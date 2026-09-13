@@ -15,6 +15,9 @@ import torch
 
 from scripts.soup.build import soup_state_dicts, truncated_soup
 from scripts.soup.pipeline import (
+    check_init_mode,
+    configured_svd_slice,
+    init_tag,
     pool_glob,
     resolve_lrs,
     sigma_argv,
@@ -164,6 +167,42 @@ class TestSlugForPattern:
         # Deterministic and distinct from a different pattern.
         assert slug == slug_for_pattern("a/*|b/*")
         assert slug != slug_for_pattern("a/*|c/*")
+
+
+class TestNoUncondInit:
+    def test_slice_from_config_then_args(self):
+        assert configured_svd_slice({}, []) == 0
+        assert configured_svd_slice({"svd_slice": 3}, []) == 3
+        # ARGS override the merged config, in either argparse spelling.
+        assert (
+            configured_svd_slice({"svd_slice": 3}, ["--network_args", "svd_slice=5"])
+            == 5
+        )
+        assert configured_svd_slice({}, ["--network_args=svd_slice=2"]) == 2
+        assert (
+            configured_svd_slice({}, ["--network_args", "foo=1", "svd_slice=4", "--x"])
+            == 4
+        )
+
+    def test_tag_only_in_no_uncond_mode(self):
+        assert init_tag(False, 3) == ""  # uncond path keeps the legacy slug
+        assert init_tag(True) == "_nouncond"
+        assert init_tag(True, 3) == "_nouncond_k3"
+
+    def test_slice_under_uncond_path_is_refused(self):
+        # --network_weights would overwrite the sliced A with the uncond's rows.
+        with pytest.raises(SystemExit, match="svd_slice=3 under the uncond-init"):
+            check_init_mode(False, None, 3, [])
+        check_init_mode(True, None, 3, [])  # the supported combination
+        check_init_mode(False, None, 0, [])  # shipped path untouched
+
+    def test_contradictory_flags_are_refused(self):
+        with pytest.raises(SystemExit, match="mutually exclusive"):
+            check_init_mode(True, "anima_uncond_x", 0, [])
+        with pytest.raises(SystemExit, match="network_weights"):
+            check_init_mode(True, None, 0, ["--network_weights", "a.safetensors"])
+        with pytest.raises(SystemExit, match="network_weights"):
+            check_init_mode(True, None, 0, ["--network_weights=a.safetensors"])
 
 
 class TestResolveLrs:

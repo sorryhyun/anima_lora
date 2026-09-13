@@ -13,6 +13,64 @@ from networks.lora_modules.base import BaseLoRAModule
 logger = logging.getLogger(__name__)
 
 
+# Smallest (lam_cols / lam_0) a fp32 eigh still resolves into the right
+# eigenvector. lam is sigma^2, so 1e-3 is a 32:1 singular-value window — every
+# weight group of the base DiT clears it by an order of magnitude at the 256
+# columns eight r=32 slices need, except the ones that need the SVD anyway.
+_GRAM_EIG_FLOOR = 1e-3
+
+
+def _gram_window_is_resolvable(lam: torch.Tensor) -> bool:
+    """``lam`` = the descending eigenvalues of the window actually requested."""
+    return bool(lam[0] > 0 and (lam[-1] / lam[0]).item() >= _GRAM_EIG_FLOOR)
+
+
+def _top_right_singular_vectors(W: torch.Tensor, cols: int) -> torch.Tensor:
+    """Top-``cols`` right singular vectors of ``W``, as an ``(in, cols)`` matrix.
+
+    The same subspace ``torch.linalg.svd(W).Vh[:cols].T`` returns, but routed
+    through an eigendecomposition of the **smaller Gram matrix**: on real DiT
+    layers that is 7.5x cheaper end to end (54.2 s -> 7.2 s for the 448
+    ``blocks.*`` Linears at r=32, 5070 Ti) *and* lands tighter-orthonormal
+    columns than cuSOLVER's
+    Jacobi SVD (1e-6 vs 1e-3 max off-diagonal), which is the property
+    ``svd_slice`` leans on. Measured capture against the exact V is 1.000 on
+    every weight group of the base DiT.
+
+    Batching the per-layer calls by shape was measured and is worthless —
+    cuSOLVER has no batched kernel at these sizes and loops internally
+    (34.4 s -> 35.0 s for the 168 ``(2048, 2048)`` layers).
+
+    What the Gram costs is the **bottom** of the window: it squares the spectrum,
+    so ``lam_cols / lam_0 == (sigma_cols / sigma_0)^2`` sinks under the fp32 eigh
+    error floor long before the SVD would notice, and those eigenvectors come
+    back orthonormal but spanning the wrong subspace (the 256-vector
+    ``(6144, 256)`` Linears decay 1569:1 and a slice-7 window — the last 32 of
+    the 256 — captured only 0.796 of the exact one). ``in > out`` is worse still:
+    the ``(out, out)`` eigenvectors are U, and ``V_r = W^T U_r / sigma_r``
+    amplifies the same error again (the 3325:1 adaln ``.1`` Linears lose
+    orthogonality outright, 0.49). So both branches read their own conditioning
+    off the eigenvalues they just computed and hand the layer to the SVD when the
+    requested window reaches too deep — which is cheap, because those are the
+    narrow layers.
+    """
+    out_dim, in_dim = W.shape
+    if in_dim <= out_dim:
+        # V are the eigenvectors of the (in x in) Gram directly.
+        lam, Q = torch.linalg.eigh(W.T @ W)
+        lam, V = lam.flip(-1)[:cols], Q.flip(-1)[:, :cols]
+        if _gram_window_is_resolvable(lam):
+            return V
+    elif cols <= out_dim:
+        # out < in: eigh gives U, and V follows through W^T U / sigma.
+        lam, Q = torch.linalg.eigh(W @ W.T)
+        lam, U = lam.flip(-1)[:cols], Q.flip(-1)[:, :cols]
+        if _gram_window_is_resolvable(lam):
+            return (W.T @ U) / lam.clamp_min(0).sqrt().clamp_min(1e-12)
+    _, _, Vh = torch.linalg.svd(W, full_matrices=False)
+    return Vh.T[:, :cols]
+
+
 class LoRAModule(BaseLoRAModule):
     supports_conv2d = True
 
@@ -111,8 +169,8 @@ class LoRAModule(BaseLoRAModule):
         matches the expected row-norm of the Kaiming default (a row of V_r^T has
         norm 1; a Kaiming row has E[‖·‖²] ≈ 1/3), so "better direction" is not
         confounded with "larger effective step". Linear only in v0 — Conv2d keeps
-        the Kaiming init already written above. Uses the same randomized SVD as
-        ``ortho.py`` (no new numerical machinery).
+        the Kaiming init already written above. The basis comes from
+        ``_top_right_singular_vectors`` (exact, Gram-routed).
         """
         if not isinstance(self.lora_down, torch.nn.Linear):
             logger.warning(
@@ -129,14 +187,13 @@ class LoRAModule(BaseLoRAModule):
                 f"the {min(W.shape)}-vector spectrum of {self.lora_name} "
                 f"({tuple(W.shape)}); lower the slice or the rank."
             )
-        # Exact thin SVD (2026-09-12; was a q=r+6, niter=2 randomized sketch).
+        # Exact basis (2026-09-12; was a q=r+6, niter=2 randomized sketch).
         # The sketch captured only 0.80–0.93 of the true top-r subspace on
         # real DiT layers and re-drew its basis per call, so two slices from
         # two sketches were not orthogonal. One exact basis makes slice 0 the
-        # actual top-r and every slice pair exactly orthogonal.
-        # Cost: 0.2–0.3 s per (8192, 2048) layer on GPU, ~1 min per run.
-        _, _, Vh = torch.linalg.svd(W, full_matrices=False)
-        V = Vh.T
+        # actual top-r and every slice pair exactly orthogonal. Cost after the
+        # Gram routing: ~7 s for a whole 28-block network (was ~54 s).
+        V = _top_right_singular_vectors(W, offset + rank)
         with torch.no_grad():
             v_r = V[:, offset : offset + rank].T / math.sqrt(3)
             self.lora_down.weight.copy_(v_r.to(self.lora_down.weight.dtype))

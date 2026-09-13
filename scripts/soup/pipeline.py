@@ -15,7 +15,9 @@ ladder, 2026-07-04/05) as one pipeline:
    fine-tune set. The checkpoint name is deterministic in (pool, ratio, epochs),
    so it is trained **once** and reused across any soup drawing the same pool.
 2. **Seeded fine-tunes**: N normal captioned runs on the ``--path_pattern``
-   images, ``--network_weights``-initialized from the uncond checkpoint. Souping
+   images, ``--network_weights``-initialized from the uncond checkpoint (or,
+   with ``--no_uncond``, straight from the method config's ``down_init`` — Phase
+   1 is skipped entirely; see :func:`init_tag`). Souping
    absorbs the training-seed lottery (a catastrophic draw is invisible to
    loss/AUC — report Act 5). Seed is the only axis that varies by default;
    ``--lr_pool`` / ``--lr_interval`` add per-ingredient learning-rate diversity
@@ -369,6 +371,63 @@ def resolve_uncond_init(ref: str) -> Path:
     return ROOT / "output" / "ckpt" / p.name
 
 
+def configured_svd_slice(merged: dict, ft_extra: list[str]) -> int:
+    """The ``svd_slice`` the Phase-2 fine-tunes would build their ``A`` from:
+    the merged method config's top-level key, overridden by a
+    ``--network_args svd_slice=k`` in the forwarded ARGS. 0 = plain top-r."""
+    slice_ = int(merged.get("svd_slice", 0) or 0)
+    for i, a in enumerate(ft_extra):
+        vals: list[str] = []
+        if a == "--network_args":
+            j = i + 1
+            while j < len(ft_extra) and not ft_extra[j].startswith("-"):
+                vals.append(ft_extra[j])
+                j += 1
+        elif a.startswith("--network_args="):
+            vals = [a.split("=", 1)[1]]
+        for v in vals:
+            if v.startswith("svd_slice="):
+                slice_ = int(v.split("=", 1)[1] or 0)
+    return slice_
+
+
+def init_tag(no_uncond: bool, svd_slice: int = 0) -> str:
+    """Slug suffix that keeps a no-uncond soup (and each ``svd_slice`` window of
+    it) from colliding with the uncond-init soup of the same selection:
+    ``""`` for the shipped uncond path, ``_nouncond`` / ``_nouncond_k<slice>``
+    otherwise. Applied to the derived slug only — an explicit ``--name`` is
+    taken verbatim."""
+    if not no_uncond:
+        return ""
+    return f"_nouncond_k{svd_slice}" if svd_slice else "_nouncond"
+
+
+def check_init_mode(
+    no_uncond: bool, uncond_init: str | None, svd_slice: int, ft_extra: list[str]
+) -> None:
+    """Refuse the init combinations that would silently do something else:
+    ``--no_uncond`` with a pinned ``--uncond_init`` (contradiction), with a
+    ``--network_weights`` in ARGS (the flag exists to *not* warm-start), and —
+    the trap that motivated the knob — an ``svd_slice`` window under the uncond
+    path, where ``--network_weights`` overwrites ``A`` with the uncond
+    checkpoint's (slice-0) rows and the slice is silently lost."""
+    if no_uncond and uncond_init:
+        raise SystemExit("--no_uncond and --uncond_init are mutually exclusive.")
+    if no_uncond and any(a.split("=", 1)[0] == "--network_weights" for a in ft_extra):
+        raise SystemExit(
+            "--no_uncond with --network_weights in ARGS: the flag means the "
+            "fine-tunes start from down_init, not from a checkpoint. Drop one."
+        )
+    if svd_slice and not no_uncond:
+        raise SystemExit(
+            f"svd_slice={svd_slice} under the uncond-init path: the fine-tunes load "
+            "the uncond checkpoint via --network_weights, which overwrites A with "
+            "its slice-0 rows — the slice would be silently lost. Pass "
+            "--no_uncond (NO_UNCOND=1 / [soup] no_uncond = true) to seed the "
+            "ingredients from weight_svd + svd_slice directly."
+        )
+
+
 def _train(args_list: list[str], dry_run: bool) -> None:
     cmd = build_launch_cmd(*args_list)
     if dry_run:
@@ -432,6 +491,16 @@ def main() -> None:
         "(a bare name resolved under output/ckpt/, a filename, or a path). When "
         "set, Phase 1 is SKIPPED — pool / uncond_ratio / uncond_epochs no longer "
         "affect the init. Set uncond_init in the [soup] table to make it a default.",
+    )
+    ap.add_argument(
+        "--no_uncond",
+        action="store_true",
+        default=bool(d.get("no_uncond", False)),
+        help="skip Phase 1 entirely: the fine-tunes start from the method "
+        "config's down_init (weight_svd [+ svd_slice]) instead of an uncond "
+        "checkpoint. Required for svd_slice != 0 (a --network_weights init "
+        "would overwrite the slice). The derived slug gets a _nouncond[_k<slice>] "
+        "suffix. Set no_uncond = true in the [soup] table to make it a default.",
     )
     ap.add_argument(
         "--num_soup",
@@ -520,9 +589,13 @@ def main() -> None:
     sigma = sigma_settings(merged, sigma_overrides(ft_extra))
     sigma_flags = sigma_argv(sigma, merged)
 
+    svd_slice = configured_svd_slice(merged, ft_extra)
+    check_init_mode(args.no_uncond, args.uncond_init, svd_slice, ft_extra)
+
     ckpt_dir = ROOT / "output" / "ckpt"
     name = args.name or (
-        slug_for_shard(shard) if shard else slug_for_pattern(args.path_pattern)
+        (slug_for_shard(shard) if shard else slug_for_pattern(args.path_pattern))
+        + init_tag(args.no_uncond, svd_slice)
     )
     pool = pool_glob(args.pool_path_pattern, args.path_pattern)
     print(f"[soup] fine-tune pattern {args.path_pattern!r} -> slug {name!r}")
@@ -531,11 +604,23 @@ def main() -> None:
     # Both phases get the expanded glob, so any artists_shard living in the
     # method config must be switched OFF — train.py refuses to see both.
     no_shard = ["--artists_shard", ""]
-    print(f"[soup] uncond pool pattern {pool!r}")
+    if not args.no_uncond:
+        print(f"[soup] uncond pool pattern {pool!r}")
 
-    # Phase 1 — uncond inter-train (skipped when the init already exists, or
-    # bypassed entirely when a checkpoint is pinned via --uncond_init).
-    if args.uncond_init:
+    # Phase 1 — uncond inter-train (skipped when the init already exists,
+    # bypassed when a checkpoint is pinned via --uncond_init, or dropped
+    # altogether with --no_uncond: the ingredients then share the deterministic
+    # weight_svd[+svd_slice] init from W0 — the same shared-subspace property
+    # the rank-r truncation relies on, minus the uncond ΔW).
+    uncond_path: Path | None
+    if args.no_uncond:
+        uncond_path = None
+        slice_note = f" (svd_slice={svd_slice})" if svd_slice else ""
+        print(
+            f"[soup] phase 1: SKIPPED (--no_uncond) — ingredients init from "
+            f"down_init={merged.get('down_init', 'kaiming')!r}{slice_note}"
+        )
+    elif args.uncond_init:
         uncond_path = resolve_uncond_init(args.uncond_init)
         if not uncond_path.is_file():
             raise SystemExit(
@@ -597,8 +682,7 @@ def main() -> None:
                     *no_shard,
                     "--path_pattern",
                     args.path_pattern,
-                    "--network_weights",
-                    str(uncond_path),
+                    *(["--network_weights", str(uncond_path)] if uncond_path else []),
                     "--seed",
                     str(seed),
                     "--output_name",

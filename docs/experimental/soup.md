@@ -37,7 +37,29 @@ uncond pool glob, default `*` = whole dataset — the fine-tune set is always
 unioned in), `UNCOND_RATIO` (0.5), `UNCOND_EPOCHS` (2), `NUM_SOUP` (3 — number
 of seeded fine-tunes to soup; seeds are `1001..1000+N`), `LR_POOL` /
 `LR_INTERVAL` (per-ingredient LR diversity, see below), `RANK` (default =
-method `network_dim`), `PRESET`.
+method `network_dim`), `PRESET`, `NO_UNCOND=1` (skip Phase 1, see below).
+
+## No-uncond mode — `NO_UNCOND=1` / `[soup] no_uncond = true`
+
+Skips Phase 1: the ingredients start from the method config's `down_init`
+(`weight_svd`, plus a top-level `svd_slice = k` if set) instead of
+`--network_weights`-loading an uncond checkpoint. The shared-init property the
+rank-r truncation relies on still holds — `weight_svd` is an exact SVD of `W₀`,
+so every seed starts from the identical `A` and `B = 0`; what is dropped is the
+uncond ΔW itself. Whether that ΔW buys anything is unmeasured (the plain-soup
+control in `bench/memorization/report.md` never ran), and Phase 1 is the
+pipeline's most expensive step at the shipped whole-pool dose.
+
+It is **required** for `svd_slice != 0`: under the uncond path
+`--network_weights` overwrites `A` with the checkpoint's slice-0 rows and the
+slice is silently lost, so the pipeline refuses that combination. All
+ingredients of one soup must share the same slice (different slices would put
+the ΔWs in orthogonal input subspaces and the rank-r truncation would drop
+~`(N-1)/N` of the energy); the per-artist address is for merging *different*
+soups later (`bench/merge_basis/README.md`). The derived slug gets a
+`_nouncond[_k<slice>]` suffix (`anima_soup_sincos_nouncond_k3`) so it never
+collides with the uncond-init soup of the same selection; an explicit `NAME` is
+taken verbatim.
 
 ## Ingredient diversity — seed by default, LR opt-in
 

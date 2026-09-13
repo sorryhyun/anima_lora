@@ -202,6 +202,9 @@ def cmd_soup(extra):
         if os.environ.get(env):
             argv += [flag, os.environ[env]]
 
+    if os.environ.get("NO_UNCOND", "").lower() in ("1", "true", "yes", "on"):
+        argv += ["--no_uncond"]
+
     mode, extra = _resolve_run_mode(list(extra or []))
     run_command("soup", [*argv, *extra], mode=mode)
 

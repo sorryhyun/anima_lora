@@ -23,3 +23,7 @@ pool_path_pattern = "*"
 uncond_ratio = 1.0
 uncond_epochs = 4
 num_soup = 3
+# no_uncond = true skips Phase 1: ingredients init from down_init (weight_svd
+# [+ top-level svd_slice]) instead of the uncond checkpoint. Required whenever
+# svd_slice != 0 — a --network_weights warm-start would overwrite the slice.
+no_uncond = false

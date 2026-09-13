@@ -52,19 +52,44 @@ trainable, so the adapter can rotate away from the SVD basis immediately.
 |-----------|---------|-------------|
 | `down_init` | `"kaiming"` | `"kaiming"` (default `kaiming_uniform_(a=√5)`), `"weight_svd"` (SVD-Down, this doc), or the gradient-seeded `"grad_svd"` / `"basis_file"` (see below) |
 | `grad_basis_file` | — | Network arg: path to a gradient-basis artifact. Required by `down_init="basis_file"`; written automatically by `"grad_svd"`. |
-| `svd_slice` | `0` | `weight_svd` only: seed from right singular vectors `[k·r, (k+1)·r)` instead of the top-r. Slices of one orthonormal basis are mutually orthogonal, so adapters trained with different `k` never share an input subspace at merge — a per-artist address. The window must fit every targeted layer (`(k+1)·r ≤ min(W.shape)`; the base DiT's 256-row adaln `.1` Linears cap r=32 at `k ≤ 7`) or the init refuses. Stamped as `ss_svd_slice`. Since 2026-09-12 the basis is an exact thin SVD (the earlier `q=r+6` randomized sketch captured only 0.80–0.93 of the true top-r on real DiT layers and re-drew per call, so slices from it were not orthogonal); slice 0 therefore now is the actual top-r. Motivation and the (so far flat) merge reads: `bench/merge_basis/README.md`. |
+| `svd_slice` | `0` | `weight_svd` only: seed from right singular vectors `[k·r, (k+1)·r)` instead of the top-r. Slices of one orthonormal basis are mutually orthogonal, so adapters trained with different `k` never share an input subspace at merge — a per-artist address. The window must fit every targeted layer (`(k+1)·r ≤ min(W.shape)`; the base DiT's 256-row adaln `.1` Linears cap r=32 at `k ≤ 7`) or the init refuses. Stamped as `ss_svd_slice`. Since 2026-09-12 the basis is exact (the earlier `q=r+6` randomized sketch captured only 0.80–0.93 of the true top-r on real DiT layers and re-drew per call, so slices from it were not orthogonal); slice 0 therefore now is the actual top-r. Motivation and the (so far flat) merge reads: `bench/merge_basis/README.md`. |
 
 ## Implementation
 
 | File | Role |
 |------|------|
-| `networks/lora_modules/lora.py` | `_init_down_weight_svd()` — randomized SVD of `W₀`, copies `V_rᵀ/√3` into `lora_down` |
+| `networks/lora_modules/lora.py` | `_top_right_singular_vectors()` — the exact basis; `_init_down_weight_svd()` copies `V_rᵀ/√3` into `lora_down` |
 | `networks/lora_anima/config.py` | `down_init` cfg field + validation (Linear/plain-LoRA-only guard) |
 | `networks/grad_basis.py` | The gradient-seeded siblings: sketch, basis artifact I/O, and the shared `V_rᵀ/√3` copy |
 
-The randomized SVD (`torch.svd_lowrank`, `q = min(rank+6, …)`, `niter=2`) is the
-same construction already used in `networks/lora_modules/ortho.py` — no new
-numerical machinery. Startup cost is paid once per adapted Linear at init.
+The basis is computed per adapted Linear at init, from an **eigendecomposition of
+the smaller Gram matrix** rather than `torch.linalg.svd` — the same subspace, but
+**7.5× cheaper** end to end on the base DiT (54.2 s → 7.2 s for all 448
+`blocks.*` Linears at r=32, 5070 Ti) and with tighter-orthonormal columns than
+cuSOLVER's Jacobi SVD (1e-6 vs 1e-3 max off-diagonal), which is the property
+`svd_slice` leans on. Measured capture against the exact V is 1.000 on every
+weight group.
+
+Two things that measurement settled, so they don't get re-proposed:
+
+- **Batching the per-layer calls by shape buys nothing.** cuSOLVER has no batched
+  kernel at these sizes and loops internally: 34.4 s → 35.0 s for the 168
+  `(2048, 2048)` layers.
+- **The Gram route needs a conditioning guard**, because squaring the spectrum
+  sinks the bottom of the requested window under the fp32 eigh error floor — the
+  1569:1 `(6144, 256)` Linears returned an orthonormal but *wrong* slice-7
+  window (0.796 capture), and for `in > out` (where V only follows through
+  `W^T U / σ`) the 3325:1 adaln `.1` Linears lost orthogonality outright (0.49).
+  Both branches read `λ_cols/λ_0` off the eigenvalues they just computed and hand
+  the layer to `linalg.svd` below `_GRAM_EIG_FLOOR` — those are the narrow,
+  cheap layers, so the fallback costs ~1 s of the 7.2 s.
+
+A disk-cached basis was considered instead and is not worth it: the basis is a
+pure function of `W₀`, so it caches cleanly, but one artifact is 56 MB–903 MB
+depending on stored columns/dtype, it is baked to the *specific* checkpoint (base
+vs aesthetic vs any merged/souped DiT — not just to depth, so `load_basis`'s
+block-count guard would not catch a mismatch, and a wrong basis is a silently
+worse init rather than an error), and it would now be saving ~7 s per run.
 
 ## Status
 

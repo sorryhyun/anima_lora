@@ -61,6 +61,42 @@ Gates:
   the map generalises; ≥ 25 % is strong. Zero with trained singles at the
   gate means the encoder is a lookup — see kill criteria.
 
+#### Run 1 attempts so far (2026-09-13 night) — the common mode is the bug
+
+Three launches, none reached eval; all killed on the train log. The
+parametrisation, not the idea, is what failed each time:
+
+| attempt | encoder | what the log showed |
+|---|---|---|
+| `-8fd936` | zero-init head + shared bias, lr 3e-4 | rel 18× row norm by step 450 — every one of the 512 hidden weights behind an output coordinate steps by lr in the same direction, so the output moves 512 × lr per step |
+| `-e28bba` | head × 1/64, shared bias at lr 1e-3 | rel grows linearly (36× at step 4300), max/mean 1.00, held == train: the shared bias gets the *summed* gradient of every ext token in the batch, a direction consistent enough that Adam marches at full lr with no restoring force (free rows never had this — each row only saw its own few items) |
+| `-02254c` | no bias, per-row norm cap 1.5 by output normalisation | `rel_spread` 0.000 through step 600: at the cap the output is `d / ‖d‖`, the internal `d` keeps growing along the common direction, and the per-glyph part is divided by it |
+
+**Next action — mean-centre the identity, own the layout mode separately.**
+
+- `Δ_r = (d_r − mean_rows d) + c`. Centring across the full row table each
+  step projects the common-mode gradient out of the shared weights, so the
+  per-glyph part behaves like free rows (their own, inconsistent gradients,
+  which saturated at ~1.0× on every rows arm). `c` is one free vector at the
+  rows lr carrying the "big glyph on a blank canvas" mode every rows arm
+  converged to (cos-to-mean 0.25–0.53, common part ≈ 0.5–0.75× row norm).
+- Bound `c` on the **parameter**, not the output: after each optimizer step
+  `c ← c · min(1, cap/‖c‖)` with cap 0.75. Projected descent has no creep;
+  output normalisation does.
+- Keep `head × 1/64` and the LayerNorm on the pooled features; no cap on the
+  centred part, but log `rel_spread` (identity), `rel_common` (‖c‖) and the
+  max row norm, and kill if spread is still < 0.05 by step 600 or the max row
+  passes 2×.
+- Relaunch with the same data / steps / σ band (`--arm encoder --data_tag w2
+  --arm_tag held32 --held_out 32`, 6000 steps); the 512² latent cache is
+  already built. Gates unchanged.
+- If spread grows but trained singles miss the gate: the pooled feature is
+  ~90 % background (ink covers ~7 % of the 96² render) — next lever is the
+  input, not the optimizer: tight-crop the glyph to the render, or mean-pool
+  ink-weighted. If spread stays flat with centring in place, the head's
+  gradient through the frozen DiT is too weak at 1/64 — raise `out_scale`
+  one notch (1/16) before anything else.
+
 ### Run 2 — kanji + scene composites (only if run 1's held-out is nonzero)
 
 Inventory kana + the 24 structured kanji + the top-200 corpus kanji with

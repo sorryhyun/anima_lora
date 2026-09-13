@@ -871,17 +871,23 @@ def _glyph_batch(bank, device, rng: random.Random, shift: int = 6, fonts=None):
 
 class GlyphEncoder:
     """``g(glyph render) → Δ_row`` in row-norm units. Small CNN + MLP, last
-    layer zero-init (step 0 = pack rows) plus a learned shared bias for the
-    layout mode every free-rows arm converged to.
+    layer zero-init (step 0 = pack rows).
 
-    ``out_scale`` keeps Adam honest: with a zero-init last layer every one of
-    the ``hidden`` weights feeding an output coordinate steps by ``lr`` in the
-    same direction, so the output moves ``hidden × lr`` per step — the first
-    run hit 18× the row norm by step 450. Scaling the head's output by
-    1/64 puts a coordinate's per-step move back near the free-rows lr; the
-    shared bias sits outside the scale and trains at the rows lr."""
+    Two guards, both learned the hard way. ``out_scale``: with a zero-init
+    last layer every one of the ``hidden`` weights feeding an output
+    coordinate steps by ``lr`` in the same direction, so the output moves
+    ``hidden × lr`` per step (run 1 hit 18× the row norm by step 450).
+    ``cap``: any component every row shares gets the *summed* gradient of
+    every ext token in the batch — a direction consistent enough that Adam
+    marches at full lr forever (run 2's shared bias reached 36× row norm,
+    every row identical, the per-glyph part drowned before the adapter's
+    LayerNorm). So there is no shared bias, and each row's delta is capped at
+    ``cap`` row norms (the free-rows arms lived at 1.0–1.4×); the gradient
+    still turns the direction."""
 
-    def __new__(cls, dim: int, width: int = 32, out_scale: float = 1.0 / 64):
+    def __new__(
+        cls, dim: int, width: int = 32, out_scale: float = 1.0 / 64, cap: float = 1.5
+    ):
         import torch
         from torch import nn
 
@@ -900,12 +906,14 @@ class GlyphEncoder:
                 )
                 nn.init.zeros_(self.head[-1].weight)
                 nn.init.zeros_(self.head[-1].bias)
-                self.shared = nn.Parameter(torch.zeros(dim))
                 self.out_scale = out_scale
+                self.cap = cap
 
             def forward(self, x):
                 h = self.norm(self.conv(x).mean(dim=(2, 3)))
-                return self.head(h) * self.out_scale + self.shared
+                d = self.head(h) * self.out_scale
+                n = d.norm(dim=1, keepdim=True)
+                return d * (self.cap / torch.clamp(n, min=self.cap))
 
         return _Enc()
 
@@ -1090,13 +1098,7 @@ def stage_train(a):
         bank = _glyph_bank([row_text[r] for r in rows_all], _fonts(), a.glyph_size)
         delta = ExtDelta(anima, rows_all, rows.shape[1], device, row_scale)
         enc = GlyphEncoder(rows.shape[1]).to(device)
-        params = [
-            {"params": [enc.shared], "lr": a.lr_rows},
-            {
-                "params": [p for n, p in enc.named_parameters() if n != "shared"],
-                "lr": a.lr_enc,
-            },
-        ]
+        params = [{"params": list(enc.parameters()), "lr": a.lr_enc}]
         is_train_row = torch.tensor([r in train_ext for r in delta.ext_ids])
         print(
             f"encoder: {sum(p.numel() for p in enc.parameters()) / 1e6:.2f}M params, "
@@ -1214,8 +1216,18 @@ def stage_train(a):
                 "rel": float(dn.mean() / row_scale),
                 "it_s": step / (time.time() - t0),
             }
-            if enc is not None and dn_held.numel():
-                rec["rel_held"] = float(dn_held.mean() / row_scale)
+            if enc is not None:
+                # identity lives in the spread between rows, not the common mode
+                raw = delta.raw.detach()
+                rec["rel_spread"] = float(
+                    (raw - raw.mean(0, keepdim=True)).norm(dim=1).mean()
+                )
+                rec["rel_common"] = float(raw.mean(0).norm())
+                rec["at_cap"] = float(
+                    (raw.norm(dim=1) >= enc.cap - 1e-3).float().mean()
+                )
+                if dn_held.numel():
+                    rec["rel_held"] = float(dn_held.mean() / row_scale)
             if lora is not None:
                 rec["lora_b_norm"] = float(
                     sum(p.norm() ** 2 for p in list(lora.params)[1::2]) ** 0.5

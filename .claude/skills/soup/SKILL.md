@@ -23,6 +23,8 @@ Three stages, submitted as one daemon command job (attach-by-default; `--queue` 
 
 env: `NAME`, `POOL_PATH_PATTERN`, `UNCOND_RATIO`, `UNCOND_EPOCHS`, `NUM_SOUP`, `RANK`, plus `LR_POOL`/`LR_INTERVAL` for opt-in per-ingredient LR diversity. By default ingredients vary by **seed only**; the soup is a uniform average with **no greedy-selection gate**, so a bad LR draw is averaged in, not dropped.
 
+`NO_UNCOND=1` / `[soup] no_uncond = true` skips Phase 1 — ingredients init from `down_init` (`weight_svd` [+ top-level `svd_slice`]); **required** for `svd_slice != 0` (the uncond `--network_weights` warm-start would overwrite the slice; the pipeline refuses). All ingredients of one soup share one slice; the slug gets `_nouncond[_k<slice>]`.
+
 `ARGS` reaches the fine-tunes — **except `--sigma_lowres*`**, a whole-pipeline routing knob that is also replayed onto the uncond run and folded into its name as an `_sl<digest>` tag, so a σ-demoted soup can't silently reuse a natively-trained init (and vice versa). Names are unchanged when σ-demote is off.
 
 ## Config
