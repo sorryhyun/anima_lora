@@ -1079,6 +1079,25 @@ What it settles.
   ext positions only); an adapter LoRA is not (24 → 21/24) and must carry an
   ext gate if it is ever kept.
 
+**W2 addendum (2026-09-13, evening; report
+[`reports/wake_w0_w2_2026_09_13.md`](reports/wake_w0_w2_2026_09_13.md)).**
+256² is a dead cost lever — the base cannot spell there (EN control 24/24 →
+11/24), so its pixel loss trains layout only (92-kana arm 1/36). 24 kana at
+512² with W1-matched exposure → 10/36 singles (W1 8/16): **rows interfere**,
+exposure alone does not scale, and combos render the *strongest* single of
+the string. The address is context-free at the adapter output, near-random
+in row space, and transfers to 1024² for every character it discriminates
+(3/8: あ え お). Cost of record: 512², batch 4, compile, no grad-ckpt, no
+aggressive recompute = 2.35 it/s (W1 1.2).
+W2a balanced batches (4 distinct strings per shared layout) → 6/36 singles,
+a miss against 10/36. With free rows and a batch-mean loss, batch composition
+cannot cancel layout; the balanced data only pays off inside a comparing loss
+(W2c swap-contrastive).
+Same-noise 24-way diffusion classifier on the `rows_w24` delta: identity sits at
+σ ≈ 0.8 only (top-1 19/48, top-3 33/48; chance at σ ≤ 0.65 and at 0.95; floor
+at chance everywhere), where the default sampling spends 18.5 % of steps.
+σ restriction must target 0.7–0.9, not `t_max 0.6`.
+
 Gotchas that cost time: read the largest detector box, not the whole 512² image
 (the manga prompt also spawns tiny salad bubbles); ext rows are Qwen-piece
 keyed (「いい」 is one row); the VAE takes `IMAGE_TRANSFORMS` range, not the

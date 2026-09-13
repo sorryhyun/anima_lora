@@ -16,10 +16,13 @@ Stages (each one daemon job; ``--stage all`` chains them):
           reader-agreed kana/kanji units?
   data    build the glyph set: font renders (Noto Sans/Serif CJK weights) of 1–3
           kana strings + kana-only corpus bubble crops; eval prompt sets.
+          ``--balanced N`` renders N distinct strings per shared layout (W2a).
   train   frozen DiT, frozen Qwen; trainable = a delta on the ext rows the
           training captions touch (arm ``rows``) or that + a LoRA on every
           Linear of ``llm_adapter.blocks`` (arm ``rows_adapter``). Plain
           rectified-flow loss on the glyph crops.
+  classify  same-noise N-way diffusion classifier over the trained single kana
+          (delta on vs off): which σ carries identity, do the rows discriminate.
   eval    T2I the eval set with the delta scaled 0 (floor) and 1 (trained),
           same seeds; read; CER vs the floor. An EN string set is the pipeline
           control (no training needed; the base reads Latin).
@@ -495,33 +498,51 @@ def _fonts():
     return paths
 
 
-def _render_string(text: str, font_path: str, rng: random.Random, size=512):
-    from PIL import Image, ImageDraw, ImageFont
-
-    bubble = rng.random() < 0.6
-    bg = rng.choice(
+def _sample_layout(n: int, rng: random.Random, size=512) -> dict:
+    """Every random choice of one render for an ``n``-char string, drawn in the
+    pre-W2a order so unbalanced data dirs rebuild bit-identically."""
+    lay = {"bubble": rng.random() < 0.6}
+    lay["bg"] = rng.choice(
         ["white", "white", (235, 235, 235), (245, 240, 230), (220, 225, 235)]
     )
+    if lay["bubble"]:
+        # light screentone-ish dots + a white ellipse
+        lay["dots"] = [(rng.randrange(size), rng.randrange(size)) for _ in range(900)]
+        lay["pad"] = rng.randint(30, 70)
+        lay["outline"] = rng.randint(2, 5)
+    lay["vertical"] = rng.random() < 0.65 if n > 1 else rng.random() < 0.3
+    lay["fs"] = (
+        rng.randint(110, 200) if n == 1 else rng.randint(int(320 / n), int(400 / n))
+    )
+    lay["color"] = rng.choice(["black", "black", (30, 30, 30), (60, 40, 40)])
+    lay["rot"] = rng.uniform(-6, 6) if rng.random() < 0.3 else None
+    return lay
+
+
+def _render_string(
+    text: str, font_path: str, rng: random.Random, size=512, layout=None
+):
+    """``layout`` (from ``_sample_layout``) pins canvas/bubble/size/position so
+    several strings render in the same layout; ``None`` draws a fresh one."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    n = len(text)
+    lay = layout if layout is not None else _sample_layout(n, rng, size)
+    bubble, bg, fs, color = lay["bubble"], lay["bg"], lay["fs"], lay["color"]
     im = Image.new("RGB", (size, size), bg)
     d = ImageDraw.Draw(im)
     if bubble:
-        # light screentone-ish dots + a white ellipse
-        for _ in range(900):
-            x, y = rng.randrange(size), rng.randrange(size)
+        for x, y in lay["dots"]:
             d.ellipse((x, y, x + 2, y + 2), fill=(150, 150, 150))
-        pad = rng.randint(30, 70)
+        pad = lay["pad"]
         d.ellipse(
             (pad, pad, size - pad, size - pad),
             fill="white",
             outline="black",
-            width=rng.randint(2, 5),
+            width=lay["outline"],
         )
-    n = len(text)
-    vertical = rng.random() < 0.65 if n > 1 else rng.random() < 0.3
-    fs = rng.randint(110, 200) if n == 1 else rng.randint(int(320 / n), int(400 / n))
     font = ImageFont.truetype(font_path, fs, index=0)
-    color = rng.choice(["black", "black", (30, 30, 30), (60, 40, 40)])
-    if vertical:
+    if lay["vertical"]:
         total = n * fs * 1.05
         y = (size - total) / 2
         for ch in text:
@@ -533,8 +554,8 @@ def _render_string(text: str, font_path: str, rng: random.Random, size=512):
         d.text(
             ((size - w) / 2, (size - fs) / 2 - fs * 0.1), text, fill=color, font=font
         )
-    if rng.random() < 0.3:
-        im = im.rotate(rng.uniform(-6, 6), fillcolor=bg, resample=Image.BICUBIC)
+    if lay["rot"] is not None:
+        im = im.rotate(lay["rot"], fillcolor=bg, resample=Image.BICUBIC)
     return im, bubble
 
 
@@ -574,7 +595,11 @@ def _data_dir(a):
 
 
 def _arm_dir(a):
-    return OUT / (a.arm + (f"_{a.data_tag}" if a.data_tag else ""))
+    return OUT / (
+        a.arm
+        + (f"_{a.data_tag}" if a.data_tag else "")
+        + (f"_{a.arm_tag}" if a.arm_tag else "")
+    )
 
 
 def stage_data(a):
@@ -609,40 +634,88 @@ def stage_data(a):
             seen.add(t)
             corpus_eval.append(t)
 
-    items = []
-    # font renders: every kana ×N + random combos
     n_single = a.n_single
-    for ch in kana:
-        for _ in range(n_single):
-            items.append(("font", ch))
-    n_combo = 0
     n_target = min(a.n_combo, 50 * (n_possible - n_eval_combos))
-    while n_combo < n_target:
-        k = rng.choice([2, 3])
-        s = "".join(rng.choice(kana) for _ in range(k))
-        if s in combos_eval:
-            continue
-        items.append(("font", s))
-        n_combo += 1
     recs = []
-    for i, (kind, s) in enumerate(items):
-        im, bubble = _render_string(s, rng.choice(fonts), rng)
-        fn = out / "img" / f"font_{i:05d}.png"
-        im.save(fn)
-        recs.append(
-            {
-                "file": str(fn),
-                "text": s,
-                "caption": (TPL_BUBBLE if bubble else TPL_PLAIN).format(s),
-                "src": "font",
-            }
-        )
+    if a.balanced:
+        # W2a: groups of `g` distinct strings rendered in ONE layout (font, canvas,
+        # bubble, glyph size/position) — layout cancels inside the batch, identity
+        # is the only gradient. Singles: each round partitions the shuffled
+        # inventory (every kana exactly n_single times when g | len(kana)).
+        g = a.balanced
+        assert len(kana) >= g, f"--balanced {g} needs ≥ {g} chars"
+        groups = []
+        for _ in range(n_single):
+            perm = kana[:]
+            rng.shuffle(perm)
+            for j in range(0, len(perm), g):
+                grp = perm[j : j + g]
+                if len(grp) < g:
+                    grp += rng.sample([c for c in kana if c not in grp], g - len(grp))
+                groups.append(grp)
+        n_combo = 0
+        while n_combo < n_target:
+            k = rng.choice([2, 3])
+            grp: list = []
+            for _ in range(1000):
+                s = "".join(rng.choice(kana) for _ in range(k))
+                if s not in combos_eval and s not in grp:
+                    grp.append(s)
+                    if len(grp) == g:
+                        break
+            if len(grp) < g:  # tiny alphabet (smoke runs)
+                break
+            groups.append(grp)
+            n_combo += g
+        for lid, grp in enumerate(groups):
+            font = rng.choice(fonts)
+            lay = _sample_layout(len(grp[0]), rng)
+            for s in grp:
+                im, bubble = _render_string(s, font, rng, layout=lay)
+                fn = out / "img" / f"font_{len(recs):05d}.png"
+                im.save(fn)
+                recs.append(
+                    {
+                        "file": str(fn),
+                        "text": s,
+                        "caption": (TPL_BUBBLE if bubble else TPL_PLAIN).format(s),
+                        "src": "font",
+                        "layout_id": lid,
+                    }
+                )
+    else:
+        items = []
+        # font renders: every kana ×N + random combos
+        for ch in kana:
+            for _ in range(n_single):
+                items.append(("font", ch))
+        n_combo = 0
+        while n_combo < n_target:
+            k = rng.choice([2, 3])
+            s = "".join(rng.choice(kana) for _ in range(k))
+            if s in combos_eval:
+                continue
+            items.append(("font", s))
+            n_combo += 1
+        for i, (kind, s) in enumerate(items):
+            im, bubble = _render_string(s, rng.choice(fonts), rng)
+            fn = out / "img" / f"font_{i:05d}.png"
+            im.save(fn)
+            recs.append(
+                {
+                    "file": str(fn),
+                    "text": s,
+                    "caption": (TPL_BUBBLE if bubble else TPL_PLAIN).format(s),
+                    "src": "font",
+                }
+            )
     # corpus crops
     lines = _corpus_lines(CORPUS_TRAIN / "boxes.jsonl", 6)
     if a.only_chars:
         lines = [ln for ln in lines if all(c in kana for c in ln[0] if c in KANA)]
     rng.shuffle(lines)
     lines = lines[: a.n_corpus]
+    corpus_lid = len(recs)  # past every font layout id
     for j, (t, rel, box) in enumerate(lines):
         try:
             im = _crop_bubble(CORPUS_TRAIN / rel, box)
@@ -659,6 +732,14 @@ def stage_data(a):
                 "src": "corpus",
             }
         )
+    if a.balanced:
+        # corpus crops have no shared layout: plain shuffled groups of g (the
+        # tail that does not fill a group is dropped) so every batch is one group
+        corpus = [r for r in recs if r["src"] == "corpus"]
+        corpus = corpus[: len(corpus) - len(corpus) % a.balanced]
+        for j, r in enumerate(corpus):
+            r["layout_id"] = corpus_lid + j // a.balanced
+        recs = [r for r in recs if r["src"] == "font"] + corpus
     (out / "train.jsonl").write_text(
         "\n".join(json.dumps(r, ensure_ascii=False) for r in recs)
     )
@@ -684,17 +765,28 @@ def stage_data(a):
     print(
         f"data: {len(recs)} train items {dict(c)}; eval {len(ev)} prompts", flush=True
     )
+    if a.balanced:  # whole groups side by side: layout must match within a row
+        by_lid: dict = {}
+        for r in recs:
+            by_lid.setdefault(r["layout_id"], []).append(r)
+        sheet_recs = [
+            r
+            for lid in rng.sample(sorted(by_lid), min(10, len(by_lid)))
+            for r in by_lid[lid]
+        ]
+    else:
+        sheet_recs = rng.sample(recs, min(40, len(recs)))
     _sheet(
         [
             (
                 __import__("PIL.Image", fromlist=["Image"]).open(r["file"]),
                 [r["text"], r["src"]],
             )
-            for r in rng.sample(recs, min(40, len(recs)))
+            for r in sheet_recs
         ],
         out / "sheet_train.png",
         thumb=160,
-        cols=8,
+        cols=a.balanced * 2 if a.balanced else 8,
     )
 
 
@@ -848,24 +940,58 @@ def stage_train(a):
     anima.train()
     if a.grad_ckpt:
         anima.enable_gradient_checkpointing(unsloth_offload=False)
+    if a.compile:
+        # Block compile is the repo's first OOM remedy (bit-exact, cuts
+        # activation memory); one train_size → one token family. Compile after
+        # the trainables are attached (the ExtDelta hooks sit on the adapter's
+        # embed, the adapter LoRA patches Linears the blocks never see).
+        from library.runtime.harness import compile_blocks_for_training
 
-    # 4. loop
-    n = len(recs)
+        compile_blocks_for_training(
+            anima,
+            None,
+            backend="inductor",
+            n_token_families=1,
+            activation_memory_budget=a.activation_memory_budget,
+            partitioner_aggressive_recomputation=bool(a.aggressive_recompute),
+            grad_ckpt=bool(a.grad_ckpt),
+        )
+
+    # 4. loop — balanced data (W2a) draws one layout group per batch
+    groups = None
+    if "layout_id" in recs[0]:
+        by_lid: dict = {}
+        for i, r in enumerate(recs):
+            by_lid.setdefault(r["layout_id"], []).append(i)
+        groups = list(by_lid.values())
+        sizes = {len(x) for x in groups}
+        assert sizes == {a.batch}, (
+            f"balanced data has group sizes {sizes}; pass --batch to match"
+        )
+        print(f"batching: {len(groups)} layout groups of {a.batch}", flush=True)
+    unit = 1 if groups else a.batch
+    n = len(groups) if groups else len(recs)
     order = list(range(n))
     random.Random(a.seed).shuffle(order)
     ptr = 0
     log = []
     t0 = time.time()
     for step in range(1, a.train_steps + 1):
-        if ptr + a.batch > n:
+        if ptr + unit > n:
             random.Random(a.seed + step).shuffle(order)
             ptr = 0
-        idx = order[ptr : ptr + a.batch]
-        ptr += a.batch
+        sel = order[ptr : ptr + unit]
+        ptr += unit
+        idx = groups[sel[0]] if groups else sel
         latents = lat[idx].to(device)
         noise = torch.randn_like(latents)
         noisy, ts, target = fm_training_batch(
-            latents, noise, dtype=torch.bfloat16, device=device
+            latents,
+            noise,
+            dtype=torch.bfloat16,
+            device=device,
+            t_min=a.t_min,
+            t_max=a.t_max,
         )
         pe = torch.stack([cache[recs[i]["caption"]][0] for i in idx]).to(device)
         am = torch.stack([cache[recs[i]["caption"]][1] for i in idx]).to(device)
@@ -925,6 +1051,204 @@ def stage_train(a):
 
 
 # ----------------------------------------------------------------------------
+# stage: classify (diffusion-classifier diagnostic, before a W2c loss)
+
+
+def stage_classify(a):
+    """Same-noise N-way diffusion classifier over the single kana.
+
+    Fresh held-out single renders (unseen fonts/layouts); each is noised once
+    per σ and scored under every kana's caption in its own template — identical
+    inputs, only the address differs. Summed FM error per candidate, right =
+    argmin. Run with the arm's delta and with it off (pack rows) as the control.
+    Answers: which σ band carries identity (where a CE term belongs), the error
+    gap/spread that sets its temperature, and whether the rows already
+    discriminate (then renders fail in sampling, not in the rows).
+    """
+    import numpy as np
+    import torch
+    from PIL import Image
+
+    from library.inference.generation import get_generation_settings
+    from library.inference.models import load_dit_model
+
+    data = _data_dir(a)
+    arm_dir = _arm_dir(a)
+    recs = [json.loads(ln) for ln in (data / "train.jsonl").read_text().splitlines()]
+    singles = {r["text"] for r in recs if r["src"] == "font" and len(r["text"]) == 1}
+    kana = [c for c in KANA if c in singles]
+    tpls = {"bubble": TPL_BUBBLE, "plain": TPL_PLAIN}
+    sigmas = [float(x) for x in a.cls_t.split(",")]
+    out = arm_dir / (f"classify_{a.eval_tag}" if a.eval_tag else "classify")
+    (out / "img").mkdir(parents=True, exist_ok=True)
+    args = _gen_args(a.train_size, a.steps, a.cfg, out)
+    device = get_generation_settings(args).device
+
+    # 1. held-out renders: own rng stream, so fonts/layouts are not the train set's
+    rng = random.Random(10_000 + a.seed)
+    fonts = _fonts()
+    items = []
+    for ki, ch in enumerate(kana):
+        for j in range(a.cls_per_kana):
+            im, bubble = _render_string(ch, rng.choice(fonts), rng, size=a.train_size)
+            fn = out / "img" / f"{ki:02d}_{j}.png"
+            im.save(fn)
+            items.append(
+                {"file": str(fn), "text": ch, "tpl": "bubble" if bubble else "plain"}
+            )
+
+    # 2. text + latents + one noise draw per (item, σ), shared by both conds
+    cache = _encode_captions([tpls[t].format(c) for t in tpls for c in kana], device)
+    vae = _load_vae(device)
+    with torch.no_grad():
+        px = np.stack([np.array(Image.open(it["file"]).convert("RGB")) for it in items])
+        px = torch.from_numpy(px).permute(0, 3, 1, 2).float().div(127.5).sub(1.0)
+        lat = torch.cat(
+            [
+                vae.encode_pixels_to_latents(px[i : i + 8].to(device)).float().cpu()
+                for i in range(0, len(px), 8)
+            ]
+        )
+    del vae
+    torch.cuda.empty_cache()
+    g = torch.Generator().manual_seed(a.seed)
+    noise = torch.randn((len(items), len(sigmas), *lat.shape[1:]), generator=g)
+
+    # 3. frozen DiT + the arm's delta
+    sd = torch.load(arm_dir / "trained.pt")
+    assert "lora" not in sd, "classify covers rows-only arms"
+    anima = load_dit_model(args, device, torch.bfloat16)
+    anima.requires_grad_(False)
+    anima.eval()
+    delta = ExtDelta(
+        anima,
+        sd["delta"]["ext_ids"],
+        sd["delta"]["raw"].shape[1],
+        device,
+        sd["delta"]["row_scale"],
+    )
+    delta.load(sd["delta"])
+
+    # 4. err[cond, item, σ, kana] = FM error summed over the latent
+    K = len(kana)
+    conds = ("trained", "floor")
+    err = torch.zeros(len(conds), len(items), len(sigmas), K)
+    h, w = lat.shape[-2:]
+    t0 = time.time()
+    n_fwd = 0
+    with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
+        for ci, cond in enumerate(conds):
+            delta.scale = 1.0 if cond == "trained" else 0.0
+            for ii, it in enumerate(items):
+                caps = [tpls[it["tpl"]].format(c) for c in kana]
+                x = lat[ii : ii + 1].to(device)
+                for si, sig in enumerate(sigmas):
+                    nz = noise[ii, si : si + 1].to(device)
+                    target = nz - x
+                    noisy = ((1.0 - sig) * x + sig * nz).to(torch.bfloat16)
+                    for k0 in range(0, K, a.cls_batch):
+                        cs = caps[k0 : k0 + a.cls_batch]
+                        b = len(cs)
+                        pred = anima(
+                            noisy.repeat(b, 1, 1, 1).unsqueeze(2),
+                            torch.full((b,), sig, device=device),
+                            torch.stack([cache[c][0] for c in cs]).to(device),
+                            padding_mask=torch.zeros(
+                                b, 1, h, w, dtype=torch.bfloat16, device=device
+                            ),
+                            target_input_ids=torch.stack([cache[c][2] for c in cs]).to(
+                                device
+                            ),
+                            target_attention_mask=torch.stack(
+                                [cache[c][3] for c in cs]
+                            ).to(device),
+                            source_attention_mask=torch.stack(
+                                [cache[c][1] for c in cs]
+                            ).to(device),
+                        ).squeeze(2)
+                        err[ci, ii, si, k0 : k0 + b] = (
+                            ((pred.float() - target) ** 2).sum(dim=(1, 2, 3)).cpu()
+                        )
+                        n_fwd += b
+                if ii % 8 == 7:
+                    print(
+                        f"classify {cond}: item {ii + 1}/{len(items)}, "
+                        f"{n_fwd / (time.time() - t0):.1f} fwd/s",
+                        flush=True,
+                    )
+    del anima
+    torch.cuda.empty_cache()
+    labels = torch.tensor([kana.index(it["text"]) for it in items])
+    torch.save(
+        {
+            "err": err,
+            "labels": labels,
+            "kana": kana,
+            "sigmas": sigmas,
+            "conds": conds,
+            "items": items,
+        },
+        out / "classify.pt",
+    )
+    _report_classify(out, err, labels, kana, sigmas, conds)
+
+
+def _report_classify(out: Path, err, labels, kana, sigmas, conds):
+    import torch
+
+    K = len(kana)
+    N = len(labels)
+    ar = torch.arange(N)
+
+    def stats(e):  # e: N×K summed errors
+        right = e[ar, labels]
+        rank = (e < right[:, None]).sum(1).float()  # 0 = right kana wins
+        wrong_mean = (e.sum(1) - right) / (K - 1)
+        gap = (wrong_mean - right).mean()
+        spread = e.std(1).mean()
+        return rank, gap, spread, right.mean()
+
+    L = [
+        "# classify — same-noise diffusion classifier",
+        "",
+        f"{N} held-out single renders, {K}-way (chance {1 / K:.3f}); summed FM "
+        "error per latent, right kana = argmin. Σσ = errors summed over the grid.",
+        "",
+        "| cond | σ | top-1 | mean rank | err right | gap (wrong − right) | spread | gap/spread |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for ci, cond in enumerate(conds):
+        for si, sig in list(enumerate(sigmas)) + [(None, None)]:
+            e = err[ci].sum(1) if si is None else err[ci, :, si]
+            rank, gap, spread, right = stats(e)
+            L.append(
+                f"| {cond} | {'Σσ' if sig is None else f'{sig:.2f}'} | "
+                f"{(rank == 0).float().mean():.3f} | {rank.mean() + 1:.1f} | "
+                f"{right:.0f} | {gap:.1f} | {spread:.1f} | {gap / spread:.3f} |"
+            )
+    L += ["", "## Per kana (Σσ): right/total, most-picked wrong kana", ""]
+    for ci, cond in enumerate(conds):
+        pred = err[ci].sum(1).argmin(1)
+        parts = []
+        for ki, ch in enumerate(kana):
+            m = labels == ki
+            hit = int((pred[m] == ki).sum())
+            wrong = [kana[int(q)] for q in pred[m] if int(q) != ki]
+            parts.append(
+                f"{ch} {hit}/{int(m.sum())}" + (f"→{''.join(wrong)}" if wrong else "")
+            )
+        picks = torch.bincount(pred, minlength=K)
+        top = sorted(range(K), key=lambda k: -int(picks[k]))[:5]
+        L.append(f"- **{cond}**: " + ", ".join(parts))
+        L.append(
+            "  - most-picked overall: "
+            + ", ".join(f"{kana[k]} ×{int(picks[k])}" for k in top)
+        )
+    (out / "classify.md").write_text("\n".join(L) + "\n")
+    print("\n".join(L), flush=True)
+
+
+# ----------------------------------------------------------------------------
 # stage: eval
 
 
@@ -937,8 +1261,21 @@ def stage_eval(a):
     data = _data_dir(a)
     arm_dir = _arm_dir(a)
     ev = json.loads((data / "eval.json").read_text())
+    if a.eval_groups:
+        keep = set(a.eval_groups.split(","))
+        ev = [e for e in ev if e["group"] in keep]
+    if a.eval_limit:
+        seen: dict = {}
+        ev = [
+            e
+            for e in ev
+            if seen.setdefault(e["group"], []).append(1)
+            or len(seen[e["group"]]) <= a.eval_limit
+        ]
     sd = torch.load(arm_dir / "trained.pt")
-    args = _gen_args(a.eval_size, a.steps, a.cfg, arm_dir / "img")
+    eval_dir = arm_dir / f"eval_{a.eval_tag}" if a.eval_tag else arm_dir
+    eval_dir.mkdir(parents=True, exist_ok=True)
+    args = _gen_args(a.eval_size, a.steps, a.cfg, eval_dir / "img")
     gen = get_generation_settings(args)
     device = gen.device
     shared = load_shared_models(args)
@@ -959,10 +1296,11 @@ def stage_eval(a):
         lora = AdapterLoRA(anima, sd["adapter_rank"], device)
         lora.load(sd["lora"])
     vae = _load_vae(device)
-    (arm_dir / "img").mkdir(parents=True, exist_ok=True)
+    (eval_dir / "img").mkdir(parents=True, exist_ok=True)
     manifest = []
     t0 = time.time()
-    for cond in ("floor", "trained"):
+    conds = ("trained",) if a.no_floor else ("floor", "trained")
+    for cond in conds:
         s = 0.0 if cond == "floor" else 1.0
         delta.scale = s
         if lora is not None:
@@ -970,7 +1308,7 @@ def stage_eval(a):
         shared["conds_cache"].clear()
         for ei, e in enumerate(ev):
             for seed in range(a.seeds):
-                fn = arm_dir / "img" / f"{cond}_{e['group']}_{ei:03d}_s{seed}.png"
+                fn = eval_dir / "img" / f"{cond}_{e['group']}_{ei:03d}_s{seed}.png"
                 if not fn.exists():
                     a2 = copy.deepcopy(args)
                     a2.prompt = e["caption"]
@@ -985,10 +1323,13 @@ def stage_eval(a):
     )
     del anima, vae, shared
     torch.cuda.empty_cache()
-    _read_eval(a, arm_dir, manifest)
+    _read_eval(a, eval_dir, manifest, arm_dir)
 
 
-def _read_eval(a, arm_dir: Path, manifest):
+def _read_eval(a, arm_dir: Path, manifest, train_dir: Path | None = None):
+    """``arm_dir`` is where reads/report/sheets land; ``train_dir`` (default the
+    same) holds ``eval_coverage.json`` from the train stage."""
+    train_dir = train_dir or arm_dir
     from collections import defaultdict
 
     from PIL import Image
@@ -1023,8 +1364,8 @@ def _read_eval(a, arm_dir: Path, manifest):
                 f"{sum(m['cer_vl'] for m in ms) / len(ms):.3f} | {sum(m['exact'] for m in ms)}/{len(ms)} |"
             )
     cov = (
-        json.loads((arm_dir / "eval_coverage.json").read_text())
-        if (arm_dir / "eval_coverage.json").exists()
+        json.loads((train_dir / "eval_coverage.json").read_text())
+        if (train_dir / "eval_coverage.json").exists()
         else {}
     )
     if cov:
@@ -1037,7 +1378,7 @@ def _read_eval(a, arm_dir: Path, manifest):
                 cov[m["text"]]
                 for m in manifest
                 if m["group"] == g
-                and m["cond"] == "floor"
+                and m["cond"] == "trained"
                 and m["seed"] == 0
                 and m["text"] in cov
             ]
@@ -1078,7 +1419,7 @@ def main():
         "--stage",
         nargs="+",
         default=["all"],
-        choices=["all", "salad", "data", "train", "eval"],
+        choices=["all", "salad", "data", "train", "eval", "classify"],
     )
     p.add_argument("--arm", default="rows", choices=["rows", "rows_adapter"])
     p.add_argument("--device", default="cuda")
@@ -1101,11 +1442,83 @@ def main():
     p.add_argument("--lr_adapter", type=float, default=1e-4)
     p.add_argument("--adapter_rank", type=int, default=16)
     p.add_argument("--grad_ckpt", type=int, default=1)
+    p.add_argument(
+        "--compile",
+        type=int,
+        default=1,
+        help="train: per-block torch.compile of the frozen DiT (the OOM remedy of record)",
+    )
+    p.add_argument("--activation_memory_budget", type=float, default=0.99)
+    p.add_argument(
+        "--aggressive_recompute",
+        type=int,
+        default=1,
+        help="compile: partitioner aggressive recomputation (−VRAM, +~12 % s/it); 0 when memory allows",
+    )
+    p.add_argument(
+        "--t_min",
+        type=float,
+        default=None,
+        help="restrict FM timesteps (W2 σ-restriction lever; None = full range)",
+    )
+    p.add_argument("--t_max", type=float, default=None)
+    p.add_argument(
+        "--eval_groups",
+        default="",
+        help="eval: comma list of groups to render (single,combo,corpus,en); default all",
+    )
+    p.add_argument(
+        "--eval_limit",
+        type=int,
+        default=0,
+        help="eval: first N prompts per group (0 = all)",
+    )
+    p.add_argument(
+        "--eval_tag",
+        default="",
+        help="eval: write img/reads/report/sheets under <arm>/eval_<tag>/ (e.g. a second eval_size)",
+    )
+    p.add_argument(
+        "--no_floor",
+        action="store_true",
+        help="eval: skip the delta-scale-0 floor renders (identical across arms on the same eval set)",
+    )
+    p.add_argument(
+        "--cls_t",
+        default="0.1,0.2,0.35,0.5,0.65,0.8,0.95",
+        help="classify: σ grid (DiT-scale) to score the candidates at",
+    )
+    p.add_argument(
+        "--cls_per_kana",
+        type=int,
+        default=2,
+        help="classify: held-out renders per kana",
+    )
+    p.add_argument(
+        "--cls_batch",
+        type=int,
+        default=24,
+        help="classify: candidate captions per DiT forward",
+    )
     p.add_argument("--seed", type=int, default=0)
     p.add_argument(
         "--data_tag",
         default="",
         help="suffix for output/wake_probe/data_<tag> and <arm>_<tag>",
+    )
+    p.add_argument(
+        "--arm_tag",
+        default="",
+        help="suffix for the arm dir only (<arm>_<data_tag>_<arm_tag>): a second "
+        "train recipe on the same data without overwriting the first",
+    )
+    p.add_argument(
+        "--balanced",
+        type=int,
+        default=0,
+        help="data: groups of N distinct strings sharing one layout (font, canvas, "
+        "bubble, glyph size/position); train then batches one group per step "
+        "(W2a; needs --batch N). 0 = shuffled items",
     )
     p.add_argument(
         "--only_chars",
@@ -1122,6 +1535,7 @@ def main():
             "data": stage_data,
             "train": stage_train,
             "eval": stage_eval,
+            "classify": stage_classify,
         }[s](a)
 
 
