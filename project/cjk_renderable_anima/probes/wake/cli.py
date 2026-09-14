@@ -19,6 +19,7 @@ def build_parser(stages, description: str | None = None) -> argparse.ArgumentPar
     _encoder_args(p.add_argument_group("train: encoder arm"))
     _eval_args(p.add_argument_group("eval / native"))
     _classify_args(p.add_argument_group("classify / classify_str"))
+    _scene_args(p.add_argument_group("scenes"))
     return p
 
 
@@ -372,6 +373,27 @@ def _eval_args(g):
         default=1.0,
         help="native: ExtDelta scale for the trained cond (scene-survival vs identity probe)",
     )
+    g.add_argument(
+        "--delta_parts",
+        default="full",
+        help="native: comma list of table parts to render as separate conds "
+        "(encoder arms; raw = g + c + f): full (named `trained`), f (per-row "
+        "residual), c (common vector), g (centred encoder part), and sums fg fc gc",
+    )
+    g.add_argument(
+        "--kept_ref",
+        default="",
+        help="native: dir holding floor_*.png of an earlier native run, the "
+        "scene-kept reference when this run has --no_floor (default: the arm's "
+        "native/img)",
+    )
+    g.add_argument(
+        "--kept_tau",
+        type=float,
+        default=0.0,
+        help="native: scene-kept margin — cos(img, floor) − cos(img, flat "
+        "training-canvas prototype) at or above this counts as kept",
+    )
 
 
 def _classify_args(g):
@@ -403,4 +425,73 @@ def _classify_args(g):
         default="ja",
         choices=["ja", "en"],
         help="classify_str: ja = kana strings of trained rows; en = nonsense two-word Latin strings (base-model order control)",
+    )
+
+
+def _scene_args(g):
+    g.add_argument(
+        "--scene_tag", default="s0", help="scenes: output/wake_probe/scenes_<tag>"
+    )
+    g.add_argument(
+        "--scene_n", type=int, default=1000, help="scenes: prompts to generate"
+    )
+    g.add_argument(
+        "--scene_shapes",
+        default="448,512:2,448x512,512x448",
+        help="scenes: canvas pool (S0 recipe; --shapes syntax)",
+    )
+    g.add_argument(
+        "--scene_anchors",
+        default="",
+        help="scenes: comma list of EN anchor words (default the built-in ten)",
+    )
+    g.add_argument(
+        "--scene_bubble_tag",
+        default="speech bubble",
+        help="scenes: bubble tag in the prompt — recorded so the data stage "
+        "spells the composite caption identically",
+    )
+    g.add_argument(
+        "--scene_min_box",
+        type=int,
+        default=96,
+        help="scenes: reject usable regions under this many px on the short side",
+    )
+    g.add_argument(
+        "--scene_char_frac",
+        type=float,
+        default=0.3,
+        help="scenes: share of 1girl prompts naming a dataset character (else `original`)",
+    )
+    g.add_argument(
+        "--scene_artist_frac",
+        type=float,
+        default=0.8,
+        help="scenes: share of prompts carrying one of the dataset's @artist tags",
+    )
+    g.add_argument(
+        "--scene_batch", type=int, default=4, help="scenes: prompts per DiT pass"
+    )
+    g.add_argument(
+        "--scene_negative",
+        default="worst quality, lowres, old, bad hands, bad anatomy, sepia, blurry, glitch, jpeg artifacts",
+        help="scenes: negative prompt (inference only; never enters a caption)",
+    )
+    g.add_argument(
+        "--scene_artists",
+        default="sincos,hews",
+        help="scenes: comma list of curated artist names added to the dataset pool at 4× weight",
+    )
+    g.add_argument(
+        "--scene_gen_scale",
+        type=float,
+        default=1.0,
+        help="scenes: render at this multiple of the pool shape, then downsample "
+        "(the base draws crude scenes at 512²; 2.0 = its native ~1024)",
+    )
+    g.add_argument(
+        "--scene_allow_open",
+        type=int,
+        default=0,
+        help="scenes: keep images whose bubble fill runs to the border (open background)",
     )

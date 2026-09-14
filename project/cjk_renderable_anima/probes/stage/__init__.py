@@ -5,6 +5,7 @@ data      glyph training set + eval prompt set
 train     frozen DiT, rectified-flow loss on glyph crops → trained.pt
 classify  same-noise diffusion classifiers (``classify``, ``classify_str``)
 eval      T2I floor vs trained on the eval set (``eval``) and scene prompts (``native``)
+scenes    self-generated EN-anchored scenes for the S-line composites (plan_synth)
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ STAGES = {
     "classify": ("classify", "stage_classify"),
     "classify_str": ("classify", "stage_classify_str"),
     "native": ("eval", "stage_native"),
+    "scenes": ("scenes", "stage_scenes"),
 }
 ALL = ["salad", "data", "train", "eval"]
 

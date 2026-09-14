@@ -219,9 +219,14 @@ def stage_native(a):
     vae = load_vae(device)
     manifest = []
     t0 = time.time()
-    conds = ("trained",) if a.no_floor else ("floor", "trained")
+    parts = table_parts(sd, [x for x in a.delta_parts.split(",") if x])
+    conds = ([] if a.no_floor else ["floor"]) + list(parts)
     for cond in conds:
-        delta.scale = 0.0 if cond == "floor" else a.delta_scale
+        if cond == "floor":
+            delta.scale = 0.0
+        else:
+            delta.scale = a.delta_scale
+            delta.raw.data.copy_(parts[cond].to(delta.raw.device))
         shared["conds_cache"].clear()
         for it in items:
             for seed in range(a.seeds):
@@ -241,6 +246,106 @@ def stage_native(a):
     _read_native(a, out, manifest, chars, clauses, conds)
 
 
+def table_parts(sd: dict, names: list[str]) -> dict:
+    """``{cond name: raw table}`` for the requested parts of an encoder arm's
+    saved table, ``raw = g + c + f`` (``g`` centred across rows, ``c`` the
+    common vector broadcast, ``f`` the per-row residual). ``full`` keeps the
+    name ``trained`` so older reports and file names stay comparable."""
+
+    raw = sd["delta"]["raw"]
+    out = {}
+    comp = None
+    for name in names:
+        if name == "full":
+            out["trained"] = raw
+            continue
+        if comp is None:
+            assert "free" in sd and "encoder" in sd, (
+                f"--delta_parts {name}: the table has no g/c/f split (rows arm?)"
+            )
+            f = sd["free"].to(raw.dtype)
+            c = sd["encoder"]["common"].to(raw.dtype).expand_as(raw)
+            comp = {"f": f, "c": c, "g": raw - f - c}
+        assert name and all(ch in comp for ch in name), f"--delta_parts: {name}"
+        out[name] = sum(comp[ch] for ch in name)
+    if comp is not None:
+        n = lambda t: float(t.norm(dim=1).mean())  # noqa: E731
+        print(
+            f"table parts (row-norm units, mean over rows): g {n(comp['g']):.3f} "
+            f"c {n(comp['c']):.3f} f {n(comp['f']):.3f} full {n(raw):.3f}",
+            flush=True,
+        )
+    return out
+
+
+class SceneKept:
+    """The scene-kept ruler (plan_synth item 4): an image is *kept* when its
+    PE-Spatial pooled feature is closer to the floor image of the same
+    (prompt, kana, clause, seed) than to the flat training canvas —
+    ``margin = cos(img, floor) − cos(img, canvas prototype) ≥ τ`` with the
+    prototype the mean feature of ``n_proto`` training renders. Floor images
+    come from this run's manifest, else from ``ref_dir`` (an earlier native
+    run of the same arm). A plain cos-to-floor cannot do it: a white bubble
+    on black still scores 0.89 against a 2-koma scene while real scenes sit
+    at 0.94+ (P0b calibration, 2026-09-14)."""
+
+    def __init__(self, device, ref_dir: Path, canvas_dir: Path, tau: float, n_proto=64):
+        import random
+
+        import torch
+
+        from library.training.cmmd import pool_and_normalize
+        from library.vision.encoder import (
+            encode_pe_from_imageminus1to1,
+            load_pe_encoder,
+        )
+
+        self.device = torch.device(device)
+        self.bundle = load_pe_encoder(self.device, name="pe_spatial")
+        self._pool, self._enc = pool_and_normalize, encode_pe_from_imageminus1to1
+        self.ref_dir = ref_dir
+        self.tau = tau
+        self.cache: dict = {}
+        files = sorted(canvas_dir.glob("*.png"))
+        assert files, f"scene-kept: no training canvases in {canvas_dir}"
+        files = random.Random(0).sample(files, min(n_proto, len(files)))
+        self.proto = torch.nn.functional.normalize(
+            torch.stack([self.feat(f) for f in files]).mean(0), dim=0
+        )
+        self.n_proto = len(files)
+
+    def feat(self, path: Path):
+        import numpy as np
+        import torch
+        from PIL import Image
+
+        key = str(path)
+        if key not in self.cache:
+            t = torch.from_numpy(np.asarray(Image.open(path).convert("RGB")))
+            t = (t.permute(2, 0, 1).float() / 127.5 - 1.0).unsqueeze(0)
+            with torch.no_grad():
+                f = self._enc(self.bundle, t.to(self.device))[0]
+            self.cache[key] = self._pool(f).cpu()
+        return self.cache[key]
+
+    def score(self, path: Path, ref: Path) -> tuple[float, float]:
+        """``(cos to floor, cos to canvas prototype)``."""
+        f = self.feat(path)
+        return float((f * self.feat(ref)).sum()), float((f * self.proto).sum())
+
+    def floor_file(self, m: dict, manifest) -> Path | None:
+        for x in manifest:
+            if x["cond"] == "floor" and all(
+                x[k] == m[k] for k in ("pi", "text", "clause", "seed")
+            ):
+                return Path(x["file"])
+        cand = (
+            self.ref_dir
+            / f"floor_p{m['pi']:02d}_{m['text']}_{m['clause']}_s{m['seed']}.png"
+        )
+        return cand if cand.exists() else None
+
+
 def _read_native(a, out: Path, manifest, chars, clauses, conds):
     rd = Readers(a.device)
     for m in manifest:
@@ -249,20 +354,47 @@ def _read_native(a, out: Path, manifest, chars, clauses, conds):
         m["hit_vl"] = hit(reads, m["text"], "vl")
         m["exact"] = m["hit_sfx"] and m["hit_vl"]
         m["any_cjk"] = any(CJK_RE.search(r["sfx"] or "") for r in reads)
+    del rd
+    ref_dir = Path(a.kept_ref) if a.kept_ref else arm_dir(a) / "native" / "img"
+    kept = SceneKept(a.device, ref_dir, data_dir(a) / "img", a.kept_tau)
+    for m in manifest:
+        ref = None if m["cond"] == "floor" else kept.floor_file(m, manifest)
+        m["kept_cos"] = m["canvas_cos"] = m["kept"] = None
+        if ref is not None:
+            m["kept_cos"], m["canvas_cos"] = kept.score(Path(m["file"]), ref)
+            m["kept"] = m["kept_cos"] - m["canvas_cos"] >= kept.tau
+        m["hit_kept"] = bool(m["exact"] and m["kept"])
     (out / "native_reads.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=1)
     )
     agg = defaultdict(list)
     for m in manifest:
         agg[(m["clause"], m["cond"])].append(m)
+    trained_conds = [c for c in conds if c != "floor"]
     lines = [
         f"# wake_probe — arm `{a.arm}` native (scene prompts + kana clause)",
         "",
-        f"prompts: `{a.native_prompts}`; chars {' '.join(chars)}; {a.seeds} seed(s); {a.eval_size}²; delta scale {a.delta_scale}",
+        f"prompts: `{a.native_prompts}`; chars {' '.join(chars)}; {a.seeds} seed(s); "
+        f"{a.eval_size}²; delta scale {a.delta_scale}; parts {' '.join(trained_conds)}",
         "",
-        "| clause | cond | n | CER sfx | CER vl16 | hit sfx | hit vl | both | any CJK read |",
-        "|---|---|---|---|---|---|---|---|---|",
+        f"scene-kept ruler: kept ⇔ PE-Spatial cos(img, floor image of the same "
+        f"prompt/kana/seed) − cos(img, flat training-canvas prototype of "
+        f"{kept.n_proto} renders) ≥ {kept.tau:.2f} (floor ref `{ref_dir}`)",
+        "",
+        "| clause | cond | n | CER sfx | CER vl16 | hit sfx | hit vl | both | any CJK read | floor cos | canvas cos | kept | hit & kept |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
+
+    def _kept_cols(ms):
+        ks = [m for m in ms if m["kept_cos"] is not None]
+        if not ks:
+            return "– | – | – | –"
+        return (
+            f"{sum(m['kept_cos'] for m in ks) / len(ks):.3f} | "
+            f"{sum(m['canvas_cos'] for m in ks) / len(ks):.3f} | "
+            f"{sum(bool(m['kept']) for m in ms)} | {sum(m['hit_kept'] for m in ms)}"
+        )
+
     for cl in clauses:
         for c in conds:
             ms = agg.get((cl, c), [])
@@ -272,28 +404,39 @@ def _read_native(a, out: Path, manifest, chars, clauses, conds):
                 f"| {cl} | {c} | {len(ms)} | {sum(m['cer_sfx'] for m in ms) / len(ms):.3f} | "
                 f"{sum(m['cer_vl'] for m in ms) / len(ms):.3f} | {sum(m['hit_sfx'] for m in ms)} | "
                 f"{sum(m['hit_vl'] for m in ms)} | {sum(m['exact'] for m in ms)} | "
-                f"{sum(m['any_cjk'] for m in ms)} |"
+                f"{sum(m['any_cjk'] for m in ms)} | {_kept_cols(ms)} |"
             )
-    lines += ["", "per kana (trained, both readers):", ""]
-    for k in chars:
-        for cl in clauses:
-            ms = [
-                m
-                for m in manifest
-                if m["text"] == k and m["clause"] == cl and m["cond"] == "trained"
-            ]
-            if ms:
-                lines.append(f"- {k} / {cl}: {sum(m['exact'] for m in ms)}/{len(ms)}")
-    lines += ["", "per prompt (trained, both readers, all kana/clauses):", ""]
-    by_p = defaultdict(list)
-    for m in manifest:
-        if m["cond"] == "trained":
-            by_p[m["pi"]].append(m)
-    for pi in sorted(by_p):
-        ms = by_p[pi]
-        lines.append(
-            f"- p{pi:02d} `{ms[0]['prompt']}`: {sum(m['exact'] for m in ms)}/{len(ms)}"
-        )
+    lines += ["", "per kana (both readers hit / kept / hit & kept):", ""]
+    for c in trained_conds:
+        for k in chars:
+            for cl in clauses:
+                ms = [
+                    m
+                    for m in manifest
+                    if m["text"] == k and m["clause"] == cl and m["cond"] == c
+                ]
+                if ms:
+                    lines.append(
+                        f"- {c} {k} / {cl}: {sum(m['exact'] for m in ms)} / "
+                        f"{sum(bool(m['kept']) for m in ms)} / {sum(m['hit_kept'] for m in ms)} "
+                        f"of {len(ms)}"
+                    )
+    lines += [
+        "",
+        "per prompt (both readers hit / kept / hit & kept, all kana/clauses):",
+        "",
+    ]
+    for c in trained_conds:
+        by_p = defaultdict(list)
+        for m in manifest:
+            if m["cond"] == c:
+                by_p[m["pi"]].append(m)
+        for pi in sorted(by_p):
+            ms = by_p[pi]
+            lines.append(
+                f"- {c} p{pi:02d} `{ms[0]['prompt']}`: {sum(m['exact'] for m in ms)} / "
+                f"{sum(bool(m['kept']) for m in ms)} / {sum(m['hit_kept'] for m in ms)} of {len(ms)}"
+            )
     lines += [
         "",
         "Sheets: sheet_<kana>_<clause>.png — one row per prompt: "
@@ -308,7 +451,15 @@ def _read_native(a, out: Path, manifest, chars, clauses, conds):
     for k in chars:
         for cl in clauses:
             rows = [
-                _sheet_row(by_key[pi, k, cl, seed, c], f"p{pi:02d} {c} s{seed}: {k}")
+                _sheet_row(
+                    by_key[pi, k, cl, seed, c],
+                    f"p{pi:02d} {c} s{seed}: {k}"
+                    + (
+                        f" m{by_key[pi, k, cl, seed, c]['kept_cos'] - by_key[pi, k, cl, seed, c]['canvas_cos']:+.2f}"
+                        if by_key[pi, k, cl, seed, c]["kept_cos"] is not None
+                        else ""
+                    ),
+                )
                 for pi in sorted(by_p)
                 for seed in range(a.seeds)
                 for c in conds

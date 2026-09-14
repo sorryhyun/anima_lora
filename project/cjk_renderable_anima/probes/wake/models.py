@@ -17,7 +17,7 @@ def checkpoints():
     return default_checkpoints()
 
 
-def gen_args(size, steps: int, cfg: int | float, save: Path):
+def gen_args(size, steps: int, cfg: int | float, save: Path, negative_prompt: str = ""):
     """``size``: int side or ``(W, H)``; the request wants (height, width)."""
     from anima_lora.inference import GenerationRequest
 
@@ -25,6 +25,7 @@ def gen_args(size, steps: int, cfg: int | float, save: Path):
     ck = checkpoints()
     req = GenerationRequest(
         prompt="",
+        negative_prompt=negative_prompt,
         image_size=(H, W),
         infer_steps=steps,
         guidance_scale=cfg,

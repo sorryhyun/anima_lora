@@ -794,6 +794,47 @@ wall) not run since cheaper-at-parity missed on wall alone (0.82×, not
 0.75×). Next = P0b singles at scale (instrument owed: `--kana_ext` +
 `single_ext`), then P1 strings on a 512–768 pool.
 
+### Table-parts probe (2026-09-14 night): the glyph is conditional on the canvas mode, nothing separates
+
+**Why it was owed.** P0b's `native` reads 32/64 but the sheets say the hits
+are training canvases drawn over the scene (`plan_synth.md`). Before
+re-training on scene composites: does the canvas live in the *shared*
+parts of the table — the common vector `c` (at its 0.75 cap) and the
+rank-1 encoder part `g` — with the glyph in the per-row `f`? If so,
+warm-starting `g`/`c` from P0b would carry the canvas forever and zeroing
+`c` at inference would already be a fix. The saved table splits exactly:
+`raw = g + c + f` (mean row norms 0.968 / 0.750 / 0.718, full 1.574;
+`g` centred across rows so `mean(g + c) = c`).
+
+Two jobs on the P0b table, no training:
+
+| job | what | result |
+|---|---|---|
+| `20260914-213200-f1225f` | scene-kept ruler on P0b's existing `native/` (64 trained images) | plain PE-cos to the floor image fails (a white bubble on black scores 0.89 against a 2-koma scene; real scenes 0.94+; seed-pair p10 0.82). **Margin rule** — cos(img, floor) − cos(img, mean feature of 64 training canvases) ≥ 0 — matches the sheets: every wipe negative (−0.33 … −0.01), every kept scene positive. P0b full table: hit 32, kept 28, **hit & kept 2/64** |
+| `20260914-213229-c7e1f5` (`native_parts/`, 64 renders, 4.3 min) | `--delta_parts f,c,g,fg`, 8 prompts × す か × 1 seed, floor reused | **every part 0/16 hits.** `f`, `g`, `fg`: scene kept 16/16, text = floor garble. `c` alone: kept 11/16, and where it wins it draws the *training canvas* — big white bubble, one generic kana (readers say ん at p03 p05 p06) — never す or か |
+
+**Reading.** The canvas mode is `c` (the "big glyph on a blank canvas"
+direction the encoder docstring predicted), but the identity in `f` / `g`
+does not render without it: the rows learned *glyph given the flat-canvas
+layout*, and `f + g` inside a real scene is silent. No linear split of the
+table separates glyph from canvas, so (i) zeroing `c` at inference is not
+a fix, (ii) a warm start from P0b (or P0a) carries a conditional identity
+that the composites would have to re-learn anyway, and (iii) the magnitude
+axis (`--delta_scale` 0.5 → 2/64, 0.7 → 22/64 hits) and the parts axis
+agree: the P0b table has exactly one working direction and it is the
+training image. **Decision (user, 2026-09-14): the S line — the rows
+arm from scratch on the scene-composite mix with the canvas mode moved
+into a per-source `c_flat` (`plan_synth.md`, S0), no encoder, no warm
+start; P0b stays as the flat-only control.**
+
+**Instrument.** `native --delta_parts f,c,g,fg,…` renders each part of an
+encoder-arm table as its own cond (`full` keeps the name `trained`);
+`_read_native` now reports `floor cos | canvas cos | kept | hit & kept`
+per cond, with `--kept_ref` (floor images of an earlier run when this one
+is `--no_floor`) and `--kept_tau` (margin, default 0). The canvas
+prototype is 64 renders from the arm's own data dir, so a synth-trained
+arm measures against *its* flat share.
+
 ### Shelved W2 levers (do not reopen without a new reason)
 
 - Same-noise classifier CE / swap hinge on free rows: valid for singles,

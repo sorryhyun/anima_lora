@@ -11,9 +11,11 @@ pack's ext rows, so EN prompts are bit-exact by construction and the
 artefact ships as an ordinary vocab pack.
 
 [`plan.md`](plan.md) is the forward plan (phases P0a–P4, gates, kill
-criteria, recipe of record); [`plan_synth.md`](plan_synth.md) amends its P1
-data with self-generated scene composites (P0b's `native` probe showed the
-rows address the whole training canvas, not the glyph); [`findings.md`](findings.md) holds the settled
+criteria, recipe of record); [`plan_synth.md`](plan_synth.md) opens the **S
+line** — the rows arm retrained from scratch on self-generated scene
+composites with a per-source layout vector (P0b's `native` and
+table-parts probes showed the rows address the whole training canvas, not
+the glyph, and that nothing in the table separates the two); [`findings.md`](findings.md) holds the settled
 verdicts one screen per topic; `history.md` is the dated run record
 (W2d Runs 1–3, order probe, σ diagnostic, strings arm, canvas-shape gate).
 [`diagram.html`](diagram.html) is the one-figure picture of what trains and
