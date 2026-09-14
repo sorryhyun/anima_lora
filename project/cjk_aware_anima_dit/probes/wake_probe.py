@@ -502,9 +502,46 @@ def _fonts():
     return paths
 
 
-def _sample_layout(n: int, rng: random.Random, size=512) -> dict:
+JITTER_BG_LIGHT = [
+    "white",
+    "white",
+    (235, 235, 235),
+    (245, 240, 230),
+    (220, 225, 235),
+    (250, 235, 200),
+    (200, 215, 235),
+]
+JITTER_BG_DARK = [(30, 30, 30), (20, 25, 40), (60, 40, 50), (45, 45, 45), (10, 10, 10)]
+JITTER_INK_DARK = [
+    "black",
+    "black",
+    (30, 30, 30),
+    (140, 30, 30),
+    (30, 40, 140),
+    (20, 100, 50),
+    (150, 60, 120),
+]
+JITTER_INK_LIGHT = [
+    "white",
+    "white",
+    (240, 235, 200),
+    (250, 220, 60),
+    (120, 220, 240),
+    (255, 150, 160),
+]
+
+
+def _sample_layout(n: int, rng: random.Random, size=512, mode: str = "v1") -> dict:
     """Every random choice of one render for an ``n``-char string, drawn in the
-    pre-W2a order so unbalanced data dirs rebuild bit-identically."""
+    pre-W2a order so unbalanced data dirs rebuild bit-identically.
+
+    ``mode="jitter"`` (data lever, 2026-09-14) draws the v1 fields and then
+    overrides what v1 held constant: glyph position (anywhere on the canvas /
+    inside the bubble), size down to 60 px, ink colour + optional outline,
+    dark backgrounds, a bubble of random size and place. Every row then has
+    the same layout statistics and the only thing a row can explain is the
+    glyph — the constant "big black glyph centred on a light canvas" was the
+    shared gradient direction that drove the encoder's table to rank 1."""
     lay = {"bubble": rng.random() < 0.6}
     lay["bg"] = rng.choice(
         ["white", "white", (235, 235, 235), (245, 240, 230), (220, 225, 235)]
@@ -520,43 +557,99 @@ def _sample_layout(n: int, rng: random.Random, size=512) -> dict:
     )
     lay["color"] = rng.choice(["black", "black", (30, 30, 30), (60, 40, 40)])
     lay["rot"] = rng.uniform(-6, 6) if rng.random() < 0.3 else None
+    if mode == "jitter":
+        dark = rng.random() < 0.35
+        lay["bg"] = rng.choice(JITTER_BG_DARK if dark else JITTER_BG_LIGHT)
+        # bubble fill stays white, so ink inside a bubble is always dark
+        ink_light = dark and not lay["bubble"]
+        lay["color"] = rng.choice(JITTER_INK_LIGHT if ink_light else JITTER_INK_DARK)
+        if rng.random() < 0.25:
+            lay["stroke"] = rng.randint(2, 6)
+            lay["stroke_fill"] = "black" if ink_light else "white"
+        lay["fs"] = (
+            rng.randint(60, 200) if n == 1 else rng.randint(int(180 / n), int(400 / n))
+        )
+        # normalised anchors; _render_string maps them into the feasible range
+        # once it knows the text extent (layout dicts stay font-free)
+        lay["pos"] = (rng.random(), rng.random())
+        if lay["bubble"]:
+            lay["box"] = (
+                rng.random(),
+                rng.random(),
+                rng.uniform(0.45, 1.0),
+                rng.uniform(0.45, 1.0),
+            )
     return lay
 
 
 def _render_string(
-    text: str, font_path: str, rng: random.Random, size=512, layout=None
+    text: str,
+    font_path: str,
+    rng: random.Random,
+    size=512,
+    layout=None,
+    mode: str = "v1",
 ):
     """``layout`` (from ``_sample_layout``) pins canvas/bubble/size/position so
     several strings render in the same layout; ``None`` draws a fresh one."""
     from PIL import Image, ImageDraw, ImageFont
 
     n = len(text)
-    lay = layout if layout is not None else _sample_layout(n, rng, size)
+    lay = layout if layout is not None else _sample_layout(n, rng, size, mode)
     bubble, bg, fs, color = lay["bubble"], lay["bg"], lay["fs"], lay["color"]
     im = Image.new("RGB", (size, size), bg)
     d = ImageDraw.Draw(im)
+    font = ImageFont.truetype(font_path, fs, index=0)
+    # text block extent (w, h) and its centre; v1 = canvas centre, jitter =
+    # anchored inside the bubble's inscribed rectangle / the canvas
+    if lay["vertical"]:
+        tw = max(d.textlength(ch, font=font) for ch in text)
+        th = n * fs * 1.05
+    else:
+        tw = d.textlength(text, font=font)
+        th = fs
+    cx, cy = size / 2, size / 2
+    ebox = (
+        (lay["pad"], lay["pad"], size - lay["pad"], size - lay["pad"])
+        if bubble
+        else None
+    )
+    if "pos" in lay:
+        m = 8
+        if bubble:
+            u, v, sw, sh = lay["box"]
+            # half-axes: big enough that the inscribed rectangle holds the text
+            amin = (tw / 2 + m) * 2**0.5
+            bmin = (th / 2 + m) * 2**0.5
+            amax = bmax = size / 2 - m
+            ea = min(amax, max(amin, sw * amax))
+            eb = min(bmax, max(bmin, sh * bmax))
+            ecx = ea + m + u * max(0.0, size - 2 * (ea + m))
+            ecy = eb + m + v * max(0.0, size - 2 * (eb + m))
+            ebox = (ecx - ea, ecy - eb, ecx + ea, ecy + eb)
+            rx = max(0.0, ea / 2**0.5 - tw / 2 - m / 2)
+            ry = max(0.0, eb / 2**0.5 - th / 2 - m / 2)
+            cx = ecx + (2 * lay["pos"][0] - 1) * rx
+            cy = ecy + (2 * lay["pos"][1] - 1) * ry
+        else:
+            cx = tw / 2 + m + lay["pos"][0] * max(0.0, size - tw - 2 * m)
+            cy = th / 2 + m + lay["pos"][1] * max(0.0, size - th - 2 * m)
     if bubble:
         for x, y in lay["dots"]:
             d.ellipse((x, y, x + 2, y + 2), fill=(150, 150, 150))
-        pad = lay["pad"]
-        d.ellipse(
-            (pad, pad, size - pad, size - pad),
-            fill="white",
-            outline="black",
-            width=lay["outline"],
-        )
-    font = ImageFont.truetype(font_path, fs, index=0)
+        d.ellipse(ebox, fill="white", outline="black", width=lay["outline"])
+    stroke = {}
+    if lay.get("stroke"):
+        stroke = {"stroke_width": lay["stroke"], "stroke_fill": lay["stroke_fill"]}
     if lay["vertical"]:
-        total = n * fs * 1.05
-        y = (size - total) / 2
+        y = cy - th / 2
         for ch in text:
             w = d.textlength(ch, font=font)
-            d.text(((size - w) / 2, y), ch, fill=color, font=font)
+            d.text((cx - w / 2, y), ch, fill=color, font=font, **stroke)
             y += fs * 1.05
     else:
-        w = d.textlength(text, font=font)
         d.text(
-            ((size - w) / 2, (size - fs) / 2 - fs * 0.1), text, fill=color, font=font
+            (cx - tw / 2, cy - fs / 2 - fs * 0.1), text, fill=color, font=font, **stroke
         )
     if lay["rot"] is not None:
         im = im.rotate(lay["rot"], fillcolor=bg, resample=Image.BICUBIC)
@@ -673,7 +766,7 @@ def stage_data(a):
             n_combo += g
         for lid, grp in enumerate(groups):
             font = rng.choice(fonts)
-            lay = _sample_layout(len(grp[0]), rng)
+            lay = _sample_layout(len(grp[0]), rng, mode=a.layout)
             for s in grp:
                 im, bubble = _render_string(s, font, rng, layout=lay)
                 fn = out / "img" / f"font_{len(recs):05d}.png"
@@ -702,7 +795,7 @@ def stage_data(a):
             items.append(("font", s))
             n_combo += 1
         for i, (kind, s) in enumerate(items):
-            im, bubble = _render_string(s, rng.choice(fonts), rng)
+            im, bubble = _render_string(s, rng.choice(fonts), rng, mode=a.layout)
             fn = out / "img" / f"font_{i:05d}.png"
             im.save(fn)
             recs.append(
@@ -911,6 +1004,7 @@ class GlyphEncoder:
         common_cap: float = 0.75,
         pool: str = "spatial",
         glyph_size: int = 96,
+        head_init: str = "zero",
     ):
         import torch
         from torch import nn
@@ -938,7 +1032,14 @@ class GlyphEncoder:
                 self.head = nn.Sequential(
                     nn.Linear(feat, 512), nn.GELU(), nn.Linear(512, dim)
                 )
-                nn.init.zeros_(self.head[-1].weight)
+                # rank lever (2026-09-14): attempt 10's zero-init last layer
+                # grew as one outer product (PR 2.8, table PR 1.0) — with
+                # Adam a consistent gradient direction on shared weights
+                # marches while the per-glyph tail random-walks. ``random``
+                # keeps the default full-rank init; stage_train rescales it
+                # to --init_spread row norms on the reference render
+                if head_init == "zero":
+                    nn.init.zeros_(self.head[-1].weight)
                 nn.init.zeros_(self.head[-1].bias)
                 self.common = nn.Parameter(torch.zeros(dim))
                 self.out_scale = out_scale
@@ -1147,6 +1248,8 @@ def stage_train(a):
     )
     enc = None
     bank = None
+    free = None
+    free_mask = None
     if a.arm == "encoder":
         rows_all = sorted(set(train_ext) | {i for ids in ev_ext.values() for i in ids})
         row_text = _row_texts(tok, pack, rows_all)
@@ -1159,13 +1262,53 @@ def stage_train(a):
             common_cap=a.common_cap,
             pool=a.enc_pool,
             glyph_size=a.glyph_size,
+            head_init=a.head_init,
         ).to(device)
         font_mean = a.font_mode == "mean"
+        if a.head_init == "random":
+            with torch.no_grad():
+                xref = _glyph_batch(
+                    bank,
+                    device,
+                    random.Random(0),
+                    shift=0,
+                    fonts=[0] * bank.shape[0],
+                    font_mean=font_mean,
+                )
+                spread0 = float(enc.identity(xref).norm(dim=1).mean())
+                enc.head[-1].weight.mul_(a.init_spread / max(spread0, 1e-8))
+                spread1 = float(enc.identity(xref).norm(dim=1).mean())
+            print(
+                f"encoder head random init: spread {spread0:.4f} → {spread1:.3f} row norms",
+                flush=True,
+            )
         params = [
             {"params": enc.enc_params(), "lr": a.lr_enc},
             {"params": [enc.common], "lr": a.lr_common},
         ]
         is_train_row = torch.tensor([r in train_ext for r in delta.ext_ids])
+        if a.init_encoder:
+            src = torch.load(a.init_encoder, map_location="cpu", weights_only=False)
+            enc.load_state_dict({k: v.to(device) for k, v in src["encoder"].items()})
+            print(
+                f"encoder warm start: {a.init_encoder} (arm {src.get('arm')}, "
+                f"common norm {float(enc.common.norm()):.3f})",
+                flush=True,
+            )
+        if a.free_residual > 0:
+            # Run 1d hybrid: row_i = g(glyph_i) + f_i on trained rows only
+            # (mask zeroes held-out rows in the forward, so they get neither
+            # a residual nor a gradient); μ · mean_i ‖f_i‖² over trained rows
+            free = torch.nn.Parameter(
+                torch.zeros(len(delta.ext_ids), rows.shape[1], device=device)
+            )
+            free_mask = is_train_row.float().unsqueeze(1).to(device)
+            n_free = float(is_train_row.sum())
+            params.append({"params": [free], "lr": a.lr_free})
+            print(
+                f"free residual: {int(n_free)} trained rows, μ {a.free_residual:g}, lr {a.lr_free:g}",
+                flush=True,
+            )
         print(
             f"encoder: {sum(p.numel() for p in enc.parameters()) / 1e6:.2f}M params, "
             f"{len(rows_all)} rows ({int(is_train_row.sum())} in training captions), "
@@ -1266,6 +1409,8 @@ def stage_train(a):
         )
         if enc is not None:
             delta.raw = enc(_glyph_batch(bank, device, aug_rng, font_mean=font_mean))
+            if free is not None:
+                delta.raw = delta.raw + free * free_mask
         with torch.autocast("cuda", dtype=torch.bfloat16):
             pred = anima(
                 noisy.unsqueeze(2),
@@ -1277,7 +1422,30 @@ def stage_train(a):
                 source_attention_mask=am,
             )
         pred = pred.squeeze(2)
-        loss = F.mse_loss(pred.float(), target.float())
+        loss_fm = F.mse_loss(pred.float(), target.float())
+        loss = loss_fm
+        decor_val = None
+        if enc is not None and a.decor > 0:
+            # plan_wake Run 1b amended: the FM gradient's sign-consistent
+            # direction marches the table to rank 1 under Adam (attempt 10
+            # PR 1.0, rinit 23 → 1.24). Penalise pairwise cos² of the centred
+            # *trained* rows (189×189 per step, no DiT forward): ≈ 1 at PR 1,
+            # → 0 as rows spread to the free-rows geometry (pairwise cos 0.04).
+            # Held-out rows are excluded from both the centring and the pairs
+            # so they get no direct gradient.
+            tr = delta.raw[is_train_row.to(delta.raw.device)].float()
+            cen_tr = tr - tr.mean(0, keepdim=True)
+            cn_tr = F.normalize(cen_tr, dim=1)
+            sim_tr = cn_tr @ cn_tr.T
+            n_tr = sim_tr.shape[0]
+            decor_val = ((sim_tr**2).sum() - (sim_tr.diagonal() ** 2).sum()) / (
+                n_tr * (n_tr - 1)
+            )
+            loss = loss + a.decor * decor_val
+        free_pen = None
+        if free is not None:
+            free_pen = ((free * free_mask) ** 2).sum() / n_free
+            loss = loss + a.free_residual * free_pen
         opt.zero_grad(set_to_none=True)
         loss.backward()
         opt.step()
@@ -1292,7 +1460,7 @@ def stage_train(a):
                 dn = dn[is_train_row.to(dn.device)]
             rec = {
                 "step": step,
-                "loss": loss.item(),
+                "loss": loss_fm.item(),
                 "delta_norm_mean": float(dn.mean()),
                 "delta_norm_max": float(dn.max()),
                 "rel": float(dn.mean() / row_scale),
@@ -1327,6 +1495,35 @@ def stage_train(a):
                 )
                 rec["rel_common"] = float(enc.common.detach().norm())
                 rec["rel_max"] = float(raw.norm(dim=1).max())
+                # table rank: attempt 10's centred table had participation
+                # ratio 1.0 (one axis, cos 0.85 with c) and nearest-neighbour
+                # cos ≥ 0.84 for every kana — the instrument the data lever
+                # and the rank lever are judged on
+                cen = (raw - raw.mean(0, keepdim=True)).float()
+                sv = torch.linalg.svdvals(cen)
+                pw = sv**2 / (sv**2).sum().clamp_min(1e-12)
+                rec["table_pr"] = float(1.0 / (pw**2).sum().clamp_min(1e-12))
+                cn = F.normalize(cen, dim=1)
+                sim = cn @ cn.T
+                sim.fill_diagonal_(-1.0)
+                rec["nn_cos"] = float(sim.max(dim=1).values.mean())
+                if decor_val is not None:
+                    rec["decor"] = float(decor_val.detach())
+                    rec["loss_total"] = float(loss.detach())
+                if free is not None:
+                    # the hybrid's instrument: how much of the trained rows'
+                    # identity the free residual carries vs the shared g
+                    # (rel_spread_ref). ≫ 1 = g learned nothing (lookup)
+                    fn = (free.detach() * free_mask).norm(dim=1)
+                    rec["free_norm"] = float(fn.sum() / n_free)
+                    rec["free_max"] = float(fn.max())
+                    rec["free_ratio"] = float(
+                        rec["free_norm"] / max(rec["rel_spread_ref"], 1e-6)
+                    )
+                    rec["loss_total"] = float(loss.detach())
+                    svg = torch.linalg.svdvals(ref.float())
+                    pwg = svg**2 / (svg**2).sum().clamp_min(1e-12)
+                    rec["g_pr"] = float(1.0 / (pwg**2).sum().clamp_min(1e-12))
                 if dn_held.numel():
                     rec["rel_held"] = float(dn_held.mean() / row_scale)
             if lora is not None:
@@ -1378,11 +1575,15 @@ def stage_train(a):
                         for f in range(bank.shape[1])
                     ]
                 ).mean(0)
+            if free is not None:
+                delta.raw = delta.raw + free * free_mask
     sd = {"delta": delta.state_dict(), "arm": a.arm, "args": vars(a)}
     if enc is not None:
         sd["encoder"] = {k: v.cpu() for k, v in enc.state_dict().items()}
         sd["held_out"] = held
         sd["row_text"] = {int(r): row_text[r] for r in delta.ext_ids}
+        if free is not None:
+            sd["free"] = (free.detach() * free_mask).cpu()
     if lora is not None:
         sd["lora"] = lora.state_dict()
         sd["adapter_rank"] = a.adapter_rank
@@ -2055,6 +2256,47 @@ def main():
         "--glyph_size", type=int, default=96, help="encoder arm: glyph render side"
     )
     p.add_argument(
+        "--head_init",
+        default="zero",
+        choices=["zero", "random"],
+        help="encoder arm: last head layer zero (attempts 1–10) or random full-rank, "
+        "rescaled so the step-0 identity spread is --init_spread row norms",
+    )
+    p.add_argument(
+        "--init_spread",
+        type=float,
+        default=1.0,
+        help="encoder arm: --head_init random target spread on the reference render",
+    )
+    p.add_argument(
+        "--decor",
+        type=float,
+        default=0.0,
+        help="encoder arm: λ on mean_{i≠j} cos²(r_i, r_j) over the centred trained "
+        "rows of the encoder table (0 = off; plan_wake Run 1b amended: ≈ 0.02 "
+        "against an FM loss of ≈ 0.04)",
+    )
+    p.add_argument(
+        "--free_residual",
+        type=float,
+        default=0.0,
+        help="encoder arm: μ on mean_i ‖f_i‖² for a per-row free residual on the "
+        "trained rows (row = g(glyph) + f_i; held-out rows get g only). 0 = off. "
+        "plan_wake Run 1d: the semi-amortised hybrid — f carries the identity "
+        "magnitude the shared head cannot, the L2 pushes what g can explain into g",
+    )
+    p.add_argument(
+        "--lr_free",
+        type=float,
+        default=1e-3,
+        help="encoder arm: lr of the free residual, row-norm units (W1 rows: 1e-3; 3e-3 walks off-manifold)",
+    )
+    p.add_argument(
+        "--init_encoder",
+        default="",
+        help="encoder arm: warm-start the encoder (conv/proj/head + common) from another arm's trained.pt",
+    )
+    p.add_argument(
         "--lr_decay",
         default="none",
         choices=["none", "cosine"],
@@ -2177,6 +2419,14 @@ def main():
         help="data: groups of N distinct strings sharing one layout (font, canvas, "
         "bubble, glyph size/position); train then batches one group per step "
         "(W2a; needs --batch N). 0 = shuffled items",
+    )
+    p.add_argument(
+        "--layout",
+        default="v1",
+        choices=["v1", "jitter"],
+        help="data: v1 = pre-W2a renders (big centred dark glyph on a light canvas, "
+        "bit-identical rebuilds); jitter = random position / size / ink colour / "
+        "outline / dark backgrounds / bubble box (the 2026-09-14 data lever)",
     )
     p.add_argument(
         "--only_chars",
