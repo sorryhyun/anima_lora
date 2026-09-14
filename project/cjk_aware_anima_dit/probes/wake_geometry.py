@@ -48,9 +48,19 @@ def main():
     p.add_argument("--arm_dir", type=Path, required=True)
     p.add_argument("--pairs", required=True, help="comp=atom+atom,… (IDS pairs)")
     p.add_argument("--n_rand", type=int, default=2000)
+    p.add_argument(
+        "--table",
+        default="raw",
+        choices=["raw", "free", "g"],
+        help="which table to read: raw = the shipped delta (g + f on the hybrid), "
+        "free = the per-row residual f alone (Run 1d+), g = raw − free",
+    )
     a = p.parse_args()
     sd = torch.load(a.arm_dir / "trained.pt", map_location="cpu")
     raw = sd["delta"]["raw"].float()  # rows × dim, in row-norm units
+    if a.table != "raw":
+        assert "free" in sd, f"{a.arm_dir} has no free residual (not a hybrid arm)"
+        raw = sd["free"].float() if a.table == "free" else raw - sd["free"].float()
     ext_ids = sd["delta"]["ext_ids"]
     pairs = []
     for item in a.pairs.split(","):

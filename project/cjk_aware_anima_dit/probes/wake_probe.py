@@ -1145,12 +1145,19 @@ def stage_train(a):
     # every held-out char as group ``single_held``.
     held: list = []
     keep = list(range(len(recs_all)))
-    if a.held_out:
+    if a.held_out or a.held_out_chars:
         assert a.arm == "encoder", "--held_out is the encoder arm's generalisation test"
         inv = sorted(
             {r["text"] for r in recs_all if r["src"] == "font" and len(r["text"]) == 1}
         )
-        held = random.Random(a.seed + 7).sample(inv, a.held_out)
+        if a.held_out_chars:
+            # Run 2: an IDS-structured split — composites whose atoms stay
+            # trained — is chosen by hand, not drawn
+            held = list(a.held_out_chars)
+            missing = [c for c in held if c not in inv]
+            assert not missing, f"--held_out_chars not in the inventory: {missing}"
+        else:
+            held = random.Random(a.seed + 7).sample(inv, a.held_out)
         hs = set(held)
         keep = [i for i, r in enumerate(recs_all) if not (hs & set(r["text"]))]
         for e in ev:
@@ -2321,6 +2328,12 @@ def main():
         default=0,
         help="encoder arm: N single chars removed from every training item and "
         "evaluated as group single_held (the generalisation test)",
+    )
+    p.add_argument(
+        "--held_out_chars",
+        default="",
+        help="encoder arm: explicit held-out chars instead of --held_out's draw "
+        "(Run 2: IDS composites whose atoms are trained, e.g. 明休男岩加相困森)",
     )
     p.add_argument("--adapter_rank", type=int, default=16)
     p.add_argument("--grad_ckpt", type=int, default=1)

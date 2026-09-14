@@ -13,6 +13,9 @@
 > 20/24 both readers) with a 0.9-norm per-glyph residual and left held-out
 > flat (2/64): the DiT reads near-orthogonal addresses, not shape — see
 > *Run 1d*. Trained inventory solved; generalisation is not in this g.
+> **Run 2 (2026-09-14 pm):** IDS held-out composites 0/16 — every one renders
+> as a clean hiragana (あ お も ち); trained composites render. Addresses do
+> not compose; W4 is an exposure budget. See *Run 2 result*.
 
 ## Where the line stands (four sentences)
 
@@ -445,6 +448,64 @@ if it is clean.
 
 Gate: held-out kanji singles > 0 and native-rendering scene survival
 (scene kept on ≥ 75 % of the trained-clause renders, glyph present ≥ 50 %).
+
+#### Run 2 result (2026-09-14): addresses do not compose — W4 is an exposure budget
+
+Blank canvases, one lever. `data_k2` = kana 92 + the 24 structured kanji
+(116 chars, 1875 items: 1396 font, 479 corpus); the top-200 corpus kanji
+were **left out** so per-char exposure matches the kana runs (with 316
+chars it drops ≈ 5× and a trained-gate miss would be unreadable). Held-out
+by hand (`--held_out_chars 明休男岩加相困森`): eight composites whose atoms
+日月木人口女子田力山石目 all stay trained, with 林 品 晶 好 trained as
+composites so the DiT sees composition; 1708/1875 items kept. Recipe = fres
+(`g` warm-started from fres, `f` from zero, μ 1e-3), job
+`20260914-094804-992cac`, 44 min + 8 min eval.
+
+| group | report | both-reader | note |
+|---|---|---|---|
+| trained singles (12 atoms + 林品晶好 + あい, ×2 seeds) | 21/36 | 19/36 | atoms 15/24 [14]; misses are *repeats* (木→木木木, 口→ロロ, 田→日日, あ→ああい), 力→カ (same shape), 晶→昌 |
+| held-out composites (×2 seeds) | **0/16** | 0/16 | 明→あ, 休→あ, 男→も, 岩→お, 加→あ, 相→ち, 困→あ, 森→あ — clean hiragana, not one kanji stroke |
+| combo / corpus | 0/36 / 0/20 | | one glyph per string, as before |
+| EN | 24/24 | | |
+
+Instruments as fres: `free_norm` 0.46 / max 1.42, `free_ratio` 0.22,
+`g_pr` 1.1, g spread 2.1. f-space composition on the trained composites
+(`wake_geometry.py --table free`): 林 ~ 木 cos 0.48 (pct 99), 好 ~ 女+子
+0.30 (pct 94), 品 / 晶 at chance vs their atoms but 0.57 to *each other*.
+
+**Reading.**
+
+- *The generalisation question is answered, and not by exposure.* A
+  held-out composite's row is `g` alone, and `g` alone draws the prior — a
+  kana. Not a wrong kanji, not its atoms fused (the free-rows kanji probe
+  fused parts when the rows existed): the shape→row map carries no
+  "kanji made of 日 and 月". The f-space structure that does exist is
+  *visual similarity* (林 looks like 木, 品 looks like 晶), the same
+  confusable-pair correlation fres showed — an address neighbourhood, not
+  composition.
+- *The trained side regressed and is a confound on the bar, not on the
+  verdict.* 19/36 both-reader (53 %) misses the 67 % gate; あ い went 0/4
+  where fres had every kana. `f` restarted from zero on a 304-row table
+  with 1708 items, and the repeated-atom composites (林 品 晶) taught a
+  "repeat the glyph" mode that leaks into atoms (木→木木木, 田→日日). The
+  held-out verdict does not depend on it: trained composites 林 好 render
+  (4/8), held-out ones render as kana.
+- *W4 by the pre-registered branch: an exposure budget, not a research
+  line.* Every kanji needs its own `f_i` with exposure; at the kana runs'
+  per-char exposure (≈ 800 gradient touches per char over 13 epochs) the
+  jōyō 2,136 is ≈ 0.6 M item-views ≈ 150 k steps ≈ **one GPU-day** at 2.3
+  it/s, in one table (hybrid, `g + f`), EN bit-exact. That is a budget
+  decision, and the repeat-mode leak says the data for it should not
+  over-weight repeated-atom composites.
+
+**What the wake line has, closing W2d.** (1) A trained-inventory pack
+recipe (`g + f`, Run 1d) that renders every trained single at 6000 steps;
+(2) the finding that the frozen DiT reads near-orthogonal per-glyph
+addresses that neither rank levers nor shape encoders nor IDS structure
+predict; (3) the exposure budget above for kanji at scale. W3 (strings,
+DiT-side composition) is unchanged and is the next product step; the
+scene-composite data (layout-prior fix) rides on whichever table W3
+trains against.
 
 ### Shelved W2 levers (do not reopen without a new reason)
 
