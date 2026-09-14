@@ -53,7 +53,7 @@ converts to a `/ 617` one.**
 The three lines that outlived the freeze (`plan2.md`, `plan_vl_respace.md`,
 `plan_render.md`) were archived 2026-09-12; their open items are the
 "Still open outside the wake line" list in [`findings.md`](findings.md). The
-render line was reframed 2026-09-13 as the wake line ([`plan_wake.md`](plan_wake.md)).
+render line was reframed 2026-09-13 as the wake line ([`plan_wake.md`](../cjk_renderable_anima/plan_wake.md)).
 
 ---
 
@@ -972,7 +972,7 @@ pretraining and learned to *garble* only because the T5 side never carried a
 CJK address (`<unk>`); so wake weights, do not train a script. No arm in the
 line had put a pixel loss on the rows with the DiT frozen — JA-BODY carried a
 target-stream LoRA and a whole-crop inpaint loss, JA-SHIP no trainable weight
-on the row → pixel path. Plan: [`plan_wake.md`](plan_wake.md); instrument
+on the row → pixel path. Plan: [`plan_wake.md`](../cjk_renderable_anima/plan_wake.md); instrument
 `probes/wake_probe.py`; outputs `output/wake_probe/`.
 
 Probe 0 (base model, 12 EN prompts × 3 seeds, 768², job `-d72433`). 369

@@ -91,6 +91,18 @@ td.num{font-variant-numeric:tabular-nums;font-family:var(--mono);font-size:14px;
 p{margin:0}
 .prose{display:grid;gap:12px;max-width:66ch}
 code{font-family:var(--mono);font-size:.88em}
+.zoomframe{stroke:var(--muted);stroke-width:1.4;stroke-dasharray:6 5;fill:none}
+svg .tok{font-family:var(--mono);font-size:13px;fill:var(--ink)}
+.tag.h{color:var(--ink);outline:1.5px solid var(--ink)}
+.tag.k{color:var(--muted);outline:1.5px dashed var(--faint)}
+.eqs{display:grid;gap:14px;padding-block:18px;padding-inline:22px;background:var(--plate);overflow-x:auto}
+.eq{display:flex;align-items:baseline;justify-content:space-between;gap:24px;font-family:var(--math);font-size:23px;white-space:nowrap}
+.eq i{font-style:italic}
+.eq .n{font-family:var(--sans);font-size:14px;color:var(--muted)}
+.eq .side{font-size:18px;color:var(--muted);margin-left:28px}
+.sym{min-width:720px}
+.sym td:first-child{font-family:var(--math);font-style:italic;font-size:19px;white-space:nowrap}
+.thumb{width:44px;height:44px;vertical-align:middle;background:var(--plate);margin-left:6px}
 </style>
 
 </head>
@@ -116,8 +128,9 @@ code{font-family:var(--mono);font-size:.88em}
     </defs>
 
     <!-- zoom connectors (under everything) -->
-    <line class="zoomline" x1="400" y1="612" x2="590" y2="30"/>
-    <line class="zoomline" x1="400" y1="662" x2="590" y2="880"/>
+    <rect class="zoomframe" x="256" y="488" width="290" height="392"/>
+    <line class="zoomline" x1="546" y1="488" x2="590" y2="30"/>
+    <line class="zoomline" x1="546" y1="880" x2="590" y2="880"/>
 
     <!-- ============ PANEL A: frozen Anima ============ -->
     <g>
@@ -160,7 +173,7 @@ code{font-family:var(--mono);font-size:.88em}
       <line class="wire" x1="335" y1="612" x2="335" y2="577" marker-end="url(#ah)"/>
       <rect x="270" y="612" width="130" height="50" class="f-lav trained"/>
       <text x="335" y="633" text-anchor="middle" font-size="15">embed</text>
-      <text x="335" y="655" text-anchor="middle" class="m" font-size="18">E + ρΔ</text>
+      <text x="335" y="655" text-anchor="middle" class="m" font-size="18">E + sρΔ</text>
       <line class="wire" x1="335" y1="700" x2="335" y2="667" marker-end="url(#ah)"/>
       <rect x="270" y="700" width="130" height="50" class="f-sky"/>
       <text x="335" y="721" text-anchor="middle">T5 ids</text>
@@ -172,90 +185,124 @@ code{font-family:var(--mono);font-size:.88em}
       <path class="wire" d="M476 700V536H405" marker-end="url(#ah)"/>
       <text x="486" y="624" class="sm">K, V</text>
 
-      <line class="wire" x1="335" y1="800" x2="335" y2="755" marker-end="url(#ah)"/>
-      <line class="wire" x1="476" y1="800" x2="476" y2="755" marker-end="url(#ah)"/>
-      <rect x="270" y="800" width="262" height="44" class="f-lav"/>
-      <text x="401" y="829" text-anchor="middle" class="jp" font-size="17">…reads as "します".</text>
-      <text x="401" y="866" text-anchor="middle" class="sm">caption</text>
-
-      <!-- gradient -->
-      <path class="grad" d="M440 63H472V330H446" marker-end="url(#ahr)"/>
-      <text transform="translate(490 196) rotate(90)" text-anchor="middle" class="sm red">∂ℒ through frozen DiT</text>
-      <path class="grad" d="M248 342V637H264" marker-end="url(#ahr)"/>
-      <text transform="translate(238 490) rotate(-90)" text-anchor="middle" class="sm red">stops at Δ</text>
-
-      <text x="290" y="936" text-anchor="middle" class="cap">Frozen Anima, one trainable delta</text>
-    </g>
-
-    <!-- ============ PANEL B: the address table ============ -->
+      <<!-- ============ PANEL B: text conditioning, up close ============ -->
     <rect x="590" y="30" width="470" height="850" class="zoom"/>
     <g>
-      <text x="790" y="62" text-anchor="middle" class="m" font-size="22">Ẽ<tspan dy="6" font-size="15">r</tspan></text>
-      <line class="wire" x1="790" y1="113" x2="790" y2="78" marker-end="url(#ah)"/>
-      <circle cx="790" cy="130" r="17" class="plus-bg"/>
-      <path class="plus" d="M781 130H799M790 121V139"/>
+      <!-- output -->
+      <text x="872" y="62" text-anchor="middle" font-size="17">context → DiT cross-attn</text>
+      <text x="872" y="84" text-anchor="middle" class="sm">512 × 1024</text>
+      <line class="wire" x1="872" y1="120" x2="872" y2="92" marker-end="url(#ah)"/>
+      <rect x="772" y="120" width="200" height="38" class="f-mint"/>
+      <text x="872" y="145" text-anchor="middle" font-size="16">out_proj · RMSNorm</text>
+      <line class="wire" x1="872" y1="190" x2="872" y2="163" marker-end="url(#ah)"/>
 
-      <rect x="610" y="106" width="120" height="48" class="f-lav"/>
-      <text x="670" y="126" text-anchor="middle" font-size="15">pack row <tspan class="m" font-size="17">E</tspan><tspan class="m" dy="4" font-size="12">r</tspan></text>
-      <text x="670" y="146" text-anchor="middle" class="sm">frozen</text>
-      <line class="wire" x1="730" y1="130" x2="770" y2="130" marker-end="url(#ah)"/>
+      <!-- adapter block -->
+      <rect x="752" y="190" width="240" height="280" class="f-butter"/>
+      <text x="732" y="222" text-anchor="end">6×</text>
+      <rect x="772" y="226" width="200" height="38" class="f-lav"/>
+      <text x="872" y="251" text-anchor="middle">MLP</text>
+      <line class="wire" x1="872" y1="294" x2="872" y2="269" marker-end="url(#ah)"/>
+      <rect x="772" y="294" width="200" height="52" class="f-apri"/>
+      <text x="872" y="316" text-anchor="middle">Cross-Attention</text>
+      <text x="872" y="336" text-anchor="middle" class="sm">Q: T5 stream · K, V: Qwen3</text>
+      <line class="wire" x1="872" y1="376" x2="872" y2="351" marker-end="url(#ah)"/>
+      <rect x="772" y="376" width="200" height="52" class="f-apri"/>
+      <text x="872" y="398" text-anchor="middle">Self-Attention</text>
+      <text x="872" y="418" text-anchor="middle" class="sm">RoPE over 512 slots</text>
+      <text x="872" y="456" text-anchor="middle" class="sm">pre-norm · residual · frozen</text>
+      <line class="wire" x1="872" y1="510" x2="872" y2="475" marker-end="url(#ah)"/>
 
-      <line class="wire" x1="790" y1="190" x2="790" y2="147"/>
-      <rect x="720" y="190" width="140" height="40" class="f-lav"/>
-      <text x="790" y="216" text-anchor="middle" class="m">× s ρ</text>
-      <text x="874" y="206" class="sm">ρ ≈ 195, mean row norm</text>
-      <text x="874" y="226" class="sm">s = 0 floor · 1 trained</text>
+      <!-- embed: stock rows | pack ext rows -->
+      <rect x="772" y="510" width="96" height="80" class="f-lav"/>
+      <text x="820" y="535" text-anchor="middle" font-size="16">stock</text>
+      <text x="820" y="556" text-anchor="middle" class="sm">id &lt; 32128</text>
+      <text x="820" y="577" text-anchor="middle" class="sm">frozen</text>
+      <rect x="872" y="510" width="100" height="80" class="f-lav trained"/>
+      <text x="922" y="535" text-anchor="middle" font-size="16">pack ext</text>
+      <text x="922" y="556" text-anchor="middle" class="sm">id ≥ 32128</text>
+      <text x="922" y="580" text-anchor="middle" class="m" font-size="17">E<tspan dy="4" font-size="12">r</tspan><tspan dy="-4"> + sρΔ</tspan><tspan dy="4" font-size="12">r</tspan></text>
 
-      <line class="wire" x1="790" y1="283" x2="790" y2="230"/>
-      <text x="804" y="264" class="m red" font-size="21">Δ<tspan dy="5" font-size="14">r</tspan></text>
-      <circle cx="790" cy="300" r="17" class="plus-bg"/>
-      <path class="plus" d="M781 300H799M790 291V309"/>
+      <!-- T5 id strip -->
+      <line class="wire" x1="812" y1="632" x2="812" y2="595" marker-end="url(#ah)"/>
+      <line class="wire" x1="901" y1="632" x2="901" y2="595" marker-end="url(#ah)"/>
+      <rect x="762" y="632" width="24" height="32" class="f-sky"/><text x="774" y="653" text-anchor="middle" class="tok">…</text>
+      <rect x="790" y="632" width="40" height="32" class="f-sky"/><text x="810" y="653" text-anchor="middle" class="tok">▁as</text>
+      <rect x="834" y="632" width="30" height="32" class="f-sky"/><text x="849" y="653" text-anchor="middle" class="tok">▁"</text>
+      <rect x="868" y="632" width="66" height="32" class="f-apri"/><text x="901" y="654" text-anchor="middle" class="jp" font-size="16">します</text>
+      <rect x="938" y="632" width="26" height="32" class="f-sky"/><text x="951" y="653" text-anchor="middle" class="tok">".</text>
+      <rect x="968" y="632" width="38" height="32" class="f-sky"/><text x="987" y="653" text-anchor="middle" class="tok">&lt;/s&gt;</text>
+      <rect x="1010" y="632" width="30" height="32" class="f-sky"/><text x="1025" y="653" text-anchor="middle" class="tok">pad</text>
+      <text x="1040" y="686" text-anchor="end" class="sm">T5 ids, padded to 512</text>
 
-      <rect x="890" y="274" width="150" height="52" class="f-lav trained"/>
-      <text x="965" y="297" text-anchor="middle" class="m" font-size="18">f<tspan dy="4" font-size="13">r</tspan><tspan dy="-4"> · 𝟏[r ∈ ℛ</tspan><tspan dy="4" font-size="12">tr</tspan><tspan dy="-4">]</tspan></text>
-      <text x="965" y="317" text-anchor="middle" class="sm">per-row residual</text>
-      <line class="wire" x1="890" y1="300" x2="810" y2="300" marker-end="url(#ah)"/>
-      <text x="975" y="356" class="sm">pulled by <tspan class="m" font-size="16" fill="currentColor">μ‖f‖²</tspan></text>
-      <text x="975" y="376" class="sm">μ = 10⁻³</text>
+      <!-- tokenizers -->
+      <line class="wire" x1="872" y1="712" x2="872" y2="694" marker-end="url(#ah)"/>
+      <rect x="772" y="712" width="200" height="50" class="f-sky"/>
+      <text x="872" y="733" text-anchor="middle" font-size="16">T5 tokenizer + pack</text>
+      <text x="872" y="753" text-anchor="middle" class="sm">EN spiece · JA → 32128 + r</text>
+      <rect x="608" y="712" width="104" height="50" class="f-sky"/>
+      <text x="660" y="733" text-anchor="middle" font-size="16">Qwen3</text>
+      <text x="660" y="753" text-anchor="middle" class="sm">tokenizer</text>
+      <line class="wire" x1="712" y1="740" x2="767" y2="740" marker-end="url(#ah)"/>
+      <text x="740" y="731" text-anchor="middle" class="sm">pieces</text>
 
-      <line class="wire" x1="790" y1="373" x2="790" y2="317"/>
-      <circle cx="790" cy="390" r="17" class="plus-bg"/>
-      <path class="plus" d="M781 390H799M790 381V399"/>
-      <rect x="610" y="368" width="120" height="44" class="f-lav trained"/>
-      <text x="670" y="387" text-anchor="middle" class="m" font-size="18">c</text>
-      <text x="670" y="404" text-anchor="middle" class="sm">‖c‖ ≤ 0.75</text>
-      <line class="wire" x1="730" y1="390" x2="770" y2="390" marker-end="url(#ah)"/>
+      <!-- Qwen3 source stream -->
+      <line class="wire" x1="660" y1="712" x2="660" y2="595" marker-end="url(#ah)"/>
+      <rect x="608" y="520" width="104" height="70" class="f-butter"/>
+      <text x="660" y="550" text-anchor="middle" font-size="16">Qwen3 0.6B</text>
+      <text x="660" y="574" text-anchor="middle" class="sm">frozen</text>
+      <path class="wire" d="M660 520V320H767" marker-end="url(#ah)"/>
+      <text x="706" y="310" text-anchor="middle" class="sm">K, V</text>
+      <text x="670" y="410" class="sm">last hidden</text>
+      <text x="670" y="430" class="sm">512 × 1024</text>
+      <text x="670" y="450" class="sm">pad → 0</text>
+      <text x="670" y="490" class="sm">no Δ here</text>
 
-      <line class="wire" x1="790" y1="450" x2="790" y2="407"/>
-      <rect x="720" y="450" width="140" height="40" class="f-lav"/>
-      <text x="790" y="476" text-anchor="middle" class="m" font-size="19">× α = 2⁻⁴</text>
-      <line class="wire" x1="790" y1="520" x2="790" y2="490"/>
-      <rect x="720" y="520" width="140" height="40" class="f-lav"/>
-      <text x="790" y="546" text-anchor="middle" font-size="16"><tspan class="m" font-size="19">− ψ̄</tspan><tspan dx="7">table mean</tspan></text>
-      <line class="wire" x1="790" y1="590" x2="790" y2="560"/>
-      <rect x="720" y="590" width="140" height="60" class="f-mint"/>
-      <text x="790" y="616" text-anchor="middle">Glyph CNN <tspan class="m">ψ</tspan><tspan class="m" dy="5" font-size="14">θ</tspan></text>
-      <text x="790" y="638" text-anchor="middle" class="sm">3.4M · lr 0 in P0b</text>
+      <!-- caption -->
+      <line class="wire" x1="660" y1="800" x2="660" y2="767" marker-end="url(#ah)"/>
+      <line class="wire" x1="872" y1="800" x2="872" y2="767" marker-end="url(#ah)"/>
+      <rect x="608" y="800" width="432" height="46" class="f-lav"/>
+      <text x="824" y="830" text-anchor="middle" class="jp" font-size="17">…Japanese text reads as "します".</text>
+      <text x="824" y="868" text-anchor="middle" class="sm">caption</text>
 
-      <line class="wire" x1="790" y1="680" x2="790" y2="655" marker-end="url(#ah)"/>
-      <image href="data:image/jpeg;base64,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" x="742" y="680" width="96" height="96"/>
-      <rect x="742" y="680" width="96" height="96" class="thumb-edge"/>
-      <text x="790" y="806" text-anchor="middle" class="m">x<tspan dy="5" font-size="14">r</tspan></text>
-      <text x="790" y="830" text-anchor="middle" class="sm">mean of 15 fonts, 96²</text>
+      <!-- gradient -->
+      <path class="grad" d="M1000 70H1046V550H978" marker-end="url(#ahr)"/>
+      <text transform="translate(1030 330) rotate(90)" text-anchor="middle" class="sm red">∂ℒ through frozen adapter</text>
 
-      <line class="wire" x1="965" y1="680" x2="965" y2="331" marker-end="url(#ah)"/>
-      <rect x="890" y="680" width="150" height="50" class="f-sky"/>
-      <text x="965" y="702" text-anchor="middle">row <tspan class="m">r</tspan></text>
-      <text x="965" y="722" text-anchor="middle" class="sm">one Qwen piece</text>
-      <text x="965" y="760" text-anchor="middle" class="sm jp">し · します · 出</text>
-
-      <text x="825" y="936" text-anchor="middle" class="cap">Address Table, <tspan class="m">Δ</tspan><tspan class="m" dy="5" font-size="14">r</tspan><tspan dy="-5" class="m"> = g</tspan><tspan class="m" dy="5" font-size="14">θ</tspan><tspan class="m" dy="-5">(x</tspan><tspan class="m" dy="5" font-size="14">r</tspan><tspan class="m" dy="-5">) + f</tspan><tspan class="m" dy="5" font-size="14">r</tspan></text>
+      <text x="825" y="936" text-anchor="middle" class="cap">Text Conditioning, T5 queries read Qwen3</text>
     </g>
 
   </svg>
   </div>
-  <figcaption><b>Left:</b> Anima's full text-to-image path, every weight frozen. A Japanese piece in the caption routes to a vocab-pack ext id (≥ 32128); <code>llm_adapter.embed</code> looks it up and adds <span class="mi">ρΔ</span>. English captions carry no ext id, so they never touch <span class="mi">Δ</span> and render bit-exact. <b>Middle:</b> the table behind <span class="mi">Δ</span> — a shared glyph-encoder prior plus a free per-row residual, where the identity the DiT reads actually lives.</figcaption>
+  <figcaption><b>Left:</b> Anima's full text-to-image path, every weight frozen. <b>Right:</b> the dashed text side up close. One caption feeds two tokenizers. Qwen3 0.6B reads the raw text, and its last hidden state becomes the adapter's keys and values. The T5 id stream is the query: English spans keep their stock spiece ids, and a Japanese span is cut into Qwen pieces, each routed to ext id 32128 + <span class="mi">r</span>. <code>llm_adapter.embed</code> resolves those against the pack rows plus <span class="mi">sρΔ</span>. English captions carry no ext id, so they never touch <span class="mi">Δ</span> and render bit-exact. The gradient comes back through the frozen adapter and stops at the ext rows. Qwen3 receives none.</figcaption>
 </figure>
+
+<section>
+  <h2>The address, written out</h2>
+  <p class="lede">What the pack-ext cell computes for row <span class="mi">r</span>. Of these symbols only <span class="mi">f</span> and <span class="mi">c</span> take gradient in P0b. <span class="mi">ρ</span> and <span class="mi">s</span> are not tuned.</p>
+  <div class="eqs" role="math">
+    <div class="eq"><span><i>Ẽ</i><sub><i>r</i></sub> = <i>E</i><sub><i>r</i></sub> + <i>s</i> <i>ρ</i> <i>Δ</i><sub><i>r</i></sub></span><span class="n">(1)</span></div>
+    <div class="eq"><span><i>Δ</i><sub><i>r</i></sub> = <i>α</i> ( <i>ψ</i><sub><i>θ</i></sub>(<i>x</i><sub><i>r</i></sub>) − <i>ψ̄</i> ) + <i>c</i> + 𝟏[<i>r</i> ∈ ℛ<sub>tr</sub>] <i>f</i><sub><i>r</i></sub><span class="side">‖<i>c</i>‖ ≤ 0.75</span></span><span class="n">(2)</span></div>
+    <div class="eq"><span>ℒ = ‖ <i>v</i><sub><i>φ</i></sub>(<i>z</i><sub><i>σ</i></sub>, <i>σ</i>, <i>T</i>(caption; <i>E</i> + <i>ρΔ</i>)) − (<i>ε</i> − <i>z</i><sub>0</sub>) ‖² + <i>μ</i> · mean<sub><i>r</i> ∈ ℛ<sub>tr</sub></sub> ‖<i>f</i><sub><i>r</i></sub>‖²<span class="side"><i>σ</i> ~ U[0.7, 0.9]</span></span><span class="n">(3)</span></div>
+  </div>
+  <div class="scroll">
+  <table class="sym">
+    <thead><tr><th>Symbol</th><th>Value</th><th>Kind</th><th>Role</th></tr></thead>
+    <tbody>
+      <tr><td>ρ</td><td class="num">≈ 195</td><td><span class="tag k">constant</span></td><td>Mean pack-row norm over ℛ<sub>tr</sub>, measured once from <span class="mi">E</span>. Sets the units, so ‖<span class="mi">Δ<sub>r</sub></span>‖ = 1 moves a row by its own length.</td></tr>
+      <tr><td>s</td><td class="num">0 or 1</td><td><span class="tag k">switch</span></td><td>Eval only: 0 renders the floor (bare pack), 1 the trained table. Always 1 in training.</td></tr>
+      <tr><td>α</td><td class="num">2⁻⁴</td><td><span class="tag h">hyperparam</span></td><td><code>--out_scale</code> on the zero-init encoder head (default 2⁻⁶, raised one notch).</td></tr>
+      <tr><td>μ</td><td class="num">10⁻³</td><td><span class="tag h">hyperparam</span></td><td>L2 pull on <span class="mi">f</span>. Anything the encoder can explain gets pushed into <span class="mi">g</span>.</td></tr>
+      <tr><td>c</td><td class="num">1024</td><td><span class="tag t">trained</span></td><td>Shared layout vector holding the common mode that <span class="mi">ψ̄</span> removes. lr 1e-3. Projected back to ‖<span class="mi">c</span>‖ ≤ 0.75 after each step, and that cap (<code>--common_cap</code>) is the hyperparameter.</td></tr>
+      <tr><td>f<sub>r</sub></td><td class="num">rows × 1024</td><td><span class="tag t">trained</span></td><td>Free per-row residual, only for rows in training captions. lr 1e-3. Carries the identity the DiT actually reads.</td></tr>
+      <tr><td>ψ<sub>θ</sub></td><td class="num">3.4M</td><td><span class="tag z">held · lr 0</span></td><td>Glyph CNN, warm from earlier runs. It is a prior, not the identity.</td></tr>
+      <tr><td>x<sub>r</sub></td><td class="num">96²</td><td><span class="tag k">input</span></td><td>Row <span class="mi">r</span>'s piece text rendered in 15 fonts and averaged. <img class="thumb" src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCABgAGADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD9U6KKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKAPNPCfx+8M+Lfilr/w9h+1WfibRVDz213CYw6H7rRseHBHPBNel18mfCCwj1P8Ab0+MN8yhjp+lWUSk9mf/AOspr6zoATpXO+J/HFn4d0C+1OJDqhtI2la2tZYxIwUZON7AZ46ZrfuArW8oc4UqQTjOBivzk8e6x8K9JufFum3vjPxx4KubWWeK3006pcRwP8mQyeZEf3ZYkABiAB26UAfbfww+O/hT4p+ANI8Xafdmx03VAxt47/EUp2uUOVz6qcetegtMiR+YzqqddzHAr8ov2a4fhFqXw98CQXfhLxz8Qde8mIXDwPfzafayFucIpEQVT17cGv0x+IXglviX8PrvQhql/wCH5byONkvtOk8ue3dWV1IJ91AIPUZHegDd1LXbexsZp4it5JGpZYIpUDv7DcwH5muD+C3x+0D426Lq+o6bDcaYul6lNpVzDqGEcXEWPMA5wQMjkEivnH4k/CWx+Gcml6drXjr4k+NPEepMVtdE8M3gt5Z8cnHoAOSSwA7kVw37GX7NXg34veE/Hx1288babe2Piu+t30tvEd3azW6kq6ieOOXaZCGBLc59TQB+iMM8dwm+KRZU6bkORUlch8LPhjpfwh8H2/hrR7vU7ywgkeRJNWvXu5xuOSPMcliB2HauvoAKKKKAPkD4Z+LdJ+HX7bPxptfEl5FpcmtWumz2ElydqyoiOGwT/vCu/wDjH+1z4W8HWB0nwzcDxV4wvv3FhpenHezyHgFiPugdzXdfFT9nvwD8aJLeXxb4fg1G6t12RXSs0Uyr6b1IOKb8M/2dfh38IZmn8LeGLPT7tuDdsDLNj/fYk/rQB1Hg2bVY/BGky+IUVdZFnG16iDjzduXAHbnPHb1r5f1v40ePviX4c8Y6toE3hPRfDmmyXVi0eu3zxzy+WCrnainaCcgbuT1xgivr8gMCCMg9Qa8Z8Yfsd/CHx34hn1vWPB8E2oXDmSdobiaFJmPUuiOFYnvkc0AfKf7J37W2o/Bv4GeALXx74Pv9H8DTwm2sfFkRE9kf3rKPNZfmi56FwARjmv0OtbhLu2inj5jlQOufQjIrJi8E+H4fC0PhtdGsf+EfhhW3j00wKYFjAwF2EYxWzHGsSKiKFRRgKBgAUAfOv7T/AIZ1PRtV074k+G/FGi+H9Z0CCQTDXWIt2iI5JKgkcZHTnPUHFcT/AME5PDvie78M/EH4jeKGBuPG+vPf2pSFoUlgRFjWVUbkKxU4zyQAe9fQXxB+BHgr4qa5peqeK9KbWn007oLS5uJDaFsghngDeW7AjgspIya7y3t4rSCOGCNIYY1CJHGoVVA6AAdBQBJRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQB/9k=" alt="mean glyph render"></td></tr>
+      <tr><td>ψ̄</td><td class="num">1024</td><td><span class="tag k">derived</span></td><td>Mean encoder output over the table. Subtracting it keeps the shared weights from getting a same-direction push on every row.</td></tr>
+      <tr><td>E</td><td class="num">69 558 × 1024</td><td><span class="tag z">frozen</span></td><td>Pack ext rows. Qwen3, the LLM adapter, DiT and VAE are frozen too.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="lede">Optimizer: AdamW (0.9, 0.99), batch 4, cosine decay. The σ band sits where W2 found glyph identity is decided.</p>
+</section>
 
 <section>
   <h2>What it sees, what it draws</h2>
@@ -272,21 +319,6 @@ code{font-family:var(--mono);font-size:.88em}
   </div>
 </section>
 
-<div class="cols">
-<section>
-  <h2>What moves</h2>
-  <table>
-    <thead><tr><th>Parameter</th><th>Shape</th><th>P0b lr</th><th></th></tr></thead>
-    <tbody>
-      <tr><td><span class="mi">f</span> per-row residual</td><td class="num">rows × 1024</td><td class="num">1e-3</td><td><span class="tag t">trained</span></td></tr>
-      <tr><td><span class="mi">c</span> shared layout vector</td><td class="num">1024</td><td class="num">1e-3</td><td><span class="tag t">trained</span></td></tr>
-      <tr><td><span class="mi">ψ<sub>θ</sub></span> glyph CNN</td><td class="num">3.4M</td><td class="num">0</td><td><span class="tag z">warm, held</span></td></tr>
-      <tr><td>Pack rows <span class="mi">E</span></td><td class="num">69 558 × 1024</td><td class="num">—</td><td><span class="tag z">frozen</span></td></tr>
-      <tr><td>Qwen3 · LLM adapter · DiT · VAE</td><td class="num">—</td><td class="num">—</td><td><span class="tag z">frozen</span></td></tr>
-    </tbody>
-  </table>
-  <p class="lede">Loss: plain rectified flow on <span class="mi">σ</span> ∈ [0.7, 0.9], where glyph identity is decided, plus <span class="mi">μ‖f‖²</span>. AdamW (0.9, 0.99), batch 4, cosine decay.</p>
-</section>
 
 <section>
   <h2>Why a row, not a script</h2>
@@ -296,7 +328,6 @@ code{font-family:var(--mono);font-size:.88em}
     <p>P0b, running now, scales the table to about 400 rows: the 68 voiced and small kana plus the 100 most frequent single-row kanji, 24 000 steps on the 384–512 canvas pool.</p>
   </div>
 </section>
-</div>
 </div>
 
 </body>
