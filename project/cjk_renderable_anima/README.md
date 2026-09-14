@@ -10,9 +10,10 @@ frozen text encoder; the only trainable object is a delta on the vocab
 pack's ext rows, so EN prompts are bit-exact by construction and the
 artefact ships as an ordinary vocab pack.
 
-`plan.md` is owed — it will be written against this README once the line's
-next phase (W3, DiT-side reading of address sequences) is designed. Until
-then `plan_wake.md` is the dated run record and the last decision state.
+[`plan.md`](plan.md) is the forward plan (phases P1–P4, gates, kill
+criteria, recipe of record); [`findings.md`](findings.md) holds the settled
+verdicts one screen per topic; `plan_wake.md` is the dated run record
+(W2d Runs 1–3, order probe, σ diagnostic, strings arm).
 
 ## What is established (2026-09-14)
 
@@ -23,12 +24,17 @@ then `plan_wake.md` is the dated run record and the last decision state.
 | The hybrid table `Δ_r = g(x_r) + f_r` renders every trained inventory | Run 1d 24/24 (12 kana); Run 3 **34/36 with all 92 kana** in a 246-row table | `plan_wake.md` Run 1d, Run 3 |
 | **One ext row can be a multi-glyph word** — the DiT reads a row as a *unit*, not a glyph | Run 3: します 2/2, してる 2/2, きた こう いや もう ッド from one row each (9/32 at 40 renders/row) | `plan_wake.md` Run 3 |
 | A sequence of trained addresses renders exactly **one** unit; which one is not positional | Run 3 `line` 0/32 with row coverage 39/39 (そオニ→ニ, ほらそれ→ら, いやいい→いい, なにそれ→な) | `plan_wake.md` Run 3 |
+| **A static row table can carry order and count** — strings arm (no singles, 2–4-piece random strings, band 0.5–0.9): unseen `str3` 3/16, `flip` 4/48 with first glyph = caption's first piece 28/48 vs last 5/48, `line` 2/32 (from 0); singles fell 34 → 5/36 because the rows absorbed the multi-unit prior; repeat mode is the main miss | `plan_wake.md` Strings arm result | `output/wake_probe/encoder_ws_w120_s8k_strings_warm/` |
+| **The frozen adapter + DiT read T5 piece sequences in order** — nonsense 4–5-piece EN words (GLORPAX, MIZUKANE) render 22/24, WAY NO in the given order; EN control words were multi-piece all along (HELLO = ▁H·ELL·O) | `probes/order_probe.py`, base model, no delta | `plan_wake.md` Order probe |
 | Kanji at scale is an exposure budget, not a research line | Run 2: trained composites render, held-out composites are kana; jōyō 2 136 ≈ one GPU-day in one table | `plan_wake.md` Run 2 |
 
-The last two rows draw the boundary of the rows path: **a unit per address,
-no enumeration of addresses.** Strings need the DiT to read several
-addresses in order, which is a DiT-side change (W3) and the first step that
-leaves the pure vocab-pack form.
+The `line` row and the order-probe row together narrow the string
+verdict: the DiT *does* enumerate addresses in order — for pieces it was
+pretrained on. Ext rows were trained on single-unit canvases and sit
+off-manifold, so nothing asked them to be contextualisable. Whether the
+rows path reaches strings is an open, cheap question (a strings-only arm
+warm-started from Run 3); W3 (DiT-side) is the fallback if that arm stays
+at 0, not the next step.
 
 ## The artefact
 
@@ -108,16 +114,25 @@ larger piece misses the row (the `eval_coverage.json` line).
 
 | path | what |
 |---|---|
-| `plan_wake.md` | dated run record W2d Runs 1–3 + the decision state as of 2026-09-14 (copied from the frozen line; `plan.md` supersedes it once written) |
+| `plan.md` | forward plan — phases, gates, kill criteria, recipe of record |
+| `findings.md` | settled verdicts, rulers, gotchas, do-not-re-propose |
+| `plan_wake.md` | dated run record: W2d Runs 1–3, order probe, σ diagnostic, strings arm |
 | `reports/wake_w0_w2_2026_09_13.md` | W0–W2: hypothesis, Probe 0/1, address geometry, the 256² / 24-kana / balanced / σ-band arms, kanji probe |
 | `probes/wake_probe.py` | the instrument — data / train / eval / classify / native |
 | `probes/wake_geometry.py` | row-table geometry (PR, pairwise cos, composition pairs) |
+| `probes/order_probe.py` | base-model order control — nonsense multi-piece EN words, no delta |
 | `formulation.pdf`, `.tex` | the training written as equations |
 
 ## Open
 
-- **W3 — strings.** The DiT must read several addresses in sequence. The
-  rows path is closed on this (Run 3 `line`); the design is an ext-gated
+- **Mixed arm (next).** The strings arm showed rows carry order + count but
+  absorb the data's unit-count prior (singles 34 → 5). One distribution —
+  30 % singles + 70 % 2–4-piece strings, Run 3 warm start, band 0.5–0.9 —
+  should return singles while keeping `flip` / `str3` / `line`. Then the
+  repeat mode (ううう, ねねね) is the lever: strings with a repeated piece
+  as negatives.
+- **W3 — DiT-side, fallback only.** Not needed for order/count (strings arm);
+  kept for the case the mixed arm cannot hold singles and strings at once; the design is an ext-gated
   DiT-side change with EN kept to a *limited, measured* touch (ext gate on
   ext-free sequences, position mask, EN replay on mixed prompts — the
   "EN safety" list in `plan_wake.md`). To be designed in `plan.md`.

@@ -47,9 +47,12 @@ Active projects:
 - [`cjk_renderable_anima/`](cjk_renderable_anima/) — promoted 2026-09-14 from
   the wake line of `cjk_aware_anima_dit`: a frozen DiT renders a requested JA
   glyph, or a whole common word, from a delta on the vocab pack's ext rows
-  (all 92 kana 34/36; word rows are units, します/してる from one row). Rows
-  cannot enumerate a sequence (`line` 0/32) — W3, DiT-side reading of
-  address sequences, is the open phase. Home: its `README.md`; `plan.md` owed.
+  (all 92 kana 34/36; word rows are units, します/してる from one row), and a
+  static table trained on strings carries order and count through the frozen
+  adapter (unseen 3-kana 3/16, order read 28/48 vs 5/48) at the cost of a
+  unit-count prior in the rows (singles 34 → 5). Open phase: the mixed
+  distribution (P1), then the repeat mode. Home: `README.md`, `plan.md`,
+  `findings.md`.
 
 Both CJK lines below are frozen, and no other line has open phases.
 

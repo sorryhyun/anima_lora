@@ -54,6 +54,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[3]
 LINE = REPO / "project" / "cjk_renderable_anima"
 sys.path.insert(0, str(REPO))
+# the OCR readers (pseudo_label) stayed in the frozen line
+sys.path.insert(0, str(REPO / "project" / "cjk_aware_anima_dit" / "ocr"))
 
 OUT = REPO / "output" / "wake_probe"
 CORPUS_TRAIN = REPO / "post_image_dataset" / "render" / "ja" / "resized"
@@ -74,6 +76,8 @@ EVAL_GROUPS = (
     "word",
     "word_held",
     "line",
+    "flip",
+    "str3",
     "combo",
     "corpus",
     "en",
@@ -765,6 +769,33 @@ def _arm_dir(a):
     )
 
 
+def _clean_kana_strings(
+    tok, qmap, kana: list, rng: random.Random, n: int, k: int, excl=()
+):
+    """``n`` k-kana strings whose *every* permutation tokenizes to exactly its
+    own single-kana rows (never a merged word piece), so order flips are pure."""
+    from itertools import permutations
+
+    def clean(s: str) -> bool:
+        for perm in permutations(s):
+            ps = _pieces(tok, qmap, "".join(perm))
+            if len(ps) != k or any(p != c or r is None for (p, r), c in zip(ps, perm)):
+                return False
+        return True
+
+    out, seen = [], set(excl)
+    tries = 0
+    while len(out) < n and tries < 20_000:
+        tries += 1
+        s = "".join(rng.sample(kana, k))
+        if s in seen or s[::-1] in seen:
+            continue
+        if clean(s):
+            out.append(s)
+            seen.add(s)
+    return out
+
+
 def stage_data(a):
     rng = random.Random(0)
     out = _data_dir(a)
@@ -904,23 +935,68 @@ def stage_data(a):
                 )
     else:
         items = []
-        # font renders: every kana ×N + random combos (+ every trained word ×N)
-        for ch in kana:
-            for _ in range(n_single):
-                items.append(("font", ch))
-        for w in words:
-            if w in words_held:
-                continue
-            for _ in range(n_single):
-                items.append(("font", w))
-        n_combo = 0
-        while n_combo < n_target:
-            k = rng.choice([2, 3])
-            s = "".join(rng.choice(kana) for _ in range(k))
-            if s in combos_eval:
-                continue
-            items.append(("font", s))
-            n_combo += 1
+        flip_eval: list = []
+        str3_eval: list = []
+        if a.strings_only:
+            # strings arm (2026-09-14): no singles at all — every item is a
+            # 2–4-piece random-order string of trained rows (kana, and trained
+            # words at --word_frac per slot), so no row can carry a single-unit
+            # layout and the loss asks the rows to be contextualisable
+            assert piece_ok is not None, "--strings_only needs --words"
+            flip_pairs = _clean_kana_strings(
+                tok, qmap, kana, rng, a.n_flip_eval, 2, excl=combos_eval
+            )
+            flip_eval = [x for s_ in flip_pairs for x in (s_, s_[::-1])]
+            str3_eval = _clean_kana_strings(
+                tok, qmap, kana, rng, a.n_str3_eval, 3, excl=combos_eval
+            )
+            excl = combos_eval | set(flip_eval) | set(str3_eval)
+            n_str, tries = 0, 0
+            while n_str < a.n_strings and tries < 50 * a.n_strings:
+                tries += 1
+                if a.single_frac > 0 and rng.random() < a.single_frac:
+                    # mixed distribution (plan P1): a single kana or trained
+                    # word, so unit count is only predictable from the caption
+                    items.append(("font", rng.choice(kana + words_train)))
+                    n_str += 1
+                    continue
+                k = rng.choices([2, 3, 4], weights=[45, 35, 20])[0]
+                parts = [
+                    rng.choice(words_train)
+                    if words_train and rng.random() < a.word_frac
+                    else rng.choice(kana)
+                    for _ in range(k)
+                ]
+                s_ = "".join(parts)
+                if s_ in excl or [p for p, _ in _pieces(tok, qmap, s_)] != parts:
+                    continue
+                if not piece_ok(s_):
+                    continue
+                items.append(("font", s_))
+                n_str += 1
+            print(
+                f"strings: {n_str} items (tries {tries}); flip eval {len(flip_eval)}, "
+                f"str3 eval {len(str3_eval)}",
+                flush=True,
+            )
+        else:
+            # font renders: every kana ×N + random combos (+ every trained word ×N)
+            for ch in kana:
+                for _ in range(n_single):
+                    items.append(("font", ch))
+            for w in words:
+                if w in words_held:
+                    continue
+                for _ in range(n_single):
+                    items.append(("font", w))
+            n_combo = 0
+            while n_combo < n_target:
+                k = rng.choice([2, 3])
+                s = "".join(rng.choice(kana) for _ in range(k))
+                if s in combos_eval:
+                    continue
+                items.append(("font", s))
+                n_combo += 1
         for i, (kind, s) in enumerate(items):
             im, bubble = _render_string(s, rng.choice(fonts), rng, mode=a.layout)
             fn = out / "img" / f"font_{i:05d}.png"
@@ -1005,6 +1081,14 @@ def stage_data(a):
                 for s in lines_eval
             ]
         )
+    if a.strings_only:
+        ev += [
+            {"group": "flip", "text": s, "caption": TPL_BUBBLE.format(s)}
+            for s in flip_eval
+        ] + [
+            {"group": "str3", "text": s, "caption": TPL_BUBBLE.format(s)}
+            for s in str3_eval
+        ]
     (out / "eval.json").write_text(json.dumps(ev, ensure_ascii=False, indent=1))
     from collections import Counter
 
@@ -1973,6 +2057,334 @@ def _report_classify(out: Path, err, labels, kana, sigmas, conds):
 
 
 # ----------------------------------------------------------------------------
+# stage: classify_str (where in σ are order / count / identity decided for strings?)
+
+
+def _string_pairs(row_text: dict, rng: random.Random, n_pairs: int, n_triples: int):
+    """Kana strings whose every permutation tokenizes to the same single-kana
+    rows (so "なに" vs "にな" is a pure order contrast, never a word row).
+    Returns (pairs, triples, kana) — strings, not captions."""
+    from itertools import permutations
+
+    tok, q = _qwen_pieces()
+    text_row = {t: r for r, t in row_text.items()}
+    kana = sorted(t for t in text_row if len(t) == 1 and t in KANA)
+
+    def clean(s: str) -> bool:
+        for perm in permutations(s):
+            ps = _pieces(tok, q, "".join(perm))
+            if len(ps) != len(s):
+                return False
+            if any(p != c or r != text_row[c] for (p, r), c in zip(ps, perm)):
+                return False
+        return True
+
+    pairs, triples, seen = [], [], set()
+    tries = 0
+    while len(pairs) < n_pairs and tries < 20_000:
+        tries += 1
+        a, b = rng.sample(kana, 2)
+        s = a + b
+        if s in seen or b + a in seen:
+            continue
+        if clean(s):
+            pairs.append(s)
+            seen.add(s)
+    tries = 0
+    while len(triples) < n_triples and tries < 20_000:
+        tries += 1
+        s = "".join(rng.sample(kana, 3))
+        if s in seen:
+            continue
+        if clean(s):
+            triples.append(s)
+            seen.add(s)
+    return pairs, triples, kana
+
+
+def _string_candidates(s: str, kana: list, rng: random.Random) -> dict:
+    """Named candidate strings for one rendered string ``s``."""
+    others = [k for k in kana if k not in s]
+    c = rng.choice(others)
+    cands = {"S": s, "rev": s[::-1]}
+    if len(s) == 3:
+        cands["rot"] = s[1:] + s[0]
+        cands["first2"] = s[:2]
+    cands["first"] = s[0]
+    cands["last"] = s[-1]
+    cands["sub0"] = c + s[1:]
+    cands["sub1"] = s[0] + c + s[2:]
+    return cands
+
+
+def _en_word_pairs(rng: random.Random, n_pairs: int) -> list[str]:
+    """Nonsense two-word Latin strings "ZORP KAV" whose word swap keeps the T5
+    piece multiset (words are space-separated, so pieces never cross a word);
+    every word must be ≥ 2 pieces so the contrast is piece order, not one id."""
+    from library.anima.weights import load_t5_tokenizer
+
+    t5 = load_t5_tokenizer(None)
+    cons, vow = "BDFGKLMNPRSTVZ", "AEIOU"
+
+    def word():
+        n = rng.randint(2, 3)
+        w = "".join(rng.choice(cons) + rng.choice(vow) for _ in range(n))
+        if rng.random() < 0.6:
+            w += rng.choice(cons)
+        return w
+
+    out, seen = [], set()
+    while len(out) < n_pairs:
+        a, b = word(), word()
+        if a == b or (a, b) in seen:
+            continue
+        if len(t5.tokenize(a)) < 2 or len(t5.tokenize(b)) < 2:
+            continue
+        if sorted(t5.tokenize(f"{a} {b}")) != sorted(t5.tokenize(f"{b} {a}")):
+            continue
+        seen.add((a, b))
+        out.append(f"{a} {b}")
+    return out
+
+
+def _en_candidates(s: str, rng: random.Random, pool: list[str]) -> dict:
+    a, b = s.split(" ")
+    c = rng.choice([w for p in pool for w in p.split(" ") if w not in (a, b)])
+    return {
+        "S": s,
+        "rev": f"{b} {a}",
+        "first": a,
+        "last": b,
+        "sub0": f"{c} {b}",
+        "sub1": f"{a} {c}",
+    }
+
+
+def stage_classify_str(a):
+    """Same-noise diffusion classifier over *strings* of trained kana rows.
+
+    Each held-out 2- or 3-kana render is noised once per σ and scored under
+    its own caption (S) and named alternatives: reversed / rotated (order),
+    single pieces and prefixes (count), one piece substituted (identity).
+    Reports, per σ and cond, how often S beats each alternative and the
+    gap/spread — i.e. at which σ the DiT reads order, how many units, and
+    which units, for the arm's rows. Floor (delta off) is the control.
+    """
+    import numpy as np
+    import torch
+    from PIL import Image
+
+    from library.inference.generation import get_generation_settings
+    from library.inference.models import load_dit_model
+
+    arm_dir = _arm_dir(a)
+    sd = torch.load(arm_dir / "trained.pt", weights_only=False)
+    assert "lora" not in sd, "classify_str covers rows-only arms"
+    row_text = {int(r): t for r, t in sd["row_text"].items()}
+    tpls = {"bubble": TPL_BUBBLE, "plain": TPL_PLAIN}
+    sigmas = [float(x) for x in a.cls_t.split(",")]
+    out = arm_dir / (f"classify_str_{a.eval_tag}" if a.eval_tag else "classify_str")
+    (out / "img").mkdir(parents=True, exist_ok=True)
+    args = _gen_args(a.train_size, a.steps, a.cfg, out)
+    device = get_generation_settings(args).device
+
+    rng = random.Random(20_000 + a.seed)
+    if a.cls_lang == "en":
+        # base-model order control: no ext id in any caption, delta inert
+        pairs = _en_word_pairs(rng, a.cls_pairs)
+        triples, kana = [], []
+        tpls = {"bubble": TPL_EN, "plain": TPL_EN}
+        out = arm_dir / (
+            f"classify_str_en_{a.eval_tag}" if a.eval_tag else "classify_str_en"
+        )
+        (out / "img").mkdir(parents=True, exist_ok=True)
+    else:
+        pairs, triples, kana = _string_pairs(row_text, rng, a.cls_pairs, a.cls_triples)
+    print(
+        f"classify_str: {len(pairs)} pairs {pairs}\n{len(triples)} triples {triples}",
+        flush=True,
+    )
+    fonts = _fonts()
+    items = []
+    for si, s in enumerate(pairs + triples):
+        if a.cls_lang == "en":
+            cands = _en_candidates(s, rng, pairs)
+        else:
+            cands = _string_candidates(s, kana, rng)
+        for j in range(a.cls_per_kana):
+            lay = _sample_layout(len(s), rng, a.train_size)
+            if a.cls_lang == "en":
+                lay["vertical"] = False
+            im, bubble = _render_string(
+                s, rng.choice(fonts), rng, size=a.train_size, layout=lay
+            )
+            fn = out / "img" / f"{si:02d}_{j}.png"
+            im.save(fn)
+            items.append(
+                {
+                    "file": str(fn),
+                    "text": s,
+                    "tpl": "bubble" if bubble else "plain",
+                    "cands": cands,
+                }
+            )
+    cand_names = sorted({k for it in items for k in it["cands"]})
+    caps_all = [tpls[it["tpl"]].format(c) for it in items for c in it["cands"].values()]
+    cache = _encode_captions(caps_all, device)
+    vae = _load_vae(device)
+    with torch.no_grad():
+        px = np.stack([np.array(Image.open(it["file"]).convert("RGB")) for it in items])
+        px = torch.from_numpy(px).permute(0, 3, 1, 2).float().div(127.5).sub(1.0)
+        lat = torch.cat(
+            [
+                vae.encode_pixels_to_latents(px[i : i + 8].to(device)).float().cpu()
+                for i in range(0, len(px), 8)
+            ]
+        )
+    del vae
+    torch.cuda.empty_cache()
+    g = torch.Generator().manual_seed(a.seed)
+    noise = torch.randn((len(items), len(sigmas), *lat.shape[1:]), generator=g)
+
+    anima = load_dit_model(args, device, torch.bfloat16)
+    anima.requires_grad_(False)
+    anima.eval()
+    delta = ExtDelta(
+        anima,
+        sd["delta"]["ext_ids"],
+        sd["delta"]["raw"].shape[1],
+        device,
+        sd["delta"]["row_scale"],
+    )
+    delta.load(sd["delta"])
+
+    conds = ("trained", "floor")
+    C = len(cand_names)
+    err = torch.full((len(conds), len(items), len(sigmas), C), float("nan"))
+    h, w = lat.shape[-2:]
+    t0 = time.time()
+    n_fwd = 0
+    with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
+        for ci, cond in enumerate(conds):
+            delta.scale = 1.0 if cond == "trained" else 0.0
+            for ii, it in enumerate(items):
+                names = [n for n in cand_names if n in it["cands"]]
+                cs = [tpls[it["tpl"]].format(it["cands"][n]) for n in names]
+                b = len(cs)
+                x = lat[ii : ii + 1].to(device)
+                for si, sig in enumerate(sigmas):
+                    nz = noise[ii, si : si + 1].to(device)
+                    target = nz - x
+                    noisy = ((1.0 - sig) * x + sig * nz).to(torch.bfloat16)
+                    pred = anima(
+                        noisy.repeat(b, 1, 1, 1).unsqueeze(2),
+                        torch.full((b,), sig, device=device),
+                        torch.stack([cache[c][0] for c in cs]).to(device),
+                        padding_mask=torch.zeros(
+                            b, 1, h, w, dtype=torch.bfloat16, device=device
+                        ),
+                        target_input_ids=torch.stack([cache[c][2] for c in cs]).to(
+                            device
+                        ),
+                        target_attention_mask=torch.stack([cache[c][3] for c in cs]).to(
+                            device
+                        ),
+                        source_attention_mask=torch.stack([cache[c][1] for c in cs]).to(
+                            device
+                        ),
+                    ).squeeze(2)
+                    e = ((pred.float() - target) ** 2).sum(dim=(1, 2, 3)).cpu()
+                    for n, v in zip(names, e):
+                        err[ci, ii, si, cand_names.index(n)] = v
+                    n_fwd += b
+                if ii % 8 == 7:
+                    print(
+                        f"classify_str {cond}: item {ii + 1}/{len(items)}, "
+                        f"{n_fwd / (time.time() - t0):.1f} fwd/s",
+                        flush=True,
+                    )
+    del anima
+    torch.cuda.empty_cache()
+    torch.save(
+        {
+            "err": err,
+            "cand_names": cand_names,
+            "sigmas": sigmas,
+            "conds": conds,
+            "items": items,
+        },
+        out / "classify_str.pt",
+    )
+    _report_classify_str(out, err, cand_names, sigmas, conds, items)
+
+
+def _report_classify_str(out: Path, err, cand_names, sigmas, conds, items):
+    import torch
+
+    S = cand_names.index("S")
+    contrasts = {
+        "order (S < rev)": ["rev"],
+        "order3 (S < rot)": ["rot"],
+        "count (S < first,last)": ["first", "last"],
+        "count3 (S < first2)": ["first2"],
+        "identity (S < sub0,sub1)": ["sub0", "sub1"],
+    }
+    n2 = sum(len(it["text"]) == 2 for it in items)
+    n3 = len(items) - n2
+    L = [
+        "# classify_str — same-noise diffusion classifier over kana strings",
+        "",
+        f"{n2} 2-kana + {n3} 3-kana held-out renders; summed FM error per latent "
+        "under the true caption S vs named alternatives, same noise. "
+        "win = S has the lower error against every listed alternative; "
+        "gap = mean(alt − S) / mean spread over all candidates.",
+        "",
+    ]
+    for name, alts in contrasts.items():
+        ai = [cand_names.index(x) for x in alts if x in cand_names]
+        if not ai:
+            continue
+        L += [
+            f"## {name}",
+            "",
+            "| cond | " + " | ".join(f"σ {s:.2f}" for s in sigmas) + " |",
+            "|---|" + "---|" * len(sigmas),
+        ]
+        for ci, cond in enumerate(conds):
+            cells = []
+            for si in range(len(sigmas)):
+                e = err[ci, :, si, :]
+                valid = ~torch.isnan(e[:, ai]).any(1)
+                if int(valid.sum()) == 0:
+                    cells.append("–")
+                    continue
+                es = e[valid]
+                win = (es[:, ai] > es[:, S : S + 1]).all(1).float().mean()
+                gap = (es[:, ai].mean(1) - es[:, S]).mean()
+                spread = torch.nanmean(
+                    torch.tensor([float(torch.std(r[~torch.isnan(r)])) for r in es])
+                )
+                cells.append(f"{win:.2f} ({gap / spread:+.2f})")
+            L.append(f"| {cond} | " + " | ".join(cells) + " |")
+        L.append("")
+    L += [
+        "## Per-item argmin (trained), σ columns",
+        "",
+        "| text | tpl | " + " | ".join(f"{s:.2f}" for s in sigmas) + " |",
+        "|---|---|" + "---|" * len(sigmas),
+    ]
+    for ii, it in enumerate(items):
+        row = []
+        for si in range(len(sigmas)):
+            e = err[0, ii, si]
+            k = int(torch.argmin(torch.nan_to_num(e, nan=float("inf"))))
+            row.append(cand_names[k])
+        L.append(f"| {it['text']} | {it['tpl']} | " + " | ".join(row) + " |")
+    (out / "classify_str.md").write_text("\n".join(L) + "\n")
+    print("\n".join(L), flush=True)
+
+
+# ----------------------------------------------------------------------------
 # stage: eval
 
 
@@ -2368,7 +2780,16 @@ def main():
         "--stage",
         nargs="+",
         default=["all"],
-        choices=["all", "salad", "data", "train", "eval", "classify", "native"],
+        choices=[
+            "all",
+            "salad",
+            "data",
+            "train",
+            "eval",
+            "classify",
+            "classify_str",
+            "native",
+        ],
     )
     p.add_argument("--arm", default="rows", choices=["rows", "rows_adapter", "encoder"])
     p.add_argument("--device", default="cuda")
@@ -2564,6 +2985,50 @@ def main():
         default=24,
         help="classify: candidate captions per DiT forward",
     )
+    p.add_argument(
+        "--cls_pairs", type=int, default=24, help="classify_str: 2-kana strings"
+    )
+    p.add_argument(
+        "--cls_triples", type=int, default=8, help="classify_str: 3-kana strings"
+    )
+    p.add_argument(
+        "--cls_lang",
+        default="ja",
+        choices=["ja", "en"],
+        help="classify_str: ja = kana strings of trained rows; en = nonsense two-word Latin strings (base-model order control)",
+    )
+    p.add_argument(
+        "--strings_only",
+        action="store_true",
+        help="data: strings arm — no singles; 2–4-piece random-order strings of trained rows only (needs --words)",
+    )
+    p.add_argument(
+        "--n_strings", type=int, default=6000, help="data: --strings_only font items"
+    )
+    p.add_argument(
+        "--single_frac",
+        type=float,
+        default=0.0,
+        help="data: --strings_only fraction of font items that are singles (plan P1 mixed distribution)",
+    )
+    p.add_argument(
+        "--word_frac",
+        type=float,
+        default=0.25,
+        help="data: --strings_only P(slot is a trained word)",
+    )
+    p.add_argument(
+        "--n_flip_eval",
+        type=int,
+        default=12,
+        help="data: --strings_only clean kana pairs, both orders → group flip",
+    )
+    p.add_argument(
+        "--n_str3_eval",
+        type=int,
+        default=8,
+        help="data: --strings_only clean 3-kana strings → group str3",
+    )
     p.add_argument("--seed", type=int, default=0)
     p.add_argument(
         "--native_prompts",
@@ -2664,6 +3129,7 @@ def main():
             "train": stage_train,
             "eval": stage_eval,
             "classify": stage_classify,
+            "classify_str": stage_classify_str,
             "native": stage_native,
         }[s](a)
 
