@@ -28,6 +28,7 @@ import time
 from collections import Counter
 from pathlib import Path
 
+from wake.bubble import bubble_bbox, bubble_mask
 from wake.common import OUT, norm, parse_shapes
 from wake.models import decode_image, gen_args, load_generator, load_vae
 from wake.readers import Readers, contact_sheet, load_bgr
@@ -617,81 +618,19 @@ def _judge(a, it: dict, reads: list, bgr) -> str:
     return "pass"
 
 
-def bubble_region(bgr, box, pad: int = 4, tol: int = 24):
-    """``(bubble bbox or None, usable region)``. The bubble fill colour is
-    the median of a ring ``pad``–``pad+4`` px outside the text box; seeds are
-    ring points within ``tol`` of it (a seed on the outline would leak);
-    pixels farther than ``tol`` from the fill are "ink" and are thickened
-    by 2 px before the fill so a sketchy outline still closes. The union of
-    fills gives the bubble bbox; the usable region is its inscribed
-    rectangle (0.72 × — 1/√2 of an ellipse's axes), grown to hold the text
-    box. A fill touching the image border or covering > 35 % of the image
-    is *open* (``None``): the region is then the text box grown 1.5× and
-    clamped — bounded, so an erase stays near the text."""
-    import cv2
-    import numpy as np
-
+def bubble_region(bgr, box):
+    """``(bubble bbox or None, usable region)`` from ``wake.bubble.bubble_mask``:
+    the usable region is the bubble bbox's inscribed rectangle (0.72 × —
+    1/√2 of an ellipse's axes), grown to hold the text box. No bubble (open
+    fill, leak, a blob that does not enclose the text): the region is the
+    text box grown 1.5× and clamped — bounded, so an erase stays near the
+    text."""
     H, W = bgr.shape[:2]
     x0, y0, x1, y1 = (int(v) for v in box)
-    # ring mask
-    ring = np.zeros((H, W), dtype=bool)
-    ox0, oy0 = max(0, x0 - pad - 4), max(0, y0 - pad - 4)
-    ox1, oy1 = min(W, x1 + pad + 4), min(H, y1 + pad + 4)
-    ring[oy0:oy1, ox0:ox1] = True
-    ring[max(0, y0 - pad) : min(H, y1 + pad), max(0, x0 - pad) : min(W, x1 + pad)] = (
-        False
-    )
-    if not ring.any():
-        return None, [x0, y0, x1, y1]
-    fill = np.median(bgr[ring].reshape(-1, 3), axis=0)
-    dist = np.abs(bgr.astype(np.int16) - fill.astype(np.int16)).max(axis=2)
-    ink = (dist > tol).astype(np.uint8)
-    ink = cv2.dilate(ink, np.ones((5, 5), np.uint8))  # close 2 px gaps
-    canvas = np.where(ink[..., None] > 0, 0, 255).astype(np.uint8)
-    canvas = np.repeat(canvas, 3, axis=2)
-    ys, xs = np.nonzero(ring & (dist <= tol))
-    if len(xs) == 0:
+    m = bubble_mask(bgr, box)
+    if m is None:
         return None, _grown(box, W, H)
-    # seeds: up to 12 ring points spread around the box; each seed's fill
-    # is judged on its own — a fill that reaches the image border AND is
-    # large (> 8 % of the image) is a leak through the outline, a small
-    # border-touching fill is a bubble clipped by the canvas edge (kept);
-    # the bubble is the largest surviving fill
-    idx = np.linspace(0, len(xs) - 1, num=min(12, len(xs))).astype(int)
-    best = None
-    seen = np.zeros((H, W), dtype=np.uint8)
-    for k in idx:
-        sx, sy = int(xs[k]), int(ys[k])
-        if seen[sy, sx]:
-            continue
-        mask = np.zeros((H + 2, W + 2), dtype=np.uint8)
-        cv2.floodFill(
-            canvas,
-            mask,
-            (sx, sy),
-            0,
-            (10, 10, 10),
-            (10, 10, 10),
-            cv2.FLOODFILL_FIXED_RANGE | cv2.FLOODFILL_MASK_ONLY | (255 << 8) | 4,
-        )
-        m = mask[1:-1, 1:-1]
-        seen |= m
-        n = int(m.sum() // 255)
-        touches = bool(m[0].any() or m[-1].any() or m[:, 0].any() or m[:, -1].any())
-        if n > 0.35 * H * W or (touches and n > 0.08 * H * W):
-            continue
-        if best is None or n > best[0]:
-            best = (n, m)
-    if best is None:
-        return None, _grown(box, W, H)
-    # the ink dilation ate 2 px of interior at the outline: give it back
-    ys, xs = np.nonzero(cv2.dilate(best[1], np.ones((5, 5), np.uint8)))
-    bx0, by0 = int(xs.min()), int(ys.min())
-    bx1, by1 = int(xs.max()) + 1, int(ys.max()) + 1
-    # plausibility: a bubble is a few × its text box; a fill many times
-    # larger ran into a panel-bounded background (not open, but not a bubble)
-    if (bx1 - bx0) * (by1 - by0) > 12 * max(1, (x1 - x0) * (y1 - y0)):
-        return None, _grown(box, W, H)
+    bx0, by0, bx1, by1 = bubble_bbox(m)
     bcx, bcy = (bx0 + bx1) / 2, (by0 + by1) / 2
     bw, bh = (bx1 - bx0) * 0.72, (by1 - by0) * 0.72
     region = [

@@ -70,6 +70,17 @@ def stage_eval(a):
     anima = shared["model"]
     anima.eval()
     delta = ExtDelta.from_state(anima, sd["delta"], device)
+    if a.with_c_flat:
+        # S0: the flat-template eval with the per-source switch on (native
+        # never adds it — the scene is the composite source)
+        assert "c_flat" in sd, (
+            "--with_c_flat: the table has no c_flat (not an S-line rows arm)"
+        )
+        delta.raw.data.add_(sd["c_flat"].to(delta.raw))
+        print(
+            f"eval: + c_flat (norm {float(sd['c_flat'].norm()):.3f} row norms)",
+            flush=True,
+        )
     lora = None
     if "lora" in sd:
         lora = AdapterLoRA(anima, sd["adapter_rank"], device)
@@ -259,6 +270,10 @@ def table_parts(sd: dict, names: list[str]) -> dict:
         if name == "full":
             out["trained"] = raw
             continue
+        if comp is None and "c_flat" in sd:
+            # S-line rows arm: raw = f (the rows), c = c_flat (flat-only switch)
+            c = sd["c_flat"].to(raw.dtype).expand_as(raw)
+            comp = {"f": raw, "c": c}
         if comp is None:
             assert "free" in sd and "encoder" in sd, (
                 f"--delta_parts {name}: the table has no g/c/f split (rows arm?)"
@@ -271,8 +286,9 @@ def table_parts(sd: dict, names: list[str]) -> dict:
     if comp is not None:
         n = lambda t: float(t.norm(dim=1).mean())  # noqa: E731
         print(
-            f"table parts (row-norm units, mean over rows): g {n(comp['g']):.3f} "
-            f"c {n(comp['c']):.3f} f {n(comp['f']):.3f} full {n(raw):.3f}",
+            "table parts (row-norm units, mean over rows): "
+            + " ".join(f"{k} {n(v):.3f}" for k, v in comp.items())
+            + f" full {n(raw):.3f}",
             flush=True,
         )
     return out
@@ -306,7 +322,11 @@ class SceneKept:
         self.ref_dir = ref_dir
         self.tau = tau
         self.cache: dict = {}
-        files = sorted(canvas_dir.glob("*.png"))
+        # the prototype is the arm's *flat* share: an S-line data dir also
+        # holds scene composites (scene_*.png), which are not the canvas
+        files = sorted(
+            f for f in canvas_dir.glob("*.png") if not f.name.startswith("scene_")
+        )
         assert files, f"scene-kept: no training canvases in {canvas_dir}"
         files = random.Random(0).sample(files, min(n_proto, len(files)))
         self.proto = torch.nn.functional.normalize(

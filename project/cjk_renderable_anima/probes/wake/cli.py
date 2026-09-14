@@ -20,6 +20,7 @@ def build_parser(stages, description: str | None = None) -> argparse.ArgumentPar
     _eval_args(p.add_argument_group("eval / native"))
     _classify_args(p.add_argument_group("classify / classify_str"))
     _scene_args(p.add_argument_group("scenes"))
+    _synth_args(p.add_argument_group("data / train: S line (plan_synth)"))
     return p
 
 
@@ -393,6 +394,95 @@ def _eval_args(g):
         default=0.0,
         help="native: scene-kept margin — cos(img, floor) − cos(img, flat "
         "training-canvas prototype) at or above this counts as kept",
+    )
+
+
+def _synth_args(g):
+    g.add_argument(
+        "--scenes",
+        default="",
+        help="data: S-line mix from output/wake_probe/scenes_<tag> — flat singles "
+        "(the rest) + scene composites (--scene_frac) + natural phrases on flat "
+        "canvases (--natural_frac) + random-order strings (--strings_frac); "
+        "replaces the singles×n_single + combos + corpus-crop mix",
+    )
+    g.add_argument(
+        "--n_items", type=int, default=16000, help="data: --scenes total items"
+    )
+    g.add_argument(
+        "--scene_frac",
+        type=float,
+        default=0.4,
+        help="data: --scenes share of items that are scene composites",
+    )
+    g.add_argument(
+        "--natural_frac",
+        type=float,
+        default=0.2,
+        help="data: --scenes share that are covered corpus phrases in a font on a flat canvas",
+    )
+    g.add_argument(
+        "--strings_frac",
+        type=float,
+        default=0.0,
+        help="data: --scenes share that are random-order 2–4-piece strings "
+        "(strings-arm recipe; adds the flip / str3 eval groups). S0: 0 (user, 2026-09-14)",
+    )
+    g.add_argument(
+        "--scene_stroke",
+        type=float,
+        default=0.25,
+        help="data: --scenes share of composites whose glyphs get a thin outline "
+        "in the fill colour (manga lettering over art)",
+    )
+    g.add_argument(
+        "--scene_min_glyph",
+        type=int,
+        default=40,
+        help="data: --scenes smallest per-glyph cell (px) a composite may draw; "
+        "a text that would go smaller is redrawn shorter",
+    )
+    g.add_argument(
+        "--n_phrase_eval",
+        type=int,
+        default=16,
+        help="data: --scenes covered held-out corpus lines never trained → group phrase_held",
+    )
+    g.add_argument(
+        "--box_weight",
+        type=float,
+        default=1.0,
+        help="train: FM loss weight inside a composite item's swapped text box "
+        "(1 outside; batch-normalised); 1 = off",
+    )
+    g.add_argument(
+        "--c_flat",
+        type=int,
+        default=0,
+        help="train (rows arm): per-source layout vector added to every trained "
+        "row on flat-canvas batches only (Δ_r = f_r + 𝟏[flat]·c_flat)",
+    )
+    g.add_argument(
+        "--lr_c_flat", type=float, default=0.0, help="train: c_flat lr (0 = --lr_rows)"
+    )
+    g.add_argument(
+        "--c_flat_cap",
+        type=float,
+        default=0.75,
+        help="train: ‖c_flat‖ bound in row norms (projected after each step)",
+    )
+    g.add_argument(
+        "--f_orth",
+        type=float,
+        default=0.0,
+        help="train: λ · mean_r cos²(f_r, c_flat) guard (0 = off; read `leak` first)",
+    )
+    g.add_argument(
+        "--with_c_flat",
+        type=int,
+        default=0,
+        help="eval: add the saved c_flat to every trained row (the flat-template "
+        "eval with the switch on); native runs without it",
     )
 
 

@@ -1,6 +1,8 @@
 """What an arm trains, and how it becomes the ``ExtDelta`` table.
 
   rows          free per-row delta on the ext rows the training captions touch
+                (S0: + a per-source layout vector ``c_flat`` on flat-canvas
+                batches only — ``--c_flat``; ``--free_residual`` = μ‖f‖² pull)
   rows_adapter  that + a LoRA on every Linear of ``llm_adapter.blocks``
   encoder       Δ_r = g(glyph_r) [+ f_r free residual on trained rows] (W2d)
 
@@ -38,11 +40,28 @@ class Trainables:
         self.free_mask = None
         self.row_text = None
         self.lora = None
+        self.c_flat = None
         if a.arm == "encoder":
             self._init_encoder(train_ext, ev_ext, tok, pack, anima, dim)
         else:
             self.delta = ExtDelta(anima, train_ext, dim, device, self.row_scale)
             self.params = [{"params": [self.delta.raw], "lr": a.lr_rows}]
+            if a.c_flat:
+                # S0 (plan_synth): Δ_r = f_r + 𝟏[flat-canvas item] · c_flat —
+                # the flat layout gets its own switch so the rows stop
+                # carrying it; the train stage flips ``delta.common`` per
+                # (one-source) batch. Projected onto ‖c_flat‖ ≤ cap.
+                self.c_flat = torch.nn.Parameter(torch.zeros(dim, device=device))
+                self.params.append(
+                    {"params": [self.c_flat], "lr": a.lr_c_flat or a.lr_rows}
+                )
+                print(
+                    f"c_flat: on, lr {a.lr_c_flat or a.lr_rows:g}, cap {a.c_flat_cap:g}"
+                    + (f", f_orth {a.f_orth:g}" if a.f_orth else ""),
+                    flush=True,
+                )
+            if a.free_residual > 0:
+                print(f"rows: μ‖f‖² pull {a.free_residual:g}", flush=True)
         if a.arm == "rows_adapter":
             self.lora = AdapterLoRA(anima, a.adapter_rank, device)
             self.params.append({"params": list(self.lora.params), "lr": a.lr_adapter})
@@ -138,6 +157,11 @@ class Trainables:
 
     # -- per step ------------------------------------------------------------
 
+    def set_source(self, flat: bool):
+        """S0: the batch is flat-canvas (``c_flat`` on) or composite (off)."""
+        if self.c_flat is not None:
+            self.delta.common = self.c_flat if flat else None
+
     def materialize(self, aug_rng: random.Random):
         """Encoder arm: rebuild ``delta.raw`` from this step's glyph draw."""
         if self.enc is None:
@@ -172,11 +196,31 @@ class Trainables:
         if self.free is not None:
             free_pen = ((self.free * self.free_mask) ** 2).sum() / self.n_free
             loss = loss + a.free_residual * free_pen
+        elif self.enc is None and a.free_residual > 0:
+            # rows arm (S0): the same μ · mean_r ‖f_r‖² on the free rows —
+            # the one guard against norm creep besides the cosine decay
+            loss = loss + a.free_residual * (self.delta.raw**2).sum(1).mean()
+        if self.c_flat is not None and a.f_orth > 0:
+            # keep the rows off the flat-layout axis: λ · mean_r cos²(f_r, c_flat)
+            loss = loss + a.f_orth * self._leak(squared=True)
         return loss, decor_val
+
+    def _leak(self, squared: bool = False):
+        """mean over trained rows of cos(f_r, c_flat) (² when ``squared``) —
+        the canvas-in-the-rows monitor; P0b's table reads ≈ 1 on its c."""
+        cn = F.normalize(self.delta.raw.float(), dim=1, eps=1e-6)
+        cc = F.normalize(self.c_flat.float(), dim=0, eps=1e-6)
+        cos = cn @ cc
+        return (cos**2).mean() if squared else cos.mean()
 
     def after_step(self):
         if self.enc is not None:
             self.enc.clamp_common()  # projected descent on c: no creep
+        if self.c_flat is not None:
+            with torch.no_grad():
+                n = float(self.c_flat.norm())
+                if n > self.a.c_flat_cap:
+                    self.c_flat.mul_(self.a.c_flat_cap / n)
 
     # -- logging -------------------------------------------------------------
 
@@ -196,6 +240,11 @@ class Trainables:
         }
         if self.enc is not None:
             self._log_encoder(rec, loss, decor_val, dn_held)
+        if self.c_flat is not None:
+            with torch.no_grad():
+                rec["leak"] = float(self._leak())
+                rec["c_flat_norm"] = float(self.c_flat.norm())
+                rec["loss_total"] = float(loss.detach())
         if self.lora is not None:
             rec["lora_b_norm"] = float(
                 sum(p.norm() ** 2 for p in list(self.lora.params)[1::2]) ** 0.5
@@ -310,6 +359,8 @@ class Trainables:
         if self.lora is not None:
             sd["lora"] = self.lora.state_dict()
             sd["adapter_rank"] = a.adapter_rank
+        if self.c_flat is not None:
+            sd["c_flat"] = self.c_flat.detach().cpu()
         sd["killed"] = killed
         return sd
 

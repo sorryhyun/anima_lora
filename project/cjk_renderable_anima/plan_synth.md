@@ -126,11 +126,18 @@ held-out eval. Rendering at 2× and downsampling changes nothing (8 % vs
 
 | share | source | why |
 |---|---|---|
-| 30 % | flat-canvas singles, uniform over kana + ext + kanji + words, ext and kanji at 2× | identity exposure per row stays where P0b left it |
-| 40 % | **scene composites**: singles, words, phrases inside a generated bubble | the row learns the glyph, not the canvas; small kana get a size reference inside words |
-| 20 % | natural phrases on flat canvases (`--phrases`, fully covered by trained rows) | the product distribution; T5 contextualises |
-| 10 % | random-order 2–4-piece strings (strings-arm recipe) | order / count signal with no language prior; keeps `flip` honest |
+| 40 % | flat-canvas singles, uniform over kana + ext (non-small) + kanji + words, ext and kanji at 2× | identity exposure per row stays where P0b left it |
+| 40 % | **scene composites**: singles and phrases inside a generated bubble | the row learns the glyph, not the canvas; small kana get a size reference inside phrases |
+| 20 % | natural phrases on flat canvases (`--natural_frac`, fully covered by trained rows) | the product distribution; T5 contextualises |
+| 0 % | random-order 2–4-piece strings | **out for S0** (user, 2026-09-14): order/count is S1's question; `--strings_frac` keeps the lever (adds `flip` / `str3`) |
 | 0 % | real corpus crops | two in three labels wrong (`datacheck.md`) |
+
+Built as `data_synth_s0` (2026-09-14 23:49): 16 000 items = 6 400 font +
+3 200 phrase + 6 400 scene (5 549 single / 851 phrase — the median region
+holds two glyphs at 32 px, so composite phrases skew short) over the
+**186** kept scenes (≈ 34 swaps each; scenes re-judged with the
+containment rule, 203 → 186). Composites carry the same units as the flat
+items, so each of the ~300 rows meets ≈ 20 distinct scenes.
 
 Composites carry the same text distribution as the flat items (singles /
 words / phrases in proportion). Small kana appear only inside words
@@ -150,10 +157,24 @@ words / phrases in proportion). Small kana appear only inside words
    `scenes_<tag>/{scenes.jsonl, scenes_all.jsonl, report.md, sheet_kept.png,
    sheet_rejected.png}`. `--scene_rejudge 1` re-applies the filter to an
    existing run from its stored reads on CPU. Reused by every later arm.
-2. `--stage data --scenes <tag> --scene_frac 0.4`: erase + draw + caption;
-   composite items keep `src: "scene"`; `shape` from the scene.
-3. `--phrases <file>` + `--natural_frac`, filtered by `piece_ok`;
-   eval group `phrase_held` (covered phrases never trained).
+2. `--stage data --scenes <tag> --scene_frac 0.4` (**done**, `stage/synth.py`
+   + `wake/render.py::render_into_scene` + `wake/bubble.py`): erase + draw +
+   caption; composite items keep `src: "scene"`, `shape` from the scene,
+   `box` = the drawn text box, `kind` ∈ single / phrase. The erase paints
+   the usable region ∪ the text box padded by a quarter, **only inside the
+   bubble's flood interior** (letter holes filled) — a rectangle's corners
+   poked past round outlines (user, 2026-09-14). Text fitted into the
+   region, vertical when taller than wide, per-glyph cell ≥
+   `--scene_min_glyph` (32 px: at 40 the mix fell to 82 % singles because
+   the median region holds two glyphs); kinds are drawn against the
+   region's capacity, singles when the kind never fits. `--scene_stroke`
+   0.25 of composites get a thin outline in the fill colour. Fonts: Noto
+   CJK only (index 0 = JP); DroidSansFallback drew Chinese-styled kanji
+   and is out of every S-line render.
+3. `--natural_frac` (**done**, no file needed): covered training-corpus
+   lines (296, 276 distinct) in a font on flat canvases; eval group
+   `phrase_held` = 16 covered held-out lines whose text never appears in a
+   training item (45 available).
 4. `native` scene-kept ruler (**done**): kept ⇔ PE-Spatial
    cos(img, floor image of the same prompt/kana/seed) − cos(img, mean
    feature of 64 training canvases) ≥ 0 (`--kept_tau`), reported per cond
@@ -163,9 +184,11 @@ words / phrases in proportion). Small kana appear only inside words
    Without the ruler a run can "pass" by wiping scenes harder.
 5. `--delta_scale` (done) and `--delta_parts f,c,g,fg` (done): magnitude
    and component axes of the trained table for `native`.
-6. **Box-weighted loss** in the train stage (`--box_weight`, composite
-   items only): per-item latent weight map from the record's `box`.
-7. **Per-source layout vector** (`--c_flat`): the rows arm gains one
+6. **Box-weighted loss** (**done**, `--box_weight`, composite batches
+   only): per-item latent weight map from the record's `box` (VAE 8×),
+   normalised by the weight sum so the loss scale matches plain MSE.
+7. **Per-source layout vector** (**done**, `--c_flat 1`; `ExtDelta.common`
+   set per batch, batches are one *(shape, source)*): the rows arm gains one
    shared vector `c_flat` added to every trained row on **flat-canvas
    items only** (`src` font / corpus / strings / phrases-flat); composite
    items train `f_r` alone. Batches become one-(shape, source) so the
@@ -204,8 +227,11 @@ arm, with the flat-canvas mode moved into a dedicated switch:
   shapes; the 640 family is not needed for this gate).
 - **Loss**: rectified flow on the band, box-weighted on composites
   (`--box_weight 4` inside the swapped box, 1 outside).
-- Arm tag `rows_synth_s24k_S0`; P0b (`encoder_wdsek_w120_s24k_p0b`) is the
-  flat-only control. S0 vs P0b differs in data *and* parametrisation; the
+- Arm dir `rows_synth_s0_s24k_S0`; P0b (`encoder_wdsek_w120_s24k_p0b`) is the
+  flat-only control. Jobs `20260914-235607-0ac29b` (train + eval 512²,
+  `--with_c_flat 1`, no floor) and `20260914-235621-7e903c` (native: 8
+  prompts × あかすぐ × 2 seeds, EN clause, floor + `full,c,fc`; `full` *is*
+  `f` on the rows arm). S0 vs P0b differs in data *and* parametrisation; the
   gates are absolute, so a pass settles both. Singles < 30/36 → one hybrid
   run on the same data (`--arm encoder`, same steps) isolates which change
   did it before anything else is touched.

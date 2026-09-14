@@ -10,13 +10,15 @@ import random
 from glob import glob
 from pathlib import Path
 
+from .bubble import bubble_interior, bubble_mask, ring_median
 from .common import wh
 
 
 def find_fonts() -> list[str]:
-    paths = sorted(glob("/usr/share/fonts/opentype/noto/Noto*CJK*.ttc"))
-    paths += glob("/usr/share/fonts/truetype/droid/DroidSansFallback*.ttf")
-    return paths
+    # Noto CJK .ttc index 0 = the JP face. DroidSansFallback (pre-S0 data
+    # dirs had it) draws kanji in Chinese-styled forms and is out (user,
+    # 2026-09-14)
+    return sorted(glob("/usr/share/fonts/opentype/noto/Noto*CJK*.ttc"))
 
 
 JITTER_BG_LIGHT = [
@@ -212,3 +214,124 @@ def crop_bubble(img_path: Path, box, size=512):
     canvas = Image.new("RGB", (side, side), (240, 240, 240))
     canvas.paste(crop, (0, 0))
     return canvas.resize((size, size), Image.LANCZOS)
+
+
+# ----------------------------------------------------------------------------
+# S line (plan_synth): draw JA text into a generated scene's bubble
+
+
+def fit_text(d, text: str, font_path: str, region, vertical: bool, min_glyph: int):
+    """Largest font size whose text block fits ``region`` (inner 90 %); the
+    glyph cell must be at least ``min_glyph`` px, else ``None``. Returns
+    ``(font, fs, tw, th)``."""
+    from PIL import ImageFont
+
+    rx0, ry0, rx1, ry1 = region
+    rw, rh = (rx1 - rx0) * 0.9, (ry1 - ry0) * 0.9
+    n = len(text)
+    if vertical:
+        fs = int(min(rw, rh / (n * 1.05)))
+    else:
+        fs = int(min(rh, rw / n))
+    if fs < min_glyph:
+        return None
+    for _ in range(4):
+        font = ImageFont.truetype(font_path, fs, index=0)
+        if vertical:
+            tw = max(d.textlength(ch, font=font) for ch in text)
+            th = n * fs * 1.05
+        else:
+            tw = d.textlength(text, font=font)
+            th = fs
+        k = min(rw / max(tw, 1e-6), rh / max(th, 1e-6))
+        if k >= 1.0:
+            return font, fs, tw, th
+        fs = int(fs * min(k, 0.97))
+        if fs < min_glyph:
+            return None
+    return None
+
+
+def region_capacity(region, min_glyph: int) -> int:
+    """How many glyphs the region holds at ``min_glyph`` px per cell along
+    its long side (vertical when taller than wide), inner 90 %."""
+    rw, rh = (region[2] - region[0]) * 0.9, (region[3] - region[1]) * 0.9
+    if rh > rw:
+        return int(rh / (min_glyph * 1.05)) if rw >= min_glyph else 0
+    return int(rw / min_glyph) if rh >= min_glyph else 0
+
+
+def render_into_scene(
+    scene: dict,
+    text: str,
+    font_path: str,
+    rng: random.Random,
+    min_glyph: int = 40,
+    stroke: bool = False,
+):
+    """Erase every anchor bubble's usable region (plus the text box padded by
+    a quarter of its size — detector boxes run tight) with the bubble's
+    ring-median colour, only *inside the bubble interior* (flood mask,
+    letter holes filled — a rectangle's corners would poke past a round
+    outline), and draw ``text``
+    fitted into the headline region — vertical when the region is taller
+    than wide (the base draws tall manga bubbles). Returns ``(image, drawn
+    text box)`` or ``None`` when the text does not fit at ``min_glyph`` px
+    per glyph (the caller draws a shorter text). Other anchor bubbles are
+    left erased (empty bubble). ``stroke``: a thin outline in the fill colour
+    around the glyphs (manga lettering over art)."""
+    import numpy as np
+    from PIL import Image, ImageDraw
+
+    im = Image.open(scene["file"]).convert("RGB")
+    arr = np.array(im)
+    W, H = im.size
+    head = scene["regions"].index(scene["region"])
+    fills = []
+    for tb, reg in zip(scene["boxes_anchor"], scene["regions"]):
+        fill = ring_median(arr, tb)
+        fills.append(fill)
+        x0, y0, x1, y1 = (int(v) for v in tb)
+        px, py = (x1 - x0) // 4 + 4, (y1 - y0) // 4 + 4
+        ex0, ey0 = max(0, min(reg[0], x0 - px)), max(0, min(reg[1], y0 - py))
+        ex1, ey1 = min(W, max(reg[2], x1 + px)), min(H, max(reg[3], y1 + py))
+        m = bubble_mask(arr, tb)
+        if m is None:
+            return None
+        paint = np.zeros((H, W), dtype=bool)
+        paint[ey0:ey1, ex0:ex1] = True
+        paint &= bubble_interior(m)
+        arr[paint] = fill
+    im = Image.fromarray(arr)
+    d = ImageDraw.Draw(im)
+    region = scene["region"]
+    rw, rh = region[2] - region[0], region[3] - region[1]
+    vertical = len(text) > 1 and rh > rw
+    fit = fit_text(d, text, font_path, region, vertical, min_glyph)
+    if fit is None:
+        return None
+    font, fs, tw, th = fit
+    fill = fills[head]
+    dark_bg = sum(fill) / 3 < 100
+    color = rng.choice(
+        [(240, 240, 240), "white"]
+        if dark_bg
+        else ["black", "black", (30, 30, 30), (60, 40, 40)]
+    )
+    cx, cy = (region[0] + region[2]) / 2, (region[1] + region[3]) / 2
+    kw = {"stroke_width": max(1, fs // 24), "stroke_fill": fill} if stroke else {}
+    if vertical:
+        y = cy - th / 2
+        for ch in text:
+            w = d.textlength(ch, font=font)
+            d.text((cx - w / 2, y), ch, fill=color, font=font, **kw)
+            y += fs * 1.05
+    else:
+        d.text((cx - tw / 2, cy - fs / 2 - fs * 0.1), text, fill=color, font=font, **kw)
+    box = [
+        int(max(0, cx - tw / 2 - 2)),
+        int(max(0, cy - th / 2 - 2)),
+        int(min(W, cx + tw / 2 + 2)),
+        int(min(H, cy + th / 2 + 2)),
+    ]
+    return im, box

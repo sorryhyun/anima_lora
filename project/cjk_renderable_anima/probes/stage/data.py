@@ -58,6 +58,7 @@ _EVAL_ORDER = (
     "single_ext",
     "flip",
     "str3",
+    "phrase_held",
 )
 
 
@@ -124,7 +125,12 @@ def stage_data(a):
         _word_set(a, out, tokq, inv)
 
     n_target = min(a.n_combo, 50 * (n_possible - len(combos_eval)))
-    if a.balanced:
+    if a.scenes:
+        # S line (plan_synth): the whole mix comes from synth.py; no corpus crops
+        from .synth import synth_recs
+
+        recs = synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq)
+    elif a.balanced:
         recs = _balanced_font_recs(
             a, rng, inv, combos_eval, n_target, fonts, shapes, out
         )
@@ -143,7 +149,8 @@ def stage_data(a):
                     fn, s, (TPL_BUBBLE if bubble else TPL_PLAIN).format(s), "font", shp
                 )
             )
-    recs += _corpus_recs(a, rng, inv, shapes, out, first_layout_id=len(recs))
+    if not a.scenes:
+        recs += _corpus_recs(a, rng, inv, shapes, out, first_layout_id=len(recs))
 
     (out / "train.jsonl").write_text(
         "\n".join(json.dumps(r, ensure_ascii=False) for r in recs)

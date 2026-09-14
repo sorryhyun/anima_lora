@@ -866,6 +866,44 @@ bubble), read miss 240 (misspelled anchor or JA garble), region < 56 px
 174, leak 77, no box 17. Every image has its prompt row
 (`scenes_all.jsonl`; future runs write `prompts.jsonl` first).
 
+### S0 build + launch (2026-09-14 night): scene composites, rows arm from scratch
+
+**Instrument** (`stage/synth.py`, `wake/bubble.py`, `render_into_scene`,
+train-stage `--box_weight` / `--c_flat`, eval `--with_c_flat`, native
+`--delta_parts` on rows arms, scene-kept prototype = the flat share only).
+Smoke on 400 items caught three data defects before the build:
+
+- **Erase coverage** — a text-box-only erase left the anchor where the
+  detector box ran tight (red "Yes" under セックス); erase = region ∪ box
+  padded ¼ fixed it, and then the rectangle's corners poked past round
+  outlines (user: scene 124). Final: paint only inside the bubble's flood
+  interior with the letter holes filled.
+- **Leaked bubbles in the kept set** (user: scene 48 — a white kitchen
+  wall passed as the bubble, the swap painted a 130 × 240 px white block
+  over the character). Rule added to `bubble_mask`: the fill's bbox must
+  enclose its text box (¼ tolerance). `--scene_rejudge 1` on s0: **203 →
+  186 kept**, all 17 drops verified leaks on the sheet.
+- **Chinese-styled kanji** (user): DroidSansFallbackFull was 1 of 15 fonts;
+  Noto CJK's ttc index 0 is the JP face. Droid is out of `find_fonts`
+  (every S-line render; pre-S0 data dirs had it).
+
+Also from the user: strings out of S0 (`--strings_frac 0`; flip/str3 only
+when strings are in), a stroke outline on 25 % of composites. Per-glyph
+floor 32 px (40 px left 82 % of composites singles; the median region
+holds two glyphs). Composite kind draw is capacity-first (no wasted
+renders).
+
+**Data `synth_s0`**: 16 000 = 6 400 font + 3 200 phrase + 6 400 scene
+(5 549 single / 851 phrase) over 186 scenes, 6.4 min CPU. Shapes 448²
+3 130 / 448×512 3 254 / 512×448 3 071 / 512² 6 545. Eval 150 prompts (+
+`phrase_held` 16).
+
+**Train smoke** `20260914-234903-f65608` (40 steps, compile, no ckpt): 1.0
+it/s at step 25 (compile warm-up; the un-compiled first try OOMed at
+14.8 GB — block compile is the recipe, as ever), `leak` 0.02, `c_flat`
+norm 0.12 after 25 steps. **S0 jobs**: train + eval `20260914-235607-0ac29b`,
+native `20260914-235621-7e903c` (gates in `plan_synth.md`).
+
 ### Shelved W2 levers (do not reopen without a new reason)
 
 - Same-noise classifier CE / swap hinge on free rows: valid for singles,

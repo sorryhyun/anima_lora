@@ -12,7 +12,6 @@ import random
 import time
 
 import torch
-import torch.nn.functional as F
 
 from wake.common import TPL_BUBBLE, arm_dir, data_dir, parse_shape
 from wake.models import (
@@ -102,10 +101,14 @@ def stage_train(a):
             t_max=a.t_max,
         )
         tr.materialize(aug_rng)
+        is_scene = recs[idx[0]]["src"] == "scene"
+        tr.set_source(flat=not is_scene)
         with torch.autocast("cuda", dtype=torch.bfloat16):
             captions = [recs[i]["caption"] for i in idx]
             pred = dit_forward(anima, noisy, ts, cache, captions, device)
-        loss_fm = F.mse_loss(pred.float(), target.float())
+        loss_fm = weighted_fm_loss(
+            pred, target, [recs[i] for i in idx], a.box_weight if is_scene else 1.0
+        )
         loss, decor_val = tr.regularized(loss_fm)
         opt.zero_grad(set_to_none=True)
         loss.backward()
@@ -134,6 +137,22 @@ def stage_train(a):
     )
     del anima
     torch.cuda.empty_cache()
+
+
+def weighted_fm_loss(pred, target, recs, box_weight: float):
+    """MSE on the flow target, with the latent cells under a composite item's
+    swapped text box (``rec['box']``, pixels at the item's own size, VAE 8×)
+    weighted ``box_weight`` and the rest 1 — normalised by the weight sum so
+    the loss scale matches the plain MSE (``box_weight`` 1 = plain MSE)."""
+    se = (pred.float() - target.float()) ** 2
+    if box_weight == 1.0:
+        return se.mean()
+    B, _C, h, w = se.shape
+    wmap = torch.ones(B, 1, h, w, device=se.device)
+    for b, r in enumerate(recs):
+        x0, y0, x1, y1 = r["box"]
+        wmap[b, :, y0 // 8 : -(-y1 // 8), x0 // 8 : -(-x1 // 8)] = box_weight
+    return (se * wmap).sum() / (wmap.expand_as(se).sum())
 
 
 def _held_out_split(a, recs_all, ev, out):
@@ -292,7 +311,8 @@ class Batcher:
     - balanced data (W2a): one layout group per step;
     - mixed shapes: an epoch is every shape's items shuffled and chunked into
       full batches, the batch list shuffled — a batch is one shape and each
-      shape is drawn in proportion to its items;
+      shape is drawn in proportion to its items (S line: one *(shape,
+      source)* — flat vs scene composite — so ``c_flat`` toggles per batch);
     - else a shuffled walk in chunks of ``--batch``.
 
     Every epoch reshuffles with ``Random(seed + step)``."""
@@ -321,7 +341,10 @@ class Batcher:
         if lat.row_of is not None and self.groups is None:
             self.by_shape: dict = {}
             for r in range(len(recs)):
-                self.by_shape.setdefault(lat.shape_of(r), []).append(r)
+                key = lat.shape_of(r)
+                if recs[r]["src"] == "scene":
+                    key += "|scene"
+                self.by_shape.setdefault(key, []).append(r)
             self.shape_batches = self._shape_epoch(random.Random(a.seed))
             self.bptr = 0
             print(

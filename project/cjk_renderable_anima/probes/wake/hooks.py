@@ -13,7 +13,11 @@ class ExtDelta:
     hook runs after the pack's and adds the delta on top of the pack rows).
 
     ``raw`` is in row-norm units (× ``row_scale``, the mean pack-row norm);
-    ``scale`` 0 restores the pack rows exactly."""
+    ``scale`` 0 restores the pack rows exactly. ``common`` (S0, plan_synth):
+    an optional ``(dim,)`` vector in the same units added to every *trained*
+    row on top of ``raw`` for the current batch — the per-source layout
+    vector ``c_flat``; the train stage sets it per batch, eval leaves it
+    ``None``."""
 
     def __init__(self, anima, ext_ids, dim, device, row_scale: float):
         from library.anima.ext_vocab import T5_TABLE_SIZE
@@ -26,6 +30,7 @@ class ExtDelta:
         )
         self.row_scale = row_scale
         self.scale = 1.0
+        self.common = None
         self.state: dict = {}
         embed = anima.llm_adapter.embed
         lut = torch.full((max(self.ext_ids) + 2,), -1, dtype=torch.long)
@@ -56,7 +61,10 @@ class ExtDelta:
                 device=output.device,
                 dtype=self.raw.dtype,
             )
-            d[known] = self.raw[loc[known]] * self.row_scale
+            rows = self.raw[loc[known]]
+            if self.common is not None:
+                rows = rows + self.common.to(rows.dtype)
+            d[known] = rows * self.row_scale
             out = output.clone()
             out[mask] = out[mask] + (d * self.scale).to(out.dtype)
             return out

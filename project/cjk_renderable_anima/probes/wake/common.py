@@ -28,6 +28,9 @@ KANA = HIRA + KATA
 KANA_EXT_HIRA = "がぎぐげござじずぜぞだぢづでどばびぶべぼぱぴぷぺぽぁぃぅぇぉっゃゅょ"
 KANA_EXT_KATA = "ガギグゲゴザジズゼゾダヂヅデドバビブベボパピプペポァィゥェォッャュョ"
 KANA_EXT = KANA_EXT_HIRA + KANA_EXT_KATA
+# small kana are not a singles concept (P0b: a lone ゃ draws full-size — no
+# size reference); the S line shows them only inside words / phrases
+KANA_SMALL = "ぁぃぅぇぉっゃゅょァィゥェォッャュョ"
 KANA_RE = re.compile(r"^[ぁ-ゟァ-ヿー〜っ・…！？!?]+$")
 CJK_RE = re.compile(r"[぀-ヿ぀-ゟ㐀-䶿一-鿿]")
 KANJI_RE = re.compile(r"[一-鿿]")
@@ -57,6 +60,9 @@ TPL_PLAIN = (
     'japanese text, white background, simple background. Japanese text reads as "{}".'
 )
 TPL_EN = 'manga, speech bubble, english text. English text reads as "{}".'
+# S-line composite: the scene's own tag caption (``english text`` →
+# ``japanese text``) + the trained clause shape
+TPL_SCENE_JA = '{tags}. Japanese text reads as "{text}".'
 
 # report / sheet order; ``word`` / ``word_held`` / ``line`` are the 2026-09-14
 # word-address groups (``--words``)
@@ -70,6 +76,7 @@ EVAL_GROUPS = (
     "line",
     "flip",
     "str3",
+    "phrase_held",
     "combo",
     "corpus",
     "en",
