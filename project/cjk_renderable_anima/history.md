@@ -835,6 +835,37 @@ is `--no_floor`) and `--kept_tau` (margin, default 0). The canvas
 prototype is 64 renders from the arm's own data dir, so a synth-trained
 arm measures against *its* flat share.
 
+### Scenes s0 (2026-09-14 night): 1 000 self-generated scenes, 203 kept
+
+**Job `20260914-221635-347544`** (62 min; ≈ 3.6 s/img batched 4 per shape
+on the S0 pool `448,512:2,448x512,512x448`, 28 steps cfg 4, negative
+prompt on the uncond branch). Three smokes before it (jobs `-220052`,
+`-220253`, `-221018`, `-221342`, 16–32 prompts each): the first prompt
+generator (plain tag bags, no artist / character, unsorted) drew a
+generic off-distribution average (user's read) and 0/16 passed; rewriting
+the prompt in the dataset's caption order (`rating, count, character,
+copyright, @artist, generals sorted`) with dataset artists + `sincos` /
+`hews` made every sheet in-domain; 2× render + downsample did nothing
+(8 % vs 4 %) and is off; two anchor bubbles per two-speaker prompt are
+normal (both get swapped).
+
+**Filter, re-judged on CPU from the stored reads** (`--scene_rejudge 1`,
+no GPU): 45 kept at a 96 px bar → 120 at 64 px → 203 at 56 px with the
+bubble fill fixed. The fill's bug was unioning every seed's flood, so one
+seed leaking through a sketchy outline (a 20 % fill under the 35 % cap)
+opened the whole bubble; per-seed judging (large + border = leak, small +
+border = edge-clipped bubble, largest survivor wins) took open bubbles
+from 17 % to 3 %, and a 12× text-box plausibility guard removed the fills
+that ran into panel-bounded backgrounds (8 % open in the end). Region
+short side on the kept set: p10 67, median 83 px. The base draws the
+bubble at ≈ 1/8 of the canvas whatever the framing (`full body` median
+57 px), so the size bar is the product condition, not a defect.
+
+**Rejects that stay:** stray text 289 (shirts, signs, a second garbled
+bubble), read miss 240 (misspelled anchor or JA garble), region < 56 px
+174, leak 77, no box 17. Every image has its prompt row
+(`scenes_all.jsonl`; future runs write `prompts.jsonl` first).
+
 ### Shelved W2 levers (do not reopen without a new reason)
 
 - Same-noise classifier CE / swap hinge on free rows: valid for singles,

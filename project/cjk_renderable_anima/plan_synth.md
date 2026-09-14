@@ -62,18 +62,25 @@ preservation term outside the text box needs scene images anyway.
 Let Anima draw the scene itself, then replace only what is inside the
 bubble:
 
-1. **Scene generation** (GPU, base model, delta off): `{scene tags},
-   speech bubble, english text. English text reads as "{anchor}"` with a
-   short EN anchor (hi ok no yes wow hey — Latin, every piece pretrained,
+1. **Scene generation** (GPU, base model, delta off): a dataset-format
+   caption — `{rating}, {count}, {character}, {copyright}, @{artist},
+   {generals sorted}. English text reads as "{anchor}"` with `speech
+   bubble` and `english text` among the generals and a short EN anchor
+   (hi ok no yes wow hey oh huh yay wait — Latin, every piece pretrained,
    no ext row touched). The output is in-domain by construction, and the
    caption explains everything in the image.
-2. **Box filter** (same pass): the `Readers` detector finds the text box;
-   keep an image only when exactly one box is found and its read matches
-   the anchor. Record `(file, scene tags, box)`.
-3. **Swap** (CPU, `--stage data`): fill the box with the bubble's local
-   colour (median of a ring around the box), draw the kana / word / phrase
-   fitted into the box with the existing font renderer. One scene serves
-   several swaps.
+2. **Bubble filter** (same pass): the `Readers` detector boxes the *text*;
+   every box that reads the anchor is an anchor bubble (the base draws one
+   per speaker — all are swapped), any other non-speck box is stray text
+   and rejects the image. The bubble itself comes from a flood fill of the
+   fill colour around the text box; the **usable region** is its inscribed
+   rectangle. Record `(file, head, generals, anchor, boxes, regions,
+   bubbles)`.
+3. **Swap** (CPU, `--stage data`): fill each region with the bubble's local
+   colour (median of a ring around the text box), draw the kana / word /
+   phrase fitted into the region with the existing font renderer —
+   **vertical when the region is taller than wide** (the base draws tall
+   manga bubbles). One scene serves several swaps.
 4. **Caption**: `{scene tags}, speech bubble, japanese text. Japanese text
    reads as "{text}"` — the native clause shape, with the anchor's EN
    clause swapped for the JA one.
@@ -89,16 +96,31 @@ anchor gives one clean short bubble. The caption swap is one string.
 
 ## Scene prompts
 
-Not the dataset's revised captions: they are character- and
-artist-specific and carry `nsfw` / `sensitive` prefixes. Instead a
-combinatorial generator in the probe — subject (1girl / 1boy / 2girls /
-1boy 1girl …) × setting (classroom, bedroom, park, cafe, street, beach,
-rooftop, kitchen, train, …) × pose / action × expression × style
-(monochrome manga, colour, screentone, film grain, sketch) → thousands
-of clean prompts. The 8 blind-pairs prompts
-(`project/cjk_aware_anima/assets/unmask_eval_prompts.txt`) are **held out**
-of the generator's vocabulary combinations so `native` stays a held-out
-eval.
+A combinatorial generator (`stage/scenes.py`) that writes prompts **in the
+dataset's caption format** — the first smoke (generic tag bags, no artist,
+no character, unsorted) drew a generic average that was off-distribution
+for the base (user, 2026-09-14): `rating` (safe / sensitive) → `count`
+(1girl ×5, 1boy ×3, 2girls, 1boy 1girl, 2boys — two speakers draw two
+bubbles and far more stray text) → character + copyright (a dataset pair
+for 30 % of 1girl prompts, else `original`) → `@artist` (80 %: the
+dataset's 83 `@name` rows plus `sincos` / `hews` at 4× weight) → generals
+**sorted alphabetically**: 1–2 appearance tags, a setting (library,
+rooftop, kitchen, train interior, beach, city street, shrine, …), an
+action, an expression, an optional style (screentone, monochrome, sketch,
+anime coloring, flat color, watercolor, lineart, halftone), `solo` for
+single counts, `looking at viewer` 50 %, a framing (cowboy shot / full
+body / from side / none), `speech bubble`, `english text`. Negative prompt
+on the uncond branch only (`--scene_negative`; never enters a caption):
+`worst quality, lowres, old, bad hands, bad anatomy, sepia, blurry,
+glitch, jpeg artifacts`. No positive quality tags — the training caption
+mirrors the prompt and the dataset captions carry none. The 8 blind-pairs
+prompts (`project/cjk_aware_anima/assets/unmask_eval_prompts.txt`) are
+**held out**: none of their setting / action / style / framing tokens
+(classroom, bedroom, park bench, cafe interior, windowsill, film grain,
+maid, holding a tray, upper body, portrait, simple background, 2koma,
+comic, surprised, greyscale) is in the vocabulary, so `native` stays a
+held-out eval. Rendering at 2× and downsampling changes nothing (8 % vs
+4 % on 24 prompts, same reject profile) and is off.
 
 ## Data mix (S0; replaces P0b's flat-only data)
 
@@ -116,10 +138,18 @@ words / phrases in proportion). Small kana appear only inside words
 
 ## Instrument (owed, in order)
 
-1. `--stage scenes`: prompt generator (`--scene_n`, `--scene_shapes`
-   `512,640,512x640,640x512` — no 768², OOM at batch 4), anchors, generate
-   through the daemon, detect + read, write `scenes/<tag>/scenes.jsonl`
-   (`file, tags, box, anchor, shape`) + a sheet. Reused by every later arm.
+1. `--stage scenes` (**done**, `stage/scenes.py`): prompt generator
+   (`--scene_n`, `--scene_shapes` = the S0 pool), `prompts.jsonl` written
+   before the first render, batched text-encoder → DiT → VAE per shape
+   (`--scene_batch 4`, per-item seeds as one noise tensor each), detector +
+   both readers, bubble flood fill (ring-median fill colour, seeds only on
+   matching ring pixels, ink dilated 2 px so sketchy outlines close, each
+   seed's fill judged alone — a large border-touching fill is a leak, a
+   small one an edge-clipped bubble — largest survivor wins, 12× text-box
+   plausibility guard), `--scene_min_box 56` on the region's short side,
+   `scenes_<tag>/{scenes.jsonl, scenes_all.jsonl, report.md, sheet_kept.png,
+   sheet_rejected.png}`. `--scene_rejudge 1` re-applies the filter to an
+   existing run from its stored reads on CPU. Reused by every later arm.
 2. `--stage data --scenes <tag> --scene_frac 0.4`: erase + draw + caption;
    composite items keep `src: "scene"`; `shape` from the scene.
 3. `--phrases <file>` + `--natural_frac`, filtered by `piece_ok`;
@@ -192,7 +222,7 @@ strings arm used 0.5–0.9; S0 starts at the singles band, S1 widens only if
 
 | stage | cost |
 |---|---|
-| scenes: 1 000 images at 512–640, 28 steps | ≈ 1 h GPU once (≈ 3 s/img + detect/read); ~60 % expected to pass the box filter |
+| scenes: 1 000 images on the S0 pool, 28 steps, batch 4 | **measured** 62 min (≈ 3.6 s/img + 5 min detect/read); **203 kept (20 %)** — the prompt list is a stable prefix, so `--scene_n 2000` on the same tag renders only the missing 1 000 |
 | swaps | CPU, minutes |
 | train (S0, 24 k steps) | ≈ 2.4 h |
 | eval + native (+ scene-kept) | ≈ 15 min |
@@ -229,14 +259,22 @@ Singles fall below 30 → the two layouts compete in `f`; `--single_frac`
   median fill, and a share of composites where the erased bubble gets the
   *anchor redrawn in a font* (EN text, EN caption) so the patch is not
   ext-row-specific.
-- **Horizontal-only boxes.** The EN anchor bubble is short and horizontal;
-  vertical JA layouts are absent from composites. Flat-canvas items keep
-  the vertical prior; revisit if `native` with a vertical clause is needed.
-- **Detector recall on generated bubbles.** Unknown; the box filter's pass
-  rate is the first number the `scenes` stage prints. Below 40 % → anchor
-  words / bubble tags adjusted before scaling to 1 000.
-- **Tiny bubbles.** A box under ~64 px on the short side cannot hold a
-  kana at readable size; filtered out (`--scene_min_box`).
+- **Bubble shapes.** Measured, not a risk: the base draws round *and*
+  tall manga bubbles, so composites carry both horizontal and vertical
+  layouts (the data stage picks vertical for regions taller than wide).
+- **Filter yield — measured 20 % on s0** (1 000 images): stray text 29 %
+  (shirts, signs, a second garbled bubble), anchor misread or drawn as JA
+  garble 24 %, region under 56 px 17 %, fill leak 8 %. The stray-text and
+  read rules are strict on purpose; the size and leak rules were tuned on
+  the sheets (user-picked rejects 977 461 704 822 667 585 all pass now).
+  Each scene serves several swaps; 2 000 scenes ≈ 400 kept is the target.
+- **Small bubbles are the product.** The base draws the bubble at ≈ 1/8 of
+  the canvas whatever the framing (region short side median ≈ 65 px at
+  512², 57 px for `full body`): a 96 px bar kept 4 %. The bar is **56 px**
+  — the inscribed square of a round 76 px bubble is 55 px, and a tall
+  65 × 119 region holds one or two kana vertically. Glyphs of 4 latent
+  tokens a side are what the box-weighted loss is for; if S0's singles
+  gate fails, raise the bar before touching the loss.
 
 ## Not this plan
 
