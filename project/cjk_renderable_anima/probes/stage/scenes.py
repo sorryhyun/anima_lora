@@ -290,6 +290,30 @@ def stage_scenes(a):
 
     out = OUT / f"scenes_{a.scene_tag}"
     (out / "img").mkdir(parents=True, exist_ok=True)
+    if a.scene_rejudge:
+        # CPU only: re-apply the filter to an existing run from its stored
+        # detector boxes + reads (new size bar / open-bubble rule / stray
+        # rule) — no generation, no readers
+        items = [
+            json.loads(ln)
+            for ln in (out / "scenes_all.jsonl").read_text().splitlines()
+            if ln
+        ]
+        for it in items:
+            reads = [{"box": b, **r} for b, r in zip(it["boxes"], it["reads"])]
+            for k in (
+                "box",
+                "region",
+                "bubble",
+                "boxes_anchor",
+                "regions",
+                "bubbles",
+                "read",
+            ):
+                it.pop(k, None)
+            it["reason"] = _judge(a, it, reads, load_bgr(Path(it["file"])))
+        _report_scenes(a, out, items)
+        return
     items = scene_items(a)
     cs = Counter("x".join(map(str, it["shape"])) for it in items)
     print(
@@ -308,6 +332,10 @@ def stage_scenes(a):
     vae = load_vae(device)
     for it in items:
         it["file"] = str(out / "img" / f"scene_{it['i']:05d}.png")
+    # prompts first, so a killed run still has one row per image index
+    (out / "prompts.jsonl").write_text(
+        "\n".join(json.dumps(it, ensure_ascii=False) for it in items)
+    )
     groups: dict = {}
     for it in items:
         if not Path(it["file"]).exists():
@@ -401,6 +429,10 @@ def _filter_scenes(a, out: Path, items: list[dict]):
                 flush=True,
             )
     del rd
+    _report_scenes(a, out, items)
+
+
+def _report_scenes(a, out: Path, items: list[dict]):
     kept = [it for it in items if it["reason"] == "pass"]
     (out / "scenes_all.jsonl").write_text(
         "\n".join(json.dumps(it, ensure_ascii=False) for it in items)
@@ -585,62 +617,81 @@ def _judge(a, it: dict, reads: list, bgr) -> str:
     return "pass"
 
 
-def bubble_region(bgr, box, pad: int = 5, tol: int = 24):
-    """``(bubble bbox or None, usable region)``. Flood-fills from 8 seeds on
-    a ring ``pad`` px outside the text box (fixed range ± ``tol`` per
-    channel from each seed's colour), unions the fills, and takes the
-    rectangle inscribed in the union's bbox (0.72 × — an ellipse's inscribed
-    rectangle is 1/√2 of its axes). A union touching the image border or
-    covering > 35 % of the image is an open background (``None``); the
-    region is then the text box grown 1.8× and clamped."""
+def bubble_region(bgr, box, pad: int = 4, tol: int = 24):
+    """``(bubble bbox or None, usable region)``. The bubble fill colour is
+    the median of a ring ``pad``–``pad+4`` px outside the text box; seeds are
+    ring points within ``tol`` of it (a seed on the outline would leak);
+    pixels farther than ``tol`` from the fill are "ink" and are thickened
+    by 2 px before the fill so a sketchy outline still closes. The union of
+    fills gives the bubble bbox; the usable region is its inscribed
+    rectangle (0.72 × — 1/√2 of an ellipse's axes), grown to hold the text
+    box. A fill touching the image border or covering > 35 % of the image
+    is *open* (``None``): the region is then the text box grown 1.5× and
+    clamped — bounded, so an erase stays near the text."""
     import cv2
     import numpy as np
 
     H, W = bgr.shape[:2]
     x0, y0, x1, y1 = (int(v) for v in box)
-    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
-    seeds = []
-    for sx in (x0 - pad, cx, x1 + pad):
-        for sy in (y0 - pad, cy, y1 + pad):
-            if (sx, sy) == (cx, cy):
-                continue
-            seeds.append((int(min(W - 1, max(0, sx))), int(min(H - 1, max(0, sy)))))
-    union = np.zeros((H, W), dtype=np.uint8)
-    for sx, sy in seeds:
+    # ring mask
+    ring = np.zeros((H, W), dtype=bool)
+    ox0, oy0 = max(0, x0 - pad - 4), max(0, y0 - pad - 4)
+    ox1, oy1 = min(W, x1 + pad + 4), min(H, y1 + pad + 4)
+    ring[oy0:oy1, ox0:ox1] = True
+    ring[max(0, y0 - pad) : min(H, y1 + pad), max(0, x0 - pad) : min(W, x1 + pad)] = (
+        False
+    )
+    if not ring.any():
+        return None, [x0, y0, x1, y1]
+    fill = np.median(bgr[ring].reshape(-1, 3), axis=0)
+    dist = np.abs(bgr.astype(np.int16) - fill.astype(np.int16)).max(axis=2)
+    ink = (dist > tol).astype(np.uint8)
+    ink = cv2.dilate(ink, np.ones((5, 5), np.uint8))  # close 2 px gaps
+    canvas = np.where(ink[..., None] > 0, 0, 255).astype(np.uint8)
+    canvas = np.repeat(canvas, 3, axis=2)
+    ys, xs = np.nonzero(ring & (dist <= tol))
+    if len(xs) == 0:
+        return None, _grown(box, W, H)
+    # seeds: up to 12 ring points spread around the box; each seed's fill
+    # is judged on its own — a fill that reaches the image border AND is
+    # large (> 8 % of the image) is a leak through the outline, a small
+    # border-touching fill is a bubble clipped by the canvas edge (kept);
+    # the bubble is the largest surviving fill
+    idx = np.linspace(0, len(xs) - 1, num=min(12, len(xs))).astype(int)
+    best = None
+    seen = np.zeros((H, W), dtype=np.uint8)
+    for k in idx:
+        sx, sy = int(xs[k]), int(ys[k])
+        if seen[sy, sx]:
+            continue
         mask = np.zeros((H + 2, W + 2), dtype=np.uint8)
         cv2.floodFill(
-            bgr.copy(),
+            canvas,
             mask,
             (sx, sy),
             0,
-            (tol, tol, tol),
-            (tol, tol, tol),
+            (10, 10, 10),
+            (10, 10, 10),
             cv2.FLOODFILL_FIXED_RANGE | cv2.FLOODFILL_MASK_ONLY | (255 << 8) | 4,
         )
         m = mask[1:-1, 1:-1]
-        if m.sum() / 255 > 0.35 * H * W:
+        seen |= m
+        n = int(m.sum() // 255)
+        touches = bool(m[0].any() or m[-1].any() or m[:, 0].any() or m[:, -1].any())
+        if n > 0.35 * H * W or (touches and n > 0.08 * H * W):
             continue
-        union |= m
-    ys, xs = np.nonzero(union)
-    open_bg = (
-        len(xs) == 0
-        or len(xs) > 0.35 * H * W
-        or xs.min() == 0
-        or ys.min() == 0
-        or xs.max() == W - 1
-        or ys.max() == H - 1
-    )
-    if open_bg:
-        w, h = (x1 - x0) * 1.8, (y1 - y0) * 1.8
-        region = [
-            int(max(0, cx - w / 2)),
-            int(max(0, cy - h / 2)),
-            int(min(W, cx + w / 2)),
-            int(min(H, cy + h / 2)),
-        ]
-        return None, region
+        if best is None or n > best[0]:
+            best = (n, m)
+    if best is None:
+        return None, _grown(box, W, H)
+    # the ink dilation ate 2 px of interior at the outline: give it back
+    ys, xs = np.nonzero(cv2.dilate(best[1], np.ones((5, 5), np.uint8)))
     bx0, by0 = int(xs.min()), int(ys.min())
     bx1, by1 = int(xs.max()) + 1, int(ys.max()) + 1
+    # plausibility: a bubble is a few × its text box; a fill many times
+    # larger ran into a panel-bounded background (not open, but not a bubble)
+    if (bx1 - bx0) * (by1 - by0) > 12 * max(1, (x1 - x0) * (y1 - y0)):
+        return None, _grown(box, W, H)
     bcx, bcy = (bx0 + bx1) / 2, (by0 + by1) / 2
     bw, bh = (bx1 - bx0) * 0.72, (by1 - by0) * 0.72
     region = [
@@ -649,8 +700,6 @@ def bubble_region(bgr, box, pad: int = 5, tol: int = 24):
         int(min(W, bcx + bw / 2)),
         int(min(H, bcy + bh / 2)),
     ]
-    # the region must still hold the text box (else the fill was a
-    # neighbouring patch, not the bubble): grow to cover it
     region = [
         min(region[0], x0),
         min(region[1], y0),
@@ -658,3 +707,15 @@ def bubble_region(bgr, box, pad: int = 5, tol: int = 24):
         max(region[3], y1),
     ]
     return [bx0, by0, bx1, by1], region
+
+
+def _grown(box, W, H, k: float = 1.5):
+    x0, y0, x1, y1 = box
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    w, h = (x1 - x0) * k, (y1 - y0) * k
+    return [
+        int(max(0, cx - w / 2)),
+        int(max(0, cy - h / 2)),
+        int(min(W, cx + w / 2)),
+        int(min(H, cy + h / 2)),
+    ]

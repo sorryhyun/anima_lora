@@ -454,7 +454,7 @@ def _scene_args(g):
     g.add_argument(
         "--scene_min_box",
         type=int,
-        default=96,
+        default=56,
         help="scenes: reject usable regions under this many px on the short side",
     )
     g.add_argument(
@@ -488,6 +488,12 @@ def _scene_args(g):
         default=1.0,
         help="scenes: render at this multiple of the pool shape, then downsample "
         "(the base draws crude scenes at 512²; 2.0 = its native ~1024)",
+    )
+    g.add_argument(
+        "--scene_rejudge",
+        type=int,
+        default=0,
+        help="scenes: re-apply the filter to scenes_<tag> from its stored reads (CPU, no generation)",
     )
     g.add_argument(
         "--scene_allow_open",
