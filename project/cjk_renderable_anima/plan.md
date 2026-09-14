@@ -170,6 +170,28 @@ number.
 
 ### P0b — singles at scale (next; ~2–3 GPU-hours)
 
+**Launched 2026-09-14 17:13** (a kana-only launch at 17:03 was stopped at
+3.6 min to add kanji, user call). Instrument in: `--kana_ext` (the 68 voiced
+/ handakuten / small kana, each its own Qwen piece + pack row) and
+`--kanji 100` (the 100 most frequent corpus kanji that are single pack rows,
+by **frequency, not school grade** — 出気人日私今…何(27th)…実:17; the rows the
+corpus uses and the base for kanji-bearing words later; the list carries the
+corpus's adult vocabulary 精 射 液), both as singles ×`n_single`; eval groups
+`single_ext` (12 hira + 6 kata) and `single_kanji` (18), each on its own rng
+so `single` / `word` / `word_held` / `combo` / `en` stay P0a's sets (`line`
+changed). Data `wdsek` (`wds` args + `--kana_ext --kanji 100`): 15 880 items
+(font 15 580 incl. 700 combos, corpus 300 — corpus crops stay kana-only via
+`_corpus_lines`' `KANA_RE`, so kanji bubbles are not used yet). Arm
+`encoder_wdsek_w120_s24k_p0b`: P0a's recipe at **24 000 steps fixed** (user
+call; ≈ 2.4 h at 2.79 it/s, ≈ 6 epochs, ≈ 240 renders/row — below the
+~400/row the budget line assumed), band 0.7–0.9 (singles band),
+`--lr_enc 0` (`g` frozen per the recipe of record), `g` + `f` warm from P0a
+A, new rows' `f` from zero. Jobs `20260914-171315-ba4465` (train + eval
+512²), `20260914-171322-ecb831` (384×512 eval: single, single_ext, single_kanji,
+word, en). Kanji gate (not pre-registered before launch, set now):
+`single_kanji` ≥ 18/36 — half the kana bar's rate, since kanji start from
+`g` alone at 60 % of the renders/row. `native` on 8 kana owed after the gate.
+
 The kana table every later phase warm-starts from: the full kana
 inventory as singles, on the P0a pool.
 

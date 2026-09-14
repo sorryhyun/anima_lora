@@ -115,6 +115,7 @@ larger piece misses the row (the `eval_coverage.json` line).
 | path | what |
 |---|---|
 | `plan.md` | forward plan — phases, gates, kill criteria, recipe of record |
+| `deploy_plan.md` | Hub v2 layout (`old/ delta/ comfy/ diffusers/`), bake, pre-upload gates, license, migration |
 | `findings.md` | settled verdicts, rulers, gotchas, do-not-re-propose |
 | `plan_wake.md` | dated run record: W2d Runs 1–3, order probe, σ diagnostic, strings arm |
 | `reports/wake_w0_w2_2026_09_13.md` | W0–W2: hypothesis, Probe 0/1, address geometry, the 256² / 24-kana / balanced / σ-band arms, kanji probe |

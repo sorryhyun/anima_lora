@@ -64,6 +64,12 @@ CORPUS_HELD = REPO / "post_image_dataset" / "render" / "ja" / "heldout"
 HIRA = "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん"
 KATA = "アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン"
 KANA = HIRA + KATA
+# P0b (2026-09-14): voiced / handakuten / small kana — each is its own Qwen piece
+# and pack row (checked: 68/68); added to the singles inventory by --kana_ext and
+# scored as group ``single_ext``, apart from the basic 92
+KANA_EXT_HIRA = "がぎぐげござじずぜぞだぢづでどばびぶべぼぱぴぷぺぽぁぃぅぇぉっゃゅょ"
+KANA_EXT_KATA = "ガギグゲゴザジズゼゾダヂヅデドバビブベボパピプペポァィゥェォッャュョ"
+KANA_EXT = KANA_EXT_HIRA + KANA_EXT_KATA
 KANA_RE = re.compile(r"^[ぁ-ゟァ-ヿー〜っ・…！？!?]+$")
 CJK_RE = re.compile(r"[぀-ヿ぀-ゟ㐀-䶿一-鿿]")
 
@@ -73,6 +79,8 @@ TPL_BUBBLE = 'manga, speech bubble, japanese text. Japanese text reads as "{}".'
 EVAL_GROUPS = (
     "single",
     "single_held",
+    "single_ext",
+    "single_kanji",
     "word",
     "word_held",
     "line",
@@ -805,6 +813,27 @@ def _word_inventory(tok, q, n: int, min_len: int = 2):
     return cnt.most_common(n)
 
 
+def _kanji_inventory(tok, q, n: int):
+    """P0b (2026-09-14): the ``n`` most frequent kanji in the training corpus
+    bubbles that are each exactly one Qwen piece with its own pack row, plus
+    their character counts (frequency, not school grade: the rows the corpus
+    actually uses, and the widest base for kanji-bearing words later)."""
+    from collections import Counter
+
+    cnt: Counter = Counter()
+    for ln in (CORPUS_TRAIN / "boxes.jsonl").read_text().splitlines():
+        for b in json.loads(ln)["bubbles"]:
+            cnt.update(c for c in b["line"] if re.match(r"[一-鿿]", c))
+    out = []
+    for c, k in cnt.most_common():
+        ps = _pieces(tok, q, c)
+        if len(ps) == 1 and ps[0][0] == c and ps[0][1] is not None:
+            out.append((c, k))
+            if len(out) >= n:
+                break
+    return out
+
+
 def _arm_dir(a):
     return OUT / (
         a.arm
@@ -880,6 +909,31 @@ def stage_data(a):
         combos_eval.add("".join(rng.choice(kana) for _ in range(k)))
     held = _corpus_lines(CORPUS_HELD / "boxes.jsonl", 4)
     rng.shuffle(held)
+    kanji: list = []
+    single_kanji_eval: list = []
+    if a.kanji:
+        assert not a.only_chars and not a.balanced, "--kanji: full inventory"
+        kfreq = _kanji_inventory(*_qwen_pieces(), a.kanji)
+        kanji = [c for c, _ in kfreq]
+        krng = random.Random(a.seed + 23)
+        single_kanji_eval = krng.sample(kanji, min(18, len(kanji)))
+        (out / "kanji.json").write_text(json.dumps(kfreq, ensure_ascii=False))
+        print(
+            f"kanji: {len(kanji)} singles (last {kfreq[-1][0]}:{kfreq[-1][1]}); "
+            f"{''.join(kanji)}",
+            flush=True,
+        )
+    kana_ext: list = []
+    single_ext_eval: list = []
+    if a.kana_ext:
+        assert not a.only_chars and not a.balanced, (
+            "--kana_ext: full inventory, unbalanced"
+        )
+        kana_ext = list(KANA_EXT)
+        erng = random.Random(a.seed + 19)
+        single_ext_eval = erng.sample(list(KANA_EXT_HIRA), 12) + erng.sample(
+            list(KANA_EXT_KATA), 6
+        )
     corpus_eval = []
     seen = set()
     if a.only_chars:
@@ -906,7 +960,10 @@ def stage_data(a):
         )
         words_train = [w for w in words if w not in words_held]
         kana_rows = {
-            p for c in kana for p, row in _pieces(tok, qmap, c) if row is not None
+            p
+            for c in kana + kana_ext + kanji
+            for p, row in _pieces(tok, qmap, c)
+            if row is not None
         }
         trained_pieces = kana_rows | set(words_train)
 
@@ -1020,7 +1077,9 @@ def stage_data(a):
                 if a.single_frac > 0 and rng.random() < a.single_frac:
                     # mixed distribution (plan P1): a single kana or trained
                     # word, so unit count is only predictable from the caption
-                    items.append(("font", rng.choice(kana + words_train)))
+                    items.append(
+                        ("font", rng.choice(kana + kana_ext + kanji + words_train))
+                    )
                     n_str += 1
                     continue
                 k = rng.choices([2, 3, 4], weights=[45, 35, 20])[0]
@@ -1052,6 +1111,9 @@ def stage_data(a):
                     continue
                 for _ in range(n_single):
                     items.append(("font", w))
+            for ch in kana_ext + kanji:  # P0b: extended kana / kanji, singles only
+                for _ in range(n_single):
+                    items.append(("font", ch))
             n_combo = 0
             while n_combo < n_target:
                 k = rng.choice([2, 3])
@@ -1155,6 +1217,16 @@ def stage_data(a):
                 for s in lines_eval
             ]
         )
+    if single_kanji_eval:
+        ev += [
+            {"group": "single_kanji", "text": s, "caption": TPL_BUBBLE.format(s)}
+            for s in single_kanji_eval
+        ]
+    if single_ext_eval:
+        ev += [
+            {"group": "single_ext", "text": s, "caption": TPL_BUBBLE.format(s)}
+            for s in single_ext_eval
+        ]
     if a.strings_only:
         ev += [
             {"group": "flip", "text": s, "caption": TPL_BUBBLE.format(s)}
@@ -2987,6 +3059,19 @@ def main():
         help="eval: WxH canvas instead of --eval_size² (e.g. 384x512); pair with --eval_tag",
     )
     p.add_argument("--n_single", type=int, default=6, help="font renders per kana")
+    p.add_argument(
+        "--kanji",
+        type=int,
+        default=0,
+        help="data (P0b): add the N most frequent single-row corpus kanji as singles "
+        "×n_single; eval group single_kanji (18 drawn)",
+    )
+    p.add_argument(
+        "--kana_ext",
+        action="store_true",
+        help="data (P0b): add voiced / handakuten / small kana (68) as singles "
+        "×n_single; eval group single_ext (18 drawn)",
+    )
     p.add_argument("--n_combo", type=int, default=700)
     p.add_argument("--n_corpus", type=int, default=600)
     p.add_argument("--train_steps", type=int, default=2000)
