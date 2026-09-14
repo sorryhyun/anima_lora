@@ -16,6 +16,11 @@
 > **Run 2 (2026-09-14 pm):** IDS held-out composites 0/16 — every one renders
 > as a clean hiragana (あ お も ち); trained composites render. Addresses do
 > not compose; W4 is an exposure budget. See *Run 2 result*.
+> **Run 3 (2026-09-14 pm):** word addresses. All 92 kana trained (34/36);
+> a single-piece word row renders as a multi-glyph *unit* (します してる きた
+> もう, 9/32 at this exposure); a sequence of trained addresses renders
+> exactly one of them (`line` 0/32). Real words did not change the string
+> verdict — see *Run 3 result*. Strings stay W3.
 
 ## Where the line stands (four sentences)
 
@@ -507,12 +512,94 @@ DiT-side composition) is unchanged and is the next product step; the
 scene-composite data (layout-prior fix) rides on whichever table W3
 trains against.
 
+### Run 3 — word addresses (2026-09-14 pm): a row can be a word; a sequence is still one row
+
+**Why it was owed.** Every combo / corpus eval so far scored strings whose
+pieces were *not all trained rows* (corpus coverage 19/28), so "one glyph
+per string" had never been measured on a sequence of trained addresses,
+and every combo was a random kana salad. Two hypotheses, one run: real
+words as addresses, and trained-address sequences.
+
+**What a "word address" is.** The pack's ext rows are Qwen pieces and Qwen
+already merges many JA words into one piece (ありがとう / 行く / 明日 / いい /
+って → one row each; 大丈夫 → 大+丈夫, ドキドキ → ド+キ+ド+キ). A word address
+is therefore an *existing* row put into the trained inventory with the
+whole-word render as `g`'s input — no pack change, no cache digest change.
+The corpus bubbles (`render/ja/resized/boxes.jsonl`, 3 607 lines) hold
+1 417 distinct multi-char single-piece words (10 503 occurrences; the top
+60 cover ≈ 44 %); only 17 lines are a single piece, typical short lines are
+2–5 pieces.
+
+**Data `wd`** (`--words 120 --held_out_words 8 --n_single 40`): kana 92 +
+the 120 most frequent single-piece words (mostly grammar: って いい から
+ちゃ して じゃ ない …; content words 気持ち 好き ちょっと), 8 held out by seed
+(えて かい こと これ だけ なら にも ません); 40 renders per row (8 860 font
+items) + the 132 / 641 corpus lines whose every piece is a trained row
+(coverage 100 % by construction). Bubble renders now shrink to fit the
+ellipse (可愛い overflowed at 400/n px; singles unchanged). Eval adds
+`word` (16 trained words), `word_held` (8), `line` (16 held-out corpus lines
+of 2–3 pieces, every piece trained: いやいい = いや+いい, なにそれ = なに+それ,
+ほらそれ, さわって, フフフ …). Recipe = fres, 8 000 steps, `g` and the 134
+overlapping `f` rows warm-started from Run 1d (`--init_free`), word `f`
+from zero. Job `20260914-111212-d1542c`, 58 min + eval 15 min; arm
+`encoder_wd_w120_s8k_fres_warm`.
+
+| group | n | exact (sfx) | note |
+|---|---|---|---|
+| single (18 kana × 2) | 36 | **34/36** | all 92 kana trained — the kana pack exists; misses と→こし, れ→ね |
+| word (trained) | 32 | **9/32** | します 2/2, してる 2/2, きた, こう, いや, もう, ッド; misses: first glyph only (こう→こ, ただ→た, した→し, には→に), repeats (でも→てもも, もう→もうう), one-glyph collapse (こんな/そんな→ん) |
+| word_held | 16 | 0/16 | `g` alone on a word render draws text salad, not even a kana |
+| **line** (2–3 trained pieces) | 32 | **0/32** | every render is *one* piece: そオニ→ニ, ほらそれ→ら, さわって→わ, なにそれ→な, いやいい→いい, ちゃく→く, めちゃ→め, フフフ→フ |
+| combo / corpus | 36 / 20 | 1/36 / 0/20 | as before |
+| EN | 24 | 24/24 | bit-exact |
+
+Instruments: `rel` 2.39 → 1.45, `rel_spread_ref` 2.2 → 0.78, `free_norm`
+0.23 → 0.70, `free_ratio` 0.90 (Run 1d: 0.17), `table_pr` 1.1 → 2.8, `g_pr`
+1.09. With 246 rows the identity moved almost entirely into `f`; `g`
+shrank to a prior.
+
+**Reading.**
+
+- *A row is a unit, and the unit can be a word.* します and してる (three
+  glyphs) render from one ext row on both seeds; きた こう いや もう ッド on
+  one. So the frozen DiT's "one glyph per address" is really "one *unit*
+  per address" — an address can carry a short word's layout. That is new,
+  and it is a per-row exposure question (words had 40 renders + a few
+  corpus crops and `f` from zero; kana had a warm start). 9/32 misses the
+  67 % gate; the miss modes (first glyph only, repeats) are the
+  under-exposed row rounding to the nearest kana basin or the repeat mode
+  Run 2 showed.
+- *A sequence of trained addresses renders one of them.* `line` 0/32 with
+  coverage 39/39 is the clean version of the string verdict: the DiT does
+  not enumerate ext tokens in a clause, it draws one. Which one is not
+  positional (last: そオニ→ニ; second: ほらそれ→ら, さわって→わ, いやいい→いい;
+  first: なにそれ→な, めちゃ→め) and not obviously frequency. Random combos
+  were not the reason; real words in real order fail the same way. **The
+  sequence question is closed on the rows path: strings are W3.**
+- *Held-out words are worse than held-out kana.* `g` on a word render
+  produces salad, not a kana — the shared encoder has no word prior. Word
+  addresses are lookup, one row per word, exposure per row.
+
+**What this adds to the pack.** (1) The full kana inventory renders
+(34/36) with words in the same table — the 92-kana pack is this run's
+`trained.pt`. (2) A common-word pack is buildable the same way, at a cost
+that is per-word exposure; a words-only continuation warm-started from
+this run (`f` now non-zero for the 112 words) is the one cheap lever to
+see whether words reach the kana bar. (3) Nothing here moves strings; a
+2-piece bubble needs the DiT to read two addresses, which is W3's
+ext-gated cross-attention LoRA.
+
+**Decision owed.** Whether to spend ~1 h on the words-only continuation
+(product value: single-word bubbles from a common-word pack) before W3,
+or go to W3 on the kana+word table as is.
+
 ### Shelved W2 levers (do not reopen without a new reason)
 
 - Same-noise classifier CE / swap hinge on free rows: valid for singles,
   cannot fix combos (frozen DiT does not bind order); superseded by W2d.
 - W2b warm start: folded into the encoder's shared bias.
-- 92-kana free-rows band run: the question it answers no longer matters.
+- 92-kana free-rows band run: superseded — Run 3 trained all 92 kana in the
+  hybrid table (34/36).
 - Synthesis (Δ_山 + Δ_石 in 岩's row): 5 min, low decision value; run only
   as a data point for the encoder's input design.
 

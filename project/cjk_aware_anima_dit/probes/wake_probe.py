@@ -67,6 +67,20 @@ KANA_RE = re.compile(r"^[ぁ-ゟァ-ヿー〜っ・…！？!?]+$")
 CJK_RE = re.compile(r"[぀-ヿ぀-ゟ㐀-䶿一-鿿]")
 
 TPL_BUBBLE = 'manga, speech bubble, japanese text. Japanese text reads as "{}".'
+# report / sheet order; ``word`` / ``word_held`` / ``line`` are the 2026-09-14
+# word-address groups (``--words``)
+EVAL_GROUPS = (
+    "single",
+    "single_held",
+    "word",
+    "word_held",
+    "line",
+    "combo",
+    "corpus",
+    "en",
+)
+# a word piece: kana / kanji / long vowel only (no ・ … punctuation pieces)
+WORD_RE = re.compile(r"^[ぁ-ゟァ-ヺー一-鿿]+$")
 TPL_PLAIN = (
     'japanese text, white background, simple background. Japanese text reads as "{}".'
 )
@@ -599,15 +613,30 @@ def _render_string(
     bubble, bg, fs, color = lay["bubble"], lay["bg"], lay["fs"], lay["color"]
     im = Image.new("RGB", (size, size), bg)
     d = ImageDraw.Draw(im)
-    font = ImageFont.truetype(font_path, fs, index=0)
+
+    def extent(fs):
+        font = ImageFont.truetype(font_path, fs, index=0)
+        if lay["vertical"]:
+            tw = max(d.textlength(ch, font=font) for ch in text)
+            th = n * fs * 1.05
+        else:
+            tw = d.textlength(text, font=font)
+            th = fs
+        return font, tw, th
+
     # text block extent (w, h) and its centre; v1 = canvas centre, jitter =
     # anchored inside the bubble's inscribed rectangle / the canvas
-    if lay["vertical"]:
-        tw = max(d.textlength(ch, font=font) for ch in text)
-        th = n * fs * 1.05
-    else:
-        tw = d.textlength(text, font=font)
-        th = fs
+    font, tw, th = extent(fs)
+    if bubble and "pos" not in lay:
+        # v1 fit (2026-09-14, word data): a 3-char vertical string at 400/n px
+        # ran past the ellipse (可愛い). Shrink only when the block does not fit
+        # the inscribed rectangle of the centred ellipse — singles never do,
+        # so the pre-word data dirs' single renders are unchanged.
+        half = (size / 2 - lay["pad"]) / 2**0.5 - 6
+        k = min(1.0, half / max(tw / 2, 1e-6), half / max(th / 2, 1e-6))
+        if k < 1.0:
+            fs = max(12, int(fs * k))
+            font, tw, th = extent(fs)
     cx, cy = size / 2, size / 2
     ebox = (
         (lay["pad"], lay["pad"], size - lay["pad"], size - lay["pad"])
@@ -691,6 +720,44 @@ def _data_dir(a):
     return OUT / ("data" + (f"_{a.data_tag}" if a.data_tag else ""))
 
 
+def _qwen_pieces():
+    """CPU-only: (Qwen3 tokenizer, qwen id → pack ext row). The pack's ext
+    rows are Qwen pieces, many of them whole words (ありがとう / 行く / 明日 are
+    one piece → one row), so a "word address" is an existing row."""
+    from library.anima.vocab_pack import VocabPack, resolve_pack_prefix
+    from library.anima.weights import load_qwen3_tokenizer
+
+    ck = _ck()
+    tok = load_qwen3_tokenizer(ck.text_encoder)
+    pack = VocabPack.load(resolve_pack_prefix(ck.vocab_pack))
+    q = {int(k): int(v) for k, v in pack.mapping["qwen"].items()}
+    return tok, q
+
+
+def _pieces(tok, q, text: str):
+    """text → [(piece text, ext row or None)] on the Qwen side."""
+    out = []
+    for i in tok.encode(text, add_special_tokens=False):
+        out.append((tok.decode([i]), q.get(int(i))))
+    return out
+
+
+def _word_inventory(tok, q, n: int, min_len: int = 2):
+    """The ``n`` most frequent multi-char single-piece words in the training
+    corpus bubbles (piece frequency over every line, not the length-capped
+    subset) plus their counts."""
+    from collections import Counter
+
+    cnt: Counter = Counter()
+    for ln in (CORPUS_TRAIN / "boxes.jsonl").read_text().splitlines():
+        r = json.loads(ln)
+        for b in r["bubbles"]:
+            for p, row in _pieces(tok, q, b["line"]):
+                if row is not None and len(p) >= min_len and WORD_RE.match(p):
+                    cnt[p] += 1
+    return cnt.most_common(n)
+
+
 def _arm_dir(a):
     return OUT / (
         a.arm
@@ -730,6 +797,62 @@ def stage_data(a):
         if t not in seen and len(corpus_eval) < 10:
             seen.add(t)
             corpus_eval.append(t)
+
+    # 2026-09-14 word addresses: the inventory gains the corpus's most frequent
+    # single-piece words (each its own pack row), K of them held out; corpus
+    # lines are kept only when every piece is a trained row (kana single or
+    # word) so ``line`` evaluates addresses *in sequence*, not coverage
+    words: list = []
+    words_held: list = []
+    piece_ok = None
+    if a.words:
+        tok, qmap = _qwen_pieces()
+        freq = _word_inventory(tok, qmap, a.words, a.word_min_len)
+        words = [w for w, _ in freq]
+        wrng = random.Random(a.seed + 13)
+        words_held = (
+            sorted(wrng.sample(words, a.held_out_words)) if a.held_out_words else []
+        )
+        words_train = [w for w in words if w not in words_held]
+        kana_rows = {
+            p for c in kana for p, row in _pieces(tok, qmap, c) if row is not None
+        }
+        trained_pieces = kana_rows | set(words_train)
+
+        def piece_ok(text: str) -> bool:  # noqa: F811
+            ps = _pieces(tok, qmap, text)
+            return all(row is not None and p in trained_pieces for p, row in ps)
+
+        (out / "words.json").write_text(
+            json.dumps(
+                {"freq": freq, "held": words_held, "kana_pieces": sorted(kana_rows)},
+                ensure_ascii=False,
+                indent=1,
+            )
+        )
+        print(
+            f"words: {len(words)} (held {len(words_held)}: {' '.join(words_held)}); "
+            f"top {' '.join(f'{w}:{c}' for w, c in freq[:20])}",
+            flush=True,
+        )
+        # eval: trained words, held-out words, covered held-out corpus lines
+        words_eval = wrng.sample(words_train, min(a.n_word_eval, len(words_train)))
+        held_lines = _corpus_lines(CORPUS_HELD / "boxes.jsonl", a.line_max_len)
+        wrng.shuffle(held_lines)
+        lines_eval, seenl = [], set()
+        for t, _rel, _box in held_lines:
+            ps = _pieces(tok, qmap, t)
+            if t in seenl or not (2 <= len(ps) <= 3) or not piece_ok(t):
+                continue
+            seenl.add(t)
+            lines_eval.append(t)
+            if len(lines_eval) >= a.n_line_eval:
+                break
+        print(
+            f"words eval: {len(words_eval)} trained, {len(words_held)} held, "
+            f"{len(lines_eval)} covered 2-3 piece lines",
+            flush=True,
+        )
 
     n_single = a.n_single
     n_target = min(a.n_combo, 50 * (n_possible - n_eval_combos))
@@ -782,10 +905,15 @@ def stage_data(a):
                 )
     else:
         items = []
-        # font renders: every kana ×N + random combos
+        # font renders: every kana ×N + random combos (+ every trained word ×N)
         for ch in kana:
             for _ in range(n_single):
                 items.append(("font", ch))
+        for w in words:
+            if w in words_held:
+                continue
+            for _ in range(n_single):
+                items.append(("font", w))
         n_combo = 0
         while n_combo < n_target:
             k = rng.choice([2, 3])
@@ -807,9 +935,17 @@ def stage_data(a):
                 }
             )
     # corpus crops
-    lines = _corpus_lines(CORPUS_TRAIN / "boxes.jsonl", 6)
+    lines = _corpus_lines(
+        CORPUS_TRAIN / "boxes.jsonl", a.line_max_len if a.words else 6
+    )
     if a.only_chars:
         lines = [ln for ln in lines if all(c in kana for c in ln[0] if c in KANA)]
+    if piece_ok is not None:
+        n0 = len(lines)
+        lines = [ln for ln in lines if piece_ok(ln[0])]
+        print(
+            f"corpus: {len(lines)}/{n0} lines fully covered by trained rows", flush=True
+        )
     rng.shuffle(lines)
     lines = lines[: a.n_corpus]
     corpus_lid = len(recs)  # past every font layout id
@@ -855,6 +991,21 @@ def stage_data(a):
         ]
         + [{"group": "en", "text": s, "caption": TPL_EN.format(s)} for s in EN_WORDS]
     )
+    if a.words:
+        ev += (
+            [
+                {"group": "word", "text": s, "caption": TPL_BUBBLE.format(s)}
+                for s in words_eval
+            ]
+            + [
+                {"group": "word_held", "text": s, "caption": TPL_BUBBLE.format(s)}
+                for s in words_held
+            ]
+            + [
+                {"group": "line", "text": s, "caption": TPL_BUBBLE.format(s)}
+                for s in lines_eval
+            ]
+        )
     (out / "eval.json").write_text(json.dumps(ev, ensure_ascii=False, indent=1))
     from collections import Counter
 
@@ -1312,8 +1463,25 @@ def stage_train(a):
             free_mask = is_train_row.float().unsqueeze(1).to(device)
             n_free = float(is_train_row.sum())
             params.append({"params": [free], "lr": a.lr_free})
+            n_warm = 0
+            if a.init_free:
+                # warm start the per-row residual by ext id (rows the source
+                # never had stay at zero — new words start from g alone)
+                src_f = torch.load(a.init_free, map_location="cpu", weights_only=False)
+                src_idx = {int(e): i for i, e in enumerate(src_f["delta"]["ext_ids"])}
+                with torch.no_grad():
+                    for i, e in enumerate(delta.ext_ids):
+                        j = src_idx.get(int(e))
+                        if j is not None:
+                            free[i] = src_f["free"][j].to(device)
+                            n_warm += 1
             print(
-                f"free residual: {int(n_free)} trained rows, μ {a.free_residual:g}, lr {a.lr_free:g}",
+                f"free residual: {int(n_free)} trained rows, μ {a.free_residual:g}, lr {a.lr_free:g}"
+                + (
+                    f", {n_warm} rows warm-started from {a.init_free}"
+                    if a.init_free
+                    else ""
+                ),
                 flush=True,
             )
         print(
@@ -1914,7 +2082,7 @@ def _read_eval(a, arm_dir: Path, manifest, train_dir: Path | None = None):
         "| group | cond | n | CER sfx | CER vl16 | exact (sfx) |",
         "|---|---|---|---|---|---|",
     ]
-    for g in ("single", "single_held", "combo", "corpus", "en"):
+    for g in EVAL_GROUPS:
         for c in ("floor", "trained"):
             ms = agg.get((g, c), [])
             if not ms:
@@ -1933,7 +2101,9 @@ def _read_eval(a, arm_dir: Path, manifest, train_dir: Path | None = None):
             "",
             "eval ext-row coverage (rows seen in training / rows in the string):",
         ]
-        for g in ("single", "single_held", "combo", "corpus"):
+        for g in EVAL_GROUPS:
+            if g == "en":
+                continue
             xs = [
                 cov[m["text"]]
                 for m in manifest
@@ -1950,7 +2120,7 @@ def _read_eval(a, arm_dir: Path, manifest, train_dir: Path | None = None):
     ]
     (arm_dir / "report.md").write_text("\n".join(lines))
     print("\n".join(lines), flush=True)
-    for g in ("single", "single_held", "combo", "corpus", "en"):
+    for g in EVAL_GROUPS:
         rows = []
         for m in [m for m in manifest if m["group"] == g and m["seed"] == 0]:
             r0 = m["reads"][-1] if m["reads"] else {"sfx": "", "vl": ""}
@@ -2445,6 +2615,44 @@ def main():
         "--only_chars",
         default="",
         help="restrict the kana inventory (textual-inversion regime: few chars, many exposures)",
+    )
+    p.add_argument(
+        "--words",
+        type=int,
+        default=0,
+        help="data: add the N most frequent single-Qwen-piece words of the training "
+        "corpus to the inventory (each is an existing pack row = one address); "
+        "corpus lines are then kept only when every piece is a trained row",
+    )
+    p.add_argument("--word_min_len", type=int, default=2)
+    p.add_argument(
+        "--held_out_words",
+        type=int,
+        default=0,
+        help="data: K of the words removed from every training item, eval group word_held",
+    )
+    p.add_argument(
+        "--n_word_eval",
+        type=int,
+        default=16,
+        help="data: trained words in eval group word",
+    )
+    p.add_argument(
+        "--n_line_eval",
+        type=int,
+        default=16,
+        help="data: held-out corpus lines of 2-3 pieces, every piece trained (eval group line)",
+    )
+    p.add_argument(
+        "--line_max_len",
+        type=int,
+        default=8,
+        help="data: corpus line length cap in word mode",
+    )
+    p.add_argument(
+        "--init_free",
+        default="",
+        help="train: warm-start the free residual by ext id from another arm's trained.pt",
     )
     a = p.parse_args()
     stages = ["salad", "data", "train", "eval"] if "all" in a.stage else a.stage
