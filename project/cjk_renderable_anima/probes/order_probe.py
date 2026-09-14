@@ -28,7 +28,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import wake_probe as wp  # noqa: E402
+from wake.common import OUT, TPL_EN, cer, norm  # noqa: E402
+from wake.models import decode_image, gen_args, load_vae  # noqa: E402
+from wake.readers import Readers, contact_sheet, load_bgr  # noqa: E402
 
 REAL = ["HELLO", "STOP", "SORRY", "HELP", "PLOVEN", "OSTREB"]
 NONSENSE = [
@@ -59,7 +61,7 @@ def build_items(t5_tok):
                     "text": w,
                     "pieces": pieces,
                     "n_pieces": len(pieces),
-                    "caption": wp.TPL_EN.format(w),
+                    "caption": TPL_EN.format(w),
                 }
             )
     return items
@@ -80,13 +82,13 @@ def main():
     from library.inference.generation import generate, get_generation_settings
     from library.inference.models import load_dit_model, load_shared_models
 
-    out = wp.OUT / "order_probe"
+    out = OUT / "order_probe"
     (out / "img").mkdir(parents=True, exist_ok=True)
     items = build_items(load_t5_tokenizer(None))
     for it in items:
         print(f"{it['group']:8s} {it['text']:10s} {it['n_pieces']} {it['pieces']}")
 
-    args = wp._gen_args(a.size, a.steps, a.cfg, out / "img")
+    args = gen_args(a.size, a.steps, a.cfg, out / "img")
     gen = get_generation_settings(args)
     device = gen.device
     shared = load_shared_models(args)
@@ -94,7 +96,7 @@ def main():
     anima = load_dit_model(args, device, torch.bfloat16)
     anima.eval()
     shared["model"] = anima
-    vae = wp._load_vae(device)
+    vae = load_vae(device)
     manifest = []
     t0 = time.time()
     for ei, e in enumerate(items):
@@ -106,7 +108,7 @@ def main():
                 a2.seed = seed
                 with torch.no_grad():
                     lat = generate(a2, gen, shared)
-                wp._decode(vae, lat, device).save(fn)
+                decode_image(vae, lat, device).save(fn)
             manifest.append({"file": str(fn), "seed": seed, **e})
     print(
         f"gen: {len(manifest)} images in {(time.time() - t0) / 60:.1f} min", flush=True
@@ -116,16 +118,14 @@ def main():
 
     from PIL import Image
 
-    rd = wp.Readers(a.device)
+    rd = Readers(a.device)
     for m in manifest:
-        reads = rd.read_image(wp._bgr(Path(m["file"])), whole=True)
+        reads = rd.read_image(load_bgr(Path(m["file"])), whole=True)
         m["reads"] = reads
-        m["cer_sfx"] = min([wp.cer(r["sfx"] or "", m["text"]) for r in reads] or [1.0])
-        m["cer_vl"] = min([wp.cer(r["vl"] or "", m["text"]) for r in reads] or [1.0])
-        m["exact_sfx"] = any(
-            wp.norm(r["sfx"] or "") == wp.norm(m["text"]) for r in reads
-        )
-        m["exact_vl"] = any(wp.norm(r["vl"] or "") == wp.norm(m["text"]) for r in reads)
+        m["cer_sfx"] = min([cer(r["sfx"] or "", m["text"]) for r in reads] or [1.0])
+        m["cer_vl"] = min([cer(r["vl"] or "", m["text"]) for r in reads] or [1.0])
+        m["exact_sfx"] = any(norm(r["sfx"] or "") == norm(m["text"]) for r in reads)
+        m["exact_vl"] = any(norm(r["vl"] or "") == norm(m["text"]) for r in reads)
         m["exact"] = m["exact_sfx"] or m["exact_vl"]
     (out / "reads.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=1))
 
@@ -135,7 +135,7 @@ def main():
     lines = [
         "# order probe — base model, EN multi-piece words, no delta",
         "",
-        f"size {a.size} steps {a.steps} cfg {a.cfg} seeds {a.seeds}; template `{wp.TPL_EN}`",
+        f"size {a.size} steps {a.steps} cfg {a.cfg} seeds {a.seeds}; template `{TPL_EN}`",
         "",
         "| group | n | exact (sfx) | exact (vl) | exact (either) | CER sfx | CER vl |",
         "|---|---|---|---|---|---|---|",
@@ -192,7 +192,7 @@ def main():
                     ],
                 )
             )
-        wp._sheet(rows, out / f"sheet_{g}.png", cols=4)
+        contact_sheet(rows, out / f"sheet_{g}.png", cols=4)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,9 @@
-# plan_wake — wake the DiT's own JA glyph units (forward plan, 2026-09-13)
+# history — the wake line's dated run record (from 2026-09-13)
+
+> Renamed from `plan_wake.md` on 2026-09-14: it began as the forward plan and
+> became the record of what ran. Decisions live in [`plan.md`](plan.md),
+> verdicts in [`findings.md`](findings.md); nothing below was rewritten, so
+> "this file is only what comes next" is its 2026-09-13 voice.
 
 > **Status (2026-09-13 night).** W0–W2 are done and lifted into
 > [`reports/wake_w0_w2_2026_09_13.md`](reports/wake_w0_w2_2026_09_13.md):

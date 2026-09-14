@@ -1,0 +1,406 @@
+"""Command line: flags grouped by the stage that reads them."""
+
+from __future__ import annotations
+
+import argparse
+
+from .common import NATIVE_CLAUSES, NATIVE_PROMPTS
+
+
+def build_parser(stages, description: str | None = None) -> argparse.ArgumentParser:
+    """``stages``: the stage names ``--stage`` accepts (besides ``all``)."""
+    p = argparse.ArgumentParser(
+        description=description, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    _run_args(p.add_argument_group("run"), stages)
+    _generation_args(p.add_argument_group("generation"))
+    _data_args(p.add_argument_group("data"))
+    _train_args(p.add_argument_group("train"))
+    _encoder_args(p.add_argument_group("train: encoder arm"))
+    _eval_args(p.add_argument_group("eval / native"))
+    _classify_args(p.add_argument_group("classify / classify_str"))
+    return p
+
+
+# ----------------------------------------------------------------------------
+
+
+def _run_args(g, stages):
+    g.add_argument("--stage", nargs="+", default=["all"], choices=["all", *stages])
+    g.add_argument("--arm", default="rows", choices=["rows", "rows_adapter", "encoder"])
+    g.add_argument("--device", default="cuda")
+    g.add_argument("--seed", type=int, default=0)
+    g.add_argument(
+        "--data_tag",
+        default="",
+        help="suffix for output/wake_probe/data_<tag> and <arm>_<tag>",
+    )
+    g.add_argument(
+        "--arm_tag",
+        default="",
+        help="suffix for the arm dir only (<arm>_<data_tag>_<arm_tag>): a second "
+        "train recipe on the same data without overwriting the first",
+    )
+
+
+def _generation_args(g):
+    g.add_argument("--steps", type=int, default=28, help="inference steps")
+    g.add_argument("--cfg", type=float, default=4.0)
+    g.add_argument(
+        "--seeds", type=int, default=2, help="seeds per prompt (salad: 3 recommended)"
+    )
+    g.add_argument("--salad_size", type=int, default=768)
+    g.add_argument("--train_size", type=int, default=512)
+    g.add_argument("--eval_size", type=int, default=512)
+    g.add_argument(
+        "--eval_shape",
+        default="",
+        help="eval: WxH canvas instead of --eval_size² (e.g. 384x512); pair with --eval_tag",
+    )
+
+
+def _data_args(g):
+    g.add_argument(
+        "--shapes",
+        default="",
+        help="data: mixed canvas shapes, comma list of side or WxH with an optional "
+        ":weight (e.g. '384,448,512:2,384x512,512x384'); every font item draws one, "
+        "corpus crops draw from the squares; train then batches one shape per step "
+        "and caches latents per shape. Empty = 512² renders at --train_size (old dirs)",
+    )
+    g.add_argument("--n_single", type=int, default=6, help="font renders per kana")
+    g.add_argument("--n_combo", type=int, default=700)
+    g.add_argument("--n_corpus", type=int, default=600)
+    g.add_argument(
+        "--kanji",
+        type=int,
+        default=0,
+        help="data (P0b): add the N most frequent single-row corpus kanji as singles "
+        "×n_single; eval group single_kanji (18 drawn)",
+    )
+    g.add_argument(
+        "--kana_ext",
+        action="store_true",
+        help="data (P0b): add voiced / handakuten / small kana (68) as singles "
+        "×n_single; eval group single_ext (18 drawn)",
+    )
+    g.add_argument(
+        "--balanced",
+        type=int,
+        default=0,
+        help="data: groups of N distinct strings sharing one layout (font, canvas, "
+        "bubble, glyph size/position); train then batches one group per step "
+        "(W2a; needs --batch N). 0 = shuffled items",
+    )
+    g.add_argument(
+        "--layout",
+        default="v1",
+        choices=["v1", "jitter"],
+        help="data: v1 = pre-W2a renders (big centred dark glyph on a light canvas, "
+        "bit-identical rebuilds); jitter = random position / size / ink colour / "
+        "outline / dark backgrounds / bubble box (the 2026-09-14 data lever)",
+    )
+    g.add_argument(
+        "--only_chars",
+        default="",
+        help="restrict the kana inventory (textual-inversion regime: few chars, many exposures)",
+    )
+    g.add_argument(
+        "--words",
+        type=int,
+        default=0,
+        help="data: add the N most frequent single-Qwen-piece words of the training "
+        "corpus to the inventory (each is an existing pack row = one address); "
+        "corpus lines are then kept only when every piece is a trained row",
+    )
+    g.add_argument("--word_min_len", type=int, default=2)
+    g.add_argument(
+        "--held_out_words",
+        type=int,
+        default=0,
+        help="data: K of the words removed from every training item, eval group word_held",
+    )
+    g.add_argument(
+        "--n_word_eval",
+        type=int,
+        default=16,
+        help="data: trained words in eval group word",
+    )
+    g.add_argument(
+        "--n_line_eval",
+        type=int,
+        default=16,
+        help="data: held-out corpus lines of 2-3 pieces, every piece trained (eval group line)",
+    )
+    g.add_argument(
+        "--line_max_len",
+        type=int,
+        default=8,
+        help="data: corpus line length cap in word mode",
+    )
+    g.add_argument(
+        "--strings_only",
+        action="store_true",
+        help="data: strings arm — no singles; 2–4-piece random-order strings of trained rows only (needs --words)",
+    )
+    g.add_argument(
+        "--n_strings", type=int, default=6000, help="data: --strings_only font items"
+    )
+    g.add_argument(
+        "--single_frac",
+        type=float,
+        default=0.0,
+        help="data: --strings_only fraction of font items that are singles (plan P1 mixed distribution)",
+    )
+    g.add_argument(
+        "--word_frac",
+        type=float,
+        default=0.25,
+        help="data: --strings_only P(slot is a trained word)",
+    )
+    g.add_argument(
+        "--n_flip_eval",
+        type=int,
+        default=12,
+        help="data: --strings_only clean kana pairs, both orders → group flip",
+    )
+    g.add_argument(
+        "--n_str3_eval",
+        type=int,
+        default=8,
+        help="data: --strings_only clean 3-kana strings → group str3",
+    )
+
+
+def _train_args(g):
+    g.add_argument("--train_steps", type=int, default=2000)
+    g.add_argument("--batch", type=int, default=4)
+    g.add_argument(
+        "--lr_rows", type=float, default=3e-3, help="in units of the mean pack-row norm"
+    )
+    g.add_argument("--lr_adapter", type=float, default=1e-4)
+    g.add_argument("--adapter_rank", type=int, default=16)
+    g.add_argument(
+        "--lr_decay",
+        default="none",
+        choices=["none", "cosine"],
+        help="train: lr schedule over --train_steps (cosine to 0; all param groups)",
+    )
+    g.add_argument("--grad_ckpt", type=int, default=1)
+    g.add_argument(
+        "--compile",
+        type=int,
+        default=1,
+        help="train: per-block torch.compile of the frozen DiT (the OOM remedy of record)",
+    )
+    g.add_argument("--activation_memory_budget", type=float, default=0.99)
+    g.add_argument(
+        "--aggressive_recompute",
+        type=int,
+        default=1,
+        help="compile: partitioner aggressive recomputation (−VRAM, +~12 % s/it); 0 when memory allows",
+    )
+    g.add_argument(
+        "--t_min",
+        type=float,
+        default=None,
+        help="restrict FM timesteps (W2 σ-restriction lever; None = full range)",
+    )
+    g.add_argument("--t_max", type=float, default=None)
+
+
+def _encoder_args(g):
+    g.add_argument(
+        "--lr_enc", type=float, default=3e-4, help="encoder arm: AdamW lr on the CNN"
+    )
+    g.add_argument(
+        "--lr_common",
+        type=float,
+        default=1e-3,
+        help="encoder arm: lr on the shared layout vector c (row-norm units; the rows lr)",
+    )
+    g.add_argument(
+        "--common_cap",
+        type=float,
+        default=0.75,
+        help="encoder arm: ‖c‖ bound in row norms, applied to the parameter after each step",
+    )
+    g.add_argument(
+        "--out_scale",
+        type=float,
+        default=1.0 / 64,
+        help="encoder arm: scale on the zero-init head (raise one notch to 1/16 if spread stays flat)",
+    )
+    g.add_argument(
+        "--kill_spread",
+        type=float,
+        default=0.05,
+        help="encoder arm: abort if rel_spread_ref (fixed font, no shift) is below this once --kill_spread_step is reached",
+    )
+    g.add_argument(
+        "--kill_spread_step",
+        type=int,
+        default=600,
+        help="encoder arm: 0 disables the spread rule (--kill_max_row 0 disables the max-row rule)",
+    )
+    g.add_argument(
+        "--kill_max_row",
+        type=float,
+        default=2.0,
+        help="encoder arm: abort if any row's delta passes this many row norms",
+    )
+    g.add_argument(
+        "--glyph_size", type=int, default=96, help="encoder arm: glyph render side"
+    )
+    g.add_argument(
+        "--head_init",
+        default="zero",
+        choices=["zero", "random"],
+        help="encoder arm: last head layer zero (attempts 1–10) or random full-rank, "
+        "rescaled so the step-0 identity spread is --init_spread row norms",
+    )
+    g.add_argument(
+        "--init_spread",
+        type=float,
+        default=1.0,
+        help="encoder arm: --head_init random target spread on the reference render",
+    )
+    g.add_argument(
+        "--decor",
+        type=float,
+        default=0.0,
+        help="encoder arm: λ on mean_{i≠j} cos²(r_i, r_j) over the centred trained "
+        "rows of the encoder table (0 = off; history.md Run 1b amended: ≈ 0.02 "
+        "against an FM loss of ≈ 0.04)",
+    )
+    g.add_argument(
+        "--free_residual",
+        type=float,
+        default=0.0,
+        help="encoder arm: μ on mean_i ‖f_i‖² for a per-row free residual on the "
+        "trained rows (row = g(glyph) + f_i; held-out rows get g only). 0 = off. "
+        "history.md Run 1d: the semi-amortised hybrid — f carries the identity "
+        "magnitude the shared head cannot, the L2 pushes what g can explain into g",
+    )
+    g.add_argument(
+        "--lr_free",
+        type=float,
+        default=1e-3,
+        help="encoder arm: lr of the free residual, row-norm units (W1 rows: 1e-3; 3e-3 walks off-manifold)",
+    )
+    g.add_argument(
+        "--init_encoder",
+        default="",
+        help="encoder arm: warm-start the encoder (conv/proj/head + common) from another arm's trained.pt",
+    )
+    g.add_argument(
+        "--init_free",
+        default="",
+        help="train: warm-start the free residual by ext id from another arm's trained.pt",
+    )
+    g.add_argument(
+        "--enc_pool",
+        default="spatial",
+        choices=["spatial", "mean"],
+        help="encoder arm: feature pooling — spatial keeps the arrangement (glyph), "
+        "mean keeps channel statistics only (attempts 4–7 tracked font, not glyph)",
+    )
+    g.add_argument(
+        "--font_mode",
+        default="mean",
+        choices=["mean", "random"],
+        help="encoder arm: input render — mean over every font (font-free) or one random font per row per step",
+    )
+    g.add_argument(
+        "--held_out",
+        type=int,
+        default=0,
+        help="encoder arm: N single chars removed from every training item and "
+        "evaluated as group single_held (the generalisation test)",
+    )
+    g.add_argument(
+        "--held_out_chars",
+        default="",
+        help="encoder arm: explicit held-out chars instead of --held_out's draw "
+        "(Run 2: IDS composites whose atoms are trained, e.g. 明休男岩加相困森)",
+    )
+
+
+def _eval_args(g):
+    g.add_argument(
+        "--eval_groups",
+        default="",
+        help="eval: comma list of groups to render (single,combo,corpus,en); default all",
+    )
+    g.add_argument(
+        "--eval_limit",
+        type=int,
+        default=0,
+        help="eval: first N prompts per group (0 = all)",
+    )
+    g.add_argument(
+        "--eval_tag",
+        default="",
+        help="eval: write img/reads/report/sheets under <arm>/eval_<tag>/ (e.g. a second eval_size)",
+    )
+    g.add_argument(
+        "--no_floor",
+        action="store_true",
+        help="eval: skip the delta-scale-0 floor renders (identical across arms on the same eval set)",
+    )
+    g.add_argument(
+        "--native_prompts",
+        default=str(NATIVE_PROMPTS),
+        help="native: scene prompt file (one per line; default the blind-pairs set)",
+    )
+    g.add_argument(
+        "--native_chars",
+        default="あ,か,す",
+        help="native: comma list of kana to hang off every scene prompt",
+    )
+    g.add_argument(
+        "--native_clauses",
+        default=",".join(NATIVE_CLAUSES),
+        help="native: clause shapes to append (" + ", ".join(NATIVE_CLAUSES) + ")",
+    )
+    g.add_argument(
+        "--native_limit", type=int, default=0, help="native: first N prompts (0 = all)"
+    )
+    g.add_argument(
+        "--delta_scale",
+        type=float,
+        default=1.0,
+        help="native: ExtDelta scale for the trained cond (scene-survival vs identity probe)",
+    )
+
+
+def _classify_args(g):
+    g.add_argument(
+        "--cls_t",
+        default="0.1,0.2,0.35,0.5,0.65,0.8,0.95",
+        help="classify: σ grid (DiT-scale) to score the candidates at",
+    )
+    g.add_argument(
+        "--cls_per_kana",
+        type=int,
+        default=2,
+        help="classify: held-out renders per kana",
+    )
+    g.add_argument(
+        "--cls_batch",
+        type=int,
+        default=24,
+        help="classify: candidate captions per DiT forward",
+    )
+    g.add_argument(
+        "--cls_pairs", type=int, default=24, help="classify_str: 2-kana strings"
+    )
+    g.add_argument(
+        "--cls_triples", type=int, default=8, help="classify_str: 3-kana strings"
+    )
+    g.add_argument(
+        "--cls_lang",
+        default="ja",
+        choices=["ja", "en"],
+        help="classify_str: ja = kana strings of trained rows; en = nonsense two-word Latin strings (base-model order control)",
+    )

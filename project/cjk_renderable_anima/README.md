@@ -11,8 +11,10 @@ pack's ext rows, so EN prompts are bit-exact by construction and the
 artefact ships as an ordinary vocab pack.
 
 [`plan.md`](plan.md) is the forward plan (phases P0a–P4, gates, kill
-criteria, recipe of record); [`findings.md`](findings.md) holds the settled
-verdicts one screen per topic; `plan_wake.md` is the dated run record
+criteria, recipe of record); [`plan_synth.md`](plan_synth.md) amends its P1
+data with self-generated scene composites (P0b's `native` probe showed the
+rows address the whole training canvas, not the glyph); [`findings.md`](findings.md) holds the settled
+verdicts one screen per topic; `history.md` is the dated run record
 (W2d Runs 1–3, order probe, σ diagnostic, strings arm, canvas-shape gate).
 [`diagram.html`](diagram.html) is the one-figure picture of what trains and
 how (frozen Anima path + the hybrid address table; open in a browser).
@@ -24,13 +26,13 @@ reads of hand-lettered SFX — read before trusting `line` / `corpus` evals.
 | claim | evidence | where |
 |---|---|---|
 | The frozen DiT holds JA glyph units; a rows-only ext-row delta makes it draw a requested kana | W1 8 hiragana 7/8 at seed 0; identity decided at σ ≈ 0.8; EN 24/24 bit-exact | `reports/wake_w0_w2_2026_09_13.md` |
-| Trained addresses are near-orthogonal random directions, not shape coordinates | held-out kana 2–5/64 across every encoder lever (data jitter, random init, decorrelation, free residual); IDS composites 0/16 | `plan_wake.md` Runs 1–2 |
-| The hybrid table `Δ_r = g(x_r) + f_r` renders every trained inventory | Run 1d 24/24 (12 kana); Run 3 **34/36 with all 92 kana** in a 246-row table | `plan_wake.md` Run 1d, Run 3 |
-| **One ext row can be a multi-glyph word** — the DiT reads a row as a *unit*, not a glyph | Run 3: します 2/2, してる 2/2, きた こう いや もう ッド from one row each (9/32 at 40 renders/row) | `plan_wake.md` Run 3 |
-| A sequence of trained addresses renders exactly **one** unit; which one is not positional | Run 3 `line` 0/32 with row coverage 39/39 (そオニ→ニ, ほらそれ→ら, いやいい→いい, なにそれ→な) | `plan_wake.md` Run 3 |
-| **A static row table can carry order and count** — strings arm (no singles, 2–4-piece random strings, band 0.5–0.9): unseen `str3` 3/16, `flip` 4/48 with first glyph = caption's first piece 28/48 vs last 5/48, `line` 2/32 (from 0); singles fell 34 → 5/36 because the rows absorbed the multi-unit prior; repeat mode is the main miss | `plan_wake.md` Strings arm result | `output/wake_probe/encoder_ws_w120_s8k_strings_warm/` |
-| **The frozen adapter + DiT read T5 piece sequences in order** — nonsense 4–5-piece EN words (GLORPAX, MIZUKANE) render 22/24, WAY NO in the given order; EN control words were multi-piece all along (HELLO = ▁H·ELL·O) | `probes/order_probe.py`, base model, no delta | `plan_wake.md` Order probe |
-| Kanji at scale is an exposure budget, not a research line | Run 2: trained composites render, held-out composites are kana; jōyō 2 136 ≈ one GPU-day in one table | `plan_wake.md` Run 2 |
+| Trained addresses are near-orthogonal random directions, not shape coordinates | held-out kana 2–5/64 across every encoder lever (data jitter, random init, decorrelation, free residual); IDS composites 0/16 | `history.md` Runs 1–2 |
+| The hybrid table `Δ_r = g(x_r) + f_r` renders every trained inventory | Run 1d 24/24 (12 kana); Run 3 **34/36 with all 92 kana** in a 246-row table | `history.md` Run 1d, Run 3 |
+| **One ext row can be a multi-glyph word** — the DiT reads a row as a *unit*, not a glyph | Run 3: します 2/2, してる 2/2, きた こう いや もう ッド from one row each (9/32 at 40 renders/row) | `history.md` Run 3 |
+| A sequence of trained addresses renders exactly **one** unit; which one is not positional | Run 3 `line` 0/32 with row coverage 39/39 (そオニ→ニ, ほらそれ→ら, いやいい→いい, なにそれ→な) | `history.md` Run 3 |
+| **A static row table can carry order and count** — strings arm (no singles, 2–4-piece random strings, band 0.5–0.9): unseen `str3` 3/16, `flip` 4/48 with first glyph = caption's first piece 28/48 vs last 5/48, `line` 2/32 (from 0); singles fell 34 → 5/36 because the rows absorbed the multi-unit prior; repeat mode is the main miss | `history.md` Strings arm result | `output/wake_probe/encoder_ws_w120_s8k_strings_warm/` |
+| **The frozen adapter + DiT read T5 piece sequences in order** — nonsense 4–5-piece EN words (GLORPAX, MIZUKANE) render 22/24, WAY NO in the given order; EN control words were multi-piece all along (HELLO = ▁H·ELL·O) | `probes/order_probe.py`, base model, no delta | `history.md` Order probe |
+| Kanji at scale is an exposure budget, not a research line | Run 2: trained composites render, held-out composites are kana; jōyō 2 136 ≈ one GPU-day in one table | `history.md` Run 2 |
 
 The `line` row and the order-probe row together narrow the string
 verdict: the DiT *does* enumerate addresses in order — for pieces it was
@@ -47,7 +49,7 @@ A vocab pack delta: `output/wake_probe/encoder_wd_w120_s8k_fres_warm/trained.pt`
 rows (92 kana + 112 common words + eval pieces), `free` (the per-row
 residual), `encoder` (the glyph CNN, only needed to extend the table),
 `row_text` (row → piece text). Loading it into the pack is the existing
-`ExtDelta` hook (`probes/wake_probe.py`); baking it into a shipped pack
+`ExtDelta` hook (`probes/wake/hooks.py`); baking it into a shipped pack
 (safetensors + json, new digest → `make preprocess-te ARGS=--overwrite` for
 CJK captions) is not done yet.
 
@@ -56,7 +58,7 @@ Inventory facts that matter when extending it:
 - The pack's ext rows are **Qwen pieces**. Qwen merges many JA words into one
   piece (ありがとう / いい / って / 明日 → one row each); 大丈夫 → 大+丈夫 and
   ドキドキ → ド+キ+ド+キ are sequences and inherit the one-unit limit.
-- The kana inventory (`KANA` in `wake_probe.py`) is the unvoiced 46 + 46
+- The kana inventory (`KANA` in `probes/wake/common.py`) is the unvoiced 46 + 46
   only: no dakuten / handakuten / small kana singles. Those reach the table
   only inside word pieces (じゃ って いっぱい プロ); び appears nowhere.
 - Every row needs its own exposure (≈ 40 renders/row got words to 9/32,
@@ -121,9 +123,11 @@ larger piece misses the row (the `eval_coverage.json` line).
 | `plan.md` | forward plan — phases, gates, kill criteria, recipe of record |
 | `deploy_plan.md` | Hub v2 layout (`old/ delta/ comfy/ diffusers/`), bake, pre-upload gates, license, migration |
 | `findings.md` | settled verdicts, rulers, gotchas, do-not-re-propose |
-| `plan_wake.md` | dated run record: W2d Runs 1–3, order probe, σ diagnostic, strings arm |
+| `history.md` | dated run record (was `history.md`): W2d Runs 1–3, order probe, σ diagnostic, strings arm |
 | `reports/wake_w0_w2_2026_09_13.md` | W0–W2: hypothesis, Probe 0/1, address geometry, the 256² / 24-kana / balanced / σ-band arms, kanji probe |
-| `probes/wake_probe.py` | the instrument — data / train / eval / classify / native |
+| `probes/wake_probe.py` | the instrument's entry point — stages salad / data / train / eval / classify / classify_str / native |
+| `probes/stage/` | one module per stage (salad, data, train, classify, eval + native) |
+| `probes/wake/` | the stages' shared plumbing — models, hooks, readers, renders, inventories, encoder, argparse |
 | `probes/wake_geometry.py` | row-table geometry (PR, pairwise cos, composition pairs) |
 | `probes/order_probe.py` | base-model order control — nonsense multi-piece EN words, no delta |
 | `formulation.pdf`, `.tex` | the training written as equations |
@@ -148,7 +152,7 @@ larger piece misses the row (the `eval_coverage.json` line).
   kept for the case the mixed arm cannot hold singles and strings at once; the design is an ext-gated
   DiT-side change with EN kept to a *limited, measured* touch (ext gate on
   ext-free sequences, position mask, EN replay on mixed prompts — the
-  "EN safety" list in `plan_wake.md`). To be designed in `plan.md`.
+  "EN safety" list in `history.md`). To be designed in `plan.md`.
 - **Word pack completion.** Words reached 9/32 at 40 renders/row with `f`
   from zero; a words-only continuation warm-started from Run 3 is the one
   cheap lever to see whether they reach the kana bar (single-word bubbles).

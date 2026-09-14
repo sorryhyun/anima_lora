@@ -17,7 +17,7 @@ whose output ships as a vocab pack.
   reader ledger, ext rows / pack / DiT, captions, the SFX reader, detection,
   gotchas, the do-not-re-propose list, and the open items outside the wake
   line.
-- [`plan_wake.md`](../cjk_renderable_anima/plan_wake.md) — moved with the wake line to `cjk_renderable_anima/` (2026-09-14; the frozen copy here is archived). Was the live plan (W2d encoder → W3 strings →
+- [`cjk_renderable_anima/history.md`](../cjk_renderable_anima/history.md) — moved with the wake line to `cjk_renderable_anima/` (2026-09-14; the frozen copy here is archived). Was the live plan (W2d encoder → W3 strings →
   W4 kanji), gates and kill criteria.
 - [`history.md`](history.md) — the dated per-phase record (D0 … the wake
   probes) with every evidence pointer, verbatim as it was written. Go here

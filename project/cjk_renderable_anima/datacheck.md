@@ -6,7 +6,7 @@ the corpus slice, not an outlier.
 
 ## Where the labels come from
 
-`wake_probe.py --stage data` adds corpus crops through `_corpus_lines`
+`wake_probe.py --stage data` adds corpus crops through `corpus_lines` (`probes/wake/inventory.py`)
 (`post_image_dataset/render/ja/{resized,heldout}/boxes.jsonl`, built by
 `project/cjk_aware_anima_dit/render/corpus_boxes.py`):
 
