@@ -1,9 +1,5 @@
 # plan_wake — wake the DiT's own JA glyph units (forward plan, 2026-09-13)
 
-> **Moved 2026-09-14.** The wake line is now its own project,
-> [`../cjk_renderable_anima/`](../cjk_renderable_anima/) (code, records, PDF).
-> This copy is frozen with the rest of this line; edit the new home.
-
 > **Status (2026-09-13 night).** W0–W2 are done and lifted into
 > [`reports/wake_w0_w2_2026_09_13.md`](reports/wake_w0_w2_2026_09_13.md):
 > the hypothesis, Probe 0/1, the address geometry, the 256² / 24-kana /
@@ -651,7 +647,7 @@ Otherwise there is no rows path to 2,136 characters.
 Full list in the report; the ones that bite while running the arms above:
 
 - Every GPU stage via `make daemon-run ARGS="--label … --queue
-  project/cjk_aware_anima_dit/probes/wake_probe.py --stage train|eval|native|classify …"`
+  project/cjk_renderable_anima/probes/wake_probe.py --stage train|eval|native|classify …"`
   then `make daemon-wait JOB=<id>`; the data stage is CPU-only and safe inline.
 - **Never below 512²**; block compile before grad-ckpt; batch 8 OOMs at 512²
   without ckpt even compiled; activation budget stays 0.99.

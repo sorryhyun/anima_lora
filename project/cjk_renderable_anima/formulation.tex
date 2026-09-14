@@ -1,0 +1,129 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=22mm]{geometry}
+\usepackage{amsmath,amssymb,bm}
+\usepackage{xeCJK}
+\xeCJKsetup{CJKspace=true,PunctStyle=plain}
+\usepackage{fontspec}
+\setmainfont{Noto Serif CJK KR}
+\setCJKmainfont{Noto Serif CJK KR}
+\setCJKsansfont{Noto Sans CJK KR}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\setlength{\parskip}{4pt}
+\setlength{\parindent}{0pt}
+\linespread{1.15}
+\definecolor{note}{RGB}{90,90,90}
+\newcommand{\Emb}{\mathbf{E}}
+\newcommand{\R}{\mathcal{R}}
+\newcommand{\Rtr}{\mathcal{R}_{\mathrm{tr}}}
+\newcommand{\ind}{\mathbf{1}}
+\newcommand{\norm}[1]{\left\lVert #1 \right\rVert}
+
+\begin{document}
+
+{\LARGE\bfseries Wake W2d 단어 주소 런: 학습의 수식 표현}\\[2pt]
+{\color{note}\small 2026-09-14 · job \texttt{20260914-111212-d1542c} · \texttt{probes/wake\_probe.py --arm encoder --words 120}}
+
+\vspace{6pt}
+\hrule
+\vspace{8pt}
+
+\section*{0. 표기}
+
+\begin{tabular}{@{}ll@{}}
+\toprule
+기호 & 뜻 \\
+\midrule
+$v_\phi$ & frozen DiT (rectified-flow 속도장) \\
+$\Emb \in \mathbb{R}^{N_{\mathrm{ext}} \times 1024}$ & vocab pack의 ext row 테이블 (frozen). $\Emb_r$ = row $r$ \\
+$\R$ & 이번 런이 다루는 ext row 집합 ($|\R| = 246$) \\
+$\Rtr \subset \R$ & 학습 캡션에 등장하는 row ($|\Rtr| = 232$) \\
+$\rho = \frac{1}{|\Rtr|}\sum_{r\in\Rtr}\norm{\Emb_r} \approx 195$ & pack row 평균 노름. 모든 delta는 이 단위 \\
+$x_r \in [0,1]^{96\times96}$ & row $r$의 piece 텍스트를 15개 폰트로 렌더한 잉크의 평균 \\
+$\psi_\theta : [0,1]^{96\times96} \to \mathbb{R}^{1024}$ & 글리프 인코더 (CNN + MLP, 3.4M) \\
+$\bar\psi = \frac{1}{|\R|}\sum_{r'\in\R}\psi_\theta(x_{r'})$ & 테이블 전체의 평균 출력 (공통 모드) \\
+$c \in \mathbb{R}^{1024}$ & 공유 레이아웃 벡터, $\norm{c}\le 0.75$ \\
+$f \in \mathbb{R}^{|\R|\times 1024}$ & row별 자유 잔차 \\
+$s \in \{0,1\}$ & delta 스케일 (평가: $0$ = floor, $1$ = trained) \\
+\bottomrule
+\end{tabular}
+
+\section*{1. 텍스트 쪽: 주소}
+
+캡션 $c_{\mathrm{txt}} = $ \texttt{"…Japanese text reads as "$w$"."}\ 에서 $w$는 Qwen piece 열 $(p_1,\dots,p_k)$로 잘리고, 각 piece는 pack의 ext row $r_i$로 라우팅된다. 단어 하나가 piece 하나면 (ありがとう, いい, って) row도 하나다.
+
+T5 쪽 쿼리 스트림이 보는 임베딩:
+\begin{equation}
+  \tilde{\Emb}_r \;=\; \Emb_r \;+\; s\,\rho\,\Delta_r ,
+  \qquad r \in \R
+\end{equation}
+
+ext id가 없는 프롬프트는 $\Delta$를 전혀 지나지 않으므로 EN은 bit-exact다.
+
+\section*{2. delta의 파라미터화 (hybrid)}
+
+\begin{equation}
+  \Delta_r \;=\; g_\theta(x_r) \;+\; \ind[\,r \in \Rtr\,]\; f_r
+\end{equation}
+\begin{equation}
+  g_\theta(x_r) \;=\; \alpha\bigl(\psi_\theta(x_r) - \bar\psi\bigr) \;+\; c ,
+  \qquad \alpha = 2^{-4}
+\end{equation}
+
+\begin{itemize}[leftmargin=14pt,itemsep=1pt]
+  \item $\psi_\theta(x_r) - \bar\psi$: 공통 모드를 테이블 전체에서 빼서, 공유 가중치가 모든 row에 같은 방향으로 밀리는 그래디언트를 받지 않게 한다. 남는 것은 row별 차이뿐이다.
+  \item $c$: 빼낸 공통 모드("빈 캔버스에 큰 글리프")가 사는 자리. 매 step 후 $c \leftarrow c\cdot\min(1,\,0.75/\norm{c})$로 투영.
+  \item $f_r$: 학습 row에만 붙는 잔차. Run~1d에서 DiT가 실제로 읽는 identity는 $g$가 아니라 여기(노름 $\approx 0.9$, 서로 거의 직교)에 실린다는 것이 확인됐다. 이번 런은 카나 row 134개의 $f$를 Run~1d에서 warm start하고, 단어 row의 $f$는 0에서 시작한다.
+\end{itemize}
+
+\section*{3. 손실}
+
+이미지 $y$ (폰트 렌더 또는 corpus 말풍선 크롭), $z_0 = \mathrm{VAE}(y) \in \mathbb{R}^{16\times64\times64}$, $\varepsilon \sim \mathcal{N}(0, I)$, $\sigma \sim \mathcal{U}[0.7,\,0.9]$:
+\begin{align}
+  z_\sigma &= (1-\sigma)\, z_0 + \sigma\,\varepsilon \\
+  \mathcal{L}_{\mathrm{FM}} &= \norm{\, v_\phi\bigl(z_\sigma,\ \sigma,\ T(c_{\mathrm{txt}};\ \Emb + \rho\Delta)\bigr) - (\varepsilon - z_0) \,}_2^2 \\
+  \mathcal{L} &= \mathcal{L}_{\mathrm{FM}} \;+\; \mu\,\frac{1}{|\Rtr|}\sum_{r\in\Rtr}\norm{f_r}^2 ,
+  \qquad \mu = 10^{-3}
+\end{align}
+
+$T(\cdot\,;\cdot)$는 캡션을 Qwen 소스 스트림 + delta가 얹힌 T5 쿼리 스트림으로 인코딩하는 frozen 경로(텍스트 인코더 + llm\_adapter)다. 그래디언트는 DiT의 cross-attention을 거슬러 임베딩 row까지만 내려온다. $\sigma$ 밴드 $[0.7, 0.9]$는 W2에서 글리프 identity가 $\sigma \approx 0.8$에서 결정된다는 결과에 맞춘 것이다.
+
+$\mu$ 항은 $g$가 설명할 수 있는 것은 $g$로 밀어 넣고, $f$에는 $g$가 못 담는 row별 크기만 남기려는 L2 pull이다.
+
+\section*{4. 최적화}
+
+AdamW $(\beta_1,\beta_2) = (0.9,\,0.99)$, weight decay 0, batch 4, 8000 step:
+\[
+  \theta:\ \eta = 3\times10^{-5}\ \text{(cosine}\to 0), \qquad
+  c:\ \eta = 10^{-3}, \qquad
+  f:\ \eta = 10^{-3}.
+\]
+
+\section*{5. 저장과 평가}
+
+학습 후 테이블을 한 번 굳힌다:
+\[
+  \Delta_r^{\star} \;=\; g_\theta(x_r) + \ind[r\in\Rtr]\,f_r ,
+  \qquad r \in \R
+\]
+그 뒤로는 $\psi_\theta$ 없이 $\Delta^\star$만 ExtDelta 포맷으로 싣는다 (eval / native / classify가 그대로 돈다). 평가는 같은 seed로 $s=1$에서 샘플링하고 OCR 두 개(sfx reader, PaddleOCR-VL)로 읽어 CER과 exact를 센다.
+
+\section*{6. 이 런이 묻는 것}
+
+단일 row가 그려진다는 것은 Run~1d에서 확인됐다 (trained 24/24). 이번 런은 $w = p_1 p_2$ (예: いや + いい)일 때, 학습된 row 두 개 $\tilde\Emb_{r_1}, \tilde\Emb_{r_2}$가 나란히 들어간 시퀀스를 DiT가 글리프 두 개로 그리는지를 묻는다. 지금까지의 combo / corpus 평가는 학습되지 않은 row가 섞인 시퀀스였으므로 이 질문에 답한 적이 없다.
+
+\begin{center}\small
+\begin{tabular}{@{}lp{6.2cm}p{5.6cm}@{}}
+\toprule
+eval 그룹 & 내용 & 읽는 것 \\
+\midrule
+\texttt{word} & 학습된 단어 16 & 단어 하나 = 주소 하나가 그려지는가 \\
+\texttt{word\_held} & 제외 단어 8 & lookup 확인 (0 예상) \\
+\texttt{line} & 모든 piece가 학습된 2--3 piece 대사 16 & \textbf{주소 나열이 그려지는가} \\
+\texttt{single} \texttt{combo} \texttt{corpus} \texttt{en} & 이전 런과 같음 & 회귀 여부, EN 안전 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\end{document}

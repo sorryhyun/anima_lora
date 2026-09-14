@@ -42,8 +42,16 @@ Retired lines so far:
 Finished lines are listed in [`finished/README.md`](finished/README.md)
 (the ResShift SR sidecar, 2026-08-22; mod guidance, 2026-08-24).
 
-Active projects: none — both CJK lines are frozen (below), and no other
-line has open phases.
+Active projects:
+
+- [`cjk_renderable_anima/`](cjk_renderable_anima/) — promoted 2026-09-14 from
+  the wake line of `cjk_aware_anima_dit`: a frozen DiT renders a requested JA
+  glyph, or a whole common word, from a delta on the vocab pack's ext rows
+  (all 92 kana 34/36; word rows are units, します/してる from one row). Rows
+  cannot enumerate a sequence (`line` 0/32) — W3, DiT-side reading of
+  address sequences, is the open phase. Home: its `README.md`; `plan.md` owed.
+
+Both CJK lines below are frozen, and no other line has open phases.
 
 Frozen lines (kept here rather than in `finished/` or `_archive/`: their
 `findings.md` is the anti-re-proposal record and is read often, but neither
@@ -61,8 +69,8 @@ reached its own top-line goal, so neither is a "finished" line):
   five arms decoupled in-domain COO from the doujin gate, so the headroom is
   ♡ / small-kana labels, not representation.
   Home: [`findings.md`](cjk_aware_anima_dit/findings.md) (verdicts),
-  [`plan_wake.md`](cjk_aware_anima_dit/plan_wake.md) (the live plan — the
-  DiT side reopened 2026-09-13 as the wake line), [`history.md`](cjk_aware_anima_dit/history.md)
+  [`plan_wake.md`](cjk_aware_anima_dit/plan_wake.md) (frozen copy — the wake
+  line moved to `cjk_renderable_anima/` on 2026-09-14), [`history.md`](cjk_aware_anima_dit/history.md)
   (the dated record incl. the freeze note); pre-freeze plans and dated
   reports archived to `_archive/cjk_aware_anima_dit/{plans,reports}/`.
 - [`cjk_aware_anima/`](cjk_aware_anima/) — the encoder-side line, frozen
