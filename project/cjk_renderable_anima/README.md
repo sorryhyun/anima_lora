@@ -10,10 +10,10 @@ frozen text encoder; the only trainable object is a delta on the vocab
 pack's ext rows, so EN prompts are bit-exact by construction and the
 artefact ships as an ordinary vocab pack.
 
-[`plan.md`](plan.md) is the forward plan (phases P1–P4, gates, kill
+[`plan.md`](plan.md) is the forward plan (phases P0a–P4, gates, kill
 criteria, recipe of record); [`findings.md`](findings.md) holds the settled
 verdicts one screen per topic; `plan_wake.md` is the dated run record
-(W2d Runs 1–3, order probe, σ diagnostic, strings arm).
+(W2d Runs 1–3, order probe, σ diagnostic, strings arm, canvas-shape gate).
 
 ## What is established (2026-09-14)
 
@@ -125,7 +125,15 @@ larger piece misses the row (the `eval_coverage.json` line).
 
 ## Open
 
-- **Mixed arm (next).** The strings arm showed rows carry order + count but
+- **Singles at scale (next; plan P0b).** P0a passed: Run 3's recipe on a
+  mixed 384–512 canvas pool (`wake_probe.py --shapes`, one-shape batches)
+  renders singles 36/36 sfx at 512² (Run 3 33/36) and 34/36 at 384×512 at
+  0.82× the wall, so the pool is the recipe of record. P0b trains the full
+  kana inventory (basic + voiced + small, ~160 rows + 120 words) as
+  singles for 2–3 GPU-hours warm-started from P0a's table (instrument
+  owed: `--kana_ext` + a `single_ext` eval group); the strings work below
+  then runs on a 512–768 pool.
+- **Mixed arm (after P0b).** The strings arm showed rows carry order + count but
   absorb the data's unit-count prior (singles 34 → 5). One distribution —
   30 % singles + 70 % 2–4-piece strings, Run 3 warm start, band 0.5–0.9 —
   should return singles while keeping `flip` / `str3` / `line`. Then the

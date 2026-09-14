@@ -1,4 +1,4 @@
-# plan — cjk_renderable_anima (forward plan, 2026-09-14 evening)
+# plan — cjk_renderable_anima (forward plan, 2026-09-14 evening; P0 added 2026-09-14 night)
 
 > Supersedes the decision state in [`plan_wake.md`](plan_wake.md), which
 > stays as the dated run record. Verdicts live in [`findings.md`](findings.md);
@@ -19,7 +19,11 @@ rows — singles-only rows draw one unit, strings-only rows draw several
 (singles 34 → 5/36) — so the count must come from the caption, not the
 row. The remaining misses are the repeat mode (ううう, ねねね) and the
 per-row exposure grind for new characters; no DiT-side change is needed
-for sequences.
+for sequences. The 256² kill was drawn under the default σ sampling and
+does not extend upward: at 384² the base spells EN 24/24 and the 512²
+band rows read 21/36 (2026-09-14, `rows_w24_band/eval_384/`), so canvas
+shape is an open lever — for cost, and for rows that stop carrying one
+blank 512² layout.
 
 ## The target artefact (unchanged)
 
@@ -56,8 +60,11 @@ make daemon-run ARGS="--label wake-mixed --stall-timeout 0 --queue \
     --free_residual 1e-3 --lr_free 1e-3"
 ```
 
-Fixed by measurement, do not retune without a new reason: 512² canvases;
-σ band **0.5–0.9** (order/count/identity are decided at σ 0.5–0.8 in the
+Fixed by measurement, do not retune without a new reason: canvases from
+the P0a pool — singles `--shapes "384,448,512:2,384x512,512x384"`,
+strings `"512,640,768:2,512x768,768x512"` (P1, one measurement owed on
+the 768 family's batch); σ band
+**0.5–0.9** (order/count/identity are decided at σ 0.5–0.8 in the
 base, identity of kana rows at 0.8, nothing above 0.9 — the sampler is a
 hard band, so the band is the weighting); `g` frozen (it is a prior,
 `free_ratio` 0.9); rows lr 1e-3 in row-norm units; cosine decay; eval
@@ -67,7 +74,139 @@ change that touches EN.
 
 ## Phases
 
-### P1 — mixed distribution (next; ~1 h 20 min)
+Order (2026-09-14 night): **P0a → P0b → P1 → P2 → P3 → P4.** P0a decides
+the canvas pool every later phase trains on; P0b is the singles table at
+scale; P1 onwards is the strings work as planned, on that pool.
+
+### P0a — canvas shapes A/B — **PASSED 2026-09-14 (better at cost)**
+
+Same recipe as Run 3 (`encoder_wd_w120_s8k_fres_warm`: fres, band
+0.7–0.9, 8 000 steps, batch 4, lr_enc 3e-5, `g`/`f` warm-started from
+`encoder_w2_held32_s6k_cos_rinit_fres`), same inventory (`wd`: 92 kana +
+120 words, 8 held out), the data dir rebuilt with a shape pool. The
+instrument is in (`--shapes` on data, per-shape latent caches and
+one-shape batches on train, `--eval_shape WxH` on eval; 512² renders are
+bit-identical to the old code, so `wd` itself is untouched).
+
+```bash
+# data (CPU): singles pool 384–512, squares and 3:4 / 4:3
+.venv/bin/python project/cjk_renderable_anima/probes/wake_probe.py \
+    --stage data --arm encoder --data_tag wds --words 120 --held_out_words 8 \
+    --n_single 40 --shapes "384,448,512:2,384x512,512x384"
+
+# A: matched exposure (8 000 steps) — the cost readout
+make daemon-run ARGS="--label wake-shapes-a --stall-timeout 0 --queue \
+    project/cjk_renderable_anima/probes/wake_probe.py --stage train eval --arm encoder \
+    --data_tag wds --arm_tag w120_s8k_fres_warm_shp --train_steps 8000 --batch 4 \
+    --t_min 0.7 --t_max 0.9 --compile 1 --grad_ckpt 0 --aggressive_recompute 0 \
+    --seeds 2 --no_floor --lr_common 1e-3 --common_cap 0.75 --out_scale 0.0625 \
+    --lr_enc 3e-5 --lr_decay cosine --kill_spread_step 0 --kill_max_row 0 \
+    --enc_pool spatial --font_mode mean --head_init random --init_spread 1.0 \
+    --init_encoder output/wake_probe/encoder_w2_held32_s6k_cos_rinit_fres/trained.pt \
+    --init_free    output/wake_probe/encoder_w2_held32_s6k_cos_rinit_fres/trained.pt \
+    --free_residual 1e-3 --lr_free 1e-3"
+# second eval of A on a non-square canvas
+make daemon-run ARGS="--label wake-shapes-a-384x512 --queue \
+    project/cjk_renderable_anima/probes/wake_probe.py --stage eval --arm encoder \
+    --data_tag wds --arm_tag w120_s8k_fres_warm_shp --eval_shape 384x512 \
+    --eval_tag 384x512 --eval_groups single,word,en --seeds 2"
+# B: matched wall — A's recipe at the step count that equals Run 3's 58 min
+```
+
+Band 0.7–0.9 is measured at 384² too: the same-noise classifier on the
+512² band rows at 384² (`rows_w24_band/classify_384/`, job
+`20260914-152513-e84609`) peaks at σ 0.80 with top-1 0.73 (512²: 0.69),
+chance at 0.65 and 0.95 — identity's σ does not move with canvas size on
+this grid, so one hard band serves the whole pool.
+
+Readouts, both seeds, both readers, largest box, 512² eval unless
+stated: singles /36, word /32, EN /24, wall min, it/s; A also at 384×512.
+Run 3 bar: singles 34/36, word 9/32, EN 24/24, 58 min at 2.3 it/s.
+
+Gate — **mixed shapes are better or cheaper**, either of:
+
+- *cheaper at parity*: A singles ≥ 32/36 and word ≥ 7/32 and EN 24/24,
+  with A's wall ≤ 0.75 × Run 3's (the pool's mean token count is 0.72 ×
+  512²'s, so ≥ 1.3 × it/s is expected; below that the compile families
+  ate the gain); or
+- *better at cost*: A singles ≥ 34/36 with the 384×512 eval singles ≥
+  28/36 (a non-square canvas the 512²-only rows never saw), whatever the
+  wall.
+
+B is run only when A passes cheaper-at-parity, to state the "same
+result at 0.6× budget" claim on its own numbers (gate: B singles ≥
+32/36).
+
+**Result (arm `encoder_wds_w120_s8k_fres_warm_shp`, jobs
+`20260914-154123-df61b7` / `-8978a0`).** Same ruler for both arms
+(largest detector box; the plan's 34/36 bar is the sfx reader):
+
+| eval | A mixed | Run 3 |
+|---|---|---|
+| single 512², sfx / both readers | **36/36 / 29/36** | 33/36 / 26/36 |
+| word 512², sfx / both | 10/32 / 7/32 | 9/32 / 9/32 |
+| line / combo / corpus | 0/32 / 0/36 / 0/20 | 0/32 / 1/36 / 0/20 |
+| EN 512² | 24/24 | 24/24 |
+| single **384×512**, sfx / both | **34/36 / 29/36** | — |
+| word / EN 384×512 | 11/32 (9 both) / 21/24 (floor 21/24: base case + punctuation, delta bit-exact) | — |
+| train wall / it/s | **47.8 min / 2.79** | 58 min / 2.30 |
+
+Instruments tracked Run 3 step for step (`rel` 1.50 vs 1.45,
+`free_ratio` 0.91 vs 0.90, `table_pr` 2.80 vs 2.83 at step 7525). Every
+512² single miss is a vl misread of a correct render (ひ→U, ち→5, ぬ→奴,
+キ→丰); at 384×512 two are real (み→る, ケ→タ one seed each). Verdict:
+**better at cost** — singles above Run 3 at 512², 29/36 on a canvas the
+512² rows never saw, at 0.82× the wall. Cheaper-at-parity missed on the
+wall alone (1.21× it/s, not 1.33×: fixed per-step cost + the 512² family
+at 34 % of items), so B was not run. The pool is the recipe of record.
+
+Outcomes: pass → the pool is the recipe of record for singles and the
+P1 pool (`512,640,768:2,512x768,768x512`) is used for strings. A singles
+in 28–31 → shapes cost a little identity; run once more with
+`512:3` weighting, then decide. A singles < 28/36 → the pixel loss at
+384–448 dilutes identity (the 256² verdict extended one tier up); stay
+at 512², P0b and P1 run at 512² and the shape lever is closed with this
+number.
+
+### P0b — singles at scale (next; ~2–3 GPU-hours)
+
+The kana table every later phase warm-starts from: the full kana
+inventory as singles, on the P0a pool.
+
+- **Inventory**: 92 basic kana + voiced / handakuten / small kana
+  (がぎぐげござじずぜぞだぢづでどばびぶべぼぱぴぷぺぽ + katakana
+  counterparts + ぁぃぅぇぉっゃゅょ / ァィゥェォッャュョ, ~70 rows) + the 120
+  words as units. Instrument owed first: a `--kana_ext` data flag that adds
+  those rows to the inventory and an eval group `single_ext` (18 drawn),
+  so the new rows are scored separately from the 92.
+- **Distribution**: singles / word units only (`--n_single 40`); no
+  strings — the count prior is P1's problem, and P1 warm-starts from this
+  table (the plan's 2-step, done once).
+- **Budget**: 2–3 GPU-hours at the it/s P0a measured; steps = that wall ×
+  it/s (at ~3 it/s ≈ 22–32 k steps, batch 4 ≈ 10 epochs over ~11 k items,
+  ≈ 400 renders per row — above W1's 290). Cosine decay to 0 over the
+  full run.
+- **Warm start**: `g` and `f` from P0a's A
+  (`encoder_wds_w120_s8k_fres_warm_shp/trained.pt`); new rows' `f` from
+  zero.
+
+Gate: basic singles ≥ 32/36, `single_ext` ≥ 24/36 (the 67 % bar the rows
+band hit on 24 kana), word ≥ 8/32, EN 24/24, and the P0a non-square
+eval ≥ 28/36 when the pool is in. Instruments: `table_pr`, `rel_max`
+(does the table hold ~280 rows), plus the `native` stage on 8 kana
+before P1 starts — the scene-prompt layout leak is what the shape pool
+is supposed to remove.
+
+Fails on `single_ext` alone → exposure, not capacity: extend by one more
+hour once. Fails on the basic 92 → the table does not hold ~280 rows at
+once; see P3 kill criteria (per-block packs).
+
+### P1 — mixed distribution (after P0b; ~1 h 20 min)
+
+On the P0a pool for strings (`--shapes "512,640,768:2,512x768,768x512"`
+when P0a passed — bubbles with 2–4 pieces need the canvas; batch 4 at
+768² may need `--grad_ckpt 1` or a 2-item batch for that family; measure
+once). Warm start from the P0b table.
 
 `--single_frac` on the strings data: each font item is a single kana/word
 with probability 0.3, otherwise a 2–4-piece string; corpus lines as before.
@@ -163,7 +302,9 @@ and `rel_max` are the early instruments).
 - `probes/order_probe.py`: base-model EN order control (nonsense
   multi-piece words); run it after any change on the EN path.
 - `probes/wake_geometry.py`: table PR / pairwise cos / composition pairs.
-- Never below 512²; block compile before grad-ckpt; batch 8 OOMs at 512²;
+- 256² is dead (base cannot spell EN there, 11/24) but 384² is not (EN
+  24/24, 512² rows read 21/36 there); the pool is P0a's call. Block
+  compile before grad-ckpt; batch 8 OOMs at 512²;
   clear `conds_cache` on delta-scale switches; ext rows are Qwen-piece
   keyed (a kana "pair" is only an order contrast when every permutation
   tokenizes to its own rows); the readers under-read kana — look at the

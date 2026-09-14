@@ -745,6 +745,50 @@ data = 30 % singles + 70 % strings (`--strings_only` gains a
 remaining lever (harder negatives: strings with a repeated piece, so a
 repeat is only right when the caption says so).
 
+### Canvas-shape gate (2026-09-14 night): 384² is alive, the band does not move, mixed shapes are an instrument
+
+**Why it was owed.** The 256² kill (report § W2, "never below 512²") ran on
+the *default* σ sampling; the σ 0.8 band was found later the same day. The
+verdict "no text competence below 512²" was therefore band-confounded and
+one tier too broad. Three jobs, no training:
+
+| job | what | result |
+|---|---|---|
+| `20260914-151236-404750` (`rows_w24_band/eval_384/`) | the 512² band rows rendered at **384²**, singles + EN | EN **24/24 floor and trained**; singles **21/36** both readers largest box (25/36 at 512² on the same ruler). Misses: repetition (ききき そそそ すすべ), つ→っ, vl misreads of correct こ/し, ち→5 |
+| `20260914-152513-e84609` (`rows_w24_band/classify_384/`) | same-noise 24-way classifier at 384² | identity peaks at **σ 0.80, top-1 0.73** (512²: 0.69); chance at 0.65 / 0.95; floor chance everywhere |
+| `20260914-152918-40d794` | smoke of the mixed-shape instrument (tiny inventory, 30 steps, 384×512 eval) | per-shape latents, 4 static token families, one-shape batches, non-square renders, EN 2/2 |
+
+**Reading.** The base spells at 384² and the rows transfer *downward*
+(1024² showed upward). No σ shift exists in the stack (training draws raw
+σ; inference `flow_shift` is a fixed 3.0), and none is needed: the
+identity band is the same at 384² and 512², so one hard band 0.7–0.9
+serves a mixed pool. 256² itself stays untested under a band; the verdict
+now reads "256² under default σ", not "below 512²".
+
+**Instrument (`wake_probe.py`).** `--shapes "384,448,512:2,384x512,512x384"`
+on the data stage draws a canvas per font item (corpus crops from the
+squares; one shape per balanced group), records `shape` per item, and
+scales glyph / bubble sizes by the short side so the glyph-to-canvas
+statistics match 512² (512² renders are bit-identical to the old code —
+80/80 — so every existing data dir rebuilds unchanged). Train caches
+`latents_mixed_<shapes>.pt` per shape and batches one shape per step,
+each shape in proportion to its items; the block compile gets one static
+graph per distinct token count (384×512 and 512×384 share). Eval takes
+`--eval_shape WxH`. `_gen_args` passes (H, W) to the request.
+
+**P0a result (same night, `encoder_wds_w120_s8k_fres_warm_shp`, jobs
+`20260914-154123-df61b7` train+eval 47.8 + 12 min, `-8978a0` 384×512
+eval).** Run 3's recipe on `wds` (= `wd` rebuilt with `--shapes
+"384,448,512:2,384x512,512x384"`; identical inventory, 8992 items).
+512²: singles **36/36 sfx / 29/36 both** (Run 3 33 / 26 on the same
+ruler), word 10/32, EN 24/24; 384×512: singles **34/36 / 29/36**, word
+11/32, EN 21/24 = floor (base writes "Sorry" / "OK." there). 2.79 it/s vs
+2.30. Instruments identical to Run 3 through training. **Verdict: better
+at cost** (plan gate) — the pool is the recipe of record; B (matched
+wall) not run since cheaper-at-parity missed on wall alone (0.82×, not
+0.75×). Next = P0b singles at scale (instrument owed: `--kana_ext` +
+`single_ext`), then P1 strings on a 512–768 pool.
+
 ### Shelved W2 levers (do not reopen without a new reason)
 
 - Same-noise classifier CE / swap hinge on free rows: valid for singles,
@@ -801,8 +845,10 @@ Full list in the report; the ones that bite while running the arms above:
 - Every GPU stage via `make daemon-run ARGS="--label … --queue
   project/cjk_renderable_anima/probes/wake_probe.py --stage train|eval|native|classify …"`
   then `make daemon-wait JOB=<id>`; the data stage is CPU-only and safe inline.
-- **Never below 512²**; block compile before grad-ckpt; batch 8 OOMs at 512²
-  without ckpt even compiled; activation budget stays 0.99.
+- **Never below 384²** (256² dead under default σ; 384² EN 24/24, band
+  unchanged — see *Canvas-shape gate*); block compile before grad-ckpt;
+  batch 8 OOMs at 512² without ckpt even compiled; activation budget
+  stays 0.99.
 - Rows lr 1e-3 in row-norm units (3e-3 walks off-manifold); watch the
   encoder's delta norm the same way (`rel` in `train_log.json`).
 - Read the **largest detector box**, both readers; `report.md` is the

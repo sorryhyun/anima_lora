@@ -160,13 +160,15 @@ def _ck():
     return default_checkpoints()
 
 
-def _gen_args(size: int, steps: int, cfg: int | float, save: Path):
+def _gen_args(size, steps: int, cfg: int | float, save: Path):
+    """``size``: int side or ``(W, H)``; the request wants (height, width)."""
     from anima_lora.inference import GenerationRequest
 
+    W, H = _wh(size)
     ck = _ck()
     req = GenerationRequest(
         prompt="",
-        image_size=(size, size),
+        image_size=(H, W),
         infer_steps=steps,
         guidance_scale=cfg,
         seed=0,
@@ -548,6 +550,40 @@ JITTER_INK_LIGHT = [
 ]
 
 
+def _wh(size) -> tuple[int, int]:
+    """Canvas ``(W, H)`` from an int side or a ``(W, H)`` pair."""
+    if isinstance(size, int):
+        return size, size
+    W, H = size
+    return int(W), int(H)
+
+
+def _parse_shape(tok: str) -> tuple[int, int]:
+    """``'512'`` → (512, 512); ``'384x512'`` → (384, 512) as (W, H)."""
+    tok = tok.strip().lower()
+    if "x" in tok:
+        W, H = tok.split("x")
+        return int(W), int(H)
+    return int(tok), int(tok)
+
+
+def _parse_shapes(spec: str) -> list[tuple[int, int, float]]:
+    """``--shapes`` → ``[(W, H, weight)]``. ``'384,448,512:2,384x512'`` draws
+    512² twice as often as each other entry. Sides must be multiples of 16
+    (VAE 8× and a 2-patch), so every entry is one static token family."""
+    out = []
+    for tok in spec.split(","):
+        if not tok.strip():
+            continue
+        shp, _, w = tok.partition(":")
+        W, H = _parse_shape(shp)
+        assert W % 16 == 0 and H % 16 == 0, (
+            f"shape {tok}: sides must be multiples of 16"
+        )
+        out.append((W, H, float(w) if w else 1.0))
+    return out
+
+
 def _sample_layout(n: int, rng: random.Random, size=512, mode: str = "v1") -> dict:
     """Every random choice of one render for an ``n``-char string, drawn in the
     pre-W2a order so unbalanced data dirs rebuild bit-identically.
@@ -559,18 +595,24 @@ def _sample_layout(n: int, rng: random.Random, size=512, mode: str = "v1") -> di
     the same layout statistics and the only thing a row can explain is the
     glyph — the constant "big black glyph centred on a light canvas" was the
     shared gradient direction that drove the encoder's table to rank 1."""
+    # mixed shapes (2026-09-14): glyph / bubble sizes were drawn for a 512
+    # canvas; scale them by the short side so a 384² render keeps the same
+    # glyph-to-canvas statistics (a 512 draw is bit-identical: int(x * 1.0)).
+    W, H = _wh(size)
+    sc = min(W, H) / 512
     lay = {"bubble": rng.random() < 0.6}
     lay["bg"] = rng.choice(
         ["white", "white", (235, 235, 235), (245, 240, 230), (220, 225, 235)]
     )
     if lay["bubble"]:
         # light screentone-ish dots + a white ellipse
-        lay["dots"] = [(rng.randrange(size), rng.randrange(size)) for _ in range(900)]
-        lay["pad"] = rng.randint(30, 70)
+        lay["dots"] = [(rng.randrange(W), rng.randrange(H)) for _ in range(900)]
+        lay["pad"] = int(rng.randint(30, 70) * sc)
         lay["outline"] = rng.randint(2, 5)
     lay["vertical"] = rng.random() < 0.65 if n > 1 else rng.random() < 0.3
-    lay["fs"] = (
-        rng.randint(110, 200) if n == 1 else rng.randint(int(320 / n), int(400 / n))
+    lay["fs"] = int(
+        (rng.randint(110, 200) if n == 1 else rng.randint(int(320 / n), int(400 / n)))
+        * sc
     )
     lay["color"] = rng.choice(["black", "black", (30, 30, 30), (60, 40, 40)])
     lay["rot"] = rng.uniform(-6, 6) if rng.random() < 0.3 else None
@@ -583,8 +625,13 @@ def _sample_layout(n: int, rng: random.Random, size=512, mode: str = "v1") -> di
         if rng.random() < 0.25:
             lay["stroke"] = rng.randint(2, 6)
             lay["stroke_fill"] = "black" if ink_light else "white"
-        lay["fs"] = (
-            rng.randint(60, 200) if n == 1 else rng.randint(int(180 / n), int(400 / n))
+        lay["fs"] = int(
+            (
+                rng.randint(60, 200)
+                if n == 1
+                else rng.randint(int(180 / n), int(400 / n))
+            )
+            * sc
         )
         # normalised anchors; _render_string maps them into the feasible range
         # once it knows the text extent (layout dicts stay font-free)
@@ -612,9 +659,10 @@ def _render_string(
     from PIL import Image, ImageDraw, ImageFont
 
     n = len(text)
+    W, H = _wh(size)
     lay = layout if layout is not None else _sample_layout(n, rng, size, mode)
     bubble, bg, fs, color = lay["bubble"], lay["bg"], lay["fs"], lay["color"]
-    im = Image.new("RGB", (size, size), bg)
+    im = Image.new("RGB", (W, H), bg)
     d = ImageDraw.Draw(im)
 
     def extent(fs):
@@ -635,17 +683,13 @@ def _render_string(
         # ran past the ellipse (可愛い). Shrink only when the block does not fit
         # the inscribed rectangle of the centred ellipse — singles never do,
         # so the pre-word data dirs' single renders are unchanged.
-        half = (size / 2 - lay["pad"]) / 2**0.5 - 6
+        half = (min(W, H) / 2 - lay["pad"]) / 2**0.5 - 6
         k = min(1.0, half / max(tw / 2, 1e-6), half / max(th / 2, 1e-6))
         if k < 1.0:
             fs = max(12, int(fs * k))
             font, tw, th = extent(fs)
-    cx, cy = size / 2, size / 2
-    ebox = (
-        (lay["pad"], lay["pad"], size - lay["pad"], size - lay["pad"])
-        if bubble
-        else None
-    )
+    cx, cy = W / 2, H / 2
+    ebox = (lay["pad"], lay["pad"], W - lay["pad"], H - lay["pad"]) if bubble else None
     if "pos" in lay:
         m = 8
         if bubble:
@@ -653,19 +697,19 @@ def _render_string(
             # half-axes: big enough that the inscribed rectangle holds the text
             amin = (tw / 2 + m) * 2**0.5
             bmin = (th / 2 + m) * 2**0.5
-            amax = bmax = size / 2 - m
+            amax, bmax = W / 2 - m, H / 2 - m
             ea = min(amax, max(amin, sw * amax))
             eb = min(bmax, max(bmin, sh * bmax))
-            ecx = ea + m + u * max(0.0, size - 2 * (ea + m))
-            ecy = eb + m + v * max(0.0, size - 2 * (eb + m))
+            ecx = ea + m + u * max(0.0, W - 2 * (ea + m))
+            ecy = eb + m + v * max(0.0, H - 2 * (eb + m))
             ebox = (ecx - ea, ecy - eb, ecx + ea, ecy + eb)
             rx = max(0.0, ea / 2**0.5 - tw / 2 - m / 2)
             ry = max(0.0, eb / 2**0.5 - th / 2 - m / 2)
             cx = ecx + (2 * lay["pos"][0] - 1) * rx
             cy = ecy + (2 * lay["pos"][1] - 1) * ry
         else:
-            cx = tw / 2 + m + lay["pos"][0] * max(0.0, size - tw - 2 * m)
-            cy = th / 2 + m + lay["pos"][1] * max(0.0, size - th - 2 * m)
+            cx = tw / 2 + m + lay["pos"][0] * max(0.0, W - tw - 2 * m)
+            cy = th / 2 + m + lay["pos"][1] * max(0.0, H - th - 2 * m)
     if bubble:
         for x, y in lay["dots"]:
             d.ellipse((x, y, x + 2, y + 2), fill=(150, 150, 150))
@@ -803,6 +847,23 @@ def stage_data(a):
     (out / "img").mkdir(parents=True, exist_ok=True)
     fonts = _fonts()
     print(f"fonts: {len(fonts)}", flush=True)
+    # mixed shapes (2026-09-14): every font item draws its canvas (W, H) from
+    # --shapes; corpus crops are square, so they draw from the pool's squares.
+    # Own rng stream: an unset --shapes rebuilds the old data dirs bit-identically.
+    shapes = _parse_shapes(a.shapes)
+    srng = random.Random(a.seed + 17)
+
+    def draw_shape(square: bool = False):
+        if not shapes:
+            return None
+        pool = [x for x in shapes if not square or x[0] == x[1]] or [
+            (min(x[:2]), min(x[:2]), x[2]) for x in shapes
+        ]
+        W, H, _ = srng.choices(pool, weights=[x[2] for x in pool])[0]
+        return (W, H)
+
+    def shape_rec(shp):
+        return {"shape": list(shp)} if shp else {}
 
     # eval strings first so the training pool can exclude the combos
     if a.only_chars:
@@ -919,9 +980,10 @@ def stage_data(a):
             n_combo += g
         for lid, grp in enumerate(groups):
             font = rng.choice(fonts)
-            lay = _sample_layout(len(grp[0]), rng, mode=a.layout)
+            shp = draw_shape()  # one shape per layout group: a batch is one shape
+            lay = _sample_layout(len(grp[0]), rng, size=shp or 512, mode=a.layout)
             for s in grp:
-                im, bubble = _render_string(s, font, rng, layout=lay)
+                im, bubble = _render_string(s, font, rng, size=shp or 512, layout=lay)
                 fn = out / "img" / f"font_{len(recs):05d}.png"
                 im.save(fn)
                 recs.append(
@@ -931,6 +993,7 @@ def stage_data(a):
                         "caption": (TPL_BUBBLE if bubble else TPL_PLAIN).format(s),
                         "src": "font",
                         "layout_id": lid,
+                        **shape_rec(shp),
                     }
                 )
     else:
@@ -998,7 +1061,10 @@ def stage_data(a):
                 items.append(("font", s))
                 n_combo += 1
         for i, (kind, s) in enumerate(items):
-            im, bubble = _render_string(s, rng.choice(fonts), rng, mode=a.layout)
+            shp = draw_shape()
+            im, bubble = _render_string(
+                s, rng.choice(fonts), rng, size=shp or 512, mode=a.layout
+            )
             fn = out / "img" / f"font_{i:05d}.png"
             im.save(fn)
             recs.append(
@@ -1007,6 +1073,7 @@ def stage_data(a):
                     "text": s,
                     "caption": (TPL_BUBBLE if bubble else TPL_PLAIN).format(s),
                     "src": "font",
+                    **shape_rec(shp),
                 }
             )
     # corpus crops
@@ -1024,20 +1091,27 @@ def stage_data(a):
     rng.shuffle(lines)
     lines = lines[: a.n_corpus]
     corpus_lid = len(recs)  # past every font layout id
+    shp = None
+    n_corpus_added = 0
     for j, (t, rel, box) in enumerate(lines):
+        # balanced: a corpus group of g consecutive crops shares one shape
+        if not a.balanced or n_corpus_added % a.balanced == 0:
+            shp = draw_shape(square=True)
         try:
-            im = _crop_bubble(CORPUS_TRAIN / rel, box)
+            im = _crop_bubble(CORPUS_TRAIN / rel, box, size=shp[0] if shp else 512)
         except Exception as e:  # noqa: BLE001
             print("skip", rel, e)
             continue
         fn = out / "img" / f"corpus_{j:05d}.png"
         im.save(fn)
+        n_corpus_added += 1
         recs.append(
             {
                 "file": str(fn),
                 "text": t,
                 "caption": TPL_BUBBLE.format(t),
                 "src": "corpus",
+                **shape_rec(shp),
             }
         )
     if a.balanced:
@@ -1096,6 +1170,9 @@ def stage_data(a):
     print(
         f"data: {len(recs)} train items {dict(c)}; eval {len(ev)} prompts", flush=True
     )
+    if shapes:
+        cs = Counter("x".join(map(str, r["shape"])) for r in recs)
+        print(f"shapes: {dict(sorted(cs.items()))}", flush=True)
     if a.balanced:  # whole groups side by side: layout must match within a row
         by_lid: dict = {}
         for r in recs:
@@ -1353,6 +1430,18 @@ def _ext_ids_of(cache):
     return ids
 
 
+def _shape_index(recs) -> dict | None:
+    """``{'WxH': [record indices]}`` for a data dir built with --shapes, else
+    None (every record then trains at --train_size as before)."""
+    if not recs or "shape" not in recs[0]:
+        return None
+    out: dict = {}
+    for i, r in enumerate(recs):
+        assert "shape" in r, f"record {i} has no shape in a --shapes data dir"
+        out.setdefault("x".join(map(str, r["shape"])), []).append(i)
+    return out
+
+
 def stage_train(a):
     import numpy as np
     import torch
@@ -1432,24 +1521,20 @@ def stage_train(a):
         json.dumps(cov, ensure_ascii=False, indent=1)
     )
 
-    # 2. latents
+    # 2. latents — one tensor at --train_size (square data dirs), or one
+    # tensor per canvas shape when the data stage drew --shapes (each item is
+    # encoded at its own render size; a batch is then one shape)
     t0 = time.time()
-    lat_file = data / f"latents_{a.train_size}.pt"
-    if lat_file.exists():
-        lat = torch.load(lat_file)
-    else:
-        vae = _load_vae(device)
-        lat = []
+    by_shape = _shape_index(recs_all)
+
+    def _encode(vae, files, size):
+        out = []
         with torch.no_grad():
-            for i in range(0, len(recs_all), 8):
+            for i in range(0, len(files), 8):
                 px = np.stack(
                     [
-                        np.array(
-                            Image.open(r["file"])
-                            .convert("RGB")
-                            .resize((a.train_size, a.train_size))
-                        )
-                        for r in recs_all[i : i + 8]
+                        np.array(Image.open(f).convert("RGB").resize(size))
+                        for f in files[i : i + 8]
                     ]
                 )
                 px = (
@@ -1460,14 +1545,64 @@ def stage_train(a):
                     .sub(1.0)
                     .to(device)
                 )  # IMAGE_TRANSFORMS range
-                lat.append(vae.encode_pixels_to_latents(px).float().cpu())
-        lat = torch.cat(lat)
-        torch.save(lat, lat_file)
-        del vae
-        torch.cuda.empty_cache()
-    if len(keep) != len(recs_all):
-        lat = lat[keep]
-    print(f"latents: {tuple(lat.shape)} in {time.time() - t0:.0f}s", flush=True)
+                out.append(vae.encode_pixels_to_latents(px).float().cpu())
+        return torch.cat(out)
+
+    if by_shape is None:
+        lat_file = data / f"latents_{a.train_size}.pt"
+        if lat_file.exists():
+            lat = torch.load(lat_file)
+        else:
+            vae = _load_vae(device)
+            lat = _encode(
+                vae, [r["file"] for r in recs_all], (a.train_size, a.train_size)
+            )
+            torch.save(lat, lat_file)
+            del vae
+            torch.cuda.empty_cache()
+        if len(keep) != len(recs_all):
+            lat = lat[keep]
+        row_of = None
+        print(f"latents: {tuple(lat.shape)} in {time.time() - t0:.0f}s", flush=True)
+    else:
+        lat_file = data / f"latents_mixed_{'_'.join(sorted(by_shape))}.pt"
+        if lat_file.exists():
+            lat = torch.load(lat_file)
+        else:
+            vae = _load_vae(device)
+            lat = {}
+            for shp, idxs in by_shape.items():
+                W, H = _parse_shape(shp)
+                lat[shp] = _encode(vae, [recs_all[i]["file"] for i in idxs], (W, H))
+            torch.save(lat, lat_file)
+            del vae
+            torch.cuda.empty_cache()
+        # recs_all index → (shape, row in that shape's tensor)
+        row_of = {
+            i: (shp, k) for shp, idxs in by_shape.items() for k, i in enumerate(idxs)
+        }
+        print(
+            "latents: "
+            + ", ".join(f"{shp} {tuple(lat[shp].shape)}" for shp in sorted(lat))
+            + f" in {time.time() - t0:.0f}s",
+            flush=True,
+        )
+
+    def lat_of(idx):
+        """latents for a batch of ``recs`` indices (all one shape)."""
+        if row_of is None:
+            return lat[idx]
+        ent = [row_of[keep[i]] for i in idx]
+        assert len({e[0] for e in ent}) == 1, f"mixed shapes in one batch: {ent}"
+        return lat[ent[0][0]][[e[1] for e in ent]]
+
+    n_families = 1
+    if by_shape is not None:
+        # a static block graph per distinct token count (384×512 and 512×384
+        # share one: same seq, rope comes in as a tensor)
+        n_families = len(
+            {(W // 16) * (H // 16) for W, H in map(_parse_shape, by_shape)}
+        )
 
     # 3. frozen DiT + trainables
     anima = load_dit_model(args, device, torch.bfloat16)
@@ -1609,7 +1744,7 @@ def stage_train(a):
             anima,
             None,
             backend="inductor",
-            n_token_families=1,
+            n_token_families=n_families,
             activation_memory_budget=a.activation_memory_budget,
             partitioner_aggressive_recomputation=bool(a.aggressive_recompute),
             grad_ckpt=bool(a.grad_ckpt),
@@ -1632,18 +1767,54 @@ def stage_train(a):
     order = list(range(n))
     random.Random(a.seed).shuffle(order)
     ptr = 0
+    # mixed shapes without layout groups: an epoch is every shape's items
+    # shuffled and chunked into full batches, the batch list shuffled — so a
+    # batch is one shape and each shape is drawn in proportion to its items
+    shape_batches = None
+    bptr = 0
+    if row_of is not None and groups is None:
+        by_shp: dict = {}
+        for r in range(len(recs)):
+            by_shp.setdefault(row_of[keep[r]][0], []).append(r)
+
+        def make_batches(brng: random.Random):
+            out = []
+            for shp in sorted(by_shp):
+                ids = by_shp[shp][:]
+                brng.shuffle(ids)
+                out += [
+                    ids[j : j + a.batch]
+                    for j in range(0, len(ids) - a.batch + 1, a.batch)
+                ]
+            brng.shuffle(out)
+            return out
+
+        shape_batches = make_batches(random.Random(a.seed))
+        print(
+            "batching: mixed shapes "
+            + ", ".join(f"{k} {len(v)}" for k, v in sorted(by_shp.items()))
+            + f" → {len(shape_batches)} batches/epoch of {a.batch}",
+            flush=True,
+        )
     log = []
     aug_rng = random.Random(a.seed + 11)
     killed = ""
     t0 = time.time()
     for step in range(1, a.train_steps + 1):
-        if ptr + unit > n:
-            random.Random(a.seed + step).shuffle(order)
-            ptr = 0
-        sel = order[ptr : ptr + unit]
-        ptr += unit
-        idx = groups[sel[0]] if groups else sel
-        latents = lat[idx].to(device)
+        if shape_batches is not None:
+            if bptr >= len(shape_batches):
+                shape_batches = make_batches(random.Random(a.seed + step))
+                bptr = 0
+            idx = shape_batches[bptr]
+            bptr += 1
+        else:
+            if ptr + unit > n:
+                random.Random(a.seed + step).shuffle(order)
+                ptr = 0
+            sel = order[ptr : ptr + unit]
+            ptr += unit
+            idx = groups[sel[0]] if groups else sel
+        latents = lat_of(idx).to(device)
         noise = torch.randn_like(latents)
         noisy, ts, target = fm_training_batch(
             latents,
@@ -2414,7 +2585,8 @@ def stage_eval(a):
     sd = torch.load(arm_dir / "trained.pt")
     eval_dir = arm_dir / f"eval_{a.eval_tag}" if a.eval_tag else arm_dir
     eval_dir.mkdir(parents=True, exist_ok=True)
-    args = _gen_args(a.eval_size, a.steps, a.cfg, eval_dir / "img")
+    eval_size = _parse_shape(a.eval_shape) if a.eval_shape else a.eval_size
+    args = _gen_args(eval_size, a.steps, a.cfg, eval_dir / "img")
     gen = get_generation_settings(args)
     device = gen.device
     shared = load_shared_models(args)
@@ -2801,6 +2973,19 @@ def main():
     p.add_argument("--salad_size", type=int, default=768)
     p.add_argument("--train_size", type=int, default=512)
     p.add_argument("--eval_size", type=int, default=512)
+    p.add_argument(
+        "--shapes",
+        default="",
+        help="data: mixed canvas shapes, comma list of side or WxH with an optional "
+        ":weight (e.g. '384,448,512:2,384x512,512x384'); every font item draws one, "
+        "corpus crops draw from the squares; train then batches one shape per step "
+        "and caches latents per shape. Empty = 512² renders at --train_size (old dirs)",
+    )
+    p.add_argument(
+        "--eval_shape",
+        default="",
+        help="eval: WxH canvas instead of --eval_size² (e.g. 384x512); pair with --eval_tag",
+    )
     p.add_argument("--n_single", type=int, default=6, help="font renders per kana")
     p.add_argument("--n_combo", type=int, default=700)
     p.add_argument("--n_corpus", type=int, default=600)

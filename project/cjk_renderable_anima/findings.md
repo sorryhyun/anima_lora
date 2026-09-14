@@ -24,7 +24,13 @@ Nothing is shipped; the mixed arm (plan P1) is the next gate.
 - **Renders**: 512², 28 steps, cfg 4, seeds 0/1, the trained clause
   template `Japanese text reads as "…"` on a manga bubble or plain prompt
   (`TPL_BUBBLE` / `TPL_PLAIN`); EN control `English text reads as "…"`.
-  **Never below 512²** — the base cannot spell even EN at 256² (11/24).
+  **Never below 384²** — the base cannot spell even EN at 256² (11/24) but
+  spells at 384² (24/24), where the 512² band rows read 21/36 and identity
+  still peaks at σ 0.8 (2026-09-14 gate; `rows_w24_band/eval_384/`,
+  `classify_384/`). Canvas shape is a recipe lever, not a ruler: Run 3's
+  recipe on a 384–512 mixed pool (P0a, `encoder_wds_w120_s8k_fres_warm_shp`)
+  gave singles 36/36 sfx at 512² (Run 3 33/36) and 34/36 at 384×512 at
+  0.82× the wall; eval stays at 512² unless a shape is the question.
 - **Reading**: AnimeText detector boxes, both readers (SFX reader `sfx`,
   PaddleOCR-VL `vl`); `report.md` scores the best box per image, the
   per-item tables quote the **largest detector box**. `exact` is the
@@ -119,7 +125,9 @@ Nothing is shipped; the mixed arm (plan P1) is the next gate.
 
 ## Settled — what does not move it
 
-- 256² training (dead: no text competence there); balanced batches (FM
+- 256² training under the default σ (dead: EN 11/24 there; 384² is alive
+  and the band is the same, so this is one tier, not "below 512²");
+  balanced batches (FM
   loss is a batch mean, free rows only see their own items); rows lr 3e-3
   (walks off-manifold at 2.4× row norm); `--t_max 0.6` (backwards —
   identity is above it); adapter LoRA (`rows_adapter`: drifts EN, kept as
