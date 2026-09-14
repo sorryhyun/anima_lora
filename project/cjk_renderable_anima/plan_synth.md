@@ -269,6 +269,39 @@ a leak that climbs with the flat share says the split is not doing its
 job) and `--delta_parts f,c` on `native` (expect `f` alone to hit — the
 whole point of the switch).
 
+**S0 result (2026-09-15, `history.md`): hit & kept 15/64 (P0b 2), kept
+48/64, singles 20/36, word 3/32 — mechanism confirmed, every gate missed;
+`c_flat` absorbed the bubble flat layout, the plain one leaked into `f`
+(leak 0.28); ×1.5 / ×2 scale lose hits (off-manifold), eval without
+`c_flat` is worse, so neither magnitude nor the switch at eval explains
+the singles.** Next-run candidates were (a) **one flat layout** — every
+flat item drawn with the bubble (the eval template), so `c_flat` is one
+direction; or (b) `c_flat` keyed by caption template (bubble / plain);
+plus the identity budget — composite glyph floor 32 → 48 px on a larger
+`--scene_min_box`, or flat share 40 → 50 %. The pre-registered hybrid
+isolation run (`--arm encoder`, same data) stays available but the leak
+split already names a data × parametrisation interaction, so it is not
+first.
+
+**S0b (user, 2026-09-15 — launched; `history.md`): (a)**, `--flat_bubble
+1.0` (the plain layout had no job left once the composites carry the
+augmentation — and P0b held 36/36 with both layouts in `f`, so the plain
+leak explains wipes, not singles), plus two data fixes found on the S0
+sheets: **`--scene_fill 0.7`** (the glyph filled 90 % of the bubble
+region; 0.7 leaves manga-like air, median single 58 → 51 px, and cuts
+composite phrases 851 → 295 since the capacity check scales with it) and
+the **`erase_miss` gate** (`--scene_max_residual 0.5`: 12 of s0's 186 kept
+scenes had the flood on another blob, so the EN anchor stayed under the
+kana and the region was not the anchor's bubble — ≈ 400 S0 composites
+trained on "hey" + ぐ; s0 re-judged 186 → 174). `--c_flat_cap` 0.75 →
+1.5 (pinned from step 600 in S0 while leak climbed; a shared vector
+carries no per-glyph identity, so the cap guarded nothing). Same 24 k
+recipe otherwise, data `synth_s0b`, arm `rows_synth_s0b_s24k_S0b`. Expect:
+leak ≪ 0.28, kept → ≥ 56, hit & kept up through fewer wipes; singles
+recover only if the layout leak was costing `f` — if they stay near 20
+with the fill and gate in, the lever is composite glyph size / phrase
+share, not layout.
+
 Outcomes: pass → S1 (strings, repeat mode) warm-starts from the S0 table
 on this data.
 Scene-kept passes, hit falls (glyph too weak inside a real bubble) →

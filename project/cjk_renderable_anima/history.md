@@ -904,6 +904,98 @@ it/s at step 25 (compile warm-up; the un-compiled first try OOMed at
 norm 0.12 after 25 steps. **S0 jobs**: train + eval `20260914-235607-0ac29b`,
 native `20260914-235621-7e903c` (gates in `plan_synth.md`).
 
+### S0 result (2026-09-15 morning): mechanism yes, gates no
+
+Jobs `20260914-235607-0ac29b` (train 184.7 min at 2.52 it/s + eval) and
+`20260914-235621-7e903c` (native, 17.8 min). Table at 24k: mean 0.70 row
+norms (P0b 1.5), max 2.1, `c_flat` pinned at its 0.75 cap from step ≈ 600,
+`leak` 0.11 → 0.20 → 0.28 (flattening; P0b's table reads ≈ 1).
+
+| gate | S0 | bar | P0b |
+|---|---|---|---|
+| native hit & kept | **15/64** | ≥ 24 | 2 |
+| native scene kept | 48/64 | ≥ 56 | 28 |
+| native hit (either ruler) | 25/64 | – | 32 |
+| single | 20/36 | ≥ 30 | 36 |
+| single_ext | 21/36 | ≥ 18 | 19 |
+| single_kanji | 26/36 | ≥ 22 | 27 |
+| word | 3/32 | ≥ 8 | 11 |
+| phrase_held | 1/32 | > 0 | – |
+| en | 24/24 | 24 | 24 |
+
+**What moved.** The composites decouple canvas from glyph: hit & kept 2 →
+15, scene kept 28 → 48, with the same hit count order as P0b. The switch
+holds what it was built to hold: `c` alone = 0 hits, kept 53/64 (it draws
+nothing); `fc` = 31 hits but kept 29 — it draws the *training bubble* (big
+white ellipse on a dark ground, `sheet_か_en.png` fc column). So `c_flat`
+absorbed the **bubble** flat layout. The remaining wipes in `trained` (16
+of 64) are the other flat layout — the bare canvas + big glyph of
+`TPL_PLAIN` (40 % of flat singles draw no bubble) — which one shared vector
+could not also take, and which is what `leak` 0.28 measures.
+
+**What it cost.** Identity: singles 36 → 20 (either-reader 20, so not
+reader noise; 9 more tiles draw the glyph *with extra glyphs* — ぬる,
+かかい — a phrase habit), word 11 → 3. ぐ 0/16 on `trained` — drawn as く,
+dakuten gone — while `fc` draws ぐ 8/16: a small mark is ~4 px inside a
+composite bubble, so the rows learned it only on flat items, i.e. jointly
+with `c_flat`. Eval **without** `c_flat` (`eval_noc/`, job
+`20260915-051751-4b7b1c`): single 17, ext 19, word 0 — `f` alone is a
+little worse on the flat template, so the loss is in `f`, not an artefact
+of adding the switch at eval.
+
+**Magnitude is not the lever, in either direction** (`native_x1.5/`,
+`native_x2.0/`, jobs `20260915-051851-69d35d` / `-c7a53a`, `--kept_ref`
+this run's floor): ×1.5 → hit 10, kept 57, hit & kept 7; ×2 → hit 0, kept
+60. Scaling the rows up takes the address off-manifold and the DiT falls
+back to floor garble with the scene intact — the mirror of P0b's ×0.5
+probe. The table is at its useful scale.
+
+**Read.** S0 answers the plan's question — the layout prior *is* removable
+by data, and per-source `c_flat` is the right shape of fix — but the flat
+share came in two layouts (bubble / plain) and a single vector took one of
+them; the other leaked into `f`, and the composites' small glyphs bought
+scene survival at the price of identity for small marks and words. Not a
+magnitude problem, not a reader problem. Decision on S0b owed (user):
+one flat layout (bubble only, = the eval template) so `c_flat` is one
+direction, or `c_flat` keyed by template; and the identity budget (flat
+share / composite glyph floor) — see `plan_synth.md` outcomes.
+
+### S0b build + launch (2026-09-15 morning): one flat layout, smaller composite glyphs, erase gate
+
+Two data defects read off the S0 sheets before the S0b decision:
+
+- **Erase miss** (user's hunch: EN and JA coexisting in a bubble). The
+  composite erase paints only inside the bubble's flood interior; when the
+  flood took another blob the anchor was never painted and the usable
+  region was not the anchor's bubble either — NO!/ユ, yes/と, wow/家,
+  huh/ピ drawn straight over the letters. Measured with the erase's own
+  geometry (`anchor_residual`: share of the anchor's ink the paint leaves
+  standing): **12 of 186 kept scenes at ≥ 0.89**, every other kept scene
+  ≤ 0.31 and clean on the sheet (edge pixels). Each scene serves ≈ 34
+  swaps, so ≈ 400 S0 composites (6 %) trained "reads as ぐ" on an image
+  showing hey + ぐ — a candidate for part of S0's phrase habit (extra
+  glyphs beside the kana). Gate `--scene_max_residual 0.5` → reason
+  `erase_miss`; `--scene_rejudge 1` on s0: **186 → 174**, exactly the 12.
+- **Glyph size** (user): the text block was fitted to 90 % of the usable
+  region, a lone kana edge to edge. `--scene_fill` (default 0.9 = S0);
+  on the s0 scenes 0.7 → median single 50 px, 92 % ≥ 40 px, 59 % ≥ 48 px;
+  0.6 → 43 px, 67 % ≥ 40. Chosen 0.7. Side effect: `region_capacity`
+  scales with it, so composite phrases fall 851 → 295 (the median bubble
+  now holds one glyph); small kana inside composite words get ≈ ⅓ of
+  S0's exposure.
+
+**Decision (user):** option (a) — `--flat_bubble 1.0`, every flat item in
+the font bubble, plain `TPL_PLAIN` items gone (S0: 40 % of font singles,
+32 % of phrases). Cap `--c_flat_cap 1.5` (Claude's call, user deferred).
+
+**Data `synth_s0b`** (S0 argv + the three flags, 6.5 min CPU): 15 967 =
+6 400 font + 3 200 phrase + 6 367 scene (6 072 single / 295 phrase) over
+174 scenes; 0 plain captions; composite single box short side p10 43 /
+median 51 px; the 33 missing items are bubbles that hold no glyph at
+32 px after the 0.7 fill. **Jobs:** train + eval `20260915-084732-b88c27`
+(`--c_flat_cap 1.5`, else S0's recipe), native `20260915-085011-e34f12`
+(queued; same 8 prompts × あかすぐ × 2 seeds, `full,c,fc`).
+
 ### Shelved W2 levers (do not reopen without a new reason)
 
 - Same-noise classifier CE / swap hinge on free rows: valid for singles,

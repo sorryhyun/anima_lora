@@ -140,7 +140,12 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
         s = draws[kind]()
         shp = shapes.draw()
         im, bubble = render_string(
-            s, rng.choice(fonts), rng, size=shp or 512, mode=a.layout
+            s,
+            rng.choice(fonts),
+            rng,
+            size=shp or 512,
+            mode=a.layout,
+            bubble_frac=a.flat_bubble,
         )
         fn = out / "img" / f"{src}_{i:05d}.png"
         im.save(fn)
@@ -173,7 +178,7 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
         # the region holds `cap` glyphs at --scene_min_glyph: draw texts of
         # the kind until one is short enough (cheap, no render), singles
         # when the kind never fits; the render can still refuse (font width)
-        cap = region_capacity(sc["region"], a.scene_min_glyph)
+        cap = region_capacity(sc["region"], a.scene_min_glyph, a.scene_fill)
         drawn = None
         for attempt in range(6):
             text = None
@@ -193,6 +198,7 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
                 rng,
                 min_glyph=a.scene_min_glyph,
                 stroke=rng.random() < a.scene_stroke,
+                fill_frac=a.scene_fill,
             )
             if drawn is not None:
                 break

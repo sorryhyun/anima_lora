@@ -111,7 +111,7 @@ svg .tok{font-family:var(--mono);font-size:13px;fill:var(--ink)}
 <header>
   <div class="eyebrow">project/cjk_renderable_anima · wake line</div>
   <h1>CJK Renderable Anima</h1>
-  <p class="dek">Anima already holds Japanese glyph units in its weights; it garbles them because the T5-side query stream never gave them an address. This line trains only that address — a delta <em>Δ</em> on the vocab pack's ext rows — through a DiT, adapter and text encoder that never move.</p>
+  <p class="dek">Anima already holds Japanese glyph units in its weights; it garbles them because the T5-side query stream never gave them an address. This line trains only that address — a delta <em>Δ</em> on the vocab pack's ext rows — through a DiT, adapter and text encoder that never move. What ships is the pack itself, with the trained rows baked in.</p>
 </header>
 
 <figure>
@@ -185,7 +185,9 @@ svg .tok{font-family:var(--mono);font-size:13px;fill:var(--ink)}
       <path class="wire" d="M476 700V536H405" marker-end="url(#ah)"/>
       <text x="486" y="624" class="sm">K, V</text>
 
-      <<!-- ============ PANEL B: text conditioning, up close ============ -->
+    </g>
+
+    <!-- ============ PANEL B: text conditioning, up close ============ -->
     <rect x="590" y="30" width="470" height="850" class="zoom"/>
     <g>
       <!-- output -->
@@ -278,11 +280,11 @@ svg .tok{font-family:var(--mono);font-size:13px;fill:var(--ink)}
 
 <section>
   <h2>The address, written out</h2>
-  <p class="lede">What the pack-ext cell computes for row <span class="mi">r</span>. Of these symbols only <span class="mi">f</span> and <span class="mi">c</span> take gradient in P0b. <span class="mi">ρ</span> and <span class="mi">s</span> are not tuned.</p>
+  <p class="lede">The only thing trained is the ext-row table <span class="mi">Ẽ</span> that <code>llm_adapter.embed</code> reads. (2) is how its offset <span class="mi">Δ</span> is parametrised during training: a frozen glyph prior, a shared vector <span class="mi">c</span>, and a free per-row residual <span class="mi">f</span>. In P0b only <span class="mi">c</span> and <span class="mi">f</span> take gradient, and since <span class="mi">c</span> is shared, <span class="mi">f<sub>r</sub></span> is the per-row degree of freedom. It is, in effect, row <span class="mi">r</span> itself. <span class="mi">ρ</span> and <span class="mi">s</span> are not tuned.</p>
   <div class="eqs" role="math">
     <div class="eq"><span><i>Ẽ</i><sub><i>r</i></sub> = <i>E</i><sub><i>r</i></sub> + <i>s</i> <i>ρ</i> <i>Δ</i><sub><i>r</i></sub></span><span class="n">(1)</span></div>
     <div class="eq"><span><i>Δ</i><sub><i>r</i></sub> = <i>α</i> ( <i>ψ</i><sub><i>θ</i></sub>(<i>x</i><sub><i>r</i></sub>) − <i>ψ̄</i> ) + <i>c</i> + 𝟏[<i>r</i> ∈ ℛ<sub>tr</sub>] <i>f</i><sub><i>r</i></sub><span class="side">‖<i>c</i>‖ ≤ 0.75</span></span><span class="n">(2)</span></div>
-    <div class="eq"><span>ℒ = ‖ <i>v</i><sub><i>φ</i></sub>(<i>z</i><sub><i>σ</i></sub>, <i>σ</i>, <i>T</i>(caption; <i>E</i> + <i>ρΔ</i>)) − (<i>ε</i> − <i>z</i><sub>0</sub>) ‖² + <i>μ</i> · mean<sub><i>r</i> ∈ ℛ<sub>tr</sub></sub> ‖<i>f</i><sub><i>r</i></sub>‖²<span class="side"><i>σ</i> ~ U[0.7, 0.9]</span></span><span class="n">(3)</span></div>
+    <div class="eq"><span>ℒ = ‖ <i>v</i><sub><i>φ</i></sub>(<i>z</i><sub><i>σ</i></sub>, <i>σ</i>, <i>T</i>(caption; <i>Ẽ</i>)) − (<i>ε</i> − <i>z</i><sub>0</sub>) ‖² + <i>μ</i> · mean<sub><i>r</i> ∈ ℛ<sub>tr</sub></sub> ‖<i>f</i><sub><i>r</i></sub>‖²<span class="side"><i>σ</i> ~ U[0.7, 0.9]</span></span><span class="n">(3)</span></div>
   </div>
   <div class="scroll">
   <table class="sym">
@@ -291,10 +293,10 @@ svg .tok{font-family:var(--mono);font-size:13px;fill:var(--ink)}
       <tr><td>ρ</td><td class="num">≈ 195</td><td><span class="tag k">constant</span></td><td>Mean pack-row norm over ℛ<sub>tr</sub>, measured once from <span class="mi">E</span>. Sets the units, so ‖<span class="mi">Δ<sub>r</sub></span>‖ = 1 moves a row by its own length.</td></tr>
       <tr><td>s</td><td class="num">0 or 1</td><td><span class="tag k">switch</span></td><td>Eval only: 0 renders the floor (bare pack), 1 the trained table. Always 1 in training.</td></tr>
       <tr><td>α</td><td class="num">2⁻⁴</td><td><span class="tag h">hyperparam</span></td><td><code>--out_scale</code> on the zero-init encoder head (default 2⁻⁶, raised one notch).</td></tr>
-      <tr><td>μ</td><td class="num">10⁻³</td><td><span class="tag h">hyperparam</span></td><td>L2 pull on <span class="mi">f</span>. Anything the encoder can explain gets pushed into <span class="mi">g</span>.</td></tr>
+      <tr><td>μ</td><td class="num">10⁻³</td><td><span class="tag h">hyperparam</span></td><td>Weight of the L2 pull on <span class="mi">f</span>, averaged over trained rows. It is a regulariser, not the learning signal, which comes from the flow loss. It keeps each row near its prior plus <span class="mi">c</span>. With <span class="mi">ψ<sub>θ</sub></span> frozen, nothing else can absorb what it shrinks except the shared <span class="mi">c</span>.</td></tr>
       <tr><td>c</td><td class="num">1024</td><td><span class="tag t">trained</span></td><td>Shared layout vector holding the common mode that <span class="mi">ψ̄</span> removes. lr 1e-3. Projected back to ‖<span class="mi">c</span>‖ ≤ 0.75 after each step, and that cap (<code>--common_cap</code>) is the hyperparameter.</td></tr>
-      <tr><td>f<sub>r</sub></td><td class="num">rows × 1024</td><td><span class="tag t">trained</span></td><td>Free per-row residual, only for rows in training captions. lr 1e-3. Carries the identity the DiT actually reads.</td></tr>
-      <tr><td>ψ<sub>θ</sub></td><td class="num">3.4M</td><td><span class="tag z">held · lr 0</span></td><td>Glyph CNN, warm from earlier runs. It is a prior, not the identity.</td></tr>
+      <tr><td>f<sub>r</sub></td><td class="num">rows × 1024</td><td><span class="tag t">trained</span></td><td>Free per-row residual, only for rows in training captions. lr 1e-3. The per-row trainable value: it carries the identity the DiT actually reads.</td></tr>
+      <tr><td>ψ<sub>θ</sub></td><td class="num">3.4M</td><td><span class="tag z">held · lr 0</span></td><td>Glyph CNN, warm from earlier runs (<code>--lr_enc 0</code>). A frozen offset: it sets where each trained row starts, and it is the only per-row term for rows with no <span class="mi">f</span> (held-out, eval-only). It is a prior, not the identity.</td></tr>
       <tr><td>x<sub>r</sub></td><td class="num">96²</td><td><span class="tag k">input</span></td><td>Row <span class="mi">r</span>'s piece text rendered in 15 fonts and averaged. <img class="thumb" src="data:image/jpeg;base64,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" alt="mean glyph render"></td></tr>
       <tr><td>ψ̄</td><td class="num">1024</td><td><span class="tag k">derived</span></td><td>Mean encoder output over the table. Subtracting it keeps the shared weights from getting a same-direction push on every row.</td></tr>
       <tr><td>E</td><td class="num">69 558 × 1024</td><td><span class="tag z">frozen</span></td><td>Pack ext rows. Qwen3, the LLM adapter, DiT and VAE are frozen too.</td></tr>
@@ -302,6 +304,7 @@ svg .tok{font-family:var(--mono);font-size:13px;fill:var(--ink)}
   </table>
   </div>
   <p class="lede">Optimizer: AdamW (0.9, 0.99), batch 4, cosine decay. The σ band sits where W2 found glyph identity is decided.</p>
+  <p class="lede"><b>After training</b> the parametrisation is thrown away. For every ext id, <span class="mi">ρΔ<sub>r</sub></span> is added into the pack row (<code>deploy_plan.md</code> § What gets baked), and <span class="mi">ψ<sub>θ</sub></span>, <span class="mi">c</span> and <span class="mi">f</span> are gone. What ships is an ordinary vocab pack with no hook, and gate G0 checks that the baked pack renders what the hook eval rendered.</p>
 </section>
 
 <section>
@@ -323,7 +326,7 @@ svg .tok{font-family:var(--mono);font-size:13px;fill:var(--ink)}
 <section>
   <h2>Why a row, not a script</h2>
   <div class="prose">
-    <p>A trained row is an <em>address</em>, not a shape coordinate. Held-out kana stay at 2–5/64 whatever the encoder does, so identity lives in <span class="mi">f</span> and <span class="mi">g</span> is only a prior. Every row needs its own exposure, roughly 40 renders or more.</p>
+    <p>A trained row is an <em>address</em>, not a shape coordinate. Held-out kana stay at 2–5/64 whatever the encoder does, so identity lives in <span class="mi">f</span> and the encoder term <span class="mi">α(ψ<sub>θ</sub> − ψ̄)</span> is only a prior. Every row needs its own exposure, roughly 40 renders or more.</p>
     <p>A row can be a whole word: Qwen merges <span class="jp">します</span> or <span class="jp">ありがとう</span> into one piece, and the DiT draws it as one unit. A sequence of rows still renders a single piece — that is the strings problem P1 takes on.</p>
     <p>P0b, running now, scales the table to about 400 rows: the 68 voiced and small kana plus the 100 most frequent single-row kanji, 24 000 steps on the 384–512 canvas pool.</p>
   </div>

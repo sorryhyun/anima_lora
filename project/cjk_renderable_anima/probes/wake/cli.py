@@ -443,6 +443,23 @@ def _synth_args(g):
         "a text that would go smaller is redrawn shorter",
     )
     g.add_argument(
+        "--flat_bubble",
+        type=float,
+        default=0.6,
+        help="data: --scenes share of flat-canvas items (font singles / phrases) "
+        "drawn inside a speech bubble; the rest are bare-canvas TPL_PLAIN. "
+        "1.0 = S0b option (a): one flat layout, so c_flat is one direction "
+        "(S0 at 0.6 leaked the plain layout into the rows, leak 0.28)",
+    )
+    g.add_argument(
+        "--scene_fill",
+        type=float,
+        default=0.9,
+        help="data: --scenes fraction of the bubble's usable region the text "
+        "block may fill (0.9 = edge to edge, S0; 0.7 leaves manga-like air — "
+        "at 0.7 the median single glyph is ≈ 50 px on the s0 scenes, 92 %% ≥ 40 px)",
+    )
+    g.add_argument(
         "--n_phrase_eval",
         type=int,
         default=16,
@@ -546,6 +563,14 @@ def _scene_args(g):
         type=int,
         default=56,
         help="scenes: reject usable regions under this many px on the short side",
+    )
+    g.add_argument(
+        "--scene_max_residual",
+        type=float,
+        default=0.5,
+        help="scenes: reject when more than this share of the anchor's ink would "
+        "survive the composite erase (the flood took another blob; s0: 12/186 "
+        "kept scenes at ≥ 0.89, every clean scene ≤ 0.31)",
     )
     g.add_argument(
         "--scene_char_frac",

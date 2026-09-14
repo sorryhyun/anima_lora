@@ -30,6 +30,7 @@ from pathlib import Path
 
 from wake.bubble import bubble_bbox, bubble_mask
 from wake.common import OUT, norm, parse_shapes
+from wake.render import anchor_residual
 from wake.models import decode_image, gen_args, load_generator, load_vae
 from wake.readers import Readers, contact_sheet, load_bgr
 
@@ -310,6 +311,7 @@ def stage_scenes(a):
                 "regions",
                 "bubbles",
                 "read",
+                "residual",
             ):
                 it.pop(k, None)
             it["reason"] = _judge(a, it, reads, load_bgr(Path(it["file"])))
@@ -455,6 +457,7 @@ def _report_scenes(a, out: Path, items: list[dict]):
         "shape",
         "seed",
         "read",
+        "residual",
     )
     (out / "scenes.jsonl").write_text(
         "\n".join(
@@ -472,12 +475,21 @@ def _report_scenes(a, out: Path, items: list[dict]):
         "",
         f"prompt: `{TPL_SCENE.format(tags='<rating, count, character, copyright, @artist, generals sorted>', anchor='<anchor>')}`; "
         f"shapes `{a.scene_shapes}` × gen scale {a.scene_gen_scale}; batch {a.scene_batch}; "
-        f"{a.steps} steps cfg {a.cfg}; negative `{a.scene_negative}`; min box {a.scene_min_box} px",
+        f"{a.steps} steps cfg {a.cfg}; negative `{a.scene_negative}`; min box {a.scene_min_box} px; "
+        f"max erase residual {a.scene_max_residual}",
         "",
         "| reason | n | share |",
         "|---|---|---|",
     ]
-    for k in ("pass", "no_box", "multi_box", "read_miss", "small_box", "open_bubble"):
+    for k in (
+        "pass",
+        "no_box",
+        "multi_box",
+        "read_miss",
+        "small_box",
+        "open_bubble",
+        "erase_miss",
+    ):
         lines.append(
             f"| {k} | {reasons.get(k, 0)} | {reasons.get(k, 0) / max(1, n):.0%} |"
         )
@@ -615,6 +627,13 @@ def _judge(a, it: dict, reads: list, bgr) -> str:
         return "open_bubble"
     if any(min(g[2] - g[0], g[3] - g[1]) < a.scene_min_box for g in it["regions"]):
         return "small_box"
+    # the erase the data stage will run must actually remove the anchor:
+    # a flood that took another blob leaves the letters under the kana
+    it["residual"] = max(
+        anchor_residual(bgr, b, g) for b, g in zip(boxes, it["regions"])
+    )
+    if it["residual"] > a.scene_max_residual:
+        return "erase_miss"
     return "pass"
 
 

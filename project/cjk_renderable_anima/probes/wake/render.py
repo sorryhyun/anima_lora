@@ -50,7 +50,13 @@ JITTER_INK_LIGHT = [
 ]
 
 
-def sample_layout(n: int, rng: random.Random, size=512, mode: str = "v1") -> dict:
+def sample_layout(
+    n: int,
+    rng: random.Random,
+    size=512,
+    mode: str = "v1",
+    bubble_frac: float = 0.6,
+) -> dict:
     """Every random choice of one render for an ``n``-char string, drawn in the
     pre-W2a order so unbalanced data dirs rebuild bit-identically.
 
@@ -66,7 +72,10 @@ def sample_layout(n: int, rng: random.Random, size=512, mode: str = "v1") -> dic
     # glyph-to-canvas statistics (a 512 draw is bit-identical: int(x * 1.0)).
     W, H = wh(size)
     sc = min(W, H) / 512
-    lay = {"bubble": rng.random() < 0.6}
+    # the draw is consumed whatever the share, so 1.0 (S0b option (a): every
+    # flat item inside the bubble, one flat layout for ``c_flat``) keeps the
+    # rest of the sequence bit-identical to the 0.6 build
+    lay = {"bubble": rng.random() < bubble_frac}
     lay["bg"] = rng.choice(
         ["white", "white", (235, 235, 235), (245, 240, 230), (220, 225, 235)]
     )
@@ -119,15 +128,19 @@ def render_string(
     size=512,
     layout=None,
     mode: str = "v1",
+    bubble_frac: float = 0.6,
 ):
     """``layout`` (from ``sample_layout``) pins canvas/bubble/size/position so
-    several strings render in the same layout; ``None`` draws a fresh one.
-    Returns ``(image, drew_bubble)``."""
+    several strings render in the same layout; ``None`` draws a fresh one
+    (``bubble_frac`` = share drawn inside a bubble). Returns ``(image,
+    drew_bubble)``."""
     from PIL import Image, ImageDraw, ImageFont
 
     n = len(text)
     W, H = wh(size)
-    lay = layout if layout is not None else sample_layout(n, rng, size, mode)
+    lay = (
+        layout if layout is not None else sample_layout(n, rng, size, mode, bubble_frac)
+    )
     bubble, bg, fs, color = lay["bubble"], lay["bg"], lay["fs"], lay["color"]
     im = Image.new("RGB", (W, H), bg)
     d = ImageDraw.Draw(im)
@@ -220,14 +233,23 @@ def crop_bubble(img_path: Path, box, size=512):
 # S line (plan_synth): draw JA text into a generated scene's bubble
 
 
-def fit_text(d, text: str, font_path: str, region, vertical: bool, min_glyph: int):
-    """Largest font size whose text block fits ``region`` (inner 90 %); the
-    glyph cell must be at least ``min_glyph`` px, else ``None``. Returns
-    ``(font, fs, tw, th)``."""
+def fit_text(
+    d,
+    text: str,
+    font_path: str,
+    region,
+    vertical: bool,
+    min_glyph: int,
+    fill_frac: float = 0.9,
+):
+    """Largest font size whose text block fits ``region`` (inner
+    ``fill_frac`` — 0.9 fills the bubble edge to edge, ``--scene_fill`` 0.7
+    leaves manga-like air around the glyphs); the glyph cell must be at
+    least ``min_glyph`` px, else ``None``. Returns ``(font, fs, tw, th)``."""
     from PIL import ImageFont
 
     rx0, ry0, rx1, ry1 = region
-    rw, rh = (rx1 - rx0) * 0.9, (ry1 - ry0) * 0.9
+    rw, rh = (rx1 - rx0) * fill_frac, (ry1 - ry0) * fill_frac
     n = len(text)
     if vertical:
         fs = int(min(rw, rh / (n * 1.05)))
@@ -252,13 +274,57 @@ def fit_text(d, text: str, font_path: str, region, vertical: bool, min_glyph: in
     return None
 
 
-def region_capacity(region, min_glyph: int) -> int:
+def region_capacity(region, min_glyph: int, fill_frac: float = 0.9) -> int:
     """How many glyphs the region holds at ``min_glyph`` px per cell along
-    its long side (vertical when taller than wide), inner 90 %."""
-    rw, rh = (region[2] - region[0]) * 0.9, (region[3] - region[1]) * 0.9
+    its long side (vertical when taller than wide), inner ``fill_frac``."""
+    rw, rh = (region[2] - region[0]) * fill_frac, (region[3] - region[1]) * fill_frac
     if rh > rw:
         return int(rh / (min_glyph * 1.05)) if rw >= min_glyph else 0
     return int(rw / min_glyph) if rh >= min_glyph else 0
+
+
+def erase_paint(arr, tb, reg):
+    """Bool HxW mask of what the composite erase paints for one anchor: the
+    usable region ∪ the text box padded by a quarter of its size (detector
+    boxes run tight), clipped to the bubble interior (flood mask, letter
+    holes filled — a rectangle's corners would poke past a round outline).
+    ``None`` when no bubble mask is found."""
+    import numpy as np
+
+    H, W = arr.shape[:2]
+    x0, y0, x1, y1 = (int(v) for v in tb)
+    px, py = (x1 - x0) // 4 + 4, (y1 - y0) // 4 + 4
+    ex0, ey0 = max(0, min(reg[0], x0 - px)), max(0, min(reg[1], y0 - py))
+    ex1, ey1 = min(W, max(reg[2], x1 + px)), min(H, max(reg[3], y1 + py))
+    m = bubble_mask(arr, tb)
+    if m is None:
+        return None
+    paint = np.zeros((H, W), dtype=bool)
+    paint[ey0:ey1, ex0:ex1] = True
+    paint &= bubble_interior(m)
+    return paint
+
+
+def anchor_residual(arr, tb, reg, tol: int = 24) -> float:
+    """Share of the anchor's ink (pixels in the text box farther than ``tol``
+    from the ring-median fill) that ``erase_paint`` would leave standing.
+    ≈ 0 for a bubble the flood found (edge pixels only); ≈ 1 when the flood
+    took another blob — the letters survive under the drawn kana and the
+    usable region is not this bubble's (s0: 12 of 186 kept scenes). 1.0
+    when there is no bubble mask."""
+    import numpy as np
+
+    paint = erase_paint(arr, tb, reg)
+    if paint is None:
+        return 1.0
+    H, W = arr.shape[:2]
+    x0, y0, x1, y1 = (int(v) for v in tb)
+    fill = np.array(ring_median(arr, tb), dtype=np.int16)
+    sub = np.zeros((H, W), dtype=bool)
+    sub[max(0, y0 - 2) : min(H, y1 + 2), max(0, x0 - 2) : min(W, x1 + 2)] = True
+    ink = (np.abs(arr.astype(np.int16) - fill).max(axis=2) > tol) & sub
+    n = int(ink.sum())
+    return float((ink & ~paint).sum()) / n if n else 0.0
 
 
 def render_into_scene(
@@ -268,14 +334,16 @@ def render_into_scene(
     rng: random.Random,
     min_glyph: int = 40,
     stroke: bool = False,
+    fill_frac: float = 0.9,
 ):
     """Erase every anchor bubble's usable region (plus the text box padded by
     a quarter of its size — detector boxes run tight) with the bubble's
     ring-median colour, only *inside the bubble interior* (flood mask,
     letter holes filled — a rectangle's corners would poke past a round
     outline), and draw ``text``
-    fitted into the headline region — vertical when the region is taller
-    than wide (the base draws tall manga bubbles). Returns ``(image, drawn
+    fitted into the inner ``fill_frac`` of the headline region — vertical
+    when the region is taller than wide (the base draws tall manga
+    bubbles). Returns ``(image, drawn
     text box)`` or ``None`` when the text does not fit at ``min_glyph`` px
     per glyph (the caller draws a shorter text). Other anchor bubbles are
     left erased (empty bubble). ``stroke``: a thin outline in the fill colour
@@ -291,23 +359,16 @@ def render_into_scene(
     for tb, reg in zip(scene["boxes_anchor"], scene["regions"]):
         fill = ring_median(arr, tb)
         fills.append(fill)
-        x0, y0, x1, y1 = (int(v) for v in tb)
-        px, py = (x1 - x0) // 4 + 4, (y1 - y0) // 4 + 4
-        ex0, ey0 = max(0, min(reg[0], x0 - px)), max(0, min(reg[1], y0 - py))
-        ex1, ey1 = min(W, max(reg[2], x1 + px)), min(H, max(reg[3], y1 + py))
-        m = bubble_mask(arr, tb)
-        if m is None:
+        paint = erase_paint(arr, tb, reg)
+        if paint is None:
             return None
-        paint = np.zeros((H, W), dtype=bool)
-        paint[ey0:ey1, ex0:ex1] = True
-        paint &= bubble_interior(m)
         arr[paint] = fill
     im = Image.fromarray(arr)
     d = ImageDraw.Draw(im)
     region = scene["region"]
     rw, rh = region[2] - region[0], region[3] - region[1]
     vertical = len(text) > 1 and rh > rw
-    fit = fit_text(d, text, font_path, region, vertical, min_glyph)
+    fit = fit_text(d, text, font_path, region, vertical, min_glyph, fill_frac)
     if fit is None:
         return None
     font, fs, tw, th = fit
