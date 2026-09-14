@@ -14,6 +14,10 @@ artefact ships as an ordinary vocab pack.
 criteria, recipe of record); [`findings.md`](findings.md) holds the settled
 verdicts one screen per topic; `plan_wake.md` is the dated run record
 (W2d Runs 1–3, order probe, σ diagnostic, strings arm, canvas-shape gate).
+[`diagram.html`](diagram.html) is the one-figure picture of what trains and
+how (frozen Anima path + the hybrid address table; open in a browser).
+[`datacheck.md`](datacheck.md): the corpus-crop labels are mostly wrong OCR
+reads of hand-lettered SFX — read before trusting `line` / `corpus` evals.
 
 ## What is established (2026-09-14)
 
