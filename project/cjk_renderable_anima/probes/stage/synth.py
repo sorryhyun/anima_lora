@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import random
 from collections import Counter
+from pathlib import Path
 
 from wake.common import (
     CORPUS_HELD,
@@ -34,7 +35,7 @@ from wake.common import (
     TPL_PLAIN,
     TPL_SCENE_JA,
 )
-from wake.inventory import clean_kana_strings, corpus_lines, pieces
+from wake.inventory import clean_kana_strings, corpus_lines, phrase_file_lines, pieces
 from wake.readers import contact_sheet
 from wake.render import pick_font, region_capacity, render_into_scene, render_string
 
@@ -93,29 +94,60 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
         inv.evals.update(flip=flip_eval, str3=str3_eval)
         excl |= set(flip_eval) | set(str3_eval)
 
-    # natural phrases: covered training-corpus lines (frequency-weighted list)
-    train_lines = [
-        t
-        for t, _rel, _box in corpus_lines(CORPUS_TRAIN / "boxes.jsonl", a.line_max_len)
-        if len(pieces(tok, qmap, t)) >= 2 and inv.piece_ok(t)
-    ]
-    train_set = set(train_lines)
-    held_lines = []
-    for t, _rel, _box in corpus_lines(CORPUS_HELD / "boxes.jsonl", a.line_max_len):
-        if (
-            t in train_set
-            or t in held_lines
-            or t in inv.evals.get("line", ())
-            or len(pieces(tok, qmap, t)) < 2
-            or not inv.piece_ok(t)
-        ):
-            continue
-        held_lines.append(t)
+    # natural phrases: covered training-corpus lines (frequency-weighted list),
+    # or — sentence line (2026-09-16) — the lines of ``--phrase_file`` with the
+    # held set taken by *book* (``--phrase_held_books``), so phrase_held is
+    # never-trained text from never-trained pages
+    if a.phrase_file:
+        plines = phrase_file_lines(
+            Path(a.phrase_file), a.phrase_min_pieces, a.phrase_max_pieces
+        )
+        books = sorted({b for _t, b, _n in plines})
+        hrng = random.Random(a.seed + 41)
+        held_books = set(hrng.sample(books, min(a.phrase_held_books, len(books))))
+        train_lines = [
+            t for t, b, _n in plines if b not in held_books and inv.piece_ok(t)
+        ]
+        train_set = set(train_lines)
+        held_lines = sorted(
+            {
+                t
+                for t, b, _n in plines
+                if b in held_books and t not in train_set and inv.piece_ok(t)
+            }
+        )
+        src = f"{a.phrase_file} ({len(plines)} lines, {len(books)} books, held {sorted(held_books)})"
+    else:
+        train_lines = [
+            t
+            for t, _rel, _box in corpus_lines(
+                CORPUS_TRAIN / "boxes.jsonl", a.line_max_len
+            )
+            if len(pieces(tok, qmap, t)) >= 2 and inv.piece_ok(t)
+        ]
+        train_set = set(train_lines)
+        held_lines = []
+        for t, _rel, _box in corpus_lines(CORPUS_HELD / "boxes.jsonl", a.line_max_len):
+            if (
+                t in train_set
+                or t in held_lines
+                or t in inv.evals.get("line", ())
+                or len(pieces(tok, qmap, t)) < 2
+                or not inv.piece_ok(t)
+            ):
+                continue
+            held_lines.append(t)
+        src = "corpus"
     prng = random.Random(a.seed + 37)
     prng.shuffle(held_lines)
     inv.evals["phrase_held"] = sorted(held_lines[: a.n_phrase_eval])
+    if a.phrase_file:
+        # trained lines too, so memorisation and generalisation read apart
+        inv.evals["phrase"] = sorted(
+            prng.sample(sorted(train_set), min(a.n_phrase_eval, len(train_set)))
+        )
     print(
-        f"phrases: {len(train_lines)} covered training lines ({len(train_set)} distinct); "
+        f"phrases ({src}): {len(train_lines)} covered training lines ({len(train_set)} distinct); "
         f"phrase_held {len(inv.evals['phrase_held'])}/{len(held_lines)} never-trained held lines",
         flush=True,
     )

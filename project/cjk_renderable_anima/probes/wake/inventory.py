@@ -31,6 +31,37 @@ def corpus_lines(boxes_jsonl: Path, max_len: int):
     return out
 
 
+def phrase_file_lines(path: Path, min_pieces: int, max_pieces: int) -> list:
+    """``[(line, book, n_pieces)]`` from a phrase TSV (``line[\\tbook[\\tn]]``,
+    one per row; a bare line gets book ``""`` and its count is taken from the
+    tokenizer lazily by the caller when absent). Lines outside
+    ``[min_pieces, max_pieces]`` are dropped when the count column is present."""
+    out = []
+    for ln in path.read_text(encoding="utf-8").splitlines():
+        if not ln.strip():
+            continue
+        cols = ln.rstrip("\n").split("\t")
+        text = cols[0].strip()
+        book = cols[1].strip() if len(cols) > 1 else ""
+        n = int(cols[2]) if len(cols) > 2 and cols[2].strip() else None
+        if n is not None and not (min_pieces <= n <= max_pieces):
+            continue
+        out.append((text, book, n))
+    return out
+
+
+def phrase_pieces(tok, q, lines: list, covered: set, n: int) -> list:
+    """The ``n`` most frequent pieces (each with a pack row) over ``lines``
+    that are not already in ``covered`` — the rows a phrase set needs beyond
+    the singles inventory. Returns ``[(piece, count)]``."""
+    cnt: Counter = Counter()
+    for text, _book, _n in lines:
+        for p, row in pieces(tok, q, text):
+            if row is not None and p not in covered:
+                cnt[p] += 1
+    return cnt.most_common(n)
+
+
 def qwen_pieces():
     """(Qwen3 tokenizer, qwen id → pack ext row). The pack's ext rows are
     Qwen pieces, many of them whole words (ありがとう / 行く / 明日 are one

@@ -460,6 +460,29 @@ def _synth_args(g):
         "--n_items", type=int, default=16000, help="data: --scenes total items"
     )
     g.add_argument(
+        "--phrase_file",
+        default="",
+        help="data: TSV `line[\\tbook[\\tn_pieces]]` replacing the corpus as the "
+        "phrase source (--natural_frac items and the composites' phrase kind); "
+        "held set = --phrase_held_books whole books → eval group phrase_held, "
+        "plus group `phrase` (trained lines)",
+    )
+    g.add_argument(
+        "--phrase_pieces",
+        type=int,
+        default=0,
+        help="data: with --phrase_file, add its N most frequent pieces outside the "
+        "inventory as rows (trained through the phrases only; no singles / evals)",
+    )
+    g.add_argument(
+        "--phrase_held_books",
+        type=int,
+        default=6,
+        help="data: --phrase_file books held out whole for phrase_held",
+    )
+    g.add_argument("--phrase_min_pieces", type=int, default=3)
+    g.add_argument("--phrase_max_pieces", type=int, default=10)
+    g.add_argument(
         "--scene_frac",
         type=float,
         default=0.4,

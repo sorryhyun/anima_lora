@@ -58,6 +58,7 @@ _EVAL_ORDER = (
     "single_ext",
     "flip",
     "str3",
+    "phrase",
     "phrase_held",
 )
 
@@ -90,6 +91,9 @@ class Inventory:
     words: list = field(default_factory=list)
     words_held: list = field(default_factory=list)
     words_train: list = field(default_factory=list)
+    # --phrase_pieces: rows a phrase file needs beyond the singles inventory
+    # (trained through the phrases only — never drawn as singles / evals)
+    phrase_pieces: list = field(default_factory=list)
     # word mode: a string is usable only when every piece is a trained row
     piece_ok: Callable[[str], bool] | None = None
     evals: dict = field(default_factory=dict)  # group → [text]
@@ -258,6 +262,30 @@ def _word_set(a, out, tokq, inv: Inventory):
         if row is not None
     }
     trained_pieces = kana_rows | set(inv.words_train)
+    if a.phrase_file and a.phrase_pieces:
+        # sentence line (2026-09-16): the phrase file's most frequent pieces
+        # outside the inventory become rows too, so more of its lines are
+        # drawable; they are trained only through the phrases that carry them
+        from pathlib import Path
+
+        from wake.inventory import phrase_file_lines, phrase_pieces
+
+        plines = phrase_file_lines(
+            Path(a.phrase_file), a.phrase_min_pieces, a.phrase_max_pieces
+        )
+        # held words stay held: they must not come back as phrase rows
+        extra = phrase_pieces(
+            tok, qmap, plines, trained_pieces | set(inv.words_held), a.phrase_pieces
+        )
+        inv.phrase_pieces = [p for p, _ in extra]
+        trained_pieces |= set(inv.phrase_pieces)
+        print(
+            f"phrase pieces: +{len(extra)} rows from {a.phrase_file} "
+            f"({len(plines)} lines; last {extra[-1][0]}:{extra[-1][1]}): "
+            + " ".join(p for p, _ in extra[:40])
+            + (" …" if len(extra) > 40 else ""),
+            flush=True,
+        )
 
     def piece_ok(text: str) -> bool:
         return all(
@@ -268,7 +296,12 @@ def _word_set(a, out, tokq, inv: Inventory):
     inv.piece_ok = piece_ok
     (out / "words.json").write_text(
         json.dumps(
-            {"freq": freq, "held": inv.words_held, "kana_pieces": sorted(kana_rows)},
+            {
+                "freq": freq,
+                "held": inv.words_held,
+                "kana_pieces": sorted(kana_rows),
+                "phrase_pieces": inv.phrase_pieces,
+            },
             ensure_ascii=False,
             indent=1,
         )

@@ -76,6 +76,7 @@ EVAL_GROUPS = (
     "line",
     "flip",
     "str3",
+    "phrase",
     "phrase_held",
     "combo",
     "corpus",
