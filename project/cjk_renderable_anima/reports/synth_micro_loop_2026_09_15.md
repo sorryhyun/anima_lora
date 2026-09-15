@@ -416,11 +416,17 @@ cells with the `hi` reference render (`stage/eval.py`, this commit).
 - Placement (IoU 0.12 / 0.17) is above the single-frame arms but below m12fm
   and the floor's 0.36 — still the open ruler. s1sfx scenes unused so far.
 
-**Full-inventory launch** (00:55, jobs `d0b023` train+eval / `13db19`
-native): `synth_full_fm` = 92 kana + 68 ext kana (`--kana_ext`) + 200
-corpus kanji (`--kanji 200`, last 室:9) + 100 single-piece words (`--words
-100 --held_out_words 8`), 30 000 items, the m6fm Q-off recipe at **53 000
-steps** (≈ 460 samples per row, ≈ 6 h) → `rows_synth_full_fm_full_s53k_qoff`.
+**Full-inventory launch** (00:55 → relaunched 01:32, jobs `9393f3`
+train+eval / `106e0e` native): `synth_full_fm10k` = 92 kana + 68 ext kana
+(`--kana_ext`) + 200 corpus kanji (`--kanji 200`, last 室:9) + 100
+single-piece words (`--words 100 --held_out_words 8`; 435 ext rows touched),
+**10 000 items**, the m6fm Q-off recipe at **53 000 steps** (≈ 460 samples
+per row, ≈ 6 h) → `rows_synth_full_fm10k_full_s53k_qoff`. The first launch
+(`d0b023`, 30 000 items) was killed at the latents step: the probe's text
+cache is ≈ 1.3 MB per caption in RAM (25 288 captions → 33 GB RSS with the
+latents and the DiT load still to come, swap full on the 46 GB box).
+**Budget rule for the probe: ≈ 10 k items per run** (data `synth_full_fm`,
+30 k rendered items, is on disk and unused).
 Below the 1 000-per-row planning number by design: it is the **seed**
 checkpoint — if singles / ext / kanji hold at a decent rate it becomes the
 warm start for further vocab exposure and sentence-rendering arms rather
