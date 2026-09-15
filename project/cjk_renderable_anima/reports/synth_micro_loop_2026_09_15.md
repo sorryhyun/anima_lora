@@ -475,3 +475,29 @@ start keeps identity) but the flat gates argue for the 1 000-per-row budget
 first: 433 rows × 1 000 / 4 ≈ 108k steps (≈ 12 h) with a word share pinned
 (≥ 25 % of items) — or the 92-kana intermediate arm at 23k steps to check
 that the katakana failure is exposure and not interference.
+
+## `scenes_sl1` — sentence-anchored scene pool (2026-09-16 08:00, user)
+
+User's ask: a ~1k scene pool whose anchors are short EN sentences ("that is
+what I said"), to be composited with JA words / sentences of 3–10 pieces
+that make sense — the sentence-rendering data the seed line needs. Corpus
+supply on the JA side: 1 650 training-corpus lines of 3–10 pieces with every
+piece a pack row (1 610 distinct, 722 kana-only).
+
+Smoke `scenes_sl1smoke` (job `79c987`, 64 prompts, 40 anchors of 2–5 words
+without commas / apostrophes, frames reads_as + bubble_reads + saying, 4.3
+min): **19 kept (30 %)**, read_miss only 11 % — the readers read multi-word
+EN back exactly more often than single words (s1 reads_as: 31 %). The base
+wraps the sentence inside one bubble; region short side median 71 px, long
+side 77–202 px, and the bubble size tracks the anchor length ("thank you so
+much" 196×160). The composite draws one line (`render_into_scene`, no
+wrap), so the region's long side / 32 px sets the phrase length a scene can
+take (3–6 glyphs at the smoke's sizes) — the data stage already draws only
+texts that fit each region's capacity.
+
+Full run `scenes_sl1` (job queued 08:12): 3 400 prompts (≈ 1 020 kept at 30
+%, ≈ 3.8 h), the 40 smoke anchors + 15 longer ones (5–7 words) to widen the
+region spread for 8–10-piece phrases. Open for the data step: a curated /
+filtered JA phrase source (`--natural_frac` draws corpus lines, which are
+adult-manga lines) and multi-line wrapping in the composite draw for the
+long phrases.
