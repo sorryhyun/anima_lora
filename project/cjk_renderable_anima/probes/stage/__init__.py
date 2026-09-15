@@ -21,6 +21,8 @@ STAGES = {
     "classify": ("classify", "stage_classify"),
     "classify_str": ("classify", "stage_classify_str"),
     "native": ("eval", "stage_native"),
+    "enref": ("eval", "stage_enref"),
+    "native_rescore": ("eval", "stage_native_rescore"),
     "scenes": ("scenes", "stage_scenes"),
 }
 ALL = ["salad", "data", "train", "eval"]

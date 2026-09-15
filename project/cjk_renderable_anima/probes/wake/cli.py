@@ -392,6 +392,15 @@ def _eval_args(g):
         "= rows f + s × that shift at the ext positions of the adapter output",
     )
     g.add_argument(
+        "--out_vec_train",
+        type=float,
+        default=0.0,
+        help="train: with --out_vec, add this × the EN shift norm × its direction at "
+        "every ext position of the adapter output on every step (Q fixed on, so the "
+        "rows never have to learn the render trigger). The vector is saved into "
+        "trained.pt and eval / native apply it to every trained cond. 0 = off",
+    )
+    g.add_argument(
         "--out_vec_scales",
         default="1.0",
         help="native: comma list of multiples of the EN shift norm for --out_vec",
@@ -407,6 +416,20 @@ def _eval_args(g):
         help="native: comma list of table parts to render as separate conds "
         "(encoder arms; raw = g + c + f): full (named `trained`), f (per-row "
         "residual), c (common vector), g (centred encoder part), and sums fg fc gc",
+    )
+    g.add_argument(
+        "--native_floor",
+        type=int,
+        default=0,
+        help="native: also render the delta-off floor cond (needed only for the "
+        "old scene-kept margin; the EN-reference ruler replaced it 2026-09-15)",
+    )
+    g.add_argument(
+        "--en_word",
+        default="hi",
+        help="native: the EN word of the EN-reference render (English text reads "
+        'as "<word>", same prompt and seed) — en cos / en cos out / box IoU '
+        "score every trained render against it; refs are shared per size/steps/cfg",
     )
     g.add_argument(
         "--kept_ref",

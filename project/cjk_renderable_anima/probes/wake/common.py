@@ -91,6 +91,10 @@ NATIVE_CLAUSES = {
     # the user's phrasing: a Japanese-language clause (its own words route to
     # untrained pack rows; only the kana row carries the delta)
     "ja": "{p}. ひらがなの「{k}」という文字がある。",
+    # the EN-reference swap (2026-09-15): the *same* caption as the EN
+    # reference render with only the quoted word replaced — the pair differs
+    # in nothing but the ext row (enref uses "hi"; see wake/enref.py)
+    "swap": '{p}, english text. English text reads as "{k}".',
 }
 
 # ----------------------------------------------------------------------------

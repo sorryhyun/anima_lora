@@ -22,6 +22,7 @@ from wake.models import (
     ext_ids_of,
 )
 from wake.models import gen_args, load_vae
+from wake.hooks import OutVec, load_out_vec
 from wake.trainables import Trainables
 
 
@@ -55,6 +56,20 @@ def stage_train(a):
     tok, _ = ensure_text_strategies(checkpoints().text_encoder, vocab_pack=None)
     tr = Trainables(a, anima, device, train_ext, ev_ext, tok, strategy_pack(tok))
 
+    outvec, q_vec = None, None
+    if a.out_vec and a.out_vec_train > 0:
+        # Q-in-training (plan_synth decision tree): the pretrained quoted-EN
+        # output shift sits at the ext positions for every item, flat or
+        # composite, so neither f nor c_flat has to build the trigger
+        vhat, norm = load_out_vec(a.out_vec, a.out_vec_frame)
+        q_vec = vhat * (a.out_vec_train * norm)
+        outvec = OutVec(anima, device)
+        outvec.set(q_vec)
+        print(
+            f"out_vec: Q fixed on, frame {a.out_vec_frame}, EN shift norm {norm:.2f}"
+            f" × {a.out_vec_train:g} → ‖{float(q_vec.norm()):.2f}‖",
+            flush=True,
+        )
     opt = torch.optim.AdamW(tr.params, weight_decay=0.0, betas=(0.9, 0.99))
     sched = None
     if a.lr_decay == "cosine":
@@ -127,7 +142,10 @@ def stage_train(a):
                 print(killed, flush=True)
                 break
     tr.export_table(aug_rng)
-    torch.save(tr.state_dict(held, killed), out / "trained.pt")
+    sd = tr.state_dict(held, killed)
+    if q_vec is not None:
+        sd["out_vec"] = q_vec.cpu()
+    torch.save(sd, out / "trained.pt")
     (out / "train_log.json").write_text(json.dumps(log, indent=1))
     if killed:
         raise SystemExit(killed)

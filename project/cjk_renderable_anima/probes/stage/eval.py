@@ -21,7 +21,8 @@ from wake.common import (
     data_dir,
     parse_shape,
 )
-from wake.hooks import AdapterLoRA, ExtDelta, OutVec
+from wake.enref import EnRef, enref_boxes, enref_dir, render_enref
+from wake.hooks import AdapterLoRA, ExtDelta, OutVec, load_out_vec
 from wake.models import encode_captions, ext_ids_of, generate_to, load_generator
 from wake.models import load_trained, load_vae
 from wake.readers import Readers, contact_sheet, hit, read_scored
@@ -85,6 +86,14 @@ def stage_eval(a):
     if "lora" in sd:
         lora = AdapterLoRA(anima, sd["adapter_rank"], device)
         lora.load(sd["lora"])
+    outvec = None
+    if "out_vec" in sd:
+        # trained with Q fixed on: the deployed cond is rows + Q
+        outvec = OutVec(anima, device)
+        print(
+            f"eval: + saved out_vec ‖{float(sd['out_vec'].norm()):.2f}‖ (Q on)",
+            flush=True,
+        )
     vae = load_vae(device)
     manifest = []
     t0 = time.time()
@@ -92,6 +101,8 @@ def stage_eval(a):
     for cond in conds:
         s = 0.0 if cond == "floor" else 1.0
         delta.scale = s
+        if outvec is not None:
+            outvec.set(sd["out_vec"] if s else None)
         if lora is not None:
             lora.scale = s
         shared["conds_cache"].clear()
@@ -228,26 +239,29 @@ def stage_native(a):
         )
     del cache
     vae = load_vae(device)
+    render_enref(a, prompts, a.seeds, args, gen, shared, vae, device)
     manifest = []
     t0 = time.time()
     parts = table_parts(sd, [x for x in a.delta_parts.split(",") if x])
-    conds = ([] if a.no_floor else ["floor"]) + list(parts)
+    # floor (delta off) is opt-in since the EN-reference ruler (2026-09-15):
+    # `en cos` against the "hi" render is the scene ruler now
+    conds = (["floor"] if a.native_floor and not a.no_floor else []) + list(parts)
     outvec = None
     fq = {}
+    saved_q = sd.get("out_vec")
+    if saved_q is not None:
+        # trained with Q fixed on: every trained cond renders with it
+        outvec = OutVec(anima, device)
+        print(
+            f"native: + saved out_vec ‖{float(saved_q.norm()):.2f}‖ (Q on)", flush=True
+        )
     if a.out_vec:
         # quote-probe cond: rows f + the pretrained quoted-EN output shift
-        q = torch.load(a.out_vec, map_location="cpu", weights_only=False)
-        vec = q["avg"] if a.out_vec_frame == "avg" else q["dirs"][a.out_vec_frame]
-        norm = (
-            sum(q["shift_norm"].values()) / len(q["shift_norm"])
-            if a.out_vec_frame == "avg"
-            else q["shift_norm"][a.out_vec_frame]
-        )
-        vhat = vec.float() / vec.float().norm()
+        vhat, norm = load_out_vec(a.out_vec, a.out_vec_frame)
         f_rows = sd["delta"]["raw"]
         for sc in [float(x) for x in a.out_vec_scales.split(",") if x]:
             fq[f"fq{sc:g}"] = (f_rows, vhat * (sc * norm))
-        outvec = OutVec(anima, device)
+        outvec = outvec or OutVec(anima, device)
         conds += list(fq)
         print(
             f"out_vec: frame {a.out_vec_frame}, EN shift norm {norm:.2f}, scales {sorted(fq)}",
@@ -255,7 +269,9 @@ def stage_native(a):
         )
     for cond in conds:
         if outvec is not None:
-            outvec.set(fq[cond][1] if cond in fq else None)
+            outvec.set(
+                fq[cond][1] if cond in fq else (saved_q if cond != "floor" else None)
+            )
         if cond == "floor":
             delta.scale = 0.0
         elif cond in fq:
@@ -281,6 +297,54 @@ def stage_native(a):
     del anima, vae, shared
     torch.cuda.empty_cache()
     _read_native(a, out, manifest, chars, clauses, conds)
+
+
+def _native_prompts(a) -> list[str]:
+    prompts = [
+        ln.strip()
+        for ln in Path(a.native_prompts).read_text(encoding="utf-8").splitlines()
+        if ln.strip() and not ln.startswith("#")
+    ]
+    return prompts[: a.native_limit] if a.native_limit else prompts
+
+
+def stage_enref(a):
+    """Render the EN-reference images only (shared across arms; no delta)."""
+    import torch
+
+    prompts = _native_prompts(a)
+    d = enref_dir(a)
+    d.mkdir(parents=True, exist_ok=True)
+    args, gen, device, shared = load_generator(a.eval_size, a.steps, a.cfg, d)
+    shared["model"].eval()
+    vae = load_vae(device)
+    render_enref(a, prompts, a.seeds, args, gen, shared, vae, device)
+    del shared, vae
+    torch.cuda.empty_cache()
+    boxes = enref_boxes(d, None, a.device)
+    reads = json.loads((d / "enref_reads.json").read_text())
+    n_hit = sum(
+        hit(v, a.en_word, "sfx") or hit(v, a.en_word, "vl") for v in reads.values()
+    )
+    print(
+        f"enref: {len(boxes)} refs, {sum(b is not None for b in boxes.values())} with a "
+        f"detector box, {n_hit} read as `{a.en_word}`",
+        flush=True,
+    )
+
+
+def stage_native_rescore(a):
+    """Re-score an existing native run from its ``native_reads.json`` (no
+    re-render, no re-OCR): kept + the EN-reference columns, report + sheets."""
+    out = arm_dir(a) / (f"native_{a.eval_tag}" if a.eval_tag else "native")
+    manifest = json.loads((out / "native_reads.json").read_text())
+    assert manifest and all("reads" in m for m in manifest), f"{out}: no stored reads"
+    chars = [c for c in a.native_chars.split(",") if c] or sorted(
+        {m["text"] for m in manifest}, key=[m["text"] for m in manifest].index
+    )
+    clauses = sorted({m["clause"] for m in manifest})
+    conds = list(dict.fromkeys(m["cond"] for m in manifest))
+    _read_native(a, out, manifest, chars, clauses, conds, reread=False)
 
 
 def table_parts(sd: dict, names: list[str]) -> dict:
@@ -392,19 +456,43 @@ class SceneKept:
         return cand if cand.exists() else None
 
 
-def _read_native(a, out: Path, manifest, chars, clauses, conds):
-    rd = Readers(a.device)
-    for m in manifest:
-        reads = read_scored(rd, m)
-        m["hit_sfx"] = hit(reads, m["text"], "sfx")
-        m["hit_vl"] = hit(reads, m["text"], "vl")
-        m["exact"] = m["hit_sfx"] and m["hit_vl"]
-        m["any_cjk"] = any(CJK_RE.search(r["sfx"] or "") for r in reads)
+def _read_native(a, out: Path, manifest, chars, clauses, conds, *, reread=True):
+    rd = None
+    if reread or any("reads" not in m for m in manifest):
+        rd = Readers(a.device)
+        for m in manifest:
+            reads = read_scored(rd, m)
+            m["hit_sfx"] = hit(reads, m["text"], "sfx")
+            m["hit_vl"] = hit(reads, m["text"], "vl")
+            m["exact"] = m["hit_sfx"] and m["hit_vl"]
+            m["any_cjk"] = any(CJK_RE.search(r["sfx"] or "") for r in reads)
+    # EN-reference ruler (wake/enref.py): refs rendered by stage_native /
+    # stage_enref; boxes read once and cached beside them
+    ed = enref_dir(a)
+    enref = None
+    if any(ed.glob("enref_p*_s*.png")):
+        enref = EnRef(a.device, ed, enref_boxes(ed, rd, a.device))
     del rd
-    ref_dir = Path(a.kept_ref) if a.kept_ref else arm_dir(a) / "native" / "img"
-    kept = SceneKept(a.device, ref_dir, data_dir(a) / "img", a.kept_tau)
     for m in manifest:
-        ref = None if m["cond"] == "floor" else kept.floor_file(m, manifest)
+        m["en_cos"] = m["en_cos_out"] = m["box_iou"] = None
+        sc = enref.score(m) if enref is not None else None
+        if sc is not None:
+            m["en_cos"], m["en_cos_out"], m["box_iou"] = sc
+    ref_dir = Path(a.kept_ref) if a.kept_ref else arm_dir(a) / "native" / "img"
+    has_floor = any(m["cond"] == "floor" for m in manifest) or any(
+        ref_dir.glob("floor_*.png")
+    )
+    kept = (
+        SceneKept(a.device, ref_dir, data_dir(a) / "img", a.kept_tau)
+        if has_floor
+        else None
+    )
+    for m in manifest:
+        ref = (
+            None
+            if kept is None or m["cond"] == "floor"
+            else kept.floor_file(m, manifest)
+        )
         m["kept_cos"] = m["canvas_cos"] = m["kept"] = None
         if ref is not None:
             m["kept_cos"], m["canvas_cos"] = kept.score(Path(m["file"]), ref)
@@ -423,13 +511,36 @@ def _read_native(a, out: Path, manifest, chars, clauses, conds):
         f"prompts: `{a.native_prompts}`; chars {' '.join(chars)}; {a.seeds} seed(s); "
         f"{a.eval_size}²; delta scale {a.delta_scale}; parts {' '.join(trained_conds)}",
         "",
-        f"scene-kept ruler: kept ⇔ PE-Spatial cos(img, floor image of the same "
-        f"prompt/kana/seed) − cos(img, flat training-canvas prototype of "
-        f"{kept.n_proto} renders) ≥ {kept.tau:.2f} (floor ref `{ref_dir}`)",
+        (
+            f"scene-kept ruler: kept ⇔ PE-Spatial cos(img, floor image of the same "
+            f"prompt/kana/seed) − cos(img, flat training-canvas prototype of "
+            f"{kept.n_proto} renders) ≥ {kept.tau:.2f} (floor ref `{ref_dir}`)"
+            if kept is not None
+            else "scene-kept ruler: off (no floor renders; --native_floor 1 to restore)"
+        ),
         "",
-        "| clause | cond | n | CER sfx | CER vl16 | hit sfx | hit vl | both | any CJK read | floor cos | canvas cos | kept | hit & kept |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+        (
+            f"EN-reference ruler: same prompt and seed rendered with `English text reads as "
+            f"'{a.en_word}'` (`{ed}`); en cos = PE-Spatial cos to it, en cos out = the same over "
+            "patch tokens outside both text boxes, box IoU = glyph box vs the EN word's box "
+            "(means over the cond; floor row = the ruler's own floor)"
+            if enref is not None
+            else "EN-reference ruler: no refs rendered (run --stage enref)"
+        ),
+        "",
+        "| clause | cond | n | CER sfx | CER vl16 | hit sfx | hit vl | both | any CJK read | floor cos | canvas cos | kept | hit & kept | en cos | en cos out | box IoU |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
+
+    def _en_cols(ms):
+        es = [m for m in ms if m["en_cos"] is not None]
+        if not es:
+            return "– | – | –"
+        return (
+            f"{sum(m['en_cos'] for m in es) / len(es):.3f} | "
+            f"{sum(m['en_cos_out'] for m in es) / len(es):.3f} | "
+            f"{sum(m['box_iou'] for m in es) / len(es):.2f}"
+        )
 
     def _kept_cols(ms):
         ks = [m for m in ms if m["kept_cos"] is not None]
@@ -450,9 +561,13 @@ def _read_native(a, out: Path, manifest, chars, clauses, conds):
                 f"| {cl} | {c} | {len(ms)} | {sum(m['cer_sfx'] for m in ms) / len(ms):.3f} | "
                 f"{sum(m['cer_vl'] for m in ms) / len(ms):.3f} | {sum(m['hit_sfx'] for m in ms)} | "
                 f"{sum(m['hit_vl'] for m in ms)} | {sum(m['exact'] for m in ms)} | "
-                f"{sum(m['any_cjk'] for m in ms)} | {_kept_cols(ms)} |"
+                f"{sum(m['any_cjk'] for m in ms)} | {_kept_cols(ms)} | {_en_cols(ms)} |"
             )
-    lines += ["", "per kana (both readers hit / kept / hit & kept):", ""]
+    lines += [
+        "",
+        "per kana (both readers hit / kept / hit & kept | en cos out / box IoU):",
+        "",
+    ]
     for c in trained_conds:
         for k in chars:
             for cl in clauses:
@@ -465,7 +580,7 @@ def _read_native(a, out: Path, manifest, chars, clauses, conds):
                     lines.append(
                         f"- {c} {k} / {cl}: {sum(m['exact'] for m in ms)} / "
                         f"{sum(bool(m['kept']) for m in ms)} / {sum(m['hit_kept'] for m in ms)} "
-                        f"of {len(ms)}"
+                        f"of {len(ms)} | {_en_cols(ms)}"
                     )
     lines += [
         "",
@@ -503,6 +618,11 @@ def _read_native(a, out: Path, manifest, chars, clauses, conds):
                     + (
                         f" m{by_key[pi, k, cl, seed, c]['kept_cos'] - by_key[pi, k, cl, seed, c]['canvas_cos']:+.2f}"
                         if by_key[pi, k, cl, seed, c]["kept_cos"] is not None
+                        else ""
+                    )
+                    + (
+                        f" e{by_key[pi, k, cl, seed, c]['en_cos_out']:.2f}"
+                        if by_key[pi, k, cl, seed, c]["en_cos_out"] is not None
                         else ""
                     ),
                 )

@@ -115,13 +115,14 @@ def stage_data(a):
     # mixed shapes (2026-09-14): every font item draws its canvas (W, H) from
     # --shapes; corpus crops are square, so they draw from the pool's squares
     shapes = ShapePool(a.shapes, a.seed)
-    tokq = qwen_pieces() if (a.kanji or a.words) else None
+    # --scenes needs the piece map for piece_ok even at --words 0 (micro arms)
+    tokq = qwen_pieces() if (a.kanji or a.words or a.scenes) else None
 
     inv = Inventory(kana=list(a.only_chars) if a.only_chars else list(KANA))
     # eval strings first so the training pool can exclude the combos
     combos_eval, n_possible = _eval_strings(a, rng, inv)
     _extra_singles(a, out, tokq, inv)
-    if a.words:
+    if a.words or a.scenes:
         _word_set(a, out, tokq, inv)
 
     n_target = min(a.n_combo, 50 * (n_possible - len(combos_eval)))

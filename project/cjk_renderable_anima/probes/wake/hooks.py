@@ -172,3 +172,16 @@ class OutVec:
 
     def set(self, vec):
         self.vec = None if vec is None else vec.to(self.device)
+
+
+def load_out_vec(path: str, frame: str):
+    """``(unit direction, EN shift norm)`` from ``quote_dir_save.py``'s .pt —
+    ``dirs[<frame>]`` / ``shift_norm[<frame>]``, or the cross-frame ``avg``."""
+    q = torch.load(path, map_location="cpu", weights_only=False)
+    vec = q["avg"] if frame == "avg" else q["dirs"][frame]
+    norm = (
+        sum(q["shift_norm"].values()) / len(q["shift_norm"])
+        if frame == "avg"
+        else q["shift_norm"][frame]
+    )
+    return vec.float() / vec.float().norm(), float(norm)

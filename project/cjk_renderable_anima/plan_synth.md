@@ -1,17 +1,21 @@
 # plan_synth — the S line, live plan (rows on self-generated scene composites)
 
-> **Status 2026-09-15 (evening):** S0b **missed** — worse than S0 on every
-> ruler (native `f` alone 1 / 50 / 0 vs S0 25 / 48 / 15; `f+c` 25 / 24 / 9;
-> singles 15/36). Leak did fall (0.28 → 0.18) but the 1.5 cap let `c_flat`
-> take the render trigger, so the rows went silent. Two probes closed the
-> same day: a P0b warm start (identity survives, trigger never grows;
-> `f` 0/64) and the pretrained quoted-EN direction Q at inference (kills
-> the wipes, halves exact hits; S0 15 → 9). Verdicts in
-> [`findings.md`](findings.md) *Settled — trigger vs canvas*. **Live arm:
-> cap-only isolation** `rows_synth_s0b_s24k_S0b_cap075` (S0b data, cap
-> 0.75; train + eval `20260915-152223-870a1d`, native
-> `20260915-152223-5b4509`) — attributes S0b's collapse to the cap vs
-> `--scene_fill 0.7`.
+> **Status 2026-09-15 (night):** the full-scale cap-only isolation was
+> killed at 15 min (user: too large a run for the question) and the S
+> line moved to a **micro loop** — 6 rows (あかす出人日), 2 000 steps,
+> ≈ 25 min per arm incl. native — for the trigger / canvas / frame
+> questions. Five arms + three re-renders settled today (table in
+> *Micro loop*; chronology `history.md`): the `c_flat` cap is not a lever
+> (cap 0.75 = removed), **composite share is** (0.4 → 0.9: hit & kept
+> 23 → 41, en cos 0.797 → 0.860), the rows are **bound to the JA clause
+> frame** (in the EN ref's own caption か renders as Latin strokes 0/16
+> while あ 11/16 lands as a word token would), and Q fixed on in
+> training routes the trigger *across frames* for か (0 → 7) at an
+> identity cost elsewhere (日 → 目) — glyph-dependent, not rankable on
+> 6 rows. Rulers changed: **`en cos` / `box IoU` against a shared EN
+> reference** (`English text reads as "hi"`, same prompt and seed)
+> replace the floor-based kept margin; floor renders are off by default.
+> **Next arm**: frame-mix data × Q on/off on ≈ 12 rows (below).
 >
 > What the S line is, how the instrument works, the S0 recipe / result and
 > the measured budgets moved to [`synth.md`](synth.md); chronology is
@@ -57,7 +61,16 @@ p10 43 / median 51 px.
 
 Full S0b argv: `history.md` "S0b build + launch".
 
-## Gates (unchanged from S0)
+## Gates (S0 gates stand for the full-scale run; rulers re-based 2026-09-15)
+
+Scene ruler is now **`en cos`** (PE-Spatial cos to the EN reference of
+the same prompt/seed; floor ≈ 0.93–0.97 is the ceiling), placement ruler
+**`box IoU`** (glyph box vs the "hi" box; floor 0.36–0.51, every trained
+cond so far 0.05–0.25 — read with the sheets, it is harsh on small
+boxes). `stage native` renders trained conds only (`--native_floor 1`
+restores the old kept margin). Native runs on **both** clauses — `en`
+(the trained JA frame) and `swap` (the EN ref's caption, word swapped) —
+and a row counts as a word token only when it hits under `swap`.
 
 - **native (EN clause, 8 held-out prompts × 4 kana × 2 seeds): hit & kept ≥ 24/64**, from
   P0b's measured baseline of **2/64** (its 32/64 hits are canvas wipes on
@@ -80,45 +93,46 @@ costing `f` — P0b held 36/36 with both layouts in `f`, so singles near 20
 with the fill and gate in would point at composite glyph size / phrase
 share, not layout.
 
-## Decision tree (after S0b's eval + native)
+## Micro loop (2026-09-15 evening) — what is settled at 6 rows
 
-S0b landed in the **wipes remain, sheets show the flat canvas** branch
-(kept 24–50 < 56; `fc` draws the font bubble, `f` alone a bare ground +
-glyph — note the scene-kept ruler scores the latter as *kept*, read the
-sheets). The cap-only run is the pre-registered response, **with one
-correction from S0b's data**: the cap is isolated *downward* (0.75, S0's
-value), not off — 0.75 → 1.5 moved the trigger from `f` into `c`, so a
-larger cap removes the glyph before the canvas.
+Data: `synth_micro6` (60 / 40 flat / composite, 1 600 items) and
+`synth_micro6_c9` (10 / 90). Native あかす日 × 8 prompts × 2 seeds; hits =
+both readers.
 
-- **Pass** (hit & kept ≥ 24, kept ≥ 56, singles ≥ 30) → S1 (strings,
-  repeat mode) warm-starts from that table on this data.
-- **Isolation recovers `f` alone to ≈ S0 (hit ≥ 20)** → S0b's collapse was
-  the cap; keep cap 0.75 and S0b's data, and push the only lever that
-  puts the trigger in `f` without the canvas: composite share 40 → 60 %
-  (`--scene_frac`) and glyph floor `--scene_min_box` 56 → 72 with
-  `--scene_n 2000`, one at a time.
-- **Isolation stays near S0b (`f` hit < 10)** → the collapse was
-  `--scene_fill 0.7` (smaller composite glyphs, phrases 851 → 295);
-  revert to `--scene_fill` 0.85 with the erase gate and one layout, cap
-  0.75.
-- **Either way, the Q-in-training arm is next after that**: rows trained
-  with the quoted-EN direction fixed on at the ext positions for every
-  item (`OutVec` in the train stage), `c_flat` cap 0.75 for canvas only,
-  same data. Prediction on record: `f` alone hits ≥ S0's 25 with kept ≥
-  56, because the trigger is supplied and never has to be learned into
-  either part; failure = hits stay in the subtitle mode (Q at inference:
-  13 / 54 / 9).
-- **Wipes remain but the sheets show erase artefacts** (patch, ring) →
-  inspect `sheet_scene.png`, redo the erase (inpaint ring, not flat fill).
-- **Singles < 30 with kept passing** → the identity budget: `--single_frac`
-  0.4 once (flat share 40 → 50 %), or the glyph floor above; not the
-  layout, not the cap.
-- **Word / small kana fall further** → composite phrases are down to 295;
-  raise bubble size (`--scene_min_box`) before touching `--scene_fill`.
+| arm | JA clause hit / en cos | swap clause hit / en cos | note |
+|---|---|---|---|
+| 0.4, cap 0.75 | 56 / 0.817 | – | = no `c_flat` on every number |
+| 0.4, no `c_flat` | 57 / 0.797 | 10 / 0.830 | |
+| 0.4, Q fixed | 52 / 0.829 | – | |
+| **0.9, Q off** | **60 / 0.860** | 23 / 0.903 | か 0/16 under swap (Latin strokes), あ 11/16 |
+| 0.9, Q on | 48 / 0.838 | 23 / 0.885 | か 7/16 under swap, 日 → 目 (JA 3/16) |
 
-The pre-registered hybrid isolation run (`--arm encoder`, same data) stays
-available but is not first: the leak split already names a data ×
-parametrisation interaction.
+Settled: cap ≠ lever; composite share = lever; rows are frame-bound;
+Q = frame-independence for some glyphs at an identity pull for others.
+Micro verdicts are on mechanism; 246-row interference is untested
+(W2's 24-kana collapse) — the winner needs one full-scale run.
+
+## Decision tree (next: frame-mix × Q, ≈ 12 rows)
+
+Data: composite 0.9 on ≈ 12 rows (6 kana + 6 kanji), captions drawn
+from a **frame mix** — the JA clause (`japanese text. Japanese text
+reads as "…"`), the EN swap clause (`english text. English text reads
+as "…"`), and bare quotes — so identity stops leaning on one clause
+(needs a `--frame_mix` lever in the data stage). Two arms, Q off / Q on,
+same seed; native on `en` + `swap`.
+
+- **Frame mix alone lifts swap hits (≥ 40/64) with JA hits held (≥ 50)
+  and no 目-type identity loss** → Q stays closed; frame mix goes into
+  the full-scale S recipe with composite 0.9.
+- **Frame mix lifts swap hits only with Q on** → Q is part of the recipe;
+  the identity pull is then the open cost (measure on the 6 kanji;
+  `--free_residual` and the Q scale 1.0 → 0.5 are the two levers).
+- **Neither moves swap hits** → the script decision lives in the DiT's
+  reading of the frame, not in the row; that is W3-shaped (DiT-side)
+  work, and the row path ships JA-clause-only.
+- Either way, **flat 0** (composite only) is the pending data point for
+  the remaining seed-0 wipes (`n_flat > 0` assert to lift; identity
+  without flat exposure to check).
 
 ## Open risks
 
@@ -154,10 +168,13 @@ parametrisation interaction.
 - Contrastive terms on text-free native images.
 - Pasting onto the dataset's real images (off-manifold paste, caption
   style mismatch, nsfw/artist tags) — the self-generated scene replaces it.
-- `c_flat` cap sweeps beyond the single isolation run above, and any cap
-  *above* 0.75: S0b measured that the trigger follows the room.
+- `c_flat` in any form: the micro loop measured cap 0.75 ≡ removed
+  (2026-09-15); the S recipe drops the switch.
 - Q (the quoted-EN adapter-output direction) as an inference-time
-  replacement for a trained `c` — measured, halves exact hits. Its only
-  open use is training-time (decision tree).
+  replacement for a trained `c` — measured, halves exact hits. Q fixed on
+  in training is *measured, not closed*: glyph-dependent (decision tree).
+- The floor-based kept margin as a gate — replaced by `en cos` / `box
+  IoU`; a bare ground with a bubble scored as kept, and the base itself
+  wipes `portrait, simple background` for EN.
 - Restarting a running arm for a monitor value (leak, `‖c_flat‖`): the
   gates read at the end, and a mid-run change loses attribution.
