@@ -431,3 +431,47 @@ Below the 1 000-per-row planning number by design: it is the **seed**
 checkpoint — if singles / ext / kanji hold at a decent rate it becomes the
 warm start for further vocab exposure and sentence-rendering arms rather
 than being rerun from scratch.
+
+## Full-inventory seed result (2026-09-16 07:45): 53k steps at ≈ 490 samples/row is not enough — the flat gates fail, words are zero
+
+`rows_synth_full_fm10k_full_s53k_qoff` (train 341.6 min at 2.59 it/s, jobs
+`9393f3` / `106e0e`): 433 texts over 10 000 items (median 26 items per
+text, words 754 items total ≈ 8 each), 53 000 steps × 4 ≈ 490 samples per
+row. Loss flat 0.09–0.11 throughout; table mean 0.58 row norms, one shared
+row (ext 58974, not a Qwen piece — the clause's common piece) at 2.2.
+
+| gate | seed 53k | S0 24k (old recipe, 09-15) | m6fm 2k (6 rows) |
+|---|---|---|---|
+| single | **13/36** | 20/36 | 12/12 |
+| single_ext | 18/36 | 21/36 | – |
+| single_kanji | 18/36 | 26/36 | – |
+| word | **0/32** (held 0/16) | 3/32 | – |
+| line / phrase_held | 0/32 / 0/32 | 2/32 / 1/32 | – |
+| combo | 0/36 | 1/36 | 5/36 |
+| en | 24/24 | 24/24 | 24/24 |
+| native en hit / en cos / IoU | 36 / 0.882 / 0.13 | – | 54 / 0.868 / 0.12 |
+| native swap hit / en cos / IoU | 18 / 0.932 / 0.32 | – | 46 / 0.905 / 0.17 |
+
+- **Katakana is the failure family on the singles sheet**: hiragana singles
+  mostly render (の う ち む は ま と), katakana mostly do not (ケ→ん-like,
+  テ→ヲ, キ→ボ, リ→り, ン/チ garbage), small kana (ゃ ッ ュ ィ) 0. Kanji misses
+  are near-shape kanji (長→最, 違→遼, 相→紀), i.e. identity partly there.
+- **Words got ≈ 8 items each** (7.5 % of items over 92 words) and 33 word
+  rows sit at norm ≈ 0 — the composite sampler draws by item, so the word
+  share is what the flat share left, not a per-row budget. Word rows are
+  effectively untrained.
+- **Native**: swap 18/64 with か 0/16 and す 1/16 — the frame independence of
+  m6fm is gone at this exposure; en cos is the highest of any arm (0.93) and
+  IoU 0.32 / か 0.56 because the rows draw little (weak delta ≈ base
+  placement, the same fq0 pattern).
+- The shared row at norm 2.2 (row 58974; every caption touches it) is the
+  micro arms' 7th / 13th row and carried the trigger there too — not new.
+
+Verdict: **not a seed as is.** Per-row exposure ≈ 490 sits where m12fm's
+≈ 670 already lost glyphs; the exposure curve (1 330 → 100 %, 670 → 75 %,
+490 → 36 % singles) is steeper than linear at scale, and words need their
+own share. Warm-starting from this table is possible (P0b showed a warm
+start keeps identity) but the flat gates argue for the 1 000-per-row budget
+first: 433 rows × 1 000 / 4 ≈ 108k steps (≈ 12 h) with a word share pinned
+(≥ 25 % of items) — or the 92-kana intermediate arm at 23k steps to check
+that the katakana failure is exposure and not interference.
