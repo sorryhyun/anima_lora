@@ -21,7 +21,7 @@ from wake.common import (
     data_dir,
     parse_shape,
 )
-from wake.enref import EnRef, enref_boxes, enref_dir, render_enref
+from wake.enref import EnRef, enref_boxes, enref_dir, enref_file, render_enref
 from wake.hooks import AdapterLoRA, ExtDelta, OutVec, load_out_vec
 from wake.models import encode_captions, ext_ids_of, generate_to, load_generator
 from wake.models import load_trained, load_vae
@@ -598,43 +598,75 @@ def _read_native(a, out: Path, manifest, chars, clauses, conds, *, reread=True):
                 f"- {c} p{pi:02d} `{ms[0]['prompt']}`: {sum(m['exact'] for m in ms)} / "
                 f"{sum(bool(m['kept']) for m in ms)} / {sum(m['hit_kept'] for m in ms)} of {len(ms)}"
             )
+    # the EN reference (`English text reads as "<word>"`, same prompt + seed)
+    # leads every seed's cells on the sheet, so the ruler's target is in view
+    sheet_conds = (["enref"] if enref is not None else []) + list(conds)
     lines += [
         "",
         "Sheets: sheet_<kana>_<clause>.png — one row per prompt: "
-        + ", ".join(f"{c} s{s}" for s in range(a.seeds) for c in conds)
-        + "; label = prompt idx / sfx read / vl16 read.",
+        + ", ".join(f"{c} s{s}" for s in range(a.seeds) for c in sheet_conds)
+        + "; label = prompt idx / sfx read / vl16 read"
+        + (f" (enref = the `{a.en_word}` reference render)." if enref else "."),
     ]
     (out / "report.md").write_text("\n".join(lines))
     print("\n".join(lines), flush=True)
     by_key = {
         (m["pi"], m["text"], m["clause"], m["seed"], m["cond"]): m for m in manifest
     }
+
+    def _enref_row(pi: int, seed: int):
+        ref = enref_file(ed, pi, seed)
+        if not ref.exists():
+            return None
+        reads = enref_reads.get(ref.name) or []
+        return _sheet_row(
+            {"file": str(ref), "reads": [r for r in reads if not r.get("whole")]},
+            f"p{pi:02d} enref s{seed}: {a.en_word}",
+        )
+
+    enref_reads = {}
+    if enref is not None and (ed / "enref_reads.json").exists():
+        enref_reads = json.loads((ed / "enref_reads.json").read_text())
     for k in chars:
         for cl in clauses:
-            rows = [
-                _sheet_row(
-                    by_key[pi, k, cl, seed, c],
-                    f"p{pi:02d} {c} s{seed}: {k}"
-                    + (
-                        f" m{by_key[pi, k, cl, seed, c]['kept_cos'] - by_key[pi, k, cl, seed, c]['canvas_cos']:+.2f}"
-                        if by_key[pi, k, cl, seed, c]["kept_cos"] is not None
-                        else ""
-                    )
-                    + (
-                        f" e{by_key[pi, k, cl, seed, c]['en_cos_out']:.2f}"
-                        if by_key[pi, k, cl, seed, c]["en_cos_out"] is not None
-                        else ""
-                    ),
-                )
-                for pi in sorted(by_p)
-                for seed in range(a.seeds)
-                for c in conds
-                if (pi, k, cl, seed, c) in by_key
-            ]
+            rows = []
+            for pi in sorted(by_p):
+                for seed in range(a.seeds):
+                    cells = [
+                        _sheet_row(
+                            by_key[pi, k, cl, seed, c],
+                            f"p{pi:02d} {c} s{seed}: {k}"
+                            + (
+                                f" m{by_key[pi, k, cl, seed, c]['kept_cos'] - by_key[pi, k, cl, seed, c]['canvas_cos']:+.2f}"
+                                if by_key[pi, k, cl, seed, c]["kept_cos"] is not None
+                                else ""
+                            )
+                            + (
+                                f" e{by_key[pi, k, cl, seed, c]['en_cos_out']:.2f}"
+                                if by_key[pi, k, cl, seed, c]["en_cos_out"] is not None
+                                else ""
+                            ),
+                        )
+                        for c in conds
+                        if (pi, k, cl, seed, c) in by_key
+                    ]
+                    if not cells:
+                        continue
+                    if enref is not None:
+                        cells.insert(
+                            0, _enref_row(pi, seed) or _blank_cell(a.eval_size)
+                        )
+                    rows += cells
             if rows:
                 contact_sheet(
                     rows,
                     out / f"sheet_{k}_{cl}.png",
                     thumb=192,
-                    cols=len(conds) * a.seeds,
+                    cols=len(sheet_conds) * a.seeds,
                 )
+
+
+def _blank_cell(size: int):
+    from PIL import Image
+
+    return Image.new("RGB", (size, size), "lightgray"), ["enref: missing"]

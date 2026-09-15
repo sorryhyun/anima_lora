@@ -386,3 +386,42 @@ source. The caption says `Japanese SFX reads as "…"` over a picture that
 is a banner, which is what the base itself drew for that clause.
 
 Scene pool now: s0 174 + s1 269 + s1sfx 102 = **545** over five frames.
+
+## Frame-mix 2×2 on 6 rows (2026-09-15 23:38 → 09-16 00:50): frames are the lever, Q is inert, 日 was exposure
+
+Data `synth_micro6_fm` = the `synth_micro12_fm` recipe (scenes s0 + s1, 443
+kept scenes over four frames, share 0.9, no `c_flat`) on the six micro rows,
+1 600 items (≈ 1 330 samples per row at 2 000 steps × 4). Arms
+`rows_synth_micro6_fm_m6fm_s2k_{qon,qoff}` (jobs `e4b19f` / `af35b8`,
+`d7a880` / `78c719`); m12fm (`74db20` / `74f7f3`) is the same recipe on 12
+rows, i.e. half the samples per row. Native sheets now lead every seed's
+cells with the `hi` reference render (`stage/eval.py`, this commit).
+
+| arm | rows | frames | Q | en hit | en cos | IoU | swap hit | en cos | IoU | singles |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 0.9 Q off | 6 | 1 | off | 60 | 0.860 | 0.07 | 23 | 0.903 | 0.09 | 12/12 |
+| 0.9 Q on | 6 | 1 | on | 48 | 0.838 | 0.09 | 23 | 0.885 | 0.13 | 10/12 |
+| m12fm | 12 | 4 | off | 44 | 0.891 | 0.18 | 26 | 0.926 | 0.24 | 18/24 |
+| m6fm Q on | 6 | 4 | on | 54 | 0.870 | 0.12 | 44 | 0.902 | 0.14 | 11/12 |
+| **m6fm Q off** | 6 | 4 | off | 54 | 0.868 | 0.12 | **46** | 0.905 | 0.17 | 12/12 |
+
+- **Frame-mix doubles the swap hits** (23 → 46) at a cost of 6 `en` hits and
+  with the flat eval untouched: the rows are no longer JA-frame-bound.
+- **Q is inert on frame-mix data** (Q on vs off within 2 hits and 0.003 cos on
+  every clause); the earlier "Q on below Q off" was a single-frame artefact.
+  Q off is the recipe.
+- **日 was exposure, not frames**: 12/16 on both clauses at ≈ 1 330 samples per
+  row (m6fm), 2 / 0 at ≈ 670 (m12fm, with み 0/2, は 1/2 on the flat eval).
+  Planning number: **≈ 1 000 samples per row** saturates the micro rows.
+- Placement (IoU 0.12 / 0.17) is above the single-frame arms but below m12fm
+  and the floor's 0.36 — still the open ruler. s1sfx scenes unused so far.
+
+**Full-inventory launch** (00:55, jobs `d0b023` train+eval / `13db19`
+native): `synth_full_fm` = 92 kana + 68 ext kana (`--kana_ext`) + 200
+corpus kanji (`--kanji 200`, last 室:9) + 100 single-piece words (`--words
+100 --held_out_words 8`), 30 000 items, the m6fm Q-off recipe at **53 000
+steps** (≈ 460 samples per row, ≈ 6 h) → `rows_synth_full_fm_full_s53k_qoff`.
+Below the 1 000-per-row planning number by design: it is the **seed**
+checkpoint — if singles / ext / kanji hold at a decent rate it becomes the
+warm start for further vocab exposure and sentence-rendering arms rather
+than being rerun from scratch.
