@@ -5,7 +5,7 @@
 > line moved to a **micro loop** — 6 rows (あかす出人日), 2 000 steps,
 > ≈ 25 min per arm incl. native — for the trigger / canvas / frame
 > questions. Five arms + three re-renders settled today (table in
-> *Micro loop*; chronology `history.md`): the `c_flat` cap is not a lever
+> *Micro loop*; chronology `reports/synth_micro_loop_2026_09_15.md`): the `c_flat` cap is not a lever
 > (cap 0.75 = removed), **composite share is** (0.4 → 0.9: hit & kept
 > 23 → 41, en cos 0.797 → 0.860), the rows are **bound to the JA clause
 > frame** (in the EN ref's own caption か renders as Latin strokes 0/16
@@ -19,7 +19,7 @@
 >
 > What the S line is, how the instrument works, the S0 recipe / result and
 > the measured budgets moved to [`synth.md`](synth.md); chronology is
-> [`history.md`](history.md). The P-line record (`plan.md`) stays the
+> [`reports/`](reports/README.md). The P-line record (`plan.md`) stays the
 > flat-only control; no P-line weights are used anywhere in the S line.
 > Target artefact, kill criteria and the P2–P4 phase content in `plan.md`
 > stand, re-based on the S table.
@@ -59,7 +59,7 @@ p10 43 / median 51 px.
   two flat layouts, cap 0.75, 186 scenes incl. 12 erase misses) and P0b
   (`encoder_wdsek_w120_s24k_p0b`, flat-only).
 
-Full S0b argv: `history.md` "S0b build + launch".
+Full S0b argv: `reports/synth_s0_s0b_2026_09_15.md` "S0b build + launch".
 
 ## Gates (S0 gates stand for the full-scale run; rulers re-based 2026-09-15)
 

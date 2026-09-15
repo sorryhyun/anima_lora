@@ -230,7 +230,7 @@ class Trainables:
         loss = loss_fm
         decor_val = None
         if self.enc is not None and a.decor > 0:
-            # history.md Run 1b amended: the FM gradient's sign-consistent
+            # W2d report Run 1b amended: the FM gradient's sign-consistent
             # direction marches the table to rank 1 under Adam (attempt 10
             # PR 1.0, rinit 23 → 1.24). Penalise pairwise cos² of the centred
             # *trained* rows (189×189 per step, no DiT forward): ≈ 1 at PR 1,
@@ -353,7 +353,7 @@ class Trainables:
             rec["rel_held"] = float(dn_held.mean() / self.row_scale)
 
     def kill_reason(self, rec, step) -> str:
-        """history.md W2d kill rules: identity not moving, or a row walking
+        """W2d report kill rules: identity not moving, or a row walking
         off-manifold — stop before spending the eval. Encoder arm only."""
         a = self.a
         killed = ""

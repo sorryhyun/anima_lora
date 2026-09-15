@@ -72,7 +72,7 @@ reached its own top-line goal, so neither is a "finished" line):
   five arms decoupled in-domain COO from the doujin gate, so the headroom is
   ♡ / small-kana labels, not representation.
   Home: [`findings.md`](cjk_aware_anima_dit/findings.md) (verdicts),
-  [`cjk_renderable_anima/history.md`](cjk_renderable_anima/history.md) (the frozen copy here was archived — the wake
+  [`cjk_renderable_anima/reports/`](cjk_renderable_anima/reports/README.md) (the frozen copy here was archived — the wake
   line moved to `cjk_renderable_anima/` on 2026-09-14), [`history.md`](cjk_aware_anima_dit/history.md)
   (the dated record incl. the freeze note); pre-freeze plans and dated
   reports archived to `_archive/cjk_aware_anima_dit/{plans,reports}/`.

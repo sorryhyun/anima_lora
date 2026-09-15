@@ -2,9 +2,9 @@
 
 > What the S line is and how its instrument works, kept here so
 > [`plan_synth.md`](plan_synth.md) carries only the live plan. Chronology
-> (runs, numbers, decisions in order) is in [`history.md`](history.md).
+> (runs, numbers, decisions in order) is in [`reports/`](reports/README.md).
 > Sections below are the original plan text at the time each item was
-> built; where a later run changed a number, `history.md` wins.
+> built; where a later run changed a number, the dated report wins.
 
 ## Why (what P0b's native probe showed)
 
@@ -42,7 +42,7 @@ gives 22/64 (`native_x0.7/`). Magnitude is not the lever; a stronger
 `‖f‖` pull or a smaller `out_scale` would only slide along the same axis.
 
 **Table-parts probe (2026-09-14 night, `native_parts/`, 64 renders;
-`history.md`):** the saved table splits exactly into `g + c + f`. Rendered
+`reports/wake_canvas_scenes_2026_09_14.md`):** the saved table splits exactly into `g + c + f`. Rendered
 one part at a time, **every part is 0/16 hits**: `f`, `g`, `f+g` keep the
 scene and draw floor garble; `c` alone draws the training canvas (big
 white bubble, a generic ん) and no requested kana. The canvas mode is `c`,
@@ -180,7 +180,7 @@ held-out eval. Rendering at 2× and downsampling changes nothing (8 % vs
    direction) and `‖c_flat‖`. Optional guard `--f_orth λ`: λ ·
    mean_r cos²(f_r, c_flat).
 
-Added 2026-09-15 (S0b, `history.md` "S0b build + launch"):
+Added 2026-09-15 (S0b, `reports/synth_s0_s0b_2026_09_15.md` "S0b build + launch"):
 
 8. **`anchor_residual` / `erase_miss`** (`wake/render.py`, `stage/scenes.py`):
    the erase geometry is `erase_paint`; the judge measures the share of the
@@ -270,7 +270,7 @@ strings arm used 0.5–0.9; S0 starts at the singles band, S1 widens only if
 
 ## S0 result and the S0b decision (pointer)
 
-**S0 result (2026-09-15, `history.md`): hit & kept 15/64 (P0b 2), kept
+**S0 result (2026-09-15, `reports/synth_s0_s0b_2026_09_15.md`): hit & kept 15/64 (P0b 2), kept
 48/64, singles 20/36, word 3/32 — mechanism confirmed, every gate missed;
 `c_flat` absorbed the bubble flat layout, the plain one leaked into `f`
 (leak 0.28); ×1.5 / ×2 scale lose hits (off-manifold), eval without
@@ -284,7 +284,7 @@ isolation run (`--arm encoder`, same data) stays available but the leak
 split already names a data × parametrisation interaction, so it is not
 first.
 
-**S0b (user, 2026-09-15 — launched; `history.md`): (a)**, `--flat_bubble
+**S0b (user, 2026-09-15 — launched; `reports/synth_s0_s0b_2026_09_15.md`): (a)**, `--flat_bubble
 1.0` (the plain layout had no job left once the composites carry the
 augmentation — and P0b held 36/36 with both layouts in `f`, so the plain
 leak explains wipes, not singles), plus two data fixes found on the S0

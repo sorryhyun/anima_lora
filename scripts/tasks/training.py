@@ -1337,7 +1337,7 @@ _EASY_ADAPTERS = {
     # pool and the pair views are symlinks, so each image is encoded ONCE.
     "phash_edit": {"stage": _phash_edit_stage, "preprocess": _phash_edit_preprocess},
     # plan_render bubble-fill probe (archived; superseded by
-    # project/cjk_renderable_anima/history.md, W3):
+    # project/cjk_renderable_anima/reports/wake_plan_2026_09_13.md, W3):
     # one descriptor per edition; trees under post_image_dataset/render/<ed>/.
     "render_en": {"stage": _render_stage, "preprocess": _render_preprocess},
     "render_ja": {"stage": _render_stage, "preprocess": _render_preprocess},

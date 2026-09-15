@@ -1,7 +1,8 @@
 # plan — cjk_renderable_anima (forward plan, 2026-09-14 evening; P0 added 2026-09-14 night)
 
-> Supersedes the decision state in [`history.md`](history.md), which
-> stays as the dated run record. Verdicts live in [`findings.md`](findings.md);
+> Supersedes the decision state in the 2026-09-13 wake plan
+> ([`reports/wake_plan_2026_09_13.md`](reports/wake_plan_2026_09_13.md)); the dated run record is
+> [`reports/`](reports/README.md). Verdicts live in [`findings.md`](findings.md);
 > this file is only what comes next: phases, gates, kill criteria, and the
 > recipe of record. Nothing is shipped.
 

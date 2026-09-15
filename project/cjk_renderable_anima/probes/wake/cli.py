@@ -272,7 +272,7 @@ def _encoder_args(g):
         type=float,
         default=0.0,
         help="encoder arm: λ on mean_{i≠j} cos²(r_i, r_j) over the centred trained "
-        "rows of the encoder table (0 = off; history.md Run 1b amended: ≈ 0.02 "
+        "rows of the encoder table (0 = off; W2d report Run 1b amended: ≈ 0.02 "
         "against an FM loss of ≈ 0.04)",
     )
     g.add_argument(
@@ -281,7 +281,7 @@ def _encoder_args(g):
         default=0.0,
         help="encoder arm: μ on mean_i ‖f_i‖² for a per-row free residual on the "
         "trained rows (row = g(glyph) + f_i; held-out rows get g only). 0 = off. "
-        "history.md Run 1d: the semi-amortised hybrid — f carries the identity "
+        "W2d report Run 1d: the semi-amortised hybrid — f carries the identity "
         "magnitude the shared head cannot, the L2 pushes what g can explain into g",
     )
     g.add_argument(

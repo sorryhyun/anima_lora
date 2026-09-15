@@ -37,7 +37,7 @@ Stages (each one daemon job; ``--stage all`` = salad data train eval):
 
 The stages live in ``stage/`` (one module each) and the shared plumbing in
 ``wake/`` (models, hooks, readers, renders, inventories, encoder); each
-package's ``__init__.py`` has the map. Run record: ``../history.md``.
+package's ``__init__.py`` has the map. Run record: ``../reports/README.md``.
 
     make daemon-run ARGS="--label wake-salad --stall-timeout 0 \
         project/cjk_renderable_anima/probes/wake_probe.py --stage salad"
