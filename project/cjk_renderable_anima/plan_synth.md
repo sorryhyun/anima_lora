@@ -1,26 +1,46 @@
 # plan_synth — the S line, live plan (rows on self-generated scene composites)
 
-> **Status 2026-09-15 (night):** the full-scale cap-only isolation was
-> killed at 15 min (user: too large a run for the question) and the S
-> line moved to a **micro loop** — 6 rows (あかす出人日), 2 000 steps,
-> ≈ 25 min per arm incl. native — for the trigger / canvas / frame
-> questions. Five arms + three re-renders settled today (table in
-> *Micro loop*; chronology `reports/synth_micro_loop_2026_09_15.md`): the `c_flat` cap is not a lever
-> (cap 0.75 = removed), **composite share is** (0.4 → 0.9: hit & kept
-> 23 → 41, en cos 0.797 → 0.860), the rows are **bound to the JA clause
-> frame** (in the EN ref's own caption か renders as Latin strokes 0/16
-> while あ 11/16 lands as a word token would), and Q fixed on in
-> training routes the trigger *across frames* for か (0 → 7) at an
-> identity cost elsewhere (日 → 目) — glyph-dependent, not rankable on
-> 6 rows. Rulers changed: **`en cos` / `box IoU` against a shared EN
-> reference** (`English text reads as "hi"`, same prompt and seed)
-> replace the floor-based kept margin; floor renders are off by default.
-> **Flat 0 measured 20:50 and closed** — worse on every ruler, wipes
-> unchanged; the flat items hold identity, the bubble is the composites'
-> own canvas. **Frame-mix arm running (22:56, jobs `74db20` / `74f7f3`)**:
-> 12 rows on the s0 + s1 scene pool (four prompt frames from the image,
-> `sign` = the first non-bubble placement), new lettering fonts, inherited
-> ink colour, ±7° tilt — data `synth_micro12_fm`, Q off; result owed below.
+> **Status 2026-09-16 (morning):** the micro loop is **closed** — the
+> frame-mix 2×2 on 6 rows (table in *Frame-mix 2×2*) settled the last
+> two mechanism questions: **frames are the lever** (swap hits 23 → 46
+> with JA hits 60 → 54 and flat singles held) and **Q is inert** on
+> frame-mix data (on vs off within 2 hits / 0.003 cos) — the recipe of
+> record is frame-mix composite 0.9, Q off, no `c_flat`. The 12-row
+> frame-mix arm's 日 collapse was **per-row exposure, not frames**
+> (12/16 at ≈ 1 330 draws per row, 2/0 at ≈ 670), which the first
+> full-inventory run then confirmed at scale: **433 rows × 53 000 steps
+> (≈ 490 draws per row) fails the flat gates** — singles 13/36, ext
+> 18/36, kanji 18/36, **words 0/32** (the item sampler gave the 92 words
+> ≈ 8 items each), katakana + small kana the failure family, hiragana
+> mostly holding, kanji missing to near-shape neighbours. Exposure
+> curve on record: 1 330 → 100 %, 670 → 75 %, 490 → 36 % singles;
+> **≈ 1 000 draws per row** is the planning number, and words / pieces
+> need a pinned share. Two instrument facts from the same day: the probe
+> holds its text cache in RAM (≈ 1.3 MB per caption; 30 k items blew the
+> 46 GB box) — **≈ 10 k items per run**; native sheets now carry the EN
+> `hi` reference as the leading column. **Sentence line opened** (user):
+> a sentence-anchored scene pool `scenes_sl1` is rendering (55 EN
+> sentence anchors, 3 400 prompts, smoke 30 % kept, bubbles wrap the
+> sentence), and **Manga109 dialogue** is wired in as the phrase source
+> (`--phrase_file`, 40 446 lines of 3–10 pieces, held by book;
+> `--phrase_pieces` adds the file's uncovered pieces as rows — the top
+> ones are the **untrained punctuation rows** ー ？ ！ 。 、 ・・・ ～ 「」).
+> Next steps are the three branches in *Next steps (2026-09-16)*.
+>
+> Earlier status (2026-09-15 night, kept for the chronology): the
+> full-scale cap-only isolation was killed at 15 min and the S line
+> moved to a micro loop — 6 rows (あかす出人日), 2 000 steps, ≈ 25 min
+> per arm incl. native. Five arms + three re-renders settled that day
+> (`reports/synth_micro_loop_2026_09_15.md`): the `c_flat` cap is not a
+> lever (cap 0.75 = removed), composite share is (0.4 → 0.9: hit & kept
+> 23 → 41, en cos 0.797 → 0.860), the rows are bound to the JA clause
+> frame (か 0/16 as Latin strokes under `swap`, あ 11/16), and Q fixed
+> on in training looked glyph-dependent at 6 rows. Rulers: **`en cos` /
+> `box IoU` against a shared EN reference** (`English text reads as
+> "hi"`, same prompt and seed) replace the floor-based kept margin;
+> floor renders are off by default. Flat 0 measured and closed — worse
+> on every ruler, wipes unchanged; the flat items hold identity, the
+> bubble is the composites' own canvas.
 >
 > What the S line is, how the instrument works, the S0 recipe / result and
 > the measured budgets moved to [`synth.md`](synth.md); chronology is
@@ -29,7 +49,7 @@
 > Target artefact, kill criteria and the P2–P4 phase content in `plan.md`
 > stand, re-based on the S table.
 
-## Data mix (micro recipe of record; live build `data_synth_micro12_fm`, verdicts on `data_synth_micro6_c9`)
+## Data mix (recipe of record; verdicts on `data_synth_micro6_fm` = frame-mix on the 6 micro rows)
 
 The S0b mix (40 flat / 40 composite / 20 flat phrases, one flat layout,
 `c_flat` cap 1.5) is the flat-only prior measured as the problem: `f`
@@ -49,12 +69,24 @@ arm measures.
 | 0 % | real corpus crops | out (two in three labels wrong, `datacheck.md`) | |
 | **caption frame** | s0 composites are all the JA `reads as` clause on a bubble | **built 2026-09-15 (`--scene_frames`)**: the scene prompt draws a frame — `reads_as` / `bubble_reads` (`There is a speech bubble that reads "…"`) / `saying` (`She is saying "…"`) / `sign` (`He is holding a sign that reads "…"`) — and the composite caption swaps the JA text into the *same* frame. In the live build: reads_as 1 472 / bubble_reads 781 / sign 379 / saying 248 composites | rows are frame-bound (か 0/16 as Latin strokes under `swap`); the frame now comes from the image, no caption-only `--frame_mix` needed. s1: 269/1000 kept (27 %), `bubble_reads` 36 %, **`sign` 34 % and the first non-bubble placement (99 px boards)**, `saying` 21 % (still a bubble), `reads_as` 17 %. **`sfx` set aside** (user, 23:00): 102 kept but the base draws the word on a title bar / banner, not as SFX — pool `s1sfx` exists, not in the mix |
 
-Live build 2026-09-15 22:53 (`--only_chars あかすのみは出人日大目月`,
-`--words 0`, `--n_items 3200`): 3 200 items = 320 font + 2 880 scene over
-443 scenes, all singles, ≈ 27 flat + 240 composite items per row (the
-c9 ratio, twice the rows). The 6-row `data_synth_micro6_c9` (1 600 items,
-s0 only, Noto Sans, black ink, no tilt) is the control the arm reads
-against; `data_synth_micro6` (0.4 share) the older one.
+Builds on record: `data_synth_micro6_fm` (6 rows, 1 600 items over the
+443 s0 + s1 scenes — the 2×2's data), `data_synth_micro12_fm` (12 rows,
+3 200 items), `data_synth_full_fm10k` (433 rows, 10 000 items — the seed
+run's data; `data_synth_full_fm` at 30 000 items is on disk and unusable:
+RAM). The 6-row `data_synth_micro6_c9` (s0 only, Noto Sans, black ink, no
+tilt) is the single-frame control.
+
+**Exposure, measured (the number the full-scale run failed on):** draws
+per row = steps × batch / rows, and the flat singles follow it — 1 330 →
+12/12 (m6fm), 670 → 18/24 with 日 lost (m12fm), 490 → 13/36 with katakana
+and small kana gone (full 53k). Steeper than linear at scale. Two
+consequences for the full-scale data: (1) plan ≈ 1 000 draws per row and
+size steps from the row count, (2) **pin the share of every kind that
+must be learned** — the composite sampler draws by item, so at 433 rows
+the 92 words got 754 of 10 000 items (≈ 8 each, 33 word rows at norm 0)
+and scored 0/32. Sentence pieces (`--phrase_pieces`) are in the same
+position: they are trained only through the phrases that carry them, so
+the phrase share *is* their exposure.
 
 ## Recipe of record (micro, rows arm, from scratch; full-scale run owed)
 
@@ -63,7 +95,14 @@ against; `data_synth_micro6` (0.4 share) the older one.
 - **No `c_flat`** (`--c_flat 0`): cap 0.75 ≡ no `c_flat` on every native
   number and on the sheets (23 vs 24 hit & kept); the switch is dropped,
   not tuned. No encoder, no warm start (`f_r` from zero), **no Q at train
-  time** (glyph-dependent — decision tree). Rows-only is the S line.
+  time** — closed 2026-09-16: on frame-mix data Q on vs off is within 2
+  hits and 0.003 cos on both clauses (the 6-row "Q helps か" reading was
+  a single-frame artefact). Rows-only is the S line.
+- **Frame mix** (`--scenes s0,s1`, four prompt frames from the image):
+  the measured lever for frame independence — swap hits 23 → 46 of 64 on
+  the same 6 rows, JA hits 60 → 54, flat singles 12/12, 日 12/16 on both
+  clauses. `s1sfx` (banner placement) and `sl1` (sentence bubbles) are
+  pools not yet in any arm.
 - σ band 0.7–0.9; rows lr 1e-3, cosine; `μ‖f‖²` pull 1e-3
   (`--free_residual`); rectified flow on the band, `--box_weight 4` inside
   the swapped box.
@@ -71,16 +110,25 @@ against; `data_synth_micro6` (0.4 share) the older one.
 - **Micro scale (what every verdict above is on):** 6 rows
   (`--only_chars あかす出人日` — 3 kana + 3 corpus kanji, one Qwen piece
   each), 2 000 steps ≈ 13 min at 2.5 it/s, + native on `en` and `swap`
-  ≈ 25 min per arm. Arm `rows_synth_micro6_c9_m6c9_s2k_qoff` (job
-  `54e3e5`). The frame-mix arm widens this to 12 rows (6 kana あかすのみは
-  + 6 kanji 出人日大目月), same 2 000 steps (so ≈ 670 draws per row, half
-  of c9's), arm `rows_synth_micro12_fm_m12fm_s2k_qoff` (jobs `74db20` /
-  `74f7f3`); native on あ か す 日 as before.
-- **Full scale (owed, the gate run):** inventory `--kana_ext --kanji 100
-  --words 120`, held-out words 8, small kana only inside words; 24 000
-  steps ≈ 2.6 h. 246-row interference at composite 0.9 is untested (W2's
-  24-kana collapse at 512²); the micro verdicts are on mechanism, not on
-  capacity.
+  ≈ 25 min per arm. Recipe arm `rows_synth_micro6_fm_m6fm_s2k_qoff` (jobs
+  `d7a880` / `78c719`); single-frame control `…micro6_c9_m6c9_s2k_qoff`;
+  12-row `…micro12_fm_m12fm_s2k_qoff` (≈ 670 draws per row).
+- **Full scale, first run (2026-09-16, `rows_synth_full_fm10k_full_s53k_qoff`,
+  jobs `9393f3` / `106e0e`):** 92 kana + 68 ext + 200 corpus kanji + 100
+  words (8 held), 10 000 items, 53 000 steps = 342 min at 2.59 it/s, ≈
+  490 draws per row. **Failed the flat gates** (singles 13/36, ext 18/36,
+  kanji 18/36, word 0/32, combo 0/36; native en 36/64, swap 18/64 with か
+  0/16). Not the seed. Training itself was clean (loss flat 0.09–0.11,
+  mean row norm 0.58, one shared row at 2.2 — the clause's common piece,
+  present in every arm). What it measured: the exposure curve above, and
+  that 433 rows at composite 0.9 do not interfere *visibly* beyond
+  exposure (hiragana held, katakana did not — an exposure-or-interference
+  question the 92-kana arm below answers).
+- **Full scale, the gate run (owed):** same inventory, **≈ 1 000 draws
+  per row** — 433 rows → ≈ 108 000 steps ≈ 12 h — with the word share
+  pinned (≥ 25 % of items); or warm-started from the 53k table (P0b showed
+  warm starts keep identity; `--init_rows`) for the remaining budget.
+  RAM rule: ≈ 10 000 items per data build.
 - Eval: `stage native` renders trained conds only (`--native_floor 0`),
   both clauses (`--native_clauses en,swap`), scored against the shared
   `English text reads as "hi"` refs (`--stage enref` once, arm-independent).
@@ -122,16 +170,28 @@ per-char hits under `swap` (frame independence is per glyph, not per
 arm — か vs あ), and the `native_swap` sheets before trusting a box IoU on
 a small box.
 
-## Prediction on record (frame-mix arm, ≈ 12 rows)
+## Frame-mix 2×2 (2026-09-16, settled at 6 rows)
 
-With captions drawn from the frame mix and Q off, `swap` hits rise on the
-rows that are Latin-distorted today (か-type) while JA-clause hits hold
-≥ 50/64 and en cos stays ≥ 0.86; rows already frame-independent (あ-type)
-move little. If か-type rows stay at 0/16 under `swap` even when a third
-of their exposure was the EN frame, the script decision is the DiT's
-reading of the frame, not the row's (third branch below). Q on top of the
-mix is expected to add nothing the mix did not, at the same identity cost
-(目-type) — the arm is there to close Q, not to rescue it.
+Prediction on record (09-15 night) was: frame mix lifts `swap` on the
+か-type rows with JA hits ≥ 50 and en cos ≥ 0.86, and Q adds nothing.
+Measured (native あかす日 × 8 prompts × 2 seeds, hits = both readers;
+chronology `reports/synth_micro_loop_2026_09_15.md`, last sections):
+
+| arm | rows | frames | Q | JA hit / en cos / IoU | swap hit / en cos / IoU | singles |
+|---|---|---|---|---|---|---|
+| 0.9 Q off (c9) | 6 | 1 | off | 60 / 0.860 / 0.07 | 23 / 0.903 / 0.09 | 12/12 |
+| 0.9 Q on | 6 | 1 | on | 48 / 0.838 / 0.09 | 23 / 0.885 / 0.13 | 10/12 |
+| m12fm | 12 | 4 | off | 44 / 0.891 / 0.18 | 26 / 0.926 / 0.24 | 18/24 |
+| m6fm Q on | 6 | 4 | on | 54 / 0.870 / 0.12 | 44 / 0.902 / 0.14 | 11/12 |
+| **m6fm Q off** | 6 | 4 | off | 54 / 0.868 / 0.12 | **46** / 0.905 / 0.17 | 12/12 |
+
+The prediction held on both counts. Frames are the lever (swap 23 → 46
+at a cost of 6 JA hits, flat eval untouched); Q is inert on frame-mix
+data and closed; 日 at 12/16 on both clauses at ≈ 1 330 draws per row
+says the m12fm collapse (2 / 0) was exposure. Placement (IoU 0.12–0.17
+vs the floor's 0.36) is still the unpassed ruler — m12fm's higher IoU is
+the weak-delta pattern (rows that draw little sit at the base's
+placement), not a placement gain.
 
 ## Micro loop (2026-09-15 evening) — what is settled at 6 rows
 
@@ -152,38 +212,74 @@ Q = frame-independence for some glyphs at an identity pull for others.
 Micro verdicts are on mechanism; 246-row interference is untested
 (W2's 24-kana collapse) — the winner needs one full-scale run.
 
-## Decision tree (next: frame-mix × Q, ≈ 12 rows)
+## Next steps (2026-09-16) — three branches, one arm at a time
 
-Data: composite 0.9 on 12 rows (6 kana + 6 kanji) over the **s0 + s1
-scene pool** (`data_synth_micro12_fm`), so the composites carry four
-frames in image *and* caption (`reads_as` / `bubble_reads` / `saying` /
-`sign`; built 2026-09-15, see the s1 and s1sfx sections of
-`reports/synth_micro_loop_2026_09_15.md`) and identity stops leaning on
-one clause; fonts, ink colour and tilt ride along (not separable in this
-arm — if it moves, the ablation is s0-only data with the new renders).
-Q off first (running); Q on only if the first branch below fails. Native
-on `en` + `swap`. Read against c9 (JA 60 / 0.860, swap 23 / 0.903, seed-0
-wipes 11/32, flat singles 12/12) with the caveat that 12 rows at 2 000
-steps see half the draws per row.
+The mechanism is settled and the recipe is fixed; what is open is
+**capacity** (rows × exposure) and **what the rows are for** (units vs
+sentences). The user named three directions (09-16 morning); they are
+not exclusive, and each has a cheap first arm.
 
-- **Frame mix alone lifts swap hits (≥ 40/64) with JA hits held (≥ 50)
-  and no 目-type identity loss** → Q stays closed; frame mix goes into
-  the full-scale S recipe with composite 0.9.
-- **Frame mix lifts swap hits only with Q on** → Q is part of the recipe;
-  the identity pull is then the open cost (measure on the 6 kanji;
-  `--free_residual` and the Q scale 1.0 → 0.5 are the two levers).
-- **Neither moves swap hits** → the script decision lives in the DiT's
-  reading of the frame, not in the row; that is W3-shaped (DiT-side)
-  work, and the row path ships JA-clause-only.
-- **Flat 0 is measured and closed** (2026-09-15 20:50,
-  `rows_synth_micro6_c10_m6c10_s2k_flat0`): seed-0 wipes unchanged
-  (11/32), JA hits 60 → 46, swap hits 23 → 5, 日 drifts to Latin "a";
-  with no flat items the rows learn the *bubble* as their canvas (white
-  disc on black). Flat 10 % stays. The wipe is the delta norm, not the
-  mix; the next data lever after frame mix is **where composite text
-  sits** — bubble / subtitle bar / directly on the scene, as the EN refs
-  place "hi" — the composite form of the position-jitter idea (scene
-  stage; needs non-bubble text placement in `stage/scenes.py`).
+**A. Train the untrained tokens** — the vocab pack's symbol block is
+routed but untrained, and the sentence line needs it: fullwidth
+punctuation (ー ？ ！ 。 、 ・・・ ～ 「」) are ext rows, ASCII `!?,.…` are
+pretrained pieces, and the OCR line (`anime_tools.ocr._text.drop_symbols`)
+keeps punctuation as read — no fullwidth → ASCII fold — so captions at
+inference carry the ext rows. Decision (user, 09-16): **follow the OCR
+line**, do not normalise to ASCII, and train these rows *through the
+phrases* (`--phrase_pieces`; they are its top pieces), never as singles.
+Owed on the data side: apply `drop_symbols` to the phrase file so the
+training character set equals the OCR caption set. The probe's `norm()`
+strips punctuation before matching, so punctuation rendering is read on
+the sheets, not in the hit counts — a punctuation-aware read (CER on the
+unstripped string) is a small eval change if it becomes a gate.
+
+**B. Sentence training as is** — the phrase composites on the sentence
+pool. Pieces in place: `scenes_sl1` (rendering; 55 sentence anchors, 30 %
+kept, bubbles wrap the sentence, regions 60–200 px), `--phrase_file` on
+Manga109 dialogue (40 446 lines 3–10 pieces, 87 books, 6 held out whole →
+`phrase_held`; `phrase` = 16 trained lines for the memorisation /
+generalisation split), coverage 11 255 lines with the 433-row inventory
++ 100 phrase pieces (3 458 without them). Two blockers before an arm:
+(1) **the composite draw is single-line** — the region's long side / 32
+px caps a phrase at 3–6 glyphs, and 108 of 180 phrase-kind draws in the
+smoke fell back to singles; 2–3-line horizontal wrapping in
+`render_into_scene` / `region_capacity` is the fix (sl1's wider bubbles
+help but do not remove it); (2) **phrase share must be pinned** (the
+words lesson) — `--natural_frac` sets the flat-phrase share and the
+composites mirror the flat kinds, so the share of items that are phrases
+is the exposure of every phrase piece. First arm: 6 rows' worth of
+exposure on ≈ 100 pieces is not cheap; the honest micro version is the
+**12 micro rows + their phrase pieces** on `sl1` + s1, phrase share 0.5,
+≈ 1 000 draws per row, reading `phrase` vs `phrase_held` and the
+punctuation on the sheets.
+
+**C. Analyse the trained tokens** — the 53k table is 434 rows of
+measured signal, cheaper to read than to retrain. Questions it can answer
+without a GPU: which rows hit and which did not (per family: hiragana
+mostly yes, katakana no, small kana no, kanji to near-shape neighbours),
+whether hit correlates with row norm / items-per-text / font coverage /
+the row's pretraining frequency (the pack's `stats`), whether the
+katakana failure is exposure (draws per row equal to hiragana's, so
+**no** — it is either interference with hiragana or a render-side
+cause: fonts, the JA readers' katakana bias) — and the geometry of the
+learned rows (cos between hit and miss rows, hiragana vs katakana
+clusters; the wake geometry tools in `wake_geometry.py`). One GPU arm
+belongs here: **92 basic kana at 23 000 steps** (≈ 1 000 draws per row,
+≈ 2.5 h) — if katakana holds there, the 53k katakana loss was
+interference at 433 rows; if not, it is render-side.
+
+Order of record: **C first** (no GPU, reads the run already paid for),
+then the 92-kana arm, then B once wrapping is in and sl1 has landed; A
+rides inside B. The 108k full-scale gate run waits for the 92-kana
+answer.
+
+Flat 0 is measured and closed (2026-09-15 20:50,
+`rows_synth_micro6_c10_m6c10_s2k_flat0`): seed-0 wipes unchanged (11/32),
+JA hits 60 → 46, swap hits 23 → 5, 日 drifts to Latin "a"; with no flat
+items the rows learn the *bubble* as their canvas. Flat 10 % stays. The
+wipe is the delta norm, not the mix; the placement lever (text on a
+subtitle bar / on the scene, as the EN refs place "hi") is scene-stage
+work — `s1sfx` (banner) is the pool that has it and is in no arm yet.
 
 ## Open risks
 
@@ -205,16 +301,22 @@ steps see half the draws per row.
   their unit (flat 0: white disc on black). Placement diversity in the
   scene stage (subtitle bar / on-scene text) is the lever, not more
   bubbles.
-- **Capacity at 0.9.** Every 0.9 verdict is on 6 rows drawn ≈ 1 200
-  composite steps each (240 distinct items per row); the full inventory
-  at 16 k items / 24 k steps gets ≈ 260 composite draws per row from ≈ 45
-  distinct items, on ≈ 51 px glyphs — 5× less per row, and the 246-row
-  interference of W2 on top. If full-scale singles fall, the levers are
-  distinct composites per row (`--scene_n 2000`, `--scene_min_box` 56 →
-  72) and steps, not the share.
-- **Scene yield.** 17 % kept at 56 px, 174 after the erase gate; each
-  scene serves ≈ 37 swaps. Raising the bar needs `--scene_n 2000` (the
-  prompt list is a stable prefix, only the missing 1 000 render).
+- **Capacity at 0.9 — measured 2026-09-16.** 433 rows at ≈ 490 draws
+  per row (10 k items, 53 k steps) fell to 13/36 singles; the exposure
+  curve (1 330 / 670 / 490 → 100 / 75 / 36 %) is the risk realised. The
+  levers are steps (≈ 1 000 draws per row → ≈ 108 k steps) and pinned
+  shares per kind, not the composite share. Whether katakana's loss is
+  interference on top of exposure is the 92-kana arm's question.
+- **RAM.** The probe keeps every caption's text embedding in RAM (≈ 1.3
+  MB each): 30 k items = 33 GB before latents and the DiT load, on a 46
+  GB box. ≈ 10 k items per data build until the cache is paged.
+- **Scene yield.** s0 17 % kept, s1 27 %, sl1 smoke 30 % (sentences
+  read back better than single words); 443 scenes serve the unit arms,
+  ≈ 1 000 sentence scenes are rendering. Each scene serves many swaps;
+  distinct-items-per-row is bounded by `--n_items`, not by scenes.
+- **Bubble capacity for sentences.** Single-line draw: long side / 32 px
+  glyphs — the sentence line's blocker (branch B); wrapping is the fix,
+  raising `--scene_min_box` is not (it is the short side).
 
 ## Not this plan
 
@@ -235,7 +337,11 @@ steps see half the draws per row.
   (2026-09-15); the S recipe drops the switch.
 - Q (the quoted-EN adapter-output direction) as an inference-time
   replacement for a trained `c` — measured, halves exact hits. Q fixed on
-  in training is *measured, not closed*: glyph-dependent (decision tree).
+  in training — **closed 2026-09-16**: inert on frame-mix data (2×2).
+- Normalising fullwidth punctuation to ASCII in the phrase data — the OCR
+  line does not, so inference captions carry the ext rows; train the rows
+  (branch A), do not fold them.
+- More items per data build past ≈ 10 k without paging the text cache.
 - The floor-based kept margin as a gate — replaced by `en cos` / `box
   IoU`; a bare ground with a bubble scored as kept, and the base itself
   wipes `portrait, simple background` for EN.
