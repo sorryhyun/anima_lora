@@ -62,6 +62,8 @@ class Trainables:
                 )
             if a.free_residual > 0:
                 print(f"rows: μ‖f‖² pull {a.free_residual:g}", flush=True)
+            if a.init_rows:
+                self._init_rows_from(a.init_rows)
         if a.arm == "rows_adapter":
             self.lora = AdapterLoRA(anima, a.adapter_rank, device)
             self.params.append({"params": list(self.lora.params), "lr": a.lr_adapter})
@@ -71,6 +73,56 @@ class Trainables:
             )
 
     # -- setup ---------------------------------------------------------------
+
+    def _init_rows_from(self, path: str):
+        """Rows-arm warm start (P0b → S-line probe): copy the source table's
+        exported rows by ext id. An encoder source's rows are g(glyph) + f +
+        ``common`` (one shared vector, cos ≈ 1 with the table mean); that
+        vector is the flat-canvas component, so it is moved out of the rows
+        and into ``c_flat`` (clipped to the cap) when the switch is on, and
+        dropped otherwise. Rows the source never had stay at zero."""
+        src = torch.load(path, map_location="cpu", weights_only=False)
+        src_raw = src["delta"]["raw"].float()
+        src_idx = {int(e): i for i, e in enumerate(src["delta"]["ext_ids"])}
+        common = None
+        enc = src.get("encoder") or {}
+        if "common" in enc:
+            common = enc["common"].float().cpu()
+        elif "c_flat" in src:
+            common = src["c_flat"].float().cpu()
+        n_warm = 0
+        with torch.no_grad():
+            for i, e in enumerate(self.delta.ext_ids):
+                j = src_idx.get(int(e))
+                if j is None:
+                    continue
+                row = src_raw[j]
+                if common is not None:
+                    row = row - common
+                self.delta.raw[i] = row.to(self.device)
+                n_warm += 1
+            c_note = ""
+            if common is not None and self.c_flat is not None:
+                c = common.clone()
+                cap = float(self.a.c_flat_cap)
+                if cap > 0 and c.norm() > cap:
+                    c = c * (cap / c.norm())
+                self.c_flat.copy_(c.to(self.device))
+                c_note = (
+                    f"; c_flat seeded from source common ‖{float(common.norm()):.3f}‖"
+                    f" → ‖{float(c.norm()):.3f}‖"
+                )
+            elif common is not None:
+                c_note = (
+                    f"; source common ‖{float(common.norm()):.3f}‖ dropped (no c_flat)"
+                )
+        dn = self.delta.raw.detach().norm(dim=1)
+        print(
+            f"rows warm start: {n_warm}/{len(self.delta.ext_ids)} rows from {path} "
+            f"(arm {src.get('arm')}); row norm mean {float(dn.mean()):.3f} "
+            f"max {float(dn.max()):.3f}{c_note}",
+            flush=True,
+        )
 
     def _init_encoder(self, train_ext, ev_ext, tok, pack, anima, dim):
         a, device = self.a, self.device

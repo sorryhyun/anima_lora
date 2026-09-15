@@ -134,3 +134,41 @@ class AdapterLoRA:
     def load(self, sd):
         for p, q in zip(self.params, sd["params"]):
             p.data.copy_(q.to(p.device))
+
+
+class OutVec:
+    """Add one fixed vector at the ext-row positions of ``llm_adapter``'s
+    *output* (post-norm crossattn code) — the quote-probe test: give trained
+    rows the pretrained "quoted text" direction the adapter builds for EN
+    tokens, instead of a trained ``c_flat``. ``vec`` is ``None`` = off."""
+
+    def __init__(self, anima, device):
+        from library.anima.ext_vocab import T5_TABLE_SIZE
+
+        self.T = T5_TABLE_SIZE
+        self.vec = None
+        self.device = device
+        self.state: dict = {}
+        adapter = anima.llm_adapter
+
+        def pre(module, args):
+            if args and torch.is_tensor(args[0]):
+                self.state["mask"] = args[0] >= self.T
+
+        def post(module, args, output):
+            mask = self.state.pop("mask", None)
+            if self.vec is None or mask is None or not bool(mask.any()):
+                return None
+            out = output.clone()
+            out[mask] = out[mask] + self.vec.to(out.dtype)
+            return out
+
+        self.handles = [
+            # prepend: the pack's clamp pre-hook rewrites ext ids to <unk>, so a
+            # later pre-hook would never see them
+            adapter.embed.register_forward_pre_hook(pre, prepend=True),
+            adapter.register_forward_hook(post),
+        ]
+
+    def set(self, vec):
+        self.vec = None if vec is None else vec.to(self.device)

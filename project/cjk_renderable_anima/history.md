@@ -996,6 +996,96 @@ median 51 px; the 33 missing items are bubbles that hold no glyph at
 (`--c_flat_cap 1.5`, else S0's recipe), native `20260915-085011-e34f12`
 (queued; same 8 prompts × あかすぐ × 2 seeds, `full,c,fc`).
 
+### S0b result (2026-09-15 midday): worse than S0 on every ruler; the cap gave `c` the trigger
+
+Jobs `20260915-084732-b88c27` (train + eval) / `20260915-085011-e34f12`
+(native); reports `output/wake_probe/rows_synth_s0b_s24k_S0b/{report.md,
+native/report.md}`. Training: 2.53 it/s steady, loss floor 0.05–0.06,
+leak **0.178** (S0 0.278 — the "leak ≪ 0.28" prediction held), `‖c_flat‖`
+pinned at the 1.5 cap the whole run, `rel` 0.65.
+
+| ruler | S0 | S0b |
+|---|---|---|
+| native `f` alone hit / kept / hit & kept | 25 / 48 / 15 | **1** / 50 / 0 |
+| native `c` alone | 0 / 53 / 0 | 0 / 20 / 0 |
+| native `f+c` | 31 / 29 / 10 | 25 / 24 / 9 |
+| singles / ext / kanji | 20 / 21 / 26 | 15 / 18 / 23 |
+| word / line / combo / corpus | 3 / 2 / 1 / 1 | 1 / 3 / 1 / 0 |
+| EN | 24/24 | 24/24 |
+
+Gate (hit & kept ≥ 24, kept ≥ 56, singles ≥ 30): missed by more than S0.
+The one-layout change did lower the leak; the cap raise let `c_flat`
+absorb the render trigger, so the rows went silent (`f` alone 25 → 1) and
+`f+c` still wipes to the font-bubble circle. Ruler caveat: the `f`-alone
+renders are a bare ground + big glyph, which the scene-kept ruler (cos to
+floor − cos to the bubble prototype) scores as *kept* — 50 overstates.
+Dakuten still lost on `f` (ぐ → く); held-out words pixel-identical to S0
+(untrained addresses → base prior).
+
+### P0b warm-start probes (2026-09-15 afternoon): identity survives, the trigger never grows
+
+New flag `--init_rows <trained.pt>` (`wake/cli.py`, `Trainables._init_rows_from`):
+rows = source `delta.raw` − source common vector (P0b's encoder `common`,
+cos 1.0 with its g mean — the canvas component), `c_flat` seeded with that
+vector clipped to the cap; 366/367 ext ids covered. Same S0b data, cap
+0.75, 2 k steps, eval `single,word` only.
+
+- lr 3e-3 (`rows_synth_s0b_s2k_P0bwarm`): Adam halves the row norm by step
+  100 (`rel` 1.19 → 0.52), singles **1/36** — the table is inert; lr is not
+  a probe-scale knob.
+- lr 3e-4 (`rows_synth_s0b_s2k_P0bwarm_lr3e-4`): `rel` 1.25 → 0.79, leak
+  flat 0.27 for 2 k steps; singles 25/36, word 3/32; native `f` alone
+  **0 / 61 / 0**, `f+c` 8 / 32 / 3.
+
+Reading: rows minus the shared vector hold identity and no trigger (P0b's
+parts probe reproduced); with `c` seeded the flat items are satisfied at
+step 0, so only the composite gradient moves `f`, and at 40 % share with
+small glyphs it builds no trigger in 2 k steps. A warm start saves
+identity, not exposure. `rel` still shrinks a third under the μ‖f‖² pull.
+
+### Quote-direction probes (2026-09-15 afternoon): the pretrained text trigger exists, is ⟂ to `c`, and is not a drop-in
+
+User's question: EN renders when quoted — does the trained `c_flat` overlap
+the `reads as "…"` representation? CPU probes
+(`probes/quote_probe.py`, `probes/quote_dir_save.py`; Qwen3 + adapter fp32,
+18 EN words × 4 frames vs plain, 8 kana under the S0 / S0b tables):
+
+- Input level: `c_flat` cos to the stock T5 table mean −0.07, energy in
+  its top-256 PCs 0.30 (gaussian 0.25, real rows 0.45) — a fresh direction.
+- Adapter output: with the *same* tokens quoted vs plain, the quote shift
+  is one shared direction — per-word pairwise cos 0.46–0.54 per frame,
+  cross-frame cos 0.73–0.91 (reads as / bubble reads / she is saying /
+  bare quotes); ‖shift‖/‖plain code‖ 0.64–0.85. `c`'s image cos to it
+  −0.07 (S0, S0b), `f`'s +0.04; random 0.02. Untrained pack kana codes sit
+  *closer* to the EN-quoted mean (0.41) than trained `f` (0.34) or `f+c`
+  (0.12–0.19). The artist-handle mode (`@greatdoggo`) is a third contextual
+  direction, ⟂ to Q and to every kana code.
+- Native, `f` alone + Q at the ext positions of the adapter output
+  (`OutVec` hook, `--out_vec output/wake_probe/quote_dir/quote_dir.pt
+  --out_vec_scales 1.0,1.5`, conds `fq1` / `fq1.5`, output `native_q/`):
+
+| rows | `f` alone | `f` + Q×1.0 | `f` + Q×1.5 | `f+c` |
+|---|---|---|---|---|
+| S0b hit / kept / hit & kept | 1 / 50 / 0 | 4 / 54 / 2 | 1 / 59 / 1 | 25 / 24 / 9 |
+| S0 | 25 / 48 / 15 | 13 / 54 / 9 | 12 / 55 / 7 | 31 / 29 / 10 |
+| S0 target-in-any-read | 44 | 46 | 40 | 59 |
+
+Q removes the wipes and restores the scene where `f` had blanked it (S0:
+か on a bare ground → か beside the figure), but pushes the DiT into its
+subtitle "small text line in a scene" mode: the single big glyph shrinks
+or gets embedded, exact hits halve (か 14 → 4; ぐ 0 → 3, the first dakuten
+in a scene). Not a drop-in for a trained `c`. Open use: Q fixed on during
+training. Gotcha: the first fq pass was silently inert — the pack's clamp
+pre-hook rewrites ext ids before a non-prepended hook sees them; `OutVec`
+now registers `prepend=True`, verified by md5 (`fq1` ≠ `trained`).
+
+### Cap-only isolation launched (2026-09-15 15:57)
+
+S0b argv with `--c_flat_cap 0.75`, arm `rows_synth_s0b_s24k_S0b_cap075`;
+train + eval `20260915-152223-870a1d`, native `20260915-152223-5b4509`.
+Reads `f` alone hit vs S0 25 / S0b 1 (cap vs `--scene_fill 0.7`), kept vs
+56, singles vs 20 / 15. Branches in `plan_synth.md` *Decision tree*.
+
 ### Shelved W2 levers (do not reopen without a new reason)
 
 - Same-noise classifier CE / swap hinge on free rows: valid for singles,

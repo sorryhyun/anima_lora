@@ -301,6 +301,16 @@ def _encoder_args(g):
         help="train: warm-start the free residual by ext id from another arm's trained.pt",
     )
     g.add_argument(
+        "--init_rows",
+        default="",
+        help="rows arm: warm-start the rows by ext id from another arm's trained.pt "
+        "(its exported delta.raw). If the source is an encoder arm with a shared "
+        "``common`` vector, that vector is subtracted from every row and, when "
+        "--c_flat is on, seeds c_flat (clipped to --c_flat_cap) — so the flat "
+        "table starts where the source left it and the composites train f alone. "
+        "Rows the source never had start at zero",
+    )
+    g.add_argument(
         "--enc_pool",
         default="spatial",
         choices=["spatial", "mean"],
@@ -373,6 +383,23 @@ def _eval_args(g):
         type=float,
         default=1.0,
         help="native: ExtDelta scale for the trained cond (scene-survival vs identity probe)",
+    )
+    g.add_argument(
+        "--out_vec",
+        default="",
+        help="native: .pt with the pretrained quoted-EN adapter-output shift "
+        "(quote_dir_save.py: dirs[<frame>], shift_norm[<frame>]); adds conds fq<s> "
+        "= rows f + s × that shift at the ext positions of the adapter output",
+    )
+    g.add_argument(
+        "--out_vec_scales",
+        default="1.0",
+        help="native: comma list of multiples of the EN shift norm for --out_vec",
+    )
+    g.add_argument(
+        "--out_vec_frame",
+        default="reads_as",
+        help="native: which frame's shift to use from --out_vec (reads_as|bubble_reads|she_says|bare_quotes|avg)",
     )
     g.add_argument(
         "--delta_parts",

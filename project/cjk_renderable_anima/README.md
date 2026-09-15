@@ -11,11 +11,13 @@ pack's ext rows, so EN prompts are bit-exact by construction and the
 artefact ships as an ordinary vocab pack.
 
 [`plan.md`](plan.md) is the forward plan (phases P0a–P4, gates, kill
-criteria, recipe of record); [`plan_synth.md`](plan_synth.md) opens the **S
-line** — the rows arm retrained from scratch on self-generated scene
-composites with a per-source layout vector (P0b's `native` and
-table-parts probes showed the rows address the whole training canvas, not
-the glyph, and that nothing in the table separates the two); [`findings.md`](findings.md) holds the settled
+criteria, recipe of record); [`plan_synth.md`](plan_synth.md) is the **S
+line's** live plan (status, data mix, recipe, gates, decision tree) and
+[`synth.md`](synth.md) its as-built reference — the rows arm retrained
+from scratch on self-generated scene composites with a per-source layout
+vector (P0b's `native` and table-parts probes showed the rows address the
+whole training canvas, not the glyph, and that nothing in the table
+separates the two); [`findings.md`](findings.md) holds the settled
 verdicts one screen per topic; `history.md` is the dated run record
 (W2d Runs 1–3, order probe, σ diagnostic, strings arm, canvas-shape gate).
 [`diagram.html`](diagram.html) is the one-figure picture of what trains and
@@ -23,7 +25,7 @@ how (frozen Anima path + the hybrid address table; open in a browser).
 [`datacheck.md`](datacheck.md): the corpus-crop labels are mostly wrong OCR
 reads of hand-lettered SFX — read before trusting `line` / `corpus` evals.
 
-## What is established (2026-09-14)
+## What is established (2026-09-15)
 
 | claim | evidence | where |
 |---|---|---|
@@ -34,6 +36,7 @@ reads of hand-lettered SFX — read before trusting `line` / `corpus` evals.
 | A sequence of trained addresses renders exactly **one** unit; which one is not positional | Run 3 `line` 0/32 with row coverage 39/39 (そオニ→ニ, ほらそれ→ら, いやいい→いい, なにそれ→な) | `history.md` Run 3 |
 | **A static row table can carry order and count** — strings arm (no singles, 2–4-piece random strings, band 0.5–0.9): unseen `str3` 3/16, `flip` 4/48 with first glyph = caption's first piece 28/48 vs last 5/48, `line` 2/32 (from 0); singles fell 34 → 5/36 because the rows absorbed the multi-unit prior; repeat mode is the main miss | `history.md` Strings arm result | `output/wake_probe/encoder_ws_w120_s8k_strings_warm/` |
 | **The frozen adapter + DiT read T5 piece sequences in order** — nonsense 4–5-piece EN words (GLORPAX, MIZUKANE) render 22/24, WAY NO in the given order; EN control words were multi-piece all along (HELLO = ▁H·ELL·O) | `probes/order_probe.py`, base model, no delta | `history.md` Order probe |
+| **The render trigger and the flat canvas are both common to every flat item, so one shared vector takes both** — S0b's cap 0.75 → 1.5 moved the trigger from `f` into `c_flat` (`f` alone 25 → 1 hit); a P0b warm start keeps identity but never grows a trigger (0/64); the pretrained quoted-EN direction Q is a canvas-free trigger but halves exact hits at inference (S0 hit & kept 15 → 9) | `findings.md` *Settled — trigger vs canvas*; `history.md` 2026-09-15 entries | `output/wake_probe/rows_synth_s0b_s24k_S0b/`, `…/native_q/` |
 | Kanji at scale is an exposure budget, not a research line | Run 2: trained composites render, held-out composites are kana; jōyō 2 136 ≈ one GPU-day in one table | `history.md` Run 2 |
 
 The `line` row and the order-probe row together narrow the string

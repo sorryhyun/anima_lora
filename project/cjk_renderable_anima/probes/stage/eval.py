@@ -21,7 +21,7 @@ from wake.common import (
     data_dir,
     parse_shape,
 )
-from wake.hooks import AdapterLoRA, ExtDelta
+from wake.hooks import AdapterLoRA, ExtDelta, OutVec
 from wake.models import encode_captions, ext_ids_of, generate_to, load_generator
 from wake.models import load_trained, load_vae
 from wake.readers import Readers, contact_sheet, hit, read_scored
@@ -232,9 +232,35 @@ def stage_native(a):
     t0 = time.time()
     parts = table_parts(sd, [x for x in a.delta_parts.split(",") if x])
     conds = ([] if a.no_floor else ["floor"]) + list(parts)
+    outvec = None
+    fq = {}
+    if a.out_vec:
+        # quote-probe cond: rows f + the pretrained quoted-EN output shift
+        q = torch.load(a.out_vec, map_location="cpu", weights_only=False)
+        vec = q["avg"] if a.out_vec_frame == "avg" else q["dirs"][a.out_vec_frame]
+        norm = (
+            sum(q["shift_norm"].values()) / len(q["shift_norm"])
+            if a.out_vec_frame == "avg"
+            else q["shift_norm"][a.out_vec_frame]
+        )
+        vhat = vec.float() / vec.float().norm()
+        f_rows = sd["delta"]["raw"]
+        for sc in [float(x) for x in a.out_vec_scales.split(",") if x]:
+            fq[f"fq{sc:g}"] = (f_rows, vhat * (sc * norm))
+        outvec = OutVec(anima, device)
+        conds += list(fq)
+        print(
+            f"out_vec: frame {a.out_vec_frame}, EN shift norm {norm:.2f}, scales {sorted(fq)}",
+            flush=True,
+        )
     for cond in conds:
+        if outvec is not None:
+            outvec.set(fq[cond][1] if cond in fq else None)
         if cond == "floor":
             delta.scale = 0.0
+        elif cond in fq:
+            delta.scale = a.delta_scale
+            delta.raw.data.copy_(fq[cond][0].to(delta.raw.device))
         else:
             delta.scale = a.delta_scale
             delta.raw.data.copy_(parts[cond].to(delta.raw.device))

@@ -12,10 +12,15 @@ verdicts are read-only in
 [`../cjk_aware_anima/findings.md`](../cjk_aware_anima/findings.md)
 (the vocab pack itself).
 
-Line status (2026-09-14): frozen DiT + frozen adapter + a delta on the
+Line status (2026-09-15): frozen DiT + frozen adapter + a delta on the
 pack's ext rows renders every kana and short common words (Run 3), and a
 static table trained on strings carries **order and count** (strings arm).
-Nothing is shipped; the mixed arm (plan P1) is the next gate.
+The S line (scene composites + a per-source layout vector `c_flat`) put
+the mechanism on real scenes (S0 hit & kept 15/64 from P0b's 2) but no arm
+has cleared the native gate; the blocker is now named — the *render
+trigger* and the *canvas* are both common to every flat item, so one
+shared vector takes both (see *Settled — trigger vs canvas*). Nothing is
+shipped; the cap-only isolation run (`s24k_S0b_cap075`) is the live arm.
 
 ---
 
@@ -123,6 +128,57 @@ Nothing is shipped; the mixed arm (plan P1) is the next gate.
   count right, second slot copies a neighbour. It is Run 2's repeat mode
   on the string side and the open lever after the mixed arm.
 
+## Settled — trigger vs canvas: why the S-line tables wipe or go silent
+
+The S line splits every ext row into `f_r` (per glyph) + `𝟙[flat]·c_flat`
+(one vector, on for flat-canvas items only). Four measurements, 2026-09-15,
+fix what each part holds — read them before touching the cap, the init or
+the data mix.
+
+- **`c` holds the canvas *and* the "render text here" trigger; `f` holds
+  identity and (depending on the cap) part of the trigger.** Native, EN
+  clause, 64 renders, hit / kept / hit & kept: S0 (cap 0.75) `f` alone
+  25 / 48 / 15, `f+c` 31 / 29 / 10; S0b (cap 1.5, one flat layout,
+  `--scene_fill 0.7`) `f` alone **1** / 50 / 0, `f+c` 25 / 24 / 9; P0b
+  (flat-only hybrid) every part without its common vector 0/16. Raising
+  the cap 0.75 → 1.5 moved the trigger out of `f` into `c` (S0b's leak
+  fell 0.28 → 0.18 and every flat ruler got worse: singles 20 → 15, word
+  3 → 1). **A larger cap = more absorption, not less leak.** Mechanism:
+  `c` is switched on for flat items only, so it can absorb anything
+  common to *all* flat items — canvas and trigger alike; only the
+  composites show the trigger without the canvas, so the composite share
+  and glyph size decide what `f` is forced to keep, the cap only decides
+  what `c` is allowed to take.
+- **In row space the two are already separate.** Rows are mostly ⊥ to
+  `c` (mean cos 0.18–0.28), `c` is ⊥ to the stock T5 table mean (−0.07)
+  and lies outside its top-256 PCs (energy 0.30, gaussian 0.25, real rows
+  0.45). What is entangled is the DiT's *response*, not the parameters —
+  no row-space regulariser can split it.
+- **A warm start from P0b's rows saves identity, not exposure.** With
+  `--init_rows` (rows = P0b raw − its common vector, `c_flat` seeded with
+  that vector, cap 0.75), 2 k composite steps at lr 3e-4 keep singles at
+  25/36 but leak stays flat at 0.27 and native `f` alone is **0/64** hit,
+  61 kept; `f+c` 8 / 32 / 3. Flat items are satisfied at step 0, so only
+  the composite gradient moves `f`, and at 40 % share with small glyphs it
+  builds no trigger in 2 k steps. (lr 3e-3 on the same warm start halves
+  the row norm by step 100 and leaves an inert table: singles 1/36.)
+- **The pretrained model has a canvas-free text trigger, and it is not a
+  drop-in for `c`.** At the adapter output, the shift an EN token gets
+  from being quoted (`reads as "…"`, `speech bubble that reads "…"`, `she
+  is saying "…"`, bare quotes) is one shared direction Q (per-word cos
+  ≈ 0.5, cross-frame 0.73–0.91); `c`'s image is ⟂ to it (−0.07). Adding Q
+  at the ext positions of `f` alone (`--out_vec`, native conds `fq<s>`):
+  S0 rows 25 / 48 / 15 → 13 / 54 / 9; S0b rows 1 / 50 / 0 → 4 / 54 / 2.
+  Q removes the wipes and restores the scene where `f` had blanked it, but
+  pushes the DiT into its subtitle "small text line in a scene" mode, so
+  the single big glyph the exact ruler needs shrinks or gets embedded
+  (target-in-any-read unchanged at 44 → 46; か 14 → 4 hits, ぐ 0 → 3 with
+  dakuten). Untested and the only remaining use: Q fixed on *during
+  training* so `f` learns identity that renders under it.
+- The artist-handle mode (`@greatdoggo` → logo) is a third, contextual
+  direction, ⟂ to Q and to every kana code — not a "draw a fixed mark"
+  address to borrow.
+
 ## Settled — what does not move it
 
 - 256² training under the default σ (dead: EN 11/24 there; 384² is alive
@@ -134,7 +190,10 @@ Nothing is shipped; the mixed arm (plan P1) is the next gate.
   the negative control); same-noise CE / swap hinge on free rows (fixes
   nothing combos-related); regressing rows onto existing embeddings or
   Latin letters; encoder-only generalisation (rank-1 table under every
-  lever); IDS composition of addresses.
+  lever); IDS composition of addresses; the `c_flat` cap in either
+  direction (0.75 → 1.5 handed the trigger to `c`); a P0b warm start as a
+  shortcut through the composite stage; Q added at inference over rows
+  trained with a `c`.
 
 ## Gotchas that cost time
 
@@ -152,6 +211,10 @@ Nothing is shipped; the mixed arm (plan P1) is the next gate.
 - A background `daemon-wait` client from the agent harness gets killed on
   low host memory — the daemon job survives; wait with a Monitor poll on
   `output/daemon/jobs/<id>/job.json` `state`.
+- Any hook on `llm_adapter.embed` that must see ext ids registers with
+  `prepend=True` — the vocab pack's clamp pre-hook rewrites them to
+  `<unk>` first; the first `OutVec` native pass was silently inert
+  (fq renders byte-identical to `f`), caught only by an md5 compare.
 - Warm-started `f` dips (0.78 → 0.52 in 25 steps at lr 1e-3, Adam moves a
   row ≈ 0.03 row-norm units/step) and re-settles by step ~2 000; do not
   read the dip as identity loss.
@@ -165,6 +228,12 @@ Nothing is shipped; the mixed arm (plan P1) is the next gate.
 - A hard two-step curriculum (singles then strings) — each step bakes its
   unit count into the rows; mix instead.
 - Widening the σ band above 0.9 — nothing is decided there.
+- Raising `c_flat_cap` (or removing it) to "let the vector settle" — S0b
+  measured the direction: the trigger follows the room.
+- Seeding rows or `c` from EN / quoted-EN codes, or a row-space
+  "canvas-component" regulariser — the split is already clean in row
+  space; the coupling is in the DiT's response.
+- Q as an inference-time replacement for a trained `c`.
 
 ## Open
 
@@ -177,5 +246,12 @@ Nothing is shipped; the mixed arm (plan P1) is the next gate.
 - Pack bake: `trained.pt` → shipped safetensors + json + digest; the full
   kana inventory (voiced, handakuten, small kana ≈ 70 rows) and the
   common-word pack at the kana bar.
-- Scene prompts (`native` stage): the rows' layout prior in a real
-  composition; not re-measured since the string arms.
+- Cap-only isolation (`rows_synth_s0b_s24k_S0b_cap075`, S0b data, cap
+  0.75): attributes S0b's `f` collapse to the cap vs `--scene_fill 0.7`;
+  reads `f` alone hit vs S0 25 / S0b 1.
+- Q as a *training-time* trigger: rows trained with the quoted-EN
+  direction fixed on for every item, `c_flat` at 0.75 for canvas only —
+  does `f` then carry identity that renders under Q in a scene? Needs the
+  `OutVec` hook in the train stage; not before the isolation run reads.
+- Composite share 40 → 60 % and `--scene_min_box` 56 → 72 (plan_synth
+  tree) once the cap is attributed.
