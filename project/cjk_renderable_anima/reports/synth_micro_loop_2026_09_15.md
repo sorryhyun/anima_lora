@@ -249,3 +249,140 @@ IoU is harsh on small boxes (あ visually in the "hi" slot still scores
 0.25, en cos 0.906, 12 hits) is the weakest delta and the closest to the
 base's placement — the placement/identity trade-off is the delta norm,
 which every arm drives to the same ≈ 125–130.
+
+## Flat 0 (2026-09-15 20:25 → 20:50): composite-only is worse on every ruler and wipes exactly as much — CLOSED
+
+Same 6 rows and train argv as the 0.9 Q-off arm; data `synth_micro6_c10`
+= 1 600 scene composites, 0 flat (`n_flat > 0` assert in `stage/synth.py`
+lifted to `>= 0`; composites default to singles when no flat kind is
+in). Jobs `861ded` (train + eval) / `a61d3e` (native, `--native_clauses
+en,swap` in one job). Arm `rows_synth_micro6_c10_m6c10_s2k_flat0`. Train
+end point as every arm (loss 0.104, row norm 125, rel 0.64).
+
+| | 0.9 Q off (flat 10 %) | flat 0 |
+|---|---|---|
+| flat singles / combo / EN | 12/12 / 5/36 / 24/24 | 10/12 / 0/36 / 24/24 |
+| JA clause both-reader hits / en cos / IoU | 60 / 0.860 / 0.07 | **46** / 0.856 / 0.10 |
+| swap clause hits / en cos / IoU | 23 / 0.903 / 0.09 | **5** / 0.887 / 0.14 |
+| wipes (en cos < 0.80) seed 0 / seed 1, JA clause | 11/32 / 2/32 | 11/32 / 3/32 |
+
+Per char, JA clause (c9 → flat 0): あ 16 → 15, か 14 → 15, す 15 → 11,
+**日 15 → 5**; swap: あ 11 → 2, か 0 → 0, す 3 → 0, 日 9 → 3.
+
+- **The residual wipe is not the flat prior.** Seed-0 wipes are the same
+  count with zero flat items, and the same picture (big glyph on a white
+  ground) — that ground is the DiT's own mode for a strong ext row, not a
+  learned canvas. Composite share 0.4 → 0.9 took the wipes from 7/8 to
+  4/8; removing the last flat items takes them nowhere. The delta norm
+  (≈ 125 on every arm) is what overrides the scene.
+- **Composites have a canvas too: the bubble.** か seed 1 draws a **white
+  disc on black with か inside** on 5/8 prompts (`sheet_か_en.png`) — the
+  erased bubble region blown up to the whole canvas. With no flat items
+  the rows learn "glyph inside a round white bubble" as the unit, so the
+  wipe changes shape rather than count. Every composite is a bubble; the
+  EN refs put "hi" in a subtitle bar or straight on the scene and rarely
+  in a bubble, which is also why box IoU never leaves 0.1: the row goes
+  where its training surround was.
+- **Flat exposure holds identity and frame independence.** 日 renders as
+  Latin **"a"** on 5/8 seed-0 prompts (scene intact, `sheet_日_en.png`),
+  出 fails both flat-eval seeds as an H-like Latin form in a bubble, and
+  the swap-clause hits collapse 23 → 5 (あ 11 → 2). The big clean glyph
+  on a flat ground is what keeps a row on its glyph rather than sliding
+  to the nearest Latin letter; small in-bubble glyphs alone do not.
+
+Verdict: **flat 0 closed**; flat 10 % + composite 0.9 stays the micro
+recipe of record. The data lever that the bubble finding points at is
+*where the composite text sits* (bubble / subtitle bar / directly on the
+scene, as the EN refs do) — the composite analogue of the position-jitter
+idea (user, 20:20) — scene-stage work, queued after the frame-mix arm.
+
+## Scene frames s1 (2026-09-15 21:24 → 22:30): the prompt frame is a data axis — `sign` gives a non-bubble placement, `bubble_reads` triples the bubble yield
+
+Flat 0 said the composites' own canvas is the bubble, and the swap clause
+said the rows are bound to the one `reads as` frame. Both are the scene
+prompt's doing — every s0 scene was `…, speech bubble, english text.
+English text reads as "hi"`. `--scene_frames` (`stage/scenes.py`,
+`FRAMES`) now draws the frame per prompt and records `frame` /
+`clause_tpl`; the data stage swaps the JA text into the *same* frame
+(`She is saying "か".`, `He is holding a sign that reads "か".`; `English
+text reads as` → `Japanese text reads as`), so the composite caption is
+the frame the base drew the scene under. Pronoun frames go to solo counts
+only; `sign` drops other held objects from the action slot. `--scenes
+s0,s1` composes runs. Also from tonight: the drawn glyph inherits the
+**anchor's ink colour** (`anchor_ink`, median of the box's non-fill
+pixels, when it contrasts ≥ 60 with the fill; s0: 29/174 anchors are
+coloured — red / yellow / pink / blue) instead of always black, so ink
+colour is not one more constant the rows can absorb (user, 00006's purple
+"hi"); and s0's 826 rejected renders were pruned from disk.
+
+Run `s1` (job `48bb04`, 1 000 prompts, frames `reads_as,bubble_reads,
+saying,sign`, else the s0 recipe): **251 kept (25 %)** vs s0's 17 %.
+
+| frame | prompts | kept | yield | top rejects | region short side (median) | what it looks like |
+|---|---|---|---|---|---|---|
+| `bubble_reads` `There is a speech bubble that reads "…"` | 338 | 111 | **33 %** | small_box 79, multi_box 55, open 46 | 73 px | clean single bubbles, varied shapes / placements |
+| `sign` `He is holding a sign that reads "…"` | 172 | 56 | **33 %** | read_miss 41, open 23, no_box 22 | **99 px** | a held board with big lettering — **the non-bubble placement**; the flood finds the board like a bubble |
+| `saying` `She is saying "…"` | 177 | 36 | 20 % | multi_box 42, small_box 42, read_miss 34 | 72 px | a bubble anyway (the `speech bubble` tag wins); one panel-border false pass (886) |
+| `reads_as` (s0's) | 313 | 48 | 15 % | read_miss 97, multi_box 90 | – | as s0 |
+
+Reads: (1) the clause form changes what the base draws far more than
+expected — `bubble_reads` doubles `reads_as`'s yield on the same tags,
+`reads_as` loses a third to read_miss (garbled anchor). (2) `sign` is the
+first placement that is not a bubble and still erasable (flat board,
+ring-median fill), with the largest glyph budget of any source. (3)
+`saying` buys nothing over `bubble_reads` while the bubble tag is in its
+generals; a bubble-less variant would drop the tag. Follow-up in flight:
+`s1sfx` (job `cd7ee6`, 300 prompts, frame `sfx` = `sound effects` tag +
+`English SFX reads as "BAM"` — the trainer's OCR clause grammar — with
+its own onomatopoeia anchors and the open-fill path allowed: bubble-less
+frames erase the plain rectangle).
+
+Pool for the next micro arm: s0 174 + s1 251 (+ s1sfx) = 425+ scenes over
+four frames; composites carry the frame in the caption, so the arm *is*
+the frame-mix arm of `plan_synth.md`'s decision tree, with the frame
+coming from the image rather than a caption-only lever.
+
+## s1sfx + filter fixes + fonts (2026-09-15 22:00 → 23:00)
+
+**Filter fixes** (from the user's picks 873 / 424 / 00001 / 832 on the s1
+sheets): 873 = reader miss on a clean bubble (JA-tuned readers), 424 and
+00001 = `small_box` by 11 px and by 2 px, 832 = a false `erase_miss` — the
+outline is broken at 12 o'clock, nine seeds leak, three find a *pocket*
+between the outline and the letters that encloses the box by bbox but covers
+none of it. Two rules now in `bubble.py` / `stage/scenes.py`: (1) a fill
+whose interior covers < 50 % of the text box is not a bubble; (2) with no
+closed bubble the region is grown 1.2× → 1.35× → 1.5× and the first size
+whose **erase seam** (the 3-px ring just outside the paint rectangle) is
+≥ `--scene_open_uniform 0.9` fill-coloured is kept — the letters inside
+vanish into the same colour, an outline crossing the edge shows as a cut,
+and growing from the smallest step keeps a broken outline instead of
+painting it over. s1 re-judged 251 → **269 kept (27 %)**; 18 open scenes
+in, 832 among them with its bubble intact. Renders also inherit the
+**anchor's ink colour** (`anchor_ink`) and 30 % of composites are tilted
+±7° on their own layer (`tilt_frac` / `tilt_deg`; box = the tilted alpha
+bbox).
+
+**Fonts** (`assets/fonts/FONTS.md`, user's list from oekaki-zukan 516 +
+two BOOTH picks): 源暎アンチック, 源柔 / 源真ゴシック M+B, コーポレート・ロゴ,
+たぬき油性マジック, 破線G, こよみゆる, plus Noto Serif CJK (= 源ノ明朝); **Noto
+Sans CJK is out** (user: reads ambiguous next to the manga faces; the
+Chinese-form memory was DroidSansFallback, dropped 09-14 — verified on
+直骨誤令海天込 that Noto index 0 is the JP face). `pick_font` draws
+uniformly among the faces whose cmap covers the string (こよみゆる is JIS
+L1 only; 破線G is a dashed decorative face, kept at equal weight on the
+user's call). 16 faces.
+
+**s1sfx** (job `cd7ee6`, 300 prompts, `sound effects` tag + `English SFX
+reads as "BAM"`, open fill allowed): **102 kept (34 %)** after the
+re-judge (94 before); rejects read_miss 92, multi_box 84. **The base does
+not draw manga SFX for this frame — it draws the word on a title-card bar
+or banner** (dark bar at the bottom, a pink banner across the chest, a
+subtitle box), 95 of 102 with no closed bubble, region short side median
+**131 px** (bubbles 73, signs 99). The rectangle erase paints in the bar's
+own colour so it is invisible, the glyph inherits the bar's lettering
+colour (pink / orange / white on navy), and the result is a third
+placement family — text on a panel — with the largest glyph budget of any
+source. The caption says `Japanese SFX reads as "…"` over a picture that
+is a banner, which is what the base itself drew for that clause.
+
+Scene pool now: s0 174 + s1 269 + s1sfx 102 = **545** over five frames.

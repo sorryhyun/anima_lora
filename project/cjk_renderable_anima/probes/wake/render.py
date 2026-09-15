@@ -14,11 +14,44 @@ from .bubble import bubble_interior, bubble_mask, ring_median
 from .common import wh
 
 
+FONT_DIR = Path(__file__).resolve().parents[2] / "assets" / "fonts"
+
+
 def find_fonts() -> list[str]:
     # Noto CJK .ttc index 0 = the JP face. DroidSansFallback (pre-S0 data
     # dirs had it) draws kanji in Chinese-styled forms and is out (user,
-    # 2026-09-14)
-    return sorted(glob("/usr/share/fonts/opentype/noto/Noto*CJK*.ttc"))
+    # 2026-09-14); Noto Sans CJK is out too (user, 2026-09-15: reads
+    # ambiguous next to the manga faces) — Noto Serif CJK (= 源ノ明朝, the
+    # article's serif pick) stays and is the full-coverage fallback. Plus
+    # the manga lettering set under assets/fonts (FONTS.md — antique,
+    # rounded / angular gothic, logo, marker, handwriting), gitignored.
+    return sorted(glob("/usr/share/fonts/opentype/noto/NotoSerifCJK*.ttc")) + sorted(
+        str(p) for p in FONT_DIR.glob("*.[ot]tf")
+    )
+
+
+_CMAP: dict[str, set] = {}
+
+
+def font_covers(font_path: str, text: str) -> bool:
+    """Every char of ``text`` has a glyph in the font's cmap (index 0 of a
+    .ttc). Hand-lettered fonts stop at JIS level 2 and a missing glyph
+    renders as tofu, which the row would learn."""
+    cm = _CMAP.get(font_path)
+    if cm is None:
+        from fontTools.ttLib import TTFont
+
+        tt = TTFont(font_path, fontNumber=0, lazy=True)
+        cm = set(tt.getBestCmap().keys())
+        tt.close()
+        _CMAP[font_path] = cm
+    return all(ord(ch) in cm for ch in text)
+
+
+def pick_font(text: str, fonts: list[str], rng: random.Random) -> str:
+    """One draw among the fonts that cover ``text`` (Noto always does)."""
+    ok = [f for f in fonts if font_covers(f, text)]
+    return rng.choice(ok or fonts)
 
 
 JITTER_BG_LIGHT = [
@@ -283,12 +316,14 @@ def region_capacity(region, min_glyph: int, fill_frac: float = 0.9) -> int:
     return int(rw / min_glyph) if rh >= min_glyph else 0
 
 
-def erase_paint(arr, tb, reg):
+def erase_paint(arr, tb, reg, open_ok: bool = False):
     """Bool HxW mask of what the composite erase paints for one anchor: the
     usable region ∪ the text box padded by a quarter of its size (detector
     boxes run tight), clipped to the bubble interior (flood mask, letter
     holes filled — a rectangle's corners would poke past a round outline).
-    ``None`` when no bubble mask is found."""
+    ``None`` when no bubble mask is found — unless ``open_ok`` (bubble-less
+    frames such as `sfx`): then the plain rectangle is painted, a flat
+    ring-median patch on the scene."""
     import numpy as np
 
     H, W = arr.shape[:2]
@@ -297,24 +332,77 @@ def erase_paint(arr, tb, reg):
     ex0, ey0 = max(0, min(reg[0], x0 - px)), max(0, min(reg[1], y0 - py))
     ex1, ey1 = min(W, max(reg[2], x1 + px)), min(H, max(reg[3], y1 + py))
     m = bubble_mask(arr, tb)
-    if m is None:
+    if m is None and not open_ok:
         return None
     paint = np.zeros((H, W), dtype=bool)
     paint[ey0:ey1, ex0:ex1] = True
-    paint &= bubble_interior(m)
+    if m is not None:
+        paint &= bubble_interior(m)
     return paint
 
 
-def anchor_residual(arr, tb, reg, tol: int = 24) -> float:
+def erase_uniform(arr, tb, reg, tol: int = 24, width: int = 3) -> float:
+    """Seam test for an open (no closed bubble) erase: the share of the
+    ``width``-px ring just *outside* the paint rectangle that sits within
+    ``tol`` of the ring-median fill. 1.0 means the painted rectangle has no
+    visible edge — whatever was inside (the letters, an ascender the
+    detector box clipped) vanishes into the same colour — while an outline
+    or art crossing the rectangle's edge shows as a cut and lowers it. The
+    judge grows the rectangle from the smallest step, so a white bubble
+    with a broken outline keeps its outline (s1 832) and a bare white
+    ground keeps nothing to keep."""
+    import numpy as np
+
+    paint = erase_paint(arr, tb, reg, open_ok=True)
+    H, W = arr.shape[:2]
+    ys, xs = np.nonzero(paint)
+    if len(xs) == 0:
+        return 0.0
+    x0, y0, x1, y1 = xs.min(), ys.min(), xs.max() + 1, ys.max() + 1
+    ring = np.zeros((H, W), dtype=bool)
+    ring[
+        max(0, y0 - width) : min(H, y1 + width), max(0, x0 - width) : min(W, x1 + width)
+    ] = True
+    ring[y0:y1, x0:x1] = False
+    if not ring.any():
+        return 0.0
+    fill = np.array(ring_median(arr, tb), dtype=np.int16)
+    d = np.abs(arr.astype(np.int16) - fill).max(axis=2)
+    return float((d[ring] <= tol).mean())
+
+
+def anchor_ink(arr, tb, tol: int = 24, min_px: int = 30):
+    """Median colour of the anchor's ink inside text box ``tb`` (pixels
+    farther than ``tol`` from the ring-median fill), or ``None`` when too
+    few — the base's own lettering colour for this scene (s1 00006: a purple
+    "hi"), inherited by the drawn glyph so ink colour is not one more
+    constant the rows can absorb (user, 2026-09-15). Outline pixels are in
+    the median too; with a thin outline the letter body wins."""
+    import numpy as np
+
+    H, W = arr.shape[:2]
+    x0, y0, x1, y1 = (int(v) for v in tb)
+    sub = arr[max(0, y0) : min(H, y1), max(0, x0) : min(W, x1)].astype(np.int16)
+    if sub.size == 0:
+        return None
+    fill = np.array(ring_median(arr, tb), dtype=np.int16)
+    ink = sub[np.abs(sub - fill).max(axis=2) > tol]
+    if len(ink) < min_px:
+        return None
+    return tuple(int(v) for v in np.median(ink, axis=0))
+
+
+def anchor_residual(arr, tb, reg, tol: int = 24, open_ok: bool = False) -> float:
     """Share of the anchor's ink (pixels in the text box farther than ``tol``
     from the ring-median fill) that ``erase_paint`` would leave standing.
     ≈ 0 for a bubble the flood found (edge pixels only); ≈ 1 when the flood
     took another blob — the letters survive under the drawn kana and the
     usable region is not this bubble's (s0: 12 of 186 kept scenes). 1.0
-    when there is no bubble mask."""
+    when there is no bubble mask (0 under ``open_ok``: the rectangle covers
+    the box)."""
     import numpy as np
 
-    paint = erase_paint(arr, tb, reg)
+    paint = erase_paint(arr, tb, reg, open_ok)
     if paint is None:
         return 1.0
     H, W = arr.shape[:2]
@@ -335,6 +423,8 @@ def render_into_scene(
     min_glyph: int = 40,
     stroke: bool = False,
     fill_frac: float = 0.9,
+    tilt_frac: float = 0.3,
+    tilt_deg: float = 7.0,
 ):
     """Erase every anchor bubble's usable region (plus the text box padded by
     a quarter of its size — detector boxes run tight) with the bubble's
@@ -356,10 +446,14 @@ def render_into_scene(
     W, H = im.size
     head = scene["regions"].index(scene["region"])
     fills = []
-    for tb, reg in zip(scene["boxes_anchor"], scene["regions"]):
+    # a kept scene whose bubble is None passed the judge as open (bubble-less
+    # frame): paint the rectangle
+    bubbles = scene.get("bubbles") or [None] * len(scene["regions"])
+    ink = anchor_ink(arr, scene["boxes_anchor"][head])  # read before the erase
+    for tb, reg, bub in zip(scene["boxes_anchor"], scene["regions"], bubbles):
         fill = ring_median(arr, tb)
         fills.append(fill)
-        paint = erase_paint(arr, tb, reg)
+        paint = erase_paint(arr, tb, reg, open_ok=bub is None)
         if paint is None:
             return None
         arr[paint] = fill
@@ -374,25 +468,45 @@ def render_into_scene(
     font, fs, tw, th = fit
     fill = fills[head]
     dark_bg = sum(fill) / 3 < 100
-    color = rng.choice(
-        [(240, 240, 240), "white"]
-        if dark_bg
-        else ["black", "black", (30, 30, 30), (60, 40, 40)]
-    )
+    # the anchor's own ink colour when it contrasts with the fill (≥ 60 on
+    # some channel), else the old contrast rule
+    if ink is not None and max(abs(a - b) for a, b in zip(ink, fill)) >= 60:
+        color = ink
+    else:
+        color = rng.choice(
+            [(240, 240, 240), "white"]
+            if dark_bg
+            else ["black", "black", (30, 30, 30), (60, 40, 40)]
+        )
     cx, cy = (region[0] + region[2]) / 2, (region[1] + region[3]) / 2
     kw = {"stroke_width": max(1, fs // 24), "stroke_fill": fill} if stroke else {}
+    # the text goes on its own layer so it can be tilted a few degrees
+    # (user, 2026-09-15: hand-lettered bubbles are rarely dead level) —
+    # 30 % of composites, ±7°, about the text block's centre
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ld = ImageDraw.Draw(layer)
     if vertical:
         y = cy - th / 2
         for ch in text:
-            w = d.textlength(ch, font=font)
-            d.text((cx - w / 2, y), ch, fill=color, font=font, **kw)
+            w = ld.textlength(ch, font=font)
+            ld.text((cx - w / 2, y), ch, fill=color, font=font, **kw)
             y += fs * 1.05
     else:
-        d.text((cx - tw / 2, cy - fs / 2 - fs * 0.1), text, fill=color, font=font, **kw)
+        ld.text(
+            (cx - tw / 2, cy - fs / 2 - fs * 0.1), text, fill=color, font=font, **kw
+        )
+    if rng.random() < tilt_frac:
+        layer = layer.rotate(
+            rng.uniform(-tilt_deg, tilt_deg), resample=Image.BICUBIC, center=(cx, cy)
+        )
+    im.paste(layer, (0, 0), layer)
+    bb = layer.getbbox()  # alpha bbox: the drawn (and tilted) glyphs
+    if bb is None:
+        return None
     box = [
-        int(max(0, cx - tw / 2 - 2)),
-        int(max(0, cy - th / 2 - 2)),
-        int(min(W, cx + tw / 2 + 2)),
-        int(min(H, cy + th / 2 + 2)),
+        int(max(0, bb[0] - 2)),
+        int(max(0, bb[1] - 2)),
+        int(min(W, bb[2] + 2)),
+        int(min(H, bb[3] + 2)),
     ]
     return im, box

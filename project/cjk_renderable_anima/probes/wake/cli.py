@@ -603,6 +603,14 @@ def _scene_args(g):
         help="scenes: comma list of EN anchor words (default the built-in ten)",
     )
     g.add_argument(
+        "--scene_frames",
+        default="reads_as",
+        help="scenes: comma list of text frames the prompt asks for the anchor in "
+        "(reads_as|bubble_reads|saying|sign|bare_quotes|sfx; s0 = reads_as only; sfx keeps its own onomatopoeia anchors and passes an open fill). "
+        "Pronoun frames are drawn for solo counts only; the data stage swaps "
+        "the JA text into the same frame",
+    )
+    g.add_argument(
         "--scene_bubble_tag",
         default="speech bubble",
         help="scenes: bubble tag in the prompt — recorded so the data stage "
@@ -659,6 +667,14 @@ def _scene_args(g):
         type=int,
         default=0,
         help="scenes: re-apply the filter to scenes_<tag> from its stored reads (CPU, no generation)",
+    )
+    g.add_argument(
+        "--scene_open_uniform",
+        type=float,
+        default=0.9,
+        help="scenes: keep a scene with no closed bubble when this share of the "
+        "rectangle erase (outside the text box) is within tol of the fill — "
+        "white bubble with a broken outline on white, a board, a plain wall",
     )
     g.add_argument(
         "--scene_allow_open",

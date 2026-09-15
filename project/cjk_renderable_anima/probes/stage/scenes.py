@@ -30,7 +30,7 @@ from pathlib import Path
 
 from wake.bubble import bubble_bbox, bubble_mask
 from wake.common import OUT, norm, parse_shapes
-from wake.render import anchor_residual
+from wake.render import anchor_residual, erase_uniform
 from wake.models import decode_image, gen_args, load_generator, load_vae
 from wake.readers import Readers, contact_sheet, load_bgr
 
@@ -206,6 +206,57 @@ def artist_pool() -> list[str]:
 
 TPL_SCENE = '{tags}. English text reads as "{anchor}".'
 
+# Text frames (user, 2026-09-15 night): how the prompt asks for the anchor.
+# Every s0 composite was a `reads as` bubble, so the rows learned the bubble
+# as their canvas (flat-0 arm) and stayed bound to the one clause (swap
+# clause: か 0/16). Each frame = (generals it adds, clause template with
+# `{a}` = anchor, `{pro}` = She/He from the count). Pronoun frames are drawn
+# for solo counts only. The data stage swaps the anchor for the JA text in
+# the *same* frame (`clause_tpl` on the record) — so the composite caption
+# carries the frame the base drew the scene under.
+# `sfx` (user, 2026-09-15): the trainer's OCR clause grammar is `Japanese SFX
+# reads as "…"`, so the EN side mirrors it and the JA swap *is* the product
+# caption. SFX are drawn bubble-less, so the frame keeps its own anchors
+# (onomatopoeia the base letters big) and passes an open fill.
+FRAMES = {
+    "reads_as": (["{bubble}", "english text"], 'English text reads as "{a}".'),
+    "bubble_reads": (
+        ["{bubble}", "english text"],
+        'There is a speech bubble that reads "{a}".',
+    ),
+    "saying": (["{bubble}", "english text"], '{pro} is saying "{a}".'),
+    "sign": (
+        ["holding sign", "sign", "english text"],
+        '{pro} is holding a sign that reads "{a}".',
+    ),
+    "bare_quotes": (["{bubble}", "english text"], '"{a}".'),
+    "sfx": (["sound effects", "english text"], 'English SFX reads as "{a}".'),
+}
+SFX_ANCHORS = [
+    "BAM",
+    "BOOM",
+    "BANG",
+    "WHAM",
+    "THUD",
+    "CRASH",
+    "POW",
+    "ZAP",
+    "WHOOSH",
+    "SLAM",
+]
+FRAME_ANCHORS = {"sfx": SFX_ANCHORS}
+FRAME_OPEN_OK = {"sfx"}  # no bubble expected: an open fill is not a reject
+PRONOUN = {"1girl": "She", "1boy": "He"}
+
+
+def frame_clause(frame: str, count: str, anchor: str, bubble_tag: str):
+    """``(generals, clause_tpl, clause)`` for one frame; ``clause_tpl`` keeps
+    ``{a}`` so the data stage can re-fill it with the JA text."""
+    gens, tpl = FRAMES[frame]
+    gens = [bubble_tag if g == "{bubble}" else g for g in gens]
+    tpl = tpl.replace("{pro}", PRONOUN.get(count, "She"))
+    return gens, tpl, tpl.format(a=anchor)
+
 
 def compose(head: list[str], generals: list[str]) -> str:
     """``rating, count, character, copyright, @artist, <generals sorted>``."""
@@ -230,6 +281,9 @@ def scene_items(a) -> list[dict]:
     rng = random.Random(a.seed + 29)
     pool = ScenePool(a.scene_shapes, a.seed)
     anchors = [x for x in a.scene_anchors.split(",") if x] or ANCHORS
+    frames = [x for x in a.scene_frames.split(",") if x] or ["reads_as"]
+    unknown = [f for f in frames if f not in FRAMES]
+    assert not unknown, f"--scene_frames: unknown {unknown}; have {list(FRAMES)}"
     artists = artist_pool() if a.scene_artist_frac > 0 else []
     # curated well-known artists (user, 2026-09-14: sincos, hews) at 4× weight
     curated = [f"@{x.strip()}" for x in a.scene_artists.split(",") if x.strip()]
@@ -250,16 +304,28 @@ def scene_items(a) -> list[dict]:
         if artists and rng.random() < a.scene_artist_frac:
             ident.append(rng.choice(artists))
         head = [rng.choice(RATINGS), count, *ident]
+        solo = count in ("1girl", "1boy")
+        frame = rng.choice(frames)
+        if not solo and "{pro}" in FRAMES[frame][1]:
+            frame = rng.choice(
+                [f for f in frames if "{pro}" not in FRAMES[f][1]] or ["reads_as"]
+            )
+        anchor = rng.choice(FRAME_ANCHORS.get(frame, anchors))
+        fgens, clause_tpl, clause = frame_clause(
+            frame, count, anchor, a.scene_bubble_tag
+        )
+        action = rng.choice(ACTIONS)
+        if frame == "sign" and action.startswith("holding"):
+            action = "standing"  # one held object per prompt
         generals = [
             *rng.sample(APPEARANCE, rng.choice([1, 2, 2])),
             *rng.choice(SETTINGS),
-            rng.choice(ACTIONS),
+            action,
             rng.choice(EXPRESSIONS),
             *rng.choice(STYLES),
-            a.scene_bubble_tag,
-            "english text",
+            *fgens,
         ]
-        if count in ("1girl", "1boy"):
+        if solo:
             generals.append("solo")
         if rng.random() < 0.5:
             generals.append("looking at viewer")
@@ -270,7 +336,6 @@ def scene_items(a) -> list[dict]:
         if tags in seen:
             continue
         seen.add(tags)
-        anchor = rng.choice(anchors)
         i = len(items)
         items.append(
             {
@@ -279,7 +344,9 @@ def scene_items(a) -> list[dict]:
                 "generals": sorted(set(generals)),
                 "tags": tags,
                 "anchor": anchor,
-                "prompt": TPL_SCENE.format(tags=tags, anchor=anchor),
+                "frame": frame,
+                "clause_tpl": clause_tpl,
+                "prompt": f"{tags}. {clause}",
                 "shape": list(pool.draw()),
                 "seed": a.seed * 100_000 + i,
             }
@@ -302,6 +369,8 @@ def stage_scenes(a):
             if ln
         ]
         for it in items:
+            if not Path(it["file"]).exists():
+                continue  # rejected render pruned from disk: stored reason stands
             reads = [{"box": b, **r} for b, r in zip(it["boxes"], it["reads"])]
             for k in (
                 "box",
@@ -312,6 +381,7 @@ def stage_scenes(a):
                 "bubbles",
                 "read",
                 "residual",
+                "open_uniform",
             ):
                 it.pop(k, None)
             it["reason"] = _judge(a, it, reads, load_bgr(Path(it["file"])))
@@ -321,7 +391,8 @@ def stage_scenes(a):
     cs = Counter("x".join(map(str, it["shape"])) for it in items)
     print(
         f"scenes: {len(items)} prompts, shapes {dict(sorted(cs.items()))}, "
-        f"anchors {Counter(it['anchor'] for it in items).most_common()}",
+        f"anchors {Counter(it['anchor'] for it in items).most_common()}, "
+        f"frames {Counter(it['frame'] for it in items).most_common()}",
         flush=True,
     )
     # one loaded model; per-shape args (size lives in args only); batches of
@@ -448,6 +519,8 @@ def _report_scenes(a, out: Path, items: list[dict]):
         "tags",
         "prompt",
         "anchor",
+        "frame",
+        "clause_tpl",
         "box",
         "region",
         "bubble",
@@ -458,10 +531,12 @@ def _report_scenes(a, out: Path, items: list[dict]):
         "seed",
         "read",
         "residual",
+        "open_uniform",
     )
     (out / "scenes.jsonl").write_text(
         "\n".join(
-            json.dumps({k: it[k] for k in keys}, ensure_ascii=False) for it in kept
+            json.dumps({k: it[k] for k in keys if k in it}, ensure_ascii=False)
+            for it in kept
         )
     )
     reasons = Counter(it["reason"] for it in items)
@@ -473,8 +548,12 @@ def _report_scenes(a, out: Path, items: list[dict]):
     lines = [
         f"# scenes `{a.scene_tag}` — {n} generated, **{len(kept)} kept ({len(kept) / max(1, n):.0%})**",
         "",
-        f"prompt: `{TPL_SCENE.format(tags='<rating, count, character, copyright, @artist, generals sorted>', anchor='<anchor>')}`; "
-        f"shapes `{a.scene_shapes}` × gen scale {a.scene_gen_scale}; batch {a.scene_batch}; "
+        f"prompt: `<rating, count, character, copyright, @artist, generals sorted>. <clause>`; "
+        f"frames `{a.scene_frames}` ("
+        + "; ".join(
+            f"{f}: `{FRAMES[f][1]}`" for f in FRAMES if f in a.scene_frames.split(",")
+        )
+        + f"); shapes `{a.scene_shapes}` × gen scale {a.scene_gen_scale}; batch {a.scene_batch}; "
         f"{a.steps} steps cfg {a.cfg}; negative `{a.scene_negative}`; min box {a.scene_min_box} px; "
         f"max erase residual {a.scene_max_residual}",
         "",
@@ -519,6 +598,26 @@ def _report_scenes(a, out: Path, items: list[dict]):
                     Counter("x".join(map(str, it["shape"])) for it in kept).items()
                 )
             ),
+            "kept per frame: "
+            + ", ".join(
+                f"{k} {v}/{Counter(it.get('frame', 'reads_as') for it in items)[k]}"
+                for k, v in sorted(
+                    Counter(it.get("frame", "reads_as") for it in kept).items()
+                )
+            ),
+            "reject per frame: "
+            + "; ".join(
+                f"{f} "
+                + ", ".join(
+                    f"{r} {c}"
+                    for r, c in Counter(
+                        it["reason"]
+                        for it in items
+                        if it.get("frame", "reads_as") == f and it["reason"] != "pass"
+                    ).most_common(3)
+                )
+                for f in sorted({it.get("frame", "reads_as") for it in items})
+            ),
         ]
     lines += [
         "",
@@ -553,7 +652,7 @@ def _sheet(its, path: Path, kept: bool):
             (
                 im,
                 [
-                    f"{it['i']:05d} {it['anchor']} {it['reason']}",
+                    f"{it['i']:05d} {it['anchor']} {it.get('frame', '')[:6]} {it['reason']}",
                     f"vl {r0['vl'] or ''} / sfx {r0['sfx'] or ''}",
                     it["tags"][:40],
                     it["tags"][40:80],
@@ -613,8 +712,25 @@ def _judge(a, it: dict, reads: list, bgr) -> str:
     r = hits[0]
     it["read"] = r["vl"] if norm(r["vl"] or "") == anchor else r["sfx"]
     it["boxes_anchor"], it["bubbles"], it["regions"] = boxes, [], []
+    H, W = bgr.shape[:2]
+    unis = []
     for b in boxes:
         bubble, region = bubble_region(bgr, b)
+        if bubble is None:
+            # no closed bubble: the region is the text box grown 1.5×; take
+            # the smallest growth whose erase seam is invisible instead, so
+            # a broken outline is kept rather than painted over (s1 832)
+            best = (erase_uniform(bgr, b, region), region)
+            for grow in (1.2, 1.35):
+                g = _grown(b, W, H, grow)
+                if min(g[2] - g[0], g[3] - g[1]) < a.scene_min_box:
+                    continue
+                u = erase_uniform(bgr, b, g)
+                if u >= a.scene_open_uniform:
+                    best = (u, g)
+                    break
+            unis.append(best[0])
+            region = best[1]
         it["bubbles"].append(bubble)
         it["regions"].append(region)
     # the largest bubble is the headline record
@@ -623,14 +739,24 @@ def _judge(a, it: dict, reads: list, bgr) -> str:
         key=lambda i: (boxes[i][2] - boxes[i][0]) * (boxes[i][3] - boxes[i][1]),
     )
     it["box"], it["bubble"], it["region"] = boxes[k], it["bubbles"][k], it["regions"][k]
-    if any(b is None for b in it["bubbles"]) and not a.scene_allow_open:
+    # no closed bubble: fine for a bubble-less frame, for --scene_allow_open,
+    # or when the rectangle erase has no visible seam (≥ --scene_open_uniform)
+    open_anchors = [b for b, bub in zip(boxes, it["bubbles"]) if bub is None]
+    it["open_uniform"] = min(unis) if unis else None
+    open_ok = (
+        a.scene_allow_open
+        or it.get("frame") in FRAME_OPEN_OK
+        or (open_anchors and it["open_uniform"] >= a.scene_open_uniform)
+    )
+    if open_anchors and not open_ok:
         return "open_bubble"
     if any(min(g[2] - g[0], g[3] - g[1]) < a.scene_min_box for g in it["regions"]):
         return "small_box"
     # the erase the data stage will run must actually remove the anchor:
     # a flood that took another blob leaves the letters under the kana
     it["residual"] = max(
-        anchor_residual(bgr, b, g) for b, g in zip(boxes, it["regions"])
+        anchor_residual(bgr, b, g, open_ok=open_ok)
+        for b, g in zip(boxes, it["regions"])
     )
     if it["residual"] > a.scene_max_residual:
         return "erase_miss"

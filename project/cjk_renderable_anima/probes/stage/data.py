@@ -43,7 +43,7 @@ from wake.inventory import (
     word_inventory,
 )
 from wake.readers import contact_sheet
-from wake.render import crop_bubble, find_fonts, render_string, sample_layout
+from wake.render import crop_bubble, find_fonts, pick_font, render_string, sample_layout
 
 # eval.json group order (skipped when empty)
 _EVAL_ORDER = (
@@ -141,7 +141,7 @@ def stage_data(a):
         for i, s in enumerate(texts):
             shp = shapes.draw()
             im, bubble = render_string(
-                s, rng.choice(fonts), rng, size=shp or 512, mode=a.layout
+                s, pick_font(s, fonts, rng), rng, size=shp or 512, mode=a.layout
             )
             fn = out / "img" / f"font_{i:05d}.png"
             im.save(fn)
@@ -405,7 +405,7 @@ def _balanced_font_recs(
         n_combo += g
     recs = []
     for lid, grp in enumerate(groups):
-        font = rng.choice(fonts)
+        font = pick_font("".join(grp), fonts, rng)
         shp = shapes.draw()  # one shape per layout group: a batch is one shape
         lay = sample_layout(len(grp[0]), rng, size=shp or 512, mode=a.layout)
         for s in grp:

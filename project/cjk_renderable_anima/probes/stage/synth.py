@@ -36,23 +36,41 @@ from wake.common import (
 )
 from wake.inventory import clean_kana_strings, corpus_lines, pieces
 from wake.readers import contact_sheet
-from wake.render import region_capacity, render_into_scene, render_string
+from wake.render import pick_font, region_capacity, render_into_scene, render_string
 
 
-def load_scenes(tag: str) -> list[dict]:
-    path = OUT / f"scenes_{tag}" / "scenes.jsonl"
-    scenes = [json.loads(ln) for ln in path.read_text().splitlines() if ln]
-    assert scenes, f"--scenes {tag}: no kept scenes in {path}"
+def load_scenes(tags: str) -> list[dict]:
+    """Kept scenes of every ``scenes_<tag>`` run in the comma list (s0 + a
+    frame-mix run compose)."""
+    scenes = []
+    for tag in [t for t in tags.split(",") if t]:
+        path = OUT / f"scenes_{tag}" / "scenes.jsonl"
+        got = [json.loads(ln) for ln in path.read_text().splitlines() if ln]
+        assert got, f"--scenes {tag}: no kept scenes in {path}"
+        scenes += got
     return scenes
 
 
 def scene_caption(scene: dict, text: str) -> str:
-    """The scene prompt with the EN clause swapped for the JA one."""
+    """The scene prompt with the anchor swapped for the JA text *in the frame
+    the scene was drawn under* (`clause_tpl`; s0 records predate it and are
+    the `reads as` frame): `english text` → `japanese text` in the tags,
+    `English text reads as` → `Japanese text reads as` in the clause, every
+    other frame (`She is saying "…"`, `holding a sign that reads "…"`) keeps
+    its words and only the quote changes."""
     generals = [
         "japanese text" if g == "english text" else g for g in scene["generals"]
     ]
     tags = ", ".join(scene["head"] + sorted(set(generals)))
-    return TPL_SCENE_JA.format(tags=tags, text=text)
+    tpl = scene.get("clause_tpl")
+    if not tpl:
+        return TPL_SCENE_JA.format(tags=tags, text=text)
+    clause = (
+        tpl.replace("English text reads as", "Japanese text reads as")
+        .replace("English SFX reads as", "Japanese SFX reads as")
+        .format(a=text)
+    )
+    return f"{tags}. {clause}"
 
 
 def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]:
@@ -127,8 +145,12 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
     n_phr = round(n * a.natural_frac)
     n_str = round(n * a.strings_frac)
     n_flat = n - n_scene - n_phr - n_str
-    assert n_flat > 0, "--scenes: shares leave no flat singles"
-    kinds = ["single"] * n_flat + ["phrase"] * n_phr + ["string"] * n_str
+    assert n_flat >= 0, "--scenes: shares exceed --n_items"
+    # composites mirror the flat kind distribution; with flat 0 (composite
+    # only, 2026-09-15) they are singles unless phrases / strings are in
+    kinds = (["single"] * n_flat + ["phrase"] * n_phr + ["string"] * n_str) or [
+        "single"
+    ]
     draws = {
         "single": lambda: rng.choice(units),
         "phrase": lambda: rng.choice(train_lines),
@@ -141,7 +163,7 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
         shp = shapes.draw()
         im, bubble = render_string(
             s,
-            rng.choice(fonts),
+            pick_font(s, fonts, rng),
             rng,
             size=shp or 512,
             mode=a.layout,
@@ -194,7 +216,7 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
             drawn = render_into_scene(
                 sc,
                 text,
-                rng.choice(fonts),
+                pick_font(text, fonts, rng),
                 rng,
                 min_glyph=a.scene_min_glyph,
                 stroke=rng.random() < a.scene_stroke,

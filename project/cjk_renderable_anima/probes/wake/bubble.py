@@ -112,6 +112,11 @@ def bubble_mask(arr, box, pad: int = 4, tol: int = 24):
     tx, ty = (x1 - x0) // 4, (y1 - y0) // 4
     if bx0 > x0 + tx or by0 > y0 + ty or bx1 < x1 - tx or by1 < y1 - ty:
         return None
+    # a pocket between an open outline and the letters' ink encloses the box
+    # by bbox yet covers none of it (s1 832: outline broken at 12 o'clock,
+    # every other seed leaked) — its interior must hold the text
+    if bubble_interior(m)[y0:y1, x0:x1].mean() < 0.5:
+        return None
     return m
 
 
