@@ -175,6 +175,31 @@ the data mix.
   (target-in-any-read unchanged at 44 → 46; か 14 → 4 hits, ぐ 0 → 3 with
   dakuten). Untested and the only remaining use: Q fixed on *during
   training* so `f` learns identity that renders under it.
+- **A table trained under the frames does not converge on Q.** The 53k
+  full-inventory rows (no `c_flat`, four caption frames, Q off) image at
+  the adapter output with cos −0.02 … −0.03 to every frame's Q (`She is
+  saying "…"` included; random 0.025), 0.05 energy in the EN-quoted-code
+  subspace (untrained row 0.10), and move the code away from the EN word
+  cluster (0.42 → 0.31). The frozen adapter adds the same frame shift to a
+  trained and an untrained row (vs Q 0.35–0.45 both; EN words 0.73). The
+  rows' shared direction (18 % of the table's energy, = the S0/S0b row
+  mean, ≠ their `c_flat`) is the self-built trigger and is ⟂ Q; hit
+  tracks it (+0.32). Residual geometry is near-orthogonal (pairwise cos
+  0.03) with a weak small-mark neighbourhood (ば↔ぱ pct 98, か↔が 92,
+  あ↔ア / kanji-component random). `reports/rows_manifold_2026_09_16.md`.
+- **Identity is conditional on the trigger it was trained with, and only
+  composite training makes it modular; inheriting the trigger buys no
+  steps.** Transplant probe (`probes/transplant_table.py`, no training):
+  a flat-only donor's residual (P0b 24 k, Run 3 8 k; own shared direction
+  projected out) on the 53k m̂ renders 0/64 in scenes at any scale, the
+  same as m̂ alone (scene kept, floor garble), while the composite-trained
+  micro6 residual on the same m̂ renders 23/64 with the scene kept. Then
+  `--pin_dir` arms (53k m̂ frozen per family, residual only trained, ⟂
+  projected) on the micro6 frame-mix data: `en` 54 = 54 at 2 k and 41 vs
+  39 at 500 against from-scratch, curves overlapping; `swap` 20 vs 9 at
+  500 but 32 vs 46 at 2 k. m̂ alone scores the best scene / placement of
+  any cond (en cos 0.920, IoU 0.31) — the residuals cost scene, not the
+  trigger. `reports/transplant_2026_09_16.md`.
 - The artist-handle mode (`@greatdoggo` → logo) is a third, contextual
   direction, ⟂ to Q and to every kana code — not a "draw a fixed mark"
   address to borrow.
@@ -234,6 +259,11 @@ the data mix.
   "canvas-component" regulariser — the split is already clean in row
   space; the coupling is in the DiT's response.
 - Q as an inference-time replacement for a trained `c`.
+- Flat-only (or flat-heavy) exposure for new glyphs with the trigger
+  supplied (transplant: 0/64 for every flat donor), and pinning /
+  seeding the shared direction as a step saver (`--pin_dir`: neutral on
+  `en`, worse on `swap` at convergence) — identity is the cost and it is
+  per row.
 
 ## Open
 

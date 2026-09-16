@@ -263,7 +263,22 @@ katakana failure is exposure (draws per row equal to hiragana's, so
 **no** — it is either interference with hiragana or a render-side
 cause: fonts, the JA readers' katakana bias) — and the geometry of the
 learned rows (cos between hit and miss rows, hiragana vs katakana
-clusters; the wake geometry tools in `wake_geometry.py`). One GPU arm
+clusters; the wake geometry tools in `wake_geometry.py`). **Geometry
+read 2026-09-16** (`reports/rows_manifold_2026_09_16.md`,
+`probes/rows_manifold_probe.py`): one shared direction (18 % of the
+energy, the same one S0/S0b rows shared, ⟂ Q at the adapter output) plus
+near-orthogonal residuals; ば↔ぱ-type small-mark locality only; hit
+tracks along-m̂ (+0.32) and exposure (+0.24), not crowding (−0.09);
+hira↔kata pairs are random-distance — **katakana's miss is not
+row-space interference**; word rows are untrained (norm 0.12); no
+frame — `She is saying "…"` included — shares a representation with the
+delta beyond the frozen adapter's frame shift. **Transplant + pin
+(same day, `reports/transplant_2026_09_16.md`)**: flat-trained residuals
+render 0/64 on the 53k m̂, composite-trained ones transfer (23/64); a
+frozen inherited m̂ buys no steps (`en` 54 = 54 at 2 k, 41 vs 39 at 500)
+and costs `swap` at convergence — exposure per row on composites is the
+budget, and the levers left are per-item (rows per composite, glyph
+size). One GPU arm
 belongs here: **92 basic kana at 23 000 steps** (≈ 1 000 draws per row,
 ≈ 2.5 h) — if katakana holds there, the 53k katakana loss was
 interference at 433 rows; if not, it is render-side.

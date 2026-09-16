@@ -31,6 +31,11 @@ class ExtDelta:
         self.row_scale = row_scale
         self.scale = 1.0
         self.common = None
+        # ``pinned`` (rows, dim), fixed, added to every trained row on every
+        # item: the inherited shared direction a_r · m̂ (``--pin_dir``); the
+        # trainable ``raw`` is then the per-row residual only. Saved tables
+        # fold it into ``raw`` so eval / native / ``from_state`` see the full delta.
+        self.pinned = None
         self.state: dict = {}
         embed = anima.llm_adapter.embed
         lut = torch.full((max(self.ext_ids) + 2,), -1, dtype=torch.long)
@@ -62,6 +67,8 @@ class ExtDelta:
                 dtype=self.raw.dtype,
             )
             rows = self.raw[loc[known]]
+            if self.pinned is not None:
+                rows = rows + self.pinned[loc[known]].to(rows.dtype)
             if self.common is not None:
                 rows = rows + self.common.to(rows.dtype)
             d[known] = rows * self.row_scale
@@ -82,9 +89,12 @@ class ExtDelta:
         return delta
 
     def state_dict(self):
+        raw = self.raw.detach().cpu()
+        if self.pinned is not None:
+            raw = raw + self.pinned.detach().cpu().to(raw.dtype)
         return {
             "ext_ids": self.ext_ids,
-            "raw": self.raw.detach().cpu(),
+            "raw": raw,
             "row_scale": self.row_scale,
         }
 

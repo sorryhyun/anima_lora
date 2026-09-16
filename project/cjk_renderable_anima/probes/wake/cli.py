@@ -311,6 +311,26 @@ def _encoder_args(g):
         "Rows the source never had start at zero",
     )
     g.add_argument(
+        "--pin_dir",
+        default="",
+        help="rows arm: inherit the shared direction of another arm's trained.pt — "
+        "every trained row gets a fixed a_r · m̂_fam (kana / other family means of the "
+        "source table) and only the residual trains (transplant probe 2026-09-16)",
+    )
+    g.add_argument(
+        "--pin_coef",
+        default="row",
+        help="rows arm: a_r for --pin_dir — 'row' (the source row's own coefficient, "
+        "family mean when absent), 'fam' (family mean), or a number",
+    )
+    g.add_argument(
+        "--pin_orth",
+        type=int,
+        default=1,
+        help="rows arm: with --pin_dir, project the trainable residual ⟂ m̂_fam after "
+        "every step (1) or let it re-grow the direction (0)",
+    )
+    g.add_argument(
         "--enc_pool",
         default="spatial",
         choices=["spatial", "mean"],

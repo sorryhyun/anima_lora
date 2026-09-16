@@ -64,6 +64,9 @@ class Trainables:
                 print(f"rows: μ‖f‖² pull {a.free_residual:g}", flush=True)
             if a.init_rows:
                 self._init_rows_from(a.init_rows)
+            self.pin_u = None
+            if a.pin_dir:
+                self._pin_from(a.pin_dir, tok, pack)
         if a.arm == "rows_adapter":
             self.lora = AdapterLoRA(anima, a.adapter_rank, device)
             self.params.append({"params": list(self.lora.params), "lr": a.lr_adapter})
@@ -123,6 +126,70 @@ class Trainables:
             f"max {float(dn.max()):.3f}{c_note}",
             flush=True,
         )
+
+    def _pin_from(self, path: str, tok, pack):
+        """Inherit the shared direction (transplant probe, 2026-09-16): the
+        source table splits into one shared direction per family (m̂_kana /
+        m̂_other) plus near-orthogonal residuals, and a composite-trained
+        residual renders on that direction while a flat-trained one does not.
+        Here every trained row gets a *fixed* ``a_r · m̂_fam`` (``delta.pinned``)
+        and the trainable ``raw`` is the residual only; ``--pin_orth`` keeps it
+        ⟂ m̂_fam after each step so the row cannot re-grow the trigger. ``a_r``:
+        ``--pin_coef row`` = the source row's own coefficient when the row is
+        in the source, else the family mean; ``fam`` = the family mean always;
+        a number = that value for every row."""
+        from .encoder import row_texts
+
+        a = self.a
+        src = torch.load(path, map_location="cpu", weights_only=False)
+        s_raw = src["delta"]["raw"].float()
+        s_ids = [int(e) for e in src["delta"]["ext_ids"]]
+        s_text = row_texts(tok, pack, s_ids)
+        my_text = row_texts(tok, pack, self.delta.ext_ids)
+        dirs, coefs = {}, {}
+        for fam in ("kana", "other"):
+            ii = [
+                i
+                for i, e in enumerate(s_ids)
+                if e in s_text and _fam_of(s_text[e]) == fam
+            ]
+            m = s_raw[ii].mean(0)
+            dirs[fam] = m / m.norm()
+            coefs[fam] = float((s_raw[ii] @ dirs[fam]).mean())
+        s_idx = {e: i for i, e in enumerate(s_ids)}
+        n, dim = self.delta.raw.shape
+        pinned = torch.zeros(n, dim)
+        u = torch.zeros(n, dim)
+        n_row = 0
+        for i, e in enumerate(self.delta.ext_ids):
+            fam = _fam_of(my_text.get(int(e), "他"))
+            mh = dirs[fam]
+            if a.pin_coef == "row" and int(e) in s_idx:
+                c = float(s_raw[s_idx[int(e)]] @ mh)
+                n_row += 1
+            elif a.pin_coef in ("row", "fam"):
+                c = coefs[fam]
+            else:
+                c = float(a.pin_coef)
+            pinned[i] = c * mh
+            u[i] = mh
+        self.delta.pinned = pinned.to(self.device)
+        self.pin_u = u.to(self.device)
+        with torch.no_grad():
+            self._project_orth()
+        print(
+            f"pin: shared direction from {path} — family coef {coefs} (mode {a.pin_coef}, "
+            f"{n_row} rows with their own coefficient), pinned norm mean "
+            f"{float(pinned.norm(dim=1).mean()):.3f}, orth {'on' if a.pin_orth else 'off'}",
+            flush=True,
+        )
+
+    @torch.no_grad()
+    def _project_orth(self):
+        if self.pin_u is None or not self.a.pin_orth:
+            return
+        r = self.delta.raw
+        r.sub_((r * self.pin_u).sum(1, keepdim=True) * self.pin_u)
 
     def _init_encoder(self, train_ext, ev_ext, tok, pack, anima, dim):
         a, device = self.a, self.device
@@ -273,6 +340,8 @@ class Trainables:
                 n = float(self.c_flat.norm())
                 if n > self.a.c_flat_cap:
                     self.c_flat.mul_(self.a.c_flat_cap / n)
+        if getattr(self, "pin_u", None) is not None:
+            self._project_orth()
 
     # -- logging -------------------------------------------------------------
 
@@ -413,8 +482,19 @@ class Trainables:
             sd["adapter_rank"] = a.adapter_rank
         if self.c_flat is not None:
             sd["c_flat"] = self.c_flat.detach().cpu()
+        if getattr(self.delta, "pinned", None) is not None:
+            # delta.raw in sd is the full table (pinned folded in); keep the parts
+            sd["pinned"] = self.delta.pinned.detach().cpu()
+            sd["resid"] = self.delta.raw.detach().cpu()
+            sd["pin_src"] = a.pin_dir
         sd["killed"] = killed
         return sd
+
+
+def _fam_of(text: str) -> str:
+    from .common import HIRA, KATA
+
+    return "kana" if text in HIRA + KATA else "other"
 
 
 def participation_ratio(m) -> float:
