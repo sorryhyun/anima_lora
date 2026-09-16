@@ -468,3 +468,17 @@ arm dir a table or report cites, `data_synth_full_fm10k` (the 53k seed's
 data), the micro data builds the 2×2 / micro-loop tables are on, and the
 two JA-frame smokes (`scenes_ja_manga_smoke`, `scenes_ja_tall_smoke`) —
 the measured evidence behind step 2.
+
+Second cleanup (2026-09-16 night, user; 9.3 GB): deleted every closed-line
+arm dir — the W2/W2d encoder runs except the artefact
+(`encoder_wd_w120_s8k_fres_warm`) and its init
+(`encoder_w2_held32_s6k_cos_rinit_fres`); `rows`, `rows_adapter`,
+`rows_few`, `rows_w2*`, `rows_w24*`, `salad`; P0b
+(`encoder_wdsek_w120_s24k_p0b`); S0 / S0b / P0bwarm; every micro-loop arm
+and data build (`*micro6*`, `*micro12*`); the transplant probes
+(`rows_tm6_*`, `rows_transplant_*`, `rows_twd_*`); `rows_synth_punct_punct_s4k`
+(superseded by `punct_only`); `scenes_s1sfx`; `order_probe` and `rows_k24_band`
+(closed probes; order_probe.py rewrites its dir on rerun). Stripped the latents from
+`data_synth_full_fm10k` and img + latents from `data_synth_krzh16`
+(json / jsonl / sheets stay, so their arms still eval). Numbers from the
+deleted dirs live only in the reports now.
