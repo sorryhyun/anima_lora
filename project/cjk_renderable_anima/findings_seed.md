@@ -127,6 +127,42 @@ early and hurts it at convergence (the frozen direction + projection deny
 the row the component the EN frame wants). `--pin_dir` stays as an
 instrument (reading a residual against a fixed trigger), not a recipe.
 
+## Why image → row encoders stay closed (the categorical-address reading)
+
+Asked again after the geometry read (user, 09-16 afternoon): could a
+glyph-render embedding — flat, in-scene, their average or concat — be
+mapped to the ext row? No, and the reason is the same fact seen from
+four sides. "Smooth in shape" would mean: interpolating あ → お morphs
+the glyph, halving the row thins or fades it, nearby rows draw similar
+shapes. What is measured is the opposite on every axis — IDS sums render
+an unrelated kana, not a blend (W2d Run 2, 0/16); 0.5× the row makes the
+glyph vanish and the scene return (a threshold, not a fade — `native_x0.5`
+2/64); held-out kana land on the nearest trained glyph or garble, never
+an intermediate shape (W2d Runs 1–2, 2–5/64 under every lever);
+row-similarity vs shape-similarity ρ ≈ 0.15 (this table). The DiT reads
+an ext row as a **categorical address** — a lookup into units it already
+knows, with a pull toward the nearest known one — the way `cat` and
+`dog` embeddings have no cat-dog between them. It has no reason to be
+otherwise: the text conditioning it was pretrained on (T5 pieces) is
+categorical too, and nothing ever put JA glyph shape on an axis.
+Contextualisation does not add such an axis: the adapter is ≈ linear on
+these rows (corr 0.73) and the frame shift is the same additive vector
+for trained and untrained rows (vs Q 0.35–0.45 both), so context moves
+the code along the shared direction, not along shape.
+
+Consequences: any encoder — a fresh CNN (W2d), a pretrained vision
+feature, flat + scene inputs averaged or concatenated — must output
+addresses that are random directions per glyph, which no input
+representation makes learnable from ~400 examples; W2d already trained
+the map end-to-end through the DiT loss (not as regression) and g
+collapsed to rank 1. Averaging *learned* rows across tables is no better
+(same-glyph residuals cos ≈ 0.1; the flat one is trigger-conditional, so
+the average is the composite row at half amplitude plus noise). The one
+observation that would reopen this is a direction in row space along
+which the rendered shape changes continuously; none has been seen. The
+same fact is why a multi-glyph word is one row (します): the address
+names a unit the DiT knows, whatever its length.
+
 ## What follows for the seed
 
 - **Composite exposure per row is the cost, and it is per row.** No
