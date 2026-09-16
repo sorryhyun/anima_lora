@@ -3,11 +3,17 @@
 Writes ``<data_dir>/{img/, train.jsonl, eval.json, sheet_train.png}`` (+
 ``words.json`` / ``kanji.json`` when those inventories are on).
 
+What goes into the table is one flag — ``--units`` (``wake/units.py``), a
+repeatable source spec. This module resolves those sources against the corpus
+and the tokenizer, then draws the items.
+
 Bit-identity contract: the main ``rng`` (seed 0) is consumed in a fixed order
 — eval singles, eval combos, held corpus shuffle, font items, renders, corpus
 shuffle, sheet draw. Every later lever draws from its own stream (shapes
 seed+17, kana_ext seed+19, kanji seed+23, words seed+13), so switching a lever
-off rebuilds the older data dirs identically. Keep it that way.
+off rebuilds the older data dirs identically. The ``--units`` sources are
+resolved in the canonical order of ``wake/units.py``, never the typed order,
+for the same reason. Keep it that way.
 """
 
 from __future__ import annotations
@@ -15,8 +21,6 @@ from __future__ import annotations
 import json
 import random
 from collections import Counter
-from dataclasses import dataclass, field
-from typing import Callable
 
 from wake.common import (
     CORPUS_HELD,
@@ -44,6 +48,7 @@ from wake.inventory import (
 )
 from wake.readers import contact_sheet
 from wake.render import crop_bubble, find_fonts, pick_font, render_string, sample_layout
+from wake.units import Inventory, parse_units
 
 # eval.json group order (skipped when empty)
 _EVAL_ORDER = (
@@ -82,27 +87,6 @@ class ShapePool:
         return (W, H)
 
 
-@dataclass
-class Inventory:
-    """Everything a training item may contain, and the eval strings drawn."""
-
-    kana: list
-    kana_ext: list = field(default_factory=list)
-    kanji: list = field(default_factory=list)
-    words: list = field(default_factory=list)
-    words_held: list = field(default_factory=list)
-    words_train: list = field(default_factory=list)
-    # --phrase_pieces: rows a phrase file needs beyond the singles inventory
-    # (trained through the phrases only — never drawn as singles / evals)
-    phrase_pieces: list = field(default_factory=list)
-    # --extra_units: pieces drawn as singles like kana (punctuation arm,
-    # user 2026-09-16: 、。ー！？ and small っ ッ as single-letter addresses)
-    extra: list = field(default_factory=list)
-    # word mode: a string is usable only when every piece is a trained row
-    piece_ok: Callable[[str], bool] | None = None
-    evals: dict = field(default_factory=dict)  # group → [text]
-
-
 def _rec(fn, text, caption, src, shp, **extra) -> dict:
     return {
         "file": str(fn),
@@ -123,23 +107,14 @@ def stage_data(a):
     # mixed shapes (2026-09-14): every font item draws its canvas (W, H) from
     # --shapes; corpus crops are square, so they draw from the pool's squares
     shapes = ShapePool(a.shapes, a.seed)
-    # --scenes needs the piece map for piece_ok even at --words 0 (micro arms);
-    # --extra_units needs it to check each unit is one piece with an ext row
-    tokq = qwen_pieces() if (a.kanji or a.words or a.scenes or a.extra_units) else None
-
-    if a.no_kana:
-        # punctuation / micro arms (2026-09-16): nothing forces the 92 kana in,
-        # so the unit pool can be --extra_units / --kanji / --words alone
-        kana_inv: list = []
-    elif a.only_chars:
-        kana_inv = list(a.only_chars)
-    else:
-        kana_inv = list(KANA)
-    inv = Inventory(kana=kana_inv)
+    inv = _base_inventory(a)
+    # --scenes needs the piece map for piece_ok even with no words source
+    # (micro arms); a `list:` source needs it to check each unit is one piece
+    tokq = qwen_pieces() if (inv.needs_tokenizer() or a.scenes) else None
     # eval strings first so the training pool can exclude the combos
     combos_eval, n_possible = _eval_strings(a, rng, inv)
-    _extra_singles(a, out, tokq, inv)
-    if a.words or a.scenes:
+    _resolve_singles(a, out, tokq, inv)
+    if inv.has("words") or a.scenes:
         _word_set(a, out, tokq, inv)
 
     n_target = min(a.n_combo, 50 * (n_possible - len(combos_eval)))
@@ -199,13 +174,34 @@ def stage_data(a):
 # inventories and eval strings
 
 
+def _base_inventory(a) -> Inventory:
+    """``--units`` → the Inventory, with the base (``kana`` / ``chars:``)
+    sources resolved. The rest need the tokenizer and are done later."""
+    inv = Inventory(sources=parse_units(a.units))
+    for s in inv.sources:
+        if s.kind == "kana":
+            s.units = list(KANA)
+        elif s.kind != "chars":
+            continue
+        inv.kana += [c for c in s.units if c not in inv.kana]
+    # a hand-picked base (chars: with no kana beside it): the eval singles are
+    # the base itself and corpus lines are filtered down to it
+    inv.restricted = inv.has("chars") and not inv.has("kana")
+    print(
+        f"units: --units {inv.describe()} → base {len(inv.kana)}"
+        + (" (restricted)" if inv.restricted else ""),
+        flush=True,
+    )
+    return inv
+
+
 def _eval_strings(a, rng, inv: Inventory):
     """Eval singles / combos / held corpus lines (main rng) and the EN control.
     Returns ``(combos_eval, number of possible 2–3 kana strings)``."""
     kana = inv.kana
-    if not kana:  # --no_kana: no kana singles / combos / corpus lines to draw
+    if not kana:  # no base source: no kana singles / combos / corpus lines
         singles_eval: list = []
-    elif a.only_chars:
+    elif inv.restricted:
         singles_eval = kana[:18]
     else:
         singles_eval = rng.sample(list(HIRA), 12) + rng.sample(list(KATA), 6)
@@ -218,7 +214,7 @@ def _eval_strings(a, rng, inv: Inventory):
         combos_eval.add("".join(rng.choice(kana) for _ in range(k)))
     held = corpus_lines(CORPUS_HELD / "boxes.jsonl", 4)
     rng.shuffle(held)
-    if a.only_chars or not kana:
+    if inv.restricted or not kana:
         held = [ln for ln in held if all(c in kana for c in ln[0] if c in KANA)]
     corpus_eval: list = []
     for t, _rel, _box in held:
@@ -233,41 +229,53 @@ def _eval_strings(a, rng, inv: Inventory):
     return combos_eval, n_possible
 
 
-def _extra_singles(a, out, tokq, inv: Inventory):
-    """P0b inventory extensions, singles only: the N most frequent single-row
-    corpus kanji (``--kanji``) and voiced / small kana (``--kana_ext``)."""
-    if a.kanji:
-        assert not a.only_chars and not a.balanced, "--kanji: full inventory"
-        kfreq = kanji_inventory(*tokq, a.kanji)
-        inv.kanji = [c for c, _ in kfreq]
-        krng = random.Random(a.seed + 23)
-        inv.evals["single_kanji"] = krng.sample(inv.kanji, min(18, len(inv.kanji)))
-        (out / "kanji.json").write_text(json.dumps(kfreq, ensure_ascii=False))
-        print(
-            f"kanji: {len(inv.kanji)} singles (last {kfreq[-1][0]}:{kfreq[-1][1]}); "
-            f"{''.join(inv.kanji)}",
-            flush=True,
+def _resolve_singles(a, out, tokq, inv: Inventory):
+    """The singles-only sources: ``kana_ext`` (68 voiced / handakuten / small),
+    ``kanji:N`` (the N most frequent single-row corpus kanji) and ``list:``
+    (literal ext-row units — the punctuation arm).
+
+    Each keeps its own rng stream (kana_ext seed+19, kanji seed+23), so adding
+    or dropping one leaves the other's draw untouched.
+    """
+    if inv.has("kana_ext"):
+        assert not inv.restricted and not a.balanced, (
+            "--units kana_ext: full inventory, unbalanced"
         )
-    if a.kana_ext:
-        assert not a.only_chars and not a.balanced, (
-            "--kana_ext: full inventory, unbalanced"
-        )
-        inv.kana_ext = list(KANA_EXT)
+        src = inv.source("kana_ext")
+        src.units = list(KANA_EXT)
+        inv.kana_ext = src.units
         erng = random.Random(a.seed + 19)
         inv.evals["single_ext"] = erng.sample(list(KANA_EXT_HIRA), 12) + erng.sample(
             list(KANA_EXT_KATA), 6
         )
-    if a.extra_units:
-        # punctuation arm (2026-09-16): every unit must be one Qwen piece
-        # with an ext row (、 。 ・ ー ～ ！ ？ 「 」 ！！ ・・・ っ ッ …); all of
-        # them form eval group single_extra — read on the sheets, since the
-        # readers' norm() strips punctuation before matching
-        inv.extra = [u for u in a.extra_units.split(",") if u]
+    ksrc = inv.source("kanji")
+    if ksrc and ksrc.n:
+        assert not inv.restricted and not a.balanced, (
+            "--units kanji: full inventory, unbalanced"
+        )
+        ksrc.freq = kanji_inventory(*tokq, ksrc.n)
+        ksrc.units = [c for c, _ in ksrc.freq]
+        inv.kanji = ksrc.units
+        krng = random.Random(a.seed + 23)
+        inv.evals["single_kanji"] = krng.sample(inv.kanji, min(18, len(inv.kanji)))
+        (out / "kanji.json").write_text(json.dumps(ksrc.freq, ensure_ascii=False))
+        print(
+            f"kanji: {len(inv.kanji)} singles "
+            f"(last {ksrc.freq[-1][0]}:{ksrc.freq[-1][1]}); {''.join(inv.kanji)}",
+            flush=True,
+        )
+    lsrc = inv.source("list")
+    if lsrc:
+        # punctuation arm (2026-09-16): every unit must be one Qwen piece with
+        # an ext row (、 。 ・ ー ～ ！ ？ 「 」 ！！ ・・・ っ ッ …); all of them form
+        # eval group single_extra — read on the sheets, since the readers'
+        # norm() strips punctuation before matching
         tok, qmap = tokq
-        bad = [u for u in inv.extra if len(pieces(tok, qmap, u)) != 1]
-        assert not bad, f"--extra_units: not one Qwen piece: {bad}"
-        norow = [u for u in inv.extra if pieces(tok, qmap, u)[0][1] is None]
-        assert not norow, f"--extra_units: pretrained piece, no ext row: {norow}"
+        bad = [u for u in lsrc.units if len(pieces(tok, qmap, u)) != 1]
+        assert not bad, f"--units list: not one Qwen piece: {bad}"
+        norow = [u for u in lsrc.units if pieces(tok, qmap, u)[0][1] is None]
+        assert not norow, f"--units list: pretrained piece, no ext row: {norow}"
+        inv.extra = lsrc.units
         inv.evals["single_extra"] = inv.extra[:18]
         print(
             f"extra units: {len(inv.extra)} singles {' '.join(inv.extra)}", flush=True
@@ -275,18 +283,26 @@ def _extra_singles(a, out, tokq, inv: Inventory):
 
 
 def _word_set(a, out, tokq, inv: Inventory):
-    """2026-09-14 word addresses: the inventory gains the corpus's most frequent
-    single-piece words (each its own pack row), K of them held out; corpus
-    lines are kept only when every piece is a trained row (kana single or
-    word) so ``line`` evaluates addresses *in sequence*, not coverage."""
+    """2026-09-14 word addresses (``--units words:N/held=K``): the inventory
+    gains the corpus's most frequent single-piece words (each its own pack
+    row), K of them held out; corpus lines are kept only when every piece is a
+    trained row (kana single or word) so ``line`` evaluates addresses *in
+    sequence*, not coverage.
+
+    Runs with no words source too (``--scenes`` needs ``piece_ok`` for the
+    micro arms): N is then 0 and the coverage test is the singles alone.
+    """
     tok, qmap = tokq
-    freq = word_inventory(tok, qmap, a.words, a.word_min_len)
+    src = inv.source("words")
+    n_words = src.n if src else 0
+    n_held = src.held if src else 0
+    freq = word_inventory(tok, qmap, n_words, a.word_min_len)
     inv.words = [w for w, _ in freq]
     wrng = random.Random(a.seed + 13)
-    inv.words_held = (
-        sorted(wrng.sample(inv.words, a.held_out_words)) if a.held_out_words else []
-    )
+    inv.words_held = sorted(wrng.sample(inv.words, n_held)) if n_held else []
     inv.words_train = [w for w in inv.words if w not in inv.words_held]
+    if src:
+        src.freq, src.units, src.held_units = freq, inv.words, inv.words_held
     kana_rows = {
         p
         for c in inv.kana + inv.kana_ext + inv.kanji + inv.extra
@@ -378,7 +394,7 @@ def _font_texts(a, rng, inv: Inventory, combos_eval, n_target, tokq) -> list[str
         # 2–4-piece random-order string of trained rows (kana, and trained
         # words at --word_frac per slot), so no row can carry a single-unit
         # layout and the loss asks the rows to be contextualisable
-        assert inv.piece_ok is not None, "--strings_only needs --words"
+        assert inv.piece_ok is not None, "--strings_only needs --units words:N"
         tok, qmap = tokq
         flip_pairs = clean_kana_strings(
             tok, qmap, kana, rng, a.n_flip_eval, 2, excl=combos_eval
@@ -422,7 +438,7 @@ def _font_texts(a, rng, inv: Inventory, combos_eval, n_target, tokq) -> list[str
         texts += [ch] * a.n_single
     for w in inv.words_train:
         texts += [w] * a.n_single
-    # P0b: extended kana / kanji, singles only; --extra_units the same way
+    # P0b: extended kana / kanji, singles only; `list:` units the same way
     # (2026-09-16 — without this they reach the flat stream only via --scenes)
     for ch in inv.kana_ext + inv.kanji + inv.extra:
         texts += [ch] * a.n_single
@@ -488,8 +504,10 @@ def _corpus_recs(a, rng, inv: Inventory, shapes, out, first_layout_id: int):
     """Square crops of kana-only training-corpus bubbles (word mode: only lines
     every piece of which is a trained row). Balanced data puts them in plain
     shuffled groups of g past every font layout id."""
-    lines = corpus_lines(CORPUS_TRAIN / "boxes.jsonl", a.line_max_len if a.words else 6)
-    if a.only_chars:
+    lines = corpus_lines(
+        CORPUS_TRAIN / "boxes.jsonl", a.line_max_len if inv.has("words") else 6
+    )
+    if inv.restricted:
         lines = [ln for ln in lines if all(c in inv.kana for c in ln[0] if c in KANA)]
     if inv.piece_ok is not None:
         n0 = len(lines)

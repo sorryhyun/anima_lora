@@ -243,8 +243,8 @@ arm, with the flat-canvas mode moved into a dedicated switch:
   the one guard against norm creep); `c_flat` at the rows lr, capped 0.75
   (projected, as `c` was). `s` (inference on/off) and ρ (mean pack-row
   norm) are not knobs.
-- **Inventory** as P0b: `--kana_ext --kanji 100 --words 120`, held-out
-  words 8; small kana only inside words.
+- **Inventory** as P0b: `--units kana --units kana_ext --units kanji:100
+  --units words:120/held=8`; small kana only inside words.
 - **Steps** 24 000 matched to P0b (≈ 258 renders per row; ≈ 2.4 h at
   P0b's 2.79 it/s — the rows arm has no CNN forward, expect ≥ that), batch
   4, compile, no grad-ckpt. Pool `448,512:2,448x512,512x448` (light

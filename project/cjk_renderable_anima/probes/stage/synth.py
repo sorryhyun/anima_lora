@@ -29,7 +29,6 @@ from pathlib import Path
 from wake.common import (
     CORPUS_HELD,
     CORPUS_TRAIN,
-    KANA_SMALL,
     OUT,
     TPL_BUBBLE,
     TPL_PLAIN,
@@ -92,7 +91,7 @@ def scene_caption(scene: dict, text: str) -> str:
 
 
 def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]:
-    assert inv.piece_ok is not None, "--scenes needs --words (piece coverage)"
+    assert inv.piece_ok is not None, "--scenes needs the piece-coverage test"
     tok, qmap = tokq
     kana = inv.kana
     scenes = load_scenes(a.scenes, a.scene_tall_ar)
@@ -169,18 +168,12 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
         flush=True,
     )
 
-    # -- unit pool for singles -------------------------------------------------
-    ext_ns = [c for c in inv.kana_ext if c not in KANA_SMALL]
-    units = (
-        list(kana)
-        + ext_ns * 2
-        + list(inv.kanji) * 2
-        + list(inv.words_train)
-        + list(inv.extra) * 2
-    )
+    # -- unit pool for singles: every trained unit repeated by its --units
+    # weight, in the canonical source order (wake/units.py)
+    units = inv.pool()
     assert units, (
-        "--scenes: the unit pool is empty — with --no_kana the singles must "
-        "come from --extra_units / --kana_ext / --kanji / --words"
+        f"--scenes: the unit pool is empty — `--units {inv.describe()}` "
+        "resolved to no drawable unit"
     )
 
     def draw_string() -> str:
@@ -206,8 +199,8 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
     n_flat = n - n_scene - n_phr - n_str
     assert n_flat >= 0, "--scenes: shares exceed --n_items"
     assert kana or not n_str, (
-        "--strings_frac draws random kana strings, so it needs a kana "
-        "inventory — --no_kana dropped it"
+        "--strings_frac draws random kana strings, so it needs a base "
+        "inventory — no `kana` / `chars:` source is in --units"
     )
     # composites mirror the flat kind distribution; with flat 0 (composite
     # only, 2026-09-15) they are singles unless phrases / strings are in

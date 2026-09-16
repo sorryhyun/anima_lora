@@ -45,7 +45,7 @@ CPU-only and safe inline.
 ```bash
 # data: 30 % singles + 70 % random-order 2–4-piece strings of trained rows
 .venv/bin/python project/cjk_renderable_anima/probes/wake_probe.py \
-    --stage data --arm encoder --data_tag wm --words 120 --held_out_words 8 \
+    --stage data --arm encoder --data_tag wm --units kana --units words:120/held=8 \
     --strings_only --n_strings 6000 --single_frac 0.3
 
 # train + eval: Run 3 table warm-started, g frozen, band 0.5–0.9
@@ -92,7 +92,7 @@ bit-identical to the old code, so `wd` itself is untouched).
 ```bash
 # data (CPU): singles pool 384–512, squares and 3:4 / 4:3
 .venv/bin/python project/cjk_renderable_anima/probes/wake_probe.py \
-    --stage data --arm encoder --data_tag wds --words 120 --held_out_words 8 \
+    --stage data --arm encoder --data_tag wds --units kana --units words:120/held=8 \
     --n_single 40 --shapes "384,448,512:2,384x512,512x384"
 
 # A: matched exposure (8 000 steps) — the cost readout

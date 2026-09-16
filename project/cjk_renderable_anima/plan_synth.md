@@ -129,7 +129,7 @@ the phrase share *is* their exposure.
   the swapped box.
 - Batch 4, compile, no grad-ckpt, pool `448,512:2,448x512,512x448`.
 - **Micro scale (what every verdict above is on):** 6 rows
-  (`--only_chars あかす出人日` — 3 kana + 3 corpus kanji, one Qwen piece
+  (`--units chars:あかす出人日` — 3 kana + 3 corpus kanji, one Qwen piece
   each), 2 000 steps ≈ 13 min at 2.5 it/s, + native on `en` and `swap`
   ≈ 25 min per arm. Recipe arm `rows_synth_micro6_fm_m6fm_s2k_qoff` (jobs
   `d7a880` / `78c719`); single-frame control `…micro6_c9_m6c9_s2k_qoff`;
@@ -352,7 +352,7 @@ the 53k table never touched (rows come from the captions, and no phrase
 was in); they are the top pieces of the Manga109 dialogue outside the
 inventory (ー 6 712, っ 4 573, ？ 4 473, ！ 4 424 …). They are
 single-letter addresses, so they train like kana singles on the s0 / s1
-pools, not through phrases: `--extra_units` (each unit one Qwen piece with
+pools, not through phrases: `--units list:…` (each unit one Qwen piece with
 an ext row; `！？` is two pieces and stays out) adds them to the singles
 pool at 2× and forms eval group `single_extra` — read on the sheets,
 since the readers' `norm()` strips punctuation before matching. Arm
@@ -369,8 +369,12 @@ composites), min glyph 28, 3 columns — warm-started from the punctuation
 table (`--init_rows` takes a comma list since 09-16 — the 53k table + the
 punctuation table, later overriding by ext id — if the two are kept
 apart), read on `phrase` vs `phrase_held`, `word`, `swap`, and the flat
-singles as the regression guard; launched after the punctuation arm's
-eval is read, not queued blind. The 92-kana arm runs only if
+singles as the regression guard. Queued behind the punctuation arm
+(user, 09-16 16:00: cancel only if the punctuation arm looks wrong):
+**`rows_synth_sent_tall_sent_s24k`**, jobs `20260916-160004-6b244f`
+(data train eval; pool = tall subsets of sl1w + s1 + s0 ≈ 280 scenes;
+the 15 extra units stay in the singles pool) and `…-e3ec6e` (native, en +
+swap). The 92-kana arm runs only if
 katakana still fails after sentence exposure; the 108k gate run is
 re-based on the sentence table.
 

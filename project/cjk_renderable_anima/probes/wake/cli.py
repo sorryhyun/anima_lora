@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 
 from .common import NATIVE_CLAUSES, NATIVE_PROMPTS
+from .units import KINDS
 
 
 def build_parser(stages, description: str | None = None) -> argparse.ArgumentParser:
@@ -72,6 +73,18 @@ def _generation_args(g):
 
 def _data_args(g):
     g.add_argument(
+        "--units",
+        action="append",
+        metavar="SPEC",
+        help="data: what the ext table trains on — repeat once per source, "
+        f"`kind[:arg][*weight][/held=K]` over {' | '.join(KINDS)}: e.g. `kana`, "
+        "`kana_ext`, `kanji:200`, `words:100/held=8`, `chars:あかす出人日`, "
+        "`list:、,。,！！`. Default `kana` (the 92); name no kana source to train "
+        "punctuation / kanji / words alone. `*W` sets the draw weight in the "
+        "S-line singles pool, `/held=K` holds K units out. Typed order never "
+        "changes the data — see wake/units.py",
+    )
+    g.add_argument(
         "--shapes",
         default="",
         help="data: mixed canvas shapes, comma list of side or WxH with an optional "
@@ -82,19 +95,6 @@ def _data_args(g):
     g.add_argument("--n_single", type=int, default=6, help="font renders per kana")
     g.add_argument("--n_combo", type=int, default=700)
     g.add_argument("--n_corpus", type=int, default=600)
-    g.add_argument(
-        "--kanji",
-        type=int,
-        default=0,
-        help="data (P0b): add the N most frequent single-row corpus kanji as singles "
-        "×n_single; eval group single_kanji (18 drawn)",
-    )
-    g.add_argument(
-        "--kana_ext",
-        action="store_true",
-        help="data (P0b): add voiced / handakuten / small kana (68) as singles "
-        "×n_single; eval group single_ext (18 drawn)",
-    )
     g.add_argument(
         "--balanced",
         type=int,
@@ -112,31 +112,10 @@ def _data_args(g):
         "outline / dark backgrounds / bubble box (the 2026-09-14 data lever)",
     )
     g.add_argument(
-        "--only_chars",
-        default="",
-        help="restrict the kana inventory (textual-inversion regime: few chars, many exposures)",
-    )
-    g.add_argument(
-        "--no_kana",
-        action="store_true",
-        help="data: empty the base kana inventory (punctuation / micro arms, "
-        "2026-09-16) — the unit pool is then --extra_units / --kanji / --words "
-        "alone; --only_chars restricts the kana instead of dropping them",
-    )
-    g.add_argument(
-        "--words",
+        "--word_min_len",
         type=int,
-        default=0,
-        help="data: add the N most frequent single-Qwen-piece words of the training "
-        "corpus to the inventory (each is an existing pack row = one address); "
-        "corpus lines are then kept only when every piece is a trained row",
-    )
-    g.add_argument("--word_min_len", type=int, default=2)
-    g.add_argument(
-        "--held_out_words",
-        type=int,
-        default=0,
-        help="data: K of the words removed from every training item, eval group word_held",
+        default=2,
+        help="data: shortest piece `--units words:N` will count as a word",
     )
     g.add_argument(
         "--n_word_eval",
@@ -159,7 +138,7 @@ def _data_args(g):
     g.add_argument(
         "--strings_only",
         action="store_true",
-        help="data: strings arm — no singles; 2–4-piece random-order strings of trained rows only (needs --words)",
+        help="data: strings arm — no singles; 2–4-piece random-order strings of trained rows only (needs --units words:N)",
     )
     g.add_argument(
         "--n_strings", type=int, default=6000, help="data: --strings_only font items"
@@ -259,13 +238,6 @@ def _data_synth_args(g):
         "a text that would go smaller is redrawn shorter. 40 through the seed "
         "(S0 … 53k); 28 since 2026-09-16 for the sentence line — at 40 a "
         "phrase fits 5 %% of sl1w bubbles even wrapped, at 28 + 2 columns 43 %%",
-    )
-    g.add_argument(
-        "--extra_units",
-        default="",
-        help="data: comma list of extra single-piece ext-row units drawn as "
-        "singles like kana (punctuation arm, 2026-09-16: 、,。,・,ー,～,！,？,「,」,"
-        "！！,・・・,っ,ッ); all of them form eval group single_extra",
     )
     g.add_argument(
         "--scene_tall_ar",

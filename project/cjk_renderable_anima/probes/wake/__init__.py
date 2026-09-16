@@ -8,6 +8,7 @@ Entry point stays ``probes/wake_probe.py`` (same CLI, same output dirs).
   readers      detector + two OCR readers, contact sheets
   render       two renderers: flat font layouts, and the S-line scene compositor
   bubble       bubble flood-mask geometry (mask / interior / bbox)
+  units        --units source specs → the Inventory the data stage draws from
   inventory    Qwen pieces → pack rows; word / kanji inventories; clean strings
   enref        the EN-reference ruler (en cos / en cos out / box IoU)
   encoder      W2d glyph encoder g(render) → Δ_row and its glyph bank

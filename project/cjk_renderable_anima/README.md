@@ -87,11 +87,31 @@ CPU-only and safe inline. Corpus bubbles come from
 the repo).
 
 ```bash
-# data: kana 92 + top-120 single-piece corpus words (8 held out), 40 renders/row
-.venv/bin/python project/cjk_renderable_anima/probes/wake_probe.py \
-    --stage data --arm encoder --data_tag wd --words 120 --held_out_words 8 --n_single 40
+# S line, the recipe of record (2026-09-16): scene composites + flat singles,
+# rows arm, warm-started from the previous table. One daemon job, all stages.
+# <manga109s> is the local Manga109-s derivation; the path stays out of the repo.
+make daemon-run ARGS="--label sent --stall-timeout 0 --queue \
+    project/cjk_renderable_anima/probes/wake_probe.py --stage data train eval --arm rows \
+    --scenes sl1w,s1,s0 --scene_tall_ar 1.0 --data_tag synth_sent_tall \
+    --units kana --units kana_ext --units kanji:200 --units words:100/held=8 \
+    --units 'list:、,。,・,ー,～,〜,！,？,「,」,！！,・・・,・・・・,っ,ッ' \
+    --phrase_file <manga109s>/derived/dialogue_3_10.tsv --phrase_pieces 40 \
+    --n_items 10000 --scene_frac 0.8 --natural_frac 0.1 --strings_frac 0 \
+    --flat_bubble 1.0 --scene_fill 0.7 --scene_min_glyph 28 --scene_max_lines 3 \
+    --shapes 448,512:2,448x512,512x448 \
+    --init_rows output/wake_probe/rows_synth_punct_punct_s4k/trained.pt \
+    --train_steps 24000 --batch 4 --t_min 0.7 --t_max 0.9 \
+    --compile 1 --grad_ckpt 0 --aggressive_recompute 0 \
+    --lr_rows 1e-3 --lr_decay cosine --free_residual 1e-3 --box_weight 4 \
+    --seeds 2 --no_floor --c_flat 0 --arm_tag sent_s24k"
 
-# train + eval: the Run 3 recipe (hybrid, warm start g and f from Run 1d)
+# Archived — the W2d Run 3 encoder recipe (hybrid g + f). The encoder arm has not
+# run since 2026-09-14; it is kept because extending the hybrid table needs it,
+# and because a rows warm start reads an encoder source's shared `common` vector.
+.venv/bin/python project/cjk_renderable_anima/probes/wake_probe.py \
+    --stage data --arm encoder --data_tag wd \
+    --units kana --units words:120/held=8 --n_single 40
+
 make daemon-run ARGS="--label wake-words --stall-timeout 0 --queue \
     project/cjk_renderable_anima/probes/wake_probe.py --stage train eval --arm encoder \
     --data_tag wd --arm_tag w120_s8k_fres_warm --train_steps 8000 --batch 4 \
@@ -111,9 +131,31 @@ reads any arm's table (`--table free|raw`, `--pairs 明=日+月,…`).
 
 Stages: `salad` (base-model probe), `data`, `train`, `eval`, `classify`
 (same-noise diffusion classifier over σ), `native` (scene prompts + kana
-clause). Arms: `rows` (free delta), `rows_adapter` (+ llm_adapter LoRA —
-drifts EN, kept as the negative control), `encoder` (W2d hybrid, the
-recipe of record).
+clause), `scenes` (the S line's self-generated composite pool), `enref`
+(the EN-reference renders the ruler scores against), `native_rescore`
+(re-read an existing native run). Arms: `rows` (free delta — **the recipe
+of record** since the S line opened, 2026-09-15; every run since
+2026-09-14 is a `rows` run), `rows_adapter` (+ llm_adapter LoRA — drifts
+EN, kept as the negative control), `encoder` (W2d hybrid; last run
+2026-09-14, kept to extend the hybrid table).
+
+**What the table trains on is one flag: `--units`** (`probes/wake/units.py`),
+repeated once per source — `kana`, `kana_ext`, `kanji:200`,
+`words:100/held=8`, `chars:あかす出人日` (a hand-picked base, the
+textual-inversion regime) and `list:、,。,！！` (literal ext-row units, the
+punctuation arm). `*W` sets a source's draw weight in the S-line singles
+pool and `/held=K` holds K units out; each source also fixes the eval group
+its units are scored under (`single` / `single_ext` / `single_kanji` /
+`word` + `word_held` / `single_extra`). Typed order never changes the data —
+sources resolve in a canonical order, so a recipe rebuilds its data dir byte
+for byte however it was typed. Default is `kana` (the 92); naming no kana
+source trains punctuation / kanji / words alone.
+
+The CLI's argparse groups name the stage **and arm** that read each flag.
+They were relabelled 2026-09-16 with no flag, default or behaviour change:
+`--init_rows` / `--pin_*` are rows-arm flags that used to sit in the
+encoder group, `--free_residual` is read by both arms, and the S-line
+group mixed data flags with train flags (`--box_weight`, `--c_flat`).
 
 Gotchas that bite (full list in `reports/wake_w0_w2_2026_09_13.md`): never
 below 512²; block compile before grad-ckpt; batch 8 OOMs at 512²; rows lr
@@ -130,6 +172,7 @@ larger piece misses the row (the `eval_coverage.json` line).
 | `deploy_plan.md` | Hub v2 layout (`old/ delta/ comfy/ diffusers/`), bake, pre-upload gates, license, migration |
 | `findings.md` | settled verdicts, rulers, gotchas, do-not-re-propose |
 | `findings_seed.md` | what the 53k full-inventory table taught (2026-09-16): its evals, row-space geometry, adapter-output vs Q, transplant, pinned-trigger arms — the one-place summary for the seed question |
+| `freetext.md` | the shelved FreeText line (2026-06) re-read against this one: its "no Korean glyph prior" root cause falls to krzh16; its Stage-1 attention localizer is a possible render-free ruler for wipe / frame binding / katakana (not built) |
 | `reports/README.md` | index of the dated run record — W0–W2, the 09-13 plan as written, W2d, words/strings, canvas/scenes, S0/S0b, micro loop (split out of the former `history.md` 2026-09-15) |
 | `reports/wake_w0_w2_2026_09_13.md` | W0–W2: hypothesis, Probe 0/1, address geometry, the 256² / 24-kana / balanced / σ-band arms, kanji probe |
 | `probes/wake_probe.py` | the instrument's entry point — stages salad / data / train / eval / classify / classify_str / native |
@@ -147,7 +190,7 @@ larger piece misses the row (the `eval_coverage.json` line).
   0.82× the wall, so the pool is the recipe of record. P0b trains the full
   kana inventory (basic + voiced + small, ~160 rows + 120 words) as
   singles for 2–3 GPU-hours warm-started from P0a's table (instrument
-  owed: `--kana_ext` + a `single_ext` eval group); the strings work below
+  owed: `--units kana_ext` + a `single_ext` eval group); the strings work below
   then runs on a 512–768 pool.
 - **Mixed arm (after P0b).** The strings arm showed rows carry order + count but
   absorb the data's unit-count prior (singles 34 → 5). One distribution —
