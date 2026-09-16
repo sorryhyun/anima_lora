@@ -39,6 +39,9 @@ logs
 _logs/
 .claude/*
 !.claude/skills/
+!.claude/agents/
+.claude/agents/session-explorer.md
+.claude/agents/archive-explorer.md
 .env
 .anima_backend
 .anima-update-backups
