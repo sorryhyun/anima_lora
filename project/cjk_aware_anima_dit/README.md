@@ -26,9 +26,14 @@ whose output ships as a vocab pack.
   `ocr/eval_table.py`. [`whitespace_fixed.md`](whitespace_fixed.md) — the
   target-normaliser note `ocr/crop_dataset.py` cites.
 - `ocr/`, `probes/`, `render/`, `assets/` — this line's code, runnable.
-  `probes/wake_probe.py` (+ `wake_geometry.py`) is the wake instrument; the
-  hand labels (`assets/sfx_labels_sincos.tsv`, 975 rows / 617 SFX scored) are
-  the reader gate's ground truth.
+  The hand labels (`assets/sfx_labels_sincos.tsv`, 975 rows / 617 SFX scored)
+  are the reader gate's ground truth.
+  **`probes/wake_probe.py` (+ `wake_geometry.py`) here is frozen** — the
+  single-file ancestor of the wake instrument, last touched 2026-09-14 when
+  the line moved. The live instrument is the split package
+  [`../cjk_renderable_anima/probes/`](../cjk_renderable_anima/probes/)
+  (`wake_probe.py` entry point + `stage/` + `wake/`); every run since is
+  there. Read this copy only for how a pre-split run was invoked.
 - `reports/` — dated reports, gitignored (private mirror); the wake report
   `wake_w0_w2_2026_09_13.md` is there. Reports and the eight plan files from
   before the freeze are under `_archive/cjk_aware_anima_dit/{reports,plans}/`.
