@@ -1,17 +1,17 @@
 import enum
 import math
 
-import torch
 import numpy as np
 import torch as th
 import torch.nn.functional as F
 
 from .basic_ops import mean_flat
-from .losses import normal_kl, discretized_gaussian_log_likelihood
+from .losses import normal_kl
 
-from ldm.models.autoencoder import AutoencoderKLTorch
 
-def get_named_beta_schedule(schedule_name, num_diffusion_timesteps, beta_start, beta_end):
+def get_named_beta_schedule(
+    schedule_name, num_diffusion_timesteps, beta_start, beta_end
+):
     """
     Get a pre-defined beta schedule for the given name.
 
@@ -23,61 +23,85 @@ def get_named_beta_schedule(schedule_name, num_diffusion_timesteps, beta_start, 
     if schedule_name == "linear":
         # Linear schedule from Ho et al, extended to work for any number of
         # diffusion steps.
-        return np.linspace(
-            beta_start**0.5, beta_end**0.5, num_diffusion_timesteps, dtype=np.float64
-        )**2
+        return (
+            np.linspace(
+                beta_start**0.5,
+                beta_end**0.5,
+                num_diffusion_timesteps,
+                dtype=np.float64,
+            )
+            ** 2
+        )
     else:
         raise NotImplementedError(f"unknown beta schedule: {schedule_name}")
 
+
 def get_named_eta_schedule(
-        schedule_name,
-        num_diffusion_timesteps,
-        min_noise_level,
-        etas_end=0.99,
-        kappa=1.0,
-        kwargs=None):
+    schedule_name,
+    num_diffusion_timesteps,
+    min_noise_level,
+    etas_end=0.99,
+    kappa=1.0,
+    kwargs=None,
+):
     """
     Get a pre-defined eta schedule for the given name.
 
     The eta schedule library consists of eta schedules which remain similar
     in the limit of num_diffusion_timesteps.
     """
-    if schedule_name == 'exponential':
+    if schedule_name == "exponential":
         # ponential = kwargs.get('ponential', None)
         # start = math.exp(math.log(min_noise_level / kappa) / ponential)
         # end = math.exp(math.log(etas_end) / (2*ponential))
         # xx = np.linspace(start, end, num_diffusion_timesteps, endpoint=True, dtype=np.float64)
         # sqrt_etas = xx**ponential
-        power = kwargs.get('power', None)
+        power = kwargs.get("power", None)
         # etas_start = min(min_noise_level / kappa, min_noise_level, math.sqrt(0.001))
         etas_start = min(min_noise_level / kappa, min_noise_level)
-        increaser = math.exp(1/(num_diffusion_timesteps-1)*math.log(etas_end/etas_start))
-        base = np.ones([num_diffusion_timesteps, ]) * increaser
-        power_timestep = np.linspace(0, 1, num_diffusion_timesteps, endpoint=True)**power
-        power_timestep *= (num_diffusion_timesteps-1)
+        increaser = math.exp(
+            1 / (num_diffusion_timesteps - 1) * math.log(etas_end / etas_start)
+        )
+        base = (
+            np.ones(
+                [
+                    num_diffusion_timesteps,
+                ]
+            )
+            * increaser
+        )
+        power_timestep = (
+            np.linspace(0, 1, num_diffusion_timesteps, endpoint=True) ** power
+        )
+        power_timestep *= num_diffusion_timesteps - 1
         sqrt_etas = np.power(base, power_timestep) * etas_start
-    elif schedule_name == 'ldm':
+    elif schedule_name == "ldm":
         import scipy.io as sio
-        mat_path = kwargs.get('mat_path', None)
-        sqrt_etas = sio.loadmat(mat_path)['sqrt_etas'].reshape(-1)
+
+        mat_path = kwargs.get("mat_path", None)
+        sqrt_etas = sio.loadmat(mat_path)["sqrt_etas"].reshape(-1)
     else:
         raise ValueError(f"Unknow schedule_name {schedule_name}")
 
     return sqrt_etas
 
+
 class ModelMeanType(enum.Enum):
     """
     Which type of output the model predicts.
     """
+
     START_X = enum.auto()  # the model predicts x_0
     EPSILON = enum.auto()  # the model predicts epsilon
     PREVIOUS_X = enum.auto()  # the model predicts epsilon
     RESIDUAL = enum.auto()  # the model predicts epsilon
     EPSILON_SCALE = enum.auto()  # the model predicts epsilon
 
+
 class LossType(enum.Enum):
-    MSE = enum.auto()           # simplied MSE
+    MSE = enum.auto()  # simplied MSE
     WEIGHTED_MSE = enum.auto()  # weighted mse derived from KL
+
 
 class ModelVarTypeDDPM(enum.Enum):
     """
@@ -88,6 +112,7 @@ class ModelVarTypeDDPM(enum.Enum):
     LEARNED_RANGE = enum.auto()
     FIXED_LARGE = enum.auto()
     FIXED_SMALL = enum.auto()
+
 
 def _extract_into_tensor(arr, timesteps, broadcast_shape):
     """
@@ -103,6 +128,7 @@ def _extract_into_tensor(arr, timesteps, broadcast_shape):
     while len(res.shape) < len(broadcast_shape):
         res = res[..., None]
     return res.expand(broadcast_shape)
+
 
 class GaussianDiffusion:
     """
@@ -152,8 +178,8 @@ class GaussianDiffusion:
         # calculations for posterior q(x_{t-1} | x_t, x_0)
         self.posterior_variance = kappa**2 * self.etas_prev / self.etas * self.alpha
         self.posterior_variance_clipped = np.append(
-                self.posterior_variance[1], self.posterior_variance[1:]
-                )
+            self.posterior_variance[1], self.posterior_variance[1:]
+        )
         # log calculation clipped because the posterior variance is 0 at the
         # beginning of the diffusion chain.
         self.posterior_log_variance_clipped = np.log(self.posterior_variance_clipped)
@@ -162,11 +188,15 @@ class GaussianDiffusion:
 
         # weight for the mse loss
         if model_mean_type in [ModelMeanType.START_X, ModelMeanType.RESIDUAL]:
-            weight_loss_mse = 0.5 / self.posterior_variance_clipped * (self.alpha / self.etas)**2
-        elif model_mean_type in [ModelMeanType.EPSILON, ModelMeanType.EPSILON_SCALE]  :
-            weight_loss_mse = 0.5 / self.posterior_variance_clipped * (
-                    kappa * self.alpha / ((1-self.etas) * self.sqrt_etas)
-                    )**2
+            weight_loss_mse = (
+                0.5 / self.posterior_variance_clipped * (self.alpha / self.etas) ** 2
+            )
+        elif model_mean_type in [ModelMeanType.EPSILON, ModelMeanType.EPSILON_SCALE]:
+            weight_loss_mse = (
+                0.5
+                / self.posterior_variance_clipped
+                * (kappa * self.alpha / ((1 - self.etas) * self.sqrt_etas)) ** 2
+            )
         else:
             raise NotImplementedError(model_mean_type)
 
@@ -182,7 +212,9 @@ class GaussianDiffusion:
         :param t: the number of diffusion steps (minus 1). Here, 0 means one step.
         :return: A tuple (mean, variance, log_variance), all of x_start's shape.
         """
-        mean = _extract_into_tensor(self.etas, t, x_start.shape) * (y - x_start) + x_start
+        mean = (
+            _extract_into_tensor(self.etas, t, x_start.shape) * (y - x_start) + x_start
+        )
         variance = _extract_into_tensor(self.etas, t, x_start.shape) * self.kappa**2
         log_variance = variance.log()
         return mean, variance, log_variance
@@ -203,8 +235,10 @@ class GaussianDiffusion:
             noise = th.randn_like(x_start)
         assert noise.shape == x_start.shape
         return (
-            _extract_into_tensor(self.etas, t, x_start.shape) * (y - x_start) + x_start
-            + _extract_into_tensor(self.sqrt_etas * self.kappa, t, x_start.shape) * noise
+            _extract_into_tensor(self.etas, t, x_start.shape) * (y - x_start)
+            + x_start
+            + _extract_into_tensor(self.sqrt_etas * self.kappa, t, x_start.shape)
+            * noise
         )
 
     def q_posterior_mean_variance(self, x_start, x_t, t):
@@ -232,10 +266,7 @@ class GaussianDiffusion:
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
     def p_mean_variance(
-        self, model, x_t, y, t,
-        clip_denoised=True,
-        denoised_fn=None,
-        model_kwargs=None
+        self, model, x_t, y, t, clip_denoised=True, denoised_fn=None, model_kwargs=None
     ):
         """
         Apply the model to get p(x_{t-1} | x_t), as well as a prediction of
@@ -266,7 +297,9 @@ class GaussianDiffusion:
         model_output = model(self._scale_input(x_t, t), t, **model_kwargs)
 
         model_variance = _extract_into_tensor(self.posterior_variance, t, x_t.shape)
-        model_log_variance = _extract_into_tensor(self.posterior_log_variance_clipped, t, x_t.shape)
+        model_log_variance = _extract_into_tensor(
+            self.posterior_log_variance_clipped, t, x_t.shape
+        )
 
         def process_xstart(x):
             if denoised_fn is not None:
@@ -275,29 +308,32 @@ class GaussianDiffusion:
                 return x.clamp(-1, 1)
             return x
 
-        if self.model_mean_type == ModelMeanType.START_X:      # predict x_0
+        if self.model_mean_type == ModelMeanType.START_X:  # predict x_0
             pred_xstart = process_xstart(model_output)
-        elif self.model_mean_type == ModelMeanType.RESIDUAL:      # predict x_0
+        elif self.model_mean_type == ModelMeanType.RESIDUAL:  # predict x_0
             pred_xstart = process_xstart(
                 self._predict_xstart_from_residual(y=y, residual=model_output)
-                )
+            )
         elif self.model_mean_type == ModelMeanType.EPSILON:
             pred_xstart = process_xstart(
                 self._predict_xstart_from_eps(x_t=x_t, y=y, t=t, eps=model_output)
-            )                                                  #  predict \eps
+            )  #  predict \eps
         elif self.model_mean_type == ModelMeanType.EPSILON_SCALE:
             pred_xstart = process_xstart(
                 self._predict_xstart_from_eps_scale(x_t=x_t, y=y, t=t, eps=model_output)
-            )                                                  #  predict \eps
+            )  #  predict \eps
         else:
-            raise ValueError(f'Unknown Mean type: {self.model_mean_type}')
+            raise ValueError(f"Unknown Mean type: {self.model_mean_type}")
 
         model_mean, _, _ = self.q_posterior_mean_variance(
             x_start=pred_xstart, x_t=x_t, t=t
         )
 
         assert (
-            model_mean.shape == model_log_variance.shape == pred_xstart.shape == x_t.shape
+            model_mean.shape
+            == model_log_variance.shape
+            == pred_xstart.shape
+            == x_t.shape
         )
         return {
             "mean": model_mean,
@@ -308,28 +344,40 @@ class GaussianDiffusion:
 
     def _predict_xstart_from_eps(self, x_t, y, t, eps):
         assert x_t.shape == eps.shape
-        return  (
-            x_t - _extract_into_tensor(self.sqrt_etas, t, x_t.shape) * self.kappa * eps
-                - _extract_into_tensor(self.etas, t, x_t.shape) * y
+        return (
+            x_t
+            - _extract_into_tensor(self.sqrt_etas, t, x_t.shape) * self.kappa * eps
+            - _extract_into_tensor(self.etas, t, x_t.shape) * y
         ) / _extract_into_tensor(1 - self.etas, t, x_t.shape)
 
     def _predict_xstart_from_eps_scale(self, x_t, y, t, eps):
         assert x_t.shape == eps.shape
-        return  (
+        return (
             x_t - eps - _extract_into_tensor(self.etas, t, x_t.shape) * y
         ) / _extract_into_tensor(1 - self.etas, t, x_t.shape)
 
     def _predict_xstart_from_residual(self, y, residual):
         assert y.shape == residual.shape
-        return (y - residual)
+        return y - residual
 
     def _predict_eps_from_xstart(self, x_t, y, t, pred_xstart):
         return (
-            x_t - _extract_into_tensor(1 - self.etas, t, x_t.shape) * pred_xstart
-                - _extract_into_tensor(self.etas, t, x_t.shape) * y
+            x_t
+            - _extract_into_tensor(1 - self.etas, t, x_t.shape) * pred_xstart
+            - _extract_into_tensor(self.etas, t, x_t.shape) * y
         ) / _extract_into_tensor(self.kappa * self.sqrt_etas, t, x_t.shape)
 
-    def p_sample(self, model, x, y, t, clip_denoised=True, denoised_fn=None, model_kwargs=None, noise_repeat=False):
+    def p_sample(
+        self,
+        model,
+        x,
+        y,
+        t,
+        clip_denoised=True,
+        denoised_fn=None,
+        model_kwargs=None,
+        noise_repeat=False,
+    ):
         """
         Sample x_{t-1} from the model at the given timestep.
 
@@ -362,7 +410,11 @@ class GaussianDiffusion:
             (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
         )  # no noise when t == 0
         sample = out["mean"] + nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
-        return {"sample": sample, "pred_xstart": out["pred_xstart"], "mean":out["mean"]}
+        return {
+            "sample": sample,
+            "pred_xstart": out["pred_xstart"],
+            "mean": out["mean"],
+        }
 
     def p_sample_loop(
         self,
@@ -412,22 +464,24 @@ class GaussianDiffusion:
             final = sample["sample"]
         with th.no_grad():
             out = self.decode_first_stage(
-                    final,
-                    first_stage_model=first_stage_model,
-                    consistencydecoder=consistencydecoder,
-                    )
+                final,
+                first_stage_model=first_stage_model,
+                consistencydecoder=consistencydecoder,
+            )
         return out
 
     def p_sample_loop_progressive(
-            self, y, model,
-            first_stage_model=None,
-            noise=None,
-            noise_repeat=False,
-            clip_denoised=True,
-            denoised_fn=None,
-            model_kwargs=None,
-            device=None,
-            progress=False,
+        self,
+        y,
+        model,
+        first_stage_model=None,
+        noise=None,
+        noise_repeat=False,
+        clip_denoised=True,
+        denoised_fn=None,
+        model_kwargs=None,
+        device=None,
+        progress=False,
     ):
         """
         Generate samples from the model and yield intermediate samples from
@@ -471,8 +525,9 @@ class GaussianDiffusion:
                 yield out
                 z_sample = out["sample"]
 
-    def decode_first_stage(self, z_sample, first_stage_model=None, consistencydecoder=None):
-        batch_size = z_sample.shape[0]
+    def decode_first_stage(
+        self, z_sample, first_stage_model=None, consistencydecoder=None
+    ):
         data_dtype = z_sample.dtype
 
         if consistencydecoder is None:
@@ -501,7 +556,7 @@ class GaussianDiffusion:
         data_dtype = y.dtype
         model_dtype = next(first_stage_model.parameters()).dtype
         if up_sample and self.sf != 1:
-            y = F.interpolate(y, scale_factor=self.sf, mode='bicubic')
+            y = F.interpolate(y, scale_factor=self.sf, mode="bicubic")
         if first_stage_model is None:
             return y
         else:
@@ -524,16 +579,26 @@ class GaussianDiffusion:
         if noise is None:
             noise = th.randn_like(y)
 
-        t = th.tensor([self.num_timesteps-1,] * y.shape[0], device=y.device).long()
+        t = th.tensor(
+            [
+                self.num_timesteps - 1,
+            ]
+            * y.shape[0],
+            device=y.device,
+        ).long()
 
         return y + _extract_into_tensor(self.kappa * self.sqrt_etas, t, y.shape) * noise
 
     def training_losses(
-            self, model, x_start, y, t,
-            first_stage_model=None,
-            model_kwargs=None,
-            noise=None,
-            ):
+        self,
+        model,
+        x_start,
+        y,
+        t,
+        first_stage_model=None,
+        model_kwargs=None,
+        noise=None,
+    ):
         """
         Compute training losses for a single timestep.
 
@@ -568,12 +633,16 @@ class GaussianDiffusion:
                 ModelMeanType.START_X: z_start,
                 ModelMeanType.RESIDUAL: z_y - z_start,
                 ModelMeanType.EPSILON: noise,
-                ModelMeanType.EPSILON_SCALE: noise*self.kappa*_extract_into_tensor(self.sqrt_etas, t, noise.shape),
+                ModelMeanType.EPSILON_SCALE: noise
+                * self.kappa
+                * _extract_into_tensor(self.sqrt_etas, t, noise.shape),
             }[self.model_mean_type]
             assert model_output.shape == target.shape == z_start.shape
             terms["mse"] = mean_flat((target - model_output) ** 2)
             if self.model_mean_type == ModelMeanType.EPSILON_SCALE:
-                terms["mse"] /= (self.kappa**2 * _extract_into_tensor(self.etas, t, t.shape))
+                terms["mse"] /= self.kappa**2 * _extract_into_tensor(
+                    self.etas, t, t.shape
+                )
             if self.loss_type == LossType.WEIGHTED_MSE:
                 weights = _extract_into_tensor(self.weight_loss_mse, t, t.shape)
             else:
@@ -582,14 +651,20 @@ class GaussianDiffusion:
         else:
             raise NotImplementedError(self.loss_type)
 
-        if self.model_mean_type == ModelMeanType.START_X:      # predict x_0
+        if self.model_mean_type == ModelMeanType.START_X:  # predict x_0
             pred_zstart = model_output
         elif self.model_mean_type == ModelMeanType.EPSILON:
-            pred_zstart = self._predict_xstart_from_eps(x_t=z_t, y=z_y, t=t, eps=model_output)
+            pred_zstart = self._predict_xstart_from_eps(
+                x_t=z_t, y=z_y, t=t, eps=model_output
+            )
         elif self.model_mean_type == ModelMeanType.RESIDUAL:
-            pred_zstart = self._predict_xstart_from_residual(y=z_y, residual=model_output)
+            pred_zstart = self._predict_xstart_from_residual(
+                y=z_y, residual=model_output
+            )
         elif self.model_mean_type == ModelMeanType.EPSILON_SCALE:
-            pred_zstart = self._predict_xstart_from_eps_scale(x_t=z_t, y=z_y, t=t, eps=model_output)
+            pred_zstart = self._predict_xstart_from_eps_scale(
+                x_t=z_t, y=z_y, t=t, eps=model_output
+            )
         else:
             raise NotImplementedError(self.model_mean_type)
 
@@ -599,14 +674,22 @@ class GaussianDiffusion:
         if self.normalize_input:
             if self.latent_flag:
                 # the variance of latent code is around 1.0
-                std = th.sqrt(_extract_into_tensor(self.etas, t, inputs.shape) * self.kappa**2 + 1)
+                std = th.sqrt(
+                    _extract_into_tensor(self.etas, t, inputs.shape) * self.kappa**2 + 1
+                )
                 inputs_norm = inputs / std
             else:
-                inputs_max = _extract_into_tensor(self.sqrt_etas, t, inputs.shape) * self.kappa * 3 + 1
+                inputs_max = (
+                    _extract_into_tensor(self.sqrt_etas, t, inputs.shape)
+                    * self.kappa
+                    * 3
+                    + 1
+                )
                 inputs_norm = inputs / inputs_max
         else:
             inputs_norm = inputs
         return inputs_norm
+
 
 class GaussianDiffusionDDPM:
     """
@@ -634,10 +717,10 @@ class GaussianDiffusionDDPM:
         scale_factor=None,
         sf=4,
     ):
-        self.model_mean_type = model_mean_type        # EPSILON
-        self.model_var_type = model_var_type          # LEARNED_RANGE
-        self.scale_factor = scale_factor   # scale factor in latent space default True
-        self.sf=sf
+        self.model_mean_type = model_mean_type  # EPSILON
+        self.model_var_type = model_var_type  # LEARNED_RANGE
+        self.scale_factor = scale_factor  # scale factor in latent space default True
+        self.sf = sf
 
         # Use float64 for accuracy.
         betas = np.array(betas, dtype=np.float64)
@@ -769,7 +852,10 @@ class GaussianDiffusionDDPM:
         assert t.shape == (B,)
         model_output = model(x, t, **model_kwargs)
 
-        if self.model_var_type in [ModelVarTypeDDPM.LEARNED, ModelVarTypeDDPM.LEARNED_RANGE]:
+        if self.model_var_type in [
+            ModelVarTypeDDPM.LEARNED,
+            ModelVarTypeDDPM.LEARNED_RANGE,
+        ]:
             assert model_output.shape == (B, C * 2, *x.shape[2:])
             model_output, model_var_values = th.split(model_output, C, dim=1)
             if self.model_var_type == ModelVarTypeDDPM.LEARNED:
@@ -807,18 +893,18 @@ class GaussianDiffusionDDPM:
                 return x.clamp(-1, 1)
             return x
 
-        if self.model_mean_type == ModelMeanType.PREVIOUS_X:       # predict x_{t-1}
+        if self.model_mean_type == ModelMeanType.PREVIOUS_X:  # predict x_{t-1}
             pred_xstart = process_xstart(
                 self._predict_xstart_from_xprev(x_t=x, t=t, xprev=model_output)
             )
             model_mean = model_output
         elif self.model_mean_type in [ModelMeanType.START_X, ModelMeanType.EPSILON]:
-            if self.model_mean_type == ModelMeanType.START_X:      # predict x_0
+            if self.model_mean_type == ModelMeanType.START_X:  # predict x_0
                 pred_xstart = process_xstart(model_output)
             else:
                 pred_xstart = process_xstart(
                     self._predict_xstart_from_eps(x_t=x, t=t, eps=model_output)
-                )                                                  #  predict \eps
+                )  #  predict \eps
             model_mean, _, _ = self.q_posterior_mean_variance(
                 x_start=pred_xstart, x_t=x, t=t
             )
@@ -1019,7 +1105,7 @@ class GaussianDiffusionDDPM:
         noise = th.randn_like(x)
         mean_pred = (
             out["pred_xstart"] * th.sqrt(alpha_bar_prev)
-            + th.sqrt(1 - alpha_bar_prev - sigma ** 2) * eps
+            + th.sqrt(1 - alpha_bar_prev - sigma**2) * eps
         )
         nonzero_mask = (
             (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
@@ -1146,7 +1232,9 @@ class GaussianDiffusionDDPM:
                 yield out
                 img = out["sample"]
 
-    def training_losses(self, model, x_start, t, first_stage_model=None, model_kwargs=None, noise=None):
+    def training_losses(
+        self, model, x_start, t, first_stage_model=None, model_kwargs=None, noise=None
+    ):
         """
         Compute training losses for a single timestep.
 
@@ -1182,10 +1270,12 @@ class GaussianDiffusionDDPM:
         terms["mse"] = mean_flat((target - model_output) ** 2)
         terms["loss"] = terms["mse"]
 
-        if self.model_mean_type == ModelMeanType.START_X:      # predict x_0
+        if self.model_mean_type == ModelMeanType.START_X:  # predict x_0
             pred_zstart = model_output.detach()
         elif self.model_mean_type == ModelMeanType.EPSILON:
-            pred_zstart = self._predict_xstart_from_eps(x_t=z_t, t=t, eps=model_output.detach())
+            pred_zstart = self._predict_xstart_from_eps(
+                x_t=z_t, t=t, eps=model_output.detach()
+            )
         else:
             raise NotImplementedError(self.model_mean_type)
 
@@ -1203,12 +1293,11 @@ class GaussianDiffusionDDPM:
         """
         batch_size = x_start.shape[0]
         t = th.tensor([self.num_timesteps - 1] * batch_size, device=x_start.device)
-        qt_mean, _, qt_log_variance = self.q_mean_variance(x_start, t)   # q(x_t|x_0)
+        qt_mean, _, qt_log_variance = self.q_mean_variance(x_start, t)  # q(x_t|x_0)
         kl_prior = normal_kl(
             mean1=qt_mean, logvar1=qt_log_variance, mean2=0.0, logvar2=0.0
         )
         return mean_flat(kl_prior) / np.log(2.0)
-
 
     def _scale_input(self, inputs, t):
         return inputs
@@ -1227,7 +1316,7 @@ class GaussianDiffusionDDPM:
     def encode_first_stage(self, y, first_stage_model, up_sample=False):
         ori_dtype = y.dtype
         if up_sample:
-            y = F.interpolate(y, scale_factor=self.sf, mode='bicubic')
+            y = F.interpolate(y, scale_factor=self.sf, mode="bicubic")
         if first_stage_model is None:
             return y
         else:
@@ -1236,4 +1325,3 @@ class GaussianDiffusionDDPM:
                 z_y = first_stage_model.encode(y)
                 out = z_y * self.scale_factor
                 return out.type(ori_dtype)
-

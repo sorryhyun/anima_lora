@@ -225,12 +225,16 @@ def run_read(opts, pages: list[Path]) -> None:
 # --------------------------------------------------------------------------- apply
 
 
-def kind_for(stem: str, box: Box, text: str, hand_by_stem, rec, reread) -> tuple[str, str]:
+def kind_for(
+    stem: str, box: Box, text: str, hand_by_stem, rec, reread
+) -> tuple[str, str]:
     """``(kind, source)``: the covering hand label with the best IoU, else the rule."""
     best, arg = 0.0, None
     for h in hand_by_stem.get(stem, []):
         iou, cont = rec.overlap(box, h["box"])
-        if (iou >= reread.COVERED_IOU or cont >= reread.COVERED_CONTAINMENT) and iou > best:
+        if (
+            iou >= reread.COVERED_IOU or cont >= reread.COVERED_CONTAINMENT
+        ) and iou > best:
             best, arg = iou, h
     if arg is not None:
         return arg["kind"], "hand"
@@ -391,23 +395,46 @@ def run_apply(opts, pages: list[Path]) -> None:
     masks_dir = REPO / "post_image_dataset/masks" / SHARD
     hyb = _load_jsonl(RECORDS_DIR / f"ocr_records_{SHARD}_hybrid_vl.jsonl")
     reads, boxes = load_reads(), load_boxes()
-    kw = dict(rec=rec, reread=reread, hand=hand, ref=ref, ab_stems=ab_stems, masks_dir=masks_dir)
+    kw = dict(
+        rec=rec,
+        reread=reread,
+        hand=hand,
+        ref=ref,
+        ab_stems=ab_stems,
+        masks_dir=masks_dir,
+    )
 
     stats: Counter = Counter()
     recs = build_records(
-        opts, pages, reads=reads, boxes=boxes, hand=hand, rec=rec, reread=reread,
-        engine="animetext+sfx_reader", stats=stats,
+        opts,
+        pages,
+        reads=reads,
+        boxes=boxes,
+        hand=hand,
+        rec=rec,
+        reread=reread,
+        engine="animetext+sfx_reader",
+        stats=stats,
     )
     if stats["unread"]:
-        print(f"WARNING: {stats['unread']} boxes have no cached read — run --stage read first")
+        print(
+            f"WARNING: {stats['unread']} boxes have no cached read — run --stage read first"
+        )
     out_path = opts.out or RECORDS_DIR / f"ocr_records_{SHARD}_animetext.jsonl"
     n = _write_jsonl(out_path, recs)
 
     raw_stats: Counter = Counter()
     opts_raw = argparse.Namespace(**{**vars(opts), "dedupe": False})
     raw = build_records(
-        opts_raw, pages, reads=reads, boxes=boxes, hand=hand, rec=rec, reread=reread,
-        engine="animetext+sfx_reader", stats=raw_stats,
+        opts_raw,
+        pages,
+        reads=reads,
+        boxes=boxes,
+        hand=hand,
+        rec=rec,
+        reread=reread,
+        engine="animetext+sfx_reader",
+        stats=raw_stats,
     )
     m_hyb = metrics(hyb, **kw)
     m_raw = metrics(raw, **kw)
@@ -424,9 +451,18 @@ def run_apply(opts, pages: list[Path]) -> None:
         "| records | lines / pages | floor | best-match / ≥0.9 | hand-SFX exact / mean sim |",
         "|---|---|---|---|---|",
         _row("hybrid_vl (3-layer stack, O4)", m_hyb),
-        _row("O6 probe, yolo12l 640 inner c0.25 (findings)", {
-            "records": 1001, "pages_with_line": 163, "floor": 4, "best_match_sim": 0.844,
-            "best_match_ge_0.9": 45, "hand_sfx_exact": 63, "hand_sfx_mean_sim": 0.860}),
+        _row(
+            "O6 probe, yolo12l 640 inner c0.25 (findings)",
+            {
+                "records": 1001,
+                "pages_with_line": 163,
+                "floor": 4,
+                "best_match_sim": 0.844,
+                "best_match_ge_0.9": 45,
+                "hand_sfx_exact": 63,
+                "hand_sfx_mean_sim": 0.860,
+            },
+        ),
         _row("animetext, no dedupe", m_raw),
         _row("**animetext, dedupe** (the file)", m_dd),
         _row(f"animetext, dedupe + join_cjk ({merges} joins)", m_join),
@@ -449,9 +485,13 @@ def run_apply(opts, pages: list[Path]) -> None:
             if tuple(r["box"]) in kept_keys:
                 continue
             keeper = next(
-                (k for k in recs.get(stem, [])
-                 if rec.overlap(tuple(r["box"]), tuple(k["box"]))[1] >= DEDUPE_CONTAINMENT
-                 and rec.norm(r["text"]) in rec.norm(k["text"])),
+                (
+                    k
+                    for k in recs.get(stem, [])
+                    if rec.overlap(tuple(r["box"]), tuple(k["box"]))[1]
+                    >= DEDUPE_CONTAINMENT
+                    and rec.norm(r["text"]) in rec.norm(k["text"])
+                ),
                 None,
             )
             md.append(
@@ -464,9 +504,16 @@ def run_apply(opts, pages: list[Path]) -> None:
     print(f"wrote {out_path} ({n}) and {report}")
     (OUT / "records_metrics.json").write_text(
         json.dumps(
-            {"hybrid_vl": m_hyb, "animetext_raw": m_raw, "animetext": m_dd,
-             "animetext_join": m_join, "joins": merges, "stats": dict(stats)},
-            ensure_ascii=False, indent=1,
+            {
+                "hybrid_vl": m_hyb,
+                "animetext_raw": m_raw,
+                "animetext": m_dd,
+                "animetext_join": m_join,
+                "joins": merges,
+                "stats": dict(stats),
+            },
+            ensure_ascii=False,
+            indent=1,
         )
     )
 
@@ -486,7 +533,9 @@ def run_side(opts, pages: list[Path]) -> None:
     ref = _load_jsonl(RECORDS_DIR / f"ocr_records_{SHARD}.jsonl")
     ab_stems = [
         json.loads(r)["stem"]
-        for r in (REPO / "output/tests/vl16_ab/ab.jsonl").read_text(encoding="utf-8").splitlines()
+        for r in (REPO / "output/tests/vl16_ab/ab.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
     ]
     masks_dir = REPO / "post_image_dataset/masks" / SHARD
     boxes = load_boxes()
@@ -508,26 +557,49 @@ def run_side(opts, pages: list[Path]) -> None:
             crops.append(crop)
             keys.append(_key(p.stem, b))
         for k, (text, score) in zip(keys, recog.recognize(crops), strict=True):
-            reads[k] = text.strip() if text.strip() and score >= opts.min_score else None
+            reads[k] = (
+                text.strip() if text.strip() and score >= opts.min_score else None
+            )
         n += len(crops)
     print(f"side: {n} crops recognized in {time.time() - t0:.1f}s", flush=True)
     stats: Counter = Counter()
     recs = build_records(
-        opts, pages, reads=reads, boxes=boxes, hand=hand, rec=rec, reread=reread,
-        engine="animetext+ppocr_v6", stats=stats,
+        opts,
+        pages,
+        reads=reads,
+        boxes=boxes,
+        hand=hand,
+        rec=rec,
+        reread=reread,
+        engine="animetext+ppocr_v6",
+        stats=stats,
     )
     path = OUT / "records_animetext_ppocr.jsonl"
     _write_jsonl(path, recs)
-    m = metrics(recs, rec=rec, reread=reread, hand=hand, ref=ref, ab_stems=ab_stems, masks_dir=masks_dir)
+    m = metrics(
+        recs,
+        rec=rec,
+        reread=reread,
+        hand=hand,
+        ref=ref,
+        ab_stems=ab_stems,
+        masks_dir=masks_dir,
+    )
     row = _row(f"animetext + PP-OCRv6 rec (side row, score ≥ {opts.min_score})", m)
     print(row)
     report = OUT / "records_report.md"
     if report.exists():
         s = report.read_text(encoding="utf-8")
         if "PP-OCRv6 rec (side row" not in s:
-            s = s.replace("\n\n- gate (plan_det D1)", f"\n{row}\n\n- gate (plan_det D1)", 1)
+            s = s.replace(
+                "\n\n- gate (plan_det D1)", f"\n{row}\n\n- gate (plan_det D1)", 1
+            )
             report.write_text(s, encoding="utf-8")
-    (OUT / "records_metrics_side.json").write_text(json.dumps({"animetext_ppocr": m, "stats": dict(stats)}, ensure_ascii=False, indent=1))
+    (OUT / "records_metrics_side.json").write_text(
+        json.dumps(
+            {"animetext_ppocr": m, "stats": dict(stats)}, ensure_ascii=False, indent=1
+        )
+    )
 
 
 # --------------------------------------------------------------------------- hand pass
@@ -538,23 +610,32 @@ def run_hand(opts, pages: list[Path]) -> None:
     from PIL import Image, ImageDraw, ImageFont
 
     _, reread, sfx, _ = _pkg()
-    rec = m109.pilot_records()
+    m109.pilot_records()
     recs = _load_jsonl(opts.out or RECORDS_DIR / f"ocr_records_{SHARD}_animetext.jsonl")
     hyb = _load_jsonl(RECORDS_DIR / f"ocr_records_{SHARD}_hybrid_vl.jsonl")
     pp = _load_jsonl(RECORDS_DIR / f"ocr_records_{SHARD}_ppocr_v3.jsonl")
     new = []
     for stem, rs in recs.items():
-        known = [tuple(r["box"]) for r in hyb.get(stem, [])] + [tuple(r["box"]) for r in pp.get(stem, [])]
+        known = [tuple(r["box"]) for r in hyb.get(stem, [])] + [
+            tuple(r["box"]) for r in pp.get(stem, [])
+        ]
         for r in rs:
             if not reread.covered(tuple(r["box"]), known):
                 new.append(r)
     rng = np.random.default_rng(opts.seed)
-    pick = [new[i] for i in sorted(rng.choice(len(new), min(opts.n_hand, len(new)), replace=False))]
-    print(f"hand: {len(new)} new records (no hybrid_vl / PP v3 box covers them); drew {len(pick)}")
+    pick = [
+        new[i]
+        for i in sorted(rng.choice(len(new), min(opts.n_hand, len(new)), replace=False))
+    ]
+    print(
+        f"hand: {len(new)} new records (no hybrid_vl / PP v3 box covers them); drew {len(pick)}"
+    )
 
     tsv = ASSETS / f"animetext_new_lines_{SHARD}.tsv"
     if tsv.exists() and not opts.overwrite:
-        print(f"{tsv} exists — keeping it (--overwrite to redraw; hand labels would be lost)")
+        print(
+            f"{tsv} exists — keeping it (--overwrite to redraw; hand labels would be lost)"
+        )
     else:
         lines = ["row\tstem\tbox\tdet_score\tkind\ttext\treal_text\tnote"]
         for i, r in enumerate(pick):
@@ -569,7 +650,11 @@ def run_hand(opts, pages: list[Path]) -> None:
     d.mkdir(parents=True, exist_ok=True)
     import subprocess
 
-    fpath = subprocess.run(["fc-match", "-f", "%{file}", "Noto Sans CJK JP"], capture_output=True, text=True).stdout.strip()
+    fpath = subprocess.run(
+        ["fc-match", "-f", "%{file}", "Noto Sans CJK JP"],
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
     font = ImageFont.truetype(fpath, 20)
     small = ImageFont.truetype(fpath, 15)
     TW, TH, CAP = 300, 210, 70
@@ -583,35 +668,71 @@ def run_hand(opts, pages: list[Path]) -> None:
             i = s + j
             bgr = cache.get(r["stem"])
             if bgr is None:
-                bgr = cache[r["stem"]] = cv2.imread(str(REPO / "post_image_dataset/resized" / SHARD / f"{r['stem']}.png"))
+                bgr = cache[r["stem"]] = cv2.imread(
+                    str(
+                        REPO / "post_image_dataset/resized" / SHARD / f"{r['stem']}.png"
+                    )
+                )
             crop = sfx.crop_box(bgr, r["box"], 0.12)
             im = Image.fromarray(crop[:, :, ::-1])
             sc = min((TW - 10) / im.width, (TH - 10) / im.height)
             im = im.resize((max(1, int(im.width * sc)), max(1, int(im.height * sc))))
             x0, y0 = (j % cols) * TW, (j // cols) * (TH + CAP)
             sheet.paste(im, (x0 + (TW - im.width) // 2, y0 + (TH - im.height) // 2))
-            draw.rectangle([x0, y0, x0 + TW - 1, y0 + TH + CAP - 1], outline=(200, 200, 200))
-            draw.text((x0 + 6, y0 + TH + 2), f"#{i}  {r['kind']}  det {r['det_score']:.2f}", fill=(90, 90, 90), font=small)
+            draw.rectangle(
+                [x0, y0, x0 + TW - 1, y0 + TH + CAP - 1], outline=(200, 200, 200)
+            )
+            draw.text(
+                (x0 + 6, y0 + TH + 2),
+                f"#{i}  {r['kind']}  det {r['det_score']:.2f}",
+                fill=(90, 90, 90),
+                font=small,
+            )
             draw.text((x0 + 6, y0 + TH + 22), r["text"][:22], fill=(0, 0, 0), font=font)
-            draw.text((x0 + 6, y0 + TH + 48), f"{r['stem']} {r['box']}", fill=(140, 140, 140), font=small)
+            draw.text(
+                (x0 + 6, y0 + TH + 48),
+                f"{r['stem']} {r['box']}",
+                fill=(140, 140, 140),
+                font=small,
+            )
         p = d / f"sheet_{s // per:02d}.png"
         sheet.save(p)
         print(f"  {p}")
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--stage", nargs="+", choices=["det", "read", "apply", "side", "hand"], default=["det", "apply"])
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "--stage",
+        nargs="+",
+        choices=["det", "read", "apply", "side", "hand"],
+        default=["det", "apply"],
+    )
     ap.add_argument("--det_conf", type=float, default=0.25)
     ap.add_argument("--nms", type=float, default=0.5)
     ap.add_argument("--nest", default="inner", choices=["inner", "outer", "raw"])
-    ap.add_argument("--min_chars", type=int, default=2, help="records: norm(text) length floor")
-    ap.add_argument("--min_score", type=float, default=0.6, help="side row: PP-OCRv6 score floor")
+    ap.add_argument(
+        "--min_chars", type=int, default=2, help="records: norm(text) length floor"
+    )
+    ap.add_argument(
+        "--min_score", type=float, default=0.6, help="side row: PP-OCRv6 score floor"
+    )
     ap.add_argument("--no_dedupe", dest="dedupe", action="store_false")
-    ap.add_argument("--out", type=Path, default=None, help="records file (default: cjk_unmask/ocr_records_sincos_animetext.jsonl)")
+    ap.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="records file (default: cjk_unmask/ocr_records_sincos_animetext.jsonl)",
+    )
     ap.add_argument("--n_hand", type=int, default=60)
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--device", default="cpu", help="det/side: onnxruntime device; read: torch device")
+    ap.add_argument(
+        "--device",
+        default="cpu",
+        help="det/side: onnxruntime device; read: torch device",
+    )
     ap.add_argument("--bs", type=int, default=16)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--overwrite", action="store_true")

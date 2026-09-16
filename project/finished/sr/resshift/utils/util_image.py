@@ -13,10 +13,11 @@ from pathlib import Path
 from einops import rearrange
 from skimage import img_as_ubyte, img_as_float32
 
+
 # --------------------------Metrics----------------------------
 def ssim(img1, img2):
-    C1 = (0.01 * 255)**2
-    C2 = (0.03 * 255)**2
+    C1 = (0.01 * 255) ** 2
+    C2 = (0.03 * 255) ** 2
 
     img1 = img1.astype(np.float64)
     img2 = img2.astype(np.float64)
@@ -32,25 +33,27 @@ def ssim(img1, img2):
     sigma2_sq = cv2.filter2D(img2**2, -1, window)[5:-5, 5:-5] - mu2_sq
     sigma12 = cv2.filter2D(img1 * img2, -1, window)[5:-5, 5:-5] - mu1_mu2
 
-    ssim_map = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / ((mu1_sq + mu2_sq + C1) *
-                                                            (sigma1_sq + sigma2_sq + C2))
+    ssim_map = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / (
+        (mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2)
+    )
     return ssim_map.mean()
 
+
 def calculate_ssim(im1, im2, border=0, ycbcr=False):
-    '''
+    """
     SSIM the same outputs as MATLAB's
     im1, im2: h x w x , [0, 255], uint8
-    '''
+    """
     if not im1.shape == im2.shape:
-        raise ValueError('Input images must have the same dimensions.')
+        raise ValueError("Input images must have the same dimensions.")
 
     if ycbcr:
         im1 = rgb2ycbcr(im1, True)
         im2 = rgb2ycbcr(im2, True)
 
     h, w = im1.shape[:2]
-    im1 = im1[border:h-border, border:w-border]
-    im2 = im2[border:h-border, border:w-border]
+    im1 = im1[border : h - border, border : w - border]
+    im2 = im2[border : h - border, border : w - border]
 
     if im1.ndim == 2:
         return ssim(im1, im2)
@@ -58,49 +61,62 @@ def calculate_ssim(im1, im2, border=0, ycbcr=False):
         if im1.shape[2] == 3:
             ssims = []
             for i in range(3):
-                ssims.append(ssim(im1[:,:,i], im2[:,:,i]))
+                ssims.append(ssim(im1[:, :, i], im2[:, :, i]))
             return np.array(ssims).mean()
         elif im1.shape[2] == 1:
             return ssim(np.squeeze(im1), np.squeeze(im2))
     else:
-        raise ValueError('Wrong input image dimensions.')
+        raise ValueError("Wrong input image dimensions.")
+
 
 def calculate_psnr(im1, im2, border=0, ycbcr=False):
-    '''
+    """
     PSNR metric.
     im1, im2: h x w x , [0, 255], uint8
-    '''
+    """
     if not im1.shape == im2.shape:
-        raise ValueError('Input images must have the same dimensions.')
+        raise ValueError("Input images must have the same dimensions.")
 
     if ycbcr:
         im1 = rgb2ycbcr(im1, True)
         im2 = rgb2ycbcr(im2, True)
 
     h, w = im1.shape[:2]
-    im1 = im1[border:h-border, border:w-border]
-    im2 = im2[border:h-border, border:w-border]
+    im1 = im1[border : h - border, border : w - border]
+    im2 = im2[border : h - border, border : w - border]
 
     im1 = im1.astype(np.float64)
     im2 = im2.astype(np.float64)
-    mse = np.mean((im1 - im2)**2)
+    mse = np.mean((im1 - im2) ** 2)
     if mse == 0:
-        return float('inf')
+        return float("inf")
     return 20 * math.log10(255.0 / math.sqrt(mse))
+
 
 def batch_PSNR(img, imclean, border=0, ycbcr=False):
     if ycbcr:
         img = rgb2ycbcrTorch(img, True)
         imclean = rgb2ycbcrTorch(imclean, True)
-    Img = img.data.cpu().numpy().clip(min=0., max=1.)
-    Iclean = imclean.data.cpu().numpy().clip(min=0., max=1.)
+    Img = img.data.cpu().numpy().clip(min=0.0, max=1.0)
+    Iclean = imclean.data.cpu().numpy().clip(min=0.0, max=1.0)
     Img = img_as_ubyte(Img)
     Iclean = img_as_ubyte(Iclean)
     PSNR = 0
     h, w = Iclean.shape[2:]
     for i in range(Img.shape[0]):
-        PSNR += calculate_psnr(Iclean[i,:,].transpose((1,2,0)), Img[i,:,].transpose((1,2,0)), border)
+        PSNR += calculate_psnr(
+            Iclean[
+                i,
+                :,
+            ].transpose((1, 2, 0)),
+            Img[
+                i,
+                :,
+            ].transpose((1, 2, 0)),
+            border,
+        )
     return PSNR
+
 
 def batch_SSIM(img, imclean, border=0, ycbcr=False):
     if ycbcr:
@@ -112,23 +128,38 @@ def batch_SSIM(img, imclean, border=0, ycbcr=False):
     Iclean = img_as_ubyte(Iclean)
     SSIM = 0
     for i in range(Img.shape[0]):
-        SSIM += calculate_ssim(Iclean[i,:,].transpose((1,2,0)), Img[i,:,].transpose((1,2,0)), border)
+        SSIM += calculate_ssim(
+            Iclean[
+                i,
+                :,
+            ].transpose((1, 2, 0)),
+            Img[
+                i,
+                :,
+            ].transpose((1, 2, 0)),
+            border,
+        )
     return SSIM
 
+
 def normalize_np(im, mean=0.5, std=0.5, reverse=False):
-    '''
+    """
     Input:
         im: h x w x c, numpy array
         Normalize: (im - mean) / std
         Reverse: im * std + mean
 
-    '''
+    """
     if not isinstance(mean, (list, tuple)):
-        mean = [mean, ] * im.shape[2]
+        mean = [
+            mean,
+        ] * im.shape[2]
     mean = np.array(mean).reshape([1, 1, im.shape[2]])
 
     if not isinstance(std, (list, tuple)):
-        std = [std, ] * im.shape[2]
+        std = [
+            std,
+        ] * im.shape[2]
     std = np.array(std).reshape([1, 1, im.shape[2]])
 
     if not reverse:
@@ -137,20 +168,25 @@ def normalize_np(im, mean=0.5, std=0.5, reverse=False):
         out = im.astype(np.float32) * std + mean
     return out
 
+
 def normalize_th(im, mean=0.5, std=0.5, reverse=False):
-    '''
+    """
     Input:
         im: b x c x h x w, torch tensor
         Normalize: (im - mean) / std
         Reverse: im * std + mean
 
-    '''
+    """
     if not isinstance(mean, (list, tuple)):
-        mean = [mean, ] * im.shape[1]
+        mean = [
+            mean,
+        ] * im.shape[1]
     mean = torch.tensor(mean, device=im.device).view([1, im.shape[1], 1, 1])
 
     if not isinstance(std, (list, tuple)):
-        std = [std, ] * im.shape[1]
+        std = [
+            std,
+        ] * im.shape[1]
     std = torch.tensor(std, device=im.device).view([1, im.shape[1], 1, 1])
 
     if not reverse:
@@ -159,14 +195,15 @@ def normalize_th(im, mean=0.5, std=0.5, reverse=False):
         out = im * std + mean
     return out
 
+
 # ------------------------Image format--------------------------
 def rgb2ycbcr(im, only_y=True):
-    '''
+    """
     same as matlab rgb2ycbcr
     Input:
         im: uint8 [0,255] or float [0,1]
         only_y: only return Y channel
-    '''
+    """
     # transform to float64 data type, range [0, 255]
     if im.dtype == np.uint8:
         im_temp = im.astype(np.float64)
@@ -175,43 +212,73 @@ def rgb2ycbcr(im, only_y=True):
 
     # convert
     if only_y:
-        rlt = np.dot(im_temp, np.array([65.481, 128.553, 24.966])/ 255.0) + 16.0
+        rlt = np.dot(im_temp, np.array([65.481, 128.553, 24.966]) / 255.0) + 16.0
     else:
-        rlt = np.matmul(im_temp, np.array([[65.481,  -37.797, 112.0  ],
-                                           [128.553, -74.203, -93.786],
-                                           [24.966,  112.0,   -18.214]])/255.0) + [16, 128, 128]
+        rlt = np.matmul(
+            im_temp,
+            np.array(
+                [
+                    [65.481, -37.797, 112.0],
+                    [128.553, -74.203, -93.786],
+                    [24.966, 112.0, -18.214],
+                ]
+            )
+            / 255.0,
+        ) + [16, 128, 128]
     if im.dtype == np.uint8:
         rlt = rlt.round()
     else:
-        rlt /= 255.
+        rlt /= 255.0
     return rlt.astype(im.dtype)
 
+
 def rgb2ycbcrTorch(im, only_y=True):
-    '''
+    """
     same as matlab rgb2ycbcr
     Input:
         im: float [0,1], N x 3 x H x W
         only_y: only return Y channel
-    '''
+    """
     # transform to range [0,255.0]
-    im_temp = im.permute([0,2,3,1]) * 255.0  # N x H x W x C --> N x H x W x C
+    im_temp = im.permute([0, 2, 3, 1]) * 255.0  # N x H x W x C --> N x H x W x C
     # convert
     if only_y:
-        rlt = torch.matmul(im_temp, torch.tensor([65.481, 128.553, 24.966],
-                                        device=im.device, dtype=im.dtype).view([3,1])/ 255.0) + 16.0
+        rlt = (
+            torch.matmul(
+                im_temp,
+                torch.tensor(
+                    [65.481, 128.553, 24.966], device=im.device, dtype=im.dtype
+                ).view([3, 1])
+                / 255.0,
+            )
+            + 16.0
+        )
     else:
-        rlt = torch.matmul(im_temp, torch.tensor([[65.481,  -37.797, 112.0  ],
-                                                  [128.553, -74.203, -93.786],
-                                                  [24.966,  112.0,   -18.214]],
-                                                  device=im.device, dtype=im.dtype)/255.0) + \
-                                                    torch.tensor([16, 128, 128]).view([-1, 1, 1, 3])
+        rlt = torch.matmul(
+            im_temp,
+            torch.tensor(
+                [
+                    [65.481, -37.797, 112.0],
+                    [128.553, -74.203, -93.786],
+                    [24.966, 112.0, -18.214],
+                ],
+                device=im.device,
+                dtype=im.dtype,
+            )
+            / 255.0,
+        ) + torch.tensor([16, 128, 128]).view([-1, 1, 1, 3])
     rlt /= 255.0
     rlt.clamp_(0.0, 1.0)
     return rlt.permute([0, 3, 1, 2])
 
-def bgr2rgb(im): return cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
 
-def rgb2bgr(im): return cv2.cvtColor(im, cv2.COLOR_RGB2BGR)
+def bgr2rgb(im):
+    return cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
+
+
+def rgb2bgr(im):
+    return cv2.cvtColor(im, cv2.COLOR_RGB2BGR)
+
 
 def tensor2img(tensor, rgb2bgr=True, out_type=np.uint8, min_max=(0, 1)):
     """Convert torch Tensors into image numpy arrays.
@@ -234,8 +301,11 @@ def tensor2img(tensor, rgb2bgr=True, out_type=np.uint8, min_max=(0, 1)):
         (Tensor or list): 3D ndarray of shape (H x W x C) OR 2D ndarray of
         shape (H x W). The channel order is BGR.
     """
-    if not (torch.is_tensor(tensor) or (isinstance(tensor, list) and all(torch.is_tensor(t) for t in tensor))):
-        raise TypeError(f'tensor or list of tensors expected, got {type(tensor)}')
+    if not (
+        torch.is_tensor(tensor)
+        or (isinstance(tensor, list) and all(torch.is_tensor(t) for t in tensor))
+    ):
+        raise TypeError(f"tensor or list of tensors expected, got {type(tensor)}")
 
     flag_tensor = torch.is_tensor(tensor)
     if flag_tensor:
@@ -247,7 +317,11 @@ def tensor2img(tensor, rgb2bgr=True, out_type=np.uint8, min_max=(0, 1)):
 
         n_dim = _tensor.dim()
         if n_dim == 4:
-            img_np = make_grid(_tensor, nrow=int(math.sqrt(_tensor.size(0))), normalize=False).numpy()
+            from torchvision.utils import make_grid
+
+            img_np = make_grid(
+                _tensor, nrow=int(math.sqrt(_tensor.size(0))), normalize=False
+            ).numpy()
             img_np = img_np.transpose(1, 2, 0)
             if rgb2bgr:
                 img_np = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
@@ -262,7 +336,9 @@ def tensor2img(tensor, rgb2bgr=True, out_type=np.uint8, min_max=(0, 1)):
         elif n_dim == 2:
             img_np = _tensor.numpy()
         else:
-            raise TypeError(f'Only support 4D, 3D or 2D tensor. But received with dimension: {n_dim}')
+            raise TypeError(
+                f"Only support 4D, 3D or 2D tensor. But received with dimension: {n_dim}"
+            )
         if out_type == np.uint8:
             # Unlike MATLAB, numpy.unit8() WILL NOT round by default.
             img_np = (img_np * 255.0).round()
@@ -271,6 +347,7 @@ def tensor2img(tensor, rgb2bgr=True, out_type=np.uint8, min_max=(0, 1)):
     if len(result) == 1 and flag_tensor:
         result = result[0]
     return result
+
 
 def img2tensor(imgs, bgr2rgb=False, out_type=torch.float32):
     """Convert image numpy arrays into torch tensor.
@@ -287,21 +364,37 @@ def img2tensor(imgs, bgr2rgb=False, out_type=torch.float32):
 
     def _img2tensor(img):
         if img.ndim == 2:
-            tensor = torch.from_numpy(img[None, None,]).type(out_type)
+            tensor = torch.from_numpy(
+                img[
+                    None,
+                    None,
+                ]
+            ).type(out_type)
         elif img.ndim == 3:
             if bgr2rgb:
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            tensor = torch.from_numpy(rearrange(img, 'h w c -> c h w')).type(out_type).unsqueeze(0)
+            tensor = (
+                torch.from_numpy(rearrange(img, "h w c -> c h w"))
+                .type(out_type)
+                .unsqueeze(0)
+            )
         else:
-            raise TypeError(f'2D or 3D numpy array expected, got{img.ndim}D array')
+            raise TypeError(f"2D or 3D numpy array expected, got{img.ndim}D array")
         return tensor
 
-    if not (isinstance(imgs, np.ndarray) or (isinstance(imgs, list) and all(isinstance(t, np.ndarray) for t in imgs))):
-        raise TypeError(f'Numpy array or list of numpy array expected, got {type(imgs)}')
+    if not (
+        isinstance(imgs, np.ndarray)
+        or (isinstance(imgs, list) and all(isinstance(t, np.ndarray) for t in imgs))
+    ):
+        raise TypeError(
+            f"Numpy array or list of numpy array expected, got {type(imgs)}"
+        )
 
     flag_numpy = isinstance(imgs, np.ndarray)
     if flag_numpy:
-        imgs = [imgs,]
+        imgs = [
+            imgs,
+        ]
     result = []
     for _img in imgs:
         result.append(_img2tensor(_img))
@@ -309,6 +402,7 @@ def img2tensor(imgs, bgr2rgb=False, out_type=torch.float32):
     if len(result) == 1 and flag_numpy:
         result = result[0]
     return result
+
 
 # ------------------------Image resize-----------------------------
 def imresize_np(img, scale, antialiasing=True):
@@ -323,7 +417,7 @@ def imresize_np(img, scale, antialiasing=True):
     in_H, in_W, in_C = img.size()
     out_C, out_H, out_W = in_C, math.ceil(in_H * scale), math.ceil(in_W * scale)
     kernel_width = 4
-    kernel = 'cubic'
+    kernel = "cubic"
 
     # Return the desired dimension order for performing the resize.  The
     # strategy is to perform the resize first along the dimension with the
@@ -332,9 +426,11 @@ def imresize_np(img, scale, antialiasing=True):
 
     # get weights and indices
     weights_H, indices_H, sym_len_Hs, sym_len_He = calculate_weights_indices(
-        in_H, out_H, scale, kernel, kernel_width, antialiasing)
+        in_H, out_H, scale, kernel, kernel_width, antialiasing
+    )
     weights_W, indices_W, sym_len_Ws, sym_len_We = calculate_weights_indices(
-        in_W, out_W, scale, kernel, kernel_width, antialiasing)
+        in_W, out_W, scale, kernel, kernel_width, antialiasing
+    )
     # process H dimension
     # symmetric copying
     img_aug = torch.FloatTensor(in_H + sym_len_Hs + sym_len_He, in_W, in_C)
@@ -355,7 +451,9 @@ def imresize_np(img, scale, antialiasing=True):
     for i in range(out_H):
         idx = int(indices_H[i][0])
         for j in range(out_C):
-            out_1[i, :, j] = img_aug[idx:idx + kernel_width, :, j].transpose(0, 1).mv(weights_H[i])
+            out_1[i, :, j] = (
+                img_aug[idx : idx + kernel_width, :, j].transpose(0, 1).mv(weights_H[i])
+            )
 
     # process W dimension
     # symmetric copying
@@ -377,13 +475,16 @@ def imresize_np(img, scale, antialiasing=True):
     for i in range(out_W):
         idx = int(indices_W[i][0])
         for j in range(out_C):
-            out_2[:, i, j] = out_1_aug[:, idx:idx + kernel_width, j].mv(weights_W[i])
+            out_2[:, i, j] = out_1_aug[:, idx : idx + kernel_width, j].mv(weights_W[i])
     if need_squeeze:
         out_2.squeeze_()
 
     return out_2.numpy()
 
-def calculate_weights_indices(in_length, out_length, scale, kernel, kernel_width, antialiasing):
+
+def calculate_weights_indices(
+    in_length, out_length, scale, kernel, kernel_width, antialiasing
+):
     if (scale < 1) and (antialiasing):
         # Use a modified kernel to simultaneously interpolate and antialias- larger kernel width
         kernel_width = kernel_width / scale
@@ -407,8 +508,9 @@ def calculate_weights_indices(in_length, out_length, scale, kernel, kernel_width
 
     # The indices of the input pixels involved in computing the k-th output
     # pixel are in row k of the indices matrix.
-    indices = left.view(out_length, 1).expand(out_length, P) + torch.linspace(0, P - 1, P).view(
-        1, P).expand(out_length, P)
+    indices = left.view(out_length, 1).expand(out_length, P) + torch.linspace(
+        0, P - 1, P
+    ).view(1, P).expand(out_length, P)
 
     # The weights used to compute the k-th output pixel are in row k of the
     # weights matrix.
@@ -437,31 +539,34 @@ def calculate_weights_indices(in_length, out_length, scale, kernel, kernel_width
     indices = indices + sym_len_s - 1
     return weights, indices, int(sym_len_s), int(sym_len_e)
 
+
 # matlab 'imresize' function, now only support 'bicubic'
 def cubic(x):
     absx = torch.abs(x)
     absx2 = absx**2
     absx3 = absx**3
-    return (1.5*absx3 - 2.5*absx2 + 1) * ((absx <= 1).type_as(absx)) + \
-        (-0.5*absx3 + 2.5*absx2 - 4*absx + 2) * (((absx > 1)*(absx <= 2)).type_as(absx))
+    return (1.5 * absx3 - 2.5 * absx2 + 1) * ((absx <= 1).type_as(absx)) + (
+        -0.5 * absx3 + 2.5 * absx2 - 4 * absx + 2
+    ) * (((absx > 1) * (absx <= 2)).type_as(absx))
+
 
 # ------------------------Image I/O-----------------------------
-def imread(path, chn='rgb', dtype='float32', force_gray2rgb=True, force_rgba2rgb=False):
-    '''
+def imread(path, chn="rgb", dtype="float32", force_gray2rgb=True, force_rgba2rgb=False):
+    """
     Read image.
     chn: 'rgb', 'bgr' or 'gray'
     out:
         im: h x w x c, numpy tensor
-    '''
+    """
     try:
         im = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)  # BGR, uint8
-    except:
+    except Exception:
         print(str(path))
 
     if im is None:
         print(str(path))
 
-    if chn.lower() == 'gray':
+    if chn.lower() == "gray":
         assert im.ndim == 2, f"{str(path)} has {im.ndim} channels!"
     else:
         if im.ndim == 2:
@@ -475,72 +580,77 @@ def imread(path, chn='rgb', dtype='float32', force_gray2rgb=True, force_rgba2rgb
             else:
                 raise ValueError(f"{str(path)} has {im.ndim} channels!")
         else:
-            if chn.lower() == 'rgb':
+            if chn.lower() == "rgb":
                 im = bgr2rgb(im)
-            elif chn.lower() == 'bgr':
+            elif chn.lower() == "bgr":
                 pass
 
-    if dtype == 'float32':
-        im = im.astype(np.float32) / 255.
-    elif dtype ==  'float64':
-        im = im.astype(np.float64) / 255.
-    elif dtype == 'uint8':
+    if dtype == "float32":
+        im = im.astype(np.float32) / 255.0
+    elif dtype == "float64":
+        im = im.astype(np.float64) / 255.0
+    elif dtype == "uint8":
         pass
     else:
-        sys.exit('Please input corrected dtype: float32, float64 or uint8!')
+        sys.exit("Please input corrected dtype: float32, float64 or uint8!")
 
     return im
 
-def imwrite(im_in, path, chn='rgb', dtype_in='float32', qf=None):
-    '''
+
+def imwrite(im_in, path, chn="rgb", dtype_in="float32", qf=None):
+    """
     Save image.
     Input:
         im: h x w x c, numpy tensor
         path: the saving path
         chn: the channel order of the im,
-    '''
+    """
     im = im_in.copy()
     if isinstance(path, str):
         path = Path(path)
-    if dtype_in != 'uint8':
+    if dtype_in != "uint8":
         im = img_as_ubyte(im)
 
-    if chn.lower() == 'rgb' and im.ndim == 3:
+    if chn.lower() == "rgb" and im.ndim == 3:
         im = rgb2bgr(im)
 
-    if qf is not None and path.suffix.lower() in ['.jpg', '.jpeg']:
+    if qf is not None and path.suffix.lower() in [".jpg", ".jpeg"]:
         flag = cv2.imwrite(str(path), im, [int(cv2.IMWRITE_JPEG_QUALITY), int(qf)])
     else:
         flag = cv2.imwrite(str(path), im)
 
     return flag
 
-def jpeg_compress(im, qf, chn_in='rgb'):
-    '''
+
+def jpeg_compress(im, qf, chn_in="rgb"):
+    """
     Input:
         im: h x w x 3 array
         qf: compress factor, (0, 100]
         chn_in: 'rgb' or 'bgr'
     Return:
         Compressed Image with channel order: chn_in
-    '''
+    """
     # transform to BGR channle and uint8 data type
-    im_bgr = rgb2bgr(im) if chn_in.lower() == 'rgb' else im
-    if im.dtype != np.dtype('uint8'): im_bgr = img_as_ubyte(im_bgr)
+    im_bgr = rgb2bgr(im) if chn_in.lower() == "rgb" else im
+    if im.dtype != np.dtype("uint8"):
+        im_bgr = img_as_ubyte(im_bgr)
 
     # JPEG compress
-    flag, encimg = cv2.imencode('.jpg', im_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), qf])
+    flag, encimg = cv2.imencode(".jpg", im_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), qf])
     assert flag
-    im_jpg_bgr = cv2.imdecode(encimg, 1)    # uint8, BGR
+    im_jpg_bgr = cv2.imdecode(encimg, 1)  # uint8, BGR
 
     # transform back to original channel and the original data type
-    im_out = bgr2rgb(im_jpg_bgr) if chn_in.lower() == 'rgb' else im_jpg_bgr
-    if im.dtype != np.dtype('uint8'): im_out = img_as_float32(im_out).astype(im.dtype)
+    im_out = bgr2rgb(im_jpg_bgr) if chn_in.lower() == "rgb" else im_jpg_bgr
+    if im.dtype != np.dtype("uint8"):
+        im_out = img_as_float32(im_out).astype(im.dtype)
     return im_out
+
 
 # ------------------------Augmentation-----------------------------
 def data_aug_np(image, mode):
-    '''
+    """
     Performs data augmentation of the input image
     Input:
         image: a cv2 (OpenCV) image
@@ -553,7 +663,7 @@ def data_aug_np(image, mode):
                 5 - rotate 180 degree and flip
                 6 - rotate 270 degree
                 7 - rotate 270 degree and flip
-    '''
+    """
     if mode == 0:
         # original
         out = image
@@ -582,49 +692,53 @@ def data_aug_np(image, mode):
         out = np.rot90(image, k=3)
         out = np.flipud(out)
     else:
-        raise Exception('Invalid choice of image transformation')
+        raise Exception("Invalid choice of image transformation")
 
     return out.copy()
 
+
 def inverse_data_aug_np(image, mode):
-    '''
+    """
     Performs inverse data augmentation of the input image
-    '''
+    """
     if mode == 0:
         # original
         out = image
     elif mode == 1:
         out = np.flipud(image)
     elif mode == 2:
-        out = np.rot90(image, axes=(1,0))
+        out = np.rot90(image, axes=(1, 0))
     elif mode == 3:
         out = np.flipud(image)
-        out = np.rot90(out, axes=(1,0))
+        out = np.rot90(out, axes=(1, 0))
     elif mode == 4:
-        out = np.rot90(image, k=2, axes=(1,0))
+        out = np.rot90(image, k=2, axes=(1, 0))
     elif mode == 5:
         out = np.flipud(image)
-        out = np.rot90(out, k=2, axes=(1,0))
+        out = np.rot90(out, k=2, axes=(1, 0))
     elif mode == 6:
-        out = np.rot90(image, k=3, axes=(1,0))
+        out = np.rot90(image, k=3, axes=(1, 0))
     elif mode == 7:
         # rotate 270 degree and flip
         out = np.flipud(image)
-        out = np.rot90(out, k=3, axes=(1,0))
+        out = np.rot90(out, k=3, axes=(1, 0))
     else:
-        raise Exception('Invalid choice of image transformation')
+        raise Exception("Invalid choice of image transformation")
 
     return out
+
 
 # ----------------------Visualization----------------------------
 def imshow(x, title=None, cbar=False):
     import matplotlib.pyplot as plt
-    plt.imshow(np.squeeze(x), interpolation='nearest', cmap='gray')
+
+    plt.imshow(np.squeeze(x), interpolation="nearest", cmap="gray")
     if title:
         plt.title(title)
     if cbar:
         plt.colorbar()
     plt.show()
+
 
 def imblend_with_mask(im, mask, alpha=0.25):
     """
@@ -632,87 +746,108 @@ def imblend_with_mask(im, mask, alpha=0.25):
         im, mask: h x w x c numpy array, uint8, [0, 255]
         alpha: scaler in [0.0, 1.0]
     """
-    edge_map = cv2.Canny(mask, 100, 200).astype(np.float32)[:, :, None] / 255.
+    edge_map = cv2.Canny(mask, 100, 200).astype(np.float32)[:, :, None] / 255.0
 
     assert mask.dtype == np.uint8
-    mask = mask.astype(np.float32) / 255.
+    mask = mask.astype(np.float32) / 255.0
     if mask.ndim == 2:
         mask = mask[:, :, None]
 
-    back_color = np.array([159, 121, 238], dtype=np.float32).reshape((1,1,3))
+    back_color = np.array([159, 121, 238], dtype=np.float32).reshape((1, 1, 3))
     blend = im.astype(np.float32) * alpha + (1 - alpha) * back_color
     blend = np.clip(blend, 0, 255)
     out = im.astype(np.float32) * (1 - mask) + blend * mask
 
     # paste edge
-    out = out * (1 - edge_map) + np.array([0,255,0], dtype=np.float32).reshape((1,1,3)) * edge_map
+    out = (
+        out * (1 - edge_map)
+        + np.array([0, 255, 0], dtype=np.float32).reshape((1, 1, 3)) * edge_map
+    )
 
     return out.astype(np.uint8)
 
+
 # -----------------------Covolution------------------------------
-def imgrad(im, pading_mode='mirror'):
-    '''
+def imgrad(im, pading_mode="mirror"):
+    """
     Calculate image gradient.
     Input:
         im: h x w x c numpy array
-    '''
+    """
     from scipy.ndimage import correlate  # lazy import
-    wx = np.array([[0, 0, 0],
-                   [-1, 1, 0],
-                   [0, 0, 0]], dtype=np.float32)
-    wy = np.array([[0, -1, 0],
-                   [0, 1, 0],
-                   [0, 0, 0]], dtype=np.float32)
+
+    wx = np.array([[0, 0, 0], [-1, 1, 0], [0, 0, 0]], dtype=np.float32)
+    wy = np.array([[0, -1, 0], [0, 1, 0], [0, 0, 0]], dtype=np.float32)
     if im.ndim == 3:
         gradx = np.stack(
-                [correlate(im[:,:,c], wx, mode=pading_mode) for c in range(im.shape[2])],
-                axis=2
-                )
+            [correlate(im[:, :, c], wx, mode=pading_mode) for c in range(im.shape[2])],
+            axis=2,
+        )
         grady = np.stack(
-                [correlate(im[:,:,c], wy, mode=pading_mode) for c in range(im.shape[2])],
-                axis=2
-                )
+            [correlate(im[:, :, c], wy, mode=pading_mode) for c in range(im.shape[2])],
+            axis=2,
+        )
         grad = np.concatenate((gradx, grady), axis=2)
     else:
         gradx = correlate(im, wx, mode=pading_mode)
         grady = correlate(im, wy, mode=pading_mode)
         grad = np.stack((gradx, grady), axis=2)
 
-    return {'gradx': gradx, 'grady': grady, 'grad':grad}
+    return {"gradx": gradx, "grady": grady, "grad": grad}
+
 
 def imgrad_fft(im):
-    '''
+    """
     Calculate image gradient.
     Input:
         im: h x w x c numpy array
-    '''
-    wx = np.rot90(np.array([[0, 0, 0],
-                            [-1, 1, 0],
-                            [0, 0, 0]], dtype=np.float32), k=2)
+    """
+    wx = np.rot90(np.array([[0, 0, 0], [-1, 1, 0], [0, 0, 0]], dtype=np.float32), k=2)
     gradx = convfft(im, wx)
-    wy = np.rot90(np.array([[0, -1, 0],
-                            [0, 1, 0],
-                            [0, 0, 0]], dtype=np.float32), k=2)
+    wy = np.rot90(np.array([[0, -1, 0], [0, 1, 0], [0, 0, 0]], dtype=np.float32), k=2)
     grady = convfft(im, wy)
     grad = np.concatenate((gradx, grady), axis=2)
 
-    return {'gradx': gradx, 'grady': grady, 'grad':grad}
+    return {"gradx": gradx, "grady": grady, "grad": grad}
+
 
 def convfft(im, weight):
-    '''
+    """
     Convolution with FFT
     Input:
         im: h1 x w1 x c numpy array
         weight: h2 x w2 numpy array
     Output:
         out: h1 x w1 x c numpy array
-    '''
-    axes = (0,1)
+    """
+    axes = (0, 1)
     otf = psf2otf(weight, im.shape[:2])
     if im.ndim == 3:
-        otf = np.tile(otf[:, :, None], (1,1,im.shape[2]))
+        otf = np.tile(otf[:, :, None], (1, 1, im.shape[2]))
     out = fft.ifft2(fft.fft2(im, axes=axes) * otf, axes=axes).real
     return out
+
+
+def zero_pad(image, shape, position="corner"):
+    """Zero-pad a 2D array to ``shape``, placing it at the corner or center."""
+    shape = np.asarray(shape, dtype=int)
+    imshape = np.asarray(image.shape, dtype=int)
+    if np.all(imshape == shape):
+        return image
+    dshape = shape - imshape
+    if np.any(shape <= 0) or np.any(dshape < 0):
+        raise ValueError("zero_pad: target shape must be positive and >= image shape")
+    pad_img = np.zeros(shape, dtype=image.dtype)
+    idx, idy = np.indices(imshape)
+    if position == "center":
+        if np.any(dshape % 2 != 0):
+            raise ValueError("zero_pad: center padding needs even size differences")
+        offx, offy = dshape // 2
+    else:
+        offx, offy = 0, 0
+    pad_img[idx + offx, idy + offy] = image
+    return pad_img
+
 
 def psf2otf(psf, shape):
     """
@@ -729,7 +864,7 @@ def psf2otf(psf, shape):
 
     inshape = psf.shape
     # Pad the PSF to outsize
-    psf = zero_pad(psf, shape, position='corner')
+    psf = zero_pad(psf, shape, position="corner")
 
     # Circularly shift OTF so that the 'center' of the PSF is [0,0] element of the array
     for axis, axis_size in enumerate(inshape):
@@ -747,11 +882,12 @@ def psf2otf(psf, shape):
 
     return otf
 
+
 # ----------------------Patch Cropping----------------------------
 def random_crop(im, pch_size):
-    '''
+    """
     Randomly crop a patch from the give image.
-    '''
+    """
     h, w = im.shape[:2]
     # padding if necessary
     if h < pch_size or w < pch_size:
@@ -763,19 +899,23 @@ def random_crop(im, pch_size):
     if h == pch_size:
         ind_h = 0
     elif h > pch_size:
-        ind_h = random.randint(0, h-pch_size)
+        ind_h = random.randint(0, h - pch_size)
     else:
-        raise ValueError('Image height is smaller than the patch size')
+        raise ValueError("Image height is smaller than the patch size")
     if w == pch_size:
         ind_w = 0
     elif w > pch_size:
-        ind_w = random.randint(0, w-pch_size)
+        ind_w = random.randint(0, w - pch_size)
     else:
-        raise ValueError('Image width is smaller than the patch size')
+        raise ValueError("Image width is smaller than the patch size")
 
-    im_pch = im[ind_h:ind_h+pch_size, ind_w:ind_w+pch_size,]
+    im_pch = im[
+        ind_h : ind_h + pch_size,
+        ind_w : ind_w + pch_size,
+    ]
 
     return im_pch
+
 
 class ToTensor:
     def __init__(self, max_value=1.0):
@@ -786,12 +926,15 @@ class ToTensor:
         if im.ndim == 2:
             im = im[:, :, np.newaxis]
         if im.dtype == np.uint8:
-            assert self.max_value == 255.
-            out = torch.from_numpy(im.astype(np.float32).transpose(2,0,1) / self.max_value)
+            assert self.max_value == 255.0
+            out = torch.from_numpy(
+                im.astype(np.float32).transpose(2, 0, 1) / self.max_value
+            )
         else:
             assert self.max_value == 1.0
-            out = torch.from_numpy(im.transpose(2,0,1))
+            out = torch.from_numpy(im.transpose(2, 0, 1))
         return out
+
 
 class RandomCrop:
     def __init__(self, pch_size, pass_crop=False):
@@ -809,14 +952,15 @@ class RandomCrop:
             out = random_crop(im, self.pch_size)
         return out
 
+
 class ImageSpliterNp:
     def __init__(self, im, pch_size, stride, sf=1):
-        '''
+        """
         Input:
             im: h x w x c, numpy array, [0, 1], low-resolution image in SR
             pch_size, stride: patch setting
             sf: scale factor in image super-resolution
-        '''
+        """
         assert stride <= pch_size
         self.stride = stride
         self.pch_size = pch_size
@@ -832,8 +976,8 @@ class ImageSpliterNp:
         self.num_pchs = 0
 
         self.im_ori = im
-        self.im_res = np.zeros([height*sf, width*sf, chn], dtype=im.dtype)
-        self.pixel_count = np.zeros([height*sf, width*sf, chn], dtype=im.dtype)
+        self.im_res = np.zeros([height * sf, width * sf, chn], dtype=im.dtype)
+        self.pixel_count = np.zeros([height * sf, width * sf, chn], dtype=im.dtype)
 
     def extract_starts(self, length):
         starts = list(range(0, length, self.stride))
@@ -857,7 +1001,10 @@ class ImageSpliterNp:
             h_start = self.height_starts_list[h_start_idx] * self.sf
             h_end = h_start + self.pch_size * self.sf
 
-            pch = self.im_ori[h_start:h_end, w_start:w_end,]
+            pch = self.im_ori[
+                h_start:h_end,
+                w_start:w_end,
+            ]
             self.w_start, self.w_end = w_start, w_end
             self.h_start, self.h_end = h_start, h_end
 
@@ -868,11 +1015,11 @@ class ImageSpliterNp:
         return pch, (h_start, h_end, w_start, w_end)
 
     def update(self, pch_res, index_infos):
-        '''
+        """
         Input:
             pch_res: pch_size x pch_size x 3, [0,1]
             index_infos: (h_start, h_end, w_start, w_end)
-        '''
+        """
         if index_infos is None:
             w_start, w_end = self.w_start, self.w_end
             h_start, h_end = self.h_start, self.h_end
@@ -886,22 +1033,23 @@ class ImageSpliterNp:
         assert np.all(self.pixel_count != 0)
         return self.im_res / self.pixel_count
 
+
 class ImageSpliterTh:
     def __init__(self, im, pch_size, stride, sf=1, extra_bs=1):
-        '''
+        """
         Input:
             im: n x c x h x w, torch tensor, float, low-resolution image in SR
             pch_size, stride: patch setting
             sf: scale factor in image super-resolution
             pch_bs: aggregate pchs to processing, only used when inputing single image
-        '''
+        """
         assert stride <= pch_size
         self.stride = stride
         self.pch_size = pch_size
         self.sf = sf
         self.extra_bs = extra_bs
 
-        bs, chn, height, width= im.shape
+        bs, chn, height, width = im.shape
         self.true_bs = bs
 
         self.height_starts_list = self.extract_starts(height)
@@ -915,12 +1063,18 @@ class ImageSpliterTh:
         self.count_pchs = 0
 
         self.im_ori = im
-        self.im_res = torch.zeros([bs, chn, height*sf, width*sf], dtype=im.dtype, device=im.device)
-        self.pixel_count = torch.zeros([bs, chn, height*sf, width*sf], dtype=im.dtype, device=im.device)
+        self.im_res = torch.zeros(
+            [bs, chn, height * sf, width * sf], dtype=im.dtype, device=im.device
+        )
+        self.pixel_count = torch.zeros(
+            [bs, chn, height * sf, width * sf], dtype=im.dtype, device=im.device
+        )
 
     def extract_starts(self, length):
         if length <= self.pch_size:
-            starts = [0,]
+            starts = [
+                0,
+            ]
         else:
             starts = list(range(0, length, self.stride))
             for ii in range(len(starts)):
@@ -938,13 +1092,15 @@ class ImageSpliterTh:
     def __next__(self):
         if self.count_pchs < self.length:
             index_infos = []
-            current_starts_list = self.starts_list[self.count_pchs:self.count_pchs+self.extra_bs]
+            current_starts_list = self.starts_list[
+                self.count_pchs : self.count_pchs + self.extra_bs
+            ]
             for ii, (h_start, w_start) in enumerate(current_starts_list):
                 w_end = w_start + self.pch_size
                 h_end = h_start + self.pch_size
                 current_pch = self.im_ori[:, :, h_start:h_end, w_start:w_end]
                 if ii == 0:
-                    pch =  current_pch
+                    pch = current_pch
                 else:
                     pch = torch.cat([pch, current_pch], dim=0)
 
@@ -961,22 +1117,23 @@ class ImageSpliterTh:
         return pch, index_infos
 
     def update(self, pch_res, index_infos):
-        '''
+        """
         Input:
             pch_res: (n*extra_bs) x c x pch_size x pch_size, float
             index_infos: [(h_start, h_end, w_start, w_end),]
-        '''
+        """
         assert pch_res.shape[0] % self.true_bs == 0
         pch_list = torch.split(pch_res, self.true_bs, dim=0)
         assert len(pch_list) == len(index_infos)
         for ii, (h_start, h_end, w_start, w_end) in enumerate(index_infos):
             current_pch = pch_list[ii]
-            self.im_res[:, :, h_start:h_end, w_start:w_end] +=  current_pch
+            self.im_res[:, :, h_start:h_end, w_start:w_end] += current_pch
             self.pixel_count[:, :, h_start:h_end, w_start:w_end] += 1
 
     def gather(self):
         assert torch.all(self.pixel_count != 0)
         return self.im_res.div(self.pixel_count)
+
 
 # ----------------------Patch Cliping----------------------------
 class Clamper:
@@ -989,11 +1146,14 @@ class Clamper:
         elif isinstance(im, torch.Tensor):
             return torch.clamp(im, min=self.min_bound, max=self.max_bound)
         else:
-            raise TypeError(f'ndarray or Tensor expected, got {type(im)}')
+            raise TypeError(f"ndarray or Tensor expected, got {type(im)}")
+
 
 # ----------------------Interpolation----------------------------
 class Bicubic:
-    def __init__(self, scale=None, out_shape=None, activate_matlab=True, resize_back=False):
+    def __init__(
+        self, scale=None, out_shape=None, activate_matlab=True, resize_back=False
+    ):
         self.scale = scale
         self.activate_matlab = activate_matlab
         self.out_shape = out_shape
@@ -1003,44 +1163,49 @@ class Bicubic:
         if self.activate_matlab:
             out = imresize_np(im, scale=self.scale)
             if self.resize_back:
-                out = imresize_np(out, scale=1/self.scale)
+                out = imresize_np(out, scale=1 / self.scale)
         else:
             out = cv2.resize(
-                    im,
-                    dsize=self.out_shape,
-                    fx=self.scale,
-                    fy=self.scale,
-                    interpolation=cv2.INTER_CUBIC,
-                    )
+                im,
+                dsize=self.out_shape,
+                fx=self.scale,
+                fy=self.scale,
+                interpolation=cv2.INTER_CUBIC,
+            )
             if self.resize_back:
                 out = cv2.resize(
-                        out,
-                        dsize=self.out_shape,
-                        fx=1/self.scale,
-                        fy=1/self.scale,
-                        interpolation=cv2.INTER_CUBIC,
-                        )
+                    out,
+                    dsize=self.out_shape,
+                    fx=1 / self.scale,
+                    fy=1 / self.scale,
+                    interpolation=cv2.INTER_CUBIC,
+                )
         return out
+
 
 class SmallestMaxSize:
     def __init__(self, max_size=256, interpolation=None, pass_smallmaxresize=False):
         from albumentations import SmallestMaxSize
+
         self.resizer = SmallestMaxSize(
-                max_size=max_size,
-                interpolation=cv2.INTER_CUBIC if interpolation is None else interpolation
-                )
+            max_size=max_size,
+            interpolation=cv2.INTER_CUBIC if interpolation is None else interpolation,
+        )
         self.pass_smallmaxresize = pass_smallmaxresize
 
     def __call__(self, im):
         if self.pass_smallmaxresize:
             out = im
         else:
-            out = self.resizer(image=im)['image']
+            out = self.resizer(image=im)["image"]
         return out
+
 
 # ----------------------augmentation----------------------------
 class SpatialAug:
-    def __init__(self, pass_aug=False, only_hflip=False, only_vflip=False, only_hvflip=False):
+    def __init__(
+        self, pass_aug=False, only_hflip=False, only_vflip=False, only_hvflip=False
+    ):
         self.only_hflip = only_hflip
         self.only_vflip = only_vflip
         self.only_hvflip = only_hvflip
@@ -1068,13 +1233,14 @@ class SpatialAug:
             out = data_aug_np(im, flag)
         return out
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     im = np.random.randn(64, 64, 3).astype(np.float32)
 
-    grad1 = imgrad(im)['grad']
-    grad2 = imgrad_fft(im)['grad']
+    grad1 = imgrad(im)["grad"]
+    grad2 = imgrad_fft(im)["grad"]
 
-    error = np.abs(grad1 -grad2).max()
-    mean_error = np.abs(grad1 -grad2).mean()
-    print('The largest error is {:.2e}'.format(error))
-    print('The mean error is {:.2e}'.format(mean_error))
+    error = np.abs(grad1 - grad2).max()
+    mean_error = np.abs(grad1 - grad2).mean()
+    print("The largest error is {:.2e}".format(error))
+    print("The mean error is {:.2e}".format(mean_error))

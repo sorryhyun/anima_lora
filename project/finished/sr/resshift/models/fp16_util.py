@@ -6,22 +6,22 @@ import torch.nn as nn
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 
 
-def convert_module_to_f16(l):
+def convert_module_to_f16(module):
     """
     Convert primitive modules to float16.
     """
-    if isinstance(l, (nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.Linear)):
-        l.weight.data = l.weight.data.half()
-        l.bias.data = l.bias.data.half()
+    if isinstance(module, (nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.Linear)):
+        module.weight.data = module.weight.data.half()
+        module.bias.data = module.bias.data.half()
 
 
-def convert_module_to_f32(l):
+def convert_module_to_f32(module):
     """
     Convert primitive modules to float32, undoing convert_module_to_f16().
     """
-    if isinstance(l, (nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.Linear)):
-        l.weight.data = l.weight.data.float()
-        l.bias.data = l.bias.data.float()
+    if isinstance(module, (nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.Linear)):
+        module.weight.data = module.weight.data.float()
+        module.bias.data = module.bias.data.float()
 
 
 def make_master_params(model_params):

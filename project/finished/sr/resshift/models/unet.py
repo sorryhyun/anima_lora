@@ -19,11 +19,12 @@ from .basic_ops import (
 from .swin_transformer import BasicLayer
 
 try:
-    import xformers
     import xformers.ops as xop
+
     XFORMERS_IS_AVAILBLE = True
-except:
+except ImportError:
     XFORMERS_IS_AVAILBLE = False
+
 
 class TimestepBlock(nn.Module):
     """
@@ -35,6 +36,7 @@ class TimestepBlock(nn.Module):
         """
         Apply the module to `x` given `emb` timestep embeddings.
         """
+
 
 class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
     """
@@ -49,6 +51,7 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
             else:
                 x = layer(x)
         return x
+
 
 class Upsample(nn.Module):
     """
@@ -80,6 +83,7 @@ class Upsample(nn.Module):
             x = self.conv(x)
         return x
 
+
 class Downsample(nn.Module):
     """
     A downsampling layer with an optional convolution.
@@ -88,6 +92,7 @@ class Downsample(nn.Module):
     :param dims: determines if the signal is 1D, 2D, or 3D. If 3D, then
                  downsampling occurs in the inner-two dimensions.
     """
+
     def __init__(self, channels, use_conv, dims=2, out_channels=None):
         super().__init__()
         self.channels = channels
@@ -107,6 +112,7 @@ class Downsample(nn.Module):
         assert x.shape[1] == self.channels
         return self.op(x)
 
+
 class ResBlock(TimestepBlock):
     """
     A residual block that can optionally change the number of channels.
@@ -121,6 +127,7 @@ class ResBlock(TimestepBlock):
     :param up: if True, use this block for upsampling.
     :param down: if True, use this block for downsampling.
     """
+
     def __init__(
         self,
         channels,
@@ -205,6 +212,7 @@ class ResBlock(TimestepBlock):
             h = self.out_layers(h)
         return self.skip_connection(x) + h
 
+
 def count_flops_attn(model, _x, y):
     """
     A counter for the `thop` package to count the operations in an
@@ -218,8 +226,9 @@ def count_flops_attn(model, _x, y):
     """
     b, c, *spatial = y[0].shape
     num_spatial = int(np.prod(spatial))
-    matmul_ops = 2 * b * (num_spatial ** 2) * c
+    matmul_ops = 2 * b * (num_spatial**2) * c
     model.total_ops += th.DoubleTensor([matmul_ops])
+
 
 class AttentionBlock(nn.Module):
     """
@@ -227,6 +236,7 @@ class AttentionBlock(nn.Module):
     Originally ported from here, but adapted to the N-d case.
     https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/models/unet.py#L66.
     """
+
     def __init__(
         self,
         channels,
@@ -239,9 +249,9 @@ class AttentionBlock(nn.Module):
         if num_head_channels == -1:
             self.num_heads = num_heads
         else:
-            assert (
-                channels % num_head_channels == 0
-            ), f"q,k,v channels {channels} is not divisible by num_head_channels {num_head_channels}"
+            assert channels % num_head_channels == 0, (
+                f"q,k,v channels {channels} is not divisible by num_head_channels {num_head_channels}"
+            )
             self.num_heads = channels // num_head_channels
         self.norm = normalization(channels)
         self.qkv = conv_nd(1, channels, channels * 3, 1)
@@ -261,6 +271,7 @@ class AttentionBlock(nn.Module):
         h = self.attention(qkv)
         h = self.proj_out(h)
         return (x + h).reshape(b, c, *spatial)
+
 
 class QKVAttentionLegacy(nn.Module):
     """
@@ -282,10 +293,20 @@ class QKVAttentionLegacy(nn.Module):
         ch = width // (3 * self.n_heads)
         if XFORMERS_IS_AVAILBLE:
             # qkv: b x length x heads x 3ch
-            qkv = qkv.reshape(bs, self.n_heads, ch * 3, length).permute(0, 3, 1, 2).to(memory_format=th.contiguous_format)
+            qkv = (
+                qkv.reshape(bs, self.n_heads, ch * 3, length)
+                .permute(0, 3, 1, 2)
+                .to(memory_format=th.contiguous_format)
+            )
             q, k, v = qkv.split(ch, dim=3)  # b x length x heads x ch
-            a = xop.memory_efficient_attention(q, k, v, p=0.0)  # b x length x heads x ch
-            out = a.permute(0, 2, 3, 1).to(memory_format=th.contiguous_format).reshape(bs, -1, length)
+            a = xop.memory_efficient_attention(
+                q, k, v, p=0.0
+            )  # b x length x heads x ch
+            out = (
+                a.permute(0, 2, 3, 1)
+                .to(memory_format=th.contiguous_format)
+                .reshape(bs, -1, length)
+            )
         else:
             # q,k, v: (b*heads) x ch x length
             q, k, v = qkv.reshape(bs * self.n_heads, ch * 3, length).split(ch, dim=1)
@@ -301,6 +322,7 @@ class QKVAttentionLegacy(nn.Module):
     @staticmethod
     def count_flops(model, _x, y):
         return count_flops_attn(model, _x, y)
+
 
 class QKVAttention(nn.Module):
     """
@@ -322,10 +344,20 @@ class QKVAttention(nn.Module):
         ch = width // (3 * self.n_heads)
         if XFORMERS_IS_AVAILBLE:
             # qkv: b x length x heads x 3ch
-            qkv = qkv.reshape(bs, self.n_heads, ch * 3, length).permute(0, 3, 1, 2).to(memory_format=th.contiguous_format)
+            qkv = (
+                qkv.reshape(bs, self.n_heads, ch * 3, length)
+                .permute(0, 3, 1, 2)
+                .to(memory_format=th.contiguous_format)
+            )
             q, k, v = qkv.split(ch, dim=3)  # b x length x heads x ch
-            a = xop.memory_efficient_attention(q, k, v, p=0.0)  # b x length x heads x length
-            out = a.permute(0, 2, 3, 1).to(memory_format=th.contiguous_format).reshape(bs, -1, length)
+            a = xop.memory_efficient_attention(
+                q, k, v, p=0.0
+            )  # b x length x heads x length
+            out = (
+                a.permute(0, 2, 3, 1)
+                .to(memory_format=th.contiguous_format)
+                .reshape(bs, -1, length)
+            )
         else:
             q, k, v = qkv.chunk(3, dim=1)  # b x heads*ch x length
             scale = 1 / math.sqrt(math.sqrt(ch))
@@ -335,13 +367,16 @@ class QKVAttention(nn.Module):
                 (k * scale).view(bs * self.n_heads, ch, length),
             )  # More stable with f16 than dividing afterwards
             weight = th.softmax(weight.float(), dim=-1).type(weight.dtype)
-            a = th.einsum("bts,bcs->bct", weight, v.reshape(bs * self.n_heads, ch, length))
+            a = th.einsum(
+                "bts,bcs->bct", weight, v.reshape(bs * self.n_heads, ch, length)
+            )
             out = a.reshape(bs, -1, length)
         return out
 
     @staticmethod
     def count_flops(model, _x, y):
         return count_flops_attn(model, _x, y)
+
 
 class UNetModel(nn.Module):
     """
@@ -394,7 +429,9 @@ class UNetModel(nn.Module):
         super().__init__()
 
         if isinstance(num_res_blocks, int):
-            num_res_blocks = [num_res_blocks,] * len(channel_mult)
+            num_res_blocks = [
+                num_res_blocks,
+            ] * len(channel_mult)
         else:
             assert len(num_res_blocks) == len(channel_mult)
         self.num_res_blocks = num_res_blocks
@@ -555,12 +592,14 @@ class UNetModel(nn.Module):
         :param lq: an [N x C x ...] Tensor of low quality iamge.
         :return: an [N x C x ...] Tensor of outputs.
         """
-        assert (y is not None) == (
-            self.num_classes is not None
-        ), "must specify y if and only if the model is class-conditional"
+        assert (y is not None) == (self.num_classes is not None), (
+            "must specify y if and only if the model is class-conditional"
+        )
 
         hs = []
-        emb = self.time_embed(timestep_embedding(timesteps, self.model_channels)).type(self.dtype)
+        emb = self.time_embed(timestep_embedding(timesteps, self.model_channels)).type(
+            self.dtype
+        )
 
         if self.num_classes is not None:
             assert y.shape == (x.shape[0],)
@@ -599,6 +638,7 @@ class UNetModel(nn.Module):
         self.input_blocks.apply(convert_module_to_f32)
         self.middle_block.apply(convert_module_to_f32)
         self.output_blocks.apply(convert_module_to_f32)
+
 
 class UNetModelSwin(nn.Module):
     """
@@ -658,7 +698,9 @@ class UNetModelSwin(nn.Module):
         super().__init__()
 
         if isinstance(num_res_blocks, int):
-            num_res_blocks = [num_res_blocks,] * len(channel_mult)
+            num_res_blocks = [
+                num_res_blocks,
+            ] * len(channel_mult)
         else:
             assert len(num_res_blocks) == len(channel_mult)
         if num_heads == -1:
@@ -696,7 +738,9 @@ class UNetModelSwin(nn.Module):
             for ii in range(int(math.log(lq_size / image_size) / math.log(2))):
                 feature_extractor.append(nn.Conv2d(feature_chn, base_chn, 3, 1, 1))
                 feature_extractor.append(nn.SiLU())
-                feature_extractor.append(Downsample(base_chn, True, out_channels=base_chn*2))
+                feature_extractor.append(
+                    Downsample(base_chn, True, out_channels=base_chn * 2)
+                )
                 base_chn *= 2
                 feature_chn = base_chn
             self.feature_extractor = nn.Sequential(*feature_extractor)
@@ -721,26 +765,28 @@ class UNetModelSwin(nn.Module):
                     )
                 ]
                 ch = int(mult * model_channels)
-                if ds in attention_resolutions and jj==0:
+                if ds in attention_resolutions and jj == 0:
                     layers.append(
                         BasicLayer(
-                                in_chans=ch,
-                                embed_dim=swin_embed_dim,
-                                num_heads=num_heads if num_head_channels == -1 else swin_embed_dim // num_head_channels,
-                                window_size=window_size,
-                                depth=swin_depth,
-                                img_size=ds,
-                                patch_size=1,
-                                mlp_ratio=mlp_ratio,
-                                qkv_bias=True,
-                                qk_scale=None,
-                                drop=dropout,
-                                attn_drop=0.,
-                                drop_path=0.,
-                                use_checkpoint=False,
-                                norm_layer=normalization,
-                                patch_norm=patch_norm,
-                                 )
+                            in_chans=ch,
+                            embed_dim=swin_embed_dim,
+                            num_heads=num_heads
+                            if num_head_channels == -1
+                            else swin_embed_dim // num_head_channels,
+                            window_size=window_size,
+                            depth=swin_depth,
+                            img_size=ds,
+                            patch_size=1,
+                            mlp_ratio=mlp_ratio,
+                            qkv_bias=True,
+                            qk_scale=None,
+                            drop=dropout,
+                            attn_drop=0.0,
+                            drop_path=0.0,
+                            use_checkpoint=False,
+                            norm_layer=normalization,
+                            patch_norm=patch_norm,
+                        )
                     )
                 self.input_blocks.append(TimestepEmbedSequential(*layers))
                 input_block_chans.append(ch)
@@ -776,23 +822,25 @@ class UNetModelSwin(nn.Module):
                 use_scale_shift_norm=use_scale_shift_norm,
             ),
             BasicLayer(
-                    in_chans=ch,
-                    embed_dim=swin_embed_dim,
-                    num_heads=num_heads if num_head_channels == -1 else swin_embed_dim // num_head_channels,
-                    window_size=window_size,
-                    depth=swin_depth,
-                    img_size=ds,
-                    patch_size=1,
-                    mlp_ratio=mlp_ratio,
-                    qkv_bias=True,
-                    qk_scale=None,
-                    drop=dropout,
-                    attn_drop=0.,
-                    drop_path=0.,
-                    use_checkpoint=False,
-                    norm_layer=normalization,
-                    patch_norm=patch_norm,
-                     ),
+                in_chans=ch,
+                embed_dim=swin_embed_dim,
+                num_heads=num_heads
+                if num_head_channels == -1
+                else swin_embed_dim // num_head_channels,
+                window_size=window_size,
+                depth=swin_depth,
+                img_size=ds,
+                patch_size=1,
+                mlp_ratio=mlp_ratio,
+                qkv_bias=True,
+                qk_scale=None,
+                drop=dropout,
+                attn_drop=0.0,
+                drop_path=0.0,
+                use_checkpoint=False,
+                norm_layer=normalization,
+                patch_norm=patch_norm,
+            ),
             ResBlock(
                 ch,
                 time_embed_dim,
@@ -817,26 +865,28 @@ class UNetModelSwin(nn.Module):
                     )
                 ]
                 ch = int(model_channels * mult)
-                if ds in attention_resolutions and i==0:
+                if ds in attention_resolutions and i == 0:
                     layers.append(
                         BasicLayer(
-                                in_chans=ch,
-                                embed_dim=swin_embed_dim,
-                                num_heads=num_heads if num_head_channels == -1 else swin_embed_dim // num_head_channels,
-                                window_size=window_size,
-                                depth=swin_depth,
-                                img_size=ds,
-                                patch_size=1,
-                                mlp_ratio=mlp_ratio,
-                                qkv_bias=True,
-                                qk_scale=None,
-                                drop=dropout,
-                                attn_drop=0.,
-                                drop_path=0.,
-                                use_checkpoint=False,
-                                norm_layer=normalization,
-                                patch_norm=patch_norm,
-                                 )
+                            in_chans=ch,
+                            embed_dim=swin_embed_dim,
+                            num_heads=num_heads
+                            if num_head_channels == -1
+                            else swin_embed_dim // num_head_channels,
+                            window_size=window_size,
+                            depth=swin_depth,
+                            img_size=ds,
+                            patch_size=1,
+                            mlp_ratio=mlp_ratio,
+                            qkv_bias=True,
+                            qk_scale=None,
+                            drop=dropout,
+                            attn_drop=0.0,
+                            drop_path=0.0,
+                            use_checkpoint=False,
+                            norm_layer=normalization,
+                            patch_norm=patch_norm,
+                        )
                     )
                 if level and i == num_res_blocks[level]:
                     out_ch = ch
@@ -871,7 +921,9 @@ class UNetModelSwin(nn.Module):
         :return: an [N x C x ...] Tensor of outputs.
         """
         hs = []
-        emb = self.time_embed(timestep_embedding(timesteps, self.model_channels)).type(self.dtype)
+        emb = self.time_embed(timestep_embedding(timesteps, self.model_channels)).type(
+            self.dtype
+        )
 
         if lq is not None:
             assert self.cond_lq
@@ -880,7 +932,6 @@ class UNetModelSwin(nn.Module):
                 lq = th.cat([lq, mask], dim=1)
             lq = self.feature_extractor(lq.type(self.dtype))
             x = th.cat([x, lq], dim=1)
-
 
         h = x.type(self.dtype)
         for ii, module in enumerate(self.input_blocks):
@@ -911,6 +962,7 @@ class UNetModelSwin(nn.Module):
         self.middle_block.apply(convert_module_to_f32)
         self.output_blocks.apply(convert_module_to_f32)
 
+
 class ResBlockConv(TimestepBlock):
     """
     A residual block that can optionally change the number of channels.
@@ -924,6 +976,7 @@ class ResBlockConv(TimestepBlock):
     :param up: if True, use this block for upsampling.
     :param down: if True, use this block for downsampling.
     """
+
     def __init__(
         self,
         channels,
@@ -1003,6 +1056,7 @@ class ResBlockConv(TimestepBlock):
             h = self.out_layers(h)
         return self.skip_connection(x) + h
 
+
 class UNetModelConv(nn.Module):
     """
     The full UNet model with attention and timestep embedding.
@@ -1040,7 +1094,9 @@ class UNetModelConv(nn.Module):
         super().__init__()
 
         if isinstance(num_res_blocks, int):
-            num_res_blocks = [num_res_blocks,] * len(channel_mult)
+            num_res_blocks = [
+                num_res_blocks,
+            ] * len(channel_mult)
         else:
             assert len(num_res_blocks) == len(channel_mult)
         self.num_res_blocks = num_res_blocks
@@ -1178,4 +1234,3 @@ class UNetModelConv(nn.Module):
         h = h.type(x.dtype)
         out = self.out(h)
         return out
-

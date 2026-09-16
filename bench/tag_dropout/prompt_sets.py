@@ -287,7 +287,6 @@ def main() -> None:
     detailed_stems = stem_pool[: args.num_detailed]
     detailed: List[dict] = []
     omission: List[dict] = []
-    char_set = set(characteristic)
     for i, stem in enumerate(detailed_stems):
         tags = captions[stem]
         text = ", ".join(tags)

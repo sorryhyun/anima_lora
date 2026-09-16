@@ -49,6 +49,7 @@ Run in the root venv (`make sr-*` targets removed 2026-08-22 — line finished):
   make daemon-run ARGS="project/finished/sr/train_sr/train.py --iters 30000 [--bs 8 --compile] [--no-amp]"
 or ×4: append --version x4.
 """
+
 import argparse
 import json
 import sys
@@ -66,7 +67,7 @@ from library.training.ema import ema_update, make_ema
 
 HERE = Path(__file__).resolve().parent
 SR = HERE.parent
-sys.path.insert(0, str(SR / "distill_rsd"))   # reuse rsd_models + data
+sys.path.insert(0, str(SR / "distill_rsd"))  # reuse rsd_models + data
 import rsd_models as M  # noqa: E402
 from data import ArtSRDataset  # noqa: E402
 from rsd_models import predict_x0  # noqa: E402
@@ -77,12 +78,24 @@ from models.unet import UNetModelSwin  # noqa: E402  (vendored ResShift, on sys.
 # so the warm-start prior actually transfers. "latent" only for x2, whose already-shipped
 # teacher + 1-step student were both trained under it — see rsd_models.make_cond_lq.
 VERSIONS = {
-    "x2":   (SR / "configs" / "realsr_x2_art.yaml",
-             M.WEIGHTS / "resshift_realsrx4_s15_v2.pth", "x2_lpips_30k", "latent"),
-    "x4":   (SR / "configs" / "realsr_x4_art.yaml",
-             M.WEIGHTS / "resshift_realsrx4_s15_v2.pth", "x4_art", "pixel"),
-    "x4s4": (SR / "configs" / "realsr_x4_s4_art.yaml",
-             M.WEIGHTS / "resshift_realsrx4_s4_v3.pth", "x4_s4_art", "pixel"),
+    "x2": (
+        SR / "configs" / "realsr_x2_art.yaml",
+        M.WEIGHTS / "resshift_realsrx4_s15_v2.pth",
+        "x2_lpips_30k",
+        "latent",
+    ),
+    "x4": (
+        SR / "configs" / "realsr_x4_art.yaml",
+        M.WEIGHTS / "resshift_realsrx4_s15_v2.pth",
+        "x4_art",
+        "pixel",
+    ),
+    "x4s4": (
+        SR / "configs" / "realsr_x4_s4_art.yaml",
+        M.WEIGHTS / "resshift_realsrx4_s4_v3.pth",
+        "x4_s4_art",
+        "pixel",
+    ),
 }
 
 
@@ -109,17 +122,23 @@ def warm_start(model, ckpt_path):
     """
     sd = torch.load(ckpt_path, map_location="cpu")
     sd = sd["state_dict"] if isinstance(sd, dict) and "state_dict" in sd else sd
-    sd = {k[len("module."):] if k.startswith("module.") else k: v for k, v in sd.items()}
+    sd = {
+        k[len("module.") :] if k.startswith("module.") else k: v for k, v in sd.items()
+    }
     tgt = model.state_dict()
     take = {k: v for k, v in sd.items() if k in tgt and tgt[k].shape == v.shape}
     skipped_src = [k for k in sd if k not in take]
     missing_tgt = [k for k in tgt if k not in take]
     model.load_state_dict(take, strict=False)
-    print(f"warm-start from {Path(ckpt_path).name}: loaded {len(take)}/{len(tgt)} tensors")
+    print(
+        f"warm-start from {Path(ckpt_path).name}: loaded {len(take)}/{len(tgt)} tensors"
+    )
     if skipped_src or missing_tgt:
-        print(f"  WARNING partial warm-start — skipped(src)={skipped_src[:6]}"
-              f"{'…' if len(skipped_src) > 6 else ''} missing(tgt)={missing_tgt[:6]}"
-              f"{'…' if len(missing_tgt) > 6 else ''}")
+        print(
+            f"  WARNING partial warm-start — skipped(src)={skipped_src[:6]}"
+            f"{'…' if len(skipped_src) > 6 else ''} missing(tgt)={missing_tgt[:6]}"
+            f"{'…' if len(missing_tgt) > 6 else ''}"
+        )
     else:
         print("  (strict match — all tensors warm-started)")
     return model
@@ -141,7 +160,9 @@ def sample_sr(diff, model, z_y, c_y, vqgan):
     for i in reversed(range(diff.num_timesteps)):
         t = torch.full((z_y.shape[0],), i, device=z_y.device, dtype=torch.long)
         # clip_denoised=False — these are VQ latents (range ~±3.4), not bounded to [-1,1]
-        z = diff.p_sample(model, z, z_y, t, clip_denoised=False, model_kwargs={"lq": c_y})["sample"]
+        z = diff.p_sample(
+            model, z, z_y, t, clip_denoised=False, model_kwargs={"lq": c_y}
+        )["sample"]
     return diff.decode_first_stage(z.float(), first_stage_model=vqgan).clamp(-1, 1)
 
 
@@ -155,7 +176,9 @@ def save_montage(path, lq, sr, gt, n=4):
     """[lq | sr | gt] rows for the first n samples, saved as one PNG."""
     rows = []
     for i in range(min(n, lq.shape[0])):
-        rows.append(np.concatenate([to_uint8(lq[i]), to_uint8(sr[i]), to_uint8(gt[i])], axis=1))
+        rows.append(
+            np.concatenate([to_uint8(lq[i]), to_uint8(sr[i]), to_uint8(gt[i])], axis=1)
+        )
     Image.fromarray(np.concatenate(rows, axis=0)).save(path)
 
 
@@ -165,71 +188,130 @@ def main():
     ap.add_argument("--bs", type=int, default=8)
     ap.add_argument("--grad_accum", type=int, default=1)
     ap.add_argument("--lr", type=float, default=5e-5)
-    ap.add_argument("--lr_min", type=float, default=2e-5, help="cosine floor (set ==lr to disable)")
+    ap.add_argument(
+        "--lr_min", type=float, default=2e-5, help="cosine floor (set ==lr to disable)"
+    )
     ap.add_argument("--warmup", type=int, default=500, help="linear LR warmup steps")
-    ap.add_argument("--lambda_lpips", type=float, default=0.5,
-                    help="decoded-image VGG-LPIPS on the per-step x0 prediction. Default ON "
-                         "(0.5) since 2026-07-06 — pure latent MSE was confirmed as the "
-                         "detail ceiling the students inherit. 0 = canonical ResShift "
-                         "latent MSE; costs a VQGAN decode per step when on.")
-    ap.add_argument("--lambda_dc", type=float, default=1.0,
-                    help="low-freq DC/color L1 on the same decoded x0 (dc_loss, k=32) — "
-                         "pins the global tone LPIPS leaves free. Inert extra decode cost "
-                         "only when --lambda_lpips 0; set 0 to disable.")
+    ap.add_argument(
+        "--lambda_lpips",
+        type=float,
+        default=0.5,
+        help="decoded-image VGG-LPIPS on the per-step x0 prediction. Default ON "
+        "(0.5) since 2026-07-06 — pure latent MSE was confirmed as the "
+        "detail ceiling the students inherit. 0 = canonical ResShift "
+        "latent MSE; costs a VQGAN decode per step when on.",
+    )
+    ap.add_argument(
+        "--lambda_dc",
+        type=float,
+        default=1.0,
+        help="low-freq DC/color L1 on the same decoded x0 (dc_loss, k=32) — "
+        "pins the global tone LPIPS leaves free. Inert extra decode cost "
+        "only when --lambda_lpips 0; set 0 to disable.",
+    )
     ap.add_argument("--ema", type=float, default=0.999)
-    ap.add_argument("--amp", action=argparse.BooleanOptionalAction, default=True,
-                    help="bf16 autocast on the net + NATIVE-bf16 VQGAN (matches distill_rsd; "
-                         "autocast alone would keep the VQGAN GroupNorms fp32 and materialize "
-                         "the full-res norm activations). --no-amp = full fp32.")
-    ap.add_argument("--compile", action="store_true",
-                    help="block-compile the Swin/Res blocks at the CLASS level (glue stays "
-                         "eager — see rsd_models.compile_swin_blocks). Per-step it/s is ~a "
-                         "wash vs eager but saves VRAM; the lever for a bigger --bs without "
-                         "grad-ckpt. Whole-graph compile measured strictly worse — don't revive.")
-    ap.add_argument("--grad_ckpt", action=argparse.BooleanOptionalAction, default=False,
-                    help="Swin gradient checkpointing (bit-exact activation save; default OFF — "
-                         "at 256-px crops the recompute costs ~25%% throughput, and one net + "
-                         "one optimizer fits without it; turn on to fit bigger bs on smaller "
-                         "cards)")
-    ap.add_argument("--no_grad_ckpt", dest="grad_ckpt", action="store_false",
-                    help=argparse.SUPPRESS)  # legacy spelling (pre-2026-07 runs)
-    ap.add_argument("--version", choices=list(VERSIONS), default="x2",
-                    help="scale/schedule family — picks config + warm-start ckpt + output "
-                         "dir (see VERSIONS). x2 = 2x finetune; x4 = 15-step x4 teacher "
-                         "finetune (feeds sr-rsd-train --version x4ft); x4s4 = 4-step v3.")
-    ap.add_argument("--cond_lq", choices=["pixel", "latent"], default=None,
-                    help="what to feed the UNet's `lq` conditioning input (default: the "
-                         "version's — pixel for x4/x4s4, latent for the legacy x2 line). "
-                         "pixel = LR pixels at latent resolution, the convention the released "
-                         "weights were trained with; latent = the VQ latent, which is "
-                         "off-manifold for them. See rsd_models.make_cond_lq.")
-    ap.add_argument("--init", default=None,
-                    help="warm-start checkpoint (default: the version's released teacher)")
-    ap.add_argument("--config", default=None,
-                    help="ResShift config yaml (default: the version's art config)")
-    ap.add_argument("--src", default=None,
-                    help="HR pool dir (default: sr/data/hr_pool if present, else image_dataset)")
-    ap.add_argument("--text_boxes", default=str(SR / "data" / "text_boxes.json"),
-                    help="CTD text-box json from sr/scripts/detect_text_boxes.py; missing "
-                         "file just disables text oversampling (dataset warns)")
-    ap.add_argument("--text_crop_prob", type=float, default=0.25,
-                    help="fraction of samples biased to crops covering a text box — random "
-                         "crops almost never hit text, so without this the model learns "
-                         "tiny glyphs as texture and hallucinates strokes. 0 = off")
-    ap.add_argument("--scale_jitter_prob", type=float, default=0.25,
-                    help="fraction of samples degraded at a random scale in "
-                         "[sf, scale_jitter_max] instead of exactly sf — puts sub-native "
-                         "text/detail sizes in-distribution WITH GT supervision. 0 = off")
-    ap.add_argument("--scale_jitter_max", type=float, default=0.0,
-                    help="upper degradation scale for --scale_jitter_prob draws "
-                         "(0 = auto: 2·sf, i.e. 4 at x2 and 8 at x4)")
+    ap.add_argument(
+        "--amp",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="bf16 autocast on the net + NATIVE-bf16 VQGAN (matches distill_rsd; "
+        "autocast alone would keep the VQGAN GroupNorms fp32 and materialize "
+        "the full-res norm activations). --no-amp = full fp32.",
+    )
+    ap.add_argument(
+        "--compile",
+        action="store_true",
+        help="block-compile the Swin/Res blocks at the CLASS level (glue stays "
+        "eager — see rsd_models.compile_swin_blocks). Per-step it/s is ~a "
+        "wash vs eager but saves VRAM; the lever for a bigger --bs without "
+        "grad-ckpt. Whole-graph compile measured strictly worse — don't revive.",
+    )
+    ap.add_argument(
+        "--grad_ckpt",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Swin gradient checkpointing (bit-exact activation save; default OFF — "
+        "at 256-px crops the recompute costs ~25%% throughput, and one net + "
+        "one optimizer fits without it; turn on to fit bigger bs on smaller "
+        "cards)",
+    )
+    ap.add_argument(
+        "--no_grad_ckpt", dest="grad_ckpt", action="store_false", help=argparse.SUPPRESS
+    )  # legacy spelling (pre-2026-07 runs)
+    ap.add_argument(
+        "--version",
+        choices=list(VERSIONS),
+        default="x2",
+        help="scale/schedule family — picks config + warm-start ckpt + output "
+        "dir (see VERSIONS). x2 = 2x finetune; x4 = 15-step x4 teacher "
+        "finetune (feeds sr-rsd-train --version x4ft); x4s4 = 4-step v3.",
+    )
+    ap.add_argument(
+        "--cond_lq",
+        choices=["pixel", "latent"],
+        default=None,
+        help="what to feed the UNet's `lq` conditioning input (default: the "
+        "version's — pixel for x4/x4s4, latent for the legacy x2 line). "
+        "pixel = LR pixels at latent resolution, the convention the released "
+        "weights were trained with; latent = the VQ latent, which is "
+        "off-manifold for them. See rsd_models.make_cond_lq.",
+    )
+    ap.add_argument(
+        "--init",
+        default=None,
+        help="warm-start checkpoint (default: the version's released teacher)",
+    )
+    ap.add_argument(
+        "--config",
+        default=None,
+        help="ResShift config yaml (default: the version's art config)",
+    )
+    ap.add_argument(
+        "--src",
+        default=None,
+        help="HR pool dir (default: sr/data/hr_pool if present, else image_dataset)",
+    )
+    ap.add_argument(
+        "--text_boxes",
+        default=str(SR / "data" / "text_boxes.json"),
+        help="CTD text-box json from sr/scripts/detect_text_boxes.py; missing "
+        "file just disables text oversampling (dataset warns)",
+    )
+    ap.add_argument(
+        "--text_crop_prob",
+        type=float,
+        default=0.25,
+        help="fraction of samples biased to crops covering a text box — random "
+        "crops almost never hit text, so without this the model learns "
+        "tiny glyphs as texture and hallucinates strokes. 0 = off",
+    )
+    ap.add_argument(
+        "--scale_jitter_prob",
+        type=float,
+        default=0.25,
+        help="fraction of samples degraded at a random scale in "
+        "[sf, scale_jitter_max] instead of exactly sf — puts sub-native "
+        "text/detail sizes in-distribution WITH GT supervision. 0 = off",
+    )
+    ap.add_argument(
+        "--scale_jitter_max",
+        type=float,
+        default=0.0,
+        help="upper degradation scale for --scale_jitter_prob draws "
+        "(0 = auto: 2·sf, i.e. 4 at x2 and 8 at x4)",
+    )
     ap.add_argument("--num_workers", type=int, default=6)
-    ap.add_argument("--save_dir", default=None,
-                    help="default: output/sr/<version's subdir>")
+    ap.add_argument(
+        "--save_dir", default=None, help="default: output/sr/<version's subdir>"
+    )
     ap.add_argument("--log_every", type=int, default=50)
     ap.add_argument("--save_every", type=int, default=5000)
-    ap.add_argument("--sample_every", type=int, default=2500,
-                    help="render a p_sample_loop montage every N steps (0=off)")
+    ap.add_argument(
+        "--sample_every",
+        type=int,
+        default=2500,
+        help="render a p_sample_loop montage every N steps (0=off)",
+    )
     ap.add_argument("--max_steps", type=int, default=0, help="smoke cap (0=off)")
     args = ap.parse_args()
 
@@ -238,7 +320,9 @@ def main():
     config = args.config or str(cfg_path)
     init = args.init or str(init_ckpt)
     cond_mode = args.cond_lq or default_cond
-    save_dir = Path(args.save_dir) if args.save_dir else M.REPO / "output" / "sr" / out_sub
+    save_dir = (
+        Path(args.save_dir) if args.save_dir else M.REPO / "output" / "sr" / out_sub
+    )
     (save_dir / "samples").mkdir(parents=True, exist_ok=True)
     cfg = M.load_configs(config)
     sf = cfg.diffusion.params.sf
@@ -251,7 +335,9 @@ def main():
     if src is None:
         pool = SR / "data" / "hr_pool"
         src = str(pool) if pool.is_dir() else None
-        print(f"[sr-train] --src defaulting to {src or 'image_dataset (no hr_pool — run build_hr_pool)'}")
+        print(
+            f"[sr-train] --src defaulting to {src or 'image_dataset (no hr_pool — run build_hr_pool)'}"
+        )
 
     print(f"building model ({args.version}: warm-start from {Path(init).name})...")
     model = M._build_unet(cfg, UNetModelSwin)
@@ -271,13 +357,16 @@ def main():
     T = diff.num_timesteps
 
     ema = make_ema(model)
-    for m in ema.modules():  # ema is sample-only — grad-ckpt has no benefit and warns under no_grad
+    for m in (
+        ema.modules()
+    ):  # ema is sample-only — grad-ckpt has no benefit and warns under no_grad
         if hasattr(m, "use_checkpoint"):
             m.use_checkpoint = False
 
     lp = None
     if args.lambda_lpips > 0:
         import lpips
+
         lp = lpips.LPIPS(net="vgg").to(dev).eval()
         for p in lp.parameters():
             p.requires_grad_(False)
@@ -291,29 +380,42 @@ def main():
         # the backward-compile context and spills to eager (same trap as distill_rsd).
         sys.path.insert(0, str(M.REPO))
         from library.runtime.dynamo import pin_dynamo_limit  # dependency-free helper
+
         for knob in ("recompile_limit", "cache_size_limit"):
             pin_dynamo_limit(knob, 64)
         M.compile_swin_blocks()
 
     loader = DataLoader(
-        ArtSRDataset(src=src, gt_size=256, scale=sf,
-                     length=args.iters * args.bs * args.grad_accum + 1000,
-                     text_boxes=args.text_boxes, text_crop_prob=args.text_crop_prob,
-                     scale_jitter_prob=args.scale_jitter_prob,
-                     scale_jitter_max=jitter_max),
-        batch_size=args.bs, num_workers=args.num_workers, drop_last=True,
-        pin_memory=True, persistent_workers=args.num_workers > 0)
+        ArtSRDataset(
+            src=src,
+            gt_size=256,
+            scale=sf,
+            length=args.iters * args.bs * args.grad_accum + 1000,
+            text_boxes=args.text_boxes,
+            text_crop_prob=args.text_crop_prob,
+            scale_jitter_prob=args.scale_jitter_prob,
+            scale_jitter_max=jitter_max,
+        ),
+        batch_size=args.bs,
+        num_workers=args.num_workers,
+        drop_last=True,
+        pin_memory=True,
+        persistent_workers=args.num_workers > 0,
+    )
     it = iter(loader)
 
     def autocast():
-        return torch.autocast("cuda", dtype=torch.bfloat16) if args.amp else nullcontext()
+        return (
+            torch.autocast("cuda", dtype=torch.bfloat16) if args.amp else nullcontext()
+        )
 
     def next_batch():
         nonlocal it
         try:
             b = next(it)
         except StopIteration:
-            it = iter(loader); b = next(it)
+            it = iter(loader)
+            b = next(it)
         return b["gt"].to(dev, non_blocking=True), b["lq"].to(dev, non_blocking=True)
 
     def encode(gt, lq):
@@ -337,41 +439,63 @@ def main():
         return args.lr * f
 
     log_path = save_dir / "progress.jsonl"
-    snap = {"method": f"resshift_{args.version}", "version": args.version, "config": config,
-            "sf": sf, "init": init, "cond_lq": cond_mode,
-            "iters": args.iters, "bs": args.bs, "lr": args.lr, "lambda_lpips": args.lambda_lpips,
-            "lambda_dc": args.lambda_dc,
-            "amp": args.amp, "compile": args.compile, "grad_ckpt": args.grad_ckpt,
-            "text_boxes": args.text_boxes, "text_crop_prob": args.text_crop_prob,
-            "scale_jitter_prob": args.scale_jitter_prob,
-            "scale_jitter_max": jitter_max}
+    snap = {
+        "method": f"resshift_{args.version}",
+        "version": args.version,
+        "config": config,
+        "sf": sf,
+        "init": init,
+        "cond_lq": cond_mode,
+        "iters": args.iters,
+        "bs": args.bs,
+        "lr": args.lr,
+        "lambda_lpips": args.lambda_lpips,
+        "lambda_dc": args.lambda_dc,
+        "amp": args.amp,
+        "compile": args.compile,
+        "grad_ckpt": args.grad_ckpt,
+        "text_boxes": args.text_boxes,
+        "text_crop_prob": args.text_crop_prob,
+        "scale_jitter_prob": args.scale_jitter_prob,
+        "scale_jitter_max": jitter_max,
+    }
     (save_dir / "snapshot.toml").write_text(
-        "\n".join(f'{k} = {json.dumps(v)}' for k, v in snap.items()) + "\n")
+        "\n".join(f"{k} = {json.dumps(v)}" for k, v in snap.items()) + "\n"
+    )
 
     t0 = time.time()
-    print(f"training: version={args.version} cond_lq={cond_mode} iters={args.iters} "
-          f"bs={args.bs}x{args.grad_accum} sf={sf} T={T} amp={args.amp} compile={args.compile} grad_ckpt={args.grad_ckpt} "
-          f"lpips={args.lambda_lpips} dc={args.lambda_dc} src={src}")
+    print(
+        f"training: version={args.version} cond_lq={cond_mode} iters={args.iters} "
+        f"bs={args.bs}x{args.grad_accum} sf={sf} T={T} amp={args.amp} compile={args.compile} grad_ckpt={args.grad_ckpt} "
+        f"lpips={args.lambda_lpips} dc={args.lambda_dc} src={src}"
+    )
 
     for step in range(args.iters):
         lr_now = set_lr(step)
         opt.zero_grad(set_to_none=True)
         logs = {}
         for _ in range(args.grad_accum):
-            gt, lq = next_batch(); B = gt.shape[0]
+            gt, lq = next_batch()
+            B = gt.shape[0]
             z0, z_y = encode(gt, lq)
-            c_y = M.make_cond_lq(lq, z_y, cond_mode)   # `lq` conditioning != residual base
+            c_y = M.make_cond_lq(
+                lq, z_y, cond_mode
+            )  # `lq` conditioning != residual base
             t = torch.randint(0, T, (B,), device=dev)
             noise = torch.randn_like(z0)
             z_t = diff.q_sample(z0, z_y, t, noise=noise)
             with autocast():
-                pred = predict_x0(diff, model, z_t, c_y, t)   # xstart -> pred IS z0
+                pred = predict_x0(diff, model, z_t, c_y, t)  # xstart -> pred IS z0
                 L_mse = F.mse_loss(pred.float(), z0.float())
             L = L_mse
             if lp is not None or args.lambda_dc > 0:
                 # decode runs native bf16 outside autocast (grad flows through the frozen
                 # decoder; matches distill_rsd), image back to fp32 for the losses
-                img = vqgan.decode(pred.to(vdt), force_not_quantize=True).float().clamp(-1, 1)
+                img = (
+                    vqgan.decode(pred.to(vdt), force_not_quantize=True)
+                    .float()
+                    .clamp(-1, 1)
+                )
                 # reference the roundtrip-consistent target decode(z0), NOT raw gt. The frozen
                 # VQ-f4 roundtrip is color-tinted on this art data (measured ~[+2.5 R, +0.9 B]
                 # u8 on content crops), so comparing decode(pred) against raw gt puts the
@@ -383,7 +507,11 @@ def main():
                 # signal is untouched. Kept as a separate no_grad decode (not fused into the pred
                 # decode) so no decoder activations are stored for it.
                 with torch.no_grad():
-                    gt_img = vqgan.decode(z0.to(vdt), force_not_quantize=True).float().clamp(-1, 1)
+                    gt_img = (
+                        vqgan.decode(z0.to(vdt), force_not_quantize=True)
+                        .float()
+                        .clamp(-1, 1)
+                    )
                 if lp is not None:
                     with autocast():
                         L_lpips = lp(img, gt_img).mean()
@@ -401,8 +529,12 @@ def main():
 
         if step % args.log_every == 0:
             rate = (step + 1) / (time.time() - t0)
-            line = {"step": step, **{k: round(v, 5) for k, v in logs.items()},
-                    "lr": round(lr_now, 7), "it_s": round(rate, 3)}
+            line = {
+                "step": step,
+                **{k: round(v, 5) for k, v in logs.items()},
+                "lr": round(lr_now, 7),
+                "it_s": round(rate, 3),
+            }
             print(line)
             with open(log_path, "a") as f:
                 f.write(json.dumps(line) + "\n")
@@ -414,14 +546,18 @@ def main():
             save_montage(save_dir / "samples" / f"step_{step:06d}.png", lq, sr, gt)
 
         if step > 0 and step % args.save_every == 0:
-            torch.save({"ema": ema.state_dict(), "model": model.state_dict(), "step": step},
-                       save_dir / f"resshift_{args.version}_{step}.pth")
+            torch.save(
+                {"ema": ema.state_dict(), "model": model.state_dict(), "step": step},
+                save_dir / f"resshift_{args.version}_{step}.pth",
+            )
         if args.max_steps and step + 1 >= args.max_steps:
             print(f"max_steps {args.max_steps} hit — stopping (smoke).")
             break
 
-    torch.save({"ema": ema.state_dict(), "model": model.state_dict(), "step": args.iters},
-               save_dir / f"resshift_{args.version}_final.pth")
+    torch.save(
+        {"ema": ema.state_dict(), "model": model.state_dict(), "step": args.iters},
+        save_dir / f"resshift_{args.version}_final.pth",
+    )
     print(f"done. saved to {save_dir}")
 
 

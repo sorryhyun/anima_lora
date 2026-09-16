@@ -18,7 +18,6 @@ import argparse
 import sys
 from pathlib import Path
 
-import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -101,7 +100,9 @@ def main():
         adapter.apply_to()
         try:
             with torch.no_grad():
-                reg_latent = generate_body(gen_args, anima, ctx, ctx_null, device, seed=s)
+                reg_latent = generate_body(
+                    gen_args, anima, ctx, ctx_null, device, seed=s
+                )
         finally:
             adapter.remove()
         reg_img = decode_latent(vae, reg_latent, device)
@@ -126,7 +127,11 @@ def main():
             print(f"  WARN: pixel_L1={l1:.4f} outside sane (0,1) — plumbing suspect")
 
         if args.save_images:
-            out = Path(__file__).resolve().parent / "results" / f"smoke_{args.label or 'reg'}"
+            out = (
+                Path(__file__).resolve().parent
+                / "results"
+                / f"smoke_{args.label or 'reg'}"
+            )
             out.mkdir(parents=True, exist_ok=True)
             pixels_to_pil(base_img).save(out / f"s{s}_base.png")
             pixels_to_pil(reg_img).save(out / f"s{s}_reg_untrained.png")

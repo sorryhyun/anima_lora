@@ -16,6 +16,7 @@ and hallucinates strokes:
     appear WITH GT supervision (teaches graceful degradation instead of confident
     wrong strokes on inputs effectively downscaled more than ×scale).
 """
+
 import io
 import json
 import random
@@ -38,10 +39,19 @@ def _jpeg(img: Image.Image, q: int) -> Image.Image:
 
 
 class ArtSRDataset(Dataset):
-    def __init__(self, src=None, gt_size=256, scale=4, length=20000,
-                 jpeg_range=(55, 95), blur_prob=0.3,
-                 text_boxes=None, text_crop_prob=0.0,
-                 scale_jitter_prob=0.0, scale_jitter_max=None):
+    def __init__(
+        self,
+        src=None,
+        gt_size=256,
+        scale=4,
+        length=20000,
+        jpeg_range=(55, 95),
+        blur_prob=0.3,
+        text_boxes=None,
+        text_crop_prob=0.0,
+        scale_jitter_prob=0.0,
+        scale_jitter_max=None,
+    ):
         self.src = Path(src or (REPO / "image_dataset")).resolve()
         self.files = sorted(p for p in self.src.rglob("*") if p.suffix.lower() in EXTS)
         if not self.files:
@@ -59,17 +69,24 @@ class ArtSRDataset(Dataset):
             tb_path = Path(text_boxes)
             if tb_path.exists():
                 bx = json.loads(tb_path.read_text())["boxes"]
-                self.text_files = [(p, bx[rel]) for p in self.files
-                                   if (rel := str(p.relative_to(self.src))) in bx and bx[rel]]
+                self.text_files = [
+                    (p, bx[rel])
+                    for p in self.files
+                    if (rel := str(p.relative_to(self.src))) in bx and bx[rel]
+                ]
             if not self.text_files:
-                print(f"ArtSRDataset: WARNING no text boxes usable from {text_boxes} "
-                      f"(missing file or no key overlap with {self.src}) — text "
-                      f"oversampling DISABLED; run sr/scripts/detect_text_boxes.py")
+                print(
+                    f"ArtSRDataset: WARNING no text boxes usable from {text_boxes} "
+                    f"(missing file or no key overlap with {self.src}) — text "
+                    f"oversampling DISABLED; run sr/scripts/detect_text_boxes.py"
+                )
                 self.text_crop_prob = 0.0
-        print(f"ArtSRDataset: {len(self.files)} source images, virtual length {length}, "
-              f"text crops p={self.text_crop_prob} ({len(self.text_files)} files w/ text), "
-              f"scale jitter p={self.scale_jitter_prob} "
-              f"[{self.scale}, {self.scale_jitter_max}]")
+        print(
+            f"ArtSRDataset: {len(self.files)} source images, virtual length {length}, "
+            f"text crops p={self.text_crop_prob} ({len(self.text_files)} files w/ text), "
+            f"scale jitter p={self.scale_jitter_prob} "
+            f"[{self.scale}, {self.scale_jitter_max}]"
+        )
 
     def __len__(self):
         return self.length
@@ -111,6 +128,7 @@ class ArtSRDataset(Dataset):
         lr = gt.resize((max(1, round(g / s)), max(1, round(g / s))), Image.BICUBIC)
         if random.random() < self.blur_prob:
             from PIL import ImageFilter
+
             lr = lr.filter(ImageFilter.GaussianBlur(radius=random.uniform(0.3, 0.8)))
         lr = _jpeg(lr, random.randint(*self.jpeg_range))
         return lr.resize((g, g), Image.BICUBIC)  # upsample back to HR size
@@ -132,5 +150,10 @@ class ArtSRDataset(Dataset):
         if random.random() < 0.5:
             gt = gt.transpose(Image.FLIP_LEFT_RIGHT)
         lq = self._degrade(gt)
-        to_t = lambda p: torch.from_numpy(np.asarray(p, np.float32) / 127.5 - 1).permute(2, 0, 1)
+
+        def to_t(p):
+            return torch.from_numpy(np.asarray(p, np.float32) / 127.5 - 1).permute(
+                2, 0, 1
+            )
+
         return {"gt": to_t(gt), "lq": to_t(lq)}
