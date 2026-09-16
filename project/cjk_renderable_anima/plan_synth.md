@@ -1,5 +1,26 @@
 # plan_synth — the S line, live plan (rows on self-generated scene composites)
 
+> **Status 2026-09-16 (afternoon):** branch C is **done** — the 53k table
+> was read in row space, at the adapter output, by transplant and by a
+> pinned-trigger arm ([`findings_seed.md`](findings_seed.md) is the
+> one-place summary). Verdicts: one shared trigger direction (18 % of the
+> energy, ⟂ the pretrained quote direction Q under every frame incl. `She
+> is saying`) + near-orthogonal residuals, no manifold to amortise;
+> flat-trained identity does not transfer onto the composite trigger
+> (0/64 for two flat donors), composite-trained identity does (23/64);
+> inheriting the trigger buys **no steps** (`--pin_dir`: 54 = 54 at 2 k,
+> 41 vs 39 at 500) — **composite exposure per row is the cost, and the
+> levers left are per item** (rows per composite, glyph size). Katakana's
+> miss is not row-space interference. **Decision (user, 09-16): next is
+> branch B as originally planned** — finish the `scenes_sl1` pool
+> (resumed at 1 208 / 3 400), render sentences / meaningful multi-token
+> strings into the scenes, and **continue training warm-started from the
+> 53k table** (`--init_rows`; it holds hiragana / kanji identity and the
+> trigger, lacks words / katakana / small kana / sentences — all
+> exposure). A rides inside B (punctuation rows through the phrases). The
+> 92-kana interference arm is demoted to *only if katakana still fails
+> after sentence exposure*.
+>
 > **Status 2026-09-16 (morning):** the micro loop is **closed** — the
 > frame-mix 2×2 on 6 rows (table in *Frame-mix 2×2*) settled the last
 > two mechanism questions: **frames are the lever** (swap hits 23 → 46
@@ -283,10 +304,22 @@ belongs here: **92 basic kana at 23 000 steps** (≈ 1 000 draws per row,
 ≈ 2.5 h) — if katakana holds there, the 53k katakana loss was
 interference at 433 rows; if not, it is render-side.
 
-Order of record: **C first** (no GPU, reads the run already paid for),
-then the 92-kana arm, then B once wrapping is in and sl1 has landed; A
-rides inside B. The 108k full-scale gate run waits for the 92-kana
-answer.
+Order of record (revised 2026-09-16 afternoon, user): C is done
+(`findings_seed.md`); **B is next** — (1) `scenes_sl1` finishes (resumed,
+job `20260916-114945-8f389e`); (2) the wrapping fix in `render_into_scene`
+/ `region_capacity` so a phrase draws as 2–3 lines instead of falling
+back to a single; (3) phrase share pinned via `--natural_frac`, punctuation
+rows in through `--phrase_pieces` (A rides here), `drop_symbols` applied
+to the phrase file; (4) the arm: sentence / multi-token composites on
+`sl1` + s1 + s0, **warm-started from the 53k table** (`--init_rows
+output/wake_probe/rows_synth_full_fm10k_full_s53k_qoff/trained.pt`, no
+`c_flat` so its rows load unchanged), read on `phrase` vs `phrase_held`,
+`word`, `swap`, and the flat singles as the regression guard. The
+per-item exposure levers from `findings_seed.md` (every piece in a phrase
+gets gradient from the same draw; glyph size) are what this arm buys
+over the seed. The 92-kana arm runs only if katakana still fails after
+sentence exposure; the 108k gate run is re-based on the warm-started
+sentence table.
 
 Flat 0 is measured and closed (2026-09-15 20:50,
 `rows_synth_micro6_c10_m6c10_s2k_flat0`): seed-0 wipes unchanged (11/32),

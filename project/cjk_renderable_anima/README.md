@@ -129,6 +129,7 @@ larger piece misses the row (the `eval_coverage.json` line).
 | `plan.md` | forward plan — phases, gates, kill criteria, recipe of record |
 | `deploy_plan.md` | Hub v2 layout (`old/ delta/ comfy/ diffusers/`), bake, pre-upload gates, license, migration |
 | `findings.md` | settled verdicts, rulers, gotchas, do-not-re-propose |
+| `findings_seed.md` | what the 53k full-inventory table taught (2026-09-16): its evals, row-space geometry, adapter-output vs Q, transplant, pinned-trigger arms — the one-place summary for the seed question |
 | `reports/README.md` | index of the dated run record — W0–W2, the 09-13 plan as written, W2d, words/strings, canvas/scenes, S0/S0b, micro loop (split out of the former `history.md` 2026-09-15) |
 | `reports/wake_w0_w2_2026_09_13.md` | W0–W2: hypothesis, Probe 0/1, address geometry, the 256² / 24-kana / balanced / σ-band arms, kanji probe |
 | `probes/wake_probe.py` | the instrument's entry point — stages salad / data / train / eval / classify / classify_str / native |
