@@ -6,7 +6,7 @@
 > per-row residuals. Question (user): flat font data teaches identity
 > cheaply but a flat-only table wipes the scene; can a new glyph be
 > trained flat-only if it inherits the composite-trained m̂? No-training
-> test (`probes/transplant_table.py` + the `native` stage, 128 renders per
+> test (`src/probe/transplant_table.py` + the `native` stage, 128 renders per
 > cond, あ か す 日 × 8 held-out scene prompts × 2 seeds, `en` clause,
 > both readers): **a flat-only donor's residual (P0b 24 k, Run 3 8 k) on
 > the 53k m̂ renders 0/64 — indistinguishable from m̂ alone (scene kept,
@@ -94,7 +94,7 @@ donor's own rate, か and 日 far below it.
 
 ## Pinned arms (launched 10:25, `--pin_dir`; results below when in)
 
-`wake/trainables.py::_pin_from` + `ExtDelta.pinned`: every trained row
+`src/train/trainables.py::_pin_from` + `ExtDelta.pinned`: every trained row
 gets a fixed `a_fam · m̂_fam` from the 53k table (kana 0.132, other 0.333,
 `--pin_coef fam` — the honest new-row setting, no per-row leak from the
 53k), the trainable `raw` is the residual only and is re-projected ⟂ m̂_fam

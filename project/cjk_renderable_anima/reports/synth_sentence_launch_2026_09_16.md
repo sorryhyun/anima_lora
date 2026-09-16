@@ -8,7 +8,7 @@
 > section: the sentence arm was stopped. `plan_synth.md` now carries only
 > what is still to run.
 >
-> Index: [`README.md`](README.md). Backticked paths (`probes/…`, `plan_synth.md`,
+> Index: [`README.md`](README.md). Backticked paths (`src/…`, `plan_synth.md`,
 > `output/…`) are relative to the line root `project/cjk_renderable_anima/` or
 > the repo root. Relative doc links below (`findings_seed.md`, `synth.md`,
 > `reports/…`) were written from the line root.
@@ -277,7 +277,7 @@ cause: fonts, the JA readers' katakana bias) — and the geometry of the
 learned rows (cos between hit and miss rows, hiragana vs katakana
 clusters; the wake geometry tools in `wake_geometry.py`). **Geometry
 read 2026-09-16** (`reports/rows_manifold_2026_09_16.md`,
-`probes/rows_manifold_probe.py`): one shared direction (18 % of the
+`src/bench/rows_manifold.py`): one shared direction (18 % of the
 energy, the same one S0/S0b rows shared, ⟂ Q at the adapter output) plus
 near-orthogonal residuals; ば↔ぱ-type small-mark locality only; hit
 tracks along-m̂ (+0.32) and exposure (+0.24), not crowding (−0.09);
@@ -404,8 +404,8 @@ swap), argv in `README.md` *How to run*. Three earlier submissions the same
 evening (19:48, 20:03, 20:11) were killed during their data stage as the
 user read the smoke sheets — one column for the short kind, two columns at
 most for sentences, 6-glyph sentences as one column, two scenes out. What
-changed against the stopped arm, all in `stage/synth.py` / `wake/render.py`
-/ `wake/cli.py`:
+changed against the stopped arm, all in `src/data/synth.py` / `src/common/render/scene.py`
+/ `src/cli/data.py`:
 
 - **Hard kind quotas** (`--scene_mix single=0.1,short=0.5,sentence=0.4`):
   the composites' kinds are counts, shuffled. **Text first, then a scene

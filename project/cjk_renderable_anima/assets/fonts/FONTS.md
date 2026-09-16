@@ -3,7 +3,7 @@
 Picked from https://oekaki-zukan.com/articles/516 (user, 2026-09-15) — the
 comic-lettering set the base model's training captions were drawn in. Binaries
 are gitignored (48 MB); this file and `licenses/` are tracked. `find_fonts()`
-(`probes/wake/render.py`) lists Noto CJK plus every `*.ttf` / `*.otf` here, and
+(`src/common/render/flat.py`) lists Noto CJK plus every `*.ttf` / `*.otf` here, and
 `pick_font()` draws only among fonts whose cmap covers the string.
 
 | file | font | role (per the article) | licence | source |

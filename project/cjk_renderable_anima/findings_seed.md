@@ -9,7 +9,7 @@
 > the run itself. One screen per topic; the dated record is
 > [`reports/rows_manifold_2026_09_16.md`](reports/rows_manifold_2026_09_16.md)
 > and [`reports/transplant_2026_09_16.md`](reports/transplant_2026_09_16.md),
-> the instruments `probes/rows_manifold_probe.py`, `probes/transplant_table.py`
+> the instruments `src/bench/rows_manifold.py`, `src/probe/transplant_table.py`
 > and the train flags `--pin_dir / --pin_coef / --pin_orth`. Verdicts are
 > also folded into [`findings.md`](findings.md); this file is the
 > one-place summary for the seed question.

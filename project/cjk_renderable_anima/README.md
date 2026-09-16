@@ -36,7 +36,7 @@ reads of hand-lettered SFX — read before trusting `line` / `corpus` evals.
 | **One ext row can be a multi-glyph word** — the DiT reads a row as a *unit*, not a glyph | Run 3: します 2/2, してる 2/2, きた こう いや もう ッド from one row each (9/32 at 40 renders/row) | `reports/wake_words_strings_2026_09_14.md` Run 3 |
 | A sequence of trained addresses renders exactly **one** unit; which one is not positional | Run 3 `line` 0/32 with row coverage 39/39 (そオニ→ニ, ほらそれ→ら, いやいい→いい, なにそれ→な) | `reports/wake_words_strings_2026_09_14.md` Run 3 |
 | **A static row table can carry order and count** — strings arm (no singles, 2–4-piece random strings, band 0.5–0.9): unseen `str3` 3/16, `flip` 4/48 with first glyph = caption's first piece 28/48 vs last 5/48, `line` 2/32 (from 0); singles fell 34 → 5/36 because the rows absorbed the multi-unit prior; repeat mode is the main miss | `reports/wake_words_strings_2026_09_14.md` Strings arm result | `output/wake_probe/encoder_ws_w120_s8k_strings_warm/` |
-| **The frozen adapter + DiT read T5 piece sequences in order** — nonsense 4–5-piece EN words (GLORPAX, MIZUKANE) render 22/24, WAY NO in the given order; EN control words were multi-piece all along (HELLO = ▁H·ELL·O) | `probes/order_probe.py`, base model, no delta | `reports/wake_words_strings_2026_09_14.md` Order probe |
+| **The frozen adapter + DiT read T5 piece sequences in order** — nonsense 4–5-piece EN words (GLORPAX, MIZUKANE) render 22/24, WAY NO in the given order; EN control words were multi-piece all along (HELLO = ▁H·ELL·O) | `src/probe/order_probe.py`, base model, no delta | `reports/wake_words_strings_2026_09_14.md` Order probe |
 | **The render trigger and the flat canvas are both common to every flat item, so one shared vector takes both** — S0b's cap 0.75 → 1.5 moved the trigger from `f` into `c_flat` (`f` alone 25 → 1 hit); a P0b warm start keeps identity but never grows a trigger (0/64); the pretrained quoted-EN direction Q is a canvas-free trigger but halves exact hits at inference (S0 hit & kept 15 → 9) | `findings.md` *Settled — trigger vs canvas*; `reports/synth_s0_s0b_2026_09_15.md` | `output/wake_probe/rows_synth_s0b_s24k_S0b/`, `…/native_q/` |
 | Kanji at scale is an exposure budget, not a research line | Run 2: trained composites render, held-out composites are kana; jōyō 2 136 ≈ one GPU-day in one table | `reports/wake_w2d_encoder_2026_09_13_14.md` Run 2 |
 
@@ -55,7 +55,7 @@ A vocab pack delta: `output/wake_probe/encoder_wd_w120_s8k_fres_warm/trained.pt`
 rows (92 kana + 112 common words + eval pieces), `free` (the per-row
 residual), `encoder` (the glyph CNN, only needed to extend the table),
 `row_text` (row → piece text). Loading it into the pack is the existing
-`ExtDelta` hook (`probes/wake/hooks.py`); baking it into a shipped pack
+`ExtDelta` hook (`src/common/hooks.py`); baking it into a shipped pack
 (safetensors + json, new digest → `make preprocess-te ARGS=--overwrite` for
 CJK captions) is not done yet.
 
@@ -64,7 +64,7 @@ Inventory facts that matter when extending it:
 - The pack's ext rows are **Qwen pieces**. Qwen merges many JA words into one
   piece (ありがとう / いい / って / 明日 → one row each); 大丈夫 → 大+丈夫 and
   ドキドキ → ド+キ+ド+キ are sequences and inherit the one-unit limit.
-- The kana inventory (`KANA` in `probes/wake/common.py`) is the unvoiced 46 + 46
+- The kana inventory (`KANA` in `src/common/text.py`) is the unvoiced 46 + 46
   only: no dakuten / handakuten / small kana singles. Those reach the table
   only inside word pieces (じゃ って いっぱい プロ); び appears nowhere.
 - Every row needs its own exposure (≈ 40 renders/row got words to 9/32,
@@ -95,7 +95,7 @@ the repo).
 # repo (dialogue_2_10.tsv = dialogue_3_10.tsv + its 2-piece lines,
 # <manga109s>/derived/make_dialogue_2_10.py).
 make daemon-run ARGS="--label sent --stall-timeout 0 --queue \
-    project/cjk_renderable_anima/probes/wake_probe.py --stage data train eval --arm rows \
+    project/cjk_renderable_anima/src/wake_probe.py --stage data train eval --arm rows \
     --scenes sl1w --scene_drop sl1w:332,957 --scene_min_tokens 900 --data_tag synth_sent_q \
     --units kana --units kana_ext --units kanji:200 --units words:100/held=8 \
     --units 'list:、,。,・,ー,～,〜,！,？,「,」,！！,・・・,・・・・,っ,ッ' \
@@ -111,19 +111,19 @@ make daemon-run ARGS="--label sent --stall-timeout 0 --queue \
     --lr_rows 1e-3 --lr_decay cosine --free_residual 1e-3 --box_weight 4 \
     --seeds 2 --no_floor --c_flat 0 --arm_tag sent_s24k"
 make daemon-run ARGS="--label sent-native --stall-timeout 0 --queue \
-    project/cjk_renderable_anima/probes/wake_probe.py --stage native --arm rows \
+    project/cjk_renderable_anima/src/wake_probe.py --stage native --arm rows \
     --data_tag synth_sent_q --arm_tag sent_s24k --native_chars あ,か,す,日 \
     --native_clauses en,swap --seeds 2 --delta_parts full"
 
 # Archived — the W2d Run 3 encoder recipe (hybrid g + f). The encoder arm has not
 # run since 2026-09-14; it is kept because extending the hybrid table needs it,
 # and because a rows warm start reads an encoder source's shared `common` vector.
-.venv/bin/python project/cjk_renderable_anima/probes/wake_probe.py \
+.venv/bin/python project/cjk_renderable_anima/src/wake_probe.py \
     --stage data --arm encoder --data_tag wd \
     --units kana --units words:120/held=8 --n_single 40
 
 make daemon-run ARGS="--label wake-words --stall-timeout 0 --queue \
-    project/cjk_renderable_anima/probes/wake_probe.py --stage train eval --arm encoder \
+    project/cjk_renderable_anima/src/wake_probe.py --stage train eval --arm encoder \
     --data_tag wd --arm_tag w120_s8k_fres_warm --train_steps 8000 --batch 4 \
     --t_min 0.7 --t_max 0.9 --compile 1 --grad_ckpt 0 --aggressive_recompute 0 \
     --seeds 2 --no_floor --lr_common 1e-3 --common_cap 0.75 --out_scale 0.0625 \
@@ -136,7 +136,7 @@ make daemon-run ARGS="--label wake-words --stall-timeout 0 --queue \
 
 Outputs land in `output/wake_probe/<arm>_<data_tag>_<arm_tag>/`: `report.md`
 (per-group CER / exact), `eval_reads.json` (every render, both readers),
-`sheet_<group>.png`, `train_log.json`, `trained.pt`. `probes/wake_geometry.py`
+`sheet_<group>.png`, `train_log.json`, `trained.pt`. `src/bench/wake_geometry.py`
 reads any arm's table (`--table free|raw`, `--pairs 明=日+月,…`).
 
 Stages: `salad` (base-model probe), `data`, `train`, `eval`, `classify`
@@ -149,7 +149,7 @@ of record** since the S line opened, 2026-09-15; every run since
 EN, kept as the negative control), `encoder` (W2d hybrid; last run
 2026-09-14, kept to extend the hybrid table).
 
-**What the table trains on is one flag: `--units`** (`probes/wake/units.py`),
+**What the table trains on is one flag: `--units`** (`src/data/units.py`),
 repeated once per source — `kana`, `kana_ext`, `kanji:200`,
 `words:100/held=8`, `chars:あかす出人日` (a hand-picked base, the
 textual-inversion regime) and `list:、,。,！！` (literal ext-row units, the
@@ -185,11 +185,13 @@ larger piece misses the row (the `eval_coverage.json` line).
 | `freetext.md` | the shelved FreeText line (2026-06) re-read against this one: its "no Korean glyph prior" root cause falls to krzh16; its Stage-1 attention localizer is a possible render-free ruler for wipe / frame binding / katakana (not built) |
 | `reports/README.md` | index of the dated run record — W0–W2, the 09-13 plan as written, W2d, words/strings, canvas/scenes, S0/S0b, micro loop (split out of the former `history.md` 2026-09-15) |
 | `reports/wake_w0_w2_2026_09_13.md` | W0–W2: hypothesis, Probe 0/1, address geometry, the 256² / 24-kana / balanced / σ-band arms, kanji probe |
-| `probes/wake_probe.py` | the instrument's entry point — stages salad / data / train / eval / classify / classify_str / native |
-| `probes/stage/` | one module per stage (salad, data, train, classify, eval + native) |
-| `probes/wake/` | the stages' shared plumbing — models, hooks, readers, renders, inventories, encoder, argparse |
-| `probes/wake_geometry.py` | row-table geometry (PR, pairwise cos, composition pairs) |
-| `probes/order_probe.py` | base-model order control — nonsense multi-piece EN words, no delta |
+| `src/wake_probe.py` | the instrument's entry point — stages salad / data / train / eval / classify / classify_str / native / enref / scenes; registry in `src/stages.py` |
+| `src/common/` | plumbing three or more stages share — paths, text metrics, prompts, shapes, models, hooks, readers, bubble, `render/{flat,scene}` |
+| `src/data/` `src/train/` `src/eval/` `src/scenes/` | one package per role: its stage module(s) plus what only that stage reads (units + inventory; trainables + encoder; enref, native, classify, salad; judge) |
+| `src/cli/` | argparse, one module per reading stage |
+| `src/probe/` | standalone model-running questions — `order_probe.py` (base-model EN order control), `transplant_table.py`, `merge_tables.py`, `quote_dir_save.py` |
+| `src/bench/` | rulers over a finished table, no sampler — `wake_geometry.py` (PR, pairwise cos, composition pairs), `rows_manifold.py`; local name, no repo `result.json` envelope |
+| `tests/` | line-local tests (imports, CLI golden dump, units / shapes / CER / kinsoku): `.venv/bin/python -m pytest project/cjk_renderable_anima/tests` — not part of the repo suite |
 | `formulation.pdf`, `.tex` | the training written as equations |
 
 ## Open

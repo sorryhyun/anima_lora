@@ -31,8 +31,8 @@ whose output ships as a vocab pack.
   **`probes/wake_probe.py` (+ `wake_geometry.py`) here is frozen** — the
   single-file ancestor of the wake instrument, last touched 2026-09-14 when
   the line moved. The live instrument is the split package
-  [`../cjk_renderable_anima/probes/`](../cjk_renderable_anima/probes/)
-  (`wake_probe.py` entry point + `stage/` + `wake/`); every run since is
+  [`../cjk_renderable_anima/src/`](../cjk_renderable_anima/src/)
+  (`wake_probe.py` entry point + `stages.py` + role packages); every run since is
   there. Read this copy only for how a pre-split run was invoked.
 - `reports/` — dated reports, gitignored (private mirror); the wake report
   `wake_w0_w2_2026_09_13.md` is there. Reports and the eight plan files from

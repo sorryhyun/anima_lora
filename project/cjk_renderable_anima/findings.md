@@ -88,7 +88,7 @@ shipped; the cap-only isolation run (`s24k_S0b_cap075`) is the live arm.
   The wake EN control was multi-piece all along (HELLO = ▁H·ELL·O). Base
   model, no delta: nonsense 4–5-piece words (GLORPAX, MIZUKANE) 22/24
   exact, two-word swaps 6/6 with "WAY NO" in the *given* order
-  (`probes/order_probe.py`). There is no T5 encoder in the loop; the
+  (`src/probe/order_probe.py`). There is no T5 encoder in the loop; the
   T5-side table is the adapter's query vocabulary, the adapter (6 blocks,
   self-attn + Qwen cross-attn, **both RoPE'd**) bakes position into each
   vector, and the DiT's cross-attention — which has no text-side PE — reads
@@ -189,7 +189,7 @@ the data mix.
   あ↔ア / kanji-component random). `reports/rows_manifold_2026_09_16.md`.
 - **Identity is conditional on the trigger it was trained with, and only
   composite training makes it modular; inheriting the trigger buys no
-  steps.** Transplant probe (`probes/transplant_table.py`, no training):
+  steps.** Transplant probe (`src/probe/transplant_table.py`, no training):
   a flat-only donor's residual (P0b 24 k, Run 3 8 k; own shared direction
   projected out) on the 53k m̂ renders 0/64 in scenes at any scale, the
   same as m̂ alone (scene kept, floor garble), while the composite-trained

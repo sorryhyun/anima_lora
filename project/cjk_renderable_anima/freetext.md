@@ -66,7 +66,7 @@ June (abstain on low lift).
 
 Instrument: `_archive/bench/freetext/stage1_localize.py` (`capture_maps`,
 `dump_maps_npz`) + `stage1.py`; hook it behind the `ExtDelta` hook
-(`probes/wake/hooks.py`) on a trained table and read the map for the row
+(`src/common/hooks.py`) on a trained table and read the map for the row
 token vs the frame tokens. Not built; no job.
 
 ## Ideas noted, not planned

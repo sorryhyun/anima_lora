@@ -4,7 +4,7 @@
 > (a row can be a word; a sequence renders one row), the base-model order probe
 > (sequence reading is pretrained), the `classify_str` σ diagnostic (order at
 > σ 0.5–0.8), and the strings arm (a static table carries order + count).
-> Index: [`README.md`](README.md). Backticked paths (`probes/…`, `plan_synth.md`, `output/…`) are relative to the line root `project/cjk_renderable_anima/` or the repo root, as they were in `history.md`.
+> Index: [`README.md`](README.md). Backticked paths (`src/…`, `plan_synth.md`, `output/…`) are relative to the line root `project/cjk_renderable_anima/` or the repo root, as they were in `history.md`.
 
 ## Run 3 — word addresses (2026-09-14 pm): a row can be a word; a sequence is still one row
 
@@ -95,7 +95,7 @@ T5 tokenizer says otherwise: HELLO = ▁H·ELL·O, SORRY = ▁S·OR·RY, HELP =
 ▁·HE·LP — the EN 24/24 was already a multi-piece result. Real words could
 still be recognised as wholes by the adapter's self-attn, so the
 discriminating probe is *nonsense* multi-piece words, base model, no
-delta: `probes/order_probe.py` (job `20260914-131417-18883e`, 42 renders
+delta: `src/probe/order_probe.py` (job `20260914-131417-18883e`, 42 renders
 in 2.5 min; `output/wake_probe/order_probe/`).
 
 | group | n | exact (sfx / vl) | misses |

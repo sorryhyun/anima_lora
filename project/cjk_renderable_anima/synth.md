@@ -97,7 +97,7 @@ anchor gives one clean short bubble. The caption swap is one string.
 
 ## Scene prompts
 
-A combinatorial generator (`stage/scenes.py`) that writes prompts **in the
+A combinatorial generator (`src/scenes/stage.py`) that writes prompts **in the
 dataset's caption format** — the first smoke (generic tag bags, no artist,
 no character, unsorted) drew a generic average that was off-distribution
 for the base (user, 2026-09-14): `rating` (safe / sensitive) → `count`
@@ -126,7 +126,7 @@ held-out eval. Rendering at 2× and downsampling changes nothing (8 % vs
 
 ## Instrument (as built, in build order)
 
-1. `--stage scenes` (**done**, `stage/scenes.py`): prompt generator
+1. `--stage scenes` (**done**, `src/scenes/stage.py`): prompt generator
    (`--scene_n`, `--scene_shapes` = the S0 pool), `prompts.jsonl` written
    before the first render, batched text-encoder → DiT → VAE per shape
    (`--scene_batch 4`, per-item seeds as one noise tensor each), detector +
@@ -138,8 +138,8 @@ held-out eval. Rendering at 2× and downsampling changes nothing (8 % vs
    `scenes_<tag>/{scenes.jsonl, scenes_all.jsonl, report.md, sheet_kept.png,
    sheet_rejected.png}`. `--scene_rejudge 1` re-applies the filter to an
    existing run from its stored reads on CPU. Reused by every later arm.
-2. `--stage data --scenes <tag> --scene_frac 0.4` (**done**, `stage/synth.py`
-   + `wake/render.py::render_into_scene` + `wake/bubble.py`): erase + draw +
+2. `--stage data --scenes <tag> --scene_frac 0.4` (**done**, `src/data/synth.py`
+   + `src/common/render/scene.py::render_into_scene` + `src/common/bubble.py`): erase + draw +
    caption; composite items keep `src: "scene"`, `shape` from the scene,
    `box` = the drawn text box, `kind` ∈ single / phrase. The erase paints
    the usable region ∪ the text box padded by a quarter, **only inside the
@@ -182,7 +182,7 @@ held-out eval. Rendering at 2× and downsampling changes nothing (8 % vs
 
 Added 2026-09-15 (S0b, `reports/synth_s0_s0b_2026_09_15.md` "S0b build + launch"):
 
-8. **`anchor_residual` / `erase_miss`** (`wake/render.py`, `stage/scenes.py`):
+8. **`anchor_residual` / `erase_miss`** (`src/common/render/scene.py`, `src/scenes/judge.py`):
    the erase geometry is `erase_paint`; the judge measures the share of the
    anchor's ink the paint would leave and rejects above
    `--scene_max_residual` (0.5). 12 of s0's 186 kept scenes had the flood on

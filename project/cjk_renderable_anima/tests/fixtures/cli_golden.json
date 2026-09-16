@@ -1,0 +1,2184 @@
+[
+ {
+  "group": "options",
+  "option_strings": [
+   "-h",
+   "--help"
+  ],
+  "dest": "help",
+  "default": "==SUPPRESS==",
+  "choices": null,
+  "nargs": 0,
+  "type": "None",
+  "help": "show this help message and exit",
+  "action": "_HelpAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "run",
+  "option_strings": [
+   "--stage"
+  ],
+  "dest": "stage",
+  "default": [
+   "all"
+  ],
+  "choices": [
+   "all",
+   "salad",
+   "data",
+   "train",
+   "eval",
+   "classify",
+   "classify_str",
+   "native",
+   "enref",
+   "native_rescore",
+   "scenes"
+  ],
+  "nargs": "+",
+  "type": "None",
+  "help": null,
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "run",
+  "option_strings": [
+   "--arm"
+  ],
+  "dest": "arm",
+  "default": "rows",
+  "choices": [
+   "rows",
+   "rows_adapter",
+   "encoder"
+  ],
+  "nargs": null,
+  "type": "None",
+  "help": null,
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "run",
+  "option_strings": [
+   "--device"
+  ],
+  "dest": "device",
+  "default": "cuda",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": null,
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "run",
+  "option_strings": [
+   "--seed"
+  ],
+  "dest": "seed",
+  "default": 0,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": null,
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "run",
+  "option_strings": [
+   "--data_tag"
+  ],
+  "dest": "data_tag",
+  "default": "",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "suffix for output/wake_probe/data_<tag> and <arm>_<tag>",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "run",
+  "option_strings": [
+   "--arm_tag"
+  ],
+  "dest": "arm_tag",
+  "default": "",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "suffix for the arm dir only (<arm>_<data_tag>_<arm_tag>): a second train recipe on the same data without overwriting the first",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "generation",
+  "option_strings": [
+   "--steps"
+  ],
+  "dest": "steps",
+  "default": 28,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "inference steps",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "generation",
+  "option_strings": [
+   "--cfg"
+  ],
+  "dest": "cfg",
+  "default": 4.0,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": null,
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "generation",
+  "option_strings": [
+   "--seeds"
+  ],
+  "dest": "seeds",
+  "default": 2,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "seeds per prompt (salad: 3 recommended)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "generation",
+  "option_strings": [
+   "--salad_size"
+  ],
+  "dest": "salad_size",
+  "default": 768,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": null,
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "generation",
+  "option_strings": [
+   "--train_size"
+  ],
+  "dest": "train_size",
+  "default": 512,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": null,
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "generation",
+  "option_strings": [
+   "--eval_size"
+  ],
+  "dest": "eval_size",
+  "default": 512,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": null,
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "generation",
+  "option_strings": [
+   "--eval_shape"
+  ],
+  "dest": "eval_shape",
+  "default": "",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "eval: WxH canvas instead of --eval_size² (e.g. 384x512); pair with --eval_tag",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data",
+  "option_strings": [
+   "--units"
+  ],
+  "dest": "units",
+  "default": null,
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "data: what the ext table trains on — repeat once per source, `kind[:arg][*weight][/held=K]` over kana | chars | kana_ext | kanji | words | list: e.g. `kana`, `kana_ext`, `kanji:200`, `words:100/held=8`, `chars:あかす出人日`, `list:、,。,！！`. Default `kana` (the 92); name no kana source to train punctuation / kanji / words alone. `*W` sets the draw weight in the S-line singles pool, `/held=K` holds K units out. Typed order never changes the data — see data/units.py",
+  "action": "_AppendAction",
+  "metavar": "SPEC",
+  "required": false
+ },
+ {
+  "group": "data",
+  "option_strings": [
+   "--shapes"
+  ],
+  "dest": "shapes",
+  "default": "",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "data: mixed canvas shapes, comma list of side or WxH with an optional :weight (e.g. '384,448,512:2,384x512,512x384'); every font item draws one, corpus crops draw from the squares; train then batches one shape per step and caches latents per shape. Empty = 512² renders at --train_size (old dirs)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data",
+  "option_strings": [
+   "--n_single"
+  ],
+  "dest": "n_single",
+  "default": 6,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "font renders per kana",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data",
+  "option_strings": [
+   "--n_combo"
+  ],
+  "dest": "n_combo",
+  "default": 700,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": null,
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data",
+  "option_strings": [
+   "--n_corpus"
+  ],
+  "dest": "n_corpus",
+  "default": 600,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": null,
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data",
+  "option_strings": [
+   "--balanced"
+  ],
+  "dest": "balanced",
+  "default": 0,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "data: groups of N distinct strings sharing one layout (font, canvas, bubble, glyph size/position); train then batches one group per step (W2a; needs --batch N). 0 = shuffled items",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data",
+  "option_strings": [
+   "--layout"
+  ],
+  "dest": "layout",
+  "default": "v1",
+  "choices": [
+   "v1",
+   "jitter"
+  ],
+  "nargs": null,
+  "type": "None",
+  "help": "data: v1 = pre-W2a renders (big centred dark glyph on a light canvas, bit-identical rebuilds); jitter = random position / size / ink colour / outline / dark backgrounds / bubble box (the 2026-09-14 data lever)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data",
+  "option_strings": [
+   "--word_min_len"
+  ],
+  "dest": "word_min_len",
+  "default": 2,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "data: shortest piece `--units words:N` will count as a word",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data",
+  "option_strings": [
+   "--n_word_eval"
+  ],
+  "dest": "n_word_eval",
+  "default": 16,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "data: trained words in eval group word",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data",
+  "option_strings": [
+   "--n_line_eval"
+  ],
+  "dest": "n_line_eval",
+  "default": 16,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "data: held-out corpus lines of 2-3 pieces, every piece trained (eval group line)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data",
+  "option_strings": [
+   "--line_max_len"
+  ],
+  "dest": "line_max_len",
+  "default": 8,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "data: corpus line length cap in word mode",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data",
+  "option_strings": [
+   "--strings_only"
+  ],
+  "dest": "strings_only",
+  "default": false,
+  "choices": null,
+  "nargs": 0,
+  "type": "None",
+  "help": "data: strings arm — no singles; 2–4-piece random-order strings of trained rows only (needs --units words:N)",
+  "action": "_StoreTrueAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data",
+  "option_strings": [
+   "--n_strings"
+  ],
+  "dest": "n_strings",
+  "default": 6000,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "data: --strings_only font items",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data",
+  "option_strings": [
+   "--single_frac"
+  ],
+  "dest": "single_frac",
+  "default": 0.0,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "data: --strings_only fraction of font items that are singles (plan P1 mixed distribution)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data",
+  "option_strings": [
+   "--word_frac"
+  ],
+  "dest": "word_frac",
+  "default": 0.25,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "data: --strings_only P(slot is a trained word)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data",
+  "option_strings": [
+   "--n_flip_eval"
+  ],
+  "dest": "n_flip_eval",
+  "default": 12,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "data: --strings_only clean kana pairs, both orders → group flip",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data",
+  "option_strings": [
+   "--n_str3_eval"
+  ],
+  "dest": "n_str3_eval",
+  "default": 8,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "data: --strings_only clean 3-kana strings → group str3",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--scenes"
+  ],
+  "dest": "scenes",
+  "default": "",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "data: S-line mix from output/wake_probe/scenes_<tag> — flat singles (the rest) + scene composites (--scene_frac) + natural phrases on flat canvases (--natural_frac) + random-order strings (--strings_frac); replaces the singles×n_single + combos + corpus-crop mix",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--n_items"
+  ],
+  "dest": "n_items",
+  "default": 16000,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "data: --scenes total items",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--phrase_file"
+  ],
+  "dest": "phrase_file",
+  "default": "",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "data: TSV `line[\\tbook[\\tn_pieces]]` replacing the corpus as the phrase source (--natural_frac items and the composites' phrase kind); held set = --phrase_held_books whole books → eval group phrase_held, plus group `phrase` (trained lines)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--phrase_pieces"
+  ],
+  "dest": "phrase_pieces",
+  "default": 0,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "data: with --phrase_file, add its N most frequent pieces outside the inventory as rows (trained through the phrases only; no singles / evals)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--phrase_held_books"
+  ],
+  "dest": "phrase_held_books",
+  "default": 6,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "data: --phrase_file books held out whole for phrase_held",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--phrase_min_pieces"
+  ],
+  "dest": "phrase_min_pieces",
+  "default": 3,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": null,
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--phrase_max_pieces"
+  ],
+  "dest": "phrase_max_pieces",
+  "default": 10,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": null,
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--scene_drop"
+  ],
+  "dest": "scene_drop",
+  "default": "",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "data: --scenes kept scenes to leave out, `tag:i,i;tag:i` (sl1w:332,957 — bubble-less tall regions the sentence quota reused)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--scene_mix"
+  ],
+  "dest": "scene_mix",
+  "default": "",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "data: --scenes hard per-kind quotas for the composites, e.g. `single=0.1,short=0.5,sentence=0.4` (sentence arm, 2026-09-16): `single` = one unit of the singles pool, `short` = a --phrase_file line of --short_pieces pieces below the sentence floor, `sentence` = a line with >= --sentence_min_letters letters. Texts are drawn uniformly among the lines that fit the bubble; a kind that fits no text re-picks the scene and is never demoted. Empty = the seed behaviour (composites mirror the flat kinds, first fitting line)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--short_pieces"
+  ],
+  "dest": "short_pieces",
+  "default": "2-5",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "data: --scene_mix piece range (Qwen pieces, inclusive) of the `short` kind; the phrase file must carry lines that short (dialogue_2_10.tsv; --phrase_min_pieces 2)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--short_max_lines"
+  ],
+  "dest": "short_max_lines",
+  "default": 1,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "data: --scene_mix columns a `short` item may wrap into (1 = one vertical line, user 2026-09-16; a bubble too low for it is a miss and the scene is re-picked). Sentences use --scene_max_lines",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--sentence_min_glyph"
+  ],
+  "dest": "sentence_min_glyph",
+  "default": 0,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "data: --scene_mix per-glyph floor (px) for the `sentence` kind; 0 = --scene_min_glyph. The sentence arm runs 20 (user, 2026-09-16: a 6-glyph line as one column; at 28 px two of the 276 sl1w bubbles hold it)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--sentence_fill"
+  ],
+  "dest": "sentence_fill",
+  "default": 0.0,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "data: --scene_mix bubble fill for the `sentence` kind; 0 = --scene_fill. The sentence arm runs 0.9",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--scene_fewest_lines"
+  ],
+  "dest": "scene_fewest_lines",
+  "default": 1,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "data: --scene_mix 1 = a text that fits in fewer columns at the glyph floor stays there (one column whenever it fits); 0 = the seed rule (more columns when the glyph gets 1.4x larger)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--short_lexical"
+  ],
+  "dest": "short_lexical",
+  "default": 1,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "data: --scene_mix 1 = a `short` line must carry a word piece (a multi-glyph kana Qwen piece or a kanji): あっ / ぎゃああ / せーの are out, お前 / 待て / 勝先生 stay (user, 2026-09-16: combined glyphs must make words). Costs the words the tokenizer splits into single glyphs (きつね), ~25 %% of the 2–5-piece lines. 0 = every line",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--sentence_min_letters"
+  ],
+  "dest": "sentence_min_letters",
+  "default": 6,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "data: --scene_mix floor for the `sentence` kind — kana + kanji glyphs (at least 4 of them distinct), punctuation / digits not counted, so ハハハ・・・, 何っ！ and ハハハハハハ are not sentences. Lines under it with a `short` piece count are `short`; other lines under it are in no kind",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--scene_vertical"
+  ],
+  "dest": "scene_vertical",
+  "default": 0,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "data: --scenes 1 = tategaki only: a multi-glyph text that does not fit as columns is a miss (re-pick the scene under --scene_mix, shorter text otherwise), never a horizontal line",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--scene_min_tokens"
+  ],
+  "dest": "scene_min_tokens",
+  "default": 0,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "data: --scenes keep only scenes whose canvas is at least this many DiT tokens ((W/16)*(H/16)); 900 keeps the 512² family and drops 448² (784) and 448x512 (896) (user, 2026-09-16)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--scene_frac"
+  ],
+  "dest": "scene_frac",
+  "default": 0.4,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "data: --scenes share of items that are scene composites",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--natural_frac"
+  ],
+  "dest": "natural_frac",
+  "default": 0.2,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "data: --scenes share that are covered corpus phrases in a font on a flat canvas",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--strings_frac"
+  ],
+  "dest": "strings_frac",
+  "default": 0.0,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "data: --scenes share that are random-order 2–4-piece strings (strings-arm recipe; adds the flip / str3 eval groups). S0: 0 (user, 2026-09-14)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--scene_stroke"
+  ],
+  "dest": "scene_stroke",
+  "default": 0.25,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "data: --scenes share of composites whose glyphs get a thin outline in the fill colour (manga lettering over art)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--scene_min_glyph"
+  ],
+  "dest": "scene_min_glyph",
+  "default": 28,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "data: --scenes smallest per-glyph cell (px) a composite may draw; a text that would go smaller is redrawn shorter. 40 through the seed (S0 … 53k); 28 since 2026-09-16 for the sentence line — at 40 a phrase fits 5 %% of sl1w bubbles even wrapped, at 28 + 2 columns 43 %%",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--scene_tall_ar"
+  ],
+  "dest": "scene_tall_ar",
+  "default": 0.0,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "data: --scenes keep only scenes whose headline region is at least this tall for its width (1.0 = taller than wide; 0 = every kept scene). Tategaki pool for the sentence line: sl1w 116/276 at 1.0, 61 at 1.3",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--scene_max_lines"
+  ],
+  "dest": "scene_max_lines",
+  "default": 3,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "data: --scenes columns (tategaki, right-to-left; lines when the text only fits horizontally) a composite may wrap into, cut at Qwen piece boundaries only; more columns win only at 1.4x the glyph. 1 = the single-line seed behaviour; the sentence arm runs 2 (user, 2026-09-16: three columns in a bubble read wrong)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--flat_bubble"
+  ],
+  "dest": "flat_bubble",
+  "default": 0.6,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "data: --scenes share of flat-canvas items (font singles / phrases) drawn inside a speech bubble; the rest are bare-canvas TPL_PLAIN. 1.0 = S0b option (a): one flat layout, so c_flat is one direction (S0 at 0.6 leaked the plain layout into the rows, leak 0.28)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--scene_fill"
+  ],
+  "dest": "scene_fill",
+  "default": 0.9,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "data: --scenes fraction of the bubble's usable region the text block may fill (0.9 = edge to edge, S0; 0.7 leaves manga-like air — at 0.7 the median single glyph is ≈ 50 px on the s0 scenes, 92 %% ≥ 40 px)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--n_phrase_eval"
+  ],
+  "dest": "n_phrase_eval",
+  "default": 16,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "data: --scenes covered held-out corpus lines never trained → group phrase_held",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train",
+  "option_strings": [
+   "--train_steps"
+  ],
+  "dest": "train_steps",
+  "default": 2000,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": null,
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train",
+  "option_strings": [
+   "--batch"
+  ],
+  "dest": "batch",
+  "default": 4,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": null,
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train",
+  "option_strings": [
+   "--lr_rows"
+  ],
+  "dest": "lr_rows",
+  "default": 0.003,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "in units of the mean pack-row norm",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train",
+  "option_strings": [
+   "--lr_adapter"
+  ],
+  "dest": "lr_adapter",
+  "default": 0.0001,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": null,
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train",
+  "option_strings": [
+   "--adapter_rank"
+  ],
+  "dest": "adapter_rank",
+  "default": 16,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": null,
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train",
+  "option_strings": [
+   "--lr_decay"
+  ],
+  "dest": "lr_decay",
+  "default": "none",
+  "choices": [
+   "none",
+   "cosine"
+  ],
+  "nargs": null,
+  "type": "None",
+  "help": "train: lr schedule over --train_steps (cosine to 0; all param groups)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train",
+  "option_strings": [
+   "--grad_ckpt"
+  ],
+  "dest": "grad_ckpt",
+  "default": 1,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": null,
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train",
+  "option_strings": [
+   "--compile"
+  ],
+  "dest": "compile",
+  "default": 1,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "train: per-block torch.compile of the frozen DiT (the OOM remedy of record)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train",
+  "option_strings": [
+   "--activation_memory_budget"
+  ],
+  "dest": "activation_memory_budget",
+  "default": 0.99,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": null,
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train",
+  "option_strings": [
+   "--aggressive_recompute"
+  ],
+  "dest": "aggressive_recompute",
+  "default": 1,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "compile: partitioner aggressive recomputation (−VRAM, +~12 % s/it); 0 when memory allows",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train",
+  "option_strings": [
+   "--t_min"
+  ],
+  "dest": "t_min",
+  "default": null,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "restrict FM timesteps (W2 σ-restriction lever; None = full range)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train",
+  "option_strings": [
+   "--t_max"
+  ],
+  "dest": "t_max",
+  "default": null,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": null,
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train",
+  "option_strings": [
+   "--free_residual"
+  ],
+  "dest": "free_residual",
+  "default": 0.0,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "encoder arm: μ on mean_i ‖f_i‖² for a per-row free residual on the trained rows (row = g(glyph) + f_i; held-out rows get g only). 0 = off. W2d report Run 1d: the semi-amortised hybrid — f carries the identity magnitude the shared head cannot, the L2 pushes what g can explain into g",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train",
+  "option_strings": [
+   "--out_vec_train"
+  ],
+  "dest": "out_vec_train",
+  "default": 0.0,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "train: with --out_vec, add this × the EN shift norm × its direction at every ext position of the adapter output on every step (Q fixed on, so the rows never have to learn the render trigger). The vector is saved into trained.pt and eval / native apply it to every trained cond. 0 = off",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: S line (plan_synth)",
+  "option_strings": [
+   "--box_weight"
+  ],
+  "dest": "box_weight",
+  "default": 1.0,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "train: FM loss weight inside a composite item's swapped text box (1 outside; batch-normalised); 1 = off",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: S line (plan_synth)",
+  "option_strings": [
+   "--c_flat"
+  ],
+  "dest": "c_flat",
+  "default": 0,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "train (rows arm): per-source layout vector added to every trained row on flat-canvas batches only (Δ_r = f_r + 𝟏[flat]·c_flat)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: S line (plan_synth)",
+  "option_strings": [
+   "--lr_c_flat"
+  ],
+  "dest": "lr_c_flat",
+  "default": 0.0,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "train: c_flat lr (0 = --lr_rows)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: S line (plan_synth)",
+  "option_strings": [
+   "--c_flat_cap"
+  ],
+  "dest": "c_flat_cap",
+  "default": 0.75,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "train: ‖c_flat‖ bound in row norms (projected after each step)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: S line (plan_synth)",
+  "option_strings": [
+   "--f_orth"
+  ],
+  "dest": "f_orth",
+  "default": 0.0,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "train: λ · mean_r cos²(f_r, c_flat) guard (0 = off; read `leak` first)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: rows arm",
+  "option_strings": [
+   "--init_rows"
+  ],
+  "dest": "init_rows",
+  "default": "",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "rows arm: warm-start the rows by ext id from another arm's trained.pt (its exported delta.raw). If the source is an encoder arm with a shared ``common`` vector, that vector is subtracted from every row and, when --c_flat is on, seeds c_flat (clipped to --c_flat_cap) — so the flat table starts where the source left it and the composites train f alone. Rows the source never had start at zero. Comma list = several tables in order, a later one overriding by ext id (53k table + punctuation table)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: rows arm",
+  "option_strings": [
+   "--pin_dir"
+  ],
+  "dest": "pin_dir",
+  "default": "",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "rows arm: inherit the shared direction of another arm's trained.pt — every trained row gets a fixed a_r · m̂_fam (kana / other family means of the source table) and only the residual trains (transplant probe 2026-09-16)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: rows arm",
+  "option_strings": [
+   "--pin_coef"
+  ],
+  "dest": "pin_coef",
+  "default": "row",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "rows arm: a_r for --pin_dir — 'row' (the source row's own coefficient, family mean when absent), 'fam' (family mean), or a number",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: rows arm",
+  "option_strings": [
+   "--pin_orth"
+  ],
+  "dest": "pin_orth",
+  "default": 1,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "rows arm: with --pin_dir, project the trainable residual ⟂ m̂_fam after every step (1) or let it re-grow the direction (0)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: encoder arm",
+  "option_strings": [
+   "--lr_enc"
+  ],
+  "dest": "lr_enc",
+  "default": 0.0003,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "encoder arm: AdamW lr on the CNN",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: encoder arm",
+  "option_strings": [
+   "--lr_common"
+  ],
+  "dest": "lr_common",
+  "default": 0.001,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "encoder arm: lr on the shared layout vector c (row-norm units; the rows lr)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: encoder arm",
+  "option_strings": [
+   "--common_cap"
+  ],
+  "dest": "common_cap",
+  "default": 0.75,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "encoder arm: ‖c‖ bound in row norms, applied to the parameter after each step",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: encoder arm",
+  "option_strings": [
+   "--out_scale"
+  ],
+  "dest": "out_scale",
+  "default": 0.015625,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "encoder arm: scale on the zero-init head (raise one notch to 1/16 if spread stays flat)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: encoder arm",
+  "option_strings": [
+   "--kill_spread"
+  ],
+  "dest": "kill_spread",
+  "default": 0.05,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "encoder arm: abort if rel_spread_ref (fixed font, no shift) is below this once --kill_spread_step is reached",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: encoder arm",
+  "option_strings": [
+   "--kill_spread_step"
+  ],
+  "dest": "kill_spread_step",
+  "default": 600,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "encoder arm: 0 disables the spread rule (--kill_max_row 0 disables the max-row rule)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: encoder arm",
+  "option_strings": [
+   "--kill_max_row"
+  ],
+  "dest": "kill_max_row",
+  "default": 2.0,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "encoder arm: abort if any row's delta passes this many row norms",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: encoder arm",
+  "option_strings": [
+   "--glyph_size"
+  ],
+  "dest": "glyph_size",
+  "default": 96,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "encoder arm: glyph render side",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: encoder arm",
+  "option_strings": [
+   "--head_init"
+  ],
+  "dest": "head_init",
+  "default": "zero",
+  "choices": [
+   "zero",
+   "random"
+  ],
+  "nargs": null,
+  "type": "None",
+  "help": "encoder arm: last head layer zero (attempts 1–10) or random full-rank, rescaled so the step-0 identity spread is --init_spread row norms",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: encoder arm",
+  "option_strings": [
+   "--init_spread"
+  ],
+  "dest": "init_spread",
+  "default": 1.0,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "encoder arm: --head_init random target spread on the reference render",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: encoder arm",
+  "option_strings": [
+   "--decor"
+  ],
+  "dest": "decor",
+  "default": 0.0,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "encoder arm: λ on mean_{i≠j} cos²(r_i, r_j) over the centred trained rows of the encoder table (0 = off; W2d report Run 1b amended: ≈ 0.02 against an FM loss of ≈ 0.04)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: encoder arm",
+  "option_strings": [
+   "--lr_free"
+  ],
+  "dest": "lr_free",
+  "default": 0.001,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "encoder arm: lr of the free residual, row-norm units (W1 rows: 1e-3; 3e-3 walks off-manifold)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: encoder arm",
+  "option_strings": [
+   "--init_encoder"
+  ],
+  "dest": "init_encoder",
+  "default": "",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "encoder arm: warm-start the encoder (conv/proj/head + common) from another arm's trained.pt",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: encoder arm",
+  "option_strings": [
+   "--init_free"
+  ],
+  "dest": "init_free",
+  "default": "",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "train: warm-start the free residual by ext id from another arm's trained.pt",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: encoder arm",
+  "option_strings": [
+   "--enc_pool"
+  ],
+  "dest": "enc_pool",
+  "default": "spatial",
+  "choices": [
+   "spatial",
+   "mean"
+  ],
+  "nargs": null,
+  "type": "None",
+  "help": "encoder arm: feature pooling — spatial keeps the arrangement (glyph), mean keeps channel statistics only (attempts 4–7 tracked font, not glyph)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: encoder arm",
+  "option_strings": [
+   "--font_mode"
+  ],
+  "dest": "font_mode",
+  "default": "mean",
+  "choices": [
+   "mean",
+   "random"
+  ],
+  "nargs": null,
+  "type": "None",
+  "help": "encoder arm: input render — mean over every font (font-free) or one random font per row per step",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: encoder arm",
+  "option_strings": [
+   "--held_out"
+  ],
+  "dest": "held_out",
+  "default": 0,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "encoder arm: N single chars removed from every training item and evaluated as group single_held (the generalisation test)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: encoder arm",
+  "option_strings": [
+   "--held_out_chars"
+  ],
+  "dest": "held_out_chars",
+  "default": "",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "encoder arm: explicit held-out chars instead of --held_out's draw (Run 2: IDS composites whose atoms are trained, e.g. 明休男岩加相困森)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "eval / native",
+  "option_strings": [
+   "--eval_groups"
+  ],
+  "dest": "eval_groups",
+  "default": "",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "eval: comma list of groups to render (single,combo,corpus,en); default all",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "eval / native",
+  "option_strings": [
+   "--eval_limit"
+  ],
+  "dest": "eval_limit",
+  "default": 0,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "eval: first N prompts per group (0 = all)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "eval / native",
+  "option_strings": [
+   "--eval_tag"
+  ],
+  "dest": "eval_tag",
+  "default": "",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "eval: write img/reads/report/sheets under <arm>/eval_<tag>/ (e.g. a second eval_size)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "eval / native",
+  "option_strings": [
+   "--no_floor"
+  ],
+  "dest": "no_floor",
+  "default": false,
+  "choices": null,
+  "nargs": 0,
+  "type": "None",
+  "help": "eval: skip the delta-scale-0 floor renders (identical across arms on the same eval set)",
+  "action": "_StoreTrueAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "eval / native",
+  "option_strings": [
+   "--with_c_flat"
+  ],
+  "dest": "with_c_flat",
+  "default": 0,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "eval: add the saved c_flat to every trained row (the flat-template eval with the switch on); native runs without it",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "eval / native",
+  "option_strings": [
+   "--native_prompts"
+  ],
+  "dest": "native_prompts",
+  "default": "<REPO>/project/cjk_aware_anima/assets/unmask_eval_prompts.txt",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "native: scene prompt file (one per line; default the blind-pairs set)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "eval / native",
+  "option_strings": [
+   "--native_chars"
+  ],
+  "dest": "native_chars",
+  "default": "あ,か,す",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "native: comma list of kana to hang off every scene prompt",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "eval / native",
+  "option_strings": [
+   "--native_clauses"
+  ],
+  "dest": "native_clauses",
+  "default": "en,ja,swap",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "native: clause shapes to append (en, ja, swap)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "eval / native",
+  "option_strings": [
+   "--native_limit"
+  ],
+  "dest": "native_limit",
+  "default": 0,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "native: first N prompts (0 = all)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "eval / native",
+  "option_strings": [
+   "--delta_scale"
+  ],
+  "dest": "delta_scale",
+  "default": 1.0,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "native: ExtDelta scale for the trained cond (scene-survival vs identity probe)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "eval / native",
+  "option_strings": [
+   "--out_vec"
+  ],
+  "dest": "out_vec",
+  "default": "",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "native: .pt with the pretrained quoted-EN adapter-output shift (quote_dir_save.py: dirs[<frame>], shift_norm[<frame>]); adds conds fq<s> = rows f + s × that shift at the ext positions of the adapter output",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "eval / native",
+  "option_strings": [
+   "--out_vec_scales"
+  ],
+  "dest": "out_vec_scales",
+  "default": "1.0",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "native: comma list of multiples of the EN shift norm for --out_vec",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "eval / native",
+  "option_strings": [
+   "--out_vec_frame"
+  ],
+  "dest": "out_vec_frame",
+  "default": "reads_as",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "native: which frame's shift to use from --out_vec (reads_as|bubble_reads|she_says|bare_quotes|avg)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "eval / native",
+  "option_strings": [
+   "--delta_parts"
+  ],
+  "dest": "delta_parts",
+  "default": "full",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "native: comma list of table parts to render as separate conds (encoder arms; raw = g + c + f): full (named `trained`), f (per-row residual), c (common vector), g (centred encoder part), and sums fg fc gc",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "eval / native",
+  "option_strings": [
+   "--native_floor"
+  ],
+  "dest": "native_floor",
+  "default": 0,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "native: also render the delta-off floor cond (needed only for the old scene-kept margin; the EN-reference ruler replaced it 2026-09-15)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "eval / native",
+  "option_strings": [
+   "--en_word"
+  ],
+  "dest": "en_word",
+  "default": "hi",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "native: the EN word of the EN-reference render (English text reads as \"<word>\", same prompt and seed) — en cos / en cos out / box IoU score every trained render against it; refs are shared per size/steps/cfg",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "eval / native",
+  "option_strings": [
+   "--kept_ref"
+  ],
+  "dest": "kept_ref",
+  "default": "",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "native: dir holding floor_*.png of an earlier native run, the scene-kept reference when this run has --no_floor (default: the arm's native/img)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "eval / native",
+  "option_strings": [
+   "--kept_tau"
+  ],
+  "dest": "kept_tau",
+  "default": 0.0,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "native: scene-kept margin — cos(img, floor) − cos(img, flat training-canvas prototype) at or above this counts as kept",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "classify / classify_str",
+  "option_strings": [
+   "--cls_t"
+  ],
+  "dest": "cls_t",
+  "default": "0.1,0.2,0.35,0.5,0.65,0.8,0.95",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "classify: σ grid (DiT-scale) to score the candidates at",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "classify / classify_str",
+  "option_strings": [
+   "--cls_per_kana"
+  ],
+  "dest": "cls_per_kana",
+  "default": 2,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "classify: held-out renders per kana",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "classify / classify_str",
+  "option_strings": [
+   "--cls_batch"
+  ],
+  "dest": "cls_batch",
+  "default": 24,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "classify: candidate captions per DiT forward",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "classify / classify_str",
+  "option_strings": [
+   "--cls_pairs"
+  ],
+  "dest": "cls_pairs",
+  "default": 24,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "classify_str: 2-kana strings",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "classify / classify_str",
+  "option_strings": [
+   "--cls_triples"
+  ],
+  "dest": "cls_triples",
+  "default": 8,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "classify_str: 3-kana strings",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "classify / classify_str",
+  "option_strings": [
+   "--cls_lang"
+  ],
+  "dest": "cls_lang",
+  "default": "ja",
+  "choices": [
+   "ja",
+   "en"
+  ],
+  "nargs": null,
+  "type": "None",
+  "help": "classify_str: ja = kana strings of trained rows; en = nonsense two-word Latin strings (base-model order control)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "scenes",
+  "option_strings": [
+   "--scene_tag"
+  ],
+  "dest": "scene_tag",
+  "default": "s0",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "scenes: output/wake_probe/scenes_<tag>",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "scenes",
+  "option_strings": [
+   "--scene_n"
+  ],
+  "dest": "scene_n",
+  "default": 1000,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "scenes: prompts to generate",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "scenes",
+  "option_strings": [
+   "--scene_shapes"
+  ],
+  "dest": "scene_shapes",
+  "default": "448,512:2,448x512,512x448",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "scenes: canvas pool (S0 recipe; --shapes syntax)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "scenes",
+  "option_strings": [
+   "--scene_anchors"
+  ],
+  "dest": "scene_anchors",
+  "default": "",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "scenes: comma list of EN anchor words (default the built-in ten)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "scenes",
+  "option_strings": [
+   "--scene_frames"
+  ],
+  "dest": "scene_frames",
+  "default": "reads_as",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "scenes: comma list of text frames the prompt asks for the anchor in (reads_as|bubble_reads|saying|sign|bare_quotes|sfx; s0 = reads_as only; sfx keeps its own onomatopoeia anchors and passes an open fill). Pronoun frames are drawn for solo counts only; the data stage swaps the JA text into the same frame",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "scenes",
+  "option_strings": [
+   "--scene_ja_anchors"
+  ],
+  "dest": "scene_ja_anchors",
+  "default": "",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "scenes: comma list of JA anchors for the ja_* frames (default the built-in 24 short manga lines); the base's kana come out garbled and are erased — the frame is asked for so the base draws a *tall* bubble",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "scenes",
+  "option_strings": [
+   "--scene_extra_tags"
+  ],
+  "dest": "scene_extra_tags",
+  "default": "",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "scenes: comma list of general tags appended to every prompt (recorded in the scene's generals, so the composite caption carries them); e.g. `monochrome,screentone` for manga-page bubbles. NOT `comic` / `2koma` / `greyscale` — those identify the native held-out prompts",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "scenes",
+  "option_strings": [
+   "--scene_bubble_tag"
+  ],
+  "dest": "scene_bubble_tag",
+  "default": "speech bubble",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "scenes: bubble tag in the prompt — recorded so the data stage spells the composite caption identically",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "scenes",
+  "option_strings": [
+   "--scene_min_box"
+  ],
+  "dest": "scene_min_box",
+  "default": 56,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "scenes: reject usable regions under this many px on the short side",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "scenes",
+  "option_strings": [
+   "--scene_max_residual"
+  ],
+  "dest": "scene_max_residual",
+  "default": 0.5,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "scenes: reject when more than this share of the anchor's ink would survive the composite erase (the flood took another blob; s0: 12/186 kept scenes at ≥ 0.89, every clean scene ≤ 0.31)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "scenes",
+  "option_strings": [
+   "--scene_char_frac"
+  ],
+  "dest": "scene_char_frac",
+  "default": 0.3,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "scenes: share of 1girl prompts naming a dataset character (else `original`)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "scenes",
+  "option_strings": [
+   "--scene_artist_frac"
+  ],
+  "dest": "scene_artist_frac",
+  "default": 0.8,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "scenes: share of prompts carrying one of the dataset's @artist tags",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "scenes",
+  "option_strings": [
+   "--scene_batch"
+  ],
+  "dest": "scene_batch",
+  "default": 4,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "scenes: prompts per DiT pass",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "scenes",
+  "option_strings": [
+   "--scene_negative"
+  ],
+  "dest": "scene_negative",
+  "default": "worst quality, lowres, old, bad hands, bad anatomy, sepia, blurry, glitch, jpeg artifacts",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "scenes: negative prompt (inference only; never enters a caption)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "scenes",
+  "option_strings": [
+   "--scene_artists"
+  ],
+  "dest": "scene_artists",
+  "default": "sincos,hews",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "scenes: comma list of curated artist names added to the dataset pool at 4× weight",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "scenes",
+  "option_strings": [
+   "--scene_gen_scale"
+  ],
+  "dest": "scene_gen_scale",
+  "default": 1.0,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "scenes: render at this multiple of the pool shape, then downsample (the base draws crude scenes at 512²; 2.0 = its native ~1024)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "scenes",
+  "option_strings": [
+   "--scene_rejudge"
+  ],
+  "dest": "scene_rejudge",
+  "default": 0,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "scenes: re-apply the filter to scenes_<tag> from its stored reads (CPU, no generation)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "scenes",
+  "option_strings": [
+   "--scene_open_uniform"
+  ],
+  "dest": "scene_open_uniform",
+  "default": 0.9,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "scenes: keep a scene with no closed bubble when this share of the rectangle erase (outside the text box) is within tol of the fill — white bubble with a broken outline on white, a board, a plain wall",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "scenes",
+  "option_strings": [
+   "--scene_allow_open"
+  ],
+  "dest": "scene_allow_open",
+  "default": 0,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "scenes: keep images whose bubble fill runs to the border (open background)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ }
+]

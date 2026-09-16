@@ -1,9 +1,29 @@
 # refactor.md — `probes/` → `src/`, and the two grab-bag packages
 
-Written 2026-09-16, **not executed**. Scope: this line's code tree only
+Written 2026-09-16; **executed 2026-09-16**. Scope: this line's code tree only
 (`project/cjk_renderable_anima/`). No behaviour change, no flag change, no
-output-path change — the CLI surface and the data dirs must come out byte for
-byte identical. Review this, then I run it.
+output-path change.
+
+## As executed
+
+- **Verified**: the CLI golden dump (143 actions) is equal except one help
+  string whose path moved (`see wake/units.py` → `see data/units.py`); two CPU
+  data dirs (flat mix + the sentence-arm S-line mix, fixed seeds) rebuild
+  **byte-identical** from `src/` vs `probes/`; every function-level import
+  (67) resolves; `tests/` 43 pass.
+- **`probes/` stays on disk until the jobs launched from it finish**
+  (`20260916-201323-226f69` data train eval, `…-a06a68` native). Stages
+  import lazily, so moving it mid-run would crash the eval stage. Delete it
+  (`git rm -r probes`) once both are terminal.
+- **Deviations from the plan below**: `quote_dir_save.py` keeps its name (the
+  `--out_vec` help text names it); the `common/` bootstrap inserts the repo
+  root and `ocr/` right **after** `src/`, not at position 0 (repo root has
+  `train.py` and an installed `bench` package that would shadow `src/train`
+  and `src/bench`); `scenes/judge.py` reads `FRAMES` from `scenes/stage.py`,
+  so `stage_scenes` imports the judge inside the function; the helpers shared
+  across a split lose their underscore (`sheet_row`, `blank_cell`, `judge`,
+  `filter_scenes`, `report_scenes`, the `cli` `*_args`). `formulation.tex`
+  keeps its recorded job argv.
 
 ## What is wrong today
 

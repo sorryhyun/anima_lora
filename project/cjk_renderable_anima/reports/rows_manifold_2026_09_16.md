@@ -1,6 +1,6 @@
 # rows manifold probe (2026-09-16): the 53k table has one shared direction and near-orthogonal residuals; nothing in it is the pretrained quote representation
 
-> `probes/rows_manifold_probe.py` read the full-inventory table
+> `src/bench/rows_manifold.py` read the full-inventory table
 > (`rows_synth_full_fm10k_full_s53k_qoff`: 433 named rows, 53 k steps,
 > frame-mix composites 0.9, no `c_flat`, Q off) in row space and at the
 > adapter output, CPU + one 2-minute GPU pass, no retrain. **Row space:**
@@ -30,7 +30,7 @@
 > equal for hit and miss rows; katakana rows simply carry less (norm 0.31 vs
 > 0.34, along-m̂ 0.088 vs 0.111) at the same exposure.
 
-Instrument: `probes/rows_manifold_probe.py --stage rows` (CPU) and
+Instrument: `src/bench/rows_manifold.py --stage rows` (CPU) and
 `--stage adapter --device cuda` (Qwen TE + llm_adapter, 433 rows × 6 frames,
 delta on / off from one TE pass). Outputs
 `output/wake_probe/rows_synth_full_fm10k_full_s53k_qoff/manifold/{rows,adapter}.json`.

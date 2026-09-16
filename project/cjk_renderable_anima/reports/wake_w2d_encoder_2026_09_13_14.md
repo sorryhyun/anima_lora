@@ -4,7 +4,7 @@
 > Run 1 launches (parametrisation), Run 1b / 1b amended (rank-1 table), Run 1c
 > (decorrelation), Run 1d (free-residual hybrid `g + f`: trained 24/24,
 > held-out flat), Run 2 (IDS composites 0/16 — W4 is an exposure budget).
-> Index: [`README.md`](README.md). Backticked paths (`probes/…`, `plan_synth.md`, `output/…`) are relative to the line root `project/cjk_renderable_anima/` or the repo root, as they were in `history.md`.
+> Index: [`README.md`](README.md). Backticked paths (`src/…`, `plan_synth.md`, `output/…`) are relative to the line root `project/cjk_renderable_anima/` or the repo root, as they were in `history.md`.
 
 ## W2d — amortized glyph encoder
 
@@ -385,7 +385,7 @@ basins: ま→た/あ, ヨ→あ/ま, ケ→テ/チ). Read flat, not worse.
   already resolves — **drop it** (Run 1b/1b-amended closed).
 - *Composition is the open question, not kana held-out.* Whether a
   composite's address relates to its atoms' addresses is a question about
-  `f`-space, and `probes/wake_geometry.py --pairs` reads it directly. Run 2
+  `f`-space, and `src/bench/wake_geometry.py --pairs` reads it directly. Run 2
   (kanji atoms + composites on blank canvases, IDS held-out) is where that
   is answered; the trained side of Run 2 is no longer at risk.
 

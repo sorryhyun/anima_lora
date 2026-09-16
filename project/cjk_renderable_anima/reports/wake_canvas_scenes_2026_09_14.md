@@ -4,7 +4,7 @@
 > alive and the mixed-shape pool is the P0a recipe; the table-parts probe shows
 > the glyph is conditional on the canvas mode (→ the S line); 1 000 self-generated
 > scenes → 186 kept; the S0 data build and launch.
-> Index: [`README.md`](README.md). Backticked paths (`probes/…`, `plan_synth.md`, `output/…`) are relative to the line root `project/cjk_renderable_anima/` or the repo root, as they were in `history.md`.
+> Index: [`README.md`](README.md). Backticked paths (`src/…`, `plan_synth.md`, `output/…`) are relative to the line root `project/cjk_renderable_anima/` or the repo root, as they were in `history.md`.
 
 ## Canvas-shape gate (2026-09-14 night): 384² is alive, the band does not move, mixed shapes are an instrument
 
@@ -124,7 +124,7 @@ bubble), read miss 240 (misspelled anchor or JA garble), region < 56 px
 
 ## S0 build + launch (2026-09-14 night): scene composites, rows arm from scratch
 
-**Instrument** (`stage/synth.py`, `wake/bubble.py`, `render_into_scene`,
+**Instrument** (`src/data/synth.py`, `src/common/bubble.py`, `render_into_scene`,
 train-stage `--box_weight` / `--c_flat`, eval `--with_c_flat`, native
 `--delta_parts` on rows arms, scene-kept prototype = the flat share only).
 Smoke on 400 items caught three data defects before the build:

@@ -44,13 +44,13 @@ CPU-only and safe inline.
 
 ```bash
 # data: 30 % singles + 70 % random-order 2–4-piece strings of trained rows
-.venv/bin/python project/cjk_renderable_anima/probes/wake_probe.py \
+.venv/bin/python project/cjk_renderable_anima/src/wake_probe.py \
     --stage data --arm encoder --data_tag wm --units kana --units words:120/held=8 \
     --strings_only --n_strings 6000 --single_frac 0.3
 
 # train + eval: Run 3 table warm-started, g frozen, band 0.5–0.9
 make daemon-run ARGS="--label wake-mixed --stall-timeout 0 --queue \
-    project/cjk_renderable_anima/probes/wake_probe.py --stage train eval --arm encoder \
+    project/cjk_renderable_anima/src/wake_probe.py --stage train eval --arm encoder \
     --data_tag wm --arm_tag w120_s8k_mixed_warm --train_steps 8000 --batch 4 \
     --t_min 0.5 --t_max 0.9 --compile 1 --grad_ckpt 0 --aggressive_recompute 0 \
     --seeds 2 --no_floor --lr_common 1e-3 --common_cap 0.75 --out_scale 0.0625 \
@@ -91,13 +91,13 @@ bit-identical to the old code, so `wd` itself is untouched).
 
 ```bash
 # data (CPU): singles pool 384–512, squares and 3:4 / 4:3
-.venv/bin/python project/cjk_renderable_anima/probes/wake_probe.py \
+.venv/bin/python project/cjk_renderable_anima/src/wake_probe.py \
     --stage data --arm encoder --data_tag wds --units kana --units words:120/held=8 \
     --n_single 40 --shapes "384,448,512:2,384x512,512x384"
 
 # A: matched exposure (8 000 steps) — the cost readout
 make daemon-run ARGS="--label wake-shapes-a --stall-timeout 0 --queue \
-    project/cjk_renderable_anima/probes/wake_probe.py --stage train eval --arm encoder \
+    project/cjk_renderable_anima/src/wake_probe.py --stage train eval --arm encoder \
     --data_tag wds --arm_tag w120_s8k_fres_warm_shp --train_steps 8000 --batch 4 \
     --t_min 0.7 --t_max 0.9 --compile 1 --grad_ckpt 0 --aggressive_recompute 0 \
     --seeds 2 --no_floor --lr_common 1e-3 --common_cap 0.75 --out_scale 0.0625 \
@@ -108,7 +108,7 @@ make daemon-run ARGS="--label wake-shapes-a --stall-timeout 0 --queue \
     --free_residual 1e-3 --lr_free 1e-3"
 # second eval of A on a non-square canvas
 make daemon-run ARGS="--label wake-shapes-a-384x512 --queue \
-    project/cjk_renderable_anima/probes/wake_probe.py --stage eval --arm encoder \
+    project/cjk_renderable_anima/src/wake_probe.py --stage eval --arm encoder \
     --data_tag wds --arm_tag w120_s8k_fres_warm_shp --eval_shape 384x512 \
     --eval_tag 384x512 --eval_groups single,word,en --seeds 2"
 # B: matched wall — A's recipe at the step count that equals Run 3's 58 min
@@ -318,13 +318,13 @@ and `rel_max` are the early instruments).
 
 ## Instruments and gotchas
 
-- `probes/wake_probe.py`: stages `salad data train eval classify
+- `src/wake_probe.py`: stages `salad data train eval classify
   classify_str native`; `--strings_only --n_strings --word_frac
   --n_flip_eval --n_str3_eval` (data), `--cls_lang en|ja --cls_pairs
   --cls_triples` (classify_str), `--t_min --t_max` (hard band).
-- `probes/order_probe.py`: base-model EN order control (nonsense
+- `src/probe/order_probe.py`: base-model EN order control (nonsense
   multi-piece words); run it after any change on the EN path.
-- `probes/wake_geometry.py`: table PR / pairwise cos / composition pairs.
+- `src/bench/wake_geometry.py`: table PR / pairwise cos / composition pairs.
 - 256² is dead (base cannot spell EN there, 11/24) but 384² is not (EN
   24/24, 512² rows read 21/36 there); the pool is P0a's call. Block
   compile before grad-ckpt; batch 8 OOMs at 512²;

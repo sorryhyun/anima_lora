@@ -5,7 +5,7 @@
 > (か frame-independent, 日 → 目); `en cos` / `box IoU` against a shared
 > `English text reads as "hi"` reference replace the floor ruler; the rows are
 > bound to the JA clause frame.
-> Index: [`README.md`](README.md). Backticked paths (`probes/…`, `plan_synth.md`, `output/…`) are relative to the line root `project/cjk_renderable_anima/` or the repo root, as they were in `history.md`.
+> Index: [`README.md`](README.md). Backticked paths (`src/…`, `plan_synth.md`, `output/…`) are relative to the line root `project/cjk_renderable_anima/` or the repo root, as they were in `history.md`.
 
 ## Cap-only isolation killed; micro arms launched (2026-09-15 16:18)
 
@@ -132,7 +132,7 @@ User's objection to the scene-kept ruler: the product question is not
 "did the delta leave the scene alone" but "does the ext row behave like
 an EN word token" — render the same prompt and seed with `English text
 reads as "hi"` and ask how little changes when the word becomes the
-glyph. Implemented as `wake/enref.py` + `--stage enref` (16 shared refs
+glyph. Implemented as `src/eval/enref.py` + `--stage enref` (16 shared refs
 under `output/wake_probe/native_enref/512_28_4/`, arm-independent) +
 `--stage native_rescore` (re-scores an existing native from its stored
 reads; no re-render / re-OCR). Three columns per trained render:
@@ -253,7 +253,7 @@ which every arm drives to the same ≈ 125–130.
 ## Flat 0 (2026-09-15 20:25 → 20:50): composite-only is worse on every ruler and wipes exactly as much — CLOSED
 
 Same 6 rows and train argv as the 0.9 Q-off arm; data `synth_micro6_c10`
-= 1 600 scene composites, 0 flat (`n_flat > 0` assert in `stage/synth.py`
+= 1 600 scene composites, 0 flat (`n_flat > 0` assert in `src/data/synth.py`
 lifted to `>= 0`; composites default to singles when no flat kind is
 in). Jobs `861ded` (train + eval) / `a61d3e` (native, `--native_clauses
 en,swap` in one job). Arm `rows_synth_micro6_c10_m6c10_s2k_flat0`. Train
@@ -301,7 +301,7 @@ idea (user, 20:20) — scene-stage work, queued after the frame-mix arm.
 Flat 0 said the composites' own canvas is the bubble, and the swap clause
 said the rows are bound to the one `reads as` frame. Both are the scene
 prompt's doing — every s0 scene was `…, speech bubble, english text.
-English text reads as "hi"`. `--scene_frames` (`stage/scenes.py`,
+English text reads as "hi"`. `--scene_frames` (`src/scenes/stage.py`,
 `FRAMES`) now draws the frame per prompt and records `frame` /
 `clause_tpl`; the data stage swaps the JA text into the *same* frame
 (`She is saying "か".`, `He is holding a sign that reads "か".`; `English
@@ -349,7 +349,7 @@ sheets): 873 = reader miss on a clean bubble (JA-tuned readers), 424 and
 00001 = `small_box` by 11 px and by 2 px, 832 = a false `erase_miss` — the
 outline is broken at 12 o'clock, nine seeds leak, three find a *pocket*
 between the outline and the letters that encloses the box by bbox but covers
-none of it. Two rules now in `bubble.py` / `stage/scenes.py`: (1) a fill
+none of it. Two rules now in `bubble.py` / `src/scenes/judge.py`: (1) a fill
 whose interior covers < 50 % of the text box is not a bubble; (2) with no
 closed bubble the region is grown 1.2× → 1.35× → 1.5× and the first size
 whose **erase seam** (the 3-px ring just outside the paint rectangle) is
@@ -395,7 +395,7 @@ kept scenes over four frames, share 0.9, no `c_flat`) on the six micro rows,
 `rows_synth_micro6_fm_m6fm_s2k_{qon,qoff}` (jobs `e4b19f` / `af35b8`,
 `d7a880` / `78c719`); m12fm (`74db20` / `74f7f3`) is the same recipe on 12
 rows, i.e. half the samples per row. Native sheets now lead every seed's
-cells with the `hi` reference render (`stage/eval.py`, this commit).
+cells with the `hi` reference render (`src/eval/native.py`, this commit).
 
 | arm | rows | frames | Q | en hit | en cos | IoU | swap hit | en cos | IoU | singles |
 |---|---|---|---|---|---|---|---|---|---|---|
