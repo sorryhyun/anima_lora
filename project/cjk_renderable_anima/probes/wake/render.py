@@ -266,6 +266,72 @@ def crop_bubble(img_path: Path, box, size=512):
 # S line (plan_synth): draw JA text into a generated scene's bubble
 
 
+# glyph cell pitch along a line / column and between lines / columns
+V_PITCH, V_GAP = 1.05, 1.15  # vertical: glyphs down a column, columns apart
+H_PITCH, H_GAP = 1.0, 1.2  # horizontal: glyphs along a line, lines apart
+# a new line / column must not start with these (kinsoku, the common subset)
+NO_HEAD = set("、。，．・ー〜～!?！？」』）)ゃゅょっャュョッァィゥェォ")
+# … and must not leave these at the end of the previous one
+NO_TAIL = set("「『（(")
+# drawn rotated a quarter turn in a column (the long-vowel bar and dashes)
+V_ROTATE = set("ー〜～…‥－-—–")
+# nudged to the top-right of their cell in a column
+V_PUNCT = set("、。，．")
+# a layout with more lines wins over fewer only when its glyph is this much
+# larger — a bubble is filled, but a phrase that fits one column stays one
+MORE_LINES_GAIN = 1.4
+
+
+def split_lines(text: str, k: int, cuts=None) -> list[str] | None:
+    """``text`` as ``k`` near-equal lines cut only at ``cuts`` (allowed
+    character offsets — the caller's piece boundaries; ``None`` = anywhere),
+    each cut nudged forward past a kinsoku violation. ``None`` when ``k``
+    lines are not possible."""
+    n = len(text)
+    if k == 1:
+        return [text]
+    allowed = sorted(
+        set(range(1, n)) if cuts is None else {c for c in cuts if 0 < c < n}
+    )
+    if len(allowed) < k - 1:
+        return None
+    chosen: list[int] = []
+    for i in range(1, k):
+        target = n * i / k
+        lo = chosen[-1] + 1 if chosen else 1
+        cand = [c for c in allowed if c >= lo]
+        if not cand:
+            return None
+        c = min(cand, key=lambda x: abs(x - target))
+        # kinsoku: prefer not to open a line with NO_HEAD or close one on
+        # NO_TAIL — nudge forward; when every later cut violates too (a
+        # trailing run of ・・・), keep the nearest cut rather than refuse
+        c0 = c
+        while c < n and (text[c] in NO_HEAD or text[c - 1] in NO_TAIL):
+            nxt = [x for x in cand if x > c]
+            if not nxt:
+                c = c0
+                break
+            c = nxt[0]
+        chosen.append(c)
+    bounds = [0, *chosen, n]
+    lines = [text[a:b] for a, b in zip(bounds, bounds[1:])]
+    return lines if all(lines) else None
+
+
+def _block_size(d, font, fs, lines, vertical):
+    """(w, h) of the drawn block for ``lines`` at ``fs``."""
+    k = len(lines)
+    if vertical:
+        w = max(d.textlength(ch, font=font) for ln in lines for ch in ln)
+        w = max(w, fs) + (k - 1) * fs * V_GAP
+        h = max(len(ln) for ln in lines) * fs * V_PITCH
+    else:
+        w = max(d.textlength(ln, font=font) for ln in lines)
+        h = fs + (k - 1) * fs * H_GAP
+    return w, h
+
+
 def fit_text(
     d,
     text: str,
@@ -274,46 +340,59 @@ def fit_text(
     vertical: bool,
     min_glyph: int,
     fill_frac: float = 0.9,
+    max_lines: int = 1,
+    cuts=None,
 ):
     """Largest font size whose text block fits ``region`` (inner
     ``fill_frac`` — 0.9 fills the bubble edge to edge, ``--scene_fill`` 0.7
-    leaves manga-like air around the glyphs); the glyph cell must be at
-    least ``min_glyph`` px, else ``None``. Returns ``(font, fs, tw, th)``."""
+    leaves manga-like air around the glyphs) over 1..``max_lines`` lines
+    (columns when ``vertical``), lines cut only at ``cuts``. A layout with
+    more lines replaces one with fewer only when its glyph is
+    ``MORE_LINES_GAIN``× larger. The glyph cell must be at least
+    ``min_glyph`` px, else ``None``. Returns ``(font, fs, lines)``."""
     from PIL import ImageFont
 
     rx0, ry0, rx1, ry1 = region
     rw, rh = (rx1 - rx0) * fill_frac, (ry1 - ry0) * fill_frac
-    n = len(text)
-    if vertical:
-        fs = int(min(rw, rh / (n * 1.05)))
-    else:
-        fs = int(min(rh, rw / n))
-    if fs < min_glyph:
-        return None
-    for _ in range(4):
-        font = ImageFont.truetype(font_path, fs, index=0)
+    best = None
+    for k in range(1, max_lines + 1):
+        lines = split_lines(text, k, cuts)
+        if lines is None:
+            continue
+        m = max(len(ln) for ln in lines)
         if vertical:
-            tw = max(d.textlength(ch, font=font) for ch in text)
-            th = n * fs * 1.05
+            fs = int(min(rw / (1 + (k - 1) * V_GAP), rh / (m * V_PITCH)))
         else:
-            tw = d.textlength(text, font=font)
-            th = fs
-        k = min(rw / max(tw, 1e-6), rh / max(th, 1e-6))
-        if k >= 1.0:
-            return font, fs, tw, th
-        fs = int(fs * min(k, 0.97))
+            fs = int(min(rh / (1 + (k - 1) * H_GAP), rw / (m * H_PITCH)))
         if fs < min_glyph:
-            return None
-    return None
+            continue
+        for _ in range(4):
+            font = ImageFont.truetype(font_path, fs, index=0)
+            tw, th = _block_size(d, font, fs, lines, vertical)
+            sc = min(rw / max(tw, 1e-6), rh / max(th, 1e-6))
+            if sc >= 1.0:
+                if best is None or fs >= best[1] * MORE_LINES_GAIN:
+                    best = (font, fs, lines)
+                break
+            fs = int(fs * min(sc, 0.97))
+            if fs < min_glyph:
+                break
+    return best
 
 
-def region_capacity(region, min_glyph: int, fill_frac: float = 0.9) -> int:
-    """How many glyphs the region holds at ``min_glyph`` px per cell along
-    its long side (vertical when taller than wide), inner ``fill_frac``."""
+def region_capacity(
+    region, min_glyph: int, fill_frac: float = 0.9, max_lines: int = 1
+) -> int:
+    """How many glyphs the region holds at ``min_glyph`` px per cell over up
+    to ``max_lines`` columns (vertical) or lines (horizontal), inner
+    ``fill_frac`` — the larger of the two orientations."""
     rw, rh = (region[2] - region[0]) * fill_frac, (region[3] - region[1]) * fill_frac
-    if rh > rw:
-        return int(rh / (min_glyph * 1.05)) if rw >= min_glyph else 0
-    return int(rw / min_glyph) if rh >= min_glyph else 0
+    g = min_glyph
+    v_cols = int((rw - g) / (g * V_GAP)) + 1 if rw >= g else 0
+    v_cap = int(rh / (g * V_PITCH)) * min(v_cols, max_lines)
+    h_rows = int((rh - g) / (g * H_GAP)) + 1 if rh >= g else 0
+    h_cap = int(rw / (g * H_PITCH)) * min(h_rows, max_lines)
+    return max(v_cap, h_cap)
 
 
 def erase_paint(arr, tb, reg, open_ok: bool = False):
@@ -415,6 +494,33 @@ def anchor_residual(arr, tb, reg, tol: int = 24, open_ok: bool = False) -> float
     return float((ink & ~paint).sum()) / n if n else 0.0
 
 
+def _draw_vertical_glyph(layer, ld, ch, x, y, fs, font, color, kw):
+    """One glyph of a column at cell centre ``x``, cell top ``y``: the
+    long-vowel bar / dashes a quarter turn clockwise, 、。 to the top-right
+    of the cell, everything else upright and centred."""
+    from PIL import Image, ImageDraw
+
+    w = ld.textlength(ch, font=font)
+    if ch in V_ROTATE:
+        cell = int(fs * 1.5)
+        tile = Image.new("RGBA", (cell, cell), (0, 0, 0, 0))
+        td = ImageDraw.Draw(tile)
+        td.text(
+            ((cell - w) / 2, (cell - fs) / 2 - fs * 0.1),
+            ch,
+            fill=color,
+            font=font,
+            **kw,
+        )
+        tile = tile.rotate(-90, resample=Image.BICUBIC)
+        layer.alpha_composite(tile, (int(x - cell / 2), int(y + fs / 2 - cell / 2)))
+        return
+    if ch in V_PUNCT:
+        ld.text((x - w / 2 + fs * 0.4, y - fs * 0.4), ch, fill=color, font=font, **kw)
+        return
+    ld.text((x - w / 2, y), ch, fill=color, font=font, **kw)
+
+
 def render_into_scene(
     scene: dict,
     text: str,
@@ -425,19 +531,24 @@ def render_into_scene(
     fill_frac: float = 0.9,
     tilt_frac: float = 0.3,
     tilt_deg: float = 7.0,
+    max_lines: int = 1,
+    cuts=None,
 ):
     """Erase every anchor bubble's usable region (plus the text box padded by
     a quarter of its size — detector boxes run tight) with the bubble's
     ring-median colour, only *inside the bubble interior* (flood mask,
     letter holes filled — a rectangle's corners would poke past a round
-    outline), and draw ``text``
-    fitted into the inner ``fill_frac`` of the headline region — vertical
-    when the region is taller than wide (the base draws tall manga
-    bubbles). Returns ``(image, drawn
-    text box)`` or ``None`` when the text does not fit at ``min_glyph`` px
-    per glyph (the caller draws a shorter text). Other anchor bubbles are
-    left erased (empty bubble). ``stroke``: a thin outline in the fill colour
-    around the glyphs (manga lettering over art)."""
+    outline), and draw ``text`` fitted into the inner ``fill_frac`` of the
+    headline region over up to ``max_lines`` columns / lines, cut only at
+    ``cuts`` (character offsets — the caller's piece boundaries, so a row's
+    unit is never split across lines). **Vertical first** (user,
+    2026-09-16: manga lettering is tategaki): columns right-to-left
+    whenever the text fits that way at ``min_glyph``, horizontal lines only
+    when it does not. Returns ``(image, drawn text box)`` or ``None`` when
+    the text does not fit at ``min_glyph`` px per glyph (the caller draws a
+    shorter text). Other anchor bubbles are left erased (empty bubble).
+    ``stroke``: a thin outline in the fill colour around the glyphs (manga
+    lettering over art)."""
     import numpy as np
     from PIL import Image, ImageDraw
 
@@ -460,12 +571,23 @@ def render_into_scene(
     im = Image.fromarray(arr)
     d = ImageDraw.Draw(im)
     region = scene["region"]
-    rw, rh = region[2] - region[0], region[3] - region[1]
-    vertical = len(text) > 1 and rh > rw
-    fit = fit_text(d, text, font_path, region, vertical, min_glyph, fill_frac)
+    vertical = len(text) > 1
+    fit = (
+        fit_text(
+            d, text, font_path, region, True, min_glyph, fill_frac, max_lines, cuts
+        )
+        if vertical
+        else None
+    )
+    if fit is None:
+        vertical = False
+        fit = fit_text(
+            d, text, font_path, region, False, min_glyph, fill_frac, max_lines, cuts
+        )
     if fit is None:
         return None
-    font, fs, tw, th = fit
+    font, fs, lines = fit
+    tw, th = _block_size(d, font, fs, lines, vertical)
     fill = fills[head]
     dark_bg = sum(fill) / 3 < 100
     # the anchor's own ink colour when it contrasts with the fill (≥ 60 on
@@ -486,15 +608,21 @@ def render_into_scene(
     layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     ld = ImageDraw.Draw(layer)
     if vertical:
-        y = cy - th / 2
-        for ch in text:
-            w = ld.textlength(ch, font=font)
-            ld.text((cx - w / 2, y), ch, fill=color, font=font, **kw)
-            y += fs * 1.05
+        # columns right-to-left, glyphs top-down; the block is centred on the
+        # region, every column centred on its own height
+        x = cx + tw / 2 - fs / 2  # centre of the first (rightmost) column
+        for ln in lines:
+            y = cy - len(ln) * fs * V_PITCH / 2
+            for ch in ln:
+                _draw_vertical_glyph(layer, ld, ch, x, y, fs, font, color, kw)
+                y += fs * V_PITCH
+            x -= fs * V_GAP
     else:
-        ld.text(
-            (cx - tw / 2, cy - fs / 2 - fs * 0.1), text, fill=color, font=font, **kw
-        )
+        y = cy - th / 2 - fs * 0.1
+        for ln in lines:
+            w = ld.textlength(ln, font=font)
+            ld.text((cx - w / 2, y), ln, fill=color, font=font, **kw)
+            y += fs * H_GAP
     if rng.random() < tilt_frac:
         layer = layer.rotate(
             rng.uniform(-tilt_deg, tilt_deg), resample=Image.BICUBIC, center=(cx, cy)

@@ -231,7 +231,49 @@ FRAMES = {
     ),
     "bare_quotes": (["{bubble}", "english text"], '"{a}".'),
     "sfx": (["sound effects", "english text"], 'English SFX reads as "{a}".'),
+    # JA frames (user, 2026-09-16): the base writes EN horizontally and so
+    # draws wide bubbles (sl1w: 22 % taller than wide, height median 136 px —
+    # not moved by anchor length, frame or canvas). The one lever that can
+    # change the bubble's shape is asking for *Japanese* text: the letters
+    # come out garbled and are erased anyway; what is kept is the bubble.
+    # The judge takes every detector box as an anchor box (no read match),
+    # and the data stage's EN→JA swap is the identity on these frames.
+    "ja_reads_as": (["{bubble}", "japanese text"], 'Japanese text reads as "{a}".'),
+    "ja_bubble_reads": (
+        ["{bubble}", "japanese text"],
+        'There is a speech bubble that reads "{a}".',
+    ),
+    "ja_saying": (["{bubble}", "japanese text"], '{pro} is saying "{a}".'),
 }
+JA_FRAMES = {f for f in FRAMES if f.startswith("ja_")}
+# short manga lines (3–8 glyphs) — long enough that the base draws a real
+# bubble, short enough to stay one utterance; --scene_ja_anchors overrides
+JA_ANCHORS = [
+    "ちょっとまって",
+    "なんだそれ",
+    "だいじょうぶ？",
+    "いってきます",
+    "ただいま",
+    "ごめんなさい",
+    "ありがとう",
+    "しらないよ",
+    "そうなんだ",
+    "まあいいか",
+    "やめてよ",
+    "おはよう",
+    "またあした",
+    "どうしたの",
+    "うそでしょ",
+    "わかった",
+    "いやだ",
+    "なにこれ",
+    "やったあ",
+    "おなかすいた",
+    "ねえきいて",
+    "もういいよ",
+    "たすけて",
+    "いくよ",
+]
 SFX_ANCHORS = [
     "BAM",
     "BOOM",
@@ -244,7 +286,7 @@ SFX_ANCHORS = [
     "WHOOSH",
     "SLAM",
 ]
-FRAME_ANCHORS = {"sfx": SFX_ANCHORS}
+FRAME_ANCHORS = {"sfx": SFX_ANCHORS, **{f: JA_ANCHORS for f in JA_FRAMES}}
 FRAME_OPEN_OK = {"sfx"}  # no bubble expected: an open fill is not a reject
 PRONOUN = {"1girl": "She", "1boy": "He"}
 
@@ -284,6 +326,11 @@ def scene_items(a) -> list[dict]:
     frames = [x for x in a.scene_frames.split(",") if x] or ["reads_as"]
     unknown = [f for f in frames if f not in FRAMES]
     assert not unknown, f"--scene_frames: unknown {unknown}; have {list(FRAMES)}"
+    frame_anchors = dict(FRAME_ANCHORS)
+    ja_anchors = [x for x in a.scene_ja_anchors.split(",") if x]
+    if ja_anchors:
+        frame_anchors.update({f: ja_anchors for f in JA_FRAMES})
+    extra = [x.strip() for x in a.scene_extra_tags.split(",") if x.strip()]
     artists = artist_pool() if a.scene_artist_frac > 0 else []
     # curated well-known artists (user, 2026-09-14: sincos, hews) at 4× weight
     curated = [f"@{x.strip()}" for x in a.scene_artists.split(",") if x.strip()]
@@ -310,7 +357,7 @@ def scene_items(a) -> list[dict]:
             frame = rng.choice(
                 [f for f in frames if "{pro}" not in FRAMES[f][1]] or ["reads_as"]
             )
-        anchor = rng.choice(FRAME_ANCHORS.get(frame, anchors))
+        anchor = rng.choice(frame_anchors.get(frame, anchors))
         fgens, clause_tpl, clause = frame_clause(
             frame, count, anchor, a.scene_bubble_tag
         )
@@ -324,6 +371,7 @@ def scene_items(a) -> list[dict]:
             rng.choice(EXPRESSIONS),
             *rng.choice(STYLES),
             *fgens,
+            *extra,
         ]
         if solo:
             generals.append("solo")
@@ -574,11 +622,25 @@ def _report_scenes(a, out: Path, items: list[dict]):
         )
     if kept:
         short.sort()
+        # tategaki pool (2026-09-16): how many headline regions are taller
+        # than wide, and how tall — the sentence line's binding constraint
+        ars = [
+            (it["region"][3] - it["region"][1])
+            / max(1, it["region"][2] - it["region"][0])
+            for it in kept
+        ]
+        tall_h = sorted(
+            it["region"][3] - it["region"][1] for it, ar in zip(kept, ars) if ar >= 1.0
+        )
         lines += [
             "",
             f"kept usable-region short side (px): min {short[0]} p10 {short[len(short) // 10]} "
             f"median {short[len(short) // 2]} max {short[-1]}; "
             f"anchor bubbles per kept image {sum(len(it['regions']) for it in kept) / len(kept):.2f}",
+            f"tall regions (AR ≥ 1.0): {sum(ar >= 1.0 for ar in ars)}/{len(kept)} "
+            f"({sum(ar >= 1.0 for ar in ars) / len(kept):.0%}); AR ≥ 1.3: "
+            f"{sum(ar >= 1.3 for ar in ars)}; tall-region height median "
+            f"{tall_h[len(tall_h) // 2] if tall_h else 0} px",
             "",
             "kept per anchor: "
             + ", ".join(
@@ -684,7 +746,14 @@ def _judge(a, it: dict, reads: list, bgr) -> str:
     if not reads:
         return "no_box"
     anchor = norm(it["anchor"])
-    hits = [r for r in reads if anchor in {norm(r["vl"] or ""), norm(r["sfx"] or "")}]
+    if it.get("frame") in JA_FRAMES:
+        # JA frame: the base's kana are garbled and get erased — every
+        # detector box is an anchor bubble, no read match asked
+        hits = list(reads)
+    else:
+        hits = [
+            r for r in reads if anchor in {norm(r["vl"] or ""), norm(r["sfx"] or "")}
+        ]
     if not hits:
         return "read_miss"
     boxes = []
@@ -710,7 +779,7 @@ def _judge(a, it: dict, reads: list, bgr) -> str:
     if stray:
         return "multi_box"
     r = hits[0]
-    it["read"] = r["vl"] if norm(r["vl"] or "") == anchor else r["sfx"]
+    it["read"] = r["vl"] if norm(r["vl"] or "") == anchor else (r["sfx"] or r["vl"])
     it["boxes_anchor"], it["bubbles"], it["regions"] = boxes, [], []
     H, W = bgr.shape[:2]
     unis = []

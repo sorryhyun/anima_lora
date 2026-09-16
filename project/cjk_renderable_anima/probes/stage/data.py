@@ -56,6 +56,7 @@ _EVAL_ORDER = (
     "line",
     "single_kanji",
     "single_ext",
+    "single_extra",
     "flip",
     "str3",
     "phrase",
@@ -94,6 +95,9 @@ class Inventory:
     # --phrase_pieces: rows a phrase file needs beyond the singles inventory
     # (trained through the phrases only — never drawn as singles / evals)
     phrase_pieces: list = field(default_factory=list)
+    # --extra_units: pieces drawn as singles like kana (punctuation arm,
+    # user 2026-09-16: 、。ー！？ and small っ ッ as single-letter addresses)
+    extra: list = field(default_factory=list)
     # word mode: a string is usable only when every piece is a trained row
     piece_ok: Callable[[str], bool] | None = None
     evals: dict = field(default_factory=dict)  # group → [text]
@@ -240,6 +244,21 @@ def _extra_singles(a, out, tokq, inv: Inventory):
         inv.evals["single_ext"] = erng.sample(list(KANA_EXT_HIRA), 12) + erng.sample(
             list(KANA_EXT_KATA), 6
         )
+    if a.extra_units:
+        # punctuation arm (2026-09-16): every unit must be one Qwen piece
+        # with an ext row (、 。 ・ ー ～ ！ ？ 「 」 ！！ ・・・ っ ッ …); all of
+        # them form eval group single_extra — read on the sheets, since the
+        # readers' norm() strips punctuation before matching
+        inv.extra = [u for u in a.extra_units.split(",") if u]
+        tok, qmap = tokq
+        bad = [u for u in inv.extra if len(pieces(tok, qmap, u)) != 1]
+        assert not bad, f"--extra_units: not one Qwen piece: {bad}"
+        norow = [u for u in inv.extra if pieces(tok, qmap, u)[0][1] is None]
+        assert not norow, f"--extra_units: pretrained piece, no ext row: {norow}"
+        inv.evals["single_extra"] = inv.extra[:18]
+        print(
+            f"extra units: {len(inv.extra)} singles {' '.join(inv.extra)}", flush=True
+        )
 
 
 def _word_set(a, out, tokq, inv: Inventory):
@@ -257,7 +276,7 @@ def _word_set(a, out, tokq, inv: Inventory):
     inv.words_train = [w for w in inv.words if w not in inv.words_held]
     kana_rows = {
         p
-        for c in inv.kana + inv.kana_ext + inv.kanji
+        for c in inv.kana + inv.kana_ext + inv.kanji + inv.extra
         for p, row in pieces(tok, qmap, c)
         if row is not None
     }

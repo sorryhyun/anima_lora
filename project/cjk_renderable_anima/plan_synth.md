@@ -307,21 +307,72 @@ belongs here: **92 basic kana at 23 000 steps** (≈ 1 000 draws per row,
 interference at 433 rows; if not, it is render-side.
 
 Order of record (revised 2026-09-16 afternoon, user): C is done
-(`findings_seed.md`); **B is next** — (1) `scenes_sl1` finishes (resumed,
-job `20260916-114945-8f389e`); (2) the wrapping fix in `render_into_scene`
-/ `region_capacity` so a phrase draws as 2–3 lines instead of falling
-back to a single; (3) phrase share pinned via `--natural_frac`, punctuation
-rows in through `--phrase_pieces` (A rides here), `drop_symbols` applied
-to the phrase file; (4) the arm: sentence / multi-token composites on
-`sl1` + s1 + s0, **warm-started from the 53k table** (`--init_rows
-output/wake_probe/rows_synth_full_fm10k_full_s53k_qoff/trained.pt`, no
-`c_flat` so its rows load unchanged), read on `phrase` vs `phrase_held`,
-`word`, `swap`, and the flat singles as the regression guard. The
-per-item exposure levers from `findings_seed.md` (every piece in a phrase
-gets gradient from the same draw; glyph size) are what this arm buys
-over the seed. The 92-kana arm runs only if katakana still fails after
-sentence exposure; the 108k gate run is re-based on the warm-started
-sentence table.
+(`findings_seed.md`); **B is next** — (1) the scene pool: `scenes_sl1`
+(job `20260916-114945-8f389e`) was stopped at 2 125/3 400 renders with no
+kept/rejected pass; **`scenes_sl1w`** replaced it (wide shapes
+576×448 … 640×384, 1 000 renders, **276 kept, 28 %**, usable-region short
+side median 83 px) and is the sentence pool of record; (2) **wrapping —
+done 2026-09-16 evening**: `render_into_scene` / `fit_text` /
+`region_capacity` take `max_lines` (`--scene_max_lines`, default 3) and
+`cuts` (the caller's Qwen piece boundaries, so a row's unit is never
+split across lines); layout is **vertical first** (columns right-to-left,
+ー〜 rotated, 、。 top-right of the cell; horizontal lines only when the
+text cannot fit that way), more columns win only at 1.4× the glyph,
+kinsoku-nudged cuts. The wrap alone did not move it — the floor did:
+`--scene_min_glyph` **40 → 28** (default). Phrase fit share on sl1w × Manga109
+lines 4–12 glyphs (828 draws): 40 px 1 line 3 % → 3 cols 15 %; 28 px 1 line
+16 % → 2 cols 43 % → **3 cols 52 % (34 % vertical)**; 3 cols over 2 buys
+~9 points. 28 px at 512 is ≈ 3.5 latent tokens a glyph — this is the
+small-glyph risk below taken on purpose. **Tall bubbles (user, 2026-09-16
+evening: tategaki pool first, regenerate when short).** The wrap fit is
+bounded by bubble *height*, and the base draws EN horizontally, so its
+bubbles are wide: sl1w 116/276 taller than wide (61 at AR ≥ 1.3, height
+median 136 px); anchor length, frame and canvas do not move it (short
+anchors just make small bubbles). The lever is asking for *Japanese*
+text: `ja_reads_as / ja_bubble_reads / ja_saying` frames (`japanese text`
+tag, 24 built-in short manga anchors, `--scene_ja_anchors`), the letters
+garbled and erased anyway, the judge taking every detector box as an
+anchor (no read match). Smokes, 96 renders, tall canvases
+`384x640,448x640,448x576`: plain **20 kept (21 %), tall 17/20, AR ≥ 1.3
+15, height 121 px**; with `--scene_extra_tags monochrome,screentone`
+**30 kept (31 %), tall 24/30, AR ≥ 1.3 24, height 134 px** — rejects are
+`open_bubble` ~45 % (the base letters JA columns with no bubble) and
+`small_box` ~28 % (tategaki columns are narrow; `--scene_min_box` 56 → 40
+for a full run). **Not run at scale** (user, 09-16 evening): the intent is
+the rendered EN pool sl1w, tall-centred, with the JA text swapped in —
+the full ja_manga job (`20260916-154856-a14ef5`, 2 400 renders) was killed
+at launch; the JA-frame recipe stays on record as the lever if the tall
+pool runs short. `--scene_tall_ar 1.0` on the data stage keeps only
+tall-region scenes of every listed pool, so the sentence pool = the tall
+subsets of sl1w (116) + s1 (90) + s0 (74). `comic` / `2koma` /
+`greyscale` stay out of the prompts (native held-out tokens).
+(3) **punctuation first, as singles** (user, 09-16 evening): the fullwidth
+marks `、。・ー〜～！？「」`, `！！ ・・・ ・・・・` and small `っ ッ` are ext rows
+the 53k table never touched (rows come from the captions, and no phrase
+was in); they are the top pieces of the Manga109 dialogue outside the
+inventory (ー 6 712, っ 4 573, ？ 4 473, ！ 4 424 …). They are
+single-letter addresses, so they train like kana singles on the s0 / s1
+pools, not through phrases: `--extra_units` (each unit one Qwen piece with
+an ext row; `！？` is two pieces and stays out) adds them to the singles
+pool at 2× and forms eval group `single_extra` — read on the sheets,
+since the readers' `norm()` strips punctuation before matching. Arm
+**`rows_synth_punct_punct_s4k`** (job `20260916-155710-01337f`): the 53k
+recipe (`--scenes s0,s1`, 92 kana + ext + 200 kanji + 100 words, composite
+0.9, min glyph 32) + 15 extra units, 6 000 items, **`--init_rows` the 53k
+table**, 4 000 steps. `drop_symbols` on the phrase file changes 0 of
+40 446 lines (already clean). (4) **the sentence arm, budget 24 000
+steps** (user): the rendered EN pool sl1w, tall-centred
+(`--scene_tall_ar 1.0`; + s1 / s0 tall subsets if the pool runs short),
+JA phrases swapped in — `--phrase_file … --phrase_pieces 40`, 10 000
+items, `scene_frac 0.8 / natural_frac 0.1` (phrase share 0.5 among
+composites), min glyph 28, 3 columns — warm-started from the punctuation
+table (`--init_rows` takes a comma list since 09-16 — the 53k table + the
+punctuation table, later overriding by ext id — if the two are kept
+apart), read on `phrase` vs `phrase_held`, `word`, `swap`, and the flat
+singles as the regression guard; launched after the punctuation arm's
+eval is read, not queued blind. The 92-kana arm runs only if
+katakana still fails after sentence exposure; the 108k gate run is
+re-based on the sentence table.
 
 Flat 0 is measured and closed (2026-09-15 20:50,
 `rows_synth_micro6_c10_m6c10_s2k_flat0`): seed-0 wipes unchanged (11/32),

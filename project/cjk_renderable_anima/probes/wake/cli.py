@@ -308,7 +308,8 @@ def _encoder_args(g):
         "``common`` vector, that vector is subtracted from every row and, when "
         "--c_flat is on, seeds c_flat (clipped to --c_flat_cap) — so the flat "
         "table starts where the source left it and the composites train f alone. "
-        "Rows the source never had start at zero",
+        "Rows the source never had start at zero. Comma list = several tables in "
+        "order, a later one overriding by ext id (53k table + punctuation table)",
     )
     g.add_argument(
         "--pin_dir",
@@ -531,9 +532,35 @@ def _synth_args(g):
     g.add_argument(
         "--scene_min_glyph",
         type=int,
-        default=40,
+        default=28,
         help="data: --scenes smallest per-glyph cell (px) a composite may draw; "
-        "a text that would go smaller is redrawn shorter",
+        "a text that would go smaller is redrawn shorter. 40 through the seed "
+        "(S0 … 53k); 28 since 2026-09-16 for the sentence line — at 40 a "
+        "phrase fits 5 %% of sl1w bubbles even wrapped, at 28 + 2 columns 43 %%",
+    )
+    g.add_argument(
+        "--extra_units",
+        default="",
+        help="data: comma list of extra single-piece ext-row units drawn as "
+        "singles like kana (punctuation arm, 2026-09-16: 、,。,・,ー,～,！,？,「,」,"
+        "！！,・・・,っ,ッ); all of them form eval group single_extra",
+    )
+    g.add_argument(
+        "--scene_tall_ar",
+        type=float,
+        default=0.0,
+        help="data: --scenes keep only scenes whose headline region is at least "
+        "this tall for its width (1.0 = taller than wide; 0 = every kept scene). "
+        "Tategaki pool for the sentence line: sl1w 116/276 at 1.0, 61 at 1.3",
+    )
+    g.add_argument(
+        "--scene_max_lines",
+        type=int,
+        default=3,
+        help="data: --scenes columns (tategaki, right-to-left; lines when the "
+        "text only fits horizontally) a composite may wrap into, cut at Qwen "
+        "piece boundaries only; more columns win only at 1.4x the glyph. "
+        "1 = the single-line seed behaviour",
     )
     g.add_argument(
         "--flat_bubble",
@@ -652,6 +679,21 @@ def _scene_args(g):
         "(reads_as|bubble_reads|saying|sign|bare_quotes|sfx; s0 = reads_as only; sfx keeps its own onomatopoeia anchors and passes an open fill). "
         "Pronoun frames are drawn for solo counts only; the data stage swaps "
         "the JA text into the same frame",
+    )
+    g.add_argument(
+        "--scene_ja_anchors",
+        default="",
+        help="scenes: comma list of JA anchors for the ja_* frames (default the "
+        "built-in 24 short manga lines); the base's kana come out garbled and "
+        "are erased — the frame is asked for so the base draws a *tall* bubble",
+    )
+    g.add_argument(
+        "--scene_extra_tags",
+        default="",
+        help="scenes: comma list of general tags appended to every prompt "
+        "(recorded in the scene's generals, so the composite caption carries "
+        "them); e.g. `monochrome,screentone` for manga-page bubbles. NOT "
+        "`comic` / `2koma` / `greyscale` — those identify the native held-out prompts",
     )
     g.add_argument(
         "--scene_bubble_tag",

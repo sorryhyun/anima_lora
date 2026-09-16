@@ -40,15 +40,32 @@ from wake.readers import contact_sheet
 from wake.render import pick_font, region_capacity, render_into_scene, render_string
 
 
-def load_scenes(tags: str) -> list[dict]:
+def load_scenes(tags: str, min_ar: float = 0.0) -> list[dict]:
     """Kept scenes of every ``scenes_<tag>`` run in the comma list (s0 + a
-    frame-mix run compose)."""
+    frame-mix run compose). ``min_ar`` (``--scene_tall_ar``) keeps only
+    scenes whose headline region is at least that tall for its width —
+    the sentence line's tategaki pool (user, 2026-09-16: tall bubbles
+    first; regenerate when they run short)."""
     scenes = []
     for tag in [t for t in tags.split(",") if t]:
         path = OUT / f"scenes_{tag}" / "scenes.jsonl"
         got = [json.loads(ln) for ln in path.read_text().splitlines() if ln]
         assert got, f"--scenes {tag}: no kept scenes in {path}"
+        if min_ar > 0:
+            tall = [
+                s
+                for s in got
+                if (s["region"][3] - s["region"][1])
+                >= min_ar * (s["region"][2] - s["region"][0])
+            ]
+            print(
+                f"scenes {tag}: {len(tall)}/{len(got)} kept scenes with region "
+                f"AR >= {min_ar}",
+                flush=True,
+            )
+            got = tall
         scenes += got
+    assert scenes, f"--scenes {tags}: no scenes left (--scene_tall_ar {min_ar})"
     return scenes
 
 
@@ -78,7 +95,7 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
     assert inv.piece_ok is not None, "--scenes needs --words (piece coverage)"
     tok, qmap = tokq
     kana = inv.kana
-    scenes = load_scenes(a.scenes)
+    scenes = load_scenes(a.scenes, a.scene_tall_ar)
 
     # -- eval strings: flip / str3 (strings-arm recipe, only with strings in)
     # and phrase_held
@@ -154,7 +171,13 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
 
     # -- unit pool for singles -------------------------------------------------
     ext_ns = [c for c in inv.kana_ext if c not in KANA_SMALL]
-    units = list(kana) + ext_ns * 2 + list(inv.kanji) * 2 + list(inv.words_train)
+    units = (
+        list(kana)
+        + ext_ns * 2
+        + list(inv.kanji) * 2
+        + list(inv.words_train)
+        + list(inv.extra) * 2
+    )
 
     def draw_string() -> str:
         for _ in range(200):
@@ -229,10 +252,13 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
     for i in range(n_scene):
         sc = scenes[order[i % len(order)]]
         kind = rng.choice(kinds)
-        # the region holds `cap` glyphs at --scene_min_glyph: draw texts of
-        # the kind until one is short enough (cheap, no render), singles
-        # when the kind never fits; the render can still refuse (font width)
-        cap = region_capacity(sc["region"], a.scene_min_glyph, a.scene_fill)
+        # the region holds `cap` glyphs at --scene_min_glyph over up to
+        # --scene_max_lines columns: draw texts of the kind until one is
+        # short enough (cheap, no render), singles when the kind never fits;
+        # the render can still refuse (font width, piece cuts)
+        cap = region_capacity(
+            sc["region"], a.scene_min_glyph, a.scene_fill, a.scene_max_lines
+        )
         drawn = None
         for attempt in range(6):
             text = None
@@ -245,6 +271,11 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
                 n_short += 1
                 kind = "single"
                 continue
+            # lines break only between Qwen pieces — a row's unit stays whole
+            cuts, off = [], 0
+            for p, _row in pieces(tok, qmap, text):
+                off += len(p)
+                cuts.append(off)
             drawn = render_into_scene(
                 sc,
                 text,
@@ -253,6 +284,8 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
                 min_glyph=a.scene_min_glyph,
                 stroke=rng.random() < a.scene_stroke,
                 fill_frac=a.scene_fill,
+                max_lines=a.scene_max_lines,
+                cuts=cuts,
             )
             if drawn is not None:
                 break

@@ -77,13 +77,19 @@ class Trainables:
 
     # -- setup ---------------------------------------------------------------
 
-    def _init_rows_from(self, path: str):
+    def _init_rows_from(self, paths: str):
         """Rows-arm warm start (P0b → S-line probe): copy the source table's
         exported rows by ext id. An encoder source's rows are g(glyph) + f +
         ``common`` (one shared vector, cos ≈ 1 with the table mean); that
         vector is the flat-canvas component, so it is moved out of the rows
         and into ``c_flat`` (clipped to the cap) when the switch is on, and
-        dropped otherwise. Rows the source never had stay at zero."""
+        dropped otherwise. Rows the source never had stay at zero. A comma
+        list loads several tables in order (user, 2026-09-16: the 53k
+        table + a punctuation table), a later one overriding by ext id."""
+        for path in [p for p in paths.split(",") if p]:
+            self._init_rows_one(path)
+
+    def _init_rows_one(self, path: str):
         src = torch.load(path, map_location="cpu", weights_only=False)
         src_raw = src["delta"]["raw"].float()
         src_idx = {int(e): i for i, e in enumerate(src["delta"]["ext_ids"])}
