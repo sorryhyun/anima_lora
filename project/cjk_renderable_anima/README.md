@@ -87,23 +87,33 @@ CPU-only and safe inline. Corpus bubbles come from
 the repo).
 
 ```bash
-# S line, the recipe of record (2026-09-16): scene composites + flat singles,
-# rows arm, warm-started from the previous table. One daemon job, all stages.
-# <manga109s> is the local Manga109-s derivation; the path stays out of the repo.
+# S line, the recipe of record (2026-09-16 evening): the sentence arm — every
+# item a tategaki composite on the sl1w pool, kinds pinned as hard quotas
+# (--scene_mix), rows arm, warm-started from the 53k + punctuation table.
+# One daemon job, all stages; the native read is a second job on the same arm.
+# <manga109s> is the local Manga109-s derivation; the path stays out of the
+# repo (dialogue_2_10.tsv = dialogue_3_10.tsv + its 2-piece lines,
+# <manga109s>/derived/make_dialogue_2_10.py).
 make daemon-run ARGS="--label sent --stall-timeout 0 --queue \
     project/cjk_renderable_anima/probes/wake_probe.py --stage data train eval --arm rows \
-    --scenes sl1w,s1,s0 --scene_tall_ar 1.0 --data_tag synth_sent_tall \
+    --scenes sl1w --scene_drop sl1w:332,957 --scene_min_tokens 900 --data_tag synth_sent_q \
     --units kana --units kana_ext --units kanji:200 --units words:100/held=8 \
     --units 'list:、,。,・,ー,～,〜,！,？,「,」,！！,・・・,・・・・,っ,ッ' \
-    --phrase_file <manga109s>/derived/dialogue_3_10.tsv --phrase_pieces 40 \
-    --n_items 10000 --scene_frac 0.8 --natural_frac 0.1 --strings_frac 0 \
-    --flat_bubble 1.0 --scene_fill 0.7 --scene_min_glyph 28 --scene_max_lines 3 \
-    --shapes 448,512:2,448x512,512x448 \
-    --init_rows output/wake_probe/rows_synth_punct_punct_s4k/trained.pt \
+    --phrase_file <manga109s>/derived/dialogue_2_10.tsv --phrase_min_pieces 2 --phrase_pieces 40 \
+    --scene_mix single=0.1,short=0.5,sentence=0.4 --short_pieces 2-5 --short_max_lines 1 \
+    --sentence_min_letters 6 --sentence_min_glyph 20 --sentence_fill 0.9 --scene_vertical 1 \
+    --n_items 10000 --scene_frac 1.0 --natural_frac 0 --strings_frac 0 \
+    --flat_bubble 1.0 --scene_fill 0.7 --scene_min_glyph 28 --scene_max_lines 2 \
+    --shapes 512 \
+    --init_rows output/wake_probe/rows_synth_full_fm10k_merge_punct/trained.pt \
     --train_steps 24000 --batch 4 --t_min 0.7 --t_max 0.9 \
     --compile 1 --grad_ckpt 0 --aggressive_recompute 0 \
     --lr_rows 1e-3 --lr_decay cosine --free_residual 1e-3 --box_weight 4 \
     --seeds 2 --no_floor --c_flat 0 --arm_tag sent_s24k"
+make daemon-run ARGS="--label sent-native --stall-timeout 0 --queue \
+    project/cjk_renderable_anima/probes/wake_probe.py --stage native --arm rows \
+    --data_tag synth_sent_q --arm_tag sent_s24k --native_chars あ,か,す,日 \
+    --native_clauses en,swap --seeds 2 --delta_parts full"
 
 # Archived — the W2d Run 3 encoder recipe (hybrid g + f). The encoder arm has not
 # run since 2026-09-14; it is kept because extending the hybrid table needs it,

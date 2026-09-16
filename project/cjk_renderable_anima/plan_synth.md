@@ -14,8 +14,11 @@
 Recipe of record (settled; tables and argv in the report): rows only,
 `Δ_r = f_r`, no `c_flat`, no Q; frame-mix scenes, composite 0.9 / flat
 singles 0.1; σ 0.7–0.9, rows lr 1e-3 cosine, `--free_residual 1e-3`,
-`--box_weight 4`; batch 4, compile, no grad-ckpt, shapes
-`448,512:2,448x512,512x448`. The full launch line is in
+`--box_weight 4`; batch 4, compile, no grad-ckpt. Canvases are the **512²
+family only** (user, 2026-09-16 evening): `--shapes 512` for flat items,
+`--scene_min_tokens 900` on the scene pool (drops 448² and 448×512). The
+sentence arm on top of this: every item a tategaki composite on sl1w with
+hard kind quotas (`--scene_mix`). The full launch line is in
 [`README.md`](README.md) *How to run*.
 
 Budgets: **≈ 1 000 draws per row** (steps × batch / rows); **pin the share
@@ -25,29 +28,17 @@ cache in RAM).
 
 ## Next steps (one arm at a time)
 
-1. **Sentence arm — tategaki sentences on `scenes_sl1w` (user, 2026-09-16
-   evening).** Every item is a composite on `scenes_sl1w`, drawn vertical
-   (columns right-to-left), with the text-length mix pinned:
-   - **10 %** — 1 token (one Qwen piece: a single unit / punctuation row);
-   - **50 %** — 2–5 tokens;
-   - **40 %** — Japanese sentences (Manga109 dialogue lines,
-     `--phrase_file`, held by book → `phrase_held`).
-
-   Why the stopped `sent_s24k` had no sentences: the composite draw takes
-   the first of 40 random lines that fits the bubble, so of 2 092 phrase
-   composites 1 405 were 3–4 glyph interjections (`ハハハ・・・`, `何っ！`),
-   and 1 886 of the phrase draws fell back to singles (74 % of composites
-   were singles). Owed in `stage/synth.py` before launch: the shares above as
-   hard quotas (on a miss, re-pick the scene, never demote the kind); a
-   sentence floor so the 40 % are sentences, not interjections; a 2–5-token
-   source (`dialogue_3_10.tsv` starts at 3 pieces). Check the composite
-   sheet for tategaki sentences before GPU time. Otherwise as the stopped
-   arm: 10 000 items, min glyph 28, 3 columns, 24 000 steps, warm-started
-   (`--init_rows`); read on `phrase` vs `phrase_held`, `word`, `swap`, flat
-   singles as the regression guard.
-   After the launch: delete the `output/wake_probe/` `rows_synth_*`,
-   `scenes_*`, `encoder_*`, `data_*` dirs that are unneeded, misleading or
-   from failed runs; keep a dir only where it is the superset / replacement.
+1. **Sentence arm — LAUNCHED 2026-09-16 20:13** as
+   `rows_synth_sent_q_sent_s24k` (jobs `20260916-201323-226f69` data train
+   eval, `…-a06a68` native en + swap); build, smoke numbers and the
+   deletions in
+   [`reports/synth_sentence_launch_2026_09_16.md`](reports/synth_sentence_launch_2026_09_16.md)
+   *Relaunch*. **Read owed**: `phrase` vs `phrase_held` (sentences, 20 px
+   glyphs — the small-glyph risk taken for this kind), `short` vs
+   `short_held` (2–5-piece words, one column), `word`, `swap`, flat singles
+   as the regression guard; the composite sheet. Short items cap at 4
+   glyphs and one-column sentences at 8 on sl1w — longer one-column text
+   needs step 2's tall pool.
 2. **If the tall pool runs short:** the JA-frame scene recipe
    (`ja_reads_as / ja_bubble_reads / ja_saying`, `--scene_ja_anchors`,
    `--scene_extra_tags monochrome,screentone`, `--scene_min_box` 56 → 40),

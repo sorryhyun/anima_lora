@@ -205,6 +205,98 @@ def _data_synth_args(g):
     g.add_argument("--phrase_min_pieces", type=int, default=3)
     g.add_argument("--phrase_max_pieces", type=int, default=10)
     g.add_argument(
+        "--scene_drop",
+        default="",
+        help="data: --scenes kept scenes to leave out, `tag:i,i;tag:i` "
+        "(sl1w:332,957 — bubble-less tall regions the sentence quota reused)",
+    )
+    g.add_argument(
+        "--scene_mix",
+        default="",
+        help="data: --scenes hard per-kind quotas for the composites, e.g. "
+        "`single=0.1,short=0.5,sentence=0.4` (sentence arm, 2026-09-16): "
+        "`single` = one unit of the singles pool, `short` = a --phrase_file "
+        "line of --short_pieces pieces below the sentence floor, `sentence` = "
+        "a line with >= --sentence_min_letters letters. Texts are drawn "
+        "uniformly among the lines that fit the bubble; a kind that fits no "
+        "text re-picks the scene and is never demoted. Empty = the seed "
+        "behaviour (composites mirror the flat kinds, first fitting line)",
+    )
+    g.add_argument(
+        "--short_pieces",
+        default="2-5",
+        help="data: --scene_mix piece range (Qwen pieces, inclusive) of the "
+        "`short` kind; the phrase file must carry lines that short "
+        "(dialogue_2_10.tsv; --phrase_min_pieces 2)",
+    )
+    g.add_argument(
+        "--short_max_lines",
+        type=int,
+        default=1,
+        help="data: --scene_mix columns a `short` item may wrap into (1 = one "
+        "vertical line, user 2026-09-16; a bubble too low for it is a miss and "
+        "the scene is re-picked). Sentences use --scene_max_lines",
+    )
+    g.add_argument(
+        "--sentence_min_glyph",
+        type=int,
+        default=0,
+        help="data: --scene_mix per-glyph floor (px) for the `sentence` kind; "
+        "0 = --scene_min_glyph. The sentence arm runs 20 (user, 2026-09-16: a "
+        "6-glyph line as one column; at 28 px two of the 276 sl1w bubbles hold it)",
+    )
+    g.add_argument(
+        "--sentence_fill",
+        type=float,
+        default=0.0,
+        help="data: --scene_mix bubble fill for the `sentence` kind; 0 = "
+        "--scene_fill. The sentence arm runs 0.9",
+    )
+    g.add_argument(
+        "--scene_fewest_lines",
+        type=int,
+        default=1,
+        help="data: --scene_mix 1 = a text that fits in fewer columns at the "
+        "glyph floor stays there (one column whenever it fits); 0 = the seed "
+        "rule (more columns when the glyph gets 1.4x larger)",
+    )
+    g.add_argument(
+        "--short_lexical",
+        type=int,
+        default=1,
+        help="data: --scene_mix 1 = a `short` line must carry a word piece "
+        "(a multi-glyph kana Qwen piece or a kanji): あっ / ぎゃああ / せーの "
+        "are out, お前 / 待て / 勝先生 stay (user, 2026-09-16: combined glyphs "
+        "must make words). Costs the words the tokenizer splits into single "
+        "glyphs (きつね), ~25 %% of the 2–5-piece lines. 0 = every line",
+    )
+    g.add_argument(
+        "--sentence_min_letters",
+        type=int,
+        default=6,
+        help="data: --scene_mix floor for the `sentence` kind — kana + kanji "
+        "glyphs (at least 4 of them distinct), punctuation / digits not "
+        "counted, so ハハハ・・・, 何っ！ and ハハハハハハ are not sentences. "
+        "Lines under it with a `short` piece count are `short`; other lines "
+        "under it are in no kind",
+    )
+    g.add_argument(
+        "--scene_vertical",
+        type=int,
+        default=0,
+        help="data: --scenes 1 = tategaki only: a multi-glyph text that does "
+        "not fit as columns is a miss (re-pick the scene under --scene_mix, "
+        "shorter text otherwise), never a horizontal line",
+    )
+    g.add_argument(
+        "--scene_min_tokens",
+        type=int,
+        default=0,
+        help="data: --scenes keep only scenes whose canvas is at least this "
+        "many DiT tokens ((W/16)*(H/16)); 900 keeps the 512² family and "
+        "drops 448² (784) and 448x512 (896) (user, 2026-09-16)",
+    )
+    g.add_argument(
         "--scene_frac",
         type=float,
         default=0.4,
@@ -254,7 +346,8 @@ def _data_synth_args(g):
         help="data: --scenes columns (tategaki, right-to-left; lines when the "
         "text only fits horizontally) a composite may wrap into, cut at Qwen "
         "piece boundaries only; more columns win only at 1.4x the glyph. "
-        "1 = the single-line seed behaviour",
+        "1 = the single-line seed behaviour; the sentence arm runs 2 (user, "
+        "2026-09-16: three columns in a bubble read wrong)",
     )
     g.add_argument(
         "--flat_bubble",

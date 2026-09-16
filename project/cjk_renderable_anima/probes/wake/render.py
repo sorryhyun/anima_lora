@@ -342,14 +342,17 @@ def fit_text(
     fill_frac: float = 0.9,
     max_lines: int = 1,
     cuts=None,
+    fewest_lines: bool = False,
 ):
     """Largest font size whose text block fits ``region`` (inner
     ``fill_frac`` — 0.9 fills the bubble edge to edge, ``--scene_fill`` 0.7
     leaves manga-like air around the glyphs) over 1..``max_lines`` lines
     (columns when ``vertical``), lines cut only at ``cuts``. A layout with
     more lines replaces one with fewer only when its glyph is
-    ``MORE_LINES_GAIN``× larger. The glyph cell must be at least
-    ``min_glyph`` px, else ``None``. Returns ``(font, fs, lines)``."""
+    ``MORE_LINES_GAIN``× larger — never when ``fewest_lines`` (the sentence
+    arm, user 2026-09-16: a line that fits in one column stays one column).
+    The glyph cell must be at least ``min_glyph`` px, else ``None``.
+    Returns ``(font, fs, lines)``."""
     from PIL import ImageFont
 
     rx0, ry0, rx1, ry1 = region
@@ -374,6 +377,8 @@ def fit_text(
                 if best is None or fs >= best[1] * MORE_LINES_GAIN:
                     best = (font, fs, lines)
                 break
+        if best is not None and fewest_lines:
+            return best
             fs = int(fs * min(sc, 0.97))
             if fs < min_glyph:
                 break
@@ -381,15 +386,22 @@ def fit_text(
 
 
 def region_capacity(
-    region, min_glyph: int, fill_frac: float = 0.9, max_lines: int = 1
+    region,
+    min_glyph: int,
+    fill_frac: float = 0.9,
+    max_lines: int = 1,
+    vertical_only: bool = False,
 ) -> int:
     """How many glyphs the region holds at ``min_glyph`` px per cell over up
     to ``max_lines`` columns (vertical) or lines (horizontal), inner
-    ``fill_frac`` — the larger of the two orientations."""
+    ``fill_frac`` — the larger of the two orientations, or the columns alone
+    when ``vertical_only`` (the tategaki-only sentence arm)."""
     rw, rh = (region[2] - region[0]) * fill_frac, (region[3] - region[1]) * fill_frac
     g = min_glyph
     v_cols = int((rw - g) / (g * V_GAP)) + 1 if rw >= g else 0
     v_cap = int(rh / (g * V_PITCH)) * min(v_cols, max_lines)
+    if vertical_only:
+        return v_cap
     h_rows = int((rh - g) / (g * H_GAP)) + 1 if rh >= g else 0
     h_cap = int(rw / (g * H_PITCH)) * min(h_rows, max_lines)
     return max(v_cap, h_cap)
@@ -533,6 +545,8 @@ def render_into_scene(
     tilt_deg: float = 7.0,
     max_lines: int = 1,
     cuts=None,
+    vertical_only: bool = False,
+    fewest_lines: bool = False,
 ):
     """Erase every anchor bubble's usable region (plus the text box padded by
     a quarter of its size — detector boxes run tight) with the bubble's
@@ -544,9 +558,11 @@ def render_into_scene(
     unit is never split across lines). **Vertical first** (user,
     2026-09-16: manga lettering is tategaki): columns right-to-left
     whenever the text fits that way at ``min_glyph``, horizontal lines only
-    when it does not. Returns ``(image, drawn text box)`` or ``None`` when
-    the text does not fit at ``min_glyph`` px per glyph (the caller draws a
-    shorter text). Other anchor bubbles are left erased (empty bubble).
+    when it does not — never when ``vertical_only`` (the sentence arm,
+    2026-09-16: a multi-glyph text that does not fit as columns is a miss and
+    the caller re-picks the scene; a single glyph has no orientation).
+    Returns ``(image, drawn text box)`` or ``None`` when the text does not
+    fit at ``min_glyph`` px per glyph (the caller draws a shorter text). Other anchor bubbles are left erased (empty bubble).
     ``stroke``: a thin outline in the fill colour around the glyphs (manga
     lettering over art)."""
     import numpy as np
@@ -574,15 +590,35 @@ def render_into_scene(
     vertical = len(text) > 1
     fit = (
         fit_text(
-            d, text, font_path, region, True, min_glyph, fill_frac, max_lines, cuts
+            d,
+            text,
+            font_path,
+            region,
+            True,
+            min_glyph,
+            fill_frac,
+            max_lines,
+            cuts,
+            fewest_lines,
         )
         if vertical
         else None
     )
+    if fit is None and vertical and vertical_only:
+        return None
     if fit is None:
         vertical = False
         fit = fit_text(
-            d, text, font_path, region, False, min_glyph, fill_frac, max_lines, cuts
+            d,
+            text,
+            font_path,
+            region,
+            False,
+            min_glyph,
+            fill_frac,
+            max_lines,
+            cuts,
+            fewest_lines,
         )
     if fit is None:
         return None

@@ -17,10 +17,20 @@ singles×n_single + combos + corpus-crop mix. Every item is a font render:
 
 Eval groups added: ``flip`` / ``str3`` (strings) and ``phrase_held`` —
 covered held-out corpus lines whose text never appears in a training item.
+
+Sentence arm (2026-09-16, ``--scene_mix``): the composites' kinds are hard
+quotas over ``single`` (one unit) / ``short`` (a ``--short_pieces`` phrase
+line under the sentence floor) / ``sentence`` (>= ``--sentence_min_letters``
+kana + kanji glyphs). The text is drawn uniformly among the kind's lines that
+fit the bubble (the seed path took the first of 40 random lines that fit,
+which made 2 092 "phrase" composites mostly 3–4-glyph interjections); a kind
+that fits nothing on a scene re-picks the scene and is never demoted. Adds
+eval groups ``short`` / ``short_held`` (the ``phrase`` pair reads sentences).
 """
 
 from __future__ import annotations
 
+import bisect
 import json
 import random
 from collections import Counter
@@ -29,7 +39,9 @@ from pathlib import Path
 from wake.common import (
     CORPUS_HELD,
     CORPUS_TRAIN,
+    KANJI_RE,
     OUT,
+    WORD_RE,
     TPL_BUBBLE,
     TPL_PLAIN,
     TPL_SCENE_JA,
@@ -39,17 +51,41 @@ from wake.readers import contact_sheet
 from wake.render import pick_font, region_capacity, render_into_scene, render_string
 
 
-def load_scenes(tags: str, min_ar: float = 0.0) -> list[dict]:
+def load_scenes(tags: str, min_ar: float = 0.0, min_tokens: int = 0, drop: str = "") -> list[dict]:
     """Kept scenes of every ``scenes_<tag>`` run in the comma list (s0 + a
     frame-mix run compose). ``min_ar`` (``--scene_tall_ar``) keeps only
     scenes whose headline region is at least that tall for its width —
     the sentence line's tategaki pool (user, 2026-09-16: tall bubbles
-    first; regenerate when they run short)."""
+    first; regenerate when they run short). ``min_tokens``
+    (``--scene_min_tokens``) drops canvases under that many DiT tokens
+    (900: the 512² family only — user, 2026-09-16). ``drop`` (``--scene_drop``,
+    ``tag:i,i;tag:i``) removes kept scenes by index — sl1w 332 / 957 are
+    bubble-less tall regions (a hooded sketch's body, a box beside a
+    figure) that the sentence quota reused 12–13 times per 400 items (user,
+    2026-09-16)."""
+    dropped = {}
+    for part in [x for x in drop.split(";") if x]:
+        tag, ids = part.split(":")
+        dropped[tag] = {int(x) for x in ids.split(",") if x}
     scenes = []
     for tag in [t for t in tags.split(",") if t]:
         path = OUT / f"scenes_{tag}" / "scenes.jsonl"
         got = [json.loads(ln) for ln in path.read_text().splitlines() if ln]
         assert got, f"--scenes {tag}: no kept scenes in {path}"
+        if dropped.get(tag):
+            got = [s for s in got if s["i"] not in dropped[tag]]
+            print(f"scenes {tag}: dropped {sorted(dropped[tag])}", flush=True)
+        if min_tokens > 0:
+            big = [
+                s
+                for s in got
+                if (s["shape"][0] // 16) * (s["shape"][1] // 16) >= min_tokens
+            ]
+            print(
+                f"scenes {tag}: {len(big)}/{len(got)} kept scenes at >= {min_tokens} tokens",
+                flush=True,
+            )
+            got = big
         if min_ar > 0:
             tall = [
                 s
@@ -94,7 +130,7 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
     assert inv.piece_ok is not None, "--scenes needs the piece-coverage test"
     tok, qmap = tokq
     kana = inv.kana
-    scenes = load_scenes(a.scenes, a.scene_tall_ar)
+    scenes = load_scenes(a.scenes, a.scene_tall_ar, a.scene_min_tokens, a.scene_drop)
 
     # -- eval strings: flip / str3 (strings-arm recipe, only with strings in)
     # and phrase_held
@@ -156,17 +192,73 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
         src = "corpus"
     prng = random.Random(a.seed + 37)
     prng.shuffle(held_lines)
-    inv.evals["phrase_held"] = sorted(held_lines[: a.n_phrase_eval])
-    if a.phrase_file:
-        # trained lines too, so memorisation and generalisation read apart
+    mix = _parse_mix(a.scene_mix)
+    if mix:
+        # sentence arm: the phrase pair reads sentences, the short pair the
+        # 2–5-piece lines; a line in neither kind trains in no composite
+        assert a.phrase_file, "--scene_mix needs --phrase_file"
+        n_of = {t: n for t, _b, n in plines}
+        lo, hi = (int(x) for x in a.short_pieces.split("-"))
+
+        def kind_of(t):
+            ls = _letters(t)
+            if len(ls) >= a.sentence_min_letters and len(set(ls)) >= _SENT_DISTINCT:
+                return "sentence"
+            # a short item is a word or phrase, not a stretched vowel (かー /
+            # ふー): at least two distinct letters, and (--short_lexical) a
+            # piece that is a word — a multi-glyph kana piece or a kanji —
+            # so あっ / うっ / ぎゃああ are out (user, 2026-09-16: combined
+            # glyphs must make words; costs きつね-type words the tokenizer
+            # splits into single glyphs, 25 % of the lines)
+            if (
+                lo <= n_of[t] <= hi
+                and len(set(ls)) >= _SHORT_DISTINCT
+                and (not a.short_lexical or _lexical(tok, qmap, t))
+            ):
+                return "short"
+            return None
+
+        by_kind = {"short": [], "sentence": []}
+        for t in train_lines:
+            k = kind_of(t)
+            if k:
+                by_kind[k].append(t)
+        held_by = {"short": [], "sentence": []}
+        for t in held_lines:
+            k = kind_of(t)
+            if k:
+                held_by[k].append(t)
+        inv.evals["phrase_held"] = sorted(held_by["sentence"][: a.n_phrase_eval])
         inv.evals["phrase"] = sorted(
-            prng.sample(sorted(train_set), min(a.n_phrase_eval, len(train_set)))
+            prng.sample(
+                by_kind["sentence"], min(a.n_phrase_eval, len(by_kind["sentence"]))
+            )
         )
-    print(
-        f"phrases ({src}): {len(train_lines)} covered training lines ({len(train_set)} distinct); "
-        f"phrase_held {len(inv.evals['phrase_held'])}/{len(held_lines)} never-trained held lines",
-        flush=True,
-    )
+        inv.evals["short_held"] = sorted(held_by["short"][: a.n_phrase_eval])
+        inv.evals["short"] = sorted(
+            prng.sample(by_kind["short"], min(a.n_phrase_eval, len(by_kind["short"])))
+        )
+        print(
+            f"phrases ({src}): {len(train_lines)} covered training lines — "
+            f"sentence {len(by_kind['sentence'])} (>= {a.sentence_min_letters} letters), "
+            f"short {len(by_kind['short'])} ({a.short_pieces} pieces), "
+            f"{len(train_lines) - len(by_kind['sentence']) - len(by_kind['short'])} in no kind; "
+            f"held: sentence {len(held_by['sentence'])}, short {len(held_by['short'])}",
+            flush=True,
+        )
+    else:
+        by_kind = {}
+        inv.evals["phrase_held"] = sorted(held_lines[: a.n_phrase_eval])
+        if a.phrase_file:
+            # trained lines too, so memorisation and generalisation read apart
+            inv.evals["phrase"] = sorted(
+                prng.sample(sorted(train_set), min(a.n_phrase_eval, len(train_set)))
+            )
+        print(
+            f"phrases ({src}): {len(train_lines)} covered training lines ({len(train_set)} distinct); "
+            f"phrase_held {len(inv.evals['phrase_held'])}/{len(held_lines)} never-trained held lines",
+            flush=True,
+        )
 
     # -- unit pool for singles: every trained unit repeated by its --units
     # weight, in the canonical source order (wake/units.py)
@@ -212,6 +304,14 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
         "phrase": lambda: rng.choice(train_lines),
         "string": draw_string,
     }
+    # uniform among the texts of a kind that fit a bubble of `cap` glyphs
+    # (sorted by length, bisect) — the seed path's first-of-40-that-fits
+    # draw is what made the phrase composites interjections
+    fit_pool = {
+        "single": _LenPool(units, weighted=True),
+        "short": _LenPool(by_kind.get("short", [])),
+        "sentence": _LenPool(by_kind.get("sentence", [])),
+    }
     recs: list[dict] = []
 
     def flat(kind: str, src: str, i: int):
@@ -250,6 +350,12 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
     rng.shuffle(order)
     n_short = 0
     kind_c: Counter = Counter()
+    if mix:
+        recs += _quota_composites(
+            a, rng, scenes, order, mix, n_scene, fit_pool, fonts, tokq, out
+        )
+        _scene_sheet(rng, [r for r in recs if r["src"] == "scene"], out)
+        return recs
     for i in range(n_scene):
         sc = scenes[order[i % len(order)]]
         kind = rng.choice(kinds)
@@ -258,7 +364,11 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
         # short enough (cheap, no render), singles when the kind never fits;
         # the render can still refuse (font width, piece cuts)
         cap = region_capacity(
-            sc["region"], a.scene_min_glyph, a.scene_fill, a.scene_max_lines
+            sc["region"],
+            a.scene_min_glyph,
+            a.scene_fill,
+            a.scene_max_lines,
+            bool(a.scene_vertical),
         )
         drawn = None
         for attempt in range(6):
@@ -287,6 +397,7 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
                 fill_frac=a.scene_fill,
                 max_lines=a.scene_max_lines,
                 cuts=cuts,
+                vertical_only=bool(a.scene_vertical),
             )
             if drawn is not None:
                 break
@@ -319,6 +430,247 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
     )
     _scene_sheet(rng, [r for r in recs if r["src"] == "scene"], out)
     return recs
+
+
+def _parse_mix(spec: str) -> dict[str, float]:
+    """``single=0.1,short=0.5,sentence=0.4`` → shares (must sum to 1)."""
+    if not spec:
+        return {}
+    mix = {}
+    for part in spec.split(","):
+        k, v = part.split("=")
+        assert k in ("single", "short", "sentence"), f"--scene_mix: unknown kind {k}"
+        mix[k] = float(v)
+    assert abs(sum(mix.values()) - 1.0) < 1e-6, (
+        f"--scene_mix shares sum to {sum(mix.values())}"
+    )
+    return mix
+
+
+def _letters(t: str) -> list[str]:
+    """Kana + kanji glyphs of ``t`` — the sentence floor's unit (punctuation,
+    digits, Latin and the prolonged-sound mark do not count)."""
+    return [c for c in t if "ぁ" <= c <= "ゖ" or "ァ" <= c <= "ヺ" or KANJI_RE.match(c)]
+
+
+# the length floor alone let ハハハハハハ / おやおやおや / うわああああ through
+# as sentences (smoke, 2026-09-16): a sentence has >= 4 distinct letters, a
+# short item >= 2
+_SENT_DISTINCT = 4
+_SHORT_DISTINCT = 2
+
+
+def _lexical(tok, qmap, t: str) -> bool:
+    """Some Qwen piece of ``t`` is a word: >= 2 glyphs matching WORD_RE, or
+    carries a kanji."""
+    return any(
+        (len(p) >= 2 and WORD_RE.match(p)) or any(KANJI_RE.match(c) for c in p)
+        for p, _row in pieces(tok, qmap, t)
+    )
+
+
+class _LenPool:
+    """Texts sorted by glyph length; ``draw(rng, cap)`` picks a length
+    uniformly among the lengths present at most ``cap`` glyphs, then a text
+    of that length (``None`` when nothing fits) — so the 2-glyph lines, the
+    most numerous, do not dominate the short kind."""
+
+    def __init__(self, texts, weighted: bool = False):
+        # weighted: keep repeats (the singles pool repeats a unit per its
+        # --units weight) so an as-is draw honours them
+        self.texts = sorted(
+            texts if weighted else set(texts), key=lambda t: (len(t), t)
+        )
+        self.lens = [len(t) for t in self.texts]
+        self.starts = {}
+        for i, n in enumerate(self.lens):
+            self.starts.setdefault(n, i)
+        self.lengths = sorted(self.starts)
+
+    def draw(self, rng, cap: int, by_length: bool = True):
+        if not by_length:
+            # the singles pool carries the --units weights: draw it as is
+            n = bisect.bisect_right(self.lens, cap)
+            return self.texts[rng.randrange(n)] if n else None
+        k = bisect.bisect_right(self.lengths, cap)
+        if not k:
+            return None
+        n = self.lengths[rng.randrange(k)]
+        lo, hi = self.starts[n], bisect.bisect_right(self.lens, n)
+        return self.texts[rng.randrange(lo, hi)]
+
+
+def _quota_composites(a, rng, scenes, order, mix, n_scene, fit_pool, fonts, tokq, out):
+    """The sentence arm's composites: ``n_scene`` items whose kinds are the
+    ``--scene_mix`` shares as hard counts (rounding to the largest share),
+    in a shuffled order. Per item the **text comes first** (a length
+    uniformly among the kind's lengths that at least ``_MIN_FIT_SCENES``
+    scenes hold, then a text of that length; singles as the weighted pool),
+    then a scene among those whose capacity holds it, weighted by
+    ``1 / (1 + uses)`` so the tall bubbles are not one scene — scene-first
+    with a text that fits piled the short kind at 2 glyphs, the one-column
+    capacity of most bubbles, and plain uniform-among-fitting put 124 of 400
+    items on one scene. Up to ``_SCENE_TRIES`` fitting scenes per text and
+    3 texts per item; then the item is a recorded miss, never another
+    kind."""
+    tok, qmap = tokq
+    counts = {k: int(n_scene * f) for k, f in mix.items()}
+    top = max(mix, key=mix.get)
+    counts[top] += n_scene - sum(counts.values())
+    todo = [k for k, c in counts.items() for _ in range(c)]
+    rng.shuffle(todo)
+    assert all(fit_pool[k].texts for k in counts if counts[k]), (
+        f"--scene_mix: a kind with a share has no texts: "
+        f"{ {k: len(fit_pool[k].texts) for k in counts} }"
+    )
+    # columns per kind: a short item is one column (user, 2026-09-16: 2–5
+    # tokens read as a single vertical line), sentences wrap
+    lines_of = {"single": 1, "short": a.short_max_lines, "sentence": a.scene_max_lines}
+    # sentences may draw smaller and fill more of the bubble (user,
+    # 2026-09-16: 20 px / 0.9 so a 6-glyph line is one column on about half
+    # the sl1w bubbles; at 28 px / 0.7 two of 276 hold it)
+    glyph_of = {k: a.scene_min_glyph for k in lines_of}
+    fill_of = {k: a.scene_fill for k in lines_of}
+    if a.sentence_min_glyph:
+        glyph_of["sentence"] = a.sentence_min_glyph
+    if a.sentence_fill:
+        fill_of["sentence"] = a.sentence_fill
+    caps = {
+        k: [
+            region_capacity(
+                sc["region"],
+                glyph_of[k],
+                fill_of[k],
+                lines_of[k],
+                bool(a.scene_vertical),
+            )
+            for sc in scenes
+        ]
+        for k in lines_of
+    }
+    # one-column capacity per kind: a text goes to the scenes that hold it
+    # in one column whenever >= _MIN_FIT_SCENES do (user, 2026-09-16: a
+    # 6-glyph line is one column), else to any scene that holds it wrapped
+    caps1 = {
+        k: [
+            region_capacity(
+                sc["region"], glyph_of[k], fill_of[k], 1, bool(a.scene_vertical)
+            )
+            for sc in scenes
+        ]
+        for k in lines_of
+    }
+    # the longest text a kind may draw: the capacity that _MIN_FIT_SCENES
+    # scenes reach at its column count
+    cap_of = {
+        k: sorted(cs, reverse=True)[min(_MIN_FIT_SCENES, len(cs)) - 1]
+        for k, cs in caps.items()
+    }
+    print(
+        f"quota caps (glyphs held by >= {_MIN_FIT_SCENES} scenes): "
+        + ", ".join(
+            f"{k} {c} ({lines_of[k]} col, {glyph_of[k]} px, fill {fill_of[k]})"
+            for k, c in cap_of.items()
+        ),
+        flush=True,
+    )
+    recs, miss = [], Counter()
+    used: Counter = Counter()
+    for i, kind in enumerate(todo):
+        max_lines = lines_of[kind]
+        drawn, text = None, None
+        for _ in range(3):
+            text = fit_pool[kind].draw(rng, cap_of[kind], by_length=kind != "single")
+            if text is None:
+                break
+            fitting = [j for j, c in enumerate(caps1[kind]) if c >= len(text)]
+            if len(fitting) < _MIN_FIT_SCENES:
+                fitting = [j for j, c in enumerate(caps[kind]) if c >= len(text)]
+            cuts, off = [], 0
+            for p, _row in pieces(tok, qmap, text):
+                off += len(p)
+                cuts.append(off)
+            tries, pool = [], list(fitting)
+            while pool and len(tries) < _SCENE_TRIES:
+                j = rng.choices(
+                    pool, weights=[1.0 / (1 + used[scenes[x]["i"]]) for x in pool]
+                )[0]
+                pool.remove(j)
+                tries.append(j)
+            for j in tries:
+                sc = scenes[j]
+                drawn = render_into_scene(
+                    sc,
+                    text,
+                    pick_font(text, fonts, rng),
+                    rng,
+                    min_glyph=glyph_of[kind],
+                    stroke=rng.random() < a.scene_stroke,
+                    fill_frac=fill_of[kind],
+                    max_lines=max_lines,
+                    cuts=cuts,
+                    vertical_only=bool(a.scene_vertical),
+                    fewest_lines=bool(a.scene_fewest_lines),
+                )
+                if drawn is not None:
+                    break
+            if drawn is not None:
+                break
+        if drawn is None:
+            miss[kind] += 1
+            continue
+        im, box = drawn
+        W, H = im.size
+        assert [W, H] == list(sc["shape"]), (
+            f"scene {sc['i']}: image {W}x{H} vs {sc['shape']}"
+        )
+        fn = out / "img" / f"scene_{i:05d}.png"
+        im.save(fn)
+        used[sc["i"]] += 1
+        recs.append(
+            {
+                "file": str(fn),
+                "text": text,
+                "caption": scene_caption(sc, text),
+                "src": "scene",
+                "kind": kind,
+                "shape": [W, H],
+                "box": box,
+                "scene": sc["i"],
+            }
+        )
+    got = Counter(r["kind"] for r in recs)
+    # columns drawn, from the box: width / height × glyphs ≈ 1 for one
+    # column, ≈ 4 for two
+    one_col = {
+        k: sum(
+            1
+            for r in recs
+            if r["kind"] == k
+            and len(r["text"]) > 1
+            and (r["box"][2] - r["box"][0]) * len(r["text"])
+            < 2.2 * (r["box"][3] - r["box"][1])
+        )
+        for k in counts
+    }
+    print(f"  one-column items per kind (multi-glyph): {one_col}", flush=True)
+    glyphs = {
+        k: sorted(Counter(len(r["text"]) for r in recs if r["kind"] == k).items())
+        for k in counts
+    }
+    print(
+        f"composites (quota): {len(recs)}/{n_scene} over {len(used)}/{len(scenes)} scenes "
+        f"(busiest scene {max(used.values()) if used else 0} items); "
+        f"planned {dict(counts)}, drawn {dict(got)}, missed {dict(miss)}",
+        flush=True,
+    )
+    for k, hist in glyphs.items():
+        print(f"  {k} glyph lengths: {hist}", flush=True)
+    return recs
+
+
+_SCENE_TRIES = 8
+_MIN_FIT_SCENES = 10
 
 
 def _scene_sheet(rng, recs, out):

@@ -66,6 +66,8 @@ _EVAL_ORDER = (
     "str3",
     "phrase",
     "phrase_held",
+    "short",
+    "short_held",
 )
 
 

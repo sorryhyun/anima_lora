@@ -78,6 +78,8 @@ EVAL_GROUPS = (
     "str3",
     "phrase",
     "phrase_held",
+    "short",
+    "short_held",
     "combo",
     "corpus",
     "en",

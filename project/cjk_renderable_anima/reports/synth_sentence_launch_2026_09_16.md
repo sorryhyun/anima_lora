@@ -396,3 +396,75 @@ from this arm is a result; the data build is what is owed
 afternoon, unread here: `rows_synth_punct_punct_s4k`,
 `rows_synth_punct_only_punct_only_s3k` (each with `report.md`).
 
+
+## Relaunch (2026-09-16 20:13): `rows_synth_sent_q_sent_s24k` — quotas, tategaki only, sl1w
+
+Jobs `20260916-201323-226f69` (data train eval) and `…-a06a68` (native, en +
+swap), argv in `README.md` *How to run*. Three earlier submissions the same
+evening (19:48, 20:03, 20:11) were killed during their data stage as the
+user read the smoke sheets — one column for the short kind, two columns at
+most for sentences, 6-glyph sentences as one column, two scenes out. What
+changed against the stopped arm, all in `stage/synth.py` / `wake/render.py`
+/ `wake/cli.py`:
+
+- **Hard kind quotas** (`--scene_mix single=0.1,short=0.5,sentence=0.4`):
+  the composites' kinds are counts, shuffled. **Text first, then a scene
+  that holds it**: a length uniformly among the kind's lengths that at
+  least 10 scenes hold, a text of that length, then a scene among those
+  whose capacity holds it, weighted `1 / (1 + uses)` (scene-first with a
+  text that fits piled the short kind at 2 glyphs; plain uniform-among-
+  fitting put 124 of 400 items on one scene). A text that renders nowhere
+  is a recorded miss, never another kind.
+- **Columns**: tategaki only (`--scene_vertical 1`); `single` and `short`
+  one column (`--short_max_lines 1`); sentences at most two
+  (`--scene_max_lines 2`; three read wrong on the sheet), and one whenever
+  ≥ 10 scenes hold the text in one column (`--scene_fewest_lines 1`,
+  `caps1`). Sentences draw at **20 px / fill 0.9** (`--sentence_min_glyph`,
+  `--sentence_fill`; at 28 px / 0.7 two of 276 sl1w bubbles hold a 6-glyph
+  column, at 20 px / 0.9 about half) — the small-glyph risk taken on
+  purpose for the sentence kind only; short / single stay 28 px / 0.7.
+- **Sentence floor**: ≥ 6 kana + kanji letters (punctuation / digits / ー
+  not counted) *and* ≥ 4 distinct — the length floor alone let
+  ハハハハハハ / おやおやおや through.
+- **Short kind = 2–5 pieces** from `dialogue_2_10.tsv` (= `dialogue_3_10.tsv`
+  + 2 528 two-piece lines from the same XMLs under the same character-set
+  rule; 87 books unchanged, so the held books are the same six), below the
+  sentence floor, ≥ 2 distinct letters, and (`--short_lexical 1`, user:
+  combined glyphs must make words) carrying a word piece — a multi-glyph
+  kana Qwen piece or a kanji. Keeps 8 740 of 11 611 such lines; the drops
+  are mostly interjections / SFX (あっ, ぎゃああ, せーの) plus words the
+  tokenizer splits into single glyphs (きつね, ほんと？).
+- **Scenes**: all of sl1w minus `--scene_drop sl1w:332,957` (bubble-less
+  tall regions — a hooded sketch's body, a box beside a figure — that the
+  quota reused 12–13× per 400 items); `--scene_min_tokens 900` (the 512²
+  family only, user: no 448² — sl1w is 960–1 120 tokens throughout, s1 /
+  s0 would lose their 448² and 448×512 scenes); `--shapes 512` for flat
+  items (none: `--scene_frac 1.0`, flat singles stay the eval guard).
+  Warm start `rows_synth_full_fm10k_merge_punct/trained.pt`, 24 000 steps.
+- Eval groups added: `short` / `short_held` (16 each); `phrase` /
+  `phrase_held` now sample sentences only (213 eval prompts, was 181).
+
+Last smoke before the launch (400 items, CPU, before the two-scene drop):
+planned 40 / 200 / 160, drawn 40 / 200 / 160, **missed 0**, 138/276
+scenes used, busiest 13; short 2–4 glyphs (64 / 58 / 78), one column
+200/200; sentences 6–16 glyphs flat, **6–8 one column (40/40), 9–16 two
+columns**. Training pools: sentence 3 606 (held 311), short 2 652 (held
+217), 4 248 lines in no kind. The 1-column short cap is 4 glyphs (≥ 10
+scenes at 28 px) — 5-piece lines longer than that do not draw; the tall
+pool (plan step 2) is the lever for longer one-column text.
+
+Deleted after the launch (plan step 1; 17 GB): the smoke data builds
+(`data_nokana_flat_smoke`, `data_nokana_smoke`, `data_phrase_smoke`,
+`data_synth_sent_smoke`), aborted builds (`data_synth_punct_tall`,
+`data_synth_punct_cold`), the punctuation arms' data (`data_synth_punct`,
+`data_synth_punct_only` — the arm dirs with `report.md` stay), the flat-0
+data (`data_synth_micro6_c10`; its arm dir stays), the unusable 30k build
+`data_synth_full_fm` and its RAM-killed arm
+`rows_synth_full_fm_full_s53k_qoff`, the sentence-less
+`data_synth_sent_tall` + stopped `rows_synth_sent_tall_sent_s24k`, and the
+superseded scene runs `scenes_sl1` (stopped, no judge pass), `scenes_ja_manga`
+(killed at launch), `scenes_sl1w_smoke`, `scenes_sl1smoke`. Kept: every
+arm dir a table or report cites, `data_synth_full_fm10k` (the 53k seed's
+data), the micro data builds the 2×2 / micro-loop tables are on, and the
+two JA-frame smokes (`scenes_ja_manga_smoke`, `scenes_ja_tall_smoke`) —
+the measured evidence behind step 2.
