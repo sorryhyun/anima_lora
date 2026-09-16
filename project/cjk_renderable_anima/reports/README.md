@@ -13,6 +13,7 @@ it was split here without edits.
 
 | report | dates | what it holds | headline |
 |---|---|---|---|
+| [`krzh16_2026_09_16.md`](krzh16_2026_09_16.md) | 09-16 | 16 Korean / simplified-Chinese rows on the micro recipe, read against the 53k table; the `~` tag-leak row; concat feasibility | the DiT holds Hangul and simplified units; KO/ZH rows share the kana manifold (trigger + orthogonal identity), hanzi neighbour JA rows by radical; row addresses are reproducible across runs (own char 0.5 / shape 0.3 / random 0.03) |
 | [`wake_w0_w2_2026_09_13.md`](wake_w0_w2_2026_09_13.md) | 09-13 | the wake hypothesis, Probe 0/1, address geometry, 256² / 24-kana / balanced / σ-band arms, native-rendering and kanji probes, the case for W2d | the frozen DiT holds kana units; a rows-only delta draws them; identity is decided at σ ≈ 0.8 |
 | [`wake_plan_2026_09_13.md`](wake_plan_2026_09_13.md) | 09-13 (status notes to 09-14) | the plan as written: where the line stood, target artefact (a vocab pack), W3 / W4, kill criteria, shelved W2 levers, **EN safety**, instruments & gotchas | superseded as decision state by `plan.md` / `plan_synth.md`; the EN-safety and gotcha lists still apply |
 | [`wake_w2d_encoder_2026_09_13_14.md`](wake_w2d_encoder_2026_09_13_14.md) | 09-13 → 09-14 | W2d glyph encoder: Run 1 (ten launches), 1b / 1b amended, 1c decorrelation, 1d free-residual hybrid, Run 2 kanji + IDS composites | table is rank-1; `g + f` renders every trained single (24/24), held-out flat; addresses do not compose → kanji is an exposure budget |

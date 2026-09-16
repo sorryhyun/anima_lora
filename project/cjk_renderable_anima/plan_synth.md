@@ -140,8 +140,10 @@ the phrase share *is* their exposure.
   490 draws per row. **Failed the flat gates** (singles 13/36, ext 18/36,
   kanji 18/36, word 0/32, combo 0/36; native en 36/64, swap 18/64 with か
   0/16). Not the seed. Training itself was clean (loss flat 0.09–0.11,
-  mean row norm 0.58, one shared row at 2.2 — the clause's common piece,
-  present in every arm). What it measured: the exposure curve above, and
+  mean row norm 0.58, one shared row at 2.2 — **ext row 58974, the `~`
+  symbol row, trained through the `kaguya-sama … ~tensai …~` copyright tag
+  in 81 composites; a tag leak, not a clause piece — drop it at bake;
+  `reports/krzh16_2026_09_16.md`). What it measured: the exposure curve above, and
   that 433 rows at composite 0.9 do not interfere *visibly* beyond
   exposure (hiragana held, katakana did not — an exposure-or-interference
   question the 92-kana arm below answers).
