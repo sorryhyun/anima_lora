@@ -123,10 +123,19 @@ def stage_data(a):
     # mixed shapes (2026-09-14): every font item draws its canvas (W, H) from
     # --shapes; corpus crops are square, so they draw from the pool's squares
     shapes = ShapePool(a.shapes, a.seed)
-    # --scenes needs the piece map for piece_ok even at --words 0 (micro arms)
-    tokq = qwen_pieces() if (a.kanji or a.words or a.scenes) else None
+    # --scenes needs the piece map for piece_ok even at --words 0 (micro arms);
+    # --extra_units needs it to check each unit is one piece with an ext row
+    tokq = qwen_pieces() if (a.kanji or a.words or a.scenes or a.extra_units) else None
 
-    inv = Inventory(kana=list(a.only_chars) if a.only_chars else list(KANA))
+    if a.no_kana:
+        # punctuation / micro arms (2026-09-16): nothing forces the 92 kana in,
+        # so the unit pool can be --extra_units / --kanji / --words alone
+        kana_inv: list = []
+    elif a.only_chars:
+        kana_inv = list(a.only_chars)
+    else:
+        kana_inv = list(KANA)
+    inv = Inventory(kana=kana_inv)
     # eval strings first so the training pool can exclude the combos
     combos_eval, n_possible = _eval_strings(a, rng, inv)
     _extra_singles(a, out, tokq, inv)
@@ -158,7 +167,9 @@ def stage_data(a):
                     fn, s, (TPL_BUBBLE if bubble else TPL_PLAIN).format(s), "font", shp
                 )
             )
-    if not a.scenes:
+    if not a.scenes and inv.kana:
+        # corpus crops are kana bubble lines: under --no_kana they would put
+        # the dropped kana rows back into the trained table through the captions
         recs += _corpus_recs(a, rng, inv, shapes, out, first_layout_id=len(recs))
 
     (out / "train.jsonl").write_text(
@@ -192,7 +203,9 @@ def _eval_strings(a, rng, inv: Inventory):
     """Eval singles / combos / held corpus lines (main rng) and the EN control.
     Returns ``(combos_eval, number of possible 2–3 kana strings)``."""
     kana = inv.kana
-    if a.only_chars:
+    if not kana:  # --no_kana: no kana singles / combos / corpus lines to draw
+        singles_eval: list = []
+    elif a.only_chars:
         singles_eval = kana[:18]
     else:
         singles_eval = rng.sample(list(HIRA), 12) + rng.sample(list(KATA), 6)
@@ -205,7 +218,7 @@ def _eval_strings(a, rng, inv: Inventory):
         combos_eval.add("".join(rng.choice(kana) for _ in range(k)))
     held = corpus_lines(CORPUS_HELD / "boxes.jsonl", 4)
     rng.shuffle(held)
-    if a.only_chars:
+    if a.only_chars or not kana:
         held = [ln for ln in held if all(c in kana for c in ln[0] if c in KANA)]
     corpus_eval: list = []
     for t, _rel, _box in held:
@@ -409,7 +422,9 @@ def _font_texts(a, rng, inv: Inventory, combos_eval, n_target, tokq) -> list[str
         texts += [ch] * a.n_single
     for w in inv.words_train:
         texts += [w] * a.n_single
-    for ch in inv.kana_ext + inv.kanji:  # P0b: extended kana / kanji, singles only
+    # P0b: extended kana / kanji, singles only; --extra_units the same way
+    # (2026-09-16 — without this they reach the flat stream only via --scenes)
+    for ch in inv.kana_ext + inv.kanji + inv.extra:
         texts += [ch] * a.n_single
     n_combo = 0
     while n_combo < n_target:

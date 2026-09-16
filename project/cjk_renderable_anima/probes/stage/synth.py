@@ -178,6 +178,10 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
         + list(inv.words_train)
         + list(inv.extra) * 2
     )
+    assert units, (
+        "--scenes: the unit pool is empty — with --no_kana the singles must "
+        "come from --extra_units / --kana_ext / --kanji / --words"
+    )
 
     def draw_string() -> str:
         for _ in range(200):
@@ -201,6 +205,10 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
     n_str = round(n * a.strings_frac)
     n_flat = n - n_scene - n_phr - n_str
     assert n_flat >= 0, "--scenes: shares exceed --n_items"
+    assert kana or not n_str, (
+        "--strings_frac draws random kana strings, so it needs a kana "
+        "inventory — --no_kana dropped it"
+    )
     # composites mirror the flat kind distribution; with flat 0 (composite
     # only, 2026-09-15) they are singles unless phrases / strings are in
     kinds = (["single"] * n_flat + ["phrase"] * n_phr + ["string"] * n_str) or [

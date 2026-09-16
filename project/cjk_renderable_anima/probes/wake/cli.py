@@ -117,6 +117,13 @@ def _data_args(g):
         help="restrict the kana inventory (textual-inversion regime: few chars, many exposures)",
     )
     g.add_argument(
+        "--no_kana",
+        action="store_true",
+        help="data: empty the base kana inventory (punctuation / micro arms, "
+        "2026-09-16) — the unit pool is then --extra_units / --kanji / --words "
+        "alone; --only_chars restricts the kana instead of dropping them",
+    )
+    g.add_argument(
         "--words",
         type=int,
         default=0,
