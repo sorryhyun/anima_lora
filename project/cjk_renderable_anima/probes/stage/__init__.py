@@ -1,11 +1,16 @@
 """stage — one module per wake_probe stage; the shared plumbing is ``wake/``.
 
 salad     Probe 0: does the base model's text salad hold real units?
-data      glyph training set + eval prompt set
+data      glyph training set + eval prompt set (S-line mix in ``synth.py``)
 train     frozen DiT, rectified-flow loss on glyph crops → trained.pt
 classify  same-noise diffusion classifiers (``classify``, ``classify_str``)
-eval      T2I floor vs trained on the eval set (``eval``) and scene prompts (``native``)
+eval      T2I floor vs trained on the eval set (``eval``) and scene prompts
+          (``native``); also ``enref`` (the EN-reference renders the ruler
+          scores against) and ``native_rescore`` (re-read an existing run)
 scenes    self-generated EN-anchored scenes for the S-line composites (plan_synth)
+
+``STAGES`` below is the registry ``--stage`` accepts; ``ALL`` is what
+``--stage all`` expands to.
 """
 
 from __future__ import annotations
