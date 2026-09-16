@@ -52,7 +52,7 @@ drop-in that silently does nothing for CJK.
 The base 69,558-row table with the render rows summed in, plus the json.
 Same file format, same stem rule and same two patch points as the current
 release, so it works unchanged with node ≥ 3.9.1 `AnimaVocabPackLoader`,
-anima_lora's `vocab_pack` key, and `examples/09` / `examples/10`. Against
+anima_lora's `vocab_pack` key, and `examples/09_cjk_vocab_pack.py` / `examples/10_cjk_vocab_pack_diffusers.py`. Against
 `old/` only the baked rows differ (~410 of 69,558). The json gains a
 `render` block (ext ids, `row_text`, source arm, git rev, gate numbers),
 provenance tier `render` on those rows, and a new label; `pack_digest`
@@ -189,8 +189,8 @@ anima_lora render where the surface allows it.
   renders `Japanese text reads as "何"` as 何.
 - **S-diffusers**: the D2 entry point loads with `trust_remote_code=True`;
   its image matches example 10 run on `delta/` (same seed, sampler).
-- **S-delta**: node ≥ 3.9.1 `AnimaVocabPackLoader` on the pair; `examples/09`
-  and `examples/10 --dry_run` on the `delta/` stem; anima_lora with
+- **S-delta**: node ≥ 3.9.1 `AnimaVocabPackLoader` on the pair; `examples/09_cjk_vocab_pack.py`
+  and `examples/10_cjk_vocab_pack_diffusers.py --dry_run` on the `delta/` stem; anima_lora with
   `vocab_pack` pointing at it.
 
 ## License (blocking; applies to every folder)
@@ -225,7 +225,7 @@ What reads the root paths today:
 - `library/downloads.py` (`VOCAB_PACK_REPO` + `VOCAB_PACK_STEM`), used by
   `make download-models`, `make download-vocab-pack` and the loader
   auto-fetch in `resolve_pack_prefix`;
-- `examples/09`, `examples/10`;
+- `examples/09_cjk_vocab_pack.py`, `examples/10_cjk_vocab_pack_diffusers.py`;
 - the current card and the ComfyUI node README;
 - `docs/methods/cjk_vocab_pack.md` and the guidebook in four languages.
 
@@ -251,13 +251,13 @@ Order:
 Collapsing M1 and M4 into one commit is possible if the break is accepted;
 the release notes then carry the manual-download line.
 
-## Build tooling (not written yet)
+## Build tooling (not written yet — all land in `scripts/toolkits/`)
 
 | file | does |
 |---|---|
-| `scripts/toolkits/bake_vocab_pack.py` | `trained.pt` + base pack → pack pair; stamps `anima_*` metadata (replaces the ad-hoc `save_file(..., metadata=)` stamping of 2026-09-06) |
-| `scripts/toolkits/export_pack_comfy.py` | base DiT + pack → `comfy/` file (32 128-row embed kept, `vocab_pack.ext_embed` + header json) |
-| `scripts/toolkits/export_pack_diffusers.py` | widened `text_conditioner/` + modular index with circlestone pointers + block dir |
+| `bake_vocab_pack.py` | `trained.pt` + base pack → pack pair; stamps `anima_*` metadata (replaces the ad-hoc `save_file(..., metadata=)` stamping of 2026-09-06) |
+| `export_pack_comfy.py` | base DiT + pack → `comfy/` file (32 128-row embed kept, `vocab_pack.ext_embed` + header json) |
+| `export_pack_diffusers.py` | widened `text_conditioner/` + modular index with circlestone pointers + block dir |
 
 The block dir's `ext_vocab.py` is generated from `library/anima/ext_vocab.py`
 by the vendor-sync step, not copied by hand. Add it as a `make vendor-sync`

@@ -282,7 +282,7 @@ bubble reads.
 - **Common words** to the kana bar: words-only continuation warm-started
   from P2 (`f` non-zero), single-word bubbles as the eval.
 - **Bake**: `trained.pt` → `ext_embed` rows summed into a pack copy,
-  safetensors + json, new digest; `examples/09` smoke; `make preprocess-te
+  safetensors + json, new digest; `examples/09_cjk_vocab_pack.py` smoke; `make preprocess-te
   ARGS=--overwrite` note in the model card.
 - **Scene prompts** (`native` stage) on the baked pack before anything is
   published: a kana clause hung off a real scene prompt, the rows' layout

@@ -59,6 +59,9 @@ def test_check_path_flags_missing_and_accepts_real():
     # Non-repo roots (URLs, data dirs) are skipped, never flagged.
     assert _check_path("https://example.com/x", top) is None
     assert _check_path("output/tests/foo.png", top) is None
+    # A gitignored path under a *tracked* top-level dir is machine-local (a
+    # user's own GUI preset) — its absence here is not doc drift.
+    assert _check_path("configs/gui-methods/custom/not_generated.toml", top) is None
 
 
 def test_check_path_resolves_relative_to_the_referencing_doc(tmp_path):

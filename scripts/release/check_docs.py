@@ -25,6 +25,9 @@ Design choices that keep it low-noise:
   * ``make <x>`` and flags are read only from inline-code spans and fenced
     blocks, so English prose ("make sure", "we make use of") never trips the
     target check.
+  * Gitignored paths (``configs/gui-methods/custom/…``, ``output/…``) are
+    machine-local — whether one is on disk says nothing about the repo — so a
+    doc citing one is never flagged.
 
 CLI-flag caveat: the "known flags" set is every ``--x`` mentioned anywhere in
 the ``.py`` sources — permissive on purpose (a noisy linter gets disabled). It
@@ -58,6 +61,7 @@ import re
 import subprocess
 import sys
 from collections import namedtuple
+from functools import lru_cache
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -193,6 +197,24 @@ def known_make_targets() -> set[str]:
     return targets
 
 
+@lru_cache(maxsize=None)
+def _is_ignored(rel: str) -> bool:
+    """True when git ignores ``rel`` (repo-relative), tracked files excluded.
+
+    Pattern-based, so it answers for paths that don't exist — which is exactly
+    the case that matters: a doc citing a user-local artifact
+    (``configs/gui-methods/custom/x.toml``) must not read as drift just because
+    this checkout never generated it.
+    """
+    return (
+        subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "check-ignore", "-q", "--", rel],
+            capture_output=True,
+        ).returncode
+        == 0
+    )
+
+
 def _check_path(tok: str, top: set[str], base: Path | None = None) -> str | None:
     """Return the token if it's a broken path reference, else None.
 
@@ -225,6 +247,14 @@ def _check_path(tok: str, top: set[str], base: Path | None = None) -> str | None
             return None
         # Docs often cite a module without its extension (`bench/_common`).
         if (root / f"{tok}.py").exists():
+            return None
+    # Missing *and* gitignored → machine-local, not drift (see ``_is_ignored``).
+    for root in roots:
+        try:
+            rel = (root / tok).resolve().relative_to(REPO_ROOT)
+        except ValueError:
+            continue  # base outside the repo (tests' tmp_path)
+        if _is_ignored(str(rel)):
             return None
     return tok
 
