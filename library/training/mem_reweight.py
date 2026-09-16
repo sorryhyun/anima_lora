@@ -60,8 +60,7 @@ probe's ``per_item.csv``.
 
 HARD REQUIREMENT: ``blocks_to_swap == 0``. The measurement forward is a second
 DiT forward per step, and the block-swap offloader desyncs on extra forwards;
-train.py raises at setup,
-same policy as the register-tokens guard.
+train.py raises at setup.
 """
 
 from __future__ import annotations

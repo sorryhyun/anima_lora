@@ -1,6 +1,6 @@
 # Flash Attention 4 — removed
 
-This doc records why `attn_mode = "flash4"` and `trim_crossattn_kv` were removed from the training pipeline. The short version: **FA4 ran slower than FA2 on our targets**, and the cross-attention KV-trim trick that justified FA4's ergonomic complexity only worked under FA4, so it went with it.
+This doc records why `attn_mode = "flash4"` and `trim_crossattn_kv` were removed from the training pipeline: **FA4 ran slower than FA2 on our targets**, and the cross-attention KV-trim trick that justified FA4's ergonomic complexity only worked under FA4, so it went with it.
 
 ## What was there
 
@@ -29,7 +29,7 @@ On a single RTX 5060 Ti 16 GB with LoRA rank 32, batch 2, 182 steps, FA4 was eff
 The expected advantage from FA4 (the fused CUTLASS/TVM kernel) did not materialize on consumer Blackwell. A few things contributed:
 
 - SM120 kernel maturity. The SM120 port is a community fork, not a tuned upstream kernel. The TMA-optimized path worked, but it wasn't meaningfully ahead of FA2 in forward throughput at our shapes (batch 2, 4096 image tokens, 64–512 text tokens).
-- Compile interaction. FA4's CUTLASS kernel accesses raw data pointers via DLPack, which fake-tensor tracing cannot see through. We had to wrap the kernel in `@torch.compiler.disable` and take graph breaks around every attention call. The surrounding fused region still got compiled, but the graph breaks added up across 32 blocks × 2 attention calls per block × every step.
+- Compile interaction. FA4's CUTLASS kernel accesses raw data pointers via DLPack, which fake-tensor tracing cannot see through. We had to wrap the kernel in `@torch.compiler.disable` and take graph breaks around every attention call. The surrounding fused region still got compiled, but the graph breaks added up across 28 blocks × 2 attention calls per block × every step.
 - Shape-dependent branching. The KV trim path had a separate code branch for the LSE correction, which caused torch.compile recompilations at bucketed KV shapes (64/128/256/512) until we flattened the branch. Even after the fix, the compile graph was more fragile than the FA2 path.
 
 The KV trim itself *did* reduce FLOPs — roughly 4× less cross-attention compute on short captions. But cross-attention is a small fraction of total compute (the 4096-token self-attention dominates), so the end-to-end win was small, and what little win there was got eaten by the slower FA4 forward and the compile friction.
@@ -52,12 +52,15 @@ Keeping it as a flag that everyone sets to `true` in configs, with an opaque cod
 
 ## If you want to bring FA4 back
 
-Everything is commented rather than deleted, so re-enabling is mechanical:
+The FA4 import and dispatch branch were deleted, not commented out. What remains:
+`None` stubs for `flash_attn_4_func` / `flash_attn_4_varlen_func` in
+`networks/attention_dispatch.py`, a `"flash4"` entry commented out of the
+`--attn_mode` choices in `library/anima/training.py`, and a raise on
+`attn_mode == "flash4"` in `train.py`. Reviving means:
 
-1. Dependency. Uncomment the `flash-attn-4` line in `pyproject.toml`. On consumer Blackwell you still need the SM120 fork — the local `flash-attention-sm120/` source tree is kept for reference.
-2. Attention dispatch. Uncomment the FA4 import block and the `flash4` branch in `networks/attention_dispatch.py`. Both are bracketed with `# Flash Attention 4 ... is not supported yet` comments.
-3. Train path. In `train.py`, `load_unet_lazily` currently raises on `attn_mode == "flash4"`; replace that with the original check against `_flash_attn_4_func_raw is not None`. Also restore the `args.fp8_base_unet` call (if you want fp8 too).
-4. KV trim (optional). The trim plumbing was deleted in 2026-05, so it is no longer a matter of uncommenting a block — you'd reintroduce it from scratch: a `trim_crossattn_kv` flag + CLI arg, the per-sample `crossattn_seqlens` / `max_crossattn_seqlen` pass-through in `library/training/{text_conds,forward_kwargs}.py` and `train.py`, a `crossattn_full_len` field on `AttentionParams`, and the slice + LSE-sigmoid correction gated on `attn_mode == "flash4"` in `library/anima/models.py`. Given the measured win was tiny, reviving FA4 without the trim (full 512-length KV) is the saner default. See the pre-2026-05 git history for the original trim implementation.
-5. GUI / configs. Add `"flash4"` back to `_ATTN_MODES` in `gui/__init__.py` and the `--attn_mode` choices in `inference.py` and `library/anima/training.py`. The FA4 VRAM presets (`FA4 8GB VRAM` / `FA4 16GB VRAM`) are also commented out in `gui/__init__.py`.
+1. Dependency. Add FA4 back; on consumer Blackwell this still needs the SM120 fork (`sorryhyun/flash-attention-sm120-fix`).
+2. Attention dispatch. Re-add the import and the `flash4` branch in `networks/attention_dispatch.py`, wrapping the kernel in `@torch.compiler.disable` (its DLPack pointer access breaks fake-tensor tracing).
+3. Train path. Replace the `train.py` raise with a check against `_flash_attn_4_func_raw is not None`, and restore the `--attn_mode` choice.
+4. KV trim (optional). Reintroduce from scratch: a `trim_crossattn_kv` flag + CLI arg, the per-sample `crossattn_seqlens` / `max_crossattn_seqlen` pass-through in `library/training/{text_conds,forward_kwargs}.py` and `train.py`, a `crossattn_full_len` field on `AttentionParams`, and the slice + LSE-sigmoid correction gated on `attn_mode == "flash4"` in `library/anima/models.py`. The measured win was tiny, so reviving FA4 without the trim (full 512-length KV) is the saner default. The original trim is in pre-2026-05 git history.
 
-Before doing any of that, benchmark FA4 on your own hardware. If the kernel has matured upstream — or if SM120 TMA has landed in stock `flash-attn` — it may be worth reviving. On our targets in 2026-04 it wasn't.
+Benchmark FA4 on your own hardware first. On our targets in 2026-04 it was not faster than FA2.

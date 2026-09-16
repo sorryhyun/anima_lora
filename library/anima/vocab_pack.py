@@ -3,9 +3,9 @@
 A vocab pack is **not a LoRA**: it is a table of extra T5-side embedding rows
 (``ext_embed [rows, 1024]``, ids ``>= T5_TABLE_SIZE``) plus a JSON sidecar
 carrying the segmentation / row maps (``library.anima.ext_vocab`` owns the
-primitives). Applying it means patching two places, and this module is the
-one home for both so the trainer, the preprocess TE cache, the inference CLI
-and the embedder front door all see the same table:
+primitives). Applying it patches two places, both owned by this module and
+shared by the trainer, the preprocess TE cache, the inference CLI and the
+embedder API:
 
 1. **Tokenizer** — :class:`VocabPackTokenizeStrategy` re-routes the T5 id
    stream of any prompt that carries a routed character through

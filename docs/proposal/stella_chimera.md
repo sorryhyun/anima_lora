@@ -169,7 +169,7 @@ CMMD/rendered quality without the collapse. Kill if it collapses anyway
 retraction cost is not worth it), or if the gain disappears once `K` is
 right-sized per Phase 0.
 a
-## Risks and honest limits
+## Risks and limits
 
 - The collapse may be router-side. This is the dominant risk and the reason
   Phase 0 exists. If the gate collapses to ~2 live experts, no amount of Stiefel

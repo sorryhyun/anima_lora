@@ -25,12 +25,13 @@ The 308 ms optimizer plateau was the dominant idle source — `loss.item()` sync
 ```toml
 # configs/base.toml
 optimizer_type = "AdamW"
-optimizer_args = ["fused=True"]
 ```
+
+`get_optimizer` (`library/training/optimizers.py`) adds `fused=True` on CUDA unless `optimizer_args` already sets `fused`.
 
 `torch.optim.AdamW(..., fused=True)` runs the entire optimizer step as a single fused CUDA kernel — no per-block dispatch, no quantize/dequantize round-trip. The 308 ms plateau collapses to a few milliseconds.
 
-`fused=True` is parsed by `get_optimizer` via `ast.literal_eval`, which only accepts Python literals — must be capitalized (`"fused=True"`, not `"fused=true"`). Lowercase will raise.
+If you set it explicitly, `optimizer_args` values are parsed with `ast.literal_eval`, which only accepts Python literals — `"fused=True"`, not `"fused=true"` (lowercase raises).
 
 ## Trade-off
 
@@ -51,7 +52,6 @@ optimizer_args = ["fused=True"]
 2. In `configs/base.toml`, swap:
    ```toml
    optimizer_type = "AdamW8bit"
-   # remove optimizer_args = ["fused=True"]  — bnb doesn't accept it
    ```
 3. Optionally re-add `"bitsandbytes"` to `pyproject.toml` if you want it as a hard dependency again.
 

@@ -5,7 +5,7 @@
   },
   "resize.target_res": {
     "label": "Resolution tiers (target_res):",
-    "help": "Multi-scale constant-token resolution tiers, as a JSON list of edge sizes (allowed: 512, 768, 896, 1024, 1280, 1536). [1024] is the default — a single ~1MP tier, i.e. legacy single-resolution behavior. List more than one (e.g. [1024, 1536]) to train across resolutions like the v1.0 base model: during preprocessing each image is resized into the tier that resizes it the LEAST (nearest bucket by scale; one output per image), so a near-1MP image stays at 1024 rather than being downscaled to 768 and a mixed dataset spreads naturally across tiers. Token counts per tier: 512→1024(square)+1008, 768→2160, 896→3024+3000, 1024→4032+4200, 1280→6300, 1536→8640 — each forward runs at its real token count (no padding). Cost is compiled torch.compile block graphs: 768/1280/1536 add 1 each, 512/896 add 2 (they carry a near-square pair / square plus a diversity family), so keep the list short. The same value is read at train time only to size the torch.compile cache budget; training otherwise consumes whatever latent shapes are already cached on disk."
+    "help": "Multi-scale resolution tiers, as a JSON list of edge sizes (allowed: 512, 768, 896, 1024, 1280, 1536). [1024] is the default — a single ~1MP tier. List more than one (e.g. [1024, 1536]) to train across resolutions like the v1.0 base model: during preprocessing each image is resized into the tier that resizes it the LEAST (nearest bucket by scale; one output per image), so a near-1MP image stays at 1024 rather than being downscaled to 768 and a mixed dataset spreads naturally across tiers. Token counts per tier: 512→1024(square)+1008, 768→2160, 896→3024+3000, 1024→4032+4200, 1280→6300, 1536→8640 — each forward runs at its real token count (no padding). Cost is compiled torch.compile block graphs: 768/1280/1536 add 1 each, 512/896 add 2 (they carry a near-square pair / square plus a diversity family), so keep the list short. The same value is read at train time only to size the torch.compile cache budget; training otherwise consumes whatever latent shapes are already cached on disk."
   },
   "resize.resize_crop_anchor": {
     "label": "Resize crop position:",
@@ -16,7 +16,7 @@
   },
   "resize.freefit_max_ratio": {
     "label": "Max aspect ratio:",
-    "help": "Maximum aspect ratio allowed under free-fit (only used when Free-fit is on). An image whose width/height ratio exceeds 1:R / R:1 is cover-cropped to the limit, honoring the crop position selected above — this is the ONLY place crop survives in free-fit, and only for ratios you explicitly allow. Default 4.0 matches the old bucket table's most-elongated reach (≈2016×512), so it crops nothing the old snap path didn't, while blocking degenerate 1:5 / 1:6 inputs that are both low-quality and hard to fit into the token band. Lower it (e.g. 3.0) to be stricter. This is a preprocess-only knob (training reads the on-disk cached shapes, not the clamp)."
+    "help": "Maximum aspect ratio allowed under free-fit. An image whose width/height ratio exceeds 1:R / R:1 is cover-cropped to the limit, honoring the crop position selected above — this is the ONLY place crop survives in free-fit, and only for ratios you explicitly allow. Default 4.0 (≈2016×512) blocks degenerate 1:5 / 1:6 inputs that are hard to fit into the token band. Lower it (e.g. 3.0) to be stricter. This is a preprocess-only knob (training reads the on-disk cached shapes, not the clamp)."
   },
   "autotag.mode": {
     "label": "Mode",

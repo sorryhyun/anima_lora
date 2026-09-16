@@ -20,11 +20,6 @@ the value you need from the method TOML or the CLI (`--network_dim 32`,
 make print-config METHOD=lora PRESET=default
 ```
 
-> Two parts are documented at the bottom:
-> - `configs/preprocess.toml` — preprocess-only knobs (`source_image_dir`, …).
-> - The `[general]` / `[[datasets]]` dataset blueprint — in base.toml, but
->   read by the dataset loader rather than the flat merge.
-
 ---
 
 ## Model paths

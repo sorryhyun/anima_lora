@@ -4,7 +4,7 @@
 
 This records why Spectral Guidance (Moreira et al., Spectral Guidance for
 Flexible and Efficient Control of Diffusion Models, arXiv:2605.28900) was not
-promoted past its Phase-0 falsification gate on Anima. The short version: the
+promoted past its Phase-0 falsification gate on Anima: the
 paper's load-bearing premise — that the posterior-mean operator `T_t` collapses,
 midway through the reverse process, onto a few surviving directions `φ_{t,k}`
 that form a low-dimensional guidable/preserving subspace — does not hold on

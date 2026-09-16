@@ -22,16 +22,6 @@ step and a parameter-free conditioning patch.
 > the standard `--lora_weight` path but the source-concat conditioning patch
 > still needs installing at generation time. See [Status & next phase](#status--next-phase).
 
-## Why it's interesting
-
-Instruction editing normally needs paired before/after data (expensive, scarce)
-or RL against a reward model (unstable, reward-hackable). BYG sidesteps both: it
-bootstraps its own pseudo-pairs from the frozen base T2I model and an
-unpaired image corpus, then trains a small LoRA to follow instructions while a
-directional prior keeps the edit on the base model's manifold and a cycle loss
-keeps it reversible. The output is a plain LoRA — no architectural surgery, no
-extra inference cost.
-
 ## Conditioning — parameter-free source-latent concat
 
 BYG conditions the edit on the source image via Kontext-native single-concat

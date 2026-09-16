@@ -42,9 +42,7 @@ class NetworkSpec:
     post_init: Optional[Callable[[Any, Mapping[str, Any]], None]] = None
 
 
-# The LoRA-family TOML allowlist is derived by scanning what these consumer
-# modules read via ``kwargs.get("literal")`` — a new knob registers from its
-# ``kwargs.get("foo")`` read alone.
+# Modules scanned by ``_derive_network_kwargs`` for the TOML allowlist.
 _KWARG_CONSUMER_MODULES = (
     "lora_anima/config.py",  # LoRANetworkCfg.from_kwargs
     "lora_anima/factory.py",  # REPA / loraplus / channel_scaling / custom_down

@@ -1,11 +1,8 @@
 # Bundled GUI fonts
 
-**Pretendard** — the primary UI sans for the desktop GUI (loaded at startup by
-`gui/theme.py::_load_bundled_fonts`). A multilingual (Latin + Hangul) face that
-unifies the EN/KO look of this cross-platform Qt tool into one consistent font,
-rather than depending on whatever the host OS ships. The system CJK + emoji
-families stay in the fallback chain (`apply_theme`) for JA/ZH glyphs and emoji
-markers Pretendard doesn't cover.
+**Pretendard** — the primary UI sans for the desktop GUI (Latin + Hangul), loaded at
+startup by `gui/theme.py::_load_bundled_fonts`. System CJK + emoji families stay in
+the fallback chain (`apply_theme`) for JA/ZH glyphs and emoji Pretendard doesn't cover.
 
 Three static weights were instanced from the upstream `PretendardVariable`
 variable font (axis `wght` 45–930) at the weights the design tokens use:
@@ -26,5 +23,4 @@ Pretendard is licensed under the **SIL Open Font License 1.1**.
 - Upstream: https://github.com/orioncactus/pretendard
 - Copyright © 2021 Kil Hyung-jin (길형진), with reserved font name "Pretendard".
 
-The OFL permits bundling and redistribution with software. Keep this notice
-alongside the font files.
+Keep this notice alongside the font files.

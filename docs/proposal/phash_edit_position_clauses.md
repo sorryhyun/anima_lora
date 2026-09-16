@@ -124,7 +124,7 @@ Probe (`run_edit_probe.py`, extended):
   outside-region variance relative to Arm A.
 - Held-out pairs (train-set success is an upper bound — twin_edit lesson).
 
-## Risks / honest caveats
+## Risks / caveats
 
 - Thin clause supervision: 556 single pairs (×2 directions) at the
   conservative criterion. The mass-floor merge matters — at ~1,100+ clause

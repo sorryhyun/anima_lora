@@ -47,7 +47,7 @@ from gui.widgets import apply_variant
 # duplicated here reports the wrong install state as soon as a row moves.
 #
 # Only the rows that already had translations keep an i18n key; anything newer
-# shows the catalog's own English title, which is mostly a proper noun anyway.
+# shows the catalog's own English title.
 _TITLE_KEYS: dict[str, str] = {
     "anima_dit": "model_anima_dit",
     "anima_te": "model_anima_te",
@@ -530,7 +530,7 @@ GITHUB_ISSUES_URL = f"{GITHUB_REPO_URL}/issues"
 RELEASE_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 MANIFEST_FILE = ROOT / ".anima_release.json"
 
-# Release-tag cache (gui_settings.json) so the on-launch badge check doesn't hit GitHub every start; 6h balances freshness vs per-launch network cost.
+# Release-tag cache (gui_settings.json) so the on-launch badge check doesn't hit GitHub every start.
 UPDATE_CACHE_TTL_SECONDS = 6 * 3600
 _UPDATE_CACHE_KEY = "update_check"
 
@@ -831,9 +831,8 @@ def open_update_dialog(parent=None):
 def check_for_update_async(parent, on_available) -> QThread | None:
     """Fire a non-blocking update check used by the top-bar update badge.
 
-    Skips entirely when ``.anima_release.json`` is missing — without a
-    baseline we can't tell whether the user is already on the latest tag,
-    and a false "update available" badge is worse than no badge.
+    Skips entirely when ``.anima_release.json`` is missing (no baseline tag
+    to compare against).
 
     Uses the 6h ``gui_settings.json`` cache to avoid a network round-trip
     on every launch. ``on_available(latest_tag)`` is invoked only when a

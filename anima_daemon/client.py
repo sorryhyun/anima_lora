@@ -21,8 +21,8 @@ from . import config, proc
 
 logger = logging.getLogger("anima.daemon")
 
-# Mirrors jobs.TERMINAL_STATES, restated here so this module stays importable on
-# its own (the ComfyUI node vendors it) and so `wait` needs no cross-import.
+# Mirrors jobs.TERMINAL_STATES, restated so this module stays importable on its
+# own (the ComfyUI node vendors it).
 TERMINAL_STATES = frozenset({"done", "error", "stopped"})
 
 

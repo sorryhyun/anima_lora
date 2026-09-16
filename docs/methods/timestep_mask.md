@@ -6,13 +6,10 @@ Timestep-dependent rank masking for LoRA training. Effective rank varies with th
 
 ## Quick start
 
-T-LoRA variants live in `configs/gui-methods/` (one file per variant, no toggle blocks):
-
 ```bash
-make lora-gui GUI_PRESETS=tlora              # OrthoLoRA + timestep masking (rank 64)
+make lora                                    # configs/methods/lora.toml already sets use_timestep_mask = true
+make lora-gui GUI_PRESETS=tlora              # configs/gui-methods/tlora.toml (rank 32, weight_svd down-init)
 ```
-
-Or toggle inside `configs/methods/lora.toml` by uncommenting the T-LoRA block and running `make lora`.
 
 ## Parameters
 
@@ -32,20 +29,6 @@ Timestep masking composes with every adapter module type. The mask is applied at
 | LoRA | After `lora_down`, before dropout and `lora_up` |
 | OrthoLoRA (Cayley) | After `Q_eff` projection, multiplied with `lambda_layer` |
 | HydraLoRA | After shared `lora_down`; per-expert `lora_up` heads unaffected |
-
-The default block in `configs/methods/lora.toml` stacks LoRA + OrthoLoRA + T-LoRA together.
-
-## Configs
-
-`configs/methods/lora.toml` (T-LoRA toggle block) — OrthoLoRA (Cayley) + timestep masking, rank 64:
-
-```toml
-use_ortho = true
-use_timestep_mask = true
-min_rank = 1
-alpha_rank_scale = 1.0
-network_dim = 64
-```
 
 ## Findings (bench-backed)
 
@@ -99,6 +82,5 @@ spectrum metrics can't arbitrate quality on their own.
 
 `examples/07_stack_ortho_init_tlora.py` builds a fresh OrthoInit + T-LoRA stack
 from Python (no config file) and drives the mask via the one per-step hook
-`apply_router_conditioning`, printing the live effective rank each step. It is the
-runnable counterpart to the "T-LoRA is not a class, it's a buffer" note above —
-see `examples/README.md` (row 07).
+`apply_router_conditioning`, printing the live effective rank each step — see
+`examples/README.md` (row 07).

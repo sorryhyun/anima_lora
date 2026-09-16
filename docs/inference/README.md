@@ -1,6 +1,6 @@
 # Inference stacks
 
-Training-free runtime methods — sampler acceleration, sampler-boundary corrections, and representation edits that ride on top of any checkpoint. None of these need training (mod-guidance is the exception — its `pooled_text_proj` head is distilled, but it *applies* at inference). Most compose at the sampler boundary (DAVE is the exception — a block-forward hook); read the relevant doc before touching one.
+Training-free runtime methods — sampler acceleration, sampler-boundary corrections, and representation edits that ride on top of any checkpoint. None need training except mod-guidance, whose `pooled_text_proj` head is distilled once. Most compose at the sampler boundary; DAVE and xattn-boost are block-forward hooks.
 
 The DiT operates on 5D latents `(B, C, T=1, H, W)`; sampler-boundary plug-ins here receive 5D — match `ndim` against any 4D reference latent they blend against (see root `CLAUDE.md` §"The DiT operates on 5D latents").
 
@@ -11,8 +11,6 @@ The DiT operates on 5D latents `(B, C, T=1, H, W)`; sampler-boundary plug-ins he
 | [spectrum.md](spectrum.md) | Chebyshev feature forecasting — cached steps skip all blocks; `final_layer` pre-hook captures outputs. | `--spectrum` | Structure walkthrough in `../structure/spectrum.md`. |
 | [spd.md](spd.md) | Spectral Progressive Diffusion — early steps at low res, spectral noise-expansion handoff to full res. Runner in `networks/spd.py`. | `--spd` | v0 = Euler-only, no SMC/Spectrum compose; single-late `0.5→1.0 @ σ0.7` default. `_archive/spd/bench/plan.md` Phase 3, `_archive/proposals/spd_finetune_lora.md` (Case B). |
 | [foveated.md](foveated.md) | Deferred-foveated merge — full grid above σ_c, then fovea tokens 1:1 + 2×2 periphery token groups merged (endogenous `combo` mask). Identity-preserving, ×1.37 e2e. Runner in `networks/foveated.py`. Line ARCHIVED 2026-07-03 (periphery blur constitutive — P4t; runner stays, off by default). | `--fovea_sigma_c 0.75` | Euler-only; σ_c=0.75 and the final bicubic readout are load-bearing; frac floor 0.25. Foveated-Spectrum compose CLOSED by P3, tail un-merge by P4t (`_archive/bench/foveated/`) — don't re-propose. |
-
-> Channel scaling moved to [`../optimizations/channel_scaling.md`](../optimizations/channel_scaling.md) (2026-06-10) — it's a training-time optimizer-geometry feature, invisible at inference after the save-time bake.
 
 ## Sampler-boundary corrections
 

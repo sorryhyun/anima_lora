@@ -1,12 +1,12 @@
 # Channel Scaling — SmoothQuant-style LoRA pre-scaling
 
-Per-channel input magnitude rebalancing for LoRA-family adapters — a training-time optimizer-geometry feature, not an inference plugin (it lived under `docs/inference/` until 2026-06-10; after `bake_inv_scale` at save time it is invisible to inference entirely). Absorbs a calibrated per-channel scale `s[c] = (mean|x[c]|)^α` into `lora_down` columns and applies `x / s` at forward, so the adapter output is unchanged at init but Adam's effective per-channel step no longer favors the DiT's DC-bias outlier channels.
+Per-channel input magnitude rebalancing for LoRA-family adapters — a training-time optimizer-geometry feature; after `bake_inv_scale` at save time it is invisible to inference. Absorbs a calibrated per-channel scale `s[c] = (mean|x[c]|)^α` into `lora_down` columns and applies `x / s` at forward, so the adapter output is unchanged at init but Adam's effective per-channel step no longer favors the DiT's DC-bias outlier channels.
 
 > For the motivation (DC-bias outlier channels in the frozen Anima DiT, decomposition into "register-token sinks" vs "stable outlier features", and the GraLoRA alternative weighed against), see `_archive/bench/channel_stats/channel_dominance_analysis.md`. This doc is the usage reference.
 
 ## Quick start
 
-Nothing to do — it ships on by default:
+On by default:
 
 ```toml
 # configs/base.toml
@@ -68,7 +68,7 @@ The scale is absorbed into different tensors per variant, and **whether that ten
 
 "Inert" is exact, not just "helps less": `(x · s⁻¹) @ (s · Q)ᵀ = x @ Qᵀ` cancels before anything trainable, and the frozen-basis variants' trainables (`S_p`, `S_q`, `λ` — all `r×r` or `1×r`) have no input-channel axis to rebalance. Gradients are identical with/without the scale up to bf16 rounding (~5e-3 measured). It is harmless there (one extra multiply + rounding noise) but pure overhead — if you flip a config from `use_ortho_init` back to `use_ortho`, channel scaling silently stops doing anything.
 
-The current shipped defaults (`lora.toml` `use_ortho_init = true`, `chimera.toml` `use_ortho_init = true`, EasyControl) are all in the Live column.
+`configs/methods/lora.toml` (plain LoRA, `down_init = "weight_svd"`), `configs/gui-methods/chimera_hydra.toml` (`use_ortho_init = true`) and EasyControl are Live; `configs/methods/chimera.toml` sets `use_ortho = true`, which is Inert.
 
 ## EasyControl cond stream (`cond_channel_stats.safetensors`)
 
@@ -89,8 +89,7 @@ Round-trip is covered by `tests/test_per_channel_scaling_roundtrip.py`.
 ```bash
 python scripts/calibration/analyze_lora_input_channels.py --per_artist \
     --dit models/diffusion_models/anima-base-v1.0.safetensors \
-    --dump_channel_stats networks/calibration/channel_stats.safetensors \
-    --out_json output/calibration/$(date -u +%Y%m%d-%H%M)-base.json
+    --dump_channel_stats networks/calibration/channel_stats.safetensors
 ```
 
 The script registers `forward_pre_hook` on every `nn.Linear` in the DiT, accumulates per-input-channel `sum|x|` and token count over a small batch of cached samples at 5 flow-matching sigmas, then writes one `mean|x|` vector per LoRA-target Linear. 16 samples × 5 sigmas saturates the calibration in practice; `--per_artist` (71 samples on the current dataset) broadens coverage without changing per-group dominance numbers meaningfully. The σ grid and image content barely matter: calibration is σ-grid-insensitive and content-agnostic (`docs/findings/channel_stats_content_independence.md`) — the dominance structure is weight/architecture-driven.

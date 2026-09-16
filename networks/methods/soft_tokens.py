@@ -515,9 +515,7 @@ class SoftTokensNetwork(AdapterNetworkBase):
         ):
             step_tokens = net._step_layer_tokens
             if step_tokens is not None:
-                # net.multiplier is intentionally NOT applied — soft tokens splice
-                # at full magnitude (no `* multiplier`), so set_multiplier(0) does
-                # NOT disable them (see the self.multiplier note in __init__).
+                # multiplier not applied — see the self.multiplier note in __init__.
                 layer_tok = step_tokens[layer_idx].to(
                     dtype=crossattn_emb.dtype, device=crossattn_emb.device
                 )

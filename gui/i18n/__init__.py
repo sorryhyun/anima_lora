@@ -1,7 +1,7 @@
 """Internationalization for the Anima LoRA GUI.
 
 Per-language string tables live in sibling modules (``en.py``, ``ko.py``,
-``cn.py``). Add a new language by dropping in ``<code>.py`` exporting
+``ja.py``, ``cn.py``). Add a new language by dropping in ``<code>.py`` exporting
 ``STRINGS: dict[str, str]`` and registering it in ``TRANSLATIONS`` below.
 Missing keys fall back to English via ``t()``.
 """

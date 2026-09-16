@@ -13,8 +13,8 @@ Two-pass training-free editor for flow-matching DiTs:
    prompt is the edit target ψ_tar; the residual ΔZ pins the trajectory to
    the source. For ``t_inj > 0`` we also run a parallel src stream with
    ψ_src and inject its self-attn V into the tar stream for the first
-   ``t_inj`` steps (paper Eq. 13). Mask blending (paper Eq. 12) is still
-   v3 — left as a stub here.
+   ``t_inj`` steps (paper Eq. 13). Mask blending (paper Eq. 12) is only the
+   anchor-side half (``edit_forward``'s ``mask``).
 
 Anima conventions used:
   * sigmas[0] = 1 (pure noise), sigmas[T] = 0 (clean), per
@@ -325,9 +325,9 @@ def edit_forward(
     patched ``self_attn`` (CFG>1: 3 rows ``[neg_tar, cond_src, cond_tar]``,
     hook copies ``v[1]->v[2]``; CFG=1: 2 rows ``[cond_src, cond_tar]``, hook
     copies ``v[0]->v[1]``). Matches the author's reference
-    (``DirectEdit/controller/attn_norm_ctrl_sd35.py:362``); replaces a v1
-    "two separate forwards with mode-toggle cache" path that leaked src V
-    into the uncond branch (Gap 2, ``_archive/proposals/directedit_gaps.md``).
+    (``DirectEdit/controller/attn_norm_ctrl_sd35.py:362``); two separate
+    forwards with a mode-toggle cache leak src V into the uncond branch
+    (Gap 2, ``_archive/proposals/directedit_gaps.md``).
 
     Args:
       z_init: should be ``z_inv[0]`` from ``invert(...)`` for the residual

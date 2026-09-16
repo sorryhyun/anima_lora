@@ -1,8 +1,7 @@
 """Shared paths + constants for the local training daemon.
 
-State lives under ``output/daemon/`` (already covered by the repo's
-``output/`` gitignore). See ``anima_daemon/README.md`` for the on-disk layout
-and job lifecycle.
+State lives under ``output/daemon/``. See ``anima_daemon/README.md`` for the
+on-disk layout and job lifecycle.
 """
 
 from __future__ import annotations

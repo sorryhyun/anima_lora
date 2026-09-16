@@ -3,23 +3,17 @@
 Each theme is a flat set of **semantic color tokens** (background, panel, text, border, accent, …);
 ``apply_theme`` turns the active theme into a ``QPalette`` + global stylesheet,
 and ``tok()`` lets individual widgets pull the same tokens instead of hardcoding
-hex literals — so a neutral surface follows the theme instead of staying a dark
-island on a light window.
+hex literals.
 
 Design notes
 ------------
-* **Neutral surfaces/text vary by theme; saturated *action* buttons are
-  theme-independent but still centralized.** A guide button (teal), update
-  button (amber), or danger button (red) is white-on-saturated-color and reads
-  fine on any background, so its color does not vary by theme. The saturated action palette is the single
-  ``ACTION_COLORS`` table, surfaced as global-stylesheet ``[variant="…"]`` rules
-  (see :func:`_action_button_rules`); a call site sets ``variant`` via
-  :func:`gui.widgets.action_button` / :func:`gui.widgets.apply_variant` instead
-  of an inline ``setStyleSheet``. Only the neutral chrome (window/panel/input/
-  text/border) varies by theme.
-* **Spacing/padding are tokens too.** :class:`Pad` / :class:`Gap` name the
-  recurring layout magic numbers so a row gap or panel margin reads as intent
-  and a global re-space is one edit.
+* **Only the neutral chrome (window/panel/input/text/border) varies by theme.**
+  Saturated *action* buttons are white-on-color and theme-independent; their
+  palette is the single ``ACTION_COLORS`` table, surfaced as global-stylesheet
+  ``[variant="…"]`` rules (see :func:`_action_button_rules`). A call site sets
+  ``variant`` via :func:`gui.widgets.action_button` /
+  :func:`gui.widgets.apply_variant`, never an inline ``setStyleSheet``.
+* **Spacing/padding are tokens too:** :class:`Pad` / :class:`Gap`.
 * Widgets read tokens at *build* time. A theme switch re-applies the palette +
   global stylesheet live (instant for app-level styling) and the caller rebuilds
   the window so per-widget ``tok()`` lookups pick up the new values.

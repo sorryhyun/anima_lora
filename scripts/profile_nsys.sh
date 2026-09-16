@@ -12,14 +12,12 @@
 #      under production compile (reduce-overhead). Their absence means
 #      cudagraph_trees fell back to eager.
 #
-# For per-kernel comp-vs-mem (SOL %, memory workload) you want ncu, not this.
-# Memory `project_attention_compute_bound` already pins attention at 86-89%
-# SM SOL on this box — start with the timeline; only drop to ncu if you've
-# identified a specific kernel worth drilling into.
+# For per-kernel comp-vs-mem (SOL %, memory workload) use ncu instead
+# (memory `project_attention_compute_bound`: attention is 86-89% SM SOL on
+# this box).
 #
-# CUDA Graphs: KEPT ON (unlike the old ncu script). nsys traces straight
-# through cudaGraphLaunch so the production reduce-overhead path is the
-# one you actually want to see.
+# CUDA Graphs stay on: nsys traces through cudaGraphLaunch, so the production
+# reduce-overhead path is what gets profiled.
 
 set -euo pipefail
 
@@ -28,36 +26,31 @@ cd "$(dirname "$0")/.."
 OUT="${NSYS_OUT:-output/nsys/profile}"
 mkdir -p "$(dirname "$OUT")"
 
-# Profile window. 5 steps gives a clean repeating pattern (avoids step-0
-# warmup noise and lets you eyeball variance step-to-step). Bump if you're
-# chasing tail-step phenomena like a saver firing on step N.
+# Profile window (steps 3-7: past step-0 warmup). Widen it for tail-step
+# events such as a saver firing on step N.
 PROFILE_START="${PROFILE_START:-3}"
 PROFILE_END="${PROFILE_END:-7}"
 
-# Tracing categories. Defaults cover what you almost always want:
+# Tracing categories. Default: cuda,nvtx,osrt.
 #   cuda    — kernels, memcpy, cudaGraphLaunch, runtime API
 #   nvtx    — forward/backward/optimizer ranges from loop.py
-#   osrt    — pthread/syscall waits (catches Python GIL stalls + dataloader
-#             blocking on file I/O)
+#   osrt    — pthread/syscall waits (Python GIL stalls, dataloader file I/O)
+# Opt-in:
 #   cudnn   — conv/norm dispatch boundaries
 #   cublas  — GEMM dispatch boundaries (matches kernels back to their call)
 NSYS_TRACE="${NSYS_TRACE:-cuda,nvtx,osrt,}"
 
-# Sampling. CPU IP/backtrace sampling adds overhead and clutter for a
-# GPU-bound trainer; leave off unless you suspect Python is the culprit.
+# CPU IP/backtrace sampling. Off by default; enable when Python is the suspect.
 NSYS_SAMPLE="${NSYS_SAMPLE:-none}"
 
-# Whether to also dump cuda-memory-usage events. Off by default — they
-# fatten the .nsys-rep substantially and only matter when you're chasing
-# an alloc/free pattern.
+# cuda-memory-usage events. Off by default (they fatten the .nsys-rep); enable
+# for alloc/free patterns.
 NSYS_CUDA_MEM="${NSYS_CUDA_MEM:-false}"
 
-# Symbol resolution. Off by default — resolving DWARF / kernel-symbol info
-# at trace-end stalls for a long time fetching symbol files (the live
-# pain point of this script). Kernel mangled names alone are enough to
-# rank kernels in `nsys stats`; turn on only if you need readable Python
-# frames or libstdc++ syscall names. Pair with --cudabacktrace=none so no
-# backtraces are captured in the first place (nothing to resolve).
+# Symbol resolution. Off by default: resolving at trace-end stalls for a long
+# time fetching symbol files. Mangled kernel names suffice to rank kernels in
+# `nsys stats`; enable for readable Python frames or libstdc++ syscall names.
+# --cudabacktrace=none captures no backtraces, so there is nothing to resolve.
 NSYS_RESOLVE_SYMBOLS="${NSYS_RESOLVE_SYMBOLS:-false}"
 NSYS_CUDABACKTRACE="${NSYS_CUDABACKTRACE:-none}"
 
@@ -73,8 +66,7 @@ echo "[nsys] method=${METHOD} preset=${PRESET}"
 # loop.py's torch.cuda.profiler.start()/stop() so the .nsys-rep only
 # contains the profile window — not the cold-start text-encoder caching,
 # VAE caching, compile warmup, etc. The profiler.stop() at PROFILE_END
-# also ends the capture (capture-range-end=stop), which is why we don't
-# need a separate --duration.
+# also ends the capture (capture-range-end=stop), so no --duration is needed.
 nsys profile \
     --output "$OUT" \
     --force-overwrite true \
@@ -99,10 +91,8 @@ echo "[nsys] === summary (nsys stats) ==="
 echo "[nsys] open ${OUT}.nsys-rep in the Nsight Systems GUI for the full timeline."
 echo
 
-# Terminal-friendly rankings: which kernels and which NVTX ranges
-# dominate. Skips the per-call detail you'd get in the GUI — that's the
-# point: if a kernel doesn't appear in the top of these, it's not worth
-# drilling into.
+# Terminal rankings of the dominant kernels and NVTX ranges; per-call detail
+# is in the GUI.
 nsys stats \
     --report cuda_gpu_kern_sum \
     --report cuda_gpu_mem_time_sum \

@@ -1,7 +1,4 @@
 <h2 style='margin:0 0 10px 0; font-size:17px;'>HydraLoRA</h2>
 <p>MoE-style routing on top of LoRA: shared <code>lora_down</code> + <code>num_experts</code> per-expert <code>lora_up</code> heads, routed layer-locally from the adapted Linear's input. A load-balance loss (<code>balance_loss_weight</code>) discourages router collapse onto a single expert.</p>
 <p>Adds a sinusoidal(σ)→E router bias plus hard σ-band specialization: <code>specialize_experts_by_sigma_buckets = true</code> partitions the expert pool by timestep bucket so each σ-band only routes to its assigned experts (e.g. with <code>num_experts = 6</code> and 3 buckets, 2 experts per band). <code>sigma_bucket_boundaries = [0.0, 0.5, 0.8, 1.0]</code> places the splits unevenly &mdash; more capacity in the late, low-noise refinement regime.</p>
-<p><b>Variants</b><br>
-&bull; <b>hydralora</b> &mdash; default 16GB+ profile.<br>
-&bull; <b>hydralora-8gb</b> &mdash; same architecture, low-VRAM profile (gradient checkpointing + offload); pick this if you OOM on the default.</p>
 <p>Training produces a <code>*_moe.safetensors</code> sibling next to the adapter; both files are needed for router-live inference (<code>make test-hydra</code> / ComfyUI <i>Anima Adapter Loader</i>). Requires <code>cache_llm_adapter_outputs = true</code>.</p>

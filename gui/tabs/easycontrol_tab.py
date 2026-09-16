@@ -11,10 +11,10 @@ right). The tab hosts two *kinds* of variant:
   • Descriptor variants — control-task projects described by a single
     ``configs/easycontrol/<stem>.toml`` (top-level ``name`` + ``[staging]`` /
     ``[preprocess]`` / ``[training]`` tables + blueprint, plus a ``[variant]``
-    metadata block). These are *file-edited launchers* (edit the descriptor
-    directly, like near_twins.toml — no in-GUI form): the tab shows a pointer
-    note instead of the form, and the Preprocess / Train buttons drive the
-    staging → preprocess → descriptor-folded train flow (always training the base
+    metadata block). The form renders the descriptor's scalar tables (Save writes
+    them back through tomlkit; blueprint and ``[variant]`` are preserved), and the
+    Preprocess / Train buttons drive the staging → preprocess → descriptor-folded
+    train flow (always training the base
     ``easycontrol`` method with the descriptor's ``[training]`` table folded in as
     CLI overrides). ``colorize`` is one such descriptor variant.
 
@@ -367,7 +367,7 @@ class EasyControlTab(ConfigTab):
         self._proc.start(sys.executable, argv)
 
     def _flush_dirty_descriptor(self) -> bool:
-        """Flush unsaved raw-TOML editor edits before a descriptor run (preprocess
+        """Flush unsaved descriptor form edits before a descriptor run (preprocess
         and train both re-read the file from disk). Returns False to abort the run
         if the buffer doesn't parse — _save_descriptor leaves dirty set and has
         already surfaced the parse error."""

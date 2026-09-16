@@ -1,7 +1,7 @@
 """Shared lifecycle base for non-LoRA adapter networks.
 
-The method networks under ``networks/methods/`` (easycontrol, soft_tokens)
-all expose the same trainer-facing protocol:
+The ``AdapterNetworkBase`` subclasses under ``networks/methods/`` (easycontrol,
+soft_tokens, register) expose the same trainer-facing protocol:
 
   - ``set_multiplier`` / ``is_mergeable`` / ``enable_gradient_checkpointing``
   - ``prepare_grad_etc`` / ``on_epoch_start`` / ``get_trainable_params``

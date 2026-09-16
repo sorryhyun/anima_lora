@@ -90,16 +90,14 @@ So the current rule has two halves: upcast at reductions that compute statistics
 
 Aspect-ratio bucketing means images of many shapes. After `PatchEmbed` (patch 16), each shape produces a different sequence length $L = (H/16)(W/16)$. If that shape propagates naively through the DiT, every distinct $L$ triggers `torch.compile` to retrace — with 28 blocks and dozens of shapes you blow past dynamo's recompile limit and fall back to eager, a ~2× regression.
 
-### Two dead ends before the current answer
-
-The history explains the design, so it's worth one paragraph:
+### Removed modes
 
 - Pad everything to one static shape (removed 2026-05-24). Under `attn_mode="flash"` there is no padding mask, and zero-padded tokens are not harmless — AdaLN shift and QKV bias leak them into real-token outputs (measured up to ~6.5% rel-L2). Padding also caps the biggest usable resolution tier.
 - A discrete constant-token bucket pool (the 4032/4200 families; removed 2026-06-19). Zero padding by construction and only two graphs — but every image had to be cropped/warped onto a small set of exact token counts, paying real crop loss.
 
-### The current mode: free-fit — and it's the only mode
+### Free-fit
 
-Free-fit (`library/datasets/buckets.py`) keeps each image's native aspect ratio and lets its patch-grid token count land anywhere inside its resolution tier's band. There is no flag; it's how preprocessing and training work, full stop. Crop loss drops to the sub-patch residual (<16 px).
+Free-fit (`library/datasets/buckets.py`) keeps each image's native aspect ratio and lets its patch-grid token count land anywhere inside its resolution tier's band. There is no flag. Crop loss drops to the sub-patch residual (<16 px).
 
 `EDGE_TOKEN_BANDS` defines the per-tier bands:
 

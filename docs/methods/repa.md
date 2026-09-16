@@ -56,8 +56,7 @@ make lora
 
 Missing sidecars don't crash: a batch without `repa_pe_features` skips the term
 for that step (and `train.py` prints the preprocess hint at startup). If PE
-features load but the block hook never fires, the adapter warns once — REPA
-being silently inert is a logged condition, not a quiet no-op.
+features load but the block hook never fires, the adapter warns once.
 
 ## Mechanics
 
@@ -88,16 +87,17 @@ being silently inert is a logged condition, not a quiet no-op.
 - Config plumbing: kwargs (`use_repa` / `repa_mode` / `repa_weight` /
   `repa_layer` / `repa_encoder` / `repa_target_dog` / `repa_dog_*` /
   `repa_spatial_norm` / `repa_timestep_weighting`) are parsed in
-  `networks/lora_anima/factory.py` and stashed on the network; they are
-  registered in the `NETWORK_KWARGS` allowlist (`networks/__init__.py`) — any new
-  key must be added there or it's silently inert.
+  `networks/lora_anima/factory.py` and stashed on the network. The
+  `NETWORK_KWARGS` allowlist (`networks/__init__.py`) is AST-derived from literal
+  `kwargs.get("<key>")` reads in the consumer modules — a new key read any other
+  way is silently not forwarded.
 - EasyControl: relational REPA is validated and shipped as the EasyControl
   default for cond ≠ target tasks (sanitize/colorize). The aux-loss dispatch runs
   on both the cached-LLM-adapter and in-model (`crossattn_emb=None`) text paths;
   a launch check for `repa/active=1.0` *without* `repa/align_loss` catches a
   silently-skipped term. Mechanism in `docs/experimental/easycontrol.md`.
 
-## Guardrails (from the v1 burn)
+## Guardrails
 
 - Never re-run v1's operating point (global pooling + weight 0.5). v1's
   documented outcome: anatomy ↑ but anime style broken (vision-encoder

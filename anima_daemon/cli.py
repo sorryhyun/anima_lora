@@ -71,7 +71,8 @@ def _print_json(obj) -> None:
 
 
 def _result_envelope(record: dict) -> Optional[dict]:
-    """The bench ``result.json`` a finished job lifted, if any (§ result-lift)."""
+    """The bench ``result.json`` a finished job lifted, if any (README "Result
+    envelopes")."""
     path = record.get("result_path")
     if not path:
         return None
@@ -109,8 +110,8 @@ def cmd_submit(args: argparse.Namespace) -> int:
         label=label,
         argv=argv,
         stall_timeout=args.stall_timeout,
-        # `--hold` stages the job behind a paused gate; the default leaves the
-        # gate alone so it runs when it reaches the front of the queue.
+        # `--hold` → start=False (the manager pauses the gate only when the
+        # queue is idle); the default leaves the gate alone.
         start=False if args.hold else None,
     )
     job_id = resp.get("job_id")
@@ -216,12 +217,8 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 
 def cmd_prune(args: argparse.Namespace) -> int:
-    """Sweep old terminal job dirs. Dry-run unless ``--apply``.
-
-    Pure filesystem — works whether or not a daemon is up. With a live daemon
-    the pruned jobs stay in its in-memory table until its next restart. The
-    boot sweep in ``manager._reconcile`` is the routine path.
-    """
+    """Sweep old terminal job dirs via ``jobs.prune_jobs``; dry-run unless
+    ``--apply``. Filesystem-only, so it works with the daemon up or down."""
     summary = _jobs.prune_jobs(
         max_age_days=args.days,
         keep_recent=args.keep,

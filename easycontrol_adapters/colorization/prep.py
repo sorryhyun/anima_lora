@@ -493,20 +493,14 @@ def stage_text(
     ``library.preprocess.cache_text_embeddings`` over ``caption_src`` with
     the color-only caption filter. ``caption_src`` is nested identically to
     ``post_image_dataset/resized`` so TE paths key-match the colorize
-    loader's lookup.
-
-    When ``staging`` is given, encoding is scoped to its stems (the matched
-    colorize subset) instead of the whole caption master.
+    loader's lookup. ``staging`` scopes encoding to the staged stems.
 
     With ``shuffle_variants > 0`` each cache holds v0 (full color set) plus
-    shuffled variants with ``tag_dropout_rate`` of the color tags dropped —
-    teaches the model to colorize from a partial color spec.
+    shuffled variants with ``tag_dropout_rate`` of the color tags dropped.
 
-    With ``keep_copyright`` (default) the copyright/series tag is kept and
-    placed first, protected from tag-dropout via ``caption_protect_fn`` (the
-    manga cond can't encode which series a page is from, so it's genuinely
-    ambiguous and worth binding). ``keep_comic`` does the same for
-    comic/panel-format tags, kept in the protected prefix after copyright.
+    ``keep_copyright`` places the copyright/series tag first; it rides the
+    same tag-dropout as the color tags. ``keep_comic`` adds comic/panel-format
+    tags after it, protected from dropout via ``caption_protect_fn``.
     """
     from color_caption import (
         filter_to_colors,

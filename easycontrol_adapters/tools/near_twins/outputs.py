@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
-"""near_twin outputs — pair-tree export + dataset blueprint.
+"""near_twins outputs — pair-tree export + dataset blueprint.
 
-The materialization layer of the near-twin miner. Pure I/O over the
-``PairRecord``s produced by ``near_twin.engine`` — no matching logic lives here.
-The two training-shaped artifacts are the ``_tags`` / ``_no_tags`` pair tree
+Pure I/O over ``engine.PairRecord``s: the ``_tags`` / ``_no_tags`` pair tree
 (``export_pairs``) and the EasyControl dataset blueprint (``write_dataset_config``).
 """
 
@@ -171,7 +169,7 @@ easycontrol_cond_noise_max = 0.0
 
 def _blueprint_text(export_dir: Path) -> str:
     # Subset paths are written as `{name}` placeholders (not the resolved slug):
-    # `make easycontrol EASYADAPTER=near_twin` interpolates `{name}` from the
+    # `make easycontrol EASYADAPTER=near_twins` interpolates `{name}` from the
     # config's top-level `name` key when it generates the dataset-config sidecar,
     # so changing `name` reroutes everything without touching this tail.
     # Training reads the bucket-resized tree (the preprocess pass resizes the

@@ -156,17 +156,14 @@ pin gotcha: `docs/methods/adaln.md` §EasyControl.
 The cond stream runs at the cond latent's native token count — there is no
 static-pad knob. Anima's native-shape bucketing already makes every forward run
 at its real token count (one bucket per batch → uniform S_c within a batch), and
-the DiT keys its compiled block graph on token count alone (two families: 4032 /
-4200). `encode_cond_latent` just flattens the patch-embedded cond latent and
-returns it at that count.
+the DiT keys its compiled block graph on token count alone. `encode_cond_latent`
+just flattens the patch-embedded cond latent and returns it at that count.
 
 For the common ref==target setup the cond is the SAME cached VAE latent the
-target uses, so its token count is identical to the target's and lands on one of
-the two bucket families automatically. Static-padding to a fixed budget (the
-removed `cond_token_count`, default 4096) was both unnecessary under native
-bucketing and broken for the 4200-token family (4200 > 4096), and it leaked zero
-tokens into the cond stream's self-attention and into target's LSE-extended
-attention — the same padding-leak the DiT's static-pad path was removed to avoid.
+target uses, so its token count is identical to the target's. Static padding to a
+fixed budget (the removed `cond_token_count`) leaked zero tokens into the cond
+stream's self-attention and the target's LSE-extended attention — the same
+padding leak the DiT's static-pad path was removed for.
 
 Memory scales with the cond latent's resolution: a lower-resolution reference
 produces fewer cond tokens and a smaller KV cache. To match the official
@@ -355,8 +352,9 @@ gradient checkpointing on, target latent 64×64, batch 1, bf16):
 | Two-stream, full-res cond (~4096 tokens) | ~6.3 GiB        |
 
 A real training step on 16 GiB GPUs (live observed) lands around 7.8 GiB
-for a full-resolution (ref==target) cond at constant-bucket S_c. The Phase 1.5
-design pinned ~1.4 GiB more on top of this and did not fit on 16 GiB.
+for a full-resolution (ref==target) cond. The earlier Phase 1.5 design (a separate
+cond pre-pass caching per-block `(K_c, V_c)`) pinned ~1.4 GiB more and did not fit
+on 16 GiB.
 Cond memory now scales with the reference's native resolution — there is no
 fixed token budget.
 
@@ -468,23 +466,6 @@ cond_scale)` change; subsequent KSampler steps use the cache automatically.
    masked-SDPA reference within fp32 ulp on forward and all gradients
    (via an LSE-equivalence bench, since removed). Falls back to
    masked-SDPA when flash-attn is unavailable.
-
-## History
-
-This file used to describe a Phase 1.5 design where cond ran a separate
-pre-pass across all blocks before the target forward, caching per-block
-`(K_c, V_c)` on each `block.self_attn` and replaying gradients through the
-serial cond chain via a `backward_cond_path()` call after
-`accelerator.backward`. That pinned ~1.4 GiB of state on 16 GiB GPUs and
-relied on a fragile detach + `requires_grad_(True)` dance to keep unsloth's
-per-block backward from re-traversing freed saved tensors.
-
-The current design follows the official EasyControl reference's structure
-(`EasyControl/train/src/transformer_flux.py`, `EasyControl/train/src/layers.py`)
-— two streams, one block forward, no cross-block cache — and keeps Anima's
-LSE-decomposed extended attention as the only memory optimization on top of
-that structure. The published memory result is ~7.8 GiB total in actual
-training (vs Phase 1.5's >16 GiB OOM at the same bucket).
 
 ## Files
 

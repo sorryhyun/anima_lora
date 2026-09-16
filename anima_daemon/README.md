@@ -78,7 +78,7 @@ python tasks.py daemon-jobs --all              # no cap (full history)
 python tasks.py daemon-log -n 0                # newest job, whole log
 ```
 
-`--state` validates against the six real states and exits 2 on anything else.
+`--state` validates against the six states and exits 2 on anything else.
 `daemon-jobs`, `daemon-log` and `python -m anima_daemon status <id>` all fall
 back to the on-disk records, so they answer with the daemon down.
 
@@ -153,8 +153,9 @@ to opt out. The watchdog also samples the job's process-tree CPU time and spares
 a quiet-but-computing tree (up to 8× the budget);
 `bench/_common.py::start_heartbeat()` is a one-line stdout keep-alive.
 
-`start` gates the queue: `true` → run now, `false` → add but hold the queue
-paused, omitted/`null` → leave the gate as-is.
+`start` gates the queue: `true` → run now (resumes the gate), `false` → pause
+the gate only if nothing else is queued or running (otherwise the job advances
+behind them), omitted/`null` → leave the gate as-is.
 
 Response: `201 {"job_id": "20260611-142233-a1b2c3", "state": "queued"}`.
 
@@ -289,7 +290,7 @@ while that daemon has live jobs.
 ## Result envelopes
 
 A GPU job that produces an artifact record gets it lifted onto the job record on
-the terminal transition. Two producers ship today:
+the terminal transition. Producers:
 
 | producer | writes | typical job |
 |----------|--------|-------------|
@@ -309,9 +310,6 @@ otherwise. Reading one back:
 python -m anima_daemon status <id>       # full record + envelope inlined under "result"
 JOB=<id> python tasks.py daemon-wait     # block first, then the same
 ```
-
-A `daemon-jobs` line carries the job's state and exit code, not its
-`result_path`; reading an envelope is a per-job lookup.
 
 ## Observing without HTTP
 
@@ -375,24 +373,21 @@ jobs.
   `POST /shutdown {kill_jobs:false}` → respawn. Boot reconcile re-adopts the
   running job and queued jobs persist, so the restart is lossless (~1–2s).
   `python -m anima_daemon status` shows `stale_code`.
-- **Submit-time env capture** keeps a queued job off the daemon's boot env.
 - **Attach by default (CLI).** GPU targets submit and stream the job's stdout,
   exiting with its `returncode`; ctrl-C detaches and the run survives. `--queue`
   detaches immediately, `--inline` runs the child with no daemon (pdb / py-spy /
   nsys). `ANIMA_RUN_MODE={attach,detach,inline}` sets the default;
-  `PROFILE_STEPS` / `ANIMA_ACCELERATE_LAUNCH` force inline.
+  `PROFILE_STEPS` / `ANIMA_ACCELERATE_LAUNCH` force inline unless a mode flag
+  is given.
 
 The daemon package never imports `library` / `networks` / `torch` and never
-holds a model (`tests/test_daemon.py` enforces the imports), which keeps
-restarts fast.
+holds a model (`tests/test_daemon.py` enforces the imports).
 
 ## Gotchas
 
-- **Localhost only.** No remote, no auth — the caller runs on the same machine.
-- **Serial queue.** One job at a time; submitting while one runs enqueues.
-- **No blocking wait *endpoint*.** HTTP is poll-based (`GET /jobs/{id}`) or
-  stream-based (`/jobs/{id}/logs`). Blocking lives on the client:
-  `DaemonClient.wait()` / `make daemon-wait JOB=<id>`.
+- **No blocking wait endpoint.** Poll `GET /jobs/{id}` or stream
+  `/jobs/{id}/logs`; blocking lives on the client (`DaemonClient.wait()` /
+  `make daemon-wait JOB=<id>`).
 - **SSE responses are one-per-connection** (`Connection: close`); the socket
   closing is the client's EOF signal.
 - **Port drift.** Resolve from the pidfile, not a constant. `DaemonClient()` and
@@ -400,8 +395,6 @@ restarts fast.
 - **`config_snapshot` vs re-resolve.** Without a snapshot/file the daemon re-runs
   the `base → preset → method → overrides` merge at launch; pin a snapshot when
   you need bit-stable config across a queued delay.
-- **Command-job progress.** `latest`/`progress.jsonl` are training-only; a
-  command job exposes only `state` + `stdout.log` until it exits.
 - **Agent-launched GPU work must go through the daemon.** A GPU process started
   from an agent's background shell gets SIGKILLed by the harness sandbox after
   ~1 min with no trace.

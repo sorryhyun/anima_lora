@@ -22,10 +22,8 @@ import argparse
 def build_parser() -> argparse.ArgumentParser:
     """Build the Anima inference ``ArgumentParser`` (no parsing).
 
-    Every default here is authoritative — ``generate()`` reads ~40 fields via
-    ``getattr``, so this parser is what populates them. Exposed separately from
-    :func:`build_default_args` so a caller can append its own flags before
-    parsing.
+    Exposed separately from :func:`build_default_args` so a caller can append
+    its own flags before parsing.
     """
     parser = argparse.ArgumentParser(description="HunyuanImage inference script")
 

@@ -9,9 +9,6 @@ flat **mid-gray** (the SD-inpaint convention — ``128`` in ``[0, 255]`` maps to
 region the per-block ``b_cond`` gate + cond LoRA learn to read as "regenerate
 here."
 
-Kept separate from ``prep.py`` so the generator is unit-testable in isolation
-and the deferred SAM-object / hole-loss paths can reuse :func:`generate_mask`.
-
 Public API:
     generate_mask(h, w, seed, ...) -> np.ndarray[bool]   # True = hole
     mask_array(img_rgb, seed, ...) -> np.ndarray[uint8]  # gray-filled copy
@@ -23,8 +20,8 @@ import cv2
 import numpy as np
 
 # Mid-gray fill in uint8 [0, 255] image space. The VAE input transform is
-# x/127.5 - 1, so 128 → ~0.004 ≈ 0 in [-1, 1]. The SD-inpaint convention; chosen
-# over noise-fill (noisier cond) and black (collides with legitimately-black art).
+# x/127.5 - 1, so 128 → ~0.004 ≈ 0 in [-1, 1] (SD-inpaint convention). Black
+# would collide with legitimately-black art.
 GRAY = 128
 
 

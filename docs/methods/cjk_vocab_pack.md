@@ -61,7 +61,7 @@ pair there is still a `FileNotFoundError` with the download hint.
 Both patches are applied from one memoised `load_vocab_pack(prefix)` so the
 strategy and the DiT loader see the same table.
 
-## Cache invalidation (read this)
+## Cache invalidation
 
 TE caches skip on **existence only** — no content hash. Enabling, disabling or
 swapping a pack changes the cached T5 ids and `crossattn_emb` for every caption

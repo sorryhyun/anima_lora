@@ -1,7 +1,5 @@
 # Inference Guide
 
-Start at §1; the flag tables in §4 are for looking up a specific knob.
-
 > Model paths, `--attn_mode`, `--vae_chunk_size`, and `--compile` mean the same
 > as in training — see [`base-config.md`](base-config.md). The adapter family is
 > read from the **checkpoint metadata**, so there is no flag for it.

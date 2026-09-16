@@ -8,21 +8,12 @@ Lazy re-exports of the entry points an embedder needs::
     latent = anima_lora.inference.generate(args, settings)
     image = anima_lora.inference.decode_to_pil(vae, latent, device)
 
-Exports are grouped into namespaced submodules (the preferred spelling):
-
-| namespace | exports |
-|-----------|---------|
-| ``anima_lora.models`` | ``load_dit_model`` / ``load_anima_model`` / ``load_vae`` / ``default_checkpoints`` / ``DefaultCheckpoints`` / ``str_to_dtype`` |
-| ``anima_lora.inference`` | ``generate`` / ``get_generation_settings`` / ``save_output`` / ``decode_to_pil`` / ``GenerationRequest`` / ``prepare_text_inputs`` / ``ensure_text_strategies`` |
-| ``anima_lora.config`` | ``load_method_preset`` / ``read_config_from_file`` |
-| ``anima_lora.training`` | ``AnimaTrainer`` / ``setup_parser`` / ``build_network_extras`` / ``verify_command_line_training_args`` / ``create_network`` / ``resolve_network_spec`` |
-| ``anima_lora.captioning`` | ``AnimaTagger`` |
-
-The pre-namespace flat names (``anima_lora.generate``, ``anima_lora.load_vae``,
-…) remain as aliases; the ``training`` surface is namespaced-only. Names resolve
-lazily (PEP 562) on first access, so ``import anima_lora`` stays cheap and does
-not trigger the circular-import chains of the underlying packages. Each
-submodule's docstring maps its exports to their canonical homes.
+Exports live on the namespaced submodules ``anima_lora.{models, inference,
+config, training, captioning}``; each submodule's docstring lists its exports
+and their canonical homes. The pre-namespace flat names (``anima_lora.generate``,
+``anima_lora.load_vae``, …) remain as aliases; ``training`` is namespaced-only.
+Names resolve lazily (PEP 562), so ``import anima_lora`` stays cheap and avoids
+the circular-import chains of the underlying packages.
 
 ``ROOT`` is the repo root (the directory holding ``configs/``, ``output/`` …)
 as a ``pathlib.Path``.

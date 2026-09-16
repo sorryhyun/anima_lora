@@ -4,8 +4,6 @@ Training-free diffusion sampling acceleration via Chebyshev polynomial feature f
 
 Paper: [Adaptive Spectral Feature Forecasting for Diffusion Sampling Acceleration](https://arxiv.org/abs/2603.01623) (Han et al., CVPR 2026, Stanford/ByteDance)
 
-Reference implementation: `Spectrum/` (cloned from upstream repo)
-
 ## Quick start
 
 ```bash
@@ -59,7 +57,7 @@ once per step, before deciding (x_t is available pre-forward):
 
 Because only the decision changes — the per-step `noise_pred` reconstruction (forecast + head) still runs every step — the sampler-boundary plug-ins (SMC-CFG / mod-guidance) compose unchanged. CFG is irrelevant to the decision: `x_t` is shared across cond/uncond, so one accumulator drives both branches at the cost of a single FFT/iFFT per step (negligible, zero extra DiT forwards).
 
-**The δ knob.** δ is the latency/quality dial. By default (`--spectrum_delta auto`) it self-calibrates on the first generate: the runner dry-runs the growing-window schedule while recording the SEA-distance trace, then binary-searches δ so the SEA arm's post-warmup refresh fraction *matches the window's own* — a like-for-like swap at matched compute, not a free speed re-pick. The calibrated δ is cached in-process and mirrored to `output/spectrum_sea_delta.json`, keyed on the schedule geometry (steps / warmup / stop / refresh_ratio / cfg / sampler / H×W — not the prompt). Pin it explicitly with `--spectrum_delta <float>` for sweeps, or retarget the auto fraction with `--spectrum_refresh_ratio`.
+**The δ knob.** By default (`--spectrum_delta auto`) it self-calibrates on the first generate: the runner dry-runs the growing-window schedule while recording the SEA-distance trace, then binary-searches δ so the SEA arm's post-warmup refresh fraction *matches the window's own* — a like-for-like swap at matched compute, not a free speed re-pick. The calibrated δ is cached in-process and mirrored to `output/spectrum_sea_delta.json`, keyed on the schedule geometry (steps / warmup / stop / refresh_ratio / cfg / sampler / H×W — not the prompt). Pin it explicitly with `--spectrum_delta <float>` for sweeps, or retarget the auto fraction with `--spectrum_refresh_ratio`.
 
 The SEA filter's power-law exponent β is fixed at 2 (the natural-image prior, untuned). The window schedule remains the default; `sea` is opt-in.
 
@@ -123,7 +121,7 @@ Higher `flex_window` → faster window growth → fewer forwards. Increase `w` t
 | `networks/spectrum.py` | Anima integration: `SpectrumPredictor`, `spectrum_denoise()`, `_spectrum_fast_forward()` |
 | `networks/spectrum_sea.py` | SEA-schedule helpers: `sea_filter` (σ-dependent Wiener low-pass), `l1rel` distance, `solve_delta_for_refresh_ratio` |
 | [ComfyUI-Spectrum-KSampler](https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler) | ComfyUI custom node: drop-in KSampler replacement |
-| `Spectrum/src/utils/basis_utils.py` | Core algorithm: `ChebyshevForecaster`, ridge regression, polynomial evaluation |
+| `networks/spectrum_forecast.py` | Core algorithm (vendored from upstream `src/utils/basis_utils.py`): `ChebyshevForecaster`, ridge regression, polynomial evaluation |
 
 The integration uses `register_forward_pre_hook` on `Anima.final_layer` to capture block outputs without modifying the model class. Separate forecasters are maintained for conditional and unconditional (CFG) passes.
 

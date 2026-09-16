@@ -35,7 +35,7 @@ hardcodes `use_adaln_lora=True, adaln_lora_dim=256` for every checkpoint it
 loads (`models/cosmos_predict2.py::get_dit_config`, ~line 125). ComfyUI's
 detection does the same (`comfy/model_detection.py:801`).
 
-## Who trains adaln today — we are the outlier
+## Which trainers target adaln
 
 | Trainer | adaln in LoRA target set? | Evidence |
 |---|---|---|
@@ -43,9 +43,8 @@ detection does the same (`comfy/model_detection.py:801`).
 | sd-scripts (official kohya, upstream Anima support) | NO by default — appends `.*(_modulation\|_norm\|_embedder\|final_layer).*`; opt-in via `include_patterns` (include beats exclude, same mechanism as ours) | `sd-scripts/networks/lora_anima.py:254` |
 | this repo | YES since 2026-07-16 — `_DEFAULT_EXCLUDE` still blocks `adaln_up_`, but `train_adaln = true` in `configs/base.toml` rescues it via `include_patterns` on every LoRA-family method | `networks/lora_anima/config.py` (`_DEFAULT_EXCLUDE`, `from_kwargs`) |
 
-We were the outlier; we no longer are. Both other trainers reach adaln by default
-(diffusion-pipe unconditionally, sd-scripts via the same include-beats-exclude
-opt-in we now enable), so a stock run here is closer to the reference behaviour.
+A stock run here now matches diffusion-pipe, which targets adaln unconditionally;
+sd-scripts reaches it only through the same include-beats-exclude opt-in.
 
 Our exclusion is inherited verbatim from kohya's `lora_anima.py` (ours extends
 the same regex with the runtime rename names) — a conservative
@@ -239,21 +238,12 @@ not a hot arm. We borrow only the *relative* √r consistency; the paper's
 absolute α_base ≈ 256√r calibration is for fresh-init LLM SFT and does not
 transfer to warm-started adapters.
 
-Compile interaction (fixed 2026-07-15): training adaln under
-`compile_dynamic_seq` initially crashed at the first grad-bearing forward with a
-`ConstraintViolationError` on the marked seq range. The adaln LoRA makes
-shift/scale/gate require grad, so the backward gains a seq-axis reduction whose
-inductor mix-order-reduction fusion records a 4096-boundary guard (`Ge(seq, 4096)`
-or `seq <= 4095`, per the first-traced hint) — contradicting the strict
-`mark_dynamic` bound. Fixed by disabling `triton.mix_order_reduction` whenever
-dynamic-seq marks are active, via `pin_inductor_flag` (2026-07-17) — the
-initial plain-assignment kill was context-local (inductor config overrides are
-thread-local ContextVars) and reverted in the grad-enabled compile context,
-which is what crashed v1.14.0 `make lora` runs under grad-ckpt presets. Full
-mechanism in
+Compile interaction: under `compile_dynamic_seq`, an adaln LoRA gives the backward a
+seq-axis reduction that trips inductor's mix-order-reduction 4096 guard, so
+`compile_blocks` pins `triton.mix_order_reduction` off — this applies to any LoRA on a
+broadcast-consumed Linear, not just adaln. Mechanism:
 [`../optimizations/for_compile.md`](../optimizations/for_compile.md) §2.6 and
-[[project_inductor_mix_order_reduction_guard]]. Applies to ANY LoRA on a
-broadcast-consumed Linear, not just adaln.
+[[project_inductor_mix_order_reduction_guard]].
 
 Shipping trained adaln: the save pipeline relays runtime-layout keys to the
 comfy layout for you — `lora_save.py::_relayout_adaln_to_comfy` runs on the
@@ -355,12 +345,12 @@ LoRA (mod3−w0 LPIPS ≈0.008 at w=3), absorbed LoRA-generically if at all.
 
 ### Existing checkpoints
 
-Every LoRA trained in this repo to date has zero adaln keys (verified on
+LoRAs trained here before the 2026-07-16 default flip have zero adaln keys (verified on
 atlas / colorize / soup checkpoints) — the pathway was never trained, nothing is
 mis-shipped, and there is nothing to retrofit. Trained models learned to
 compensate through attn/MLP; see caveat below.
 
-## Bench plan (gate before any default change)
+## Bench plan (outstanding)
 
 1. Turbo student arm (highest expected value): student targets `adaln_up_`
    via include_patterns, warm-started from a runtime-layout adaln-inclusive

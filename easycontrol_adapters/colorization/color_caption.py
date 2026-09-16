@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
 """Color-only caption filter for the colorization EasyControl task.
 
-The colorization condition (mangafied B&W lineart + screentone) already encodes
-*everything spatial* — composition, poses, objects, layout. The one variable it
-cannot encode is **hue/chroma**. So the text channel for colorization should
-carry *only* color information: every surviving token is then a color fact the
-model can't get from structure, which gives a strong text→color coupling and
-makes color prompts actually steer at inference.
+The mangafied condition already carries composition, pose and layout; hue is
+what it cannot carry, so the colorize text cache keeps only color tags.
 
-:func:`filter_to_colors` reduces a full Anima caption to its color tags only:
+:func:`filter_to_colors` reduces a full Anima caption to its color tags:
 
   * hair / eye / skin color tags ("blue hair", "aqua eyes", "dark skin", plus
     the multi-color escapes: "two-tone hair", "heterochromia", …)
@@ -16,30 +12,16 @@ makes color prompts actually steer at inference.
     ("yellow shirt", "red ribbon", "white background", "blue sky")
   * standalone palette descriptors ("monochrome", "colorful", "pastel colors")
 
-Everything else is dropped. Images whose caption has no color tag collapse to an
-empty caption (→ unconditional / auto-color sample), which is fine — that's the
-empty-prompt colorization mode.
+Everything else is dropped, in original order. A caption with no color tag
+becomes ``""`` (the empty-prompt colorization sample). Pure stdlib, so it
+imports without torch.
 
-Tag order is preserved (the slot order is irrelevant once non-color tags are
-gone). Pure stdlib so it stays importable from the preprocess path and unit
-tests without pulling torch.
-
-:func:`filter_to_colors_and_copyright` is the variant used by the colorize prep
-when copyright tags should ride along with the color tags ("genshin impact,
-pink hair, blue eyes"). The manga cond can't encode *which series* a page is
-from, so copyright is genuinely-ambiguous text the model can bind to — and
-unlike a hue it shouldn't be tag-dropped, so it's emitted as a protected prefix
-(see ``protect_fn`` in :func:`library.preprocess.generate_caption_variants`).
-Copyright tags are identified against the corpus copyright vocab in the caption
-index (``post_image_dataset/captions/caption_index.json`` ``groups.copyright``).
-
-:func:`filter_to_colors_and_protected` generalizes that prefix to any set of
-genuinely-ambiguous tags: copyright (series identity) and **comic/panel-format**
-tags (``comic``, ``4koma``, …). The mangafied cond carries lineart + screentone
-but the multi-panel *page format* is text the model should bind so a "comic"
-prompt produces panelled output — kept first and dropout-protected, like
-copyright. Comic tags match a fixed booru format vocab (:data:`COMIC_TAGS`), no
-caption-index lookup needed.
+:func:`filter_to_colors_and_protected` prepends copyright/series tags
+(identified against ``groups.copyright`` in
+``post_image_dataset/captions/caption_index.json``) and comic/panel-format tags
+(:data:`COMIC_TAGS`) before the color tags. Whether a prefix tag is immune to
+tag-dropout is decided by the caller's ``caption_protect_fn``, not here.
+:func:`filter_to_colors_and_copyright` is the copyright-only wrapper.
 """
 
 from __future__ import annotations
@@ -49,16 +31,13 @@ import json
 from pathlib import Path
 from typing import Callable
 
-# Repo root: easycontrol_adapters/colorization/color_caption.py → ../../..
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CAPTION_INDEX = (
     _REPO_ROOT / "post_image_dataset" / "captions" / "caption_index.json"
 )
 
 # Single color words that head a "<color> <noun>" tag or end a "<x> hair/eyes".
-# Booru's stable color vocab + a few common extended hues. Kept deliberately
-# broad on the permissive side: a false-keep ("blue rose") is still color info,
-# a false-drop loses a hue the model needs.
+# Deliberately permissive: a false keep ("blue rose") is still color info.
 COLOR_WORDS: frozenset[str] = frozenset(
     {
         "aqua",
@@ -142,13 +121,8 @@ COLOR_PHRASES: frozenset[str] = frozenset(
 )
 
 
-# Comic / panel-format tags. The mangafied cond synthesizes lineart + screentone
-# but doesn't reliably hand the model the "this is a multi-panel comic page"
-# signal, so — like copyright — it's genuinely-ambiguous text worth binding: kept
-# as a protected, dropout-immune leading token so the adapter learns the `comic`
-# tag and a "comic" prompt steers toward panelled output. A fixed booru
-# format-tag vocab (no caption-index lookup, unlike copyright); the koma variants
-# are the same comic-page family.
+# Comic / panel-format tags, kept as a leading token so a "comic" prompt steers
+# toward panelled output. Fixed booru vocab (no caption-index lookup).
 COMIC_TAGS: frozenset[str] = frozenset(
     {
         "comic",
@@ -199,13 +173,10 @@ def filter_to_colors(caption: str) -> str:
     return ", ".join(kept)
 
 
-# Copyright-group entries that name "no series" rather than a real franchise.
-# ``original`` is Danbooru's copyright tag for non-derivative works — it's the
-# single most common copyright tag in the corpus, but it carries no series
-# identity the manga cond can't already encode. Keeping it would inject a
-# constant, dropout-protected leading token on ~a quarter of the captions and
-# dilute the color→text coupling the filter exists to sharpen. So it's stripped
-# from the copyright vocab (keep + protect paths both read this set).
+# Copyright-group entries that name "no series" rather than a franchise.
+# ``original`` is the most common copyright tag in the corpus (~a quarter of
+# captions); kept, it would be a near-constant leading token with no series
+# identity, so it is stripped from the copyright vocab.
 _NON_SERIES_COPYRIGHT: frozenset[str] = frozenset({"original", "original character"})
 
 
@@ -216,13 +187,8 @@ def load_copyright_tags(
     """Lowercased set of every copyright tag name from the caption index.
 
     Reads ``groups.copyright`` (a ``{copyright_name: [image_ids]}`` map) from the
-    method-agnostic typed-tag index. Returns an empty set if the index is missing
-    so callers degrade to "no copyright kept" rather than crashing. Cached because
-    the index is a couple-thousand-image JSON and this runs once per caption.
-
-    Non-series meta-copyright tags (``_NON_SERIES_COPYRIGHT``, e.g. ``original``)
-    are excluded — they name "no franchise", so they're not worth riding along as
-    a protected caption prefix.
+    caption index; empty set if the index is missing. Cached (runs once per
+    caption). Excludes ``_NON_SERIES_COPYRIGHT`` (e.g. ``original``).
     """
     p = Path(index_path)
     if not p.exists():
@@ -252,11 +218,9 @@ def filter_to_colors_and_protected(
     """Reduce a caption to its protected leading tags followed by its color tags.
 
     The protected prefix is, in order: copyright/series tags (``keep_copyright``)
-    then comic/panel-format tags (``keep_comic``). They lead the color tags so
-    they form a contiguous run, mirroring the ``@artist``-prefix convention the
-    variant generator already protects, and a prompt reads naturally — "genshin
-    impact, comic, pink hair, blue eyes". Each tag is emitted once: a tag that is
-    both copyright/comic and color-shaped stays in its protected slot. Pass
+    then comic/panel-format tags (``keep_comic``), e.g. "genshin impact, comic,
+    pink hair, blue eyes". Each tag is emitted once: a tag that is both
+    copyright/comic and color-shaped stays in the prefix. Pass
     ``copyright_tags`` to avoid re-reading the caption index per call; defaults to
     :func:`load_copyright_tags` (only consulted when ``keep_copyright``).
     """
@@ -285,8 +249,8 @@ def filter_to_colors_and_copyright(
 ) -> str:
     """Reduce a caption to its copyright tags (first) followed by its color tags.
 
-    Thin back-compat wrapper over :func:`filter_to_colors_and_protected` with only
-    the copyright prefix enabled.
+    Wrapper over :func:`filter_to_colors_and_protected` with only the copyright
+    prefix enabled.
     """
     return filter_to_colors_and_protected(
         caption, copyright_tags, keep_copyright=True, keep_comic=False

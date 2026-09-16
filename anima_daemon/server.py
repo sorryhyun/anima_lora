@@ -608,10 +608,10 @@ class _Handler(BaseHTTPRequestHandler):
                 if not self._sse(line.rstrip("\n")):
                     return
             else:
-                # heartbeat tick: stop once the job is terminal and drained.
+                # Empty tick = log drained; stop once the job has left
+                # queued/running.
                 cur = self.manager.get(job_id)
                 if cur is not None and cur.state not in ("queued", "running"):
-                    # one more pass to flush any final lines already on disk
                     self._sse({"ev": "eof", "state": cur.state})
                     return
 

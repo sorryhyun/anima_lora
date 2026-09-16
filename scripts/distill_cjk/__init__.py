@@ -21,7 +21,10 @@ Modules:
 * :mod:`scripts.distill_cjk.data`      — pairs, span alignment, on-disk cache.
 * :mod:`scripts.distill_cjk.losses`    — L_flat / L_span / L_attn / L_pool.
 * :mod:`scripts.distill_cjk.attn_bank` — DiT cross-attn K/V probe bank (no DiT load).
+* :mod:`scripts.distill_cjk.rows`      — per-row bookkeeping / holdout.
+* :mod:`scripts.distill_cjk.adapter_lora` — ext-gated LoRA on the adapter's Linears.
+* :mod:`scripts.distill_cjk.build_query_bank` — cross-attn probe queries for ``attn``.
 
-Why not ``train.py``: there is no DiT, no VAE, no latents and no sampler here —
-the whole loop is a 6-block adapter forward over cached text features.
+The loop runs outside ``train.py``: no DiT, VAE, latents or sampler, only a 6-block
+adapter forward over cached text features.
 """

@@ -2,7 +2,7 @@
 
 MoE-style multi-head LoRA with per-module routing. Targets multi-artist training in a single LoRA without style bleed — a standard LoRA trained on multiple artists blends all styles into one shared low-rank subspace, so distinct fingerprints are lost. HydraLoRA attaches several `lora_up` heads per adapted `Linear` and lets a learned router pick a per-sample mixture.
 
-> We published paper about this! read [paper](https://arxiv.org/abs/2605.03252) if interested.
+Paper: [arXiv:2605.03252](https://arxiv.org/abs/2605.03252).
 
 > For the structural walkthrough (architecture, forward pass, why RMS-over-rank-R, load-balancing formula, orthogonalized experts and the cold-start deadlock, composition matrix), see `docs/structure/hydralora.md`. This doc is the usage / ops / decision-log reference.
 
@@ -40,35 +40,30 @@ Use the Anima Adapter Loader node (`https://github.com/sorryhyun/ComfyUI-Anima_l
 
 ## Orthogonalized experts — fallback behavior
 
-The `OrthoHydraLoRAModule` default (both `use_ortho = true` and `use_hydra = true`) is the structural deadlock fix described in `docs/structure/hydralora.md` §5. One operational detail worth knowing:
+`OrthoHydraLoRAModule` (`use_ortho = true` on a MoE-style config) is the structural deadlock fix described in `docs/structure/hydralora.md` §5.
 
 Fallback. If `min(out_dim, in_dim) < num_experts · lora_dim` the disjoint SVD-slice partition can't fit, so `P_bases` degenerates to the legacy shared `P_basis` replicated `E` times (with a warning in the log). In that case all experts start identical (shared basis + zero `S_p` + zero `lambda_layer`) and must diverge through training-time updates to `S_p` — if the router collapses they never will. Prefer to size `num_experts` so the partition fits. Implementation: `networks/lora_modules/ortho.py:OrthoHydraLoRAModule`.
 
 ## Composition with other variants
 
-- T-LoRA — timestep rank masking applies to `lora_down` (shared across experts), so it composes directly. HydraLoRA + T-LoRA is the configured default.
-- OrthoLoRA — supported via `OrthoHydraLoRAModule` (`networks/lora_modules/ortho.py`). Cayley-parameterized orthogonal `S_p` becomes per-expert (`(num_experts, r, r)`), `S_q` stays shared (matching the shared `lora_down` story). Activated by setting both `use_ortho = true` and `use_hydra = true` — this is the configured default.
+- T-LoRA — timestep rank masking applies to `lora_down` (shared across experts), so it composes directly; `configs/gui-methods/hydralora.toml` enables both.
+- OrthoLoRA — supported via `OrthoHydraLoRAModule` (`networks/lora_modules/ortho.py`). Cayley-parameterized orthogonal `S_p` becomes per-expert (`(num_experts, r, r)`), `S_q` stays shared (matching the shared `lora_down` story). Activated by `use_ortho = true` on a MoE-style config.
 - Spectrum — composes cleanly. Cached steps skip all transformer blocks entirely (router included), so hydra just runs fewer times.
 - Modulation guidance — orthogonal. Touches AdaLN only, outside the hydra-adapted Linears.
 
-## Evolution: global → layer-local
+## Checkpoints from the global router
 
-The first HydraLoRA implementation used a single global router that read max-pooled `crossattn_emb` (the text conditioning, post-T5 projection) and broadcast one gate distribution to every adapted layer for every timestep. That design was motivated by a k-means / NMI analysis showing that max-pooled `crossattn_emb` clusters cleanly by artist (NMI ≈ 0.93). It worked enough to train, but had two problems:
-
-1. One-layer-wide routing. The same gate was applied everywhere, so experts couldn't specialize per layer (e.g. an expert that's strong in early blocks but irrelevant in late blocks had no way to express that).
-2. Router decoupled from DiT input distribution. The training signal for the router came from a fixed, pre-computed text embedding — not from what the adapted module actually sees at denoising time — so the routing decision was blind to noise level and image content.
-
-The current layer-local design drops the text-space clustering path and reads each adapted layer's actual input. Old checkpoints with `_hydra_router.*` keys are refused at load time (see `networks/lora_anima/`) with an error message pointing at retraining.
+The first HydraLoRA used one global router on max-pooled `crossattn_emb`, broadcast to every layer and timestep. The layer-local design reads each adapted layer's actual input instead; checkpoints with `_hydra_router.*` keys are refused at load with a retrain message.
 
 ## Configuration
 
-The HydraLoRA toggle block in `configs/methods/lora.toml` (and the dedicated `configs/gui-methods/hydralora.toml` for GUI users) controls:
+`configs/gui-methods/hydralora.toml` is the shipped variant. HydraLoRA is one cell of the three-axis routing surface ([`../guidelines/training.md`](../guidelines/training.md#lora-family--the-three-axis-surface)):
 
-- `use_hydra = true` — switches `module_class` to `HydraLoRAModule`.
-- `num_experts = 4` — default. Higher values give more specialization capacity at the cost of more `(out_dim * rank)` parameters per module.
-- `balance_loss_weight = 0.001` — Switch Transformer load-balancing coefficient. Lowered from 0.01 because the original value dominated the weak router-gradient signal and pinned every router to uniform. Raise back toward 0.01 if you observe expert collapse after the rank-R router fix (see "Fixes" below); lower further (or zero) if specialization stays too weak.
+- `use_moe_style = "shared_A"` + `route_per_layer = true` + `router_source` (`"sigma"` in the shipped variant) — selects `HydraLoRAModule`. The retired `use_hydra` key raises.
+- `num_experts` — code default 4, shipped variant 6. More experts add `(out_dim * rank)` parameters per module.
+- `balance_loss_weight` — Switch Transformer load-balancing coefficient (shipped variant 3e-7; the ceiling on Anima is ~5e-5). Raise it if experts collapse; lower it if specialization stays weak.
 
-HydraLoRA requires `cache_llm_adapter_outputs = true` (same as standard LoRA in this repo — unrelated to routing, but the cached crossattn is assumed by the surrounding training plumbing).
+HydraLoRA requires `cache_llm_adapter_outputs = true` (same as standard LoRA in this repo).
 
 ### Hard σ-band partition
 

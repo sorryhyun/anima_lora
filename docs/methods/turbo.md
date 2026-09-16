@@ -7,17 +7,10 @@ inference-side turbo code; you load it through the normal LoRA path and run
 `--infer_steps` matched to `student_steps` (currently 4) with `--cfg 1.0` (CFG is
 baked into the student during distillation).
 
-> History. This replaced the CA-decoupled DMD2 ("CFG-as-Spear, Distribution-
-> Matching-as-Shield", Liu et al. arXiv:2511.22677) objective on 2026-05-30.
-> The whole turbo program had been spent managing the CA branch's standing CFG
-> bias (it never reaches a fixed point — see [[project_turbo_alpha4_overdistill]]),
-> and every CA-side lever came back inert or harmful
-> ([[project_turbo_fei_gap_phase0]], `ca_band`). DP-DMD removes the CA branch
-> entirely. The structural walkthrough (diversity-anchor / DMD gradient split,
-> flow-matching velocity↔x0 math, the per-step schedule) lives at
-> `docs/structure/turbo.md`; the CA-era decision log survives at
-> `_archive/proposals/dmd2_decoupled_improvements.md`. The original migration proposal
-> is archived at `_archive/proposals/dpdmd.md`.
+DP-DMD replaced the CA-decoupled DMD2 objective (Liu et al. arXiv:2511.22677) on
+2026-05-30; the CA-era decision log is `_archive/proposals/dmd2_decoupled_improvements.md`
+and the migration proposal `_archive/proposals/dpdmd.md`. Structural walkthrough:
+`docs/structure/turbo.md`.
 
 - Training: `scripts/distill_turbo/distill.py` — bespoke single-GPU loop
   (bypasses `train.py`/accelerate).
@@ -75,8 +68,7 @@ Per training step:
    `t_k`. The first-step diversity target is `v_target = (ε − z_tk) / (1 − t_k)`.
    `t_k` is read from the teacher grid, not the student grid — a σ mismatch
    silently mis-scales `v_target`. This anchor is what de-collapses pose/composition
-   diversity (the DMD mode-seeking collapse the old `dm_x0_norm` band-aid was
-   fighting at the symptom).
+   diversity (the DMD mode-seeking collapse).
 2. Student N-step rollout. Step 0 (from `ε`, t=1) is diversity-supervised:
    `div_loss = ‖v_first − v_target‖²`. Under `detach_after_first` (load-bearing)
    the diversity term is backwarded immediately and the step-0 graph is severed —
@@ -266,9 +258,8 @@ signal ([[project_cmmd_val_signal]]) with visibly preserved step-0 diversity.
 
 ### What it costs — the plain-LoRA property is gone
 
-This is the load-bearing trade. The shipped single-head turbo is a normal LoRA:
-it merges into the DiT (`make merge`), loads through any stock LoRA path, and that
-simplicity *is* the headline. A per-step-expert student is not:
+The single-head student is a normal LoRA (merges via `make merge`, loads through any
+stock LoRA path). A per-step-expert student is not:
 
 - `make merge` refuses it — K per-step heads can't fold into one static DiT
   weight (it would need K baked copies). It's caught by the `.lora_ups.` non-bakeable
@@ -304,7 +295,7 @@ the teacher anchor. The live TB scalars:
 
 ### Where to read them from
 
-Three surfaces, cheapest first — none of them need a TensorBoard export:
+Three surfaces, cheapest first:
 
 - `make run-status` — `step N/total`, it/s, ETA, last losses, last checkpoint,
   and whether the run is `RUNNING` / `OK` / `ERROR` / `DEAD` (no `run_end` and the
@@ -361,7 +352,7 @@ GAN now ships on at the FastGen `weight_gen = 0.03`; f-distill stays off:
   Targets mode-collapse — bench against the diversity anchor; they may not be
   additive (decision gate 2).
 
-Cost (honest). Without the idea-3.1 feature-tap API there is no early-exit, so
+Cost. Without the idea-3.1 feature-tap API there is no early-exit, so
 the GAN adds +1 grad-bearing teacher forward in the student step (the generator
 term must flow grad through the teacher into `x_pred`) and +2 no_grad teacher
 forwards per disc step. `--grad_ckpt` is a valid VRAM lever here, with one loop invariant: `set_view`/`set_student_step` are global state read at forward time and checkpoint recompute defers to `.backward()`, so every checkpointed forward must be backwarded while its own view/head is still live (the loop enforces this in `steps.py`; nothing in the metrics catches a violation — the recompute silently runs under the wrong view). `weight_gen=0`

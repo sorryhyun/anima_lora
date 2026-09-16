@@ -3,26 +3,23 @@
 Every row (repo, files, destination, installed-probe) lives in
 ``library/downloads.py`` for the Anima weights and in ``anime_tools.downloads``
 for the curation ones; this module only maps ``make download-<target>`` onto
-ids. Adding a weight means adding an ``Asset`` there, not a command here — the
-GUI's Models panels read the same two catalogs, so a row can't drift out of
-sync with its button.
+ids. Adding a weight means adding an ``Asset`` there, not a command here; the
+GUI's Models panels read the same two catalogs.
 
 Idempotency contract (see GH #21): every target skips when its destination
-files already exist, so a re-run *verifies* rather than re-fetching gigabytes.
-This matters because several rows move files out of ``hf``'s ``--local-dir``
-layout after download — once moved, the hub no longer sees them at the path it
-checks and would otherwise re-pull the whole repo. Pass ``--force`` (e.g.
+files already exist. Several rows move files out of ``hf``'s ``--local-dir``
+layout after download, where the hub would no longer find them and would re-pull
+the whole repo. Pass ``--force`` (e.g.
 ``make download-anima ARGS=--force``) to re-fetch regardless.
-``download-models`` continues past a failed component (one repo timing out
-shouldn't abort the Anima download beside it) and reports the failures at the
-end.
+``download-models`` continues past a failed component and reports the failures
+at the end.
 
 Rows group into **packs** (``DL.PACKS`` — Anima base / PE-Core / CJK vocab pack
 on the trainer side, tagger / tags / masking / OCR / grouping from the package);
 ``make download-model`` takes a pack id, a legacy target alias or a row id.
 
-The one target that is not a catalog row is ``download-anima-variant``: it is a
-picker over alternate base DiTs, not a checklist of things a run needs.
+``download-anima-variant`` is not a catalog row: it picks one of the alternate
+base DiTs in ``ANIMA_VARIANTS``.
 """
 
 from __future__ import annotations

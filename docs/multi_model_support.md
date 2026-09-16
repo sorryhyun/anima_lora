@@ -72,7 +72,7 @@ The DiT can be solved with a factory in an afternoon. The real pain is that `tra
 - `unet._mod_guidance_*` distillation hooks
 - Fused-projection assumptions (`qkv_proj`, `kv_proj`)
 - The postfix / IP-Adapter / EasyControl monkey-patches that target Anima's exact module names
-- The constant-token bucketing (4032/4200 token-count families) built into `library/datasets/`
+- The free-fit token bands (`EDGE_TOKEN_BANDS`) built into `library/datasets/`
 
 Plus every `configs/methods/*.toml` LoRA target list was hand-tuned against Anima block names.
 

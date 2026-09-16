@@ -1,6 +1,6 @@
 # Embedding Inversion
 
-<!-- check-docs: ignore-flags (archived design record; commands below drive scripts under the gitignored archive/inversion/ tree) -->
+<!-- check-docs: ignore-flags (archived design record; commands below drive scripts under the gitignored _archive/inversion/ tree) -->
 
 > **Archived feature (2026-05-20; line fully closed 2026-07-04).** Embedding
 > inversion and reference (K-slot prefix) inversion are no longer wired into the
@@ -27,13 +27,13 @@ This reveals "how the DiT interprets the image" in embedding space, producing a 
 make preprocess
 
 # Run inversion on 1 random image (archived script; Makefile targets retired)
-python archive/inversion/invert_embedding.py --image_dir post_image_dataset --num_images 1 --shuffle
+python _archive/inversion/invert_embedding.py --image_dir post_image_dataset --num_images 1 --shuffle
 ```
 
 Or with a single image:
 
 ```bash
-python archive/inversion/invert_embedding.py \
+python _archive/inversion/invert_embedding.py \
     --image path/to/image.png \
     --dit models/diffusion_models/anima-base-v1.0.safetensors \
     --vae models/vae/qwen_image_vae.safetensors \
@@ -58,7 +58,7 @@ Each step samples `timesteps_per_step × grad_accum` random timesteps. The embed
 Encodes the image via VAE on the fly. Requires `--vae`. The VAE is loaded, used, and freed before the DiT loads.
 
 ```bash
-python archive/inversion/invert_embedding.py --image photo.png \
+python _archive/inversion/invert_embedding.py --image photo.png \
     --dit models/diffusion_models/anima-base-v1.0.safetensors \
     --vae models/vae/qwen_image_vae.safetensors \
     --init_prompt "a photo of a cat" --text_encoder models/text_encoders/qwen_3_06b_base.safetensors
@@ -69,7 +69,7 @@ python archive/inversion/invert_embedding.py --image photo.png \
 Uses cached latents (`.npz`) and optionally cached text encoder outputs (`_anima_te.safetensors`) from `make preprocess`. No VAE needed at runtime. Skips images that already have an output file.
 
 ```bash
-python archive/inversion/invert_embedding.py --image_dir post_image_dataset \
+python _archive/inversion/invert_embedding.py --image_dir post_image_dataset \
     --dit models/diffusion_models/anima-base-v1.0.safetensors \
     --num_images 10 --shuffle
 ```
@@ -102,7 +102,7 @@ Priority order (first match wins):
 Add `--verify` to generate an image from the inverted embedding after optimization (requires `--vae`):
 
 ```bash
-python archive/inversion/invert_embedding.py --image photo.png \
+python _archive/inversion/invert_embedding.py --image photo.png \
     --dit models/diffusion_models/anima-base-v1.0.safetensors \
     --vae models/vae/qwen_image_vae.safetensors \
     --verify --verify_steps 50 --verify_seed 42
@@ -161,7 +161,7 @@ This is the original Textual Inversion recipe (Gal et al. 2022) ported to Anima.
 
 ```bash
 # Pick a reference image and invert K=8 slots (archived script; targets retired)
-python archive/inversion/invert_reference.py --image path/to/ref.png \
+python _archive/inversion/invert_reference.py --image path/to/ref.png \
     --dit models/diffusion_models/anima-base-v1.0.safetensors \
     --vae models/vae/qwen_image_vae.safetensors --num_tokens 8 \
     --save_path output/anima_ref_cat.safetensors
@@ -220,7 +220,7 @@ python inference.py --prefix_weight output/anima_ref_cat.safetensors \
 ## Direct script usage
 
 ```bash
-python archive/inversion/invert_reference.py \
+python _archive/inversion/invert_reference.py \
     --image path/to/ref.png \
     --dit models/diffusion_models/anima-base-v1.0.safetensors \
     --vae models/vae/qwen_image_vae.safetensors \

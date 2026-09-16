@@ -92,25 +92,9 @@ Not benched. The fop-vs-eos choice is principled (paper-faithfulness) but never 
 
 Anima's text-encoder padding invariant (zero-padded positions act as cross-attention sinks) means writing into the padded tail is *not* a no-op — those slots receive attention mass and the soft tokens get exposure to every spatial query. See the "Text encoder padding" note in the root CLAUDE.md.
 
-## Why a separate module from `postfix.py`
+## Slot symmetry
 
-Postfix splices once at the cached adapter output (training-time and inference-time, in `train.py:762` and `library/inference/generation.py`). Soft tokens splice per-block via a monkey-patched `Block.forward`. Different surface entirely — keeping them separate avoids muddying the postfix abstraction. Both modules expose `append_postfix(...)` so `train.py`'s existing per-step trainer hook routes timesteps to either family without code changes.
-
-## Why no slot-collapse
-
-The existing postfix module logs an aggressive guard against K-slot permutation symmetry collapse (`anima_postfix.safetensors` was effectively K=1 due to zero-init + symmetric splice — see the postfix module docstring and the `slot_embed_init_std` knob). Soft tokens structurally avoid this: tokens at different `(k, t)` pairs are consumed at different positions in the network and gradients differ from step 1, so no symmetry to break.
-
-> Removed: bank-axis dispersive regularizer (2026-05-22). Earlier versions
-> shipped an optional parameter-space dispersive regularizer (Wang & He,
-> Diffuse and Disperse, arXiv:2506.09027) over the bank's `K` and
-> `n_t_buckets` axes, meant to guard against slot collapse and under-sampled
-> bucket degeneracy. It was removed after it showed no effect worth keeping —
-> soft tokens already structurally avoid slot collapse (see "Why no
-> slot-collapse" above: different `(k, t)` pairs are consumed at different
-> positions, so gradients differ from step 1 and there's no symmetry to break).
-> The repr-space variant was separately probed and found redundant
-> ([[project_soft_tokens_contrastive_phase0]]). Plain FM is now the baseline;
-> the only optional add-on is the contrastive objective below.
+Tokens at different `(k, t)` pairs are consumed at different positions in the network, so their gradients differ from step 1 — there is no K-slot permutation symmetry to collapse (the failure that left the retired postfix adapter effectively K=1).
 
 ## Contrastive objective (optional, B=1-adapted SoftREPA InfoNCE)
 
@@ -227,7 +211,7 @@ cross-objective comparability) and, under dual bank,
 
 | Component | Compat | Notes |
 |---|---|---|
-| Training loop | ✅ | `train.py` already passes `timesteps=...` into `append_postfix` (legacy `cond-timestep` postfix mode); soft tokens piggyback on the same hook. |
+| Training loop | ✅ | `train.py` passes `timesteps=...` into the per-step `append_postfix` hook. |
 | Standard inference | ✅ | `create_network_from_weights` loads the bank (contrastive forced off — it leaves no params); `library/inference/generation.py` fires `append_postfix(..., timesteps=t)` per CFG branch each step, including the tiled path. |
 | Spectrum inference | ✅ | `networks/spectrum.py` fires the same per-step splice on *actual* steps; cached steps skip all blocks so soft tokens no-op there (composes with `--spectrum`). |
 | `torch.compile` (`_run_blocks`) | ✅ | `end_of_sequence` keeps `crossattn_emb` shape static; the cached `_step_layer_tokens` is read as a runtime tensor with static shape. `front_of_padding` uses `scatter` with dynamic per-sample indices but static buffer shape — also compile-clean. |

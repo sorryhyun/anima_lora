@@ -1,20 +1,10 @@
 # Documentation
 
-Index of the `docs/` tree. Each row is a one-line orientation; read the linked doc before working on the thing it describes.
-
-- Methods — shipped training algorithms (adapter families).
-- Inference — training-free runtime stacks: acceleration + sampler-boundary corrections.
-- Experimental — wired and runnable, but not part of the default stack.
-- Structure — architecture walkthroughs (how a thing is built, not how to use it).
-- Findings — empirical results and analyses on the Anima model; premises tested, behavior measured, decisions settled.
-- Optimizations — compiler, kernel, and hardware setup.
-- Guidelines — user-facing guides and references (multi-language).
-- Proposals — active design docs for unbuilt work.
-- Architecture notes — repo-wide planning docs at the top of `docs/`.
+Index of the `docs/` tree. Read the linked doc before working on the thing it describes.
 
 ## Methods
 
-Shipped training algorithms — adapter families.
+Shipped training methods, losses and model assets.
 
 | Doc | Description |
 |-----|-------------|
@@ -22,19 +12,14 @@ Shipped training algorithms — adapter families.
 | [methods/hydra-lora.md](methods/hydra-lora.md) | HydraLoRA — MoE multi-head routing (shared-A experts), one cell of the three-axis routing surface in `configs/methods/lora.toml` |
 | [methods/timestep_mask.md](methods/timestep_mask.md) | T-LoRA — timestep-dependent rank masking (full rank at noise, rank 1 at clean) |
 | [methods/turbo.md](methods/turbo.md) | Turbo (DP-DMD) — diversity-preserved few-step distillation of the CFG=4 teacher into an N-step LoRA student (`make turbo`; published 4-step student on HF) |
+| [methods/adaln.md](methods/adaln.md) | AdaLN LoRA — adapting the per-block AdaLN modulation MLPs, and shipping them ComfyUI-compatible |
+| [methods/repa.md](methods/repa.md) | REPA — auxiliary loss aligning a mid-block DiT feature to cached PE-Spatial patch tokens |
+| [methods/anima-2.9b.md](methods/anima-2.9b.md) | Anima-2.9B — the 40-block community depth expansion; loading, depth-specific LoRAs, regeneration recipes |
+| [methods/cjk_vocab_pack.md](methods/cjk_vocab_pack.md) | CJK vocab pack — extra T5-side embedding rows for JA / KO / ZH prompts (text-encoder asset, not a LoRA) |
 
 ## Inference
 
-Training-free runtime stacks — acceleration and sampler-boundary corrections. See [inference/](inference/) for the section index.
-
-| Doc | Description |
-|-----|-------------|
-| [inference/spectrum.md](inference/spectrum.md) | Spectrum — training-free inference acceleration via Chebyshev feature forecasting |
-| [inference/spd.md](inference/spd.md) | SPD — training-free multi-resolution inference (low-res early, spectral noise-expansion handoff); Case B fine-tune wired |
-| [inference/smc_cfg.md](inference/smc_cfg.md) | SMC-CFG — training-free α-adaptive sliding-mode CFG correction in velocity space |
-| [inference/cns.md](inference/cns.md) | CNS — training-free SDE noise recolorer (`er_sde` only); shapes injected noise toward unresolved frequency bands |
-| [inference/mod-guidance.md](inference/mod-guidance.md) | Modulation guidance — text-conditioned AdaLN steering via distilled `pooled_text_proj` MLP |
-| [inference/invert.md](inference/invert.md) | Embedding inversion — optimize text embeddings (full and K-slot reference) |
+Training-free runtime stacks (acceleration, sampler-boundary corrections, representation edits, the resident server) — indexed in [inference/README.md](inference/README.md).
 
 ## Experimental
 
@@ -47,6 +32,10 @@ Wired and runnable, but not part of the default stack — may break or change.
 | [experimental/soft_tokens.md](experimental/soft_tokens.md) | Soft Tokens — SoftREPA per-layer × per-t soft text tokens (~1M params); frozen DiT, optional B=1 contrastive |
 | [experimental/directedit_editing_v3.md](experimental/directedit_editing_v3.md) | DirectEdit (v3) — flow-inversion image editing; what's actually wired and runnable |
 | [experimental/vr_loss.md](experimental/vr_loss.md) | Variance-reduced FM loss — AsymFlow §5.2 control-variate correction at the loss level |
+| [experimental/easycontrol_region.md](experimental/easycontrol_region.md) | EasyControl · Region — paint-to-character inpainting task on the EasyControl stack |
+| [experimental/byg.md](experimental/byg.md) | BYG — unpaired instruction editing (no paired data, no reward model) |
+| [experimental/soup.md](experimental/soup.md) | Soup — uncond-init ΔW LoRA soup (`make soup`) |
+| [experimental/cjk_ext_vocab_coverage.md](experimental/cjk_ext_vocab_coverage.md) | CJK ext-vocab row coverage — measured reachable/unreachable rows and the symbol block |
 
 Curation docs — Anima Tagger, position captions, multiview audit, grouping,
 masking — live with their code in the sibling
@@ -73,7 +62,7 @@ Architecture walkthroughs — how a component is built.
 
 ## Findings
 
-Empirical results and analyses on the Anima model — premises tested against the real model, measurements of how it behaves, and the decisions the evidence settled (ship, don't-build, or pure characterization). The full set (20 docs, keyed by outcome: MEASUREMENT / NO-GO / FALSIFIED / CLOSED / DEMOTED / LANDED / TRAP) lives in its own index → [findings/README.md](findings/README.md).
+Empirical results on the Anima model, keyed by outcome (MEASUREMENT / NO-GO / FALSIFIED / CLOSED / DEMOTED / LANDED / TRAP) — indexed in [findings/README.md](findings/README.md).
 
 ## Optimizations
 
@@ -115,4 +104,3 @@ Repo-wide planning docs.
 | Doc | Description |
 |-----|-------------|
 | [multi_model_support.md](multi_model_support.md) | Terrain map for adding a second image model (e.g. Z-Image-Base) alongside Anima — exploratory |
-| [separation_plan.md](separation_plan.md) | Working plan to split inference into a standalone `../anima_inference` |

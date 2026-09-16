@@ -4,7 +4,7 @@ Training-free, sampler-level modification of the CFG cond/uncond combine. Treats
 
 Paper: [Wang et al., "CFG-Ctrl: Control-Based Classifier-Free Diffusion Guidance"](https://arxiv.org/abs/2603.03281)
 
-This implementation is the α-adaptive variant of the paper — the fixed switching gain `k` is replaced with `k_t = α · mean(|e_t|)` per step (cf. Plestan et al. 2010, adaptive sliding-mode control). The paper's fixed `k=0.1` was empirically off by ~14× on Anima at CFG=4 (per the now-removed SMC-CFG analysis bench) and produced visible chattering; the α form self-scales across model / CFG / σ / sample.
+This implementation is the α-adaptive variant of the paper — the fixed switching gain `k` is replaced with `k_t = α · mean(|e_t|)` per step (cf. Plestan et al. 2010, adaptive sliding-mode control), so the gain self-scales across model / CFG / σ / sample. The sliding surface, bang-bang switching and single CFG-combine intervention point are the paper's.
 
 ## Quick start
 
@@ -65,8 +65,6 @@ The top panel makes the instantaneous mismatch visible: in the σ ≈ 0.2–0.4 
 - green — α-adaptive controller. By construction `k_t = α·|e_t|.mean`, so its cumulative budget is exactly `α × signal` (0.20× here) at every step. Always in the refining zone.
 - blue / red — fixed k = 0.02 / 0.1. `k` doesn't see `|e|`, so the curve grows linearly with `Σ|Δσ|`. Paper-k = 0.1 ends at **2.82× the natural signal** — and because `sign(s) ≈ sign(e_prev) ≈ sign(e)` under λ=5, that "extra magnitude" is an *anti-prompt* drift, not extra signal. The controller spends most of the trajectory clamping `e + Δe` to the opposite sign of `e`, then integrating that flipped correction through 28 steps puts ~3× the prompt-driven correction worth of anti-prompt displacement into `x`. Paper-CFG ≥ 7 hides this because `|e|` is larger; CFG = 4 exposes it.
 
-Plot regenerated with the SMC-CFG plotting bench (since removed).
-
 ### Why `sign()` and not a tanh boundary layer
 
 Classical SMC literature (Edwards & Spurgeon, 1998) prescribes replacing `sign(s)` with `tanh(s/ε)` to reduce chattering. We tested both:
@@ -96,7 +94,7 @@ SMC-CFG operates strictly on the velocity-space cond/uncond combine, so it compo
 | Mod-guidance | AdaLN coefficients (inside each block) | yes |
 | Spectrum | feature forecasting (skips DiT forwards on cached steps) | yes (sampler still runs the combine) |
 
-All four can run together: `python inference.py --smc_cfg --spectrum --mod_guidance ...`. Each one's effect on outputs is mechanistically distinct.
+All four can run together: `python inference.py --smc_cfg --spectrum --pooled_text_proj <path> --mod_w <w> ...`.
 
 ## CLI
 
@@ -105,18 +103,6 @@ All four can run together: `python inference.py --smc_cfg --spectrum --mod_guida
 --smc_cfg_lambda 5.0   sliding-manifold slope λ (paper sweep {3,4,5,6}; 5 was best)
 --smc_cfg_alpha 0.2    adaptive gain α ∈ (0, 1]
 ```
-
-That's the whole surface. No `--smc_cfg_k` (retired with the fixed-k path) and no `--smc_cfg_eps` (we ship `sign()` only).
-
-## Is this really still SMC-CFG?
-
-Yes. We kept the structural pieces:
-
-- Sliding surface `s = (e − e_prev) + λ·e_prev` — the λ-blend that lets the controller act on both the current residual and its derivative.
-- Bang-bang switching `Δe = −k · sign(s)` — the discontinuous correction in the direction that drives `s → 0`.
-- Drop-in CFG combine modification — same single point of intervention as the paper.
-
-What changed is the gain law: fixed `k` → `k_t = α·mean(|e_t|)`. This is a textbook adaptive-SMC modification (Plestan et al. 2010 and follow-ups), motivated by the same observation that motivates adaptive control in general: a fixed gain tuned offline doesn't track a residual whose magnitude varies across operating regime. On Anima this turned out to matter a lot — the paper's `k=0.1` was tuned on SD3.5 / Flux / Qwen at their own CFG and resolution conventions, and the residual magnitudes there are not Anima's.
 
 ## Related code
 

@@ -4,7 +4,7 @@
 
 This records why L2P (turn the frozen latent DiT into a pixel-space DiT by
 swapping the VAE for large-patch RGB tokenization) was not promoted past its
-Phase-0 probe on Anima. The short version: the paper's load-bearing premise —
+Phase-0 probe on Anima: the paper's load-bearing premise —
 that a frozen DiT core trained on VAE-latent token statistics stays "within its
 native optimization manifold" when fed RGB-patch tokens through re-trained shells
 — **does not transplant to Anima's 2048-dim / 28-block scale on a single-GPU

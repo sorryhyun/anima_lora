@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
-"""near_twin engine — pairing gates, Stage-B grid match, discriminators.
+"""near_twins engine — pairing gates, Stage-B grid match, discriminators.
 
-The pair-mining core of the near-twin tag-gap miner: the same-size/tag-pivot
-prune, the dense grid match, the discriminators, and ``run_artist`` (Stages
-A/B). The reusable embedding half — member discovery, PE-Spatial encoding, and
-the per-image feature cache — was promoted to ``anime_tools.grouping.features`` and
-is re-imported below (names preserved for backward compatibility). Rendering and
-export live in ``near_twin.outputs``; the CLI + config layering in
-``near_twin.__main__`` (see that module's docstring for the full pipeline).
+The same-size/tag-pivot prune, the discriminators, and ``run_artist`` (Stages
+A/B). Member discovery, PE-Spatial encoding, the feature cache and the grid
+match live in ``anime_tools.grouping`` and are re-exported below.
 """
 
 from __future__ import annotations
@@ -25,10 +21,7 @@ from PIL import Image
 # Run from the repo root; `library` is installed editable (`uv sync`).
 from library.vision.encoder import encode_pe_from_imageminus1to1  # noqa: F401  (kept for API parity)
 
-# Embedding primitive + member discovery live in ``anime_tools.grouping``
-# (curation split Phase 2). Re-exported here so ``near_twin.outputs`` /
-# ``__main__`` and any external importer keep pulling these names from
-# ``.engine`` unchanged.
+# Re-exported so ``outputs`` / ``__main__`` import these from ``.engine``.
 from anime_tools.grouping.features import (  # noqa: F401
     CACHE_ROOT,
     GRID_CACHE,
@@ -48,9 +41,7 @@ from anime_tools.grouping.features import (  # noqa: F401
     read_tags,
 )
 
-# Stage-B dense grid match shared with the dataset-grouping tool (same
-# near-twin gate). Re-exported here so ``near_twin.outputs`` / ``__main__``
-# keep importing them from ``.engine``.
+# Stage-B dense grid match, shared with the dataset-grouping tool.
 from anime_tools.grouping.matching import (  # noqa: F401
     MatchResult,
     _geom_filter,
@@ -149,8 +140,6 @@ def select_identity_members(
 
 
 # ---------------------------------------------------------------------------- Stage B match
-# ``match_grids`` / ``MatchResult`` / ``_geom_filter`` now live in
-# ``anime_tools.grouping.matching`` (re-exported at the top of this module).
 
 
 def _largest_blob(cells: set[int], G: int) -> tuple[int, set[int]]:

@@ -7,23 +7,14 @@ for free, ranks the cleanest single-attribute pairs first, and materializes them
 as a `_tags` / `_no_tags` pair tree wired straight into an EasyControl control
 task (text/bubble removal — "sanitize").
 
-The bottleneck in building an EasyControl removal/attribute-edit adapter is
-finding real with-/without-attribute data. This tool finds those pairs in an
-existing image corpus and stages them for training.
-
-It lives under `easycontrol_adapters/` but is dataset-agnostic — point
-`--image-dirs` at any `<dir>/<artist>/<id>.<ext>` tree (defaults to the crawl
+Point `--image-dirs` at any `<dir>/<artist>/<id>.<ext>` tree (default: the crawl
 pool `$CAPTION_CORPUS_DIR/{retrieved,selected}`, falling back to `~/gelcrawl/`).
+Features are cached, so tuning the `[staging]` table and re-running takes
+seconds.
 
-> **Note:** this README is the live doc. The original design lived at a
-> `near_twin_tag_gap_miner` proposal (removed once implemented). The one
-> intentional divergence from that proposal: the **HTML contact sheet / TSV**
-> "eyeball" artifacts were *not* built — iteration happens by editing the
-> `[staging]` TOML and re-running (features are cached, so re-runs are seconds).
+## Quick start
 
-## Quick start (the EasyControl pipeline)
-
-The tool is step 1 of a three-step EasyControl flow, all driven by one config
+The miner is step 1 of a three-step EasyControl flow, driven by one config
 (`configs/easycontrol/near_twins.toml`) and selected with `EASYADAPTER`:
 
 ```bash
@@ -153,8 +144,7 @@ Run `python -m easycontrol_adapters.tools.near_twins --help` for the full list
   not `speech_bubble`) — 1,212 of 15,905 caption files carry `speech bubble`
   (+`thought bubble` ×81). Tag mode works for bubbles today; matching is
   space-insensitive either way.
-- **Output is not direct EasyControl training data in the naive sense** — real
-  mined pairs differ in bubbles + expression + crop at once and aren't
-  pixel-aligned, which is why this feeds the EasyControl extended-self-attn cond
-  path (loose reference, not a pixel-aligned delta), eval sets, and unpaired
-  editing — not a pixel-supervised removal loss.
+- **Mined pairs are not pixel-aligned deltas** — they can differ in bubbles,
+  expression and crop at once, so they suit the EasyControl cond path (a loose
+  reference), eval sets and unpaired editing, not a pixel-supervised removal
+  loss.

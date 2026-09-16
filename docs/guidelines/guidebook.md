@@ -330,7 +330,7 @@ make preprocess-te           # 3) Text embedding caching
 make preprocess-pe           # (Optional) PE vision features — CMMD validation only
 make mask                    # Generate masks for masked loss (SAM3)
 make mask-clean              # Delete post_image_dataset/masks/
-make autotag --image <path>  # Print the predicted caption for one image
+make autotag ARGS="--image <path>"  # Print the predicted caption for one image
 make curate-group            # Group similar images → workspace/groups/groups.json
 ```
 
@@ -343,10 +343,10 @@ make lora-gui GUI_PRESETS=lora                   # Plain LoRA
 make lora-gui GUI_PRESETS=hydralora              # MoE multi-head
 make exp-chimera                                 # ChimeraHydra (experimental)
 
-make lora                                        # Toggle-block style (configs/methods/lora.toml)
+make lora                                        # Method config (configs/methods/lora.toml)
 PRESET=half make lora                            # Half the dataset, for quick experiments
 
-make lora -- --network_dim 32 --max_train_epochs 24   # Override any key
+make lora ARGS="--network_dim 32 --max_train_epochs 24"   # Override any key
 make daemon-terminate                            # Kill the running job + stop the daemon (frees the GPU)
 ```
 

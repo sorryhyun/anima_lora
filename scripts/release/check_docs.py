@@ -17,7 +17,7 @@ Source of truth, never hard-coded here:
   * cli flags    : every ``--flag`` literal appearing in any tracked ``.py``.
   * file paths   : the working tree itself.
 
-Design choices that keep it low-noise:
+Skipped references:
   * Paths are only checked when their first segment is a git-tracked top-level
     entry, so URLs (``claude.ai/code``), repo slugs (``sorryhyun/anima_lora``)
     and runtime/data dirs (``output/…``, ``post_image_dataset/…``) are skipped,
@@ -26,14 +26,11 @@ Design choices that keep it low-noise:
     blocks, so English prose ("make sure", "we make use of") never trips the
     target check.
   * Gitignored paths (``configs/gui-methods/custom/…``, ``output/…``) are
-    machine-local — whether one is on disk says nothing about the repo — so a
-    doc citing one is never flagged.
+    machine-local, so a doc citing one is never flagged.
 
 CLI-flag caveat: the "known flags" set is every ``--x`` mentioned anywhere in
-the ``.py`` sources — permissive on purpose (a noisy linter gets disabled). It
-reliably catches a *fully removed* flag but won't notice one that lingers only
-in a comment. Several benign mentions are suppressed so they don't read as
-drift, since that's why flags are WARN, not ERROR:
+the ``.py`` sources, so it catches a *fully removed* flag but not one that
+lingers only in a comment. Suppressed mentions:
   * foreign tool flags in shell snippets (uv / gh / ruff …) → ``FOREIGN_FLAGS``;
   * bare placeholders in example payloads (``--some_flag``) → ``PLACEHOLDER_FLAGS``;
   * truncated glob/prefix families (``--region-*`` → ``--region-``, ``--ddp_*``

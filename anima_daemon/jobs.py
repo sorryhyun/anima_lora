@@ -58,8 +58,8 @@ class Job:
     # layered daemon-env ← captured_env ← extra_env at spawn. See README.
     captured_env: dict = field(default_factory=dict)
 
-    # Auto-chain: a command job carrying a chain_train spec ({method, preset,
-    # methods_subdir}) makes the manager enqueue that train job on success.
+    # Auto-chain: a command job carrying a chain_train spec (README "Two job
+    # kinds") makes the manager enqueue that train job on success.
     # chained_job_id records the follow-on it spawned.
     chain_train: Optional[dict] = None
     chained_job_id: Optional[str] = None
@@ -218,8 +218,7 @@ def prune_jobs(
                 continue
         candidates.append((float(ts), d))
 
-    # Newest first, then drop the protected head — the floor applies to terminal
-    # jobs only, which is what the caller means by "keep the recent history".
+    # Newest first, then drop the protected head (terminal jobs only).
     candidates.sort(key=lambda t: t[0], reverse=True)
     for ts, d in candidates[keep:] if keep > 0 else candidates:
         if ts >= cutoff:

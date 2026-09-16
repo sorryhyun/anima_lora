@@ -1,13 +1,9 @@
 """GPU (torch) backend for :mod:`mangafy` — same screentone, on the device.
 
-The pure ``cv2``/``numpy`` mangafier is CPU-bound: the cost is the trig-heavy
-screen fields (``sin``/``cos`` meshgrids rendered at ``ss``× supersample, once per
-luminance band) and the two XDoG Gaussian blurs. All of that is embarrassingly
-parallel elementwise math, so this module reimplements it in torch and runs it on
-CUDA — a single image's screens/blurs collapse from hundreds of ms of NumPy into a
-few fused kernels.
+Reimplements the CPU-bound parts of the ``cv2``/``numpy`` mangafier (the
+supersampled per-band screen fields and the two XDoG blurs) in torch.
 
-It deliberately reuses :func:`mangafy.resolve_params` and :func:`mangafy._band_plan`
+It reuses :func:`mangafy.resolve_params` and :func:`mangafy._band_plan`
 **verbatim**, fed the same NumPy ``default_rng(seed)``. So the *structure* of every
 page — band count, which pattern (dot/line/cross) lands on which value band, each
 band's angle/period, the XDoG knobs, the luma weights — is bit-identical to the CPU

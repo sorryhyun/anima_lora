@@ -9,23 +9,12 @@ merged config chain (``configs/preprocess.toml``, default
 under the project root.
 
 Every stage runs as an ``anime_tools`` **request object**
-(``anime_tools.masking.requests.{SamMaskRequest,MergeMasksRequest}``) — the
-trainer never spells a flag. How a request is executed depends on where
-``make mask`` runs (``_execute``):
-
-- **Under a daemon job** (``ANIMA_DAEMON_JOB_DIR`` set — every GUI run, and
-  ``make daemon-run ARGS="tasks.py mask"``) the stage runners are called
-  **in-process** through the package registry (``Stage.runner()``): one
-  interpreter for the whole chain, one SAM3 load shared by every rule pass
-  (``load_sam3`` is cached per process), and the package's ``_progress``
-  heartbeat keeps a quiet model load from reading as a stall to the daemon's
-  watchdog. The job process exits at the end, releasing VRAM.
-- **From a plain shell** each stage is a ``python -m <stage.module>`` child
-  with ``req.to_argv()``, so ``make mask`` still releases the model between
-  stages and on exit.
-
-The switch is ``_common.execute_stage`` — the same one the caption stages
-(``preprocess.py``) and grouping (``curate.py``) run through.
+(``anime_tools.masking.requests.{SamMaskRequest,MergeMasksRequest}``) through
+``_common.execute_stage``: in-process under a daemon job (every GUI run, and
+``make daemon-run ARGS="tasks.py mask"``), so one SAM3 load is shared by every
+rule pass and the package's ``_progress`` heartbeat keeps a quiet model load from
+tripping the daemon's stall watchdog; a ``python -m`` child per stage from a plain
+shell.
 
 Where the rules come from:
 

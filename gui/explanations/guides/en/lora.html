@@ -1,7 +1,4 @@
 <h2 style='margin:0 0 10px 0; font-size:17px;'>LoRA</h2>
 <p>Classic low-rank adaptation. Adds small trainable matrices (down &times; up) to existing weight layers.<br>
 <code>y = x + (x @ down @ up) &times; scale &times; multiplier</code><br>
-Simple, effective, and the default choice for most fine-tuning tasks. Fully bakeable into the base DiT.</p>
-<p><b>Variants</b><br>
-&bull; <b>lora</b> &mdash; default 16GB+ profile.<br>
-&bull; <b>lora-8gb</b> &mdash; low-VRAM profile (block swap + offload checkpointing); pick this if you OOM on the default.</p>
+Fully bakeable into the base DiT. For low VRAM, pick a lighter profile in the <b>Hardware</b> dropdown.</p>

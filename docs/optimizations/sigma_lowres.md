@@ -77,8 +77,6 @@ sigma_lowres_span2 = ""
 Which to pick is a real trade rather than a strict ordering — see
 [when to schedule](#when-to-schedule).
 
-Validation always stays native, so val loss remains comparable across arms.
-
 ## Why it is safe (and where it isn't)
 
 The unit of certification is the per-step demote gap: how much a
@@ -121,7 +119,7 @@ the two placements build nearly unrelated adapters), while the same mass placed
 late costs 0.094 of cosine. That is what `--sigma_lowres_span` is for: protect
 the first epoch(s), demote late.
 
-The honest scope: on per-step-certified routes, scheduling is not required —
+Scope: on per-step-certified routes, scheduling is not required —
 `sigma896late ≈ sigma896` at render level. The amplification law governs
 *off-map* bias. Spans buy weight-space closeness to a native run; they do not by
 themselves buy render quality, and they cost throughput.
@@ -191,7 +189,7 @@ weight-space read (deterministic twin control: 1.000).
 | `win768late` (768 window + late, no stack) | −6.1% / −6.3% | 0.9678 / 0.9728 | 0.959 / 0.962 | comfortably inside both |
 | `896only` (gate off) | −31.7% / −30.2% | 0.9494 / 0.9500 | 0.183 / 0.236 | below both |
 
-Reads worth carrying:
+Reads:
 
 - **The gating, not the resolution, is what keeps the footprint small.**
   Gate-free 896 buys −31% and lands outside the lottery on both corpora; the
@@ -210,8 +208,7 @@ What ships is scheduled: `configs/base.toml` sets `late:0.75` on both rules,
 so `--sigma_lowres` alone gives `combolate` — the conservative end of the trade,
 biased toward keeping the endpoint weights near a native run (ΔW 0.75 vs 0.37).
 
-E16's render-level evidence points the other way, and it is worth knowing before
-you accept the default:
+E16's render-level evidence points the other way:
 
 - `sigma896late ≈ sigma896` at render level, for 4.5pp of throughput.
 - On hews (the lenient corpus) `combolate` rendered at 0.9461 against a
@@ -277,7 +274,7 @@ count sub-4032, not sub-3000.
   Grid-agnostic adapters (repa) are allowed.
 - A timestep sampler without a flat-σ draw disables demotion. The run warns
   once and trains native throughout, rather than failing.
-- Validation is never demoted, by construction.
+- Validation is never demoted, so val loss stays comparable across arms.
 - Route parametrization is for probes. `--sigma_lowres_route` accepts
   anything, but only the routes in the map above are certified; an uncertified
   route is an experiment, not a recipe.

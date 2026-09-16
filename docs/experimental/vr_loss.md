@@ -53,11 +53,11 @@ with zero extra VRAM for a second model copy.
 
 ```bash
 # Enable on any LoRA-family run:
-make lora --vr_loss_weight 1.0
-make lora-gui GUI_PRESETS=tlora --vr_loss_weight 1.0
+make lora ARGS="--vr_loss_weight 1.0"
+make lora-gui GUI_PRESETS=tlora ARGS="--vr_loss_weight 1.0"
 python tasks.py lora --vr_loss_weight 1.0
 
-# Or flip the keys in configs/methods/lora.toml (commented out by default):
+# Or set the keys in a method TOML:
 #   vr_loss_weight = 1.0
 #   vr_fei_sigma_low_div = 4.0
 ```
@@ -69,7 +69,7 @@ extra model is loaded into VRAM. The only cost is the extra forward
 (~+40% step time); low-VRAM presets can run this — they just pay the
 compute.
 
-## What it actually does
+## What it does
 
 ```
                               latents x_0  (B, C, H_lat, W_lat)
@@ -158,8 +158,7 @@ What makes FEI specifically right here:
    `Im(I − P)` residual carries the win against `Im(P)` deviation in
    AsymFlow.
 
-Default `vr_fei_sigma_low_div = 4.0` matches the live training default in
-the FEI-routed Hydra variant in `configs/methods/lora.toml`.
+Default `vr_fei_sigma_low_div = 4.0`.
 
 ### λ estimation
 
@@ -231,8 +230,7 @@ finally:
 For LoRA-family runs this is bit-equivalent to a frozen copy of the base
 DiT: the base weights are frozen for the whole training run, and adapters
 are additive residuals on top — turning the multiplier to zero collapses
-the model to its base. No `--vr_frozen_ref_dit` flag, no second model copy
-in VRAM, no constant-token-bucket state mirroring to keep in sync.
+the model to its base. No second model copy in VRAM.
 
 `set_multiplier(0)` covers `LoRA` / `OrthoLoRA` / `HydraLoRA` /
 `StackedExperts`.
@@ -259,7 +257,7 @@ but they are consumed before the VR block runs — see the order in
 | Layer | File | Role |
 |---|---|---|
 | CLI args | `library/anima/training.py` | `--vr_loss_weight`, `--vr_fei_sigma_low_div`, `--vr_sigma_min`, `--vr_lambda_beta` |
-| Config gate | `configs/methods/lora.toml` | Commented `vr_loss_weight = 1.0` block; uncomment to enable |
+| Config gate | method TOML / CLI | `vr_loss_weight > 0` enables (default `0.0`) |
 | Forward + stash | `train.py::get_noise_pred_and_target` | Builds `x_0^L`, `x_t^L`, calls `network.set_multiplier(0)` + no-grad `anima(...)` + restore, stashes `ctx.aux['vr'] = {'z': ..., 'state': ...}` |
 | Loss handler | `library/training/losses.py::_flow_matching_vr_loss` | Computes `(y + λ·z)²`, updates `state['lambda_ema']` in place |
 | Composer gate | `library/training/losses.py::build_loss_composer` | Replaces `flow_match` → `flow_matching_vr` when `vr_loss_weight > 0` |
@@ -311,7 +309,7 @@ optional).
 
 No extra VRAM beyond what standard FM uses. The control-variate forward
 reuses the trainable DiT (with adapter multiplier=0), so there is no
-second 2B model held in memory. Low-VRAM presets (`low_vram`, `fast_16gb`)
+second 2B model held in memory. The `low_vram` preset
 can run VR — they just pay the ~+40% compute.
 
 ## Config knobs
@@ -338,7 +336,7 @@ can run VR — they just pay the ~+40% compute.
   "99.99% loss variance recovered" and "the optimizer actually does
   better". Cheap; can run alongside the fixed-λ bench.
 - Wall-clock-matched A/B — current A/B is matched-step (60min VR vs
-  50min standard). The honest comparison gives standard FM the 1.4× step
+  50min standard). The fair comparison gives standard FM the 1.4× step
   budget VR pays for; only then is the quality delta attributable to VR
   vs to more compute. Run before stamping v1 as "shipped quality win".
 - Mid-training ρ² stability — the bench used a *merged* T-LoRA

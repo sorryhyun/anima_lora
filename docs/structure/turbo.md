@@ -15,15 +15,6 @@ inference-side code, you just run it at `--infer_steps <student_steps> --cfg 1.0
 > per-step schedule, and the co-LoRA capacity argument. For the usage / ops /
 > decision-log reference (config knobs, `make` targets, metrics to watch,
 > current status), see `docs/methods/turbo.md`.
->
-> History. This replaced the CA-decoupled DMD2 objective ("CFG-as-Spear,
-> Distribution-Matching-as-Shield", Liu et al. arXiv:2511.22677) on 2026-05-30.
-> The CA branch never reached a fixed point — the whole turbo program had been
-> spent managing its standing CFG bias — and every CA-side lever came back inert or
-> harmful. DP-DMD removes the CA branch entirely and recovers diversity with an
-> explicit anchor instead. The CA-era decision log survives at
-> `_archive/proposals/dmd2_decoupled_improvements.md`; the migration proposal at
-> `_archive/proposals/dpdmd.md`.
 
 ---
 
@@ -58,7 +49,7 @@ gradient.
 
 ---
 
-## 2. The two gradients (the whole idea)
+## 2. The two gradients
 
 The student carries two losses with disjoint graphs:
 
@@ -136,7 +127,7 @@ warns when it's violated. (Defaults ship `student_rank = fake_rank = 48`.)
 
 ---
 
-## 4. The velocity↔x0 conversion (what makes it work on Anima)
+## 4. The velocity↔x0 conversion
 
 The paper is written for score/ε-prediction. Anima predicts velocity
 $v = \varepsilon - x_0$ on the flow-matching path $x_t = (1-t)\,x_0 + t\,\varepsilon$
@@ -278,7 +269,7 @@ $(\alpha-1)=3\times$ drives the student off-manifold (saturated white output).
 
 ---
 
-## 6. The fake update (keeping the shield sharp)
+## 6. The fake update
 
 The fake learns to denoise the student's current output distribution by plain
 flow-matching regression:

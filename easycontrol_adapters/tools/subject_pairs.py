@@ -1,14 +1,13 @@
 """Cross-image subject-pair miner for the EasyControl *subject* descriptor.
 
-Phase 2 of the directedit_ec line (archived: _archive/directedit_ec/initial_proposal.md):
-mine (cond = image A of a character, target = image B of the SAME character)
-pairs from the typed caption index, so the adapter is forced to learn
-content-based (associative) retrieval — positional copying cannot satisfy a
-cross-image pair. Same ``EasyControlNetwork``, only the data pairing changes.
+Mines (cond = image A of a character, target = image B of the SAME character)
+pairs from the typed caption index, so the adapter must learn content-based
+retrieval rather than positional copying. Same ``EasyControlNetwork``; only the
+data pairing changes. Background: ``_archive/directedit_ec/initial_proposal.md``.
 
-Unlike the near_twins miner this needs no PE matching engine and no encode
-pass: both pair members are corpus images whose latents/TE already live in the
-shared LoRA cache (``post_image_dataset/lora/``) — staging is pure symlinks.
+No PE matching and no encode pass: both members are corpus images whose
+latents/TE already live in the shared LoRA cache (``post_image_dataset/lora/``),
+so staging is pure symlinks.
 
 Contract (mirrors ``easycontrol_adapters.tools.near_twins``):
   * reads its ``[staging]`` table + top-level ``name`` slug from
@@ -24,10 +23,7 @@ Contract (mirrors ``easycontrol_adapters.tools.near_twins``):
 
 Pairing policy: solo single-character images grouped by character tag;
 each target draws a seeded random cond partner from its group, preferring a
-DIFFERENT artist dir (starves the style/positional shortcut further); groups
-are capped so no single character dominates. The roadmap's same-artist +
-shared-character-defining-tags fallback is deliberately not implemented —
-character tags alone already cover ~1.1k targets.
+DIFFERENT artist dir; groups are capped so no single character dominates.
 """
 
 from __future__ import annotations

@@ -1,14 +1,8 @@
 # scripts/calibration
 
-Live calibration scripts — the ones you re-run to regenerate the **shipped**
-artifacts under `networks/calibration/`. Promoted here from their original
-benches (`bench/{pid,cns,channel_stats}`, archived under `_archive/bench/`)
-once the gains were observed and the methods shipped. Self-contained: no
-`bench/` dependency (no `bench._common` / `bench._anima`); they import the
-public `anima_lora` façade + `library` / `networks` directly.
-
-The frozen probe/analysis history (gamma_probe sweeps, sigma/turbo probes,
-result envelopes) stays in `_archive/bench/`.
+Scripts that regenerate the shipped artifacts under `networks/calibration/`.
+They import the `anima_lora` façade + `library` / `networks` directly (no `bench/`
+dependency). Probe/analysis history stays in `_archive/bench/`.
 
 ## CNS — colored-noise sampling γ matrix
 
@@ -55,8 +49,3 @@ Consumer: `networks/lora_anima/factory.py` (`_CHANNEL_STATS_PATH`) and
 `networks/methods/easycontrol.py`. Regime analysis: memory
 `project_per_channel_scaling_audit`. User doc:
 `docs/optimizations/channel_scaling.md`.
-
-> **PiD color calibration — retired 2026-07-05.** `fit_color_calib.py` (PiD→native-VAE
-> color-drift transform) moved to `_archive/scripts/calibration/`. The whole PiD
-> decode path is superseded by the ResShift SR sidecar (x4/x2 students), which was
-> verified to replace it. Findings history: memory `project_pid_color_drift_calib`.

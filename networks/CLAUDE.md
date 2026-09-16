@@ -11,21 +11,21 @@ by both training and inference.
 |------|------|
 | `__init__.py` | `NetworkSpec` registry (`NETWORK_REGISTRY`) + the `NETWORK_KWARGS` TOML allowlist + `resolve_network_spec()` (maps the three-axis cfg → a registry entry). **`NETWORK_KWARGS` is auto-derived** (`_derive_network_kwargs` AST-scans `config.py` / `factory.py` / `__init__.py`): a new net kwarg registers from its `kwargs.get("foo")` read alone — any other read form (`kwargs["foo"]`, a helper) is not picked up. |
 | `lora_anima/` | LoRA network creation, module targeting, timestep-masking orchestration, global routing. Split into `network.py` (assembly/runtime core), `network_metrics.py` (read-side metrics/diagnostics mixin — balance loss, router stats, ortho reg), `routers.py` (`GlobalRouter` / `FreqRouter` / `ContentRouter`, also re-exported from `network.py`), `factory.py`, `loading.py`, and `config.py`. |
-| `lora_modules/` | Per-variant module implementations: `lora.py`, `ortho.py`, `hydra.py`, `stacked_experts.py`, `chimera.py`, `step_expert.py` (shared-down + K step-selected up-heads for the turbo DP-DMD student), plus `base.py` and `router_state.py` (shared σ/FEI/routing-weights buffers + the buffer-presence-guarded `RouterStateMixin` setters for Hydra/OrthoHydra/StackedExperts). Training forwards compute their rank GEMMs in the **model compute dtype** (`org_forwarded.dtype` — NOT `x.dtype`; AdaLN LayerNorm hands fp32 under autocast(bf16); pinned by `tests/test_lora_dtype_policy.py`); Hydra and `ChimeraHydraInferenceModule` compute in fp32 at inference. Rank-GEMM activation memory is governed by `activation_memory_budget` (base.toml, 0.99 — the settled knee, never 0.85; no-grad-ckpt runs only). Each module class owns its save-pipeline hooks (`distill_save_state_dict` / `build_moe_state_dict`). |
+| `lora_modules/` | Per-variant modules: `lora.py`, `ortho.py`, `hydra.py`, `stacked_experts.py`, `chimera.py`, `step_expert.py` (shared down + K step-selected up-heads, turbo student), `base.py` (shared forward scaffold), `router_state.py` (σ/FEI/routing-weights buffers + `RouterStateMixin` setters). Training forwards compute rank GEMMs in the **model compute dtype** (`org_forwarded.dtype`, not `x.dtype` — AdaLN LayerNorm hands fp32 under autocast(bf16); pinned by `tests/test_lora_dtype_policy.py`); Hydra and `ChimeraHydraInferenceModule` compute in fp32 at inference. Rank-GEMM activation memory is governed by `activation_memory_budget` (base.toml 0.99 — the settled knee, never 0.85; no-grad-ckpt runs only). |
 | `attn_fuse.py` | `AttnFuseSpec` + `iter_split_groups` + `match_fused_spec` — the fuse↔split layout contract (§Attn fuse spec). |
-| `lora_save.py`, `lora_utils.py` | Thin save-pipeline orchestrator + shared helpers. `lora_save.save_network_weights` calls each variant's `distill_save_state_dict` in fixed order, then dispatches to the matching `build_moe_state_dict`. Owns only the legacy sig-type OrthoLoRA distill (no live module class for it) and the variant-write sibling-file naming. |
-| `methods/base.py` | Shared lifecycle base for the non-LoRA adapter networks (`easycontrol`, `soft_tokens`) — common `set_multiplier` / `is_mergeable` / `enable_gradient_checkpointing` trainer-facing protocol. |
-| `protocol.py` | `typing.Protocol` description of the adapter-network surface every network duck-types to: `AdapterNetwork` (core trainer-facing lifecycle) + `RouterConditionableNetwork` (optional per-step routing setters, LoRA-family only). Not an enforced base — consumers keep `hasattr`-probing; guarded by `tests/test_adapter_protocol.py` (which also guards the inference↛training import boundary). |
-| `methods/easycontrol.py` | EasyControl: per-block cond LoRA on self-attn (q/k/v/o) + FFN + scalar `b_cond` logit-bias gate; two-stream block forward at training, KV-cache prefill at inference. Opt-in target-stream adaln LoRA (`train_adaln`, cond-gated — method TOMLs pin it false against base.toml's LoRA-family default; see `docs/methods/adaln.md` §EasyControl). |
+| `lora_save.py`, `lora_utils.py` | Save pipeline + shared helpers. `save_network_weights` calls each module class's `distill_save_state_dict` in a load-bearing order (see the `lora_save.py` docstring), then its `build_moe_state_dict`. |
+| `methods/base.py` | `AdapterNetworkBase` — shared trainer-facing lifecycle for the non-LoRA networks (EasyControl, SoftTokens, Register). |
+| `protocol.py` | `typing.Protocol` description of the duck-typed adapter surface: `AdapterNetwork` (core lifecycle) + `RouterConditionableNetwork` (per-step routing setters, LoRA family only). Not an enforced base — consumers `hasattr`-probe; guarded by `tests/test_adapter_protocol.py` (which also guards the inference↛training import boundary). |
+| `methods/easycontrol.py` | EasyControl: per-block cond LoRA on self-attn (q/k/v/o) + FFN + scalar `b_cond` logit-bias gate; two-stream block forward at training, KV-cache prefill at inference. Opt-in target-stream adaln LoRA (`train_adaln`) — EasyControl TOMLs must pin it false, since base.toml turns it on for the LoRA family (`docs/methods/adaln.md` §EasyControl). |
 | `methods/turbo_dmd.py` | Turbo Anima DP-DMD distillation harness — owns student + fake `LoRANetwork` instances on one frozen DiT; output is a normal LoRA. See `docs/methods/turbo.md`. |
 | `methods/soft_tokens.py`, `methods/ip_adapter_pe_lora.py` | Soft tokens (SoftREPA parameterization) + the PE-LoRA delta path (`inject_pe_lora`), vendored into the Anima-Tagger ComfyUI node. |
-| `register_injection.py` | `RegisterInjector` — shared DSR register-token machinery (`_run_blocks` wrap + mid-stack pre-hooks + rope extension + adoption metrics). Two owners: the standalone register method (`methods/register.py`) and the LoRA family (`num_registers > 0` in a lora TOML = full LoRA trained jointly with K learnable registers; param at top-level dot-free key `register_tokens`, own lr group at `unet_lr × register_lr_scale`, kept-live at inference — `is_mergeable()` False, merge refused, `load_dit_model` auto-detects the key and attaches dynamic hooks; REPA capture auto-trims the K trailing tokens). |
-| `grad_basis.py` | Gradient-SVD `lora_down` init (`down_init="grad_svd"` / `"basis_file"`) — the frozen-DiT gradient sketch `S = Ωᵀ G`, the fp16 `in × r` basis artifact (`ss_num_blocks`-stamped; **depth-baked**, `load_basis` refuses a mismatch), and the scale-matched `V_rᵀ/√3` copy. `train.py` runs the per-run sketch before `_create_and_apply_network` (refused under block swap) and hands the factory a `grad_basis_file`, so both modes share one load path. See `docs/methods/svd-down-lora.md` §Gradient-seeded siblings, `docs/proposal/grad_basis_init.md`. |
+| `register_injection.py` | `RegisterInjector` — DSR register-token injection (`_run_blocks` wrap + mid-stack pre-hooks + rope extension). Owners: `methods/register.py` (`--method register`) and the LoRA family (`num_registers > 0`: LoRA + K learnable registers under the top-level key `register_tokens`, lr `unet_lr × register_lr_scale`). Registers can't merge — the checkpoint stays kept-live (`is_mergeable()` False, merge refused); `load_dit_model` auto-detects the key; REPA capture trims the K trailing tokens. |
+| `grad_basis.py` | Gradient-SVD `lora_down` init (`down_init="grad_svd"` / `"basis_file"`). The basis is **depth-baked** (`load_basis` refuses a block-count mismatch); `grad_svd` sketches in `train.py` before the network is built and is refused under block swap. `docs/methods/svd-down-lora.md` §Gradient-seeded siblings. |
 | `attention_dispatch.py` | Unified `dispatch_attention()` — backend router (SDPA / FA2 / FA3 / sageattn / flex). |
 | `spectrum.py` | Spectrum inference acceleration (Chebyshev feature forecasting). See `docs/inference/spectrum.md`. |
 | `spd.py` | Spectral Progressive Diffusion — training-free inference acceleration (grow spatial resolution along the trajectory, spectral noise-expansion handoff). Sampler-level runner registered like Spectrum. See `docs/inference/spd.md`. |
 | `foveated.py` | Deferred-foveated merge — training-free inference acceleration (full grid above σ_c, then fovea tokens 1:1 + periphery 2×2-token groups merged via the `token_merger` forward kwarg; endogenous `combo` mask). Sampler-level runner registered like Spectrum/SPD. See `docs/inference/foveated.md`. |
-| `calibration/` | Shipped calibration artifacts: `channel_stats.safetensors` + `cond_channel_stats.safetensors` (per-channel scaling, main + EasyControl cond stream — see `docs/optimizations/channel_scaling.md`; inert on frozen-basis ortho variants) + `cns_gamma.npz` (CNS γ schedule, also auto-downloaded from a release) + `dave_alpha.npz` (DAVE). |
+| `calibration/` | Shipped artifacts: `channel_stats.safetensors` + `cond_channel_stats.safetensors` (per-channel scaling, main + EasyControl cond stream; `docs/optimizations/channel_scaling.md`), `cns_gamma.npz` (CNS γ), `dave_alpha.npz` (DAVE). |
 
 ## Three-axis routing surface
 
@@ -46,23 +46,20 @@ mechanics (zero-init gates, `set_fei` reference-write into every module's
 
 ## Attn fuse spec (qkv/kv fuse↔split)
 
-`attn_fuse.py::AttnFuseSpec` + `iter_split_groups` + `match_fused_spec` define the
-runtime-fused `qkv_proj` (self-attn) / `kv_proj` (cross-attn) ↔
-on-disk split `q/k/v_proj` layout. ComfyUI's cosmos backbone uses the split layout while
-Anima's training-side DiT uses the fused projections; save always writes split, load
-always re-fuses. Both `lora_save.py` and `loading.py` walk the same specs, so adding a
-new fused projection only needs one entry here.
+The training DiT fuses `qkv_proj` (self-attn) / `kv_proj` (cross-attn); ComfyUI's cosmos
+backbone uses split `q/k/v_proj`. Save always writes split, load always re-fuses. Both
+`lora_save.py` and `loading.py` walk `ATTN_FUSE_SPECS`, so a new fused projection needs
+one entry there.
 
 ## Attention dispatch
 
 `attention_dispatch.py::dispatch_attention()` routes to the active backend (torch SDPA,
 flash-attn v2/v3, sageattn, flex attention). **Tensor layout differs by backend** — BHLD
-for SDPA/sageattn, BLHD for flash-attn — so callers must hand tensors to the dispatcher
-in a known layout and the dispatcher transposes as needed. Check the backend branches
-before adding new attention call sites.
+for SDPA/sageattn, BLHD for flash-attn. `dispatch_attention` takes `[B, L, H, D]` and
+transposes per backend; check the backend branches before adding a call site.
 
 FA4 (flash-attention-sm120) is disabled — `attn_mode="flash4"` raises in the dispatcher.
-What re-enabling it would entail: `docs/optimizations/fa4.md`.
+Re-enable notes: `docs/optimizations/fa4.md`.
 
 ## compile_blocks() and forward hooks
 

@@ -18,8 +18,8 @@ address packs, legacy make-target aliases or row ids through :func:`resolve`.
 
 Same rule as the package's: **this is the single source of truth for weight
 locations.** ``library/vision/encoders.py`` and ``library/anima/vocab_pack.py``
-import their defaults from here; a path spelled in a loader is a Download button
-that writes where the loader will not look.
+import their defaults from here; a loader must not spell its own path, or the
+Download button writes somewhere the loader does not look.
 """
 
 from __future__ import annotations

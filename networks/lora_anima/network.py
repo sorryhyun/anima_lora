@@ -1779,8 +1779,7 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
                         f"content_router_lr_scale of unet_lr={base_lr})"
                     )
 
-        # Own lr group: a LoRA-scale lr rarely lets registers grow into sinks
-        # against the baked-in attractor.
+        # Register tokens: own lr group (why: cfg.register_lr_scale comment).
         if self.register_injector is not None:
             base_lr = unet_lr if unet_lr is not None else default_lr
             if base_lr is None or base_lr == 0:

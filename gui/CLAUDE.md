@@ -2,16 +2,14 @@
 
 PySide6 (Qt6) desktop GUI. Root `CLAUDE.md` owns the training/config/daemon contracts this
 GUI drives. Most of the surface is `tabs/config_tab.py` and the `tabs/preprocess/` package;
-`tabs/image_tab.py`'s autotag worker lives in `tabs/_autotag.py`. For recipe-style changes
+`tabs/image_tab.py`'s autotag worker is `tabs/_autotag.py`. For recipe-style changes
 (new training field / variant / language, job submission, a new job-submitting tab,
 action-button colors) **load the `gui-changes` skill**.
 
 ## What it is
 
-A front-end over the existing pipeline: it edits TOML configs and submits jobs to the
-daemon; no training/torch logic. `config_io.py`, `_paths.py` and `tabs/preprocess/knobs.py`
-are **Qt-free** (no PySide6 import) so they stay headless-unit-testable — keep them that
-way. `library/` imports are torch-free leaves only (e.g. `library.config.dataset_keys`,
+Edits TOML configs and submits jobs to the daemon; no training/torch logic. `config_io.py`, `_paths.py` and `tabs/preprocess/knobs.py`
+are **Qt-free** (no PySide6 import) so they stay headless-unit-testable. `library/` imports are torch-free leaves only (e.g. `library.config.dataset_keys`,
 `library.config.io`, `library.datasets.path_filter`, `library.preprocess.resize_preview`,
 `library.datasets.curation_actions`, `library.downloads`); a torch/cv2-importing module
 slows startup by seconds. Verify with `python -X importtime -c "import gui.app"` — torch
@@ -24,8 +22,8 @@ must not appear.
 - `app.py::main`: `load_language()` → build + show `MainWindow` →
   `ensure_daemon_quietly()` (deferred via `QTimer.singleShot(0, ...)` so a cold daemon
   boot doesn't block the window) → Qt loop.
-- `make lora-gui GUI_PRESETS=<variant>` is a *training* entry (runs `gui-methods/`
-  configs directly), not this GUI.
+- `make lora-gui GUI_PRESETS=<variant>` trains from `gui-methods/` configs; it does not
+  launch the GUI.
 
 ## Architecture
 
@@ -119,14 +117,14 @@ must not appear.
   `buttons.py` (`action_button` / `apply_variant` / `SplitButtonStyle`), `target_res.py`,
   `sample_prompts.py`, `image_view.py`, `_qt_utils.py` (leaf helpers like `_no_wheel`).
   Imports are one-way — `fields.py`/`mixins.py` import the domain widgets, never the
-  reverse — and nothing here imports `gui.daemon` (keeps it cycle-free).
+  reverse — and nothing here imports `gui.daemon`.
 - **`i18n/`** — `en/ko/ja/cn.py`, each `STRINGS: dict[str,str]` (~540–590 keys).
-  `t(key, **kwargs)` falls back to English, then to the key itself. Register new languages
-  in `TRANSLATIONS`.
+  `t(key, **kwargs)` falls back to English, then to the key itself. New language: see the
+  `gui-changes` skill.
 - **`explanations/`** — lazy-loaded help under `guides/<lang>/`: `_fields.json` (field
   tooltips), `_preprocess_fields.json` (trainer-native preprocess knobs),
   `_stage_fields.json` (stage-form overlay keyed `<stage_id>.<dest>` → `{label, help,
-  choices?}`, read by `stage_form.label_for` / `help_for`), `<method>.html`. Same English
+  choices?}`, read by `stage_form.label_for` / `help_for`), `<method>.html`, all with English
   fallback.
 - Support modules: `progress.py` (JSONL/tqdm parse), `process.py` (`kill_process_tree`),
   `tensorboard.py`, `validation.py`, `dialogs.py` (pre-launch confirmations +
@@ -146,7 +144,7 @@ must not appear.
   drifts silently.
 - **i18n key parity is manual.** Nothing enforces shared keys across the four language
   files; a missing key silently shows English. Add every string to all four (and the
-  matching `_fields.json` / `.html` for help text) — the `translator` agent propagates
+  matching `_fields.json` / `.html` for help text); the `translator` agent propagates
   English → ko/ja/cn.
 - **The daemon outlives the GUI.** Closing the window does not stop training.
 - **Process kill must walk the tree.** A directly-spawned `QProcess`'s real work runs in a
@@ -155,6 +153,6 @@ must not appear.
 - **`gui_settings.json`** holds UI state (language, 6 h update-check cache, preprocess
   knobs, hardware preset) — outside `configs/` so it survives a config reset.
 - **Install app-wide event filters last.** `app.installEventFilter(self)` routes every Qt
-  event through Python, including the ~82k construction-time events (~0.7 s of launch).
-  `MainWindow` installs its filter after `setCentralWidget`. Launch budget guarded by
+  event through Python, including ~82k construction-time events (~0.7 s of launch), so
+  `MainWindow` installs its filter after `setCentralWidget`. Launch budget:
   `tests/test_gui_launch_speed.py`.

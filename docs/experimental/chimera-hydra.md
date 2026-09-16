@@ -16,7 +16,7 @@
 
 Two HydraLoRAs glued at the residual. Each half is a complete asymmetric LoRA in the sense of HydraLoRA (Tian et al., NeurIPS'24, [arXiv:2404.19245](https://arxiv.org/abs/2404.19245)) — one shared down-projection A, K B-heads, one router. The two halves differ only in what their router reads:
 
-- Content half (HydraLoRA shape): `A_c x → K_c B_c[k] (A_c x)`, routed by a per-Linear router on pooled `lx_c` (the content-side rank-r latent). Same content router HydraLoRA's paper specifies.
+- Content half (HydraLoRA shape): `A_c x → K_c B_c[k] (A_c x)`, routed by the network-level ContentRouter on pooled `crossattn_emb` (the original design used HydraLoRA's per-Linear router on pooled `lx_c`).
 - Frequency half (HydraLoRA shape): `A_f x → K_f B_f[j] (A_f x)`, routed by a single network-level router fed `concat(FEI(z_t), σ-features)`. The router shape and "frequency-energy indicator" feature lineage trace to FeRA (arXiv:[2511.17979](https://arxiv.org/abs/2511.17979)).
 
 Pool outputs are added. No multiplicative gate, no σ-band overlap mask, no curriculum:
@@ -35,9 +35,7 @@ Three papers, one cell:
 | TimeStep Master ([2503.07416](https://arxiv.org/abs/2503.07416)) — Wang et al., 2025 | Asymmetric per-pool timestep treatment. The freq half is the always-on full-rank "core"; the content half is the rank-masked "context" branch. T-LoRA's rank schedule is the masking primitive. |
 | FeRA ([2511.17979](https://arxiv.org/abs/2511.17979)) — 2025 | The frequency-energy indicator (FEI) routing input + the network-level soft frequency router that fuses freq-specific adapter experts. ChimeraHydra reuses the same router shape (Linear → SiLU → Linear → softmax/τ) and FEI-on-`z_t` input as Anima's existing FeRA implementation. |
 
-> Supersedes the earlier single-A chimera (one shared A per Linear, SVD column space sliced into content + freq sub-spaces). The prior framing was structurally closer to "hydra with two routers" than "two hydras"; the dual-A move makes the chimera metaphor honest and upgrades pool orthogonality from output-side-only to both sides (see "Free orthogonality" below). Earlier `_chimera.safetensors` files stop loading by design — same precedent as the pre-three-axis adapter migrations ([`networks/CLAUDE.md`](../../networks/CLAUDE.md) §"Three-axis routing surface").
->
-> Also supersedes the staged 2D design (multiplicative gate `g_c ⊙ g_t` + Phase 1/2/3 curriculum) preserved in git history. Staging existed to break gradient confounding in the multiplicative gate; additive composition removes the confounding directly.
+> Checkpoints from the earlier single-A chimera (one shared A, SVD column space sliced into content + freq) and from the staged multiplicative-gate design do not load.
 
 ## Quick start
 

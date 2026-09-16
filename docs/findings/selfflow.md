@@ -1,7 +1,7 @@
 # Self-Flow rep-loss — falsified on the frozen Anima backbone
 
 This records why Self-Flow's representation-distillation objective was not
-ported into Anima's LoRA fine-tuning pipeline. The short version: the method
+ported into Anima's LoRA fine-tuning pipeline: the method
 exploits an information gap between clean-noised and heavy-noised views of a
 latent that a pretraining-scale, still-learning backbone hasn't closed yet.
 Anima's frozen DiT is a finished denoiser — it has already closed that gap, so

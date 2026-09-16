@@ -1,16 +1,15 @@
 """Structural typing for the adapter-network surface.
 
 The trainer and the inference engine never import a concrete network class;
-they ``hasattr``-probe and call. Three concrete networks implement the surface:
+they ``hasattr``-probe and call. Implementations:
 
   * ``networks.lora_anima.network.LoRANetwork`` (the whole LoRA family),
-  * ``networks.methods.easycontrol.EasyControlNetwork``,
-  * ``networks.methods.soft_tokens.SoftTokensNetwork``
-
-(the latter two via ``networks.methods.base.AdapterNetworkBase``).
+  * the ``networks.methods.base.AdapterNetworkBase`` subclasses —
+    ``EasyControlNetwork``, ``SoftTokensNetwork``, ``RegisterNetwork``.
 
 The ``typing.Protocol``s here are guarded by a contract test
-(``tests/test_adapter_protocol.py``). They are a *description*, not an enforced
+(``tests/test_adapter_protocol.py``, which covers LoRANetwork, EasyControl and
+SoftTokens). They are a *description*, not an enforced
 base class — the consumers keep duck-typing (``apply_router_conditioning``'s
 ``hasattr`` probes are the runtime contract). Both protocols are
 ``@runtime_checkable`` and non-data (every member is a method), so

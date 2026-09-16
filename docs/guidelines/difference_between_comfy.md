@@ -17,15 +17,13 @@ It matters most for anything that hooks the forward path — notably `mod_guidan
 |---|---|---|
 | `pooled_text_proj` MLP (distilled modulation-guidance head) | present, baked into `forward_mini_train_dit` | absent entirely |
 | `torch.compile` on block forwards | `compile_blocks()` compiles each `block._forward` | not used |
-| Constant-token bucketing (native 4032/4200 shapes) | `compile_blocks()` native-shape flatten | not supported |
+| Free-fit native-shape bucketing + dynamic-seq compile | `compile_blocks()` native-shape flatten | not supported |
 | `crossattn_seqlens` / variable text length | computed from mask, used only for the flex block mask | not computed; always pad to 512 |
 | Attention dispatch | unified `attention_dispatch.AttentionParams` (sdpa / flash / sageattn / flex; flash4 branch present but disabled) | `transformer_options` dict + ComfyUI's own attention |
 | Custom block-swap / CPU offload | `enable_block_swap`, `ModelOffloader` | relies on ComfyUI's `model_management.py` |
 | Gradient checkpointing variants | standard / CPU-offload / unsloth | standard only |
 | Final-layer dtype cast | implicit (shared dtype assumed) | explicit `.to(crossattn_emb.dtype)` |
 | Preprocess text embeds output | variable-length + `crossattn_seqlens` tensor | fixed-padded to 512 |
-
-The difference that matters most downstream: `pooled_text_proj` exists only in anima_lora.
 
 ## 1. `pooled_text_proj` — exists only in anima_lora
 
@@ -93,8 +91,6 @@ self.uncond_combined = (proj_neg + delta).detach()
 
 This is correct for ComfyUI precisely because ComfyUI has no `pooled_text_proj` step. The hook has to supply both the base projection (`proj_pos` / `proj_neg`, which anima_lora's `forward_mini_train_dit` applies itself) AND the guidance delta (`w·(proj_tag − proj_neg)`), because nothing downstream will add the base projection for it.
 
-Consequence: porting the ComfyUI hook semantics back into anima_lora requires subtracting the base projection, since `forward_mini_train_dit` already adds `proj(pool(crossattn))`.
-
 ### Checkpoint compatibility
 
 A `pooled_text_proj.safetensors` trained in anima_lora is not a state-dict subset of ComfyUI's `MiniTrainDIT`. It's shipped as a standalone weight file (`models/anima_mod_guidance/pooled_text_proj_0413.safetensors`) and loaded by the custom node's adapter-loader (`mod_guidance.py`), not by ComfyUI's model loader. LoRA checkpoints trained in anima_lora are safe in ComfyUI — they already exclude `pooled_text_proj` keys by construction (`networks/lora_anima/config.py` `_DEFAULT_EXCLUDE`).
@@ -129,9 +125,9 @@ It does not compute per-sample seqlens, does not set up flex block masks, and do
 
 Practical consequence. Both paths produce the same image quality on normal prompts because the pretrained model was trained with max-padded text anyway (the padding positions act as attention sinks in cross-attention softmax — trimming or masking them produces black images, see `CLAUDE.md` § "Text encoder padding"). In anima_lora the seqlens only drive the flex block mask; they are not a correctness requirement, so ComfyUI's simpler path is safe.
 
-### 2.2 Static-shape token bucketing
+### 2.2 Native-shape bucketing
 
-anima_lora — `compile_blocks()` (`library/anima/models.py`) enables native-shape flattening: the forward flattens `(B, T, H, W, D)` into a fake 5D shape of `(B, 1, seq_len, 1, D)`, restored after the block loop by `_unflatten_native_shape`. The shipped bucket table is two token-count families (4032 / 4200), each exactly filling its count, so `torch.compile` sees one block graph per token-count family (two total) with no padding. Eager forwards skip the flatten (bit-exact).
+anima_lora — `compile_blocks()` (`library/anima/models.py`) enables native-shape flattening: the forward flattens `(B, T, H, W, D)` into a fake 5D shape of `(B, 1, seq_len, 1, D)`, restored after the block loop by `_unflatten_native_shape`. The block graph keys on token count alone, and `compile_dynamic_seq` collapses each resolution tier's token band to one graph, with no padding. Eager forwards skip the flatten (bit-exact). Details: [`../structure/anima-optimizations.md`](../structure/anima-optimizations.md) §3.
 
 comfy — no static-shape mode. Processes variable `(B, T, H, W, D)` directly. Only padding is to patch boundaries via `comfy.ldm.common_dit.pad_to_patch_size()`.
 
@@ -192,7 +188,7 @@ ComfyUI explicitly casts `x` to `crossattn_emb.dtype` before the final layer; an
 | Gradient checkpointing — standard | yes | yes |
 | Gradient checkpointing — CPU offload | yes (`enable_gradient_checkpointing(cpu_offload=True)`) | no |
 | Gradient checkpointing — unsloth offload | yes (`enable_gradient_checkpointing(unsloth_offload=True)`) | no |
-| Constant-token bucketing to stabilize compile cache | `compile_blocks()` native-shape flatten (native 4032/4200, two graphs) | no |
+| Token-count-keyed compile cache | `compile_blocks()` native-shape flatten + dynamic-seq (one graph per tier band) | no |
 | Block swap / CPU offload inference | `enable_block_swap` (`library/anima/models.py::Anima.enable_block_swap`), `ModelOffloader` (`library/runtime/offloading.py`) | relies on `comfy/model_management.py` LoRAM reservation |
 | Switch offload mode between training/inference | `switch_block_swap_for_inference()` / `switch_block_swap_for_training()` | N/A |
 
@@ -226,8 +222,6 @@ This doesn't affect per-step forward behavior — both implementations accept `t
 
 ## 7. Block swap / VRAM management
 
-Already covered in §3 as part of the performance table. Two concrete things worth calling out:
-
 - anima_lora's `ModelOffloader` (`library/runtime/offloading.py`, instantiated in `library/anima/models.py::Anima.enable_block_swap`) is a custom async-aware offloader with `wait_for_block` / `submit_move_blocks` hooks called from the block loop in `library/anima/models.py::Anima.forward_mini_train_dit`. It runs inside the forward, not at the runtime layer.
 - ComfyUI's model management is external: `comfy/model_management.py` decides what to keep in VRAM and swaps whole models when memory pressure exceeds thresholds. It does not do per-block swap inside a forward.
 
@@ -252,16 +246,6 @@ Practical consequence. If you train with `--blocks_to_swap 16` in anima_lora, th
 - anima_lora: the delta is applied inside the block loop in `forward_mini_train_dit` via `_mod_guidance_schedule` (per-block `w(l)`), with `final_layer` scheduled separately via `_mod_guidance_final_w`.
 - comfy: the delta is applied via `register_forward_hook` on `t_embedding_norm` (for the base projection) plus `register_forward_pre_hook` on each block (for the scheduled steering delta). The hook has to supply both the base projection and the delta — anima_lora's built-in `pooled_text_proj` addition doesn't exist here.
 - Do not copy the ComfyUI hook's `(proj_pos + delta)` combined tensor back into anima_lora — it would double-add the base projection. See `docs/inference/mod-guidance.md` for the separation of `_mod_guidance_delta` (unit direction) from `_mod_guidance_schedule` (per-block `w`).
-
-## Where the two diverge, and where they'll stay diverged
-
-The transformer-block math is identical; the divergence is in the wrapping layers:
-
-- Inference performance infrastructure (compile, offload, static shapes) — anima_lora only.
-- Training infrastructure (gradient checkpointing variants, block swap training mode, distillation) — anima_lora only.
-- `pooled_text_proj` modulation-guidance head and its surrounding data flow — anima_lora only, grafted on via the custom node in ComfyUI.
-- Cross-attention masking / seqlens (flex-mode block mask only; flash4 LSE-correction path is dormant) — anima_lora only.
-- Text-encoder integration model (disk-cached vs sampler-inline) — different but equivalent.
 
 ## References
 

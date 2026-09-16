@@ -1,45 +1,8 @@
 #!/usr/bin/env python3
-"""near_twins_tag_gap_miner — mine in-artist variant pairs by attribute gap.
+"""near_twins CLI — ``[staging]`` config layering, argparse surface, orchestration.
 
-An **exploration / curation tool** (not a training step) that surfaces
-near-duplicate *variant* pairs within a single artist where the two members
-differ by a **specified attribute** — e.g. one has a speech bubble and the
-other doesn't. It feeds EasyControl builders: eval sets, seed data for unpaired
-editing, and a difference-region mask localizing *where* the two members differ.
-
-Pipeline (see ``docs/proposal/near_twins_tag_gap_miner.md`` for the full design):
-
-1. **Gather members** per artist from ``--image-dirs`` (default the raw crawl
-   pool ``~/gelcrawl/{retrieved,selected}``), scoped ``union`` so a twin can
-   straddle the curated cut. Each member's native pixel ``(W, H)`` is read from
-   the image header here (no decode).
-1b. **Same-size gate (+ tag pivot)**: a true variant pair (a redraw that adds
-   one attribute) shares the **exact** canvas, so only members that share their
-   ``(W, H)`` with ≥1 sibling *in the same artist* survive — the rest can never
-   pair and are dropped before embedding. The pair loop then only ever compares
-   equal-size members, which also makes the dense grid match pixel-aligned by
-   construction (the original cross-crop case the PE machinery was hedging
-   against is gone). In **tag mode** the gate sharpens further: an accepted pair
-   has the target tag in *exactly one* member, so a same-size group is only kept
-   when it holds BOTH a tagged and an untagged member (an all-tagged or
-   all-untagged group can never produce a gap). The whole prune runs *before* the
-   PE-Spatial load, so an empty candidate set skips the GPU entirely.
-2. **Embed** each *surviving* image with **PE-Spatial-B16-512** (``library.vision``)
-   at a fixed 512x512 native bucket → CLS descriptor + 32x32 patch grid (pooled to
-   16x16, L2-normed). Cached per-image under ``~/.cache/near_twin/``.
-3. **Stage A — global prefilter**: within-artist all-pairs cosine on the CLS
-   descriptor; keep ``>= --sim-min``.
-4. **Stage B — dense grid match**: pool each survivor's grid to ``G x G``, run a
-   mutual-NN + ratio test, count inliers ``>= --cell-match-min``; a pair is a
-   near-twin when the inlier fraction ``>= --match-frac-min``. Unmatched cells
-   are the **difference region**. Optional ``--geom-check`` RANSAC-rejects pose
-   twins and estimates the crop offset.
-5. **Discriminator** (``--tag`` / ``--tag-any`` / ``--region``):
-   keep pairs where the attribute is present in **exactly one** member.
-6. **Rank by edit-cleanliness**: fewest *other* differences first.
-7. **Output**: a materialized ``_tags`` / ``_no_tags`` pair tree (the
-   training-shaped output), plus a ready-to-use EasyControl dataset config
-   under ``configs/easycontrol/``.
+Matching core lives in ``engine``; pair-tree export and the dataset blueprint in
+``outputs``. Pipeline, output layout and knobs: ``README.md`` beside this file.
 
 Run from the repo root::
 
@@ -47,17 +10,8 @@ Run from the repo root::
         --tag-any "speech bubble,thought bubble,blank speech bubble" \
         --artists ama_mitsuki
 
-    # tagless visual attribute (recommended for bubbles on an untagged tree):
-    python -m easycontrol_adapters.tools.near_twin --region \
-        --artists ama_mitsuki
-
-Features are cached, so the intended loop is: run → inspect the exported pair
-tree → adjust ``--sim-min`` / ``--match-frac-min`` / ``--cell-match-min`` /
-``--max-extra-diff`` → re-run (seconds).
-
-Algorithm core lives in ``near_twin.engine``; rendering/export in
-``near_twin.outputs``. This module holds the ``[staging]`` config layering, the
-argparse surface, and the run orchestration.
+    # tagless visual attribute:
+    python -m easycontrol_adapters.tools.near_twins --region --artists ama_mitsuki
 """
 
 from __future__ import annotations

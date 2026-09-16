@@ -7,13 +7,14 @@ inference path — only the down projection's starting directions change.
 
 ## Quick start
 
-In `configs/methods/lora.toml`, set on the plain-LoRA path:
+`configs/methods/lora.toml` already sets it for `make lora` (the code default is
+`"kaiming"`):
 
 ```toml
-down_init = "weight_svd"   # default: "kaiming"
+down_init = "weight_svd"
 ```
 
-Then `make lora`. No new flags, no new checkpoint format.
+The checkpoint format is unchanged.
 
 ## What it does
 
@@ -29,7 +30,7 @@ forward is unchanged. The `1/√3` matches the expected row-norm of the Kaiming
 default (a row of `V_rᵀ` has norm 1; a Kaiming row has `E[‖·‖²] ≈ 1/3`), so this
 is a better direction, not a larger step.
 
-Why bother: it reads the input directions the pretrained Linear is most
+It reads the input directions the pretrained Linear is most
 responsive to, while keeping plain LoRA's full first-step tangent — the whole
 `d_out × r` up-projection `B` gets gradient on step 1 (only `lora_down` is
 dormant, exactly like Kaiming LoRA). This is the half of OrthoInit worth keeping
@@ -70,7 +71,7 @@ cuSOLVER's Jacobi SVD (1e-6 vs 1e-3 max off-diagonal), which is the property
 `svd_slice` leans on. Measured capture against the exact V is 1.000 on every
 weight group.
 
-Two things that measurement settled, so they don't get re-proposed:
+Settled by the same measurement:
 
 - **Batching the per-layer calls by shape buys nothing.** cuSOLVER has no batched
   kernel at these sizes and loops internally: 34.4 s → 35.0 s for the 168
@@ -123,26 +124,19 @@ of an artist's first-step gradient energy, the artist's own gradient basis
 **depth-baked** (module names carry the block index) and `load_basis` refuses a
 depth mismatch. Whether any of this survives training is `docs/proposal/grad_basis_init.md` §E1.
 
-## Where this came from
+## Origin
 
-The line started with StelLA (NeurIPS 2025), not with the internal probe —
-the archived proposal credits `bench/turbo/probe_ortho_init_step.py`, but that
-probe was the trigger, not the source. StelLA's three-factor `USVᵀ` (U, V on the
-Stiefel manifold, S carrying amplitude) is the repo's OrthoInit
-parameterization `ΔW = s·P·diag(λ)·Q`, so the cold-start critique SVD-Down is
-built on is a critique of StelLA's factorization. Its Table 5 initialization
-ablation — the SVD seed *washes out* (SVD-major ≈ SVD-minor ≈ random) once the
-subspace is trainable — is the question SVD-Down answers for free LoRA: keep the
-principal input basis, drop the manifold constraint and the paired-dyad cold
-start. Reading StelLA forked into two proposals in one commit (`2674b59e`,
-2026-06-22): this one for plain LoRA, and `docs/proposal/stella_chimera.md` for
-the chimera case.
+The line came from StelLA (NeurIPS 2025): its three-factor `USVᵀ` is the repo's
+OrthoInit parameterization `ΔW = s·P·diag(λ)·Q`, and its Table 5 ablation (the SVD
+seed washes out once the subspace is trainable) is the question SVD-Down answers for
+free LoRA — keep the principal input basis, drop the manifold constraint and the
+paired-dyad cold start. The chimera counterpart is `docs/proposal/stella_chimera.md`.
 
 ## References
 
 - Li et al., [StelLA: Subspace Learning in Low-rank Adaptation using Stiefel
   Manifold](https://arxiv.org/abs/2510.01938), NeurIPS 2025 (Spotlight) —
-  origin of this line; see above. Code:
+  origin of this line. Code:
   <https://github.com/SonyResearch/stella>.
 - Hu et al., [LoRA](https://arxiv.org/abs/2106.09685), 2021.
 - Meng et al., [PiSSA](https://arxiv.org/abs/2404.02948), NeurIPS 2024 — also

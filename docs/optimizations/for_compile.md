@@ -1,31 +1,18 @@
 # Changes from sd-scripts for torch.compile / dynamo
 
-This document catalogues every change made to the `anima_lora` fork (relative to the original `sd-scripts` repo) that enables or supports `torch.compile` and PyTorch dynamo. Changes are grouped by file and subsystem.
+Changes in the `anima_lora` fork (relative to `sd-scripts`) that enable or support `torch.compile` and dynamo, grouped by file.
 
 ---
 
 ## 1. Attention dispatch (`networks/attention_dispatch.py`)
 
-### 1.1 Flash Attention 4 graph breaks
+### 1.1 Flash Attention 4 (removed)
 
-FA4's CUTLASS/TVM kernels access raw DLPack data pointers, which fail with FakeTensors during dynamo tracing. Since FA4 is already a fused kernel that `torch.compile` cannot improve, we wrap it with `@torch.compiler.disable` to insert clean graph breaks while letting surrounding ops compile normally.
-
-```python
-# NEW
-@torch.compiler.disable
-def flash_attn_4_func(*args, **kwargs):
-    out, _lse = _flash_attn_4_func_raw(*args, **kwargs)
-    return out
-
-@torch.compiler.disable
-def flash_attn_4_varlen_func(*args, **kwargs):
-    out, _lse = _flash_attn_4_varlen_func_raw(*args, **kwargs)
-    return out
-```
-
-sd-scripts: No FA4 support at all.
-
-> Note: FA4 is currently not the default attention backend — see [`fa4.md`](fa4.md) for why. The code paths remain in place for re-enabling.
+FA4 and its KV-trim + LSE-sink correction path were removed 2026-05-20 (with the
+`crossattn_full_len` field and the `_KV_BUCKETS` constant); `flash_attn_4_func` /
+`flash_attn_4_varlen_func` survive only as `None` stubs in `attention_dispatch.py`.
+Cross-attention runs the full 512-length KV under FA2. Postmortem:
+[`fa4.md`](fa4.md).
 
 ### 1.2 Flex attention: NOT pre-compiled
 
@@ -49,19 +36,6 @@ New first-class `"flex"` attention mode with pre-computed `BlockMask` support fo
 | `softmax_scale` | Custom softmax scale passed through to all backends (avoids per-call branching) |
 | `crossattn_block_mask` | Pre-computed BlockMask for the cross-attention padding mask (flex mode) |
 | `selfattn_block_mask` | Unused in native mode (no padded self-attn KV); stays `None` |
-
-### 1.5 LSE sink correction for trimmed cross-attention (flash4 — removed)
-
-The KV-trim + LSE-sigmoid correction path was bundled with FA4 and depended on FA4's `return_lse`. Both FA4 and the trim plumbing were removed (the `crossattn_full_len` field and the `_KV_BUCKETS` constant are gone as of 2026-05-20). See `docs/optimizations/fa4.md` for the postmortem; reviving it now means reimplementing the trim, not uncommenting it.
-
-When the path was active, zero-padded KV positions were trimmed and the softmax denominator restored via:
-
-```python
-correction = torch.sigmoid(lse - math.log(n_pad))
-x = out * correction.transpose(1, 2).unsqueeze(-1)
-```
-
----
 
 ## 2. Model architecture (`library/anima/models.py`)
 
@@ -94,15 +68,11 @@ padding_mask.unsqueeze(1).repeat(1, n_heads, 1)
 padding_mask.unsqueeze(2).expand(-1, -1, n_heads)
 ```
 
-### 2.4 KV bucket trimming constants (removed)
-
-`_KV_BUCKETS` trimmed cross-attention KV sequences to the smallest fitting bucket, capping `torch.compile` shape variants. It was tied to the FA4-only trim path and was removed along with it (2026-05-20). Cross-attention now runs the full 512-length KV under FA2. See `docs/optimizations/fa4.md`.
-
 ### 2.5 `compile_blocks(backend="inductor")` — the single switch
 
 `compile_blocks` is the one call that turns on `torch.compile`. It does two coupled things and raises the dynamo cache-size budget itself:
 
-1. Native-shape flattening (`self._native_flatten = True`). The forward flattens each bucket's patch grid `(B, T, H, W, D)` to a fake-5D `(B, 1, seq_len, 1, D)` shape (`unflatten`-restored after the block loop). This keys the block graph on token count alone — the shipped `CONSTANT_TOKEN_BUCKETS` collapses to two token-count families (4032 and 4200) — instead of guarding `H` and `W` separately (one graph per resolution, 24 buckets). No padding, so flash self-attention sees no padded tokens. Bit-exact to the eager 5D path; eager (uncompiled) forwards leave the flag `False` and skip the reshape.
+1. Native-shape flattening (`self._native_flatten = True`). The forward flattens each bucket's patch grid `(B, T, H, W, D)` to a fake-5D `(B, 1, seq_len, 1, D)` shape (`unflatten`-restored after the block loop). This keys the block graph on token count alone instead of guarding `H` and `W` separately (one graph per resolution). No padding, so flash self-attention sees no padded tokens. Bit-exact to the eager 5D path; eager (uncompiled) forwards leave the flag `False` and skip the reshape.
 
 2. Per-block compile. Compiles each block's `_forward` method:
    ```python
@@ -111,20 +81,18 @@ padding_mask.unsqueeze(2).expand(-1, -1, n_heads)
    ```
    **Critical:** compiles `_forward` (the actual attention/MLP), NOT `forward` (the checkpointing wrapper). The gradient checkpointing decorator (`unsloth_checkpoint`) uses `@torch._disable_dynamo`, which would cause an immediate graph break if `forward` itself were compiled — dynamo compiles nothing useful but still checks shape guards, causing recompile storms.
 
-The cache budget is `cache_size_limit = max(current, 2*n + 8)` where `n` is the number of token-count families (2): the `2*` covers fwd+bwd sharing the one `_forward` bytecode, the `+8` covers requires_grad / stride specializations. The `max()` lets a multi-resolution caller (e.g. a distill loop whose downsampled stages produce more distinct shapes) pre-raise the limit without `compile_blocks` lowering it.
-
-There is no padded mode anymore.
+The budget is `recompile_limit = max(current, 2*n + 8)` (via `pin_dynamo_limit`), where `n` is the number of token-count families — derived by `train.py::_derive_token_budget` from the buckets actually populated, defaulting to the 1024 tier's count. The `2*` covers fwd+bwd sharing the one `_forward` bytecode, the `+8` covers requires_grad / stride specializations. The `max()` lets a multi-resolution caller (e.g. a distill loop whose downsampled stages produce more distinct shapes) pre-raise the limit without `compile_blocks` lowering it.
 
 ### 2.6 Dynamic-seq marks disable inductor mix-order reduction
 
-When `compile_dynamic_seq` is active (free-fit — §3.1 — auto-enables it, and the
+When `compile_dynamic_seq` is active (`train.py` auto-enables it with `torch_compile`, and the
 bespoke distill loops force it via `ensure_dynamic_seq_for_freefit`),
 `compile_blocks` marks only the seq axis dynamic and bounds it to the tier's
 `seq_range` via a strict `mark_dynamic`. That strict bound collides with an
 inductor fusion pass:
 
 ```python
-# compile_blocks, when dynamic-seq marks are active
+# compile_blocks, when dynamic-seq marks are active (per-band mode: only if a band straddles 4096)
 pin_inductor_flag("triton.mix_order_reduction", False)  # library/runtime/dynamo.py
 ```
 
@@ -145,9 +113,8 @@ Why `pin_inductor_flag` and not plain assignment. Inductor config
 it; the grad-enabled step-0 compile (grad-ckpt recompute / AOT backward path)
 schedules in a different context where the override is absent and the read falls
 back to the entry's default — env-derived True — so the kill silently
-reverted and the fusion still recorded the guard. This shipped broken in
-v1.14.0 (same commit as adaln default-on) and crashed community `make lora`
-runs at step 0 under the grad-ckpt presets. The pin sets the entry's
+reverted and the fusion still recorded the guard (step-0 crash under the
+grad-ckpt presets). The pin sets the entry's
 `.default` too (same pattern as `pin_dynamo_limit` for `recompile_limit`), which
 every context reads. Poisoned per-signature cache dirs from crashed runs
 self-heal: the config is part of the FxGraphCache key, so stale entries miss.
@@ -155,37 +122,21 @@ See also the caveat on `isolate_compile_cache` (stale-guard poisoning across
 cache reuse). Discovered fixing the adaln training path (2026-07-15); ContextVar
 regression root-caused 2026-07-17 — `docs/methods/adaln.md` §Path 2.
 
-> sd-scripts: no dynamic-seq path, no free-fit, no per-block compile — none
-> of this machinery exists upstream. The legacy `set_static_token_count(count, pad=True)` path zero-padded every bucket up to a single shape, but it leaked padded tokens into flash self-attention (AdaLN shift + Q/K/V bias make zero-input padded rows emit non-trivial K/V; up to ~6.5% rel-L2 on the 4032 buckets) and couldn't even run the shipped table (4200 > the legacy 4096 target → truncation). It was removed 2026-05-24 along with `compile_core` / `--compile_mode full`, `static_token_count`, `static_pad`, and the flex self-attn pad-mask.
+sd-scripts has no dynamic-seq path, free-fit bucketing or per-block compile. Why
+the earlier static-pad and constant-token-bucket modes were removed:
+[`../structure/anima-optimizations.md`](../structure/anima-optimizations.md) §3.
 
 ---
 
 ## 3. Datasets (`library/datasets/`)
 
-### 3.1 Constant-token buckets (`buckets.py`)
+### 3.1 Free-fit bucketing (`buckets.py`)
 
-`CONSTANT_TOKEN_BUCKETS` — 24 predefined `(W, H)` resolutions grouped into two token-count families, 4032 (= 63·64) and 4200 (= 60·70). Each resolution *exactly* fills its family's count, so there is zero intra-bucket padding by construction. Native shapes are the default mode: every forward runs at its real token count, so `compile_blocks`' flatten makes `torch.compile` trace one block graph per distinct count — just two for this table.
-
-> Free-fit (opt-in `freefit=true`) is the alternative: keep native aspect ratio and land the token count *anywhere* inside a tier's band rather than snapping to these discrete buckets (`freefit_bucket`; `_archive/proposals/free_aspect_token_band_resize.md`). The off-table counts would explode the static graph count, so free-fit requires `compile_dynamic_seq` (auto-enabled when `freefit` + `torch_compile`), which marks only the seq axis dynamic and bounds it to the tier's `seq_range` — collapsing the whole band to one graph. Constant-token bucketing stays the default and stays frozen (the frozen top-5 aspect set `DCW_ASPECT_BUCKETS`, consumed by CNS calibration + mod-distill, is drawn from it); the two modes coexist per-dataset via the `freefit` flag.
-
-```python
-CONSTANT_TOKEN_BUCKETS = [
-    # ---- 4032-token family (63*64) ----
-    (1008, 1024),   # 63 x 64, ar 0.98 (nearest to square)
-    (1024, 1008),   #          ar 1.02
-    (896, 1152),    # 56 x 72, ar 0.78
-    # ... 9 more landscape/portrait pairs
-    (2016, 512),    # 32 x 126, ar 3.94
-    # ---- 4200-token family (60*70) ----
-    (960, 1120),    # 60 x 70, ar 0.86
-    # ... 11 more landscape/portrait pairs
-    (1920, 560),    # 35 x 120, ar 3.43
-]
-```
-
-Two families instead of one because a single count's divisors near √N are sparse (4032 alone jumps aspect 1.29→1.75); interleaving 4032 and 4200 densely covers aspect space at the cost of one extra graph. Note this diverges from `DCW_ASPECT_BUCKETS`: the 832×1248 / 1248×832 HD pair (4056 tokens) is no longer a training bucket.
-
-`BucketManager.make_buckets()` accepts `constant_token_buckets=True` to use these instead of dynamically generated resolutions.
+Each image keeps its native aspect ratio and lands its token count anywhere inside
+its tier's `EDGE_TOKEN_BANDS` band; `make_buckets()` takes the on-disk cached
+`(W,H)` as the bucket set. The many in-band token counts would each be a static
+graph, so free-fit relies on `compile_dynamic_seq` (§2.6). Bands, tier choice and
+the compile coupling: [`../structure/anima-optimizations.md`](../structure/anima-optimizations.md) §3.
 
 ### 3.2 Incomplete batch dropping (`base.py`)
 
@@ -230,15 +181,6 @@ padding_mask_key = (bs, h_latent, w_latent, weight_dtype, accelerator.device)
 padding_mask = self._padding_mask_cache.get(padding_mask_key)
 ```
 
-### 4.4 `constant_token_buckets` plumbed to dataset config
-
-```python
-constant_token_buckets=True,                          # native bucketing (default)
-freefit=bool(getattr(args, "freefit", False)),        # opt-in free-aspect override
-```
-
-Passed through `library/config/` to `BucketManager.make_buckets()`. When `freefit=True` the bucket set becomes the actual on-disk cached `(W,H)` instead of the constant-token table (training auto-enables `compile_dynamic_seq`).
-
 ---
 
 ## 5. LoRA networks (`networks/lora_anima/`)
@@ -267,53 +209,21 @@ def load_state_dict(self, state_dict, strict=True, **kwargs):
 
 sd-scripts: Zero `_orig_mod_` awareness — loading a checkpoint trained with `torch.compile` would fail.
 
-### 5.2 ~~Memory-saving down-projection autograd~~ (REMOVED 2026-06-10)
+### 5.2 Custom down-projection autograd (removed 2026-06-10)
 
-The custom down-projection `autograd.Function` (`custom_autograd.py`) and the
-fp32-bottleneck matmul policy it serviced were removed. The training forward
-ran under `accelerator.autocast()` (default `mixed_precision="bf16"`), and
-autocast re-casts fp32 `F.linear` inputs back to bf16 — so the fp32 matmuls
-never actually executed, the "fp32 activation retained for backward" the
-Function was built to avoid was never retained, and the whole mechanism was
-dead weight plus cast traffic (`x.float()` materialized a fp32 copy of every
-adapted Linear's input that autocast immediately re-rounded — up to ~24%
-module overhead on wide-input Linears). Measured in the `lora_fp32_bottleneck` bench (since removed):
+`custom_autograd.py` and its fp32-bottleneck matmul policy were removed: under
+`accelerator.autocast()` the fp32 matmuls never executed (bit-identical forward in
+the `lora_fp32_bottleneck` bench). Training forwards now run the rank GEMMs in the
+frozen Linear's output dtype (`org_forwarded.dtype`, `networks/lora_modules/base.py`);
+inference paths keep fp32. Regression tests: `tests/test_lora_dtype_policy.py`.
+`use_custom_down_autograd` is still accepted as a logged no-op so old snapshot TOMLs
+replay.
 
-* live-autocast path vs explicit bf16 GEMMs: bit-identical forward (max abs diff 0.0);
-* cuBLAS bf16 GEMMs accumulate in fp32 internally, so the bf16 output sits at
-  the rounding floor (one caveat: `allow_bf16_reduced_precision_reduction`,
-  default True, costs ~1.4× error at k=8192);
-* 200-step Adam probe: final ΔW deviation vs an fp64 run indistinguishable
-  across fp32-bottleneck / bf16 / live-autocast regimes.
-
-The training forwards now compute the rank GEMMs directly in the activation
-dtype (`weight.to(x.dtype)` at the matmul boundary — the same cast autocast
-performed, now explicit and autocast-independent). Inference paths
-(HydraLoRAModule at eval, `ChimeraHydraInferenceModule`, EasyControl KV
-prefill) kept their historical fp32 compute since the inference engine runs
-without autocast. Regression tests: `tests/test_lora_dtype_policy.py`
-(bitwise legacy parity under autocast + dtype honesty).
-
-`use_custom_down_autograd` is still accepted everywhere it used to be (TOML
-allowlist, factory, EasyControl, turbo CLI) but is a logged no-op, so old
-snapshot TOMLs replay cleanly.
-
-Post-removal addendum (2026-06-10, same day): the Function was numerically
-dead weight but NOT memory-dead. Under `torch.compile` an `autograd.Function`
-is traced as a HOP that pins the saved-for-backward set to its
-`ctx.save_for_backward` choice ({x, weight}, casts recomputed in backward).
-With plain traceable ops, AOT's min-cut partitioner chose to save ~0.8 GB more
-intermediates per step — first-step OOM on a 16 GB card at 4200 tokens without
-gradient checkpointing. The generic replacement is
-`activation_memory_budget = 0.85` (base.toml → `torch._functorch.config.
-activation_memory_budget`, set in `train.py` before `compile_blocks`):
-measured identical step time (1.02 vs 1.01 s/it) and identical peak (~15.2 GB
-total) to the custom-Function era on the 26-step probe. It is auto-skipped
-under `gradient_checkpointing` — repartitioning makes checkpoint's recompute
-pass select a different graph than forward (`CheckpointError`, torch #166926),
-and ckpt already minimizes saved activations. Lesson: *numerically-inert ≠
-memory-inert* — removing a custom Function changes partitioning even when its
-math traces identically.
+The removal changed the AOT partitioner's saved-activation set and OOMed the
+16 GB no-grad-ckpt run; the replacement is `activation_memory_budget` (base.toml,
+set in `train.py` before `compile_blocks`, auto-skipped under
+`gradient_checkpointing`). Root cause and measurements:
+[`../findings/custom_autograd_removal_partitioner_oom.md`](../findings/custom_autograd_removal_partitioner_oom.md).
 
 ---
 
@@ -329,13 +239,7 @@ for k, v in lora_sd.items():
 
 ---
 
-## 7. Config (`library/train_util.py` dataset blueprint path)
-
-`generate_dataset_group_by_blueprint()` accepts a new `constant_token_buckets: bool` parameter, forwarded to `dataset.make_buckets()`.
-
----
-
-## 8. CLI arguments
+## 7. CLI arguments
 
 ### Changed behavior
 
@@ -348,18 +252,18 @@ for k, v in lora_sd.items():
 
 ## Summary: the compilation strategy
 
-The key insight is that a DiT training loop has three sources of shape dynamism that trigger `torch.compile` recompilation:
+A DiT training loop has three sources of shape dynamism that trigger `torch.compile` recompilation:
 
 1. Spatial resolution — different bucket sizes produce different `(T, H, W)` token counts.
 2. Caption length — variable text encoder output lengths for cross-attention KV.
 3. Batch size — trailing incomplete batches at epoch boundaries.
 
-The fork eliminates all three:
+The fork bounds all three:
 
 | Source | Solution | Files |
 |--------|----------|-------|
-| Spatial resolution | `CONSTANT_TOKEN_BUCKETS` + `compile_blocks` native-shape flatten (graph keys on token count) | `buckets.py`, `library/anima/models.py` |
+| Spatial resolution | `compile_blocks` native-shape flatten (graph keys on token count) + `compile_dynamic_seq` (one graph per tier band) | `buckets.py`, `library/anima/models.py` |
 | Caption length | Text encoder output zero-padded to a fixed 512-token KV (sink padding) | `library/anima/strategy.py`, `library/anima/models.py` |
 | Batch size | Drop incomplete last batches | `library/datasets/base.py` |
 
-With shapes stabilized, `compile_blocks()` compiles each block's `_forward` with `dynamic=False` — the inductor backend generates optimized kernels once per token-count family (two) and reuses them for every step.
+`compile_blocks()` then compiles each block's `_forward` once per bounded band and reuses the kernels every step.

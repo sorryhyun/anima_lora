@@ -4,8 +4,8 @@ One worker thread drains a ``queue.Queue`` of job ids, spawns each detached
 (so a console ctrl-C can't reach it), and monitors by polling
 ``(pid, create_time)`` liveness rather than awaiting a subprocess transport
 (avoids Windows ProactorEventLoop bugs). On boot it reconciles ``jobs/`` to
-re-attach a still-alive orphan or mark a dead one ``orphaned``. Exactly one job
-runs at a time. See ``anima_daemon/README.md`` for the job lifecycle.
+re-attach a still-alive orphan or finalize a dead one as ``error`` (detail
+``orphaned``). Exactly one job runs at a time. See ``anima_daemon/README.md`` for the job lifecycle.
 """
 
 from __future__ import annotations
@@ -407,8 +407,7 @@ class JobManager:
         with self._lock:
             if job.state != STATE_QUEUED or job.stop_requested:
                 return
-        # Auto-chained train steps skip the guard — the only VRAM in flight is
-        # the just-finished preceding step's still-releasing allocation.
+        # Auto-chained train steps skip the guard (see Job.from_chain).
         if not job.from_chain:
             self._gpu_guard(job)
         self._launch_and_monitor(job)
@@ -939,7 +938,7 @@ class JobManager:
         )
 
     def active_job(self) -> Optional[Job]:
-        """The currently-running job, if any (lock-safe public accessor)."""
+        """The running or paused job, if any (lock-safe public accessor)."""
         with self._lock:
             return self._current_running_locked()
 

@@ -14,11 +14,10 @@ Why this is OK to do on a cross-attention adapter:
     padding region is well-defined as "zero" regardless of ψ.
   * Cross-attention drift outside the diff span: an open empirical question
     (the LLM Adapter cross-attends Qwen3's hidden states, which DO differ
-    between ψ_src and ψ_tar everywhere). Phase 6 must compare slot-surgery vs
-    full-re-encode head-to-head, not just both vs the baseline.
+    between ψ_src and ψ_tar everywhere).
 
-Probe coverage: ``scripts/probes/edit_slot_alignment.py`` reports 10/10 clean
-contiguous spans across replace/remove/add for the cases we care about.
+Probe coverage: ``_archive/text_enc_probes/edit_slot_alignment.py`` reports
+10/10 clean contiguous spans across replace/remove/add.
 """
 
 from __future__ import annotations
@@ -77,7 +76,7 @@ def find_t5_diff_span(
 
     Returns the diff endpoints and the trimmed lengths so callers can locate
     the suffix region without retrimming. Mirrors
-    ``scripts/probes/edit_slot_alignment.py::find_diff_span`` plus the trim
+    ``_archive/text_enc_probes/edit_slot_alignment.py::find_diff_span`` plus the trim
     step the probe does separately, so the regression set carries over.
     """
     src_len = _trim_pad_tail(src_ids, pad_id)

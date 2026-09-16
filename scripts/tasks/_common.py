@@ -96,8 +96,7 @@ def bespoke_preset_flags(preset: str) -> list[str]:
 
     Honored keys: ``blocks_to_swap`` → ``--blocks_to_swap N``;
     ``gradient_checkpointing`` (bool) → ``--grad_ckpt``/``--no_grad_ckpt``
-    (defaults to ``--no_grad_ckpt`` when omitted — these trainable footprints
-    are tiny, so ckpt is a pure perf loss when VRAM isn't tight);
+    (defaults to ``--no_grad_ckpt`` when omitted);
     ``sample_ratio`` → ``--sample_ratio R``. Other preset keys are dropped.
     """
     try:
@@ -431,12 +430,10 @@ def build_launch_cmd(*args: str, python_exe: str | None = None) -> list[str]:
     which ``Popen``s it detached. The nsys wrapper stays in
     ``accelerate_launch`` (CLI-only).
 
-    Single-GPU fast path (default): invoke ``train.py`` directly, skipping the
-    ``accelerate launch`` bootstrap (a second full Python process importing
-    accelerate/torch just to spawn one local worker). ``train.py`` builds its
-    own single-process ``Accelerator()`` and reads ``mixed_precision`` from the
-    config chain itself. Set ``ANIMA_ACCELERATE_LAUNCH=1`` to force the
-    accelerate launcher, which multi-GPU/distributed runs genuinely need.
+    Default: invoke ``train.py`` directly (it builds its own single-process
+    ``Accelerator()`` and reads ``mixed_precision`` from the config chain).
+    ``ANIMA_ACCELERATE_LAUNCH=1`` wraps it in ``accelerate launch`` for
+    multi-GPU/distributed runs.
 
     ``python_exe`` overrides the launching interpreter (default ``PY`` =
     python.exe). GOTCHA: the detached daemon passes ``pythonw.exe`` here — a
@@ -543,7 +540,7 @@ def _resolve_run_mode(extra: list[str]) -> tuple[str, list[str]]:
     Precedence: explicit ``--inline/--queue/--detach/--attach`` flag > the
     ``ANIMA_RUN_MODE`` env var > attach default. When implicit,
     ``PROFILE_STEPS``/``ANIMA_ACCELERATE_LAUNCH`` force inline so the default
-    attach path never silently drops them. An explicit flag always wins.
+    attach path never silently drops them.
     """
     extra = list(extra)
     flagged: str | None = None

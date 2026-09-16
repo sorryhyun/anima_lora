@@ -86,7 +86,7 @@ def spawn_detached(
     Detaching keeps a console ctrl-C from reaching the child:
     ``start_new_session=True`` on POSIX, ``CREATE_NO_WINDOW`` on Windows.
 
-    Windows: ``CREATE_NO_WINDOW``, not ``DETACHED_PROCESS``. A tree with no
+    Windows uses ``CREATE_NO_WINDOW``, not ``DETACHED_PROCESS``: a tree with no
     console at all makes every native compiler ``torch.compile`` shells out to
     (``ptxas.exe``, ``cl.exe``) allocate its own visible console window;
     ``CREATE_NO_WINDOW`` gives the tree a hidden console those grandchildren

@@ -12,7 +12,7 @@ trained for preview-v1.
 make download-anima-variant ARGS=Anima-2.9B-preview-v1
 ```
 
-## What changes on our side: nothing but depth
+## What changes: depth only
 
 Same Qwen3-0.6B text encoder, same Qwen-Image VAE, same 16-channel latents, same
 patch size. TE / VAE / PE caches and the whole preprocess pipeline are reused
@@ -22,7 +22,7 @@ The loader reads depth and width off the checkpoint header
 (`library/anima/weights.py::probe_dit_arch`) and builds the matching module list,
 so there is no flag to set: point `--pretrained_model_name_or_path` (training) or
 `--dit` (inference) at the file. See the *DiT depth is read from the checkpoint*
-invariant in the root `CLAUDE.md` for the contract and its consequences.
+invariant in the root `CLAUDE.md` for the contract and its consequences (adapters are depth-specific; `ss_num_blocks` stamp).
 
 ## Measured envelope (RTX 5070 Ti, 16GB)
 
@@ -58,13 +58,6 @@ correctness but blocks 28–39 train without input rebalancing — regenerate wi
 `scripts/calibration/analyze_lora_input_channels.py` before serious 2.9B runs.
 `dave_alpha.npz` is likewise a 28-vector and raises a clear re-derive error.
 **CNS γ is not depth-baked** — its `(1, 28, 32)` middle axis is timesteps.
-
-### Adapters are depth-specific
-
-Module names carry the block index, so a 40-block adapter merged onto the
-28-block base silently drops its tail blocks behind a `not all LoRA keys are
-used` warning. `save_weights` stamps `ss_num_blocks` so the mismatch is
-machine-detectable.
 
 ## Sample comparison
 

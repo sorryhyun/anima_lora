@@ -16,7 +16,7 @@ ladder, 2026-07-04/05). GUI: Experimental tab → Method → soup.
 ```bash
 make soup PATH_PATTERN="sincos/*"                # attach-by-default (foreground)
 make soup TARGET=sincos                          # shorthand ⇒ PATH_PATTERN="sincos/*" NAME=sincos
-make soup PATH_PATTERN="art_a/*|art_b/*" NAME=ab --queue   # multi-slice, detached
+make soup PATH_PATTERN="art_a/*|art_b/*" NAME=ab ARGS=--queue   # multi-slice, detached
 make soup TARGET=sincos ARGS="--network_dim 32 --max_train_epochs 8"
 ```
 

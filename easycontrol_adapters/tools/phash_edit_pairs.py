@@ -6,25 +6,19 @@ hash, and captions each pair with the **tag delta** between its members — so t
 prompt is an edit instruction ("given this image, apply these changes") rather
 than a description.
 
-Why phash and not the tag delta itself (measured 2026-08-20)
------------------------------------------------------------
-Pairing by caption similarity does not work on the curated training pool:
-``post_image_dataset/`` (3,007 images, all-pairs, every grouping constraint
-lifted) yields **72** pairs at tag-Δ≤16 out of 4.5M — curation stripped the
-variant uploads that make an edit pair. The raw crawl pool
+Why phash (measured 2026-08-20)
+------------------------------
+The curated pool (``post_image_dataset/``, 3,007 images) yields only **72**
+pairs at tag-Δ≤16 — curation stripped the variant uploads. The raw crawl pool
 (``$CAPTION_CORPUS_DIR/retrieved``, 16k images) has them, and ``gelcrawl``
-already caches a 256-bit ``imagehash.phash`` for every file, so the pair search
-is a Hamming threshold over an existing artifact:
+already caches a 256-bit ``imagehash.phash`` per file:
 
-* random pairs sit at phash 128 (= chance for 256 bits); tag-Δ≤16 candidates at
-  median 60 — tag similarity *does* predict image similarity, monotonically,
-  but far too weakly to gate on.
-* ``phash <= 40`` over all 128.9M pairs → ~2.4k aligned pairs in ~7 s of CPU.
-  Spot-checked through phash 36: still genuine in-place variants (censor
-  on/off, speech-bubble removal, expression changes).
-* A tag-Δ prefilter would *discard* ~800 of them (aligned pairs whose caption
-  moved a lot), which is why tag delta is the caption here and phash is the
-  finder.
+* random pairs sit at phash 128; tag-Δ≤16 candidates at median 60 — tag
+  similarity predicts image similarity too weakly to gate on.
+* ``phash <= 40`` over all 128.9M pairs → ~2.4k aligned pairs in ~7 s of CPU,
+  still genuine in-place variants when spot-checked through 36.
+* A tag-Δ prefilter would discard ~800 of them, so phash finds pairs and the
+  tag delta only captions them.
 
 Output shape
 ------------
@@ -39,10 +33,8 @@ view is then materialized as symlinks over it by
 * ``cond/…/{pair}_no_tags_{W'xH'}_anima.npz`` → the cond's latent, keyed by the
   target stem (the EasyControl loader's convention).
 
-Staging per pair the way the other descriptors do would resize and VAE-encode
-the same image once per pair *and* direction it joins — 7,424 encodes over 2,722
-distinct images at the shipped knobs. A latent depends only on the image, so the
-pool is encoded once and only the 3,712 delta captions are TE-encoded.
+Each distinct image is resized and VAE-encoded once (per-pair staging would
+encode it once per pair and direction); only the delta captions are TE-encoded.
 
 Contract (mirrors ``near_twins`` / ``subject_edit_pairs``):
   * reads ``[staging]`` + ``name`` from ``--config`` (default

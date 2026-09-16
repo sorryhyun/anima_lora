@@ -134,7 +134,7 @@ Since the plan2 refactor there is no `use_hydra` flag (passing one raises). The 
 | `route_per_layer` | `True` / `False` | per-Linear router vs. one network-level router |
 | `router_source` | `"none"` / `"input"` / `"sigma"` / `"fei"` / `"crossattn_emb"` | what the router reads |
 
-The paper-faithful HydraLoRA described in this doc is the cell `("shared_A", true, "input")`. Swapping `router_source` to `"sigma"` or `"fei"` keeps the layout but routes by noise level instead of content; `route_per_layer=false` swaps the per-Linear routers for one network-level `GlobalRouter`. The live `configs/methods/lora.toml` default trains no MoE at all — the routed variants are opt-in blocks, and `configs/gui-methods/hydralora.toml` is the ready-made per-variant file.
+The paper-faithful HydraLoRA described in this doc is the cell `("shared_A", true, "input")`. Swapping `router_source` to `"sigma"` or `"fei"` keeps the layout but routes by noise level instead of content; `route_per_layer=false` swaps the per-Linear routers for one network-level `GlobalRouter`. The live `configs/methods/lora.toml` trains no MoE — the routed variants are opt-in via the routing keys, and `configs/gui-methods/hydralora.toml` is the ready-made per-variant file.
 
 OrthoHydra (§5.2) is activated by adding `use_ortho = true` on top of the shared-A axes. `cache_llm_adapter_outputs = true` is assumed by the surrounding training plumbing (as for every LoRA config in this repo).
 

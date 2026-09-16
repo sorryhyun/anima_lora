@@ -643,14 +643,12 @@ class OrthoHydraLoRAModule(RouterStateMixin, BaseLoRAModule):
         ``(E, out, r)``); :meth:`HydraLoRAModule.build_moe_state_dict` expands
         this into per-expert keys.
 
-        GOTCHA (centered_gate parity): the runtime MoE form combines ups with
-        the raw softmax gate (``Σ_e g_e P_e``), but a checkpoint trained with
-        ``ortho_centered_gate=True`` computed ``Σ_e (g_e - 1/E) P_e`` — an
-        extra ``-(1/E)Σ_e P_e`` mean-expert bias this distilled form does NOT
-        carry. In-training CMMD validation (live centered forward) is
-        faithful; the deployed distilled ``_moe`` checkpoint is not, until the
-        router-live node subtracts the mean expert. Treat centered_gate as
-        train/research-only for now.
+        Centered-gate parity: a checkpoint trained with
+        ``ortho_centered_gate=True`` computed ``Σ_e (g_e - 1/E) P_e``, which the
+        distilled ups do not encode. ``save_weights`` stamps
+        ``ss_ortho_centered_gate`` and the loader (``HydraLoRAModule``
+        ``centered_gate``) subtracts ``1/E`` at runtime; a loader that ignores
+        the stamp is off by the mean expert.
         """
         prefixes = set()
         for key in list(state_dict.keys()):

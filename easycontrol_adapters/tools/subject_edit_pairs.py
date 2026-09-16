@@ -1,20 +1,16 @@
 """Delta-caption edit-pair miner for the EasyControl *subject_edit* descriptor.
 
-Phase 2.5 of the directedit_ec line (archived: _archive/directedit_ec/roadmap.md): same
-mined cross-image pairs as the subject descriptor (cond = image A of a
+Same mined cross-image pairs as the subject descriptor (cond = image A of a
 character, target = image B of the SAME character), but the prompt is the
-**tag delta** between the two captions instead of B's full caption:
+**tag delta** between the two captions instead of B's full caption
+(background: ``_archive/directedit_ec/roadmap.md``):
 
     additions = B's tags not in A   (in B's caption order)
     removals  = A's tags not in B   (prefixed, e.g. ``-hat``)
 
-The prompt stops being a description and becomes an *edit instruction* —
-"given this image, apply these changes". Shared tags cancel, so the character
-NAME tag drops out of the prompt whenever both captions carry it: the cond
-stream is the only identity source, which structurally starves the name-tag
-shortcut the subject probe had to control for. Targets are real corpus images,
-so unlike the Phase-3 teacher-distillation path there is no teacher ceiling
-and no tagger-readback dependency.
+The prompt is an *edit instruction*. Shared tags cancel, so the character
+NAME tag drops out whenever both captions carry it and identity must come from
+the cond stream.
 
 Pair quality is delta-driven: the default partner policy picks the group
 member with the SMALLEST symmetric tag difference (same character + small

@@ -1,14 +1,14 @@
 """Mangafication: color illustration → synthetic B&W manga (lineart + screentone).
 
-v0 — pure ``cv2`` / ``numpy``, no model downloads. Produces a 3-channel
-grayscale RGB image approximating a real screentoned manga page, used as the
-*condition* (target = original color image) for the colorization adapter.
+Pure ``cv2`` / ``numpy``, no model downloads. Produces a 3-channel grayscale
+RGB image approximating a screentoned manga page, used as the *condition*
+(target = original color image) for the colorization adapter.
 
 Pipeline: XDoG lineart (crisp ink contours) → luminance-banded screentone
 (each band gets its own seeded dot/line/cross pattern + period/angle, so
 texture changes where value changes) → composite line over tone as 3-channel
 RGB. Per-image jitter (seeded by stem) keeps the model from keying on one
-fixed screen operator. See ``README.md`` for the learned-lineart Phase B.
+fixed screen operator.
 """
 
 from __future__ import annotations
@@ -38,17 +38,17 @@ _TONE_BLACK_CUT = 0.10  # luminance <= this -> solid black (deep shadow)
 # Real manga mixes clustered-dot, parallel-line/hatch, and cross-hatch tone; each
 # luminance band (see below) draws its own pattern so texture changes where value does.
 _TONE_KINDS = ("dot", "line", "cross")
-# Weighted draw per band. For this smooth-shaded illustration data, line/cross hatch
-# over a large flat region reads as awkward dense stripes, so they're weighted to
-# ~0 but kept in the table (the draw still consumes one rng slot per band either way).
-_TONE_KIND_WEIGHTS = (0.8, 0.2, 0.0)  # P(dot, line, cross) — dot-only
+# Weighted draw per band. Hatch over large flat regions of smooth-shaded
+# illustrations reads as dense stripes, so line is down-weighted and cross is off;
+# every kind stays in the table (the draw consumes one rng slot per band either way).
+_TONE_KIND_WEIGHTS = (0.8, 0.2, 0.0)  # P(dot, line, cross)
 # The toned luminance range is split into this many bands per image; each gets its
 # own pattern/angle/period. 1 = single tone whole image.
 _TONE_BAND_COUNTS = (1, 2, 3, 4)
 _TONE_BAND_WEIGHTS = (0.10, 0.40, 0.35, 0.15)
 # Shadow-detail lift: a shadow-gated unsharp mask on the tone-fill luminance so dark
 # fabric/hair keeps its fold/weave relief instead of crushing to flat black, without
-# lifting the darkness itself (CLAHE was tried first but washes out the value instead).
+# lifting the darkness itself.
 # Gated off above `_DETAIL_GATE_HI` to keep skin/highlights faithful. XDoG still runs
 # on raw luminance. `_DETAIL_AMOUNT = 0` disables.
 _DETAIL_AMOUNT = 1.0  # unsharp strength on shadow local-contrast; 0 -> no lift

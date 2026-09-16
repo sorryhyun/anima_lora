@@ -15,7 +15,7 @@ QA `easycontrol_adapters/region/contact_sheet.py`.
 make easycontrol-staging    EASYADAPTER=region   # select · SAM · cond · captions  (GPU: SAM3)
 python easycontrol_adapters/region/contact_sheet.py   # → {base}/contact_sheets/index.html
 make easycontrol-preprocess EASYADAPTER=region   # VAE cond latents + TE variants
-make easycontrol            EASYADAPTER=region --queue
+make easycontrol            EASYADAPTER=region ARGS=--queue
 make daemon-run ARGS="--label region-bench bench/region/run_bench.py --label v5"
 ```
 

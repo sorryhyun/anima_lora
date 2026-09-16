@@ -19,10 +19,9 @@ def apply_variant(w: QWidget, variant: str | None) -> None:
     The saturated action colors live in the global stylesheet as
     ``[variant="…"]`` rules (see :data:`gui.theme.ACTION_COLORS`). Setting the
     dynamic property after a widget is realized does **not** restyle it until the
-    style is re-polished — hence the unpolish/polish dance. This is what a state
-    flip uses (idle→busy swaps the variant in one line instead of swapping a
-    whole stylesheet string). Pass ``None``/"" to clear back to the neutral
-    default button look.
+    style is re-polished — hence the unpolish/polish. Use it for state flips
+    (idle→busy). Pass ``None``/"" to clear back to the neutral default button
+    look.
     """
     w.setProperty("variant", variant or "")
     style = w.style()

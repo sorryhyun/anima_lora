@@ -68,11 +68,9 @@ def _stable_seed(name: str) -> int:
 def _save_png_atomic(arr: np.ndarray, out: Path) -> None:
     """Write ``arr`` to ``out`` atomically — temp file in the same dir + os.replace.
 
-    A direct ``Image.save(out)`` interrupted mid-write leaves a truncated PNG that
-    the ``out.exists()`` skip-check then keeps forever, blowing up only later at
-    VAE decode. Writing to a unique temp in the same directory and ``os.replace``-ing
-    it in means the final name only ever appears fully written (atomic on one fs);
-    on any failure the temp is removed."""
+    An interrupted direct save leaves a truncated PNG that the ``out.exists()``
+    skip-check keeps forever (it fails later at VAE decode). On failure the temp
+    is removed."""
     out.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=out.parent, suffix=".tmp.png")
     os.close(fd)
@@ -234,11 +232,9 @@ def stage_text(
 ):
     """Cache **full-caption** TE embeddings with shuffle + tag-dropout variants.
 
-    Unlike colorize's text stage there is NO caption filter — inpaint reuses the
-    full caption (the hole content is described by it). With ``shuffle_variants > 0``
-    each cache holds v0 (the verbatim caption) plus shuffled variants with
-    ``tag_dropout_rate`` of the tags dropped — teaching the model to fill from a
-    *partial* caption (mostly context-driven) as well as the full spec. The
+    No caption filter. With ``shuffle_variants > 0`` each cache holds v0 (the
+    verbatim caption) plus shuffled variants with ``tag_dropout_rate`` of the
+    tags dropped. The
     ``@artist`` prefix is auto-protected from both shuffle and dropout by
     ``caption_variants`` (no ``caption_transform``/``protect_fn`` needed here).
 
@@ -347,9 +343,7 @@ def main() -> None:
         "--cond_cache_dir", default="post_image_dataset/easycontrol/inpaint/cond"
     )
     parser.add_argument("--vae", default="models/vae/qwen_image_vae.safetensors")
-    # Match scripts/preprocess/cache_latents.py: 2D fold ON by default so cond
-    # latents are encoded by the SAME VAE path as the target latents in
-    # post_image_dataset/lora/ (and ~2x faster). --no_vae_2d for the stock 3D VAE.
+    # 2D fold ON by default to match the target cache; see stage_encode.
     parser.add_argument(
         "--vae_2d",
         "--qwen_image_vae_2d",

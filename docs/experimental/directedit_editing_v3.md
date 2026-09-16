@@ -196,31 +196,13 @@ KSampler-style refiners. The pre-0.2.0 debug `prompt_src` / `prompt_tar`
 STRING outputs were dropped; the same values are already on canvas
 upstream of the node's STRING inputs.
 
-#### What 0.2.0 removed
+#### Removed in 0.2.0
 
-The 0.1.x node embedded captioning + edit-target derivation inside
-`AnimaDirectEdit` itself:
-
-* `tagger` (`ANIMA_TAGGER`) socket — ran `AnimaTagger.predict_caption`
-  on the image to derive ψ_src.
-* `prompt_src_override` STRING — escape hatch when the user wanted to
-  paste ψ_src directly.
-* `edit_text` STRING — short edit instruction; ψ_tar built as
-  `psi_src + ", " + edit_text` (or via the dispatcher below).
-* `use_dispatcher` / `replace_threshold` / `replace_gap` — ran
-  `library.inference.edit_dispatcher.derive_target_caption`, which used
-  Qwen3 last-pool cosine similarity to choose between REPLACE / REMOVE
-  / APPEND from `edit_text` against an existing tag in ψ_src.
-
-All of the above were removed in 0.2.0. The node is now agnostic about
-where its caption strings come from — pipe in `AnimaTaggerCaption` from
-the sibling `comfyui-anima-tagger` package if you want image-driven
-captioning, paste the original generation prompt, hand-type the
-captions, or run any other STRING-producing node. The dispatcher's
-intent (RANK / REPLACE / REMOVE / APPEND from a single edit instruction)
-becomes the caller's responsibility — typically expressed as a hand-
-edited `target_tag` that mirrors `source_tag` with the relevant tag(s)
-added, swapped, or removed.
+The `tagger` socket, `prompt_src_override`, `edit_text` and the dispatcher knobs
+(`use_dispatcher` / `replace_threshold` / `replace_gap`) are gone. The node takes
+ψ_src / ψ_tar as plain STRING inputs — pipe in `AnimaTaggerCaption` from
+`comfyui-anima-tagger`, paste the generation prompt, or hand-edit a `target_tag`
+that mirrors `source_tag` with the tag(s) added, swapped or removed.
 
 #### Pipeline
 

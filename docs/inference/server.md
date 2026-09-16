@@ -3,9 +3,8 @@
 `scripts/inference_server.py` — load the DiT / VAE / text-encoder once and
 serve many generations over a localhost HTTP port, instead of paying the
 model-load cost per image. It's the inference counterpart of the training
-`anima_daemon/`: same discoverability skin (a localhost port + a pidfile at a
-fixed per-user location), wrapped around the resident-model lifetime the Anima
-Tagger's `anime_tools.tagger.cli.autotag_server` worker established.
+`anima_daemon/`, with the same discovery mechanism (a localhost port + a pidfile
+at a fixed per-user location).
 
 The generation engine is unchanged — the server is a thin HTTP shell over the
 existing programmatic API (`get_generation_settings` → `generate(…,
@@ -13,13 +12,12 @@ shared_models=…)` → `decode_to_pil`, the same calls `examples/01_generate.py
 makes). `generate()` already reuses a warm DiT out of `shared_models["model"]`
 and never frees it; the server just keeps that dict alive across requests.
 
-## Why a separate process (and not a daemon job kind)
+## Separate process from the training daemon
 
 The training daemon's whole contract is to free the GPU between serial,
 mutually-exclusive jobs — `manager._gpu_guard` actively reaps VRAM before each
-launch. A resident inference model is the opposite workload, so it can't live
-*inside* the daemon. Instead it runs as its own "polite tenant" process that
-yields the card when training needs it (see *Coexistence* below).
+launch. A resident inference model is the opposite workload, so it runs as its own
+process that yields the card when training needs it (see *Coexistence* below).
 
 | | Resident inference server | Training daemon |
 |---|---|---|
@@ -89,9 +87,6 @@ starve a training launch of VRAM:
    `$ANIMA_INFERENCE_IDLE_TTL` seconds idle (default 600; `0` disables, also
    `--idle-ttl`), so a forgotten server doesn't camp on the card. The reaper
    skips an in-flight generation (non-blocking lock acquire).
-
-The net effect: the daemon stays the GPU's traffic cop, and the inference server
-is warm-but-yielding.
 
 ## Adapter switching
 
