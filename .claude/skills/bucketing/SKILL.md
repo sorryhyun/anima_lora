@@ -5,20 +5,16 @@ description: Free-fit native-shape bucketing — the token bands per edge tier, 
 
 # Free-fit bucketing
 
-Free-fit is the **sole** resize mode. The discrete constant-token bucket pool
-(`CONSTANT_TOKEN_BUCKETS` and the per-tier tables) was removed 2026-06-19; the migration
-kept only each tier's numeric token band in `EDGE_TOKEN_BANDS`. There is no `freefit`
-flag any more — it's implicit. The legacy pad-to-static path went 2026-05-24
-(`static_token_count` / `static_pad` etc.).
-
-Free-fit keeps each image's **native aspect ratio** and lands its patch-grid token count
-*anywhere* inside its tier's band, driving crop loss to ~zero (sub-patch <16px residual).
+Free-fit is the **sole** resize mode: each image keeps its **native aspect ratio** and
+lands its patch-grid token count *anywhere* inside its tier's band, driving crop loss to
+~zero (sub-patch <16px residual). The discrete `CONSTANT_TOKEN_BUCKETS` pool it replaced
+is gone from the resize path; the name survives only in older docs and node READMEs.
 
 **Ownership**: `freefit_bucket` / `freefit_band_for_edge` are **owned by
-`anime_tools.buckets` since 2026-09-03**, re-exported by `library/datasets/buckets.py`
-the way `library/models/pe.py` re-exports the PE tower. The resize pass itself is the
-package's `anime_tools.stages.resize`, which `make preprocess-resize` runs as a
-`ResizeRequest` (see the `anime-tools` skill). Design:
+`anime_tools.buckets`**, re-exported by `library/datasets/buckets.py` the way
+`library/models/pe.py` re-exports the PE tower. The resize pass itself is the package's
+`anime_tools.stages.resize`, which `make preprocess-resize` runs as a `ResizeRequest`
+(see the `anime-tools` skill). Design:
 `_archive/proposals/free_aspect_token_band_resize.md`.
 
 ## Tiers
@@ -43,7 +39,7 @@ The 1024 tier's band is **frozen at (4032, 4200)** (`FREEFIT_FROZEN_EDGES`) beca
 frozen top-5 aspect set (`DCW_ASPECT_BUCKETS`, consumed by CNS calibration + mod-distill)
 is drawn from it. All tiers stay within the rope cap (≤256 patches/axis).
 
-## Compile coupling — the load-bearing part
+## Compile coupling
 
 Free-fit populates many distinct `(W,H)` inside a tier's band, which would explode the
 static N-graph cascade, so it **requires `compile_dynamic_seq`** — auto-enabled by
@@ -61,12 +57,12 @@ graph keys on **token count alone** — bit-exact to the eager 5D path.
 `make_buckets()` uses the actual on-disk cached `(W,H)` as the bucket set, so nothing
 AR-snaps at load.
 
-**Training is self-describing and does NOT need `--target_res`** (a preprocess-only
-knob): every cached latent exact-matches its true `(W,H)`, and the
-`compile_blocks(n_token_families=…)` dynamo budget is derived from the buckets the
-`path_pattern`-filtered images **actually populate** (`train.py::_derive_token_budget`)
-**plus the sample-prompt resolutions when sampling is enabled**. A sample prompt outside
-the training range added to the file *mid-run* is skipped with a warning at sample time.
+**Training does not need `--target_res`** (a preprocess-only knob): every cached latent
+exact-matches its true `(W,H)`, and the `compile_blocks(n_token_families=…)` dynamo budget
+is derived from the buckets the `path_pattern`-filtered images **actually populate**
+(`train.py::_derive_token_budget`) **plus the sample-prompt resolutions when sampling is
+enabled**. A sample prompt outside the training range added to the file *mid-run* is
+skipped with a warning at sample time.
 
 **Snap-era caches still train fine** — a snap pool is just a free-fit pool that landed
 only on the old discrete counts. Re-preprocess only to gain the reduced-crop benefit.

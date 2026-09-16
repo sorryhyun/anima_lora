@@ -9,10 +9,10 @@ by both training and inference.
 
 | Path | Role |
 |------|------|
-| `__init__.py` | `NetworkSpec` registry (`NETWORK_REGISTRY`) + the `NETWORK_KWARGS` TOML allowlist + `resolve_network_spec()` (maps the three-axis cfg → a registry entry). **`NETWORK_KWARGS` is auto-derived** (`_derive_network_kwargs` AST-scans `config.py` / `factory.py` / `__init__.py` for `kwargs.get("literal")` reads), so a new cfg+TOML net kwarg registers from its read alone — **just add the `kwargs.get("foo")` read, no separate allowlist edit** (recognizes the `kwargs.get` form only; a non-`kwargs.get` read won't be picked up). |
+| `__init__.py` | `NetworkSpec` registry (`NETWORK_REGISTRY`) + the `NETWORK_KWARGS` TOML allowlist + `resolve_network_spec()` (maps the three-axis cfg → a registry entry). **`NETWORK_KWARGS` is auto-derived** (`_derive_network_kwargs` AST-scans `config.py` / `factory.py` / `__init__.py` for `kwargs.get("literal")` reads), so a new cfg+TOML net kwarg registers from its `kwargs.get("foo")` read alone, with no separate allowlist edit — the `kwargs.get` form only; a non-`kwargs.get` read won't be picked up. |
 | `lora_anima/` | LoRA network creation, module targeting, timestep-masking orchestration, global routing. Split into `network.py` (assembly/runtime core), `network_metrics.py` (read-side metrics/diagnostics mixin — balance loss, router stats, ortho reg), `routers.py` (`GlobalRouter` / `FreqRouter` / `ContentRouter`, re-exported from `network.py` for back-compat), `factory.py`, `loading.py`, and `config.py`. |
-| `lora_modules/` | Per-variant module implementations: `lora.py`, `ortho.py`, `hydra.py`, `stacked_experts.py`, `chimera.py`, `step_expert.py` (shared-down + K step-selected up-heads for the turbo DP-DMD student), plus `base.py` and `router_state.py` (shared σ/FEI/routing-weights buffer protocol for Hydra/OrthoHydra/StackedExperts — keeps the global-router grad path identical across all three; the per-module `set_sigma`/`set_fei`/`set_routing_weights`/`clear_*` method surface is the `RouterStateMixin` in that file, buffer-presence-guarded so a module inherits the full surface with absent buffers as safe no-ops). Training forwards compute their rank GEMMs in the **model compute dtype** (`org_forwarded.dtype` — NOT `x.dtype`; AdaLN LayerNorm hands fp32 under autocast(bf16). Bit-identical to the fp32-bottleneck path removed 2026-06-10 — see `tests/test_lora_dtype_policy.py` (the `lora_fp32_bottleneck` bench that proved it is also removed)); inference paths keep fp32. The removed custom-autograd Function was also an implicit partitioner boundary — its memory role is now covered by `activation_memory_budget` (base.toml, 0.99 — the settled knee, never 0.85; no-grad-ckpt runs only). Each module class owns its own save-pipeline hook (`distill_save_state_dict` / `build_moe_state_dict`) — the Cayley/SVD math and per-pool MoE layout live next to the variant that defined them. |
-| `attn_fuse.py` | `AttnFuseSpec` + `iter_split_groups` + `match_fused_spec` — single source of truth for the runtime-fused `qkv_proj`/`kv_proj` ↔ on-disk split `q/k/v_proj` layout. Sits at the `networks/` top level so save (`lora_save.py`) and load (`lora_anima/loading.py`) both reach it without a cross-package import. |
+| `lora_modules/` | Per-variant module implementations: `lora.py`, `ortho.py`, `hydra.py`, `stacked_experts.py`, `chimera.py`, `step_expert.py` (shared-down + K step-selected up-heads for the turbo DP-DMD student), plus `base.py` and `router_state.py` (shared σ/FEI/routing-weights buffer protocol for Hydra/OrthoHydra/StackedExperts — keeps the global-router grad path identical across all three; the per-module `set_sigma`/`set_fei`/`set_routing_weights`/`clear_*` method surface is the `RouterStateMixin` in that file, buffer-presence-guarded so a module inherits the full surface with absent buffers as safe no-ops). Training forwards compute their rank GEMMs in the **model compute dtype** (`org_forwarded.dtype` — NOT `x.dtype`; AdaLN LayerNorm hands fp32 under autocast(bf16); pinned by `tests/test_lora_dtype_policy.py`); inference paths keep fp32. Rank-GEMM activation memory is governed by `activation_memory_budget` (base.toml, 0.99 — the settled knee, never 0.85; no-grad-ckpt runs only). Each module class owns its own save-pipeline hook (`distill_save_state_dict` / `build_moe_state_dict`) — the Cayley/SVD math and per-pool MoE layout live next to the variant that defined them. |
+| `attn_fuse.py` | `AttnFuseSpec` + `iter_split_groups` + `match_fused_spec` — the fuse↔split layout contract (§Attn fuse spec). Sits at the `networks/` top level so save (`lora_save.py`) and load (`lora_anima/loading.py`) both reach it without a cross-package import. |
 | `lora_save.py`, `lora_utils.py` | Thin save-pipeline orchestrator + shared helpers. `lora_save.save_network_weights` calls each variant's `distill_save_state_dict` in fixed order, then dispatches to the matching `build_moe_state_dict`. Owns only the legacy sig-type OrthoLoRA distill (no live module class for it) and the variant-write sibling-file naming. |
 | `methods/base.py` | Shared lifecycle base for the non-LoRA adapter networks (`easycontrol`, `soft_tokens`) — common `set_multiplier` / `is_mergeable` / `enable_gradient_checkpointing` trainer-facing protocol. |
 | `protocol.py` | `typing.Protocol` description of the adapter-network surface every network duck-types to: `AdapterNetwork` (core trainer-facing lifecycle) + `RouterConditionableNetwork` (optional per-step routing setters, LoRA-family only). Not an enforced base — consumers keep `hasattr`-probing; the protocol is greppable docs + a contract test (`tests/test_adapter_protocol.py`, which also guards the inference↛training import boundary). |
@@ -22,37 +22,27 @@ by both training and inference.
 | `register_injection.py` | `RegisterInjector` — shared DSR register-token machinery (`_run_blocks` wrap + mid-stack pre-hooks + rope extension + adoption metrics). Two owners: the standalone register method (`methods/register.py`) and the LoRA family (`num_registers > 0` in a lora TOML = full LoRA trained jointly with K learnable registers; param at top-level dot-free key `register_tokens`, own lr group at `unet_lr × register_lr_scale`, kept-live at inference — `is_mergeable()` False, merge refused, `load_dit_model` auto-detects the key and attaches dynamic hooks; REPA capture auto-trims the K trailing tokens). |
 | `grad_basis.py` | Gradient-SVD `lora_down` init (`down_init="grad_svd"` / `"basis_file"`) — the frozen-DiT gradient sketch `S = Ωᵀ G`, the fp16 `in × r` basis artifact (`ss_num_blocks`-stamped; **depth-baked**, `load_basis` refuses a mismatch), and the shared `V_rᵀ/√3` copy so a gradient seed is a direction change and not a step-size change. `train.py` runs the per-run sketch before `_create_and_apply_network` (refused under block swap) and hands the factory a `grad_basis_file`, so both modes share one load path. See `docs/methods/svd-down-lora.md` §Gradient-seeded siblings, `docs/proposal/grad_basis_init.md`. |
 | `attention_dispatch.py` | Unified `dispatch_attention()` — backend router (SDPA / FA2 / FA3 / sageattn / flex). |
-| `spectrum.py` | Spectrum inference acceleration (Chebyshev feature forecasting). See root CLAUDE.md §Spectrum and `docs/inference/spectrum.md`. |
+| `spectrum.py` | Spectrum inference acceleration (Chebyshev feature forecasting). See `docs/inference/spectrum.md`. |
 | `spd.py` | Spectral Progressive Diffusion — training-free inference acceleration (grow spatial resolution along the trajectory, spectral noise-expansion handoff). Sampler-level runner registered like Spectrum. See `docs/inference/spd.md`. |
 | `foveated.py` | Deferred-foveated merge — training-free inference acceleration (full grid above σ_c, then fovea tokens 1:1 + periphery 2×2-token groups merged via the `token_merger` forward kwarg; endogenous `combo` mask). Sampler-level runner registered like Spectrum/SPD. See `docs/inference/foveated.md`. |
 | `calibration/` | Shipped calibration artifacts: `channel_stats.safetensors` + `cond_channel_stats.safetensors` (per-channel scaling, main + EasyControl cond stream — see `docs/optimizations/channel_scaling.md`; inert on frozen-basis ortho variants) + `cns_gamma.npz` (CNS γ schedule, also auto-downloaded from a release) + `dave_alpha.npz` (DAVE). |
 
-## Three-axis routing surface (plan2)
+## Three-axis routing surface
 
-As of commit `1dca212`, the LoRA-family routing flags collapsed into three orthogonal
-cfg axes consumed by `lora_anima/config.py::LoRANetworkCfg.from_kwargs` and dispatched
-by `__init__.py::resolve_network_spec`:
-
-| Knob | Values | Meaning |
-|---|---|---|
-| `use_moe_style` | `False` / `"shared_A"` / `"independent_A"` | Expert layout — no experts, Hydra-style shared `lora_down`, or stacked per-expert `(lora_down, lora_up)`. |
-| `route_per_layer` | `True` / `False` | Router location — per-Linear (Hydra default) or one network-level router. |
-| `router_source` | `"none"` / `"input"` / `"sigma"` / `"fei"` / `"crossattn_emb"` | What signal the router reads — Linear input, σ-features, FEI on `z_t`, pooled cross-attention text features (the DiT's K/V), or no router. `"input"` requires `route_per_layer=True`; `"crossattn_emb"` requires `route_per_layer=False`. |
-
-The matrix cells map to concrete variants: plain LoRA / OrthoLoRA / T-LoRA
-(`use_moe_style=False`), HydraLoRA and its σ/FEI-routed forms (`"shared_A"` + per-layer
-router — FEI-on-Hydra is the lora.toml default), FeRA (`"independent_A"` +
-`GlobalRouter`), and the text-routed `"crossattn_emb"` cell. Pre-plan2 metadata stamps
-(`ss_use_hydra`, `ss_use_fei_router`, `ss_network_module = "networks.methods.fera"`)
-**no longer load**; the new stamps are `ss_use_moe_style` / `ss_route_per_layer` /
-`ss_router_source`. `use_ortho` (Cayley/PSOFT) and `use_ortho_init` (trainable
-SVD-seeded bases) are per-module bools, mutually exclusive.
+The LoRA-family routing cfg is three orthogonal axes — `use_moe_style` /
+`route_per_layer` / `router_source` — parsed by
+`lora_anima/config.py::LoRANetworkCfg.from_kwargs` and dispatched by
+`__init__.py::resolve_network_spec` to a `NETWORK_REGISTRY` entry. `use_ortho`
+(Cayley/PSOFT) and `use_ortho_init` (trainable SVD-seeded bases) are per-module bools,
+mutually exclusive.
 
 **Load the `lora-routing` skill before adding/changing a variant or touching routing
-code** — it holds the full variant matrix, per-variant module details
-(LoRA/Ortho/OrthoInit/T-LoRA/Hydra/FeRA, ReFT's removal), ortho/ortho_init composition
-rules, and the `GlobalRouter` mechanics (zero-init gates, `set_fei` reference-write into
-every module's `_routing_weights` buffer, and the router-collapse failure mode).
+code** — it holds the axis values and their constraints, the full variant matrix,
+per-variant module details (LoRA/Ortho/OrthoInit/T-LoRA/Hydra/FeRA), the metadata stamps
+(`ss_use_moe_style` / `ss_route_per_layer` / `ss_router_source`, and which pre-plan2
+stamps no longer load), ortho/ortho_init composition rules, and the `GlobalRouter`
+mechanics (zero-init gates, `set_fei` reference-write into every module's
+`_routing_weights` buffer, and the router-collapse failure mode).
 
 ## Attn fuse spec (qkv/kv fuse↔split)
 
@@ -71,11 +61,8 @@ for SDPA/sageattn, BLHD for flash-attn — so callers must hand tensors to the d
 in a known layout and the dispatcher transposes as needed. Check the backend branches
 before adding new attention call sites.
 
-FA4 (flash-attention-sm120) was evaluated and is currently disabled — see
-`docs/optimizations/fa4.md`. The KV-trim + LSE-correction path that depended on FA4 was
-removed (the `crossattn_full_len` field and `trim_crossattn_kv` flag are gone as of
-2026-05-20); only the `flash4` branch stub remains in the dispatcher. See fa4.md for
-what re-enabling FA4 would entail.
+FA4 (flash-attention-sm120) is disabled — `attn_mode="flash4"` raises in the dispatcher.
+What re-enabling it would entail: `docs/optimizations/fa4.md`.
 
 ## compile_blocks() and forward hooks
 
@@ -96,10 +83,10 @@ what re-enabling FA4 would entail.
 
 ## Timestep masking — when to update what
 
-T-LoRA's mask is a single CPU/GPU buffer shared across all adapted Linears, updated once
-per denoising step from `lora_anima/network.py`. Anything that calls into LoRA modules
-during a forward must have the mask set for the current `t` already — `factory.py` and
-`network.py` are the only places that should be poking `set_timestep_mask` /
-`clear_timestep_mask`. New adapter variants that want timestep awareness should reuse
-the same buffer pattern (register as a buffer in `base.py`, read it inside `forward`)
-rather than threading `t` through every call site.
+T-LoRA's mask is a single CPU/GPU buffer shared across all adapted Linears, owned by
+`lora_anima/network.py::LoRANetwork.set_timestep_mask` / `clear_timestep_mask` and fired
+once per step from `library/training/forward/router_conditioning.py`. Anything that calls
+into LoRA modules during a forward must have the mask set for the current `t` already.
+New adapter variants that want timestep awareness should reuse the same buffer pattern
+(register as a buffer in `base.py`, read it inside `forward`) rather than threading `t`
+through every call site.

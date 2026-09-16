@@ -1,16 +1,14 @@
 # configs/ — the merge chain
 
-Guidance for working inside `configs/`. The root `CLAUDE.md` carries only the kernel
-(the chain order, method-beats-preset, and the two mask lines); the mechanics are here.
-Key-by-key semantics of `base.toml` are documented for users in
+Mechanics of the `configs/` tree. Key-by-key semantics of `base.toml` for users:
 `docs/guidelines/base-config.md`.
 
-Three-layer merge: `base.toml → presets.toml[<preset>] → methods/<method>.toml → CLI
-args`. **Method settings win over preset settings on overlap**, so a method can force its
-own hardware requirements (e.g. a frozen-DiT method forcing `blocks_to_swap=0`).
+`base.toml → presets.toml[<preset>] → methods/<method>.toml → CLI args`, **method
+settings win over preset settings on overlap**.
 `library.config.io.load_method_preset(method, preset, methods_subdir=...)` is the
-reusable merge helper (not re-exported via `train_util`). `make print-config METHOD=…
-PRESET=…` dumps the merged chain. All config paths are relative to the repo root.
+reusable merge helper (also re-exported from `library.train_util`). `make print-config
+METHOD=… PRESET=…` dumps the merged chain. All config paths are relative to the repo
+root.
 
 ## `base.toml` — infra + the default dataset blueprint
 
@@ -37,8 +35,7 @@ Preprocess knobs split out of `base.toml` (`source_image_dir`, `drop_lowres_imag
 `min_pixels`, **`target_res`**, **`mask_dir`**). Read by the preprocess pipeline via
 `load_path_overrides`, layered **`preprocess.toml → base.toml → preset → method`** —
 preprocess.toml is read *first*, so a legacy copy of any of these keys still sitting in
-`base.toml` keeps winning (backward compatible). It lives here precisely because
-base.toml is overwritten on `make update` and this file is not.
+`base.toml` keeps winning (backward compatible).
 
 `train.py` never reads the filter knobs, **but `target_res` and `mask_dir` are dual-use**:
 `load_method_preset` seeds both from preprocess.toml at lowest priority (preset / method /
@@ -65,29 +62,26 @@ paths) stays in `base.toml` because the dataset blueprint interpolates
 
 ## `presets.toml` — hardware profiles
 
-Sections `[default]`, `[fast_16gb]`, `[low_vram]` (also Windows 8GB), `[half]`. Holds
-`blocks_to_swap`, gradient/offload checkpointing, etc.
+Sections `[default]`, `[low_vram]` (also Windows 8GB), `[graft]`, `[half]`, `[quarter]`,
+`[tenth]`, `[debug]`. Holds `blocks_to_swap`, gradient/offload checkpointing, etc.
 
 ## `methods/` — one flat file per family
 
-Read by `train.py` (`lora`, `chimera`, `soft_tokens`, `byg`), each holding rank + routing
-knobs + opinionated LR/epochs/output_name. Variants inside `lora.toml` are comment-toggle
-blocks; the default stacks LoRA + OrthoLoRA + T-LoRA + shared_A FEI-routed Hydra (routing
-surface: the `lora-routing` skill).
+Read by `train.py` (`lora`, `chimera`, `soft_tokens`, `byg`, `register`), each holding
+rank + routing knobs + opinionated LR/epochs/output_name. Variants inside `lora.toml` are
+comment-toggle blocks; the default stacks LoRA + OrthoLoRA + T-LoRA + shared_A FEI-routed
+Hydra (routing surface: the `lora-routing` skill).
 
 `turbo.toml` is the **odd one out** — a bespoke sectioned schema read only by
 `scripts/distill_turbo/`. Don't `print-config METHOD=turbo`.
 
-**Pre-three-axis checkpoints (`ss_use_hydra` / `ss_use_fei_router` metadata) no longer
-load** — the legacy fallback was removed.
-
 ## Self-contained per-method dir — `<method>/<method>.toml`
 
-The consolidated layout: method config **+** full inline dataset blueprint in one file,
-no `dataset_config` cross-reference. `_resolve_method_path` (`library/config/io.py`)
-**prefers** `configs/<method>/<method>.toml` over the flat `configs/methods/<method>.toml`
-when present (default `methods` subdir only — `gui-methods` stays flat), so `--method
-<m>` auto-discovers it with no new flags.
+Method config **+** full inline dataset blueprint in one file, no `dataset_config`
+cross-reference. `_resolve_method_path` (`library/config/io.py`) **prefers**
+`configs/<method>/<method>.toml` over the flat `configs/methods/<method>.toml` when
+present (default `methods` subdir only — `gui-methods` stays flat), so `--method <m>`
+auto-discovers it with no new flags.
 
 **EasyControl is the pilot**: `configs/easycontrol/easycontrol.toml`, alongside the
 miner-generated descriptor blueprints `near_twins.toml` / `colorize.toml` in the same dir.
@@ -98,14 +92,14 @@ migrated.
 ## `gui-methods/` — clean per-variant parallel tree
 
 No toggle blocks: what you see is what runs. Selected via `--methods_subdir gui-methods`
-(wrapped by `make lora-gui`). `ls` for the live list.
+(wrapped by `make lora-gui`). `ls` for the live list; custom ones live in
+`gui-methods/custom/`.
 
-**Hardware composes via preset, not file copies.** The old `-8gb` variant duplicates were
-removed 2026-07-03 — the GUI's Hardware dropdown picks a `presets.toml` section tagged
-`[<name>.gui] group="hardware"` (display metadata, stripped from the merge like
-`[variant]`). So variant files must **NOT** pin `gradient_checkpointing` /
-`unsloth_offload_checkpointing`: method wins over preset, so pinning silently defeats the
-picker. Pinned by a test in `tests/test_config.py`.
+**Hardware composes via preset, not file copies** — the GUI's Hardware dropdown picks a
+`presets.toml` section tagged `[<name>.gui] group="hardware"` (display metadata, stripped
+from the merge like `[variant]`). So variant files must **NOT** pin
+`gradient_checkpointing` / `unsloth_offload_checkpointing`: method wins over preset, so
+pinning silently defeats the picker. Pinned by a test in `tests/test_config.py`.
 
 Data-scope is plain flat keys (`sample_ratio`, `artists_shard` — defaults in `base.toml`;
 `sample_ratio=1.0` is inert so per-subset ratios stay authoritative), surfaced as GUI form

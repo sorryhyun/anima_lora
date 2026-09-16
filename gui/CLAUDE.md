@@ -1,11 +1,10 @@
 # gui/CLAUDE.md
 
 Guidance for the PySide6 (Qt6) desktop GUI. Scoped to `gui/` — read the root `CLAUDE.md`
-for the training/config/daemon contracts this GUI drives. ~19.9k lines across 53 Python
-files; `tabs/config_tab.py` (1665) and the `tabs/preprocess/` package (`tab.py` 1019 +
-section modules ~930 + the Qt-free knob table `knobs.py` 515) hold most of the surface
-(module-layout cleanup complete — history in `_archive/proposals/gui_refactor_plan.md`;
-`tabs/image_tab.py`'s autotag worker lives in `tabs/_autotag.py`).
+for the training/config/daemon contracts this GUI drives. `tabs/config_tab.py` and the
+`tabs/preprocess/` package (`tab.py` + section modules + the Qt-free knob table
+`knobs.py`) hold most of the surface; `tabs/image_tab.py`'s autotag worker lives in
+`tabs/_autotag.py`.
 
 ## What it is
 
@@ -22,20 +21,19 @@ torch must not appear).
 
 - `make gui` → `tasks.py gui` → `scripts/tasks/gui.py::cmd_gui` → `python -m gui`.
 - `python -m gui` → `gui/__main__.py` → `gui/__init__.py::main` → `gui/app.py::main`.
-- `app.py::main` (gui/app.py:377): `load_language()` → `ensure_daemon_quietly()` → build
-  `MainWindow` → Qt loop.
-- The legacy CLI `make lora-gui GUI_PRESETS=<variant>` is a *training* entry (runs
-  `gui-methods/` configs directly); it is not this GUI. The GUI submits to the daemon
-  instead.
+- `app.py::main`: `load_language()` → `ensure_daemon_quietly()` → build `MainWindow` → Qt
+  loop.
+- `make lora-gui GUI_PRESETS=<variant>` is a *training* entry (runs `gui-methods/`
+  configs directly), not this GUI.
 
 ## Architecture
 
 - **`app.py::MainWindow`** — top bar (Guidebook / Models / Update / Queue + TensorBoard
   overlay toggles / ⚙ Settings at top right — language + the checkout-specific MCP
-  registration (`claude mcp add` line + generic `mcpServers` JSON) via `SettingsDialog`,
-  now in `settings_dialog.py`; a language change offers an immediate in-place window
-  rebuild (`_reload_ui`) instead of requiring an app restart) + one tab set (Config =
-  MethodsTab picker over the LoRA family + the promoted Turbo distiller, Preprocess,
+  registration (`claude mcp add` line + generic `mcpServers` JSON) via
+  `settings_dialog.py::SettingsDialog`; a language change offers an immediate in-place
+  window rebuild (`_reload_ui`)) + one tab set (Config = MethodsTab picker over the
+  LoRA family + the promoted Turbo distiller, Preprocess,
   Dataset, Merge, Experimental = MethodsTab picker over the research methods + soup
   pipeline, EasyControl) in a `QStackedWidget` with the global TensorBoard and Queue
   overlay views. Dark `QPalette` via `_dark()`. `GuidebookDialog` + `_guidebook_path`
@@ -82,8 +80,7 @@ torch must not appear).
   `add_knob(key, widget, label)` registers the editor for a knob-table key and wires
   change→dirty, the `enabled_by` gate and the generic `values()`/`set_values()` —
   dispatched on *widget type*, so a `float` knob may be a spin or a free-text edit).
-  **Four of the five sections are drawn from `anime_tools` stage schemas**
-  (the stage-schema migration, landed 2026-09-07 — proposal retired once complete):
+  **Four of the five sections are drawn from `anime_tools` stage schemas**:
   `stage_form.py::StageFormSection` renders one schema (`anime_tools.gui.stages.schema`
   — kind / default / choices / help / advanced / gate / bound roots) as a `KnobSection`
   keyed by the stage's dests, hides bound + trainer-owned dests (`TRAINER_FIELDS`),
@@ -133,8 +130,8 @@ torch must not appear).
   **observes** jobs by polling files on disk (job.json / progress.jsonl / stdout.log)
   via a `QTimer`. No background thread, no SSE. `active_job_id()` re-attaches to a job
   from a previous session / the ComfyUI node / CLI on restart.
-- **`widgets/`** (a package since the Phase 2 split) — re-exports everything from
-  sibling modules so `from gui.widgets import <name>` is unchanged: `fields.py` (the
+- **`widgets/`** — a package that re-exports everything from its sibling modules, so
+  `from gui.widgets import <name>` is unchanged: `fields.py` (the
   field factory — `_widget(value, key)` maps a TOML value → Qt widget by type,
   `_read(widget)` maps back — plus
   `ClickableLabel`/`make_field_label`/`hint_label`/tooltip-wrap helpers), `mixins.py`
@@ -157,10 +154,9 @@ torch must not appear).
   (progress.jsonl + live sample preview + preprocess→train auto-chain) and only borrow
   `_submit_job`.
 - **`i18n/`** — one module per language (`en/ko/ja/cn.py`), each exporting `STRINGS:
-  dict[str,str]` (~370 keys). `t(key, **kwargs)` (gui/i18n/__init__.py:72) looks up
-  current lang then **falls back to English, then to the key itself** — so a key missing
-  from `ko.py` silently shows English, not an error. Register new languages in
-  `TRANSLATIONS`.
+  dict[str,str]` (~370 keys). `t(key, **kwargs)` looks up the current lang then **falls
+  back to English, then to the key itself** — so a key missing from `ko.py` silently
+  shows English, not an error. Register new languages in `TRANSLATIONS`.
 - **`explanations/`** — lazy-loaded help: `guides/<lang>/_fields.json` (per-field
   tooltips) + `_preprocess_fields.json` (the trainer-native preprocess knobs) +
   `_stage_fields.json` (the stage-form overlay, keyed `<stage_id>.<dest>` →
@@ -182,7 +178,7 @@ torch must not appear).
   **PreprocessingTab** owns them (they persist to `preprocess.toml`, not the training
   config). `_VIRTUAL_KEYS` (`use_valid`, `validation_split_num`) are not flat TOML keys
   — ConfigTab writes them into per-dataset `[[datasets]]` overrides. `_BASIC`
-  (config_io.py:269) controls the collapsible "Advanced" fold. Putting a knob in the
+  (`config_io.py`) controls the collapsible "Advanced" fold. Putting a knob in the
   wrong tab causes silent drift.
 - **i18n key parity is manual.** The 4 language files are independent; nothing enforces
   that they share keys. A missing key just falls back to English. When you add a string,
@@ -197,12 +193,10 @@ torch must not appear).
   knobs) — separate from `configs/` so it survives a config reset.
 - **Install app-wide event filters LAST.** `app.installEventFilter(self)` routes *every*
   Qt event through Python, including the ChildAdded/Polish/LayoutRequest storm of
-  building the widget tree. `MainWindow` installed its context-menu filter at the top of
-  `__init__` and paid ~82k Python round-trips (~0.7s of a 2.05s launch) for events it
-  drops — it now installs after `setCentralWidget`, since ContextMenu/ToolTip can't fire
-  before the window is shown. Same rule for any new filter: if it only handles
-  interaction events, install it once the tree exists. Guarded by
-  `tests/test_gui_launch_speed.py` (which also records the remaining launch costs).
+  building the widget tree (~82k round-trips, ~0.7s of launch, for events a
+  context-menu filter drops). `MainWindow` installs its filter after
+  `setCentralWidget`; a filter that only handles interaction events goes in once the
+  tree exists. The launch budget is guarded by `tests/test_gui_launch_speed.py`.
 
 ## Common changes
 

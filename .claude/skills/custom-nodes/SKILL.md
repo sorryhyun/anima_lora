@@ -5,19 +5,19 @@ description: The ComfyUI node map — which node lives in which standalone repo 
 
 # ComfyUI custom nodes
 
-Most nodes were extracted to standalone repos and are **symlinked** into
-`../comfy/custom_nodes/`. Edit the source repo, never the symlink.
+Most nodes live in standalone repos, **symlinked** into `../comfy/custom_nodes/`. Edit
+the source repo, never the symlink.
 
 ## Out of tree
 
 | Node | Repo / path | Notes |
 |---|---|---|
 | Spectrum KSampler + mod-guidance | https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler | ships DCW scalar default `+0.01` + `auto` mode |
-| PiD decode | https://github.com/sorryhyun/ComfyUI-Anima-PiD | full handoff 2026-06-04; symlinked as `comfyui-anima-pid` |
+| PiD decode | https://github.com/sorryhyun/ComfyUI-Anima-PiD | symlinked as `comfyui-anima-pid` |
 | EasyControl KSampler | `~/ComfyUI-EasyControl-KSamplerCompat` | |
-| Block Compile | https://github.com/sorryhyun/ComfyUI-Anima-BlockCompile | moved out 2026-06-30; standalone at `~/ComfyUI-Anima-BlockCompile`, symlinked as `comfyui-anima-blockcompile` |
+| Block Compile | https://github.com/sorryhyun/ComfyUI-Anima-BlockCompile | standalone at `~/ComfyUI-Anima-BlockCompile`, symlinked as `comfyui-anima-blockcompile` |
 | Anima Adapter Loader | https://github.com/sorryhyun/ComfyUI-Anima_lora-Adapter | Adapter / FeRA / Soft Tokens loaders; standalone at `~/ComfyUI-Anima_lora-Adapter`. **Read its `CLAUDE.md` for the `forward_hook`-not-override invariant** |
-| Anima Tagger | inside the `anime_tools` repo (`comfyui/anima_tagger/` there) | moved 2026-08-30, the standalone `ComfyUI-Anima-Tagger` repo is retired; symlinked as `comfyui-anima-tagger`; imports `anime_tools.tagger` and vendors nothing |
+| Anima Tagger | inside the `anime_tools` repo (`comfyui/anima_tagger/` there) | symlinked as `comfyui-anima-tagger`; imports `anime_tools.tagger` and vendors nothing. The standalone `ComfyUI-Anima-Tagger` repo is **retired but still on disk** — don't edit it |
 
 ## In tree
 

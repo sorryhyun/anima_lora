@@ -12,21 +12,21 @@ package's own catalog skill is `../anime_tools/.claude/skills/model-catalog/SKIL
 
 **Add a weight by adding a row, not a command.** `make download-*`, `make download-list`
 and both GUI Models panels read the catalog; `resolve()` takes a name as **legacy alias →
-pack id → row id** (so `pe` keeps its historical meaning). **Loaders import their default
-paths from here** rather than spelling them.
+pack id → row id** (so `pe` keeps its historical meaning), and raises `KeyError` naming
+the unknown token. **Loaders import their default paths from here** rather than spelling
+them.
 
 ## Packs
 
-A pack is what a "Download pack" button is a button *for*. Display order is
-`TRAINER_PACKS` then the package's:
+Display order is `TRAINER_PACKS` then the package's:
 
 - trainer: `anima` (DiT + Qwen3-0.6B TE + Qwen-Image VAE) · `pe` (PE-Core-L14-336) ·
   `cjk` (vocab pack, on by default since v2)
 - package: `tagger` · `tags` · `masking` · `ocr` · `grouping`
 
 `HIDDEN_PACKS` is the seam for a package pack the trainer does not offer (not listed,
-resolved or downloaded here). It is currently **empty** — keep it as the mechanism; don't
-filter rows instead.
+resolved or downloaded here). It is currently **empty** — keep it as the mechanism rather
+than filtering rows.
 
 ## Commands
 
@@ -37,4 +37,5 @@ make download-model ocr     # by pack, legacy alias, or row id
 ```
 
 SAM3 (`masking`) and OCR are **opt-in** — not in the first-run set.
-`make download-anima-variant ARGS=Anima-2.9B-preview-v1` fetches a depth variant.
+`make download-anima-variant ARGS=Anima-2.9B-preview-v1` fetches a depth variant
+(no args lists them).
