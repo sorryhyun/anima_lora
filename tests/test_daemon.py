@@ -1412,127 +1412,6 @@ def test_mcp_submit_command_and_tail_log(real_cmd_daemon):
     assert any("hello-mcp" in line for line in payload["lines"])
 
 
-# --------------------------------------------------------------------------
-# daemon-status CLI verb
-# --------------------------------------------------------------------------
-
-
-def test_daemon_status_json(daemon, monkeypatch, capsys):
-    import anima_daemon.client as daemon_client
-    from scripts.tasks import daemon as daemon_tasks
-
-    cl, _ = daemon
-    monkeypatch.setattr(daemon_client, "DaemonClient", lambda port=None: cl)
-    jid = cl.submit(method="lora", overrides={"duration": 0.3})["job_id"]
-
-    daemon_tasks.cmd_daemon_status([])
-    out = json.loads(capsys.readouterr().out)
-    assert out["up"] is True
-    assert out["base_url"] == cl.base
-    assert out["stale_code"] is False  # in-process daemon shares current source
-    assert any(j["id"] == jid for j in out["jobs"])
-    # compact by default: heavy record fields are stripped, target is derived…
-    assert "argv" not in out["jobs"][0] and "extra_env" not in out["jobs"][0]
-    assert "target" in out["jobs"][0]
-    # …truncation is reported honestly
-    assert out["jobs_total"] >= 1 and out["jobs_shown"] == len(out["jobs"])
-
-    # …and --full restores the raw records (still with a derived target)
-    daemon_tasks.cmd_daemon_status(["--full"])
-    full = json.loads(capsys.readouterr().out)
-    assert "argv" in full["jobs"][0] and "target" in full["jobs"][0]
-
-    # --limit caps the list without hiding the total; --state filters it
-    daemon_tasks.cmd_daemon_status(["--limit", "0"])
-    capped = json.loads(capsys.readouterr().out)
-    assert capped["jobs"] == [] and capped["jobs_total"] >= 1
-
-    daemon_tasks.cmd_daemon_status(["--state", "queued,running,done"])
-    filtered = json.loads(capsys.readouterr().out)
-    assert filtered["jobs_total"] >= 1
-    assert all(j["state"] in ("queued", "running", "done") for j in filtered["jobs"])
-
-    # A bogus --state value errors loudly instead of silently filtering the list
-    # to nothing (which reads exactly like "the job vanished").
-    with pytest.raises(SystemExit) as ei:
-        daemon_tasks.cmd_daemon_status(["--state", "no-such-state"])
-    assert ei.value.code == 2
-    assert "unknown job state" in capsys.readouterr().err
-
-    # --job <id> returns that one full record, no list/eyeball step.
-    daemon_tasks.cmd_daemon_status(["--job", jid])
-    one = json.loads(capsys.readouterr().out)
-    assert one["id"] == jid and "argv" in one
-
-    with pytest.raises(SystemExit) as ei:
-        daemon_tasks.cmd_daemon_status(["--job", "nope-0000"])
-    assert ei.value.code == 2
-    assert json.loads(capsys.readouterr().out)["error"] == "no such job"
-
-
-def test_status_pins_unfinished_jobs_below_the_cap(daemon, monkeypatch, capsys):
-    """A queued job below the newest-N cap still shows up.
-
-    The daemon does not always start jobs in submit order (a chained job waits on
-    its parent, so a later submit can run and finish first), so a still-pending
-    job can sit under a pile of newer finished rows. Truncating it away makes the
-    compact view read as "nothing is queued" exactly when the queue matters.
-    """
-    import anima_daemon.client as daemon_client
-    from scripts.tasks import daemon as daemon_tasks
-
-    cl, _ = daemon
-    monkeypatch.setattr(daemon_client, "DaemonClient", lambda port=None: cl)
-
-    pending = {
-        "id": "20260101-000000-pending",
-        "state": "queued",
-        "method": "lora",
-        "submitted_at": 1.0,
-    }
-    newer = [
-        {
-            "id": f"20260101-0000{i:02d}-done",
-            "state": "done",
-            "method": "lora",
-            "submitted_at": 100.0 + i,
-        }
-        for i in range(20)
-    ]
-    monkeypatch.setattr(cl, "list_jobs", lambda: [pending, *newer])
-
-    daemon_tasks.cmd_daemon_status([])
-    out = json.loads(capsys.readouterr().out)
-    ids = [j["id"] for j in out["jobs"]]
-    assert pending["id"] in ids, "queued job truncated out of the compact view"
-    assert ids[-1] == pending["id"]  # pinned rows keep the newest-first order
-    assert out["jobs_pinned"] == 1
-    assert out["jobs_shown"] == daemon_tasks._STATUS_DEFAULT_LIMIT + 1
-    assert out["jobs_total"] == 21
-
-    # An explicit --state filter is still honoured verbatim — no pinning.
-    daemon_tasks.cmd_daemon_status(["--state", "done"])
-    filtered = json.loads(capsys.readouterr().out)
-    assert all(j["state"] == "done" for j in filtered["jobs"])
-    assert filtered["jobs_pinned"] == 0
-
-    # --limit 0 stays a hard "no rows" escape hatch.
-    daemon_tasks.cmd_daemon_status(["--limit", "0"])
-    assert json.loads(capsys.readouterr().out)["jobs"] == []
-
-
-def test_daemon_status_down_exits_1(monkeypatch, capsys):
-    import anima_daemon.client as daemon_client
-    from scripts.tasks import daemon as daemon_tasks
-
-    monkeypatch.setattr(daemon_client, "DaemonClient", lambda port=None: _dead_client())
-    with pytest.raises(SystemExit) as ei:
-        daemon_tasks.cmd_daemon_status([])
-    assert ei.value.code == 1
-    out = json.loads(capsys.readouterr().out)
-    assert out["up"] is False
-
-
 def test_tail_while_write(tmp_path):
     """progress.jsonl tail-while-write: last_event sees the freshest line even
     as it grows (Windows-strict-locking smoke check)."""
@@ -1913,7 +1792,7 @@ def test_job_target_prefers_semantic_flags_over_label():
     assert _job_target({"kind": "train", "overrides": {"output_name": "a"}}) == "a"
 
 
-def test_status_rows_carry_the_exit_code(daemon, monkeypatch, capsys):
+def test_job_rows_carry_the_exit_code(daemon, monkeypatch, capsys):
     """A `done` row and a "done but rc=1" row must not look identical (§3)."""
     import anima_daemon.client as daemon_client
     from scripts.tasks import daemon as daemon_tasks
@@ -1921,9 +1800,9 @@ def test_status_rows_carry_the_exit_code(daemon, monkeypatch, capsys):
     cl, _ = daemon
     monkeypatch.setattr(daemon_client, "DaemonClient", lambda port=None: cl)
     cl.submit(method="lora", overrides={"duration": 0.3})
-    daemon_tasks.cmd_daemon_status([])
-    out = json.loads(capsys.readouterr().out)
-    assert "returncode" in out["jobs"][0]
+    daemon_tasks.cmd_daemon_jobs([])
+    rows = [ln for ln in capsys.readouterr().out.splitlines() if "rc=" in ln]
+    assert rows, "daemon-jobs printed no job row carrying an exit code"
 
 
 def test_print_queued_prints_hints_once_per_process(capsys, monkeypatch):
@@ -2004,9 +1883,8 @@ def _write_job(jobs_dir, job_id, *, submitted_at, state="done", stdout=None, **e
 def test_daemon_jobs_is_oldest_first_so_tail_shows_the_newest(
     tmp_path, monkeypatch, capsys
 ):
-    """`daemon-status`'s JSON is newest-first, so `| tail` showed the OLDEST
-    rows of the slice, cut mid-record — "my job isn't there" when it was at the
-    top. `daemon-jobs` is log-ordered instead."""
+    """`daemon-jobs` is log-ordered: the newest row is the last one printed, so
+    `| tail -5` means the five most recent."""
     from scripts.tasks import daemon as dcli
 
     _isolate_state(tmp_path, monkeypatch)

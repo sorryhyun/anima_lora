@@ -15,22 +15,34 @@ Local FIFO job queue (`anima_daemon/`), auto-starts on first submit. Full HTTP c
 
 `make daemon | daemon-run ARGS="<script.py> …" | daemon-wait [JOB=<id>] | daemon-attach [JOB=<id>] | daemon-jobs | daemon-log [JOB=<id>] | daemon-pause [JOB=<id>] | daemon-resume [JOB=<id>] | daemon-kill | daemon-terminate | daemon-prune`
 
-- Front door: **`make daemon-run ARGS="<script.py> [flags]"`** — attach-by-default, exits with the job's code; `--queue` detaches, `--inline` bypasses the daemon; `--stall-timeout S` where `0` = off. daemon-run's own `--label`/`--stall-timeout` go **before** the script path — after it every token reaches the child untouched (bench scripts take `--label` themselves), and `-- ` passes everything after it verbatim (run-mode flags included). No Python snippet needed; `python -m anima_daemon submit|wait|status` is the same thing without `tasks.py`.
+- Front door: **`make daemon-run ARGS="<script.py> [flags]"`** — attach-by-default, exits with the job's code; `--queue` detaches, `--inline` bypasses the daemon; `--stall-timeout S` where `0` = off. daemon-run's own `--label`/`--stall-timeout` go **before** the script path — after it every token reaches the child untouched (bench scripts take `--label` themselves), and `-- ` passes everything after it verbatim (run-mode flags included).
 - **`make daemon-wait [JOB=<id>]`** blocks to terminal and prints the record + result envelope, exiting with the job's code (`DaemonClient.wait()` programmatically) — don't hand-roll an HTTP poll loop.
 - `daemon-pause` tree-freezes the running job (SIGSTOP — VRAM held, SM idle, resume instant; the queue does NOT advance past it; refuses `accelerate launch` runs).
 - Append `--queue` to any train/distill target to enqueue instead of running inline (`make lora --queue`, `make turbo --queue`). GUI Train button, ComfyUI trainer node, and preprocessing all submit here.
 - Long-quiet phases: prefer `--stall-timeout` over a heartbeat, else `bench/_common.py::start_heartbeat()` (the watchdog also spares a quiet-but-CPU-burning tree).
 
-## Retention
+## Reading the queue
 
-Job dirs are retention-bounded: at boot, before `load_all()`, the daemon prunes terminal jobs older than 30d (keeping the newest 200). `make daemon-prune` is the manual sweep — dry-run unless `ARGS="--apply"`. Knobs: `ANIMA_DAEMON_JOB_RETENTION_DAYS` / `ANIMA_DAEMON_JOB_RETENTION_KEEP`.
+| question | command | what comes back |
+|---|---|---|
+| Is a job running / is the queue busy? | `make daemon-jobs ARGS="--state queued,running,paused"` | one line per unfinished job, then `N of M jobs` — a bare `0 of M` **is** the "nothing running" answer (exit 1 = daemon down) |
+| How far along is the current run? | `make run-status` | `step N/total`, it/s, ETA, last losses, last ckpt (§ Run status below) |
+| Did job `<id>` finish, and with what exit code? | `make daemon-jobs ARGS="--all" \| grep <id>` | one line: when · id · state · `rc=` · duration · target · first error line |
+| …and block until it does? | `make daemon-wait JOB=<id>` | exits with the job's own code (record + envelope on stdout) |
+| What argv did job `<id>` run? | `python -c "import json;print(' '.join(json.load(open('output/daemon/jobs/<id>/job.json'))['argv']))"` | the child argv on one line. **Command jobs only** — a train job persists `method`/`preset`/`overrides`/`extra` and builds its launch cmd at spawn, so its `argv` is empty |
+| One job's full record + its bench `result.json`? | `python -m anima_daemon status <id>` | the whole record, envelope inlined under `result`; reads the on-disk `job.json` when the daemon is down |
+| Is the daemon up, on which port, running stale code? | `python -m anima_daemon status` | `up`, resolved `base_url`, `stale_code`, `paused`, `active_job` (exit 1 when down) |
+
+`daemon-jobs`, `daemon-log`, `run-status` and the `job.json` read all work with the daemon down.
+
+`daemon-jobs` prints **oldest first** (`| tail -5` = the five most recent), capped at 15; filter with `ARGS="--running|--failed|--done|--state s[,s]|--limit N|--all"`. Jobs do not always start in submit order (a chained job waits on its parent), so ask for pending work by state rather than trusting the newest-15 slice to contain it. `make daemon-log [JOB=<id>]` dumps a job's stdout from disk (`ARGS="-n 200"`; `-n 0` = all); `daemon-attach` follows a *live* stream only, so it has nothing for a finished job.
 
 ## Discovery & agent surface
 
 - Discovery is pidfile-based: `output/daemon/daemon.json` / `~/.anima/daemon.json` → `{port, root}`. **Never hardcode 8765** — the port falls back to ephemeral on collision.
-- **`make daemon-jobs`** is the human view: one line per job, **oldest first**, so `| tail -5` is the five most recent. `daemon-status`'s JSON is newest-first, so tailing *it* shows the oldest rows, cut mid-record. **`make daemon-log [JOB=<id>]`** dumps a job's stdout from disk (`ARGS="-n 200"`; `-n 0` = all) — `daemon-attach` only follows a *live* stream, so it has nothing for a finished job. Both fall back to the on-disk records when the daemon is down.
-- `make daemon-status` prints one JSON object (health + resolved `base_url` + compact job summaries, newest-first and capped, each with a derived `target` + `jobs_total`/`jobs_shown`/`jobs_pinned`; unfinished jobs — `queued`/`running`/`paused` — are pinned in even when they fall below the cap, so a pending queue never reads as empty). Filter via `ARGS="--running|--failed|--done|--state s|--limit N|--all"`; `--full` for raw records; `--job <id>`/`JOB=<id>` for one full record with its bench `result.json` inlined. Passive; exit 1 when down.
+- `python -m anima_daemon submit|wait|status` is the stdlib-only equivalent of the `make` targets, for callers that can't import `tasks.py`.
 - The daemon self-describes at `GET /` (README) and `GET /tools` (JSON-Schema manifest). `anima_daemon/mcp.py` is a stdio MCP bridge over the same surface — register the script path as the MCP command; it discovers the daemon itself.
+- Job dirs are retention-bounded (terminal jobs older than 30d pruned at boot, newest 200 kept). `make daemon-prune` is the manual sweep — dry-run unless `ARGS="--apply"`. Rules and knobs: `anima_daemon/README.md` § Retention.
 
 ## Batch generation: `make gen`
 

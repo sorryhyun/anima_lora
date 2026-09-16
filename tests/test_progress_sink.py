@@ -318,7 +318,7 @@ def test_run_status_finds_daemon_job_streams(tmp_path):
     hit = rs._resolve("cjk_unmask_a", logs, jobs)
     assert hit.parent.name == "20260901-180249-1334d2"
     assert rs._stream_run_name(hit) == "cjk_unmask_a"
-    # …and by the job id, which is all a daemon-status listing gives you
+    # …and by the job id, which is all a `daemon-jobs` listing gives you
     assert rs._resolve("20260901-180249-1334d2", logs, jobs) == hit
     # the flat logs/ name still resolves from its filename, no file read needed
     assert rs._resolve("inline_run", logs, jobs).name == "inline_run.progress.jsonl"

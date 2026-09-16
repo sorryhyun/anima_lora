@@ -38,7 +38,8 @@ def write_gen_manifest(
 
     The manifest carries ``label`` + ``metrics`` (the two keys the daemon lifts)
     plus the full image list; ``label`` defaults to the adapter stem so
-    ``daemon-status`` shows what was rendered.
+    ``daemon-wait`` / ``python -m anima_daemon status <id>`` shows what was
+    rendered.
     """
     import json
 

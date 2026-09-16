@@ -145,8 +145,8 @@ def format_status(st: dict, *, metric_limit: int = 6) -> str:
     total = st["total_steps"] or "?"
     pct = f" ({st['pct']:.1f}%)" if st["pct"] is not None else ""
     rate = f"{st['rate']:.2f} it/s" if st["rate"] else "? it/s"
-    # A daemon-launched run: name the job so the follow-up (`make daemon-status
-    # ARGS="--job <id>"`, `make daemon-attach JOB=<id>`) needs no lookup step.
+    # A daemon-launched run: name the job so the follow-up (`make daemon-attach
+    # JOB=<id>`, `make daemon-log JOB=<id>`) needs no lookup step.
     job = _job_id_for(Path(st["path"]))
     where = f" (job {job})" if job else ""
     head = (

@@ -578,7 +578,7 @@ def _attach_hints(job_id: str) -> str:
     return (
         f"  make daemon-attach JOB={job_id}   # re-attach to this job\n"
         f"  make daemon-kill JOB={job_id}     # stop it\n"
-        f"  make daemon-status                # queue overview"
+        f"  make daemon-jobs                  # queue overview"
     )
 
 

@@ -1,14 +1,10 @@
 """Client-side verbs for ``python -m anima_daemon`` — submit / wait / status / prune.
 
-The daemon's HTTP surface was fully capable of "run this argv on the GPU queue"
-long before anything on the command line could ask for it: submitting an
-arbitrary command job meant writing a Python snippet against
-``DaemonClient.submit_command``. These verbs are that missing front door,
-kept in the daemon package (rather than ``scripts/tasks/``) so they work from a
-bare checkout, a vendored node tree, or an agent shell — no ``tasks.py`` import,
-no ``library.*``, stdlib only. (``prune`` is the odd one: state-dir maintenance
-rather than a client call, but it belongs on the same front door and obeys the
-same stdlib-only rule.)
+The command-line front door to ``DaemonClient``, kept in the daemon package
+(rather than ``scripts/tasks/``) so it works from a bare checkout, a vendored
+node tree, or an agent shell — no ``tasks.py`` import, no ``library.*``, stdlib
+only. (``prune`` is state-dir maintenance rather than a client call, but rides
+the same front door under the same stdlib-only rule.)
 
     python -m anima_daemon submit [--label L] [--stall-timeout S] [--wait]
                                   [--hold] -- <argv…>
@@ -44,12 +40,11 @@ def _label_for(argv: list[str]) -> str:
     ``python -c <src>`` has no name to take, so it stays ``command`` rather than
     becoming a slice of source code.
 
-    ``daemon-run``'s own ``--label`` must precede the script path, but bench
-    scripts take a ``--label`` of their own and muscle memory puts it after —
-    labelling the bench *run dir* while the job record stayed generic, so a grid
-    of N runs showed as N identical rows. When the daemon side wasn't given a
-    label, borrow the child's: ``run_bench --label ko3_a`` → ``run_bench:ko3_a``.
-    Display only — the child argv is passed through untouched either way.
+    A ``--label`` after the script path belongs to the child (bench scripts take
+    one of their own). When the daemon side was given no label, borrow the
+    child's so a grid of N runs doesn't render as N identical rows:
+    ``run_bench --label ko3_a`` → ``run_bench:ko3_a``. Display only — the child
+    argv is passed through untouched either way.
     """
     name = None
     for i, tok in enumerate(argv):
@@ -122,9 +117,7 @@ def cmd_submit(args: argparse.Namespace) -> int:
         argv=argv,
         stall_timeout=args.stall_timeout,
         # `--hold` stages the job behind a paused gate; the default leaves the
-        # gate alone so it runs when it reaches the front of the queue. Note this
-        # is NOT `make …--queue`, which means "don't attach" — submitting here
-        # never attaches, so returning immediately is already the default.
+        # gate alone so it runs when it reaches the front of the queue.
         start=False if args.hold else None,
     )
     job_id = resp.get("job_id")
@@ -218,7 +211,18 @@ def cmd_status(args: argparse.Namespace) -> int:
     if health is None:
         _print_json({"up": False, "base_url": None})
         return 1
-    _print_json({"up": True, "base_url": cl.base, **health})
+    # `stale_code`: the resident daemon is serving source older than the current
+    # on-disk `anima_daemon/*` (the next submit restarts it eagerly). /health
+    # carries only the raw boot `fingerprint`, so the comparison happens here —
+    # this is the only surface that reports it.
+    _print_json(
+        {
+            "up": True,
+            "base_url": cl.base,
+            "stale_code": _client.daemon_is_stale(health),
+            **health,
+        }
+    )
     return 0
 
 

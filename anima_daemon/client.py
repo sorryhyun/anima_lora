@@ -99,7 +99,8 @@ def daemon_is_stale(health: Optional[dict]) -> bool:
     """True iff a live daemon is serving code older than current on-disk
     source — compares the fingerprint it booted with against a fresh hash. A
     daemon predating the fingerprint field is treated as stale. Used by
-    ``ensure_daemon`` (eager restart) and ``daemon-status`` (``stale_code``).
+    ``ensure_daemon`` (eager restart) and ``python -m anima_daemon status``
+    (``stale_code``).
     """
     if not health:
         return False

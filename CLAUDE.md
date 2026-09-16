@@ -70,10 +70,9 @@ Non-obvious knobs and gotchas worth knowing up front:
 - **Daemon** (local FIFO job queue, auto-starts on first submit): **agent-launched GPU
   work must go through it** — GPU processes started from a Claude Code background Bash
   get killed by the harness sandbox layer after ~1 min (silent SIGKILL, no trace;
-  observed 2026-07-25). Front door `make daemon-run ARGS="<script.py> [flags]"`, `make
-  daemon-wait [JOB=<id>]` to block; append `--queue` to any train/distill target to
-  enqueue. Discovery is pidfile-based — never hardcode 8765. **Load the `daemon` skill**
-  for the full surface; contract in `anima_daemon/README.md`.
+  observed 2026-07-25). Front door `make daemon-run ARGS="<script.py> [flags]"`; append
+  `--queue` to any train/distill target to enqueue. **Load the `daemon` skill** for the
+  full surface; contract in `anima_daemon/README.md`.
 - **σ-demoted training** (`--sigma_lowres`, opt-in): routes each train step's latent
   grid by noise level — high-σ steps train on a lower-res sibling latent, ~−14% wall
   with the shipped **combolate** recipe (what `configs/base.toml` sets). Needs sibling

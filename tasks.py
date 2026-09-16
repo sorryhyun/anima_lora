@@ -120,19 +120,13 @@ COMMANDS = {
         daemon.cmd_daemon,
         "Start the local training-job daemon (idempotent; detached, waits for /health).",
     ),
-    "daemon-status": (
-        daemon.cmd_daemon_status,
-        "Daemon status as JSON (health + resolved base_url + compact job "
-        "summaries; --full for raw records, --job <id>/JOB=<id> for one record "
-        "+ its result envelope). Passive — never starts a daemon; exit 1 when down.",
-    ),
     "daemon-jobs": (
         daemon.cmd_daemon_jobs,
         "Job history as lines, OLDEST first — the newest row is last, so "
-        "'| tail -5' means the five most recent (daemon-status's JSON is "
-        "newest-first, which made tail show the oldest). Same filters "
-        "(--limit N/--all/--running/--failed/--done/--state s); reads the "
-        "on-disk records when the daemon is down.",
+        "'| tail -5' means the five most recent. Filters: "
+        "--limit N/--all/--running/--failed/--done/--state s; reads the "
+        "on-disk records when the daemon is down. One job's full record + its "
+        "result envelope: python -m anima_daemon status <id>.",
     ),
     "daemon-log": (
         daemon.cmd_daemon_log,

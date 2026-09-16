@@ -6,9 +6,10 @@ poll or stream rather than holding the run open. The GUI Train button, the
 ComfyUI trainer node and `make … --queue` all submit here; this doc is the same
 surface for direct use from a script, an MCP server, or an agent.
 
-`http://127.0.0.1:8765`, JSON in / JSON out, no auth, localhost only
-(`config.py`). All state is on disk under `output/daemon/`, so anything that can
-read files can observe a run with the HTTP port down.
+`http://127.0.0.1:<port>` (8765 unless taken — resolve it from the pidfile),
+JSON in / JSON out, no auth, localhost only (`config.py`). All state is on disk
+under `output/daemon/`, so anything that can read files can observe a run with
+the HTTP port down.
 
 **Self-describing.** `GET /` returns this file; `GET /tools` returns a manifest
 — one entry per operation with a JSON-Schema `input_schema`, HTTP
@@ -22,7 +23,7 @@ The daemon auto-starts on first submit.
 ```bash
 python tasks.py daemon            # start it, detached, wait for /health
 python -m anima_daemon            # equivalent (what the spawner runs)
-python tasks.py daemon-status     # one JSON object: health + resolved base_url + jobs
+python -m anima_daemon status     # health + resolved base_url + stale_code
 curl -s 127.0.0.1:8765/health     # {"ok":true,"pid":…,"active_job":…,"paused":…}
 ```
 
@@ -33,7 +34,7 @@ python tasks.py daemon-run bench/memorization/probe.py --n 5   # attach + stream
 python tasks.py daemon-run --stall-timeout 0 my_quiet_loop.py  # quiet loop, no watchdog
 python tasks.py daemon-run --queue long_sweep.py               # detach instead
 JOB=<id> python tasks.py daemon-wait          # block; print record + result envelope
-JOB=<id> python tasks.py daemon-status        # one record, envelope inlined
+python -m anima_daemon status <id>            # one record, envelope inlined
 ```
 
 `daemon-run` exits with the job's own exit code, and ctrl-C detaches. Its own
@@ -58,38 +59,32 @@ whether the run is healthy-but-slow or wedged.
 
 ## Reading the queue
 
-`daemon-status` is the machine surface: one JSON object, jobs **newest first**,
-capped at 15, with every unfinished job (`queued`/`running`/`paused`) pinned in
-even when it falls below the cap — jobs do not always start in submit order, so
-without pinning a pending job can sit under 15 finished rows and the queue reads
-as empty. `jobs_total`/`jobs_shown`/`jobs_pinned` report the truncation. Each
-compact job carries a derived `target` (soup name, train `output_name`, a bench
-script's `--label`) and its `returncode`.
+Use `daemon-jobs` to see what has run or is queued, `run-status` for how far the
+current run has got, `daemon-wait` to block on one job, `daemon-log` for a job's
+stdout, and `python -m anima_daemon status [id]` for daemon health or one full
+record with its result envelope.
 
-`daemon-jobs` is the human surface: one greppable line per job, **oldest first**,
-so `| tail -5` is the five most recent. (Tailing `daemon-status` shows the
-*oldest* rows, cut mid-record.) `daemon-log` is the post-mortem counterpart to
-`daemon-attach`, which follows a live stream and has nothing to show once a job
-is terminal.
+`daemon-jobs` prints one greppable line per job — when · id · state · `rc=` ·
+duration · derived `target` (soup name, train `output_name`, a bench script's
+`--label`) · first error line — **oldest first**, capped at the newest 15, with a
+trailing `N of M jobs`. It is the live-queue view too: `--state
+queued,running,paused` answers "is anything running", a bare `0 of M` being the
+"nothing" answer. `daemon-log` reads the log off disk, so unlike `daemon-attach`
+(a live stream) it still answers for a finished job.
 
 ```bash
-python tasks.py daemon-status --running        # only running/paused jobs
-python tasks.py daemon-status --failed         # only error/stopped
-python tasks.py daemon-status --state done     # exact state(s), comma-separated
-python tasks.py daemon-status --limit 40       # raise/lower the cap
-python tasks.py daemon-status --all            # no cap (full history)
-python tasks.py daemon-status --full           # raw records, not compact
-python tasks.py daemon-status --job <id>       # ONE record, full, + its result envelope
 python tasks.py daemon-jobs                    # newest 15, newest LAST
+python tasks.py daemon-jobs --running          # only running/paused jobs
 python tasks.py daemon-jobs --failed --all     # every error/stopped job
-JOB=<id> python tasks.py daemon-log            # that job's stdout, from disk
+python tasks.py daemon-jobs --state done       # exact state(s), comma-separated
+python tasks.py daemon-jobs --limit 40         # raise/lower the cap
+python tasks.py daemon-jobs --all              # no cap (full history)
 python tasks.py daemon-log -n 0                # newest job, whole log
 ```
 
-`--state` validates against the six real states and exits 2 on anything else; a
-typo would otherwise filter everything away and read as "the job vanished".
-`--job`, `daemon-jobs` and `daemon-log` all fall back to the on-disk records, so
-they answer with the daemon down.
+`--state` validates against the six real states and exits 2 on anything else.
+`daemon-jobs`, `daemon-log` and `python -m anima_daemon status <id>` all fall
+back to the on-disk records, so they answer with the daemon down.
 
 ## Two job kinds
 
@@ -97,6 +92,10 @@ they answer with the daemon down.
 |------|--------------|------------------|
 | `train` (default) | a `train.py` run built from `method` + `preset` + `overrides` + `extra` | `progress.jsonl` stream + exit code |
 | `command` | a plain `python <argv>` task (preprocess, mask, a distill loop) | exit code only |
+
+A train job's record keeps `method`/`preset`/`overrides`/`extra` and builds its
+launch argv at spawn, so its `argv` field stays empty; a command job's `argv` is
+literally what runs (`jobs/<id>/job.json`).
 
 A `command` job can carry a **`chain_train`** spec — `{method, preset,
 methods_subdir, overrides}` — and the daemon auto-enqueues that training job when
@@ -314,13 +313,12 @@ metrics={…})` drops the pointer under the daemon and is a plain envelope write
 otherwise. Reading one back:
 
 ```bash
-JOB=<id> python tasks.py daemon-status   # full record + envelope inlined under "result"
+python -m anima_daemon status <id>       # full record + envelope inlined under "result"
 JOB=<id> python tasks.py daemon-wait     # block first, then the same
-python tasks.py daemon-status --all      # every job's result_path (pointer only)
 ```
 
-The compact list carries `result_path` but **not** `result_summary`: a bench
-`metrics` blob can run hundreds of lines and would swamp the overview.
+A `daemon-jobs` line carries the job's state and exit code, not its
+`result_path`; reading an envelope is a per-job lookup.
 
 ## Observing without HTTP
 
@@ -382,7 +380,7 @@ The daemon is a throwaway view over disk state, not a durable service.
   compares it to the on-disk source and on a mismatch does
   `POST /shutdown {kill_jobs:false}` → respawn. Boot reconcile re-adopts the
   running job and queued jobs persist, so the restart is lossless (~1–2s).
-  `daemon-status` shows `stale_code`.
+  `python -m anima_daemon status` shows `stale_code`.
 - **Submit-time env capture** keeps a queued job off the daemon's boot env.
 - **Attach by default (CLI).** GPU targets submit and stream the job's stdout,
   exiting with its `returncode`; ctrl-C detaches and the run survives. `--queue`

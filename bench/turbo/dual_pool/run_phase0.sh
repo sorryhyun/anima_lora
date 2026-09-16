@@ -4,7 +4,7 @@
 #
 # Queues both arms on the daemon (serial, survives the terminal) and returns.
 # This does NOT poll — check progress with `make run-status RUN=<output_name>`
-# or `make daemon-status`. Renders/eval are a separate step (see README.md).
+# or `make daemon-jobs`. Renders/eval are a separate step (see README.md).
 #
 #   bash bench/turbo/dual_pool/run_phase0.sh
 #
@@ -22,7 +22,7 @@ echo "Queuing Arm B (single r=64 baseline) ..."
 make turbo ARGS="--config ${DIR}/arm_B_single_r64.toml --queue"
 
 echo
-echo "Both arms queued. Watch:  make daemon-status"
+echo "Both arms queued. Watch:  make daemon-jobs"
 echo "Per-run:                  make run-status RUN=anima_superturbo_dualpool_A_v1"
 echo "                          make run-status RUN=anima_superturbo_dualpool_B_v1"
 echo "Then render + eval per bench/turbo/dual_pool/README.md."
