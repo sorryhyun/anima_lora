@@ -1,5 +1,4 @@
-"""Vision-encoder registry (originally for img2emb; reused live by IP-Adapter
-and the Anima Tagger).
+"""Vision-encoder registry (IP-Adapter, the Anima Tagger, the PE feature cache).
 
 Two Meta Perception Encoder variants are registered:
 
@@ -10,8 +9,8 @@ Two Meta Perception Encoder variants are registered:
   pool head — only the patch token sequence is meaningful. Used by the Anima
   Tagger as the auxiliary encoder for spatial detail / long-tail tags.
 
-Both vendored at ``anime_tools/vision/pe.py`` (re-exported as ``library.models.pe``) so we don't have to clone
-perception_models or install xformers.
+Both vendored at ``anime_tools/vision/pe.py`` (re-exported as
+``library.models.pe``) — no perception_models clone or xformers install.
 
 ``encode(pixel_values)`` returns ``(last_hidden_state[B, T, D],
 pooled[B, D_pool])``. ``T`` includes a CLS token at position 0 for both

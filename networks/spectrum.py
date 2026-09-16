@@ -29,9 +29,9 @@ from networks.spectrum_sea import (
     window_decision_fraction,
 )
 
-# The Chebyshev forecasters live in the pure-compute core (single source shared
-# verbatim with the ComfyUI node). Re-exported here for back-compat — existing
-# importers (bench/spd, tests) keep doing ``from networks.spectrum import ...``.
+# The Chebyshev forecasters live in the pure-compute core shared with the
+# ComfyUI node. Re-exported here: bench/spd and tests import them from
+# ``networks.spectrum``.
 from networks.spectrum_forecast import (  # noqa: F401
     DTYPE,
     ChebyshevForecaster,
@@ -42,8 +42,7 @@ from networks.spectrum_forecast import (  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
-# Back-compat alias: the window-fraction helper moved to spectrum_sea (it is the
-# SEA auto-δ target), but tests import it as ``_window_decision_fraction`` here.
+# Alias: tests import the spectrum_sea window-fraction helper under this name.
 _window_decision_fraction = window_decision_fraction
 
 # Auto-δ calibration cache for the SEA schedule. Keyed by the schedule geometry;
@@ -198,8 +197,7 @@ def spectrum_denoise(
             pooled-text/FSG, see library.inference.sampler_context). ctx.fsg,
             when set, forces its scheduled σ-band steps to actual forwards and
             calibrates the latent before each.
-        foveation: optional velocity-foveation adapter (archived
-            ``_archive/proposals/foveated_denoise.md``), duck-typed:
+        foveation: optional velocity-foveation adapter, duck-typed:
             force_actual/eval_view/pool_velocity/final_readout. Unvalidated
             against SMC-CFG — ignored (with a warning) while foveation is active.
     """
@@ -283,8 +281,7 @@ def spectrum_denoise(
         )
     # δ rides the input-latent trajectory, so it must be re-calibrated whenever
     # step count, CFG scale, sampler rule, or resolution changes. Prompt is
-    # deliberately excluded — fixed δ + per-prompt-varying refresh pattern is
-    # the whole point of content-adaptivity.
+    # excluded: a fixed δ yields a per-prompt refresh pattern.
     sampler_label = type(sampler).__name__ if sampler is not None else "euler"
     sea_cache_key = (
         num_steps,

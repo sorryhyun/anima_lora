@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """Build a frozen DiT + fresh adapter for a *training* run — the harness helpers.
 
-`build_anima` (shown indirectly by 01/04) owns the inference path: it loads an
-*existing* adapter checkpoint and applies it. When you write a distillation /
-fine-tuning trainer you instead attach a *fresh, untrained* network and drive
-your own optimizer — so you can't call `build_anima` wholesale. The three
-composable helpers in `library.runtime.harness` factor out the model-side
-boilerplate the trainers used to copy verbatim:
+`build_anima` loads an *existing* adapter checkpoint and applies it. A
+distillation / fine-tuning trainer instead attaches a *fresh, untrained* network
+and drives its own optimizer, using the three helpers in
+`library.runtime.harness`:
 
   - place_dit_for_training(model, device, blocks_to_swap=...)
         block-swap placement (or a plain .to(device)) with the *training* swap
@@ -18,9 +16,9 @@ boilerplate the trainers used to copy verbatim:
   - enable_training_grad_ckpt(model, enabled=...)
         unsloth CPU-offload gradient checkpointing (model must stay in train()).
 
-This is exactly the sequence scripts/distill_{mod,turbo}.py run; this script
-distills it to the smallest demonstrable build (no dataset, no optimizer step —
-it stops once the model is ready to train and prints the trainable-param split).
+This is the sequence `scripts/distill_turbo/setup.py` and
+`project/finished/mod_guidance/distill.py` run, stopped once the model is ready
+to train (no dataset, no optimizer step); it prints the trainable-param split.
 
     python examples/06_frozen_dit_training_build.py
     python examples/06_frozen_dit_training_build.py --blocks_to_swap 16 --compile
@@ -68,8 +66,7 @@ def main() -> None:
         dit_weight_dtype=dtype,
     )
 
-    # 2. Attach a fresh (untrained) LoRA network — this is what build_anima
-    #    *can't* do for you (it loads weights from a checkpoint instead).
+    # 2. Attach a fresh (untrained) LoRA network.
     network = create_network(
         multiplier=1.0,
         network_dim=opts.network_dim,

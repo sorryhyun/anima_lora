@@ -1,8 +1,7 @@
 """``KnobSection`` — one ``QGroupBox`` form over a slice of the knob table.
 
 A section subclass declares *which* widgets it builds (``_build``); the base
-handles everything that used to be re-implemented per knob in the tab: the
-clickable help label, the change→dirty wiring, the ``enabled_by`` gating,
+handles the clickable help label, the change→dirty wiring, the ``enabled_by`` gating,
 and the generic ``values()`` / ``set_values()`` read/write keyed by knob.
 
 Read/write is dispatched on the *widget type*, not the knob kind, because two
@@ -74,7 +73,7 @@ def read_widget(knob: Knob, widget: QWidget):
 
 def set_widget(knob: Knob, widget: QWidget, value) -> None:
     """Inverse of :func:`read_widget`; empty text falls back to the hardcoded
-    default (``"*"`` patterns, the source dir) as the old per-knob setters did."""
+    default (``"*"`` patterns, the source dir)."""
     if isinstance(widget, QCheckBox):
         widget.setChecked(bool(value))
     elif isinstance(widget, QSpinBox):

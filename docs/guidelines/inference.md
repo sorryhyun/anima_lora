@@ -1,23 +1,18 @@
 # Inference Guide
 
-Generation is request-driven: `inference.py` parses a big flag surface, but
-you rarely touch most of it. This guide is organized around *what you're trying
-to do* — start at §1, drop to the reference tables at the end only when you need
-a specific knob.
+Start at §1; the flag tables in §4 are for looking up a specific knob.
 
-> Model paths, `--attn_mode`, `--vae_chunk_size`, and `--compile` share their
-> meaning with training — see [`base-config.md`](base-config.md). Adapter family
-> lives in the **checkpoint metadata**, not the command line: the DiT loader
-> merges or keeps-live the adapter automatically.
+> Model paths, `--attn_mode`, `--vae_chunk_size`, and `--compile` mean the same
+> as in training — see [`base-config.md`](base-config.md). The adapter family is
+> read from the **checkpoint metadata**, so there is no flag for it.
 
 ---
 
 ## 1. Just test what I trained
 
-Every `make test-*` target auto-picks the latest bakeable adapter in
-`output/ckpt/` and runs it through a sane preset (`INFERENCE_BASE` in
-`scripts/tasks/_common.py`). This is the fastest path and the most
-representative starting point.
+Every `make test-*` target auto-picks the latest adapter in `output/ckpt/` and
+runs it with the preset values below (`INFERENCE_BASE` in
+`scripts/tasks/_common.py`).
 
 ```bash
 make test                  # latest LoRA / OrthoLoRA / T-LoRA
@@ -34,8 +29,7 @@ make test NOLORA=1         # bare DiT (skips --lora_weight); MOD=1 → mod-only 
 make test SPECTRUM=1 MOD=1 # stack them
 ```
 
-What `make test` actually runs (the values that matter, from
-`INFERENCE_BASE`):
+What `make test` runs:
 
 ```
 --image_size 1024 1024  --infer_steps 28  --flow_shift 3.0
@@ -43,10 +37,9 @@ What `make test` actually runs (the values that matter, from
 --vae_chunk_size 64     --vae_disable_cache  --seed 42
 ```
 
-> ⚠️ The bare `inference.py` argparse defaults are different —
-> `--infer_steps 50`, `--flow_shift 3.0`, `--guidance_scale 3.5`,
-> `--sampler euler`, `--attn_mode torch`. When you hand-roll a command, start
-> from the `make test` values above, not the argparse defaults.
+> ⚠️ Bare `inference.py` defaults differ (`--infer_steps 50`,
+> `--guidance_scale 3.5`, `--attn_mode torch`). When you write a command by
+> hand, start from the `make test` values above.
 
 Correction / conditioning test targets (each composes with `SPECTRUM`/`MOD`):
 
@@ -61,7 +54,7 @@ Correction / conditioning test targets (each composes with `SPECTRUM`/`MOD`):
 
 ## 2. Generate by hand
 
-When you need full control, call `inference.py` directly:
+Call `inference.py` directly for full control:
 
 ```bash
 python inference.py \
@@ -211,21 +204,15 @@ python inference.py … --lora_weight turbo.safetensors --infer_steps 4 --guidan
 ### Cross-attn boost
 | Flag | Description |
 |---|---|
-| `--xattn_boost` | Cross-attn residual gain λ, cond forward only (1.0 = off; 2.0 = Phase-0 winner) |
+| `--xattn_boost` | Cross-attn residual gain λ, cond forward only (1.0 = off; 2.0 = shipped setting) |
 | `--xattn_boost_band` | σ cutoff (boost at σ ≥ band; default 0.85) |
 
 ---
 
 ## 5. LoRA in ComfyUI
 
-Plain Anima LoRA `.safetensors` use kohya-ss `lora_unet_` key naming and load
-directly into ComfyUI's stock `LoraLoader` — no conversion. For HydraLoRA /
-FeRA / postfix checkpoints (extra `router.*`, stacked
-`lora_ups.N.*` keys the stock loader drops), use the Anima Adapter Loader in
-`https://github.com/sorryhyun/ComfyUI-Anima_lora-Adapter`.
-
-Spectrum KSampler + mod-guidance + in-node DCW (scalar default `+0.01`, plus an
-`auto` mode running the v4 fusion head) live in
-[ComfyUI-Spectrum-KSampler](https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler).
-For ComfyUI-vs-CLI parity details see
+Plain LoRA / OrthoLoRA / T-LoRA files load in ComfyUI's stock `LoraLoader`;
+HydraLoRA / FeRA / postfix checkpoints need the Anima Adapter Loader node. Node
+links and the merge-to-checkpoint route: [guidebook §10](guidebook.md#10-deploying-to-comfyui).
+For ComfyUI-vs-CLI behaviour differences see
 [`difference_between_comfy.md`](difference_between_comfy.md).

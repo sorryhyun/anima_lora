@@ -1,7 +1,6 @@
 """Cache text-encoder (Qwen3) outputs.
 
-Orchestration extracted from ``preprocess/cache_text_embeddings.py`` (see
-``docs/proposal/tooling_architecture.md`` §A). The script keeps argparse + model
+Orchestration for ``preprocess/cache_text_embeddings.py``, which keeps argparse + model
 load + uncond staging; the caption-variant generation and the batched
 tokenize→encode→(LLM-adapter)→save loop live here.
 """
@@ -21,10 +20,9 @@ from library.preprocess._dataset import PreprocessStats, walk_images
 from library.preprocess._progress import ProgressFn
 
 # generate_caption_variants + build_erasure_token_pool live in the torch-free
-# caption_variants module so the caption-correction step (which materializes the
-# variant sidecars before the encoder loads) and the GUI can reuse them. Re-export
-# here for backward compatibility (existing callers import them off this module /
-# the package façade).
+# anime_tools.captions.variants (shared with the caption-correction step, which
+# writes the variant sidecars before the encoder loads, and the GUI); re-exported
+# for callers importing them off this module / the package façade.
 from anime_tools.captions.variants import (  # noqa: F401
     build_erasure_token_pool,
     generate_caption_variants,
@@ -182,12 +180,9 @@ def _walk_te_candidates(
                 "(resized outputs only)."
             )
 
-    # The per-image header open below exists only to mirror the resize-time
-    # min_pixels drop. When a ``keep_*`` filter is active the candidate set is
-    # already the resized/curated outputs — every survivor passed min_pixels at
-    # resize — so re-opening each (large, original) source image just to re-derive
-    # that fact is pure I/O waste. Skip it; the matched set is the authority.
-    # (TE only needs the caption ``.txt``, never the image pixels.)
+    # The per-image header open below only mirrors the resize-time min_pixels
+    # drop. With a ``keep_*`` filter active every candidate already passed
+    # min_pixels at resize, so the open is skipped.
     already_filtered = keep_stems is not None or keep_rel_stems is not None
     check_pixels = min_pixels > 0 and not already_filtered
 
@@ -503,12 +498,8 @@ def cache_text_embeddings(
                     k = flat + off
                     save_dict[f"t5_attn_mask_{label}"] = t5_attn_mask[k]
                     if crossattn_emb is not None:
-                        # Adapter-output cache: prune the unused Qwen
-                        # prompt_embeds / attn_mask / t5_input_ids (~half the
-                        # file). Only crossattn_emb (+ t5_attn_mask for postfix)
-                        # is read at train time — see
-                        # library/training/forward/text_conds.py. 512-pad kept,
-                        # so crossattn is bit-identical to the legacy layout.
+                        # Adapter-output cache: prune the unused Qwen keys (see
+                        # the single-caption branch above).
                         save_dict[f"crossattn_emb_{label}"] = crossattn_emb[k]
                     else:
                         save_dict[f"prompt_embeds_{label}"] = prompt_embeds[k]

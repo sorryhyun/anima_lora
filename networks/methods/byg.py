@@ -38,11 +38,11 @@ Objective (paper Alg. 1), per step with ``t~U(0,1)``, ``ε~N(0,I)``, source ``x`
   5. Identity (grad, concat=x, instr=c̄): ``L_id=‖G(x_t,t,c̄,x)−(ε−x)‖²`` —
      staged on an independent graph (anti-collapse anchor + VRAM win).
 
-Deviations from the paper (see proposal "Decisions locked"): snapshot
-bootstrap instead of EMA (``byg_ema_decay`` toggles EMA); t discretized to the
-rollout grid for exact ``ỹ_t`` capture. The symmetric prior (paper Eq. 5,
-``L_prior^fwd + L_prior^rev``) is on by default (v2); ``byg_prior_symmetric =
-false`` reverts to the v1 fwd-only prior (two fewer frozen-base forwards/step).
+Deviations from the paper: snapshot bootstrap instead of EMA
+(``byg_ema_decay`` toggles EMA); t discretized to the rollout grid for exact
+``ỹ_t`` capture. The symmetric prior (paper Eq. 5, ``L_prior^fwd +
+L_prior^rev``) is on by default; ``byg_prior_symmetric = false`` uses the
+fwd-only prior (two fewer frozen-base forwards/step).
 """
 
 from __future__ import annotations
@@ -344,8 +344,7 @@ class BYGConditioning:
 
     def _zero_emb(self, B: int, device, dtype):
         """Cached source timestep embedding (always the zeros-timestep, so it is
-        invariant per (B, device, dtype) — recomputing it on every ``set_source``
-        was pure waste)."""
+        invariant per (B, device, dtype))."""
         key = (B, device, dtype)
         cached = self._zero_emb_cache.get(key)
         if cached is None:
@@ -617,7 +616,7 @@ class BYGMethodAdapter(MethodAdapter):
         eps = torch.randn_like(x)
 
         # t discretized to the rollout grid (exact ỹ_t capture). sigmas[j] is the σ
-        # at node j (1.0..0.0); uniform path reproduces the legacy 1/n grid, an
+        # at node j (1.0..0.0); uniform path is the 1/n grid, an
         # explicit byg_rollout_sigmas grid warps the nodes (Anima-aware NFE).
         if self._rollout_sigmas is not None:
             sigmas = self._rollout_sigmas
@@ -664,7 +663,7 @@ class BYGMethodAdapter(MethodAdapter):
             return lam_id * l_id
 
         # Full step: stage the identity backward on its independent graph NOW so
-        # it frees before the coupled forward builds (the +1.2 vs +2.2 GB win).
+        # it frees before the coupled forward builds (lower peak VRAM).
         if lam_id > 0.0:
             ctx.accelerator.backward(lam_id * l_id)
 

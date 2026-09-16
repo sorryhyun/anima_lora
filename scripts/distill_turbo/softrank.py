@@ -8,10 +8,9 @@ to explain the DP-DMD diversity anchor better than mismatched ones.
 
 ``soft_rank`` is vendored from ``softtorch`` (a-paulus/softtorch, Apache-2.0,
 arXiv:2603.08824) — the same relaxation ``bench/soft_tokens_contrastive/_softrank.py``
-uses for the offline gradient probe (kept self-contained here). Soft-rank was
-chosen over AGSM/InfoNCE: bounded by construction (``L → 0`` at rank → 1) and its
-gradient aligns with the margin gradient (``cos ≈ 0.86``,
-[[project_softrank_agsm_gradient_probe]]).
+uses for the offline gradient probe (kept self-contained here). Soft-rank is
+bounded by construction (``L → 0`` at rank → 1) and its gradient aligns with the
+margin gradient (``cos ≈ 0.86``).
 """
 
 from __future__ import annotations
@@ -79,11 +78,10 @@ class CaptionNegativePool:
     are max-padded (the padding invariant → constant seq length), so captions from
     any step or image bucket stack cleanly into a single negative tensor.
 
-    Entries are detached on-device clones (no per-step D2H sync — the loop's whole
-    accumulator design avoids syncs); the buffer is bounded to ``capacity``. The
-    current step's captions are added *after* drawing, so an anchor never draws its
-    own caption as a negative (barring a genuine earlier repeat — the `shuffled`
-    pool the Phase-0 probe measured the worst damage on).
+    Entries are detached on-device clones (no per-step D2H sync); the buffer is
+    bounded to ``capacity``. The current step's captions are added *after*
+    drawing, so an anchor never draws its own caption as a negative (barring a
+    genuine earlier repeat).
     """
 
     def __init__(self, capacity: int):

@@ -2,11 +2,9 @@ import math
 import random
 from typing import NamedTuple, Tuple
 
-# The free-fit tier / band / solver geometry is OWNED by ``anime_tools.buckets``
-# (curation split, API-first T5 — 2026-09-03) and re-exported here, the way
-# ``library/models/pe.py`` re-exports the PE tower: the package's resize stage
-# and ``make preprocess-resize`` (a ``ResizeRequest`` itself now) land an image
-# on the same ``(W, H)`` by construction. Trainer-only helpers — token-family
+# The free-fit tier / band / solver geometry is owned by ``anime_tools.buckets``
+# and re-exported here, so the package's resize stage and ``make
+# preprocess-resize`` land an image on the same ``(W, H)`` by construction. Trainer-only helpers — token-family
 # budgets for compile, per-band clustering, σ-demote siblings, the frozen DCW
 # aspect set, ``BucketManager`` — stay below. Torch-free and numpy-free on the
 # import path (numpy is imported lazily inside BucketManager) so the GUI can
@@ -71,7 +69,7 @@ def token_counts_for_sample_prompts(prompts) -> set:
     (``prompts`` = ``train_util.load_prompts`` dicts, width/height default 512).
     Folded into the compile token budget so a sample resolution outside the
     training buckets widens the compiled range instead of raising a
-    dynamic-seq ConstraintViolationError mid-training (issue #42)."""
+    dynamic-seq ConstraintViolationError mid-training."""
     counts: set = set()
     for prompt_dict in prompts:
         w, h = snap_sample_size(
@@ -85,12 +83,12 @@ def token_counts_for_sample_prompts(prompts) -> set:
 def cluster_token_bands(counts, rel_gap: float = 0.10) -> "list[tuple[int, int]]":
     """Cluster a token-count set into per-tier ``(lo, hi)`` bands.
 
-    Data-driven (_archive/proposals/perband_dynamic_seq.md): sort the *actual*
+    Data-driven: sort the *actual*
     counts and split wherever the relative gap to the previous count exceeds
     ``rel_gap``. Handles every count source uniformly — tier buckets, sample
     prompts, σ-demote siblings — with no ``EDGE_TOKEN_BANDS`` special-casing:
     a sample prompt landing between tiers becomes its own singleton band, a
-    single-tier pool degenerates to one band == the old union range.
+    single-tier pool degenerates to one band.
     """
     ordered = sorted({int(c) for c in counts})
     if not ordered:
@@ -177,10 +175,9 @@ def demoted_token_counts(resos, native_edge: int, demote_edge: int) -> set:
     return counts
 
 
-# Frozen literal: dataset's top-5 (H, W) resolutions by frequency from the old
-# discrete 1024-tier bucket pool (pre-free-fit). Kept for CNS calibration and
-# mod-guidance distillation which still key off it (DCW name only because those
-# consumers import the symbol; the DCW line itself is retired, _archive/dcw/).
+# Frozen literal: the dataset's top-5 (H, W) resolutions by frequency from the
+# pre-free-fit 1024-tier bucket pool. CNS calibration and mod-guidance
+# distillation key off it (under the DCW name they import).
 DCW_ASPECT_BUCKETS: Tuple[Tuple[int, int], ...] = (
     (1200, 896),  # 896x1200 portrait, most common, 4200-tok
     (1344, 800),  # 800x1344 tall portrait, 4200-tok
@@ -194,8 +191,7 @@ N_DCW_ASPECTS: int = len(DCW_ASPECT_BUCKETS)
 
 
 def make_bucket_resolutions(max_reso, min_size=256, max_size=1024, divisible=64):
-    """Generate bucket resolutions for multi-aspect-ratio training.
-    Moved from model_util.py to avoid dependency."""
+    """Generate bucket resolutions for multi-aspect-ratio training."""
     max_width, max_height = max_reso
     max_area = max_width * max_height
 
@@ -278,9 +274,8 @@ class BucketManager:
         target_res=None,
     ):
         if freefit_resos is not None:
-            # Free-fit: the on-disk cached (W, H) set IS the source of truth for
-            # buckets — every cached latent exact-matches in select_bucket, nothing
-            # AR-snaps at load. target_res is preprocess-only and inert here.
+            # Free-fit: the cached (W, H) set is the bucket set, so every cached
+            # latent exact-matches in select_bucket (see BaseDataset.make_buckets).
             resos = sorted(set(tuple(r) for r in freefit_resos))
         else:
             resos = make_bucket_resolutions(

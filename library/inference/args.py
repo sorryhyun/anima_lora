@@ -1,11 +1,10 @@
 """Anima inference argument parser — the single source of truth for every
 generation knob ``generate()`` reads off an ``argparse.Namespace``.
 
-Extracted from the top-level ``inference.py`` CLI script so programmatic callers
-(``GenerationRequest.to_args()``, ``bench/`` probes, embedders) can build a
-fully-defaulted namespace without importing the entry-point module. ``inference``
-now delegates its own ``parse_args`` here, so the CLI and every library caller
-share one parser definition.
+The CLI (``inference.parse_args``) and programmatic callers
+(``GenerationRequest.to_args()``, ``bench/`` probes, embedders) share this
+parser, so a fully-defaulted namespace needs no import of the entry-point
+module.
 
     from library.inference.args import build_default_args
     args = build_default_args(["--prompt", "a fox", "--text_encoder", te, "--save_path", out])
@@ -427,7 +426,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # SPD (arXiv:2605.18736): forces Euler, mutually exclusive with --spectrum.
-    # See networks/spd.py + bench/spd/.
+    # See networks/spd.py + docs/inference/spd.md (bench: _archive/spd/bench/).
     parser.add_argument(
         "--spd",
         action="store_true",
@@ -481,13 +480,11 @@ def build_parser() -> argparse.ArgumentParser:
         "static center rect.",
     )
 
-    # Front-loaded cross-attn boost (frontload_text_boost arm (b), Phase-0
-    # G1+G2 PASS): scale the cross-attn residual of every block by λ on the
-    # CONDITIONAL forward only, gated to σ ≥ band — the plan-writing window
-    # where cross-attn text drive exists at all (peaks σ=1, ~0.02 floor below
-    # σ≈0.85 — docs/findings/crossattn_self_attn_dominance.md). Improves
-    # weak-tag adherence / relation bindings; amplifies ALL caption tags
-    # (framing priors ride along). Composes with --spectrum (real forwards
+    # Front-loaded cross-attn boost: scale the cross-attn residual of every
+    # block by λ on the CONDITIONAL forward only, gated to σ ≥ band — the
+    # window where cross-attn text drive exists at all
+    # (docs/findings/crossattn_self_attn_dominance.md). Amplifies ALL caption
+    # tags (framing priors ride along). Composes with --spectrum (real forwards
     # boosted, forecast steps extrapolate from boosted features) and with
     # --smc_cfg / --cfgpp / --mod_guidance (they touch the combine or the
     # modulation pathway, not the cond forward). Under CFG 1.0 (turbo) the
@@ -527,12 +524,9 @@ def build_parser() -> argparse.ArgumentParser:
         "0.0 = raw boost. Default 0.5 (Phase-1'' sweet spot at λ=2).",
     )
 
-    # SMC-CFG: Sliding-Mode Control CFG (α-adaptive variant; arXiv:2603.03281).
-    # Drop-in CFG modification: replaces w·e with w·(e + Δe) where
-    # Δe = -k_t·sign(s), s = (e - e_prev) + λ·e_prev, k_t = α·mean(|e_t|).
-    # No extra DiT forwards; one prev-step velocity-residual buffer. Composes
-    # with --spectrum / --mod_guidance (operates strictly on the
-    # velocity-space CFG combine). See docs/inference/smc_cfg.md.
+    # SMC-CFG (library/inference/corrections/smc_cfg.py). Composes with
+    # --spectrum / --mod_guidance (operates strictly on the velocity-space CFG
+    # combine). See docs/inference/smc_cfg.md.
     parser.add_argument(
         "--smc_cfg",
         action="store_true",
@@ -551,15 +545,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=0.2,
         help="SMC-CFG adaptive gain α ∈ (0, 1]. k_t := α·|e_t|.mean() per "
         "step — self-scales across model / CFG / σ / sample. Paper's fixed "
-        "k=0.1 was off by ~14× on Anima (bench/smc_cfg/analysis_and_proposal.md), "
+        "k=0.1 was off by ~14× on Anima (_archive/bench/smc_cfg/analysis_and_proposal.md), "
         "so the α path is the only mode now. α=0.2 is the production default.",
     )
 
-    # Trajectory-resolved latent statistics (_archive/proposals/traj_latent_stats.md
-    # Phase 0). Passive per-step recorder — pure observation, recorder on/off
-    # latents are bit-identical (pinned by tests/test_traj_stats.py). One .npz
-    # sidecar per generation. Composes with --spectrum (recorded post-combine
-    # in the spectrum loop too) and the tiled path (post-blend).
+    # Trajectory-resolved latent statistics (library/inference/traj_stats.py):
+    # passive recorder, one .npz sidecar per generation. Composes with
+    # --spectrum (recorded post-combine in the spectrum loop too) and the tiled
+    # path (post-blend).
     parser.add_argument(
         "--traj_stats",
         action="store_true",
@@ -579,14 +572,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Bits per channel for the --traj_stats quantization codes (1-8).",
     )
 
-    # FSG: Foresight Guidance (NeurIPS 2025, arXiv 23177). Pre-step latent
-    # calibration: at scheduled mid-σ steps, run K forward(cond)-backward(uncond)
-    # fixed-point iterations to pull x_t onto the golden path, then denoise from
-    # x̂_t. Training-free, deterministic; ~3·K extra forwards per scheduled step.
-    # Composes with --mod_guidance / --dave / --cns / --smc_cfg (FSG's
+    # FSG: Foresight Guidance (library/inference/corrections/fsg_core.py);
+    # ~3·K extra forwards per scheduled step. Composes with --mod_guidance / --dave / --cns / --smc_cfg (FSG's
     # calibration uses plain γ-combine; the outer step keeps the configured CFG
     # variant). Ignored under --spectrum / --spd (they replace the loop). See
-    # docs/inference/fsg.md and docs/proposal/foresight_guidance.md.
+    # docs/inference/fsg.md.
     parser.add_argument(
         "--fsg",
         action="store_true",
@@ -655,11 +645,8 @@ def build_parser() -> argparse.ArgumentParser:
         "with --cfgpp.",
     )
 
-    # CNS: Colored Noise Sampling (arXiv:2605.30332). Recolors the er_sde
-    # injected noise by sqrt(1-γ) from a precomputed completion matrix so the
-    # fixed stochastic budget lands in unresolved frequency bands. Training-free,
-    # er_sde-only (no-op on euler). γ is calibrated per (cfg×aspect) by
-    # scripts/calibration/cns_calibrate.py. See docs/methods (_archive/bench/cns/plan.md).
+    # CNS: Colored Noise Sampling (library/inference/corrections/cns_core.py).
+    # er_sde-only (no-op on euler). See docs/inference/cns.md.
     parser.add_argument(
         "--cns",
         type=str,
@@ -676,11 +663,8 @@ def build_parser() -> argparse.ArgumentParser:
         "CNS, 0.0 = pass-through. Safety knob for over-injection off-manifold.",
     )
 
-    # DAVE: DC Attenuation for diVersity Enhancement (training-free, ICML'26).
-    # Per-block representation edit ĥ = α·μ + (h−μ) that attenuates the cross-seed-
-    # shared DC component to recover same-prompt diversity. Hook-based; standard
-    # denoise loop only (no Spectrum/SPD compose). Mask from
-    # bench/dave/derive_alpha_mask.py. See library/inference/corrections/dave.py.
+    # DAVE (library/inference/corrections/dave.py): standard denoise loop only
+    # (no Spectrum/SPD compose).
     parser.add_argument(
         "--dave",
         type=str,

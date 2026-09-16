@@ -1,10 +1,8 @@
-"""Stdio MCP bridge for the daemon — pure stdlib, zero new deps.
+"""Stdio MCP bridge for the daemon.
 
-Exposes the daemon's HTTP surface as MCP tools; the bridge resolves the
-daemon itself via the pidfile (``config.discover_pidfile``), so MCP config is
-just a command to run — see ``anima_daemon/README.md`` "MCP bridge" for setup
-and the two deviations from ``server.TOOLS`` (``tail_log`` replaces the SSE
-``tail_logs``; only ``submit_*`` auto-start the daemon).
+Exposes the daemon's HTTP surface as MCP tools, resolving the daemon via the
+pidfile (``config.discover_pidfile``). Setup and the deviations from
+``server.TOOLS``: ``anima_daemon/README.md`` "MCP bridge".
 
 Transport: newline-delimited JSON-RPC 2.0 over stdio. Nothing but protocol
 messages may touch stdout; diagnostics go to stderr.
@@ -63,10 +61,8 @@ TAIL_LOG_TOOL = {
 
 
 def _tail_lines(path: str, n: int, *, max_bytes: int = 262_144) -> list[str]:
-    """Last ``n`` lines of a (possibly huge) log, decoded leniently. tqdm
-    redraws ride ``\\r`` on one physical line, so naive ``splitlines()`` would
-    turn one progress bar into thousands of "lines" — keep only the final
-    rendering of each and drop blank ones."""
+    """Last ``n`` non-blank lines of a (possibly huge) log, decoded leniently.
+    ``\\r``-separated tqdm redraws collapse to their final rendering."""
     try:
         p = Path(path)
         size = p.stat().st_size

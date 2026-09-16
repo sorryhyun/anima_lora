@@ -1,5 +1,4 @@
-# LoRA module building blocks. Public API re-exported here so
-# `from networks.lora_modules import LoRAModule, ...` works unchanged.
+# LoRA module building blocks; public API re-exported here.
 
 from networks.lora_modules.base import BaseLoRAModule, _absorb_channel_scale
 from networks.lora_modules.chimera import (

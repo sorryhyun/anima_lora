@@ -231,8 +231,7 @@ class BaseDataset(torch.utils.data.Dataset):
         self.contrastive_neg_mode: str = "shuffled"
 
         # Per-image sidecar registry: each spec bundles a loader with its batch
-        # collation policy, so a new channel is one register_sidecar() call
-        # instead of a hand-copied loop/stack/None dance in __getitem__.
+        # collation policy (see SidecarSpec).
         self._sidecar_specs: List[SidecarSpec] = []
         # Loaders are bound methods and enabled_attr names an attribute (not a
         # closure), so every spec pickles for Windows/`spawn` DataLoader workers.
@@ -790,13 +789,10 @@ class BaseDataset(torch.utils.data.Dataset):
         for info in self.image_data.values():
             subset = self.image_to_subset.get(info.image_key)
             # Same resolution order the reader uses (`new_cache_text_encoder_
-            # outputs` / `_load_text_encoder_outputs`): text_cache_dir, when
+            # outputs` / `load_outputs_npz`): text_cache_dir, when
             # set, redirects the TE cache and cache_dir holds only latents/PE.
             # Probing cache_dir alone reports a redirected subset as incomplete
-            # unless cache_dir *also* happens to carry a TE cache — which is
-            # what masked this for colorize's first subset (cache_dir = the
-            # shared lora/ cache) until a subset arrived whose cache_dir has no
-            # TE sidecars of its own.
+            # unless cache_dir *also* happens to carry a TE cache.
             npz_path = caching_strategy.get_outputs_npz_path(
                 info.absolute_path,
                 cache_dir=(

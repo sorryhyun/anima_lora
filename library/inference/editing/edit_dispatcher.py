@@ -8,14 +8,12 @@ Three intents, with APPEND as the safe default:
               AND gap-to-top-2 above ``replace_gap``). String-substitute that tag.
   * APPEND  — everything else. Append ``", " + edit_instruction`` to the caption.
 
-The threshold/gap gate is the load-bearing piece: probe `scripts/probes/
-edit_nearest_tag.py` shows that legitimate REPLACE cases (e.g. "large breasts"
-into a caption with "medium breasts") have both top-1 ≳ 0.95 AND gaps ≳ 0.07,
-while ambiguous or no-conflict cases (case 13 huge+large both present, case 16
-"medium hair" near "grey hair") have gaps < 0.01. Failing the gate falls through
-to APPEND — same as today's behaviour, no regression.
-
-See ``plan.md`` and the probe transcript for the full rationale.
+The threshold/gap gate is the load-bearing piece: probe
+``_archive/text_enc_probes/edit_nearest_tag.py`` shows that legitimate REPLACE
+cases (e.g. "large breasts" into a caption with "medium breasts") have both
+top-1 ≳ 0.95 AND gaps ≳ 0.07, while ambiguous or no-conflict cases (huge+large
+both present, "medium hair" near "grey hair") have gaps < 0.01. Failing the
+gate falls through to APPEND.
 """
 
 from __future__ import annotations
@@ -119,7 +117,7 @@ def encode_last_pooled_via_anima_strategy(
     """Anima-flavoured ``EncodeLastPooledFn``: tokenize + encode via the
     Anima strategy trio and return (N, D) last-non-padding-token vectors.
 
-    Mirrors ``scripts/probes/edit_nearest_tag.py::encode_phrases`` exactly — the
+    Mirrors ``_archive/text_enc_probes/edit_nearest_tag.py::encode_phrases`` exactly — the
     probe is the regression set for the dispatcher thresholds, so the encoding
     path must match.
     """
@@ -144,17 +142,16 @@ def derive_target_caption(
 ) -> EditPlan:
     """Decide ψ_tar from (ψ_src, edit phrase) without a tag-families YAML.
 
-    Default behaviour matches the pre-dispatcher world (append the edit phrase),
-    so adopting the dispatcher never *worsens* an existing prompt path. REPLACE
-    only fires when Qwen3 geometry is confidently pointing at a single tag.
+    Default is APPEND (the edit phrase is appended). REPLACE only fires when
+    Qwen3 geometry is confidently pointing at a single tag.
 
     The encoder shim is caller-supplied so the ComfyUI node (which goes through
     comfy's stock ``CLIP`` socket, not the AnimaTokenizeStrategy) and the
     standalone CLI (Anima strategy trio) can share this code path. For the
     Anima case, see ``encode_last_pooled_via_anima_strategy``.
 
-    Thresholds tuned against ``scripts/probes/edit_nearest_tag.py`` (22 cases as
-    of this commit). Revisit when Phase 6 lands a larger labeled set.
+    Thresholds tuned against ``_archive/text_enc_probes/edit_nearest_tag.py``
+    (22 cases).
     """
     src_tags = _split_tags(src_caption)
     phrase, removal_kind = _parse_remove_syntax(edit_instruction)

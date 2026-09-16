@@ -1,7 +1,6 @@
 """Resize a dataset directory into free-fit bucket resolutions.
 
-The resize pass is ``anime_tools.stages.resize`` (the owner since the
-API-first migration, 2026-09-03): ``make preprocess-resize`` runs it as a
+The resize pass is ``anime_tools.stages.resize``: ``make preprocess-resize`` runs it as a
 ``ResizeRequest``. What stays here is the programmatic wrapper embedders and
 tests call — :func:`resize_to_buckets`, with the trainer's ``PreprocessStats``
 shape, ``curation_decisions`` (translated into the stage's ``skip`` set) and
@@ -66,10 +65,6 @@ def resize_to_buckets(
     ``stats.skipped`` counts every image not (re)written this run — too small,
     decided against, or already at its bucket. Pass ``progress`` for a
     per-image bar.
-
-    The snap-era knobs (``resolution`` / ``min_bucket_reso`` /
-    ``max_bucket_reso`` / ``bucket_reso_steps`` / ``bucket_resos`` /
-    ``fit_mode``) were dropped in v2 — free-fit is the only resize mode.
     """
     options = ResizeOptions.build(
         target_res=target_res or list(DEFAULT_TARGET_RES),

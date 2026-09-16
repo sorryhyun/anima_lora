@@ -7,9 +7,7 @@ shipped γ artifact under the repo home (``--cns auto`` → ``DEFAULT_GAMMA_PATH
 an explicit path overrides).
 
 The completion matrix is produced offline by ``scripts/calibration/cns_calibrate.py`` (cfg=4.0,
-top-3 aspects) and shipped as ``networks/calibration/cns_gamma.npz``. This module
-only *consumes* it. Phase plan + premise: ``_archive/bench/cns/plan.md``; the γ premise is
-independently corroborated by ``project_sigma_signal_resolves_by_045``.
+top-3 aspects) and shipped as ``networks/calibration/cns_gamma.npz``.
 
 Seam: ``ERSDESampler._sample_noise`` (``library/inference/sampling.py``). CNS is a
 no-op on the euler/ODE default (no injected noise) — only ``--sampler er_sde``
@@ -26,8 +24,8 @@ __all__ = ["CNSRecolorer", "radial_bins", "DEFAULT_GAMMA_PATH"]
 
 # Default shipped calibration artifact (relative to repo home). `--cns auto`
 # resolves here; an explicit path overrides. Ships an aspect-averaged single-γ
-# (shape (1, T, F)) — the cross-aspect variation is cosmetic (β MAD ~0.01,
-# cf. project_dcw_bucket_prior_cosmetic), so one γ serves any resolution; the
+# (shape (1, T, F)) — the cross-aspect variation is cosmetic (β MAD ~0.01),
+# so one γ serves any resolution; the
 # recolorer's nearest-aspect select degrades to index 0 for a single-row table.
 DEFAULT_GAMMA_PATH = "networks/calibration/cns_gamma.npz"
 

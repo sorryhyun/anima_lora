@@ -1,14 +1,13 @@
 """Trainer-side model catalog — the Anima half of the download surface.
 
-The curation half already exists: :mod:`anime_tools.downloads` is one
+The curation half is :mod:`anime_tools.downloads`: one
 :class:`~anime_tools.downloads.Asset` per checkpoint (tagger, SAM3, PE-Spatial,
 the tag KB, the OCR stack…) carrying repo, files, destination and an **offline**
 installed probe. This module adds the rows only the trainer needs — the Anima
 base weights, PE-Core, the CJK vocab pack — as the same ``Asset`` kind, so
-``make download-*`` and the GUI read one list instead of two hand-kept copies.
+``make download-*`` and the GUI read one list.
 
-Reusing the package's row type is deliberate: destinations already coincide
-because ``anime_tools._env.curation_home()`` falls back to ``ANIMA_HOME``, which
+Destinations coincide because ``anime_tools._env.curation_home()`` falls back to ``ANIMA_HOME``, which
 ``scripts/tasks/_common.py`` pins to this checkout. So ``models_dir()`` is
 ``<repo>/models`` and a catalog row writes exactly where a loader here looks.
 
@@ -121,9 +120,7 @@ TRAINER_PACKS: tuple[Pack, ...] = (
 )
 
 # Package packs the trainer does not offer: not listed, resolved or downloaded
-# from here. Empty since the package dropped ``text_mask`` (the MIT UNet++ text
-# segmenter + its ComicTextDetector gate) outright in 0.5 — the seam stays so
-# the next package-only pack is one id here, not a row filter.
+# from here.
 HIDDEN_PACKS: tuple[str, ...] = ()
 
 PACKS: tuple[Pack, ...] = (
@@ -272,8 +269,8 @@ GROUPS: dict[str, tuple[str, ...]] = {
 }
 
 # What a first-run `make download-models` fetches — the mandatory set: the
-# Anima base, both PE towers, the tagger checkpoint, the tag KB, and (since v2)
-# the CJK vocab pack, because ``configs/base.toml`` now enables it. Not
+# Anima base, both PE towers, the tagger checkpoint, the tag KB, and the CJK
+# vocab pack, because ``configs/base.toml`` enables it. Not
 # "everything missing": SAM3 is gated and masking is opt-in (``make
 # download-sam3``), and the OCR stack is opt-in (``make download-model ocr``).
 DEFAULT_SET: tuple[str, ...] = (

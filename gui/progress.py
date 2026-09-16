@@ -1,9 +1,8 @@
-"""tqdm progress-bar parsing for QProcess output streams.
+"""Progress-bar drivers for the tabs: tqdm stdout lines and ``progress.jsonl``.
 
-Both ConfigTab and PreprocessingTab pipe a child process's stdout/stderr
-through a small QProgressBar at the top of the tab. The parsing logic
-(matching tqdm's textual format and computing s/step from the first
-completed step) is shared here so the two tabs don't drift.
+``TqdmProgressTracker`` matches tqdm's textual format and computes s/step from
+the first completed step; ``JsonlProgressReader`` reads the trainer's
+structured event stream.
 
 Use as::
 
@@ -130,13 +129,12 @@ class TqdmProgressTracker:
 class JsonlProgressReader:
     """Drives a QProgressBar from a training ``progress.jsonl`` event stream.
 
-    This is the Phase-0 replacement for tqdm-stdout parsing: the trainer writes
-    structured ``run_start`` / ``step`` / ``val`` / ``run_end`` events
-    (``library/training/progress.py``) next to the checkpoint, and this reader
-    tails that file. It is *additive* — the caller keeps the tqdm
+    The trainer writes structured ``run_start`` / ``step`` / ``val`` /
+    ``run_end`` events (``library/training/progress.py``) next to the
+    checkpoint, and this reader tails that file. The caller keeps the tqdm
     :class:`TqdmProgressTracker` as a fallback and only hands the bar over once
-    ``active`` flips True (first event seen). When the file never appears (older
-    train.py, progress disabled) the reader stays inert and tqdm drives the bar.
+    ``active`` flips True (first event seen). When the file never appears
+    (progress disabled) the reader stays inert and tqdm drives the bar.
 
     Usage::
 

@@ -1,24 +1,21 @@
 """The Preprocessing tab's trainer-native knob table — single source of truth,
 Qt-free.
 
-Since the stage-schema migration (P1–P3, landed 2026-09-07) this table holds only what is **not** a field of an
-``anime_tools`` stage request: the dataset roots and scope (``source_image_dir``
+This table holds only what is **not** a field of an ``anime_tools`` stage
+request: the dataset roots and scope (``source_image_dir``
 / ``path_scope`` / ``preprocess_path_pattern``), the trainer-side TE-cache
 knobs (``caption_shuffle_variants`` / ``caption_tag_dropout_rate``), the
 low-res filter sugar (``drop_lowres_images`` → ``min_pixels=0``) and the three
 **chain gates** — whether the Run chain runs the autotag / position-clause /
 SAM stages at all (``caption_autotag`` / ``caption_position_clauses`` /
-``run_sam_mask``). Every other row the tab used to carry (resize geometry,
-caption rewriting, autotag mode, SAM rule cards) is drawn
-from the stage schemas by ``stage_form.py`` and persisted under
-``[variant.stages.<stage_id>]``.
+``run_sam_mask``). Everything else (resize geometry, caption rewriting,
+autotag mode, SAM rule cards) is drawn from the stage schemas by
+``stage_form.py`` and persisted under ``[variant.stages.<stage_id>]``.
 
-The pure functions below replace the per-knob ladders that used to live in
-``preprocess_tab.py`` (``set_variant`` fallback chain, ``preprocess_env`` /
-``preprocess_overrides`` serialisation, and the ``_save_variant_preprocess_meta``
-pop-or-set chain), so adding a knob is one row + the widget, and the "where does
-the default come from" policies (hardcoded / ``preprocess.toml`` /
-``gui_settings.json``) are declared instead of re-derived at each site.
+The pure functions below implement the tab's default resolution, env /
+override serialisation and ``[variant]`` elision from the table, so adding a
+knob is one row + the widget, and each knob's default source (hardcoded /
+``preprocess.toml`` / ``gui_settings.json``) is declared on its row.
 
 The contract is pinned byte-for-byte by
 ``tests/test_gui_preprocess_characterization.py`` (fixture under
@@ -35,8 +32,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-# Defaults match the historical hardcoded values in scripts/tasks/preprocess.py,
-# so a fresh GUI runs the same pipeline as the bare CLI.
+# Defaults match the bare CLI (scripts/tasks/preprocess.py), so a fresh GUI runs
+# the same pipeline.
 DEFAULT_SOURCE_IMAGE_DIR = "image_dataset"
 DEFAULT_PREPROCESS_PATH_PATTERN = "*"
 DEFAULT_DROP_LOWRES_IMAGES = True
@@ -44,7 +41,7 @@ DEFAULT_TE_SHUFFLE_VARIANTS = 4
 DEFAULT_TE_TAG_DROPOUT = 0.1
 DEFAULT_CAPTION_POSITION_CLAUSES = False
 DEFAULT_CAPTION_AUTOTAG = False
-DEFAULT_RUN_SAM_MASK = False  # v2: masking is opt-in
+DEFAULT_RUN_SAM_MASK = False  # masking is opt-in
 # The SAM rule the first card seeds from when neither the variant nor
 # ``configs/sam_mask.yaml`` names one (the CLI's historical prompt set).
 DEFAULT_SAM_MASKS = ("ignore:text:speech bubble", "ignore:text:text bubble")
@@ -238,7 +235,7 @@ def resolved_defaults(pp_cfg: dict, settings: dict) -> dict:
 
 def load_values(meta: dict, defaults: dict) -> dict:
     """Widget values for a variant: its ``[variant]`` meta over the resolved
-    defaults (replaces the per-knob fallback ladder in ``set_variant``)."""
+    defaults (what ``set_variant`` shows)."""
     return {knob.key: meta.get(knob.key, defaults[knob.key]) for knob in KNOBS}
 
 

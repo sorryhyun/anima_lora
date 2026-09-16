@@ -1,24 +1,19 @@
 #!/usr/bin/env python3
 """From a method config to a built network to an in-process training run.
 
-Three progressive parts — each builds on the previous, each opt-in via a flag so
-the cheap part runs by default and the GPU-heavy parts stay explicit:
+Three parts; the config part runs by default, the GPU parts are opt-in:
 
-  1. load_method_preset() — the config merge chain (default; no GPU, no weights)
+  1. load_method_preset() — the config merge chain (no GPU, no weights)
      base.toml → presets.toml[<preset>] → methods/<method>.toml → (CLI on top).
-     This is what `train.py` does before it touches a single weight. The LoRA
-     family is routed by a three-axis surface — use_moe_style / route_per_layer /
-     router_source — which is just three keys in the merged dict; we print them.
+     Prints the network keys, including the three-axis LoRA routing surface
+     (use_moe_style / route_per_layer / router_source).
 
   2. create_network()  (--build-network) — turn the resolved config into a live
      LoRA network bound to the DiT. Needs the DiT checkpoint.
 
-  3. AnimaTrainer().train()  (--train) — actually run the training loop in-process.
-     `make lora` (→ `python tasks.py lora`) shells out to
-     `accelerate launch train.py --method lora --preset default`; that's the
-     supported path and the only one for multi-GPU. On a single GPU you can skip
-     the launcher and drive the trainer from Python — useful for embedding
-     training in a larger script, a notebook, or a custom sweep.
+  3. AnimaTrainer().train()  (--train) — run the training loop in-process on a
+     single GPU, as `make lora` does by default. Multi-GPU runs need
+     `accelerate launch` (`ANIMA_ACCELERATE_LAUNCH=1 make lora`).
 
     python examples/02_config_and_train.py --method lora --preset default
     python examples/02_config_and_train.py --method lora --build-network
@@ -34,12 +29,9 @@ from __future__ import annotations
 
 import argparse
 
-# `load_method_preset` is re-exported on the `anima_lora.config` namespace.
 from anima_lora.config import load_method_preset
 
-# Keys that make up the LoRA routing/shape surface — the values an adapter
-# author cares about. (Full merged dict has ~150 keys spanning optimizer,
-# dataset, logging, etc.)
+# The LoRA routing/shape keys printed from the merged config.
 NETWORK_KEYS = (
     "network_module",
     "network_dim",
@@ -77,10 +69,8 @@ def build_network(merged: dict):
 
     from anima_lora.training import create_network
 
-    # We only need the raw DiT weights to bind a fresh network to — no LoRA / no
-    # adapters to attach. So skip the namespace-driven load_dit_model and call the
-    # explicit-argument primitive directly (as its docstring advises, and as
-    # examples/04_load_models.py does). attn_mode "torch" is the portable default.
+    # Only the raw DiT is needed (no adapter to attach), so use the
+    # explicit-argument primitive, as examples/04_load_models.py does.
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     unet = anima_weights.load_anima_model(
         device=device,
@@ -123,8 +113,7 @@ def run_training(method: str, preset: str, extra_argv: list[str]) -> None:
     """
     from library.config import schema as config_schema
 
-    # The whole run-training toolkit rides the façade: `anima_lora.training`
-    # loads repo-root train.py by path, so this works from any CWD.
+    # `anima_lora.training` loads repo-root train.py by path (any CWD works).
     from anima_lora.config import read_config_from_file
     from anima_lora.training import (
         AnimaTrainer,
@@ -136,17 +125,14 @@ def run_training(method: str, preset: str, extra_argv: list[str]) -> None:
     argv = ["--method", method, "--preset", preset, *extra_argv]
 
     parser = setup_parser()
-    # populate_schema adds the config-driven flags (incl. the network_module
-    # str-extras that create_network reads); without it the routing keys are
-    # missing from the namespace.
+    # populate_schema adds the config-driven flags, including the routing keys
+    # create_network reads.
     config_schema.populate_schema(parser, extras=build_network_extras())
 
     args = parser.parse_args(argv)
     verify_command_line_training_args(args)
-    # Applies the base→preset→method merge, then layers CLI overrides on top
-    # (that's how `--network_dim 32` wins over the method file). We pass `argv`
-    # explicitly so the override layer is driven by *our* list — not the process
-    # sys.argv. (Default argv=None preserves the CLI behaviour for train.py.)
+    # base→preset→method merge, then CLI overrides on top. `argv` is passed
+    # explicitly so the override layer reads our list, not sys.argv.
     args = read_config_from_file(args, parser, argv=argv)
 
     if args.attn_mode == "sdpa":
@@ -156,8 +142,7 @@ def run_training(method: str, preset: str, extra_argv: list[str]) -> None:
 
 
 def main() -> None:
-    # parse_known_args so anything extra (e.g. --max_train_epochs 8) is forwarded
-    # verbatim to the trainer in part 3, exactly like the CLI override layer.
+    # parse_known_args: unknown args (e.g. --max_train_epochs 8) go to the trainer.
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--method", default="lora")
     p.add_argument("--preset", default="default")

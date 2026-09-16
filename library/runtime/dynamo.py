@@ -1,15 +1,8 @@
 """Dynamo/inductor compile-config pinning helpers.
 
-The knobs worth a shared home: setting a ``torch._dynamo`` / ``torch._inductor``
-config value so it survives into the *backward* compile context. A plain
-``config.<name> = value`` assignment is context-local (the ``user_override`` is
-a thread-local ``ContextVar`` — see ``pin_dynamo_limit`` / ``pin_inductor_flag``),
-so every call site that sets a compile knob before a ``torch.compile`` would
-otherwise re-discover the same ContextVar trap: the grad-bearing compile reads
-the entry's *default* and the setting silently reverts. Keep this
-dependency-free (torch + logging only) so any layer — ``library.anima`` models,
-``library.runtime`` harness, ``networks/`` adapters, ``scripts/`` distill loops
-— can import it without a cycle.
+Set a ``torch._dynamo`` / ``torch._inductor`` config value so it survives into
+the *backward* compile context (see ``pin_dynamo_limit``). Dependency-free
+(torch + logging only) so any layer can import it without a cycle.
 """
 
 from __future__ import annotations
@@ -28,8 +21,7 @@ def pin_dynamo_limit(name: str, value: int) -> int:
     *different* context (the AOTAutograd / backward compile path), where the override
     is absent and the read falls back to the config entry's ``default`` (8) — so the
     budget silently reverts and the loop spills to eager at the first grad forward,
-    despite a correct setup-time raise (verified: the override reads 64 in the main
-    thread but 8 in a worker thread). Pinning the canonical entry's ``.default``
+    despite a correct setup-time raise. Pinning the canonical entry's ``.default``
     makes the raise context-independent. We set both: the override (same-context
     reads + log visibility) and the default (compile-/backward-thread reads).
 
@@ -68,7 +60,7 @@ def pin_inductor_flag(name: str, value: object) -> None:
     is env-derived True, so the ``compile_blocks`` kill silently reverted and
     the fusion's hint-derived ``Ge(seq, 4096)`` guard broke strict dynamic-seq
     marks (ConstraintViolationError at the first training step under gradient
-    checkpointing — the v1.14.0 adaln-default-on community crash). Pin both: the
+    checkpointing). Pin both: the
     override (same-context reads) and the default (compile-/backward-thread
     reads).
 

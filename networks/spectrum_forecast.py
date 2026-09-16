@@ -3,9 +3,8 @@
 The Chebyshev T-polynomial ridge-regression forecaster (``ChebyshevForecaster``)
 and the Taylor-blended predictor (``SpectrumPredictor``) that ``networks/spectrum.py``
 fits on captured ``final_layer`` features at actual steps and queries at cached
-steps. Extracted here so the CLI Spectrum runner and the ComfyUI node
-(``ComfyUI-Spectrum-KSampler``) share one implementation instead of hand-mirroring
-it (the node used to keep a verbatim ``forecaster.py`` copy).
+steps. Shared by the CLI Spectrum runner and the ComfyUI node
+(``ComfyUI-Spectrum-KSampler``).
 
 torch/stdlib only — no ``comfy``, no anima-model imports.
 

@@ -2,7 +2,7 @@
 HydraLoRA / FeRA / σ-band router at inference time.
 
 The training side, the inference loop, and the ComfyUI custom node
-(``custom_nodes/comfyui-hydralora/``) all need to compute exactly the same
+(``ComfyUI-Anima_lora-Adapter``) all need to compute exactly the same
 FEI / σ / σ-band math against the same trained router weights. Any drift
 between the three copies shows up directly as wrong gates — the router
 weights were trained against a specific functional form, so a permuted band
@@ -23,10 +23,9 @@ Public surface:
   ``[e_low, e_high]``. The default FEI for ``library/runtime/fei.py`` and
   the plan2 ``stacked_experts_global_fei`` GlobalRouter.
 * ``compute_fei_nband_high_to_low(z, sigma_low, num_bands) -> (B, N)``
-  simplex ordered ``[high, ..., low]``. Legacy / author-faithful FeRA
-  (``networks.methods.fera``, retired at plan2 — checkpoints still load
-  through the node). Different ordering from ``compute_fei_2band``; do not
-  unify the two.
+  simplex ordered ``[high, ..., low]``. Author-faithful FeRA (checkpoints
+  still load through the node). Different ordering from
+  ``compute_fei_2band``; do not unify the two.
 * ``fei_sigma_low(h_lat, w_lat, div) -> float`` — bucket-invariant σ_low
   scaling (``min(H_lat, W_lat) / div``).
 * ``sigma_sinusoidal_features(sigma, dim)`` — sinusoidal σ features matching
@@ -70,8 +69,7 @@ def compute_fei_nband_high_to_low(
 ) -> torch.Tensor:
     """Return ``(B, num_bands)`` simplex energies, ordered ``[high, ..., low]``.
 
-    Bit-identical to the now-retired
-    ``networks/methods/fera.py::FrequencyEnergyIndicator``: bands are
+    Bit-identical to FeRA's ``FrequencyEnergyIndicator``: bands are
     differences of adjacent pyramid levels (high-freq first), followed by
     the coarsest LP as the residual low-band; σ scales double outward
     from ``sigma_low``. Promoted to fp32 internally — squared norms can
@@ -79,9 +77,7 @@ def compute_fei_nband_high_to_low(
 
     Author-faithful FeRA router weights were trained against this exact
     ordering, so any permutation here would corrupt the gate at
-    inference. The plan2 ``stacked_experts_global_fei`` format uses
-    ``compute_fei_2band`` instead — different ordering by design, do not
-    unify.
+    inference. ``stacked_experts_global_fei`` uses ``compute_fei_2band``.
     """
     z = z.float()
     sigmas: List[float] = [sigma_low * (2.0**k) for k in range(num_bands - 1)]

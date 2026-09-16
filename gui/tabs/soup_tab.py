@@ -3,8 +3,8 @@
 Reuses the shared distill config-editor layout (``_DistillConfigTab``): the
 ``[soup]`` pipeline knobs *and* the plain-LoRA training stack are edited as the
 sectioned form over ``configs/soup/soup.toml`` (Save writes them back through
-tomlkit, comments preserved), so soup now looks and behaves like the SPD / Turbo
-tabs. The one soup-specific addition is a small **run-only** box pinned to the
+tomlkit, comments preserved), as in the Turbo tab. The one soup-specific
+addition is a small **run-only** box pinned to the
 top of the form carrying the per-run ``--path_pattern`` / ``--name`` / fine-tune
 args — these are *not* persisted to the TOML (like ``output_name``, they vary
 per run), so they live outside ``_fields`` and Save ignores them.

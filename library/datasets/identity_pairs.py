@@ -6,16 +6,12 @@ caption_index.json``) and owns the IP-Adapter **policy** on top of it: a
 tiered character → copyright → artist back-off that, given a target image,
 returns a *different* image of the same identity to feed the IP path.
 
-The index encodes no policy (see that script's docstring); everything
-opinionated — level priority, cross-artist constraint, the candidate-pool
-restriction — lives here so the disk artifact stays reusable.
+The index encodes no policy; level priority, the cross-artist constraint and
+the candidate-pool restriction all live here.
 
-Why distinct pairs: under self-pairing (reference == VAE target) the IP path
-can lower the loss by copying the target's own pixels, which never forces it to
-learn *identity*. With a reference that is a different image of the same
-identity, the only signal that consistently helps is what is invariant across
-the pair — identity — because pose/crop/background/lighting differ and are
-useless to copy. See ``docs/proposal/ip-adapter-identity-pairs.md``.
+Distinct pairs, not self-pairing: with reference == VAE target the IP path can
+lower the loss by copying the target's pixels instead of learning identity. See
+``_archive/proposals/ip-adapter-identity-pairs.md``.
 """
 
 from __future__ import annotations
@@ -179,17 +175,15 @@ class IdentityPairSampler:
     def hard_negative(self, target_stem: str, rng: random.Random) -> tuple[str, str]:
         """Return ``(reference_stem, level)`` for a *hard* negative — a
         same-artist image whose ``character`` tags are **disjoint** from the
-        target's (style-matched, content-different; the proposal's option (c)).
+        target's (style-matched, content-different).
 
         Both sides must be character-tagged for the contrast to be genuine
         (otherwise "different character" is vacuous). When no such sibling
         exists — orphan artist, untagged target, or a dataset where the artist's
         images all share characters — falls back to ``shuffled()`` (returning
-        its ``"shuffled"`` level so callers can see the degradation). This is
-        the Phase-0-measured fallback: ~71% of steps land here on the current
-        dataset (character tagging caps the strict pool at ~29%). Use
-        ``hard_negative_backoff`` to rescue most of that fallback via the
-        copyright tier."""
+        its ``"shuffled"`` level so callers can see the degradation).
+        ``hard_negative_backoff`` adds copyright / original tiers before that
+        fallback."""
         meta = self.image_meta.get(target_stem)
         if meta is None:
             return self.shuffled(target_stem, rng)

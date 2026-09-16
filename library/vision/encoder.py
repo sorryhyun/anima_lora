@@ -1,10 +1,9 @@
 """Live vision-encoder wrapper for IP-Adapter / similar consumers.
 
 Wraps PE-Core (or any encoder registered in library/vision/encoders.py) for
-in-loop use during training and inference. Differs from img2emb's preprocess
-path in that we accept a tensor batch already produced by the training
-dataset (in [-1, 1]) and re-bucket / resize it on-the-fly to the encoder's
-patch grid.
+in-loop use during training and inference: accepts a tensor batch already
+produced by the training dataset (in [-1, 1]) and re-buckets / resizes it
+on-the-fly to the encoder's patch grid.
 
 PE-Core uses Normalize(0.5, 0.5) i.e. maps [0, 1] -> [-1, 1]. Anima's training
 ``IMAGE_TRANSFORMS`` is also ToTensor + Normalize(0.5, 0.5), so a tensor read

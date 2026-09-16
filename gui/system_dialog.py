@@ -43,10 +43,8 @@ from gui.widgets import apply_variant
 
 # Rows come from the catalog, never from a table here: ``library/downloads.py``
 # (Anima weights) and ``anime_tools.downloads`` (curation weights) each carry an
-# Asset's repo, files, destination and an offline installed-probe. A duplicate
-# path list in the GUI is a Download button that reports the wrong state the
-# moment a row moves — which is exactly how the old MIT text net came to read
-# as MISSING while sitting on disk.
+# Asset's repo, files, destination and an offline installed-probe. A path list
+# duplicated here reports the wrong install state as soon as a row moves.
 #
 # Only the rows that already had translations keep an i18n key; anything newer
 # shows the catalog's own English title, which is mostly a proper noun anyway.
@@ -224,8 +222,8 @@ class _CatalogPanel(QWidget):
 
     Each pack (``DL.PACKS``) is a ``QGroupBox`` — title, a dim description,
     a "Download pack" button that fetches its rows together, then the rows.
-    Rows scroll inside the tab, so a catalog that grows (the package's is at 15
-    and counting) never pushes the log pane off the dialog. Downloads run on the
+    Rows scroll inside the tab, so a growing catalog never pushes the log pane
+    off the dialog. Downloads run on the
     owning dialog's single QProcess — one job at a time across both tabs.
     """
 
@@ -365,7 +363,7 @@ def _anima_all(_assets) -> tuple[str, list[str] | None]:
     """The Anima tab's top button is the first-run set, not "every row": it
     deliberately also pulls the two curation rows a default preprocess needs
     (tagger checkpoint, tag KB) while SAM3 and OCR stay opt-in on the Curation
-    tab. Since v2 the set includes the CJK vocab pack, which base.toml enables."""
+    tab. The set includes the CJK vocab pack, which base.toml enables."""
     return t("models_download_all"), ["download-models"]
 
 

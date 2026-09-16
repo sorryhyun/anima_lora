@@ -1,6 +1,6 @@
 # Anima LoRA Guidebook
 
-A complete guide to the Anima LoRA training/inference pipeline: install → dataset → preprocessing → training → inference → ComfyUI deployment. It is written for Windows beginners and assumes GUI use; every terminal command has been collected into [Appendix A](#appendix-a-cli-reference). For WSL, Linux, and training optimization (this project's main focus), see the other docs.
+A complete guide to the Anima LoRA training/inference pipeline: install → dataset → preprocessing → training → inference → ComfyUI deployment. It assumes Windows and the GUI; every terminal command is collected in [Appendix A](#appendix-a-cli-reference). For WSL, Linux, and training optimization, see the other docs.
 
 ---
 
@@ -109,7 +109,7 @@ Following Anima's official guidelines, tag order is always `[meta] [character] [
 absurdres, safe, 1girl, chitanda eru, hyouka, @channel (caststation), full body, serafuku, She is saying hi.
 ```
 
-- Based on personal experimentation, quality tags such as `absurdres`, `highres`, and `masterpiece` are best omitted or kept to a minimum. (Once the officially released mod guidance is available, you can skip them entirely.)
+- Omit quality tags such as `absurdres`, `highres`, and `masterpiece`, or keep them to a minimum. (Once the officially released mod guidance is available, you can skip them entirely.)
 - Don't want to caption by hand? In the GUI's Dataset tab, select an image and click Autotag — the built-in Anima Tagger fills the caption in the correct order ([§6.3](#63-dataset-tab-autotag--grouping)). Treat the result as a starting point: review the tags, especially character/series/artist names, before training.
 
 ---
@@ -120,7 +120,7 @@ To optimize training speed and VRAM, resize → VAE latent caching → text embe
 
 | Step | What it does | Output |
 |---|---|---|
-| Resize | Resizes to the pixel alignment the VAE requires, assigns each image a fixed token bucket, and excludes images that are too small (default: below 0.5 MP) | `post_image_dataset/resized/` |
+| Resize | Resizes to the pixel alignment the VAE requires, assigns each image a fixed token bucket, and excludes images that are too small (default: below 0.25 MP) | `post_image_dataset/resized/` |
 | VAE latent caching | Runs the VAE once and saves the result — the VAE is never loaded onto the GPU during training | `post_image_dataset/lora/{stem}_{WxH}_anima.npz` |
 | Text embedding caching | Pre-computes Qwen3 0.6B + LLM adapter outputs (including comma-shuffled caption variants) | `post_image_dataset/lora/{stem}_anima_te.safetensors` |
 
@@ -150,7 +150,7 @@ The GUI reads `configs/gui-methods/<variant>.toml` (one clean file per variant) 
 Training/preprocess subprocesses re-read the variant TOML from disk, so edits you don't save never reach training. The GUI handles this two ways:
 
 - Change detection: editing any field (or the `+ Extra args` box) turns the `Save` button orange and marks it `Save *` — the signal that the screen and the disk differ.
-- Auto-save: if you forget and press `Train` / `Preprocess` anyway, the current form values are written to the variant file first, then the subprocess starts. What you see is what runs. (`Test` infers from the last checkpoint, so it is not auto-saved.)
+- Auto-save: if you forget and press `Train` / `Preprocess` anyway, the current form values are written to the variant file first, then the subprocess starts. (`Test` infers from the last checkpoint, so it is not auto-saved.)
 
 > To discard edits, switch to another variant and back — the file is reloaded from disk.
 
@@ -159,7 +159,7 @@ Training/preprocess subprocesses re-read the variant TOML from disk, so edits yo
 Training does not run inside the GUI window — pressing `Train` hands the job to a background training daemon that runs `train.py` as a detached process.
 
 - `Stop` cancels the current job only. The daemon stays up and moves on to the next queued job.
-- Closing the GUI does not stop training. Reopen it and it automatically re-attaches to the running job (`Re-attached to running job …`), with the progress bar and logs resuming live. Useful for long overnight runs.
+- Closing the GUI does not stop training. Reopen it and it automatically re-attaches to the running job (`Re-attached to running job …`), with the progress bar and logs resuming live.
 - Exceptions: `Test` and `Preprocess` run as in-window subprocesses, so closing the GUI cancels them.
 - To shut training down completely and release the GPU, use the CLI's `make daemon-terminate` ([Appendix A](#appendix-a-cli-reference)).
 
@@ -180,26 +180,26 @@ Grouping — clustering similar images. Click Group to cluster near-duplicates a
 
 The config merge order is `configs/base.toml → configs/presets.toml[<preset>] → configs/methods/<method>.toml → CLI args`, and method settings win over preset settings.
 
-The best starting point is OrthoLoRA + T-LoRA (the `tlora` variant) — the most balanced combination of stability, detail, and style preservation, and directly usable for ordinary character/style LoRAs. In the GUI, just pick `tlora` in the variant dropdown plus your Hardware preset.
+Start with the `tlora` variant (OrthoLoRA + T-LoRA; see [§8](#8-adapter-variant-selection-guide)): in the GUI, pick `tlora` in the variant dropdown plus your Hardware preset.
 
 ### 7.1 Commonly Adjusted Settings (LoRA defaults)
 
 | Parameter | Default | Description |
 |---|---|---|
 | `network_dim` | `32` | LoRA rank. Higher = more expressive, more parameters |
-| `network_alpha` | `32` | LoRA scale (usually equal to `network_dim`) |
+| `network_alpha` | `32` (gui-methods) / `128` (methods) | LoRA scale |
 | `learning_rate` | `2e-5` | Learning rate. Hydra can go lower |
-| `max_train_epochs` | `4` | Smaller dataset → more epochs |
-| `save_every_n_epochs` | `2` (gui-methods) / `4` (methods) | Cumulative adapter-weight save interval |
-| `checkpointing_epochs` | `2` (gui-methods) / `4` (methods) | Resume-state save interval (single file, overwritten) |
+| `max_train_epochs` | `4` (gui-methods) / `8` (methods) | Smaller dataset → more epochs |
+| `save_every_n_epochs` | `2` (gui-methods) / `8` (methods) | Cumulative adapter-weight save interval |
+| `checkpointing_epochs` | `2` (gui-methods) / `8` (methods) | Resume-state save interval (single file, overwritten) |
 | `caption_dropout_rate` | `0.1` | Replaces some captions with an empty string (helps CFG) |
 | `use_shuffled_caption_variants` | `true` | Use comma-shuffled caption variants |
 
-Variant toggles (`use_ortho`, `use_timestep_mask`, `use_moe_style`, `router_source`, …) are already set in each variant file. The recommended `tlora` is `use_ortho = true` + `use_timestep_mask = true`.
+Variant toggles (`use_ortho`, `use_timestep_mask`, `use_moe_style`, `router_source`, …) are already set in each variant file.
 
 ### 7.2 Auto-Resume (checkpointing_epochs)
 
-If training is interrupted, it automatically resumes from the last saved point — covering power loss, OOM, and accidentally closing the window. It is on by default: just press `Train` again, and `auto-resuming from checkpoint at step N` in the log confirms it worked.
+If training is interrupted (power loss, OOM, closed window), it resumes from the last saved point. It is on by default: press `Train` again, and `auto-resuming from checkpoint at step N` in the log confirms it worked.
 
 This is a different job from `save_every_n_epochs`:
 
@@ -209,7 +209,7 @@ This is a different job from `save_every_n_epochs`:
 | `checkpointing_epochs` | Full resume state (optimizer / scheduler / RNG / weights) | Overwrites a single file (disk doesn't grow) | Continue after an interruption |
 
 - When training finishes normally the resume files are deleted automatically, leaving only the final output.
-- If you changed the dataset or core settings (rank, LR, epoch count, …), resuming from the old state is meaningless or harmful. Delete `output/ckpt/<output_name>-checkpoint-state/` manually and start fresh.
+- If you changed the dataset or core settings (rank, LR, epoch count, …), don't resume from the old state: delete `output/ckpt/<output_name>-checkpoint-state/` manually and start fresh.
 
 ### 7.3 Outputs
 
@@ -219,9 +219,12 @@ This is a different job from `save_every_n_epochs`:
 
 ### 7.4 Masked Loss (Excluding Text Bubbles)
 
-For manga/comic-style data, excluding speech bubbles and text regions from the loss produces noticeably cleaner results. Masks are generated with SAM3 + MIT (`make mask`, [Appendix A](#appendix-a-cli-reference)) and the resulting PNGs are black-and-white: white (255) = trained on, black (0) = excluded.
+For manga/comic-style data, excluding speech bubbles and text regions from the loss gives cleaner results. This is optional and off by default:
 
-Subsets use `post_image_dataset/masks/` automatically when present, otherwise falling back to the legacy `masks/{merged,sam,mit}/` layout in order. Missing masks are simply ignored, so this step is optional.
+1. Download SAM3 ([§3.2](#32-download-models)) and generate masks with `make mask` ([Appendix A](#appendix-a-cli-reference)). The PNGs are black-and-white: white (255) = trained on, black (0) = excluded.
+2. Turn on `masked_loss` in the training config (`--masked_loss` from the CLI). Without it, masks on disk are ignored.
+
+Images without a mask are trained on in full. Mask lookup details are in [`training.md`](training.md#masked-loss-sam3).
 
 ---
 
@@ -259,7 +262,7 @@ Commonly used options:
 | `--image_size H W` | Output resolution (e.g. `1024 1024`, `1024 1536`) |
 | `--infer_steps` | Denoising steps (typically 20–50) |
 | `--guidance_scale` | CFG strength (3.0–5.0 recommended) |
-| `--sampler` | `er_sde`, `euler`, `dpm++`, … |
+| `--sampler` | `er_sde`, `euler`, `lcm` |
 | `--seed` | Seed for reproducibility |
 | `--spectrum` | Enable Spectrum acceleration |
 | `--pgraft` | P-GRAFT (LoRA cutoff late in denoising) — the base model handles late detail |
@@ -304,7 +307,7 @@ Updating never touches `image_dataset/`, `post_image_dataset/`, `output/`, or `m
 
 Everything the GUI does is also available from the CLI. `make <target>` and `python tasks.py <target>` are equivalent, and since the one-line install does not install `make`, use `python tasks.py` if `make` is missing (or `winget install ezwinports.make`).
 
-> Getting `ModuleNotFoundError`? That's the venv. Either prefix commands with `uv run` (`uv run python tasks.py lora`) or activate the venv once per terminal — see [Appendix B](#appendix-b-manual-install-uv--git).
+> Getting `ModuleNotFoundError`? Prefix commands with `uv run` or activate the venv — see [Appendix B](#appendix-b-manual-install-uv--git).
 
 Model download
 
@@ -325,7 +328,7 @@ make preprocess-resize       # 1) image_dataset/ → post_image_dataset/resized/
 make preprocess-vae          # 2) VAE latent caching
 make preprocess-te           # 3) Text embedding caching
 make preprocess-pe           # (Optional) PE vision features — CMMD validation only
-make mask                    # Generate masks for masked loss (SAM3 + MIT)
+make mask                    # Generate masks for masked loss (SAM3)
 make mask-clean              # Delete post_image_dataset/masks/
 make autotag --image <path>  # Print the predicted caption for one image
 make curate-group            # Group similar images → workspace/groups/groups.json
@@ -407,9 +410,9 @@ winget install ezwinports.make                          # 3) (Optional) make
 uv sync                                                 # 4) Install dependencies
 ```
 
-`uv sync` creates an isolated Python environment in `.venv/` inside `anima_lora/` and installs everything there. Your system Python is untouched, and you never need to run `pip install` yourself.
+`uv sync` installs everything into `.venv/` inside `anima_lora/`; you don't need `pip install`.
 
-The most common beginner trap: opening a fresh terminal and running `python tasks.py ...` uses the *system* Python and fails with `ModuleNotFoundError`. Fix it either way:
+Running `python tasks.py ...` in a fresh terminal uses the *system* Python and fails with `ModuleNotFoundError`. Fix it either way:
 
 - Prefix with `uv run` (no activation needed, works anywhere): `uv run python tasks.py lora`
 - Activate the venv (once per terminal window):
@@ -447,11 +450,11 @@ Manual install: get 13.2 from the NVIDIA archive at <https://developer.nvidia.co
 
 ## Appendix D. Other Settings
 
-### `num_repeats` (summary: leave it alone)
+### `num_repeats`
 
-A kohya-ss style option in `configs/base.toml`'s `[[datasets.subsets]]` specifying how many times each image is used per epoch. It shows up in a lot of other trainer guides, but —
+A kohya-ss style option in `configs/base.toml`'s `[[datasets.subsets]]`: how many times each image is used per epoch.
 
-- In this guide's workflow, leave it at `1`. With all images in one folder, raising it only *lengthens each epoch* — the effect is identical to raising `max_train_epochs`. Every preset and method config in this project is tuned assuming `num_repeats = 1`.
+- Leave it at `1`. With all images in one folder, raising it has the same effect as raising `max_train_epochs`, and every preset and method config assumes `num_repeats = 1`.
 - It only makes sense as a balancing tool when a run has multiple subsets (folders) with very different image counts (e.g. Character A with 1000 images + B with 50: set only the B subset to `num_repeats = 20`).
 - It's a dataset setting, so it is not exposed in the GUI or method files. If you really need it, edit `configs/base.toml` (or the TOML given via `--dataset_config`) directly.
 

@@ -57,8 +57,7 @@ def _path_overrides() -> dict:
 
     Reads ``METHOD``/``METHODS_SUBDIR`` env vars so the GUI can point
     preprocess at the same variant file training will use. Missing env vars →
-    just base + preset. Defers the ``library.config.io`` import so commands
-    that don't touch preprocess keep the module-load surface small.
+    just base + preset.
     """
     global _PATH_OVERRIDES_CACHE
     if _PATH_OVERRIDES_CACHE is not None:
@@ -237,7 +236,7 @@ def run(cmd: list[str], **kwargs):
     if env is None:
         env = os.environ.copy()
     # Curation stages (anime_tools) anchor bare relative defaults on
-    # ANIMA_HOME; pin it to this checkout so they resolve as before the split.
+    # ANIMA_HOME; pin it to this checkout.
     env.setdefault("ANIMA_HOME", str(ROOT))
     # Bound `hf` CLI socket timeouts so a stalled download can't hang the serial
     # daemon queue (a hung-not-failed fetch wedges every job queued behind it,
@@ -428,11 +427,9 @@ def _nsys_run_stats(rep_path: Path) -> None:
 def build_launch_cmd(*args: str, python_exe: str | None = None) -> list[str]:
     """Build the ``train.py`` launch command list (no side effects).
 
-    Pure command construction, extracted from ``accelerate_launch`` so other
-    spawners (the training daemon under ``anima_daemon/``) can ``Popen`` the
-    same command themselves — detached, own stdio/process-tree monitoring —
-    instead of going through ``run()``'s blocking path. The nsys wrapper stays
-    in ``accelerate_launch`` (CLI-only; the daemon never applies it).
+    Shared by ``accelerate_launch`` and the training daemon (``anima_daemon/``),
+    which ``Popen``s it detached. The nsys wrapper stays in
+    ``accelerate_launch`` (CLI-only).
 
     Single-GPU fast path (default): invoke ``train.py`` directly, skipping the
     ``accelerate launch`` bootstrap (a second full Python process importing
@@ -508,8 +505,7 @@ def build_method_args(
     """Assemble the ``["--method", m, "--preset", p, ...]`` train.py arg list.
 
     Pure — no env reads, no subprocess. Shared by the CLI ``train()`` path and
-    the training daemon so the daemon doesn't duplicate the ARTIST/
-    PROFILE_STEPS handling. ``artist``/``profile_steps`` add their flags only
+    the training daemon. ``artist``/``profile_steps`` add their flags only
     when the caller didn't already pass them in ``extra``.
     """
     extra = list(extra or [])
@@ -582,10 +578,8 @@ def _attach_hints(job_id: str) -> str:
     )
 
 
-# Whether this process has already printed the queued-job cheat-sheet. Queueing
-# a grid in one `for` loop repeated five lines of hints per job and buried the
-# one line the reader wanted ("what did the queue just get?"), so the hints go
-# out once and every later submit prints only its own `queued job` line.
+# Whether this process has already printed the queued-job hints; later submits
+# print only their own `queued job` line.
 _QUEUED_HINTS_SHOWN = False
 
 
@@ -633,8 +627,7 @@ def _attach_and_wait(cl, job_id: str) -> int:
     """
     from anima_daemon.client import DaemonClient
 
-    # flush: stdout to a pipe is block-buffered, so an unflushed banner makes a
-    # piped attach look like zero bytes (i.e. indistinguishable from a hang).
+    # flush: stdout to a pipe is block-buffered; an unflushed banner looks like a hang.
     print(
         f"\nattached to job {job_id} ({cl.base}) — ctrl-C detaches "
         "(the job keeps running)\n",
@@ -764,12 +757,7 @@ def train(
     `--artist_filter <name>` (filters dataset to `@<name>`-tagged captions and
     redirects output to `output/ckpt-artist/`).
 
-    Run mode (``_resolve_run_mode``): by default the job is submitted to the
-    local daemon and this terminal *attaches* to its stdout, exiting with the
-    job's exit code (ctrl-C detaches, the run survives). ``--queue`` detaches
-    (submit + return); ``--inline`` runs the child directly with no daemon.
-    ``ANIMA_RUN_MODE`` sets the default; ``PROFILE_STEPS``/
-    ``ANIMA_ACCELERATE_LAUNCH`` force inline.
+    Run mode: see ``_resolve_run_mode`` and the attach-by-default block above.
     """
     preset = preset or _preset()
     extra = list(extra or [])

@@ -52,8 +52,7 @@ class OrthoLoRAModule(BaseLoRAModule):
             module_dropout=module_dropout,
         )
 
-        # SVD-informed init. Randomized lowrank is ~10-100× faster than full
-        # SVD at r ≪ min(m,n) and near-machine-precision on the kept slice.
+        # SVD-informed init (randomized low-rank; accurate on the kept slice).
         init_device = "cuda" if torch.cuda.is_available() else "cpu"
         W = org_module.weight.data.float().to(init_device)
         q = min(lora_dim + 6, min(W.shape))
@@ -202,8 +201,7 @@ class OrthoInitLoRAModule(BaseLoRAModule):
     """OrthoInit: top-r SVD of W₀ as *initialization only* — trainable, uncapped.
 
     OrthoLoRA freezes the top-r SVD basis and only Cayley-rotates within it,
-    so ``colspace(ΔW) ⊆ top-r(W₀)`` for the whole run — the fix for
-    "T-LoRA+ortho / chimera-ortho feels weak". OrthoInit keeps the same
+    so ``colspace(ΔW) ⊆ top-r(W₀)`` for the whole run. OrthoInit keeps the same
     three-factor ``P diag(λ) Q`` shape but makes ``P_init`` / ``Q_init``
     trainable Parameters seeded from the SVD (no frozen buffer, no Cayley), so
     ΔW can reach any rank-r subspace while keeping the W₀-aligned warm start.
@@ -342,11 +340,10 @@ class OrthoHydraLoRAModule(RouterStateMixin, BaseLoRAModule):
     columns are orthonormal, so ``P_bases[i]^T P_bases[j] = 0`` for i≠j —
     experts are structurally orthogonal in output space.
 
-    Disjoint slices instead of shared-P + per-expert R_p: a shared basis makes
-    ``P_eff[i]^T P_eff[j] = R_p[i]^T R_p[j]`` orthogonal-but-nonzero, so every
-    expert lives in the same rank-r span and the router gets near-identical
-    ``score_e`` — an MoE cold-start deadlock confirmed by bench (2026-04-21).
-    Disjoint subspaces make ``score_e`` genuinely different from step 0.
+    Why disjoint slices: with a shared P basis every expert lives in the same
+    rank-r span, the router gets near-identical ``score_e``, and the MoE
+    deadlocks at cold start. Disjoint subspaces make ``score_e`` differ from
+    step 0.
 
     Fallback when ``min(out, in) < E*r``: ``P_bases`` replicates the top-r
     slice E times (warning logged) — experts start identical and rely
@@ -449,10 +446,10 @@ class OrthoHydraLoRAModule(RouterStateMixin, BaseLoRAModule):
             self.router = torch.nn.Linear(router_in_dim, num_experts, bias=True)
             with torch.no_grad():
                 self.router.weight.zero_()
-                # Normal seed is the legacy symmetry-breaker for zero-init λ.
-                # Under centered_gate the break comes from (P_k - mean)·λ0
-                # instead, so the gate must stay exactly uniform at init —
-                # leave the router fully zero-init.
+                # Normal seed breaks symmetry for zero-init λ. Under
+                # centered_gate the break comes from (P_k - mean)·λ0 instead,
+                # so the gate must stay exactly uniform at init — leave the
+                # router fully zero-init.
                 if not self._centered_gate:
                     torch.nn.init.normal_(self.router.weight[:, :lora_dim], std=0.01)
                 self.router.bias.zero_()
@@ -668,7 +665,7 @@ class OrthoHydraLoRAModule(RouterStateMixin, BaseLoRAModule):
         for prefix in prefixes:
             S_p = state_dict[f"{prefix}.S_p"]  # (E, r, r)
             S_q = state_dict[f"{prefix}.S_q"]  # (r, r)
-            # Per-expert disjoint bases (new) or legacy shared basis (old ckpts).
+            # Per-expert disjoint bases, or a shared basis (older ckpts).
             P_bases = state_dict.get(f"{prefix}.P_bases")
             if P_bases is None:
                 P_bases = state_dict[f"{prefix}.P_basis"]  # (out, r) legacy

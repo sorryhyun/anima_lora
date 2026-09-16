@@ -2,9 +2,7 @@
 
 Every metric source — the LoRA network, the postfix network, each method
 adapter — implements ``metrics(ctx) -> dict[str, float]``. The trainer
-collects from a flat list of producers at log-step cadence; there is no
-registry of free functions, no shared scratch dict, and no
-``getattr(network, "_last_xxx", None)`` rummaging across module boundaries.
+collects from a flat list of producers at log-step cadence.
 
 Adding a metric means editing the owner that already holds the underlying
 state — same file as the loss / forward / scheduler that produces the value.
@@ -48,9 +46,7 @@ def collect_metrics(
     """Run each producer under ``no_grad`` and merge results.
 
     A producer raising is contained — metrics must never kill a training
-    step — but the failure is silent on purpose to keep the hot log path
-    free of try-explain plumbing. Diagnose by calling the producer
-    directly from a REPL.
+    step — and silent; diagnose by calling the producer directly.
     """
     out: dict[str, float] = {}
     with torch.no_grad():

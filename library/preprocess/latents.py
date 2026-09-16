@@ -1,7 +1,6 @@
 """Cache VAE latents for a dataset directory.
 
-Orchestration extracted from ``preprocess/cache_latents.py`` (see
-``docs/proposal/tooling_architecture.md`` §A). The script keeps only argparse +
+Orchestration for ``preprocess/cache_latents.py``, which keeps only argparse +
 VAE load; the walk → group-by-resolution → batched-encode → idempotent-save
 loop lives here.
 
@@ -254,7 +253,7 @@ def cache_demoted_latents(
     progress: ProgressFn | None = None,
     overwrite: bool = False,
 ) -> PreprocessStats:
-    """Emit σ-demote sibling latents (sigma_lowres Phase 1b, 1024→896 route).
+    """Emit σ-demote sibling latents (sigma_lowres, 1024→896 route).
 
     For every resized image in ``native_edge``'s free-fit band: LANCZOS-downscale
     the resized PNG to its demote-tier free-fit bucket (``demote_bucket_for`` —
@@ -357,8 +356,8 @@ def cache_latents(
 
     The VAE forward stays serial on the calling thread (single GPU stream); the
     per-batch disk decode + image transform and the npz read-modify-write are
-    CPU/IO, so they're farmed to thread pools that overlap the GPU — the GPU no
-    longer idles between batches. ``io_workers`` sizes those pools (default
+    CPU/IO, so they're farmed to thread pools that overlap the GPU.
+    ``io_workers`` sizes those pools (default
     ``min(8, cpu_count)``). Output is byte-identical to the serial path.
 
     ``keep_stems`` (when given) restricts the walk to images whose stem is in

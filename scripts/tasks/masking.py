@@ -6,8 +6,7 @@
 ``<mask_dir>/<rel>/{stem}_mask.png``, where ``mask_dir`` comes from the
 merged config chain (``configs/preprocess.toml``, default
 ``post_image_dataset/masks``). Per-rule intermediates are never persisted
-under the project root. The MIT / ComicTextDetector text masker was removed
-in v2 (text is no longer masked automatically).
+under the project root.
 
 Every stage runs as an ``anime_tools`` **request object**
 (``anime_tools.masking.requests.{SamMaskRequest,MergeMasksRequest}``) — the
@@ -20,7 +19,7 @@ trainer never spells a flag. How a request is executed depends on where
   interpreter for the whole chain, one SAM3 load shared by every rule pass
   (``load_sam3`` is cached per process), and the package's ``_progress``
   heartbeat keeps a quiet model load from reading as a stall to the daemon's
-  watchdog. The job process exits at the end, so VRAM is released as before.
+  watchdog. The job process exits at the end, releasing VRAM.
 - **From a plain shell** each stage is a ``python -m <stage.module>`` child
   with ``req.to_argv()``, so ``make mask`` still releases the model between
   stages and on exit.
@@ -44,8 +43,7 @@ Where the rules come from:
   its own.
 
 Either way a rule becomes one SAM pass into its own temp dir; the merge
-step's pixel-min union then composes them exactly as the old single-pass
-``rules`` did (ignore regions unioned).
+step's pixel-min union composes them (ignore regions unioned).
 """
 
 from __future__ import annotations
@@ -85,8 +83,7 @@ def _resized_image_dir() -> Path:
     config snapshot via ``CONFIG_FILE`` whose ``resized_image_dir`` is already
     scoped to ``post_image_dataset/resized/<path_scope>``). Scoping the input
     is what stops a scoped run from re-masking every other folder. Without a
-    snapshot (direct ``make mask``) this falls back to the unscoped default, so
-    CLI behavior is unchanged.
+    snapshot (direct ``make mask``) this falls back to the unscoped default.
     """
     return ROOT / _path("resized_image_dir", "post_image_dataset/resized")
 
@@ -102,7 +99,7 @@ def _scoped_mask_output_dir(resized_dir: Path) -> Path:
     ``masks/<scope>`` — not flat in ``masks/`` — or the trainer won't find
     them. Mirror whatever scope ``resized_dir`` carries over the unscoped
     ``post_image_dataset/resized`` default. Unscoped (direct ``make mask``)
-    returns the bare output dir, so CLI behavior is unchanged.
+    returns the bare output dir.
     """
     mask_root = _mask_output_dir()
     try:
@@ -185,12 +182,11 @@ def _sam_rules(cfg: dict) -> list[dict]:
 def _sam_request(image_dir: Path, out_dir: Path, rule: dict, path_pattern: str | None):
     """The ``SamMaskRequest`` one yaml rule runs as.
 
-    A rule's own ``path_pattern`` routes *within* the global scope in the old
-    single-pass CLI; the package takes one glob per run, so a rule that names
-    a pattern runs on that pattern alone (the global scope still applies to
-    every rule without one). The SAM3 checkpoint is the request default — the
-    package's download catalog is where the weights land. Validation fires here: a rule naming no region (or a malformed one)
-    would otherwise fail minutes in, after the SAM3 load.
+    The package takes one glob per run, so a rule that names a
+    ``path_pattern`` runs on that pattern alone (the global scope applies to
+    every rule without one). The SAM3 checkpoint is the request default.
+    Validation fires here, before the SAM3 load: a rule naming no region (or
+    a malformed one) raises.
     """
     from anime_tools.masking.requests import MaskPrompt, SamMaskRequest
 
@@ -282,7 +278,7 @@ def cmd_mask(extra):
             print("SAM masking is disabled — nothing to do.")
             return
         # One SAM pass per rule, each into its own dir; the merge below unions
-        # them (pixel-min), which is the old rules compose.
+        # them (pixel-min).
         for req in requests:
             _execute("masks_sam", req)
         mask_output_dir.mkdir(parents=True, exist_ok=True)

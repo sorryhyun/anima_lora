@@ -1,13 +1,12 @@
 """Process control for the daemon — spawn detached, kill trees, prove liveness.
 
-Every rule here exists because a training job is a **process tree**
-(``accelerate launch → train.py → dataloader workers``), not one PID, and
-because PIDs get reused. Route every spawn / kill / liveness check through
-psutil so the same code works on Linux and Windows (the daemon must run on
-both — ``python tasks.py daemon`` is the Windows alias for ``make daemon``).
+A job is a **process tree** (``train.py`` → dataloader workers, plus an
+``accelerate launch`` parent on multi-GPU runs), not one PID, and PIDs get
+reused. Every spawn / kill / liveness check goes through psutil so the same
+code works on Linux and Windows.
 
-This is the ``Popen``-flavored sibling of ``gui/process.py`` (which is
-``QProcess``-bound): same snapshot-then-terminate-then-kill tree walk.
+``Popen``-based sibling of ``gui/process.py`` (``QProcess``): same
+snapshot-then-terminate-then-kill tree walk.
 """
 
 from __future__ import annotations
@@ -33,9 +32,8 @@ def create_time(pid: int) -> Optional[float]:
 def is_alive(pid: Optional[int], ct: Optional[float], *, tol: float = 1.0) -> bool:
     """True iff ``pid`` exists *and* its create_time matches ``ct``.
 
-    The create_time check is the sole defense against PID reuse — without it a
-    recycled PID looks like our still-running job. ``tol`` absorbs the
-    sub-second rounding difference between platforms' create_time clocks.
+    The create_time check is the only guard against PID reuse. ``tol`` absorbs
+    sub-second create_time rounding differences between platforms.
     """
     if pid is None or ct is None:
         return False
@@ -48,12 +46,10 @@ def is_alive(pid: Optional[int], ct: Optional[float], *, tol: float = 1.0) -> bo
 def tree_cpu_seconds(pid: Optional[int]) -> Optional[float]:
     """Total CPU seconds (user+system) burned by ``pid`` and every descendant.
 
-    The liveness signal for a job that legitimately writes nothing for minutes:
-    an embed/eval loop is *quiet but computing*, while a wedged process (stalled
-    socket, deadlock, symlink-cycle walk) burns no CPU. Sampled twice and
-    differenced by the stall watchdog. ``None`` when the tree can't be read at
-    all (pid gone / no permission), so the caller can fall back to its
-    output-mtime-only verdict rather than treating "unknown" as "alive".
+    The stall watchdog samples this twice and differences it: a quiet embed/eval
+    loop still burns CPU, a wedged process does not. ``None`` when the tree
+    can't be read (pid gone / no permission), so the caller falls back to its
+    output-mtime-only verdict.
     """
     if pid is None:
         return None
@@ -87,31 +83,20 @@ def spawn_detached(
 ) -> subprocess.Popen:
     """Spawn ``cmd`` detached from this process's console, stdout→file.
 
-    Detaching is what lets a console ctrl-C miss the child:
-    ``start_new_session=True`` on POSIX (new session/process group, terminal
-    SIGINT only reaches the foreground group), ``CREATE_NO_WINDOW`` on Windows.
+    Detaching keeps a console ctrl-C from reaching the child:
+    ``start_new_session=True`` on POSIX, ``CREATE_NO_WINDOW`` on Windows.
 
-    Windows console nuance — why ``CREATE_NO_WINDOW`` *without*
-    ``DETACHED_PROCESS``: detaching gives the whole training tree **no console
-    at all**, so when ``torch.compile``'s inductor/Triton backend shells out to
-    native compilers (``ptxas.exe`` per CUDA kernel, ``cl.exe`` for the C++
-    wrapper) with no creation flags, Windows sees "parent has no console" and
-    allocates a fresh **visible** console for each — a burst of terminal-window
-    flashes on every compile-heavy training start. ``CREATE_NO_WINDOW`` instead
-    gives the tree a console that *exists but is hidden*; those compiler
-    grandchildren inherit it rather than popping their own. CTRL_C isolation is
-    preserved regardless: the daemon runs under ``pythonw`` with no console of
-    its own, and a ``CREATE_NO_WINDOW`` child gets its own private hidden
-    console, so a stray terminal CTRL_C still can't reach it (and we kill jobs
-    via ``kill_tree``, not console events). Stdio still has no usable inherited
-    handles, so redirecting to a file stays mandatory — we do it on both
-    platforms for uniformity.
+    Windows: ``CREATE_NO_WINDOW``, not ``DETACHED_PROCESS``. A tree with no
+    console at all makes every native compiler ``torch.compile`` shells out to
+    (``ptxas.exe``, ``cl.exe``) allocate its own visible console window;
+    ``CREATE_NO_WINDOW`` gives the tree a hidden console those grandchildren
+    inherit, and it is still private, so a terminal CTRL_C can't reach it.
+    Stdio has no usable inherited handles, so the redirect to a file is
+    mandatory (done on both platforms).
 
-    Window suppression on Windows is the *interpreter's* job, not a creation
-    flag's: the uv venv ``python.exe`` is a trampoline that re-launches the real
-    interpreter, so ``CREATE_NO_WINDOW`` set here doesn't reliably reach the
-    child's console. Callers that must stay windowless (the long-lived daemon)
-    launch under ``pythonw.exe`` instead (see ``client.venv_python``).
+    This flag does not reliably suppress the console of the uv venv
+    ``python.exe`` trampoline; windowless callers launch under ``pythonw.exe``
+    (``client.venv_python``).
     """
     stdout_path.parent.mkdir(parents=True, exist_ok=True)
     log = open(stdout_path, "ab", buffering=0)
@@ -136,14 +121,12 @@ def kill_tree(pid: int, *, grace_seconds: float = 5.0) -> None:
     """Terminate ``pid`` and every descendant; SIGKILL survivors after grace.
 
     Snapshots descendants up-front — children of a dying process get reparented
-    and would slip past a re-walk. Safe to call on an already-dead PID, and on
-    one we have no rights to: every psutil call here swallows ``AccessDenied``,
-    including the reap-wait. ``psutil.wait_procs`` cannot be used for that wait
-    because it lets ``AccessDenied`` escape from its inner ``Process.wait()`` —
-    which crashed the daemon worker in issue #83 when the guard aimed at a
-    system process. We open-code the wait on a shared deadline instead, so one
-    unwaitable member can't abort the reap for the rest of the family (nor can a
-    large family multiply the grace period).
+    and would slip past a re-walk. Safe on an already-dead PID and on one we
+    have no rights to: every psutil call here swallows ``AccessDenied``,
+    including the reap-wait. Do not use ``psutil.wait_procs`` for that wait —
+    it lets ``AccessDenied`` escape from ``Process.wait()`` and crashes the
+    worker (issue #83). The open-coded wait shares one deadline, so one
+    unwaitable member can't abort the reap or multiply the grace period.
     """
     try:
         parent = psutil.Process(pid)
@@ -181,11 +164,9 @@ def kill_tree(pid: int, *, grace_seconds: float = 5.0) -> None:
 def suspend_tree(pid: int) -> None:
     """SIGSTOP ``pid`` and every descendant — freeze a whole job tree in place.
 
-    Parent **first** so it can't fork a new child into the gap while we walk
-    (the same "snapshot before you act" reason ``kill_tree`` snapshots up
-    front); dataloader workers and any compiler grandchildren follow. On Linux
-    this is SIGSTOP, on Windows ``NtSuspendProcess`` — psutil abstracts both.
-    The CUDA context and VRAM survive; only SM scheduling stops. Pairs with
+    Parent **first** so it can't fork a new child into the gap while we walk;
+    descendants follow. SIGSTOP on Linux, ``NtSuspendProcess`` on Windows (via
+    psutil). The CUDA context and VRAM survive. Pairs with
     :func:`resume_tree`. Safe on an already-dead PID.
     """
     try:
@@ -210,9 +191,8 @@ def suspend_tree(pid: int) -> None:
 def resume_tree(pid: int) -> None:
     """SIGCONT ``pid`` and every descendant — the inverse of :func:`suspend_tree`.
 
-    Reverse order: children (deepest last-suspended) **first**, parent last, so
-    the parent never briefly observes a still-frozen child after it itself has
-    unfrozen. Safe on an already-dead PID.
+    Children **first**, parent last, so the parent never observes a
+    still-frozen child. Safe on an already-dead PID.
     """
     try:
         parent = psutil.Process(pid)
@@ -248,8 +228,7 @@ def write_pidfile(
     if root is not None:
         data["root"] = str(root)
     if fingerprint is not None:
-        # The daemon-source fingerprint it booted with — disk-observable so a
-        # passive reader can flag stale code without the HTTP port (Phase 0a).
+        # Boot-time source fingerprint, readable without the HTTP port.
         data["fingerprint"] = fingerprint
     path.write_text(json.dumps(data), encoding="utf-8")
 

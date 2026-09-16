@@ -71,7 +71,7 @@ from gui.explanations import field_help, field_help_html, method_guide
 from gui.i18n import t
 from gui.process import kill_process_tree, setup_kill_safe
 from gui.widgets import (
-    ClickableLabel,  # noqa: F401 — re-exported; sibling tabs import it from here
+    ClickableLabel,  # noqa: F401 — re-exported
     DirtyTrackingMixin,
     ImageViewerDialog,
     SplitButtonStyle,  # noqa: F401 — re-exported; preprocess_tab imports it from here
@@ -581,9 +581,8 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
     def _wire_validation_widgets(self, current_split_num: int) -> None:
         """Keep ``use_valid`` and ``validation_split_num`` in sync: the spinbox
         is the source of truth for the count, the checkbox its on/off mirror.
-        Ticking surfaces a positive default up front instead of silently
-        coercing 0->16 at save time — an enabled checkbox + a 0 count used to
-        save as 16, surprising users who set 0 to disable validation."""
+        Ticking surfaces a positive default up front rather than coercing a 0
+        count at save time."""
         from PySide6.QtWidgets import QCheckBox, QSpinBox
 
         from gui.validation import _DEFAULT_VALIDATION_SPLIT_NUM
@@ -1315,9 +1314,9 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         # perpetual "starting…" spinner. Watched and started from the Queue tab.
 
     def _launch_training(self, variant: str) -> None:
-        """Submit a training job to the local daemon (spawns ``accelerate
-        launch … train.py`` detached, so training survives the GUI closing).
-        The caller owns all pre-launch confirmations."""
+        """Submit a training job to the local daemon (runs ``train.py``
+        detached, so training survives the GUI closing). The caller owns all
+        pre-launch confirmations."""
         merged, _ = merged_gui_variant_preset(variant, self._current_preset())
         merged = self._gui_scoped_paths(merged)
         logging_dir = merged.get("logging_dir")

@@ -1,7 +1,7 @@
 """Log-dispatch: fan an assembled ``logs`` dict out to its sinks.
 
 Sends a ``logs`` dict to every configured Accelerate tracker (tensorboard /
-wandb / others) plus the Phase-0 :class:`~library.training.progress.ProgressSink`.
+wandb / others) plus the :class:`~library.training.progress.ProgressSink`.
 This is the *output* end of the metrics pipeline — the values are produced via
 the :mod:`library.training.metrics` collector protocol, assembled into a dict,
 then handed here. Distinct from :mod:`library.log`, which configures Python's
@@ -38,12 +38,6 @@ def generate_step_logs(
     :func:`dispatch_logs`. ``vr_state`` is the trainer's ``RuntimeState.vr``
     dict (λ tracking for the variance-reduced FM loss); pass ``None`` when VR
     is off.
-
-    Note on history: the old in-trainer version carried a ``for…else`` whose
-    ``else`` block (a legacy ``lr/group{i}`` naming fallback from before
-    ``lr_descriptions`` existed) ran unconditionally — a for-loop ``else``
-    fires whenever the loop completes without ``break`` — duplicating every LR
-    series under a second key set. The loop below is the whole behavior.
     """
     logs = {"loss/current": current_loss, "loss/average": avr_loss}
 

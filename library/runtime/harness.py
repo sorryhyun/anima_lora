@@ -60,8 +60,8 @@ def build_anima(
     Sequence: load DiT → freeze + ``reset_mod_guidance`` → (if ``adapter``)
     ``create_network_from_weights`` → ``apply_to`` → ``load_weights`` →
     freeze/unfreeze per ``train_mode`` → gradient checkpointing → train()/
-    eval() → **``compile_blocks`` last** (adapter monkey-patches must already
-    be installed, else torch.compile traces the wrong forward).
+    eval() → **``compile_blocks`` last** (compile-after-apply, see module
+    docstring).
 
     Arguments:
         args: reads ``device``, ``dtype``, ``attn_mode``,
@@ -336,8 +336,7 @@ def compile_dit_blocks(
     marking only the seq-length axis dynamic; ``seq_range`` bounds that
     symbolic axis and ``n_token_families`` sizes the dynamo cache budget.
 
-    COMPILE LAST — install adapter monkey-patches first, or torch.compile
-    traces the wrong forward (the invariant ``build_anima`` encodes).
+    COMPILE LAST — after the adapter's ``apply_to`` (see module docstring).
     """
     if not enabled:
         return
@@ -445,8 +444,7 @@ def _apply_activation_memory_budget(
     revert, unlike dynamo's recompile_limit). GOTCHA: skipped under gradient
     checkpointing — repartitioning the joint graph lets checkpoint's recompute
     pass select a different graph than forward, raising ``CheckpointError``
-    (torch #166926); ckpt already minimizes saved activations so the cap buys
-    nothing there anyway.
+    (torch #166926).
     """
     if budget < 1.0 and not grad_ckpt:
         import torch._functorch.config as _functorch_config
@@ -555,8 +553,7 @@ def compile_blocks_for_training(
     """The LoRA-training (``train.py``) compile sequence, post ``apply_to``.
 
     Native-shape flattening + per-block torch.compile. COMPILE LAST — run only
-    after ``network.apply_to`` + ``load_weights`` so dynamo traces the
-    adapter's monkey-patched forwards, not the bare DiT.
+    after ``network.apply_to`` + ``load_weights``.
 
     Sequence: partitioner budget/tuning (skipped under grad-ckpt) →
     per-signature compile cache isolation → ``unet.compile_blocks(...)`` with
@@ -597,7 +594,7 @@ def compile_blocks_for_training(
     )
     # NB: compile_cond_stream (EasyControl) stays on the union range —
     # the cond stream runs at the same seq as the target stream, but its
-    # compile surface is separate; per-band there is a follow-up, not Phase 0.
+    # compile surface is separate.
     if hasattr(network, "compile_cond_stream"):
         network.compile_cond_stream(
             backend,

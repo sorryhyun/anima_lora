@@ -72,7 +72,7 @@ def setup_mod_guidance(
     device: torch.device,
     shared_models: Optional[Dict] = None,
 ) -> None:
-    """Compute Phase 2 modulation guidance delta and per-block schedule.
+    """Compute the modulation guidance delta and per-block schedule.
 
     delta_unit  = proj(pool(pos_crossattn)) - proj(pool(neg_crossattn))
     schedule[l] = w(l) from --mod_start_layer / --mod_end_layer / --mod_taper
@@ -108,8 +108,7 @@ def setup_mod_guidance(
     if getattr(anima, "enable_pooled_text_sigma_film", False):
         # This head is σ-conditioned, but the single baked delta below is σ-flat
         # (no timestep available at bake time). It falls back to the σ-flat proj
-        # path (t_embedding=None), so steering ignores the FiLM. Per-step steering
-        # is a follow-up; warn rather than silently mis-steer.
+        # path (t_embedding=None), so steering ignores the FiLM — warn.
         logger.warning(
             "pooled_text_proj was trained with σ-FiLM, but inference steering bakes "
             "a single σ-flat delta — the timestep conditioning is ignored. "

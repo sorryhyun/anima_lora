@@ -2,8 +2,7 @@
 #
 # Three two-layer MLP routers, all firing once per step and broadcasting their
 # gates into every routing-aware module's shared buffer (see LoRANetwork's
-# set_*_routing_weights). Split out of network.py; re-exported there so
-# ``from networks.lora_anima.network import GlobalRouter`` still resolves.
+# set_*_routing_weights). Also re-exported from network.py.
 #
 # Shared contract across all three:
 #   * fp32 compute is load-bearing — bf16 logits + softmax(logits/τ) underflow
@@ -103,11 +102,12 @@ class FreqRouter(torch.nn.Module):
     chimera module's ``_freq_routing_weights`` (grad_fn preserved) so
     ``∂L_denoise/∂π_f`` reaches the router (eq. 6-7, 11).
 
-    Output layer uses NON-zero init (small N(0, std)) — a zero-init freq router
-    is a fixed point of the additive composition (uniform gates, zero router
-    gradient), so the chimera proposal mandates non-zero init here. When both
-    ``fei_dim`` and ``sigma_dim`` are > 0, per-modality parameterless LayerNorm
-    balances their differing per-channel variance budgets before the MLP.
+    Output layer is ``N(0, init_std)``. Without a centered gate a zero-init
+    freq router is a fixed point (uniform gates, zero router gradient);
+    ``LoRANetwork`` builds it with ``init_std=0`` because chimera's centered
+    gate breaks that symmetry. When both ``fei_dim`` and ``sigma_dim`` are
+    > 0, per-modality parameterless LayerNorm balances their differing
+    per-channel variance budgets before the MLP.
     """
 
     def __init__(
@@ -141,15 +141,13 @@ class FreqRouter(torch.nn.Module):
             and self.sigma_dim > 0
             and self.fei_dim + self.sigma_dim == self.input_dim
         )
-        # SiLU (proposal §Routers): smoother than ReLU on small-input MLPs.
         self.net = torch.nn.Sequential(
             torch.nn.Linear(input_dim, hidden_dim),
             torch.nn.SiLU(),
             torch.nn.Linear(hidden_dim, num_freq_experts),
         )
         with torch.no_grad():
-            # Only the output layer gets the small-std non-zero init that breaks
-            # the freq-pool cold-start fixed point (see class docstring).
+            # Output layer only (see class docstring).
             torch.nn.init.normal_(self.net[-1].weight, std=float(init_std))
             torch.nn.init.zeros_(self.net[-1].bias)
 
@@ -185,7 +183,8 @@ class ContentRouter(torch.nn.Module):
     Same ``Linear → SiLU → Linear → softmax/τ`` shape as FreqRouter, but the
     input is a pooled ``crossattn_emb`` (per-sample text features). Output
     ``π_c`` is broadcast to every chimera module's ``_content_routing_weights``
-    (grad_fn preserved) — the only source of π_c. Output is zero-init: the
+    (grad_fn preserved) — the only source of π_c. Output is zero-init by
+    default (``content_router_init_std=0.0``): the
     content pool's disjoint ``P_bases_c·λ_c`` residual breaks symmetry under
     the always-on centered gate, so uniform π_c at step 0 keeps ΔW_c=0 while
     the router still gets gradient. Parameterless input LN normalizes the

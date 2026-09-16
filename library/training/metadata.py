@@ -1,6 +1,4 @@
 # Metadata construction for LoRA training checkpoints.
-#
-# Extracted from train.py to keep the training loop focused on training.
 
 from __future__ import annotations
 

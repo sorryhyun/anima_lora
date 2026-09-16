@@ -1,7 +1,6 @@
 # configs/ — the merge chain
 
-Mechanics of the `configs/` tree. Key-by-key semantics of `base.toml` for users:
-`docs/guidelines/base-config.md`.
+Key-by-key semantics of `base.toml` for users: `docs/guidelines/base-config.md`.
 
 `base.toml → presets.toml[<preset>] → methods/<method>.toml → CLI args`, **method
 settings win over preset settings on overlap**.
@@ -34,21 +33,20 @@ Full-vs-shallow is decided by `load_dataset_config_from_base` on whether the met
 Preprocess knobs split out of `base.toml` (`source_image_dir`, `drop_lowres_images`,
 `min_pixels`, **`target_res`**, **`mask_dir`**). Read by the preprocess pipeline via
 `load_path_overrides`, layered **`preprocess.toml → base.toml → preset → method`** —
-preprocess.toml is read *first*, so a legacy copy of any of these keys still sitting in
-`base.toml` keeps winning (backward compatible).
+preprocess.toml is read *first*, so a legacy copy of any of these keys still in
+`base.toml` keeps winning.
 
 `train.py` never reads the filter knobs, **but `target_res` and `mask_dir` are dual-use**:
 `load_method_preset` seeds both from preprocess.toml at lowest priority (preset / method /
 CLI still override).
 
-- `target_res` is **inert at train time** — seeded for the snapshot only, and a
-  preprocess-only knob otherwise.
+- `target_res` is **inert at train time** (seeded for the snapshot only).
 - **`mask_dir` is load-bearing.** It is the single mask-root knob for `make mask` /
   `make mask-clean`, `make preprocess-reconcile`, the GUI mask counter/overlay, the turbo
   loop, and training — where it reaches every subset that doesn't name its own `mask_dir`
   via the BlueprintGenerator argparse fallback (`--mask_dir` overrides).
 
-Two gates keep a mask tree from turning masking on by itself:
+Two gates keep a mask tree from enabling masking by itself:
 
 - training gates `mask_dir` on **the directory existing** (`resolve_configured_mask_dir`),
   so a maskless checkout falls back to the legacy `masks/{merged,sam}` auto-resolution
@@ -72,33 +70,33 @@ rank + routing knobs + opinionated LR/epochs/output_name. Variants inside `lora.
 comment-toggle blocks; the default stacks LoRA + OrthoLoRA + T-LoRA + shared_A FEI-routed
 Hydra (routing surface: the `lora-routing` skill).
 
-`turbo.toml` is the **odd one out** — a bespoke sectioned schema read only by
-`scripts/distill_turbo/`. Don't `print-config METHOD=turbo`.
+`turbo.toml` uses a bespoke sectioned schema read only by `scripts/distill_turbo/`;
+don't `print-config METHOD=turbo`.
 
 ## Self-contained per-method dir — `<method>/<method>.toml`
 
 Method config **+** full inline dataset blueprint in one file, no `dataset_config`
 cross-reference. `_resolve_method_path` (`library/config/io.py`) **prefers**
 `configs/<method>/<method>.toml` over the flat `configs/methods/<method>.toml` when
-present (default `methods` subdir only — `gui-methods` stays flat), so `--method <m>`
-auto-discovers it with no new flags.
+present (default `methods` subdir only — `gui-methods` stays flat); `--method <m>` picks
+it up with no extra flag.
 
-**EasyControl is the pilot**: `configs/easycontrol/easycontrol.toml`, alongside the
-miner-generated descriptor blueprints `near_twins.toml` / `colorize.toml` in the same dir.
-NB `configs/gui-methods/easycontrol.toml` still points at the standalone
+EasyControl uses it: `configs/easycontrol/easycontrol.toml`, with the miner-generated
+descriptor blueprints `near_twins.toml` / `colorize.toml` in the same dir.
+`configs/gui-methods/easycontrol.toml` still points at the standalone
 `configs/datasets/easycontrol.toml` — keep the inline subset in sync until gui-methods is
 migrated.
 
 ## `gui-methods/` — clean per-variant parallel tree
 
-No toggle blocks: what you see is what runs. Selected via `--methods_subdir gui-methods`
+One file per variant, no comment-toggle blocks. Selected via `--methods_subdir gui-methods`
 (wrapped by `make lora-gui`). `ls` for the live list; custom ones live in
 `gui-methods/custom/`.
 
-**Hardware composes via preset, not file copies** — the GUI's Hardware dropdown picks a
+**Hardware composes via preset** — the GUI's Hardware dropdown picks a
 `presets.toml` section tagged `[<name>.gui] group="hardware"` (display metadata, stripped
 from the merge like `[variant]`). So variant files must **NOT** pin
-`gradient_checkpointing` / `unsloth_offload_checkpointing`: method wins over preset, so
+`gradient_checkpointing` / `unsloth_offload_checkpointing` — method wins over preset, so
 pinning silently defeats the picker. Pinned by a test in `tests/test_config.py`.
 
 Data-scope is plain flat keys (`sample_ratio`, `artists_shard` — defaults in `base.toml`;

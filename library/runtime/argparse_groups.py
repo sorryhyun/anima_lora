@@ -1,10 +1,9 @@
 """Shared argparse flag groups for tooling entry points.
 
-``preprocess/`` and ``bench/`` each re-declared the same flags — ``--dir`` /
-``--cache_dir`` / ``--recursive`` (dataset IO) and ``--device`` / ``--dtype``
-(compute). These parser-parent helpers only *add arguments* to a parser the
-caller owns (parsing/dispatch stay in the entry point); every knob is opt-out
-or parameterized so a script can still override a default.
+``--dir`` / ``--cache_dir`` / ``--recursive`` (dataset IO) and ``--device`` /
+``--dtype`` (compute) for ``preprocess/`` and ``bench/``. These helpers only
+*add arguments* to a parser the caller owns (parsing/dispatch stay in the entry
+point); every knob is opt-out or parameterized.
 
 ``--dtype`` strings round-trip through ``library.runtime.device.str_to_dtype``,
 the same mapping ``library.runtime.harness.build_anima`` reads.

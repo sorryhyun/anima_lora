@@ -104,8 +104,7 @@ def filter_lora_state_dict(
     return weights_sd
 
 
-# Derived from `ATTN_FUSE_SPECS` so the q/k/v ↔ qkv fusion layout has a single
-# source of truth. Save / adapter-load walk the underscore-fragment form via
+# Derived from `ATTN_FUSE_SPECS`. Save / adapter-load walk the underscore-fragment form via
 # `iter_split_groups`; this base-model merge path needs the dotted module-path
 # form (e.g. `self_attn.qkv_proj` matches against `blocks.0.self_attn.qkv_proj`).
 _FUSED_PROJ_FALLBACK = {
@@ -230,9 +229,8 @@ def load_safetensors_with_lora(
             # time), but this hook sees the DiT's *runtime* key names
             # (``adaln_up_{br}``, post ``_dit_rename_hook``). Without the
             # rename the adaln rows of every ``train_adaln`` LoRA silently
-            # fell into the "not all LoRA keys are used" warning on the
-            # static-merge path (create_network_from_weights already did
-            # this for the live-hook path). Presence-gated: no-op otherwise.
+            # fall into the "not all LoRA keys are used" warning.
+            # Presence-gated: no-op otherwise.
             if has_comfy_adaln_keys(normalized):
                 normalized = relayout_adaln_comfy_to_runtime(normalized)
             lora_weights_list[i] = normalized

@@ -156,8 +156,8 @@ def cmd_download_danbooru_tags(extra):
 def cmd_download_vocab_pack(extra):
     """The shipped CJK vocab pack (.safetensors + .json pair).
 
-    Part of ``download-models`` since v2 (``configs/base.toml`` enables it by
-    default); kept as its own target for a re-fetch.
+    Part of ``download-models`` (``configs/base.toml`` enables it by default);
+    kept as its own target for a re-fetch.
     """
     _fetch("vocab-pack", extra=extra)
     print(
@@ -261,8 +261,8 @@ def cmd_download_models(extra):
     """The first-run set: Anima base, PE, the CJK vocab pack, the tagger
     checkpoint, the tag KB.
 
-    Deliberately not "everything in the catalog". SAM3 is gated and masking is
-    opt-in since v2 (``download-sam3``), and the OCR stack is opt-in
+    Not the whole catalog: SAM3 is gated and masking is opt-in
+    (``download-sam3``), and the OCR stack is opt-in
     (``download-model ocr``). See ``DEFAULT_SET`` in ``library/downloads.py``.
     """
     failed = DL.fetch_all(DL.resolve(DL.DEFAULT_SET), force=_force(extra))

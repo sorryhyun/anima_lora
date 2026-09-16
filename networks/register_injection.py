@@ -1,7 +1,6 @@
 """Shared mid-stack register-token injection for the Anima DiT (DSR mechanism).
 
-Extracted from ``networks/methods/register.py`` so two owners drive one
-implementation:
+Two owners drive this one implementation:
 
 * the standalone register method (``--method register``,
   ``networks/methods/register.py``), and
@@ -22,7 +21,7 @@ Mechanism (DSR, arXiv:2605.05206 — "starting block" pattern):
   is re-passed per block by ``_run_blocks``), eager and compile-safe (hooks run
   at block ``__call__`` granularity, outside the compiled ``_forward``).
 * Forces ``_native_flatten`` so the seq axis is dim 2 (``(B, 1, seq, 1, D)``)
-  — bit-exact to the eager 5D path (see root CLAUDE.md §free-fit).
+  — bit-exact to the eager 5D path (see the ``bucketing`` skill).
 
 The injector is owner-agnostic: the owner supplies ``get_scaled_tokens``, a
 zero-arg callable returning the ``(K, D)`` register tensor already scaled by
@@ -44,7 +43,7 @@ class RegisterInjector:
 
     Also computes the relocation-crossover readouts (``last_reg_ratio`` /
     ``last_patch_sink_ratio`` — training-time adoption gate, no-grad) each
-    forward, matching the original register-method behavior.
+    forward.
     """
 
     def __init__(

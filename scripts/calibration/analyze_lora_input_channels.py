@@ -150,7 +150,7 @@ def dump_channel_stats_safetensors(stats, out_path, prefix="lora_unet_"):
 
     Each entry in `stats` is keyed by a dot-separated module path (e.g.
     `blocks.0.self_attn.qkv_proj`); we prepend `prefix` and replace dots with
-    underscores to match the `lora_name` format used by `networks/lora_anima.py`.
+    underscores to match the `lora_name` format used by `networks/lora_anima/network.py`.
 
     For fused attention projections (`self_attn.qkv_proj`, `cross_attn.kv_proj`)
     we additionally emit per-component (`q_proj`/`k_proj`/`v_proj`) entries that
@@ -182,8 +182,8 @@ def dump_channel_stats_safetensors(stats, out_path, prefix="lora_unet_"):
 
 
 def find_sample_stems(dataset_dir, n, seed, per_artist=False, per_artist_n=1):
-    # discover_cached_pairs walks recursively (post-2026-04 the dataset is nested
-    # by artist subdir) and pairs each TE sidecar with its latent NPZ; we only add
+    # discover_cached_pairs walks recursively (the dataset is nested by artist
+    # subdir) and pairs each TE sidecar with its latent NPZ; we only add
     # the flip-variant skip the calibration wants (flip latents live in *_flip*.npz).
     pairs = [
         c
@@ -192,7 +192,7 @@ def find_sample_stems(dataset_dir, n, seed, per_artist=False, per_artist_n=1):
     ]
     if not pairs:
         raise FileNotFoundError(f"no paired latent/TE samples in {dataset_dir}")
-    # Keep the historical (base, npz_path, te_path) tuple shape downstream relies on.
+    # (base, npz_path, te_path) tuple shape downstream relies on.
     stems = [(c.stem, c.npz_path, c.te_path) for c in pairs]
 
     rng = np.random.default_rng(seed)
@@ -379,7 +379,7 @@ def main():
     logger.info(f"sigmas: {sigmas}")
 
     # build_anima encodes the load→apply→(compile) ordering and the device/dtype
-    # + reset_mod_guidance placement these probes used to open-code. We collect
+    # + reset_mod_guidance placement. We collect
     # input stats in eval (for_inference=True): T-LoRA's mask is training-only, so
     # the inference full-rank forward is the regime channel scaling is consumed in.
     args.device = str(device)

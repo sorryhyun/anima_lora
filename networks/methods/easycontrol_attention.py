@@ -5,11 +5,6 @@ Self-contained attention math shared by the EasyControl network
 the target stream attends over the concatenation ``[target_k ; cond_k]`` with a
 per-block scalar logit bias (``b_cond``) on the cond rows, without ever
 materializing the ``[B, H, S_t, S_t + S_c]`` attention matrix.
-
-Split out of ``easycontrol.py`` (2026-06-08) — pure attention, zero coupling to
-``EasyControlNetwork``, and separately benched
-(``bench/easycontrol/step0_equivalence.py`` /
-``bench/easycontrol/step1p5_lse_equivalence.py``).
 """
 
 from __future__ import annotations
@@ -271,7 +266,7 @@ def _extended_target_attention(
     """
     from networks import attention_dispatch as anima_attention
 
-    # dtype matching mirrors the original Attention.forward casting policy.
+    # dtype matching mirrors Attention.forward's casting policy.
     if target_q.dtype != target_v.dtype:
         if (
             not attn_params.supports_fp32 or attn_params.requires_same_dtype

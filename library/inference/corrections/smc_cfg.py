@@ -13,18 +13,12 @@ Drop-in modification of the CFG cond/uncond combine. At each denoising step:
     Δe         = −k_t · sign(s_t)               (bang-bang switching correction)
     v̂_t        = v_uncond + w · (e_t + Δe)
 
-The paper's fixed-k formulation is replaced by an α-adaptive gain k_t =
-α · mean(|e_t|), which keeps the controller in-band across model / CFG /
-σ / sample by construction (see bench/smc_cfg/analysis_and_proposal.md
-§A — paper's fixed k=0.1 is off by ~14× on Anima at CFG=4). α=0.2 is the
-production default.
+The adaptive gain keeps the controller in-band across model / CFG / σ /
+sample (the paper's fixed k=0.1 is off by ~14× on Anima at CFG=4; see
+_archive/bench/smc_cfg/analysis_and_proposal.md §A). α=0.2 is the default.
 
-The paper-and-textbook tanh boundary-layer ε for chattering reduction is
-not implemented — at α=0.2 on Anima the per-voxel ±k_t bang-bang stays
-below the visibility floor (sign() distributes evenly across voxels),
-whereas tanh-with-auto-ε concentrates the correction into fewer voxels
-and surfaces as grain. If you need the smoothed variant, recover it as
-`switch = tanh(s / s.abs().mean().clamp_min(1e-8))`.
+No tanh boundary layer: at α=0.2 the ±k_t bang-bang stays below visibility,
+while tanh-with-auto-ε concentrates the correction and surfaces as grain.
 
 `e_prev` is the raw e from the previous step (None → e_prev := e_t on the
 first step, matching the paper's `if e(t+1) is None then e(t+1) ← e(t)`).
@@ -55,8 +49,7 @@ class SMCCFGState:
         self.lam = float(lam)
         # alpha: dimensionless adaptive gain. k_t = alpha · |e_t|.mean() per
         # step — self-scales across model / CFG / σ / sample (see
-        # bench/smc_cfg/analysis_and_proposal.md §A). Paper's fixed-k path
-        # was retired after α dominated it on Anima at CFG=4.
+        # _archive/bench/smc_cfg/analysis_and_proposal.md §A).
         self.alpha = float(alpha)
         self._e_prev: Optional[torch.Tensor] = None
 

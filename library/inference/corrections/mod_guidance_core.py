@@ -8,8 +8,7 @@ Two pieces of math are shared verbatim between the library's mod-guidance
 * ``project_pooled`` — the pooled-text → modulation-delta projection: a 2-layer
   MLP (Linear → SiLU → Linear), optionally σ-FiLM-modulated between the two
   linears (``h * (1 + scale) + shift``, where ``(scale, shift)`` is a linear of
-  the normed time embedding). This is the exact op of ``_pooled_text_delta``;
-  the node used to hand-mirror it as ``_project`` / ``_project_film``.
+  the normed time embedding). This is the exact op of ``_pooled_text_delta``.
 * ``build_block_schedule`` — the per-block ``w(ℓ)`` profile from the
   start/end/taper knobs. Mirrored by the library's ``build_mod_schedule`` and
   the node's ``ModGuidanceState._build_schedule``.

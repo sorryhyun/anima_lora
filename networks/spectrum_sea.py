@@ -104,7 +104,7 @@ def l1rel(a: torch.Tensor, b: torch.Tensor) -> float:
 # per-config calibration. ``solve_delta_for_refresh_ratio`` binary-searches the
 # δ whose accumulate-reset rule, replayed over a recorded distance trace, hits a
 # target fraction of refreshes — making the SEA arm a like-for-like swap at
-# matched compute (see proposal §"The δ knob").
+# matched compute (docs/inference/spectrum.md §"SEA schedule").
 # ---------------------------------------------------------------------------
 
 
@@ -121,9 +121,8 @@ def window_decision_fraction(
     Replays the exact window rule (the Spectrum loop's ``else`` branch + its
     curr_ws advance) and returns ``actual_decision_steps / decision_steps``. The
     SEA auto-δ target defaults to *this* so the SEA arm is a like-for-like swap at
-    matched compute for any step count — the hard-coded 0.62 in the proposal was
-    only the 24-step value and over-computes elsewhere (_archive/bench/
-    spectrum_sea/prompt_generalization.py: 0.62 → +22% forwards at 28 steps).
+    matched compute for any step count (a fixed fraction only matches one step
+    count).
 
     ``forced_steps`` are step indices forced to an actual forward by an external
     consumer (FSG-scheduled calibration steps). They are treated exactly like

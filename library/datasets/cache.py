@@ -1,8 +1,7 @@
 """General cached-pair train dataset (VAE latents + text encoder outputs).
 
 Loads pre-cached VAE latents + text encoder outputs from disk, grouped by
-latent resolution so each batch has uniform spatial dims. Despite the name
-it is not distill-specific — used by ``project/finished/mod_guidance/distill.py`` and
+latent resolution so each batch has uniform spatial dims. Used by ``project/finished/mod_guidance/distill.py`` and
 ``scripts/distill_turbo/distill.py``.
 """
 
@@ -32,9 +31,8 @@ logger = logging.getLogger(__name__)
 def _cached_collate_impl(batch):
     """Stack a list of per-sample :class:`CachedDataset` dicts into a batch dict.
 
-    Self-describing: optional keys (``pooled_text`` / ``mask``) are stacked only
-    when present in the sample dict, so there's no collate-vs-dataset flag to
-    keep in sync. ``idx`` stays a Python list; everything else is
+    Optional keys (``pooled_text`` / ``mask``) are stacked only when present in
+    the sample dict. ``idx`` stays a Python list; everything else is
     ``torch.stack``-ed (uniform spatial dims guaranteed by
     :class:`BucketBatchSampler`).
     """
@@ -77,7 +75,7 @@ class BucketBatchSampler(torch.utils.data.Sampler):
     def __init__(self, batches, warmup_idxs, *, shuffle=True, seed=0):
         self._batches = batches  # list[list[int]]
         # Batch indices pinned to the front, largest-token first. Accepts a
-        # single int / None for back-compat.
+        # single int / None.
         if warmup_idxs is None:
             warmup_idxs = []
         elif isinstance(warmup_idxs, int):

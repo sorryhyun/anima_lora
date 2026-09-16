@@ -2,8 +2,7 @@
 # `lora_save.py`. The DiT runtime fuses self-attn ``q/k/v`` into
 # ``qkv_proj`` and cross-attn ``k/v`` into ``kv_proj``; ComfyUI checkpoints
 # store the unfused per-component projections. Save and load both walk the
-# same component lists — centralising them here keeps the two scanners from
-# drifting.
+# same component lists.
 
 from __future__ import annotations
 
@@ -34,8 +33,7 @@ class AttnFuseSpec:
     @property
     def fused_frag(self) -> str:
         """Fragment of the lora_name that identifies the fused projection,
-        e.g. ``"self_attn_qkv_proj"`` — matches what
-        ``_FUSED_SPLIT`` used as its dict key.
+        e.g. ``"self_attn_qkv_proj"``.
         """
         return f"{self.attn_type}_{self.fused_letters}_proj"
 
@@ -44,10 +42,9 @@ class AttnFuseSpec:
         return f"{self.attn_type}_{letter}_proj"
 
 
-# Single source of truth for both save and load paths. Save-side splits
-# ``self_attn_qkv_proj`` → q/k/v and ``cross_attn_kv_proj`` → k/v; load-side
-# re-fuses the inverse. Adding a new fused projection to the runtime only
-# needs an entry here.
+# Save-side splits ``self_attn_qkv_proj`` → q/k/v and ``cross_attn_kv_proj``
+# → k/v; load-side re-fuses the inverse. A new fused projection only needs an
+# entry here.
 ATTN_FUSE_SPECS: Tuple[AttnFuseSpec, ...] = (
     AttnFuseSpec("self_attn", "qkv", ("q", "k", "v")),
     AttnFuseSpec("cross_attn", "kv", ("k", "v")),
@@ -60,8 +57,7 @@ def match_fused_spec(prefix: str) -> Optional[AttnFuseSpec]:
     Save-side dual of :func:`iter_split_groups` — the loader walks split
     component keys to detect groups that need re-fusing, while the saver
     walks fused prefixes (e.g. ``…self_attn_qkv_proj``) to detect groups
-    that need splitting. Both sides consult the same ATTN_FUSE_SPECS tuple
-    so adding a new fused projection touches one entry.
+    that need splitting.
     """
     for spec in ATTN_FUSE_SPECS:
         if prefix.endswith(spec.fused_frag):

@@ -1,7 +1,7 @@
 """Off-thread image decode + mask / resize-preview overlay composers.
 
-Pure leaf helpers split out of ``image_tab.py``: none of them reference the
-owning ``ImageViewerTab``. They take a ``QPixmap`` (plus a little preprocess
+Pure leaf helpers for ``image_tab.py``: none of them reference the owning
+``ImageViewerTab``. They take a ``QPixmap`` (plus a little preprocess
 config) and return a new ``QPixmap`` with the overlay painted on.
 """
 

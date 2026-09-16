@@ -8,15 +8,7 @@ restricts training to shard ``k`` (1-indexed) by emitting a ``path_pattern`` of
 ``<artist>/*`` globs joined with ``|`` — the alternation syntax
 :func:`library.datasets.path_filter.filter_paths_by_glob` already understands.
 
-Round-robin (rather than contiguous blocks) keeps each shard a representative
-mix across the alphabet, so per-shard image count stays balanced and shards
-don't accidentally group stylistically-adjacent neighbours.
-
-This is the partition-coherence ladder for the merge-interference probe
-(``bench/lora_merge_interference/``): 1 artist per LoRA (most coherent) →
-artist-group shard (this knob) → full random shuffle (least coherent). Training
-N shard LoRAs and re-running the probe shows how cross-adapter B-side
-orthogonality scales with the semantic coherence of the split.
+Round-robin (not contiguous blocks) keeps per-shard image counts balanced.
 
 Pure stdlib — the GUI and config linters can call it without importing torch.
 """
@@ -80,8 +72,7 @@ def apply_artist_shard(
 ) -> dict:
     """Set ``path_pattern`` on every non-reg subset to its shard's artist globs.
 
-    Mutates ``user_config`` in place (mirrors the ``--sample_ratio`` override in
-    ``train.py``). ``resolve`` maps a possibly-relative ``image_dir`` to an
+    Mutates ``user_config`` in place. ``resolve`` maps a possibly-relative ``image_dir`` to an
     on-disk path for directory enumeration (pass ``resolve_under_home``); the
     written ``path_pattern`` stays relative to ``image_dir``, as the filter
     expects. Raises if a subset already carries an explicit ``path_pattern`` (a

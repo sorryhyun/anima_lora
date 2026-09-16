@@ -12,13 +12,10 @@ stages; on Anima that is the dead zone (σ≈0.94 diverges, ρ>1). The operator
 contracts only in **mid-σ**, and the contracting band **moves down with step
 count**: at 20-step Euler it was [0.75, 0.85], but at the 28-step er_sde
 production schedule σ≈0.84 stops contracting and the sweet spot is σ≈0.75, so
-the default is the **[0.59, 0.75]** band (Plan-B calibration, `_archive/bench/fsg`).
+the default is the **[0.59, 0.75]** band.
 This is a ``pre-step latent calibration`` seam: it mutates ``latents`` *before* the
 real per-step forward and is otherwise invisible to the rest of the loop. Re-probe
 the band with ``_archive/bench/fsg`` if you change ``infer_steps``.
-
-This is a faithful port of ``_archive/bench/fsg/render_compare.py::_fsg_calibrate``;
-the archived bench remains the calibration instrument (Phase-0 probe → band/K/Δσ/γ).
 """
 
 from __future__ import annotations
@@ -96,7 +93,9 @@ class FSGCalibrator(_FSGCalibratorCore):
             return latents
 
         def vel_cond_uncond(x, sigma):
-            vc = self._velocity(anima, x, sigma, step_i, embed, padding_mask, pooled_pos)
+            vc = self._velocity(
+                anima, x, sigma, step_i, embed, padding_mask, pooled_pos
+            )
             vu = self._velocity(
                 anima, x, sigma, step_i, negative_embed, padding_mask, pooled_neg
             )

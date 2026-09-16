@@ -29,17 +29,10 @@ def _top_right_singular_vectors(W: torch.Tensor, cols: int) -> torch.Tensor:
     """Top-``cols`` right singular vectors of ``W``, as an ``(in, cols)`` matrix.
 
     The same subspace ``torch.linalg.svd(W).Vh[:cols].T`` returns, but routed
-    through an eigendecomposition of the **smaller Gram matrix**: on real DiT
-    layers that is 7.5x cheaper end to end (54.2 s -> 7.2 s for the 448
-    ``blocks.*`` Linears at r=32, 5070 Ti) *and* lands tighter-orthonormal
-    columns than cuSOLVER's
-    Jacobi SVD (1e-6 vs 1e-3 max off-diagonal), which is the property
-    ``svd_slice`` leans on. Measured capture against the exact V is 1.000 on
-    every weight group of the base DiT.
-
-    Batching the per-layer calls by shape was measured and is worthless —
-    cuSOLVER has no batched kernel at these sizes and loops internally
-    (34.4 s -> 35.0 s for the 168 ``(2048, 2048)`` layers).
+    through an eigendecomposition of the **smaller Gram matrix**: ~7.5x cheaper
+    on the base DiT *and* tighter-orthonormal columns than cuSOLVER's Jacobi
+    SVD (1e-6 vs 1e-3 max off-diagonal), which is the property ``svd_slice``
+    leans on.
 
     What the Gram costs is the **bottom** of the window: it squares the spectrum,
     so ``lam_cols / lam_0 == (sigma_cols / sigma_0)^2`` sinks under the fp32 eigh
@@ -168,8 +161,8 @@ class LoRAModule(BaseLoRAModule):
         ``A_0 = V_r^T / sqrt(3)`` where ``W0 = U Σ V^T`` and the ``1/sqrt(3)``
         matches the expected row-norm of the Kaiming default (a row of V_r^T has
         norm 1; a Kaiming row has E[‖·‖²] ≈ 1/3), so "better direction" is not
-        confounded with "larger effective step". Linear only in v0 — Conv2d keeps
-        the Kaiming init already written above. The basis comes from
+        confounded with "larger effective step". Linear only — Conv2d keeps the
+        Kaiming init already written above. The basis comes from
         ``_top_right_singular_vectors`` (exact, Gram-routed).
         """
         if not isinstance(self.lora_down, torch.nn.Linear):
@@ -187,12 +180,8 @@ class LoRAModule(BaseLoRAModule):
                 f"the {min(W.shape)}-vector spectrum of {self.lora_name} "
                 f"({tuple(W.shape)}); lower the slice or the rank."
             )
-        # Exact basis (2026-09-12; was a q=r+6, niter=2 randomized sketch).
-        # The sketch captured only 0.80–0.93 of the true top-r subspace on
-        # real DiT layers and re-drew its basis per call, so two slices from
-        # two sketches were not orthogonal. One exact basis makes slice 0 the
-        # actual top-r and every slice pair exactly orthogonal. Cost after the
-        # Gram routing: ~7 s for a whole 28-block network (was ~54 s).
+        # Exact basis: slice 0 is the actual top-r and every slice pair is
+        # exactly orthogonal (a randomized sketch would break both).
         V = _top_right_singular_vectors(W, offset + rank)
         with torch.no_grad():
             v_r = V[:, offset : offset + rank].T / math.sqrt(3)
@@ -223,9 +212,7 @@ class LoRAModule(BaseLoRAModule):
         )
 
     # Forward is the shared BaseLoRAModule scaffold; this class supplies the
-    # down / up GEMMs (Linear-or-Conv2d dispatch) and the eval delta. The
-    # T-LoRA gate is the inherited default (``lx * _timestep_mask``). The
-    # ``_fused`` short-circuit + the dtype-policy commentary live in the base.
+    # down / up GEMMs (Linear-or-Conv2d dispatch) and the eval delta.
 
     def _down(self, x_lora, work):
         if isinstance(self.lora_down, torch.nn.Linear):
@@ -406,9 +393,7 @@ def bake_inv_scale(state_dict: Dict[str, torch.Tensor]) -> None:
     ``F.linear(x * inv_scale, down)``. Pre-folding ``down *= inv_scale`` makes
     the on-disk delta act on raw inputs — a standard LoRA that any consumer
     (stock ComfyUI, ``merge_to_dit``, third-party loaders) applies correctly
-    without knowing the ``.inv_scale`` convention. This is exactly what every
-    loader does on load (``LoRAModule.merge_to`` / ``get_weight`` / the inference
-    factory's ``inv_scale``-keyed reconstruction), precomputed once at save.
+    without knowing the ``.inv_scale`` convention.
 
     Operates on the split (post-defuse) layout: each ``<prefix>.inv_scale`` has
     a sibling ``<prefix>.lora_down.weight``. Run AFTER ``defuse_standard_qkv``.

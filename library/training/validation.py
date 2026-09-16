@@ -1,13 +1,11 @@
 """Validation pass: CMMD (primary) with per-sigma FM-MSE fallback.
 
-Extracted from ``train.py`` so the trainer class only owns hook points
-(``process_batch``, ``on_step_start``, ``on_validation_step_end``,
+The trainer class owns only the hook points (``process_batch``, ``on_step_start``, ``on_validation_step_end``,
 ``_switch_rng_state`` / ``_restore_rng_state``). The PE encoder is cached on
 the trainer as ``trainer._cmmd_pe_bundle`` to avoid reloading PE-Core each pass.
 
-CMMD is the primary signal — the legacy FM-MSE pass did not track sample
-quality on Anima (see ``project_fm_val_loss_uninformative``). FM-MSE still
-runs as the silent-loss fallback when CMMD can't (no PE/TE cache, sampling
+CMMD is the primary signal — FM-MSE does not track sample quality on Anima.
+FM-MSE still runs as the silent-loss fallback when CMMD can't (no PE/TE cache, sampling
 error, missing references)."""
 
 from __future__ import annotations
@@ -255,8 +253,8 @@ def _try_cmmd_validation(
     )
 
     # Three-phase val so the DiT, VAE and PE-Core never share the GPU — the
-    # peak is one model + its working set, not DiT+VAE simultaneously (the old
-    # OOM: per-sample VAE decode ran with the DiT still resident):
+    # peak is one model + its working set (per-sample VAE decode with the DiT
+    # still resident OOMs):
     #   phase 1: DiT resident → sample every item's latents, park on CPU.
     #   phase 2: DiT → CPU, VAE → GPU → decode all latents to pixels (CPU).
     #   phase 3: VAE → CPU, PE → GPU → encode all pixels to features.

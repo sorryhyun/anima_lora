@@ -1,8 +1,7 @@
 """Shared data-loading + loss utilities for the img2emb resampler pipeline.
 
-Consumed by the phase-0/phase-1 bench trainers under ``archive/bench/img2emb/``
-and by the archived img2emb training stages under ``archive/img2emb/``.
-Extracted here so live consumers don't have to depend on the archived training code.
+Consumed by the archived img2emb code under ``_archive/bench/img2emb/`` and
+``_archive/img2emb/``.
 """
 
 from __future__ import annotations
@@ -31,10 +30,9 @@ class _VariantMeanDataset(Dataset):
     """Load one TE file, zero-clamp the padded tail across every variant,
     return the variant-mean ``(S, D)`` slice. Parallelizable via DataLoader.
 
-    Only used by the phase-0 diagnostic probes (``archive/bench/img2emb/phase0_probes``)
-    where the analytic OLS solution requires the per-image mean. All production
-    training stages (phase 1 / 1.5 / 2) sample one variant per step via
-    ``_ResamplerTrainDataset`` and never touch this class.
+    Only used by the diagnostic probes (``_archive/bench/img2emb/phase0_probes.py``)
+    where the analytic OLS solution requires the per-image mean. Training
+    stages sample one variant per step via ``_ResamplerTrainDataset``.
     """
 
     def __init__(self, te_paths: list[str], active_lengths: list[int]):
@@ -84,14 +82,14 @@ def load_targets_mean(
 ) -> torch.Tensor:
     """Materialize the variant-mean targets ``(N, S, D)`` fp32 in RAM.
 
-    Opt-in: only phase-0 diagnostic probes call this. The mean is a valid
+    Opt-in: only the diagnostic probes call this. The mean is a valid
     *diagnostic* target (order-invariant summary of the caption distribution)
     but a poor *training* target — it shrinks the norm under triangle
     inequality and sits off the T5 manifold. Production training stages use
     ``_ResamplerTrainDataset`` for per-step per-variant sampling instead.
 
     Pre-allocated + filled by index via DataLoader workers — peak RAM is the
-    final ~2 GB tensor, not the old per-variant stack.
+    final ~2 GB tensor.
     """
     ds = _VariantMeanDataset(te_paths, active_lengths)
     loader = DataLoader(
@@ -122,16 +120,14 @@ def load_targets_mean(
 def _peek_target_shape(te_paths: list[str]) -> tuple[int, int]:
     """Return ``(S, D)`` of the cross-attn target by reading one TE file.
 
-    Cheap stand-in for ``cache["targets_mean"].shape[1:]`` now that we don't
-    materialize the mean up-front.
+    Cheap stand-in for ``cache["targets_mean"].shape[1:]`` (the mean is not
+    materialized up-front).
     """
     sd = load_file(te_paths[0])
     variant_keys = sorted(k for k in sd.keys() if k.startswith("crossattn_emb_v"))
     key = variant_keys[0] if variant_keys else "crossattn_emb"
     if key not in sd:
-        raise RuntimeError(
-            f"No crossattn_emb / crossattn_emb_v* key in {te_paths[0]}"
-        )
+        raise RuntimeError(f"No crossattn_emb / crossattn_emb_v* key in {te_paths[0]}")
     t = sd[key]
     return int(t.shape[0]), int(t.shape[1])
 
@@ -140,11 +136,9 @@ def load_cache(cache_dir: Path, image_dir: str, encoder: str, num_workers: int =
     """Return dict with pooled / tokens / target_shape / active_lengths / split /
     te_paths.
 
-    The mean target is no longer materialized eagerly — it's useless for
-    training (see ``load_targets_mean`` docstring) and was a ~2 GB RAM tax.
-    Phase-0 diagnostics that still want it call ``load_targets_mean`` directly.
-    ``num_workers`` is kept in the signature for call-site compatibility but
-    is unused here; pass it to ``load_targets_mean`` instead.
+    The mean target is not materialized; diagnostics that want it call
+    ``load_targets_mean`` directly. ``num_workers`` is unused here; pass it to
+    ``load_targets_mean`` instead.
     """
     _ = num_workers
     stems = json.loads((cache_dir / "stems.json").read_text())
@@ -179,18 +173,18 @@ def load_cache(cache_dir: Path, image_dir: str, encoder: str, num_workers: int =
         "split": split,
         "active_lengths": act["active_lengths"],
         "num_variants": V,
-        "te_paths": te_paths,           # list[str] aligned to stems order
-        "target_shape": (S, D_y),       # (S, D_y) int tuple
-        "pooled": pooled,               # (N, D_enc) fp32
-        "tokens": tokens,               # (N, T, D_enc) bf16
-        "target_pooled": target_pooled, # (N, V, D_y) fp32 or None
+        "te_paths": te_paths,  # list[str] aligned to stems order
+        "target_shape": (S, D_y),  # (S, D_y) int tuple
+        "pooled": pooled,  # (N, D_enc) fp32
+        "tokens": tokens,  # (N, T, D_enc) bf16
+        "target_pooled": target_pooled,  # (N, V, D_y) fp32 or None
     }
 
 
 @torch.no_grad()
 def match_target_to_pred(
-    pred: torch.Tensor,         # (B, K, D)
-    target: torch.Tensor,       # (B, K, D)
+    pred: torch.Tensor,  # (B, K, D)
+    target: torch.Tensor,  # (B, K, D)
     mask_active: torch.Tensor,  # (B, K) bool
     anchor_mask: torch.Tensor,  # (B, K) bool
 ) -> tuple[torch.Tensor, dict[str, float]]:
@@ -233,16 +227,16 @@ def match_target_to_pred(
 
 
 def _resampler_loss(
-    pred: torch.Tensor,      # (B, S, D)
-    target: torch.Tensor,    # (B, S, D)
-    mask: torch.Tensor,      # (B, S) bool, True in active region
+    pred: torch.Tensor,  # (B, S, D)
+    target: torch.Tensor,  # (B, S, D)
+    mask: torch.Tensor,  # (B, S) bool, True in active region
     cos_w: float,
     zero_w: float,
 ):
     pred_f = pred.float()
     target_f = target.float()
-    active = mask.unsqueeze(-1).float()        # (B, S, 1)
-    inactive = (1.0 - active)
+    active = mask.unsqueeze(-1).float()  # (B, S, 1)
+    inactive = 1.0 - active
 
     # MSE on active region (normalized by active element count)
     diff = (pred_f - target_f) ** 2
@@ -261,7 +255,7 @@ def _resampler_loss(
 
     # Zero-pad penalty
     if zero_w > 0:
-        pad_sq = (pred_f ** 2) * inactive
+        pad_sq = (pred_f**2) * inactive
         denom_inact = inactive.sum().clamp_min(1.0) * pred_f.shape[-1]
         pad_loss = pad_sq.sum() / denom_inact
     else:
@@ -287,8 +281,8 @@ def _pool(x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
 
 
 def _infonce_loss(
-    pred_pool: torch.Tensor,      # (B, D)  resampler pooled output
-    tgt_pooled: torch.Tensor,     # (B, V, D) per-variant pooled targets
+    pred_pool: torch.Tensor,  # (B, D)  resampler pooled output
+    tgt_pooled: torch.Tensor,  # (B, V, D) per-variant pooled targets
     tau: float,
 ) -> tuple[torch.Tensor, dict[str, float]]:
     """SupCon-style multi-positive InfoNCE across in-batch variants.
@@ -300,11 +294,11 @@ def _infonce_loss(
     """
     B, V, D = tgt_pooled.shape
     device = pred_pool.device
-    pred_n = F.normalize(pred_pool.float(), dim=-1, eps=1e-8)          # (B, D)
-    tgt_n = F.normalize(tgt_pooled.float(), dim=-1, eps=1e-8)          # (B, V, D)
-    tgt_flat = tgt_n.reshape(B * V, D)                                  # (B*V, D)
+    pred_n = F.normalize(pred_pool.float(), dim=-1, eps=1e-8)  # (B, D)
+    tgt_n = F.normalize(tgt_pooled.float(), dim=-1, eps=1e-8)  # (B, V, D)
+    tgt_flat = tgt_n.reshape(B * V, D)  # (B*V, D)
 
-    sim = (pred_n @ tgt_flat.T) / max(tau, 1e-4)                        # (B, B*V)
+    sim = (pred_n @ tgt_flat.T) / max(tau, 1e-4)  # (B, B*V)
     # Build positive mask: row b has 1 at columns [b*V:(b+1)*V].
     pos_mask = (
         torch.eye(B, device=device).repeat_interleave(V, dim=1).bool()  # (B, B*V)

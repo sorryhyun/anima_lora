@@ -7,8 +7,7 @@ defused checkpoint layout (``defuse_standard_qkv``) so the file loads through
 every plain-LoRA consumer: ``--lora_weight`` inference, ``merge_to_dit``,
 ComfyUI, and the turbo warm-start knob (``network.student_init_weights``).
 
-Motivating use: seed the DP-DMD student from the official anima_turboV10
-release (see memory ``project_official_turbo_v10_eval``):
+Example — seed the DP-DMD student from the official anima_turboV10 release:
 
     python scripts/toolkits/extract_delta_lora.py \
         --tuned models/diffusion_models/anima_turboV10.net.safetensors \

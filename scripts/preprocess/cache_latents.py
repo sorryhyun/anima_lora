@@ -51,7 +51,7 @@ def main() -> None:
     # compile covers every free-fit (W,H) — no per-shape recompile). Opt-in
     # because the warmup is a net loss for tiny incremental re-caches. Forces
     # --chunk_size 0: the chunked-conv Python loop is compile-hostile (never
-    # finishes compiling). See scratch bench 2026-06-28.
+    # finishes compiling).
     parser.add_argument(
         "--compile_vae",
         action="store_true",

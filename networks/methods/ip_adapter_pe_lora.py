@@ -3,9 +3,8 @@
 Wraps every nn.Linear inside PE-Core's resblocks (attn.out_proj,
 mlp.c_fc, mlp.c_proj) plus the qkv path (raw ``in_proj_weight`` Parameter on
 ``_SelfAttention``) with a low-rank delta. The base PE weights stay frozen;
-only the LoRA params train. Cleaner-than-the-doc prototype: no cache split,
-no implicit-alignment loss — just unfrozen-via-LoRA PE-Core through which the
-FM gradient flows back from the DiT.
+only the LoRA params train; the FM gradient flows back from the DiT through
+the LoRA-adapted PE-Core (no cache split, no implicit-alignment loss).
 """
 
 from __future__ import annotations
@@ -138,7 +137,8 @@ def _patch_pe_qkv(
 ) -> None:
     """Replace ``_SelfAttention.forward`` with a copy that adds a LoRA residual
     onto the concatenated qkv projection. Mirrors the original forward in
-    library/models/pe.py:182 — keep the two in sync if PE upstream changes.
+    ``anime_tools.vision.pe._SelfAttention.forward`` — keep the two in sync if
+    PE upstream changes.
     """
     embed_dim = attn.embed_dim
     layer = PELoRALayer(embed_dim, 3 * embed_dim, rank, alpha)

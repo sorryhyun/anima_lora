@@ -2,9 +2,8 @@
 # forwards `make <target>` to `python tasks.py <target> $(ARGS)`.
 #
 # Make-line variables (PRESET=low_vram, REF_IMAGE=foo.png, ARTIST=sincos,
-# ENCODER=pe, METHOD=lora, MODEL_DIR=..., ADAPTER_DIR=..., MULTIPLIER=...,
-# IP_SCALE=..., EC_SCALE=..., PROMPT="...", NEG="...", INVERT_NAME=...,
-# BENCH_INVERSIONS=..., FINETUNE_WARM=..., FINETUNE_BS=..., FINETUNE_SWAP=...,
+# METHOD=lora, MODEL_DIR=..., ADAPTER_DIR=..., MULTIPLIER=...,
+# EC_SCALE=..., PROMPT="...", NEG="...",
 # RUN=..., ALL=1, JSONL=1, GUI_PRESETS=..., PROFILE_STEPS=3-5,
 # SPECTRUM=1) are exported as env vars so tasks.py picks them up.
 #

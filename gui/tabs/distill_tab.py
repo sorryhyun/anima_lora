@@ -7,14 +7,9 @@ Turbo trains through a bespoke distill loop (``make turbo`` →
 edits. It also has no dataset of its own: it reuses the ordinary LoRA cache
 under ``post_image_dataset/lora``.
 
-(The SPD trajectory-adapter distiller shared this tab until 2026-07-05, when the
-SPD LoRA path was archived to ``_archive/spd/``; SPD now ships only as the
-training-free ``--spd`` inference stack — see ``docs/inference/spd.md``.)
-
-So rather than the IP-Adapter / EasyControl dataset-browser launcher (which
-exists to manage a *separate* image set), these get a structured config-editor
-tab that mirrors the method tabs' look: a per-section form on top, a log on the
-bottom, and daemon-backed Preprocess / Train / Stop in the top bar.
+The tab is a structured config editor in the method tabs' layout: a
+per-section form on top, a log on the bottom, and daemon-backed Preprocess /
+Train / Stop in the top bar.
 
 Editing uses ``tomlkit`` so the configs' extensive inline comments survive a
 Save round-trip (a plain ``toml.dumps`` would strip them); those comments

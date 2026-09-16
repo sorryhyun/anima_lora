@@ -35,9 +35,8 @@ def process_escape(text: str) -> str:
     """Process escape sequences (\\n, \\t, \\r, \\\\, \\uXXXX) in a prompt.
 
     Only the escape sequences themselves are rewritten — non-ASCII text passes
-    through untouched. The previous ``encode("utf-8").decode("unicode_escape")``
-    round-trip mojibaked every non-ASCII character (CJK prompts reached the
-    tokenizer as latin-1 garbage).
+    through untouched (an ``encode("utf-8").decode("unicode_escape")``
+    round-trip would mojibake CJK prompts into latin-1 garbage).
     """
     return _ESCAPE_RE.sub(_escape_sub, text)
 
@@ -62,10 +61,9 @@ def ensure_text_strategies(
     strategy is missing *and* no path is available to build it, it raises a clear
     ``ValueError`` instead of failing later deep in the encode call.
 
-    Returns the two live strategies (whether freshly installed or pre-existing) so
-    a caller can use them directly instead of fishing them back out of the globals
-    with ``get_strategy()``. They remain global — the return value is the same
-    object the downstream encode path reads, not a private copy.
+    Returns the two live strategies (whether freshly installed or pre-existing).
+    They remain global — the return value is the same object the downstream
+    encode path reads, not a private copy.
 
     ``vocab_pack`` selects the CJK vocab pack the tokenizer routes through: a
     path prefix or loaded ``VocabPack``; ``None`` = the ``vocab_pack`` key in

@@ -7,7 +7,7 @@ they are ``q_proj(image tokens)``, so they only exist during a forward. The
 first G2 run substituted seeded random directions for them and the whole
 readout space collapsed: a random query attends almost uniformly, so the
 readout degenerates to a near-mean over the sequence. Measured consequence
-(``project/cjk_aware_anima/report_0816_phase2.md``): unrelated prompts sat at 0.374 and
+(``_archive/cjk_aware_anima/reports/0816_phase2.md``): unrelated prompts sat at 0.374 and
 *rose to 0.738 during training*, and two captions of the same image landed at
 exactly 1.000 — the space was blind to wording, which is the one axis this line
 exists to serve. That contaminated ``L_attn`` as an objective, not just as a
@@ -16,7 +16,7 @@ metric, and both G2 recovery numbers were withdrawn.
 So: tap the real thing. Run a handful of DiT forwards on **cached** latents and
 **cached** post-adapter contexts at 2-3 noise levels, hook each sampled block's
 ``cross_attn.q_norm`` (the queries as the attention actually sees them — cross
-attention applies no RoPE, ``models.py:385``, so the post-norm tensor is final),
+attention applies no RoPE, gated on ``is_selfattn`` in ``Attention.compute_qkv`` (``library/anima/models.py``), so the post-norm tensor is final),
 and keep a pool of real token queries per block.
 
 σ matters: the cross-attn input is adaLN-modulated by the timestep embedding,
@@ -68,9 +68,9 @@ LATENT_KEY = re.compile(r"^latents_(\d+)x(\d+)$")
 def find_items(cache_root: Path, n: int, seed: int) -> list[tuple[Path, Path]]:
     """``(latents npz, te safetensors)`` pairs from the ordinary image caches.
 
-    Caches are nested one directory per artist (``project_image_dataset_symlink``
-    layout), hence the recursive glob. An image is usable only if both sidecars
-    exist — TE caches are text-only and can lag a re-preprocess.
+    Caches are nested one directory per artist, hence the recursive glob. An
+    image is usable only if both sidecars exist — TE caches are text-only and
+    can lag a re-preprocess.
     """
     items: list[tuple[Path, Path]] = []
     for npz in sorted(cache_root.rglob("*_anima.npz")):

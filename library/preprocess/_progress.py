@@ -3,7 +3,7 @@
 The cache loops live in ``library/`` and must run headless (daemon, tests,
 embedding code), so they never create a progress bar themselves. A caller that
 *does* want one passes a ``progress`` callback; the CLI wrappers pass
-:func:`tqdm_progress`. The protocol is intentionally tiny:
+:func:`tqdm_progress`. The protocol:
 
     progress(advance, total=N, detail="…")
 

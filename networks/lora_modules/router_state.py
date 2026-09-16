@@ -1,7 +1,6 @@
 # Shared σ / FEI / routing-weights buffer protocol for HydraLoRAModule,
-# OrthoHydraLoRAModule, and StackedExpertsLoRAModule. Lives here so the
-# global-router gradient path stays identical across all three (the proposal
-# flagged a drift where OrthoHydra had detached its routing buffer).
+# OrthoHydraLoRAModule, and StackedExpertsLoRAModule, so the global-router
+# gradient path is identical across all three.
 #
 # Cross-module aliasing dance (`_wire_shared_*` / Module._apply recovery) is
 # tangled with cudagraph pointer stability and stays in LoRANetwork.
@@ -38,8 +37,7 @@ def _copy_or_rebind_buffer(
         setattr(module, name, value.to(buf.dtype).clone())
 
 
-# Sinusoidal σ features (shared with postfix-sigma, which inlines its own copy).
-# freqs depend only on (half_dim, device); cache to avoid emitting a fresh
+# Sinusoidal σ features. freqs depend only on (half_dim, device); cache to avoid emitting a fresh
 # arange+exp per module per step.
 _FREQS_CACHE: dict[tuple[int, torch.device], torch.Tensor] = {}
 
@@ -185,7 +183,7 @@ def _register_routing_weights_buffer(module: torch.nn.Module, num_experts: int) 
 
     Forward gate-weighting branch runs unconditionally (no None guard under
     compile). LoRANetwork.set_routing_weights rebinds across every module via
-    the shared-buffer aliasing protocol — see [[project_set_sigma_aliasing_bug]].
+    the shared-buffer aliasing protocol (``network.py::_wire_shared_*``).
     """
     placeholder = torch.full(
         (1, num_experts),
@@ -201,8 +199,7 @@ def _set_routing_weights(module: torch.nn.Module, weights: torch.Tensor) -> None
     Direct slot assignment (NOT .copy_()) and no .detach() — the buffer must
     carry the router's grad_fn so ∂L/∂α flows back to GlobalRouter. This is
     the FeRA gradient path (eq. 6-7, 11): α_t enters y_t as a live multiplier,
-    so plain L_denoise backprop trains the router. Shared across all three
-    routing-aware modules so the contract is identical regardless of layout.
+    so plain L_denoise backprop trains the router.
     """
     buf = module._routing_weights
     w = weights.to(dtype=buf.dtype, device=buf.device)
@@ -221,23 +218,16 @@ class RouterStateMixin:
     """Shared σ / FEI / routing-weights *method surface* for the routing-aware
     LoRA variants (HydraLoRA / OrthoHydra / StackedExperts).
 
-    The free functions above own the buffer mechanics — pointer-stable rebind,
-    the grad-carrying ``_routing_weights`` slot-assign contract (NO ``.detach()``
-    / ``.copy_()`` so ``∂L/∂α`` reaches the GlobalRouter, FeRA eq. 6-7, 11).
-    What was still pasted verbatim into each class was the thin method wrapping;
-    this mixin holds it once, so a future router source is a one-place edit.
+    The free functions above own the buffer mechanics (pointer-stable rebind,
+    the grad-carrying ``_routing_weights`` slot-assign).
 
     Each setter is **buffer-presence-guarded** (``hasattr``): a module that
     registered only a subset of the buffers inherits the full surface as safe
-    no-ops. StackedExperts (``_routing_weights`` only, no σ/FEI) is the case
-    that matters — its ``set_sigma`` / ``set_fei`` become no-ops, exactly
-    equivalent to never defining them (the network keys its ``_*_aware_loras``
-    lists on *buffer* presence — ``network.py::_wire_shared_*`` — and every
-    external caller probes by method name and tolerates a no-op). The
-    ``_routing_weights`` guard also subsumes the old
-    ``getattr(self, "use_global_router", False)`` check: that buffer is
-    registered iff ``use_global_router`` on Hydra/OrthoHydra, and always on
-    StackedExperts, so ``hasattr`` is the exact, layout-agnostic condition.
+    no-ops. StackedExperts (``_routing_weights`` only, no σ/FEI) gets no-op
+    ``set_sigma`` / ``set_fei`` (the network keys its ``_*_aware_loras`` lists
+    on *buffer* presence — ``network.py::_wire_shared_*``). ``_routing_weights``
+    is registered iff ``use_global_router`` on Hydra/OrthoHydra, and always on
+    StackedExperts.
 
     Chimera carries two routing buffers (π_c / π_f) and a different method
     surface — it keeps ``_ChimeraRoutingMixin`` instead.

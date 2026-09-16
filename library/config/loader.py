@@ -288,8 +288,7 @@ class ConfigSanitizer:
             logger.error("Invalid user config")
             raise
 
-    # NOTE: In nature, argument parser result is not needed to be sanitize
-    #   However this will help us to detect program bug
+    # argparse results need no sanitizing; validating them catches program bugs
     def sanitize_argparse_namespace(
         self, argparse_namespace: argparse.Namespace
     ) -> argparse.Namespace:
@@ -430,8 +429,8 @@ def disable_masks_in_blueprint(
     dataset constructor bakes ``image_info.mask_path`` from ``subset.mask_dir``
     and ``make_buckets`` preloads every mask PNG into
     ``image_info.preloaded_alpha_mask``, which ``__getitem__`` then uses
-    whatever the subset flags say — so a post-hoc strip left a checkout with
-    a mask tree on disk training masked. ``mask_dir = ""`` (not ``None``)
+    whatever the subset flags say, so stripping the built subsets still
+    trains masked from a mask tree on disk. ``mask_dir = ""`` (not ``None``)
     also switches off the subset constructor's legacy ``masks/{merged,sam}``
     auto-resolution, and ``alpha_mask = False`` keeps a cache-borne alpha
     channel out of the batch (``_load_sample``).

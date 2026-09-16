@@ -1077,8 +1077,8 @@ class AutoencoderKLQwenImage(
 
         After this the VAE handles **only single images** (``T=1``) — multi-frame
         encode/decode will assert. ~2x faster / ~0.65-0.7x memory vs the 3D path,
-        numerically equivalent within bf16 noise. Mirrors sd-scripts'
-        ``--qwen_image_vae_2d``. Returns the number of convs folded.
+        numerically equivalent within bf16 noise. Returns the number of convs
+        folded.
         """
         n = 0
         for parent in self.modules():
@@ -1624,7 +1624,7 @@ def load_vae(
     """Load VAE from a given path.
 
     ``dtype``/``eval`` are shortcuts for the common ``vae.to(dtype); vae.eval()``
-    (both default off for historical "raw load" behavior). ``vae_2d`` folds the
+    (both default off). ``vae_2d`` folds the
     causal Conv3d stack into 2D convs (see :meth:`AutoencoderKLQwenImage.convert_to_2d`)
     — faster/leaner but **image-only** (single-frame); good for latent caching/decode.
     """

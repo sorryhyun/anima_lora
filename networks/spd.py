@@ -7,17 +7,8 @@ frequencies emerge from noise. The latent power spectrum decays as a power law
 (`P_ω ∝ |ω|^{-β}`, β=2.26 on Anima — `bench/spd/`), so HF carries far less
 signal and is cheap to defer.
 
-This is the training-free path: the bare DiT (or any existing LoRA checkpoint)
-runs the multi-resolution trajectory through the standard inference path — no
-training. The math here is promoted verbatim from the Phase-2 probe (archived at
-`_archive/spd/bench/probe_lowres_denoise.py`), which validated that the bare
-Anima DiT denoises low-res latents and accepts the spectral-expansion handoff
-coherently (std ×0.95, no NaN, no smear).
-
-SPD is inference-only. The trajectory-adapter *fine-tune* (the "Case B" SPD
-distillation LoRA) was archived 2026-07-05 to `_archive/spd/`; the target-
-construction + SNR-gated-loss helpers that used to live here moved with it
-(`_archive/spd/networks/spd_train_targets.py`). Only the sampler runner remains.
+SPD is inference-only: the bare DiT (or any existing LoRA checkpoint) runs the
+multi-resolution trajectory through the standard inference path.
 
 Architecturally this mirrors ``networks/spectrum.py``: a sampler-level runner
 that *replaces* the denoise loop and self-registers with
@@ -25,13 +16,12 @@ that *replaces* the denoise loop and self-registers with
 no hard edge into ``networks/``. Dispatched from ``generate_body`` on
 ``--spd``.
 
-v0 scope (runner + CLI):
+Scope:
   * **Euler only.** Spectral expansion re-spaces the remaining σ schedule
     mid-loop (Sec 4.3); ``ERSDESampler``/``LCMSampler`` precompute their
     coefficients from the *full* schedule at construction, so they are
-    incompatible with re-spacing. The probe used plain Euler for exactly this
-    reason. If a stochastic sampler is requested we fall back to Euler with a
-    one-time warning.
+    incompatible with re-spacing. If a stochastic sampler is requested we fall
+    back to Euler with a one-time warning.
   * **No SMC-CFG composition.** It operates at the sampler boundary on the
     (re-spaced) σ and is unvalidated against the mid-loop reshape; passing it
     with ``--spd`` warns and ignores.
@@ -97,7 +87,7 @@ def spd_denoise(
     each stage to match the new token grid.
 
     ``ctx`` carries the shared conditioning side-channels (see
-    ``library.inference.sampler_context``). SPD v0 honors soft-tokens / P-GRAFT /
+    ``library.inference.sampler_context``). SPD honors soft-tokens / P-GRAFT /
     pooled-text but ignores SMC-CFG (it acts on the re-spaced σ boundary,
     unvalidated against the mid-loop reshape).
     """
@@ -126,7 +116,7 @@ def spd_denoise(
         log.warning(
             "--spd v0 does not compose with SMC-CFG (it acts on the "
             "re-spaced σ boundary and is unvalidated against the mid-loop "
-            "reshape); ignoring. See docs/proposal/spd_finetune_lora.md."
+            "reshape); ignoring. See docs/inference/spd.md."
         )
 
     do_cfg = guidance_scale != 1.0
@@ -247,7 +237,7 @@ def spd_denoise(
     return x5
 
 
-# Side-effect registration (mirrors networks/spectrum.py:495).
+# Side-effect registration (mirrors the register_spectrum_runner call in networks/spectrum.py).
 from library.inference.generation import register_spd_runner  # noqa: E402
 
 register_spd_runner(spd_denoise)

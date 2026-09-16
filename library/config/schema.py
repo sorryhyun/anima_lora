@@ -10,9 +10,7 @@ Once populated, :func:`validate_entry` is the single place that decides:
 * whether a value is within declared ``choices``,
 * type-coercion of soft mismatches (e.g. TOML ``1`` where ``float`` is wanted).
 
-Warnings get a ``file:line`` locator when possible so a typo in
-``configs/methods/lora.toml`` surfaces with the exact offending line before
-a two-hour run starts.
+Warnings get a ``file:line`` locator when possible.
 """
 
 from __future__ import annotations
@@ -116,9 +114,9 @@ def populate_schema(
             continue
         CONFIG_SCHEMA[key.name] = key
 
-    # Back-compat aliases: the cache surface collapsed from four flags
-    # (cache_latents{,_to_disk}, cache_text_encoder_outputs{,_to_disk}) to two
-    # semantic knobs. Old configs / snapshots still resolve onto the new keys.
+    # Back-compat aliases: the four old cache flags
+    # (cache_latents{,_to_disk}, cache_text_encoder_outputs{,_to_disk}) resolve
+    # onto the two semantic knobs.
     for _canon, _old in (
         ("use_vae_cache", ("cache_latents", "cache_latents_to_disk")),
         (
@@ -132,8 +130,7 @@ def populate_schema(
                 aliases=CONFIG_SCHEMA[_canon].aliases + _old,
             )
 
-    # Manual TOML-only / non-argparse extras. `base_config` is the only one
-    # essential today; future methods can extend via ``extras``.
+    # Manual TOML-only / non-argparse extras; callers extend via ``extras``.
     CONFIG_SCHEMA.setdefault(
         "base_config",
         ConfigKey(

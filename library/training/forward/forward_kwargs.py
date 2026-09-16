@@ -5,10 +5,10 @@ Two concerns sit here:
 * **Postfix injection** — for networks with ``append_postfix``, splice the
   learned postfix vectors onto the cached T5 embedding and pool the *real*
   text BEFORE the splice so modulation guidance only sees real text.
-* **Mode normalization** (issues.md P2.3) — ``build_forward_conditioning``
+* **Mode normalization** — ``build_forward_conditioning``
   collapses the in-model vs cached-crossattn text-conditioning split into ONE
   uniform ``(cond, kw)`` bundle so the trainer keeps a single forward call
-  site; the split is data prep here, not control flow at the call.
+  site.
 """
 
 from __future__ import annotations
@@ -57,7 +57,7 @@ def build_forward_kwargs(
 
 @dataclass(slots=True)
 class ForwardConditioning:
-    """ONE uniform conditioning bundle for the DiT forward (issues.md P2.3).
+    """ONE uniform conditioning bundle for the DiT forward.
 
     ``cond`` is the positional conditioning passed to ``anima(...)``;
     ``crossattn_emb`` is the (possibly postfix-extended) cached T5-space

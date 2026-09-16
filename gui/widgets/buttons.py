@@ -40,11 +40,9 @@ def action_button(
 ) -> QPushButton | QToolButton:
     """Build a saturated action button styled by its global-stylesheet *variant*.
 
-    Folds the repeated ``QPushButton(text)/QToolButton()`` + ``setStyleSheet``
-    (hardcoded hex) + ``setToolTip`` + ``clicked.connect`` sequence into one
-    call. The color lives in :data:`gui.theme.ACTION_COLORS` (one source of
-    truth), not here, so it can't drift between call sites and flips correctly on
-    a state change via :func:`apply_variant`.
+    Creates the button, sets its variant / tooltip and connects ``on_click``.
+    The color lives in :data:`gui.theme.ACTION_COLORS`; flip it on a state
+    change via :func:`apply_variant`.
 
     Variants: ``primary`` (green go), ``secondary`` (purple alt), ``info``
     (blue), ``danger`` (red stop), ``warning`` (orange/dirty), ``busy`` (gray).

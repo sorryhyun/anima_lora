@@ -1,16 +1,15 @@
 """Training-loop orchestration.
 
-Owns the per-epoch / per-step body that used to live inline in
-``AnimaTrainer.train()``. The entrypoint is :func:`run_training_loop`, which
-takes a built :class:`LoopState` plus the trainer instance so override hooks
-(``process_batch``, ``on_step_start``, ``sample_images``,
-``generate_step_logs``, ``step_logging``, ``epoch_logging``) keep working
-unchanged. The validation pass lives in :mod:`library.training.validation`.
+Owns the per-epoch / per-step body of ``AnimaTrainer.train()``. The entrypoint
+is :func:`run_training_loop`, which takes a built :class:`LoopState` plus the
+trainer instance so override hooks (``process_batch``, ``on_step_start``,
+``sample_images``, ``generate_step_logs``, ``step_logging``,
+``epoch_logging``) stay overridable. The validation pass lives in
+:mod:`library.training.validation`.
 
-State that used to be on ``self`` for cross-call signaling —
-``_last_router_H_postfix``, ``_cudagraph_mark_step``, ``_hydra_warmup_step``,
-``_adapters`` — stays on the trainer; this module reads them through the
-``trainer`` handle.
+Cross-call signaling state — ``_last_router_H_postfix``,
+``_cudagraph_mark_step``, ``_hydra_warmup_step``, ``_adapters`` — lives on the
+trainer; this module reads it through the ``trainer`` handle.
 """
 
 from __future__ import annotations
@@ -38,7 +37,7 @@ from library.training.validation import run_validation
 
 logger = logging.getLogger(__name__)
 
-# Liveness early check (issues.md P1.1): late enough that warmups / partial
+# Liveness early check: late enough that warmups / partial
 # sidecar coverage have had a chance to fire at least once, early enough that
 # a silently-dead feature aborts a strict run in minutes instead of hours.
 LIVENESS_EARLY_CHECK_STEP = 25
@@ -46,7 +45,7 @@ LIVENESS_EARLY_CHECK_STEP = 25
 
 @dataclass
 class LoopState:
-    """Bundles every local that used to live in ``train()``'s for-epoch scope.
+    """Bundles the locals of ``train()``'s for-epoch scope.
 
     Most fields are constants for the run; ``global_step``, ``profile_started``,
     ``profile_range``, ``initial_step``, and ``text_encoder(s)`` are mutated
@@ -133,9 +132,8 @@ def build_loop_state(
     initial_step,
     metadata,
 ) -> LoopState:
-    """Build :class:`LoopState`. Mirrors the pre-loop setup that used to sit
-    between ``_prepare_with_accelerator()`` and the for-epoch loop in
-    ``train()``: noise scheduler, trackers, loss recorders, optional text
+    """Build :class:`LoopState`: the pre-loop setup between
+    ``_prepare_with_accelerator()`` and the for-epoch loop — noise scheduler, trackers, loss recorders, optional text
     encoder eviction, ``--sample_at_first``, train/val ctx construction,
     progress bar, profiler parsing.
     """
@@ -699,7 +697,7 @@ def _log_epoch_average(trainer, state: LoopState, epoch: int) -> None:
 
 
 def _audit_liveness(trainer, state: LoopState, *, where: str) -> None:
-    """Liveness audit (issues.md P1.1): a configured-ON aux loss that never
+    """Liveness audit: a configured-ON aux loss that never
     consumed its aux input is a silent baseline — flag it loudly.
 
     Reads the trainer-owned ``LivenessLedger`` that the per-step composer

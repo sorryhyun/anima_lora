@@ -567,10 +567,7 @@ def _resize_crop_fields() -> dict[str, object]:
 
 # ``--curation_decisions <path>`` is the one resize flag the package's
 # ``ResizeRequest`` has no field for that the trainer still honours (it becomes
-# the request's ``skip`` set). The snap-era flags this used to swallow with a
-# note (``--resize_bucket_resos`` / ``--bucket_reso_steps`` / ``--min_bucket_reso``
-# / ``--max_bucket_reso`` / ``--resolution`` / ``--freefit``) were dropped in v2:
-# they now fail the stage's own parse, which names the flags that do exist.
+# the request's ``skip`` set).
 _CURATION_DECISIONS_FLAGS = ("--curation_decisions", "--curation-decisions")
 
 
@@ -980,7 +977,7 @@ def _variant_settings() -> tuple[str, str, str]:
         "caption_tag_dropout_rate", "0.1"
     )
     # Identity-randomized r-family tag regularization; 0.0 = off (no r-family
-    # written, backward compatible).
+    # written).
     randomize = os.environ.get("CAPTION_TAG_RANDOMIZE_RATE") or _path(
         "caption_tag_randomize_rate", "0.0"
     )
@@ -1246,9 +1243,8 @@ def cmd_caption_index(extra):
             "anime_tools.captions.index",
             "--src",
             _path("source_image_dir", "image_dataset"),
-            # The package's default moved to its own workspace/ tree (0.4.0);
-            # the trainer's readers (train.py, configs/easycontrol/*.toml) keep
-            # the post_image_dataset/ home.
+            # The package defaults to its own workspace/ tree; the trainer's
+            # readers (train.py, configs/easycontrol/*.toml) read it here.
             "--out",
             CAPTION_INDEX_PATH,
             *pp_args,
@@ -1350,9 +1346,7 @@ def _caption_combine_request(
     written as a workspace→trainer publish. The trainer *is* its own workspace
     here (the caption stages write ``post_image_dataset/resized`` directly), so
     the export runs **in place**: ``out`` is the resized tree's parent, and
-    every row but ``caption``/``variants`` compares identical and is skipped
-    (verified on the live tree: 3,008 image + 873 mask + 1 index rows
-    identical, 700 captions and 700 variant sidecars combined).
+    every row but ``caption``/``variants`` compares identical and is skipped.
 
     ``master`` and ``excluded_dir`` keep the package's workspace defaults —
     absent trees contribute no rows, so nothing is ever written back over the

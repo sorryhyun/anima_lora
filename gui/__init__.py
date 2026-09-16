@@ -1,7 +1,6 @@
 """Anima LoRA — PySide6 GUI package.
 
-The package root is a thin facade: path constants live in :mod:`gui._paths`,
-and the bulk of what used to live here was split into focused submodules —
+The package root is a thin facade over :mod:`gui._paths` and these submodules:
 
 * :mod:`gui.config_io`   — variant/preset discovery, load/save, merge, lint (Qt-free)
 * :mod:`gui.validation`  — validation-split encoding (Qt-free)
@@ -9,8 +8,7 @@ and the bulk of what used to live here was split into focused submodules —
 * :mod:`gui.discovery`   — image/adapter/dataset directory walks (Qt-free)
 * :mod:`gui.widgets`     — LazyTabMixin, the config-form field factory, ScaledImageLabel
 
-Everything is re-exported here so the historical ``from gui import <name>``
-call sites in the tabs keep working unchanged.
+Their public names are re-exported here (``from gui import <name>``).
 """
 
 from __future__ import annotations

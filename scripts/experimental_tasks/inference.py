@@ -3,9 +3,7 @@
 Covers the unstable methods kept under ``make exp-*``: soft tokens, BYG, plus
 the DirectEdit probes. Reference-image variants accept
 REF_IMAGE env or first positional arg, copy the ref alongside the generated
-output. (EasyControl and Turbo graduated to the shipped ``test-easycontrol`` /
-``test-turbo`` — see ``scripts/tasks/inference.py``; IP-Adapter was downgraded
-to ``bench/ip_adapter/``.)
+output.
 """
 
 from __future__ import annotations
@@ -114,18 +112,16 @@ def cmd_test_soft(extra):
 
 
 def cmd_test_directedit(extra):
-    """DirectEdit on a random source image, seeded by wd-swinv2-tagger-v3.
+    """DirectEdit on a random source image, seeded by the Anima Tagger.
 
     Pipeline:
       1. Pick source image (REF_IMAGE env, first positional arg, or random
          from ``post_image_dataset/resized/``).
-      2. Run wd-swinv2-tagger-v3 on the source -> ``src_tags`` caption
-         (downloaded on first use to ``models/captioners/wd-swinv2-tagger-v3/``).
-      3. Build edit prompts:
-            prompt_src = src_tags
-            prompt_tar = src_tags + ", " + PROMPT
-         (PROMPT env or ``--prompt`` extra arg supplies the edit instruction.
-         Defaults to ``"double peace"``.)
+      2. Run the Anima Tagger on the source -> ``--prompt_src`` caption
+         (checkpoint auto-fetched on first use).
+      3. Pass the edit instruction as ``--edit_instruction`` (PROMPT env, else
+         a ``--prompt`` extra arg, else a "double peace" default); edit.py's
+         dispatcher derives ψ_tar from it.
       4. Call ``scripts/edit.py`` (DirectEdit invert + edit) using the same
          DiT/VAE/TE trio as the other inference targets.
       5. Save under ``output/tests/directedit/`` and copy the source image
@@ -345,14 +341,10 @@ def _filter_inference_base_for_edit(args: list[str]) -> list[str]:
 def cmd_test_byg(extra):
     """Inference with the latest BYG editing LoRA (source image + instruction).
 
-    NOTE (v1): BYG ships as a *plain LoRA*, so the trained weights load via the
-    standard ``--lora_weight`` path; the only missing inference piece is the
-    parameter-free source-concat conditioning patch (``BYGConditioning`` in
-    ``networks/methods/byg.py``) being installed at generation time and primed
-    with the VAE-encoded reference. That wiring into ``library/inference/`` is
-    the next phase (mirrors the EasyControl KV-prefill node). Until then this
-    command is a placeholder so the collapse-watch validation can be run once
-    inference is wired.
+    Placeholder: exits with an error. BYG trains a plain LoRA (loads via
+    ``--lora_weight``), but the source-concat conditioning patch
+    (``BYGConditioning`` in ``networks/methods/byg.py``) is not yet installed
+    and primed with the VAE-encoded reference in ``library/inference/``.
     """
     raise SystemExit(
         "exp-test-byg: BYG inference (source-concat patch install + ref encode) "

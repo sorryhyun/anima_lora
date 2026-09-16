@@ -1,9 +1,7 @@
 """Model-EMA helpers for the bespoke distillation/finetune loops.
 
-Promoted from ``sr/distill_rsd/train.py`` / ``sr/train_x2/train.py`` (which
-carried identical copies) — the same promote-to-library pattern as the turbo
-primitives (see ``scripts/distill_turbo/primitives.py``). Loop-internal
-machinery: import by submodule path, not via the ``library.training`` facade.
+Loop-internal machinery: import by submodule path, not via the
+``library.training`` facade.
 """
 
 import copy

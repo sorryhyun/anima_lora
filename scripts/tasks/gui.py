@@ -95,8 +95,6 @@ def cmd_gui_shortcut(_extra):
     target = pyw if pyw.exists() else Path(PY)
     icon = _ensure_shortcut_icon() or target
 
-    # The install-dir shortcut is the policy-proof fallback: it never depends on
-    # a writable Desktop, so it's the one we treat as load-bearing.
     install_shortcut = ROOT / "Anima LoRA GUI.lnk"
     install_ok = _write_shortcut(install_shortcut, target, icon)
 

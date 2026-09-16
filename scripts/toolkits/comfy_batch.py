@@ -95,8 +95,7 @@ class Entry(NamedTuple):
     """One draw candidate: a coherent tag *cluster*, not necessarily one tag.
 
     A booru tag rarely stands alone — an act tag without its mandatory
-    companions leaves the model guessing what the scene is, which is what a
-    one-tag-per-slot pool kept producing. ``avoid`` lists tags this cluster
+    companions leaves the model guessing what the scene is. ``avoid`` lists tags this cluster
     never co-occurs with in the corpus, so an act and a framing that can't
     physically coexist don't get drawn into the same prompt.
 

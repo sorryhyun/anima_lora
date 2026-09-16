@@ -176,13 +176,13 @@ def cmd_test(extra):
 
 
 def cmd_gen(extra):
-    """Batch generation routed through the daemon (attach-by-default, Phase 1c).
+    """Batch generation routed through the daemon (attach-by-default).
 
     Same argv as ``make test`` (shares ``_base_test_args`` — NOLORA / SPECTRUM /
     MOD / DAVE / FSG env levers all compose), but submitted as a GPU command job
     so it **queues behind** a live training run instead of OOM-colliding with it,
     survives the terminal closing, and lands a generation manifest in the job
-    record (Phase 1a result-lift). ``--queue`` detaches (overnight seed/ckpt
+    record. ``--queue`` detaches (overnight seed/ckpt
     sweeps), ``--inline`` bypasses the daemon (identical to ``make test``).
 
     Point at a specific adapter / prompt file / seed grid via ARGS, e.g.
@@ -197,7 +197,7 @@ def cmd_gen(extra):
 
 def cmd_test_hydra(extra):
     # Uses the moe sibling (router-live); static-merge is auto-skipped in
-    # library/inference_pipeline.py:_is_hydra_moe detection.
+    # library/inference/models.py:_is_hydra_moe detection.
     run([*INFERENCE_BASE, "--lora_weight", str(latest_hydra()), *extra])
 
 

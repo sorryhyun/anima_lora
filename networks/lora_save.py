@@ -21,15 +21,12 @@ Ordering of the conversion pipeline is load-bearing:
      (gated on ``.P_init`` — a name no other variant uses, so order vs the
      ``.S_p``-keyed steps above is independent; placed here for readability)
   5. legacy sig-type OrthoLoRA → standard LoRA
-     (gated on ``.base_lambda``; kept here because it touches the
-     deprecated ``lora_deprecated.OrthoLoRAModule`` save layout that no
-     live module class owns)
+     (gated on ``.base_lambda``; no live module class emits these keys —
+     kept so old artifacts remain re-bakeable)
 
 The ``.S_p`` / ``.S_q`` dimensionality is the discriminator — every step
 checks both dims explicitly so the matchers never overlap on the same
-prefix. Step 5 handles legacy checkpoints from
-``lora_deprecated.OrthoLoRAModule``; current training never emits those
-keys, but the converter is kept so old artifacts remain re-bakeable.
+prefix.
 
 The standard write path then relays adaln keys from the runtime names to
 the ComfyUI layout (``_relayout_adaln_to_comfy``), after the qkv defuse and
@@ -60,9 +57,7 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 
-# Legacy sig-type OrthoLoRA → standard LoRA via 2r-dim SVD. Kept here (not on a
-# module class) because the live ``OrthoLoRAModule`` never emits these keys —
-# they belong to the deprecated ``lora_deprecated.OrthoLoRAModule``.
+# Legacy sig-type OrthoLoRA → standard LoRA via 2r-dim SVD (see step 5 above).
 
 
 def _convert_legacy_ortho_to_lora(
@@ -138,13 +133,9 @@ def _relayout_adaln_to_comfy(
 ) -> Optional[Dict[str, str]]:
     """Rename adaln LoRA keys from the in-repo runtime names
     (``adaln_up_{br}``) to the ComfyUI state-dict layout
-    (``adaln_modulation_{br}_2``) so the file loads natively in ComfyUI —
-    its generic key map only knows the latter, and runtime-named keys are
-    silently dropped (adaln.md §Key-naming contract). The attn/MLP keys
-    already ship in the defused split layout ComfyUI expects, so only the
-    adaln keys move. The in-repo loader renames them back on load
-    (``create_network_from_weights`` → ``relayout_adaln_comfy_to_runtime``),
-    so one file round-trips both ecosystems.
+    (``adaln_modulation_{br}_2``) and stamp ``ss_adaln_layout`` — see the
+    layout note in ``networks/lora_utils.py``. The attn/MLP keys already ship
+    in the defused split layout, so only the adaln keys move.
 
     Presence-gated — an adaln-less checkpoint is untouched, metadata and
     all. Mutates ``state_dict`` in place; returns the metadata to write
@@ -171,8 +162,7 @@ def _relayout_adaln_to_comfy(
     return metadata
 
 
-# Back-compat shim: tests/test_global_router.py imports this name directly
-# to exercise the StackedExperts MoE writer in isolation.
+# Imported directly by tests/test_global_router.py.
 
 
 def _build_stacked_experts_state_dict(

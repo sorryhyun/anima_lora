@@ -4,8 +4,6 @@ Each ``add_*_arguments`` call plugs a related group of flags into the training
 parser. The groups split the flag surface into coherent chunks so individual
 entry points (training, preprocessing, distillation, ...) can opt into only
 what they need.
-
-No real logic lives here — these are pure argparse declarations.
 """
 
 from __future__ import annotations
@@ -1114,12 +1112,11 @@ def enable_high_vram(args: argparse.Namespace):
 def verify_training_args(args: argparse.Namespace):
     enable_high_vram(args)
 
-    # Expand the two semantic cache knobs into the legacy internal flags that
-    # the dataset / strategy / metadata code still reads. `use_vae_cache` and
-    # `use_text_cache` are the only config-facing surface; disk caching is the
-    # only supported mode (RAM-only was never used), so the `_to_disk` siblings
-    # always track their base flag. The old keys survive as schema aliases
-    # (see library/config/schema.py) so pre-existing configs still resolve.
+    # Expand the two semantic cache knobs (`use_vae_cache` / `use_text_cache`)
+    # into the internal flags the dataset / strategy / metadata code reads. Disk
+    # caching is the only supported mode, so the `_to_disk` siblings always track
+    # their base flag. The old keys resolve as schema aliases
+    # (library/config/schema.py).
     args.cache_latents = args.cache_latents_to_disk = bool(args.use_vae_cache)
     args.cache_text_encoder_outputs = args.cache_text_encoder_outputs_to_disk = bool(
         args.use_text_cache

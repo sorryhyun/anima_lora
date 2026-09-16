@@ -1,7 +1,6 @@
 """Named visual themes for the GUI — Dark / Light / Sepia.
 
-Replaces the old single dark palette + accent-color picker. Each theme is a flat
-set of **semantic color tokens** (background, panel, text, border, accent, …);
+Each theme is a flat set of **semantic color tokens** (background, panel, text, border, accent, …);
 ``apply_theme`` turns the active theme into a ``QPalette`` + global stylesheet,
 and ``tok()`` lets individual widgets pull the same tokens instead of hardcoding
 hex literals — so a neutral surface follows the theme instead of staying a dark
@@ -12,8 +11,7 @@ Design notes
 * **Neutral surfaces/text vary by theme; saturated *action* buttons are
   theme-independent but still centralized.** A guide button (teal), update
   button (amber), or danger button (red) is white-on-saturated-color and reads
-  fine on any background, so its color does not vary by theme — but the hex no
-  longer lives at the call site. The saturated action palette is the single
+  fine on any background, so its color does not vary by theme. The saturated action palette is the single
   ``ACTION_COLORS`` table, surfaced as global-stylesheet ``[variant="…"]`` rules
   (see :func:`_action_button_rules`); a call site sets ``variant`` via
   :func:`gui.widgets.action_button` / :func:`gui.widgets.apply_variant` instead
@@ -27,7 +25,7 @@ Design notes
   the window so per-widget ``tok()`` lookups pick up the new values.
 
 This module may import Qt (it is only ever imported from the Qt side); keep
-``_paths.py`` / ``config_io.py`` Qt-free as before.
+``_paths.py`` / ``config_io.py`` Qt-free.
 """
 
 from __future__ import annotations
@@ -203,11 +201,10 @@ _SEPIA = Theme(
 )
 
 # Saturated *action* button palette — theme-INDEPENDENT (white-on-color reads on
-# any background, so unlike the neutral chrome these don't vary per theme), but
-# centralized here instead of inline-hex'd at 60+ call sites. Each entry becomes
-# a global-stylesheet `[variant="<key>"]` rule (see _action_button_rules); a call
-# site picks one via gui.widgets.action_button(variant=…) / apply_variant().
-# Values are the historical call-site colors so the look is unchanged.
+# any background, so unlike the neutral chrome these don't vary per theme). Each
+# entry becomes a global-stylesheet `[variant="<key>"]` rule (see
+# _action_button_rules); a call site picks one via
+# gui.widgets.action_button(variant=…) / apply_variant().
 ACTION_COLORS: dict[str, str] = {
     "primary": "#27ae60",  # green — the main go/run action (Train, Run)
     "secondary": "#8e44ad",  # purple — an alternate action (Test)
@@ -609,7 +606,7 @@ def _load_bundled_fonts() -> str | None:
     """Register the bundled Pretendard weights with Qt (once per process).
 
     Returns the family name to put at the head of the UI font stack, or ``None``
-    if no bundled file loaded (then we render in the OS font as before). All
+    if no bundled file loaded (then the OS font is used). All
     three weights register under one Qt family, so a plain ``QFont(family)`` +
     ``setWeight`` resolves the right instance."""
     global _bundled_family, _fonts_loaded
@@ -674,7 +671,7 @@ def apply_theme(app: QApplication, name: str | None = None) -> Theme:
 
     ``name`` defaults to the persisted theme. Updates the module-global active
     theme so subsequent ``tok()`` lookups (and rebuilt widgets) use it. Returns
-    the applied Theme. The font is set here too (kept from the old ``_dark``)."""
+    the applied Theme. Also sets the app font."""
     global _active, _base_style, _scroll_handle_style
     resolved = name if (name in THEMES) else current_theme_name()
     t = THEMES[resolved]

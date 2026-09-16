@@ -66,5 +66,6 @@ Per training step:
         fake_loss = MSE(v_fake, target)  → fake.step()
 
 Output: ``output/ckpt/anima_turbo.safetensors`` — a normal plain-LoRA file
-loadable by the standard inference path at ``--infer_steps 2 --cfg 1.0``.
+loadable by the standard inference path with ``--infer_steps`` matched to
+``student_steps`` and ``--cfg 1.0`` (``make test-turbo``).
 """

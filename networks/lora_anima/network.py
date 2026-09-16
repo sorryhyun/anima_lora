@@ -34,7 +34,7 @@ from networks.lora_modules.router_state import _fei_temperature
 from networks.lora_anima.network_metrics import _NetworkMetricsMixin
 from networks.register_injection import RegisterInjector
 
-# Re-exported from routers.py for back-compat imports.
+# Re-exported from routers.py.
 from networks.lora_anima.routers import (  # noqa: F401
     CROSSATTN_EMB_DIM,
     ContentRouter,
@@ -378,7 +378,7 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
                             effective_module_class = LoRAModule
                         elif module_class is ChimeraHydraInferenceModule:
                             # Load path: unrouted leg was saved as plain LoRA
-                            # (OrthoLoRA distilled at save — _convert_ortho_to_lora).
+                            # (OrthoLoRA distilled at save — OrthoLoRAModule.distill_save_state_dict).
                             effective_module_class = LoRAModule
                         else:
                             # Train path: unrouted leg uses OrthoLoRA's Cayley
@@ -503,7 +503,7 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
                         extra_kwargs["fei_feature_dim"] = cfg.fei_feature_dim
                         self._fei_router_hits += 1
 
-                # SVD-Down init — plain two-factor LoRAModule only (v0). Ortho/
+                # SVD-Down init — plain two-factor LoRAModule only. Ortho/
                 # Hydra/Chimera classes own their own SVD seeding and reject this
                 # kwarg; gate so it never reaches them.
                 if cfg.down_init != "kaiming" and effective_module_class is LoRAModule:
@@ -1005,7 +1005,7 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
         reallocates each buffer independently and orphans ``_shared_sigma`` —
         every call identity-checks the canonical buffer and rebinds if broken,
         else ``copy_`` writes to a stale tensor and every module reads zeros
-        (manifested only at B=1). See [[set_sigma_aliasing_bug]].
+        (manifested only at B=1).
         """
         sigmas = sigmas.detach()
         self._last_sigma = sigmas
@@ -1094,7 +1094,7 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
         """Stash per-sample FEI ``[B, fei_dim]`` on every FEI-aware module.
 
         Parallel to ``set_sigma`` — one call per step, same shared-buffer
-        aliasing recovery ([[project_set_sigma_aliasing_bug]]). ``fei`` is
+        aliasing recovery. ``fei`` is
         ``(B, fei_feature_dim)``, computed by
         ``library.runtime.fei.compute_fei_2band``. When a ``GlobalRouter`` is
         wired (``route_per_layer=False``), it fires here too and broadcasts
@@ -1143,7 +1143,7 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
         ):
             return
 
-        # Per-layer FEI broadcast (legacy path — FEI-on-Hydra Phase 1).
+        # Per-layer FEI broadcast (per-Linear FEI routers).
         if has_per_layer_fei:
             for dim, loras in self._fei_aware_loras_by_dim.items():
                 canonical = loras[0]._buffers["_fei"]
@@ -1854,7 +1854,7 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
                     list(self.cfg.sigma_bucket_boundaries)
                 )
 
-        # Three-axis routing config (see networks/CLAUDE.md). Stamped every
+        # Three-axis routing config (`lora-routing` skill). Stamped every
         # save so the loader reconstructs the router layout without key-sniffing.
         if self.cfg.use_moe_style is not False:
             metadata["ss_use_moe_style"] = str(self.cfg.use_moe_style)

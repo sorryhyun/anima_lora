@@ -38,12 +38,12 @@ def apply_router_conditioning(
     """
     if hasattr(network, "set_timestep_mask"):
         network.set_timestep_mask(timesteps, max_timestep=1.0)
-    # σ-conditional HydraLoRA router (Track B, timestep-hydra.md). No-op
+    # σ-conditional HydraLoRA router (timestep-hydra.md). No-op
     # unless use_sigma_router is on and the variant is hydra/ortho_hydra.
     if hasattr(network, "set_sigma"):
         network.set_sigma(timesteps)
     # FEI router input — set_fei() drives both the per-Linear FEI router
-    # (FEI-on-Hydra Phase 1) and the network-level GlobalRouter (FeRA /
+    # and the network-level GlobalRouter (FeRA /
     # stacked_experts). FEI is a function of the actual input the model
     # sees this step (``noisy_model_input``), not a leak from the target.
     # No-op when the active network has no FEI router.

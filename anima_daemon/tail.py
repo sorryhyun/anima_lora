@@ -1,10 +1,8 @@
 """Read helpers for the per-job ``progress.jsonl`` + ``stdout.log``.
 
-The daemon never pipes a child's stdout — it tails files (the payoff of the
-Phase-0 file-based progress decision: a re-attached orphan the daemon didn't
-spawn can still be followed). These helpers are deliberately tiny and
-exception-swallowing; a missing/half-written line is normal while the trainer
-appends.
+The daemon never pipes a child's stdout — it tails files, so a re-adopted
+orphan it didn't spawn can still be followed. These helpers swallow
+exceptions; a missing or half-written line is normal while the trainer appends.
 """
 
 from __future__ import annotations
@@ -24,9 +22,8 @@ def read_events(
 ) -> list[dict]:
     """Parse + filter a ``progress.jsonl`` stream into a list of event dicts.
 
-    The query surface behind ``GET /jobs/{id}/progress`` (and the MCP
-    ``get_progress`` tool): a long run's stream is megabytes of ``step`` lines,
-    so callers thin it server-side instead of downloading the file.
+    The query surface behind ``GET /jobs/{id}/progress`` and the MCP
+    ``get_progress`` tool.
 
     - ``events``: keep only these ``ev`` kinds (e.g. ``["step", "val"]``).
     - ``since_step``: keep events at/after this ``global_step``. Events that

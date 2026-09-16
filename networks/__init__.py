@@ -1,14 +1,8 @@
 """NetworkSpec registry for LoRA adapter-method dispatch.
 
-Replaces the flag-cascade in ``networks.lora_anima.create_network`` with a
-declarative map. Each entry pairs an adapter variant name with the module
-class it instantiates and a ``save_variant`` label consumed by
-``networks.lora_save``. See networks/CLAUDE.md §three-axis routing surface
-for the full precedence table this module implements.
-
-The legacy ``use_hydra``/``use_sigma_router``/``use_fei_router`` kwargs were
-retired in plan2 task #6 (see ``LoRANetworkCfg.from_kwargs`` for the rejection
-message); ``use_dora`` was retired alongside the ``lora_deprecated`` module.
+Each entry pairs an adapter variant name with the module class it
+instantiates and a ``save_variant`` label consumed by ``networks.lora_save``.
+``resolve_network_spec`` maps the three-axis routing kwargs to an entry.
 """
 
 from __future__ import annotations
@@ -48,12 +42,9 @@ class NetworkSpec:
     post_init: Optional[Callable[[Any, Mapping[str, Any]], None]] = None
 
 
-# Single source of truth = the reads themselves. The LoRA-family TOML allowlist
-# is *derived* by scanning what these consumer modules read via
-# ``kwargs.get("literal")``, so adding a new knob is one edit — write the
-# ``kwargs.get("foo")`` read at its consumer and it auto-registers here (no
-# separate frozenset entry to keep in sync; see
-# docs/findings/entanglement_audit_high_severity.md §H1).
+# The LoRA-family TOML allowlist is derived by scanning what these consumer
+# modules read via ``kwargs.get("literal")`` — a new knob registers from its
+# ``kwargs.get("foo")`` read alone.
 _KWARG_CONSUMER_MODULES = (
     "lora_anima/config.py",  # LoRANetworkCfg.from_kwargs
     "lora_anima/factory.py",  # REPA / loraplus / channel_scaling / custom_down
@@ -63,15 +54,14 @@ _KWARG_CONSUMER_MODULES = (
 # Read positionally as the *default* of a canonical key
 # (``kwargs.get("router_hidden_dim", kwargs.get("router_hidden", 64))`` /
 # ``kwargs.get("fera_num_bands", kwargs.get("num_bands", 3))``). The canonical
-# names are forwarded; these back-compat aliases are intentionally not.
+# names are forwarded; these aliases are not.
 _KWARG_ALIAS_FALLBACKS = frozenset({"router_hidden", "num_bands"})
 
 
 def _derive_network_kwargs() -> frozenset[str]:
     """Every literal key the LoRA-family consumers read via ``kwargs.get(...)``.
 
-    AST-scans the consumer modules so the allowlist can never silently drift
-    from the reads. Recognizes the ``kwargs.get("literal"[, default])`` form
+    AST-scans the consumer modules. Recognizes the ``kwargs.get("literal"[, default])`` form
     only — a consumer reading a forwarded knob another way (``kwargs["k"]``
     indexing, a helper wrapper) won't be picked up.
     """
@@ -201,9 +191,8 @@ NETWORK_REGISTRY: Dict[str, NetworkSpec] = {
 def all_network_kwargs() -> Tuple[str, ...]:
     """Return the LoRA-family TOML allowlist (``NETWORK_KWARGS``), sorted.
 
-    Single source of truth for train.py — populates the argparse schema and
-    the TOML -> net_kwargs forwarding list, so adding a key to NETWORK_KWARGS
-    automatically makes it visible to training without touching train.py.
+    train.py uses it to populate the argparse schema and the TOML ->
+    net_kwargs forwarding list.
     """
     return tuple(sorted(NETWORK_KWARGS))
 
@@ -224,8 +213,7 @@ def resolve_network_spec(kwargs: Mapping[str, Any]) -> NetworkSpec:
     use_moe_style="independent_A" -> stacked_experts_global_fei (FeRA);
     use_moe_style="shared_A" (+use_ortho) -> ortho_hydra, else hydra;
     use_ortho_init -> ortho_init; use_ortho -> ortho; else lora. Raises on
-    mutually-exclusive combinations. The legacy use_hydra kwarg was retired
-    in plan2 task #6 — LoRANetworkCfg.from_kwargs raises if a TOML carries it.
+    mutually-exclusive combinations.
     """
     use_ortho = _parse_bool_flag(kwargs, "use_ortho")
     use_ortho_init = _parse_bool_flag(kwargs, "use_ortho_init")

@@ -62,15 +62,10 @@ logger = logging.getLogger(__name__)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    """Parse command line arguments.
+    """Parse command line arguments (``argv=None`` reads ``sys.argv``).
 
-    ``argv=None`` reads ``sys.argv`` (the CLI path). Pass an explicit list to
-    build an args namespace programmatically -- see ``examples/01_generate.py``.
-
-    Thin delegate to :func:`library.inference.args.build_default_args`: the
-    parser definition lives in ``library`` so programmatic callers
-    (``GenerationRequest``, ``bench/`` probes) don't have to import this
-    entry-point script. ``from inference import parse_args`` still works.
+    Delegates to :func:`library.inference.args.build_default_args`, which owns
+    the parser definition. See ``examples/01_generate.py`` for programmatic use.
     """
     return build_default_args(argv)
 
@@ -382,8 +377,8 @@ def process_interactive(args: argparse.Namespace) -> None:
                 prompt_data = parse_prompt_line(line)
                 prompt_args = apply_overrides(args, prompt_data)
 
-                # Pin the resolved seed for save_output (generate() no longer
-                # writes it back to the namespace).
+                # generate() doesn't write the resolved seed back; pin it for
+                # save_output.
                 prompt_args.seed = resolve_seed(prompt_args)
                 latent = generate(prompt_args, gen_settings, shared_models)
 
@@ -404,9 +399,8 @@ def process_interactive(args: argparse.Namespace) -> None:
 
 
 def _list_pngs(path) -> set:
-    """The set of ``*.png`` under ``path`` (empty if it doesn't exist yet). Used
-    to diff before/after a run so the daemon manifest captures exactly the images
-    this run produced, without threading a collector through every save path."""
+    """The set of ``*.png`` under ``path`` (empty if it doesn't exist yet). Diffed
+    before/after a run so the daemon manifest lists exactly this run's images."""
     try:
         return {os.path.join(path, n) for n in os.listdir(path) if n.endswith(".png")}
     except OSError:
@@ -416,8 +410,8 @@ def _list_pngs(path) -> set:
 def main():
     args = parse_args()
 
-    # Snapshot the output dir so we can attribute freshly-written images to this
-    # run for the daemon result manifest (Phase 1a lift). No-op cost when inline.
+    # Snapshot the output dir to attribute new images to this run in the daemon
+    # result manifest.
     _pngs_before = _list_pngs(getattr(args, "save_path", None))
 
     # Check if latents are provided
@@ -518,8 +512,8 @@ def main():
         else:
             # Single prompt mode
             gen_settings = get_generation_settings(args)
-            # generate() no longer writes the resolved seed back to args, so
-            # pin it here for save_output()'s filename + metadata.
+            # generate() doesn't write the resolved seed back to args; pin it
+            # for save_output()'s filename + metadata.
             args.seed = resolve_seed(args)
             latent = generate(args, gen_settings)
 
@@ -538,7 +532,7 @@ def main():
             save_output(args, vae, latent, device)
 
     # Record a generation manifest + result pointer when running as a daemon job
-    # (proposal Phase 1a). Inline runs: no-op. Sorted so the manifest is stable.
+    # (no-op inline). Sorted so the manifest is stable.
     new_images = sorted(_list_pngs(getattr(args, "save_path", None)) - _pngs_before)
     write_gen_manifest(args, new_images)
 

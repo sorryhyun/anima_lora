@@ -453,7 +453,7 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
     )
 
     # Variance-reduced flow-matching loss (AsymFlow §5.2, arXiv:2605.12964;
-    # bench/fm_vr_headroom/proposal.md). Gated off by default.
+    # _archive/bench/fm_vr_headroom/proposal.md). Gated off by default.
     parser.add_argument(
         "--vr_loss_weight",
         type=float,
@@ -634,8 +634,7 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
 
 
 # E[w] = 1 normalizers for the min_snr scheme, keyed by (gamma, density). Mean-1
-# normalization is what keeps a reweighting arm from doubling as an LR change —
-# the same confound weight_svd's 1/sqrt(3) row-norm match avoids on the init side.
+# normalization keeps a reweighting arm from doubling as an LR change.
 _MIN_SNR_NORM_CACHE: dict[tuple, float] = {}
 
 
@@ -1081,10 +1080,9 @@ def sample_images(
         dit.switch_block_swap_for_training()
         if net is not None:
             net.train()
-        # No clean_memory_on_device() here on purpose: emptying the CUDA cache
-        # at the sample<->train boundary is what made VRAM visibly fluctuate.
-        # Letting the caching allocator hold its blocks keeps usage flat (peak
-        # settles at max(training, sampling) and stays there).
+        # No clean_memory_on_device() here: emptying the CUDA cache at the
+        # sample<->train boundary makes VRAM fluctuate; holding the allocator's
+        # blocks keeps peak at max(training, sampling).
 
     # Decode this round's latents now for per-epoch visibility; block-swap runs
     # defer to end-of-training decode_pending_samples (see _should_decode_inline).
@@ -1188,7 +1186,7 @@ def _sample_image_inference(
     # Band-aware: under --compile_seq_bands the graphs are per-band, so a
     # seq_len in an inter-band gap has no tight graph even though the union
     # range "covers" it. _dynamic_seq_bands is [union range] in classic mode,
-    # so the membership check degenerates to the old range check there.
+    # so the membership check is a plain range check there.
     from library.datasets.buckets import band_for_seq
 
     seq_range = getattr(dit, "_dynamic_seq_range", None)
@@ -1306,9 +1304,9 @@ def _sample_image_inference(
         neg_crossattn_emb,
     )
 
-    # Stash the latent rather than decode now: loading the VAE to GPU mid-run on
-    # top of the resident DiT + block-swap buffers is an OOM risk on tight cards,
-    # so decode is deferred to decode_pending_samples() at end of training.
+    # Stash the latent rather than decode now: loading the VAE to GPU on top of
+    # the resident DiT + block-swap buffers is an OOM risk on tight cards.
+    # decode_pending_samples() decodes later (see _should_decode_inline).
     ts_str = time.strftime("%Y%m%d%H%M%S", time.localtime())
     num_suffix = f"e{epoch:06d}" if epoch is not None else f"{steps:06d}"
     seed_suffix = "" if seed is None else f"_{seed}"

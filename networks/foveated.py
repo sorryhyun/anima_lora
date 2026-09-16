@@ -1,7 +1,7 @@
 """Deferred-foveated merge — training-free inference acceleration.
 
-Ship home of the foveated bench line — **ARCHIVED 2026-07-03** (owner decision
-post-P4t: the periphery soft blur is constitutive and unrecoverable; digest in
+The foveated line is **ARCHIVED** (the periphery soft blur is constitutive and
+unrecoverable; digest in
 `_archive/bench/foveated/report.md`, retired ship plan in
 `_archive/proposals/foveated_denoise.md`, durable lessons in
 `docs/findings/foveated_denoise.md`, user doc in `docs/inference/foveated.md`).
@@ -30,13 +30,13 @@ Measured (bench, bare DiT, eager, 1024², 28 steps, CFG 4): fwd ×2.15,
 e2e ×1.37, fovea visually baseline-identical, subject RMSE ties-or-beats a
 static center rect on every prompt tested.
 
-Hard-won invariants (do not rediscover — P0/P2/P3 lessons):
+Invariants:
   * **Never rewrite the latent.** It stays full-res end-to-end; merging is
     what the *compute* sees.
   * The mask lives on the pooled cell grid — every merge-cell is uniformly
     fovea or periphery (no group straddles the boundary).
   * Masks must be compact blobs — scattered fovea cells lose their whole
-    attention neighborhood (+47 % subject error in P2).
+    attention neighborhood (+47 % subject error).
 
 Architecturally this mirrors ``networks/spd.py``: a sampler-level runner that
 replaces the denoise loop and self-registers with
@@ -45,14 +45,14 @@ replaces the denoise loop and self-registers with
 through the model's own ``forward`` via the ``token_merger`` kwarg
 (``library/anima/models.py``) — no duplicated forward path.
 
-v1 scope:
+Scope:
   * **Euler only.** The bench calibrated the Euler CFG loop; er_sde noise
     injection into group-shared periphery states is unvalidated. A stochastic
     sampler request falls back to Euler with a one-time warning.
   * **No SMC-CFG / FSG / CFG++ composition** — unvalidated against
     group-shared periphery velocities; warn-and-ignore (SPD posture).
     Spectrum composition is measured safe but buys ~5 % at visible periphery
-    cost (P3) — mutually exclusive at dispatch, do not re-propose the compose.
+    cost — mutually exclusive at dispatch, do not re-propose the compose.
   * **Composes with LoRA / Hydra / soft-tokens / P-GRAFT** — per-step adapter
     setters mirror the standard loop, and the per-Linear LoRA delta is
     token-count-agnostic.
@@ -184,7 +184,7 @@ class FoveatedTokenMerge:
         return self._rope_cache
 
 
-# ── Score → compact mask (P2/P2b pipeline) ──────────────────────────────────────
+# ── Score → compact mask ────────────────────────────────────────────────────────
 
 
 def _shift(m: np.ndarray, dy: int, dx: int) -> np.ndarray:
@@ -213,8 +213,7 @@ def score_to_cells(
     close → dilate-1 margin) lands on the target fraction.
 
     Morphology is the compactness contract: open drops specks/thin structures
-    (isolated fovea cells lose their attention neighborhood — P2 scatter
-    falsification), close fills gaps, the dilate is the 1-cell boundary margin.
+    (isolated fovea cells lose their attention neighborhood), close fills gaps, the dilate is the 1-cell boundary margin.
     Returns ``(cells bool (hp, wp), achieved fraction)``.
     """
     lo, hi = 0.005, 0.95
@@ -286,8 +285,7 @@ def foveated_denoise(
     ``FoveatedTokenMerge``, continue merged. After the loop: bicubic merged
     readout on the periphery.
 
-    ``fovea_frac`` floor is 0.25 (the 3s ladder knee); ≤0.15 is falsified on
-    multi-subject prompts. ``sigma_c=0.75`` is load-bearing — see module note.
+    ``fovea_frac`` floor is 0.25; ≤0.15 fails on multi-subject prompts. ``sigma_c=0.75`` is load-bearing — see module note.
     """
     if mask_source not in MASK_SOURCES:
         raise ValueError(
@@ -332,8 +330,7 @@ def foveated_denoise(
     pgraft_network = ctx.pgraft_network
     lora_cutoff_step = ctx.lora_cutoff_step
     soft_tokens_net = ctx.soft_tokens_net
-    # --traj_stats: passive per-step recorder (Phase 2 known-bad calibration
-    # arm — _archive/proposals/traj_latent_stats.md). Post-combine, pre-Euler-step,
+    # --traj_stats: passive per-step recorder. Post-combine, pre-Euler-step,
     # on the full-grid x5 (periphery tokens carry their group-shared values
     # after the σ_c crossing — exactly the trace the gauge must flag).
     traj_stats = getattr(ctx, "traj_stats", None)
@@ -513,7 +510,7 @@ def foveated_denoise(
     return x5
 
 
-# Side-effect registration (mirrors networks/spd.py:562).
+# Side-effect registration (mirrors the register_spd_runner call in networks/spd.py).
 from library.inference.generation import register_foveated_runner  # noqa: E402
 
 register_foveated_runner(foveated_denoise)

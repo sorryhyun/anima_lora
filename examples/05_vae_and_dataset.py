@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Read the dataset cache and round-trip pixels through the VAE.
 
-Two things a scripts/ author repeatedly needs:
+Two parts:
 
   A. VAE round-trip — encode an image to a latent and decode it back. The clean
      helpers are encode_pixels_to_latents() / decode_to_pixels(), both expecting
@@ -52,16 +52,10 @@ def _crop_fraction(w: int, h: int, bucket: tuple[int, int]) -> float:
 def vae_roundtrip(image_path: str, out_path: str, device, *, target_res: int) -> None:
     """Part A — pixels → latent → pixels, resized to a real Anima bucket first.
 
-    The VAE itself takes any H,W, but training never feeds it raw native pixels:
-    a 4000px photo would blow the rope cap and is not a cached shape. Preprocessing
-    resizes every image to its free-fit bucket. We do the same here so the
-    round-trip is on a *training-shaped* latent — reusing the exact chooser
-    (`select_resize_bucket`) and pixel geometry (`resize_to_bucket`) preprocess uses,
-    not a hand-rolled resize.
-
-    Free-fit is the only resize mode: it keeps the image's native aspect and
-    lands its token count anywhere inside the tier's band, so the crop the
-    printout reports is sub-patch.
+    The VAE takes any H,W, but training only sees images resized to their
+    free-fit bucket, so the round-trip does the same with preprocess's own
+    chooser (`select_resize_bucket`) and resize (`resize_to_bucket`). Free-fit
+    keeps the native aspect, so the reported crop is sub-patch.
     """
     from PIL import Image, ImageOps
     from torchvision import transforms
@@ -90,7 +84,7 @@ def vae_roundtrip(image_path: str, out_path: str, device, *, target_res: int) ->
     pixels = to_tensor(img).unsqueeze(0).to(device, dtype=torch.bfloat16)  # [1,3,H,W]
 
     with torch.no_grad():
-        latent = vae.encode_pixels_to_latents(pixels)  # [1, 16, 1, H/8, W/8]
+        latent = vae.encode_pixels_to_latents(pixels)  # [1, 16, H/8, W/8]
         recon = vae.decode_to_pixels(latent)  # [-1, 1]
 
     print(
@@ -116,10 +110,8 @@ def iterate_cache(data_dir: str, device) -> None:
         f"crossattn_emb={tuple(crossattn_emb.shape)}  pooled={tuple(pooled.shape)}"
     )
 
-    # Decode the cached latent back to an image to confirm it's the real thing.
-    # decode_to_pil is the in-memory latent→PIL exit (VAE decode + the
-    # [-1,1]→[0,255] + channel handling), so no temp PNG / hand-rolled
-    # denormalization — just an Image you can .save(), composite, or score.
+    # Decode the cached latent back to an image. decode_to_pil does VAE decode
+    # + denormalization in memory and returns a PIL Image.
     from library.inference.output import decode_to_pil
 
     vae = _load_vae(device)

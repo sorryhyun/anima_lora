@@ -387,7 +387,7 @@ def build_argparser() -> argparse.ArgumentParser:
         "(base_loss, default 'dpdmd').",
     )
 
-    # DMD2 teacher-feature GAN (FastGen idea 1; off by default).
+    # DMD2 teacher-feature GAN (off by default).
     parser.add_argument(
         "--gan_loss_weight_gen",
         type=float,
@@ -497,7 +497,7 @@ def build_argparser() -> argparse.ArgumentParser:
         "Default: TOML (softrank.warmup_ratio, default 1.0).",
     )
 
-    # CDM off-trajectory loss (L_CDM; docs/proposal/cdm.md Phase 1, off by default).
+    # CDM off-trajectory loss (L_CDM; off by default).
     parser.add_argument(
         "--cdm_weight",
         type=float,
@@ -513,7 +513,7 @@ def build_argparser() -> argparse.ArgumentParser:
         "per iteration. Default: TOML (cdm.weight, default 0).",
     )
 
-    # f-distill reweighting (FastGen idea 2; needs the GAN disc).
+    # f-distill reweighting (needs the GAN disc).
     parser.add_argument(
         "--f_div",
         type=str,
@@ -557,7 +557,7 @@ class TurboConfig:
     fake_rank: int
     student_alpha: float
     fake_alpha: float
-    # τ-split critic (turbo_tau_split_critic Phase 1): 1 = single fake (the
+    # τ-split critic: 1 = single fake (the
     # shipped, byte-identical loop); 2 = dual banks split at fake_tau_boundary
     # (bank 0 owns [0, b)). Requires batch_size=1.
     fake_tau_banks: int
@@ -614,8 +614,7 @@ class TurboConfig:
     # AOT min-cut partitioner tuning (mirrors train.py's partitioner_* args):
     # change what the default partition is willing to recompute, on top of
     # activation_memory_budget. Ignored under --grad_ckpt (same gate as the
-    # budget). aggressive_recomputation is THE settled memory lever
-    # ([[project_partitioner_flags_phase0]]).
+    # budget). aggressive_recomputation is the settled memory lever.
     partitioner_recompute_views: bool
     partitioner_aggressive_recomputation: bool
 
@@ -642,7 +641,7 @@ class TurboConfig:
     # stay on the static grid; the DP anchor composes unchanged (t₁=1 pinned).
     dynamic_schedule: bool
 
-    # CDM off-trajectory loss (L_CDM, docs/proposal/cdm.md Phase 1): supervise
+    # CDM off-trajectory loss (L_CDM, arXiv:2605.06376): supervise
     # the student's local x0 estimate at a velocity-extrapolated off-trajectory
     # point (t' ~ U(0,1)) with the same real-vs-fake delta as the DM branch.
     # 0 = the whole path off (byte-identical loop).
@@ -651,13 +650,13 @@ class TurboConfig:
     # Base objective selector
     base_loss: str
 
-    # DMD2 teacher-feature GAN (idea 1) + f-distill reweighting (idea 2)
+    # DMD2 teacher-feature GAN + f-distill reweighting
     gan_loss_weight_gen: float
     gan_feature_block_idx: int  # -1 → middle block (resolved in distill.py)
     gan_disc_lr: float
     gan_disc_hidden: int  # <= 0 → inner_dim // 2
     gan_disc_head: str  # "pooled" (per-tap logit) | "token" (LADD-style per-token)
-    gan_delay_steps: int  # generator-side λ held at 0 for the first N steps (disc still trains)
+    gan_delay_steps: int  # generator λ = 0 for the first N steps (disc still trains)
     gan_warmup_steps: int  # then λ ramps 0 → weight_gen over N steps (0 = instant-on)
     gan_r1_weight: float
     gan_r1_alpha: float
@@ -670,7 +669,7 @@ class TurboConfig:
     f_bin_num: int
     f_ratio_normalization: bool
 
-    # Soft-rank caption-discrimination auxiliary (turbo_caption_ranking.md Phase 1)
+    # Soft-rank caption-discrimination auxiliary
     softrank_weight: float
     softrank_k: int
     softrank_every_n: int
@@ -753,7 +752,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         )
     if fake_tau_banks == 2 and batch_size != 1:
         # τ is per-sample; B=1 makes the routing decision a scalar. B>1 would
-        # need a split-batch double forward — out of scope for v0.
+        # need a split-batch double forward (not implemented).
         raise ValueError(
             f"network.fake_tau_banks=2 requires batch_size=1 (got {batch_size}): "
             "the bank routing is by the batch's scalar τ."
@@ -923,9 +922,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     # Optimizer
     student_lr = float(_pick(args.student_lr, cfg, "optim.student_lr", 1e-5))
     fake_lr = float(_pick(args.fake_lr, cfg, "optim.fake_lr", 1e-5))
-    # lr_schedule was removed 2026-07-14: the "constant" arm (superturbo_B2)
-    # never settles and rendered worse than its cosine twin — cosine is the
-    # only shape again (see primitives.make_scheduler).
+    # LR schedule is always warmup → cosine (see primitives.make_scheduler).
     fake_steps_per_student_step = int(
         _pick(
             args.fake_steps_per_student_step,
@@ -1027,8 +1024,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
                 "— the soft-rank term rides the step-0 diversity anchor."
             )
         if softrank_k < 2:
-            # softrank needs >= 2 candidates for a non-degenerate rank (chance 1/3
-            # at k=2, matching the Phase-0 probe).
+            # softrank needs >= 2 candidates for a non-degenerate rank.
             raise ValueError(f"softrank.k={softrank_k}: must be >= 2")
         if softrank_every_n < 1:
             raise ValueError(f"softrank.every_n={softrank_every_n}: must be >= 1")
@@ -1043,9 +1039,8 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
                 f"softrank.warmup_ratio={softrank_warmup_ratio}: must be in [0, 1]."
             )
         if int(args.blocks_to_swap) > 0:
-            # The k extra student forwards are the offloader's audited-risk area
-            # ([[project_blockswap_extra_forwards_gradcache]]); turbo keeps the DiT
-            # resident by default. Fail at config time rather than desync the swap.
+            # Block swap desyncs on the k extra student forwards; turbo keeps the
+            # DiT resident by default. Fail at config time.
             raise ValueError(
                 "softrank.weight > 0 requires blocks_to_swap=0 — the extra "
                 "caption-negative forwards are unaudited under block swap."
@@ -1079,15 +1074,14 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
                 "(project_turbo_view_ckpt_recompute_hazard). Turn one off."
             )
         if int(args.blocks_to_swap) > 0:
-            # Extra per-step forwards are the offloader's audited-risk area
-            # ([[project_blockswap_extra_forwards_gradcache]]); turbo keeps the
-            # DiT resident by default. Fail at config time, don't desync.
+            # Block swap desyncs on extra per-step forwards; turbo keeps the
+            # DiT resident by default. Fail at config time.
             raise ValueError(
                 "cdm.weight > 0 requires blocks_to_swap=0 — the off-trajectory "
                 "forwards are unaudited under block swap."
             )
         logger.info(
-            f"L_CDM off-trajectory loss ON (docs/proposal/cdm.md Phase 1): "
+            f"L_CDM off-trajectory loss ON: "
             f"weight={cdm_weight}, variant A (CFG'd real score), t' ~ U(0,1) "
             "launched from the DMD grad step; +1 student grad forward, "
             "+2 teacher & +1 fake no-grad per iteration."
@@ -1117,7 +1111,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     if f_div not in _F_DIVS:
         raise ValueError(f"f_distill.f_div={f_div!r}: expected one of {_F_DIVS}")
     if f_div != "rkl" and gan_loss_weight_gen <= 0.0:
-        # r = exp(disc_logits) only exists once the GAN disc is built (idea 1).
+        # r = exp(disc_logits) only exists once the GAN disc is built.
         raise ValueError(
             f"f_distill.f_div={f_div!r} requires gan.weight_gen > 0 — the "
             "f-divergence weight reads the GAN discriminator's logits."
@@ -1378,8 +1372,7 @@ def snapshot_toml_text(c: TurboConfig, *, source_config: str | None = None) -> s
     dumps *every* resolved field — CLI overrides folded in — so the run log dir
     becomes a self-contained record of "this run + the config that produced it".
     It's the turbo analogue of the ``<output_name>.snapshot.toml`` that
-    ``train.py`` writes for the LoRA family (the bespoke turbo config never went
-    through that path).
+    ``train.py`` writes for the LoRA family.
     """
     return dataclass_snapshot_toml(
         c,

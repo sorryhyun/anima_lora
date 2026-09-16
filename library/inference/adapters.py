@@ -57,7 +57,7 @@ def set_hydra_sigma(model: Any, timesteps: torch.Tensor) -> None:
 
 
 def set_xattn_gain(model: Any, gain: float) -> None:
-    """Set the per-block cross-attn residual gain (frontload_text_boost arm b).
+    """Set the per-block cross-attn residual gain.
 
     Writes each Block's non-persistent ``_xattn_gain`` buffer in place so
     compiled block graphs pick the new value up without a recompile. 1.0
@@ -71,15 +71,14 @@ def set_xattn_gain(model: Any, gain: float) -> None:
 def set_xattn_renorm(
     model: Any, on: bool, *, per_token: bool = True, frac: float = 1.0
 ) -> None:
-    """Toggle norm-matched cross-attn gain (frontload_text_boost arm (g)).
+    """Toggle norm-matched cross-attn gain.
 
     While True, each Block rescales its post-cross-attn hidden state back
     toward the gain-1.0 norm, so ``set_xattn_gain`` rotates the state
     toward the cross-attn residual without leaving the norm shell.
     ``per_token=False`` matches the per-image MEAN token norm instead of
-    each token's — full per-token matching flattens the token-norm
-    distribution (grey tone, muted highlights); the mean variant keeps the
-    energy budget bounded while preserving relative peaks. ``frac`` ρ
+    each token's (per-token matching flattens the token-norm distribution →
+    grey tone, muted highlights). ``frac`` ρ
     applies ``scale**ρ`` (1.0 = full correction, 0.0 = raw boost). Same
     cond-only discipline as :func:`set_xattn_gain` — toggle together with
     the gain and reset both before uncond forwards.
@@ -118,7 +117,7 @@ def set_xattn_kbias(model: Any, bias: Optional[torch.Tensor]) -> None:
     """Set (or clear, with ``None``) the cross-attn per-key logit bias.
 
     ``bias`` is a ``(L_ctx,)`` float tensor added to every cross-attn QK^T
-    row (frontload_text_boost arm (d) — allocation probe). Writes each
+    row (allocation probe). Writes each
     Block's ``cross_attn._ctx_k_bias`` buffer; ``None`` restores exact
     identity (and the fused flash path — a set bias drops that call to
     SDPA). Same cond-only discipline as :func:`set_xattn_gain`: callers

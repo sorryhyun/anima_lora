@@ -16,7 +16,7 @@ Two CLIs::
 
 Modules:
 
-* :mod:`scripts.distill_cjk.config`    — CLI → frozen dataclass (distill_mod precedent).
+* :mod:`scripts.distill_cjk.config`    — CLI → frozen dataclass.
 * :mod:`scripts.distill_cjk.ext_table` — parameterization ladder + split embedding.
 * :mod:`scripts.distill_cjk.data`      — pairs, span alignment, on-disk cache.
 * :mod:`scripts.distill_cjk.losses`    — L_flat / L_span / L_attn / L_pool.

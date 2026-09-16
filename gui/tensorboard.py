@@ -229,7 +229,7 @@ class TensorBoardPanel(QGroupBox):
         Called when a ``run_start`` progress event carries a ``log_dir`` field.
         The corresponding row is highlighted green and gains a "(current)"
         suffix to make it easy to spot in TensorBoard's sidebar. While a run is
-        marked current the "현재 학습 조회" (view current run) button lights up.
+        marked current the view-current-run button lights up.
         """
         if run_dir:
             self._current_run_path = Path(run_dir)
@@ -276,8 +276,7 @@ class TensorBoardPanel(QGroupBox):
         """Collect every directory under *base* that actually holds TensorBoard
         event files, descending a few levels so nested layouts surface as
         individual runs. Turbo writes to ``output/logs/turbo/<run>`` (one level
-        deeper than plain training's ``output/logs/<run>``), so a flat
-        ``iterdir`` only ever saw a single ``turbo`` row instead of its runs.
+        deeper than plain training's ``output/logs/<run>``).
         A dir that holds events is treated as a leaf run and not descended into.
         """
         found: list[Path] = []
@@ -406,8 +405,6 @@ class TensorBoardPanel(QGroupBox):
 class TensorBoardTab(QWidget):
     """Dedicated tab hosting a :class:`TensorBoardPanel`.
 
-    The panel used to sit permanently at the bottom of the ConfigTab; it now
-    lives on its own tab so the training form isn't always crowded by it.
     ConfigTab keeps a reference to ``.panel`` for log-dir / current-run syncing.
     """
 

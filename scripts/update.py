@@ -100,11 +100,10 @@ def _selected_windows_backend() -> str:
         if saved in {"cuda", "rocm"}:
             return saved
 
-    # Existing installs predate the marker. Decide from the hardware, NOT from
-    # the venv's torch build: the v1.16.0→v1.16.1 transition ran the old
-    # extra-unaware `uv sync`, which installed the ROCm torch on every Windows
-    # machine (GH #92) — trusting `torch.version.hip` here would lock NVIDIA
-    # users into that broken state on every subsequent update.
+    # No marker yet: decide from the hardware, NOT from the venv's torch build —
+    # an older extra-unaware `uv sync` installed ROCm torch on every Windows
+    # machine (GH #92), so trusting `torch.version.hip` would lock NVIDIA users
+    # into that state.
     vendor = _detect_windows_gpu_vendor()
     if vendor == "amd":
         return "rocm"
@@ -343,9 +342,9 @@ def _download(url: str, dest: Path) -> None:
 def _skip_links_filter(member, path):
     """The data filter, but symlinks/hardlinks are dropped instead of fatal.
 
-    A stray committed symlink in the release tarball (absolute target →
-    LinkOutsideDestinationError) once bricked every update; release content
-    must never depend on links, so skipping is always safe.
+    A committed symlink in the release tarball (absolute target →
+    LinkOutsideDestinationError) would otherwise abort the update; release
+    content never depends on links, so skipping is safe.
     """
     if member.islnk() or member.issym():
         print(f"  skipping link in tarball: {member.name}")

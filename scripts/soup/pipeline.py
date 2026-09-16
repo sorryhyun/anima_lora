@@ -2,7 +2,7 @@
 """`make soup` orchestrator: uncond inter-train → seeded fine-tunes → SVD soup.
 
 Ships the recipe validated in ``bench/memorization/report.md`` (the uncond-init
-ladder, 2026-07-04/05) as one pipeline:
+ladder) as one pipeline:
 
 1. **Uncond inter-train** (Self-Soupervision, arXiv:2602.02890): a short
    ``caption_dropout_rate 1.0`` run on a *diluted* pool. The pool is selected by
@@ -407,8 +407,8 @@ def check_init_mode(
 ) -> None:
     """Refuse the init combinations that would silently do something else:
     ``--no_uncond`` with a pinned ``--uncond_init`` (contradiction), with a
-    ``--network_weights`` in ARGS (the flag exists to *not* warm-start), and —
-    the trap that motivated the knob — an ``svd_slice`` window under the uncond
+    ``--network_weights`` in ARGS (the flag exists to *not* warm-start), and an
+    ``svd_slice`` window under the uncond
     path, where ``--network_weights`` overwrites ``A`` with the uncond
     checkpoint's (slice-0) rows and the slice is silently lost."""
     if no_uncond and uncond_init:

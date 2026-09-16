@@ -1,7 +1,6 @@
 """CJK vocab extension for the LLM Adapter's T5-side query stream.
 
-Promoted from ``bench/cjk_adapter/ext_vocab.py`` (which now re-exports from
-here) — the runtime surface (``segment_runs`` / ``HybridT5Encoder`` /
+The runtime surface (``segment_runs`` / ``HybridT5Encoder`` /
 ``load_ext_assets``) is what the vocab-pack loaders (in-repo shim, ComfyUI
 node vendor tree) consume; the ``build_*`` / ``fit_anchor_map`` helpers are
 build-time only (``bench/cjk_adapter/build_ext.py``).
@@ -18,21 +17,20 @@ Byte-fragment fallback: Qwen is byte-BPE, so some chars tokenize as UTF-8
 fragments. Those get per-character supplementary rows, initialised from the
 mapped mean of their fragment embeddings. Plain mean is order-invariant, so
 two chars whose UTF-8 bytes are permutations of each other would collide
-bit-identically (527 such pairs, e.g. 鯰/鰯 — the Phase 0.2 separability
-finding); exactly those colliding rows use a position-weighted mean instead,
+bit-identically (527 such pairs, e.g. 鯰/鰯); exactly those colliding rows use a position-weighted mean instead,
 which breaks the tie while leaving every non-colliding row at the plain mean.
 
-Symbol routing (2026-09-03): the stock spiece also has no row for a long
+Symbol routing: the stock spiece also has no row for a long
 tail of non-CJK symbols (``^`` ``<`` ``~`` ``·`` ``×`` ``☆``, emoji …) that
 danbooru tags and zh names use — T5 folds ``^^^`` into a single ``<unk>``, so
 ``^^^`` / ``☆`` / ``\\`` were the same token. Those chars are routed to the
 Qwen side exactly like CJK, with their rows appended *after* the CJK blocks
 (``mapping["sym"]`` / ``mapping["sym_char"]``) so every pre-existing row id,
 distill cache and trained pack stays valid. The routing rule ships **inside
-the pack json** (``mapping["route"]``); a pack without it routes the legacy
-CJK ranges only, bit-identical to before.
+the pack json** (``mapping["route"]``); a pack without it routes the CJK
+ranges only.
 
-Quote partition (2026-09-05, DiT line D1): a pack may carry a second,
+Quote partition: a pack may carry a second,
 **content-free isotropic block** (``mapping["iso"]``: i.i.d. Gaussian rows
 regenerated from ``(seed, n_rows, dim, norm)`` — :func:`iso_block`) that
 mirrors the trained blocks row-for-row at an offset. Routed spans *inside a
@@ -157,7 +155,7 @@ class Route:
         return spans
 
 
-# The quote pairs the D1 span rule recognises (principle 8 of the DiT plan):
+# The quote pairs the span rule recognises:
 # CJK corner brackets (both weights) and the ASCII double quote new caption
 # builders emit. Script-neutral by design.
 DEFAULT_QUOTES: tuple[tuple[str, str], ...] = (("「", "」"), ("『", "』"), ('"', '"'))
@@ -433,7 +431,7 @@ def fit_anchor_map(
     ``method="ridge"`` — plain ridge least squares (the v1 asset). Ridge
     shrinks toward the directions the anchors share, so the mapped ext keys
     collapse onto a thin subspace (PR 236 of 1024, 16 % of random row pairs
-    above cos 0.5; ``probes/map_probe.py``, 2026-09-02).
+    above cos 0.5; ``project/cjk_aware_anima/probes/map_probe.py``).
 
     ``method="procrustes-mix"`` — ridge plus ``mix`` × the scaled orthogonal
     Procrustes rotation fitted on the same anchors (centered fit, applied as
@@ -708,13 +706,12 @@ class HybridT5Encoder:
         base vocab would spell out char-by-char; everything between matches
         goes through the ordinary Qwen path unchanged.
 
-        Eojeol boundary guard (plan_ko3 risk 1): a hangul surface may only
+        Eojeol boundary guard: a hangul surface may only
         match where an eojeol starts — BOS, or after a non-hangul char
         (space/punct/other script). Particles attach at the *end* of an
         eojeol, so a boundary-anchored prefix match still fires on 레이무가;
         what the guard kills is a surface waking up mid-word (…아레이무…).
-        JA has no spaces — minting JA words is deferred until it gets its own
-        boundary design (plan_ko3 M3).
+        The guard is hangul-only (JA has no spaces to anchor on).
         """
         surfaces: set[str] = set(self.word_map or ()) | set(self.word_sub or ())
         if not surfaces:

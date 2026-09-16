@@ -1,12 +1,11 @@
 # examples/
 
-Runnable scripts showing the Anima programmatic API for library embedders —
-the Python you write when you `import anima_lora` into your own code instead of
-going through `make` targets. Each script is self-contained and runs from the
-repo root (`anima_lora/`).
+Runnable scripts showing the Anima programmatic API for embedders — driving
+the pipeline from `import anima_lora` instead of `make` targets. Each script is
+self-contained.
 
 After `uv sync` (which installs this repo editable), the front-door package is
-importable from anywhere — the curated entry points live on `anima_lora`:
+importable from anywhere:
 
 ```python
 import anima_lora
@@ -15,22 +14,14 @@ latent = anima_lora.inference.generate(args, settings)
 image = anima_lora.inference.decode_to_pil(vae, latent, device)
 ```
 
-`anima_lora` is a thin lazy re-export of `library.inference` /
-`library.config.io` / `library.anima.weights` / `library.models.qwen_vae`,
-grouped into curated namespaces — `anima_lora.{models, inference, config,
-training, captioning}` is the preferred spelling; the pre-namespace flat names
-(`anima_lora.generate`, …) keep working as aliases (see
-`anima_lora/__init__.py` for the full map). `anima_lora.training` carries the
-in-process training toolkit (`AnimaTrainer`, `setup_parser`,
-`build_network_extras`, `verify_command_line_training_args`, `create_network`,
-`resolve_network_spec`) — repo-root `train.py` is loaded by path, so it works
-from any CWD. Repo-relative model/config paths
-resolve against the repo home, not the CWD — so `import anima_lora` works from
-any directory; set `ANIMA_HOME` to point at a relocated checkout. The high-level flows
-(`01`–`03`, `08`, `09`) import the curated entry points from `anima_lora`; `10` drives diffusers instead; the building-block
-scripts (`04`–`07`) reach into the `library.*` homes directly, since their point
-is to show the raw primitives. Either way there's no `sys.path` bootstrap:
-`uv sync` installs the repo editable, so the scripts run from any directory.
+`anima_lora` is a lazy re-export grouped into `anima_lora.{models, inference,
+config, training, captioning}`; the namespace → export → canonical-home map is
+in `anima_lora/__init__.py`. Repo-relative model/config paths resolve against
+the repo home, not the CWD; set `ANIMA_HOME` for a relocated checkout.
+
+The high-level flows (`01`–`03`, `08`, `09`) import from `anima_lora`; `10`
+drives diffusers; the building blocks (`04`–`07`) import the `library.*`
+primitives directly. None needs a `sys.path` bootstrap.
 
 **High-level flows** — the supported entry points:
 
@@ -96,15 +87,13 @@ python examples/07_stack_ortho_init_tlora.py --steps 3      # stack OrthoInit + 
 
 ## Notes for embedders
 
-- **`anima_lora` is the stable API; `library.*` / `networks.* `/ `scripts.*` are internal.**
-  The curated `anima_lora` façade is the surface we keep stable across releases.
-  The underlying trees are installed and importable for advanced use (`04`/`05`
-  reach into `library.*` on purpose), but they may move or change signature
-  without a deprecation cycle — pin a tag (`ANIMA_VERSION`) if you depend on them.
+- **`anima_lora` is the stable API; `library.*` / `networks.*` / `scripts.*` are internal.**
+  The underlying trees are importable (`04`–`07` use `library.*`), but may move
+  or change signature without a deprecation cycle — pin a tag (`ANIMA_VERSION`)
+  if you depend on them.
 - **Inference is request-driven.** `01`/`03` build a typed
-  `anima_lora.GenerationRequest` and call `.to_args()` — which feeds the request
-  through `inference.parse_args` under the hood, so every optional knob the
-  generation code reads via `getattr()` still gets a value. The long tail of
+  `anima_lora.GenerationRequest` and call `.to_args()`, which feeds the request
+  through `inference.parse_args` so every optional knob gets its default. The long tail of
   method knobs (spectrum/smc-cfg/ip-adapter) rides through the request's `extra_argv`,
   or you can build the `argparse.Namespace` straight from `inference.parse_args(argv)`.
 - **Adapter family is in the checkpoint, not the call.** `01 --lora_weight` passes
@@ -123,15 +112,14 @@ python examples/07_stack_ortho_init_tlora.py --steps 3      # stack OrthoInit + 
   pass straight through `create_network(**kwargs)` to `resolve_network_spec`. `07`
   stacks OrthoInit + T-LoRA that way and shows the single per-step driving hook
   (`apply_router_conditioning`). Which combos exist is the three-axis matrix in
-  `networks/CLAUDE.md`; impossible combos raise at build, they don't silently
-  degrade.
+  `networks/CLAUDE.md`; impossible combos raise at build.
 - **Prompt encoding uses two process-global strategy singletons.** `generate()` /
   `prepare_text_inputs()` lazily install them from `args.text_encoder` (via
   `anima_lora.ensure_text_strategies`), so the high-level flows just work; `04`
   shows the explicit one-liner. Encoding also needs the DiT — the encoder hidden
   states are projected by `Anima._preprocess_text_embeds`.
-- **Multi-GPU training** must go through `accelerate launch train.py …`
-  (`make lora`). `02 --train` is the single-process equivalent.
-- The text-encoder padding and constant-token bucketing invariants in
-  `../CLAUDE.md` apply — they're handled inside the called functions, but worth
-  reading before you deviate from these flows.
+- **Multi-GPU training** needs `accelerate launch` (`ANIMA_ACCELERATE_LAUNCH=1
+  make lora`). `02 --train` runs single-process, like the default `make lora`.
+- The text-encoder padding and free-fit bucketing invariants in `../CLAUDE.md`
+  apply — the called functions handle them; read them before deviating from
+  these flows.

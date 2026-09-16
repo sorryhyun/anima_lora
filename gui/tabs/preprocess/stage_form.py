@@ -74,7 +74,7 @@ _RUN_BAR_FIELDS: frozenset[str] = frozenset({"apply"})
 _NO_BROWSE: frozenset[str] = frozenset({"path_pattern"})
 
 # Kinds edited as csv text and sent as a list. ``masks`` is the SAM stage's
-# ``ROLE:KIND:VALUE`` region list (anime_tools 0.6.4); the package's web GUI
+# ``ROLE:KIND:VALUE`` region list (anime_tools 0.7.4); the package's web GUI
 # draws a row editor for it, this form keeps the csv line.
 _LIST_KINDS: frozenset[str] = frozenset({"list", "masks"})
 

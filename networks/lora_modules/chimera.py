@@ -3,7 +3,7 @@
 # ContentRouter) + freq pool (K_f B-heads, routed by FEI(z_t) via the
 # network-level FreqRouter). T-LoRA's rank mask hits the content branch only
 # — the freq branch stays full-rank at every t (TimeStep Master-style
-# asymmetric mixture). See networks/CLAUDE.md and docs/experimental/chimera-hydra.md.
+# asymmetric mixture). See docs/experimental/chimera-hydra.md.
 #
 # Per Linear:
 #
@@ -312,7 +312,7 @@ class ChimeraHydraLoRAModule(_ChimeraRoutingMixin, BaseLoRAModule):
             self.S_p_c = torch.nn.Parameter(torch.zeros(K_c, M, M))
             self.S_p_f = torch.nn.Parameter(torch.zeros(K_f, M, M))
 
-            # Per-expert trainable diagonal (Lever 1). Init 1 → no-op at the
+            # Per-expert trainable diagonal. Init 1 → no-op at the
             # basis level; ΔW=0 at init still holds via the centered gate.
             if self._expert_diag:
                 self.sigma_c = torch.nn.Parameter(torch.ones(K_c, r))
@@ -441,17 +441,14 @@ class ChimeraHydraLoRAModule(_ChimeraRoutingMixin, BaseLoRAModule):
             Q_eff_c = R_q_c @ self.Q_basis_c  # (r, in)
             Q_eff_f = R_q_f @ self.Q_basis_f  # (r, in)
 
-        # Single rank-cat down-projection for both pools: running Q_eff_c and
-        # Q_eff_f as two separate matmuls makes backward materialize TWO
-        # (B, L, in) grad_x tensors that autograd then sums (~0.9 GiB extra
-        # across 28 blocks on wide-input Linears). Concatenating Q_eff along
-        # the rank axis computes grad_x once; the split below is a free view.
-        # Bit-identical to the per-pool calls — see
+        # Single rank-cat down-projection for both pools: two separate matmuls
+        # make backward materialize TWO (B, L, in) grad_x tensors. Concatenating
+        # Q_eff along the rank axis computes grad_x once; the split below is a
+        # free view. Bit-identical to the per-pool calls — see
         # test_chimera_down_proj_rank_cat_matches_separate.
         #
-        # GEMMs run in the adapter compute dtype (work), not x.dtype — same
-        # rationale as base.py's forward(); OrthoInit gets its fp32 bottleneck
-        # via work.
+        # GEMMs run in the adapter compute dtype (work), not x.dtype (see
+        # base.py's forward()); OrthoInit gets its fp32 bottleneck via work.
         comp = work
         Q_eff_cat = torch.cat([Q_eff_c, Q_eff_f], dim=0)  # (2r, in)
         x_lora = self._rebalance(x.to(comp))
@@ -463,9 +460,7 @@ class ChimeraHydraLoRAModule(_ChimeraRoutingMixin, BaseLoRAModule):
         # recentering.
         pi_c = self._content_gate_raw(lx_c.shape[0])  # (B, K_c) fp32
         if self.training:
-            # Plain STORE_ATTR — see HydraLoRAModule.forward for the rationale;
-            # @compiler.disable would force a graph break and explode
-            # saved-for-backward memory under torch.compile.
+            # Plain STORE_ATTR — see HydraLoRAModule.forward.
             self._last_gate = self._full_gate(pi_c)
         pi_c = self._center(pi_c, K_c)
 
@@ -517,8 +512,8 @@ class ChimeraHydraLoRAModule(_ChimeraRoutingMixin, BaseLoRAModule):
 
     def regularization(self):
         """No-op on both paths: Cayley guarantees orthogonality structurally,
-        and OrthoInit deliberately leaves the bases unconstrained (SVD as a
-        warm start, not a cage). ``P_bases_c`` exists under either layout."""
+        and OrthoInit leaves the bases unconstrained. ``P_bases_c`` exists
+        under either layout."""
         zero = torch.tensor(0.0, device=self.P_bases_c.device)
         return zero, zero
 
@@ -590,7 +585,7 @@ class ChimeraHydraLoRAModule(_ChimeraRoutingMixin, BaseLoRAModule):
                     P_eff_c = P_eff_c[..., :r]  # (K_c, out, r)
                     P_eff_f = P_eff_f[..., :r]
 
-            # Fold the per-expert diagonal (Lever 1) into the saved ups, so the
+            # Fold the per-expert diagonal into the saved ups, so the
             # distilled free-form reproduces the trained forward exactly.
             sig_c = state_dict.get(f"{prefix}.sigma_c")
             sig_f = state_dict.get(f"{prefix}.sigma_f")
@@ -755,7 +750,7 @@ class ChimeraHydraInferenceModule(_ChimeraRoutingMixin, BaseLoRAModule):
     Both pools' gates are recentered to ``π − 1/K`` before the combine (λ is
     folded symmetrically into the saved ups, so this reproduces the trained
     forward exactly). No T-LoRA mask at inference, consistent with the rest
-    of the LoRA family — see ``[[project_tlora_inference_full_rank]]``.
+    of the LoRA family.
     """
 
     def __init__(

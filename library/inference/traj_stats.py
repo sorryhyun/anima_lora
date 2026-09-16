@@ -1,6 +1,6 @@
 """Trajectory-resolved latent statistics — the passive per-step recorder.
 
-Phase 0 of ``_archive/proposals/traj_latent_stats.md``: observe the denoising
+Proposal: ``_archive/proposals/traj_latent_stats.md``. Observes the denoising
 trajectory (per-step, per-token, per-channel statistics of the x̂₀ estimate)
 without changing a single bit of the generation. Everything is computed on
 ``.float()`` copies of the loop tensors, out-of-place, and dumped to one
@@ -20,8 +20,8 @@ channel.
 
 Traces per step (see the proposal's table):
 
-* ``tok``      — token-level normalized x̂₀ itself (f16) — the raw map the
-  Phase 2 gauge computes token-wise RMSE(σ) on (codes are too coarse at k=4)
+* ``tok``      — token-level normalized x̂₀ itself (f16) — the raw map for
+  token-wise RMSE(σ) (codes are too coarse at k=4)
 * ``codes``    — k-bit uniform quantization code of token-level x̂₀ (uint8)
 * ``activity`` — ‖x̂₀(p, i) − x̂₀(p, i−1)‖ over channels (NaN at step 0)
 * ``hf``       — Laplacian energy of x̂₀ around each token (foveation's x0var)
@@ -97,7 +97,7 @@ class TrajStatsRecorder:
 
     Pure observation: :meth:`record` never mutates its inputs and never feeds
     anything back into the loop — recorder on/off latents are bit-identical
-    (pinned by ``tests/test_traj_stats.py`` and the Phase 0 bench).
+    (pinned by ``tests/test_traj_stats.py``).
     """
 
     # process-global: generations flushed so far (filename collision guard for
@@ -293,9 +293,8 @@ class TrajStatsRecorder:
 
         header = dict(self.meta)
         header.update({"k": self.k, "seed": seed, "num_steps": len(self._steps)})
-        # uncompressed on purpose: zlib on the ~4 MB payload costs >100 ms and
-        # flush runs inside the generation wall time; the proposal budgets
-        # "a few MB" per sidecar, so disk is the cheap side of this trade.
+        # uncompressed: zlib on the ~4 MB payload costs >100 ms inside the
+        # generation wall time.
         np.savez(
             path,
             tok=stack("tok"),  # (S, B, C, Ht, Wt) f16 — token-level x̂₀
@@ -320,7 +319,7 @@ def derive_summary(npz_path: str, tau: Optional[float] = None) -> dict:
 
     * ``E`` — effective token usage per step: fraction of tokens with
       ``activity > τ``. Default τ is the σ→0 noise floor, provisionally the
-      95th percentile of final-step activity (Phase 1 calibrates this knob).
+      95th percentile of final-step activity.
     * ``commit_cdf`` — fraction of tokens committed (code last changed) at or
       before each step.
     """

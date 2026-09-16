@@ -1,9 +1,8 @@
 """Stdlib HTTP surface for the daemon — zero new deps, localhost only.
 
 A hand-written ``(method, path)`` dispatch on a ``BaseHTTPRequestHandler``;
-request bodies are plain ``json.loads``'d dicts (no Pydantic — the only
-callers are trusted localhost clients). Served by ``ThreadingHTTPServer`` so
-a parked SSE stream just holds one blocked thread.
+request bodies are unvalidated ``json.loads``'d dicts. Served by
+``ThreadingHTTPServer``, so a parked SSE stream holds one thread.
 
 Full endpoint reference: ``anima_daemon/README.md`` (also served live at
 ``GET /``); machine-readable manifest at ``GET /tools`` (``TOOLS`` below).
@@ -35,9 +34,9 @@ _JOB_PROGRESS_RE = re.compile(r"^/jobs/(?P<id>[^/]+)/progress$")
 
 _README = Path(__file__).resolve().parent / "README.md"
 
-# Machine-readable self-description served at GET /tools — one entry per
-# operation, JSON-Schema `input_schema` so a thin MCP bridge (or any LLM tool
-# loop) can register these directly. Kept in sync with the handlers by hand.
+# Machine-readable manifest served at GET /tools and registered by mcp.py — one
+# entry per operation with a JSON-Schema `input_schema`. Kept in sync with the
+# handlers by hand.
 TOOLS = [
     {
         "name": "submit_training",
@@ -58,7 +57,7 @@ TOOLS = [
                 "preset": {
                     "type": "string",
                     "default": "default",
-                    "description": "Hardware preset: default | fast_16gb | low_vram | half.",
+                    "description": "Hardware preset: default | low_vram | half | quarter | tenth | graft | debug (configs/presets.toml).",
                 },
                 "methods_subdir": {
                     "type": "string",
@@ -128,8 +127,7 @@ TOOLS = [
                     "description": (
                         "Per-job stall-watchdog budget in seconds, overriding the "
                         "120s command-job default; 0 disables it. Raise (or disable) "
-                        "for a legitimately quiet embed/eval loop instead of "
-                        "hand-rolling a stdout heartbeat."
+                        "for a legitimately quiet embed/eval loop."
                     ),
                 },
                 "config_snapshot": {
@@ -149,7 +147,7 @@ TOOLS = [
     },
     {
         "name": "list_jobs",
-        "description": "List all jobs (full records, submission order). Each has state ∈ queued|running|done|error|stopped.",
+        "description": "List all jobs (full records, submission order). Each has state ∈ queued|running|paused|done|error|stopped.",
         "method": "GET",
         "path": "/jobs",
         "input_schema": {"type": "object", "properties": {}},
@@ -347,11 +345,9 @@ class _Handler(BaseHTTPRequestHandler):
         """Open an SSE response — one response per connection, never keep-alive.
 
         An SSE body has no ``Content-Length``/chunked framing, so the socket
-        closing is the client's only EOF signal. Keep-alive would hold the
-        socket open after the handler returns, so a client already sent the
-        ``eof`` event blocked forever (hung ``make daemon-attach`` on a
-        finished job). ``Connection: close`` + ``close_connection`` fix that;
-        don't revert to keep-alive.
+        closing is the client's only EOF signal. With keep-alive every consumer
+        hangs after the ``eof`` event — keep ``Connection: close`` +
+        ``close_connection``.
         """
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
@@ -421,8 +417,7 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             text = _README.read_text(encoding="utf-8")
         except OSError:
-            # README not shipped alongside (e.g. a trimmed vendor tree) — point
-            # the caller at the machine-readable manifest instead.
+            # README not shipped (e.g. a trimmed vendor tree): point at /tools.
             self._send_json({"error": "README.md not found", "tools": "/tools"}, 404)
             return
         self._send_text(text, content_type="text/markdown; charset=utf-8")
@@ -554,9 +549,7 @@ class _Handler(BaseHTTPRequestHandler):
         if result is None:
             self._send_json({"error": "no such job", "job_id": job_id}, 404)
             return
-        # A refusal (wrong state / accelerate run) rides an `error` field in the
-        # 200 body, matching the rest of this API's body-carries-outcome contract
-        # (`stop` of a terminal job likewise 200s) — only a missing job is 404.
+        # A refusal rides an `error` field in a 200 body; only a missing job 404s.
         self._send_json(result)
 
     def _handle_resume(self, job_id: str) -> None:
@@ -659,8 +652,8 @@ def serve_with_fallback(manager: JobManager, *, port: int, fingerprint=None) -> 
     except OSError:
         from .client import DaemonClient
 
-        # A sibling may have bound the socket microseconds ago but not yet
-        # reached serve_forever; probe a few times (short timeout) to be sure.
+        # A sibling may have bound the socket but not yet reached
+        # serve_forever; probe a few times.
         for _ in range(3):
             if DaemonClient(port).health(timeout=0.5) is not None:
                 raise  # an anima daemon owns it → let the caller stand down

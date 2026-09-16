@@ -1,9 +1,9 @@
 """Process-tree control helpers for the GUI.
 
-QProcess.kill() only signals the immediate child. The GUI launches wrappers
-like ``accelerate launch ... train.py`` and ``python tasks.py <task>``; the
-actual training process is a grandchild that holds VRAM. Killing the wrapper
-alone leaves it orphaned. Two helpers fix that:
+QProcess.kill() only signals the immediate child. The GUI's directly-spawned
+processes are wrappers (``python tasks.py <task>``, the toolkit scripts) whose
+real work — holding VRAM — runs in a grandchild, which killing the wrapper
+alone leaves orphaned. Two helpers:
 
 * ``setup_kill_safe`` — on Unix, starts the child in a fresh session so the
   whole launcher subtree shares one process group.
@@ -23,8 +23,8 @@ def setup_kill_safe(proc: QProcess) -> None:
     """Configure ``proc`` so its child can be killed as a tree.
 
     On Unix, the child is started as a session leader (``setsid()``) which
-    makes it the head of a new process group — handy for ``os.killpg`` style
-    teardown, though we let psutil handle the walk itself. On Windows this
+    makes it the head of a new process group; psutil does the actual walk.
+    On Windows this
     is a no-op; psutil's tree walk works there without extra setup.
 
     Also sets ``PYTHONUNBUFFERED=1`` on the child process environment so the

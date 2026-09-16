@@ -1,9 +1,7 @@
 """Shared walk / group / skip loop for the preprocess cache scripts.
 
-Extracted from the near-identical ``main()`` bodies of
-``preprocess/cache_latents.py`` / ``cache_text_embeddings.py`` /
-``cache_pe_encoder.py`` (see ``docs/proposal/tooling_architecture.md`` §A).
-Holds only the pipeline-agnostic orchestration:
+Used by ``preprocess/cache_latents.py`` / ``cache_text_embeddings.py`` /
+``cache_pe_encoder.py``. Holds only the pipeline-agnostic orchestration:
 
 1. enumerate the dataset images under a directory (optionally recursive, with
    the per-subfolder stem-collision check the stem-keyed cache layout requires),
@@ -11,9 +9,8 @@ Holds only the pipeline-agnostic orchestration:
 3. group the remainder by pixel shape so one batched encoder forward serves a
    whole group (same ``(W, H)`` → same bucket → same output shape).
 
-The encoder, suffix, and save format stay in each caller — only the loop moves
-down here. Reuses ``library.datasets.image_utils`` for the scan + stem check
-rather than introducing a second image-walker.
+The encoder, suffix, and save format stay in each caller. The scan + stem check
+reuse ``library.datasets.image_utils``.
 """
 
 from __future__ import annotations

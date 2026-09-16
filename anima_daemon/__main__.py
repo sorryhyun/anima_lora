@@ -62,10 +62,9 @@ def main() -> int:
     manager = JobManager()
     manager.start()
 
-    # Fingerprint the source we're booting with, recorded in the pidfile +
-    # /health so a client can detect stale code and restart us (see
-    # config.source_fingerprint). Computed once — /health must echo the BOOT
-    # value, never re-hash on-disk files, or staleness would always agree.
+    # Boot-time source fingerprint for the pidfile + /health (see
+    # config.source_fingerprint). Computed once: /health must echo the BOOT
+    # value — re-hashing on-disk files would never report stale code.
     fingerprint = config.source_fingerprint()
 
     try:

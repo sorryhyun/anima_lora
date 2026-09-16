@@ -18,7 +18,7 @@ from accelerate import Accelerator
 @dataclass(frozen=True)
 class TrainCtx:
     """Training-wide state, fixed for the whole run, passed to per-step /
-    per-batch methods instead of 15-arg parameter lists. Per-call values
+    per-batch methods. Per-call values
     (epoch, global_step, progress_bar, …) stay explicit at call sites."""
 
     args: Any
@@ -122,8 +122,7 @@ class AcceleratedBundle:
 @dataclass
 class RuntimeState:
     """Per-run mutable state threaded across trainer methods (unlike the
-    frozen ``*Ctx`` bundles above), grouped here instead of scattered as bare
-    attributes."""
+    frozen ``*Ctx`` bundles above)."""
 
     # Merged from adapters' `extra_forwards` in get_noise_pred_and_target;
     # consumed by the loss composer in _process_batch_inner.

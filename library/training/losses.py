@@ -240,7 +240,7 @@ def conditional_loss(
     return loss
 
 
-# Internal alias — still referenced below by the composer stages.
+# Internal alias used by the composer stages below.
 _conditional_loss = conditional_loss
 
 

@@ -1,11 +1,11 @@
 """T5("") unconditional cross-attention sidecar — Anima-domain helpers.
 
 The unconditional text input every training / distill / inference path shares is
-a single model-scoped file — ``post_image_dataset/_anima_uncond_te.safetensors``
+a single model-scoped file — ``library/anima/assets/_anima_uncond_te.safetensors``
 — so the LoRA's CFG-uncond branch matches Anima's own inference path
-(``library/inference/text.py:99-127``). This is paper-faithful (Starodubcev
-et al., ICLR 2026, arXiv:2602.09268v1 §5) and avoids the
-``torch.zeros_like(crossattn_emb)`` shortcut that would be neither.
+(``library/inference/text.py::prepare_text_inputs``, negative-prompt branch),
+as in Starodubcev et al., ICLR 2026, arXiv:2602.09268v1 §5 — not
+``torch.zeros_like(crossattn_emb)``.
 
 This module owns the *Anima-domain* half: path/constants, encoding ``T5("")``
 through Qwen3 + the LLM adapter, and loading/broadcasting the cached tensor.
@@ -27,18 +27,13 @@ logger = logging.getLogger(__name__)
 
 UNCOND_TE_FILENAME = "_anima_uncond_te.safetensors"
 # Matches ``library.inference.text.MAX_CROSSATTN_TOKENS``; defined locally so the
-# anima/ domain layer never imports up into inference/. The 512 cap is an
-# Anima-model fact (its CFG-uncond padding), so it rightly lives here.
+# anima/ domain layer never imports up into inference/.
 DEFAULT_SEQ_LEN = 512
 
-# The uncond sidecar is a model-scoped artifact, not a per-cache-dir one: it is a
-# pure function of the base Qwen3 encoder + base-DiT LLM adapter + 512-pad, so it
-# never varies by dataset / checkpoint / run. We therefore SHIP it as a bundled
-# package asset (~1 MB) right next to this module — no preprocess step needed to
-# materialise it. The path is package-relative (via ``__file__``) so it resolves
-# from any CWD and ships with the install; staging/regeneration (e.g. after a
-# base-model swap) overwrites this same file in place, keeping one source of
-# truth. Override with an explicit path arg where a call site exposes one.
+# The uncond sidecar is a pure function of the base Qwen3 encoder + base-DiT LLM
+# adapter + 512-pad, so it ships as a package asset (~1 MB) under ``assets/``,
+# resolved via ``__file__``. Staging/regeneration (e.g. after a base-model swap)
+# overwrites this same file in place.
 DEFAULT_UNCOND_DIR = Path(__file__).resolve().parent / "assets"
 
 
@@ -103,8 +98,9 @@ def encode_uncond_crossattn(
     pad/truncate to ``seq_len``. Returns ``(crossattn_emb, pooled)``, both bf16
     on CPU. Shape: ``(seq_len, 1024)`` and ``(1024,)``.
 
-    Mirrors the negative-prompt path in ``library/inference/text.py:99-127``
-    and the encode path in ``scripts/preprocess/cache_text_embeddings.py:71-105``.
+    Mirrors the negative-prompt path in
+    ``library/inference/text.py::prepare_text_inputs``
+    and the encode path in ``library/preprocess/text.py::_encode_batch``.
     """
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -148,8 +144,7 @@ def encode_uncond_crossattn(
 def load_uncond_crossattn(path: str, device, dtype) -> torch.Tensor:
     """Load the ``T5("")`` sidecar staged by ``make preprocess-te`` and return a
     ``(1, seq, 1024)`` tensor on ``device`` in ``dtype``. Used as the student's
-    unconditional cross-attention input; replaces ``torch.zeros_like(...)``,
-    which is neither paper-faithful nor what Anima uses at CFG-uncond inference.
+    unconditional cross-attention input.
     """
     if not os.path.exists(path):
         raise FileNotFoundError(

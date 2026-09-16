@@ -4,10 +4,9 @@
 three optimizer/scheduler pairs, the dataloader, and the per-forward closures,
 returning a :class:`RunContext` that ``distill.run_loop`` reads/mutates.
 
-Pure extraction of the former ``distill.main`` setup block. Construction order
-is load-bearing (block-swap → grad-ckpt → apply_to → compile; compile-limit
-pinned before the first trace; resume applied only once every mutable object
-exists) and is kept verbatim — see inline comments for the individual gotchas.
+Construction order is load-bearing (block-swap → grad-ckpt → apply_to →
+compile; compile-limit pinned before the first trace; resume applied only once
+every mutable object exists) — see inline comments for the individual gotchas.
 """
 
 from __future__ import annotations
@@ -148,8 +147,7 @@ class RunContext:
 def build_run(args, cfg: TurboConfig) -> RunContext:
     """Construct the full DP-DMD run state and return it as a ``RunContext``.
 
-    Verbatim extraction of the former ``main`` setup block — every step keeps
-    its original order (see module docstring for why that's load-bearing).
+    Step order is load-bearing (see module docstring).
     """
     torch.manual_seed(cfg.seed)
     device, dtype = resolve_device_dtype()
@@ -405,7 +403,7 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         n_disc = sum(p.numel() for p in turbo.disc_params())
         logger.info(f"trainable: disc={n_disc:,}")
 
-    # f-distill (idea 2): per-τ EMA histogram buffer for ratio normalization.
+    # f-distill: per-τ EMA histogram buffer for ratio normalization.
     # Training-only scaffolding (never saved — save_student filters to LoRA keys).
     fdistill_on = gan_on and cfg.f_div != "rkl"
     fdistill_bins = None
@@ -493,14 +491,14 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         )
 
     if cfg.single_prompt_idx is not None:
-        # Phase 0 overfit — wrap as a 1-sample list so the dataloader cycles it.
+        # Single-prompt overfit — wrap as a 1-sample list so the dataloader cycles it.
         apply_single_prompt_slice(dataset, cfg.single_prompt_idx, logger=logger)
 
     # Bucket-grouped batch sampler (mirrors distill_mod): every batch is one
     # resolution — free-fit gives each image its own token count, so a
     # cross-resolution batch can't stack. Order shuffled per epoch, seeded by
     # cfg.seed (data-order axis of the training lottery); largest-token bucket
-    # pinned first for compile warmup ([[project_compile_context_vram_climb]]).
+    # pinned first for compile warmup.
     dataloader = torch.utils.data.DataLoader(
         dataset,
         batch_sampler=dataset.make_batch_sampler(shuffle=True, seed=cfg.seed),

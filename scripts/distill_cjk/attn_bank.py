@@ -4,11 +4,11 @@ Two verified facts about how the DiT consumes the adapter output fix the shape
 of this loss (``library/anima/models.py``):
 
 1. The DiT's cross-attention applies **no RoPE to the context** (rope is gated
-   on ``is_selfattn``, :385), so the text side is consumed
+   on ``is_selfattn`` in ``Attention.compute_qkv``), so the text side is consumed
    **permutation-invariantly** — position-wise matching asks for more than the
    model can observe.
 2. Padded positions are zeroed after the adapter, never masked out
-   (``crossattn_emb[~mask] = 0``, inference/text.py:229) — the CLAUDE.md
+   (``crossattn_emb[~mask] = 0``, ``library/inference/text.py``) — the CLAUDE.md
    attention-sink invariant. With ``k_norm(0) = 0`` those ``S - N`` rows are
    sink mass at logit 0 carrying zero value, so the **number of real tokens is
    itself part of the conditioning**, and teacher and student do not have the
@@ -27,7 +27,7 @@ forward, so they come from a pre-built pool
 That pool is not optional. Seeded random directions were used once and the
 readout space collapsed — a random query attends almost uniformly, so the
 readout degenerates to a near-mean over the sequence, which is blind to wording.
-Measured in ``project/cjk_aware_anima/report_0816_phase2.md``: unrelated prompts at 0.374
+Measured in ``_archive/cjk_aware_anima/reports/0816_phase2.md``: unrelated prompts at 0.374
 *rising to 0.738 during training*, two captions of one image at exactly 1.000.
 It broke ``L_attn`` as an objective as well as the metric, so ``--allow_random_queries``
 exists only to reproduce that withdrawn run.
@@ -105,7 +105,7 @@ def build_bank(
         raise FileNotFoundError(
             f"no query bank at {bank_path}. The attn loss needs REAL cross-attn "
             "queries — random directions collapse the readout space (see "
-            "project/cjk_aware_anima/report_0816_phase2.md). Build one with:\n"
+            "_archive/cjk_aware_anima/reports/0816_phase2.md). Build one with:\n"
             "    make daemon-run ARGS='scripts/distill_cjk/build_query_bank.py "
             f"--blocks {','.join(str(b) for b in blocks)}'\n"
             "or pass --allow_random_queries to reproduce the withdrawn G2 run."

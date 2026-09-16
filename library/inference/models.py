@@ -204,7 +204,7 @@ def attach_adapters(
             # ``lora_unet_*`` namespace, so they must NOT be filtered; plain
             # Hydra moe keeps the lora_unet_* filter. Passing ``metadata=``
             # alongside ``weights_sd=`` lets both layouts go through one code
-            # path — no more file=path vs weights_sd= fork.
+            # path.
             with safe_open(lora_weight_path, framework="pt") as f:
                 lora_metadata = dict(f.metadata() or {})
             is_chimera = _is_chimera_moe(lora_weight_path)
@@ -491,8 +491,7 @@ def load_text_encoder(
 
     The legacy ``args`` namespace is still accepted as a fallback (the CLI and
     ``prepare_text_inputs`` pass one); explicit keywords win over it when both are
-    given. Don't reach for ``inference.parse_args`` just to feed this — that drags
-    in unrelated required flags (``--save_path``) and reads nothing else here.
+    given.
     """
     # Explicit keyword wins; otherwise fall back to the namespace; otherwise default.
     te_path = (

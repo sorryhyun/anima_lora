@@ -321,8 +321,8 @@ class Attention(nn.Module):
         self.output_dropout = nn.Dropout(dropout) if dropout > 1e-4 else nn.Identity()
 
         if not self.is_selfattn:
-            # Inference-side per-key logit bias on cross-attn QK^T rows
-            # (frontload_text_boost arm d). None = off/identity; a (L_ctx,)
+            # Inference-side per-key logit bias on cross-attn QK^T rows.
+            # None = off/identity; a (L_ctx,)
             # tensor routes this call through SDPA's additive attn_mask. Set
             # via library.inference.adapters.set_xattn_kbias.
             self.register_buffer("_ctx_k_bias", None, persistent=False)
@@ -1118,10 +1118,10 @@ class Block(nn.Module):
         self.gradient_checkpointing = False
         self.unsloth_offload_checkpointing = False
 
-        # Inference-side cross-attn residual gain (frontload_text_boost arm b).
+        # Inference-side cross-attn residual gain (--xattn_boost).
         # Non-persistent so the sampler can retune per-step via fill_(). 1.0 = identity.
         self.register_buffer("_xattn_gain", torch.ones(()), persistent=False)
-        # Norm-matched variant (arm g): rescales post-cross-attn state back to
+        # Norm-matched variant: rescales post-cross-attn state back to
         # its gain=1.0 norm so the trained norm shell isn't left. pertoken=False
         # uses the per-image mean instead. frac ρ applies scale**ρ. False = identity.
         self._xattn_renorm = False
@@ -1306,7 +1306,8 @@ class Block(nn.Module):
 class Anima(nn.Module):
     """Cosmos-Predict2 DiT model for image/video generation.
 
-    28 transformer blocks with AdaLN-LoRA modulation, 3D RoPE, and optional LLM Adapter.
+    ``num_blocks`` transformer blocks (28 on base; the loader reads depth off the
+    checkpoint) with AdaLN-LoRA modulation, 3D RoPE, and optional LLM Adapter.
     """
 
     LATENT_CHANNELS = 16
@@ -1441,7 +1442,8 @@ class Anima(nn.Module):
         self.enable_pooled_text_modulation = False
 
         # Mod-guidance state as non-persistent buffers (zeros=off), unconditional
-        # so forward math stays branch-free. Setters in library/inference/mod_guidance.py.
+        # so forward math stays branch-free. Setters in
+        # library/inference/corrections/mod_guidance.py.
         self.register_buffer(
             "_mod_guidance_delta",
             torch.zeros(1, model_channels),
@@ -1532,7 +1534,7 @@ class Anima(nn.Module):
         if not self.training:
             # Block.forward gates checkpointing on self.training, so enabling it
             # in eval mode (e.g. via the inference loader) is silently inert —
-            # still OOMs with no signal. Warn once. (issues.md DX1)
+            # still OOMs with no signal. Warn once.
             logger.warning(
                 "enable_gradient_checkpointing() called but module is in eval mode "
                 "— checkpointing is inert until you call .train() (Block.forward "
@@ -1589,9 +1591,8 @@ class Anima(nn.Module):
             n = n_token_families
         else:
             n = token_count_families((1024,))
-        # pin_dynamo_limit, not plain assignment: the budget is a ContextVar that
-        # reverts to the default 8 in the backward compile context — a wide
-        # multi-scale run would silently spill to eager without pinning .default.
+        # pin_dynamo_limit, not plain assignment: a plain override reverts in the
+        # backward compile context (see library/runtime/dynamo.py).
         limit = pin_dynamo_limit("recompile_limit", 2 * n + 8)
 
         # dynamic_seq marks only the seq axis dynamic (not torch.compile(dynamic=True)).
@@ -1612,13 +1613,10 @@ class Anima(nn.Module):
             # GOTCHA: inductor's mix-order-reduction fusion (torch 2.12,
             # default-on) records a guard_or_true(Ge(seq, 4096)) that contradicts
             # any dynamic-seq mark range straddling 4096 -> ConstraintViolationError.
-            # MUST pin via pin_inductor_flag, not plain assignment — inductor
-            # config overrides are thread-local ContextVars and a plain override
-            # is absent in the grad-enabled step-0 compile context.
-            # Per-band mode pins only when some band actually straddles 4096
-            # (a tight band entirely on one side of it can't contradict the
-            # guard). Union mode keeps today's unconditional pin — Phase 0
-            # leaves the flag-off path byte-identical.
+            # MUST pin via pin_inductor_flag, not plain assignment (see
+            # library/runtime/dynamo.py). Per-band mode pins only when some band
+            # actually straddles 4096 (a tight band entirely on one side of it
+            # can't contradict the guard); union mode pins unconditionally.
             straddles_4096 = (
                 any(lo < 4096 <= hi for lo, hi in self._dynamic_seq_bands)
                 if seq_bands
@@ -1781,7 +1779,7 @@ class Anima(nn.Module):
     def move_to_device_except_swap_blocks(self, device: torch.device):
         if self.blocks_to_swap:
             save_blocks = self.blocks
-            self.blocks = None  # Use None to skip .to() on blocks (consistent with flux_models.py)
+            self.blocks = None  # Use None to skip .to() on blocks
 
         self.to(device)
 
@@ -2048,7 +2046,7 @@ class Anima(nn.Module):
             )
 
         # No self-attn pad-mask: native shapes never have padded KV positions, so
-        # selfattn_block_mask stays None (legacy pad-to-static path is gone).
+        # selfattn_block_mask stays None.
         feature_sink = {} if return_block_features is not None else None
         stop_after_block = (
             max(return_block_features)

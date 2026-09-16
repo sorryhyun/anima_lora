@@ -2,10 +2,9 @@
 #
 # Pure read-side machinery — balance loss, router stats, up-weight grad-norm
 # diagnostics, ortho regularization, and the log-step ``metrics`` aggregator.
-# Split out of network.py to keep the assembly/runtime core readable; these
-# methods only ever read instance state (``self.cfg``, ``self.unet_loras``,
+# These methods only read instance state (``self.cfg``, ``self.unet_loras``,
 # the router handles, the per-step caches) that network.py owns. Mixed into
-# ``LoRANetwork`` so every method is still ``network.<method>()``.
+# ``LoRANetwork``.
 
 import math
 from typing import Dict, List, Optional, Union
@@ -126,8 +125,8 @@ class _NetworkMetricsMixin:
             fraction replaced by a smoothed running usage estimate), robust at
             ``train_batch_size=1`` where per-microbatch Switch collapses to a
             per-sample uniformity penalty. See the inline note below.
-          * freq — per-module Switch balance (unchanged; FEI passthrough /
-            FreqRouter gates are already batch-meaningful).
+          * freq — per-module Switch balance (FEI passthrough / FreqRouter
+            gates are already batch-meaningful).
         Combined with ``_balance_w_content`` / ``_balance_w_freq``. Warmup is
         asymmetric: the content pool rides ``_balance_loss_weight`` (held at 0
         during warmup); the freq pool bypasses warmup since the FreqRouter has
@@ -223,7 +222,7 @@ class _NetworkMetricsMixin:
         Vectorized: gates with matching E are stacked into one ``(M, B, E)``
         tensor reduced in a single pass per metric (~10 launches regardless of
         module count vs ~500 for the per-module loop — see
-        ``docs/optimizations/nsys_analysis_0503.md``). Memoized on
+        ``docs/optimizations/hydra_analysis.md``). Memoized on
         ``_router_stats_cache``, invalidated by ``clear_step_caches``.
         """
         if self._router_stats_cache is not None:
@@ -328,8 +327,8 @@ class _NetworkMetricsMixin:
 
         Chimera's ``_last_gate`` is ``cat([π_c, π_f])`` summing to 2, so a
         single argmax over the concat is doubly misleading. Report each pool
-        independently with **mean gates** (see
-        ``[[project_fera_expert_usage_mean_gates]]``): content π_c aggregated
+        independently with **mean gates** (argmax breaks ties to index 0):
+        content π_c aggregated
         across modules; freq π_f read once from ``freq_router._last_gates``
         (broadcast identically to every module). Entropy is normalized per pool
         by ``log(K_pool)``. Empty dict on non-chimera nets / no cached gate.
@@ -415,9 +414,8 @@ class _NetworkMetricsMixin:
         min_rank = max(0, min(min_rank, max_rank))
         has_tlora_split = use_tlora and 0 < min_rank < max_rank
 
-        # Collect grads first; reduce in a few fused passes (the naive per-module
-        # loop stalled the post-backward boundary by 100s of ms on log steps —
-        # docs/optimizations/nsys_analysis_0503.md).
+        # Collect grads first; reduce in a few fused passes (a per-module loop
+        # stalls the post-backward boundary by 100s of ms on log steps).
         up_grads: List[torch.Tensor] = []  # each (E, out_i, R)
         sp_grads: List[torch.Tensor] = []  # each (E, r, r)
         expert_band_ref: Optional[torch.Tensor] = None

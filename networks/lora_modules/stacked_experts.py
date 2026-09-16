@@ -1,5 +1,5 @@
 # StackedExpertsLoRAModule: FeRA-style independent-A multi-LoRA experts (see
-# networks/CLAUDE.md § LoRA variants). Each expert owns its own
+# the `lora-routing` skill's variant matrix). Each expert owns its own
 # (lora_down, lora_up) — distinct from Hydra's shared-A layout. Carries no
 # router; gates arrive via `_routing_weights` from the network-level
 # GlobalRouter (cfg.route_per_layer=False).
@@ -185,8 +185,7 @@ class StackedExpertsLoRAModule(RouterStateMixin, BaseLoRAModule):
             adapter = torch.nn.functional.linear(mid, self.P_basis)
         else:
             # Compute in the model dtype (org_forwarded.dtype), not fp32 — see
-            # the dtype-policy note in base.py's forward(); the old .float()
-            # operands OOMed for zero numeric gain under autocast.
+            # the dtype-policy note in base.py's forward().
             compute_dtype = org_forwarded.dtype
             x_lora = self._rebalance(x.to(compute_dtype))
 

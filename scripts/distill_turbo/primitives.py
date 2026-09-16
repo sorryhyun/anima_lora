@@ -1,10 +1,8 @@
 """Re-noising, τ samplers, and shared loop-side helpers.
 
-These were the first copy of the distillation per-step primitives; they have
-since been promoted to ``library/training`` and ``library/datasets`` so the
-other distillation loops (``project/finished/mod_guidance``)
-share one implementation. This module is now a thin compatibility shim — the
-turbo loop imports the same names from here as before.
+Re-exports the shared per-step primitives from ``library/training`` and
+``library/datasets`` under the names the turbo loop imports, plus turbo-only
+helpers (τ-bank routing, CDM grid/extrapolation, GAN ramp, scheduler).
 """
 
 from __future__ import annotations
@@ -94,8 +92,8 @@ def cdm_extrapolate(
     (large, possibly noiseward) stride to ``t' ~ U(0,1)`` instead of the next
     grid point. Inputs are DETACHED and the result is a plain fp32 tensor with
     no graph: the extrapolation is a launch point for one fresh grad-bearing
-    student forward, not a second BPTT chain (the deliberate deviation
-    documented in docs/proposal/cdm.md Phase 1 — mirrors the DM renoise path).
+    student forward, not a second BPTT chain (a deliberate deviation from the
+    paper; mirrors the DM renoise path).
     ``t_to`` is per-sample ``(B,)``, broadcast against ``x``'s trailing dims.
     """
     stride = t_to.detach().float().view(-1, *([1] * (x.dim() - 1))) - s_from
@@ -123,10 +121,9 @@ def gan_effective_weight(cfg, step: int) -> float:
 def make_scheduler(opt, total_steps: int, lr: float):
     """Warmup (2% of ``total_steps``, ≥1 step) → cosine annealing to ``0.1·lr``.
 
-    Cosine is the only shape: the ``lr_schedule="constant"`` variant was tried
-    (superturbo_B2) and closed — it never settles (full-magnitude updates to the
-    last step, ~5-10x the annealed per-step displacement) and rendered worse
-    than the cosine twin. The tail is settling, not dead time.
+    Cosine is the only shape: a constant schedule never settles (full-magnitude
+    updates to the last step) and rendered worse. The tail is settling, not
+    dead time.
     """
     warmup_steps = max(1, int(0.02 * total_steps))
     return make_warmup_cosine_scheduler(

@@ -3,9 +3,8 @@
 On Windows, ``subprocess`` launches of a *console* program (``git``,
 ``nvidia-smi``, ``powershell`` …) flash a console window on screen unless
 ``CREATE_NO_WINDOW`` is passed. The daemon's GPU-occupancy poll and the
-per-checkpoint ModelSpec git query fire repeatedly, so on Windows users see a
-terminal blink several times whenever a checkpoint is written — cosmetic but
-alarming.
+per-checkpoint ModelSpec git query fire repeatedly, so without it a terminal
+blinks several times whenever a checkpoint is written.
 
 This is distinct from the *job launcher* (``anima_daemon/proc.py``), which
 spawns the trainer under ``pythonw.exe``: ``CREATE_NO_WINDOW`` doesn't survive
@@ -54,15 +53,12 @@ def install_no_window_default() -> None:
     ``DETACHED_PROCESS``/``CREATE_NEW_PROCESS_GROUP``, we OR in
     ``CREATE_NO_WINDOW`` before delegating.
 
-    Why this exists: ``torch.compile`` (inductor + Triton) shells out to
-    ``ptxas.exe`` / ``cl.exe`` / ``cuobjdump.exe`` per generated kernel during
-    the first training step. Those call sites are inside PyTorch / Triton —
-    we can't pass ``no_window_kwargs()`` there. If the Python parent ends up
-    with no inherited console (uv-venv ``python.exe`` trampoline re-exec,
-    pythonw.exe GUI parent, certain double-click launchers), Windows allocates
-    a fresh **visible** console for each grandchild → the "lots of terminal
-    flash" effect users report at training start. Pre-allocating a hidden
-    console here flips those grandchildren over to inheriting it.
+    ``torch.compile`` (inductor + Triton) shells out to ``ptxas.exe`` /
+    ``cl.exe`` / ``cuobjdump.exe`` per generated kernel during the first
+    training step, from call sites that can't take ``no_window_kwargs()``. If
+    the Python parent has no inherited console (uv-venv ``python.exe``
+    trampoline re-exec, pythonw.exe GUI parent, some double-click launchers),
+    Windows allocates a fresh **visible** console for each grandchild.
 
     Safe defaults: ptxas / cl / cuobjdump never read from a console and their
     stdout/stderr are always captured via pipes by torch — losing the visible

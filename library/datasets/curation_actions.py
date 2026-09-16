@@ -12,10 +12,8 @@ ledger as extra ``--skip`` (``ResizeRequest.excluded_dir``), which is the one
 place an excluded image could come back, and every later stage walks the
 resized tree — so the image never trains. :func:`restore_rels` reverses it.
 
-Before anime_tools 0.6 the GUI's Delete gesture moved the *source* image to
-``post_image_dataset/moved/`` and left the resized copy and its caches behind,
-so a "moved" image could still be cached and trained. A ``moved/`` tree on
-disk is inert and can be deleted or restored by hand.
+A ``post_image_dataset/moved/`` tree is the pre-0.6 mechanism and is inert; it
+can be deleted or restored by hand.
 """
 
 from __future__ import annotations
@@ -176,9 +174,7 @@ def load_curation_decisions(
 ) -> dict[str, dict[str, Any]]:
     """Load per-image preprocess decisions from JSON.
 
-    The file is intentionally optional. Missing or malformed files behave as an
-    empty decision set so normal CLI preprocess remains unchanged unless a GUI
-    decision file is present.
+    Missing or malformed files behave as an empty decision set.
     """
 
     if not path:

@@ -27,15 +27,13 @@ logger = logging.getLogger(__name__)
 
 
 # Colorization (and other cond≠target tasks) pair a synthetic *condition* latent
-# with each target. Staging (easycontrol_adapters/colorization/prep.py) decides
-# which targets get a condition synthesized via the descriptor's
-# `[staging].only_data_includes` / `exclude_data_includes` tag filters (net set =
-# only − exclude). The tag scan below backs that staging-time selection (the colorize
-# targets live under post_image_dataset/resized/ with no .txt sidecar, so tags are
-# read from the caption master in image_dataset/). At *train* time the loader does
-# NOT re-scan tags — it simply keeps the targets that actually have a cached cond
-# latent (see the cond_cache_dir branch below), so whatever staging selected is
-# paired out automatically.
+# with each target. Staging (easycontrol_adapters/colorization/prep.py) selects
+# targets via the descriptor's `[staging].only_data_includes` /
+# `exclude_data_includes` tag filters (net set = only − exclude), backed by the
+# tag scan below (tags come from the caption master in image_dataset/; the
+# colorize targets under post_image_dataset/resized/ have no .txt sidecar). At
+# train time the loader does not re-scan tags — it keeps the targets that have a
+# cached cond latent (the cond_cache_dir branch below).
 _tag_stems_cache: dict = {}
 
 
@@ -278,13 +276,10 @@ class DreamBoothDataset(BaseDataset):
 
             # cond≠target task (cond_cache_dir set): keep only the targets that
             # actually have a cached condition latent — BEFORE reading captions.
-            # Staging's tag filters ([staging].only_data_includes /
-            # exclude_data_includes) synthesize a cond + text cache for only a
-            # subset of the shared `resized` corpus, but image_dir still
-            # enumerates the whole corpus. Filtering here (rather than after the
-            # caption read, as this used to) keeps the TE-cache check below from
-            # spamming "neither caption file nor class tokens" for the thousands
-            # of unpaired targets we're about to drop anyway. A target with no
+            # Staging synthesizes a cond + text cache for only a subset of the
+            # shared `resized` corpus while image_dir enumerates all of it;
+            # filtering first keeps the TE-cache check below from warning
+            # "neither caption file nor class tokens" for every unpaired target. A target with no
             # cond latent would also crash at load time (_load_cond_latent raises).
             if getattr(subset, "cond_cache_dir", None):
                 from library.io.cache import discover_latents_by_stem

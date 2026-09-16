@@ -1,5 +1,5 @@
 """Resident Anima Tagger worker — the autotag subprocess-protocol state machine
-split out of ``image_tab.py``.
+used by ``image_tab.py``.
 
 ``_AutotagWorker`` owns the ``QProcess`` lifetime, the stdio sentinel protocol,
 and the idle/GPU-watch timers; it never touches a widget. ``ImageViewerTab``

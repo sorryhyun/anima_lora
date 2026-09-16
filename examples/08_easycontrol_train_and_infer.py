@@ -3,25 +3,22 @@
 
 EasyControl is *image-conditioned* generation — a frozen DiT with per-block
 condition-LoRA on self-attn (q/k/v/o) + FFN, gated by a learned scalar `b_cond`
-(extended self-attention over the reference image's VAE latent). Unlike the
-text-only LoRA flows, it has two halves worth showing together:
+(extended self-attention over the reference image's VAE latent):
 
   1. **Training** is a *normal* `--method easycontrol`. The self-contained config
      `configs/easycontrol/easycontrol.toml` carries both the method settings AND
      an inline dataset blueprint (paired source→target — here ref==target, like
      IP-Adapter v1), and `_resolve_method_path` auto-discovers the per-method dir
-     over the flat `configs/methods/`. So it rides the *exact same* merge-chain +
-     `AnimaTrainer().train()` path as `examples/02_config_and_train.py` — the only
-     difference is the method name. Source images + `.txt` captions go in
-     `easycontrol-dataset/`; caches are redirected to
+     over the flat `configs/methods/`. It uses the same merge-chain +
+     `AnimaTrainer().train()` path as `examples/02_config_and_train.py`. Source
+     images + `.txt` captions go in `easycontrol-dataset/`; caches are redirected to
      `post_image_dataset/easycontrol/` via the subset `cache_dir`.
 
   2. **Inference** is request-driven like `01`/`03`, but adds two typed fields the
      other flows leave unset: `easycontrol_weight` (the trained adapter) and
-     `easycontrol_image` (the reference). `GenerationRequest` models both as
-     first-class fields — no `extra_argv` needed for them. The two remaining
-     knobs (`--easycontrol_image_match_size`, `--easycontrol_scale`) aren't typed,
-     so they ride `extra_argv` exactly like the corrections in `03`.
+     `easycontrol_image` (the reference). The untyped knobs
+     (`--easycontrol_image_match_size`, `--easycontrol_scale`) ride `extra_argv`
+     as in `03`.
 
 Three parts, each opt-in so the cheap one runs by default:
 
@@ -42,8 +39,6 @@ from pathlib import Path
 
 import torch
 
-# Curated entry points on the `anima_lora` front door (thin lazy re-export),
-# spelled through its grouped namespaces.
 from anima_lora.config import load_method_preset
 from anima_lora.inference import (
     GenerationRequest,
@@ -61,9 +56,8 @@ DIT = _ckpt.dit
 VAE = _ckpt.vae
 TEXT_ENCODER = _ckpt.text_encoder
 
-# The keys EasyControl's method file forces on top of base+preset — what makes
-# this an image-conditioning run rather than a text-only LoRA. (See the merge
-# chain: method settings win over preset on overlap.)
+# The keys EasyControl's method file sets on top of base+preset (method settings
+# win over preset on overlap).
 EASYCONTROL_KEYS = (
     "network_module",
     "network_dim",
@@ -77,8 +71,7 @@ EASYCONTROL_KEYS = (
 def show_config(preset: str) -> dict:
     """Part 1 — merge + print the EasyControl-defining keys with provenance.
 
-    Identical helper to examples/02, just pinned to `--method easycontrol` and
-    its method-specific keys. No GPU, no weights.
+    Same helper as examples/02, pinned to `--method easycontrol`. No GPU.
     """
     merged, provenance = load_method_preset(
         "easycontrol", preset, return_provenance=True
@@ -96,11 +89,9 @@ def show_config(preset: str) -> dict:
 def run_training(preset: str, extra_argv: list[str]) -> None:
     """Part 2 — reproduce train.py's __main__ block for `--method easycontrol`.
 
-    Byte-for-byte the same wiring as examples/02's run_training (setup_parser →
-    populate_schema → parse → read_config_from_file → AnimaTrainer().train); the
-    only change is the hard-coded method. EasyControl is not special here — the
-    frozen-DiT + cond-LoRA build happens inside AnimaTrainer, driven entirely by
-    the resolved config.
+    Same wiring as examples/02's run_training with the method fixed; the
+    frozen-DiT + cond-LoRA build happens inside AnimaTrainer from the resolved
+    config.
     """
     from library.config import schema as config_schema
 
@@ -129,8 +120,7 @@ def run_training(preset: str, extra_argv: list[str]) -> None:
 
 def _latest_easycontrol_weight() -> str:
     """Newest `anima_easycontrol*.safetensors` under output/ckpt/ (matches the
-    `output_name` in the method config). Mirrors how `make test-easycontrol`
-    resolves the weight via `latest_output('anima_easycontrol')`."""
+    `output_name` in the method config)."""
     ckpt_dir = Path("output/ckpt")
     cands = sorted(
         ckpt_dir.glob("anima_easycontrol*.safetensors"),
@@ -148,11 +138,9 @@ def _latest_easycontrol_weight() -> str:
 def run_inference(opts: argparse.Namespace) -> None:
     """Part 3 — image-conditioned generation with the trained adapter.
 
-    Same request → generate → decode → save flow as 01/03, but with the two
-    EasyControl typed fields populated. `--easycontrol_image_match_size` (resize
-    the cond latent to the generation size) and `--easycontrol_scale` (cond
-    strength) aren't typed fields, so they ride `extra_argv` — the same escape
-    hatch 03 uses for the sampler corrections.
+    Same flow as 01/03 with the two EasyControl typed fields set.
+    `--easycontrol_image_match_size` (resize the cond latent to the generation
+    size) and `--easycontrol_scale` (cond strength) ride `extra_argv`.
     """
     weight = opts.weight or _latest_easycontrol_weight()
 
@@ -170,9 +158,9 @@ def run_inference(opts: argparse.Namespace) -> None:
         guidance_scale=opts.cfg,
         image_size=tuple(opts.size),  # (H, W)
         seed=opts.seed,
-        easycontrol_weight=weight,  # typed field — no extra_argv needed
-        easycontrol_image=opts.ref,  # typed field — the reference image
-        extra_argv=extra,  # the untyped knobs (match_size / scale)
+        easycontrol_weight=weight,
+        easycontrol_image=opts.ref,
+        extra_argv=extra,  # untyped knobs (match_size / scale)
     )
     print(f"easycontrol_weight = {weight}")
     print(f"easycontrol_image  = {opts.ref}")
@@ -200,8 +188,7 @@ def run_inference(opts: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    # parse_known_args so training overrides (e.g. --max_train_epochs 6) forward
-    # verbatim to the trainer, exactly like the CLI override layer in 02.
+    # parse_known_args: unknown args (e.g. --max_train_epochs 6) go to the trainer.
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--preset", default="default")
     p.add_argument(
@@ -245,8 +232,7 @@ def main() -> None:
         run_inference(opts)
         return
 
-    # Default (cheap): just show the merged config — what `--method easycontrol`
-    # resolves to before any weight is touched.
+    # Default: show the merged config.
     show_config(opts.preset)
 
 

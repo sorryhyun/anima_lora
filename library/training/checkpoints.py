@@ -210,12 +210,6 @@ def save_sd_model_on_train_end_common(
 class CheckpointSaver:
     """Owns every save / remove operation across a training run.
 
-    Replaces the cluster of save_model / remove_model / save_model_hook /
-    load_model_hook closures and the inline save-tick blocks scattered through
-    train(). State that used to live in closures (metadata refs, save_dtype,
-    sai-spec callable, mp.Value handles, ``steps_from_state``) becomes
-    instance attributes.
-
     ``metadata`` is a shared mutable dict — the trainer also writes
     ``ss_epoch`` between saves; the saver only writes during a save.
     """
@@ -241,7 +235,7 @@ class CheckpointSaver:
         self.get_sai_model_spec_fn = get_sai_model_spec_fn
         self.current_epoch = current_epoch
         self.current_step = current_step
-        # Optional structured-progress sink (Phase 0). When set, every
+        # Optional structured-progress sink. When set, every
         # checkpoint write emits a ``ckpt`` event.
         self.progress_sink = progress_sink
         # Set by the load_state pre-hook when resuming. Read by train() to

@@ -30,8 +30,8 @@ import torch
 def radial_bins(h: int, w: int, n_bins: int) -> tuple[np.ndarray, np.ndarray]:
     """Radial-frequency bin index per FFT cell + bin centers in [0, 1].
 
-    Kept identical to ``scripts/calibration/gamma_probe.py::_radial_bins`` (library may not
-    import from bench/). The normalization (r / r.max()) makes the bin *centers*
+    Kept identical to ``scripts/calibration/gamma_probe.py::_radial_bins``. The
+    normalization (r / r.max()) makes the bin *centers*
     independent of (h, w), so a γ matrix calibrated at one aspect's grid maps
     cleanly onto another shape's radial map by bin index.
     """
@@ -49,7 +49,7 @@ class CNSRecolorer:
     """Recolors per-step SDE white noise from a precomputed γ(f, t) matrix.
 
     γ is stored per aspect (the spectral content — hence the staircase — shifts
-    with aspect; cf. Phase 0 cfg×aspect sharpening). On first use the recolorer
+    with aspect). On first use the recolorer
     locks onto the calibrated aspect closest in aspect-ratio to the inference
     latent shape, then for each step σ-interpolates γ (robust to a step-count or
     flow_shift mismatch vs the calibration schedule) and applies::

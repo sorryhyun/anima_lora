@@ -221,14 +221,12 @@ def fm_training_batch(
     dtype: torch.dtype = torch.float32,
     noise_scheduler: Optional[object] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """The default rectified-flow training step, as plain kwargs (issues.md DX2).
+    """The default rectified-flow training step, as plain kwargs.
 
-    Bench/adjacent code that wants a faithful FM step should call this instead
-    of reassembling ``get_noisy_model_input_and_timesteps`` (needs a full ``args``
-    Namespace + a scheduler) and then re-deriving the target by hand. This is the
-    exact recipe ``train.py`` runs — it delegates to the same function under the
-    hood (the ``tests/test_fm_training_batch.py`` invariant pins the bit-match),
-    with the trainer's argument **defaults** baked in as kwarg defaults.
+    The exact recipe ``train.py`` runs, without a full ``args`` Namespace or a
+    scheduler — it delegates to ``get_noisy_model_input_and_timesteps``
+    (``tests/test_fm_training_batch.py`` pins the bit-match), with the trainer's
+    argument **defaults** baked in as kwarg defaults.
 
     Args:
         latents: clean latents ``(B, C, H, W)`` (or 5D — ndim is honored).

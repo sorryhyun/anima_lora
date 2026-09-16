@@ -150,8 +150,7 @@ def load_mask_from_dir(
         image_dir: Optional source root. When set, the relative subpath from
             ``image_dir`` to ``image_path`` is mirrored under ``mask_dir``,
             matching the nested-output layout produced by the mask writers.
-            Falls back to the legacy flat lookup if no nested file exists so
-            old caches keep working mid-migration.
+            Falls back to the legacy flat lookup if no nested file exists.
 
     Returns:
         Float tensor [H, W] in [0, 1] range, or None if no mask file found.
@@ -526,7 +525,7 @@ def glob_images(directory, base="*", recursive: bool = False):
 def _assert_unique_stems(img_paths, source_label: str = "directory") -> None:
     """Raise if two image paths share a stem *within the same subfolder*.
 
-    Cache filenames are stem-keyed and the cache layout now mirrors the
+    Cache filenames are stem-keyed and the cache layout mirrors the
     source-tree subfolder structure, so the collision constraint is local:
     two ``cover.png`` files in different character folders are fine, but
     two files with the same stem in the same folder (e.g. ``cover.png`` +

@@ -4,16 +4,13 @@ Each ComfyUI node tries to import the live ``library.*`` first, falling back
 to a bundled vendor copy when the host install isn't sitting inside the
 anima_lora repo. This script keeps those vendor copies fresh.
 
-Four targets (the tagger node no longer vendors anything — it depends on the
-``anime_tools`` package and lives in that repo, ``anime_tools/comfyui/anima_tagger/``):
+Four targets:
 
 * ``custom_nodes/comfyui-anima-directedit/_vendor/`` — directedit primitives,
   trimmed sampling helper, the trimmed ``CONSTANT_TOKEN_BUCKETS`` constant,
   and a tiny ``library.anima.models`` stub so the lazy ``Anima`` annotation
-  resolves. DirectEdit no longer pulls in AnimaTagger / vision / edit
-  dispatcher — its node consumes ``source_tag`` / ``target_tag`` STRINGs
-  directly, with image-driven captioning handled externally by
-  ``AnimaTaggerCaption``.
+  resolves. The node consumes ``source_tag`` / ``target_tag`` STRINGs
+  directly (no tagger / vision / edit dispatcher vendored).
 * ``ComfyUI-Anima_lora-Adapter/_vendor/`` — the pure-compute router kernels
   imported by ``adapter.py`` + ``fera.py`` (FEI 2-band / n-band, σ sinusoidal
   features, σ-band partition mask). This node was **extracted to a standalone
@@ -43,9 +40,8 @@ Four targets (the tagger node no longer vendors anything — it depends on the
   hydralora target this is a standalone published repo (default a sibling of
   anima_lora's parent; override ``ANIMA_SPECTRUM_NODE_REPO``); sync_vendor writes
   the tree *into that repo*. Each core is torch/numpy only — no ``comfy`` and no
-  anima-model imports — so drift between the live tree and the vendored copy is
-  the bug class this target eliminates. Skipped (with a warning) when the repo
-  isn't checked out beside anima_lora.
+  anima-model imports. Skipped (with a warning) when the repo isn't checked out
+  beside anima_lora.
 
 Run before bumping a node version / publishing:
 
@@ -65,9 +61,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DIRECTEDIT_VENDOR = ROOT / "custom_nodes" / "comfyui-anima-directedit" / "_vendor"
 TRAINER_VENDOR = ROOT / "custom_nodes" / "comfyui-anima-trainer" / "_vendor"
 
-# The hydralora node (Anima Adapter Loader) is a standalone published repo;
-# sync_vendor writes its router-kernel vendor tree *into that repo*. Default is
-# a sibling checkout; override with ``ANIMA_ADAPTER_NODE_REPO``.
+# Standalone node repos (see module docstring); override via env.
 ADAPTER_NODE_REPO = Path(
     os.environ.get(
         "ANIMA_ADAPTER_NODE_REPO", ROOT.parents[1] / "ComfyUI-Anima_lora-Adapter"
@@ -75,11 +69,6 @@ ADAPTER_NODE_REPO = Path(
 )
 HYDRALORA_VENDOR = ADAPTER_NODE_REPO / "_vendor"
 
-# The Spectrum KSampler is also a standalone published repo (default a sibling of
-# anima_lora's parent; override with ``ANIMA_SPECTRUM_NODE_REPO``). sync_vendor
-# writes the pure-compute *_core kernels (FSG / SMC / CNS / SPD numerics)
-# into its ``_vendor/`` tree. The node imports the live ``library.*`` / ``networks.*``
-# first and falls back to this tree when installed outside the repo.
 SPECTRUM_NODE_REPO = Path(
     os.environ.get(
         "ANIMA_SPECTRUM_NODE_REPO", ROOT.parents[1] / "ComfyUI-Spectrum-KSampler"
@@ -249,10 +238,8 @@ def build_directedit_vendor() -> None:
     _write_trimmed(DIRECTEDIT_VENDOR, _resolve_directedit_trimmed())
 
 
-# Hydralora vendor tree — pure-compute kernels for adapter.py + fera.py in the
-# standalone ComfyUI-Anima_lora-Adapter repo. router_compute.py is the single
-# import surface; it pulls fei.py + router_state.py transitively, so all three
-# are vendored verbatim (router weights are bit-sensitive to these kernels).
+# Hydralora vendor tree (see module docstring; router weights are bit-sensitive
+# to these kernels).
 HYDRALORA_VERBATIM: list[tuple[str, str]] = [
     ("library/inference/router_compute.py", "library/inference/router_compute.py"),
     ("library/runtime/fei.py", "library/runtime/fei.py"),
@@ -294,11 +281,8 @@ def build_hydralora_vendor() -> None:
     _copy_verbatim(HYDRALORA_VENDOR, HYDRALORA_VERBATIM)
 
 
-# Trainer vendor tree — the stdlib daemon *client* the trainer node submits
-# jobs through. config.py + client.py copied verbatim (pure stdlib); proc.py
-# trimmed to read_pidfile only — dropping its psutil import keeps the vendored
-# client pure-stdlib (the node never auto-starts the daemon, so spawn/kill is
-# never exercised).
+# Trainer vendor tree (see module docstring): proc.py is trimmed to
+# read_pidfile so the vendored client stays pure-stdlib.
 TRAINER_VERBATIM: list[tuple[str, str]] = [
     ("anima_daemon/config.py", "anima_daemon/config.py"),
     ("anima_daemon/client.py", "anima_daemon/client.py"),
@@ -353,11 +337,7 @@ def build_trainer_vendor() -> None:
     _write_trimmed(TRAINER_VENDOR, TRAINER_TRIMMED)
 
 
-# Spectrum vendor tree — the pure-compute ``*_core`` kernels shared verbatim
-# between the library's sampler-boundary plugins and the node's ComfyUI seam
-# wrappers. Each core is torch/numpy only (no comfy / no anima-model imports),
-# so the copied files' internal imports keep working unchanged. The node files
-# import the live ``library.*`` / ``networks.*`` first and fall back to this tree.
+# Spectrum vendor tree (see module docstring).
 SPECTRUM_VERBATIM: list[tuple[str, str]] = [
     (
         "library/inference/corrections/fsg_core.py",
@@ -371,17 +351,15 @@ SPECTRUM_VERBATIM: list[tuple[str, str]] = [
         "library/inference/corrections/smc_cfg.py",
     ),
     # Mod-guidance projection (σ-flat / σ-FiLM pooled-text head) + per-block
-    # schedule. The node imports project_pooled / build_block_schedule from here,
-    # replacing its hand-mirrored _project / _project_film / _build_schedule.
+    # schedule. The node imports project_pooled / build_block_schedule from here.
     (
         "library/inference/corrections/mod_guidance_core.py",
         "library/inference/corrections/mod_guidance_core.py",
     ),
     # Spectrum Chebyshev forecasters (ChebyshevForecaster + SpectrumPredictor) +
-    # the SEA cache-decision metric / auto-δ calibration. Both are pure torch and
-    # were hand-mirrored node-side (forecaster.py + the verbatim-ported SEA math);
-    # the node now imports them and keeps only its ComfyUI seam (disk δ-cache,
-    # model_function_wrapper state machine).
+    # the SEA cache-decision metric / auto-δ calibration (pure torch). The node
+    # keeps only its ComfyUI seam (disk δ-cache, model_function_wrapper state
+    # machine).
     ("networks/spectrum_forecast.py", "networks/spectrum_forecast.py"),
     ("networks/spectrum_sea.py", "networks/spectrum_sea.py"),
     # SPD spectral primitives (DCT helpers + spectral_expand geometry). The node

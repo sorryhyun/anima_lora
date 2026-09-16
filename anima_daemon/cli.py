@@ -1,10 +1,8 @@
 """Client-side verbs for ``python -m anima_daemon`` — submit / wait / status / prune.
 
-The command-line front door to ``DaemonClient``, kept in the daemon package
-(rather than ``scripts/tasks/``) so it works from a bare checkout, a vendored
-node tree, or an agent shell — no ``tasks.py`` import, no ``library.*``, stdlib
-only. (``prune`` is state-dir maintenance rather than a client call, but rides
-the same front door under the same stdlib-only rule.)
+The command-line front door to ``DaemonClient``. Imports neither ``tasks.py``
+nor ``library.*``, so it works from a bare checkout, a vendored node tree, or
+an agent shell. ``prune`` is filesystem maintenance, not a client call.
 
     python -m anima_daemon submit [--label L] [--stall-timeout S] [--wait]
                                   [--hold] -- <argv…>
@@ -36,15 +34,10 @@ def _label_for(argv: list[str]) -> str:
     plus the child's own ``--label`` when it has one.
 
     ``["project/x/bench/run_pair_census.py", "--limit", "5"]`` → ``run_pair_census``;
-    ``["-m", "scripts.distill_turbo.distill"]`` → ``distill``. An inline
-    ``python -c <src>`` has no name to take, so it stays ``command`` rather than
-    becoming a slice of source code.
-
-    A ``--label`` after the script path belongs to the child (bench scripts take
-    one of their own). When the daemon side was given no label, borrow the
-    child's so a grid of N runs doesn't render as N identical rows:
-    ``run_bench --label ko3_a`` → ``run_bench:ko3_a``. Display only — the child
-    argv is passed through untouched either way.
+    ``["-m", "scripts.distill_turbo.distill"]`` → ``distill``; ``-c <src>`` →
+    ``command``. A child ``--label`` is appended: ``run_bench --label ko3_a`` →
+    ``run_bench:ko3_a``. Display only — the child argv is passed through
+    untouched.
     """
     name = None
     for i, tok in enumerate(argv):
@@ -135,9 +128,7 @@ def cmd_wait(args: argparse.Namespace) -> int:
 def _timeout_snapshot(cl, job_id: str) -> dict:
     """Where the job stands when the wait gave up — state + last progress event.
 
-    A bare ``timed out`` told a scripted caller nothing about whether the run was
-    healthy-but-slow or wedged, so the snapshot goes to stdout as JSON (the
-    timeout message itself stays on stderr).
+    Printed to stdout as JSON; the timeout message itself goes to stderr.
     """
     out: dict = {"job_id": job_id, "timed_out": True}
     try:
@@ -164,8 +155,7 @@ def _timeout_snapshot(cl, job_id: str) -> dict:
 def _wait_and_report(cl, job_id: str, *, timeout: Optional[float]) -> int:
     """Block on the job, print its final record (+ lifted result envelope), and
     return its exit code — ``124`` on wait timeout (matching ``timeout(1)``),
-    with a snapshot of where the job stands so the caller keeps the in-flight
-    status instead of an empty buffer."""
+    after printing a snapshot of where the job stands."""
     try:
         record = cl.wait(job_id, timeout=timeout)
     except LookupError as e:
@@ -211,10 +201,9 @@ def cmd_status(args: argparse.Namespace) -> int:
     if health is None:
         _print_json({"up": False, "base_url": None})
         return 1
-    # `stale_code`: the resident daemon is serving source older than the current
-    # on-disk `anima_daemon/*` (the next submit restarts it eagerly). /health
-    # carries only the raw boot `fingerprint`, so the comparison happens here —
-    # this is the only surface that reports it.
+    # `stale_code`: the daemon is serving source older than the on-disk
+    # `anima_daemon/*` (the next submit restarts it). /health carries only the
+    # boot `fingerprint`; this is the only surface that does the comparison.
     _print_json(
         {
             "up": True,
@@ -229,11 +218,9 @@ def cmd_status(args: argparse.Namespace) -> int:
 def cmd_prune(args: argparse.Namespace) -> int:
     """Sweep old terminal job dirs. Dry-run unless ``--apply``.
 
-    Pure filesystem — it does not talk to the daemon, so it works whether or not
-    one is up. With a *live* daemon the pruned jobs stay in its in-memory table
-    until its next restart (harmless: they're finished history), so the boot
-    sweep in ``manager._reconcile`` remains the primary path and this is the
-    "I want the space back now" escape hatch.
+    Pure filesystem — works whether or not a daemon is up. With a live daemon
+    the pruned jobs stay in its in-memory table until its next restart. The
+    boot sweep in ``manager._reconcile`` is the routine path.
     """
     summary = _jobs.prune_jobs(
         max_age_days=args.days,

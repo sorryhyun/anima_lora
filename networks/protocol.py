@@ -1,8 +1,7 @@
-"""Structural typing for the adapter-network surface (proposal Part B3).
+"""Structural typing for the adapter-network surface.
 
-The trainer and the inference engine already talk to adapter networks through a
-de facto interface — they never import a concrete network class, they
-``hasattr``-probe and call. Three concrete networks implement it today:
+The trainer and the inference engine never import a concrete network class;
+they ``hasattr``-probe and call. Three concrete networks implement the surface:
 
   * ``networks.lora_anima.network.LoRANetwork`` (the whole LoRA family),
   * ``networks.methods.easycontrol.EasyControlNetwork``,
@@ -10,20 +9,16 @@ de facto interface — they never import a concrete network class, they
 
 (the latter two via ``networks.methods.base.AdapterNetworkBase``).
 
-This module writes that interface down as a ``typing.Protocol`` so it is
-greppable, documented, and guarded by a contract test
-(``tests/test_adapter_protocol.py``). It is a *description*, not an enforced
+The ``typing.Protocol``s here are guarded by a contract test
+(``tests/test_adapter_protocol.py``). They are a *description*, not an enforced
 base class — the consumers keep duck-typing (``apply_router_conditioning``'s
 ``hasattr`` probes are the runtime contract). Both protocols are
 ``@runtime_checkable`` and non-data (every member is a method), so
 ``issubclass(SomeNetwork, AdapterNetwork)`` works without constructing a
 network (which would need a live DiT).
 
-Why two protocols: the core lifecycle is implemented by *every* adapter
-network; the per-step router setters live only on the LoRA family (the method
-networks have frozen-DiT splice forwards with no σ/FEI/timestep routing). The
-optional surface is split out as ``RouterConditionableNetwork`` so a checker
-can require the core everywhere and the routing surface only where it applies.
+The core lifecycle is implemented by every adapter network; the per-step
+router setters (``RouterConditionableNetwork``) live only on the LoRA family.
 """
 
 from __future__ import annotations
@@ -79,10 +74,8 @@ class RouterConditionableNetwork(Protocol):
     These are the setters ``library.training.forward.router_conditioning``
     ``hasattr``-probes each step (timestep_mask → sigma → fei) plus the
     cross-attn content router fired by the inference engine. The method
-    networks (EasyControl / SoftTokens) deliberately do NOT implement this —
-    their probes no-op. Kept separate from :class:`AdapterNetwork` so a
-    consumer can require the core lifecycle without forcing the routing surface
-    onto frozen-DiT methods.
+    networks (EasyControl / SoftTokens) do not implement it — their probes
+    no-op.
     """
 
     def set_timestep_mask(

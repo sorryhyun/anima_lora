@@ -1,6 +1,6 @@
 """In-process training — ``anima_lora.training``.
 
-The exports mirror what ``examples/02_config_and_train.py`` needs to reproduce
+The exports ``examples/02_config_and_train.py`` uses to reproduce
 ``train.py``'s ``__main__`` block from Python:
 
 | export | canonical home |
@@ -10,8 +10,7 @@ The exports mirror what ``examples/02_config_and_train.py`` needs to reproduce
 | ``resolve_network_spec`` | ``networks`` |
 
 ``train.py`` is a repo-root script, not an installed module, so it is loaded by
-path (against :data:`anima_lora.ROOT`) — the trainer is reachable from any CWD,
-same as the rest of the façade.
+path (against :data:`anima_lora.ROOT`) and works from any CWD.
 """
 
 from __future__ import annotations

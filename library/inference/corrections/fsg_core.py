@@ -12,9 +12,8 @@ FSG reframes CFG as a *fixed-point calibration*: at scheduled timesteps it runs
 ``K`` forward(conditional)–backward(unconditional) iterations over a long
 interval ``Δσ`` to pull ``x_t → x̂_t`` onto the path where the conditional and
 unconditional velocities agree, then the denoise step proceeds from ``x̂_t``.
-Training-free, checkpoint-agnostic, deterministic. See ``docs/inference/fsg.md``
-and ``docs/proposal/foresight_guidance.md``; premise/eyeball probes archived in
-``_archive/bench/fsg/``.
+Training-free, checkpoint-agnostic, deterministic. See ``docs/inference/fsg.md``;
+premise/eyeball probes archived in ``_archive/bench/fsg/``.
 
 Paper: "Towards a Golden Classifier-Free Guidance Path via Foresight Fixed
 Point Iterations" (NeurIPS 2025, arXiv 23177). The paper is ε-prediction + DDIM;
@@ -58,11 +57,10 @@ def cfgpp_guidance_weight(sigma_i: float, sigma_next: float, lam: float) -> floa
 
     Applied as ``noise_pred = v^u + w_eff·(v^c − v^u)`` this is algebraically
     identical to the Euler "calibrate x̂ = x − λ(1−σ')σ·Δv then step along v^u"
-    form — but because it's a *pure reweight of the cond/uncond combine*, it
-    composes with ANY integrator (Euler, ER-SDE, LCM): the sampler consumes the
-    reweighted prediction unchanged, no integration surgery needed. This is the
-    key to running CFG++ (and thus faithful FSG) under the production er_sde
-    sampler. At the final step (σ_next → 0) it collapses to ``w_eff = λ``.
+    form — but as a *pure reweight of the cond/uncond combine* it composes with
+    any integrator (Euler, ER-SDE, LCM): the sampler consumes the reweighted
+    prediction unchanged. At the final step (σ_next → 0) it collapses to
+    ``w_eff = λ``.
     """
     ds = sigma_i - sigma_next
     if ds <= 0.0:
@@ -79,8 +77,8 @@ class FSGCalibrator:
 
     Args:
         band: ``(σ_lo, σ_hi)`` — calibrate only when the step's σ falls inside.
-            Default [0.59, 0.75] — the 28-step er_sde production band (Plan-B);
-            the band shifts down with step count (was [0.75, 0.85] at 20-step).
+            Default [0.59, 0.75] — the 28-step er_sde band; it shifts down
+            with step count ([0.75, 0.85] at 20-step Euler).
         k: fixed-point iterations per scheduled step (error ~ρ^K, ρ≈0.93 ⇒
             K=3–4 captures ~all the gain). ``k=0`` makes the calibrator inert.
         d_sigma: calibration interval Δσ (the forward-backward stride; *not* the

@@ -4,9 +4,8 @@ Split by concern into sibling modules — ``mixins`` (LazyTabMixin,
 DirtyTrackingMixin), ``fields`` (the ``_widget``/``_read`` factory + label
 helpers), ``buttons`` (action-button variants + SplitButtonStyle),
 ``target_res`` (the multi-scale tier row), ``sample_prompts`` (the sample
-prompt editor), ``image_view`` (the zoom/pan image label) — but re-exported
-here so every existing ``from gui.widgets import <name>`` call site keeps
-working unchanged.
+prompt editor), ``image_view`` (the zoom/pan image label) — all re-exported
+here; import from ``gui.widgets``.
 """
 
 from __future__ import annotations

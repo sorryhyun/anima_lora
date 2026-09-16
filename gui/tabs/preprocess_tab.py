@@ -1,7 +1,5 @@
-"""Compatibility shim — the Preprocessing tab now lives in
-``gui.tabs.preprocess`` (``tab.py`` + one module per section). Import
-``PreprocessingTab`` from there; this module stays so old import paths keep
-working. Tests that monkeypatch the default-source loaders must patch
+"""Compatibility shim re-exporting ``gui.tabs.preprocess`` (``tab.py`` + one
+module per section); import ``PreprocessingTab`` from there. Tests that monkeypatch the default-source loaders must patch
 ``gui.tabs.preprocess.tab``, not this shim."""
 
 from __future__ import annotations

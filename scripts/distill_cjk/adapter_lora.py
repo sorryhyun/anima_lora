@@ -1,7 +1,7 @@
 """Ext-gated LoRA on the LLM Adapter's per-block Linears (plan3, rung 2-ii).
 
 The vocab-pack line (plan.md) trains ext *rows* only and leaves the adapter
-frozen. §8/§9 of report_0827 showed that a rare kanji name whose whole
+frozen. §8/§9 of ``_archive/cjk_aware_anima/reports/0827_names_synth.md`` showed that a rare kanji name whose whole
 neighbourhood is new rows never composes — the adapter's self-attention was
 pretrained on EN pieces and cannot be asked to compose new rows through frozen
 weights. This module adds the capacity: a LoRA on the neighbour-mixing path

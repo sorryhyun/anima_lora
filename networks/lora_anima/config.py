@@ -19,7 +19,7 @@ import torch
 
 from networks.lora_modules import LoRAModule
 
-# Three-axis routing config (see plan2.md §three-axis-config).
+# Three-axis routing config (see the `lora-routing` skill).
 MoEStyle = Union[Literal[False], Literal["shared_A"], Literal["independent_A"]]
 RouterSource = Literal["input", "sigma", "fei", "crossattn_emb", "none"]
 
@@ -219,8 +219,8 @@ class LoRANetworkCfg:
     # increasing, 0.0→1.0; None = uniform linspace.
     sigma_bucket_boundaries: Optional[List[float]] = None
 
-    # Three-axis routing config — see networks/CLAUDE.md §Three-axis routing
-    # surface for the full matrix. use_moe_style: expert layout. route_per_layer:
+    # Three-axis routing config — the `lora-routing` skill has the full
+    # matrix. use_moe_style: expert layout. route_per_layer:
     # router location. router_source: gate input signal.
     use_moe_style: MoEStyle = False
     route_per_layer: bool = False
@@ -278,16 +278,16 @@ class LoRANetworkCfg:
     fera_num_bands: int = 3
 
     # ChimeraHydra dual-pool additive routing (docs/experimental/chimera-hydra.md):
-    # content pool (K_c, per-layer router) + freq pool (K_f, network FreqRouter
-    # on FEI+σ), E = K_c + K_f. Per-pool balance weights tracked separately so
+    # content pool (K_c, network ContentRouter on pooled crossattn_emb) + freq
+    # pool (K_f, network FreqRouter on FEI+σ), E = K_c + K_f. Per-pool balance weights tracked separately so
     # one pool can't flatten while the other concentrates.
     use_chimera_hydra: bool = False
     num_experts_content: int = 3
     num_experts_freq: int = 3
     balance_w_content: Optional[float] = None  # falls back to balance_loss_weight
     balance_w_freq: Optional[float] = None  # falls back to balance_loss_weight
-    # FreqRouter init magnitude; non-zero because zero-weight init is a fixed
-    # point under the additive composition.
+    # FreqRouter init magnitude. Currently only logged: LoRANetwork builds the
+    # FreqRouter with init_std=0 (the centered gate breaks symmetry).
     freq_router_init_std: float = 0.1
     # Per-modality LayerNorm on the FreqRouter input (parameterless). Active
     # only when both FEI and σ blocks are enabled — with one off, LN either
@@ -584,11 +584,8 @@ class LoRANetworkCfg:
                     "freq_router_mode='learned' for an MLP that maps any input "
                     "width to K_f experts."
                 )
-        # Three-axis routing resolution (plan2.md §three-axis-config). The
-        # legacy ``use_hydra`` / ``use_sigma_router`` / ``use_fei_router``
-        # kwargs were retired in plan2 task #6 — every shipped TOML uses the
-        # new keys, and old `.safetensors` files (with ``ss_use_hydra`` etc.)
-        # stop loading by design (no legacy compat shim).
+        # Three-axis routing resolution. The retired ``use_hydra`` /
+        # ``use_sigma_router`` / ``use_fei_router`` kwargs raise below.
         raw_moe_style = kwargs.get("use_moe_style")
         raw_route_per_layer = kwargs.get("route_per_layer")
         raw_router_source = kwargs.get("router_source")
@@ -623,9 +620,8 @@ class LoRANetworkCfg:
             route_per_layer = use_moe_style is not False
 
         # ChimeraHydra: pin the three-axis cells to (shared_A, per-layer, input)
-        # regardless of TOML wiring — the content router is a per-layer
-        # shared_A Hydra router on pooled lx; the freq router adds a second
-        # source via a dedicated network-level mechanism.
+        # regardless of TOML wiring. The actual routing is the network-level
+        # ContentRouter / FreqRouter.
         if use_chimera_hydra:
             if use_moe_style not in (False, "shared_A"):
                 raise ValueError(
@@ -809,7 +805,7 @@ class LoRANetworkCfg:
         fei_router_names: Optional[List[str]] = None,
         is_stacked_experts: bool = False,
         # Three-axis stamps from save metadata. All three must be present
-        # for MoE checkpoints — pre-plan2 artifacts stop loading by design.
+        # for MoE checkpoints; unstamped MoE artifacts don't load.
         new_use_moe_style: Optional[str] = None,
         new_route_per_layer: Optional[bool] = None,
         new_router_source: Optional[str] = None,
@@ -841,7 +837,7 @@ class LoRANetworkCfg:
 
         Non-MoE checkpoints have no three-axis stamps; absence = (False,
         False, "none"). MoE checkpoints (Hydra/OrthoHydra/StackedExperts)
-        must carry all three — pre-plan2 checkpoints no longer load.
+        must carry all three.
         """
         if (
             new_use_moe_style is not None

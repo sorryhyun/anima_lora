@@ -522,12 +522,10 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
     def _groups_manifest_path(self) -> Path:
         """Where ``make curate-group`` actually wrote the manifest.
 
-        Read off ``GroupRequest.out`` rather than spelled here: the stage owns
-        its destination (it moved to the workspace tree), and a second copy of
-        the path in the viewer is how the Group button comes to write a manifest
-        this tab never reads. The pre-workspace
-        ``post_image_dataset/groups/groups.json`` is the fallback, so a manifest
-        grouped before the move keeps showing until the next rebuild.
+        Read off ``GroupRequest.out`` (the stage owns its destination) rather
+        than spelled here. The pre-workspace
+        ``post_image_dataset/groups/groups.json`` is the fallback, so an older
+        manifest keeps showing until the next rebuild.
         """
         from anime_tools.grouping.requests import GroupRequest
 

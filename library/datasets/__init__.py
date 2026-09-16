@@ -1,14 +1,10 @@
 # Dataset classes and utilities for Anima LoRA training.
 # Re-exports all public names so `from library.datasets import X` works.
 #
-# Each name resolves lazily (PEP 562) the first time it's accessed, so importing
-# the package — or a single light submodule like `library.datasets.buckets` —
-# does NOT eagerly drag in the whole torch-backed dataset stack (image_utils /
-# base / dreambooth / cache / loss_recorder all import torch). This keeps
-# torch-free callers torch-free: notably the GUI process, which reads the bucket
-# table (`from library.datasets.buckets import CONSTANT_TOKEN_BUCKETS`) on the UI
-# thread and would otherwise pay a ~5-10s torch import on first use. Mirrors the
-# lazy façade in `anima_lora/__init__.py`.
+# Each name resolves lazily (PEP 562) on first access, so importing the package —
+# or a light submodule like `library.datasets.buckets` — does not import torch
+# (image_utils / base / dreambooth / cache / loss_recorder do). The GUI reads the
+# bucket table on its UI thread and relies on this.
 
 from __future__ import annotations
 

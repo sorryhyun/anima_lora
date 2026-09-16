@@ -7,7 +7,7 @@ orchestration. Builds on the Anima-domain encode / load primitives in
 The sidecar is a model-scoped, run-invariant artifact, so it ships as a bundled
 package asset (``library/anima/assets/_anima_uncond_te.safetensors``) and is read
 directly by ``make turbo``, the mod-guidance distiller
-(``project/finished/mod_guidance/``), and training-time caption dropout. The staging here is now only the
+(``project/finished/mod_guidance/``), and training-time caption dropout. The staging here is only the
 *regeneration* path — it overwrites that same asset in place after a base-model
 swap (or if the bundled copy is ever missing).
 """
@@ -130,8 +130,7 @@ def ensure_uncond_crossattn(
     (``library/anima/assets/_anima_uncond_te.safetensors``), so this just loads
     it; the on-demand staging below is a fallback that only fires if that asset
     is somehow missing (e.g. deleted, or a swapped base model). Caller owns where
-    it stores the result (e.g. ``TrainState.uncond_crossattn_1``) — this stays
-    ignorant of trainer state.
+    it stores the result (e.g. ``TrainState.uncond_crossattn_1``).
     """
     if existing is not None:
         return existing

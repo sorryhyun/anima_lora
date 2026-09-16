@@ -329,9 +329,8 @@ class HydraLoRAModule(RouterStateMixin, BaseLoRAModule):
             return org_forwarded
 
         # Training computes rank GEMMs in the model compute dtype
-        # (org_forwarded.dtype, not x.dtype — see base.py's forward() for
-        # why); inference keeps the historical fp32 compute unconditionally
-        # so router-live checkpoints produce unchanged outputs.
+        # (org_forwarded.dtype, not x.dtype — see base.py's forward());
+        # inference computes in fp32 unconditionally.
         comp = org_forwarded.dtype if self.training else torch.float32
         x_lora = self._rebalance(x.to(comp))
         lx = torch.nn.functional.linear(x_lora, self.lora_down.weight.to(comp))
@@ -342,8 +341,7 @@ class HydraLoRAModule(RouterStateMixin, BaseLoRAModule):
         if self.training:
             # Plain STORE_ATTR (NOT @compiler.disable): a disabled helper
             # forces a graph break per LoRA forward and explodes
-            # saved-for-backward memory under torch.compile (observed
-            # OOM at 56 MoE + 140 OrthoLoRA modules on T4-class budget).
+            # saved-for-backward memory under torch.compile (OOM).
             self._last_gate = gate
 
         if self.training:

@@ -87,7 +87,7 @@ so the masked delta still composes cleanly with the frozen weight; `org_forward(
 
 At inference the mask is cleared and the full rank is always live. Why: the trained `A` and `B` absorb the schedule into their columns — high-index columns were trained against fewer (low-noise) steps but still learned something, and the inference forward runs unmasked on purpose. Baking the mask into inference would throw that signal away. (Because inference is always full-rank, merging a T-LoRA-trained checkpoint into the DiT is bit-equivalent to running it live.)
 
-`train.py` calls `set_timestep_mask(timesteps)` right after noise sampling, once per step. Only `network.py`/`factory.py` should ever touch `set_timestep_mask`/`clear_timestep_mask` — any code that runs the LoRA modules mid-step must find the mask already set.
+`library/training/forward/router_conditioning.py` calls `set_timestep_mask(timesteps, max_timestep=1.0)` right after noise sampling, once per step — any code that runs the LoRA modules mid-step must find the mask already set.
 
 ---
 

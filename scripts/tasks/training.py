@@ -1,9 +1,9 @@
 """Training entry-points for shipped methods (lora family + lora-gui + EasyControl).
 
 Each ``cmd_*`` is a thin shim that translates env vars + extra argv into the
-right ``train.py`` (via ``accelerate launch``) call. Experimental methods
-(postfix, ip-adapter) live in ``scripts/experimental_tasks/training.py`` and are
-wired up under ``make exp-*`` in ``tasks.py``.
+right ``train.py`` call (see ``_common.build_launch_cmd``). Experimental
+methods live in ``scripts/experimental_tasks/training.py`` and are wired up
+under ``make exp-*`` in ``tasks.py``.
 """
 
 from __future__ import annotations
@@ -62,10 +62,10 @@ def cmd_register(extra):
     the dynamic-seq bound by K); block swap stays forced off. Override knobs
     via ``--network_args`` or the config::
 
-        make register                                     # K36 @ block 8, unfrozen QKV, arm B
+        make register                                     # K36 @ block 8, unfrozen QKV
         make register ARGS="--network_args num_registers=16 qkv_mode=lora"
-        make register ARGS="--network_args num_registers=0"   # LoRA-only drift control (arm L)
-        make register ARGS="--network_args insert_block=0"    # entry insertion (RQ3 geometry)
+        make register ARGS="--network_args num_registers=0"   # LoRA-only drift control
+        make register ARGS="--network_args insert_block=0"    # entry insertion
 
     Inference is the ComfyUI node ``custom_nodes/comfyui-anima-register`` (kept
     live — register tokens can't merge into DiT weights)."""
@@ -81,8 +81,8 @@ def cmd_turbo(extra):
 
         make turbo                                  # defaults: rank=64, 4-step
         make turbo ARGS="--student_rank 64 --iterations 5000"
-        make turbo ARGS="--single_prompt_idx 0"     # Phase 0 single-prompt overfit
-        make turbo --queue                          # enqueue on the daemon
+        make turbo ARGS="--single_prompt_idx 0"     # single-prompt overfit
+        make turbo ARGS=--queue                     # enqueue on the daemon
 
     The output is a normal LoRA — a distilled student ships at
     https://huggingface.co/sorryhyun/anima-turbo-4step (infer with
@@ -108,7 +108,7 @@ def cmd_turbo(extra):
 
 
 def cmd_soup(extra):
-    """Uncond-init soup training (docs: bench/memorization/report.md).
+    """Uncond-init soup training (docs: docs/experimental/soup.md).
 
     One pipeline (``scripts/soup/pipeline.py``): a short uncond inter-train on a
     diluted pool (reused if the checkpoint already exists) → 3 seeded captioned
@@ -119,7 +119,7 @@ def cmd_soup(extra):
         make soup                                     # uses soup.toml path_pattern
         make soup PATH_PATTERN="sincos/*"             # attach-by-default
         make soup TARGET=sincos                       # shorthand for "sincos/*"
-        make soup PATH_PATTERN="a/*|b/*" NAME=ab --queue
+        make soup PATH_PATTERN="a/*|b/*" NAME=ab ARGS=--queue
         make soup ARTISTS_SHARD=1_6                   # round-robin artist shard
         make soup CUSTOM=soup                         # gui-methods/custom/soup.toml
         make soup TARGET=sincos ARGS="--network_dim 32 --max_train_epochs 8"
@@ -835,7 +835,7 @@ def _region_preprocess(adapter: str, cfg: dict, base: str, extra) -> None:
 
 
 def _subject_stage(adapter: str, cfg: dict, base: str, extra) -> None:
-    """Subject staging: mine cross-image same-character pairs (directedit_ec Phase 2).
+    """Subject staging: mine cross-image same-character pairs.
 
     ``easycontrol_adapters/tools/subject_pairs.py`` reads its ``[staging]``
     table and rewrites the blueprint tail in place (near_twins contract).
@@ -875,7 +875,7 @@ def _subject_preprocess(adapter: str, cfg: dict, base: str, extra) -> None:
 
 
 def _subject_edit_stage(adapter: str, cfg: dict, base: str, extra) -> None:
-    """Subject-edit staging: mine delta-caption edit pairs (directedit_ec Phase 2.5).
+    """Subject-edit staging: mine delta-caption edit pairs.
 
     ``easycontrol_adapters/tools/subject_edit_pairs.py`` — subject_pairs
     contract, but the staged ``.txt`` files are REAL files holding the tag
@@ -942,8 +942,7 @@ def _phash_edit_preprocess(adapter: str, cfg: dict, base: str, extra) -> None:
 
     Differs from :func:`_near_twins_preprocess` in what gets *encoded*. There a
     pair tree is staged per pair, so a member that joins several pairs (and both
-    directions of each) is resized and VAE-encoded once per view — 7,424 encodes
-    over 2,722 distinct images at the shipped phash_edit knobs. Here the miner
+    directions of each) is resized and VAE-encoded once per view. Here the miner
     stages a deduplicated ``pool/`` instead, and the pair views are symlinks:
 
       1. purge the derived pair links (so the VAE pass only ever sees the pool)
@@ -1328,17 +1327,16 @@ _EASY_ADAPTERS = {
     },
     # Aligned-pair instruction editor: bespoke staging over the census manifest,
     # then the near_twins preprocess pass verbatim (same _tags/_no_tags shape).
-    # NB the twin_edit tool + descriptor were removed with the directedit_ec
-    # archive (2026-08-19); this entry is dead until they are restored.
+    # NB the twin_edit tool + descriptor are archived (directedit_ec); this
+    # entry is dead until they are restored.
     "twin_edit": {"stage": _twin_edit_stage, "preprocess": _near_twins_preprocess},
     # phash-mined aligned instruction editor: the twin_edit objective on pairs
     # found by perceptual hash over the RAW crawl pool instead of by tag delta
     # over the curated one. Bespoke preprocess: the miner stages a deduplicated
     # pool and the pair views are symlinks, so each image is encoded ONCE.
     "phash_edit": {"stage": _phash_edit_stage, "preprocess": _phash_edit_preprocess},
-    # plan_render bubble-fill probe (archived; superseded by
-    # project/cjk_renderable_anima/reports/wake_plan_2026_09_13.md, W3):
-    # one descriptor per edition; trees under post_image_dataset/render/<ed>/.
+    # plan_render bubble-fill probe (archived line): one descriptor per
+    # edition; trees under post_image_dataset/render/<ed>/.
     "render_en": {"stage": _render_stage, "preprocess": _render_preprocess},
     "render_ja": {"stage": _render_stage, "preprocess": _render_preprocess},
     # S6 body arm: render_ja's trees + a prompt_embeds TE cache (text_body/).

@@ -63,7 +63,7 @@ def run_fake_warmup(
         return data_iter
 
     logger.info(f"fake (critic) head-start: {warmup_steps} fake-only updates")
-    # P0a (turbo_tau_split_critic): per-τ-bin critic-loss profile, warmup phase.
+    # Per-τ-bin critic-loss profile, warmup phase.
     tau_profile = TauBinCriticLoss(device, prefix="warmup/fake_loss_tau")
     for cw in tqdm(range(warmup_steps), desc="fake-warmup"):
         try:

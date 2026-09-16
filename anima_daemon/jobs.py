@@ -47,9 +47,9 @@ class Job:
     overrides: dict = field(default_factory=dict)
     extra: list[str] = field(default_factory=list)
 
-    # "train" (accelerate launch train.py) or "command" (plain ``python <argv>``
-    # — preprocess/mask, finalized on exit code with no progress.jsonl wiring).
-    # Default "train" keeps pre-field legacy job.json records loading.
+    # "train" (a train.py run) or "command" (plain ``python <argv>``, finalized
+    # on exit code with no progress.jsonl). Default "train" keeps legacy
+    # job.json records without this field loading.
     kind: str = "train"
     argv: list[str] = field(default_factory=list)
     extra_env: dict = field(default_factory=dict)
@@ -59,9 +59,8 @@ class Job:
     captured_env: dict = field(default_factory=dict)
 
     # Auto-chain: a command job carrying a chain_train spec ({method, preset,
-    # methods_subdir}) makes the manager enqueue that train job on success, so
-    # "preprocess → train" survives the GUI closing. chained_job_id records the
-    # follow-on it spawned.
+    # methods_subdir}) makes the manager enqueue that train job on success.
+    # chained_job_id records the follow-on it spawned.
     chain_train: Optional[dict] = None
     chained_job_id: Optional[str] = None
 
@@ -79,7 +78,7 @@ class Job:
     started_at: Optional[float] = None
     ended_at: Optional[float] = None
     # Wall-clock of the last running->paused tree-freeze; cleared on resume.
-    # Observability only — the freeze itself is the process state.
+    # Observability only.
     paused_at: Optional[float] = None
 
     # Whether the train tree was spawned under `accelerate launch` (multi-GPU).
@@ -87,8 +86,8 @@ class Job:
     # timeout. Command jobs and the single-GPU direct-invoke path are False.
     accelerate_launched: bool = False
 
-    # (pid, create_time) identifies the spawned process so a reused PID can
-    # never be mistaken for our job (see manager._gpu_guard, issue #83).
+    # (pid, create_time) identifies the spawned process so a reused PID is
+    # never mistaken for our job (see manager._gpu_guard).
     pid: Optional[int] = None
     create_time: Optional[float] = None
 
@@ -100,7 +99,7 @@ class Job:
     # exits, or for an adopted orphan (psutil liveness gives no code).
     returncode: Optional[int] = None
 
-    # Result-envelope lift (see README "Where did my run land"): a GPU job that
+    # Result-envelope lift (README "Result envelopes"): a GPU job that
     # writes a bench envelope drops a `result_path.json` pointer; the monitor
     # follows it and records the absolute path here plus a {label, metrics}
     # digest in result_summary. Both None for a job that wrote no envelope.
@@ -131,8 +130,7 @@ class Job:
         return cls(**{k: v for k, v in data.items() if k in known})
 
     def public(self) -> dict:
-        """The dict shape returned over HTTP (drops nothing sensitive — this is
-        localhost — but keeps the field order stable for clients)."""
+        """The dict shape returned over HTTP (all fields, stable order)."""
         return asdict(self)
 
 

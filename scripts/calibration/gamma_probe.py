@@ -4,8 +4,8 @@
 Measures the *completion matrix* γ(f, t) for Anima: how resolved each radial
 frequency band is at each sampling step. CNS (Colored Noise Sampling) recolors
 the SDE-injected noise by sqrt(1−γ) so the fixed stochastic-energy budget lands
-in the bands the network has NOT yet built. Before wiring that into the sampler
-we need to know the staircase is sharp on Anima. See _archive/bench/cns/plan.md.
+in the bands the network has NOT yet built. This probe checks the staircase is
+sharp on Anima. See _archive/bench/cns/plan.md.
 
 What it does (no engine edits):
   1. Drive deterministic ODE (euler) generations through the real pipeline via
@@ -16,7 +16,7 @@ What it does (no engine edits):
   3. γ(f,t) = 1 − |X_pred(f,t) − X₀(f)|² / |X₀(f)|², radially binned over the
      latent (H, W) FFT grid, averaged over channels and trajectories.
   4. Report staircase sharpness + emit beta_preview = the exact per-step colored
-     scale CNS would apply (Eq. 11), so Phase-1 wiring is drop-in.
+     scale CNS would apply (Eq. 11).
 
 Run from repo root (anima_lora/):
     python scripts/calibration/gamma_probe.py --steps 28 --cfg 1.0

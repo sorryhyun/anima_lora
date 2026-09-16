@@ -45,9 +45,6 @@ def make_warmup_cosine_scheduler(
     ``eta_min_ratio·lr`` over the remaining ``total_steps − warmup_steps``.
     ``warmup_steps <= 0`` skips warmup and returns a bare ``CosineAnnealingLR``
     over all ``total_steps``.
-
-    Open-coded identically in ``project/finished/mod_guidance`` and
-    ``scripts/distill_turbo`` before being promoted here.
     """
     from torch.optim.lr_scheduler import (
         CosineAnnealingLR,
@@ -154,7 +151,7 @@ def get_scheduler_fix(args, optimizer: Optimizer, num_processes: int):
 
     if name == SchedulerType.COSINE_WITH_RESTARTS:
         # Without num_cycles the transformers default (1 hard cycle) is
-        # shape-identical to plain cosine — silently degenerate (issue #69).
+        # shape-identical to plain cosine — silently degenerate.
         lr_scheduler_kwargs.setdefault("num_cycles", args.lr_scheduler_num_cycles)
         return schedule_func(
             optimizer,

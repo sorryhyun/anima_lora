@@ -1,4 +1,4 @@
-"""Caption-editing widgets split out of ``image_tab.py``.
+"""Caption-editing widgets for ``image_tab.py``.
 
 A self-contained cluster (none of it references the owning ``ImageViewerTab``):
 the boxed tag editor with autocomplete, char-level diff helpers, and the

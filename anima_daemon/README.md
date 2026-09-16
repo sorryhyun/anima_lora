@@ -11,10 +11,9 @@ JSON in / JSON out, no auth, localhost only (`config.py`). All state is on disk
 under `output/daemon/`, so anything that can read files can observe a run with
 the HTTP port down.
 
-**Self-describing.** `GET /` returns this file; `GET /tools` returns a manifest
-— one entry per operation with a JSON-Schema `input_schema`, HTTP
-`method`+`path`, and a description. `curl 127.0.0.1:8765/tools` is enough to
-discover the whole surface.
+`GET /` returns this file; `GET /tools` returns a manifest — one entry per
+operation with a JSON-Schema `input_schema`, HTTP `method`+`path`, and a
+description.
 
 ## Start / discover the daemon
 
@@ -42,8 +41,7 @@ flags (`--label`, `--stall-timeout`) are recognized **only before the script
 path** — after it every token belongs to the child (bench scripts define their
 own `--label`), and a literal `--` passes everything after it verbatim. Absent a
 daemon-side label, the child's `--label` is folded into the display one
-(`run_bench --label ko3_a` → job `run_bench:ko3_a`) so a grid of N runs of one
-script doesn't render as N identical rows.
+(`run_bench --label ko3_a` → job `run_bench:ko3_a`).
 
 The same verbs exist inside the package for callers that can't import `tasks.py`:
 
@@ -54,8 +52,7 @@ python -m anima_daemon status [job_id]
 ```
 
 `wait --timeout S` exits `124` and prints a JSON snapshot — `state`, the last
-`progress.jsonl` event, its staleness — so a caller that gives up still learns
-whether the run is healthy-but-slow or wedged.
+`progress.jsonl` event, its staleness.
 
 ## Reading the queue
 
@@ -67,10 +64,9 @@ record with its result envelope.
 `daemon-jobs` prints one greppable line per job — when · id · state · `rc=` ·
 duration · derived `target` (soup name, train `output_name`, a bench script's
 `--label`) · first error line — **oldest first**, capped at the newest 15, with a
-trailing `N of M jobs`. It is the live-queue view too: `--state
-queued,running,paused` answers "is anything running", a bare `0 of M` being the
-"nothing" answer. `daemon-log` reads the log off disk, so unlike `daemon-attach`
-(a live stream) it still answers for a finished job.
+trailing `N of M jobs`. `--state queued,running,paused` shows live jobs (`0 of
+M` = nothing running). `daemon-log` reads the log off disk, so unlike
+`daemon-attach` (a live stream) it works for a finished job.
 
 ```bash
 python tasks.py daemon-jobs                    # newest 15, newest LAST
@@ -99,8 +95,8 @@ literally what runs (`jobs/<id>/job.json`).
 
 A `command` job can carry a **`chain_train`** spec — `{method, preset,
 methods_subdir, overrides}` — and the daemon auto-enqueues that training job when
-the command succeeds, so "preprocess → train" survives the submitter closing. The
-follow-on id lands in the command job's `chained_job_id`.
+the command succeeds, even if the submitter has exited. The follow-on id lands in
+the command job's `chained_job_id`.
 
 ## REST endpoints
 
@@ -133,9 +129,8 @@ verbatim. `config_snapshot` (a merged config dict) or `config_file` (a path) pin
 the exact config instead of re-resolving the merge chain. Optional
 `captured_env` is a whitelisted snapshot of the submitter's shell (`ANIMA_*`,
 `CUDA_*`, `HF_*`, `PYTORCH_*`, `TORCH_*`, `NCCL_*`) layered under the job's env at
-spawn (**daemon-env ← captured_env ← extra_env**), so a queued job runs with the
-caller's settings, not the daemon's boot env. The Python client and MCP bridge
-fill it automatically; pass `{}` to opt out.
+spawn (**daemon-env ← captured_env ← extra_env**). The Python client and MCP
+bridge fill it automatically; pass `{}` to opt out.
 
 Command job:
 ```json
@@ -153,11 +148,10 @@ Command job:
 
 `stall_timeout` (seconds) overrides the **stall watchdog** for this job — the
 daemon kills a command job whose `stdout.log` and `progress.jsonl` have both
-frozen for 120 s by default, so a wedged download can't park the queue. Raise it
-for a legitimately quiet loop, or pass `0` to opt out. The watchdog also samples
-the job's process-tree CPU time and spares a quiet-but-computing tree (up to 8×
-the budget); `bench/_common.py::start_heartbeat()` is a one-line stdout
-keep-alive for scripts that prefer to self-announce.
+frozen for 120 s by default. Raise it for a legitimately quiet loop, or pass `0`
+to opt out. The watchdog also samples the job's process-tree CPU time and spares
+a quiet-but-computing tree (up to 8× the budget);
+`bench/_common.py::start_heartbeat()` is a one-line stdout keep-alive.
 
 `start` gates the queue: `true` → run now, `false` → add but hold the queue
 paused, omitted/`null` → leave the gate as-is.
@@ -205,18 +199,17 @@ Tree-kills a running or queued job. Returns `{job_id, state}`. The client's
 ### `POST /jobs/{id}/pause` · `POST /jobs/{id}/resume` — tree-freeze
 
 `pause` SIGSTOPs the job's whole process tree (dataloader workers included);
-`resume` SIGCONTs it. Method-agnostic and zero-cooperation — identical on
-`train.py`, the bespoke turbo/spd/mod loops, bench, and inference. The CUDA
-context and VRAM survive; only SM scheduling stops, so resume is instant (no
-reload, no recompile, optimizer state intact). Returns `{job_id, state, error?}`
+`resume` SIGCONTs it. Works on any job with no cooperation from the child. The
+CUDA context and VRAM survive, so resume is instant (no reload, no recompile,
+optimizer state intact). Returns `{job_id, state, error?}`
 (`error` on a refusal; 404 only for an unknown id). `pause_job`/`resume_job` with
 no id resolve the active job.
 
 - **The queue does NOT advance past a paused job** — it still owns its VRAM slot.
 - **Refused** for anything not `running`, and for a multi-GPU `accelerate launch`
   run (a frozen NCCL rank trips the collective heartbeat).
-- `stale_for` freezes while paused. Wall-clock throughput/ETA inside the run blips
-  across the pause; accepted, not compensated.
+- `stale_for` freezes while paused. Wall-clock throughput/ETA inside the run
+  includes the pause.
 - The freeze outlives a daemon restart. `stop`/`shutdown` thaw the tree first.
 - A paused run holds only its allocated VRAM, so a small `--inline` job fits in
   the remainder.
@@ -244,7 +237,7 @@ Job start/finish and friends, plus `: keepalive` comments while idle.
 `anima_daemon/*.py` the daemon booted with; if it differs from the on-disk source
 the next `ensure_daemon()` submit restarts it. `worker_idle_for` is seconds since
 the job worker last advanced — large while a job sits `queued` means the worker
-is behind a long run (normal), or with `worker_alive` false, has died (a bug).
+is behind a long run, or, with `worker_alive` false, has died.
 
 ### `POST /shutdown`
 
@@ -252,7 +245,7 @@ is behind a long run (normal), or with `worker_alive` false, has died (a bug).
 
 ## Python client (`anima_daemon.client`)
 
-Pure stdlib (`urllib`) — imports without dragging in `library.*`/torch.
+`urllib`-based, no `library.*` / torch imports.
 
 ```python
 from anima_daemon.client import DaemonClient, ensure_daemon   # `Client` is an alias
@@ -293,7 +286,7 @@ command job. Methods map 1:1 onto the endpoints, with two client-side extras:
 `ensure_daemon(expected_root=…)` refuses to attach to another checkout's daemon
 while that daemon has live jobs.
 
-## Where did my run land — the result-envelope lift
+## Result envelopes
 
 A GPU job that produces an artifact record gets it lifted onto the job record on
 the terminal transition. Two producers ship today:
@@ -307,7 +300,7 @@ One pointer file: the daemon exports `ANIMA_DAEMON_JOB_ID` /
 `ANIMA_DAEMON_JOB_DIR` into every job's env, a producer that sees `JOB_DIR` drops
 `<job_dir>/result_path.json` → `{"path": "<abs path>"}`, and the monitor records
 `result_path` plus `result_summary` (`{label, metrics}`, lifted opaquely — the
-schema stays bench-owned). Both stay `null` for a job that wrote no envelope; the
+schema is bench-owned). Both stay `null` for a job that wrote no envelope; the
 artifacts never move. `write_result(run_dir, script=__file__, args=args,
 metrics={…})` drops the pointer under the daemon and is a plain envelope write
 otherwise. Reading one back:
@@ -371,9 +364,10 @@ one up, pruned jobs linger in its in-memory table until its next restart.
 | `ANIMA_DAEMON_JOB_RETENTION_DAYS` | `30` | boot prune: age above which a *terminal* job dir is deleted; `0` disables |
 | `ANIMA_DAEMON_JOB_RETENTION_KEEP` | `200` | newest terminal job dirs always kept, whatever their age |
 
-## Disposable daemon
+## Restarts and run modes
 
-The daemon is a throwaway view over disk state, not a durable service.
+All state is on disk, so the daemon can be restarted at any time without losing
+jobs.
 
 - **Eager restart on stale code.** Each daemon fingerprints its own
   `anima_daemon/*.py` at boot; every submit goes through `ensure_daemon()`, which
@@ -388,8 +382,9 @@ The daemon is a throwaway view over disk state, not a durable service.
   nsys). `ANIMA_RUN_MODE={attach,detach,inline}` sets the default;
   `PROFILE_STEPS` / `ANIMA_ACCELERATE_LAUNCH` force inline.
 
-Corollary: the daemon stays **stdlib-only forever** — importing `library.*` or
-holding a model makes restarts slow and staleness real again.
+The daemon package never imports `library` / `networks` / `torch` and never
+holds a model (`tests/test_daemon.py` enforces the imports), which keeps
+restarts fast.
 
 ## Gotchas
 
@@ -398,10 +393,8 @@ holding a model makes restarts slow and staleness real again.
 - **No blocking wait *endpoint*.** HTTP is poll-based (`GET /jobs/{id}`) or
   stream-based (`/jobs/{id}/logs`). Blocking lives on the client:
   `DaemonClient.wait()` / `make daemon-wait JOB=<id>`.
-- **SSE responses are one-per-connection.** `_open_sse` sends `Connection: close`
-  and sets `close_connection` — an SSE body has no `Content-Length`, so the
-  client's only EOF signal is the socket closing. Do not make it keep-alive:
-  every consumer then hangs after the `eof` event.
+- **SSE responses are one-per-connection** (`Connection: close`); the socket
+  closing is the client's EOF signal.
 - **Port drift.** Resolve from the pidfile, not a constant. `DaemonClient()` and
   `ensure_daemon()` handle it.
 - **`config_snapshot` vs re-resolve.** Without a snapshot/file the daemon re-runs
@@ -415,9 +408,9 @@ holding a model makes restarts slow and staleness real again.
 
 ## MCP bridge (`mcp.py`)
 
-A stdio MCP server over the same surface — pure stdlib, newline-delimited
-JSON-RPC. Register it as a **command, never an address**: the bridge resolves the
-daemon via the pidfile, so it survives port drift and restarts.
+A stdio MCP server over the same surface — newline-delimited JSON-RPC. Register
+it as a **command, not an address**: the bridge resolves the daemon via the
+pidfile, so it survives port drift and restarts.
 
 ```bash
 # absolute paths; any cwd works. Other clients: the same command/args as JSON.

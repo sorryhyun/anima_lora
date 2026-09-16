@@ -3,7 +3,7 @@
 All accumulators live on-device; they're flushed in one stacked ``.tolist()``
 at every ``log_interval`` so per-step CUDA syncs go to zero.
 
-Health-scalar semantics (see proposal log for context):
+Health-scalar semantics:
 
 * ``grad``      — overall DMD gradient magnitude into x_pred
 * ``dm``        — DM regularizer strength (v_real − v_fake)
@@ -36,7 +36,7 @@ from tqdm import tqdm
 
 from library.training.accumulator import ScalarAccumulator
 
-# τ-binned critic-loss profile (turbo_tau_split_critic P0a): bin count for the
+# τ-binned critic-loss profile: bin count for the
 # per-τ fake-loss telemetry. 8 uniform bins over τ ∈ [0, 1].
 TAU_PROFILE_BINS = 8
 
@@ -166,7 +166,7 @@ class TurboMetrics:
 
 
 class TauBinCriticLoss:
-    """Per-τ-bin fake/critic loss profile — P0a of turbo_tau_split_critic.
+    """Per-τ-bin fake/critic loss profile.
 
     Buckets each fake-update loss by its drawn ``tau_fake`` into
     ``TAU_PROFILE_BINS`` uniform bins and logs the per-bin interval mean as
@@ -175,8 +175,8 @@ class TauBinCriticLoss:
 
     NOT a gate signal: the raw per-τ profile is structurally nonuniform (the FM
     target ``ε − x0`` is intrinsically harder at some τ regardless of critic
-    capacity) — this is the baseline for the Phase-1 "does a τ-split flatten
-    the *excess*?" mechanism check only.
+    capacity) — it is a baseline for checking whether a τ-split flattens the
+    *excess*.
 
     The loop's fake loss is a batch-mean scalar, so at B>1 it is attributed to
     every sample's τ bin (exact at the shipped ``batch_size=1``).

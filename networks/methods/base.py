@@ -8,19 +8,12 @@ all expose the same trainer-facing protocol:
   - ``prepare_optimizer_params(_with_multiple_te_lrs)``
   - ``save_weights`` / ``load_weights``
 
-Most of the implementation is identical across them — only the param-group
-split, the bag of metadata stamps, and the state-dict shape really differ.
-``AdapterNetworkBase`` owns the shared scaffolding so each method file only
-overrides the parts that are actually method-specific
-(``metadata_fields``, ``state_dict_for_save``, optimizer groups when they
-need more than one).
+``AdapterNetworkBase`` owns the shared scaffolding; each method file
+overrides ``metadata_fields``, ``state_dict_for_save``, and optimizer groups
+when it needs more than one.
 
 LoRA-family networks under ``networks/lora_anima/`` are *not* subclasses
-here: they carry their own concerns (``merge_to``, ``backup_weights``,
-``pre_calculation``, ``apply_max_norm_regularization``, three-axis
-routing metadata) and the proposal scopes the base to ``networks/methods/``.
-They're still duck-typed to the same protocol — the trainer doesn't care
-about inheritance.
+here; they duck-type the same protocol (``networks/protocol.py``).
 """
 
 from __future__ import annotations

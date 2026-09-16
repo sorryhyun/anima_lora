@@ -24,9 +24,7 @@ class LazyTabMixin:
     """Defer a tab's first expensive scan until the tab is actually opened.
 
     Several tabs walk dataset/checkpoint directories (and the Merge tab reads
-    safetensors keys) during construction. Doing that for *every* tab up front
-    is what made the window slow to appear, even though only the first tab is
-    visible at launch. Mixing this in lets construction stay cheap: the heavy
+    safetensors keys). Mixing this in keeps construction cheap: the heavy
     work runs on the first ``showEvent`` — i.e. when the user selects the tab —
     and exactly once thereafter. Subclasses override ``_lazy_init``.
 
@@ -87,9 +85,8 @@ class DirtyTrackingMixin:
     """Save-button dirty-state tracking shared by the config-style tabs.
 
     A tab is *dirty* when its form has edits not yet written back to the config
-    file on disk. ConfigTab (+ its EasyControl subclass), the distill editors,
-    and PreprocessingTab all carried a near-identical copy of this wiring; this
-    mixin holds the one copy.
+    file on disk. Used by ConfigTab (+ its EasyControl subclass), the distill
+    editors, and PreprocessingTab.
 
     Host requirements:
       * ``self._dirty: bool`` initialised in ``__init__``;

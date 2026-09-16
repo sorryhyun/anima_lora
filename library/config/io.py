@@ -151,7 +151,7 @@ def _resolve_method_path(
     A method may live in the flat folder (``configs/<methods_subdir>/
     <method>.toml``) or in its own consolidated directory
     (``configs/<method>/<method>.toml`` — method config + inline dataset
-    blueprint in one file, the EasyControl pilot). The per-method dir wins
+    blueprint in one file). The per-method dir wins
     when present, but only for the default ``methods`` subdir — ``gui-methods``
     stays flat. Returns the flat-folder path when no per-method file exists,
     or ``None`` when ``method`` is falsy.
@@ -198,8 +198,7 @@ def _apply_dataset_overrides(blueprint: dict, override: dict) -> None:
 
     ``[general]``: per-key overwrite. ``[[datasets]]``: matched by index
     against the base blueprint, top-level scalars only — ``subsets`` arrays
-    in the override are ignored with a warning (subset-level overrides are
-    out of scope, to keep the merge predictable).
+    in the override are ignored with a warning.
     """
     g_override = override.get("general")
     if isinstance(g_override, dict):
@@ -326,8 +325,8 @@ def load_path_overrides(
     out: dict = {}
 
     # read preprocess.toml FIRST, before base.toml, so a legacy copy of its
-    # keys left in a user's customized base.toml still wins (never regress an
-    # existing customization); preset/method layers below still override
+    # keys left in a user's customized base.toml still wins; preset/method
+    # layers below still override
     preprocess_path = os.path.join(configs_dir, "preprocess.toml")
     if os.path.exists(preprocess_path):
         with open(preprocess_path, "r", encoding="utf-8") as f:
@@ -448,8 +447,7 @@ def list_presets(configs_dir: str = "configs") -> list[str]:
 
     The union of ``[<name>]`` table sections in ``configs/presets.toml`` and the
     one-file-per-preset stems under ``configs/custom/*.toml`` — i.e. exactly the
-    set :func:`_resolve_preset` can resolve. Shared with the GUI so it doesn't
-    re-derive the preset discovery rule.
+    set :func:`_resolve_preset` can resolve. Shared with the GUI.
     """
     configs_dir = str(resolve_under_home(configs_dir))
     names: set[str] = set()
@@ -727,7 +725,7 @@ def read_config_from_file(
     print_config = bool(getattr(args, "print_config", False))
     write_snapshot = bool(getattr(args, "config_snapshot", False))
 
-    # New-style chain: --method / --preset
+    # --method / --preset chain
     method = getattr(args, "method", None)
     preset = getattr(args, "preset", None) or "default"
     methods_subdir = getattr(args, "methods_subdir", None) or "methods"

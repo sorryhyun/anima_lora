@@ -1,15 +1,14 @@
 """GUI-side bridge to the local training daemon (``anima_daemon``).
 
-Phase 2 turns the GUI into a daemon *client*: the Train button submits a job to
-the daemon (so training survives the GUI closing) and the tab then *observes*
-that job by polling the per-job files the daemon already writes to local disk —
-``job.json`` for state, ``progress.jsonl`` for the bar, ``stdout.log`` for the
-log. Everything is poll-driven off the tab's existing ``QTimer``; there is
-deliberately **no background thread / SSE consumer**, because the daemon is
-localhost-only (a non-goal forbids remote) so the files are right there to read.
+The Train button submits a job to the daemon (so training survives the GUI
+closing) and the tab then *observes* that job by polling the per-job files the
+daemon writes to local disk — ``job.json`` for state, ``progress.jsonl`` for the
+bar, ``stdout.log`` for the log. Everything is poll-driven off the tab's
+``QTimer``; there is no background thread / SSE consumer (the daemon is
+localhost-only, so the files are local).
 
-This keeps the heavy ``library.*`` / torch imports out of the GUI: the daemon
-client is pure ``urllib`` and ``config`` is pure ``pathlib``.
+The daemon client is pure ``urllib`` and ``config`` is pure ``pathlib``, so no
+``library.*`` / torch import reaches the GUI.
 """
 
 from __future__ import annotations
@@ -77,8 +76,7 @@ def submit_training(
 ) -> dict:
     """Auto-start the daemon if needed and enqueue a training job.
 
-    Mirrors what ``tasks.py lora-gui <variant>`` would have launched inline:
-    ``method`` is the gui-methods variant stem and ``methods_subdir`` is
+    Equivalent to ``tasks.py lora-gui <variant>``: ``method`` is the gui-methods variant stem and ``methods_subdir`` is
     ``"gui-methods"``. ``start`` controls the queue gate: ``True`` (the main
     Train button) runs it now, ``False`` (the queue dropdown) holds it until
     "Start Queue". Returns the daemon's ``{job_id, state}`` response.
@@ -108,8 +106,8 @@ def submit_command(
 ) -> dict:
     """Auto-start the daemon if needed and enqueue a plain task job.
 
-    Mirrors what ``python tasks.py <target>`` would have launched inline (e.g.
-    preprocess / mask), but runs it through the daemon's serial queue so it
+    Equivalent to ``python tasks.py <target>`` (e.g. preprocess / mask), but
+    runs it through the daemon's serial queue so it
     survives the GUI closing and can't fight a training run for the GPU.
 
     ``chain_train`` (``{method, preset, methods_subdir}``) makes the daemon

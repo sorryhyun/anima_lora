@@ -44,9 +44,9 @@ def load_arbitrary_dataset(args, tokenizer=None) -> MinimalDataset:
     dataset_class = args.dataset_class.split(".")[-1]
     module = importlib.import_module(module)
     dataset_class = getattr(module, dataset_class)
-    # resolution and max_token_length are no longer knobs (native constant-token
-    # bucketing; text always padded to max_length); pass None for those legacy
-    # positional slots in the external dataset contract.
+    # resolution and max_token_length are not knobs (text is always padded to
+    # max_length); pass None for those positional slots in the external dataset
+    # contract.
     train_dataset_group: MinimalDataset = dataset_class(
         tokenizer, None, None, args.debug_dataset
     )

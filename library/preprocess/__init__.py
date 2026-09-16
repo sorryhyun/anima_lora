@@ -1,9 +1,7 @@
 """Dataset-caching orchestration shared by the ``preprocess/`` entry points.
 
 This package holds the reusable "drive the primitives over a *dataset*" logic
-that the ``preprocess/cache_*.py`` scripts otherwise inlined in their ``main()``
-bodies (see ``docs/proposal/tooling_architecture.md`` §A): the walk/group/skip
-loop (``_dataset``) plus one module per cache kind whose function takes the
+behind the ``preprocess/cache_*.py`` scripts: the walk/group/skip loop (``_dataset``) plus one module per cache kind whose function takes the
 already-loaded model + explicit paths and returns a :class:`PreprocessStats`.
 Entry points keep argparse + model load + an optional ``tqdm`` progress bar.
 
@@ -42,8 +40,8 @@ _LAZY = {
     "StaleCaches": ("reconcile", "StaleCaches"),
     "cache_text_embeddings": ("text", "cache_text_embeddings"),
     "count_pending_text": ("text", "count_pending_text"),
-    # Torch-free leaf (now anime_tools.captions.variants) so the caption-correction step / GUI can
-    # import these without dragging torch in via the text submodule.
+    # Torch-free leaf (anime_tools.captions.variants), so the caption-correction
+    # step / GUI can import these without torch via the text submodule.
     "generate_caption_variants": (
         "anime_tools.captions.variants",
         "generate_caption_variants",

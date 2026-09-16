@@ -1,18 +1,16 @@
-"""Per-step DP-DMD loss terms and updates, factored out of ``distill.run_loop``.
+"""Per-step DP-DMD loss terms and updates called from ``distill.run_loop``.
 
-Each function is a verbatim lift of one ``# --- … ---`` block from the training
-loop, reading the built objects off the :class:`~scripts.distill_turbo.setup.RunContext`
+Each function is one ``# --- … ---`` block of the training loop, reading the
+built objects off the :class:`~scripts.distill_turbo.setup.RunContext`
 and the resolved config. The loop keeps the algorithmic spine — the student
 rollout (whose graph the non-split diversity/soft-rank terms ride) and the final
 assemble/backward/optimizer step — inline; these are the surrounding loss terms
 and the fake/critic update.
 
-Numerically identical to the pre-split loop: same statements, same order, same
-RNG stream. Two terms carry documented in-branch side effects:
+Two terms carry documented in-branch side effects:
 
 * ``cdm_off_trajectory_loss`` backwards its own graph (view restored to student
-  first) and records ``metrics.add_cdm`` — it MUST run before the GAN gen forward
-  (project_turbo_view_ckpt_recompute_hazard).
+  first) and records ``metrics.add_cdm`` — it MUST run before the GAN gen forward.
 * ``fake_update`` runs the fake + discriminator optimizer/scheduler steps.
 """
 
@@ -46,7 +44,7 @@ def selective_block_grad_ckpt(model: Anima):
     forward graph in recompute → ``CheckpointError``. The unsloth path carries
     ``@torch._disable_dynamo``, so ``_forward`` runs eager in both forward and
     recompute, and it offloads saved tensors to CPU. The reentrant grad-drop bug
-    ([[project_unsloth_reentrant_drops_grad]]) does not apply here: the frozen
+    (see ``cdm_off_trajectory_loss``) does not apply here: the frozen
     teacher view has no grad-requiring params inside the region.
 
     Wraps ONLY the grad-bearing GAN gen teacher forward, reclaiming the peak
@@ -71,9 +69,9 @@ def selective_block_grad_ckpt(model: Anima):
             b.unsloth_offload_checkpointing = u
 
 
-# --- f-distill reweighting (FastGen idea 2; f_distill.py:20 + _get_f_div_weighting_h)
+# --- f-distill reweighting (port of FastGen f_distill.py:20 + _get_f_div_weighting_h)
 # h = f'(r) where the density ratio r = exp(disc_logits) comes free from the GAN
-# head (idea 1). "rkl" ≡ uniform h ≡ plain DMD2 (the off-by-default no-op).
+# head. "rkl" ≡ uniform h ≡ plain DMD2 (the off-by-default no-op).
 _F_DIV_WEIGHTING = {
     "rkl": lambda r: torch.ones_like(r),
     "kl": lambda r: r,
@@ -246,8 +244,7 @@ def cdm_off_trajectory_loss(
 
     ORDER MATTERS: this branch must run BEFORE the GAN gen forward — that
     forward's checkpointed recompute happens at backward under the then-current
-    view, so this must stay the last view flip of the step
-    (project_turbo_view_ckpt_recompute_hazard).
+    view, so this must stay the last view flip of the step.
 
     VRAM: the CDM student forward is unsloth-checkpointed (same lever as
     gan.grad_ckpt) and BACKWARDED IN-BRANCH, so its graph is freed before the GAN
@@ -260,8 +257,7 @@ def cdm_off_trajectory_loss(
     t_off = torch.rand(B).to(device=ctx.device, dtype=ctx.dtype)
     # requires_grad_ is LOAD-BEARING under the unsloth ckpt below:
     # the reentrant path silently drops the LoRA param grads when
-    # every explicit checkpoint input is detached
-    # (project_unsloth_reentrant_drops_grad) — the leaf's grad flag
+    # every explicit checkpoint input is detached — the leaf's grad flag
     # is what forces the autograd node.
     x_off = (
         cdm_extrapolate(x_g_cdm, v_g_cdm, s_g_cdm, t_off).to(ctx.dtype).requires_grad_()
@@ -441,7 +437,7 @@ def fake_update(
         fake_loss_sum = fake_loss_sum + fake_loss.detach()
         ctx.tau_profiles[turbo.fake_bank].add(fake_loss, tau_fake)
 
-        # Discriminator update (idea 1), co-located with the fake/critic update
+        # Discriminator update, co-located with the fake/critic update
         # (FastGen cadence). The disc scores frozen-TEACHER block features of
         # renoised fake (x_pred) vs renoised real latents — grad only to the disc
         # head. gan_use_same_t_noise reuses (τ_fake, ε_fake) for the real branch.

@@ -68,18 +68,14 @@ def cmd_daemon(extra):
     )
 
 
-# Default job cap — the history grows unboundedly, so a bare `daemon-jobs` shows
-# only the most-recent slice. `--all` lifts the cap, `--limit N` sets it, and the
-# trailing `N of M jobs` line reports the truncation so a capped view never reads
-# as "that's everything".
+# Default job cap for a bare `daemon-jobs` (most recent slice). `--all` lifts it,
+# `--limit N` sets it; a trailing `N of M jobs` line reports truncation.
 _STATUS_DEFAULT_LIMIT = 15
 
 # Shorthand state groups for `--running` / `--failed` / `--done`.
 _STATUS_ACTIVE_STATES = frozenset({"running", "paused"})
 _STATUS_FAILED_STATES = frozenset({"error", "stopped"})
-# Every legal job state — `--state` is validated against this, so a typo (or a
-# job id passed where a state belongs) exits 2 instead of filtering every row
-# away and reading as "the job vanished".
+# Every legal job state; an unknown `--state` value exits 2.
 _STATUS_ALL_STATES = frozenset(
     {"queued", "running", "paused", "done", "error", "stopped"}
 )
@@ -277,10 +273,7 @@ def cmd_daemon_log(extra):
         print(ln)
 
 
-# How often an idle attach prints "still here, still quiet". A GPU bench between
-# prints and a wedged daemon look identical on a silent pipe, and the silence can
-# legitimately run minutes — so say so periodically rather than leaving the reader
-# (or an agent parsing the pipe) to guess.
+# How often an attach with no output prints a `[attached Ns — no output yet]` tick.
 _ATTACH_TICK_SECONDS = 30.0
 
 
@@ -305,10 +298,8 @@ def cmd_daemon_attach(extra):
     daemon event stream. Ctrl-C detaches this terminal only — never the daemon
     or the training subprocess (we are the parent of nothing).
 
-    Every write is flushed: stdout to a pipe is block-buffered, so an unflushed
-    banner makes a piped attach look like zero bytes / a hang. On a job that is
-    already terminal it returns as soon as the log is drained (the SSE endpoint
-    closes the connection at ``eof``)."""
+    Every write is flushed. On a job that is already terminal it returns as
+    soon as the log is drained (the SSE endpoint closes at ``eof``)."""
     if not _client.is_running():
         print("no daemon; `make daemon` to start.", file=sys.stderr)
         sys.exit(1)
@@ -323,9 +314,8 @@ def cmd_daemon_attach(extra):
     try:
         for line in stream:
             last_line[0] = time.time()
-            # The log stream's terminator is a {"ev":"eof","state":…} event. Now
-            # that the connection actually closes (rather than parking), every
-            # attach reaches it — so render it instead of leaking raw JSON.
+            # The log stream's terminator is a {"ev":"eof","state":…} event;
+            # render it instead of printing raw JSON.
             if line.startswith("{") and '"eof"' in line:
                 try:
                     ev = json.loads(line)

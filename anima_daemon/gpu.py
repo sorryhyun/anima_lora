@@ -1,13 +1,11 @@
 """Best-effort GPU-occupancy probe for the serial dequeue guard.
 
-Single GPU, one job at a time → between jobs exactly zero training procs
-should hold VRAM. Before launching the next job the manager asks who's holding
-the GPU so it can distinguish "free, go" from "a known dead job leaked VRAM,
-reap it" from "an unknown proc is using the card, don't blind-kill it".
+Before launching the next job the manager asks who holds the GPU, to tell
+"free" from "a known dead job leaked VRAM, reap it" from "an unknown process
+is using the card, leave it alone".
 
-pynvml first (no subprocess, exact), ``nvidia-smi`` fallback, then give up
-gracefully — the guard degrades to "assume free" rather than deadlocking the
-queue if neither is available (e.g. CPU-only CI).
+pynvml first, ``nvidia-smi`` fallback; if neither is available (e.g. CPU-only
+CI) the probes return ``None`` and the guard assumes the GPU is free.
 """
 
 from __future__ import annotations
@@ -21,10 +19,9 @@ from typing import Optional
 def no_window_kwargs() -> dict:
     """``subprocess`` kwargs that suppress the Windows console-window flash.
 
-    Inlined (rather than imported from ``library.runtime.proc``) to keep the
-    daemon package stdlib-only — the load-bearing invariant that makes it
-    ~1s-restartable. Returns ``{"creationflags": CREATE_NO_WINDOW}`` on Windows,
-    ``{}`` elsewhere (a harmless no-op on Linux/macOS).
+    Inlined rather than imported from ``library.runtime.proc``: the daemon
+    package must not import ``library`` / ``networks`` / ``torch``. Returns
+    ``{"creationflags": CREATE_NO_WINDOW}`` on Windows, ``{}`` elsewhere.
     """
     if sys.platform == "win32":
         return {"creationflags": subprocess.CREATE_NO_WINDOW}
@@ -37,11 +34,9 @@ def gpu_pids() -> Optional[set[int]]:
     ``None`` means "couldn't tell" (no NVML, no nvidia-smi) — distinct from an
     empty set, which means "queried successfully, no compute job is running".
 
-    Compute-only on purpose: the guard exists to spot leftover *training*
-    procs, which use CUDA compute contexts. Graphics contexts (the Windows
-    desktop compositor, browsers, any GPU-accelerated app) must NOT count, or
-    on WDDM the guard would see a dozen innocent renderers every time and stall
-    the queue for its full retry budget before launching anyway.
+    Compute contexts only: graphics contexts (desktop compositor, browsers)
+    must not count, or on Windows WDDM the guard would stall every launch on
+    innocent renderers.
     """
     pids = _gpu_pids_nvml()
     if pids is not None:
@@ -52,10 +47,9 @@ def gpu_pids() -> Optional[set[int]]:
 def gpu_mem() -> Optional[tuple[int, int]]:
     """``(used_mib, total_mib)`` summed over visible GPUs, or ``None``.
 
-    The reliable busy/free signal on Windows WDDM, where per-process compute
-    enumeration is meaningless (see ``gpu_pids``) but aggregate memory is still
-    accurate. A real training run holds GBs; an idle desktop holds a few hundred
-    MiB — so a fraction-of-total threshold cleanly tells the two apart.
+    The busy/free signal the guard uses: on Windows WDDM per-process
+    enumeration is unreliable but aggregate memory is accurate, and a training
+    run holds GBs where an idle desktop holds a few hundred MiB.
     """
     mem = _gpu_mem_nvml()
     if mem is not None:
@@ -129,9 +123,7 @@ def _gpu_pids_nvml() -> Optional[set[int]]:
         out: set[int] = set()
         for i in range(pynvml.nvmlDeviceGetCount()):
             h = pynvml.nvmlDeviceGetHandleByIndex(i)
-            # Compute contexts only — graphics processes (desktop, browser, …)
-            # are not training jobs and must not gate the queue. Mirrors the
-            # nvidia-smi fallback's --query-compute-apps.
+            # Compute contexts only, mirroring nvidia-smi --query-compute-apps.
             try:
                 for proc in pynvml.nvmlDeviceGetComputeRunningProcesses(h):
                     out.add(int(proc.pid))

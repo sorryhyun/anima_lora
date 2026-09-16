@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cross-platform task runner -- replaces Makefile for Windows compatibility.
+"""Cross-platform task runner; the Makefile forwards every target here.
 
 Usage:
     python tasks.py <command> [extra args...]
@@ -7,14 +7,10 @@ Usage:
 Examples:
     python tasks.py lora
     python tasks.py lora --network_dim 32 --max_train_epochs 64
-    python tasks.py test
-    python tasks.py test                     # add SPECTRUM=1 to enable Spectrum
-    python tasks.py test                     # add MOD=1 to enable modulation guidance
-    python tasks.py test                     # add NOLORA=1 to run against the bare DiT
+    python tasks.py test                     # env: SPECTRUM=1 or SPD=1, MOD=1, NOLORA=1
     python tasks.py download-models
     python tasks.py turbo                    # DP-DMD 4-step distillation
     python tasks.py exp-chimera              # experimental method
-    python tasks.py test                     # add SPD=1 for progressive-resolution inference
 
 Command implementations live under ``scripts/tasks/`` (shipped methods) and
 ``scripts/experimental_tasks/`` (unstable methods exposed under ``exp-*``).
@@ -26,15 +22,8 @@ import sys
 
 
 class _LazyCmd:
-    """A command callable that imports its module only when first invoked.
-
-    tasks.py is a pure dispatch table: a single ``python tasks.py <cmd>`` needs
-    exactly one command module, but importing all of them up front to build
-    ``COMMANDS`` cost ~100ms (the daemon client's urllib/http chain dominates) —
-    wasted for the common case (``make gui`` immediately spawns a child for the
-    real work). Wrapping each entry defers the import to dispatch time, so every
-    target stops paying for modules it won't run.
-    """
+    """A command callable that imports its module only when first invoked, so a
+    single ``python tasks.py <cmd>`` imports only the one module it runs."""
 
     def __init__(self, modpath: str, name: str):
         self._modpath = modpath
@@ -417,8 +406,7 @@ COMMANDS = {
         "Refresh custom_nodes/*/_vendor/ from live library/* (run before publishing nodes)",
     ),
     # ── Experimental ──────────────────────────────────────────────────
-    # Unstable methods kept under exp-* so they don't pollute the main command
-    # surface. May produce broken output, change without notice, or be removed.
+    # May produce broken output, change without notice, or be removed.
     "exp-soft-tokens": (
         exp_training.cmd_soft_tokens,
         "[experimental] SoftREPA-style per-layer × per-t soft tokens (training-only v1)",
@@ -483,15 +471,11 @@ COMMANDS = {
 
 
 def _force_utf8_stdio():
-    """Make stdout/stderr UTF-8 so non-UTF-8 consoles don't crash on glyphs.
+    """Reconfigure stdout/stderr as UTF-8 with ``errors="replace"``.
 
-    Several commands print Unicode status glyphs (``✓``/``✗``). On a Windows
-    console whose code page isn't UTF-8 (e.g. cp949 on a Korean install)
-    ``print`` raises ``UnicodeEncodeError`` and aborts the whole task. Re-encode
-    stdio as UTF-8 with ``errors="replace"`` so output is never fatal — UTF-8
-    when the terminal can show it, a replacement char at worst when it can't.
-    Best-effort: some wrapped streams (pytest capture, certain pipes) lack
-    ``reconfigure``; skip them silently.
+    Status glyphs (``✓``/``✗``) otherwise raise ``UnicodeEncodeError`` on a
+    non-UTF-8 Windows console (e.g. cp949). Streams without ``reconfigure``
+    (pytest capture, some pipes) are skipped.
     """
     for stream in (sys.stdout, sys.stderr):
         try:

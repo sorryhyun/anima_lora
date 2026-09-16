@@ -14,8 +14,7 @@ and the embedder front door all see the same table:
    prompts are bit-identical with or without the pack.
 2. **Embedding table** — :func:`attach_vocab_pack` hooks ``llm_adapter.embed``
    so ext ids resolve to pack rows. It is a hook pair (clamp pre-hook +
-   row-substitution forward hook, the ComfyUI Adapter node's reference
-   design), not a widened ``nn.Embedding``: the module's state dict stays at
+   row-substitution forward hook), not a widened ``nn.Embedding``: the module's state dict stays at
    the stock 32128 rows, so ``make merge`` / checkpoint saves / ``ss_``
    metadata are unaffected and the pack composes with any DiT or LoRA.
 
@@ -125,13 +124,12 @@ def _is_shipped_default(prefix: Path) -> bool:
 def _fetch_shipped_pack(prefix: Path, missing: list[str]) -> None:
     """Install the shipped pack through the catalog row, once, on first use.
 
-    ``configs/base.toml`` enables the pack by default since v2, and ``make
-    update`` overwrites base.toml — so a pre-v2 checkout (or a fresh embedder
-    install that skipped ``make download-models``) would otherwise hit a hard
-    ``FileNotFoundError`` at the first train / inference / node load. Only the
-    *shipped default* is fetched: a custom ``vocab_pack`` path still raises.
-    Any failure re-raises the original missing-pack error with the download
-    hint, so a network problem reads the same as before.
+    ``configs/base.toml`` enables the pack by default and ``make update``
+    overwrites base.toml, so a checkout that skipped ``make download-models``
+    would otherwise hit ``FileNotFoundError`` at the first train / inference /
+    node load. Only the *shipped default* is fetched: a custom ``vocab_pack``
+    path still raises. Any failure re-raises the original missing-pack error
+    with the download hint.
     """
     print(
         f"vocab pack {prefix.name}: {', '.join(missing)} not installed — fetching "

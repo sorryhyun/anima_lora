@@ -20,7 +20,7 @@ under ``make exp-test-directedit`` — that task picks a random source image,
 runs the Anima Tagger to seed ``--prompt_src``, and forms ``--prompt_tar``
 from ``PROMPT`` env (the user's edit instruction).
 
-v1.1 status:
+Status:
   * V-injection: WIRED. ``--t_inj N`` injects src self-attn V into the tar
     pass for the first N steps (paper Eq. 13). ``--t_inj_blocks`` selects
     the block subset (default = all but the final block, SD3.5-style).
@@ -28,7 +28,7 @@ v1.1 status:
     Eq. 12 — Δz dropped inside the edit region (the full background-lock
     latent blend remains future work). ``--easycontrol_mask`` composes the
     learned counterpart: gray-hole the EC cond over the same region so the
-    inpaint prior clamps outside it (project/directedit_ec/bench Phase 1a).
+    inpaint prior clamps outside it (_archive/directedit_ec/bench).
   * Inversion runs at ``--invert_guidance 1.0`` (no CFG); the edit pass uses
     the user's ``--guidance_scale`` (default 4.0, Anima base-v1.0 standard).
 """
@@ -320,7 +320,7 @@ def parse_args() -> argparse.Namespace:
         help="Additive offset on every block's learned b_cond gate — the "
         "continuous cond-softmax-mass dial (each -1 cuts cond attention mass "
         "~e×; cond_scale is near-binary on the inpaint prior, see "
-        "project/directedit_ec/bench). Applied after load, read live per forward "
+        "_archive/directedit_ec/bench). Applied after load, read live per forward "
         "(NOT baked into the KV cache).",
     )
     p.add_argument(
@@ -360,11 +360,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def _pick_bucket(img: Image.Image) -> tuple[int, int]:
-    """Return (H, W): free-fit the source aspect into the canonical 1024 tier band.
-
-    The old path snapped to the nearest discrete CONSTANT_TOKEN_BUCKETS; free-fit
-    preserves the native aspect (sub-patch crop).
-    """
+    """Return (H, W): free-fit the source aspect into the canonical 1024 tier band
+    (native aspect preserved, sub-patch crop)."""
     rw, rh = img.size
     edge = choose_edge(rw, rh, [1024])
     bw, bh = freefit_bucket(rw, rh, freefit_band_for_edge(edge))
@@ -567,7 +564,7 @@ def _log_fm_score_table(rows: list[dict]) -> None:
     only). Sorted by FM error so the on-manifold ranking reads top-down. When
     reconstruction MSE is present the summary reports whether the lowest-FM
     variant is also the best-reconstructing one and, for n≥3, the Pearson r
-    between the two — the core question the probe exists to answer.
+    between the two.
     """
     have_recon = all(r.get("recon") is not None for r in rows)
     ordered = sorted(rows, key=lambda r: r["fm"])

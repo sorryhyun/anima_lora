@@ -1,8 +1,7 @@
 """Gradient-SVD ``lora_down`` init — seed ``A`` from the task gradient's row space.
 
-``down_init="weight_svd"`` seeds ``A`` with W₀'s top-r right singular vectors —
-"where W is big", not "where the task pushes". This module builds the other
-basis: a one-pass randomized sketch of the flow-matching gradient per
+``down_init="weight_svd"`` seeds ``A`` with W₀'s top-r right singular vectors.
+This module builds the gradient basis instead: a one-pass randomized sketch of the flow-matching gradient per
 LoRA-target Linear, whose top-r right singular vectors are the subspace a
 LoRA-GA / LoRA-One init would use (with ``B = 0`` the first optimizer step is
 the rank-r truncated full-FT step).
@@ -18,8 +17,7 @@ Two consumers, one code path:
   beside the checkpoint, and hands the path to the factory.
 * ``down_init="basis_file"`` — a basis built once over many artists
   (``bench/grad_init/build_universal_basis.py``) is read from disk; no per-run
-  backward pass. E0 measured 0.633 held-out capture for a 20-artist pool vs
-  0.709 for the artist's own gradient and 0.206 for ``weight_svd``.
+  backward pass.
 
 A basis is **depth-baked**: module names carry the block index, so a 28-block
 basis must not seed a 40-block DiT (see ``docs/methods/anima-2.9b.md``).
@@ -445,9 +443,8 @@ def init_down_from_basis(
     ``basis`` is ``(in, r_store)``. When ``r_store < r`` the leading
     ``r_store`` rows of ``weight`` are seeded and the rest keep whatever init
     the caller already wrote (Kaiming), so the seeded directions are never
-    diluted by zeros. The ``1/sqrt(3)`` matches the expected row-norm of the
-    Kaiming default exactly as ``weight_svd`` does, so "better direction" is not
-    confounded with "larger effective step".
+    diluted by zeros. The ``1/sqrt(3)`` row-norm match is the same as
+    ``LoRAModule._init_down_weight_svd``.
     """
     r, in_features = weight.shape
     if basis.shape[0] != in_features:

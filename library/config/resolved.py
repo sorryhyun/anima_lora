@@ -3,11 +3,8 @@
 The bespoke distillation loops (``scripts/distill_turbo`` / ``project/finished/mod_guidance``)
 read sectioned TOML files raw (not through
 ``load_method_preset``) and resolve every knob with a hand-rolled CLI-vs-TOML-vs-
-default precedence rule, then freeze the result into a dataclass. Turbo grew the
-cleanest version of that pattern; this module is its promotion so the other loops
-stop re-deriving it. Precedence bugs are DX bugs — users expect ``ARGS=`` /
-``PRESET=`` to mean the same thing across every method — and snapshots are how
-this repo preserves run truth, so neither should be bespoke per loop.
+default precedence rule, then freeze the result into a dataclass. This module
+is that shared pattern.
 
 - :func:`pick` — CLI override (non-sentinel) wins, else dotted TOML key, else default.
 - :func:`load_toml` — read a raw TOML file (sectioned bespoke configs).
@@ -22,7 +19,7 @@ from typing import Any, Iterable, Optional, Sequence
 
 from library.config.io import toml_get
 
-# Python 3.11+; fall back to ``tomli`` if needed (mirrors the distill scripts).
+# Python 3.11+; fall back to ``tomli`` if needed.
 try:
     import tomllib
 except ModuleNotFoundError:  # pragma: no cover
@@ -39,8 +36,7 @@ def _is_sentinel(value: Any, sentinels: Sequence[Any]) -> bool:
     """True if ``value`` equals one of the sentinels (identity OR ``==``).
 
     Booleans never match the numeric ``-1`` sentinels (``True == -1`` is False),
-    so ``store_true``/``store_false`` flags pass through untouched — matching the
-    original ``cli_val is not None and cli_val != -1 and cli_val != -1.0`` guard.
+    so ``store_true``/``store_false`` flags pass through untouched.
     """
     for s in sentinels:
         if value is s:
@@ -61,8 +57,7 @@ def pick(
     """CLI override (non-sentinel) wins, else dotted TOML ``key``, else ``default``.
 
     ``cfg`` is a raw (nested) TOML dict; ``key`` is a dotted ``a.b.c`` path read
-    via :func:`library.config.io.toml_get`. The previous inline ``_pick`` / ``pick``
-    closures in the distill scripts are exactly this with the default sentinels.
+    via :func:`library.config.io.toml_get`.
     """
     if not _is_sentinel(cli_value, sentinels):
         return cli_value

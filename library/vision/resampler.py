@@ -1,10 +1,6 @@
-"""Perceiver resampler architecture — shared by phase1_5_anchored and the
-phase-1 bench trainer.
+"""Perceiver resampler architecture (used by the IP-Adapter bench).
 
-Pure model code: no caching, loss, or I/O. Queries are init N(0, 0.15) — the
-measured per-element std of the target crossattn_emb — so the prediction
-starts at the right scale and the cosine loss isn't stuck on vanishing-norm
-outputs.
+Pure model code: no caching, loss, or I/O.
 """
 
 from __future__ import annotations
@@ -16,8 +12,7 @@ import torch.nn as nn
 class ResamplerBlock(nn.Module):
     """Pre-LN block: (queries ← patches) cross-attn + self-attn over queries + FFN.
 
-    Residual around each sub-layer; no dropout (phase-1 data is small and
-    variants already act as implicit augmentation).
+    Residual around each sub-layer; no dropout.
     """
 
     def __init__(self, d_model: int, n_heads: int):

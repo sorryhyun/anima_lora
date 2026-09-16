@@ -18,8 +18,8 @@ import torch
 from safetensors.torch import load_file
 
 # Suffix conventions live in the torch-free leaf so torch-free consumers (the
-# GUI) share one definition. Re-exported here for back-compat with the many
-# call sites importing them from ``library.io.cache``.
+# GUI) share one definition. Re-exported for call sites importing them from
+# ``library.io.cache``.
 from library.io.cache_names import (  # noqa: F401
     DEFAULT_PE_ENCODER,
     LATENT_CACHE_SUFFIX,
@@ -294,9 +294,8 @@ def parse_latent_cache_name(path: str | os.PathLike) -> LatentCacheFile | None:
     """Parse a ``{stem}_{W}x{H}_anima.npz`` path into its parts.
 
     Returns ``(path, stem, W_px, H_px)`` or ``None`` if the basename doesn't
-    match the bucketed-latent convention. The single source of truth for the
-    pixel-dim filename pattern — bench probes should use this instead of
-    re-compiling their own ``_FNAME_RE`` / ``_RES_RE`` / ``_bucket_of``.
+    match the bucketed-latent convention. Bench probes should use this rather
+    than their own filename regex.
     """
     p = Path(path)
     m = _LATENT_PIXEL_RE.match(p.name)
@@ -325,7 +324,7 @@ def discover_latents_by_stem(
     return out
 
 
-# Bucketed sample discovery (promoted from bench/_anima.py).
+# Bucketed sample discovery.
 def discover_bucketed_samples(
     data_dir: Path,
     bucket: str | None,

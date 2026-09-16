@@ -8,11 +8,10 @@ BYG dataset (``library/datasets/base.py``) loads these into
 ``batch["byg_{role}_emb"]`` / ``["byg_{role}_mask"]`` and the
 ``BYGMethodAdapter`` consumes them.
 
-v1 = **tag-swap** generation (no VLM, paper App. D shortcut): pick a color word
-present in the caption and swap it for another, which mechanically yields a
-self-contained reverse instruction and a temporal-language-free target caption.
-This is free (no VLM) but cannot express style edits — the ``--vlm`` tail (paper
-App. D.1, Qwen3-VL) is left for a later phase.
+Generation is **tag-swap** (paper App. D shortcut): pick a color word present in
+the caption and swap it for another, which mechanically yields a self-contained
+reverse instruction and a temporal-language-free target caption. It cannot
+express style edits; ``--vlm`` (paper App. D.1, Qwen3-VL) is not implemented.
 
 Usage::
 

@@ -85,11 +85,11 @@ def load_dotenv(path: Optional[Path] = None) -> dict[str, str]:
     return added
 
 
-# Default checkpoint paths — single source of truth for the DiT / VAE / text
-# encoder a bench script or example needs. Resolution order, highest first:
+# Default checkpoint paths for the DiT / VAE / text encoder a bench script or
+# example needs. Resolution order, highest first:
 #   1. env vars ANIMA_DIT / ANIMA_VAE / ANIMA_TEXT_ENCODER (incl. anything
 #      promoted from .env by load_dotenv)
-#   2. configs/base.toml (the real source of truth shared with training)
+#   2. configs/base.toml (shared with training)
 #   3. the literals below (only if base.toml is missing/unreadable)
 _CKPT_ENV = {
     "dit": "ANIMA_DIT",
@@ -107,7 +107,7 @@ _CKPT_FALLBACK = {
     "dit": "models/diffusion_models/anima-base-v1.0.safetensors",
     "vae": "models/vae/qwen_image_vae.safetensors",
     "text_encoder": "models/text_encoders/qwen_3_06b_base.safetensors",
-    # base.toml ships the CJK pack on (v2); with no base.toml to read there is
+    # base.toml ships the CJK pack on; with no base.toml to read there is
     # nothing to auto-fetch against, so the literal stays "" = off (stock T5
     # tokenizer, bit-exact).
     "vocab_pack": "",
@@ -135,9 +135,8 @@ def default_checkpoints() -> DefaultCheckpoints:
     Env (``ANIMA_DIT`` / ``ANIMA_VAE`` / ``ANIMA_TEXT_ENCODER``) wins over
     ``configs/base.toml``, which wins over hardcoded fallbacks. ``.env`` is
     consulted (via :func:`load_dotenv`, which never clobbers real env vars), so
-    callers need not load it themselves. This is the one place bench scripts and
-    examples should reach for these paths instead of re-deriving the
-    ``os.environ.get("ANIMA_DIT", "models/…")`` pattern.
+    callers need not load it themselves. Bench scripts and examples should
+    get these paths here.
     """
     load_dotenv()
 

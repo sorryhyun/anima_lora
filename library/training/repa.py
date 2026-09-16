@@ -31,7 +31,7 @@ Config rides the LoRA network kwargs (``use_repa`` / ``repa_mode`` /
 the factory. The scalar loss returns under ``aux["repa"]``, weighted by
 ``LossComposer`` stage 2 (``losses._repa_loss``).
 
-Phase-1 operating-point levers (``docs/methods/repa.md`` §"Annealing plan";
+Operating-point levers (``docs/methods/repa.md`` §"Annealing plan";
 both default-off):
 
 - ``repa_anneal_steps`` — hard cutoff (HASTE, arXiv:2505.16792: alignment
@@ -47,8 +47,7 @@ gradient norm at stable spatial positions — the probe takes
 ``autograd.grad`` of the alignment scalar w.r.t. pooled DiT tokens, resizes
 the per-token grad-norm map to a 32×32 grid, and accumulates top-10%
 membership counts across steps into
-``<output_name>_repa_grad_heatmap.npz`` / ``repa/heatmap_conc``. Decision
-rule: ~uniform (concentration ≲ 3×) ⇒ close lever 3 without a training run.
+``<output_name>_repa_grad_heatmap.npz`` / ``repa/heatmap_conc``.
 """
 
 from __future__ import annotations
@@ -198,7 +197,7 @@ def dog_standardize(
     """Difference-of-Gaussians band-pass of the target tokens (REPA-DoG).
 
     Generalizes ``spatial_norm``'s DC removal to a broader low-band strip
-    (arXiv:2603.14645v1 §3.5; best ``σ₁ = min/16`` per Phase-0 bench). ``pe``
+    (arXiv:2603.14645v1 §3.5; best ``σ₁ = min/16`` in bench). ``pe``
     is ``(B, N, d)`` with ``N == gh*gw`` (CLS dropped); reshaped to
     ``(gh, gw)`` row-major, band-passed, standardized, flattened back — slots
     in **instead of** ``relational_gram_loss``'s ``spatial_norm`` block.
@@ -319,7 +318,7 @@ class REPAMethodAdapter(MethodAdapter):
         self._dog_sigma1_div = 16.0
         self._dog_sigma2_div = 0.0
         self._dog_norm_std = 0.0
-        # Timestep reweighting of the alignment term (0 = uniform = legacy path).
+        # Timestep reweighting of the alignment term (0 = uniform).
         self._timestep_weighting = 0.0
         # Trailing register tokens to drop from the capture (0 = none).
         self._trim_tokens = 0
@@ -483,7 +482,7 @@ class REPAMethodAdapter(MethodAdapter):
         self._latent_hw = (int(latents.shape[-2]), int(latents.shape[-1]))
 
     def _past_anneal_cutoff(self, args, micro_step: int) -> bool:
-        """Hard anneal cutoff (lever 1): True once the optimizer-step clock
+        """Hard anneal cutoff: True once the optimizer-step clock
         passes ``repa_anneal_steps`` — (0, 1] is a fraction of
         ``max_train_steps``, > 1 is absolute optimizer steps. 0 = off."""
         if self._anneal_steps <= 0:
@@ -523,8 +522,8 @@ class REPAMethodAdapter(MethodAdapter):
             return None
         if self._captured is None:
             # PE features loaded + train step, but the block hook never fired —
-            # REPA would be silently inert. Warn once so a mis-wired hook (e.g.
-            # a future compile change that swallows it) is visible, not silent.
+            # REPA would be silently inert. Warn once so a mis-wired hook is
+            # visible.
             if not getattr(self, "_warned_no_capture", False):
                 logger.warning(
                     "REPA: block %d hook did not fire on a train step — alignment "

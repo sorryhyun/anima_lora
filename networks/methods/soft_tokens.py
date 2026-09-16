@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 # Anima cached crossattn_emb dimension (Qwen3 hidden size, post LLM-adapter).
 DEFAULT_EMBED_DIM = 1024
 
-# Contrastive negative-sourcing modes (docs/proposal/soft_tokens_contrastive.md):
+# Contrastive negative-sourcing modes (_archive/proposals/soft_tokens_contrastive.md):
 # ``shuffled`` = unrelated cached-TE negative; ``jaccard`` = shuffled but logit
 # down-weighted by caption tag-overlap; ``hard`` = same-artist/different-character
 # sibling (falls back to shuffled for orphan artists); ``hard_backoff`` = tiered
@@ -52,9 +52,7 @@ CONTRASTIVE_MODES = ("shuffled", "jaccard", "hard", "hard_backoff")
 #                  candidates (``L = softtorch.rank(r)[matched] − 1``). Gradient
 #                  flows *through* the ordering yet stays bounded by the SoftSort
 #                  relaxation (unlike InfoNCE's unbounded negative push). Needs k
-#                  live negative forwards only (docs/proposal/soft_tokens_softrank.md).
-# (AGSM was removed 2026-05-30 — its w_matched stayed pinned at chance in both the
-# soft-tokens A/B and the mod-guidance probe; softrank won on eyeball + curves.)
+#                  live negative forwards only (_archive/proposals/soft_tokens_softrank.md).
 CONTRASTIVE_OBJECTIVES = ("infonce", "softrank")
 
 
@@ -127,8 +125,8 @@ def create_network(
     contrastive_objective = str(kwargs.get("contrastive_objective", "infonce"))
     softrank_softness = float(kwargs.get("softrank_softness", 0.1))
     softrank_method = str(kwargs.get("softrank_method", "neuralsort"))
-    # ``dual_bank`` (ψ⁺/ψ⁻ token banks). ``agsm_dual_bank`` kept as a deprecated
-    # alias so pre-2026-05-30 configs/snapshots don't silently drop the flag.
+    # ``dual_bank`` (ψ⁺/ψ⁻ token banks). ``agsm_dual_bank`` is a deprecated
+    # alias so older configs/snapshots don't silently drop the flag.
     _dual_bank = kwargs.get("dual_bank", kwargs.get("agsm_dual_bank", "false"))
     dual_bank = str(_dual_bank).lower() in ("true", "1", "yes")
     network = SoftTokensNetwork(
@@ -345,8 +343,7 @@ class SoftTokensNetwork(AdapterNetworkBase):
         self.contrastive_objective = str(contrastive_objective)
         # softrank: SoftSort softness (softtorch's temperature). NOT contrastive_tau
         # — softtorch's standardize=True puts the candidate axis at unit scale, so
-        # the right softness is ~0.1 (its default), not the sigmoid τ=0.5 the
-        # proposal floated reusing. Separate knob (the τ-reuse was the wrong scale).
+        # the right softness is ~0.1 (its default).
         self._softrank_softness = float(softrank_softness)
         # SoftSort vs NeuralSort relaxation for softrank. neuralsort (default) has
         # a smooth gradient through ties (the near-miss regime); softsort goes flat
@@ -500,7 +497,7 @@ class SoftTokensNetwork(AdapterNetworkBase):
     def _make_block_hook(self, layer_idx: int, org_forward):
         """Closure that splices layer_idx's tokens into crossattn_emb tail.
 
-        Block.forward signature (from library/anima/models.py:1179):
+        Block.forward signature (from library/anima/models.py::Block.forward):
           forward(x_B_T_H_W_D, emb_B_T_D, crossattn_emb, attn_params,
                   rope_cos_sin=None, adaln_lora_B_T_3D=None)
         """
@@ -661,7 +658,7 @@ class SoftTokensNetwork(AdapterNetworkBase):
 
         - file 4D + this net single (inference of a dual checkpoint): slice the
           ψ⁺ branch (index 0) — Appendix H keeps ψ⁻ training-only.
-        - file 3D + this net single: pass through (the Phase-2 path).
+        - file 3D + this net single: pass through.
         - file 4D + this net dual (resume): pass through.
         - file 3D + this net dual: a single-bank checkpoint can't seed both
           branches unambiguously → hard error.
@@ -851,7 +848,7 @@ class SoftTokensNetwork(AdapterNetworkBase):
             "contrastive_logit_gap": float(gap.item()),
         }
 
-    # ── soft-rank listwise objective (docs/proposal/soft_tokens_softrank.md) ──
+    # ── soft-rank listwise objective (_archive/proposals/soft_tokens_softrank.md) ──
 
     def _candidate_rewards(
         self,

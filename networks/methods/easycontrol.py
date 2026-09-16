@@ -1,4 +1,4 @@
-"""EasyControl network module for Anima — two-stream rewrite (adapter-only, DiT frozen).
+"""EasyControl network module for Anima — two-stream (adapter-only, DiT frozen).
 
 Per block, a cond stream (reference latent, patch-embedded + own RoPE at its
 native token count) runs alongside the target stream: cond gets its own
@@ -9,8 +9,7 @@ are baseline; cond skips cross-attn entirely. cond_x flows block-to-block via
 a per-block side channel (``block._easycontrol_cond_x_in``), threaded as an
 explicit checkpoint arg/return so autograd stays intact under grad-checkpoint.
 Step-0 equivalence: ``b_cond`` inits to -10 (exp(-10)~4.5e-5 softmax mass) so
-target_out ~ baseline DiT regardless of cond, verified by
-``bench/easycontrol/step0_equivalence.py``. See docs/experimental/easycontrol.md.
+target_out ~ baseline DiT regardless of cond. See docs/experimental/easycontrol.md.
 
 Train-time contract: caller calls ``network.set_cond(clean_vae_latent)`` once
 per batch before the DiT forward (``None``/``clear_cond`` for CFG-dropout —
@@ -58,13 +57,13 @@ DEFAULT_MLP_RATIO = 4.0
 DEFAULT_LORA_DIM = 16
 DEFAULT_LORA_ALPHA = 16
 DEFAULT_B_COND_INIT = -10.0
-DEFAULT_COND_RES_SCALE = 1.0  # 1.0 = native cond res (bit-exact to pre-PAI path)
+DEFAULT_COND_RES_SCALE = 1.0  # 1.0 = native cond res (no PAI downscale)
 DEFAULT_ADALN_IN_DIM = 256  # AdaLN-LoRA bottleneck width (adaln_up_* in_features)
 DEFAULT_ADALN_RANK = 8
 DEFAULT_TARGET_RANK = 32
 DEFAULT_CROSSATTN_DIM = 1024  # crossattn_emb width (T5-target space)
 
-# Body LoRA (plan_render S6): target-stream deltas, the llm_adapter block LoRA
+# Body LoRA: target-stream deltas, the llm_adapter block LoRA
 # and the ext-row delta. State-dict prefixes select their lr group (target_lr).
 _TARGET_LORA_KINDS = ("qkv", "o", "xq", "xkv", "ffn1", "ffn2")
 _BODY_PREFIXES = ("target_lora_", "adapter_lora.", "ext_lora_")
@@ -155,8 +154,7 @@ class _LoRAProj(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.training:
-            # Activation-dtype GEMMs: bit-identical under autocast(bf16) to the
-            # retired fp32-bottleneck path.
+            # Activation-dtype GEMMs.
             x_lora = x
             if self._has_channel_scale:
                 x_lora = x * self.inv_scale.to(device=x.device, dtype=x.dtype)
@@ -202,7 +200,7 @@ def create_network(
     adaln_rank = int(kwargs.get("adaln_rank", DEFAULT_ADALN_RANK) or DEFAULT_ADALN_RANK)
     adaln_alpha = float(kwargs.get("adaln_alpha", 0.0) or 0.0)  # <=0 → √r law
 
-    # Body LoRA (opt-in, plan_render S6) — the reading path the adapter-only
+    # Body LoRA (opt-in) — the reading path the adapter-only
     # form leaves frozen. train_llm_adapter needs the adapter live
     # (cache_llm_adapter_outputs=false + a prompt_embeds TE cache).
     train_target = _as_bool(kwargs.get("train_target"))
@@ -214,8 +212,7 @@ def create_network(
     target_lr = kwargs.get("target_lr")
     target_lr = float(target_lr) if target_lr not in (None, "", "None") else None
 
-    # Deprecated 2026-06-10, accepted so old snapshot TOMLs replay (fp32-bottleneck
-    # autograd removed).
+    # Deprecated: accepted and ignored so old snapshot TOMLs replay.
     if str(kwargs.get("use_custom_down_autograd", "false")).strip().lower() in (
         "true",
         "1",
@@ -523,8 +520,8 @@ class EasyControlNetwork(AdapterNetworkBase):
         self.b_cond_init = b_cond_init
         self.cond_scale = cond_scale
         self.apply_ffn_lora = apply_ffn_lora
-        # Position-Aware Interpolation downscale for the cond stream: 1.0 = native
-        # (bit-exact to pre-PAI). 0<s<1 downsamples the cond latent (~s^2 tokens)
+        # Position-Aware Interpolation downscale for the cond stream: 1.0 = native.
+        # 0<s<1 downsamples the cond latent (~s^2 tokens)
         # and rescales cond's RoPE positions back onto the target grid.
         if not (0.0 < cond_res_scale <= 1.0):
             logger.warning(
@@ -627,7 +624,7 @@ class EasyControlNetwork(AdapterNetworkBase):
             self.adaln_lora_cross_attn = None
             self.adaln_lora_mlp = None
 
-        # Body LoRA (opt-in, plan_render S6): the ext row → pixel path that
+        # Body LoRA (opt-in): the ext row → pixel path that
         # the adapter-only form leaves with zero trainable weights.
         # (1) target-stream deltas on self-attn qkv/out, cross-attn q/kv and
         #     mlp ffn1/ffn2 — applied only on the cond-active paths (the
@@ -2014,7 +2011,8 @@ class EasyControlMethodAdapter(MethodAdapter):
         cond_src = batch.get("cond_latents") if isinstance(batch, dict) else None
         if cond_src is None:
             cond_src = latents
-        elif cond_src.ndim == 5:  # 5D fallback (old cache), mirror train.py:761
+        elif cond_src.ndim == 5:
+            # 5D fallback (old cache), as in train.py's get_noise_pred_and_target.
             cond_src = cond_src.squeeze(2)
         cond_latent = cond_src.to(ctx.accelerator.device, dtype=ctx.weight_dtype)
 

@@ -23,12 +23,11 @@ to stay commensurable with the offline probe's statistic.
 
 MEASUREMENT is restricted to draws with σ ≤ ``sigma_max`` (the band the MIA
 signal lives in, banked: σ ≤ 0.7) and to every K-th train batch
-(``measure_every``). With the Phase-0 recipe (bs=1, 668 steps, 167 members)
-K must stay small — K=1 still gives only ~2–4 measurements per item across
-the run, which is why the EMA uses Adam-style bias correction.
+(``measure_every``). K must stay small — at bs=1, K=1 gives only ~2–4
+measurements per item across a few-hundred-step run, which is why the EMA uses
+Adam-style bias correction.
 
-MULTI-DRAW mode (``mem_extra_sigmas`` non-empty — the Phase-0.5 estimator
-fix): instead of the single train-draw pair, every measurement step scores
+MULTI-DRAW mode (``mem_extra_sigmas`` non-empty): instead of the single train-draw pair, every measurement step scores
 each batch item at a fixed σ grid × antithetic ±ε pairs (mirroring
 ``loss_gap.py::confidence``: MSE averaged across all draws *before* the log,
 identical noise for base and adapted). One well-averaged Δ per item per
@@ -49,20 +48,19 @@ for items whose bias-corrected Δ-EMA z-scores (across all items with ≥ 1
 measurement) exceed the threshold — only on σ ≤ sigma_max draws, only after
 ``warmup_updates`` total measurements. High-σ draws are untouched: the item
 keeps teaching composition/style, it stops being pixel-copied. mode="measure"
-runs the tracker without touching the loss (the "which of my images is this
-LoRA xeroxing" report ships on its own).
+runs the tracker without touching the loss.
 
 The weight for a step is computed from tracker state *before* that step's
 measurement is folded in (strictly causal — no same-step feedback loop).
 
 STATE is a plain dict keyed by the dataset ``image_key`` (absolute path),
 persisted as ``<output_dir>/<output_name>_memgap.json`` every few updates and
-at process exit, for post-hoc inspection and the Phase-0 sanity correlation
-against the offline probe's ``per_item.csv``.
+at process exit, for post-hoc inspection and correlation against the offline
+probe's ``per_item.csv``.
 
 HARD REQUIREMENT: ``blocks_to_swap == 0``. The measurement forward is a second
-DiT forward per step — unaudited against the block-swap offloader
-(cf. [[project_blockswap_extra_forwards_gradcache]]); train.py raises at setup,
+DiT forward per step, and the block-swap offloader desyncs on extra forwards;
+train.py raises at setup,
 same policy as the register-tokens guard.
 """
 
@@ -239,7 +237,7 @@ class MemGapTracker:
         self._steps = 0  # train batches seen (measurement cadence)
         self._updates = 0  # total per-item measurements folded in
         # Flag-set snapshots [(updates, [stems…]), …] for churn analysis
-        # (kill criterion 3: churn > ~50% ⇒ estimator too noisy to act on).
+        # (churn > ~50% ⇒ estimator too noisy to act on).
         self._history: list[tuple[int, list[str]]] = []
         self._dirty = False
         atexit.register(self.save)

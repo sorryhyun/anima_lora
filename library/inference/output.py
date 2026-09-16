@@ -24,15 +24,14 @@ def write_gen_manifest(
 ) -> Optional[str]:
     """Under a daemon spawn, record a generation manifest + result pointer.
 
-    The daemon-first-class result-envelope lift (proposal Phase 1a) exports
-    ``ANIMA_DAEMON_JOB_DIR`` into every job's env. When set, we write a manifest
-    (``gen_manifest.json``) into the job dir and drop ``result_path.json`` →
-    ``{"path": <abs manifest>}`` so the monitor lifts ``result_path`` +
-    ``result_summary`` (``{label, metrics}``) onto the job record — making a
-    queued ``make gen`` run a first-class citizen the same way bench results are.
+    The daemon exports ``ANIMA_DAEMON_JOB_DIR`` into every job's env. When set,
+    we write a manifest (``gen_manifest.json``) into the job dir and drop
+    ``result_path.json`` → ``{"path": <abs manifest>}`` so the monitor lifts
+    ``result_path`` + ``result_summary`` (``{label, metrics}``) onto the job
+    record, as for bench results.
 
-    Absent the env var (a plain inline ``python inference.py``) this is a no-op,
-    so the CLI stays standalone with zero daemon coupling. Best-effort: a bad
+    Absent the env var (a plain inline ``python inference.py``) this is a
+    no-op. Best-effort: a bad
     job dir must never fail a completed generation. Returns the manifest path (or
     None when inline / on failure).
 
@@ -180,8 +179,7 @@ def decode_to_pil(
     """Decode a clean latent straight to a ``PIL.Image`` — the in-memory exit.
 
     Composes ``decode_latent`` (VAE decode → ``[-1,1]`` CHW tensor) with
-    ``pixels_to_pil``, so embedders who want an image to composite / return over
-    HTTP / score don't have to round-trip through a temp PNG via ``save_output``.
+    ``pixels_to_pil``, with no temp PNG round-trip through ``save_output``.
     """
     return pixels_to_pil(decode_latent(vae, latent, device))
 

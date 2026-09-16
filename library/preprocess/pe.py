@@ -1,7 +1,6 @@
 """Cache PE-Core (or other registered vision-encoder) patch-token features.
 
-Orchestration extracted from ``preprocess/cache_pe_encoder.py`` (see
-``docs/proposal/tooling_architecture.md`` §A). The script keeps only argparse +
+Orchestration for ``preprocess/cache_pe_encoder.py``, which keeps only argparse +
 encoder load; the walk → group → batched-encode → idempotent-save loop, and the
 centroid pooling pass, live here so the daemon / tests / embedding code can
 drive them without a CLI attached.
@@ -163,8 +162,8 @@ def cache_pe_features(
     from library.vision.buckets import pick_bucket
 
     # Flatten every shape-group into ONE dataset + homogeneous-shape batch plan so the
-    # worker pool spawns once (Windows spawn() re-imports torch+library per worker, and
-    # per-group DataLoaders paid that for every (W,H) bucket). ``batch_sampler`` keeps
+    # worker pool spawns once (Windows spawn() re-imports torch+library per worker,
+    # so a DataLoader per (W,H) group pays that per group). ``batch_sampler`` keeps
     # each batch within one shape group, preserving one-bucket-per-forward.
     all_paths: list[Path] = []
     all_out_paths: list[Path] = []

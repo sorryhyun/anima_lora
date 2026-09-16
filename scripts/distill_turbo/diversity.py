@@ -1,7 +1,6 @@
 """DAVE-derived same-prompt diversity validation for the turbo distillation loop.
 
-DP-DMD's whole pitch is *diversity-preserved* distillation, but the in-loop
-``div`` loss only measures how close the student's first step lands to the
+The in-loop ``div`` loss only measures how close the student's first step lands to the
 teacher's K-step anchor — it says nothing about whether the student's own
 same-prompt samples have collapsed across seeds (the canonical DMD failure).
 

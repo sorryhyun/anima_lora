@@ -100,13 +100,13 @@ PREPROCESS_TOML = ROOT / "configs" / "preprocess.toml"
 
 PREPROCESS_METHODS = ["lora", "tlora", "hydralora"]
 
-# Sourced from base.toml via gui.config_io so this tab can't drift from the
-# Config/EasyControl tabs; fallback only, when the variant doesn't override the path.
+# Sourced from base.toml via gui.config_io (shared with the Config/EasyControl tabs);
+# fallback only, when the variant doesn't override the path.
 RESIZED_DIR = default_resized_dir()
 LORA_CACHE_DIR = default_lora_cache_dir()
 MASK_DIR = default_mask_dir()
 
-# Pre-Phase-3 widget attribute names → (section attribute, key). Kept for
+# Legacy widget attribute names → (section attribute, key). Kept for
 # one release so tests and ``image_tab`` that reach into ``tab.<widget>`` stay
 # valid; new code should go through ``tab.values()`` / ``tab.stage_values()``
 # or the owning section instead. A key is a knob-table key for a trainer row
@@ -514,7 +514,7 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
             out.update(reader() if reader is not None else section.values())
         return out
 
-    _widget_values = values  # pre-Phase-3 name
+    _widget_values = values  # legacy name
 
     def stage_values(self) -> dict[str, object]:
         """``{stage_id: {dest: value}}`` for every stage form (``masks_sam``:

@@ -1,8 +1,8 @@
 """DAVE — DC Attenuation for diVersity Enhancement (training-free, ICML'26).
 
 Recovers same-prompt sample diversity by attenuating the **DC component** of each
-target Transformer block's output — the spatial average ``μ^ℓ`` that the Phase-0
-probe found to be near-perfectly cross-seed-shared (it carries the conditioning /
+target Transformer block's output — the spatial average ``μ^ℓ`` that the probe
+found to be near-perfectly cross-seed-shared (it carries the conditioning /
 global layout) while the **AC residual** ``h − μ`` holds the seed-specific
 structure. The per-block edit::
 
@@ -22,8 +22,7 @@ no-op``), so it survives ``compile_blocks()`` (the hook fires eager around each
 block's compiled ``_forward``; the DC mean over dims (1,2,3) is correct for both the
 eager 5D ``(B,T,H,W,D)`` and the native-flattened fake-5D ``(B,1,seq,1,D)`` layout).
 
-v0: standard denoise loop only (no Spectrum/SPD compose) — the scoping CNS shipped
-with. The edit applies to both the cond and uncond CFG forwards (a uniform
+Standard denoise loop only (no Spectrum/SPD compose). The edit applies to both the cond and uncond CFG forwards (a uniform
 representation edit; the hook does not distinguish the two passes).
 
 Reference: "Breaking the Lock-in: Diversifying Text-to-Image Generation via
@@ -44,7 +43,7 @@ from library.env import resolve_under_home
 
 logger = logging.getLogger(__name__)
 
-# Shipped Phase-1 mask (relative to repo home). ``--dave auto`` resolves here;
+# Shipped mask (relative to repo home). ``--dave auto`` resolves here;
 # an explicit path overrides. Produced by bench/dave/derive_alpha_mask.py.
 DEFAULT_MASK_PATH = "networks/calibration/dave_alpha.npz"
 

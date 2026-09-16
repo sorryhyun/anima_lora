@@ -23,9 +23,8 @@ attach(
         "default_checkpoints": "library.env",
         "DefaultCheckpoints": "library.env",
         "str_to_dtype": "library.runtime.device",
-        # CJK vocab pack (text-encoder asset, not a LoRA): load once, hook
-        # onto a DiT / LLMAdapter. GenerationRequest(vocab_pack=…) is the
-        # request-driven path; these are the primitives behind it.
+        # CJK vocab pack primitives; GenerationRequest(vocab_pack=…) is the
+        # request-driven path.
         "VocabPack": "library.anima.vocab_pack",
         "load_vocab_pack": "library.anima.vocab_pack",
         "attach_vocab_pack": "library.anima.vocab_pack",

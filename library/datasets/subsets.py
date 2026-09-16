@@ -17,10 +17,8 @@ logger = logging.getLogger(__name__)
 def _resolve_default_mask_dir() -> Optional[str]:
     """Resolve the default mask directory.
 
-    Prefers the new ``post_image_dataset/masks/`` layout produced by
-    ``make mask``; falls back to the legacy ``masks/{merged,sam}/`` pair so
-    users who haven't re-run masking after the consolidation keep training
-    without manual intervention (``masks/mit`` went with the v2 MIT removal).
+    Prefers the ``post_image_dataset/masks/`` layout produced by
+    ``make mask``; falls back to the legacy ``masks/{merged,sam}/`` pair.
     Whether the result is *used* is ``--masked_loss``'s call — when that is
     off, ``train.py`` sets every subset's ``mask_dir`` to ``""`` at the
     blueprint (``loader.disable_masks_in_blueprint``), which skips this.

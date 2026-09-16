@@ -12,15 +12,13 @@ reverse/cycle pass conditions on inference-quality inputs), while the
 *gradient* flows through the cheap one-step prediction ``ŷ`` (which is
 differentiable w.r.t. the trainable forward velocity). ``sg`` is stop-gradient.
 
-This is a general recipe — any loss that wants clean ``x_0``-space
-conditioning while keeping gradients connected to the noisy state — so it
-lives here as a standalone utility, not buried in the BYG method module.
+It applies to any loss that wants clean ``x_0``-space conditioning while
+keeping gradients connected to the noisy state.
 
 5D-latent invariant (repo CLAUDE.md): every velocity/latent the DiT touches is
 5D ``(B, C, T=1, H, W)`` with the singleton at **dim 2**. The blend adds two
-such tensors element-wise; a silent ndim/shape mismatch is the exact class of
-dim-2 bug that bit FreeText repeatedly, so we assert it here rather than let
-broadcasting paper over it.
+such tensors element-wise, so ndim/shape are asserted rather than left to
+broadcasting.
 """
 
 from __future__ import annotations

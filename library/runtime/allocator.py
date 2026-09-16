@@ -2,15 +2,12 @@
 
 Free-fit native-shape bucketing hands the allocator a different seq_len every
 step, so segment reuse degrades and the reserved pool fragments over a long
-run — the old constant-token pool ran one exact size every step and never hit
-this (issue #58: part of the freefit VRAM regression is reserved-pool growth,
-not saved-for-backward activations). ``expandable_segments`` lets the
-allocator grow segments in place instead of carving a new one per novel size,
-removing that fragmentation class.
+run. ``expandable_segments`` lets the allocator grow segments in place
+instead of carving a new one per novel size.
 
 The env var is read when the CUDA caching allocator initializes, so this must
 run before the first CUDA allocation — train.py calls it in its pre-torch
-prologue to be unambiguous.
+prologue.
 """
 
 from __future__ import annotations

@@ -2,10 +2,8 @@
 predict (``test-tagger``), autotag, and the dbv4 checkpoint builder.
 
 ``make tagger`` / ``make test-tagger`` invoke ``python -m anime_tools.tagger.cli.main``
-with the appropriate ``--mode``; extra args are forwarded verbatim. The PE-head
-training targets (``make preprocess-tagger`` / ``make tagger`` as a trainer)
-were archived 2026-08-27 with the dbv4 backend migration
-(``../anime_tools/_archive/anima_tagger_training/``, moved with the curation split); sidecar training runs via
+with the appropriate ``--mode``; extra args are forwarded verbatim. Sidecar
+head training runs via
 ``make daemon-run ARGS="-m anime_tools.tagger.cli.train_sidecar"``.
 """
 

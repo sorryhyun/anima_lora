@@ -1,19 +1,15 @@
 #!/usr/bin/env python3
 """Stack two LoRA-family variants — OrthoInit + T-LoRA — from Python.
 
-`06_frozen_dit_training_build.py` shows the *plainest* programmatic build (default
-LoRA, no variant kwargs). Everything beyond that is documented only as the
-comment-toggle blocks in `configs/methods/lora.toml`. This script demonstrates
-the three facts an embedder (or a bespoke `scripts/` trainer) needs to compose
-variants *without* a config file:
+`06_frozen_dit_training_build.py` builds default LoRA with no variant kwargs.
+This script composes variants *without* a config file:
 
   1. Variant selection is **kwargs → resolve_network_spec** — the exact keys the
      TOML carries pass straight through `create_network(**kwargs)`. Here:
        use_ortho_init=True  → OrthoInitLoRAModule (trainable SVD-seeded bases,
                               λ-gated so ΔW=0 at init; distills to plain LoRA).
        use_timestep_mask=True → T-LoRA power-law rank schedule.
-     (use_ortho_init=True + use_moe_style would raise in resolve_network_spec —
-      impossible combos fail loudly at build, they don't silently degrade.)
+     (use_ortho_init=True + use_moe_style raises in resolve_network_spec.)
 
   2. T-LoRA is **not a class**. It is the `_timestep_mask` buffer every variant
      inherits from `BaseLoRAModule`, rebound per-step to one shared GPU tensor by
@@ -23,21 +19,18 @@ variants *without* a config file:
 
   3. The per-step driving is ONE call — `apply_router_conditioning(...)` — which
      `hasattr`-probes the network and fires `set_timestep_mask` / `set_sigma` /
-     `set_fei` in a stable order. A bespoke loop should call that, not hand-roll
-     the individual setters. For this stack only `set_timestep_mask` does work;
-     the rest no-op.
+     `set_fei` in a stable order; call it rather than the individual setters.
+     For this stack only `set_timestep_mask` does work; the rest no-op.
 
-Caveats this script is deliberately demonstrating around:
+Caveats:
 
   - **T-LoRA is training-only.** Inference runs full rank at every `t`; never call
     `set_timestep_mask` in a sampling loop (`docs/methods/timestep_mask.md`).
   - **The schedule barely moves learned effective rank on Anima**
-    (`_archive/bench/timestep_mask/`). This shows the *mechanism*; don't expect the
-    schedule to be a big quality lever — question `network_dim` before tuning
+    (`_archive/bench/timestep_mask/`) — question `network_dim` before tuning
     `alpha_rank_scale`.
   - **OrthoInit distills to a standard LoRA at save** (sqrt-split λ → down/up), so
-    the output checkpoint loads anywhere a plain LoRA does. The whole stack is a
-    *training-time* composition with no inference-side footprint.
+    the output checkpoint loads anywhere a plain LoRA does.
   - The variant matrix (which combos exist) lives in `networks/CLAUDE.md`
     (three-axis table).
 
@@ -179,14 +172,10 @@ def main() -> None:
         sigma = t.to(device=device, dtype=dtype)
         timesteps = t.to(device).reshape(1)  # flow t ∈ [0, 1] == σ on Anima's scale
 
-        # No dataset, so the "clean" latent x0 and the noise ε are both synthetic —
-        # but we still MIX them the way real training does (rectified flow), so the
-        # forward sees an on-distribution noisy latent and the target is the true
-        # flow-matching velocity, not an unrelated random tensor:
-        #   noisy = (1-σ)·x0 + σ·ε ;  target = ε - x0   (library/runtime/noise.py:90,
-        #   train.py:921). The real trainer also SAMPLES σ (sigmoid/logit-normal via
-        #   SAMPLER_REGISTRY); we instead drive σ on a fixed descending grid purely so
-        #   the T-LoRA mask's effect on effective rank is legible step-by-step.
+        # Synthetic x0 and ε, mixed as in real training (rectified flow):
+        #   noisy = (1-σ)·x0 + σ·ε ;  target = ε - x0   (library/runtime/noise.py).
+        # The real trainer samples σ (SAMPLER_REGISTRY); here σ follows a fixed
+        # descending grid so the mask's rank change is readable per step.
         x0 = torch.randn(
             1, LATENT_CHANNELS, 1, H, W, generator=gen, device=device, dtype=dtype
         )
@@ -226,9 +215,8 @@ def main() -> None:
             f"{eff_rank}/{opts.network_dim}"
         )
 
-        # autocast(bf16) is what the real trainer runs under — it also keeps the
-        # adapter's compute-dtype policy (org_forwarded.dtype) on its intended
-        # bf16 path. Enabled on both CUDA and CPU so the example is portable.
+        # autocast(bf16) as in the real trainer; also keeps the adapter's
+        # compute-dtype policy on its bf16 path. Enabled on CUDA and CPU.
         optimizer.zero_grad(set_to_none=True)
         with torch.autocast(device_type=device.type, dtype=dtype):
             model_pred = model(

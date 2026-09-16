@@ -1,16 +1,14 @@
 """Shared run-shell for the bespoke distillation loops.
 
 ``scripts/distill_turbo`` / ``project/finished/mod_guidance`` keep their method math (DMD
-student/fake/critic, GAD pooled-text objective) local and legitimately
-divergent — but they repeat the same
-orchestration *shell*: pick device/dtype, slice to a single overfit prompt, stand
+student/fake/critic, GAD pooled-text objective) local but share this
+orchestration shell: pick device/dtype, slice to a single overfit prompt, stand
 up the TensorBoard writer, write the config snapshot, and apply the free-fit
-dynamic-seq compile guard. Those are correctness policies, not method math, so a
-change to compile/free-fit/snapshot semantics should land once here instead of
-being missed in one of three near-identical copies.
+dynamic-seq compile guard. Changes to compile/free-fit/snapshot semantics land
+here.
 
-These are deliberately small, stateless helpers — the loops call them and keep
-their own dataloader/optimizer/inner-step logic.
+Small, stateless helpers — the loops keep their own
+dataloader/optimizer/inner-step logic.
 """
 
 from __future__ import annotations
@@ -28,8 +26,7 @@ _DTYPES: dict[str, "Any"] = {}
 def resolve_device_dtype(dtype: str = "bf16", device: str = "cuda"):
     """``(torch.device, torch.dtype)`` for a training run.
 
-    All three distill loops hardcode ``cuda`` + ``bfloat16``; this keeps that the
-    default while leaving the string knobs overridable.
+    Defaults to ``cuda`` + ``bfloat16``; the string knobs override.
     """
     import torch
 
@@ -47,7 +44,7 @@ def resolve_device_dtype(dtype: str = "bf16", device: str = "cuda"):
 def apply_single_prompt_slice(
     dataset: Any, index: int, *, logger: logging.Logger = log
 ) -> tuple:
-    """Phase-0 overfit: pin ``dataset.samples`` to the single sample at ``index``.
+    """Single-sample overfit: pin ``dataset.samples`` to the single sample at ``index``.
 
     ``index`` is taken modulo the sample count, so it never indexes out of range;
     the dataloader then cycles the one (latent, text) pair. Returns the pinned
@@ -117,12 +114,11 @@ def ensure_dynamic_seq_for_freefit(
 ) -> bool:
     """Force ``dynamic_seq`` on for the (free-fit) cached pool.
 
-    Free-fit is the only resize mode now: a cached pool lands many distinct token
-    counts inside one tier's band, so the static per-count compile cascade would
-    explode and poison the compile cache. The bespoke distill loops never see
-    train.py's auto-enable (project_daemon_wiring_pattern), so they call this.
-    Callers gate it on ``torch_compile`` being set. Always returns ``True``
-    (``token_counts`` is accepted for call-site compatibility, no longer read).
+    A free-fit cached pool lands many distinct token counts inside one tier's
+    band, so the static per-count compile cascade would explode and poison the
+    compile cache. The bespoke distill loops don't get train.py's auto-enable,
+    so they call this. Callers gate it on ``torch_compile`` being set. Always
+    returns ``True`` (``token_counts`` is accepted but unused).
     """
     if not dynamic_seq:
         logger.info(

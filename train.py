@@ -1,4 +1,4 @@
-# Anima LoRA training script (merged standalone)
+# Anima LoRA training script
 
 import importlib
 import argparse
@@ -237,7 +237,7 @@ class AnimaTrainer:
 
     # endregion
 
-    # region Anima-specific methods (from AnimaNetworkTrainer overrides)
+    # region Anima-specific methods
 
     def assert_extra_args(
         self,
@@ -270,9 +270,7 @@ class AnimaTrainer:
                     args.cache_llm_adapter_outputs = False
         elif getattr(args, "cache_llm_adapter_outputs", False):
             # Adapter-output caching writes into the TE cache; with text
-            # caching off there's nothing to write into, so it's a harmless
-            # no-op — auto-disable instead of crashing (easy to hit from the
-            # GUI, where these are independent toggles).
+            # caching off it is a no-op, so auto-disable instead of crashing.
             logger.warning(
                 "cache_llm_adapter_outputs=true has no effect without text-encoder "
                 "caching (use_text_cache=false / live text encoding); disabling it."
@@ -328,7 +326,7 @@ class AnimaTrainer:
                     dataset.restrict_to_byg_tuples()
                 val_dataset_group.refresh_concat_state()
 
-        # REPA v2: load cached PE-Spatial patch tokens into batches when
+        # REPA: load cached PE-Spatial patch tokens into batches when
         # use_repa is set (rides the resolved network kwargs).
         net_kwargs = resolve_network_kwargs(args)
         if net_kwargs.get("use_repa", "").lower() in ("true", "1", "yes"):
@@ -518,11 +516,8 @@ class AnimaTrainer:
             anima_utils.load_pooled_text_proj(model, args.pooled_text_proj, "cpu")
             model.pooled_text_proj.to(device=loading_device, dtype=loading_dtype)
 
-        # NOTE: torch.compile (compile_blocks) is intentionally NOT done here —
-        # it must run AFTER the adapter's apply_to monkey-patches the targeted
-        # Linears, or dynamo traces the un-adapted forward. Done in
-        # _create_and_apply_network instead (after apply_to + load_weights +
-        # grad-ckpt) — see library/runtime/harness.py for the ordering.
+        # compile_blocks is NOT run here: it must follow apply_to + load_weights
+        # (see _create_and_apply_network and library/runtime/harness.py).
 
         # So dit.enable_gradient_checkpointing() can override to use unsloth.
         self._use_unsloth_offload_checkpointing = args.unsloth_offload_checkpointing
@@ -589,8 +584,7 @@ class AnimaTrainer:
 
     # Per-step forward phases: ``get_noise_pred_and_target`` is a flat
     # sequence of named phases; conditional logic lives INSIDE each phase,
-    # never as lexical nesting around it, so "always per step" is
-    # structurally evident at the call site.
+    # never as nesting around the call.
 
     def _step_ctx(self, ctx: TrainCtx) -> StepCtx:
         return StepCtx(
@@ -909,7 +903,7 @@ class AnimaTrainer:
     def _maybe_sigma_demote(
         self, ctx: TrainCtx, batch, latents, is_train, generator=None
     ):
-        """sigma_lowres Phase 1b (σ > threshold → demote-tier latent).
+        """sigma_lowres σ-demote (σ > threshold → demote-tier latent).
 
         Returns ``(latents, sigmas_flat)``: possibly-swapped latents plus the
         pre-drawn flat σ (None → sampler draws internally). Active only when
@@ -1136,11 +1130,10 @@ class AnimaTrainer:
         self, ctx: TrainCtx, *, anima, noisy_model_input, timesteps, tc, padding_mask
     ):
         """ALWAYS per step. Single, branch-free forward call site: both
-        text-conditioning modes normalize to ONE uniform
-        ``ForwardConditioning`` bundle first, in ``build_forward_conditioning``,
-        not as control flow here. Must run inside the primary forward's
-        autocast/grad scope (the postfix splice runs learned modules), hence
-        not in ``_prepare_conditioning``. Returns ``(model_pred, cond)``.
+        text-conditioning modes normalize to one ``ForwardConditioning`` in
+        ``build_forward_conditioning``. Must run inside the primary forward's
+        autocast/grad scope (the postfix splice runs learned modules).
+        Returns ``(model_pred, cond)``.
         """
         cond = build_forward_conditioning(
             network=ctx.network, tc=tc, timesteps=timesteps
@@ -1715,7 +1708,7 @@ class AnimaTrainer:
 
     # endregion
 
-    # region Methods only in NetworkTrainer (not overridden by Anima)
+    # region Generic network-trainer methods
 
     def post_process_network(self, args, accelerator, network, text_encoders, unet):
         self._network = (
@@ -1752,7 +1745,7 @@ class AnimaTrainer:
 
                 return _hook
 
-            blocks_list = unet.blocks  # nn.ModuleList of 28 Anima DiT blocks
+            blocks_list = unet.blocks  # nn.ModuleList of DiT blocks
             num_blocks = len(blocks_list)
             for bi in self._func_blocks:
                 if not (0 <= bi < num_blocks):
@@ -2040,12 +2033,11 @@ class AnimaTrainer:
                     )
 
             blueprint = blueprint_generator.generate(user_config, args)
-            # v2: `masked_loss` is the one switch. A mask tree left on disk
-            # from an earlier `make mask` (config `mask_dir`, or the legacy
-            # `masks/{merged,sam}` auto-resolution) must not re-enable masking
-            # on its own — and the gate has to sit here, before the datasets
-            # are built, because construction bakes mask paths and preloads
-            # the PNGs (see `disable_masks_in_blueprint`).
+            # `masked_loss` is the one masking switch: a mask tree left on disk
+            # (config `mask_dir`, or the legacy `masks/{merged,sam}`
+            # auto-resolution) must not re-enable masking. The gate sits before
+            # the datasets are built because construction bakes mask paths and
+            # preloads the PNGs (see `disable_masks_in_blueprint`).
             if not getattr(args, "masked_loss", False):
                 ignored_mask_dirs = config_util.disable_masks_in_blueprint(
                     blueprint.dataset_group
@@ -2232,8 +2224,7 @@ class AnimaTrainer:
         load path. Output is an ordinary LoRA either way (B=0, ΔW=0 at step 0).
 
         Refused under block swap: the swapper's residency plan assumes the
-        training loop's forward cadence and desyncs on extra forwards
-        (docs/optimizations/block_swap.md). Build the basis with
+        training loop's forward cadence and desyncs on extra forwards. Build the basis with
         ``bench/grad_init/build_universal_basis.py`` and pass ``basis_file``
         instead on a swap preset.
         """
@@ -2471,8 +2462,7 @@ class AnimaTrainer:
         if args.torch_compile:
             from library.runtime.harness import compile_blocks_for_training
 
-            # Token-family budget from buckets the dataset actually populated
-            # (_derive_token_budget) — not args.target_res (preprocess-only).
+            # Token-family budget from _derive_token_budget.
             n_token_families, seq_range, seq_bands = getattr(
                 self, "_compile_token_budget", (None, None, None)
             )
@@ -2755,10 +2745,8 @@ class AnimaTrainer:
         train_util.prepare_dataset_args(args, True)
         setup_logging(args, reset=True)
 
-        # Free-fit requires compile_dynamic_seq: a free-fit pool populates many
-        # distinct (W, H) within one tier's token band, which would explode
-        # the static N-graph compile cascade. Auto-enable whenever compile is
-        # on (no-op if torch_compile is off).
+        # Free-fit requires compile_dynamic_seq (else a static N-graph compile
+        # cascade); auto-enable whenever torch_compile is on.
         if getattr(args, "torch_compile", False):
             if not getattr(args, "compile_dynamic_seq", False):
                 logger.info(
@@ -2819,9 +2807,7 @@ class AnimaTrainer:
         use_user_config = ds.use_user_config
         use_dreambooth_method = ds.use_dreambooth_method
 
-        # Derive the compile token-family budget from buckets the selected
-        # images actually populate — NOT args.target_res. Sample prompt
-        # resolutions are folded in so out-of-bucket generation compiles.
+        # Compile token-family budget: see _derive_token_budget.
         self._compile_token_budget = self._derive_token_budget(
             args, train_dataset_group, val_dataset_group
         )
@@ -2859,7 +2845,7 @@ class AnimaTrainer:
         strategy_anima.setup_text_encoder_outputs_caching_strategy(args)
 
         # When caching is enabled the caches MUST already be complete on disk
-        # (train.py no longer encodes on the fly); skip loading the encoders
+        # (train.py does not encode on the fly); skip loading the encoders
         # entirely when nothing else needs them. `cache_latents = false` is a
         # separate, explicit live-encoding mode, not a fallback.
         sampling_enabled = bool(
@@ -3096,8 +3082,7 @@ class AnimaTrainer:
                     pid=os.getpid(),
                     log_dir=resolve_run_log_dir(args),
                 )
-                # Mirror WARNING+ records into the stream so a reader debugging
-                # the run gets them structured instead of buried in tqdm stdout.
+                # Mirror WARNING+ log records into the stream.
                 self.progress_sink.attach_log_mirror()
 
         if (args.save_n_epoch_ratio is not None) and (args.save_n_epoch_ratio > 0):
@@ -3305,9 +3290,6 @@ class AnimaTrainer:
             saver.cleanup_resumable()
             saver.save_final(network, loop_state.global_step, num_train_epochs)
 
-        # Remove the TensorBoard log dir for runs shorter than 2 steps — they
-        # add noise to the runs list (e.g. aborted starts, dry-runs) and carry
-        # no useful loss curves.
         if is_main_process and loop_state.global_step < 2:
             _cleanup_short_log_dir(args)
 
@@ -3408,15 +3390,11 @@ def build_network_extras() -> dict[str, _config_schema.ConfigKey]:
 def _install_crash_reporter(argv: list[str]) -> None:
     """Record a fatal startup/training exception into ``--progress_jsonl``.
 
-    The daemon launches us windowless under ``pythonw.exe``, which drops the
-    child's stdout/stderr, so an uncaught traceback here is otherwise lost and
-    the daemon falls back to a generic "process exited (code=1)".
-    ``progress.jsonl`` is written by path, so it survives.
-
-    ``run_scope`` already emits ``run_end(error=…)`` for in-loop failures, but
-    only *after* ``ProgressSink.run_start`` fires — late in ``train()``.
-    Errors before that (cache incomplete, config/dataset build, model load)
-    escape it entirely; this excepthook is the catch-all.
+    Under the daemon's windowless ``pythonw.exe`` launch stdout/stderr are
+    dropped, so an uncaught traceback is otherwise lost. ``run_scope`` only
+    covers failures after ``ProgressSink.run_start`` (late in ``train()``);
+    this excepthook catches earlier ones (cache incomplete, config/dataset
+    build, model load).
     """
     path = None
     for i, tok in enumerate(argv):

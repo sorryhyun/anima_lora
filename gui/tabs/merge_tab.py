@@ -3,8 +3,8 @@
 Layout mirrors ImageViewerTab: top directory combo, left file list, right
 details panel (file stats + bakeability scan + merge options + log).
 
-Runs ``scripts/toolkits/merge_to_dit.py`` via ``QProcess`` and streams stdout/stderr
-into the log pane, same pattern as ``ConfigTab`` training.
+Runs ``scripts/toolkits/merge_to_dit.py`` (and the merge/extract toolkits) via
+``QProcess`` and streams stdout/stderr into the log pane.
 """
 
 from __future__ import annotations
@@ -417,7 +417,7 @@ class MergeTab(LazyTabMixin, QWidget):
         self._clear_details()
 
     def _lazy_init(self) -> None:
-        # Deferred to first show: the dir scan + adapter classify used to block window startup.
+        # Deferred to first show so the dir scan + adapter classify don't block window startup.
         if self._dirs:
             self._load_dir(self.dir_combo.currentText())
         else:

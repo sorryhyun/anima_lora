@@ -7,8 +7,8 @@ loaded lazily on first access. Missing keys fall back to English.
 tab's ``anime_tools`` stage forms: keyed ``<stage_id>.<dest>`` →
 ``{"label", "help", "choices"?}``, read by ``tabs/preprocess/stage_form``
 (``label_for`` / ``help_for``) with the schema's English as the fallback.
-The key scheme is the package's, so the file is the seed of a package-side
-translation table (proposal §4).
+The key scheme is the package's, so the file can seed a package-side
+translation table.
 
 Method/variant guide HTML blocks live under ``guides/<lang>/<name>.html``
 and are also loaded lazily. Shared snippets (``_apply_note``,

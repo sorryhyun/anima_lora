@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
 """Access the three core models directly — the primitives a scripts/ tool builds on.
 
-inference.py and train.py wrap these loaders; if you're writing your own script
-(a probe, a metric, a one-off batch job) you want them raw:
+inference.py and train.py wrap these loaders; a custom script uses them directly:
 
   - DiT  : library.anima.weights.load_anima_model()
   - VAE  : library.models.qwen_vae.load_vae()
   - Text : library.inference.models.load_text_encoder()  (Qwen3)
 
 This script loads all three, then encodes a prompt to the DiT-ready cross-attn
-embedding via the supported prepare_text_inputs() helper — which is where the
-text-encoder padding invariant lives (max-pad to 512; the DiT projects the
-encoder hidden states through `_preprocess_text_embeds`, so encoding genuinely
-needs the DiT, not just the text encoder).
+embedding via prepare_text_inputs(), which applies the text-encoder padding
+invariant (max-pad to 512). Encoding needs the DiT too: it projects the encoder
+hidden states through `_preprocess_text_embeds`.
 
     python examples/04_load_models.py --prompt "a lighthouse at dusk"
 """
@@ -72,12 +70,10 @@ def main() -> None:
     print(f"VAE   : {type(vae).__name__}  z_dim={vae.z_dim}")
 
     # --- Text encoder + encode a prompt -------------------------------------
-    # Prompt encoding goes through two process-global strategy singletons (the
-    # strategy pattern in library/anima/strategy.py). ensure_text_strategies()
-    # installs them from the text-encoder path — a no-op if already set, and the
-    # same call prepare_text_inputs() makes internally — and hands them back so
-    # you can see (and use) them rather than fishing them out of the globals.
-    # (Skip it and the first tokenize() dies with `'NoneType' has no tokenize`.)
+    # Prompt encoding goes through two process-global strategy singletons
+    # (library/anima/strategy.py). ensure_text_strategies() installs them from
+    # the text-encoder path (no-op if already set; prepare_text_inputs() calls it
+    # internally) and returns them. Without them tokenize() fails on None.
     tokenize_strategy, encoding_strategy = ensure_text_strategies(
         TEXT_ENCODER, max_length=MAX_CROSSATTN_TOKENS
     )
@@ -86,8 +82,7 @@ def main() -> None:
         f"{type(encoding_strategy).__name__}"
     )
 
-    # Loading the encoder needs only its path — pass it as a keyword. (No prompt,
-    # no save_path: those belong to generation, not to loading a model.)
+    # Loading the encoder needs only its path.
     text_encoder = load_text_encoder(
         text_encoder=TEXT_ENCODER,
         dtype=torch.bfloat16,
@@ -98,8 +93,7 @@ def main() -> None:
 
     # prepare_text_inputs returns (context, context_null); context['embed'][0] is
     # the cross-attn embedding the DiT consumes, max-padded to MAX_CROSSATTN_TOKENS.
-    # Pass the request as keywords — the encoder is already loaded, so hand it in
-    # via shared_models and prepare_text_inputs won't reload it.
+    # shared_models hands in the loaded encoder so it isn't reloaded.
     context, _context_null = prepare_text_inputs(
         device=device,
         anima=dit,

@@ -2,9 +2,8 @@
 
 The Qt-facing half of the train/preprocess launch flow: resume prompts, cache
 reassurance popups, and the on-disk probes (``find_resumable_checkpoint`` /
-``count_preprocess_caches``) that decide whether to show them. Split out of the
-package root so the Qt-free config logic in ``gui.config_io`` doesn't pull
-QMessageBox in.
+``count_preprocess_caches``) that decide whether to show them. Kept apart from
+the Qt-free ``gui.config_io`` so that module doesn't pull QMessageBox in.
 """
 
 from __future__ import annotations
@@ -27,9 +26,8 @@ from PySide6.QtWidgets import (
 from gui._paths import ROOT
 from gui.i18n import current_language, t
 
-# Cache discovery lives in the torch-free leaf library/io/cache_names.py — one source
-# of truth shared with the preprocess pipeline (keeps GUI startup torch-free). Re-exported
-# so existing `from gui.dialogs import count_preprocess_caches` call sites keep working.
+# Cache discovery lives in the torch-free leaf library/io/cache_names.py, shared with
+# the preprocess pipeline. Re-exported for ``gui/__init__.py``.
 from library.io.cache_names import count_preprocess_caches  # noqa: F401
 
 _GUIDELINES = ROOT / "docs" / "guidelines"

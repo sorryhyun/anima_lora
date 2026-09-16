@@ -13,13 +13,11 @@ from gui.i18n import t
 @functools.cache
 def _target_res_tiers() -> tuple[tuple[int, ...], dict[int, int]]:
     """``(allowed tiers, {edge: max token count})`` sourced from
-    ``library.datasets.buckets`` (the single source of truth) instead of a
-    hardcoded mirror. Lazy + cached so importing ``widgets`` stays cheap; the
+    ``library.datasets.buckets``. Lazy + cached so importing ``widgets`` stays cheap; the
     bucket module is torch-free so this never drags the training stack in.
 
     A tier is "dangerous" (extra compiled block graph + VRAM) when its per-image
-    token count exceeds the canonical 1024 tier — which reproduces the previous
-    ``{1280: 6300, 1536: 8640}`` flag set, but recomputed from the tables.
+    token count exceeds the canonical 1024 tier.
     """
     from library.datasets.buckets import ALLOWED_TARGET_RES, EDGE_TOKEN_BANDS
 
@@ -34,13 +32,11 @@ class _TargetResWidget(QWidget):
     """Horizontal row of tier checkboxes for the multi-scale ``target_res`` knob.
 
     Reads/writes a list of edge ints (e.g. ``[1024, 1536]``). Never returns an
-    empty list — unchecking everything falls back to ``[1024]`` (the legacy
-    single ~1MP tier) so preprocess/train always have a valid tier.
+    empty list — unchecking everything falls back to ``[1024]`` (the single
+    ~1MP tier) so preprocess/train always have a valid tier.
 
     The 1280/1536 tiers are visually flagged as "dangerous" (high token count
-    + extra compile graph / VRAM) via colour + an i18n tooltip. Free-fit is the
-    only resize mode, so there is no per-tier bucket allow-list any more (the
-    snap-era ``resize_bucket_resos`` popup was removed 2026-09-07).
+    + extra compile graph / VRAM) via colour + an i18n tooltip.
     """
 
     changed = Signal()

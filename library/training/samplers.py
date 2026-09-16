@@ -1,9 +1,7 @@
 """Noise / timestep samplers.
 
-M1 extraction (plan.md): isolates the noise-and-timestep draw out of
-`get_noise_pred_and_target` so new schedules can be added by registering a
-`SamplerFn` instead of branching in-trainer. The default sampler preserves
-the pre-refactor behavior — it delegates to
+The noise-and-timestep draw for `get_noise_pred_and_target`; new schedules
+register a `SamplerFn`. The default sampler delegates to
 `noise_utils.get_noisy_model_input_and_timesteps`, which already returns the
 DiT-scale time argument (σ∈[0,1]); no rescale is applied here.
 """

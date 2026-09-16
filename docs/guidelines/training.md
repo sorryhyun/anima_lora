@@ -1,11 +1,10 @@
 # Training Reference
 
-Every training run resolves a method + hardware preset via the merge chain
-`configs/base.toml → configs/presets.toml[<preset>] → configs/methods/<method>.toml → CLI args`
-(method beats preset on overlap — so e.g. postfix forces `blocks_to_swap = 0`).
+Every training run resolves a method + hardware preset through the config
+merge chain (order and override rules: [`base-config.md`](base-config.md)).
 Method TOMLs in `configs/methods/` are toggle-block files that hold several
-variants behind comments; the clean per-variant tree lives in
-`configs/gui-methods/` and is wrapped by `make lora-gui GUI_PRESETS=<variant>`.
+variants behind comments; the clean per-variant files live in
+`configs/gui-methods/` and run with `make lora-gui GUI_PRESETS=<variant>`.
 
 ```bash
 make lora                                      # methods/lora.toml + presets[default]
@@ -16,10 +15,9 @@ make print-config METHOD=lora PRESET=default   # dump the merged config
 
 Run `ls configs/gui-methods/` for the live variant list.
 
-For a key-by-key reference of the bottom layer — model paths, the noise
-schedule, caching, compile, and every memory knob — see
-[`base-config.md`](base-config.md). This doc focuses on method/variant
-selection and the training-specific options on top of that base.
+Model paths, noise schedule, caching, compile, memory knobs and the dataset
+blueprint are covered key by key in [`base-config.md`](base-config.md); this doc
+covers method/variant selection and training-specific options.
 
 ## LoRA family — the three-axis surface
 
@@ -35,11 +33,10 @@ router_source    = "none" | "input" | "sigma" | "fei"
 The shipped default is `use_moe_style = false` (plain LoRA stack) with
 `use_ortho = true` + `use_timestep_mask = true`. Uncomment a routing block to
 get HydraLoRA (σ-routed shared-A experts), FeRA-on-Hydra (FEI-routed
-shared-A), or author-faithful FeRA (`independent_A` + global FEI router —
-available as a routing block in `configs/methods/lora.toml`).
+shared-A), or author-faithful FeRA (`independent_A` + global FEI router).
 
-Pre-three-axis checkpoints carrying `ss_use_hydra` / `ss_use_fei_router`
-metadata no longer load — the legacy fallback was removed.
+Older checkpoints carrying `ss_use_hydra` / `ss_use_fei_router` metadata no
+longer load.
 
 ### OrthoLoRA (Cayley + PSOFT-inspired)
 
@@ -50,17 +47,17 @@ guarantee. Orthogonality is structural — no regularization knob.
 use_ortho = true
 ```
 
-Linear layers only (no Conv2d). See [`../../_archive/methods/psoft-integrated-ortholora.md`](../../_archive/methods/psoft-integrated-ortholora.md) (archived — superseded by [SVD-Down LoRA](../methods/svd-down-lora.md) in the showcased variant lineup).
+Linear layers only (no Conv2d). See [SVD-Down LoRA](../methods/svd-down-lora.md); the original design note is archived at [`../../_archive/methods/psoft-integrated-ortholora.md`](../../_archive/methods/psoft-integrated-ortholora.md).
 
 ### T-LoRA (timestep-dependent rank masking)
 
 Early (high-noise) steps use full rank; later steps use reduced rank.
 Composes with every variant in the family. Training-time only — inference
-runs full rank by design.
+runs full rank.
 
 ```toml
 use_timestep_mask = true
-min_rank = 8
+min_rank = 1
 alpha_rank_scale = 1.0
 ```
 
@@ -82,7 +79,7 @@ Each has its own method TOML and `make` entrypoint:
 | Family | Config | Train target |
 |--------|--------|--------------|
 | ChimeraHydra (dual-pool MoE) | `methods/chimera.toml` | `make exp-chimera` |
-| EasyControl | `methods/easycontrol.toml` | `make easycontrol` |
+| EasyControl | `easycontrol/easycontrol.toml` | `make easycontrol` |
 | Soft Tokens (SoftREPA) | `methods/soft_tokens.toml` | `make exp-soft-tokens` |
 
 Deep dives in `docs/methods/` (shipped) and `docs/experimental/`.
@@ -92,13 +89,6 @@ Deep dives in `docs/methods/` (shipped) and `docs/experimental/`.
 Unconditional. LoRA / Hydra bottleneck matmuls run in fp32 regardless
 of autocast; stored parameters stay bf16. The legacy `lora_fp32_accumulation`
 flag is deprecated and ignored.
-
-## Cross-attention KV trim
-
-Removed — the trim path only ran under `attn_mode = "flash4"`, which we
-evaluated and dropped. See [`../optimizations/fa4.md`](../optimizations/fa4.md).
-Training now always runs full 512-length cross-attention KV; the zero-padded
-positions act as attention sinks and cost negligible compute on FA2.
 
 ## Caption shuffle variants
 
@@ -118,93 +108,36 @@ changing tokenizer or padding.
 ## Masked loss (SAM3)
 
 Exclude regions like text bubbles from the training loss. **Opt-in since v2**:
-`masked_loss = false` in `base.toml`, and a mask tree on disk is ignored (one
-log line) until you set `masked_loss = true` in the method TOML or pass
-`--masked_loss`. `make download-sam3` first — SAM3 is no longer in the
-first-run set.
+`masked_loss = false` in `base.toml`, and masks on disk are ignored (one log
+line) until you set `masked_loss = true` in the method TOML or pass
+`--masked_loss`. Run `make download-sam3` first — SAM3 is not in the first-run
+set.
 
 ```bash
 make mask        # SAM3 (via tempdir) → post_image_dataset/masks/
 make mask-clean  # rm -rf post_image_dataset/masks/
 ```
 
-These read `post_image_dataset/resized/` (the resized output of
-`make preprocess`). With `masked_loss = true`, subsets auto-pick
-`post_image_dataset/masks/` if present, falling back to legacy
-`masks/{merged,sam}/` so users who haven't re-run `make mask` after the
-consolidation keep training. The in-image text masker (MIT) is gone; lettering
-and balloons are ordinary SAM3 ignore prompts (`configs/sam_mask.yaml`).
+These read `post_image_dataset/resized/` (the output of `make preprocess`).
+With `masked_loss = true`, subsets use `post_image_dataset/masks/` if present,
+otherwise the legacy `masks/{merged,sam}/` layout. Lettering and balloons are
+SAM3 prompts in `configs/sam_mask.yaml`.
 
 ## Dataset configuration
 
-The default LoRA blueprint lives in `base.toml` (under `[general]` /
-`[[datasets]]` / `[[datasets.subsets]]`) and is *not* part of the flat
-merge chain — `_DATASET_CONFIG_SECTIONS` in `library/train_util.py` skips it
-so it never pollutes argparse. Top-level path keys interpolate into the
-blueprint at load time:
-
-```toml
-# source_image_dir now lives in configs/preprocess.toml (preprocess-only).
-# These shared keys stay in base.toml so the blueprint can interpolate them:
-resized_image_dir = "post_image_dataset/resized"
-lora_cache_dir    = "post_image_dataset/lora"
-
-[general]
-# (empty) — kohya-legacy keep_tokens / caption_extension were removed: both are
-# inert in the cached workflow (keep_tokens is superseded by the pre-cached
-# shuffle variants; the TE-cacher hardcodes .txt). Add a real dataset-wide
-# default here only if one applies.
-
-[[datasets]]
-batch_size = 1
-validation_split_num = 0
-validation_seed = 42
-
-  [[datasets.subsets]]
-  image_dir = '{resized_image_dir}'
-  cache_dir = '{lora_cache_dir}'
-  num_repeats = 1
-  recursive = true
-```
-
-`cache_dir` redirects every VAE / TE / PE sidecar to a flat,
-stem-keyed location — used so EasyControl can keep its source dir
-(`easycontrol-dataset/`) purely user-facing while caches all land
-under `post_image_dataset/`.
-
-To shallow-override the blueprint, drop a `[general]` / `[[datasets]]` block
-into the method TOML — `_apply_dataset_overrides` in `library/config/io.py`
-merges top-level scalars (e.g. `batch_size`). Subset-level keys must go
-through `--dataset_config <path>`.
-
-The `[half]` preset (and similar) sets `sample_ratio = 0.5` for every
-subset via the global `--sample_ratio` override — it shrinks train only;
-validation count stays exact.
+The dataset blueprint (`[general]` / `[[datasets]]` in `base.toml`), per-subset
+`cache_dir`, method-TOML overrides, and the `[half]` preset's `sample_ratio` are
+documented in [`base-config.md`](base-config.md#the-dataset-blueprint-general--datasets).
 
 ## Validation
 
-Default val signal is paired CMMD² (PE-Core MMD between paired
-samples) — set by `use_cmmd = true` and sized by `validation_split_num`
-(integer count) or `validation_split` (fraction). With CMMD off, val falls
-back to the legacy per-σ FM-MSE pass; that signal hasn't correlated with
-sample quality on Anima, so prefer CMMD unless VRAM forces the swap.
+Off by default. Enable it with `validation_split_num` (count) or
+`validation_split` (fraction); `use_cmmd = true` selects the paired CMMD² signal.
+See [`base-config.md`](base-config.md#loss--validation).
 
-## Multi-GPU (removed)
+## Multi-GPU
 
-The repo is single-GPU only. `scripts/tasks/_common.py::accelerate_launch`
-hardcodes a single-process invocation, and the trainer no longer carries
-DDP plumbing — the `--ddp_*` flags, `InitProcessGroupKwargs` /
-`DistributedDataParallelKwargs` setup, and manual `all_reduce_network()`
-sync are all gone. Accelerate's collectives still work harmlessly at
-1 process.
-
-If you re-add multi-GPU later, the non-obvious design choice to preserve is
-don't `accelerator.prepare(network)` and rely on the default DDP wrap.
-With the DiT frozen and only the adapter trainable, wrapping the LoRA
-`nn.Module` directly is awkward (the buckets don't match the frozen base)
-and wrapping the DiT wastes bandwidth on params that never get gradients.
-The previous approach was: leave the network unwrapped, run a manual fused
-all-reduce on `[p.grad for p in network.parameters() if p.grad is not None]`
-once per `sync_gradients` step (`_flatten_dense_tensors` avoids N serialized
-collectives). Any grad-clip must run *after* that all-reduce so it sees
-global-mean grads.
+Training is single-GPU. The trainer has no DDP gradient sync (the `--ddp_*`
+flags and manual all-reduce were removed). If multi-GPU is re-added: leave the
+network out of `accelerator.prepare`, all-reduce the adapter grads once per
+`sync_gradients` step, and clip only after that all-reduce.

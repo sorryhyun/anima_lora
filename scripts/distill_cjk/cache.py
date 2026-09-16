@@ -43,8 +43,8 @@ SHARD_SIZE = 512
 # ---- process-pool staging ---------------------------------------------------
 # The per-pair work (padded fast-tokenizer calls + the pure-Python hybrid ext
 # encoder + span alignment) is GIL-bound Python, so a worker *thread* never
-# overlapped with the main loop in practice (measured 2026-08-27: ~26 pairs/s,
-# GPU 0↔100%). Each worker process builds its own PairEncoder once.
+# overlapped with the main loop in practice (~26 pairs/s, GPU 0↔100%). Each
+# worker process builds its own PairEncoder once.
 _WORKER_ENCODER: PairEncoder | None = None
 
 
@@ -134,7 +134,7 @@ def _encode_split(
                 source_attention_mask=src_mask,
             )
             # Mirror the inference boundary exactly: pads are zeroed *after*
-            # the adapter (library/inference/text.py:229), so a pad position
+            # the adapter (library/inference/text.py), so a pad position
             # carries no Qwen signal — it is a plain attention sink downstream.
             out[~mask.bool()] = 0
             return out

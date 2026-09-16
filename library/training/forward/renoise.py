@@ -3,19 +3,13 @@
 Every distillation / probe loop that re-noises a clean latent and feeds it to
 the DiT repeats the same handful of mechanical steps: build ``x_t = (1-t)·x +
 t·ε``, sample the noise level ``t``/``σ``, insert the singleton temporal axis to
-reach the DiT's 5D layout, and hand the model a zero padding mask. They lived
-copy-pasted across ``project/finished/mod_guidance``, ``scripts/distill_turbo``
-and a dozen ``bench/`` probes (the second copy,
-``distill_turbo/primitives.py``, is what motivated promoting them here). This is
-the model-agnostic half — no DiT call, just tensor math — so it sits in
-``library/training/forward`` next to the other per-step composables.
+reach the DiT's 5D layout, and hand the model a zero padding mask. This is the
+model-agnostic half — no DiT call, just tensor math.
 
-5D-latent invariant (repo CLAUDE.md): the DiT operates on 5D
-``(B, C, T=1, H, W)`` with the singleton at **dim 2**; everything around it is
-4D ``(B, C, H, W)``. :func:`to_dit_5d` / :func:`from_dit_5d` are the only
+5D-latent invariant (repo CLAUDE.md): the DiT takes ``(B, C, T=1, H, W)`` with
+the singleton at **dim 2**. :func:`to_dit_5d` / :func:`from_dit_5d` are the
 sanctioned boundary moves — they target dim 2 explicitly and assert the shape,
-so a stray ``squeeze()`` can't silently collapse the batch axis when ``B == 1``
-(the exact class of bug that bit FreeText repeatedly).
+so a stray ``squeeze()`` can't collapse the batch axis when ``B == 1``.
 """
 
 from __future__ import annotations
@@ -92,7 +86,7 @@ def make_padding_mask(ref: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
 class PadCache:
     """Per-spatial-shape zero padding mask, recycled across forwards.
 
-    Constant-token bucketing keeps the spatial shape stable within a step (and
+    The spatial shape is stable within a step (and
     constant in single-prompt mode), so we recycle the ``(B, 1, H, W)`` tensor
     keyed on ``(B, H, W)`` instead of re-allocating each forward.
     """

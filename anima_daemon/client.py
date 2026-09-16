@@ -1,8 +1,8 @@
 """HTTP client for the daemon — used by the CLI commands and the ComfyUI node.
 
-Pure stdlib (``urllib``) so it imports cleanly from inside ComfyUI without
-dragging in ``library.*`` / torch. ``ensure_daemon`` auto-starts a
-console-detached daemon and waits for ``/health``.
+``urllib``-based, with no ``library.*`` / torch imports, so it loads inside
+ComfyUI. ``ensure_daemon`` auto-starts a console-detached daemon and waits for
+``/health``.
 """
 
 from __future__ import annotations
@@ -27,16 +27,16 @@ TERMINAL_STATES = frozenset({"done", "error", "stopped"})
 
 
 def venv_python(*, windowless: bool = False) -> str:
-    """Resolve the anima_lora venv interpreter — must run under anima's venv,
-    not whatever interpreter the caller happens to be (notably ComfyUI's).
+    """Resolve the anima_lora venv interpreter (not the caller's, e.g. ComfyUI's).
     Probes the usual venv layouts under the repo root and its parent, then
     falls back to ``sys.executable``.
 
-    ``windowless=True`` (Windows only) prefers ``pythonw.exe``: it never
-    allocates a console, so closing one can't send CTRL_CLOSE_EVENT and kill
-    the long-lived daemon (the uv venv ``python.exe`` is a trampoline that
+    ``windowless=True`` (Windows only) prefers ``pythonw.exe``, which never
+    allocates a console. The uv venv ``python.exe`` is a trampoline that
     re-launches the real interpreter, so ``CREATE_NO_WINDOW`` doesn't reliably
-    suppress its console — ``pythonw`` sidesteps that).
+    suppress its console, and closing that console kills the process
+    (CTRL_CLOSE_EVENT / ``STATUS_CONTROL_C_EXIT``). Every daemon and job spawn
+    uses this.
     """
     if sys.platform == "win32":
         exe = "pythonw.exe" if windowless else "python.exe"
@@ -67,7 +67,7 @@ def daemon_matches_root(health: Optional[dict], expected_root: str | Path) -> bo
     """True iff a daemon health response belongs to ``expected_root``. Falls
     back to the local in-repo pidfile for legacy daemons lacking ``root`` in
     ``/health``; a rootless daemon found only via the per-user global pidfile
-    is treated as unknown (that's exactly how a GUI could misattach)."""
+    is treated as not matching."""
     if not health:
         return False
     expected = _norm_root(expected_root)
@@ -96,10 +96,9 @@ def _root_mismatch_message(health: dict, expected_root: str | Path) -> str:
 
 
 def daemon_is_stale(health: Optional[dict]) -> bool:
-    """True iff a live daemon is serving code older than current on-disk
-    source — compares the fingerprint it booted with against a fresh hash. A
-    daemon predating the fingerprint field is treated as stale. Used by
-    ``ensure_daemon`` (eager restart) and ``python -m anima_daemon status``
+    """True iff a live daemon's boot fingerprint differs from a fresh hash of
+    the on-disk source (a daemon without a fingerprint counts as stale). Used by
+    ``ensure_daemon`` (restart) and ``python -m anima_daemon status``
     (``stale_code``).
     """
     if not health:
@@ -181,9 +180,7 @@ class DaemonClient:
         start: Optional[bool] = None,
         captured_env: Optional[dict] = None,
     ) -> dict:
-        # Snapshot the caller's whitelisted env so the queued job runs with
-        # THIS shell's settings, not the daemon's boot env. Pass
-        # captured_env={} explicitly to opt out.
+        # Snapshot the caller's whitelisted env; pass captured_env={} to opt out.
         if captured_env is None:
             captured_env = config.capture_env()
         return self._request(
@@ -281,13 +278,11 @@ class DaemonClient:
     ) -> dict:
         """Block until ``job_id`` is terminal; return its final record.
 
-        The non-streaming counterpart to ``stream_logs``, unbothered by a
-        daemon restart mid-wait (see :meth:`job_record`). Poll interval ramps
-        0.25s -> ``poll`` so a short job returns promptly.
+        Survives a daemon restart mid-wait (see :meth:`job_record`). Poll
+        interval ramps 0.25s -> ``poll``.
 
         Raises ``LookupError`` if no such job, and ``TimeoutError`` if
-        ``timeout`` elapses first — a still-running job must never read as an
-        outcome.
+        ``timeout`` elapses first.
         """
         deadline = None if timeout is None else time.time() + timeout
         interval = 0.25
@@ -309,8 +304,7 @@ class DaemonClient:
             interval = min(interval * 1.6, max(0.25, poll))
 
     def stop(self, job_id: Optional[str] = None) -> dict:
-        # No job_id → daemon's "stop the running job" semantics. We resolve the
-        # active job here so the URL stays RESTful.
+        # No job_id → resolve the active job from /health.
         if job_id is None:
             health = self.health() or {}
             job_id = health.get("active_job")
@@ -361,7 +355,6 @@ class DaemonClient:
         return self.stream(f"/jobs/{job_id}/logs")
 
 
-# `Client` is the name callers reach for first (and got an ImportError on).
 Client = DaemonClient
 
 
@@ -378,19 +371,16 @@ def ensure_daemon(
     ``/health`` until it answers or ``timeout`` elapses.
 
     The daemon may bind a different port than requested if the preferred one
-    is taken by a stranger (``server.serve_with_fallback``); we re-resolve the
-    actual port from the pidfile each tick rather than polling a dead one.
-    Poll cadence ramps 0.1s -> 0.5s so the common fast-boot case returns
-    promptly without busy-spinning on a genuinely slow start.
+    is taken by a stranger (``server.serve_with_fallback``), so the port is
+    re-resolved from the pidfile each tick. Poll cadence ramps 0.1s -> 0.5s.
     """
     requested = port or _resolve_port()
     client = DaemonClient(requested)
     health = client.health()
     if health is not None:
         if expected_root is None or daemon_matches_root(health, expected_root):
-            # Our checkout: reuse it unless it's running stale code, in which
-            # case restart eagerly (reconcile re-adopts the running job
-            # losslessly, unlike the cross-checkout case below).
+            # Our checkout: reuse it unless it's running stale code; restart is
+            # lossless (reconcile re-adopts the running job).
             if not daemon_is_stale(health):
                 return client
             logger.info("daemon is running stale code; restarting")
@@ -409,8 +399,7 @@ def ensure_daemon(
 
     config.ensure_state_dirs()
     proc.spawn_detached(
-        # pythonw.exe → no console window whose close button would kill the
-        # daemon and strand the pidfile. Logs still go to daemon.log below.
+        # pythonw.exe on Windows (see venv_python); logs go to daemon.log.
         [venv_python(windowless=True), "-m", "anima_daemon", str(requested)],
         cwd=config.ROOT,
         stdout_path=config.DAEMON_LOG,

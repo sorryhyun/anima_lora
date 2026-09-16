@@ -119,9 +119,7 @@ def create_network(
 ):
     spec = resolve_network_spec(kwargs)
 
-    # Deprecated 2026-06-10 (accepted so old snapshot TOMLs replay): the
-    # fp32-bottleneck down-projection autograd was removed; GEMMs now run in
-    # org_forwarded.dtype, bit-identical to the old path. See bench/lora_fp32_bottleneck.
+    # Deprecated: accepted and ignored so old snapshot TOMLs replay.
     if str(kwargs.get("use_custom_down_autograd", "false")).strip().lower() in (
         "true",
         "1",
@@ -180,7 +178,7 @@ def create_network(
         )
         network._repa_grad_heatmap = float(kwargs.get("repa_grad_heatmap", 0) or 0)
         # REPA-DoG target band-pass: replaces spatial_norm in relational target
-        # preprocess. Default-on (A/B-validated); repa_target_dog=false reverts.
+        # preprocess. Default-on; repa_target_dog=false turns it off.
         network._repa_target_dog = _as_bool(kwargs.get("repa_target_dog"), default=True)
         network._repa_dog_sigma1_div = float(
             kwargs.get("repa_dog_sigma1_div", 16.0) or 16.0
@@ -407,8 +405,8 @@ def create_network_from_weights(
     has_ortho_hydra = False
     has_hydra = False
     # StackedExperts: 3-D lora_down_weight (E,r,in) discriminates it from Hydra's
-    # 2-D shared lora_down.weight. Plan-2 stamps are canonical; this key-sniff is
-    # a fallback for unstamped/legacy artifacts.
+    # 2-D shared lora_down.weight. Three-axis metadata stamps are canonical; this
+    # key-sniff is a fallback for unstamped artifacts.
     has_stacked_experts = False
     hydra_num_experts = 0
     # MoE (Hydra) vs plain lora_names, passed as hydra_router_names so
@@ -800,7 +798,7 @@ def create_network_from_weights(
     )
     if is_chimera_hydra:
         # On-disk: per-pool distilled chimera (lora_down_{c,f} + stacked
-        # lora_up_{c,f}_weight + content router). 1-A legacy fallback removed.
+        # lora_up_{c,f}_weight + content router).
         if not chimera_dual_a_modules:
             raise RuntimeError(
                 "Checkpoint is stamped ss_use_chimera_hydra=true but contains "

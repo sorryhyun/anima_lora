@@ -1,8 +1,7 @@
 # Step-expert LoRA: shared down-projection + K up-heads selected by the
 # diffusion step index (no learned router). Used by the turbo DP-DMD student
-# when ``per_step_expert`` is on, so e.g. head A serves step 0 (diversity) and
-# head B serves step 1 (quality) without the two gradients fighting over one
-# set of up-weights. Selection is a plain Python int, not a buffer/tensor —
+# when ``per_step_expert`` is on (e.g. head A serves step 0, head B step 1).
+# Selection is a plain Python int, not a buffer/tensor —
 # torch.compile guards on it and specializes one graph per step value (K
 # graphs) instead of forcing an ``.item()`` graph break.
 
@@ -22,9 +21,9 @@ class StepExpertLoRAModule(BaseLoRAModule):
     ``forward`` reads ``self._step`` (set by the network's
     ``set_step_index`` / coordinator's ``set_student_step``) and routes through
     ``self.lora_ups[self._step]``; ``lora_down`` is shared across heads.
-    Linear-only. ``merge_to`` / ``fuse_weight`` are intentionally absent — K
-    per-step heads can't fold into one static DiT weight, so ``make merge``
-    refuses per-step-expert turbo.
+    Linear-only. No ``merge_to`` / ``fuse_weight`` — K per-step heads can't
+    fold into one static DiT weight, so ``make merge`` refuses per-step-expert
+    turbo.
     """
 
     supports_conv2d = False

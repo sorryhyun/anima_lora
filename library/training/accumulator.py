@@ -2,19 +2,11 @@
 
 The distill / training loops accumulate per-step metrics on-device so the hot
 path never forces a CUDA sync, then read them all back once per log boundary.
-Hand-rolled, that read is a ``torch.cat([...]).tolist()`` with magic slice
-offsets (``packed[5 : 5 + n_stages]``) — fragile: reorder or insert a scalar
-and every downstream index shifts silently.
 
 :class:`ScalarAccumulator` owns that bookkeeping. Callers ``add()`` named
 scalars (or ``add_at()`` into a fixed-width vector entry) on-device, then
 ``flush()`` reads everything back in ONE ``.tolist()`` and returns a
-name-keyed dict — results are addressed by name, never by offset. Adding a
-logged scalar is one ``add()`` call plus one read of ``flush()[name]``; no
-indices move.
-
-This generalizes the bespoke ``TurboMetrics`` pattern in
-``scripts/distill_turbo/metrics.py`` (whose hardcoded fields predate this).
+name-keyed dict.
 """
 
 from __future__ import annotations

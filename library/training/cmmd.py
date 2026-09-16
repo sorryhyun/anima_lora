@@ -43,7 +43,7 @@ _SCALE = 1000.0
 def _pool_pe(feats: torch.Tensor, *, drop_cls: bool = True) -> torch.Tensor:
     """Mean over patch tokens. ``feats`` is ``[T, D]``; returns ``[D]``.
 
-    Matches ``scripts/preprocess/cache_pe_encoder.py:_pool_pe`` so the CMMD reference
+    Matches ``library/preprocess/pe.py:_pool_pe`` so the CMMD reference
     pool is comparable to the IP-Adapter centroid.
     """
     if drop_cls and feats.shape[0] > 1:
@@ -73,11 +73,10 @@ def gram_of(feats: torch.Tensor, *, drop_cls: bool = True) -> torch.Tensor:
     identical Gram; global feature scale ⇒ identical Gram (Frobenius
     normalization divides it out).
 
-    NB: the paired-Gram eval line FAILED its Phase-0 known-difference gate
-    (content-dominated, style-weak — reverses the CMMD-vindicated plain<base
-    ranking) and was archived; kept only because the archived probes
-    (``_archive/bench/paired_eval/``) import these helpers. Do not build a val
-    metric on the token-Gram — see ``_archive/proposals/paired_gram_eval.md``.
+    NB: the paired-Gram eval failed its known-difference gate (content-dominated,
+    style-weak) and was archived; kept only because ``_archive/bench/paired_eval/``
+    imports these helpers. Do not build a val metric on the token-Gram — see
+    ``_archive/proposals/paired_gram_eval.md``.
     """
     feats = feats.to(torch.float32)
     if drop_cls and feats.shape[0] > 1:
@@ -107,7 +106,7 @@ def resolve_pe_sidecar(
     encoder: str = "pe",
     cache_dir: Path | str | None = None,
 ) -> Path:
-    """Match ``preprocess/cache_pe_encoder.cache_path_for`` so the val pass
+    """Match ``library.preprocess.pe.cache_path_for`` so the val pass
     looks for sidecars in the same place the cache step wrote them."""
     image_path = Path(image_path)
     name = f"{image_path.stem}_anima_{encoder}.safetensors"

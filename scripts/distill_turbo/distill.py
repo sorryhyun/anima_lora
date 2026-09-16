@@ -20,10 +20,9 @@ from pathlib import Path
 
 from library.runtime.allocator import default_expandable_segments
 
-# Mirror of train.py's allocator default (project_daemon_wiring_pattern —
-# bespoke loops never see train.py infra): must run before the first CUDA
-# allocation. The 2026-08-19 anima_turbo_v2_1 run died at step 887 on a
-# 66 MiB alloc with 143 MiB free — fragmentation this flag exists to absorb.
+# Mirror of train.py's allocator default (bespoke loops don't inherit train.py
+# infra): must run before the first CUDA allocation. Without it long runs die
+# of fragmentation (an OOM on a small alloc with free memory reported).
 # print, not logging — no handler exists this early (basicConfig runs below).
 if default_expandable_segments():
     print(
@@ -66,10 +65,7 @@ logging.basicConfig(
 
 
 def _step_tag(step: int) -> str:
-    """Human checkpoint suffix: 1000 -> ``1k``, 8000 -> ``8k``, else raw count.
-
-    Matches the hand-rolled ``_1k`` / ``_500`` naming the runs already use.
-    """
+    """Human checkpoint suffix: 1000 -> ``1k``, 8000 -> ``8k``, else raw count."""
     return f"{step // 1000}k" if step % 1000 == 0 else str(step)
 
 
@@ -360,8 +356,7 @@ def run_loop(ctx: RunContext, cfg):
             # forward → real-vs-fake surrogate → in-branch backward, view restored to
             # student, + metrics.add_cdm). ORDER MATTERS: it MUST run BEFORE the GAN
             # gen forward — that forward's checkpointed recompute happens at backward
-            # under the then-current view, so CDM must be the last view flip before it
-            # (project_turbo_view_ckpt_recompute_hazard).
+            # under the then-current view, so CDM must be the last view flip before it.
             if cdm_on and cdm_src is not None:
                 cdm_off_trajectory_loss(
                     ctx, cfg, cdm_src, crossattn_emb, c_null, latents, mask, B
@@ -468,8 +463,7 @@ def run_loop(ctx: RunContext, cfg):
                         # (deterministic from step; makes the delay/warmup window
                         # legible next to the margin/spread curves).
                         writer.add_scalar("train/gan_weight_gen_eff", gan_w, step + 1)
-                # log_interval cadence (per-step would re-introduce the syncs we
-                # just eliminated).
+                # log_interval cadence (per-step would add CUDA syncs).
                 progress.set_postfix(**tqdm_postfix(m))
                 if ctx.console_steps:
                     logger.info(

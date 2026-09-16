@@ -1,9 +1,8 @@
 """Resize-preview helpers shared by preprocess GUI surfaces.
 
 The resize step cover-scales an image to its free-fit bucket and anchor-crops
-to it. The geometry is ``anime_tools.stages.resize`` (the owner since the
-API-first migration, 2026-09-03); this module re-exports it under the names the
-GUI grew up with and adds the preview rectangle math, so a preview shows
+to it. The geometry is ``anime_tools.stages.resize``; this module re-exports it
+under the GUI's names and adds the preview rectangle math, so a preview shows
 exactly what the stage will keep without touching files.
 """
 
@@ -75,7 +74,7 @@ def select_resize_bucket(
     max_ratio: float = DEFAULT_FREEFIT_MAX_RATIO,
 ) -> tuple[int, tuple[int, int]]:
     """``(tier_edge, (W, H))`` for a source size — ``anime_tools.stages.resize.
-    select_bucket`` under the name the GUI grew up with."""
+    select_bucket`` under the GUI's name."""
     return select_bucket(width, height, target_res, max_ratio=max_ratio)
 
 

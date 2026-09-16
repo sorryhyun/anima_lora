@@ -3,7 +3,7 @@
 # This is a *curated* facade: it re-exports the public, stable surface of the
 # training package, grouped by concern below. Two things are deliberately NOT
 # re-exported here and must be imported by their submodule path:
-#   - The argparse / CLI surface, which now lives in `library.config.cli_args`
+#   - The argparse / CLI surface, which lives in `library.config.cli_args`
 #     (it is config, not training).
 #   - Loop-internal machinery only `train.py`/`loop.py` compose:
 #       library.training.loop          (build_loop_state, run_training_loop)
@@ -40,7 +40,7 @@ from library.training.samplers import (
 )
 
 # The default rectified-flow training step as plain kwargs — the bench-friendly
-# entry point (issues.md DX2). Home is library.runtime.noise; re-exported here so
+# entry point. Home is library.runtime.noise; re-exported here so
 # training-adjacent callers find it next to the sampler surface.
 from library.runtime.noise import fm_training_batch
 

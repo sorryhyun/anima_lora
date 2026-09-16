@@ -1,21 +1,11 @@
 """Register-token adapter for the Anima DiT — full method wiring.
 
-Promoted from the `bench/headroom/` probe (`register_adapter.py`) into a
-first-class `networks/methods/` adapter driven by `train.py --method register`.
-Same DSR mechanism (arXiv:2605.05206) retrofitted onto a frozen pretrained DiT:
+Driven by `train.py --method register`. DSR mechanism (arXiv:2605.05206) on a
+frozen pretrained DiT:
 
-* K non-decoded **register tokens** concatenated onto the *self-attention*
-  sequence at block ``insert_block`` (default 8 — DSR Tab. 9's sweet spot;
-  0 = stack entry), carried through the remaining blocks as a true
-  residual-carrying scratchpad, stripped before unpatchify. DSR's insertion
-  ablation (28-block DiT-XL, K=36): block 0 → FID 5.54, block 8 → 5.33,
-  block 16 → 5.49, block 24 → 5.68 (baseline 5.89) — "registers are most
-  useful when introduced in the early-to-middle part of the generator".
-  Rope-exempt (identity cos/sin rows), so no attention-path seq-axis slicing.
-  Mid-stack insertion rides ``forward_pre_hook``s on blocks ≥ ``insert_block``
-  (concat at the insert block, rope swap on every later block — the rope tuple
-  is re-passed per block by ``_run_blocks``), eager and compile-safe (hooks run
-  at block ``__call__`` granularity, outside the compiled ``_forward``).
+* K non-decoded **register tokens** injected mid-stack at ``insert_block``
+  (default 8 — DSR Tab. 9's sweet spot; 0 = stack entry). Mechanism lives in
+  ``networks/register_injection.py``.
 * A trained self-attn QKV surface on the target blocks — either a low-rank
   LoRA (`qkv_mode="lora"`) or a full-rank ΔW (`qkv_mode="unfrozen"`, the DSR
   sweet-spot reachability arm, proposal `_archive/proposals/headroom_register_tokens.md`).
@@ -23,9 +13,9 @@ Same DSR mechanism (arXiv:2605.05206) retrofitted onto a frozen pretrained DiT:
 Two arms (proposal §Arms; `bench/headroom/README.md`):
 
 * **arm B** (default, shippable) — K *learnable* register embeddings.
-* **arm A** — K *fixed-zero* registers = a lesion, never ship. Available only
-  for controlled ablation. `arm=L` shorthand (`num_registers=0`) is the honest
-  LoRA-only drift control.
+* **arm A** — K *fixed-zero* registers (a lesion; ablation only, not for
+  shipping). `arm=L` shorthand (`num_registers=0`) is the LoRA-only drift
+  control.
 
 Design notes that make this both train-side and ComfyUI-loadable:
 

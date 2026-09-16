@@ -103,8 +103,7 @@ def generate_image(args: argparse.Namespace) -> None:
     gen_settings = get_generation_settings(args)
 
     # generate() loads the DiT (hooking the pack rows onto llm_adapter.embed)
-    # and installs the pack-routing tokenizer from args.vocab_pack — the same
-    # path `inference.py --vocab_pack …` and `make test` take.
+    # and installs the pack-routing tokenizer from args.vocab_pack.
     latent = generate(args, gen_settings)
 
     clean_memory_on_device(device)

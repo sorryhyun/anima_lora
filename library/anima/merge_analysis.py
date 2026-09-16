@@ -15,10 +15,9 @@ sum of energies — it carries pairwise cross-terms::
 - ``≈ 0`` → orthogonal/independent — the ``--normalize global`` √N-quadrature
   assumption holds.
 
-The merge script already derives a normalization scale *assuming* orthogonality
-but never reports the actual interference, so two stylistically-opposed LoRAs
-get silently cancelled with no diagnostic.  This module measures it exactly and
-cheaply via the Gram-trace identity — no ``out×in`` ΔW is ever materialized
+The merge script derives its normalization scale *assuming* orthogonality;
+this module measures the actual interference exactly and cheaply via the
+Gram-trace identity — no ``out×in`` ΔW is ever materialized
 (mirrors ``merge_loras.fro2``)::
 
     ⟨ΔW_i, ΔW_j⟩_F = Σ( (up_iᵀ up_j) ⊙ (down_i down_jᵀ) )
@@ -29,8 +28,8 @@ the energy-weighted aggregate reflects what the merge actually writes (pairwise
 is not).
 
 **Subspace overlap** complements the signed cosine. Two independent low-rank
-deltas in a huge matrix space have vanishing expected Frobenius cosine (the
-artist-LoRA Phase-0 bench measured exactly this), so the cosine reads
+deltas in a huge matrix space have vanishing expected Frobenius cosine
+(measured on independent artist LoRAs), so the cosine reads
 "orthogonal" for essentially every real merge — including ones that visibly
 clash. The precursor to a visible clash is the LoRAs *occupying the same
 functional subspace*: both writing into the same output directions (column
@@ -51,9 +50,7 @@ the pair's signed cosine (``COS_ALIGNED``): a high overlap only reads
 "colliding" when the directions are ≈ orthogonal (cos ≈ 0) — the blind spot the
 metric exists for. A high overlap with cos ≫ 0 is **reinforcing** (both LoRAs
 push the same way — common when the inputs share an init basin, e.g. soup
-outputs from one uncond init), and with cos ≪ 0 is **cancelling**. Without
-this, a maximally-*constructive* merge (every cos ≈ +1) reports every layer as
-"colliding", which is exactly backwards.
+outputs from one uncond init), and with cos ≪ 0 is **cancelling**.
 """
 
 from __future__ import annotations
@@ -63,7 +60,7 @@ from itertools import combinations
 
 import torch
 
-# Loaded-LoRA tuple as returned by ``scripts/merge_loras.load_lora``:
+# Loaded-LoRA tuple as returned by ``scripts/toolkits/merge_loras.load_lora``:
 # (downs, ups, alphas) keyed by module stem.
 LoadedLoRA = tuple[dict[str, torch.Tensor], dict[str, torch.Tensor], dict[str, float]]
 
@@ -81,7 +78,7 @@ OVERLAP_COLLIDING_X = 8.0
 # or cancels (cos ≪ 0) rather than genuinely colliding. Only a same-subspace /
 # orthogonal-direction pair (cos ≈ 0) is a real "collision" the cosine can't
 # see. 0.5 sits well above the near-orthogonal regime independent adapters
-# occupy (≈0–0.15, the artist-LoRA Phase-0 finding) yet below the blind-spot
+# occupy (≈0–0.15 on artist LoRAs) yet below the blind-spot
 # construction's <0.5, so both regimes classify correctly. (The GUI banner uses
 # a separate, coarser _SAFE_COS=0.15 gate for the same reinforce-vs-collide
 # decision — see gui/tabs/merge_tab.py::_apply_analysis_marker.)
@@ -205,9 +202,8 @@ class InterferenceReport:
     @property
     def strongest_pair(self) -> tuple[tuple[int, int], float] | None:
         """The input pair with the largest |cosine| — the dominant interference,
-        whether reinforcing (+) or cancelling (−). This, not the energy ratio
-        (which inflates with N) or the most-negative pair, is the honest severity
-        signal for the GUI banner."""
+        whether reinforcing (+) or cancelling (−). Grades the GUI banner
+        severity (the energy ratio inflates with N)."""
         if not self.pair_cosine:
             return None
         return max(self.pair_cosine.items(), key=lambda kv: abs(kv[1]))

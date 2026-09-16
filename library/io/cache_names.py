@@ -1,12 +1,10 @@
 """Torch-free cache-filename conventions for preprocessed sidecars.
 
-Single source of truth for the suffixes the preprocess pipeline writes, plus
-the by-name classifier / counter built on them (:func:`classify_cache_file`,
-:func:`count_preprocess_caches`). Deliberately stdlib-only at import time so
-lightweight consumers (notably the PySide6 GUI, which cannot import torch —
-see ``gui/CLAUDE.md``) share the exact naming/counting rules instead of
-hand-copying drift-prone string literals (the GUI's private copy previously
-drifted when ``pe_spatial`` became the default REPA encoder).
+The suffixes the preprocess pipeline writes, plus the by-name classifier /
+counter built on them (:func:`classify_cache_file`,
+:func:`count_preprocess_caches`). Stdlib-only at import time so the PySide6 GUI
+(which cannot import torch — see ``gui/CLAUDE.md``) shares these rules instead
+of copying the literals.
 """
 
 from __future__ import annotations
@@ -22,7 +20,7 @@ TE_CACHE_SUFFIX = "_anima_te.safetensors"
 
 
 def demoted_latents_key(width: int, height: int) -> str:
-    """NPZ key of the σ-demote sibling latent (sigma_lowres Phase 1b).
+    """NPZ key of the σ-demote sibling latent (sigma_lowres).
 
     Lives *inside* the image's native ``{stem}_{WxH}_anima.npz`` — no sibling
     file. Deliberately NOT prefixed ``latents_``: readers like

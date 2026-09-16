@@ -60,9 +60,8 @@ def _builtin_variants_by_family() -> dict[str, list[tuple[int, str, str]]]:
     """Map family → list of (order, stem, label) tuples for built-in variants.
 
     Built-in = directly under ``configs/gui-methods/`` (not the ``custom/``
-    subdir). Files without a ``[variant].family`` are dropped silently —
-    they're either malformed or intentionally hidden, and listing them under
-    a guessed family would just re-introduce the stale-map problem.
+    subdir). Files without a ``[variant].family`` are dropped silently
+    (malformed or intentionally hidden).
     """
     by_family: dict[str, list[tuple[int, str, str]]] = {}
     if not GUI_METHODS_DIR.is_dir():
@@ -92,9 +91,9 @@ def list_methods() -> list[str]:
     """Method families to show in the combo, in curated order (lora first).
 
     The curated order lives in ``_METHOD_ORDER`` (a family omitted from it stays
-    hidden), but a family is only listed when it actually has built-in variant
-    files on disk — so a name left in ``_METHOD_ORDER`` without any
-    ``configs/gui-methods/*.toml`` no longer shows an empty variant combo.
+    hidden), and a family is only listed when it has built-in variant files on
+    disk, so a name in ``_METHOD_ORDER`` without any
+    ``configs/gui-methods/*.toml`` doesn't show an empty variant combo.
     """
     available = set(_builtin_variants_by_family())
     return [m for m in _METHOD_ORDER if m in available]
@@ -216,9 +215,8 @@ _GROUPS = {
         "use_repa",
         "repa_target_dog",
         # σ-demoted training: the master boolean plus the stacked-router keys it
-        # gates. Grouped with (and pinned next to) use_repa rather than left in
-        # the "Other" junk drawer — every key here is inert while sigma_lowres
-        # is off, so they read as one switch + its operating point.
+        # gates, pinned next to use_repa. Every key here is inert while
+        # sigma_lowres is off.
         "sigma_lowres",
         "sigma_lowres_route",
         "sigma_lowres_threshold",
@@ -293,8 +291,8 @@ _GROUPS = {
     },
 }
 _K2G = {k: g for g, ks in _GROUPS.items() for k in ks}
-# Preprocess-time knobs (target_res, drop_lowres_images, min_pixels) are owned by the Preprocess tab;
-# hidden from the config form to keep a single source of truth and avoid the two surfaces drifting.
+# Preprocess-time knobs (target_res, drop_lowres_images, min_pixels) are owned by the Preprocess tab,
+# so they are hidden from the config form.
 _SKIP = {
     "base_config",
     "dataset_config",
@@ -506,7 +504,7 @@ def _merged_via_library(
     Returns ``(merged, origin)``. The base/preset/method spine — file
     resolution, merge order (method wins over preset), custom-preset handling —
     comes from :func:`library.config.io.load_method_preset` so the GUI never
-    re-derives it and can't drift from what `train.py` actually runs. We seed
+    re-derives what `train.py` runs. We seed
     the form baseline with ``_load_base()`` first because the preprocess-only
     scalars (e.g. ``source_image_dir``) live in preprocess.toml, which the
     library layer intentionally doesn't fold into the training merge.
@@ -521,7 +519,7 @@ def _merged_via_library(
         )
     except (FileNotFoundError, KeyError, ValueError):
         # Missing method/preset file — degrade to the base baseline rather than
-        # crashing the form (the old hand-rolled merge silently no-op'd too).
+        # crashing the form.
         return merged, origin
     for k, v in lib_merged.items():
         merged[k] = v

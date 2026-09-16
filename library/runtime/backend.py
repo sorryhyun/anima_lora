@@ -30,8 +30,8 @@ def diagnose_cuda_unavailable(torch_module: Any) -> str | None:
 
     Returns an actionable message, or None when there is nothing to say
     (CUDA works, or no NVIDIA GPU is detectable). The wrong-torch-build cases
-    exist because v1.16.1/2's lock let a plain ``uv sync`` on Windows resolve
-    the ROCm torch (GH #92) — a plain re-sync now restores the CUDA stack.
+    cover a Windows env that resolved the ROCm torch (GH #92); a plain
+    ``uv sync`` restores the CUDA stack.
     """
     if torch_module.cuda.is_available():
         return None

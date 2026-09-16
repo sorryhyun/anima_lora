@@ -16,9 +16,8 @@ logger = logging.getLogger(__name__)
 # Load-time inverse of the qkv/kv split performed by LoRANetwork.save_weights().
 # The training runtime uses fused self_attn.qkv_proj and cross_attn.kv_proj, but saved
 # checkpoints are defused to separate q_proj/k_proj/v_proj for ComfyUI compatibility.
-# Without this step, reloading such a checkpoint into the live LoRA module path silently
-# drops the attention LoRA keys (they don't match the fused runtime names). This helper
-# reassembles the fused LoRA matrices so load_state_dict hits every module.
+# Without this step, reloading such a checkpoint silently drops the attention LoRA keys
+# (they don't match the fused runtime names).
 #
 # Fusion math (n components, each with rank r, out dim `out`):
 #   down_fused = cat([down_i], dim=0)                       # [n*r, in]
@@ -101,7 +100,7 @@ def _refuse_split_chimera_keys(
     state_dict: Dict[str, torch.Tensor],
 ) -> Dict[str, torch.Tensor]:
     """Inverse of the chimera per-pool q/k/v split performed in
-    :func:`networks.lora_save._build_chimera_moe_state_dict`.
+    :meth:`ChimeraHydraLoRAModule.build_moe_state_dict`.
 
     Each chimera Linear gets ``lora_down_{c,f}.weight`` (cloned across
     q/k/v) plus per-pool stacked ups ``lora_up_{c,f}_weight`` (concatenated

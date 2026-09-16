@@ -3,14 +3,13 @@
 Every denoise-loop variant — the standard loop in ``generation.generate_body``
 and the ``--spectrum`` / ``--spd`` runners in ``networks/`` — threads the same
 block of side-channel args: adapter routing (P-GRAFT, soft-tokens), the
-SMC-CFG correction, and the pooled-text override. These are orthogonal
-to each sampler's own knobs (Spectrum's window/Chebyshev params, SPD's
-resolution stages), so bundling them keeps the runner signatures focused on
-what is actually sampler-specific.
+SMC-CFG correction, and the pooled-text override — orthogonal to each
+sampler's own knobs (Spectrum's window/Chebyshev params, SPD's resolution
+stages).
 
 ``generate_body`` builds one ``SamplerSideChannels`` and hands it to whichever
-runner is active. Adding a new side-channel means one field here plus the
-``from_args`` build site — not a new kwarg in every runner signature.
+runner is active. A new side-channel is one field here plus the ``from_args``
+build site.
 """
 
 from __future__ import annotations

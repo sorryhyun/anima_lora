@@ -5,8 +5,7 @@ The 2D separable type-II DCT helpers and the SPD spectral-expansion geometry
 — torch only, no adapter / sampler / comfy imports — so this module is the single
 source of truth shared verbatim between ``networks/spd.py`` (the CLI sampler +
 fine-tune target construction) and the ComfyUI Spectrum "SPEED" node (vendored by
-scripts/release/sync_vendor.py). The node previously hand-mirrored these and ran
-without the matrix cache; vendoring this module gains it the cache (bit-identical).
+scripts/release/sync_vendor.py).
 
 DO NOT EDIT the vendored copy — regenerate it via scripts/release/sync_vendor.py.
 """
@@ -19,10 +18,8 @@ import torch
 
 # The type-II DCT basis is constant for a given (n, device, dtype), and both the
 # SPD sampler and the fine-tune target construction only ever see a handful of
-# bucket sizes — so build each matrix once and reuse it read-only instead of
-# rebuilding dense (n×n) matrices on every dct2/idct2 call. Callers must NOT
-# mutate the returned tensor (dct2/idct2 only matmul against it). Math is
-# bit-identical to the un-cached construction.
+# bucket sizes — so each matrix is built once and reused read-only. Callers must
+# NOT mutate the returned tensor (dct2/idct2 only matmul against it).
 _DCT_CACHE: dict[tuple[int, torch.device, torch.dtype], torch.Tensor] = {}
 
 
@@ -91,11 +88,9 @@ def spectral_expand(
     """Embed the current low-res DCT block into a larger grid, fill HF slots with
     σ-scaled noise, iDCT, scale by κ (Eq. iii) and align the timestep (Eq. 5–6).
 
-    ``hf_scale`` attenuates the fresh HF noise fill (paper prescription = 1.0).
-    It is the continuity↔detail knob the SPD∘Spectrum frontier probe sweeps:
+    ``hf_scale`` attenuates the fresh HF noise fill (paper prescription = 1.0):
     γ→0 injects no fresh HF (max LL-feature continuity across the seam, but an
     off-manifold under-detailed state); γ=1 is the on-manifold paper default.
-    Default 1.0 ⇒ bit-for-bit identical to the sampler/training path.
 
     Returns (expanded (B,C,1,h_hi,w_hi) latent, sigma_aligned).
     """
