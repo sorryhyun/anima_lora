@@ -1217,6 +1217,24 @@
  {
   "group": "train: S line (plan_synth)",
   "option_strings": [
+   "--pair_ref_frame"
+  ],
+  "dest": "pair_ref_frame",
+  "default": "ja",
+  "choices": [
+   "ja",
+   "en"
+  ],
+  "nargs": null,
+  "type": "None",
+  "help": "train: the frame of the --pair_loss sibling caption — ja = as built (the item's own frame, only the quote differs); en = the scene's EN frame (english text tag, English text reads as), so the base's JA pseudo-text prior stays in the paired residual instead of cancelling",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: S line (plan_synth)",
+  "option_strings": [
    "--box_weight"
   ],
   "dest": "box_weight",

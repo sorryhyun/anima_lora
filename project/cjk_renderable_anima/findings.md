@@ -204,6 +204,20 @@ the data mix.
   direction, ⟂ to Q and to every kana code — not a "draw a fixed mark"
   address to borrow.
 
+- **The wipe is not the delta norm alone, and it is what hides the base's
+  JA pseudo-text** (ΔFM Δ0 / Δ0b, 2026-09-17, 12 dakuten rows). Paired-
+  difference FM (`--pair_loss 1`: the sibling's residual under the same ε, σ
+  subtracted) cancels ≈ 80 % of the residual — the scene part — and at
+  equal row norm (144 vs 149) the native keeps its scene: en cos 0.935 vs
+  0.855, images under 0.85 6 vs 20 of 64. The glyph then lands as scene
+  text **beside lines of JA pseudo-text**, reader hits halve (joint hit ∧
+  en cos ≥ 0.85: 15–20 vs plain 28). That pseudo-text is in no
+  teacher-forced residual (an EN-frame sibling changes the paired loss by
+  nothing); it is the base free-running under `japanese text`, and plain
+  FM removes it only by wiping the scene with it. Wipe ↔ co-text is one
+  axis on single-glyph data: a σ split of the two losses interpolates
+  along it. `reports/synth_pair_2026_09_17.md`.
+
 ## Settled — what does not move it
 
 - 256² training under the default σ (dead: EN 11/24 there; 384² is alive
@@ -218,7 +232,10 @@ the data mix.
   lever); IDS composition of addresses; the `c_flat` cap in either
   direction (0.75 → 1.5 handed the trigger to `c`); a P0b warm start as a
   shortcut through the composite stage; Q added at inference over rows
-  trained with a `c`.
+  trained with a `c`; ΔFM as an exposure saver (no point beats plain FM at
+  equal draws), and reweighting ΔFM against plain FM (`--pair_sigma_min`)
+  or moving the sibling's caption frame (`--pair_ref_frame en`) as a way
+  to keep the scene *and* drop the pseudo-text.
 
 ## Gotchas that cost time
 
@@ -267,6 +284,12 @@ the data mix.
 
 ## Open
 
+- **Is the exposure budget the lr integral?** ΔFM at `--lr_rows 2e-3` ×
+  1 500 steps ≡ 1e-3 × 3 000 (19 vs 18/24, same native read); every S-line
+  exposure number was taken at 1e-3 cosine, so draws and ∫lr were never
+  separated for plain FM (3e-3 stays closed). `plan_synth2.md` L0.
+- Does the ΔFM co-text need unaddressed text — i.e. does it vanish when
+  the caption is a whole sentence of trained rows (`plan_synth2.md` Δ2)?
 - Mixed arm gate (plan P1): singles ≥ 30/36 back with `flip` / `str3` /
   `line` at or above the strings arm.
 - Repeat mode: whether repeated-piece strings as negatives stop the second

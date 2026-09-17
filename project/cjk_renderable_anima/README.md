@@ -17,8 +17,10 @@ line's** live plan (status, data mix, recipe, gates, decision tree) and
 from scratch on self-generated scene composites with a per-source layout
 vector (P0b's `native` and table-parts probes showed the rows address the
 whole training canvas, not the glyph, and that nothing in the table
-separates the two); [`plan_synth2.md`](plan_synth2.md) is the ΔFM proposal (paired-difference
-supervision for new rows, 2026-09-17, queued behind the sentence arms);
+separates the two); [`plan_synth2.md`](plan_synth2.md) is the ΔFM line (paired-difference
+supervision for new rows; Δ0 / Δ0b read 2026-09-17 — a scene-holding loss:
+no wipe, no exposure saving, JA co-text the loss cannot remove, **lr is a
+lever** — next L0, then Δ2);
 [`findings.md`](findings.md) holds the settled
 verdicts one screen per topic; [`reports/`](reports/README.md) is the dated run record
 (indexed: W0–W2, W2d Runs 1–3, order probe, σ diagnostic, strings arm,

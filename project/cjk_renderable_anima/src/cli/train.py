@@ -90,6 +90,15 @@ def train_synth_args(g):
         "the leak fallback (plan_synth2: 0.7 = identity band only)",
     )
     g.add_argument(
+        "--pair_ref_frame",
+        choices=["ja", "en"],
+        default="ja",
+        help="train: the frame of the --pair_loss sibling caption — ja = as built "
+        "(the item's own frame, only the quote differs); en = the scene's EN frame "
+        "(english text tag, English text reads as), so the base's JA pseudo-text "
+        "prior stays in the paired residual instead of cancelling",
+    )
+    g.add_argument(
         "--box_weight",
         type=float,
         default=1.0,

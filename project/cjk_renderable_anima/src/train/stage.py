@@ -52,9 +52,20 @@ def stage_train(a):
     if a.pair_loss:
         n_pair = sum("ref_file" in r for r in recs)
         assert n_pair, "--pair_loss needs a data dir built with --pair_ref"
+        if a.pair_ref_frame == "en":
+            from data.pair import en_frame
+
+            for r in recs:
+                if "ref_caption" in r:
+                    r["ref_caption"] = en_frame(r["ref_caption"])
         print(
             f"pair loss: {n_pair}/{len(recs)} items have a sibling"
-            + (f", σ ≥ {a.pair_sigma_min:g} only" if a.pair_sigma_min > 0 else ""),
+            + (f", σ ≥ {a.pair_sigma_min:g} only" if a.pair_sigma_min > 0 else "")
+            + (
+                ", sibling captions under the EN frame"
+                if a.pair_ref_frame == "en"
+                else ""
+            ),
             flush=True,
         )
     cache, train_ext, ev_ext = _encode_text(recs, ev, device, out, bool(a.pair_loss))

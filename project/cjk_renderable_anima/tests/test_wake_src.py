@@ -146,3 +146,28 @@ def test_render_into_scene_sibling(tmp_path):
             scene, text, fonts[0], rng, min_glyph=28, tilt_frac=1.0
         )
         assert box_alone == box_b and np.array_equal(np.array(alone), np.array(im_b))
+
+
+def test_pair_en_frame_inverts_scene_caption():
+    """``--pair_ref_frame en``: the sibling caption goes back under the EN
+    frame the scene was rendered with; a frame that names no language only
+    loses the ``japanese text`` tag."""
+    from data.pair import en_frame
+    from data.synth import scene_caption
+
+    sc = {
+        "head": ["safe", "1girl"],
+        "generals": ["english text", "speech bubble", "smile"],
+        "clause_tpl": 'English text reads as "{a}".',
+    }
+    cap = scene_caption(sc, "K")
+    assert "japanese text" in cap and 'Japanese text reads as "K"' in cap
+    en = en_frame(cap)
+    assert "apanese" not in en
+    assert ", english text," in en and en.endswith('English text reads as "K".')
+    said = scene_caption({**sc, "clause_tpl": 'She is saying "{a}".'}, "K")
+    assert en_frame(said) == said.replace("japanese text", "english text")
+    # last tag before the clause
+    assert en_frame('1girl, japanese text. She is saying "K".') == (
+        '1girl, english text. She is saying "K".'
+    )

@@ -77,3 +77,20 @@ class RefPool:
 
     def n_strings(self) -> int:
         return sum(len(v) for v in self.pool.values())
+
+
+def en_frame(caption: str) -> str:
+    """A sibling caption moved back under the **EN frame** the scene was
+    rendered with — the inverse of ``synth.scene_caption``'s swap: the
+    ``japanese text`` tag → ``english text``, ``Japanese text / SFX reads
+    as`` → ``English …``; frames that name no language (``She is saying
+    "…"``) keep their words. ΔFM ``--pair_ref_frame en`` (2026-09-17): under
+    the JA frame the base's sibling residual carries its JA pseudo-text
+    prior, the paired loss cancels it, and the row never learns to suppress
+    it. The tag keeps its sorted position (not re-sorted)."""
+    return (
+        caption.replace(", japanese text,", ", english text,")
+        .replace(", japanese text.", ", english text.")
+        .replace("Japanese text reads as", "English text reads as")
+        .replace("Japanese SFX reads as", "English SFX reads as")
+    )
