@@ -8,7 +8,7 @@ means patching two places — the T5-side tokenizer and the LLM adapter's
 embedding table — and ``library.anima.vocab_pack`` owns both, so on the front
 door it is one field:
 
-    GenerationRequest(prompt="1girl, 猫耳, 銀髪", vocab_pack="models/vocab_packs/anima_cjk_vocab_pack")
+    GenerationRequest(prompt="1girl, 猫耳, 銀髪", vocab_pack="models/vocab_packs/anima_cjk_vocab_pack_preview")
 
 ``generate()`` installs the pack-routing tokenize strategy and ``load_dit_model``
 hooks the rows onto ``llm_adapter.embed`` (the module's state dict stays at the
@@ -29,8 +29,9 @@ download-vocab-pack``:
     # tokenizer-only dry run (no DiT / VAE): prints the routed id stream
     python examples/09_cjk_vocab_pack.py --dry_run --prompt "1girl, 猫耳, 銀髪"
 
-What to expect: danbooru-style tags in JA work like their English spelling
-in same-seed grids; KO / ZH tag rows are trained but were not grid-validated
+What to expect: danbooru-style tags in JA worked like their English spelling
+in same-seed grids on the pre-render pack (the shipped ``_preview`` pack
+retrains 503 JA rows for quoted-text rendering, not re-verified); KO / ZH tag rows are trained but were not grid-validated
 the same way; full-CJK rare-kanji character names do not compose (type
 names in latin, ``hakurei reimu``). See ``docs/methods/cjk_vocab_pack.md``.
 """

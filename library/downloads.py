@@ -72,7 +72,7 @@ PE_DIR = "pe"
 # ``tokenizer_qwen3/`` is for pipelines without a Qwen3 tokenizer of their own;
 # this one reuses the text encoder's, so it is not fetched.
 VOCAB_PACK_REPO = "sorryhyun/anima-vocab-pack-cjk"
-VOCAB_PACK_STEM = "anima_cjk_vocab_pack"
+VOCAB_PACK_STEM = "anima_cjk_vocab_pack_preview"
 VOCAB_PACK_DIR = "vocab_packs"
 
 
@@ -88,7 +88,7 @@ def default_vocab_pack_dir() -> Path:
 
 
 def default_vocab_pack_prefix() -> Path:
-    """``<models_dir>/vocab_packs/anima_cjk_vocab_pack`` — the path prefix
+    """``<models_dir>/vocab_packs/anima_cjk_vocab_pack_preview`` — the path prefix
     (no suffix) ``configs/base.toml`` ships as ``vocab_pack`` and the loader's
     auto-fetch recognises as the shipped pack."""
     return default_vocab_pack_dir() / VOCAB_PACK_STEM

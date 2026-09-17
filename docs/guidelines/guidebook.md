@@ -74,7 +74,7 @@ The Models dialog in the GUI lists every weight grouped into packs; Download the
 | Anima DiT (the diffusion model itself) | `models/diffusion_models/anima-base-v1.0.safetensors` |
 | Qwen3 0.6B text encoder | `models/text_encoders/qwen_3_06b_base.safetensors` |
 | QwenImage VAE | `models/vae/qwen_image_vae.safetensors` |
-| CJK vocab pack (Japanese / Korean / Chinese captions and prompts; on by default) | `models/vocab_packs/anima_cjk_vocab_pack.{safetensors,json}` |
+| CJK vocab pack (Japanese / Korean / Chinese captions and prompts; on by default) | `models/vocab_packs/anima_cjk_vocab_pack_preview.{safetensors,json}` |
 
 The set also pulls the PE vision encoders, the Anima Tagger checkpoint and the Danbooru tag DB, which preprocessing uses. The vocab pack is enabled by default since v2 (`vocab_pack` in `configs/base.toml`; set it to `""` to turn it off — English captions are identical either way).
 

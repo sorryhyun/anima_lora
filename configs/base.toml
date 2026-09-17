@@ -8,7 +8,7 @@ vae = "models/vae/qwen_image_vae.safetensors"
 # bit-exact). EN-only captions and prompts are unaffected either way. Changing
 # or disabling it changes every TE cache with CJK captions: re-run
 # `make preprocess-te ARGS=--overwrite` afterwards.
-vocab_pack = "models/vocab_packs/anima_cjk_vocab_pack"
+vocab_pack = "models/vocab_packs/anima_cjk_vocab_pack_preview"
 
 output_dir = "output/ckpt"
 output_name = "anima_lora"

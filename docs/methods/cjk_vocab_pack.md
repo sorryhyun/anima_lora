@@ -11,7 +11,7 @@ itself if the default is missing. Setting the key to `""` turns the whole path
 off (stock tokenizer).
 
 Public pack: <https://huggingface.co/sorryhyun/anima-vocab-pack-cjk>
-(`anima_cjk_vocab_pack.{safetensors,json}`, ~285 MB; the model card carries the
+(`anima_cjk_vocab_pack_preview.{safetensors,json}`, ~285 MB; the model card carries the
 training label). Research history and the pack builder live under
 `project/cjk_aware_anima/` and `bench/cjk_adapter/`; this page is the shipped
 surface only.
@@ -19,10 +19,10 @@ surface only.
 ## Default on, how to turn off
 
 ```bash
-make download-models              # first-run set — includes the pack (→ models/vocab_packs/anima_cjk_vocab_pack.{safetensors,json})
+make download-models              # first-run set — includes the pack (→ models/vocab_packs/anima_cjk_vocab_pack_preview.{safetensors,json})
 make download-vocab-pack          # re-fetch just the pack
 # configs/base.toml (the shipped default)
-vocab_pack = "models/vocab_packs/anima_cjk_vocab_pack"
+vocab_pack = "models/vocab_packs/anima_cjk_vocab_pack_preview"
 # off: stock tokenizer, bit-exact
 vocab_pack = ""
 make preprocess-te ARGS=--overwrite   # after any change, only if a caption carries CJK (see below)
@@ -86,6 +86,14 @@ EN-only datasets are unaffected either way (identical ids, identical caches).
   same-seed grids (`猫耳` ≈ `cat ears`); mixed EN + CJK prompts; symbols the
   stock T5 cannot spell (the pack's symbol block, e.g. `♡`); KO / ZH tag rows
   are trained (glossary-derived) but were not grid-validated as widely as JA.
+  These tag results were measured on the pre-render pack. The shipped
+  `_preview` pack continues 503 of the same rows (kana, common kanji,
+  punctuation) on quoted-text rendering composites, so JA tag behaviour on it
+  is not re-verified.
+- Renders (preview): quoted Japanese text drawn into the image —
+  `speech bubble, japanese text. … Japanese text reads as "はい".` Single kana /
+  kanji and very short words render some of the time, seed-dependent; longer
+  words and sentences mostly do not.
 - Does not: full-CJK rare-kanji character names do not compose —
   type them in latin (`hakurei reimu`). Free-form CJK sentences are a
   tokenization path, not a translation: the rows carry tag identity, not

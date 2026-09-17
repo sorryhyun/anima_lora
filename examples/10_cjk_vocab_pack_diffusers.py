@@ -47,7 +47,7 @@ from library.anima.ext_vocab import T5_TABLE_SIZE, HybridT5Encoder, load_ext_ass
 
 PIPE_REPO = "circlestone-labs/Anima-Base-v1.0-Diffusers"
 PACK_REPO = "sorryhyun/anima-vocab-pack-cjk"
-PACK_STEM = "anima_cjk_vocab_pack"
+PACK_STEM = "anima_cjk_vocab_pack_preview"
 
 
 def fetch_pack(local_prefix: str | None) -> Path:
