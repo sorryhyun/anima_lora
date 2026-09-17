@@ -39,7 +39,7 @@ from pathlib import Path
 from common.paths import CORPUS_HELD, CORPUS_TRAIN, OUT
 from common.prompts import TPL_BUBBLE, TPL_PLAIN, TPL_SCENE_JA
 from common.readers import contact_sheet
-from common.render.flat import pick_font, render_string
+from common.render.flat import pick_font, render_string, sample_layout
 from common.render.scene import region_capacity, render_into_scene
 from common.text import KANJI_RE, WORD_RE
 
@@ -312,26 +312,49 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
     }
     recs: list[dict] = []
 
+    # ΔFM (plan_synth2): every composite gets a Latin sibling by the same
+    # fit, and so does every flat item (one layout, two draws)
+    refs = RefPool(a.pair_ref_pool, rng) if a.pair_ref == "en" else None
+
     def flat(kind: str, src: str, i: int):
         s = draws[kind]()
         shp = shapes.draw()
-        im, bubble = render_string(
-            s,
-            pick_font(s, fonts, rng),
-            rng,
-            size=shp or 512,
-            mode=a.layout,
-            bubble_frac=a.flat_bubble,
-        )
+        font = pick_font(s, fonts, rng)
         fn = out / "img" / f"{src}_{i:05d}.png"
+        rec = {"text": s, "src": src, "kind": kind}
+        if refs is None:
+            im, bubble = render_string(
+                s, font, rng, size=shp or 512, mode=a.layout, bubble_frac=a.flat_bubble
+            )
+        else:
+            from PIL import ImageChops
+
+            # no scene to key the pool on: 16 slots per glyph count keep the
+            # sibling captions bounded (2 templates × ≤ 64 strings a length)
+            ref = refs.draw(-1 - i % 16, s)
+            lay = sample_layout(len(s), rng, shp or 512, a.layout, a.flat_bubble)
+            im, bubble = render_string(
+                s, font, rng, size=shp or 512, layout=lay, fit_text=ref
+            )
+            im_a, _ = render_string(
+                ref, font, rng, size=shp or 512, layout=lay, fit_text=s
+            )
+            fn_a = fn.with_name(fn.stem + "_ref.png")
+            im_a.save(fn_a)
+            # the two renders differ under the glyphs only — that is the box
+            box = ImageChops.difference(im, im_a).getbbox() or (0, 0, *im.size)
+            rec.update(
+                ref_file=str(fn_a),
+                ref_text=ref,
+                ref_caption=(TPL_BUBBLE if bubble else TPL_PLAIN).format(ref),
+                box=list(box),
+            )
         im.save(fn)
         recs.append(
             {
                 "file": str(fn),
-                "text": s,
+                **rec,
                 "caption": (TPL_BUBBLE if bubble else TPL_PLAIN).format(s),
-                "src": src,
-                "kind": kind,
                 **({"shape": list(shp)} if shp else {}),
             }
         )
@@ -348,8 +371,6 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
     rng.shuffle(order)
     n_short = 0
     kind_c: Counter = Counter()
-    # ΔFM (plan_synth2): every composite gets a Latin sibling by the same fit
-    refs = RefPool(a.pair_ref_pool, rng) if a.pair_ref == "en" else None
     if mix:
         recs += _quota_composites(
             a, rng, scenes, order, mix, n_scene, fit_pool, fonts, tokq, out, refs
@@ -466,8 +487,9 @@ def _pair_report(refs, recs):
         return
     paired = [r for r in recs if "ref_file" in r]
     caps = len({r["ref_caption"] for r in paired})
+    n_flat = sum(r["src"] != "scene" for r in paired)
     print(
-        f"pairs: {len(paired)} composites with a Latin sibling, "
+        f"pairs: {len(paired) - n_flat} composites + {n_flat} flat items with a Latin sibling, "
         f"{refs.n_strings()} reference strings, {caps} distinct reference captions",
         flush=True,
     )

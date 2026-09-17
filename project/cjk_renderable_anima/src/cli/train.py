@@ -83,6 +83,14 @@ def train_synth_args(g):
         "Log gains fm_plain / pres / ref_bias; `loss` is the paired term",
     )
     g.add_argument(
+        "--pair_flat",
+        type=int,
+        default=1,
+        help="train: --pair_loss on flat items that carry a sibling too (same "
+        "layout, Latin glyphs; box weight stays 1). 0 = flat batches stay plain FM "
+        "— 5–8× the paired loss, the pre-2026-09-17 behaviour",
+    )
+    g.add_argument(
         "--pair_sigma_min",
         type=float,
         default=0.0,

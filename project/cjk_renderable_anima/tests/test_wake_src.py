@@ -148,6 +148,47 @@ def test_render_into_scene_sibling(tmp_path):
         assert box_alone == box_b and np.array_equal(np.array(alone), np.array(im_b))
 
 
+def test_render_string_flat_sibling():
+    """ΔFM flat sibling: two strings rendered with each other as ``fit_text``
+    under one layout share canvas, bubble and block centre — they differ
+    under the glyphs only; without ``fit_text`` the render is unchanged."""
+    import random
+
+    import numpy as np
+    from common.render.flat import find_fonts, render_string, sample_layout
+
+    fonts = find_fonts()
+    for text, ref, mode, seed in (
+        ("が", "K", "v1", 1),
+        ("こんにちは", "QXZPL", "jitter", 2),
+        ("日", "M", "jitter", 4),
+    ):
+        rng = random.Random(seed)
+        lay = sample_layout(len(text), rng, (448, 576), mode, 0.6)
+        lay["rot"] = None  # the extent check below is axis-aligned
+        im_b, bub_b = render_string(
+            text, fonts[0], rng, size=(448, 576), layout=lay, fit_text=ref
+        )
+        im_a, bub_a = render_string(
+            ref, fonts[0], rng, size=(448, 576), layout=lay, fit_text=text
+        )
+        assert bub_a == bub_b
+        diff = (np.array(im_b) != np.array(im_a)).any(axis=2)
+        ys, xs = np.nonzero(diff)
+        assert len(ys)  # the glyphs differ ...
+        # ... inside one text block, not across the canvas (a moved bubble
+        # or centre would spread the difference)
+        n = len(text)
+        long_side = 1.2 * lay["fs"] * n + 3 * lay.get("stroke", 0) + 8
+        assert max(ys.max() - ys.min(), xs.max() - xs.min()) <= long_side
+    rng_a, rng_b = random.Random(9), random.Random(9)
+    lay = sample_layout(1, rng_a, 512, "jitter", 0.6)
+    sample_layout(1, rng_b, 512, "jitter", 0.6)
+    one, _ = render_string("が", fonts[0], rng_a, size=512, layout=lay)
+    same, _ = render_string("が", fonts[0], rng_b, size=512, layout=lay, fit_text="が")
+    assert np.array_equal(np.array(one), np.array(same))
+
+
 def test_pair_en_frame_inverts_scene_caption():
     """``--pair_ref_frame en``: the sibling caption goes back under the EN
     frame the scene was rendered with; a frame that names no language only

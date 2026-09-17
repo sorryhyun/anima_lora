@@ -60,6 +60,10 @@ def stage_train(a):
                     r["ref_caption"] = en_frame(r["ref_caption"])
         print(
             f"pair loss: {n_pair}/{len(recs)} items have a sibling"
+            + (
+                f" ({sum('ref_file' in r and r['src'] != 'scene' for r in recs)} flat"
+                f"{'' if a.pair_flat else ', left on plain FM'})"
+            )
             + (f", σ ≥ {a.pair_sigma_min:g} only" if a.pair_sigma_min > 0 else "")
             + (
                 ", sibling captions under the EN frame"
@@ -130,6 +134,7 @@ def stage_train(a):
 
     batcher = Batcher(a, recs, lat)
     pair_ema: dict = {}
+    flat_ema: dict = {}
     log = []
     aug_rng = random.Random(a.seed + 11)
     killed = ""
@@ -155,7 +160,12 @@ def stage_train(a):
             captions = [r["caption"] for r in brecs]
             pred = dit_forward(anima, noisy, ts, cache, captions, device)
         extra = {}
-        if a.pair_loss and is_scene:
+        paired = (
+            a.pair_loss
+            and (is_scene or a.pair_flat)
+            and all("ref_file" in r for r in brecs)
+        )
+        if paired:
             # ΔFM (plan_synth2): the sibling under the same ε and σ, its
             # residual r_A = v_θ(A) − v_A* subtracted as a control variate.
             # The A forward carries no gradient — nothing about the
@@ -169,7 +179,13 @@ def stage_train(a):
             loss_fm = weighted_fm_loss(
                 pred - keep_pair * pred_a, target - keep_pair * target_a, brecs, bw
             )
-            extra = pair_stats(pred, target, pred_a, target_a, brecs, bw, pair_ema)
+            if is_scene:
+                extra = pair_stats(pred, target, pred_a, target_a, brecs, bw, pair_ema)
+            else:
+                # flat siblings: own EMA and keys, the composite fields keep
+                # their meaning
+                st = pair_stats(pred, target, pred_a, target_a, brecs, bw, flat_ema)
+                extra = {f"{k}_flat": v for k, v in st.items()}
         else:
             loss_fm = weighted_fm_loss(pred, target, brecs, bw)
         loss, decor_val = tr.regularized(loss_fm)

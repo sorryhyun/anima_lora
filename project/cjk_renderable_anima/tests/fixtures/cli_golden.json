@@ -1202,6 +1202,21 @@
  {
   "group": "train: S line (plan_synth)",
   "option_strings": [
+   "--pair_flat"
+  ],
+  "dest": "pair_flat",
+  "default": 1,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "train: --pair_loss on flat items that carry a sibling too (same layout, Latin glyphs; box weight stays 1). 0 = flat batches stay plain FM — 5–8× the paired loss, the pre-2026-09-17 behaviour",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: S line (plan_synth)",
+  "option_strings": [
    "--pair_sigma_min"
   ],
   "dest": "pair_sigma_min",

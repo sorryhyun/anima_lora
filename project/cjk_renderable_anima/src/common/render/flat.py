@@ -159,11 +159,18 @@ def render_string(
     layout=None,
     mode: str = "v1",
     bubble_frac: float = 0.6,
+    fit_text: str | None = None,
 ):
     """``layout`` (from ``sample_layout``) pins canvas/bubble/size/position so
     several strings render in the same layout; ``None`` draws a fresh one
     (``bubble_frac`` = share drawn inside a bubble). Returns ``(image,
-    drew_bubble)``."""
+    drew_bubble)``.
+
+    ``fit_text`` (ΔFM flat sibling, plan_synth2): the block extent — the
+    bubble fit, the jitter bubble's size and the block centre — is the max
+    over ``text`` and ``fit_text``, so the two strings rendered with each
+    other as ``fit_text`` under one ``layout`` share every pixel but the
+    glyphs."""
     from PIL import Image, ImageDraw, ImageFont
 
     n = len(text)
@@ -177,11 +184,12 @@ def render_string(
 
     def extent(fs):
         font = ImageFont.truetype(font_path, fs, index=0)
+        both = [text] + ([fit_text] if fit_text else [])
         if lay["vertical"]:
-            tw = max(d.textlength(ch, font=font) for ch in text)
-            th = n * fs * 1.05
+            tw = max(d.textlength(ch, font=font) for t in both for ch in t)
+            th = max(len(t) for t in both) * fs * 1.05
         else:
-            tw = d.textlength(text, font=font)
+            tw = max(d.textlength(t, font=font) for t in both)
             th = fs
         return font, tw, th
 
@@ -234,8 +242,13 @@ def render_string(
             d.text((cx - w / 2, y), ch, fill=color, font=font, **stroke)
             y += fs * 1.05
     else:
+        own = d.textlength(text, font=font)
         d.text(
-            (cx - tw / 2, cy - fs / 2 - fs * 0.1), text, fill=color, font=font, **stroke
+            (cx - own / 2, cy - fs / 2 - fs * 0.1),
+            text,
+            fill=color,
+            font=font,
+            **stroke,
         )
     if lay["rot"] is not None:
         im = im.rotate(lay["rot"], fillcolor=bg, resample=Image.BICUBIC)
