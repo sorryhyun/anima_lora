@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from common.prompts import NATIVE_CLAUSES, NATIVE_PROMPTS
+from common.prompts import NATIVE_CLAUSES, NATIVE_PROMPTS, TARGET_PROMPTS
 
 
 def eval_args(g):
@@ -50,7 +50,18 @@ def eval_args(g):
         help="native: clause shapes to append (" + ", ".join(NATIVE_CLAUSES) + ")",
     )
     g.add_argument(
-        "--native_limit", type=int, default=0, help="native: first N prompts (0 = all)"
+        "--native_limit",
+        type=int,
+        default=0,
+        help="native / target: first N prompts (0 = all)",
+    )
+    g.add_argument(
+        "--target_prompts",
+        default=str(TARGET_PROMPTS),
+        help="target: file of full captions rendered verbatim, one per line, expected "
+        "text = the quoted span (default: the user's ComfyUI prompts of 2026-09-17 — "
+        "hoshino ai by @akipeko saying はい / こんにちは). Reads --eval_shape, "
+        "--seeds, --delta_parts, --no_floor, --eval_tag",
     )
     g.add_argument(
         "--delta_scale",

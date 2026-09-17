@@ -40,8 +40,9 @@ def scene_args(g):
         default="",
         help="scenes: comma list of general tags appended to every prompt "
         "(recorded in the scene's generals, so the composite caption carries "
-        "them); e.g. `monochrome,screentone` for manga-page bubbles. NOT "
-        "`comic` / `2koma` / `greyscale` — those identify the native held-out prompts",
+        "them); e.g. `monochrome,screentone` for manga-page bubbles; "
+        "`comic` is allowed but marks native prompt 8 (`comic, 2koma, ...`) as "
+        "seen — read native on the other 7; NOT `2koma` / `greyscale`",
     )
     g.add_argument(
         "--scene_bubble_tag",

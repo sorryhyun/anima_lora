@@ -22,7 +22,11 @@ verdicts one screen per topic; [`reports/`](reports/README.md) is the dated run 
 (indexed: W0–W2, W2d Runs 1–3, order probe, σ diagnostic, strings arm,
 canvas-shape gate, the S line).
 [`diagram.html`](diagram.html) is the one-figure picture of what trains and
-how (frozen Anima path + the hybrid address table; open in a browser).
+how (frozen Anima path + the address table; open in a browser), the
+pack → step 1 → step 2 → bake pipeline with the warm-start guard, and the
+"why it is hard" figure: the row → glyph map is a hash, so every shortcut
+to `f` (encoder, composition, contrastive, codebook, warm start) is held-out
+0 and the cost is exposure per row.
 [`datacheck.md`](datacheck.md): the corpus-crop labels are mostly wrong OCR
 reads of hand-lettered SFX — read before trusting `line` / `corpus` evals.
 
@@ -54,10 +58,20 @@ A vocab pack delta: `output/wake_probe/encoder_wd_w120_s8k_fres_warm/trained.pt`
 (gitignored) — `delta.ext_ids` + `delta.raw` in row-norm units over 246 ext
 rows (92 kana + 112 common words + eval pieces), `free` (the per-row
 residual), `encoder` (the glyph CNN, only needed to extend the table),
-`row_text` (row → piece text). Loading it into the pack is the existing
-`ExtDelta` hook (`src/common/hooks.py`); baking it into a shipped pack
-(safetensors + json, new digest → `make preprocess-te ARGS=--overwrite` for
-CJK captions) is not done yet.
+`row_text` (row → piece text). Loading it into the pack at run time is the
+`ExtDelta` hook (`src/common/hooks.py`). Baking any arm's `trained.pt` into a
+shipped pack pair is `scripts/toolkits/bake_vocab_pack.py` (rows summed at
+`ExtDelta` scale 1, json `render` block, `provenance` tier `render`; new
+digest → `make preprocess-te ARGS=--overwrite` for CJK captions). The sent
+24k table is baked as `models/vocab_packs/anima_cjk_vocab_pack_sent_s24k/`
+and symlinked into ComfyUI's `vocab_packs/` (2026-09-17):
+
+```bash
+.venv/bin/python scripts/toolkits/bake_vocab_pack.py \
+    output/wake_probe/rows_synth_sent_q_sent_s24k \
+    --out models/vocab_packs/anima_cjk_vocab_pack_sent_s24k/ \
+    --comfy_dir /media/sorryhyun/data/comfy_models/vocab_packs
+```
 
 Inventory facts that matter when extending it:
 
@@ -91,6 +105,19 @@ the repo).
 # item a tategaki composite on the sl1w pool, kinds pinned as hard quotas
 # (--scene_mix), rows arm, warm-started from the 53k + punctuation table.
 # One daemon job, all stages; the native read is a second job on the same arm.
+# `--lr_warmup 500 --init_anchor 0.3` (2026-09-17): without them the warm start
+# is gone by step 50 (Adam at lr 1e-3 in row-norm units; sent_s24k ended at
+# cos 0.10 to its source, norm 98 → 47 → regrown). The anchor's gradient is 0
+# at f = f₀, so the warmup is what saves the first steps; μ is a sweep
+# (0.3 / 1 / 3), ruler = train_log `warm_cos` (target ≈ 0.7) with `single` +
+# `native` not below the unanchored sent_s24k. Flat sentence eval groups are
+# 4 prompts each now (`--n_phrase_eval`, was 16) — `single` / `native` are the
+# rulers, the flat sentences are off-distribution for a composite-only arm.
+# σ band 0.5–0.9, not the singles band 0.7–0.9: 90 % of the items are
+# multi-piece and order / count are decided at σ 0.5–0.8 (strings σ diagnostic,
+# reports/wake_words_strings_2026_09_14.md); the band is one global flag, so a
+# run mixing kinds takes the lower edge. μ = 0.3 from the anchor sweep
+# (reports/anchor_sweep_2026_09_17.md).
 # <manga109s> is the local Manga109-s derivation; the path stays out of the
 # repo (dialogue_2_10.tsv = dialogue_3_10.tsv + its 2-piece lines,
 # <manga109s>/derived/make_dialogue_2_10.py).
@@ -106,14 +133,22 @@ make daemon-run ARGS="--label sent --stall-timeout 0 --queue \
     --flat_bubble 1.0 --scene_fill 0.7 --scene_min_glyph 28 --scene_max_lines 2 \
     --shapes 512 \
     --init_rows output/wake_probe/rows_synth_full_fm10k_merge_punct/trained.pt \
-    --train_steps 24000 --batch 4 --t_min 0.7 --t_max 0.9 \
+    --train_steps 24000 --batch 4 --t_min 0.5 --t_max 0.9 \
     --compile 1 --grad_ckpt 0 --aggressive_recompute 0 \
     --lr_rows 1e-3 --lr_decay cosine --free_residual 1e-3 --box_weight 4 \
-    --seeds 2 --no_floor --c_flat 0 --arm_tag sent_s24k"
+    --lr_warmup 500 --init_anchor 0.3 \
+    --seeds 2 --no_floor --c_flat 0 --arm_tag sent_s24k_a1_s05"
 make daemon-run ARGS="--label sent-native --stall-timeout 0 --queue \
     project/cjk_renderable_anima/src/wake_probe.py --stage native --arm rows \
-    --data_tag synth_sent_q --arm_tag sent_s24k --native_chars あ,か,す,日 \
+    --data_tag synth_sent_q --arm_tag sent_s24k_a1_s05 --native_chars あ,か,す,日 \
     --native_clauses en,swap --seeds 2 --delta_parts full"
+# The user's own target (2026-09-17): the ComfyUI captions in
+# assets/target_prompts.txt (hoshino ai by @akipeko saying はい / こんにちは)
+# rendered verbatim at the Comfy canvas, floor vs trained, both readers —
+# no rulers, the question is only "does it say はい". Third job on the arm.
+make daemon-run ARGS="--label sent-target --stall-timeout 0 --queue \
+    project/cjk_renderable_anima/src/wake_probe.py --stage target --arm rows \
+    --data_tag synth_sent_q --arm_tag sent_s24k_a1_s05 --eval_shape 768x1344 --steps 30 --seeds 2"
 
 # Archived — the W2d Run 3 encoder recipe (hybrid g + f). The encoder arm has not
 # run since 2026-09-14; it is kept because extending the hybrid table needs it,
@@ -136,14 +171,21 @@ make daemon-run ARGS="--label wake-words --stall-timeout 0 --queue \
 
 Outputs land in `output/wake_probe/<arm>_<data_tag>_<arm_tag>/`: `report.md`
 (per-group CER / exact), `eval_reads.json` (every render, both readers),
-`sheet_<group>.png`, `train_log.json`, `trained.pt`. `src/bench/wake_geometry.py`
+`sheet_<group>.png`, `train_log.json` (with `warm_cos` / `warm_drift` on a
+warm start), `trained.pt`, and **`eval_summary.png`** — the one-glance sheet:
+headline numbers of everything the arm has (train, eval groups, `native/`,
+`target/`) plus a hit and a miss per group, framed green / red. It is
+rewritten whenever `eval`, `native` or `target` finishes; `--stage summary`
+rebuilds it from the json manifests (CPU only). `src/bench/wake_geometry.py`
 reads any arm's table (`--table free|raw`, `--pairs 明=日+月,…`).
 
 Stages: `salad` (base-model probe), `data`, `train`, `eval`, `classify`
 (same-noise diffusion classifier over σ), `native` (scene prompts + kana
 clause), `scenes` (the S line's self-generated composite pool), `enref`
 (the EN-reference renders the ruler scores against), `native_rescore`
-(re-read an existing native run). Arms: `rows` (free delta — **the recipe
+(re-read an existing native run), `target` (the user's own captions from
+`--target_prompts`, verbatim, floor vs trained at `--eval_shape`),
+`summary` (rebuild `eval_summary.png`). Arms: `rows` (free delta — **the recipe
 of record** since the S line opened, 2026-09-15; every run since
 2026-09-14 is a `rows` run), `rows_adapter` (+ llm_adapter LoRA — drifts
 EN, kept as the negative control), `encoder` (W2d hybrid; last run
@@ -187,6 +229,7 @@ larger piece misses the row (the `eval_coverage.json` line).
 | `reports/wake_w0_w2_2026_09_13.md` | W0–W2: hypothesis, Probe 0/1, address geometry, the 256² / 24-kana / balanced / σ-band arms, kanji probe |
 | `src/wake_probe.py` | the instrument's entry point — stages salad / data / train / eval / classify / classify_str / native / enref / scenes; registry in `src/stages.py` |
 | `src/common/` | plumbing three or more stages share — paths, text metrics, prompts, shapes, models, hooks, readers, bubble, `render/{flat,scene}` |
+| `assets/target_prompts.txt` | the `target` stage's default captions — the user's ComfyUI prompts of 2026-09-17 (hoshino ai by @akipeko at the bar, saying はい / こんにちは), one full caption per line, expected text = the quoted span |
 | `src/data/` `src/train/` `src/eval/` `src/scenes/` | one package per role: its stage module(s) plus what only that stage reads (units + inventory; trainables + encoder; enref, native, classify, salad; judge) |
 | `src/cli/` | argparse, one module per reading stage |
 | `src/probe/` | standalone model-running questions — `order_probe.py` (base-model EN order control), `transplant_table.py`, `merge_tables.py`, `quote_dir_save.py` |

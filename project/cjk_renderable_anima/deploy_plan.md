@@ -251,11 +251,11 @@ Order:
 Collapsing M1 and M4 into one commit is possible if the break is accepted;
 the release notes then carry the manual-download line.
 
-## Build tooling (not written yet — all land in `scripts/toolkits/`)
+## Build tooling (`scripts/toolkits/`; only `bake_vocab_pack.py` exists, 2026-09-17)
 
 | file | does |
 |---|---|
-| `bake_vocab_pack.py` | `trained.pt` + base pack → pack pair; stamps `anima_*` metadata (replaces the ad-hoc `save_file(..., metadata=)` stamping of 2026-09-06) |
+| `bake_vocab_pack.py` | **written.** `trained.pt` + base pack → pack pair; stamps `anima_*` metadata + `anima_render`, json `render` block, `provenance` tier `render`; `--comfy_dir` symlinks the pair into a ComfyUI `vocab_packs/` folder. Test `tests/test_bake_vocab_pack.py` (bake equals `ExtDelta` hook) |
 | `export_pack_comfy.py` | base DiT + pack → `comfy/` file (32 128-row embed kept, `vocab_pack.ext_embed` + header json) |
 | `export_pack_diffusers.py` | widened `text_conditioner/` + modular index with circlestone pointers + block dir |
 
@@ -265,7 +265,7 @@ target.
 
 Invariant tests, each on a tiny synthetic table:
 
-- bake equals hook;
+- bake equals hook — `tests/test_bake_vocab_pack.py`;
 - EN ids are bit-exact;
 - the comfy export keeps the 32 128-row embed and round-trips the header json;
 - the widened conditioner loads through `from_pretrained`.

@@ -173,6 +173,10 @@ def _read_eval(a, out: Path, manifest, train_dir: Path):
         ]
         if rows:
             contact_sheet(rows, out / f"sheet_{g}.png", thumb=192, cols=6)
+    if out == train_dir:
+        from .summary import summarize_quietly
+
+        summarize_quietly(train_dir)
 
 
 def blank_cell(size: int):

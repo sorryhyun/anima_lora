@@ -8,6 +8,11 @@ eval      T2I floor vs trained on the eval set (eval/stage)
 native    scene prompts + a kana clause; also ``enref`` (the EN-reference
           renders the ruler scores against) and ``native_rescore`` (re-read
           an existing run)  (eval/native)
+target    the user's own captions (``--target_prompts``) rendered verbatim at
+          --eval_shape, floor vs trained, readers only  (eval/native)
+summary   eval_summary.png — headline numbers + a hit and a miss per group
+          from eval / native / target; auto-written when each of those ends
+          (eval/summary)
 scenes    self-generated EN-anchored scenes for the S-line composites
           (generation in scenes/stage, keep / reject in scenes/judge)
 
@@ -30,6 +35,8 @@ STAGES = {
     "native": ("eval.native", "stage_native"),
     "enref": ("eval.native", "stage_enref"),
     "native_rescore": ("eval.native", "stage_native_rescore"),
+    "target": ("eval.native", "stage_target"),
+    "summary": ("eval.summary", "stage_summary"),
     "scenes": ("scenes.stage", "stage_scenes"),
 }
 ALL = ["salad", "data", "train", "eval"]

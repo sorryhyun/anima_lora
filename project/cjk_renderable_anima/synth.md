@@ -120,7 +120,9 @@ prompts (`project/cjk_aware_anima/assets/unmask_eval_prompts.txt`) are
 (classroom, bedroom, park bench, cafe interior, windowsill, film grain,
 maid, holding a tray, upper body, portrait, simple background, 2koma,
 comic, surprised, greyscale) is in the vocabulary, so `native` stays a
-held-out eval. Rendering at 2× and downsampling changes nothing (8 % vs
+held-out eval — except `comic`, which the `ja_comic` pool (`--scene_extra_tags
+comic`, 2026-09-17) puts in every caption: native is held out on prompts 1–7
+for any run whose data carries that pool. Rendering at 2× and downsampling changes nothing (8 % vs
 4 % on 24 prompts, same reject profile) and is off.
 
 

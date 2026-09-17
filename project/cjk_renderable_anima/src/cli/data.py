@@ -303,6 +303,9 @@ def data_synth_args(g):
     g.add_argument(
         "--n_phrase_eval",
         type=int,
-        default=16,
-        help="data: --scenes covered held-out corpus lines never trained → group phrase_held",
+        default=4,
+        help="data: prompts per flat sentence group (phrase / phrase_held / short / "
+        "short_held). 16 → 4 on 2026-09-17: the flat sentence renders are "
+        "off-distribution for a composite-only arm and `single` + `native` are the "
+        "rulers",
     )

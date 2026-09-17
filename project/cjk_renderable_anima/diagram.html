@@ -123,7 +123,7 @@ svg .v{font-weight:700;font-style:normal}
 <body>
 <div class="wrap">
 <header>
-  <div class="eyebrow">project/cjk_renderable_anima · S line · 2026-09-16</div>
+  <div class="eyebrow">project/cjk_renderable_anima · S line · 2026-09-17</div>
   <h1>CJK Renderable Anima</h1>
   <p class="dek">Anima already holds Japanese glyph units in its weights; it garbles them because the T5-side query stream never gave them an address. This line trains only that address — one free vector <b class="v">f</b><sub>r</sub> per vocab-pack ext row — through a DiT, adapter and text encoder that never move, on scene composites the base model drew itself. What ships is the pack, with the trained rows baked in.</p>
 </header>
@@ -336,6 +336,73 @@ svg .v{font-weight:700;font-style:normal}
 </section>
 
 <section>
+  <h2>How it is trained: pack → step 1 → step 2 → bake</h2>
+  <p class="lede">One table, grown in stages, each stage warm-starting from the last. The pack supplies the ids and a row per id; step 1 binds single glyphs; step 2 binds punctuation, words and sentence order on the same rows; the bake writes the sum back into an ordinary pack. What passes from stage to stage is <b class="v">F</b> (<code>trained.pt</code>) and nothing else — no DiT or adapter weight ever changes.</p>
+  <div class="scroll">
+  <svg viewBox="0 0 1080 400" role="img" aria-label="Four boxes left to right: the r256 vocab pack with 69 558 ext rows and f at zero; step 1, the singles table of 433 rows trained 53 000 steps on frame-mix composites; step 2, the sentence run of 24 000 steps warm-started from step 1 with lr warmup 500 and init anchor mu 1; and the bake, which adds rho times f into the pack rows. Arrows carry trained.pt between stages. A red dashed path under the step 1 to step 2 arrow is the warm-start guard: without warmup and anchor the warm start is erased by Adam in about 50 steps, cosine 0.10 to its source at 24 000 steps.">
+    <defs>
+      <marker id="ah3" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="4.6" markerHeight="4.6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="ink-fill"/></marker>
+      <marker id="ahr3" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="4.6" markerHeight="4.6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="red-fill"/></marker>
+    </defs>
+
+    <!-- stage 0: the pack -->
+    <rect x="20" y="40" width="220" height="210" class="f-lav"/>
+    <text x="130" y="70" text-anchor="middle">r256 pack · <tspan class="m v">E</tspan></text>
+    <text x="130" y="96" text-anchor="middle" class="sm">synthjakozh1sym_r256</text>
+    <text x="130" y="116" text-anchor="middle" class="sm">69 558 rows · JA + KO + ZH</text>
+    <text x="130" y="136" text-anchor="middle" class="sm">T5-side distill, earlier line</text>
+    <text x="130" y="166" text-anchor="middle" class="m" font-size="18"><tspan class="v">f</tspan><tspan dy="5" font-size="14">r</tspan><tspan dy="-5"> = 0 · ρ ≈ 195</tspan></text>
+    <line x1="36" y1="186" x2="224" y2="186" class="thumb-edge"/>
+    <text x="130" y="210" text-anchor="middle" class="sm">an address book, not knowledge:</text>
+    <text x="130" y="230" text-anchor="middle" class="sm">a random iso table ties it</text>
+
+    <!-- stage 1 -->
+    <line class="wire" x1="240" y1="120" x2="282" y2="120" marker-end="url(#ah3)"/>
+    <rect x="290" y="40" width="250" height="210" class="f-lav trained"/>
+    <text x="415" y="70" text-anchor="middle">step 1 · the table 🔥</text>
+    <text x="415" y="96" text-anchor="middle" class="sm">433 rows: 92 kana · 50 voiced / small</text>
+    <text x="415" y="116" text-anchor="middle" class="sm">200 corpus kanji · 91 words</text>
+    <text x="415" y="136" text-anchor="middle" class="sm">frame-mix composites 0.9 · flat 0.1</text>
+    <text x="415" y="156" text-anchor="middle" class="sm">σ 0.7–0.9 · 53k steps · 342 min</text>
+    <text x="415" y="176" text-anchor="middle" class="sm">≈ 490 draws / row · then + punct rows</text>
+    <line x1="306" y1="186" x2="524" y2="186" class="thumb-edge"/>
+    <text x="415" y="210" text-anchor="middle" class="sm">single 13/36 · ext 20/36 · kanji 18/36</text>
+    <text x="415" y="230" text-anchor="middle" class="sm">words 0/32 (≈ 8 items each)</text>
+
+    <!-- stage 2 -->
+    <line class="wire" x1="540" y1="120" x2="582" y2="120" marker-end="url(#ah3)"/>
+    <rect x="590" y="40" width="250" height="210" class="f-lav trained"/>
+    <text x="715" y="70" text-anchor="middle">step 2 · sentences 🔥</text>
+    <text x="715" y="96" text-anchor="middle" class="sm">same rows + punctuation rows</text>
+    <text x="715" y="116" text-anchor="middle" class="sm">+ Manga109 dialogue pieces</text>
+    <text x="715" y="136" text-anchor="middle" class="sm">tategaki composites · sl1w pool</text>
+    <text x="715" y="156" text-anchor="middle" class="sm">single .1 · short .5 · sentence .4</text>
+    <text x="715" y="176" text-anchor="middle" class="sm">σ 0.7–0.9 · 24k steps · 10k items</text>
+    <line x1="606" y1="186" x2="824" y2="186" class="thumb-edge"/>
+    <text x="715" y="210" text-anchor="middle" class="sm">run 2 (A2): + ja_comic, σ 0.5–0.9</text>
+    <text x="715" y="230" text-anchor="middle" class="sm">warm-started from run 1 · reads owed</text>
+
+    <!-- bake -->
+    <line class="wire" x1="840" y1="120" x2="882" y2="120" marker-end="url(#ah3)"/>
+    <rect x="890" y="40" width="175" height="210" class="f-mint"/>
+    <text x="977" y="70" text-anchor="middle">bake</text>
+    <text x="977" y="104" text-anchor="middle" class="m" font-size="18"><tspan class="v">e</tspan><tspan dy="5" font-size="13">r</tspan><tspan dy="-5"> += ρ </tspan><tspan class="v">f</tspan><tspan dy="5" font-size="13">r</tspan></text>
+    <text x="977" y="136" text-anchor="middle" class="sm">every ext id in the table</text>
+    <text x="977" y="156" text-anchor="middle" class="sm">ordinary pack · no hook</text>
+    <text x="977" y="176" text-anchor="middle" class="sm">gate G0: renders what</text>
+    <text x="977" y="196" text-anchor="middle" class="sm">the hooked eval rendered</text>
+
+    <!-- the warm-start guard -->
+    <path class="grad" d="M415 250 V 300 H 715 V 258" marker-end="url(#ahr3)"/>
+    <text x="565" y="328" text-anchor="middle" class="red" font-size="15">--init_rows · --lr_warmup 500 · --init_anchor μ = 1 → warm_cos 0.98, source singles kept</text>
+    <text x="565" y="356" text-anchor="middle" class="sm">without them AdamW moves every coordinate ≈ lr per step: the warm start is gone by step 50, cos 0.10 at 24k, singles 0/36</text>
+    <text x="565" y="380" text-anchor="middle" class="sm">anchor = μ · mean ‖f − f⁰‖² on inherited rows (its gradient is 0 at the start, so the warmup carries the first steps)</text>
+  </svg>
+  </div>
+  <figcaption><b>Left to right:</b> the shipped CJK pack fixes the id space and gives each id a row; <b>step 1</b> (<code>rows_synth_full_fm10k</code> → <code>merge_punct</code>) trains one vector per row on single-glyph composites; <b>step 2</b> (<code>sent_s24k_a1</code>) continues the same table on tategaki sentence composites with punctuation and dialogue rows added; the bake folds ρ<b class="v">f</b> into the pack rows; every solid arrow carries <code>trained.pt</code>. The dashed red path is the one non-obvious part: a warm start at lr 10⁻³ in row-norm units is erased by AdamW before the data can use it, so every continuation carries the warmup and the anchor (μ sweep 2026-09-17: μ 0 → 0/36 singles, μ ≥ 0.1 keeps ≥ 80 %, μ 1 inherits the source verbatim at ≤ 2.5 % FM-loss cost).</figcaption>
+</section>
+
+<section>
   <h2>What it sees, what it draws</h2>
   <p class="lede">90 % of items are <b>scene composites</b>: the base model draws a character scene with an English speech bubble (or sign), the anchor text is erased with the bubble's own colour, and the Japanese text is drawn into the region in one of 16 manga faces, the anchor's ink colour, 30 % tilted. The caption is the scene's own tags with <code>english text → japanese text</code> plus the same frame the scene was drawn under (<i>reads as</i> / <i>speech bubble that reads</i> / <i>She is saying</i> / <i>holding a sign that reads</i>). 10 % are flat font bubbles. The renders at the bottom are the 53k table (433 rows, ≈ 490 draws per row), read by the SFX OCR reader.</p>
   <div class="specimens">
@@ -363,6 +430,114 @@ svg .v{font-weight:700;font-style:normal}
     <p>A trained row is an <em>address</em>, not a shape coordinate. Held-out kana stay at 2–5/64 whatever a glyph encoder does, so identity lives in <b class="v">f</b><sub>r</sub> and every row needs its own exposure — the measured curve is 1 330 draws per row → 100 % singles, 670 → 75 %, 490 → 36 %; <b>≈ 1 000 draws per row</b> is the planning number, and the 53k run's words scored 0/32 because the item sampler gave them ≈ 8 each.</p>
     <p>The 53k table, read in row space and at the adapter output: one shared trigger direction (18 % of the energy, orthogonal to the pretrained quote direction under every frame) plus near-orthogonal per-row residuals — no manifold to amortise. Flat-trained identity does not transfer onto the composite trigger (0/64 for two flat donors); composite-trained identity does (23/64); inheriting the trigger buys no steps. Composite exposure per row is the cost.</p>
     <p>A row can be a whole word — Qwen merges <span class="jp">します</span> or <span class="jp">ありがとう</span> into one piece and the DiT draws it as one unit — but a sequence of trained rows renders <em>one</em> unit, while the same frozen stack reads pretrained EN piece sequences in order (nonsense words 22/24). That is the <b>sentence line</b>: Manga109 dialogue (40 446 lines of 3–10 pieces, held out by book) drawn into sentence-anchored scenes, continuing from the 53k table. Two blockers before the arm: the composite draw is single-line, so a 40 px glyph cell caps most bubbles at 2–4 glyphs (wide 576–640 px canvases and 2–3-line wrapping are the fixes), and the phrase share must be pinned, since it is the only exposure the punctuation rows get.</p>
+  </div>
+</section>
+
+<section>
+  <h2>Why it is hard: the row → glyph map is a hash</h2>
+  <p class="lede">Every shortcut to <b class="v">f</b> that was tried assumes the trained rows carry some structure a glyph's <em>shape</em> could predict — smoothness, linearity, a metric, a shared codebook. Measured in the 53k table, none is there. The frozen adapter + DiT reads a row as one unit and any near-orthogonal direction will do, so the only thing that binds a direction to a glyph is the gradient the DiT sends back while it draws that glyph — exposure.</p>
+  <div class="scroll">
+  <svg viewBox="0 0 1080 500" role="img" aria-label="Six trained rows (か が き 木 林 森) plotted in row space are randomly placed, pairwise cosine 0.04, while the same six glyphs in pixel space sit in shape neighbourhoods (か beside が, 木 inside 林 inside 森). The lines from each row to its glyph cross through the frozen adapter and DiT, so no neighbourhood survives the map. A red dotted arc from the pixel side back to row space, labelled with every shortcut that predicts f from shape, is crossed out with held-out 0; the one dashed red path into row space is the flow-matching gradient, about one thousand draws per row.">
+    <defs>
+      <marker id="ah2" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="4.6" markerHeight="4.6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="ink-fill"/></marker>
+      <marker id="ahr2" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="4.6" markerHeight="4.6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="red-fill"/></marker>
+    </defs>
+
+    <!-- the shortcuts: predict f from shape, right → left, crossed out -->
+    <path d="M880 120 C 880 30, 200 30, 200 112" fill="none" stroke="var(--red)" stroke-width="2" stroke-dasharray="3 6" marker-end="url(#ahr2)"/>
+    <text x="540" y="26" text-anchor="middle" class="sm red">g(shape) · Δa + Δb · contrastive · codebook · nearest-row init · warm start</text>
+    <text x="540" y="90" text-anchor="middle" class="red" font-size="17">✕ held-out 0 — nothing in row space to predict</text>
+
+    <!-- panels -->
+    <rect x="40" y="120" width="320" height="300" class="f-lav trained"/>
+    <text x="200" y="148" text-anchor="middle">row space · <tspan class="m v">f</tspan><tspan class="m" dy="5" font-size="14">r</tspan><tspan dy="-5"> 🔥</tspan></text>
+    <rect x="720" y="120" width="320" height="300" class="f-sky"/>
+    <text x="880" y="148" text-anchor="middle">pixels · what the DiT organises</text>
+
+    <!-- row → glyph lines (under the box) -->
+    <g class="zoomline">
+      <line x1="112" y1="196" x2="796" y2="200"/>
+      <line x1="288" y1="190" x2="982" y2="336"/>
+      <line x1="122" y1="286" x2="898" y2="336"/>
+      <line x1="248" y1="256" x2="972" y2="200"/>
+      <line x1="168" y1="376" x2="812" y2="336"/>
+      <line x1="318" y1="366" x2="876" y2="200"/>
+    </g>
+
+    <!-- the frozen reader, drawn over the lines -->
+    <rect x="430" y="220" width="220" height="100" class="f-butter"/>
+    <rect x="430" y="220" width="220" height="100" fill="none" stroke="currentColor" stroke-width="1.2"/>
+    <text x="540" y="254" text-anchor="middle">LLM adapter · DiT</text>
+    <text x="540" y="278" text-anchor="middle" class="sm">frozen · reads a row as one unit</text>
+    <text x="540" y="300" text-anchor="middle" class="sm">any direction is an address</text>
+    <rect x="404" y="334" width="272" height="24" style="fill:var(--bg)"/>
+    <text x="540" y="351" text-anchor="middle" class="sm">no neighbourhood survives the map</text>
+
+    <!-- row-space points: shape neighbours deliberately far apart -->
+    <g class="jp" font-size="26" text-anchor="middle">
+      <circle cx="112" cy="196" r="5" class="ink-fill"/><text x="112" y="184">か</text>
+      <circle cx="288" cy="190" r="5" class="ink-fill"/><text x="288" y="178">森</text>
+      <circle cx="122" cy="286" r="5" class="ink-fill"/><text x="122" y="274">林</text>
+      <circle cx="248" cy="256" r="5" class="ink-fill"/><text x="248" y="244">き</text>
+      <circle cx="168" cy="376" r="5" class="ink-fill"/><text x="168" y="364">木</text>
+      <circle cx="318" cy="366" r="5" class="ink-fill"/><text x="318" y="354">が</text>
+    </g>
+    <text x="200" y="404" text-anchor="middle" class="sm">pairwise cos 0.04 · か↔が partner rank 5 / 50 · no manifold</text>
+
+    <!-- pixel-space tiles: grouped by shape -->
+    <g class="jp" font-size="30" text-anchor="middle">
+      <rect x="774" y="178" width="44" height="44" class="thumb-edge"/><text x="796" y="211">か</text>
+      <rect x="854" y="178" width="44" height="44" class="thumb-edge"/><text x="876" y="211">が</text>
+      <rect x="950" y="178" width="44" height="44" class="thumb-edge"/><text x="972" y="211">き</text>
+      <rect x="790" y="314" width="44" height="44" class="thumb-edge"/><text x="812" y="347">木</text>
+      <rect x="876" y="314" width="44" height="44" class="thumb-edge"/><text x="898" y="347">林</text>
+      <rect x="960" y="314" width="44" height="44" class="thumb-edge"/><text x="982" y="347">森</text>
+    </g>
+    <text x="836" y="246" text-anchor="middle" class="sm">one dakuten apart</text>
+    <text x="880" y="384" text-anchor="middle" class="sm">林 → 木, 森 → 木林: the DiT composes here</text>
+    <text x="880" y="404" text-anchor="middle" class="sm">and only here</text>
+
+    <!-- the one thing that binds: gradient from the drawing -->
+    <path class="grad" d="M720 286 H 662" marker-end="url(#ahr2)"/>
+    <path class="grad" d="M430 286 H 372" marker-end="url(#ahr2)"/>
+    <line class="grad" x1="540" y1="440" x2="540" y2="366" marker-end="url(#ahr2)"/>
+    <text x="540" y="466" text-anchor="middle" class="red">∂ℒ/∂<tspan class="m v">f</tspan><tspan class="m" dy="5" font-size="14">r</tspan><tspan dy="-5"> — the gradient of drawing this glyph, sent back through the frozen stack</tspan></text>
+    <text x="540" y="490" text-anchor="middle" class="sm">≈ 1 000 composite draws per row binds one direction to one glyph; nothing binds it cheaper</text>
+  </svg>
+  </div>
+  <figcaption><b>Left:</b> six trained rows of the 53k table in row space. Shape neighbours land nowhere near each other (<span class="jp">か</span>↔<span class="jp">が</span> pct 92, partner rank 5 of 50; hira↔kata same-sound and kanji↔component no closer than random; pairwise cos 0.04, energy in the stock table's top-256 PCs 0.31 against 0.25 for gaussian noise). <b>Right:</b> the same six glyphs as the DiT draws them, in shape neighbourhoods, with composition happening in pixels (<span class="jp">森</span> renders as <span class="jp">木林</span> at kana-level exposure). <b>Between:</b> the frozen stack, which reads any near-orthogonal direction as an address. The dotted, crossed-out arc is every shortcut that tries to compute <b class="v">f</b> from the right side; the map has nothing for it to use. The dashed gradient path is the only one that has ever bound a row.</figcaption>
+
+  <p class="lede"><b>What each shortcut assumed, and what it measured.</b> Same objective every time (flow matching through the frozen DiT — embedding inversion is this loss with one image); the levers differ only in what structure they impose on <b class="v">F</b>.</p>
+  <div class="scroll">
+  <table class="sym retired">
+    <thead><tr><th>Shortcut</th><th>Assumes the row → glyph map is</th><th>Measured</th></tr></thead>
+    <tbody>
+      <tr><td>g(<b class="v">x</b><sub>r</sub>) shape encoder (W2d)</td><td>smooth — near shapes give near rows</td><td>held-out kana 2–5/64 under data jitter, random head init, decorrelation (PR 35) and hinge; <b class="v">F</b> marches to rank 1 every time. Hybrid g + f renders trained rows only.</td></tr>
+      <tr><td>Δ<sub>a</sub> + Δ<sub>b</sub>, IDS, jamo</td><td>linear — a composite is the sum of its parts</td><td>IDS composites 0/16, each a clean <em>unrelated</em> hiragana. The DiT sums in pixels (<span class="jp">森 → 木林</span>), not in row space.</td></tr>
+      <tr><td>contrastive · hinge · same-noise CE</td><td>metric — a margin in row space is a margin in the render</td><td>fixes nothing on free rows; the rows were already near-orthogonal without it.</td></tr>
+      <tr><td>regress onto stock rows or Latin · nearest-row init · warm start</td><td>a semantic / orthographic neighbourhood</td><td>regression dead; a warm start is erased by Adam (cos 0.10) and, anchored so it survives, inherits the trigger but buys no steps.</td></tr>
+      <tr><td>codebook · discrete units</td><td>shared codes across glyphs</td><td>near-orthogonal residuals: one code per row is the table itself. Not run — implied by the manifold probe.</td></tr>
+      <tr><td>adapter LoRA (<code>rows_adapter</code>)</td><td>the unit is missing from the weights</td><td>drifts EN; kept as the negative control. The units are there: kana, kanji atoms, and — krzh16 — Hangul (<span class="jp">감</span> exact, jamo near-misses) and simplified hanzi (<span class="jp">你</span> 2/2) all render from rows alone.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="cols">
+    <div class="prose">
+      <p><b>So the cost is exposure, and it is a schedule, not a line.</b> The planning number is ≈ 1 000 composite draws per row (1 330 → 100 % singles, 670 → 75 %, 490 → 36 %). KO and ZH need no new mechanism — krzh16 rows rebuild the same shared trigger (cos to m̂ +0.41 vs +0.46), carry kanji-sized norms and sit outside the kana subspace, i.e. they are ordinary new rows.</p>
+      <p>The levers that <em>do</em> move draws-per-row are the data, not the parametrisation: composite share (0.4 → 0.9 was the micro-loop lever), the σ band, and whatever the sentence arm says about multi-row items. Inventory choice is the other half — the 11 172 Hangul syllables are the headache; KS X 1001's 2 350 cover everyday text.</p>
+    </div>
+    <div class="scroll">
+    <table>
+      <thead><tr><th>Inventory</th><th>Rows</th><th>Cost</th></tr></thead>
+      <tbody>
+        <tr><td>jōyō kanji</td><td class="num">2 136</td><td>≈ 1 GPU-day, one table (findings)</td></tr>
+        <tr><td>KS X 1001 Hangul</td><td class="num">2 350</td><td>≈ 1 GPU-day at the same rate (extrapolated)</td></tr>
+        <tr><td>GB2312 level 1 hanzi</td><td class="num">3 755</td><td>≈ 2 GPU-days at the same rate (extrapolated)</td></tr>
+        <tr><td><b>all three</b></td><td class="num">≈ 8 200</td><td>≈ 4 GPU-days; nothing above shortens it</td></tr>
+      </tbody>
+    </table>
+    </div>
   </div>
 </section>
 </div>

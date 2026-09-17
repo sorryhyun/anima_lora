@@ -17,6 +17,16 @@ def train_args(g):
         choices=["none", "cosine"],
         help="train: lr schedule over --train_steps (cosine to 0; all param groups)",
     )
+    g.add_argument(
+        "--lr_warmup",
+        type=int,
+        default=0,
+        help="train: linear lr warmup steps from 0 (all param groups, composes with "
+        "--lr_decay). 0 = full lr from step 1. A warm start needs it: Adam's first "
+        "steps move every coordinate ≈ lr regardless of the gradient, and at lr 1e-3 "
+        "in row-norm units that erased a 0.58-norm row in ≈ 50 steps (sent_s24k, "
+        "2026-09-17: warm rows ended at cos 0.10 to their source)",
+    )
     g.add_argument("--grad_ckpt", type=int, default=1)
     g.add_argument(
         "--compile",
@@ -104,6 +114,16 @@ def rows_args(g):
         "table starts where the source left it and the composites train f alone. "
         "Rows the source never had start at zero. Comma list = several tables in "
         "order, a later one overriding by ext id (53k table + punctuation table)",
+    )
+    g.add_argument(
+        "--init_anchor",
+        type=float,
+        default=0.0,
+        help="rows arm: μ on mean_r ‖f_r − f₀_r‖² over the rows --init_rows filled "
+        "(f₀ = the warm start), replacing the --free_residual pull to 0 on those rows "
+        "(rows the source never had keep it). 0 = off. Its gradient is 0 at f = f₀, so "
+        "pair it with --lr_warmup or the first steps still blow the rows away. Ruler: "
+        "train_log `warm_cos` (mean cos of the warm rows to f₀)",
     )
     g.add_argument(
         "--pin_dir",

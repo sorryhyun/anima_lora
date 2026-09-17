@@ -7,6 +7,7 @@ against, and a re-read of an existing run.
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -139,6 +140,113 @@ def stage_native(a):
     del anima, vae, shared
     torch.cuda.empty_cache()
     _read_native(a, out, manifest, chars, clauses, conds)
+
+
+TARGET_QUOTE = re.compile(r'["「]([^"」]+)["」]')
+
+
+def target_items(path: Path) -> list[dict]:
+    """One item per non-comment line of ``--target_prompts``: the caption
+    verbatim, the expected text = its quoted span (``"…"`` or ``「…」``)."""
+    items = []
+    for ln in path.read_text(encoding="utf-8").splitlines():
+        ln = ln.strip()
+        if not ln or ln.startswith("#"):
+            continue
+        m = TARGET_QUOTE.search(ln)
+        if not m:
+            print(f"target: no quoted text, skipped: {ln}", flush=True)
+            continue
+        items.append(
+            {
+                "pi": len(items),
+                "prompt": ln,
+                "text": m.group(1),
+                "clause": "verbatim",
+                "caption": ln,
+            }
+        )
+    return items
+
+
+def stage_target(a):
+    """The user's own target captions (``--target_prompts``, one full caption
+    per line, e.g. the ComfyUI prompts of 2026-09-17: hoshino ai by @akipeko
+    saying はい), rendered verbatim — floor (delta off) unless ``--no_floor``,
+    then every ``--delta_parts`` cond — at ``--eval_shape`` (WxH) or
+    ``--eval_size``², read by both readers. No EN-reference / scene-kept rulers:
+    the question is only whether the picture says the quoted text."""
+    import torch
+
+    from common.shapes import parse_shape
+
+    sd = load_trained(arm_dir(a))
+    assert "lora" not in sd, "target covers rows-only arms"
+    out = arm_dir(a) / (f"target_{a.eval_tag}" if a.eval_tag else "target")
+    (out / "img").mkdir(parents=True, exist_ok=True)
+    items = target_items(Path(a.target_prompts))
+    if a.native_limit:
+        items = items[: a.native_limit]
+    assert items, f"no target captions in {a.target_prompts}"
+    chars = sorted({it["text"] for it in items}, key=[it["text"] for it in items].index)
+    clauses = ["verbatim"]
+    size = parse_shape(a.eval_shape) if a.eval_shape else a.eval_size
+    args, gen, device, shared = load_generator(size, a.steps, a.cfg, out / "img")
+    anima = shared["model"]
+    anima.eval()
+    delta = ExtDelta.from_state(anima, sd["delta"], device)
+    trained = set(delta.ext_ids)
+    cache = encode_captions([it["caption"] for it in items], device)
+    for it in items:
+        ids = sorted(ext_ids_of({it["caption"]: cache[it["caption"]]}))
+        it["ext_rows"] = len(ids)
+        it["trained_rows"] = len([x for x in ids if x in trained])
+        print(
+            f"target p{it['pi']:02d} {it['text']}: ext rows {it['ext_rows']}, "
+            f"trained {it['trained_rows']} — {it['caption']}",
+            flush=True,
+        )
+    del cache
+    vae = load_vae(device)
+    parts = table_parts(sd, [x for x in a.delta_parts.split(",") if x])
+    conds = ([] if a.no_floor else ["floor"]) + list(parts)
+    outvec = None
+    saved_q = sd.get("out_vec")
+    if saved_q is not None:
+        outvec = OutVec(anima, device)
+    manifest = []
+    t0 = time.time()
+    for cond in conds:
+        if outvec is not None:
+            outvec.set(None if cond == "floor" else saved_q)
+        if cond == "floor":
+            delta.scale = 0.0
+        else:
+            delta.scale = a.delta_scale
+            delta.raw.data.copy_(parts[cond].to(delta.raw.device))
+        shared["conds_cache"].clear()
+        for it in items:
+            for seed in range(a.seeds):
+                fn = out / "img" / f"{cond}_p{it['pi']:02d}_{it['text']}_s{seed}.png"
+                generate_to(fn, args, gen, shared, vae, device, it["caption"], seed)
+                manifest.append({"file": str(fn), "cond": cond, "seed": seed, **it})
+    print(
+        f"target gen: {len(manifest)} images in {(time.time() - t0) / 60:.1f} min",
+        flush=True,
+    )
+    del anima, vae, shared
+    torch.cuda.empty_cache()
+    _read_native(
+        a,
+        out,
+        manifest,
+        chars,
+        clauses,
+        conds,
+        rulers=False,
+        title="target (the user's captions, verbatim)",
+        prompts_path=a.target_prompts,
+    )
 
 
 def _native_prompts(a) -> list[str]:
@@ -298,7 +406,22 @@ class SceneKept:
         return cand if cand.exists() else None
 
 
-def _read_native(a, out: Path, manifest, chars, clauses, conds, *, reread=True):
+def _read_native(
+    a,
+    out: Path,
+    manifest,
+    chars,
+    clauses,
+    conds,
+    *,
+    reread=True,
+    rulers=True,
+    title="native (scene prompts + kana clause)",
+    prompts_path=None,
+):
+    """``rulers=False`` (the ``target`` stage): readers only — no EN-reference
+    or scene-kept scoring (both are keyed by the native prompt index and would
+    read another prompt set's refs)."""
     rd = None
     if reread or any("reads" not in m for m in manifest):
         rd = Readers(a.device)
@@ -312,7 +435,7 @@ def _read_native(a, out: Path, manifest, chars, clauses, conds, *, reread=True):
     # stage_enref; boxes read once and cached beside them
     ed = enref_dir(a)
     enref = None
-    if any(ed.glob("enref_p*_s*.png")):
+    if rulers and any(ed.glob("enref_p*_s*.png")):
         enref = EnRef(a.device, ed, enref_boxes(ed, rd, a.device))
     del rd
     for m in manifest:
@@ -321,8 +444,8 @@ def _read_native(a, out: Path, manifest, chars, clauses, conds, *, reread=True):
         if sc is not None:
             m["en_cos"], m["en_cos_out"], m["box_iou"] = sc
     ref_dir = Path(a.kept_ref) if a.kept_ref else arm_dir(a) / "native" / "img"
-    has_floor = any(m["cond"] == "floor" for m in manifest) or any(
-        ref_dir.glob("floor_*.png")
+    has_floor = rulers and (
+        any(m["cond"] == "floor" for m in manifest) or any(ref_dir.glob("floor_*.png"))
     )
     kept = (
         SceneKept(a.device, ref_dir, data_dir(a) / "img", a.kept_tau)
@@ -348,10 +471,11 @@ def _read_native(a, out: Path, manifest, chars, clauses, conds, *, reread=True):
         agg[(m["clause"], m["cond"])].append(m)
     trained_conds = [c for c in conds if c != "floor"]
     lines = [
-        f"# wake_probe — arm `{a.arm}` native (scene prompts + kana clause)",
+        f"# wake_probe — arm `{a.arm}` {title}",
         "",
-        f"prompts: `{a.native_prompts}`; chars {' '.join(chars)}; {a.seeds} seed(s); "
-        f"{a.eval_size}²; delta scale {a.delta_scale}; parts {' '.join(trained_conds)}",
+        f"prompts: `{prompts_path or a.native_prompts}`; chars {' '.join(chars)}; "
+        f"{a.seeds} seed(s); {a.eval_shape or f'{a.eval_size}²'}; "
+        f"delta scale {a.delta_scale}; parts {' '.join(trained_conds)}",
         "",
         (
             f"scene-kept ruler: kept ⇔ PE-Spatial cos(img, floor image of the same "
@@ -504,3 +628,7 @@ def _read_native(a, out: Path, manifest, chars, clauses, conds, *, reread=True):
                     thumb=192,
                     cols=len(sheet_conds) * a.seeds,
                 )
+    if out.name in ("native", "target"):
+        from .summary import summarize_quietly
+
+        summarize_quietly(arm_dir(a))

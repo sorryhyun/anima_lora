@@ -35,6 +35,8 @@
    "native",
    "enref",
    "native_rescore",
+   "target",
+   "summary",
    "scenes"
   ],
   "nargs": "+",
@@ -897,11 +899,11 @@
    "--n_phrase_eval"
   ],
   "dest": "n_phrase_eval",
-  "default": 16,
+  "default": 4,
   "choices": null,
   "nargs": null,
   "type": "int",
-  "help": "data: --scenes covered held-out corpus lines never trained → group phrase_held",
+  "help": "data: prompts per flat sentence group (phrase / phrase_held / short / short_held). 16 → 4 on 2026-09-17: the flat sentence renders are off-distribution for a composite-only arm and `single` + `native` are the rulers",
   "action": "_StoreAction",
   "metavar": null,
   "required": false
@@ -995,6 +997,21 @@
   "nargs": null,
   "type": "None",
   "help": "train: lr schedule over --train_steps (cosine to 0; all param groups)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train",
+  "option_strings": [
+   "--lr_warmup"
+  ],
+  "dest": "lr_warmup",
+  "default": 0,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "train: linear lr warmup steps from 0 (all param groups, composes with --lr_decay). 0 = full lr from step 1. A warm start needs it: Adam's first steps move every coordinate ≈ lr regardless of the gradient, and at lr 1e-3 in row-norm units that erased a 0.58-norm row in ≈ 50 steps (sent_s24k, 2026-09-17: warm rows ended at cos 0.10 to their source)",
   "action": "_StoreAction",
   "metavar": null,
   "required": false
@@ -1205,6 +1222,21 @@
   "nargs": null,
   "type": "None",
   "help": "rows arm: warm-start the rows by ext id from another arm's trained.pt (its exported delta.raw). If the source is an encoder arm with a shared ``common`` vector, that vector is subtracted from every row and, when --c_flat is on, seeds c_flat (clipped to --c_flat_cap) — so the flat table starts where the source left it and the composites train f alone. Rows the source never had start at zero. Comma list = several tables in order, a later one overriding by ext id (53k table + punctuation table)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: rows arm",
+  "option_strings": [
+   "--init_anchor"
+  ],
+  "dest": "init_anchor",
+  "default": 0.0,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "rows arm: μ on mean_r ‖f_r − f₀_r‖² over the rows --init_rows filled (f₀ = the warm start), replacing the --free_residual pull to 0 on those rows (rows the source never had keep it). 0 = off. Its gradient is 0 at f = f₀, so pair it with --lr_warmup or the first steps still blow the rows away. Ruler: train_log `warm_cos` (mean cos of the warm rows to f₀)",
   "action": "_StoreAction",
   "metavar": null,
   "required": false
@@ -1663,7 +1695,22 @@
   "choices": null,
   "nargs": null,
   "type": "int",
-  "help": "native: first N prompts (0 = all)",
+  "help": "native / target: first N prompts (0 = all)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "eval / native",
+  "option_strings": [
+   "--target_prompts"
+  ],
+  "dest": "target_prompts",
+  "default": "<REPO>/project/cjk_renderable_anima/assets/target_prompts.txt",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "target: file of full captions rendered verbatim, one per line, expected text = the quoted span (default: the user's ComfyUI prompts of 2026-09-17 — hoshino ai by @akipeko saying はい / こんにちは). Reads --eval_shape, --seeds, --delta_parts, --no_floor, --eval_tag",
   "action": "_StoreAction",
   "metavar": null,
   "required": false
@@ -1996,7 +2043,7 @@
   "choices": null,
   "nargs": null,
   "type": "None",
-  "help": "scenes: comma list of general tags appended to every prompt (recorded in the scene's generals, so the composite caption carries them); e.g. `monochrome,screentone` for manga-page bubbles. NOT `comic` / `2koma` / `greyscale` — those identify the native held-out prompts",
+  "help": "scenes: comma list of general tags appended to every prompt (recorded in the scene's generals, so the composite caption carries them); e.g. `monochrome,screentone` for manga-page bubbles; `comic` is allowed but marks native prompt 8 (`comic, 2koma, ...`) as seen — read native on the other 7; NOT `2koma` / `greyscale`",
   "action": "_StoreAction",
   "metavar": null,
   "required": false

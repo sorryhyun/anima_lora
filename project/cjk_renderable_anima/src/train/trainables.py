@@ -41,6 +41,8 @@ class Trainables:
         self.row_text = None
         self.lora = None
         self.c_flat = None
+        self.raw0 = None  # rows arm: the warm start (f₀) and which rows it filled
+        self.warm_mask = None
         if a.arm == "encoder":
             self._init_encoder(train_ext, ev_ext, tok, pack, anima, dim)
         else:
@@ -86,8 +88,17 @@ class Trainables:
         dropped otherwise. Rows the source never had stay at zero. A comma
         list loads several tables in order (user, 2026-09-16: the 53k
         table + a punctuation table), a later one overriding by ext id."""
+        self.warm_mask = torch.zeros(len(self.delta.ext_ids), dtype=torch.bool)
         for path in [p for p in paths.split(",") if p]:
             self._init_rows_one(path)
+        self.warm_mask = self.warm_mask.to(self.device)
+        self.raw0 = self.delta.raw.detach().clone()
+        if self.a.init_anchor > 0:
+            print(
+                f"rows: init anchor μ‖f − f₀‖² {self.a.init_anchor:g} on "
+                f"{int(self.warm_mask.sum())} warm rows (‖f‖² pull stays on the rest)",
+                flush=True,
+            )
 
     def _init_rows_one(self, path: str):
         src = torch.load(path, map_location="cpu", weights_only=False)
@@ -109,6 +120,7 @@ class Trainables:
                 if common is not None:
                     row = row - common
                 self.delta.raw[i] = row.to(self.device)
+                self.warm_mask[i] = True
                 n_warm += 1
             c_note = ""
             if common is not None and self.c_flat is not None:
@@ -321,6 +333,16 @@ class Trainables:
         if self.free is not None:
             free_pen = ((self.free * self.free_mask) ** 2).sum() / self.n_free
             loss = loss + a.free_residual * free_pen
+        elif self.enc is None and a.init_anchor > 0 and self.raw0 is not None:
+            # rows arm, warm start (2026-09-17): μ · mean_r ‖f_r − f₀_r‖² on the
+            # rows --init_rows filled — the stationary point sits at the source
+            # table instead of at 0; the rows the source never had keep the
+            # S0 pull below
+            sq = (self.delta.raw**2).sum(1)
+            anchor = ((self.delta.raw - self.raw0) ** 2).sum(1)
+            loss = loss + a.init_anchor * anchor[self.warm_mask].mean()
+            if a.free_residual > 0 and bool((~self.warm_mask).any()):
+                loss = loss + a.free_residual * sq[~self.warm_mask].mean()
         elif self.enc is None and a.free_residual > 0:
             # rows arm (S0): the same μ · mean_r ‖f_r‖² on the free rows —
             # the one guard against norm creep besides the cosine decay
@@ -367,6 +389,12 @@ class Trainables:
         }
         if self.enc is not None:
             self._log_encoder(rec, loss, decor_val, dn_held)
+        if self.raw0 is not None and bool(self.warm_mask.any()):
+            # the warm-start ruler: how much of the source table is still there
+            r = self.delta.raw.detach()[self.warm_mask]
+            r0 = self.raw0[self.warm_mask]
+            rec["warm_cos"] = float(F.cosine_similarity(r, r0, dim=1).mean())
+            rec["warm_drift"] = float(((r - r0).norm(dim=1) / r0.norm(dim=1)).mean())
         if self.c_flat is not None:
             with torch.no_grad():
                 rec["leak"] = float(self._leak())

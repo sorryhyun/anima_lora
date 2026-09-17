@@ -35,3 +35,4 @@ it was split here without edits.
   plans) or the repo root (`output/…`, `make …`), as in the original record.
 - Job ids, arm dirs and argv go in the report; the verdict also goes to
   `../findings.md` once it is settled.
+- [`anchor_sweep_2026_09_17.md`](anchor_sweep_2026_09_17.md) — warm-start erasure (Adam lr 1e-3, no warmup → cos 0.10 at 24k), `--lr_warmup` + `--init_anchor` fix, μ sweep 0/0.1/0.3/1 at 3k vs the source ceiling, first target-stage はい hit

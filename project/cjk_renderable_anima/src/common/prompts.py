@@ -52,6 +52,11 @@ EVAL_GROUPS = (
 NATIVE_PROMPTS = (
     REPO / "project" / "cjk_aware_anima" / "assets" / "unmask_eval_prompts.txt"
 )
+# the user's own target captions (ComfyUI, 2026-09-17), rendered verbatim by
+# ``--stage target``
+TARGET_PROMPTS = (
+    REPO / "project" / "cjk_renderable_anima" / "assets" / "target_prompts.txt"
+)
 NATIVE_CLAUSES = {
     # the trained clause shape, hung off a scene prompt instead of the template
     "en": '{p}, japanese text. Japanese text reads as "{k}".',

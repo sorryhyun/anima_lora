@@ -75,12 +75,20 @@ def stage_train(a):
         )
     opt = torch.optim.AdamW(tr.params, weight_decay=0.0, betas=(0.9, 0.99))
     sched = None
-    if a.lr_decay == "cosine":
+    if a.lr_decay == "cosine" or a.lr_warmup > 0:
         # the identity has no parameter-side bound (attempt 8/9: linear norm
-        # growth, 1.6× at 2000 steps); cosine to 0 stops it late
-        sched = torch.optim.lr_scheduler.LambdaLR(
-            opt, lambda st: 0.5 * (1 + math.cos(math.pi * min(st / a.train_steps, 1.0)))
-        )
+        # growth, 1.6× at 2000 steps); cosine to 0 stops it late. Linear
+        # warmup (--lr_warmup) multiplies in: a warm start's first Adam steps
+        # otherwise move every coordinate ≈ lr and erase the rows.
+        def lr_mult(st):
+            m = 1.0
+            if a.lr_decay == "cosine":
+                m = 0.5 * (1 + math.cos(math.pi * min(st / a.train_steps, 1.0)))
+            if a.lr_warmup > 0:
+                m *= min((st + 1) / a.lr_warmup, 1.0)
+            return m
+
+        sched = torch.optim.lr_scheduler.LambdaLR(opt, lr_mult)
     anima.train()
     if a.grad_ckpt:
         anima.enable_gradient_checkpointing(unsloth_offload=False)
