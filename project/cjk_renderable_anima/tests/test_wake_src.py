@@ -94,3 +94,55 @@ def test_split_lines_kinsoku():
     assert split_lines("あいうえ", 2, cuts=[2]) == ["あい", "うえ"]
     # every later cut violates: the nearest cut stands rather than refusing
     assert split_lines("あ・・・", 2) is not None
+
+
+def test_render_into_scene_sibling(tmp_path):
+    """ΔFM (plan_synth2): the sibling is drawn by the same fit and differs
+    from the item only inside the union text box; the reference never carries
+    the target's romaji letters."""
+    import random
+
+    import numpy as np
+    from common.render.flat import find_fonts
+    from common.render.scene import render_into_scene
+    from data.pair import RefPool, romaji_letters
+    from PIL import Image
+
+    fonts = find_fonts()
+    assert fonts, "assets/fonts is empty"
+    Image.new("RGB", (512, 512), "white").save(tmp_path / "scene.png")
+    scene = {
+        "i": 0,
+        "file": str(tmp_path / "scene.png"),
+        "shape": [512, 512],
+        "regions": [[96, 96, 416, 416]],
+        "region": [96, 96, 416, 416],
+        "boxes_anchor": [[160, 200, 352, 312]],
+        "bubbles": [None],
+    }
+    for text in ("す", "がんばれ"):
+        rng = random.Random(3)
+        ref = RefPool(4, rng).draw(0, text)
+        assert len(ref) == len(text) and not (set(ref) & romaji_letters(text))
+        drawn = render_into_scene(
+            scene, text, fonts[0], rng, min_glyph=28, tilt_frac=1.0, ref_text=ref
+        )
+        assert drawn is not None and len(drawn) == 4
+        im_b, box_b, im_a, box_a = drawn
+        diff = (np.array(im_b) != np.array(im_a)).any(axis=2)
+        assert diff.any()  # the glyphs differ ...
+        u = [
+            min(box_b[0], box_a[0]),
+            min(box_b[1], box_a[1]),
+            max(box_b[2], box_a[2]),
+            max(box_b[3], box_a[3]),
+        ]
+        diff[u[1] : u[3], u[0] : u[2]] = False
+        assert not diff.any()  # ... and nothing else does
+        # same draw without the sibling is bit-identical to the item
+        rng = random.Random(3)
+        RefPool(4, rng).draw(0, text)
+        alone, box_alone = render_into_scene(
+            scene, text, fonts[0], rng, min_glyph=28, tilt_frac=1.0
+        )
+        assert box_alone == box_b and np.array_equal(np.array(alone), np.array(im_b))

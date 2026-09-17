@@ -301,6 +301,23 @@ def data_synth_args(g):
         "at 0.7 the median single glyph is ≈ 50 px on the s0 scenes, 92 %% ≥ 40 px)",
     )
     g.add_argument(
+        "--pair_ref",
+        default="none",
+        choices=["none", "en"],
+        help="data: ΔFM (plan_synth2) — draw a sibling of every composite by the "
+        "same fit with a Latin string of the item's glyph count in the box "
+        "(never the target's romaji letters); records gain ref_file / ref_text / "
+        "ref_caption / ref_box and box becomes the union. The train stage's "
+        "--pair_loss needs it; --pair_loss 0 on the same data dir is the control",
+    )
+    g.add_argument(
+        "--pair_ref_pool",
+        type=int,
+        default=4,
+        help="data: --pair_ref reference strings per (scene, glyph count), so the "
+        "reference captions stay few (≈ 1.3 MB of text cache each)",
+    )
+    g.add_argument(
         "--n_phrase_eval",
         type=int,
         default=4,

@@ -373,7 +373,7 @@ class Trainables:
 
     # -- logging -------------------------------------------------------------
 
-    def log_record(self, step, loss_fm, loss, decor_val, t0) -> dict:
+    def log_record(self, step, loss_fm, loss, decor_val, t0, extra=None) -> dict:
         dn = (self.delta.raw.detach() * self.row_scale).norm(dim=1)
         if self.enc is not None:
             is_tr = self.is_train_row.to(dn.device)
@@ -386,6 +386,7 @@ class Trainables:
             "delta_norm_max": float(dn.max()),
             "rel": float(dn.mean() / self.row_scale),
             "it_s": step / (time.time() - t0),
+            **(extra or {}),  # ΔFM: fm_plain / pres / ref_bias (train/stage.py)
         }
         if self.enc is not None:
             self._log_encoder(rec, loss, decor_val, dn_held)

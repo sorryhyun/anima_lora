@@ -294,6 +294,7 @@ def render_into_scene(
     cuts=None,
     vertical_only: bool = False,
     fewest_lines: bool = False,
+    ref_text: str | None = None,
 ):
     """Erase every anchor bubble's usable region (plus the text box padded by
     a quarter of its size — detector boxes run tight) with the bubble's
@@ -311,7 +312,14 @@ def render_into_scene(
     Returns ``(image, drawn text box)`` or ``None`` when the text does not
     fit at ``min_glyph`` px per glyph (the caller draws a shorter text). Other anchor bubbles are left erased (empty bubble).
     ``stroke``: a thin outline in the fill colour around the glyphs (manga
-    lettering over art)."""
+    lettering over art).
+
+    ``ref_text`` (ΔFM, plan_synth2): a sibling of the same glyph count drawn
+    by the *same* fit — same erase, font, size, line lengths, positions,
+    colour and tilt draw — with ``ref_text``'s glyphs in place of ``text``'s.
+    Returns ``(image, box, ref image, ref box)``; the two images are asserted
+    pixel-identical outside the union of the two boxes, so the pair differs
+    by the glyphs alone."""
     import numpy as np
     from PIL import Image, ImageDraw
 
@@ -387,37 +395,61 @@ def render_into_scene(
     kw = {"stroke_width": max(1, fs // 24), "stroke_fill": fill} if stroke else {}
     # the text goes on its own layer so it can be tilted a few degrees
     # (user, 2026-09-15: hand-lettered bubbles are rarely dead level) —
-    # 30 % of composites, ±7°, about the text block's centre
-    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    ld = ImageDraw.Draw(layer)
-    if vertical:
-        # columns right-to-left, glyphs top-down; the block is centred on the
-        # region, every column centred on its own height
-        x = cx + tw / 2 - fs / 2  # centre of the first (rightmost) column
-        for ln in lines:
-            y = cy - len(ln) * fs * V_PITCH / 2
-            for ch in ln:
-                _draw_vertical_glyph(layer, ld, ch, x, y, fs, font, color, kw)
-                y += fs * V_PITCH
-            x -= fs * V_GAP
-    else:
-        y = cy - th / 2 - fs * 0.1
-        for ln in lines:
-            w = ld.textlength(ln, font=font)
-            ld.text((cx - w / 2, y), ln, fill=color, font=font, **kw)
-            y += fs * H_GAP
-    if rng.random() < tilt_frac:
-        layer = layer.rotate(
-            rng.uniform(-tilt_deg, tilt_deg), resample=Image.BICUBIC, center=(cx, cy)
-        )
-    im.paste(layer, (0, 0), layer)
-    bb = layer.getbbox()  # alpha bbox: the drawn (and tilted) glyphs
-    if bb is None:
+    # 30 % of composites, ±7°, about the text block's centre. The tilt is
+    # drawn once so a sibling gets the same one.
+    tilt = rng.uniform(-tilt_deg, tilt_deg) if rng.random() < tilt_frac else None
+
+    def draw(text_lines):
+        layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        ld = ImageDraw.Draw(layer)
+        if vertical:
+            # columns right-to-left, glyphs top-down; the block is centred on
+            # the region, every column centred on its own height
+            x = cx + tw / 2 - fs / 2  # centre of the first (rightmost) column
+            for ln in text_lines:
+                y = cy - len(ln) * fs * V_PITCH / 2
+                for ch in ln:
+                    _draw_vertical_glyph(layer, ld, ch, x, y, fs, font, color, kw)
+                    y += fs * V_PITCH
+                x -= fs * V_GAP
+        else:
+            y = cy - th / 2 - fs * 0.1
+            for ln in text_lines:
+                w = ld.textlength(ln, font=font)
+                ld.text((cx - w / 2, y), ln, fill=color, font=font, **kw)
+                y += fs * H_GAP
+        if tilt is not None:
+            layer = layer.rotate(tilt, resample=Image.BICUBIC, center=(cx, cy))
+        bb = layer.getbbox()  # alpha bbox: the drawn (and tilted) glyphs
+        if bb is None:
+            return None
+        out = im.copy()
+        out.paste(layer, (0, 0), layer)
+        box = [
+            int(max(0, bb[0] - 2)),
+            int(max(0, bb[1] - 2)),
+            int(min(W, bb[2] + 2)),
+            int(min(H, bb[3] + 2)),
+        ]
+        return out, box
+
+    drawn = draw(lines)
+    if drawn is None or ref_text is None:
+        return drawn
+    assert len(ref_text) == len(text), (ref_text, text)
+    # the sibling takes the item's line lengths (not a re-split: kinsoku
+    # nudges depend on the glyphs, and the layout must be the same)
+    ref_lines, off = [], 0
+    for ln in lines:
+        ref_lines.append(ref_text[off : off + len(ln)])
+        off += len(ln)
+    drawn_ref = draw(ref_lines)
+    if drawn_ref is None:
         return None
-    box = [
-        int(max(0, bb[0] - 2)),
-        int(max(0, bb[1] - 2)),
-        int(min(W, bb[2] + 2)),
-        int(min(H, bb[3] + 2)),
-    ]
-    return im, box
+    (im_b, box_b), (im_a, box_a) = drawn, drawn_ref
+    ux0, uy0 = min(box_b[0], box_a[0]), min(box_b[1], box_a[1])
+    ux1, uy1 = max(box_b[2], box_a[2]), max(box_b[3], box_a[3])
+    diff = (np.array(im_b) != np.array(im_a)).any(axis=2)
+    diff[uy0:uy1, ux0:ux1] = False
+    assert not diff.any(), "sibling differs outside the union text box"
+    return im_b, box_b, im_a, box_a

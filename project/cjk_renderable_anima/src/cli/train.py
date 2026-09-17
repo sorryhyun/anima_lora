@@ -73,6 +73,23 @@ def train_args(g):
 
 def train_synth_args(g):
     g.add_argument(
+        "--pair_loss",
+        type=int,
+        default=0,
+        help="train: ΔFM (plan_synth2) — on composites, train on the difference "
+        "between the item and its Latin sibling (data built with --pair_ref) under "
+        "the same ε / σ: ‖(v(B) − sg v(A)) − (v*_B − v*_A)‖²_w; the sibling forward "
+        "is no_grad (one more compiled graph per family, ≈ +1 forward per step). "
+        "Log gains fm_plain / pres / ref_bias; `loss` is the paired term",
+    )
+    g.add_argument(
+        "--pair_sigma_min",
+        type=float,
+        default=0.0,
+        help="train: --pair_loss only on samples with σ ≥ this (plain FM below) — "
+        "the leak fallback (plan_synth2: 0.7 = identity band only)",
+    )
+    g.add_argument(
         "--box_weight",
         type=float,
         default=1.0,

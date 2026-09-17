@@ -49,8 +49,16 @@ def stage_train(a):
 
     held, keep = _held_out_split(a, recs_all, ev, out)
     recs = [recs_all[i] for i in keep]
-    cache, train_ext, ev_ext = _encode_text(recs, ev, device, out)
-    lat = LatentStore(a, data, recs_all, keep, device)
+    if a.pair_loss:
+        n_pair = sum("ref_file" in r for r in recs)
+        assert n_pair, "--pair_loss needs a data dir built with --pair_ref"
+        print(
+            f"pair loss: {n_pair}/{len(recs)} items have a sibling"
+            + (f", σ ≥ {a.pair_sigma_min:g} only" if a.pair_sigma_min > 0 else ""),
+            flush=True,
+        )
+    cache, train_ext, ev_ext = _encode_text(recs, ev, device, out, bool(a.pair_loss))
+    lat = LatentStore(a, data, recs_all, keep, device, ref=bool(a.pair_loss))
 
     anima = load_dit_model(args, device, torch.bfloat16)
     anima.requires_grad_(False)
@@ -110,6 +118,7 @@ def stage_train(a):
         )
 
     batcher = Batcher(a, recs, lat)
+    pair_ema: dict = {}
     log = []
     aug_rng = random.Random(a.seed + 11)
     killed = ""
@@ -129,12 +138,29 @@ def stage_train(a):
         tr.materialize(aug_rng)
         is_scene = recs[idx[0]]["src"] == "scene"
         tr.set_source(flat=not is_scene)
+        brecs = [recs[i] for i in idx]
+        bw = a.box_weight if is_scene else 1.0
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            captions = [recs[i]["caption"] for i in idx]
+            captions = [r["caption"] for r in brecs]
             pred = dit_forward(anima, noisy, ts, cache, captions, device)
-        loss_fm = weighted_fm_loss(
-            pred, target, [recs[i] for i in idx], a.box_weight if is_scene else 1.0
-        )
+        extra = {}
+        if a.pair_loss and is_scene:
+            # ΔFM (plan_synth2): the sibling under the same ε and σ, its
+            # residual r_A = v_θ(A) − v_A* subtracted as a control variate.
+            # The A forward carries no gradient — nothing about the
+            # reference reaches the rows.
+            pred_a, target_a = pair_branch(
+                anima, lat, idx, noise, ts, cache, brecs, device
+            )
+            keep_pair = (
+                (ts.float() >= a.pair_sigma_min).view(-1, 1, 1, 1).to(pred.dtype)
+            )
+            loss_fm = weighted_fm_loss(
+                pred - keep_pair * pred_a, target - keep_pair * target_a, brecs, bw
+            )
+            extra = pair_stats(pred, target, pred_a, target_a, brecs, bw, pair_ema)
+        else:
+            loss_fm = weighted_fm_loss(pred, target, brecs, bw)
         loss, decor_val = tr.regularized(loss_fm)
         opt.zero_grad(set_to_none=True)
         loss.backward()
@@ -143,7 +169,7 @@ def stage_train(a):
             sched.step()
         tr.after_step()
         if step % 25 == 0 or step == 1:
-            rec = tr.log_record(step, loss_fm, loss, decor_val, t0)
+            rec = tr.log_record(step, loss_fm, loss, decor_val, t0, extra)
             log.append(rec)
             print(json.dumps(rec), flush=True)
             killed = tr.kill_reason(rec, step)
@@ -182,6 +208,62 @@ def weighted_fm_loss(pred, target, recs, box_weight: float):
         x0, y0, x1, y1 = r["box"]
         wmap[b, :, y0 // 8 : -(-y1 // 8), x0 // 8 : -(-x1 // 8)] = box_weight
     return (se * wmap).sum() / (wmap.expand_as(se).sum())
+
+
+def _box_mask(se_shape, recs, device):
+    """``(B, 1, h, w)`` 1 under each item's ``box`` (latent cells), else 0."""
+    B, _C, h, w = se_shape
+    m = torch.zeros(B, 1, h, w, device=device)
+    for b, r in enumerate(recs):
+        x0, y0, x1, y1 = r["box"]
+        m[b, :, y0 // 8 : -(-y1 // 8), x0 // 8 : -(-x1 // 8)] = 1.0
+    return m
+
+
+def pair_branch(anima, lat, idx, noise, ts, cache, recs, device):
+    """The sibling's ``(pred_A, target_A)`` under the batch's own ``ε`` and
+    ``σ`` (``ts`` is σ per sample), ``no_grad``."""
+    lat_a = lat.ref(idx).to(device)
+    sig = ts.float().view(-1, 1, 1, 1)
+    noisy_a = ((1.0 - sig) * lat_a.float() + sig * noise.float()).to(torch.bfloat16)
+    target_a = noise - lat_a
+    with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
+        pred_a = dit_forward(
+            anima, noisy_a, ts, cache, [r["ref_caption"] for r in recs], device
+        )
+    return pred_a, target_a
+
+
+def pair_stats(pred, target, pred_a, target_a, recs, box_weight, ema: dict) -> dict:
+    """The ΔFM log fields (plan_synth2): ``fm_plain`` = plain ‖r_B‖²_w on
+    the same items (the number comparable to a ``--pair_loss 0`` arm),
+    ``pres`` = outside-box ‖v_θ(B) − v_θ(A)‖² (the scene-preservation term),
+    ``ref_bias`` = the systematic part of the sibling's in-box residual:
+    ‖EMA(mean_b m_b)‖ / EMA(mean_b ‖m_b‖) with ``m_b`` the in-box channel
+    mean of ``r_A`` per item, EMA over ≈ 100 steps — ≈ 0 when the base's
+    reference error is spread, → 1 when every item shares one in-box DC
+    error (stroke-style bias is read on the sheets, not here)."""
+    with torch.no_grad():
+        out = {"fm_plain": float(weighted_fm_loss(pred, target, recs, box_weight))}
+        m = _box_mask(pred.shape, recs, pred.device)
+        d = (pred.float() - pred_a.float()) ** 2
+        outside = 1.0 - m
+        out["pres"] = float(
+            (d * outside).sum() / outside.expand_as(d).sum().clamp(min=1)
+        )
+        r_a = (pred_a.float() - target_a.float()) * m
+        cells = m.sum(dim=(1, 2, 3)).clamp(min=1)  # (B,)
+        m_b = r_a.sum(dim=(2, 3)) / cells.view(-1, 1)  # (B, C) in-box channel mean
+        alpha = 0.01
+        mean_vec = m_b.mean(0)
+        mean_norm = m_b.norm(dim=1).mean()
+        if "vec" not in ema:
+            ema["vec"], ema["norm"] = mean_vec, mean_norm
+        else:
+            ema["vec"] = (1 - alpha) * ema["vec"] + alpha * mean_vec
+            ema["norm"] = (1 - alpha) * ema["norm"] + alpha * mean_norm
+        out["ref_bias"] = float(ema["vec"].norm() / ema["norm"].clamp(min=1e-8))
+    return out
 
 
 def _held_out_split(a, recs_all, ev, out):
@@ -223,12 +305,18 @@ def _held_out_split(a, recs_all, ev, out):
     return held, keep
 
 
-def _encode_text(recs, ev, device, out):
+def _encode_text(recs, ev, device, out, refs: bool = False):
     """Qwen side + pack-routed T5 ids, pre-adapter, for the training and eval
-    captions. Writes ``eval_coverage.json`` (trained rows / rows per string)."""
+    captions (and, ``refs``, the ΔFM sibling captions — Latin, so they touch
+    no ext row and stay out of ``train_ext``). Writes ``eval_coverage.json``
+    (trained rows / rows per string)."""
     t0 = time.time()
     cache = encode_captions([r["caption"] for r in recs], device)
     train_ext = ext_ids_of(cache)
+    if refs:
+        ref_caps = sorted({r["ref_caption"] for r in recs if "ref_caption" in r})
+        cache.update(encode_captions(ref_caps, device))
+        print(f"text: {len(ref_caps)} sibling captions", flush=True)
     ev_cache = encode_captions([e["caption"] for e in ev], device)
     ev_ext = {
         e["text"]: sorted(ext_ids_of({e["caption"]: ev_cache[e["caption"]]}))
@@ -266,12 +354,15 @@ class LatentStore:
     ``--shapes`` (each item encoded at its own render size). Indexed by
     positions in the kept ``recs``; a batch must be one shape."""
 
-    def __init__(self, a, data, recs_all, keep, device):
+    def __init__(self, a, data, recs_all, keep, device, ref: bool = False):
         t0 = time.time()
         self.keep = keep
         by_shape = shape_index(recs_all)
         self.row_of = None
         self.n_families = 1
+        self.ref_lat = None
+        if ref:
+            self._load_ref(a, data, recs_all, by_shape, device)
         if by_shape is None:
             lat_file = data / f"latents_{a.train_size}.pt"
             if lat_file.exists():
@@ -322,6 +413,45 @@ class LatentStore:
                 flush=True,
             )
         self.lat = lat
+
+    def _load_ref(self, a, data, recs_all, by_shape, device):
+        """ΔFM sibling latents (``ref_file``), one tensor per shape holding
+        only the paired items, bf16 on disk; ``ref_row_of`` maps a recs_all
+        index to (shape, row)."""
+        paired = {
+            shp: [i for i in idxs if "ref_file" in recs_all[i]]
+            for shp, idxs in (by_shape or {"sq": range(len(recs_all))}).items()
+        }
+        paired = {k: v for k, v in paired.items() if v}
+        lat_file = data / f"latents_ref_{'_'.join(sorted(paired))}.pt"
+        if lat_file.exists():
+            ref = torch.load(lat_file)
+        else:
+            vae = load_vae(device)
+            ref = {}
+            for shp, idxs in paired.items():
+                size = parse_shape(shp) if by_shape else (a.train_size, a.train_size)
+                ref[shp] = encode_images(
+                    vae, [recs_all[i]["ref_file"] for i in idxs], device, size
+                ).to(torch.bfloat16)
+            torch.save(ref, lat_file)
+            del vae
+            torch.cuda.empty_cache()
+        self.ref_lat = ref
+        self.ref_row_of = {
+            i: (shp, k) for shp, idxs in paired.items() for k, i in enumerate(idxs)
+        }
+        print(
+            "sibling latents: "
+            + ", ".join(f"{shp} {tuple(ref[shp].shape)}" for shp in sorted(ref)),
+            flush=True,
+        )
+
+    def ref(self, idx):
+        """Sibling latents (float32) for kept positions ``idx``, one shape."""
+        ent = [self.ref_row_of[self.keep[i]] for i in idx]
+        assert len({e[0] for e in ent}) == 1, f"mixed shapes in one batch: {ent}"
+        return self.ref_lat[ent[0][0]][[e[1] for e in ent]].float()
 
     def shape_of(self, i: int) -> str:
         return self.row_of[self.keep[i]][0]

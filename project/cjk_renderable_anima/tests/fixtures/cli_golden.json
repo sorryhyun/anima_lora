@@ -158,6 +158,21 @@
  {
   "group": "generation",
   "option_strings": [
+   "--negative"
+  ],
+  "dest": "negative",
+  "default": "",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "target: negative prompt for the verbatim-caption renders (pair with --eval_tag)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "generation",
+  "option_strings": [
    "--seeds"
   ],
   "dest": "seeds",
@@ -896,6 +911,39 @@
  {
   "group": "data: S line (plan_synth)",
   "option_strings": [
+   "--pair_ref"
+  ],
+  "dest": "pair_ref",
+  "default": "none",
+  "choices": [
+   "none",
+   "en"
+  ],
+  "nargs": null,
+  "type": "None",
+  "help": "data: ΔFM (plan_synth2) — draw a sibling of every composite by the same fit with a Latin string of the item's glyph count in the box (never the target's romaji letters); records gain ref_file / ref_text / ref_caption / ref_box and box becomes the union. The train stage's --pair_loss needs it; --pair_loss 0 on the same data dir is the control",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--pair_ref_pool"
+  ],
+  "dest": "pair_ref_pool",
+  "default": 4,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "data: --pair_ref reference strings per (scene, glyph count), so the reference captions stay few (≈ 1.3 MB of text cache each)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
    "--n_phrase_eval"
   ],
   "dest": "n_phrase_eval",
@@ -1132,6 +1180,36 @@
   "nargs": null,
   "type": "float",
   "help": "train: with --out_vec, add this × the EN shift norm × its direction at every ext position of the adapter output on every step (Q fixed on, so the rows never have to learn the render trigger). The vector is saved into trained.pt and eval / native apply it to every trained cond. 0 = off",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: S line (plan_synth)",
+  "option_strings": [
+   "--pair_loss"
+  ],
+  "dest": "pair_loss",
+  "default": 0,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "train: ΔFM (plan_synth2) — on composites, train on the difference between the item and its Latin sibling (data built with --pair_ref) under the same ε / σ: ‖(v(B) − sg v(A)) − (v*_B − v*_A)‖²_w; the sibling forward is no_grad (one more compiled graph per family, ≈ +1 forward per step). Log gains fm_plain / pres / ref_bias; `loss` is the paired term",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: S line (plan_synth)",
+  "option_strings": [
+   "--pair_sigma_min"
+  ],
+  "dest": "pair_sigma_min",
+  "default": 0.0,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "train: --pair_loss only on samples with σ ≥ this (plain FM below) — the leak fallback (plan_synth2: 0.7 = identity band only)",
   "action": "_StoreAction",
   "metavar": null,
   "required": false

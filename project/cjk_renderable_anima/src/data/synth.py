@@ -44,6 +44,7 @@ from common.render.scene import region_capacity, render_into_scene
 from common.text import KANJI_RE, WORD_RE
 
 from .inventory import clean_kana_strings, corpus_lines, phrase_file_lines, pieces
+from .pair import RefPool
 
 
 def load_scenes(
@@ -347,11 +348,14 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
     rng.shuffle(order)
     n_short = 0
     kind_c: Counter = Counter()
+    # ΔFM (plan_synth2): every composite gets a Latin sibling by the same fit
+    refs = RefPool(a.pair_ref_pool, rng) if a.pair_ref == "en" else None
     if mix:
         recs += _quota_composites(
-            a, rng, scenes, order, mix, n_scene, fit_pool, fonts, tokq, out
+            a, rng, scenes, order, mix, n_scene, fit_pool, fonts, tokq, out, refs
         )
         _scene_sheet(rng, [r for r in recs if r["src"] == "scene"], out)
+        _pair_report(refs, recs)
         return recs
     for i in range(n_scene):
         sc = scenes[order[i % len(order)]]
@@ -384,6 +388,7 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
             for p, _row in pieces(tok, qmap, text):
                 off += len(p)
                 cuts.append(off)
+            ref = refs.draw(sc["i"], text) if refs else None
             drawn = render_into_scene(
                 sc,
                 text,
@@ -395,30 +400,15 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
                 max_lines=a.scene_max_lines,
                 cuts=cuts,
                 vertical_only=bool(a.scene_vertical),
+                ref_text=ref,
             )
             if drawn is not None:
                 break
         if drawn is None:
             continue
-        im, box = drawn
-        W, H = im.size
-        assert [W, H] == list(sc["shape"]), (
-            f"scene {sc['i']}: image {W}x{H} vs {sc['shape']}"
-        )
-        fn = out / "img" / f"scene_{i:05d}.png"
-        im.save(fn)
         kind_c[kind] += 1
         recs.append(
-            {
-                "file": str(fn),
-                "text": text,
-                "caption": scene_caption(sc, text),
-                "src": "scene",
-                "kind": kind,
-                "shape": [W, H],
-                "box": box,
-                "scene": sc["i"],
-            }
+            _scene_record(drawn, sc, text, kind, out / "img" / f"scene_{i:05d}", ref)
         )
     print(
         f"composites: {kind_c.get('single', 0) + kind_c.get('phrase', 0) + kind_c.get('string', 0)} "
@@ -426,7 +416,61 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
         flush=True,
     )
     _scene_sheet(rng, [r for r in recs if r["src"] == "scene"], out)
+    _pair_report(refs, recs)
     return recs
+
+
+def _scene_record(drawn, sc, text, kind, stem: Path, ref_text=None) -> dict:
+    """Save a composite (and its ΔFM sibling when drawn) and build its
+    record. With a sibling, ``box`` is the union of the two drawn boxes and
+    the record carries ``ref_file`` / ``ref_text`` / ``ref_caption`` /
+    ``ref_box``."""
+    im, box = drawn[:2]
+    W, H = im.size
+    assert [W, H] == list(sc["shape"]), (
+        f"scene {sc['i']}: image {W}x{H} vs {sc['shape']}"
+    )
+    fn = stem.with_suffix(".png")
+    im.save(fn)
+    rec = {
+        "file": str(fn),
+        "text": text,
+        "caption": scene_caption(sc, text),
+        "src": "scene",
+        "kind": kind,
+        "shape": [W, H],
+        "box": box,
+        "scene": sc["i"],
+    }
+    if len(drawn) == 4:
+        im_a, box_a = drawn[2:]
+        fn_a = stem.with_name(stem.name + "_ref.png")
+        im_a.save(fn_a)
+        rec.update(
+            ref_file=str(fn_a),
+            ref_text=ref_text,
+            ref_caption=scene_caption(sc, ref_text),
+            ref_box=box_a,
+            box=[
+                min(box[0], box_a[0]),
+                min(box[1], box_a[1]),
+                max(box[2], box_a[2]),
+                max(box[3], box_a[3]),
+            ],
+        )
+    return rec
+
+
+def _pair_report(refs, recs):
+    if refs is None:
+        return
+    paired = [r for r in recs if "ref_file" in r]
+    caps = len({r["ref_caption"] for r in paired})
+    print(
+        f"pairs: {len(paired)} composites with a Latin sibling, "
+        f"{refs.n_strings()} reference strings, {caps} distinct reference captions",
+        flush=True,
+    )
 
 
 def _parse_mix(spec: str) -> dict[str, float]:
@@ -497,7 +541,9 @@ class _LenPool:
         return self.texts[rng.randrange(lo, hi)]
 
 
-def _quota_composites(a, rng, scenes, order, mix, n_scene, fit_pool, fonts, tokq, out):
+def _quota_composites(
+    a, rng, scenes, order, mix, n_scene, fit_pool, fonts, tokq, out, refs=None
+):
     """The sentence arm's composites: ``n_scene`` items whose kinds are the
     ``--scene_mix`` shares as hard counts (rounding to the largest share),
     in a shuffled order. Per item the **text comes first** (a length
@@ -596,6 +642,7 @@ def _quota_composites(a, rng, scenes, order, mix, n_scene, fit_pool, fonts, tokq
                 tries.append(j)
             for j in tries:
                 sc = scenes[j]
+                ref = refs.draw(sc["i"], text) if refs else None
                 drawn = render_into_scene(
                     sc,
                     text,
@@ -608,6 +655,7 @@ def _quota_composites(a, rng, scenes, order, mix, n_scene, fit_pool, fonts, tokq
                     cuts=cuts,
                     vertical_only=bool(a.scene_vertical),
                     fewest_lines=bool(a.scene_fewest_lines),
+                    ref_text=ref,
                 )
                 if drawn is not None:
                     break
@@ -616,25 +664,9 @@ def _quota_composites(a, rng, scenes, order, mix, n_scene, fit_pool, fonts, tokq
         if drawn is None:
             miss[kind] += 1
             continue
-        im, box = drawn
-        W, H = im.size
-        assert [W, H] == list(sc["shape"]), (
-            f"scene {sc['i']}: image {W}x{H} vs {sc['shape']}"
-        )
-        fn = out / "img" / f"scene_{i:05d}.png"
-        im.save(fn)
         used[sc["i"]] += 1
         recs.append(
-            {
-                "file": str(fn),
-                "text": text,
-                "caption": scene_caption(sc, text),
-                "src": "scene",
-                "kind": kind,
-                "shape": [W, H],
-                "box": box,
-                "scene": sc["i"],
-            }
+            _scene_record(drawn, sc, text, kind, out / "img" / f"scene_{i:05d}", ref)
         )
     got = Counter(r["kind"] for r in recs)
     # columns drawn, from the box: width / height × glyphs ≈ 1 for one
@@ -680,3 +712,14 @@ def _scene_sheet(rng, recs, out):
         ImageDraw.Draw(im).rectangle(r["box"], outline=(0, 255, 0), width=2)
         tiles.append((im, [r["text"], r["kind"]]))
     contact_sheet(tiles, out / "sheet_scene.png", thumb=192, cols=8)
+    pairs = [r for r in sample if "ref_file" in r]
+    if pairs:
+        # ΔFM: item beside its sibling, union box on both — the read before
+        # launch is that the two differ by the glyphs alone
+        tiles = []
+        for r in pairs[:20]:
+            for f, t in ((r["file"], r["text"]), (r["ref_file"], r["ref_text"])):
+                im = Image.open(f).convert("RGB")
+                ImageDraw.Draw(im).rectangle(r["box"], outline=(0, 255, 0), width=2)
+                tiles.append((im, [t, r["kind"]]))
+        contact_sheet(tiles, out / "sheet_scene_pair.png", thumb=192, cols=8)
