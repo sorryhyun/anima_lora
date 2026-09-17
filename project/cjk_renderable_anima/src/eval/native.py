@@ -191,7 +191,9 @@ def stage_target(a):
     chars = sorted({it["text"] for it in items}, key=[it["text"] for it in items].index)
     clauses = ["verbatim"]
     size = parse_shape(a.eval_shape) if a.eval_shape else a.eval_size
-    args, gen, device, shared = load_generator(size, a.steps, a.cfg, out / "img")
+    args, gen, device, shared = load_generator(
+        size, a.steps, a.cfg, out / "img", a.negative
+    )
     anima = shared["model"]
     anima.eval()
     delta = ExtDelta.from_state(anima, sd["delta"], device)

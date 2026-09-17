@@ -39,7 +39,7 @@ def gen_args(size, steps: int, cfg: int | float, save: Path, negative_prompt: st
     return req.to_args()
 
 
-def load_generator(size, steps: int, cfg: int | float, save: Path):
+def load_generator(size, steps: int, cfg: int | float, save: Path, negative_prompt: str = ""):
     """``(args, gen settings, device, shared models)`` ready for ``generate``;
     the DiT is ``shared['model']``."""
     import torch
@@ -47,7 +47,7 @@ def load_generator(size, steps: int, cfg: int | float, save: Path):
     from library.inference.generation import get_generation_settings
     from library.inference.models import load_dit_model, load_shared_models
 
-    args = gen_args(size, steps, cfg, save)
+    args = gen_args(size, steps, cfg, save, negative_prompt)
     gen = get_generation_settings(args)
     device = gen.device
     shared = load_shared_models(args)

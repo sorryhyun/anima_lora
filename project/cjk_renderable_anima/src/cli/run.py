@@ -25,6 +25,11 @@ def generation_args(g):
     g.add_argument("--steps", type=int, default=28, help="inference steps")
     g.add_argument("--cfg", type=float, default=4.0)
     g.add_argument(
+        "--negative",
+        default="",
+        help="target: negative prompt for the verbatim-caption renders (pair with --eval_tag)",
+    )
+    g.add_argument(
         "--seeds", type=int, default=2, help="seeds per prompt (salad: 3 recommended)"
     )
     g.add_argument("--salad_size", type=int, default=768)

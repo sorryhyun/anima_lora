@@ -5,6 +5,22 @@
 > this file is only packaging, surfaces, gates before upload, and the Hub
 > migration. Decisions the user still owes are collected at the end (D1–D6).
 
+## Status (2026-09-17)
+
+- **Shipped: `anima_cjk_vocab_pack_preview` at the repo root**, beside the
+  current pack (roots untouched, no `old/` move yet). Baked with
+  `bake_vocab_pack.py` from `output/wake_probe/rows_synth_sent_q_sent_s24k_a1_s05`
+  (503 rows, baked sha `5f52aefce82a…`). Same pair format as the current
+  release, so it loads through `AnimaVocabPackLoader` with no node change.
+  Card gets a Preview section with the p03 seed-0 `はい` render
+  (`assets/preview_hai.png`, rendered through `inference.py --vocab_pack` on
+  the baked pair; matches the hook render, mean |Δpixel| 2.7/255).
+  Gates run: G0 on that one image only. G1–G4 and G6 not run; the card says
+  tag prompts are unverified.
+- **On hold: `comfy/` (base DiT with the table baked in)** and the
+  `AnimaVocabPackCheckpointLoader` node. Not built until the user reopens it.
+- `diffusers/` and the `old/` migration (M1–M4) are unchanged and still open.
+
 ## Target Hub layout
 
 The repo stays `sorryhyun/anima-vocab-pack-cjk`. The current release moves
@@ -22,7 +38,6 @@ old/                           the 2026-09-06 release, byte-identical (server-si
 
 delta/                         framework-neutral pack pair — same format as today
   anima_cjk_render_pack_v1.safetensors / .json
-  tokenizer_qwen3/
 
 comfy/                         single file for ComfyUI models/diffusion_models/
   anima-base-v1.0-cjk-render-v1.safetensors
@@ -50,6 +65,11 @@ drop-in that silently does nothing for CJK.
 ### `delta/` — the pack pair (assumption D6)
 
 The base 69,558-row table with the render rows summed in, plus the json.
+No `tokenizer_qwen3/`: anima_lora, the ComfyUI node and example 10 all
+build the fast Qwen tokenizer from their own pipeline files, and nothing
+fetches the bundled copy (2026-09-17). The `.json` stays mandatory — it is
+the routing map (`qwen` / `char` / `sym` / `route` → rows) the hybrid T5
+encoder is built from, and every loader refuses a table without it.
 Same file format, same stem rule and same two patch points as the current
 release, so it works unchanged with node ≥ 3.9.1 `AnimaVocabPackLoader`,
 anima_lora's `vocab_pack` key, and `examples/09_cjk_vocab_pack.py` / `examples/10_cjk_vocab_pack_diffusers.py`. Against
@@ -276,7 +296,7 @@ Uploads use `hf upload` for `delta/` and `diffusers/`, and
 | folder | size |
 |---|---|
 | `old/` | ~297 MB (pack 285 MB + tokenizer 11.5 MB) |
-| `delta/` | ~297 MB |
+| `delta/` | ~287 MB (pack + json) |
 | `comfy/` | ~4.3 GB per base |
 | `diffusers/` | ~270 MB conditioner + ext rows in its dtype (~140–285 MB) |
 
