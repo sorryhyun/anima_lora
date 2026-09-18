@@ -405,7 +405,7 @@ def stage_scenes(a):
     import torch
 
     # judge reads FRAMES from this module, so it imports here, not at the top
-    from .judge import filter_scenes, judge, report_scenes
+    from .judge import filter_scenes, report_scenes
 
     out = OUT / f"scenes_{a.scene_tag}"
     (out / "img").mkdir(parents=True, exist_ok=True)
@@ -413,28 +413,19 @@ def stage_scenes(a):
         # CPU only: re-apply the filter to an existing run from its stored
         # detector boxes + reads (new size bar / open-bubble rule / stray
         # rule) — no generation, no readers
+        import os
+        from multiprocessing import Pool
+
         items = [
             json.loads(ln)
             for ln in (out / "scenes_all.jsonl").read_text().splitlines()
             if ln
         ]
-        for it in items:
-            if not Path(it["file"]).exists():
-                continue  # rejected render pruned from disk: stored reason stands
-            reads = [{"box": b, **r} for b, r in zip(it["boxes"], it["reads"])]
-            for k in (
-                "box",
-                "region",
-                "bubble",
-                "boxes_anchor",
-                "regions",
-                "bubbles",
-                "read",
-                "residual",
-                "open_uniform",
-            ):
-                it.pop(k, None)
-            it["reason"] = judge(a, it, reads, load_bgr(Path(it["file"])))
+        # flood fills are CPU-bound: one worker per core
+        with Pool(os.cpu_count()) as pool:
+            items = pool.starmap(
+                _rejudge_one, [(a, it) for it in items], chunksize=8
+            )
         report_scenes(a, out, items)
         return
     items = scene_items(a)
@@ -482,6 +473,34 @@ def stage_scenes(a):
     del shared, vae
     torch.cuda.empty_cache()
     filter_scenes(a, out, items)
+
+
+def _rejudge_one(a, it: dict) -> dict:
+    """``--scene_rejudge`` worker: one stored row through the current judge."""
+    from .judge import judge
+
+    if not Path(it["file"]).exists():
+        return it  # rejected render pruned from disk: stored reason stands
+    reads = [{"box": b, **r} for b, r in zip(it["boxes"], it["reads"])]
+    for k in (
+        "box",
+        "region",
+        "bubble",
+        "boxes_anchor",
+        "regions",
+        "bubbles",
+        "read",
+        "residual",
+        "open_uniform",
+        "open_lost",
+        "region_offset",
+        "boxes_speck",
+        "speck_regions",
+        "speck_bubbles",
+    ):
+        it.pop(k, None)
+    it["reason"] = judge(a, it, reads, load_bgr(Path(it["file"])))
+    return it
 
 
 def generate_batch(args, shared, vae, device, chunk: list[dict], out_shape):

@@ -124,11 +124,11 @@ def fit_text(
                 if best is None or fs >= best[1] * MORE_LINES_GAIN:
                     best = (font, fs, lines)
                 break
-        if best is not None and fewest_lines:
-            return best
             fs = int(fs * min(sc, 0.97))
             if fs < min_glyph:
                 break
+        if best is not None and fewest_lines:
+            return best
     return best
 
 
@@ -207,6 +207,39 @@ def erase_uniform(arr, tb, reg, tol: int = 24, width: int = 3) -> float:
     fill = np.array(ring_median(arr, tb), dtype=np.int16)
     d = np.abs(arr.astype(np.int16) - fill).max(axis=2)
     return float((d[ring] <= tol).mean())
+
+
+def erase_lost(arr, tb, reg, tol: int = 24) -> float:
+    """Share of an open (rectangle) erase's painted pixels *outside* the text
+    box that are not the fill colour — the outline, shelf lines, hair the
+    rectangle paints over. The ring seam test (``erase_uniform``) misses a
+    thin outline crossing the rectangle; at <= 0.02 the erases read clean,
+    from 0.03 up outlines are cut (Δ0.9 sheets: s1 627 0.16, s1 65 0.03)."""
+    import numpy as np
+
+    paint = erase_paint(arr, tb, reg, open_ok=True)
+    H, W = arr.shape[:2]
+    x0, y0, x1, y1 = (int(v) for v in tb)
+    paint[max(0, y0 - 2) : min(H, y1 + 2), max(0, x0 - 2) : min(W, x1 + 2)] = False
+    if not paint.any():
+        return 0.0
+    fill = np.array(ring_median(arr, tb), dtype=np.int16)
+    ink = np.abs(arr.astype(np.int16) - fill).max(axis=2) > tol
+    return float((ink & paint).sum()) / float(paint.sum())
+
+
+def region_offset(tb, reg) -> float:
+    """Distance of the region's centre from the text box's centre, in text
+    box half-sizes (the larger axis). The base centres its text in a bubble
+    (median 0.11); a flood that leaked through an outline gap into a panel
+    strip or a figure moves the region off the text (ja_comic 770 1.4,
+    sl1w 962 5.8)."""
+    tcx, tcy = (tb[0] + tb[2]) / 2, (tb[1] + tb[3]) / 2
+    rcx, rcy = (reg[0] + reg[2]) / 2, (reg[1] + reg[3]) / 2
+    return max(
+        abs(rcx - tcx) / max(1.0, (tb[2] - tb[0]) / 2),
+        abs(rcy - tcy) / max(1.0, (tb[3] - tb[1]) / 2),
+    )
 
 
 def anchor_ink(arr, tb, tol: int = 24, min_px: int = 30):
@@ -339,6 +372,16 @@ def render_into_scene(
         if paint is None:
             return None
         arr[paint] = fill
+    # specks the judge kept (plan_synth2 Δ0.9): same erase, no text drawn
+    for tb, reg, bub in zip(
+        scene.get("boxes_speck", ()),
+        scene.get("speck_regions", ()),
+        scene.get("speck_bubbles", ()),
+    ):
+        paint = erase_paint(arr, tb, reg, open_ok=bub is None)
+        if paint is None:
+            return None
+        arr[paint] = ring_median(arr, tb)
     im = Image.fromarray(arr)
     d = ImageDraw.Draw(im)
     region = scene["region"]

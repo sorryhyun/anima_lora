@@ -223,6 +223,30 @@ def data_synth_args(g):
         "shorter text otherwise), never a horizontal line",
     )
     g.add_argument(
+        "--scene_one_bubble",
+        default="",
+        help="data: comma list of --scenes tags kept to one-anchor-bubble scenes "
+        "(ja_comic: 1.64 anchor bubbles per image, 198 of 359 have one — "
+        "plan_synth2 Δ0.9)",
+    )
+    g.add_argument(
+        "--single_scenes",
+        default="",
+        help="data: --scene_mix only — comma list of --scenes tags a one-glyph "
+        "text may be drawn on (empty = every tag); multi-glyph texts route by "
+        "fit over every tag. Δ0.9: singles on the s1 pools, sl1w / ja_comic "
+        "for words only",
+    )
+    g.add_argument(
+        "--single_max_ar",
+        type=float,
+        default=0.0,
+        help="data: --scene_mix only — a one-glyph text goes only on scenes whose "
+        "headline region is at most this long for its short side (0 = off). "
+        "2 drops the sentence-sized strips a lone glyph floats in (sl1w 192 "
+        "AR 5.1, 545 AR 9.0; s1 247 of 262 pass)",
+    )
+    g.add_argument(
         "--scene_min_tokens",
         type=int,
         default=0,

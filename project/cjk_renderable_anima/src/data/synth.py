@@ -48,7 +48,11 @@ from .pair import RefPool
 
 
 def load_scenes(
-    tags: str, min_ar: float = 0.0, min_tokens: int = 0, drop: str = ""
+    tags: str,
+    min_ar: float = 0.0,
+    min_tokens: int = 0,
+    drop: str = "",
+    one_bubble: str = "",
 ) -> list[dict]:
     """Kept scenes of every ``scenes_<tag>`` run in the comma list (s0 + a
     frame-mix run compose). ``min_ar`` (``--scene_tall_ar``) keeps only
@@ -60,7 +64,12 @@ def load_scenes(
     ``tag:i,i;tag:i``) removes kept scenes by index — sl1w 332 / 957 are
     bubble-less tall regions (a hooded sketch's body, a box beside a
     figure) that the sentence quota reused 12–13 times per 400 items (user,
-    2026-09-16)."""
+    2026-09-16). ``one_bubble`` (``--scene_one_bubble``, comma tags) keeps
+    only scenes with one anchor box in those runs. Every scene is tagged
+    ``pool`` = its run tag (indices ``i`` repeat across runs)."""
+    one = {t for t in one_bubble.split(",") if t}
+    unknown = one - set(tags.split(","))
+    assert not unknown, f"--scene_one_bubble {sorted(unknown)}: not in --scenes {tags}"
     dropped = {}
     for part in [x for x in drop.split(";") if x]:
         tag, ids = part.split(":")
@@ -73,6 +82,15 @@ def load_scenes(
         if dropped.get(tag):
             got = [s for s in got if s["i"] not in dropped[tag]]
             print(f"scenes {tag}: dropped {sorted(dropped[tag])}", flush=True)
+        for s in got:
+            s["pool"] = tag
+        if tag in one:
+            single = [s for s in got if len(s["boxes_anchor"]) == 1]
+            print(
+                f"scenes {tag}: {len(single)}/{len(got)} kept scenes with one anchor bubble",
+                flush=True,
+            )
+            got = single
         if min_tokens > 0:
             big = [
                 s
@@ -128,7 +146,12 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
     assert inv.piece_ok is not None, "--scenes needs the piece-coverage test"
     tok, qmap = tokq
     kana = inv.kana
-    scenes = load_scenes(a.scenes, a.scene_tall_ar, a.scene_min_tokens, a.scene_drop)
+    scenes = load_scenes(
+        a.scenes, a.scene_tall_ar, a.scene_min_tokens, a.scene_drop, a.scene_one_bubble
+    )
+    assert _parse_mix(a.scene_mix) or not (a.single_scenes or a.single_max_ar), (
+        "--single_scenes / --single_max_ar route the --scene_mix draw only"
+    )
 
     # -- eval strings: flip / str3 (strings-arm recipe, only with strings in)
     # and phrase_held
@@ -191,10 +214,11 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
     prng = random.Random(a.seed + 37)
     prng.shuffle(held_lines)
     mix = _parse_mix(a.scene_mix)
-    if mix:
+    if mix.get("short") or mix.get("sentence"):
         # sentence arm: the phrase pair reads sentences, the short pair the
         # 2–5-piece lines; a line in neither kind trains in no composite
-        assert a.phrase_file, "--scene_mix needs --phrase_file"
+        # (a singles-only mix, Δ1, needs no phrase source)
+        assert a.phrase_file, "--scene_mix short / sentence need --phrase_file"
         n_of = {t: n for t, _b, n in plines}
         lo, hi = (int(x) for x in a.short_pieces.split("-"))
 
@@ -462,6 +486,7 @@ def _scene_record(drawn, sc, text, kind, stem: Path, ref_text=None) -> dict:
         "shape": [W, H],
         "box": box,
         "scene": sc["i"],
+        "scene_pool": sc.get("pool"),
     }
     if len(drawn) == 4:
         im_a, box_a = drawn[2:]
@@ -631,6 +656,27 @@ def _quota_composites(
         k: sorted(cs, reverse=True)[min(_MIN_FIT_SCENES, len(cs)) - 1]
         for k, cs in caps.items()
     }
+    # plan_synth2 Δ0.9: a one-glyph text only on --single_scenes pools and
+    # regions no longer than --single_max_ar for their short side — a lone
+    # glyph in a sentence-sized strip floats on blank canvas (sl1w 192)
+    single_pools = {t for t in a.single_scenes.split(",") if t}
+
+    def single_ok(sc) -> bool:
+        if single_pools and sc["pool"] not in single_pools:
+            return False
+        if a.single_max_ar > 0:
+            w = sc["region"][2] - sc["region"][0]
+            h = sc["region"][3] - sc["region"][1]
+            return max(w, h) <= a.single_max_ar * max(1, min(w, h))
+        return True
+
+    single_idx = {j for j, sc in enumerate(scenes) if single_ok(sc)}
+    print(
+        f"one-glyph texts: {len(single_idx)}/{len(scenes)} scenes eligible "
+        f"(pools {sorted(single_pools) or 'all'}, max AR {a.single_max_ar or 'off'})",
+        flush=True,
+    )
+    assert single_idx, "--single_scenes / --single_max_ar leave no scene for a glyph"
     print(
         f"quota caps (glyphs held by >= {_MIN_FIT_SCENES} scenes): "
         + ", ".join(
@@ -651,6 +697,8 @@ def _quota_composites(
             fitting = [j for j, c in enumerate(caps1[kind]) if c >= len(text)]
             if len(fitting) < _MIN_FIT_SCENES:
                 fitting = [j for j, c in enumerate(caps[kind]) if c >= len(text)]
+            if len(text) == 1:
+                fitting = [j for j in fitting if j in single_idx]
             cuts, off = [], 0
             for p, _row in pieces(tok, qmap, text):
                 off += len(p)
@@ -658,7 +706,7 @@ def _quota_composites(
             tries, pool = [], list(fitting)
             while pool and len(tries) < _SCENE_TRIES:
                 j = rng.choices(
-                    pool, weights=[1.0 / (1 + used[scenes[x]["i"]]) for x in pool]
+                    pool, weights=[1.0 / (1 + used[x]) for x in pool]
                 )[0]
                 pool.remove(j)
                 tries.append(j)
@@ -686,7 +734,7 @@ def _quota_composites(
         if drawn is None:
             miss[kind] += 1
             continue
-        used[sc["i"]] += 1
+        used[j] += 1
         recs.append(
             _scene_record(drawn, sc, text, kind, out / "img" / f"scene_{i:05d}", ref)
         )

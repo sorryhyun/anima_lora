@@ -17,7 +17,12 @@ from pathlib import Path
 
 from common.bubble import bubble_bbox, bubble_mask
 from common.readers import Readers, contact_sheet, load_bgr
-from common.render.scene import anchor_residual, erase_uniform
+from common.render.scene import (
+    anchor_residual,
+    erase_lost,
+    erase_uniform,
+    region_offset,
+)
 from common.text import norm
 
 from .stage import FRAME_OPEN_OK, FRAMES, JA_FRAMES
@@ -69,6 +74,11 @@ def report_scenes(a, out: Path, items: list[dict]):
         "read",
         "residual",
         "open_uniform",
+        "open_lost",
+        "region_offset",
+        "boxes_speck",
+        "speck_regions",
+        "speck_bubbles",
     )
     (out / "scenes.jsonl").write_text(
         "\n".join(
@@ -92,7 +102,8 @@ def report_scenes(a, out: Path, items: list[dict]):
         )
         + f"); shapes `{a.scene_shapes}` × gen scale {a.scene_gen_scale}; batch {a.scene_batch}; "
         f"{a.steps} steps cfg {a.cfg}; negative `{a.scene_negative}`; min box {a.scene_min_box} px; "
-        f"max erase residual {a.scene_max_residual}",
+        f"max erase residual {a.scene_max_residual}; open erase lost ink <= {a.scene_open_lost}; "
+        f"region offset <= {a.scene_max_offset}",
         "",
         "| reason | n | share |",
         "|---|---|---|",
@@ -104,7 +115,9 @@ def report_scenes(a, out: Path, items: list[dict]):
         "read_miss",
         "small_box",
         "open_bubble",
+        "bubble_leak",
         "erase_miss",
+        "speck_erase",
     ):
         lines.append(
             f"| {k} | {reasons.get(k, 0)} | {reasons.get(k, 0) / max(1, n):.0%} |"
@@ -125,7 +138,9 @@ def report_scenes(a, out: Path, items: list[dict]):
             "",
             f"kept usable-region short side (px): min {short[0]} p10 {short[len(short) // 10]} "
             f"median {short[len(short) // 2]} max {short[-1]}; "
-            f"anchor bubbles per kept image {sum(len(it['regions']) for it in kept) / len(kept):.2f}",
+            f"anchor bubbles per kept image {sum(len(it['regions']) for it in kept) / len(kept):.2f}; "
+            f"kept with erased specks {sum(bool(it.get('boxes_speck')) for it in kept)} "
+            f"({sum(len(it.get('boxes_speck', ())) for it in kept)} specks)",
             f"tall regions (AR ≥ 1.0): {sum(ar >= 1.0 for ar in ars)}/{len(kept)} "
             f"({sum(ar >= 1.0 for ar in ars) / len(kept):.0%}); AR ≥ 1.3: "
             f"{sum(ar >= 1.3 for ar in ars)}; tall-region height median "
@@ -228,8 +243,9 @@ def judge(a, it: dict, reads: list, bgr) -> str:
     Every box that reads the anchor is an anchor bubble (the base draws one
     per speaker; the data stage swaps all of them); boxes overlapping an
     anchor box are merged into it; any other box is stray text and rejects
-    the image unless it is a detector speck (under a quarter of the anchor
-    box's area). Each anchor bubble must be closed (flood fill from a ring
+    the image unless it is a speck (under a quarter of the anchor box's
+    area), which is recorded (``boxes_speck`` / ``speck_regions`` /
+    ``speck_bubbles``) for the data stage to erase. Each anchor bubble must be closed (flood fill from a ring
     outside the text box stays off the border) and its inscribed region at
     least ``--scene_min_box`` on the short side."""
     if not reads:
@@ -258,39 +274,38 @@ def judge(a, it: dict, reads: list, bgr) -> str:
                 ]
         boxes.append(box)
     area = max(1, max((b[2] - b[0]) * (b[3] - b[1]) for b in boxes))
-    stray = [
+    others = [
         o
         for o in reads
-        if o not in hits
-        and not any(_overlap(b, o["box"]) for b in boxes)
-        and (o["box"][2] - o["box"][0]) * (o["box"][3] - o["box"][1]) >= 0.25 * area
+        if o not in hits and not any(_overlap(b, o["box"]) for b in boxes)
     ]
-    if stray:
+    specks = [
+        o["box"]
+        for o in others
+        if (o["box"][2] - o["box"][0]) * (o["box"][3] - o["box"][1]) < 0.25 * area
+    ]
+    if len(specks) < len(others):
         return "multi_box"
     r = hits[0]
     it["read"] = r["vl"] if norm(r["vl"] or "") == anchor else (r["sfx"] or r["vl"])
     it["boxes_anchor"], it["bubbles"], it["regions"] = boxes, [], []
     H, W = bgr.shape[:2]
-    unis = []
+    unis, losts, offs = [], [], []
     for b in boxes:
         bubble, region = bubble_region(bgr, b)
         if bubble is None:
-            # no closed bubble: the region is the text box grown 1.5×; take
-            # the smallest growth whose erase seam is invisible instead, so
-            # a broken outline is kept rather than painted over (s1 832)
-            best = (erase_uniform(bgr, b, region), region)
-            for grow in (1.2, 1.35):
-                g = _grown(b, W, H, grow)
-                if min(g[2] - g[0], g[3] - g[1]) < a.scene_min_box:
-                    continue
-                u = erase_uniform(bgr, b, g)
-                if u >= a.scene_open_uniform:
-                    best = (u, g)
-                    break
-            unis.append(best[0])
-            region = best[1]
+            u, region = _open_region(a, bgr, b, region, a.scene_min_box)
+            unis.append(u)
+            losts.append(erase_lost(bgr, b, region))
+        else:
+            offs.append(region_offset(b, region))
         it["bubbles"].append(bubble)
         it["regions"].append(region)
+    # a flood that leaked through an outline gap (Δ0.9, ja_comic 770): the
+    # region leaves the text, the erase paints a panel strip or a figure
+    it["region_offset"] = max(offs) if offs else None
+    if offs and it["region_offset"] > a.scene_max_offset:
+        return "bubble_leak"
     # the largest bubble is the headline record
     k = max(
         range(len(boxes)),
@@ -299,12 +314,19 @@ def judge(a, it: dict, reads: list, bgr) -> str:
     it["box"], it["bubble"], it["region"] = boxes[k], it["bubbles"][k], it["regions"][k]
     # no closed bubble: fine for a bubble-less frame, for --scene_allow_open,
     # or when the rectangle erase has no visible seam (≥ --scene_open_uniform)
+    # and paints over no outline / art beside the text (≤ --scene_open_lost;
+    # Δ0.9, s1 627: the seam test passed a rectangle through the outline)
     open_anchors = [b for b, bub in zip(boxes, it["bubbles"]) if bub is None]
     it["open_uniform"] = min(unis) if unis else None
+    it["open_lost"] = max(losts) if losts else None
     open_ok = (
         a.scene_allow_open
         or it.get("frame") in FRAME_OPEN_OK
-        or (open_anchors and it["open_uniform"] >= a.scene_open_uniform)
+        or (
+            open_anchors
+            and it["open_uniform"] >= a.scene_open_uniform
+            and it["open_lost"] <= a.scene_open_lost
+        )
     )
     if open_anchors and not open_ok:
         return "open_bubble"
@@ -318,7 +340,49 @@ def judge(a, it: dict, reads: list, bgr) -> str:
     )
     if it["residual"] > a.scene_max_residual:
         return "erase_miss"
+    # specks (plan_synth2 Δ0.9): the small non-anchor boxes — a second
+    # bubble of pseudo-text, a sign, a signature — were kept un-erased and
+    # became text beside the glyph in the training target (sl1w 192: "Hav"
+    # under the pasted glyph). Each gets the anchor's erase; a bubble speck
+    # the flood cannot clear or that leaked, or an open one whose rectangle
+    # leaves a seam or paints over art, rejects the scene.
+    it["boxes_speck"], it["speck_regions"], it["speck_bubbles"] = [], [], []
+    for b in specks:
+        b = list(b)
+        bubble, region = bubble_region(bgr, b)
+        if bubble is None:
+            u, region = _open_region(a, bgr, b, region, 0)
+            if (
+                u < a.scene_open_uniform
+                or erase_lost(bgr, b, region) > a.scene_open_lost
+            ):
+                return "speck_erase"
+        elif (
+            region_offset(b, region) > a.scene_max_offset
+            or anchor_residual(bgr, b, region) > a.scene_max_residual
+        ):
+            return "speck_erase"
+        it["boxes_speck"].append(b)
+        it["speck_regions"].append(region)
+        it["speck_bubbles"].append(bubble)
     return "pass"
+
+
+def _open_region(a, bgr, box, region, min_side: int):
+    """``(seam uniformity, region)`` for a box with no closed bubble: the
+    region is the text box grown 1.5×; take the smallest growth whose erase
+    seam is invisible instead, so a broken outline is kept rather than
+    painted over (s1 832). Growths under ``min_side`` px are skipped."""
+    H, W = bgr.shape[:2]
+    best = (erase_uniform(bgr, box, region), region)
+    for grow in (1.2, 1.35):
+        g = _grown(box, W, H, grow)
+        if min(g[2] - g[0], g[3] - g[1]) < min_side:
+            continue
+        u = erase_uniform(bgr, box, g)
+        if u >= a.scene_open_uniform:
+            return u, g
+    return best
 
 
 def bubble_region(bgr, box):

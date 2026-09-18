@@ -59,10 +59,12 @@ def scene_args(g):
     g.add_argument(
         "--scene_max_residual",
         type=float,
-        default=0.5,
+        default=0.33,
         help="scenes: reject when more than this share of the anchor's ink would "
         "survive the composite erase (the flood took another blob; s0: 12/186 "
-        "kept scenes at ≥ 0.89, every clean scene ≤ 0.31)",
+        "kept scenes at ≥ 0.89, every clean scene ≤ 0.31). 0.5 until Δ1 "
+        "(2026-09-18): the 11 scenes at 0.35–0.48 each keep anchor letters "
+        "beside the pasted glyph (s1w 1209 'yes' → 'y'), 0.30–0.31 read clean",
     )
     g.add_argument(
         "--scene_char_frac",
@@ -109,6 +111,22 @@ def scene_args(g):
         help="scenes: keep a scene with no closed bubble when this share of the "
         "rectangle erase (outside the text box) is within tol of the fill — "
         "white bubble with a broken outline on white, a board, a plain wall",
+    )
+    g.add_argument(
+        "--scene_open_lost",
+        type=float,
+        default=0.02,
+        help="scenes: an open (rectangle) erase may paint over at most this share "
+        "of non-fill ink outside the text box — the outline, shelf lines, hair "
+        "(Δ0.9: clean at <= 0.02, outlines cut from 0.03; s1 627 0.16)",
+    )
+    g.add_argument(
+        "--scene_max_offset",
+        type=float,
+        default=1.0,
+        help="scenes: reject a closed bubble whose usable region's centre is more "
+        "than this many text-box half-sizes from the text — the flood leaked "
+        "through an outline gap (Δ0.9: median 0.11; ja_comic 770 1.4)",
     )
     g.add_argument(
         "--scene_allow_open",

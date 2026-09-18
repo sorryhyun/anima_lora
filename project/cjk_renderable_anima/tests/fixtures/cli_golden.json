@@ -761,6 +761,51 @@
  {
   "group": "data: S line (plan_synth)",
   "option_strings": [
+   "--scene_one_bubble"
+  ],
+  "dest": "scene_one_bubble",
+  "default": "",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "data: comma list of --scenes tags kept to one-anchor-bubble scenes (ja_comic: 1.64 anchor bubbles per image, 198 of 359 have one — plan_synth2 Δ0.9)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--single_scenes"
+  ],
+  "dest": "single_scenes",
+  "default": "",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "data: --scene_mix only — comma list of --scenes tags a one-glyph text may be drawn on (empty = every tag); multi-glyph texts route by fit over every tag. Δ0.9: singles on the s1 pools, sl1w / ja_comic for words only",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--single_max_ar"
+  ],
+  "dest": "single_max_ar",
+  "default": 0.0,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "data: --scene_mix only — a one-glyph text goes only on scenes whose headline region is at most this long for its short side (0 = off). 2 drops the sentence-sized strips a lone glyph floats in (sl1w 192 AR 5.1, 545 AR 9.0; s1 247 of 262 pass)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
    "--scene_min_tokens"
   ],
   "dest": "scene_min_tokens",
@@ -2195,11 +2240,11 @@
    "--scene_max_residual"
   ],
   "dest": "scene_max_residual",
-  "default": 0.5,
+  "default": 0.33,
   "choices": null,
   "nargs": null,
   "type": "float",
-  "help": "scenes: reject when more than this share of the anchor's ink would survive the composite erase (the flood took another blob; s0: 12/186 kept scenes at ≥ 0.89, every clean scene ≤ 0.31)",
+  "help": "scenes: reject when more than this share of the anchor's ink would survive the composite erase (the flood took another blob; s0: 12/186 kept scenes at ≥ 0.89, every clean scene ≤ 0.31). 0.5 until Δ1 (2026-09-18): the 11 scenes at 0.35–0.48 each keep anchor letters beside the pasted glyph (s1w 1209 'yes' → 'y'), 0.30–0.31 read clean",
   "action": "_StoreAction",
   "metavar": null,
   "required": false
@@ -2320,6 +2365,36 @@
   "nargs": null,
   "type": "float",
   "help": "scenes: keep a scene with no closed bubble when this share of the rectangle erase (outside the text box) is within tol of the fill — white bubble with a broken outline on white, a board, a plain wall",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "scenes",
+  "option_strings": [
+   "--scene_open_lost"
+  ],
+  "dest": "scene_open_lost",
+  "default": 0.02,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "scenes: an open (rectangle) erase may paint over at most this share of non-fill ink outside the text box — the outline, shelf lines, hair (Δ0.9: clean at <= 0.02, outlines cut from 0.03; s1 627 0.16)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "scenes",
+  "option_strings": [
+   "--scene_max_offset"
+  ],
+  "dest": "scene_max_offset",
+  "default": 1.0,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "scenes: reject a closed bubble whose usable region's centre is more than this many text-box half-sizes from the text — the flood leaked through an outline gap (Δ0.9: median 0.11; ja_comic 770 1.4)",
   "action": "_StoreAction",
   "metavar": null,
   "required": false
