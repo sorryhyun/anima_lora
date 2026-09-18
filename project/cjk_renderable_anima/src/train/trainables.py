@@ -104,6 +104,14 @@ class Trainables:
         src = torch.load(path, map_location="cpu", weights_only=False)
         src_raw = src["delta"]["raw"].float()
         src_idx = {int(e): i for i, e in enumerate(src["delta"]["ext_ids"])}
+        # ``raw`` is in row-norm units of the run that trained it (delta =
+        # raw × row_scale, row_scale = that run's mean pack-row norm), so a
+        # source from another inventory is rescaled to apply the same delta
+        # here — the correction merge_tables.py makes (Δ1 232.9 → ~197 would
+        # otherwise start every row 1.18× too large). A source saved without
+        # row_scale is taken as already in this run's units.
+        src_rs = src["delta"].get("row_scale")
+        k = float(src_rs) / self.row_scale if src_rs is not None else 1.0
         common = None
         enc = src.get("encoder") or {}
         if "common" in enc:
@@ -119,12 +127,12 @@ class Trainables:
                 row = src_raw[j]
                 if common is not None:
                     row = row - common
-                self.delta.raw[i] = row.to(self.device)
+                self.delta.raw[i] = (row * k).to(self.device)
                 self.warm_mask[i] = True
                 n_warm += 1
             c_note = ""
             if common is not None and self.c_flat is not None:
-                c = common.clone()
+                c = common.clone() * k
                 cap = float(self.a.c_flat_cap)
                 if cap > 0 and c.norm() > cap:
                     c = c * (cap / c.norm())
@@ -140,7 +148,8 @@ class Trainables:
         dn = self.delta.raw.detach().norm(dim=1)
         print(
             f"rows warm start: {n_warm}/{len(self.delta.ext_ids)} rows from {path} "
-            f"(arm {src.get('arm')}); row norm mean {float(dn.mean()):.3f} "
+            f"(arm {src.get('arm')}); row_scale {src_rs if src_rs is None else f'{float(src_rs):.3f}'}"
+            f" → {self.row_scale:.3f} (× {k:.4f}); row norm mean {float(dn.mean()):.3f} "
             f"max {float(dn.max()):.3f}{c_note}",
             flush=True,
         )

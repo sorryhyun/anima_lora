@@ -163,10 +163,12 @@ def rows_args(g):
     g.add_argument(
         "--init_anchor",
         type=float,
-        default=0.0,
+        default=0.1,
         help="rows arm: μ on mean_r ‖f_r − f₀_r‖² over the rows --init_rows filled "
         "(f₀ = the warm start), replacing the --free_residual pull to 0 on those rows "
-        "(rows the source never had keep it). 0 = off. Its gradient is 0 at f = f₀, so "
+        "(rows the source never had keep it). 0 = off; inert without --init_rows. "
+        "Default 0.1 = the smallest μ that keeps ≥ 80 % of the source's singles "
+        "(anchor sweep 2026-09-17); S2b runs 0.3. Its gradient is 0 at f = f₀, so "
         "pair it with --lr_warmup or the first steps still blow the rows away. Ruler: "
         "train_log `warm_cos` (mean cos of the warm rows to f₀)",
     )

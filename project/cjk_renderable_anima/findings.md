@@ -4,7 +4,9 @@ What this line has settled, in the form a later decision needs: the verdict,
 the number it turns on, and the mechanism note that exists nowhere else. One
 screen per topic, no chronology. The dated run record is
 [`reports/`](reports/README.md) (indexed: W2d Runs 1–3, the order probe, the σ
-diagnostic, the strings arm, the S line); the forward plan is [`plan.md`](plan.md); the
+diagnostic, the strings arm, the S line); the forward plans are
+[`plan_synth3.md`](plan_synth3.md) (the sentence step) and
+[`plan_synth4.md`](plan_synth4.md) (the seed table + kanji); the
 W0–W2 report is `reports/wake_w0_w2_2026_09_13.md`. The predecessor lines'
 verdicts are read-only in
 [`../cjk_aware_anima_dit/findings.md`](../cjk_aware_anima_dit/findings.md)
@@ -12,15 +14,14 @@ verdicts are read-only in
 [`../cjk_aware_anima/findings.md`](../cjk_aware_anima/findings.md)
 (the vocab pack itself).
 
-Line status (2026-09-15): frozen DiT + frozen adapter + a delta on the
+Line status (2026-09-18): frozen DiT + frozen adapter + a delta on the
 pack's ext rows renders every kana and short common words (Run 3), and a
 static table trained on strings carries **order and count** (strings arm).
-The S line (scene composites + a per-source layout vector `c_flat`) put
-the mechanism on real scenes (S0 hit & kept 15/64 from P0b's 2) but no arm
-has cleared the native gate; the blocker is now named — the *render
-trigger* and the *canvas* are both common to every flat item, so one
-shared vector takes both (see *Settled — trigger vs canvas*). Nothing is
-shipped; the cap-only isolation run (`s24k_S0b_cap075`) is the live arm.
+The S line (scene composites, rows only, no `c_flat`) put the mechanism on
+real scenes; no arm has cleared the native gate. The line is at step 1 (the
+single-glyph seed table, 356–434 rows) plus step 2 (the sentence pass,
+plain FM — ΔFM lost that A/B). Nothing is published; a table is baked into
+a local pack pair (`README.md` *The artefact*).
 
 ---
 
@@ -43,8 +44,13 @@ shipped; the cap-only isolation run (`s24k_S0b_cap075`) is the live arm.
   stripped). The readers under-read kana (力/カ, つ/っ, き こ し at large
   size are vl-unprintable) — a "miss" on a clean glyph is often the reader;
   look at the sheet before counting.
-- **`--no_floor`**: the delta-off renders are identical across arms (JA
-  CER 1.000, singles 0/16, EN 24/24) — the W0/W1 numbers are the floor.
+- **`--no_floor`**: the delta-off renders are identical across arms, so the
+  W0/W1 numbers are the floor — but **the floor is not 0 for every glyph**.
+  It was measured on hiragana (JA CER 1.000, singles 0/16, EN 24/24); the
+  pack's *katakana dakuten* rows render untrained at 15/16 and 14/16
+  natively, 10/12 flat (`reports/synth_s2_smoke_2026_09_18.md`). Any probe
+  on those glyphs renders the floor (`--native_floor 1`) and subtracts it,
+  or uses floor-negative glyphs.
 - **Classifier stages** (`classify`, `classify_str`): same-noise diffusion
   classifier, summed FM error per latent, right = argmin; never pool errors
   by raw sum over σ (σ 0.95's spread buries the band).
@@ -173,8 +179,9 @@ the data mix.
   pushes the DiT into its subtitle "small text line in a scene" mode, so
   the single big glyph the exact ruler needs shrinks or gets embedded
   (target-in-any-read unchanged at 44 → 46; か 14 → 4 hits, ぐ 0 → 3 with
-  dakuten). Untested and the only remaining use: Q fixed on *during
-  training* so `f` learns identity that renders under it.
+  dakuten). Q fixed on *during training* (`--out_vec_train`) is **closed**
+  (micro loop, 2026-09-15): on frame-mix data at composite share 0.9 it
+  reads 30 hit & kept against 41 with Q off, singles 10/12 vs 12/12.
 - **A table trained under the frames does not converge on Q.** The 53k
   full-inventory rows (no `c_flat`, four caption frames, Q off) image at
   the adapter output with cos −0.02 … −0.03 to every frame's Q (`She is
@@ -236,6 +243,18 @@ the data mix.
   equal draws), and reweighting ΔFM against plain FM (`--pair_sigma_min`)
   or moving the sibling's caption frame (`--pair_ref_frame en`) as a way
   to keep the scene *and* drop the pseudo-text.
+- **ΔFM on multi-glyph items** (S2a, 2026-09-18,
+  `reports/synth_s2a_2026_09_18.md`): a fully addressed caption does not
+  stop the base free-running around the glyph. Plain FM beat the paired
+  loss on every sentence ruler that moves (sub-exact pooled +0.131 vs
+  +0.081, native `en` 5 vs 2 of 48) — the paired arm holds the scene and
+  drops the string into pseudo-JA at subtitle size. The sentence step runs
+  plain; ΔFM stays a flag (`--pair_loss`), open only for singles.
+- **ΔFM on rows the pack already renders**: it rotates them away from the
+  pretrained row (cos 0.06 vs plain FM's 0.41) and *damages* them — Δ0
+  paired arms read 5–7/12 on floor-positive katakana where the untrained
+  floor reads 10/12 and plain FM 11/12
+  (`reports/synth_s2_smoke_2026_09_18.md`).
 
 ## Gotchas that cost time
 
@@ -284,27 +303,20 @@ the data mix.
 
 ## Open
 
-- **Is the exposure budget the lr integral?** ΔFM at `--lr_rows 2e-3` ×
-  1 500 steps ≡ 1e-3 × 3 000 (19 vs 18/24, same native read); every S-line
-  exposure number was taken at 1e-3 cosine, so draws and ∫lr were never
-  separated for plain FM (3e-3 stays closed). `plan_synth2.md` L0.
-- Does the ΔFM co-text need unaddressed text — i.e. does it vanish when
-  the caption is a whole sentence of trained rows (`plan_synth2.md` Δ2)?
-- Mixed arm gate (plan P1): singles ≥ 30/36 back with `flip` / `str3` /
-  `line` at or above the strings arm.
+- **Where the exposure budget really is.** For plain FM it is draws, not the
+  lr integral (L0, 2026-09-17: 2e-3 × 750 travels further than 1e-3 × 3 000
+  and reads no better). Under ΔFM the lr is a lever (2e-3 × 1 500 ≡ 1e-3
+  × 3 000, 19 vs 18/24), and row *norm* is a third axis — native hits rise
+  as the norm falls, scene fidelity falls with it, crossing ≈ × 0.7 on a
+  12-row table (`reports/row_blocks_alpha_2026_09_18.md`). Whether that
+  curve holds on a 356-row table is `plan_synth4.md` R4.3.
+- **Is the row bound to the glyph's absolute size?** Never varied on
+  purpose; the VAE is not the bottleneck (clean round trip from 10 px kana,
+  16 px kanji) and 12 px is the decided floor for a size arm
+  (`plan_synth4.md` R4.5).
 - Repeat mode: whether repeated-piece strings as negatives stop the second
   slot copying its neighbour.
 - Does contextualisability transfer to rows added later with singles-only
   exposure (the "2-step once vs per batch of characters" question)?
-- Pack bake: `trained.pt` → shipped safetensors + json + digest; the full
-  kana inventory (voiced, handakuten, small kana ≈ 70 rows) and the
-  common-word pack at the kana bar.
-- Cap-only isolation (`rows_synth_s0b_s24k_S0b_cap075`, S0b data, cap
-  0.75): attributes S0b's `f` collapse to the cap vs `--scene_fill 0.7`;
-  reads `f` alone hit vs S0 25 / S0b 1.
-- Q as a *training-time* trigger: rows trained with the quoted-EN
-  direction fixed on for every item, `c_flat` at 0.75 for canvas only —
-  does `f` then carry identity that renders under Q in a scene? Needs the
-  `OutVec` hook in the train stage; not before the isolation run reads.
-- Composite share 40 → 60 % and `--scene_min_box` 56 → 72 (plan_synth
-  tree) once the cap is attributed.
+- Publishing: the Hub layout, the tag-path gate G2 and the license block
+  (`deploy_plan.md`).

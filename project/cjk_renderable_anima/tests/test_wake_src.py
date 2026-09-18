@@ -212,3 +212,50 @@ def test_pair_en_frame_inverts_scene_caption():
     assert en_frame('1girl, japanese text. She is saying "K".') == (
         '1girl, english text. She is saying "K".'
     )
+
+
+def test_init_rows_converts_row_scale(tmp_path):
+    """``--init_rows`` across inventories (S2a pre-condition, 2026-09-18):
+    ``raw`` is in the source run's row-norm units, so a row must be rescaled
+    by ``src_row_scale / this_row_scale`` — the delta applied stays
+    bit-for-bit the source's. Rows the source lacks stay zero; a source with
+    no ``row_scale`` is taken as-is."""
+    import types
+
+    import torch
+    from train.trainables import Trainables
+
+    src_rs, dst_rs = 232.9, 197.0
+    src_ids = [100, 101, 103]
+    src_raw = torch.randn(3, 8)
+    torch.save(
+        {"arm": "rows", "delta": {"ext_ids": src_ids, "raw": src_raw, "row_scale": src_rs}},
+        tmp_path / "src.pt",
+    )
+    torch.save(
+        {"arm": "rows", "delta": {"ext_ids": src_ids, "raw": src_raw}},
+        tmp_path / "old.pt",
+    )
+
+    def fresh():
+        tr = Trainables.__new__(Trainables)
+        tr.a = types.SimpleNamespace(c_flat_cap=0.0, init_anchor=0.0)
+        tr.device = "cpu"
+        tr.row_scale = dst_rs
+        tr.c_flat = None
+        tr.delta = types.SimpleNamespace(
+            ext_ids=[100, 101, 102, 103], raw=torch.nn.Parameter(torch.zeros(4, 8))
+        )
+        return tr
+
+    tr = fresh()
+    tr._init_rows_from(str(tmp_path / "src.pt"))
+    got = tr.delta.raw.detach() * dst_rs  # the delta this run applies
+    want = src_raw * src_rs  # the delta the source run applied
+    assert torch.allclose(got[[0, 1, 3]], want, atol=1e-4)
+    assert torch.equal(got[2], torch.zeros(8))
+    assert tr.warm_mask.tolist() == [True, True, False, True]
+
+    tr = fresh()
+    tr._init_rows_from(str(tmp_path / "old.pt"))
+    assert torch.allclose(tr.delta.raw.detach()[[0, 1, 3]], src_raw)

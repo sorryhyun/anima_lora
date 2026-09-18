@@ -10,28 +10,38 @@ frozen text encoder; the only trainable object is a delta on the vocab
 pack's ext rows, so EN prompts are bit-exact by construction and the
 artefact ships as an ordinary vocab pack.
 
-[`plan.md`](plan.md) is the forward plan (phases P0a–P4, gates, kill
-criteria, recipe of record); [`plan_synth.md`](plan_synth.md) is the **S
-line's** live plan (status, data mix, recipe, gates, decision tree) and
-[`synth.md`](synth.md) its as-built reference — the rows arm retrained
-from scratch on self-generated scene composites with a per-source layout
-vector (P0b's `native` and table-parts probes showed the rows address the
-whole training canvas, not the glyph, and that nothing in the table
-separates the two); [`plan_synth2.md`](plan_synth2.md) is the ΔFM line (paired-difference
-supervision for new rows; Δ0 / Δ0b read 2026-09-17 — a scene-holding loss:
-no wipe, no exposure saving, JA co-text the loss cannot remove, **lr is a
-lever** — next L0, then Δ2);
-[`plan_synth3.md`](plan_synth3.md) is the plan after Δ1 — the sentence step
-(step 2, with the ΔFM-vs-plain A/B: S2-smoke → S2a → S2b), written on two
-measurements of 2026-09-18: exact match is floor-saturated on every
-multi-glyph group (`src/probe/sub_exact.py` supplies a lift ruler; under it
-`sent2_s24k`, recorded as a collapse, is the best sentence table we have) and
-the shared trigger direction is per-run, not per-line (cos 0.35–0.69 across
-runs), which prices merging tables by ext id;
-[`plan_synth4.md`](plan_synth4.md) is step 1 again — the seed-table recipe
-(row-block batching, per-block warmup, the row-norm lever α; from the Δ0
-smokes of 2026-09-18, `reports/row_blocks_alpha_2026_09_18.md`) and the
-kanji budget K moved out of plan_synth3;
+## State (2026-09-18 evening)
+
+The line trains a **rows** arm on self-generated scene composites (the S
+line): one ext-row delta per unit, no encoder, no `c_flat`. Two steps —
+**step 1** the single-glyph seed table, **step 2** the sentence pass on top
+of it.
+
+- **Step 1 tables on record:** `src53k` (plain FM, 434 rows) and Δ1
+  `d1_s53k` (ΔFM, 356 rows). Δ1 missed its gate on singles and on the JA
+  frame; its recipe is being re-settled in
+  [`plan_synth4.md`](plan_synth4.md) (row-block batching, per-block warmup,
+  the row-norm lever α) together with the kanji budget K.
+- **Step 2:** S2a read 2026-09-18 evening
+  ([`reports/synth_s2a_2026_09_18.md`](reports/synth_s2a_2026_09_18.md)) —
+  plain FM beats ΔFM on every sentence ruler that moves (sub-exact pooled
+  lift +0.131 vs +0.081, native `en` 5 vs 2 of 48). **ΔFM is killed on
+  sentences; S2b trains plain** and is the next launch (recipe in
+  [`plan_synth3.md`](plan_synth3.md) S2b).
+- **Anchor:** the μ 0.1 plain arm on the same data and seed
+  (`rows_synth_s2a_s2a_plain_a01`, read the same evening, addendum of the
+  S2a report) lost lift (+0.086 vs +0.131, native はい 1 vs 5/8) — S2b runs
+  at `--init_anchor 0.3`. Nothing is running; S2b is the next launch.
+- **Ruler:** exact match is floor-saturated on every multi-glyph group;
+  `src/probe/sub_exact.py` (glyph recall minus a permutation control) is
+  the ruler that orders sentence arms.
+
+The plans: [`plan_synth3.md`](plan_synth3.md) (step 2, live),
+[`plan_synth4.md`](plan_synth4.md) (step 1 recipe + kanji budget, live),
+[`plan_synth2.md`](plan_synth2.md) (the ΔFM loss as built),
+[`synth.md`](synth.md) (the S line as built),
+[`plan_synth.md`](plan_synth.md) and [`plan.md`](plan.md) (superseded,
+kept for the verdicts in them).
 [`findings.md`](findings.md) holds the settled
 verdicts one screen per topic; [`reports/`](reports/README.md) is the dated run record
 (indexed: W0–W2, W2d Runs 1–3, order probe, σ diagnostic, strings arm,
@@ -42,10 +52,8 @@ pack → step 1 → step 2 → bake pipeline with the warm-start guard, and the
 "why it is hard" figure: the row → glyph map is a hash, so every shortcut
 to `f` (encoder, composition, contrastive, codebook, warm start) is held-out
 0 and the cost is exposure per row.
-[`datacheck.md`](datacheck.md): the corpus-crop labels are mostly wrong OCR
-reads of hand-lettered SFX — read before trusting `line` / `corpus` evals.
 
-## What is established (2026-09-15)
+## What is established
 
 | claim | evidence | where |
 |---|---|---|
@@ -62,24 +70,25 @@ reads of hand-lettered SFX — read before trusting `line` / `corpus` evals.
 The `line` row and the order-probe row together narrow the string
 verdict: the DiT *does* enumerate addresses in order — for pieces it was
 pretrained on. Ext rows were trained on single-unit canvases and sit
-off-manifold, so nothing asked them to be contextualisable. Whether the
-rows path reaches strings is an open, cheap question (a strings-only arm
-warm-started from Run 3); W3 (DiT-side) is the fallback if that arm stays
-at 0, not the next step.
+off-manifold, so nothing asked them to be contextualisable; the strings arm
+then showed a static table *can* carry order and count, so no DiT-side
+change is needed for sequences.
 
 ## The artefact
 
-A vocab pack delta: `output/wake_probe/encoder_wd_w120_s8k_fres_warm/trained.pt`
-(gitignored) — `delta.ext_ids` + `delta.raw` in row-norm units over 246 ext
-rows (92 kana + 112 common words + eval pieces), `free` (the per-row
-residual), `encoder` (the glyph CNN, only needed to extend the table),
-`row_text` (row → piece text). Loading it into the pack at run time is the
-`ExtDelta` hook (`src/common/hooks.py`). Baking any arm's `trained.pt` into a
+A vocab pack delta: any arm's `output/wake_probe/<arm>/trained.pt`
+(gitignored) — `delta.ext_ids` + `delta.raw` in row-norm units, `free` (the
+per-row residual), `row_text` (row → piece text), and on encoder-arm tables
+`encoder` (the glyph CNN). Loading it into the pack at run time is the
+`ExtDelta` hook (`src/common/hooks.py`). Baking it into a
 shipped pack pair is `scripts/toolkits/bake_vocab_pack.py` (rows summed at
 `ExtDelta` scale 1, json `render` block, `provenance` tier `render`; new
 digest → `make preprocess-te ARGS=--overwrite` for CJK captions). The sent
-24k table is baked as `models/vocab_packs/anima_cjk_vocab_pack_sent_s24k/`
-and symlinked into ComfyUI's `vocab_packs/` (2026-09-17):
+24k table (503 rows) is baked as
+`models/vocab_packs/anima_cjk_vocab_pack_sent_s24k/`
+and symlinked into ComfyUI's `vocab_packs/` (2026-09-17); the Hub preview
+pack is the same recipe's `sent_s24k_a1_s05` arm
+([`deploy_plan.md`](deploy_plan.md)):
 
 ```bash
 .venv/bin/python scripts/toolkits/bake_vocab_pack.py \
@@ -93,9 +102,10 @@ Inventory facts that matter when extending it:
 - The pack's ext rows are **Qwen pieces**. Qwen merges many JA words into one
   piece (ありがとう / いい / って / 明日 → one row each); 大丈夫 → 大+丈夫 and
   ドキドキ → ド+キ+ド+キ are sequences and inherit the one-unit limit.
-- The kana inventory (`KANA` in `src/common/text.py`) is the unvoiced 46 + 46
-  only: no dakuten / handakuten / small kana singles. Those reach the table
-  only inside word pieces (じゃ って いっぱい プロ); び appears nowhere.
+- `KANA` in `src/common/text.py` is the unvoiced 46 + 46; the dakuten /
+  handakuten / small kana are `KANA_EXT` (68 rows, `--units kana_ext`) and
+  small kana are not a singles concept — they reach the table inside word
+  pieces (じゃ って いっぱい プロ).
 - Every row needs its own exposure (≈ 40 renders/row got words to 9/32,
   kana with a warm start to 34/36). Held-out anything is 0: the shared
   encoder `g` is a prior, the identity lives in `f`.
@@ -123,9 +133,8 @@ the repo).
 # `--lr_warmup 500 --init_anchor 0.3` (2026-09-17): without them the warm start
 # is gone by step 50 (Adam at lr 1e-3 in row-norm units; sent_s24k ended at
 # cos 0.10 to its source, norm 98 → 47 → regrown). The anchor's gradient is 0
-# at f = f₀, so the warmup is what saves the first steps; μ is a sweep
-# (0.3 / 1 / 3), ruler = train_log `warm_cos` (target ≈ 0.7) with `single` +
-# `native` not below the unanchored sent_s24k. Flat sentence eval groups are
+# at f = f₀, so the warmup is what saves the first steps; `warm_cos` /
+# `warm_drift` in train_log are the read. Flat sentence eval groups are
 # 4 prompts each now (`--n_phrase_eval`, was 16) — `single` / `native` are the
 # rulers, the flat sentences are off-distribution for a composite-only arm.
 # σ band 0.5–0.9, not the singles band 0.7–0.9: 90 % of the items are
@@ -229,20 +238,23 @@ below 512²; block compile before grad-ckpt; batch 8 OOMs at 512²; rows lr
 1e-3 in row-norm units (3e-3 walks off-manifold); read the largest detector
 box with both readers; clear `conds_cache` on delta-scale switches; ext rows
 are Qwen-piece keyed; a caption whose tokenizer merges the target into a
-larger piece misses the row (the `eval_coverage.json` line).
+larger piece misses the row (the `eval_coverage.json` line); the real
+corpus-crop labels are mostly wrong OCR reads of hand-lettered SFX (two in
+three) — do not trust a `line` / `corpus` eval on them.
 
 ## Files
 
 | path | what |
 |---|---|
-| `plan.md` | forward plan — phases, gates, kill criteria, recipe of record |
+| `plan.md` | the P line (encoder arm, flat singles) — superseded by the S line; kept for its P0a canvas-pool result and the slot-rows / W3 fallbacks |
+| `plan_synth*.md` | the S line: `plan_synth` (superseded), `plan_synth2` (the ΔFM loss as built), `plan_synth3` (step 2, live), `plan_synth4` (step 1 recipe + kanji budget, live) |
 | `deploy_plan.md` | Hub v2 layout (`old/ delta/ comfy/ diffusers/`), bake, pre-upload gates, license, migration |
 | `findings.md` | settled verdicts, rulers, gotchas, do-not-re-propose |
 | `findings_seed.md` | what the 53k full-inventory table taught (2026-09-16): its evals, row-space geometry, adapter-output vs Q, transplant, pinned-trigger arms — the one-place summary for the seed question |
 | `freetext.md` | the shelved FreeText line (2026-06) re-read against this one: its "no Korean glyph prior" root cause falls to krzh16; its Stage-1 attention localizer is a possible render-free ruler for wipe / frame binding / katakana (not built) |
 | `reports/README.md` | index of the dated run record — W0–W2, the 09-13 plan as written, W2d, words/strings, canvas/scenes, S0/S0b, micro loop (split out of the former `history.md` 2026-09-15) |
 | `reports/wake_w0_w2_2026_09_13.md` | W0–W2: hypothesis, Probe 0/1, address geometry, the 256² / 24-kana / balanced / σ-band arms, kanji probe |
-| `src/wake_probe.py` | the instrument's entry point — stages salad / data / train / eval / classify / classify_str / native / enref / scenes; registry in `src/stages.py` |
+| `src/wake_probe.py` | the instrument's entry point — stages salad / data / train / eval / classify / classify_str / native / enref / native_rescore / target / summary / scenes; registry in `src/stages.py` |
 | `src/common/` | plumbing three or more stages share — paths, text metrics, prompts, shapes, models, hooks, readers, bubble, `render/{flat,scene}` |
 | `assets/target_prompts.txt` | the `target` stage's default captions — the user's ComfyUI prompts of 2026-09-17 (hoshino ai by @akipeko at the bar, saying はい / こんにちは), one full caption per line, expected text = the quoted span |
 | `src/data/` `src/train/` `src/eval/` `src/scenes/` | one package per role: its stage module(s) plus what only that stage reads (units + inventory; trainables + encoder; enref, native, classify, salad; judge) |
@@ -254,30 +266,10 @@ larger piece misses the row (the `eval_coverage.json` line).
 
 ## Open
 
-- **Singles at scale (next; plan P0b).** P0a passed: Run 3's recipe on a
-  mixed 384–512 canvas pool (`wake_probe.py --shapes`, one-shape batches)
-  renders singles 36/36 sfx at 512² (Run 3 33/36) and 34/36 at 384×512 at
-  0.82× the wall, so the pool is the recipe of record. P0b trains the full
-  kana inventory (basic + voiced + small, ~160 rows + 120 words) as
-  singles for 2–3 GPU-hours warm-started from P0a's table (instrument
-  owed: `--units kana_ext` + a `single_ext` eval group); the strings work below
-  then runs on a 512–768 pool.
-- **Mixed arm (after P0b).** The strings arm showed rows carry order + count but
-  absorb the data's unit-count prior (singles 34 → 5). One distribution —
-  30 % singles + 70 % 2–4-piece strings, Run 3 warm start, band 0.5–0.9 —
-  should return singles while keeping `flip` / `str3` / `line`. Then the
-  repeat mode (ううう, ねねね) is the lever: strings with a repeated piece
-  as negatives.
-- **W3 — DiT-side, fallback only.** Not needed for order/count (strings arm);
-  kept for the case the mixed arm cannot hold singles and strings at once; the design is an ext-gated
-  DiT-side change with EN kept to a *limited, measured* touch (ext gate on
-  ext-free sequences, position mask, EN replay on mixed prompts — the
-  "EN safety" list in `reports/wake_plan_2026_09_13.md`). To be designed in `plan.md`.
-- **Word pack completion.** Words reached 9/32 at 40 renders/row with `f`
-  from zero; a words-only continuation warm-started from Run 3 is the one
-  cheap lever to see whether they reach the kana bar (single-word bubbles).
-- **Pack bake.** Fold `trained.pt` into a shipped pack file + digest; the
-  full kana inventory (voiced, handakuten, small kana) is ≈ 70 more rows of
-  exposure.
-- **Kanji.** Exposure budget (~1 GPU-day jōyō in one table); the data must
-  not over-weight repeated-atom composites (repeat-mode leak, Run 2).
+- **S2b** — the sentence run at 24 k, plain FM; μ from the arm running now
+  (`plan_synth3.md` S2b).
+- **The seed-table recipe** — α on the 53 k table, the α eval-singles read,
+  glyph-size binding, then K1 at `kanji:400`–`600` (`plan_synth4.md`
+  R4.1 / R4.3 / R4.5 / K).
+- **Publishing** — the Hub v2 layout and gates G1–G4 / G6 are unrun
+  (`deploy_plan.md`).

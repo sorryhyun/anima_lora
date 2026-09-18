@@ -28,6 +28,9 @@ Stages (each one daemon job; ``--stage all`` = salad data train eval):
   classify_str  the same over 2–3 kana strings: order / count / identity by σ.
   native  scene prompts (the blind-pairs set) + a kana clause, delta 0/1, read:
           does the address survive an ordinary prompt outside the template?
+          ``enref`` renders the EN references it is scored against,
+          ``native_rescore`` re-reads a finished run, ``target`` renders the
+          user's own captions verbatim, ``summary`` rebuilds eval_summary.png.
   scenes  S line: base model draws tag-prompted scenes with one EN-anchored
           speech bubble; detector + readers keep exactly-one-box images that
           read the anchor → scenes_<tag>/scenes.jsonl for the composite data.

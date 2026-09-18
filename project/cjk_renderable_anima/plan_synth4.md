@@ -12,28 +12,28 @@
 > that closes it — most of them are native-only or eval-only re-scores of
 > tables that already exist. Retraining the seed table is the *last* item.
 
-## R4.0 — geometry re-tests under ΔFM (first; mostly free)
+## R4.0 — geometry re-tests under ΔFM — free rows done 2026-09-18
 
-The line's geometry claims were all measured on plain-FM tables. ΔFM rows
-are trained on a different residual (the scene part cancelled), row-block
-rows on a different optimizer path, and today's α curve is a norm result
-the old claims never saw. Re-ask each on the tables that now exist before
-the recipe is fixed on top of them:
+`src/probe/table_geometry.py`, `reports/table_geometry_2026_09_18.md`:
 
-| claim (where it was closed) | re-test | cost |
+- **No shape structure under ΔFM either** (neighbour pairs = the same-row
+  control in every table) — W2d's premise holds on ΔFM tables.
+- **The shared direction is per-loss, not per-run**: ΔFM ↔ ΔFM 0.66–0.87
+  across datasets, inventories and sizes, plain ↔ plain 0.59–0.69,
+  cross-loss 0.27–0.51. The K0 merge price for **same-loss** blocks is
+  ≈ 0.7; the 0.35 that priced chunking was a cross-loss number.
+- **Plain rows point 0.41 along the pack row they perturb, ΔFM rows 0.06**
+  — α on a plain table scales a pack-row gain ΔFM never had, so R4.3's
+  plain sweep is not a control for the ΔFM curve.
+- The shared direction's share of row energy is per table: plain 26 %,
+  `rb62f` 22 %, **Δ1 11 %** (PR 57 vs 12).
+
+Two native rows are still queued behind R4.1 / R4.3:
+
+| question | re-test | cost |
 |---|---|---|
 | **"lr 3e-3 → off-manifold at 2.4× row norm, table inert"** (plain FM, `findings.md`) | `rb62f` × 1.5 / × 2.0, native. Inert (singles-style collapse) → the norm boundary is loss-independent; only more wipe → the "off-manifold" was plain FM's scene-residual component, not a manifold edge | 2 × 9 min |
 | **"wipe = delta norm"** (flat 0 closed) and the Δ0 "equal norm, different wipe" one-point comparison | the same α sweep (× 0.7 / × 0.4 / × 0.2) on a plain table — `pair0_s750_lr2e-3` (12 rows) and `src53k` (the seed), native. If plain's hits also rise as norm falls, the norm lever is loss-independent and part of ΔFM's no-wipe advantage was Δ1's contraction to norm 79; if plain stays flat or falls, ΔFM's direction is what makes the small row readable | 3–6 × 9 min |
-| **"trained addresses are near-orthogonal random directions, context-free"** (`wake_rows_geometry`) | on `rb62f`, `pairEN_s750`, `pair0_s750`, Δ1: pairwise row cos distribution; shape-neighbour pairs (が·ぎ·ぐ·げ·ご share the dakuten, が/ガ hiragana–katakana) vs unrelated pairs; cos of each row to the pack's pretrained row for the same glyph. Structure appearing under ΔFM would reopen a premise W2d closed on | free |
-| **shared trigger direction = 17–29 % of row energy, per-run** (K0) | already moved: plain 26 %, `rb62f` 22 %, **Δ1 11 %**. Add participation ratio / spectrum per table and cos of shared directions across today's arms (mixed / rb62f / w8) — the K0 merge price at 0.35 may be a ΔFM-vs-plain artefact rather than a per-run one | free |
-| "composite residuals transfer, flat ones don't" (transplant closed) | covered by K0's merge eval; no separate item | — |
-
-The free rows go in one probe (`src/probe/table_geometry.py`, reads
-`trained.pt` + the pack) and run today; the native rows queue behind R4.1 /
-R4.3. What they change: a loss-independent norm lever makes α a property of
-the *table*, not of ΔFM, and the recipe table below loses a ΔFM-specific
-argument; shape structure in the rows changes what K1's new kanji rows can
-be expected to share with their neighbours.
 
 ## Where step 1 stands
 
@@ -92,18 +92,9 @@ i.e. step-to-step gradient-direction consistency, which the loss scalar
 cannot show. ぐ is the chaotic case (rerun cos 0.47), ガ the stable small one
 (0.90) — "a small natural norm" is a real per-row property. **Log
 `cos(Δraw_t, Δraw_{t−1})` per step** (one line in the block log) to read it
-directly next time. Original question kept below for the record.
-
-
-`row_blocks_log.jsonl` (every step: in-box / out-of-box residual, row norm,
-lr per row) and `src/probe/row_blocks_plot.py` (small multiples, two arms
-overlaid). The question is whether rows are **uniform or ragged**: same
-in-box curve and same end norm for every glyph → one schedule fits all and
-the per-row lever is only the block length; ragged (some rows still falling
-at step 62, some at their floor by 20, end norms spread) → per-row
-normalisation is on the table (block length or lr from the row's own
-in-box slope, or a norm target per row instead of a step count). The w8
-overlay shows what the first 8 steps do to that.
+directly next time. Instruments: `row_blocks_log.jsonl` (every step: in-box
+/ out-of-box residual, row norm, lr per row) and
+`src/probe/row_blocks_plot.py` (small multiples, two arms overlaid).
 
 ### R4.3 — α on the 53 k table (native only, 2 × 9 min)
 
@@ -114,6 +105,72 @@ cosine (161 → 79) and still lost `en` 22 / 14 / 11 vs plain's 36 / 24 / 16; if
 Δ1 miss was part norm and **α is a deployment knob on the existing table**
 (the LoRA-multiplier slot: train at full norm, ship at α). If it does not
 move on 356 rows, the Δ0 curve was a 12-row artefact and α is dropped.
+
+### R4.5 — is the row bound to glyph size? (free read first, then one data arm)
+
+> **Floor measured 2026-09-18 (`src/probe/vae_glyph_floor.py`, job
+> `20260918-174805-50ea9f`, `output/wake_probe/vae_glyph_floor/`):** the VAE
+> round trip is not the size bottleneck. Kana (`どうしたんだよー`, yoko, two
+> fonts) read identically before and after from **10 px**; every synth
+> condition is CER 0 at 16 px; the three real corpus crops at 15–17 px
+> (`channel_(caststation)`, tate and yoko) come back unchanged (0.06 / 0 /
+> 0). The kanji string (`くっそ鬱雑えわ`) reads wrong at 8–12 px *before* the
+> VAE (髪雅 / 霰雑 / 懲雑 for 鬱雑) — that is the readers' floor, not the
+> latent's. **Decision (user, 2026-09-18): the size arm's minimum glyph is
+> 12 px** — `--scene_min_glyph` / `--sentence_min_glyph` 12 in the data
+> build, the jitter drawn between 12 px and the bubble fit, so the
+> distribution spans the corpus's 15–20 px dialogue down to the VAE floor
+> instead of sitting at p50 51 px. Two consequences to carry: (1) the
+> **data distribution shifts** — `region_capacity` at 12 px lets far more
+> multi-line sentences into small bubbles and drops the p50 glyph size,
+> so the size bins (below) must be re-binned on the new build and the
+> count/size confound loosens on its own; (2) **12–16 px kanji sit under
+> the readers**, so the per-bin native ruler is kana-only there, or each
+> bin carries its own "before" read as a control (the floor probe's
+> before → after column). 12 px is 1.5 latent px at f8 — whether σ 0.7–0.9
+> trains anything at that scale is the band-floor lever (second lever
+> below), now coupled to the size arm rather than after it.
+
+User's question, 2026-09-18: glyph size has never been varied on purpose.
+`fit_text` (`src/common/render/scene.py`) takes the **largest font that
+fits the bubble × fill** — the size is a deterministic function of the
+bubble, the glyph count and `--scene_fill` (0.7 single / short, 0.9
+sentence); the only variation is which bubble the scene draw lands on and
+the ±1.5× canvas mix. Δ1's glyph boxes (10 k items, 99 % single): short side
+**p10 39 / p50 51 / p90 78 px** at 512-class canvases, i.e. 5–10 latent px,
+always at a fixed 70 % of the bubble; multi-glyph texts shrink with the
+count (20–28 px floors), so size and count are confounded in `short` /
+`sentence`. Under the 0.7–0.9 band only low-frequency structure trains —
+silhouette, extent, ink mass at an absolute latent scale — so a row may
+well encode "this blob at this size" rather than a size-free identity.
+Evidence already consistent with that, never read as size: flat-trained
+(large, centred) rows render 0/64 in bubbles, composite-trained rows
+render the large flat template only half (Δ1 `single` 12/36 vs native
+20–38/64); 512²-trained rows lose 25 → 21/36 at 384². The deployment
+exposure is the target stage's 768×1344 canvas, where the base's bubbles
+put the glyph at a different absolute latent size than anything trained.
+
+- **Free read (first).** `native_reads.json` keeps every detector box with
+  its read (`reads[].box`, `whole=False` rows). For Δ1, `rb62f`, the α sweep
+  and `src53k`: bin the *hit* box's short side (the box whose sfx read
+  contains the glyph) and the miss renders' JA-box sizes, hit rate per bin,
+  against the training distribution above. Hits collapsing outside
+  39–78 px = binding confirmed; flat hit rate across bins = not the lever.
+  One probe, no GPU; not written yet. Also the eval template's
+  glyph size vs native's — R4.1's question is partly this one.
+- **If bound, one data arm (Δ0-sized, ≈ 15 min + native):** size
+  augmentation inside the same recipe — a random shrink factor on
+  `fit_text`'s size (`--scene_size_jitter`, drawn so the glyph lands
+  anywhere in **[12 px, bubble fit]**) or `--scene_fill` drawn from a
+  range, with `--scene_min_glyph 12`; if the arm is paired the sibling
+  takes the same fit, so the pair stays pixel-identical outside the box
+  (plain after S2a — `plan_synth3.md`). Rulers: native hits by size
+  bin (above), `single`, en cos. Second lever if the first is flat: the band
+  floor 0.7 → 0.5 (stroke structure in; the strings arm's band), priced
+  against the singles band result. Third: target-canvas shapes in
+  `--shapes`.
+- **Not this item:** a scale-invariant encoder or any shape prior — the
+  W2d verdict; this is exposure, the data shows more sizes or it does not.
 
 ### R4.4 — the recipe decision
 
@@ -128,15 +185,15 @@ After R4.1–R4.3, fix the K1 recipe line by line:
 | `--free_residual` μ | 1e-3 | unchanged — norm is handled at α, not in training |
 | row norm | full in training, α at inference | R4.3 |
 | `--box_weight` | 4 | settled |
-| loss | ΔFM (`--pair_loss 1 --pair_ref en`) | settled for singles (tail 15 vs 24); S2 decides it for sentences in `plan_synth3.md` |
+| glyph size | jitter over [12 px, bubble fit], `--scene_min_glyph 12` | user 2026-09-18 after the VAE floor probe (round trip clean from 10 px kana / 16 px kanji, corpus 15–17 px unchanged); R4.5 sizes the arm, the free read decides whether the row is size-bound |
+| loss | ΔFM (`--pair_loss 1 --pair_ref en`) | settled for singles (tail 15 vs 24); **S2a 2026-09-18: ΔFM loses to plain on sentences** (`reports/synth_s2a_2026_09_18.md`) — the seed table's loss is a singles question only, and the smoke's floor-row damage (katakana) is now a K1 recipe item for ΔFM |
 | unit weights | uniform `*1` | settled by Δ1's exposure read (kanji ≥ kana per draw) |
 
-**Before any warm start from Δ1** (K1 seeded from it, transplants,
-S2a): fix the loader's row-unit conversion — `raw` is in units of the run's
-own `row_scale`, Δ1's is 232.9 against ≈ 197 for every other table, and
-`_init_rows_one` copies without converting (`plan_synth3.md` S2a
-pre-condition has the details; past warm starts were all inside one
-inventory family, ratio 0.996–1.001, so no recorded result moves).
+**Warm starts from Δ1 convert row units** — `raw` is in units of the run's
+own `row_scale` (Δ1's is 232.9 against ≈ 197 for every other table) and
+`_init_rows_one` rescales by `src_row_scale / row_scale` since 2026-09-18
+(`plan_synth3.md` S2a). Warm starts before that were all inside one
+inventory family, ratio 0.996–1.001, so no recorded result moves.
 
 A recipe that changes batching, warmup and unit count at once is not
 comparable to Δ1. **K1 therefore carries Δ1's inventory as a subset** (the
@@ -166,36 +223,28 @@ it needs a `jouyou` unit kind or a `list:` file. Decide which target the line
 is scaling to before sizing a run: **corpus 600 (92.6 % coverage, 18.5 h)** is
 the cheap complete-looking point; jōyō is a different piece of work.
 
-### K0 — is a merged table a table? (free, no GPU)
+### K0 — is a merged table a table? (a) read, (b) parked
 
 The budget above wants the shortcut `plan_synth2.md` parked in *Chunking*:
 train disjoint row blocks and union them by ext id (`src/probe/merge_tables.py`
 already does this with the per-run `row_scale` correction; the shipped
 `merge_punct` table is exactly this). That would make kanji scaling parallel in
-wall-clock instead of linear. **It is not free**, and the price is now
-measured — cosine between run's mean row directions (the shared trigger,
-17–29 % of row energy):
+wall-clock instead of linear.
 
-| pair | cos |
-|---|---|
-| 53 k ↔ punct-only (the shipped `merge_punct`) | **0.590** |
-| 53 k ↔ plain-FM Δ0 (`pair0_s3000`) | 0.686 |
-| 53 k ↔ **ΔFM** Δ0 (`pairEN_s1500_lr2e-3`) | **0.348** |
-| plain-FM Δ0 ↔ ΔFM Δ0 (same rows, same data) | 0.449 |
-| 53 k ↔ `sent_s24k_a1_s05` (warm off it, μ 0.3) | 0.999 |
+**(a) is read** — `reports/table_geometry_2026_09_18.md`. The price of a
+merge is the cosine between the runs' shared directions, and it is set by
+the **loss**, not the run: same-loss blocks agree at 0.59–0.87 (the shipped
+`merge_punct` is 0.590), cross-loss pairs at 0.27–0.51, and Δ1 ↔ punct-only
+at **0.043**. So chunking within one loss merges at ≈ 0.7; the 0.35 that
+looked like the price was a plain-vs-ΔFM number.
 
-So the shared direction is **per-run, not per-line**, and the loss rotates it
-more than the dataset does (0.449 on identical rows and data). The shipped
-merge worked at 0.59 for 17 punctuation rows; nothing says a 400-row kanji
-block merged at 0.35 into a ΔFM kana block does. Caveat: the Δ0 means are over
-12–17 rows and are noisy estimators; the 53 k ↔ punct row is the load-bearing
-one.
-
-K0 is therefore: (a) the cos table above extended to Δ1's table once it lands,
-(b) `merge_tables.py` Δ1 ⊕ punct-only and eval the merged table on both blocks
-— if a 0.35–0.59 merge costs the donor block its singles, the shortcut is dead
-and K is one long run; if it does not, K1 is two or three parallel-in-time
-runs. Both are eval-only.
+**(b) is parked.** Δ1 already trains the punct rows, so `merge_tables.py`
+Δ1 ⊕ punct-only is a cross-loss *override* at the floor (0.04), not the
+same-loss chunking K1 would use; the merged table exists
+(`rows_synth_d1_merge_punct`) and its eval was cancelled (user,
+2026-09-18). A same-loss K0(b) needs a punct-only block in the same loss as
+its base (≈ 3 k steps), and it decides whether K is one long run or two or
+three parallel-in-time ones.
 
 ### K1 — the scaled table
 
@@ -220,15 +269,22 @@ run, the standing miss).
 
 ## Order
 
-R4.0's free rows run first (one probe, no GPU); its native rows queue with
-R4.1 and R4.3, all re-scores of existing tables (≈ 1.5 h of GPU together);
-R4.2 lands on its own. Then the recipe table
-is filled and K0 (free) answers whether K1 is one run or several. K1 itself
-waits on `plan_synth3.md`'s S2 verdict for the box: if S2 dies, the seed
-table is the whole artefact and K1's size is a shipping decision; if S2
-passes, S2b goes first. Either way K1 is the recipe above, not Δ1's.
+R4.0's free rows and R4.2 are read; K0(a) is read and K0(b) is parked.
+Still to run: R4.0's two native rows with **R4.1** and **R4.3**, all
+re-scores of existing tables (≈ 1.5 h of GPU together), and **R4.5's free
+read** (size bins on the existing natives, no GPU), which decides whether a
+size-jitter arm joins the recipe table. Then R4.4 is filled in. K1 runs
+after S2b (`plan_synth3.md`), on the recipe above, not Δ1's.
 
 ## Open risks
+
+- **Glyph size was never varied** (R4.5). If the rows are size-bound, every
+  native number above is a number at the base's bubble size on a 512-class
+  canvas, and the 768×1344 target stage reads on a size the table never
+  saw; K1 would then need the size lever in its recipe, not after it. The
+  floor is known (VAE clean from 10–16 px, min 12 px decided); what is not
+  is whether the σ band trains a 1.5-latent-px glyph, and the readers
+  cannot referee kanji under 16 px.
 
 - **Δ0 is 12 rows.** Every recipe number above comes from 12 dakuten rows at
   744 steps, and Δ0's 12 rows never showed the `en`-clause loss that Δ1's

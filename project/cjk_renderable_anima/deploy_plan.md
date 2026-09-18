@@ -1,7 +1,8 @@
 # deploy_plan — `sorryhyun/anima-vocab-pack-cjk`, v2 layout (2026-09-14)
 
 > Forward plan for publishing the render line's table. Nothing here is
-> uploaded yet. Training phases and their gates stay in [`plan.md`](plan.md);
+> uploaded yet. Training plans and their gates stay in
+> [`plan_synth3.md`](plan_synth3.md) / [`plan_synth4.md`](plan_synth4.md);
 > this file is only packaging, surfaces, gates before upload, and the Hub
 > migration. Decisions the user still owes are collected at the end (D1–D6).
 
@@ -148,9 +149,11 @@ fails, the block files move to the root under D2a.
 
 ## What gets baked
 
-Source: the `trained.pt` of the table that passes its gate. v1 candidate is
-P0b (`output/wake_probe/encoder_wdsek_w120_s24k_p0b/trained.pt`), unless D1
-says to wait for P2.
+Source: the `trained.pt` of the table that passes its gate. Baked so far:
+`rows_synth_sent_q_sent_s24k_a1_s05` (503 rows) as the shipped **preview**
+pack, and `rows_synth_sent_q_sent_s24k` as the local
+`models/vocab_packs/anima_cjk_vocab_pack_sent_s24k/`. v1's source is D1 and
+waits on the sentence run (`plan_synth3.md` S2b).
 
 Formula, for every ext id `e` in `delta.ext_ids` (all of them, exactly as
 evaluated, so G0 can be exact):
@@ -163,11 +166,13 @@ This is `ExtDelta`'s forward hook at `scale = 1`, so the eval renders are
 what ships. Held-out and eval-only rows carry `g` only; they are baked too,
 so the shipped table equals the evaluated one.
 
-Card claims for a P0b-sourced v1, and nothing beyond them:
+Card claims, and nothing beyond them — each one re-measured on the table
+that actually ships:
 
-- Renders **one unit** per quoted string: a kana (basic, voiced, small), one
-  of the 100 kanji, or one of the 112 trained words. Multi-piece strings
-  render one piece until P1/P2 (Run 3 `line` 0/32).
+- Renders **one unit** per quoted string: a kana, one of the trained kanji,
+  or one of the trained words. Multi-glyph strings are 0 exact on every
+  group of every arm to date; the sub-exact lift is real but is not a card
+  claim.
 - Through the trained clause shape `Japanese text reads as "…"`.
 - On base-v1.0 (others per G4).
 - Every existing pack behaviour (tags, EN bit-exact) per G1/G2.
@@ -184,10 +189,10 @@ prompt.**
 G2 measures it. If it fails, the fix is the D1 quote partition: `iso` block
 plus `route.quotes`, so quoted content uses mirror rows at an offset. It is
 already in `HybridT5Encoder` and node 3.10.0. But the render addresses move,
-so the rows retrain on the mirror block. That decision is cheapest **before
-P1**; run G2 on the P0b table as soon as it exists. (isoq's s20 loss was
-tag-caption quality through the mirror block, which is a different use; it
-does not decide this.)
+so the rows retrain on the mirror block — which makes it the cheapest
+decision to take **before the next big table**, on a table that already
+exists. (isoq's s20 loss was tag-caption quality through the mirror block,
+which is a different use; it does not decide this.)
 
 ## Gates before any upload
 
@@ -302,8 +307,8 @@ Uploads use `hf upload` for `delta/` and `diffusers/`, and
 
 ## Decisions owed
 
-- **D1**: first table to ship. The P0b singles table, with the single-unit
-  claim, or wait for P2 strings.
+- **D1**: first table to ship. The baked preview's table as it stands, with
+  the single-unit claim, or wait for the sentence run (S2b).
 - **D2**: diffusers entry point. Root json (a, recommended), subfolder
   snapshot (b), or a separate repo (c).
 - **D3**: the trainer's default pack after M2. Stay on `old/` until G2 passes,

@@ -17,6 +17,7 @@ habits are held; what is left is whether the read carries *this* item's glyphs.
 A positive lift on `_held` groups is content the table never saw as a string.
 
     python src/probe/sub_exact.py <arm dir> [<arm dir> …] [--groups a,b] [--boot 5000]
+    python src/probe/sub_exact.py <arm dir>/native … --groups en,swap   # sentence natives
 
 Two arm dirs print a bootstrap CI on the difference of pooled lifts.
 """
@@ -38,11 +39,20 @@ def _read(rec) -> str:
 
 
 def lifts(path: Path, groups) -> dict:
-    """group → (n, recall, control, [per-item lift])."""
-    recs = json.loads((path / "eval_reads.json").read_text())
+    """group → (n, recall, control, [per-item lift]). ``path`` is an arm dir
+    (``eval_reads.json``, groups = eval groups) or its ``native/`` dir
+    (``native_reads.json``, groups = clauses — sentence natives, S2a)."""
+    f = path / "eval_reads.json"
+    if not f.exists():
+        f = path / "native_reads.json"
+    recs = json.loads(f.read_text())
     out = {}
     for g in groups:
-        rows = [r for r in recs if r.get("group") == g and r.get("cond") == "trained"]
+        rows = [
+            r
+            for r in recs
+            if r.get("group", r.get("clause")) == g and r.get("cond") == "trained"
+        ]
         if not rows:
             continue
         refs = [r["text"] for r in rows]
@@ -71,7 +81,7 @@ def main():
     pooled = {}
     for d in a.dirs:
         t = lifts(d, groups)
-        print(f"\n== {d.name} ==")
+        print(f"\n== {d.parent.name + '/' if d.name == 'native' else ''}{d.name} ==")
         print(f"{'group':>12} | {'n':>3} | recall | control |   lift")
         for g, (n, real, ctrl, per) in t.items():
             print(f"{g:>12} | {n:3d} | {real:6.3f} |  {ctrl:6.3f} | {st.mean(per):+6.3f}")

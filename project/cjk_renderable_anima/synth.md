@@ -1,9 +1,9 @@
 # synth — the S line as built (reference; moved out of `plan_synth.md` 2026-09-15)
 
-> What the S line is and how its instrument works, kept here so
-> [`plan_synth.md`](plan_synth.md) carries only the live plan. Chronology
-> (runs, numbers, decisions in order) is in [`reports/`](reports/README.md).
-> Sections below are the original plan text at the time each item was
+> What the S line is and how its instrument works. Chronology (runs,
+> numbers, decisions in order) is in [`reports/`](reports/README.md); the
+> live plans are [`plan_synth3.md`](plan_synth3.md) and
+> [`plan_synth4.md`](plan_synth4.md). Sections below are the design as
 > built; where a later run changed a number, the dated report wins.
 
 ## Why (what P0b's native probe showed)
@@ -148,8 +148,9 @@ for any run whose data carries that pool. Rendering at 2× and downsampling chan
    bubble's flood interior** (letter holes filled) — a rectangle's corners
    poked past round outlines (user, 2026-09-14). Text fitted into the
    region, vertical when taller than wide, per-glyph cell ≥
-   `--scene_min_glyph` (32 px: at 40 the mix fell to 82 % singles because
-   the median region holds two glyphs); kinds are drawn against the
+   `--scene_min_glyph` (40 px through the seed runs, **28 since 2026-09-16**
+   for the sentence line — at 40 a phrase fits 5 % of sl1w bubbles even
+   wrapped, at 28 + 2 columns 43 %); kinds are drawn against the
    region's capacity, singles when the kind never fits. `--scene_stroke`
    0.25 of composites get a thin outline in the fill colour. Fonts: Noto
    CJK only (index 0 = JP); DroidSansFallback drew Chinese-styled kanji
@@ -214,7 +215,7 @@ Added 2026-09-15 (S0b, `reports/synth_s0_s0b_2026_09_15.md` "S0b build + launch"
 | 40 % | **scene composites**: singles and phrases inside a generated bubble | the row learns the glyph, not the canvas; small kana get a size reference inside phrases |
 | 20 % | natural phrases on flat canvases (`--natural_frac`, fully covered by trained rows) | the product distribution; T5 contextualises |
 | 0 % | random-order 2–4-piece strings | **out for S0** (user, 2026-09-14): order/count is S1's question; `--strings_frac` keeps the lever (adds `flip` / `str3`) |
-| 0 % | real corpus crops | two in three labels wrong (`datacheck.md`) |
+| 0 % | real corpus crops | two in three labels are wrong OCR reads of hand-lettered SFX |
 
 Built as `data_synth_s0` (2026-09-14 23:49): 16 000 items = 6 400 font +
 3 200 phrase + 6 400 scene (5 549 single / 851 phrase — the median region
@@ -236,9 +237,8 @@ arm, with the flat-canvas mode moved into a dedicated switch:
 - **No encoder.** The W2d glyph CNN and its scaffolding (ψ, α, `out_scale`,
   mean-encoder, `enc_pool`, `head_init`, `init_spread`, `lr_enc`, spread /
   max-row kill rules) are dropped: held-out generalisation closed at 0,
-  `g` is rank-1, and the parts probe shows it renders nothing alone. The
-  rows arm was the original working arm and has never run at scale under
-  the 0.8 band — S0 also answers whether the hybrid ever bought anything.
+  `g` is rank-1, and the parts probe shows it renders nothing alone. Every
+  run since is a rows run.
 - **No warm start.** `f_r` from zero (the pack rows), `c_flat` from zero.
 - **What stays, all measured:** σ band 0.7–0.9 (identity at 0.8); rows lr
   1e-3 in row-norm units, cosine decay; `μ‖f‖²` pull 1e-3 (`--free_residual`,
@@ -257,53 +257,35 @@ arm, with the flat-canvas mode moved into a dedicated switch:
   flat-only control. Jobs `20260914-235607-0ac29b` (train + eval 512²,
   `--with_c_flat 1`, no floor) and `20260914-235621-7e903c` (native: 8
   prompts × あかすぐ × 2 seeds, EN clause, floor + `full,c,fc`; `full` *is*
-  `f` on the rows arm). S0 vs P0b differs in data *and* parametrisation; the
-  gates are absolute, so a pass settles both. Singles < 30/36 → one hybrid
-  run on the same data (`--arm encoder`, same steps) isolates which change
-  did it before anything else is touched.
+  `f` on the rows arm). **`c_flat` did not survive S0b** — the recipe since
+  is `--c_flat 0`.
 
 Small glyphs are the one new risk: a kana in a 64–100 px bubble on a 512
 canvas is 4–6 latent tokens a side, smaller than the dead 256² case. Hence
 the box-weighted loss above and a minimum box of ≈ 96 px short side at
 512 (`--scene_min_box`), steering bubble size from the prompt (`large
 speech bubble`) rather than accepting what the base draws. Band note: the
-strings arm used 0.5–0.9; S0 starts at the singles band, S1 widens only if
-`flip` / `str3` sit at 0.
+singles band is 0.7–0.9; a run with multi-piece kinds takes the strings
+arm's 0.5–0.9, since the band is one global flag.
 
-## S0 result and the S0b decision (pointer)
+## S0 / S0b — results (pointer)
 
-**S0 result (2026-09-15, `reports/synth_s0_s0b_2026_09_15.md`): hit & kept 15/64 (P0b 2), kept
-48/64, singles 20/36, word 3/32 — mechanism confirmed, every gate missed;
-`c_flat` absorbed the bubble flat layout, the plain one leaked into `f`
-(leak 0.28); ×1.5 / ×2 scale lose hits (off-manifold), eval without
-`c_flat` is worse, so neither magnitude nor the switch at eval explains
-the singles.** Next-run candidates were (a) **one flat layout** — every
-flat item drawn with the bubble (the eval template), so `c_flat` is one
-direction; or (b) `c_flat` keyed by caption template (bubble / plain);
-plus the identity budget — composite glyph floor 32 → 48 px on a larger
-`--scene_min_box`, or flat share 40 → 50 %. The pre-registered hybrid
-isolation run (`--arm encoder`, same data) stays available but the leak
-split already names a data × parametrisation interaction, so it is not
-first.
-
-**S0b (user, 2026-09-15 — launched; `reports/synth_s0_s0b_2026_09_15.md`): (a)**, `--flat_bubble
-1.0` (the plain layout had no job left once the composites carry the
-augmentation — and P0b held 36/36 with both layouts in `f`, so the plain
-leak explains wipes, not singles), plus two data fixes found on the S0
-sheets: **`--scene_fill 0.7`** (the glyph filled 90 % of the bubble
-region; 0.7 leaves manga-like air, median single 58 → 51 px, and cuts
-composite phrases 851 → 295 since the capacity check scales with it) and
-the **`erase_miss` gate** (`--scene_max_residual 0.5`: 12 of s0's 186 kept
-scenes had the flood on another blob, so the EN anchor stayed under the
-kana and the region was not the anchor's bubble — ≈ 400 S0 composites
-trained on "hey" + ぐ; s0 re-judged 186 → 174). `--c_flat_cap` 0.75 →
-1.5 (pinned from step 600 in S0 while leak climbed; a shared vector
-carries no per-glyph identity, so the cap guarded nothing). Same 24 k
-recipe otherwise, data `synth_s0b`, arm `rows_synth_s0b_s24k_S0b`. Expect:
-leak ≪ 0.28, kept → ≥ 56, hit & kept up through fewer wipes; singles
-recover only if the layout leak was costing `f` — if they stay near 20
-with the fill and gate in, the lever is composite glyph size / phrase
-share, not layout.
+`reports/synth_s0_s0b_2026_09_15.md`. **S0** (2026-09-15): hit & kept 15/64
+(P0b 2), kept 48/64, singles 20/36, word 3/32 — the mechanism is confirmed
+and every gate missed; `c_flat` absorbed the bubble flat layout and the
+plain one leaked into `f` (leak 0.28); ×1.5 / ×2 scale lose hits
+(off-manifold) and eval without `c_flat` is worse, so neither magnitude nor
+the switch at eval explains the singles. **S0b** answered it: one flat
+layout (`--flat_bubble 1.0`) with `--c_flat_cap` 0.75 → 1.5 moved the render
+*trigger* out of `f` into `c_flat` and every flat ruler got worse — the cap
+is not a lever in either direction, and `c_flat` is out of the recipe
+(`findings.md` *trigger vs canvas*). Two data fixes from the S0 sheets
+stayed: **`--scene_fill 0.7`** (the glyph filled 90 % of the bubble region;
+0.7 leaves manga-like air, median single 58 → 51 px, and cuts composite
+phrases 851 → 295 since the capacity check scales with it) and the
+**`erase_miss` gate** (`--scene_max_residual`: 12 of s0's 186 kept scenes
+had the flood on another blob, so the EN anchor stayed under the kana —
+≈ 400 S0 composites trained on "hey" + ぐ; s0 re-judged 186 → 174).
 
 ## Risks named up front (S0; measured status)
 

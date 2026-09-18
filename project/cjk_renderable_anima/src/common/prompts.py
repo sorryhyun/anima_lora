@@ -35,6 +35,7 @@ EVAL_GROUPS = (
     "single_held",
     "single_ext",
     "single_kanji",
+    "single_extra",
     "word",
     "word_held",
     "line",

@@ -4,9 +4,10 @@
 > (433 named rows: 92 kana + 50 voiced + 200 corpus kanji + 91 words;
 > 10 000 items, frame-mix composites 0.9 + flat bubble 0.1, no `c_flat`,
 > Q off; 53 000 steps ≈ 490 draws per row, 342 min), failed its flat gates
-> and was **not** taken as the seed — but it is the largest composite-
-> trained table on record, and one day of reading it settled more than
-> the run itself. One screen per topic; the dated record is
+> — but it is the largest composite-trained table on record, it became the
+> warm start every sentence run uses (through
+> `rows_synth_full_fm10k_merge_punct`), and one day of reading it settled
+> more than the run itself. One screen per topic; the dated record is
 > [`reports/rows_manifold_2026_09_16.md`](reports/rows_manifold_2026_09_16.md)
 > and [`reports/transplant_2026_09_16.md`](reports/transplant_2026_09_16.md),
 > the instruments `src/bench/rows_manifold.py`, `src/probe/transplant_table.py`
