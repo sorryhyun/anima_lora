@@ -71,6 +71,7 @@ h1{font-family:var(--math);font-weight:600;font-size:clamp(30px,4.2vw,44px);line
 figure{margin:0;display:grid;gap:14px}
 .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .scroll svg{display:block;width:100%;min-width:720px;height:auto;color:var(--ink)}
+.scroll.narrow svg{max-width:820px;min-width:0;margin-inline:auto}
 figcaption{font-size:15px;color:var(--muted);max-width:78ch}
 figcaption b{color:var(--ink);font-weight:700}
 /* svg vocabulary, in the DiT-paper figure idiom */
@@ -171,135 +172,158 @@ svg .v{font-weight:700;font-style:normal}
     <li><span class="sw grad"></span>gradient path</li>
     <li><span class="tag k">no_grad</span>the sibling branch, detached</li>
   </ul>
-  <div class="scroll">
-  <svg viewBox="0 88 1080 832" role="img" aria-label="The paired loss. In the middle, the base model samples a scene from an English prompt; its anchor text is erased once and the same text fit is drawn twice, feeding the two branches on either side. Branch B is the composite carrying the new glyph and the trained ext row in its caption; branch A is a sibling image of the same scene with Latin reference letters pasted in the same box under the same Japanese caption frame. Both are noised with the same epsilon and sigma and run through the same frozen Anima; branch A carries no gradient. Each branch forms a flow-matching residual, and the loss is the squared box-weighted norm of their difference. Inside the box the noise cancels and the target is the clean pixel delta between the two strings; outside the box the term asks the two renders to match, which preserves the scene. A red dashed rail runs from the loss back to the ext row in B's caption only.">
+  <div class="scroll narrow">
+  <svg viewBox="0 88 820 1180" role="img" aria-label="The paired loss. At the top, the base model samples a scene from an English prompt; its anchor text is erased once and the same text fit is drawn twice, feeding the two branches below. Branch B, on the left, is the composite carrying the new glyph and the trained ext row in its caption; branch A, on the right, is a sibling image of the same scene with Latin reference letters pasted in the same box under the same Japanese caption frame. Both are noised with the same epsilon and sigma and run through the same frozen Anima; branch A carries no gradient. Each branch forms a flow-matching residual, and the loss is the squared box-weighted norm of their difference. Inside the box the noise cancels and the target is the clean pixel delta between the two strings; outside the box the term asks the two renders to match, which preserves the scene. A red dashed rail runs from the loss back to the ext row in B's caption only.">
     <defs>
       <marker id="ah4" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="4.6" markerHeight="4.6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="ink-fill"/></marker>
       <marker id="ahr4" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="4.6" markerHeight="4.6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="red-fill"/></marker>
     </defs>
 
-    <!-- ============ branch B ============ -->
-    <rect x="90" y="130" width="300" height="250" rx="6" class="f-butter"/>
-    <text x="106" y="158"><tspan class="m v">B</tspan> · the item to learn</text>
-
-    <rect x="140" y="172" width="200" height="140" class="thumb-edge" style="fill:var(--plate)"/>
-    <circle cx="172" cy="290" r="18" class="gbox"/>
-    <path class="gbox" d="M146 312 q26 -22 52 0"/>
-    <path class="gbox" d="M302 300 q18 -14 30 12"/>
-    <ellipse cx="244" cy="226" rx="60" ry="40" class="gbox" style="fill:var(--bg)"/>
-    <path class="gbox" d="M220 262 L210 288 L236 264" style="fill:var(--bg)"/>
-    <text x="244" y="240" text-anchor="middle" class="jp" font-size="36">が</text>
-    <rect x="216" y="200" width="56" height="52" fill="none" stroke="var(--red)" stroke-width="2" stroke-dasharray="5 4"/>
-
-    <rect x="104" y="318" width="272" height="42" rx="4" class="f-sky"/>
-    <text x="114" y="345" class="tok" font-size="13">…reads as "</text>
-    <rect x="204" y="324" width="44" height="30" rx="3" class="f-lav trained"/>
-    <text x="226" y="346" text-anchor="middle" class="jp" font-size="17">が</text>
-    <text x="252" y="345" class="tok" font-size="13">".</text>
-    <text x="368" y="345" text-anchor="end" class="m" font-size="17"><tspan class="v">c</tspan><tspan dy="5" font-size="13">B</tspan></text>
-    <text x="272" y="350" class="fire">🔥</text>
-
     <!-- ============ the scene both branches are cut from ============ -->
-    <rect x="408" y="106" width="264" height="250" rx="6" class="f-mint"/>
-    <text x="540" y="134" text-anchor="middle" font-size="16">Anima draws the scene</text>
+    <g transform="translate(-130 0)">
+      <rect x="408" y="106" width="264" height="250" rx="6" class="f-mint"/>
+      <text x="540" y="134" text-anchor="middle" font-size="16">Anima draws the scene</text>
 
-    <rect x="460" y="164" width="160" height="112" class="thumb-edge" style="fill:var(--plate)"/>
-    <circle cx="486" cy="258" r="14" class="gbox"/>
-    <path class="gbox" d="M466 276 q20 -17 40 0"/>
-    <path class="gbox" d="M598 268 q14 -11 24 9"/>
-    <ellipse cx="546" cy="202" rx="46" ry="30" class="gbox" style="fill:var(--bg)"/>
-    <path class="gbox" d="M528 228 L520 250 L540 230" style="fill:var(--bg)"/>
-    <text x="546" y="211" text-anchor="middle" font-size="22">hi</text>
+      <rect x="460" y="164" width="160" height="112" class="thumb-edge" style="fill:var(--plate)"/>
+      <circle cx="486" cy="258" r="14" class="gbox"/>
+      <path class="gbox" d="M466 276 q20 -17 40 0"/>
+      <path class="gbox" d="M598 268 q14 -11 24 9"/>
+      <ellipse cx="546" cy="202" rx="46" ry="30" class="gbox" style="fill:var(--bg)"/>
+      <path class="gbox" d="M528 228 L520 250 L540 230" style="fill:var(--bg)"/>
+      <text x="546" y="211" text-anchor="middle" font-size="22">hi</text>
 
-    <text x="540" y="302" text-anchor="middle" class="m" font-size="16"><tspan class="v">z</tspan> ← <tspan class="v">z</tspan> − Δσ · <tspan class="v">v</tspan><tspan dy="5" font-size="12">θ</tspan><tspan dy="-5">(</tspan><tspan class="v">z</tspan>, σ, <tspan class="v">c</tspan><tspan dy="5" font-size="12">EN</tspan><tspan dy="-5">)</tspan></text>
-    <text x="540" y="324" text-anchor="middle" class="sm">σ : 1 → 0 · an EN prompt</text>
+      <text x="540" y="302" text-anchor="middle" class="m" font-size="16"><tspan class="v">z</tspan> ← <tspan class="v">z</tspan> − Δσ · <tspan class="v">v</tspan><tspan dy="5" font-size="12">θ</tspan><tspan dy="-5">(</tspan><tspan class="v">z</tspan>, σ, <tspan class="v">c</tspan><tspan dy="5" font-size="12">EN</tspan><tspan dy="-5">)</tspan></text>
+      <text x="540" y="324" text-anchor="middle" class="sm">σ : 1 → 0 · an EN prompt</text>
+    </g>
 
-    <line class="wire" x1="404" y1="218" x2="394" y2="218" marker-end="url(#ah4)"/>
-    <line class="wire" x1="676" y1="218" x2="686" y2="218" marker-end="url(#ah4)"/>
+    <!-- the scene splits into the two branches -->
+    <path class="wire" d="M410 356 V 374 H 194 V 390" marker-end="url(#ah4)"/>
+    <path class="wire" d="M410 356 V 374 H 626 V 390" marker-end="url(#ah4)"/>
+
+    <!-- ============ branch B ============ -->
+    <g transform="translate(-46 264)">
+      <rect x="90" y="130" width="300" height="250" rx="6" class="f-butter"/>
+      <text x="106" y="158"><tspan class="m v">B</tspan> · the item to learn</text>
+
+      <rect x="140" y="172" width="200" height="140" class="thumb-edge" style="fill:var(--plate)"/>
+      <circle cx="172" cy="290" r="18" class="gbox"/>
+      <path class="gbox" d="M146 312 q26 -22 52 0"/>
+      <path class="gbox" d="M302 300 q18 -14 30 12"/>
+      <ellipse cx="244" cy="226" rx="60" ry="40" class="gbox" style="fill:var(--bg)"/>
+      <path class="gbox" d="M220 262 L210 288 L236 264" style="fill:var(--bg)"/>
+      <text x="244" y="240" text-anchor="middle" class="jp" font-size="36">が</text>
+      <rect x="216" y="200" width="56" height="52" fill="none" stroke="var(--red)" stroke-width="2" stroke-dasharray="5 4"/>
+
+      <rect x="104" y="318" width="272" height="42" rx="4" class="f-sky"/>
+      <text x="114" y="345" class="tok" font-size="13">…reads as "</text>
+      <rect x="204" y="324" width="44" height="30" rx="3" class="f-lav trained"/>
+      <text x="226" y="346" text-anchor="middle" class="jp" font-size="17">が</text>
+      <text x="252" y="345" class="tok" font-size="13">".</text>
+      <text x="368" y="345" text-anchor="end" class="m" font-size="17"><tspan class="v">c</tspan><tspan dy="5" font-size="13">B</tspan></text>
+      <text x="272" y="350" class="fire">🔥</text>
+    </g>
 
     <!-- ============ branch A ============ -->
-    <rect x="690" y="130" width="300" height="250" rx="6" class="f-lav"/>
-    <text x="706" y="158"><tspan class="m v">A</tspan> · the reference sibling</text>
+    <g transform="translate(-214 264)">
+      <rect x="690" y="130" width="300" height="250" rx="6" class="f-lav"/>
+      <text x="706" y="158"><tspan class="m v">A</tspan> · the reference sibling</text>
 
-    <rect x="740" y="172" width="200" height="140" class="thumb-edge" style="fill:var(--plate)"/>
-    <circle cx="772" cy="290" r="18" class="gbox"/>
-    <path class="gbox" d="M746 312 q26 -22 52 0"/>
-    <path class="gbox" d="M902 300 q18 -14 30 12"/>
-    <ellipse cx="844" cy="226" rx="60" ry="40" class="gbox" style="fill:var(--bg)"/>
-    <path class="gbox" d="M820 262 L810 288 L836 264" style="fill:var(--bg)"/>
-    <text x="844" y="239" text-anchor="middle" font-size="30">KZ</text>
-    <rect x="816" y="200" width="56" height="52" fill="none" stroke="var(--red)" stroke-width="2" stroke-dasharray="5 4"/>
+      <rect x="740" y="172" width="200" height="140" class="thumb-edge" style="fill:var(--plate)"/>
+      <circle cx="772" cy="290" r="18" class="gbox"/>
+      <path class="gbox" d="M746 312 q26 -22 52 0"/>
+      <path class="gbox" d="M902 300 q18 -14 30 12"/>
+      <ellipse cx="844" cy="226" rx="60" ry="40" class="gbox" style="fill:var(--bg)"/>
+      <path class="gbox" d="M820 262 L810 288 L836 264" style="fill:var(--bg)"/>
+      <text x="844" y="239" text-anchor="middle" font-size="30">KZ</text>
+      <rect x="816" y="200" width="56" height="52" fill="none" stroke="var(--red)" stroke-width="2" stroke-dasharray="5 4"/>
 
-    <rect x="704" y="318" width="272" height="42" rx="4" class="f-sky"/>
-    <text x="714" y="345" class="tok" font-size="13">…reads as "</text>
-    <rect x="804" y="324" width="44" height="30" rx="3" class="f-sky" style="stroke:var(--faint);stroke-width:1.5"/>
-    <text x="826" y="346" text-anchor="middle" font-size="16">KZ</text>
-    <text x="852" y="345" class="tok" font-size="13">".</text>
-    <text x="968" y="345" text-anchor="end" class="m" font-size="17"><tspan class="v">c</tspan><tspan dy="5" font-size="13">A</tspan></text>
-    <text x="840" y="376" text-anchor="middle" class="sm">one Latin letter per glyph · never the romaji</text>
+      <rect x="704" y="318" width="272" height="42" rx="4" class="f-sky"/>
+      <text x="714" y="345" class="tok" font-size="13">…reads as "</text>
+      <rect x="804" y="324" width="44" height="30" rx="3" class="f-sky" style="stroke:var(--faint);stroke-width:1.5"/>
+      <text x="826" y="346" text-anchor="middle" font-size="16">KZ</text>
+      <text x="852" y="345" class="tok" font-size="13">".</text>
+      <text x="968" y="345" text-anchor="end" class="m" font-size="17"><tspan class="v">c</tspan><tspan dy="5" font-size="13">A</tspan></text>
+      <text x="840" y="376" text-anchor="middle" class="sm">one Latin letter per glyph · never the romaji</text>
+    </g>
 
     <!-- ============ noising ============ -->
-    <line class="wire" x1="240" y1="388" x2="240" y2="416" marker-end="url(#ah4)"/>
-    <line class="wire" x1="840" y1="388" x2="840" y2="416" marker-end="url(#ah4)"/>
-    <rect x="120" y="418" width="240" height="46" rx="4" class="f-apri"/>
-    <text x="240" y="447" text-anchor="middle" class="m" font-size="18"><tspan class="v">z</tspan><tspan dy="5" font-size="13">σ</tspan><tspan dy="-5">= (1−σ)</tspan><tspan class="v">x</tspan><tspan dy="5" font-size="13">B</tspan><tspan dy="-5"> + σ</tspan><tspan class="v">ε</tspan></text>
-    <rect x="720" y="418" width="240" height="46" rx="4" class="f-apri"/>
-    <text x="840" y="447" text-anchor="middle" class="m" font-size="18"><tspan class="v">z</tspan><tspan dy="5" font-size="13">σ</tspan><tspan dy="-5">= (1−σ)</tspan><tspan class="v">x</tspan><tspan dy="5" font-size="13">A</tspan><tspan dy="-5"> + σ</tspan><tspan class="v">ε</tspan></text>
-    <text x="540" y="437" text-anchor="middle" class="sm">the same <tspan class="m">ε</tspan>,</text>
-    <text x="540" y="456" text-anchor="middle" class="sm">the same <tspan class="m">σ</tspan> ∼ U[0.7, 0.9]</text>
+    <g transform="translate(-46 264)">
+      <line class="wire" x1="240" y1="388" x2="240" y2="416" marker-end="url(#ah4)"/>
+      <rect x="120" y="418" width="240" height="46" rx="4" class="f-apri"/>
+      <text x="240" y="447" text-anchor="middle" class="m" font-size="18"><tspan class="v">z</tspan><tspan dy="5" font-size="13">σ</tspan><tspan dy="-5">= (1−σ)</tspan><tspan class="v">x</tspan><tspan dy="5" font-size="13">B</tspan><tspan dy="-5"> + σ</tspan><tspan class="v">ε</tspan></text>
+    </g>
+    <g transform="translate(-214 264)">
+      <line class="wire" x1="840" y1="388" x2="840" y2="416" marker-end="url(#ah4)"/>
+      <rect x="720" y="418" width="240" height="46" rx="4" class="f-apri"/>
+      <text x="840" y="447" text-anchor="middle" class="m" font-size="18"><tspan class="v">z</tspan><tspan dy="5" font-size="13">σ</tspan><tspan dy="-5">= (1−σ)</tspan><tspan class="v">x</tspan><tspan dy="5" font-size="13">A</tspan><tspan dy="-5"> + σ</tspan><tspan class="v">ε</tspan></text>
+    </g>
+    <g transform="translate(-130 264)">
+      <text x="540" y="437" text-anchor="middle" class="sm">the same <tspan class="m">ε</tspan>,</text>
+      <text x="540" y="456" text-anchor="middle" class="sm">the same <tspan class="m">σ</tspan> ∼ U[0.7, 0.9]</text>
+    </g>
 
     <!-- ============ the frozen model, twice ============ -->
-    <line class="wire" x1="240" y1="470" x2="240" y2="494" marker-end="url(#ah4)"/>
-    <line class="wire" x1="840" y1="470" x2="840" y2="494" marker-end="url(#ah4)"/>
-    <rect x="120" y="496" width="240" height="72" rx="5" class="f-lav"/>
-    <text x="240" y="524" text-anchor="middle" font-size="17">Anima · frozen</text>
-    <text x="240" y="548" text-anchor="middle" class="m" font-size="18"><tspan class="v">v</tspan><tspan dy="5" font-size="13">θ</tspan><tspan dy="-5">(</tspan><tspan class="v">z</tspan><tspan dy="5" font-size="13">σ</tspan><tspan dy="-5">, </tspan><tspan class="v">c</tspan><tspan dy="5" font-size="13">B</tspan><tspan dy="-5">)</tspan></text>
-    <rect x="720" y="496" width="240" height="72" rx="5" class="f-lav"/>
-    <text x="840" y="524" text-anchor="middle" font-size="17">same weights · <tspan class="mono" font-size="14">no_grad</tspan></text>
-    <text x="840" y="548" text-anchor="middle" class="m" font-size="18"><tspan class="v">v</tspan><tspan dy="5" font-size="13">θ</tspan><tspan dy="-5">(</tspan><tspan class="v">z</tspan><tspan dy="5" font-size="13">σ</tspan><tspan dy="-5">, </tspan><tspan class="v">c</tspan><tspan dy="5" font-size="13">A</tspan><tspan dy="-5">)</tspan></text>
-    <line class="zoomline" x1="360" y1="532" x2="720" y2="532"/>
-    <text x="540" y="524" text-anchor="middle" class="sm">one model, two forwards</text>
+    <g transform="translate(-46 264)">
+      <line class="wire" x1="240" y1="470" x2="240" y2="494" marker-end="url(#ah4)"/>
+      <rect x="120" y="496" width="240" height="72" rx="5" class="f-lav"/>
+      <text x="240" y="524" text-anchor="middle" font-size="17">Anima · frozen</text>
+      <text x="240" y="548" text-anchor="middle" class="m" font-size="18"><tspan class="v">v</tspan><tspan dy="5" font-size="13">θ</tspan><tspan dy="-5">(</tspan><tspan class="v">z</tspan><tspan dy="5" font-size="13">σ</tspan><tspan dy="-5">, </tspan><tspan class="v">c</tspan><tspan dy="5" font-size="13">B</tspan><tspan dy="-5">)</tspan></text>
+    </g>
+    <g transform="translate(-214 264)">
+      <line class="wire" x1="840" y1="470" x2="840" y2="494" marker-end="url(#ah4)"/>
+      <rect x="720" y="496" width="240" height="72" rx="5" class="f-lav"/>
+      <text x="840" y="524" text-anchor="middle" font-size="17">same weights · <tspan class="mono" font-size="14">no_grad</tspan></text>
+      <text x="840" y="548" text-anchor="middle" class="m" font-size="18"><tspan class="v">v</tspan><tspan dy="5" font-size="13">θ</tspan><tspan dy="-5">(</tspan><tspan class="v">z</tspan><tspan dy="5" font-size="13">σ</tspan><tspan dy="-5">, </tspan><tspan class="v">c</tspan><tspan dy="5" font-size="13">A</tspan><tspan dy="-5">)</tspan></text>
+    </g>
+    <line class="zoomline" x1="314" y1="796" x2="506" y2="796"/>
+    <text x="410" y="788" text-anchor="middle" class="sm">one model, two forwards</text>
 
     <!-- ============ residuals ============ -->
-    <line class="wire" x1="240" y1="574" x2="240" y2="598" marker-end="url(#ah4)"/>
-    <line class="wire" x1="840" y1="574" x2="840" y2="598" marker-end="url(#ah4)"/>
-    <rect x="120" y="600" width="240" height="48" rx="4" class="f-mint"/>
-    <text x="240" y="630" text-anchor="middle" class="m" font-size="19"><tspan class="v">r</tspan><tspan dy="5" font-size="14">B</tspan><tspan dy="-5"> = </tspan><tspan class="v">v</tspan><tspan dy="5" font-size="13">θ</tspan><tspan dy="-5">(B) − </tspan><tspan class="v">v</tspan><tspan dy="5" font-size="13">B</tspan><tspan dy="-5">*</tspan></text>
-    <rect x="720" y="600" width="240" height="48" rx="4" class="f-mint"/>
-    <text x="840" y="630" text-anchor="middle" class="m" font-size="19"><tspan class="v">r</tspan><tspan dy="5" font-size="14">A</tspan><tspan dy="-5"> = </tspan><tspan class="v">v</tspan><tspan dy="5" font-size="13">θ</tspan><tspan dy="-5">(A) − </tspan><tspan class="v">v</tspan><tspan dy="5" font-size="13">A</tspan><tspan dy="-5">*</tspan></text>
+    <g transform="translate(-46 264)">
+      <line class="wire" x1="240" y1="574" x2="240" y2="598" marker-end="url(#ah4)"/>
+      <rect x="120" y="600" width="240" height="48" rx="4" class="f-mint"/>
+      <text x="240" y="630" text-anchor="middle" class="m" font-size="19"><tspan class="v">r</tspan><tspan dy="5" font-size="14">B</tspan><tspan dy="-5"> = </tspan><tspan class="v">v</tspan><tspan dy="5" font-size="13">θ</tspan><tspan dy="-5">(B) − </tspan><tspan class="v">v</tspan><tspan dy="5" font-size="13">B</tspan><tspan dy="-5">*</tspan></text>
+    </g>
+    <g transform="translate(-214 264)">
+      <line class="wire" x1="840" y1="574" x2="840" y2="598" marker-end="url(#ah4)"/>
+      <rect x="720" y="600" width="240" height="48" rx="4" class="f-mint"/>
+      <text x="840" y="630" text-anchor="middle" class="m" font-size="19"><tspan class="v">r</tspan><tspan dy="5" font-size="14">A</tspan><tspan dy="-5"> = </tspan><tspan class="v">v</tspan><tspan dy="5" font-size="13">θ</tspan><tspan dy="-5">(A) − </tspan><tspan class="v">v</tspan><tspan dy="5" font-size="13">A</tspan><tspan dy="-5">*</tspan></text>
+    </g>
 
     <!-- ============ the difference ============ -->
-    <path class="wire" d="M240 648 V 678 H 510" marker-end="url(#ah4)"/>
-    <path class="wire" d="M840 648 V 678 H 570" marker-end="url(#ah4)"/>
-    <circle cx="540" cy="678" r="17" class="plus-bg"/>
-    <line x1="531" y1="678" x2="549" y2="678" class="plus"/>
-    <text x="540" y="712" text-anchor="middle" class="sm">≈ 80 % of <tspan class="m v">r</tspan><tspan class="m" dy="4" font-size="12">B</tspan><tspan dy="-4"> cancels: the scene posterior at σ ≈ 0.8, the erase patch and the paste artefacts, shared by construction</tspan></text>
+    <path class="wire" d="M194 912 V 942 H 380" marker-end="url(#ah4)"/>
+    <path class="wire" d="M626 912 V 942 H 440" marker-end="url(#ah4)"/>
+    <circle cx="410" cy="942" r="17" class="plus-bg"/>
+    <line x1="401" y1="942" x2="419" y2="942" class="plus"/>
+    <text x="410" y="976" text-anchor="middle" class="sm">≈ 80 % of <tspan class="m v">r</tspan><tspan class="m" dy="4" font-size="12">B</tspan><tspan dy="-4"> cancels: the scene posterior at σ ≈ 0.8,</tspan></text>
+    <text x="410" y="995" text-anchor="middle" class="sm">the erase patch and the paste artefacts, shared by construction</text>
 
     <!-- ============ the loss ============ -->
-    <line class="wire" x1="540" y1="758" x2="540" y2="742" marker-end="url(#ah4)"/>
-    <rect x="300" y="758" width="480" height="62" rx="5" class="f-apri trained"/>
-    <text x="540" y="798" text-anchor="middle" class="m" font-size="26"><tspan class="cal" font-style="normal">L</tspan><tspan dy="6" font-size="16">Δ</tspan><tspan dy="-6" font-style="normal"> = ‖ </tspan><tspan class="v">r</tspan><tspan dy="6" font-size="16">B</tspan><tspan dy="-6"> − </tspan><tspan class="v">r</tspan><tspan dy="6" font-size="16">A</tspan><tspan dy="-6" font-style="normal"> ‖²</tspan><tspan dy="8" font-size="16">w</tspan></text>
+    <g transform="translate(-130 264)">
+      <line class="wire" x1="540" y1="758" x2="540" y2="742" marker-end="url(#ah4)"/>
+      <rect x="300" y="758" width="480" height="62" rx="5" class="f-apri trained"/>
+      <text x="540" y="798" text-anchor="middle" class="m" font-size="26"><tspan class="cal" font-style="normal">L</tspan><tspan dy="6" font-size="16">Δ</tspan><tspan dy="-6" font-style="normal"> = ‖ </tspan><tspan class="v">r</tspan><tspan dy="6" font-size="16">B</tspan><tspan dy="-6"> − </tspan><tspan class="v">r</tspan><tspan dy="6" font-size="16">A</tspan><tspan dy="-6" font-style="normal"> ‖²</tspan><tspan dy="8" font-size="16">w</tspan></text>
+    </g>
 
     <!-- ============ what the two regions do ============ -->
-    <path class="wire" d="M360 822 L 300 842" marker-end="url(#ah4)" opacity="0.6"/>
-    <path class="wire" d="M720 822 L 780 842" marker-end="url(#ah4)" opacity="0.6"/>
-    <rect x="30" y="846" width="490" height="62" rx="4" class="gbox"/>
-    <text x="46" y="872" class="sm"><tspan class="ink-fill" font-size="15">inside the box</tspan>: <tspan class="m">ε</tspan> cancels exactly, so the target is</text>
-    <text x="46" y="894" class="sm"><tspan class="m v">x</tspan><tspan class="m" dy="4" font-size="12">A</tspan><tspan dy="-4"> − </tspan><tspan class="m v">x</tspan><tspan class="m" dy="4" font-size="12">B</tspan><tspan dy="-4"> : the clean pixel delta of the two strings</tspan></text>
-    <rect x="560" y="846" width="490" height="62" rx="4" class="gbox"/>
-    <text x="576" y="872" class="sm"><tspan class="ink-fill" font-size="15">outside the box</tspan>: the term is ‖<tspan class="m v">v</tspan><tspan class="m" dy="4" font-size="12">θ</tspan><tspan dy="-4">(B) − </tspan><tspan class="m v">v</tspan><tspan class="m" dy="4" font-size="12">θ</tspan><tspan dy="-4">(A)‖² :</tspan></text>
-    <text x="576" y="894" class="sm">draw the scene as you draw it with text you can read</text>
+    <line class="wire" x1="410" y1="1084" x2="410" y2="1106" marker-end="url(#ah4)" opacity="0.6"/>
+    <rect x="170" y="1110" width="480" height="62" rx="4" class="gbox"/>
+    <text x="186" y="1136" class="sm"><tspan class="ink-fill" font-size="15">inside the box</tspan>: <tspan class="m">ε</tspan> cancels exactly, so the target is</text>
+    <text x="186" y="1158" class="sm"><tspan class="m v">x</tspan><tspan class="m" dy="4" font-size="12">A</tspan><tspan dy="-4"> − </tspan><tspan class="m v">x</tspan><tspan class="m" dy="4" font-size="12">B</tspan><tspan dy="-4"> : the clean pixel delta of the two strings</tspan></text>
+    <rect x="170" y="1182" width="480" height="62" rx="4" class="gbox"/>
+    <text x="186" y="1208" class="sm"><tspan class="ink-fill" font-size="15">outside the box</tspan>: the term is ‖<tspan class="m v">v</tspan><tspan class="m" dy="4" font-size="12">θ</tspan><tspan dy="-4">(B) − </tspan><tspan class="m v">v</tspan><tspan class="m" dy="4" font-size="12">θ</tspan><tspan dy="-4">(A)‖² :</tspan></text>
+    <text x="186" y="1230" class="sm">draw the scene as you draw it with text you can read</text>
 
     <!-- ============ gradient rail: B only ============ -->
-    <path class="grad" d="M300 775 H 30 V 396 H 210 V 366" marker-end="url(#ahr4)"/>
-    <text transform="translate(22 560) rotate(-90)" text-anchor="middle" class="sm red">∂<tspan class="cal">L</tspan><tspan dy="4" font-size="11">Δ</tspan><tspan dy="-4">/∂</tspan><tspan class="m v">f</tspan><tspan class="m" dy="4" font-size="11">r</tspan><tspan dy="-4">, into the ext row of </tspan><tspan class="m v">c</tspan><tspan class="m" dy="4" font-size="11">B</tspan><tspan dy="-4">, nowhere else</tspan></text>
+    <path class="grad" d="M170 1039 H 14 V 660 H 164 V 630" marker-end="url(#ahr4)"/>
+    <text transform="translate(32 850) rotate(-90)" text-anchor="middle" class="sm red">∂<tspan class="cal">L</tspan><tspan dy="4" font-size="11">Δ</tspan><tspan dy="-4">/∂</tspan><tspan class="m v">f</tspan><tspan class="m" dy="4" font-size="11">r</tspan><tspan dy="-4">, into the ext row of </tspan><tspan class="m v">c</tspan><tspan class="m" dy="4" font-size="11">B</tspan><tspan dy="-4">, nowhere else</tspan></text>
   </svg>
   </div>
 
   <div class="eqs" role="math">
     <div class="eq"><span><b class="v">z</b><sub><i>σ</i></sub><sup><i>X</i></sup>&emsp14;=&emsp14;(1−<i>σ</i>)&thinsp;<b class="v">x</b><sub><i>X</i></sub>&thinsp;+&thinsp;<i>σ</i>&thinsp;<b class="v">ε</b>,&emsp;<b class="v">v</b><sub><i>X</i></sub>*&emsp14;=&emsp14;<b class="v">ε</b>&thinsp;−&thinsp;<b class="v">x</b><sub><i>X</i></sub>,&emsp;<b class="v">r</b><sub><i>X</i></sub>&emsp14;=&emsp14;<b class="v">v</b><sub><i>θ</i></sub>(<b class="v">z</b><sub><i>σ</i></sub><sup><i>X</i></sup>,&thinsp;<i>σ</i>,&thinsp;<b class="v">c</b><sub><i>X</i></sub>)&thinsp;−&thinsp;<b class="v">v</b><sub><i>X</i></sub>*<span class="side"><i>X</i> ∈ {A, B}</span></span><span class="n">(1)</span></div>
     <div class="eq"><span><span class="cal">L</span><sub>Δ</sub>&emsp14;=&emsp14;<span class="bb">E</span><sub><b class="v">ε</b>,&thinsp;<i>σ</i></sub>&thinsp;‖&thinsp;<b class="v">r</b><sub><i>B</i></sub>&thinsp;−&thinsp;sg[&thinsp;<b class="v">r</b><sub><i>A</i></sub>&thinsp;]&thinsp;‖²<sub><i>w</i></sub>&thinsp;+&thinsp;<i>μ</i>&thinsp;·&thinsp;<span class="bb">E</span><sub><i>r</i> ∈ <span class="cal">R</span><sub>tr</sub></sub>&thinsp;‖<b class="v">f</b><sub><i>r</i></sub>‖²<span class="side"><i>σ</i> ∼ U[0.7, 0.9]</span></span><span class="n">loss</span></div>
-    <div class="eq"><span>in box:&emsp14;<b class="v">v</b><sub><i>B</i></sub>*&thinsp;−&thinsp;<b class="v">v</b><sub><i>A</i></sub>*&emsp14;=&emsp14;<b class="v">x</b><sub><i>A</i></sub>&thinsp;−&thinsp;<b class="v">x</b><sub><i>B</i></sub>&emsp;&emsp;out of box:&emsp14;<b class="v">r</b><sub><i>B</i></sub>&thinsp;−&thinsp;<b class="v">r</b><sub><i>A</i></sub>&emsp14;=&emsp14;<b class="v">v</b><sub><i>θ</i></sub>(B)&thinsp;−&thinsp;<b class="v">v</b><sub><i>θ</i></sub>(A)<span class="side">the target is clean · the scene is held</span></span><span class="n">(2)</span></div>
+    <div class="eq"><span>in box:&emsp14;<b class="v">v</b><sub><i>B</i></sub>*&thinsp;−&thinsp;<b class="v">v</b><sub><i>A</i></sub>*&emsp14;=&emsp14;<b class="v">x</b><sub><i>A</i></sub>&thinsp;−&thinsp;<b class="v">x</b><sub><i>B</i></sub>&emsp;&emsp;out of box:&emsp14;<b class="v">r</b><sub><i>B</i></sub>&thinsp;−&thinsp;<b class="v">r</b><sub><i>A</i></sub>&emsp14;=&emsp14;<b class="v">v</b><sub><i>θ</i></sub>(B)&thinsp;−&thinsp;<b class="v">v</b><sub><i>θ</i></sub>(A)<span class="side">the scene is held</span></span><span class="n">(2)</span></div>
   </div>
 
   <figcaption><b>One noise, one <span class="mi">σ</span>, two renders of the same scene.</b> The row has to learn one thing, the glyph it addresses. Plain flow matching on a composite trains it on the whole picture, so everything the scene happens to contain is pulled into the row as bias. Instead the same scene is drawn twice, once with the new glyph (<span class="mi"><b class="v">B</b></span>) and once with a Latin string the frozen model already renders (<span class="mi"><b class="v">A</b></span>), under the same <span class="mi"><b class="v">ε</b></span> and the same <span class="mi">σ</span>; the row is trained on the <b>difference of the two flow-matching residuals</b>. What the two renders share cancels, and what is left is the part the new row draws.</figcaption>
@@ -430,9 +454,8 @@ svg .v{font-weight:700;font-style:normal}
   <p class="lede">One table is trained: the ext rows that <code>llm_adapter.embed</code> reads, one free vector per row. Notation: bold lowercase is a vector, bold uppercase a matrix or tensor, italic a scalar.</p>
   <div class="eqs" role="math">
     <div class="eq"><span><b class="v">ẽ</b><sub><i>r</i></sub>&emsp14;=&emsp14;<b class="v">e</b><sub><i>r</i></sub>&thinsp;+&thinsp;<i>ρ</i>&thinsp;<b class="v">f</b><sub><i>r</i></sub></span><span class="n">(1)</span></div>
-    <div class="eq"><span><b class="v">f</b><sub><i>r</i></sub>&emsp14;←&emsp14;<b class="v">f</b><sub><i>r</i></sub><sup>(step 1)</sup> if <i>r</i> ∈ step 1's table, else random<span class="side">step 2 only; step 1 needs no warm start under the paired loss</span></span><span class="n">(2)</span></div>
-    <div class="eq"><span><b class="v">r</b><sub><i>X</i></sub>&emsp14;=&emsp14;<b class="v">v</b><sub><i>φ</i></sub>(<b class="v">z</b><sub><i>σ</i></sub><sup><i>X</i></sup>,&thinsp;<i>σ</i>,&thinsp;<i>T</i>(<b class="v">c</b><sub><i>X</i></sub>;&thinsp;<b class="v">Ẽ</b>))&thinsp;−&thinsp;(<b class="v">ε</b>&thinsp;−&thinsp;<b class="v">z</b><sub>0</sub><sup><i>X</i></sup>)<span class="side">only <b class="v">c</b><sub><i>B</i></sub> carries an ext id, so only <b class="v">r</b><sub><i>B</i></sub> depends on <b class="v">F</b></span></span><span class="n">(3)</span></div>
-    <div class="eq"><span><span class="cal">L</span><sub>Δ</sub>&emsp14;=&emsp14;<span class="bb">E</span><sub><i>x</i></sub>&thinsp;‖&thinsp;<b class="v">r</b><sub><i>B</i></sub>&thinsp;−&thinsp;sg[&thinsp;<b class="v">r</b><sub><i>A</i></sub>&thinsp;]&thinsp;‖²<sub><i>w</i></sub>&thinsp;+&thinsp;<i>μ</i>&thinsp;·&thinsp;<span class="bb">E</span><sub><i>r</i> ∈ <span class="cal">R</span><sub>tr</sub></sub>&thinsp;‖<b class="v">f</b><sub><i>r</i></sub>‖²<span class="side"><i>σ</i> ∼ U[0.7, 0.9]</span></span><span class="n">(4)</span></div>
+    <div class="eq"><span><b class="v">r</b><sub><i>X</i></sub>&emsp14;=&emsp14;<b class="v">v</b><sub><i>φ</i></sub>(<b class="v">z</b><sub><i>σ</i></sub><sup><i>X</i></sup>,&thinsp;<i>σ</i>,&thinsp;<i>T</i>(<b class="v">c</b><sub><i>X</i></sub>;&thinsp;<b class="v">Ẽ</b>))&thinsp;−&thinsp;(<b class="v">ε</b>&thinsp;−&thinsp;<b class="v">z</b><sub>0</sub><sup><i>X</i></sup>)<span class="side">only <b class="v">c</b><sub><i>B</i></sub> carries an ext id, so only <b class="v">r</b><sub><i>B</i></sub> depends on <b class="v">F</b></span></span><span class="n">(2)</span></div>
+    <div class="eq"><span><span class="cal">L</span><sub>Δ</sub>&emsp14;=&emsp14;<span class="bb">E</span><sub><i>x</i></sub>&thinsp;‖&thinsp;<b class="v">r</b><sub><i>B</i></sub>&thinsp;−&thinsp;sg[&thinsp;<b class="v">r</b><sub><i>A</i></sub>&thinsp;]&thinsp;‖²<sub><i>w</i></sub>&thinsp;+&thinsp;<i>μ</i>&thinsp;·&thinsp;<span class="bb">E</span><sub><i>r</i> ∈ <span class="cal">R</span><sub>tr</sub></sub>&thinsp;‖<b class="v">f</b><sub><i>r</i></sub>‖²<span class="side"><i>σ</i> ∼ U[0.7, 0.9]</span></span><span class="n">(3)</span></div>
   </div>
   <div class="scroll">
   <table class="sym">
@@ -456,63 +479,41 @@ svg .v{font-weight:700;font-style:normal}
   <h2>How it is trained: pack → step 1 → step 2 → bake</h2>
   <p class="lede">One table, grown in stages. Step 1 binds single glyphs; step 2 adds punctuation, words and sentence order to the same rows; the bake writes the result into an ordinary pack. Only the table passes between stages.</p>
   <div class="scroll">
-  <svg viewBox="0 0 1080 400" role="img" aria-label="Four boxes left to right: the r256 vocab pack with 69 558 ext rows and f at zero; step 1, the singles table trained on frame-mix composites; step 2, the sentence run warm-started from step 1 with lr warmup and an init anchor; and the bake, which adds rho times f into the pack rows. Arrows carry trained.pt between stages. A red dashed path under the step 1 to step 2 arrow is the warm-start guard: without warmup and anchor the warm start is erased by Adam in about 50 steps.">
+  <svg viewBox="0 0 1080 300" role="img" aria-label="Four boxes left to right: the r256 vocab pack, where f is still zero; step 1, which binds one glyph per row; step 2, which adds words, punctuation and order to the same rows; and the bake, which adds rho times f into the pack rows. Arrows carry trained.pt between stages. A red dashed path under the step 1 to step 2 arrow is the warm-start guard: without warmup and anchor the warm start is erased by Adam in about 50 steps.">
     <defs>
       <marker id="ah3" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="4.6" markerHeight="4.6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="ink-fill"/></marker>
       <marker id="ahr3" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="4.6" markerHeight="4.6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="red-fill"/></marker>
     </defs>
 
     <!-- stage 0: the pack -->
-    <rect x="20" y="40" width="220" height="210" class="f-lav"/>
-    <text x="130" y="70" text-anchor="middle">r256 pack · <tspan class="m v">E</tspan></text>
-    <text x="130" y="96" text-anchor="middle" class="sm">synthjakozh1sym_r256</text>
-    <text x="130" y="116" text-anchor="middle" class="sm">69 558 rows · JA + KO + ZH</text>
-    <text x="130" y="136" text-anchor="middle" class="sm">T5-side distill, earlier line</text>
-    <text x="130" y="166" text-anchor="middle" class="m" font-size="18"><tspan class="v">f</tspan><tspan dy="5" font-size="14">r</tspan><tspan dy="-5"> = 0 · ρ ≈ 195</tspan></text>
-    <line x1="36" y1="186" x2="224" y2="186" class="thumb-edge"/>
-    <text x="130" y="210" text-anchor="middle" class="sm">an address book, not knowledge:</text>
-    <text x="130" y="230" text-anchor="middle" class="sm">a random iso table ties it</text>
+    <rect x="20" y="40" width="220" height="110" class="f-lav"/>
+    <text x="130" y="74" text-anchor="middle">r256 pack · <tspan class="m v">E</tspan></text>
+    <text x="130" y="112" text-anchor="middle" class="m" font-size="18"><tspan class="v">f</tspan><tspan dy="5" font-size="14">r</tspan><tspan dy="-5"> = 0 · ρ ≈ 195</tspan></text>
 
     <!-- stage 1 -->
-    <line class="wire" x1="240" y1="120" x2="282" y2="120" marker-end="url(#ah3)"/>
-    <rect x="290" y="40" width="250" height="210" class="f-lav"/>
-    <text x="415" y="70" text-anchor="middle">step 1 · the table</text>
-    <text x="415" y="96" text-anchor="middle" class="sm">every item paired · no flat items</text>
-    <text x="415" y="114" text-anchor="middle" class="sm">355 rows: 92 kana · 68 voiced</text>
-    <text x="415" y="132" text-anchor="middle" class="sm">200 corpus kanji · 13 punct</text>
-    <text x="415" y="150" text-anchor="middle" class="sm">σ 0.7–0.9 · ≈ 1 000 draws/row</text>
-    <text x="415" y="168" text-anchor="middle" class="sm">lr 2e-3 · uniform · random init</text>
-    <line x1="306" y1="182" x2="524" y2="182" class="thumb-edge"/>
-    <text x="415" y="206" text-anchor="middle" class="sm">≈ 9 h on one GPU</text>
-    <text x="415" y="228" text-anchor="middle" class="sm">gate: single-glyph render rate</text>
+    <line class="wire" x1="240" y1="95" x2="282" y2="95" marker-end="url(#ah3)"/>
+    <rect x="290" y="40" width="250" height="110" class="f-lav"/>
+    <text x="415" y="74" text-anchor="middle">step 1 · the table</text>
+    <text x="415" y="112" text-anchor="middle" class="sm">binds one glyph per row</text>
 
     <!-- stage 2 -->
-    <line class="wire" x1="540" y1="120" x2="582" y2="120" marker-end="url(#ah3)"/>
-    <rect x="590" y="40" width="250" height="210" class="f-lav"/>
-    <text x="715" y="70" text-anchor="middle">step 2 · sentences</text>
-    <text x="715" y="96" text-anchor="middle" class="sm">same rows + word + punct rows</text>
-    <text x="715" y="114" text-anchor="middle" class="sm">Manga109 dialogue · tategaki</text>
-    <text x="715" y="132" text-anchor="middle" class="sm">single .1 · short .5 · sentence .4</text>
-    <text x="715" y="150" text-anchor="middle" class="sm">warm from step 1 · anchor μ</text>
-    <line x1="606" y1="182" x2="824" y2="182" class="thumb-edge"/>
-    <text x="715" y="206" text-anchor="middle" class="sm">ruler = sub-exact glyph lift</text>
-    <text x="715" y="228" text-anchor="middle" class="sm">exact sentence match is the open bar</text>
+    <line class="wire" x1="540" y1="95" x2="582" y2="95" marker-end="url(#ah3)"/>
+    <rect x="590" y="40" width="250" height="110" class="f-lav"/>
+    <text x="715" y="74" text-anchor="middle">step 2 · sentences</text>
+    <text x="715" y="112" text-anchor="middle" class="sm">adds words, punctuation and order</text>
 
     <!-- bake -->
-    <line class="wire" x1="840" y1="120" x2="882" y2="120" marker-end="url(#ah3)"/>
-    <rect x="890" y="40" width="175" height="210" class="f-mint"/>
+    <line class="wire" x1="840" y1="95" x2="882" y2="95" marker-end="url(#ah3)"/>
+    <rect x="890" y="40" width="175" height="110" class="f-mint"/>
     <text x="977" y="70" text-anchor="middle">bake</text>
     <text x="977" y="104" text-anchor="middle" class="m" font-size="18"><tspan class="v">e</tspan><tspan dy="5" font-size="13">r</tspan><tspan dy="-5"> += ρ </tspan><tspan class="v">f</tspan><tspan dy="5" font-size="13">r</tspan></text>
-    <text x="977" y="136" text-anchor="middle" class="sm">every ext id in the table</text>
-    <text x="977" y="156" text-anchor="middle" class="sm">ordinary pack · no hook</text>
-    <text x="977" y="176" text-anchor="middle" class="sm">gate: renders what</text>
-    <text x="977" y="196" text-anchor="middle" class="sm">the hooked eval rendered</text>
+    <text x="977" y="132" text-anchor="middle" class="sm">ordinary pack · no hook</text>
 
     <!-- the warm-start guard -->
-    <path class="grad" d="M415 250 V 300 H 715 V 258" marker-end="url(#ahr3)"/>
-    <text x="565" y="328" text-anchor="middle" class="red" font-size="15">--init_rows · --lr_warmup 500 · --init_anchor μ</text>
-    <text x="565" y="356" text-anchor="middle" class="sm">without them AdamW moves every coordinate ≈ lr per step and the warm start is gone within ~50 steps</text>
-    <text x="565" y="380" text-anchor="middle" class="sm">anchor = μ · mean ‖f − f⁰‖² on inherited rows (its gradient is 0 at the start, so the warmup carries the first steps)</text>
+    <path class="grad" d="M415 150 V 196 H 715 V 158" marker-end="url(#ahr3)"/>
+    <text x="565" y="224" text-anchor="middle" class="red" font-size="15">--init_rows · --lr_warmup 500 · --init_anchor μ</text>
+    <text x="565" y="252" text-anchor="middle" class="sm">without them AdamW moves every coordinate ≈ lr per step and the warm start is gone within ~50 steps</text>
+    <text x="565" y="276" text-anchor="middle" class="sm">anchor = μ · mean ‖f − f⁰‖² on inherited rows (its gradient is 0 at the start, so the warmup carries the first steps)</text>
   </svg>
   </div>
   <figcaption>Each stage starts from the table the last one left, and the bake folds ρ<b class="v">f</b> into the pack rows. Dashed red: AdamW erases a warm start before the data can use it, so every continuation carries a learning-rate warmup and an anchor term (<code>--init_anchor</code>) holding the inherited rows near where they started.</figcaption>

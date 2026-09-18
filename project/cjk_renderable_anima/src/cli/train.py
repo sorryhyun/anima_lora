@@ -27,6 +27,17 @@ def train_args(g):
         "in row-norm units that erased a 0.58-norm row in ≈ 50 steps (sent_s24k, "
         "2026-09-17: warm rows ended at cos 0.10 to their source)",
     )
+    g.add_argument(
+        "--row_blocks",
+        type=int,
+        default=0,
+        help="train (rows arm, single-glyph items): train one ext row at a time "
+        "for this many steps — rows cycle in a shuffled order, every batch is "
+        "--batch items of the current row (one shape, drawn with replacement), "
+        "--lr_warmup / --lr_decay are measured inside the block and the row's "
+        "Adam state is zeroed at block start. Rows share no parameter, so this "
+        "is a per-row local schedule at the same wall-clock. 0 = mixed batches",
+    )
     g.add_argument("--grad_ckpt", type=int, default=1)
     g.add_argument(
         "--compile",

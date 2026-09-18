@@ -1,12 +1,20 @@
-# plan_synth3 — after Δ1: the sentence step and the kanji budget
+# plan_synth3 — after Δ1: the sentence step
 
-> **Status 2026-09-18 morning.** Δ1 (`20260918-015823-5a6c3f`, `d1_s53k`) is at
-> ~40 k / 53 k, train ends ≈ 11:06, job ≈ 11:30. This plan is what runs after
-> it. Two branches, from the user's note of 2026-09-18: **S2** — the sentence
-> step (step 2), *including whether the pair loss is effective there at all* —
-> and **K** — kanji scaling, at more draws per row than a kana row gets.
-> Order and why: R (free) → S2a (micro A/B, ≈ 3 h) → branch. One GPU line at
-> a time, as in [`plan_synth2.md`](plan_synth2.md).
+> **Status 2026-09-18 afternoon.** Δ1 (`20260918-015823-5a6c3f`, `d1_s53k`)
+> landed and is read — `reports/synth_pair_delta1_2026_09_18.md`: gate missed
+> on singles (12/36) and native joint (29/128), passed on the tail (15/128);
+> the whole joint loss is the `en` clause (JA frame), `swap` (EN frame) gains.
+> This plan is **S2** — the sentence step (step 2), *including whether the
+> pair loss is effective there at all*. Step 1 (the seed-table recipe and the
+> kanji budget K) moved to [`plan_synth4.md`](plan_synth4.md) on 2026-09-18
+> evening after the Δ0 smokes changed its recipe
+> ([`reports/row_blocks_alpha_2026_09_18.md`](reports/row_blocks_alpha_2026_09_18.md)).
+> Order: R (free, mostly done) → **S2-smoke** (≈ 1 h, cold 2-arm) → S2a
+> (micro A/B, ≈ 3 h, trimmed by the smoke) → S2b. One GPU line at a time, as
+> in [`plan_synth2.md`](plan_synth2.md).
+> **No paired arm has ever trained on a multi-glyph item** — Δ0's 2 000 items
+> and Δ1's 10 000 are all `single`. Whether ΔFM reaches sentences is untested,
+> not just unmeasured, which is what the smoke is for.
 > Two measurements made while writing this plan changed its shape:
 > **(1)** exact match is floor-saturated on every multi-glyph group, and under a
 > sub-exact ruler the run that was recorded as a collapse (`sent2_s24k`) is the
@@ -20,10 +28,21 @@ Every number below is `exact (sfx)` off the arm's `report.md`, seed-0/1 pooled.
 
 | table | what it is | single | ext | kanji | word | short/phrase/line | en |
 |---|---|---|---|---|---|---|---|
-| `src53k` (`full_s53k_qoff`) | 53 k plain FM, 434 rows, 490 draws/row | 13/36 | 20/36 | 18/36 | 0/32 | — | 24/24 |
+| `src53k` (`full_s53k_qoff`) | 53 k plain FM, 434 rows, 490 draws/row | 13/36 | 18/36 | 18/36 | 0/32 | — | 24/24 |
 | `sent_s24k_a1_s05` | + sentence pass, warm, `--lr_warmup 500 --init_anchor 0.3` | 11/36 | 19/36 | 19/36 | 0/32 | **0/32** each | 24/24 |
 | `sent2_s24k` | a *second* sentence pass warm-started off that | 0/36 | 0/36 | 0/36 | 0/32 | **0/32** each | 24/24 |
-| Δ1 `d1_s53k` | ΔFM, 355 rows, 597 draws/row, uniform weights | *running* | | | | (no multi-glyph groups) | |
+| Δ1 `d1_s53k` | ΔFM, 356 rows, 596 draws/row, uniform weights | 12/36 | 17/36 | 18/36 | (no word rows) | 0 exact; sub-exact pooled **+0.178** vs `src53k` +0.098 (P = 0.016) | 24/24 |
+
+(`src53k` ext was printed here as 20/36 on 2026-09-18 morning; the arm's
+`report.md` and the Δ1 gate both say 18/36.) Δ1's native, by clause (both /
+joint / tail of 64): `en` 22 / 14 / 11 vs plain 36 / 24 / 16; `swap` 19 / 15 /
+4 vs plain 18 / 12 / 8. か and す carry −13 of the −14 on `en` and both gain
+on `swap`. The cross sheets (`src/probe/cross_sheet.py`, `x_か_en.png`) show
+the mechanism: plain FM writes one large か on a wiped canvas; ΔFM keeps the
+scene and か sits *inside the base's free-running JA pseudo-text*
+(`きじたと(か)`) — the exact read is lost to co-text, not to a missing glyph.
+That is the wipe the Δ0 report said ΔFM removes, now measured on the full
+table, and it is the failure S2's premise claims to fix.
 
 `sent_s24k_a1_s05`'s report has been owed since 2026-09-17; the table above
 and the ruler below discharge it — the full record goes to
@@ -70,25 +89,47 @@ Three things follow, and they are the plan:
    A gate written as "short ≥ 1/32" is a coin flip; "pooled lift above the
    baseline's CI" is a measurement.
 
-## R — read Δ1 (free, today)
+## R — read Δ1 (free) — done 2026-09-18, two items left
 
-No new GPU beyond the eval already inside the job.
+`reports/synth_pair_delta1_2026_09_18.md` discharges the gate, the sheets and
+the exposure read:
 
-- **Gate (from `plan_synth2.md`):** beat `src53k` on singles (13/36) and on the
-  joint native count with the tail under plain FM's.
-- **The uniform-exposure read, which only Δ1 can give.** The 53 k run drew
-  kanji and `kana_ext` at weight 2 against kana's 1 — its kanji 18/36 vs kana
-  13/36 is *2× the exposure*, not evidence about strokes. Δ1 forces every
-  source to `*1`, so **Δ1's `single` vs `single_ext` vs `single_kanji` vs
-  `single_extra` spread at 597 draws/row is the first clean measurement of
-  per-draw difficulty by unit type.** It sets K's weights; do not pick them
-  before this number exists.
-- Sheets to read: the first kanji rows for the flat-0 drift risk
-  (`plan_synth2.md` Δ1, last bullet — 日 as Latin "a" was a plain-FM flat-0
-  failure and Δ0's 12 rows were all kana), and `single_extra` (punctuation at
-  weight 1 for the first time).
-- Also free: `sub_exact.py` on Δ1 is meaningless (no multi-glyph groups) —
-  Δ1's contribution to S2 is the seed table, not a ruler.
+- **Gate:** missed on singles (12 vs 13) and native joint (29 vs 36), passed
+  on the tail (15 vs 24). ΔFM is not a drop-in for the seed table.
+- **The uniform-exposure read:** at weight 1 and 596 draws/row, kana 12/36,
+  `kana_ext` 17/36, kanji 18/36. **Per draw, kanji are not harder than kana**
+  — the 53 k run's kanji 18 vs kana 13 was its 2× exposure. K's weights follow
+  from this: no extra draws for kanji; if anything, plain kana / katakana is
+  the weak kind.
+- **Flat-0 drift on kanji:** 日 is the one glyph that does *not* drop on
+  `en` (5 → 6 both); it moves the scene most (lowest en cos, lowest box IoU)
+  but is not drawn as Latin. Risk retired for Δ1's recipe.
+- **`sub_exact.py` on Δ1 is not meaningless** — the eval set carries
+  `line` / `combo` / `corpus` even though training had no multi-glyph items,
+  and Δ1 orders *above* `src53k` there (+0.178 vs +0.098, P = 0.016). That is
+  the ruler's second comparison (see *Open risks*).
+- **Δ1 vs `src53k` is not a clean A/B on the loss**: the pool (rebuilt `s1w`),
+  row count (356 vs 434), weights (uniform vs ×2), layout (vertical
+  one-column ≥ 28 px) and lr (2e-3 vs 1e-3) all moved with it. The control is
+  `--pair_loss 0` on `data_synth_d1` (`src/cli/data.py` names it). It is not a
+  separate arm: if S2 kills ΔFM, K1 runs plain FM on Δ1's data and *is* that
+  control; if S2 keeps it, the sheets already assign the `en` loss to the
+  loss.
+
+Still owed, both free:
+
+- **`single_extra`** — the 13 punctuation rows are in the inventory and
+  rendered, but the group is missing from `EVAL_GROUPS` (`src/common/prompts.py`),
+  so neither the table nor the sheet is written. One line + re-run the eval
+  stage on `rows_synth_d1_d1_s53k`.
+- **K0** — cos table extended to Δ1's table, and Δ1 ⊕ punct-only merged and
+  evaluated on both blocks.
+
+### box weight under ΔFM — settled 2026-09-18, keep `--box_weight 4`
+
+Measured on the s750 smoke (`reports/row_blocks_alpha_2026_09_18.md`): w = 1
+weakens the glyph (singles 13 → 9, native `en` 22 → 15) and changes nothing
+on the scene. Every arm below keeps 4.
 
 ## S2 — the sentence step, and whether ΔFM is effective there
 
@@ -101,9 +142,53 @@ where the target lives and its scene-holding stays.
 
 What is new here is that the question is now askable: there is a ruler, and
 there is a prior (both existing sentence tables carry lift; the anchor trades
-singles against it).
+singles against it). And Δ1 made the premise concrete: the `en`-clause loss
+*is* co-text around the glyph (R above), so "fully addressed caption → no
+co-text" is now a prediction with a number behind it, not a story.
 
-### S2a — the A/B, micro (≈ 3 h, first)
+### S2-smoke — does the pair loss reach a multi-glyph item at all (≈ 1 h, first)
+
+Every paired arm to date trained on singles only. Before S2a spends 3 h and a
+Δ1 warm-start on four arms, a Δ0-sized cold A/B on sentence items:
+
+- **Data** (one build): Δ0's `chars:がぎぐげござガギグゲゴザ` plus a small word
+  inventory (`--units words:30`), `--scene_mix short=0.5,sentence=0.5
+  --phrase_file dialogue_2_10.tsv`, `--pair_ref en --pair_ref_pool 4`,
+  `--shapes 512`. **Read `sheet_scene_pair.png` first** — multi-column and
+  multi-line siblings have only ever passed the pixel-identity assert.
+- **Train**, two arms on that dir, cold, 1 500 steps, the Δ0 argv
+  (`--box_weight 4`, `--t_min 0.7 --t_max 0.9`, `--free_residual 1e-3`):
+  `--pair_loss 0` vs `--pair_loss 1 --lr_rows 2e-3`.
+- **Read:** (a) how much of the sentence residual cancels — paired loss vs
+  `fm_plain` (Δ0 singles: ≈ 80 %); if the cancelled share collapses on
+  multi-line items the sibling is not doing its job; (b) `sub_exact.py`
+  pooled lift over `short` / `phrase` / `line`, plain vs paired, bootstrap CI;
+  (c) native `がガ`, **`en` clause**, co-text count (renders with more than
+  one text box) — the clause Δ1 lost.
+- **Decision:** paired lift inside plain's CI *and* co-text not below plain →
+  S2a drops its paired arms and becomes a μ sweep (2 arms, plain). Paired lift
+  above plain's CI → S2a keeps the paired arms and may drop the plain μ 0 arm.
+  Either way S2a shrinks.
+- **Limit:** cold 1 500 steps at ~60 rows is under the identity budget; this
+  answers "does the paired residual point somewhere on sentences, relative to
+  plain", which is what Δ0 answered for singles — not "are sentences readable".
+
+### S2a — the A/B, micro (≈ 3 h, after the smoke)
+
+**Pre-condition (found 2026-09-18, not yet fixed): the warm-start loader
+does not convert row units.** `raw` is in row-norm units (delta = `raw ×
+row_scale`) and `row_scale` is the mean pack-row norm of *that run's*
+inventory (`src/train/trainables.py:30`); `_init_rows_one` (`:103`) copies
+the source `raw` as is. Every warm start so far stayed inside the 53 k
+inventory family (`src53k` 196.4 → `sent_s24k` 197.1 → `sent2` 197.0, a 0.4 %
+error — the anchor-sweep and `sent2` reads stand). S2a warm-starts **Δ1
+(row_scale 232.9, 356 rows) into a ~500-row inventory (≈ 197)**: uncorrected,
+every Δ1 row starts 1.18× too large and `--init_anchor` pins it there — and
+norm is the native lever (`plan_synth4.md`). Fix before launch: `row = row *
+src_row_scale / self.row_scale` in the loader (source without `row_scale` →
+1.0), the same correction `src/probe/merge_tables.py` already applies;
+one unit test on a two-inventory fixture; CLI golden untouched.
+
 
 Four arms on **one** data dir, 3 k steps each, warm-started from Δ1's table,
 everything else the `sent_s24k_a1_s05` argv:
@@ -131,13 +216,15 @@ everything else the `sent_s24k_a1_s05` argv:
   multi-column items before launch** — that assert is the only thing checked
   so far.
 - **Ruler:** `sub_exact.py` pooled lift (primary), per-group lift, exact match
-  and `single` (secondary), `en` 24/24 (invariant). Native `がガゴ` for the
-  co-text count.
+  and `single` (secondary), `en` 24/24 (invariant). Native `がガゴ` on the
+  **`en` clause** (the JA frame — the trained and deployed frame, and the one
+  Δ1 lost) for the co-text count; `swap` is the control clause.
 - **Gate — ΔFM is effective on sentences iff** `s2_pair_a03` pooled lift is
-  above `s2_plain_a03`'s bootstrap CI **and** `single` is not below it. The
-  mechanism claim predicts something sharper and should be checked separately:
-  the co-text count on the native sheets falls for the paired arm where the
-  caption is fully addressed, which is the only reason this line survived Δ0.
+  above `s2_plain_a03`'s bootstrap CI **and** `single` is not below it **and**
+  the `en`-clause co-text count is below the plain arm's. The third clause is
+  the mechanism itself: Δ1 showed ΔFM's cost is co-text around the glyph, and
+  a fully addressed caption is the only proposed fix. Lift without a co-text
+  drop means the ruler moved and the failure did not.
 - **Kill:** paired lift inside plain's CI at equal `single` → ΔFM does not
   reach sentences; it stays a flag, S2b runs plain, and the row goes to
   `findings.md` *What does not move it*. This is the decision the whole ΔFM
@@ -160,90 +247,30 @@ at 768×1344, the user's ComfyUI captions) against the anchor sweep's 1/8 and
 
 ## K — the kanji budget
 
-**What "more steps per row" costs.** Δ1's rate is 597 draws/row at 355 rows /
-53 k steps / batch 4; the exposure curve (`plan_synth.md`) reads 1 330 / 670 /
-490 draws → 100 / 75 / 36 % of singles.
-
-| kanji rows | total rows | at 597 draws/row | at 1 194 (×2 kanji) |
-|---|---|---|---|
-| 200 (Δ1) | 355 | 53 k steps, 8.7 h | 83 k, 13.6 h |
-| 400 | 555 | 83 k, 13.6 h | 143 k, 23.4 h |
-| 600 | 755 | 113 k, 18.5 h | 203 k, 33.4 h |
-| 1 000 | 1 155 | 172 k, 28.4 h | 322 k, 53 h |
-
-**The inventory ceiling is real and close.** `kanji:N` is corpus frequency over
-the manga109s bubbles, and there are only **1 037** distinct kanji that are one
-Qwen piece with a pack row: top-200 covers 68.3 % of corpus kanji tokens,
-top-400 84.3 %, top-600 92.6 %, top-1000 99.5 %. The *pack* holds **8 501**
-single-kanji rows, so jōyō 2 136 is addressable — but not through `kanji:N`;
-it needs a `jouyou` unit kind or a `list:` file. Decide which target the line
-is scaling to before sizing a run: **corpus 600 (92.6 % coverage, 18.5 h)** is
-the cheap complete-looking point; jōyō is a different piece of work.
-
-### K0 — is a merged table a table? (free, no GPU)
-
-The budget above wants the shortcut `plan_synth2.md` parked in *Chunking*:
-train disjoint row blocks and union them by ext id (`src/probe/merge_tables.py`
-already does this with the per-run `row_scale` correction; the shipped
-`merge_punct` table is exactly this). That would make kanji scaling parallel in
-wall-clock instead of linear. **It is not free**, and the price is now
-measured — cosine between run's mean row directions (the shared trigger,
-17–29 % of row energy):
-
-| pair | cos |
-|---|---|
-| 53 k ↔ punct-only (the shipped `merge_punct`) | **0.590** |
-| 53 k ↔ plain-FM Δ0 (`pair0_s3000`) | 0.686 |
-| 53 k ↔ **ΔFM** Δ0 (`pairEN_s1500_lr2e-3`) | **0.348** |
-| plain-FM Δ0 ↔ ΔFM Δ0 (same rows, same data) | 0.449 |
-| 53 k ↔ `sent_s24k_a1_s05` (warm off it, μ 0.3) | 0.999 |
-
-So the shared direction is **per-run, not per-line**, and the loss rotates it
-more than the dataset does (0.449 on identical rows and data). The shipped
-merge worked at 0.59 for 17 punctuation rows; nothing says a 400-row kanji
-block merged at 0.35 into a ΔFM kana block does. Caveat: the Δ0 means are over
-12–17 rows and are noisy estimators; the 53 k ↔ punct row is the load-bearing
-one.
-
-K0 is therefore: (a) the cos table above extended to Δ1's table once it lands,
-(b) `merge_tables.py` Δ1 ⊕ punct-only and eval the merged table on both blocks
-— if a 0.35–0.59 merge costs the donor block its singles, the shortcut is dead
-and K is one long run; if it does not, K1 is two or three parallel-in-time
-runs. Both are eval-only.
-
-### K1 — the scaled table
-
-Recipe = Δ1's, with weights set by R's per-type spread and `kanji:400` or
-`:600`. **Do not raise the kanji weight above what R measures**: the 53 k run's
-kanji 18/36 at weight 2 was read as "kanji is fine" and it was an exposure
-artefact; if Δ1 shows kanji at parity with kana at weight 1, the extra draws
-should go to `kana_ext`/katakana instead (1/12 at equal exposure in the 53 k
-run, the standing miss).
-
-- **Gate:** `single_kanji` on the *new* rows (frequency ranks 200–600, which
-  are rarer and were never evaluated) not below Δ1's on ranks 1–200, at equal
-  draws/row. Held-out kanji stay 0 by construction (addresses do not compose,
-  `findings.md`) — do not read that as a failure.
-- **Guard:** rows in ≈ 0.35 % of batches at 755 rows (Δ1: 1.1 %, Δ0: 8 %).
-  AdamW β₂ 0.99 decays `v` between visits; `delta_norm_mean` per draw against
-  Δ1's curve over the first few thousand steps is the early read, as in Δ1.
-- **Guard:** the 53 k run's word rows sat at norm 0.12 because a weighted draw
-  is not a quota. At 755 rows check the items-per-row histogram in the data
-  log before training, not after.
+Moved to [`plan_synth4.md`](plan_synth4.md) with the step-1 recipe decisions
+(row blocks, per-block warmup, the row-norm lever). K0 stays free and is
+listed there.
 
 ## Order
 
-R and K0 are free and run today, off Δ1's output. Then **S2a**, because it is
-the branch that can close: every multi-glyph group has been 0 since 2026-09-14,
-the ΔFM line exists to fix exactly that, and a 3 h A/B either gives the line a
-result or ends it. K1 is 14–19 h of GPU that produces a bigger *singles* table;
-if S2 dies, a bigger singles table is the whole ceiling of the line and its
-size should be a shipping decision, not a research one. If S2a passes, S2b and
-K1 compete for the box and S2b goes first (it is what the artefact is for).
+R is read; `single_extra` and K0 are free and run off Δ1's output. Then the
+**S2-smoke** (≈ 1 h), then **S2a** trimmed to what the smoke leaves, because
+S2 is the branch that can close: every multi-glyph group has been 0 since
+2026-09-14, the ΔFM line exists to fix exactly that, and the smoke + A/B either
+give the line a result or end it. One deployment fact decides whether Δ1 is
+already a usable seed: under the EN frame (`swap`) Δ1 beats `src53k` on every
+native column (19 / 15 / 4 vs 18 / 12 / 8); under the JA frame it loses. The
+target stage's prompt frame (`deploy_plan.md`) has to be fixed before S2b so
+the gate is read on the clause that ships. K1 (`plan_synth4.md`) waits on
+this line's verdict: if S2 dies, a bigger singles table is the whole ceiling
+of the line and its size is a shipping decision; if S2a passes, S2b goes
+first (it is what the artefact is for).
 
 ## Open risks
 
-- **The sub-exact ruler is new and has one comparison behind it.** It is a
+- **The sub-exact ruler is new and has two comparisons behind it** (`sent`
+  vs `sent2`, and `src53k` vs Δ1 — the latter *disagrees* with exact match by
+  construction: fewer exact hits, more of the right glyphs). It is a
   bag-of-glyphs measure: it cannot see order or count, the two things the
   strings arm showed a table *can* carry. It orders arms; it does not say the
   output is readable. Sheets stay the second read, per-glyph — a pooled lift
@@ -260,10 +287,13 @@ K1 compete for the box and S2b goes first (it is what the artefact is for).
   by refusing the update the sentence step is asking for. If S2a shows lift and
   `single` moving in opposite directions at every μ, the artefact needs two
   tables, not one, and the shipping question (`deploy_plan.md`) changes shape.
-- **Δ1's flat 0 on kanji** is unverified — the flat-0 drift failures (日 as
-  Latin "a") were plain-FM and Δ0's rows were all kana. R's sheets are the
-  first look; the lever if it drifts is small paired flat glyphs, not 10 %
-  at 110–200 px (`plan_synth2.md` Δ1).
+- **Δ1's flat 0 on kanji** — read (R): 日 holds on `en` and is not drawn as
+  Latin. The lever, if a later inventory drifts, is still small paired flat
+  glyphs, not 10 % at 110–200 px (`plan_synth2.md` Δ1).
+- **The S2-smoke is cold and small**, like Δ0 — and Δ0's 12 rows did not
+  expose the `en`-clause loss that Δ1's 356 did. A smoke pass is a licence to
+  run S2a, not a sentence verdict; a smoke kill is a kill only for the paired
+  arms of S2a, and S2b's plain run still measures sentences.
 - **RAM** (46 GB usable): reference latents + captions are pool-bounded, but
   S2a adds word and `list:` rows on top of the sentence recipe's phrase pieces,
   and K1 at 755 rows raises the text cache. The 10 k-item build stays the cap.
@@ -279,6 +309,5 @@ K1 compete for the box and S2b goes first (it is what the artefact is for).
 - **A kana reference, contrastive ΔFM, cached Jacobians, OCR-reward rows.**
   Unchanged from `plan_synth2.md` *Not this plan*.
 - **lr 3e-3**, and **lr as a plain-FM lever** (L0, closed 2026-09-17).
-- **Jōyō 2 136 in one run.** 8 501 single-kanji rows exist in the pack, so it
-  is reachable, but at Δ1's rate it is ~60 h and it needs a unit kind that does
-  not exist. Revisit only after K1 prices the 400–600 band.
+- **The seed-table recipe and the kanji budget** — `plan_synth4.md` (row
+  blocks, warmup, α, K0 / K1, jōyō).

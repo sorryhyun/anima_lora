@@ -103,10 +103,17 @@ def stage_train(a):
         # growth, 1.6× at 2000 steps); cosine to 0 stops it late. Linear
         # warmup (--lr_warmup) multiplies in: a warm start's first Adam steps
         # otherwise move every coordinate ≈ lr and erase the rows.
+        # --row_blocks: the schedule is per block — step and horizon are the
+        # block's, so every row gets the same warmup + cosine regardless of
+        # where in the run its block falls.
+        horizon = a.row_blocks or a.train_steps
+
         def lr_mult(st):
+            if a.row_blocks:
+                st = st % a.row_blocks
             m = 1.0
             if a.lr_decay == "cosine":
-                m = 0.5 * (1 + math.cos(math.pi * min(st / a.train_steps, 1.0)))
+                m = 0.5 * (1 + math.cos(math.pi * min(st / horizon, 1.0)))
             if a.lr_warmup > 0:
                 m *= min((st + 1) / a.lr_warmup, 1.0)
             return m
@@ -132,15 +139,23 @@ def stage_train(a):
             grad_ckpt=bool(a.grad_ckpt),
         )
 
-    batcher = Batcher(a, recs, lat)
+    batcher = Batcher(a, recs, lat, cache=cache, delta=tr.delta)
     pair_ema: dict = {}
     flat_ema: dict = {}
     log = []
+    block_log = []  # --row_blocks: every step, per row (row_blocks_log.jsonl)
     aug_rng = random.Random(a.seed + 11)
     killed = ""
     t0 = time.time()
     for step in range(1, a.train_steps + 1):
         idx = batcher.next(step)
+        if batcher.blocks and (step - 1) % a.row_blocks == 0:
+            # new row block: fresh optimizer state for this row only (the
+            # other rows' slices are untouched; theirs is their own block's)
+            st = opt.state.get(tr.delta.raw)
+            if st:
+                for k in ("exp_avg", "exp_avg_sq"):
+                    st[k][batcher.cur_row].zero_()
         latents = lat[idx].to(device)
         noise = torch.randn_like(latents)
         noisy, ts, target = fm_training_batch(
@@ -189,9 +204,51 @@ def stage_train(a):
         else:
             loss_fm = weighted_fm_loss(pred, target, brecs, bw)
         loss, decor_val = tr.regularized(loss_fm)
+        if batcher.blocks:
+            # per-row trajectory: the paired (or plain) residual split into
+            # its in-box (glyph) and out-of-box (scene) mean squares, every
+            # step, with the row's norm *before* this step's update
+            with torch.no_grad():
+                if paired:
+                    res = (pred.float() - keep_pair * pred_a.float()) - (
+                        target.float() - keep_pair * target_a.float()
+                    )
+                else:
+                    res = pred.float() - target.float()
+                se = res**2
+                m = _box_mask(se.shape, brecs, se.device)
+                inb = float((se * m).sum() / m.expand_as(se).sum().clamp(min=1))
+                outb = float(
+                    (se * (1 - m)).sum() / (1 - m).expand_as(se).sum().clamp(min=1)
+                )
+                rn = float(tr.delta.raw[batcher.cur_row].norm() * tr.row_scale)
+            block_log.append(
+                {
+                    "step": step,
+                    "block": (step - 1) // a.row_blocks,
+                    "local": (step - 1) % a.row_blocks + 1,
+                    "ext": batcher.cur_ext,
+                    "loss": float(loss_fm),
+                    "in_box": inb,
+                    "out_box": outb,
+                    "row_norm": rn,
+                    "lr": opt.param_groups[0]["lr"],
+                }
+            )
         opt.zero_grad(set_to_none=True)
         loss.backward()
+        if batcher.blocks:
+            # only the block's row moves: the others would otherwise keep
+            # taking Adam steps from the μ‖f‖² pull and their stale momentum
+            # for the rest of the run (smoke 2026-09-18: block-0 row ended at
+            # norm 24 against block-11's 150)
+            raw_before = tr.delta.raw.detach().clone()
         opt.step()
+        if batcher.blocks:
+            with torch.no_grad():
+                keep = torch.ones(raw_before.shape[0], dtype=torch.bool, device=raw_before.device)
+                keep[batcher.cur_row] = False
+                tr.delta.raw[keep] = raw_before[keep]
         if sched is not None:
             sched.step()
         tr.after_step()
@@ -211,6 +268,10 @@ def stage_train(a):
         sd["out_vec"] = q_vec.cpu()
     torch.save(sd, out / "trained.pt")
     (out / "train_log.json").write_text(json.dumps(log, indent=1))
+    if block_log:
+        (out / "row_blocks_log.jsonl").write_text(
+            "\n".join(json.dumps(r) for r in block_log) + "\n"
+        )
     if killed:
         raise SystemExit(killed)
     print(
@@ -501,11 +562,21 @@ class Batcher:
       source)* — flat vs scene composite — so ``c_flat`` toggles per batch);
     - else a shuffled walk in chunks of ``--batch``.
 
-    Every epoch reshuffles with ``Random(seed + step)``."""
+    Every epoch reshuffles with ``Random(seed + step)``.
 
-    def __init__(self, a, recs, lat: LatentStore):
+    ``--row_blocks N`` (rows arm, single-glyph scene items): one ext row at a
+    time for N steps, rows in a shuffled cycle; every batch is ``--batch``
+    items of that row from one shape, drawn with replacement (a row has
+    ~10–30 items, a block ~4N draws). ``cur_row`` is the row's index in
+    ``delta.raw`` for the current step."""
+
+    def __init__(self, a, recs, lat: LatentStore, cache=None, delta=None):
         self.seed, self.batch = a.seed, a.batch
         self.groups = None
+        self.blocks = None
+        if a.row_blocks:
+            self._init_row_blocks(a, recs, lat, cache, delta)
+            return
         if "layout_id" in recs[0]:
             by_lid: dict = {}
             for i, r in enumerate(recs):
@@ -540,6 +611,56 @@ class Batcher:
                 flush=True,
             )
 
+    def _init_row_blocks(self, a, recs, lat, cache, delta):
+        from library.anima.ext_vocab import T5_TABLE_SIZE
+
+        assert a.arm == "rows", "--row_blocks is a rows-arm batcher"
+        self.n_block = a.row_blocks
+        by_row: dict = {}
+        skipped = 0
+        for i, r in enumerate(recs):
+            if r["src"] != "scene":
+                skipped += 1
+                continue
+            t5 = cache[r["caption"]][2]
+            ext = sorted({int(v) - T5_TABLE_SIZE for v in t5.tolist() if v >= T5_TABLE_SIZE})
+            if len(ext) != 1:
+                skipped += 1  # multi-row item: no single block owns it
+                continue
+            shp = lat.shape_of(i) if lat.row_of is not None else ""
+            by_row.setdefault(ext[0], {}).setdefault(shp, []).append(i)
+        assert by_row, "--row_blocks needs single-glyph scene items"
+        self.rows = sorted(by_row)  # ext ids
+        self.row_items = by_row  # ext id → {shape: [rec idx]}
+        self.row_index = {e: delta.index[e] for e in self.rows}
+        self.order = self.rows[:]
+        random.Random(a.seed).shuffle(self.order)
+        self.blocks = True
+        self.cur_row = None
+        self.cur_ext = None
+        n_items = sum(len(v) for d in by_row.values() for v in d.values())
+        print(
+            f"batching: row blocks of {self.n_block} steps over {len(self.rows)} rows "
+            f"({n_items} items, {skipped} skipped), {a.train_steps / self.n_block:.1f} "
+            f"blocks/run = {a.train_steps / self.n_block / len(self.rows):.2f} "
+            f"passes/row, {self.batch * self.n_block} draws/row/block",
+            flush=True,
+        )
+
+    def _row_block_next(self, step: int) -> list[int]:
+        blk = (step - 1) // self.n_block
+        pos = blk % len(self.order)
+        if pos == 0 and (step - 1) % self.n_block == 0:
+            random.Random(self.seed + step).shuffle(self.order)
+        self.cur_ext = self.order[pos]
+        self.cur_row = self.row_index[self.cur_ext]
+        rng = random.Random(self.seed * 7919 + step)
+        shapes = self.row_items[self.cur_ext]
+        # a shape drawn in proportion to its items, then the batch from it
+        pool = [(shp, i) for shp, ids in shapes.items() for i in ids]
+        shp = rng.choice(pool)[0]
+        return [rng.choice(shapes[shp]) for _ in range(self.batch)]
+
     def _shape_epoch(self, brng: random.Random):
         out = []
         for shp in sorted(self.by_shape):
@@ -553,6 +674,8 @@ class Batcher:
         return out
 
     def next(self, step: int) -> list[int]:
+        if self.blocks:
+            return self._row_block_next(step)
         if self.shape_batches is not None:
             if self.bptr >= len(self.shape_batches):
                 self.shape_batches = self._shape_epoch(random.Random(self.seed + step))

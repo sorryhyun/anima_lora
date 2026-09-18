@@ -22,12 +22,16 @@ supervision for new rows; Δ0 / Δ0b read 2026-09-17 — a scene-holding loss:
 no wipe, no exposure saving, JA co-text the loss cannot remove, **lr is a
 lever** — next L0, then Δ2);
 [`plan_synth3.md`](plan_synth3.md) is the plan after Δ1 — the sentence step
-(step 2, with the ΔFM-vs-plain A/B) and the kanji budget, written on two
+(step 2, with the ΔFM-vs-plain A/B: S2-smoke → S2a → S2b), written on two
 measurements of 2026-09-18: exact match is floor-saturated on every
 multi-glyph group (`src/probe/sub_exact.py` supplies a lift ruler; under it
 `sent2_s24k`, recorded as a collapse, is the best sentence table we have) and
 the shared trigger direction is per-run, not per-line (cos 0.35–0.69 across
 runs), which prices merging tables by ext id;
+[`plan_synth4.md`](plan_synth4.md) is step 1 again — the seed-table recipe
+(row-block batching, per-block warmup, the row-norm lever α; from the Δ0
+smokes of 2026-09-18, `reports/row_blocks_alpha_2026_09_18.md`) and the
+kanji budget K moved out of plan_synth3;
 [`findings.md`](findings.md) holds the settled
 verdicts one screen per topic; [`reports/`](reports/README.md) is the dated run record
 (indexed: W0–W2, W2d Runs 1–3, order probe, σ diagnostic, strings arm,
@@ -243,7 +247,7 @@ larger piece misses the row (the `eval_coverage.json` line).
 | `assets/target_prompts.txt` | the `target` stage's default captions — the user's ComfyUI prompts of 2026-09-17 (hoshino ai by @akipeko at the bar, saying はい / こんにちは), one full caption per line, expected text = the quoted span |
 | `src/data/` `src/train/` `src/eval/` `src/scenes/` | one package per role: its stage module(s) plus what only that stage reads (units + inventory; trainables + encoder; enref, native, classify, salad; judge) |
 | `src/cli/` | argparse, one module per reading stage |
-| `src/probe/` | standalone model-running questions — `order_probe.py` (base-model EN order control), `transplant_table.py`, `merge_tables.py`, `quote_dir_save.py` |
+| `src/probe/` | standalone questions over a finished table — model-running: `order_probe.py` (base-model EN order control), `transplant_table.py`, `merge_tables.py`, `quote_dir_save.py`; free readers over what a stage already wrote: `sub_exact.py` (glyph-lift ruler for the floor-saturated multi-glyph groups), `cross_sheet.py` (two arms' `native` renders row-interleaved on one sheet) |
 | `src/bench/` | rulers over a finished table, no sampler — `wake_geometry.py` (PR, pairwise cos, composition pairs), `rows_manifold.py`; local name, no repo `result.json` envelope |
 | `tests/` | line-local tests (imports, CLI golden dump, units / shapes / CER / kinsoku): `.venv/bin/python -m pytest project/cjk_renderable_anima/tests` — not part of the repo suite |
 | `formulation.pdf`, `.tex` | the training written as equations |

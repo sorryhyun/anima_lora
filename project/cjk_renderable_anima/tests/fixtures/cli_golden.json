@@ -1112,6 +1112,21 @@
  {
   "group": "train",
   "option_strings": [
+   "--row_blocks"
+  ],
+  "dest": "row_blocks",
+  "default": 0,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "train (rows arm, single-glyph items): train one ext row at a time for this many steps — rows cycle in a shuffled order, every batch is --batch items of the current row (one shape, drawn with replacement), --lr_warmup / --lr_decay are measured inside the block and the row's Adam state is zeroed at block start. Rows share no parameter, so this is a per-row local schedule at the same wall-clock. 0 = mixed batches",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train",
+  "option_strings": [
    "--grad_ckpt"
   ],
   "dest": "grad_ckpt",
