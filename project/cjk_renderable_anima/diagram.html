@@ -60,11 +60,13 @@ svg .red{fill:var(--red)}
 .trained{stroke:var(--red);stroke-width:3}
 .wire{stroke:var(--ink);stroke-width:2.6;fill:none}
 .grad{stroke:var(--red);stroke-width:2.6;stroke-dasharray:9 6;fill:none}
-.zoom{stroke:var(--ink);stroke-width:1.6;stroke-dasharray:6 5;fill:none}
 .zoomline{stroke:var(--muted);stroke-width:1.2;stroke-dasharray:5 5}
 .plus-bg{fill:var(--ink)} .plus{stroke:var(--bg);stroke-width:3}
 .ink-fill{fill:var(--ink)} .red-fill{fill:var(--red)}
 .thumb-edge{fill:none;stroke:var(--rule);stroke-width:1.5}
+.ghost{fill:none;stroke:var(--faint);stroke-width:2;stroke-dasharray:7 6}
+svg .faint-ink{fill:var(--muted)}
+svg .mono{font-family:var(--mono);font-size:13px}
 /* lower sections */
 section{display:grid;gap:18px;align-content:start}
 h2{font-family:var(--math);font-weight:600;font-size:26px;margin:0;text-wrap:balance}
@@ -91,12 +93,14 @@ td.num{font-variant-numeric:tabular-nums;font-family:var(--mono);font-size:14px;
 p{margin:0}
 .prose{display:grid;gap:12px;max-width:66ch}
 code{font-family:var(--mono);font-size:.88em}
-.zoomframe{stroke:var(--muted);stroke-width:1.4;stroke-dasharray:6 5;fill:none}
 svg .tok{font-family:var(--mono);font-size:13px;fill:var(--ink)}
 .tag.h{color:var(--ink);outline:1.5px solid var(--ink)}
 .tag.k{color:var(--muted);outline:1.5px dashed var(--faint)}
 .eqs{display:grid;gap:14px;padding-block:18px;padding-inline:22px;background:var(--plate);overflow-x:auto}
-.eq{display:flex;align-items:baseline;justify-content:space-between;gap:24px;font-family:var(--math);font-size:23px;white-space:nowrap}
+.eq{display:flex;align-items:center;justify-content:space-between;gap:24px;font-family:var(--math);font-size:23px;white-space:nowrap}
+.frac{display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;margin-inline:5px}
+.frac .num{border-bottom:1.5px solid currentColor;padding:0 10px 4px}
+.frac .den{padding:4px 10px 0}
 .eq i{font-style:italic}
 .eq .n{font-family:var(--sans);font-size:14px;color:var(--muted)}
 .eq .side{font-size:18px;color:var(--muted);margin-left:28px}
@@ -135,167 +139,113 @@ svg .v{font-weight:700;font-style:normal}
     <li><span class="sw grad"></span>gradient path</li>
   </ul>
   <div class="scroll">
-  <svg viewBox="0 0 1080 975" role="img" aria-label="Frozen Anima text-to-image path; the only trainable parameters are the vocab pack's ext rows inside the LLM adapter's embedding, one free vector per Qwen piece, trained by the rectified-flow loss whose gradient passes back through the frozen DiT and the frozen adapter.">
+  <svg viewBox="0 0 850 930" role="img" aria-label="The text-conditioning path, bottom to top. One caption feeds two tokenizers: Qwen3 reads the raw text and its last hidden state becomes the LLM adapter's keys and values; the T5 id stream is the query, with Japanese spans routed to ext ids at or above 32128. The embedding table is split into frozen stock rows and the vocab pack's ext rows, which carry the one trained parameter, f. Six frozen adapter blocks and an out_proj produce the 512 by 1024 context, which feeds the frozen Anima DiT sketched at the top. A red dashed rail runs from the DiT back down through the frozen adapter to the ext rows, the only place anything updates; Qwen3 receives no gradient.">
     <defs>
       <marker id="ah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="4.6" markerHeight="4.6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="ink-fill"/></marker>
       <marker id="ahr" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="4.6" markerHeight="4.6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="red-fill"/></marker>
     </defs>
 
-    <!-- zoom connectors (under everything) -->
-    <rect class="zoomframe" x="256" y="488" width="290" height="392"/>
-    <line class="zoomline" x1="546" y1="488" x2="590" y2="30"/>
-    <line class="zoomline" x1="546" y1="880" x2="590" y2="880"/>
-
-    <!-- ============ PANEL A: frozen Anima ============ -->
+    <!-- ============ the next block, sketched ============ -->
     <g>
-      <rect x="70" y="36" width="370" height="54" class="f-lav"/>
-      <text x="255" y="70" text-anchor="middle" class="m">ℒ = Σ<tspan dy="5" font-size="13">x</tspan><tspan dy="-5"> w ‖ </tspan><tspan class="v">v̂</tspan> − (<tspan class="v">ε</tspan> − <tspan class="v">z</tspan><tspan dy="5" font-size="14">0</tspan><tspan dy="-5">) ‖² / Σ w + μ‖</tspan><tspan class="v">F</tspan>‖²</text>
-      <line class="wire" x1="255" y1="130" x2="255" y2="96" marker-end="url(#ah)"/>
-
-      <rect x="70" y="130" width="370" height="40" class="f-mint"/>
-      <text x="255" y="156" text-anchor="middle">Linear and Reshape</text>
-      <line class="wire" x1="255" y1="170" x2="255" y2="192"/>
-      <rect x="70" y="192" width="370" height="40" class="f-lav"/>
-      <text x="255" y="218" text-anchor="middle">Layer Norm</text>
-      <line class="wire" x1="255" y1="232" x2="255" y2="256"/>
-
-      <rect x="70" y="256" width="370" height="86" class="f-butter"/>
-      <text x="255" y="292" text-anchor="middle">Anima DiT Block</text>
-      <text x="255" y="318" text-anchor="middle" class="sm">self-attn · cross-attn · MLP · frozen</text>
-      <text x="42" y="306" text-anchor="middle">28×</text>
-
-      <!-- gradient, panel A: ℒ → DiT (right rail), DiT → context → adapter → rows (centre rail) -->
-      <path class="grad" d="M452 96V299H446" marker-end="url(#ahr)"/>
-      <text x="462" y="200" class="sm red">∂ℒ</text>
-      <path class="grad" d="M246 342V637H264" marker-end="url(#ahr)"/>
-      <text transform="translate(238 492) rotate(-90)" text-anchor="middle" class="sm red">∂ℒ/∂context · cross-attn, weights fixed</text>
-
-      <!-- latent column -->
-      <line class="wire" x1="150" y1="420" x2="150" y2="347" marker-end="url(#ah)"/>
-      <rect x="80" y="420" width="140" height="38" class="f-sky"/>
-      <text x="150" y="445" text-anchor="middle">Patchify</text>
-      <line class="wire" x1="150" y1="490" x2="150" y2="458"/>
-      <rect x="102" y="502" width="120" height="120" class="f-sky"/>
-      <rect x="96" y="496" width="120" height="120" class="f-apri"/>
-      <image href="data:image/jpeg;base64,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" x="96" y="496" width="120" height="120" preserveAspectRatio="xMidYMid slice"/>
-      <rect x="96" y="496" width="120" height="120" class="thumb-edge"/>
-      <text x="150" y="650" text-anchor="middle">Noised Latent <tspan class="m v">z</tspan><tspan class="m" dy="5" font-size="14">σ</tspan></text>
-      <text x="150" y="676" text-anchor="middle" class="m" font-size="18">σ ~ U[0.7, 0.9]</text>
-      <text x="150" y="700" text-anchor="middle" class="sm">scene composite · 448–512 px</text>
-      <text x="150" y="720" text-anchor="middle" class="sm">w = 4 inside the text box</text>
-
-      <!-- conditioning column -->
-      <line class="wire" x1="335" y1="420" x2="335" y2="347" marker-end="url(#ah)"/>
-      <rect x="270" y="420" width="130" height="38" class="f-lav"/>
-      <text x="335" y="445" text-anchor="middle" font-size="16">context 512×1024</text>
-      <line class="wire" x1="335" y1="500" x2="335" y2="463" marker-end="url(#ah)"/>
-      <rect x="270" y="500" width="130" height="72" class="f-apri"/>
-      <text x="335" y="530" text-anchor="middle">LLM Adapter</text>
-      <text x="335" y="554" text-anchor="middle" class="sm">×6 · frozen</text>
-      <line class="wire" x1="335" y1="612" x2="335" y2="577" marker-end="url(#ah)"/>
-      <rect x="270" y="612" width="130" height="50" class="f-lav trained"/>
-      <text x="335" y="633" text-anchor="middle" font-size="15">embed</text>
-      <text x="335" y="655" text-anchor="middle" class="m" font-size="18"><tspan class="v">E</tspan> + sρ<tspan class="v">F</tspan></text>
-      <text x="412" y="632" class="fire">🔥</text>
-      <line class="wire" x1="335" y1="700" x2="335" y2="667" marker-end="url(#ah)"/>
-      <rect x="270" y="700" width="130" height="50" class="f-sky"/>
-      <text x="335" y="721" text-anchor="middle">T5 ids</text>
-      <text x="335" y="742" text-anchor="middle" class="sm">ext id ≥ 32128</text>
-
-      <rect x="420" y="700" width="112" height="50" class="f-butter"/>
-      <text x="476" y="721" text-anchor="middle" font-size="16">Qwen3 0.6B</text>
-      <text x="476" y="742" text-anchor="middle" class="sm">frozen</text>
-      <path class="wire" d="M476 700V536H405" marker-end="url(#ah)"/>
-      <text x="486" y="624" class="sm">K, V</text>
-
+      <rect x="340" y="58" width="320" height="88" rx="5" class="ghost"/>
+      <text x="500" y="94" text-anchor="middle" class="faint-ink">Anima DiT</text>
+      <text x="500" y="118" text-anchor="middle" class="sm">28 × block · self-attn · cross-attn · MLP</text>
+      <text x="500" y="137" text-anchor="middle" class="sm">frozen</text>
     </g>
 
-    <!-- ============ PANEL B: text conditioning, up close ============ -->
-    <rect x="590" y="30" width="470" height="850" class="zoom"/>
+    <!-- ============ context out ============ -->
+    <line class="wire" x1="500" y1="196" x2="500" y2="150" marker-end="url(#ah)"/>
+    <text x="512" y="176" class="sm">context 512 × 1024</text>
+
+    <rect x="372" y="196" width="256" height="44" rx="4" class="f-mint"/>
+    <text x="500" y="223" text-anchor="middle" font-size="16">out_proj · RMSNorm</text>
+    <line class="wire" x1="500" y1="266" x2="500" y2="244" marker-end="url(#ah)"/>
+
+    <!-- ============ adapter ============ -->
+    <rect x="352" y="266" width="296" height="252" rx="6" class="f-butter"/>
+    <text x="340" y="296" text-anchor="end">6×</text>
+    <text x="500" y="502" text-anchor="middle" class="sm">pre-norm · residual · frozen</text>
+
+    <rect x="372" y="278" width="256" height="44" rx="4" class="f-lav"/>
+    <text x="500" y="305" text-anchor="middle">MLP</text>
+    <line class="wire" x1="500" y1="348" x2="500" y2="326" marker-end="url(#ah)"/>
+
+    <rect x="372" y="348" width="256" height="58" rx="4" class="f-apri"/>
+    <text x="500" y="372" text-anchor="middle">Cross-Attention</text>
+    <text x="500" y="394" text-anchor="middle" class="sm">Q: T5 stream · K, V: Qwen3</text>
+    <line class="wire" x1="500" y1="432" x2="500" y2="410" marker-end="url(#ah)"/>
+
+    <rect x="372" y="432" width="256" height="58" rx="4" class="f-apri"/>
+    <text x="500" y="456" text-anchor="middle">Self-Attention</text>
+    <text x="500" y="478" text-anchor="middle" class="sm">RoPE over 512 slots</text>
+    <line class="wire" x1="500" y1="548" x2="500" y2="522" marker-end="url(#ah)"/>
+
+    <!-- ============ embed: stock rows | pack ext rows ============ -->
+    <rect x="372" y="548" width="120" height="86" rx="4" class="f-lav"/>
+    <text x="432" y="576" text-anchor="middle" font-size="16">stock</text>
+    <text x="432" y="598" text-anchor="middle" class="sm">id &lt; 32128</text>
+    <text x="432" y="620" text-anchor="middle" class="sm">frozen</text>
+
+    <rect x="508" y="548" width="120" height="86" rx="4" class="f-lav trained"/>
+    <text x="568" y="576" text-anchor="middle" font-size="16">pack ext</text>
+    <text x="568" y="598" text-anchor="middle" class="sm">id ≥ 32128</text>
+    <text x="568" y="622" text-anchor="middle" class="m" font-size="17"><tspan class="v">e</tspan><tspan dy="4" font-size="12">r</tspan><tspan dy="-4"> + sρ</tspan><tspan class="v">f</tspan><tspan dy="4" font-size="12">r</tspan></text>
+    <text x="634" y="570" class="fire">🔥</text>
+    <text x="364" y="596" text-anchor="end" class="sm mono">llm_adapter.embed</text>
+
+    <!-- ============ T5 id strip ============ -->
+    <line class="wire" x1="432" y1="686" x2="432" y2="640" marker-end="url(#ah)"/>
+    <line class="wire" x1="568" y1="686" x2="568" y2="640" marker-end="url(#ah)"/>
     <g>
-      <!-- output -->
-      <text x="872" y="62" text-anchor="middle" font-size="17">context → DiT cross-attn</text>
-      <text x="872" y="84" text-anchor="middle" class="sm">512 × 1024</text>
-      <line class="wire" x1="872" y1="120" x2="872" y2="92" marker-end="url(#ah)"/>
-      <rect x="772" y="120" width="200" height="38" class="f-mint"/>
-      <text x="872" y="145" text-anchor="middle" font-size="16">out_proj · RMSNorm</text>
-      <line class="wire" x1="872" y1="190" x2="872" y2="163" marker-end="url(#ah)"/>
-
-      <!-- adapter block -->
-      <rect x="752" y="190" width="240" height="280" class="f-butter"/>
-      <text x="732" y="222" text-anchor="end">6×</text>
-      <rect x="772" y="226" width="200" height="38" class="f-lav"/>
-      <text x="872" y="251" text-anchor="middle">MLP</text>
-      <line class="wire" x1="872" y1="294" x2="872" y2="269" marker-end="url(#ah)"/>
-      <rect x="772" y="294" width="200" height="52" class="f-apri"/>
-      <text x="872" y="316" text-anchor="middle">Cross-Attention</text>
-      <text x="872" y="336" text-anchor="middle" class="sm">Q: T5 stream · K, V: Qwen3</text>
-      <line class="wire" x1="872" y1="376" x2="872" y2="351" marker-end="url(#ah)"/>
-      <rect x="772" y="376" width="200" height="52" class="f-apri"/>
-      <text x="872" y="398" text-anchor="middle">Self-Attention</text>
-      <text x="872" y="418" text-anchor="middle" class="sm">RoPE over 512 slots</text>
-      <text x="872" y="456" text-anchor="middle" class="sm">pre-norm · residual · frozen</text>
-      <line class="wire" x1="872" y1="510" x2="872" y2="475" marker-end="url(#ah)"/>
-
-      <!-- embed: stock rows | pack ext rows -->
-      <rect x="772" y="510" width="96" height="80" class="f-lav"/>
-      <text x="820" y="535" text-anchor="middle" font-size="16">stock</text>
-      <text x="820" y="556" text-anchor="middle" class="sm">id &lt; 32128</text>
-      <text x="820" y="577" text-anchor="middle" class="sm">frozen</text>
-      <rect x="872" y="510" width="100" height="80" class="f-lav trained"/>
-      <text x="922" y="535" text-anchor="middle" font-size="16">pack ext</text>
-      <text x="922" y="556" text-anchor="middle" class="sm">id ≥ 32128</text>
-      <text x="922" y="580" text-anchor="middle" class="m" font-size="17"><tspan class="v">e</tspan><tspan dy="4" font-size="12">r</tspan><tspan dy="-4"> + sρ</tspan><tspan class="v">f</tspan><tspan dy="4" font-size="12">r</tspan></text>
-      <text x="978" y="532" class="fire">🔥</text>
-
-      <!-- T5 id strip -->
-      <line class="wire" x1="812" y1="632" x2="812" y2="595" marker-end="url(#ah)"/>
-      <line class="wire" x1="901" y1="632" x2="901" y2="595" marker-end="url(#ah)"/>
-      <rect x="762" y="632" width="24" height="32" class="f-sky"/><text x="774" y="653" text-anchor="middle" class="tok">…</text>
-      <rect x="790" y="632" width="40" height="32" class="f-sky"/><text x="810" y="653" text-anchor="middle" class="tok">▁as</text>
-      <rect x="834" y="632" width="30" height="32" class="f-sky"/><text x="849" y="653" text-anchor="middle" class="tok">▁"</text>
-      <rect x="868" y="632" width="66" height="32" class="f-apri"/><text x="901" y="654" text-anchor="middle" class="jp" font-size="16">します</text>
-      <rect x="938" y="632" width="26" height="32" class="f-sky"/><text x="951" y="653" text-anchor="middle" class="tok">".</text>
-      <rect x="968" y="632" width="38" height="32" class="f-sky"/><text x="987" y="653" text-anchor="middle" class="tok">&lt;/s&gt;</text>
-      <rect x="1010" y="632" width="30" height="32" class="f-sky"/><text x="1025" y="653" text-anchor="middle" class="tok">pad</text>
-      <text x="1040" y="686" text-anchor="end" class="sm">T5 ids, padded to 512</text>
-
-      <!-- tokenizers -->
-      <line class="wire" x1="872" y1="712" x2="872" y2="694" marker-end="url(#ah)"/>
-      <rect x="772" y="712" width="200" height="50" class="f-sky"/>
-      <text x="872" y="733" text-anchor="middle" font-size="16">T5 tokenizer + pack</text>
-      <text x="872" y="753" text-anchor="middle" class="sm">EN spiece · JA → 32128 + r</text>
-      <rect x="608" y="712" width="104" height="50" class="f-sky"/>
-      <text x="660" y="733" text-anchor="middle" font-size="16">Qwen3</text>
-      <text x="660" y="753" text-anchor="middle" class="sm">tokenizer</text>
-      <line class="wire" x1="712" y1="740" x2="767" y2="740" marker-end="url(#ah)"/>
-      <text x="740" y="731" text-anchor="middle" class="sm">pieces</text>
-
-      <!-- Qwen3 source stream -->
-      <line class="wire" x1="660" y1="712" x2="660" y2="595" marker-end="url(#ah)"/>
-      <rect x="608" y="520" width="104" height="70" class="f-butter"/>
-      <text x="660" y="550" text-anchor="middle" font-size="16">Qwen3 0.6B</text>
-      <text x="660" y="574" text-anchor="middle" class="sm">frozen</text>
-      <path class="wire" d="M660 520V320H767" marker-end="url(#ah)"/>
-      <text x="706" y="310" text-anchor="middle" class="sm">K, V</text>
-      <text x="670" y="410" class="sm">last hidden</text>
-      <text x="670" y="430" class="sm">512 × 1024</text>
-      <text x="670" y="450" class="sm">pad → 0</text>
-      <text x="670" y="490" class="sm">no <tspan class="v" font-family="STIX Two Text,serif">f</tspan> here</text>
-
-      <!-- caption -->
-      <line class="wire" x1="660" y1="800" x2="660" y2="767" marker-end="url(#ah)"/>
-      <line class="wire" x1="872" y1="800" x2="872" y2="767" marker-end="url(#ah)"/>
-      <rect x="608" y="800" width="432" height="46" class="f-lav"/>
-      <text x="824" y="830" text-anchor="middle" class="jp" font-size="17">…speech bubble. She is saying "します".</text>
-      <text x="824" y="868" text-anchor="middle" class="sm">caption = the scene's own tags + the frame it was drawn under</text>
-
-      <text x="825" y="936" text-anchor="middle" class="cap">Text Conditioning, T5 queries read Qwen3</text>
+      <rect x="372" y="690" width="26" height="34" rx="3" class="f-sky"/><text x="385" y="712" text-anchor="middle" class="tok">…</text>
+      <rect x="410" y="690" width="44" height="34" rx="3" class="f-sky"/><text x="432" y="712" text-anchor="middle" class="tok">▁as</text>
+      <rect x="466" y="690" width="56" height="34" rx="3" class="f-sky"/><text x="494" y="712" text-anchor="middle" class="tok">▁"</text>
+      <rect x="534" y="690" width="68" height="34" rx="3" class="f-apri"/><text x="568" y="713" text-anchor="middle" class="jp" font-size="16">します</text>
+      <rect x="614" y="690" width="28" height="34" rx="3" class="f-sky"/><text x="628" y="712" text-anchor="middle" class="tok">".</text>
+      <rect x="654" y="690" width="40" height="34" rx="3" class="f-sky"/><text x="674" y="712" text-anchor="middle" class="tok">&lt;/s&gt;</text>
     </g>
+    <text x="694" y="746" text-anchor="end" class="sm">T5 ids, padded to 512</text>
 
+    <!-- ============ tokenizers ============ -->
+    <line class="wire" x1="500" y1="768" x2="500" y2="730" marker-end="url(#ah)"/>
+    <rect x="372" y="768" width="256" height="54" rx="4" class="f-sky"/>
+    <text x="500" y="791" text-anchor="middle" font-size="16">T5 tokenizer + pack</text>
+    <text x="500" y="812" text-anchor="middle" class="sm">EN spiece · JA → 32128 + r</text>
+
+    <rect x="104" y="768" width="180" height="54" rx="4" class="f-sky"/>
+    <text x="194" y="791" text-anchor="middle" font-size="16">Qwen3</text>
+    <text x="194" y="812" text-anchor="middle" class="sm">tokenizer</text>
+    <line class="wire" x1="284" y1="795" x2="367" y2="795" marker-end="url(#ah)"/>
+    <text x="326" y="786" text-anchor="middle" class="sm">pieces</text>
+
+    <!-- ============ Qwen3 source stream ============ -->
+    <line class="wire" x1="194" y1="768" x2="194" y2="700" marker-end="url(#ah)"/>
+    <rect x="104" y="614" width="180" height="86" rx="4" class="f-butter"/>
+    <text x="194" y="648" text-anchor="middle" font-size="16">Qwen3 0.6B</text>
+    <text x="194" y="672" text-anchor="middle" class="sm">frozen</text>
+    <path class="wire" d="M194 614V377H367" marker-end="url(#ah)"/>
+    <text x="284" y="367" text-anchor="middle" class="sm">K, V</text>
+    <text x="204" y="452" class="sm">last hidden 512 × 1024</text>
+    <text x="204" y="472" class="sm">pad → 0</text>
+
+    <!-- ============ caption ============ -->
+    <line class="wire" x1="194" y1="866" x2="194" y2="826" marker-end="url(#ah)"/>
+    <line class="wire" x1="500" y1="866" x2="500" y2="826" marker-end="url(#ah)"/>
+    <rect x="104" y="866" width="612" height="48" rx="4" class="f-lav"/>
+    <text x="410" y="896" text-anchor="middle" class="jp" font-size="17">…speech bubble. She is saying "します".</text>
+
+    <!-- ============ gradient rail ============ -->
+    <path class="grad" d="M730 100V591H634" marker-end="url(#ahr)"/>
+    <text transform="translate(722 380) rotate(-90)" text-anchor="middle" class="sm red">∂ℒ/∂context</text>
   </svg>
   </div>
-  <figcaption><b>Left:</b> Anima's full text-to-image path, every weight frozen. <b>Right:</b> the dashed text side up close. One caption feeds two tokenizers. Qwen3 0.6B reads the raw text, and its last hidden state becomes the adapter's keys and values. The T5 id stream is the query: English spans keep their stock spiece ids, and a Japanese span is cut into Qwen pieces, each routed to ext id 32128 + <span class="mi">r</span>. <code>llm_adapter.embed</code> resolves those against the pack rows plus <span class="mi">sρ<b class="v">F</b></span>. English captions carry no ext id, so they never touch <b class="v">F</b> and render bit-exact. <b>The gradient</b> (left, dashed) enters the DiT at the loss, leaves it through cross-attention as <span class="mi">∂ℒ/∂context</span>, runs back through the adapter's out_proj and six blocks without updating any of them, and lands on the ext rows — the one place anything moves. Qwen3 receives none.</figcaption>
+
+  <div class="eqs" role="math">
+    <div class="eq"><span>ℒ = <span class="frac"><span class="num">Σ<sub><i>x</i></sub> <i>w</i>(<i>x</i>) ‖ <b class="v">v</b><sub><i>φ</i></sub>(<b class="v">z</b><sub><i>σ</i></sub>, <i>σ</i>, context) − (<b class="v">ε</b> − <b class="v">z</b><sub>0</sub>) ‖²</span><span class="den">Σ<sub><i>x</i></sub> <i>w</i>(<i>x</i>)</span></span> + <i>μ</i> · mean<sub><i>r</i></sub> ‖<b class="v">f</b><sub><i>r</i></sub>‖²<span class="side"><i>σ</i> ~ U[0.7, 0.9] · <i>w</i> = 4 inside the text box</span></span><span class="n">loss</span></div>
+    <div class="eq"><span>∂ℒ/∂<b class="v">f</b><sub><i>r</i></sub> = <i>s</i><i>ρ</i> · ∂ℒ/∂context · ∂context/∂<b class="v">ẽ</b><sub><i>r</i></sub><span class="side">the red rail — every factor on the right is a frozen Jacobian</span></span><span class="n">grad</span></div>
+  </div>
+
+  <figcaption>The text side of a frozen Anima, bottom to top; the DiT it feeds is sketched at the top and not drawn. One caption feeds two tokenizers. Qwen3 0.6B reads the raw text, and its last hidden state becomes the adapter's keys and values. The T5 id stream is the query: English spans keep their stock spiece ids, and a Japanese span is cut into Qwen pieces, each routed to ext id 32128 + <span class="mi">r</span>. <code>llm_adapter.embed</code> resolves those against the pack rows plus <span class="mi">sρ<b class="v">F</b></span>. English captions carry no ext id, so they never touch <b class="v">F</b> and render bit-exact. <b>The gradient</b> (red, dashed) enters the DiT at the loss, leaves it through cross-attention as <span class="mi">∂ℒ/∂context</span>, runs back through out_proj and the six adapter blocks without updating any of them, and lands on the ext rows — the one place anything moves. Qwen3 receives none. Symbols and the full parametrisation: next section.</figcaption>
 </figure>
 
 <section>
@@ -304,7 +254,7 @@ svg .v{font-weight:700;font-style:normal}
   <div class="eqs" role="math">
     <div class="eq"><span><b class="v">ẽ</b><sub><i>r</i></sub> = <b class="v">e</b><sub><i>r</i></sub> + <i>s</i> <i>ρ</i> <b class="v">f</b><sub><i>r</i></sub><span class="side">rows of <b class="v">Ẽ</b>, <b class="v">E</b>, <b class="v">F</b>; shipped pack: <i>s</i> = 1, i.e. <b class="v">e</b><sub><i>r</i></sub> + <i>ρ</i> <b class="v">f</b><sub><i>r</i></sub></span></span><span class="n">(1)</span></div>
     <div class="eq"><span><b class="v">f</b><sub><i>r</i></sub> ← <b class="v">f</b><sub><i>r</i></sub><sup>(53k)</sup> if <i>r</i> ∈ 53k table, else 0<span class="side"><code>--init_rows</code>; recipe of record starts at 0</span></span><span class="n">(2)</span></div>
-    <div class="eq"><span>ℒ = Σ<sub><i>x</i></sub> <i>w</i>(<i>x</i>) ‖ <b class="v">v</b><sub><i>φ</i></sub>(<b class="v">z</b><sub><i>σ</i></sub>, <i>σ</i>, <i>T</i>(caption; <b class="v">Ẽ</b>)) − (<b class="v">ε</b> − <b class="v">z</b><sub>0</sub>) ‖² / Σ <i>w</i> + <i>μ</i> · mean<sub><i>r</i> ∈ ℛ<sub>tr</sub></sub> ‖<b class="v">f</b><sub><i>r</i></sub>‖²<span class="side"><i>σ</i> ~ U[0.7, 0.9]</span></span><span class="n">(3)</span></div>
+    <div class="eq"><span>ℒ = <span class="frac"><span class="num">Σ<sub><i>x</i></sub> <i>w</i>(<i>x</i>) ‖ <b class="v">v</b><sub><i>φ</i></sub>(<b class="v">z</b><sub><i>σ</i></sub>, <i>σ</i>, <i>T</i>(caption; <b class="v">Ẽ</b>)) − (<b class="v">ε</b> − <b class="v">z</b><sub>0</sub>) ‖²</span><span class="den">Σ<sub><i>x</i></sub> <i>w</i>(<i>x</i>)</span></span> + <i>μ</i> · mean<sub><i>r</i> ∈ ℛ<sub>tr</sub></sub> ‖<b class="v">f</b><sub><i>r</i></sub>‖²<span class="side"><i>σ</i> ~ U[0.7, 0.9]</span></span><span class="n">(3)</span></div>
   </div>
   <div class="scroll">
   <table class="sym">

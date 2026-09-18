@@ -18,6 +18,11 @@
 > Origin: the user's three-candidate note of 2026-09-17 (paired-difference
 > FM / cached local Jacobian / OCR-reward rows); this plan takes the first,
 > the other two are in *Not this plan* with the reason.
+> **2026-09-18:** Δ2 moved to [`plan_synth3.md`](plan_synth3.md) as **S2**,
+> with a ruler it did not have (exact match is 0/32 on every multi-glyph group
+> of every arm) and the ΔFM-vs-plain A/B written as the line's kill decision.
+> The "paired `short` / `sentence` siblings — code owed" note below is stale:
+> the Δ0.9 rework put every kind through one composite loop.
 
 The S line pays for identity in exposure: ≈ 1 000 draws per row
 (`plan_synth.md`, exposure curve 1 330 / 670 / 490 → 100 / 75 / 36 %). Every
@@ -246,6 +251,54 @@ single glyphs into it. Read of `scenes_sl1w` (276 kept of 1 000) and of
   user's call) and 55 wide. Needs a data-stage filter on
   `len(boxes_anchor) == 1` (none today; `--scene_tall_ar` and
   `--scene_drop` exist).
+- **Built 2026-09-17 night** (pools rejudged in place; originals kept as
+  `scenes_<tag>/*_pre_speck.*`). Judge (`scenes/judge.py`): specks are
+  recorded (`boxes_speck` / `speck_regions` / `speck_bubbles`) and erased by
+  `render_into_scene` with the anchor's erase, `speck_erase` when that erase
+  fails; the user's read of the smoke build (scene 00022 / 00024) added two
+  rules — **`bubble_leak`** (`--scene_max_offset 1.0`: region centre more than
+  one text-box half-size off the text = the flood leaked through an outline
+  gap into a panel strip / figure; median 0.11, ja_comic 770 1.4, sl1w 962
+  5.8) and **`--scene_open_lost 0.02`** (an open rectangle erase may paint
+  over ≤ 2 % non-fill ink outside the text box; the ring seam test passed
+  rectangles through the outline — s1 627 0.16, clean at ≤ 0.02, cut from
+  0.03). Both thresholds set on review sheets of every kept anchor. Kept:
+  **s1 269 → 237** (AR ≤ 2: 228), **sl1w 276 → 222**, **ja_comic 359 → 294**
+  (one-bubble 178). `--scene_rejudge` runs one worker per core (≈ 5 s a pool).
+  Data (`data/synth.py`, `--scene_mix` draw only): `--single_scenes` (pools a
+  one-glyph text may use) + `--single_max_ar` (catches sl1w 192 / 330 / 414 /
+  545 at AR 3.5–9), multi-glyph texts route by fit over every pool;
+  `--scene_one_bubble <tags>`; a singles-only `--scene_mix single=1` no longer
+  needs `--phrase_file`; composites record `scene_pool` and scene reuse is
+  counted per pool (indices collide across runs). Also fixed `fit_text`'s
+  shrink step, which sat after a `return` since `c434a398` (a font size that
+  overflowed on the first try was retried unchanged and the line count
+  refused). CPU smoke `data_smoke_d09` (`--scenes s1,sl1w,ja_comic
+  --scene_one_bubble ja_comic --single_scenes s1 --single_max_ar 2`, kana +
+  words:50, pairs): 600 / 600 drawn, 0 violations of the routing, 205 / 205
+  multi-glyph items one column. Seen on its sheet, not fixed: 2–3-glyph
+  words draw small in wide bubbles (column width caps `fs` at fill 0.7); a
+  second s1 anchor bubble stays as an empty erased bubble.
+  **Top-up queued** 23:41 (`20260917-234153-209e43`): tag `s1w`, s1 frames
+  and short anchors over sl1w's shapes, `--scene_n 1600 --seed 3`
+  (≈ 110 min, ≈ 370 kept expected at ≈ 23 %).
+  **Top-up read 2026-09-18 01:30:** `s1w` 388 / 1 600 kept (24 %), even over
+  the six shapes, sheet clean. **Residual bar 0.5 → 0.33** after the first
+  Δ1 build's pair sheet showed 次 on a sign still reading "y" (s1w 1209,
+  residual 0.36): every used scene at 0.35–0.48 (11, ≈ 150 items) kept anchor
+  letters, 0.30–0.31 clean; job `20260918-013849-26448e` stopped before
+  training, pools rejudged — s1 233, s1w 380, sl1w 213, ja_comic 292,
+  one-glyph pool 586 (s1 225 + s1w 361).
+- **Δ1 launched 2026-09-18 01:58** (`20260918-015823-5a6c3f`, data + train +
+  eval, tag `synth_d1`, arm `d1_s53k`, ≈ 9 h). `--units kana kana_ext*1
+  kanji:200*1 list:<13 punct>*1` (kanji 200 = the 53k run's set, user; っ /
+  ッ are in `kana_ext`), `--scene_mix single=1.0 --n_items 10000`, scenes
+  `s1,s1w,sl1w,ja_comic` routed as above, `--pair_ref en --pair_loss 1
+  --lr_rows 2e-3`, random init, `--c_flat 0`, 53 000 steps, rest the 53k
+  argv. First build read: **355 rows, not 373** — the singles pool excludes
+  the 18 small kana by design, so a singles-only build leaves them untrained
+  (as in the 53k run); items per row 12–43 (weighted draw, not a hard quota;
+  median 28). Native (`が,ガ,ご,ゴ` × `en,swap`) runs as its own job after.
 - **Read before Δ1:** `sheet_scene_pair.png` of the rebuilt data — no text
   in the image other than the pasted string, on every pair shown; pool size
   per shape after the rejudge (each of 250 rows needs ≈ 40 items inside the

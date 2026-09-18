@@ -21,6 +21,13 @@ separates the two); [`plan_synth2.md`](plan_synth2.md) is the ΔFM line (paired-
 supervision for new rows; Δ0 / Δ0b read 2026-09-17 — a scene-holding loss:
 no wipe, no exposure saving, JA co-text the loss cannot remove, **lr is a
 lever** — next L0, then Δ2);
+[`plan_synth3.md`](plan_synth3.md) is the plan after Δ1 — the sentence step
+(step 2, with the ΔFM-vs-plain A/B) and the kanji budget, written on two
+measurements of 2026-09-18: exact match is floor-saturated on every
+multi-glyph group (`src/probe/sub_exact.py` supplies a lift ruler; under it
+`sent2_s24k`, recorded as a collapse, is the best sentence table we have) and
+the shared trigger direction is per-run, not per-line (cos 0.35–0.69 across
+runs), which prices merging tables by ext id;
 [`findings.md`](findings.md) holds the settled
 verdicts one screen per topic; [`reports/`](reports/README.md) is the dated run record
 (indexed: W0–W2, W2d Runs 1–3, order probe, σ diagnostic, strings arm,
