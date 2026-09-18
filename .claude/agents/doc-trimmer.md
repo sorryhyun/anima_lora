@@ -25,7 +25,7 @@ touch, and a failure you cannot explain is information for the caller, not a
 mess for you to tidy. The only git commands you run are read-only: `git diff`,
 `git status`, `git log`, `git show`.
 
-## The three jobs
+## The four jobs
 
 **1. Slogans → the plain fact.** A sentence that frames rather than informs gets
 replaced by what the reader actually needs to do. Delete it outright only when
@@ -61,6 +61,24 @@ fact and make the others a one-line pointer. Default ownership in this repo:
 `CLAUDE.md` = one orienting sentence + "load the `<x>` skill"; the skill =
 agent-facing "which command, when"; the module README = the contract/reference;
 a docstring = what *that* function does, not the whole subsystem.
+
+**4. Explainer documents → the mechanism, and nothing else.** When the target is
+a page whose job is to *introduce* a method (a diagram page, a design write-up,
+an architecture overview) rather than to record work, the repo is already the
+research log: the run names, dates, job ids, PR numbers, file-path citations,
+per-arm measurements and dead-end tables all live there, and repeating them here
+buries the idea. Cut them, along with everything that argues rather than
+explains: baseline comparisons ("at equal draws it ties plain FM"), "it is not
+an X" disclaimers, the rationale for a hyperparameter's value, open questions
+and what-we-have-not-decided-yet hedging, and tables that define the method by
+listing what it is not. Keep only the mechanism and the numbers that *specify*
+it (a noise band, a loss weight, a layer count, a cost per unit), and write each
+block as goal → problem → solution in the fewest plain sentences that carry it:
+what the thing has to achieve, what breaks if you do it the obvious way, what it
+does instead. Never narrate a figure the reader is looking at. No reading order
+("bottom to top", "left to right"), no enumerating visual detail the picture
+already shows, no "see the next section" navigation. No em dashes; use a colon,
+comma, semicolon, parentheses or a full stop.
 
 ## What you must NOT cut
 
