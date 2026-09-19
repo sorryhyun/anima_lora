@@ -4,6 +4,7 @@ One repeatable flag, one source per occurrence::
 
     --units kana                  92 basic kana                     → single
     --units kana_ext              68 voiced / handakuten / small    → single_ext, ×2
+    --units small                 the 18 small kana, inside digraphs → single_small
     --units kanji:200             top-200 single-row corpus kanji   → single_kanji, ×2
     --units words:100/held=8      top-100 single-piece corpus words → word / word_held
     --units chars:あかす出人日      a literal unit list               → single
@@ -11,7 +12,10 @@ One repeatable flag, one source per occurrence::
 
 ``*W`` overrides the source's weight in the S-line singles pool and ``/held=K``
 holds K of its units out of every training item. No ``--units`` at all means
-``kana``. ``kana`` and ``chars:`` both feed the base inventory (combos, random
+``kana``. ``small`` draws each small kana inside ``SMALL_PER`` two-glyph
+digraphs (あっ きゃ ニャ — a lone ゃ renders full-size, so it cannot be a single)
+whose Qwen pieces are the host row + the small row; every small kana gets the
+pool mass of one unit of its weight. ``kana`` and ``chars:`` both feed the base inventory (combos, random
 strings and corpus-line filtering draw from it); a ``chars:`` base with no
 ``kana`` alongside it is the textual-inversion regime — few units, many
 exposures — and scores its own units as the ``single`` group.
@@ -32,21 +36,32 @@ from common.text import KANA_SMALL
 
 # canonical pool order (NOT the typed order). `kana` / `chars` are both the
 # base inventory — combos, strings and corpus-line filtering draw from it.
-KINDS = ("kana", "chars", "kana_ext", "kanji", "words", "list")
+KINDS = ("kana", "chars", "kana_ext", "small", "kanji", "words", "list")
 # kinds resolved against the Qwen tokenizer + the training corpus (they take a
 # count, not a literal unit list)
 CORPUS_KINDS = ("kanji", "words")
 # kinds that need the tokenizer at all (`list` units are validated against it)
-NEEDS_TOKENIZER = ("kanji", "words", "list")
+NEEDS_TOKENIZER = ("small", "kanji", "words", "list")
 NEEDS_ARG = ("kanji", "words", "chars", "list")
 
 # default draws per unit in the S-line singles pool (`*W` overrides)
-WEIGHT = {"kana": 1, "chars": 1, "kana_ext": 2, "kanji": 2, "words": 1, "list": 2}
+WEIGHT = {
+    "kana": 1,
+    "chars": 1,
+    "kana_ext": 2,
+    "small": 1,
+    "kanji": 2,
+    "words": 1,
+    "list": 2,
+}
+# digraphs per small kana in the singles pool (`--units small`)
+SMALL_PER = 6
 # the eval group a source's units are scored under
 GROUP = {
     "kana": "single",
     "chars": "single",
     "kana_ext": "single_ext",
+    "small": "single_small",
     "kanji": "single_kanji",
     "words": "word",
     "list": "single_extra",
@@ -156,6 +171,8 @@ class Inventory:
     kana: list = field(default_factory=list)
     restricted: bool = False
     kana_ext: list = field(default_factory=list)
+    # `small`: small kana → its SMALL_PER digraphs (cycled when fewer split)
+    small_of: dict = field(default_factory=dict)
     kanji: list = field(default_factory=list)
     words: list = field(default_factory=list)
     words_held: list = field(default_factory=list)
@@ -191,15 +208,20 @@ class Inventory:
 
         Small kana are dropped from the ``kana_ext`` draw: a lone ゃ renders
         full-size, so it is not a singles concept (P0b); the S line shows them
-        inside words / phrases only.
+        inside words / phrases only — or, with a ``small`` source, inside its
+        digraphs: a small kana's ``SMALL_PER`` digraphs share the mass of one
+        unit, so every other unit is repeated ``SMALL_PER`` times over.
         """
         ext_ns = [c for c in self.kana_ext if c not in KANA_SMALL]
+        m = SMALL_PER if self.small_of else 1
+        small = [d for ds in self.small_of.values() for d in ds]
         return (
-            self.kana * self.weight("kana" if self.has("kana") else "chars")
-            + ext_ns * self.weight("kana_ext")
-            + self.kanji * self.weight("kanji")
-            + self.words_train * self.weight("words")
-            + self.extra * self.weight("list")
+            self.kana * (m * self.weight("kana" if self.has("kana") else "chars"))
+            + ext_ns * (m * self.weight("kana_ext"))
+            + small * self.weight("small")
+            + self.kanji * (m * self.weight("kanji"))
+            + self.words_train * (m * self.weight("words"))
+            + self.extra * (m * self.weight("list"))
         )
 
     def describe(self) -> str:

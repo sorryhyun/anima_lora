@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import bisect
 import json
+import math
 import random
 from collections import Counter
 from pathlib import Path
@@ -434,14 +435,15 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
                 off += len(p)
                 cuts.append(off)
             ref = refs.draw(sc["i"], text) if refs else None
-            drawn = render_into_scene(
-                sc,
-                text,
-                pick_font(text, fonts, rng),
-                rng,
+            drawn = _render_jittered(
+                a,
+                a.scene_fill,
+                scene=sc,
+                text=text,
+                font_path=pick_font(text, fonts, rng),
+                rng=rng,
                 min_glyph=a.scene_min_glyph,
                 stroke=rng.random() < a.scene_stroke,
-                fill_frac=a.scene_fill,
                 max_lines=a.scene_max_lines,
                 cuts=cuts,
                 vertical_only=bool(a.scene_vertical),
@@ -463,6 +465,20 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
     _scene_sheet(rng, [r for r in recs if r["src"] == "scene"], out)
     _pair_report(refs, recs)
     return recs
+
+
+def _render_jittered(a, fill_frac: float, **kw):
+    """``render_into_scene`` with ``--scene_size_jitter``: the fill is scaled by
+    a log-uniform draw in [jitter, 1], so the glyph lands anywhere between
+    ``min_glyph`` and the bubble fit (plan_synth4 R4.5); a draw too small for
+    ``min_glyph`` falls back to the full fit. A paired sibling shares the fit."""
+    j = float(getattr(a, "scene_size_jitter", 0.0) or 0.0)
+    if 0.0 < j < 1.0:
+        ff = fill_frac * math.exp(kw["rng"].uniform(math.log(j), 0.0))
+        drawn = render_into_scene(fill_frac=ff, **kw)
+        if drawn is not None:
+            return drawn
+    return render_into_scene(fill_frac=fill_frac, **kw)
 
 
 def _scene_record(drawn, sc, text, kind, stem: Path, ref_text=None) -> dict:
@@ -713,14 +729,15 @@ def _quota_composites(
             for j in tries:
                 sc = scenes[j]
                 ref = refs.draw(sc["i"], text) if refs else None
-                drawn = render_into_scene(
-                    sc,
-                    text,
-                    pick_font(text, fonts, rng),
-                    rng,
+                drawn = _render_jittered(
+                    a,
+                    fill_of[kind],
+                    scene=sc,
+                    text=text,
+                    font_path=pick_font(text, fonts, rng),
+                    rng=rng,
                     min_glyph=glyph_of[kind],
                     stroke=rng.random() < a.scene_stroke,
-                    fill_frac=fill_of[kind],
                     max_lines=max_lines,
                     cuts=cuts,
                     vertical_only=bool(a.scene_vertical),

@@ -3,13 +3,99 @@
 > **Status 2026-09-18 evening.** This plan is **S2** — the sentence step
 > (step 2). Step 1 (the seed-table recipe and the kanji budget K) is
 > [`plan_synth4.md`](plan_synth4.md).
-> R, S2-smoke and S2a are read; **S2b is the next launch and the only live
-> item here**, its recipe below.
+> R, S2-smoke, S2a and **S2b** are read — S2b was round 1 of the vocab
+> step → merge → sentence step loop (*S2b* and *The loop* below).
 > **The loss is decided: plain.** S2a (`reports/synth_s2a_2026_09_18.md`)
 > put plain above ΔFM on every sentence ruler that moves (sub-exact pooled
 > +0.131 vs +0.081, native `en` 5 vs 2 / 48); ΔFM is killed on sentences
 > (user decision). The ruler that decided it is `src/probe/sub_exact.py`:
 > exact match is floor-saturated on every multi-glyph group.
+
+> **Caveat found 2026-09-18 night — every run since 2026-09-17 17:36 trained
+> on the baked preview pack, not the raw pack.** `configs/base.toml`
+> `vocab_pack` was pointed at `anima_cjk_vocab_pack_preview` when that pack
+> was built (17:04; committed `b1028bd4` 23:20), and the preview pack **is**
+> the raw pack + `sent_s24k_a1_s05`'s delta (502 rows, mean |Δ| 105;
+> preview − raw equals that table to 4e-6). `wake_probe` reads the
+> configured pack, so per the job logs' pack sha (`7b9fce0bb57b` raw,
+> `5f52aefce82a` preview): raw = `sent2_s24k`, `smk3k_*`,
+> `sent_s24k_a1_s05`, and the first ΔFM arm `pairEN_s1500`; **preview =
+> every other `pair_d0` arm, Δ0b, the row-block arms, Δ1 53 k, S2-smoke,
+> S2a, the KR / ZH blocks, S2b.** What that does to this plan's numbers:
+>
+> - **Runs on the same pack still compare** (ΔFM vs plain in S2a, μ 0.3 vs
+>   0.1, the row-block arms), and each arm's eval is the table it trained
+>   (pack + delta), so the scores are real scores of that stack.
+> - **Δ1 is not a ΔFM-from-scratch table.** 355 of its 356 rows were already
+>   trained in the preview pack (|S| 137 vs |Δ1| 79 on them, cos 0.137): Δ1
+>   is a 53 k ΔFM residual on top of the plain sentence table, and its
+>   12 / 17 / 18 singles sit beside that table's own 11 / 19 / 19. Its
+>   `trained.pt` means nothing on the raw pack; "v1's source is D1" reads
+>   preview + Δ1.
+> - **"Δ1 ↔ plain 0.14" is the residual's cosine to the table under it**
+>   (the same 0.137), not evidence that the shared direction is per-loss.
+> - **Δ0's verdict compared across packs:** `pairEN_s1500` 10/24 ran on raw,
+>   `pair0_s1500` 20/24 on preview, where the 12 dakuten rows were already
+>   trained `kana_ext` rows. "ΔFM saves no draws" is unmeasured.
+> - **The smoke's floor finding** ("untrained katakana dakuten render at
+>   floor 10/12", "ΔFM damages floor-positive rows") read the preview pack's
+>   trained rows as a floor. It may still hold as "ΔFM wears down trained
+>   plain rows"; on the raw pack it is unmeasured.
+> - **S2b's 15 small-kana rows carry their delta twice** — baked in the
+>   preview pack and added again by `--init_rows <sent_s24k_a1_s05>`.
+>
+> **Δ0 re-run on the raw pack — read 2026-09-19**
+> (`reports/s2b_and_raw_pack_rerun_2026_09_19.md`, `ANIMA_VOCAB_PACK=…/anima_cjk_vocab_pack`,
+> `base.toml` untouched): floor **0/24**; plain 7, ΔFM lr 1e-3 / 2e-3 10,
+> **ΔFM lr 5e-3 13** of 24 at 1 500 steps (native `en` 13 / 10 / 14, ΔFM
+> holding the scene as before); `--row_blocks 62` **0/24** (4/24 at 5e-3 with
+> row norm 248) — its 16/24 was fine-tuning trained rows; glyph-size jitter
+> 0–1/24. The katakana floor finding is retired; "ΔFM saves no draws" and
+> "2e-3 × 1 500 ≡ 1e-3 × 3 000" are not reproduced. S2b itself is read in
+> the same report (singles 12 / 17 / 18 held, pooled lift +0.089, はい 1/8).
+> The body below is not yet re-derived; every launch from here states its
+> pack.
+>
+> **Preview-pack arm dirs deleted 2026-09-19 (user).** All 31
+> `output/wake_probe/rows_synth_*` arms whose job log shows only the preview
+> sha are gone — every `pair_d0` arm without a `_raw` suffix except
+> `pairEN_s1500`, `pair_d0f`, the row-block arms, `pair_kr` / `pair_zh`,
+> `s2_smoke_*`, `s2a_*`, `d1_d1_s53k` (Δ1), `d1_merge_punct`,
+> `s2b_plain_d1_6k`. The reports are the only record; paths to those arms
+> below and in `reports/` are dead. Kept: the raw arms, every `data_synth_*`
+> dir (images do not depend on the pack), the daemon job logs, and
+> `models/vocab_packs/vocab_pack_test` (S2b's baked table).
+
+**`step1_0919` — Δ1 re-run on the raw pack, small kana added — launched
+2026-09-19 10:07**, job `20260919-100716-22fdca`, data
+`data_step1_0919`, arm `rows_step1_0919_s53k`. Δ1's argv (R below) with two
+changes: `ANIMA_VOCAB_PACK=models/vocab_packs/anima_cjk_vocab_pack` (log sha
+`7b9fce0bb57b`) and `--units small`. ΔFM, lr 2e-3 cosine, 53 k × batch 4,
+373 rows ≈ 568 draws/row. `--units small` (`src/data/inventory.py`
+`small_digraphs`) draws each of the 18 small kana inside up to 6 two-glyph
+digraphs whose Qwen pieces are the host row + the small row (あっ きゃ しょ
+ニャ トゥ; corpus-attested first, then the yōon / gairaigo tables), each small
+kana at the pool mass of one weight-1 unit; eval group `single_small`. The
+frequent uses (って ちゃ った じゃ ック ティ) are single Qwen pieces — word rows,
+the loop's vocab step. With it a sentence step needs no second warm source
+for the small-kana rows (S2b's `--init_rows <sent>,<Δ1>` and its
+double-delta defect).
+
+**`step1_0919` read 2026-09-19** (`reports/step1_0919_2026_09_19.md`):
+singles 10 / 5 / 3 of 36 against the plain seed's 13 / 18 / 18 — ΔFM from
+scratch is weak at full inventory, no bug, and `--delta_scale 1.7` does not
+recover it.
+
+**`step2_0919` — the sentence step on that table, launched 2026-09-19
+20:38** (user: run it as it is), job `20260919-203858-051f61`, data
+`data_step2_0919` (job `20260919-202821-2392df`), arm
+`rows_step2_0919_plain_6k`, raw pack (log sha `7b9fce0bb57b`). S2b's data
+argv + `--units small`, S2b's train argv with one warm source:
+`--init_rows rows_step1_0919_s53k/trained.pt` (369/369 rows warm, the 18
+small kana included), plain, μ 0.3, warmup 500, lr 1e-3 cosine, σ 0.5–0.9,
+6 k. The pool is S2b's — 4 564 covered lines, 480 sentences, 470 shorts:
+the small kana were already covered through `kana_ext`, so `small` makes
+them warm, not more numerous. Eval adds `single_small`.
 
 ## Where the line stands going in
 
@@ -175,55 +261,93 @@ What S2a leaves standing for S2b:
   already-trained table, not identity** — a flat micro result does not price
   a 24 k run.
 
-### S2b — the run (≈ 6 h, plain, μ 0.3 — both decided 2026-09-18)
+### S2b — the run, round 1 (launched 2026-09-18 night: 6 k, plain, μ 0.3)
 
-Plain FM at 24 k. Gates against `sent2_s24k`'s pooled lift (+0.161) with
-`single` ≥ 11/36, and the target stage (`はい` / `こんにちは` at 768×1344, the
-user's ComfyUI captions) against the anchor sweep's 1/8 and 0/6.
+**The warm start's job is sentence composition on rows that are already
+trained — no cold vocab inside a sentence pass** (user, 2026-09-18). That
+fixes the seed and the inventory together, and replaces the recipe this
+section carried until the evening (`merge_punct` seed, `words:100/held=8`,
+`list:はい,こんにちは`, 24 k):
 
-Recipe = the `sent_s24k_a1_s05` argv (`20260917-131126-da1e0a`: σ 0.5–0.9,
-lr 1e-3 cosine, `--lr_warmup 500`, `--free_residual 1e-3 --box_weight 4`,
-`--scene_mix single=0.1,short=0.5,sentence=0.4`, `words:100/held=8`, the
-punct `list:`, `--n_items 10000`) with these changes, each one a measured
-reason:
+- **Seed Δ1 (`rows_synth_d1_d1_s53k`), loss plain.** This is S2a's plain arm
+  — the one measured configuration on the rejudged pools (+0.131, native
+  はい 5/8). The cross-loss objection (Δ1 ↔ plain 0.14 per row) was answered
+  by that arm winning; the katakana-damage objection is a Δ0 smoke finding,
+  not measured on Δ1, and `--native_floor 1` reads it here.
+- **Inventory = Δ1's units only** (`kana`, `kana_ext*1`, `kanji:200*1`, the
+  punct `list:`): no `words:`, no `--phrase_pieces`, no こんにちは. In S2a
+  those were 143 of 446 rows starting cold with no anchor, so S2a's +0.131
+  is not a pure composition number. `はい` is は + い (two pieces, both Δ1
+  rows), not a `list:` unit.
+- **The 15 small-kana rows** (`っ ッ ゃ ょ ィ ぁ ェ ゅ ォ ぅ ァ ぇ ぃ ぉ ャ`)
+  cannot be drawn as singles, so Δ1 never had them, and they sit in 2 693 of
+  the 8 998 multi-glyph items (っ 1 630). They warm-start from
+  `rows_synth_sent_q_sent_s24k_a1_s05` (plain FM, sentence-trained, has all
+  15): `--init_rows <sent_s24k_a1_s05>,<Δ1>` — the later table overrides by
+  ext id, so every Δ1 row is Δ1's.
+- **Data `data_synth_s2b`** (rebuilt 22:00, no `--pair_ref`): 9 998 items,
+  single 1 000 / short 5 000 / sentence 3 998, rejudged pools. Without piece
+  rows the covered pool is small — 4 564 covered lines, **475 distinct
+  sentences, 454 distinct shorts** (S2a's inventory: 6 142 sentence lines);
+  365 rows drawn, median 42 occurrences per row in the 10 k items.
+- **6 k steps, not 24 k** — sized to that pool (2.4 epochs, ≈ 100 draws on
+  the median row; 24 k would show each line 80–100 times). `--lr_warmup 500
+  --init_anchor 0.3`, lr 1e-3 cosine, σ 0.5–0.9, box weight 4, batch 4. μ 0.3
+  is checked: the μ 0.1 arm on S2a's data and seed lost lift (+0.086 vs
+  +0.131, native はい 1 vs 5/8; addendum of
+  `reports/synth_s2a_2026_09_18.md`).
+- **Rulers:** `single,single_ext,single_kanji,short,short_held,phrase,
+  phrase_held,en` (no word groups — no word rows); native `あ,か,す,日,はい`
+  on `en,swap`, katakana only with `--native_floor 1`. Sub-exact pooled lift
+  is the primary number. こんにちは has no row this round and is not gated.
 
-- **Seed `rows_synth_full_fm10k_merge_punct`, not Δ1.** Same loss as the
-  run (plain ↔ plain shared direction 0.59–0.69; Δ1 ↔ plain 0.14 per row —
-  `table_geometry`), and the smoke showed ΔFM tables damage the pack's
-  floor-positive katakana rows, which an anchor to Δ1 would pin in.
-- **Data without `--pair_ref`.** Halves the latent store and the build; no
-  sibling is read by a plain arm.
-- **Rejudged pools** (S2a's build), `--units list:はい,こんにちは` added (the
-  target strings; こんにちは is one Qwen piece with no row).
-- **`--init_anchor 0.3` — μ checked and kept.** The μ 0.1 arm on S2a's
-  data and seed (`rows_synth_s2a_s2a_plain_a01`, read 2026-09-18 evening,
-  addendum of `reports/synth_s2a_2026_09_18.md`) moved the rows twice as far
-  and lost lift (+0.086 vs +0.131, native はい 1 vs 5/8). The no-anchor
-  `sent2_s24k` lift (+0.161) is a 24 k-from-a-sentence-table result, not a
-  μ result at this scale; if S2b's lift lands under the gate, μ is swept on
-  S2b's own table then, not before.
-- **Rulers:** `single,single_ext,single_kanji,word,word_held,short,
-  short_held,phrase,phrase_held,en` (S2a had no `single` — the anchor's
-  singles cost went unmeasured); native `あ,か,す,日` + `はい,こんにちは`
-  on `en,swap`; katakana only with `--native_floor 1` (the smoke's floor
-  finding). Sub-exact pooled lift is the primary number.
-- **Not changed:** lr (1e-3 is plain's recipe of record; "lr is a lever"
-  was an ΔFM finding), σ 0.5–0.9, box weight 4, batch 4, 24 k.
+Job `20260918-222047-984df3`, arm `rows_synth_s2b_s2b_plain_d1_6k` — **read
+2026-09-19**: singles 12 / 17 / 18 (= Δ1's), pooled lift +0.089 with the lift
+on `short` only (held groups +0.03–0.05), native はい 1/8 on S2a's prompts;
+the small pool memorises its shorts and does not generalise. Not
+step-comparable to `sent2_s24k` (+0.161) or S2a (+0.131): different
+inventory, pool and step count — the round-over-round numbers of the loop
+below are the comparison this line makes from here.
 
-Owed before launch: pin the target stage's prompt frame to the clause the
-card claims — `Japanese text reads as "…"` (`deploy_plan.md` *What gets
-baked*) — so the gate is read on the clause that ships.
+Owed before the native read: pin the target stage's prompt frame to the
+clause the card claims — `Japanese text reads as "…"` (`deploy_plan.md`
+*What gets baked*) — so the gate is read on the clause that ships.
+
+### The loop — vocab step, merge, sentence step (user, 2026-09-18)
+
+S2b is round 1. After it the line runs a three-part cycle, twice:
+
+1. **Vocab step.** Train the rows the sentence pool needs and the table does
+   not have — the cold set S2b left out (the `words:` pieces, the phrase
+   file's frequent pieces, こんにちは) — as a step-1 table (the seed recipe,
+   `plan_synth4.md`), not inside a sentence pass.
+2. **Merge** those rows into the round's table by ext id (`--init_rows a,b`
+   or `merge_tables.py`; `row_scale` is converted).
+3. **Sentence step.** Warm-start the merged table and train sentences again
+   on the pool the new rows open up (S2a's inventory covers 11 119 lines /
+   6 142 sentences against this round's 4 564 / 475), every row warm.
+
+Then the same cycle once more. Each sentence step is sized to its own pool
+the way S2b is and read on the same rulers; the word groups come back with
+the word rows. Open for the vocab step: which loss trains a multi-glyph
+piece as a unit (Δ1's ΔFM is a singles recipe, and the smoke's floor finding
+applies to any row the pack already renders), and whether a merged table's
+two shared directions (`table_geometry`: ΔFM ↔ plain 0.14) cost the sentence
+step anything — round 1's small-kana rows are the first read of that.
 
 ## K — the kanji budget
 
 Moved to [`plan_synth4.md`](plan_synth4.md) with the step-1 recipe decisions
-(row blocks, per-block warmup, the row-norm lever). K0 stays free and is
-listed there.
+(lr, the area-coupled box weight, glyph size, the row-norm lever α). K0 is
+parked there.
 
 ## Order
 
-R, S2-smoke and S2a are read. **S2b is next**, then K1
-(`plan_synth4.md`). One deployment fact stands from R: under the EN frame
+R, S2-smoke, S2a and S2b are read (S2b:
+`reports/s2b_and_raw_pack_rerun_2026_09_19.md`). Next is the pack question
+at the top of this file, then the loop's vocab
+step, merge and second sentence step, then the cycle once more. K1
+(`plan_synth4.md`) shares the vocab step's recipe and is ordered there. One deployment fact stands from R: under the EN frame
 (`swap`) Δ1 beats `src53k` on every native column (19 / 15 / 4 vs
 18 / 12 / 8); under the JA frame it loses.
 
@@ -251,9 +375,9 @@ R, S2-smoke and S2a are read. **S2b is next**, then K1
 - **Δ1's flat 0 on kanji** — read (R): 日 holds on `en` and is not drawn as
   Latin. The lever, if a later inventory drifts, is still small paired flat
   glyphs, not 10 % at 110–200 px (`plan_synth2.md` Δ1).
-- **RAM** (46 GB usable): captions are pool-bounded, but S2b adds word and
-  `list:` rows on top of the sentence recipe's phrase pieces, and K1 at 755
-  rows raises the text cache. The 10 k-item build stays the cap.
+- **RAM** (46 GB usable): captions are pool-bounded, but the loop's later
+  sentence steps add word and phrase-piece rows on top of S2b's inventory,
+  and K1 at 755 rows raises the text cache. The 10 k-item build stays the cap.
 
 ## Not this plan
 
@@ -266,5 +390,5 @@ R, S2-smoke and S2a are read. **S2b is next**, then K1
 - **A kana reference, contrastive ΔFM, cached Jacobians, OCR-reward rows.**
   Unchanged from `plan_synth2.md` *Not this plan*.
 - **lr 3e-3**, and **lr as a plain-FM lever** (L0, closed 2026-09-17).
-- **The seed-table recipe and the kanji budget** — `plan_synth4.md` (row
-  blocks, warmup, α, K0 / K1, jōyō).
+- **The seed-table recipe and the kanji budget** — `plan_synth4.md` (lr,
+  box weight / glyph size, α, K0 / K1, jōyō).

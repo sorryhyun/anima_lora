@@ -10,28 +10,48 @@ frozen text encoder; the only trainable object is a delta on the vocab
 pack's ext rows, so EN prompts are bit-exact by construction and the
 artefact ships as an ordinary vocab pack.
 
-## State (2026-09-18 evening)
+## State (2026-09-19 morning)
 
 The line trains a **rows** arm on self-generated scene composites (the S
 line): one ext-row delta per unit, no encoder, no `c_flat`. Two steps —
 **step 1** the single-glyph seed table, **step 2** the sentence pass on top
 of it.
 
+- **Caveat (found 2026-09-18 night): every run since 2026-09-17 17:36
+  trained on the baked preview pack, not the raw pack.** `configs/base.toml`
+  `vocab_pack` points at `anima_cjk_vocab_pack_preview` (= raw pack +
+  `sent_s24k_a1_s05`'s 502-row delta), and `wake_probe` reads the configured
+  pack. That covers every ΔFM arm but the first, Δ0b, the row-block arms,
+  **Δ1**, S2-smoke, S2a, the KR / ZH blocks and S2b. Same-pack comparisons
+  stand; what does not: Δ1 as a ΔFM-from-scratch table (it is a residual on
+  the plain sentence table, 355/356 rows already trained under it), the
+  ΔFM ↔ plain 0.14 geometry read, Δ0's "ΔFM saves no draws" (its two arms
+  ran on different packs), and the smoke's katakana floor finding. Δ0 was
+  re-run on the raw pack (`ANIMA_VOCAB_PACK=…`): floor 0/24, plain 7, ΔFM
+  10, **ΔFM lr 5e-3 13** of 24; row blocks 0–4/24, glyph-size jitter 0–1/24
+  ([`reports/s2b_and_raw_pack_rerun_2026_09_19.md`](reports/s2b_and_raw_pack_rerun_2026_09_19.md),
+  which also reads S2b: singles held, no sentence ruler moved). The full
+  list is at the top of [`plan_synth3.md`](plan_synth3.md). Every launch from here
+  states its pack.
+- **Running (2026-09-19 10:07): `step1_0919`** — Δ1's 53 k ΔFM recipe on the
+  raw pack with `--units small` (373 rows), job `20260919-100716-22fdca`,
+  arm `rows_step1_0919_s53k`; recipe at the top of `plan_synth3.md`.
 - **Step 1 tables on record:** `src53k` (plain FM, 434 rows) and Δ1
   `d1_s53k` (ΔFM, 356 rows). Δ1 missed its gate on singles and on the JA
   frame; its recipe is being re-settled in
-  [`plan_synth4.md`](plan_synth4.md) (row-block batching, per-block warmup,
-  the row-norm lever α) together with the kanji budget K.
+  [`plan_synth4.md`](plan_synth4.md) on the raw-pack Δ0 arms (lr, the
+  area-coupled box weight behind the size-jitter 0/24, the row-norm lever
+  α) together with the kanji budget K.
 - **Step 2:** S2a read 2026-09-18 evening
   ([`reports/synth_s2a_2026_09_18.md`](reports/synth_s2a_2026_09_18.md)) —
   plain FM beats ΔFM on every sentence ruler that moves (sub-exact pooled
   lift +0.131 vs +0.081, native `en` 5 vs 2 of 48). **ΔFM is killed on
-  sentences; S2b trains plain** and is the next launch (recipe in
-  [`plan_synth3.md`](plan_synth3.md) S2b).
+  sentences; S2b trained plain** (recipe and the vocab step → merge →
+  sentence step loop in [`plan_synth3.md`](plan_synth3.md)).
 - **Anchor:** the μ 0.1 plain arm on the same data and seed
   (`rows_synth_s2a_s2a_plain_a01`, read the same evening, addendum of the
-  S2a report) lost lift (+0.086 vs +0.131, native はい 1 vs 5/8) — S2b runs
-  at `--init_anchor 0.3`. Nothing is running; S2b is the next launch.
+  S2a report) lost lift (+0.086 vs +0.131, native はい 1 vs 5/8) — S2b ran
+  at `--init_anchor 0.3`.
 - **Ruler:** exact match is floor-saturated on every multi-glyph group;
   `src/probe/sub_exact.py` (glyph recall minus a permutation control) is
   the ruler that orders sentence arms.
@@ -104,8 +124,10 @@ Inventory facts that matter when extending it:
   ドキドキ → ド+キ+ド+キ are sequences and inherit the one-unit limit.
 - `KANA` in `src/common/text.py` is the unvoiced 46 + 46; the dakuten /
   handakuten / small kana are `KANA_EXT` (68 rows, `--units kana_ext`) and
-  small kana are not a singles concept — they reach the table inside word
-  pieces (じゃ って いっぱい プロ).
+  small kana are not a singles concept (a lone ゃ renders full-size) — their
+  own 18 rows train through `--units small` (two-glyph digraphs, host row +
+  small row: あっ きゃ ニャ), and the merged uses are word pieces (じゃ って
+  いっぱい プロ).
 - Every row needs its own exposure (≈ 40 renders/row got words to 9/32,
   kana with a warm start to 34/36). Held-out anything is 0: the shared
   encoder `g` is a prior, the identity lives in `f`.
@@ -268,8 +290,9 @@ three) — do not trust a `line` / `corpus` eval on them.
 
 - **S2b** — the sentence run at 24 k, plain FM; μ from the arm running now
   (`plan_synth3.md` S2b).
-- **The seed-table recipe** — α on the 53 k table, the α eval-singles read,
-  glyph-size binding, then K1 at `kanji:400`–`600` (`plan_synth4.md`
-  R4.1 / R4.3 / R4.5 / K).
+- **The seed-table recipe** — the size arm's share-matched re-run (the
+  box weight is area-coupled, so the jitter arms measured the weight, not
+  size), α on `step1_0919` and `src53k`, then K1 at `kanji:400`–`600`
+  (`plan_synth4.md` R4.5 / R4.3 / K).
 - **Publishing** — the Hub v2 layout and gates G1–G4 / G6 are unrun
   (`deploy_plan.md`).

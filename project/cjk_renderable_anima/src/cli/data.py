@@ -12,7 +12,8 @@ def data_args(g):
         metavar="SPEC",
         help="data: what the ext table trains on — repeat once per source, "
         f"`kind[:arg][*weight][/held=K]` over {' | '.join(KINDS)}: e.g. `kana`, "
-        "`kana_ext`, `kanji:200`, `words:100/held=8`, `chars:あかす出人日`, "
+        "`kana_ext`, `small` (the 18 small kana, inside digraphs), `kanji:200`, "
+        "`words:100/held=8`, `chars:あかす出人日`, "
         "`list:、,。,！！`. Default `kana` (the 92); name no kana source to train "
         "punctuation / kanji / words alone. `*W` sets the draw weight in the "
         "S-line singles pool, `/held=K` holds K units out. Typed order never "
@@ -315,6 +316,16 @@ def data_synth_args(g):
         "drawn inside a speech bubble; the rest are bare-canvas TPL_PLAIN. "
         "1.0 = S0b option (a): one flat layout, so c_flat is one direction "
         "(S0 at 0.6 leaked the plain layout into the rows, leak 0.28)",
+    )
+    g.add_argument(
+        "--scene_size_jitter",
+        type=float,
+        default=0.0,
+        help="data: --scenes glyph-size jitter (plan_synth4 R4.5). 0 = off (the "
+        "largest font that fits, as before); j in (0, 1) scales each item's fill "
+        "by a log-uniform draw in [j, 1], so the glyph lands between "
+        "--scene_min_glyph and the bubble fit. A draw under the min glyph falls "
+        "back to the full fit; a --pair_ref sibling shares the fit",
     )
     g.add_argument(
         "--scene_fill",

@@ -13,7 +13,7 @@ from pathlib import Path
 
 from common.models import checkpoints
 from common.paths import CORPUS_TRAIN
-from common.text import KANA, KANA_RE, KANJI_RE, WORD_RE
+from common.text import KANA, KANA_RE, KANA_SMALL, KANJI_RE, WORD_RE
 
 
 def corpus_lines(boxes_jsonl: Path, max_len: int):
@@ -83,6 +83,56 @@ def pieces(tok, q, text: str):
     for i in tok.encode(text, add_special_tokens=False):
         out.append((tok.decode([i]), q.get(int(i))))
     return out
+
+
+# standard yōon / gairaigo digraphs, tried after the corpus-attested ones
+_YOON = [h + s for h in "きしちにひみりぎじびぴ" for s in "ゃゅょ"] + [
+    h + s for h in "キシチニヒミリギジビピ" for s in "ャュョ"
+]
+_GAIRAIGO = (
+    "ファ フィ フェ フォ ウィ ウェ ウォ ティ ディ トゥ ドゥ チェ シェ ジェ デュ テュ "
+    "フュ ツァ ツィ ツェ ツォ クァ クィ クェ クォ グァ イェ"
+).split()
+
+
+def small_digraphs(tok, q, hosts, per: int) -> dict:
+    """``--units small``: small kana → ``per`` two-glyph digraphs (host + small;
+    っ / ッ also small + host) whose Qwen pieces are exactly the two glyphs,
+    each with an ext row, the host a trained single. Corpus-attested digraphs
+    (>= 3 bubbles) first, by count, then the yōon / gairaigo tables, then the
+    rarer corpus ones; a small kana with
+    fewer than ``per`` cycles its list so every one carries ``per`` entries.
+    Most frequent uses (って ちゃ った じゃ) are one Qwen piece — word rows, not
+    these."""
+    hosts = set(hosts) - set(KANA_SMALL)
+    cnt: Counter = Counter()
+    for ln in (CORPUS_TRAIN / "boxes.jsonl").read_text().splitlines():
+        for b in json.loads(ln)["bubbles"]:
+            t = b["line"]
+            for i in range(len(t) - 1):
+                a, c = t[i], t[i + 1]
+                if (a in hosts and c in KANA_SMALL) or (a in "っッ" and c in hosts):
+                    cnt[a + c] += 1
+    # one- and two-bubble digraphs are mostly OCR noise (おゃ うゅ ナュ): they
+    # rank after the tables
+    seen = cnt.most_common()
+    ranked = (
+        [d for d, n in seen if n >= 3]
+        + _YOON
+        + _GAIRAIGO
+        + [d for d, n in seen if n < 3]
+    )
+    out: dict = {s: [] for s in KANA_SMALL}
+    for d in dict.fromkeys(ranked):
+        ps = pieces(tok, q, d)
+        if [p for p, _ in ps] != list(d) or any(r is None for _, r in ps):
+            continue
+        host, small = (d[1], d[0]) if d[0] in "っッ" and d[1] in hosts else (d[0], d[1])
+        if host in hosts and small in out and len(out[small]) < per:
+            out[small].append(d)
+    missing = [s for s, ds in out.items() if not ds]
+    assert not missing, f"--units small: no splitting digraph for {missing}"
+    return {s: [ds[i % len(ds)] for i in range(per)] for s, ds in out.items()}
 
 
 def word_inventory(tok, q, n: int, min_len: int = 2):

@@ -255,7 +255,7 @@
   "choices": null,
   "nargs": null,
   "type": "None",
-  "help": "data: what the ext table trains on — repeat once per source, `kind[:arg][*weight][/held=K]` over kana | chars | kana_ext | kanji | words | list: e.g. `kana`, `kana_ext`, `kanji:200`, `words:100/held=8`, `chars:あかす出人日`, `list:、,。,！！`. Default `kana` (the 92); name no kana source to train punctuation / kanji / words alone. `*W` sets the draw weight in the S-line singles pool, `/held=K` holds K units out. Typed order never changes the data — see data/units.py",
+  "help": "data: what the ext table trains on — repeat once per source, `kind[:arg][*weight][/held=K]` over kana | chars | kana_ext | small | kanji | words | list: e.g. `kana`, `kana_ext`, `small` (the 18 small kana, inside digraphs), `kanji:200`, `words:100/held=8`, `chars:あかす出人日`, `list:、,。,！！`. Default `kana` (the 92); name no kana source to train punctuation / kanji / words alone. `*W` sets the draw weight in the S-line singles pool, `/held=K` holds K units out. Typed order never changes the data — see data/units.py",
   "action": "_AppendAction",
   "metavar": "SPEC",
   "required": false
@@ -934,6 +934,21 @@
   "nargs": null,
   "type": "float",
   "help": "data: --scenes share of flat-canvas items (font singles / phrases) drawn inside a speech bubble; the rest are bare-canvas TPL_PLAIN. 1.0 = S0b option (a): one flat layout, so c_flat is one direction (S0 at 0.6 leaked the plain layout into the rows, leak 0.28)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data: S line (plan_synth)",
+  "option_strings": [
+   "--scene_size_jitter"
+  ],
+  "dest": "scene_size_jitter",
+  "default": 0.0,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "data: --scenes glyph-size jitter (plan_synth4 R4.5). 0 = off (the largest font that fits, as before); j in (0, 1) scales each item's fill by a log-uniform draw in [j, 1], so the glyph lands between --scene_min_glyph and the bubble fit. A draw under the min glyph falls back to the full fit; a --pair_ref sibling shares the fit",
   "action": "_StoreAction",
   "metavar": null,
   "required": false

@@ -92,7 +92,8 @@ def stage_eval(a):
     conds = ("trained",) if a.no_floor else ("floor", "trained")
     for cond in conds:
         s = 0.0 if cond == "floor" else 1.0
-        delta.scale = s
+        # --delta_scale: the table only (norm probe); LoRA / out_vec stay at 1
+        delta.scale = s * a.delta_scale
         if outvec is not None:
             outvec.set(sd["out_vec"] if s else None)
         if lora is not None:

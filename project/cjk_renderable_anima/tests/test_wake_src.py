@@ -50,6 +50,21 @@ def test_parse_units_canonical_order():
     assert parse_units(["list:、,！！*3"])[0].units == ["、", "！！"]
 
 
+def test_pool_small_kana_mass():
+    """`--units small`: every small kana carries the pool mass of one weight-1
+    unit, and a recipe without the source keeps its pool byte for byte."""
+    from data.units import SMALL_PER, Inventory, parse_units
+
+    inv = Inventory(sources=parse_units(["kana", "kana_ext*1"]))
+    inv.kana, inv.kana_ext = ["あ", "き"], ["が", "ゃ"]
+    assert inv.pool() == ["あ", "き", "が"]
+    inv.sources = parse_units(["kana", "kana_ext*1", "small"])
+    inv.small_of = {"ゃ": ["きゃ"] * SMALL_PER}
+    pool = inv.pool()
+    assert pool.count("あ") == pool.count("が") == SMALL_PER
+    assert sum("ゃ" in u for u in pool) == SMALL_PER and "ゃ" not in pool
+
+
 def test_parse_shapes():
     from common.shapes import parse_shape, parse_shapes, wh
 

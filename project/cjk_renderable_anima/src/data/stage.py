@@ -41,9 +41,10 @@ from .inventory import (
     kanji_inventory,
     pieces,
     qwen_pieces,
+    small_digraphs,
     word_inventory,
 )
-from .units import Inventory, parse_units
+from .units import SMALL_PER, Inventory, parse_units
 
 # eval.json group order (skipped when empty)
 _EVAL_ORDER = (
@@ -56,6 +57,7 @@ _EVAL_ORDER = (
     "line",
     "single_kanji",
     "single_ext",
+    "single_small",
     "single_extra",
     "flip",
     "str3",
@@ -244,6 +246,22 @@ def _resolve_singles(a, out, tokq, inv: Inventory):
         erng = random.Random(a.seed + 19)
         inv.evals["single_ext"] = erng.sample(list(KANA_EXT_HIRA), 12) + erng.sample(
             list(KANA_EXT_KATA), 6
+        )
+    ssrc = inv.source("small")
+    if ssrc:
+        # 2026-09-19: the small kana cannot be drawn as singles, so the 53 k
+        # seed table had no row for them and the sentence step met them cold
+        assert inv.has("kana") and not inv.restricted and not a.balanced, (
+            "--units small: hosts are the full kana inventory, unbalanced"
+        )
+        inv.small_of = small_digraphs(*tokq, inv.kana + inv.kana_ext, SMALL_PER)
+        ssrc.units = [d for ds in inv.small_of.values() for d in dict.fromkeys(ds)]
+        inv.evals["single_small"] = [ds[0] for ds in inv.small_of.values()]
+        (out / "small.json").write_text(json.dumps(inv.small_of, ensure_ascii=False))
+        print(
+            f"small kana: {len(inv.small_of)} rows in {len(ssrc.units)} digraphs; "
+            + " ".join(f"{k}:{'/'.join(dict.fromkeys(v))}" for k, v in inv.small_of.items()),
+            flush=True,
         )
     ksrc = inv.source("kanji")
     if ksrc and ksrc.n:

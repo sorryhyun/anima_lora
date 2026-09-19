@@ -100,3 +100,24 @@ on the ext ids both tables trained (n).
   it scales (read 3), so R4.3's plain-table α sweep is a different
   experiment from the ΔFM one, not a control for it.
 - plan_synth2's "chunking" price: 0.35 → ≈ 0.7 for same-loss blocks.
+
+## Addendum (2026-09-18 evening): Δ1 as a warm-start / embedding source — closed
+
+Moved from `plan_synth4.md` R4.0 on 2026-09-19. `src/probe/script_blocks.py`;
+Δ1's cos matrix was `output/wake_probe/rows_synth_d1_d1_s53k/manifold/pairwise_cos*`
+(arm dir deleted 2026-09-19). Δ1 and the KR / ZH blocks trained on the
+preview pack (`plan_synth3.md`, caveat at the top), so Δ1 here is the ΔFM
+residual on the plain sentence table.
+
+- Inside Δ1 the top-1 neighbour of a row is its shape confusable (れ↔わ,
+  ン↔シ, 達↔遠, び↔ぴ; dakuten rows' top-5 are 66 % dakuten across scripts)
+  but the tilt is small: top-1 cos 0.27 of which 0.17 survives removing m̂;
+  μ alone explains 10.8 % of a row, the best neighbour 7.5 %, both 13.7 %.
+  A shape neighbour is no better a start than `--init_anchor μ`.
+- KR (가거고구/나너노누/다더도두) and ZH (气乐变见长时话 + 门书车们这) 12-row
+  blocks on the Δ0 recipe: cos(m̂_block, m̂_Δ1) 0.43 / 0.47 (JA Δ0 0.67), so
+  Δ1's μ gives a new-script row cos 0.22–0.24 at init (JA 0.31); KR↔ZH 0.66.
+  Hangul jamo differences are not parallel (+0.04–0.06, random p95 0.12);
+  a simplified row lands nowhere near its shinjitai (气↔気 rank 67/355,
+  时↔時 308, 见↔見 339; controls reach the same max). 744-step rows, glyphs
+  not rendering yet — geometry only.
