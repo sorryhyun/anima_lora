@@ -21,7 +21,9 @@
 | **`step1_0920`** | raw | the same argv and data, `--box_share 0.25` | **20/36** | **19 / 8** | 0.934 |
 
 `step1_0920` (2026-09-20, job `20260920-003014-320a05`, arm
-`rows_step1_0919_step1_0920_bs25_s53k`; one variable against `step1_0919`):
+`rows_step1_0920_s53k`, renamed from `rows_step1_0919_step1_0920_bs25_s53k`;
+`data_step1_0920` is a symlink to `data_step1_0919`, so `--data_tag
+step1_0920 --arm_tag s53k` resolves; one variable against `step1_0919`):
 
 | read | `step1_0919` | `step1_0920` | plain `src53k` |
 |---|---|---|---|
