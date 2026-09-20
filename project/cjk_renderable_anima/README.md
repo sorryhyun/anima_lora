@@ -10,68 +10,54 @@ frozen text encoder; the only trainable object is a delta on the vocab
 pack's ext rows, so EN prompts are bit-exact by construction and the
 artefact ships as an ordinary vocab pack.
 
-## State (2026-09-19 morning)
+## State (2026-09-20)
 
 The line trains a **rows** arm on self-generated scene composites (the S
-line): one ext-row delta per unit, no encoder, no `c_flat`. Two steps —
-**step 1** the single-glyph seed table, **step 2** the sentence pass on top
-of it.
+line): one ext-row delta per unit, no encoder, no `c_flat`, no flat items.
+Two steps — **step 1** the single-glyph seed table, **step 2** the sentence
+pass on top of it.
 
-- **Caveat (found 2026-09-18 night): every run since 2026-09-17 17:36
-  trained on the baked preview pack, not the raw pack.** `configs/base.toml`
-  `vocab_pack` points at `anima_cjk_vocab_pack_preview` (= raw pack +
-  `sent_s24k_a1_s05`'s 502-row delta), and `wake_probe` reads the configured
-  pack. That covers every ΔFM arm but the first, Δ0b, the row-block arms,
-  **Δ1**, S2-smoke, S2a, the KR / ZH blocks and S2b. Same-pack comparisons
-  stand; what does not: Δ1 as a ΔFM-from-scratch table (it is a residual on
-  the plain sentence table, 355/356 rows already trained under it), the
-  ΔFM ↔ plain 0.14 geometry read, Δ0's "ΔFM saves no draws" (its two arms
-  ran on different packs), and the smoke's katakana floor finding. Δ0 was
-  re-run on the raw pack (`ANIMA_VOCAB_PACK=…`): floor 0/24, plain 7, ΔFM
-  10, **ΔFM lr 5e-3 13** of 24; row blocks 0–4/24, glyph-size jitter 0–1/24
-  ([`reports/s2b_and_raw_pack_rerun_2026_09_19.md`](reports/s2b_and_raw_pack_rerun_2026_09_19.md),
-  which also reads S2b: singles held, no sentence ruler moved). The full
-  list is at the top of [`plan_synth3.md`](plan_synth3.md). Every launch from here
-  states its pack.
-- **Running (2026-09-19 10:07): `step1_0919`** — Δ1's 53 k ΔFM recipe on the
-  raw pack with `--units small` (373 rows), job `20260919-100716-22fdca`,
-  arm `rows_step1_0919_s53k`; recipe at the top of `plan_synth3.md`.
-- **Step 1 tables on record:** `src53k` (plain FM, 434 rows) and Δ1
-  `d1_s53k` (ΔFM, 356 rows). Δ1 missed its gate on singles and on the JA
-  frame; its recipe is being re-settled in
-  [`plan_synth4.md`](plan_synth4.md) on the raw-pack Δ0 arms (lr, the
-  area-coupled box weight behind the size-jitter 0/24, the row-norm lever
-  α) together with the kanji budget K.
-- **Step 2:** S2a read 2026-09-18 evening
-  ([`reports/synth_s2a_2026_09_18.md`](reports/synth_s2a_2026_09_18.md)) —
-  plain FM beats ΔFM on every sentence ruler that moves (sub-exact pooled
-  lift +0.131 vs +0.081, native `en` 5 vs 2 of 48). **ΔFM is killed on
-  sentences; S2b trained plain** (recipe and the vocab step → merge →
-  sentence step loop in [`plan_synth3.md`](plan_synth3.md)).
-- **Anchor:** the μ 0.1 plain arm on the same data and seed
-  (`rows_synth_s2a_s2a_plain_a01`, read the same evening, addendum of the
-  S2a report) lost lift (+0.086 vs +0.131, native はい 1 vs 5/8) — S2b ran
-  at `--init_anchor 0.3`.
+- **Every launch states its pack.** `ANIMA_VOCAB_PACK=models/vocab_packs/anima_cjk_vocab_pack`
+  is raw (log sha `7b9fce0bb57b`); `configs/base.toml` still defaults to
+  `anima_cjk_vocab_pack_preview` (= raw + a 502-row delta, sha
+  `5f52aefce82a`), which silently based every run between 2026-09-17 17:36
+  and 2026-09-19 — the arms and what it invalidated are in
+  [`reports/s2b_and_raw_pack_rerun_2026_09_19.md`](reports/s2b_and_raw_pack_rerun_2026_09_19.md).
+  Those preview-pack arm dirs were deleted 2026-09-19; the reports are their
+  only record.
+- **Current seed table: `step1_0920`** (2026-09-20, arm
+  `rows_step1_0920_s53k`) — `step1_0919`'s ΔFM argv and data with one flag
+  changed, `--box_share 0.25`, the area-independent in-box loss. Singles
+  10 → **20**/36, `single_kanji` 3 → 8, native `en` 8 → **19** of 64, with
+  the scene *better* held (en cos 0.931 → 0.934). It closes about a third of
+  the native gap to the plain seed `src53k` (13/36 singles, native 36) and
+  not all of it; `single_small` is 0/36 on both.
+- **Step 2 on record: `step2_0919`** (2026-09-19, arm
+  `rows_step2_0919_plain_6k`) — the sentence pass on the *older*
+  `step1_0919` seed, plain FM, 6 k steps sized to its pool. Sub-exact pooled
+  lift +0.086 with the lift now on held groups too (`short` +0.125,
+  `short_held` +0.141); singles held at the seed's level. Owed: the same
+  step on `step1_0920`.
 - **Ruler:** exact match is floor-saturated on every multi-glyph group;
   `src/probe/sub_exact.py` (glyph recall minus a permutation control) is
   the ruler that orders sentence arms.
 
-The plans: [`plan_synth3.md`](plan_synth3.md) (step 2, live),
-[`plan_synth4.md`](plan_synth4.md) (step 1 recipe + kanji budget, live),
-[`plan_synth2.md`](plan_synth2.md) (the ΔFM loss as built),
-[`synth.md`](synth.md) (the S line as built),
-[`plan_synth.md`](plan_synth.md) and [`plan.md`](plan.md) (superseded,
-kept for the verdicts in them).
-[`findings.md`](findings.md) holds the settled
-verdicts one screen per topic; [`reports/`](reports/README.md) is the dated run record
-(indexed: W0–W2, W2d Runs 1–3, order probe, σ diagnostic, strings arm,
-canvas-shape gate, the S line).
+[`plan.md`](plan.md) is the single forward plan (step 1 recipe, step 2 and
+the vocab → merge → sentence loop, the kanji budget K).
+[`synth.md`](synth.md) is the S line as built, including the exact
+`step1_0920` / `step2_0919` argv. [`findings.md`](findings.md) holds the
+settled verdicts one screen per topic; [`reports/`](reports/README.md) is
+the dated run record (indexed: W0–W2, W2d Runs 1–3, order probe, σ
+diagnostic, strings arm, canvas-shape gate, the S line). The four
+`plan_synth*.md` files are archived under `_archive/cjk_renderable_anima/`
+(`plan.md` carries the redirect table).
 [`diagram.html`](diagram.html) is the one-figure picture of what trains and
-how (frozen Anima path + the address table; open in a browser), the
-pack → step 1 → step 2 → bake pipeline with the warm-start guard, and the
-"why it is hard" figure: the row → glyph map is a hash, so every shortcut
-to `f` (encoder, composition, contrastive, codebook, warm start) is held-out
-0 and the cost is exposure per row.
+how (frozen Anima path + the address table; open in a browser), **the
+formulation written out** (*The address, written out*), the pack → step 1 →
+step 2 → bake pipeline with the warm-start guard, and the "why it is hard"
+figure: the row → glyph map is a hash, so every shortcut to `f` (encoder,
+composition, contrastive, codebook, warm start) is held-out 0 and the cost
+is exposure per row.
 
 ## What is established
 
@@ -134,11 +120,13 @@ Inventory facts that matter when extending it:
 
 ## Formulation
 
-[`formulation.pdf`](formulation.pdf) (source `formulation.tex`, build with
-`tectonic formulation.tex`) — the Run 3 training written out: address
-`Ẽ_r = E_r + s ρ Δ_r`, hybrid `Δ_r = α(ψ_θ(x_r) − ψ̄) + c + 𝟏[r ∈ ℛ_tr] f_r`,
-rectified-flow loss on σ ∈ [0.7, 0.9] through the frozen DiT, `μ‖f‖²` pull,
-AdamW groups, and what each eval group reads.
+[`diagram.html`](diagram.html) *The address, written out* — the address
+`ẽ_r = e_r + ρ f_r`, the residual `r_X`, the paired loss `L_Δ` with the
+`μ‖f‖²` pull, the σ band, and a symbol table giving every term's value,
+kind and role. (The old `formulation.pdf` / `.tex` were the **Run 3**
+hybrid-encoder training — `Δ_r = α(ψ_θ(x_r) − ψ̄) + c + 𝟏[r ∈ ℛ_tr] f_r` —
+a design the line dropped when the encoder closed at held-out 0; removed
+2026-09-20, in git history if ever wanted.)
 
 ## How to run
 
@@ -147,54 +135,25 @@ CPU-only and safe inline. Corpus bubbles come from
 `post_image_dataset/render/ja/{resized,heldout}/boxes.jsonl` (local, not in
 the repo).
 
+**The recipe of record — the `step1_0920` and `step2_0919` argv, with what
+every block is doing — is [`synth.md`](synth.md) *The recipe as run*.**
+Reproduced there rather than here so it stays beside the design it
+implements. The two other stages that take an arm:
+
 ```bash
-# S line, the recipe of record (2026-09-16 evening): the sentence arm — every
-# item a tategaki composite on the sl1w pool, kinds pinned as hard quotas
-# (--scene_mix), rows arm, warm-started from the 53k + punctuation table.
-# One daemon job, all stages; the native read is a second job on the same arm.
-# `--lr_warmup 500 --init_anchor 0.3` (2026-09-17): without them the warm start
-# is gone by step 50 (Adam at lr 1e-3 in row-norm units; sent_s24k ended at
-# cos 0.10 to its source, norm 98 → 47 → regrown). The anchor's gradient is 0
-# at f = f₀, so the warmup is what saves the first steps; `warm_cos` /
-# `warm_drift` in train_log are the read. Flat sentence eval groups are
-# 4 prompts each now (`--n_phrase_eval`, was 16) — `single` / `native` are the
-# rulers, the flat sentences are off-distribution for a composite-only arm.
-# σ band 0.5–0.9, not the singles band 0.7–0.9: 90 % of the items are
-# multi-piece and order / count are decided at σ 0.5–0.8 (strings σ diagnostic,
-# reports/wake_words_strings_2026_09_14.md); the band is one global flag, so a
-# run mixing kinds takes the lower edge. μ = 0.3 from the anchor sweep
-# (reports/anchor_sweep_2026_09_17.md).
-# <manga109s> is the local Manga109-s derivation; the path stays out of the
-# repo (dialogue_2_10.tsv = dialogue_3_10.tsv + its 2-piece lines,
-# <manga109s>/derived/make_dialogue_2_10.py).
-make daemon-run ARGS="--label sent --stall-timeout 0 --queue \
-    project/cjk_renderable_anima/src/wake_probe.py --stage data train eval --arm rows \
-    --scenes sl1w --scene_drop sl1w:332,957 --scene_min_tokens 900 --data_tag synth_sent_q \
-    --units kana --units kana_ext --units kanji:200 --units words:100/held=8 \
-    --units 'list:、,。,・,ー,～,〜,！,？,「,」,！！,・・・,・・・・,っ,ッ' \
-    --phrase_file <manga109s>/derived/dialogue_2_10.tsv --phrase_min_pieces 2 --phrase_pieces 40 \
-    --scene_mix single=0.1,short=0.5,sentence=0.4 --short_pieces 2-5 --short_max_lines 1 \
-    --sentence_min_letters 6 --sentence_min_glyph 20 --sentence_fill 0.9 --scene_vertical 1 \
-    --n_items 10000 --scene_frac 1.0 --natural_frac 0 --strings_frac 0 \
-    --flat_bubble 1.0 --scene_fill 0.7 --scene_min_glyph 28 --scene_max_lines 2 \
-    --shapes 512 \
-    --init_rows output/wake_probe/rows_synth_full_fm10k_merge_punct/trained.pt \
-    --train_steps 24000 --batch 4 --t_min 0.5 --t_max 0.9 \
-    --compile 1 --grad_ckpt 0 --aggressive_recompute 0 \
-    --lr_rows 1e-3 --lr_decay cosine --free_residual 1e-3 --box_weight 4 \
-    --lr_warmup 500 --init_anchor 0.3 \
-    --seeds 2 --no_floor --c_flat 0 --arm_tag sent_s24k_a1_s05"
-make daemon-run ARGS="--label sent-native --stall-timeout 0 --queue \
+# native — the scene-prompt read, a second job on a finished arm
+make daemon-run ARGS="--label step1-native --stall-timeout 0 --queue \
     project/cjk_renderable_anima/src/wake_probe.py --stage native --arm rows \
-    --data_tag synth_sent_q --arm_tag sent_s24k_a1_s05 --native_chars あ,か,す,日 \
+    --data_tag step1_0920 --arm_tag s53k --native_chars あ,か,す,日 \
     --native_clauses en,swap --seeds 2 --delta_parts full"
-# The user's own target (2026-09-17): the ComfyUI captions in
-# assets/target_prompts.txt (hoshino ai by @akipeko saying はい / こんにちは)
-# rendered verbatim at the Comfy canvas, floor vs trained, both readers —
-# no rulers, the question is only "does it say はい". Third job on the arm.
-make daemon-run ARGS="--label sent-target --stall-timeout 0 --queue \
+
+# target — the user's own ComfyUI captions (assets/target_prompts.txt:
+# hoshino ai by @akipeko saying はい / こんにちは) rendered verbatim at the
+# Comfy canvas, floor vs trained, both readers. No rulers; the question is
+# only "does it say はい".
+make daemon-run ARGS="--label step1-target --stall-timeout 0 --queue \
     project/cjk_renderable_anima/src/wake_probe.py --stage target --arm rows \
-    --data_tag synth_sent_q --arm_tag sent_s24k_a1_s05 --eval_shape 768x1344 --steps 30 --seeds 2"
+    --data_tag step1_0920 --arm_tag s53k --eval_shape 768x1344 --steps 30 --seeds 2"
 
 # Archived — the W2d Run 3 encoder recipe (hybrid g + f). The encoder arm has not
 # run since 2026-09-14; it is kept because extending the hybrid table needs it,
@@ -268,8 +227,10 @@ three) — do not trust a `line` / `corpus` eval on them.
 
 | path | what |
 |---|---|
-| `plan.md` | the P line (encoder arm, flat singles) — superseded by the S line; kept for its P0a canvas-pool result and the slot-rows / W3 fallbacks |
-| `plan_synth*.md` | the S line: `plan_synth` (superseded), `plan_synth2` (the ΔFM loss as built), `plan_synth3` (step 2, live), `plan_synth4` (step 1 recipe + kanji budget, live) |
+| `plan.md` | **the forward plan** — step 1 (seed-table recipe, the loss question, glyph size, α), step 2 (the sentence pass + the vocab → merge → sentence loop), K (the kanji budget), open risks, the fallbacks |
+| `synth.md` | **the S line as built** — why composites, the scene prompts and pools, the instrument in build order, the ΔFM loss as built, the `step1_0920` / `step2_0919` argv, the rulers, the budget |
+| `diagram.html` | the one-figure picture (open in a browser) — the frozen Anima path + the address table, **the formulation written out** (`ẽ_r`, `r_X`, `L_Δ`, the symbol table), the pack → step 1 → step 2 → bake pipeline, and the "why it is hard" figure |
+| `_archive/cjk_renderable_anima/plan_synth*.md` | archived 2026-09-20: `plan_synth` (budgets/pools/rulers), `plan_synth2` (the ΔFM line Δ0–Δ2), `plan_synth3` (S2 and the loop), `plan_synth4` (the step-1 recipe arms R4.3–R4.6 and K). Kept for the arms they record; `plan.md` has the redirect table |
 | `deploy_plan.md` | Hub v2 layout (`old/ delta/ comfy/ diffusers/`), bake, pre-upload gates, license, migration |
 | `findings.md` | settled verdicts, rulers, gotchas, do-not-re-propose |
 | `findings_seed.md` | what the 53k full-inventory table taught (2026-09-16): its evals, row-space geometry, adapter-output vs Q, transplant, pinned-trigger arms — the one-place summary for the seed question |
@@ -284,15 +245,17 @@ three) — do not trust a `line` / `corpus` eval on them.
 | `src/probe/` | standalone questions over a finished table — model-running: `order_probe.py` (base-model EN order control), `transplant_table.py`, `merge_tables.py`, `quote_dir_save.py`; free readers over what a stage already wrote: `sub_exact.py` (glyph-lift ruler for the floor-saturated multi-glyph groups), `cross_sheet.py` (two arms' `native` renders row-interleaved on one sheet) |
 | `src/bench/` | rulers over a finished table, no sampler — `wake_geometry.py` (PR, pairwise cos, composition pairs), `rows_manifold.py`; local name, no repo `result.json` envelope |
 | `tests/` | line-local tests (imports, CLI golden dump, units / shapes / CER / kinsoku): `.venv/bin/python -m pytest project/cjk_renderable_anima/tests` — not part of the repo suite |
-| `formulation.pdf`, `.tex` | the training written as equations |
 
 ## Open
 
-- **S2b** — the sentence run at 24 k, plain FM; μ from the arm running now
-  (`plan_synth3.md` S2b).
-- **The seed-table recipe** — the size arm's share-matched re-run (the
-  box weight is area-coupled, so the jitter arms measured the weight, not
-  size), α on `step1_0919` and `src53k`, then K1 at `kanji:400`–`600`
-  (`plan_synth4.md` R4.5 / R4.3 / K).
+Ordered in [`plan.md`](plan.md) *Order*; the short form:
+
+- **Which loss the seed table takes at full inventory** (`plan.md` S1a) —
+  ΔFM wins at 12 rows, plain wins at 374–434, and the two full-table arms
+  also differed in lr. The control is `--pair_loss 0 --lr_rows 1e-3` on
+  `step1_0920`'s own build; nothing else should run first.
+- **Round 2 of the sentence loop** — step 2 on the `step1_0920` seed.
+- **α as a deployment knob** (`plan.md` S1c) and **glyph size / the
+  small-bubble pool** (S1b), then **K1** at `kanji:400`–`600`.
 - **Publishing** — the Hub v2 layout and gates G1–G4 / G6 are unrun
   (`deploy_plan.md`).

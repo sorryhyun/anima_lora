@@ -2,7 +2,7 @@
 
 > Forward plan for publishing the render line's table. Nothing here is
 > uploaded yet. Training plans and their gates stay in
-> [`plan_synth3.md`](plan_synth3.md) / [`plan_synth4.md`](plan_synth4.md);
+> [`plan.md`](plan.md) (step 1, step 2, the kanji budget);
 > this file is only packaging, surfaces, gates before upload, and the Hub
 > migration. Decisions the user still owes are collected at the end (D1–D6).
 
@@ -153,7 +153,8 @@ Source: the `trained.pt` of the table that passes its gate. Baked so far:
 `rows_synth_sent_q_sent_s24k_a1_s05` (503 rows) as the shipped **preview**
 pack, and `rows_synth_sent_q_sent_s24k` as the local
 `models/vocab_packs/anima_cjk_vocab_pack_sent_s24k/`. v1's source is D1 and
-waits on the sentence run (`plan_synth3.md` S2b).
+waits on the sentence run (`plan.md` *Step 2*, round 2 on the `step1_0920`
+seed). Both baked tables above are preview-pack-era and pre-`--box_share`.
 
 Formula, for every ext id `e` in `delta.ext_ids` (all of them, exactly as
 evaluated, so G0 can be exact):

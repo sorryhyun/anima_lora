@@ -4,10 +4,15 @@ What ran, in order, with the numbers and the decision each run forced. One
 file per stretch of related runs; text inside a report is the voice of its
 date and is not rewritten when a later run changes a number (the later
 report wins). Settled verdicts live in [`../findings.md`](../findings.md), the
-state digest in [`../README.md`](../README.md), the forward plans in
-[`../plan.md`](../plan.md) (P line) and [`../plan_synth.md`](../plan_synth.md)
-(S line). Until 2026-09-15 everything from W2d on was one file, `history.md`;
-it was split here without edits.
+state digest in [`../README.md`](../README.md), the forward plan in
+[`../plan.md`](../plan.md) and the method as built in
+[`../synth.md`](../synth.md). Until 2026-09-15 everything from W2d on was one
+file, `history.md`; it was split here without edits.
+
+Reports written before 2026-09-20 cite `plan_synth.md` / `plan_synth2.md` /
+`plan_synth3.md` / `plan_synth4.md`; those four are archived under
+`_archive/cjk_renderable_anima/` and their live content is in `../plan.md`
+(which carries the redirect table) and `../synth.md`.
 
 ## Index (chronological)
 
@@ -15,7 +20,7 @@ it was split here without edits.
 |---|---|---|---|
 | [`krzh16_2026_09_16.md`](krzh16_2026_09_16.md) | 09-16 | 16 Korean / simplified-Chinese rows on the micro recipe, read against the 53k table; the `~` tag-leak row; concat feasibility | the DiT holds Hangul and simplified units; KO/ZH rows share the kana manifold (trigger + orthogonal identity), hanzi neighbour JA rows by radical; row addresses are reproducible across runs (own char 0.5 / shape 0.3 / random 0.03) |
 | [`wake_w0_w2_2026_09_13.md`](wake_w0_w2_2026_09_13.md) | 09-13 | the wake hypothesis, Probe 0/1, address geometry, 256² / 24-kana / balanced / σ-band arms, native-rendering and kanji probes, the case for W2d | the frozen DiT holds kana units; a rows-only delta draws them; identity is decided at σ ≈ 0.8 |
-| [`wake_plan_2026_09_13.md`](wake_plan_2026_09_13.md) | 09-13 (status notes to 09-14) | the plan as written: where the line stood, target artefact (a vocab pack), W3 / W4, kill criteria, shelved W2 levers, **EN safety**, instruments & gotchas | superseded as decision state by `plan.md` / `plan_synth.md`; the EN-safety and gotcha lists still apply |
+| [`wake_plan_2026_09_13.md`](wake_plan_2026_09_13.md) | 09-13 (status notes to 09-14) | the plan as written: where the line stood, target artefact (a vocab pack), W3 / W4, kill criteria, shelved W2 levers, **EN safety**, instruments & gotchas | superseded as decision state by `../plan.md`; the EN-safety and gotcha lists still apply |
 | [`wake_w2d_encoder_2026_09_13_14.md`](wake_w2d_encoder_2026_09_13_14.md) | 09-13 → 09-14 | W2d glyph encoder: Run 1 (ten launches), 1b / 1b amended, 1c decorrelation, 1d free-residual hybrid, Run 2 kanji + IDS composites | table is rank-1; `g + f` renders every trained single (24/24), held-out flat; addresses do not compose → kanji is an exposure budget |
 | [`wake_words_strings_2026_09_14.md`](wake_words_strings_2026_09_14.md) | 09-14 pm | Run 3 word addresses, base-model order probe, `classify_str` σ diagnostic, strings arm | a row can be a word; order reading is pretrained (σ 0.5–0.8); a static table carries order + count but absorbs the unit-count prior |
 | [`wake_canvas_scenes_2026_09_14.md`](wake_canvas_scenes_2026_09_14.md) | 09-14 night | canvas-shape gate + P0a, table-parts probe, scenes s0, S0 build + launch | 384² alive, mixed pool is the recipe; glyph is conditional on the canvas mode → the S line; 186 kept scenes |
@@ -29,6 +34,14 @@ it was split here without edits.
 | [`synth_pair_2026_09_17.md`](synth_pair_2026_09_17.md) | 09-17 evening | `plan_synth2.md` Δ0: plain FM vs ΔFM (EN sibling, `--pair_loss 1`) on 12 dakuten rows at 1 500 / 3 000 steps, the ΔFM lr 2e-3 arm, three natives; Δ0b: `--pair_sigma_min 0.8` and `--pair_ref_frame en` arms | pass gate missed (10 / 18 vs 20 / 21 of 24); **lr is a lever** — 2e-3 × 1 500 ≡ 1e-3 × 3 000 for ΔFM (19/24), the budget is ∫lr; ΔFM removes the wipe (en cos 0.93 vs 0.855 at equal norm) but keeps the base's JA pseudo-text, joint hit ∧ kept still favours plain (28 vs 15–20 of 64); the pseudo-text is in no training residual — wipe ↔ co-text is one axis, σ split interpolates, EN-frame sibling flat |
 | [`s2b_and_raw_pack_rerun_2026_09_19.md`](s2b_and_raw_pack_rerun_2026_09_19.md) | 09-18 night → 09-19 | S2b round 1 (Δ1 seed, warm rows only, 6 k, plain); the finding that every run since 09-17 17:36 trained on the baked preview pack; Δ0 re-run on the raw pack (plain, ΔFM lr 1e-3 / 2e-3 / 5e-3, row blocks, glyph-size jitter, box weight 1); `--scene_size_jitter` | S2b holds Δ1's singles (12 / 17 / 18) and moves no sentence ruler (pooled +0.089, はい 1/8); **Δ1 is a ΔFM residual on the plain sentence table, not a from-scratch table**; on the raw pack the floor is 0/24, ΔFM 10 vs plain 7 at 1 500 steps, **lr 5e-3 best (13/24)**, row blocks 0–4/24 (their 16/24 was fine-tuning trained rows), size jitter 0–1/24 |
 | [`step1_0919_2026_09_19.md`](step1_0919_2026_09_19.md) | 09-19 | `step1_0919`: Δ1's ΔFM recipe from scratch on the raw pack + `--units small` (374 rows, 568 draws/row); eval at `--delta_scale 1.7`; `table_geometry.py` re-run on raw tables | no bug — **ΔFM from scratch is weak at full inventory** (10 / 5 / 3 of 36 vs plain 13 / 18 / 18 at matched draws); rows carry the right identity (71 % top-1 retrieval in the plain table) at 14 % of plain's size along it, table contracts 145 → 75, and **× 1.7 scale does not recover it** (10 / 4 / 1); geometry reads 3 and 4 of 09-18 retired as preview-pack artifacts (cos to pack row −0.08 under both losses; same-glyph cross-loss cos 0.31, not 0.14) |
+
+**Not yet written up here:** `step1_0920` (2026-09-20, `--box_share 0.25` on
+`step1_0919`'s argv and data — every ruler about doubles) and `step2_0919`
+(2026-09-19, the sentence step on the `step1_0919` seed — pooled sub-exact
+lift +0.086, `_held` groups moving). Their numbers, argv and job ids are in
+[`../plan.md`](../plan.md) *Where the line stands* and
+[`../synth.md`](../synth.md) *The recipe as run*; the Δ0-scale arms behind
+`--box_share` are in `_archive/cjk_renderable_anima/plan_synth4.md` R4.5.
 
 ## Conventions
 

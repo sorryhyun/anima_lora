@@ -4,9 +4,9 @@ What this line has settled, in the form a later decision needs: the verdict,
 the number it turns on, and the mechanism note that exists nowhere else. One
 screen per topic, no chronology. The dated run record is
 [`reports/`](reports/README.md) (indexed: W2d Runs 1–3, the order probe, the σ
-diagnostic, the strings arm, the S line); the forward plans are
-[`plan_synth3.md`](plan_synth3.md) (the sentence step) and
-[`plan_synth4.md`](plan_synth4.md) (the seed table + kanji); the
+diagnostic, the strings arm, the S line); the forward plan is
+[`plan.md`](plan.md) (step 1, step 2, the kanji budget) and the method as
+built is [`synth.md`](synth.md); the
 W0–W2 report is `reports/wake_w0_w2_2026_09_13.md`. The predecessor lines'
 verdicts are read-only in
 [`../cjk_aware_anima_dit/findings.md`](../cjk_aware_anima_dit/findings.md)
@@ -14,14 +14,21 @@ verdicts are read-only in
 [`../cjk_aware_anima/findings.md`](../cjk_aware_anima/findings.md)
 (the vocab pack itself).
 
-Line status (2026-09-18): frozen DiT + frozen adapter + a delta on the
+Line status (2026-09-20): frozen DiT + frozen adapter + a delta on the
 pack's ext rows renders every kana and short common words (Run 3), and a
 static table trained on strings carries **order and count** (strings arm).
 The S line (scene composites, rows only, no `c_flat`) put the mechanism on
 real scenes; no arm has cleared the native gate. The line is at step 1 (the
-single-glyph seed table, 356–434 rows) plus step 2 (the sentence pass,
-plain FM — ΔFM lost that A/B). Nothing is published; a table is baked into
-a local pack pair (`README.md` *The artefact*).
+single-glyph seed table, 374–434 rows; current table `step1_0920`) plus
+step 2 (the sentence pass, plain FM — ΔFM lost that A/B; current run
+`step2_0919`, on the older seed). Nothing is published; a table is baked
+into a local pack pair (`README.md` *The artefact*).
+
+**Every number in this line is a number at a stated vocab pack.** Raw =
+`models/vocab_packs/anima_cjk_vocab_pack` (sha `7b9fce0bb57b`); `configs/base.toml`
+defaults to the *preview* pack (raw + a 502-row delta, sha `5f52aefce82a`),
+which silently based every run between 2026-09-17 17:36 and 2026-09-19.
+Launch with `ANIMA_VOCAB_PACK=` set.
 
 ---
 
@@ -225,6 +232,61 @@ the data mix.
   axis on single-glyph data: a σ split of the two losses interpolates
   along it. `reports/synth_pair_2026_09_17.md`.
 
+## Settled — the in-box weight was an area coupling, not a knob
+
+- **`--box_weight` divided by the weight sum over the whole canvas, so a
+  row's share of the loss followed its box *area*.** At `d0`'s ≈ 64-cell
+  box, w 4 = a 6.83 % in-box share; a jittered small glyph cut it to
+  2.87 %, as far as dropping the weight to 1 does (share 1.84 %, singles
+  1/24). **The glyph-size arms that read 0–1/24 were measuring the share**:
+  the same data at a share-matched w 12 reads 5/24 at norm 107.
+  `--box_share ρ_g` (2026-09-19) replaces it — `s·mean_in + (1−s)·mean_out`,
+  `s = min(ρ_g·n_glyphs, 0.75)`, per *glyph* so glyph count, glyph size and
+  canvas shape stop moving the row's weight. **Every box-weight and row-norm
+  number recorded before 2026-09-19 is a number at `d0`'s box**, and
+  `--free_residual` μ 1e-3 is calibrated to it too.
+- **The end row norm is a balance point, not the end of travel.** In every
+  arm the norm peaks by step ≈ 400–700 and falls under the cosine schedule;
+  weight decay is 0, so the only pull toward 0 is μ‖f‖², which does not
+  scale with the box. A smaller box lowers where the in-box gradient
+  balances μ, and more steps on the same recipe cannot recover it.
+- **The share is the biggest single-flag win the line has measured.**
+  `ρ_g 0.25` (≈ `--box_weight` 20) on the full table (`step1_0919` →
+  `step1_0920`, one variable): `single` 10 → **20**/36, `single_ext` 5 → 8,
+  `single_kanji` 3 → 8, native `en` 8 → **19** of 64 — with the scene
+  *better* held (en cos 0.931 → 0.934) at a norm 1.5× higher, and the norm
+  no longer decaying (250 → 160 against 149 → 76). It does not remove the
+  back-half contraction, and it closes about a third of the native gap to
+  plain FM.
+
+## Settled — glyph size
+
+- **Small glyphs at σ 0.7–0.9 do not teach identity by themselves.** At an
+  equal 25 % share, the jittered-small build is the worst small arm on both
+  rulers (`single` 0/24, native 4 of 128) at a norm above the full-fit
+  build's — the rows travel, not toward identity, and the misreads are
+  voiced-but-wrong (が → ず, ご → ど, グ → ダ). A ≈ 30 px glyph is ≈ 4 × 4
+  latent cells at that band and what survives is "a dakuten kana".
+- **Large and small items mixed in one build is the lever that works.**
+  `d0mix` (half full-fit 38/54/80 px, half jittered 17/30/50): native 18 of
+  128 against 11 for both full-fit arms at the same lr, 7 of the 18 under
+  64 px (full-fit w 4: 1 of 11), scene *better* held (0.933 vs 0.921).
+  Large items carry identity, small ones carry size. Micro scale, one seed.
+- **Size arms are read on native, not `single`.** The `single` template asks
+  for a large glyph and under-reads size-trained rows on every such arm
+  (`d0mix` 5/24 with 18 native; the w 12 arm 5/24 with 9).
+- **No native hit under 40 px on any full table** (0 of 149 boxes across
+  `src53k` and `step1_0919`), and the 24–40 px bin holds no single-glyph box
+  at all — when the base lays out small text it writes its own multi-glyph
+  pseudo-text, and the row's glyph appears only where the layout is one
+  large glyph. Most hits are *above* the training p95. Not the readers'
+  floor: the VAE round trip is clean from 10 px kana / 16 px kanji.
+- **`--scene_size_jitter` is the wrong tool and the pools are why.** It
+  shrinks the glyph inside a bubble the base drew for something larger —
+  an image the base never draws, teaching "small glyph ⇒ mostly empty
+  bubble". No pool has a region under 40 px in 1 118 scenes. The glyph has
+  to be small because the *bubble* is small (`plan.md` S1b.1).
+
 ## Settled — what does not move it
 
 - 256² training under the default σ (dead: EN 11/24 there; 384² is alive
@@ -254,7 +316,33 @@ the data mix.
   pretrained row (cos 0.06 vs plain FM's 0.41) and *damages* them — Δ0
   paired arms read 5–7/12 on floor-positive katakana where the untrained
   floor reads 10/12 and plain FM 11/12
-  (`reports/synth_s2_smoke_2026_09_18.md`).
+  (`reports/synth_s2_smoke_2026_09_18.md`). That smoke's *floor* finding
+  ("untrained katakana dakuten render at 10/12") is retired: it read the
+  preview pack's already-trained rows as a floor, and on the raw pack the
+  floor is 0/24.
+- **Row blocks** (`--row_blocks N`: one row family at a time, own Adam state
+  and schedule) **do not wake a cold row** — 0/24 at lr 2e-3 and 4/24 at
+  5e-3 on the raw pack. Their 16/24 was fine-tuning rows the preview pack
+  had already trained. With them go the per-block warmup, the block-length
+  question and the per-row trajectory read. What survives from that read:
+  the rerun chaos floor on 12 rows is cos ≈ 0.75 per row at one seed, so
+  **no schedule knob is decided at one seed**
+  (`reports/row_blocks_alpha_2026_09_18.md`, `reports/s2b_and_raw_pack_rerun_2026_09_19.md`).
+- **There is no shape structure in any table, under either loss**
+  (`reports/table_geometry_2026_09_18.md`): a shape neighbour is no better a
+  warm start than `--init_anchor μ`. The "shared direction is per-loss" read
+  of 2026-09-18 used a *residual* table as the ΔFM side and is retired;
+  same-glyph cross-loss cos is 0.31, not 0.14, and cos to the own pack row
+  is −0.08 under both losses (`reports/step1_0919_2026_09_19.md`).
+- **ΔFM from scratch is weak at full inventory** — not a bug, and not a
+  scale artefact. `step1_0919` (374 rows, 568 draws/row) reads 10 / 5 / 3 of
+  36 against the plain seed's 13 / 18 / 18 at matched draws; the rows carry
+  the *right* identity (71 % top-1 retrieval against the plain table) at
+  14 % of plain's size along it, the table contracts 145 → 75, and
+  `--delta_scale 1.7` does not recover it (10 / 4 / 1). `--box_share 0.25`
+  lifts it to 20 / 8 / 8 without closing the native gap (19 vs 36 of 64).
+  **The 12-row "ΔFM beats plain" result does not survive to full
+  inventory**; which loss the seed table takes is open (`plan.md` S1a).
 
 ## Gotchas that cost time
 
@@ -308,12 +396,17 @@ the data mix.
   and reads no better). Under ΔFM the lr is a lever (2e-3 × 1 500 ≡ 1e-3
   × 3 000, 19 vs 18/24), and row *norm* is a third axis — native hits rise
   as the norm falls, scene fidelity falls with it, crossing ≈ × 0.7 on a
-  12-row table (`reports/row_blocks_alpha_2026_09_18.md`). Whether that
-  curve holds on a 356-row table is `plan_synth4.md` R4.3.
-- **Is the row bound to the glyph's absolute size?** Never varied on
-  purpose; the VAE is not the bottleneck (clean round trip from 10 px kana,
-  16 px kanji) and 12 px is the decided floor for a size arm
-  (`plan_synth4.md` R4.5).
+  12-row table (`reports/row_blocks_alpha_2026_09_18.md`). That sweep ran on
+  the preview pack; whether the curve holds on a raw full table is
+  `plan.md` S1c. Counter-evidence already in: `--box_share` raised both the
+  norm (122 → 184) *and* `single` (10 → 15) with en cos held, so norm is not
+  a single monotone axis.
+- **Which loss the seed table takes** (`plan.md` S1a) — ΔFM wins at 12 rows,
+  plain wins at 374–434, and the two full-table arms also differed in lr.
+- **Is the row bound to the glyph's absolute size?** Partly answered (above:
+  mixed large/small moves native, small-only does not); what is unread is
+  whether a bubble the base itself drew small changes it, and whether
+  σ 0.7–0.9 trains a glyph under one DiT token at all (`plan.md` S1b).
 - Repeat mode: whether repeated-piece strings as negatives stop the second
   slot copying its neighbour.
 - Does contextualisability transfer to rows added later with singles-only
