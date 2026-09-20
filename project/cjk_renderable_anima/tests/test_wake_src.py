@@ -244,7 +244,10 @@ def test_init_rows_converts_row_scale(tmp_path):
     src_ids = [100, 101, 103]
     src_raw = torch.randn(3, 8)
     torch.save(
-        {"arm": "rows", "delta": {"ext_ids": src_ids, "raw": src_raw, "row_scale": src_rs}},
+        {
+            "arm": "rows",
+            "delta": {"ext_ids": src_ids, "raw": src_raw, "row_scale": src_rs},
+        },
         tmp_path / "src.pt",
     )
     torch.save(
@@ -274,3 +277,27 @@ def test_init_rows_converts_row_scale(tmp_path):
     tr = fresh()
     tr._init_rows_from(str(tmp_path / "old.pt"))
     assert torch.allclose(tr.delta.raw.detach()[[0, 1, 3]], src_raw)
+
+
+def test_box_share_loss_is_area_independent():
+    """--box_share (plan_synth4 R4.5): the in-box share of the loss is ρ_g per
+    glyph whatever the box area, capped; 0 falls back to --box_weight."""
+    import torch
+    from train.stage import BOX_SHARE_CAP, weighted_fm_loss
+
+    def loss(box, text="が", share=0.25, e_in=1.0, e_out=0.0):
+        target = torch.zeros(1, 4, 64, 64)
+        pred = torch.full_like(target, e_out**0.5)
+        x0, y0, x1, y1 = (v // 8 for v in box)
+        pred[:, :, y0:y1, x0:x1] = e_in**0.5
+        rec = [{"box": box, "text": text}]
+        return float(weighted_fm_loss(pred, target, rec, 4.0, share))
+
+    small, big = [64, 64, 96, 96], [64, 64, 192, 192]  # 16 vs 256 cells
+    assert loss(small) == pytest.approx(0.25)
+    assert loss(big) == pytest.approx(0.25)
+    assert loss(small, e_in=0.0, e_out=1.0) == pytest.approx(0.75)
+    assert loss(big, text="がぎ") == pytest.approx(0.5)  # per glyph
+    assert loss(big, text="が ぎ ぐ げ ご") == pytest.approx(BOX_SHARE_CAP)
+    # share 0 = the old weight-sum form, which does follow the area
+    assert loss(small, share=0.0) < loss(big, share=0.0)

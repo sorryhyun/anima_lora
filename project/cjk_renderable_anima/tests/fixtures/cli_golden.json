@@ -1340,6 +1340,21 @@
  {
   "group": "train: S line (plan_synth)",
   "option_strings": [
+   "--box_share"
+  ],
+  "dest": "box_share",
+  "default": 0.0,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "train: area-independent box loss (plan_synth4 R4.5) — per item s·mean(in box) + (1 − s)·mean(outside), s = min(share × glyphs in the item, 0.75), so the in-box share of the loss stops following the box area; replaces --box_weight when > 0 (0.25 = --box_weight 20 at a 64-cell box); 0 = off",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: S line (plan_synth)",
+  "option_strings": [
    "--c_flat"
   ],
   "dest": "c_flat",

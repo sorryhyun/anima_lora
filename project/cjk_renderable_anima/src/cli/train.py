@@ -125,6 +125,16 @@ def train_synth_args(g):
         "(1 outside; batch-normalised); 1 = off",
     )
     g.add_argument(
+        "--box_share",
+        type=float,
+        default=0.0,
+        help="train: area-independent box loss (plan_synth4 R4.5) — per item "
+        "s·mean(in box) + (1 − s)·mean(outside), s = min(share × glyphs in the "
+        "item, 0.75), so the in-box share of the loss stops following the box "
+        "area; replaces --box_weight when > 0 (0.25 = --box_weight 20 at a "
+        "64-cell box); 0 = off",
+    )
+    g.add_argument(
         "--c_flat",
         type=int,
         default=0,

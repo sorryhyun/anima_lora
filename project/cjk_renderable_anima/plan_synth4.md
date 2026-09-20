@@ -17,7 +17,27 @@
 |---|---|---|---|---|---|
 | `src53k` | raw | plain FM, 434 rows, mixed batches, 490 draws/row | 13/36 | 36 / 24 / 16 | 0.882 |
 | Δ1 `d1_s53k` (deleted) | preview | ΔFM residual on the plain sentence table, 356 rows | 12/36 | 22 / 14 / 11 | 0.915 |
-| `step1_0919` | raw | ΔFM, 373 rows, 53 k | *running* | | |
+| `step1_0919` | raw | ΔFM, 374 rows, 53 k, w 4 | 10/36 | 8 / 4 (`en` / `swap` both of 64) | 0.931 |
+| **`step1_0920`** | raw | the same argv and data, `--box_share 0.25` | **20/36** | **19 / 8** | 0.934 |
+
+`step1_0920` (2026-09-20, job `20260920-003014-320a05`, arm
+`rows_step1_0919_step1_0920_bs25_s53k`; one variable against `step1_0919`):
+
+| read | `step1_0919` | `step1_0920` | plain `src53k` |
+|---|---|---|---|
+| `single` / `single_ext` (no lone small kana, of 28) / `single_kanji` / `single_extra` | 10 / 5 / 3 / 13 | **20 / 8 / 8 / 15** | 13 / — / 18 / — |
+| native `en` / `swap` both of 64 | 8 / 4 | **19 / 8** | 36 / 18 |
+| native hits under 64 px | 2 of 12 | 5 of 27 | 6 of 54 |
+| en cos `en` / `swap` | 0.931 / 0.973 | 0.934 / 0.967 | 0.882 / 0.932 |
+| row norm peak → end (max row) | 149 → 76 (237) | 250 → 160 (435) | 147 → 114 |
+
+The share transfers to the full table: every ruler about doubles and the
+scene does not pay (en cos 0.931 → 0.934). It closes about a third of the
+native gap to plain, not all of it; kanji is still the weak group (8/36, 日
+1/32 native) and the back-half contraction is unchanged in proportion
+(250 → 160 against 149 → 76) — the share raised the curve, it did not
+remove the pull. `single_small` 0/36 on both. The plain columns carry the
+flat-template confound (`reports/step1_0919_2026_09_19.md`); native does not.
 
 Δ0 on the raw pack (12 dakuten rows, 1 500 steps, paired, σ 0.7–0.9, μ 1e-3,
 `--box_weight 4` unless stated; floor 0/24):
@@ -32,6 +52,7 @@
 | ΔFM lr 2e-3 `--box_weight 1` | 1 | 68 | — | — |
 | ΔFM lr 2e-3, size jitter min 12 px (`d0sz`) | 0 | 70 | — | — |
 | ΔFM lr 2e-3, size jitter min 16 px (`d0sz16`) | 1 | 73 | — | — |
+| ΔFM lr 2e-3, `d0sz` at `--box_weight 12` (share-matched) | 5 | 107 | — | — |
 
 Closed, with the record in the report named:
 
@@ -79,6 +100,7 @@ build's `train.jsonl`, ≈ 4 032-cell canvases):
 | `d0sz16`, w 4 | 30 | 3.27 % | 73 | 1 |
 | `d0sz`, w 4 | 25 | 2.87 % | 70 | 0 |
 | `d0`, w 1 | 64 | 1.84 % | 68 | 1 |
+| **`d0sz`, w 12** | 25 | ≈ 7.0 % | 107 | 5 |
 
 And the low norm is **not unfinished travel**: in every raw arm the row norm
 peaks by step ≈ 400–700 and then falls under the cosine schedule
@@ -103,13 +125,119 @@ dakuten that separates が from か is under one cell at σ 0.7–0.9; and the
 `single` template asks for a large glyph, which may be the wrong ruler for
 small-trained rows (the size arms' natives are unread).
 
-- **Next arm (one, ≈ 16 min + eval):** `d0sz` at `--box_weight 12` — in-box
-  share ≈ 7.0 %, matched to `d0`'s 6.83 % — ΔFM lr 2e-3, 1 500 steps, raw
-  pack. Norm back to ≈ 120 and `single` ≈ 10/24 → the jitter arms measured
-  the normalisation and size is still unread; norm back but `single` ≈ 0 →
-  resolution or the ruler, read the natives by size bin next (kana only
-  under 16 px).
-- **If it is the share, fix the loss, not the flag:** make the in-box term
+- **The share-matched arm (2026-09-19, job `20260919-220706-521c7a`, arm
+  `rows_synth_pair_d0sz_pairEN_s1500_lr2e-3_bw12_raw`):** `d0sz` at
+  `--box_weight 12`, otherwise `d0sz`'s argv. Norm 88 / 125 / 121 / 107 at
+  step 100 / 400 / 800 / 1 500 (peak 130 at 450; `d0` 93 / 130 / 134 / 122),
+  `single` **5/24** (が ×2, ぎ, ガ ×2) against `d0sz` w 4's 0 and `d0`'s 10.
+  **Most of the jitter arms' 0/24 was the normalisation**: the share alone
+  takes the norm 70 → 107 and `single` 0 → 5 on the same data. The rest
+  (5 vs 10, 107 vs 122) is one seed and above the ≈ 3 noise line but not
+  separated: the share is matched on the *median* box, so under jitter the
+  small items still sit at a third of `d0`'s share and the large ones above
+  it; resolution and the ruler are the other candidates. Misses are the
+  usual undakuten / sibling reads (ぐ → く, ご → こ, ギ / ゲ → デ / ヂ). Two
+  layout reads off `eval_reads.json`: the `d0sz` w 4 rows drew **two small
+  stacked glyphs in a ≈ 45 × 83 px box on 10 of 12 seed-0 templates**
+  (`ああ`, `まあ`, `チの`; `d0`: 0 of 12), w 12 on 3 of 12 — small-trained
+  rows at low share pull the template toward the base's small multi-glyph
+  habit (R4.6); and が seed 1 hit in a **36 × 33 px** box, the line's first
+  sub-40 px exact read (`d0`'s hits are 81–179 px).
+- **Where the share should sit — `d0` at `--box_weight 20` (≈ 25 %),
+  2026-09-19, job `20260919-223749-5285c9`, arm `…_lr2e-3_bw20_raw`; and
+  the w 12 arm's native.** 6.83 % was never chosen (w 4 came from plain FM
+  × `d0`'s box) and nothing above it had been read. Native = が ガ ご ゴ ×
+  `en,swap`, 64 renders per clause, hits sfx / vl16 / both:
+
+  | arm | share | end norm (peak) | `single` /24 | `en` sfx / vl / both | `swap` sfx / vl / both | en cos |
+  |---|---|---|---|---|---|---|
+  | `d0` w 4 | 6.83 % | 122 (136) | 10 | 13 / 11 / 10 | 5 / 3 / 1 | 0.926 |
+  | `d0` w 4, lr 5e-3 | 6.83 % | 144 (190) | 13 | 14 / 15 / 14 | 11 / 6 / 6 | 0.912 |
+  | `d0sz` w 12 | ≈ 7.0 % | 107 (130) | 5 | 10 / 7 / 7 | 2 / 2 / 2 | 0.934 |
+  | **`d0` w 20** | ≈ 25 % | **184 (189)** | **15** | 13 / 5 / 5 | 9 / 6 / 6 | 0.921 |
+
+  w 20 is the best `single` of the raw arms and the scene holds (en cos
+  0.921 vs 0.926, above lr 5e-3's 0.912) at a norm 1.5 × w 4's — and the
+  norm no longer decays (188 → 184 against 134 → 122), as the μ-balance
+  reading predicts. Native is **not broken and not improved**: `en` + `swap`
+  both-hits 11 → 11, with `en` 10 → 5 entirely on the vl16 reader (sfx
+  13 → 13) and `swap` 1 → 6. lr 5e-3 at w 4 is still the best native
+  (20 both) at a lower norm, so norm is not what native is short of. The
+  small-glyph arm's native (9 both, が 5/16 on `en`) sits at the `d0`
+  arms' level despite 5/24 singles — the `single` template under-reads
+  small-trained rows, as suspected. One seed each; native differences
+  under ≈ 5 of 64 are not read.
+- **The area-independent loss is in — `--box_share ρ_g`
+  (`weighted_fm_loss`, 2026-09-19):** per item `s·mean_in + (1 − s)·mean_out`,
+  `s = min(ρ_g × glyphs, 0.75)`, batch mean; per *glyph*, not per box, because
+  the old loss already kept a row's share flat in glyph count (box area ∝
+  count) and a per-box ρ would cut a sentence row to ρ / n. ρ_g 0.25 =
+  w 20 at `d0`'s box. Arms `…_lr2e-3_bs25_raw` (jobs `…232433-899898` `d0`,
+  `…232433-b475fa` `d0sz`), native hits = `en` + `swap` both-readers of 128:
+
+  | arm | end norm (peak) | `single` /24 | native both | native hits under 40 px | en cos |
+  |---|---|---|---|---|---|
+  | `d0` w 4 | 122 (136) | 10 | 11 | 1 | 0.926 |
+  | `d0` w 20 | 184 (189) | 15 | 11 | 2 | 0.921 |
+  | **`d0` ρ_g 0.25** | 180 (185) | **15** | — | — | — |
+  | `d0sz` w 12 | 107 (130) | 5 | 9 | **3** (25 / 27 / 31 px) | 0.934 |
+  | **`d0sz` ρ_g 0.25** | 144 (158) | **0** | **4** | 0 | 0.934 |
+
+  `d0` on the new loss reproduces w 20 (same curve, same 15/24) — the
+  implementation check. **`d0sz` at an equal 25 % share is the worst small
+  arm on both rulers** at a norm above `d0` w 4's: the rows travel, not
+  toward identity — the `single` misreads are voiced-but-wrong (が → ず,
+  ご → ど, グ → ダ, ガ / グ → デ). That is the resolution confound showing: a
+  ≈ 30 px glyph is ≈ 4 × 4 cells at σ 0.7–0.9 and what survives is "a
+  dakuten kana". The w 12 arm's identity came from its large items (the old
+  normalisation over-weights big boxes inside a jittered build; not
+  measured per item), and that arm is also the only one with native hits
+  under 32 px — small-glyph training does move native size when identity
+  is learned somewhere. So: **the share is fixed, and small glyphs at
+  σ 0.7–0.9 do not teach identity by themselves.** One seed each.
+- **Arm A — large and small items in one build (2026-09-20, jobs
+  `…002601-e4c490` / `…002602-4f7016`, arm
+  `rows_synth_pair_d0mix_pairEN_s1500_lr2e-3_bs25_raw`).** Data
+  `data_synth_pair_d0mix`: per glyph half of `d0`'s items (997, short side
+  38 / 54 / 80 px) and half of `d0sz`'s (1 004, 17 / 30 / 50), images by
+  reference, no render; ρ_g 0.25, otherwise the `bs25` argv.
+
+  | arm | end norm (peak) | `single` /24 | native `en` / `swap` both | native hits < 40 / 40–64 / ≥ 64 px | en cos |
+  |---|---|---|---|---|---|
+  | `d0` w 4 | 122 (136) | 10 | 10 / 1 | 1 / 0 / 10 | 0.926 |
+  | `d0` w 20 | 184 (189) | 15 | 5 / 6 | 2 / 1 / 7 (+1 whole) | 0.921 |
+  | `d0sz` ρ_g 0.25 | 144 (158) | 0 | 3 / 1 | 0 / 1 / 3 | 0.934 |
+  | **`d0mix` ρ_g 0.25** | 160 (166) | 5 | **14 / 4** | **2 / 5 / 11** | 0.933 |
+
+  Native 18 of 128 against 11 for both `d0` arms at the same lr (lr 5e-3's
+  20 is the only higher raw read), with the scene *better* held than `d0`'s
+  (0.933 vs 0.921) and 7 of the 18 hits under 64 px (`d0` w 4: 1 of 11).
+  The large items carry identity, the small ones carry size, as posed.
+  `single` reads 5/24 — the template under-reads size-trained rows on
+  every such arm (w 12: 5/24 with 9 native), so **size arms are read on
+  native, not `single`**. One seed; 18 vs 11 is above the ≈ 5 line, the
+  size split is small counts. This is the jitter build, which R4.6 argues
+  is off-domain (a small glyph in a large bubble); it works anyway when
+  mixed, so R4.6's small-bubble pool is now an improvement on a working
+  lever rather than its precondition.
+- **Plain FM at ρ_g 0.25 (2026-09-20, jobs `…003014-5aa1de` /
+  `…003014-2a2034`, arm `rows_synth_pair_d0_pair0_s1500_bs25_raw`)** — the
+  plain raw control's argv (lr 1e-3, `--pair_loss 0`, `d0`) with the share:
+
+  | arm | end norm | `single` /24 | native `en` sfx / vl / both | `swap` sfx / vl / both | en cos `en` / `swap` |
+  |---|---|---|---|---|---|
+  | plain w 4 | 113 | 7 | 22 / 13 / 13 | 13 / 5 / 5 | 0.906 / 0.935 |
+  | **plain ρ_g 0.25** | 132 | 10 | **35 / 30 / 26** | 14 / 1 / 1 | **0.893** / 0.947 |
+  | ΔFM ρ_g 0.25 (`d0` w 20) | 184 | 15 | 13 / 5 / 5 | 9 / 6 / 6 | 0.921 / 0.969 |
+
+  Plain takes the share without leaving the manifold (norm 132, no
+  collapse; the lr 3e-3 failure was lr) and **doubles the `en` native,
+  13 → 26 of 64 — the best 12-row raw native read**, where the same share
+  under ΔFM left native flat. The price is the scene: en cos 0.906 → 0.893,
+  the lowest of the raw arms (ΔFM holds 0.921 at a norm 1.4 × higher).
+  `swap` does not follow (5 → 1, on the vl16 reader). Same split as the
+  full tables: plain is ahead on native, ΔFM on the scene. One seed.
+- **If it is the share, fix the loss, not the flag** (done, above): make the in-box term
   area-independent — mean over in-box cells and mean over the rest,
   combined at a fixed ratio — so glyph size, glyph count (`short` /
   `sentence` boxes are larger) and canvas shape stop moving the row's
@@ -234,8 +362,8 @@ dropped. One `--stage eval` at × 0.7 on the same table says whether the
 | batching | mixed | row blocks closed on the raw pack |
 | lr | **5e-3** under ΔFM | 13 vs 10/24 on raw, no collapse at norm 144 (the 3e-3 off-manifold finding was plain FM); ≥ 2 seeds before K1 |
 | `--free_residual` μ | 1e-3 | sets the end norm together with the in-box share (R4.5) — revisit with the loss fix, not alone |
-| `--box_weight` | 4 at `d0`'s box size | w 1 reads 1/24 on raw; the weight is area-coupled (R4.5) |
-| glyph size | jitter over [12 px, bubble fit] | undecided — R4.5's share-matched arm first |
+| `--box_weight` → `--box_share` | ρ_g 0.25 | w 20 ≈ 25 % reads 15 vs 10/24 with en cos held (0.921) and native flat; `--box_share` reproduces it area-independently (R4.5) |
+| glyph size | half full-fit, half jittered [12 px, fit] (`d0mix`) | native 18 vs 11 of 128 with hits under 64 px, scene held; jitter alone reads 0/24 and native 4. ≥ 2 seeds before K1 (R4.5) |
 | row norm | full in training, α at inference | R4.3 |
 | loss | ΔFM for singles (`--pair_loss 1 --pair_ref en`) | raw Δ0: ΔFM 10 vs plain 7, scene held; plain on sentences (S2a) |
 | unit weights | uniform `*1` | Δ1's exposure read (kanji ≥ kana per draw), preview pack — re-read on `step1_0919` |
@@ -307,11 +435,11 @@ run, the standing miss).
 
 ## Order
 
-1. R4.5's share-matched arm (`d0sz`, `--box_weight 12`, raw pack).
+1. ~~R4.5's share-matched arm~~ — read: 5/24 at norm 107, share is most of it.
 2. `step1_0919` lands → its eval / native, then R4.3's α points on it and
    on `src53k`, and R4.5's free read.
-3. If (1) says share: the area-independent in-box loss, re-run `d0` and
-   `d0sz` on it, then μ.
+3. ~~The area-independent in-box loss, `d0` and `d0sz` on it~~ — done
+   (`--box_share 0.25`); μ still open.
 4. R4.6 on that loss: the small-bubble pool smoke, anchor-size fit, `d0s` vs
    `d0`, native by size bin.
 5. R4.4 filled in on ≥ 2 seeds; K1 after it.

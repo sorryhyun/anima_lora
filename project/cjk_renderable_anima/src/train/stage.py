@@ -171,6 +171,7 @@ def stage_train(a):
         tr.set_source(flat=not is_scene)
         brecs = [recs[i] for i in idx]
         bw = a.box_weight if is_scene else 1.0
+        bs = a.box_share if is_scene else 0.0
         with torch.autocast("cuda", dtype=torch.bfloat16):
             captions = [r["caption"] for r in brecs]
             pred = dit_forward(anima, noisy, ts, cache, captions, device)
@@ -192,17 +193,19 @@ def stage_train(a):
                 (ts.float() >= a.pair_sigma_min).view(-1, 1, 1, 1).to(pred.dtype)
             )
             loss_fm = weighted_fm_loss(
-                pred - keep_pair * pred_a, target - keep_pair * target_a, brecs, bw
+                pred - keep_pair * pred_a, target - keep_pair * target_a, brecs, bw, bs
             )
             if is_scene:
-                extra = pair_stats(pred, target, pred_a, target_a, brecs, bw, pair_ema)
+                extra = pair_stats(
+                    pred, target, pred_a, target_a, brecs, bw, pair_ema, bs
+                )
             else:
                 # flat siblings: own EMA and keys, the composite fields keep
                 # their meaning
-                st = pair_stats(pred, target, pred_a, target_a, brecs, bw, flat_ema)
+                st = pair_stats(pred, target, pred_a, target_a, brecs, bw, flat_ema, bs)
                 extra = {f"{k}_flat": v for k, v in st.items()}
         else:
-            loss_fm = weighted_fm_loss(pred, target, brecs, bw)
+            loss_fm = weighted_fm_loss(pred, target, brecs, bw, bs)
         loss, decor_val = tr.regularized(loss_fm)
         if batcher.blocks:
             # per-row trajectory: the paired (or plain) residual split into
@@ -246,7 +249,9 @@ def stage_train(a):
         opt.step()
         if batcher.blocks:
             with torch.no_grad():
-                keep = torch.ones(raw_before.shape[0], dtype=torch.bool, device=raw_before.device)
+                keep = torch.ones(
+                    raw_before.shape[0], dtype=torch.bool, device=raw_before.device
+                )
                 keep[batcher.cur_row] = False
                 tr.delta.raw[keep] = raw_before[keep]
         if sched is not None:
@@ -282,12 +287,38 @@ def stage_train(a):
     torch.cuda.empty_cache()
 
 
-def weighted_fm_loss(pred, target, recs, box_weight: float):
+BOX_SHARE_CAP = 0.75
+
+
+def weighted_fm_loss(pred, target, recs, box_weight: float, box_share: float = 0.0):
     """MSE on the flow target, with the latent cells under a composite item's
     swapped text box (``rec['box']``, pixels at the item's own size, VAE 8×)
     weighted ``box_weight`` and the rest 1 — normalised by the weight sum so
-    the loss scale matches the plain MSE (``box_weight`` 1 = plain MSE)."""
+    the loss scale matches the plain MSE (``box_weight`` 1 = plain MSE).
+
+    ``box_share`` ρ_g > 0 replaces that with the area-independent form
+    (plan_synth4 R4.5): per item ``s·mean_in + (1 − s)·mean_out`` with
+    ``s = min(ρ_g · n_glyphs, BOX_SHARE_CAP)``, averaged over the batch — the
+    in-box share of the loss no longer follows the box area, and a row's share
+    does not fall with the item's glyph count. At ``d0``'s 64-cell box
+    ρ_g 0.25 is ``box_weight`` 20."""
     se = (pred.float() - target.float()) ** 2
+    if box_share > 0.0:
+        m = _box_mask(se.shape, recs, se.device)
+        per_cell = se.mean(dim=1, keepdim=True)  # (B, 1, h, w)
+        n_in = m.sum(dim=(1, 2, 3))
+        n_out = (1.0 - m).sum(dim=(1, 2, 3))
+        mean_in = (per_cell * m).sum(dim=(1, 2, 3)) / n_in.clamp(min=1)
+        mean_out = (per_cell * (1.0 - m)).sum(dim=(1, 2, 3)) / n_out.clamp(min=1)
+        n_glyph = torch.tensor(
+            [max(1, len("".join(r["text"].split()))) for r in recs],
+            device=se.device,
+            dtype=se.dtype,
+        )
+        s = (box_share * n_glyph).clamp(max=BOX_SHARE_CAP)
+        s = torch.where(n_in > 0, s, torch.zeros_like(s))  # no box: plain mean
+        s = torch.where(n_out > 0, s, torch.ones_like(s))
+        return (s * mean_in + (1.0 - s) * mean_out).mean()
     if box_weight == 1.0:
         return se.mean()
     B, _C, h, w = se.shape
@@ -322,7 +353,9 @@ def pair_branch(anima, lat, idx, noise, ts, cache, recs, device):
     return pred_a, target_a
 
 
-def pair_stats(pred, target, pred_a, target_a, recs, box_weight, ema: dict) -> dict:
+def pair_stats(
+    pred, target, pred_a, target_a, recs, box_weight, ema: dict, box_share: float = 0.0
+) -> dict:
     """The ΔFM log fields (plan_synth2): ``fm_plain`` = plain ‖r_B‖²_w on
     the same items (the number comparable to a ``--pair_loss 0`` arm),
     ``pres`` = outside-box ‖v_θ(B) − v_θ(A)‖² (the scene-preservation term),
@@ -332,7 +365,11 @@ def pair_stats(pred, target, pred_a, target_a, recs, box_weight, ema: dict) -> d
     reference error is spread, → 1 when every item shares one in-box DC
     error (stroke-style bias is read on the sheets, not here)."""
     with torch.no_grad():
-        out = {"fm_plain": float(weighted_fm_loss(pred, target, recs, box_weight))}
+        out = {
+            "fm_plain": float(
+                weighted_fm_loss(pred, target, recs, box_weight, box_share)
+            )
+        }
         m = _box_mask(pred.shape, recs, pred.device)
         d = (pred.float() - pred_a.float()) ** 2
         outside = 1.0 - m
@@ -623,7 +660,9 @@ class Batcher:
                 skipped += 1
                 continue
             t5 = cache[r["caption"]][2]
-            ext = sorted({int(v) - T5_TABLE_SIZE for v in t5.tolist() if v >= T5_TABLE_SIZE})
+            ext = sorted(
+                {int(v) - T5_TABLE_SIZE for v in t5.tolist() if v >= T5_TABLE_SIZE}
+            )
             if len(ext) != 1:
                 skipped += 1  # multi-row item: no single block owns it
                 continue

@@ -33,7 +33,15 @@ from common.render.flat import (
     sample_layout,
 )
 from common.shapes import parse_shapes
-from common.text import HIRA, KANA, KANA_EXT, KANA_EXT_HIRA, KANA_EXT_KATA, KATA
+from common.text import (
+    HIRA,
+    KANA,
+    KANA_EXT,
+    KANA_EXT_HIRA,
+    KANA_EXT_KATA,
+    KANA_SMALL,
+    KATA,
+)
 
 from .inventory import (
     clean_kana_strings,
@@ -244,9 +252,12 @@ def _resolve_singles(a, out, tokq, inv: Inventory):
         src.units = list(KANA_EXT)
         inv.kana_ext = src.units
         erng = random.Random(a.seed + 19)
-        inv.evals["single_ext"] = erng.sample(list(KANA_EXT_HIRA), 12) + erng.sample(
-            list(KANA_EXT_KATA), 6
-        )
+        # lone small kana are never drawn as singles (they train inside
+        # `small` digraphs and read on single_small), so they scored 0 by
+        # construction here — 8 of step1_0919's 36
+        hira = [c for c in KANA_EXT_HIRA if c not in KANA_SMALL]
+        kata = [c for c in KANA_EXT_KATA if c not in KANA_SMALL]
+        inv.evals["single_ext"] = erng.sample(hira, 12) + erng.sample(kata, 6)
     ssrc = inv.source("small")
     if ssrc:
         # 2026-09-19: the small kana cannot be drawn as singles, so the 53 k
@@ -260,7 +271,9 @@ def _resolve_singles(a, out, tokq, inv: Inventory):
         (out / "small.json").write_text(json.dumps(inv.small_of, ensure_ascii=False))
         print(
             f"small kana: {len(inv.small_of)} rows in {len(ssrc.units)} digraphs; "
-            + " ".join(f"{k}:{'/'.join(dict.fromkeys(v))}" for k, v in inv.small_of.items()),
+            + " ".join(
+                f"{k}:{'/'.join(dict.fromkeys(v))}" for k, v in inv.small_of.items()
+            ),
             flush=True,
         )
     ksrc = inv.source("kanji")
