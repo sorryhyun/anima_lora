@@ -424,9 +424,11 @@ What each block is doing:
   470 shorts (2–5 pieces), 3 614 in no kind, over 820 of 1 004 scenes:
   ≈ 2.4 epochs. 24 k would show each line 80–100 times.
 - **`--box_weight 4`, not `--box_share`** — step 2 ran before the share fix
-  reached the sentence step. Round 2 should carry `--box_share 0.25`
-  (`plan.md` *Step 2*); a sentence box is larger than a single's, so the
-  area coupling is at its worst here.
+  reached the sentence step. On this build a sentence box is 1.9 % of the
+  canvas, so w 4 is a mean in-box share of 0.07. Round 2's value is open:
+  the 2026-09-20 smoke (`reports/step2_0920_box_weight_smoke_2026_09_20.md`)
+  found no sentence ruler ordered by the weight, and `--box_share 0.25` caps
+  77 % of these items at 0.75 (`plan.md` *Step 2*).
 - **`--n_phrase_eval 8`** — flat sentence eval groups are small on purpose;
   `single` and `native` are the rulers, and flat sentences are
   off-distribution for a composite-only arm.

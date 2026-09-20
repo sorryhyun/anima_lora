@@ -257,6 +257,27 @@ argv, one warm source `rows_step1_0920_s53k/trained.pt`. Gate: pooled lift
 above `step2_0919`'s +0.086 CI with the `_held` groups moving, and singles
 not below the seed's 20 / 8 / 8.
 
+**The in-box weight for Round 2 is not settled — smoke of 2026-09-20**
+(`reports/step2_0920_box_weight_smoke_2026_09_20.md`; 2 000 steps on the
+`step1_0920` seed, plain, n = 8 per group, one seed). `--box_weight` 1 / 4 /
+12 and `--box_share 0.1` are mean in-box shares of 0.02 / 0.07 / 0.18 / 0.48
+on this build (a sentence box is 1.9 % of the canvas, and 0.75 is
+`BOX_SHARE_CAP`, a constant). Weight moves the rows monotonically (drift
+0.021 → 0.084) and orders no sentence ruler — pooled lift +0.114 / +0.077 /
++0.079 / +0.109, exact 0/16 — while singles (6 → 4 of 8) and native (4 → 2 of
+8) pay and en cos holds. `--box_share 0.25` would cap 77 % of the items at
+0.75, so it is **not** Round 2's value. In every arm the anchor takes back
+about half the drift as the lr decays: the end point is μ 0.3 against the
+in-box gradient, not the step count.
+
+- **Owed arm: `--box_share 0.05` + cap 0.25**, same smoke frame (argv in the
+  report). Cap reached at 5 glyphs, mean share ≈ 0.18 = w 12's, with the 1–2
+  glyph items (22 %) above w 12. Read: do singles and native pay less at
+  w 12's sentence level. Needs a `--box_share_cap` flag (default 0.75, so
+  every run on record reproduces) in `src/cli/train.py` +
+  `src/train/stage.py`. Reads the same as w 12 → the weight axis is closed
+  and Round 2 runs on `--box_weight 12`.
+
 **Open inside the loop:** which loss trains a multi-glyph piece as a unit
 (ΔFM is a singles recipe, and ΔFM damages rows the pack already renders);
 whether a merged table's two shared directions cost the sentence step
