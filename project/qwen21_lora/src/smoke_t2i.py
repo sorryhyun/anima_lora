@@ -1,9 +1,8 @@
-"""One-image smoke test: does Qwen-Image-2.1 generate at all on this box?
+"""One-image smoke test for Qwen-Image-2.1 on a 16 GB card.
 
 Runs the split strategy from ``loader.py`` — stream the text encoder for the
-encode pass, drop it, then denoise with the transformer resident. Prints peak
-VRAM per phase so the training script can budget against real numbers instead
-of the parameter-count estimates.
+encode pass, drop it, then denoise with the transformer resident — and prints
+peak VRAM per phase for the training script to budget against.
 
     .venv/bin/python project/qwen21_lora/src/smoke_t2i.py \
         --prompt "..." --resolution 1024 --steps 20
@@ -73,7 +72,7 @@ def main() -> None:
     ap.add_argument(
         "--compile_all_shapes",
         action="store_true",
-        help="also compile the prefill shape (default: decode only)",
+        help="also compile the prefill shape (default: decode shape)",
     )
     ap.add_argument(
         "--repeat",
@@ -182,9 +181,7 @@ def main() -> None:
         print(recompile_report(), flush=True)
 
     # ── phase 3: decode, with the DiT off the card ────────────────────
-    # The VAE is a video-style decoder with a feature cache; at 1024 it wants
-    # several GB of its own, which it does not get while 32 DiT blocks are
-    # still parked on the device.
+    # The VAE wants several GB to itself at 1024 (see loader.decode_latents).
     if dit_attached is not None:
         dit_attached.detach()
     pipe.transformer = None

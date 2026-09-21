@@ -13,15 +13,12 @@ Both heavy modules are homogeneous ``nn.ModuleList``s, which is all it needs:
     Qwen3VLForConditionalGeneration
         .model.language_model.layers                   36 x ~0.39 GB
 
-Everything outside the swapped list stays resident, so the caller moves the
-model with :func:`to_device_except_blocks` rather than a plain ``.to()``.
-
-The swap *schedule* is ours rather than the offloader's — see
-:func:`swap_schedule`. ``ModelOffloader.submit_move_blocks`` streams the whole
-model across PCIe every forward no matter how few blocks are swapped, which at
-``blocks_to_swap=4`` on this model was 55 % of all CUDA time (profiled
-2026-09-21, more than the GEMMs). Driving ``_submit_move_blocks`` from an
-explicit schedule instead costs ``2 * blocks_to_swap`` moves per forward.
+The swap *schedule* is ours rather than the offloader's (:func:`swap_schedule`):
+``ModelOffloader.submit_move_blocks`` streams the whole model across PCIe every
+forward no matter how few blocks are swapped, which at ``blocks_to_swap=4`` on
+this model was 55 % of all CUDA time, more than the GEMMs. Driving
+``_submit_move_blocks`` from an explicit schedule costs ``2 * blocks_to_swap``
+moves per forward.
 """
 
 from __future__ import annotations
@@ -77,7 +74,7 @@ def auto_blocks_to_swap(
     """Fewest blocks to swap that still leaves ``activation_reserve_gb`` free.
 
     Swapping costs a PCIe round trip per block per forward, so the answer is
-    the minimum that fits, not a safe-looking maximum.
+    the minimum that fits.
     """
     per = block_size_gb(blocks)
     budget = free_gb - resident_size_gb(model, blocks) - activation_reserve_gb
@@ -91,9 +88,10 @@ def to_device_except_blocks(
 ) -> None:
     """``model.to(device)`` with ``blocks`` left where they are.
 
-    The swapper places the blocks itself in
-    ``prepare_block_devices_before_forward``; moving them here would spike to
-    the full bf16 footprint first, which is the OOM we are avoiding.
+    Everything outside the swapped list stays resident. The swapper places the
+    blocks itself in ``prepare_block_devices_before_forward``; a plain ``.to()``
+    would spike to the full bf16 footprint first, which is the OOM being
+    avoided.
     """
     saved = []
     for name, child in list(model.named_children()):
@@ -120,21 +118,19 @@ def swap_schedule(
     """``{block index: (index to evict, index to load)}`` after that block runs.
 
     The forward starts with ``blocks[:N-S]`` on the device and ``blocks[N-S:]``
-    on the CPU, and must end the same way — that restore is the only reason to
-    touch a block outside the swapped tail.
+    on the CPU, and must end the same way; that restore is why a block outside the
+    swapped tail is touched at all.
 
         idx in [0, S)      evict idx, load N-S+idx    make room for the tail
-        idx in [S, N-S)    nothing                    resident, stays resident
+        idx in [S, N-S)    --                         resident, stays resident
         idx in [N-S, N)    evict idx, load idx-(N-S)  restore, during the tail
 
-    Every block is on the device when its own forward runs (it is either never
-    evicted, or evicted only afterwards), residency never exceeds the ``N-S``
-    the layout starts with, and each loaded index is submitted once, so the
-    offloader's future-per-destination bookkeeping is unchanged. The loads
-    queued by the last ``S`` blocks are awaited by the *next* forward's
-    ``wait_for_block``, which is what makes the restore free.
+    The loads queued by the last ``S`` blocks are awaited by the *next*
+    forward's ``wait_for_block``, which is what makes the restore free.
+    Residency, presence-when-run and one submit per destination are replayed in
+    ``tests/test_qwen21_swap_schedule.py``.
 
-    The two ranges only stay disjoint while ``2S <= N``; past that a block would
+    The two ranges stay disjoint while ``2S <= N``; past that a block would
     need both hooks and the phases interleave, so ``minimal=False`` (and any
     ``S > N/2``) falls back to ``ModelOffloader``'s rolling ring, which is
     ``N`` moves — no worse than ``2S`` once ``S`` passes ``N/2``.
@@ -159,13 +155,7 @@ def swap_schedule(
 
 
 class Attached:
-    """A live block-swap attachment, and the way to take it back off.
-
-    The hooks close over the offloader and the offloader owns a thread pool, so
-    an attachment that is merely dropped keeps the whole block list — and its
-    share of the card — reachable through a reference cycle. Releasing 17.5 GB
-    of text encoder between phases needs :meth:`detach`, not ``del``.
-    """
+    """A live block-swap attachment, and the way to take it back off."""
 
     def __init__(self, offloader: ModelOffloader, blocks: nn.ModuleList, model):
         self.offloader = offloader
@@ -177,13 +167,7 @@ class Attached:
         self.offloader.prepare_block_devices_before_forward(self.blocks)
 
     def detach(self) -> None:
-        """Remove the hooks, stop the mover, and bring every block back to CPU.
-
-        This only gives the VRAM back if nothing else still pins the weights —
-        in particular every forward through a swapped model must run under
-        ``torch.no_grad()``, or the autograd graph's saved tensors hold them
-        (see ``loader.encode_prompts``).
-        """
+        """Remove the hooks, stop the mover, and bring every block back to CPU."""
         for handle in self.handles:
             handle.remove()
         self.handles.clear()
@@ -195,10 +179,9 @@ class Attached:
             for handle in self.offloader.remove_handles:
                 handle.remove()
             self.offloader.remove_handles.clear()
-        # The swapper leaves a block's parameters and its buffers on different
-        # devices, so bring both down with the call it used to place them.
         cpu = torch.device("cpu")
         for block in self.blocks:
+            # A swapped block's parameters and buffers sit on different devices.
             block.to(cpu)
             weighs_to_device(block, cpu)
         self.model.to(cpu)
@@ -222,13 +205,13 @@ def attach(
     """Hook ``ModelOffloader`` onto ``model``'s block list.
 
     Returns ``(attached, blocks)``; ``attached`` is None when
-    ``blocks_to_swap == 0``, in which case nothing is hooked and the caller can
-    move the model normally.
+    ``blocks_to_swap == 0``, in which case the caller can move the model
+    normally.
 
     ``minimal_schedule=False`` reproduces ``ModelOffloader``'s own rolling ring,
-    for comparing against it. It is forward-only either way: with
-    ``supports_backward`` the backward hooks run the offloader's own index math,
-    so the schedule here has to match the ring it expects.
+    for comparing against it, and is forced under ``supports_backward``: the
+    backward hooks run the offloader's own index math, so the schedule has to
+    match the ring they expect.
     """
     blocks = find_blocks(model, blocks_path)
     if blocks_to_swap <= 0:

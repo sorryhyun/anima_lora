@@ -6,26 +6,21 @@ The checkpoint is 33 GB in bf16 and its three heavy parts are wildly uneven:
     transformer   7B, 32 SS blocks  14.2 GB
     vae           AutoencoderKLQwenImage21   1.35 GB
 
-diffusers' ``enable_model_cpu_offload`` moves one *whole* module at a time, so
-its peak is the largest module — 17.5 GB, which OOMs a 16.3 GB 5070 Ti before
-the first prompt is encoded. ``enable_sequential_cpu_offload`` fits but streams
-every submodule every step, which is unusable for a 40-step sample.
-
-Neither accelerate offload path works on this box (2026-09-21): ``cpu_offload``
-and ``device_map="auto"`` both OOM at ~14.4 GB allocated, and the same wall is
-hit whether the ``max_memory`` GPU budget is 7 GiB or 11 GiB — the weights an
-``AlignDevicesHook`` pages in are never returned to CPU, so the card fills
-regardless of the budget.
+No offload path fits: ``enable_model_cpu_offload`` peaks at the largest module
+(17.5 GB, OOM before the first prompt is encoded), ``enable_sequential_cpu_offload``
+streams every submodule every step, and accelerate's ``cpu_offload`` /
+``device_map="auto"`` both OOM at ~14.4 GB allocated whatever ``max_memory``
+says (2026-09-21) — the weights an ``AlignDevicesHook`` pages in stay on the
+device.
 
 So both heavy modules run on the GPU under the trainer's own block swapper
-(``library.runtime.offloading``, attached by ``blockswap.py``), which is what
-``blocks_to_swap`` already does for Anima. Weights stay bf16 — nothing is
-quantized.
+(``library.runtime.offloading``, attached by ``blockswap.py``). Weights stay
+bf16, unquantized.
 
 The phase split is the same one ``train.py`` makes for Anima (text encode →
 free → DiT): encode with the text encoder swapping, drop the 17.5 GB of it,
-then give the card to the transformer + VAE. Callers that only want embeddings
-(latent/TE caching) never pay for the transformer at all.
+then give the card to the transformer + VAE. Callers that want embeddings alone
+(latent/TE caching) skip the transformer.
 """
 
 from __future__ import annotations
@@ -92,9 +87,8 @@ def load_text_encoder(
     """Qwen3-VL-8B on CPU — the caller block-swaps it onto the card.
 
     ``attn_implementation`` is transformers' own switch ("sdpa",
-    "flash_attention_2", "eager"). The encode pass is one forward over a short
-    right-padded prompt, so this is a small share of a generation; it falls back
-    to the default rather than failing the run if the backend is unavailable.
+    "flash_attention_2", "eager"); an unavailable one falls back to the model's
+    default rather than failing the run.
     """
     from transformers import Qwen3VLForConditionalGeneration
 
@@ -124,7 +118,7 @@ def place(
     label: str = "model",
     minimal_schedule: bool = True,
 ):
-    """Move ``model`` onto ``device``, block-swapping only as much as needed.
+    """Move ``model`` onto ``device``, block-swapping as little as fits.
 
     ``blocks_to_swap=None`` sizes the swap against what is actually free;
     0 keeps everything resident. Returns the ``Attached`` handle (or None) —
@@ -173,7 +167,7 @@ def load_pipeline(
     components: tuple[str, ...] | None = None,
     text_encoder=None,
 ):
-    """Build the pipeline on CPU. Nothing is moved to the GPU here.
+    """Build the pipeline on CPU. Every module stays there.
 
     ``components`` keeps the named modules and passes ``None`` for the rest —
     ``("text_encoder",)`` loads 17.5 GB instead of 33 GB when all the caller
@@ -188,7 +182,7 @@ def load_pipeline(
 
     kwargs: dict[str, object] = {}
     if components is not None:
-        # `processor` and `scheduler` are tiny config-only pieces; always keep
+        # `processor` and `scheduler` are tiny config pieces; always keep
         # them so the pipeline can still build its prompt templates.
         for name in ("vae", "text_encoder", "transformer"):
             if name not in components:
@@ -205,17 +199,7 @@ def encode_prompts(
     device: str = "cuda",
     images: list | None = None,
 ) -> list[tuple[torch.Tensor, torch.Tensor | None, torch.Tensor]]:
-    """Encode prompts and bring the results back to CPU.
-
-    ``no_grad`` is what makes the encoder releasable, not just faster:
-    ``encode_prompt`` does not disable grad itself, so the returned embedding
-    carries a ``grad_fn`` chain whose saved tensors are the encoder's own
-    ``Linear`` weights. Keeping the result then pins every resident block on
-    the card — 9 GB that survives ``del``, ``gc.collect()`` and
-    ``empty_cache()``, because ``SavedVariable`` holds them from C++ where no
-    Python reference is visible. Diagnosed 2026-09-21; the giveaway was that a
-    probe which *discarded* the embeddings released the memory cleanly.
-    """
+    """Encode prompts and bring the results back to CPU."""
     out = []
     with torch.no_grad():
         for prompt in prompts:
@@ -235,13 +219,12 @@ def encode_prompts(
 def decode_latents(pipe, latents: torch.Tensor, height: int, width: int):
     """The tail of ``QwenImage21Pipeline.__call__``, run separately.
 
-    Generating with ``output_type="latent"`` lets the caller unload the
-    transformer before the VAE runs — the decoder is a video-style one with a
-    feature cache and wants several GB to itself at 1024.
+    ``output_type="latent"`` lets the caller unload the transformer before the
+    VAE runs. Tiling is required at 1024: the decoder holds a feature cache
+    across its 3D resnet stack and untiled it asks for >1 GiB contiguous on top
+    of ~12 GB already allocated. Tiles keep the peak flat and the output is the
+    same image.
     """
-    # Tiled: the decoder holds a feature cache across its 3D resnet stack, and
-    # untiled at 1024 it asks for >1 GiB contiguous on top of ~12 GB already
-    # allocated. Tiles keep the peak flat and the output is the same image.
     pipe.vae.enable_tiling()
     latents = pipe._unpack_latents(latents, height, width, pipe.vae_scale_factor)
     latents = latents.to(pipe.vae.device, pipe.vae.dtype)

@@ -1,12 +1,10 @@
 """Invariants of the Qwen-Image-2.1 probe's block-swap schedule.
 
 ``project/qwen21_lora/src/blockswap.py`` drives ``ModelOffloader._submit_move_blocks``
-from its own schedule instead of ``submit_move_blocks``, to avoid streaming the
-whole model across PCIe every forward. The schedule is only correct if it keeps
-three promises, all checked here by replaying it against a residency set: every
-block is on the device when it runs, residency never exceeds what the layout
-starts with, and the end state equals the start state so the next forward can
-run without re-preparing.
+from its own schedule instead of ``submit_move_blocks``. Replayed here against a
+residency set, that schedule must keep three promises: every block is on the
+device when it runs, residency stays within what the layout starts with, and
+the end state equals the start state so the next forward needs no re-prepare.
 
 Pure Python — no torch import, no GPU.
 """

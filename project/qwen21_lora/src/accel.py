@@ -1,46 +1,18 @@
 """Attention backend selection and per-block ``torch.compile`` for Qwen-Image-2.1.
 
-Two levers, both independent of the block swapper in ``blockswap.py``:
+Two levers, both independent of the block swapper in ``blockswap.py``.
 
-**Attention backend.** ``QwenImage21AttnProcessor`` routes through diffusers'
-``dispatch_attention_fn``, whose ``backend`` argument the processor fills from its
-own ``_attention_backend`` on the *decode* call and leaves ``None`` on each
-*prefill* segment. ``None`` does not mean native: it means the globally active
-backend, which is what ``ModelMixin.set_attention_backend`` also installs. So
-that method routes the prefill through flash-attn too, and the prefill hands it
-the block-causal bool mask, which flash-attn 2 rejects outright.
+**Attention backend.** With ``use_kv_cache=True`` (the pipeline default) step 0
+prefills and every later step decodes, so a per-processor backend covers
+``steps - 1`` of the loop. There is little left to win there: SDPA already
+dispatches the maskless decode attention to FlashAttention-2
+(``pytorch_flash::flash_fwd_kernel``), so an explicit ``flash`` measures ±0. The
+masked prefill segments are the attention left on a slow path.
 
-:func:`set_attention_backend` here therefore writes ``processor._attention_backend``
-and nothing else — the decode path takes the new kernel, the prefill keeps the
-global default. With ``use_kv_cache=True`` (the pipeline default) that is step 0
-prefilling and every later step decoding, so the backend covers ``steps - 1`` of
-the loop.
-
-The decode path has a mask of its own: the text-padding mask, which flash-attn 2
-also rejects. ``encode_prompt`` returns ``prompt_embeds_mask=None`` when nothing
-is padded — the single-prompt case — so ``flash`` applies there. A padded batch
-needs ``flash_varlen``, which unpads instead; the function says which one it
-picked and why.
-
-**Block compilation.** The repo's own rule (``DiT.compile_blocks``) is to compile
-the per-block inner forward and leave the module hooks eager around it, which is
-exactly what the block swapper needs: ``wait_for_block`` / ``submit_move_blocks``
-run as forward hooks in ``nn.Module._call_impl``, so compiling ``block.forward``
-(the instance attribute, not ``block.compile()``) keeps the thread-pool waits out
-of the traced region. ``block.compile()`` would wrap ``_call_impl`` itself and
-trace the hooks.
-
-Swapped weights are safe under compile because a block's parameters are always on
-the device by the time its forward runs — ``wait_for_block`` is what guarantees
-that — so the device never changes *at trace or call time*. Only the storage
-behind ``weight.data`` rotates, and inlined nn.Module parameters are graph inputs.
-Do not combine this with ``mode="reduce-overhead"``: cuda graphs record static
-input addresses, which the swapper invalidates every block.
-
-By default only the decode shape is compiled (``segments is None``). The prefill
-branch runs a Python loop over per-segment attention calls whose count and
-boundaries come from the prompt, so it would specialize per prompt length for a
-single use per generation.
+**Block compilation.** The decode shape is compiled by default
+(``segments is None``). The prefill branch runs a Python loop over per-segment
+attention calls whose count and boundaries come from the prompt, so it would
+specialize per prompt length for a single use per generation.
 """
 
 from __future__ import annotations
@@ -71,12 +43,17 @@ def set_attention_backend(
 ) -> str | None:
     """Point the transformer's attention processors at ``backend``.
 
-    Per-processor, never global — see the module docstring for why
-    ``ModelMixin.set_attention_backend`` is the wrong call here.
+    Per-processor, rather than ``ModelMixin.set_attention_backend``, which also
+    sets the *globally* active backend, and ``QwenImage21AttnProcessor`` passes
+    ``backend=None`` on each *prefill* segment, which falls through to exactly
+    that global — handing flash-attn 2 the block-causal bool mask it rejects
+    outright. Writing ``processor._attention_backend`` leaves the prefill on the
+    global default.
 
     ``padded_prompt`` is whether the caller is passing a ``prompt_embeds_mask``;
-    with one, a mask-rejecting backend is swapped for its varlen sibling.
-    Returns the backend actually installed.
+    flash-attn 2 rejects that one too, so a mask-rejecting backend is swapped
+    for its varlen sibling, which unpads instead. Returns the backend actually
+    installed.
     """
     from diffusers.models.attention import AttentionModuleMixin
     from diffusers.models.attention_dispatch import (
@@ -109,8 +86,7 @@ def set_attention_backend(
         if processor is None or not hasattr(processor, "_attention_backend"):
             continue
         # `native` is spelled as an explicit backend rather than by clearing the
-        # field: None would defer to the global active backend, which is what we
-        # are deliberately not touching.
+        # field: None would defer to the global active backend.
         processor._attention_backend = name
         count += 1
     print(
@@ -124,9 +100,8 @@ def set_attention_backend(
 def _decode_dispatch(eager, compiled):
     """Route the decode shape to ``compiled`` and the prefill shape to ``eager``.
 
-    ``segments`` is the prefill's per-segment boundary list and ``None`` on the
-    decode path (and whenever the KV cache is off in the pipeline, which makes
-    every step a prefill — then nothing here compiles, by design).
+    ``segments`` is the prefill's per-segment boundary list, ``None`` on the
+    decode path.
     """
 
     @functools.wraps(eager)
@@ -147,10 +122,12 @@ def compile_blocks(
 ) -> int:
     """``torch.compile`` each block's ``forward``. Returns the block count.
 
-    Compiles the bound method as an instance attribute so ``_call_impl`` still
-    runs the block-swap hooks eagerly around it. Every block traces the same
-    code, so only the first pays a full inductor compile and the rest hit the FX
-    graph cache.
+    Compiles the bound method as an instance attribute, not ``block.compile()``:
+    ``wait_for_block`` / ``submit_move_blocks`` run as forward hooks in
+    ``nn.Module._call_impl``, and this form keeps them outside the traced
+    region. Swapped weights are safe because ``wait_for_block`` puts a block's
+    parameters on the device before its forward runs; the storage behind
+    ``weight.data`` rotates under it.
     """
     if mode == "reduce-overhead":
         raise ValueError(
@@ -173,7 +150,7 @@ def compile_blocks(
             _decode_dispatch(block.forward, compiled) if decode_only else compiled
         )
 
-    scope = "decode only" if decode_only else "every shape"
+    scope = "decode shape" if decode_only else "every shape"
     print(
         f"compile: {len(blocks)} block.forward with backend={backend} mode={mode} "
         f"dynamic={dynamic} ({scope}, recompile_limit={limit})",

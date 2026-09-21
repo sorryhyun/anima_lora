@@ -1,16 +1,14 @@
 """Sweep attention backends x block compilation on one Qwen-Image-2.1 load.
 
-Every arm denoises the same prompt at the same seed, so the numbers are
-comparable and the images should be too (a backend that changes the picture is a
-finding, not a speedup — the sweep hashes each arm's latents and prints the max
-absolute deviation from the native uncompiled reference).
+Every arm denoises the same prompt at the same seed and prints the max absolute
+latent deviation from the first arm, so a backend that changes the picture shows
+up next to its speedup.
 
 One process, because a reload is 33 GB off disk and an arm is 20 seconds: the
 text encoder is streamed, used and dropped once, then the transformer stays on
 the card while the arms reconfigure it in place. Compiled arms run last — the
 attention backend is read inside the traced region, so switching it after a
-compile forces a recompile, and each compiled arm reports its steady state after
-that has settled.
+compile forces a recompile.
 
     make daemon-run ARGS="project/qwen21_lora/src/bench_accel.py --steps 20"
 """
@@ -52,8 +50,7 @@ def profile_arm(pipe, call, steps: int, seed: int) -> None:
 
     A block-swap stall shows up as ``Memcpy DtoH/HtoD`` and as wall time the
     kernel table does not account for; a kernel-bound loop shows GEMMs at the
-    top. Which of the two it is decides whether an attention backend or a
-    compile could have helped at all.
+    top.
     """
     from torch.profiler import ProfilerActivity, profile
 
@@ -106,8 +103,7 @@ def main() -> None:
         "--profile",
         type=int,
         default=0,
-        help="profile this many steps of the first arm and print the top CUDA "
-        "ops — the only way to tell a kernel win from a PCIe stall",
+        help="profile this many steps of each swept backend and print the top CUDA ops",
     )
     ap.add_argument("--out", default="project/qwen21_lora/out/bench_accel.json")
     args = ap.parse_args()
@@ -132,8 +128,8 @@ def main() -> None:
     del te, te_attached
     drop_text_encoder(pipe)
 
-    # Held for the whole sweep: the transformer never leaves the card, and the
-    # attachment must outlive the arms or the swapper's hooks go with it.
+    # Held for the whole sweep: detaching an attachment takes the swapper's
+    # hooks off with it.
     attachment = [None]
 
     def attach_dit(blocks_to_swap, minimal=True):
@@ -192,7 +188,12 @@ def main() -> None:
         }
 
     if args.profile:
-        profile_arm(pipe, call, args.profile, args.seed)
+        for backend in backends:
+            set_attention_backend(
+                pipe.transformer, backend, padded_prompt=mask is not None
+            )
+            print(f"\n=== profile: {backend} ===", flush=True)
+            profile_arm(pipe, call, args.profile, args.seed)
 
     if args.swap_arms:
         results = []
