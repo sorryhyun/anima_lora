@@ -86,13 +86,31 @@ TRANSFORMER_BLOCKS = "transformer_blocks"
 def load_text_encoder(
     model_dir: Path | str = DEFAULT_MODEL_DIR,
     dtype: torch.dtype = torch.bfloat16,
+    *,
+    attn_implementation: str | None = None,
 ):
-    """Qwen3-VL-8B on CPU — the caller block-swaps it onto the card."""
+    """Qwen3-VL-8B on CPU — the caller block-swaps it onto the card.
+
+    ``attn_implementation`` is transformers' own switch ("sdpa",
+    "flash_attention_2", "eager"). The encode pass is one forward over a short
+    right-padded prompt, so this is a small share of a generation; it falls back
+    to the default rather than failing the run if the backend is unavailable.
+    """
     from transformers import Qwen3VLForConditionalGeneration
 
-    return Qwen3VLForConditionalGeneration.from_pretrained(
-        Path(model_dir) / "text_encoder", dtype=dtype
-    )
+    path = Path(model_dir) / "text_encoder"
+    if attn_implementation:
+        try:
+            return Qwen3VLForConditionalGeneration.from_pretrained(
+                path, dtype=dtype, attn_implementation=attn_implementation
+            )
+        except (ImportError, ValueError) as exc:
+            print(
+                f"text_encoder: {attn_implementation} unavailable ({exc}); "
+                "falling back to the default implementation",
+                flush=True,
+            )
+    return Qwen3VLForConditionalGeneration.from_pretrained(path, dtype=dtype)
 
 
 def place(
@@ -104,6 +122,7 @@ def place(
     supports_backward: bool = False,
     activation_reserve_gb: float = 2.5,
     label: str = "model",
+    minimal_schedule: bool = True,
 ):
     """Move ``model`` onto ``device``, block-swapping only as much as needed.
 
@@ -137,6 +156,7 @@ def place(
         blocks_to_swap,
         device,
         supports_backward=supports_backward,
+        minimal_schedule=minimal_schedule,
     )
     if attached is None:
         model.to(device)

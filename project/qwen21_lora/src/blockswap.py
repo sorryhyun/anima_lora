@@ -15,6 +15,13 @@ Both heavy modules are homogeneous ``nn.ModuleList``s, which is all it needs:
 
 Everything outside the swapped list stays resident, so the caller moves the
 model with :func:`to_device_except_blocks` rather than a plain ``.to()``.
+
+The swap *schedule* is ours rather than the offloader's — see
+:func:`swap_schedule`. ``ModelOffloader.submit_move_blocks`` streams the whole
+model across PCIe every forward no matter how few blocks are swapped, which at
+``blocks_to_swap=4`` on this model was 55 % of all CUDA time (profiled
+2026-09-21, more than the GEMMs). Driving ``_submit_move_blocks`` from an
+explicit schedule instead costs ``2 * blocks_to_swap`` moves per forward.
 """
 
 from __future__ import annotations
@@ -107,6 +114,50 @@ def to_device_except_blocks(
             setattr(parent, name, blocks)
 
 
+def swap_schedule(
+    num_blocks: int, blocks_to_swap: int, minimal: bool = True
+) -> dict[int, tuple[int, int]]:
+    """``{block index: (index to evict, index to load)}`` after that block runs.
+
+    The forward starts with ``blocks[:N-S]`` on the device and ``blocks[N-S:]``
+    on the CPU, and must end the same way — that restore is the only reason to
+    touch a block outside the swapped tail.
+
+        idx in [0, S)      evict idx, load N-S+idx    make room for the tail
+        idx in [S, N-S)    nothing                    resident, stays resident
+        idx in [N-S, N)    evict idx, load idx-(N-S)  restore, during the tail
+
+    Every block is on the device when its own forward runs (it is either never
+    evicted, or evicted only afterwards), residency never exceeds the ``N-S``
+    the layout starts with, and each loaded index is submitted once, so the
+    offloader's future-per-destination bookkeeping is unchanged. The loads
+    queued by the last ``S`` blocks are awaited by the *next* forward's
+    ``wait_for_block``, which is what makes the restore free.
+
+    The two ranges only stay disjoint while ``2S <= N``; past that a block would
+    need both hooks and the phases interleave, so ``minimal=False`` (and any
+    ``S > N/2``) falls back to ``ModelOffloader``'s rolling ring, which is
+    ``N`` moves — no worse than ``2S`` once ``S`` passes ``N/2``.
+    """
+    if blocks_to_swap <= 0:
+        return {}
+    if not minimal or 2 * blocks_to_swap > num_blocks:
+        return {
+            idx: (idx, (num_blocks - blocks_to_swap + idx) % num_blocks)
+            for idx in range(num_blocks)
+        }
+    schedule = {
+        idx: (idx, num_blocks - blocks_to_swap + idx) for idx in range(blocks_to_swap)
+    }
+    schedule.update(
+        {
+            idx: (idx, idx - (num_blocks - blocks_to_swap))
+            for idx in range(num_blocks - blocks_to_swap, num_blocks)
+        }
+    )
+    return schedule
+
+
 class Attached:
     """A live block-swap attachment, and the way to take it back off.
 
@@ -166,12 +217,18 @@ def attach(
     *,
     supports_backward: bool,
     debug: bool = False,
+    minimal_schedule: bool = True,
 ) -> tuple[Attached | None, nn.ModuleList]:
     """Hook ``ModelOffloader`` onto ``model``'s block list.
 
     Returns ``(attached, blocks)``; ``attached`` is None when
     ``blocks_to_swap == 0``, in which case nothing is hooked and the caller can
     move the model normally.
+
+    ``minimal_schedule=False`` reproduces ``ModelOffloader``'s own rolling ring,
+    for comparing against it. It is forward-only either way: with
+    ``supports_backward`` the backward hooks run the offloader's own index math,
+    so the schedule here has to match the ring it expects.
     """
     blocks = find_blocks(model, blocks_path)
     if blocks_to_swap <= 0:
@@ -186,12 +243,26 @@ def attach(
     )
     attached = Attached(offloader, blocks, model)
 
+    schedule = swap_schedule(
+        len(blocks), blocks_to_swap, minimal=minimal_schedule and not supports_backward
+    )
+    loaded = {cuda_idx for _cpu, cuda_idx in schedule.values()}
     for idx, block in enumerate(blocks):
-        attached.handles.append(
-            block.register_forward_pre_hook(_make_wait_hook(offloader, idx))
-        )
-        attached.handles.append(
-            block.register_forward_hook(_make_submit_hook(offloader, blocks, idx))
+        if idx in loaded:
+            attached.handles.append(
+                block.register_forward_pre_hook(_make_wait_hook(offloader, idx))
+            )
+        if idx in schedule:
+            attached.handles.append(
+                block.register_forward_hook(
+                    _make_submit_hook(offloader, blocks, *schedule[idx])
+                )
+            )
+    if debug or minimal_schedule:
+        print(
+            f"blockswap: {len(schedule)} moves/forward for {blocks_to_swap} "
+            f"swapped of {len(blocks)} blocks",
+            flush=True,
         )
 
     return attached, blocks
@@ -204,8 +275,10 @@ def _make_wait_hook(offloader: ModelOffloader, idx: int):
     return hook
 
 
-def _make_submit_hook(offloader: ModelOffloader, blocks: nn.ModuleList, idx: int):
+def _make_submit_hook(
+    offloader: ModelOffloader, blocks: nn.ModuleList, cpu_idx: int, cuda_idx: int
+):
     def hook(_module, _args, _output):
-        offloader.submit_move_blocks(blocks, idx)
+        offloader._submit_move_blocks(blocks, cpu_idx, cuda_idx)
 
     return hook

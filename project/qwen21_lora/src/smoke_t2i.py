@@ -20,6 +20,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+from accel import compile_blocks, recompile_report, set_attention_backend  # noqa: E402
 from loader import (  # noqa: E402
     DEFAULT_MODEL_DIR,
     TEXT_ENCODER_BLOCKS,
@@ -51,6 +52,36 @@ def main() -> None:
     # None = size the swap against free VRAM; 0 = keep everything resident.
     ap.add_argument("--blocks_to_swap", type=int, default=None)
     ap.add_argument("--te_blocks_to_swap", type=int, default=None)
+    ap.add_argument(
+        "--attn_backend",
+        default="native",
+        help="diffusers attention backend for the DiT decode path: native, "
+        "flash, flash_varlen, sage, ... (see AttentionBackendName)",
+    )
+    ap.add_argument(
+        "--te_attn_implementation",
+        default=None,
+        help="transformers attn_implementation for the text encoder "
+        "(sdpa / flash_attention_2 / eager); default = the model's own",
+    )
+    ap.add_argument(
+        "--compile", action="store_true", help="torch.compile each DiT block's forward"
+    )
+    ap.add_argument(
+        "--compile_mode", default=None, help="inductor preset for --compile"
+    )
+    ap.add_argument(
+        "--compile_all_shapes",
+        action="store_true",
+        help="also compile the prefill shape (default: decode only)",
+    )
+    ap.add_argument(
+        "--repeat",
+        type=int,
+        default=1,
+        help="denoise this many times; with --compile the first pass pays the "
+        "compile and the rest are the steady-state number",
+    )
     ap.add_argument("--out", default="project/qwen21_lora/out/smoke.png")
     args = ap.parse_args()
 
@@ -59,7 +90,9 @@ def main() -> None:
     print(f"free VRAM before load: {free_vram_gb():.2f} GB", flush=True)
 
     t0 = time.time()
-    te = load_text_encoder(args.model_dir)
+    te = load_text_encoder(
+        args.model_dir, attn_implementation=args.te_attn_implementation
+    )
     pipe = load_pipeline(args.model_dir, text_encoder=te)
     print(f"pipeline built in {time.time() - t0:.1f}s", flush=True)
 
@@ -103,17 +136,25 @@ def main() -> None:
         blocks_to_swap=args.blocks_to_swap,
         label="transformer",
     )
+    embeds, mask, _pad = encoded[0]
+    set_attention_backend(
+        pipe.transformer, args.attn_backend, padded_prompt=mask is not None
+    )
+    if args.compile:
+        compile_blocks(
+            pipe.transformer.transformer_blocks,
+            mode=args.compile_mode,
+            decode_only=not args.compile_all_shapes,
+        )
     empty_cache()
     print(f"free VRAM with DiT placed: {free_vram_gb():.2f} GB", flush=True)
 
-    embeds, mask, _pad = encoded[0]
     call = dict(
         prompt_embeds=embeds.to("cuda"),
         prompt_embeds_mask=None if mask is None else mask.to("cuda"),
         num_inference_steps=args.steps,
         output_resolution=args.resolution,
         true_cfg_scale=args.true_cfg_scale,
-        generator=torch.Generator("cuda").manual_seed(args.seed),
     )
     if len(encoded) > 1:
         neg_embeds, neg_mask, _ = encoded[1]
@@ -122,15 +163,23 @@ def main() -> None:
             None if neg_mask is None else neg_mask.to("cuda")
         )
 
-    torch.cuda.reset_peak_memory_stats()
-    t0 = time.time()
-    latents = pipe(output_type="latent", **call).images
-    dt = time.time() - t0
-    print(
-        f"denoise: {dt:.1f}s ({dt / args.steps:.2f}s/step)  "
-        f"peak {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB",
-        flush=True,
-    )
+    for run in range(args.repeat):
+        torch.cuda.reset_peak_memory_stats()
+        t0 = time.time()
+        latents = pipe(
+            output_type="latent",
+            generator=torch.Generator("cuda").manual_seed(args.seed),
+            **call,
+        ).images
+        dt = time.time() - t0
+        tag = "" if args.repeat == 1 else f" [{run + 1}/{args.repeat}]"
+        print(
+            f"denoise{tag}: {dt:.1f}s ({dt / args.steps:.2f}s/step)  "
+            f"peak {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB",
+            flush=True,
+        )
+    if args.compile:
+        print(recompile_report(), flush=True)
 
     # ── phase 3: decode, with the DiT off the card ────────────────────
     # The VAE is a video-style decoder with a feature cache; at 1024 it wants
