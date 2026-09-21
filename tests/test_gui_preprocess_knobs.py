@@ -31,7 +31,6 @@ FLIPPED_VALUES = {
     "caption_tag_dropout_rate": "0.45",
 }
 _TOGGLED = (
-    "drop_lowres_images",
     "caption_position_clauses",
     "caption_autotag",
     "run_sam_mask",
@@ -124,19 +123,16 @@ def test_load_values_is_a_fixed_point_of_merge_on_bare_checkout():
         )
 
 
-def test_const_elision_under_populated_toml_is_the_recorded_quirk():
-    """`drop_lowres_images` *loads* from preprocess.toml but is *elided*
-    against the hardcoded default: with the TOML at false, ticking the box back
-    to true (== hardcoded default) is popped and reloads as false. Recorded by
-    the Phase 0 fixture; collapsing the policies is a separate decision — a
-    failure here means that decision was made implicitly."""
+def test_retired_knob_loads_as_nothing_and_is_dropped_on_save():
+    """A variant saved before resize lost its pixel floor still carries
+    ``drop_lowres_images``: it is not a knob any more, so it loads as nothing
+    and the next save pops it."""
     defaults = _defaults("populated")
-    assert defaults["drop_lowres_images"] is False
+    stale = {"drop_lowres_images": False}
+    assert "drop_lowres_images" not in K.load_values(stale, defaults)
     values = _persistable(_flipped_widget_values("populated"))
-    assert values["drop_lowres_images"] is True
-    meta = K.merge_into_meta({}, values, defaults, include_mask=False)
+    meta = K.merge_into_meta(dict(stale), values, defaults, include_mask=False)
     assert "drop_lowres_images" not in meta
-    assert K.load_values(meta, defaults)["drop_lowres_images"] is False
 
 
 def test_elision_keeps_a_plain_checkout_empty():

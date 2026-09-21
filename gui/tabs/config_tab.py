@@ -1110,10 +1110,10 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         On success _on_job_finished chains into training; on failure/cancel it
         stays idle so we never train over a broken cache.
 
-        Geometry/filter knobs (drop_lowres_images / min_pixels / target_res /
-        freefit_max_ratio) can't ride the CONFIG_FILE snapshot (it strips
-        preprocess-only keys), so _preprocess_env forwards them as env instead,
-        read by tasks.py with priority over the snapshot."""
+        Geometry knobs (target_res / freefit_max_ratio) can't ride the
+        CONFIG_FILE snapshot (it strips preprocess-only keys), so
+        _preprocess_env forwards them as env instead, read by tasks.py with
+        priority over the snapshot."""
         chain_after = getattr(self, "_chain_train_after_preprocess", False)
         if chain_after:
             self.train_btn.setText(t("train_preprocessing"))

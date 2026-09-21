@@ -74,11 +74,8 @@ def _widget(v: Any, key: str = "") -> QWidget:
         return w
     if isinstance(v, int):
         w = QSpinBox()
-        # 10k default cap guards against typos; overridden for fields that legitimately exceed it.
-        if key == "min_pixels":
-            w.setRange(0, 100_000_000)
-        else:
-            w.setRange(0, 10000)
+        # 10k default cap guards against typos.
+        w.setRange(0, 10000)
         w.setValue(v)
         return _no_wheel(w)
     if isinstance(v, float):

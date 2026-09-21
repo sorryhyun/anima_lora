@@ -41,6 +41,9 @@ SCENARIOS: dict[str, dict[str, dict]] = {
                 "left": 0.0,
             },
             "freefit_max_ratio": 3.0,
+            # Retired keys (resize has no pixel floor since anime_tools 0.7.5):
+            # a user-owned preprocess.toml may still carry them, and they
+            # must reach neither the env nor the variant.
             "drop_lowres_images": False,
             "min_pixels": 250000,
             "caption_shuffle_variants": 9,
@@ -71,8 +74,6 @@ def _flip_every_knob(tab) -> None:
     tab.source_dir_edit.setText("flipped_images")
     tab.path_scope_edit.setText("artist_a")
     tab.preprocess_path_pattern_edit.setText("artist_a/**")
-    tab.drop_lowres_chk.setChecked(not tab.drop_lowres_chk.isChecked())
-    tab.min_pixels_spin.setValue(123456)
     tab._set_target_res_widget([768, 1280])
     tab._set_resize_crop_anchor("bottom_right")
     tab._set_resize_crop_margins({"top": 1.5, "right": 2.5, "bottom": 3.5, "left": 4.5})

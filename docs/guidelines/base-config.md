@@ -181,8 +181,6 @@ User-owned and preserved by `make update` (base.toml is overwritten). Layered
 | Key | What it controls |
 |---|---|
 | `source_image_dir` | The raw input dir `make preprocess` resizes from (`image_dataset/`). |
-| `drop_lowres_images` | Skip images below the resolution floor instead of upscaling. |
-| `min_pixels` | The low-res floor used by `drop_lowres_images`. |
 | `target_res` | Which `EDGE_TOKEN_BANDS` tiers preprocess is allowed to use. |
 | `mask_dir` | Where `make mask` writes merged masks, and where training looks them up. |
 

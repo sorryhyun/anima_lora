@@ -108,7 +108,6 @@ SHOWN_BOUND: dict[str, frozenset[str]] = {
 FIELD_ORDER: dict[str, tuple[str, ...]] = {
     # Rows listed here come first, in this order; the rest follow in schema order.
     "resize": (
-        "min_pixels",
         "target_res",
         "resize_crop_anchor",
         "resize_crop_margins",
@@ -134,7 +133,6 @@ _PP_SEEDS: dict[str, dict[str, str]] = {
         d: d
         for d in (
             "target_res",
-            "min_pixels",
             "freefit_max_ratio",
             "resize_crop_anchor",
             "resize_crop_margins",

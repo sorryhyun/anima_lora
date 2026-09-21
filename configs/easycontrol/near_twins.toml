@@ -10,7 +10,6 @@ cell_match_min = 0.9
 max_extra_diff = 25
 
 [preprocess]
-min_pixels = 0
 recursive = true
 vae = 'models/vae/qwen_image_vae.safetensors'
 batch_size = 4

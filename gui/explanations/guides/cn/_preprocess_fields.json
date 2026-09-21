@@ -1,6 +1,5 @@
 {
   "source_image_dir": "存放原始训练图像的文件夹 — 每张图像均有对应的 .txt 标注附属文件。缓存步骤会将这些图像调整大小后写入 post_image_dataset/resized/，并将 VAE/文本/PE 缓存写入 post_image_dataset/lora/ 下。此项为仅预处理使用的设置：训练不读取该值（训练读取调整后的缓存输出）。保存至 configs/preprocess.toml；预设/方法文件仍可在每次运行时覆盖，base.toml 中遗留的副本优先（向后兼容）。",
-  "drop_lowres_images": "开启后，预处理期间小于「Min pixels」阈值的源图像将被跳过，不会进入调整大小 / VAE / 文本缓存 —— 低分辨率图像对训练信号贡献极小且浪费缓存空间。关闭则保留所有图像（等同于 --min_pixels 0）。保存至 configs/preprocess.toml。",
   "caption_shuffle_variants": "文本编码器缓存时每张图像生成的字幕变体数。v0为原始字幕；v1..v(N-1)为智能洗牌（@artist前缀和'On the …'/'In the …'节锚保留）。当use_shuffled_caption_variants=true时，数据加载器以20%概率选v0，其余均匀选v1..v(N-1)。设为0则只缓存单一原始字幕。",
   "caption_tag_dropout_rate": "仅应用于v1..v(N-1)洗牌变体的逐标签丢弃概率。第一个@artist标记之前的标签不会被丢弃 — 作者标签结构上重要，评级/角色/系列前缀对顺序敏感。洗牌变体≤0时忽略。典型值：0.05–0.15。越高LoRA对缺失标签越鲁棒，但可能稀释信号。",
   "caption_autotag": "对整个数据集运行 Anima 打标器，并将 '.txt' 标注 sidecar 写入标注主目录 (image_dataset/)。这是数据集标签页中单图自动打标按钮的批量版本。它在流水线中最先运行 —— 紧跟在缩放之后 —— 因为其他每个标注阶段 (位置子句、顺序校正、触发词、文本编码器缓存) 都会编辑这一阶段刚刚创建的标注。打标读取的是缩放后的图像，因为那才是训练实际看到的像素数据，但标注会保存在原图旁边。这是 GPU 步骤: 会给数据集跑一遍打标器；检查点在首次使用时自动下载。标注编辑不会使文本编码器缓存失效，所以在这条流水线内该步骤总是直接写入，随后串联的 TE 步骤会重新编码。若想在提交前先审阅，请在终端运行 `make caption-autotag` —— 默认是试运行，会在 post_image_dataset/captions/autotag/report.json 中留下每张图像的前后对比。",

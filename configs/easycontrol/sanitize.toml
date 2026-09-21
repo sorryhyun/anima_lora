@@ -13,7 +13,6 @@ add_identity_pairs = 0.25
 identity_saturation_min = 0.4
 
 [preprocess]
-min_pixels = 0
 recursive = true
 vae = 'models/vae/qwen_image_vae.safetensors'
 batch_size = 4

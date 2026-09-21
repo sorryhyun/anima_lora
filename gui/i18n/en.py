@@ -38,17 +38,6 @@ STRINGS: dict[str, str] = {
         "that root. '*' (or blank) processes everything, '1/*' processes only "
         "data_group1/1, and '1/*|2/*' processes both subfolders."
     ),
-    "preprocess_drop_lowres": "Drop low-resolution images",
-    "preprocess_drop_lowres_tip": (
-        "Skip source images smaller than the pixel threshold below so they "
-        "never enter the resize / VAE / text caches. Uncheck to keep every "
-        "image regardless of size."
-    ),
-    "preprocess_min_pixels": "Min pixels (filter threshold):",
-    "preprocess_min_pixels_tip": (
-        "Pixel-count threshold for the low-res filter. 500000 = 0.5MP. "
-        "Ignored when 'Drop low-resolution images' is unchecked."
-    ),
     "preprocess_target_res": "Resolution tiers (target_res):",
     "preprocess_freefit_max_ratio": "Max aspect ratio:",
     "preprocess_freefit_max_ratio_tip": (

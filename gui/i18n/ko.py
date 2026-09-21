@@ -35,17 +35,6 @@ STRINGS: dict[str, str] = {
         "적용됩니다. '*'(또는 빈 값)은 전체, '1/*'는 data_group1/1 하위만, "
         "'1/*|2/*'는 두 하위 폴더를 처리합니다."
     ),
-    "preprocess_drop_lowres": "저해상도 이미지 제외",
-    "preprocess_drop_lowres_tip": (
-        "아래 픽셀 임계값보다 작은 소스 이미지를 건너뛰어 리사이즈 / VAE / "
-        "텍스트 캐시에 포함되지 않도록 합니다. "
-        "체크 해제 시 크기에 상관없이 모든 이미지를 유지합니다."
-    ),
-    "preprocess_min_pixels": "최소 픽셀 수 (필터 임계값):",
-    "preprocess_min_pixels_tip": (
-        "저해상도 필터의 픽셀 수 임계값. 500000 = 0.5MP. "
-        "'저해상도 이미지 제외'가 해제되면 무시됩니다."
-    ),
     "preprocess_target_res": "해상도 티어 (target_res):",
     "preprocess_freefit_max_ratio": "최대 종횡비:",
     "preprocess_freefit_max_ratio_tip": (

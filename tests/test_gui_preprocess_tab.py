@@ -349,7 +349,7 @@ def test_caption_master_stages_default_from_preprocess_toml(monkeypatch):
         import json
 
         autotag = json.loads(env["PREPROCESS_STAGES_JSON"])["autotag"]
-        assert autotag == {"mode": "merge", "min_confidence": 0.35}
+        assert autotag == {"mode": "merge", "min_confidence": 0.35, "batch_size": 8}
 
         # Unchecking must PERSIST as false — popping it (the old rule, which
         # compared against the hardcoded default) would let the config's `true`

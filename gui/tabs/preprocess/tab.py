@@ -115,8 +115,6 @@ _WIDGET_ALIASES: dict[str, tuple[str, str]] = {
     "source_dir_edit": ("image_section", "source_image_dir"),
     "path_scope_edit": ("image_section", "path_scope"),
     "preprocess_path_pattern_edit": ("image_section", "preprocess_path_pattern"),
-    "drop_lowres_chk": ("image_section", "drop_lowres_images"),
-    "min_pixels_spin": ("image_section", "min_pixels"),
     "target_res_widget": ("image_section", "target_res"),
     "resize_crop_anchor_widget": ("image_section", "resize_crop_anchor"),
     "resize_crop_margins_widget": ("image_section", "resize_crop_margins"),

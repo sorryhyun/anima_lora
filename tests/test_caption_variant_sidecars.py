@@ -255,7 +255,6 @@ def test_te_encodes_sidecar_into_variant_keys(tmp_path):
             object(),
             device=torch.device("cpu"),
             recursive=False,
-            min_pixels=0,
             caption_shuffle_variants=0,  # sidecar present → variant mode regardless
         )
     assert stats.written == 1
@@ -280,7 +279,6 @@ def test_te_single_caption_when_no_sidecar_and_no_variants(tmp_path):
             object(),
             device=torch.device("cpu"),
             recursive=False,
-            min_pixels=0,
             caption_shuffle_variants=0,
         )
     with safe_open(str(d / "a_anima_te.safetensors"), framework="pt") as f:
@@ -306,7 +304,6 @@ def test_te_recaches_when_sidecar_is_newer(tmp_path):
             object(),
             device=torch.device("cpu"),
             recursive=False,
-            min_pixels=0,
         )
         cache = d / "a_anima_te.safetensors"
         # Bump the sidecar past the cache → next pass must re-encode, not skip.
@@ -321,7 +318,6 @@ def test_te_recaches_when_sidecar_is_newer(tmp_path):
             object(),
             device=torch.device("cpu"),
             recursive=False,
-            min_pixels=0,
         )
     assert stats.written == 1 and stats.skipped == 0
 

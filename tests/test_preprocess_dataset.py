@@ -364,12 +364,12 @@ def test_count_pending_text_counts_uncaptioned(tmp_path: Path) -> None:
     _write_image(data / "b.png", (64, 64))  # no .txt — still a candidate
     (data / "a.txt").write_text("hello", encoding="utf-8")
 
-    assert count_pending_text(data, cache_dir=cache, min_pixels=0) == (2, 2)
+    assert count_pending_text(data, cache_dir=cache) == (2, 2)
 
     te = _te_cache_path(data / "a.png", cache, data)
     te.parent.mkdir(parents=True, exist_ok=True)
     te.touch()
-    assert count_pending_text(data, cache_dir=cache, min_pixels=0) == (1, 2)
+    assert count_pending_text(data, cache_dir=cache) == (1, 2)
 
 
 def test_count_pending_text_recaches_when_caption_is_newer(tmp_path: Path) -> None:
@@ -388,21 +388,10 @@ def test_count_pending_text_recaches_when_caption_is_newer(tmp_path: Path) -> No
 
     os.utime(caption, (100, 100))
     os.utime(te, (200, 200))
-    assert count_pending_text(data, cache_dir=cache, min_pixels=0) == (0, 1)
+    assert count_pending_text(data, cache_dir=cache) == (0, 1)
 
     os.utime(caption, (300, 300))
-    assert count_pending_text(data, cache_dir=cache, min_pixels=0) == (1, 1)
-
-
-def test_count_pending_text_min_pixels_filter(tmp_path: Path) -> None:
-    from library.preprocess import count_pending_text
-
-    data = tmp_path / "imgs"
-    _write_image(data / "small.png", (16, 16))  # 256 px — below threshold
-    _write_image(data / "big.png", (64, 64))  # 4096 px
-
-    # total reflects the post-min_pixels candidate set (small filtered out).
-    assert count_pending_text(data, min_pixels=1000) == (1, 1)
+    assert count_pending_text(data, cache_dir=cache) == (1, 1)
 
 
 def test_count_pending_text_keep_rel_stems_filters_nested_paths(tmp_path: Path) -> None:
@@ -419,7 +408,6 @@ def test_count_pending_text_keep_rel_stems_filters_nested_paths(tmp_path: Path) 
         cache_dir=cache,
         recursive=True,
         keep_rel_stems={"charA/cover"},
-        min_pixels=0,
     ) == (1, 1)
 
     te = _te_cache_path(data / "charA" / "cover.png", cache, data)
@@ -430,7 +418,6 @@ def test_count_pending_text_keep_rel_stems_filters_nested_paths(tmp_path: Path) 
         cache_dir=cache,
         recursive=True,
         keep_rel_stems={"charA/cover"},
-        min_pixels=0,
     ) == (0, 1)
 
 
@@ -471,7 +458,7 @@ def test_resize_to_buckets_writes_and_mirrors_layout(tmp_path: Path) -> None:
 
     src = tmp_path / "src"
     dst = tmp_path / "dst"
-    # Two images >= 0.5MP (so min_pixels keeps them); one nested.
+    # Two images; one nested.
     _write_image(src / "a.png", (900, 900))
     (src / "a.txt").write_text("caption a")
     _write_image(src / "charB" / "b.png", (900, 900))
@@ -509,7 +496,6 @@ def test_resize_to_buckets_path_pattern_preserves_filtered_layout(
         dst,
         recursive=True,
         path_pattern="charA/*",
-        min_pixels=0,
         workers=1,
         verbose=False,
     )
@@ -532,7 +518,6 @@ def test_resize_to_buckets_applies_curation_skip_decision(tmp_path: Path) -> Non
     stats, bucket_counts = resize_to_buckets(
         src,
         dst,
-        min_pixels=0,
         workers=1,
         verbose=False,
         curation_decisions={
@@ -553,7 +538,7 @@ def test_resize_to_buckets_applies_curation_skip_decision(tmp_path: Path) -> Non
     assert (src / "move.png").exists()
 
 
-def test_resize_to_buckets_accumulates_decision_and_min_pixel_skips(
+def test_resize_to_buckets_skips_decisions_and_keeps_small_images(
     tmp_path: Path,
 ) -> None:
     from library.preprocess import resize_to_buckets
@@ -562,24 +547,23 @@ def test_resize_to_buckets_accumulates_decision_and_min_pixel_skips(
     dst = tmp_path / "dst"
     _write_image(src / "keep.png", (900, 900))
     _write_image(src / "decision_skip.png", (900, 900))
-    _write_image(src / "too_small.png", (64, 64))
+    _write_image(src / "small.png", (64, 64))  # no pixel floor: scaled up
 
     stats, bucket_counts = resize_to_buckets(
         src,
         dst,
-        min_pixels=500_000,
         workers=1,
         verbose=False,
         curation_decisions={"decision_skip.png": {"action": "skip"}},
     )
 
     assert stats.seen == 3
-    assert stats.skipped == 2
-    assert stats.written == 1
-    assert sum(bucket_counts.values()) == 1
+    assert stats.skipped == 1
+    assert stats.written == 2
+    assert sum(bucket_counts.values()) == 2
     assert (dst / "keep.png").exists()
     assert not (dst / "decision_skip.png").exists()
-    assert not (dst / "too_small.png").exists()
+    assert (dst / "small.png").exists()
 
 
 def test_resize_to_buckets_default_tier_does_not_upscale_to_multitier(
@@ -602,7 +586,6 @@ def test_resize_to_buckets_default_tier_does_not_upscale_to_multitier(
             src,
             dst,
             target_res=target_res,
-            min_pixels=0,
             workers=1,
             verbose=False,
             overwrite=True,
@@ -629,20 +612,16 @@ def test_resize_to_buckets_skips_up_to_date_and_rebuckets_on_tier_change(
     _write_image(src / "big.png", (1400, 1050))  # ~1.5MP → stays 1024 tier
 
     # First pass at the single 1024 tier writes both.
-    stats, _ = resize_to_buckets(
-        src, dst, target_res=[1024], min_pixels=0, workers=1, verbose=False
-    )
+    stats, _ = resize_to_buckets(src, dst, target_res=[1024], workers=1, verbose=False)
     assert (stats.written, stats.skipped) == (2, 0)
 
     # Re-run, same tiers: both already at their bucket → all skipped.
-    stats, _ = resize_to_buckets(
-        src, dst, target_res=[1024], min_pixels=0, workers=1, verbose=False
-    )
+    stats, _ = resize_to_buckets(src, dst, target_res=[1024], workers=1, verbose=False)
     assert (stats.written, stats.skipped) == (0, 2)
 
     # Add the 768 tier: only `small` moves bucket → exactly one re-resize.
     stats, counts = resize_to_buckets(
-        src, dst, target_res=[768, 1024], min_pixels=0, workers=1, verbose=False
+        src, dst, target_res=[768, 1024], workers=1, verbose=False
     )
     assert (stats.written, stats.skipped) == (1, 1)
     with Image.open(dst / "small.png") as im:
@@ -653,26 +632,11 @@ def test_resize_to_buckets_skips_up_to_date_and_rebuckets_on_tier_change(
         src,
         dst,
         target_res=[768, 1024],
-        min_pixels=0,
         workers=1,
         verbose=False,
         overwrite=True,
     )
     assert (stats.written, stats.skipped) == (2, 0)
-
-
-def test_resize_to_buckets_min_pixels_filter(tmp_path: Path) -> None:
-    from library.preprocess import resize_to_buckets
-
-    src = tmp_path / "src"
-    dst = tmp_path / "dst"
-    _write_image(src / "tiny.png", (64, 64))  # 4096 px, below default 0.5MP
-
-    stats, _ = resize_to_buckets(src, dst, workers=1, verbose=False)
-    assert stats.seen == 1
-    assert stats.skipped == 1
-    assert stats.written == 0
-    assert not (dst / "tiny.png").exists()
 
 
 def test_reconcile_caches_removes_only_wrong_bucket(tmp_path: Path) -> None:

@@ -147,7 +147,7 @@ diffusers = { git = "https://github.com/huggingface/diffusers", rev = "80c7ed262
 # (the `anime-tools-dev` group swaps in ../anime_tools as an editable path
 # source; it conflicts with the default `anime-tools-git` group by design).
 anime-tools = [
-    { git = "https://github.com/sorryhyun/anime_tools", tag = "v0.7.4", group = "anime-tools-git" },
+    { git = "https://github.com/sorryhyun/anime_tools", tag = "v0.7.5", group = "anime-tools-git" },
     { path = "../anime_tools", editable = true, group = "anime-tools-dev" },
 ]
 torch = [

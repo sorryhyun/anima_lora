@@ -34,56 +34,6 @@ from ._common import (
 
 # Subfolders are walked by default. Stems must stay unique across the tree —
 # cache filenames are stem-keyed and flat.
-def _min_pixels_args() -> list[str]:
-    """``--min_pixels <N>`` derived from the merged config's ``drop_lowres_images``
-    / ``min_pixels`` keys. Returns ``[]`` when both are absent (each script's own
-    argparse default applies). ``drop_lowres_images = false`` forces
-    ``--min_pixels 0`` even when ``min_pixels`` is set. GUI auto-chain env
-    (``DROP_LOWRES_IMAGES``, the threshold from the GUI's resize form or the
-    ``MIN_PIXELS`` env) wins over the merged config.
-    """
-    from ._common import _path_overrides  # local import: avoids unused circular
-
-    env_drop = os.environ.get("DROP_LOWRES_IMAGES")
-    env_min = os.environ.get("MIN_PIXELS")
-    form_min = (_resize_form() or {}).get("min_pixels")
-    if form_min in ("", None):
-        form_min = None
-    if env_drop is not None or env_min is not None or form_min is not None:
-        if env_drop is not None and not _boolish(env_drop, True):
-            return ["--min_pixels", "0"]
-        raw = env_min if env_min is not None else form_min
-        if raw is None:
-            return []
-        try:
-            return ["--min_pixels", str(max(0, int(raw)))]
-        except (TypeError, ValueError):
-            return []
-
-    overrides = _path_overrides()
-    if "drop_lowres_images" not in overrides and "min_pixels" not in overrides:
-        return []
-    if overrides.get("drop_lowres_images") is False:
-        return ["--min_pixels", "0"]
-    raw = overrides.get("min_pixels", 500_000)
-    try:
-        n = max(0, int(raw))
-    except (TypeError, ValueError):
-        return []
-    return ["--min_pixels", str(n)]
-
-
-def _config_min_pixels() -> int:
-    """The configured ``min_pixels`` threshold (merged chain), default 0.5MP."""
-    from ._common import _path_overrides
-
-    raw = _path_overrides().get("min_pixels", 500_000)
-    try:
-        return max(0, int(raw))
-    except (TypeError, ValueError):
-        return 500_000
-
-
 def _resize_form() -> dict | None:
     """The GUI's resize stage form (``PREPROCESS_STAGES_JSON``), or ``None``
     from a plain shell."""
@@ -598,7 +548,6 @@ def _resize_request(
     dst: str,
     extra,
     *,
-    min_pixels: int | None,
     path_pattern: str | None = None,
     target_res: tuple[int, ...] | None = None,
     prog: str = "make preprocess-resize ARGS=",
@@ -614,13 +563,11 @@ def _resize_request(
     if form is not None:
         # The GUI's resize form carries the geometry (tiers, crop, clamp,
         # overwrite, workers); the trainer fills the roots, the scope, the
-        # walk and the curation skips, and the low-res sugar's answer.
+        # walk and the curation skips.
         overrides: dict[str, object] = {
             "recursive": True,
             "excluded_dir": EXCLUDED_DIR,
         }
-        if min_pixels is not None:
-            overrides["min_pixels"] = int(min_pixels)
         if skips:
             overrides["skip"] = skips
         req = request_from_form(
@@ -639,8 +586,6 @@ def _resize_request(
         "path_pattern": path_pattern or "*",
         **_resize_crop_fields(),
     }
-    if min_pixels is not None:
-        fields["min_pixels"] = int(min_pixels)
     if target_res:
         fields["target_res"] = tuple(target_res)
     ratio = _config_freefit_max_ratio()
@@ -653,12 +598,6 @@ def _resize_request(
     except ValueError as exc:
         raise SystemExit(f"resize config: {exc}") from exc
     return request_with_args(req, cleaned, prog=prog)
-
-
-def _min_pixels_value(mp_args: list[str]) -> int | None:
-    """The ``--min_pixels N`` an argv helper produced, as the request field
-    (``None`` = package default)."""
-    return int(mp_args[1]) if mp_args else None
 
 
 from library.datasets.curation_actions import EXCLUDED_DIR  # noqa: E402
@@ -781,28 +720,18 @@ def _pop_resize_only_args(extra) -> list[str]:
     return cleaned
 
 
-def _resolve_lowres_filter(extra) -> tuple[list[str], list[str]]:
-    """Reconcile the low-res input filter against CLI ``ARGS``.
-
-    Returns ``(min_pixels_args, cleaned_extra)`` with our two convenience
-    flags popped so underlying scripts never see an arg their argparse
-    doesn't define. Precedence (highest first): explicit ``--min_pixels N``
-    in ``ARGS`` wins outright; ``--no_drop_lowres`` → ``--min_pixels 0``
-    (keep every image); ``--drop_lowres`` → force the configured threshold;
-    neither → fall back to the merged-config behavior (``_min_pixels_args``).
-    """
-    cleaned = list(extra)
-    no_drop = "--no_drop_lowres" in cleaned
-    drop = "--drop_lowres" in cleaned
+def _pop_retired_lowres_args(extra) -> list[str]:
+    """``ARGS`` minus the retired low-res filter flags (``--min_pixels N``,
+    ``--drop_lowres``, ``--no_drop_lowres``). The resize stage has no pixel
+    floor since anime_tools 0.7.5 — every source image lands in the tree."""
+    cleaned = _drop_option_with_value(list(extra), {"--min_pixels"})
     cleaned = [a for a in cleaned if a not in ("--no_drop_lowres", "--drop_lowres")]
-
-    if "--min_pixels" in cleaned:
-        return [], cleaned
-    if no_drop:  # disable wins over enable when both are passed
-        return ["--min_pixels", "0"], cleaned
-    if drop:
-        return ["--min_pixels", str(_config_min_pixels())], cleaned
-    return _min_pixels_args(), cleaned
+    if len(cleaned) != len(extra):
+        print(
+            "  [preprocess] --min_pixels / --drop_lowres / --no_drop_lowres are "
+            "retired: resize keeps every image (exclude one from the Image tab)."
+        )
+    return cleaned
 
 
 def _drop_option_with_value(extra, names: set[str]) -> list[str]:
@@ -826,12 +755,11 @@ def cmd_preprocess_resize(extra, *, chained: bool = False):
     stages that follow already receive the same ``ARGS`` — only a standalone
     ``make preprocess-resize`` needs the re-crop warning below.
     """
-    mp_args, extra = _resolve_lowres_filter(extra)
+    extra = _pop_retired_lowres_args(extra)
     req = _resize_request(
         _path("source_image_dir", "image_dataset"),
         _path("resized_image_dir", "post_image_dataset/resized"),
         extra,
-        min_pixels=_min_pixels_value(mp_args),
         path_pattern=_preprocess_path_pattern(),
         target_res=_config_target_res(),
     )
@@ -1106,6 +1034,7 @@ def cmd_preprocess_captions(extra, caption_config: dict[str, object] | None = No
 def cmd_preprocess_te(extra, caption_config: dict[str, object] | None = None):
     if caption_config is None:
         caption_config, extra = _caption_correction_config(extra)
+    extra = _pop_retired_lowres_args(extra)
     # Caption rewrites before anything reads the captions. `cmd_preprocess_captions`
     # runs them too, but the no-correction + no-variants path below skips that
     # step entirely and encodes the source captions directly.
@@ -1114,8 +1043,8 @@ def cmd_preprocess_te(extra, caption_config: dict[str, object] | None = None):
     shuffle, dropout, randomize = _variant_settings()
     n_variants = int(_float_or_zero(shuffle))
     # The caption step writes the variant sidecars whenever correction is on OR
-    # variants are requested; TE then reads resized/ (min_pixels=0) and encodes
-    # the sidecars verbatim. Only pure no-correction + no-variants reads the
+    # variants are requested; TE then reads resized/ and encodes the
+    # sidecars verbatim. Only pure no-correction + no-variants reads the
     # source captions directly. Position clauses force it too: they're written
     # into resized/ and never into the master, so encoding the master directly
     # would silently train the pre-clause caption.
@@ -1125,13 +1054,10 @@ def cmd_preprocess_te(extra, caption_config: dict[str, object] | None = None):
         or bool(caption_config.get("position_clauses"))
     )
     if needs_caption_step:
-        _, extra = _resolve_lowres_filter(extra)
-        extra = _drop_option_with_value(extra, {"--min_pixels"})
         pp_args = _preprocess_path_pattern_args(extra)
         cmd_preprocess_captions(extra, caption_config=caption_config)
         text_dir = _path("resized_image_dir", "post_image_dataset/resized")
         match_args: list[str] = []
-        mp_args: list[str] = ["--min_pixels", "0"]
     else:
         pp_args = _preprocess_path_pattern_args(extra)
         text_dir = _path("source_image_dir", "image_dataset")
@@ -1139,7 +1065,6 @@ def cmd_preprocess_te(extra, caption_config: dict[str, object] | None = None):
             "--match_images_from",
             _path("resized_image_dir", "post_image_dataset/resized"),
         ]
-        mp_args, extra = _resolve_lowres_filter(extra)
     _release_stage_models()
     # CJK vocab pack from the config chain ("" = off): the caches must be
     # encoded through the same pack train.py / inference.py will route with.
@@ -1168,7 +1093,6 @@ def cmd_preprocess_te(extra, caption_config: dict[str, object] | None = None):
             "--caption_tag_randomize_rate",
             randomize,
             "--recursive",
-            *mp_args,
             *pp_args,
             *extra,
         ]
@@ -1348,6 +1272,13 @@ def _caption_combine_request(
     the export runs **in place**: ``out`` is the resized tree's parent, and
     every row but ``caption``/``variants`` compares identical and is skipped.
 
+    ``src`` is the resized tree too, not ``image_dataset/``: since anime_tools
+    0.7.5 the image row publishes each image's *original* under ``src`` (and
+    the mask row is refitted to it), which in place would drop full-size
+    originals into the resized tree and rewrite the masks at their geometry.
+    Pointed at the resized tree, the "original" is the resized PNG itself and
+    both rows compare identical.
+
     ``master`` and ``excluded_dir`` keep the package's workspace defaults —
     absent trees contribute no rows, so nothing is ever written back over the
     hand-written masters under ``image_dataset/``.
@@ -1360,7 +1291,7 @@ def _caption_combine_request(
 
     resized = Path(_path("resized_image_dir", "post_image_dataset/resized"))
     return ExportRequest(
-        src=_path("source_image_dir", "image_dataset"),
+        src=str(resized),
         dst=str(resized),
         masks=_path("mask_dir", "post_image_dataset/masks"),
         index=CAPTION_INDEX_PATH,
@@ -1627,6 +1558,7 @@ def cmd_preprocess(extra):
     it writes the derived caption in ``resized/`` that TE encodes.
     """
     caption_config, extra = _caption_correction_config(extra)
+    extra = _pop_retired_lowres_args(extra)
     # PE features are NOT cached here by default (CMMD chains `preprocess-pe`
     # explicitly) — keeps the default LoRA preprocess fast. Exception:
     # `use_repa=true` chains them at the end (see `_repa_pe_encoder()` below).
@@ -1639,12 +1571,11 @@ def cmd_preprocess(extra):
         _require_repa_encoder_model(encoder)
     cmd_preprocess_resize(extra, chained=True)
     _run_caption_autotag_stage(caption_config)
-    # VAE/TE steps read on-disk shapes — strip the low-res convenience flags AND
-    # the resize-only --target_res so their argparse never sees an undefined arg.
+    # VAE/TE steps read on-disk shapes — strip the resize-only --target_res so
+    # their argparse never sees an undefined arg.
     downstream = _pop_resize_only_args(extra)
-    _, vae_extra = _resolve_lowres_filter(downstream)
     _release_stage_models()
-    cmd_preprocess_vae(vae_extra)
+    cmd_preprocess_vae(downstream)
     _run_caption_position_stage(caption_config)
     cmd_preprocess_te(downstream, caption_config=caption_config)
     # Caption index as a free by-product — consumed by the IP-Adapter pair sampler,
@@ -1769,14 +1700,12 @@ def cmd_preprocess_config(extra):
         cache_dir = sub.get("cache_dir") or image_dir
         # bucket-resize originals -> image_dir; cache_latents.py keys caches by
         # on-disk size, so the resized size must match what the trainer expects.
-        # min_pixels=0: an ad-hoc job keeps every image the config names.
         _execute(
             "resize",
             _resize_request(
                 src_dir,
                 image_dir,
                 rest,
-                min_pixels=0,
                 prog="make preprocess-config ARGS=",
             ),
         )

@@ -291,8 +291,9 @@ _GROUPS = {
     },
 }
 _K2G = {k: g for g, ks in _GROUPS.items() for k in ks}
-# Preprocess-time knobs (target_res, drop_lowres_images, min_pixels) are owned by the Preprocess tab,
-# so they are hidden from the config form.
+# Preprocess-time knobs (target_res) are owned by the Preprocess tab, so they are hidden from the
+# config form. ``drop_lowres_images`` / ``min_pixels`` are retired keys (resize has no pixel floor
+# since anime_tools 0.7.5), tolerated on load: a user-owned preprocess.toml may still carry them.
 _SKIP = {
     "base_config",
     "dataset_config",
@@ -350,7 +351,7 @@ def _load(p) -> dict:
 
 def _load_base() -> dict:
     """``base.toml`` overlaid on ``configs/preprocess.toml`` (the split-out
-    preprocess-only knobs: source_image_dir / drop_lowres_images / min_pixels).
+    preprocess-only knobs: source_image_dir / target_res / …).
 
     Mirrors ``load_path_overrides``' preprocess→base layering so the GUI form
     baseline matches what preprocess/training actually read: a legacy key still

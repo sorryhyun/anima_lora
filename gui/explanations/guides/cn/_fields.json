@@ -78,8 +78,6 @@
   "resized_image_dir": "预处理写入VAE对齐PNG的目录。训练时也解析为数据集子集的image_dir（通过base.toml中的{resized_image_dir}模板），因此修改此项会同时影响预处理和训练。",
   "lora_cache_dir": "预处理写入VAE潜变量（.npz）和文本编码器（_anima_te.safetensors）缓存的目录。训练时也解析为数据集子集的cache_dir。",
   "path_pattern": "应用于每张图像相对于其子集image_dir路径的fnmatch glob。无需重新运行预处理即可用单个variant TOML训练完整数据集的一个子集。`|`分隔多个模式进行OR组合。示例：`*`保留所有；`char_a/*`仅保留char_a/子文件夹下的文件；`char_a/*|char_b/*`保留两个文件夹；`*portrait*`保留路径包含'portrait'的所有文件。验证枚举和图像计数阈值遵循过滤后的池。",
-  "drop_lowres_images": "若为true，预处理自动链跳过低于`min_pixels`阈值的源图像，使其不进入调整大小/VAE/TE缓存。通过相同的`--min_pixels`参数应用于preprocess/resize_images.py和preprocess/cache_text_embeddings.py。取消勾选则无论大小保留所有图像。",
-  "min_pixels": "`drop_lowres_images`使用的像素数阈值（默认500_000 = 0.5MP）。原样传递给preprocess/resize_images.py和cache_text_embeddings.py作为`--min_pixels`。`drop_lowres_images = false`时忽略。若在不关闭复选框的情况下禁用过滤，设为0。",
   "target_res": "多尺度常量令牌分辨率档位（边长512/768/1024/1280/1536）。仅1024 = 单一~1MP档位 = 传统行为。勾选多个可像v1.0基础模型一样跨分辨率训练：每张图像被预处理到缩放量最小的档位（最近邻桶；每张图像一个输出），~1MP的图像不会被降采样到768而是保留在1024。各档位令牌数：512→1024(正方形)+1008，768→2160，1024→4032+4200，1280→6300，1536→8640。每增加一个档位会增加已编译的torch.compile块计算图（768/1280/1536各+1，512+2），因此请保持选择数量较少。训练时仅读取用于调整torch.compile缓存预算；实际训练直接使用磁盘上已缓存的潜变量形状。",
   "sample_prompts": "训练过程中渲染图像以便目视检查过拟合的预览提示词 — 与验证/CMMD相互独立。每行填写一条提示词。图像在训练进行时写入output_dir/sample/（解码时机由'sample_decode_inline'控制）。未指定种子的提示词使用每提示词固定种子，确保每轮从相同噪声渲染（便于对比的画廊）。留空则禁用。支持行内修饰符，例如：'1girl, solo --w 832 --h 1216 --s 28 --d 42 --l 4.0'（w/h = 尺寸，s = 步数，d = 种子，l = CFG缩放，n = 负面提示词）。",
   "sample_every_n_epochs": "每N轮渲染一次样本提示词。0 = 禁用。与'sample_prompts'配合使用。使用适合数据集的较小值（如1–4）可获得逐轮画廊，便于判断品质在何处达到峰值而尚未过拟合。遵循'use_valid'开关 — 验证关闭时采样也将强制关闭。",

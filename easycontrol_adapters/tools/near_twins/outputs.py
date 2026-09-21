@@ -143,7 +143,6 @@ max_extra_diff = 6
 # only add a path key here to point one elsewhere.
 [preprocess]
 target_res = [1024]  # bucket tiers (512 768 1024 1280 1536); must match training
-min_pixels = 0  # 0 = never drop a member (would orphan its pair partner)
 recursive = true
 vae = 'models/vae/qwen_image_vae.safetensors'
 batch_size = 4

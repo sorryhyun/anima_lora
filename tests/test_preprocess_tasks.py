@@ -83,10 +83,8 @@ def test_preprocess_te_uses_corrected_resized_captions(monkeypatch):
     assert "--match_images_from" not in te_cmd
     assert te_cmd[te_cmd.index("--cache_dir") + 1] == "post_image_dataset/lora"
     assert te_cmd[te_cmd.index("--path_pattern") + 1] == "group/*"
-    assert [i for i, arg in enumerate(te_cmd) if arg == "--min_pixels"] == [
-        te_cmd.index("--min_pixels")
-    ]
-    assert te_cmd[te_cmd.index("--min_pixels") + 1] == "0"
+    # The retired low-res flag is popped, never forwarded to the TE script.
+    assert "--min_pixels" not in te_cmd and "--min_pixels" not in caption_cmd
 
 
 def test_caption_correction_enabled_when_only_trigger_or_no_artist_set():
@@ -154,36 +152,15 @@ def _stub_overrides(monkeypatch, overrides: dict) -> None:
     monkeypatch.setattr(_common, "_path_overrides", lambda: dict(overrides))
 
 
-def test_min_pixels_args_env_drop_false_keeps_every_image(monkeypatch):
-    """GUI auto-chain unchecks low-res → DROP_LOWRES_IMAGES=0 forces --min_pixels 0,
-    overriding a merged config that still says drop=true (the snapshot strips it)."""
-    from scripts.tasks.preprocess import _min_pixels_args
+def test_retired_lowres_args_are_popped(capsys):
+    from scripts.tasks.preprocess import _pop_retired_lowres_args
 
-    _stub_overrides(monkeypatch, {"drop_lowres_images": True, "min_pixels": 250_000})
-    monkeypatch.setenv("DROP_LOWRES_IMAGES", "0")
-    monkeypatch.setenv("MIN_PIXELS", "250000")
-
-    assert _min_pixels_args() == ["--min_pixels", "0"]
-
-
-def test_min_pixels_args_env_drop_true_uses_env_threshold(monkeypatch):
-    from scripts.tasks.preprocess import _min_pixels_args
-
-    _stub_overrides(monkeypatch, {})
-    monkeypatch.setenv("DROP_LOWRES_IMAGES", "1")
-    monkeypatch.setenv("MIN_PIXELS", "250000")
-
-    assert _min_pixels_args() == ["--min_pixels", "250000"]
-
-
-def test_min_pixels_args_no_env_falls_back_to_config(monkeypatch):
-    from scripts.tasks.preprocess import _min_pixels_args
-
-    _stub_overrides(monkeypatch, {"drop_lowres_images": False, "min_pixels": 250_000})
-    monkeypatch.delenv("DROP_LOWRES_IMAGES", raising=False)
-    monkeypatch.delenv("MIN_PIXELS", raising=False)
-
-    assert _min_pixels_args() == ["--min_pixels", "0"]
+    assert _pop_retired_lowres_args(
+        ["--overwrite", "--min_pixels", "0", "--no_drop_lowres", "--drop_lowres"]
+    ) == ["--overwrite"]
+    assert "retired" in capsys.readouterr().out
+    assert _pop_retired_lowres_args(["--overwrite"]) == ["--overwrite"]
+    assert capsys.readouterr().out == ""
 
 
 def test_target_res_args_env_wins_over_config(monkeypatch):
@@ -633,7 +610,7 @@ def test_gui_forms_fold_into_the_caption_config(monkeypatch):
 
 def test_resize_form_drives_the_resize_request(monkeypatch, tmp_path):
     """The GUI's resize form carries the geometry; the trainer fills the
-    roots / walk / skips and the low-res sugar's answer."""
+    roots / walk / skips."""
     from scripts.tasks import _common, preprocess
 
     monkeypatch.setattr(preprocess, "_path", lambda key, default: default)
@@ -641,13 +618,13 @@ def test_resize_form_drives_the_resize_request(monkeypatch, tmp_path):
     monkeypatch.setattr(
         preprocess, "_curation_decisions_path", lambda: tmp_path / "none"
     )
-    for name in ("TARGET_RES", "MIN_PIXELS", "PREPROCESS_PATH_PATTERN"):
+    for name in ("TARGET_RES", "PREPROCESS_PATH_PATTERN"):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("DROP_LOWRES_IMAGES", "1")
     _stages_env(
         monkeypatch,
         resize={
             "target_res": [1024, 896],
+            # a form saved before anime_tools 0.7.5: the stale dest is ignored
             "min_pixels": 250000,
             "resize_crop_anchor": "top",
             "resize_crop_margins": [5.0, 0.0, 0.0, 0.0],
@@ -663,22 +640,13 @@ def test_resize_form_drives_the_resize_request(monkeypatch, tmp_path):
 
     (req,) = built
     assert req.target_res == (1024, 896)  # the form, not the config's [512]
-    assert req.min_pixels == 250000
+    assert not hasattr(req, "min_pixels")
     assert req.resize_crop_anchor == "top"
     assert req.resize_crop_margins == (5.0, 0.0, 0.0, 0.0)
     assert req.freefit_max_ratio == 3.0
     assert req.overwrite and req.workers == 2
     assert req.recursive
     assert req.src == "image_dataset" and req.path_pattern == "*"
-
-    # The low-res sugar: unchecked → --min_pixels 0 regardless of the form.
-    monkeypatch.setenv("DROP_LOWRES_IMAGES", "0")
-    built.clear()
-    preprocess.cmd_preprocess_resize([])
-    assert built[0].min_pixels == 0
-    # Its threshold also reaches the TE script when no caption step runs.
-    monkeypatch.setenv("DROP_LOWRES_IMAGES", "1")
-    assert preprocess._min_pixels_args() == ["--min_pixels", "250000"]
 
 
 def test_sigma_demote_routes_true_is_the_certified_route(monkeypatch):
@@ -903,6 +871,62 @@ def test_caption_full_combine_publishes_in_place(monkeypatch):
         Path(preprocess.ROOT, req.src),
         Path(preprocess.ROOT, req.dst),
     )
+
+
+def test_caption_full_combine_never_publishes_originals_in_place(monkeypatch, tmp_path):
+    """Since anime_tools 0.7.5 the export's image row is the *original* under
+    ``src`` and the mask row is refitted to it. In place that would land
+    full-size originals in the resized tree (a second image per stem, or the
+    resized PNG overwritten) and rewrite the masks — so ``src`` is the resized
+    tree, and every pixel row plans as identical."""
+    from pathlib import Path
+
+    from anime_tools.masking._masks import mask_path_for
+    from anime_tools.stages import export_workspace as E
+    from PIL import Image
+
+    from scripts.tasks import preprocess
+
+    source = tmp_path / "image_dataset"
+    resized = tmp_path / "post_image_dataset" / "resized"
+    masks = tmp_path / "post_image_dataset" / "masks"
+    (source / "a").mkdir(parents=True)
+    (resized / "a").mkdir(parents=True)
+    Image.new("RGB", (400, 300)).save(source / "a" / "j.jpg")
+    Image.new("RGB", (400, 300)).save(source / "p.png")
+    for rel in ("a/j.png", "p.png"):
+        Image.new("RGB", (200, 150)).save(resized / rel)
+        (resized / rel).with_suffix(".txt").write_text("1girl")
+        mask = mask_path_for(resized / rel, resized, masks)
+        mask.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("L", (200, 150), 255).save(mask)
+
+    values = {
+        "source_image_dir": str(source),
+        "resized_image_dir": str(resized),
+        "mask_dir": str(masks),
+    }
+    monkeypatch.setattr(
+        preprocess, "_path", lambda key, default: values.get(key, default)
+    )
+    req = preprocess._caption_combine_request(apply=True)
+
+    rows = E.plan_export(
+        E.ExportPaths(
+            resized=Path(req.dst),
+            masks=Path(req.masks),
+            master=tmp_path / "workspace" / "master",
+            index=tmp_path / "none.json",
+            src=Path(req.src),
+            out=Path(req.out),
+        )
+    )
+    pixel = [r for r in rows if r.kind in ("image", "mask")]
+    assert len(pixel) == 4
+    assert {(r.kind, r.status) for r in pixel} == {
+        ("image", "identical"),
+        ("mask", "identical"),
+    }
 
 
 def test_caption_full_warns_when_te_would_encode_the_masters(monkeypatch, capsys):

@@ -176,39 +176,24 @@ def populate_schema(
             ),
         )
 
-    # Preprocess input filter — consumed by scripts/tasks/preprocess.py (forwarded
-    # to the resize stage (make preprocess-resize) and scripts/preprocess/cache_text_embeddings.py as
-    # ``--min_pixels``). Not an argparse arg on train.py — preprocess reads it
-    # straight from the merged config chain via load_path_overrides().
-    CONFIG_SCHEMA.setdefault(
-        "drop_lowres_images",
-        ConfigKey(
-            name="drop_lowres_images",
-            type="bool",
-            default=True,
-            help=(
-                "When true, the preprocess auto-chain skips source images "
-                "smaller than ``min_pixels`` (see below) so they never enter "
-                "the resize/VAE/TE caches. Set false to keep every image."
+    # Retired preprocess input filter (the resize stage lost its pixel floor in
+    # anime_tools 0.7.5 — every source image lands in the tree). Nothing reads
+    # these; they stay registered so a user-owned configs/preprocess.toml that
+    # still carries them loads without an unknown-key warning.
+    for _name, _type, _default in (
+        ("drop_lowres_images", "bool", True),
+        ("min_pixels", "int", 500_000),
+    ):
+        CONFIG_SCHEMA.setdefault(
+            _name,
+            ConfigKey(
+                name=_name,
+                type=_type,
+                default=_default,
+                help="Retired — no effect. The resize stage keeps every image.",
+                source="manual",
             ),
-            source="manual",
-        ),
-    )
-    CONFIG_SCHEMA.setdefault(
-        "min_pixels",
-        ConfigKey(
-            name="min_pixels",
-            type="int",
-            default=500_000,
-            help=(
-                "Pixel-count threshold for ``drop_lowres_images`` "
-                "(default 500_000 = 0.5MP). Forwarded to "
-                "the resize stage + cache_text_embeddings.py as "
-                "``--min_pixels``. Ignored when ``drop_lowres_images=false``."
-            ),
-            source="manual",
-        ),
-    )
+        )
 
     if extras:
         for k, v in extras.items():

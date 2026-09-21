@@ -1051,7 +1051,6 @@ def stage_text(
         cache_dir=text_cache_dir,
         recursive=True,
         batch_size=batch_size,
-        min_pixels=0,  # staged 512-tier images are below the resize filter
         overwrite=overwrite,
         progress=tqdm_progress("Caching caption text"),
     )

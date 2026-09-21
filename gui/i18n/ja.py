@@ -37,17 +37,6 @@ STRINGS: dict[str, str] = {
         "相対パスに適用されます。'*'(または空欄) は全件、'1/*' は "
         "data_group1/1 のみ、'1/*|2/*' は両方のサブフォルダーを処理します。"
     ),
-    "preprocess_drop_lowres": "低解像度画像を除外",
-    "preprocess_drop_lowres_tip": (
-        "下のピクセル閾値を下回るソース画像をスキップし、"
-        "リサイズ / VAE / テキストキャッシュに含まれないようにします。"
-        "チェックを外すとサイズに関わらずすべての画像を保持します。"
-    ),
-    "preprocess_min_pixels": "最小ピクセル数 (フィルター閾値):",
-    "preprocess_min_pixels_tip": (
-        "低解像度フィルターのピクセル数閾値。500000 = 0.5MP。"
-        "「低解像度画像を除外」がオフの場合は無視されます。"
-    ),
     "preprocess_target_res": "解像度ティア (target_res):",
     "preprocess_freefit_max_ratio": "最大アスペクト比:",
     "preprocess_freefit_max_ratio_tip": (

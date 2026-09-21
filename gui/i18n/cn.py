@@ -39,16 +39,6 @@ STRINGS: dict[str, str] = {
         "'*'（或空白）处理全部；'1/*' 只处理 data_group1/1；"
         "'1/*|2/*' 处理两个子文件夹。"
     ),
-    "preprocess_drop_lowres": "丢弃低分辨率图像",
-    "preprocess_drop_lowres_tip": (
-        "跳过小于下方像素阈值的源图像，使其不进入调整大小 / VAE / 文本缓存。"
-        "取消勾选可保留所有图像，无论大小。"
-    ),
-    "preprocess_min_pixels": "最小像素数 (过滤阈值):",
-    "preprocess_min_pixels_tip": (
-        "低分辨率过滤器的像素数阈值。500000 = 0.5MP。"
-        "当「丢弃低分辨率图像」未勾选时忽略。"
-    ),
     "preprocess_target_res": "分辨率档位 (target_res):",
     "preprocess_freefit_max_ratio": "最大宽高比:",
     "preprocess_freefit_max_ratio_tip": (

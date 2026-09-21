@@ -101,7 +101,8 @@ def test_visible_fields_hide_bound_and_auto(schemas):
     assert (
         not {"src", "dst", "path_pattern", "recursive", "skip", "excluded_dir"} & resize
     )
-    assert {"target_res", "min_pixels", "overwrite", "workers"} <= resize
+    assert {"target_res", "overwrite", "workers"} <= resize
+    assert "min_pixels" not in resize  # no pixel floor since anime_tools 0.7.5
 
     # --apply is the run bar's, never a form row.
     assert "apply" not in {f["dest"] for f in SF.visible_fields(schemas["autotag"])}
@@ -192,10 +193,10 @@ def test_seeded_defaults_layer_preprocess_toml_over_the_schema(schemas):
     names — the form opens on what the CLI would run — and ``no_correct``
     is ``caption_correct_order`` inverted (default: no reordering)."""
     bare = SF.seeded_defaults(schemas["resize"], {})
-    assert bare["target_res"] is None and bare["min_pixels"] == 500000
+    assert bare["target_res"] is None and "min_pixels" not in bare
     pp = {
         "target_res": [1024, 896],
-        "min_pixels": 250000,
+        "min_pixels": 250000,  # retired key in a user-owned TOML: ignored
         "resize_crop_margins": {"top": 5.0, "right": 0, "bottom": 0, "left": 0},
         "caption_autotag_mode": "merge",
         "caption_autotag_min_confidence": 0.35,
@@ -203,7 +204,7 @@ def test_seeded_defaults_layer_preprocess_toml_over_the_schema(schemas):
     }
     resize = SF.seeded_defaults(schemas["resize"], pp)
     assert resize["target_res"] == [1024, 896]
-    assert resize["min_pixels"] == 250000
+    assert "min_pixels" not in resize
     assert resize["resize_crop_margins"] == [5.0, 0.0, 0.0, 0.0]
     autotag = SF.seeded_defaults(schemas["autotag"], pp)
     assert (autotag["mode"], autotag["min_confidence"]) == ("merge", 0.35)
@@ -419,7 +420,7 @@ def test_chain_gate_disables_the_stage_rows(schemas):
     sec = StageFormSection(schemas["autotag"], lambda *_: None, gate="caption_autotag")
     try:
         gate = sec.knob_widgets["caption_autotag"]
-        assert set(sec.keys()) == {"mode", "min_confidence"}
+        assert set(sec.keys()) == {"mode", "min_confidence", "batch_size"}
         assert sec.knob_values() == {"caption_autotag": False}
         assert not sec.widgets["mode"].isEnabled()
         gate.setChecked(True)

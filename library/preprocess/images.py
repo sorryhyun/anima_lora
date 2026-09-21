@@ -45,7 +45,6 @@ def resize_to_buckets(
     *,
     target_res: list[int] | None = None,
     workers: int = 4,
-    min_pixels: int = 500_000,
     recursive: bool = False,
     path_pattern: str | None = None,
     verbose: bool = True,
@@ -59,12 +58,11 @@ def resize_to_buckets(
     """Resize+crop every image under ``src`` into bucket resolutions under ``dst``.
 
     Mirrors the source subdir layout, copies caption sidecars, and skips images
-    below ``min_pixels`` and those a curation decision marks ``skip`` /
-    ``move``. Returns ``(stats, bucket_counts)`` where ``bucket_counts`` maps
-    each ``(W, H)`` bucket to its image count (skipped + written) and
-    ``stats.skipped`` counts every image not (re)written this run — too small,
-    decided against, or already at its bucket. Pass ``progress`` for a
-    per-image bar.
+    a curation decision marks ``skip`` / ``move``. Returns ``(stats,
+    bucket_counts)`` where ``bucket_counts`` maps each ``(W, H)`` bucket to its
+    image count (skipped + written) and ``stats.skipped`` counts every image
+    not (re)written this run — decided against, or already at its bucket. Pass
+    ``progress`` for a per-image bar.
     """
     options = ResizeOptions.build(
         target_res=target_res or list(DEFAULT_TARGET_RES),
@@ -102,7 +100,6 @@ def resize_to_buckets(
         options=options,
         path_pattern=path_pattern,
         recursive=recursive,
-        min_pixels=min_pixels,
         overwrite=overwrite,
         workers=workers,
         skip=skip,
@@ -112,7 +109,7 @@ def resize_to_buckets(
     stats = PreprocessStats(
         seen=result.seen,
         written=result.written,
-        skipped=result.skipped_small + result.skipped_excluded + result.skipped_current,
+        skipped=result.skipped_excluded + result.skipped_current,
         failed=result.failed,
     )
     bucket_counts: dict[tuple[int, int], int] = {}
@@ -121,10 +118,6 @@ def resize_to_buckets(
         bucket_counts[(w, h)] = count
 
     if verbose:
-        if result.too_small:
-            print(f"Skipped {result.skipped_small} images below {min_pixels:,} pixels:")
-            for line in result.too_small:
-                print(f"  {line}")
         for line in result.failures:
             print(f"  fail: {line}")
         if result.skipped_current:

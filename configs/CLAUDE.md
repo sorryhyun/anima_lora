@@ -30,8 +30,8 @@ Full-vs-shallow is decided by `load_dataset_config_from_base` on whether the met
 
 ## `preprocess.toml` — user-owned, preserved across updates
 
-Preprocess knobs split out of `base.toml` (`source_image_dir`, `drop_lowres_images`,
-`min_pixels`, **`target_res`**, **`mask_dir`**). Read by the preprocess pipeline via
+Preprocess knobs split out of `base.toml` (`source_image_dir`, **`target_res`**,
+**`mask_dir`**). Read by the preprocess pipeline via
 `load_path_overrides`, layered **`preprocess.toml → base.toml → preset → method`** —
 preprocess.toml is read *first*, so a legacy copy of any of these keys still in
 `base.toml` keeps winning.

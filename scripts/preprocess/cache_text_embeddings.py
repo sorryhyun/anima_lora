@@ -102,17 +102,6 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "--min_pixels",
-        type=int,
-        default=500_000,
-        help=(
-            "Skip images with fewer than this many pixels (default: 500_000 "
-            "= 0.5MP). Mirrors the same filter in the resize stage (make preprocess-resize) "
-            "so TE caches don't accumulate for images that get dropped at "
-            "resize time. Set to 0 to disable."
-        ),
-    )
-    parser.add_argument(
         "--path_pattern",
         "--path-pattern",
         dest="path_pattern",
@@ -177,7 +166,6 @@ def main() -> None:
         recursive=args.recursive,
         path_pattern=args.path_pattern,
         keep_rel_stems=keep_rel_stems,
-        min_pixels=args.min_pixels,
         overwrite=args.overwrite,
     )
     uncond_needed = bool(args.dit) and not default_uncond_path().exists()
@@ -278,7 +266,6 @@ def main() -> None:
         caption_shuffle_variants=N,
         caption_tag_dropout_rate=tag_dropout_rate,
         caption_tag_randomize_rate=tag_randomize_rate,
-        min_pixels=args.min_pixels,
         overwrite=args.overwrite,
         progress=tqdm_progress("Caching text embeddings"),
     )

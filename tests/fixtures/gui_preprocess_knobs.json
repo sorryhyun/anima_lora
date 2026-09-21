@@ -6,10 +6,10 @@
         "CAPTION_POSITION_CLAUSES": "0",
         "CAPTION_SHUFFLE_VARIANTS": "4",
         "CAPTION_TAG_DROPOUT_RATE": "0.1",
-        "DROP_LOWRES_IMAGES": "1",
         "PREPROCESS_PATH_PATTERN": "*",
         "PREPROCESS_STAGES_JSON": {
           "autotag": {
+            "batch_size": 8,
             "min_confidence": 0.0,
             "mode": "missing"
           },
@@ -36,7 +36,6 @@
           ],
           "resize": {
             "freefit_max_ratio": 4.0,
-            "min_pixels": 500000,
             "overwrite": false,
             "resize_crop_anchor": "center",
             "resize_crop_margins": null,
@@ -78,8 +77,7 @@
       },
       "overrides": {
         "caption_autotag": false,
-        "caption_position_clauses": false,
-        "drop_lowres_images": true
+        "caption_position_clauses": false
       }
     },
     "defaults_reloaded": {
@@ -88,10 +86,10 @@
         "CAPTION_POSITION_CLAUSES": "0",
         "CAPTION_SHUFFLE_VARIANTS": "4",
         "CAPTION_TAG_DROPOUT_RATE": "0.1",
-        "DROP_LOWRES_IMAGES": "1",
         "PREPROCESS_PATH_PATTERN": "*",
         "PREPROCESS_STAGES_JSON": {
           "autotag": {
+            "batch_size": 8,
             "min_confidence": 0.0,
             "mode": "missing"
           },
@@ -118,7 +116,6 @@
           ],
           "resize": {
             "freefit_max_ratio": 4.0,
-            "min_pixels": 500000,
             "overwrite": false,
             "resize_crop_anchor": "center",
             "resize_crop_margins": null,
@@ -169,8 +166,7 @@
       },
       "overrides": {
         "caption_autotag": false,
-        "caption_position_clauses": false,
-        "drop_lowres_images": true
+        "caption_position_clauses": false
       }
     },
     "flipped": {
@@ -179,10 +175,10 @@
         "CAPTION_POSITION_CLAUSES": "1",
         "CAPTION_SHUFFLE_VARIANTS": "11",
         "CAPTION_TAG_DROPOUT_RATE": "0.45",
-        "DROP_LOWRES_IMAGES": "0",
         "PREPROCESS_PATH_PATTERN": "artist_a/**",
         "PREPROCESS_STAGES_JSON": {
           "autotag": {
+            "batch_size": 8,
             "min_confidence": 0.55,
             "mode": "overwrite"
           },
@@ -220,7 +216,6 @@
           ],
           "resize": {
             "freefit_max_ratio": 2.25,
-            "min_pixels": 123456,
             "overwrite": true,
             "resize_crop_anchor": "bottom_right",
             "resize_crop_margins": [
@@ -242,7 +237,6 @@
         "caption_position_clauses": true,
         "caption_shuffle_variants": 11,
         "caption_tag_dropout_rate": 0.45,
-        "drop_lowres_images": false,
         "family": "lora",
         "path_scope": "artist_a",
         "preprocess_path_pattern": "artist_a/**",
@@ -281,7 +275,6 @@
           ],
           "resize": {
             "freefit_max_ratio": 2.25,
-            "min_pixels": 123456,
             "overwrite": true,
             "resize_crop_anchor": "bottom_right",
             "resize_crop_margins": [
@@ -303,7 +296,6 @@
         "caption_position_clauses": true,
         "caption_shuffle_variants": 11,
         "caption_tag_dropout_rate": 0.45,
-        "drop_lowres_images": false,
         "family": "lora",
         "path_scope": "artist_a",
         "preprocess_path_pattern": "artist_a/**",
@@ -331,7 +323,6 @@
           ],
           "resize": {
             "freefit_max_ratio": 2.25,
-            "min_pixels": 123456,
             "overwrite": true,
             "resize_crop_anchor": "bottom_right",
             "resize_crop_margins": [
@@ -350,8 +341,7 @@
       },
       "overrides": {
         "caption_autotag": true,
-        "caption_position_clauses": true,
-        "drop_lowres_images": false
+        "caption_position_clauses": true
       }
     },
     "flipped_reloaded": {
@@ -360,10 +350,10 @@
         "CAPTION_POSITION_CLAUSES": "1",
         "CAPTION_SHUFFLE_VARIANTS": "11",
         "CAPTION_TAG_DROPOUT_RATE": "0.45",
-        "DROP_LOWRES_IMAGES": "0",
         "PREPROCESS_PATH_PATTERN": "artist_a/**",
         "PREPROCESS_STAGES_JSON": {
           "autotag": {
+            "batch_size": 8,
             "min_confidence": 0.55,
             "mode": "overwrite"
           },
@@ -401,7 +391,6 @@
           ],
           "resize": {
             "freefit_max_ratio": 2.25,
-            "min_pixels": 123456,
             "overwrite": true,
             "resize_crop_anchor": "bottom_right",
             "resize_crop_margins": [
@@ -423,7 +412,6 @@
         "caption_position_clauses": true,
         "caption_shuffle_variants": 11,
         "caption_tag_dropout_rate": 0.45,
-        "drop_lowres_images": false,
         "family": "lora",
         "path_scope": "artist_a",
         "preprocess_path_pattern": "artist_a/**",
@@ -462,7 +450,6 @@
           ],
           "resize": {
             "freefit_max_ratio": 2.25,
-            "min_pixels": 123456,
             "overwrite": true,
             "resize_crop_anchor": "bottom_right",
             "resize_crop_margins": [
@@ -484,7 +471,6 @@
         "caption_position_clauses": true,
         "caption_shuffle_variants": 11,
         "caption_tag_dropout_rate": 0.45,
-        "drop_lowres_images": false,
         "family": "lora",
         "path_scope": "artist_a",
         "preprocess_path_pattern": "artist_a/**",
@@ -523,7 +509,6 @@
           ],
           "resize": {
             "freefit_max_ratio": 2.25,
-            "min_pixels": 123456,
             "overwrite": true,
             "resize_crop_anchor": "bottom_right",
             "resize_crop_margins": [
@@ -542,8 +527,7 @@
       },
       "overrides": {
         "caption_autotag": true,
-        "caption_position_clauses": true,
-        "drop_lowres_images": false
+        "caption_position_clauses": true
       }
     }
   },
@@ -554,10 +538,10 @@
         "CAPTION_POSITION_CLAUSES": "1",
         "CAPTION_SHUFFLE_VARIANTS": "7",
         "CAPTION_TAG_DROPOUT_RATE": "0.3",
-        "DROP_LOWRES_IMAGES": "0",
         "PREPROCESS_PATH_PATTERN": "*",
         "PREPROCESS_STAGES_JSON": {
           "autotag": {
+            "batch_size": 8,
             "min_confidence": 0.35,
             "mode": "merge"
           },
@@ -584,7 +568,6 @@
           ],
           "resize": {
             "freefit_max_ratio": 3.0,
-            "min_pixels": 250000,
             "overwrite": false,
             "resize_crop_anchor": "top",
             "resize_crop_margins": [
@@ -604,7 +587,6 @@
       "meta_full": {
         "caption_shuffle_variants": 7,
         "caption_tag_dropout_rate": 0.3,
-        "drop_lowres_images": false,
         "family": "lora",
         "run_sam_mask": false,
         "stages": {
@@ -629,7 +611,6 @@
       "meta_inputs_only": {
         "caption_shuffle_variants": 7,
         "caption_tag_dropout_rate": 0.3,
-        "drop_lowres_images": false,
         "family": "lora",
         "stages": {
           "resize": {
@@ -642,8 +623,7 @@
       },
       "overrides": {
         "caption_autotag": true,
-        "caption_position_clauses": true,
-        "drop_lowres_images": false
+        "caption_position_clauses": true
       }
     },
     "defaults_reloaded": {
@@ -652,10 +632,10 @@
         "CAPTION_POSITION_CLAUSES": "1",
         "CAPTION_SHUFFLE_VARIANTS": "7",
         "CAPTION_TAG_DROPOUT_RATE": "0.3",
-        "DROP_LOWRES_IMAGES": "0",
         "PREPROCESS_PATH_PATTERN": "*",
         "PREPROCESS_STAGES_JSON": {
           "autotag": {
+            "batch_size": 8,
             "min_confidence": 0.35,
             "mode": "merge"
           },
@@ -682,7 +662,6 @@
           ],
           "resize": {
             "freefit_max_ratio": 3.0,
-            "min_pixels": 250000,
             "overwrite": false,
             "resize_crop_anchor": "top",
             "resize_crop_margins": [
@@ -702,7 +681,6 @@
       "meta_full": {
         "caption_shuffle_variants": 7,
         "caption_tag_dropout_rate": 0.3,
-        "drop_lowres_images": false,
         "family": "lora",
         "run_sam_mask": false,
         "stages": {
@@ -727,7 +705,6 @@
       "meta_inputs_only": {
         "caption_shuffle_variants": 7,
         "caption_tag_dropout_rate": 0.3,
-        "drop_lowres_images": false,
         "family": "lora",
         "run_sam_mask": false,
         "stages": {
@@ -751,8 +728,7 @@
       },
       "overrides": {
         "caption_autotag": true,
-        "caption_position_clauses": true,
-        "drop_lowres_images": false
+        "caption_position_clauses": true
       }
     },
     "flipped": {
@@ -761,10 +737,10 @@
         "CAPTION_POSITION_CLAUSES": "0",
         "CAPTION_SHUFFLE_VARIANTS": "11",
         "CAPTION_TAG_DROPOUT_RATE": "0.45",
-        "DROP_LOWRES_IMAGES": "1",
         "PREPROCESS_PATH_PATTERN": "artist_a/**",
         "PREPROCESS_STAGES_JSON": {
           "autotag": {
+            "batch_size": 8,
             "min_confidence": 0.55,
             "mode": "overwrite"
           },
@@ -802,7 +778,6 @@
           ],
           "resize": {
             "freefit_max_ratio": 2.25,
-            "min_pixels": 123456,
             "overwrite": true,
             "resize_crop_anchor": "bottom_right",
             "resize_crop_margins": [
@@ -862,7 +837,6 @@
           ],
           "resize": {
             "freefit_max_ratio": 2.25,
-            "min_pixels": 123456,
             "overwrite": true,
             "resize_crop_anchor": "bottom_right",
             "resize_crop_margins": [
@@ -913,7 +887,6 @@
           ],
           "resize": {
             "freefit_max_ratio": 2.25,
-            "min_pixels": 123456,
             "overwrite": true,
             "resize_crop_anchor": "bottom_right",
             "resize_crop_margins": [
@@ -932,8 +905,7 @@
       },
       "overrides": {
         "caption_autotag": false,
-        "caption_position_clauses": false,
-        "drop_lowres_images": true
+        "caption_position_clauses": false
       }
     },
     "flipped_reloaded": {
@@ -942,10 +914,10 @@
         "CAPTION_POSITION_CLAUSES": "0",
         "CAPTION_SHUFFLE_VARIANTS": "11",
         "CAPTION_TAG_DROPOUT_RATE": "0.45",
-        "DROP_LOWRES_IMAGES": "0",
         "PREPROCESS_PATH_PATTERN": "artist_a/**",
         "PREPROCESS_STAGES_JSON": {
           "autotag": {
+            "batch_size": 8,
             "min_confidence": 0.55,
             "mode": "overwrite"
           },
@@ -983,7 +955,6 @@
           ],
           "resize": {
             "freefit_max_ratio": 2.25,
-            "min_pixels": 123456,
             "overwrite": true,
             "resize_crop_anchor": "bottom_right",
             "resize_crop_margins": [
@@ -1005,7 +976,6 @@
         "caption_position_clauses": false,
         "caption_shuffle_variants": 11,
         "caption_tag_dropout_rate": 0.45,
-        "drop_lowres_images": false,
         "family": "lora",
         "path_scope": "artist_a",
         "preprocess_path_pattern": "artist_a/**",
@@ -1044,7 +1014,6 @@
           ],
           "resize": {
             "freefit_max_ratio": 2.25,
-            "min_pixels": 123456,
             "overwrite": true,
             "resize_crop_anchor": "bottom_right",
             "resize_crop_margins": [
@@ -1066,7 +1035,6 @@
         "caption_position_clauses": false,
         "caption_shuffle_variants": 11,
         "caption_tag_dropout_rate": 0.45,
-        "drop_lowres_images": false,
         "family": "lora",
         "path_scope": "artist_a",
         "preprocess_path_pattern": "artist_a/**",
@@ -1105,7 +1073,6 @@
           ],
           "resize": {
             "freefit_max_ratio": 2.25,
-            "min_pixels": 123456,
             "overwrite": true,
             "resize_crop_anchor": "bottom_right",
             "resize_crop_margins": [
@@ -1124,8 +1091,7 @@
       },
       "overrides": {
         "caption_autotag": false,
-        "caption_position_clauses": false,
-        "drop_lowres_images": false
+        "caption_position_clauses": false
       }
     }
   }

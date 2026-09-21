@@ -405,7 +405,6 @@ def _resize_tree(
     src: str,
     dst: str,
     *,
-    min_pixels: int,
     target_res: tuple[int, ...],
     recursive: bool = True,
     freefit_max_ratio=None,
@@ -421,7 +420,6 @@ def _resize_tree(
     fields: dict = {
         "src": src,
         "dst": dst,
-        "min_pixels": int(min_pixels),
         "recursive": bool(recursive),
     }
     if target_res and tuple(target_res) != (1024,):
@@ -460,12 +458,10 @@ def _near_twins_preprocess(adapter: str, cfg: dict, base: str, extra) -> None:
     if not isinstance(target_res, (list, tuple)):
         target_res = [target_res]
 
-    # Resize staging tree into buckets. min_pixels defaults to 0 (not 0.5MP) so a
-    # small member can't be dropped and orphan its pair partner.
+    # Resize staging tree into buckets.
     _resize_tree(
         staging,
         resized,
-        min_pixels=int(pp.get("min_pixels", 0)),
         target_res=tuple(int(e) for e in target_res),
         recursive=bool(recursive),
         freefit_max_ratio=pp.get("freefit_max_ratio"),
@@ -989,7 +985,6 @@ def _phash_edit_preprocess(adapter: str, cfg: dict, base: str, extra) -> None:
     _resize_tree(
         pool,
         resized,
-        min_pixels=int(pp.get("min_pixels", 0)),
         target_res=tuple(int(e) for e in target_res),
         recursive=bool(recursive),
     )

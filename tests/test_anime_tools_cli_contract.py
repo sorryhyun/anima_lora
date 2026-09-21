@@ -470,8 +470,6 @@ def test_preprocess_resize_builds_resize_request_from_config_and_args(
     )
     for name in ("TARGET_RES", "PREPROCESS_PATH_PATTERN", "FREEFIT_MAX_RATIO"):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("DROP_LOWRES_IMAGES", "1")
-    monkeypatch.setenv("MIN_PIXELS", "250000")
 
     preprocess.cmd_preprocess_resize(["--overwrite"])
 
@@ -481,7 +479,6 @@ def test_preprocess_resize_builds_resize_request_from_config_and_args(
     assert req.src == "image_dataset"
     assert req.dst == "post_image_dataset/resized"
     assert req.target_res == (768, 1024)
-    assert req.min_pixels == 250000
     assert req.recursive
     assert req.overwrite  # ARGS applied through the request's parser
     assert req.skip == ()
@@ -512,12 +509,7 @@ def test_preprocess_resize_turns_curation_decisions_into_skip(monkeypatch, tmp_p
 
     calls = _capture(monkeypatch, preprocess)
     monkeypatch.setattr(_common, "_path_overrides", lambda: {})
-    for name in (
-        "TARGET_RES",
-        "PREPROCESS_PATH_PATTERN",
-        "DROP_LOWRES_IMAGES",
-        "MIN_PIXELS",
-    ):
+    for name in ("TARGET_RES", "PREPROCESS_PATH_PATTERN"):
         monkeypatch.delenv(name, raising=False)
     decisions = tmp_path / "curation_decisions.json"
     save_curation_decisions(
@@ -545,7 +537,6 @@ def test_preprocess_resize_turns_curation_decisions_into_skip(monkeypatch, tmp_p
     assert req.skip == ("a/skip.png", "b/move.png", "c/gone.png")
     # The trainer's own ledger is the stage's to read, under the trainer's tree.
     assert req.excluded_dir == "post_image_dataset/_excluded"
-    assert req.min_pixels == 500_000  # the package default, no trainer literal
 
 
 # ----- grouping ------------------------------------------------------------------

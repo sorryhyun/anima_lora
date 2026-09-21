@@ -1,6 +1,6 @@
-"""Image-prep section: the trainer's dataset roots / scope / pattern / low-res
-switch on top of the ``anime_tools`` **resize** stage form (min_pixels,
-tiers, crop anchor + margins, free-fit clamp, overwrite, workers).
+"""Image-prep section: the trainer's dataset roots / scope / pattern on top
+of the ``anime_tools`` **resize** stage form (tiers, crop anchor + margins,
+free-fit clamp, overwrite, workers).
 
 The three domain widgets (tier row, 3×3 anchor picker, four margin spins)
 are kept and mapped onto the stage's dests — the schema's ``list`` kind is
@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui.i18n import t
-from gui.tabs.preprocess._section import checkbox, line, no_wheel, spin
+from gui.tabs.preprocess._section import line, no_wheel
 from gui.tabs.preprocess.knobs import (
     DEFAULT_PREPROCESS_PATH_PATTERN,
     DEFAULT_SOURCE_IMAGE_DIR,
@@ -166,7 +166,6 @@ class ImagePrepSection(StageFormSection):
             help_cb,
             title=t("preprocess_image_prep"),
             defaults=defaults,
-            gated_by={"min_pixels": "drop_lowres_images"},
         )
 
     def _build_prefix(self) -> None:
@@ -192,23 +191,9 @@ class ImagePrepSection(StageFormSection):
             t("preprocess_path_pattern"),
             tooltip=t("preprocess_path_pattern_tip"),
         )
-        drop = checkbox(t("preprocess_drop_lowres"))
-        drop.setChecked(bool(pp.get("drop_lowres_images", True)))
-        # min_pixels (a stage field) only applies when the filter is on — the
-        # CLI's drop_lowres=false → --min_pixels 0; wired via ``gated_by``.
-        self.add_trainer_knob(
-            "drop_lowres_images",
-            drop,
-            t("preprocess_drop_lowres"),
-            tooltip=t("preprocess_drop_lowres_tip"),
-        )
 
     def _make_widget(self, fd: dict) -> QWidget:
         dest = fd["dest"]
-        if dest == "min_pixels":
-            min_px = spin(0, 100_000_000, int(fd.get("default") or 0), step=50_000)
-            min_px.setGroupSeparatorShown(True)
-            return min_px
         if dest == "target_res":
             # Dual-use: preprocess resizes to these tiers, and the tab's status
             # / the Dataset tab's resize preview read the same widget.

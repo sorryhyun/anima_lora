@@ -31,7 +31,4 @@ caption_position_clauses = false
 
 sigma_demote = "1024:896,1024:768"
 
-drop_lowres_images = true
-min_pixels = 250000
-
 freefit_max_ratio = 4.0

@@ -1,8 +1,4 @@
 {
-  "resize.min_pixels": {
-    "label": "Min pixels (filter threshold):",
-    "help": "Pixel-count threshold for the low-res filter (width × height). 500000 = 0.5MP, the default — matches the resize/caching scripts' own argparse defaults. Only applies when 'Drop low-resolution images' is on; otherwise it's ignored (the filter is disabled). Override per-run on the CLI with make preprocess ARGS=\"--min_pixels N\". Saved to configs/preprocess.toml."
-  },
   "resize.target_res": {
     "label": "Resolution tiers (target_res):",
     "help": "Multi-scale resolution tiers, as a JSON list of edge sizes (allowed: 512, 768, 896, 1024, 1280, 1536). [1024] is the default — a single ~1MP tier. List more than one (e.g. [1024, 1536]) to train across resolutions like the v1.0 base model: during preprocessing each image is resized into the tier that resizes it the LEAST (nearest bucket by scale; one output per image), so a near-1MP image stays at 1024 rather than being downscaled to 768 and a mixed dataset spreads naturally across tiers. Token counts per tier: 512→1024(square)+1008, 768→2160, 896→3024+3000, 1024→4032+4200, 1280→6300, 1536→8640 — each forward runs at its real token count (no padding). Cost is compiled torch.compile block graphs: 768/1280/1536 add 1 each, 512/896 add 2 (they carry a near-square pair / square plus a diversity family), so keep the list short. The same value is read at train time only to size the torch.compile cache budget; training otherwise consumes whatever latent shapes are already cached on disk."

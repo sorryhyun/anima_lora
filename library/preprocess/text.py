@@ -13,7 +13,6 @@ from collections.abc import Callable, Collection
 from pathlib import Path
 
 import torch
-from PIL import Image
 
 from library.io.cache import TE_CACHE_SUFFIX, resolve_cache_path
 from library.preprocess._dataset import PreprocessStats, walk_images
@@ -139,12 +138,11 @@ def _walk_te_candidates(
     path_pattern: str | None,
     keep_stems: Collection[str] | None,
     keep_rel_stems: Collection[str] | None,
-    min_pixels: int,
     verbose: bool,
 ) -> list[Path]:
     """Enumerate the images a TE cache pass would encode (caption-agnostic).
 
-    Applies the same ``keep_stems`` + ``min_pixels`` filters as
+    Applies the same ``keep_stems`` filters as
     :func:`cache_text_embeddings`; an absent or empty ``.txt`` is *not* a
     filter (uncaptioned images are encoded with an empty caption). Shared by
     the encode loop and :func:`count_pending_text` so they agree on the set.
@@ -179,34 +177,7 @@ def _walk_te_candidates(
                 f"Matched-image filter: keeping {len(candidates)}/{pre} captions "
                 "(resized outputs only)."
             )
-
-    # The per-image header open below only mirrors the resize-time min_pixels
-    # drop. With a ``keep_*`` filter active every candidate already passed
-    # min_pixels at resize, so the open is skipped.
-    already_filtered = keep_stems is not None or keep_rel_stems is not None
-    check_pixels = min_pixels > 0 and not already_filtered
-
-    kept: list[Path] = []
-    skipped_small = 0
-    for p in candidates:
-        if check_pixels:
-            try:
-                with Image.open(p) as im:
-                    w, h = im.size
-            except Exception as e:
-                logger.warning("could not read %s: %s", p.name, e)
-                continue
-            if w * h < min_pixels:
-                skipped_small += 1
-                continue
-        kept.append(p)
-
-    if skipped_small and verbose:
-        print(
-            f"Skipping {skipped_small} images below {min_pixels:,} pixels "
-            f"({min_pixels / 1e6:.2f}MP) -- same filter as the resize stage."
-        )
-    return kept
+    return candidates
 
 
 def count_pending_text(
@@ -217,14 +188,13 @@ def count_pending_text(
     path_pattern: str | None = None,
     keep_stems: Collection[str] | None = None,
     keep_rel_stems: Collection[str] | None = None,
-    min_pixels: int = 500_000,
     overwrite: bool = False,
 ) -> tuple[int, int]:
     """Return ``(pending, total)`` TE caches **without loading the encoder**.
 
     ``pending`` is the number of candidate images whose
     ``{stem}_anima_te.safetensors`` isn't on disk; ``total`` is every candidate
-    (post ``keep_stems`` / ``min_pixels`` filtering). Mirrors the per-batch skip
+    (post ``keep_stems`` filtering). Mirrors the per-batch skip
     in :func:`cache_text_embeddings`, so the entry point can skip the (slow)
     Qwen3 + LLM-adapter load when ``pending == 0``. With ``overwrite`` every
     candidate counts as pending (the encoder always loads)."""
@@ -234,7 +204,6 @@ def count_pending_text(
         path_pattern=path_pattern,
         keep_stems=keep_stems,
         keep_rel_stems=keep_rel_stems,
-        min_pixels=min_pixels,
         verbose=False,
     )
     if overwrite:
@@ -266,7 +235,6 @@ def cache_text_embeddings(
     caption_tag_randomize_rate: float = 0.0,
     caption_transform: Callable[[str], str] | None = None,
     caption_protect_fn: Callable[[str], bool] | None = None,
-    min_pixels: int = 500_000,
     overwrite: bool = False,
     verbose: bool = True,
     progress: ProgressFn | None = None,
@@ -279,8 +247,7 @@ def cache_text_embeddings(
     and the trainer's cache-completeness probe expects a TE cache for each.
 
     Strategies + encoder + (optional) ``llm_adapter`` are supplied loaded + on
-    ``device``. Images below ``min_pixels`` are skipped (mirrors the resize
-    filter). With ``caption_shuffle_variants > 0`` each cache holds N variants
+    ``device``. With ``caption_shuffle_variants > 0`` each cache holds N variants
     (v0 pristine, v1..v{N-1} shuffled + optionally tag-dropped + optionally
     identity-randomized via ``caption_tag_randomize_rate``). Returns counts;
     pass ``progress`` for a per-image bar.
@@ -308,7 +275,6 @@ def cache_text_embeddings(
         path_pattern=path_pattern,
         keep_stems=keep_stems,
         keep_rel_stems=keep_rel_stems,
-        min_pixels=min_pixels,
         verbose=verbose,
     )
 

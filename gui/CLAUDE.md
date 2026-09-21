@@ -89,9 +89,9 @@ must not appear.
 - **`tabs/preprocess/knobs.py`** — the **trainer-native knob table** (`KNOBS:
   tuple[Knob]`: kind / default / `default_from` (const · `preprocess.toml` ·
   `gui_settings.json`) / env name / `persist` elision rule / snapshot flag). Only what is
-  *not* a stage-request field: dataset roots + scope, the low-res sugar
-  (`drop_lowres_images` → `min_pixels=0`), the TE-cache variant knobs, and the three chain
-  gates (`caption_autotag` / `caption_position_clauses` / `run_sam_mask`). Pure functions:
+  *not* a stage-request field: dataset roots + scope, the TE-cache variant knobs, and the
+  three chain gates (`caption_autotag` / `caption_position_clauses` / `run_sam_mask`). Pure
+  functions:
   `resolved_defaults` → `load_values` (`set_variant`), `to_env` (`preprocess_env`),
   `to_overrides` (`preprocess_overrides`), `merge_into_meta` (`[variant]` pop-or-set
   elision). `PREPROCESS_ONLY_KEYS` (rows + `stages`) is ConfigTab's training-snapshot strip
@@ -136,9 +136,10 @@ must not appear.
 - **Save is comment-destructive.** `config_io._save` round-trips via `toml.dumps()`. Don't
   route hand-commented files (e.g. `base.toml`) through a GUI save — edit
   presets/variants instead.
-- **Tab ownership is partitioned.** `_SKIP` keys (`target_res`, `drop_lowres_images`,
-  `min_pixels`) are hidden from ConfigTab because PreprocessingTab owns them (persisted to
-  `preprocess.toml`, not the training config). `_VIRTUAL_KEYS` (`use_valid`,
+- **Tab ownership is partitioned.** `_SKIP` keys (`target_res`) are hidden from ConfigTab
+  because PreprocessingTab owns them (persisted to `preprocess.toml`, not the training
+  config); the retired `drop_lowres_images` / `min_pixels` stay in `_SKIP` so a stale key
+  in a user's TOML never draws a widget. `_VIRTUAL_KEYS` (`use_valid`,
   `validation_split_num`) are written into per-dataset `[[datasets]]` overrides, not flat
   keys. `_BASIC` (`config_io.py`) controls the "Advanced" fold. A knob in the wrong tab
   drifts silently.

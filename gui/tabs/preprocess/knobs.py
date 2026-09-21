@@ -4,8 +4,7 @@ Qt-free.
 This table holds only what is **not** a field of an ``anime_tools`` stage
 request: the dataset roots and scope (``source_image_dir``
 / ``path_scope`` / ``preprocess_path_pattern``), the trainer-side TE-cache
-knobs (``caption_shuffle_variants`` / ``caption_tag_dropout_rate``), the
-low-res filter sugar (``drop_lowres_images`` → ``min_pixels=0``) and the three
+knobs (``caption_shuffle_variants`` / ``caption_tag_dropout_rate``) and the three
 **chain gates** — whether the Run chain runs the autotag / position-clause /
 SAM stages at all (``caption_autotag`` / ``caption_position_clauses`` /
 ``run_sam_mask``). Everything else (resize geometry, caption rewriting,
@@ -36,7 +35,6 @@ from typing import Literal
 # the same pipeline.
 DEFAULT_SOURCE_IMAGE_DIR = "image_dataset"
 DEFAULT_PREPROCESS_PATH_PATTERN = "*"
-DEFAULT_DROP_LOWRES_IMAGES = True
 DEFAULT_TE_SHUFFLE_VARIANTS = 4
 DEFAULT_TE_TAG_DROPOUT = 0.1
 DEFAULT_CAPTION_POSITION_CLAUSES = False
@@ -55,6 +53,12 @@ DEFAULT_SAM_DILATE = 5
 STAGES_KEY = "stages"
 
 Kind = Literal["bool", "int", "float", "str"]
+# Knobs that left the table: a variant saved by an older GUI may still carry
+# them; they load as nothing and are dropped on the next save.
+RETIRED_KEYS = (
+    "drop_lowres_images",
+)  # resize lost its pixel floor (anime_tools 0.7.5)
+
 DefaultFrom = Literal["const", "preprocess_toml", "gui_settings"]
 # How the knob reaches the variant's ``[variant]`` meta on save:
 #   if_changed        — written only when it differs from the *hardcoded* default
@@ -104,18 +108,6 @@ KNOBS: tuple[Knob, ...] = (
         DEFAULT_PREPROCESS_PATH_PATTERN,
         env="PREPROCESS_PATH_PATTERN",
         empty_fallback="const",
-    ),
-    # Sugar over the resize stage's ``min_pixels``: off → ``--min_pixels 0``
-    # (``scripts/tasks/preprocess.py::_min_pixels_args``); the threshold itself
-    # is the stage field, gated on this box.
-    Knob(
-        "drop_lowres_images",
-        "image",
-        "bool",
-        DEFAULT_DROP_LOWRES_IMAGES,
-        default_from="preprocess_toml",
-        env="DROP_LOWRES_IMAGES",
-        snapshot=True,
     ),
     Knob(
         "caption_shuffle_variants",
@@ -302,6 +294,8 @@ def merge_into_meta(
     ``include_mask`` (so an invalid mask rule can't block a cache build).
     Returns ``meta``. The ``stages`` sub-table is ``stage_form``'s
     (``merge_stages_into_meta``)."""
+    for key in RETIRED_KEYS:
+        meta.pop(key, None)
     for knob in KNOBS:
         if knob.persist == "mask":
             if not include_mask:

@@ -17,7 +17,6 @@ seed = 42
 [preprocess]
 caption_shuffle_variants = 4
 caption_tag_dropout_rate = 0.0
-min_pixels = 0
 
 [training]
 network_dim = 32

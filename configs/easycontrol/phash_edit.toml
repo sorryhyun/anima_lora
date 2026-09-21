@@ -42,7 +42,6 @@ colorize_variants = 4       # per-variant coin flip: `-monochrome, -greyscale` v
 # TE-encoded. At the knobs above that is 2.7k resize+VAE and 3.7k TE encodes
 # instead of 7.4k of each. Paths default to <base>/{pool,resized,cache,cond}
 # and <base>/pairs.json; set pool_dir / manifest here to override.
-min_pixels = 0              # never drop a member and orphan its pair partner
 recursive = true
 vae = 'models/vae/qwen_image_vae.safetensors'
 batch_size = 4
