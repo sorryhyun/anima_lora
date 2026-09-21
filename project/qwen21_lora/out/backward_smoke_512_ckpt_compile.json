@@ -1,0 +1,60 @@
+{
+  "resolution": 512,
+  "image_tokens": 1024,
+  "text_len": 64,
+  "rank": 16,
+  "lora_params": 41943040,
+  "patched_linears": 224,
+  "blocks_to_swap": 12,
+  "compile": true,
+  "grad_checkpointing": true,
+  "steps": [
+    {
+      "step": 0,
+      "loss": 2.2418830394744873,
+      "grad_norm": 0.2109246701002121,
+      "seconds": 9.530639886856079,
+      "peak_gb": 9.326001644134521,
+      "params_without_grad": 0,
+      "params_nonfinite_grad": 0,
+      "params_zero_grad": 224,
+      "placement_restored": true
+    },
+    {
+      "step": 1,
+      "loss": 4.279404163360596,
+      "grad_norm": 0.7446054816246033,
+      "seconds": 1.177713394165039,
+      "peak_gb": 9.59113883972168,
+      "params_without_grad": 0,
+      "params_nonfinite_grad": 0,
+      "params_zero_grad": 0,
+      "placement_restored": true
+    },
+    {
+      "step": 2,
+      "loss": 2.881241798400879,
+      "grad_norm": 0.31271567940711975,
+      "seconds": 1.1771459579467773,
+      "peak_gb": 9.59113883972168,
+      "params_without_grad": 0,
+      "params_nonfinite_grad": 0,
+      "params_zero_grad": 0,
+      "placement_restored": true
+    },
+    {
+      "step": 3,
+      "loss": 3.2911458015441895,
+      "grad_norm": 0.5221990942955017,
+      "seconds": 1.1765038967132568,
+      "peak_gb": 9.59113883972168,
+      "params_without_grad": 0,
+      "params_nonfinite_grad": 0,
+      "params_zero_grad": 0,
+      "placement_restored": true
+    }
+  ],
+  "params_off_device": [],
+  "steady_seconds": 1.1765038967132568,
+  "peak_gb": 9.59113883972168
+}

@@ -1,0 +1,60 @@
+{
+  "output": "project/qwen21_lora/out/lora_channel_caststation.safetensors",
+  "metadata": {
+    "base_model": "Qwen-Image-2.1",
+    "rank": "16",
+    "alpha": "16",
+    "targets": "transformer_blocks\\.\\d+\\.(attn\\.(to_q|to_k|to_v|to_out\\.0)|img_mlp\\.(proj|gate_layer|out))",
+    "lora_dtype": "bf16",
+    "image_tokens": "3996-4216",
+    "epochs": "8",
+    "samples": "30",
+    "lr": "0.0001"
+  },
+  "total_steps": 240,
+  "minutes": 15.711251930395763,
+  "history": [
+    {
+      "epoch": 0,
+      "loss": 0.4768000066280365,
+      "seconds": 118.06135869026184
+    },
+    {
+      "epoch": 1,
+      "loss": 0.2826394552985827,
+      "seconds": 117.85600304603577
+    },
+    {
+      "epoch": 2,
+      "loss": 0.27231484204530715,
+      "seconds": 117.79607105255127
+    },
+    {
+      "epoch": 3,
+      "loss": 0.2502589796980222,
+      "seconds": 117.74672865867615
+    },
+    {
+      "epoch": 4,
+      "loss": 0.2320452998081843,
+      "seconds": 117.78419947624207
+    },
+    {
+      "epoch": 5,
+      "loss": 0.22343572974205017,
+      "seconds": 117.69381070137024
+    },
+    {
+      "epoch": 6,
+      "loss": 0.22636587917804718,
+      "seconds": 117.72703146934509
+    },
+    {
+      "epoch": 7,
+      "loss": 0.2094488504032294,
+      "seconds": 117.73900961875916
+    }
+  ],
+  "peak_gb": 13.973711967468262,
+  "blocks_to_swap": 5
+}

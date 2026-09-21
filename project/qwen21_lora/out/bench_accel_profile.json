@@ -1,0 +1,22 @@
+{
+  "resolution": 1024,
+  "steps": 4,
+  "repeat": 1,
+  "compile_mode": null,
+  "device": "NVIDIA GeForce RTX 5070 Ti",
+  "torch": "2.12.0+cu132",
+  "arms": [
+    {
+      "arm": "native",
+      "backend": "native",
+      "times_s": [
+        3.93
+      ],
+      "steady_s": 3.93,
+      "s_per_step": 0.9825,
+      "peak_gb": 12.25,
+      "max_abs_delta_vs_native": 0.0,
+      "speedup": 1.0
+    }
+  ]
+}

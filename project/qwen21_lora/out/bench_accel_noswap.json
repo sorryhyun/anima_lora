@@ -1,0 +1,62 @@
+{
+  "resolution": 1024,
+  "steps": 20,
+  "repeat": 2,
+  "compile_mode": null,
+  "device": "NVIDIA GeForce RTX 5070 Ti",
+  "torch": "2.12.0+cu132",
+  "arms": [
+    {
+      "arm": "native",
+      "backend": "native",
+      "times_s": [
+        15.14,
+        15.68
+      ],
+      "steady_s": 15.68,
+      "s_per_step": 0.7842,
+      "peak_gb": 13.87,
+      "max_abs_delta_vs_native": 0.0,
+      "speedup": 1.0
+    },
+    {
+      "arm": "flash",
+      "backend": "flash",
+      "times_s": [
+        15.16,
+        15.67
+      ],
+      "steady_s": 15.67,
+      "s_per_step": 0.7835,
+      "peak_gb": 13.87,
+      "max_abs_delta_vs_native": 0.91406,
+      "speedup": 1.001
+    },
+    {
+      "arm": "native+compile",
+      "backend": "native",
+      "times_s": [
+        14.29,
+        14.15
+      ],
+      "steady_s": 14.15,
+      "s_per_step": 0.7076,
+      "peak_gb": 13.87,
+      "max_abs_delta_vs_native": 0.87695,
+      "speedup": 1.108
+    },
+    {
+      "arm": "flash+compile",
+      "backend": "flash",
+      "times_s": [
+        13.99,
+        14.13
+      ],
+      "steady_s": 14.13,
+      "s_per_step": 0.7065,
+      "peak_gb": 13.87,
+      "max_abs_delta_vs_native": 0.69824,
+      "speedup": 1.11
+    }
+  ]
+}

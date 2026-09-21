@@ -1,1 +1,5 @@
-out/
+cache/
+# out/: keep the small JSON records (bench / smoke / run meta), drop images + weights
+out/**
+!out/**/
+!out/**/*.json

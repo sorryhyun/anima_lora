@@ -23,6 +23,7 @@ moves per forward.
 
 from __future__ import annotations
 
+import contextlib
 import gc
 import sys
 from pathlib import Path
@@ -113,7 +114,7 @@ def to_device_except_blocks(
 
 
 def swap_schedule(
-    num_blocks: int, blocks_to_swap: int, minimal: bool = True
+    num_blocks: int, blocks_to_swap: int, minimal: bool = True, restore: bool = True
 ) -> dict[int, tuple[int, int]]:
     """``{block index: (index to evict, index to load)}`` after that block runs.
 
@@ -134,9 +135,20 @@ def swap_schedule(
     need both hooks and the phases interleave, so ``minimal=False`` (and any
     ``S > N/2``) falls back to ``ModelOffloader``'s rolling ring, which is
     ``N`` moves — no worse than ``2S`` once ``S`` passes ``N/2``.
+
+    ``restore=False`` drops the second range: training leaves the swapped tail
+    on the device for the backward, which walks it back itself. What is left is
+    the first range at any ``S``, which is ``ModelOffloader.submit_move_blocks``
+    exactly (it gates on ``block_idx >= blocks_to_swap`` for the same reason),
+    so the rolling-ring fallback does not apply.
     """
     if blocks_to_swap <= 0:
         return {}
+    if not restore:
+        return {
+            idx: (idx, num_blocks - blocks_to_swap + idx)
+            for idx in range(blocks_to_swap)
+        }
     if not minimal or 2 * blocks_to_swap > num_blocks:
         return {
             idx: (idx, (num_blocks - blocks_to_swap + idx) % num_blocks)
@@ -152,6 +164,32 @@ def swap_schedule(
         }
     )
     return schedule
+
+
+_recomputing = False
+
+
+@contextlib.contextmanager
+def _recompute_guard():
+    global _recomputing
+    _recomputing = True
+    try:
+        yield
+    finally:
+        _recomputing = False
+
+
+def checkpoint_context_fn():
+    """``context_fn`` for ``torch.utils.checkpoint`` — hooks off during recompute.
+
+    Gradient checkpointing runs each block's forward a second time, inside the
+    backward, and that second ``__call__`` fires the swap hooks again: every
+    recomputed block would queue another move and the schedule would run one
+    eviction ahead of the blocks still to be recomputed. Wrapping the recompute
+    in this context makes both hooks no-ops, leaving the backward hooks
+    ``ModelOffloader`` installs as the only driver of the backward direction.
+    """
+    return contextlib.nullcontext(), _recompute_guard()
 
 
 class Attached:
@@ -209,9 +247,9 @@ def attach(
     normally.
 
     ``minimal_schedule=False`` reproduces ``ModelOffloader``'s own rolling ring,
-    for comparing against it, and is forced under ``supports_backward``: the
-    backward hooks run the offloader's own index math, so the schedule has to
-    match the ring they expect.
+    for comparing against it. It is ignored under ``supports_backward``, where
+    the forward only half-swaps (:func:`swap_schedule` ``restore=False``) and the
+    offloader's own backward hooks walk the tail back.
     """
     blocks = find_blocks(model, blocks_path)
     if blocks_to_swap <= 0:
@@ -227,7 +265,10 @@ def attach(
     attached = Attached(offloader, blocks, model)
 
     schedule = swap_schedule(
-        len(blocks), blocks_to_swap, minimal=minimal_schedule and not supports_backward
+        len(blocks),
+        blocks_to_swap,
+        minimal=minimal_schedule,
+        restore=not supports_backward,
     )
     loaded = {cuda_idx for _cpu, cuda_idx in schedule.values()}
     for idx, block in enumerate(blocks):
@@ -253,6 +294,8 @@ def attach(
 
 def _make_wait_hook(offloader: ModelOffloader, idx: int):
     def hook(_module, _args):
+        if _recomputing:
+            return
         offloader.wait_for_block(idx)
 
     return hook
@@ -262,6 +305,8 @@ def _make_submit_hook(
     offloader: ModelOffloader, blocks: nn.ModuleList, cpu_idx: int, cuda_idx: int
 ):
     def hook(_module, _args, _output):
+        if _recomputing:
+            return
         offloader._submit_move_blocks(blocks, cpu_idx, cuda_idx)
 
     return hook

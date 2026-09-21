@@ -1,0 +1,34 @@
+{
+  "resolution": 1024,
+  "steps": 3,
+  "repeat": 1,
+  "compile_mode": null,
+  "device": "NVIDIA GeForce RTX 5070 Ti",
+  "torch": "2.12.0+cu132",
+  "arms": [
+    {
+      "arm": "native",
+      "backend": "native",
+      "times_s": [
+        1.85
+      ],
+      "steady_s": 1.85,
+      "s_per_step": 0.6172,
+      "peak_gb": 13.87,
+      "max_abs_delta_vs_native": 0.0,
+      "speedup": 1.0
+    },
+    {
+      "arm": "flash",
+      "backend": "flash",
+      "times_s": [
+        1.85
+      ],
+      "steady_s": 1.85,
+      "s_per_step": 0.6173,
+      "peak_gb": 13.87,
+      "max_abs_delta_vs_native": 0.03125,
+      "speedup": 1.0
+    }
+  ]
+}

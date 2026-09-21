@@ -1,0 +1,44 @@
+{
+  "resolution": 512,
+  "image_tokens": 1024,
+  "text_len": 64,
+  "rank": 16,
+  "lora_params": 41943040,
+  "patched_linears": 224,
+  "blocks_to_swap": 12,
+  "compile": false,
+  "grad_checkpointing": true,
+  "steps": [
+    {
+      "step": 0,
+      "loss": 2.24108624458313,
+      "grad_norm": 0.22718024253845215,
+      "seconds": 2.2376303672790527,
+      "peak_gb": 9.347550868988037,
+      "params_without_grad": 448,
+      "placement_restored": true
+    },
+    {
+      "step": 1,
+      "loss": 4.292916297912598,
+      "grad_norm": 0.7702318429946899,
+      "seconds": 1.177135944366455,
+      "peak_gb": 9.660051345825195,
+      "params_without_grad": 448,
+      "placement_restored": true
+    },
+    {
+      "step": 2,
+      "loss": 2.9149668216705322,
+      "grad_norm": 0.451570063829422,
+      "seconds": 1.1764872074127197,
+      "peak_gb": 9.660051345825195,
+      "params_without_grad": 448,
+      "placement_restored": true
+    }
+  ],
+  "nonfinite_grads": [],
+  "params_off_device": [],
+  "steady_seconds": 1.1764872074127197,
+  "peak_gb": 9.660051345825195
+}

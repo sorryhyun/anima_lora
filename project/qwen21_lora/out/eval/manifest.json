@@ -1,0 +1,216 @@
+{
+  "lora": "project/qwen21_lora/out/lora_channel_caststation.safetensors",
+  "lora_metadata": {
+    "base_model": "Qwen-Image-2.1",
+    "rank": "16",
+    "epochs": "8",
+    "lora_dtype": "bf16",
+    "alpha": "16",
+    "samples": "30",
+    "lr": "0.0001",
+    "targets": "transformer_blocks\\.\\d+\\.(attn\\.(to_q|to_k|to_v|to_out\\.0)|img_mlp\\.(proj|gate_layer|out))",
+    "image_tokens": "3996-4216"
+  },
+  "size": "896x1184",
+  "steps": 20,
+  "true_cfg_scale": 1.0,
+  "negative_prompt": "",
+  "multipliers": [
+    1.0,
+    0.0
+  ],
+  "images": [
+    {
+      "file": "00_m1.png",
+      "index": 0,
+      "multiplier": 1.0,
+      "seed": 1234,
+      "prompt": "safe, 1girl, solo, @channel (caststation), blonde hair, school uniform, classroom, sitting at desk, smile, looking at viewer",
+      "denoise_seconds": 18.41767406463623
+    },
+    {
+      "file": "01_m1.png",
+      "index": 1,
+      "multiplier": 1.0,
+      "seed": 1235,
+      "prompt": "safe, 1girl, solo, @channel (caststation), long hair, blush, bedroom, on bed, looking at viewer",
+      "denoise_seconds": 18.546329975128174
+    },
+    {
+      "file": "02_m1.png",
+      "index": 2,
+      "multiplier": 1.0,
+      "seed": 1236,
+      "prompt": "safe, 1boy, 1girl, @channel (caststation), hetero, hug, indoors, curtains",
+      "denoise_seconds": 18.58626961708069
+    },
+    {
+      "file": "03_m1.png",
+      "index": 3,
+      "multiplier": 1.0,
+      "seed": 1237,
+      "prompt": "safe, 2girls, @channel (caststation), outdoors, park bench, eating ice cream, summer",
+      "denoise_seconds": 18.59950852394104
+    },
+    {
+      "file": "04_m1.png",
+      "index": 4,
+      "multiplier": 1.0,
+      "seed": 1238,
+      "prompt": "safe, 1girl, solo, @channel (caststation), monochrome, greyscale, sitting on a windowsill, film grain",
+      "denoise_seconds": 18.601102352142334
+    },
+    {
+      "file": "05_m1.png",
+      "index": 5,
+      "multiplier": 1.0,
+      "seed": 1239,
+      "prompt": "safe, 1girl, solo, @channel (caststation), maid, holding a tray, cafe interior",
+      "denoise_seconds": 18.55506420135498
+    },
+    {
+      "file": "06_m1.png",
+      "index": 6,
+      "multiplier": 1.0,
+      "seed": 1240,
+      "prompt": "safe, 1girl, solo, @channel (caststation), upper body, portrait, simple background",
+      "denoise_seconds": 18.580079317092896
+    },
+    {
+      "file": "07_m1.png",
+      "index": 7,
+      "multiplier": 1.0,
+      "seed": 1241,
+      "prompt": "safe, 1girl, solo, wakamo (blue archive), blue archive, @channel (caststation), fox ears, halo, black hair, yellow eyes, smile, full body, standing, white background",
+      "denoise_seconds": 18.608278036117554
+    },
+    {
+      "file": "08_m1.png",
+      "index": 8,
+      "multiplier": 1.0,
+      "seed": 1242,
+      "prompt": "sensitive, 1girl, solo, @channel (caststation), swimsuit, bikini, beach, day, blue sky, looking at viewer",
+      "denoise_seconds": 18.610352993011475
+    },
+    {
+      "file": "09_m1.png",
+      "index": 9,
+      "multiplier": 1.0,
+      "seed": 1243,
+      "prompt": "safe, 1girl, solo, @channel (caststation), cat ears, hoodie, night, city street, neon lights, from side",
+      "denoise_seconds": 18.541470527648926
+    },
+    {
+      "file": "10_m1.png",
+      "index": 10,
+      "multiplier": 1.0,
+      "seed": 1244,
+      "prompt": "safe, 1girl, solo, @channel (caststation), twintails, red eyes, dress, garden, flowers, wind, hair blowing",
+      "denoise_seconds": 18.621556758880615
+    },
+    {
+      "file": "11_m1.png",
+      "index": 11,
+      "multiplier": 1.0,
+      "seed": 1245,
+      "prompt": "safe, 1girl, solo, @channel (caststation), sitting, crossed legs, thighhighs, black dress, chair, dim lighting, looking down",
+      "denoise_seconds": 18.599427700042725
+    },
+    {
+      "file": "00_m0.png",
+      "index": 0,
+      "multiplier": 0.0,
+      "seed": 1234,
+      "prompt": "safe, 1girl, solo, @channel (caststation), blonde hair, school uniform, classroom, sitting at desk, smile, looking at viewer",
+      "denoise_seconds": 16.968209266662598
+    },
+    {
+      "file": "01_m0.png",
+      "index": 1,
+      "multiplier": 0.0,
+      "seed": 1235,
+      "prompt": "safe, 1girl, solo, @channel (caststation), long hair, blush, bedroom, on bed, looking at viewer",
+      "denoise_seconds": 16.96937847137451
+    },
+    {
+      "file": "02_m0.png",
+      "index": 2,
+      "multiplier": 0.0,
+      "seed": 1236,
+      "prompt": "safe, 1boy, 1girl, @channel (caststation), hetero, hug, indoors, curtains",
+      "denoise_seconds": 16.970131635665894
+    },
+    {
+      "file": "03_m0.png",
+      "index": 3,
+      "multiplier": 0.0,
+      "seed": 1237,
+      "prompt": "safe, 2girls, @channel (caststation), outdoors, park bench, eating ice cream, summer",
+      "denoise_seconds": 16.977447271347046
+    },
+    {
+      "file": "04_m0.png",
+      "index": 4,
+      "multiplier": 0.0,
+      "seed": 1238,
+      "prompt": "safe, 1girl, solo, @channel (caststation), monochrome, greyscale, sitting on a windowsill, film grain",
+      "denoise_seconds": 16.979316234588623
+    },
+    {
+      "file": "05_m0.png",
+      "index": 5,
+      "multiplier": 0.0,
+      "seed": 1239,
+      "prompt": "safe, 1girl, solo, @channel (caststation), maid, holding a tray, cafe interior",
+      "denoise_seconds": 16.969669103622437
+    },
+    {
+      "file": "06_m0.png",
+      "index": 6,
+      "multiplier": 0.0,
+      "seed": 1240,
+      "prompt": "safe, 1girl, solo, @channel (caststation), upper body, portrait, simple background",
+      "denoise_seconds": 16.978939533233643
+    },
+    {
+      "file": "07_m0.png",
+      "index": 7,
+      "multiplier": 0.0,
+      "seed": 1241,
+      "prompt": "safe, 1girl, solo, wakamo (blue archive), blue archive, @channel (caststation), fox ears, halo, black hair, yellow eyes, smile, full body, standing, white background",
+      "denoise_seconds": 16.977380752563477
+    },
+    {
+      "file": "08_m0.png",
+      "index": 8,
+      "multiplier": 0.0,
+      "seed": 1242,
+      "prompt": "sensitive, 1girl, solo, @channel (caststation), swimsuit, bikini, beach, day, blue sky, looking at viewer",
+      "denoise_seconds": 16.97435688972473
+    },
+    {
+      "file": "09_m0.png",
+      "index": 9,
+      "multiplier": 0.0,
+      "seed": 1243,
+      "prompt": "safe, 1girl, solo, @channel (caststation), cat ears, hoodie, night, city street, neon lights, from side",
+      "denoise_seconds": 16.977837085723877
+    },
+    {
+      "file": "10_m0.png",
+      "index": 10,
+      "multiplier": 0.0,
+      "seed": 1244,
+      "prompt": "safe, 1girl, solo, @channel (caststation), twintails, red eyes, dress, garden, flowers, wind, hair blowing",
+      "denoise_seconds": 16.97452402114868
+    },
+    {
+      "file": "11_m0.png",
+      "index": 11,
+      "multiplier": 0.0,
+      "seed": 1245,
+      "prompt": "safe, 1girl, solo, @channel (caststation), sitting, crossed legs, thighhighs, black dress, chair, dim lighting, looking down",
+      "denoise_seconds": 16.966341495513916
+    }
+  ]
+}
