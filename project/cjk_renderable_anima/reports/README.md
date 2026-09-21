@@ -6,13 +6,13 @@ date and is not rewritten when a later run changes a number (the later
 report wins). Settled verdicts live in [`../findings.md`](../findings.md), the
 state digest in [`../README.md`](../README.md), the forward plan in
 [`../plan.md`](../plan.md) and the method as built in
-[`../synth.md`](../synth.md). Until 2026-09-15 everything from W2d on was one
+[`../training.md`](../training.md). Until 2026-09-15 everything from W2d on was one
 file, `history.md`; it was split here without edits.
 
 Reports written before 2026-09-20 cite `plan_synth.md` / `plan_synth2.md` /
 `plan_synth3.md` / `plan_synth4.md`; those four are archived under
 `_archive/cjk_renderable_anima/` beside the 09-20 `plan.md`, `plan_grid.md` and
-`plan_step1.md` (archived 2026-09-21); their live content is in `../synth.md`,
+`plan_step1.md` (archived 2026-09-21); their live content is in `../training.md`,
 `../findings.md` and `../sent_run.md`, and `../plan.md` is the forward plan.
 
 ## Index (chronological)
@@ -42,7 +42,7 @@ Reports written before 2026-09-20 cite `plan_synth.md` / `plan_synth2.md` /
 (2026-09-19, the sentence step on the `step1_0919` seed — pooled sub-exact
 lift +0.086, `_held` groups moving). Their numbers, argv and job ids are in
 `_archive/cjk_renderable_anima/plan_2026_09_20.md` *Where the line stands* and
-[`../synth.md`](../synth.md) *The recipe as run*; the Δ0-scale arms behind
+`_archive/cjk_renderable_anima/synth.md` *The recipe as run*; the Δ0-scale arms behind
 `--box_share` are in `_archive/cjk_renderable_anima/plan_synth4.md` R4.5.
 
 ## Conventions

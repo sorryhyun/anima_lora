@@ -6,7 +6,7 @@ screen per topic, no chronology. The dated run record is
 [`reports/`](reports/README.md) (indexed: W2d Runs 1–3, the order probe, the σ
 diagnostic, the strings arm, the S line); the forward plan is
 [`plan.md`](plan.md) (covering Japanese, the sentence run, `preview2`) and the method as
-built is [`synth.md`](synth.md); the
+in use is [`training.md`](training.md); the
 W0–W2 report is `reports/wake_w0_w2_2026_09_13.md`. The predecessor lines'
 verdicts are read-only in
 [`../cjk_aware_anima_dit/findings.md`](../cjk_aware_anima_dit/findings.md)

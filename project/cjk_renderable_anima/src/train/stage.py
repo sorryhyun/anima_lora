@@ -73,7 +73,9 @@ def stage_train(a):
             ),
             flush=True,
         )
-    cache, train_ext, ev_ext = _encode_text(recs, ev, device, out, bool(a.pair_loss))
+    cache, train_ext, ev_ext = _encode_text(
+        recs, ev, device, out, bool(a.pair_loss), te_cache=data / "te_cache"
+    )
     lat = LatentStore(a, data, recs_all, keep, device, ref=bool(a.pair_loss))
 
     anima = load_dit_model(args, device, torch.bfloat16)
@@ -508,13 +510,13 @@ def _held_out_split(a, recs_all, ev, out):
     return held, keep
 
 
-def _encode_text(recs, ev, device, out, refs: bool = False):
+def _encode_text(recs, ev, device, out, refs: bool = False, te_cache=None):
     """Qwen side + pack-routed T5 ids, pre-adapter, for the training and eval
     captions (and, ``refs``, the ΔFM sibling captions — Latin, so they touch
     no ext row and stay out of ``train_ext``). Writes ``eval_coverage.json``
     (trained rows / rows per string)."""
     t0 = time.time()
-    cache = encode_captions([r["caption"] for r in recs], device)
+    cache = encode_captions([r["caption"] for r in recs], device, te_cache)
     train_ext = ext_ids_of(cache)
     if refs:
         ref_caps = sorted({r["ref_caption"] for r in recs if "ref_caption" in r})
@@ -582,20 +584,31 @@ class LatentStore:
             print(f"latents: {tuple(lat.shape)} in {time.time() - t0:.0f}s", flush=True)
         else:
             lat_file = data / f"latents_mixed_{'_'.join(sorted(by_shape))}.pt"
+            # one .npy per shape, written chunk by chunk and mapped back: a
+            # 100 k-item dir neither collects its latents in RAM nor loses a
+            # half-done encode (the single .pt is the pre-2026-09-21 cache)
+            lat_dir = lat_file.with_suffix("")
             if lat_file.exists():
                 lat = torch.load(lat_file)
             else:
-                vae = load_vae(device)
-                lat = {
-                    shp: encode_images(
+                lat_dir.mkdir(exist_ok=True)
+                vae = None
+
+                def one(shp, idxs):
+                    nonlocal vae
+                    f = lat_dir / f"{shp}.npy"
+                    mark = f.with_suffix(".npy.done")
+                    if not (mark.exists() and int(mark.read_text()) == len(idxs)):
+                        vae = vae or load_vae(device)
+                    return encode_images(
                         vae,
                         [recs_all[i]["file"] for i in idxs],
                         device,
                         parse_shape(shp),
+                        out_file=f,
                     )
-                    for shp, idxs in by_shape.items()
-                }
-                torch.save(lat, lat_file)
+
+                lat = {shp: one(shp, idxs) for shp, idxs in by_shape.items()}
                 del vae
                 torch.cuda.empty_cache()
             # recs_all index → (shape, row in that shape's tensor)

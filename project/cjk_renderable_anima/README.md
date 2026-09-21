@@ -10,12 +10,14 @@ frozen text encoder; the only trainable object is a delta on the vocab
 pack's ext rows, so EN prompts are bit-exact by construction and the
 artefact ships as an ordinary vocab pack.
 
-## State (2026-09-20)
+## State (2026-09-21)
 
-The line trains a **rows** arm on self-generated scene composites (the S
-line): one ext-row delta per unit, no encoder, no `c_flat`, no flat items.
-Two steps — **step 1** the single-glyph seed table, **step 2** the sentence
-pass on top of it.
+The line trains a **rows** arm — one ext-row delta per Qwen piece, no encoder,
+no `c_flat`, no flat items — on a 50 : 50 mix of self-generated scene
+composites and mechanical grid items, plain flow matching
+([`training.md`](training.md)). Coverage is built as disjoint tables merged by
+ext id; the **sentence run** then warm-starts the merged table
+([`plan.md`](plan.md)).
 
 - **Every launch states its pack.** `ANIMA_VOCAB_PACK=models/vocab_packs/anima_cjk_vocab_pack`
   is raw (log sha `7b9fce0bb57b`); `configs/base.toml` still defaults to
@@ -46,12 +48,13 @@ pass on top of it.
 
 [`plan.md`](plan.md) is the single forward plan: how the table comes to cover
 Japanese, how the sentence run is done on it, and what `preview2` is.
-[`synth.md`](synth.md) is the S line as built, including the exact
-`step1_0920` / `step2_0919` argv. [`findings.md`](findings.md) holds the
+[`training.md`](training.md) is how the table is trained today — scene
+pools, the data stage, the train knobs, how a table is read, merge and bake.
+[`findings.md`](findings.md) holds the
 settled verdicts one screen per topic; [`reports/`](reports/README.md) is
 the dated run record (indexed: W0–W2, W2d Runs 1–3, order probe, σ
 diagnostic, strings arm, canvas-shape gate, the S line). Older plans (`plan_synth*.md`, the 09-20 `plan.md`, `plan_grid.md`,
-`plan_step1.md`, the full deploy plan) are archived under
+`plan_step1.md`, `synth.md`, `suggestions.md`, the full deploy plan) are archived under
 `_archive/cjk_renderable_anima/` (`plan.md` *Where the older plans went*).
 [`diagram.html`](diagram.html) is the one-figure picture of what trains and
 how (frozen Anima path + the address table; open in a browser), **the
@@ -137,16 +140,14 @@ CPU-only and safe inline. Corpus bubbles come from
 `post_image_dataset/render/ja/{resized,heldout}/boxes.jsonl` (local, not in
 the repo).
 
-**The recipe of record — the `step1_0920` and `step2_0919` argv, with what
-every block is doing — is [`synth.md`](synth.md) *The recipe as run*.**
-Reproduced there rather than here so it stays beside the design it
-implements. The two other stages that take an arm:
+**The recipe in use — the data and train argv with what every knob is doing —
+is [`training.md`](training.md).** The two other stages that take an arm:
 
 ```bash
 # native — the scene-prompt read, a second job on a finished arm
 make daemon-run ARGS="--label step1-native --stall-timeout 0 --queue \
     project/cjk_renderable_anima/src/wake_probe.py --stage native --arm rows \
-    --data_tag step1_0920 --arm_tag s53k --native_chars あ,か,す,日 \
+    --data_tag step1_0921 --arm_tag s30k --native_chars あ,か,す,日 \
     --native_clauses en,swap --seeds 2 --delta_parts full"
 
 # target — the user's own ComfyUI captions (assets/target_prompts.txt:
@@ -155,25 +156,7 @@ make daemon-run ARGS="--label step1-native --stall-timeout 0 --queue \
 # only "does it say はい".
 make daemon-run ARGS="--label step1-target --stall-timeout 0 --queue \
     project/cjk_renderable_anima/src/wake_probe.py --stage target --arm rows \
-    --data_tag step1_0920 --arm_tag s53k --eval_shape 768x1344 --steps 30 --seeds 2"
-
-# Archived — the W2d Run 3 encoder recipe (hybrid g + f). The encoder arm has not
-# run since 2026-09-14; it is kept because extending the hybrid table needs it,
-# and because a rows warm start reads an encoder source's shared `common` vector.
-.venv/bin/python project/cjk_renderable_anima/src/wake_probe.py \
-    --stage data --arm encoder --data_tag wd \
-    --units kana --units words:120/held=8 --n_single 40
-
-make daemon-run ARGS="--label wake-words --stall-timeout 0 --queue \
-    project/cjk_renderable_anima/src/wake_probe.py --stage train eval --arm encoder \
-    --data_tag wd --arm_tag w120_s8k_fres_warm --train_steps 8000 --batch 4 \
-    --t_min 0.7 --t_max 0.9 --compile 1 --grad_ckpt 0 --aggressive_recompute 0 \
-    --seeds 2 --no_floor --lr_common 1e-3 --common_cap 0.75 --out_scale 0.0625 \
-    --lr_enc 3e-5 --lr_decay cosine --kill_spread_step 0 --kill_max_row 0 \
-    --enc_pool spatial --font_mode mean --head_init random --init_spread 1.0 \
-    --init_encoder output/wake_probe/encoder_w2_held32_s6k_cos_rinit_fres/trained.pt \
-    --init_free    output/wake_probe/encoder_w2_held32_s6k_cos_rinit_fres/trained.pt \
-    --free_residual 1e-3 --lr_free 1e-3"
+    --data_tag step1_0921 --arm_tag s30k --eval_shape 768x1344 --steps 30 --seeds 2"
 ```
 
 Outputs land in `output/wake_probe/<arm>_<data_tag>_<arm_tag>/`: `report.md`
@@ -230,11 +213,11 @@ three) — do not trust a `line` / `corpus` eval on them.
 | path | what |
 |---|---|
 | `plan.md` | **the forward plan (rewritten 2026-09-21)** — covering Japanese (the joint piece ranking, the tables, the grid-mix recipe, multi-glyph units in the data, reading and merging a cold table), the sentence run (data and train argv, sizing, reading rules), and `preview2` for v2.0.0.beta2 |
-| `synth.md` | **the S line as built** — why composites, the scene prompts and pools, the instrument in build order, the ΔFM loss as built, the `step1_0920` / `step2_0919` argv, the rulers, the budget |
+| `training.md` | **how the table is trained today** — what trains, scene pools, the data stage (scene singles + grid items, multi-glyph units, sharded builds, pre-training checks), the train knobs and the `step1_0921` argv, reading a table (eval, native, the rulers), merge / sentence run / bake, cost |
 | `sent_run.md` | **the sentence pass on one page** — every sentence run 09-16 → 09-20 with its read, what 09-20 measured (anchor μ as the trade knob, the habit shift, eval lift not reaching scene prompts, the `BoxSplit` log), the row-exposure read (content is gated per row at ≈ 1 000 multi-glyph draws; drift is Zipfian), the boost gate arm (**failed**: 8 rows at ≥ 1 000 draws gained −0.023, the partner's number; variety of strings per row is the reading left), reading rules |
 | `plan_z8.md` | **2026-09-21** — the logistics of `step1_0921z` on a borrowed 96 GB box for one night (Tailscale SSH, after hours only, done by 09:00 09-22): the 1 900-row cold table (≈ 85 % of dialogue lines with `step1_0921`, 152 k steps at ≈ 5.3 it/s), what is already built here, bring-up, the long run, what comes back; KO / ZH parked |
 | `diagram.html` | the one-figure picture (open in a browser) — the frozen Anima path + the address table, **the formulation written out** (`ẽ_r`, `r_X`, `L_Δ`, the symbol table), the pack → step 1 → step 2 → bake pipeline, and the "why it is hard" figure |
-| `_archive/cjk_renderable_anima/` | archived 2026-09-21: `plan_2026_09_20.md` (step 1 / step 2 / V / K), `plan_grid.md` (grid gates S0 → G1, exposure arithmetic), `plan_step1.md`, `deploy_plan_2026_09_17.md`; archived 2026-09-20: `plan_synth` (budgets/pools/rulers), `plan_synth2` (the ΔFM line Δ0–Δ2), `plan_synth3` (S2 and the loop), `plan_synth4` (the step-1 recipe arms R4.3–R4.6 and K). Kept for the arms they record; `plan.md` has the redirect table |
+| `_archive/cjk_renderable_anima/` | archived 2026-09-21: `plan_2026_09_20.md` (step 1 / step 2 / V / K), `plan_grid.md` (grid gates S0 → G1, exposure arithmetic), `plan_step1.md`, `deploy_plan_2026_09_17.md`, `synth.md` (the S line as built: ΔFM, the `step1_0920` / `step2_0919` argv), `suggestions.md`; archived 2026-09-20: `plan_synth` (budgets/pools/rulers), `plan_synth2` (the ΔFM line Δ0–Δ2), `plan_synth3` (S2 and the loop), `plan_synth4` (the step-1 recipe arms R4.3–R4.6 and K). Kept for the arms they record; `plan.md` has the redirect table |
 | `deploy_plan.md` | the form of the shipped weights — a baked vocab pack pair, the bake formula, what loads it |
 | `findings.md` | settled verdicts, rulers, gotchas, do-not-re-propose |
 | `findings_seed.md` | what the 53k full-inventory table taught (2026-09-16): its evals, row-space geometry, adapter-output vs Q, transplant, pinned-trigger arms — the one-place summary for the seed question |

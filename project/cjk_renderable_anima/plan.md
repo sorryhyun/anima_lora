@@ -2,7 +2,7 @@
 
 Index: [`README.md`](README.md). Two things are planned here and nothing else:
 **how the table comes to cover Japanese**, and **how the sentence run is done
-on it**. The method as built is [`synth.md`](synth.md), every sentence run so
+on it**. How the table is trained today is [`training.md`](training.md), every sentence run so
 far is [`sent_run.md`](sent_run.md), verdicts are [`findings.md`](findings.md),
 numbers are [`reports/`](reports/README.md), tonight's borrowed-box logistics
 are [`plan_z8.md`](plan_z8.md), and the shipped file form is

@@ -48,7 +48,7 @@ would answer, without a new arm:
 
 - **wipe** — does a row that overrides the scene spread its attention
   over the whole grid, while a kept render concentrates it in the bubble?
-  (The residual wipe is the delta norm, `synth.md` *Risks the build
+  (The residual wipe is the delta norm, archived `synth.md` *Risks the build
   carries*; no data-mix arm moves it.)
 - **frame binding** — under `swap` (EN caption, word swapped) does か's
   attention leave the bubble, or stay and draw Latin strokes? (か 0/16

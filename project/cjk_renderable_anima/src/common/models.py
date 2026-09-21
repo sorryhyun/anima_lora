@@ -39,7 +39,9 @@ def gen_args(size, steps: int, cfg: int | float, save: Path, negative_prompt: st
     return req.to_args()
 
 
-def load_generator(size, steps: int, cfg: int | float, save: Path, negative_prompt: str = ""):
+def load_generator(
+    size, steps: int, cfg: int | float, save: Path, negative_prompt: str = ""
+):
     """``(args, gen settings, device, shared models)`` ready for ``generate``;
     the DiT is ``shared['model']``."""
     import torch
@@ -99,87 +101,180 @@ def decode_image(vae, latent, device):
     return pixels_to_pil(px[0].float().cpu())
 
 
-def encode_images(vae, files, device, size=None):
+def encode_images(vae, files, device, size=None, out_file=None):
     """VAE latents (float32, CPU) for image files, 8 per VAE call; ``size``
-    ``(W, H)`` resizes first. Pixels go in at the IMAGE_TRANSFORMS range."""
+    ``(W, H)`` resizes first. Pixels go in at the IMAGE_TRANSFORMS range.
+
+    ``out_file`` (a ``.npy`` path): the latents are written into that file
+    chunk by chunk instead of being collected in RAM, ``<out_file>.done``
+    holds the number of finished items so an interrupted encode resumes, and
+    the result is the file mapped copy-on-write (pages are evictable)."""
     import numpy as np
     import torch
     from PIL import Image
 
-    out = []
+    def chunk(i):
+        ims = [Image.open(f).convert("RGB") for f in files[i : i + 8]]
+        px = np.stack([np.array(im.resize(size) if size else im) for im in ims])
+        px = (
+            torch.from_numpy(px)
+            .permute(0, 3, 1, 2)
+            .float()
+            .div(127.5)
+            .sub(1.0)
+            .to(device)
+        )
+        return vae.encode_pixels_to_latents(px).float().cpu()
+
+    if out_file is None:
+        with torch.no_grad():
+            return torch.cat([chunk(i) for i in range(0, len(files), 8)])
+    out_file = Path(out_file)
+    mark = out_file.with_suffix(out_file.suffix + ".done")
+    done = int(mark.read_text()) if mark.exists() and out_file.exists() else 0
+    mm = np.load(out_file, mmap_mode="r+") if done else None
     with torch.no_grad():
-        for i in range(0, len(files), 8):
-            ims = [Image.open(f).convert("RGB") for f in files[i : i + 8]]
-            px = np.stack([np.array(im.resize(size) if size else im) for im in ims])
-            px = (
-                torch.from_numpy(px)
-                .permute(0, 3, 1, 2)
-                .float()
-                .div(127.5)
-                .sub(1.0)
-                .to(device)
-            )
-            out.append(vae.encode_pixels_to_latents(px).float().cpu())
-    return torch.cat(out)
+        for i in range(done, len(files), 8):
+            lat = chunk(i)
+            if mm is None:
+                mm = np.lib.format.open_memmap(
+                    out_file, "w+", np.float32, (len(files), *lat.shape[1:])
+                )
+            mm[i : i + len(lat)] = lat.numpy()
+            if (i // 8) % 250 == 249:  # every 2 000 items
+                mm.flush()
+                mark.write_text(str(i + len(lat)))
+    if mm is not None:
+        mm.flush()
+        del mm
+    mark.write_text(str(len(files)))
+    return torch.from_numpy(np.load(out_file, mmap_mode="c"))
 
 
 class _TextEntry:
     """One cached caption, indexed like the tuple ``(prompt_embeds, attn_mask,
-    t5_ids, t5_mask)``; the max-padded embeds are row ``i`` of
-    ``encode_captions``' mmapped spill file."""
+    t5_ids, t5_mask)``: row ``i`` of ``encode_captions``' four arrays (the
+    max-padded embeds are an mmapped file)."""
 
-    __slots__ = ("mm", "i", "rest")
+    __slots__ = ("arrs", "i")
 
-    def __init__(self, mm, i, rest):
-        self.mm, self.i, self.rest = mm, i, rest
+    def __init__(self, arrs, i):
+        self.arrs, self.i = arrs, i
 
     def __getitem__(self, k):
-        return self.mm[self.i] if k == 0 else self.rest[k - 1]
+        return self.arrs[k][self.i]
 
 
-def encode_captions(captions, device):
+_TE_REST = ("attn_mask", "t5_ids", "t5_mask")
+
+
+def _te_key(uniq) -> str:
+    """What a text cache is valid for: the captions, the text encoder file and
+    the pack's routing json (the T5 ids come from it)."""
+    import hashlib
+
+    from library.anima.vocab_pack import resolve_pack_prefix
+
+    ck = checkpoints()
+    h = hashlib.sha256("\n".join(uniq).encode())
+    h.update(str(ck.text_encoder).encode())
+    pj = (
+        Path(str(resolve_pack_prefix(ck.vocab_pack)) + ".json")
+        if ck.vocab_pack
+        else None
+    )
+    h.update(pj.read_bytes() if pj is not None and pj.exists() else b"no-pack")
+    return h.hexdigest()[:16]
+
+
+def encode_captions(captions, device, cache_dir=None):
     """Unique captions → dict caption -> (prompt_embeds, attn_mask, t5_ids,
-    t5_mask) on CPU. The embeds stream from an unlinked temp file, written
-    max-padded as encoded (a row is 1 MB; 40 k captions do not fit in RAM —
-    ``TMPDIR`` moves the file); the rest stays in memory."""
-    import os
+    t5_mask) on CPU.
+
+    Everything is written to disk chunk by chunk as it is encoded — the
+    max-padded embeds as a raw bf16 file (a row is 1 MB), the three id / mask
+    arrays as ``.npy`` — and read back mapped, so nothing accumulates in RAM.
+    ``cache_dir``: keep the files there (``meta.json`` holds the key and the
+    number of finished captions; an interrupted encode resumes, a finished one
+    is reused without loading the text encoder). Without it they go to a temp
+    dir (``TMPDIR`` picks the disk) that is removed once mapped."""
+    import json
+    import shutil
     import tempfile
 
+    import numpy as np
     import torch
 
-    from library.inference.models import load_text_encoder
-    from library.inference.text import ensure_text_strategies
-
-    tok, enc = ensure_text_strategies(checkpoints().text_encoder, vocab_pack=None)
-    te = load_text_encoder(
-        text_encoder=checkpoints().text_encoder, dtype=torch.bfloat16, device=device
-    ).eval()
     uniq = sorted(set(captions))
-    fd, spill = tempfile.mkstemp(prefix="wake_te_", suffix=".bf16")
-    rests, shape = [], None
-    with os.fdopen(fd, "wb") as f, torch.no_grad():
-        for i in range(0, len(uniq), 16):
-            chunk = uniq[i : i + 16]
-            tokens = tok.tokenize(chunk)
-            pe, am, t5, t5m = enc.encode_tokens(tok, [te], tokens)
-            pe = pe.to(torch.bfloat16).cpu().contiguous()
-            assert shape in (None, tuple(pe.shape[1:])), (shape, pe.shape)
-            shape = tuple(pe.shape[1:])
-            f.write(pe.view(torch.int16).numpy().tobytes())
-            am, t5, t5m = am.cpu(), t5.long().cpu(), t5m.cpu()
-            rests += [(am[j], t5[j], t5m[j]) for j in range(len(chunk))]
-    te.to("cpu")
-    del te
-    torch.cuda.empty_cache()
     if not uniq:
-        os.unlink(spill)
         return {}
-    # mapped private and unlinked: pages are evictable, the file goes with the process
+    key = _te_key(uniq) if cache_dir is not None else ""
+    d = (
+        Path(cache_dir)
+        if cache_dir is not None
+        else Path(tempfile.mkdtemp(prefix="wake_te_"))
+    )
+    d.mkdir(parents=True, exist_ok=True)
+    meta_f, emb_f = d / "meta.json", d / "embeds.bf16"
+    meta = json.loads(meta_f.read_text()) if meta_f.exists() else {}
+    if meta.get("key") != key or meta.get("n") != len(uniq):
+        meta = {"key": key, "n": len(uniq), "done": 0}
+    done = meta["done"] if emb_f.exists() else 0
+    if done < len(uniq):
+        from library.inference.models import load_text_encoder
+        from library.inference.text import ensure_text_strategies
+
+        tok, enc = ensure_text_strategies(checkpoints().text_encoder, vocab_pack=None)
+        te = load_text_encoder(
+            text_encoder=checkpoints().text_encoder, dtype=torch.bfloat16, device=device
+        ).eval()
+        rest = None
+        with open(emb_f, "r+b" if done else "wb") as f, torch.no_grad():
+            for i in range(done, len(uniq), 16):
+                pe, am, t5, t5m = enc.encode_tokens(
+                    tok, [te], tok.tokenize(uniq[i : i + 16])
+                )
+                pe = pe.to(torch.bfloat16).cpu().contiguous()
+                shape = tuple(pe.shape[1:])
+                assert meta.setdefault("shape", list(shape)) == list(shape), shape
+                f.seek(i * shape[0] * shape[1] * 2)
+                f.write(memoryview(pe.view(torch.int16).numpy()))
+                others = [o.cpu().numpy() for o in (am, t5.long(), t5m)]
+                if rest is None:
+                    rest = [
+                        np.lib.format.open_memmap(
+                            d / f"{n}.npy",
+                            "r+" if done else "w+",
+                            o.dtype,
+                            (len(uniq), *o.shape[1:]),
+                        )
+                        for n, o in zip(_TE_REST, others)
+                    ]
+                for r, o in zip(rest, others):
+                    r[i : i + len(o)] = o
+                if (i // 16) % 250 == 249:  # every 4 000 captions
+                    f.flush()
+                    for r in rest:
+                        r.flush()
+                    meta["done"] = i + len(others[0])
+                    meta_f.write_text(json.dumps(meta))
+        for r in rest:
+            r.flush()
+        del rest
+        meta["done"] = len(uniq)
+        meta_f.write_text(json.dumps(meta))
+        te.to("cpu")
+        del te
+        torch.cuda.empty_cache()
+    shape = tuple(meta["shape"])
     n = len(uniq) * shape[0] * shape[1]
-    mm = torch.from_file(spill, shared=False, size=n, dtype=torch.bfloat16)
-    mm = mm.view(len(uniq), *shape)
-    os.unlink(spill)
-    return {c: _TextEntry(mm, i, rests[i]) for i, c in enumerate(uniq)}
+    mm = torch.from_file(str(emb_f), shared=False, size=n, dtype=torch.bfloat16)
+    arrs = [mm.view(len(uniq), *shape)] + [
+        torch.from_numpy(np.load(d / f"{nm}.npy", mmap_mode="c")) for nm in _TE_REST
+    ]
+    if cache_dir is None:  # mapped: the files go with the process
+        shutil.rmtree(d, ignore_errors=True)
+    return {c: _TextEntry(arrs, i) for i, c in enumerate(uniq)}
 
 
 def ext_ids_of(cache) -> set[int]:
