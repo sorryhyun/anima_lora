@@ -1,0 +1,211 @@
+"""Attach the trainer's block swapper to a stock diffusers/transformers model.
+
+``library.runtime.offloading.ModelOffloader`` is written to be driven from
+inside a model's block loop — ``wait_for_block(i)`` before block *i* runs,
+``submit_move_blocks(blocks, i)`` after (``library/anima/models.py::_run_blocks``).
+Qwen-Image-2.1's blocks live in upstream diffusers and transformers, whose
+forwards we do not own, so the same two calls are attached as ordinary module
+hooks instead. The swapper itself is unmodified.
+
+Both heavy modules are homogeneous ``nn.ModuleList``s, which is all it needs:
+
+    QwenImage21Transformer2DModel.transformer_blocks   32 x ~0.44 GB
+    Qwen3VLForConditionalGeneration
+        .model.language_model.layers                   36 x ~0.39 GB
+
+Everything outside the swapped list stays resident, so the caller moves the
+model with :func:`to_device_except_blocks` rather than a plain ``.to()``.
+"""
+
+from __future__ import annotations
+
+import gc
+import sys
+from pathlib import Path
+
+import torch
+import torch.nn as nn
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+from library.runtime.device import weighs_to_device  # noqa: E402
+from library.runtime.offloading import ModelOffloader  # noqa: E402
+
+
+def find_blocks(model: nn.Module, path: str) -> nn.ModuleList:
+    """``"model.language_model.layers"`` → that ``ModuleList``."""
+    out: nn.Module = model
+    for part in path.split("."):
+        out = getattr(out, part)
+    if not isinstance(out, nn.ModuleList):
+        raise TypeError(f"{path} is {type(out).__name__}, not an nn.ModuleList")
+    return out
+
+
+def block_size_gb(blocks: nn.ModuleList) -> float:
+    b = blocks[0]
+    return sum(p.numel() * p.element_size() for p in b.parameters()) / 1024**3
+
+
+def resident_size_gb(model: nn.Module, blocks: nn.ModuleList) -> float:
+    """Bytes of everything that is *not* in ``blocks``."""
+    swapped = {id(p) for b in blocks for p in b.parameters()}
+    return (
+        sum(
+            p.numel() * p.element_size()
+            for p in model.parameters()
+            if id(p) not in swapped
+        )
+        / 1024**3
+    )
+
+
+def auto_blocks_to_swap(
+    model: nn.Module,
+    blocks: nn.ModuleList,
+    free_gb: float,
+    *,
+    activation_reserve_gb: float = 2.5,
+) -> int:
+    """Fewest blocks to swap that still leaves ``activation_reserve_gb`` free.
+
+    Swapping costs a PCIe round trip per block per forward, so the answer is
+    the minimum that fits, not a safe-looking maximum.
+    """
+    per = block_size_gb(blocks)
+    budget = free_gb - resident_size_gb(model, blocks) - activation_reserve_gb
+    can_keep = max(0, int(budget // per))
+    # ModelOffloader needs at least two blocks left resident to swap against.
+    return max(0, min(len(blocks) - 2, len(blocks) - can_keep))
+
+
+def to_device_except_blocks(
+    model: nn.Module, blocks: nn.ModuleList, device: torch.device
+) -> None:
+    """``model.to(device)`` with ``blocks`` left where they are.
+
+    The swapper places the blocks itself in
+    ``prepare_block_devices_before_forward``; moving them here would spike to
+    the full bf16 footprint first, which is the OOM we are avoiding.
+    """
+    saved = []
+    for name, child in list(model.named_children()):
+        if child is blocks:
+            saved.append((model, name))
+    # The list may be nested — walk to its parent rather than assume a child.
+    if not saved:
+        for mod in model.modules():
+            for name, child in list(mod.named_children()):
+                if child is blocks:
+                    saved.append((mod, name))
+    for parent, name in saved:
+        setattr(parent, name, None)
+    try:
+        model.to(device)
+    finally:
+        for parent, name in saved:
+            setattr(parent, name, blocks)
+
+
+class Attached:
+    """A live block-swap attachment, and the way to take it back off.
+
+    The hooks close over the offloader and the offloader owns a thread pool, so
+    an attachment that is merely dropped keeps the whole block list — and its
+    share of the card — reachable through a reference cycle. Releasing 17.5 GB
+    of text encoder between phases needs :meth:`detach`, not ``del``.
+    """
+
+    def __init__(self, offloader: ModelOffloader, blocks: nn.ModuleList, model):
+        self.offloader = offloader
+        self.blocks = blocks
+        self.model = model
+        self.handles: list = []
+
+    def prepare(self) -> None:
+        self.offloader.prepare_block_devices_before_forward(self.blocks)
+
+    def detach(self) -> None:
+        """Remove the hooks, stop the mover, and bring every block back to CPU.
+
+        This only gives the VRAM back if nothing else still pins the weights —
+        in particular every forward through a swapped model must run under
+        ``torch.no_grad()``, or the autograd graph's saved tensors hold them
+        (see ``loader.encode_prompts``).
+        """
+        for handle in self.handles:
+            handle.remove()
+        self.handles.clear()
+        for idx in list(self.offloader.futures.keys()):
+            self.offloader._wait_blocks_move(idx)
+        self.offloader.futures.clear()
+        self.offloader.thread_pool.shutdown(wait=True)
+        if self.offloader.supports_backward:
+            for handle in self.offloader.remove_handles:
+                handle.remove()
+            self.offloader.remove_handles.clear()
+        # The swapper leaves a block's parameters and its buffers on different
+        # devices, so bring both down with the call it used to place them.
+        cpu = torch.device("cpu")
+        for block in self.blocks:
+            block.to(cpu)
+            weighs_to_device(block, cpu)
+        self.model.to(cpu)
+        self.offloader = None
+        self.blocks = None
+        self.model = None
+        gc.collect()
+        torch.cuda.empty_cache()
+
+
+def attach(
+    model: nn.Module,
+    blocks_path: str,
+    blocks_to_swap: int,
+    device: torch.device,
+    *,
+    supports_backward: bool,
+    debug: bool = False,
+) -> tuple[Attached | None, nn.ModuleList]:
+    """Hook ``ModelOffloader`` onto ``model``'s block list.
+
+    Returns ``(attached, blocks)``; ``attached`` is None when
+    ``blocks_to_swap == 0``, in which case nothing is hooked and the caller can
+    move the model normally.
+    """
+    blocks = find_blocks(model, blocks_path)
+    if blocks_to_swap <= 0:
+        return None, blocks
+
+    offloader = ModelOffloader(
+        blocks,
+        blocks_to_swap,
+        device,
+        supports_backward=supports_backward,
+        debug=debug,
+    )
+    attached = Attached(offloader, blocks, model)
+
+    for idx, block in enumerate(blocks):
+        attached.handles.append(
+            block.register_forward_pre_hook(_make_wait_hook(offloader, idx))
+        )
+        attached.handles.append(
+            block.register_forward_hook(_make_submit_hook(offloader, blocks, idx))
+        )
+
+    return attached, blocks
+
+
+def _make_wait_hook(offloader: ModelOffloader, idx: int):
+    def hook(_module, _args):
+        offloader.wait_for_block(idx)
+
+    return hook
+
+
+def _make_submit_hook(offloader: ModelOffloader, blocks: nn.ModuleList, idx: int):
+    def hook(_module, _args, _output):
+        offloader.submit_move_blocks(blocks, idx)
+
+    return hook

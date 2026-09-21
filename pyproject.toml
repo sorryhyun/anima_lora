@@ -12,7 +12,9 @@ dependencies = [
     "torchvision>=0.27.0,<0.28 ; sys_platform != 'win32'",
     "accelerate>=1.13.0",
     "transformers>=5.10.1",
-    "diffusers>=0.39.0",
+    # Pinned to a git commit in [tool.uv.sources]: the QwenImage21 classes
+    # (project/qwen21_lora/) exist only on main, not in any release.
+    "diffusers>=0.41.0.dev0",
     "einops>=0.7.0",
     # Optimizers
     "pytorch-optimizer>=3.9.0",
@@ -132,6 +134,13 @@ override-dependencies = [
 ]
 
 [tool.uv.sources]
+# diffusers: `QwenImage21Pipeline` / `QwenImage21Transformer2DModel` /
+# `AutoencoderKLQwenImage21` (the Qwen-Image-2.1 sidecar) landed on main after
+# the 0.40.0 release, so there is no wheel to pin to. Pinned to a commit rather
+# than floating `main` — the trainer's own diffusers surface is small
+# (`randn_tensor`, `EulerAncestralDiscreteScheduler`, `ConfigMixin`,
+# `modular_pipelines.anima`) but it still rides this pin. Bump deliberately.
+diffusers = { git = "https://github.com/huggingface/diffusers", rev = "80c7ed262aeffbeb43ef13ae04baeb9b84515a69" }
 # anime_tools: the pinned release tag is what releases install. For a live dev
 # loop against a sibling checkout run
 #     uv sync --group anime-tools-dev
