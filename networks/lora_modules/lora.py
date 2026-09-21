@@ -331,7 +331,7 @@ class LoRAModule(BaseLoRAModule):
 # Co-located with LoRAModule because they operate on the layout this class
 # writes (``.lora_down.weight`` / ``.lora_up.weight`` / ``.alpha`` /
 # optional ``.inv_scale``). The standard variant write fires these; the
-# Hydra and Chimera writers also defuse their plain-LoRA legs by calling
+# Hydra writer also defuses its plain-LoRA leg by calling
 # :func:`defuse_standard_qkv` directly.
 
 
@@ -349,10 +349,7 @@ def defuse_standard_qkv(state_dict: Dict[str, torch.Tensor]) -> None:
     Used by:
       * the standard write path,
       * the Hydra write path's "plain-LoRA leg" (modules excluded from
-        ``router_targets`` save under the plain layout),
-      * the Chimera write path's plain-LoRA leg (router_targets excludes
-        attention projections by default — OrthoLoRA fallback lands as
-        plain LoRA after the ortho distill step).
+        ``router_targets`` save under the plain layout).
     """
     fused_groups: List[tuple] = []
     for key in list(state_dict.keys()):

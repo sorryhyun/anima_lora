@@ -38,16 +38,9 @@ Use `make test-hydra` (or `python tasks.py test-hydra`) to run inference against
 
 Use the Anima Adapter Loader node (`https://github.com/sorryhyun/ComfyUI-Anima_lora-Adapter`), which installs per-Linear forward hooks that reproduce `HydraLoRAModule.forward` exactly — including σ-conditional routing when the checkpoint's router input is wider than `rank`. See `https://github.com/sorryhyun/ComfyUI-Anima_lora-Adapter` for installation, hook mechanics, and changelog.
 
-## Orthogonalized experts — fallback behavior
-
-`OrthoHydraLoRAModule` (`use_ortho = true` on a MoE-style config) is the structural deadlock fix described in `docs/structure/hydralora.md` §5.
-
-Fallback. If `min(out_dim, in_dim) < num_experts · lora_dim` the disjoint SVD-slice partition can't fit, so `P_bases` degenerates to the legacy shared `P_basis` replicated `E` times (with a warning in the log). In that case all experts start identical (shared basis + zero `S_p` + zero `lambda_layer`) and must diverge through training-time updates to `S_p` — if the router collapses they never will. Prefer to size `num_experts` so the partition fits. Implementation: `networks/lora_modules/ortho.py:OrthoHydraLoRAModule`.
-
 ## Composition with other variants
 
 - T-LoRA — timestep rank masking applies to `lora_down` (shared across experts), so it composes directly; `configs/gui-methods/hydralora.toml` enables both.
-- OrthoLoRA — supported via `OrthoHydraLoRAModule` (`networks/lora_modules/ortho.py`). Cayley-parameterized orthogonal `S_p` becomes per-expert (`(num_experts, r, r)`), `S_q` stays shared (matching the shared `lora_down` story). Activated by `use_ortho = true` on a MoE-style config.
 - Spectrum — composes cleanly. Cached steps skip all transformer blocks entirely (router included), so hydra just runs fewer times.
 - Modulation guidance — orthogonal. Touches AdaLN only, outside the hydra-adapted Linears.
 
@@ -69,7 +62,7 @@ HydraLoRA requires `cache_llm_adapter_outputs = true` (same as standard LoRA in 
 
 `specialize_experts_by_sigma_buckets = true` (with `num_sigma_buckets > 1` and `num_experts % num_sigma_buckets == 0`) partitions the E experts into B σ-bands. For a sample at σ in band b, only the in-band experts can win the gate (out-of-band logits masked to `-inf` before softmax). Soft routing still operates within a band.
 
-- Layout: interleaved. Expert e belongs to band `e mod B`. With OrthoHydra's sequential SVD slicing, interleaving gives every band a representative spread of singular slices instead of binding band 0 to the top slice and band B-1 to the bottom — see `networks/lora_modules/hydra.py::_register_sigma_band_partition`.
+- Layout: interleaved. Expert e belongs to band `e mod B` — see `networks/lora_modules/hydra.py::_register_sigma_band_partition`.
 - Edges: optional. `sigma_bucket_boundaries = [0.0, 0.5, 0.8, 1.0]` (length B+1, strictly increasing, 0.0 → 1.0) overrides the default uniform `linspace(0, 1, B+1)`. Lets you concentrate capacity in a chosen σ regime — e.g. wide low-σ band, narrow high-σ band — while keeping equal experts per band. With variable bucket widths under uniform σ sampling, narrow buckets see fewer training samples per band; consider oversampling those σ ranges if you want their experts to converge as fast.
 
 Both fields are stamped into safetensors metadata (`ss_specialize_experts_by_sigma_buckets`, `ss_num_sigma_buckets`, `ss_sigma_bucket_boundaries`) so inference (CLI + ComfyUI) reconstructs the partition exactly.

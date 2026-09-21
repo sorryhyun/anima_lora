@@ -29,7 +29,7 @@ Each exports `STRINGS: dict[str, str]`. `en.py` is the source. Same keys across 
 
 Flat JSON: config-key → human-readable tooltip. `en/` is the source. Translate the *value*, never the key. Keep the JSON valid and key order matching the English file.
 
-**4. GUI method help** — `gui/explanations/guides/{en,ko,cn,ja}/*.html` (`lora.html`, `tlora.html`, `hydralora.html`, `fera.html`, `reft.html`, `preprocess.html`, `_apply_note.html`, `_not_mergeable.html`)
+**4. GUI method help** — `gui/explanations/guides/{en,ko,cn,ja}/*.html` (`lora.html`, `tlora.html`, `hydralora.html`, `preprocess.html`, `_apply_note.html`, `_not_mergeable.html`)
 
 Prose HTML, structurally parallel across languages. Translate text nodes; leave tags, attributes, and code/identifiers inside them intact.
 

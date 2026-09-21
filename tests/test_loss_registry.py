@@ -31,8 +31,8 @@ def _make_args(**overrides) -> argparse.Namespace:
 
 
 def _net(**attrs) -> SimpleNamespace:
-    # Composer reads `_ortho_reg_weight` and `_balance_loss_weight`.
-    defaults = {"_ortho_reg_weight": 0.0, "_balance_loss_weight": 0.0}
+    # Composer reads `_balance_loss_weight`.
+    defaults = {"_balance_loss_weight": 0.0}
     defaults.update(attrs)
     return SimpleNamespace(**defaults)
 
@@ -40,7 +40,6 @@ def _net(**attrs) -> SimpleNamespace:
 def test_registry_contains_expected_keys():
     assert {
         "flow_match",
-        "ortho_reg",
         "hydra_balance",
         "functional",
         "multiscale",

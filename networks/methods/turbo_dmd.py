@@ -817,11 +817,6 @@ class TurboDMDNetwork:
             self._save_student_step_expert(sd, file, dtype, metadata)
             return
 
-        # Delegate to the network's own save so the full distill chain runs.
-        # GOTCHA: an OrthoInit/OrthoLoRA student stores P_init/Q_init/lambda_layer
-        # (or Cayley/SVD bases), NOT lora_down/lora_up — save_weights distills
-        # those into the standard factorization. A naive pre-filter here would
-        # strip them before the distill step ever sees them.
         self.student.save_weights(file, dtype, metadata)
         logger.info(f"saved student LoRA → {file}")
 

@@ -16,14 +16,11 @@ logger = logging.getLogger(__name__)
 def _is_hydra_moe(path: str) -> bool:
     """Cheap check: peek at the safetensors header for a per-expert ups key.
 
-    HydraLoRA moe files carry per-expert ``.lora_ups.N.weight`` keys;
-    chimera files carry the dual-pool variants ``.lora_ups_c.N.weight`` /
-    ``.lora_ups_f.N.weight``. Either signal means router-live: skip static
-    merge. Regular LoRA files have none of these. Uses ``safe_open`` so
-    only the header is read.
-
-    Callers that need to disambiguate chimera from plain Hydra should also
-    consult ``_is_chimera_moe``.
+    HydraLoRA moe files carry per-expert ``.lora_ups.N.weight`` keys, which
+    means router-live: skip static merge. Regular LoRA files have none. The
+    removed ChimeraHydra layout (``.lora_ups_c.`` / ``.lora_ups_f.``) is matched
+    too so it reaches ``create_network_from_weights``' refusal instead of a
+    silent partial merge. Uses ``safe_open`` so only the header is read.
     """
     from safetensors import safe_open
 
@@ -33,24 +30,6 @@ def _is_hydra_moe(path: str) -> bool:
                 ".lora_ups." in k or ".lora_ups_c." in k or ".lora_ups_f." in k
                 for k in f.keys()
             )
-    except Exception:
-        return False
-
-
-def _has_register_tokens(path: str) -> bool:
-    """Cheap header peek: does this LoRA carry a ``register_tokens`` key?
-
-    LoRA-family checkpoints trained with ``num_registers > 0`` hold K DSR
-    register tokens that ride the self-attn sequence — they can't fold into a
-    static weight merge, so the network must stay live (same treatment as
-    P-GRAFT: ``create_network_from_weights`` + ``apply_to`` dynamic hooks; the
-    register injection installs in ``LoRANetwork.apply_to``).
-    """
-    from safetensors import safe_open
-
-    try:
-        with safe_open(path, framework="pt") as f:
-            return "register_tokens" in f.keys()
     except Exception:
         return False
 
@@ -68,25 +47,6 @@ def _has_te_keys(path: str) -> bool:
     try:
         with safe_open(path, framework="pt") as f:
             return any(k.startswith("lora_te_") for k in f.keys())
-    except Exception:
-        return False
-
-
-def _is_chimera_moe(path: str) -> bool:
-    """Peek at safetensors metadata for ``ss_use_chimera_hydra="true"``.
-
-    Chimera files share the Hydra-MoE on-disk shape (so ``_is_hydra_moe``
-    also returns True) but carry the dual-pool runtime contract — they
-    additionally hold a top-level ``freq_router.*`` block and need the
-    per-Linear router narrowed to K_c outputs. Inference / load paths
-    must read this flag to wire the network correctly.
-    """
-    from safetensors import safe_open
-
-    try:
-        with safe_open(path, framework="pt") as f:
-            md = f.metadata() or {}
-            return str(md.get("ss_use_chimera_hydra", "")).strip().lower() == "true"
     except Exception:
         return False
 
@@ -121,12 +81,11 @@ def attach_adapters(
     pgraft_mode: bool,
     hydra_mode: bool,
     step_expert_mode: bool = False,
-    register_mode: bool = False,
 ) -> None:
     """Attach LoRA-family adapters that ride as dynamic forward hooks.
 
     Covers the two routes that can't go through ``load_anima_model``'s static
-    merge: **P-GRAFT** (toggleable mid-denoising) and **HydraLoRA moe / chimera**
+    merge: **P-GRAFT** (toggleable mid-denoising) and **HydraLoRA moe**
     (router-live, runs per-sample). Both rehydrate a network, ``apply_to`` the
     already-loaded ``model`` in place, and stash it on ``model`` for the sampler
     toggle sites to find. No-op when neither mode is set. Mutates ``model``;
@@ -136,28 +95,20 @@ def attach_adapters(
     ``pgraft_mode`` / ``hydra_mode`` are passed in (not recomputed) because the
     caller already derives them to decide whether to skip the static merge.
     """
-    # P-GRAFT / register tokens: attach LoRA as dynamic hooks. P-GRAFT wants
-    # the toggle; register-token checkpoints CAN'T merge (K sequence-riding
-    # tokens), so both skip the static merge and keep the network live.
-    if (pgraft_mode or register_mode) and not hydra_mode:
+    # P-GRAFT: attach LoRA as dynamic hooks (toggleable mid-denoising), so it
+    # skips the static merge and keeps the network live.
+    if pgraft_mode and not hydra_mode:
         from safetensors import safe_open
         from networks import lora_anima
 
-        logger.info(
-            "%s: Loading LoRA as dynamic hooks (not static merge)",
-            "P-GRAFT" if pgraft_mode else "register tokens",
-        )
+        logger.info("P-GRAFT: Loading LoRA as dynamic hooks (not static merge)")
         for lora_weight_path in args.lora_weight:
-            # Metadata carries ss_register_insert_block (and the three-axis
-            # stamps) — load_file() drops __metadata__, so read it separately.
+            # Metadata carries the three-axis stamps — load_file() drops
+            # __metadata__, so read it separately.
             with safe_open(lora_weight_path, framework="pt") as f:
                 lora_metadata = dict(f.metadata() or {})
             lora_sd = load_file(lora_weight_path)
-            lora_sd = {
-                k: v
-                for k, v in lora_sd.items()
-                if k.startswith("lora_unet_") or k == "register_tokens"
-            }
+            lora_sd = {k: v for k, v in lora_sd.items() if k.startswith("lora_unet_")}
 
             multiplier = (
                 args.lora_multiplier
@@ -198,25 +149,12 @@ def attach_adapters(
         from safetensors import safe_open
 
         for lora_weight_path in args.lora_weight:
-            # Read the three-axis routing stamps (and chimera stamps) from
-            # on-disk __metadata__ — load_file() drops it. Chimera files
-            # (dual-pool) carry top-level ``freq_router.*`` keys outside the
-            # ``lora_unet_*`` namespace, so they must NOT be filtered; plain
-            # Hydra moe keeps the lora_unet_* filter. Passing ``metadata=``
-            # alongside ``weights_sd=`` lets both layouts go through one code
-            # path.
+            # Read the three-axis routing stamps from on-disk __metadata__ —
+            # load_file() drops it.
             with safe_open(lora_weight_path, framework="pt") as f:
                 lora_metadata = dict(f.metadata() or {})
-            is_chimera = _is_chimera_moe(lora_weight_path)
             lora_sd = load_file(lora_weight_path)
-            if is_chimera:
-                logger.info("HydraLoRA: chimera file — dual-pool routing wired")
-            else:
-                lora_sd = {
-                    k: v
-                    for k, v in lora_sd.items()
-                    if k.startswith("lora_unet_") or k == "register_tokens"
-                }
+            lora_sd = {k: v for k, v in lora_sd.items() if k.startswith("lora_unet_")}
 
             multiplier = (
                 args.lora_multiplier
@@ -315,12 +253,10 @@ def load_dit_model(
 
     loading_device = device
 
-    # HydraLoRA moe (incl. FeRA-style stacked-experts global FEI): router-live
-    # inference can't go through static merge. Detect early so we can skip the
-    # baked-down path and take the dynamic hook route regardless of whether
-    # --pgraft is set. ``_is_hydra_moe`` matches the ``lora_ups.{i}.weight``
-    # key pattern shared by both shared-A Hydra and the plan2 stacked-experts
-    # save format.
+    # HydraLoRA moe: router-live inference can't go through static merge.
+    # Detect early so we can skip the baked-down path and take the dynamic hook
+    # route regardless of whether --pgraft is set. ``_is_hydra_moe`` matches
+    # the ``lora_ups.{i}.weight`` key pattern.
     # Per-step-expert turbo is detected FIRST: its files also match
     # ``_is_hydra_moe`` (shared ``.lora_ups.{k}.weight`` key shape) but are
     # router-free and head-selected by step counter, so the metadata stamp wins.
@@ -371,33 +307,12 @@ def load_dit_model(
         and len(args.lora_weight) > 0
     )
 
-    # Register tokens (LoRA trained with num_registers > 0): the K
-    # sequence-riding tokens can't fold into a static merge — force the
-    # dynamic-hook route (LoRANetwork.apply_to installs the injection).
-    register_mode = False
-    if (
-        not step_expert_mode
-        and args.lora_weight is not None
-        and len(args.lora_weight) > 0
-    ):
-        register_flags = [_has_register_tokens(p) for p in args.lora_weight]
-        if any(register_flags):
-            if len(args.lora_weight) > 1:
-                raise ValueError(
-                    "A register-token LoRA must be loaded alone (one "
-                    "--lora_weight). Its registers are kept-live sequence "
-                    "tokens — composing with statically-merged LoRAs in one "
-                    "invocation is untested."
-                )
-            register_mode = True
-
     # load LoRA weights (skip static merge for P-GRAFT, HydraLoRA moe,
-    # register tokens, and per-step-expert turbo — all ride dynamic hooks)
+    # and per-step-expert turbo — all ride dynamic hooks)
     if (
         not pgraft_mode
         and not hydra_mode
         and not step_expert_mode
-        and not register_mode
         and args.lora_weight is not None
         and len(args.lora_weight) > 0
     ):
@@ -459,7 +374,6 @@ def load_dit_model(
         pgraft_mode=pgraft_mode,
         hydra_mode=hydra_mode,
         step_expert_mode=step_expert_mode,
-        register_mode=register_mode,
     )
 
     if getattr(args, "compile", False):

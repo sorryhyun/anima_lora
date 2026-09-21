@@ -14,31 +14,20 @@ from networks import NETWORK_REGISTRY, NetworkSpec, lora_save
 from networks.lora_anima.config import LoRANetworkCfg
 from networks.lora_anima.loading import (
     _refuse_split_hydra_keys,
-    _refuse_split_stacked_experts_keys,
     _refuse_unfused_attn_lora_keys,
     _stack_lora_ups,
 )
 from networks.lora_modules import (
-    ChimeraHydraInferenceModule,
-    ChimeraHydraLoRAModule,
     HydraLoRAModule,
     LoRAModule,
-    OrthoHydraLoRAModule,
-    OrthoInitLoRAModule,
-    OrthoLoRAModule,
-    StackedExpertsLoRAModule,
     StepExpertLoRAModule,
     _sigma_sinusoidal_features,
 )
-from networks.lora_modules.router_state import _fei_temperature
 from networks.lora_anima.network_metrics import _NetworkMetricsMixin
-from networks.register_injection import RegisterInjector
 
 # Re-exported from routers.py.
 from networks.lora_anima.routers import (  # noqa: F401
     CROSSATTN_EMB_DIM,
-    ContentRouter,
-    FreqRouter,
     GlobalRouter,
 )
 
@@ -97,8 +86,6 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
         self._last_up_grad_stats: Dict[str, object] = {}
         # Per-step cache for get_router_stats; cleared in clear_step_caches.
         self._router_stats_cache: Optional[Dict[str, object]] = None
-        # Chimera variant: per-pool reduction/entropy norm, same lifecycle.
-        self._chimera_router_stats_cache: Optional[Dict[str, object]] = None
         # State-dict prefixes of training-only submodules (e.g. REPA head);
         # save_weights strips them so attaching an aux head is inference-safe.
         self._training_only_prefixes: set = set()
@@ -152,9 +139,8 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
         # Read via getattr by library/inference/adapters.py.
         self.use_fei_router = cfg.router_source == "fei"
         self.use_sigma_router = cfg.router_source == "sigma"
-        # Shared-A Hydra + network-level router: Hydra/OrthoHydra skip their own
-        # router and consume GlobalRouter gates (mirrors FeRA's routing location
-        # with Hydra's param layout).
+        # Shared-A Hydra + network-level router: Hydra modules skip their own
+        # router and consume GlobalRouter gates.
         self._use_global_router_for_hydra = (
             cfg.use_moe_style == "shared_A"
             and not cfg.route_per_layer
@@ -162,7 +148,7 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
         )
 
         # Per-module HydraLoRA gating: matched → Hydra class, else plain
-        # LoRA/OrthoLoRA. Fresh build: regex over original_name. From-weights:
+        # LoRA. Fresh build: regex over original_name. From-weights:
         # explicit name set wins. None on both = MoE everywhere.
         self._hydra_router_names = (
             set(cfg.hydra_router_names) if cfg.hydra_router_names else None
@@ -351,19 +337,10 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
             for lora_name, child_module, dim, alpha_val, original_name in tqdm(
                 non_skipped, desc=f"Creating {label} LoRA", leave=False
             ):
-                # Nominal Hydra/MoE class narrows to hydra-filter-matched layers;
-                # non-matching layers fall back to plain LoRA/OrthoLoRA.
+                # Nominal Hydra class narrows to hydra-filter-matched layers;
+                # non-matching layers fall back to plain LoRA.
                 effective_module_class = module_class
-                if (
-                    module_class
-                    in (
-                        HydraLoRAModule,
-                        OrthoHydraLoRAModule,
-                        ChimeraHydraLoRAModule,
-                        ChimeraHydraInferenceModule,
-                    )
-                    and is_unet
-                ):
+                if module_class is HydraLoRAModule and is_unet:
                     if self._hydra_router_names is not None:
                         hydra_on = lora_name in self._hydra_router_names
                     elif self._hydra_router_re is not None:
@@ -374,81 +351,27 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
                         self._hydra_router_hits += 1
                     else:
                         self._hydra_router_misses += 1
-                        if module_class is HydraLoRAModule:
-                            effective_module_class = LoRAModule
-                        elif module_class is ChimeraHydraInferenceModule:
-                            # Load path: unrouted leg was saved as plain LoRA
-                            # (OrthoLoRA distilled at save — OrthoLoRAModule.distill_save_state_dict).
-                            effective_module_class = LoRAModule
-                        else:
-                            # Train path: unrouted leg uses OrthoLoRA's Cayley
-                            # parameterization.
-                            effective_module_class = OrthoLoRAModule
+                        effective_module_class = LoRAModule
 
                 extra_kwargs = {}
                 if effective_module_class == StepExpertLoRAModule:
                     # Shared down + K step-indexed up-heads, selected per
                     # forward via set_step_index / the turbo coordinator.
                     extra_kwargs["step_expert_K"] = cfg.step_expert_K
-                elif effective_module_class == OrthoLoRAModule:
-                    pass  # SVD init reads from org_module directly
-                elif effective_module_class == OrthoInitLoRAModule:
-                    pass  # SVD init reads from org_module directly
-                elif effective_module_class == ChimeraHydraLoRAModule:
-                    # Pool split is chimera's only constructor surface; σ/FEI
-                    # dims are 0 (network FreqRouter owns those axes). Pool sum
-                    # == cfg.num_experts by from_kwargs invariant.
-                    extra_kwargs["num_experts_content"] = cfg.num_experts_content
-                    extra_kwargs["num_experts_freq"] = cfg.num_experts_freq
-                    extra_kwargs["lambda_init"] = cfg.chimera_lambda_init
-                    extra_kwargs["use_ortho_init"] = cfg.use_ortho_init
-                    extra_kwargs["expert_basis_mult"] = cfg.chimera_expert_basis_mult
-                    extra_kwargs["expert_diag"] = cfg.chimera_expert_diag
-                elif effective_module_class == ChimeraHydraInferenceModule:
-                    # Pool sizes arrive from chimera-stamped metadata via
-                    # cfg.from_weights.
-                    extra_kwargs["num_experts_content"] = cfg.num_experts_content
-                    extra_kwargs["num_experts_freq"] = cfg.num_experts_freq
-                elif effective_module_class == OrthoHydraLoRAModule:
-                    extra_kwargs["num_experts"] = cfg.num_experts
-                    extra_kwargs["centered_gate"] = cfg.ortho_centered_gate
-                    extra_kwargs["lambda_init"] = cfg.ortho_lambda_init
-                    if self._use_global_router_for_hydra:
-                        extra_kwargs["use_global_router"] = True
-                        self._global_router_hits += 1
                 elif effective_module_class == HydraLoRAModule:
                     extra_kwargs["num_experts"] = cfg.num_experts
-                    # Runtime parity for ortho_centered_gate-distilled OrthoHydra
-                    # checkpoints; inert for plain Hydra/chimera.
-                    extra_kwargs["centered_gate"] = cfg.ortho_centered_gate
                     if cfg.expert_init_std > 0.0:
                         extra_kwargs["expert_init_std"] = cfg.expert_init_std
                     if self._use_global_router_for_hydra:
                         extra_kwargs["use_global_router"] = True
                         self._global_router_hits += 1
-                    if cfg.use_chimera_hydra:
-                        # Dual-pool runtime form (distilled chimera checkpoint):
-                        # router narrows to K_c outputs + registers
-                        # _freq_routing_weights for the FreqRouter broadcast.
-                        extra_kwargs["num_experts_content"] = cfg.num_experts_content
-                        extra_kwargs["use_global_content_router"] = True
-                elif effective_module_class == StackedExpertsLoRAModule:
-                    # Independent-A (FeRA): gates arrive via the network
-                    # GlobalRouter (_routing_weights), no per-Linear router.
-                    # num_experts must match cfg.num_experts or the broadcast
-                    # shape-mismatches.
-                    extra_kwargs["num_experts"] = cfg.num_experts
-                    extra_kwargs["ortho"] = cfg.use_ortho
-                    if cfg.use_ortho:
-                        extra_kwargs["ortho_init_std"] = cfg.ortho_init_std
 
                 # Hard σ-band expert partition (independent of the σ-router
                 # regex); set_sigma propagates _sigma for per-step band
                 # selection. E % N == 0 validated in cfg.
                 if (
                     cfg.specialize_experts_by_sigma_buckets
-                    and effective_module_class
-                    in (HydraLoRAModule, OrthoHydraLoRAModule)
+                    and effective_module_class is HydraLoRAModule
                     and is_unet
                 ):
                     extra_kwargs["specialize_experts_by_sigma_buckets"] = True
@@ -463,11 +386,7 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
                 # (network router consumes σ once, per-Linear cat dead).
                 if (
                     cfg.router_source == "sigma"
-                    and effective_module_class
-                    in (
-                        HydraLoRAModule,
-                        OrthoHydraLoRAModule,
-                    )
+                    and effective_module_class is HydraLoRAModule
                     and is_unet
                     and not self._use_global_router_for_hydra
                 ):
@@ -481,15 +400,11 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
                         extra_kwargs["sigma_feature_dim"] = cfg.sigma_feature_dim
                         self._sigma_router_hits += 1
 
-                # FEI-conditional router (FeRA-style): same gating as σ, widens
+                # FEI-conditional router: same gating as σ, widens
                 # the router input with the per-sample FEI simplex (set_fei).
                 if (
                     cfg.router_source == "fei"
-                    and effective_module_class
-                    in (
-                        HydraLoRAModule,
-                        OrthoHydraLoRAModule,
-                    )
+                    and effective_module_class is HydraLoRAModule
                     and is_unet
                     and not self._use_global_router_for_hydra
                 ):
@@ -503,9 +418,8 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
                         extra_kwargs["fei_feature_dim"] = cfg.fei_feature_dim
                         self._fei_router_hits += 1
 
-                # SVD-Down init — plain two-factor LoRAModule only. Ortho/
-                # Hydra/Chimera classes own their own SVD seeding and reject this
-                # kwarg; gate so it never reaches them.
+                # SVD-Down init — plain two-factor LoRAModule only; gate so the
+                # kwarg never reaches Hydra/StepExpert.
                 if cfg.down_init != "kaiming" and effective_module_class is LoRAModule:
                     extra_kwargs["down_init"] = cfg.down_init
                     if cfg.down_init == "weight_svd" and cfg.svd_slice:
@@ -549,17 +463,10 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
 
             return loras, skipped
 
-        # Qwen3 TE, typically not trained. Skip for Ortho* since SVD init is
-        # expensive and TE modules are discarded in apply_to anyway.
+        # Qwen3 TE, typically not trained.
         self.text_encoder_loras: List[LoRAModule] = []
         skipped_te = []
-        if text_encoders is not None and module_class not in (
-            OrthoLoRAModule,
-            OrthoInitLoRAModule,
-            OrthoHydraLoRAModule,
-            ChimeraHydraLoRAModule,
-            ChimeraHydraInferenceModule,
-        ):
+        if text_encoders is not None:
             for i, text_encoder in enumerate(text_encoders):
                 if text_encoder is None:
                     continue
@@ -636,12 +543,10 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
         self._wire_shared_sigma_buffers()
         self._wire_shared_fei_buffers()
         self._wire_shared_routing_buffers()
-        self._wire_shared_freq_routing_buffers()
-        self._wire_shared_content_routing_buffers()
 
         # Network-level GlobalRouter when cfg selects MoE without per-Linear
-        # routers. independent_A always consumes the broadcast gates; shared_A
-        # consumes them when built with use_global_router=True.
+        # routers; shared_A modules built with use_global_router=True consume
+        # its broadcast gates.
         self.global_router: Optional[GlobalRouter] = None
         # Tells call sites to fire set_crossattn_routing with the pooled text
         # tensor each forward (broadcasts to _routing_weights).
@@ -677,139 +582,14 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
                     f"routing-aware modules={len(self._routing_aware_loras)}"
                 )
 
-        # ChimeraHydra FreqRouter: one per network, broadcasts π_f over every
-        # chimera module's freq pool (input concat(FEI, σ-features)). Built only
-        # when a chimera module exists.
-        self.freq_router: Optional[FreqRouter] = None
-        # "learned" builds the FreqRouter MLP; "fei" leaves freq_router=None and
-        # broadcasts the FEI simplex directly in set_fei.
-        self.freq_router_mode: str = str(
-            getattr(cfg, "freq_router_mode", "learned")
-        ).lower()
-        self.freq_router_tau: float = float(getattr(cfg, "freq_router_tau", 1.0))
-        if cfg.use_chimera_hydra and self._chimera_aware_loras:
-            if self.freq_router_mode == "fei":
-                # Hardwired-FEI gate: π_f = normalize(FEI ** (1/τ)). FEI simplex
-                # IS the routing distribution, so K_f == band count (re-asserted
-                # here for the from_weights path, which bypasses from_kwargs).
-                if int(cfg.num_experts_freq) != int(cfg.fei_feature_dim):
-                    raise ValueError(
-                        "freq_router_mode='fei' requires num_experts_freq == "
-                        f"fei_feature_dim (got K_f={cfg.num_experts_freq}, "
-                        f"fei_feature_dim={cfg.fei_feature_dim})."
-                    )
-                # set_fei still fires every step to broadcast the FEI simplex.
-                self.use_fei_router = True
-                logger.info(
-                    "ChimeraHydra freq pool: HARDWIRED FEI gate "
-                    f"(K_f={cfg.num_experts_freq} = fei bands, τ={self.freq_router_tau:.2f}, "
-                    "no learned router / no σ-features / no freq balance loss), "
-                    f"chimera modules={len(self._chimera_aware_loras)}"
-                )
-            else:
-                freq_input_dim = int(cfg.fei_feature_dim) + int(cfg.sigma_feature_dim)
-                if freq_input_dim <= 0:
-                    raise ValueError(
-                        "use_chimera_hydra=True requires fei_feature_dim + "
-                        f"sigma_feature_dim > 0 for the FreqRouter input (got "
-                        f"FEI={cfg.fei_feature_dim}, σ={cfg.sigma_feature_dim})."
-                    )
-                # Chimera is always centered-gate: cold-start is broken by the
-                # disjoint P_bases_f·λ_f residual, so zero-init the router for
-                # uniform π_f at step 0 → ΔW_f=0.
-                freq_init_std = 0.0
-                self.freq_router = FreqRouter(
-                    input_dim=freq_input_dim,
-                    num_freq_experts=int(cfg.num_experts_freq),
-                    hidden_dim=int(cfg.router_hidden_dim),
-                    tau=float(cfg.router_tau),
-                    init_std=freq_init_std,
-                    fei_dim=int(cfg.fei_feature_dim),
-                    sigma_dim=int(cfg.sigma_feature_dim),
-                    apply_layer_norm=bool(cfg.freq_router_layer_norm),
-                )
-                # Chimera ties σ+FEI into the freq router input, so set_fei is
-                # where FreqRouter re-fires each step.
-                self.use_fei_router = True
-                logger.info(
-                    f"ChimeraHydra FreqRouter: input_dim={freq_input_dim} "
-                    f"(FEI={cfg.fei_feature_dim} + σ={cfg.sigma_feature_dim}), "
-                    f"K_f={cfg.num_experts_freq}, hidden={cfg.router_hidden_dim}, "
-                    f"τ={cfg.router_tau:.2f}, init_std={cfg.freq_router_init_std}, "
-                    f"LN={self.freq_router.apply_layer_norm}, "
-                    f"chimera modules={len(self._chimera_aware_loras)}"
-                )
-
-        # ChimeraHydra ContentRouter: network-level twin of FreqRouter for the
-        # content pool, fed pooled crossattn_emb (content routing is always
-        # network-level). π_c flows through _content_routing_weights.
-        self.content_router: Optional[ContentRouter] = None
-        self.use_content_router: bool = False
-        if cfg.use_chimera_hydra and self._chimera_aware_loras:
-            # Centered-gate zero-init (like FreqRouter): disjoint P_bases_c·λ_c
-            # residual breaks symmetry, so uniform π_c at step 0 keeps ΔW_c=0.
-            # Opt-in non-zero content_router_init_std tilts π_c off uniform.
-            self.content_router = ContentRouter(
-                input_dim=CROSSATTN_EMB_DIM,
-                num_content_experts=int(cfg.num_experts_content),
-                hidden_dim=int(cfg.router_hidden_dim),
-                tau=float(cfg.router_tau),
-                init_std=float(cfg.content_router_init_std),
-                apply_layer_norm=bool(cfg.content_router_layer_norm),
-            )
-            self.use_content_router = True
-            # Running EMA of per-expert content usage (mean π_c) — the smoothed
-            # routed-fraction estimate _get_chimera_balance_loss reads.
-            self._content_usage_ema: Optional[torch.Tensor] = None
-            logger.info(
-                f"ChimeraHydra ContentRouter: input_dim={CROSSATTN_EMB_DIM} "
-                f"(pooled crossattn_emb), K_c={cfg.num_experts_content}, "
-                f"hidden={cfg.router_hidden_dim}, τ={cfg.router_tau:.2f}, "
-                f"init_std={cfg.content_router_init_std}, "
-                f"LN={cfg.content_router_layer_norm}, "
-                f"chimera modules={len(self._chimera_aware_loras)}"
-            )
-
         # Depth of the DiT this adapter is being trained against, stamped into
         # save_weights metadata as ss_num_blocks. Read here rather than derived
         # from module names later, which layer_start/layer_end filtering would
         # under-count.
         self._trained_num_blocks = len(unet.blocks) if hasattr(unet, "blocks") else 0
 
-        # DSR register tokens trained jointly with the LoRA (see networks/CLAUDE.md
-        # register_injection.py entry). Top-level dot-free key ("register_tokens")
-        # so lora key-sniffers/refusers/merge_to's prefix grouping never see it.
-        # Registers can't merge into DiT weights → is_mergeable() is False.
-        self.register_injector: Optional[RegisterInjector] = None
-        # train.py widens the compile dynamic-seq MAX bound by this constant
-        # +K seq growth past the insert block.
-        self.extra_seq_tokens = int(cfg.num_registers)
-        if cfg.num_registers > 0:
-            n_blocks = len(unet.blocks)
-            if not (0 <= cfg.register_insert_block < n_blocks):
-                raise ValueError(
-                    f"register_insert_block must be in [0, {n_blocks}), "
-                    f"got {cfg.register_insert_block}"
-                )
-            self.register_tokens = torch.nn.Parameter(
-                torch.randn(cfg.num_registers, int(unet.model_channels))
-                * cfg.register_init_std
-            )
-            self.register_injector = RegisterInjector(
-                num_registers=cfg.num_registers,
-                insert_block=cfg.register_insert_block,
-                get_scaled_tokens=lambda: self.register_tokens * self.multiplier,
-            )
-            logger.info(
-                f"Register tokens: K={cfg.num_registers} learnable registers "
-                f"enter the self-attn seq at block {cfg.register_insert_block} "
-                f"(DSR starting-block pattern), lr scale "
-                f"×{cfg.register_lr_scale:g}, init_std={cfg.register_init_std:g}. "
-                "Checkpoint is kept-live at inference (registers can't merge)."
-            )
-
     def _wire_shared_sigma_buffers(self) -> None:
-        """Alias each Hydra/OrthoHydra module's ``_sigma``/``_sigma_features``
+        """Alias each Hydra module's ``_sigma``/``_sigma_features``
         buffers to one network-level tensor, so a ``copy_`` on the shared
         buffer flows to every module without a Python propagation loop.
 
@@ -878,8 +658,7 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
         self, buffer_name: str, aware_attr: str, shared_attr: str
     ) -> None:
         """Alias every module carrying ``buffer_name`` to one shared ``(1, E)``
-        tensor — broadcast scaffold behind the routing/content/freq gate
-        buffers. No per-dim split (unlike ``_shared_fei``): all such modules
+        tensor — broadcast scaffold behind the routing gate buffer. No per-dim split (unlike ``_shared_fei``): all such modules
         share one ``num_experts`` by construction.
         """
         loras = [
@@ -896,20 +675,6 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
     def _wire_shared_routing_buffers(self) -> None:
         self._wire_shared_broadcast_buffer(
             "_routing_weights", "_routing_aware_loras", "_shared_routing_weights"
-        )
-
-    def _wire_shared_content_routing_buffers(self) -> None:
-        self._wire_shared_broadcast_buffer(
-            "_content_routing_weights",
-            "_content_aware_loras",
-            "_shared_content_routing_weights",
-        )
-
-    def _wire_shared_freq_routing_buffers(self) -> None:
-        self._wire_shared_broadcast_buffer(
-            "_freq_routing_weights",
-            "_chimera_aware_loras",
-            "_shared_freq_routing_weights",
         )
 
     def prepare_network(self, args):
@@ -1101,8 +866,8 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
         gates via ``set_routing_weights`` in the same call.
         """
         fei = fei.detach()
-        # Fast-path: nothing to do with no per-Linear FEI consumer, no global
-        # router, and no chimera FreqRouter needing FEI.
+        # Fast-path: nothing to do with no per-Linear FEI consumer and no
+        # global router.
         has_per_layer_fei = bool(getattr(self, "_fei_aware_loras", None))
         global_fei_router = (
             self.global_router
@@ -1113,34 +878,9 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
             )
             else None
         )
-        chimera_freq_router = (
-            self.freq_router
-            if (
-                getattr(self, "freq_router", None) is not None
-                and getattr(self, "_chimera_aware_loras", None)
-            )
-            else None
-        )
-        # Hardwired-FEI freq pool: no router module, broadcast the simplex
-        # directly — needs its own flag since freq_router is None here.
-        chimera_fei_active = bool(
-            self.cfg.use_chimera_hydra
-            and getattr(self, "_chimera_aware_loras", None)
-            and getattr(self, "freq_router_mode", "learned") == "fei"
-        )
-        if not (
-            has_per_layer_fei
-            or global_fei_router is not None
-            or chimera_freq_router is not None
-            or chimera_fei_active
-        ):
+        if not (has_per_layer_fei or global_fei_router is not None):
             return
-        if not (
-            self.use_fei_router
-            or global_fei_router is not None
-            or chimera_freq_router is not None
-            or chimera_fei_active
-        ):
+        if not (self.use_fei_router or global_fei_router is not None):
             return
 
         # Per-layer FEI broadcast (per-Linear FEI routers).
@@ -1166,41 +906,11 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
                 else:
                     canonical.copy_(cast)
 
-        # Global router (FeRA-style): fires WITH grad so L_denoise reaches the
+        # Global router: fires WITH grad so L_denoise reaches the
         # GlobalRouter params (set_routing_weights keeps the live grad_fn).
         if global_fei_router is not None:
             gates = global_fei_router(fei)
             self.set_routing_weights(gates)
-
-        # ChimeraHydra FreqRouter: input concat(FEI, σ-features). σ arrives via
-        # set_sigma, which must fire before set_fei in the same step (chimera
-        # modules are built with sigma_feature_dim=0 — the freq router alone
-        # owns the σ axis).
-        if chimera_freq_router is not None:
-            sigma = self._last_sigma
-            if sigma is None:
-                raise RuntimeError(
-                    "ChimeraHydra FreqRouter requires set_sigma to fire before "
-                    "set_fei within the same step (apply_router_conditioning "
-                    "preserves this order — check custom call sites)."
-                )
-            sigma_dim = int(self.cfg.sigma_feature_dim)
-            sigma_feat = _sigma_sinusoidal_features(sigma, sigma_dim)
-            fei_cast = fei.to(device=sigma_feat.device, dtype=sigma_feat.dtype)
-            if fei_cast.dim() == 1:
-                fei_cast = fei_cast.unsqueeze(0)
-            router_in = torch.cat([fei_cast, sigma_feat], dim=-1)
-            freq_gates = chimera_freq_router(router_in)
-            self.set_freq_routing_weights(freq_gates)
-
-        # Hardwired-FEI freq pool: π_f = normalize(FEI ** (1/τ)), detached and
-        # grad_fn-free — a fixed gate like T-LoRA's timestep mask.
-        elif chimera_fei_active:
-            fei_cast = fei.float()
-            if fei_cast.dim() == 1:
-                fei_cast = fei_cast.unsqueeze(0)
-            pi_f = _fei_temperature(fei_cast, float(self.freq_router_tau))
-            self.set_freq_routing_weights(pi_f)
 
     def clear_fei(self) -> None:
         """Reset cached FEI to zeros without rebinding pointers (same
@@ -1284,7 +994,7 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
         ``(B, L, D)`` (raw, pooled here) or ``(B, D)`` (pre-pooled). Runs WITH
         grad, broadcasts via :meth:`set_routing_weights`. Call BEFORE each
         forward, separately for cond/uncond branches at inference — gates
-        depend on the caption (parallel to chimera's ``set_content``).
+        depend on the caption.
         """
         if self.global_router is None or not getattr(
             self, "use_crossattn_router", False
@@ -1292,58 +1002,6 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
             return
         gates = self.global_router(crossattn_emb)
         self.set_routing_weights(gates)
-
-    def set_freq_routing_weights(self, weights: torch.Tensor) -> None:
-        """Broadcast ``π_f`` from the FreqRouter to every chimera module's
-        ``_freq_routing_weights`` (``_compute_gate`` reads it for the
-        ``[π_c | π_f]`` concat). See ``_broadcast_gate``."""
-        self._broadcast_gate(
-            weights,
-            "_chimera_aware_loras",
-            "_freq_routing_weights",
-            "_shared_freq_routing_weights",
-        )
-
-    def clear_freq_routing_weights(self) -> None:
-        """Reset chimera freq gates to uniform ``1/K_f`` in place."""
-        self._reset_gate(
-            "_chimera_aware_loras",
-            "_freq_routing_weights",
-            "_shared_freq_routing_weights",
-        )
-
-    def set_content(self, crossattn_emb: torch.Tensor) -> None:
-        """Fire the network-level ContentRouter on a pooled text vector.
-
-        ``crossattn_emb`` is ``(B, L, D)`` (raw, pooled here) or ``(B, D)``
-        (pre-pooled). No-op when chimera is off. Runs WITH grad; broadcasts
-        via :meth:`set_content_routing_weights`.
-        """
-        if self.content_router is None:
-            return
-        if not getattr(self, "_content_aware_loras", None):
-            return
-        gates = self.content_router(crossattn_emb)
-        self.set_content_routing_weights(gates)
-
-    def set_content_routing_weights(self, weights: torch.Tensor) -> None:
-        """Broadcast ``π_c`` from the ContentRouter to every chimera module's
-        ``_content_routing_weights``. Externally callable for inference paths
-        that pre-compute gates. See ``_broadcast_gate``."""
-        self._broadcast_gate(
-            weights,
-            "_content_aware_loras",
-            "_content_routing_weights",
-            "_shared_content_routing_weights",
-        )
-
-    def clear_content_routing_weights(self) -> None:
-        """Reset chimera content gates to uniform ``1/K_c`` in place."""
-        self._reset_gate(
-            "_content_aware_loras",
-            "_content_routing_weights",
-            "_shared_content_routing_weights",
-        )
 
     def clear_step_caches(self) -> None:
         """Drop per-step tensor references (``_last_gate``) and invalidate
@@ -1364,22 +1022,15 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
         """
         self._last_sigma = None
         self._router_stats_cache = None
-        self._chimera_router_stats_cache = None
         for lora in self.unet_loras + self.text_encoder_loras:
             if hasattr(lora, "_last_gate"):
                 lora._last_gate = None
-        # Drop GlobalRouter/FreqRouter/ContentRouter per-step transients for
-        # the same cudagraph-pool-reclamation reason.
+        # Drop GlobalRouter per-step transients for the same
+        # cudagraph-pool-reclamation reason.
         if self.global_router is not None:
             self.global_router._last_gates = None
             self.global_router._last_input = None
             self.global_router._last_fei = None
-        if getattr(self, "freq_router", None) is not None:
-            self.freq_router._last_gates = None
-            self.freq_router._last_input = None
-        if getattr(self, "content_router", None) is not None:
-            self.content_router._last_gates = None
-            self.content_router._last_input = None
 
     @staticmethod
     def _strip_orig_mod_keys(state_dict):
@@ -1414,12 +1065,8 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
         if has_comfy_adaln_keys(weights_sd):
             weights_sd = relayout_adaln_comfy_to_runtime(weights_sd)
 
-        # Stack per-expert hydra ups into fused lora_up_weight (+ per-expert
-        # downs for StackedExperts; no-op for Hydra).
+        # Stack per-expert hydra ups into fused lora_up_weight.
         weights_sd = _stack_lora_ups(weights_sd)
-        # Stacked-experts first: its 3-D lora_down_weight discriminator would
-        # be short-circuited by the hydra refuser's absent shared lora_down.weight.
-        weights_sd = _refuse_split_stacked_experts_keys(weights_sd)
         # Hydra attn before the regular refuser: hydra splits carry no
         # lora_up.weight, so non-hydra attention still goes through cleanly.
         weights_sd = _refuse_split_hydra_keys(weights_sd)
@@ -1481,15 +1128,8 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
             lora.apply_to()
             self.add_module(lora.lora_name, lora)
 
-        # Register-token injection, installed after the LoRA monkey-patches;
-        # both must run before compile_blocks (compile-after-apply invariant).
-        if apply_unet and self.register_injector is not None:
-            self.register_injector.apply(unet)
-
     def is_mergeable(self):
-        # Register tokens ride the sequence, not the weights — a static merge
-        # would silently drop them. Kept-live inference only.
-        return self.cfg.num_registers == 0
+        return True
 
     def merge_to(self, text_encoders, unet, weights_sd, dtype=None, device=None):
         apply_text_encoder = apply_unet = False
@@ -1565,14 +1205,7 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
                 list(self.cfg.reg_lrs.items()) if self.cfg.reg_lrs is not None else []
             )
             router_scale = float(self.cfg.router_lr_scale)
-            # Chimera content-router multiplier stacks on router_scale; off
-            # (1.0) for non-chimera so plain Hydra is unaffected.
-            content_router_scale = (
-                float(self.cfg.content_router_lr_scale)
-                if getattr(self.cfg, "use_chimera_hydra", False)
-                else 1.0
-            )
-            router_lr_mult = router_scale * content_router_scale
+            router_lr_mult = router_scale
 
             def _is_router_param(pname: str) -> bool:
                 return pname.startswith("router.")
@@ -1740,59 +1373,6 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
                         f"({router_scale}x of unet_lr={base_lr})"
                     )
 
-        # ChimeraHydra FreqRouter mirrors the GlobalRouter param-group treatment.
-        if getattr(self, "freq_router", None) is not None:
-            fr_params = list(self.freq_router.parameters())
-            if len(fr_params) > 0:
-                router_scale = float(self.cfg.router_lr_scale)
-                freq_scale = float(self.cfg.freq_router_lr_scale)
-                base_lr = unet_lr if unet_lr is not None else default_lr
-                if base_lr is None or base_lr == 0:
-                    logger.info("FreqRouter: no base LR, skipping param group")
-                else:
-                    fr_lr = float(base_lr) * router_scale * freq_scale
-                    all_params.append({"params": fr_params, "lr": fr_lr})
-                    lr_descriptions.append("chimera freq router")
-                    logger.info(
-                        f"ChimeraHydra FreqRouter param group: lr={fr_lr:.2e} "
-                        f"({router_scale}x router_lr_scale × {freq_scale}x "
-                        f"freq_router_lr_scale of unet_lr={base_lr})"
-                    )
-
-        # ChimeraHydra ContentRouter param group. Stacks router_lr_scale ×
-        # content_router_lr_scale (LN parameterless, only the two Linears here).
-        if getattr(self, "content_router", None) is not None:
-            cr_params = list(self.content_router.parameters())
-            if len(cr_params) > 0:
-                router_scale = float(self.cfg.router_lr_scale)
-                content_scale = float(self.cfg.content_router_lr_scale)
-                base_lr = unet_lr if unet_lr is not None else default_lr
-                if base_lr is None or base_lr == 0:
-                    logger.info("ContentRouter: no base LR, skipping param group")
-                else:
-                    cr_lr = float(base_lr) * router_scale * content_scale
-                    all_params.append({"params": cr_params, "lr": cr_lr})
-                    lr_descriptions.append("chimera content router")
-                    logger.info(
-                        f"ChimeraHydra ContentRouter param group: lr={cr_lr:.2e} "
-                        f"({router_scale}x router_lr_scale × {content_scale}x "
-                        f"content_router_lr_scale of unet_lr={base_lr})"
-                    )
-
-        # Register tokens: own lr group (why: cfg.register_lr_scale comment).
-        if self.register_injector is not None:
-            base_lr = unet_lr if unet_lr is not None else default_lr
-            if base_lr is None or base_lr == 0:
-                logger.info("Register tokens: no base LR, skipping param group")
-            else:
-                reg_lr = float(base_lr) * float(self.cfg.register_lr_scale)
-                all_params.append({"params": [self.register_tokens], "lr": reg_lr})
-                lr_descriptions.append("register tokens")
-                logger.info(
-                    f"Register-token param group: lr={reg_lr:.2e} "
-                    f"({self.cfg.register_lr_scale:g}x of unet_lr={base_lr})"
-                )
-
         # REPA v2 projection-head param group (absolute mode only). LR =
         # repa_lr_scale × unet_lr. Training-only — stripped by lora_save.
         if getattr(self, "repa_head", None) is not None:
@@ -1862,15 +1442,6 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
             )
             metadata["ss_router_source"] = str(self.cfg.router_source)
 
-        # OrthoHydra centered-gate: distilled _moe ups combine with (g_e - 1/E)
-        # not raw softmax; loader threads this into the runtime combine.
-        if getattr(self.cfg, "ortho_centered_gate", False):
-            metadata["ss_ortho_centered_gate"] = "true"
-
-        # Informational only — distills to standard LoRA, no special loader path.
-        if getattr(self.cfg, "use_ortho_init", False):
-            metadata["ss_use_ortho_init"] = "true"
-
         # Informational — which lora_down seed this plain LoRA got. The slice is
         # what a merge tool would compare: two adapters on the same weight_svd
         # slice share an input subspace, different slices are orthogonal.
@@ -1879,52 +1450,10 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
             if self.cfg.down_init == "weight_svd":
                 metadata["ss_svd_slice"] = str(int(getattr(self.cfg, "svd_slice", 0)))
 
-        # Insert block leaves no tensor footprint, so stamp it (K is
-        # recoverable from register_tokens' shape).
-        if self.cfg.num_registers > 0:
-            metadata["ss_num_registers"] = str(int(self.cfg.num_registers))
-            metadata["ss_register_insert_block"] = str(
-                int(self.cfg.register_insert_block)
-            )
-
         # Scalars the loader needs to size the FEI router input.
         if self.cfg.router_source == "fei" and self.cfg.fei_feature_dim > 0:
             metadata["ss_fei_feature_dim"] = str(int(self.cfg.fei_feature_dim))
             metadata["ss_fei_sigma_low_div"] = str(float(self.cfg.fei_sigma_low_div))
-
-        # ChimeraHydra: pool split is the only info the loader can't derive
-        # from key shapes (P_bases encodes E=K_c+K_f but not the split point).
-        if self.cfg.use_chimera_hydra:
-            metadata["ss_use_chimera_hydra"] = "true"
-            metadata["ss_num_experts_content"] = str(int(self.cfg.num_experts_content))
-            metadata["ss_num_experts_freq"] = str(int(self.cfg.num_experts_freq))
-            metadata["ss_chimera_fei_feature_dim"] = str(int(self.cfg.fei_feature_dim))
-            metadata["ss_chimera_sigma_feature_dim"] = str(
-                int(self.cfg.sigma_feature_dim)
-            )
-            metadata["ss_chimera_fei_sigma_low_div"] = str(
-                float(self.cfg.fei_sigma_low_div)
-            )
-            # Parameterless LN has no tensor footprint, must travel in metadata
-            # (absent → off, preserving pre-LN checkpoint inference).
-            metadata["ss_chimera_freq_router_layer_norm"] = (
-                "true" if self.cfg.freq_router_layer_norm else "false"
-            )
-            # "fei" mode = hardwired FEI simplex, no FreqRouter weights —
-            # loader must NOT rebuild one. Absent ⇒ "learned".
-            metadata["ss_chimera_freq_router_mode"] = str(
-                getattr(self, "freq_router_mode", "learned")
-            )
-            metadata["ss_chimera_freq_router_tau"] = str(
-                float(getattr(self, "freq_router_tau", 1.0))
-            )
-            # Content routing is always network ContentRouter on pooled
-            # crossattn_emb, centered-gate; stamped as constants.
-            metadata["ss_chimera_content_router_source"] = "crossattn_emb"
-            metadata["ss_chimera_content_router_layer_norm"] = (
-                "true" if self.cfg.content_router_layer_norm else "false"
-            )
-            metadata["ss_chimera_centered_gate"] = "true"
 
         state_dict = self.state_dict()
         # Training-only submodules (e.g. the REPA head) never belong in the

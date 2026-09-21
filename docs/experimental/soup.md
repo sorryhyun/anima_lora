@@ -151,10 +151,10 @@ rank 16 to begin with.
 - Plain-LoRA checkpoints only. The ingredient runs use `--method soup`
   (`configs/soup/soup.toml`) — a dedicated, stable plain-LoRA stack (`weight_svd`
   down-init + REPA; T-LoRA is training-only, so its checkpoints are still plain).
-  This is deliberately *not* `configs/methods/lora.toml`, whose comment-toggle-able
-  ortho / Hydra blocks and drifting `path_pattern` / `output_name` would break
-  the soup: Hydra / Chimera / stacked-experts / ortho key shapes are refused
-  loudly by `build.py`. Override per run via `ARGS="--network_dim 32 …"`.
+  This is deliberately *not* `configs/methods/lora.toml`, whose Hydra routing
+  knobs and drifting `path_pattern` / `output_name` would break the soup: Hydra
+  (and any other non-plain-LoRA) key shapes are refused loudly by `build.py`.
+  Override per run via `ARGS="--network_dim 32 …"`.
 - The pool must dilute the target, not repeat it at full dose. The uncond
   phase exposes the target's own frames (the fine-tune set is unioned into the
   pool), so the pool must be broad enough that the target is a minority

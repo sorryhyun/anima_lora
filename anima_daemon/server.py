@@ -52,7 +52,7 @@ TOOLS = [
             "properties": {
                 "method": {
                     "type": "string",
-                    "description": "Method/adapter config name (e.g. 'lora', 'chimera', 'easycontrol').",
+                    "description": "Method/adapter config name (e.g. 'lora', 'soft_tokens', 'easycontrol').",
                 },
                 "preset": {
                     "type": "string",

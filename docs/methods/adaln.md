@@ -145,7 +145,7 @@ They reach the network as top-level TOML keys, not `network_args` — the
 allowlist is AST-derived from the `kwargs.get()` reads (`networks/__init__.py::
 _derive_network_kwargs`) and `train.py::resolve_network_kwargs` forwards them. So
 `configs/base.toml`'s `train_adaln = true` applies to every LoRA-family method
-(lora / chimera / soup / byg) with no per-method opt-in. Verify a merge with
+(lora / soup / byg) with no per-method opt-in. Verify a merge with
 `make print-config METHOD=<m> PRESET=<p>`.
 
 Frozen-DiT methods. `soft_tokens` takes `**kwargs` and ignores the adaln
@@ -252,7 +252,7 @@ standard write path (after the qkv defuse, before hashing), stamps
 untouched. The in-repo loader renames back on load
 (`create_network_from_weights` → `relayout_adaln_comfy_to_runtime`), so one file
 round-trips both ecosystems. Every method on the standard path is covered,
-turbo included; the MoE/chimera `_moe` siblings are not ComfyUI-loadable
+turbo included; the Hydra MoE `_moe` siblings are not ComfyUI-loadable
 regardless, and the turbo per-step-expert layout (`step_expert_K > 1`) writes
 verbatim and stays runtime-layout.
 

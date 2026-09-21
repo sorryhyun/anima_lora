@@ -33,9 +33,7 @@ class HydraLoRAModule(RouterStateMixin, BaseLoRAModule):
 
     ``use_global_router``: drops the per-layer router for the network-level
     GlobalRouter's broadcast ``_routing_weights`` (σ-band partition then
-    incompatible). ``num_experts_content > 0`` is the ChimeraHydra dual-pool
-    form: content pool via the local router, freq pool via the network-level
-    FreqRouter's ``_freq_routing_weights``, concatenated in ``_compute_gate``.
+    incompatible).
     """
 
     def __init__(
@@ -57,9 +55,6 @@ class HydraLoRAModule(RouterStateMixin, BaseLoRAModule):
         sigma_bucket_boundaries: Optional[List[float]] = None,
         fei_feature_dim: int = 0,
         use_global_router: bool = False,
-        num_experts_content: int = 0,
-        use_global_content_router: bool = False,
-        centered_gate: bool = False,
     ):
         super().__init__(
             lora_name,
@@ -77,13 +72,6 @@ class HydraLoRAModule(RouterStateMixin, BaseLoRAModule):
 
         self.num_experts = num_experts
         self.in_dim = in_dim
-        # Centered-gate runtime parity: an OrthoHydra checkpoint trained with
-        # ``ortho_centered_gate`` combined experts with (g_e - 1/E), folded
-        # symmetrically into the saved ups — reproduced here as gate -= 1/E.
-        # Single-pool only (chimera's concat gate isn't one E-simplex). See
-        # ortho.py distill note.
-        self._centered_gate = bool(centered_gate)
-
         self.lora_down = torch.nn.Linear(in_dim, self.lora_dim, bias=False)
         torch.nn.init.kaiming_uniform_(self.lora_down.weight, a=math.sqrt(5))
 
@@ -97,37 +85,6 @@ class HydraLoRAModule(RouterStateMixin, BaseLoRAModule):
             torch.nn.init.normal_(self.lora_up_weight, mean=0.0, std=expert_init_std)
 
         self.use_global_router = bool(use_global_router)
-        # ChimeraHydra dual-pool flag (load-time form): the per-Linear router
-        # produces K_c content gates; freq gates arrive via FreqRouter
-        # broadcast. Invariants enforced below.
-        self.num_experts_content = int(num_experts_content)
-        self.num_experts_freq = (
-            num_experts - self.num_experts_content
-            if self.num_experts_content > 0
-            else 0
-        )
-        self.use_global_content_router = bool(use_global_content_router)
-        if self.num_experts_content > 0:
-            if self.num_experts_freq <= 0:
-                raise ValueError(
-                    f"num_experts_content={self.num_experts_content} must be < "
-                    f"num_experts={num_experts} (freq pool would be empty)."
-                )
-            if self.use_global_router:
-                raise ValueError(
-                    "num_experts_content > 0 is incompatible with "
-                    "use_global_router=True (chimera owns its own freq router)."
-                )
-            if int(sigma_feature_dim) > 0 or int(fei_feature_dim) > 0:
-                raise ValueError(
-                    "num_experts_content > 0 requires sigma_feature_dim == 0 and "
-                    "fei_feature_dim == 0 — those axes belong to the FreqRouter."
-                )
-        elif self.use_global_content_router:
-            raise ValueError(
-                "use_global_content_router=True requires num_experts_content > 0 "
-                "(global content router only runs on the chimera content pool)."
-            )
         # Router reads pooled rank-R, not raw in_dim: raw DiT inputs have
         # 80-96x DC-bias outliers + 4096 tokens, mean-pool collapses to DC and
         # the router gets no gradient. lora_down is trained jointly, so
@@ -136,12 +93,6 @@ class HydraLoRAModule(RouterStateMixin, BaseLoRAModule):
         if self.use_global_router:
             self.sigma_feature_dim = 0
             self.fei_feature_dim = 0
-        elif self.use_global_content_router:
-            # Chimera load form: per-Linear router absent on disk, π_c arrives
-            # via the ``_content_routing_weights`` slot-assigned buffer below.
-            self.sigma_feature_dim = 0
-            self.fei_feature_dim = 0
-            self.router = None
         else:
             self.sigma_feature_dim = int(sigma_feature_dim)
             # fei_dim=2 default = raw 2-band simplex (e_low, e_high) from
@@ -150,14 +101,7 @@ class HydraLoRAModule(RouterStateMixin, BaseLoRAModule):
             router_in_dim = (
                 self.lora_dim + self.sigma_feature_dim + self.fei_feature_dim
             )
-            # Chimera narrows the router to K_c outputs (its forward output IS
-            # π_c); plain Hydra keeps the standard E-output router.
-            router_out_dim = (
-                self.num_experts_content
-                if self.num_experts_content > 0
-                else num_experts
-            )
-            self.router = torch.nn.Linear(router_in_dim, router_out_dim, bias=True)
+            self.router = torch.nn.Linear(router_in_dim, num_experts, bias=True)
             # Split init: small-std on rank-R columns, zeros on σ/FEI columns,
             # so step-0 gate matches σ/FEI-off and conditioning emerges as
             # those columns train.
@@ -173,28 +117,6 @@ class HydraLoRAModule(RouterStateMixin, BaseLoRAModule):
         # pointer-stable buffers (see router_state.py) — no None-vs-Tensor
         # guard needed under torch.compile.
         self._register_router_io_buffers(num_experts)
-        if self.num_experts_content > 0:
-            # ChimeraHydra freq-pool gate buffer, uniform 1/K_f placeholder;
-            # the network-level FreqRouter overwrites via direct slot
-            # assignment (``set_freq_routing_weights`` — no detach/copy_, so
-            # grad_fn is preserved). Non-persistent.
-            placeholder = torch.full(
-                (1, self.num_experts_freq),
-                1.0 / max(self.num_experts_freq, 1),
-                dtype=torch.float32,
-            )
-            self.register_buffer("_freq_routing_weights", placeholder, persistent=False)
-            # Content-pool counterpart. Registered unconditionally on chimera
-            # modules so buffer presence identifies them; the per-Linear
-            # (default) form computes π_c locally and leaves this dead.
-            content_placeholder = torch.full(
-                (1, self.num_experts_content),
-                1.0 / max(self.num_experts_content, 1),
-                dtype=torch.float32,
-            )
-            self.register_buffer(
-                "_content_routing_weights", content_placeholder, persistent=False
-            )
         # σ-band partition: experts split into num_sigma_buckets bands;
         # out-of-band logits masked to -inf before softmax, soft routing
         # within each band. Independent of σ-feature router. Incompatible
@@ -218,8 +140,7 @@ class HydraLoRAModule(RouterStateMixin, BaseLoRAModule):
         L≈4096 sequence; safe in rank-R space since lora_down strips the raw
         DiT DC-bias outliers that break RMS in bf16 (docs/methods/hydra-lora.md
         §Fixes). ``use_global_router`` bypasses this — gate is the broadcast
-        ``_routing_weights`` buffer, ``lx`` ignored. ``num_experts_content > 0``
-        (chimera) concats K_c local content gates with K_f broadcast freq gates.
+        ``_routing_weights`` buffer, ``lx`` ignored.
         """
         if self.use_global_router:
             B = lx.shape[0] if lx.dim() >= 1 else 1
@@ -227,21 +148,6 @@ class HydraLoRAModule(RouterStateMixin, BaseLoRAModule):
             if w.dim() == 1:
                 w = w.unsqueeze(0)
             return w.to(lx.dtype).expand(B, -1)
-        if self.use_global_content_router:
-            # π_c broadcast from the network-level ContentRouter, π_f from
-            # the FreqRouter — no per-Linear router call (``self.router`` None).
-            B = lx.shape[0] if lx.dim() >= 1 else 1
-            pi_c = self._content_routing_weights
-            if pi_c.dim() == 1:
-                pi_c = pi_c.unsqueeze(0)
-            if pi_c.shape[0] == 1 and B > 1:
-                pi_c = pi_c.expand(B, -1)
-            pi_c = pi_c.to(lx.dtype)
-            pi_f = self._freq_routing_weights
-            if pi_f.dim() == 1:
-                pi_f = pi_f.unsqueeze(0)
-            pi_f = pi_f.to(pi_c.dtype).expand(pi_c.shape[0], -1)
-            return torch.cat([pi_c, pi_f], dim=-1)
         if lx.dim() >= 3:
             B = lx.shape[0]
             pooled = lx.reshape(B, -1, lx.shape[-1]).pow(2).mean(dim=1).sqrt()
@@ -262,62 +168,16 @@ class HydraLoRAModule(RouterStateMixin, BaseLoRAModule):
             fei_feat = self._fei.to(pooled.dtype).expand(pooled.shape[0], -1)
             parts.append(fei_feat)
         router_in = parts[0] if len(parts) == 1 else torch.cat(parts, dim=-1)
-        logits = self.router(router_in)  # (B, K_c) under chimera, (B, E) otherwise
+        logits = self.router(router_in)  # (B, E)
         if self._sigma_band_partition:
             logits = _apply_sigma_band_mask(
                 logits, self._sigma, self._expert_band, self._sigma_edges
             )
-        if self.num_experts_content > 0:
-            # Chimera dual-pool: softmax each pool independently, concat.
-            pi_c = torch.softmax(logits, dim=-1)  # (B, K_c)
-            pi_f = self._freq_routing_weights
-            if pi_f.dim() == 1:
-                pi_f = pi_f.unsqueeze(0)
-            pi_f = pi_f.to(pi_c.dtype).expand(pi_c.shape[0], -1)
-            return torch.cat([pi_c, pi_f], dim=-1)  # (B, E)
         return torch.softmax(logits, dim=-1)
-
-    def set_freq_routing_weights(self, weights: torch.Tensor) -> None:
-        """Slot-assign the freq pool's gates — NO ``.detach()``/``.copy_()``,
-        the buffer must carry the FreqRouter's grad_fn so ``d(loss)/d(pi_f)``
-        reaches the FreqRouter parameters. Mirrors
-        ``router_state._set_routing_weights``.
-        """
-        if self.num_experts_content <= 0:
-            return
-        buf = self._freq_routing_weights
-        w = weights.to(dtype=buf.dtype, device=buf.device)
-        if w.dim() == 1:
-            w = w.unsqueeze(0)
-        self._freq_routing_weights = w
-
-    def clear_freq_routing_weights(self) -> None:
-        if self.num_experts_content <= 0:
-            return
-        K_f = int(self._freq_routing_weights.shape[-1])
-        self._freq_routing_weights.fill_(1.0 / max(K_f, 1))
-
-    def set_content_routing_weights(self, weights: torch.Tensor) -> None:
-        """Inference-side slot-assign for the chimera global-content path.
-        Mirrors :meth:`set_freq_routing_weights`."""
-        if self.num_experts_content <= 0:
-            return
-        buf = self._content_routing_weights
-        w = weights.to(dtype=buf.dtype, device=buf.device)
-        if w.dim() == 1:
-            w = w.unsqueeze(0)
-        self._content_routing_weights = w
-
-    def clear_content_routing_weights(self) -> None:
-        if self.num_experts_content <= 0:
-            return
-        K_c = int(self._content_routing_weights.shape[-1])
-        self._content_routing_weights.fill_(1.0 / max(K_c, 1))
 
     # σ / FEI / routing-weights method surface (set_sigma / clear_sigma /
     # set_fei / clear_fei / set_routing_weights / clear_routing_weights) is
-    # inherited from RouterStateMixin. The chimera freq/content setters
-    # above stay local — extra buffers the mixin doesn't know about.
+    # inherited from RouterStateMixin.
 
     def forward(self, x):
         org_forwarded = self.org_forward(x)
@@ -352,15 +212,9 @@ class HydraLoRAModule(RouterStateMixin, BaseLoRAModule):
 
         lx, scale = self._apply_rank_dropout(lx)
 
-        # Centered-gate parity (single-pool only). The concat gate of a chimera
-        # dual-pool form is not one E-simplex, so centering is gated off there.
-        gate_eff = gate
-        if self._centered_gate and self.num_experts_content == 0:
-            gate_eff = gate - (1.0 / self.num_experts)
-
         # Gate-weighted up projection: (B, out, r) per batch element.
         combined = torch.einsum(
-            "be,eod->bod", gate_eff.to(comp), self.lora_up_weight.to(comp)
+            "be,eod->bod", gate.to(comp), self.lora_up_weight.to(comp)
         )
         orig_shape = lx.shape
         B = orig_shape[0]
@@ -380,9 +234,7 @@ class HydraLoRAModule(RouterStateMixin, BaseLoRAModule):
         (ComfyUI's HydraLoRA node layout), then defuse fused-qkv attention
         prefixes per-expert per-component, cloning the shared ``lora_down`` /
         ``alpha`` / ``router.*`` / ``sigma_mlp.*`` / ``inv_scale`` into each
-        split. Expects the state_dict already in training-runtime form —
-        :meth:`OrthoHydraLoRAModule.distill_save_state_dict` runs first for
-        the ortho-hydra path.
+        split. Expects the state_dict in training-runtime form.
         """
         hydra_sd: Dict[str, torch.Tensor] = {}
         for k, v in state_dict.items():

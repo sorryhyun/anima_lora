@@ -174,7 +174,7 @@ class MainWindow(QMainWindow):
             LazyTabHolder(
                 lambda: MethodsTab(
                     tb_panel=self._tb_tab.panel,
-                    flat_methods=("chimera", "soft_tokens"),
+                    flat_methods=("soft_tokens",),
                     distill_methods=("soup",),
                 )
             ),

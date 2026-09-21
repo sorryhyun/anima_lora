@@ -145,7 +145,7 @@ What makes FEI specifically right here:
    FEI low-pass picks out exactly the band where the frozen-reference
    prediction is accurate — the precondition for high ρ² in the control
    variate.
-2. Same band split the adapter already routes on. HydraLoRA / FeRA routing
+2. Same band split the adapter already routes on. HydraLoRA routing
    on `router_source = "fei"` is conditioned on the same
    `library/runtime/fei.py::gaussian_blur_2d` split, so the control variate
    inherits the existing inductive bias instead of inventing a new one.
@@ -232,8 +232,7 @@ DiT: the base weights are frozen for the whole training run, and adapters
 are additive residuals on top — turning the multiplier to zero collapses
 the model to its base. No second model copy in VRAM.
 
-`set_multiplier(0)` covers `LoRA` / `OrthoLoRA` / `HydraLoRA` /
-`StackedExperts`.
+`set_multiplier(0)` covers `LoRA` / `HydraLoRA`.
 Postfix's `network.append_postfix` modifies `crossattn_emb` *before* the
 DiT call, not the DiT itself, so the bypass forward receives the same
 postfix-appended tokens as the gradient forward — postfix is therefore

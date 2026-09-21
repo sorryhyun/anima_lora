@@ -13,8 +13,8 @@ runs it with the preset values below (`INFERENCE_BASE` in
 `scripts/tasks/_common.py`).
 
 ```bash
-make test                  # latest LoRA / OrthoLoRA / T-LoRA
-make test-hydra            # latest HydraLoRA / FeRA *_moe.safetensors (router-live)
+make test                  # latest LoRA / T-LoRA
+make test-hydra            # latest HydraLoRA *_moe.safetensors (router-live)
 make test-merge            # a baked/merged DiT under MODEL_DIR= (no adapter)
 ```
 
@@ -209,8 +209,8 @@ python inference.py … --lora_weight turbo.safetensors --infer_steps 4 --guidan
 
 ## 5. LoRA in ComfyUI
 
-Plain LoRA / OrthoLoRA / T-LoRA files load in ComfyUI's stock `LoraLoader`;
-HydraLoRA / FeRA / postfix checkpoints need the Anima Adapter Loader node. Node
+Plain LoRA / T-LoRA files load in ComfyUI's stock `LoraLoader`;
+HydraLoRA / postfix checkpoints need the Anima Adapter Loader node. Node
 links and the merge-to-checkpoint route: [guidebook §10](guidebook.md#10-deploying-to-comfyui).
 For ComfyUI-vs-CLI behaviour differences see
 [`difference_between_comfy.md`](difference_between_comfy.md).

@@ -218,7 +218,7 @@ cross-objective comparability) and, under dual bank,
 | `blocks_to_swap` | ❌ method-forced 0 | The hook captures each `Block` by reference at `apply_to()` time; a swapped block is a different object instance, so the hook would fire on the wrong tensor. |
 | `gradient_checkpointing` | ✅ | The hook is the outermost wrapper; the original `forward` (which itself runs `checkpoint(_forward, ...)`) is called underneath, and the spliced `crossattn_emb` is part of the saved input graph. |
 | Modulation guidance | ✅ orthogonal | Modulation = per-block AdaLN path; soft tokens = K/V input path per block. |
-| T-LoRA / OrthoLoRA | n/a | Soft tokens freeze the DiT; LoRA-family methods are not stacked in this config. |
+| T-LoRA | n/a | Soft tokens freeze the DiT; LoRA-family methods are not stacked in this config. |
 
 ## Evaluation
 

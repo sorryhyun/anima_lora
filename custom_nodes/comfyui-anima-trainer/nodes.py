@@ -461,14 +461,12 @@ def _load_anima_model(anima_model: str):
 def _apply_lora_to_model(model, file_path: str, strength: float) -> None:
     """Patch the trained LoRA onto ``model`` in place via ComfyUI's native path.
 
-    The trainer only ever emits an ortho-T-LoRA, which serialises as plain LoRA
-    keys: OrthoLoRA folds down to ``lora_down``/``lora_up`` at save time, and the
-    T-LoRA rank mask is training-only (inference is full-rank). So ComfyUI's
+    The trainer only ever emits a T-LoRA, which serialises as plain LoRA keys:
+    the T-LoRA rank mask is training-only (inference is full-rank). So ComfyUI's
     stock machinery — ``model_lora_keys_unet`` + ``convert_lora`` + ``load_lora``
     — maps and applies it directly, exactly as the built-in LoraLoader node would
-    on a natively-loaded Anima DiT. No Anima adapter loader (HydraLoRA /
-    Chimera live routing) is involved, so we don't pull in the comfyui-hydralora
-    node here (which imports its chimera module at load time).
+    on a natively-loaded Anima DiT. No Anima adapter loader (HydraLoRA live
+    routing) is involved, so we don't pull in the comfyui-hydralora node here.
     """
     import comfy.lora
     import comfy.lora_convert
@@ -485,7 +483,7 @@ def _apply_lora_to_model(model, file_path: str, strength: float) -> None:
 def _fold_inv_scale(lora_sd: dict) -> dict:
     """Fold ``per_channel_scaling`` ``inv_scale`` into ``lora_down`` and drop it.
 
-    Inert for the trainer's default ortho-T-LoRA (no ``per_channel_scaling`` →
+    Inert for the trainer's default T-LoRA (no ``per_channel_scaling`` →
     no ``.inv_scale`` keys). Kept as a guard so the native patcher never silently
     drops an ``.inv_scale`` suffix it doesn't recognise and applies a delta
     that's off by ``s_norm`` per input column. Mirrors ``LoRAModule.merge_to``:

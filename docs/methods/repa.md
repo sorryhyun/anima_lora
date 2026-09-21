@@ -80,8 +80,9 @@ features load but the block hook never fires, the adapter warns once.
 - Numerics: Gram / cosine computed in fp32 (caches are bf16; low-norm cosine
   is precision-sensitive).
 - Loss attach: scalar returned under `aux["repa"]`, weighted by
-  `losses._repa_loss` in the stage-2 registry slot (same family as `fera_fecl`).
-  Active iff the factory stamped `_repa_weight > 0`.
+  `losses._repa_loss` in the stage-2 registry slot (same family as
+  `hydra_balance` / `soft_tokens_contrastive`). Active iff the factory
+  stamped `_repa_weight > 0`.
 - Gradient reach: REPA gradient only flows into LoRA modules in blocks
   ≤ `repa_layer` (by design). Remember this when reading per-block deltas.
 - Config plumbing: kwargs (`use_repa` / `repa_mode` / `repa_weight` /

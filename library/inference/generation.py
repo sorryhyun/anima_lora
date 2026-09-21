@@ -17,7 +17,6 @@ from library.inference.adapters import (
     clear_hydra_fei,
     clear_hydra_sigma,
     compute_and_set_hydra_fei,
-    set_hydra_content,
     set_hydra_crossattn,
     set_hydra_sigma,
     set_step_expert_index,
@@ -408,7 +407,6 @@ def generate_body_tiled(
                     if anima.blocks_to_swap:
                         anima.prepare_block_swap_before_forward()
                     # caption-dependent routers; fire separately for cond vs uncond
-                    set_hydra_content(anima, embed)
                     set_hydra_crossattn(anima, embed)
                     if soft_tokens_net is not None:
                         soft_tokens_net.append_postfix(
@@ -439,7 +437,6 @@ def generate_body_tiled(
                     if do_cfg:
                         if anima.blocks_to_swap:
                             anima.prepare_block_swap_before_forward()
-                        set_hydra_content(anima, negative_embed)
                         set_hydra_crossattn(anima, negative_embed)
                         if soft_tokens_net is not None:
                             soft_tokens_net.append_postfix(
@@ -895,7 +892,6 @@ def generate_body(
                         )
                     else:
                         cond_embed = embed
-                    set_hydra_content(anima, cond_embed)
                     set_hydra_crossattn(anima, cond_embed)
                     if soft_tokens_net is not None:
                         soft_tokens_net.append_postfix(
@@ -929,7 +925,6 @@ def generate_body(
                         set_xattn_boost_state(anima, 1.0)
 
                     if do_cfg:
-                        set_hydra_content(anima, negative_embed)
                         set_hydra_crossattn(anima, negative_embed)
                         if soft_tokens_net is not None:
                             soft_tokens_net.append_postfix(

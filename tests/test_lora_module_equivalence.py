@@ -8,24 +8,21 @@ input) of every variant module as golden tensors, checked in under
 (B1's forward scaffold, B2's router mixin) must reproduce these bit-exactly —
 ``torch.equal``, not ``allclose``.
 
-Determinism: ``tests/conftest.py`` forces ``CUDA_VISIBLE_DEVICES=""`` so the
-SVD-based inits (ortho / hydra / chimera read ``torch.cuda.is_available()``)
-run on CPU; builders also patch ``torch.cuda.is_available`` directly so the
-standalone ``--write`` path below is CPU-deterministic regardless of how it is
-invoked. Every builder re-seeds before construction, so ``svd_lowrank``'s
-internal random projection is reproducible.
+Determinism: ``tests/conftest.py`` forces ``CUDA_VISIBLE_DEVICES=""`` so every
+module is built on CPU; builders also patch ``torch.cuda.is_available`` directly
+so the standalone ``--write`` path below is CPU-deterministic regardless of how
+it is invoked. Every builder re-seeds before construction.
 
 Regenerate the goldens (only when the *reference* forward legitimately changes —
 NOT to paper over a refactor regression)::
 
     python tests/test_lora_module_equivalence.py --write
 
-**Regenerate on Linux only.** The SVD-init variants (ortho / hydra / chimera)
-build their bases via ``torch.svd_lowrank`` → LAPACK, which is not bit-portable
-across BLAS backends (Windows MKL ≠ Linux OpenBLAS, ~1e-2 in bf16). The
-checked-in goldens were written on Linux, and ``torch.equal`` is bit-exact — a
-golden regenerated on Windows can never pass here or in CI. The writer enforces
-this (refuses to run off Linux unless ``--force-platform`` is passed).
+**Regenerate on Linux only.** bf16 GEMMs are not bit-portable across BLAS
+backends (Windows MKL ≠ Linux OpenBLAS). The checked-in goldens were written on
+Linux, and ``torch.equal`` is bit-exact — a golden regenerated on Windows can
+never pass here or in CI. The writer enforces this (refuses to run off Linux
+unless ``--force-platform`` is passed).
 
 The goldens are tiny by construction (r ≤ 8, dim ≤ 64) — a few KB each.
 """
@@ -48,7 +45,7 @@ GOLDEN_DIR = Path(__file__).resolve().parent / "golden"
 
 
 def _force_cpu():
-    """Pin the SVD-init device to CPU (mirrors ``test_lora_dtype_policy._cpu_only``)."""
+    """Pin module construction to CPU."""
     return mock.patch("torch.cuda.is_available", return_value=False)
 
 
@@ -132,55 +129,6 @@ def _b_step_expert():
     return base, module
 
 
-def _b_ortho_init(channel_scale=None):
-    from networks.lora_modules.ortho import OrthoInitLoRAModule
-
-    base = _linear_base()
-    with _force_cpu():
-        module = OrthoInitLoRAModule(
-            "m", base, multiplier=1.0, lora_dim=4, alpha=4, channel_scale=channel_scale
-        )
-    with torch.no_grad():
-        module.lambda_layer.copy_(torch.randn_like(module.lambda_layer) * 0.3)
-    module.apply_to()
-    _set_mask(module, 4)
-    return base, module
-
-
-def _b_ortho(channel_scale=None):
-    from networks.lora_modules.ortho import OrthoLoRAModule
-
-    base = _linear_base()
-    with _force_cpu():
-        module = OrthoLoRAModule(
-            "m", base, multiplier=1.0, lora_dim=4, alpha=4, channel_scale=channel_scale
-        )
-    with torch.no_grad():
-        module.S_p.copy_(torch.randn_like(module.S_p) * 0.05)
-        module.S_q.copy_(torch.randn_like(module.S_q) * 0.05)
-        module.lambda_layer.copy_(torch.randn_like(module.lambda_layer) * 0.3)
-    module.apply_to()
-    _set_mask(module, 4)
-    return base, module
-
-
-def _b_ortho_hydra():
-    from networks.lora_modules.ortho import OrthoHydraLoRAModule
-
-    base = _linear_base()
-    with _force_cpu():
-        module = OrthoHydraLoRAModule(
-            "m", base, multiplier=1.0, lora_dim=4, alpha=4, num_experts=3
-        )
-    with torch.no_grad():
-        module.S_p.copy_(torch.randn_like(module.S_p) * 0.05)
-        module.S_q.copy_(torch.randn_like(module.S_q) * 0.05)
-        module.lambda_layer.copy_(torch.randn_like(module.lambda_layer) * 0.3)
-    module.apply_to()
-    _set_mask(module, 4)
-    return base, module
-
-
 def _b_hydra(channel_scale=None):
     from networks.lora_modules.hydra import HydraLoRAModule
 
@@ -204,81 +152,6 @@ def _b_hydra(channel_scale=None):
     return base, module
 
 
-def _b_stacked(ortho=False):
-    from networks.lora_modules.stacked_experts import StackedExpertsLoRAModule
-
-    base = _linear_base()
-    with _force_cpu():
-        module = StackedExpertsLoRAModule(
-            "m", base, multiplier=1.0, lora_dim=4, alpha=4, num_experts=3, ortho=ortho
-        )
-    with torch.no_grad():
-        if ortho:
-            module.lambda_layer.copy_(torch.randn_like(module.lambda_layer) * 0.3)
-        else:
-            module.lora_up_weight.copy_(torch.randn_like(module.lora_up_weight) * 0.1)
-    module.apply_to()
-    module.set_routing_weights(torch.tensor([[0.5, 0.3, 0.2], [0.2, 0.3, 0.5]]))
-    _set_mask(module, 4)
-    return base, module
-
-
-def _b_chimera(use_ortho_init=False, channel_scale=None):
-    from networks.lora_modules.chimera import ChimeraHydraLoRAModule
-
-    base = _linear_base()
-    with _force_cpu():
-        module = ChimeraHydraLoRAModule(
-            "m",
-            base,
-            multiplier=1.0,
-            lora_dim=4,
-            alpha=4,
-            num_experts_content=3,
-            num_experts_freq=2,
-            lambda_init=0.1,
-            channel_scale=channel_scale,
-            use_ortho_init=use_ortho_init,
-        )
-    with torch.no_grad():
-        module.lambda_c.copy_(torch.randn_like(module.lambda_c) * 0.3)
-        module.lambda_f.copy_(torch.randn_like(module.lambda_f) * 0.3)
-        if not use_ortho_init:
-            module.S_p_c.copy_(torch.randn_like(module.S_p_c) * 0.05)
-            module.S_p_f.copy_(torch.randn_like(module.S_p_f) * 0.05)
-            module.S_q_c.copy_(torch.randn_like(module.S_q_c) * 0.05)
-            module.S_q_f.copy_(torch.randn_like(module.S_q_f) * 0.05)
-    module.apply_to()
-    module.set_content_routing_weights(torch.tensor([[0.5, 0.3, 0.2]]))
-    module.set_freq_routing_weights(torch.tensor([[0.6, 0.4]]))
-    _set_mask(module, 4)
-    return base, module
-
-
-def _b_chimera_inf(channel_scale=None):
-    from networks.lora_modules.chimera import ChimeraHydraInferenceModule
-
-    base = _linear_base()
-    with _force_cpu():
-        module = ChimeraHydraInferenceModule(
-            "m",
-            base,
-            multiplier=1.0,
-            lora_dim=4,
-            alpha=4,
-            num_experts_content=3,
-            num_experts_freq=2,
-            channel_scale=channel_scale,
-        )
-    with torch.no_grad():
-        module.lora_up_c_weight.copy_(torch.randn_like(module.lora_up_c_weight) * 0.1)
-        module.lora_up_f_weight.copy_(torch.randn_like(module.lora_up_f_weight) * 0.1)
-    module.apply_to()
-    module.set_content_routing_weights(torch.tensor([[0.5, 0.3, 0.2]]))
-    module.set_freq_routing_weights(torch.tensor([[0.6, 0.4]]))
-    return base, module
-
-
 # name → (builder, modes, x_factory). ``modes`` lists which forward modes to
 # capture; conv LoRA is eval-only (the T-LoRA mask multiply is shaped for the
 # Linear rank axis, never exercised on conv in production).
@@ -291,38 +164,12 @@ _VARIANTS = {
     ),
     "lora_conv2d": (lambda: _b_lora(conv=True), ("eval",), lambda: _x_img()),
     "step_expert": (_b_step_expert, ("train", "eval"), _x_seq),
-    "ortho_init": (_b_ortho_init, ("train", "eval"), _x_seq),
-    "ortho_init_channel_scale": (
-        lambda: _b_ortho_init(channel_scale=_channel_scale(32)),
-        ("train", "eval"),
-        _x_seq,
-    ),
-    "ortho": (_b_ortho, ("train", "eval"), _x_seq),
-    "ortho_channel_scale": (
-        lambda: _b_ortho(channel_scale=_channel_scale(32)),
-        ("train", "eval"),
-        _x_seq,
-    ),
-    "ortho_hydra": (_b_ortho_hydra, ("train", "eval"), _x_seq),
     "hydra": (_b_hydra, ("train", "eval"), _x_seq),
     "hydra_channel_scale": (
         lambda: _b_hydra(channel_scale=_channel_scale(32)),
         ("train", "eval"),
         _x_seq,
     ),
-    "stacked_free": (lambda: _b_stacked(ortho=False), ("train", "eval"), _x_seq),
-    "stacked_ortho": (lambda: _b_stacked(ortho=True), ("train", "eval"), _x_seq),
-    "chimera_frozen": (
-        lambda: _b_chimera(use_ortho_init=False),
-        ("train", "eval"),
-        _x_seq,
-    ),
-    "chimera_ortho_init": (
-        lambda: _b_chimera(use_ortho_init=True),
-        ("train", "eval"),
-        _x_seq,
-    ),
-    "chimera_inference": (_b_chimera_inf, ("eval",), _x_seq),
 }
 
 # Variants whose eval forward calls ``nn.Linear`` submodules directly (no
@@ -356,8 +203,7 @@ def _capture(name: str) -> dict:
             # The raw-nn.Linear eval paths (LoRA / step-expert) require the
             # adapter params to match the bf16 base + activations — inference
             # loads them in the model dtype. The other variants' eval forwards
-            # cast internally (and keep fp32 buffers like ``_eye_r`` the Cayley
-            # solve needs), so a blanket ``.to(bf16)`` would break them.
+            # cast internally, so a blanket ``.to(bf16)`` is not needed there.
             if name in _EVAL_BF16:
                 module.to(torch.bfloat16)
             with torch.no_grad():
@@ -370,14 +216,12 @@ def _golden_path(name: str) -> Path:
     return GOLDEN_DIR / f"{name}.pt"
 
 
-# These goldens are bit-exact (``torch.equal``) fixtures. The SVD-init variants
-# (ortho / hydra / chimera) build their bases via ``torch.svd_lowrank`` →
-# LAPACK, which is NOT bit-reproducible across BLAS backends (Windows MKL vs
-# Linux OpenBLAS diverge at ~1e-2 in bf16). The checked-in goldens were written
-# on Linux; regenerating on another platform produces bytes that can never
-# satisfy ``torch.equal`` here or in CI. A Windows-written ``chimera_frozen.pt``
-# is exactly how this harness was last broken — so the writer refuses to run
-# off the canonical platform unless explicitly forced.
+# These goldens are bit-exact (``torch.equal``) fixtures, and bf16 GEMMs are NOT
+# bit-reproducible across BLAS backends (Windows MKL vs Linux OpenBLAS). The
+# checked-in goldens were written on Linux; regenerating on another platform
+# produces bytes that can never satisfy ``torch.equal`` here or in CI. A
+# Windows-written golden is exactly how this harness was last broken — so the
+# writer refuses to run off the canonical platform unless explicitly forced.
 _CANONICAL_PLATFORM = "linux"
 
 
@@ -385,7 +229,7 @@ def _write_goldens():
     if sys.platform != _CANONICAL_PLATFORM and "--force-platform" not in sys.argv:
         raise SystemExit(
             f"refusing to write goldens on {sys.platform!r}: these are bit-exact "
-            f"fixtures and the SVD-based inits are not reproducible across BLAS "
+            f"fixtures and the forwards are not reproducible across BLAS "
             f"backends. Regenerate on {_CANONICAL_PLATFORM!r} (the platform the "
             f"checked-in goldens were written on), or pass --force-platform if you "
             f"are deliberately moving the canonical platform."

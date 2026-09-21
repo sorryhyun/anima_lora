@@ -27,8 +27,8 @@ measured, not assumed — on shared weight_svd-init ingredients it is ~99.9%
 (bench/memorization/report.md, Act 5).
 
 Plain-LoRA checkpoints only (the lora.toml weight_svd / T-LoRA family —
-T-LoRA is training-only so its checkpoints are plain). Hydra / chimera /
-stacked-experts / ortho key shapes are refused loudly.
+T-LoRA is training-only so its checkpoints are plain). Hydra key shapes are
+refused loudly.
 
 Usage
 -----
@@ -77,7 +77,7 @@ def _group_modules(sd: dict, path: str) -> dict[str, dict[str, torch.Tensor]]:
             raise ValueError(
                 f"{path}: unrecognized key suffix {suffix!r} on {module!r} — "
                 "only plain LoRA checkpoints (lora_down/lora_up/alpha/inv_scale) "
-                "can be souped; Hydra/chimera/stacked-experts/ortho are refused."
+                "can be souped; Hydra is refused."
             )
         modules.setdefault(module, {})[suffix] = value
     return modules

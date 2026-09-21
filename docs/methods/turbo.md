@@ -140,8 +140,8 @@ one). Prefer it.
 Why this and not a cold start: the official turbo is polished but mode-collapsed
 ([[project_official_turbo_v10_eval]]) — starting there hands the student the
 few-step map for free and leaves DP-DMD's diversity anchor with the one job it is
-actually good at, re-expanding the modes. It also sidesteps the OrthoInit /
-plain-LoRA cold-start tangent problem entirely.
+actually good at, re-expanding the modes. It also sidesteps the plain-LoRA
+cold-start tangent problem entirely.
 
 `fake_init_weights` normally points at the same file: at init the student *is*
 the warm-start distribution, so a matched critic starts calibrated instead of
@@ -246,7 +246,7 @@ and the DMD reverse-KL on steps 1..N. The detach already severs the two
 backward graphs, so `per_step_expert=true` splits the student into one shared
 `lora_down` plus K = `student_steps` up-heads (`StepExpertLoRAModule`),
 selecting head `k` for denoise step `k` by the step counter — no router (the step
-index is known at call time, unlike FeRA's FEI/σ case). Head 0 then sees only the
+index is known at call time, unlike HydraLoRA's FEI/σ-routed case). Head 0 then sees only the
 diversity gradient, head k only step-k's DMD gradient; only the shared down-proj is
 trained by both. Per-step inference compute is unchanged (one head active per step).
 

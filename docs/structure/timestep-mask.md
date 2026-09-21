@@ -98,9 +98,7 @@ T-LoRA touches only the `r`-dim bottleneck, and every adapter in the family has 
 | Adapter                | Where the mask lands                                          |
 | ---------------------- | ------------------------------------------------------------- |
 | LoRA                   | After `lora_down`, before dropout / `lora_up`                 |
-| OrthoLoRA / OrthoInit  | Multiplied into the diagonal scale $\lambda$ (gates the singular values) |
 | HydraLoRA              | After shared `lora_down`; router gates unaffected (routing must never see the mask) |
-| ChimeraHydra           | Content branch only — the freq branch stays full-rank at every $t$ (`chimera-hydra.md` §4) |
 
 ---
 

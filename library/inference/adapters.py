@@ -176,38 +176,10 @@ def _resolve_fei_sigma_low_div(model: Any) -> Optional[float]:
     return None
 
 
-def set_hydra_content(model: Any, crossattn_emb: torch.Tensor) -> None:
-    """Fire the ChimeraHydra ContentRouter on a pooled text vector.
-
-    Mirrors :func:`set_hydra_fei`. ``crossattn_emb`` is the post-LLM-adapter
-    text feature tensor (B, L, D) — the same one fed into the DiT's
-    cross-attention. No-op on networks without a ContentRouter (chimera off).
-
-    Call BEFORE each forward in the denoising loop, separately for cond
-    and uncond branches — the two have different captions and therefore
-    different ``π_c`` gates. The freq router has no cond/uncond asymmetry
-    (FEI is identical) so it fires once per step.
-    """
-    for network in iter_hydra_networks(model):
-        if not getattr(network, "use_content_router", False):
-            continue
-        set_content = getattr(network, "set_content", None)
-        if callable(set_content):
-            set_content(crossattn_emb)
-
-
-def clear_hydra_content(model: Any) -> None:
-    for network in iter_hydra_networks(model):
-        clear_content = getattr(network, "clear_content_routing_weights", None)
-        if callable(clear_content):
-            clear_content()
-
-
 def set_hydra_crossattn(model: Any, crossattn_emb: torch.Tensor) -> None:
     """Fire the network-level GlobalRouter on a pooled text vector.
 
-    Mirrors :func:`set_hydra_content`, but for the non-chimera Hydra / FeRA
-    pool routed on text (``router_source="crossattn_emb"``,
+    For the Hydra pool routed on text (``router_source="crossattn_emb"``,
     ``route_per_layer=False``). ``crossattn_emb`` is the post-LLM-adapter
     feature tensor (B, L, D) fed into the DiT's cross-attention. No-op on
     networks without a crossattn GlobalRouter.

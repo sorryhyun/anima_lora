@@ -50,5 +50,5 @@ and is stripped from the train.py merge.
 
 ## Constraints
 
-- Plain-LoRA checkpoints only — hydra/chimera refused.
+- Plain-LoRA checkpoints only — Hydra (and any non-plain-LoRA key shape) refused.
 - Quality win + seed-lottery insurance, **NOT a memorization fix**.

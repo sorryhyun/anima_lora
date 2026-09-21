@@ -36,10 +36,8 @@ from networks import lora_save
 
 EXPECTED_VARIANTS = {
     "lora",
-    "ortho",
-    "ortho_init",
     "hydra",
-    "ortho_hydra",
+    "step_expert",
 }
 
 
@@ -118,12 +116,10 @@ def test_derivation_is_sane_and_independent_of_import_order():
 
 
 def test_alias_fallbacks_excluded():
-    """Back-compat alias defaults (router_hidden / num_bands) must NOT forward —
-    only their canonical names do."""
+    """The back-compat alias default (router_hidden) must NOT forward — only
+    its canonical name does."""
     assert "router_hidden" not in NETWORK_KWARGS
-    assert "num_bands" not in NETWORK_KWARGS
     assert "router_hidden_dim" in NETWORK_KWARGS
-    assert "fera_num_bands" in NETWORK_KWARGS
 
 
 def test_factory_only_keys_are_derived():
@@ -143,11 +139,9 @@ def test_factory_only_keys_are_derived():
     "kwargs, expected",
     [
         ({}, "lora"),
-        ({"use_ortho": "true"}, "ortho"),
-        ({"use_ortho_init": "true"}, "ortho_init"),
         ({"use_moe_style": "shared_A"}, "hydra"),
-        ({"use_moe_style": "shared_A", "use_ortho": "true"}, "ortho_hydra"),
-        ({"use_moe_style": "independent_A"}, "stacked_experts_global_fei"),
+        ({"step_expert_K": "4"}, "step_expert"),
+        ({"step_expert_K": "1"}, "lora"),
         # Falsey forms of use_moe_style resolve to plain LoRA.
         ({"use_moe_style": False}, "lora"),
         ({"use_moe_style": "false"}, "lora"),
@@ -159,28 +153,11 @@ def test_resolve_precedence(kwargs, expected):
     assert spec.name == expected
 
 
-def test_ortho_and_ortho_init_mutually_exclusive():
-    with pytest.raises(ValueError, match="mutually exclusive"):
-        resolve_network_spec({"use_ortho": "true", "use_ortho_init": "true"})
-
-
-@pytest.mark.parametrize(
-    "kwargs",
-    [
-        {"use_ortho_init": "true", "use_moe_style": "shared_A"},
-        {"use_ortho_init": "true", "use_moe_style": "independent_A"},
-    ],
-)
-def test_ortho_init_rejects_moe(kwargs):
-    with pytest.raises(NotImplementedError):
-        resolve_network_spec(kwargs)
-
-
-def test_ortho_init_composes_with_chimera():
-    """OrthoInit now rides the chimera_hydra spec (trainable bases threaded via
-    cfg.use_ortho_init); it resolves rather than raising."""
-    spec = resolve_network_spec({"use_ortho_init": "true", "use_chimera_hydra": "true"})
-    assert spec.name == "chimera_hydra"
+def test_independent_a_moe_style_rejected():
+    """The independent-A (stacked experts) layout was removed; a stale config
+    must raise rather than resolve to plain LoRA."""
+    with pytest.raises(ValueError, match="expected False or 'shared_A'"):
+        resolve_network_spec({"use_moe_style": "independent_A"})
 
 
 # ---------------------------------------------------------------------------
@@ -219,7 +196,7 @@ def _save_and_reload(
         save_variant=save_variant,
     )
     # hydra writes *_moe.safetensors alongside (not the main file)
-    if save_variant in ("hydra_moe", "ortho_hydra_to_hydra"):
+    if save_variant == "hydra_moe":
         moe_path = tmp_path / (out.stem + "_moe.safetensors")
         assert moe_path.exists(), f"expected _moe file at {moe_path}"
         return load_file(str(moe_path))
@@ -289,115 +266,6 @@ def test_save_adaln_relayout_inert_without_adaln(tmp_path: Path):
 
     with safe_open(str(tmp_path / "out.safetensors"), framework="pt") as f:
         assert "ss_adaln_layout" not in f.metadata()
-
-
-def test_save_ortho_roundtrip(tmp_path: Path):
-    r, in_dim, out_dim = 4, 8, 12
-    prefix = "lora_unet_blocks_0_self_attn_qkv_proj"
-    # OrthoLoRA (PSOFT) runtime keys: Cayley params + frozen SVD bases
-    sd = {
-        f"{prefix}.S_p": torch.randn(r, r),
-        f"{prefix}.S_q": torch.randn(r, r),
-        f"{prefix}.P_basis": torch.randn(3 * out_dim, r),
-        f"{prefix}.Q_basis": torch.randn(r, in_dim),
-        f"{prefix}.lambda_layer": torch.randn(1, r),
-        f"{prefix}.alpha": _alpha(r),
-    }
-
-    loaded = _save_and_reload(sd, tmp_path, save_variant="ortho_to_lora")
-
-    base = "lora_unet_blocks_0_self_attn"
-    for suffix in ("q_proj", "k_proj", "v_proj"):
-        assert loaded[f"{base}_{suffix}.lora_down.weight"].shape == (r, in_dim)
-        assert loaded[f"{base}_{suffix}.lora_up.weight"].shape == (out_dim, r)
-    for k in loaded:
-        assert not k.endswith(".S_p") and not k.endswith(".S_q")
-        assert not k.endswith(".P_basis") and not k.endswith(".Q_basis")
-
-
-def test_save_ortho_init_roundtrip(tmp_path: Path):
-    r, in_dim, out_dim = 4, 8, 12
-    prefix = "lora_unet_blocks_0_self_attn_qkv_proj"
-    # OrthoInit runtime keys: trainable P_init/Q_init + λ (no S_p/S_q, no
-    # frozen P_basis/Q_basis). Discriminated by ``.P_init``.
-    sd = {
-        f"{prefix}.P_init": torch.randn(3 * out_dim, r),
-        f"{prefix}.Q_init": torch.randn(r, in_dim),
-        f"{prefix}.lambda_layer": torch.randn(1, r),
-        f"{prefix}.alpha": _alpha(r),
-    }
-
-    loaded = _save_and_reload(sd, tmp_path, save_variant="ortho_to_lora")
-
-    base = "lora_unet_blocks_0_self_attn"
-    for suffix in ("q_proj", "k_proj", "v_proj"):
-        assert loaded[f"{base}_{suffix}.lora_down.weight"].shape == (r, in_dim)
-        assert loaded[f"{base}_{suffix}.lora_up.weight"].shape == (out_dim, r)
-    # runtime-only keys must be gone
-    for k in loaded:
-        assert not k.endswith(".P_init") and not k.endswith(".Q_init")
-        assert not k.endswith(".lambda_layer")
-
-
-def test_ortho_init_module_zero_delta_and_distill_fidelity():
-    """ΔW=0 at init (λ=0) and the sqrt-split distill reproduces P·diag(λ)·Q."""
-    from networks.lora_modules import OrthoInitLoRAModule
-
-    torch.manual_seed(0)
-    in_dim, out_dim, r = 16, 24, 4
-    lin = torch.nn.Linear(in_dim, out_dim, bias=False)
-    mod = OrthoInitLoRAModule("lora_test", lin, lora_dim=r, alpha=r)
-
-    # ΔW = 0 at init: adapter output equals the base Linear output.
-    mod.apply_to()
-    x = torch.randn(2, in_dim)
-    base_out = lin.weight @ x[0]  # org weight preserved (apply_to deletes ref)
-    with torch.no_grad():
-        y = mod.forward(x)
-    assert torch.allclose(y[0], base_out, atol=1e-5)
-
-    # Give λ a nonzero value, then check distill round-trips the product.
-    with torch.no_grad():
-        mod.lambda_layer.copy_(torch.randn(1, r))
-    P = mod.P_init.detach().float()
-    Q = mod.Q_init.detach().float()
-    lam = mod.lambda_layer.detach().squeeze(0).float()
-    expected_dW = P @ torch.diag(lam) @ Q  # (out, in)
-
-    sd = {
-        "m.P_init": mod.P_init.detach().clone(),
-        "m.Q_init": mod.Q_init.detach().clone(),
-        "m.lambda_layer": mod.lambda_layer.detach().clone(),
-        "m.alpha": torch.tensor(float(r)),
-    }
-    OrthoInitLoRAModule.distill_save_state_dict(sd, torch.float32)
-    up = sd["m.lora_up.weight"]
-    down = sd["m.lora_down.weight"]
-    assert torch.allclose(up @ down, expected_dW, atol=1e-5)
-
-
-def test_ortho_init_training_grads_flow():
-    """OrthoInit's training forward (activation-dtype GEMMs) must deliver
-    gradient to the trainable SVD bases, λ, and the input."""
-    from networks.lora_modules import OrthoInitLoRAModule
-
-    torch.manual_seed(1)
-    in_dim, out_dim, r = 16, 24, 4
-    lin = torch.nn.Linear(in_dim, out_dim, bias=False)
-    mod = OrthoInitLoRAModule("lora_test", lin, lora_dim=r, alpha=r)
-    with torch.no_grad():
-        mod.lambda_layer.copy_(torch.randn(1, r))
-    mod.apply_to()
-    mod.train()
-
-    x = torch.randn(2, 5, in_dim, requires_grad=True)
-    y = mod.forward(x)
-    y.sum().backward()
-
-    assert mod.Q_init.grad is not None and mod.Q_init.grad.abs().sum() > 0
-    assert mod.P_init.grad is not None and mod.P_init.grad.abs().sum() > 0
-    assert mod.lambda_layer.grad is not None
-    assert x.grad is not None
 
 
 def test_save_hydra_moe_roundtrip(tmp_path: Path):
@@ -483,57 +351,6 @@ def test_save_hydra_moe_mixed_with_plain_lora_qkv_defuses_up(tmp_path: Path):
         assert not k.startswith(plain_prefix), f"fused plain-LoRA key survived: {k}"
 
 
-def test_save_ortho_hydra_roundtrip(tmp_path: Path):
-    E, r, in_dim, out_dim = 4, 4, 8, 12
-    prefix = "lora_unet_blocks_0_self_attn_qkv_proj"
-    # OrthoHydraLoRA runtime keys: S_p is 3-D (E, r, r); P_bases is (E, out, r)
-    sd = {
-        f"{prefix}.S_p": torch.randn(E, r, r),
-        f"{prefix}.S_q": torch.randn(r, r),
-        f"{prefix}.P_bases": torch.randn(E, 3 * out_dim, r),
-        f"{prefix}.Q_basis": torch.randn(r, in_dim),
-        f"{prefix}.lambda_layer": torch.randn(1, r),
-        f"{prefix}.alpha": _alpha(r),
-        f"{prefix}.router.weight": torch.randn(E, in_dim),
-        f"{prefix}.router.bias": torch.randn(E),
-    }
-
-    loaded = _save_and_reload(sd, tmp_path, save_variant="ortho_hydra_to_hydra")
-
-    base = "lora_unet_blocks_0_self_attn"
-    for suffix in ("q_proj", "k_proj", "v_proj"):
-        assert loaded[f"{base}_{suffix}.lora_down.weight"].shape == (r, in_dim)
-        for e in range(E):
-            assert loaded[f"{base}_{suffix}.lora_ups.{e}.weight"].shape == (out_dim, r)
-    for k in loaded:
-        assert not k.endswith(".S_p") and not k.endswith(".S_q")
-        assert not k.endswith(".P_bases") and not k.endswith(".P_basis")
-
-
-def test_save_ortho_hydra_legacy_P_basis_still_bakes(tmp_path: Path):
-    """Legacy OrthoHydra checkpoints (pre-disjoint-bases) used a single
-    (out, r) ``P_basis`` shared across experts. The save pipeline must still
-    bake these into hydra moe form so old artifacts remain convertible.
-    """
-    E, r, in_dim, out_dim = 4, 4, 8, 12
-    prefix = "lora_unet_blocks_0_self_attn_qkv_proj"
-    sd = {
-        f"{prefix}.S_p": torch.randn(E, r, r),
-        f"{prefix}.S_q": torch.randn(r, r),
-        f"{prefix}.P_basis": torch.randn(3 * out_dim, r),  # legacy 2-D
-        f"{prefix}.Q_basis": torch.randn(r, in_dim),
-        f"{prefix}.lambda_layer": torch.randn(1, r),
-        f"{prefix}.alpha": _alpha(r),
-        f"{prefix}.router.weight": torch.randn(E, in_dim),
-        f"{prefix}.router.bias": torch.randn(E),
-    }
-    loaded = _save_and_reload(sd, tmp_path, save_variant="ortho_hydra_to_hydra")
-    base = "lora_unet_blocks_0_self_attn"
-    for suffix in ("q_proj", "k_proj", "v_proj"):
-        for e in range(E):
-            assert loaded[f"{base}_{suffix}.lora_ups.{e}.weight"].shape == (out_dim, r)
-
-
 # ---------------------------------------------------------------------------
 # Metadata stamp
 # ---------------------------------------------------------------------------
@@ -561,3 +378,57 @@ def test_metadata_stamps_ss_network_spec(tmp_path: Path):
     )
     meta = _load_metadata(out)
     assert meta.get("ss_network_spec") == "lora"
+
+
+# ---------------------------------------------------------------------------
+# Removed adapter families — detected and refused at load
+# ---------------------------------------------------------------------------
+
+
+_PLAIN_KEYS = ("m.lora_down.weight", "m.lora_up.weight", "m.alpha")
+
+
+@pytest.mark.parametrize(
+    "extra_keys, file_metadata, expected",
+    [
+        ((), {}, None),
+        ((), {"ss_use_moe_style": "shared_A"}, None),
+        (("m.lora_ups.0.weight", "m.lora_up_weight"), {}, None),
+        (("m.S_p",), {}, "undistilled OrthoLoRA"),
+        (("m.S_q",), {}, "undistilled OrthoLoRA"),
+        (("m.P_init",), {}, "undistilled OrthoLoRA"),
+        (("m.Q_init",), {}, "undistilled OrthoLoRA"),
+        (("m.lora_ups_c.0.weight",), {}, "ChimeraHydra"),
+        (("m.lora_up_c_weight",), {}, "ChimeraHydra"),
+        (("m.lora_downs.0.weight",), {}, "stacked-experts (FeRA)"),
+        (("m.lora_down_weight",), {}, "stacked-experts (FeRA)"),
+        (("register_tokens",), {}, "register-token"),
+        ((), {"ss_use_chimera_hydra": "true"}, "ChimeraHydra"),
+        ((), {"ss_use_moe_style": "independent_A"}, "stacked-experts (FeRA)"),
+        ((), {"ss_ortho_centered_gate": "true"}, "centered-gate OrthoHydra"),
+    ],
+)
+def test_detect_removed_variant(extra_keys, file_metadata, expected):
+    from networks.lora_anima.factory import _detect_removed_variant
+
+    sd = {k: torch.zeros(1) for k in (*_PLAIN_KEYS, *extra_keys)}
+    assert _detect_removed_variant(sd, file_metadata) == expected
+
+
+@pytest.mark.parametrize(
+    "extra_keys, file_metadata",
+    [
+        (("register_tokens",), {}),
+        (("m.S_p",), {}),
+        ((), {"ss_use_chimera_hydra": "true"}),
+    ],
+)
+def test_create_network_from_weights_refuses_removed_variant(extra_keys, file_metadata):
+    """The refusal fires before the DiT is touched, so no model is needed."""
+    from networks.lora_anima.factory import create_network_from_weights
+
+    sd = {k: torch.zeros(1) for k in (*_PLAIN_KEYS, *extra_keys)}
+    with pytest.raises(ValueError, match="no longer supported"):
+        create_network_from_weights(
+            1.0, None, None, None, None, weights_sd=sd, metadata=file_metadata
+        )

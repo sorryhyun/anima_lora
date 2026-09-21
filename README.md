@@ -72,9 +72,9 @@ Four things this repo aims to do well:
 1. **Fast LoRA training** on consumer GPUs — per-block `torch.compile` over a tiny fixed shape set (one block graph per token-count family), end to end.
 2. **Solid conventional implementations** — LoRA (SVD-Down init) and T-LoRA stack together and bake losslessly into a standalone DiT checkpoint.
 3. **Inference stacks, engineered for Anima** — Spectrum, SMC-CFG, modulation guidance, SPD, and embedding inversion: training-free, compose with any checkpoint, each implemented end-to-end against Anima's compile contract rather than dropped in as a toy port.
-4. **Training stacks beyond the conventional path** — OrthoHydraLoRA, ChimeraHydra, Soft Tokens, Turbo distillation, EasyControl, DirectEdit.
+4. **Training stacks beyond the conventional path** — HydraLoRA, Soft Tokens, Turbo distillation, EasyControl, DirectEdit.
 
-> **At-a-glance diagrams** for every method (DiT internals, LoRA, OrthoLoRA, T-LoRA, HydraLoRA, Spectrum, modulation, compile optimizations) live in [`docs/structure_images/`](docs/structure_images/) — paired with prose walkthroughs in [`docs/structure/`](docs/structure/).
+> **At-a-glance diagrams** for every method (DiT internals, LoRA, T-LoRA, HydraLoRA, Spectrum, modulation, compile optimizations) live in [`docs/structure_images/`](docs/structure_images/) — paired with prose walkthroughs in [`docs/structure/`](docs/structure/).
 
 ---
 
@@ -105,25 +105,6 @@ The default training config stacks **LoRA (SVD-Down init) + T-LoRA** together. B
 | **SVD-Down LoRA** | `lora_down` seeded from the pretrained weight's own top-r right singular vectors instead of random Kaiming init (ΔW=0 at start) — same module, save format, and merge path as plain LoRA, just a better starting basis. Default down-init for the LoRA stack. | [svd-down-lora.md](docs/methods/svd-down-lora.md) |
 | **T-LoRA** | Timestep-dependent rank masking — low rank at high noise, full rank at low noise. Training-only mask, so merge is bit-equivalent. | [timestep_mask.md](docs/methods/timestep_mask.md) |
 
-**Side-by-side** — same prompt, `er_sde` 30 steps, `cfg=4.0`, 1024². Each LoRA trained at rank 16 for 2 epochs on a 20% subset with training seed 42; inference seeds `{41, 42, 43}`. Reproduce with `python _archive/bench_methods.py`.
-
-|  | **LoRA** | **OrthoLoRA + T-LoRA** |
-|:---:|:---:|:---:|
-| seed 41 | <img src="docs/side_by_side/lora/20260423-154854-014_41_.png" width="320"> | <img src="docs/side_by_side/ortho_tlora/20260423-155545-258_41_.png" width="320"> |
-| seed 42 | <img src="docs/side_by_side/lora/20260423-154938-584_42_.png" width="320"> | <img src="docs/side_by_side/ortho_tlora/20260423-155631-762_42_.png" width="320"> |
-| seed 43 | <img src="docs/side_by_side/lora/20260423-155024-080_43_.png" width="320"> | <img src="docs/side_by_side/ortho_tlora/20260423-155718-280_43_.png" width="320"> |
-
-<details>
-<summary>Base model and individual variants (plain, OrthoLoRA, T-LoRA)</summary>
-
-|  | **plain (base)** | **OrthoLoRA** | **T-LoRA** |
-|:---:|:---:|:---:|:---:|
-| seed 41 | <img src="docs/side_by_side/plain/20260423-160513-382_41_.png" width="240"> | <img src="docs/side_by_side/ortholora/20260423-155109-338_41_.png" width="240"> | <img src="docs/side_by_side/tlora/20260423-155327-834_41_.png" width="240"> |
-| seed 42 | <img src="docs/side_by_side/plain/20260423-160556-697_42_.png" width="240"> | <img src="docs/side_by_side/ortholora/20260423-155155-526_42_.png" width="240"> | <img src="docs/side_by_side/tlora/20260423-155413-304_42_.png" width="240"> |
-| seed 43 | <img src="docs/side_by_side/plain/20260423-160640-759_43_.png" width="240"> | <img src="docs/side_by_side/ortholora/20260423-155241-905_43_.png" width="240"> | <img src="docs/side_by_side/tlora/20260423-155458-996_43_.png" width="240"> |
-
-</details>
-
 **Merging**:
 
 ```bash
@@ -141,7 +122,7 @@ Beyond the headline methods below, a handful of things ship **on by default** an
 
 | Feature | Default | What it does |
 |---|---|---|
-| Channel scaling | `channel_scaling_alpha = 0.5` | Per-channel LoRA gradient rebalance (SmoothQuant-style) — Adam-specific, inert on frozen-basis ortho variants. [channel_scaling.md](docs/optimizations/channel_scaling.md) |
+| Channel scaling | `channel_scaling_alpha = 0.5` | Per-channel LoRA gradient rebalance (SmoothQuant-style) — Adam-specific. [channel_scaling.md](docs/optimizations/channel_scaling.md) |
 | SVD-Down LoRA | `down_init = "weight_svd"` | Plain LoRA's `lora_down` is seeded from the pretrained weight's own top-r singular vectors instead of random Kaiming init. [svd-down-lora.md](docs/methods/svd-down-lora.md) |
 | Free-fit scaling to target res | always on — the only resize mode | Every image keeps its native aspect ratio and lands its patch-grid token count anywhere inside its resolution tier's band, driving crop loss to ~zero. See [Fast training](#1-fast-training) above. |
 | Text area masking | `masked_loss = true` | Excludes tagged regions (e.g. text bubbles) from the training loss. [training.md](docs/guidelines/training.md) |
@@ -170,9 +151,8 @@ Adapter families that train something — a LoRA-style delta, a routing head, or
 
 | Method | What it is | Doc |
 |---|---|---|
-| **OrthoHydraLoRA** | MoE-style multi-head LoRA with orthogonalized experts and layer-local routing — shared `lora_down`, per-expert `lora_up_i`, learned per-sample router. Targets multi-style training without the cross-style bleed a single low-rank subspace produces. Original paper: [arXiv:2605.03252](https://arxiv.org/abs/2605.03252). Saves two side-by-side files: `anima_hydra.safetensors` (baked-down LoRA, ComfyUI drop-in) and `anima_hydra_moe.safetensors` (full multi-head); live routing in ComfyUI via the bundled **Anima Adapter Loader** node ([ComfyUI-Anima_lora-Adapter](https://github.com/sorryhyun/ComfyUI-Anima_lora-Adapter)). | [hydra-lora.md](docs/methods/hydra-lora.md) |
+| **HydraLoRA** | MoE-style multi-head LoRA with layer-local routing — shared `lora_down`, per-expert `lora_up_i`, learned per-sample router. Targets multi-style training without the cross-style bleed a single low-rank subspace produces. Original paper: [arXiv:2605.03252](https://arxiv.org/abs/2605.03252). Saves two side-by-side files: `anima_hydra.safetensors` (baked-down LoRA, ComfyUI drop-in) and `anima_hydra_moe.safetensors` (full multi-head); live routing in ComfyUI via the bundled **Anima Adapter Loader** node ([ComfyUI-Anima_lora-Adapter](https://github.com/sorryhyun/ComfyUI-Anima_lora-Adapter)). | [hydra-lora.md](docs/methods/hydra-lora.md) |
 | **Turbo** | DP-DMD distillation (Wu et al., arXiv:2602.03139) of the CFG=4 / 28-step teacher into a few-step generator. Output is a **normal LoRA** — composes with concept LoRAs like LCM-LoRA does, fully bakeable into the DiT. Bespoke single-GPU distill loop: `make turbo` (honors `PRESET`, `--queue`); infer at `--infer_steps 4 --cfg 1.0` via `make test-turbo`. A ready-made 4-step student ships at [huggingface.co/sorryhyun/anima-turbo-4step](https://huggingface.co/sorryhyun/anima-turbo-4step). | [turbo.md](docs/methods/turbo.md) |
-| **ChimeraHydra** | Dual-pool additive MoE: a content pool (layer-local router) plus a frequency pool (network router on FEI + σ features), each an asymmetric HydraLoRA off a disjoint SVD subspace. Fuses HydraLoRA + TimeStep Master + FeRA. `make exp-chimera`. | [chimera-hydra.md](docs/experimental/chimera-hydra.md) |
 | **Soft Tokens** | SoftREPA (Lee et al., NeurIPS 2025) — per-layer × per-t learnable text tokens (~1M params) spliced into `crossattn_emb`; DiT frozen. `make exp-soft-tokens`. | [soft_tokens.md](docs/experimental/soft_tokens.md) |
 | **DirectEdit + Anima Tagger** | Flow-inversion image editing (Yang & Ye, 2026) — invert to noise, swap edit conditioning, re-denoise with V-injection. Source captions come from the **Anima Tagger**, a trained image → Anima-format tag model, for ψ_src. `make exp-test-directedit`. | [directedit_editing_v3.md](docs/experimental/directedit_editing_v3.md) |
 | **EasyControl** | Extended self-attention image conditioning. DiT frozen; trains per-block cond LoRA on self-attn + FFN + scalar `b_cond` gate. | [easycontrol.md](docs/experimental/easycontrol.md) |
@@ -209,7 +189,7 @@ CLI path:
 
 ```bash
 make preprocess           # VAE-compatible resize & validation
-make lora                 # or: PRESET=fast_16gb make lora / PRESET=low_vram make lora / make exp-chimera
+make lora                 # or: PRESET=fast_16gb make lora / PRESET=low_vram make lora / make exp-soft-tokens
 make test                 # sample generation with the latest trained LoRA
 ```
 

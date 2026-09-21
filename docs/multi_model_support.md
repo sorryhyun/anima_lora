@@ -84,7 +84,7 @@ Not all adapter families port equally. Rough triage:
 
 | Adapter | Portability to a new DiT | Why |
 |---------|--------------------------|-----|
-| LoRA / OrthoLoRA | High | Operates on any `nn.Linear`; only target list needs to change |
+| LoRA | High | Operates on any `nn.Linear`; only target list needs to change |
 | HydraLoRA | High-medium | Same target story as LoRA + a router on the Linear's input |
 | T-LoRA | High | Timestep mask is model-agnostic |
 | Modulation guidance | Medium-low | Assumes AdaLN coefficients of a specific shape; needs `pooled_text_proj` slot |

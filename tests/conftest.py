@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 # Force CPU-only test runs unless explicitly opted into GPU. Several code paths
-# select their device from ``torch.cuda.is_available()`` (LoRA / chimera SVD
+# select their device from ``torch.cuda.is_available()`` (LoRA SVD
 # init, network assembly, …), so a card present on the box silently pulls
 # tensors onto the GPU. Hiding the device here — before torch is imported
 # anywhere — keeps the suite deterministic and identical with or without a GPU.

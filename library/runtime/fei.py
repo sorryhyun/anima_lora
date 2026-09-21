@@ -96,8 +96,6 @@ def fei_sigma_low(h_lat: int, w_lat: int, fei_sigma_low_div: float) -> float:
     """``σ_low = min(H_lat, W_lat) / fei_sigma_low_div``.
 
     Bucket-adaptive — keeps the band semantic across aspect ratios with
-    no per-bucket router head. Default ``4.0`` is set on ``LoRANetworkCfg``;
-    the chimera configs (``configs/methods/chimera.toml``,
-    ``configs/gui-methods/chimera_hydra.toml``) pin it explicitly.
+    no per-bucket router head. Default ``4.0`` is set on ``LoRANetworkCfg``.
     """
     return float(min(h_lat, w_lat)) / float(fei_sigma_low_div)

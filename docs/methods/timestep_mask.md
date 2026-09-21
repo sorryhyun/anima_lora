@@ -27,7 +27,6 @@ Timestep masking composes with every adapter module type. The mask is applied at
 | Module | Where mask is applied |
 |--------|----------------------|
 | LoRA | After `lora_down`, before dropout and `lora_up` |
-| OrthoLoRA (Cayley) | After `Q_eff` projection, multiplied with `lambda_layer` |
 | HydraLoRA | After shared `lora_down`; per-expert `lora_up` heads unaffected |
 
 ## Findings (bench-backed)
@@ -77,10 +76,3 @@ spectrum metrics can't arbitrate quality on their own.
 | `networks/lora_anima/network.py` | `clear_timestep_mask()` — removes mask (for inference) |
 | `networks/lora_modules/lora.py` | Per-module mask application in each forward method |
 | `train.py` | Calls `set_timestep_mask()` each step after noise sampling |
-
-## Programmatic example
-
-`examples/07_stack_ortho_init_tlora.py` builds a fresh OrthoInit + T-LoRA stack
-from Python (no config file) and drives the mask via the one per-step hook
-`apply_router_conditioning`, printing the live effective rank each step — see
-`examples/README.md` (row 07).

@@ -235,7 +235,7 @@ def test_cfg_rejects_gradient_mode_on_a_non_plain_variant():
     with pytest.raises(ValueError, match="only applies to plain LoRA"):
         _cfg(
             down_init="basis_file",
-            use_ortho="true",
+            use_moe_style="shared_A",
             _basis={"x": _orthonormal(IN, RANK)},
         )
 

@@ -124,8 +124,8 @@ Spectrum applies at inference only, after everything else has attached. The patt
 
 | Component                | Interaction                                                                                         |
 | ------------------------ | --------------------------------------------------------------------------------------------------- |
-| LoRA / OrthoLoRA / T-LoRA | Cached steps skip the patched forwards entirely; the LoRA math runs on actual steps and its effect rides inside the fit. No interface. |
-| HydraLoRA / Chimera routers | Same — routers fire only on actual forwards. The fit implicitly memoizes the routing decisions through the features they produced. |
+| LoRA / T-LoRA | Cached steps skip the patched forwards entirely; the LoRA math runs on actual steps and its effect rides inside the fit. No interface. |
+| HydraLoRA routers | Same — routers fire only on actual forwards. The fit implicitly memoizes the routing decisions through the features they produced. |
 | Soft tokens              | The soft-token embeddings are appended on actual steps only; cached steps skip cross-attention entirely, so there is nothing to plumb on that branch. |
 | Modulation guidance      | Its delta is applied inside the fast path (§2.1), so cached steps still see modulation steering.   |
 | P-GRAFT                  | The cutoff toggles the network off mid-trajectory; the polynomial straddles the transition, and the warmup / stop-at regions force actual forwards at the sensitive ends. Composes cleanly. |

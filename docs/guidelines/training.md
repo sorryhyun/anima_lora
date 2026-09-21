@@ -20,10 +20,10 @@ covers method/variant selection and training-specific options.
 
 ## LoRA family — the three-axis surface
 
-LoRA / OrthoLoRA / T-LoRA / HydraLoRA / FeRA share one routing surface:
+LoRA / T-LoRA / HydraLoRA share one routing surface:
 
 ```toml
-use_moe_style    = false | "shared_A" | "independent_A"
+use_moe_style    = false | "shared_A"
 route_per_layer  = true | false
 router_source    = "none" | "input" | "sigma" | "fei"
 ```
@@ -31,22 +31,10 @@ router_source    = "none" | "input" | "sigma" | "fei"
 `configs/methods/lora.toml` leaves the routing keys unset (plain LoRA, `down_init =
 "weight_svd"`, T-LoRA and REPA on). `use_moe_style = "shared_A"` +
 `router_source = "sigma"` is HydraLoRA (`configs/gui-methods/hydralora.toml`);
-`router_source = "fei"` on shared-A is FeRA-on-Hydra; `independent_A` + a global
-FEI router is author-faithful FeRA.
+`router_source = "fei"` on shared-A is FEI-routed Hydra.
 
 Older checkpoints carrying `ss_use_hydra` / `ss_use_fei_router` metadata no
 longer load.
-
-### OrthoLoRA (Cayley + PSOFT-inspired)
-
-Cayley-parameterized orthogonal rotation of frozen SVD bases with a zero-init
-guarantee. Orthogonality is structural — no regularization knob.
-
-```toml
-use_ortho = true
-```
-
-Linear layers only (no Conv2d). See [SVD-Down LoRA](../methods/svd-down-lora.md); the original design note is archived at [`../../_archive/methods/psoft-integrated-ortholora.md`](../../_archive/methods/psoft-integrated-ortholora.md).
 
 ### T-LoRA (timestep-dependent rank masking)
 
@@ -63,10 +51,9 @@ alpha_rank_scale = 1.0
 Schedule: `r(t) = floor((1 - t)^alpha_rank_scale * (network_dim - min_rank)) + min_rank`.
 See [`../methods/timestep_mask.md`](../methods/timestep_mask.md).
 
-### HydraLoRA / FeRA / Hydra+FEI
+### HydraLoRA / Hydra+FEI
 
-See [`../methods/hydra-lora.md`](../methods/hydra-lora.md); the FEI lineage is in
-[`../experimental/chimera-hydra.md`](../experimental/chimera-hydra.md). The
+See [`../methods/hydra-lora.md`](../methods/hydra-lora.md). The
 `balance_loss_weight` ceiling is ~5e-5 on Anima — above that the Switch loss
 saturates.
 
@@ -74,7 +61,6 @@ saturates.
 
 | Family | Config | Train target |
 |--------|--------|--------------|
-| ChimeraHydra (dual-pool MoE) | `methods/chimera.toml` | `make exp-chimera` |
 | EasyControl | `easycontrol/easycontrol.toml` | `make easycontrol` |
 | Soft Tokens (SoftREPA) | `methods/soft_tokens.toml` | `make exp-soft-tokens` |
 

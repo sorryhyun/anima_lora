@@ -20,8 +20,8 @@ generate_image() shows the three steps: settings → generate → decode.
 
 Adapters are optional: pass one or more paths to `--lora_weight` (with matching
 `--multiplier` values) to stack them. generate() → load_dit_model() builds the
-network from the checkpoint and either merges it (plain LoRA / OrthoLoRA /
-T-LoRA) or keeps it live (HydraLoRA / FeRA) based on the checkpoint's metadata.
+network from the checkpoint and either merges it (plain LoRA / T-LoRA) or
+keeps it live (HydraLoRA) based on the checkpoint's metadata.
 """
 
 from __future__ import annotations

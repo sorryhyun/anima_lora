@@ -1,6 +1,4 @@
-# Shared σ / FEI / routing-weights buffer protocol for HydraLoRAModule,
-# OrthoHydraLoRAModule, and StackedExpertsLoRAModule, so the global-router
-# gradient path is identical across all three.
+# σ / FEI / routing-weights buffer protocol for HydraLoRAModule.
 #
 # Cross-module aliasing dance (`_wire_shared_*` / Module._apply recovery) is
 # tangled with cudagraph pointer stability and stays in LoRANetwork.
@@ -11,7 +9,6 @@
 #   * `_routing_weights`: rebound by LoRANetwork.set_routing_weights via
 #     direct slot assignment (NO .detach(), NO .copy_()) — the buffer must
 #     carry the router's grad_fn so L_denoise backprop reaches GlobalRouter.
-#     See FeRA eq. 6-7, 11.
 #
 # Pointer-stable placeholders + always-a-Tensor invariant → no None-vs-Tensor
 # guards in the forwards, so routed paths stay compile-clean.
@@ -60,22 +57,6 @@ def _sigma_sinusoidal_features(
         _FREQS_CACHE[key] = freqs
     angles = t[:, None] * freqs[None, :]  # [B, half_dim]
     return torch.cat([torch.cos(angles), torch.sin(angles)], dim=-1)
-
-
-def _fei_temperature(fei: torch.Tensor, tau: float) -> torch.Tensor:
-    """Hardwired-FEI freq gate: ``π_f = normalize(FEI ** (1/τ))``.
-
-    Used by the ChimeraHydra ``freq_router_mode="fei"`` path, which routes the
-    freq pool directly by the FEI band-simplex instead of a learned MLP. FEI
-    is already a normalized simplex, so τ=1.0 returns it unchanged
-    (``softmax(log p) = p``). τ<1 sharpens the low/high crossover, τ>1 flattens
-    it. The power form (rather than ``softmax(log FEI / τ)``) avoids ``log(0)``
-    on the high-σ steps where ``e_low ≈ 0`` (``0 ** (1/τ) = 0``).
-    """
-    if abs(tau - 1.0) < 1e-8:
-        return fei
-    p = fei.clamp_min(0).pow(1.0 / max(tau, 1e-6))
-    return p / p.sum(dim=-1, keepdim=True).clamp_min(1e-12)
 
 
 def _register_sigma_feature_cache(
@@ -137,9 +118,7 @@ def _register_sigma_band_partition(
 ) -> None:
     """Register `_expert_band` (E,) and `_sigma_edges` (B-1,) for σ-band routing.
 
-    Interleaved band assignment (`e mod num_sigma_buckets`) — with sequential
-    SVD slicing in OrthoHydra this gives every band a representative spread
-    of singular slices instead of binding band 0 to the top slice.
+    Interleaved band assignment (`e mod num_sigma_buckets`).
 
     `sigma_bucket_boundaries` is optionally a length-(B+1) edge list (0.0 …
     1.0); interior B-1 cuts feed `torch.bucketize`. None defaults to uniform
@@ -197,9 +176,9 @@ def _set_routing_weights(module: torch.nn.Module, weights: torch.Tensor) -> None
     """Replace `_routing_weights` with the live router output.
 
     Direct slot assignment (NOT .copy_()) and no .detach() — the buffer must
-    carry the router's grad_fn so ∂L/∂α flows back to GlobalRouter. This is
-    the FeRA gradient path (eq. 6-7, 11): α_t enters y_t as a live multiplier,
-    so plain L_denoise backprop trains the router.
+    carry the router's grad_fn so ∂L/∂α flows back to GlobalRouter: α_t
+    enters y_t as a live multiplier, so plain L_denoise backprop trains the
+    router.
     """
     buf = module._routing_weights
     w = weights.to(dtype=buf.dtype, device=buf.device)
@@ -215,22 +194,16 @@ def _clear_routing_weights(module: torch.nn.Module) -> None:
 
 
 class RouterStateMixin:
-    """Shared σ / FEI / routing-weights *method surface* for the routing-aware
-    LoRA variants (HydraLoRA / OrthoHydra / StackedExperts).
+    """σ / FEI / routing-weights *method surface* for HydraLoRA.
 
     The free functions above own the buffer mechanics (pointer-stable rebind,
     the grad-carrying ``_routing_weights`` slot-assign).
 
     Each setter is **buffer-presence-guarded** (``hasattr``): a module that
     registered only a subset of the buffers inherits the full surface as safe
-    no-ops. StackedExperts (``_routing_weights`` only, no σ/FEI) gets no-op
-    ``set_sigma`` / ``set_fei`` (the network keys its ``_*_aware_loras`` lists
-    on *buffer* presence — ``network.py::_wire_shared_*``). ``_routing_weights``
-    is registered iff ``use_global_router`` on Hydra/OrthoHydra, and always on
-    StackedExperts.
-
-    Chimera carries two routing buffers (π_c / π_f) and a different method
-    surface — it keeps ``_ChimeraRoutingMixin`` instead.
+    no-ops (the network keys its ``_*_aware_loras`` lists on *buffer* presence
+    — ``network.py::_wire_shared_*``). ``_routing_weights`` is registered iff
+    ``use_global_router``.
     """
 
     def set_sigma(
@@ -266,15 +239,14 @@ class RouterStateMixin:
         _clear_routing_weights(self)
 
     def _register_router_io_buffers(self, num_experts: int) -> None:
-        """Register the σ / FEI / routing-weights placeholder buffers shared by
-        the per-Linear-router variants (Hydra / OrthoHydra).
+        """Register the σ / FEI / routing-weights placeholder buffers.
 
         Reads ``self.sigma_feature_dim`` / ``self.fei_feature_dim`` /
         ``self.use_global_router`` (all assigned before this call). The routing
         buffer is registered only under the global router — its presence is
         exactly what the ``set_routing_weights`` guard above keys on. σ-band
-        partition and the chimera dual-pool buffers stay in each class (their
-        registration is interleaved with class-specific validation / layout).
+        partition stays in the module class (its registration is interleaved
+        with validation).
         """
         _register_sigma_feature_cache(self, self.sigma_feature_dim)
         _register_fei_feature_cache(self, self.fei_feature_dim)

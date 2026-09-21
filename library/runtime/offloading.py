@@ -266,8 +266,8 @@ class ModelOffloader(Offloader):
         free_cache: bool = True,
     ):
         # free_cache=False skips the trailing empty_cache so callers re-entering
-        # another forward this step (e.g. FeRA stacked-experts base pass) don't
-        # release allocator blocks the next forward immediately re-grows (~1 GB swing).
+        # another forward this step don't release allocator blocks the next
+        # forward immediately re-grows (~1 GB swing).
         if self.blocks_to_swap is None or self.blocks_to_swap == 0:
             return
 

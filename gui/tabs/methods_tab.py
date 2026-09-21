@@ -13,7 +13,7 @@ selecting a distill method swaps in its editor.
 
 The same wrapper backs two tabs (see ``gui/app.py``): the **main Config tab**
 (``lora`` / ``tlora`` / ``hydralora`` + the promoted ``turbo`` distiller) and the
-**Experimental tab** (``chimera`` / ``soft_tokens`` + the ``soup`` pipeline).
+**Experimental tab** (``soft_tokens`` + the ``soup`` pipeline).
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ class MethodsTab(QWidget):
         self,
         tb_panel=None,
         *,
-        flat_methods=("chimera", "soft_tokens"),
+        flat_methods=("soft_tokens",),
         distill_methods=(),
         preprocess_tab=None,
     ):

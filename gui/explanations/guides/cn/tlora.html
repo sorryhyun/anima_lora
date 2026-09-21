@@ -5,5 +5,5 @@
 构图、姿势与身份等结构正是在高噪声阶段确定的，也正是微调发生记忆的地方，因此在那里收紧容量；而在学习风格细节的干净一侧放开完整秩。掩码仅在训练时应用 — 推理时所有 t 均使用完整秩 — 因此保存的 <code>.safetensors</code> 是可正常烘焙的 LoRA。参见 <code>docs/methods/timestep_mask.md</code>。</p>
 <p>开关：<code>use_timestep_mask = true</code>。</p>
 <p><b>变体</b><br>
-&bull; <b>tlora</b> &mdash; T-LoRA 叠加 OrthoLoRA（<code>use_ortho = true</code> + <code>use_timestep_mask = true</code>）。默认可烘焙组合 &mdash; σ 分级秩调度与正交正则化结合。完全可烘焙。<br>
+&bull; <b>tlora</b> &mdash; 普通 LoRA 之上的 T-LoRA（SVD-Down 初始化，<code>use_timestep_mask = true</code>）。默认可烘焙组合 &mdash; σ 分级秩调度。完全可烘焙。<br>
 &bull; <b>tlora-8gb</b> &mdash; 相同架构，低显存配置（梯度检查点 + 卸载）；如果默认配置 OOM，请选此变体。</p>

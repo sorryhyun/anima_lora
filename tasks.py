@@ -10,7 +10,7 @@ Examples:
     python tasks.py test                     # env: SPECTRUM=1 or SPD=1, MOD=1, NOLORA=1
     python tasks.py download-models
     python tasks.py turbo                    # DP-DMD 4-step distillation
-    python tasks.py exp-chimera              # experimental method
+    python tasks.py exp-soft-tokens          # experimental method
 
 Command implementations live under ``scripts/tasks/`` (shipped methods) and
 ``scripts/experimental_tasks/`` (unstable methods exposed under ``exp-*``).
@@ -64,12 +64,6 @@ COMMANDS = {
     "lora": (
         training.cmd_lora,
         "LoRA family (lora|tlora|hydralora via configs/methods/lora.toml)",
-    ),
-    "register": (
-        training.cmd_register,
-        "Register-token adapter on a frozen DiT (DSR registers + self-attn QKV "
-        "surface; configs/methods/register.toml). Kept-live at inference via the "
-        "comfyui-anima-register node.",
     ),
     "lora-gui": (
         training.cmd_lora_gui,
@@ -410,11 +404,6 @@ COMMANDS = {
     "exp-soft-tokens": (
         exp_training.cmd_soft_tokens,
         "[experimental] SoftREPA-style per-layer × per-t soft tokens (training-only v1)",
-    ),
-    "exp-chimera": (
-        exp_training.cmd_chimera,
-        "[experimental] ChimeraHydra dual-pool additive routing "
-        "(content + freq pools on OrthoHydra; configs/methods/chimera.toml)",
     ),
     "exp-byg": (
         exp_training.cmd_byg,

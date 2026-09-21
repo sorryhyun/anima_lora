@@ -1,5 +1,11 @@
 # HydraLoRA — nsys-driven optimization, 2026-05-03
 
+> Historical profiling record. At capture time the default `make lora` stack was
+> HydraLoRA + OrthoLoRA + T-LoRA; the OrthoLoRA / OrthoHydra module has since been
+> removed from `networks/lora_modules/`, so §1, §3 and Deferred-§C below describe
+> code that no longer exists. §0 (inter-step orchestration) and §2 (`_FREQS_CACHE`) are
+> HydraLoRA-specific and still live in `networks/lora_modules/hydra.py`.
+
 Source artifacts: `output/nsys/`
 - `profile.nsys-rep` — open with Nsight Systems GUI for the full timeline
 - `profile.sqlite` — queryable kernel/API tables
@@ -93,7 +99,7 @@ batch-shape change later.
 `clear_sigma` is updated to operate on the shared buffers directly
 for the same reason — one zero per shared tensor instead of 56 × 2.
 
-### 1. `_eye_r` buffer — `networks/lora_modules/ortho.py`
+### 1. `_eye_r` buffer — OrthoLoRA/OrthoHydra module (since removed from `networks/lora_modules/`)
 
 `OrthoLoRAModule.__init__` and `OrthoHydraLoRAModule.__init__`
 register a non-persistent `_eye_r` buffer (`lora_dim × lora_dim`, fp32).
@@ -116,7 +122,7 @@ block forward, so a Python-level dict cache is safe under `compile_blocks`.
 
 Bit-equivalent to a fresh recompute (verified `0.0` max diff).
 
-### 3. Batched Cayley within OrthoLoRA / OrthoHydra — `ortho.py`
+### 3. Batched Cayley within OrthoLoRA / OrthoHydra (since removed)
 
 Both forwards now do a single `torch.linalg.solve` per call by
 concatenating the skew matrices:
@@ -173,7 +179,7 @@ fix is benched.
 49 % of GPU time is `64×64×32` bf16 tiles. Each `K=48` GEMM has low
 arithmetic intensity. Two avenues:
 
-- For HydraLoRA's per-expert P (`ortho.py:408-413`), `P_bases @ R_p`
+- For OrthoHydra's per-expert P (in the since-removed ortho module), `P_bases @ R_p`
   is `E=12` separate `(out, r) × (r, r)` GEMMs per fwd. Folding into
   a precomputed `P_eff` is straightforward at inference; not free
   under autograd during training because `R_p` depends on `S_p`, and
@@ -181,8 +187,9 @@ arithmetic intensity. Two avenues:
   correct training variant would need a manual gradient path through
   cached `R_p`.
 - Stop stacking everything by default — bench each adapter family's
-  marginal win and drop the ones that don't pull weight. The current
-  default composes LoRA + OrthoLoRA + T-LoRA on every block.
+  marginal win and drop the ones that don't pull weight. At capture time
+  the default composed LoRA + OrthoLoRA + T-LoRA on every block; the
+  current default (`configs/methods/lora.toml`) is LoRA + T-LoRA only.
 
 ### D. cudaStreamSynchronize — 17 s in 489 calls
 

@@ -38,7 +38,7 @@ not the current working directory.
 | Key | Default | What it controls |
 |---|---|---|
 | `output_dir` | `output/ckpt` | Where checkpoints land (`<output_name>.safetensors` + `.snapshot.toml` sidecar). Method TOMLs usually set their own `output_name`. |
-| `output_name` | `anima_lora` | Base filename for the adapter. Per-variant method files differentiate this (`anima_tlora_ortho`, `anima_hydra`, …). |
+| `output_name` | `anima_lora` | Base filename for the adapter. Per-variant method files differentiate this (`anima_tlora`, `anima_hydra`, …). |
 | `logging_dir` | `output/logs` | TensorBoard run directory (`make export-logs RUN=…`). |
 | `log_with` | `tensorboard` | Logging backend. |
 | `log_every_n_steps` | `2` | How often metrics are flushed. Each log is a sync point, so very small values add overhead. |
@@ -120,7 +120,7 @@ disk; training reads only the caches.
 |---|---|---|
 | `gradient_checkpointing` | `false` | Recompute activations to save VRAM. Reach for `torch_compile` / `blocks_to_swap` first. |
 | `unsloth_offload_checkpointing` | `false` | Unsloth offload variant of grad checkpointing — auto-enables `gradient_checkpointing`; incompatible with `blocks_to_swap`. |
-| `channel_scaling_alpha` | `0.5` | SmoothQuant-style per-channel input pre-scaling, baked into the adapter at training-init time (not an inference knob). `0.0` disables; `0.5` = sqrt balance; `1.0` = fully flatten channel dominance. Calibration is vendored at `networks/calibration/channel_stats.safetensors` (cond-stream sibling for EasyControl). Only affects variants with a *trainable* down-projection — exactly inert on frozen-basis ortho variants (`use_ortho` / OrthoHydra). See `docs/optimizations/channel_scaling.md`. |
+| `channel_scaling_alpha` | `0.5` | SmoothQuant-style per-channel input pre-scaling, baked into the adapter at training-init time (not an inference knob). `0.0` disables; `0.5` = sqrt balance; `1.0` = fully flatten channel dominance. Calibration is vendored at `networks/calibration/channel_stats.safetensors` (cond-stream sibling for EasyControl). See `docs/optimizations/channel_scaling.md`. |
 | `dataloader_pin_memory` | `true` | Pin DataLoader tensors in host RAM for faster GPU transfer. |
 | `persistent_data_loader_workers` | `true` | Keep DataLoader workers alive across epochs. |
 

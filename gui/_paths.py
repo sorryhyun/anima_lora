@@ -67,8 +67,6 @@ _METHOD_ORDER = (
     "lora",
     "tlora",
     "hydralora",
-    "fera",
-    "chimera",
     "soft_tokens",
     "easycontrol",
 )

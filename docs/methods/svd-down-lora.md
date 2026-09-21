@@ -33,16 +33,16 @@ is a better direction, not a larger step.
 It reads the input directions the pretrained Linear is most
 responsive to, while keeping plain LoRA's full first-step tangent — the whole
 `d_out × r` up-projection `B` gets gradient on step 1 (only `lora_down` is
-dormant, exactly like Kaiming LoRA). This is the half of OrthoInit worth keeping
-without its cold-start bottleneck (OrthoInit's diagonal-only first step gives
-gradient to just the `r` singular-value scalars). Both `A` and `B` stay
-trainable, so the adapter can rotate away from the SVD basis immediately.
+dormant, exactly like Kaiming LoRA), unlike a diagonal-only parameterization
+where the first step's gradient would reach just the `r` singular-value
+scalars. Both `A` and `B` stay trainable, so the adapter can rotate away from
+the SVD basis immediately.
 
 ## Scope
 
 - **Plain LoRA only**, Linear layers only (v0). Conv2d keeps Kaiming. The
-  config resolver rejects a non-Kaiming `down_init` combined with ortho / Hydra /
-  Chimera / MoE paths — those carry their own basis parameterization.
+  config resolver rejects a non-Kaiming `down_init` combined with the Hydra
+  MoE path — it carries its own basis parameterization.
 - Composes with T-LoRA (the `_timestep_mask` acts on the bottleneck after
   `lora_down`) and with channel-scaling (absorption runs after init, as for
   Kaiming).
@@ -95,8 +95,8 @@ worse init rather than an error), and it would now be saving ~7 s per run.
 ## Status
 
 Phase 0 parameterization probe passed all gates
-(`bench/turbo/probe_ortho_init_step.py`,
-`bench/turbo/results/20260621-2149-svd-down-phase0-clean/`): zero-output at init,
+(`bench/turbo/results/20260621-2149-svd-down-phase0-clean/`; the probe script
+has since been removed from the live tree): zero-output at init,
 gradient in `lora_up` only on step 1, step-1 `‖ΔW‖_F` within 0.5×–2× plain LoRA
 (measured ≈1.00×), and improved update alignment in the W₀-aligned regime
 (`cos_ideal` 0.42 vs plain LoRA 0.14) with no harm in the isotropic regime.
@@ -126,11 +126,13 @@ depth mismatch. Whether any of this survives training is `docs/proposal/grad_bas
 
 ## Origin
 
-The line came from StelLA (NeurIPS 2025): its three-factor `USVᵀ` is the repo's
-OrthoInit parameterization `ΔW = s·P·diag(λ)·Q`, and its Table 5 ablation (the SVD
+The line came from StelLA (NeurIPS 2025): its three-factor `USVᵀ` was the repo's
+OrthoInit parameterization `ΔW = s·P·diag(λ)·Q` (since removed along with the rest
+of the OrthoLoRA/OrthoHydra family), and its Table 5 ablation (the SVD
 seed washes out once the subspace is trainable) is the question SVD-Down answers for
 free LoRA — keep the principal input basis, drop the manifold constraint and the
-paired-dyad cold start. The chimera counterpart is `docs/proposal/stella_chimera.md`.
+paired-dyad cold start. The retired ChimeraHydra counterpart proposal is archived at
+`_archive/docs/proposal/stella_chimera.md`.
 
 ## References
 

@@ -140,10 +140,8 @@ class BaseLoRAModule(torch.nn.Module):
     # Forward scaffold (template method): the invariant chain (enable/fuse
     # short-circuit, eval delegation, module dropout, dtype policy, T-LoRA
     # gate, dropout, residual add) lives here once; two-GEMM variants (LoRA,
-    # OrthoInit, StepExpert) supply only _down/_gate/_up. Cayley modules
-    # (OrthoLoRA/OrthoHydra, one batched solve shared between down/up) and
-    # router-gated MoE modules (Hydra/StackedExperts/Chimera, gate consumed
-    # inside the up-projection) keep their own forward.
+    # StepExpert) supply only _down/_gate/_up. The router-gated Hydra module
+    # (gate consumed inside the up-projection) keeps its own forward.
 
     def forward(self, x):
         if not self.enabled or getattr(self, "_fused", False):
@@ -174,8 +172,7 @@ class BaseLoRAModule(torch.nn.Module):
 
     def _gate(self, lx: torch.Tensor, work: torch.dtype) -> torch.Tensor:
         """Default T-LoRA gate: ``lx * mask`` (fp32 mask promotes ``lx``; ``_up``
-        casts back to ``work``). Override to gate differently, e.g. OrthoInit's
-        ``lambda_layer``."""
+        casts back to ``work``). Override to gate differently."""
         return lx * self._timestep_mask
 
     def _down(self, x_lora: torch.Tensor, work: torch.dtype) -> torch.Tensor:

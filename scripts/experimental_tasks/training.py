@@ -1,4 +1,4 @@
-"""Experimental training entry-points (soft tokens, chimera, BYG, CJK distill).
+"""Experimental training entry-points (soft tokens, BYG, CJK distill).
 
 Wired up under ``make exp-*`` / ``python tasks.py exp-*``. Each ``cmd_*`` is a
 thin shim that translates env vars + extra argv into a ``train.py`` or script
@@ -16,19 +16,6 @@ from scripts.tasks._common import (
 
 def cmd_soft_tokens(extra):
     train("soft_tokens", extra)
-
-
-def cmd_chimera(extra):
-    """ChimeraHydra (dual-pool additive routing — docs/experimental/chimera-hydra.md).
-
-    Drives ``configs/methods/chimera.toml``: OrthoHydra split into a content
-    pool (K_c=3, per-layer rank-R router on pooled lx) and a freq pool
-    (K_f=3, network-level FreqRouter on concat(FEI, σ-features)). Pool
-    outputs are added (no multiplicative gate, no σ-band overlap mask).
-    Single-phase co-training; per-pool balance loss; T-LoRA mask on the
-    content branch only.
-    """
-    train("chimera", extra)
 
 
 def cmd_byg(extra):

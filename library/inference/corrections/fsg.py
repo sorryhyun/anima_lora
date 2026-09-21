@@ -27,7 +27,6 @@ import torch
 
 from library.inference.adapters import (
     compute_and_set_hydra_fei,
-    set_hydra_content,
     set_hydra_crossattn,
     set_hydra_sigma,
     set_step_expert_index,
@@ -61,7 +60,6 @@ class FSGCalibrator(_FSGCalibratorCore):
         set_hydra_sigma(anima, t_b)
         set_step_expert_index(anima, step_i)
         compute_and_set_hydra_fei(anima, x)
-        set_hydra_content(anima, embed)
         set_hydra_crossattn(anima, embed)
         kw = {"pooled_text_override": pooled} if pooled is not None else {}
         return anima(x, t_b, embed, padding_mask=padding_mask, **kw)

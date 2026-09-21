@@ -54,7 +54,6 @@ from library.inference.text import prepare_text_inputs  # noqa: E402
 from library.inference.sampling import get_timesteps_sigmas  # noqa: E402
 from library.inference.adapters import (  # noqa: E402
     compute_and_set_hydra_fei,
-    set_hydra_content,
     set_hydra_crossattn,
     set_hydra_sigma,
 )
@@ -132,12 +131,10 @@ def _integrate(
 
         set_hydra_sigma(anima, t_b)
         compute_and_set_hydra_fei(anima, latents)
-        set_hydra_content(anima, embed)
         set_hydra_crossattn(anima, embed)
         v = anima(latents, t_b, embed, padding_mask=pad)
 
         if cfg != 1.0:
-            set_hydra_content(anima, neg_embed)
             set_hydra_crossattn(anima, neg_embed)
             v_u = anima(latents, t_b, neg_embed, padding_mask=pad)
             v = v_u.float() + cfg * (v.float() - v_u.float())

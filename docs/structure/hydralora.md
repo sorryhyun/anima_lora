@@ -87,27 +87,11 @@ where $f_i$ is the fraction of samples whose dominant expert at this layer is $i
 
 ---
 
-## 5. The MoE cold-start deadlock, and orthogonalized experts
+## 5. The MoE cold-start deadlock
 
 There's a symmetry problem HydraLoRA has to solve before the balance loss can help.
 
-### 5.1 The deadlock
-
-Zero-init `lora_up_weight` makes every expert identical. Under a near-uniform router, all experts receive identical gradient, so they evolve permutation-symmetrically — identical forever, and the router has no signal to differentiate them. End state: a single LoRA paying $E\times$ the parameters. (Two earlier mitigations — random expert-gradient warmup masks, Gaussian init perturbation — were tried and removed; benching showed the real failure mode is router-side, and the structural fix below obsoletes both.)
-
-### 5.2 Orthogonalized experts (OrthoHydra)
-
-`OrthoHydraLoRAModule` (`networks/lora_modules/ortho.py`) combines HydraLoRA with the OrthoLoRA Cayley parameterization (`ortholora.md`) and adds the crucial change: per-expert disjoint output subspaces. `Q_basis` stays shared (as `lora_down` is shared), but the top-$(E \cdot r)$ left singular vectors of $W_0$ are partitioned into $E$ disjoint slices of $r$ columns:
-
-$$
-P_\text{bases}[i]^{\top}\, P_\text{bases}[j]\ =\ 0 \quad \text{for}\ i \ne j
-$$
-
-Each expert rotates inside its own slice via its own Cayley matrix, so cross-expert orthogonality survives all of training.
-
-Why this breaks the deadlock *structurally*: with a shared basis, every expert's effective up-matrix lives in the same rank-$r$ span — their pairwise products cannot be zero, and the router sees near-identical per-expert scores at init. Disjoint slices make each expert write into a genuinely different output subspace from step 0, giving the router signal to latch onto before any expert has trained.
-
-If $\min(d_\text{in}, d_\text{out}) < E \cdot r$ the partition can't fit and the code falls back to a replicated shared basis (with a warning) — in that fallback the deadlock is back, so size $E$ to fit the partition.
+Zero-init `lora_up_weight` makes every expert identical. Under a near-uniform router, all experts receive identical gradient, so they evolve permutation-symmetrically — identical forever, and the router has no signal to differentiate them. End state: a single LoRA paying $E\times$ the parameters. (Two earlier mitigations — random expert-gradient warmup masks, Gaussian init perturbation — were tried and removed; benching showed the real failure mode is router-side. A later structural fix, per-expert disjoint SVD output subspaces via an orthogonalized-expert parameterization ("OrthoHydra"), was implemented and has since been removed from the live tree along with the rest of the OrthoLoRA/OrthoHydra family — the balance loss (§4) is the mitigation that remains.)
 
 ---
 
@@ -130,13 +114,11 @@ Since the plan2 refactor there is no `use_hydra` flag (passing one raises). The 
 
 | Knob | Values | Meaning |
 |---|---|---|
-| `use_moe_style` | `False` / `"shared_A"` / `"independent_A"` | no experts / Hydra layout / per-expert $(A,B)$ pairs (FeRA) |
+| `use_moe_style` | `False` / `"shared_A"` | no experts / Hydra layout |
 | `route_per_layer` | `True` / `False` | per-Linear router vs. one network-level router |
 | `router_source` | `"none"` / `"input"` / `"sigma"` / `"fei"` / `"crossattn_emb"` | what the router reads |
 
-The paper-faithful HydraLoRA described in this doc is the cell `("shared_A", true, "input")`. Swapping `router_source` to `"sigma"` or `"fei"` keeps the layout but routes by noise level instead of content; `route_per_layer=false` swaps the per-Linear routers for one network-level `GlobalRouter`. The live `configs/methods/lora.toml` trains no MoE — the routed variants are opt-in via the routing keys, and `configs/gui-methods/hydralora.toml` is the ready-made per-variant file.
-
-OrthoHydra (§5.2) is activated by adding `use_ortho = true` on top of the shared-A axes. `cache_llm_adapter_outputs = true` is assumed by the surrounding training plumbing (as for every LoRA config in this repo).
+The paper-faithful HydraLoRA described in this doc is the cell `("shared_A", true, "input")`. Swapping `router_source` to `"sigma"` or `"fei"` keeps the layout but routes by noise level instead of content; `route_per_layer=false` swaps the per-Linear routers for one network-level `GlobalRouter`. The live `configs/methods/lora.toml` trains no MoE — the routed variants are opt-in via the routing keys, and `configs/gui-methods/hydralora.toml` is the ready-made per-variant file. `cache_llm_adapter_outputs = true` is assumed by the surrounding training plumbing (as for every LoRA config in this repo).
 
 ---
 
@@ -157,7 +139,6 @@ The Anima Adapter Loader node installs per-Linear `forward_hook`s reproducing th
 | Stacks with              | How it composes                                                                                  |
 | ------------------------ | ------------------------------------------------------------------------------------------------ |
 | T-LoRA                   | Mask applies to shared `lora_down` output, after the router already cached its gate.             |
-| OrthoLoRA                | Via `OrthoHydraLoRAModule` — per-expert Cayley rotations on disjoint output subspaces (§5.2).    |
 | Spectrum                 | Cached steps skip all transformer blocks (router included) — hydra just runs on fewer steps.     |
 | Modulation guidance      | Orthogonal — touches AdaLN only, outside the adapted Linears.                                    |
 | Static merge to DiT      | ❌ Sample-dependent gates can't fold into a Linear weight.                                       |
@@ -168,5 +149,5 @@ The Anima Adapter Loader node installs per-Linear `forward_hook`s reproducing th
 
 1. Shared `lora_down`, stacked per-expert `lora_up`, per-Linear router. On the three-axis surface: `("shared_A", true, "input")`.
 2. Router reads RMS-pooled rank-$r$ activation — RMS because mean cancels over long sequences and the raw input's outlier channels break bf16 softmax.
-3. Symmetry break comes from disjoint SVD-slice output subspaces per expert (OrthoHydra), structural at init; the balance loss then keeps experts alive — but its weight has a hard ceiling (~1e-4 saturates; run in [2e-6, 5e-5]).
+3. The cold-start symmetry break that used to come from disjoint SVD-slice output subspaces per expert (OrthoHydra, structural at init) is gone with that family; the balance loss is what keeps experts alive now — but its weight has a hard ceiling (~1e-4 saturates; run in [2e-6, 5e-5]).
 4. Ships as two files: a merged-down plain LoRA (lossy, ComfyUI native) and a `_moe` file (lossless, router-live, needs the custom node).

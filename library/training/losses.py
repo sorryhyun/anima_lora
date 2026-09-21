@@ -1,9 +1,9 @@
 """Loss registry + composer.
 
 The composer calls active handlers in three phases, in this reduction order
-(changing the order shifts ortho/multiscale numerics):
+(changing the order shifts multiscale numerics):
   1. Per-sample [B]: flow_match — base FM (weighting + masked + loss_weights).
-  2. Per-sample += scalar broadcast: ortho_reg, hydra_balance, functional.
+  2. Per-sample += scalar broadcast: hydra_balance, functional.
   3. Scalar (after `.mean()`): multiscale — avg_pool2d MSE on pred/target.
 
 The composer does not own forward passes — those happen in the trainer, which
@@ -338,19 +338,7 @@ def _flow_matching_vr_loss(ctx: LossContext) -> torch.Tensor:
     return weight * loss
 
 
-def _ortho_reg_loss(ctx: LossContext) -> torch.Tensor:
-    weight = float(getattr(ctx.network, "_ortho_reg_weight", 0.0) or 0.0)
-    if weight <= 0.0:
-        return ctx.model_pred.new_zeros(())
-    return weight * ctx.network.get_ortho_regularization()
-
-
 def _hydra_balance_loss(ctx: LossContext) -> torch.Tensor:
-    # Chimera bakes the warmup gate into its own per-pool sum (freq fires from
-    # step 0); consume directly — the weight<=0 early-exit below would
-    # otherwise zero the freq term during warmup.
-    if getattr(ctx.network, "_use_chimera_hydra", False):
-        return ctx.network.get_balance_loss()
     weight = float(getattr(ctx.network, "_balance_loss_weight", 0.0) or 0.0)
     if weight <= 0.0:
         return ctx.model_pred.new_zeros(())
@@ -403,91 +391,6 @@ def _soft_tokens_contrastive_loss(ctx: LossContext) -> torch.Tensor:
     return weight * con_loss.float()
 
 
-def _fera_fecl_bands(
-    z: torch.Tensor, num_bands: int, fei_sigma_low_div: float
-) -> list[torch.Tensor]:
-    """Decompose ``z (B, C, H, W)`` into ``num_bands`` Laplacian-pyramid
-    components (high → low), fp32 internally so bf16 latents don't underflow.
-    ``σ_low = min(H_lat, W_lat) / fei_sigma_low_div`` keeps band semantics
-    aspect-invariant; subsequent σ's double outward.
-    """
-    if num_bands < 2:
-        raise ValueError(f"num_bands must be >= 2, got {num_bands}")
-    from library.runtime.fei import gaussian_blur_2d
-
-    z = z.float()
-    h_lat, w_lat = int(z.shape[-2]), int(z.shape[-1])
-    sigma_low = float(min(h_lat, w_lat)) / float(fei_sigma_low_div)
-    sigmas = [sigma_low * (2.0**k) for k in range(num_bands - 1)]
-    pyr = [z]
-    for s in sigmas:
-        pyr.append(gaussian_blur_2d(pyr[-1], s))
-    bands = [pyr[k] - pyr[k + 1] for k in range(num_bands - 1)]
-    bands.append(pyr[-1])
-    return bands
-
-
-def _fera_fecl_loss(ctx: LossContext) -> torch.Tensor:
-    """FeRA Frequency-Energy Consistency Loss (Yin et al. eq. 10).
-
-    Bandwise consistency between adapter correction ``δ = z_fera − z_base``
-    and residual ``r = z_fera − z_target``, weighted by the residual's
-    per-band energy share. Trainer stashes ``z_base`` (no-grad base-pass,
-    routing zeroed) in ``ctx.aux['fera']``.
-
-    NOTE: 2-band collapses Eq. 10 to a content-free scalar (two ratios summing
-    to 1) — keep ``fera_fecl_weight = 0.0`` until bench-validated at 3 bands.
-    """
-    weight = float(
-        getattr(ctx.network, "fecl_weight", None)
-        or getattr(getattr(ctx.network, "cfg", None), "fera_fecl_weight", 0.0)
-        or 0.0
-    )
-    if weight <= 0.0:
-        return ctx.model_pred.new_zeros(())
-
-    fera_aux = ctx.aux.get("fera") or {}
-    z_base = fera_aux.get("z_base")
-    if z_base is None:
-        return ctx.model_pred.new_zeros(())
-
-    cfg = getattr(ctx.network, "cfg", None)
-    num_bands = int(
-        getattr(cfg, "fera_num_bands", None) or fera_aux.get("num_bands", 3)
-    )
-    fei_sigma_low_div = float(
-        getattr(cfg, "fei_sigma_low_div", None)
-        or fera_aux.get("fei_sigma_low_div", 4.0)
-    )
-
-    def _to4(x: torch.Tensor) -> torch.Tensor:
-        return x.squeeze(2) if x.dim() == 5 else x
-
-    z_base_4 = _to4(z_base).float()
-    z_fera = _to4(ctx.model_pred).float()
-    z_target = _to4(ctx.target).float()
-
-    delta = z_fera - z_base_4
-    resid = z_fera - z_target
-    delta_bands = _fera_fecl_bands(delta, num_bands, fei_sigma_low_div)
-    resid_bands = _fera_fecl_bands(resid, num_bands, fei_sigma_low_div)
-
-    eps = 1e-8
-    d_total = delta.flatten(1).pow(2).sum(-1).sqrt().clamp_min(eps)
-    r_total = resid.flatten(1).pow(2).sum(-1).sqrt().clamp_min(eps)
-    r_band_e = torch.stack([b.flatten(1).pow(2).sum(-1) for b in resid_bands], dim=-1)
-    r_share = r_band_e / r_band_e.sum(-1, keepdim=True).clamp_min(eps)
-
-    loss = z_target.new_zeros(z_target.shape[0])
-    for k in range(num_bands):
-        d_band = delta_bands[k].flatten(1).pow(2).sum(-1).sqrt()
-        r_band = resid_bands[k].flatten(1).pow(2).sum(-1).sqrt()
-        term = (d_band / d_total - r_band / r_total).pow(2)
-        loss = loss + r_share[:, k] * term
-
-    return weight * loss.mean()
-
-
 def _multiscale_loss(ctx: LossContext) -> torch.Tensor:
     """Additional MSE term at 2x-downsampled resolution; the composer blends
     it via `(scalar + ms*ms_w) / (1 + ms_w)`. Returns the raw MSE."""
@@ -506,11 +409,9 @@ def _multiscale_loss(ctx: LossContext) -> torch.Tensor:
 LOSS_REGISTRY: dict[str, LossFn] = {
     "flow_match": _flow_match_loss,
     "flow_matching_vr": _flow_matching_vr_loss,
-    "ortho_reg": _ortho_reg_loss,
     "hydra_balance": _hydra_balance_loss,
     "functional": _functional_loss,
     "multiscale": _multiscale_loss,
-    "fera_fecl": _fera_fecl_loss,
     "soft_tokens_contrastive": _soft_tokens_contrastive_loss,
     "repa": _repa_loss,
 }
@@ -525,11 +426,10 @@ LOSS_REGISTRY: dict[str, LossFn] = {
 #
 # Contract: every LOSS_REGISTRY entry that reads ``ctx.aux`` MUST have a probe
 # here mirroring its aux gate. Losses computed purely from network attrs/the
-# prediction (flow_match, ortho_reg, hydra_balance, multiscale) stay out.
+# prediction (flow_match, hydra_balance, multiscale) stay out.
 _LIVENESS_PROBES: dict[str, Callable[[dict], bool]] = {
     "flow_matching_vr": lambda aux: (aux.get("vr") or {}).get("z") is not None,
     "functional": lambda aux: aux.get("func_loss") is not None,
-    "fera_fecl": lambda aux: (aux.get("fera") or {}).get("z_base") is not None,
     "soft_tokens_contrastive": lambda aux: (
         aux.get("soft_tokens_contrastive") is not None
     ),
@@ -621,10 +521,8 @@ class LivenessLedger:
 # the per-sample [B] tensor that downstream stages add into.
 _STAGE_PER_SAMPLE = ("flow_match", "flow_matching_vr")
 _STAGE_SCALAR_BROADCAST = (
-    "ortho_reg",
     "hydra_balance",
     "functional",
-    "fera_fecl",
     "soft_tokens_contrastive",
     "repa",
 )
@@ -723,27 +621,12 @@ def build_loss_composer(
     )
     active: list[str] = [fm_name]
 
-    if float(getattr(network, "_ortho_reg_weight", 0.0) or 0.0) > 0.0:
-        active.append("ortho_reg")
-    # Chimera always activates hydra_balance — the freq pool's term fires
-    # from step 0 (bypasses warmup), so we can't gate composer activation
-    # on the warmup-held ``_balance_loss_weight``.
-    if float(getattr(network, "_balance_loss_weight", 0.0) or 0.0) > 0.0 or bool(
-        getattr(network, "_use_chimera_hydra", False)
-    ):
+    if float(getattr(network, "_balance_loss_weight", 0.0) or 0.0) > 0.0:
         active.append("hydra_balance")
     if float(getattr(args, "functional_loss_weight", 0.0) or 0.0) > 0.0:
         active.append("functional")
     if float(getattr(args, "multiscale_loss_weight", 0.0) or 0.0) > 0.0:
         active.append("multiscale")
-    # Mirrors the trainer's base-pass forward gate in get_noise_pred_and_target.
-    fecl_weight = float(getattr(network, "fecl_weight", 0.0) or 0.0)
-    if (
-        fecl_weight > 0.0
-        and getattr(getattr(network, "cfg", None), "use_moe_style", False)
-        == "independent_A"
-    ):
-        active.append("fera_fecl")
     # Gate on the *target* weight — warmup may hold the live weight at 0.
     if float(getattr(network, "_contrastive_target_weight", 0.0) or 0.0) > 0.0:
         active.append("soft_tokens_contrastive")

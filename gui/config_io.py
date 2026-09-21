@@ -196,7 +196,6 @@ _GROUPS = {
         "network_alpha",
         "network_module",
         "network_args",
-        "use_ortho",
         "use_timestep_mask",
         "use_moe_style",
         "route_per_layer",

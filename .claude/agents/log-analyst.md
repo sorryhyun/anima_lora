@@ -29,8 +29,8 @@ You only get the prompt the caller sent you (usually a run name, an output_name,
 **`train.py` (LoRA family / EasyControl / soft-tokens / etc.):**
 - Loss/opt: `loss/current`, `loss/average`, `norm/avg_grad_norm`, `norm/avg_key_norm`, `lr/<group>`, `vr/lambda_ema`.
 - Validation: `*_cmmd` (**the signal that matters**), `loss/validation/{step,epoch}_average`, `*_fm_mse`.
-- Regularizers: `reg/ortho`, `reg/balance`.
-- Routing (Hydra/FeRA/Chimera): `hydra/router_entropy`, `hydra/router_margin`, `hydra/expert_usage/<i>`, `hydra/up_grad/...`, `chimera/content_*`, `chimera/freq_*`, `ortho/subspace_overlap`, `fera/router_*`.
+- Regularizers: `reg/balance`.
+- Routing (Hydra): `hydra/router_entropy`, `hydra/router_margin`, `hydra/expert_usage/<i>`, `hydra/up_grad/...`, `hydra/router_grad_norm`, `fera/router_*` (the `fera/` prefix is a legacy `GlobalRouter` metrics namespace — not the removed FeRA training method).
 - Liveness: `liveness/<name>` — coverage of the run-end liveness audit; **< 1.0 means some adapter params never moved** (dead capacity / wiring bug).
 
 **Turbo distill loop (DP-DMD):** entirely different tags, all `train/*` and `val/*`:
@@ -46,9 +46,8 @@ A naive "loss went down, looks healthy" read is often **wrong** here. Before rep
 - **Turbo lr 2e-5 crosses an adversarial stability threshold** — breaks the student within ~1000 steps. Stay at 1e-5. Watch for the signature: `train/x_pred_std` collapsing→0 or exploding, `train/fake_loss` / GAN losses oscillating non-monotonically, `train/dm_cos` drifting. Healthy ≠ monotone here; oscillation *is* the failure mode.
 - **A mid-run ~2GB VRAM climb is the compile/inductor context, not a leak** — and it is invisible to `memory_reserved` (only `mem_get_info` sees it), so TB usually won't even show it. If the user worries about a "leak," explain this before chasing it. ([`project_compile_context_vram_climb`])
 - **`reg/balance` near-flat-high (~0.999) = Switch-loss saturation**, expected at `balance_weight` 1e-4; safe range ~[2e-6, 5e-5]. Not a bug. ([`project_hydra_balance_weight_ceiling`])
-- **Chimera content pool collapsing to ~2 live experts (3 dead) is expected**, not a failure — the content half is over-provisioned. ([`project_chimera_content_half_weak_overprovisioned`])
 - **T-LoRA schedule / alpha knobs are ~inert on learned effective rank** — don't attribute quality swings to them. ([`project_tlora_schedule_inert_on_learned_rank`])
-- **Router health**: `hydra/router_entropy → 0` or one `hydra/expert_usage/<i>` → 0 across the whole run = collapse / a permanently dead expert (distinguish from the *expected* chimera dead experts above).
+- **Router health**: `hydra/router_entropy → 0` or one `hydra/expert_usage/<i>` → 0 across the whole run = collapse / a permanently dead expert.
 - **Real problems** to surface loudly: NaN/inf in any loss, `liveness/<name> < 1.0`, `status: error` with a traceback in `run_end`, and `log` events containing `ConstraintViolationError`, `CheckpointError`, OOM, or compile-recompile-limit warnings (these tie to known dynamo/grad-ckpt hazards — see [`project_mark_dynamic_gradckpt_recompute`], [`project_compile_cache_guard_poisoning`]).
 
 When you cite one of these, name the metric and the step range that shows it. When something looks anomalous but matches a "known-and-expected" rule above, say **"anomalous-looking but expected"** and cite the rule — that distinction is most of your value.

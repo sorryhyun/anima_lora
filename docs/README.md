@@ -27,7 +27,6 @@ Wired and runnable, but not part of the default stack — may break or change.
 
 | Doc | Description |
 |-----|-------------|
-| [experimental/chimera-hydra.md](experimental/chimera-hydra.md) | ChimeraHydra — dual-pool additive MoE (content + freq routers) over disjoint SVD subspaces |
 | [experimental/easycontrol.md](experimental/easycontrol.md) | EasyControl — extended self-attn image conditioning; frozen DiT, per-block cond LoRA + scalar gate |
 | [experimental/soft_tokens.md](experimental/soft_tokens.md) | Soft Tokens — SoftREPA per-layer × per-t soft text tokens (~1M params); frozen DiT, optional B=1 contrastive |
 | [experimental/directedit_editing_v3.md](experimental/directedit_editing_v3.md) | DirectEdit (v3) — flow-inversion image editing; what's actually wired and runnable |
@@ -52,9 +51,7 @@ Architecture walkthroughs — how a component is built.
 | [structure/anima.md](structure/anima.md) | The Anima model end to end — text conditioning, VAE, DiT block stack, training-step flow |
 | [structure/anima-optimizations.md](structure/anima-optimizations.md) | Non-obvious perf/compile decisions and the *why* behind each |
 | [structure/lora.md](structure/lora.md) | Plain LoRA inside Anima — the scaffolding every variant stacks on |
-| [structure/ortholora.md](structure/ortholora.md) | PSOFT-integrated OrthoLoRA — exactly-orthogonal bases from SVD + skew-symmetric seeds |
 | [structure/hydralora.md](structure/hydralora.md) | HydraLoRA — layer-local MoE over LoRA up-heads |
-| [structure/chimera-hydra.md](structure/chimera-hydra.md) | ChimeraHydra — dual-pool additive MoE on the OrthoHydra basis |
 | [structure/timestep-mask.md](structure/timestep-mask.md) | T-LoRA — the one-line timestep→rank masking change |
 | [structure/modulation.md](structure/modulation.md) | Pooled-text modulation — max-pooled caption summary into the AdaLN stack |
 | [structure/spectrum.md](structure/spectrum.md) | Spectrum — Chebyshev feature forecasting at inference (run-or-predict per step) |
@@ -71,7 +68,7 @@ Compiler, kernel, hardware setup, and training-time optimizer geometry.
 | Doc | Description |
 |-----|-------------|
 | [optimizations/for_compile.md](optimizations/for_compile.md) | Changes from sd-scripts for torch.compile / dynamo |
-| [optimizations/channel_scaling.md](optimizations/channel_scaling.md) | Channel Scaling — SmoothQuant-style per-channel LoRA gradient rebalance (on by default, α=0.5; inert on frozen-basis ortho variants) |
+| [optimizations/channel_scaling.md](optimizations/channel_scaling.md) | Channel Scaling — SmoothQuant-style per-channel LoRA gradient rebalance (on by default, α=0.5) |
 | [optimizations/sigma_lowres.md](optimizations/sigma_lowres.md) | σ-demoted training (`--sigma_lowres`) — route each step's latent grid by noise level; stacked 768 router + placement spans (opt-in, ~−14% wall) |
 | [optimizations/fa4.md](optimizations/fa4.md) | Flash Attention 4 — why it was evaluated and removed |
 | [optimizations/adamw_fused.md](optimizations/adamw_fused.md) | AdamW8bit → fused AdamW — why bitsandbytes was dropped |

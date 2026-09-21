@@ -691,7 +691,7 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         "--method",
         type=str,
         default=None,
-        help="method name under configs/methods/ (e.g. 'tlora', 'hydralora', 'chimera'). Merged after preset so method settings win on overlap.",
+        help="method name under configs/methods/ (e.g. 'lora', 'soft_tokens'). Merged after preset so method settings win on overlap.",
     )
     parser.add_argument(
         "--preset",

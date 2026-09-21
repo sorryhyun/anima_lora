@@ -95,7 +95,6 @@ def _scan_adapter(path: Path) -> dict:
         "lora_up_weight": 0,  # hydra stacked
         "lora_ups": 0,  # hydra split
         "postfix": 0,
-        "ortho_sp": 0,  # .S_p keys (OrthoLoRA / OrthoHydraLoRA)
         "other": 0,
     }
     # Postfix mode lives in metadata — its key names share no greppable prefix.
@@ -131,8 +130,6 @@ def _scan_adapter(path: Path) -> dict:
             counts["lora_ups"] += 1
         elif k.endswith(".lora_down.weight"):
             counts["lora_down"] += 1
-        elif k.endswith(".S_p"):
-            counts["ortho_sp"] += 1
         elif is_postfix:
             counts["postfix"] += 1
         else:
@@ -141,8 +138,6 @@ def _scan_adapter(path: Path) -> dict:
     details = []
     if counts["lora_down"]:
         details.append(f"{counts['lora_down']} LoRA keys")
-    if counts["ortho_sp"]:
-        details.append(f"{counts['ortho_sp']} OrthoLoRA keys")
     if counts["lora_up_weight"] or counts["lora_ups"]:
         n = counts["lora_up_weight"] + counts["lora_ups"]
         details.append(f"{n} HydraLoRA keys")
@@ -150,8 +145,8 @@ def _scan_adapter(path: Path) -> dict:
         details.append(f"{counts['postfix']} {metadata_mode} keys")
 
     is_hydra = bool(counts["lora_up_weight"] or counts["lora_ups"])
-    is_postfix_only = is_postfix and not (counts["lora_down"] or counts["ortho_sp"])
-    has_lora_like = bool(counts["lora_down"] or counts["ortho_sp"])
+    is_postfix_only = is_postfix and not counts["lora_down"]
+    has_lora_like = bool(counts["lora_down"])
 
     if is_hydra:
         verdict = t("merge_verdict_hydra")

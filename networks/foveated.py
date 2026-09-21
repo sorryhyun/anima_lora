@@ -73,7 +73,6 @@ from tqdm import tqdm
 
 from library.inference.adapters import (
     compute_and_set_hydra_fei,
-    set_hydra_content,
     set_hydra_crossattn,
     set_hydra_sigma,
     set_xattn_boost_state,
@@ -363,7 +362,6 @@ def foveated_denoise(
         set_hydra_sigma(anima, t)
         compute_and_set_hydra_fei(anima, x)
         merge_kw = {"token_merger": merger} if merger is not None else {}
-        set_hydra_content(anima, embed)
         set_hydra_crossattn(anima, embed)
         if soft_tokens_net is not None:
             soft_tokens_net.append_postfix(
@@ -388,7 +386,6 @@ def foveated_denoise(
                 set_xattn_boost_state(anima, 1.0)  # uncond runs at identity
         if not do_cfg:
             return v_c, None
-        set_hydra_content(anima, negative_embed)
         set_hydra_crossattn(anima, negative_embed)
         if soft_tokens_net is not None:
             soft_tokens_net.append_postfix(

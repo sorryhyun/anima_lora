@@ -202,7 +202,7 @@ anima_lora uses the `networks/lora_anima/` package to build a LoRA network via m
 
 comfy applies LoRAs via `comfy/lora.py` + `comfy/model_patcher.py`. Weight merging is the default; patch-based is also supported. ComfyUI's stock `LoraLoader` recognizes anima's `lora_unet_` key naming directly (it's the kohya-ss convention) — it strips the prefix and swaps underscores back to dots to map onto `diffusion_model.*` targets. No conversion step is needed.
 
-Practical consequence. Plain LoRAs load in ComfyUI's stock LoRA loader. HydraLoRA / FeRA and prefix/postfix checkpoints carry extra keys (`router.*`, stacked `lora_ups.N.*`) that the stock loader silently drops — use the Anima Adapter Loader node ([guidebook §10](guidebook.md#10-deploying-to-comfyui)).
+Practical consequence. Plain LoRAs load in ComfyUI's stock LoRA loader. HydraLoRA and prefix/postfix checkpoints carry extra keys (`router.*`, stacked `lora_ups.N.*`) that the stock loader silently drops — use the Anima Adapter Loader node ([guidebook §10](guidebook.md#10-deploying-to-comfyui)).
 
 ## 5. Text encoder / conditioning interface
 

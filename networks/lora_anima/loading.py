@@ -32,153 +32,20 @@ logger = logging.getLogger(__name__)
 
 
 def _stack_lora_ups(state_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
-    """Stack per-expert ``.lora_ups.N.weight`` / ``.lora_downs.N.weight`` keys
-    into fused ``.lora_up_weight`` / ``.lora_down_weight`` parameters
-    (training-runtime form). In-place; returns the same dict.
-
-    Two consumers:
-      * Hydra (shared lora_down): only the ``.lora_ups.N.weight`` keys are
-        per-expert on disk; the down is written under ``.lora_down.weight``
-        and stays untouched.
-      * StackedExperts (independent-A): both ``.lora_ups.N.weight`` and
-        ``.lora_downs.N.weight`` are per-expert on disk and stack into the
-        runtime ``lora_up_weight`` / ``lora_down_weight`` Parameters.
+    """Stack per-expert Hydra ``.lora_ups.N.weight`` keys into the fused
+    ``.lora_up_weight`` parameter (training-runtime form). In-place; returns
+    the same dict. The shared down is written under ``.lora_down.weight`` and
+    stays untouched.
     """
     ups_prefixes: Dict[str, Dict[int, torch.Tensor]] = {}
-    downs_prefixes: Dict[str, Dict[int, torch.Tensor]] = {}
     for key in list(state_dict.keys()):
         if ".lora_ups." in key and key.endswith(".weight"):
             prefix = key.split(".lora_ups.")[0]
             idx = int(key.split("lora_ups.")[1].split(".")[0])
             ups_prefixes.setdefault(prefix, {})[idx] = state_dict.pop(key)
-        elif ".lora_downs." in key and key.endswith(".weight"):
-            prefix = key.split(".lora_downs.")[0]
-            idx = int(key.split("lora_downs.")[1].split(".")[0])
-            downs_prefixes.setdefault(prefix, {})[idx] = state_dict.pop(key)
     for prefix, experts in ups_prefixes.items():
         stacked = torch.stack([experts[i] for i in sorted(experts.keys())])
         state_dict[f"{prefix}.lora_up_weight"] = stacked
-    for prefix, experts in downs_prefixes.items():
-        stacked = torch.stack([experts[i] for i in sorted(experts.keys())])
-        state_dict[f"{prefix}.lora_down_weight"] = stacked
-    return state_dict
-
-
-def _stack_chimera_lora_ups(
-    state_dict: Dict[str, torch.Tensor],
-) -> Dict[str, torch.Tensor]:
-    """Stack per-expert chimera dual-A ``.lora_ups_c.N.weight`` /
-    ``.lora_ups_f.N.weight`` keys into the runtime ``.lora_up_c_weight`` /
-    ``.lora_up_f_weight`` Parameters. In-place; returns the same dict.
-
-    Chimera-only mirror of :func:`_stack_lora_ups`. Both pools have their
-    own per-expert axis on disk (``_c`` for content, ``_f`` for freq) and
-    fold into separate stacked Parameters in
-    :class:`ChimeraHydraInferenceModule`.
-    """
-    ups_c_prefixes: Dict[str, Dict[int, torch.Tensor]] = {}
-    ups_f_prefixes: Dict[str, Dict[int, torch.Tensor]] = {}
-    for key in list(state_dict.keys()):
-        if ".lora_ups_c." in key and key.endswith(".weight"):
-            prefix = key.split(".lora_ups_c.")[0]
-            idx = int(key.split("lora_ups_c.")[1].split(".")[0])
-            ups_c_prefixes.setdefault(prefix, {})[idx] = state_dict.pop(key)
-        elif ".lora_ups_f." in key and key.endswith(".weight"):
-            prefix = key.split(".lora_ups_f.")[0]
-            idx = int(key.split("lora_ups_f.")[1].split(".")[0])
-            ups_f_prefixes.setdefault(prefix, {})[idx] = state_dict.pop(key)
-    for prefix, experts in ups_c_prefixes.items():
-        stacked = torch.stack([experts[i] for i in sorted(experts.keys())])
-        state_dict[f"{prefix}.lora_up_c_weight"] = stacked
-    for prefix, experts in ups_f_prefixes.items():
-        stacked = torch.stack([experts[i] for i in sorted(experts.keys())])
-        state_dict[f"{prefix}.lora_up_f_weight"] = stacked
-    return state_dict
-
-
-def _refuse_split_chimera_keys(
-    state_dict: Dict[str, torch.Tensor],
-) -> Dict[str, torch.Tensor]:
-    """Inverse of the chimera per-pool q/k/v split performed in
-    :meth:`ChimeraHydraLoRAModule.build_moe_state_dict`.
-
-    Each chimera Linear gets ``lora_down_{c,f}.weight`` (cloned across
-    q/k/v) plus per-pool stacked ups ``lora_up_{c,f}_weight`` (concatenated
-    along out_dim across q/k/v) plus a shared ``router.{weight,bias}`` /
-    ``alpha`` / optional ``inv_scale``. Refuse step picks the first
-    component for cloned tensors and re-concats the per-pool ups.
-
-    Must run AFTER :func:`_stack_chimera_lora_ups`.
-    """
-    # Detect chimera fused groups via .lora_up_c_weight (one per chimera Linear).
-    for shared_prefix, spec in iter_split_groups(state_dict, ".lora_up_c_weight"):
-        suffixes = spec.component_letters
-        ups_c: List[torch.Tensor] = []
-        ups_f: List[torch.Tensor] = []
-        downs_c: List[torch.Tensor] = []
-        downs_f: List[torch.Tensor] = []
-        alphas: List[Optional[torch.Tensor]] = []
-        routers_w: List[Optional[torch.Tensor]] = []
-        routers_b: List[Optional[torch.Tensor]] = []
-        inv_scales: List[Optional[torch.Tensor]] = []
-        complete = True
-        for suf in suffixes:
-            cp = f"{shared_prefix}{suf}_proj"
-            ukc = f"{cp}.lora_up_c_weight"
-            ukf = f"{cp}.lora_up_f_weight"
-            dkc = f"{cp}.lora_down_c.weight"
-            dkf = f"{cp}.lora_down_f.weight"
-            if any(k not in state_dict for k in (ukc, ukf, dkc, dkf)):
-                complete = False
-                break
-            ups_c.append(state_dict[ukc])
-            ups_f.append(state_dict[ukf])
-            downs_c.append(state_dict[dkc])
-            downs_f.append(state_dict[dkf])
-            alphas.append(state_dict.get(f"{cp}.alpha"))
-            routers_w.append(state_dict.get(f"{cp}.router.weight"))
-            routers_b.append(state_dict.get(f"{cp}.router.bias"))
-            inv_scales.append(state_dict.get(f"{cp}.inv_scale"))
-        if not complete:
-            continue
-
-        # Per-pool concat along out_dim axis.
-        up_c_fused = torch.cat(ups_c, dim=1).contiguous()
-        up_f_fused = torch.cat(ups_f, dim=1).contiguous()
-        down_c = downs_c[0]
-        down_f = downs_f[0]
-        alpha = alphas[0]
-        router_w = routers_w[0]
-        router_b = routers_b[0]
-        inv_scale = inv_scales[0]
-
-        fused_prefix = f"{shared_prefix}{spec.fused_letters}_proj"
-        state_dict[f"{fused_prefix}.lora_up_c_weight"] = up_c_fused
-        state_dict[f"{fused_prefix}.lora_up_f_weight"] = up_f_fused
-        state_dict[f"{fused_prefix}.lora_down_c.weight"] = down_c
-        state_dict[f"{fused_prefix}.lora_down_f.weight"] = down_f
-        if alpha is not None:
-            state_dict[f"{fused_prefix}.alpha"] = alpha
-        if router_w is not None:
-            state_dict[f"{fused_prefix}.router.weight"] = router_w
-        if router_b is not None:
-            state_dict[f"{fused_prefix}.router.bias"] = router_b
-        if inv_scale is not None:
-            state_dict[f"{fused_prefix}.inv_scale"] = inv_scale
-
-        for suf in suffixes:
-            cp = f"{shared_prefix}{suf}_proj"
-            for subk in (
-                "lora_up_c_weight",
-                "lora_up_f_weight",
-                "lora_down_c.weight",
-                "lora_down_f.weight",
-                "alpha",
-                "router.weight",
-                "router.bias",
-                "inv_scale",
-            ):
-                state_dict.pop(f"{cp}.{subk}", None)
     return state_dict
 
 
@@ -279,91 +146,6 @@ def _refuse_split_hydra_keys(
             for sk in list(state_dict.keys()):
                 if sk.startswith(f"{cp}.sigma_mlp."):
                     state_dict.pop(sk, None)
-    return state_dict
-
-
-def _refuse_split_stacked_experts_keys(
-    state_dict: Dict[str, torch.Tensor],
-) -> Dict[str, torch.Tensor]:
-    """Inverse of the StackedExperts q/k/v split.
-
-    Mirrors :func:`_refuse_split_hydra_keys` but for the independent-A
-    layout: BOTH ``lora_up_weight`` (E, out_i, r) AND ``lora_down_weight``
-    (E, r, in) are per-expert stacked Parameters. The discriminator vs
-    Hydra is the presence of ``lora_down_weight`` (stacked) versus
-    ``lora_down.weight`` (shared scalar).
-
-    Must run AFTER ``_stack_lora_ups`` (which collapses per-expert
-    ``lora_downs.{i}.weight`` / ``lora_ups.{i}.weight`` into the stacked
-    runtime Parameters).
-
-    StackedExperts has no per-Linear ``router`` / ``sigma_mlp`` keys to
-    refuse — the router is a single network-level GlobalRouter, written
-    under ``global_router.*`` (top-level, no q/k/v split).
-    """
-    for shared_prefix, spec in iter_split_groups(state_dict, ".lora_up_weight"):
-        suffixes = spec.component_letters
-        # Skip groups that are Hydra-form (shared lora_down.weight present).
-        first_cp = f"{shared_prefix}{suffixes[0]}_proj"
-        if f"{first_cp}.lora_down.weight" in state_dict:
-            continue
-        if f"{first_cp}.lora_down_weight" not in state_dict:
-            continue
-
-        ups: List[torch.Tensor] = []
-        downs: List[torch.Tensor] = []
-        alphas: List[Optional[torch.Tensor]] = []
-        complete = True
-        for suf in suffixes:
-            cp = f"{shared_prefix}{suf}_proj"
-            uk = f"{cp}.lora_up_weight"
-            dk = f"{cp}.lora_down_weight"
-            if uk not in state_dict or dk not in state_dict:
-                complete = False
-                break
-            ups.append(state_dict[uk])
-            downs.append(state_dict[dk])
-            alphas.append(state_dict.get(f"{cp}.alpha"))
-        if not complete:
-            continue
-
-        e0, _, r0 = ups[0].shape
-        if not all(u.ndim == 3 and u.shape[0] == e0 and u.shape[2] == r0 for u in ups):
-            logger.warning(
-                f"stacked-experts attn fuse: inconsistent up shapes at "
-                f"{shared_prefix}*, skipping"
-            )
-            continue
-        if not all(
-            d.ndim == 3 and d.shape[0] == e0 and d.shape[1] == r0 for d in downs
-        ):
-            logger.warning(
-                f"stacked-experts attn fuse: inconsistent down shapes at "
-                f"{shared_prefix}*, skipping"
-            )
-            continue
-
-        # Per-expert concat along out_dim axis: (E, sum_out, rank).
-        up_fused = torch.cat(ups, dim=1).contiguous()
-        # Downs are cloned across q/k/v at save (they share the fused input);
-        # take the first component.
-        down_fused = downs[0]
-        alpha = alphas[0]
-
-        fused_prefix = f"{shared_prefix}{spec.fused_letters}_proj"
-        state_dict[f"{fused_prefix}.lora_up_weight"] = up_fused
-        state_dict[f"{fused_prefix}.lora_down_weight"] = down_fused
-        if alpha is not None:
-            state_dict[f"{fused_prefix}.alpha"] = alpha
-
-        for suf in suffixes:
-            cp = f"{shared_prefix}{suf}_proj"
-            for subk in (
-                "lora_up_weight",
-                "lora_down_weight",
-                "alpha",
-            ):
-                state_dict.pop(f"{cp}.{subk}", None)
     return state_dict
 
 

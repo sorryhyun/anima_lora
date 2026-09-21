@@ -7,9 +7,9 @@ Orientation and invariants for this repository. Task-shaped detail lives in skil
 ## Project Overview
 
 Anima — LoRA/T-LoRA training and inference pipeline for the Anima diffusion model
-(DiT-based, flow-matching). Supports several adapter families (LoRA / OrthoLoRA / T-LoRA
-/ HydraLoRA / FeRA / ChimeraHydra / EasyControl) selectable via method config + hardware
-preset. The LoRA family is routed via a three-axis surface — `use_moe_style` /
+(DiT-based, flow-matching). Supports several adapter families (LoRA / T-LoRA / HydraLoRA
+/ EasyControl) selectable via method config + hardware preset. The LoRA family is
+routed via a three-axis surface — `use_moe_style` /
 `route_per_layer` / `router_source` — see `configs/methods/lora.toml` and the
 `lora-routing` skill.
 
@@ -49,7 +49,7 @@ Knobs and gotchas:
   full list in `configs/presets.toml`);
   `make lora-gui GUI_PRESETS=tlora` runs the clean per-variant `configs/gui-methods/`
   tree (`ls` it for the live list). `make turbo` is the DP-DMD distiller;
-  `exp-soft-tokens | exp-chimera` are the experimental methods.
+  `exp-soft-tokens | exp-byg` are the experimental methods.
 - **`make soup PATH_PATTERN="<glob>"`** (or `TARGET=<dir>` shorthand) — uncond-init soup
   pipeline (`scripts/soup/`; GUI: Experimental tab → soup). Plain-LoRA only. **Load the
   `soup` skill** before running or modifying it; deep-dive `docs/experimental/soup.md`.
@@ -70,7 +70,7 @@ Knobs and gotchas:
   the `sigma-lowres` skill before enabling/tuning it**; contract in
   `docs/optimizations/sigma_lowres.md`.
 - **Gotchas**: `make merge ADAPTER_DIR=… [MULTIPLIER=0.8]` bakes LoRA into the DiT
-  (LoRA/Ortho/T-LoRA only) and refuses Hydra-moe / postfix unless `--allow-partial`.
+  (LoRA/T-LoRA only) and refuses Hydra-moe / postfix unless `--allow-partial`.
   `turbo` output is a normal LoRA — infer with `--infer_steps` matched to the DP-DMD
   `student_steps` rollout (currently 4) and `--cfg 1.0`. `make print-config METHOD=…
   PRESET=…` dumps the merged chain; `make test-unit` runs pytest; `ruff check . --fix &&
@@ -207,8 +207,7 @@ Read the linked deep-dive before working on a method.
 **Training-free inference stacks** (Spectrum, SPD, foveated merge, SMC-CFG, CNS,
 mod-guidance, embedding inversion, DAVE): [`docs/inference/`](docs/inference/README.md).
 Most ride the sampler boundary and compose with any checkpoint; DAVE is a block-forward
-hook. Channel scaling (per-channel LoRA gradient rebalance, on by default, inert on
-frozen-basis ortho variants):
+hook. Channel scaling (per-channel LoRA gradient rebalance, on by default):
 [`docs/optimizations/channel_scaling.md`](docs/optimizations/channel_scaling.md).
 
 | Method | What it is | Gotcha / pointer |
@@ -216,7 +215,6 @@ frozen-basis ortho variants):
 | **DirectEdit + Anima Tagger** | Inversion + edit-conditioning swap; Tagger (`anime_tools.tagger`) maps image → Anima-format tags for ψ_src. | Edit leverage collapses if ψ_src is off-manifold — verify with `exp-test-directedit-dry`. `docs/experimental/directedit_editing_v3.md` |
 | **EasyControl** | Extended self-attn image conditioning; frozen DiT, per-block cond LoRA + scalar `b_cond` gate. Source `easycontrol-dataset/`. | `docs/experimental/easycontrol.md` |
 | **Soft Tokens** | SoftREPA per-layer × per-t soft text tokens (~1M params); frozen DiT, per-block `Block.forward` splice into `crossattn_emb`. | Contrastive term (`infonce` default in code; shipped config uses `softrank`, weight 0.15). `configs/methods/soft_tokens.toml` |
-| **ChimeraHydra** | Dual-pool additive MoE: content pool (ContentRouter on pooled `crossattn_emb`) + freq pool (FreqRouter on FEI+σ), two A's per Linear off disjoint SVD subspaces. Both pools always centered-gate. | T-LoRA mask hits content branch only. `docs/experimental/chimera-hydra.md`, `networks/lora_modules/chimera.py` |
 | **Turbo** | DP-DMD (diversity-preserved DMD) distillation; output is a normal LoRA. Shipped as `make turbo` / `make test-turbo`; published 4-step student at `huggingface.co/sorryhyun/anima-turbo-4step`. | Bespoke sectioned schema + two-optimizer loop under `scripts/distill_turbo/`, kept out of `train.py` — don't `print-config METHOD=turbo`. Honors `--queue`, writes a canonical `.snapshot.toml`. `docs/methods/turbo.md` (ops), `docs/structure/turbo.md` (structure) |
 | **CJK vocab pack** | Text-encoder asset (not a LoRA): extra T5-side rows for JA / KO / ZH spans. One key — `vocab_pack` in `configs/base.toml` (**on by default since v2**; `""` = off) — drives training, TE caching, `inference.py` and `GenerationRequest`; `library/anima/vocab_pack.py` owns the strategy subclass + `llm_adapter.embed` hooks (state dict stays 32128 rows). | TE caches skip on existence only — enabling/changing a pack needs `make preprocess-te ARGS=--overwrite` for CJK captions; caches and LoRAs carry the pack digest and warn on mismatch. EN is bit-exact either way. `docs/methods/cjk_vocab_pack.md` |
 

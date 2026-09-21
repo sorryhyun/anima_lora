@@ -1092,18 +1092,9 @@ class AnimaTrainer:
             uncond_crossattn_emb=self._state.uncond_crossattn_1,
         )
 
-        # ChimeraHydra global content router: fire ONCE per step on the pooled
-        # crossattn_emb. apply_router_conditioning ran before text conds were
-        # materialized, so this lives outside that helper. No-op otherwise.
-        if (
-            getattr(network, "use_content_router", False)
-            and tc.crossattn_emb is not None
-            and hasattr(network, "set_content")
-        ):
-            network.set_content(tc.crossattn_emb)
-
-        # Network-level GlobalRouter routed on pooled text. Same timing
-        # rationale as the content router above. No-op otherwise.
+        # Network-level GlobalRouter routed on pooled text: fire ONCE per step.
+        # apply_router_conditioning ran before text conds were materialized, so
+        # this lives outside that helper. No-op otherwise.
         if (
             getattr(network, "use_crossattn_router", False)
             and tc.crossattn_emb is not None

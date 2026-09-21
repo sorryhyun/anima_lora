@@ -54,9 +54,23 @@ from library.runtime.fei import (
 # helpers stay private to router_state.
 from networks.lora_modules.router_state import (
     _apply_sigma_band_mask as apply_sigma_band_mask,
-    _fei_temperature as fei_temperature,
     _sigma_sinusoidal_features as sigma_sinusoidal_features,
 )
+
+
+def fei_temperature(fei: torch.Tensor, tau: float) -> torch.Tensor:
+    """Hardwired-FEI freq gate: ``π_f = normalize(FEI ** (1/τ))``.
+
+    Kept for the ComfyUI adapter node, which still serves ChimeraHydra
+    ``freq_router_mode="fei"`` checkpoints. FEI is already a normalized
+    simplex, so τ=1.0 returns it unchanged. The power form (rather than
+    ``softmax(log FEI / τ)``) avoids ``log(0)`` on the high-σ steps where
+    ``e_low ≈ 0``.
+    """
+    if abs(tau - 1.0) < 1e-8:
+        return fei
+    p = fei.clamp_min(0).pow(1.0 / max(tau, 1e-6))
+    return p / p.sum(dim=-1, keepdim=True).clamp_min(1e-12)
 
 
 def compute_fei_nband_high_to_low(

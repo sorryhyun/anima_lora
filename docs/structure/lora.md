@@ -1,6 +1,6 @@
 # Plain LoRA inside Anima
 
-How a vanilla low-rank adapter plugs into the Anima DiT. Plain LoRA means just the low-rank adapter — every other member of the family (OrthoLoRA, T-LoRA, HydraLoRA, ChimeraHydra) stacks on top of the scaffolding described here.
+How a vanilla low-rank adapter plugs into the Anima DiT. Plain LoRA means just the low-rank adapter — every other member of the family (T-LoRA, HydraLoRA) stacks on top of the scaffolding described here.
 
 ![Plain LoRA](../structure_images/lora.png)
 
@@ -32,7 +32,7 @@ $$
 
 with scalar multiplier $m$ (training = 1.0, inference-time strength) and scale $s = \alpha / r$ (an unset $\alpha$ defaults to $r$, i.e. $s = 1$).
 
-Initialization. The classic scheme is Kaiming-uniform for $A$, zeros for $B$ — $B = 0$ makes the initial delta exactly zero, so step 0 reproduces the pretrained model identically, a hard precondition for safe fine-tuning. The live config (`configs/methods/lora.toml`) additionally sets `down_init = "weight_svd"` (SVD-Down): $A$ is seeded from the pretrained weight's top-$r$ right singular vectors, scaled by $1/\sqrt{3}$ to match Kaiming's expected row-norm so the change is purely *direction*, not step size. The delta still starts at exactly zero (via $B = 0$) and everything stays ordinary LoRA afterwards — the first gradients just land in a subspace $W_0$ already cares about. This is the shipped, lightweight member of the SVD-warm-start family (`ortholora.md` compares it with its stricter siblings; deep-dive in `docs/methods/svd-down-lora.md`).
+Initialization. The classic scheme is Kaiming-uniform for $A$, zeros for $B$ — $B = 0$ makes the initial delta exactly zero, so step 0 reproduces the pretrained model identically, a hard precondition for safe fine-tuning. The live config (`configs/methods/lora.toml`) additionally sets `down_init = "weight_svd"` (SVD-Down): $A$ is seeded from the pretrained weight's top-$r$ right singular vectors, scaled by $1/\sqrt{3}$ to match Kaiming's expected row-norm so the change is purely *direction*, not step size. The delta still starts at exactly zero (via $B = 0$) and everything stays ordinary LoRA afterwards — the first gradients just land in a subspace $W_0$ already cares about. This is the shipped, lightweight member of the SVD-warm-start lineage — the stricter Cayley-orthogonal sibling it was compared against, OrthoLoRA, has since been removed from the live tree (archived at `_archive/docs/structure/ortholora.md`); deep-dive in `docs/methods/svd-down-lora.md`.
 
 Parameter count. $|\Theta_{\text{LoRA}}| = r\,(d_\text{in} + d_\text{out})$ vs. full fine-tune $d_\text{in}\cdot d_\text{out}$ — e.g. for the MLP `layer1` (2048→8192) at $r=4$: 40k params vs. 16.8M. Because $W_0$ is detached, only $A, B$ receive gradient, so roughly 99.9% of parameters are frozen and skipped by the optimizer.
 
@@ -98,7 +98,7 @@ After `apply_to()`, LoRA parameters are the only trainable tensors.
 
 ### 3.4 What the default config actually trains
 
-The live `configs/methods/lora.toml` stacks plain LoRA with T-LoRA (`use_timestep_mask = true` — see `timestep-mask.md`), the weight-SVD down init above, and the REPA auxiliary alignment loss. OrthoLoRA and the MoE variants are opt-in: `use_ortho = true` / `use_ortho_init = true` for the ortho parameterizations, and the three-axis surface (`use_moe_style` / `route_per_layer` / `router_source` — see `networks/CLAUDE.md`) for the routed variants. The old boolean toggles (`use_hydra`, `use_fei_router`) were removed and now raise if passed.
+The live `configs/methods/lora.toml` stacks plain LoRA with T-LoRA (`use_timestep_mask = true` — see `timestep-mask.md`), the weight-SVD down init above, and the REPA auxiliary alignment loss. The MoE variants are opt-in via the three-axis surface (`use_moe_style` / `route_per_layer` / `router_source` — see `networks/CLAUDE.md`). The old boolean toggles (`use_hydra`, `use_fei_router`) were removed and now raise if passed.
 
 ---
 
@@ -126,7 +126,7 @@ diffusion_model.blocks.0.self_attn.qkv_proj.weight
 
 One wrinkle: the runtime DiT uses *fused* `qkv_proj`/`kv_proj` while the on-disk convention wants split `q/k/v_proj` — `networks/attn_fuse.py` owns that mapping, applied on save and undone on load.
 
-This key schema is also why OrthoLoRA converts its native Cayley state back to `lora_up.weight` / `lora_down.weight` / `alpha` on save (`ortholora.md` §4) — fitting the schema is what lets it ride the stock loader for free.
+This same key schema is why HydraLoRA's baked-down `anima_hydra.safetensors` (its expert ups averaged into a single `lora_up.weight`, routers stripped — see `hydralora.md`) can ride the stock LoraLoader for free.
 
 Caveat: plain weight-patch LoRA only. HydraLoRA router-live inference (`hydralora.md`) writes extra keys (`router.*`, stacked `lora_ups.N.*`) that ComfyUI's stock loader silently drops — those variants need the Anima Adapter Loader custom node.
 

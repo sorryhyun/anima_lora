@@ -5,4 +5,4 @@
 Withholds capacity where structure &mdash; layout, pose, identity &mdash; is being decided, since that is where a fine-tune memorizes; full rank opens up at the clean end, where style detail is learned. The mask is training-only — inference uses full rank at every t by design — so the saved <code>.safetensors</code> is a regular bakeable LoRA. See <code>docs/methods/timestep_mask.md</code>.</p>
 <p>Toggle: <code>use_timestep_mask = true</code>.</p>
 <p><b>Variant</b><br>
-&bull; <b>tlora</b> &mdash; T-LoRA stacked on OrthoLoRA (<code>use_ortho = true</code> + <code>use_timestep_mask = true</code>). Default mergeable combo &mdash; rank-by-σ scheduling with orthogonal regularization. Fully bakeable.</p>
+&bull; <b>tlora</b> &mdash; T-LoRA on plain LoRA (SVD-Down init, <code>use_timestep_mask = true</code>). Default mergeable combo &mdash; rank-by-σ scheduling. Fully bakeable.</p>

@@ -141,7 +141,7 @@ Edit configs, browse the dataset, preprocess, start/monitor training, and merge 
 - Training Config: pick a variant from the dropdown (recommended: `tlora`) and your card in the Hardware dropdown (Default 16GB+ / Low VRAM 8GB), edit the training keys, then start training. Data scope (`sample_ratio`, `artists_shard`) is a plain form field in the Basic section.
 - Preprocess: resize + VAE + text embedding caching in one shot.
 - Dataset: preview and edit images/captions, Autotag, and Grouping ([§6.3](#63-dataset-tab-autotag--grouping)).
-- Merge: bake a trained LoRA into the base DiT to produce a standalone ComfyUI checkpoint (base LoRA / OrthoLoRA / T-LoRA only).
+- Merge: bake a trained LoRA into the base DiT to produce a standalone ComfyUI checkpoint (base LoRA / T-LoRA only).
 
 The GUI reads `configs/gui-methods/<variant>.toml` (one clean file per variant) and calls `train.py` internally, so any GUI setup is reproducible from the CLI ([Appendix A](#appendix-a-cli-reference)).
 
@@ -180,7 +180,7 @@ Grouping — clustering similar images. Click Group to cluster near-duplicates a
 
 The config merge order is `configs/base.toml → configs/presets.toml[<preset>] → configs/methods/<method>.toml → CLI args`, and method settings win over preset settings.
 
-Start with the `tlora` variant (OrthoLoRA + T-LoRA; see [§8](#8-adapter-variant-selection-guide)): in the GUI, pick `tlora` in the variant dropdown plus your Hardware preset.
+Start with the `tlora` variant (T-LoRA; see [§8](#8-adapter-variant-selection-guide)): in the GUI, pick `tlora` in the variant dropdown plus your Hardware preset.
 
 ### 7.1 Commonly Adjusted Settings (LoRA defaults)
 
@@ -195,7 +195,7 @@ Start with the `tlora` variant (OrthoLoRA + T-LoRA; see [§8](#8-adapter-variant
 | `caption_dropout_rate` | `0.1` | Replaces some captions with an empty string (helps CFG) |
 | `use_shuffled_caption_variants` | `true` | Use comma-shuffled caption variants |
 
-Variant toggles (`use_ortho`, `use_timestep_mask`, `use_moe_style`, `router_source`, …) are already set in each variant file.
+Variant toggles (`use_timestep_mask`, `use_moe_style`, `router_source`, …) are already set in each variant file.
 
 ### 7.2 Auto-Resume (checkpointing_epochs)
 
@@ -213,7 +213,7 @@ This is a different job from `save_every_n_epochs`:
 
 ### 7.3 Outputs
 
-- Trained weights: `output/ckpt/<output_name>.safetensors` (named per variant — `anima`, `anima_tlora_ortho`, `anima_hydra`, `anima_postfix`, …)
+- Trained weights: `output/ckpt/<output_name>.safetensors` (named per variant — `anima`, `anima_tlora`, `anima_hydra`, `anima_postfix`, …)
 - Intermediate checkpoints: `output/ckpt/` (with a `.snapshot.toml` sidecar, plus a `_moe` companion file for Hydra)
 - Validation samples: `output/ckpt/sample/` · inference images: `output/tests/`
 
@@ -230,14 +230,13 @@ Images without a mask are trained on in full. Mask lookup details are in [`train
 
 ## 8. Adapter Variant Selection Guide
 
-> **🌟 Recommended**: if this is your first run or an ordinary character/style LoRA, start with `tlora` (OrthoLoRA + T-LoRA).
+> **🌟 Recommended**: if this is your first run or an ordinary character/style LoRA, start with `tlora` (T-LoRA).
 
 | Variant | GUI variant name | When to use |
 |---|---|---|
-| OrthoLoRA + T-LoRA ⭐ | `tlora` | Recommended. SVD-based orthogonal rotation (OrthoLoRA) stacked with per-timestep rank masking (T-LoRA). Produces `anima_tlora_ortho.safetensors` |
+| T-LoRA ⭐ | `tlora` | Recommended. SVD-Down LoRA stacked with per-timestep rank masking (T-LoRA). Produces `anima_tlora.safetensors` |
 | Plain LoRA | `lora` | Simplest baseline, for comparison runs |
 | HydraLoRA | `hydralora` | MoE multi-head routing, many concepts in one adapter |
-| ChimeraHydra (experimental) | `chimera_hydra` | Content/frequency dual-pool MoE — research use |
 
 For 8–12 GB VRAM, don't switch variants — pick Low VRAM in the Hardware dropdown instead (`PRESET=low_vram` from the CLI). The current list of variants is whatever is in `configs/gui-methods/`.
 
@@ -275,7 +274,7 @@ The full option list is in [`docs/guidelines/inference.md`](inference.md).
 
 ComfyUI core supports the Anima base DiT natively (load it with `UNETLoader` / `CLIPLoader`). Deployment differs by adapter type.
 
-### 10.1 Classic LoRA / OrthoLoRA / T-LoRA
+### 10.1 Classic LoRA / T-LoRA
 
 Copy the `.safetensors` from `output/ckpt/` into `ComfyUI/models/loras/` and use ComfyUI's stock LoraLoader node.
 
@@ -341,7 +340,7 @@ make lora-gui GUI_PRESETS=tlora                  # Recommended combo (same per-v
 PRESET=low_vram make lora-gui GUI_PRESETS=tlora  # 8–12 GB VRAM
 make lora-gui GUI_PRESETS=lora                   # Plain LoRA
 make lora-gui GUI_PRESETS=hydralora              # MoE multi-head
-make exp-chimera                                 # ChimeraHydra (experimental)
+make exp-soft-tokens                             # Soft Tokens (experimental)
 
 make lora                                        # Method config (configs/methods/lora.toml)
 PRESET=half make lora                            # Half the dataset, for quick experiments
@@ -353,7 +352,7 @@ make daemon-terminate                            # Kill the running job + stop t
 Inference
 
 ```bash
-make test                        # Plain LoRA / OrthoLoRA / T-LoRA
+make test                        # Plain LoRA / T-LoRA
 make test SPECTRUM=1             # Spectrum acceleration
 make test MOD=1                  # Modulation guidance (composes with SPECTRUM=1)
 make test NOLORA=1               # Base DiT only
@@ -467,7 +466,7 @@ A kohya-ss style option in `configs/base.toml`'s `[[datasets.subsets]]`: how man
 - [`docs/guidelines/inference.md`](inference.md) — inference workflow, flags, Spectrum, prompt file format
 - [`docs/guidelines/difference_between_comfy.md`](difference_between_comfy.md) — anima_lora ↔ ComfyUI core implementation differences
 - [`docs/methods/timestep_mask.md`](../methods/timestep_mask.md) — T-LoRA timestep mask
-- [`docs/methods/svd-down-lora.md`](../methods/svd-down-lora.md) — SVD-Down LoRA (the OrthoLoRA family)
+- [`docs/methods/svd-down-lora.md`](../methods/svd-down-lora.md) — SVD-Down LoRA (weight-seeded down-projection init)
 - [`docs/inference/spectrum.md`](../inference/spectrum.md) — how Spectrum acceleration works and its options
 - [`docs/inference/mod-guidance.md`](../inference/mod-guidance.md) — modulation guidance
 - [`docs/methods/hydra-lora.md`](../methods/hydra-lora.md) — HydraLoRA multi-head routing

@@ -5,5 +5,5 @@
 構図・ポーズ・同一性といった構造が決定される領域はファインチューンが記憶を起こす場所でもあるため、そこでは容量を抑え、スタイルの細部を学習するクリーン側でフルランクを開放します。マスクは学習時のみ — 推論では設計上すべての t でフルランクを使用するため、保存された <code>.safetensors</code> は通常のベイク可能な LoRA です。詳細は <code>docs/methods/timestep_mask.md</code> を参照。</p>
 <p>トグル: <code>use_timestep_mask = true</code>。</p>
 <p><b>バリアント</b><br>
-&bull; <b>tlora</b> &mdash; OrthoLoRA の上に積み重ねた T-LoRA (<code>use_ortho = true</code> + <code>use_timestep_mask = true</code>)。デフォルトのマージ可能な組み合わせ — 直交正則化付きランク-σ スケジューリング。完全にベイク可能。<br>
+&bull; <b>tlora</b> &mdash; 通常の LoRA 上の T-LoRA (SVD-Down 初期化、<code>use_timestep_mask = true</code>)。デフォルトのマージ可能な組み合わせ — ランク-σ スケジューリング。完全にベイク可能。<br>
 &bull; <b>tlora-8gb</b> &mdash; 同じアーキテクチャの低 VRAM プロファイル (勾配チェックポインティング + オフロード); デフォルトで OOM になる場合はこちらを選択してください。</p>

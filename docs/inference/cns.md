@@ -92,7 +92,7 @@ CNS lives at the per-step noise-injection seam (`ERSDESampler._sample_noise`, `l
 | `--spectrum` | Structurally clean (different seam) but a real tension: Spectrum forecasts a smooth feature trajectory, and CNS concentrates energy in high-freq *late* — exactly where the Chebyshev forecaster is weakest. CNS conserves total variance so expect ≤ the er_sde-white perturbation Spectrum already tolerates, but the cached-step error must be A/B-checked, not assumed (cf. `project_spectrum_er_sde_forecastability`: er_sde forecasts ~1.6× worse than euler). |
 | SMC-CFG | Independent — SMC-CFG corrects the velocity/drift CFG combine (pre-`denoised`); CNS is the noise term. Different seams. |
 | mod-guidance | Orthogonal seam (AdaLN t-embedding), but it changes the v-trajectory → γ should be recalibrated with mod-guidance ON if co-deployed (2nd-order; the shipped γ was calibrated mod-guidance OFF). |
-| LoRA / OrthoLoRA / T-LoRA / Hydra | Orthogonal — no module patching, no extra weights. γ is LoRA-transparent (Phase 0). |
+| LoRA / T-LoRA / Hydra | Orthogonal — no module patching, no extra weights. γ is LoRA-transparent (Phase 0). |
 
 ## Faithfulness to the paper, and knobs deliberately omitted
 

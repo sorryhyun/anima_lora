@@ -40,7 +40,7 @@ def _make_args(**overrides) -> argparse.Namespace:
 
 
 def _net(**attrs) -> SimpleNamespace:
-    defaults = {"_ortho_reg_weight": 0.0, "_balance_loss_weight": 0.0}
+    defaults = {"_balance_loss_weight": 0.0}
     defaults.update(attrs)
     return SimpleNamespace(**defaults)
 
@@ -100,12 +100,10 @@ def test_inactive_loss_is_not_tracked():
 
 
 def test_dict_shaped_aux_requires_inner_tensor():
-    # vr/fera aux is a dict — the probe must mirror the handler's inner gate,
+    # vr aux is a dict — the probe must mirror the handler's inner gate,
     # not just key presence.
     assert _LIVENESS_PROBES["flow_matching_vr"]({"vr": {"state": {}}}) is False
     assert _LIVENESS_PROBES["flow_matching_vr"]({"vr": {"z": torch.zeros(1)}}) is True
-    assert _LIVENESS_PROBES["fera_fecl"]({"fera": {}}) is False
-    assert _LIVENESS_PROBES["fera_fecl"]({"fera": {"z_base": torch.zeros(1)}}) is True
 
 
 def test_audit_dead_feature_errors_with_greppable_prefix(caplog):

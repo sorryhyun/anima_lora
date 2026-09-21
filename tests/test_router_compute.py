@@ -32,9 +32,6 @@ from networks.lora_modules.router_state import (
     _apply_sigma_band_mask as _live_apply_mask,
 )
 from networks.lora_modules.router_state import (
-    _fei_temperature as _live_fei_temperature,
-)
-from networks.lora_modules.router_state import (
     _sigma_sinusoidal_features as _live_sigma_feat,
 )
 
@@ -60,10 +57,6 @@ def test_router_compute_is_canonical_sigma_features():
 
 def test_router_compute_is_canonical_band_mask():
     assert apply_sigma_band_mask is _live_apply_mask
-
-
-def test_router_compute_is_canonical_fei_temperature():
-    assert fei_temperature is _live_fei_temperature
 
 
 def test_fei_temperature_identity_at_tau_one():

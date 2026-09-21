@@ -16,7 +16,7 @@ use_timestep_mask = true
 min_rank = 1
 alpha_rank_scale = 1.0
 
-output_name = "anima_tlora_ortho"
+output_name = "anima_tlora"
 
 blocks_to_swap = 0
 
@@ -24,6 +24,6 @@ use_cmmd = false
 
 [variant]
 family = "tlora"
-label = "T-LoRA + OrthoLoRA"
-description = "T-LoRA stacked with OrthoLoRA — default mergeable combo."
+label = "T-LoRA"
+description = "T-LoRA rank mask on SVD-Down LoRA — default mergeable combo."
 order = 10
