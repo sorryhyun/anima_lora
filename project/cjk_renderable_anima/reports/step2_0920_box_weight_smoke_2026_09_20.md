@@ -141,15 +141,205 @@ why the share doubled it; in a sentence box the signal is split across rows
 and what is missing is composition, which no weight buys. Ceiling for a 6 k
 run is about w 12 / mean share ≈ 0.2.
 
+### The owed arm: ρ_g 0.05 + cap 0.25 (2026-09-20 14:34, job `20260920-143430-d8d588`)
+
+`rows_step2_0920_smoke_plain_bs05c25_s2k` — the bs10 arm's argv with
+`--box_share 0.05 --box_share_cap 0.25` (the flag is new, default 0.75).
+
+| | w 12 | ρ_g 0.05 cap 0.25 |
+|---|---|---|
+| `warm_drift` step 1000 → 2000 | 0.090 → 0.054 | 0.083 → 0.051 |
+| loss, step 1 → 2000 | 0.1088 → 0.0968 | 0.1076 → 0.0962 |
+| `single` exact /8 | 5 | 5 |
+| sub-exact lift `short` / `short_held` | +0.092 / +0.065 | +0.151 / +0.152 |
+| **sub-exact pooled (n = 16)** | **+0.079** | **+0.151** |
+| native hit sfx / vl, /8 | 2 / 1 | 3 / 3 |
+| native en cos / out | 0.924 / 0.930 | 0.920 / 0.925 |
+| native box IoU | 0.27 | 0.16 |
+
+Pooled lift difference +0.073, CI [−0.066, +0.207], P(>0) 0.86. It lands on
+w 12's drift, as designed. Singles break on the same item (`は` → a sentence
+fragment; `む` holds, which ρ_g 0.1 lost; `の` → あの and `み` → ん are the
+seed's own misses in every arm). Native is one render above w 12 (あ 2/4,
+か 1/4). Per-item sheets show the same failure shape as every other arm —
+fused pseudo-kanji (`次は` → 悶災木罵は, `彼を・・・・` → 複), `実に・・・・` →
+東に… as at w 12 — and exact stays 0/16.
+
+**Read: the same as w 12 inside this frame's noise** — nowhere worse, the
+pooled lift nominally the highest of the five arms but inside the CI, and
+w 1 (+0.114) already showed the lift does not follow weight. The weight axis
+is closed: no in-box weight orders a sentence ruler at n = 8.
+
+### ρ_g 0.1 + cap 0.33, and the pick for the 6 k run (2026-09-20 14:59, job `20260920-145948-d6527f`)
+
+`rows_step2_0920_smoke_plain_bs10c33_s2k` — user's arm: ρ_g 0.1 with the cap
+at 0.33 (reached at 4 glyphs). The three `--box_share` arms side by side:
+
+| | ρ_g 0.05 cap 0.25 | ρ_g 0.1 cap 0.33 | ρ_g 0.1 cap 0.75 |
+|---|---|---|---|
+| `warm_drift` step 1000 → 2000 | 0.083 → 0.051 | 0.100 → 0.065 | 0.123 → 0.084 |
+| `single` exact /8 | 5 | 6 | 4 |
+| sub-exact lift `short` | +0.151 | +0.157 | +0.174 |
+| sub-exact lift `short_held` | +0.152 | +0.097 | +0.045 |
+| **sub-exact pooled (n = 16)** | **+0.151** | **+0.127** | **+0.109** |
+| native hit sfx / vl, /8 | 3 / 3 | 2 / 1 | 2 / 1 |
+| native en cos / out | 0.920 / 0.925 | 0.925 / 0.930 | 0.925 / 0.929 |
+| native box IoU | 0.16 | 0.28 | 0.28 |
+
+`short` is flat across the three; what falls as the long-item share rises is
+**`short_held`** (+0.152 → +0.097 → +0.045), and native with it. All inside
+n = 8 noise, but the order is the same on both. Pick (rule fixed before the
+read: pooled lift first, singles and native as the constraint):
+**ρ_g 0.05 cap 0.25** — highest pooled and held lift, best native, singles one
+item under cap 0.33. The 6 k Round 2 run is on it: job
+`20260920-152026-39bf6f`, arm `rows_step2_0920_plain_bs05c25_6k`
+(`step2_0919`'s train argv, seed `step1_0920`, `--box_share 0.05
+--box_share_cap 0.25`).
+
+### Round 2 at 6 k: `rows_step2_0920_plain_bs05c25_6k` (job `20260920-152026-39bf6f`, 62.5 min)
+
+| | `step2_0919` (weak seed, w 4) | Round 2 (`step1_0920` seed, ρ_g 0.05 cap 0.25) |
+|---|---|---|
+| `single` / `_ext` / `_kanji` / `_small` of 36 | 10 / 4 / 2 / 0 (seed 10 / 5 / 3) | **15 / 7 / 6 / 0** (seed 20 / 8 / 8) |
+| lift `short` / `short_held` | +0.125 / +0.141 | +0.182 / +0.108 |
+| lift `phrase` / `phrase_held` | +0.031 / +0.049 | +0.071 / +0.033 |
+| **pooled lift (n = 64)** | +0.086 | **+0.099** |
+| exact, multi-glyph groups | 0/64 | 0/64 |
+| `warm_drift` 1000 / 3000 / 6000 | – / – / 0.054 | 0.102 / 0.080 / 0.042 |
+
+Pooled difference +0.012, CI [−0.050, +0.075], P(>0) 0.65. **The gate fails on
+both clauses**: the lift is not above `step2_0919`'s, the `_held` groups fall
+(the gain is on the trained groups only — `short` +0.057, `phrase` +0.040,
+`short_held` −0.033, `phrase_held` −0.016), and singles drop a quarter below the
+seed (20 → 15 on `single`) where `step2_0919` held its seed flat. A seed table
+twice as good on singles buys the sentence step nothing measurable; the
+sentence pass still costs singles in proportion to how far it moves the rows
+(end drift 0.042, row cos 0.997).
+
+**Native on the 6 k arm** (job `20260920-162359-446936`, `step1_0920`'s native
+argv: あ か す 日 × `en,swap` × 2 seeds, both readers of 64):
+
+| | seed `step1_0920` | Round 2 6 k |
+|---|---|---|
+| `en` both / `swap` both | 19 / 8 | **9 / 4** |
+| あ `en` / `swap` of 16 | 7 / 6 | 3 / 2 |
+| か | 7 / 0 | 3 / 0 |
+| す | 5 / 1 | 1 / 1 |
+| 日 | 0 / 1 | 2 / 1 |
+| en cos `en` / `swap` | 0.934 / 0.967 | 0.932 / 0.971 |
+
+Native halves (kana 19 → 7 on `en`; 日 0 → 2 is inside noise) with the scene
+held. The sentence pass gives back about what `--box_share` had bought step 1
+on native — the 6 k arm reads like `step1_0919` (8 / 4), not like its seed.
+
+**Multi-glyph native, seed vs Round 2** (jobs `20260920-163649-b806df` /
+`…-43e836`, `native_sent/`: はい おしい やったネ ちょっと来い × 8 scene prompts ×
+2 seeds, clause `en`, the four shortest of `step2_0919`'s six strings):
+
+| | seed `step1_0920` | Round 2 6 k | `step2_0919` |
+|---|---|---|---|
+| はい both / sfx, of 16 | 1 / 2 | 0 / 0 | 2 |
+| おしい · やったネ · ちょっと来い | 0 · 0 · 0 | 0 · 0 · 0 | 0 · 0 · 0 |
+| sub-exact lift (n = 64) | +0.093 | +0.084 | – |
+| en cos | 0.925 | 0.928 | – |
+
+No difference (lift CI [−0.068, +0.065]). On the はい sheets the seed answers
+with one large glyph (は alone 4×, one clean はい at p04 s1); Round 2 answers
+with smaller multi-glyph lines that carry the pieces in the wrong company
+(はかい, ばい, ぱばい、, は婿れないい) and loses the clean hit. The sentence pass
+changes the *habit* — one glyph → a line — not the content.
+
+### μ 0.1 at 6 k, with the in-box / out-of-box split log (job `20260920-164206-43ab2d`, 71 min)
+
+`rows_step2_0920_plain_bs05c25_mu01_6k` — the Round 2 argv with
+`--init_anchor 0.1`, eval + native in the same job. `BoxSplit`
+(`src/train/stage.py`, new) logs the plain residual's per-item in-box and
+out-of-box mean squares averaged between log rows, plus the in-box mean at
+σ ≥ / < 0.7.
+
+| | μ 0.3 | **μ 0.1** |
+|---|---|---|
+| `single` / `_ext` / `_kanji` / `_small` of 36 (seed 20 / 8 / 8 / 0) | 15 / 7 / 6 / 0 | 14 / 7 / 6 / 0 |
+| lift `short` / `short_held` | +0.182 / +0.108 | +0.220 / +0.165 |
+| lift `phrase` / `phrase_held` | +0.071 / +0.033 | +0.159 / +0.067 |
+| **pooled lift (n = 64)** | +0.099 | **+0.153** |
+| exact, multi-glyph groups | 0/64 | 0/64 |
+| native `en` / `swap` both of 64 (seed 19 / 8) | 9 / 4 | **5 / 2** (あ 0/32) |
+| native en cos | 0.932 | 0.929 |
+| end `warm_drift` / row cos | 0.042 / 0.997 | 0.089 / 0.990 |
+
+Pooled lift vs μ 0.3: +0.054, CI [−0.009, +0.119], P(>0) 0.95; vs
+`step2_0919`: **+0.066, CI [+0.003, +0.129]** — the first sentence arm whose
+lift clears the old run's CI, and all four groups rise, the `_held` ones
+included (the reward-hack check passes). Eval singles are unchanged against
+μ 0.3; **native single glyphs halve again** (19 → 9 → 5, あ 7+6 → 0).
+
+Split log (1 k-step means): `in_box` 0.1526 → 0.1488 → 0.1467 → 0.1446 →
+0.1442 → **0.1421** (−7 %, still falling at the end, no plateau);
+`out_box` 0.0874 → 0.085 by step 1 000 and flat after. Both σ halves fall by
+the same relative amount (σ ≥ 0.7 −5.5 %, < 0.7 −5.8 % at step 3 k) — no sign
+that σ 0.5–0.7 is wasted. The mixed `loss` shows none of this (out-of-box is
+≈ 80 % of it, batch noise ±0.013): "the sentence loss is flat" was a statement
+about the log, not the rows. μ 0.3 has no split log, so whether the looser
+anchor learns *faster* in-box is not read.
+
+The trade is now measured on both sides: the anchor is what holds the
+single-glyph function *and* what holds the sentence lift down. The run is not
+converged in-box at 6 k.
+
+**Multi-glyph native on μ 0.1** (job `20260920-175915-c4615a`, same four
+strings): exact 0/64, sub-exact lift **+0.084** — the same as the seed (+0.093)
+and μ 0.3 (+0.084). The eval-frame lift (+0.153) does not reach a scene prompt.
+Whole-canvas reads, はい: the bigram appears in 1 / 0 / 2 of 16 renders (seed /
+μ 0.3 / μ 0.1), and in μ 0.1 it is the *tail of a longer invented line*
+(`笺どおありはい`, `笺こたをりはい`); first glyph present 8 / 4 / 4 of 16. やったネ
+and ちょっと来い: no first glyph in any table (0–1 of 16).
+
+### The boost gate: `rows_step2_0920_plain_bs05c25_boost8_6k` (jobs `20260920-203327-b24831`, `…-5521aa`)
+
+Round 2's μ 0.3 argv + `--row_boost 1101,192,831,145,237,672,521,220`
+(ろ 事 カ そ ら め 知 も, each lifted from 259–787 to 1 007–1 612 expected
+draws). **Gate failed: the boosted rows gained nothing.**
+
+`row_dose.py --rows …` against `rows_step2_0920_seedread`, paired on the same
+64 items:
+
+| bin | partner (Round 2 μ 0.3) | μ 0.1 | **boost8** |
+|---|---|---|---|
+| the 8 rows, all (44 pieces) | −0.023 [−0.10, +0.05] | −0.023 [−0.11, +0.04] | **−0.023 [−0.07, +0.00]** |
+| the 8 rows, held (24) | −0.042 | −0.042 | **−0.042** |
+| occ 400–1 000, other rows | +0.148 | +0.227 | +0.148 [+0.05, +0.24] |
+| occ ≥ 1 000 | +0.031 | +0.172 | −0.016 |
+
+Hit 3/44 (seed) → 2/44 in all three tables. The pre-registered pass was
+≈ +0.15 with the interval off 0.
+
+The boost did reach the rows. Drift `|Δ|/|seed|` of the eight: partner
+0.034–0.139 → boost **0.093–0.149** (table median unchanged, 0.022 → 0.021),
+in the partner's direction (cos(Δ_boost, Δ_partner) 0.53–0.76) and against the
+seed like every heavy row (cos(Δ, seed) −0.09 … −0.30). μ 0.1 moves the same
+rows as far or further (0.089–0.336) for the same −0.023. **Two levers that
+each double these rows' travel — draws, anchor — buy no content.**
+
+Everything else is the partner's, inside noise: `sub_exact.py` pooled
+**+0.095** vs +0.099 (Δ −0.004 [−0.069, +0.064]); eval singles 16 / 7 / 7
+(partner 15 / 7 / 6); native あ か す 日 both-readers **9 / 4** of 64
+(partner 9 / 4); multi-glyph native exact 0/64, sub-exact +0.088 (partner
++0.084). The × 0.78 share cut on unboosted items cost nothing measurable.
+
+What the arm does not separate: the boost repeats a row's *own* strings. In
+`data_step2_0919` the eight rows ride **13–51 distinct strings** (median 30);
+the rows that gained at 400–1 000 items ride 22–123 (median 60), the ≥ 1 000
+rows a median of 106. Draw count was matched to the gaining bin; string
+variety was not. So item 8's slope is not draws per row; "distinct contexts per
+row" is the reading still standing, and it is the pool's question, not the
+sampler's.
+
 ## 3. Owed
 
-- **`ρ_g 0.05` + cap 0.25** — same smoke frame. Cap reached at 5 glyphs, mean
-  share ≈ 0.18 = w 12, with 1–2-glyph items (22 %) weighted above w 12. The
-  read is whether singles pay less at w 12's sentence level. Needs
-  `--box_share_cap` (default 0.75 keeps every run on record reproducible) in
-  `src/cli/train.py` + `src/train/stage.py`. Same as w 12 → the weight axis
-  is closed and 6 k runs on `--box_weight 12`.
+- ~~`ρ_g 0.05` + cap 0.25~~ — ran, above; the axis is closed.
 - Not tested here, separate levers: the anchor μ (0.3 → 0.1 was worse on
   09-18, on the weak seed and the old weighting), a sentence-length
   curriculum, and the open question in `plan.md` — which loss trains a
   multi-glyph piece as a unit.
+- ~~The boost gate~~ — ran, above: draws per row are not the lever.

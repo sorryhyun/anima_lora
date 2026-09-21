@@ -143,6 +143,7 @@ def stage_train(a):
     pair_ema: dict = {}
     flat_ema: dict = {}
     log = []
+    split = BoxSplit()  # in-box / out-of-box residual, averaged between log rows
     block_log = []  # --row_blocks: every step, per row (row_blocks_log.jsonl)
     aug_rng = random.Random(a.seed + 11)
     killed = ""
@@ -172,6 +173,7 @@ def stage_train(a):
         brecs = [recs[i] for i in idx]
         bw = a.box_weight if is_scene else 1.0
         bs = a.box_share if is_scene else 0.0
+        cap = a.box_share_cap
         with torch.autocast("cuda", dtype=torch.bfloat16):
             captions = [r["caption"] for r in brecs]
             pred = dit_forward(anima, noisy, ts, cache, captions, device)
@@ -193,20 +195,29 @@ def stage_train(a):
                 (ts.float() >= a.pair_sigma_min).view(-1, 1, 1, 1).to(pred.dtype)
             )
             loss_fm = weighted_fm_loss(
-                pred - keep_pair * pred_a, target - keep_pair * target_a, brecs, bw, bs
+                pred - keep_pair * pred_a,
+                target - keep_pair * target_a,
+                brecs,
+                bw,
+                bs,
+                cap,
             )
             if is_scene:
                 extra = pair_stats(
-                    pred, target, pred_a, target_a, brecs, bw, pair_ema, bs
+                    pred, target, pred_a, target_a, brecs, bw, pair_ema, bs, cap
                 )
             else:
                 # flat siblings: own EMA and keys, the composite fields keep
                 # their meaning
-                st = pair_stats(pred, target, pred_a, target_a, brecs, bw, flat_ema, bs)
+                st = pair_stats(
+                    pred, target, pred_a, target_a, brecs, bw, flat_ema, bs, cap
+                )
                 extra = {f"{k}_flat": v for k, v in st.items()}
         else:
-            loss_fm = weighted_fm_loss(pred, target, brecs, bw, bs)
+            loss_fm = weighted_fm_loss(pred, target, brecs, bw, bs, cap)
         loss, decor_val = tr.regularized(loss_fm)
+        if is_scene:
+            split.add(pred, target, brecs, ts)
         if batcher.blocks:
             # per-row trajectory: the paired (or plain) residual split into
             # its in-box (glyph) and out-of-box (scene) mean squares, every
@@ -258,6 +269,7 @@ def stage_train(a):
             sched.step()
         tr.after_step()
         if step % 25 == 0 or step == 1:
+            extra = {**extra, **split.pop()}
             rec = tr.log_record(step, loss_fm, loss, decor_val, t0, extra)
             log.append(rec)
             print(json.dumps(rec), flush=True)
@@ -287,10 +299,59 @@ def stage_train(a):
     torch.cuda.empty_cache()
 
 
+class BoxSplit:
+    """The plain FM residual split into its in-box (glyph) and out-of-box
+    (scene) mean squares, per item, averaged over the steps between two log
+    rows — a sentence box is ≈ 2 % of the canvas, so the logged ``loss`` cannot
+    show an in-box change. ``in_box_hi`` / ``in_box_lo`` are the same in-box
+    mean over the items drawn at σ ≥ / < ``SIGMA_SPLIT``."""
+
+    SIGMA_SPLIT = 0.7
+    KEYS = ("in_box", "out_box", "in_box_hi", "in_box_lo")
+
+    def __init__(self):
+        self.sum = {k: 0.0 for k in self.KEYS}
+        self.n = {k: 0.0 for k in self.KEYS}
+
+    @torch.no_grad()
+    def add(self, pred, target, recs, ts):
+        se = ((pred.float() - target.float()) ** 2).mean(dim=1, keepdim=True)
+        m = _box_mask(se.shape, recs, se.device)
+        n_in = m.sum(dim=(1, 2, 3))
+        inb = (se * m).sum(dim=(1, 2, 3)) / n_in.clamp(min=1)
+        outb = (se * (1 - m)).sum(dim=(1, 2, 3)) / (1 - m).sum(dim=(1, 2, 3)).clamp(
+            min=1
+        )
+        has = n_in > 0
+        hi = has & (ts.float().view(-1).to(has.device) >= self.SIGMA_SPLIT)
+        for k, v, w in (
+            ("in_box", inb, has),
+            ("out_box", outb, has),
+            ("in_box_hi", inb, hi),
+            ("in_box_lo", inb, has & ~hi),
+        ):
+            self.sum[k] = self.sum[k] + (v * w).sum()
+            self.n[k] = self.n[k] + w.sum()
+
+    def pop(self) -> dict:
+        out = {
+            k: float(self.sum[k] / self.n[k]) for k in self.KEYS if float(self.n[k]) > 0
+        }
+        self.__init__()
+        return out
+
+
 BOX_SHARE_CAP = 0.75
 
 
-def weighted_fm_loss(pred, target, recs, box_weight: float, box_share: float = 0.0):
+def weighted_fm_loss(
+    pred,
+    target,
+    recs,
+    box_weight: float,
+    box_share: float = 0.0,
+    box_share_cap: float = BOX_SHARE_CAP,
+):
     """MSE on the flow target, with the latent cells under a composite item's
     swapped text box (``rec['box']``, pixels at the item's own size, VAE 8×)
     weighted ``box_weight`` and the rest 1 — normalised by the weight sum so
@@ -298,7 +359,7 @@ def weighted_fm_loss(pred, target, recs, box_weight: float, box_share: float = 0
 
     ``box_share`` ρ_g > 0 replaces that with the area-independent form
     (plan_synth4 R4.5): per item ``s·mean_in + (1 − s)·mean_out`` with
-    ``s = min(ρ_g · n_glyphs, BOX_SHARE_CAP)``, averaged over the batch — the
+    ``s = min(ρ_g · n_glyphs, box_share_cap)``, averaged over the batch — the
     in-box share of the loss no longer follows the box area, and a row's share
     does not fall with the item's glyph count. At ``d0``'s 64-cell box
     ρ_g 0.25 is ``box_weight`` 20."""
@@ -315,7 +376,7 @@ def weighted_fm_loss(pred, target, recs, box_weight: float, box_share: float = 0
             device=se.device,
             dtype=se.dtype,
         )
-        s = (box_share * n_glyph).clamp(max=BOX_SHARE_CAP)
+        s = (box_share * n_glyph).clamp(max=box_share_cap)
         s = torch.where(n_in > 0, s, torch.zeros_like(s))  # no box: plain mean
         s = torch.where(n_out > 0, s, torch.ones_like(s))
         return (s * mean_in + (1.0 - s) * mean_out).mean()
@@ -354,7 +415,15 @@ def pair_branch(anima, lat, idx, noise, ts, cache, recs, device):
 
 
 def pair_stats(
-    pred, target, pred_a, target_a, recs, box_weight, ema: dict, box_share: float = 0.0
+    pred,
+    target,
+    pred_a,
+    target_a,
+    recs,
+    box_weight,
+    ema: dict,
+    box_share: float = 0.0,
+    box_share_cap: float = BOX_SHARE_CAP,
 ) -> dict:
     """The ΔFM log fields (plan_synth2): ``fm_plain`` = plain ‖r_B‖²_w on
     the same items (the number comparable to a ``--pair_loss 0`` arm),
@@ -367,7 +436,9 @@ def pair_stats(
     with torch.no_grad():
         out = {
             "fm_plain": float(
-                weighted_fm_loss(pred, target, recs, box_weight, box_share)
+                weighted_fm_loss(
+                    pred, target, recs, box_weight, box_share, box_share_cap
+                )
             )
         }
         m = _box_mask(pred.shape, recs, pred.device)
@@ -633,12 +704,13 @@ class Batcher:
         self.ptr = 0
         self.shape_batches = None
         if lat.row_of is not None and self.groups is None:
+            rep = self._row_boost_reps(a, recs, cache) if a.row_boost else None
             self.by_shape: dict = {}
             for r in range(len(recs)):
                 key = lat.shape_of(r)
                 if recs[r]["src"] == "scene":
                     key += "|scene"
-                self.by_shape.setdefault(key, []).append(r)
+                self.by_shape.setdefault(key, []).extend([r] * (rep[r] if rep else 1))
             self.shape_batches = self._shape_epoch(random.Random(a.seed))
             self.bptr = 0
             print(
@@ -647,6 +719,47 @@ class Batcher:
                 + f" → {len(self.shape_batches)} batches/epoch of {a.batch}",
                 flush=True,
             )
+
+    @staticmethod
+    def _row_boost_reps(a, recs, cache) -> list[int]:
+        """``--row_boost``: slots per item in an epoch, so that every listed ext
+        row expects ``--row_boost_draws`` item draws over the run. Fixed point —
+        the added slots lengthen the epoch, which lowers every row's rate."""
+        from library.anima.ext_vocab import T5_TABLE_SIZE
+
+        assert a.arm == "rows", "--row_boost is a rows-arm batcher option"
+        boost = [int(x) for x in a.row_boost.split(",") if x.strip()]
+        ext_of = []
+        for r in recs:
+            t5 = cache[r["caption"]][2].tolist()
+            ext_of.append({int(v) - T5_TABLE_SIZE for v in t5 if v >= T5_TABLE_SIZE})
+        items = {e: [i for i, s in enumerate(ext_of) if e in s] for e in boost}
+        missing = [e for e in boost if not items[e]]
+        assert not missing, f"--row_boost: no item carries ext {missing}"
+        rep = [1] * len(recs)
+        total = a.train_steps * a.batch
+
+        def draws(e):
+            return total * sum(rep[i] for i in items[e]) / sum(rep)
+
+        base = {e: draws(e) for e in boost}
+        for _ in range(12):
+            short = {e: a.row_boost_draws / draws(e) for e in boost}
+            if max(short.values()) <= 1.0:
+                break
+            for i in {i for e in boost for i in items[e]}:
+                need = max(short[e] for e in boost if e in ext_of[i])
+                if need > 1.0:
+                    rep[i] = math.ceil(rep[i] * need)
+        print(
+            f"row boost: {len(recs)} items → {sum(rep)} slots/epoch "
+            f"(unboosted share ×{len(recs) / sum(rep):.2f}); ext: items, draws "
+            + ", ".join(
+                f"{e}: {len(items[e])}, {base[e]:.0f} → {draws(e):.0f}" for e in boost
+            ),
+            flush=True,
+        )
+        return rep
 
     def _init_row_blocks(self, a, recs, lat, cache, delta):
         from library.anima.ext_vocab import T5_TABLE_SIZE

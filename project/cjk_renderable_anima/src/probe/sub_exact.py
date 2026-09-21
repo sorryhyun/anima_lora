@@ -30,7 +30,7 @@ import random
 import statistics as st
 from pathlib import Path
 
-GROUPS = ("short", "short_held", "phrase", "phrase_held", "line", "combo", "corpus", "word", "word_held")
+GROUPS = ("short", "short_held", "phrase", "phrase_held", "line", "combo", "corpus", "word", "word_held", "gword", "gword_held")
 
 
 def _read(rec) -> str:

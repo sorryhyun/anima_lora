@@ -299,5 +299,127 @@ def test_box_share_loss_is_area_independent():
     assert loss(small, e_in=0.0, e_out=1.0) == pytest.approx(0.75)
     assert loss(big, text="がぎ") == pytest.approx(0.5)  # per glyph
     assert loss(big, text="が ぎ ぐ げ ご") == pytest.approx(BOX_SHARE_CAP)
+    # --box_share_cap: a lower ceiling bites the many-glyph item only
+    rec5 = [{"box": big, "text": "がぎぐげご"}]
+    pred = torch.zeros(1, 4, 64, 64)
+    pred[:, :, 8:24, 8:24] = 1.0
+    capped = weighted_fm_loss(pred, torch.zeros_like(pred), rec5, 4.0, 0.25, 0.4)
+    assert float(capped) == pytest.approx(0.4)
     # share 0 = the old weight-sum form, which does follow the area
     assert loss(small, share=0.0) < loss(big, share=0.0)
+
+
+def test_box_split_separates_in_and_out_of_box():
+    """BoxSplit: per-item in-box / out-of-box means, the σ split, and the reset."""
+    import torch
+    from train.stage import BoxSplit
+
+    target = torch.zeros(2, 4, 64, 64)
+    pred = torch.full_like(target, 0.5)  # out-of-box se 0.25
+    pred[0, :, 8:12, 8:12] = 1.0  # item 0: in-box se 1, σ 0.8
+    pred[1, :, 8:24, 8:24] = 2.0  # item 1: in-box se 4, σ 0.6, 16× the area
+    recs = [{"box": [64, 64, 96, 96]}, {"box": [64, 64, 192, 192]}]
+    sp = BoxSplit()
+    sp.add(pred, target, recs, torch.tensor([0.8, 0.6]))
+    out = sp.pop()
+    assert out["in_box"] == pytest.approx(2.5)  # per item, not per cell
+    assert out["out_box"] == pytest.approx(0.25)
+    assert out["in_box_hi"] == pytest.approx(1.0)
+    assert out["in_box_lo"] == pytest.approx(4.0)
+    assert sp.pop() == {}
+
+
+def test_phrase_norm_and_balanced_draw(tmp_path):
+    """--phrase_norm respells ellipses / bangs and merges the spellings;
+    --text_draw balanced lands every fitting string the same count ± 1."""
+    import random
+    from data.inventory import norm_phrase, phrase_file_lines
+    from data.synth import _LenPool
+
+    assert norm_phrase("すまん・・・・寝てたか！！！") == "すまん・・・寝てたか！！"
+    assert norm_phrase("え…") == norm_phrase("え･･･") == "え・・・"
+    assert norm_phrase("あ・い") == "あ・い"  # a lone separator stays
+    f = tmp_path / "p.tsv"
+    f.write_text("え…\tb1\t2\nえ・・・・\tb2\t2\nはい\tb1\t2\n", encoding="utf-8")
+    assert phrase_file_lines(f, 2, 10) == [("え…", "b1", 2), ("え・・・・", "b2", 2), ("はい", "b1", 2)]
+    assert phrase_file_lines(f, 2, 10, norm=True) == [("え・・・", "b1", None), ("はい", "b1", 2)]
+
+    texts = ["ab", "cd", "ef", "ghijklmnopqrs"]  # one length-13 string
+    rng = random.Random(0)
+    by_len = _LenPool(texts)
+    n = sum(by_len.draw(rng, 18) == texts[3] for _ in range(400))
+    assert n > 150  # the by-length draw: half the items on one string
+    bal = _LenPool(texts, balanced=True)
+    draws = [bal.draw(rng, 18) for _ in range(402)]
+    counts = sorted(draws.count(t) for t in texts)
+    assert counts[-1] - counts[0] <= 1
+    assert all(len(bal.draw(rng, 2)) == 2 for _ in range(9))  # the cap still binds
+
+
+
+def test_grid_deck_deals_rows_evenly():
+    """`--grid`: units are dealt, so draw counts differ by at most one deck
+    pass and an item never repeats a unit."""
+    import random
+    from collections import Counter
+
+    from data.grid import GRIDS, _Deck, parse_grid
+
+    assert parse_grid("2x2,3x3:2") == [("2x2", 1.0), ("3x3", 2.0)]
+    assert {c * r for c, r, _ in GRIDS.values()} == {4, 6, 9}
+    assert all(W % 16 == 0 and H % 16 == 0 for _, _, (W, H) in GRIDS.values())
+    deck = _Deck([str(i) for i in range(23)], random.Random(0))
+    n = Counter()
+    for k in [4, 9, 6, 9, 4, 6] * 20:
+        got = deck.deal(k)
+        assert len(set(got)) == k
+        n.update(got)
+    assert max(n.values()) - min(n.values()) <= 1
+    # pool weights: a unit repeated w times is dealt w times per pass
+    deck = _Deck(["a", "b", "c", "d"] * 6 + ["x", "y"], random.Random(0))
+    n = Counter(u for _ in range(130) for u in deck.deal(4))
+    assert 5 <= n["a"] / n["x"] <= 7
+
+
+def test_grid_word_deck_by_row():
+    """`--grid_words`: no 3x3, a bubble cell holds one glyph fewer, and the
+    by-row draw keeps every word under the cap, spreads a row over its words
+    and returns None (uses undone) once the supply is spent."""
+    import random
+
+    from data.grid import _WordDeck, max_glyphs
+
+    assert max_glyphs("3x3", False, 56) == 0
+    assert [max_glyphs(g, b, 56) for g in ("2x2", "2x3") for b in (False, True)] == [
+        4, 3, 3, 2,
+    ]  # fmt: skip
+    words = {"あか": ["あ", "か"], "あす": ["あ", "す"], "かす": ["か", "す"],
+             "すあか": ["す", "あ", "か"], "あかすか": ["あ", "か", "す", "か"]}  # fmt: skip
+    deck = _WordDeck(words, 3, random.Random(0))
+    assert deck.rows == ["あ", "か", "す"]
+    got = deck.deal(4, 3)
+    assert len(set(got)) == 4 and "あかすか" not in got
+    while (got := deck.deal(2, 4)) is not None:
+        assert len(set(got)) == 2
+    assert max(deck.used.values()) <= 3
+    assert sum(deck.used.values()) >= 3 * len(words) - 1  # one word cannot pair up
+    before = dict(deck.used)
+    assert deck.deal(4, 4) is None and dict(deck.used) == before
+
+
+def test_grid_caption_headers():
+    from common.prompts import grid_caption, grid_cell_header
+
+    assert [grid_cell_header(2, 3, i) for i in range(6)] == [
+        "On the top left",
+        "On the top right",
+        "On the middle left",
+        "On the middle right",
+        "On the bottom left",
+        "On the bottom right",
+    ]
+    assert grid_cell_header(3, 3, 4) == "In the center"
+    assert grid_cell_header(3, 2, 1) == "On the top middle"
+    cap = grid_caption("flat", 2, 2, ["あ", "か", "す", "日"])
+    assert cap.endswith('On the bottom right, Japanese text reads as "日".')
+    assert cap.count("Japanese text reads as") == 4

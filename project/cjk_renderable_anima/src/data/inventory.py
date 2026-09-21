@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 from collections import Counter
 from itertools import permutations
 from pathlib import Path
@@ -32,7 +33,21 @@ def corpus_lines(boxes_jsonl: Path, max_len: int):
     return out
 
 
-def phrase_file_lines(path: Path, min_pieces: int, max_pieces: int) -> list:
+_ELLIPSIS_RE = re.compile(r"[・･]{2,}|…+|‥+|\.{3,}")
+_BANG_RE = re.compile(r"[！!]{2,}")
+
+
+def norm_phrase(text: str) -> str:
+    """``--phrase_norm``: every ellipsis spelling (・・ / ・・・・ / ･･･ / … / ‥ / ...)
+    → ``・・・`` and every run of bangs → ``！！`` — one warm row each instead of
+    a spelling per book (user, 2026-09-20: the top sentence strings were all
+    ・・・・ lines)."""
+    return _BANG_RE.sub("！！", _ELLIPSIS_RE.sub("・・・", text))
+
+
+def phrase_file_lines(
+    path: Path, min_pieces: int, max_pieces: int, norm: bool = False
+) -> list:
     """``[(line, book, n_pieces)]`` from a phrase TSV (``line[\\tbook[\\tn]]``,
     one per row; a bare line gets book ``""`` and its count is taken from the
     tokenizer lazily by the caller when absent). Lines outside
@@ -47,7 +62,18 @@ def phrase_file_lines(path: Path, min_pieces: int, max_pieces: int) -> list:
         n = int(cols[2]) if len(cols) > 2 and cols[2].strip() else None
         if n is not None and not (min_pieces <= n <= max_pieces):
             continue
+        if norm and norm_phrase(text) != text:
+            # the file's piece count is the raw spelling's: the caller recounts
+            text, n = norm_phrase(text), None
         out.append((text, book, n))
+    if norm:
+        # spellings that merged: keep the first (its book decides held / train)
+        seen, uniq = set(), []
+        for t in out:
+            if t[0] not in seen:
+                seen.add(t[0])
+                uniq.append(t)
+        out = uniq
     return out
 
 

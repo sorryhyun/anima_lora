@@ -27,6 +27,63 @@ def data_args(g):
         "corpus crops draw from the squares; train then batches one shape per step "
         "and caches latents per shape. Empty = 512² renders at --train_size (old dirs)",
     )
+    g.add_argument(
+        "--grid",
+        default="",
+        help="data: grid items — k single units drawn mechanically in a cols x rows "
+        "grid, one position clause per cell, units dealt so every row gets the same "
+        "draws. Comma list of 2x2 | 3x3 (512²) | 2x3 (416x624) | 3x2 (624x416) with "
+        "an optional :weight, e.g. '2x2,3x3,2x3,3x2'. Alone = a grid-only dir; with "
+        "--scenes the items join the S-line mix. Empty = off",
+    )
+    g.add_argument("--n_grid", type=int, default=2000, help="data: --grid items")
+    g.add_argument(
+        "--grid_bubble_frac",
+        type=float,
+        default=0.5,
+        help="data: --grid share of items whose cells are speech bubbles "
+        "(`manga, multiple speech bubbles`); the rest are a flat light canvas",
+    )
+    g.add_argument(
+        "--grid_fill_min",
+        type=float,
+        default=0.5,
+        help="data: --grid font size as a share of the cell's short side, low end",
+    )
+    g.add_argument("--grid_fill_max", type=float, default=0.8, help="…, high end")
+    g.add_argument(
+        "--grid_words",
+        default="",
+        help="data: --grid word cells (plan_grid S1) — a phrase TSV (dialogue_2_10.tsv); "
+        "its lines of --grid_word_pieces Qwen pieces whose every piece is a trained "
+        "row fill the cells of --grid_word_frac of the --grid items. Words are drawn "
+        "by row (rows cycled, the least-used word carrying the row, "
+        "--grid_word_cap items per word) and never into 3x3. Held by string → eval "
+        "groups gword / gword_held. Empty = every cell is a single unit",
+    )
+    g.add_argument(
+        "--grid_word_frac",
+        type=float,
+        default=0.5,
+        help="data: --grid_words share of --n_grid items whose cells hold words",
+    )
+    g.add_argument("--grid_word_pieces", default="2-4", help="…, piece range")
+    g.add_argument("--grid_word_cap", type=int, default=25, help="…, items per word")
+    g.add_argument(
+        "--grid_word_held",
+        type=int,
+        default=32,
+        help="data: --grid_words strings held out of every item (eval gword_held; "
+        "as many drawn words read as gword)",
+    )
+    g.add_argument(
+        "--grid_word_min_glyph",
+        type=int,
+        default=56,
+        help="data: --grid_words cell-size rule — a word of n glyphs goes only into "
+        "a (grid, frame) whose text room / n reaches this many px (256 px cells: "
+        "4 flat, 3 bubble; 208 px cells: 3 flat, 2 bubble)",
+    )
     g.add_argument("--n_single", type=int, default=6, help="font renders per kana")
     g.add_argument("--n_combo", type=int, default=700)
     g.add_argument("--n_corpus", type=int, default=600)
@@ -136,6 +193,23 @@ def data_synth_args(g):
         type=int,
         default=6,
         help="data: --phrase_file books held out whole for phrase_held",
+    )
+    g.add_argument(
+        "--phrase_norm",
+        type=int,
+        default=0,
+        help="data: 1 = respell --phrase_file lines before the coverage test — "
+        "every ellipsis (・・・・ / ･･･ / … / ...) → ・・・, every run of bangs → ！！; "
+        "merged spellings keep the first line's book",
+    )
+    g.add_argument(
+        "--text_draw",
+        choices=("length", "balanced"),
+        default="length",
+        help="data: --scene_mix short / sentence text draw — length = a glyph "
+        "length uniformly, then a text of it (every run to step2_0919); "
+        "balanced = the least-drawn fitting text, so each string lands the "
+        "same number of items ± 1",
     )
     g.add_argument("--phrase_min_pieces", type=int, default=3)
     g.add_argument("--phrase_max_pieces", type=int, default=10)

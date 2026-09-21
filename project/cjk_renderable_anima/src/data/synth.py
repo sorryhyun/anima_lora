@@ -174,7 +174,10 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
     # never-trained text from never-trained pages
     if a.phrase_file:
         plines = phrase_file_lines(
-            Path(a.phrase_file), a.phrase_min_pieces, a.phrase_max_pieces
+            Path(a.phrase_file),
+            a.phrase_min_pieces,
+            a.phrase_max_pieces,
+            norm=bool(a.phrase_norm),
         )
         books = sorted({b for _t, b, _n in plines})
         hrng = random.Random(a.seed + 41)
@@ -220,7 +223,12 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
         # 2–5-piece lines; a line in neither kind trains in no composite
         # (a singles-only mix, Δ1, needs no phrase source)
         assert a.phrase_file, "--scene_mix short / sentence need --phrase_file"
-        n_of = {t: n for t, _b, n in plines}
+        # a line without a count column (or respelled by --phrase_norm) is
+        # counted here
+        n_of = {
+            t: n if n is not None else len(pieces(tok, qmap, t))
+            for t, _b, n in plines
+        }
         lo, hi = (int(x) for x in a.short_pieces.split("-"))
 
         def kind_of(t):
@@ -330,10 +338,11 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
     # uniform among the texts of a kind that fit a bubble of `cap` glyphs
     # (sorted by length, bisect) — the seed path's first-of-40-that-fits
     # draw is what made the phrase composites interjections
+    balanced = a.text_draw == "balanced"
     fit_pool = {
         "single": _LenPool(units, weighted=True),
-        "short": _LenPool(by_kind.get("short", [])),
-        "sentence": _LenPool(by_kind.get("sentence", [])),
+        "short": _LenPool(by_kind.get("short", []), balanced=balanced),
+        "sentence": _LenPool(by_kind.get("sentence", []), balanced=balanced),
     }
     recs: list[dict] = []
 
@@ -579,7 +588,14 @@ class _LenPool:
     of that length (``None`` when nothing fits) — so the 2-glyph lines, the
     most numerous, do not dominate the short kind."""
 
-    def __init__(self, texts, weighted: bool = False):
+    def __init__(self, texts, weighted: bool = False, balanced: bool = False):
+        # balanced (--text_draw balanced): uniform among the fitting texts
+        # that have been drawn least, so every string of a kind lands the same
+        # number of items ± 1. The by-length draw gives a length held by one
+        # string as many items as a length held by a hundred (step2_0919: one
+        # 13-glyph line was 266 of 4 000 sentence items)
+        self.balanced = balanced
+        self.used: Counter = Counter()
         # weighted: keep repeats (the singles pool repeats a unit per its
         # --units weight) so an as-is draw honours them
         self.texts = sorted(
@@ -596,6 +612,14 @@ class _LenPool:
             # the singles pool carries the --units weights: draw it as is
             n = bisect.bisect_right(self.lens, cap)
             return self.texts[rng.randrange(n)] if n else None
+        if self.balanced:
+            n = bisect.bisect_right(self.lens, cap)
+            if not n:
+                return None
+            least = min(self.used[t] for t in self.texts[:n])
+            t = rng.choice([t for t in self.texts[:n] if self.used[t] == least])
+            self.used[t] += 1
+            return t
         k = bisect.bisect_right(self.lengths, cap)
         if not k:
             return None

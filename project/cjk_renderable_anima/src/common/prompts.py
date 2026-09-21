@@ -28,6 +28,38 @@ TPL_EN = 'manga, speech bubble, english text. English text reads as "{}".'
 # ``japanese text``) + the trained clause shape
 TPL_SCENE_JA = '{tags}. Japanese text reads as "{text}".'
 
+# grid items (2026-09-20): k single units drawn mechanically in a cols × rows
+# grid, one position clause per cell. Both frames and the clause shape are the
+# ones `probe/position_probe.py` read on the base model (clause → cell binds)
+GRID_FRAMES = {
+    "flat": "white background, simple background, no humans, text focus, {lang} text.",
+    "bubble": "manga, multiple speech bubbles, {lang} text.",
+}
+_GRID_COLS = {1: ("",), 2: ("left", "right"), 3: ("left", "middle", "right")}
+_GRID_ROWS = {1: ("",), 2: ("top", "bottom"), 3: ("top", "middle", "bottom")}
+
+
+def grid_cell_header(cols: int, rows: int, cell: int) -> str:
+    """Clause header of ``cell`` (row-major) in a ``cols`` × ``rows`` grid —
+    anime_tools' position vocabulary (``On the top left`` … ``In the center``)."""
+    r, c = divmod(cell, cols)
+    if (cols, rows) == (3, 3) and (r, c) == (1, 1):
+        return "In the center"
+    return "On the " + " ".join(w for w in (_GRID_ROWS[rows][r], _GRID_COLS[cols][c]) if w)
+
+
+def grid_caption(
+    frame: str, cols: int, rows: int, units, order=None, lang: str = "japanese"
+) -> str:
+    """``units[i]`` sits in cell ``i``; ``order`` is the clause sequence
+    (default reading order)."""
+    clauses = [
+        f'{grid_cell_header(cols, rows, i)}, {lang.capitalize()} text reads as "{units[i]}".'
+        for i in (order if order is not None else range(len(units)))
+    ]
+    return f"{GRID_FRAMES[frame].format(lang=lang)} {' '.join(clauses)}"
+
+
 # report / sheet order; ``word`` / ``word_held`` / ``line`` are the 2026-09-14
 # word-address groups (``--words``)
 EVAL_GROUPS = (
@@ -46,6 +78,8 @@ EVAL_GROUPS = (
     "phrase_held",
     "short",
     "short_held",
+    "gword",
+    "gword_held",
     "combo",
     "corpus",
     "en",

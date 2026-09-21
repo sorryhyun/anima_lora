@@ -38,6 +38,22 @@ def train_args(g):
         "Adam state is zeroed at block start. Rows share no parameter, so this "
         "is a per-row local schedule at the same wall-clock. 0 = mixed batches",
     )
+    g.add_argument(
+        "--row_boost",
+        default="",
+        help="train (rows arm, mixed-shape batcher): comma list of ext ids whose "
+        "items are repeated inside every epoch until each listed row expects "
+        "--row_boost_draws item draws over the run. Every other item keeps its one "
+        "slot per epoch, so their share shrinks by the added slots (printed). "
+        "Exposure probe of 2026-09-20: a row gains sentence content only past "
+        "≈ 400 multi-glyph items per 10k (≈ 1000 draws at 6k × 4). '' = off",
+    )
+    g.add_argument(
+        "--row_boost_draws",
+        type=int,
+        default=1000,
+        help="train: the per-row draw target of --row_boost",
+    )
     g.add_argument("--grad_ckpt", type=int, default=1)
     g.add_argument(
         "--compile",
@@ -133,6 +149,14 @@ def train_synth_args(g):
         "item, 0.75), so the in-box share of the loss stops following the box "
         "area; replaces --box_weight when > 0 (0.25 = --box_weight 20 at a "
         "64-cell box); 0 = off",
+    )
+    g.add_argument(
+        "--box_share_cap",
+        type=float,
+        default=0.75,
+        help="train: the per-item ceiling on --box_share's s (0.75 = every run "
+        "before 2026-09-20); lower it so a many-glyph sentence box stops at the "
+        "cap while 1–2 glyph items keep share × glyphs",
     )
     g.add_argument(
         "--c_flat",

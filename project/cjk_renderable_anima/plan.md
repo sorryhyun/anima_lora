@@ -291,6 +291,98 @@ that ships.
 
 ---
 
+## V — the vocab step: which multi-glyph pieces to wake (2026-09-20)
+
+**Why.** The sentence pool is vocabulary-limited, not data-limited. Of
+`dialogue_2_10.tsv`'s 42 557 lines (`--phrase_norm 1`), **5 211 are covered**
+by `step1_0920`'s inventory and only **538 of those are sentences** — a line
+is dropped the moment one of its Qwen pieces has no warm row, and the pieces
+it trips on are not rare words but the language's function pieces: って じゃ
+んだ ない いい から さん った でも ちゃん. 4 214 distinct cold pieces block the
+rest (hiragana 811, single kanji 1 454, kanji-carrying 1 495, katakana 382);
+only 2 lines are blocked by a piece with no pack row at all, so everything
+below is addressable. `sent_run.md` has what the small pool did to the
+sentence runs.
+
+**What N rows buy** (the N most frequent cold pieces added; ranked list with
+line counts, class and the greedy completes-most-lines order in
+`reports/vocab_step_candidates_2026_09_20.tsv`):
+
+| cold pieces added | covered lines | sentences | shorts | what the added rows are | step-1 cost at ≈ 600 draws/row |
+|---|---|---|---|---|---|
+| 0 (today) | 5 211 | 538 | 3 339 | — | — |
+| 50 | 8 961 | 2 567 | 4 942 | hiragana 50 | 7.5 k steps, 1.2 h |
+| **100** | 10 962 | **3 846** | 5 617 | hiragana 93, kanji 7 | 15 k, 2.5 h |
+| **200** | 14 088 | **5 932** | 6 591 | hiragana 160, kanji 34, katakana 4 | 30 k, 4.9 h |
+| 300 | 16 641 | 7 808 | 7 202 | hiragana 215, kanji 74 | 45 k, 7.4 h |
+| 500 | 20 848 | 10 930 | 8 141 | | 75 k, 12 h |
+
+The first 50 rows multiply the sentence pool by 5 and the first 200 by 11;
+after ≈ 200 each further hundred buys ≈ 1 000 sentences and the list turns
+into single kanji, which is K's job (`kanji:N`), not this step's.
+
+**The list.** Frequency rank and greedy rank agree on the head. Tier A is the
+first run; tier B only if A's gate passes.
+
+- **Tier A — the 100 most frequent hiragana pieces** (2–3 glyphs, 93 of the
+  frequency top 100): って じゃ んだ ない いい から さん った でも ちゃん して この
+  どう そう した なんだ もう なん じゃない です そんな それ あの その のか ちょっと
+  だから こと これ する いつ いた いや いて だった けど っと また かった ってる んな
+  さい ちゃ には かな しい こんな ここ だって なの まだ なんて あれ なら んで あなた
+  よう なかった どこ っち もの たい だけ やって なんか んです いる まで しか ですか
+  では くん こう さま っちゃ にも のは めて のに よく わたし ます ある けて くれ それは
+  みたい れて なんで しく これは ただ よね まあ とか ろう ください — plus
+  **こんにちは** (the target stage's string, one piece, never had a row).
+- **Tier B — ranks 101–200**: 67 more hiragana pieces (にな ません ですよ おい
+  みんな そうだ きた … れば) and the multi-glyph kanji / katakana pieces that are
+  words: 丈夫 好き 言って 先生 早く 今日 行く 私は 悪い 何か 来た 言う 見て 学校 ダメ.
+- **Not in V**: the single kanji in the same ranks (死 太 父 誰 郎 逃 名 空 小 奴 友
+  道 山 田 助 野 神 屋 失 形) go to K1 with `kanji:N`; full-width digits １ ２ and
+  katakana fragments (ント アイ ール) wait for a katakana pass.
+
+Length of the top 200: 126 two-glyph, 45 three-glyph, 22 one-glyph, 7 longer —
+every tier-A piece fits the single-item bubble (cap 5 glyphs, one column).
+
+**Recipe.** A separate step-1 table on the step-1 recipe, merged by ext id —
+never cold rows inside a sentence pass.
+
+1. Data: `step1_0920`'s data argv with the inventory replaced by one
+   `--units 'list:<tier A>*1'` source (a `list:` unit is asserted to be one
+   Qwen piece, which is the property the tier was picked on) and
+   `--scene_mix` singles only. 100 rows × 600 draws ÷ batch 4 = **15 k steps**.
+2. Train: `step1_0920`'s train argv (`--box_share 0.25`, σ 0.7–0.9, raw pack),
+   cold — no `--init_rows`. Loss per S1a's verdict; until S1a runs, **plain**
+   (`--pair_loss 0 --lr_rows 1e-3`): ΔFM is a singles recipe and the open
+   question below is sharper for a 2–3-glyph unit.
+3. Merge: `--init_rows rows_step1_0920_s53k,<vocab table>` (later overrides,
+   `row_scale` converted) or `src/probe/merge_tables.py`.
+4. Sentence step on the merged table: `step2_0920b`'s data argv
+   (`--short_lexical 0 --phrase_norm 1 --text_draw balanced`), rebuilt so the
+   wider inventory opens the pool; size the run to the pool (3 846 sentences
+   is ≈ 8× today's — 6 k steps is no longer 25 looks per string).
+
+**Gate for the vocab table, before any merge:** a `single`-style eval over the
+new pieces (each rendered alone, read as a string) — exact on ≥ the seed's
+kana rate (20/36) for 2-glyph pieces, and a native read on four of them
+(って いい さん ちゃん × `en`). A piece that reads as its first glyph only is
+the S2a failure (会長 → 会) and means the unit is not learned as a unit.
+
+**Open before launch.**
+- **Does a multi-glyph piece train as one unit under the step-1 recipe?** The
+  only multi-glyph rows trained so far are punctuation (！！ ・・・). Cheapest
+  read: a 12-row micro arm (って いい さん ちゃん じゃ んだ ない から った でも この
+  どう), 1 500 steps, the Δ0 frame — before the 15 k run.
+- **Glyph size.** A 3-glyph piece in a one-column single bubble draws at a
+  third of a single's height; S1b's size finding (hits fall under 64 px)
+  applies. Check the glyph-px histogram in the data log before training.
+- **Row conflict with the singles.** って as a piece and っ + て as rows never
+  co-occur in one caption (the tokenizer picks one), but they draw the same
+  pixels; whether the piece row lands near the sum of its glyph rows is a free
+  `table_geometry.py` read after the run.
+- **The merge price** is K0's question (same-loss tables agree at cos
+  0.59–0.87 on the shared direction) and is still unrun; a plain vocab table
+  on a ΔFM seed is a cross-loss merge (0.27–0.51).
+
 ## K — the kanji budget
 
 **What "more steps per row" costs.** The exposure curve reads
@@ -352,6 +444,14 @@ katakana (the other standing miss, 8/36).
 
 ## Order
 
+> 2026-09-20 evening: the row-exposure read (`sent_run.md` items 7–10) put a
+> gate arm ahead of this list — `…bs05c25_boost8_6k`. If it passes,
+> [`plan_step1.md`](plan_step1.md) (multi-glyph exposure inside step 1) runs
+> its micro arm M0 beside S1a; if it fails, this order stands as written.
+
+0. **V micro arm, then tier A** (2026-09-20) — the sentence pool is
+   vocabulary-limited (*V*, above); every later sentence run reads on a pool
+   the vocab step sets. Independent of S1a except for the loss it borrows.
 1. **S1a** — the plain control on `step1_0920`'s build, then (if ΔFM
    survives) the 5e-3 arm. It decides the loss *and* the lr for both K1 and
    every later vocab step, and nothing else should run first.

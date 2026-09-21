@@ -10,7 +10,7 @@ and the tokenizer, then draws the items.
 Bit-identity contract: the main ``rng`` (seed 0) is consumed in a fixed order
 — eval singles, eval combos, held corpus shuffle, font items, renders, corpus
 shuffle, sheet draw. Every later lever draws from its own stream (shapes
-seed+17, kana_ext seed+19, kanji seed+23, words seed+13), so switching a lever
+seed+17, kana_ext seed+19, kanji seed+23, words seed+13, grid seed+29), so switching a lever
 off rebuilds the older data dirs identically. The ``--units`` sources are
 resolved in the canonical order of ``data/units.py``, never the typed order,
 for the same reason. Keep it that way.
@@ -73,6 +73,8 @@ _EVAL_ORDER = (
     "phrase_held",
     "short",
     "short_held",
+    "gword",
+    "gword_held",
 )
 
 
@@ -117,11 +119,13 @@ def stage_data(a):
     inv = _base_inventory(a)
     # --scenes needs the piece map for piece_ok even with no words source
     # (micro arms); a `list:` source needs it to check each unit is one piece
-    tokq = qwen_pieces() if (inv.needs_tokenizer() or a.scenes) else None
+    tokq = (
+        qwen_pieces() if (inv.needs_tokenizer() or a.scenes or a.grid_words) else None
+    )
     # eval strings first so the training pool can exclude the combos
     combos_eval, n_possible = _eval_strings(a, rng, inv)
     _resolve_singles(a, out, tokq, inv)
-    if inv.has("words") or a.scenes:
+    if inv.has("words") or a.scenes or a.grid_words:
         _word_set(a, out, tokq, inv)
 
     n_target = min(a.n_combo, 50 * (n_possible - len(combos_eval)))
@@ -130,6 +134,8 @@ def stage_data(a):
         from .synth import synth_recs
 
         recs = synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq)
+    elif a.grid:
+        recs = []  # a grid-only dir: no font items, no corpus crops
     elif a.balanced:
         recs = _balanced_font_recs(
             a, rng, inv, combos_eval, n_target, fonts, shapes, out
@@ -149,7 +155,14 @@ def stage_data(a):
                     fn, s, (TPL_BUBBLE if bubble else TPL_PLAIN).format(s), "font", shp
                 )
             )
-    if not a.scenes and inv.kana:
+    if a.grid:
+        # 2026-09-20: k units per canvas, one position clause per cell; with
+        # --scenes it is added to the S-line mix (which must be a --shapes build)
+        from .grid import grid_recs
+
+        assert all("shape" in r for r in recs), "--grid beside --scenes needs --shapes"
+        recs += grid_recs(a, inv, fonts, out, tokq)
+    if not a.scenes and not a.grid and inv.kana:
         # corpus crops are kana bubble lines: under --no_kana they would put
         # the dropped kana rows back into the trained table through the captions
         recs += _corpus_recs(a, rng, inv, shapes, out, first_layout_id=len(recs))
@@ -347,7 +360,10 @@ def _word_set(a, out, tokq, inv: Inventory):
         from .inventory import phrase_file_lines, phrase_pieces
 
         plines = phrase_file_lines(
-            Path(a.phrase_file), a.phrase_min_pieces, a.phrase_max_pieces
+            Path(a.phrase_file),
+            a.phrase_min_pieces,
+            a.phrase_max_pieces,
+            norm=bool(a.phrase_norm),
         )
         # held words stay held: they must not come back as phrase rows
         extra = phrase_pieces(
