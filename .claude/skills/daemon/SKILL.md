@@ -34,6 +34,26 @@ behind a live train run instead of OOM-colliding, and survive the terminal.
   `bench/_common.py::start_heartbeat()` (the watchdog also spares a quiet-but-CPU-burning
   tree).
 
+## Job environment
+
+A job's env is **daemon-env ← `captured_env` ← `extra_env`**. `captured_env` is the
+submitter's `ANIMA_*` / `CUDA_*` / `HF_*` / `PYTORCH_*` / `TORCH_*` / `NCCL_*` at submit
+time (recorded in `job.json`); everything else — and every whitelisted var the submit
+shell does **not** set — comes from the shell that booted the daemon, possibly days ago
+(a stale-code respawn re-boots it from whichever shell submitted next).
+
+- An unset var cannot override: if the daemon booted with
+  `ANIMA_VOCAB_PACK=<preview pack>`, a later submit without the var trains on the
+  preview pack. Set every env lever the job depends on in the submit shell, and confirm
+  it from the job itself: `captured_env` in `job.json`, the value in
+  `/proc/<pid>/environ`, or the line the job logs (the vocab pack logs its sha).
+- **`make daemon-terminate` is the reset, and it is cheap when nothing is running** —
+  all state is on disk and the next submit boots a fresh daemon from the current shell.
+  Use it whenever `make daemon-jobs ARGS="--state queued,running,paused"` reads `0 of M`
+  and the daemon's env is in doubt (an old session booted it, an env lever changed, a
+  run is about to take hours). It kills the active job and discards the queue, so check
+  that line first.
+
 ## Reading the queue
 
 | question | command | what comes back |
