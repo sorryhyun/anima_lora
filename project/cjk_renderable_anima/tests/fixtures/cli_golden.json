@@ -353,6 +353,36 @@
  {
   "group": "data",
   "option_strings": [
+   "--grid_unit_min_glyph"
+  ],
+  "dest": "grid_unit_min_glyph",
+  "default": 0,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "data: --grid multi-glyph units — the deck's next unit picks a (grid, frame) whose cell holds its glyphs at this many px (the --grid_word_min_glyph room; 3x3 takes one glyph or a digraph), and the other cells take the units that fit. 0 = every unit into every grid",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data",
+  "option_strings": [
+   "--grid_mark_horizontal"
+  ],
+  "dest": "grid_mark_horizontal",
+  "default": 0,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "data: --grid cells whose multi-glyph unit is drawn as a left-to-right line say `horizontal Japanese text reads as`; a column keeps the bare clause (the manga default). 0 = every cell the bare clause",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "data",
+  "option_strings": [
    "--grid_words"
   ],
   "dest": "grid_words",
@@ -1240,6 +1270,21 @@
   "nargs": null,
   "type": "int",
   "help": null,
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train",
+  "option_strings": [
+   "--save_every"
+  ],
+  "dest": "save_every",
+  "default": 0,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "train: write trained_partial.pt (+ train_log.json) every N steps so a crashed run leaves a table; rename it to trained.pt to eval. 0 = off",
   "action": "_StoreAction",
   "metavar": null,
   "required": false

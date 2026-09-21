@@ -2,7 +2,7 @@
 
 2026-09-20. Proposal based on the current source, [findings](findings.md),
 [sentence record](sent_run.md), and dated reports. These suggestions supplement
-[plan_step1.md](plan_step1.md); they are not measured improvements or launch
+`plan_step1.md` (archived under `_archive/cjk_renderable_anima/`); they are not measured improvements or launch
 instructions. No new training or benchmark was run for this review.
 
 Keep the mixed singles/real-words direction. Before scaling it, test whether

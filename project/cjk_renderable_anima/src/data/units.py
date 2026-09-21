@@ -9,6 +9,8 @@ One repeatable flag, one source per occurrence::
     --units words:100/held=8      top-100 single-piece corpus words → word / word_held
     --units chars:あかす出人日      a literal unit list               → single
     --units 'list:、,。,！！'       literal multi-char units          → single_extra, ×2
+    --units 'list:、,@ja_cold.txt'  … and / or one unit per line of    → single_extra, ×2
+                                  assets/units/ja_cold.txt (# = comment)
 
 ``*W`` overrides the source's weight in the S-line singles pool and ``/held=K``
 holds K of its units out of every training item. No ``--units`` at all means
@@ -30,6 +32,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable
 
 from common.text import KANA_SMALL
@@ -43,6 +46,9 @@ CORPUS_KINDS = ("kanji", "words")
 # kinds that need the tokenizer at all (`list` units are validated against it)
 NEEDS_TOKENIZER = ("small", "kanji", "words", "list")
 NEEDS_ARG = ("kanji", "words", "chars", "list")
+
+# `list:@<file>` inventories (a path with a separator is taken as typed)
+UNITS_DIR = Path(__file__).resolve().parents[2] / "assets" / "units"
 
 # default draws per unit in the S-line singles pool (`*W` overrides)
 WEIGHT = {
@@ -152,9 +158,23 @@ def _parse_one(spec: str) -> UnitSource:
     if kind == "chars":
         src.units = list(arg)
     elif kind == "list":
-        src.units = [u for u in arg.split(",") if u]
+        toks = [u for u in arg.split(",") if u]
+        if any(t.startswith("@") for t in toks):  # literals and files, in order
+            us = [u for t in toks for u in (_list_file(t[1:]) if t[0] == "@" else [t])]
+            src.units = list(dict.fromkeys(us))
+        else:
+            src.units = toks
         assert src.units, f"--units {spec!r}: empty unit list"
     return src
+
+
+def _list_file(name: str) -> list:
+    """``list:@<file>``: one unit per line, first tab-separated column; blank
+    lines and ``#`` lines skipped."""
+    path = Path(name) if "/" in name else UNITS_DIR / name
+    assert path.is_file(), f"--units list:@{name}: no such file {path}"
+    lines = path.read_text(encoding="utf-8").splitlines()
+    return [ln.split("\t")[0].strip() for ln in lines if ln.strip() and ln[0] != "#"]
 
 
 @dataclass

@@ -7,6 +7,13 @@ def train_args(g):
     g.add_argument("--train_steps", type=int, default=2000)
     g.add_argument("--batch", type=int, default=4)
     g.add_argument(
+        "--save_every",
+        type=int,
+        default=0,
+        help="train: write trained_partial.pt (+ train_log.json) every N steps so a "
+        "crashed run leaves a table; rename it to trained.pt to eval. 0 = off",
+    )
+    g.add_argument(
         "--lr_rows", type=float, default=3e-3, help="in units of the mean pack-row norm"
     )
     g.add_argument("--lr_adapter", type=float, default=1e-4)

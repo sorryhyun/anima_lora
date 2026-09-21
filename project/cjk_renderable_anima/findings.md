@@ -5,7 +5,7 @@ the number it turns on, and the mechanism note that exists nowhere else. One
 screen per topic, no chronology. The dated run record is
 [`reports/`](reports/README.md) (indexed: W2d Runs 1–3, the order probe, the σ
 diagnostic, the strings arm, the S line); the forward plan is
-[`plan.md`](plan.md) (step 1, step 2, the kanji budget) and the method as
+[`plan.md`](plan.md) (covering Japanese, the sentence run, `preview2`) and the method as
 built is [`synth.md`](synth.md); the
 W0–W2 report is `reports/wake_w0_w2_2026_09_13.md`. The predecessor lines'
 verdicts are read-only in
@@ -285,7 +285,7 @@ the data mix.
   shrinks the glyph inside a bubble the base drew for something larger —
   an image the base never draws, teaching "small glyph ⇒ mostly empty
   bubble". No pool has a region under 40 px in 1 118 scenes. The glyph has
-  to be small because the *bubble* is small (`plan.md` S1b.1).
+  to be small because the *bubble* is small (`plan_2026_09_20.md` (archived) S1b.1).
 
 ## Settled — what does not move it
 
@@ -342,7 +342,7 @@ the data mix.
   `--delta_scale 1.7` does not recover it (10 / 4 / 1). `--box_share 0.25`
   lifts it to 20 / 8 / 8 without closing the native gap (19 vs 36 of 64).
   **The 12-row "ΔFM beats plain" result does not survive to full
-  inventory**; which loss the seed table takes is open (`plan.md` S1a).
+  inventory**; which loss the seed table takes is open (`plan_2026_09_20.md` (archived) S1a).
 
 ## Gotchas that cost time
 
@@ -398,18 +398,18 @@ the data mix.
   as the norm falls, scene fidelity falls with it, crossing ≈ × 0.7 on a
   12-row table (`reports/row_blocks_alpha_2026_09_18.md`). That sweep ran on
   the preview pack; whether the curve holds on a raw full table is
-  `plan.md` S1c. Counter-evidence already in: `--box_share` raised both the
+  `plan_2026_09_20.md` (archived) S1c. Counter-evidence already in: `--box_share` raised both the
   norm (122 → 184) *and* `single` (10 → 15) with en cos held, so norm is not
   a single monotone axis.
-- **Which loss the seed table takes** (`plan.md` S1a) — ΔFM wins at 12 rows,
+- **Which loss the seed table takes** (`plan_2026_09_20.md` (archived) S1a) — ΔFM wins at 12 rows,
   plain wins at 374–434, and the two full-table arms also differed in lr.
 - **Is the row bound to the glyph's absolute size?** Partly answered (above:
   mixed large/small moves native, small-only does not); what is unread is
   whether a bubble the base itself drew small changes it, and whether
-  σ 0.7–0.9 trains a glyph under one DiT token at all (`plan.md` S1b).
+  σ 0.7–0.9 trains a glyph under one DiT token at all (`plan_2026_09_20.md` (archived) S1b).
 - Repeat mode: whether repeated-piece strings as negatives stop the second
   slot copying its neighbour.
 - Does contextualisability transfer to rows added later with singles-only
   exposure (the "2-step once vs per batch of characters" question)?
-- Publishing: the Hub layout, the tag-path gate G2 and the license block
-  (`deploy_plan.md`).
+- Publishing: `preview2` for v2.0.0.beta2 (`plan.md` § 3; file form in
+  `deploy_plan.md`).

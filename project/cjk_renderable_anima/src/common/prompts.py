@@ -45,16 +45,26 @@ def grid_cell_header(cols: int, rows: int, cell: int) -> str:
     r, c = divmod(cell, cols)
     if (cols, rows) == (3, 3) and (r, c) == (1, 1):
         return "In the center"
-    return "On the " + " ".join(w for w in (_GRID_ROWS[rows][r], _GRID_COLS[cols][c]) if w)
+    return "On the " + " ".join(
+        w for w in (_GRID_ROWS[rows][r], _GRID_COLS[cols][c]) if w
+    )
 
 
 def grid_caption(
-    frame: str, cols: int, rows: int, units, order=None, lang: str = "japanese"
+    frame: str,
+    cols: int,
+    rows: int,
+    units,
+    order=None,
+    lang: str = "japanese",
+    horizontal=(),
 ) -> str:
     """``units[i]`` sits in cell ``i``; ``order`` is the clause sequence
-    (default reading order)."""
+    (default reading order). Cells in ``horizontal`` are marked as a
+    left-to-right line — the unmarked clause is the manga default, a column."""
     clauses = [
-        f'{grid_cell_header(cols, rows, i)}, {lang.capitalize()} text reads as "{units[i]}".'
+        f"{grid_cell_header(cols, rows, i)}, {'horizontal ' if i in horizontal else ''}"
+        f'{lang.capitalize()} text reads as "{units[i]}".'
         for i in (order if order is not None else range(len(units)))
     ]
     return f"{GRID_FRAMES[frame].format(lang=lang)} {' '.join(clauses)}"

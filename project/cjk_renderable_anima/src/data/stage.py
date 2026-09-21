@@ -108,7 +108,9 @@ def _rec(fn, text, caption, src, shp, **extra) -> dict:
 
 
 def stage_data(a):
-    rng = random.Random(0)
+    # --seed moves every stream, so shards of one recipe (seed 0..K-1, train.jsonl
+    # joined) draw different items; seed 0 is every build before 2026-09-21
+    rng = random.Random(a.seed)
     out = data_dir(a)
     (out / "img").mkdir(parents=True, exist_ok=True)
     fonts = find_fonts()

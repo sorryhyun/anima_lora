@@ -1,6 +1,6 @@
 # sent_run — the sentence pass, every attempt on one page (as of 2026-09-20)
 
-Index: [`README.md`](README.md). The forward plan is [`plan.md`](plan.md) *Step 2*;
+Index: [`README.md`](README.md). The forward plan is [`plan.md`](plan.md) § 2;
 this file is the record of what the sentence pass has been asked to do, what
 each run returned, and what is left to try. Numbers are `exact (sfx)` and
 `src/probe/sub_exact.py` pooled lift unless said otherwise; **lifts from
@@ -145,7 +145,7 @@ more drift and nothing for the rest. What is live:
   differ from rare ones in *variety of company*, not only in draws — that is
   the pool bullet below, now first in line. Also not excluded: the gaining rows
   are the function kana, which sit in every position of every string.
-- **[`plan_step1.md`](plan_step1.md) is dropped as written** — its gate read
+- **`plan_step1.md` (archived) is dropped as written** — its gate read
   "≈ 0 everywhere". Its budget arithmetic (1 000 multi-glyph draws per row
   inside step 1) rested on draws being the unit. A row-drawn word mix would
   still raise variety per row as a side effect, so M0 is not refuted, but it

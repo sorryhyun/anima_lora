@@ -1,526 +1,223 @@
-# plan — the live plan (step 1, step 2, the kanji budget)
+# plan — covering Japanese, then the sentence run (2026-09-21)
 
-> **Rewritten 2026-09-20.** This is the one forward plan for the line. The
-> method as built is [`synth.md`](synth.md), settled verdicts are
-> [`findings.md`](findings.md) and [`findings_seed.md`](findings_seed.md),
-> the dated record is [`reports/`](reports/README.md), and publishing is
-> [`deploy_plan.md`](deploy_plan.md). Only open items live here; everything
-> closed has moved to `findings.md` or to the report that closed it.
->
-> **Every launch states its pack.** `ANIMA_VOCAB_PACK=models/vocab_packs/anima_cjk_vocab_pack`
-> is the raw pack (log sha `7b9fce0bb57b`); `configs/base.toml` still points at
-> `anima_cjk_vocab_pack_preview` (= raw + `sent_s24k_a1_s05`'s 502-row delta,
-> sha `5f52aefce82a`), which silently based every run between 2026-09-17 17:36
-> and 2026-09-19 — see `reports/s2b_and_raw_pack_rerun_2026_09_19.md`.
-
-## Where the old plan files went
-
-The four `plan_synth*.md` files are archived under
-`_archive/cjk_renderable_anima/`, kept verbatim for the arms they record.
-Source docstrings that cite them resolve here:
-
-| old pointer | now |
-|---|---|
-| `plan_synth.md` (budgets, pools, rulers, do-not-re-propose) | `synth.md` *Budget* / *Scene pools* / *Rulers*, `findings.md` |
-| `plan_synth2.md` Δ0–Δ2 (the ΔFM loss as built) | `synth.md` *The paired loss (ΔFM)*; verdicts in `findings.md` |
-| `plan_synth2.md` Δ0.9 (scene-judge rules) | `synth.md` *Instrument* item 11 |
-| `plan_synth3.md` S2, the loop | *Step 2* below |
-| `plan_synth4.md` R4.3 / R4.4 / R4.5 / R4.6 / K | *Step 1* and *K* below |
-
-## The target artefact (unchanged since 2026-09-13)
-
-A vocab pack: a static table over ext rows, loaded by the existing
-`llm_adapter.embed` hook, shipped as safetensors + mapping json under the
-same `vocab_pack` key (training, TE caching, `inference.py`,
-`GenerationRequest`, the register node). Rows are Qwen pieces; a new pack
-changes the digest → `make preprocess-te ARGS=--overwrite` for CJK
-captions. Anything that leaves this form (DiT/adapter LoRA, runtime gate)
-is a fallback, not a phase. Packaging and the pre-upload gates are
+Index: [`README.md`](README.md). Two things are planned here and nothing else:
+**how the table comes to cover Japanese**, and **how the sentence run is done
+on it**. The method as built is [`synth.md`](synth.md), every sentence run so
+far is [`sent_run.md`](sent_run.md), verdicts are [`findings.md`](findings.md),
+numbers are [`reports/`](reports/README.md), tonight's borrowed-box logistics
+are [`plan_z8.md`](plan_z8.md), and the shipped file form is
 [`deploy_plan.md`](deploy_plan.md).
 
-The line is built in two steps over that one table:
+> **Every launch states its pack:**
+> `ANIMA_VOCAB_PACK=models/vocab_packs/anima_cjk_vocab_pack` (raw, log sha
+> `7b9fce0bb57b`). `configs/base.toml` defaults to the preview pack, which
+> already carries a trained delta.
 
-- **Step 1 — the seed table.** One ext-row delta per single-glyph unit
-  (kana, `kana_ext`, small kana, kanji, punctuation), trained on scene
-  composites with `--scene_mix single=1.0`. Recipe open, *Step 1* below.
-- **Step 2 — the sentence pass.** The same table warm-started and trained
-  on multi-glyph composites (`short` / `sentence`), plain FM. Loop open,
-  *Step 2* below.
+## 1. Covering Japanese
 
----
+**What "covered" means.** A dialogue line is covered when every Qwen piece in
+it has a trained ext row. Rows are Qwen pieces, and a piece is often several
+glyphs (って, じゃない, ありがとう are one piece, one row). Over
+`dialogue_2_10.tsv` (42 557 lines) multi-glyph pieces are 35 % of piece tokens
+and single kanji 16 %, so the inventory is cut from **one joint frequency
+ranking** of both
+([`reports/piece_coverage_2026_09_21.md`](reports/piece_coverage_2026_09_21.md),
+[ranked TSV](reports/piece_coverage_ranked_2026_09_21.tsv)), not from
+`kanji:N`.
 
-## Where the line stands (2026-09-20)
+**The tables.** Disjoint ext ids, one recipe, merged by id.
 
-Raw pack, full-inventory tables. `exact (sfx)` off each arm's `report.md`,
-seeds 0/1 pooled; native = both readers exact over あ か す 日 × `en,swap`.
-
-| table | recipe | `single` / `_ext` / `_kanji` / `_small` | native `en` / `swap` both of 64 | en cos |
-|---|---|---|---|---|
-| `src53k` (`full_s53k_qoff`) | plain FM, 434 rows, 490 draws/row, `--box_weight 4` | 13 / 18 / 18 / — | 36 / 18 | 0.882 |
-| `step1_0919` | ΔFM, 374 rows, 53 k, `--box_weight 4` | 10 / 5 / 3 / 0 | 8 / 4 | 0.931 |
-| **`step1_0920`** | the same argv and data, **`--box_share 0.25`** | **20 / 8 / 8 / 0** | **19 / 8** | 0.934 |
-| `step2_0919` | step 2 on `step1_0919`, plain, 6 k | 10 / 4 / 2 / 0 | はい 2 of 16 (sentence natives) | 0.931 |
-
-**`step1_0920` is the current seed table** (2026-09-20, job
-`20260920-003014-320a05`, arm `rows_step1_0920_s53k`; `data_step1_0920` is a
-symlink to `data_step1_0919`). One variable against `step1_0919` — the
-area-independent in-box loss — and every ruler about doubles with the scene
-*better* held (en cos 0.931 → 0.934). It closes about a third of the native
-gap to plain `src53k`, not all of it. Kanji is still the weak group
-(8/36, 日 1/32 native), `single_small` is 0/36 on both, and the back-half
-norm contraction is unchanged in proportion (250 → 160 against 149 → 76) —
-the share raised the curve, it did not remove the pull.
-
-**`step2_0919` is on record and not read out** (2026-09-19, jobs
-`20260919-202821-2392df` data / `20260919-203858-051f61` train+eval). It is
-step 2 on the *weak* `step1_0919` seed, so it prices the loop's mechanics,
-not the artefact. Sub-exact pooled lift **+0.086** (n = 64) with the lift on
-both trained and held groups — `short` +0.125, `short_held` **+0.141**,
-`phrase` +0.031, `phrase_held` +0.049 — against S2b's +0.089 that sat on
-`short` alone. Singles held at the seed's level (10 / 4 / 2 vs 10 / 5 / 3);
-sentence natives 2 of 96 (はい 2/16, the other five strings 0). **Owed:** the
-same step on `step1_0920`, which is the comparison the loop is for.
-
----
-
-## Step 1 — the seed-table recipe
-
-### The recipe as it stands
-
-| knob | value | state |
-|---|---|---|
-| batching | mixed | row blocks closed on the raw pack (`findings.md`) |
-| in-box weighting | **`--box_share 0.25`** | the decision of 2026-09-20; area-independent, replaces `--box_weight` |
-| lr | **2e-3** under ΔFM (1e-3 plain) | what both full-table runs used, `step1_0920` included. **5e-3 is a candidate, not the value**: it read 13 vs 10/24 with the best native on raw Δ0 and no collapse at norm 144 (the 3e-3 off-manifold finding was plain FM), but that is 12 rows at 1 500 steps and it has never run at full inventory or at 53 k. Open, below |
-| `--free_residual` μ | 1e-3 | sets the end norm together with the in-box share; calibrated to `d0`'s ≈ 64-cell box, so it is owed a re-read on `--box_share` |
-| glyph size | half full-fit, half jittered [12 px, fit] (`d0mix`) | native 18 vs 11 of 128 with hits under 64 px, scene held; jitter alone reads 0/24 and native 4. Micro only; ≥ 2 seeds and a full-table arm before K1 |
-| loss | ΔFM (`--pair_loss 1 --pair_ref en`) for singles | raw Δ0: ΔFM 10 vs plain 7 at 12 rows, scene held — **but at full inventory ΔFM is the weak loss** (`step1_0920` 20/36 vs plain `src53k` 13/36 on `single` and 19 vs 36 on native). Open, below |
-| row norm | full in training, α at inference | R4.3, below |
-| unit weights | uniform `*1` | kanji are not harder than kana per draw (Δ1, preview pack) — re-read on `step1_0920` |
-| pack | raw | `ANIMA_VOCAB_PACK=…/anima_cjk_vocab_pack` on every job |
-
-**Warm starts convert row units** — `raw` is in units of the run's own
-`row_scale` and `_init_rows_one` rescales by `src_row_scale / row_scale`
-(since 2026-09-18, test `test_init_rows_converts_row_scale`).
-
-### S1a — which loss the seed table takes, at full inventory
-
-The one unresolved recipe question, and it now has evidence on both sides:
-
-- **ΔFM wins at 12 rows** (raw Δ0: 10–13 vs plain 7 of 24, scene held).
-- **Plain wins at 374–434 rows** (`src53k` 13/18/18 and native 36 against
-  `step1_0919`'s 10/5/3 and 8) — and `--box_share` lifts ΔFM to 20/8/8 and
-  native 19 without closing the native gap. Plain at ρ_g 0.25 on the 12-row
-  Δ0 data is the best raw native read of the line (26 of 64 `en`, up from
-  13) at the cost of the scene (en cos 0.906 → 0.893).
-- Same split at both scales: **plain is ahead on native, ΔFM on the scene.**
-
-**The arm:** `step1_0920`'s argv and data with `--pair_loss 0 --lr_rows 1e-3`
-(the plain control on the same build — no separate data dir needed). Rulers:
-`single` / `_ext` / `_kanji` / `_small`, native `en` / `swap`, en cos.
-Pass = the loss that wins native without giving up more than ≈ 0.01 en cos.
-Until it runs, every "ΔFM vs plain" sentence in this line is a statement
-about 12 rows or about two runs that also differed in lr.
-
-**lr rides with it.** Every full-table arm has run ΔFM at 2e-3 and plain at
-1e-3 — the same pairing as `src53k` vs `step1_0919`, so the loss and the lr
-have never been separated at scale. The 12-row read that ΔFM at **5e-3** is
-better (13 vs 10/24, best raw native at 20 both) is the one recipe knob
-still decided entirely at micro scale, and a 53 k run at 5e-3 has never been
-tried. If S1a's control keeps ΔFM, the second arm is `step1_0920`'s argv at
-`--lr_rows 5e-3` before anything is frozen for K1; if it kills ΔFM, the
-5e-3 question dies with it. Two seeds either way — the 12-row rerun floor is
-cos ≈ 0.75 per row.
-
-### S1b — glyph size
-
-**Status.** The share fix is in and the small-glyph arms are re-read under
-it (`--box_share` makes the row's weight per *glyph*, not per box area, so
-the old jitter arms' 0/24 was mostly normalisation). What survives:
-
-- **Small glyphs at σ 0.7–0.9 do not teach identity by themselves.**
-  `d0sz` at an equal 25 % share is the worst small arm on both rulers
-  (`single` 0/24, native 4) at a norm above `d0` w 4's — the rows travel,
-  not toward identity (misreads are voiced-but-wrong: が → ず, ご → ど).
-  A ≈ 30 px glyph is ≈ 4 × 4 latent cells and what survives the band is
-  "a dakuten kana".
-- **Mixing large and small in one build works.** `d0mix` (half `d0`'s
-  items at 38/54/80 px, half `d0sz`'s at 17/30/50): native 18 of 128
-  against 11 for both `d0` arms at the same lr, 7 of the 18 under 64 px
-  (`d0` w 4: 1 of 11), scene *better* held (0.933 vs 0.921). Large items
-  carry identity, small ones carry size.
-- **Size arms are read on native, not `single`** — the `single` template
-  asks for a large glyph and under-reads size-trained rows on every such
-  arm (`d0mix` 5/24 with 18 native; w 12 5/24 with 9).
-- **The free read** (no GPU): no native hit under 40 px on either full
-  table (0 of 149 boxes), and the 24–40 px bin holds no single-glyph box at
-  all — when the base lays out small text it writes its own multi-glyph
-  pseudo-text. Most hits are *above* the training p95. The readers are not
-  the limit (VAE / reader floor is 10 px kana, 16 px kanji; minimum glyph
-  12 px, user 2026-09-18).
-
-**Open — S1b.1, the small-bubble pool.** `--scene_size_jitter` shrinks the
-glyph inside the bubble the scene already has, and no pool has a small
-bubble to put it in (region short side p05/p50/p95 = 57/76/145 px on `s1`,
-57/76/133 `s1w`, 59/83/133 `sl1w`, 42/62/99 `ja_comic`; **no region under
-40 px in 1 118 scenes**). The glyph should be small because the *bubble* is
-small, so the lever is the `scenes` prompt and the judge, not the
-compositor:
-
-1. **Pool smoke** (GPU, 512-class, ≈ the `s1w` run's cost per scene): a few
-   hundred scenes per lever, read off `scenes.jsonl` region / letter sizes —
-   (a) layout tags that shrink the bubble (`comic` / `4koma` / `multiple
-   speech bubbles`, `full body` / `wide shot`, `chibi`); (b) anchors that
-   shrink it (`!` `?` `…` `a` `I` — Latin / punctuation, no ext row);
-   (c) longer EN anchors (a phrase), which the base letters smaller.
-   Number to read: share of kept scenes with a region under 40 px and under
-   24 px, and the judge's yield there.
-2. **Fit to the anchor's own letter size**, not the largest font the region
-   takes: the detector box gives the erased text's letter height and the
-   swap draws at that size (± a small jitter).
-3. If (1) finds nothing under ≈ 24 px, 12 px is not reachable in-domain on
-   a 512-class canvas and the remaining route is the training canvas itself
-   (target-shape `--shapes`), at its it/s cost.
-
-**Arms:** 12-row `d0` recipe on `--box_share`, `d0` vs `d0s` (the
-small-bubble pool mixed with `s1` / `s1w`). Rulers: `single` /24 as the
-does-it-still-learn check, and native hits **by glyph-size bin**
-(probe to be written as `src/probe/native_by_size.py`). Pass = hits appear
-under 40 px without losing the ≥ 64 px bins; if `d0s` reads like `d0` in
-every bin, size binding is not what holds native down and the lever drops.
-Open inside it: a 12 px glyph is under one DiT token (16 px of canvas), so
-whether σ 0.7–0.9 trains it at all is unresolved — the band floor 0.7 → 0.5
-is the second arm only if `d0s` learns on `single` and still misses the
-small bins.
-
-**Not run, and why** (both fail the S line's own premise — the scene is the
-base's own output under a caption that explains all of it, so the FM
-residual outside the bubble is ≈ 0):
-
-- *Scenes rendered at k × and downscaled* — cost ≈ k² in generation
-  (1.5 × is already 2 ×) and 12 px from a 51 px fit is k ≈ 4.
-- *n × n panel pages from the existing pools* — free and share-preserving,
-  but a page of downscaled panels with gutters is not a base output and one
-  panel's tags do not describe it: the off-manifold paste the S line
-  replaced.
-
-### S1c — α as a deployment knob (native only, 9 min per point)
-
-The preview-pack α sweep read native hits monotone in row norm and scene
-fidelity monotone the other way, crossing ≈ × 0.7. Re-read on raw tables:
-`step1_0920` × 0.5 / × 0.7 (`--native_chars あ,か,す,日 --native_clauses
-en,swap`) and the same on plain `src53k`. If `en` joint rises without the
-tail climbing, α ships as the LoRA-multiplier slot; if neither table moves,
-the curve was a 12-row preview-pack artefact and α is dropped. One
-`--stage eval` at × 0.7 on the same table says whether the `single`
-template is norm-hungry.
-
----
-
-## Step 2 — the sentence pass and the vocab → merge → sentence loop
-
-**The loss is decided: plain.** S2a put plain above ΔFM on every sentence
-ruler that moves (sub-exact pooled +0.131 vs +0.081, native `en` 5 vs 2 of
-48); ΔFM is killed on sentences (`findings.md` *What does not move it*).
-
-**The ruler is `src/probe/sub_exact.py` pooled lift**, not exact match:
-every multi-glyph group of every arm to date is 0/32, so exact match has no
-resolution exactly where step 2 lives. Lift = glyph recall − the same
-recall of the group's *other* refs against the same read, so read length and
-the arm's general JA-glyph habits are held. Sheets stay the second read,
-per-glyph — a pooled lift that rises while the sheets show the same garbage
-with more JA glyphs in it is a reward-hacked ruler, and the check is the
-`_held` groups plus the first-glyph rate.
-
-**The warm start's job is sentence composition on rows that are already
-trained — no cold vocab inside a sentence pass** (user, 2026-09-18). That
-is what makes this a loop rather than one run:
-
-1. **Vocab step.** Train the rows the sentence pool needs and the table does
-   not have — the `words:` pieces, the phrase file's frequent pieces,
-   こんにちは — as a *step-1* table on the step-1 recipe, not inside a
-   sentence pass.
-2. **Merge** those rows into the round's table by ext id (`--init_rows a,b`,
-   the later table overriding, or `src/probe/merge_tables.py`; `row_scale`
-   is converted).
-3. **Sentence step.** Warm-start the merged table and train sentences on the
-   pool the new rows open up, every row warm. Size the run to its own pool
-   (`step2_0919`: 4 564 covered lines, 480 sentences, 470 shorts →
-   6 k steps ≈ 2.4 epochs), read it on sub-exact pooled lift.
-
-Then the same cycle once more.
-
-**Round 2 — the owed run.** `step2_0919` ran this on the weak
-`step1_0919` seed. The comparison the loop is for is the same step on
-**`step1_0920`**: same data argv (`data_step2_0919`'s build), same train
-argv, one warm source `rows_step1_0920_s53k/trained.pt`. Gate: pooled lift
-above `step2_0919`'s +0.086 CI with the `_held` groups moving, and singles
-not below the seed's 20 / 8 / 8.
-
-**The in-box weight for Round 2 is not settled — smoke of 2026-09-20**
-(`reports/step2_0920_box_weight_smoke_2026_09_20.md`; 2 000 steps on the
-`step1_0920` seed, plain, n = 8 per group, one seed). `--box_weight` 1 / 4 /
-12 and `--box_share 0.1` are mean in-box shares of 0.02 / 0.07 / 0.18 / 0.48
-on this build (a sentence box is 1.9 % of the canvas, and 0.75 is
-`BOX_SHARE_CAP`, a constant). Weight moves the rows monotonically (drift
-0.021 → 0.084) and orders no sentence ruler — pooled lift +0.114 / +0.077 /
-+0.079 / +0.109, exact 0/16 — while singles (6 → 4 of 8) and native (4 → 2 of
-8) pay and en cos holds. `--box_share 0.25` would cap 77 % of the items at
-0.75, so it is **not** Round 2's value. In every arm the anchor takes back
-about half the drift as the lr decays: the end point is μ 0.3 against the
-in-box gradient, not the step count.
-
-- **Owed arm: `--box_share 0.05` + cap 0.25**, same smoke frame (argv in the
-  report). Cap reached at 5 glyphs, mean share ≈ 0.18 = w 12's, with the 1–2
-  glyph items (22 %) above w 12. Read: do singles and native pay less at
-  w 12's sentence level. Needs a `--box_share_cap` flag (default 0.75, so
-  every run on record reproduces) in `src/cli/train.py` +
-  `src/train/stage.py`. Reads the same as w 12 → the weight axis is closed
-  and Round 2 runs on `--box_weight 12`.
-
-**Open inside the loop:** which loss trains a multi-glyph piece as a unit
-(ΔFM is a singles recipe, and ΔFM damages rows the pack already renders);
-whether a merged table's two shared directions cost the sentence step
-anything (same-loss blocks agree at cos 0.59–0.87, cross-loss 0.27–0.51 —
-`reports/table_geometry_2026_09_18.md`).
-
-**Owed before the next sentence native read:** pin the target stage's prompt
-frame to the clause the card claims — `Japanese text reads as "…"`
-(`deploy_plan.md` *What gets baked*) — so the gate is read on the clause
-that ships.
-
----
-
-## V — the vocab step: which multi-glyph pieces to wake (2026-09-20)
-
-**Why.** The sentence pool is vocabulary-limited, not data-limited. Of
-`dialogue_2_10.tsv`'s 42 557 lines (`--phrase_norm 1`), **5 211 are covered**
-by `step1_0920`'s inventory and only **538 of those are sentences** — a line
-is dropped the moment one of its Qwen pieces has no warm row, and the pieces
-it trips on are not rare words but the language's function pieces: って じゃ
-んだ ない いい から さん った でも ちゃん. 4 214 distinct cold pieces block the
-rest (hiragana 811, single kanji 1 454, kanji-carrying 1 495, katakana 382);
-only 2 lines are blocked by a piece with no pack row at all, so everything
-below is addressable. `sent_run.md` has what the small pool did to the
-sentence runs.
-
-**What N rows buy** (the N most frequent cold pieces added; ranked list with
-line counts, class and the greedy completes-most-lines order in
-`reports/vocab_step_candidates_2026_09_20.tsv`):
-
-| cold pieces added | covered lines | sentences | shorts | what the added rows are | step-1 cost at ≈ 600 draws/row |
+| table | rows | what | steps | covered lines, cumulative | state |
 |---|---|---|---|---|---|
-| 0 (today) | 5 211 | 538 | 3 339 | — | — |
-| 50 | 8 961 | 2 567 | 4 942 | hiragana 50 | 7.5 k steps, 1.2 h |
-| **100** | 10 962 | **3 846** | 5 617 | hiragana 93, kanji 7 | 15 k, 2.5 h |
-| **200** | 14 088 | **5 932** | 6 591 | hiragana 160, kanji 34, katakana 4 | 30 k, 4.9 h |
-| 300 | 16 641 | 7 808 | 7 202 | hiragana 215, kanji 74 | 45 k, 7.4 h |
-| 500 | 20 848 | 10 930 | 8 141 | | 75 k, 12 h |
+| `step1_0921` | 374 | kana, `kana_ext`, small kana (in digraphs), 13 punctuation units, `kanji:200` | 30 k | 13.5 % | **done** — arm `rows_step1_0921_s30k` |
+| `step1_0921z` | 1 900 | cold ranks 1 – 1 900 of the joint list, re-cut against `step1_0921`'s `ext_ids`: 1 317 multi-glyph pieces + 583 kanji; 1 / 2 / 3 / 4 / 5 glyphs = 583 / 796 / 353 / 139 / 29 | 152 k | ≈ 85 % | data building; trains on the Z8 ([`plan_z8.md`](plan_z8.md)) |
+| next | ≈ 1 100 | the following ranks, to ≈ 3 000 | 88 k | ≈ 95 % | later, here |
+| tail | ≈ 1 100 | the rest of the ranking | — | ≈ 98 % | later |
 
-The first 50 rows multiply the sentence pool by 5 and the first 200 by 11;
-after ≈ 200 each further hundred buys ≈ 1 000 sentences and the list turns
-into single kanji, which is K's job (`kanji:N`), not this step's.
+Units of 6 + glyphs are left out of every cut (10 inside the first 1 900:
+かもしれない, ありがとうございます, …): no grid cell holds them above ≈ 16 px and
+the scene compositor's one-column cap is 5 glyphs, so such a row would train on
+renders nobody can read. What frequency misses (こんにちは is rank 1 426) is in
+the 1 900; anything a release needs beyond the ranking is pinned into the list
+file by hand.
 
-**The list.** Frequency rank and greedy rank agree on the head. Tier A is the
-first run; tier B only if A's gate passes.
+### The recipe — the grid mix
 
-- **Tier A — the 100 most frequent hiragana pieces** (2–3 glyphs, 93 of the
-  frequency top 100): って じゃ んだ ない いい から さん った でも ちゃん して この
-  どう そう した なんだ もう なん じゃない です そんな それ あの その のか ちょっと
-  だから こと これ する いつ いた いや いて だった けど っと また かった ってる んな
-  さい ちゃ には かな しい こんな ここ だって なの まだ なんて あれ なら んで あなた
-  よう なかった どこ っち もの たい だけ やって なんか んです いる まで しか ですか
-  では くん こう さま っちゃ にも のは めて のに よく わたし ます ある けて くれ それは
-  みたい れて なんで しく これは ただ よね まあ とか ろう ください — plus
-  **こんにちは** (the target stage's string, one piece, never had a row).
-- **Tier B — ranks 101–200**: 67 more hiragana pieces (にな ません ですよ おい
-  みんな そうだ きた … れば) and the multi-glyph kanji / katakana pieces that are
-  words: 丈夫 好き 言って 先生 早く 今日 行く 私は 悪い 何か 来た 言う 見て 学校 ダメ.
-- **Not in V**: the single kanji in the same ranks (死 太 父 誰 郎 逃 名 空 小 奴 友
-  道 山 田 助 野 神 屋 失 形) go to K1 with `kanji:N`; full-width digits １ ２ and
-  katakana fragments (ント アイ ール) wait for a katakana pass.
+One run holds **scene singles** (one unit composited into a bubble of an
+existing scene pool — frame, trigger, "one unit") and **grid items** (k units
+in a cols × rows grid, one position clause per cell — k rows per step, the
+glyph stays large). Grid alone is not a seed table and a grid share above 50 %
+costs native; both are closed
+([`reports/grid_s0_2026_09_20.md`](reports/grid_s0_2026_09_20.md),
+[`grid_m0`](reports/grid_m0_2026_09_21.md),
+[`grid_m0b_s1`](reports/grid_m0b_s1_2026_09_21.md),
+[`grid_g1`](reports/grid_g1_2026_09_21.md),
+[`exposure_ledger`](reports/exposure_ledger_2026_09_21.md)).
 
-Length of the top 200: 126 two-glyph, 45 three-glyph, 22 one-glyph, 7 longer —
-every tier-A piece fits the single-item bubble (cap 5 glyphs, one column).
+| knob | value |
+|---|---|
+| loss | plain FM (`--pair_loss 0`), `--lr_rows 1e-3`, cosine, `--free_residual 1e-3` |
+| σ band | 0.7 – 0.9 |
+| in-box weight | `--box_share 0.25` (scene items) |
+| mix | grid 50 % — the share is the item ratio (scene items : grid items), no flag |
+| grids | `2x2,3x3,2x3,3x2` (512², 512², 416×624, 624×416), bubble frame on half |
+| batch / budget | 4; **80 steps per row**, cold, `--save_every 5000` |
+| scene half | `--scene_mix single=1.0`, pools `s1,s1w,sl1w,ja_comic`, `--scene_vertical 1` (every multi-glyph scene unit is a column) |
 
-**Recipe.** A separate step-1 table on the step-1 recipe, merged by ext id —
-never cold rows inside a sentence pass.
+`step1_0921` is this recipe at 374 rows and it is the read that set the
+budget — 30 k plain steps against `step1_0920`'s 53 k ΔFM scene-only:
 
-1. Data: `step1_0920`'s data argv with the inventory replaced by one
-   `--units 'list:<tier A>*1'` source (a `list:` unit is asserted to be one
-   Qwen piece, which is the property the tier was picked on) and
-   `--scene_mix` singles only. 100 rows × 600 draws ÷ batch 4 = **15 k steps**.
-2. Train: `step1_0920`'s train argv (`--box_share 0.25`, σ 0.7–0.9, raw pack),
-   cold — no `--init_rows`. Loss per S1a's verdict; until S1a runs, **plain**
-   (`--pair_loss 0 --lr_rows 1e-3`): ΔFM is a singles recipe and the open
-   question below is sharper for a 2–3-glyph unit.
-3. Merge: `--init_rows rows_step1_0920_s53k,<vocab table>` (later overrides,
-   `row_scale` converted) or `src/probe/merge_tables.py`.
-4. Sentence step on the merged table: `step2_0920b`'s data argv
-   (`--short_lexical 0 --phrase_norm 1 --text_draw balanced`), rebuilt so the
-   wider inventory opens the pool; size the run to the pool (3 846 sentences
-   is ≈ 8× today's — 6 k steps is no longer 25 looks per string).
+| | `single` | `_ext` | `_small` | `_kanji` | native `en` / `swap` (both readers, of 64) | en cos |
+|---|---|---|---|---|---|---|
+| `step1_0920` | 20/36 | 8/36 | 0/36 | 8/36 | 19 / 8 | 0.934 |
+| **`step1_0921`** | **28/36** | **20/36** | **10/36** | **19/36** | **34 / 28** | 0.903 |
 
-**Gate for the vocab table, before any merge:** a `single`-style eval over the
-new pieces (each rendered alone, read as a string) — exact on ≥ the seed's
-kana rate (20/36) for 2-glyph pieces, and a native read on four of them
-(って いい さん ちゃん × `en`). A piece that reads as its first glyph only is
-the S2a failure (会長 → 会) and means the unit is not learned as a unit.
+Multi-glyph groups are still 0 – 1 exact (`line` 1/32, `combo` 0/36): identity
+got cheaper, sentence content did not move. That is section 2's job.
 
-**Open before launch.**
-- **Does a multi-glyph piece train as one unit under the step-1 recipe?** The
-  only multi-glyph rows trained so far are punctuation (！！ ・・・). Cheapest
-  read: a 12-row micro arm (って いい さん ちゃん じゃ んだ ない から った でも この
-  どう), 1 500 steps, the Δ0 frame — before the 15 k run.
-- **Glyph size.** A 3-glyph piece in a one-column single bubble draws at a
-  third of a single's height; S1b's size finding (hits fall under 64 px)
-  applies. Check the glyph-px histogram in the data log before training.
-- **Row conflict with the singles.** って as a piece and っ + て as rows never
-  co-occur in one caption (the tokenizer picks one), but they draw the same
-  pixels; whether the piece row lands near the sum of its glyph rows is a free
-  `table_geometry.py` read after the run.
-- **The merge price** is K0's question (same-loss tables agree at cos
-  0.59–0.87 on the shared direction) and is still unrun; a plain vocab table
-  on a ΔFM seed is a cross-loss merge (0.27–0.51).
+**Multi-glyph units in the data** (new for `step1_0921z`, all default-off so
+older dirs rebuild unchanged):
 
-## K — the kanji budget
+- `--units 'list:@<file>'` — the inventory is a file under `assets/units/`
+  (`ja_cold_0001_1900.txt`: piece, count, class, glyphs, ext id, source rank).
+- `--grid_unit_min_glyph 56` — the deck's next unit picks a (grid, frame) whose
+  cell holds its glyph count: one glyph anywhere, a digraph in 3x3, 3 glyphs in
+  2x2 or a flat 2x3 / 3x2, 4 – 5 glyphs in a flat 2x2 only; the other cells
+  take what fits. Every unit is still dealt once per deck pass. The grid share
+  moves toward 2x2 (review build: 343 of 600 items, 5.2 cells per item against
+  6.25).
+- `--grid_mark_horizontal 1` — a grid cell drawn as a left-to-right line says
+  `horizontal Japanese text reads as "…"`; a column keeps the bare clause (the
+  manga default, and the only form the scene half draws).
+- `--seed k` moves every rng stream, so a big build is K shards (`--seed
+  0..K-1`, own `--data_tag`) run side by side with `train.jsonl` concatenated —
+  the records hold absolute paths, the joined dir holds no images.
 
-**What "more steps per row" costs.** The exposure curve reads
-1 330 / 670 / 490 draws/row → 100 / 75 / 36 % of singles.
+**Before training a table**, off the joined `train.jsonl`: items per row for
+the scene half and the grid half separately (a weighted draw is not a quota —
+name every unit under ≈ half the mean), the glyph-px histogram, and the caption
+check — each unit's own ext id is what its caption tokenizes to and no other
+ext row appears (review build: 3 705 of 3 705, 0 stray).
 
-| kanji rows | total rows | at ≈ 600 draws/row | at ≈ 1 200 (×2 kanji) |
-|---|---|---|---|
-| 200 (today) | 355–374 | 53 k steps, 8.7 h | 83 k, 13.6 h |
-| 400 | 555 | 83 k, 13.6 h | 143 k, 23.4 h |
-| 600 | 755 | 113 k, 18.5 h | 203 k, 33.4 h |
-| 1 000 | 1 155 | 172 k, 28.4 h | 322 k, 53 h |
+**Reading a cold table.** Its own units, rendered alone, read **as strings**,
+split by glyph count and sampled across the rank range (head and tail
+separately). Pass = multi-glyph pieces not below `step1_0921`'s kana rate
+(28/36) and kanji not below 19/36. A piece that reads as its first glyph only
+(会長 → 会) is a unit that did not train as a unit — the known failure, and the
+first thing to look for on the sheets. The eval set for this is owed
+(`single_extra` is the list's first 18 today).
 
-**The inventory ceiling is real and close.** `kanji:N` is corpus frequency
-over the manga109s bubbles, and there are only **1 037** distinct kanji that
-are one Qwen piece with a pack row: top-200 covers 68.3 % of corpus kanji
-tokens, top-400 84.3 %, top-600 92.6 %, top-1000 99.5 %. The *pack* holds
-**8 501** single-kanji rows, so jōyō 2 136 is addressable — but not through
-`kanji:N`; it needs a `jouyou` unit kind or a `list:` file. Decide which
-target the line is scaling to before sizing a run: **corpus 600 (92.6 %
-coverage, 18.5 h)** is the cheap complete-looking point; jōyō is a different
-piece of work.
+**Merge.** `src/probe/merge_tables.py --base <step1_0921> --add <step1_0921z>`
+(`row_scale` converted, ids disjoint so nothing overlaps) → an ordinary `rows`
+arm dir. First read of the merged table: `step1_0921`'s 374 eval rows inside
+its rerun floor, and a native read.
 
-### K0 — is a merged table a table? parked
+## 2. The sentence run
 
-Training disjoint row blocks and unioning them by ext id
-(`src/probe/merge_tables.py`, per-run `row_scale` correction; the shipped
-`merge_punct` table is this) would make kanji scaling parallel in
-wall-clock. The price of a merge is the cosine between the runs' shared
-directions: same-loss blocks agreed at 0.59–0.87. The test itself — a
-punct-only block in the same loss as its base (≈ 3 k steps), merged and
-evaluated — is not run; it decides whether K is one long run or two or
-three parallel-in-time ones.
+**What it is for.** Step 1 gives rows that each draw their own unit. The
+sentence run warm-starts the **merged** table and trains real multi-piece lines
+so the rows compose. Standing rule: **no cold row inside a sentence run** — new
+vocabulary is a step-1 table, merged first.
 
-### K1 — the scaled table
+**Why it runs after coverage, not before.** Every sentence run to date trained
+on a pool of 538 sentences / ≈ 925 strings, because a line is dropped the
+moment one of its pieces has no warm row. They all landed at pooled lift
++0.09 – +0.15 with 0 exact, the gain sat in ≈ 27 frequent rows, and oversampling
+the rare rows of the same pool bought nothing (`sent_run.md` items 7 – 10).
+What separated the rows that gained from the rows that did not was the variety
+of strings they appeared in. The merged inventory opens the pool to ≈ 30 000
+sentences; that is the lever this run tests, and the reason coverage came
+first.
 
-Recipe = the step-1 table above (S1a's loss verdict, `--box_share 0.25`,
-`d0mix` sizes) with `kanji:400` or `:600`. **Do not raise the kanji weight
-above what the uniform-exposure read measures**: the 53 k run's kanji 18/36
-at weight 2 was read as "kanji is fine" and it was an exposure artefact. At
-uniform weight on the preview pack kanji were *not* harder than kana per
-draw — but `step1_0920` reads kanji 8/36 against kana 20/36, so re-read the
-per-type spread on the raw table before setting weights, and if kanji are
-the weak kind the extra draws go there rather than to `kana_ext` /
-katakana (the other standing miss, 8/36).
+**Data** — `step2_0920b`'s build on the merged inventory:
 
-- **Gate:** `single_kanji` on the *new* rows (frequency ranks 200–600, rarer
-  and never evaluated) not below `step1_0920`'s on ranks 1–200, at equal
-  draws/row. Held-out kanji stay 0 by construction (addresses do not
-  compose, `findings.md`) — do not read that as a failure.
-- **Guard:** rows appear in ≈ 0.35 % of batches at 755 rows (374 rows: 1.1 %;
-  12 rows: 8 %). AdamW β₂ 0.99 decays `v` between visits; `delta_norm_mean`
-  per draw against `step1_0920`'s curve over the first few thousand steps is
-  the early read.
-- **Guard:** the 53 k run's word rows sat at norm 0.12 because a weighted
-  draw is not a quota. At 755 rows check the items-per-row histogram in the
-  data log **before** training, not after.
+```
+--stage data --arm rows --data_tag <tag> \
+--scenes s1,s1w,sl1w,ja_comic --scene_one_bubble ja_comic --single_scenes s1,s1w --single_max_ar 2 \
+--units kana --units 'kana_ext*1' --units small --units 'kanji:200*1' \
+--units 'list:、,。,・,ー,～,〜,！,？,「,」,！！,・・・,・・・・,@ja_cold_0001_1900.txt*1' \
+--phrase_file <manga109s>/derived/dialogue_2_10.tsv --phrase_min_pieces 2 --n_phrase_eval 8 \
+--scene_mix single=0.1,short=0.5,sentence=0.4 --short_pieces 2-5 --short_max_lines 1 \
+--short_lexical 0 --phrase_norm 1 --text_draw balanced \
+--sentence_min_letters 6 --sentence_min_glyph 20 --sentence_fill 0.9 --scene_vertical 1 \
+--n_items 10000 --scene_frac 1.0 --natural_frac 0 --strings_frac 0 --flat_bubble 1.0 \
+--scene_fill 0.7 --scene_min_glyph 28 --scene_max_lines 2 --shapes 512
+```
 
----
+A `list:` source mixes literals and `@file` tokens. The build prints
+covered lines / sentences / shorts; **the run is sized from that print**, in
+looks per string (6 k steps was ≈ 25 looks at each of 925 strings), not from
+the old step count.
+
+**Train** — Round 2's argv, one warm source:
+
+```
+--stage train eval native --arm rows --data_tag <tag> --shapes 512 \
+--init_rows output/wake_probe/<merged arm>/trained.pt --init_anchor 0.3 --lr_warmup 500 \
+--train_steps <sized> --batch 4 --t_min 0.5 --t_max 0.9 --compile 1 --grad_ckpt 0 \
+--lr_rows 1e-3 --lr_decay cosine --free_residual 1e-3 \
+--box_share 0.05 --box_share_cap 0.25 --c_flat 0 --pair_loss 0 \
+--eval_groups single,single_ext,single_small,single_kanji,short,short_held,phrase,phrase_held,en \
+--native_chars あ,か,す,日 --native_clauses en,swap --seeds 2 --delta_parts full --no_floor
+```
+
+The anchor μ is the one trade knob: μ 0.3 → 0.1 bought +0.054 lift and halved
+single-glyph native each time. μ 0.3 first.
+
+**Reading it** (`sent_run.md` *Reading rules*): `src/probe/sub_exact.py`
+pooled lift with the `_held` groups, never exact match alone; single-glyph
+native (あ か す 日 × `en,swap`) beside it, because that is where a sentence run
+pays; multi-glyph native (`--eval_tag sent`); `src/probe/row_dose.py` against a
+seed read of the merged table made with the same eval strings — the rows under
+400 multi-glyph items read +0.000 on every run so far and are the target.
+
+**Optional, cheap, comparable:** the same 6 k run on `step1_0921` alone with
+`data_step2_0920b` as it is on disk — one variable against `step2_0920b` (the
+seed table), ≈ 45 min.
+
+## 3. preview2 — what v2.0.0.beta2 ships
+
+```
+step1_0921 ─┐
+            ├─ merge_tables ─→ sentence run (section 2) ─→ bake ─→ anima_cjk_vocab_pack_preview2
+step1_0921z ┘
+```
+
+`preview2` is the merged JA table **after** the sentence run, baked with
+`scripts/toolkits/bake_vocab_pack.py` into the pack pair
+([`deploy_plan.md`](deploy_plan.md)). It replaces today's
+`anima_cjk_vocab_pack_preview` (`sent_s24k_a1_s05`, 503 rows, preview-pack era).
+In v2.0.0.beta2 the trainer's default moves to it: `VOCAB_PACK_STEM` in
+`library/downloads.py` and `vocab_pack` in `configs/base.toml`. A new pack is a
+new digest, so the release notes carry `make preprocess-te ARGS=--overwrite`
+for CJK captions and the stamp-mismatch warning on LoRAs trained against the
+old preview. If the later rank tables are done by then they are merged in
+before the sentence run, never after it.
 
 ## Order
 
-> 2026-09-20 evening: the row-exposure read (`sent_run.md` items 7–10) put a
-> gate arm ahead of this list — `…bs05c25_boost8_6k`. If it passes,
-> [`plan_step1.md`](plan_step1.md) (multi-glyph exposure inside step 1) runs
-> its micro arm M0 beside S1a; if it fails, this order stands as written.
+1. `step1_0921z` data: join the shards, the pre-training checks, the eval set.
+2. Z8 night: train `step1_0921z`, pull everything back ([`plan_z8.md`](plan_z8.md)).
+3. Read the cold table; merge; read the merged table.
+4. Sentence data on the merged inventory → size → the sentence run → its reads.
+5. Bake `preview2`; v2.0.0.beta2.
+6. Ranks 1 901 – 3 000 here, whenever the GPU is free; KO / ZH stay parked
+   (`plan_z8.md` *Parked*).
 
-0. **V micro arm, then tier A** (2026-09-20) — the sentence pool is
-   vocabulary-limited (*V*, above); every later sentence run reads on a pool
-   the vocab step sets. Independent of S1a except for the loss it borrows.
-1. **S1a** — the plain control on `step1_0920`'s build, then (if ΔFM
-   survives) the 5e-3 arm. It decides the loss *and* the lr for both K1 and
-   every later vocab step, and nothing else should run first.
-2. **Round 2 of the loop** — step 2 on `step1_0920` (independent of 1; can
-   queue behind it).
-3. **S1c** — α points on `step1_0920` and `src53k` (9 min each, CPU-cheap
-   native re-renders).
-4. **S1b.1** — the small-bubble pool smoke, anchor-size fit, `d0s` vs `d0`,
-   native by size bin.
-5. The recipe filled in on ≥ 2 seeds; **K1** after it.
-6. **Publishing** — the Hub v2 layout and gates G1–G4 / G6 are unrun
-   (`deploy_plan.md`).
+## Closed — do not re-propose
 
-## Open risks
+Grid alone as a seed table; a grid share above 50 %; ΔFM on grid items or on
+sentences; row oversampling of an unchanged string pool (`--row_boost`); the
+in-box weight as a sentence lever; a better seed by itself as a sentence lever;
+cold rows inside a sentence run; random multi-glyph strings in a cell (real
+pieces only); `kanji:N` alone as the coverage route. Reasons: `findings.md`,
+`sent_run.md`, `reports/grid_*.md`.
 
-- **Most recipe numbers are 12 rows, 24 singles, one seed.** Differences
-  under ≈ 3 are noise and the 12-row rerun chaos floor is cos ≈ 0.75 per
-  row, so **no schedule knob is decided at one seed**. `step1_0919` /
-  `step1_0920` are the only full-table reads of the ΔFM recipe, and they
-  differ by one flag.
-- **The loss verdict is scale-dependent and unresolved** (S1a). Every
-  12-row ΔFM-beats-plain number is contradicted by the full-table reads,
-  and no full-table arm has separated the loss from the lr — ΔFM has only
-  ever run at 2e-3 and plain only at 1e-3.
-- **Glyph size is still unread at full scale** (S1b): no native hit under
-  40 px on either table. If rows are size-bound, every native number is a
-  number at the base's bubble size on a 512-class canvas and K1 needs the
-  size lever in its recipe. Whether the σ band trains a 1.5-latent-px glyph
-  is open, and the readers cannot referee kanji under 16 px.
-- **Singles and sentences may be one budget, not two.** Every sentence pass
-  so far has cost singles, and the anchor recovers singles by pinning `f` —
-  i.e. by refusing the update the sentence step asks for. If lift and
-  `single` move in opposite directions at every μ, the artefact needs two
-  tables and the shipping question changes shape.
-- **Eval and native may want different norms** (S1c). Then the artefact
-  ships with α as a user knob — a `deploy_plan.md` change.
-- **Sub-exact is a bag-of-glyphs ruler.** It cannot see order or count, the
-  two things the strings arm showed a table *can* carry. It orders arms; it
-  does not say the output is readable.
-- **RAM** (46 GB usable): captions are pool-bounded, but later sentence
-  steps add word and phrase-piece rows and K1 at 755 rows raises the text
-  cache. The 10 k-item build stays the cap.
-- **`configs/base.toml` still defaults to the preview pack** (`NOTE.md`).
-  Anything that forgets `ANIMA_VOCAB_PACK` trains on a pre-delta'd table.
+## Where the older plans went
 
-## Not this plan
-
-- **Row blocks, per-block warmup, c / Q separation, `c_flat` in any form,
-  `--box_weight` as a free knob** — closed (`findings.md`).
-- **A bigger `--n_items` build.** Draws per row, not distinct items, is the
-  measured budget; 10 k items is the RAM cap.
-- **Encoder / composition / transplant / warm-start shortcuts** for kanji or
-  for new glyphs — closed (`findings.md` *Do not re-propose*); K is an
-  exposure budget, which is why it is a wall-clock table here and not a
-  research phase.
-- **A kana reference, contrastive ΔFM, cached Jacobians, OCR-reward rows**
-  — the reasons are in `_archive/cjk_renderable_anima/plan_synth2.md`
-  *Not this plan*.
-- **lr 3e-3 for plain FM**, and lr as a plain-FM exposure lever (L0, closed
-  2026-09-17: the budget is draws, not the lr integral).
-- **jōyō 2 136 in one run** — K's inventory note decides the target first.
-
-## Fallbacks (not phases)
-
-- **Slot rows** — tokenizer routes the i-th piece of a quoted string to
-  row (piece, i); train `Δ(piece, i) = Δ_piece + P_i`, bake the sum. Still
-  a pack. Only if order and count cannot live in one table — the strings
-  arm says they can.
-- **W3 DiT-side ext-gated cross-attn LoRA** — only if slot rows also fail;
-  carries the EN-safety list (ext gate on ext-free sequences, position
-  mask, EN replay on mixed prompts — `reports/wake_plan_2026_09_13.md`)
-  and leaves the native pack form.
+`_archive/cjk_renderable_anima/`: `plan_2026_09_20.md` (step 1 / step 2 / V /
+K as planned on 09-20 — source docstrings citing `plan.md` S1a / S1b / S1c / K
+resolve there), `plan_grid.md` (the grid gates S0 → G1 and the exposure
+arithmetic; docstrings citing `plan_grid S1`), `plan_step1.md` (dropped when
+its boost gate read ≈ 0), `plan_synth*.md`, and the full
+`deploy_plan_2026_09_17.md`.

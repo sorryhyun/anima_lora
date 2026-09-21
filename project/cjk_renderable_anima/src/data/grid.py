@@ -20,6 +20,13 @@ text to its cell; reports/position_probe_2026_09_20.md).
 Own rng stream (seed + 29): switching ``--grid`` on leaves every other draw of
 the data dir untouched.
 
+Multi-glyph units (``--grid_unit_min_glyph``, plan_z8): the deck's next unit
+picks the item's (grid, frame) among those whose cell holds its glyph count
+(``unit_fits`` — the word-cell rule; 3x3 takes one glyph or a digraph), and the
+other cells are dealt from the units that fit there. Every unit is still dealt
+once per deck pass; what moves is the grid share, toward the roomy cells. 0 =
+every unit into every grid, the builds before 2026-09-21.
+
 Word cells (``--grid_words``, plan_grid S1): ``--grid_word_frac`` of the items
 hold a 2–4-piece real word per cell instead of a single unit. Words are drawn
 **by row** (``_WordDeck``: rows cycled, the least-used word carrying the row,
@@ -75,16 +82,30 @@ class _Deck:
         self.pool, self.rng, self.deck = pool, rng, []
         self.n_distinct = len(set(pool))
 
-    def deal(self, k: int) -> list:
+    def _fill(self):
+        if not self.deck:
+            self.deck = self.pool[:]
+            self.rng.shuffle(self.deck)
+
+    def peek(self) -> str:
+        """The unit the next ``deal`` starts with."""
+        self._fill()
+        return self.deck[-1]
+
+    def deal(self, k: int, max_len: int = 0) -> list:
+        """``max_len``: units of more glyphs wait for a later item (the first
+        unit is dealt whatever its length — it chose the grid)."""
         assert k <= self.n_distinct, f"grid of {k} cells over {self.n_distinct} units"
         got, aside = [], []
         while len(got) < k:
-            if not self.deck:
-                self.deck = self.pool[:]
-                self.rng.shuffle(self.deck)
+            self._fill()
             u = self.deck.pop()
-            (aside if u in got else got).append(u)
-        self.deck += aside  # a repeat waits for the next item
+            skip = u in got or (max_len and got and len(u) > max_len)
+            (aside if skip else got).append(u)
+            assert len(aside) <= 3 * len(self.pool), (
+                f"no {k} units of ≤ {max_len} glyphs"
+            )
+        self.deck += aside  # a repeat / a too-long unit waits for the next item
         return got
 
 
@@ -103,6 +124,38 @@ def max_glyphs(name: str, bubble: bool, min_glyph: int) -> int:
     cell = min(W / cols, H / rows)
     room = cell * (1 - 2 * WORD_PAD[1] - (2 * WORD_BOX_INSET if bubble else 0))
     return int(room / min_glyph)
+
+
+def unit_fits(name: str, bubble: bool, glyphs: int, min_glyph: int) -> bool:
+    """Whether a single unit of ``glyphs`` glyphs goes into a cell of grid
+    ``name``: one glyph anywhere, a digraph in 3x3, else the word-cell room."""
+    cols, rows, _ = GRIDS[name]
+    if glyphs <= 1:
+        return True
+    if cols * rows > 6:
+        return glyphs <= 2
+    return glyphs <= max_glyphs(name, bubble, min_glyph)
+
+
+def _fit_frame(a, grids, glyphs: int, rng) -> tuple[str, bool]:
+    """(grid, bubble) for an item led by a unit of ``glyphs`` glyphs, by item
+    share × frame share; a unit no cell holds goes to the roomiest flat one."""
+    frames = [
+        (g, b, w * (a.grid_bubble_frac if b else 1 - a.grid_bubble_frac))
+        for g, w in grids
+        for b in (False, True)
+        if unit_fits(g, b, glyphs, a.grid_unit_min_glyph)
+    ]
+    frames = [f for f in frames if f[2] > 0]
+    if not frames:
+        return max((g for g, _ in grids), key=lambda g: max_glyphs(g, False, 1)), False
+    g, b, _ = rng.choices(frames, weights=[f[2] for f in frames])[0]
+    return g, b
+
+
+def _cell_max(name: str, bubble: bool, min_glyph: int) -> int:
+    cols, rows, _ = GRIDS[name]
+    return 2 if cols * rows > 6 else max(1, max_glyphs(name, bubble, min_glyph))
 
 
 class _WordDeck:
@@ -126,7 +179,8 @@ class _WordDeck:
         while len(got) < k:
             if not self.deck:
                 self.deck = [
-                    r for r in self.rows
+                    r
+                    for r in self.rows
                     if any(self.used[w] < self.cap for w in self.by_row[r])
                 ]
                 self.rng.shuffle(self.deck)
@@ -134,7 +188,8 @@ class _WordDeck:
                     return self._undo(got)
             r = self.deck.pop()
             cand = [
-                w for w in self.by_row[r]
+                w
+                for w in self.by_row[r]
                 if self.used[w] < self.cap and len(w) <= max_len and w not in got
             ]
             if not cand:
@@ -183,13 +238,23 @@ def word_supply(a, inv, tokq, rng) -> tuple[dict, list]:
 
 
 def render_grid(
-    units, cols, rows, size, fonts, rng, bubble: bool, fill, pad=(0.04, 0.10), box=False,
+    units,
+    cols,
+    rows,
+    size,
+    fonts,
+    rng,
+    bubble: bool,
+    fill,
+    pad=(0.04, 0.10),
+    box=False,
     sizes=None,
+    lines=None,
 ):
     """Draw ``units[i]`` in cell ``i`` (row-major). Returns ``(image, boxes)``,
     ``boxes[i]`` the ink bbox of cell i's unit in canvas pixels. ``box`` = the
     bubble is a rounded box (word cells) instead of an ellipse; ``sizes``
-    collects every cell's font px."""
+    collects every cell's font px, ``lines`` the cells drawn as a horizontal line."""
     from PIL import Image, ImageDraw, ImageFont
 
     W, H = size
@@ -228,6 +293,8 @@ def render_grid(
             fs = max(12, int(fs * min(room_w / tw, room_h / th) * 0.98))
         if sizes is not None:
             sizes.append(fs)
+        if lines is not None and len(u) > 1 and not vertical:
+            lines.append(i)
         # block centre: anywhere the ink stays inside its room
         cx = x0 + cw / 2 + (rng.random() - 0.5) * max(0.0, room_w - tw)
         cy = y0 + ch / 2 + (rng.random() - 0.5) * max(0.0, room_h - th)
@@ -244,17 +311,21 @@ def render_grid(
         # the ink's own bbox: textbbox is off by a font's bearings (デ, ロ)
         mask = Image.new("L", (W, H), 0)
         ImageDraw.Draw(mask).multiline_text((ox, oy), txt, fill=255, **kw)
-        boxes.append(list(mask.getbbox() or (int(x0), int(y0), int(x0 + cw), int(y0 + ch))))
+        boxes.append(
+            list(mask.getbbox() or (int(x0), int(y0), int(x0 + cw), int(y0 + ch)))
+        )
     return im, boxes
 
 
-def _rec(fn, got, bubble, name, boxes, word: bool) -> dict:
+def _rec(fn, got, bubble, name, boxes, word: bool, lines=()) -> dict:
     cols, rows, size = GRIDS[name]
     return {
         "file": str(fn),
         # space-joined: set(text) is what the held-singles filter reads
         "text": " ".join(got),
-        "caption": grid_caption("bubble" if bubble else "flat", cols, rows, got),
+        "caption": grid_caption(
+            "bubble" if bubble else "flat", cols, rows, got, horizontal=set(lines)
+        ),
         "src": "grid",
         "kind": f"grid{'w' if word else ''}{name}",
         "units": got,
@@ -276,7 +347,9 @@ def grid_recs(a, inv, fonts, out, tokq=None) -> list[dict]:
         wrng = random.Random(a.seed + 31)
         words, held = word_supply(a, inv, tokq, wrng)
         wdeck = _WordDeck(words, a.grid_word_cap, wrng)
-        wgrids = [(g, w) for g, w in grids if max_glyphs(g, False, a.grid_word_min_glyph)]
+        wgrids = [
+            (g, w) for g, w in grids if max_glyphs(g, False, a.grid_word_min_glyph)
+        ]
         assert wgrids, "--grid_words: no word-capable grid in --grid (2x2, 2x3, 3x2)"
         n_word = round(a.n_grid * a.grid_word_frac)
     is_word = [True] * n_word + [False] * (a.n_grid - n_word)
@@ -285,18 +358,24 @@ def grid_recs(a, inv, fonts, out, tokq=None) -> list[dict]:
     recs, draws, wsizes = [], Counter(), []
     for i, word in enumerate(is_word):
         fn = out / "img" / f"grid_{i:05d}.png"
+        lines = [] if a.grid_mark_horizontal else None
         if word:
             if wdeck is None:
                 continue  # caps reached: the word items stop here
-            name = wrng.choices([g for g, _ in wgrids], weights=[w for _, w in wgrids])[0]
+            name = wrng.choices([g for g, _ in wgrids], weights=[w for _, w in wgrids])[
+                0
+            ]
             bubble = wrng.random() < a.grid_bubble_frac
             k = GRIDS[name][0] * GRIDS[name][1]
             got = wdeck.deal(k, max_glyphs(name, bubble, a.grid_word_min_glyph))
             if got is None:  # the roomiest cell once, then the supply is spent
-                name, bubble = max(
-                    (g for g, _ in wgrids),
-                    key=lambda g: max_glyphs(g, False, a.grid_word_min_glyph),
-                ), False
+                name, bubble = (
+                    max(
+                        (g for g, _ in wgrids),
+                        key=lambda g: max_glyphs(g, False, a.grid_word_min_glyph),
+                    ),
+                    False,
+                )
                 k = GRIDS[name][0] * GRIDS[name][1]
                 got = wdeck.deal(k, max_glyphs(name, False, a.grid_word_min_glyph))
             if got is None:
@@ -304,18 +383,39 @@ def grid_recs(a, inv, fonts, out, tokq=None) -> list[dict]:
                 continue
             cols, rows, size = GRIDS[name]
             im, boxes = render_grid(
-                got, cols, rows, size, fonts, wrng, bubble, (0.9, 0.9), WORD_PAD,
-                box=True, sizes=wsizes,
+                got,
+                cols,
+                rows,
+                size,
+                fonts,
+                wrng,
+                bubble,
+                (0.9, 0.9),
+                WORD_PAD,
+                box=True,
+                sizes=wsizes,
+                lines=lines,
             )
         else:
-            name = rng.choices([g for g, _ in grids], weights=[w for _, w in grids])[0]
-            cols, rows, size = GRIDS[name]
-            got = deck.deal(cols * rows)
-            bubble = rng.random() < a.grid_bubble_frac
-            im, boxes = render_grid(got, cols, rows, size, fonts, rng, bubble, fill)
+            if a.grid_unit_min_glyph:
+                name, bubble = _fit_frame(a, grids, len(deck.peek()), rng)
+                cols, rows, size = GRIDS[name]
+                got = deck.deal(
+                    cols * rows, _cell_max(name, bubble, a.grid_unit_min_glyph)
+                )
+            else:
+                name = rng.choices(
+                    [g for g, _ in grids], weights=[w for _, w in grids]
+                )[0]
+                cols, rows, size = GRIDS[name]
+                got = deck.deal(cols * rows)
+                bubble = rng.random() < a.grid_bubble_frac
+            im, boxes = render_grid(
+                got, cols, rows, size, fonts, rng, bubble, fill, lines=lines
+            )
             draws.update(got)
         im.save(fn)
-        recs.append(_rec(fn, got, bubble, name, boxes, word))
+        recs.append(_rec(fn, got, bubble, name, boxes, word, lines or ()))
     singles = [r for r in recs if not r["kind"].startswith("gridw")]
     if singles:
         n = [draws[u] for u in units]

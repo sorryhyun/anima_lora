@@ -341,8 +341,15 @@ def test_phrase_norm_and_balanced_draw(tmp_path):
     assert norm_phrase("あ・い") == "あ・い"  # a lone separator stays
     f = tmp_path / "p.tsv"
     f.write_text("え…\tb1\t2\nえ・・・・\tb2\t2\nはい\tb1\t2\n", encoding="utf-8")
-    assert phrase_file_lines(f, 2, 10) == [("え…", "b1", 2), ("え・・・・", "b2", 2), ("はい", "b1", 2)]
-    assert phrase_file_lines(f, 2, 10, norm=True) == [("え・・・", "b1", None), ("はい", "b1", 2)]
+    assert phrase_file_lines(f, 2, 10) == [
+        ("え…", "b1", 2),
+        ("え・・・・", "b2", 2),
+        ("はい", "b1", 2),
+    ]
+    assert phrase_file_lines(f, 2, 10, norm=True) == [
+        ("え・・・", "b1", None),
+        ("はい", "b1", 2),
+    ]
 
     texts = ["ab", "cd", "ef", "ghijklmnopqrs"]  # one length-13 string
     rng = random.Random(0)
@@ -354,7 +361,6 @@ def test_phrase_norm_and_balanced_draw(tmp_path):
     counts = sorted(draws.count(t) for t in texts)
     assert counts[-1] - counts[0] <= 1
     assert all(len(bal.draw(rng, 2)) == 2 for _ in range(9))  # the cap still binds
-
 
 
 def test_grid_deck_deals_rows_evenly():
@@ -423,3 +429,49 @@ def test_grid_caption_headers():
     cap = grid_caption("flat", 2, 2, ["あ", "か", "す", "日"])
     assert cap.endswith('On the bottom right, Japanese text reads as "日".')
     assert cap.count("Japanese text reads as") == 4
+
+
+def test_grid_unit_fit_deal():
+    """`--grid_unit_min_glyph`: the leading unit picks a cell that holds it,
+    the other cells take what fits, and every unit is still dealt once a pass."""
+    import random
+    from collections import Counter
+    from types import SimpleNamespace
+
+    from data.grid import GRIDS, _cell_max, _Deck, _fit_frame, parse_grid, unit_fits
+
+    fits = lambda g: sorted(  # noqa: E731
+        (n, b) for n in GRIDS for b in (False, True) if unit_fits(n, b, g, 56)
+    )
+    assert len(fits(1)) == len(fits(2)) == 8
+    assert ("3x3", False) not in fits(3) and ("2x3", True) not in fits(3)
+    assert fits(4) == [("2x2", False)] and fits(5) == []
+    a = SimpleNamespace(grid_bubble_frac=0.5, grid_unit_min_glyph=56)
+    grids = parse_grid("2x2,3x3,2x3,3x2")
+    rng = random.Random(0)
+    assert _fit_frame(a, grids, 5, rng) == ("2x2", False)
+    pool = [f"{i}" for i in range(9)] + [f"a{i}" for i in range(6)]
+    pool += ["abc", "xyz", "abcd", "wxyz", "abcde"]  # 1 / 2 / 3 / 4 / 5 glyphs
+    deck, n = _Deck(pool, rng), Counter()
+    for _ in range(400):
+        name, bubble = _fit_frame(a, grids, len(deck.peek()), rng)
+        cols, rows, _ = GRIDS[name]
+        got = deck.deal(cols * rows, _cell_max(name, bubble, 56))
+        assert len(set(got)) == cols * rows
+        assert all(unit_fits(name, bubble, len(u), 56) for u in got if len(u) < 5)
+        assert (name, bubble) == ("2x2", False) or all(len(u) < 5 for u in got)
+        n.update(got)
+    assert max(n.values()) - min(n.values()) <= 2
+
+
+def test_units_list_file(tmp_path):
+    """`list:@<file>`: first column of each line, comments / blanks / repeats
+    dropped; the spec round-trips as typed."""
+    from data.units import parse_units
+
+    f = tmp_path / "cold.txt"
+    f.write_text("# rank\tpiece\nって\t1760\n\nじゃ\nって\n", encoding="utf-8")
+    (src,) = parse_units([f"list:@{f}*1"])
+    assert src.units == ["って", "じゃ"] and src.spec() == f"list:@{f}*1"
+    (src,) = parse_units([f"list:、,@{f},！！"])
+    assert src.units == ["、", "って", "じゃ", "！！"]

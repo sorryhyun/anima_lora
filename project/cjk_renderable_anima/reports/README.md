@@ -11,8 +11,9 @@ file, `history.md`; it was split here without edits.
 
 Reports written before 2026-09-20 cite `plan_synth.md` / `plan_synth2.md` /
 `plan_synth3.md` / `plan_synth4.md`; those four are archived under
-`_archive/cjk_renderable_anima/` and their live content is in `../plan.md`
-(which carries the redirect table) and `../synth.md`.
+`_archive/cjk_renderable_anima/` beside the 09-20 `plan.md`, `plan_grid.md` and
+`plan_step1.md` (archived 2026-09-21); their live content is in `../synth.md`,
+`../findings.md` and `../sent_run.md`, and `../plan.md` is the forward plan.
 
 ## Index (chronological)
 
@@ -40,7 +41,7 @@ Reports written before 2026-09-20 cite `plan_synth.md` / `plan_synth2.md` /
 `step1_0919`'s argv and data — every ruler about doubles) and `step2_0919`
 (2026-09-19, the sentence step on the `step1_0919` seed — pooled sub-exact
 lift +0.086, `_held` groups moving). Their numbers, argv and job ids are in
-[`../plan.md`](../plan.md) *Where the line stands* and
+`_archive/cjk_renderable_anima/plan_2026_09_20.md` *Where the line stands* and
 [`../synth.md`](../synth.md) *The recipe as run*; the Δ0-scale arms behind
 `--box_share` are in `_archive/cjk_renderable_anima/plan_synth4.md` R4.5.
 
@@ -61,3 +62,4 @@ lift +0.086, `_held` groups moving). Their numbers, argv and job ids are in
 - [`grid_m0b_s1_2026_09_21.md`](grid_m0b_s1_2026_09_21.md) — 174-row block, 3 000 steps: **M0b passes** (mix `single` 13/36, native `swap` 11 vs singles 5/36, 1); **S1 word cells do not** (held piece hit +0.105 [+0.034, +0.178] under the +0.15 gate, trained −0.011, `single` 13 → 7) — read on unlearned rows, the warm-started twin is owed
 - [`exposure_ledger_2026_09_21.md`](exposure_ledger_2026_09_21.md) — every cold single-glyph arm by exposure and item type (flat / scene / grid), read as identity vs native: a grid cell draw ≈ 0.6 scene draw of identity when starved, ≈ 0.04 of native `en`, ≈ 0.12 of `swap`; flat = identity + frame independence, no native; the per-row curve holds to ≈ 250 units, not to 374
 - [`grid_g1_2026_09_21.md`](grid_g1_2026_09_21.md) — 374-row gate arms, 6 k steps: even grids 50 % plain = `step1_0920`'s kana identity at a ninth of the steps (20 / 12, native 20 / 25); dense loses identity; paired keeps the scene but repeats the glyph (17 / 11); **75 % at matched exposure collapses transfer (`single` 12, native 5 / 4) — scene draws do not trade for cell draws**; kanji unmoved (2–4/36); plain's native hits are inflated by wipes
+- [`piece_coverage_2026_09_21.md`](piece_coverage_2026_09_21.md) — what a row budget buys in covered dialogue lines (`probe/piece_coverage.py`, 42 557 lines): multi-glyph single-token pieces are 35 % of piece tokens vs single kanji 16 %; every remaining corpus kanji takes coverage 13.5 → 17.6 %, 1 000 multi-glyph pieces → 63.9 %, the joint frequency ranking + 800 → 61.9 % / + 2 000 → 86.8 %; 98.7 % of multi-glyph mass is ≤ 4 glyphs; こんにちは is rank 1 426 — deploy strings are pinned, not ranked; ranked list in `piece_coverage_ranked_2026_09_21.tsv`

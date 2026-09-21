@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import random
 import time
 
@@ -279,6 +280,12 @@ def stage_train(a):
                 # (attempt 8 was killed at 2.5× with nothing to eval)
                 print(killed, flush=True)
                 break
+        if a.save_every and step % a.save_every == 0 and step < a.train_steps:
+            # a crash keeps a readable table: rename to trained.pt to eval it
+            sd = {**tr.state_dict(held, None), "step": step}
+            torch.save(sd, out / "trained_partial.tmp")
+            os.replace(out / "trained_partial.tmp", out / "trained_partial.pt")
+            (out / "train_log.json").write_text(json.dumps(log, indent=1))
     tr.export_table(aug_rng)
     sd = tr.state_dict(held, killed)
     if q_vec is not None:

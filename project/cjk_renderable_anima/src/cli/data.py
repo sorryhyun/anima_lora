@@ -52,6 +52,23 @@ def data_args(g):
     )
     g.add_argument("--grid_fill_max", type=float, default=0.8, help="…, high end")
     g.add_argument(
+        "--grid_unit_min_glyph",
+        type=int,
+        default=0,
+        help="data: --grid multi-glyph units — the deck's next unit picks a (grid, "
+        "frame) whose cell holds its glyphs at this many px (the --grid_word_min_glyph "
+        "room; 3x3 takes one glyph or a digraph), and the other cells take the units "
+        "that fit. 0 = every unit into every grid",
+    )
+    g.add_argument(
+        "--grid_mark_horizontal",
+        type=int,
+        default=0,
+        help="data: --grid cells whose multi-glyph unit is drawn as a left-to-right "
+        "line say `horizontal Japanese text reads as`; a column keeps the bare "
+        "clause (the manga default). 0 = every cell the bare clause",
+    )
+    g.add_argument(
         "--grid_words",
         default="",
         help="data: --grid word cells (plan_grid S1) — a phrase TSV (dialogue_2_10.tsv); "

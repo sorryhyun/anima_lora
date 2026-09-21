@@ -25,32 +25,34 @@ pass on top of it.
   [`reports/s2b_and_raw_pack_rerun_2026_09_19.md`](reports/s2b_and_raw_pack_rerun_2026_09_19.md).
   Those preview-pack arm dirs were deleted 2026-09-19; the reports are their
   only record.
-- **Current seed table: `step1_0920`** (2026-09-20, arm
-  `rows_step1_0920_s53k`) — `step1_0919`'s ΔFM argv and data with one flag
-  changed, `--box_share 0.25`, the area-independent in-box loss. Singles
-  10 → **20**/36, `single_kanji` 3 → 8, native `en` 8 → **19** of 64, with
-  the scene *better* held (en cos 0.931 → 0.934). It closes about a third of
-  the native gap to the plain seed `src53k` (13/36 singles, native 36) and
-  not all of it; `single_small` is 0/36 on both.
-- **Step 2 on record: `step2_0919`** (2026-09-19, arm
-  `rows_step2_0919_plain_6k`) — the sentence pass on the *older*
-  `step1_0919` seed, plain FM, 6 k steps sized to its pool. Sub-exact pooled
-  lift +0.086 with the lift now on held groups too (`short` +0.125,
-  `short_held` +0.141); singles held at the seed's level. Owed: the same
-  step on `step1_0920`.
+- **Current seed table: `step1_0921`** (2026-09-21, arm
+  `rows_step1_0921_s30k`) — the grid mix: `step1_0920`'s scene singles + 10 k
+  grid items, plain FM, 30 k steps. `single` / `_ext` / `_small` / `_kanji`
+  **28 / 20 / 10 / 19** of 36 against `step1_0920`'s 20 / 8 / 0 / 8, native
+  `en` / `swap` **34 / 28** of 64 against 19 / 8, en cos 0.903 against 0.934.
+  Multi-glyph groups are still 0 – 1 exact.
+- **Next table: `step1_0921z`** — 1 900 cold pieces (1 317 multi-glyph + 583
+  kanji) cut from the joint frequency ranking; data built
+  (`data_step1_0921z`, 102 k items), trains on the borrowed Z8
+  ([`plan_z8.md`](plan_z8.md)). Merged with `step1_0921` and followed by the
+  sentence run it becomes `preview2`, the pack v2.0.0.beta2 ships
+  ([`plan.md`](plan.md) § 3).
+- **Sentence runs on record:** every attempt, 09-16 → 09-20, is in
+  [`sent_run.md`](sent_run.md) — pooled lift +0.09 – +0.15, 0 exact, on a pool
+  of 538 sentences. The next one runs on the merged inventory.
 - **Ruler:** exact match is floor-saturated on every multi-glyph group;
   `src/probe/sub_exact.py` (glyph recall minus a permutation control) is
   the ruler that orders sentence arms.
 
-[`plan.md`](plan.md) is the single forward plan (step 1 recipe, step 2 and
-the vocab → merge → sentence loop, the kanji budget K).
+[`plan.md`](plan.md) is the single forward plan: how the table comes to cover
+Japanese, how the sentence run is done on it, and what `preview2` is.
 [`synth.md`](synth.md) is the S line as built, including the exact
 `step1_0920` / `step2_0919` argv. [`findings.md`](findings.md) holds the
 settled verdicts one screen per topic; [`reports/`](reports/README.md) is
 the dated run record (indexed: W0–W2, W2d Runs 1–3, order probe, σ
-diagnostic, strings arm, canvas-shape gate, the S line). The four
-`plan_synth*.md` files are archived under `_archive/cjk_renderable_anima/`
-(`plan.md` carries the redirect table).
+diagnostic, strings arm, canvas-shape gate, the S line). Older plans (`plan_synth*.md`, the 09-20 `plan.md`, `plan_grid.md`,
+`plan_step1.md`, the full deploy plan) are archived under
+`_archive/cjk_renderable_anima/` (`plan.md` *Where the older plans went*).
 [`diagram.html`](diagram.html) is the one-figure picture of what trains and
 how (frozen Anima path + the address table; open in a browser), **the
 formulation written out** (*The address, written out*), the pack → step 1 →
@@ -227,14 +229,13 @@ three) — do not trust a `line` / `corpus` eval on them.
 
 | path | what |
 |---|---|
-| `plan.md` | **the forward plan** — step 1 (seed-table recipe, the loss question, glyph size, α), step 2 (the sentence pass + the vocab → merge → sentence loop), K (the kanji budget), open risks, the fallbacks |
+| `plan.md` | **the forward plan (rewritten 2026-09-21)** — covering Japanese (the joint piece ranking, the tables, the grid-mix recipe, multi-glyph units in the data, reading and merging a cold table), the sentence run (data and train argv, sizing, reading rules), and `preview2` for v2.0.0.beta2 |
 | `synth.md` | **the S line as built** — why composites, the scene prompts and pools, the instrument in build order, the ΔFM loss as built, the `step1_0920` / `step2_0919` argv, the rulers, the budget |
 | `sent_run.md` | **the sentence pass on one page** — every sentence run 09-16 → 09-20 with its read, what 09-20 measured (anchor μ as the trade knob, the habit shift, eval lift not reaching scene prompts, the `BoxSplit` log), the row-exposure read (content is gated per row at ≈ 1 000 multi-glyph draws; drift is Zipfian), the boost gate arm (**failed**: 8 rows at ≥ 1 000 draws gained −0.023, the partner's number; variety of strings per row is the reading left), reading rules |
-| `plan_grid.md` | **proposed 2026-09-20** — k units per canvas inside step 1 (`--grid`: 2x2 / 3x3 on 512², 2x3 / 3x2 on 416×624, one position clause per cell, units dealt by row). S0: a grid draw teaches identity (14/36 vs 6/36 at equal steps) but grid alone plateaus (17/36, native 13 vs singles 29/36, 44) — so a **mix** with scene singles; gates M0 (leak check, 24 rows) → M0b (174 rows, the real gate) → S1 word cells → M1 / M2; code owed |
-| `plan_step1.md` | **dropped as written 2026-09-20** (its boost gate read ≈ 0: draws per row do not gate sentence content) — multi-glyph exposure inside step 1: the boost gate it waits on, the budget arithmetic, which rows real words can carry (kana yes, kanji not before V), micro arm M0 → kana block M1 → full table M2, code owed |
+| `plan_z8.md` | **2026-09-21** — the logistics of `step1_0921z` on a borrowed 96 GB box for one night (Tailscale SSH, after hours only, done by 09:00 09-22): the 1 900-row cold table (≈ 85 % of dialogue lines with `step1_0921`, 152 k steps at ≈ 5.3 it/s), what is already built here, bring-up, the long run, what comes back; KO / ZH parked |
 | `diagram.html` | the one-figure picture (open in a browser) — the frozen Anima path + the address table, **the formulation written out** (`ẽ_r`, `r_X`, `L_Δ`, the symbol table), the pack → step 1 → step 2 → bake pipeline, and the "why it is hard" figure |
-| `_archive/cjk_renderable_anima/plan_synth*.md` | archived 2026-09-20: `plan_synth` (budgets/pools/rulers), `plan_synth2` (the ΔFM line Δ0–Δ2), `plan_synth3` (S2 and the loop), `plan_synth4` (the step-1 recipe arms R4.3–R4.6 and K). Kept for the arms they record; `plan.md` has the redirect table |
-| `deploy_plan.md` | Hub v2 layout (`old/ delta/ comfy/ diffusers/`), bake, pre-upload gates, license, migration |
+| `_archive/cjk_renderable_anima/` | archived 2026-09-21: `plan_2026_09_20.md` (step 1 / step 2 / V / K), `plan_grid.md` (grid gates S0 → G1, exposure arithmetic), `plan_step1.md`, `deploy_plan_2026_09_17.md`; archived 2026-09-20: `plan_synth` (budgets/pools/rulers), `plan_synth2` (the ΔFM line Δ0–Δ2), `plan_synth3` (S2 and the loop), `plan_synth4` (the step-1 recipe arms R4.3–R4.6 and K). Kept for the arms they record; `plan.md` has the redirect table |
+| `deploy_plan.md` | the form of the shipped weights — a baked vocab pack pair, the bake formula, what loads it |
 | `findings.md` | settled verdicts, rulers, gotchas, do-not-re-propose |
 | `findings_seed.md` | what the 53k full-inventory table taught (2026-09-16): its evals, row-space geometry, adapter-output vs Q, transplant, pinned-trigger arms — the one-place summary for the seed question |
 | `freetext.md` | the shelved FreeText line (2026-06) re-read against this one: its "no Korean glyph prior" root cause falls to krzh16; its Stage-1 attention localizer is a possible render-free ruler for wipe / frame binding / katakana (not built) |
@@ -251,14 +252,7 @@ three) — do not trust a `line` / `corpus` eval on them.
 
 ## Open
 
-Ordered in [`plan.md`](plan.md) *Order*; the short form:
-
-- **Which loss the seed table takes at full inventory** (`plan.md` S1a) —
-  ΔFM wins at 12 rows, plain wins at 374–434, and the two full-table arms
-  also differed in lr. The control is `--pair_loss 0 --lr_rows 1e-3` on
-  `step1_0920`'s own build; nothing else should run first.
-- **Round 2 of the sentence loop** — step 2 on the `step1_0920` seed.
-- **α as a deployment knob** (`plan.md` S1c) and **glyph size / the
-  small-bubble pool** (S1b), then **K1** at `kanji:400`–`600`.
-- **Publishing** — the Hub v2 layout and gates G1–G4 / G6 are unrun
-  (`deploy_plan.md`).
+[`plan.md`](plan.md) *Order*: train `step1_0921z` on the Z8 and read it, merge
+with `step1_0921`, the sentence run on the merged inventory, bake `preview2`
+for v2.0.0.beta2; then the later ranks of the ranking. KO / ZH are parked
+(`plan_z8.md`).

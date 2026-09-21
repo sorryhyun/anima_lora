@@ -123,8 +123,28 @@ def encode_images(vae, files, device, size=None):
     return torch.cat(out)
 
 
+class _TextEntry:
+    """One cached caption, indexed like the tuple ``(prompt_embeds, attn_mask,
+    t5_ids, t5_mask)``; the max-padded embeds are row ``i`` of
+    ``encode_captions``' mmapped spill file."""
+
+    __slots__ = ("mm", "i", "rest")
+
+    def __init__(self, mm, i, rest):
+        self.mm, self.i, self.rest = mm, i, rest
+
+    def __getitem__(self, k):
+        return self.mm[self.i] if k == 0 else self.rest[k - 1]
+
+
 def encode_captions(captions, device):
-    """Unique captions → dict caption -> (prompt_embeds, attn_mask, t5_ids, t5_mask) on CPU."""
+    """Unique captions → dict caption -> (prompt_embeds, attn_mask, t5_ids,
+    t5_mask) on CPU. The embeds stream from an unlinked temp file, written
+    max-padded as encoded (a row is 1 MB; 40 k captions do not fit in RAM —
+    ``TMPDIR`` moves the file); the rest stays in memory."""
+    import os
+    import tempfile
+
     import torch
 
     from library.inference.models import load_text_encoder
@@ -135,23 +155,31 @@ def encode_captions(captions, device):
         text_encoder=checkpoints().text_encoder, dtype=torch.bfloat16, device=device
     ).eval()
     uniq = sorted(set(captions))
-    cache = {}
-    with torch.no_grad():
+    fd, spill = tempfile.mkstemp(prefix="wake_te_", suffix=".bf16")
+    rests, shape = [], None
+    with os.fdopen(fd, "wb") as f, torch.no_grad():
         for i in range(0, len(uniq), 16):
             chunk = uniq[i : i + 16]
             tokens = tok.tokenize(chunk)
             pe, am, t5, t5m = enc.encode_tokens(tok, [te], tokens)
-            for j, c in enumerate(chunk):
-                cache[c] = (
-                    pe[j].to(torch.bfloat16).cpu(),
-                    am[j].cpu(),
-                    t5[j].long().cpu(),
-                    t5m[j].cpu(),
-                )
+            pe = pe.to(torch.bfloat16).cpu().contiguous()
+            assert shape in (None, tuple(pe.shape[1:])), (shape, pe.shape)
+            shape = tuple(pe.shape[1:])
+            f.write(pe.view(torch.int16).numpy().tobytes())
+            am, t5, t5m = am.cpu(), t5.long().cpu(), t5m.cpu()
+            rests += [(am[j], t5[j], t5m[j]) for j in range(len(chunk))]
     te.to("cpu")
     del te
     torch.cuda.empty_cache()
-    return cache
+    if not uniq:
+        os.unlink(spill)
+        return {}
+    # mapped private and unlinked: pages are evictable, the file goes with the process
+    n = len(uniq) * shape[0] * shape[1]
+    mm = torch.from_file(spill, shared=False, size=n, dtype=torch.bfloat16)
+    mm = mm.view(len(uniq), *shape)
+    os.unlink(spill)
+    return {c: _TextEntry(mm, i, rests[i]) for i, c in enumerate(uniq)}
 
 
 def ext_ids_of(cache) -> set[int]:
@@ -159,7 +187,8 @@ def ext_ids_of(cache) -> set[int]:
     from library.anima.ext_vocab import T5_TABLE_SIZE
 
     ids = set()
-    for _, (_, _, t5, _) in cache.items():
+    for ent in cache.values():
+        t5 = ent[2]
         ids.update(int(v) - T5_TABLE_SIZE for v in t5.tolist() if v >= T5_TABLE_SIZE)
     return ids
 

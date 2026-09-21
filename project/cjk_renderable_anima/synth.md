@@ -92,7 +92,7 @@ Training and the native eval become the same distribution.
 page carries a systematic residual the rows did not cause — a downscaled
 panel grid, an off-manifold paste, a small glyph in a bubble the base drew
 for a large one — hands that residual to the only free parameters in the
-run. Two such builds are named and rejected in `plan.md` S1b.
+run. Two such builds are named and rejected in `plan_2026_09_20.md` (archived) S1b.
 
 ## Scene prompts
 
@@ -144,7 +144,7 @@ glyphs, sentences one column 65/160.
 **No pool has a small bubble.** Region short side p05 / p50 / p95 is
 57 / 76 / 145 px on `s1`, 57 / 76 / 133 on `s1w`, 59 / 83 / 133 on `sl1w`,
 42 / 62 / 99 on `ja_comic` — **no region under 40 px in 1 118 scenes**.
-That is the constraint `plan.md` S1b.1 is built against.
+That is the constraint `plan_2026_09_20.md` (archived) S1b.1 is built against.
 
 Before any new pool enters a build (the sl1w lesson): read the most-reused
 scenes on a 400-item CPU smoke and add bubble-less / text-outside-a-bubble
@@ -248,7 +248,7 @@ and is in no arm yet.
 
 `--pair_loss 1 --pair_ref en`. A flag, not the default: it holds the scene
 and does not deliver the glyph (`findings.md`), and which loss the seed
-table takes at full inventory is open (`plan.md` S1a).
+table takes at full inventory is open (`plan_2026_09_20.md` (archived) S1a).
 
 **What it is.** Per composite item B (scene + new glyph, caption `c_B` with
 the ext row) the data stage also holds its **sibling A**: the same scene,
@@ -428,7 +428,7 @@ What each block is doing:
   canvas, so w 4 is a mean in-box share of 0.07. Round 2's value is open:
   the 2026-09-20 smoke (`reports/step2_0920_box_weight_smoke_2026_09_20.md`)
   found no sentence ruler ordered by the weight, and `--box_share 0.25` caps
-  77 % of these items at 0.75 (`plan.md` *Step 2*).
+  77 % of these items at 0.75 (`plan_2026_09_20.md` (archived) *Step 2*).
 - **`--n_phrase_eval 8`** — flat sentence eval groups are small on purpose;
   `single` and `native` are the rulers, and flat sentences are
   off-distribution for a composite-only arm.
@@ -486,7 +486,7 @@ Rules of thumb that price a run:
 
 - **Small glyphs.** A kana in a 64–100 px bubble at 512 is 4–6 latent
   tokens a side. `--scene_min_glyph` (28 since the sentence line) and the
-  in-box share are the mitigation; the open question is `plan.md` S1b.
+  in-box share are the mitigation; the open question is `plan_2026_09_20.md` (archived) S1b.
 - **Erase artefacts as a cue.** Ring-median fill inside a shaded bubble can
   leave a patch the row latches onto. `erase_miss` catches the wrong-blob
   case, not the patch; the sheets are the check. (Under ΔFM the patch is
