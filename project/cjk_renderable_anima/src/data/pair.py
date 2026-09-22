@@ -79,6 +79,96 @@ class RefPool:
         return sum(len(v) for v in self.pool.values())
 
 
+class JaRefPool:
+    """``--pair_ref ja`` (idea.md, counterfactual input): the sibling is a
+    *confusable* JA unit of the same glyph count from the run's own units —
+    for strings a permutation (½) or a one-glyph swap within the glyph's
+    script (½), for singles another single of the same script; another unit
+    of the same length is the fallback. Spaces keep their positions (the
+    compositor asserts equal length). Same ``draw`` / ``n_strings`` surface
+    as ``RefPool``."""
+
+    def __init__(self, units: list[str], rng: random.Random):
+        from collections import defaultdict
+
+        from common.text import KANA, KANJI_RE
+
+        self.rng = rng
+        self.by_len: dict[int, list[str]] = defaultdict(list)
+        glyphs: dict[str, set[str]] = defaultdict(set)
+        for u in units:
+            self.by_len[len(u)].append(u)
+            for ch in u:
+                if ch != " ":
+                    glyphs[self._script(ch, KANA, KANJI_RE)].add(ch)
+        self.glyphs = {k: sorted(v) for k, v in glyphs.items()}
+        self._kana, self._kanji_re = KANA, KANJI_RE
+        self.seen: set[str] = set()
+
+    @staticmethod
+    def _script(ch: str, kana, kanji_re) -> str:
+        if ch in kana:
+            return "kana"
+        if kanji_re.match(ch):
+            return "kanji"
+        return "other"
+
+    def _swap_one(self, chars: list[str]) -> str | None:
+        pos = [i for i, c in enumerate(chars) if c != " "]
+        self.rng.shuffle(pos)
+        for i in pos:
+            pool = [
+                g
+                for g in self.glyphs.get(
+                    self._script(chars[i], self._kana, self._kanji_re), []
+                )
+                if g != chars[i]
+            ]
+            if pool:
+                out = list(chars)
+                out[i] = self.rng.choice(pool)
+                return "".join(out)
+        return None
+
+    def _permute(self, chars: list[str]) -> str | None:
+        pos = [i for i, c in enumerate(chars) if c != " "]
+        if len({chars[i] for i in pos}) < 2:
+            return None
+        for _ in range(8):
+            vals = [chars[i] for i in pos]
+            self.rng.shuffle(vals)
+            out = list(chars)
+            for i, v in zip(pos, vals):
+                out[i] = v
+            s = "".join(out)
+            if s != "".join(chars):
+                return s
+        return None
+
+    def draw(self, scene_i: int, text: str) -> str:
+        chars = list(text)
+        s = None
+        if len(chars) >= 2 and self.rng.random() < 0.5:
+            s = self._permute(chars)
+        if s is None:
+            s = self._swap_one(chars)
+        if s is None:
+            others = [u for u in self.by_len.get(len(text), []) if u != text]
+            s = self.rng.choice(others) if others else None
+        if s is None:
+            # a lone glyph of an unseen script: any kana of the same count
+            s = "".join(
+                c if c == " " else self.rng.choice([k for k in self._kana if k != c])
+                for c in chars
+            )
+        assert len(s) == len(text) and s != text, (text, s)
+        self.seen.add(s)
+        return s
+
+    def n_strings(self) -> int:
+        return len(self.seen)
+
+
 def en_frame(caption: str) -> str:
     """A sibling caption moved back under the **EN frame** the scene was
     rendered with — the inverse of ``synth.scene_caption``'s swap: the

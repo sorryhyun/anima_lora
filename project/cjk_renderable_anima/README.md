@@ -46,6 +46,15 @@ ext id; the **sentence run** then warm-starts the merged table
   `src/probe/sub_exact.py` (glyph recall minus a permutation control) is
   the ruler that orders sentence arms.
 
+[`idea.md`](idea.md) is the one open proposal outside the plan —
+counterfactual-input FM (the sibling's render as the noisy input, A's row and
+target), with its theory and gates; stage `cf_sense` and `--cf_input` /
+`--pair_ref ja` are built. Gate 0 read 2026-09-22
+(`reports/cf_sense_gate0_2026_09_22.md`): the caption's leverage band moves
+with the box — single glyphs have none below σ 0.7 (CF closed for singles),
+native multi-token text holds ≈ 0.25 at σ 0.5–0.7 and nothing at 0.8–0.9,
+and no multi-glyph row has been trained there yet. Next: Gates 1–2 on a
+multi-glyph micro block at 0.5–0.7.
 [`plan.md`](plan.md) is the single forward plan: how the table comes to cover
 Japanese, how the sentence run is done on it, and what `preview2` is.
 [`training.md`](training.md) is how the table is trained today — scene
@@ -213,6 +222,7 @@ three) — do not trust a `line` / `corpus` eval on them.
 | path | what |
 |---|---|
 | `plan.md` | **the forward plan (rewritten 2026-09-21)** — covering Japanese (the joint piece ranking, the tables, the grid-mix recipe, multi-glyph units in the data, reading and merging a cold table), the sentence run (data and train argv, sizing, reading rules), and `preview2` for v2.0.0.beta2 |
+| `suggestions.md` | ideas worth a probe, not yet run (2026-09-22): the exposure audit of `step1_0921z` (equal draws, 152-step revisit interval, the always-on pull not scaling with table size), and nine probes — norm as cause (split `a·m̂` / residual gain), per-visit pull, effective-embedding mean-init, repair-before-add, two bubbles per scene, single-donor warm start, feature regression, narrowing the categorical-address reading, residual PCA — each with the fact it must get past and its falsifier |
 | `training.md` | **how the table is trained today** — what trains, scene pools, the data stage (scene singles + grid items, multi-glyph units, sharded builds, pre-training checks), the train knobs and the `step1_0921` argv, reading a table (eval, native, the rulers), merge / sentence run / bake, cost |
 | `sent_run.md` | **the sentence pass on one page** — every sentence run 09-16 → 09-20 with its read, what 09-20 measured (anchor μ as the trade knob, the habit shift, eval lift not reaching scene prompts, the `BoxSplit` log), the row-exposure read (content is gated per row at ≈ 1 000 multi-glyph draws; drift is Zipfian), the boost gate arm (**failed**: 8 rows at ≥ 1 000 draws gained −0.023, the partner's number; variety of strings per row is the reading left), reading rules |
 | `plan_z8.md` | **2026-09-21** — the logistics of `step1_0921z` on a borrowed 96 GB box for one night (Tailscale SSH, after hours only, done by 09:00 09-22): the 1 900-row cold table (≈ 85 % of dialogue lines with `step1_0921`, 152 k steps at ≈ 5.3 it/s), what is already built here, bring-up, the long run, what comes back; KO / ZH parked |

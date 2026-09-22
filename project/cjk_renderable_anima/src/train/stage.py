@@ -76,7 +76,18 @@ def stage_train(a):
     cache, train_ext, ev_ext = _encode_text(
         recs, ev, device, out, bool(a.pair_loss), te_cache=data / "te_cache"
     )
-    lat = LatentStore(a, data, recs_all, keep, device, ref=bool(a.pair_loss))
+    cf = float(a.cf_input or 0.0)
+    if cf > 0:
+        assert not a.pair_loss, "--cf_input composes with --pair_loss 0 only"
+        n_cf = sum("ref_file" in r for r in recs)
+        assert n_cf, "--cf_input needs a data dir built with --pair_ref"
+        print(
+            f"cf input: share {cf:g} of the {n_cf}/{len(recs)} items with a sibling "
+            "take x_σ from the sibling's render (idea.md); the rest stay plain FM",
+            flush=True,
+        )
+    lat = LatentStore(a, data, recs_all, keep, device, ref=bool(a.pair_loss) or cf > 0)
+    cf_rng = torch.Generator().manual_seed(a.seed + 23)
 
     anima = load_dit_model(args, device, torch.bfloat16)
     anima.requires_grad_(False)
@@ -143,6 +154,16 @@ def stage_train(a):
         )
 
     batcher = Batcher(a, recs, lat, cache=cache, delta=tr.delta)
+    band_multi = None
+    if a.t_band_multi:
+        lo, hi = (float(x) for x in a.t_band_multi.split(","))
+        assert 0.0 <= lo < hi <= 1.0, f"--t_band_multi {a.t_band_multi}"
+        band_multi = (lo, hi)
+        print(
+            f"σ band: single-glyph items [{a.t_min}, {a.t_max}], "
+            f"multi-glyph items [{lo}, {hi}]",
+            flush=True,
+        )
     pair_ema: dict = {}
     flat_ema: dict = {}
     log = []
@@ -174,6 +195,18 @@ def stage_train(a):
         is_scene = recs[idx[0]]["src"] == "scene"
         tr.set_source(flat=not is_scene)
         brecs = [recs[i] for i in idx]
+        if band_multi is not None:
+            # per-item σ band (cf_sense 2026-09-22): the caption's leverage on a
+            # multi-glyph string lives at σ 0.35–0.7, a single glyph's at
+            # 0.7–0.9. Same underlying draw, remapped into the item's band.
+            noisy, ts = _remap_band(
+                latents, noise, ts, brecs, (a.t_min, a.t_max), band_multi
+            )
+        cf_mask = None
+        if cf > 0 and all("ref_file" in r for r in brecs):
+            noisy, target, cf_mask = cf_batch(
+                latents, lat.ref(idx).to(device), noise, ts, noisy, target, cf, cf_rng
+            )
         bw = a.box_weight if is_scene else 1.0
         bs = a.box_share if is_scene else 0.0
         cap = a.box_share_cap
@@ -220,7 +253,7 @@ def stage_train(a):
             loss_fm = weighted_fm_loss(pred, target, brecs, bw, bs, cap)
         loss, decor_val = tr.regularized(loss_fm)
         if is_scene:
-            split.add(pred, target, brecs, ts)
+            split.add(pred, target, brecs, ts, cf_mask)
         if batcher.blocks:
             # per-row trajectory: the paired (or plain) residual split into
             # its in-box (glyph) and out-of-box (scene) mean squares, every
@@ -313,17 +346,18 @@ class BoxSplit:
     (scene) mean squares, per item, averaged over the steps between two log
     rows — a sentence box is ≈ 2 % of the canvas, so the logged ``loss`` cannot
     show an in-box change. ``in_box_hi`` / ``in_box_lo`` are the same in-box
-    mean over the items drawn at σ ≥ / < ``SIGMA_SPLIT``."""
+    mean over the items drawn at σ ≥ / < ``SIGMA_SPLIT``; ``in_box_cf`` /
+    ``in_box_pl`` split it by counterfactual vs plain input (``--cf_input``)."""
 
     SIGMA_SPLIT = 0.7
-    KEYS = ("in_box", "out_box", "in_box_hi", "in_box_lo")
+    KEYS = ("in_box", "out_box", "in_box_hi", "in_box_lo", "in_box_cf", "in_box_pl")
 
     def __init__(self):
         self.sum = {k: 0.0 for k in self.KEYS}
         self.n = {k: 0.0 for k in self.KEYS}
 
     @torch.no_grad()
-    def add(self, pred, target, recs, ts):
+    def add(self, pred, target, recs, ts, cf_mask=None):
         se = ((pred.float() - target.float()) ** 2).mean(dim=1, keepdim=True)
         m = _box_mask(se.shape, recs, se.device)
         n_in = m.sum(dim=(1, 2, 3))
@@ -333,12 +367,16 @@ class BoxSplit:
         )
         has = n_in > 0
         hi = has & (ts.float().view(-1).to(has.device) >= self.SIGMA_SPLIT)
-        for k, v, w in (
+        rows = [
             ("in_box", inb, has),
             ("out_box", outb, has),
             ("in_box_hi", inb, hi),
             ("in_box_lo", inb, has & ~hi),
-        ):
+        ]
+        if cf_mask is not None:
+            is_cf = cf_mask.view(-1).to(has.device)
+            rows += [("in_box_cf", inb, has & is_cf), ("in_box_pl", inb, has & ~is_cf)]
+        for k, v, w in rows:
             self.sum[k] = self.sum[k] + (v * w).sum()
             self.n[k] = self.n[k] + w.sum()
 
@@ -407,6 +445,55 @@ def _box_mask(se_shape, recs, device):
         x0, y0, x1, y1 = r["box"]
         m[b, :, y0 // 8 : -(-y1 // 8), x0 // 8 : -(-x1 // 8)] = 1.0
     return m
+
+
+def _glyph_count(text: str) -> int:
+    return sum(not c.isspace() for c in text)
+
+
+def _remap_band(latents, noise, ts, recs, band_single, band_multi):
+    """``--t_band_multi``: per-item σ band. ``ts`` came out of the trainer's
+    affine map into ``[t_min, t_max]`` (``band_single``); items with ≥ 2
+    glyphs are remapped, through the same underlying draw, into
+    ``band_multi``. The rectified-flow target ``ε − x0`` is σ-free, so only
+    the noisy input is rebuilt. Returns ``(noisy, ts)``."""
+    lo_s, hi_s = (band_single[0] or 0.0), (band_single[1] or 1.0)
+    lo_m, hi_m = band_multi
+    multi = torch.tensor(
+        [_glyph_count(r["text"]) >= 2 for r in recs], device=ts.device
+    )
+    u = (ts.float() - lo_s) / max(hi_s - lo_s, 1e-8)
+    ts_m = lo_m + u * (hi_m - lo_m)
+    ts = torch.where(multi, ts_m, ts.float()).to(ts.dtype)
+    sig = ts.float().view(-1, 1, 1, 1)
+    noisy = ((1.0 - sig) * latents.float() + sig * noise.float()).to(torch.bfloat16)
+    return noisy, ts
+
+
+def cf_batch(lat_a, lat_b, noise, ts, noisy, target, share: float, rng):
+    """Counterfactual-input FM (``idea.md`` § 1): for a Bernoulli(``share``)
+    subset of the batch the noisy input is built from the sibling's latent
+    ``x0_B`` under the batch's own ε and σ, while the target is the straight
+    line from that state to the item's own ``x0_A``:
+
+        x_σ = (1 − σ) x0_B + σ ε
+        target = (x_σ − x0_A) / σ = (ε − x0_A) + (1 − σ)/σ · (x0_B − x0_A)
+
+    — the plain target plus a correction along the glyph difference — so
+    ``x_σ − σ · target = x0_A``. The rest of the batch keeps the plain
+    ``(noisy, target)`` it came in with. Returns ``(noisy, target, cf_mask)``."""
+    B = lat_a.shape[0]
+    cf_mask = (torch.rand(B, generator=rng) < share).to(lat_a.device)
+    if not bool(cf_mask.any()):
+        return noisy, target, cf_mask
+    sig = ts.float().view(-1, 1, 1, 1).clamp(min=1e-3)
+    la, lb, nz = lat_a.float(), lat_b.float(), noise.float()
+    noisy_cf = (1.0 - sig) * lb + sig * nz
+    target_cf = (nz - la) + (1.0 - sig) / sig * (lb - la)
+    m = cf_mask.view(-1, 1, 1, 1)
+    noisy = torch.where(m, noisy_cf.to(noisy.dtype), noisy)
+    target = torch.where(m, target_cf.to(target.dtype), target)
+    return noisy, target, cf_mask
 
 
 def pair_branch(anima, lat, idx, noise, ts, cache, recs, device):

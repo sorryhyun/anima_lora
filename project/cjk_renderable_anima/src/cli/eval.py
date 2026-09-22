@@ -153,3 +153,37 @@ def classify_args(g):
         choices=["ja", "en"],
         help="classify_str: ja = kana strings of trained rows; en = nonsense two-word Latin strings (base-model order control)",
     )
+    g.add_argument(
+        "--cf_lang",
+        default="en",
+        choices=["en", "ja"],
+        help="cf_sense (idea.md Gate 0): en = nonsense Latin words, no ext id, the "
+        "ceiling of caption leverage; ja = the arm's trained single kana rows, "
+        "delta on (trained) and off (floor)",
+    )
+    g.add_argument(
+        "--cf_rows",
+        default="single",
+        choices=["single", "piece"],
+        help="cf_sense: single = single-glyph units (kana rows / one-word strings); "
+        "piece = the table's kana-only multi-glyph rows (id: two of one glyph count, "
+        "order: two concatenated vs swapped) / en two-word strings and a three-word "
+        "permutation",
+    )
+    g.add_argument(
+        "--cf_pairs",
+        type=int,
+        default=24,
+        help="cf_sense: (A, B) pairs per kind (id / order)",
+    )
+    g.add_argument(
+        "--cf_per_pair",
+        type=int,
+        default=1,
+        help="cf_sense: layouts rendered per pair",
+    )
+    g.add_argument(
+        "--cf_t",
+        default="0.35,0.5,0.6,0.7,0.8,0.9",
+        help="cf_sense: σ grid (DiT-scale) at which B's latent is noised",
+    )

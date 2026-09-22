@@ -32,6 +32,7 @@
    "eval",
    "classify",
    "classify_str",
+   "cf_sense",
    "native",
    "enref",
    "native_rescore",
@@ -1205,11 +1206,12 @@
   "default": "none",
   "choices": [
    "none",
-   "en"
+   "en",
+   "ja"
   ],
   "nargs": null,
   "type": "None",
-  "help": "data: ΔFM (plan_synth2) — draw a sibling of every composite by the same fit with a Latin string of the item's glyph count in the box (never the target's romaji letters); records gain ref_file / ref_text / ref_caption / ref_box and box becomes the union. The train stage's --pair_loss needs it; --pair_loss 0 on the same data dir is the control",
+  "help": "data: draw a sibling of every composite by the same fit — en: ΔFM (plan_synth2), a Latin string of the item's glyph count (never the target's romaji letters); ja (idea.md): a confusable JA unit of the same count from the run's own units (permutation / one-glyph swap). Records gain ref_file / ref_text / ref_caption / ref_box and box becomes the union. The train stage's --pair_loss or --cf_input needs it; --pair_loss 0 --cf_input 0 on the same data dir is the control",
   "action": "_StoreAction",
   "metavar": null,
   "required": false
@@ -1505,6 +1507,21 @@
  {
   "group": "train",
   "option_strings": [
+   "--t_band_multi"
+  ],
+  "dest": "t_band_multi",
+  "default": "",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "per-item σ band 'lo,hi' for items with ≥ 2 glyphs (--t_min/--t_max then cover single-glyph items only); cf_sense 2026-09-22: string leverage lives at 0.35–0.7, single-glyph at 0.7–0.9. '' = one band",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train",
+  "option_strings": [
    "--free_residual"
   ],
   "dest": "free_residual",
@@ -1543,6 +1560,21 @@
   "nargs": null,
   "type": "int",
   "help": "train: ΔFM (plan_synth2) — on composites, train on the difference between the item and its Latin sibling (data built with --pair_ref) under the same ε / σ: ‖(v(B) − sg v(A)) − (v*_B − v*_A)‖²_w; the sibling forward is no_grad (one more compiled graph per family, ≈ +1 forward per step). Log gains fm_plain / pres / ref_bias; `loss` is the paired term",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "train: S line (plan_synth)",
+  "option_strings": [
+   "--cf_input"
+  ],
+  "dest": "cf_input",
+  "default": 0.0,
+  "choices": null,
+  "nargs": null,
+  "type": "float",
+  "help": "train: counterfactual-input FM (idea.md) — with this probability per item the noisy input is built from the sibling's render (x_σ = (1−σ) x0_B + σ ε; data built with --pair_ref) while the caption and the target stay A's: target = (ε − x0_A) + (1−σ)/σ (x0_B − x0_A), so x_σ − σ·target = x0_A. The other items are plain FM. Log gains in_box_cf / in_box_pl. --pair_loss 0 only",
   "action": "_StoreAction",
   "metavar": null,
   "required": false
@@ -2428,6 +2460,87 @@
   "nargs": null,
   "type": "None",
   "help": "classify_str: ja = kana strings of trained rows; en = nonsense two-word Latin strings (base-model order control)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "classify / classify_str",
+  "option_strings": [
+   "--cf_lang"
+  ],
+  "dest": "cf_lang",
+  "default": "en",
+  "choices": [
+   "en",
+   "ja"
+  ],
+  "nargs": null,
+  "type": "None",
+  "help": "cf_sense (idea.md Gate 0): en = nonsense Latin words, no ext id, the ceiling of caption leverage; ja = the arm's trained single kana rows, delta on (trained) and off (floor)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "classify / classify_str",
+  "option_strings": [
+   "--cf_rows"
+  ],
+  "dest": "cf_rows",
+  "default": "single",
+  "choices": [
+   "single",
+   "piece"
+  ],
+  "nargs": null,
+  "type": "None",
+  "help": "cf_sense: single = single-glyph units (kana rows / one-word strings); piece = the table's kana-only multi-glyph rows (id: two of one glyph count, order: two concatenated vs swapped) / en two-word strings and a three-word permutation",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "classify / classify_str",
+  "option_strings": [
+   "--cf_pairs"
+  ],
+  "dest": "cf_pairs",
+  "default": 24,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "cf_sense: (A, B) pairs per kind (id / order)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "classify / classify_str",
+  "option_strings": [
+   "--cf_per_pair"
+  ],
+  "dest": "cf_per_pair",
+  "default": 1,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "cf_sense: layouts rendered per pair",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "classify / classify_str",
+  "option_strings": [
+   "--cf_t"
+  ],
+  "dest": "cf_t",
+  "default": "0.35,0.5,0.6,0.7,0.8,0.9",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "cf_sense: σ grid (DiT-scale) at which B's latent is noised",
   "action": "_StoreAction",
   "metavar": null,
   "required": false

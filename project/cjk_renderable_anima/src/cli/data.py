@@ -429,12 +429,14 @@ def data_synth_args(g):
     g.add_argument(
         "--pair_ref",
         default="none",
-        choices=["none", "en"],
-        help="data: ΔFM (plan_synth2) — draw a sibling of every composite by the "
-        "same fit with a Latin string of the item's glyph count in the box "
-        "(never the target's romaji letters); records gain ref_file / ref_text / "
-        "ref_caption / ref_box and box becomes the union. The train stage's "
-        "--pair_loss needs it; --pair_loss 0 on the same data dir is the control",
+        choices=["none", "en", "ja"],
+        help="data: draw a sibling of every composite by the same fit — en: ΔFM "
+        "(plan_synth2), a Latin string of the item's glyph count (never the "
+        "target's romaji letters); ja (idea.md): a confusable JA unit of the "
+        "same count from the run's own units (permutation / one-glyph swap). "
+        "Records gain ref_file / ref_text / ref_caption / ref_box and box becomes "
+        "the union. The train stage's --pair_loss or --cf_input needs it; "
+        "--pair_loss 0 --cf_input 0 on the same data dir is the control",
     )
     g.add_argument(
         "--pair_ref_pool",

@@ -73,7 +73,7 @@ def train_args(g):
         "--aggressive_recompute",
         type=int,
         default=1,
-        help="compile: partitioner aggressive recomputation (−VRAM, +~12 % s/it); 0 when memory allows",
+        help="compile: partitioner aggressive recomputation (−VRAM, +~12 %% s/it); 0 when memory allows",
     )
     g.add_argument(
         "--t_min",
@@ -82,6 +82,13 @@ def train_args(g):
         help="restrict FM timesteps (W2 σ-restriction lever; None = full range)",
     )
     g.add_argument("--t_max", type=float, default=None)
+    g.add_argument(
+        "--t_band_multi",
+        default="",
+        help="per-item σ band 'lo,hi' for items with ≥ 2 glyphs (--t_min/--t_max "
+        "then cover single-glyph items only); cf_sense 2026-09-22: string "
+        "leverage lives at 0.35–0.7, single-glyph at 0.7–0.9. '' = one band",
+    )
     # Read by BOTH arms: the encoder arm gates its per-row residual on it
     # (train/trainables._init_free) and the rows arm uses it as the μ‖f‖² pull on the
     # free rows (trainables.regularized) — every S-line run passes it.
@@ -115,6 +122,16 @@ def train_synth_args(g):
         "the same ε / σ: ‖(v(B) − sg v(A)) − (v*_B − v*_A)‖²_w; the sibling forward "
         "is no_grad (one more compiled graph per family, ≈ +1 forward per step). "
         "Log gains fm_plain / pres / ref_bias; `loss` is the paired term",
+    )
+    g.add_argument(
+        "--cf_input",
+        type=float,
+        default=0.0,
+        help="train: counterfactual-input FM (idea.md) — with this probability per "
+        "item the noisy input is built from the sibling's render (x_σ = (1−σ) x0_B "
+        "+ σ ε; data built with --pair_ref) while the caption and the target stay "
+        "A's: target = (ε − x0_A) + (1−σ)/σ (x0_B − x0_A), so x_σ − σ·target = x0_A. The "
+        "other items are plain FM. Log gains in_box_cf / in_box_pl. --pair_loss 0 only",
     )
     g.add_argument(
         "--pair_flat",
@@ -208,7 +225,7 @@ def rows_args(g):
         help="rows arm: μ on mean_r ‖f_r − f₀_r‖² over the rows --init_rows filled "
         "(f₀ = the warm start), replacing the --free_residual pull to 0 on those rows "
         "(rows the source never had keep it). 0 = off; inert without --init_rows. "
-        "Default 0.1 = the smallest μ that keeps ≥ 80 % of the source's singles "
+        "Default 0.1 = the smallest μ that keeps ≥ 80 %% of the source's singles "
         "(anchor sweep 2026-09-17); S2b runs 0.3. Its gradient is 0 at f = f₀, so "
         "pair it with --lr_warmup or the first steps still blow the rows away. Ruler: "
         "train_log `warm_cos` (mean cos of the warm rows to f₀)",

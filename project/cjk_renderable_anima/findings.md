@@ -293,8 +293,10 @@ the data mix.
   and the band is the same, so this is one tier, not "below 512²");
   balanced batches (FM
   loss is a batch mean, free rows only see their own items); rows lr 3e-3
-  (walks off-manifold at 2.4× row norm); `--t_max 0.6` (backwards —
-  identity is above it); adapter LoRA (`rows_adapter`: drifts EN, kept as
+  (walks off-manifold at 2.4× row norm); `--t_max 0.6` (backwards **for
+  singles** — identity is above it; for multi-glyph strings the caption's
+  leverage lives at 0.5–0.7, `cf_sense` 2026-09-22, unread in training);
+  adapter LoRA (`rows_adapter`: drifts EN, kept as
   the negative control); same-noise CE / swap hinge on free rows (fixes
   nothing combos-related); regressing rows onto existing embeddings or
   Latin letters; encoder-only generalisation (rank-1 table under every
@@ -343,6 +345,27 @@ the data mix.
   lifts it to 20 / 8 / 8 without closing the native gap (19 vs 36 of 64).
   **The 12-row "ΔFM beats plain" result does not survive to full
   inventory**; which loss the seed table takes is open (`plan_2026_09_20.md` (archived) S1a).
+- **The caption's leverage band moves with the box** (`cf_sense`,
+  2026-09-22, `reports/cf_sense_gate0_2026_09_22.md`): with B rendered and
+  noised, the caption moves the frozen DiT's x0-estimate toward A — for a
+  **single glyph / one word** by 0 / 1 / 5 % at σ 0.35 / 0.5 / 0.6 (native
+  Latin) and 0 / 0.2 / 0.5 % (trained kana rows), peaking ≈ 0.2 at σ 0.8
+  (EN 0.197, rows 0.155, untouched pack rows 0.000); for **native two-word
+  text** by 0.19 / 0.25 / 0.20 at 0.5 / 0.6 / 0.7 and ≈ 0 at 0.8–0.9, with
+  three-word order 0.26 at 0.5. So "identity is decided at σ ≈ 0.8" is the
+  single-glyph case; multi-token text is decided at 0.5–0.7. **The trained
+  multi-glyph rows have ≤ 0.06 at every σ** in the merged and sentence
+  tables — rows are live only where they were trained (singles at 0.7–0.9
+  → 78 % of the native ceiling at 0.8), and no multi-glyph row has been
+  trained at 0.5–0.7 without 0.8–0.9 in the band. Concatenated single rows
+  carry no order leverage at any σ. **Acted on the same day**
+  (`reports/step2_band2_2026_09_22.md`): a length-conditioned band (singles
+  0.7–0.9, multi-glyph 0.35–0.7, `--t_band_multi`) at 5 k steps beat the
+  30 k sentence run at 0.5–0.9 on every eval group, tied sub-exact
+  (+0.262 vs +0.233) and returned most of the single-glyph native the 30 k
+  run lost (en 22 vs 12, swap 16 vs 0); the multi rows moved 99.4 %
+  orthogonal to m̂ — the low band edits residuals, step1's high-σ direction
+  is inherited. The sentence run's band is now length-conditioned.
 
 ## Gotchas that cost time
 
@@ -377,6 +400,11 @@ the data mix.
 - A hard two-step curriculum (singles then strings) — each step bakes its
   unit count into the rows; mix instead.
 - Widening the σ band above 0.9 — nothing is decided there.
+- Any caption-side lever that trains **single glyphs** below σ 0.7
+  (counterfactual-input FM on singles, `--t_max 0.6` on singles, …) — the
+  caption has no leverage on a rendered single glyph there (`cf_sense`,
+  2026-09-22). Multi-glyph strings are the opposite case (decided at
+  0.5–0.7) and are open.
 - Raising `c_flat_cap` (or removing it) to "let the vector settle" — S0b
   measured the direction: the trigger follows the room.
 - Seeding rows or `c` from EN / quoted-EN codes, or a row-space

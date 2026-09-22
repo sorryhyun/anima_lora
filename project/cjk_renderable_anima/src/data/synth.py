@@ -45,7 +45,7 @@ from common.render.scene import region_capacity, render_into_scene
 from common.text import KANJI_RE, WORD_RE
 
 from .inventory import clean_kana_strings, corpus_lines, phrase_file_lines, pieces
-from .pair import RefPool
+from .pair import JaRefPool, RefPool
 
 
 def load_scenes(
@@ -347,8 +347,15 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
     recs: list[dict] = []
 
     # ΔFM (plan_synth2): every composite gets a Latin sibling by the same
-    # fit, and so does every flat item (one layout, two draws)
-    refs = RefPool(a.pair_ref_pool, rng) if a.pair_ref == "en" else None
+    # fit, and so does every flat item (one layout, two draws); ``ja``
+    # (idea.md, counterfactual input) draws a confusable JA unit instead
+    refs = (
+        RefPool(a.pair_ref_pool, rng)
+        if a.pair_ref == "en"
+        else JaRefPool(units, rng)
+        if a.pair_ref == "ja"
+        else None
+    )
 
     def flat(kind: str, src: str, i: int):
         s = draws[kind]()
@@ -539,7 +546,7 @@ def _pair_report(refs, recs):
     caps = len({r["ref_caption"] for r in paired})
     n_flat = sum(r["src"] != "scene" for r in paired)
     print(
-        f"pairs: {len(paired) - n_flat} composites + {n_flat} flat items with a Latin sibling, "
+        f"pairs: {len(paired) - n_flat} composites + {n_flat} flat items with a sibling, "
         f"{refs.n_strings()} reference strings, {caps} distinct reference captions",
         flush=True,
     )

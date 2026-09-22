@@ -30,8 +30,8 @@ ranking** of both
 | table | rows | what | steps | covered lines, cumulative | state |
 |---|---|---|---|---|---|
 | `step1_0921` | 374 | kana, `kana_ext`, small kana (in digraphs), 13 punctuation units, `kanji:200` | 30 k | 13.5 % | **done** — arm `rows_step1_0921_s30k` |
-| `step1_0921z` | 1 900 | cold ranks 1 – 1 900 of the joint list, re-cut against `step1_0921`'s `ext_ids`: 1 317 multi-glyph pieces + 583 kanji; 1 / 2 / 3 / 4 / 5 glyphs = 583 / 796 / 353 / 139 / 29 | 152 k | ≈ 85 % | data building; trains on the Z8 ([`plan_z8.md`](plan_z8.md)) |
-| next | ≈ 1 100 | the following ranks, to ≈ 3 000 | 88 k | ≈ 95 % | later, here |
+| `step1_0921z` | 1 900 | cold ranks 1 – 1 900 of the joint list, re-cut against `step1_0921`'s `ext_ids`: 1 317 multi-glyph pieces + 583 kanji; 1 / 2 / 3 / 4 / 5 glyphs = 583 / 796 / 353 / 139 / 29 | 152 k | ≈ 85 % | **done** 2026-09-22 — arm `rows_step1_0921z_s152k` (Z8, [`plan_z8.md`](plan_z8.md)); kanji 15/48, multi-glyph 3/144 as strings — under the gate, kept for coverage; merged → `rows_step1_0921m_merge` (2 274 rows) |
+| next | ≈ 1 100 | the following ranks, to ≈ 3 000 (≈ 430 kanji + 670 multi-glyph, 431 of them with kanji) | 88 k | ≈ 95 % | later, here — after § 1b's probe |
 | tail | ≈ 1 100 | the rest of the ranking | — | ≈ 98 % | later |
 
 Units of 6 + glyphs are left out of every cut (10 inside the first 1 900:
@@ -112,6 +112,63 @@ first thing to look for on the sheets. The eval set for this is owed
 arm dir. First read of the merged table: `step1_0921`'s 374 eval rows inside
 its rerun floor, and a native read.
 
+### 1b. Mean-init for every row not trained yet (idea, user 2026-09-22 — not run)
+
+**Why.** A caption that touches an untrained ext row breaks the whole picture,
+not just the bubble, so every JA piece outside the tables is a hazard until its
+rank is reached — and the rest is long and rare: cold ranks 1 901 – 3 000 are
+430 kanji + 670 multi-glyph pieces of which 431 contain kanji (78 % of the
+table has to draw a kanji; corpus counts 7 → 2), the cells `step1_0921z` read
+weakest on (kanji tail 3/24, multi-glyph tail 0/72; the read is in
+`rows_step1_0921z_s152k/`, builder `eval_build.py`).
+
+**The idea.** Fill every untrained JA row with the **mean of the trained rows
+of its type** (kanji / kana-only piece / piece with kanji / katakana, by glyph
+count if the means differ), then train the remaining ranks from that init at
+fewer steps per row.
+
+**What is already known** (`findings_seed.md`, merged-table geometry
+2026-09-22):
+
+- The mean is the shared direction: m̂ carries 20 – 27 % of row energy, the two
+  tables' m̂ have cos 0.855, residuals are near-orthogonal (class-block cos
+  0.03 – 0.05 after m̂ is out) so they cancel in a mean. A class mean has norm
+  ≈ 67 against a row's ≈ 149 — the scale is a knob of the probe.
+- **m̂ alone keeps the scene best of any cond** (transplant: en cos 0.920, IoU
+  0.31 against the table's 0.882 / 0.13) **and renders 0/64** — floor garble in
+  the bubble, scene intact. That is the failure wanted from an untrained row.
+- **It should not be expected to save steps.** `--pin_dir` (m̂ inherited,
+  residual trained) overlapped scratch at 500 and 2 000 steps: the budget is
+  the per-row identity, and m̂ is what a free row grows first anyway. The pin
+  froze the direction where this only initialises it, and pin 500 led `swap`
+  20 to 9, so the step question is low-odds, not closed.
+
+Probes that would change this plan (the exposure audit: equal draws, a 152-step
+revisit interval, the pull not scaling with table size; the split-gain read;
+the effective-embedding init) are in [`suggestions.md`](suggestions.md).
+
+**Order — micro arm first, no training:**
+
+1. Probe (≈ 15 min GPU): 12 – 16 untrained pieces from ranks 1 901 + (kanji,
+   piece with kanji, katakana), `native` under (a) no delta, (b) class mean,
+   (c) class mean scaled to a trained row's norm. Read en cos / box IoU: does
+   the picture survive, and at which norm.
+2. If it does: a table holding the init for every remaining JA row, merged
+   under the trained tables (`merge_tables.py`, trained rows win). This closes
+   the broken-picture hazard by itself and is independent of step 3.
+3. Separately, one variable against cold: the 1 100-row table from the init at
+   40 and at 80 steps per row.
+
+**How long "every JA row" is.** Corpus side: 4 132 cold pieces in the ranking,
+1 900 trained → 2 232 left (1 100 to 95.1 %, 1 132 more to 98.4 %). Pack side
+(30 951 Qwen-piece rows): kana-bearing pieces 2 053 (1 282 trained → **771
+left**; 1 / 2 / 3 / 4 / 5 / 6 + glyphs = 180 / 792 / 628 / 288 / 103 / 62),
+single han 8 502 (783 trained; shared with ZH — the JA share is the ≈ 2 100 –
+3 000 jōyō + jinmeiyō), multi-glyph han-only pieces 16 379 (199 trained;
+mostly Chinese words), Hangul 3 473. A mean-init costs nothing per row, so step
+2 can cover all of single han + kana-bearing (≈ 10 500 rows) without deciding
+which han are Japanese.
+
 ## 2. The sentence run
 
 **What it is for.** Step 1 gives rows that each draw their own unit. The
@@ -154,15 +211,34 @@ the old step count.
 ```
 --stage train eval native --arm rows --data_tag <tag> --shapes 512 \
 --init_rows output/wake_probe/<merged arm>/trained.pt --init_anchor 0.3 --lr_warmup 500 \
---train_steps <sized> --batch 4 --t_min 0.5 --t_max 0.9 --compile 1 --grad_ckpt 0 \
+--train_steps <sized> --batch 4 --t_min 0.7 --t_max 0.9 --t_band_multi 0.35,0.7 --compile 1 --grad_ckpt 0 \
 --lr_rows 1e-3 --lr_decay cosine --free_residual 1e-3 \
 --box_share 0.05 --box_share_cap 0.25 --c_flat 0 --pair_loss 0 \
 --eval_groups single,single_ext,single_small,single_kanji,short,short_held,phrase,phrase_held,en \
 --native_chars あ,か,す,日 --native_clauses en,swap --seeds 2 --delta_parts full --no_floor
 ```
 
+**The σ band is length-conditioned** (2026-09-22, `reports/step2_band2_2026_09_22.md`):
+single-glyph items at 0.7–0.9, multi-glyph at 0.35–0.7 — where `cf_sense` says
+the caption has leverage on each (`reports/cf_sense_gate0_2026_09_22.md`). The
+band alone, at 5 k steps, beat the 30 k run at 0.5–0.9 on every eval group and
+returned most of the single-glyph native it had lost; the multi rows move
+orthogonal to m̂, so step1's high-σ behaviour is inherited. Size the run at
+≈ 5 k, not 30 k.
+
 The anchor μ is the one trade knob: μ 0.3 → 0.1 bought +0.054 lift and halved
-single-glyph native each time. μ 0.3 first.
+single-glyph native each time — on the 0.5–0.9 band, where the string draws
+at 0.7–0.9 were also what cost the singles' native. **Running now: μ 0.1 on
+the new band, 5 k, otherwise band2's argv** (`20260922-143706-78a340`, arm
+`rows_step2_0921m_band2_mu01_0922`; its `--eval_tag sent` native is a
+separate launch after). **The decision on what the sentence run of record
+is — band2 at μ 0.3, μ 0.1, and at which length — waits on that read**: if
+μ 0.1 keeps the singles' native (en / swap ≥ band2's 22 / 16) it is the
+recipe and the run is sized from its `warm_cos` curve (30 k with a cosine
+tail moves the rows further than 5 k; the old 30 k run's "nothing after 5 k"
+was on the wrong band); if it halves them again, band2 at μ 0.3 is the
+recipe and length is the only open question. A 30 k band2 run was queued
+and withdrawn (`20260922-143615-70ac94`) for this read.
 
 **Reading it** (`sent_run.md` *Reading rules*): `src/probe/sub_exact.py`
 pooled lift with the `_held` groups, never exact match alone; single-glyph
@@ -200,8 +276,12 @@ before the sentence run, never after it.
 2. Z8 night: train `step1_0921z`, pull everything back ([`plan_z8.md`](plan_z8.md)).
 3. Read the cold table; merge; read the merged table.
 4. Sentence data on the merged inventory → size → the sentence run → its reads.
+   **Where it stands (2026-09-22):** the 30 k run at 0.5–0.9 is read; band2
+   (length-conditioned band, 5 k) beat it on every group; μ 0.1 on band2 is
+   running. Next decision — μ and run length — is made on the μ 0.1 read,
+   then one run of record.
 5. Bake `preview2`; v2.0.0.beta2.
-6. Ranks 1 901 – 3 000 here, whenever the GPU is free; KO / ZH stay parked
+6. § 1b's mean-init probe (no training), then ranks 1 901 – 3 000 here, whenever the GPU is free; KO / ZH stay parked
    (`plan_z8.md` *Parked*).
 
 ## Closed — do not re-propose
