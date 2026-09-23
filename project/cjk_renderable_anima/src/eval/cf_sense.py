@@ -14,6 +14,15 @@ with no ext id in any caption (the ceiling: text the model reads natively);
 ``ja`` runs the arm's trained rows, delta on (``trained``) and off (``floor``).
 Pairs are ``id`` (two units of one length) and, for 2-unit strings, ``order``
 (the permutation), so the read separates identity from order leverage.
+
+Size, layout and font are controlled per run (``plan_band.md`` Stage A):
+``--cf_glyph_px`` a list of glyph px cycled over the items (one pair at every
+px with ``--cf_per_pair`` = its length), ``--cf_layout`` ``mixed`` (the Gate 0
+draw: a bubble on 60 % of pairs, the bubble caption on all) / ``flat`` /
+``bubble`` / ``grid`` (the pair in the centre cell of a 3 × 3 flat grid, EN
+only), ``--cf_font`` a pinned font, ``--cf_text`` ``letter`` / ``word`` /
+``string2``. Every item records ``px`` / ``font`` / ``bubble`` / ``glyphs`` /
+``ink_a`` / ``ink_b`` so the report and ``probe/cf_rebin.py`` bin by them.
 """
 
 from __future__ import annotations
@@ -33,10 +42,22 @@ from common.models import (
     load_vae,
 )
 from common.paths import arm_dir
-from common.prompts import TPL_BUBBLE, TPL_EN, TPL_PLAIN
-from common.render.flat import find_fonts, pick_font, render_string, sample_layout
+from common.prompts import TPL_BUBBLE, TPL_EN, TPL_PLAIN, TPL_PLAIN_EN, grid_caption
+from common.render.flat import (
+    JITTER_BG_LIGHT,
+    find_fonts,
+    pick_font,
+    render_string,
+    sample_layout,
+)
+from common.render.ink import glyph_count, ink_pixels
+from common.shapes import wh
 from common.text import KANA
 from eval.classify import _en_word_pairs
+
+# --cf_layout → share of pairs drawn inside the flat renderer's ellipse
+_BUBBLE_FRAC = {"mixed": 0.6, "flat": 0.0, "bubble": 1.0}
+_LETTERS = "ABDEFGHKLMNPRSTUVWXYZ"  # no I / J / O / Q / C: a stroke, not a glyph
 
 
 def _ja_pairs(row_text: dict, rng: random.Random, n: int, piece: bool) -> list[dict]:
@@ -82,7 +103,9 @@ def _en_pairs(rng: random.Random, n: int, piece: bool) -> list[dict]:
             b1, b2 = t.split(" ")
             b1, b2 = (b1 * 3)[: len(a1)], (b2 * 3)[: len(a2)]
             out.append({"kind": "id", "a": f"{a1} {a2}", "b": f"{b1} {b2}"})
-            out.append({"kind": "order", "a": f"{a1} {a2} {b1}", "b": f"{a2} {a1} {b1}"})
+            out.append(
+                {"kind": "order", "a": f"{a1} {a2} {b1}", "b": f"{a2} {a1} {b1}"}
+            )
         return out
     for s in words:
         a, b = s.split(" ")
@@ -93,39 +116,192 @@ def _en_pairs(rng: random.Random, n: int, piece: bool) -> list[dict]:
     return out
 
 
-def _render_pair(p: dict, fonts, rng: random.Random, size, out: Path, i: int, en: bool):
-    """A and B on one layout / font; the box is where the two renders differ,
-    in latent cells (VAE 8×) padded by one cell."""
+def _letter_pairs(rng: random.Random, n: int) -> list[dict]:
+    """``--cf_text letter``: ``id`` pairs of two capital letters — the
+    one-glyph end of the size curve (a kana row's EN twin). No ``order``
+    pairs: a single glyph has no order."""
+    out, seen = [], set()
+    while len(out) < n:
+        a, b = rng.sample(_LETTERS, 2)
+        if (a, b) in seen:
+            continue
+        seen.add((a, b))
+        out.append({"kind": "id", "a": a, "b": b})
+    return out
+
+
+def _filler(rng: random.Random, like: str) -> str:
+    """A nonsense string of ``like``'s shape (a letter, or words of the same
+    lengths) for the grid cells around the pair — drawn once per pair, so A
+    and B differ in the centre cell only."""
+    cons, vow = "BDFGKLMNPRSTVZ", "AEIOU"
+    if len(like) == 1:
+        return rng.choice(_LETTERS)
+    words = []
+    for w in like.split(" "):
+        s = "".join(rng.choice(cons) + rng.choice(vow) for _ in range(-(-len(w) // 2)))
+        words.append(s[: len(w)])
+    return " ".join(words)
+
+
+def _diff_boxes(im_a, im_b):
+    """Pixel bbox where A and B differ, and the same box in latent cells
+    (VAE 8×) padded by one cell."""
     from PIL import ImageChops
 
-    lay = sample_layout(len(p["a"]), rng, size)
-    if en:
-        lay["vertical"] = False
-    font = pick_font(p["a"] + p["b"], fonts, rng)
-    im_a, bubble = render_string(
-        p["a"], font, rng, size=size, layout=lay, fit_text=p["b"]
-    )
-    im_b, _ = render_string(p["b"], font, rng, size=size, layout=lay, fit_text=p["a"])
-    fa, fb = out / "img" / f"{i:03d}_a.png", out / "img" / f"{i:03d}_b.png"
-    im_a.save(fa)
-    im_b.save(fb)
     x0, y0, x1, y1 = ImageChops.difference(im_a, im_b).getbbox() or (0, 0, *im_a.size)
     W, H = im_a.size
-    box = (
+    cells = (
         max(0, x0 // 8 - 1),
         max(0, y0 // 8 - 1),
         min(W // 8, -(-x1 // 8) + 1),
         min(H // 8, -(-y1 // 8) + 1),
     )
-    tpl = TPL_EN if en else (TPL_BUBBLE if bubble else TPL_PLAIN)
+    return (x0, y0, x1, y1), cells
+
+
+def _item(p, fa, fb, im_a, im_b, cap_a, cap_b, **fields) -> dict:
+    pbox, box = _diff_boxes(im_a, im_b)
     return {
         **p,
         "file_a": str(fa),
         "file_b": str(fb),
         "box": box,
-        "cap_a": tpl.format(p["a"]),
-        "cap_b": tpl.format(p["b"]),
+        "cap_a": cap_a,
+        "cap_b": cap_b,
+        "glyphs": glyph_count(p["a"]),
+        "ink_a": ink_pixels(im_a, pbox),
+        "ink_b": ink_pixels(im_b, pbox),
+        **fields,
     }
+
+
+def _render_pair(
+    p: dict,
+    fonts,
+    rng: random.Random,
+    size,
+    out: Path,
+    i: int,
+    en: bool,
+    layout: str = "mixed",
+    px: int | None = None,
+    font: str | None = None,
+):
+    """A and B on one layout / font; the box is where the two renders differ,
+    in latent cells (VAE 8×) padded by one cell.
+
+    The layout and font draws are consumed whatever ``layout`` / ``px`` /
+    ``font`` say, so the pair sequence of a run is the Gate 0 sequence for
+    the same seed and ``probe/cf_rebin.py`` can replay it."""
+    if layout == "grid":
+        return _render_pair_grid(p, fonts, rng, size, out, i, en, px, font)
+    lay = sample_layout(len(p["a"]), rng, size, bubble_frac=_BUBBLE_FRAC[layout])
+    if en:
+        lay["vertical"] = False
+    if px is not None:
+        lay["fs"] = int(px)
+    drawn = pick_font(p["a"] + p["b"], fonts, rng)
+    font_path = font or drawn
+    im_a, bubble = render_string(
+        p["a"], font_path, rng, size=size, layout=lay, fit_text=p["b"]
+    )
+    im_b, _ = render_string(
+        p["b"], font_path, rng, size=size, layout=lay, fit_text=p["a"]
+    )
+    fa, fb = out / "img" / f"{i:03d}_a.png", out / "img" / f"{i:03d}_b.png"
+    im_a.save(fa)
+    im_b.save(fb)
+    if en:
+        # ``mixed`` keeps the Gate 0 caption (the bubble template on every
+        # pair); the controlled layouts caption what was drawn
+        tpl = TPL_EN if (layout == "mixed" or bubble) else TPL_PLAIN_EN
+    else:
+        tpl = TPL_BUBBLE if bubble else TPL_PLAIN
+    return _item(
+        p,
+        fa,
+        fb,
+        im_a,
+        im_b,
+        tpl.format(p["a"]),
+        tpl.format(p["b"]),
+        layout=layout,
+        bubble=bool(bubble),
+        px=int(lay["fs"]),
+        font=Path(font_path).stem,
+    )
+
+
+def _render_pair_grid(p, fonts, rng, size, out, i, en, px, font):
+    """The pair in the centre cell of a 3 × 3 flat grid (the data stage's
+    ``--grid 3x3`` frame and caption: one position clause per cell), the
+    eight other cells holding fillers of the pair's shape, identical in A
+    and B. ``px`` is the asked glyph px; a cell that cannot hold it shrinks
+    (the ``render_grid`` rule) and the item records the px drawn."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    assert en, "cf_sense --cf_layout grid is the EN ceiling probe"
+    W, H = wh(size)
+    cols = rows = 3
+    cw, ch = W / cols, H / rows
+    font_path = font or pick_font(p["a"] + p["b"], fonts, rng)
+    fill = [_filler(rng, p["a"]) for _ in range(cols * rows - 1)]
+    bg = rng.choice(JITTER_BG_LIGHT)
+    # the data stage's --grid_fill 0.5–0.8 band when no px is asked
+    fs0 = int(px) if px is not None else int(rng.uniform(0.5, 0.8) * min(cw, ch))
+    room = 0.9 * min(cw, ch)
+    d0 = ImageDraw.Draw(Image.new("RGB", (W, H), bg))
+
+    def fit(texts, fs):
+        while True:
+            f = ImageFont.truetype(font_path, fs, index=0)
+            bxs = [d0.textbbox((0, 0), t, font=f) for t in texts]
+            tw = max(b[2] - b[0] for b in bxs)
+            th = max(b[3] - b[1] for b in bxs)
+            if (tw <= room and th <= room) or fs <= 12:
+                return fs
+            fs = max(12, int(fs * min(room / tw, room / th) * 0.98))
+
+    fs_cells = [fit([t], fs0) for t in fill]
+    fs_mid = fit([p["a"], p["b"]], fs0)  # the max extent, as fit_text does
+
+    def draw(mid):
+        im = Image.new("RGB", (W, H), bg)
+        d = ImageDraw.Draw(im)
+        units = fill[:4] + [mid] + fill[4:]
+        for k, u in enumerate(units):
+            r, c = divmod(k, cols)
+            fs = fs_mid if k == 4 else fs_cells[k if k < 4 else k - 1]
+            f = ImageFont.truetype(font_path, fs, index=0)
+            bx = d.textbbox((0, 0), u, font=f)
+            tw, th = bx[2] - bx[0], bx[3] - bx[1]
+            d.text(
+                (c * cw + cw / 2 - tw / 2 - bx[0], r * ch + ch / 2 - th / 2 - bx[1]),
+                u,
+                fill="black",
+                font=f,
+            )
+        return im, units
+
+    im_a, units_a = draw(p["a"])
+    im_b, units_b = draw(p["b"])
+    fa, fb = out / "img" / f"{i:03d}_a.png", out / "img" / f"{i:03d}_b.png"
+    im_a.save(fa)
+    im_b.save(fb)
+    return _item(
+        p,
+        fa,
+        fb,
+        im_a,
+        im_b,
+        grid_caption("flat", cols, rows, units_a, lang="english"),
+        grid_caption("flat", cols, rows, units_b, lang="english"),
+        layout="grid",
+        bubble=False,
+        px=int(fs_mid),
+        font=Path(font_path).stem,
+    )
 
 
 def _box_slice(box):
@@ -139,16 +315,30 @@ def stage_cf_sense(a):
 
     en = a.cf_lang == "en"
     piece = a.cf_rows == "piece"
+    layout = a.cf_layout
+    text = a.cf_text if a.cf_text != "auto" else ("string2" if piece else "word")
+    assert en or a.cf_text == "auto", (
+        "--cf_text shapes the EN pairs; ja pairs are the rows"
+    )
+    assert layout != "grid" or en, "cf_sense --cf_layout grid is the EN ceiling probe"
+    px_list = [int(x) for x in a.cf_glyph_px.split(",") if x.strip()]
+    font = a.cf_font or None
     name = (
         f"cf_sense_{a.cf_lang}"
         + ("_piece" if piece else "")
+        + (f"_{layout}" if layout != "mixed" else "")
+        + (f"_{text}" if a.cf_text != "auto" else "")
+        + (f"_{Path(font).stem}" if font else "")
         + (f"_{a.eval_tag}" if a.eval_tag else "")
     )
     out = arm_dir(a) / name
     (out / "img").mkdir(parents=True, exist_ok=True)
     rng = random.Random(30_000 + a.seed)
     if en:
-        pairs = _en_pairs(rng, a.cf_pairs, piece)
+        if text == "letter":
+            pairs = _letter_pairs(rng, a.cf_pairs)
+        else:
+            pairs = _en_pairs(rng, a.cf_pairs, text == "string2")
         conds = ("base",)
     else:
         sd = load_trained(arm_dir(a))
@@ -165,11 +355,19 @@ def stage_cf_sense(a):
     items = []
     for i, p in enumerate(pairs):
         for j in range(a.cf_per_pair):
-            items.append(_render_pair(p, fonts, rng, a.train_size, out, len(items), en))
+            # px cycles over the items, so --cf_per_pair = len(px_list) gives
+            # every pair every px
+            px = px_list[len(items) % len(px_list)] if px_list else None
+            items.append(
+                _render_pair(
+                    p, fonts, rng, a.train_size, out, len(items), en, layout, px, font
+                )
+            )
     print(
-        f"cf_sense {a.cf_lang} {a.cf_rows}: {len(items)} pairs "
+        f"cf_sense {a.cf_lang} {a.cf_rows} {layout} {text}: {len(items)} pairs "
         f"({sum(it['kind'] == 'id' for it in items)} id, "
-        f"{sum(it['kind'] == 'order' for it in items)} order)",
+        f"{sum(it['kind'] == 'order' for it in items)} order); "
+        f"px {sorted({it['px'] for it in items})}, fonts {sorted({it['font'] for it in items})}",
         flush=True,
     )
 
@@ -236,8 +434,27 @@ def stage_cf_sense(a):
                     )
     del anima
     torch.cuda.empty_cache()
+    meta = {
+        "lang": a.cf_lang,
+        "rows": a.cf_rows,
+        "layout": layout,
+        "text": text,
+        "font": font,
+        "glyph_px": px_list,
+        "seed": a.seed,
+        "cf_pairs": a.cf_pairs,
+        "cf_per_pair": a.cf_per_pair,
+        "size": a.train_size,
+    }
     torch.save(
-        {"pos": pos, "leak": leak, "sigmas": sigmas, "conds": conds, "items": items},
+        {
+            "pos": pos,
+            "leak": leak,
+            "sigmas": sigmas,
+            "conds": conds,
+            "items": items,
+            "meta": meta,
+        },
         out / "cf_sense.pt",
     )
     _report(out, pos, leak, sigmas, conds, items, a.cf_lang)
@@ -272,6 +489,35 @@ def _report(out: Path, pos, leak, sigmas, conds, items, lang):
                     f"{mv.median():+.3f} | {(mv > 0.25).float().mean():.2f} | "
                     f"{p[:, 0].mean():+.3f} | {p[:, 1].mean():+.3f} | "
                     f"{leak[ci, sel, si].mean():.3f} |"
+                )
+        L.append("")
+    for key, title in (("px", "glyph px"), ("font", "font")):
+        vals = sorted({it.get(key) for it in items if it.get(key) is not None})
+        if len(vals) < 2:
+            continue
+        L += [
+            f"## By {title} (first cond, mean move; peak = argmax σ)",
+            "",
+            f"| kind | {title} | n | ink/glyph cells² | "
+            + " | ".join(f"{s:.2f}" for s in sigmas)
+            + " | peak |",
+            "|---|---|---|---|" + "---|" * len(sigmas) + "---|",
+        ]
+        for kind in kinds:
+            for v in vals:
+                sel = torch.tensor(
+                    [it["kind"] == kind and it.get(key) == v for it in items]
+                )
+                if not sel.any():
+                    continue
+                mv = (pos[0, sel, :, 0] - pos[0, sel, :, 1]).mean(dim=0)
+                ink = torch.tensor(
+                    [it["ink_a"] / max(it["glyphs"], 1) / 64 for it in items]
+                )[sel]
+                L.append(
+                    f"| {kind} | {v} | {int(sel.sum())} | {ink.median():.1f} | "
+                    + " | ".join(f"{float(x):+.3f}" for x in mv)
+                    + f" | {sigmas[int(mv.argmax())]:.2f} |"
                 )
         L.append("")
     L += [

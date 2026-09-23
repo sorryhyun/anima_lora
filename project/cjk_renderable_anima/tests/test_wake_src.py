@@ -475,3 +475,99 @@ def test_units_list_file(tmp_path):
     assert src.units == ["って", "じゃ"] and src.spec() == f"list:@{f}*1"
     (src,) = parse_units([f"list:、,@{f},！！"])
     assert src.units == ["、", "って", "じゃ", "！！"]
+
+
+def test_ink_pixels_reads_glyph_ink_on_any_background():
+    """``ink_pixels``: the count is the glyph's own pixels whether the box sits
+    on a light canvas or a dark one (the background is the ring outside the
+    box, not a fixed dark rule), and an empty box reads 0."""
+    from PIL import Image, ImageDraw
+
+    from common.render.ink import ink_pixels
+
+    for bg, ink in (("white", "black"), ((20, 20, 20), (240, 240, 240))):
+        im = Image.new("RGB", (128, 128), bg)
+        ImageDraw.Draw(im).rectangle((40, 40, 79, 79), fill=ink)  # 40 × 40 = 1 600
+        assert ink_pixels(im, (30, 30, 90, 90)) == 1600
+        assert ink_pixels(im, (0, 0, 20, 20)) == 0
+
+
+def test_cf_sense_controlled_pairs(tmp_path):
+    """plan_band Stage A knobs: ``flat`` draws no bubble and captions plain,
+    ``bubble`` draws one and captions it, ``px`` and the pinned font are what
+    the item records, and ``grid`` puts the pair (only) in the centre cell
+    under the 3x3 grid caption. The layout / font draws are consumed whatever
+    the knobs say, so the rng stream after a controlled pair equals the
+    stream after a ``mixed`` one."""
+    import random
+
+    from common.prompts import GRID_FRAMES, TPL_EN, TPL_PLAIN_EN
+    from common.render.flat import find_fonts
+    from eval.cf_sense import _letter_pairs, _render_pair
+
+    fonts = find_fonts()
+    (tmp_path / "img").mkdir()
+    p = {"kind": "id", "a": "RENO", "b": "PANU"}
+    it = _render_pair(
+        p, fonts, random.Random(3), 512, tmp_path, 0, True, "flat", 48, fonts[0]
+    )
+    assert not it["bubble"] and it["px"] == 48 and it["font"] == Path(fonts[0]).stem
+    assert it["cap_a"] == TPL_PLAIN_EN.format("RENO") and it["ink_a"] > 0
+    assert it["glyphs"] == 4
+    it = _render_pair(
+        p, fonts, random.Random(3), 512, tmp_path, 1, True, "bubble", 48, fonts[0]
+    )
+    assert it["bubble"] and it["cap_a"] == TPL_EN.format("RENO")
+    it = _render_pair(
+        p, fonts, random.Random(3), 512, tmp_path, 2, True, "grid", 32, fonts[0]
+    )
+    x0, y0, x1, y1 = it[
+        "box"
+    ]  # latent cells, 3x3 on 512²: the centre cell is px 170–341
+    assert 20 <= x0 and x1 <= 44 and 20 <= y0 and y1 <= 44, it["box"]
+    assert it["px"] == 32 and it["cap_a"].startswith(
+        GRID_FRAMES["flat"].format(lang="english")
+    )
+    assert 'In the center, English text reads as "RENO".' in it["cap_a"]
+    assert 'In the center, English text reads as "PANU".' in it["cap_b"]
+    # the same fillers around A and B
+    assert it["cap_a"].replace("RENO", "") == it["cap_b"].replace("PANU", "")
+    r_mixed, r_ctrl = random.Random(5), random.Random(5)
+    _render_pair(p, fonts, r_mixed, 512, tmp_path, 3, True)
+    _render_pair(p, fonts, r_ctrl, 512, tmp_path, 4, True, "flat", 24, fonts[0])
+    assert r_mixed.random() == r_ctrl.random()
+    pairs = _letter_pairs(random.Random(0), 12)
+    assert len(pairs) == 12 and len({(q["a"], q["b"]) for q in pairs}) == 12
+    assert all(len(q["a"]) == 1 and q["a"] != q["b"] for q in pairs)
+
+
+def test_ink_stats_annotates_boxed_records(tmp_path):
+    """The data build's ``_ink_stats``: scene-style ``box`` and grid-style
+    ``boxes`` records get ``glyphs`` / ``ink`` / ``box_area``; a record with
+    no box is left alone."""
+    from PIL import Image, ImageDraw
+
+    from data.stage import _ink_stats
+
+    im = Image.new("RGB", (64, 64), "white")
+    ImageDraw.Draw(im).rectangle((10, 10, 19, 19), fill="black")  # 100 px
+    ImageDraw.Draw(im).rectangle((40, 40, 49, 49), fill="black")  # 100 px
+    fn = tmp_path / "a.png"
+    im.save(fn)
+    recs = [
+        {"file": str(fn), "text": "あい", "kind": "scene", "box": [5, 5, 25, 25]},
+        {
+            "file": str(fn),
+            "text": "あ い",
+            "kind": "grid3x3",
+            "units": ["あ", "い"],
+            "boxes": [[8, 8, 22, 22], [38, 38, 52, 52]],
+        },
+        {"file": str(fn), "text": "x", "kind": "font"},
+    ]
+    med = _ink_stats(recs)
+    assert (
+        recs[0]["ink"] == 100 and recs[0]["glyphs"] == 2 and recs[0]["box_area"] == 400
+    )
+    assert recs[1]["ink"] == 200 and recs[1]["glyphs"] == 2
+    assert "ink" not in recs[2] and set(med) == {"scene", "grid3x3"}

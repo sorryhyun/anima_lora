@@ -1469,7 +1469,7 @@
   "choices": null,
   "nargs": null,
   "type": "int",
-  "help": "compile: partitioner aggressive recomputation (−VRAM, +~12 % s/it); 0 when memory allows",
+  "help": "compile: partitioner aggressive recomputation (−VRAM, +~12 %% s/it); 0 when memory allows",
   "action": "_StoreAction",
   "metavar": null,
   "required": false
@@ -1757,7 +1757,7 @@
   "choices": null,
   "nargs": null,
   "type": "float",
-  "help": "rows arm: μ on mean_r ‖f_r − f₀_r‖² over the rows --init_rows filled (f₀ = the warm start), replacing the --free_residual pull to 0 on those rows (rows the source never had keep it). 0 = off; inert without --init_rows. Default 0.1 = the smallest μ that keeps ≥ 80 % of the source's singles (anchor sweep 2026-09-17); S2b runs 0.3. Its gradient is 0 at f = f₀, so pair it with --lr_warmup or the first steps still blow the rows away. Ruler: train_log `warm_cos` (mean cos of the warm rows to f₀)",
+  "help": "rows arm: μ on mean_r ‖f_r − f₀_r‖² over the rows --init_rows filled (f₀ = the warm start), replacing the --free_residual pull to 0 on those rows (rows the source never had keep it). 0 = off; inert without --init_rows. Default 0.1 = the smallest μ that keeps ≥ 80 %% of the source's singles (anchor sweep 2026-09-17); S2b runs 0.3. Its gradient is 0 at f = f₀, so pair it with --lr_warmup or the first steps still blow the rows away. Ruler: train_log `warm_cos` (mean cos of the warm rows to f₀)",
   "action": "_StoreAction",
   "metavar": null,
   "required": false
@@ -2541,6 +2541,76 @@
   "nargs": null,
   "type": "None",
   "help": "cf_sense: σ grid (DiT-scale) at which B's latent is noised",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "classify / classify_str",
+  "option_strings": [
+   "--cf_layout"
+  ],
+  "dest": "cf_layout",
+  "default": "mixed",
+  "choices": [
+   "mixed",
+   "flat",
+   "bubble",
+   "grid"
+  ],
+  "nargs": null,
+  "type": "None",
+  "help": "cf_sense (plan_band Stage A): mixed = the Gate 0 draw (an ellipse bubble on 60 %% of pairs, the bubble caption on all); flat = no bubble, plain caption; bubble = every pair in the ellipse; grid = the pair in the centre cell of a 3x3 flat grid with the grid caption (EN only)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "classify / classify_str",
+  "option_strings": [
+   "--cf_glyph_px"
+  ],
+  "dest": "cf_glyph_px",
+  "default": "",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "cf_sense: glyph px list (e.g. 24,32,48,64,96,128) cycled over the items and recorded per item — --cf_per_pair = its length gives every pair every px. Empty = the layout's own draw (110–200 px singles, 320/n–400/n strings)",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "classify / classify_str",
+  "option_strings": [
+   "--cf_font"
+  ],
+  "dest": "cf_font",
+  "default": "",
+  "choices": null,
+  "nargs": null,
+  "type": "None",
+  "help": "cf_sense: pin one font file for every pair (the Light-vs-Black ink axis). Empty = one draw per pair among the fonts that cover the text",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "classify / classify_str",
+  "option_strings": [
+   "--cf_text"
+  ],
+  "dest": "cf_text",
+  "default": "auto",
+  "choices": [
+   "auto",
+   "letter",
+   "word",
+   "string2"
+  ],
+  "nargs": null,
+  "type": "None",
+  "help": "cf_sense EN pair shape: letter = two capitals (id only); word = one nonsense word (+ the two-word order pair); string2 = two-word strings (+ the three-word order pair). auto = word for --cf_rows single, string2 for piece",
   "action": "_StoreAction",
   "metavar": null,
   "required": false

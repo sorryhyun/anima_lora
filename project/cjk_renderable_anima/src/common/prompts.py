@@ -24,6 +24,11 @@ TPL_PLAIN = (
     'japanese text, white background, simple background. Japanese text reads as "{}".'
 )
 TPL_EN = 'manga, speech bubble, english text. English text reads as "{}".'
+# cf_sense --cf_layout flat: the EN twin of TPL_PLAIN (no bubble drawn, none
+# captioned)
+TPL_PLAIN_EN = (
+    'english text, white background, simple background. English text reads as "{}".'
+)
 # S-line composite: the scene's own tag caption (``english text`` →
 # ``japanese text``) + the trained clause shape
 TPL_SCENE_JA = '{tags}. Japanese text reads as "{text}".'

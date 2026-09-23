@@ -169,6 +169,7 @@ def stage_data(a):
         # the dropped kana rows back into the trained table through the captions
         recs += _corpus_recs(a, rng, inv, shapes, out, first_layout_id=len(recs))
 
+    _ink_stats(recs)
     (out / "train.jsonl").write_text(
         "\n".join(json.dumps(r, ensure_ascii=False) for r in recs)
     )
@@ -190,6 +191,50 @@ def stage_data(a):
         cs = Counter("x".join(map(str, r["shape"])) for r in recs)
         print(f"shapes: {dict(sorted(cs.items()))}", flush=True)
     _train_sheet(a, rng, recs, out)
+
+
+def _ink_stats(recs) -> dict:
+    """plan_band § 3: every boxed record gets ``glyphs`` / ``ink`` (ink px
+    inside its box(es)) / ``box_area`` (px²), and the build prints, per
+    kind, the median (p10–p90) glyph px — √(box area / glyphs) — and ink per
+    glyph in latent cells² (ink px / 64 / glyphs). An arm runs only if the
+    median px lands in its cell's target ± 20 %. Returns ``{kind: (px, ink)}``
+    medians for tests."""
+    import statistics as st
+
+    from PIL import Image
+
+    from common.render.ink import box_area, glyph_count, ink_pixels
+
+    px_by, ink_by = {}, {}
+    for r in recs:
+        boxes = r.get("boxes") or ([r["box"]] if r.get("box") else None)
+        if not boxes:
+            continue
+        units = r.get("units") or [r["text"]]
+        glyphs = max(1, sum(glyph_count(u) for u in units))
+        with Image.open(r["file"]) as im:
+            g = im.convert("L")
+            ink = sum(ink_pixels(g, b) for b in boxes)
+        area = sum(box_area(b) for b in boxes)
+        r["glyphs"], r["ink"], r["box_area"] = glyphs, ink, area
+        px_by.setdefault(r["kind"], []).append((area / glyphs) ** 0.5)
+        ink_by.setdefault(r["kind"], []).append(ink / 64 / glyphs)
+
+    def q(xs):
+        xs = sorted(xs)
+        p10, p90 = xs[int(0.1 * (len(xs) - 1))], xs[int(0.9 * (len(xs) - 1))]
+        return f"{st.median(xs):.0f} ({p10:.0f}–{p90:.0f})"
+
+    out = {}
+    for kind in sorted(px_by):
+        out[kind] = (st.median(px_by[kind]), st.median(ink_by[kind]))
+        print(
+            f"ink {kind}: n {len(px_by[kind])}, glyph px {q(px_by[kind])}, "
+            f"ink/glyph cells² {q(ink_by[kind])}",
+            flush=True,
+        )
+    return out
 
 
 # ----------------------------------------------------------------------------

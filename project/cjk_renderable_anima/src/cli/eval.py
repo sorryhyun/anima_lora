@@ -187,3 +187,35 @@ def classify_args(g):
         default="0.35,0.5,0.6,0.7,0.8,0.9",
         help="cf_sense: σ grid (DiT-scale) at which B's latent is noised",
     )
+    g.add_argument(
+        "--cf_layout",
+        default="mixed",
+        choices=["mixed", "flat", "bubble", "grid"],
+        help="cf_sense (plan_band Stage A): mixed = the Gate 0 draw (an ellipse "
+        "bubble on 60 %% of pairs, the bubble caption on all); flat = no bubble, "
+        "plain caption; bubble = every pair in the ellipse; grid = the pair in "
+        "the centre cell of a 3x3 flat grid with the grid caption (EN only)",
+    )
+    g.add_argument(
+        "--cf_glyph_px",
+        default="",
+        help="cf_sense: glyph px list (e.g. 24,32,48,64,96,128) cycled over the "
+        "items and recorded per item — --cf_per_pair = its length gives every "
+        "pair every px. Empty = the layout's own draw (110–200 px singles, "
+        "320/n–400/n strings)",
+    )
+    g.add_argument(
+        "--cf_font",
+        default="",
+        help="cf_sense: pin one font file for every pair (the Light-vs-Black ink "
+        "axis). Empty = one draw per pair among the fonts that cover the text",
+    )
+    g.add_argument(
+        "--cf_text",
+        default="auto",
+        choices=["auto", "letter", "word", "string2"],
+        help="cf_sense EN pair shape: letter = two capitals (id only); word = "
+        "one nonsense word (+ the two-word order pair); string2 = two-word "
+        "strings (+ the three-word order pair). auto = word for --cf_rows single, "
+        "string2 for piece",
+    )
