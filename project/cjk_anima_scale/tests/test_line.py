@@ -108,7 +108,7 @@ def test_stage_configs_load_and_chain():
     assert cfgs["stage0309"].warm_table("t") == arm_dir("stage0305", "t") / "trained.pt"
     w = cfgs["stage0709"].warm_table("t")
     assert (
-        w is not None and w.name == "trained.pt" and "rows_step1_0921m_merge" in str(w)
+        w is not None and w.name == "trained.pt" and "rows_step1_0921_merged" in str(w)
     )
     for c in cfgs.values():
         assert abs(sum(m.share for m in c.mix) - 1) < 1e-9

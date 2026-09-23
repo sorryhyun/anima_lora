@@ -5,7 +5,7 @@
     scale.py --stage stage0507 --tag t1 --steps train eval          # warm from stage0709/t1
     scale.py --stage stage0709 --tag t1 --steps bake
     scale.py --stage stage0507 --tag bp --steps data boxprobe --n_items 240
-        --warm_from output/cjk_anima_scale/rows_step1_0921m_merge/trained.pt   # gradient read, no training
+        --warm_from output/cjk_anima_scale/rows_step1_0921_merged/trained.pt   # gradient read, no training
     scale.py windows                                               # the band law
     scale.py stages                                                # the configs
 

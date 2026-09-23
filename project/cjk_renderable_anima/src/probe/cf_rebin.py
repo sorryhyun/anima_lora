@@ -14,7 +14,7 @@ box (a JA run gets ink and glyphs this way too; its px stays unknown).
 
     .venv/bin/python project/cjk_renderable_anima/src/probe/cf_rebin.py \\
         output/wake_probe/rows_step1_0921_s30k/cf_sense_en/cf_sense.pt \\
-        output/wake_probe/rows_step1_0921m_merge/cf_sense_en_piece/cf_sense.pt
+        output/wake_probe/rows_step1_0921_merged/cf_sense_en_piece/cf_sense.pt
 
 Bins: px {<40, 40–60, 60–100, 100–140, ≥140}, ink/glyph cells² {<4, 4–8,
 8–16, 16–32, 32–64, ≥64} (the plan's § 1 edges), font (exact), bubble.

@@ -1,4 +1,4 @@
-# micro_cf_0922 (idea.md Gates 1-2): 16 untrained kana-only multi-glyph pieces (8 hiragana + 8 katakana), ranks 1901+ of reports/piece_coverage_ranked_2026_09_21.tsv, single Qwen piece each, not in rows_step1_0921m_merge
+# micro_cf_0922 (idea.md Gates 1-2): 16 untrained kana-only multi-glyph pieces (8 hiragana + 8 katakana), ranks 1901+ of reports/piece_coverage_ranked_2026_09_21.tsv, single Qwen piece each, not in rows_step1_0921_merged
 # piece	count	class	glyphs	ext_id	src_rank
 かつ	7	multi	2	27168	1994
 からない	7	multi	4	26088	1995

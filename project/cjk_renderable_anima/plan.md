@@ -30,7 +30,7 @@ ranking** of both
 | table | rows | what | steps | covered lines, cumulative | state |
 |---|---|---|---|---|---|
 | `step1_0921` | 374 | kana, `kana_ext`, small kana (in digraphs), 13 punctuation units, `kanji:200` | 30 k | 13.5 % | **done** — arm `rows_step1_0921_s30k` |
-| `step1_0921z` | 1 900 | cold ranks 1 – 1 900 of the joint list, re-cut against `step1_0921`'s `ext_ids`: 1 317 multi-glyph pieces + 583 kanji; 1 / 2 / 3 / 4 / 5 glyphs = 583 / 796 / 353 / 139 / 29 | 152 k | ≈ 85 % | **done** 2026-09-22 — arm `rows_step1_0921z_s152k` (Z8, [`plan_z8.md`](plan_z8.md)); kanji 15/48, multi-glyph 3/144 as strings — under the gate, kept for coverage; merged → `rows_step1_0921m_merge` (2 274 rows) |
+| `step1_0921z` | 1 900 | cold ranks 1 – 1 900 of the joint list, re-cut against `step1_0921`'s `ext_ids`: 1 317 multi-glyph pieces + 583 kanji; 1 / 2 / 3 / 4 / 5 glyphs = 583 / 796 / 353 / 139 / 29 | 152 k | ≈ 85 % | **done** 2026-09-22 — arm `rows_step1_0921z_s152k` (Z8, [`plan_z8.md`](plan_z8.md)); kanji 15/48, multi-glyph 3/144 as strings — under the gate, kept for coverage; merged → `rows_step1_0921_merged` (2 274 rows) |
 | next | ≈ 1 100 | the following ranks, to ≈ 3 000 (≈ 430 kanji + 670 multi-glyph, 431 of them with kanji) | 88 k | ≈ 95 % | later, here — after § 1b's probe |
 | tail | ≈ 1 100 | the rest of the ranking | — | ≈ 98 % | later |
 

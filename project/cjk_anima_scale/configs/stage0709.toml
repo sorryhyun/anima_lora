@@ -7,7 +7,7 @@ stage = "stage0709"
 band = [0.7, 0.9]
 gate = "contain"
 min_overlap = 0.8
-warm_from = "output/cjk_anima_scale/rows_step1_0921m_merge/trained.pt"
+warm_from = "output/cjk_anima_scale/rows_step1_0921_merged/trained.pt"
 
 [data]
 seed = 0

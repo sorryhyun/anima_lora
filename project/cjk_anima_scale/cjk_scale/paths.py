@@ -3,7 +3,7 @@
 Everything lands under ``output/cjk_anima_scale/``: the stage dirs
 (``data_scale_<stage>_<tag>`` / ``rows_scale_<stage>_<tag>``, the probe's
 layout), the scene pools (``scenes_<tag>``), the EN reference cache
-(``native_enref``) and the seed table (``rows_step1_0921m_merge``).
+(``native_enref``) and the seed table (``rows_step1_0921_merged``).
 ``bootstrap()`` points the probe's ``common.paths.OUT`` at the same root, so
 its ``load_scenes`` / ``eval`` / ``native`` / ``cf_sense`` and every
 ``probe/*.py`` reader open a stage table exactly as they open a probe table.

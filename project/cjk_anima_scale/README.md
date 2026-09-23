@@ -53,7 +53,7 @@ The law is written and encoded (`cjk_scale/windows.py`); the four stage
 configs, the data builder with the band gate, the thin trainer, the eval
 delegation and the front door exist and smoke-build (60 items per stage).
 **No stage has trained at scale.** Seed table for the chain:
-`output/cjk_anima_scale/rows_step1_0921m_merge` (2 274 rows, the probe line's
+`output/cjk_anima_scale/rows_step1_0921_merged` (2 274 rows, the probe line's
 `step1_0921` + `step1_0921z` merge). Every launch states
 the raw pack (`ANIMA_VOCAB_PACK=models/vocab_packs/anima_cjk_vocab_pack`,
 sha `7b9fce0b…`) and goes through the daemon.

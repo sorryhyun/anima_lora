@@ -18,7 +18,7 @@ The research surface stays in `../cjk_renderable_anima/` (reports, probes).
 - Outputs: `output/cjk_anima_scale/` — stage dirs `{data,rows}_scale_<stage>_<tag>/`
   (the probe's layout with a `scale_` prefix), the scene pools `scenes_<tag>/`,
   the EN reference cache `native_enref/` and the seed table
-  `rows_step1_0921m_merge/`. `paths.bootstrap()` points the probe's
+  `rows_step1_0921_merged/`. `paths.bootstrap()` points the probe's
   `common.paths.OUT` at this root **before** any probe module loads, so its
   eval / native / cf_sense and `probe/*.py` open a stage table unchanged. The
   probe line's `output/wake_probe/` keeps symlinks to the shared pools; nothing
