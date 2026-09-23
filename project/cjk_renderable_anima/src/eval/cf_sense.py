@@ -50,7 +50,7 @@ from common.render.flat import (
     render_string,
     sample_layout,
 )
-from common.render.ink import glyph_count, ink_pixels
+from common.render.ink import glyph_count, glyph_features, ink_pixels
 from common.shapes import wh
 from common.text import KANA
 from eval.classify import _en_word_pairs
@@ -58,14 +58,62 @@ from eval.classify import _en_word_pairs
 # --cf_layout → share of pairs drawn inside the flat renderer's ellipse
 _BUBBLE_FRAC = {"mixed": 0.6, "flat": 0.0, "bubble": 1.0}
 _LETTERS = "ABDEFGHKLMNPRSTUVWXYZ"  # no I / J / O / Q / C: a stroke, not a glyph
+# the ink ruler of plan_kanji C.0 (`--cf_units kanji` terciles)
+_INK_FONT = "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc"
 
 
-def _ja_pairs(row_text: dict, rng: random.Random, n: int, piece: bool) -> list[dict]:
-    """``single``: ``id`` pairs of trained single kana, ``order`` pairs of two
-    singles vs their reversal. ``piece``: the same over the table's kana-only
-    multi-glyph rows (``id`` = two rows of one glyph count, ``order`` = two
-    rows concatenated vs swapped — the caption tokenises the concatenation
-    as it would in a sentence)."""
+def _glyph_ink(ch: str, px: int = 48, font: str = _INK_FONT) -> float:
+    """Ink of one glyph drawn alone, in latent cells² (the plan_kanji C.0
+    measure: bbox-tight, Noto Serif CJK Regular, 48 px)."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    im = Image.new("L", (px * 3, px * 3), 255)
+    d = ImageDraw.Draw(im)
+    f = ImageFont.truetype(font, px, index=0)
+    d.text((px, px), ch, font=f, fill=0)
+    return ink_pixels(im, d.textbbox((px, px), ch, font=f)) / 64.0
+
+
+def _ja_strata(row_text: dict, spec: str) -> list[list[str]]:
+    """``--cf_units`` → strata of trained single rows (plan_kanji Stage C).
+    ``kana`` = one stratum, the trained kana (the Gate 0 draw, bit-identical);
+    ``kanji`` = the trained single kanji in three ink terciles; ``chars:g0/g1``
+    = explicit groups, every char a trained single row."""
+    singles = {t for t in row_text.values() if len(t) == 1}
+    if spec == "kana":
+        return [sorted(t for t in singles if t in KANA)]
+    if spec == "kanji":
+        kanji = sorted(t for t in singles if "一" <= t <= "鿿")
+        assert len(kanji) >= 6, "cf_sense --cf_units kanji needs ≥ 6 trained kanji rows"
+        ranked = sorted(kanji, key=lambda c: (_glyph_ink(c), c))
+        k = len(ranked) // 3
+        return [ranked[:k], ranked[k : 2 * k], ranked[2 * k :]]
+    assert spec.startswith("chars:"), (
+        f"--cf_units {spec!r}: kana | kanji | chars:g0/g1/…"
+    )
+    groups = [list(g) for g in spec[len("chars:") :].split("/") if g]
+    missing = [c for g in groups for c in g if c not in singles]
+    assert not missing, f"--cf_units chars: not trained single rows: {''.join(missing)}"
+    for k, g in enumerate(groups):
+        ink = sorted(_glyph_ink(c) for c in g)
+        print(
+            f"cf_sense stratum s{k}: {''.join(g)} (ink/glyph cells² at 48 px "
+            f"median {ink[len(ink) // 2]:.1f}, {ink[0]:.1f}–{ink[-1]:.1f})",
+            flush=True,
+        )
+    return groups
+
+
+def _ja_pairs(
+    row_text: dict, rng: random.Random, n: int, piece: bool, units_spec: str = "kana"
+) -> list[dict]:
+    """``single``: ``id`` pairs of trained single rows, ``order`` pairs of two
+    singles vs their reversal, drawn within one stratum of ``units_spec``
+    (``kana`` = the trained kana, one stratum; ``kanji`` = ink terciles;
+    ``chars:g0/g1`` = explicit) and stamped with it. ``piece``: the same over
+    the table's kana-only multi-glyph rows (``id`` = two rows of one glyph
+    count, ``order`` = two rows concatenated vs swapped — the caption
+    tokenises the concatenation as it would in a sentence)."""
     if piece:
         units = sorted(
             t for t in row_text.values() if len(t) >= 2 and all(c in KANA for c in t)
@@ -75,19 +123,24 @@ def _ja_pairs(row_text: dict, rng: random.Random, n: int, piece: bool) -> list[d
         for t in units:
             by_len.setdefault(len(t), []).append(t)
         lens = [k for k, v in by_len.items() if len(v) >= 2]
+        strata = [units]
     else:
-        units = sorted(t for t in row_text.values() if len(t) == 1 and t in KANA)
-        assert len(units) >= 2, "cf_sense ja needs ≥ 2 trained single kana rows"
+        strata = _ja_strata(row_text, units_spec)
+        for s in strata:
+            assert len(s) >= 2, "cf_sense ja needs ≥ 2 trained single rows per stratum"
     out = []
-    for _ in range(n):
+    for i in range(n):
         if piece:
             a, b = rng.sample(by_len[rng.choice(lens)], 2)
+            out.append({"kind": "id", "a": a, "b": b})
         else:
-            a, b = rng.sample(units, 2)
-        out.append({"kind": "id", "a": a, "b": b})
-    for _ in range(n):
-        a, b = rng.sample(units, 2)
-        out.append({"kind": "order", "a": a + b, "b": b + a})
+            k = i % len(strata)
+            a, b = rng.sample(strata[k], 2)
+            out.append({"kind": "id", "a": a, "b": b, "stratum": k})
+    for i in range(n):
+        k = i % len(strata)
+        a, b = rng.sample(strata[k], 2)
+        out.append({"kind": "order", "a": a + b, "b": b + a, "stratum": k})
     return out
 
 
@@ -218,6 +271,10 @@ def _render_pair(
         tpl = TPL_EN if (layout == "mixed" or bubble) else TPL_PLAIN_EN
     else:
         tpl = TPL_BUBBLE if bubble else TPL_PLAIN
+    # shape descriptors of the pair's glyphs drawn alone (plan_kanji: the
+    # straightness read); `straight` = the pair mean, binned by the report
+    ga = glyph_features(p["a"], int(lay["fs"]), font_path)
+    gb = glyph_features(p["b"], int(lay["fs"]), font_path)
     return _item(
         p,
         fa,
@@ -230,6 +287,13 @@ def _render_pair(
         bubble=bool(bubble),
         px=int(lay["fs"]),
         font=Path(font_path).stem,
+        straight_a=ga["straight"],
+        straight_b=gb["straight"],
+        axis_a=ga["axis"],
+        axis_b=gb["axis"],
+        fill_a=ga["fill"],
+        fill_b=gb["fill"],
+        straight=(ga["straight"] + gb["straight"]) / 2,
     )
 
 
@@ -329,6 +393,7 @@ def stage_cf_sense(a):
         + (f"_{layout}" if layout != "mixed" else "")
         + (f"_{text}" if a.cf_text != "auto" else "")
         + (f"_{Path(font).stem}" if font else "")
+        + ("" if en or piece or a.cf_units == "kana" else f"_{a.cf_units[:5]}")
         + (f"_{a.eval_tag}" if a.eval_tag else "")
     )
     out = arm_dir(a) / name
@@ -349,7 +414,7 @@ def stage_cf_sense(a):
             from probe.merge_tables import row_text_map
 
             row_text = row_text_map([int(e) for e in sd["delta"]["ext_ids"]])
-        pairs = _ja_pairs(row_text, rng, a.cf_pairs, piece)
+        pairs = _ja_pairs(row_text, rng, a.cf_pairs, piece, a.cf_units)
         conds = ("trained", "floor")
     fonts = find_fonts()
     items = []
@@ -358,11 +423,12 @@ def stage_cf_sense(a):
             # px cycles over the items, so --cf_per_pair = len(px_list) gives
             # every pair every px
             px = px_list[len(items) % len(px_list)] if px_list else None
-            items.append(
-                _render_pair(
-                    p, fonts, rng, a.train_size, out, len(items), en, layout, px, font
-                )
+            it = _render_pair(
+                p, fonts, rng, a.train_size, out, len(items), en, layout, px, font
             )
+            if "stratum" in p:  # plan_kanji: the stratum × px cell
+                it["cell"] = f"s{p['stratum']}@{it['px']}"
+            items.append(it)
     print(
         f"cf_sense {a.cf_lang} {a.cf_rows} {layout} {text}: {len(items)} pairs "
         f"({sum(it['kind'] == 'id' for it in items)} id, "
@@ -491,7 +557,23 @@ def _report(out: Path, pos, leak, sigmas, conds, items, lang):
                     f"{leak[ci, sel, si].mean():.3f} |"
                 )
         L.append("")
-    for key, title in (("px", "glyph px"), ("font", "font")):
+    # straightness terciles over the run's items (plan_kanji: complexity
+    # that is not ink) — `sbin` 0 = curviest third, 2 = straightest
+    st = sorted(it["straight"] for it in items if it.get("straight") is not None)
+    if len(st) >= 6:
+        q1, q2 = st[len(st) // 3], st[2 * len(st) // 3]
+        for it in items:
+            if it.get("straight") is not None:
+                it["sbin"] = (
+                    0 if it["straight"] < q1 else (1 if it["straight"] < q2 else 2)
+                )
+    for key, title in (
+        ("px", "glyph px"),
+        ("font", "font"),
+        ("stratum", "stratum"),
+        ("cell", "stratum @ px"),
+        ("sbin", "straightness tercile"),
+    ):
         vals = sorted({it.get(key) for it in items if it.get(key) is not None})
         if len(vals) < 2:
             continue

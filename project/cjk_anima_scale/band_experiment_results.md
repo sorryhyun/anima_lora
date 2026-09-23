@@ -30,7 +30,7 @@ the floor that band may reach, and a grid cell sits one step higher.**
 | H-size — band = f(px) | **holds at the ceiling**: peak σ 0.4 (12–16 px) → 0.5 (20–32) → 0.6 (48) → 0.7 (64–96) → 0.8 (128), monotone, no plateau. In training it sets the floor, not the band | A.1 + A.2 |
 | H-ink — band = f(ink per glyph) | **half a grid step**: Light = Regular; Black moves one near-tie cell (96 px) and the live floor by one step at 32–48. Black 48 px (ink 8.1) peaks 0.6 while Regular 64 px (ink 8.6) peaks 0.7, so px, not ink, is the variable. Stage C not run | A.1 runs 2–3 |
 | H-count — one glyph vs a piece at fixed size | **holds in training, sign as the recipe assumed**: singles 0.7–0.9 (S, 48 px), pieces 0.5–0.7 (M, 35 px). At the ceiling a string peaks 0.1 *above* a letter at the same px, so the training preference is not the ceiling's: a single row buys the count at high σ, a piece has it in its token | B.1 vs `micro_cf_0922`; A.1 |
-| H-complexity — kanji vs kana at fixed px | **not read**: gated on an ink effect that did not appear. Kanji take the kana band for their count | — |
+| H-complexity — kanji vs kana at fixed px | **read 2026-09-23 (`plan_kanji.md`): ink does not move the band, structure moves where leverage sits.** Three strata of 8 (kana / simple kanji at the same ink / dense kanji at 2 ×) on 48 px composites, 0.7–0.9 vs 0.8–0.95: every stratum collapses on the higher arm (native 71 → 18 of 192) and every arm's leverage peaks at 0.7 — **0.8–0.95 is dead at 48 px**. Simple straight-stroke kanji sit one σ step above kana at equal ink (C.1, both layouts) and tolerate the high arm; dense kanji sit at the kana σ with half the leverage and read 0 / 64 native on both arms. Kanji take the kana band; density is an exposure / px question, not a band. Over `kanji:200` (96 pairs, 48 px): ink per glyph moves the soft peak **down** (r −0.44, and shrinks it), straightness (orientation-entropy descriptor, independent of ink) moves it up by +0.03 σ per quartile range (partial +0.2) — neither is a band term | `reports/cf_kanji_c1_2026_09_23.md`, `reports/band_c2_kanji_2026_09_23.md` |
 | H-layout — scene / grid / flat | **ellipse = flat** to the second decimal at every px; **grid +0.1–0.2 σ from 32 px on, half the leverage**, down to 16 px. Not read in training (B.2 / B.3 dropped, § 4) | A.0, A.1 runs 4–5, A.2 |
 | H-item — per-item bands in mixed-size data | **not triggered**: both halves of step 1a want 0.7–0.9. Re-scoped to the mixed-px sentence data (§ 4) | — |
 
@@ -85,7 +85,7 @@ shrinking the glyph below the fit, which the plan rules out.
   mispredicted B.1's single cell, so this is a confirmation left open, not
   a decision. B.1's rule (singles want the top half) still says 0.7–0.9.
 - **B.2** (grid × small × S) needed a 0.5–0.7 pick and did not run.
-- **Stage C** (kanji strata) gated off by the ink read.
+- **Stage C** ran after all (`plan_kanji.md`, 2026-09-23): the ink gate had only seen Latin weight (1.7 ×), not kanji ink (2.6 ×). Read above; `bk_lo` (0.5–0.7 on kanji) unrun — no stratum asked to go down.
 - **Stage D** is re-scoped: its case is a data dir mixing 16 and 30 px
   sentence text (ceiling 0.25–0.6 vs 0.4–0.6), which is step 2 territory
   and outside this plan's § 6.
@@ -111,5 +111,9 @@ shrinking the glyph below the fit, which the plan rules out.
    the step 1 structure, so it goes first.
 2. **16 px multi-glyph cell**: step 2-style data with `--scene_min_glyph
    16`, band 0.25–0.7 vs the per-item band. Opens step 2's band.
-3. **Dead rows** (マ メ ロ の イ at 0–1 of 8 on both B.1 arms):
+3. **Dense kanji: px or exposure?** Block K on the step-1a recipe (grid
+   50 %, 0.7–0.9, same budget): K_hi read 0 / 64 native and near-neighbour
+   swaps on 48 px scene-only draws; `step1_0921` bought its kanji identity
+   on 85–200 px cells. One arm, ≈ 40 min + native.
+4. **Dead rows** (マ メ ロ の イ at 0–1 of 8 on both B.1 arms):
    `table_geometry.py` on `bs_hi` before spending steps on them.

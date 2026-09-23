@@ -41,3 +41,35 @@ def ink_pixels(im, box, thresh: int = 60, ring: int = 3) -> int:
 def box_area(box) -> float:
     x0, y0, x1, y1 = box
     return max(0.0, float(x1 - x0)) * max(0.0, float(y1 - y0))
+
+
+def glyph_features(text: str, px: int, font_path: str, nbins: int = 18) -> dict:
+    """Shape descriptors of ``text`` drawn alone at ``px`` in ``font_path``
+    (plan_kanji: complexity that is not ink). ``fill`` = ink share of the
+    bbox; ``straight`` = 1 − normalised entropy of the gradient-orientation
+    histogram (mod 180°, magnitude-weighted) — straight strokes at any angle
+    concentrate it, curves spread it; ``axis`` = share of gradient energy
+    within ± 10° of horizontal or vertical (frame-like strokes)."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    im = Image.new("L", (px * 3, max(px * 3, px * (len(text) + 2))), 255)
+    d = ImageDraw.Draw(im)
+    f = ImageFont.truetype(font_path, px, index=0)
+    d.text((px, px), text, font=f, fill=0)
+    x0, y0, x1, y1 = d.textbbox((px, px), text, font=f)
+    g = 1.0 - np.asarray(im, dtype=np.float32)[y0:y1, x0:x1] / 255.0
+    if g.size == 0 or g.max() <= 0:
+        return {"fill": 0.0, "straight": 0.0, "axis": 0.0}
+    gy, gx = np.gradient(g)
+    mag = np.hypot(gx, gy)
+    ang = np.mod(np.degrees(np.arctan2(gy, gx)), 180.0)
+    hist, _ = np.histogram(ang, bins=nbins, range=(0.0, 180.0), weights=mag)
+    p = hist / max(hist.sum(), 1e-9)
+    ent = float(-(p[p > 0] * np.log(p[p > 0])).sum() / np.log(nbins))
+    near_axis = (ang < 10) | (ang > 170) | (np.abs(ang - 90) < 10)
+    axis = float(mag[near_axis].sum() / max(mag.sum(), 1e-9))
+    return {
+        "fill": float((g > 0.5).mean()),
+        "straight": 1.0 - ent,
+        "axis": axis,
+    }

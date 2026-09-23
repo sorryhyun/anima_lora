@@ -171,6 +171,16 @@ def classify_args(g):
         "permutation",
     )
     g.add_argument(
+        "--cf_units",
+        default="kana",
+        help="cf_sense --cf_lang ja --cf_rows single (plan_kanji Stage C): which "
+        "trained single rows the pairs are drawn from. kana = the trained kana "
+        "(the Gate 0 draw); kanji = the trained single kanji in three ink terciles "
+        "(ink at 48 px Noto Serif CJK Regular); chars:<g0>/<g1>/… = explicit "
+        "strata of trained rows. Pairs never cross a stratum and every item "
+        "records its stratum, so the report bins by stratum and by stratum × px",
+    )
+    g.add_argument(
         "--cf_pairs",
         type=int,
         default=24,
