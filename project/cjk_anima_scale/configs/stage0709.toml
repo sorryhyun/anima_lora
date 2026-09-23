@@ -1,25 +1,20 @@
 # stage0709 — the glyph-identity band (design.md § 2): single glyphs ≥ 48 px
 # — scene bubble fit (48–53 px), grid cells (85–200 px), large flat singles.
-# Warm from the merged step-1 table (step1_0921 + step1_0921z, 2 274 rows —
-# the probe line's `merge_tables.py` output), so no row is cold.
+# First stage of the chain: warms from the run file's seed_table.
 
 stage = "stage0709"
 band = [0.7, 0.9]
 gate = "contain"
 min_overlap = 0.8
-warm_from = "output/cjk_anima_scale/rows_step1_0921_merged/trained.pt"
+warm_from = ""                              # the first stage: the run's seed_table
 
 [data]
-seed = 0
-n_items = 40000
-units = ["kana", "kana_ext*1", "small", "kanji:200*1", "list:、,。,・,ー,～,〜,！,？,「,」,！！,・・・,・・・・*1"]
-pieces = "ja_cold_0001_1900.txt"          # the multi-glyph rows (assets/units); drawn by later stages
 scenes = "s1,s1w,sl1w,ja_comic"
 scene_one_bubble = "ja_comic"
 single_scenes = "s1,s1w"
 single_max_ar = 2.0
 shapes = "448,512:2,448x512,512x448"
-phrase_file = ""
+horizontal_frac = 0.3                       # multi-glyph items (scene) / cells (grid) drawn as left-to-right lines, marked in the caption; a single glyph has no orientation
 
 [[data.mix]]                                # step 1a's scene half: bubble fit, 48–53 px as built
 recipe = "scene_single"
@@ -37,17 +32,15 @@ bubble_frac = 0.5
 mark_horizontal = true
 
 [train]
-steps_per_row = 30
 batch = 4
 lr_rows = 1e-3
 lr_decay = "cosine"
-lr_warmup = 500
+lr_warmup_ratio = 0.1                       # of the stage's steps (micro_warm_0923: 100 / 640, 200 / 1280; the former 500 was 0.007 of 70 k)
 init_anchor = 0.0                           # design § 6 item 2: early stages let the rows move
 box_share = 0.25                            # single glyph's in-box share; log up to …
 box_share_cap = 0.5                         # … the cap, at …
 box_share_glyphs = 8                        # … this many glyphs (loss.py)
 compile = 1
-seed = 0
 save_every = 5000
 
 [eval]

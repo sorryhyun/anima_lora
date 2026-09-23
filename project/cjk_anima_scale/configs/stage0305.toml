@@ -9,16 +9,12 @@ min_overlap = 0.8
 warm_from = "stage0507"
 
 [data]
-seed = 0
-n_items = 40000
-units = ["kana", "kana_ext*1", "small", "kanji:200*1", "list:、,。,・,ー,～,〜,！,？,「,」,！！,・・・,・・・・*1"]
-pieces = "ja_cold_0001_1900.txt"
 scenes = "s1,s1w,sl1w,ja_comic"
 scene_one_bubble = "ja_comic"
 single_scenes = "s1,s1w"
 single_max_ar = 2.0
 shapes = "448,512:2,448x512,512x448"
-phrase_file = "$MANGA109S/derived/dialogue_2_10.tsv"
+horizontal_frac = 0.3                       # multi-glyph items (scene) / cells (grid) drawn as left-to-right lines, marked in the caption; a single glyph has no orientation
 short_pieces = "2-5"
 sentence_min_letters = 6
 
@@ -41,17 +37,15 @@ max_glyphs = 8
 bubble_frac = 0.5
 
 [train]
-steps_per_row = 30
 batch = 4
 lr_rows = 1e-3
 lr_decay = "cosine"
-lr_warmup = 500
+lr_warmup_ratio = 0.1                       # of the stage's steps (micro_warm_0923: 100 / 640, 200 / 1280; the former 500 was 0.007 of 70 k)
 init_anchor = 0.01                          # light anchor to the previous stage (user, 2026-09-23: a guard, not a read)
 box_share = 0.25                            # single glyph's in-box share; log up to …
 box_share_cap = 0.5                         # … the cap, at …
 box_share_glyphs = 8                        # … this many glyphs (loss.py)
 compile = 1
-seed = 0
 save_every = 5000
 
 [eval]

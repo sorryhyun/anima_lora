@@ -250,11 +250,16 @@ def render_grid(
     box=False,
     sizes=None,
     lines=None,
+    horizontal_frac: float = 0.5,
 ):
     """Draw ``units[i]`` in cell ``i`` (row-major). Returns ``(image, boxes)``,
     ``boxes[i]`` the ink bbox of cell i's unit in canvas pixels. ``box`` = the
     bubble is a rounded box (word cells) instead of an ellipse; ``sizes``
-    collects every cell's font px, ``lines`` the cells drawn as a horizontal line."""
+    collects every cell's font px, ``lines`` the cells drawn as a horizontal
+    line. ``horizontal_frac``: each multi-glyph cell is a left-to-right line
+    with this probability (drawn per cell, so one grid mixes both), a column
+    otherwise; ``_NO_COLUMN`` units are always a line; a single glyph has no
+    orientation."""
     from PIL import Image, ImageDraw, ImageFont
 
     W, H = size
@@ -272,7 +277,9 @@ def render_grid(
         r, c = divmod(i, cols)
         x0, y0 = c * cw, r * ch
         font_path = pick_font(u, fonts, rng)
-        vertical = len(u) > 1 and rng.random() < 0.5 and not (set(u) & _NO_COLUMN)
+        vertical = (
+            len(u) > 1 and not (set(u) & _NO_COLUMN) and rng.random() >= horizontal_frac
+        )
         # the room the ink may take: the cell, or the inscribed rectangle of
         # the cell's bubble
         pad = rng.uniform(*pad_range) * min(cw, ch)

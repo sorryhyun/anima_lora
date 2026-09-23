@@ -1,5 +1,5 @@
-"""Imports, the four stage configs, the chain's warm resolution, the front
-door's parser, and the probe primitives the recipes lean on."""
+"""Imports, the four stage configs and the run files, the chain's warm
+resolution, the front door's parser, and the probe primitives the recipes lean on."""
 
 from __future__ import annotations
 
@@ -106,13 +106,59 @@ def test_stage_configs_load_and_chain():
     assert cfgs["stage0507"].warm_table("t") == arm_dir("stage0709", "t") / "trained.pt"
     assert cfgs["stage0305"].warm_table("t") == arm_dir("stage0507", "t") / "trained.pt"
     assert cfgs["stage0309"].warm_table("t") == arm_dir("stage0305", "t") / "trained.pt"
-    w = cfgs["stage0709"].warm_table("t")
+    # the first stage has no warm_from of its own: cold without a run, the
+    # run's seed_table with one
+    assert (
+        cfgs["stage0709"].warm_from == "" and cfgs["stage0709"].warm_table("t") is None
+    )
+    w = config.load("stage0709", "run_full").warm_table("t")
     assert (
         w is not None and w.name == "trained.pt" and "rows_step1_0921_merged" in str(w)
     )
     for c in cfgs.values():
         assert abs(sum(m.share for m in c.mix) - 1) < 1e-9
         assert c.train_steps(2300) == 30 * 2300
+        assert "lr_warmup" not in c.train and 0 < c.train["lr_warmup_ratio"] < 1
+        # a stage file never says which rows
+        assert not (set(c.data) & set(config.RUN_DATA_KEYS)) - set(
+            config._DATA_DEFAULTS
+        )
+
+
+def test_run_files_overlay_the_stage():
+    """A run file carries rows, seed table and budgets; run wins over stage."""
+    assert set(config.run_names()) >= {"run_full", "run0923_micro"}
+    full = config.load_run("run_full")
+    assert (
+        full.data["pieces"] == "ja_cold_0001_1900.txt"
+        and full.budget["stage0709"] == 30
+    )
+    micro = config.load("stage0507", "run0923_micro")
+    assert micro.run is not None and micro.run.name == "run0923_micro"
+    assert micro.data["units"][0].startswith("chars:") and micro.data["pieces"] == ""
+    assert micro.data["phrase_file"] == "" and micro.data["n_items"] == 4000
+    assert micro.train["steps_per_row"] == 30 and micro.train_steps(24) == 720
+    assert micro.warmup_steps(720) == 72
+    assert micro.eval["groups"] == "single,word,en" and micro.eval["cf_rows"] == "piece"
+    assert micro.data["seed"] == 0 and micro.train["seed"] == 0
+    # the chain resolves under the run's name; the mix is the stage's
+    assert (
+        micro.warm_table("run0923_micro")
+        == arm_dir("stage0709", "run0923_micro") / "trained.pt"
+    )
+    assert [m.name for m in micro.mix] == [m.name for m in config.load("stage0507").mix]
+    # stage files may not carry run keys
+    bad = LINE / "configs" / "_bad_stage.toml"
+    bad.write_text(
+        'stage = "bad"\nband = [0.5, 0.7]\n[data]\nunits = ["kana"]\n'
+        '[[data.mix]]\nrecipe = "scene_single"\nshare = 1.0\n',
+        encoding="utf-8",
+    )
+    try:
+        with pytest.raises(AssertionError, match="belong to a run file"):
+            config.load(str(bad))
+    finally:
+        bad.unlink()
 
 
 def test_every_recipe_in_the_mixes_is_registered():
@@ -137,9 +183,63 @@ def test_front_door_parser():
     a = scale.build_parser().parse_args(
         ["--stage", "stage0709", "--tag", "t1", "--steps", "data", "train"]
     )
-    assert a.command == "run" and a.steps == ["data", "train"]
+    assert a.command == "run" and a.steps == ["data", "train"] and a.run is None
+    a = scale.build_parser().parse_args(
+        ["--run", "run0923_micro", "--stage", "stage0709", "--steps", "eval"]
+    )
+    assert a.run == "run0923_micro" and a.tag is None
     a = scale.build_parser().parse_args(["windows"])
     assert a.command == "windows"
+
+
+def test_horizontal_marker_and_grid_share():
+    """30 % of multi-glyph items are drawn as lines and say so: the scene
+    caption's marker per frame, the grid's per-cell draw."""
+    import random
+
+    from common.prompts import grid_caption
+    from common.render.flat import find_fonts
+    from data.grid import render_grid
+    from data.synth import scene_caption
+
+    sc = {"head": ["manga"], "generals": ["english text"], "clause_tpl": None}
+    reads = {**sc, "clause_tpl": 'English text reads as "{a}".'}
+    said = {**sc, "clause_tpl": 'She is saying "{a}".'}
+    assert (
+        scene_caption(reads, "って")
+        == 'manga, japanese text. Japanese text reads as "って".'
+    )
+    assert (
+        scene_caption(reads, "って", horizontal=True)
+        == 'manga, japanese text. horizontal Japanese text reads as "って".'
+    )
+    assert (
+        scene_caption(said, "って", horizontal=True)
+        == 'manga, japanese text. She is saying "って", written horizontally.'
+    )
+    assert scene_caption(sc, "あ", horizontal=True).endswith(
+        'horizontal Japanese text reads as "あ".'
+    )
+    fonts = find_fonts()
+    for frac, want in ((0.0, set()), (1.0, {0, 1, 3})):
+        lines: list = []
+        render_grid(
+            ["って", "んだ", "あ", "先生"],
+            2,
+            2,
+            (256, 256),
+            fonts,
+            random.Random(0),
+            False,
+            (0.3, 0.3),
+            lines=lines,
+            horizontal_frac=frac,
+        )
+        assert set(lines) == want, (frac, lines)  # the single glyph あ never
+    cap = grid_caption("flat", 2, 2, ["って", "んだ", "あ", "先生"], horizontal={0, 3})
+    assert cap.count("horizontal Japanese text reads as") == 2
+    for c in config.stage_names():
+        assert config.load(c).data["horizontal_frac"] == 0.3
 
 
 def test_probe_eval_namespace_builds():

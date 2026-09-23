@@ -138,11 +138,13 @@ def region_capacity(
     fill_frac: float = 0.9,
     max_lines: int = 1,
     vertical_only: bool = False,
+    horizontal_only: bool = False,
 ) -> int:
     """How many glyphs the region holds at ``min_glyph`` px per cell over up
     to ``max_lines`` columns (vertical) or lines (horizontal), inner
     ``fill_frac`` — the larger of the two orientations, or the columns alone
-    when ``vertical_only`` (the tategaki-only sentence arm)."""
+    when ``vertical_only`` (the tategaki-only sentence arm), the lines alone
+    when ``horizontal_only`` (a drawn-horizontal item)."""
     rw, rh = (region[2] - region[0]) * fill_frac, (region[3] - region[1]) * fill_frac
     g = min_glyph
     v_cols = int((rw - g) / (g * V_GAP)) + 1 if rw >= g else 0
@@ -151,6 +153,8 @@ def region_capacity(
         return v_cap
     h_rows = int((rh - g) / (g * H_GAP)) + 1 if rh >= g else 0
     h_cap = int(rw / (g * H_PITCH)) * min(h_rows, max_lines)
+    if horizontal_only:
+        return h_cap
     return max(v_cap, h_cap)
 
 
@@ -328,6 +332,7 @@ def render_into_scene(
     vertical_only: bool = False,
     fewest_lines: bool = False,
     ref_text: str | None = None,
+    horizontal: bool = False,
 ):
     """Erase every anchor bubble's usable region (plus the text box padded by
     a quarter of its size — detector boxes run tight) with the bubble's
@@ -342,6 +347,10 @@ def render_into_scene(
     when it does not — never when ``vertical_only`` (the sentence arm,
     2026-09-16: a multi-glyph text that does not fit as columns is a miss and
     the caller re-picks the scene; a single glyph has no orientation).
+    ``horizontal``: the item is *drawn* as left-to-right lines — the
+    orientation is the caller's draw, not a fit fallback; a text that does
+    not fit that way is a miss (scale line, 2026-09-23: 30 % of multi-glyph
+    items, marked in the caption).
     Returns ``(image, drawn text box)`` or ``None`` when the text does not
     fit at ``min_glyph`` px per glyph (the caller draws a shorter text). Other anchor bubbles are left erased (empty bubble).
     ``stroke``: a thin outline in the fill colour around the glyphs (manga
@@ -385,7 +394,7 @@ def render_into_scene(
     im = Image.fromarray(arr)
     d = ImageDraw.Draw(im)
     region = scene["region"]
-    vertical = len(text) > 1
+    vertical = len(text) > 1 and not horizontal
     fit = (
         fit_text(
             d,

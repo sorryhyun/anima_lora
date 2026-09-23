@@ -121,26 +121,40 @@ def load_scenes(
     return scenes
 
 
-def scene_caption(scene: dict, text: str) -> str:
+HORIZONTAL_SUFFIX = ", written horizontally."
+
+
+def scene_caption(scene: dict, text: str, horizontal: bool = False) -> str:
     """The scene prompt with the anchor swapped for the JA text *in the frame
     the scene was drawn under* (`clause_tpl`; s0 records predate it and are
     the `reads as` frame): `english text` → `japanese text` in the tags,
     `English text reads as` → `Japanese text reads as` in the clause, every
     other frame (`She is saying "…"`, `holding a sign that reads "…"`) keeps
-    its words and only the quote changes."""
+    its words and only the quote changes.
+
+    ``horizontal`` (a text drawn as left-to-right lines): a `reads as` frame
+    becomes `horizontal Japanese text reads as "…"` — the grid cell's marker
+    (`common.prompts.grid_caption`) — and every other frame takes the
+    suffix `, written horizontally.` before its period. The unmarked
+    caption is a column, the manga default."""
     generals = [
         "japanese text" if g == "english text" else g for g in scene["generals"]
     ]
     tags = ", ".join(scene["head"] + sorted(set(generals)))
-    tpl = scene.get("clause_tpl")
-    if not tpl:
-        return TPL_SCENE_JA.format(tags=tags, text=text)
-    clause = (
-        tpl.replace("English text reads as", "Japanese text reads as")
-        .replace("English SFX reads as", "Japanese SFX reads as")
-        .format(a=text)
+    tpl = scene.get("clause_tpl") or TPL_SCENE_JA.replace("{tags}. ", "").replace(
+        "{text}", "{a}"
     )
-    return f"{tags}. {clause}"
+    clause = tpl.replace("English text reads as", "Japanese text reads as").replace(
+        "English SFX reads as", "Japanese SFX reads as"
+    )
+    if horizontal:
+        if "Japanese text reads as" in clause:
+            clause = clause.replace(
+                "Japanese text reads as", "horizontal Japanese text reads as"
+            )
+        else:
+            clause = clause.rstrip().rstrip(".") + HORIZONTAL_SUFFIX
+    return f"{tags}. {clause.format(a=text)}"
 
 
 def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]:
@@ -226,8 +240,7 @@ def synth_recs(a, rng, inv, combos_eval, fonts, shapes, out, tokq) -> list[dict]
         # a line without a count column (or respelled by --phrase_norm) is
         # counted here
         n_of = {
-            t: n if n is not None else len(pieces(tok, qmap, t))
-            for t, _b, n in plines
+            t: n if n is not None else len(pieces(tok, qmap, t)) for t, _b, n in plines
         }
         lo, hi = (int(x) for x in a.short_pieces.split("-"))
 
@@ -752,9 +765,7 @@ def _quota_composites(
                 cuts.append(off)
             tries, pool = [], list(fitting)
             while pool and len(tries) < _SCENE_TRIES:
-                j = rng.choices(
-                    pool, weights=[1.0 / (1 + used[x]) for x in pool]
-                )[0]
+                j = rng.choices(pool, weights=[1.0 / (1 + used[x]) for x in pool])[0]
                 pool.remove(j)
                 tries.append(j)
             for j in tries:

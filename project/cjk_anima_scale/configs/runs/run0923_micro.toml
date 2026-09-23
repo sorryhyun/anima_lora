@@ -1,0 +1,24 @@
+# run0923_micro — the chain at 30 / 30 / 30 on 24 warm rows (plan_micro_chain.md):
+# 8 kana from B.1's 24 (none of its dead rows) + 8 kanji from C.2's strata
+# (4 simple K_lo + 4 dense K_hi, all in kanji:200) + 8 pieces from
+# assets/units/ja_micro_warm_0923.txt, all in the merged step-1 table.
+
+run = "run0923_micro"
+seed_table = "output/cjk_anima_scale/rows_step1_0921_merged/trained.pt"
+seed = 0
+
+[data]
+units = ["chars:あいおなアナラル人日口女精聞動願", "list:それを,はじ,やはり,すご,メン,アン,プロ,ファ"]
+pieces = ""                                 # the 8 pieces ride the list: source
+phrase_file = ""                            # no corpus line is made of these rows only
+n_items = 4000                              # ≥ 2 880 draws a stage (24 rows × 30 × batch 4)
+
+[budget]                                    # steps per row: 24 rows → 720 steps a stage
+stage0709 = 30
+stage0507 = 30
+stage0305 = 30
+
+[eval]
+groups = "single,word,en"                   # single = the 16 chars (kana + kanji; chars: base → the base is the eval),
+                                            # word = the 8 pieces (n_piece_eval ≥ 8), en = the control
+native_chars = "あ,い,日,願"                 # 2 kana + a simple + a dense kanji

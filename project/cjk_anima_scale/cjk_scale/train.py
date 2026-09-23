@@ -92,11 +92,11 @@ def train(
     )
     n_rows = len(rows.delta.ext_ids)
     steps = int(t["train_steps"]) or int(t["steps_per_row"]) * n_rows
-    warmup, decay = int(t["lr_warmup"]), t["lr_decay"]
+    warmup, decay = cfg.warmup_steps(steps), t["lr_decay"]
     print(
         f"train {cfg.stage} ({run_tag(cfg.stage, tag)}): σ [{t_min}, {t_max}], {n_rows} rows, "
         f"{steps} steps ({steps / n_rows:.0f}/row) × batch {t['batch']}, lr {t['lr_rows']:g} "
-        f"{decay} warmup {warmup}, box_share {t['box_share']} → cap {t['box_share_cap']} "
+        f"{decay} warmup {warmup} ({float(t['lr_warmup_ratio']):g}), box_share {t['box_share']} → cap {t['box_share_cap']} "
         f"at {t['box_share_glyphs']} glyphs (log), "
         f"warm {'cold' if warm is None else warm}",
         flush=True,
@@ -130,7 +130,10 @@ def train(
         "t_min": t_min,
         "t_max": t_max,
         "train_steps": steps,
+        "lr_warmup": warmup,
         "n_rows": n_rows,
+        "run": cfg.run.name if cfg.run else None,
+        "run_config": str(cfg.run.path) if cfg.run else None,
         **{k: t[k] for k in sorted(t)},
         "config": str(cfg.path),
         "arm": "rows",

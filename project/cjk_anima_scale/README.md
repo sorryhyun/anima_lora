@@ -43,7 +43,9 @@ A new read that changes a row of the law goes into
 | [`band_experiment_results.md`](band_experiment_results.md) | **the vocab band law** — the verdict, the per-px window table, the training reads, what is left unrun |
 | [`design.md`](design.md) | the scale pipeline: stage schedule, data builder, thin trainer, open questions (§ 6) |
 | [`plan_canvas.md`](plan_canvas.md) | plan only — does the law hold on a ~500-token canvas (2× throughput) |
-| `configs/stage*.toml` | the four stages: band, gate, warm chain, recipe mix, trainer surface, eval |
+| [`plan_micro_chain.md`](plan_micro_chain.md) | plan only — the three band stages at 30 / 30 / 30 on 24 warm rows (8 kana + 8 kanji + 8 pieces), the first run of the chain before scale |
+| `configs/stage*.toml` | the four stages — the band recipes: band, gate, warm chain, recipe mix, trainer surface, eval; never which rows |
+| `configs/runs/*.toml` | the runs — which rows, the seed table, steps per row per stage: `run_full` (production), `run0923_micro` (the 24-row chain read) |
 | `cjk_scale/` | the code (`windows` = the law, `recipes` + `builder` = data, `rows` + `train`, `eval`, `bake`, `ledger`); `scale.py` is the front door |
 | `runs/` | `ledger.jsonl` — every submitted job |
 
@@ -62,15 +64,17 @@ sha `7b9fce0b…`) and goes through the daemon.
 
 ```bash
 export ANIMA_VOCAB_PACK=models/vocab_packs/anima_cjk_vocab_pack   # MANGA109S comes from .env
-.venv/bin/python project/cjk_anima_scale/scale.py --stage stage0709 --tag t1 --steps data   # CPU
-.venv/bin/python project/cjk_anima_scale/scale.py --stage stage0709 --tag t1 --steps train eval --submit --queue
-.venv/bin/python project/cjk_anima_scale/scale.py --stage stage0507 --tag t1 --steps data train eval --submit
-.venv/bin/python project/cjk_anima_scale/scale.py stages | windows | ledger
+.venv/bin/python project/cjk_anima_scale/scale.py --run run_full --stage stage0709 --steps data   # CPU
+.venv/bin/python project/cjk_anima_scale/scale.py --run run_full --stage stage0709 --steps train eval --submit --queue
+.venv/bin/python project/cjk_anima_scale/scale.py --run run_full --stage stage0507 --steps data train eval --submit
+.venv/bin/python project/cjk_anima_scale/scale.py stages | runs | windows | ledger
 ```
 
-`--tag` names the chain: every stage of one chain shares it and
-`warm_from = "<stage>"` in a config resolves to that stage's table under the
-same tag. Everything lands under `output/cjk_anima_scale/` — the stage dirs
+`--run` names the chain (`configs/runs/<run>.toml`: the rows, the seed
+table, steps per row per stage); its name is the tag every stage dir of the
+chain carries, and `warm_from = "<stage>"` in a stage file resolves to that
+stage's table under it. `--tag` alone runs a stage without a run file (smoke
+builds on the default inventory). Everything lands under `output/cjk_anima_scale/` — the stage dirs
 `{data,rows}_scale_<stage>_<tag>/`, the scene pools `scenes_<tag>/`, the EN
 reference cache and the seed table — and `paths.bootstrap()` points the
 probe's output root there, so its `eval` / `native` / `cf_sense` and every

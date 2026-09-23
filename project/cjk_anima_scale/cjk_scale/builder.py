@@ -101,6 +101,8 @@ def build(
         "seed": seed,
         "n_items": n,
         "config": str(cfg.path),
+        "run": cfg.run.name if cfg.run else None,
+        "run_config": str(cfg.run.path) if cfg.run else None,
         "data": cfg.data,
         "mix": [{"recipe": m.name, "share": m.share, **m.params} for m in cfg.mix],
         "recipes": report,
@@ -188,6 +190,7 @@ def _build_recipe(cfg, m, n: int, pools: Pools, rng, out: Path, first: int):
         "px_kept": q,
         "px_drawn": drawn,
         "windows": dict(Counter(json.dumps(r["window"]) for r in kept)),
+        "horizontal": _n_horizontal(kept),
         "minutes": round((time.time() - t0) / 60, 1),
     }
     print(
@@ -197,6 +200,25 @@ def _build_recipe(cfg, m, n: int, pools: Pools, rng, out: Path, first: int):
     )
     _sheet(rng, kept, out / f"sheet_{m.name}.png")
     return kept, rep
+
+
+def _n_horizontal(recs) -> dict:
+    """Items / cells drawn as left-to-right lines (``horizontal_frac``):
+    scene items carry a bool, grid items the list of line cells; single
+    glyphs have no orientation and are counted under ``no_orientation``."""
+    n = Counter()
+    for r in recs:
+        h = r.get("horizontal")
+        if isinstance(h, list):
+            n["cells"] += len(r["units"])
+            n["cells_horizontal"] += len(h)
+            n["cells_no_orientation"] += sum(len(u) == 1 for u in r["units"])
+        elif len(r["units"]) == 1 and len(r["units"][0]) == 1:
+            n["no_orientation"] += 1
+        else:
+            n["items"] += 1
+            n["items_horizontal"] += int(bool(h))
+    return dict(n)
 
 
 def _px_gate(cfg, recs, report):
@@ -245,5 +267,7 @@ def _sheet(rng, recs, path: Path, n: int = 24):
         d = ImageDraw.Draw(im)
         for b in r.get("boxes") or [r["box"]]:
             d.rectangle(b, outline=(0, 255, 0), width=2)
-        tiles.append((im, [r["text"][:24], f"{r['px']:.0f} px {r['layout']}"]))
+        h = r.get("horizontal")
+        tag = " H" if (h is True or (isinstance(h, list) and h)) else ""
+        tiles.append((im, [r["text"][:24], f"{r['px']:.0f} px {r['layout']}{tag}"]))
     contact_sheet(tiles, path, thumb=192, cols=6)

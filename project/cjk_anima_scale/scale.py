@@ -1,17 +1,20 @@
 #!/usr/bin/env python
 """scale — the JA vocab pack at scale, one stage at a time (``design.md``).
 
-    scale.py --stage stage0709 --tag t1 --steps data train eval [--submit [--queue]]
-    scale.py --stage stage0507 --tag t1 --steps train eval          # warm from stage0709/t1
-    scale.py --stage stage0709 --tag t1 --steps bake
+    scale.py --run run_full --stage stage0709 --steps data train eval [--submit [--queue]]
+    scale.py --run run_full --stage stage0507 --steps train eval    # warm from stage0709/run_full
+    scale.py --run run_full --stage stage0709 --steps bake
     scale.py --stage stage0507 --tag bp --steps data boxprobe --n_items 240
         --warm_from output/cjk_anima_scale/rows_step1_0921_merged/trained.pt   # gradient read, no training
     scale.py windows                                               # the band law
-    scale.py stages                                                # the configs
+    scale.py stages | runs                                         # the configs
 
-A stage is ``configs/<stage>.toml``; ``--tag`` names the chain — every stage
-of one chain shares it, and ``warm_from = "<stage>"`` resolves to that
-stage's table under the same tag. Steps: ``data`` (CPU: renders +
+A stage is ``configs/<stage>.toml`` (the band recipe); a run is
+``configs/runs/<run>.toml`` (which rows, the seed table, steps per row per
+stage — ``cjk_scale/config.py``). ``--run`` names the chain: its name is
+the tag every stage dir carries, and ``warm_from = "<stage>"`` resolves to
+that stage's table under it (``--tag`` alone runs a stage without a run
+file — smoke builds). Steps: ``data`` (CPU: renders +
 ``train.jsonl`` / ``eval.json``), ``train`` (GPU), ``eval`` (GPU: exact /
 native / cf_sense + the regression check), ``bake``.
 
@@ -44,10 +47,16 @@ def build_parser() -> argparse.ArgumentParser:
         "command",
         nargs="?",
         default="run",
-        choices=["run", "windows", "stages", "ledger"],
+        choices=["run", "windows", "stages", "runs", "ledger"],
     )
     p.add_argument("--stage", help="configs/<stage>.toml")
-    p.add_argument("--tag", help="the chain's tag (shared by every stage of one chain)")
+    p.add_argument(
+        "--run", help="configs/runs/<run>.toml — rows, seed table, budgets; = the tag"
+    )
+    p.add_argument(
+        "--tag",
+        help="the chain's tag (default: the run's name; required without --run)",
+    )
     p.add_argument(
         "--steps", nargs="+", default=["data", "train", "eval"], choices=STEPS
     )
@@ -117,11 +126,24 @@ def main(argv=None):
         from cjk_scale.config import load, stage_names
 
         for s in stage_names():
-            c = load(s)
+            c = load(s, a.run)
             print(
                 f"{s}: band {c.band[0]:.2f}–{c.band[1]:.2f}, gate {c.gate}, warm_from "
-                f"{c.warm_from or 'cold'}, mix {' '.join(f'{m.name}={m.share:g}' for m in c.mix)}, "
+                f"{c.warm_from or (c.run.seed_table if c.run else '') or 'cold'}, "
+                f"mix {' '.join(f'{m.name}={m.share:g}' for m in c.mix)}, "
                 f"{c.train['steps_per_row']} steps/row"
+                + (f"  [run {c.run.name}]" if c.run else "")
+            )
+        return
+    if a.command == "runs":
+        from cjk_scale.config import load_run, run_names
+
+        for r in run_names():
+            c = load_run(r)
+            budget = " ".join(f"{k}={v}" for k, v in c.budget.items())
+            print(
+                f"{r}: seed_table {c.seed_table or 'cold'}, units {c.data.get('units')}, "
+                f"n_items {c.data.get('n_items')}, budget {budget or '-'}"
             )
         return
     if a.command == "ledger":
@@ -132,12 +154,14 @@ def main(argv=None):
                 f"{r['ts']}  {r.get('job_id', '-'):<26} {r['stage']}/{r['tag']}  {' '.join(r['steps'])}"
             )
         return
-    assert a.stage and a.tag, "--stage and --tag are required"
+    if a.run and not a.tag:
+        a.tag = Path(a.run).stem
+    assert a.stage and a.tag, "--stage and --run (or --tag) are required"
     if a.submit:
         return submit(a)
     from cjk_scale.config import load
 
-    cfg = load(a.stage)
+    cfg = load(a.stage, a.run)
     for step in a.steps:
         print(f"===== {cfg.stage} / {a.tag}: {step}", flush=True)
         if step == "data":
@@ -230,6 +254,7 @@ def submit(a) -> int:
         tag=a.tag,
         steps=a.steps,
         argv=[script, *argv],
+        run=a.run,
     )
     print(f"submitted {job_id} ({label}) — ledger: {row['ts']}", flush=True)
     if a.queue:

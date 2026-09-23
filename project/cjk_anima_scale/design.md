@@ -76,10 +76,13 @@ project/cjk_anima_scale/
   design.md            this file
   scale.py             front door: --stage <s> --tag <t> --steps data train eval bake [--submit]
   configs/
-    stage0709.toml     band, gate, warm chain, recipe mix, trainer surface, eval
+    stage0709.toml     the band recipe: band, gate, warm chain, recipe mix, trainer surface, eval — never which rows
     stage0507.toml
     stage0305.toml
     stage0309.toml
+    runs/              the runs: rows (units / pieces / phrase_file / n_items), seed table, steps per row per stage
+      run_full.toml         production — the whole inventory at 30 / 30 / 30
+      run0923_micro.toml    the 24-row chain read (plan_micro_chain.md)
   cjk_scale/           one package (see below for why not `src/`)
     paths.py           output root output/cjk_anima_scale/ (stage dirs, scene pools, enref, seed table); redirects the probe's OUT
     windows.py         (kind, px, layout) → training band; the law as a row table with provenance
@@ -143,6 +146,17 @@ Recipes (names are placeholders):
 | `scene_sentence` | Manga109-s dialogue | `scene_min_glyph` 16–28 | corpus lines |
 | `grid_string` | strings in cells (the A.2 cell) | 12–24 px | pieces / short lines |
 
+**Orientation** (`horizontal_frac`, 0.3 in every stage file; user,
+2026-09-23): a multi-glyph scene item is drawn as left-to-right lines with
+that probability, a grid cell likewise per cell (so one grid mixes both),
+the rest columns — a draw, never a fit fallback (a text that does not fit
+the drawn orientation re-picks the scene). The caption says so: a `reads
+as` frame becomes `horizontal Japanese text reads as "…"` (the grid cell's
+marker of record, `--grid_mark_horizontal`), any other scene frame takes
+`, written horizontally.` before its period; the unmarked caption is a
+column. A single glyph has no orientation. Not a window axis (no read);
+`build.json` counts `horizontal` per recipe.
+
 Caption follows the cell count, not the recipe: 1×1 takes the plain /
 bubble template (the W-line flat reads — "identity at σ 0.8", `--t_max 0.6`
 losing on flat singles — were made under it), 2×2 and up take
@@ -162,7 +176,8 @@ gate on median px / ink per recipe runs before a train job is submitted.
 ## 5. Trainer and eval (thin)
 
 Train args, the whole list: `stage`, `data_tag`, `train_steps` (or
-`steps_per_row`), `batch`, `lr_rows`, `lr_decay`, `lr_warmup`, `t_min`,
+`steps_per_row`), `batch`, `lr_rows`, `lr_decay`, `lr_warmup_ratio` (of
+the stage's steps, so 24 rows and 2 300 warm up over the same fraction), `t_min`,
 `t_max`, `init_rows`, `init_anchor`, `box_share`, `box_share_cap`,
 `compile`, `seed`, `arm_tag`. Everything else in
 `cjk_renderable_anima/src/cli/train.py` is a probe lever and is not

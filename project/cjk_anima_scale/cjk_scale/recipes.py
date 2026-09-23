@@ -75,6 +75,7 @@ class Pools:
     held: dict  # kind → held lines
     vertical: bool
     stroke: float
+    horizontal_frac: float  # share of multi-glyph items / grid cells drawn as lines
     used: Counter = field(default_factory=Counter)  # scene index → items drawn
     decks: dict = field(default_factory=dict)
     balanced: dict = field(default_factory=dict)
@@ -301,6 +302,7 @@ def build_pools(cfg, out: Path, rng: random.Random) -> Pools:
         held=held,
         vertical=bool(d["vertical"]),
         stroke=float(d["stroke"]),
+        horizontal_frac=float(d["horizontal_frac"]),
     )
 
 
@@ -361,17 +363,24 @@ def _draw_scene(
 ):
     """Text first, then a scene whose capacity holds it (one column when
     enough scenes do), weighted ``1 / (1 + uses)`` — the probe's
-    ``_quota_composites`` draw. Returns an ``Item`` or ``None``."""
+    ``_quota_composites`` draw. Orientation is drawn per item before the
+    scene: ``horizontal_frac`` of multi-glyph items are left-to-right lines
+    (marked in the caption), the rest columns; a miss in the drawn
+    orientation re-picks the scene, never the orientation. Returns an
+    ``Item`` or ``None``."""
     from common.render.flat import pick_font
     from common.render.scene import region_capacity, render_into_scene
     from data.synth import scene_caption
 
     n = len(text)
-    vert = pools.vertical
+    horiz = n > 1 and rng.random() < pools.horizontal_frac
+    vert = pools.vertical and not horiz
     cands = list(pools.single_idx) if singles_only else range(len(pools.scenes))
 
     def cap(sc, lines):
-        return region_capacity(sc["region"], min_glyph, fill, lines, vert)
+        return region_capacity(
+            sc["region"], min_glyph, fill, lines, vert, horizontal_only=horiz
+        )
 
     one = [j for j in cands if cap(pools.scenes[j], 1) >= n]
     fitting = (
@@ -391,9 +400,7 @@ def _draw_scene(
         sc = pools.scenes[j]
         f = fill
         if target_px is not None:
-            f = _fill_for_px(
-                sc["region"], n, target_px, vert or n == 1, fill_max, max_lines
-            )
+            f = _fill_for_px(sc["region"], n, target_px, not horiz, fill_max, max_lines)
         drawn = render_into_scene(
             scene=sc,
             text=text,
@@ -406,6 +413,7 @@ def _draw_scene(
             cuts=cuts,
             vertical_only=vert,
             fewest_lines=fewest_lines,
+            horizontal=horiz,
         )
         if drawn is None:
             continue
@@ -418,10 +426,15 @@ def _draw_scene(
             units=[text],
             layout="scene",
             boxes=[box],
-            caption=scene_caption(sc, text),
+            caption=scene_caption(sc, text, horizontal=horiz),
             src="scene",
             shape=(W, H),
-            extra={"scene": sc["i"], "scene_pool": sc.get("pool"), "fill": round(f, 3)},
+            extra={
+                "scene": sc["i"],
+                "scene_pool": sc.get("pool"),
+                "fill": round(f, 3),
+                "horizontal": horiz,
+            },
         )
     return None
 
@@ -561,17 +574,31 @@ def _grid_item(
     cols, rows, size = GRIDS[name]
     if size is None:
         size = pools.shapes.draw() or (512, 512)
-    lines: list | None = [] if mark_horizontal else None
+    lines: list = []
     kw = {"box": True, "pad": WORD_PAD} if box else {}
     im, boxes = render_grid(
-        got, cols, rows, size, pools.fonts, rng, bubble, (fill, fill), lines=lines, **kw
+        got,
+        cols,
+        rows,
+        size,
+        pools.fonts,
+        rng,
+        bubble,
+        (fill, fill),
+        lines=lines,
+        horizontal_frac=pools.horizontal_frac,
+        **kw,
     )
     if cols * rows == 1:
         caption = (TPL_BUBBLE if bubble else TPL_PLAIN).format(got[0])
         layout, src = "flat", "font"
     else:
         caption = grid_caption(
-            "bubble" if bubble else "flat", cols, rows, got, horizontal=set(lines or ())
+            "bubble" if bubble else "flat",
+            cols,
+            rows,
+            got,
+            horizontal=set(lines) if mark_horizontal else set(),
         )
         layout, src = "grid", "grid"
     return Item(
@@ -582,7 +609,12 @@ def _grid_item(
         caption=caption,
         src=src,
         shape=tuple(size),
-        extra={"grid": name, "bubble": bubble, "fill": round(fill, 3)},
+        extra={
+            "grid": name,
+            "bubble": bubble,
+            "fill": round(fill, 3),
+            "horizontal": sorted(lines),  # cells drawn as lines
+        },
     )
 
 
