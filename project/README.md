@@ -54,6 +54,13 @@ Active projects:
   distribution (P1), then the repeat mode. Home: `README.md`, `plan.md`,
   `findings.md`.
 
+- [`cjk_anima_scale/`](cjk_anima_scale/) — opened 2026-09-23 out of
+  `cjk_renderable_anima`: the production line for the JA pack. Home:
+  `README.md`; its `band_experiment_results.md` is the **vocab band law**
+  (band keyed on glyph count, px sets the floor, nothing above 0.9 — all
+  measured, not theory). `design.md` is the stage-schedule sketch under
+  review; nothing has trained there yet.
+
 Both CJK lines below are frozen, and no other line has open phases.
 
 Frozen lines (kept here rather than in `finished/` or `_archive/`: their

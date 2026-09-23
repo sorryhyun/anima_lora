@@ -28,6 +28,9 @@ and units those reads covered. As it stands:
 
 The plans that produced it (`plan_band.md`, `plan_kanji.md`) closed on
 2026-09-23 and were deleted; they are in git history at `f5cd4c0c`. The
+probe line's step 1a / 1b / merge / step 2 recipe (`recipe.md`) was retired
+the same day — `configs/stage*.toml` carry its settings, the band law § 3–4
+its reads (git `ff2f70f9` has the last copy). The
 reads themselves are the dated reports under `../cjk_renderable_anima/reports/`
 (`cf_rebin_gate0`, `cf_band_a1`, `band_b1`, `cf_kanji_c1`, `band_c2_kanji`).
 A new read that changes a row of the law goes into
@@ -39,7 +42,6 @@ A new read that changes a row of the law goes into
 |---|---|
 | [`band_experiment_results.md`](band_experiment_results.md) | **the vocab band law** — the verdict, the per-px window table, the training reads, what is left unrun |
 | [`design.md`](design.md) | the scale pipeline: stage schedule, data builder, thin trainer, open questions (§ 6) |
-| [`recipe.md`](recipe.md) | the step 1a / 1b / merge / step 2 recipe of record as it ran on the probe line; retired into `configs/` once the stages run |
 | [`plan_canvas.md`](plan_canvas.md) | plan only — does the law hold on a ~500-token canvas (2× throughput) |
 | `configs/stage*.toml` | the four stages: band, gate, warm chain, recipe mix, trainer surface, eval |
 | `cjk_scale/` | the code (`windows` = the law, `recipes` + `builder` = data, `rows` + `train`, `eval`, `bake`, `ledger`); `scale.py` is the front door |
@@ -51,14 +53,15 @@ The law is written and encoded (`cjk_scale/windows.py`); the four stage
 configs, the data builder with the band gate, the thin trainer, the eval
 delegation and the front door exist and smoke-build (60 items per stage).
 **No stage has trained at scale.** Seed table for the chain:
-`output/wake_probe/rows_step1_0921m_merge` (2 274 rows). Every launch states
+`output/cjk_anima_scale/rows_step1_0921m_merge` (2 274 rows, the probe line's
+`step1_0921` + `step1_0921z` merge). Every launch states
 the raw pack (`ANIMA_VOCAB_PACK=models/vocab_packs/anima_cjk_vocab_pack`,
 sha `7b9fce0b…`) and goes through the daemon.
 
 ## Running a stage
 
 ```bash
-export ANIMA_VOCAB_PACK=models/vocab_packs/anima_cjk_vocab_pack MANGA109S=~/manga109s
+export ANIMA_VOCAB_PACK=models/vocab_packs/anima_cjk_vocab_pack   # MANGA109S comes from .env
 .venv/bin/python project/cjk_anima_scale/scale.py --stage stage0709 --tag t1 --steps data   # CPU
 .venv/bin/python project/cjk_anima_scale/scale.py --stage stage0709 --tag t1 --steps train eval --submit --queue
 .venv/bin/python project/cjk_anima_scale/scale.py --stage stage0507 --tag t1 --steps data train eval --submit
@@ -67,9 +70,13 @@ export ANIMA_VOCAB_PACK=models/vocab_packs/anima_cjk_vocab_pack MANGA109S=~/mang
 
 `--tag` names the chain: every stage of one chain shares it and
 `warm_from = "<stage>"` in a config resolves to that stage's table under the
-same tag. Outputs land in `output/wake_probe/{data,rows}_scale_<stage>_<tag>/`
-so the probe's `eval` / `native` / `cf_sense` and every `probe/*.py` reader
-open them unchanged. `--submit` records the job in `runs/ledger.jsonl`.
+same tag. Everything lands under `output/cjk_anima_scale/` — the stage dirs
+`{data,rows}_scale_<stage>_<tag>/`, the scene pools `scenes_<tag>/`, the EN
+reference cache and the seed table — and `paths.bootstrap()` points the
+probe's output root there, so its `eval` / `native` / `cf_sense` and every
+`probe/*.py` reader open them unchanged (the probe's own `output/wake_probe/`
+holds symlinks to the shared pools). `--submit` records the job in
+`runs/ledger.jsonl`.
 The code is the `cjk_scale/` package (not `src/`: the probe's `src/` exposes
 top-level `common` / `data` / `train` / `eval`, which a second `src/` would
 shadow); tests: `.venv/bin/python -m pytest project/cjk_anima_scale/tests`.

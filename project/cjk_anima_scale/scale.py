@@ -4,6 +4,8 @@
     scale.py --stage stage0709 --tag t1 --steps data train eval [--submit [--queue]]
     scale.py --stage stage0507 --tag t1 --steps train eval          # warm from stage0709/t1
     scale.py --stage stage0709 --tag t1 --steps bake
+    scale.py --stage stage0507 --tag bp --steps data boxprobe --n_items 240
+        --warm_from output/cjk_anima_scale/rows_step1_0921m_merge/trained.pt   # gradient read, no training
     scale.py windows                                               # the band law
     scale.py stages                                                # the configs
 
@@ -31,7 +33,7 @@ from cjk_scale.paths import REPO, bootstrap  # noqa: E402
 
 bootstrap()
 
-STEPS = ("data", "train", "eval", "bake")
+STEPS = ("data", "train", "eval", "bake", "boxprobe")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -76,6 +78,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     # bake
     p.add_argument("--bake_out", help="bake: output pack dir")
+    # boxprobe
+    p.add_argument(
+        "--probe_draws", type=int, default=3, help="boxprobe: σ draws per item"
+    )
+    p.add_argument(
+        "--probe_items",
+        type=int,
+        default=0,
+        help="boxprobe: cap on scene items (0 = all)",
+    )
     # daemon
     p.add_argument(
         "--submit", action="store_true", help="enqueue this command on the daemon"
@@ -132,9 +144,7 @@ def main(argv=None):
             from cjk_scale.builder import build
 
             build(cfg, a.tag, n_items=a.n_items, seed=a.seed)
-        elif step == "train":
-            from cjk_scale.train import train
-
+        elif step in ("train", "boxprobe"):
             warm = cfg.warm_table(a.tag)
             if a.warm_from:
                 warm = (
@@ -146,6 +156,20 @@ def main(argv=None):
                 )
             if warm is not None:
                 assert warm.exists(), f"warm table {warm} does not exist"
+            if step == "boxprobe":
+                from cjk_scale.boxprobe import probe
+
+                probe(
+                    cfg,
+                    a.tag,
+                    warm=warm,
+                    draws=a.probe_draws,
+                    max_items=a.probe_items,
+                    seed=a.seed or 0,
+                )
+                continue
+            from cjk_scale.train import train
+
             ov = {
                 k: getattr(a, k)
                 for k in (

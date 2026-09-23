@@ -52,8 +52,9 @@ _TRAIN_DEFAULTS = {
     "lr_warmup": 500,
     "init_anchor": 0.0,
     "free_residual": 1e-3,  # μ‖f‖² on rows the warm table never had (a constant, not a lever)
-    "box_share": 0.25,
-    "box_share_cap": 0.75,
+    "box_share": 0.25,  # in-box share at one glyph (loss.py: log in the glyph count)
+    "box_share_cap": 0.5,  # the ceiling …
+    "box_share_glyphs": 8,  # … reached at this many glyphs
     "compile": 1,
     "seed": 0,
     "save_every": 5000,
@@ -145,6 +146,14 @@ def load(stage: str) -> StageConfig:
         **_DATA_DEFAULTS,
         **{k: v for k, v in raw.get("data", {}).items() if k != "mix"},
     }
+    if "$" in data["phrase_file"]:
+        from library.env import load_dotenv
+
+        load_dotenv()  # MANGA109S lives in the repo's .env (never overrides a real var)
+        if "$" in os.path.expandvars(data["phrase_file"]):
+            raise SystemExit(
+                f"{data['phrase_file']}: env var unset — put MANGA109S=<root> in .env"
+            )
     data["phrase_file"] = (
         os.path.expanduser(os.path.expandvars(data["phrase_file"]))
         if data["phrase_file"]

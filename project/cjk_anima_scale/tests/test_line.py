@@ -18,6 +18,8 @@ MODULES = [
     "builder",
     "rows",
     "train",
+    "loss",
+    "boxprobe",
     "eval",
     "bake",
     "ledger",
@@ -26,7 +28,7 @@ MODULES = [
 
 @pytest.mark.parametrize("name", MODULES)
 def test_modules_import(name):
-    if name in ("rows", "train"):
+    if name in ("rows", "train", "boxprobe"):
         pytest.importorskip("torch")
     mod = importlib.import_module(f"cjk_scale.{name}")
     assert mod.__file__.startswith(str(LINE))
@@ -45,6 +47,39 @@ def test_probe_packages_are_the_probe_line():
     ):
         mod = importlib.import_module(name)
         assert mod.__file__.startswith(str(PROBE_SRC)), (name, mod.__file__)
+
+
+def test_output_root_is_ours_and_the_probe_reads_it():
+    """Runs land under ``output/cjk_anima_scale/`` and the probe modules that
+    bind ``OUT`` at import (``data.synth`` → the scene pools, ``eval.enref``
+    → the EN reference cache) see the same root — the redirect in
+    ``bootstrap()`` ran before they loaded."""
+    import common.paths as probe_paths
+    from cjk_scale.paths import OUT, REPO
+
+    assert OUT == REPO / "output" / "cjk_anima_scale"
+    assert probe_paths.OUT == OUT
+    assert data_dir("stage0709", "t").parent == OUT
+    assert importlib.import_module("data.synth").OUT == OUT
+    assert importlib.import_module("eval.enref").OUT == OUT
+    assert probe_paths.arm_dir(
+        type(
+            "A",
+            (),
+            {"arm": "rows", "data_tag": run_tag("stage0709", "t"), "arm_tag": ""},
+        )()
+    ) == arm_dir("stage0709", "t")
+
+
+def test_box_share_curve():
+    from cjk_scale.loss import box_share_of, glyph_count
+
+    assert glyph_count("じゃ ない") == 4 and glyph_count("") == 1
+    assert box_share_of(1, 0.25, 0.5, 8) == 0.25
+    assert abs(box_share_of(2, 0.25, 0.5, 8) - (0.25 + 0.25 / 3)) < 1e-9
+    assert abs(box_share_of(4, 0.25, 0.5, 8) - (0.25 + 0.5 / 3)) < 1e-9
+    assert box_share_of(8, 0.25, 0.5, 8) == 0.5 == box_share_of(40, 0.25, 0.5, 8)
+    assert box_share_of(5, 0.25, 0.5, 1) == 0.25  # n_cap 1: flat
 
 
 def test_primitives_exist():

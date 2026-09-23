@@ -1,8 +1,9 @@
 # design — the scale pipeline (rough, 2026-09-23)
 
-The production line that builds the JA pack at scale. It replaces
-`recipe.md`'s step 1a / 1b / merge / step 2 with **one loss, one trainer,
-and a band schedule** whose stages differ only in their dataset. The probe
+The production line that builds the JA pack at scale. It replaces the
+probe line's step 1a / 1b / merge / step 2 recipe (retired 2026-09-23;
+git `ff2f70f9`) with **one loss, one trainer, and a band schedule** whose
+stages differ only in their dataset. The probe
 code in `project/cjk_renderable_anima/src/` stays the research surface;
 this line takes its render primitives and leaves its levers behind.
 
@@ -24,7 +25,10 @@ per-px window table, the count rule), `plan_kanji.md` (deleted; git `f5cd4c0c`; 
   is where the design lives (§ 4).
 - **Warm chain.** Each stage starts from the previous stage's table
   (`init_rows`, anchor μ), so a later band cannot wipe what an earlier one
-  bought. Cold rows exist only in the first stage they appear in.
+  bought. Cold rows exist only in the first stage they appear in. Warm beat
+  cold on every ruler at equal draws (`micro_warm_0923`, pieces at 0.5–0.7
+  from the 0.7–0.9 table), which is what lets a stage spend far fewer steps
+  per row than a cold run (§ 5).
 
 ## 2. The schedule
 
@@ -42,7 +46,7 @@ row enters cold only when the inventory grows.
 
 Easy-to-hard: high σ first (the glyph-identity band), then lower bands
 (the count / layout / small-text bands), then one accumulate pass over the
-whole range so the rows compose (the role `recipe.md`'s step 2 played).
+whole range so the rows compose (the role the probe's step 2 played).
 Whether the last stage is 0.3–0.9 accumulate or per-stage tables merged is
 `band_experiment_results.md` § 6 item 1 (switch vs accumulate) — unread.
 
@@ -70,7 +74,6 @@ weights at most, not `windows.py` terms (C.2 report, last section).
 ```
 project/cjk_anima_scale/
   design.md            this file
-  recipe.md            retired into configs/ once the stages run
   scale.py             front door: --stage <s> --tag <t> --steps data train eval bake [--submit]
   configs/
     stage0709.toml     band, gate, warm chain, recipe mix, trainer surface, eval
@@ -78,7 +81,7 @@ project/cjk_anima_scale/
     stage0305.toml
     stage0309.toml
   cjk_scale/           one package (see below for why not `src/`)
-    paths.py           output dirs: output/wake_probe/{data,rows}_scale_<stage>_<tag>
+    paths.py           output root output/cjk_anima_scale/ (stage dirs, scene pools, enref, seed table); redirects the probe's OUT
     windows.py         (kind, px, layout) → training band; the law as a row table with provenance
     config.py          configs/<stage>.toml → StageConfig
     recipes.py         the item generators (§ 4)
@@ -98,9 +101,12 @@ stages are imported from `project/cjk_renderable_anima/src/` — not copied.
 That `src/` puts its packages on `sys.path` as top-level names (`common`,
 `data`, `train`, `eval`), so this line's code is the `cjk_scale` package,
 not a second `src/` (a `src/train.py` here would shadow the probe's
-`train/` the moment both were on the path). Outputs keep the probe's
-`output/wake_probe/` layout with a `scale_` prefix so every probe reader
-opens a stage table unchanged.
+`train/` the moment both were on the path). Outputs live under
+`output/cjk_anima_scale/` in the probe's layout with a `scale_` prefix,
+next to the scene pools and the EN reference cache the probe primitives
+read; `paths.bootstrap()` points the probe's `common.paths.OUT` there
+before any probe module loads, so every probe reader opens a stage table
+unchanged.
 
 ## 4. The data builder — where the complexity is
 
@@ -164,6 +170,24 @@ carried over (pair_*, c_flat*, out_vec*, cf_input, free_residual,
 t_band_multi, the encoder arm, kill_*, decor, init_encoder, font_mode,
 held_out*, row_boost*).
 
+### Box share
+
+Scene items take the probe's box-share form (``s · mean_in + (1 − s) ·
+mean_out`` under the item's text box) with the share **logarithmic in the
+glyph count** (`cjk_scale/loss.py`): `box_share` at one glyph, up to
+`box_share_cap` at `box_share_glyphs` glyphs — 0.25 → 0.5 at 8 for the band
+stages (a 2-glyph piece 0.33, 4 glyphs 0.42), 0.05 → 0.25 for `stage0309`.
+The probe's form was linear (`min(ρ · n, cap)`, 0.25 → 0.75 by 3 glyphs),
+which paid a one-token piece row two to three times a single's share; the
+count stays glyphs, not tokens (user, 2026-09-23). The reads of record
+(`micro_cf_0922`, `micro_warm_0923`, B.1) ran on the linear form. The
+gradient read (`reports/boxshare_gradient_2026_09_23.md`, `boxprobe` step)
+says the difference is inert: ‖g_in‖ is 25–100 × ‖g_out‖ at 31–36 px, so
+the in-box fraction of a row's gradient is 0.89–0.99 under any curve
+between 0.25 and 0.75; the share only bites below ≈ 0.1 (`stage0309`'s
+0.05: singles 0.78, 5–7-glyph lines 0.57 in-box) — where it sets how noisy
+the row step is, not how strong.
+
 ### Budget
 
 **30 steps per row per stage** (`stage0709` / `stage0507` / `stage0305`:
@@ -178,13 +202,21 @@ rows; `step1_0921` spent 80 steps a row = 160 scene + ≈ 1 000 cell draws)
 and is chosen because the rows are warm — the stage refines a band, it does
 not buy identity. Whether 30 is enough per band is read on the first run
 of each stage (the per-stage regression check in § 5 and the stage's own
-exact / native), not assumed.
+exact / native), not assumed. The one warm budget curve on record says it
+is on the low side: pieces at 0.5–0.7, warm from the merged table, scene-only
+draws — 40 / 80 / 188 steps per row read exact 6 / 8 / 13 of 32 and native
+both-hit 4 / 8 / 17 of 128, monotone with no knee, so 80 buys about 60 % of
+190 (`micro_warm_0923`; the probe's step 1b budget of record was 190).
 
 Eval per stage: `exact` per unit group, `native` on a fixed row sample
 (`en` / `swap`), `cf_sense --cf_lang ja` on the stage's own rows at the
 stage's px (does leverage land in the band it trained in). Advancing to
 the next stage also re-runs the previous stage's exact groups on the new
-table — the warm-chain regression check.
+table — the warm-chain regression check. The probe's table readers apply
+to any stage table as-is: `probe/table_geometry.py` (row geometry vs the
+seed), `probe/row_dose.py` (which rows the data drew, `sent_run.md`
+*Reading rules*), `probe/sub_exact.py` (pooled sub-exact lift on the
+`_held` groups, for the sentence-bearing stages).
 
 ## 6. Open questions (decide before code)
 
@@ -192,8 +224,15 @@ table — the warm-chain regression check.
    merge of per-band tables) — the § 6 item-1 cell, warm from a 0.7–0.9
    table, 0.5–0.7 vs 0.5–0.9.
 2. **Anchor μ per stage** — step 2 used 0.1 (rows return to the seed,
-   `warm_cos` 0.996); a lower band needs the rows to *move*, so the early
-   stages may want μ 0 and only `stage0309` an anchor.
+   `warm_cos` 0.978 at 2.5 k → 0.996 at 30 k; the rows that moved
+   were the frequent particles and punctuation, 148 of 2 271 below cos
+   0.99). Rows the data rarely draws stay where the previous stage left
+   them, so under an anchor a consolidation pass cannot fix a band an
+   earlier stage got wrong. A lower band needs the rows to *move*, so the
+   early stages may want μ 0 and only `stage0309` an anchor. As set
+   (2026-09-23): `stage0709` 0, `stage0507` / `stage0305` 0.01 as a guard
+   against a band stage wiping the previous one (not a read), `stage0309`
+   0.1. The anchor's f₀ is always the previous stage's table, not the seed.
 3. **Dense kanji** — pending C.2 (`bk_mid` / `bk_hi`); the answer sets
    whether `kanji:N` splits by ink into two recipes or one.
 4. **px per item vs per recipe** — the builder above draws px per item; a

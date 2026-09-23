@@ -158,3 +158,36 @@ Reads:
    on px and count. Ink enters the recipe only as a budget weight (dense
    rows need more draws, or the px cell in `band_experiment_results.md`
    § 6 item 3), straightness not at all.
+
+### Addendum — stroke count (2026-09-23, no GPU)
+
+Unihan `kTotalStrokes` joined to the same 96 `kanji:200` id pairs (pair mean
+of the two glyphs); soft peak and amplitude recomputed from `cf_sense.pt`
+(live = move ≥ 0.1; the straightness quartiles re-derive to 0.628 / 0.620 /
+0.634 / 0.663, r straight → soft +0.31, ink → soft −0.39, so the ruler is the
+one above to within the live threshold).
+
+| | r → soft peak | partial, ink held | partial, strokes held |
+|---|---|---|---|
+| strokes (2.5–15, mean 8.5) | −0.36 | **−0.01** | – |
+| ink | −0.39 | – | −0.16 |
+| straightness | +0.31 | +0.18 (ink + strokes held) | |
+
+- **Strokes and ink are one variable at fixed px**: r 0.92. Strokes add
+  nothing once ink is held (OLS soft ~ ink R² 0.154; + strokes 0.155; +
+  straightness 0.183). Ink per stroke (thin vs thick strokes) is −0.04 once
+  strokes are held — no thin-vs-thick term either.
+- By stroke quartile the soft peak runs 0.668 / 0.642 / 0.614 / 0.619
+  (Q1 ≈ 4.6 strokes → Q4 ≈ 12.7): the same monotone-down curve as ink, same
+  size (≈ 0.05 σ end to end).
+- Amplitude is the ink side: ink → amp −0.27 with strokes held, strokes → amp
+  +0.19 with ink held. More ink at equal strokes costs leverage; more strokes
+  at equal ink does not.
+- The 12 off-diagonal pairs (many strokes / low ink, n 6: soft 0.608; few
+  strokes / high ink, n 6: 0.659) lean toward strokes as the carrier, but
+  6 pairs inside a 0.057 sd is not a read.
+
+Verdict unchanged: complexity, whether counted as strokes or measured as
+ink, is not a band term (≈ 0.05 σ over the whole range, inside 0.7–0.9 for
+singles) and enters only as a budget weight. Script: session scratchpad
+`strokes.py` (Unihan zip, `Unihan_IRGSources.txt`).

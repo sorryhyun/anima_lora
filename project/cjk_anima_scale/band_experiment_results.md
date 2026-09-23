@@ -89,6 +89,15 @@ shrinking the glyph below the fit, which the plan rules out.
   mispredicted B.1's single cell, so this is a confirmation left open, not
   a decision. B.1's rule (singles want the top half) still says 0.7–0.9.
 - **B.2** (grid × small × S) needed a 0.5–0.7 pick and did not run.
+- **Grid cells for multi-glyph rows at 0.5–0.7 bought nothing**
+  (`micro_warmg_0923`, warm from the merged table): a grid half beside the
+  scene half read below scene-only at 40 steps per row (exact 3 vs 6 of 32)
+  and level on exact / behind on native at 80 (7 vs 8; both-hit 4 vs 8 of
+  128), with the same row movement (`warm_cos` 0.87 vs 0.85). Grid cells
+  are 85–200 px glyphs, a different size regime from the 35 px composites;
+  whether multi-glyph grids come back at their own band (one step above a
+  flat glyph of the same px, § 2) is unread — `stage0507` has no grid recipe
+  for pieces for this reason.
 - **Stage C** ran after all (`plan_kanji.md`, 2026-09-23): the ink gate had only seen Latin weight (1.7 ×), not kanji ink (2.6 ×). Read above; `bk_lo` (0.5–0.7 on kanji) unrun — no stratum asked to go down.
 - **Stage D** is re-scoped: its case is a data dir mixing 16 and 30 px
   sentence text (ceiling 0.25–0.6 vs 0.4–0.6), which is step 2 territory
@@ -96,9 +105,13 @@ shrinking the glyph below the fit, which the plan rules out.
 
 ## 5. What the recipe takes from this
 
-- `recipe.md` step 1a (singles, 0.7–0.9) and step 1b (pieces, 0.5–0.7)
-  stand as written; the band is chosen by the row's glyph count, which is
-  why they are two runs and not one run with `--t_band_multi`.
+- The probe's step 1a (singles, 0.7–0.9) and step 1b (pieces, 0.5–0.7)
+  stood as written and became `stage0709` / `stage0507`; the band is chosen
+  by the row's glyph count, which is why they are two stages and not one
+  band with the probe's `--t_band_multi` (that flag keyed on an item's
+  `text`, and a grid item's `text` is every cell joined, so a grid of single
+  kanji landed in the multi band — the scale builder gates by unit kind
+  instead).
 - Any new item kind gets its band from (count rule) ∩ (§ 2 window for its
   px, +0.1 for a grid cell). For 16 px text in scenes
   (`--scene_min_glyph 16`, multi-glyph only — a single glyph never renders

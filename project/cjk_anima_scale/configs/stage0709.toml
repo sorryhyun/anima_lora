@@ -1,12 +1,13 @@
 # stage0709 — the glyph-identity band (design.md § 2): single glyphs ≥ 48 px
 # — scene bubble fit (48–53 px), grid cells (85–200 px), large flat singles.
-# Warm from the merged step-1 table (recipe.md), so no row is cold.
+# Warm from the merged step-1 table (step1_0921 + step1_0921z, 2 274 rows —
+# the probe line's `merge_tables.py` output), so no row is cold.
 
 stage = "stage0709"
 band = [0.7, 0.9]
 gate = "contain"
 min_overlap = 0.8
-warm_from = "output/wake_probe/rows_step1_0921m_merge/trained.pt"
+warm_from = "output/cjk_anima_scale/rows_step1_0921m_merge/trained.pt"
 
 [data]
 seed = 0
@@ -42,8 +43,9 @@ lr_rows = 1e-3
 lr_decay = "cosine"
 lr_warmup = 500
 init_anchor = 0.0                           # design § 6 item 2: early stages let the rows move
-box_share = 0.25
-box_share_cap = 0.75
+box_share = 0.25                            # single glyph's in-box share; log up to …
+box_share_cap = 0.5                         # … the cap, at …
+box_share_glyphs = 8                        # … this many glyphs (loss.py)
 compile = 1
 seed = 0
 save_every = 5000

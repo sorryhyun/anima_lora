@@ -132,7 +132,7 @@ def build_pools(cfg, out: Path, rng: random.Random) -> Pools:
     units = list(d["units"])
     if d["pieces"]:
         # the inventory keeps ONE `list:` source (Inventory.source), so the
-        # file rides on the punctuation list, as recipe.md step 2 has it
+        # file rides on the punctuation list, as the probe's step-2 data stage had it
         p = d["pieces"]
         path = Path(p) if "/" in p else UNITS_DIR / p
         assert path.is_file(), f"pieces file {path}"

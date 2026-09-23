@@ -8,7 +8,7 @@ MSE on grid / flat batches, cosine decay with warmup, the warm anchor.
 
 Reused from the probe, unchanged: ``LatentStore`` (per-shape latent cache in
 the data dir), ``Batcher`` (one shape × one source per batch),
-``weighted_fm_loss`` / ``BoxSplit``, ``_encode_text`` (TE cache +
+``BoxSplit`` (in / out split logging), ``_encode_text`` (TE cache +
 ``eval_coverage.json``), ``dit_forward``.
 
 Order (lazy loading): captions → TE cache → VAE latents → DiT → rows →
@@ -40,13 +40,9 @@ def train(
     from library.inference.models import load_dit_model
     from library.inference.text import ensure_text_strategies
     from library.runtime.noise import fm_training_batch
-    from train.stage import (
-        Batcher,
-        BoxSplit,
-        LatentStore,
-        _encode_text,
-        weighted_fm_loss,
-    )
+    from train.stage import Batcher, BoxSplit, LatentStore, _encode_text
+
+    from .loss import box_share_fm_loss
 
     t = {**cfg.train, **(overrides or {})}
     t_min, t_max = cfg.band
@@ -100,7 +96,8 @@ def train(
     print(
         f"train {cfg.stage} ({run_tag(cfg.stage, tag)}): σ [{t_min}, {t_max}], {n_rows} rows, "
         f"{steps} steps ({steps / n_rows:.0f}/row) × batch {t['batch']}, lr {t['lr_rows']:g} "
-        f"{decay} warmup {warmup}, box_share {t['box_share']} cap {t['box_share_cap']}, "
+        f"{decay} warmup {warmup}, box_share {t['box_share']} → cap {t['box_share_cap']} "
+        f"at {t['box_share_glyphs']} glyphs (log), "
         f"warm {'cold' if warm is None else warm}",
         flush=True,
     )
@@ -138,7 +135,11 @@ def train(
         "config": str(cfg.path),
         "arm": "rows",
     }
-    bs_cfg, cap = float(t["box_share"]), float(t["box_share_cap"])
+    bs_cfg, cap, n_cap = (
+        float(t["box_share"]),
+        float(t["box_share_cap"]),
+        float(t["box_share_glyphs"]),
+    )
     save_every = int(t["save_every"])
     t0 = time.time()
     for step in range(1, steps + 1):
@@ -160,7 +161,7 @@ def train(
             pred = dit_forward(
                 anima, noisy, ts, cache, [r["caption"] for r in brecs], device
             )
-        loss_fm = weighted_fm_loss(pred, target, brecs, 1.0, bs, cap)
+        loss_fm = box_share_fm_loss(pred, target, brecs, bs, cap, n_cap)
         loss = rows.regularized(loss_fm)
         if is_scene:
             split.add(pred, target, brecs, ts)
