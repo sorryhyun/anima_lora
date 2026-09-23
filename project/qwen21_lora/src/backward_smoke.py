@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 from pathlib import Path
 
@@ -33,31 +32,21 @@ import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 
-sys.path.insert(0, str(Path(__file__).parent))
-
-import blockswap  # noqa: E402
-from accel import compile_blocks, recompile_report  # noqa: E402
-from loader import (  # noqa: E402
-    DEFAULT_MODEL_DIR,
+from library.qwen21 import blockswap
+from library.qwen21.accel import compile_blocks, recompile_report
+from library.qwen21.loader import (
+    block_devices,
+    load_transformer,
     TRANSFORMER_BLOCKS,
     empty_cache,
     free_vram_gb,
     place,
 )
-from lora import DEFAULT_TARGETS, LoRANetwork  # noqa: E402
+from library.qwen21.lora import DEFAULT_TARGETS, LoRANetwork
 
 # 4 spatial downsamples in the VAE's dim_mult, as the pipeline's
 # `vae_scale_factor`. 512 px -> 32x32 latent tokens, 1024 px -> 64x64.
 VAE_SCALE_FACTOR = 16
-
-
-def load_transformer(model_dir: Path | str, dtype: torch.dtype = torch.bfloat16):
-    """The 14.2 GB transformer alone — no text encoder, no VAE."""
-    from diffusers import QwenImage21Transformer2DModel
-
-    return QwenImage21Transformer2DModel.from_pretrained(
-        Path(model_dir) / "transformer", dtype=dtype
-    )
 
 
 def dummy_batch(
@@ -132,13 +121,9 @@ def flow_matching_step(transformer, batch, generator: torch.Generator):
     return F.mse_loss(pred.float(), target.float())
 
 
-def block_devices(blocks) -> list[str]:
-    return [next(block.parameters()).device.type for block in blocks]
-
-
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model_dir", default=str(DEFAULT_MODEL_DIR))
+    ap.add_argument("--model_dir", default=None)
     ap.add_argument("--resolution", type=int, default=512)
     ap.add_argument("--text_len", type=int, default=64)
     ap.add_argument("--steps", type=int, default=3)

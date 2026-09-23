@@ -24,12 +24,7 @@ import re
 import torch
 import torch.nn as nn
 
-# The single-stream block's linears, as a fullmatch against a module's
-# qualified name. Attention projections plus the SwiGLU's three.
-DEFAULT_TARGETS = (
-    r"transformer_blocks\.\d+\.(attn\.(to_q|to_k|to_v|to_out\.0)"
-    r"|img_mlp\.(proj|gate_layer|out))"
-)
+from library.qwen21.requests import DEFAULT_TARGETS
 
 
 class LoRAAdapter(nn.Module):
@@ -120,7 +115,7 @@ class LoRANetwork(nn.Module):
 
 
 def load_network(model: nn.Module, path, dtype=None) -> tuple[LoRANetwork, dict]:
-    """Rebuild the network a ``train_lora.py`` checkpoint describes, and load it.
+    """Rebuild the network a ``train.py`` checkpoint describes, and load it.
 
     The rank, alpha and target pattern come from the file's own metadata, so a
     checkpoint trained against a different surface still loads correctly.

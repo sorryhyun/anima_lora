@@ -25,16 +25,11 @@ from __future__ import annotations
 
 import contextlib
 import gc
-import sys
-from pathlib import Path
-
 import torch
 import torch.nn as nn
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
-
-from library.runtime.device import weighs_to_device  # noqa: E402
-from library.runtime.offloading import ModelOffloader  # noqa: E402
+from library.runtime.device import weighs_to_device
+from library.runtime.offloading import ModelOffloader
 
 
 def find_blocks(model: nn.Module, path: str) -> nn.ModuleList:

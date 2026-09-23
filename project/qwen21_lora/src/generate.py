@@ -19,16 +19,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 from pathlib import Path
 
 import torch
 
-sys.path.insert(0, str(Path(__file__).parent))
-
-from loader import (  # noqa: E402
-    DEFAULT_MODEL_DIR,
+from library.qwen21.loader import (
     TEXT_ENCODER_BLOCKS,
     TRANSFORMER_BLOCKS,
     decode_latents,
@@ -40,12 +36,12 @@ from loader import (  # noqa: E402
     load_text_encoder,
     place,
 )
-from lora import load_network  # noqa: E402
+from library.qwen21.lora import load_network
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model_dir", default=str(DEFAULT_MODEL_DIR))
+    ap.add_argument("--model_dir", default=None)
     ap.add_argument(
         "--lora",
         default="project/qwen21_lora/out/lora_channel_caststation.safetensors",

@@ -17,7 +17,7 @@ swap 0 0.784, +compile 0.708.
 while their `.grad` stayed on the card. Training half-swaps — `swap_schedule(restore=False)`
 queues S forward moves, the offloader's backward hooks walk the tail back. Activation
 checkpointing's recompute re-fires the swap hooks; `blockswap.checkpoint_context_fn` makes
-them inert. `cache_dataset.py` precaches both encoders at native aspect / ~1 MP and natural
+them inert. `library/qwen21/cache.py` precaches both encoders at native aspect / ~1 MP and natural
 text length — padding either would move the image block's rope position.
 **Swap count is not the lever at 1024²**: 14 → 5 swapped left the step at 4.0 s, 100 % util,
 compute-bound — the opposite of 512²/1088 tokens (PCIe-bound at 1.18 s, compile ±0). Size

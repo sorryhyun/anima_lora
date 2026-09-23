@@ -9,13 +9,13 @@ differ from the rest of the repo: `CLAUDE.md`.
 
 | File | Purpose |
 |---|---|
-| `src/loader.py` | 33 GB checkpoint on a 16 GB card — phase split, `place()` |
-| `src/blockswap.py` | `ModelOffloader` on stock diffusers/transformers block lists |
-| `src/accel.py` | attention backend + per-block `torch.compile` |
-| `src/lora.py` | adapters held **outside** the swapped blocks; `set_multiplier`, `load_network` |
+| `library/qwen21/loader.py` | 33 GB checkpoint on a 16 GB card — phase split, `place()` |
+| `library/qwen21/blockswap.py` | `ModelOffloader` on stock diffusers/transformers block lists |
+| `library/qwen21/accel.py` | attention backend + per-block `torch.compile` |
+| `library/qwen21/lora.py` | adapters held **outside** the swapped blocks; `set_multiplier`, `load_network` |
 | `src/backward_smoke.py` | the fit gate — one training step on random tensors |
-| `src/cache_dataset.py` | Qwen3-VL embeddings + VAE latents, two files per image |
-| `src/train_lora.py` | flow matching, batch 1, `report_fit` after step 1 |
+| `library/qwen21/cache.py` | Qwen3-VL embeddings + VAE latents, two files per image |
+| `library/qwen21/train.py` | flow matching, batch 1, `report_fit` after step 1 |
 | `src/generate.py` | A/B eval, `--multipliers 1.0,0.0` from one model |
 
 ## Measured envelope
