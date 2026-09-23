@@ -13,10 +13,10 @@ here duplicates measured tables — those stay with the reports and
 | Hybrid encoder (CJK spans → ext ids; bit-identical on pure EN) | `library/anima/ext_vocab.py::HybridT5Encoder` (canonical since 2026-09-01; `bench/cjk_adapter/ext_vocab.py` is a re-export shim) | promoted; also on the Adapter node's `_vendor` surface |
 | Probe / acceptance harness (arm sweep, `--ext`, `--prompts` render grid, `--adapter_lora`) | `bench/cjk_adapter/run_bench.py` | done |
 | Residual name probe (adapter-space floor gate) | `bench/cjk_adapter/residual_probe.py` | done; diagnostic only |
-| Distill loop: corpus cache (process-pool stager, 67 pairs/s), ext-table ladder, objectives (`span`/`attn`/`flat`), register sampling / span scaling, warm start | `scripts/distill_cjk/{cache,config,data,distill,ext_table,losses,attn_bank}.py` (`make exp-cjk-cache` / `exp-distill-cjk`) | done |
+| Distill loop: corpus cache (process-pool stager, 67 pairs/s), ext-table ladder, objectives (`span`/`attn`/`flat`), register sampling / span scaling, warm start | `scripts/distill_cjk/{cache,config,data,distill,ext_table,losses,attn_bank}.py` (`make exp-distill-cjk`; the cache stager runs by module: `python -m scripts.distill_cjk.cache`) | done |
 | Real-query bank for the attention readout | `scripts/distill_cjk/build_query_bank.py` → `bench/cjk_distill/assets/query_bank.safetensors` | done |
 | Ext-gated adapter LoRA (`g = any(id ≥ 32128)`, forward-hook delta, standard `lora_A/lora_B` keys) | `scripts/distill_cjk/adapter_lora.py`, `--adapter_lora r=…` | done, inert without the flag; does not ship (plan3 closed) |
-| One-off gate drivers (G2, G3/G4, G5, coverage, separability) | [`gates/`](gates/) (`make exp-cjk-gates`) | done |
+| One-off gate drivers (G2, G3/G4, G5, coverage, separability) | [`gates/`](gates/) (run by path, e.g. `python project/cjk_aware_anima/gates/g34.py`) | done |
 | Tests | `tests/test_cjk_distill.py` (G1 EN bit-exactness, 23 cases), `tests/test_cjk_glossary.py` (24 invariants), `tests/test_cjk_adapter_lora.py` | green |
 | `process_escape` mojibake fix | `c8cf3ce2` | shipped |
 

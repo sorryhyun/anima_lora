@@ -336,19 +336,3 @@ def _filter_inference_base_for_edit(args: list[str]) -> list[str]:
         else:
             i += 1
     return out
-
-
-def cmd_test_byg(extra):
-    """Inference with the latest BYG editing LoRA (source image + instruction).
-
-    Placeholder: exits with an error. BYG trains a plain LoRA (loads via
-    ``--lora_weight``), but the source-concat conditioning patch
-    (``BYGConditioning`` in ``networks/methods/byg.py``) is not yet installed
-    and primed with the VAE-encoded reference in ``library/inference/``.
-    """
-    raise SystemExit(
-        "exp-test-byg: BYG inference (source-concat patch install + ref encode) "
-        "is not wired yet — see the P2 inference step in "
-        "bench/byg/README.md. Training (exp-byg) is functional; "
-        "the trained checkpoint is a plain LoRA loadable via --lora_weight."
-    )

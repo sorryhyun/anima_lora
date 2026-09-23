@@ -405,22 +405,10 @@ COMMANDS = {
         exp_training.cmd_soft_tokens,
         "[experimental] SoftREPA-style per-layer × per-t soft tokens (training-only v1)",
     ),
-    "exp-byg": (
-        exp_training.cmd_byg,
-        "[experimental] BYG unpaired instruction-editing training (plain LoRA, "
-        "bootstrap + DDS prior + cycle + identity; configs/methods/byg.toml). "
-        "Run exp-byg-data first.",
-    ),
     "exp-byg-data": (
         exp_training.cmd_byg_data,
         "[experimental] Build BYG edit-tuple sidecars (tag-swap) into "
         "post_image_dataset/byg/. Usage: exp-byg-data [--limit N --overwrite].",
-    ),
-    "exp-cjk-cache": (
-        exp_training.cmd_cjk_cache,
-        "[experimental] Stage the CJK distillation cache (Qwen hidden states + "
-        "frozen-teacher adapter outputs) from post_image_dataset/cjk_distill/"
-        "pairs.jsonl. Reused by every exp-distill-cjk arm.",
     ),
     "exp-distill-cjk": (
         exp_training.cmd_distill_cjk,
@@ -428,21 +416,11 @@ COMMANDS = {
         "en-translation teacher. Gates in order: ARGS='--mode oracle' → "
         "'--mode capacity' → '--mode train'. Emits a vocab pack, not a LoRA.",
     ),
-    "exp-cjk-gates": (
-        exp_training.cmd_cjk_gates,
-        "[experimental] CJK Phase-2b closing gates: G3 (teacher ceiling per "
-        "register — is the 2c cos>=0.6 gate even the right number?) and G4 "
-        "(corpus health + trust ablation). ARGS='--gates g3,g4a,g4b'.",
-    ),
     "exp-test-soft": (
         exp_inference.cmd_test_soft,
         "[experimental] Inference with latest soft_tokens weight "
         "(SoftREPA-style per-layer × per-t bank, spliced into cross-attn via "
         "monkey-patched Block.forward). Composes freely with --spectrum.",
-    ),
-    "exp-test-byg": (
-        exp_inference.cmd_test_byg,
-        "[experimental] Inference with latest BYG editing LoRA. Usage: exp-test-byg <ref_image> --prompt 'change background to a forest'",
     ),
     "exp-test-directedit": (
         exp_inference.cmd_test_directedit,

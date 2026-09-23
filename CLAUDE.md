@@ -49,7 +49,7 @@ Knobs and gotchas:
   full list in `configs/presets.toml`);
   `make lora-gui GUI_PRESETS=tlora` runs the clean per-variant `configs/gui-methods/`
   tree (`ls` it for the live list). `make turbo` is the DP-DMD distiller;
-  `exp-soft-tokens | exp-byg` are the experimental methods.
+  `exp-soft-tokens` is the experimental method.
 - **`make soup PATH_PATTERN="<glob>"`** (or `TARGET=<dir>` shorthand) — uncond-init soup
   pipeline (`scripts/soup/`; GUI: Experimental tab → soup). Plain-LoRA only. **Load the
   `soup` skill** before running or modifying it; deep-dive `docs/experimental/soup.md`.
