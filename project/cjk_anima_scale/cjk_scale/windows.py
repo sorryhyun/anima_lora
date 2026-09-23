@@ -9,20 +9,29 @@ a formula off the EN ceiling table cannot reproduce the reads (it puts a
 trained at 0.7–0.9). A new read that changes a row changes it here, with
 its report.
 
+Kinds, by the unit's Qwen tokens and glyphs (``kind_of``):
+
+    single   one token, one glyph            あ 日 ！
+    piece    one token, two or more glyphs   って 先生 ・・・  (one ext row carries the string)
+    multi    two or more tokens              あっ (host + small row), a short line, a sentence
+
+The probe's ``--t_band_multi`` / ``_remap_band`` "multi" meant ≥ 2 glyphs
+(piece + multi here); the band reads are on pieces (micro_cf_0922) and on
+lines (step 2, A.2 strings), and the rows say which.
+
 Units: ``px`` is the data stage's ink-stat glyph px, √(box area / glyphs) —
-the number every "as built" px in the reports is. ``kind`` is keyed on the
-item's glyph count (``kind_of``), the count ``train/stage.py::_remap_band``
-used: one glyph → ``single``, else ``multi``. ``layout``: ``scene`` (a bubble
-in a generated scene), ``flat`` (a 1×1 canvas, bare or ellipse — the two are
-equal to the second decimal, A.1), ``grid`` (2×2 and up, a position clause
-per cell).
+the number every "as built" px in the reports is. ``layout``: ``scene`` (a
+bubble in a generated scene), ``flat`` (a 1×1 canvas, bare or ellipse — the
+two are equal to the second decimal, A.1), ``grid`` (2×2 and up, a position
+clause per cell).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Callable
 
-KINDS = ("single", "multi")
+KINDS = ("single", "piece", "multi")
 LAYOUTS = ("scene", "flat", "grid")
 SIGMA_MAX = 0.9  # C.2: 0.8–0.95 is dead at 48 px for kana and kanji alike
 
@@ -40,7 +49,7 @@ class Window:
 
 @dataclass(frozen=True)
 class Row:
-    kind: str
+    kinds: tuple
     layouts: tuple
     px_lo: float  # inclusive
     px_hi: float | None  # exclusive; None = open
@@ -50,7 +59,7 @@ class Row:
 
     def holds(self, kind: str, px: float, layout: str) -> bool:
         return (
-            kind == self.kind
+            kind in self.kinds
             and layout in self.layouts
             and px >= self.px_lo
             and (self.px_hi is None or px < self.px_hi)
@@ -59,7 +68,7 @@ class Row:
 
 ROWS = (
     Row(
-        "single",
+        ("single",),
         LAYOUTS,
         40,
         None,
@@ -73,7 +82,7 @@ ROWS = (
         "kana band, 0.8–0.95 dead at 48 px (hi = 0.9)",
     ),
     Row(
-        "single",
+        ("single",),
         LAYOUTS,
         24,
         40,
@@ -84,41 +93,58 @@ ROWS = (
         "ends and the 0.7–0.9 row begins (32–40 px) is unread",
     ),
     Row(
-        "multi",
+        ("piece", "multi"),
         LAYOUTS,
         24,
         64,
         0.5,
         0.7,
-        "micro_cf_0922 (cf_sense_gate0_2026_09_22): 16 pieces at 35 px, exact "
-        "7 vs 1 of 32, native 6/3 vs 1/0 at 0.7–0.9; ceiling string 32 px "
-        "0.5–0.7, 48 px 0.6–0.8 (A.1). Grid strings: ceiling +0.1 from 32 px "
-        "on (A.1 runs 4–5), not read in training (plan_band B.2 unrun)",
+        "piece: micro_cf_0922 (cf_sense_gate0_2026_09_22), 16 pieces at 35 px, "
+        "exact 7 vs 1 of 32, native 6/3 vs 1/0 at 0.7–0.9. multi: no cell of "
+        "its own — step 2 trained every ≥ 2-glyph item at 0.35–0.7 "
+        "(_remap_band) and design.md § 2 puts 2–5-piece short lines ≈ 32 px "
+        "here; small-kana digraphs (あっ) trained inside the singles recipe at "
+        "0.7–0.9 in step1_0921, not read against this band. Ceiling: string "
+        "32 px 0.5–0.7, 48 px 0.6–0.8 (A.1); grid strings +0.1 from 32 px on "
+        "(A.1 runs 4–5), not read in training (plan_band B.2 unrun)",
     ),
     Row(
-        "multi",
+        ("piece", "multi"),
         LAYOUTS,
         12,
         24,
         0.3,
         0.5,
-        "cf_band_a1 A.2: 16 px string live 0.25–0.6 centred 0.4, 12 px "
-        "0.2–0.6; grid cell 12–16 px 0.3–0.5; design.md § 2 stage0305. "
-        "Nothing read under σ 0.25 (whether a stage0103 exists is open)",
+        "multi: cf_band_a1 A.2, EN two-word strings — 16 px live 0.25–0.6 "
+        "centred 0.4, 12 px 0.2–0.6; grid cell 12–16 px 0.3–0.5; design.md § 2 "
+        "stage0305. piece: by design, no read at this px. Nothing read under "
+        "σ 0.25 (whether a stage0103 exists is open)",
     ),
 )
 
 
-def kind_of(units) -> str:
-    """``single`` iff every unit of the item is one glyph, else ``multi``.
-    A grid of single glyphs is ``single``; a grid of strings, a piece, a
-    line, a small-kana digraph (あっ: two glyphs on the canvas) are
-    ``multi`` — the count the caption asks the DiT to draw."""
-    return "single" if all(glyph_count(u) == 1 for u in units) else "multi"
-
-
 def glyph_count(text: str) -> int:
     return sum(not c.isspace() for c in text)
+
+
+def unit_kind(unit: str, n_tokens: int) -> str:
+    """One unit's kind from its Qwen token count and glyph count."""
+    assert n_tokens >= 1, (unit, n_tokens)
+    if n_tokens >= 2:
+        return "multi"
+    return "single" if glyph_count(unit) == 1 else "piece"
+
+
+_RANK = {k: i for i, k in enumerate(KINDS)}
+
+
+def kind_of(units, n_tokens: Callable[[str], int]) -> str:
+    """The item's kind: the heaviest of its units' kinds (single < piece <
+    multi). A grid of single glyphs is ``single``; a grid of pieces is
+    ``piece``; anything holding a ≥ 2-token unit — a line, a small-kana
+    digraph — is ``multi``. Recipes draw one kind per item; a mixed grid
+    (``grid_string`` with ``source = "both"``) takes the heavier band."""
+    return max((unit_kind(u, n_tokens(u)) for u in units), key=_RANK.__getitem__)
 
 
 def window(kind: str, px: float, layout: str) -> Window | None:
@@ -153,11 +179,11 @@ def covers(band, w: Window | None, min_overlap: float = 0.8) -> bool:
 
 def table() -> str:
     """The rows as a text table (``scale.py windows``)."""
-    lines = ["kind    layouts             px          band       source"]
+    lines = ["kinds         layouts             px          band       source"]
     for r in ROWS:
         px = f"{r.px_lo:g}–{'' if r.px_hi is None else f'{r.px_hi:g}'}"
         lines.append(
-            f"{r.kind:<7} {'/'.join(r.layouts):<19} {px:<11} "
+            f"{'/'.join(r.kinds):<13} {'/'.join(r.layouts):<19} {px:<11} "
             f"{r.lo:.1f}–{r.hi:.1f}    {r.source}"
         )
     return "\n".join(lines)

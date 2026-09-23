@@ -144,7 +144,7 @@ def _build_recipe(cfg, m, n: int, pools: Pools, rng, out: Path, first: int):
             continue
         px = item.px()
         px_seen.append(px)
-        kind = kind_of(item.units)
+        kind = kind_of(item.units, pools.n_tokens)
         w = window(kind, px, item.layout)
         if cfg.gate != "none" and not covers(band, w, cfg.min_overlap):
             rejects["no_window" if w is None else "band"] += 1

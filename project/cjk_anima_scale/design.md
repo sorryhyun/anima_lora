@@ -121,13 +121,18 @@ the same recipe (`scene_single`) feeds `stage0709` at bubble-fit px and
 `stage0507` at 24–32 px because the builder re-draws px until the window
 contains the band.
 
+Kinds, by Qwen tokens then glyphs (`cjk_scale/windows.py`): **single** = one
+token, one glyph; **piece** = one token, 2+ glyphs (one ext row carries the
+string); **multi** = 2+ tokens (a line, a small-kana digraph あっ). The
+probe's `t_band_multi` "multi" meant ≥ 2 glyphs — piece + multi here.
+
 Recipes (names are placeholders):
 
 | recipe | source | px control | unit kinds |
 |---|---|---|---|
 | `scene_single` | bubble pool, one glyph per bubble | bubble fit (48–53) or a `--scene_glyph_px` cap for the small end | kana / kanji / punct rows |
 | `grid_single` | **1×1 … 3×3** grid, one glyph per cell; **1×1 is the flat single** (`layout v1` / `jitter` retired into it) | `grid_fill` 0.15–0.8 of the cell short side — 60–400 px at 1×1, 25–85 at 3×3 | same |
-| `scene_piece` | bubble pool, one multi-glyph unit | fill 0.7 (≈ 35 px) up to 1.0 in large bubbles (≈ 48) | piece rows |
+| `scene_piece` | bubble pool, one piece (one token, 2+ glyphs) | fill 0.7 (≈ 35 px) up to 1.0 in large bubbles (≈ 48) | piece rows |
 | `scene_short` | 2–5 pieces, one line | ≈ 32 px | corpus short lines |
 | `scene_sentence` | Manga109-s dialogue | `scene_min_glyph` 16–28 | corpus lines |
 | `grid_string` | strings in cells (the A.2 cell) | 12–24 px | pieces / short lines |

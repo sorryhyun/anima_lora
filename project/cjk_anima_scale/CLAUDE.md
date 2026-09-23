@@ -25,9 +25,12 @@ The research surface stays in `../cjk_renderable_anima/` (reports, probes).
   `trained.pt` under the same tag. No cold row inside a stage except a new one.
 - `cjk_scale/windows.py` is a **row table with provenance**, not a formula. A new
   read changes a row and its source string; the tests hold the reads.
-- `kind` is keyed on the **glyphs the item draws**: one → `single`, else `multi`.
-  A piece (って: one token, 2 glyphs) and a small-kana digraph (あっ: two tokens,
-  2 glyphs) are both `multi`. `px` is √(box area / glyphs), the ink-stat px of
+- Three kinds, by Qwen tokens then glyphs (`windows.unit_kind`): **single** = one
+  token, one glyph (あ); **piece** = one token, 2+ glyphs (って — one ext row
+  carries the string); **multi** = 2+ tokens (a line, a small-kana digraph あっ =
+  host + small row). An item takes its heaviest unit's kind. The probe's
+  `t_band_multi` / `_remap_band` "multi" meant ≥ 2 glyphs (piece + multi here) —
+  do not reuse that word for it. `px` is √(box area / glyphs), the ink-stat px of
   the reports.
 - The band gate keeps an item iff the stage band is inside its window (or
   `min_overlap` of it); the ±20 % `px_target` gate reads the recipe's **drawn**

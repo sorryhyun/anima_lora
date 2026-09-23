@@ -4,7 +4,23 @@ from __future__ import annotations
 
 import pytest
 
-from cjk_scale.windows import ROWS, SIGMA_MAX, covers, kind_of, overlap, window
+from cjk_scale.windows import (
+    KINDS,
+    ROWS,
+    SIGMA_MAX,
+    covers,
+    kind_of,
+    overlap,
+    unit_kind,
+    window,
+)
+
+# a stand-in tokenizer: one token per unit except the small-kana digraphs
+_TOKENS = {"あっ": 2, "きゃ": 2, "ってる": 1, "って": 1, "先生": 1}
+
+
+def n_tokens(u: str) -> int:
+    return _TOKENS.get(u, 1 if len(u) <= 2 else len(u))
 
 
 @pytest.mark.parametrize(
@@ -16,10 +32,12 @@ from cjk_scale.windows import ROWS, SIGMA_MAX, covers, kind_of, overlap, window
         ("single", 200, "flat", (0.7, 0.9)),  # the flat half
         ("single", 28, "scene", (0.5, 0.7)),  # design stage0507
         ("single", 39, "flat", (0.5, 0.7)),
-        ("multi", 35, "scene", (0.5, 0.7)),  # micro_cf_0922
-        ("multi", 48, "scene", (0.5, 0.7)),
+        ("piece", 35, "scene", (0.5, 0.7)),  # micro_cf_0922
+        ("piece", 48, "scene", (0.5, 0.7)),
+        ("multi", 32, "scene", (0.5, 0.7)),  # short lines, design stage0507
         ("multi", 16, "scene", (0.3, 0.5)),  # A.2
         ("multi", 14, "grid", (0.3, 0.5)),
+        ("piece", 16, "grid", (0.3, 0.5)),  # by design, unread
     ],
 )
 def test_rows_reproduce_the_reads(kind, px, layout, band):
@@ -33,19 +51,24 @@ def test_unread_cells_have_no_window():
         window("single", 16, "scene") is None
     )  # a glyph never renders that small in a bubble
     assert window("multi", 80, "grid") is None  # strings above 64 px are not a cell
-    assert window("multi", 8, "flat") is None
+    assert window("piece", 8, "flat") is None
 
 
 def test_nothing_above_sigma_max():
     assert all(r.hi <= SIGMA_MAX for r in ROWS)
+    assert all(set(r.kinds) <= set(KINDS) for r in ROWS)
 
 
-def test_kind_is_the_item_glyph_count():
-    assert kind_of(["あ"]) == "single"
-    assert kind_of(["あ", "日", "！"]) == "single"  # a grid of single glyphs
-    assert kind_of(["って"]) == "multi"
-    assert kind_of(["あっ"]) == "multi"  # a small-kana digraph draws two glyphs
-    assert kind_of(["あ", "って"]) == "multi"
+def test_kind_is_tokens_then_glyphs():
+    assert unit_kind("あ", 1) == "single"
+    assert unit_kind("って", 1) == "piece"  # one token, two glyphs
+    assert unit_kind("あっ", 2) == "multi"  # host row + small row
+    assert kind_of(["あ", "日", "！"], n_tokens) == "single"  # a grid of singles
+    assert kind_of(["って", "先生"], n_tokens) == "piece"  # a grid of pieces
+    assert kind_of(["あっ"], n_tokens) == "multi"
+    assert kind_of(["ありがとうございます"], n_tokens) == "multi"  # a line
+    assert kind_of(["って", "あっ"], n_tokens) == "multi"  # mixed grid: the heavier
+    assert kind_of(["あ", "って"], n_tokens) == "piece"
 
 
 def test_gate_contain_and_overlap():

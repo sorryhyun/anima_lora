@@ -9,8 +9,8 @@ measures the item's px, looks up its window and keeps or re-draws it.
                     or a ``glyph_px`` range that sets the fill per item
     grid_single     1×1 … 3×3 grid, one glyph per cell, one fill draw per item;
                     1×1 is the flat single (bare or ellipse, plain template)
-    scene_piece     one multi-glyph unit in a bubble, fill 0.7–1.0
-    scene_short     a 2–5-piece corpus line, one column
+    scene_piece     one piece (one token, 2+ glyphs) in a bubble, fill 0.7–1.0
+    scene_short     a 2–5-piece corpus line (multi), one column
     scene_sentence  a Manga109-s dialogue line, ``min_glyph`` drawn per item
     grid_string     pieces / short lines in 2×2 … 3×2 word cells at a target px
 
@@ -68,15 +68,27 @@ class Pools:
     scenes: list
     single_idx: set  # scenes a lone glyph may go to
     shapes: object  # data.stage.ShapePool
-    singles: list  # weighted pool, one-glyph units
-    pieces: list  # weighted pool, multi-glyph units (one Qwen piece each)
-    phrase: dict  # kind → training lines (short / sentence)
+    singles: list  # weighted pool: one token, one glyph
+    pieces: list  # weighted pool: one token, ≥ 2 glyphs (one ext row)
+    digraphs: list  # weighted pool: `small` digraphs (host + small row → multi)
+    phrase: dict  # kind → training lines (short / sentence); every line is multi
     held: dict  # kind → held lines
     vertical: bool
     stroke: float
     used: Counter = field(default_factory=Counter)  # scene index → items drawn
     decks: dict = field(default_factory=dict)
     balanced: dict = field(default_factory=dict)
+    _n_tokens: dict = field(default_factory=dict)
+
+    def n_tokens(self, text: str) -> int:
+        """Qwen token count of ``text`` (memoised) — the kind's first axis."""
+        from data.inventory import pieces as qpieces
+
+        n = self._n_tokens.get(text)
+        if n is None:
+            tok, qmap = self.tokq
+            n = self._n_tokens[text] = len(qpieces(tok, qmap, text))
+        return n
 
 
 # ----------------------------------------------------------------------------
@@ -158,10 +170,23 @@ def build_pools(cfg, out: Path, rng: random.Random) -> Pools:
     _quietly(_word_set, a, out, tokq, inv)  # no words source here: `words: 0` noise
     for g in ("combo", "corpus", "line", "word", "word_held"):
         inv.evals.pop(g, None)
+    # the pool by kind: single (1 token, 1 glyph), piece (1 token, ≥ 2 glyphs),
+    # digraph (the `small` source: host + small row, 2 tokens → multi)
+    tok, qmap = tokq
     pool = inv.pool()
-    singles = [u for u in pool if glyph_count(u) == 1]
-    pieces = [u for u in pool if glyph_count(u) >= 2]
+    singles, pieces, digraphs = [], [], []
+    for u in pool:
+        n = len(qpieces(tok, qmap, u))
+        if n >= 2:
+            digraphs.append(u)
+        elif glyph_count(u) == 1:
+            singles.append(u)
+        else:
+            pieces.append(u)
     assert singles, "the unit pool has no one-glyph unit"
+    small = {d for ds in inv.small_of.values() for d in ds}
+    stray = sorted(set(digraphs) - small)
+    assert not stray, f"≥ 2-token units outside the small digraphs: {stray[:10]}"
     scenes = load_scenes(d["scenes"], 0.0, 0, "", d["scene_one_bubble"])
     single_pools = {t for t in d["single_scenes"].split(",") if t}
     max_ar = float(d["single_max_ar"])
@@ -248,17 +273,18 @@ def build_pools(cfg, out: Path, rng: random.Random) -> Pools:
             "scene_short / scene_sentence / grid_string need data.phrase_file"
         )
     if pieces:
-        # the multi-glyph rows' own exact ruler, under the probe's `word`
-        # group (single-piece multi-glyph words — what a piece is)
+        # the piece rows' own exact ruler, under the probe's `word` group
+        # (single-piece multi-glyph words — what a piece is)
         erng = random.Random(a.seed + 43)
         distinct = list(dict.fromkeys(pieces))
         inv.evals["word"] = sorted(
             erng.sample(distinct, min(int(d["n_piece_eval"]), len(distinct)))
         )
     print(
-        f"pools: {len(set(singles))} one-glyph units ({len(singles)} weighted), "
-        f"{len(set(pieces))} pieces ({len(pieces)} weighted), {len(scenes)} scenes "
-        f"({len(single_idx)} take a lone glyph)",
+        f"pools: {len(set(singles))} singles ({len(singles)} weighted), "
+        f"{len(set(pieces))} pieces ({len(pieces)} weighted), "
+        f"{len(set(digraphs))} digraphs ({len(digraphs)} weighted, multi), "
+        f"{len(scenes)} scenes ({len(single_idx)} take a lone glyph)",
         flush=True,
     )
     return Pools(
@@ -270,6 +296,7 @@ def build_pools(cfg, out: Path, rng: random.Random) -> Pools:
         shapes=ShapePool(d["shapes"], a.seed),
         singles=singles,
         pieces=pieces,
+        digraphs=digraphs,
         phrase=phrase,
         held=held,
         vertical=bool(d["vertical"]),
@@ -412,7 +439,10 @@ def _balanced_line(pools: Pools, rng: random.Random, kind: str) -> str | None:
 
 
 def scene_single(pools: Pools, rng: random.Random, p: dict):
-    unit = rng.choice(pools.singles)
+    # `digraphs = true`: the small-kana digraphs ride along (kind multi — the
+    # gate keeps them only where a multi row holds the stage band)
+    pool = pools.singles + (pools.digraphs if p.get("digraphs") else [])
+    unit = rng.choice(pool)
     px = p.get("glyph_px")
     target = rng.uniform(*px) if px else None
     return _draw_scene(
@@ -560,7 +590,10 @@ def grid_single(pools: Pools, rng: random.Random, p: dict):
     grids = parse_grids(p.get("grids", "1x1:2,2x2,3x3,2x3,3x2"))
     name = rng.choices([g for g, _ in grids], weights=[w for _, w in grids])[0]
     cols, rows, _ = GRIDS[name]
-    deck = _deck(pools, "singles", pools.singles, rng)
+    if p.get("digraphs"):
+        deck = _deck(pools, "singles+digraphs", pools.singles + pools.digraphs, rng)
+    else:
+        deck = _deck(pools, "singles", pools.singles, rng)
     got = deck.deal(cols * rows)
     bubble = rng.random() < float(p.get("bubble_frac", 0.5))
     lo, hi = p.get("fill", [0.15, 0.8])
@@ -585,6 +618,8 @@ def grid_string(pools: Pools, rng: random.Random, p: dict):
     name = rng.choices([g for g, _ in grids], weights=[w for _, w in grids])[0]
     cols, rows, size = GRIDS[name]
     assert size is not None, "grid_string takes 2x2 and up"
+    # source: pieces (kind piece) | short (lines: kind multi) | both (a mixed
+    # grid takes the heavier kind, multi — windows.kind_of)
     src = p.get("source", "both")
     pool = []
     if src in ("pieces", "both"):

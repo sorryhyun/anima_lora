@@ -35,6 +35,7 @@ share = 0.2
 glyph_px = [24, 32]
 fill = 0.7
 min_glyph = 20
+digraphs = true                             # small-kana digraphs (あっ: 2 tokens, multi) train here, not in stage0709
 
 [[data.mix]]                                # 2–5-piece lines, one column, ≈ 32 px
 recipe = "scene_short"
