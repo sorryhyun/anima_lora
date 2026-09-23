@@ -1,0 +1,63 @@
+# stage0305 — the small-text band (design.md § 2): 12–24 px text — sentences
+# at scene_min_glyph 16, small-bubble dialogue, small grid strings.
+# Warm from stage0507 (same tag). Nothing has been read under σ 0.25.
+
+stage = "stage0305"
+band = [0.3, 0.5]
+gate = "contain"
+min_overlap = 0.8
+warm_from = "stage0507"
+
+[data]
+seed = 0
+n_items = 40000
+units = ["kana", "kana_ext*1", "small", "kanji:200*1", "list:、,。,・,ー,～,〜,！,？,「,」,！！,・・・,・・・・*1"]
+pieces = "ja_cold_0001_1900.txt"
+scenes = "s1,s1w,sl1w,ja_comic"
+scene_one_bubble = "ja_comic"
+single_scenes = "s1,s1w"
+single_max_ar = 2.0
+shapes = "448,512:2,448x512,512x448"
+phrase_file = "$MANGA109S/derived/dialogue_2_10.tsv"
+short_pieces = "2-5"
+sentence_min_letters = 6
+
+[[data.mix]]                                # dialogue at 14–22 px, up to two columns
+recipe = "scene_sentence"
+share = 0.6
+glyph_px = [14, 22]                         # sets the fill per item (a bare min_glyph floor draws 23 px)
+min_glyph = 12
+fill = 0.9
+max_lines = 2
+px_target = 18
+
+[[data.mix]]                                # the A.2 cell: strings in word cells at 12–24 px
+recipe = "grid_string"
+share = 0.4
+grids = "2x2,2x3,3x2"
+glyph_px = [12, 24]
+source = "both"
+max_glyphs = 8
+bubble_frac = 0.5
+
+[train]
+steps_per_row = 30
+batch = 4
+lr_rows = 1e-3
+lr_decay = "cosine"
+lr_warmup = 500
+init_anchor = 0.0
+box_share = 0.25
+box_share_cap = 0.75
+compile = 1
+seed = 0
+save_every = 5000
+
+[eval]
+groups = "single,single_ext,single_small,single_kanji,single_extra,word,short,short_held,phrase,phrase_held,en"
+native_chars = "あ,か,す,日"
+native_clauses = "en,swap"
+seeds = 2
+cf_sense = true
+cf_rows = "piece"
+regress = ["stage0709", "stage0507"]

@@ -167,7 +167,7 @@ step 1b, not step 2, is where their band matters.
 ## Open
 
 - Grid for multi-glyph rows: closed at 0.5–0.7 (40 and 80 steps per row both
-  read at or below scene-only). Reopens only through `plan_band.md` if grid
+  read at or below scene-only). Reopens only through a new band cell if grid
   cells turn out to want their own band.
 - Step 1b budget between 80 and 190 steps per row has one point each; the
   curve has no knee in the four reads so far (40 / 80 / 188: 6 / 8 / 13).

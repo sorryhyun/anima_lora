@@ -7,7 +7,7 @@ code in `project/cjk_renderable_anima/src/` stays the research surface;
 this line takes its render primitives and leaves its levers behind.
 
 Status: sketch. Numbers it leans on: `band_experiment_results.md` (the
-per-px window table, the count rule), `plan_kanji.md` (C.1 read in
+per-px window table, the count rule), `plan_kanji.md` (deleted; git `f5cd4c0c`; C.1 read in
 `reports/cf_kanji_c1_2026_09_23.md`, C.2 in `reports/band_c2_kanji_2026_09_23.md`).
 
 ## 1. Principles
@@ -71,26 +71,36 @@ weights at most, not `windows.py` terms (C.2 report, last section).
 project/cjk_anima_scale/
   design.md            this file
   recipe.md            retired into configs/ once the stages run
+  scale.py             front door: --stage <s> --tag <t> --steps data train eval bake [--submit]
   configs/
-    stage0709.toml     band, data recipe mix, units, steps/row, warm-start
+    stage0709.toml     band, gate, warm chain, recipe mix, trainer surface, eval
     stage0507.toml
     stage0305.toml
     stage0309.toml
-  src/
-    data/
-      builder.py       stage config → data_<stage>/ (train.jsonl, eval.json, sheets)
-      recipes.py       the item generators (§ 4) and their band windows
-      windows.py       (kind, px, layout) → live band; the § 2 table as code
-    train.py           rows-only plain FM, one band, warm chain
-    eval.py            exact / native / cf_sense on the stage's own px
+  cjk_scale/           one package (see below for why not `src/`)
+    paths.py           output dirs: output/wake_probe/{data,rows}_scale_<stage>_<tag>
+    windows.py         (kind, px, layout) → training band; the law as a row table with provenance
+    config.py          configs/<stage>.toml → StageConfig
+    recipes.py         the item generators (§ 4)
+    builder.py         stage config → data dir, the band gate, the ± 20 % px gate
+    rows.py            the ExtDelta table, warm chain, anchor
+    train.py           rows-only plain FM, one band
+    eval.py            exact / native / cf_sense via the probe stages + the regression check
     bake.py            table → pack pair
-  runs/                stage tags → job ids, argv, reads (the ledger)
+    ledger.py          runs/ledger.jsonl
+  tests/               line-local (imports, the law's rows, configs, the chain)
+  runs/                ledger.jsonl: stage, tag, steps, argv, job id per submit
 ```
 
-Render primitives (scene compositor, grid, flat, ink, fonts) are imported
-from `project/cjk_renderable_anima/src/common/render/` — not copied, not
-re-implemented. If that import direction gets awkward the primitives move
-to a shared package; the probe line keeps importing them either way.
+Render primitives (scene compositor, grid, flat, ink, fonts), the inventory
+resolvers, `LatentStore` / `Batcher` / the box-share loss and the eval
+stages are imported from `project/cjk_renderable_anima/src/` — not copied.
+That `src/` puts its packages on `sys.path` as top-level names (`common`,
+`data`, `train`, `eval`), so this line's code is the `cjk_scale` package,
+not a second `src/` (a `src/train.py` here would shadow the probe's
+`train/` the moment both were on the path). Outputs keep the probe's
+`output/wake_probe/` layout with a `scale_` prefix so every probe reader
+opens a stage table unchanged.
 
 ## 4. The data builder — where the complexity is
 
@@ -187,7 +197,8 @@ table — the warm-chain regression check.
 5. **Corpus for `stage0305`** — 16 px text needs long lines in small
    bubbles; Manga109-s dialogue is the pool, the count of usable lines is
    unknown.
-6. **Import direction** for the render primitives (§ 3).
+6. ~~**Import direction** for the render primitives (§ 3).~~ Decided
+   2026-09-23: this line imports the probe's `src/` (§ 3); nothing moves.
 7. **Is the grid shift the caption or the context?** The +0.1–0.2 σ a grid
    cell carries at the ceiling (A.1) was read on 3×3 with the grid caption.
    Whether a 1×1 gets it decides if `windows.py` applies the shift by cell

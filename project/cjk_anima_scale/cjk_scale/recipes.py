@@ -1,0 +1,621 @@
+"""recipes — the item generators (design § 4), over the probe line's render
+primitives (``common/render/``) and its inventory / scene / phrase readers.
+
+A recipe draws one item — unit(s), px, layout — and returns an ``Item`` or
+``None`` on a render miss. It knows nothing about the stage: the builder
+measures the item's px, looks up its window and keeps or re-draws it.
+
+    scene_single    one glyph in a bubble; px = the bubble fit (fill 0.7 → 48–53)
+                    or a ``glyph_px`` range that sets the fill per item
+    grid_single     1×1 … 3×3 grid, one glyph per cell, one fill draw per item;
+                    1×1 is the flat single (bare or ellipse, plain template)
+    scene_piece     one multi-glyph unit in a bubble, fill 0.7–1.0
+    scene_short     a 2–5-piece corpus line, one column
+    scene_sentence  a Manga109-s dialogue line, ``min_glyph`` drawn per item
+    grid_string     pieces / short lines in 2×2 … 3×2 word cells at a target px
+
+Records follow the probe's ``train.jsonl`` schema (``file`` / ``text`` /
+``caption`` / ``src`` / ``kind`` / ``shape`` / ``box`` or ``boxes`` /
+``units``), plus ``recipe`` / ``layout`` / ``px`` / ``window`` (design § 4).
+"""
+
+from __future__ import annotations
+
+import random
+from collections import Counter
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from .paths import UNITS_DIR
+from .windows import glyph_count
+
+# scene-fit rules the probe settled (data/synth.py): a text goes to the
+# scenes that hold it in one column whenever this many do; tries per text
+MIN_FIT_SCENES = 10
+SCENE_TRIES = 8
+
+
+@dataclass
+class Item:
+    image: object  # PIL image
+    units: list
+    layout: str  # scene | flat | grid
+    boxes: list  # ink boxes, one per unit (scene: one box)
+    caption: str
+    src: str  # scene | font | grid
+    shape: tuple
+    extra: dict = field(default_factory=dict)
+
+    @property
+    def text(self) -> str:
+        return " ".join(self.units)
+
+    def px(self) -> float:
+        """√(box area / glyphs) — the ink-stat px of ``data/stage.py``."""
+        from common.render.ink import box_area
+
+        area = sum(box_area(b) for b in self.boxes)
+        return (area / max(1, sum(glyph_count(u) for u in self.units))) ** 0.5
+
+
+@dataclass
+class Pools:
+    """Everything the recipes draw from, built once per data dir."""
+
+    fonts: list
+    tokq: tuple
+    inv: object  # data.units.Inventory
+    scenes: list
+    single_idx: set  # scenes a lone glyph may go to
+    shapes: object  # data.stage.ShapePool
+    singles: list  # weighted pool, one-glyph units
+    pieces: list  # weighted pool, multi-glyph units (one Qwen piece each)
+    phrase: dict  # kind → training lines (short / sentence)
+    held: dict  # kind → held lines
+    vertical: bool
+    stroke: float
+    used: Counter = field(default_factory=Counter)  # scene index → items drawn
+    decks: dict = field(default_factory=dict)
+    balanced: dict = field(default_factory=dict)
+
+
+# ----------------------------------------------------------------------------
+# pools
+
+
+def _quietly(fn, *args, width: int = 160):
+    """Run a probe resolver with its stdout captured; print each of its
+    lines cut to ``width`` (they are provenance, not a unit dump)."""
+    import contextlib
+    import io
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        out = fn(*args)
+    for ln in buf.getvalue().splitlines():
+        if ln.strip():
+            print(ln if len(ln) <= width else ln[: width - 1] + "…", flush=True)
+    return out
+
+
+def build_pools(cfg, out: Path, rng: random.Random) -> Pools:
+    """Inventory (``--units`` semantics), scenes, phrase kinds, eval groups —
+    the probe's resolvers on a small namespace, so a unit means what it
+    meant in every read of record."""
+    from types import SimpleNamespace
+
+    from data.inventory import pieces as qpieces
+    from data.inventory import phrase_file_lines, qwen_pieces
+    from data.stage import (
+        ShapePool,
+        _base_inventory,
+        _eval_strings,
+        _resolve_singles,
+        _word_set,
+    )
+    from data.synth import _SENT_DISTINCT, _SHORT_DISTINCT, _letters, load_scenes
+    from common.render.flat import find_fonts
+
+    d = cfg.data
+    units = list(d["units"])
+    if d["pieces"]:
+        # the inventory keeps ONE `list:` source (Inventory.source), so the
+        # file rides on the punctuation list, as recipe.md step 2 has it
+        p = d["pieces"]
+        path = Path(p) if "/" in p else UNITS_DIR / p
+        assert path.is_file(), f"pieces file {path}"
+        lists = [i for i, u in enumerate(units) if u.startswith("list:")]
+        assert len(lists) <= 1, (
+            "one list: source in data.units — the pieces file joins it"
+        )
+        if lists:
+            spec = units[lists[0]]
+            body, star, weight = spec.partition("*")
+            units[lists[0]] = f"{body},@{path}{star}{weight}"
+        else:
+            units.append(f"list:@{path}*1")
+    a = SimpleNamespace(
+        units=units,
+        balanced=0,
+        seed=int(d["seed"]),
+        phrase_file="",
+        phrase_pieces=0,
+        phrase_min_pieces=int(d["phrase_min_pieces"]),
+        phrase_max_pieces=int(d["phrase_max_pieces"]),
+        phrase_norm=bool(d["phrase_norm"]),
+        word_min_len=2,
+        n_word_eval=0,
+        line_max_len=16,
+        n_line_eval=0,
+    )
+    fonts = find_fonts()
+    inv = _base_inventory(a)
+    tokq = qwen_pieces()
+    _eval_strings(a, rng, inv)
+    _quietly(
+        _resolve_singles, a, out, tokq, inv
+    )  # its `extra units:` line lists every piece
+    _quietly(_word_set, a, out, tokq, inv)  # no words source here: `words: 0` noise
+    for g in ("combo", "corpus", "line", "word", "word_held"):
+        inv.evals.pop(g, None)
+    pool = inv.pool()
+    singles = [u for u in pool if glyph_count(u) == 1]
+    pieces = [u for u in pool if glyph_count(u) >= 2]
+    assert singles, "the unit pool has no one-glyph unit"
+    scenes = load_scenes(d["scenes"], 0.0, 0, "", d["scene_one_bubble"])
+    single_pools = {t for t in d["single_scenes"].split(",") if t}
+    max_ar = float(d["single_max_ar"])
+
+    def single_ok(sc) -> bool:
+        if single_pools and sc["pool"] not in single_pools:
+            return False
+        if max_ar > 0:
+            w = sc["region"][2] - sc["region"][0]
+            h = sc["region"][3] - sc["region"][1]
+            return max(w, h) <= max_ar * max(1, min(w, h))
+        return True
+
+    single_idx = {j for j, sc in enumerate(scenes) if single_ok(sc)}
+    assert single_idx, "single_scenes / single_max_ar leave no scene for a glyph"
+
+    phrase: dict = {"short": [], "sentence": []}
+    held: dict = {"short": [], "sentence": []}
+    needs_phrases = any(
+        m.name in ("scene_short", "scene_sentence", "grid_string") for m in cfg.mix
+    )
+    if d["phrase_file"]:
+        tok, qmap = tokq
+        plines = phrase_file_lines(
+            Path(d["phrase_file"]),
+            a.phrase_min_pieces,
+            a.phrase_max_pieces,
+            norm=a.phrase_norm,
+        )
+        books = sorted({b for _t, b, _n in plines})
+        hrng = random.Random(a.seed + 41)
+        held_books = set(
+            hrng.sample(books, min(int(d["phrase_held_books"]), len(books)))
+        )
+        n_of = {
+            t: n if n is not None else len(qpieces(tok, qmap, t)) for t, _b, n in plines
+        }
+        lo, hi = (int(x) for x in str(d.get("short_pieces", "2-5")).split("-"))
+        min_letters = int(d.get("sentence_min_letters", 6))
+
+        def kind_of(t):
+            ls = _letters(t)
+            if len(ls) >= min_letters and len(set(ls)) >= _SENT_DISTINCT:
+                return "sentence"
+            if lo <= n_of[t] <= hi and len(set(ls)) >= _SHORT_DISTINCT:
+                return "short"
+            return None
+
+        train_set = set()
+        for t, b, _n in plines:
+            if not inv.piece_ok(t):
+                continue
+            k = kind_of(t)
+            if k is None:
+                continue
+            if b in held_books:
+                held[k].append(t)
+            else:
+                phrase[k].append(t)
+                train_set.add(t)
+        for k in held:
+            held[k] = sorted({t for t in held[k] if t not in train_set})
+        for k in phrase:
+            phrase[k] = sorted(set(phrase[k]))
+        prng = random.Random(a.seed + 37)
+        n_ev = int(d["n_phrase_eval"])
+        inv.evals["phrase"] = sorted(
+            prng.sample(phrase["sentence"], min(n_ev, len(phrase["sentence"])))
+        )
+        inv.evals["phrase_held"] = held["sentence"][:n_ev]
+        inv.evals["short"] = sorted(
+            prng.sample(phrase["short"], min(n_ev, len(phrase["short"])))
+        )
+        inv.evals["short_held"] = held["short"][:n_ev]
+        print(
+            f"phrases ({d['phrase_file']}): sentence {len(phrase['sentence'])} "
+            f"(>= {min_letters} letters), short {len(phrase['short'])} ({lo}-{hi} pieces); "
+            f"held: sentence {len(held['sentence'])}, short {len(held['short'])} "
+            f"(books {sorted(held_books)})",
+            flush=True,
+        )
+    elif needs_phrases:
+        raise AssertionError(
+            "scene_short / scene_sentence / grid_string need data.phrase_file"
+        )
+    if pieces:
+        # the multi-glyph rows' own exact ruler, under the probe's `word`
+        # group (single-piece multi-glyph words — what a piece is)
+        erng = random.Random(a.seed + 43)
+        distinct = list(dict.fromkeys(pieces))
+        inv.evals["word"] = sorted(
+            erng.sample(distinct, min(int(d["n_piece_eval"]), len(distinct)))
+        )
+    print(
+        f"pools: {len(set(singles))} one-glyph units ({len(singles)} weighted), "
+        f"{len(set(pieces))} pieces ({len(pieces)} weighted), {len(scenes)} scenes "
+        f"({len(single_idx)} take a lone glyph)",
+        flush=True,
+    )
+    return Pools(
+        fonts=fonts,
+        tokq=tokq,
+        inv=inv,
+        scenes=scenes,
+        single_idx=single_idx,
+        shapes=ShapePool(d["shapes"], a.seed),
+        singles=singles,
+        pieces=pieces,
+        phrase=phrase,
+        held=held,
+        vertical=bool(d["vertical"]),
+        stroke=float(d["stroke"]),
+    )
+
+
+# ----------------------------------------------------------------------------
+# scene recipes
+
+
+def _cuts(pools: Pools, text: str) -> list:
+    """Line cuts at Qwen piece boundaries: a row's unit is never split."""
+    from data.inventory import pieces as qpieces
+
+    tok, qmap = pools.tokq
+    cuts, off = [], 0
+    for p, _row in qpieces(tok, qmap, text):
+        off += len(p)
+        cuts.append(off)
+    return cuts
+
+
+def _fill_for_px(
+    region,
+    n_glyphs: int,
+    target_px: float,
+    vertical: bool,
+    fill_max: float,
+    max_lines: int = 1,
+) -> float:
+    """The ``fill_frac`` that makes ``fit_text`` land a text of ``n_glyphs``
+    at about ``target_px`` font px in ``region`` — the knob that moves an
+    item's px (design § 4). The fit's font px at fill 1 is the largest over
+    1..``max_lines`` columns (lines when horizontal); the fill scales it."""
+    from common.render.scene import H_GAP, H_PITCH, V_GAP, V_PITCH
+
+    rw, rh = region[2] - region[0], region[3] - region[1]
+    best = 0.0
+    for k in range(1, max(1, max_lines) + 1):
+        m = -(-n_glyphs // k)  # glyphs in the longest column / line
+        if vertical:
+            fs = min(rw / (1 + (k - 1) * V_GAP), rh / (m * V_PITCH))
+        else:
+            fs = min(rh / (1 + (k - 1) * H_GAP), rw / (m * H_PITCH))
+        best = max(best, fs)
+    return max(0.15, min(fill_max, target_px / max(best, 1e-6)))
+
+
+def _draw_scene(
+    pools: Pools,
+    rng: random.Random,
+    text: str,
+    *,
+    min_glyph: int,
+    fill: float,
+    max_lines: int,
+    fewest_lines: bool = False,
+    singles_only: bool = False,
+    target_px: float | None = None,
+    fill_max: float = 1.0,
+):
+    """Text first, then a scene whose capacity holds it (one column when
+    enough scenes do), weighted ``1 / (1 + uses)`` — the probe's
+    ``_quota_composites`` draw. Returns an ``Item`` or ``None``."""
+    from common.render.flat import pick_font
+    from common.render.scene import region_capacity, render_into_scene
+    from data.synth import scene_caption
+
+    n = len(text)
+    vert = pools.vertical
+    cands = list(pools.single_idx) if singles_only else range(len(pools.scenes))
+
+    def cap(sc, lines):
+        return region_capacity(sc["region"], min_glyph, fill, lines, vert)
+
+    one = [j for j in cands if cap(pools.scenes[j], 1) >= n]
+    fitting = (
+        one
+        if len(one) >= MIN_FIT_SCENES or max_lines == 1
+        else [j for j in cands if cap(pools.scenes[j], max_lines) >= n]
+    )
+    if not fitting:
+        return None
+    cuts = _cuts(pools, text) if n > 1 else None
+    pool, tries = list(fitting), []
+    while pool and len(tries) < SCENE_TRIES:
+        j = rng.choices(pool, weights=[1.0 / (1 + pools.used[x]) for x in pool])[0]
+        pool.remove(j)
+        tries.append(j)
+    for j in tries:
+        sc = pools.scenes[j]
+        f = fill
+        if target_px is not None:
+            f = _fill_for_px(
+                sc["region"], n, target_px, vert or n == 1, fill_max, max_lines
+            )
+        drawn = render_into_scene(
+            scene=sc,
+            text=text,
+            font_path=pick_font(text, pools.fonts, rng),
+            rng=rng,
+            min_glyph=min_glyph,
+            stroke=rng.random() < pools.stroke,
+            fill_frac=f,
+            max_lines=max_lines,
+            cuts=cuts,
+            vertical_only=vert,
+            fewest_lines=fewest_lines,
+        )
+        if drawn is None:
+            continue
+        im, box = drawn
+        W, H = im.size
+        assert [W, H] == list(sc["shape"]), (sc["i"], im.size, sc["shape"])
+        pools.used[j] += 1
+        return Item(
+            image=im,
+            units=[text],
+            layout="scene",
+            boxes=[box],
+            caption=scene_caption(sc, text),
+            src="scene",
+            shape=(W, H),
+            extra={"scene": sc["i"], "scene_pool": sc.get("pool"), "fill": round(f, 3)},
+        )
+    return None
+
+
+def _balanced_line(pools: Pools, rng: random.Random, kind: str) -> str | None:
+    """A training line of ``kind``, least-drawn first (``--text_draw balanced``)."""
+    lines = pools.phrase.get(kind) or []
+    if not lines:
+        return None
+    used = pools.balanced.setdefault(kind, Counter())
+    least = min(used[t] for t in lines)
+    t = rng.choice([t for t in lines if used[t] == least])
+    used[t] += 1
+    return t
+
+
+def scene_single(pools: Pools, rng: random.Random, p: dict):
+    unit = rng.choice(pools.singles)
+    px = p.get("glyph_px")
+    target = rng.uniform(*px) if px else None
+    return _draw_scene(
+        pools,
+        rng,
+        unit,
+        min_glyph=int(p.get("min_glyph", 28)),
+        fill=float(p.get("fill", 0.7)),
+        max_lines=1,
+        singles_only=True,
+        target_px=target,
+        fill_max=float(p.get("fill", 0.7)),
+    )
+
+
+def _target(rng, p: dict):
+    """``glyph_px = [lo, hi]`` → a target px per item (None: the bubble fit)."""
+    px = p.get("glyph_px")
+    return rng.uniform(float(px[0]), float(px[1])) if px else None
+
+
+def scene_piece(pools: Pools, rng: random.Random, p: dict):
+    assert pools.pieces, "scene_piece needs data.pieces"
+    unit = rng.choice(pools.pieces)
+    lo, hi = p.get("fill", [0.7, 1.0])
+    fill = rng.uniform(float(lo), float(hi))
+    return _draw_scene(
+        pools,
+        rng,
+        unit,
+        min_glyph=int(p.get("min_glyph", 28)),
+        fill=fill,
+        max_lines=1,
+        target_px=_target(rng, p),
+        fill_max=fill,
+    )
+
+
+def scene_short(pools: Pools, rng: random.Random, p: dict):
+    text = _balanced_line(pools, rng, "short")
+    if text is None:
+        return None
+    fill = float(p.get("fill", 0.7))
+    return _draw_scene(
+        pools,
+        rng,
+        text,
+        min_glyph=int(p.get("min_glyph", 28)),
+        fill=fill,
+        max_lines=int(p.get("max_lines", 1)),
+        target_px=_target(rng, p),
+        fill_max=fill,
+    )
+
+
+def scene_sentence(pools: Pools, rng: random.Random, p: dict):
+    """``min_glyph`` floors the glyph; ``glyph_px`` (when given) sets it —
+    the fit otherwise grows to the bubble, so a 16 px floor draws 23 px
+    text on the median bubble."""
+    text = _balanced_line(pools, rng, "sentence")
+    if text is None:
+        return None
+    mg = p.get("min_glyph", [16, 28])
+    min_glyph = rng.randint(int(mg[0]), int(mg[1])) if isinstance(mg, list) else int(mg)
+    fill = float(p.get("fill", 0.9))
+    return _draw_scene(
+        pools,
+        rng,
+        text,
+        min_glyph=min_glyph,
+        fill=fill,
+        max_lines=int(p.get("max_lines", 2)),
+        fewest_lines=True,
+        target_px=_target(rng, p),
+        fill_max=fill,
+    )
+
+
+# ----------------------------------------------------------------------------
+# grid recipes (1×1 = the flat single)
+
+GRIDS = {
+    "1x1": (1, 1, None),  # canvas from the shapes pool
+    "2x2": (2, 2, (512, 512)),
+    "3x3": (3, 3, (512, 512)),
+    "2x3": (2, 3, (416, 624)),
+    "3x2": (3, 2, (624, 416)),
+}
+
+
+def parse_grids(spec: str) -> list:
+    out = []
+    for tok in str(spec).split(","):
+        if not tok.strip():
+            continue
+        name, _, w = tok.strip().partition(":")
+        assert name in GRIDS, f"grid {name}: one of {', '.join(GRIDS)}"
+        out.append((name, float(w) if w else 1.0))
+    return out
+
+
+def _deck(pools: Pools, key: str, pool: list, rng: random.Random):
+    from data.grid import _Deck
+
+    if key not in pools.decks:
+        pools.decks[key] = _Deck(pool, rng)
+    return pools.decks[key]
+
+
+def _grid_item(
+    pools, rng, name, got, bubble, fill, box: bool, mark_horizontal: bool, pad=None
+):
+    from common.prompts import TPL_BUBBLE, TPL_PLAIN, grid_caption
+    from data.grid import WORD_PAD, render_grid
+
+    cols, rows, size = GRIDS[name]
+    if size is None:
+        size = pools.shapes.draw() or (512, 512)
+    lines: list | None = [] if mark_horizontal else None
+    kw = {"box": True, "pad": WORD_PAD} if box else {}
+    im, boxes = render_grid(
+        got, cols, rows, size, pools.fonts, rng, bubble, (fill, fill), lines=lines, **kw
+    )
+    if cols * rows == 1:
+        caption = (TPL_BUBBLE if bubble else TPL_PLAIN).format(got[0])
+        layout, src = "flat", "font"
+    else:
+        caption = grid_caption(
+            "bubble" if bubble else "flat", cols, rows, got, horizontal=set(lines or ())
+        )
+        layout, src = "grid", "grid"
+    return Item(
+        image=im,
+        units=list(got),
+        layout=layout,
+        boxes=boxes,
+        caption=caption,
+        src=src,
+        shape=tuple(size),
+        extra={"grid": name, "bubble": bubble, "fill": round(fill, 3)},
+    )
+
+
+def grid_single(pools: Pools, rng: random.Random, p: dict):
+    grids = parse_grids(p.get("grids", "1x1:2,2x2,3x3,2x3,3x2"))
+    name = rng.choices([g for g, _ in grids], weights=[w for _, w in grids])[0]
+    cols, rows, _ = GRIDS[name]
+    deck = _deck(pools, "singles", pools.singles, rng)
+    got = deck.deal(cols * rows)
+    bubble = rng.random() < float(p.get("bubble_frac", 0.5))
+    lo, hi = p.get("fill", [0.15, 0.8])
+    return _grid_item(
+        pools,
+        rng,
+        name,
+        got,
+        bubble,
+        rng.uniform(float(lo), float(hi)),
+        False,
+        bool(p.get("mark_horizontal", True)),
+    )
+
+
+def grid_string(pools: Pools, rng: random.Random, p: dict):
+    """Strings in word cells at a target px: ``render_grid`` starts at the
+    fill's font px and only shrinks, so ``fill = px / cell`` sets the px."""
+    from data.grid import _NO_COLUMN  # noqa: F401  (documents the column rule)
+
+    grids = parse_grids(p.get("grids", "2x2,2x3,3x2"))
+    name = rng.choices([g for g, _ in grids], weights=[w for _, w in grids])[0]
+    cols, rows, size = GRIDS[name]
+    assert size is not None, "grid_string takes 2x2 and up"
+    src = p.get("source", "both")
+    pool = []
+    if src in ("pieces", "both"):
+        pool += pools.pieces
+    if src in ("short", "both"):
+        pool += pools.phrase.get("short", [])
+    assert pool, f"grid_string source {src!r} has no strings"
+    lo, hi = p.get("glyph_px", [12, 24])
+    px = rng.uniform(float(lo), float(hi))
+    max_len = int(p.get("max_glyphs", 8))
+    deck = _deck(pools, f"strings_{src}", pool, rng)
+    got = deck.deal(cols * rows, max_len=max_len)
+    bubble = rng.random() < float(p.get("bubble_frac", 0.5))
+    cell = min(size[0] / cols, size[1] / rows)
+    return _grid_item(
+        pools,
+        rng,
+        name,
+        got,
+        bubble,
+        px / cell,
+        True,
+        bool(p.get("mark_horizontal", True)),
+    )
+
+
+RECIPES = {
+    "scene_single": scene_single,
+    "grid_single": grid_single,
+    "scene_piece": scene_piece,
+    "scene_short": scene_short,
+    "scene_sentence": scene_sentence,
+    "grid_string": grid_string,
+}

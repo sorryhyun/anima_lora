@@ -1,0 +1,58 @@
+# stage0709 — the glyph-identity band (design.md § 2): single glyphs ≥ 48 px
+# — scene bubble fit (48–53 px), grid cells (85–200 px), large flat singles.
+# Warm from the merged step-1 table (recipe.md), so no row is cold.
+
+stage = "stage0709"
+band = [0.7, 0.9]
+gate = "contain"
+min_overlap = 0.8
+warm_from = "output/wake_probe/rows_step1_0921m_merge/trained.pt"
+
+[data]
+seed = 0
+n_items = 40000
+units = ["kana", "kana_ext*1", "small", "kanji:200*1", "list:、,。,・,ー,～,〜,！,？,「,」,！！,・・・,・・・・*1"]
+pieces = "ja_cold_0001_1900.txt"          # the multi-glyph rows (assets/units); drawn by later stages
+scenes = "s1,s1w,sl1w,ja_comic"
+scene_one_bubble = "ja_comic"
+single_scenes = "s1,s1w"
+single_max_ar = 2.0
+shapes = "448,512:2,448x512,512x448"
+phrase_file = ""
+
+[[data.mix]]                                # step 1a's scene half: bubble fit, 48–53 px as built
+recipe = "scene_single"
+share = 0.5
+fill = 0.7
+min_glyph = 28
+px_target = 50
+
+[[data.mix]]                                # step 1a's grid half + the flat single (1×1)
+recipe = "grid_single"
+share = 0.5
+grids = "1x1:1,2x2:1,3x3:1,2x3:1,3x2:1"
+fill = [0.3, 0.8]                           # one draw per item, × cell short side: 3×3 → 51–136 px, 1×1 → 150–400
+bubble_frac = 0.5
+mark_horizontal = true
+
+[train]
+steps_per_row = 30
+batch = 4
+lr_rows = 1e-3
+lr_decay = "cosine"
+lr_warmup = 500
+init_anchor = 0.0                           # design § 6 item 2: early stages let the rows move
+box_share = 0.25
+box_share_cap = 0.75
+compile = 1
+seed = 0
+save_every = 5000
+
+[eval]
+groups = "single,single_ext,single_small,single_kanji,single_extra,en"
+native_chars = "あ,か,す,日"
+native_clauses = "en,swap"
+seeds = 2
+cf_sense = true
+cf_rows = "single"
+regress = []

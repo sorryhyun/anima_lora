@@ -1,0 +1,66 @@
+# stage0507 — the count / piece band (design.md § 2): multi-glyph pieces
+# 32–48 px in scenes, single glyphs 24–32 px, 2–5-piece short lines ≈ 32 px.
+# Warm from stage0709 (same tag).
+
+stage = "stage0507"
+band = [0.5, 0.7]
+gate = "contain"
+min_overlap = 0.8
+warm_from = "stage0709"
+
+[data]
+seed = 0
+n_items = 40000
+units = ["kana", "kana_ext*1", "small", "kanji:200*1", "list:、,。,・,ー,～,〜,！,？,「,」,！！,・・・,・・・・*1"]
+pieces = "ja_cold_0001_1900.txt"
+scenes = "s1,s1w,sl1w,ja_comic"
+scene_one_bubble = "ja_comic"
+single_scenes = "s1,s1w"
+single_max_ar = 2.0
+shapes = "448,512:2,448x512,512x448"
+phrase_file = "$MANGA109S/derived/dialogue_2_10.tsv"   # export MANGA109S=~/manga109s
+short_pieces = "2-5"
+sentence_min_letters = 6
+
+[[data.mix]]                                # step 1b: one piece per bubble, fill 0.7–1.0 (≈ 35–48 px)
+recipe = "scene_piece"
+share = 0.5
+fill = [0.7, 1.0]
+min_glyph = 28
+px_target = 40
+
+[[data.mix]]                                # small singles: the 24–32 px letter window (ceiling only)
+recipe = "scene_single"
+share = 0.2
+glyph_px = [24, 32]
+fill = 0.7
+min_glyph = 20
+
+[[data.mix]]                                # 2–5-piece lines, one column, ≈ 32 px
+recipe = "scene_short"
+share = 0.3
+min_glyph = 28
+fill = 0.7
+max_lines = 1
+
+[train]
+steps_per_row = 30
+batch = 4
+lr_rows = 1e-3
+lr_decay = "cosine"
+lr_warmup = 500
+init_anchor = 0.0
+box_share = 0.25
+box_share_cap = 0.75
+compile = 1
+seed = 0
+save_every = 5000
+
+[eval]
+groups = "single,single_ext,single_small,single_kanji,single_extra,word,short,short_held,en"
+native_chars = "あ,か,す,日"
+native_clauses = "en,swap"
+seeds = 2
+cf_sense = true
+cf_rows = "piece"
+regress = ["stage0709"]

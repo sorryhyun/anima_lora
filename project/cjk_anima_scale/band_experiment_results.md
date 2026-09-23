@@ -1,7 +1,11 @@
 # band_experiment_results — which σ band, keyed on what (2026-09-23)
 
-The verdict of [`plan_band.md`](plan_band.md). The plan stays the plan; every
-number here is in `project/cjk_renderable_anima/reports/`
+**The vocab band law** — the line's name for this document ([`README.md`](README.md)).
+Not a theory: every row below is a measured read, and it holds over the
+sizes, layouts and units those reads covered.
+
+The verdict of `plan_band.md` (closed and deleted 2026-09-23; git `f5cd4c0c`).
+Every number here is in `project/cjk_renderable_anima/reports/`
 (`cf_rebin_gate0_2026_09_23.md`, `cf_band_a1_2026_09_23.md` with its A.2
 section, `band_b1_2026_09_23.md`).
 
