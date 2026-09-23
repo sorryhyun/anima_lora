@@ -11,7 +11,11 @@ The gate (design § 4)::
         re-draw otherwise (px is what the re-draw moves)
 
 ``gate = "none"`` (stage0309, the mixed consolidation pass) keeps every
-render. Every kept record carries ``recipe`` / ``layout`` / ``px`` /
+render. A recipe with no source under the run's inventory (no corpus line
+on a 24-row run, no piece) is dropped and the remaining shares renormalise
+— ``build.json`` ``dropped`` — the stage file is never edited for it.
+Rendering is forked over ``workers`` processes, each on its own seeded
+stream drawn from the build seed (deterministic per seed × workers). Every kept record carries ``recipe`` / ``layout`` / ``px`` /
 ``window`` and the probe's ``glyphs`` / ``ink`` / ``box_area`` ink stats;
 ``build.json`` holds the per-recipe px medians (the ± 20 % launch gate),
 the rejection counts and the config.
@@ -20,6 +24,8 @@ the rejection counts and the config.
 from __future__ import annotations
 
 import json
+import multiprocessing as mp
+import os
 import random
 import statistics as st
 import time
@@ -28,8 +34,16 @@ from pathlib import Path
 
 from .config import StageConfig
 from .paths import data_dir
-from .recipes import RECIPES, Pools, build_pools
+from .recipes import RECIPES, Pools, build_pools, missing_source
 from .windows import covers, kind_of, window
+
+# forked workers inherit an HF tokenizer; its thread pool must not be live
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
+
+def default_workers() -> int:
+    return max(1, (os.cpu_count() or 2) - 2)
+
 
 # eval.json group order (the probe's, minus the groups this line never draws)
 EVAL_ORDER = (
@@ -48,7 +62,11 @@ EVAL_ORDER = (
 
 
 def build(
-    cfg: StageConfig, tag: str, n_items: int | None = None, seed: int | None = None
+    cfg: StageConfig,
+    tag: str,
+    n_items: int | None = None,
+    seed: int | None = None,
+    workers: int | None = None,
 ) -> Path:
     from common.prompts import TPL_BUBBLE, TPL_EN
     from data.stage import _ink_stats
@@ -58,18 +76,27 @@ def build(
     (out / "img").mkdir(parents=True, exist_ok=True)
     seed = int(cfg.data["seed"] if seed is None else seed)
     n = int(cfg.data["n_items"] if n_items is None else n_items)
+    workers = default_workers() if workers is None else max(1, int(workers))
     rng = random.Random(seed)
     pools = build_pools(cfg, out, rng)
-    counts = _counts(cfg, n)
+    dropped = {
+        m.name: r for m in cfg.mix if (r := missing_source(m.name, m.params, pools))
+    }
+    live = [m for m in cfg.mix if m.name not in dropped]
+    assert live, f"every recipe dropped: {dropped}"
+    counts = _counts([(m.name, m.share) for m in live], n)
     print(
         f"build {cfg.stage} → {out.name}: band {cfg.band[0]:.2f}–{cfg.band[1]:.2f}, "
-        f"gate {cfg.gate}, {n} items {counts}",
+        f"gate {cfg.gate}, {n} items {counts}, {workers} workers"
+        + (f"; dropped {dropped}" if dropped else ""),
         flush=True,
     )
     recs: list = []
     report: dict = {}
-    for m in cfg.mix:
-        got, rep = _build_recipe(cfg, m, counts[m.name], pools, rng, out, len(recs))
+    for m in live:
+        got, rep = _build_recipe(
+            cfg, m, counts[m.name], pools, rng, out, len(recs), workers
+        )
         recs += got
         report[m.name] = rep
     assert recs, "no item survived the gate"
@@ -105,6 +132,9 @@ def build(
         "run_config": str(cfg.run.path) if cfg.run else None,
         "data": cfg.data,
         "mix": [{"recipe": m.name, "share": m.share, **m.params} for m in cfg.mix],
+        "dropped": dropped,
+        "shares": {m.name: round(counts[m.name] / n, 3) for m in live},
+        "workers": workers,
         "recipes": report,
         "ink_stats": {k: {"px": v[0], "ink": v[1]} for k, v in stats.items()},
         "shapes": dict(sorted(shapes.items())),
@@ -124,20 +154,94 @@ def build(
     return out
 
 
-def _counts(cfg: StageConfig, n: int) -> dict:
-    counts = {m.name: int(n * m.share) for m in cfg.mix}
-    top = max(cfg.mix, key=lambda m: m.share).name
+def _counts(shares: list, n: int) -> dict:
+    """Items per recipe from ``[(name, share)]`` — the shares of the live
+    recipes, renormalised (a dropped recipe's share goes to the rest)."""
+    total = sum(w for _, w in shares)
+    counts = {name: int(n * w / total) for name, w in shares}
+    top = max(shares, key=lambda x: x[1])[0]
     counts[top] += n - sum(counts.values())
     return counts
 
 
-def _build_recipe(cfg, m, n: int, pools: Pools, rng, out: Path, first: int):
+# fork-inherited job state (set before the pool forks; never pickled)
+_JOB: dict = {}
+
+
+def _worker(job):
+    w, n, first, seed = job
+    return _draw_loop(
+        _JOB["cfg"],
+        _JOB["m"],
+        n,
+        _JOB["pools"],
+        random.Random(seed),
+        _JOB["out"],
+        first,
+    )
+
+
+def _build_recipe(
+    cfg, m, n: int, pools: Pools, rng, out: Path, first: int, workers: int = 1
+):
+    t0 = time.time()
+    if workers <= 1 or n < 4 * workers:
+        kept, rejects, px_seen, tries = _draw_loop(cfg, m, n, pools, rng, out, first)
+    else:
+        per = [n // workers + (i < n % workers) for i in range(workers)]
+        jobs = [
+            (i, per[i], first + sum(per[:i]), rng.randrange(2**31))
+            for i in range(workers)
+        ]
+        _JOB.update(cfg=cfg, m=m, pools=pools, out=out)
+        try:
+            with mp.get_context("fork").Pool(workers) as pool:
+                parts = pool.map(_worker, jobs)
+        finally:
+            _JOB.clear()
+        kept, rejects, px_seen, tries = [], Counter(), [], 0
+        for k, rj, px, t in parts:
+            kept += k
+            rejects.update(rj)
+            px_seen += px
+            tries += t
+        pools.used.update(Counter(r["scene"] for r in kept if "scene" in r))
+    if len(kept) < n:
+        print(
+            f"  {m.name}: WARNING {len(kept)}/{n} items after {tries} tries "
+            f"(rejects {dict(rejects)})",
+            flush=True,
+        )
+    q = _quantiles([r["px"] for r in kept]) if kept else None
+    drawn = _quantiles(px_seen) if px_seen else None
+    rep = {
+        "n": len(kept),
+        "planned": n,
+        "tries": tries,
+        "rejects": dict(rejects),
+        "px_kept": q,
+        "px_drawn": drawn,
+        "windows": dict(Counter(json.dumps(r["window"]) for r in kept)),
+        "horizontal": _n_horizontal(kept),
+        "minutes": round((time.time() - t0) / 60, 1),
+    }
+    print(
+        f"  {m.name}: {len(kept)}/{n} in {tries} tries, rejects {dict(rejects)}; "
+        f"px kept {_fmt(q)} (drawn {_fmt(drawn)}); windows {rep['windows']}",
+        flush=True,
+    )
+    _sheet(rng, kept, out / f"sheet_{m.name}.png")
+    return kept, rep
+
+
+def _draw_loop(cfg, m, n: int, pools: Pools, rng, out: Path, first: int):
+    """Draw ``n`` items of recipe ``m`` through the band gate; files are
+    numbered from ``first``. Returns (kept, rejects, drawn px, tries)."""
     draw = RECIPES[m.name]
     band = cfg.band
     kept, rejects = [], Counter()
     px_seen: list = []
     tries, max_tries = 0, 4 * n + 50
-    t0 = time.time()
     while len(kept) < n and tries < max_tries:
         tries += 1
         item = draw(pools, rng, m.params)
@@ -174,32 +278,7 @@ def _build_recipe(cfg, m, n: int, pools: Pools, rng, out: Path, first: int):
         else:
             rec["boxes"] = item.boxes
         kept.append(rec)
-    if len(kept) < n:
-        print(
-            f"  {m.name}: WARNING {len(kept)}/{n} items after {tries} tries "
-            f"(rejects {dict(rejects)})",
-            flush=True,
-        )
-    q = _quantiles([r["px"] for r in kept]) if kept else None
-    drawn = _quantiles(px_seen) if px_seen else None
-    rep = {
-        "n": len(kept),
-        "planned": n,
-        "tries": tries,
-        "rejects": dict(rejects),
-        "px_kept": q,
-        "px_drawn": drawn,
-        "windows": dict(Counter(json.dumps(r["window"]) for r in kept)),
-        "horizontal": _n_horizontal(kept),
-        "minutes": round((time.time() - t0) / 60, 1),
-    }
-    print(
-        f"  {m.name}: {len(kept)}/{n} in {tries} tries, rejects {dict(rejects)}; "
-        f"px kept {_fmt(q)} (drawn {_fmt(drawn)}); windows {rep['windows']}",
-        flush=True,
-    )
-    _sheet(rng, kept, out / f"sheet_{m.name}.png")
-    return kept, rep
+    return kept, rejects, px_seen, tries
 
 
 def _n_horizontal(recs) -> dict:
@@ -230,7 +309,7 @@ def _px_gate(cfg, recs, report):
     bad = []
     for m in cfg.mix:
         t = m.params.get("px_target")
-        if not t or not report[m.name]["px_drawn"]:
+        if m.name not in report or not t or not report[m.name]["px_drawn"]:
             continue
         med = report[m.name]["px_drawn"]["median"]
         report[m.name]["px_target"] = t

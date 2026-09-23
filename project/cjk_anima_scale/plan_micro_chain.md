@@ -67,7 +67,7 @@ Per stage, by the law (`cjk_scale/windows.py`):
 |---|---|---|---|
 | stage0709 | 0.7–0.9 | (kana + kanji) scene 48–53 px + grid cells 60–180 px | **no window** (no row above 64 px, 24–64 is 0.5–0.7) — zero draws, rows untouched |
 | stage0507 | 0.5–0.7 | scene 24–32 px | scene 35–48 px |
-| stage0305 | 0.3–0.5 | **no window** (no single row under 24 px) — zero draws | word-cell grid 12–24 px (`grid_string`; the stage's `scene_sentence` has no lines on this inventory — § 2) |
+| stage0305 | 0.3–0.5 | **no window** (no single row under 24 px) — zero draws | scene 12–24 px (`scene_piece`, added 2026-09-23) + word-cell grid 12–24 px (`grid_string`; the stage's `scene_sentence` has no lines on this inventory — § 2) |
 
 So the chain, on these rows, is: singles move at stage0709, both move at
 stage0507, pieces move at stage0305. "Untouched" is exact — no draw, no gradient,
@@ -163,16 +163,29 @@ draw, design § 4), and the untouched kind absent from the stage's
    run=…)`, `scale.py --run <name>` (tag = run name; `--tag` stays for a
    run-less stage), `lr_warmup` → `lr_warmup_ratio`; `build.json` /
    `train_record.json` record the run file.
-2. **Recipe drop on an empty source**, shares renormalised, logged
-   (`builder.py`). Same family: `grid_single` should skip grid sizes the
-   inventory cannot fill (`_Deck.deal` asserts `cells ≤ distinct units`;
-   the 16-row draft died on `3x3` over 8 singles). With 16 singles the
-   24-row run clears every grid, so this is a guard, not a blocker. `stage0305` on this run is then `grid_string` alone at
-   12–24 px; if the small-px *scene* read is wanted too, the run file can
-   add a mix — `[[mix.stage0305]]` — but that is a stage-recipe edit in
-   run clothing, so the first cell runs the stage as written.
-3. **`grid_string` needs a phrase file only when its source needs lines**
-   (`recipes.py`, `needs_phrases`). One line.
+2. ~~**Recipe drop on an empty source**~~ — done 2026-09-23
+   (`recipes.missing_source`, `builder.build`): shares renormalised,
+   `build.json` carries `dropped` + the live `shares`; `grid_single` skips
+   grid sizes the inventory cannot fill (`_fillable_grids`). The three
+   micro builds: 0709 nothing dropped; 0507 `scene_short` ("no short
+   lines") → 0.715 / 0.285; 0305 `scene_sentence` → `scene_piece` /
+   `grid_string` 0.5 / 0.5 at 12–24 px. The first 0305 build was
+   `grid_string` alone: word cells are grid-sized (256 px on a 2×2) and only
+   the font shrinks to the px, so every image was an empty canvas with
+   eight 12–20 px specks; `scene_piece` at `glyph_px 12–24` went into the
+   stage file (0.4 / 0.3 / 0.3) so the band also sees a piece in a bubble,
+   with `fill_min = 0.5` (`recipes._draw_scene`): a scene recipe with a
+   `glyph_px` target keeps only the scenes whose bubble the text fills to
+   that share (`target_px / _fit_px`), so 12–24 px pieces land in small
+   bubbles (micro build: fill median 0.58, 562 distinct scenes over 2 000
+   items) instead of floating in a big one.
+3. ~~**`grid_string` needs a phrase file only when its source needs lines**~~
+   — done with item 2: the `phrase_file` assert is gone; an empty source
+   drops the recipe instead. Same day: the builder forks the draw loop over
+   `--workers` (default cpu − 2) processes, each on a stream seeded from
+   the build seed — 4 000 items in ≈ 25 s of rendering vs 2.4 min serial
+   (`build.json` records `workers`; a build is deterministic per
+   seed × workers).
 4. **Seed baseline** — `--seed_only` on `eval`: evaluate the run's
    `seed_table` under `rows_scale_<stage>_<run>_seed/` with the stage's
    data dir, no training. The probe's eval readers may open

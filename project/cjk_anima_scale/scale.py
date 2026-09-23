@@ -62,6 +62,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     # data
     p.add_argument("--n_items", type=int, help="override [data].n_items (smoke builds)")
+    p.add_argument(
+        "--workers", type=int, help="render processes (default: cpu count - 2)"
+    )
     p.add_argument("--seed", type=int, help="override [data].seed / [train].seed")
     # train
     p.add_argument(
@@ -167,7 +170,7 @@ def main(argv=None):
         if step == "data":
             from cjk_scale.builder import build
 
-            build(cfg, a.tag, n_items=a.n_items, seed=a.seed)
+            build(cfg, a.tag, n_items=a.n_items, seed=a.seed, workers=a.workers)
         elif step in ("train", "boxprobe"):
             warm = cfg.warm_table(a.tag)
             if a.warm_from:

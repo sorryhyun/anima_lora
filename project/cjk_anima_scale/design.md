@@ -57,7 +57,7 @@ count rule (§ 3):
 |---|---|---|---|
 | `stage0709` | 0.7–0.9 | single glyphs ≥ 48 px: scene bubble fit (48–53 px), grid cells (85–200 px), large flat | singles want the top half (B.1); grid cells sit +0.1 (ceiling 0.8–0.9) |
 | `stage0507` | 0.5–0.7 | multi-glyph pieces 32–48 px in scenes; single glyphs 24–32 px; 2–5-piece short lines ≈ 32 px | pieces 0.5–0.7 (`micro_cf_0922`); 24–32 px letter window 0.35–0.7; string at 48 px 0.6–0.8 |
-| `stage0305` | 0.3–0.5 | 12–24 px text: sentences with `scene_min_glyph 16`, small-bubble dialogue, small grid strings | 16 px string 0.25–0.6 centred 0.4 (A.2); grid at 12–16 px 0.3–0.5 |
+| `stage0305` | 0.3–0.5 | 12–24 px text: sentences with `scene_min_glyph 16`, small-bubble dialogue, one piece per bubble at 12–24 px, small grid strings | 16 px string 0.25–0.6 centred 0.4 (A.2); grid at 12–16 px 0.3–0.5 |
 | `stage0309` | 0.3–0.9 | everything, mixed, at natural sizes | consolidation; the sentence run's role, low μ anchor |
 
 Open on this table: **dense kanji** (C.2 agrees with C.1: no band of their

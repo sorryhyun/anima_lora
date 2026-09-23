@@ -6,7 +6,9 @@ A recipe draws one item — unit(s), px, layout — and returns an ``Item`` or
 measures the item's px, looks up its window and keeps or re-draws it.
 
     scene_single    one glyph in a bubble; px = the bubble fit (fill 0.7 → 48–53)
-                    or a ``glyph_px`` range that sets the fill per item
+                    or a ``glyph_px`` range that sets the fill per item;
+                    ``fill_min`` (any scene recipe with ``glyph_px``) keeps only
+                    scenes whose bubble the text fills to that share
     grid_single     1×1 … 3×3 grid, one glyph per cell, one fill draw per item;
                     1×1 is the flat single (bare or ellipse, plain template)
     scene_piece     one piece (one token, 2+ glyphs) in a bubble, fill 0.7–1.0
@@ -206,9 +208,6 @@ def build_pools(cfg, out: Path, rng: random.Random) -> Pools:
 
     phrase: dict = {"short": [], "sentence": []}
     held: dict = {"short": [], "sentence": []}
-    needs_phrases = any(
-        m.name in ("scene_short", "scene_sentence", "grid_string") for m in cfg.mix
-    )
     if d["phrase_file"]:
         tok, qmap = tokq
         plines = phrase_file_lines(
@@ -269,10 +268,6 @@ def build_pools(cfg, out: Path, rng: random.Random) -> Pools:
             f"(books {sorted(held_books)})",
             flush=True,
         )
-    elif needs_phrases:
-        raise AssertionError(
-            "scene_short / scene_sentence / grid_string need data.phrase_file"
-        )
     if pieces:
         # the piece rows' own exact ruler, under the probe's `word` group
         # (single-piece multi-glyph words — what a piece is)
@@ -332,8 +327,16 @@ def _fill_for_px(
 ) -> float:
     """The ``fill_frac`` that makes ``fit_text`` land a text of ``n_glyphs``
     at about ``target_px`` font px in ``region`` — the knob that moves an
-    item's px (design § 4). The fit's font px at fill 1 is the largest over
-    1..``max_lines`` columns (lines when horizontal); the fill scales it."""
+    item's px (design § 4). The fill scales the fit-1 px (``_fit_px``)."""
+    best = _fit_px(region, n_glyphs, vertical, max_lines)
+    return max(0.15, min(fill_max, target_px / max(best, 1e-6)))
+
+
+def _fit_px(region, n_glyphs: int, vertical: bool, max_lines: int = 1) -> float:
+    """The font px ``fit_text`` gives ``n_glyphs`` in ``region`` at fill 1 —
+    the largest over 1..``max_lines`` columns (lines when horizontal). The
+    bubble's capacity in px; ``target_px / _fit_px`` is the share of the
+    bubble the text will take."""
     from common.render.scene import H_GAP, H_PITCH, V_GAP, V_PITCH
 
     rw, rh = region[2] - region[0], region[3] - region[1]
@@ -345,7 +348,7 @@ def _fill_for_px(
         else:
             fs = min(rh / (1 + (k - 1) * H_GAP), rw / (m * H_PITCH))
         best = max(best, fs)
-    return max(0.15, min(fill_max, target_px / max(best, 1e-6)))
+    return best
 
 
 def _draw_scene(
@@ -360,14 +363,19 @@ def _draw_scene(
     singles_only: bool = False,
     target_px: float | None = None,
     fill_max: float = 1.0,
+    fill_min: float = 0.0,
 ):
     """Text first, then a scene whose capacity holds it (one column when
     enough scenes do), weighted ``1 / (1 + uses)`` — the probe's
     ``_quota_composites`` draw. Orientation is drawn per item before the
     scene: ``horizontal_frac`` of multi-glyph items are left-to-right lines
     (marked in the caption), the rest columns; a miss in the drawn
-    orientation re-picks the scene, never the orientation. Returns an
-    ``Item`` or ``None``."""
+    orientation re-picks the scene, never the orientation. With a
+    ``target_px``, ``fill_min`` keeps only the scenes whose bubble the text
+    fills to at least that share (``target_px / _fit_px``) — small text
+    goes to small bubbles instead of floating in a big one; no such scene
+    is a miss (``None``, the recipe re-draws). Returns an ``Item`` or
+    ``None``."""
     from common.render.flat import pick_font
     from common.render.scene import region_capacity, render_into_scene
     from data.synth import scene_caption
@@ -388,6 +396,14 @@ def _draw_scene(
         if len(one) >= MIN_FIT_SCENES or max_lines == 1
         else [j for j in cands if cap(pools.scenes[j], max_lines) >= n]
     )
+    if target_px is not None and fill_min > 0:
+        fitting = [
+            j
+            for j in fitting
+            if target_px
+            / max(_fit_px(pools.scenes[j]["region"], n, vert, max_lines), 1e-6)
+            >= fill_min
+        ]
     if not fitting:
         return None
     cuts = _cuts(pools, text) if n > 1 else None
@@ -468,6 +484,7 @@ def scene_single(pools: Pools, rng: random.Random, p: dict):
         singles_only=True,
         target_px=target,
         fill_max=float(p.get("fill", 0.7)),
+        fill_min=float(p.get("fill_min", 0)),
     )
 
 
@@ -480,7 +497,8 @@ def _target(rng, p: dict):
 def scene_piece(pools: Pools, rng: random.Random, p: dict):
     assert pools.pieces, "scene_piece needs data.pieces"
     unit = rng.choice(pools.pieces)
-    lo, hi = p.get("fill", [0.7, 1.0])
+    f = p.get("fill", [0.7, 1.0])
+    lo, hi = f if isinstance(f, list) else (f, f)
     fill = rng.uniform(float(lo), float(hi))
     return _draw_scene(
         pools,
@@ -491,6 +509,7 @@ def scene_piece(pools: Pools, rng: random.Random, p: dict):
         max_lines=1,
         target_px=_target(rng, p),
         fill_max=fill,
+        fill_min=float(p.get("fill_min", 0)),
     )
 
 
@@ -508,6 +527,7 @@ def scene_short(pools: Pools, rng: random.Random, p: dict):
         max_lines=int(p.get("max_lines", 1)),
         target_px=_target(rng, p),
         fill_max=fill,
+        fill_min=float(p.get("fill_min", 0)),
     )
 
 
@@ -531,6 +551,7 @@ def scene_sentence(pools: Pools, rng: random.Random, p: dict):
         fewest_lines=True,
         target_px=_target(rng, p),
         fill_max=fill,
+        fill_min=float(p.get("fill_min", 0)),
     )
 
 
@@ -618,14 +639,25 @@ def _grid_item(
     )
 
 
+def _fillable_grids(grids: list, n_distinct: int) -> list:
+    """The grids whose cell count the inventory can fill (``_Deck.deal``
+    asserts ``cells ≤ distinct units``); a small run drops the big ones."""
+    return [(g, w) for g, w in grids if GRIDS[g][0] * GRIDS[g][1] <= n_distinct]
+
+
 def grid_single(pools: Pools, rng: random.Random, p: dict):
-    grids = parse_grids(p.get("grids", "1x1:2,2x2,3x3,2x3,3x2"))
+    if p.get("digraphs"):
+        pool = pools.singles + pools.digraphs
+        deck = _deck(pools, "singles+digraphs", pool, rng)
+    else:
+        pool = pools.singles
+        deck = _deck(pools, "singles", pool, rng)
+    grids = _fillable_grids(
+        parse_grids(p.get("grids", "1x1:2,2x2,3x3,2x3,3x2")), len(set(pool))
+    )
+    assert grids, "grid_single: no grid the singles can fill"
     name = rng.choices([g for g, _ in grids], weights=[w for _, w in grids])[0]
     cols, rows, _ = GRIDS[name]
-    if p.get("digraphs"):
-        deck = _deck(pools, "singles+digraphs", pools.singles + pools.digraphs, rng)
-    else:
-        deck = _deck(pools, "singles", pools.singles, rng)
     got = deck.deal(cols * rows)
     bubble = rng.random() < float(p.get("bubble_frac", 0.5))
     lo, hi = p.get("fill", [0.15, 0.8])
@@ -653,11 +685,7 @@ def grid_string(pools: Pools, rng: random.Random, p: dict):
     # source: pieces (kind piece) | short (lines: kind multi) | both (a mixed
     # grid takes the heavier kind, multi — windows.kind_of)
     src = p.get("source", "both")
-    pool = []
-    if src in ("pieces", "both"):
-        pool += pools.pieces
-    if src in ("short", "both"):
-        pool += pools.phrase.get("short", [])
+    pool = _grid_string_pool(pools, p)
     assert pool, f"grid_string source {src!r} has no strings"
     lo, hi = p.get("glyph_px", [12, 24])
     px = rng.uniform(float(lo), float(hi))
@@ -676,6 +704,46 @@ def grid_string(pools: Pools, rng: random.Random, p: dict):
         True,
         bool(p.get("mark_horizontal", True)),
     )
+
+
+def _grid_string_pool(pools: Pools, p: dict) -> list:
+    src = p.get("source", "both")
+    pool = []
+    if src in ("pieces", "both"):
+        pool += pools.pieces
+    if src in ("short", "both"):
+        pool += pools.phrase.get("short", [])
+    return pool
+
+
+def missing_source(name: str, p: dict, pools: Pools) -> str | None:
+    """Why ``name`` cannot draw from ``pools`` (None when it can). A recipe
+    whose source is empty under the run's inventory is dropped by the
+    builder and its share renormalised over the rest (``build.json``
+    ``dropped``) — a 24-row run has no corpus line, production has all of
+    them; the stage file is never edited for it."""
+    if name == "scene_piece" and not pools.pieces:
+        return "no pieces"
+    if name == "scene_short" and not pools.phrase.get("short"):
+        return "no short lines"
+    if name == "scene_sentence" and not pools.phrase.get("sentence"):
+        return "no sentence lines"
+    if name == "grid_string":
+        if not _grid_string_pool(pools, p):
+            return f"no strings for source {p.get('source', 'both')!r}"
+        cells = min(
+            GRIDS[g][0] * GRIDS[g][1]
+            for g, _ in parse_grids(p.get("grids", "2x2,2x3,3x2"))
+        )
+        if len(set(_grid_string_pool(pools, p))) < cells:
+            return f"fewer strings than the smallest grid's {cells} cells"
+    if name == "grid_single":
+        pool = pools.singles + (pools.digraphs if p.get("digraphs") else [])
+        if not _fillable_grids(
+            parse_grids(p.get("grids", "1x1:2,2x2,3x3,2x3,3x2")), len(set(pool))
+        ):
+            return "no grid the singles can fill"
+    return None
 
 
 RECIPES = {

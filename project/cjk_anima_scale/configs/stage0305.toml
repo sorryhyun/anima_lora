@@ -20,16 +20,25 @@ sentence_min_letters = 6
 
 [[data.mix]]                                # dialogue at 14–22 px, up to two columns
 recipe = "scene_sentence"
-share = 0.6
+share = 0.4
 glyph_px = [14, 22]                         # sets the fill per item (a bare min_glyph floor draws 23 px)
 min_glyph = 12
 fill = 0.9
 max_lines = 2
 px_target = 18
 
+[[data.mix]]                                # one piece per bubble at 12–24 px (the piece/multi 12–24 px row; a piece has no read at this px — by design)
+recipe = "scene_piece"
+share = 0.3
+glyph_px = [12, 24]
+min_glyph = 12
+fill = 0.9
+fill_min = 0.5                              # only scenes whose bubble the text fills ≥ half — small text in small bubbles, not floating in a big one
+px_target = 18
+
 [[data.mix]]                                # the A.2 cell: strings in word cells at 12–24 px
 recipe = "grid_string"
-share = 0.4
+share = 0.3
 grids = "2x2,2x3,3x2"
 glyph_px = [12, 24]
 source = "both"

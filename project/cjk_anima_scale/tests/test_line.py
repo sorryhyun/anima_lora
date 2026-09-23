@@ -169,6 +169,44 @@ def test_every_recipe_in_the_mixes_is_registered():
             assert m.name in RECIPES, (n, m.name)
 
 
+def test_dropped_recipe_share_renormalises():
+    from cjk_scale.builder import _counts
+
+    assert _counts([("a", 0.5), ("b", 0.3)], 100) == {"a": 63, "b": 37}
+    assert sum(_counts([("a", 0.6), ("b", 0.4)], 4001).values()) == 4001
+
+
+def test_missing_source_reads_the_pools():
+    from types import SimpleNamespace as NS
+
+    from cjk_scale.recipes import missing_source
+
+    empty = NS(pieces=[], singles=list("あい"), digraphs=[], phrase={})
+    full = NS(
+        pieces=["それを", "はじ", "やはり", "すご"],
+        singles=list("あいおなアナラル人日口女精聞動願"),
+        digraphs=[],
+        phrase={"short": ["それを はじ"], "sentence": []},
+    )
+    assert missing_source("scene_short", {}, empty) == "no short lines"
+    assert missing_source("scene_sentence", {}, full) == "no sentence lines"
+    assert missing_source("scene_piece", {}, empty) == "no pieces"
+    assert missing_source("scene_piece", {}, full) is None
+    assert missing_source("grid_string", {"source": "both"}, full) is None
+    assert missing_source("grid_string", {"source": "short"}, empty)
+    assert missing_source("grid_single", {"grids": "3x3"}, empty)
+    assert missing_source("grid_single", {"grids": "1x1,3x3"}, empty) is None
+
+
+def test_fit_px_is_the_bubble_capacity():
+    from cjk_scale.recipes import _fill_for_px, _fit_px
+
+    # 100 wide × 210 tall: two glyphs down one column → 210 / (2 × 1.05) = 100
+    assert _fit_px([0, 0, 100, 210], 2, True) == pytest.approx(100.0)
+    # a 20 px target fills a fifth of it; the fill is that ratio
+    assert _fill_for_px([0, 0, 100, 210], 2, 20, True, 0.9) == pytest.approx(0.2)
+
+
 def test_run_dirs_follow_the_probe_layout():
     assert run_tag("stage0709", "t1") == "scale_stage0709_t1"
     assert data_dir("stage0709", "t1").name == "data_scale_stage0709_t1"

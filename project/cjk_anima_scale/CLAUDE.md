@@ -8,7 +8,8 @@ The research surface stays in `../cjk_renderable_anima/` (reports, probes).
 ## Layout
 
 - `scale.py` front door: `--run <r> --stage <s> --steps data train eval bake [--submit [--queue]]`
-  (`--tag <t>` instead of `--run` for a run-less smoke); `scale.py stages | runs | windows | ledger`.
+  (`--tag <t>` instead of `--run` for a run-less smoke; `--workers N` render
+  processes for `data`, default cpu − 2); `scale.py stages | runs | windows | ledger`.
 - `cjk_scale/` the code. **Not `src/`**: the probe's `src/` exposes top-level
   `common` / `data` / `train` / `eval`; this package imports them and must never
   shadow them (`tests/test_line.py` pins the direction).
