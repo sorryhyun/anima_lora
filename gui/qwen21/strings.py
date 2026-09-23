@@ -44,6 +44,14 @@ UI: dict[str, dict[str, str]] = {
         "chain_cache": "Training will read the preprocessing output: {path}",
         "reattached": "Re-attached to running job {job}.",
         "idle": "Idle",
+        "test_group": "Test",
+        "run_test": "Test",
+        "test_lora_placeholder": "train output: {path}",
+        "no_lora": "No LoRA at {path}.\nTrain first, or set lora in the Test panel.",
+        "test_lora": "LoRA ×{m}",
+        "test_base": "base model",
+        "test_hint": "Renders the prompt with the LoRA and without it (same seed), "
+        "so the pair differs by the adapter only.",
     },
     "cn": {
         "window_title": "Qwen-Image-2.1 LoRA",
@@ -78,6 +86,14 @@ UI: dict[str, dict[str, str]] = {
         "chain_cache": "训练将读取预处理输出：{path}",
         "reattached": "已重新连接到正在运行的任务 {job}。",
         "idle": "空闲",
+        "test_group": "测试",
+        "run_test": "测试",
+        "test_lora_placeholder": "训练输出：{path}",
+        "no_lora": "找不到 LoRA：{path}\n请先训练，或在测试面板中设置 lora。",
+        "test_lora": "LoRA ×{m}",
+        "test_base": "基础模型",
+        "test_hint": "用同一个种子分别在加载和不加载 LoRA 的情况下生成，"
+        "两张图的差别只来自适配器。",
     },
 }
 
@@ -127,4 +143,28 @@ FIELDS_CN: dict[str, tuple[str, str]] = {
     "compile": ("torch.compile", "对每个块动态编译；在 PCIe 瓶颈下实测无收益"),
     "compile_mode": ("编译模式", "torch.compile 模式"),
     "seed": ("随机种子", "随机数种子"),
+}
+
+# GenerateRequest fields whose name also exists on another request with a
+# different meaning.
+FIELDS_CN_GENERATE: dict[str, tuple[str, str]] = {
+    "prompt": ("提示词", "提示词（设置 prompts_file 时忽略）"),
+    "lora": ("LoRA", "要测试的 LoRA（留空 = 训练输出）"),
+    "multipliers": ("强度", "逗号分隔的适配器强度；0.0 即基础模型"),
+    "width": ("宽度", "32 的倍数（默认：分辨率，正方形）"),
+    "height": ("高度", "32 的倍数（默认：分辨率，正方形）"),
+    "steps": ("步数", "去噪步数"),
+    "seed": ("随机种子", "第一个提示词的种子（每个提示词 +1）"),
+    "out_dir": ("输出文件夹", "图片和 manifest.json 保存在这里"),
+    "prompts_file": ("提示词文件", "每行一个提示词；会覆盖上面的提示词"),
+    "resolution": ("分辨率", "未设置宽高时的正方形边长"),
+    "true_cfg_scale": (
+        "CFG",
+        "管线默认值——2.1 没有引导嵌入，大于 1 时每步多一次前向计算",
+    ),
+    "negative_prompt": ("反向提示词", "仅在 CFG > 1 时使用"),
+    "blocks_to_swap": (
+        "交换块数",
+        "交换到内存的 transformer 块数（默认按可用显存计算）",
+    ),
 }

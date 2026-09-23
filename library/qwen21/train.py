@@ -336,6 +336,16 @@ def run_train(req: TrainRequest) -> Path:
             peak = torch.cuda.max_memory_allocated() / 1024**3
             if step == 1:
                 report_fit(blocks, attached, batch)
+            # One short line per step for progress readers (the GUI bar); the
+            # full line below stays at every 20th step for the log.
+            per_step = (time.time() - t_start) / step
+            eta = int(per_step * (total_steps - step))
+            print(
+                f"  progress {step}/{total_steps} epoch {epoch + 1}/{req.epochs} "
+                f"loss {sum(losses) / len(losses):.4f} "
+                f"eta {eta // 3600}:{eta % 3600 // 60:02d}:{eta % 60:02d}",
+                flush=True,
+            )
             if step % 20 == 0 or step == 1:
                 print(
                     f"  step {step}/{total_steps} loss {loss.item():.4f} "

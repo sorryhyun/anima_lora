@@ -39,6 +39,17 @@ DEFAULT_TARGETS = (
 
 LORA_DTYPES = ("bf16", "fp16", "fp32")
 
+# The default test prompt: a character the base model already knows, described
+# in plain language the way Qwen-Image expects (not a tag list).
+BOCCHI_PROMPT = (
+    "An anime illustration of Hitori Gotoh (Bocchi) from Bocchi the Rock!: a shy "
+    "teenage girl with very long pink hair, blue eyes, and yellow and blue "
+    "cube-shaped hair clips on one side of her head. She wears a pink tracksuit "
+    "jacket over a gray pleated skirt and holds a black electric guitar, glancing "
+    "nervously at the viewer with a flustered blush under the colorful stage "
+    "lights of a small live house."
+)
+
 
 def default_model_dir() -> Path:
     """``ANIMA_QWEN21_MODEL_DIR`` if set, else ``<repo home>/models/qwen_image_2.1``."""
@@ -56,9 +67,22 @@ def resolve_model_dir(model_dir: str | Path | None) -> Path:
     return default_model_dir()
 
 
-def _f(default: Any, help: str, *, choices: tuple | None = None, advanced=False):
-    """A request field: ``help`` / ``choices`` / ``advanced`` ride in metadata."""
-    meta = {"help": help, "choices": choices, "advanced": advanced}
+def _f(
+    default: Any,
+    help: str,
+    *,
+    choices: tuple | None = None,
+    advanced=False,
+    multiline=False,
+):
+    """A request field: ``help`` / ``choices`` / ``advanced`` / ``multiline``
+    ride in metadata (the last two are GUI layout only)."""
+    meta = {
+        "help": help,
+        "choices": choices,
+        "advanced": advanced,
+        "multiline": multiline,
+    }
     return field(default=default, metadata=meta)
 
 
@@ -185,7 +209,11 @@ class TrainRequest(_Request):
         "transformer blocks to swap (default: sized from activation_reserve_gb)",
     )
     activation_reserve_gb: float = _f(
-        7.0, "VRAM kept free for activations when sizing the swap", advanced=True
+        3.5,
+        "VRAM kept free for activations when sizing the swap. 3.5 is the measured "
+        "floor at 1024² with gradient checkpointing (swap 6, 0.5 GB spare at the "
+        "largest sample); 2 OOMs. Fewer swaps are not faster at 1024²",
+        advanced=True,
     )
     grad_checkpointing: bool = _f(True, "activation checkpointing (the VRAM lever)")
     compile: bool = _f(
@@ -196,6 +224,49 @@ class TrainRequest(_Request):
     )
     compile_mode: str | None = _f(None, "torch.compile mode", advanced=True)
     seed: int = _f(0, "RNG seed", advanced=True)
+    model_dir: str = _f(
+        "",
+        f"diffusers folder (default: ${MODEL_DIR_ENV} or models/{MODEL_DIR_NAME})",
+        advanced=True,
+    )
+
+
+@dataclass
+class GenerateRequest(_Request):
+    """Render prompts with and without a LoRA — same seed per prompt, so each
+    pair differs by the adapter only."""
+
+    SCRIPT: ClassVar[str] = "scripts/qwen21/generate.py"
+
+    prompt: str = _f(
+        BOCCHI_PROMPT, "prompt (ignored when prompts_file is set)", multiline=True
+    )
+    lora: str = _f("", "LoRA to test (empty = base model only)")
+    multipliers: str = _f(
+        "1.0,0.0", "comma-separated adapter scales; 0.0 is the base model"
+    )
+    width: int | None = _f(None, "multiple of 32 (default: resolution, square)")
+    height: int | None = _f(None, "multiple of 32 (default: resolution, square)")
+    steps: int = _f(20, "denoising steps")
+    seed: int = _f(1234, "seed of the first prompt (+1 per prompt)")
+    out_dir: str = _f("output/qwen21/test", "images + manifest.json land here")
+    prompts_file: str = _f("", "one prompt per line; overrides prompt", advanced=True)
+    resolution: int = _f(
+        1024, "square edge when width/height are not given", advanced=True
+    )
+    true_cfg_scale: float = _f(
+        1.0,
+        "the pipeline default — 2.1 has no guidance embedding, >1 costs a second "
+        "forward per step",
+        advanced=True,
+    )
+    negative_prompt: str = _f("", "used only when true_cfg_scale > 1", advanced=True)
+    blocks_to_swap: int | None = _f(
+        None, "transformer blocks to swap (default: sized to free VRAM)", advanced=True
+    )
+    te_blocks_to_swap: int | None = _f(
+        None, "text-encoder blocks to swap (default: sized to free VRAM)", advanced=True
+    )
     model_dir: str = _f(
         "",
         f"diffusers folder (default: ${MODEL_DIR_ENV} or models/{MODEL_DIR_NAME})",

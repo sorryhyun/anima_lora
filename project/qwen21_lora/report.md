@@ -16,7 +16,7 @@ differ from the rest of the repo: `CLAUDE.md`.
 | `src/backward_smoke.py` | the fit gate — one training step on random tensors |
 | `library/qwen21/cache.py` | Qwen3-VL embeddings + VAE latents, two files per image |
 | `library/qwen21/train.py` | flow matching, batch 1, `report_fit` after step 1 |
-| `src/generate.py` | A/B eval, `--multipliers 1.0,0.0` from one model |
+| `library/qwen21/generate.py` | A/B eval, `--multipliers 1.0,0.0` from one model |
 
 ## Measured envelope
 

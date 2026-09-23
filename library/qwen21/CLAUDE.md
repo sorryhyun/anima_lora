@@ -14,16 +14,13 @@ schedule. What the two share is `library.runtime.offloading` (the block swapper)
 | `blockswap.py` | `ModelOffloader` on stock diffusers/transformers block lists |
 | `accel.py` | attention backend + per-block `torch.compile` |
 | `lora.py` | adapters held **outside** the swapped blocks |
-| `cache.py` / `train.py` | `run_cache(req)` / `run_train(req)` — sidecars in `scripts/qwen21/` |
+| `cache.py` / `train.py` / `generate.py` | `run_cache` / `run_train` / `run_generate(req)` — sidecars in `scripts/qwen21/` |
 | `scan.py` | **torch-free** source/cache folder counts for the GUI (stale text caches) |
 
-GUI: `make gui-qwen` → `gui/qwen21/` (en/cn, Preprocess + Train over daemon command jobs;
-forms built from the request dataclasses — a new field shows up with no GUI edit).
+Running, the GUI, adding a flag, model-dir resolution and gotchas: **load the `qwen21`
+skill**.
 
-Model directory (diffusers layout): `--model_dir` → `$ANIMA_QWEN21_MODEL_DIR` (env or
-`.env`) → `models/qwen_image_2.1` under the repo home.
-
-The research line — smokes, benches, `generate.py`, reports, measured numbers — is
+The research line — smokes, benches, reports, measured numbers — is
 `project/qwen21_lora/`.
 
 ## What does NOT carry over
