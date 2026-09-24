@@ -1,6 +1,6 @@
 # cjk_renderable_anima — make Anima render CJK text it already knows how to draw
 
-Promoted from the wake line of [`../cjk_aware_anima_dit/`](../cjk_aware_anima_dit/)
+Promoted from the wake line of [`../finished/cjk_aware_anima_dit/`](../finished/cjk_aware_anima_dit/)
 on 2026-09-14. The premise (user's, 2026-09-13): *Anima garbles Japanese
 text not because it cannot draw the glyphs but because the T5-side query
 stream never gave it an address for them — wake the weights, don't teach a

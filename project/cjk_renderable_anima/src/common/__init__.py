@@ -13,8 +13,7 @@
   render/scene the S-line compositor: JA text drawn into a generated scene's bubble
 
 Importing any ``common.*`` module runs the bootstrap below: the repo root
-(``library``) and the frozen line's ``ocr/`` dir (``pseudo_label``, read by
-``readers``) go on ``sys.path`` right after ``src/``. After, not at position 0:
+(``library``) goes on ``sys.path`` right after ``src/``. After, not at position 0:
 ``src/`` holds generic top-level names (``train`` ``eval`` ``bench`` ``cli``)
 and the repo root has ``train.py`` and ``bench/``.
 
@@ -30,6 +29,5 @@ _REPO = Path(__file__).resolve().parents[4]
 _at = next(
     (i + 1 for i, p in enumerate(sys.path) if p and Path(p).resolve() == _SRC), 0
 )
-for _p in (_REPO, _REPO / "project" / "cjk_aware_anima_dit" / "ocr"):
-    if str(_p) not in sys.path:
-        sys.path.insert(_at, str(_p))
+if str(_REPO) not in sys.path:
+    sys.path.insert(_at, str(_REPO))

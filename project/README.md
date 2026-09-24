@@ -41,12 +41,13 @@ Retired lines so far:
 
 Finished lines are listed in [`finished/README.md`](finished/README.md)
 (the ResShift SR sidecar, 2026-08-22; mod guidance, 2026-08-24; the
-encoder-side CJK line `cjk_aware_anima`, 2026-09-24).
+encoder-side CJK line `cjk_aware_anima` and its DiT-side successor
+`cjk_aware_anima_dit`, both 2026-09-24).
 
 Active projects:
 
 - [`cjk_renderable_anima/`](cjk_renderable_anima/) — promoted 2026-09-14 from
-  the wake line of `cjk_aware_anima_dit`: a frozen DiT renders a requested JA
+  the wake line of `finished/cjk_aware_anima_dit`: a frozen DiT renders a requested JA
   glyph, or a whole common word, from a delta on the vocab pack's ext rows
   (all 92 kana 34/36; word rows are units, します/してる from one row), and a
   static table trained on strings carries order and count through the frozen
@@ -61,26 +62,3 @@ Active projects:
   (band keyed on glyph count, px sets the floor, nothing above 0.9 — all
   measured, not theory). `design.md` is the stage-schedule sketch under
   review; nothing has trained there yet.
-
-The CJK line below is frozen, and no other line has open phases.
-
-Frozen line (kept here rather than in `finished/` or `_archive/`: its
-`findings.md` is the anti-re-proposal record and is read often, but the line
-never reached its own top-line goal, so it is not a "finished" line):
-
-- [`cjk_aware_anima_dit/`](cjk_aware_anima_dit/) — the DiT-side successor,
-  frozen 2026-09-08: ext rows as content-free, deterministic addresses;
-  CJK semantics to be learned on the DiT side. **Its OCR half shipped and its
-  two DiT goals were never tested at scale.** Shipped: the AnimeText detector
-  + a PaddleOCR-VL-1.6 SFX reader (`sorryhyun/paddleocr-vl-1.6-manga-lora`,
-  wired as `anime_tools.ocr.sfx`), the caption clause rules, and the D1
-  quote-partitioned pack. Open: G-A (unmasked training at corpus scale) was
-  measured only on one 351-image shard, where the caption clauses tie; G-B (a
-  LoRA learning CJK tag meaning) was never run. Ceiling found on the reader:
-  five arms decoupled in-domain COO from the doujin gate, so the headroom is
-  ♡ / small-kana labels, not representation.
-  Home: [`findings.md`](cjk_aware_anima_dit/findings.md) (verdicts),
-  [`cjk_renderable_anima/reports/`](cjk_renderable_anima/reports/README.md) (the frozen copy here was archived — the wake
-  line moved to `cjk_renderable_anima/` on 2026-09-14), [`history.md`](cjk_aware_anima_dit/history.md)
-  (the dated record incl. the freeze note); pre-freeze plans and dated
-  reports archived to `_archive/cjk_aware_anima_dit/{plans,reports}/`.

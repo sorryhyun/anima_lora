@@ -1,4 +1,4 @@
-"""The OCR line's one glyph fold (project/cjk_aware_anima_dit/ocr/textnorm.py)."""
+"""The OCR line's one glyph fold (project/finished/cjk_aware_anima_dit/ocr/textnorm.py)."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _mod():
-    path = ROOT / "project" / "cjk_aware_anima_dit" / "ocr" / "textnorm.py"
+    path = ROOT / "project" / "finished" / "cjk_aware_anima_dit" / "ocr" / "textnorm.py"
     spec = importlib.util.spec_from_file_location("textnorm", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

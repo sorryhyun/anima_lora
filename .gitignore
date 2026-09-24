@@ -74,8 +74,8 @@ project/sigma_lowres/bench/probe1280_cache
 # anime_tools stage reports (report_dir defaults anchor on ANIMA_HOME = this checkout)
 workspace/
 
-# cjk lines — both lines frozen (encoder 2026-09-05, DiT 2026-09-08) and their
-# dated reports moved to _archive/cjk_aware_anima{,_dit}/reports/. The whole
+# cjk lines — both finished (encoder 2026-09-05, DiT 2026-09-08; moved under
+# project/finished/ 2026-09-24) and their dated reports moved to
+# _archive/cjk_aware_anima{,_dit}/reports/. The whole
 # reports dir is untracked now, so a probe re-run that recreates it is quiet.
-project/cjk_aware_anima*/reports/
-project/finished/cjk_aware_anima/reports/
+project/finished/cjk_aware_anima*/reports/

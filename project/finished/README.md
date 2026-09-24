@@ -43,8 +43,23 @@ Finished lines:
   public `anima-vocab-pack-cjk` repo is built on. Ceiling: rare kanji names
   never compose under any lever, coverage / geometry refinements are inert,
   content-free tables tie the trained pack for unmask training; the DiT-side
-  question continued in `../cjk_aware_anima_dit/` → `../cjk_renderable_anima/`.
+  question continued in [`cjk_aware_anima_dit/`](cjk_aware_anima_dit/) →
+  `../cjk_renderable_anima/`.
   The pack recipe stays operational in `scripts/distill_cjk/` (corpus builders
   under `corpus/`; `docs/methods/cjk_vocab_pack.md` § Rebuilding a pack).
   Verdicts: [`cjk_aware_anima/findings.md`](cjk_aware_anima/findings.md);
   digest: [`cjk_aware_anima/README.md`](cjk_aware_anima/README.md).
+- [`cjk_aware_anima_dit/`](cjk_aware_anima_dit/) — the DiT-side CJK line: ext
+  rows as content-free addresses, CJK meaning learned or woken on the DiT side
+  (frozen 2026-09-08, wake line split out 2026-09-14, moved here 2026-09-24).
+  Shipped: the OCR half — the AnimeText detector and the B′ SFX reader
+  (`sorryhyun/paddleocr-vl-1.6-manga-lora`, `anime_tools.ocr.{animetext,sfx}`),
+  the caption clause rules, the D1 quote-partitioned pack. Ceiling: the reader
+  — five arms decoupled in-domain COO from the doujin gate, so the headroom is
+  ♡ / small-kana labels. The DiT goals were **handed off, not measured**
+  (G-A read on one 351-image shard only, G-B never run); the question lives on
+  in `../cjk_renderable_anima/` and `../cjk_anima_scale/`. Code runnable by
+  path; the `render_*` EasyControl descriptors in `scripts/tasks/training.py`
+  still call its `render/` scripts. Verdicts:
+  [`cjk_aware_anima_dit/findings.md`](cjk_aware_anima_dit/findings.md);
+  digest: [`cjk_aware_anima_dit/README.md`](cjk_aware_anima_dit/README.md).

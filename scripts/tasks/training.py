@@ -729,7 +729,7 @@ def _render_stage(adapter: str, cfg: dict, base: str, extra) -> None:
     run(
         [
             PY,
-            "project/cjk_aware_anima_dit/render/cut.py",
+            "project/finished/cjk_aware_anima_dit/render/cut.py",
             "--editions",
             edition,
             *_toml_table_to_argv(knobs),
@@ -739,7 +739,7 @@ def _render_stage(adapter: str, cfg: dict, base: str, extra) -> None:
     run(
         [
             PY,
-            "project/cjk_aware_anima_dit/render/prep_render.py",
+            "project/finished/cjk_aware_anima_dit/render/prep_render.py",
             "mask",
             "--edition",
             edition,
@@ -757,7 +757,7 @@ def _render_preprocess(adapter: str, cfg: dict, base: str, extra) -> None:
     run(
         [
             PY,
-            "project/cjk_aware_anima_dit/render/prep_render.py",
+            "project/finished/cjk_aware_anima_dit/render/prep_render.py",
             "encode",
             "text",
             "--edition",

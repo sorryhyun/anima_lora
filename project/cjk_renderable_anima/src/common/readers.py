@@ -9,6 +9,76 @@ from pathlib import Path
 from .text import cer, norm
 
 
+class StockVl16:
+    """Stock PaddleOCR-VL-1.6 (no adapter), greedy, one batch per call — the
+    ``stock`` sweeper of the finished DiT line's ``ocr/pseudo_label.py``, lifted
+    here so the wake line does not import from ``project/finished/``."""
+
+    MAX_NEW_TOKENS = 96
+
+    def __init__(self, device: str):
+        import torch
+        from transformers import AutoModelForImageTextToText, AutoProcessor
+
+        from .paths import REPO
+
+        path = str(REPO / "models/paddleocr_vl_1.6")
+        self.torch = torch
+        self.model = (
+            AutoModelForImageTextToText.from_pretrained(
+                path, dtype=torch.bfloat16, attn_implementation="sdpa"
+            )
+            .to(device)
+            .eval()
+        )
+        self.proc = AutoProcessor.from_pretrained(path)
+        self.device = device
+        self.min_edge = self.proc.image_processor.size["shortest_edge"]
+        msgs = [
+            {
+                "role": "user",
+                "content": [{"type": "image"}, {"type": "text", "text": "OCR:"}],
+            }
+        ]
+        self.text = self.proc.apply_chat_template(
+            msgs, add_generation_prompt=True, tokenize=False
+        )
+
+    def read(self, crops: list) -> list[tuple[str, int]]:
+        """``(text, n_tokens)`` per BGR crop."""
+        from PIL import Image
+
+        tok = self.proc.tokenizer
+        images = [Image.fromarray(c[:, :, ::-1]) for c in crops]
+        inputs = self.proc(
+            text=[self.text] * len(images),
+            images=images,
+            padding=True,
+            padding_side="left",
+            return_tensors="pt",
+            images_kwargs={
+                "size": {"shortest_edge": self.min_edge, "longest_edge": 1280 * 28 * 28}
+            },
+        ).to(self.device)
+        n = inputs["input_ids"].shape[-1]
+        with self.torch.inference_mode():
+            o = self.model.generate(
+                **inputs,
+                max_new_tokens=self.MAX_NEW_TOKENS,
+                do_sample=False,
+                use_cache=True,
+            )
+        out = []
+        for row in o:
+            ids = [
+                t
+                for t in row[n:].tolist()
+                if t not in (tok.eos_token_id, tok.pad_token_id)
+            ]
+            out.append((tok.decode(ids).strip(), len(ids)))
+        return out
+
+
 class Readers:
     def __init__(self, device: str):
         from anime_tools.ocr.animetext import AnimeTextDetector
@@ -16,9 +86,7 @@ class Readers:
 
         self.det = AnimeTextDetector.load(device=device)
         self.sfx = SfxReader.load(device=device, batch_size=16)
-        import pseudo_label as pl
-
-        self.vl = pl.SWEEPERS["stock"](None, device)
+        self.vl = StockVl16(device)
 
     def read_image(self, bgr, *, whole: bool = True):
         """Return list of dict(box, sfx, sfx_conf, vl) — one per detector box,

@@ -24,7 +24,7 @@ not a LoRA.
   content-free tables (HOT / ISO1 / COLLAPSE) tie or beat it for the unmask
   goal. The one confirmed requirement is that rows must exist (C9 > P).
 - **Continued elsewhere.** The DiT-side question (what an ext row *means*)
-  went to [`../../cjk_aware_anima_dit/`](../../cjk_aware_anima_dit/README.md),
+  went to [`../cjk_aware_anima_dit/`](../cjk_aware_anima_dit/README.md),
   then the wake line [`../../cjk_renderable_anima/`](../../cjk_renderable_anima/README.md)
   and the production line `../../cjk_anima_scale/`.
 

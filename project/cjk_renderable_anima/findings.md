@@ -9,7 +9,7 @@ diagnostic, the strings arm, the S line); the forward plan is
 in use is [`training.md`](training.md); the
 W0–W2 report is `reports/wake_w0_w2_2026_09_13.md`. The predecessor lines'
 verdicts are read-only in
-[`../cjk_aware_anima_dit/findings.md`](../cjk_aware_anima_dit/findings.md)
+[`../finished/cjk_aware_anima_dit/findings.md`](../finished/cjk_aware_anima_dit/findings.md)
 (DiT side, OCR readers, captions) and
 [`../finished/cjk_aware_anima/findings.md`](../finished/cjk_aware_anima/findings.md)
 (the vocab pack itself).
@@ -369,10 +369,11 @@ the data mix.
 
 ## Gotchas that cost time
 
-- The promoted `wake_probe.py` needs `project/cjk_aware_anima_dit/ocr` on
-  `sys.path` for `pseudo_label` (the readers stayed in the frozen line);
-  the promotion dropped the line and every eval died at the reader —
-  fixed 2026-09-14.
+- The promoted `wake_probe.py` needed the frozen line's `ocr/` dir on
+  `sys.path` for `pseudo_label` (the readers stayed behind); the promotion
+  dropped it and every eval died at the reader — fixed 2026-09-14. Since
+  2026-09-24 the stock VL16 reader lives in `src/common/readers.py`
+  (`StockVl16`) and nothing here imports from `project/finished/`.
 - Ext rows are **Qwen pieces**: にな, して, った are single word rows, so a
   kana "pair" is only an order contrast when *every permutation* tokenizes
   to its own kana rows (`_clean_kana_strings`); `_string_pairs` checks it.

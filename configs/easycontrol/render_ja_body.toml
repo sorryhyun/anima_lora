@@ -3,7 +3,7 @@
 # deltas + llm_adapter LoRA + ext-row delta, networks/methods/easycontrol.py) is what
 # changes. The llm_adapter now runs live, so the TE cache is the pre-adapter
 # prompt_embeds layout in its own dir (text_body/) — render_ja's text/ stays for the
-# e4 judge. See project/cjk_aware_anima_dit/plan_render.md §S6.
+# e4 judge. See _archive/cjk_aware_anima_dit/plans/plan_render.md §S6.
 #
 # cache_llm_adapter_outputs (true in easycontrol.toml) cannot be switched off from a
 # [training] table (false bools are omitted from argv); train.py auto-disables it

@@ -100,7 +100,7 @@ EN-only datasets are unaffected either way (identical ids, identical caches).
   tokenization path, not a translation: the rows carry tag identity, not
   grammar.
 - Not in this pack: the quote-partitioned isotropic block (`iso`) used by
-  the manga-unmask line (`project/cjk_aware_anima_dit/`) is a research build
+  the manga-unmask line (`project/finished/cjk_aware_anima_dit/`) is a research build
   (`output/ckpt/*_isoq`), not published. `HybridT5Encoder` handles it when a
   local pack carries one; the shipped pack routes every CJK span to the
   trained rows.

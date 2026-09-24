@@ -1,5 +1,5 @@
 # plan_render bubble-fill probe — EN (positive control, stock tokenizer). See
-# project/cjk_aware_anima_dit/plan_render.md. Trees under post_image_dataset/render/en/
+# _archive/cjk_aware_anima_dit/plans/plan_render.md. Trees under post_image_dataset/render/en/
 # are written by render/cut.py (S0c) + render/prep_render.py (S1); the inpaint recipe
 # (configs/easycontrol/inpaint.toml) is the smoke recipe, transcript never dropped.
 name = "render_en"
