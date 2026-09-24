@@ -36,6 +36,10 @@ from anima_daemon import config as _cfg
 from anima_daemon import proc as _proc
 
 
+def _truthy(value: str | None) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _job_arg(extra) -> str | None:
     """Resolve a job id from ``JOB=<id>`` env or the first positional arg."""
     job = os.environ.get("JOB")
@@ -485,15 +489,30 @@ def cmd_daemon_kill(extra):
 def cmd_daemon_pause(extra):
     """Freeze the running job's process tree (SIGSTOP) in place — VRAM stays put,
     resume is instant. ``JOB=<id>`` targets a specific job; otherwise the active
-    one. The queue does not advance past a paused job (it still owns the card)."""
+    one. The queue does not advance past a paused job (it still owns the card).
+
+    ``RELEASE=1`` (or ``--release``): cooperative release instead — the trainer
+    saves a resumable state at its next optimizer step and exits, the GPU is
+    freed and the queue advances; ``make daemon-resume`` relaunches it from that
+    state (train.py jobs only; resume reloads + recompiles)."""
     if not _client.is_running():
         print("no daemon running.", file=sys.stderr)
         sys.exit(1)
+    extra = list(extra or [])
+    release = _truthy(os.environ.get("RELEASE")) or "--release" in extra
+    extra = [a for a in extra if a != "--release"]
     cl = _client.DaemonClient()
-    result = cl.pause_job(_job_arg(extra))
+    result = cl.pause_job(_job_arg(extra), release_model=release)
     if result.get("error"):
         print(result["error"], file=sys.stderr)
         sys.exit(1)
+    if release:
+        print(
+            f"job {result.get('job_id')}: release-pause requested — the trainer "
+            f"saves a resumable state at its next step and exits (state → paused, "
+            f"GPU free). `make daemon-resume JOB={result.get('job_id')}` relaunches it."
+        )
+        return
     print(
         f"job {result.get('job_id')} → {result.get('state')} (frozen; VRAM held). "
         f"`make daemon-resume` to thaw."
@@ -511,6 +530,12 @@ def cmd_daemon_resume(extra):
     if result.get("error"):
         print(result["error"], file=sys.stderr)
         sys.exit(1)
+    if result.get("relaunch"):
+        print(
+            f"job {result.get('job_id')} → {result.get('state')} (relaunch "
+            f"#{result['relaunch']} from the saved state, front of the queue)."
+        )
+        return
     print(f"job {result.get('job_id')} → {result.get('state')} (thawed).")
 
 

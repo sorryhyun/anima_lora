@@ -422,7 +422,9 @@ def run_scope(
     ``run_start`` must already have fired (the sink is constructed earlier so it
     can be handed to the checkpoint saver). On block exit this maps the outcome
     to a status: normal return → ``ok``; ``KeyboardInterrupt`` → ``stopped``;
-    any other exception → ``error`` (re-raised either way). ``final_step`` is
+    :class:`~library.training.pause.TrainingPaused` → ``paused`` (with the
+    ``state_dir`` to resume from); any other exception → ``error`` (re-raised
+    either way). ``final_step`` is
     read lazily at exit so the event records where training actually stopped;
     ``extra_fields`` likewise — its dict (e.g. the liveness summary) is merged
     into the ``run_end`` event, and a failure inside it is swallowed so it can
@@ -445,10 +447,20 @@ def run_scope(
     if sink is None:
         yield
         return
+    from library.training.pause import TrainingPaused
+
     try:
         yield
     except KeyboardInterrupt:
         sink.run_end(status="stopped", final_step=final_step(), **_extra())
+        raise
+    except TrainingPaused as paused:
+        sink.run_end(
+            status="paused",
+            final_step=final_step(),
+            state_dir=paused.state_dir,
+            **_extra(),
+        )
         raise
     except BaseException as exc:
         sink.run_end(

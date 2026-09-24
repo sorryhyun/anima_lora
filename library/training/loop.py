@@ -33,6 +33,7 @@ from library.training.checkpoints import CheckpointSaver
 from library.training.contexts import TrainCtx, ValCtx
 from library.training.method_adapter import StepCtx
 from library.training.metrics import MetricContext, collect_metrics
+from library.training.pause import PauseWatcher, TrainingPaused
 from library.training.validation import run_validation
 
 logger = logging.getLogger(__name__)
@@ -95,6 +96,8 @@ class LoopState:
 
     global_step: int = 0
     profile_started: bool = False
+    # Release-pause request poller (daemon jobs only; None outside the daemon).
+    pause_watcher: Optional[PauseWatcher] = None
 
 
 def build_loop_state(
@@ -131,6 +134,7 @@ def build_loop_state(
     epoch_to_start,
     initial_step,
     metadata,
+    resume_step: int = 0,
 ) -> LoopState:
     """Build :class:`LoopState`: the pre-loop setup between
     ``_prepare_with_accelerator()`` and the for-epoch loop — noise scheduler, trackers, loss recorders, optional text
@@ -198,18 +202,15 @@ def build_loop_state(
         is_tracking=is_tracking,
     )
 
-    # Resume skip prelude: fast-forward global_step before tqdm so the bar
-    # total is sized right, and consume per-epoch skip credit so
-    # skip_first_batches has the right first-epoch offset.
-    global_step = 0
+    # Resume prelude: ``resume_step`` (optimizer steps already taken) seeds
+    # global_step so the tqdm total is sized right; ``epoch_to_start`` skips
+    # whole epochs and ``initial_step`` is the residual batch count inside the
+    # resumed epoch, consumed by skip_first_batches in _run_epoch_steps.
+    global_step = resume_step
+    if epoch_to_start > 0:
+        logger.info(f"resuming at epoch {epoch_to_start + 1}, step {global_step}")
     if initial_step > 0:
-        global_step = initial_step // args.gradient_accumulation_steps
-        for skip_epoch in range(epoch_to_start):
-            logger.info(
-                f"skipping epoch {skip_epoch + 1} because initial_step "
-                f"(multiplied) is {initial_step}"
-            )
-            initial_step -= len(train_dataloader)
+        logger.info(f"skipping {initial_step} batches of epoch {epoch_to_start + 1}")
 
     logger.info(f"unet dtype: {unet_weight_dtype}, device: {unet.device}")
     _ts_parts = [f"timestep_sampling={args.timestep_sampling}"]
@@ -309,6 +310,7 @@ def build_loop_state(
         profile_range=profile_range,
         on_step_start_for_network=on_step_start_for_network,
         global_step=global_step,
+        pause_watcher=PauseWatcher.from_env(),
     )
 
 
@@ -400,6 +402,7 @@ def _run_epoch_steps(trainer, state: LoopState, epoch: int) -> None:
             _sample_at_step(trainer, state)
             state.saver.maybe_save_step(state.network, state.global_step, epoch)
             state.optimizer_train_fn()
+            _maybe_release_pause(state, epoch)
 
         _log_step(
             trainer,
@@ -416,6 +419,24 @@ def _run_epoch_steps(trainer, state: LoopState, epoch: int) -> None:
 
         if state.global_step >= args.max_train_steps:
             break
+
+
+def _maybe_release_pause(state: LoopState, epoch: int) -> None:
+    """Daemon release-pause: on a pending request, write the resumable state
+    at this optimizer-step boundary and leave the loop via
+    :class:`TrainingPaused` (``run_scope`` turns it into ``run_end paused``)."""
+    watcher = state.pause_watcher
+    if watcher is None or not watcher.poll(state.accelerator):
+        return
+    logger.info(
+        f"release-pause requested: saving resumable state at step "
+        f"{state.global_step} (epoch {epoch + 1})"
+    )
+    state.optimizer_eval_fn()
+    state_dir = state.saver.save_release_pause(state.network, state.global_step, epoch)
+    if state.accelerator.is_main_process:
+        watcher.acknowledge(state_dir, global_step=state.global_step, epoch=epoch)
+    raise TrainingPaused(state_dir, state.global_step, epoch)
 
 
 def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:

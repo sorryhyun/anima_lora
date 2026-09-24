@@ -10,6 +10,8 @@ re-attach a still-alive orphan or finalize a dead one as ``error`` (detail
 
 from __future__ import annotations
 
+import itertools
+import json
 import logging
 import os
 import queue
@@ -41,6 +43,8 @@ logger = logging.getLogger("anima.daemon")
 
 _POLL_INTERVAL = 1.0  # seconds between liveness checks
 _SENTINEL = "__stop__"
+# Release-pause request file in the job dir (library/training/pause.py reads it).
+PAUSE_REQUEST_NAME = "pause.request"
 
 # Stall watchdog CPU-activity cross-check (see _stall_reason /
 # _tree_cpu_advancing): past the output-freeze budget, only kill a job whose
@@ -85,7 +89,11 @@ class JobManager:
     def __init__(self) -> None:
         self._lock = threading.RLock()
         self._jobs: dict[str, Job] = {}
-        self._queue: "queue.Queue[str]" = queue.Queue()
+        # (priority, seq, job_id): normal submissions FIFO at 1; a resumed
+        # release-paused job re-enters at 0 so it runs as soon as the slot
+        # frees; the shutdown sentinel at -1 wins over everything.
+        self._queue: "queue.PriorityQueue[tuple[int, int, str]]" = queue.PriorityQueue()
+        self._seq = itertools.count()
         self._popens: dict[str, object] = {}  # job_id -> Popen (spawned only)
         self._adopt: list[str] = []  # running orphans to monitor before the queue
         self._subscribers: set["queue.Queue[dict]"] = set()
@@ -119,7 +127,7 @@ class JobManager:
             current.stop_requested = True
             self._kill_job_tree(current)
         self._run_gate.set()  # release a worker parked on a paused queue
-        self._queue.put(_SENTINEL)  # wake the worker so it can exit
+        self._enqueue(_SENTINEL, priority=-1)  # wake the worker so it can exit
 
     def submit(
         self,
@@ -225,7 +233,7 @@ class JobManager:
         with self._lock:
             self._jobs[job.id] = job
             job.persist()
-        self._queue.put(job.id)
+        self._enqueue(job.id)
         if start is True:
             self.resume()
         self._broadcast({"ev": "submitted", "job_id": job.id, "state": job.state})
@@ -279,6 +287,9 @@ class JobManager:
                 return job
             job.stop_requested = True
             state = job.state
+            if state == STATE_PAUSED and job.released:
+                self._finalize(job, STATE_STOPPED, detail="cancelled while released")
+                return job
             if state == STATE_QUEUED:
                 # Finalize now (reentrant RLock): the worker may be blocked on a
                 # running job and won't reach this id for a while. When it does,
@@ -292,19 +303,35 @@ class JobManager:
             self._kill_job_tree(job)
         return job
 
-    def pause_job(self, job_id: str) -> Optional[dict]:
+    def pause_job(self, job_id: str, *, release_model: bool = False) -> Optional[dict]:
         """Freeze a running job's process tree (SIGSTOP), method-agnostically.
         CUDA context/VRAM stay put. The queue does NOT advance past a paused
         job — it still owns its slot. Refuses anything not ``running`` and a
         multi-GPU ``accelerate launch`` run (a frozen NCCL rank trips the
         collective heartbeat). Returns ``{job_id, state, error?}``, or
-        ``None`` when no such job (server maps that to 404)."""
+        ``None`` when no such job (server maps that to 404).
+
+        ``release_model=True`` is the cooperative variant for train.py jobs:
+        drop a ``pause.request`` in the job dir; the trainer saves a resumable
+        state at its next optimizer step and exits with ``run_end paused``,
+        the job parks as ``paused`` with no process (``released``), the GPU is
+        free and the queue advances. ``resume_job`` relaunches it with
+        ``--resume``. The job stays ``running`` until the trainer has actually
+        exited; ``release_requested`` marks the in-between."""
+        if release_model:
+            return self._request_release(job_id)
         with self._lock:
             job = self._jobs.get(job_id)
             if job is None:
                 return None
             if job.state == STATE_PAUSED:
                 return {"job_id": job.id, "state": job.state}  # idempotent
+            if job.release_requested:
+                return {
+                    "job_id": job.id,
+                    "state": job.state,
+                    "error": "a release-pause is already in flight (trainer is saving state)",
+                }
             if job.state != STATE_RUNNING:
                 return {
                     "job_id": job.id,
@@ -345,6 +372,8 @@ class JobManager:
                     "state": job.state,
                     "error": f"job is not paused (current state: {job.state})",
                 }
+            if job.released:
+                return self._requeue_released_locked(job)
             pid = job.pid
         if pid is not None:
             proc.resume_tree(pid)
@@ -356,6 +385,106 @@ class JobManager:
                 job.persist()
         self._broadcast({"ev": "resumed", "job_id": job_id})
         return {"job_id": job_id, "state": job.state}
+
+    def _request_release(self, job_id: str) -> Optional[dict]:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                return None
+            if job.state == STATE_PAUSED and job.released:
+                return {"job_id": job.id, "state": job.state, "released": True}
+            if job.release_requested:
+                return {"job_id": job.id, "state": job.state, "release_requested": True}
+            if job.kind != "train":
+                return {
+                    "job_id": job.id,
+                    "state": job.state,
+                    "error": "release_model needs a train.py job (cooperative "
+                    "checkpoint); a command job only supports the plain freeze",
+                }
+            if job.state not in ACTIVE_STATES:
+                return {
+                    "job_id": job.id,
+                    "state": job.state,
+                    "error": f"can only pause a running job (current state: {job.state})",
+                }
+            was_frozen = job.state == STATE_PAUSED
+            try:
+                job.dir.mkdir(parents=True, exist_ok=True)
+                with open(job.dir / PAUSE_REQUEST_NAME, "w", encoding="utf-8") as f:
+                    json.dump({"release_model": True, "ts": time.time()}, f)
+            except OSError as exc:
+                return {
+                    "job_id": job.id,
+                    "state": job.state,
+                    "error": f"could not write pause request: {exc}",
+                }
+            job.release_requested = True
+            job.status_detail = "release-pause requested: saving resumable state"
+            if was_frozen:
+                # A frozen tree can't act on the request — thaw it first.
+                job.state = STATE_RUNNING
+                job.paused_at = None
+            job.persist()
+            pid = job.pid
+        if was_frozen and pid is not None:
+            proc.resume_tree(pid)
+        self._broadcast({"ev": "release_requested", "job_id": job_id})
+        return {"job_id": job_id, "state": STATE_RUNNING, "release_requested": True}
+
+    def _park_released(self, job: Job, ev: dict) -> None:
+        """The trainer exited on a release-pause: keep the job as ``paused``
+        with no process. Not terminal — ``resume_job`` relaunches it."""
+        _CPU_SAMPLES.pop(job.id, None)
+        with self._lock:
+            job.state = STATE_PAUSED
+            job.released = True
+            job.release_requested = False
+            job.paused_at = time.time()
+            job.pid = None
+            job.create_time = None
+            job.resume_state_dir = ev.get("state_dir") or job.resume_state_dir
+            job.ckpt_path = tail.last_ckpt_path(job.progress_path) or job.ckpt_path
+            job.status_detail = (
+                f"released at step {ev.get('final_step')}; GPU free — "
+                "resume relaunches from the saved state"
+            )
+            job.persist()
+        self._broadcast({"ev": "paused", "job_id": job.id, "released": True})
+
+    def _requeue_released_locked(self, job: Job) -> dict:
+        """Relaunch a release-paused train job from its saved state (called
+        under the lock). ``--resume <state_dir> --skip_until_initial_step``
+        replaces any earlier resume flags in ``extra``."""
+        if not job.resume_state_dir or not os.path.isdir(job.resume_state_dir):
+            return {
+                "job_id": job.id,
+                "state": job.state,
+                "error": f"resume state dir missing: {job.resume_state_dir!r}",
+            }
+        extra = list(job.extra or [])
+        for flag in ("--resume",):
+            while flag in extra:
+                i = extra.index(flag)
+                del extra[i : i + 2]
+        while "--skip_until_initial_step" in extra:
+            extra.remove("--skip_until_initial_step")
+        extra += ["--resume", job.resume_state_dir, "--skip_until_initial_step"]
+        job.extra = extra
+        job.state = STATE_QUEUED
+        job.released = False
+        job.paused_at = None
+        job.started_at = None
+        job.ended_at = None
+        job.returncode = None
+        job.resume_count += 1
+        job.status_detail = (
+            f"resuming from {job.resume_state_dir} (relaunch #{job.resume_count})"
+        )
+        job.persist()
+        self._enqueue(job.id, priority=0)
+        self._broadcast({"ev": "resumed", "job_id": job.id, "relaunch": True})
+        return {"job_id": job.id, "state": STATE_QUEUED, "relaunch": job.resume_count}
 
     def _run(self) -> None:
         # Drain re-attached orphans before touching the queue so the serial
@@ -372,7 +501,7 @@ class JobManager:
                 logger.exception("monitor crashed for adopted job %s", job_id)
                 self._fail_safely(job_id, "daemon monitor crashed; see daemon.log")
         while True:
-            job_id = self._queue.get()
+            _prio, _seq, job_id = self._queue.get()
             self._worker_heartbeat = time.time()
             if job_id == _SENTINEL:
                 break
@@ -448,6 +577,13 @@ class JobManager:
         return not self._stopping
 
     def _launch_and_monitor(self, job: Job) -> None:
+        # A stale pause.request (daemon restarted mid-release, or a run that
+        # ended before acting on it) must not pause the relaunch on step 1.
+        try:
+            (job.dir / PAUSE_REQUEST_NAME).unlink()
+        except OSError:
+            pass
+        job.release_requested = False
         d = config.job_dir(job.id)
         try:
             # _build_cmd runs the config merge + task-runner import for train
@@ -615,6 +751,9 @@ class JobManager:
             return
         if ev and ev.get("ev") == "run_end":
             status = ev.get("status")
+            if status == "paused":
+                self._park_released(job, ev)
+                return
             mapped = {
                 "ok": STATE_DONE,
                 "stopped": STATE_STOPPED,
@@ -641,6 +780,7 @@ class JobManager:
         with self._lock:
             job.state = state
             job.ended_at = time.time()
+            job.release_requested = False
             if error:
                 job.error = error
             if detail:
@@ -901,6 +1041,8 @@ class JobManager:
 
         self._jobs = load_all()
         for job in self._jobs.values():
+            if job.state == STATE_PAUSED and job.released:
+                continue  # parked on disk, no process to re-attach
             if job.state in ACTIVE_STATES:
                 if proc.is_alive(job.pid, job.create_time):
                     # A paused tree stays SIGSTOP'd across a daemon restart;
@@ -919,13 +1061,24 @@ class JobManager:
                         detail="orphaned",
                     )
             elif job.state == STATE_QUEUED:
-                self._queue.put(job.id)
+                self._enqueue(job.id)
+
+    def _enqueue(self, job_id: str, *, priority: int = 1) -> None:
+        self._queue.put((priority, next(self._seq), job_id))
+
+    @staticmethod
+    def _occupies_slot(job: Job) -> bool:
+        """Running, or frozen in place (VRAM held). A release-paused job has
+        no process and owns nothing."""
+        return job.state in ACTIVE_STATES and not (
+            job.state == STATE_PAUSED and job.released
+        )
 
     def _current_running_locked(self) -> Optional[Job]:
         # The job occupying the worker/GPU slot — running or frozen. A paused
         # job still owns its VRAM, so stop/shutdown/health must all see it.
         for job in self._jobs.values():
-            if job.state in ACTIVE_STATES:
+            if self._occupies_slot(job):
                 return job
         return None
 
@@ -933,7 +1086,7 @@ class JobManager:
         """True when no job is running or waiting to run. The just-submitted
         job is not yet in ``_jobs`` when ``_register_and_queue`` calls this."""
         return not any(
-            job.state == STATE_QUEUED or job.state in ACTIVE_STATES
+            job.state == STATE_QUEUED or self._occupies_slot(job)
             for job in self._jobs.values()
         )
 

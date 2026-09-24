@@ -81,6 +81,16 @@ class Job:
     # Observability only.
     paused_at: Optional[float] = None
 
+    # Release-pause (README "pause with release_model"): `release_requested`
+    # is set while train.py is asked to save + exit; `released` marks a paused
+    # job with no process (GPU free, queue advances past it); `resume_state_dir`
+    # is what `resume` appends as `--resume` on relaunch; `resume_count` counts
+    # relaunches.
+    release_requested: bool = False
+    released: bool = False
+    resume_state_dir: Optional[str] = None
+    resume_count: int = 0
+
     # Whether the train tree was spawned under `accelerate launch` (multi-GPU).
     # pause_job refuses these: a frozen NCCL rank trips the collective heartbeat
     # timeout. Command jobs and the single-GPU direct-invoke path are False.

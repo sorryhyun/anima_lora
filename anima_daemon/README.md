@@ -215,6 +215,32 @@ no id resolve the active job.
 - A paused run holds only its allocated VRAM, so a small `--inline` job fits in
   the remainder.
 
+**`{"release_model": true}`** in the body (`make daemon-pause RELEASE=1`,
+`client.pause_job(id, release_model=True)`) is the cooperative variant for
+**train.py jobs only**: the daemon drops `pause.request` in the job dir, the
+trainer picks it up at its next optimizer step (`library/training/pause.py`),
+writes the resumable `<output_name>-checkpoint` weights + `-checkpoint-state`
+dir (the same files auto-resume uses, regardless of `checkpointing_epochs`),
+writes `pause.ack.json`, and exits with `run_end status="paused"` carrying
+`state_dir`. The daemon then parks the job as `paused` with `released: true`,
+`pid: null` and `resume_state_dir` set. Returns
+`{job_id, state: "running", release_requested: true}` immediately — the job
+stays `running` until the trainer has actually exited (`status_detail` says
+so). A frozen (SIGSTOP) job is thawed first so it can act on the request.
+
+- **The GPU is fully released and the queue DOES advance** past a released job.
+- `resume` on a released job re-enqueues it at the **front** of the queue with
+  `--resume <state_dir> --skip_until_initial_step` appended to `extra`
+  (`resume_count` increments); it relaunches when the slot frees — model reload
+  + recompile, **not** instant. The resumed run removes the state dir on
+  completion.
+- `stop` on a released job finalizes it `stopped` (nothing to kill). A released
+  job survives a daemon restart as-is. Refused for command jobs (no
+  cooperative checkpoint) — use the plain freeze there.
+- Multi-GPU: every rank reaches the save collective together (the main
+  process's verdict is broadcast), so unlike the freeze this is not refused for
+  `accelerate launch` runs.
+
 ### `POST /queue/pause` · `POST /queue/start`
 
 Hold / resume the queue gate. A paused queue keeps accepting submissions but

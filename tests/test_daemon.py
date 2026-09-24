@@ -1932,3 +1932,154 @@ def test_daemon_log_dumps_a_finished_job(tmp_path, monkeypatch, capsys):
     assert "new" in out and "b" in out and "c" in out
     assert "first" not in out, "picked the wrong job"
     assert "\na\n" not in out, "-n 2 must bound the tail"
+
+
+# --------------------------------------------------------------------------
+# Release-pause: pause(release_model=True) → trainer saves + exits, GPU free,
+# queue advances; resume relaunches with --resume.
+# --------------------------------------------------------------------------
+
+# A fake trainer that honors the cooperative protocol: polls the job dir for
+# `pause.request`, writes a state dir, acks, and emits `run_end paused`. On a
+# relaunch with --resume it finishes immediately with `run_end ok`.
+_FAKE_RELEASABLE_TRAINER = r"""
+import json, os, sys, time
+path, dur, job_dir, resumed = sys.argv[1], float(sys.argv[2]), sys.argv[3], sys.argv[4]
+with open(path, "w", buffering=1) as f:
+    f.write(json.dumps({"ev": "run_start", "ts": 0.0}) + "\n")
+    if resumed != "-":
+        f.write(json.dumps({"ev": "step", "ts": 0.1, "global_step": 8, "loss": 0.4, "resumed_from": resumed}) + "\n")
+        f.write(json.dumps({"ev": "run_end", "ts": 0.2, "status": "ok", "final_step": 8}) + "\n")
+        sys.exit(0)
+    t0 = time.time()
+    step = 0
+    while time.time() - t0 < dur:
+        step += 1
+        f.write(json.dumps({"ev": "step", "ts": time.time() - t0, "global_step": step, "loss": 0.5}) + "\n")
+        req = os.path.join(job_dir, "pause.request")
+        if os.path.exists(req):
+            state_dir = os.path.join(job_dir, "fake-checkpoint-state")
+            os.makedirs(state_dir, exist_ok=True)
+            os.remove(req)
+            with open(os.path.join(job_dir, "pause.ack.json"), "w") as a:
+                json.dump({"state_dir": state_dir, "global_step": step}, a)
+            f.write(json.dumps({"ev": "run_end", "ts": time.time() - t0, "status": "paused", "final_step": step, "state_dir": state_dir}) + "\n")
+            sys.exit(0)
+        time.sleep(0.1)
+    f.write(json.dumps({"ev": "run_end", "ts": dur, "status": "ok", "final_step": step}) + "\n")
+"""
+
+
+def _fake_releasable_build_cmd(self, job):
+    dur = float(job.overrides.get("duration", 1.0))
+    extra = list(job.extra or [])
+    resumed = extra[extra.index("--resume") + 1] if "--resume" in extra else "-"
+    cmd = [
+        sys.executable,
+        "-c",
+        _FAKE_RELEASABLE_TRAINER,
+        job.progress_path,
+        str(dur),
+        str(job.dir),
+        resumed,
+    ]
+    return cmd, os.environ.copy()
+
+
+@pytest.fixture
+def release_daemon(daemon, monkeypatch):
+    monkeypatch.setattr(JobManager, "_build_cmd", _fake_releasable_build_cmd)
+    return daemon
+
+
+def test_release_pause_frees_slot_and_resume_relaunches(release_daemon):
+    """pause(release_model=True): the trainer saves + exits, the job parks as
+    paused/released with no pid, the *next queued job runs* (the slot is
+    free), and resume re-enqueues it at the front with --resume <state_dir>."""
+    cl, mgr = release_daemon
+    jid = cl.submit(method="lora", overrides={"duration": 60.0})["job_id"]
+    nxt = cl.submit(method="lora", overrides={"duration": 0.3})["job_id"]
+    assert _wait_until(lambda: cl.get(jid)["state"] == "running", timeout=15)
+    pid = cl.get(jid)["pid"]
+
+    res = cl.pause_job(jid, release_model=True)
+    assert not res.get("error"), res
+    assert res["release_requested"] is True
+    assert res["state"] == "running"  # still running until the trainer exits
+
+    assert _wait_until(
+        lambda: cl.get(jid)["state"] == "paused" and cl.get(jid)["released"],
+        timeout=15,
+    )
+    j = cl.get(jid)
+    assert j["pid"] is None
+    assert j["resume_state_dir"] and os.path.isdir(j["resume_state_dir"])
+    assert not psutil.pid_exists(pid) or psutil.Process(pid).status() in (
+        psutil.STATUS_ZOMBIE,
+        psutil.STATUS_DEAD,
+    )
+    # The request file was consumed, the ack written.
+    assert not (Path(j["resume_state_dir"]).parent / "pause.request").exists()
+    assert (Path(j["resume_state_dir"]).parent / "pause.ack.json").exists()
+    # Released ⇒ not the active job; the queue advanced past it.
+    assert cl.health()["active_job"] is None or cl.health()["active_job"] == nxt
+    assert _wait_until(lambda: cl.get(nxt)["state"] == "done", timeout=15)
+
+    # Plain (freeze) pause on a released job is a no-op, not a crash.
+    assert cl.pause_job(jid)["state"] == "paused"
+
+    # Resume enqueues at priority 0: with the slot busy and another job already
+    # waiting, the resumed one launches first once the slot frees.
+    blocker = cl.submit(method="lora", overrides={"duration": 60.0})["job_id"]
+    assert _wait_until(lambda: cl.get(blocker)["state"] == "running", timeout=15)
+    later = cl.submit(method="lora", overrides={"duration": 0.3})["job_id"]
+    res = cl.resume_job(jid)
+    assert not res.get("error"), res
+    assert res["state"] == "queued" and res["relaunch"] == 1
+    cl.stop(blocker)
+    assert _wait_until(lambda: cl.get(jid)["state"] == "done", timeout=20)
+    assert _wait_until(lambda: cl.get(later)["state"] == "done", timeout=20)
+    fin, lat = cl.get(jid), cl.get(later)
+    assert fin["started_at"] <= lat["started_at"]
+    assert "--resume" in fin["extra"] and "--skip_until_initial_step" in fin["extra"]
+    assert fin["extra"][fin["extra"].index("--resume") + 1] == fin["resume_state_dir"]
+    assert fin["resume_count"] == 1
+
+
+def test_release_pause_refuses_command_job(daemon):
+    cl, _ = daemon
+    jid = cl.submit_command(label="cmd", argv=["-c", "import time; time.sleep(30)"])[
+        "job_id"
+    ]
+    assert _wait_until(lambda: cl.get(jid)["state"] == "running", timeout=15)
+    res = cl.pause_job(jid, release_model=True)
+    assert "release_model needs a train.py job" in (res.get("error") or "")
+    assert cl.get(jid)["state"] == "running"
+    cl.stop(jid)
+    assert _wait_until(lambda: cl.get(jid)["state"] == "stopped", timeout=10)
+
+
+def test_release_pause_of_frozen_job_thaws_first(release_daemon):
+    """A SIGSTOP-frozen job can't act on the request: release thaws it, then
+    the trainer saves and exits as usual."""
+    cl, _ = release_daemon
+    jid = cl.submit(method="lora", overrides={"duration": 60.0})["job_id"]
+    assert _wait_until(lambda: cl.get(jid)["state"] == "running", timeout=15)
+    assert cl.pause_job(jid)["state"] == "paused"
+    res = cl.pause_job(jid, release_model=True)
+    assert not res.get("error"), res
+    assert _wait_until(
+        lambda: cl.get(jid)["state"] == "paused" and cl.get(jid)["released"],
+        timeout=15,
+    )
+
+
+def test_stop_released_job_is_terminal(release_daemon):
+    cl, _ = release_daemon
+    jid = cl.submit(method="lora", overrides={"duration": 60.0})["job_id"]
+    assert _wait_until(lambda: cl.get(jid)["state"] == "running", timeout=15)
+    cl.pause_job(jid, release_model=True)
+    assert _wait_until(lambda: cl.get(jid)["released"], timeout=15)
+    cl.stop(jid)
+    assert cl.get(jid)["state"] == "stopped"
+    assert "release" in (cl.get(jid)["status_detail"] or "")

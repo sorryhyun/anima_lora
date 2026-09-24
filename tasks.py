@@ -140,11 +140,14 @@ COMMANDS = {
         daemon.cmd_daemon_pause,
         "Freeze the running job (or JOB=<id>) in place — SIGSTOP the process "
         "tree; VRAM stays allocated, SM util drops to zero, resume is instant. "
-        "The queue does not advance past it.",
+        "The queue does not advance past it. RELEASE=1: the trainer saves a "
+        "resumable state at its next step and exits instead — GPU freed, queue "
+        "advances, daemon-resume relaunches it (train jobs only).",
     ),
     "daemon-resume": (
         daemon.cmd_daemon_resume,
-        "Thaw a paused job (or JOB=<id>) — SIGCONT the process tree back to running.",
+        "Thaw a paused job (or JOB=<id>) — SIGCONT the process tree back to "
+        "running; a RELEASE-paused job is re-enqueued at the front with --resume.",
     ),
     "daemon-kill": (
         daemon.cmd_daemon_kill,

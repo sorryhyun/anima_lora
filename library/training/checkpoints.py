@@ -1,5 +1,6 @@
 import argparse
 import json
+import math
 import logging
 import os
 import shutil
@@ -207,6 +208,25 @@ def save_sd_model_on_train_end_common(
         diffusers_saver(out_dir)
 
 
+def resume_skip_plan(
+    resume_step: int, num_batches: int, gradient_accumulation_steps: int
+) -> tuple[int, int]:
+    """Split an optimizer-step resume offset into ``(epoch_to_start,
+    skip_batches)``: whole epochs to skip and the residual batch count inside
+    the resumed epoch (for ``accelerator.skip_first_batches``).
+
+    accelerate syncs on the last batch of the dataloader, so an epoch is
+    ``ceil(num_batches / ga)`` optimizer steps. Every residual step is a full
+    ``ga``-batch step (only the last step of an epoch can be partial, and the
+    residual is strictly less than an epoch), so the batch conversion is exact.
+    """
+    ga = max(1, int(gradient_accumulation_steps))
+    steps_per_epoch = max(1, math.ceil(num_batches / ga))
+    epoch_to_start = resume_step // steps_per_epoch
+    skip_batches = (resume_step % steps_per_epoch) * ga
+    return epoch_to_start, skip_batches
+
+
 class CheckpointSaver:
     """Owns every save / remove operation across a training run.
 
@@ -403,12 +423,39 @@ class CheckpointSaver:
             self.save(ckpt_name, network, global_step, epoch_no)
         save_checkpoint_state(args, accelerator)
 
+    def save_release_pause(self, network: Any, global_step: int, epoch: int) -> str:
+        """Release-pause save: the resumable ``<output_name>-checkpoint`` weights
+        + state dir, exactly what ``maybe_save_resumable`` writes on its cadence,
+        but on demand and regardless of ``checkpointing_epochs``. ``epoch`` is
+        0-indexed. Returns the state dir (all ranks take part in
+        ``save_state``)."""
+        args = self.args
+        accelerator = self.accelerator
+        if accelerator.is_main_process:
+            ckpt_name = get_checkpoint_ckpt_name(args, "." + args.save_model_as)
+            self.save(ckpt_name, network, global_step, epoch + 1)
+        save_checkpoint_state(args, accelerator)
+        accelerator.wait_for_everyone()
+        return get_checkpoint_state_dir(args)
+
+    def resumed_from_release(self) -> bool:
+        """True when this run was relaunched from a release-pause state dir
+        (``--resume`` pointing at ``<output_name>-checkpoint-state``)."""
+        resume = getattr(self.args, "resume", None)
+        if not resume:
+            return False
+        return os.path.normpath(str(resume)) == os.path.normpath(
+            get_checkpoint_state_dir(self.args)
+        )
+
     def cleanup_resumable(self) -> None:
         """At training end, remove the resumable checkpoint state dir + ckpt
-        file. Main-process only; no-op when ``checkpointing_epochs`` is unset."""
+        file. Main-process only; no-op when ``checkpointing_epochs`` is unset,
+        unless the run was itself resumed from a release-pause state."""
         args = self.args
         if not getattr(args, "checkpointing_epochs", None):
-            return
+            if not self.resumed_from_release():
+                return
         if not self.accelerator.is_main_process:
             return
         checkpoint_state_dir = get_checkpoint_state_dir(args)

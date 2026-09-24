@@ -223,20 +223,32 @@ TOOLS = [
             "stay put, SM utilisation drops to zero, resume is instant. The queue "
             "does NOT advance past it (it still owns its slot). Refuses anything "
             "not running, and refuses a multi-GPU accelerate-launch run. Returns "
-            "{job_id, state, error?}."
+            "{job_id, state, error?}. With release_model=true (train jobs only) "
+            "the trainer instead saves a resumable state at its next optimizer "
+            "step and exits: the GPU is freed, the queue advances, and the job "
+            "parks as paused with released=true until resume_job relaunches it "
+            "with --resume (model reload + recompile, not instant)."
         ),
         "method": "POST",
         "path": "/jobs/{id}/pause",
         "input_schema": {
             "type": "object",
             "required": ["id"],
-            "properties": {"id": {"type": "string", "description": "Job id to pause."}},
+            "properties": {
+                "id": {"type": "string", "description": "Job id to pause."},
+                "release_model": {
+                    "type": "boolean",
+                    "description": "Cooperative release: save resumable state, exit, free the GPU (train.py jobs only). Default false = SIGSTOP freeze.",
+                },
+            },
         },
     },
     {
         "name": "resume_job",
         "description": (
-            "Thaw a paused job's process tree (SIGCONT) back to running. Returns "
+            "Thaw a paused job's process tree (SIGCONT) back to running. A "
+            "release-paused job (released=true) is re-enqueued at the front of "
+            "the queue with --resume <state_dir> instead. Returns "
             "{job_id, state, error?} (error if the job isn't paused)."
         ),
         "method": "POST",
@@ -545,7 +557,10 @@ class _Handler(BaseHTTPRequestHandler):
         self._send_json({"job_id": job.id, "state": job.state})
 
     def _handle_pause(self, job_id: str) -> None:
-        result = self.manager.pause_job(job_id)
+        body = self._read_json()
+        result = self.manager.pause_job(
+            job_id, release_model=bool(body.get("release_model", False))
+        )
         if result is None:
             self._send_json({"error": "no such job", "job_id": job_id}, 404)
             return

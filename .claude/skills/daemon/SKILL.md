@@ -27,6 +27,12 @@ behind a live train run instead of OOM-colliding, and survive the terminal.
   hand-roll an HTTP poll loop.
 - `daemon-pause` tree-freezes the running job (SIGSTOP — VRAM held, SM idle, resume
   instant; the queue does NOT advance past it; refuses `accelerate launch` runs).
+  `daemon-pause RELEASE=1` is the cooperative variant for train.py jobs: the trainer
+  saves a resumable state at its next optimizer step and exits (`run_end paused`), the
+  GPU is freed and the queue advances; the job parks as `paused` + `released` and
+  `daemon-resume` re-enqueues it at the front with `--resume <state_dir>` (reload +
+  recompile, not instant). Protocol: `pause.request` / `pause.ack.json` in the job dir,
+  `library/training/pause.py`.
 - Append `--queue` to any train/distill target to enqueue instead of running inline
   (`make lora --queue`, `make turbo --queue`). GUI Train button, ComfyUI trainer node,
   and preprocessing all submit here.

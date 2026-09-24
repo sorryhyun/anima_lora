@@ -115,6 +115,8 @@ from library.config.cli_args import (
     verify_command_line_training_args,
     verify_training_args,
 )
+from library.training.checkpoints import resume_skip_plan
+from library.training.pause import TrainingPaused
 from library.training.loop import build_loop_state, run_training_loop
 from library.training.sampling_config import normalize_sample_args
 from library.training.log_dispatch import (
@@ -3176,23 +3178,29 @@ class AnimaTrainer:
                 "max_train_steps should be greater than initial step"
             )
 
+        # Units: ``resume_step`` / ``initial_step`` are optimizer steps here.
+        # accelerate syncs on the last batch of the dataloader, so an epoch is
+        # ceil(batches / ga) steps; full epochs are skipped by ``epoch_to_start``
+        # and only the residual inside the resumed epoch is turned into a batch
+        # count for ``skip_first_batches``. (Dividing a ga-multiplied count by
+        # steps-per-epoch here used to over-skip by ga², see GH #103.)
+        resume_step = initial_step
         epoch_to_start = 0
         if initial_step > 0:
+            epoch_to_start, skip_batches = resume_skip_plan(
+                initial_step, len(train_dataloader), args.gradient_accumulation_steps
+            )
             if args.skip_until_initial_step:
                 if not args.resume:
                     logger.info(
                         "initial_step is specified but not resuming. lr scheduler will be started from the beginning"
                     )
-                logger.info(f"skipping {initial_step} steps")
-                initial_step *= args.gradient_accumulation_steps
-
-                epoch_to_start = initial_step // math.ceil(
-                    len(train_dataloader) / args.gradient_accumulation_steps
+                logger.info(
+                    f"skipping {initial_step} steps: {epoch_to_start} full epochs"
+                    f" + {skip_batches} batches of epoch {epoch_to_start + 1}"
                 )
+                initial_step = skip_batches
             else:
-                epoch_to_start = initial_step // math.ceil(
-                    len(train_dataloader) / args.gradient_accumulation_steps
-                )
                 initial_step = 0  # do not skip
 
         # Drop the train dataset-group local before loop entry — the
@@ -3204,7 +3212,7 @@ class AnimaTrainer:
         # sigma_lowres step-span gate: seed the train-forward counter with the
         # resume offset (already in forward units) so it covers every resume
         # path, not just re-deriving from args inside the loop.
-        self._sigma_span_step = initial_step
+        self._sigma_span_step = resume_step * args.gradient_accumulation_steps
 
         loop_state = build_loop_state(
             self,
@@ -3238,6 +3246,7 @@ class AnimaTrainer:
             num_train_epochs=num_train_epochs,
             epoch_to_start=epoch_to_start,
             initial_step=initial_step,
+            resume_step=resume_step,
             metadata=metadata,
         )
 
@@ -3259,7 +3268,17 @@ class AnimaTrainer:
                 ),
             },
         ):
-            run_training_loop(self, loop_state)
+            try:
+                run_training_loop(self, loop_state)
+            except TrainingPaused as paused:
+                # Release-pause: state is on disk, skip the final save/cleanup
+                # (the resumed run does them) but still flush the trackers.
+                accelerator.end_training()
+                logger.info(
+                    f"training paused at step {paused.global_step}; resume with "
+                    f"--resume {paused.state_dir}"
+                )
+                raise
 
             accelerator.end_training()
             optimizer_eval_fn()
@@ -3463,4 +3482,7 @@ if __name__ == "__main__":
         )
 
     trainer = AnimaTrainer()
-    trainer.train(args)
+    try:
+        trainer.train(args)
+    except TrainingPaused:
+        sys.exit(0)  # run_end(paused) already carries the state dir
