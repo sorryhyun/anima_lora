@@ -23,12 +23,21 @@ import re
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from library.qwen21.requests import DEFAULT_TARGETS
 
 
 class LoRAAdapter(nn.Module):
-    """``scale * up(down(x))``, added to the base linear's output."""
+    """``scale * up(down(x))``, added to the base linear's output.
+
+    Parameters are fp32 by default (the master weights AdamW updates — bf16's
+    8-bit mantissa rounds away updates below ~0.4 % of a weight, and at
+    lr 1e-4 the kaiming-scaled ``down`` sits right at that edge). The rank
+    GEMMs run in the *model's* dtype: ``x`` and both weights are cast to
+    ``base_out.dtype`` first, so an fp32 adapter never lifts a ``(T, 4096)``
+    activation to fp32. Same policy as ``networks/lora_modules/base.py``.
+    """
 
     def __init__(
         self,
@@ -49,8 +58,10 @@ class LoRAAdapter(nn.Module):
     def forward(self, x: torch.Tensor, base_out: torch.Tensor) -> torch.Tensor:
         if self.multiplier == 0.0:
             return base_out
-        delta = self.up(self.down(x.to(self.down.weight.dtype)))
-        return base_out + delta.to(base_out.dtype) * (self.scale * self.multiplier)
+        work = base_out.dtype
+        lx = F.linear(x.to(work), self.down.weight.to(work))
+        delta = F.linear(lx, self.up.weight.to(work))
+        return base_out + delta * (self.scale * self.multiplier)
 
 
 class LoRANetwork(nn.Module):

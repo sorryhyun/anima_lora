@@ -199,7 +199,13 @@ class TrainRequest(_Request):
     save_every_epochs: int = _f(0, "also save every N epochs (0 = final only)")
     warmup_ratio: float = _f(0.1, "linear warmup, as a fraction of all steps")
     max_grad_norm: float = _f(1.0, "gradient clip", advanced=True)
-    lora_dtype: str = _f("bf16", "adapter weight dtype", choices=LORA_DTYPES)
+    lora_dtype: str = _f(
+        "fp32",
+        "adapter master-weight dtype (the rank GEMMs run in the model's bf16 "
+        "either way); bf16 halves the adapter's optimizer state but rounds "
+        "away small updates",
+        choices=LORA_DTYPES,
+    )
     targets: str = _f(
         DEFAULT_TARGETS, "fullmatch regex over linear names", advanced=True
     )

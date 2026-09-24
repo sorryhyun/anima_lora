@@ -96,12 +96,10 @@ def main() -> None:
     transformer.requires_grad_(False)
     print(f"transformer loaded in {time.time() - t0:.1f}s", flush=True)
 
-    network = LoRANetwork(
-        transformer, rank=args.rank, targets=args.targets, dtype=torch.bfloat16
-    )
+    network = LoRANetwork(transformer, rank=args.rank, targets=args.targets)
     patched = network.apply_to()
     network.to(device)
-    print(f"lora: rank {args.rank} bf16 on {patched} linears", flush=True)
+    print(f"lora: rank {args.rank} fp32 master on {patched} linears", flush=True)
 
     if not args.no_grad_checkpointing:
 

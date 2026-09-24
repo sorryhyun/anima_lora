@@ -130,7 +130,7 @@ FIELDS_CN: dict[str, tuple[str, str]] = {
     "save_every_epochs": ("每 N 轮保存", "每 N 轮额外保存一次（0 = 只保存最终结果）"),
     "warmup_ratio": ("预热比例", "线性预热占总步数的比例"),
     "max_grad_norm": ("梯度裁剪", "最大梯度范数"),
-    "lora_dtype": ("LoRA 精度", "适配器权重的数据类型"),
+    "lora_dtype": ("LoRA 精度", "适配器主权重的数据类型（矩阵乘法始终按模型的 bf16 进行）；bf16 省一半优化器状态但会丢失小更新"),
     "targets": ("目标层", "对线性层名称做完整匹配的正则表达式"),
     "logit_mean": ("logit 均值", "logit-normal σ 采样的均值"),
     "logit_std": ("logit 标准差", "logit-normal σ 采样的标准差"),

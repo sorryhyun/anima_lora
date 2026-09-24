@@ -55,6 +55,13 @@ band; `bounded` compiles faster up front, pays one ~20 s recompile at the second
 caption length and then holds two graphs for every shape, and was faster at the mid-band
 shape (one sample). Peak VRAM is identical. Raw: `out/backward_smoke_1024_ckpt_{eager,dynamic,bounded}.json`.
 
+These three arms ran the smoke's fp32 adapter through the *old* `LoRAAdapter.forward`,
+which cast `x` up to the weight dtype — every adapted activation went fp32, which is the
+4.5 s eager step and the swap-6 OOM above. `lora.py` now runs the rank GEMMs in the model's
+dtype with fp32 master weights (Anima's policy; `lora_dtype` default `fp32`): eager at the
+same swap 7 is **4.10–4.23 s/step, peak 13.40 GB** (`out/backward_smoke_1024_ckpt_eager_fp32master.json`),
+within noise of the bf16-adapter training run (4.0 s) with fp32 updates.
+
 ### Activation cost per token (2026-09-24, `src/activation_sweep.py`)
 
 One load, swap 14, gradient checkpointing, rank 16 bf16, random tensors; activation = step
