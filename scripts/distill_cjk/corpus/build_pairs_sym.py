@@ -54,7 +54,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 REPO = ROOT.parents[2]
-sys.path.insert(0, str(REPO))
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
 
 from scripts.distill_cjk.corpus import build_pairs, synth_tags, tag_glossary  # noqa: E402
 

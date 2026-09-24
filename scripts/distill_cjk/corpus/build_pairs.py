@@ -49,7 +49,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 REPO = ROOT.parents[2]
-sys.path.insert(0, str(REPO))
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
 ASSETS = REPO / "post_image_dataset" / "cjk_distill" / "assets"  # builder outputs (gitignored)
 
 DEFAULT_OUT = REPO / "post_image_dataset" / "cjk_distill"

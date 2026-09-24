@@ -30,7 +30,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[3]
-sys.path.insert(0, str(REPO))
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(HERE))  # ocr_sfx (sibling, torch-free)
 
 import torch  # noqa: E402

@@ -40,7 +40,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
-sys.path.insert(0, str(REPO))
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
 
 from scripts.distill_cjk.corpus import build_pairs, tag_glossary, tag_pairs  # noqa: E402
 
