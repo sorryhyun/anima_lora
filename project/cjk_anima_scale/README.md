@@ -87,6 +87,24 @@ probe's output root there, so its `eval` / `native` / `cf_sense` and every
 `probe/*.py` reader open them unchanged (the probe's own `output/wake_probe/`
 holds symlinks to the shared pools). `--submit` records the job in
 `runs/ledger.jsonl`.
+## Scene pools
+
+The four pools the stage files draw on (`scenes = "s1,s1w,sl1w,ja_comic"`)
+are grown, not rebuilt: the prompt stream is deterministic in `--seed`, so a
+pool's own argv with a larger `--scene_n` keeps every stored row and renders
+only the new indices (`src/scenes/stage.py`). `--scene_prune 1` deletes the
+rejected renders (rows stay in `scenes_all.jsonl`); the pools were pruned on
+2026-09-24 and every grow run prunes its own rejects. The argv per pool —
+`S=project/cjk_renderable_anima/src/wake_probe.py --stage scenes`, raw pack
+in the env, through `make daemon-run --stall-timeout 0`:
+
+| pool | argv after `--scene_tag <pool>` | grown to |
+|---|---|---|
+| `s1` | `--scene_frames reads_as,bubble_reads,saying,sign` | 2000 (2026-09-24) |
+| `s1w` | `--seed 3 --scene_shapes 576x448,448x576,640x448,448x640,640x384,384x640 --scene_frames reads_as,bubble_reads,saying,sign` | 2600 |
+| `sl1w` | `--seed 1 --scene_shapes 576x448,…,384x640 --scene_frames reads_as,bubble_reads,saying --scene_anchors <the 55 EN sentences: `sorted({r["anchor"]})` over the pool's `prompts.jsonl`>` | 2000 |
+| `ja_comic` | `--seed 2 --scene_shapes 384x640,448x640,448x576 --scene_frames ja_reads_as,ja_bubble_reads,ja_saying --scene_extra_tags comic --scene_min_box 40` | 4400 |
+
 The code is the `cjk_scale/` package (not `src/`: the probe's `src/` exposes
 top-level `common` / `data` / `train` / `eval`, which a second `src/` would
 shadow); tests: `.venv/bin/python -m pytest project/cjk_anima_scale/tests`.

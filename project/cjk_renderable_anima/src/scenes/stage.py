@@ -15,6 +15,12 @@ Writes ``<OUT>/scenes_<tag>/{img/, scenes.jsonl, scenes_all.jsonl,
 sheet_kept.png, sheet_rejected.png, report.md}``. ``scenes.jsonl`` rows:
 ``file, tags, prompt, anchor, box, shape, seed, read``.
 
+The prompt stream is deterministic in ``--seed``, so a pool grows by re-running
+its own argv with a larger ``--scene_n``: stored rows are kept verbatim, only
+the new indices are rendered and judged. ``--scene_prune 1`` deletes the
+rejected renders (rows stay); ``--scene_n 0 --scene_prune 1`` is that sweep
+alone. ``--scene_rejudge 1`` re-applies the judge from the stored reads.
+
 The 8 blind-pairs prompts (``native``'s held-out eval) are kept out of the
 vocabulary: no setting / action / style token that identifies one of them
 appears below, so ``native`` stays held out of the training scenes.
@@ -423,10 +429,19 @@ def stage_scenes(a):
         ]
         # flood fills are CPU-bound: one worker per core
         with Pool(os.cpu_count()) as pool:
-            items = pool.starmap(
-                _rejudge_one, [(a, it) for it in items], chunksize=8
-            )
+            items = pool.starmap(_rejudge_one, [(a, it) for it in items], chunksize=8)
         report_scenes(a, out, items)
+        _prune(a, items)
+        return
+    if a.scene_n == 0:
+        # maintenance on the stored rows only (no prompts, no model): the
+        # --scene_prune sweep
+        items = [
+            json.loads(ln)
+            for ln in (out / "scenes_all.jsonl").read_text().splitlines()
+            if ln
+        ]
+        _prune(a, items)
         return
     items = scene_items(a)
     cs = Counter("x".join(map(str, it["shape"])) for it in items)
@@ -436,23 +451,49 @@ def stage_scenes(a):
         f"frames {Counter(it['frame'] for it in items).most_common()}",
         flush=True,
     )
+    for it in items:
+        it["file"] = str(out / "img" / f"scene_{it['i']:05d}.png")
+    # Growing a pool: the prompt stream is deterministic in --seed, so the same
+    # argv with a larger --scene_n reproduces the stored prompts and appends.
+    # A stored row (same index, same prompt) is taken verbatim — its render is
+    # neither regenerated nor re-read, and a pruned reject stays a reject.
+    stored = {}
+    if (out / "scenes_all.jsonl").exists():
+        for ln in (out / "scenes_all.jsonl").read_text().splitlines():
+            if ln:
+                row = json.loads(ln)
+                stored[row["i"]] = row
+    todo = []
+    for k, it in enumerate(items):
+        row = stored.get(it["i"])
+        if row and row.get("prompt") == it["prompt"] and "reason" in row:
+            items[k] = row
+        else:
+            todo.append(it)
+    if stored:
+        print(
+            f"scenes: {len(items) - len(todo)} stored rows kept, {len(todo)} new",
+            flush=True,
+        )
+    if not todo:
+        report_scenes(a, out, items)
+        _prune(a, items)
+        return
+    # prompts first, so a killed run still has one row per image index
+    (out / "prompts.jsonl").write_text(
+        "\n".join(json.dumps(it, ensure_ascii=False) for it in items)
+    )
     # one loaded model; per-shape args (size lives in args only); batches of
     # --scene_batch same-shape prompts through text encoder → DiT → VAE at
     # once; --scene_gen_scale renders at k× the pool shape and downsamples
     # (the base's native resolution is ~1024, 512² alone draws crude scenes)
     args, gen, device, shared = load_generator(
-        tuple(items[0]["shape"]), a.steps, a.cfg, out / "img"
+        tuple(todo[0]["shape"]), a.steps, a.cfg, out / "img"
     )
     shared["model"].eval()
     vae = load_vae(device)
-    for it in items:
-        it["file"] = str(out / "img" / f"scene_{it['i']:05d}.png")
-    # prompts first, so a killed run still has one row per image index
-    (out / "prompts.jsonl").write_text(
-        "\n".join(json.dumps(it, ensure_ascii=False) for it in items)
-    )
     groups: dict = {}
-    for it in items:
+    for it in todo:
         if not Path(it["file"]).exists():
             groups.setdefault(tuple(it["shape"]), []).append(it)
     t0 = time.time()
@@ -472,7 +513,15 @@ def stage_scenes(a):
                 )
     del shared, vae
     torch.cuda.empty_cache()
-    filter_scenes(a, out, items)
+    filter_scenes(a, out, items, todo)
+    _prune(a, items)
+
+
+def _prune(a, items: list[dict]):
+    if a.scene_prune:
+        from .judge import prune_rejected
+
+        print(f"scenes: pruned {prune_rejected(items)} rejected renders", flush=True)
 
 
 def _rejudge_one(a, it: dict) -> dict:

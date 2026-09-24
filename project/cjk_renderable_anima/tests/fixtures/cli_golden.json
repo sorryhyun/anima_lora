@@ -2888,6 +2888,21 @@
  {
   "group": "scenes",
   "option_strings": [
+   "--scene_prune"
+  ],
+  "dest": "scene_prune",
+  "default": 0,
+  "choices": null,
+  "nargs": null,
+  "type": "int",
+  "help": "scenes: delete the rejected renders of scenes_<tag> from disk (their rows stay in scenes_all.jsonl with the stored reason). With generation, applied after the judge; with --scene_n 0 a CPU sweep of the stored rows alone",
+  "action": "_StoreAction",
+  "metavar": null,
+  "required": false
+ },
+ {
+  "group": "scenes",
+  "option_strings": [
    "--scene_open_uniform"
   ],
   "dest": "scene_open_uniform",

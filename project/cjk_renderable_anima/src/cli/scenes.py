@@ -105,6 +105,15 @@ def scene_args(g):
         help="scenes: re-apply the filter to scenes_<tag> from its stored reads (CPU, no generation)",
     )
     g.add_argument(
+        "--scene_prune",
+        type=int,
+        default=0,
+        help="scenes: delete the rejected renders of scenes_<tag> from disk "
+        "(their rows stay in scenes_all.jsonl with the stored reason). With "
+        "generation, applied after the judge; with --scene_n 0 a CPU sweep of "
+        "the stored rows alone",
+    )
+    g.add_argument(
         "--scene_open_uniform",
         type=float,
         default=0.9,

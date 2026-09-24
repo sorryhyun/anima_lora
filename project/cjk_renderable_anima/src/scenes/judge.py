@@ -28,24 +28,43 @@ from common.text import norm
 from .stage import FRAME_OPEN_OK, FRAMES, JA_FRAMES
 
 
-def filter_scenes(a, out: Path, items: list[dict]):
-    """Detector + readers: keep exactly-one-box images whose box reads the
-    anchor and is large enough; write both jsonl files, sheets, report."""
-    rd = Readers(a.device)
-    t0 = time.time()
-    for n, it in enumerate(items, 1):
-        bgr = load_bgr(Path(it["file"]))
-        reads = rd.read_image(bgr, whole=False)
-        it["boxes"] = [r["box"] for r in reads]
-        it["reads"] = [{"sfx": r["sfx"], "vl": r["vl"]} for r in reads]
-        it["reason"] = judge(a, it, reads, bgr)
-        if n % 100 == 0 or n == len(items):
-            print(
-                f"scenes read {n}/{len(items)} {(time.time() - t0) / 60:.1f} min",
-                flush=True,
-            )
-    del rd
+def filter_scenes(a, out: Path, items: list[dict], todo: list[dict] | None = None):
+    """Detector + readers over ``todo`` (default: every item): keep
+    exactly-one-box images whose box reads the anchor and are large enough;
+    then both jsonl files, sheets and the report over all of ``items`` — a
+    grown pool judges only its new renders, the stored rows stand."""
+    todo = items if todo is None else todo
+    if todo:
+        rd = Readers(a.device)
+        t0 = time.time()
+        for n, it in enumerate(todo, 1):
+            bgr = load_bgr(Path(it["file"]))
+            reads = rd.read_image(bgr, whole=False)
+            it["boxes"] = [r["box"] for r in reads]
+            it["reads"] = [{"sfx": r["sfx"], "vl": r["vl"]} for r in reads]
+            it["reason"] = judge(a, it, reads, bgr)
+            if n % 100 == 0 or n == len(todo):
+                print(
+                    f"scenes read {n}/{len(todo)} {(time.time() - t0) / 60:.1f} min",
+                    flush=True,
+                )
+        del rd
     report_scenes(a, out, items)
+
+
+def prune_rejected(items: list[dict]) -> int:
+    """``--scene_prune``: unlink every rejected render still on disk; the row
+    keeps its stored reason (``_rejudge_one`` and the sheets tolerate the
+    missing file). Returns the count removed."""
+    n = 0
+    for it in items:
+        if it.get("reason", "pass") == "pass":
+            continue
+        p = Path(it["file"])
+        if p.exists():
+            p.unlink()
+            n += 1
+    return n
 
 
 def report_scenes(a, out: Path, items: list[dict]):
@@ -193,7 +212,8 @@ def report_scenes(a, out: Path, items: list[dict]):
     print("\n".join(lines), flush=True)
     rng = random.Random(0)
     _sheet(rng.sample(kept, min(40, len(kept))), out / "sheet_kept.png", True)
-    rej = [it for it in items if it["reason"] != "pass"]
+    # pruned rejects (--scene_prune) have no render to draw
+    rej = [it for it in items if it["reason"] != "pass" and Path(it["file"]).exists()]
     _sheet(rng.sample(rej, min(40, len(rej))), out / "sheet_rejected.png", False)
 
 
