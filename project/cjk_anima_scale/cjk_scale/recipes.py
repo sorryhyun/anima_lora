@@ -70,6 +70,7 @@ class Pools:
     inv: object  # data.units.Inventory
     scenes: list
     single_idx: set  # scenes a lone glyph may go to
+    horiz_idx: set  # scenes a left-to-right item may go to
     shapes: object  # data.stage.ShapePool
     singles: list  # weighted pool: one token, one glyph
     pieces: list  # weighted pool: one token, ≥ 2 glyphs (one ext row)
@@ -206,6 +207,13 @@ def build_pools(cfg, out: Path, rng: random.Random) -> Pools:
 
     single_idx = {j for j, sc in enumerate(scenes) if single_ok(sc)}
     assert single_idx, "single_scenes / single_max_ar leave no scene for a glyph"
+    horiz_pools = {t for t in d["horizontal_scenes"].split(",") if t}
+    horiz_idx = {
+        j for j, sc in enumerate(scenes) if not horiz_pools or sc["pool"] in horiz_pools
+    }
+    assert horiz_idx or not float(d["horizontal_frac"]), (
+        f"horizontal_scenes {sorted(horiz_pools)}: no scene for a horizontal item"
+    )
 
     phrase: dict = {"short": [], "sentence": []}
     held: dict = {"short": [], "sentence": []}
@@ -290,6 +298,7 @@ def build_pools(cfg, out: Path, rng: random.Random) -> Pools:
         inv=inv,
         scenes=scenes,
         single_idx=single_idx,
+        horiz_idx=horiz_idx,
         shapes=ShapePool(d["shapes"], a.seed),
         singles=singles,
         pieces=pieces,
@@ -370,7 +379,8 @@ def _draw_scene(
     enough scenes do), weighted ``1 / (1 + uses)`` — the probe's
     ``_quota_composites`` draw. Orientation is drawn per item before the
     scene: ``horizontal_frac`` of multi-glyph items are left-to-right lines
-    (marked in the caption), the rest columns; a miss in the drawn
+    (marked in the caption) on the ``horizontal_scenes`` pools only, the
+    rest columns on any pool; a miss in the drawn
     orientation re-picks the scene, never the orientation. With a
     ``target_px``, ``fill_min`` keeps only the scenes whose bubble the text
     fills to at least that share (``target_px / _fit_px``) — small text
@@ -384,7 +394,12 @@ def _draw_scene(
     n = len(text)
     horiz = n > 1 and rng.random() < pools.horizontal_frac
     vert = pools.vertical and not horiz
-    cands = list(pools.single_idx) if singles_only else range(len(pools.scenes))
+    if singles_only:
+        cands = list(pools.single_idx)
+    elif horiz:
+        cands = list(pools.horiz_idx)
+    else:
+        cands = range(len(pools.scenes))
 
     def cap(sc, lines):
         return region_capacity(

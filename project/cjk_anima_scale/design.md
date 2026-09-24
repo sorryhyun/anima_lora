@@ -150,7 +150,9 @@ Recipes (names are placeholders):
 2026-09-23): a multi-glyph scene item is drawn as left-to-right lines with
 that probability, a grid cell likewise per cell (so one grid mixes both),
 the rest columns — a draw, never a fit fallback (a text that does not fit
-the drawn orientation re-picks the scene). The caption says so: a `reads
+the drawn orientation re-picks the scene). A horizontal scene item goes
+only to the `horizontal_scenes` pools (`sl1w`, the wide EN-sentence
+bubbles; user, 2026-09-24); a column goes to any pool. The caption says so: a `reads
 as` frame becomes `horizontal Japanese text reads as "…"` (the grid cell's
 marker of record, `--grid_mark_horizontal`), any other scene frame takes
 `, written horizontally.` before its period; the unmarked caption is a

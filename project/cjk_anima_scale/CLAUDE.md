@@ -45,7 +45,8 @@ The research surface stays in `../cjk_renderable_anima/` (reports, probes).
   do not reuse that word for it. `px` is √(box area / glyphs), the ink-stat px of
   the reports.
 - Orientation is a draw, not a fit fallback: `horizontal_frac` (0.3) of multi-glyph
-  scene items / grid cells are left-to-right lines, marked in the caption
+  scene items / grid cells are left-to-right lines (scene items on the
+  `horizontal_scenes` pools only — `sl1w`), marked in the caption
   (`horizontal Japanese text reads as` / `, written horizontally.`); a single glyph
   has none. Not a window axis.
 - The band gate keeps an item iff the stage band is inside its window (or

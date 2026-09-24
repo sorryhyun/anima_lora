@@ -17,7 +17,7 @@ Stage file keys:
     warm_from = "stage0507"   # the previous stage (same tag → its trained.pt); "" = the run's seed_table
 
     [data]                    # pools shared by every recipe — never units / pieces / phrase_file / n_items / seed
-    scenes, scene_one_bubble, single_scenes, single_max_ar, shapes, short_pieces, …
+    scenes, scene_one_bubble, single_scenes, single_max_ar, horizontal_scenes, shapes, short_pieces, …
 
     [[data.mix]]              # the recipes and their shares (sum to 1)
     recipe = "scene_single"; share = 0.5; <recipe params>
@@ -98,6 +98,7 @@ _DATA_DEFAULTS = {
     "scene_one_bubble": "ja_comic",
     "single_scenes": "s1,s1w",
     "single_max_ar": 2.0,
+    "horizontal_scenes": "sl1w",  # the pools a left-to-right scene item may go to ("" = every pool)
     "shapes": "448,512:2,448x512,512x448",
     "phrase_file": "",
     "phrase_min_pieces": 2,

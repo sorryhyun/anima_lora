@@ -36,7 +36,9 @@ def gen_args(size, steps: int, cfg: int | float, save: Path, negative_prompt: st
         attn_mode="flash",
         save_path=str(save),
     )
-    return req.to_args()
+    args = req.to_args()
+    args.compile_blocks = True
+    return args
 
 
 def load_generator(

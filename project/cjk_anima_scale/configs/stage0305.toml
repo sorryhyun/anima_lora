@@ -12,6 +12,7 @@ warm_from = "stage0507"
 scenes = "s1,s1w,sl1w,ja_comic"
 scene_one_bubble = "ja_comic"
 single_scenes = "s1,s1w"
+horizontal_scenes = "sl1w"                  # left-to-right scene items go to the EN-sentence pool only (user, 2026-09-24)
 single_max_ar = 2.0
 shapes = "448,512:2,448x512,512x448"
 horizontal_frac = 0.3                       # multi-glyph items (scene) / cells (grid) drawn as left-to-right lines, marked in the caption; a single glyph has no orientation

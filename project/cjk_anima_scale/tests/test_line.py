@@ -278,6 +278,7 @@ def test_horizontal_marker_and_grid_share():
     assert cap.count("horizontal Japanese text reads as") == 2
     for c in config.stage_names():
         assert config.load(c).data["horizontal_frac"] == 0.3
+        assert config.load(c).data["horizontal_scenes"] == "sl1w"
 
 
 def test_probe_eval_namespace_builds():
