@@ -11,24 +11,19 @@ block-swapped on, drop its 17.5 GB, denoise with the transformer, then take the
 transformer off the card and decode. Latents are held between phases because
 the VAE wants several GB to itself at 1024.
 
-    make daemon-run ARGS="project/qwen21_lora/src/generate.py \
-        --lora project/qwen21_lora/out/lora_channel_caststation.safetensors"
+    make daemon-run ARGS="scripts/qwen21/generate.py \
+        --lora output/qwen21/qwen21_lora.safetensors"
 """
 
 from __future__ import annotations
 
-import argparse
 import json
-import sys
 import time
 from pathlib import Path
 
 import torch
 
-sys.path.insert(0, str(Path(__file__).parent))
-
-from loader import (  # noqa: E402
-    DEFAULT_MODEL_DIR,
+from library.qwen21.loader import (
     TEXT_ENCODER_BLOCKS,
     TRANSFORMER_BLOCKS,
     decode_latents,
@@ -40,96 +35,61 @@ from loader import (  # noqa: E402
     load_text_encoder,
     place,
 )
-from lora import load_network  # noqa: E402
+from library.env import resolve_under_home
+from library.qwen21.lora import load_network
+from library.qwen21.requests import GenerateRequest, resolve_model_dir
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--model_dir", default=str(DEFAULT_MODEL_DIR))
-    ap.add_argument(
-        "--lora",
-        default="project/qwen21_lora/out/lora_channel_caststation.safetensors",
-        help="empty string = base model only",
-    )
-    ap.add_argument("--prompts", default="project/qwen21_lora/eval_prompts.txt")
-    ap.add_argument("--out_dir", default="project/qwen21_lora/out/eval")
-    ap.add_argument(
-        "--multipliers",
-        default="1.0,0.0",
-        help="comma-separated adapter scales; 0.0 is the base model",
-    )
-    ap.add_argument(
-        "--resolution",
-        type=int,
-        default=1024,
-        help="square edge, used only when --width/--height are not given",
-    )
-    ap.add_argument(
-        "--width",
-        type=int,
-        default=None,
-        help="explicit size, a multiple of 32. Without it the pipeline renders a "
-        "square (`height = height or output_resolution`), which is off the "
-        "training distribution for a portrait folder",
-    )
-    ap.add_argument("--height", type=int, default=None)
-    ap.add_argument("--steps", type=int, default=20)
-    ap.add_argument(
-        "--true_cfg_scale",
-        type=float,
-        default=1.0,
-        help="the pipeline's own default — 2.1 runs without CFG (no guidance "
-        "embedding in the transformer either), and >1 costs a second forward "
-        "per step. Raising it stacks an untested setting on top of the A/B",
-    )
-    ap.add_argument("--negative_prompt", default="")
-    ap.add_argument("--seed", type=int, default=1234)
-    ap.add_argument("--blocks_to_swap", type=int, default=None)
-    ap.add_argument("--te_blocks_to_swap", type=int, default=None)
-    args = ap.parse_args()
-
-    prompts = [
-        line.strip()
-        for line in Path(args.prompts).read_text().splitlines()
-        if line.strip()
-    ]
+def run_generate(req: GenerateRequest) -> Path:
+    """Render every prompt at every multiplier; returns the output folder."""
+    model_dir = resolve_model_dir(req.model_dir)
+    lora = str(resolve_under_home(req.lora)) if req.lora else ""
+    if req.prompts_file:
+        source = resolve_under_home(req.prompts_file)
+        prompts = [
+            line.strip()
+            for line in source.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+    else:
+        source, prompts = "prompt", [req.prompt.strip()] if req.prompt.strip() else []
     if not prompts:
-        raise SystemExit(f"no prompts in {args.prompts}")
-    multipliers = [float(m) for m in args.multipliers.split(",")]
-    if (args.width is None) != (args.height is None):
+        raise SystemExit(f"no prompts in {source}")
+    multipliers = [float(m) for m in req.multipliers.split(",")]
+    if (req.width is None) != (req.height is None):
         raise SystemExit("--width and --height go together")
-    width = args.width or args.resolution
-    height = args.height or args.resolution
+    width = req.width or req.resolution
+    height = req.height or req.resolution
     for name, value in (("width", width), ("height", height)):
         if value % 32:
             raise SystemExit(f"--{name} {value} is not a multiple of 32")
-    out_dir = Path(args.out_dir)
+    out_dir = resolve_under_home(req.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     print(
         f"{len(prompts)} prompts x {len(multipliers)} multipliers "
         f"{multipliers} = {len(prompts) * len(multipliers)} images "
         f"at {width}x{height} ({width * height / 1e6:.2f} MP, "
         f"{(width // 16) * (height // 16)} latent tokens), "
-        f"{args.steps} steps, cfg {args.true_cfg_scale}",
+        f"{req.steps} steps, cfg {req.true_cfg_scale}",
         flush=True,
     )
 
     torch.cuda.init()
     device = torch.device("cuda")
-    do_cfg = args.true_cfg_scale > 1
+    do_cfg = req.true_cfg_scale > 1
 
     # ── phase 1: encode every prompt, text encoder swapped on ─────────
-    te = load_text_encoder(args.model_dir)
-    pipe = load_pipeline(args.model_dir, text_encoder=te)
+    te = load_text_encoder(model_dir)
+    pipe = load_pipeline(model_dir, text_encoder=te)
     te_attached = place(
         te,
         TEXT_ENCODER_BLOCKS,
         device,
-        blocks_to_swap=args.te_blocks_to_swap,
+        blocks_to_swap=req.te_blocks_to_swap,
         label="text_encoder",
     )
     t0 = time.time()
-    to_encode = prompts + ([args.negative_prompt] if do_cfg else [])
+    to_encode = prompts + ([req.negative_prompt] if do_cfg else [])
     encoded = encode_prompts(pipe, to_encode, device="cuda")
     negative = encoded.pop() if do_cfg else None
     print(
@@ -145,12 +105,12 @@ def main() -> None:
 
     # ── phase 2: denoise, transformer swapped on, adapter attached ────
     network, meta = (None, {})
-    if args.lora:
-        network, meta = load_network(pipe.transformer, args.lora)
+    if lora:
+        network, meta = load_network(pipe.transformer, lora)
         network.apply_to()
         network.to(device)
         print(
-            f"lora: {args.lora} rank {meta['rank']} alpha {meta['alpha']} "
+            f"lora: {lora} rank {meta['rank']} alpha {meta['alpha']} "
             f"({meta.get('epochs', '?')} epochs, {meta.get('samples', '?')} samples)",
             flush=True,
         )
@@ -161,7 +121,7 @@ def main() -> None:
         pipe.transformer,
         TRANSFORMER_BLOCKS,
         device,
-        blocks_to_swap=args.blocks_to_swap,
+        blocks_to_swap=req.blocks_to_swap,
         label="transformer",
     )
     empty_cache()
@@ -176,10 +136,10 @@ def main() -> None:
             call = dict(
                 prompt_embeds=embeds.to(device),
                 prompt_embeds_mask=None if mask is None else mask.to(device),
-                num_inference_steps=args.steps,
+                num_inference_steps=req.steps,
                 width=width,
                 height=height,
-                true_cfg_scale=args.true_cfg_scale,
+                true_cfg_scale=req.true_cfg_scale,
             )
             if do_cfg:
                 neg_embeds, neg_mask, _ = negative
@@ -192,7 +152,7 @@ def main() -> None:
                 output_type="latent",
                 # Same seed per prompt across multipliers: the pair differs by
                 # the adapter and nothing else.
-                generator=torch.Generator("cuda").manual_seed(args.seed + index),
+                generator=torch.Generator("cuda").manual_seed(req.seed + index),
                 **call,
             ).images
             renders.append(
@@ -200,14 +160,14 @@ def main() -> None:
                     "index": index,
                     "multiplier": multiplier,
                     "prompt": prompt,
-                    "seed": args.seed + index,
+                    "seed": req.seed + index,
                     "latents": latents,
                     "seconds": time.time() - t0,
                 }
             )
             print(
-                f"  m{multiplier} [{index + 1}/{len(prompts)}] "
-                f"{renders[-1]['seconds']:.1f}s",
+                f"  image {len(renders)}/{len(prompts) * len(multipliers)} "
+                f"m{multiplier} prompt {index + 1}: {renders[-1]['seconds']:.1f}s",
                 flush=True,
             )
     print(
@@ -247,12 +207,12 @@ def main() -> None:
     (out_dir / "manifest.json").write_text(
         json.dumps(
             {
-                "lora": args.lora,
+                "lora": lora,
                 "lora_metadata": meta,
                 "size": f"{width}x{height}",
-                "steps": args.steps,
-                "true_cfg_scale": args.true_cfg_scale,
-                "negative_prompt": args.negative_prompt,
+                "steps": req.steps,
+                "true_cfg_scale": req.true_cfg_scale,
+                "negative_prompt": req.negative_prompt,
                 "multipliers": multipliers,
                 "images": manifest,
             },
@@ -260,7 +220,4 @@ def main() -> None:
         )
     )
     print(f"wrote {len(manifest)} images + manifest.json to {out_dir}", flush=True)
-
-
-if __name__ == "__main__":
-    main()
+    return out_dir

@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 from pathlib import Path
 
@@ -33,31 +32,21 @@ import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 
-sys.path.insert(0, str(Path(__file__).parent))
-
-import blockswap  # noqa: E402
-from accel import compile_blocks, recompile_report  # noqa: E402
-from loader import (  # noqa: E402
-    DEFAULT_MODEL_DIR,
+from library.qwen21 import blockswap
+from library.qwen21.accel import compile_blocks, recompile_report
+from library.qwen21.loader import (
+    block_devices,
+    load_transformer,
     TRANSFORMER_BLOCKS,
     empty_cache,
     free_vram_gb,
     place,
 )
-from lora import DEFAULT_TARGETS, LoRANetwork  # noqa: E402
+from library.qwen21.lora import DEFAULT_TARGETS, LoRANetwork
 
 # 4 spatial downsamples in the VAE's dim_mult, as the pipeline's
 # `vae_scale_factor`. 512 px -> 32x32 latent tokens, 1024 px -> 64x64.
 VAE_SCALE_FACTOR = 16
-
-
-def load_transformer(model_dir: Path | str, dtype: torch.dtype = torch.bfloat16):
-    """The 14.2 GB transformer alone — no text encoder, no VAE."""
-    from diffusers import QwenImage21Transformer2DModel
-
-    return QwenImage21Transformer2DModel.from_pretrained(
-        Path(model_dir) / "transformer", dtype=dtype
-    )
 
 
 def dummy_batch(
@@ -132,13 +121,9 @@ def flow_matching_step(transformer, batch, generator: torch.Generator):
     return F.mse_loss(pred.float(), target.float())
 
 
-def block_devices(blocks) -> list[str]:
-    return [next(block.parameters()).device.type for block in blocks]
-
-
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model_dir", default=str(DEFAULT_MODEL_DIR))
+    ap.add_argument("--model_dir", default=None)
     ap.add_argument("--resolution", type=int, default=512)
     ap.add_argument("--text_len", type=int, default=64)
     ap.add_argument("--steps", type=int, default=3)
@@ -159,12 +144,30 @@ def main() -> None:
     )
     ap.add_argument("--compile_mode", default=None)
     ap.add_argument(
+        "--compile_seq",
+        choices=("static", "dynamic", "bounded"),
+        default="dynamic",
+        help="static: one graph per shape; dynamic: torch.compile(dynamic=True); "
+        "bounded: automatic dynamic + mark_dynamic over --seq_range",
+    )
+    ap.add_argument(
+        "--seq_range",
+        default="1370,4608",
+        help="lo,hi joint tokens for --compile_seq bounded (a cache-like band)",
+    )
+    ap.add_argument(
         "--grad_checkpointing",
         action="store_true",
         help="recompute block activations in the backward; the recompute runs "
         "under blockswap.checkpoint_context_fn so it does not re-drive the swap",
     )
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument(
+        "--extra_shapes",
+        default="",
+        help="comma list of res:text_len run for one step each after --steps, e.g. "
+        "1024:200,896:346,512:346 — a recompile shows up as a slow step",
+    )
     ap.add_argument("--out", default="project/qwen21_lora/out/backward_smoke.json")
     args = ap.parse_args()
 
@@ -215,7 +218,14 @@ def main() -> None:
         # Training only ever runs the prefill shape (`segments is not None`),
         # which the decode-only dispatch routes to the eager forward — so the
         # whole point here is to compile every shape.
-        compile_blocks(blocks, mode=args.compile_mode, decode_only=False)
+        lo, hi = (int(v) for v in args.seq_range.split(","))
+        compile_blocks(
+            blocks,
+            mode=args.compile_mode,
+            dynamic={"static": False, "dynamic": True, "bounded": None}[args.compile_seq],
+            decode_only=False,
+            seq_range=(lo, hi) if args.compile_seq == "bounded" else None,
+        )
 
     empty_cache()
     print(f"free VRAM before step: {free_vram_gb():.2f} GB", flush=True)
@@ -280,6 +290,37 @@ def main() -> None:
             flush=True,
         )
 
+    extra = []
+    for spec in filter(None, args.extra_shapes.split(",")):
+        res, text_len = (int(v) for v in spec.split(":"))
+        shape_batch = dummy_batch(
+            transformer, res, text_len, device, torch.bfloat16, generator
+        )
+        torch.cuda.reset_peak_memory_stats()
+        t0 = time.time()
+        loss = flow_matching_step(transformer, shape_batch, generator)
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad(set_to_none=True)
+        torch.cuda.synchronize()
+        joint = shape_batch["latents"].shape[1] + text_len
+        record = {
+            "resolution": res,
+            "text_len": text_len,
+            "joint_tokens": joint,
+            "seconds": time.time() - t0,
+            "peak_gb": torch.cuda.max_memory_allocated() / 1024**3,
+            "placement_restored": block_devices(blocks) == placement,
+        }
+        extra.append(record)
+        print(
+            f"shape {res}:{text_len} ({joint} joint): {record['seconds']:.2f}s  "
+            f"peak {record['peak_gb']:.2f} GB  "
+            f"placement {'ok' if record['placement_restored'] else 'DRIFTED'}",
+            flush=True,
+        )
+        del shape_batch
+
     moved = [n for n, p in network.named_parameters() if p.device.type != device.type]
     if args.compile:
         print(recompile_report(), flush=True)
@@ -293,8 +334,10 @@ def main() -> None:
         "patched_linears": patched,
         "blocks_to_swap": attached.offloader.blocks_to_swap if attached else 0,
         "compile": args.compile,
+        "compile_seq": args.compile_seq if args.compile else None,
         "grad_checkpointing": args.grad_checkpointing,
         "steps": records,
+        "extra_shapes": extra,
         "params_off_device": moved,
         # The first step pays compile and allocator growth; the rest is what a
         # run would actually cost.

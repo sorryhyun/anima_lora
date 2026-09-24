@@ -112,6 +112,60 @@ def _decode_dispatch(eager, compiled):
     return forward
 
 
+# Block-forward inputs whose one varying axis is the joint sequence length, by
+# argument name -> the dim that carries it. `hidden_states` is (B, T, D),
+# `rotary_emb` (T, ...), `target_token_mask` (T,), `key_valid` (B, T), and the
+# decode path's `attention_mask` (B, 1, 1, T).
+_SEQ_AXES = {
+    "hidden_states": 1,
+    "rotary_emb": 0,
+    "target_token_mask": 0,
+    "key_valid": 1,
+    "attention_mask": -1,
+}
+
+
+def _make_bounded_forward(block: nn.Module, compiled, lo: int, hi: int):
+    """Wrap ``compiled`` in an eager ``mark_dynamic`` prologue over ``[lo, hi]``.
+
+    The marks are applied on every call, not once: gradient checkpointing's
+    recompute detaches the block inputs into fresh tensors that carry no mark,
+    and a forward marked / recompute unmarked pair raises
+    ``ConstraintViolationError``. Applying them here — inside what the
+    checkpointed ``__call__`` reaches — keeps both passes in agreement.
+
+    ``segments`` (Python ints: the text length and slot boundaries) cannot be
+    marked; automatic dynamic shapes turns them symbolic on the first recompile
+    after they change. A sequence outside ``[lo, hi]`` is left unmarked and
+    specializes statically on that count.
+    """
+    import inspect
+
+    signature = inspect.signature(block.forward)
+    warned: set[int] = set()
+
+    @functools.wraps(block.forward)
+    def forward(*args, **kwargs):
+        bound = signature.bind(*args, **kwargs)
+        arguments = bound.arguments
+        seq = int(arguments["hidden_states"].shape[1])
+        if lo <= seq <= hi:
+            for name, dim in _SEQ_AXES.items():
+                value = arguments.get(name)
+                if isinstance(value, torch.Tensor) and value.shape[dim] == seq:
+                    torch._dynamo.mark_dynamic(value, dim, min=lo, max=hi)
+        elif seq not in warned:
+            warned.add(seq)
+            print(
+                f"compile: {seq} joint tokens falls outside the bounded range "
+                f"[{lo}, {hi}]; running an unmarked (static) specialization",
+                flush=True,
+            )
+        return compiled(**arguments)
+
+    return forward
+
+
 def compile_blocks(
     blocks: nn.ModuleList,
     *,
@@ -119,6 +173,7 @@ def compile_blocks(
     backend: str = "inductor",
     dynamic: bool | None = False,
     decode_only: bool = True,
+    seq_range: tuple[int, int] | None = None,
 ) -> int:
     """``torch.compile`` each block's ``forward``. Returns the block count.
 
@@ -128,12 +183,36 @@ def compile_blocks(
     region. Swapped weights are safe because ``wait_for_block`` puts a block's
     parameters on the device before its forward runs; the storage behind
     ``weight.data`` rotates under it.
+
+    ``seq_range=(lo, hi)`` is the bounded mode: automatic dynamic shapes
+    (``dynamic=None``) plus a ``mark_dynamic(min=lo, max=hi)`` prologue on the
+    sequence axis of every block input (:func:`_make_bounded_forward`). Only
+    the joint token count goes symbolic — the hidden and head dims stay static,
+    which ``dynamic=True`` does not give — and dynamo knows the range up front.
+    The training cache knows ``lo``/``hi`` before the model is placed.
     """
     if mode == "reduce-overhead":
         raise ValueError(
             "reduce-overhead records cuda graphs with static input addresses, "
             "which the block swapper rewrites every forward"
         )
+    if seq_range is not None:
+        lo, hi = int(seq_range[0]), int(seq_range[1])
+        if not 1 < lo <= hi:
+            raise ValueError(f"seq_range must satisfy 1 < lo <= hi, got {seq_range}")
+        dynamic = None
+        if lo < 4096 <= hi:
+            # Inductor's mix-order reduction fusion derives a `seq >= 4096`
+            # guard from the trace-time hint; under strict marks that guard is a
+            # ConstraintViolationError at the first step. Same pin Anima makes.
+            from library.runtime.dynamo import pin_inductor_flag
+
+            pin_inductor_flag("triton.mix_order_reduction", False)
+            print(
+                "compile: inductor triton.mix_order_reduction pinned off "
+                f"(bounded range [{lo}, {hi}] straddles 4096)",
+                flush=True,
+            )
 
     kwargs: dict[str, object] = {"backend": backend, "dynamic": dynamic}
     if mode is not None:
@@ -146,14 +225,21 @@ def compile_blocks(
 
     for block in blocks:
         compiled = torch.compile(block.forward, **kwargs)
+        if seq_range is not None:
+            compiled = _make_bounded_forward(block, compiled, lo, hi)
         block.forward = (
             _decode_dispatch(block.forward, compiled) if decode_only else compiled
         )
 
     scope = "decode shape" if decode_only else "every shape"
+    shapes = (
+        f"bounded seq in [{lo}, {hi}] (automatic dynamic + mark_dynamic)"
+        if seq_range is not None
+        else f"dynamic={dynamic}"
+    )
     print(
         f"compile: {len(blocks)} block.forward with backend={backend} mode={mode} "
-        f"dynamic={dynamic} ({scope}, recompile_limit={limit})",
+        f"{shapes} ({scope}, recompile_limit={limit})",
         flush=True,
     )
     return len(blocks)

@@ -11,17 +11,13 @@ peak VRAM per phase for the training script to budget against.
 from __future__ import annotations
 
 import argparse
-import sys
 import time
 from pathlib import Path
 
 import torch
 
-sys.path.insert(0, str(Path(__file__).parent))
-
-from accel import compile_blocks, recompile_report, set_attention_backend  # noqa: E402
-from loader import (  # noqa: E402
-    DEFAULT_MODEL_DIR,
+from library.qwen21.accel import compile_blocks, recompile_report, set_attention_backend
+from library.qwen21.loader import (
     TEXT_ENCODER_BLOCKS,
     TRANSFORMER_BLOCKS,
     decode_latents,
@@ -37,7 +33,7 @@ from loader import (  # noqa: E402
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model_dir", default=str(DEFAULT_MODEL_DIR))
+    ap.add_argument("--model_dir", default=None)
     ap.add_argument(
         "--prompt",
         default='A neon shop sign that reads "QWEN IMAGE 2.1", rainy night, '

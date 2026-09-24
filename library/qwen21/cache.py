@@ -20,17 +20,15 @@ Nothing is cropped and nothing is padded, on either side:
   image block a frame position equal to the text length, so padding during
   training would teach the adapter an offset that inference never reproduces.
 
-Both leave the joint sequence varying per sample, which is why ``train_lora.py``
+Both leave the joint sequence varying per sample, which is why ``train.py``
 compiles the blocks dynamically.
 
-    make daemon-run ARGS="project/qwen21_lora/src/cache_dataset.py \
-        --src 'image_dataset/channel_(caststation)' --resolution 1024"
+    make daemon-run ARGS="scripts/qwen21/cache.py \
+        --src 'post_image_dataset/resized/channel_(caststation)'"
 """
 
 from __future__ import annotations
 
-import argparse
-import sys
 import time
 from pathlib import Path
 
@@ -38,10 +36,8 @@ import torch
 from PIL import Image
 from safetensors.torch import save_file
 
-sys.path.insert(0, str(Path(__file__).parent))
-
-from loader import (  # noqa: E402
-    DEFAULT_MODEL_DIR,
+from library.env import resolve_under_home
+from library.qwen21.loader import (
     TEXT_ENCODER_BLOCKS,
     drop_text_encoder,
     empty_cache,
@@ -50,21 +46,33 @@ from loader import (  # noqa: E402
     load_text_encoder,
     place,
 )
+from library.qwen21.requests import CacheRequest, resolve_model_dir
+from library.qwen21.scan import duplicate_stems, find_images
 
 VAE_SCALE_FACTOR = 16
 
 
 def find_pairs(src: Path) -> list[tuple[str, Path, str]]:
-    """``(stem, image path, caption)`` for every image with a caption sidecar."""
+    """``(stem, image path, caption)`` for every image with a caption sidecar,
+    subfolders included. The cache is flat, so a stem seen twice is an error."""
+    images = find_images(src)
+    dupes = duplicate_stems(images)
+    if dupes:
+        lines = [
+            f"  {stem}: {', '.join(str(p) for p in paths)}"
+            for stem, paths in dupes.items()
+        ]
+        raise SystemExit(
+            f"{len(dupes)} file names appear in more than one subfolder — the "
+            "cache is keyed by file name, rename them first:\n" + "\n".join(lines[:20])
+        )
     pairs = []
-    for path in sorted(src.iterdir()):
-        if path.suffix.lower() not in (".webp", ".png", ".jpg", ".jpeg"):
-            continue
+    for path in images:
         sidecar = path.with_suffix(".txt")
         if not sidecar.exists():
             print(f"skip {path.name}: no caption sidecar", flush=True)
             continue
-        pairs.append((path.stem, path, sidecar.read_text().strip()))
+        pairs.append((path.stem, path, sidecar.read_text(encoding="utf-8").strip()))
     return pairs
 
 
@@ -88,7 +96,7 @@ def target_size(image: Image.Image, resolution: int) -> tuple[int, int]:
 def cache_text(
     pairs: list[tuple[str, Path, str]],
     out_dir: Path,
-    model_dir: str,
+    model_dir: Path,
     device: torch.device,
     te_blocks_to_swap: int | None,
     overwrite: bool,
@@ -115,7 +123,8 @@ def cache_text(
     t0 = time.time()
     lengths = []
     with torch.no_grad():
-        for stem, _path, caption in todo:
+        for i, (stem, _path, caption) in enumerate(todo, 1):
+            print(f"  text {i}/{len(todo)} {stem}", flush=True)
             embeds, mask, _pad = pipe.encode_prompt(prompt=caption, device=device)
             embeds = embeds[0].detach().to("cpu", torch.bfloat16)
             if mask is None:
@@ -146,7 +155,7 @@ def cache_text(
 def cache_latents(
     pairs: list[tuple[str, Path, str]],
     out_dir: Path,
-    model_dir: str,
+    model_dir: Path,
     device: torch.device,
     resolution: int,
     overwrite: bool,
@@ -173,7 +182,8 @@ def cache_latents(
     shapes: list[tuple[int, int, int]] = []
     torch.cuda.reset_peak_memory_stats()
     with torch.no_grad():
-        for stem, path, _caption in todo:
+        for i, (stem, path, _caption) in enumerate(todo, 1):
+            print(f"  latents {i}/{len(todo)} {stem}", flush=True)
             # RGBA, not RGB: the 2.1 VAE encoder takes 4 channels, which is why
             # the pipeline converts its condition images the same way.
             image = Image.open(path).convert("RGBA")
@@ -218,63 +228,34 @@ def cache_latents(
     empty_cache()
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--model_dir", default=str(DEFAULT_MODEL_DIR))
-    ap.add_argument("--src", required=True, help="folder of images + .txt captions")
-    ap.add_argument("--out", default="project/qwen21_lora/cache")
-    ap.add_argument(
-        "--resolution",
-        type=int,
-        default=1024,
-        help="target pixel area as a square edge — 1024 means ~1024^2 pixels at "
-        "the image's own aspect ratio, not a 1024x1024 crop",
-    )
-    ap.add_argument("--te_blocks_to_swap", type=int, default=None)
-    ap.add_argument("--overwrite", action="store_true")
-    ap.add_argument(
-        "--save_crops",
-        action="store_true",
-        default=True,
-        help="also write the cropped images the latents were made from",
-    )
-    ap.add_argument("--skip_text", action="store_true")
-    ap.add_argument("--skip_latents", action="store_true")
-    args = ap.parse_args()
-
-    src = Path(args.src)
-    out_dir = Path(args.out)
+def run_cache(req: CacheRequest) -> Path:
+    """Both passes over ``req.src``; returns the cache folder."""
+    src = resolve_under_home(req.src)
+    out_dir = resolve_under_home(req.out)
+    model_dir = resolve_model_dir(req.model_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     pairs = find_pairs(src)
     if not pairs:
         raise SystemExit(f"no image/caption pairs under {src}")
-    print(f"{len(pairs)} pairs from {src}", flush=True)
+    print(f"{len(pairs)} pairs from {src}, model {model_dir}", flush=True)
 
     torch.cuda.init()
     device = torch.device("cuda")
     print(f"free VRAM: {free_vram_gb():.2f} GB", flush=True)
 
-    if not args.skip_text:
+    if not req.skip_text:
         cache_text(
-            pairs,
-            out_dir,
-            args.model_dir,
-            device,
-            args.te_blocks_to_swap,
-            args.overwrite,
+            pairs, out_dir, model_dir, device, req.te_blocks_to_swap, req.overwrite
         )
-    if not args.skip_latents:
+    if not req.skip_latents:
         cache_latents(
             pairs,
             out_dir,
-            args.model_dir,
+            model_dir,
             device,
-            args.resolution,
-            args.overwrite,
-            args.save_crops,
+            req.resolution,
+            req.overwrite,
+            req.save_crops,
         )
     print(f"cache at {out_dir}", flush=True)
-
-
-if __name__ == "__main__":
-    main()
+    return out_dir

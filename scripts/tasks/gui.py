@@ -14,6 +14,10 @@ def cmd_gui(_extra):
     run([PY, "-m", "gui"])
 
 
+def cmd_gui_qwen(_extra):
+    run([PY, "-m", "gui.qwen21"])
+
+
 def _ensure_shortcut_icon() -> Path | None:
     """Return a ready ``.ico`` path for the desktop shortcut, or None.
 

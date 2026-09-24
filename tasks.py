@@ -365,6 +365,10 @@ COMMANDS = {
     ),
     # ── GUI ───────────────────────────────────────────────────────────
     "gui": (gui.cmd_gui, "Launch PySide6 GUI"),
+    "gui-qwen": (
+        gui.cmd_gui_qwen,
+        "Launch the Qwen-Image-2.1 LoRA GUI (preprocess + train only)",
+    ),
     "gui-shortcut": (
         gui.cmd_gui_shortcut,
         "Create a Windows desktop shortcut that launches the GUI (no console window)",

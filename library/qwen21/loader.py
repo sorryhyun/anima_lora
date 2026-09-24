@@ -31,7 +31,8 @@ from pathlib import Path
 
 import torch
 
-DEFAULT_MODEL_DIR = Path("/media/sorryhyun/data/anima_models/qwen_image_2.1")
+from library.qwen21.requests import resolve_model_dir
+
 
 # Rough bf16 footprints, for picking a strategy without loading anything.
 _TRANSFORMER_GB = 14.3
@@ -79,7 +80,7 @@ TRANSFORMER_BLOCKS = "transformer_blocks"
 
 
 def load_text_encoder(
-    model_dir: Path | str = DEFAULT_MODEL_DIR,
+    model_dir: Path | str | None = None,
     dtype: torch.dtype = torch.bfloat16,
     *,
     attn_implementation: str | None = None,
@@ -92,7 +93,7 @@ def load_text_encoder(
     """
     from transformers import Qwen3VLForConditionalGeneration
 
-    path = Path(model_dir) / "text_encoder"
+    path = resolve_model_dir(model_dir) / "text_encoder"
     if attn_implementation:
         try:
             return Qwen3VLForConditionalGeneration.from_pretrained(
@@ -105,6 +106,21 @@ def load_text_encoder(
                 flush=True,
             )
     return Qwen3VLForConditionalGeneration.from_pretrained(path, dtype=dtype)
+
+
+def load_transformer(
+    model_dir: Path | str | None = None, dtype: torch.dtype = torch.bfloat16
+):
+    """The 14.2 GB transformer alone — no text encoder, no VAE."""
+    from diffusers import QwenImage21Transformer2DModel
+
+    return QwenImage21Transformer2DModel.from_pretrained(
+        resolve_model_dir(model_dir) / "transformer", dtype=dtype
+    )
+
+
+def block_devices(blocks) -> list[str]:
+    return [next(block.parameters()).device.type for block in blocks]
 
 
 def place(
@@ -124,7 +140,7 @@ def place(
     0 keeps everything resident. Returns the ``Attached`` handle (or None) —
     the caller must ``detach()`` it to give the VRAM back.
     """
-    import blockswap
+    from library.qwen21 import blockswap
 
     blocks = blockswap.find_blocks(model, blocks_path)
     if blocks_to_swap is None:
@@ -161,7 +177,7 @@ def place(
 
 
 def load_pipeline(
-    model_dir: Path | str = DEFAULT_MODEL_DIR,
+    model_dir: Path | str | None = None,
     dtype: torch.dtype = torch.bfloat16,
     *,
     components: tuple[str, ...] | None = None,
@@ -176,7 +192,7 @@ def load_pipeline(
     """
     from diffusers import QwenImage21Pipeline
 
-    model_dir = Path(model_dir)
+    model_dir = resolve_model_dir(model_dir)
     if not (model_dir / "model_index.json").exists():
         raise FileNotFoundError(f"no Qwen-Image-2.1 checkpoint at {model_dir}")
 

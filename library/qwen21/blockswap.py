@@ -25,16 +25,11 @@ from __future__ import annotations
 
 import contextlib
 import gc
-import sys
-from pathlib import Path
-
 import torch
 import torch.nn as nn
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
-
-from library.runtime.device import weighs_to_device  # noqa: E402
-from library.runtime.offloading import ModelOffloader  # noqa: E402
+from library.runtime.device import weighs_to_device
+from library.runtime.offloading import ModelOffloader
 
 
 def find_blocks(model: nn.Module, path: str) -> nn.ModuleList:
@@ -63,6 +58,23 @@ def resident_size_gb(model: nn.Module, blocks: nn.ModuleList) -> float:
         )
         / 1024**3
     )
+
+
+# Checkpointed LoRA backward, measured 2026-09-24 over 1370–6746 joint tokens
+# (`project/qwen21_lora/src/activation_sweep.py`): max_memory_reserved over idle
+# fits 0.20 GB + 0.588 MB/token with 0.03 GB residual, a text token costing the
+# same as an image token and no T² term. Rounded up here.
+_ACTIVATION_BASE_GB = 0.3
+_ACTIVATION_MB_PER_TOKEN = 0.6
+
+
+def activation_reserve_for_tokens(joint_tokens: int, slack_gb: float = 0.0) -> float:
+    """VRAM a checkpointed training step holds at ``joint_tokens`` (image + text).
+
+    ``slack_gb`` is what the caller adds for allocator growth over the first
+    steps — one block's worth is what the step-1 fit report also leaves.
+    """
+    return _ACTIVATION_BASE_GB + _ACTIVATION_MB_PER_TOKEN * joint_tokens / 1024 + slack_gb
 
 
 def auto_blocks_to_swap(

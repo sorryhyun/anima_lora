@@ -138,6 +138,8 @@ self-contained `configs/<method>/<method>.toml` layout, gui-methods rules:
   `bench/`, `scripts/` are **not** installed packages (only
   `anima_lora`/`library`/`networks` are) — they keep a `sys.path` bootstrap to import
   siblings.
+- **`library/qwen21/`** is the Qwen-Image-2.1 LoRA line's core — **not Anima**, none of
+  the invariants below apply; read `library/qwen21/CLAUDE.md` and **load the `qwen21` skill** before touching it.
 - **Strategy pattern** for tokenization/encoding (`library/anima/strategy.py`,
   `library/anima/text_strategies.py`).
 - **Pluggable adapters** under `networks/`, selected via `network_module` + (LoRA family)

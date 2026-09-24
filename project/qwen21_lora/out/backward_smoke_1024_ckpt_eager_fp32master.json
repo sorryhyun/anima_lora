@@ -1,0 +1,71 @@
+{
+  "resolution": 1024,
+  "image_tokens": 4096,
+  "text_len": 346,
+  "rank": 16,
+  "lora_params": 41943040,
+  "patched_linears": 224,
+  "blocks_to_swap": 7,
+  "compile": false,
+  "compile_seq": null,
+  "grad_checkpointing": true,
+  "steps": [
+    {
+      "step": 0,
+      "loss": 2.347743511199951,
+      "grad_norm": 0.2724791169166565,
+      "seconds": 5.021498441696167,
+      "peak_gb": 13.084517002105713,
+      "params_without_grad": 0,
+      "params_nonfinite_grad": 0,
+      "params_zero_grad": 224,
+      "placement_restored": true
+    },
+    {
+      "step": 1,
+      "loss": 6.765255928039551,
+      "grad_norm": 1.104344129562378,
+      "seconds": 4.155091047286987,
+      "peak_gb": 13.397539138793945,
+      "params_without_grad": 0,
+      "params_nonfinite_grad": 0,
+      "params_zero_grad": 0,
+      "placement_restored": true
+    },
+    {
+      "step": 2,
+      "loss": 1.8389430046081543,
+      "grad_norm": 0.7437660694122314,
+      "seconds": 4.232689619064331,
+      "peak_gb": 13.397539138793945,
+      "params_without_grad": 0,
+      "params_nonfinite_grad": 0,
+      "params_zero_grad": 0,
+      "placement_restored": true
+    },
+    {
+      "step": 3,
+      "loss": 2.804567337036133,
+      "grad_norm": 0.6318382620811462,
+      "seconds": 4.100811958312988,
+      "peak_gb": 13.397539138793945,
+      "params_without_grad": 0,
+      "params_nonfinite_grad": 0,
+      "params_zero_grad": 0,
+      "placement_restored": true
+    }
+  ],
+  "extra_shapes": [
+    {
+      "resolution": 512,
+      "text_len": 346,
+      "joint_tokens": 1370,
+      "seconds": 1.0828731060028076,
+      "peak_gb": 11.70786190032959,
+      "placement_restored": true
+    }
+  ],
+  "params_off_device": [],
+  "steady_seconds": 4.100811958312988,
+  "peak_gb": 13.397539138793945
+}

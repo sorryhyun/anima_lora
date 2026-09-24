@@ -23,17 +23,23 @@ import re
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
-# The single-stream block's linears, as a fullmatch against a module's
-# qualified name. Attention projections plus the SwiGLU's three.
-DEFAULT_TARGETS = (
-    r"transformer_blocks\.\d+\.(attn\.(to_q|to_k|to_v|to_out\.0)"
-    r"|img_mlp\.(proj|gate_layer|out))"
-)
+from library.qwen21.requests import DEFAULT_TARGETS
 
 
 class LoRAAdapter(nn.Module):
-    """``scale * up(down(x))``, added to the base linear's output."""
+    """``scale * up(down(x))``, added to the base linear's output.
+
+    Training builds this fp32 (the master weights AdamW updates — bf16's
+    8-bit mantissa rounds away updates below ~0.4 % of a weight, and at
+    lr 1e-4 the kaiming-scaled ``down`` sits right at that edge) and saves in
+    ``TrainRequest.lora_dtype`` (bf16 by default); ``load_network`` rebuilds
+    in the saved dtype, which is all inference needs. The rank
+    GEMMs run in the *model's* dtype: ``x`` and both weights are cast to
+    ``base_out.dtype`` first, so an fp32 adapter never lifts a ``(T, 4096)``
+    activation to fp32. Same policy as ``networks/lora_modules/base.py``.
+    """
 
     def __init__(
         self,
@@ -54,8 +60,10 @@ class LoRAAdapter(nn.Module):
     def forward(self, x: torch.Tensor, base_out: torch.Tensor) -> torch.Tensor:
         if self.multiplier == 0.0:
             return base_out
-        delta = self.up(self.down(x.to(self.down.weight.dtype)))
-        return base_out + delta.to(base_out.dtype) * (self.scale * self.multiplier)
+        work = base_out.dtype
+        lx = F.linear(x.to(work), self.down.weight.to(work))
+        delta = F.linear(lx, self.up.weight.to(work))
+        return base_out + delta * (self.scale * self.multiplier)
 
 
 class LoRANetwork(nn.Module):
@@ -120,7 +128,7 @@ class LoRANetwork(nn.Module):
 
 
 def load_network(model: nn.Module, path, dtype=None) -> tuple[LoRANetwork, dict]:
-    """Rebuild the network a ``train_lora.py`` checkpoint describes, and load it.
+    """Rebuild the network a ``train.py`` checkpoint describes, and load it.
 
     The rank, alpha and target pattern come from the file's own metadata, so a
     checkpoint trained against a different surface still loads correctly.

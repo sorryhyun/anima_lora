@@ -22,6 +22,10 @@ must not appear.
 - `app.py::main`: `load_language()` → build + show `MainWindow` →
   `ensure_daemon_quietly()` (deferred via `QTimer.singleShot(0, ...)` so a cold daemon
   boot doesn't block the window) → Qt loop.
+- `make gui-qwen` → `python -m gui.qwen21` — a separate en/cn window for the
+  Qwen-Image-2.1 line (not Anima; see `library/qwen21/CLAUDE.md`). Reuses `theme`,
+  `daemon`, `DaemonJobMixin`, `widgets` only; its strings live in `gui/qwen21/strings.py`,
+  not `gui/i18n/`.
 - `make lora-gui GUI_PRESETS=<variant>` trains from `gui-methods/` configs; it does not
   launch the GUI.
 

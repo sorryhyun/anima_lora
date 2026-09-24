@@ -1,6 +1,6 @@
 """Train a LoRA on the precached folder — flow matching, batch 1, block swap.
 
-Reads only what ``cache_dataset.py`` wrote, so neither encoder is ever loaded:
+Reads only what ``cache.py`` wrote, so neither encoder is ever loaded:
 the transformer gets the whole card under the block swapper.
 
 The sigma schedule matches inference rather than being uniform. The pipeline
@@ -14,21 +14,22 @@ The joint sequence length varies per sample on both axes — each image keeps it
 native aspect at ~1 MP, and caption length runs 112–346 tokens on this folder —
 so ``mu`` is per-sample, the pipeline deriving it from the image token count.
 
-Block compile is **off** by default for the same reason: it measured ±0 at a
-fixed 512² (``backward_smoke.py`` — 12 swaps × 0.41 GB × 2 directions is the
-whole step time, so compute hides under PCIe) and a moving token count can only
-make it worse. ``--compile`` turns it on dynamically if the swap count ever
-drops far enough for compute to matter.
+Block compile is **on** by default (``--compile_seq dynamic`` =
+``torch.compile(dynamic=True)``): −11 % per step at 1024² with 7 swaps under
+checkpointing (2026-09-24), ±0 at 512² with 12 swaps where the step is PCIe-bound
+(12 × 0.41 GB × 2 directions is the whole step time). One graph covers every
+sample size; ``--compile_seq bounded`` instead marks the sequence axis dynamic
+over the cache's [min, max] joint tokens and leaves the hidden dims static —
+same speed, compile paid as 17 s + one recompile rather than 42 s up front. See
+``accel.compile_blocks``. ``--no-compile`` for a quick smoke.
 
-    make daemon-run ARGS="project/qwen21_lora/src/train_lora.py --epochs 8"
+    make daemon-run ARGS="scripts/qwen21/train.py --epochs 8"
 """
 
 from __future__ import annotations
 
-import argparse
 import json
 import random
-import sys
 import time
 from pathlib import Path
 
@@ -38,19 +39,19 @@ import torch.utils.checkpoint
 from safetensors import safe_open
 from safetensors.torch import load_file, save_file
 
-sys.path.insert(0, str(Path(__file__).parent))
-
-import blockswap  # noqa: E402
-from accel import compile_blocks, recompile_report  # noqa: E402
-from backward_smoke import block_devices, load_transformer  # noqa: E402
-from loader import (  # noqa: E402
-    DEFAULT_MODEL_DIR,
+from library.env import resolve_under_home
+from library.qwen21 import blockswap
+from library.qwen21.accel import compile_blocks, recompile_report
+from library.qwen21.loader import (
     TRANSFORMER_BLOCKS,
+    block_devices,
     empty_cache,
     free_vram_gb,
+    load_transformer,
     place,
 )
-from lora import DEFAULT_TARGETS, LoRANetwork  # noqa: E402
+from library.qwen21.lora import LoRANetwork
+from library.qwen21.requests import TrainRequest, resolve_model_dir
 
 DTYPES = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}
 
@@ -74,7 +75,7 @@ def load_cache(cache_dir: Path) -> list[dict]:
         if "latent_h" not in meta:
             raise SystemExit(
                 f"{latent_path.name} predates aspect-preserving caching — "
-                "re-run cache_dataset.py --overwrite"
+                "re-run caching with --overwrite"
             )
         latent_h, latent_w = int(meta["latent_h"]), int(meta["latent_w"])
         if latent_h * latent_w != latents.shape[0]:
@@ -182,47 +183,19 @@ def report_fit(blocks, attached, batch: dict) -> None:
         print("  -> swap count is at the edge of what fits; leave it", flush=True)
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--model_dir", default=str(DEFAULT_MODEL_DIR))
-    ap.add_argument("--cache", default="project/qwen21_lora/cache")
-    ap.add_argument("--epochs", type=int, default=8)
-    ap.add_argument("--rank", type=int, default=16)
-    ap.add_argument("--alpha", type=float, default=None, help="default = rank")
-    ap.add_argument("--lr", type=float, default=1e-4)
-    ap.add_argument("--warmup_ratio", type=float, default=0.1)
-    ap.add_argument("--max_grad_norm", type=float, default=1.0)
-    ap.add_argument("--lora_dtype", default="bf16", choices=sorted(DTYPES))
-    ap.add_argument("--targets", default=DEFAULT_TARGETS)
-    ap.add_argument("--logit_mean", type=float, default=0.0)
-    ap.add_argument("--logit_std", type=float, default=1.0)
-    ap.add_argument("--blocks_to_swap", type=int, default=None)
-    ap.add_argument("--activation_reserve_gb", type=float, default=7.0)
-    ap.add_argument("--no_grad_checkpointing", action="store_true")
-    ap.add_argument(
-        "--compile",
-        action="store_true",
-        help="torch.compile each block dynamically; measured +-0 while the step "
-        "is PCIe-bound, and the token count moves per sample",
-    )
-    ap.add_argument("--compile_mode", default=None)
-    ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument(
-        "--output",
-        default="project/qwen21_lora/out/lora_channel_caststation.safetensors",
-    )
-    ap.add_argument("--save_every_epochs", type=int, default=0, help="0 = final only")
-    args = ap.parse_args()
-
-    torch.manual_seed(args.seed)
-    random.seed(args.seed)
+def run_train(req: TrainRequest) -> Path:
+    """Train on ``req.cache``; returns the final LoRA path."""
+    model_dir = resolve_model_dir(req.model_dir)
+    cache_dir = resolve_under_home(req.cache)
+    torch.manual_seed(req.seed)
+    random.seed(req.seed)
     torch.cuda.init()
     device = torch.device("cuda")
-    lora_dtype = DTYPES[args.lora_dtype]
+    save_dtype = DTYPES[req.lora_dtype]
 
-    items = load_cache(Path(args.cache))
+    items = load_cache(cache_dir)
     if not items:
-        raise SystemExit(f"no cached pairs under {args.cache}")
+        raise SystemExit(f"no cached pairs under {cache_dir}")
     image_tokens = sorted(i["latents"].shape[0] for i in items)
     text_lens = sorted(i["prompt_embeds"].shape[0] for i in items)
     sizes = {i["size"] for i in items}
@@ -235,9 +208,7 @@ def main() -> None:
 
     from diffusers import FlowMatchEulerDiscreteScheduler
 
-    scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
-        Path(args.model_dir) / "scheduler"
-    )
+    scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(model_dir / "scheduler")
     print(
         "sigma: logit-normal -> time_shift(mu), mu per sample from its image "
         f"token count ({calculate_shift(image_tokens[0], scheduler.config):.4f}"
@@ -245,24 +216,25 @@ def main() -> None:
         flush=True,
     )
 
-    transformer = load_transformer(args.model_dir)
+    transformer = load_transformer(model_dir)
     transformer.requires_grad_(False)
     network = LoRANetwork(
         transformer,
-        rank=args.rank,
-        alpha=args.alpha,
-        targets=args.targets,
-        dtype=lora_dtype,
+        rank=req.rank,
+        alpha=req.alpha,
+        targets=req.targets,
+        dtype=torch.float32,  # master weights; the rank GEMMs run in bf16
     )
     patched = network.apply_to()
     network.to(device)
     print(
-        f"lora: rank {args.rank} alpha {network.alpha} on {patched} linears, "
-        f"{network.num_parameters / 1e6:.1f}M params {args.lora_dtype}",
+        f"lora: rank {req.rank} alpha {network.alpha} on {patched} linears, "
+        f"{network.num_parameters / 1e6:.1f}M params, fp32 masters saved as "
+        f"{req.lora_dtype}",
         flush=True,
     )
 
-    if not args.no_grad_checkpointing:
+    if req.grad_checkpointing:
 
         def checkpointing_func(module, *inputs):
             return torch.utils.checkpoint.checkpoint(
@@ -274,47 +246,77 @@ def main() -> None:
 
         transformer.enable_gradient_checkpointing(checkpointing_func)
 
+    # The largest sample is known before the model is placed, and a checkpointed
+    # step's footprint is affine in its joint token count, so the reserve follows
+    # the cache instead of a constant.
+    max_joint = image_tokens[-1] + text_lens[-1]
+    if req.activation_reserve_gb is None:
+        reserve_gb = blockswap.activation_reserve_for_tokens(
+            max_joint,
+            slack_gb=blockswap.block_size_gb(transformer.transformer_blocks),
+        )
+        print(
+            f"activation reserve {reserve_gb:.2f} GB for {max_joint} joint tokens "
+            "(0.3 GB + 0.6 MB/token + one block of slack)",
+            flush=True,
+        )
+    else:
+        reserve_gb = req.activation_reserve_gb
+        print(f"activation reserve {reserve_gb:.2f} GB (--activation_reserve_gb)", flush=True)
+
     attached = place(
         transformer,
         TRANSFORMER_BLOCKS,
         device,
-        blocks_to_swap=args.blocks_to_swap,
+        blocks_to_swap=req.blocks_to_swap,
         supports_backward=True,
-        activation_reserve_gb=args.activation_reserve_gb,
+        activation_reserve_gb=reserve_gb,
         label="transformer",
     )
     blocks = transformer.transformer_blocks
     placement = block_devices(blocks)
-    if args.compile:
-        # dynamic: the joint sequence moves with both the image and caption size.
-        compile_blocks(blocks, mode=args.compile_mode, dynamic=True, decode_only=False)
+    if req.compile:
+        # The joint sequence moves with both the image and caption size; the
+        # cache bounds it before the first step.
+        seq_range = (
+            (image_tokens[0] + text_lens[0], max_joint)
+            if req.compile_seq == "bounded"
+            else None
+        )
+        compile_blocks(
+            blocks,
+            mode=req.compile_mode,
+            dynamic=True,
+            decode_only=False,
+            seq_range=seq_range,
+        )
     empty_cache()
     print(f"free VRAM before training: {free_vram_gb():.2f} GB", flush=True)
 
     params = list(network.parameters())
-    optimizer = torch.optim.AdamW(params, lr=args.lr)
-    total_steps = args.epochs * len(items)
-    warmup = max(1, int(total_steps * args.warmup_ratio))
+    optimizer = torch.optim.AdamW(params, lr=req.lr)
+    total_steps = req.epochs * len(items)
+    warmup = max(1, int(total_steps * req.warmup_ratio))
     scheduler_lr = torch.optim.lr_scheduler.LambdaLR(
         optimizer, lambda step: min(1.0, (step + 1) / warmup)
     )
     print(
-        f"{args.epochs} epochs x {len(items)} = {total_steps} steps, warmup {warmup}",
+        f"{req.epochs} epochs x {len(items)} = {total_steps} steps, warmup {warmup}",
         flush=True,
     )
 
-    out_path = Path(args.output)
+    out_path = resolve_under_home(req.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     metadata = {
         "base_model": "Qwen-Image-2.1",
-        "rank": str(args.rank),
+        "rank": str(req.rank),
         "alpha": str(network.alpha),
-        "targets": args.targets,
-        "lora_dtype": args.lora_dtype,
+        "targets": req.targets,
+        "lora_dtype": req.lora_dtype,
         "image_tokens": f"{image_tokens[0]}-{image_tokens[-1]}",
-        "epochs": str(args.epochs),
+        "epochs": str(req.epochs),
         "samples": str(len(items)),
-        "lr": str(args.lr),
+        "lr": str(req.lr),
     }
 
     def save(tag: str | None = None) -> Path:
@@ -324,7 +326,7 @@ def main() -> None:
             else out_path.with_name(f"{out_path.stem}_{tag}{out_path.suffix}")
         )
         state = {
-            k: v.detach().to("cpu").contiguous()
+            k: v.detach().to("cpu", save_dtype).contiguous()
             for k, v in network.state_dict().items()
         }
         save_file(state, path, metadata=metadata)
@@ -341,7 +343,7 @@ def main() -> None:
     step = 0
     t_start = time.time()
     torch.cuda.reset_peak_memory_stats()
-    for epoch in range(args.epochs):
+    for epoch in range(req.epochs):
         losses = []
         t_epoch = time.time()
         for index in order:
@@ -356,10 +358,10 @@ def main() -> None:
                 "latent_w": item["latent_w"],
             }
             mu = calculate_shift(item["latents"].shape[0], scheduler.config)
-            sigma = sample_sigma(scheduler, mu, args.logit_mean, args.logit_std, device)
+            sigma = sample_sigma(scheduler, mu, req.logit_mean, req.logit_std, device)
             loss = training_step(transformer, batch, sigma)
             loss.backward()
-            grad_norm = torch.nn.utils.clip_grad_norm_(params, args.max_grad_norm)
+            grad_norm = torch.nn.utils.clip_grad_norm_(params, req.max_grad_norm)
             optimizer.step()
             scheduler_lr.step()
             optimizer.zero_grad(set_to_none=True)
@@ -368,6 +370,16 @@ def main() -> None:
             peak = torch.cuda.max_memory_allocated() / 1024**3
             if step == 1:
                 report_fit(blocks, attached, batch)
+            # One short line per step for progress readers (the GUI bar); the
+            # full line below stays at every 20th step for the log.
+            per_step = (time.time() - t_start) / step
+            eta = int(per_step * (total_steps - step))
+            print(
+                f"  progress {step}/{total_steps} epoch {epoch + 1}/{req.epochs} "
+                f"loss {sum(losses) / len(losses):.4f} "
+                f"eta {eta // 3600}:{eta % 3600 // 60:02d}:{eta % 60:02d}",
+                flush=True,
+            )
             if step % 20 == 0 or step == 1:
                 print(
                     f"  step {step}/{total_steps} loss {loss.item():.4f} "
@@ -381,17 +393,17 @@ def main() -> None:
         drift = block_devices(blocks) != placement
         history.append({"epoch": epoch, "loss": mean, "seconds": time.time() - t_epoch})
         print(
-            f"epoch {epoch + 1}/{args.epochs}: loss {mean:.4f}  "
+            f"epoch {epoch + 1}/{req.epochs}: loss {mean:.4f}  "
             f"{time.time() - t_epoch:.0f}s  "
             f"peak {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB"
             f"{'  PLACEMENT DRIFTED' if drift else ''}",
             flush=True,
         )
-        if args.save_every_epochs and (epoch + 1) % args.save_every_epochs == 0:
+        if req.save_every_epochs and (epoch + 1) % req.save_every_epochs == 0:
             print(f"  saved {save(f'e{epoch + 1}')}", flush=True)
 
     final = save()
-    if args.compile:
+    if req.compile:
         print(recompile_report(), flush=True)
     summary = {
         "output": str(final),
@@ -412,7 +424,4 @@ def main() -> None:
 
     if attached is not None:
         attached.detach()
-
-
-if __name__ == "__main__":
-    main()
+    return final
