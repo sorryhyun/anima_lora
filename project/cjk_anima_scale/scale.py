@@ -84,6 +84,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="run a subset of the rulers",
     )
     p.add_argument(
+        "--seed_only",
+        action="store_true",
+        help="eval: the run's seed_table under rows_scale_<stage>_<run>_seed/, no training",
+    )
+    p.add_argument(
         "--eval_extra",
         nargs=argparse.REMAINDER,
         help="verbatim flags for the probe's eval parser",
@@ -218,6 +223,7 @@ def main(argv=None):
                 a.tag,
                 which=tuple(a.eval_only or ("eval", "native", "cf_sense")),
                 extra=a.eval_extra,
+                seed_only=a.seed_only,
             )
         elif step == "bake":
             from cjk_scale.bake import bake

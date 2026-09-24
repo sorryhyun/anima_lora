@@ -288,3 +288,70 @@ def test_probe_eval_namespace_builds():
     assert a.data_tag == "scale_stage0507_t1" and a.arm == "rows" and a.no_floor
     assert a.cf_lang == "ja" and a.cf_rows == "piece" and a.eval_limit == 3
     assert a.native_clauses == "en,swap"
+
+
+def test_seed_wrapper_restricts_to_the_inventory(tmp_path, monkeypatch):
+    """--seed_only: the run's seed table, rows the stage's words.json names,
+    under rows_scale_<stage>_<tag>_seed (the probe's --arm_tag seed)."""
+    import json
+    from dataclasses import replace
+
+    import torch
+
+    from cjk_scale import eval as ev
+    from cjk_scale import paths
+
+    monkeypatch.setattr(paths, "OUT", tmp_path)
+    seed = tmp_path / "seed" / "trained.pt"
+    seed.parent.mkdir()
+    torch.save(
+        {
+            "delta": {
+                "ext_ids": [10, 11, 12, 13],
+                "raw": torch.arange(8.0).view(4, 2),
+                "row_scale": 1.5,
+            },
+            "arm": "rows",
+            "merged_from": ["a", "b"],
+            "killed": "",
+        },
+        seed,
+    )
+    cfg = config.load("stage0709", "run0923_micro")
+    cfg = replace(cfg, run=replace(cfg.run, seed_table=str(seed)))
+    d = paths.data_dir("stage0709", "t1")
+    d.mkdir()
+    (d / "words.json").write_text(
+        json.dumps({"kana_pieces": ["あ", "それを"], "held": []})
+    )
+    out = ev.seed_wrapper(
+        cfg, "t1", row_text={10: "あ", 11: "い", 12: "それを", 13: "x"}
+    )
+    assert out == tmp_path / "rows_scale_stage0709_t1_seed"
+    sd = torch.load(out / "trained.pt", weights_only=False)
+    assert sd["delta"]["ext_ids"] == [10, 12] and sd["delta"]["row_scale"] == 1.5
+    assert torch.equal(sd["delta"]["raw"], torch.tensor([[0.0, 1.0], [4.0, 5.0]]))
+    assert sd["arm"] == "rows" and sd["args"]["seed_only"] and sd["warm_rows"] == 2
+    # no decoder → the whole table, still the trained shape
+    out = ev.seed_wrapper(cfg, "t1", row_text={})
+    assert (
+        len(torch.load(out / "trained.pt", weights_only=False)["delta"]["ext_ids"]) == 4
+    )
+    # the probe resolves the same dir from --arm_tag
+    a = ev.probe_args(cfg, "t1", ["eval"], ["--arm_tag", ev.SEED_ARM_TAG])
+    from common.paths import arm_dir as probe_arm_dir
+
+    assert probe_arm_dir(a).name == out.name and a.data_tag == "scale_stage0709_t1"
+
+
+def test_stage_table_carries_the_inventory():
+    """A unit the band draws nothing on stays in the table (micro_chain_result.md
+    § 4: 'untouched is exact'): table = captions' rows ∪ the inventory's."""
+    from cjk_scale.train import inventory_ext
+
+    words = {"kana_pieces": ["あ", "それを"], "held": [], "freq": []}
+    ev_ext = {"あ": [186], "それを": [26585], "HELLO": [], "extra_char": [7]}
+    inv = inventory_ext(words, ev_ext)
+    assert inv == {186, 26585}
+    touched = {186, 58974}
+    assert touched | inv == {186, 26585, 58974}

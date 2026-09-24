@@ -82,7 +82,7 @@ project/cjk_anima_scale/
     stage0309.toml
     runs/              the runs: rows (units / pieces / phrase_file / n_items), seed table, steps per row per stage
       run_full.toml         production — the whole inventory at 30 / 30 / 30
-      run0923_micro.toml    the 24-row chain read (plan_micro_chain.md)
+      run0923_micro.toml    the 24-row chain read (micro_chain_result.md)
   cjk_scale/           one package (see below for why not `src/`)
     paths.py           output root output/cjk_anima_scale/ (stage dirs, scene pools, enref, seed table); redirects the probe's OUT
     windows.py         (kind, px, layout) → training band; the law as a row table with provenance

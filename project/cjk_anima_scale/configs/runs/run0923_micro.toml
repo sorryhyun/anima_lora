@@ -1,4 +1,4 @@
-# run0923_micro — the chain at 30 / 30 / 30 on 24 warm rows (plan_micro_chain.md):
+# run0923_micro — the chain at 30 / 30 / 30 on 24 warm rows (micro_chain_result.md):
 # 8 kana from B.1's 24 (none of its dead rows) + 8 kanji from C.2's strata
 # (4 simple K_lo + 4 dense K_hi, all in kanji:200) + 8 pieces from
 # assets/units/ja_micro_warm_0923.txt, all in the merged step-1 table.

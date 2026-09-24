@@ -43,18 +43,24 @@ A new read that changes a row of the law goes into
 | [`band_experiment_results.md`](band_experiment_results.md) | **the vocab band law** — the verdict, the per-px window table, the training reads, what is left unrun |
 | [`design.md`](design.md) | the scale pipeline: stage schedule, data builder, thin trainer, open questions (§ 6) |
 | [`plan_canvas.md`](plan_canvas.md) | plan only — does the law hold on a ~500-token canvas (2× throughput) |
-| [`plan_micro_chain.md`](plan_micro_chain.md) | plan only — the three band stages at 30 / 30 / 30 on 24 warm rows (8 kana + 8 kanji + 8 pieces), the first run of the chain before scale |
+| [`micro_chain_result.md`](micro_chain_result.md) | **the first run of the chain** — the three band stages at 30 / 30 / 30 on 24 warm rows (8 kana + 8 kanji + 8 pieces), read rule by rule; the seed-baseline and table-membership tool changes it forced |
 | `configs/stage*.toml` | the four stages — the band recipes: band, gate, warm chain, recipe mix, trainer surface, eval; never which rows |
 | `configs/runs/*.toml` | the runs — which rows, the seed table, steps per row per stage: `run_full` (production), `run0923_micro` (the 24-row chain read) |
 | `cjk_scale/` | the code (`windows` = the law, `recipes` + `builder` = data, `rows` + `train`, `eval`, `bake`, `ledger`); `scale.py` is the front door |
 | `runs/` | `ledger.jsonl` — every submitted job |
 
-## Where it stands (2026-09-23)
+## Where it stands (2026-09-24)
 
 The law is written and encoded (`cjk_scale/windows.py`); the four stage
 configs, the data builder with the band gate, the thin trainer, the eval
-delegation and the front door exist and smoke-build (60 items per stage).
-**No stage has trained at scale.** Seed table for the chain:
+delegation and the front door exist. **The chain has run once, on 24 warm
+rows** ([`micro_chain_result.md`](micro_chain_result.md)): at μ = 0.1 on
+every stage it passes the chain-end rule (singles 24 → 26 / 32, pieces
+2 → 5 / 16, EN held), which set `init_anchor = 0.1` in the stage files; at
+μ ≤ 0.01 stage0507 undid stage0709's singles. The piece read is a budget
+statement (the next cell is 60 / 60 / 60), and the piece `cf_sense` ruler
+renders too large to read the 0.3–0.5 band. **No stage has trained at
+scale.** Seed table for the chain:
 `output/cjk_anima_scale/rows_step1_0921_merged` (2 274 rows, the probe line's
 `step1_0921` + `step1_0921z` merge). Every launch states
 the raw pack (`ANIMA_VOCAB_PACK=models/vocab_packs/anima_cjk_vocab_pack`,

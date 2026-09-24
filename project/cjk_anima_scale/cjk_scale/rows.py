@@ -6,6 +6,14 @@ The rows arm of ``train/trainables.py`` with the probe levers left behind
 units (× ``row_scale``); a source table's rows are rescaled by the ratio of
 the two runs' ``row_scale`` on the way in, its ``common`` / ``c_flat``
 vector (a flat-layout component the old encoder arms carried) dropped.
+
+The table is ``table_ext`` — every row the run's inventory names, not only
+the rows this stage's captions touch — so a row the band gives no draw
+(pieces at ``stage0709``, singles at ``stage0305``) rides through the chain
+at its warm value instead of falling out of the table and coming up cold in
+the next stage. ``touched`` are the rows with draws: the norm pull applies to
+them only, so an untouched row is exact (zero FM gradient, zero pull,
+``weight_decay`` 0 → Adam leaves it).
 """
 
 from __future__ import annotations
@@ -18,23 +26,42 @@ import torch.nn.functional as F
 
 class RowTable:
     def __init__(
-        self, anima, device, train_ext, pack, *, warm, init_anchor, free_residual, lr
+        self,
+        anima,
+        device,
+        table_ext,
+        pack,
+        *,
+        warm,
+        init_anchor,
+        free_residual,
+        lr,
+        touched=None,
     ):
         from common.hooks import ExtDelta
 
-        rows = pack.table[sorted(train_ext)].float()
+        table_ext = set(int(e) for e in table_ext)
+        touched = table_ext if touched is None else set(int(e) for e in touched)
+        assert touched <= table_ext, "touched rows must be in the table"
+        rows = pack.table[sorted(table_ext)].float()
         self.row_scale = float(rows.norm(dim=1).mean())
         dim = rows.shape[1]
         print(
-            f"pack rows: {len(train_ext)} touched, mean norm {self.row_scale:.3f} "
-            f"(std {rows.norm(dim=1).std():.3f}), dim {dim}",
+            f"pack rows: {len(table_ext)} in the table, {len(touched)} touched "
+            f"({len(table_ext) - len(touched)} untouched — no draw, held exact), "
+            f"mean norm {self.row_scale:.3f} (std {rows.norm(dim=1).std():.3f}), dim {dim}",
             flush=True,
         )
         self.device = device
         self.init_anchor = float(init_anchor)
         self.free_residual = float(free_residual)
-        self.delta = ExtDelta(anima, train_ext, dim, device, self.row_scale)
+        self.delta = ExtDelta(anima, table_ext, dim, device, self.row_scale)
         self.params = [{"params": [self.delta.raw], "lr": lr}]
+        self.touched_mask = torch.tensor(
+            [int(e) in touched for e in self.delta.ext_ids],
+            dtype=torch.bool,
+            device=device,
+        )
         self.warm_mask = torch.zeros(
             len(self.delta.ext_ids), dtype=torch.bool, device=device
         )
@@ -102,18 +129,19 @@ class RowTable:
     def regularized(self, loss_fm):
         """FM loss + the anchor on warm rows (μ · mean ‖f − f₀‖²) + the norm
         pull on cold rows (μ_free · mean ‖f‖²). No anchor: the pull is on
-        every row, the one guard against norm creep besides the cosine
-        decay (``train/stage.py``)."""
+        every touched row, the one guard against norm creep besides the
+        cosine decay (``train/stage.py``). Untouched rows get neither pull
+        (the anchor is zero on them by construction)."""
         loss = loss_fm
         raw = self.delta.raw
         if self.raw0 is not None and self.init_anchor > 0:
             anchor = ((raw - self.raw0) ** 2).sum(1)
             loss = loss + self.init_anchor * anchor[self.warm_mask].mean()
-            cold = ~self.warm_mask
+            cold = ~self.warm_mask & self.touched_mask
             if self.free_residual > 0 and bool(cold.any()):
                 loss = loss + self.free_residual * (raw**2).sum(1)[cold].mean()
-        elif self.free_residual > 0:
-            loss = loss + self.free_residual * (raw**2).sum(1).mean()
+        elif self.free_residual > 0 and bool(self.touched_mask.any()):
+            loss = loss + self.free_residual * (raw**2).sum(1)[self.touched_mask].mean()
         return loss
 
     # -- logging / export ----------------------------------------------------
@@ -148,6 +176,7 @@ class RowTable:
             "args": {**args, "init_rows": self.warm_from},
             "killed": "",
             "warm_rows": int(self.warm_mask.sum()),
+            "touched_rows": int(self.touched_mask.sum()),
         }
         if step is not None:
             sd["step"] = step

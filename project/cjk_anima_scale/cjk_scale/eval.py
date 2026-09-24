@@ -10,6 +10,13 @@ The probe stages open ``data_scale_<stage>_<tag>`` / ``rows_scale_<stage>_<tag>`
 through their own ``--data_tag``, so nothing is copied. The warm-chain
 regression check compares this table's ``eval_reads.json`` with the earlier
 stages' on the groups they share (same units + seed → same eval strings).
+
+``seed_only`` (micro_chain_result.md § 4) evaluates the run's ``seed_table``
+instead of a trained one, under ``rows_scale_<stage>_<tag>_seed/`` (the
+probe's ``--arm_tag seed``) with the stage's data dir: the baseline every
+"vs seed" rule of the plan reads against. The wrapper table keeps only the
+seed rows the stage's inventory names (``words.json``), so ``cf_sense`` draws
+its pairs from the same rows a trained table would carry.
 """
 
 from __future__ import annotations
@@ -61,18 +68,96 @@ def probe_args(
 
 
 def run(
-    cfg: StageConfig, tag: str, which=("eval", "native", "cf_sense"), extra=None
+    cfg: StageConfig,
+    tag: str,
+    which=("eval", "native", "cf_sense"),
+    extra=None,
+    seed_only: bool = False,
 ) -> None:
     from stages import run as run_stage
 
-    out = arm_dir(cfg.stage, tag)
+    extra = list(extra or [])
+    if seed_only:
+        out = seed_wrapper(cfg, tag)
+        extra += ["--arm_tag", SEED_ARM_TAG]
+    else:
+        out = arm_dir(cfg.stage, tag)
     assert (out / "trained.pt").exists(), f"no table at {out / 'trained.pt'}"
     which = [w for w in which if w != "cf_sense" or cfg.eval["cf_sense"]]
     a = probe_args(cfg, tag, which, extra)
     for name in which:
-        print(f"===== {cfg.stage} eval: {name}", flush=True)
+        print(
+            f"===== {cfg.stage} eval{' (seed)' if seed_only else ''}: {name}",
+            flush=True,
+        )
         run_stage(name, a)
-    regress(cfg, tag)
+    if not seed_only:
+        regress(cfg, tag)
+
+
+SEED_ARM_TAG = "seed"
+
+
+def seed_arm_dir(cfg: StageConfig, tag: str) -> Path:
+    """``rows_scale_<stage>_<tag>_seed`` — what the probe's ``--arm_tag seed``
+    resolves to next to the stage's data dir."""
+    return arm_dir(cfg.stage, f"{tag}_{SEED_ARM_TAG}")
+
+
+def seed_wrapper(cfg: StageConfig, tag: str, row_text=None) -> Path:
+    """Write the run's ``seed_table`` as a rows-arm ``trained.pt`` under
+    ``seed_arm_dir``, restricted to the rows whose text the stage's
+    ``words.json`` names (all of them when no decoder is available). The
+    merged seed table carries ``delta`` / ``arm`` / ``merged_from`` /
+    ``killed`` and no ``args``; the wrapper adds a synthetic ``args`` so the
+    probe readers that open it see the trained shape. Returns the arm dir."""
+    import torch
+
+    from .paths import data_dir
+
+    assert cfg.run and cfg.run.seed_table, "--seed_only needs a run with a seed_table"
+    src_path = cfg.__class__(**{**cfg.__dict__, "warm_from": ""}).warm_table(tag)
+    assert src_path and src_path.exists(), f"seed table {src_path} does not exist"
+    src = torch.load(src_path, map_location="cpu", weights_only=False)
+    ids = [int(e) for e in src["delta"]["ext_ids"]]
+    words = json.loads(
+        (data_dir(cfg.stage, tag) / "words.json").read_text(encoding="utf-8")
+    )
+    inventory = {t for v in words.values() for t in v}
+    if row_text is None:
+        from probe.merge_tables import row_text_map
+
+        row_text = row_text_map(ids)
+    keep = [i for i, e in enumerate(ids) if row_text.get(e) in inventory]
+    if row_text and keep:
+        delta = {
+            **src["delta"],
+            "ext_ids": [ids[i] for i in keep],
+            "raw": src["delta"]["raw"][keep].clone(),
+        }
+        note = f"{len(keep)} of {len(ids)} rows (the stage's inventory of {len(inventory)})"
+    else:
+        delta = src["delta"]
+        note = f"all {len(ids)} rows (no row text — inventory filter skipped)"
+    out = seed_arm_dir(cfg, tag)
+    out.mkdir(parents=True, exist_ok=True)
+    sd = {
+        "delta": delta,
+        "arm": "rows",
+        "args": {
+            "seed_only": True,
+            "seed_table": str(src_path),
+            "stage": cfg.stage,
+            "run": cfg.run.name,
+            "init_rows": str(src_path),
+        },
+        "killed": "",
+        "warm_rows": len(delta["ext_ids"]),
+        "merged_from": src.get("merged_from"),
+    }
+    torch.save(sd, out / "trained.pt")
+    print(f"seed wrapper: {src_path} → {out / 'trained.pt'}: {note}", flush=True)
+    return out
 
 
 def exact_by_group(arm: Path) -> dict:

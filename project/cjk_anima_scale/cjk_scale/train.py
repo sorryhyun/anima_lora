@@ -31,6 +31,20 @@ from .paths import arm_dir, data_dir, run_tag
 from .rows import RowTable
 
 
+def inventory_ext(words: dict, ev_ext: dict) -> set[int]:
+    """The ext rows of every unit the run names (``words.json``), read off
+    the eval strings' captions (``_encode_text``'s ``ev_ext``: text → ext ids;
+    the eval set carries every inventory unit by construction). The stage
+    table is these ∪ the rows the training captions touch, so a unit the
+    band gives no draw stays in the table at its warm value."""
+    inventory = {t for v in words.values() for t in v}
+    out: set[int] = set()
+    for text, ids in ev_ext.items():
+        if text in inventory:
+            out.update(int(i) for i in ids)
+    return out
+
+
 def train(
     cfg: StageConfig, tag: str, *, warm: Path | None, overrides: dict | None = None
 ) -> Path:
@@ -63,8 +77,15 @@ def train(
     args = gen_args(512, int(t["steps"]), float(t["cfg"]), out)
     device = get_generation_settings(args).device
 
-    cache, train_ext, _ev_ext = _encode_text(
+    cache, train_ext, ev_ext = _encode_text(
         recs, ev, device, out, te_cache=data / "te_cache"
+    )
+    words = json.loads((data / "words.json").read_text(encoding="utf-8"))
+    table_ext = train_ext | inventory_ext(words, ev_ext)
+    print(
+        f"table: {len(table_ext)} rows = {len(train_ext)} touched by the captions "
+        f"+ {len(table_ext - train_ext)} inventory rows this band draws nothing on",
+        flush=True,
     )
     ns = SimpleNamespace(
         seed=int(t["seed"]),
@@ -83,12 +104,13 @@ def train(
     rows = RowTable(
         anima,
         device,
-        train_ext,
+        table_ext,
         strategy_pack(tok),
         warm=warm,
         init_anchor=float(t["init_anchor"]),
         free_residual=float(t["free_residual"]),
         lr=float(t["lr_rows"]),
+        touched=train_ext,
     )
     n_rows = len(rows.delta.ext_ids)
     steps = int(t["train_steps"]) or int(t["steps_per_row"]) * n_rows
@@ -132,6 +154,7 @@ def train(
         "train_steps": steps,
         "lr_warmup": warmup,
         "n_rows": n_rows,
+        "n_touched": len(train_ext),
         "run": cfg.run.name if cfg.run else None,
         "run_config": str(cfg.run.path) if cfg.run else None,
         **{k: t[k] for k in sorted(t)},
