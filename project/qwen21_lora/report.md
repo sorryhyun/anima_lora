@@ -60,7 +60,22 @@ which cast `x` up to the weight dtype — every adapted activation went fp32, wh
 4.5 s eager step and the swap-6 OOM above. `lora.py` now runs the rank GEMMs in the model's
 dtype with fp32 master weights (Anima's policy; `lora_dtype` default `fp32`): eager at the
 same swap 7 is **4.10–4.23 s/step, peak 13.40 GB** (`out/backward_smoke_1024_ckpt_eager_fp32master.json`),
-within noise of the bf16-adapter training run (4.0 s) with fp32 updates.
+within noise of the bf16-adapter training run (4.0 s) with fp32 updates. The compile arms
+rerun on the new forward (`out/backward_smoke_1024_ckpt_{dynamic,bounded}_fp32master.json`):
+
+| joint tokens | eager | dynamic | bounded |
+|---|---|---|---|
+| 4442 (steady) | 4.10–4.23 s | 3.67 s | 3.70–3.88 s |
+| step 0 (compile) | 5.0 s | 42.4 s | 16.7 s |
+| 4296 (text 200) | — | 3.54 s | 20.7 s (the one `segments` recompile) |
+| 3482 (896²) | — | 2.71 s | 2.66 s |
+| 1370 (512²) | 1.08 s | 1.16 s | 1.06 s |
+| 4442 again | — | 3.85 s | 3.63 s |
+| peak | 13.40 GB | 13.27 GB | 13.27 GB |
+
+Compile is −11 % at the top of the band on the fixed forward; `bounded` and `dynamic` stay
+within run-to-run noise of each other (3.6–3.9 s) at every shape, with `bounded` paying
+its compile as 17 s + one 21 s recompile against `dynamic`'s 42 s up front.
 
 ### Activation cost per token (2026-09-24, `src/activation_sweep.py`)
 
