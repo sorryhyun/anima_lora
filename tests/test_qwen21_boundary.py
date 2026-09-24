@@ -24,7 +24,12 @@ _QWEN21_HOMES = (
     "tests/",
 )
 # What library.qwen21 may import from the rest of library.
-_SHARED = ("library.env", "library.runtime.offloading", "library.runtime.device")
+_SHARED = (
+    "library.env",
+    "library.runtime.offloading",
+    "library.runtime.device",
+    "library.runtime.dynamo",
+)
 _SCANNED = ("anima_lora", "library", "networks", "scripts", "gui", "bench", "train.py")
 
 

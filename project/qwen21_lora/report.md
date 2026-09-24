@@ -25,10 +25,54 @@ differ from the rest of the repo: `CLAUDE.md`.
 | swap 12–14 | peak 9.59 GB, 1.18 s/step | peak 10.32 GB, 4.00 s/step |
 | swap 5 | — | peak 13.96 GB, 3.93 s/step |
 | bound by | **PCIe** (12 × 0.41 GB × 2 ≈ 10 GB/step) | **compute** (100 % util, 275 W/300 W) |
-| block compile | ±0 (7 s to pay for it) | not retried; off, token count moves per sample |
+| block compile | ±0 at swap 12 (7 s to pay for it) | **−13 %** at swap 7 under checkpointing: 4.5 → 3.9 s/step (2026-09-24, below) |
 
 Swap count is a VRAM lever at both sizes and a *speed* lever only at 512². Inference is a
 separate regime: 20 steps at 896×1184 ran 1.18 it/s ≈ 17 s/image.
+
+### Block compile under checkpointing (2026-09-24, `src/backward_smoke.py --extra_shapes`)
+
+Swap 7, gradient checkpointing, rank 16 fp32 (the smoke's default), 4 steps at 4096+346
+then one step each at four other shapes. `dynamic` is `torch.compile(dynamic=True)`;
+`bounded` is automatic dynamic + `mark_dynamic(min=1370, max=4608)` on the sequence axis
+of every block input (`accel.compile_blocks(seq_range=…)`, `--compile_seq bounded`, the
+default), with the `segments` ints left to automatic dynamic.
+
+| joint tokens | eager | dynamic | bounded |
+|---|---|---|---|
+| 4442 (steady, steps 1–3) | 4.48–4.75 s | 3.90 s | 3.90 s |
+| step 0 (compile) | 5.8 s | 18.1 s | 8.0 s |
+| 4296 (text 200 — first new text length) | 4.32 s | 3.76 s | 21.0 s (one recompile: `segments` ints go symbolic) |
+| 3482 (896²) | 3.46 s | 3.18 s | 2.84 s |
+| 1370 (512²) | 1.24 s | 1.11 s | 1.11 s |
+| 4442 again | 4.55 s | 3.87 s | 3.86 s |
+| dynamo frames | — | 4 | 8 |
+| peak | 13.94 GB | 13.67 GB | 13.67 GB |
+
+Compile pays where the step is compute-bound: −13 % at 1024², −10 % even at 512² once the
+swap is 7 rather than 12. `bounded` and `dynamic` are the same speed at the top of the
+band; `bounded` compiles faster up front, pays one ~20 s recompile at the second distinct
+caption length and then holds two graphs for every shape, and was faster at the mid-band
+shape (one sample). Peak VRAM is identical. Raw: `out/backward_smoke_1024_ckpt_{eager,dynamic,bounded}.json`.
+
+### Activation cost per token (2026-09-24, `src/activation_sweep.py`)
+
+One load, swap 14, gradient checkpointing, rank 16 bf16, random tensors; activation = step
+peak − idle allocation (weights + LoRA + Adam). Joint tokens 1370–6746 (latent 32²–80² +
+346 text), and text 64–512 at 64².
+
+| | fit over joint tokens | max residual |
+|---|---|---|
+| `max_memory_allocated` − idle | **0.01 GB + 0.564 MB/token** | 0.01 GB |
+| `max_memory_reserved` − idle | 0.20 GB + 0.588 MB/token | 0.03 GB |
+| text axis (64² fixed) | 0.07 GB + 0.549 MB/token | 0.00 GB |
+
+Affine with no constant to speak of, and a text token costs what an image token costs. At
+the current data's 4442-token maximum that is 2.45 GB allocated / 2.77 GB reserved — which
+is why `--activation_reserve_gb 2.0` OOMed and 3.5 left ~0.7 GB idle. The cache knows the
+largest sample before the model loads, so the reserve can be `0.3 GB + 0.6 MB × max joint
+tokens` (+ one block of allocator slack) instead of a constant. Raw points:
+`out/activation_sweep.json`.
 
 ## Runs
 

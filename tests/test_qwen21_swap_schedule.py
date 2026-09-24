@@ -31,10 +31,12 @@ def _load_swap_schedule():
         spec.loader.exec_module(module)
     except ImportError as exc:  # torch / library not installed
         pytest.skip(f"qwen21 blockswap not importable: {exc}")
-    return module.swap_schedule
+    return module
 
 
-swap_schedule = _load_swap_schedule()
+_blockswap = _load_swap_schedule()
+swap_schedule = _blockswap.swap_schedule
+activation_reserve_for_tokens = _blockswap.activation_reserve_for_tokens
 
 
 def replay(num_blocks: int, blocks_to_swap: int, minimal: bool):
@@ -93,3 +95,16 @@ def test_falls_back_to_ring_past_half():
 
 def test_no_swap_is_no_hooks():
     assert swap_schedule(32, 0, minimal=True) == {}
+
+
+def test_activation_reserve_follows_measured_envelope():
+    """0.3 GB + 0.6 MB/token brackets the 2026-09-24 sweep: reserved-over-idle
+    was 2.81 GB at 4608 tokens and 1.00 GB at 1370, and 2.0 GB OOMed at 4442."""
+    assert activation_reserve_for_tokens(4608) >= 2.81
+    assert activation_reserve_for_tokens(4442) > 2.0
+    assert 1.0 <= activation_reserve_for_tokens(1370) < 1.5
+    # slack is additive and the curve is monotone in tokens
+    assert activation_reserve_for_tokens(4442, slack_gb=0.41) == pytest.approx(
+        activation_reserve_for_tokens(4442) + 0.41
+    )
+    assert activation_reserve_for_tokens(6746) > activation_reserve_for_tokens(4442)

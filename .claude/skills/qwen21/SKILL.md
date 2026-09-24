@@ -21,7 +21,7 @@ and measured numbers: `project/qwen21_lora/README.md` + `report.md`.
 | `project/qwen21_lora/src/` | one-off research scripts (`backward_smoke`, `smoke_t2i`, `bench_accel`) |
 
 `tests/test_qwen21_boundary.py` enforces the island: nothing Anima-side imports
-`library.qwen21`; it imports only `library.env` / `library.runtime.{offloading,device}`;
+`library.qwen21`; it imports only `library.env` / `library.runtime.{offloading,device,dynamo}`;
 `requests` and `gui.qwen21.app` stay torch-free.
 
 ## Running
@@ -100,9 +100,13 @@ choices made.
   at the next newline, so the denoise bar arrives in one burst).
 - **Swap sizing.** `report_fit` prints after step 1 with a `--blocks_to_swap`
   suggestion measured against `mem_get_info` free. At 1024² the step is compute-bound,
-  so fewer swaps doesn't make it faster (see `library/qwen21/CLAUDE.md`). Default
-  `--activation_reserve_gb 3.5` is the measured floor with gradient checkpointing
-  (2026-09-23, 30 samples up to 4096+346 tokens): swap 6, peak 13.55 GB, 0.5 GB spare,
-  4.08 s/step. 2.0 OOMs at step 1 (swap 2); 7.0 swapped 14 at the same speed.
+  so fewer swaps doesn't make it faster (see `library/qwen21/CLAUDE.md`). The reserve
+  the sizer leaves for activations follows the cache: a checkpointed step holds
+  **0.3 GB + 0.6 MB × (largest image + text token count)** (measured 2026-09-24, affine
+  to 6746 tokens, text and image tokens cost the same — `project/qwen21_lora/report.md`
+  § Activation cost per token), plus one block of allocator slack
+  (`blockswap.activation_reserve_for_tokens`). That is 3.3 GB at 4096+346 tokens, where
+  the old constant 3.5 left 0.5 GB spare and 2.0 OOMed at step 1; ~1.5 GB for 512² data.
+  `--activation_reserve_gb` overrides it with a constant.
 - **RAM:** the whole checkpoint is ~33 GB bf16 and sits in page cache on the 64 GB box.
   Reloads are ~free, so there is no resident-model worker; VRAM is the constraint.

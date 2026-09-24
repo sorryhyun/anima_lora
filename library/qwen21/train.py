@@ -14,11 +14,14 @@ The joint sequence length varies per sample on both axes — each image keeps it
 native aspect at ~1 MP, and caption length runs 112–346 tokens on this folder —
 so ``mu`` is per-sample, the pipeline deriving it from the image token count.
 
-Block compile is **off** by default for the same reason: it measured ±0 at a
-fixed 512² (``backward_smoke.py`` — 12 swaps × 0.41 GB × 2 directions is the
-whole step time, so compute hides under PCIe) and a moving token count can only
-make it worse. ``--compile`` turns it on dynamically if the swap count ever
-drops far enough for compute to matter.
+Block compile is **off** by default: it measured ±0 at 512² with 12 swaps
+(``backward_smoke.py`` — 12 × 0.41 GB × 2 directions is the whole step time, so
+compute hides under PCIe). Where the step is compute-bound it pays — −13 % at
+1024² with 7 swaps under checkpointing (2026-09-24). ``--compile`` turns it on;
+``--compile_seq bounded`` (default) marks the sequence axis dynamic over the
+cache's [min, max] joint tokens and leaves the hidden dims static, ``dynamic``
+is ``torch.compile(dynamic=True)``. Both hold one graph family across every
+sample size; see ``accel.compile_blocks``.
 
     make daemon-run ARGS="scripts/qwen21/train.py --epochs 8"
 """
@@ -242,20 +245,50 @@ def run_train(req: TrainRequest) -> Path:
 
         transformer.enable_gradient_checkpointing(checkpointing_func)
 
+    # The largest sample is known before the model is placed, and a checkpointed
+    # step's footprint is affine in its joint token count, so the reserve follows
+    # the cache instead of a constant.
+    max_joint = image_tokens[-1] + text_lens[-1]
+    if req.activation_reserve_gb is None:
+        reserve_gb = blockswap.activation_reserve_for_tokens(
+            max_joint,
+            slack_gb=blockswap.block_size_gb(transformer.transformer_blocks),
+        )
+        print(
+            f"activation reserve {reserve_gb:.2f} GB for {max_joint} joint tokens "
+            "(0.3 GB + 0.6 MB/token + one block of slack)",
+            flush=True,
+        )
+    else:
+        reserve_gb = req.activation_reserve_gb
+        print(f"activation reserve {reserve_gb:.2f} GB (--activation_reserve_gb)", flush=True)
+
     attached = place(
         transformer,
         TRANSFORMER_BLOCKS,
         device,
         blocks_to_swap=req.blocks_to_swap,
         supports_backward=True,
-        activation_reserve_gb=req.activation_reserve_gb,
+        activation_reserve_gb=reserve_gb,
         label="transformer",
     )
     blocks = transformer.transformer_blocks
     placement = block_devices(blocks)
     if req.compile:
-        # dynamic: the joint sequence moves with both the image and caption size.
-        compile_blocks(blocks, mode=req.compile_mode, dynamic=True, decode_only=False)
+        # The joint sequence moves with both the image and caption size; the
+        # cache bounds it before the first step.
+        seq_range = (
+            (image_tokens[0] + text_lens[0], max_joint)
+            if req.compile_seq == "bounded"
+            else None
+        )
+        compile_blocks(
+            blocks,
+            mode=req.compile_mode,
+            dynamic=True,
+            decode_only=False,
+            seq_range=seq_range,
+        )
     empty_cache()
     print(f"free VRAM before training: {free_vram_gb():.2f} GB", flush=True)
 

@@ -1,0 +1,95 @@
+{
+  "resolution": 1024,
+  "image_tokens": 4096,
+  "text_len": 346,
+  "rank": 16,
+  "lora_params": 41943040,
+  "patched_linears": 224,
+  "blocks_to_swap": 7,
+  "compile": true,
+  "compile_seq": "bounded",
+  "grad_checkpointing": true,
+  "steps": [
+    {
+      "step": 0,
+      "loss": 2.356334686279297,
+      "grad_norm": 0.36885786056518555,
+      "seconds": 7.989185333251953,
+      "peak_gb": 13.35719347000122,
+      "params_without_grad": 0,
+      "params_nonfinite_grad": 0,
+      "params_zero_grad": 224,
+      "placement_restored": true
+    },
+    {
+      "step": 1,
+      "loss": 6.775915145874023,
+      "grad_norm": 1.1284880638122559,
+      "seconds": 3.893096446990967,
+      "peak_gb": 13.670215606689453,
+      "params_without_grad": 0,
+      "params_nonfinite_grad": 0,
+      "params_zero_grad": 0,
+      "placement_restored": true
+    },
+    {
+      "step": 2,
+      "loss": 1.8185397386550903,
+      "grad_norm": 0.3037868142127991,
+      "seconds": 3.8953521251678467,
+      "peak_gb": 13.670215606689453,
+      "params_without_grad": 0,
+      "params_nonfinite_grad": 0,
+      "params_zero_grad": 0,
+      "placement_restored": true
+    },
+    {
+      "step": 3,
+      "loss": 2.720891237258911,
+      "grad_norm": 0.43568986654281616,
+      "seconds": 3.896374464035034,
+      "peak_gb": 13.670215606689453,
+      "params_without_grad": 0,
+      "params_nonfinite_grad": 0,
+      "params_zero_grad": 0,
+      "placement_restored": true
+    }
+  ],
+  "extra_shapes": [
+    {
+      "resolution": 1024,
+      "text_len": 200,
+      "joint_tokens": 4296,
+      "seconds": 21.02737855911255,
+      "peak_gb": 13.62743616104126,
+      "placement_restored": true
+    },
+    {
+      "resolution": 896,
+      "text_len": 346,
+      "joint_tokens": 3482,
+      "seconds": 2.8396852016448975,
+      "peak_gb": 13.082484722137451,
+      "placement_restored": true
+    },
+    {
+      "resolution": 512,
+      "text_len": 346,
+      "joint_tokens": 1370,
+      "seconds": 1.1144556999206543,
+      "peak_gb": 11.790749549865723,
+      "placement_restored": true
+    },
+    {
+      "resolution": 1024,
+      "text_len": 346,
+      "joint_tokens": 4442,
+      "seconds": 3.861997604370117,
+      "peak_gb": 13.672826290130615,
+      "placement_restored": true
+    }
+  ],
+  "params_off_device": [],
+  "steady_seconds": 3.893096446990967,
+  "peak_gb": 13.670215606689453
+}

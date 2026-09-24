@@ -38,6 +38,7 @@ DEFAULT_TARGETS = (
 )
 
 LORA_DTYPES = ("bf16", "fp16", "fp32")
+COMPILE_SEQ_MODES = ("bounded", "dynamic")
 
 # The default test prompt: a character the base model already knows, described
 # in plain language the way Qwen-Image expects (not a tag list).
@@ -208,18 +209,27 @@ class TrainRequest(_Request):
         None,
         "transformer blocks to swap (default: sized from activation_reserve_gb)",
     )
-    activation_reserve_gb: float = _f(
-        3.5,
-        "VRAM kept free for activations when sizing the swap. 3.5 is the measured "
-        "floor at 1024² with gradient checkpointing (swap 6, 0.5 GB spare at the "
-        "largest sample); 2 OOMs. Fewer swaps are not faster at 1024²",
+    activation_reserve_gb: float | None = _f(
+        None,
+        "VRAM kept free for activations when sizing the swap (default: measured "
+        "0.3 GB + 0.6 MB x the largest image+text token count in the cache, plus "
+        "one block of slack; 3.3 GB at 4096+346 tokens). Fewer swaps are not "
+        "faster at 1024²",
         advanced=True,
     )
     grad_checkpointing: bool = _f(True, "activation checkpointing (the VRAM lever)")
     compile: bool = _f(
         False,
-        "torch.compile each block dynamically; measured +-0 while the step is "
-        "PCIe-bound",
+        "torch.compile each block; +-0 while the step is PCIe-bound (512², swap "
+        "12), -13% where it is compute-bound (1024², swap 7, checkpointing)",
+        advanced=True,
+    )
+    compile_seq: str = _f(
+        "bounded",
+        "how the joint token count goes symbolic: bounded = automatic dynamic + "
+        "mark_dynamic over the cache's [min, max] joint tokens (hidden dims stay "
+        "static); dynamic = torch.compile(dynamic=True)",
+        choices=COMPILE_SEQ_MODES,
         advanced=True,
     )
     compile_mode: str | None = _f(None, "torch.compile mode", advanced=True)
