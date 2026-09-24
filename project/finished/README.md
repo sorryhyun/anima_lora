@@ -36,3 +36,15 @@ Finished lines:
   measured ceilings (teacher-bound; distillation faithful). Open remainder:
   Korean-text training data. Verdicts: [`sr/STATUS.md`](sr/STATUS.md); ops:
   [`sr/README.md`](sr/README.md).
+- [`cjk_aware_anima/`](cjk_aware_anima/) — the encoder-side CJK line: native
+  JA / KO / ZH prompting through extra T5-side vocab rows distilled against the
+  EN-translation teacher (frozen 2026-09-05, moved here 2026-09-24). Shipped:
+  the `synthja_v4` tag tier and the `synthjakozh1sym_r256` pack that the
+  public `anima-vocab-pack-cjk` repo is built on. Ceiling: rare kanji names
+  never compose under any lever, coverage / geometry refinements are inert,
+  content-free tables tie the trained pack for unmask training; the DiT-side
+  question continued in `../cjk_aware_anima_dit/` → `../cjk_renderable_anima/`.
+  The pack recipe stays operational in `scripts/distill_cjk/` (corpus builders
+  under `corpus/`; `docs/methods/cjk_vocab_pack.md` § Rebuilding a pack).
+  Verdicts: [`cjk_aware_anima/findings.md`](cjk_aware_anima/findings.md);
+  digest: [`cjk_aware_anima/README.md`](cjk_aware_anima/README.md).

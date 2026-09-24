@@ -1,6 +1,6 @@
 """Invariants for the CJK Phase 2a glossary/corpus builders.
 
-The subtle part of `project/cjk_aware_anima/datasets/` is deciding *which
+The subtle part of `scripts/distill_cjk/corpus/` is deciding *which
 string is Japanese* and *which alternate wording is safe to swap in* — both
 silently corrupt the corpus when wrong, and neither shows up as a crash. These
 guard the two rules that were established by measurement:
@@ -16,7 +16,6 @@ guard the two rules that were established by measurement:
 from __future__ import annotations
 
 import collections
-import importlib.util
 import json
 import random
 import sys
@@ -24,24 +23,7 @@ from pathlib import Path
 
 import pytest
 
-DATASETS = (
-    Path(__file__).resolve().parents[1] / "project" / "cjk_aware_anima" / "datasets"
-)
-
-
-def _load(name: str):
-    """Import a `datasets/` script by path — they are entry points, not a package."""
-    sys.path.insert(0, str(DATASETS))
-    spec = importlib.util.spec_from_file_location(name, DATASETS / f"{name}.py")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module  # dataclasses resolve types via sys.modules
-    spec.loader.exec_module(module)
-    return module
-
-
-tag_glossary = _load("tag_glossary")
-build_pairs = _load("build_pairs")
-mt = _load("mt")
+from scripts.distill_cjk.corpus import build_pairs, mt, tag_glossary, tag_pairs
 
 
 def test_translation_cache_survives_a_killed_job(tmp_path):
@@ -272,7 +254,6 @@ def test_axis_falls_back_to_the_wiki_category_for_tags_outside_the_index():
     )
 
 
-tag_pairs = _load("tag_pairs")
 
 
 def test_tag_pairs_fills_only_what_the_glossary_left_unresolved():

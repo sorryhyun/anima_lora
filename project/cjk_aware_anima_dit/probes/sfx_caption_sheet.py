@@ -48,7 +48,7 @@ from anime_tools.captions.position_clauses import (
 from anime_tools.ocr.sfx import CROP_PAD, pad_box
 
 REPO = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(REPO / "project/cjk_aware_anima/datasets"))
+sys.path.insert(0, str(REPO / "project/finished/cjk_aware_anima/datasets"))
 from ocr_sfx import dedupe_sfx, sfx_groups  # noqa: E402  (torch-free; the caption builder's rule)
 
 UNMASK = REPO / "post_image_dataset/cjk_unmask"

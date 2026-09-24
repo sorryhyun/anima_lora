@@ -40,7 +40,8 @@ Retired lines so far:
   write-ups if the line reopens.
 
 Finished lines are listed in [`finished/README.md`](finished/README.md)
-(the ResShift SR sidecar, 2026-08-22; mod guidance, 2026-08-24).
+(the ResShift SR sidecar, 2026-08-22; mod guidance, 2026-08-24; the
+encoder-side CJK line `cjk_aware_anima`, 2026-09-24).
 
 Active projects:
 
@@ -61,11 +62,11 @@ Active projects:
   measured, not theory). `design.md` is the stage-schedule sketch under
   review; nothing has trained there yet.
 
-Both CJK lines below are frozen, and no other line has open phases.
+The CJK line below is frozen, and no other line has open phases.
 
-Frozen lines (kept here rather than in `finished/` or `_archive/`: their
-`findings.md` is the anti-re-proposal record and is read often, but neither
-reached its own top-line goal, so neither is a "finished" line):
+Frozen line (kept here rather than in `finished/` or `_archive/`: its
+`findings.md` is the anti-re-proposal record and is read often, but the line
+never reached its own top-line goal, so it is not a "finished" line):
 
 - [`cjk_aware_anima_dit/`](cjk_aware_anima_dit/) — the DiT-side successor,
   frozen 2026-09-08: ext rows as content-free, deterministic addresses;
@@ -83,15 +84,3 @@ reached its own top-line goal, so neither is a "finished" line):
   line moved to `cjk_renderable_anima/` on 2026-09-14), [`history.md`](cjk_aware_anima_dit/history.md)
   (the dated record incl. the freeze note); pre-freeze plans and dated
   reports archived to `_archive/cjk_aware_anima_dit/{plans,reports}/`.
-- [`cjk_aware_anima/`](cjk_aware_anima/) — the encoder-side line, frozen
-  2026-09-05: native JA prompt conditioning via an extended T5-side vocab
-  distilled against the EN-translation teacher. Rare kanji names fail under
-  every lever; coverage and geometry refinements are inert; content-free
-  tables tie or beat the trained pack for unmask training. `synthja_v4`
-  ships as the zero-shot tag tier (`sorryhyun/anima-vocab-pack-ja`).
-  Home: [`findings.md`](cjk_aware_anima/findings.md) (§1–§14, read-only),
-  [`deliverables.md`](cjk_aware_anima/deliverables.md); plans and the dated
-  reports archived to `_archive/cjk_aware_anima/{plans,reports}/`.
-  Dataset-side numbers stay live in
-  [`datasets/README.md`](cjk_aware_anima/datasets/README.md) and
-  `bench/cjk_{adapter,distill}/results/`.

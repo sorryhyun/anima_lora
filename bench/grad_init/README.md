@@ -204,4 +204,4 @@ preference either way.
 Both kill conditions in `docs/proposal/grad_basis_init.md` §E1 fire: keep
 `weight_svd` as the default, keep `grad_svd` / `basis_file` as documented opt-in
 modes with the probe numbers as their record, do not ship a catalog basis.
-Reports: `project/cjk_aware_anima/reports/blind_s2{2,3,4,5}_E1_*.md`.
+Reports: `project/finished/cjk_aware_anima/reports/blind_s2{2,3,4,5}_E1_*.md`.

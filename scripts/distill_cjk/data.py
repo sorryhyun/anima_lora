@@ -1,7 +1,7 @@
 """Pairs, span alignment, and the on-disk cache reader (CPU only).
 
 The corpus (``post_image_dataset/cjk_distill/pairs.jsonl``, built by
-``project/cjk_aware_anima/datasets/build_pairs.py``) is a list of
+``scripts/distill_cjk/corpus/build_pairs.py``) is a list of
 ``{en, ja, register, spans}`` records. ``spans`` is what makes the span loss
 possible: D1 captions are *composed* tag-by-tag from the glossary, so each EN
 tag maps to exactly one JA tag in the same order. This module turns that free

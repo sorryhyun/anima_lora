@@ -1,4 +1,4 @@
-"""CJK vocab-pack distillation (project/cjk_aware_anima, Phase 2b).
+"""CJK vocab-pack distillation (the frozen ``project/finished/cjk_aware_anima`` line, Phase 2b).
 
 Trains the *extended* rows of the LLM Adapter's T5-side query table so that
 
@@ -24,6 +24,8 @@ Modules:
 * :mod:`scripts.distill_cjk.rows`      — per-row bookkeeping / holdout.
 * :mod:`scripts.distill_cjk.adapter_lora` — ext-gated LoRA on the adapter's Linears.
 * :mod:`scripts.distill_cjk.build_query_bank` — cross-attn probe queries for ``attn``.
+* :mod:`scripts.distill_cjk.corpus`    — the pair-file builders (glossary, lexicon,
+  ``build_pairs`` + synth registers); ``make exp-cjk-corpus ARGS='<stage> …'``.
 
 The loop runs outside ``train.py``: no DiT, VAE, latents or sampler, only a 6-block
 adapter forward over cached text features.

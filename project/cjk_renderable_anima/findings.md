@@ -11,7 +11,7 @@ W0–W2 report is `reports/wake_w0_w2_2026_09_13.md`. The predecessor lines'
 verdicts are read-only in
 [`../cjk_aware_anima_dit/findings.md`](../cjk_aware_anima_dit/findings.md)
 (DiT side, OCR readers, captions) and
-[`../cjk_aware_anima/findings.md`](../cjk_aware_anima/findings.md)
+[`../finished/cjk_aware_anima/findings.md`](../finished/cjk_aware_anima/findings.md)
 (the vocab pack itself).
 
 Line status (2026-09-20): frozen DiT + frozen adapter + a delta on the

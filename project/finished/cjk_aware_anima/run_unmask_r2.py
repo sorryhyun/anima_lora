@@ -1,0 +1,221 @@
+#!/usr/bin/env python3
+"""Arm C3 pipeline as ONE daemon command job: ext TE re-cache with the
+glossary-r2 pack -> arm-C3 LoRA train -> 3-seed eval grid.
+
+Stages run as direct subprocesses (never nested daemon jobs — that deadlocks
+the serial queue, same rule as scripts/soup/pipeline.py). Queue it *behind*
+the distill job that writes the pack::
+
+    make daemon-run ARGS="--label unmask-c3-r2 --stall-timeout 0 \
+        project/finished/cjk_aware_anima/run_unmask_r2.py --queue"
+
+Stage 1 builds the mirror + TE cache from the OCR records (default since
+plan_det D3, 2026-09-06: the AnimeText-detector records; earlier arms up to
+C11 trained on the PP-OCRv6 3-layer stack's ``_hybrid_vl`` file — pass
+``--records/--mirror/--te_out`` explicitly to reproduce one);
+stage 3 renders ``assets/unmask_eval_prompts.txt`` at seeds 42/7/1234 into
+``output/tests/cjk_unmask_eval2/armC3_s*`` next to the C2 grid.
+
+Multi-training-seed arms (C10, plan_base1 B3) are one job per seed: the first
+builds the mirror + TE cache, the rest pass ``--skip_cache`` and their own
+``--method`` / ``--arm`` (``seed`` lives in the method toml).
+"""
+
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+REPO = HERE.parents[2]
+PY = sys.executable
+
+SEEDS = (42, 7, 1234)
+
+
+def run(stage: str, argv: list[str]) -> None:
+    print(f"\n=== [{stage}] {' '.join(argv)}", flush=True)
+    subprocess.run(argv, cwd=REPO, check=True)
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--ext_prefix", default="output/ckpt/cjk_vocab/cjk_vocab_pack_synthjakozh1sym_r256_isoq"
+    )
+    ap.add_argument("--method", default="cjk_unmask_c3")
+    ap.add_argument(
+        "--te_out",
+        default="post_image_dataset/cjk_unmask/te/sincos_animetext_sentence_isoq",
+        help="plan_det D3 (2026-09-06): the AnimeText-detector records are the "
+        "default; the hybrid_vl (3-layer stack) caches stay on disk for C10/C11.",
+    )
+    ap.add_argument(
+        "--mirror",
+        default="post_image_dataset/cjk_unmask/mirror_sincos_animetext_sentence",
+        help="caption mirror dir; use a fresh one for a new records/format so "
+        "the trained arms' mirrors stay as trained.",
+    )
+    ap.add_argument("--eval_dir", default="output/tests/cjk_unmask_eval2")
+    ap.add_argument(
+        "--prompts",
+        default=str(HERE / "assets" / "unmask_eval_prompts.txt"),
+        help="eval prompt file, one row per line (v2: assets/unmask_eval_prompts_v2.txt)",
+    )
+    ap.add_argument("--arm", default="armC3")
+    ap.add_argument(
+        "--records",
+        default="post_image_dataset/cjk_unmask/ocr_records_sincos_animetext.jsonl",
+        help="OCR records (plan_det D1: AnimeText detector + SFX reader, "
+        "`ocr/animetext_records.py`). `…_hybrid_vl.jsonl` is the retired 3-layer "
+        "stack the C10/C11 arms trained on; the _v2 file carries reading order "
+        "+ the ー/ニ/tally post-processing (anime_tools.ocr._text).",
+    )
+    ap.add_argument(
+        "--ocr_format",
+        default="order",
+        choices=("order", "tags", "presence", "sentence"),
+        help="cache_te_ext --ocr_format; C2–C9 were 'tags', C10 (plan_base1 B3) "
+        "'sentence' on the hybrid records.",
+    )
+    ap.add_argument(
+        "--keep_sfx",
+        action="store_true",
+        help="no-op since 2026-09-06 (cache_te_ext keeps SFX records + the "
+        "'Japanese SFX reads as' sentence by default; was arm C11, plan_ocr O4).",
+    )
+    ap.add_argument(
+        "--drop_sfx",
+        action="store_true",
+        help="cache_te_ext --drop_sfx: the C2–C10 caption (no SFX records, no "
+        "SFX sentence) for reproductions.",
+    )
+    ap.add_argument(
+        "--sidecars",
+        default=None,
+        help="cache_te_ext --sidecars: build the captions from the shipped "
+        "{stem}.ocr.txt tree (with_ocr_clause) instead of a records jsonl — "
+        "the plain-vs-OCR A/B's arm OCR (2026-09-08). --records/--ocr_format "
+        "are ignored.",
+    )
+    ap.add_argument(
+        "--strip_symbols",
+        action="store_true",
+        help="cache_te_ext --strip_symbols: the OCR clauses carry no hearts / "
+        "stars / notes (arm NOSYM, 2026-09-08).",
+    )
+    ap.add_argument("--skip_cache", action="store_true")
+    ap.add_argument("--skip_train", action="store_true")
+    ap.add_argument(
+        "--seeds",
+        nargs="+",
+        type=int,
+        default=list(SEEDS),
+        help="grid seeds (default 42 7 1234); use fresh ones for a re-blind",
+    )
+    opts = ap.parse_args()
+
+    pack = REPO / f"{opts.ext_prefix}.safetensors"
+    if not opts.skip_cache and not pack.exists():
+        sys.exit(f"ext pack missing: {pack} (distill job not finished?)")
+
+    if not opts.skip_cache:
+        run(
+            "cache",
+            [
+                PY,
+                str(HERE / "datasets" / "cache_te_ext.py"),
+                "--shard",
+                "sincos",
+                *(
+                    ["--sidecars", opts.sidecars]
+                    if opts.sidecars
+                    else ["--records", opts.records]
+                ),
+                "--mirror",
+                opts.mirror,
+                "--ext_prefix",
+                opts.ext_prefix,
+                "--out",
+                opts.te_out,
+                "--ocr_format",
+                opts.ocr_format,
+                *(["--drop_sfx"] if opts.drop_sfx else []),
+                *(["--strip_symbols"] if opts.strip_symbols else []),
+            ],
+        )
+
+    if not opts.skip_train:
+        run(
+            "train",
+            [
+                PY,
+                "train.py",
+                "--method",
+                opts.method,
+                "--preset",
+                "default",
+                "--methods_subdir",
+                "gui-methods/custom",
+                "--output_dir",
+                "output/ckpt/cjk",
+                # stamps ss_ext_pack_sha (D1): the LoRA is coupled to the pack
+                # its TE caches were encoded through.
+                "--ext_pack",
+                opts.ext_prefix,
+            ],
+        )
+
+    lora = f"output/ckpt/cjk/{opts.method}.safetensors"
+    base = [
+        PY,
+        "inference.py",
+        "--dit",
+        "models/diffusion_models/anima-base-v1.0.safetensors",
+        "--text_encoder",
+        "models/text_encoders/qwen_3_06b_base.safetensors",
+        "--vae",
+        "models/vae/qwen_image_vae.safetensors",
+        "--vae_chunk_size",
+        "64",
+        "--vae_disable_cache",
+        "--attn_mode",
+        "flash",
+        "--lora_multiplier",
+        "1.0",
+        "--negative_prompt",
+        "worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, sepia",
+        "--image_size",
+        "1024",
+        "1024",
+        "--infer_steps",
+        "28",
+        "--flow_shift",
+        "3.0",
+        "--sampler",
+        "euler",
+        "--guidance_scale",
+        "4.0",
+        "--lora_weight",
+        lora,
+        "--from_file",
+        opts.prompts,
+    ]
+    for seed in opts.seeds:
+        run(
+            f"gen s{seed}",
+            base
+            + [
+                "--seed",
+                str(seed),
+                "--save_path",
+                f"{opts.eval_dir}/{opts.arm}_s{seed}",
+            ],
+        )
+    print("\n=== done:", lora, "->", opts.eval_dir, flush=True)
+
+
+if __name__ == "__main__":
+    main()

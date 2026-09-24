@@ -1,4 +1,4 @@
-"""OCR lines -> arm-C caption (project/cjk_aware_anima/datasets/cache_te_ext.py)."""
+"""OCR lines -> arm-C caption (project/finished/cjk_aware_anima/datasets/cache_te_ext.py)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _mod():
-    path = ROOT / "project" / "cjk_aware_anima" / "datasets" / "cache_te_ext.py"
+    path = ROOT / "project" / "finished" / "cjk_aware_anima" / "datasets" / "cache_te_ext.py"
     spec = importlib.util.spec_from_file_location("cache_te_ext", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -57,7 +57,7 @@ def test_tags_format_is_the_c2_shape():
 
 
 def _sfx():
-    path = ROOT / "project" / "cjk_aware_anima" / "datasets" / "ocr_sfx.py"
+    path = ROOT / "project" / "finished" / "cjk_aware_anima" / "datasets" / "ocr_sfx.py"
     spec = importlib.util.spec_from_file_location("ocr_sfx", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -242,9 +242,9 @@ def test_line_kind_balloon_veto():
     assert k("さわって", in_bubble=False) == "speech"
 
 
-# ---- hybrid records (project/cjk_aware_anima/datasets/build_ocr_records.py, B0)
+# ---- hybrid records (project/finished/cjk_aware_anima/datasets/build_ocr_records.py, B0)
 def _hybrid():
-    path = ROOT / "project" / "cjk_aware_anima" / "datasets" / "build_ocr_records.py"
+    path = ROOT / "project" / "finished" / "cjk_aware_anima" / "datasets" / "build_ocr_records.py"
     spec = importlib.util.spec_from_file_location("build_ocr_records", path)
     mod = importlib.util.module_from_spec(spec)
     sys.modules["build_ocr_records"] = mod  # dataclasses resolve annotations here

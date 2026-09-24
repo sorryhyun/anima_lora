@@ -423,6 +423,13 @@ COMMANDS = {
         "en-translation teacher. Gates in order: ARGS='--mode oracle' → "
         "'--mode capacity' → '--mode train'. Emits a vocab pack, not a LoRA.",
     ),
+    "exp-cjk-corpus": (
+        exp_training.cmd_cjk_corpus,
+        "[experimental] Run one CJK distillation corpus-builder stage "
+        "(scripts/distill_cjk/corpus/). Usage: exp-cjk-corpus ARGS='<stage> [flags]' "
+        "— stages: wikidata_lexicon, tag_glossary, tag_pairs, build_pairs, synth_names, "
+        "synth_tags, desc_pairs, build_pairs_sym, mt. Recipes: docs/methods/cjk_vocab_pack.md.",
+    ),
     "exp-test-soft": (
         exp_inference.cmd_test_soft,
         "[experimental] Inference with latest soft_tokens weight "

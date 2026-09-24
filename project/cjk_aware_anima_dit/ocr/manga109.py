@@ -201,14 +201,14 @@ def _load_by_path(name: str, path: Path):
 
 
 def pilot_manga_text():
-    """``project/cjk_aware_anima/datasets/manga_text.py`` — ``deskew_crop``, ``MangaOCR``."""
+    """``project/finished/cjk_aware_anima/datasets/manga_text.py`` — ``deskew_crop``, ``MangaOCR``."""
     return _load_by_path(
-        "_pilot_manga_text", REPO / "project/cjk_aware_anima/datasets/manga_text.py"
+        "_pilot_manga_text", REPO / "project/finished/cjk_aware_anima/datasets/manga_text.py"
     )
 
 
 def pilot_records():
     """``build_ocr_records.py`` — ``norm`` / ``sim`` / ``is_runaway`` (the A/B's keys)."""
     return _load_by_path(
-        "_pilot_records", REPO / "project/cjk_aware_anima/datasets/build_ocr_records.py"
+        "_pilot_records", REPO / "project/finished/cjk_aware_anima/datasets/build_ocr_records.py"
     )

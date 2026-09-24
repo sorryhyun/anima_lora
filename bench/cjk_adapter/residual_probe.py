@@ -215,12 +215,12 @@ def main() -> None:
     p.add_argument(
         "--prompts",
         type=Path,
-        default=Path("project/cjk_aware_anima/assets/ja_eval_prompts_residual.json"),
+        default=Path("project/finished/cjk_aware_anima/assets/ja_eval_prompts_residual.json"),
     )
     p.add_argument(
         "--labels",
         type=Path,
-        default=Path("project/cjk_aware_anima/assets/grid_labels.json"),
+        default=Path("project/finished/cjk_aware_anima/assets/grid_labels.json"),
         help="eyeball verdicts to rank every metric column against ('' to skip)",
     )
     opts = p.parse_args()

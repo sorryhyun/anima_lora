@@ -101,7 +101,7 @@ EVAL_GROUPS = (
 )
 
 NATIVE_PROMPTS = (
-    REPO / "project" / "cjk_aware_anima" / "assets" / "unmask_eval_prompts.txt"
+    REPO / "project" / "finished" / "cjk_aware_anima" / "assets" / "unmask_eval_prompts.txt"
 )
 # the user's own target captions (ComfyUI, 2026-09-17), rendered verbatim by
 # ``--stage target``

@@ -7,14 +7,14 @@ real-vs-real noise floor for all of them — "the seed picks a mode" is visible,
 "which mode is better" is not. This renders the same arm checkpoints on a
 12-row general prompt set (``@aak`` trigger, SFW-leaning, same shape as the
 unmask eval rows) and composes them into the blind-pairs protocol
-(``project/cjk_aware_anima/probes/blind_pairs.py``), one DIRECT pairing per
+(``project/finished/cjk_aware_anima/probes/blind_pairs.py``), one DIRECT pairing per
 set against the shipped ``weight_svd`` control — never chain sets.
 
 Sets (default): WSVD vs BASIS (load-bearing), WSVD vs GSVD, WSVD vs KAIMING
 (does init matter at all), WSVD vs MINSNR — each at its own fresh seed pair, since
 the control recurs in every set and a repeated image would unblind it. Grade in the private repo, then::
 
-    .venv/bin/python project/cjk_aware_anima/probes/blind_pairs.py score --set <set>
+    .venv/bin/python project/finished/cjk_aware_anima/probes/blind_pairs.py score --set <set>
 
 Usage (one daemon command job; ~10 inference.py loads)::
 
@@ -30,7 +30,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 PY = sys.executable
-BLIND = REPO / "project" / "cjk_aware_anima" / "probes" / "blind_pairs.py"
+BLIND = REPO / "project" / "finished" / "cjk_aware_anima" / "probes" / "blind_pairs.py"
 
 ARMS = {
     "KAIMING": "output/ckpt/e1_grad_init/e1_kaiming.safetensors",
@@ -50,7 +50,7 @@ DEFAULT_SETS = [
     ("s25_E1_WSVD_vs_MINSNR", ["WSVD", "MINSNR"], [5, 6]),
 ]
 
-# Same render recipe as project/cjk_aware_anima/run_unmask_r2.py so the
+# Same render recipe as project/finished/cjk_aware_anima/run_unmask_r2.py so the
 # recorded rungs / seed-twin floor of the blind protocol carry over.
 INFER_BASE = [
     "inference.py",

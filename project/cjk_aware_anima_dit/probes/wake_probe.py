@@ -2142,7 +2142,7 @@ def _read_eval(a, arm_dir: Path, manifest, train_dir: Path | None = None):
 # stage: native (does the address survive a scene prompt?)
 
 NATIVE_PROMPTS = (
-    REPO / "project" / "cjk_aware_anima" / "assets" / "unmask_eval_prompts.txt"
+    REPO / "project" / "finished" / "cjk_aware_anima" / "assets" / "unmask_eval_prompts.txt"
 )
 NATIVE_CLAUSES = {
     # the trained clause shape, hung off a scene prompt instead of the template

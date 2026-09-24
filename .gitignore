@@ -66,7 +66,7 @@ project/*/paper/*.blg
 project/sigma_lowres/paper_bench/
 bench/cjk_adapter/assets/
 bench/cjk_distill/assets/
-project/cjk_aware_anima/datasets/assets/
+project/finished/cjk_aware_anima/datasets/assets
 
 project/sigma_lowres/bench/probe1024_closure
 project/sigma_lowres/bench/probe1280_cache
@@ -78,3 +78,4 @@ workspace/
 # dated reports moved to _archive/cjk_aware_anima{,_dit}/reports/. The whole
 # reports dir is untracked now, so a probe re-run that recreates it is quiet.
 project/cjk_aware_anima*/reports/
+project/finished/cjk_aware_anima/reports/

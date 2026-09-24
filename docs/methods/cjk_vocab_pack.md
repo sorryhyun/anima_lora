@@ -12,9 +12,10 @@ off (stock tokenizer).
 
 Public pack: <https://huggingface.co/sorryhyun/anima-vocab-pack-cjk>
 (`anima_cjk_vocab_pack_preview.{safetensors,json}`, ~285 MB; the model card carries the
-training label). Research history and the pack builder live under
-`project/cjk_aware_anima/` and `bench/cjk_adapter/`; this page is the shipped
-surface only.
+training label). Research history lives under `project/finished/cjk_aware_anima/`; the
+builder is `bench/cjk_adapter/build_ext.py` (ext table) + `scripts/distill_cjk/`
+(corpus builders under `corpus/`, cache, distill) — see [Rebuilding a pack](#rebuilding-a-pack).
+The rest of this page is the shipped surface only.
 
 ## Default on, how to turn off
 
@@ -103,6 +104,121 @@ EN-only datasets are unaffected either way (identical ids, identical caches).
   (`output/ckpt/*_isoq`), not published. `HybridT5Encoder` handles it when a
   local pack carries one; the shipped pack routes every CJK span to the
   trained rows.
+
+## Rebuilding a pack
+
+Four stages, all from the repo root; GPU stages go through the daemon. Every
+argv below is what actually ran (daemon `job.json` records and the distill
+`result.json` envelopes under `bench/cjk_distill/results/`), except where a
+line says the flags were not recorded.
+
+1. **Ext table** — `bench/cjk_adapter/build_ext.py` →
+   `bench/cjk_adapter/assets/ext_embed.{safetensors,json}`. The id mapping is
+   tokenizer-deterministic, so a rebuild changes row *values* only; distill
+   caches (keyed on ids) survive it. Loads the Qwen3 encoder for the contextual
+   char init, so: `make daemon-run ARGS="bench/cjk_adapter/build_ext.py"` (the
+   v2 default, `--map procrustes-mix --char-init contextual`, symbol block on —
+   69,558 rows). `--no-symbols` reproduces the 58,968-row table.
+2. **Corpus** — `scripts/distill_cjk/corpus/` (`make exp-cjk-corpus
+   ARGS='<stage> [flags]'`, or `python -m scripts.distill_cjk.corpus.<stage>`).
+   Pair files land in `post_image_dataset/cjk_distill/`, intermediates
+   (glossaries, Wikidata lexicon, the danbooru wiki dump, MT caches) in
+   `post_image_dataset/cjk_distill/assets/`. `tag_overrides*.json` beside the
+   code are the hand-pinned wordings and win over every source.
+3. **Cache** — `python -m scripts.distill_cjk.cache --pairs <jsonl> --cache_dir
+   <dir> --holdout 500` per pair file (daemon; encodes both arms once).
+4. **Distill** — `make exp-distill-cjk ARGS="…"` (daemon) →
+   `output/ckpt/cjk_vocab_pack_<name>.{safetensors,json}`; publish the pair as
+   is (the loader reads the json's routing maps; the Hub repo also carries the
+   Qwen3 tokenizer files next to it).
+
+### `synthja_v4` — the JA tag tier (2026-08-31)
+
+CPU stages, in order (`--lang ja` is the default everywhere; the exact flags of
+the JA glossary / pairs runs were not recorded — the defaults are the recipe):
+
+```bash
+make exp-cjk-corpus ARGS="wikidata_lexicon"                    # EN↔JA proper nouns (Wikidata, CC0)
+make daemon-run ARGS="-m scripts.distill_cjk.corpus.tag_glossary --mt"   # wiki other_names → lexicon → MT residue (Hy-MT2-7B)
+make exp-cjk-corpus ARGS="tag_pairs"                           # fill-only from p1atdev/danbooru-ja-tag-pair
+make exp-cjk-corpus ARGS="build_pairs"                         # pairs.jsonl: tags / tags_alt / names (+ D6 quotes)
+make exp-cjk-corpus ARGS="synth_names --context both"          # + names_synth / names_synth_ja → pairs_synth.jsonl
+make exp-cjk-corpus ARGS="synth_tags"                          # + tags_synth_ja (under-floor tags) → pairs_synth_tags.jsonl
+```
+
+Then cache and distill (`result.json` of `20260831-1221-2c-synthja-v4-kanjifilter`):
+
+```bash
+P=post_image_dataset/cjk_distill/pairs_synth_tags.jsonl; C=post_image_dataset/cjk_distill/cache_synth3
+make daemon-run ARGS="-m scripts.distill_cjk.cache --pairs $P --cache_dir $C --holdout 500"
+make daemon-run ARGS="-m scripts.distill_cjk.distill --pairs $P --cache_dir $C \
+  --train_registers tags,tags_alt,names,names_synth,names_synth_ja,tags_synth_ja \
+  --register_sampling names_synth_ja:0.2,names_synth:0.5 --register_span_scale names_synth:en_pinned=0.3 \
+  --param global --rank 64 --loss span --trust provenance --min_visits 5 --holdout 500 \
+  --steps 12000 --batch_size 32 --lr 0.001 --eval_every 250 --eval_limit 256 \
+  --ext_prefix bench/cjk_adapter/assets/ext_embed \
+  --out output/ckpt/cjk_vocab_pack_synthja_v4 --label 2c-synthja-v4-kanjifilter"
+```
+
+`v4` = `v3` + the allowed-kanji filter (`kanji_allow.ALLOWED`, jōyō + jinmeiyō
++ the reviewed hyōgai whitelist) applied inside `tag_glossary`; the ext table
+was the v1 build (`--map ridge --char-init fragment-mean`). `cache_synth3` and
+`pairs_synth_tags.jsonl` are no longer on disk — rebuild from the corpus stages.
+
+### `synthjakozh1sym_r256` — the shipped JA+KO+ZH pack (2026-09-03)
+
+Corpus (CPU). The JA file is `pairs_tags.jsonl` (`build_pairs` + `synth_tags`,
+registers `tags,tags_alt,names,tags_synth_ja`); KO and ZH are `--lang` passes
+of the same stages plus the KO description register and the ZH `tags_zh_hant`
+sibling (OpenCC s2t, emitted by `build_pairs --lang zh`). Flags on record:
+
+```bash
+# JA (rebuilt 2026-09-02 after the glossary r2 review)
+make daemon-run ARGS="-m scripts.distill_cjk.corpus.tag_glossary --mt"
+make exp-cjk-corpus ARGS="tag_glossary --lang ja --reselect post_image_dataset/cjk_distill/assets/tag_glossary_ja.json"  # CPU re-pick over stored candidates
+make exp-cjk-corpus ARGS="build_pairs --lang ja"                  # pairs.jsonl, 63,241 pairs (a --commentary D2 file was passed; D2 is span-less and not a trained register)
+make exp-cjk-corpus ARGS="synth_tags"                             # tags_synth_ja
+# the merge that wrote pairs_tags.jsonl (tags, tags_alt, names, tags_synth_ja — no names_synth) was not recorded
+# KO (0831 glossary audit, round 3)
+make exp-cjk-corpus ARGS="tag_glossary --lang ko --reselect"      # sources: KR KB (models/danbooru_tags_classified.csv) → wiki → MT
+make exp-cjk-corpus ARGS="build_pairs --lang ko --alt-register"   # pairs_ko.jsonl: tags_ko / tags_alt_ko / names_ko
+make exp-cjk-corpus ARGS="synth_names --lang ko --context ja --max-names 500 --floor 60 --max-per-name 40"  # → pairs_synth_ko.jsonl
+make exp-cjk-corpus ARGS="desc_pairs"                             # pairs_desc_ko.jsonl (desc_ko: EN wiki sentence ↔ KO KB summary)
+# ZH
+make exp-cjk-corpus ARGS="tag_glossary --lang zh"                 # KB-first ranking, JA-kanji inventory guard
+make exp-cjk-corpus ARGS="build_pairs --lang zh"                  # pairs_zh.jsonl (+ tags_zh_hant)
+make exp-cjk-corpus ARGS="synth_tags --lang zh"                   # → pairs_synth_tags_zh.jsonl
+```
+
+Caches (daemon jobs `20260902-184212-622c9c`, `20260903-162103-*`; the four
+were re-staged on the 69,558-row table after the symbol-block `build_ext`):
+
+```bash
+D=post_image_dataset/cjk_distill
+for pair in tags:pairs_tags ko:pairs_synth_ko desc_ko:pairs_desc_ko zh:pairs_synth_tags_zh; do
+  make daemon-run ARGS="-m scripts.distill_cjk.cache --pairs $D/${pair#*:}.jsonl --cache_dir $D/cache_${pair%%:*} --holdout 500"
+done
+```
+
+Distill (daemon job `20260903-173932-6db847`, verbatim):
+
+```bash
+D=post_image_dataset/cjk_distill
+make daemon-run ARGS="-m scripts.distill_cjk.distill --pairs $D/pairs_tags.jsonl \
+  --cache_dir $D/cache_tags,$D/cache_ko,$D/cache_desc_ko,$D/cache_zh \
+  --train_registers tags,tags_alt,names,tags_synth_ja,tags_ko,tags_alt_ko,names_ko,names_synth_ko,desc_ko,tags_zh,tags_alt_zh,names_zh,tags_zh_hant,tags_synth_zh \
+  --holdout 500 --param global --rank 256 --min_visits 5 --loss span --trust provenance \
+  --attn_blocks 0,13,27 --attn_queries 64 --mode train --steps 12000 --batch_size 32 --lr 0.001 \
+  --eval_every 250 --eval_limit 1200 --ext_prefix bench/cjk_adapter/assets/ext_embed \
+  --out output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256 --label 2c-synthjakozh1sym-r256"
+```
+
+The symbol rows ride along untrained in this pack (the pool touches 33 of
+6,118 `sym` rows); the `tags_sym` register that teaches them is
+`build_pairs_sym` → `cache_sym` → the same distill with `cache_sym` appended
+and `tags_sym` in `--train_registers` (the `u5-sym-r256` arm, not shipped).
+The published `_preview` / `_preview2` packs are this pack plus a baked
+wake-line delta (`scripts/toolkits/bake_vocab_pack.py`), not a re-distill.
 
 ## Unmask recipe (not shipped as a variant yet)
 

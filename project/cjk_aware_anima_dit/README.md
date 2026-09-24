@@ -1,6 +1,6 @@
 # cjk_aware_anima_dit — CJK semantics on the DiT side
 
-Successor line to [`../cjk_aware_anima/`](../cjk_aware_anima/) (encoder side,
+Successor line to [`../finished/cjk_aware_anima/`](../finished/cjk_aware_anima/) (encoder side,
 frozen 2026-09-05). Premise: ext rows are content-free addresses; what a CJK
 address *means* has to be learned or woken on the DiT side.
 

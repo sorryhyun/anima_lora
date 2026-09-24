@@ -19,7 +19,7 @@ dependencies = [
     # Optimizers
     "pytorch-optimizer>=3.9.0",
     "prodigyopt>=1.1.2",
-    # CJK glossary (project/cjk_aware_anima/datasets, --lang zh): pure-python OpenCC
+    # CJK glossary (scripts/distill_cjk/corpus, --lang zh): pure-python OpenCC
     "opencc-python-reimplemented>=0.1.7",
     # Data & Config
     "toml>=0.10.2",

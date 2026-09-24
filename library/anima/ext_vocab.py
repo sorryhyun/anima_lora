@@ -431,7 +431,7 @@ def fit_anchor_map(
     ``method="ridge"`` — plain ridge least squares (the v1 asset). Ridge
     shrinks toward the directions the anchors share, so the mapped ext keys
     collapse onto a thin subspace (PR 236 of 1024, 16 % of random row pairs
-    above cos 0.5; ``project/cjk_aware_anima/probes/map_probe.py``).
+    above cos 0.5; ``project/finished/cjk_aware_anima/probes/map_probe.py``).
 
     ``method="procrustes-mix"`` — ridge plus ``mix`` × the scaled orthogonal
     Procrustes rotation fitted on the same anchors (centered fit, applied as

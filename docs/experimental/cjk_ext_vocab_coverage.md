@@ -2,17 +2,17 @@
 
 Measured 2026-09-03 on the `synthjakozh1` training pool (cold joint JA+KO+ZH,
 ext v2, `--param global`). Reproduce with
-`project/cjk_aware_anima/probes/visit_stats.py`; the run is
+`project/finished/cjk_aware_anima/probes/visit_stats.py`; the run is
 `bench/cjk_distill/results/20260903-1239-2c-synthjakozh1-r256`. Training
 refinements that follow from these numbers live in
 `_archive/cjk_aware_anima/plans/plan_zh2.md` (the encoder line is frozen —
-`project/cjk_aware_anima/plan.md`).
+`project/finished/cjk_aware_anima/plan.md`).
 
 ## What the table is
 
 The ext table appends rows to the LLM Adapter's frozen 32,128-row T5 query
 embedding (`library/anima/ext_vocab.py`; design in
-`project/cjk_aware_anima/findings.md` §2, §9). Rows come in blocks, in this
+`project/finished/cjk_aware_anima/findings.md` §2, §9). Rows come in blocks, in this
 order, and **a block never re-indexes the blocks before it**:
 
 | block | rows | what | init |

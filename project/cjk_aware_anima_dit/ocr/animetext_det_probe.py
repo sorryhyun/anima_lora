@@ -573,7 +573,7 @@ def run_eval(opts, pages: list[Path]) -> None:
 
     # the v1 kind rule for unlabelled PP records
     ocr_sfx = m109._load_by_path(
-        "ocr_sfx_rule", REPO / "project/cjk_aware_anima/datasets/ocr_sfx.py"
+        "ocr_sfx_rule", REPO / "project/finished/cjk_aware_anima/datasets/ocr_sfx.py"
     )
     sys.modules["ocr_sfx_rule"] = ocr_sfx
 

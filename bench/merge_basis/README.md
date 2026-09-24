@@ -22,13 +22,13 @@ behavioural side — phase 0 of the merge-interference line never ran.
    phase-0 metric, vendored);
 4. renders 24 tag-routed rows (12 `@aak` + the same 12 as `@channel
    (caststation)`, `prompts.txt`) per merged arm and builds two blind sets via
-   `project/cjk_aware_anima/probes/blind_pairs.py`, each at its own seed:
+   `project/finished/cjk_aware_anima/probes/blind_pairs.py`, each at its own seed:
    `s26 DISTINCT vs SHAREDWSVD` (shipping question), `s27 DISTINCT vs SHAREDKAI`
    (mechanism).
 
 ```bash
 make daemon-run ARGS="--stall-timeout 0 --queue bench/merge_basis/run.py --push"
-.venv/bin/python project/cjk_aware_anima/probes/blind_pairs.py score --set s26_MB_DISTINCT_vs_SHAREDWSVD
+.venv/bin/python project/finished/cjk_aware_anima/probes/blind_pairs.py score --set s26_MB_DISTINCT_vs_SHAREDWSVD
 ```
 
 Kill / pass are the blind protocol's: inside the 15–9 seed-twin floor with no
@@ -104,7 +104,7 @@ whose adapters all read the same 32 input directions renders as well as one
 with 128. `weight_svd` stays; per-artist seeds are not worth a knob. The
 remaining unexplored branch is a recipe where `A` actually trains (12k-step
 runs rotate it ~40 %), which the soup path can't exploit anyway (shared uncond
-init). Reports: `project/cjk_aware_anima/reports/blind_s2{6,7,8}_MB*.md`.
+init). Reports: `project/finished/cjk_aware_anima/reports/blind_s2{6,7,8}_MB*.md`.
 
 ## Next: N = 8 with `svd_slice` (knob landed 2026-09-12, not yet run)
 
