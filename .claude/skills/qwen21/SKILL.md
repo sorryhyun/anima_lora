@@ -108,5 +108,9 @@ choices made.
   (`blockswap.activation_reserve_for_tokens`). That is 3.3 GB at 4096+346 tokens, where
   the old constant 3.5 left 0.5 GB spare and 2.0 OOMed at step 1; ~1.5 GB for 512² data.
   `--activation_reserve_gb` overrides it with a constant.
+- **Block compile is on by default** (`--compile_seq dynamic`, `torch.compile(dynamic=True)`):
+  −11 % per step where the step is compute-bound, ~40 s of compile at step 1, one graph
+  for every sample size. `--no-compile` for a quick smoke; `--compile_seq bounded` is the
+  same speed with the compile paid as 17 s + one recompile (`accel.compile_blocks`).
 - **RAM:** the whole checkpoint is ~33 GB bf16 and sits in page cache on the 64 GB box.
   Reloads are ~free, so there is no resident-model worker; VRAM is the constraint.

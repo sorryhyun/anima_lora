@@ -146,7 +146,7 @@ def main() -> None:
     ap.add_argument(
         "--compile_seq",
         choices=("static", "dynamic", "bounded"),
-        default="bounded",
+        default="dynamic",
         help="static: one graph per shape; dynamic: torch.compile(dynamic=True); "
         "bounded: automatic dynamic + mark_dynamic over --seq_range",
     )

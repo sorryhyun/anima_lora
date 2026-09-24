@@ -143,10 +143,10 @@ FIELDS_CN: dict[str, tuple[str, str]] = {
         "计算交换块数时为激活保留的显存（默认按缓存中最大的图像+文本 token 数计算：0.3 GB + 0.6 MB × token 数 + 一个块的余量）",
     ),
     "grad_checkpointing": ("梯度检查点", "激活检查点——节省显存的主要手段"),
-    "compile": ("torch.compile", "对每个块编译；PCIe 瓶颈（512²、交换 12 块）下无收益，计算瓶颈（1024²、交换 7 块、检查点）下快 13%"),
+    "compile": ("torch.compile", "对每个块编译（默认开启）；计算瓶颈（1024²、交换 7 块、检查点）下每步快 11%，PCIe 瓶颈（512²、交换 12 块）下无收益；启动时约 40 秒编译"),
     "compile_seq": (
         "序列符号化方式",
-        "bounded = 自动动态形状 + 按缓存的 [最小, 最大] 联合 token 数 mark_dynamic（隐藏维保持静态）；dynamic = torch.compile(dynamic=True)",
+        "dynamic = torch.compile(dynamic=True)，一张图覆盖所有样本；bounded = 自动动态形状 + 按缓存的 [最小, 最大] 联合 token 数 mark_dynamic（隐藏维保持静态）。速度相同，只是编译时间的分摊方式不同",
     ),
     "compile_mode": ("编译模式", "torch.compile 模式"),
     "seed": ("随机种子", "随机数种子"),

@@ -14,14 +14,14 @@ The joint sequence length varies per sample on both axes — each image keeps it
 native aspect at ~1 MP, and caption length runs 112–346 tokens on this folder —
 so ``mu`` is per-sample, the pipeline deriving it from the image token count.
 
-Block compile is **off** by default: it measured ±0 at 512² with 12 swaps
-(``backward_smoke.py`` — 12 × 0.41 GB × 2 directions is the whole step time, so
-compute hides under PCIe). Where the step is compute-bound it pays — −13 % at
-1024² with 7 swaps under checkpointing (2026-09-24). ``--compile`` turns it on;
-``--compile_seq bounded`` (default) marks the sequence axis dynamic over the
-cache's [min, max] joint tokens and leaves the hidden dims static, ``dynamic``
-is ``torch.compile(dynamic=True)``. Both hold one graph family across every
-sample size; see ``accel.compile_blocks``.
+Block compile is **on** by default (``--compile_seq dynamic`` =
+``torch.compile(dynamic=True)``): −11 % per step at 1024² with 7 swaps under
+checkpointing (2026-09-24), ±0 at 512² with 12 swaps where the step is PCIe-bound
+(12 × 0.41 GB × 2 directions is the whole step time). One graph covers every
+sample size; ``--compile_seq bounded`` instead marks the sequence axis dynamic
+over the cache's [min, max] joint tokens and leaves the hidden dims static —
+same speed, compile paid as 17 s + one recompile rather than 42 s up front. See
+``accel.compile_blocks``. ``--no-compile`` for a quick smoke.
 
     make daemon-run ARGS="scripts/qwen21/train.py --epochs 8"
 """

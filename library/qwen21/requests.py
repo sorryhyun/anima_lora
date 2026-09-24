@@ -225,16 +225,19 @@ class TrainRequest(_Request):
     )
     grad_checkpointing: bool = _f(True, "activation checkpointing (the VRAM lever)")
     compile: bool = _f(
-        False,
-        "torch.compile each block; +-0 while the step is PCIe-bound (512², swap "
-        "12), -13% where it is compute-bound (1024², swap 7, checkpointing)",
+        True,
+        "torch.compile each block: -11% per step where the step is compute-bound "
+        "(1024², swap 7, checkpointing), +-0 where it is PCIe-bound (512², swap "
+        "12); ~40 s of compile up front. --no-compile for a quick smoke",
         advanced=True,
     )
     compile_seq: str = _f(
-        "bounded",
-        "how the joint token count goes symbolic: bounded = automatic dynamic + "
-        "mark_dynamic over the cache's [min, max] joint tokens (hidden dims stay "
-        "static); dynamic = torch.compile(dynamic=True)",
+        "dynamic",
+        "how the joint token count goes symbolic: dynamic = "
+        "torch.compile(dynamic=True), one graph for every sample; bounded = "
+        "automatic dynamic + mark_dynamic over the cache's [min, max] joint "
+        "tokens (hidden dims stay static). Same speed; bounded pays its compile "
+        "as 17 s + one 21 s recompile instead of 42 s up front",
         choices=COMPILE_SEQ_MODES,
         advanced=True,
     )
