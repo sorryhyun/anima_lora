@@ -200,10 +200,9 @@ class TrainRequest(_Request):
     warmup_ratio: float = _f(0.1, "linear warmup, as a fraction of all steps")
     max_grad_norm: float = _f(1.0, "gradient clip", advanced=True)
     lora_dtype: str = _f(
-        "fp32",
-        "adapter master-weight dtype (the rank GEMMs run in the model's bf16 "
-        "either way); bf16 halves the adapter's optimizer state but rounds "
-        "away small updates",
+        "bf16",
+        "dtype the saved LoRA is written in. Training always keeps fp32 master "
+        "weights and runs the rank GEMMs in the model's bf16",
         choices=LORA_DTYPES,
     )
     targets: str = _f(

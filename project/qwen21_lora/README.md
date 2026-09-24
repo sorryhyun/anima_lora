@@ -12,7 +12,7 @@ swap 0 0.784, +compile 0.708.
 ## LoRA training (2026-09-21)
 
 `lora.LoRANetwork` — rank 16 on the 7 linears per block (224, 41.9M params; fp32 master
-weights, rank GEMMs in the model's bf16 as `networks/lora_modules/base.py` does), held
+weights, rank GEMMs in the model's bf16 as `networks/lora_modules/base.py` does, saved bf16), held
 **outside** `transformer_blocks`: peft nests `lora_A`/`lora_B` inside the block and
 `ModelOffloader` moves every `.weight` under it, so trainable weights would page to CPU
 while their `.grad` stayed on the card. Training half-swaps — `swap_schedule(restore=False)`

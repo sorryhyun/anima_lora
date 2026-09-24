@@ -31,9 +31,11 @@ from library.qwen21.requests import DEFAULT_TARGETS
 class LoRAAdapter(nn.Module):
     """``scale * up(down(x))``, added to the base linear's output.
 
-    Parameters are fp32 by default (the master weights AdamW updates — bf16's
+    Training builds this fp32 (the master weights AdamW updates — bf16's
     8-bit mantissa rounds away updates below ~0.4 % of a weight, and at
-    lr 1e-4 the kaiming-scaled ``down`` sits right at that edge). The rank
+    lr 1e-4 the kaiming-scaled ``down`` sits right at that edge) and saves in
+    ``TrainRequest.lora_dtype`` (bf16 by default); ``load_network`` rebuilds
+    in the saved dtype, which is all inference needs. The rank
     GEMMs run in the *model's* dtype: ``x`` and both weights are cast to
     ``base_out.dtype`` first, so an fp32 adapter never lifts a ``(T, 4096)``
     activation to fp32. Same policy as ``networks/lora_modules/base.py``.

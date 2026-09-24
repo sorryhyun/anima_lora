@@ -191,7 +191,7 @@ def run_train(req: TrainRequest) -> Path:
     random.seed(req.seed)
     torch.cuda.init()
     device = torch.device("cuda")
-    lora_dtype = DTYPES[req.lora_dtype]
+    save_dtype = DTYPES[req.lora_dtype]
 
     items = load_cache(cache_dir)
     if not items:
@@ -223,13 +223,14 @@ def run_train(req: TrainRequest) -> Path:
         rank=req.rank,
         alpha=req.alpha,
         targets=req.targets,
-        dtype=lora_dtype,
+        dtype=torch.float32,  # master weights; the rank GEMMs run in bf16
     )
     patched = network.apply_to()
     network.to(device)
     print(
         f"lora: rank {req.rank} alpha {network.alpha} on {patched} linears, "
-        f"{network.num_parameters / 1e6:.1f}M params {req.lora_dtype}",
+        f"{network.num_parameters / 1e6:.1f}M params, fp32 masters saved as "
+        f"{req.lora_dtype}",
         flush=True,
     )
 
@@ -325,7 +326,7 @@ def run_train(req: TrainRequest) -> Path:
             else out_path.with_name(f"{out_path.stem}_{tag}{out_path.suffix}")
         )
         state = {
-            k: v.detach().to("cpu").contiguous()
+            k: v.detach().to("cpu", save_dtype).contiguous()
             for k, v in network.state_dict().items()
         }
         save_file(state, path, metadata=metadata)
