@@ -20,22 +20,39 @@ sentence_min_letters = 6
 
 [[data.mix]]                                # step 1b: one piece per bubble, fill 0.7–1.0 (≈ 35–48 px)
 recipe = "scene_piece"
-share = 0.5
+share = 0.4
 fill = [0.7, 1.0]
 min_glyph = 28
 px_target = 40
 
+[[data.mix]]                                # pieces in word cells at 24–32 px (user, 2026-09-24): the piece row's grid
+recipe = "grid_string"                      # layout below the +0.1 grid shift that starts at 32 px (band law § 2);
+share = 0.15                                # the 85–200 px piece grid that lost (micro_warmg_0923) is a different px
+grids = "2x2,2x3,3x2"
+glyph_px = [27, 36]                         # font px; the ink px the gate reads is ≈ 0.9 of it → 24–32 kept
+source = "pieces"
+max_glyphs = 8
+bubble_frac = 0.5
+
 [[data.mix]]                                # small singles: the 24–32 px letter window (ceiling only)
 recipe = "scene_single"
-share = 0.2
+share = 0.15
 glyph_px = [24, 32]
 fill = 0.7
 min_glyph = 20
 digraphs = true                             # small-kana digraphs (あっ: 2 tokens, multi) train here, not in stage0709
 
+[[data.mix]]                                # small singles in cells at 24–32 px (user, 2026-09-24): the 24–40 px single
+recipe = "grid_single"                      # row's grid layout (plan_band B.2, never run); no 1×1 — a 24 px glyph on
+share = 0.1                                 # a 448 px page is not a flat single
+grids = "2x2,3x3,2x3,3x2"
+glyph_px = [27, 36]                         # font px → ink px 24–32 (the single row's 24–40 edge)
+bubble_frac = 0.5
+mark_horizontal = true
+
 [[data.mix]]                                # 2–5-piece lines, one column, ≈ 32 px
 recipe = "scene_short"
-share = 0.3
+share = 0.2
 min_glyph = 28
 fill = 0.7
 max_lines = 1

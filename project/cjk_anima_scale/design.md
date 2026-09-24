@@ -56,7 +56,7 @@ count rule (§ 3):
 | stage | band | what trains there | why |
 |---|---|---|---|
 | `stage0709` | 0.7–0.9 | single glyphs ≥ 48 px: scene bubble fit (48–53 px), grid cells (85–200 px), large flat | singles want the top half (B.1); grid cells sit +0.1 (ceiling 0.8–0.9) |
-| `stage0507` | 0.5–0.7 | multi-glyph pieces 32–48 px in scenes; single glyphs 24–32 px; 2–5-piece short lines ≈ 32 px | pieces 0.5–0.7 (`micro_cf_0922`); 24–32 px letter window 0.35–0.7; string at 48 px 0.6–0.8 |
+| `stage0507` | 0.5–0.7 | multi-glyph pieces 32–48 px in scenes; single glyphs 24–32 px (scene bubbles and 2×2 … 3×3 cells); pieces in word cells at 24–32 px; 2–5-piece short lines ≈ 32 px | pieces 0.5–0.7 (`micro_cf_0922`); 24–32 px letter window 0.35–0.7; string at 48 px 0.6–0.8 |
 | `stage0305` | 0.3–0.5 | 12–24 px text: sentences with `scene_min_glyph 16`, small-bubble dialogue, one piece per bubble at 12–24 px, small grid strings | 16 px string 0.25–0.6 centred 0.4 (A.2); grid at 12–16 px 0.3–0.5 |
 | `stage0309` | 0.3–0.9 | everything, mixed, at natural sizes | consolidation; the sentence run's role, low μ anchor |
 
@@ -140,7 +140,7 @@ Recipes (names are placeholders):
 | recipe | source | px control | unit kinds |
 |---|---|---|---|
 | `scene_single` | bubble pool, one glyph per bubble | bubble fit (48–53) or a `--scene_glyph_px` cap for the small end | kana / kanji / punct rows |
-| `grid_single` | **1×1 … 3×3** grid, one glyph per cell; **1×1 is the flat single** (`layout v1` / `jitter` retired into it) | `grid_fill` 0.15–0.8 of the cell short side — 60–400 px at 1×1, 25–85 at 3×3 | same |
+| `grid_single` | **1×1 … 3×3** grid, one glyph per cell; **1×1 is the flat single** (`layout v1` / `jitter` retired into it) | `grid_fill` 0.15–0.8 of the cell short side — 60–400 px at 1×1, 25–85 at 3×3 — or `glyph_px` (fill = px / cell; stage0507's 24–32 px cells) | same |
 | `scene_piece` | bubble pool, one piece (one token, 2+ glyphs) | fill 0.7 (≈ 35 px) up to 1.0 in large bubbles (≈ 48) | piece rows |
 | `scene_short` | 2–5 pieces, one line | ≈ 32 px | corpus short lines |
 | `scene_sentence` | Manga109-s dialogue | `scene_min_glyph` 16–28 | corpus lines |

@@ -9,7 +9,8 @@ measures the item's px, looks up its window and keeps or re-draws it.
                     or a ``glyph_px`` range that sets the fill per item;
                     ``fill_min`` (any scene recipe with ``glyph_px``) keeps only
                     scenes whose bubble the text fills to that share
-    grid_single     1×1 … 3×3 grid, one glyph per cell, one fill draw per item;
+    grid_single     1×1 … 3×3 grid, one glyph per cell, one fill draw per item
+                    or a ``glyph_px`` range (fill = px / cell, as grid_string);
                     1×1 is the flat single (bare or ellipse, plain template)
     scene_piece     one piece (one token, 2+ glyphs) in a bubble, fill 0.7–1.0
     scene_short     a 2–5-piece corpus line (multi), one column
@@ -587,14 +588,22 @@ def _deck(pools: Pools, key: str, pool: list, rng: random.Random):
 
 
 def _grid_item(
-    pools, rng, name, got, bubble, fill, box: bool, mark_horizontal: bool, pad=None
+    pools,
+    rng,
+    name,
+    got,
+    bubble,
+    fill,
+    box: bool,
+    mark_horizontal: bool,
+    pad=None,
+    size=None,
 ):
     from common.prompts import TPL_BUBBLE, TPL_PLAIN, grid_caption
     from data.grid import WORD_PAD, render_grid
 
-    cols, rows, size = GRIDS[name]
-    if size is None:
-        size = pools.shapes.draw() or (512, 512)
+    cols, rows, gsize = GRIDS[name]
+    size = size or gsize or pools.shapes.draw() or (512, 512)
     lines: list = []
     kw = {"box": True, "pad": WORD_PAD} if box else {}
     im, boxes = render_grid(
@@ -657,19 +666,29 @@ def grid_single(pools: Pools, rng: random.Random, p: dict):
     )
     assert grids, "grid_single: no grid the singles can fill"
     name = rng.choices([g for g, _ in grids], weights=[w for _, w in grids])[0]
-    cols, rows, _ = GRIDS[name]
+    cols, rows, size = GRIDS[name]
     got = deck.deal(cols * rows)
     bubble = rng.random() < float(p.get("bubble_frac", 0.5))
-    lo, hi = p.get("fill", [0.15, 0.8])
+    if p.get("glyph_px"):
+        # a px target, as grid_string: render_grid starts at fill × cell short
+        # side and only shrinks, so fill = px / cell sets the px (1×1 draws its
+        # canvas here so the cell is known)
+        size = size or pools.shapes.draw() or (512, 512)
+        cell = min(size[0] / cols, size[1] / rows)
+        fill = _target(rng, p) / cell
+    else:
+        lo, hi = p.get("fill", [0.15, 0.8])
+        fill = rng.uniform(float(lo), float(hi))
     return _grid_item(
         pools,
         rng,
         name,
         got,
         bubble,
-        rng.uniform(float(lo), float(hi)),
+        fill,
         False,
         bool(p.get("mark_horizontal", True)),
+        size=size,
     )
 
 

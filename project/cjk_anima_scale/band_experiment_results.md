@@ -96,8 +96,10 @@ shrinking the glyph below the fit, which the plan rules out.
   128), with the same row movement (`warm_cos` 0.87 vs 0.85). Grid cells
   are 85–200 px glyphs, a different size regime from the 35 px composites;
   whether multi-glyph grids come back at their own band (one step above a
-  flat glyph of the same px, § 2) is unread — `stage0507` has no grid recipe
-  for pieces for this reason.
+  flat glyph of the same px, § 2) is unread. `stage0507` carried no grid
+  recipe for this reason until 2026-09-24, when a 24–32 px `grid_string`
+  (pieces) and a 24–32 px `grid_single` went in below the 32 px shift —
+  the small-grid cell B.2 never ran, so both are untested there.
 - **Stage C** ran after all (`plan_kanji.md`, 2026-09-23): the ink gate had only seen Latin weight (1.7 ×), not kanji ink (2.6 ×). Read above; `bk_lo` (0.5–0.7 on kanji) unrun — no stratum asked to go down.
 - **Stage D** is re-scoped: its case is a data dir mixing 16 and 30 px
   sentence text (ceiling 0.25–0.6 vs 0.4–0.6), which is step 2 territory
