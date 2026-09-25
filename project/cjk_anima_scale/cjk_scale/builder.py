@@ -202,16 +202,19 @@ def vocab_kinds(pools: Pools) -> dict:
     }
 
 
-def plan_groups(kinds: dict) -> list:
+def plan_groups(kinds: dict, table: tuple = TABLE) -> list:
     """``[(group, n_items)]`` for the kinds present (the volume rule)."""
     return [
         (g, int(round(ITEMS_PER_VOCAB * len(kinds[g.kind]) * g.share)))
-        for g in TABLE
+        for g in table
         if kinds.get(g.kind)
     ]
 
 
-def build(rc: RunConfig, workers: int | None = None) -> Path:
+def build(rc: RunConfig, workers: int | None = None, table: tuple = TABLE) -> Path:
+    """Build the run's data dir. ``table`` is ``TABLE`` for every run;
+    ``experiments/`` pass another one to validate a mix before it becomes
+    the rule — ``scale.py`` never does."""
     from common.prompts import TPL_BUBBLE, TPL_EN
     from data.stage import _ink_stats
 
@@ -224,7 +227,7 @@ def build(rc: RunConfig, workers: int | None = None) -> Path:
     pools = build_pools(rc.vocab_specs(), SEED_ROWS, phrase_file, rng)
     snap = (rng.getstate(), pools.shapes.rng.getstate())
     kinds = vocab_kinds(pools)
-    groups = plan_groups(kinds)
+    groups = plan_groups(kinds, table)
     assert groups, f"{rc.path}: no single or piece vocab — nothing to draw"
     if kinds["multi"]:
         print(

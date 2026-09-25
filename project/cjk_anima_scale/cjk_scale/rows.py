@@ -33,6 +33,26 @@ import torch
 import torch.nn.functional as F
 
 
+def merge_seed(delta: dict, seed) -> tuple[dict, int]:
+    """``delta`` (an ``ExtDelta`` state: ``ext_ids`` / ``raw`` / ``row_scale``)
+    with every ``seed`` row it lacks appended at its seed value × (seed
+    ``row_scale`` / ``delta``'s), ids sorted — the merged rows. Returns the
+    merged delta and how many seed rows were appended."""
+    src = torch.load(seed, map_location="cpu", weights_only=False)
+    k = float(src["delta"]["row_scale"]) / float(delta["row_scale"])
+    have = {int(e) for e in delta["ext_ids"]}
+    extra = [i for i, e in enumerate(src["delta"]["ext_ids"]) if int(e) not in have]
+    if not extra:
+        return delta, 0
+    ids = [int(e) for e in delta["ext_ids"]] + [
+        int(src["delta"]["ext_ids"][i]) for i in extra
+    ]
+    raw = torch.cat([delta["raw"].float(), src["delta"]["raw"][extra].float() * k])
+    order = sorted(range(len(ids)), key=ids.__getitem__)
+    merged = {**delta, "ext_ids": [ids[j] for j in order], "raw": raw[order].clone()}
+    return merged, len(extra)
+
+
 class Rows:
     def __init__(
         self,
@@ -231,31 +251,8 @@ class Rows:
         delta = self.delta.state_dict()
         n_seed = int(self.frozen_mask.sum())
         if self.context:
-            src = torch.load(self.context, map_location="cpu", weights_only=False)
-            k = float(src["delta"]["row_scale"]) / self.row_scale
-            have = {int(e) for e in delta["ext_ids"]}
-            extra = [
-                i
-                for i, e in enumerate(src["delta"]["ext_ids"])
-                if int(e) not in have
-            ]
-            if extra:
-                ids = [int(e) for e in delta["ext_ids"]] + [
-                    int(src["delta"]["ext_ids"][i]) for i in extra
-                ]
-                raw = torch.cat(
-                    [
-                        delta["raw"].float(),
-                        src["delta"]["raw"][extra].float() * k,
-                    ]
-                )
-                order = sorted(range(len(ids)), key=ids.__getitem__)
-                delta = {
-                    **delta,
-                    "ext_ids": [ids[j] for j in order],
-                    "raw": raw[order].clone(),
-                }
-                n_seed += len(extra)
+            delta, n_extra = merge_seed(delta, self.context)
+            n_seed += n_extra
         sd = {
             "delta": delta,
             "arm": "rows",

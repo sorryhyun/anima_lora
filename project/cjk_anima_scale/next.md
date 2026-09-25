@@ -250,3 +250,17 @@ identity. The § 4a "buys no word" stands for the acceptance rulers only;
 "nothing bought" is withdrawn. Read piece (+ seed floor) before
 calling any piece run dead; step (2)'s scene_piece-only arm should be
 judged on it too.
+
+## 5. Ran 2026-09-26 — parity + the scene_piece-only arm (`reports/piece_only_2026_09_26.md`)
+
+- **Parity (plan.md § 6-3) without the retrain**: `experiments/parity_300f`
+  replays run0925_300f through the one-file code — record, merge (max |Δ| 0),
+  the first 50 steps (step 1 identical) and the eval on the old rows (within
+  render noise). The one-file shape reproduces the run.
+- **§ 4a step (2) ran** (`run0926_300f_sp`, `experiments/piece_only`): same
+  300 pieces + freeze, `scene_piece` only. piece official tied (16 vs 16),
+  `word` exact 4 → 9 / 36, sent contained 11 → 4 (おしい → 0). **The mix is not
+  the doubling lever**; `builder.TABLE` unchanged.
+- The eval now carries the **piece ruler** by default (`eval.piece_vocabs`).
+- Next: read doubling itself before another arm — the seed's and both runs'
+  `word` misses by glyph count and by which glyph doubles (report § 3).

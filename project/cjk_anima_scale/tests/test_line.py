@@ -127,7 +127,9 @@ def test_output_root_is_ours():
     assert stage_paths.FONT_DIR == LINE / "assets" / "fonts"
     assert STAGE_VOCABS == VOCABS_DIR == LINE / "assets" / "vocabs"
     assert TARGET_PROMPTS == LINE / "assets" / "target_prompts.txt"
-    assert TARGET_PROMPTS.is_file() and (VOCABS_DIR / "ja_pieces_0925_300.txt").is_file()
+    assert (
+        TARGET_PROMPTS.is_file() and (VOCABS_DIR / "ja_pieces_0925_300.txt").is_file()
+    )
 
 
 def test_run_layout():
@@ -505,6 +507,58 @@ def test_stage_eval_namespace_builds():
     assert stage_paths.arm_dir(s) == run_dir("t1")
     assert ev.rulers(rc) == ["eval", "native", "sent", "target"]
     assert ev.rulers(_rc(read=())) == ["eval", "native", "target"]
+
+
+def test_piece_ruler(tmp_path, monkeypatch):
+    """A run whose vocabs hold a multi-glyph vocab gets the piece ruler — a
+    trained piece alone in a native scene, en + swap (reports/piece_2026_09_25.md:
+    the one ruler that sees piece identity); a singles-only run does not."""
+    from cjk_scale import eval as ev
+    from cjk_scale import paths
+
+    monkeypatch.setattr(paths, "OUT", tmp_path)
+    rc = _rc()
+    d = paths.data_dir("t1")
+    d.mkdir(parents=True)
+    (d / "vocabs.json").write_text(json.dumps(["あ"]), encoding="utf-8")
+    assert ev.rulers(rc) == ["eval", "native", "sent", "target"]
+    (d / "vocabs.json").write_text(json.dumps(["あ", "すごい"]), encoding="utf-8")
+    assert ev.rulers(rc) == ["eval", "native", "piece", "sent", "target"]
+    monkeypatch.setattr(ev, "piece_vocabs", lambda rc: ("すごい", "った"))
+    a = ev.ruler_args(rc, ev.TRAINED_ARM, "piece")
+    assert a.eval_tag == "piece" and a.native_chars == "すごい,った"
+    assert a.native_clauses == "en,swap"
+    f = paths.floor_dir("t1") / ev.READ_FILES["piece"]
+    f.parent.mkdir(parents=True)
+    f.write_text(json.dumps([{"text": "すごい"}, {"text": "った"}]), encoding="utf-8")
+    assert ev._fresh(rc, paths.floor_dir("t1"), "piece")
+
+
+def test_merge_seed(tmp_path):
+    """The merge at save: the run's rows kept, every seed row the run lacks
+    appended × (seed row_scale / the run's), ids sorted."""
+    import torch
+
+    from cjk_scale.rows import merge_seed
+
+    seed = tmp_path / "seed.pt"
+    torch.save(
+        {
+            "delta": {
+                "ext_ids": [10, 11, 12],
+                "raw": torch.tensor([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
+                "row_scale": 1.0,
+            }
+        },
+        seed,
+    )
+    delta = {"ext_ids": [11], "raw": torch.tensor([[9.0, 9.0]]), "row_scale": 2.0}
+    merged, n = merge_seed(delta, seed)
+    assert n == 2 and merged["ext_ids"] == [10, 11, 12]
+    assert torch.equal(
+        merged["raw"], torch.tensor([[0.5, 1.0], [9.0, 9.0], [2.5, 3.0]])
+    )
+    assert merged["row_scale"] == 2.0
 
 
 def test_floor_arm_and_merged_guard(tmp_path, monkeypatch):

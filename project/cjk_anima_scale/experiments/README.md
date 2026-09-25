@@ -46,3 +46,12 @@ experiments read the old stage-layout dirs (`data_<stage>_<tag>`) through
   `../reports/influence_target_2026_09_25.md`: **both fail** — the loss gain
   ranks the unrendered long pieces first and すごい at zero, the doubling
   margin moves in no pattern. Loss-target influence closed; bank v2 not built.
+- `parity_300f/` — plan.md § 6-3 without the retrain: replays run0925_300f
+  through the one-file code (`plan` CPU = `--dry_run`: vocabs, trainer
+  record, save-time merge; `steps`: the first N steps vs the old log; `eval`:
+  the old rows under the new eval vs the old reads). **Ran 2026-09-26** →
+  parity holds (`../reports/piece_only_2026_09_26.md` § 1).
+- `piece_only/` — next.md § 4a (2): the 300 pieces on `scene_piece` items
+  only (`build(…, table=)` with the piece groups cut to that tier), data →
+  train → eval as `run0926_300f_sp`. **Ran 2026-09-26** → not the doubling
+  lever (`../reports/piece_only_2026_09_26.md` § 2).

@@ -124,9 +124,71 @@ def load_items(data: Path) -> tuple[list, list, list]:
     return recs, ev, vocabs
 
 
-def train(rc: RunConfig) -> Path:
-    from common.models import checkpoints, dit_forward, gen_args
+def plan(rc: RunConfig, data: Path, recs: list, vocabs: list, touched: set):
+    """Everything ``train`` fixes before the model loads: the rows split
+    (what trains, what rides frozen) and the schedule, with the record
+    ``train_record.json`` carries. CPU only — the Qwen tokenizer and the
+    pack's mapping; ``touched`` = the ext rows the training captions carry
+    (``ext_ids_of`` over the TE cache)."""
     from data.inventory import qwen_pieces
+
+    idx = vocab_idx(vocabs, qwen_pieces())
+    # captions carry rows outside the vocabs (corpus lines): they ride frozen
+    # at the seed; what trains (and what the steps count) is the vocabs' rows
+    frozen = touched - idx
+    touched = touched & idx
+    steps = STEPS_PER_VOCAB * len(idx)
+    warmup = int(round(WARMUP_RATIO * steps))
+    bands = sorted({tuple(r["band"]) for r in recs})
+    record = {
+        "run": rc.name,
+        "run_config": str(rc.path),
+        "vocabs": rc.vocabs if isinstance(rc.vocabs, str) else list(rc.vocabs),
+        "data": str(data),
+        "bands": [list(b) for b in bands],
+        "train_steps": steps,
+        "steps_per_row": STEPS_PER_VOCAB,
+        "lr_warmup": warmup,
+        "lr_warmup_ratio": WARMUP_RATIO,
+        "lr_rows": LR,
+        "lr_decay": LR_DECAY,
+        "init_anchor": INIT_ANCHOR,
+        "free_residual": FREE_RESIDUAL,
+        "batch": BATCH,
+        "box_share": BOX_SHARE,
+        "box_share_cap": BOX_SHARE_CAP,
+        "box_share_glyphs": BOX_SHARE_GLYPHS,
+        "grid_box": int(GRID_BOX),
+        "seed": SEED,
+        "n_rows": len(idx),
+        "n_touched": len(touched),
+        "context": str(SEED_ROWS),
+        "n_context": len(frozen),
+        "arm": "rows",
+    }
+    return SimpleNamespace(
+        idx=idx,
+        touched=touched,
+        frozen=frozen,
+        steps=steps,
+        warmup=warmup,
+        bands=bands,
+        record=record,
+    )
+
+
+def train(
+    rc: RunConfig,
+    *,
+    data: Path | None = None,
+    out: Path | None = None,
+    max_steps: int | None = None,
+) -> Path:
+    """Train the run. ``data`` / ``out`` default to the run's dirs;
+    ``max_steps`` stops the loop early with the full-length schedule
+    (``experiments/parity_300f`` replays a run's first steps) — ``scale.py``
+    passes none of them."""
+    from common.models import checkpoints, dit_forward, gen_args
     from library.anima.vocab_pack import attached_pack_rows, strategy_pack
     from library.inference.generation import get_generation_settings
     from library.inference.models import load_dit_model
@@ -136,8 +198,8 @@ def train(rc: RunConfig) -> Path:
     from .loss import box_share_fm_loss
 
     torch.manual_seed(SEED)
-    data = data_dir(rc.name)
-    out = run_dir(rc.name)
+    data = data or data_dir(rc.name)
+    out = out or run_dir(rc.name)
     out.mkdir(parents=True, exist_ok=True)
     recs, ev, vocabs = load_items(data)
     args = gen_args(512, GEN_STEPS, GEN_CFG, out)
@@ -146,15 +208,11 @@ def train(rc: RunConfig) -> Path:
     cache, touched, _ev_idx = _encode_text(
         recs, ev, device, out, te_cache=data / "te_cache"
     )
-    idx = vocab_idx(vocabs, qwen_pieces())
-    # captions carry rows outside the vocabs (corpus lines): they ride frozen
-    # at the seed; what trains (and what the steps count) is the vocabs' rows
-    frozen = touched - idx
-    touched = touched & idx
+    p = plan(rc, data, recs, vocabs, touched)
     print(
-        f"rows: {len(idx)} ({len(vocabs)} vocabs) — {len(touched)} touched "
-        f"by the captions, {len(idx - touched)} with no draw; {len(frozen)} context "
-        f"rows frozen at {SEED_ROWS}",
+        f"rows: {len(p.idx)} ({len(vocabs)} vocabs) — {len(p.touched)} touched "
+        f"by the captions, {len(p.idx - p.touched)} with no draw; {len(p.frozen)} "
+        f"context rows frozen at {SEED_ROWS}",
         flush=True,
     )
     ns = SimpleNamespace(seed=SEED, batch=BATCH, train_size=512)
@@ -167,26 +225,24 @@ def train(rc: RunConfig) -> Path:
     rows = Rows(
         anima,
         device,
-        idx,
+        p.idx,
         strategy_pack(tok),
         warm=SEED_ROWS,
         init_anchor=INIT_ANCHOR,
         free_residual=FREE_RESIDUAL,
         lr=LR,
-        touched=touched,
-        frozen=frozen,
+        touched=p.touched,
+        frozen=p.frozen,
         context=SEED_ROWS,
     )
-    n_rows = rows.n_rows
-    steps = STEPS_PER_VOCAB * n_rows
-    warmup = int(round(WARMUP_RATIO * steps))
-    bands = sorted({tuple(r["band"]) for r in recs})
+    assert rows.n_rows == len(p.idx), (rows.n_rows, len(p.idx))
+    steps, warmup, record = p.steps, p.warmup, p.record
     print(
-        f"train {rc.name}: σ per item in {bands}, {n_rows} rows, {steps} steps "
+        f"train {rc.name}: σ per item in {p.bands}, {rows.n_rows} rows, {steps} steps "
         f"({STEPS_PER_VOCAB}/row) × batch {BATCH}, lr {LR:g} {LR_DECAY} warmup {warmup} "
         f"({WARMUP_RATIO:g}), μ {INIT_ANCHOR:g}, box_share {BOX_SHARE} → cap "
         f"{BOX_SHARE_CAP} at {BOX_SHARE_GLYPHS} glyphs (log), grid_box {int(GRID_BOX)}, "
-        f"warm {SEED_ROWS}",
+        f"warm {SEED_ROWS}" + (f"; stopping at step {max_steps}" if max_steps else ""),
         flush=True,
     )
     opt = torch.optim.AdamW(rows.params, weight_decay=0.0, betas=(0.9, 0.99))
@@ -210,34 +266,9 @@ def train(rc: RunConfig) -> Path:
     batcher = Batcher(ns, recs, lat)
     split = BoxSplit()
     log: list = []
-    record = {
-        "run": rc.name,
-        "run_config": str(rc.path),
-        "vocabs": rc.vocabs if isinstance(rc.vocabs, str) else list(rc.vocabs),
-        "data": str(data),
-        "bands": [list(b) for b in bands],
-        "train_steps": steps,
-        "steps_per_row": STEPS_PER_VOCAB,
-        "lr_warmup": warmup,
-        "lr_warmup_ratio": WARMUP_RATIO,
-        "lr_rows": LR,
-        "lr_decay": LR_DECAY,
-        "init_anchor": INIT_ANCHOR,
-        "free_residual": FREE_RESIDUAL,
-        "batch": BATCH,
-        "box_share": BOX_SHARE,
-        "box_share_cap": BOX_SHARE_CAP,
-        "box_share_glyphs": BOX_SHARE_GLYPHS,
-        "grid_box": int(GRID_BOX),
-        "seed": SEED,
-        "n_rows": n_rows,
-        "n_touched": len(touched),
-        "context": str(SEED_ROWS),
-        "n_context": len(frozen),
-        "arm": "rows",
-    }
+    last = min(steps, max_steps or steps)
     t0 = time.time()
-    for step in range(1, steps + 1):
+    for step in range(1, last + 1):
         idx = batcher.next(step)
         latents = lat[idx].to(device)
         noise = torch.randn_like(latents)
@@ -270,13 +301,16 @@ def train(rc: RunConfig) -> Path:
             torch.save(rows.state_dict(record, step), out / "trained_partial.tmp")
             os.replace(out / "trained_partial.tmp", out / "trained_partial.pt")
             (out / "train_log.json").write_text(json.dumps(log, indent=1))
-    torch.save(rows.state_dict(record), out / "trained.pt")
+    # a stopped-early loop marks its rows with the step it reached
+    torch.save(
+        rows.state_dict(record, last if last < steps else None), out / "trained.pt"
+    )
     (out / "train_log.json").write_text(json.dumps(log, indent=1))
     (out / "train_record.json").write_text(
         json.dumps(record, ensure_ascii=False, indent=1)
     )
     print(
-        f"train: {steps} steps in {(time.time() - t0) / 60:.1f} min → {out / 'trained.pt'}",
+        f"train: {last} steps in {(time.time() - t0) / 60:.1f} min → {out / 'trained.pt'}",
         flush=True,
     )
     del anima

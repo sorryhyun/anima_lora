@@ -91,7 +91,9 @@ scale.py run0925_300f eval     # daemon: read + word + en + control → one cont
    stage code vendored into `src/` (no probe-line reference left).
 3. Re-run `run0925_300f` as the first run of the new shape; its numbers
    must match the old run's (same rows, same data seed) — that is the
-   refactor's test.
+   refactor's test. **Done 2026-09-26 without the retrain** —
+   `experiments/parity_300f` (record, merge, 50 steps, eval on the old rows;
+   `reports/piece_only_2026_09_26.md` § 1).
 4. A singles run (`rows = kana + kanji:200`) is the same file shape; the
    kanji band question (`next.md`) is then just another run.
 

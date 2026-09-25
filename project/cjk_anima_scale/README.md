@@ -44,7 +44,7 @@ A new read that changes a row of the law goes into
 | [`design.md`](design.md) | the scale pipeline: stage schedule, data builder, thin trainer, open questions (§ 6) |
 | [`plan_canvas.md`](plan_canvas.md) | plan only — does the law hold on a ~500-token canvas (2× throughput) |
 | [`micro_chain_result.md`](reports/micro_chain_result.md) | **the first run of the chain** — the three band stages at 30 / 30 / 30 on 24 warm rows (8 kana + 8 kanji + 8 pieces), read rule by rule; the seed-baseline and table-membership tool changes it forced |
-| `reports/` | dated reads: [`conflict_joint_2026_09_25.md`](reports/conflict_joint_2026_09_25.md) — the gradient conflict probe + ten chain / joint arms on one data set: chain ≡ joint, steps/row is not the budget, singles and pieces want opposite regimes; [`grid_box_2026_09_25.md`](reports/grid_box_2026_09_25.md) — grid cells as the loss box: the `grid_string` price ×8–19, warm singles unmoved; [`piece_2026_09_25.md`](reports/piece_2026_09_25.md) — where 300f actually failed, by layer; [`floor_score.md`](floor_score.md) — **the seed floor of record** on sent / target / word / en |
+| `reports/` | dated reads: [`conflict_joint_2026_09_25.md`](reports/conflict_joint_2026_09_25.md) — the gradient conflict probe + ten chain / joint arms on one data set: chain ≡ joint, steps/row is not the budget, singles and pieces want opposite regimes; [`grid_box_2026_09_25.md`](reports/grid_box_2026_09_25.md) — grid cells as the loss box: the `grid_string` price ×8–19, warm singles unmoved; [`piece_2026_09_25.md`](reports/piece_2026_09_25.md) — where 300f actually failed, by layer; [`piece_only_2026_09_26.md`](reports/piece_only_2026_09_26.md) — the one-file parity by replay + the scene_piece-only arm (not the doubling lever); [`floor_score.md`](floor_score.md) — **the seed floor of record** on sent / target / word / en |
 | [`idea.md`](idea.md) | not scheduled — a per-cell gradient bank + validation-influence price in place of `‖ḡ‖·coh` and trained arms, the matched-σ sweep that would tell band from weighting; from the 2026-09-25 outside review |
 | [`plan.md`](plan.md) | the collapse spec: a run is one file, everything else is a rule (§§ 1–5; § 6 = the order, 1–2 done) |
 | `configs/runs/*.toml` | the runs — `{vocabs, read}` and nothing else: `run0925_300f` (300 pieces, the freeze arm; its re-run on this shape is plan.md § 6-3) |
@@ -54,7 +54,18 @@ A new read that changes a row of the law goes into
 | `_archive/` | the retired stage surface — `configs/stage*|joint*.toml`, the stage-shaped run files, `joint.py`, `boxprobe.py` (see its README) |
 | `runs/` | `ledger.jsonl` — every submitted job |
 
-## Where it stands (2026-09-25)
+## Where it stands (2026-09-26)
+
+**The one-file shape reproduces run0925_300f**, and **the scene_piece-only
+mix is not the doubling lever** ([`reports/piece_only_2026_09_26.md`](reports/piece_only_2026_09_26.md)).
+Parity by replay instead of the retrain (merge max |Δ| 0, step 1 identical,
+eval within render noise). `run0926_300f_sp` (same 300 pieces + freeze,
+`scene_piece` only) ties 300f on piece identity, buys `word` exact 4 → 9 / 36,
+loses sentence strings (sent contained 11 → 4). Doubling predates training
+and survives both mixes — the next read is doubling itself, not a mix. Every
+eval now carries the piece ruler (`native_piece/`, `eval.piece_vocabs`).
+
+### 2026-09-25
 
 **Grid items now train under the box-share loss**
 ([`reports/grid_box_2026_09_25.md`](reports/grid_box_2026_09_25.md)): every
@@ -133,7 +144,8 @@ merged rows — the seed's rows with the run's on top (μ 0, lr 1e-3, batch 4,
 cosine, warmup 10 %, grid box, 90 steps/row — `cjk_scale/train.py`); `eval`
 renders the floor (`load(seed)`, the `floor/` sidecar) and the trained rows
 (`trained.pt` in place — no `ctx/`) on
-`word` / `single` / `en`, あ / い native, the `read` strings and the target
+`word` / `single` / `en`, あ / い native, up to 8 trained pieces alone in a
+native scene (`native_piece/`), the `read` strings and the target
 captions, and writes one `sheet.png` + `reads.json`. Everything lands in
 `output/cjk_anima_scale/<run>/`; `--submit` records the job in
 `runs/ledger.jsonl`. The stage-shaped runs before 2026-09-25 stay on disk
