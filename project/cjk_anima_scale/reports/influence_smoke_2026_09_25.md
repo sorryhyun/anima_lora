@@ -42,6 +42,16 @@ scene_piece composites × 3 σ bins × 2 noises).
 
 ## Standing
 
+**Superseded 2026-09-25 by `influence_target_2026_09_25.md`**: the layer-2
+reading below — that the dev loss tracked the run's real piece-native gains —
+is withdrawn. Measured per piece, the loss gain ranks the unrendered
+3+-glyph pieces first (ちょっと +0.020, ありがとう +0.016) and the one piece
+with a real official gain at zero (すごい −0.001); ρ vs piecenat +0.02. The
+loss read the pseudo-text line, on rendered and unrendered pieces alike.
+Loss-target influence is closed for both axes; (a) below is moot and (b)'s
+certified-delta anchor is the only candidate left.
+
+
 Full gradient bank: **on hold.** If revived, two changes are
 prerequisites, in order: (a) row-conditioned stratified banking; (b) a
 validation target that sees the acceptance axis — the candidate is

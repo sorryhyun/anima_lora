@@ -1,5 +1,14 @@
 # idea — a gradient bank in place of trained arms (2026-09-25, from an outside review)
 
+> **Standing (2026-09-25 evening)**: calibrated and **closed for any FM-loss
+> target** — `reports/influence_smoke_2026_09_25.md` (unstratified banks
+> measure touch noise) then `reports/influence_target_2026_09_25.md` (the
+> in-box loss and the correct-vs-doubled margin see neither piece identity
+> nor doubling: ρ vs piecenat +0.02, the unrendered long pieces gain most).
+> The only unclosed piece is § Calibrate's non-loss alternative, anchoring on
+> certified table deltas. Everything below is kept as the record of the
+> proposal, not a plan.
+
 Not planned, not scheduled. Written down so the next person who wants to
 price a data mix without a 50-minute arm starts here instead of at
 `‖ḡ‖·coh`. Source: a gpt-6-astra review of this line's reports on

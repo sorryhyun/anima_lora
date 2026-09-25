@@ -35,3 +35,12 @@ to import `cjk_scale/` and the probe's `src/` primitives.
   verdict in `../reports/influence_smoke_2026_09_25.md` (bank on hold:
   estimator needs row-conditioned sampling; the dev-loss target can't see
   the acceptance axis).
+- `influence_target/` — step 1 after the smoke: does the dev target see what
+  piecenat saw? Value-only (no bank): in-box FM loss on matched
+  correct / doubled renders of the 8 piecenat pieces at the seed, step-5 000
+  and final 300f tables. T1 = per-piece identity gain vs the piecenat gains
+  (2-glyph bought, 3+ not); T2 = the doubled-vs-correct margin, the
+  acceptance-axis read. **Ran 2026-09-25** (`--label t1`) → verdict in
+  `../reports/influence_target_2026_09_25.md`: **both fail** — the loss gain
+  ranks the unrendered long pieces first and すごい at zero, the doubling
+  margin moves in no pattern. Loss-target influence closed; bank v2 not built.
