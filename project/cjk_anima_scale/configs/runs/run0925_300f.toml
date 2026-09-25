@@ -1,0 +1,28 @@
+# run0925_300f — the freeze arm (next.md A-F, 2026-09-25): 300 warm one-token
+# pieces trainable, every other row frozen at the seed (`context = "seed"`),
+# on the piece bands' data as one joint run (joint0507_0305), μ 0, lr 1e-3,
+# grid_box 1. Reads: does displacement bought by the pieces alone move the
+# product strings (product_criteria.md Axis 1) while the page (Axis 2) and
+# the frozen singles hold. はい = two frozen singles → a same-as-seed control.
+
+run = "run0925_300f"
+seed_table = "output/cjk_anima_scale/rows_step1_0921_merged/trained.pt"
+seed = 0
+context = "seed"
+
+[data]
+units = ["list:@ja_pieces_0925_300.txt"]   # no kana / chars base: the inventory is the pieces only (an empty units list would default to kana)
+pieces = ""
+phrase_file = "$MANGA109S/derived/dialogue_2_10.tsv"   # stage0305 scene_sentence 0.4 / stage0507 scene_short 0.2: lines with ≥ 1 inventory piece, the rest context rows
+n_items = 10000                             # per stage dir (disk: ~14 GB each at the micro's 1.4 MB / item; 43 GB free on 2026-09-25) — 300 rows × 90 × 4 = 108 k draws over 20 k items
+
+[budget]                                    # steps per row
+stage0507 = 45                              # data only under this run — the budget is the joint's
+stage0305 = 45
+joint0507_0305 = 90                         # 300 rows → 27 000 steps ≈ 3.2 h at 2.33 it/s
+
+[eval]
+groups = "word,en"
+native_chars = "あ,い"                      # frozen — the control
+sent_strings = "はい,おしい,やったネ,ちょっと来い,こんにちは"
+target = true

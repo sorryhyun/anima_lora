@@ -188,7 +188,11 @@ def build_pools(cfg, out: Path, rng: random.Random) -> Pools:
             singles.append(u)
         else:
             pieces.append(u)
-    assert singles, "the unit pool has no one-glyph unit"
+    if not singles:
+        # a pieces-only inventory (the freeze arm: `context = "seed"`, the
+        # singles ride frozen outside it) — the single recipes drop via
+        # missing_source and their shares renormalise over the rest
+        print("pools: no one-glyph unit — single recipes drop", flush=True)
     small = {d for ds in inv.small_of.values() for d in ds}
     stray = sorted(set(digraphs) - small)
     assert not stray, f"≥ 2-token units outside the small digraphs: {stray[:10]}"
@@ -798,6 +802,10 @@ def missing_source(name: str, p: dict, pools: Pools) -> str | None:
     them; the stage file is never edited for it."""
     if name == "scene_piece" and not pools.pieces:
         return "no pieces"
+    if name == "scene_single" and not (
+        pools.singles + (pools.digraphs if p.get("digraphs") else [])
+    ):
+        return "no singles"
     if name == "scene_short" and not pools.phrase.get("short"):
         return "no short lines"
     if name == "scene_sentence" and not pools.phrase.get("sentence"):

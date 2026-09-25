@@ -159,3 +159,40 @@ arms A / B / C / seed as rows. Accept by § Accept. What each outcome means:
 Not in this round: the token-wise outside-box EN-ref cosine (Axis 2 by eye
 until it lands in `eval/enref.py`); sentence draws (`stage0309` data, the
 one unread conflict cell); anything on the full 2 274-row inventory.
+
+## 4. Launched instead: `run0925_300f` — the freeze arm at 300 pieces (2026-09-25)
+
+Decided over § 1–2 after the § 6 re-read of the conflict report (the
+displacement was bought, the hits were not; singles paid) and the outside
+review (`idea.md`): one arm, not A / B / C.
+
+- **Inventory**: `assets/units/ja_pieces_0925_300.txt` — the 5 ruler pieces +
+  `run0925_72`'s 24 + `ja_cold_0001_1900.txt` by corpus count to 300, all
+  warm in `rows_step1_0921_merged`; glyphs 2 / 3 / 4 / 5 = 199 / 82 / 16 / 3.
+  `context = "seed"`: every kana / kanji single rides frozen (はい = a
+  same-as-seed control; あ い `native` too). No kanji in the inventory — a
+  single trained here would sit in the 0.3–0.7 bands off the law, on 0507's
+  single recipes only; kanji refinement is a separate 0709 pass.
+- **Data**: `stage0507` + `stage0305` under the run, 10 000 items each
+  (disk-bound: 1.4 MB / item, 43 GB free), merged by `configs/joint0507_0305.toml`
+  (0 / 45 / 45). stage0507's `scene_single` / `grid_single` drop under a
+  pieces-only inventory (`recipes.missing_source`, new `scene_single` case;
+  the `assert singles` became a notice) → scene_piece 0.53 / grid_string
+  0.2 / scene_short 0.27. `phrase_file` on: 0305 `scene_sentence` 0.4 draws
+  MANGA109S lines with ≥ 1 inventory piece, the rest context rows.
+- **Train**: μ 0, lr 1e-3, `grid_box` 1, 90 steps/row × 300 = 27 000 steps
+  ≈ 3.2 h at 2.33 it/s; eval `word,en` + native あ い + `native_sent` (5) +
+  `target`.
+
+```
+export ANIMA_VOCAB_PACK=models/vocab_packs/anima_cjk_vocab_pack
+S="project/cjk_anima_scale/scale.py --run run0925_300f"
+$S --stage stage0507 --steps data --workers 10 && $S --stage stage0305 --steps data --workers 10 && $S --stage joint0507_0305 --steps data   # CPU, launched 2026-09-25 14:05
+$S --stage joint0507_0305 --steps train eval --eval_only eval native sent target --submit --queue                                          # after the build
+```
+
+Read by `product_criteria.md`: Axis 1 on the five strings (こんにちは / おしい /
+やったネ / ちょっと来い carry trainable pieces; はい does not), Axis 2 on the
+sheet against the seed. Dev vs acceptance: this run's strings *are* the
+acceptance set — the first freeze read is a go / no-go on the design, not a
+share choice; the `word` group (18 of the 300) is the dev-side exact ruler.

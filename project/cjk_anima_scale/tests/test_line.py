@@ -191,6 +191,9 @@ def test_missing_source_reads_the_pools():
     assert missing_source("scene_short", {}, empty) == "no short lines"
     assert missing_source("scene_sentence", {}, full) == "no sentence lines"
     assert missing_source("scene_piece", {}, empty) == "no pieces"
+    nosingle = NS(pieces=["それを"], singles=[], digraphs=[], phrase={})
+    assert missing_source("scene_single", {}, nosingle) == "no singles"
+    assert missing_source("scene_single", {}, empty) is None
     assert missing_source("scene_piece", {}, full) is None
     assert missing_source("grid_string", {"source": "both"}, full) is None
     assert missing_source("grid_string", {"source": "short"}, empty)
