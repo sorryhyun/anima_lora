@@ -1,14 +1,29 @@
-"""Imports, the four stage configs and the run files, the chain's warm
-resolution, the front door's parser, and the probe primitives the recipes lean on."""
+"""Imports and the line's boundary (its stage packages are its own ``src/``),
+the one-file run, the recipe table by kind, the run layout, the front door,
+the eval arms (``load`` / ``overwrite``) and the one-sheet compose."""
 
 from __future__ import annotations
 
 import importlib
+import json
+import random
 
 import pytest
 
 from cjk_scale import config
-from cjk_scale.paths import LINE, PROBE_SRC, arm_dir, data_dir, run_tag
+from cjk_scale.paths import (
+    LINE,
+    OUT,
+    REPO,
+    SEED_TABLE,
+    SRC,
+    arm_dir,
+    data_dir,
+    legacy_arm_dir,
+    legacy_data_dir,
+    run_dir,
+    table_path,
+)
 
 MODULES = [
     "paths",
@@ -19,161 +34,259 @@ MODULES = [
     "rows",
     "train",
     "loss",
-    "boxprobe",
     "eval",
+    "conflict",
     "bake",
     "ledger",
+    "legacy",
 ]
 
 
 @pytest.mark.parametrize("name", MODULES)
 def test_modules_import(name):
-    if name in ("rows", "train", "boxprobe"):
+    if name in ("rows", "train", "conflict"):
         pytest.importorskip("torch")
     mod = importlib.import_module(f"cjk_scale.{name}")
     assert mod.__file__.startswith(str(LINE))
 
 
-def test_probe_packages_are_the_probe_line():
-    """The names the recipes import resolve to the probe's ``src/``, not to
-    anything of ours — the reason this package is not called ``src``."""
-    for name in (
-        "common.render.scene",
-        "common.render.flat",
-        "data.grid",
-        "data.stage",
-        "data.synth",
-        "train.stage",
-    ):
-        mod = importlib.import_module(name)
-        assert mod.__file__.startswith(str(PROBE_SRC)), (name, mod.__file__)
+# ---------------------------------------------------------------------------
+# the boundary: the stage packages are this line's own src/
 
 
-def test_output_root_is_ours_and_the_probe_reads_it():
-    """Runs land under ``output/cjk_anima_scale/`` and the probe modules that
-    bind ``OUT`` at import (``data.synth`` → the scene pools, ``eval.enref``
-    → the EN reference cache) see the same root — the redirect in
-    ``bootstrap()`` ran before they loaded."""
-    import common.paths as probe_paths
-    from cjk_scale.paths import OUT, REPO
+STAGE_MODULES = (
+    "stages",
+    "cli",
+    "common.paths",
+    "common.models",
+    "common.prompts",
+    "common.readers",
+    "common.hooks",
+    "common.render.scene",
+    "common.render.flat",
+    "common.render.ink",
+    "data.grid",
+    "data.stage",
+    "data.synth",
+    "data.inventory",
+    "train.stage",
+    "eval.stage",
+    "eval.native",
+    "eval.enref",
+    "eval.cf_sense",
+    "scenes.stage",
+    "probe.merge_tables",
+)
+
+
+@pytest.mark.parametrize("name", STAGE_MODULES)
+def test_stage_packages_are_the_lines_own(name):
+    """After ``paths.bootstrap()`` every stage module the line imports
+    resolves under ``project/cjk_anima_scale/src/`` — the probe line is
+    independent and never on the path."""
+    mod = importlib.import_module(name)
+    assert mod.__file__.startswith(str(SRC)), (name, mod.__file__)
+
+
+def test_nothing_names_the_probe_line():
+    """No code or config of the line (outside ``_archive/``) names the probe
+    line — no import, no sys.path entry, no Path constant."""
+    probe = "cjk_renderable" + "_anima"
+    hits = [
+        str(p.relative_to(LINE))
+        for p in sorted(LINE.rglob("*"))
+        if p.suffix in (".py", ".toml")
+        and "_archive" not in p.relative_to(LINE).parts
+        and "__pycache__" not in p.parts
+        and probe in p.read_text(encoding="utf-8")
+    ]
+    assert not hits, hits
+
+
+def test_stage_registry_is_trimmed():
+    from stages import STAGES
+
+    assert set(STAGES) == {"eval", "native", "target", "cf_sense", "summary", "scenes"}
+    for module, fn in STAGES.values():
+        assert callable(getattr(importlib.import_module(module), fn))
+
+
+def test_output_root_is_ours():
+    """Runs land under ``output/cjk_anima_scale/`` and the stage modules that
+    bind ``OUT`` at import (``data.synth`` → the scene pools, ``eval.enref`` →
+    the EN reference cache) see the same root; assets resolve in the line."""
+    import common.paths as stage_paths
+    from common.prompts import TARGET_PROMPTS
+    from data.units import UNITS_DIR as STAGE_UNITS
+
+    from cjk_scale.paths import UNITS_DIR
 
     assert OUT == REPO / "output" / "cjk_anima_scale"
-    assert probe_paths.OUT == OUT
-    assert data_dir("stage0709", "t").parent == OUT
+    assert stage_paths.OUT == OUT and stage_paths.REPO == REPO
     assert importlib.import_module("data.synth").OUT == OUT
     assert importlib.import_module("eval.enref").OUT == OUT
-    assert probe_paths.arm_dir(
-        type(
-            "A",
-            (),
-            {"arm": "rows", "data_tag": run_tag("stage0709", "t"), "arm_tag": ""},
-        )()
-    ) == arm_dir("stage0709", "t")
+    assert stage_paths.FONT_DIR == LINE / "assets" / "fonts"
+    assert STAGE_UNITS == UNITS_DIR == LINE / "assets" / "units"
+    assert TARGET_PROMPTS == LINE / "assets" / "target_prompts.txt"
+    assert TARGET_PROMPTS.is_file() and (UNITS_DIR / "ja_pieces_0925_300.txt").is_file()
 
 
-def test_box_share_curve():
-    from cjk_scale.loss import box_share_of, glyph_count
-
-    assert glyph_count("じゃ ない") == 4 and glyph_count("") == 1
-    assert box_share_of(1, 0.25, 0.5, 8) == 0.25
-    assert abs(box_share_of(2, 0.25, 0.5, 8) - (0.25 + 0.25 / 3)) < 1e-9
-    assert abs(box_share_of(4, 0.25, 0.5, 8) - (0.25 + 0.5 / 3)) < 1e-9
-    assert box_share_of(8, 0.25, 0.5, 8) == 0.5 == box_share_of(40, 0.25, 0.5, 8)
-    assert box_share_of(5, 0.25, 0.5, 1) == 0.25  # n_cap 1: flat
-
-
-def test_primitives_exist():
-    from common.render.scene import H_PITCH, V_PITCH, region_capacity, render_into_scene  # noqa: F401
-    from data.grid import _Deck, render_grid  # noqa: F401
-
-
-def test_stage_configs_load_and_chain():
-    names = config.stage_names()
-    assert names == ["stage0305", "stage0507", "stage0709", "stage0309"] or set(
-        names
-    ) == {
-        "stage0305",
-        "stage0507",
-        "stage0709",
-        "stage0309",
-    }
-    cfgs = {n: config.load(n) for n in names}
-    assert cfgs["stage0709"].band == (0.7, 0.9)
-    assert cfgs["stage0507"].band == (0.5, 0.7)
-    assert cfgs["stage0305"].band == (0.3, 0.5)
-    assert cfgs["stage0309"].band == (0.3, 0.9) and cfgs["stage0309"].gate == "none"
-    # the warm chain: each stage starts from the previous one under the same tag
-    assert cfgs["stage0507"].warm_table("t") == arm_dir("stage0709", "t") / "trained.pt"
-    assert cfgs["stage0305"].warm_table("t") == arm_dir("stage0507", "t") / "trained.pt"
-    assert cfgs["stage0309"].warm_table("t") == arm_dir("stage0305", "t") / "trained.pt"
-    # the first stage has no warm_from of its own: cold without a run, the
-    # run's seed_table with one
-    assert (
-        cfgs["stage0709"].warm_from == "" and cfgs["stage0709"].warm_table("t") is None
-    )
-    w = config.load("stage0709", "run_full").warm_table("t")
-    assert (
-        w is not None and w.name == "trained.pt" and "rows_step1_0921_merged" in str(w)
-    )
-    for c in cfgs.values():
-        assert abs(sum(m.share for m in c.mix) - 1) < 1e-9
-        assert c.train_steps(2300) == 30 * 2300
-        assert "lr_warmup" not in c.train and 0 < c.train["lr_warmup_ratio"] < 1
-        # a stage file never says which rows
-        assert not (set(c.data) & set(config.RUN_DATA_KEYS)) - set(
-            config._DATA_DEFAULTS
-        )
+def test_run_layout():
+    assert run_dir("r1") == OUT / "r1"
+    assert data_dir("r1") == OUT / "r1" / "data"
+    assert table_path("r1") == OUT / "r1" / "trained.pt"
+    assert arm_dir("r1", "ctx") == OUT / "r1" / "ctx"
+    assert arm_dir("r1", "floor") == OUT / "r1" / "floor"
+    assert SEED_TABLE == OUT / "rows_step1_0921_merged" / "trained.pt"
+    with pytest.raises(AssertionError):
+        run_dir("a b")
+    with pytest.raises(AssertionError):
+        arm_dir("r1", "seed")
+    # the stage-layout records, prefix-less since 2026-09-25
+    assert legacy_data_dir("stage0507", "t").name == "data_stage0507_t"
+    assert legacy_arm_dir("stage0507", "t").name == "rows_stage0507_t"
 
 
-def test_run_files_overlay_the_stage():
-    """A run file carries rows, seed table and budgets; run wins over stage."""
-    assert set(config.run_names()) >= {"run_full", "run0923_micro"}
-    full = config.load_run("run_full")
-    assert (
-        full.data["pieces"] == "ja_cold_0001_1900.txt"
-        and full.budget["stage0709"] == 30
-    )
-    micro = config.load("stage0507", "run0923_micro")
-    assert micro.run is not None and micro.run.name == "run0923_micro"
-    assert micro.data["units"][0].startswith("chars:") and micro.data["pieces"] == ""
-    assert micro.data["phrase_file"] == "" and micro.data["n_items"] == 4000
-    assert micro.train["steps_per_row"] == 30 and micro.train_steps(24) == 720
-    assert micro.warmup_steps(720) == 72
-    assert micro.eval["groups"] == "single,word,en" and micro.eval["cf_rows"] == "piece"
-    assert micro.data["seed"] == 0 and micro.train["seed"] == 0
-    # the chain resolves under the run's name; the mix is the stage's
-    assert (
-        micro.warm_table("run0923_micro")
-        == arm_dir("stage0709", "run0923_micro") / "trained.pt"
-    )
-    assert [m.name for m in micro.mix] == [m.name for m in config.load("stage0507").mix]
-    # stage files may not carry run keys
-    bad = LINE / "configs" / "_bad_stage.toml"
-    bad.write_text(
-        'stage = "bad"\nband = [0.5, 0.7]\n[data]\nunits = ["kana"]\n'
-        '[[data.mix]]\nrecipe = "scene_single"\nshare = 1.0\n',
-        encoding="utf-8",
-    )
-    try:
-        with pytest.raises(AssertionError, match="belong to a run file"):
-            config.load(str(bad))
-    finally:
-        bad.unlink()
+def test_stage_paths_take_the_run_dirs():
+    """The vendored ``data_dir`` / ``arm_dir`` take ``--data_path`` /
+    ``--arm_path``; without them they fall back to the tag layout."""
+    from types import SimpleNamespace as NS
+
+    import common.paths as stage_paths
+
+    a = NS(arm="rows", data_tag="x", arm_tag="", data_path="/d", arm_path="/a")
+    assert str(stage_paths.data_dir(a)) == "/d" and str(stage_paths.arm_dir(a)) == "/a"
+    b = NS(arm="rows", data_tag="stage0507_t", arm_tag="ctx", data_path="", arm_path="")
+    assert stage_paths.data_dir(b) == OUT / "data_stage0507_t"
+    assert stage_paths.arm_dir(b) == OUT / "rows_stage0507_t_ctx"
 
 
-def test_every_recipe_in_the_mixes_is_registered():
+# ---------------------------------------------------------------------------
+# a run is one file
+
+
+def test_run_file_is_vocabs_and_read(tmp_path):
+    assert "run0925_300f" in config.run_names()
+    rc = config.load_run("run0925_300f")
+    assert rc.vocabs == "ja_pieces_0925_300.txt"
+    assert rc.units() == ["list:@ja_pieces_0925_300.txt"]
+    assert rc.vocabs_file().is_file()
+    assert rc.read == ("はい", "おしい", "やったネ", "ちょっと来い", "こんにちは")
+    spec = tmp_path / "specs.toml"
+    spec.write_text('vocabs = ["kana", "kanji:200"]\n', encoding="utf-8")
+    rs = config.load_run(str(spec))
+    assert rs.units() == ["kana", "kanji:200"] and rs.read == ()
+    for body in (
+        'vocabs = "ja_pieces_0925_300.txt"\nseed = 0\n',
+        'vocabs = "ja_pieces_0925_300.txt"\n[budget]\njoint = 90\n',
+        'vocabs = "ja_pieces_0925_300.txt"\ncontext = "seed"\n',
+    ):
+        bad = tmp_path / "bad.toml"
+        bad.write_text(body, encoding="utf-8")
+        with pytest.raises(AssertionError, match="rules in code"):
+            config.load_run(str(bad))
+    missing = tmp_path / "missing.toml"
+    missing.write_text('vocabs = "no_such_file.txt"\n', encoding="utf-8")
+    with pytest.raises(AssertionError, match="does not exist"):
+        config.load_run(str(missing))
+
+
+def test_front_door_parser():
+    import scale
+
+    p = scale.build_parser()
+    a = p.parse_args(["run0925_300f", "data", "--workers", "3"])
+    assert a.run == "run0925_300f" and a.verb == "data" and a.workers == 3
+    a = p.parse_args(["run0925_300f", "train", "--submit", "--queue"])
+    assert a.verb == "train" and a.submit and a.queue
+    assert p.parse_args(["windows"]).verb is None
+    for gone in (
+        ["--run", "run0925_300f"],
+        ["run0925_300f", "bake"],
+        ["run0925_300f", "train", "--init_anchor", "0.1"],
+        ["run0925_300f", "train", "--steps_per_row", "30"],
+        ["run0925_300f", "data", "--n_items", "10"],
+        ["run0925_300f", "eval", "--seed_only"],
+        ["run0925_300f", "train", "--tag", "x"],
+    ):
+        with pytest.raises(SystemExit):
+            p.parse_args(gone)
+
+
+# ---------------------------------------------------------------------------
+# the recipe table by kind
+
+
+def test_recipe_table_by_kind():
+    from cjk_scale.builder import ITEMS_PER_VOCAB, TABLE, plan_groups
     from cjk_scale.recipes import RECIPES
+    from cjk_scale.windows import ROWS
 
-    for n in config.stage_names():
-        for m in config.load(n).mix:
-            assert m.name in RECIPES, (n, m.name)
+    law = {(k, (r.lo, r.hi)) for r in ROWS for k in r.kinds}
+    for g in TABLE:
+        assert (g.kind, g.band) in law, (g.name, g.kind, g.band)
+        for t in g.tiers:
+            assert t.recipe in RECIPES, (g.name, t.recipe)
+    assert {g.name: g.band for g in TABLE} == {
+        "b0709": (0.7, 0.9),
+        "b0507": (0.5, 0.7),
+        "b0305": (0.3, 0.5),
+    }
+    single = [t.recipe for g in TABLE if g.kind == "single" for t in g.tiers]
+    piece = [t.recipe for g in TABLE if g.kind == "piece" for t in g.tiers]
+    assert single == ["scene_single", "grid_single"]
+    assert sorted(set(piece)) == [
+        "grid_string",
+        "scene_piece",
+        "scene_sentence",
+        "scene_short",
+    ]
+    assert piece.count("scene_piece") == 2  # the two px tiers
+    for kind in ("single", "piece"):
+        assert abs(sum(g.share for g in TABLE if g.kind == kind) - 1) < 1e-9
+    # which groups run is which kinds the vocabs hold; the volume is one rule
+    pieces_only = plan_groups({"single": [], "piece": ["p"] * 300, "multi": []})
+    assert [(g.name, n) for g, n in pieces_only] == [("b0507", 10000), ("b0305", 10000)]
+    both = plan_groups({"single": ["s"] * 3, "piece": ["p"] * 6, "multi": []})
+    assert [(g.name, n) for g, n in both] == [
+        ("b0709", round(3 * ITEMS_PER_VOCAB)),
+        ("b0507", round(3 * ITEMS_PER_VOCAB)),
+        ("b0305", round(3 * ITEMS_PER_VOCAB)),
+    ]
 
 
-def test_dropped_recipe_share_renormalises():
+def test_counts_split_a_group_by_weight():
     from cjk_scale.builder import _counts
 
-    assert _counts([("a", 0.5), ("b", 0.3)], 100) == {"a": 63, "b": 37}
+    # stage0507's live mix under run0925_300f: 5 334 / 2 000 / 2 666 of 10 000
+    assert _counts(
+        [("scene_piece", 0.4), ("grid_string", 0.15), ("scene_short", 0.2)], 10000
+    ) == {
+        "scene_piece": 5334,
+        "grid_string": 2000,
+        "scene_short": 2666,
+    }
     assert sum(_counts([("a", 0.6), ("b", 0.4)], 4001).values()) == 4001
+
+
+def test_restart_puts_the_draw_state_back():
+    """Every band group restarts from the pools' post-build state — the rng
+    a stage build of record continued with, the canvas rng, empty counters."""
+    from collections import Counter
+    from types import SimpleNamespace as NS
+
+    from cjk_scale.builder import _restart
+
+    rng, shapes = random.Random(0), NS(rng=random.Random(17))
+    pools = NS(shapes=shapes, used=Counter(), decks={}, balanced={})
+    snap = (rng.getstate(), shapes.rng.getstate())
+    first = (rng.random(), shapes.rng.random())
+    pools.used[3] += 1
+    pools.decks["x"] = 1
+    pools.balanced["short"] = Counter({"a": 1})
+    _restart(pools, rng, snap)
+    assert (rng.random(), shapes.rng.random()) == first
+    assert not pools.used and not pools.decks and not pools.balanced
 
 
 def test_missing_source_reads_the_pools():
@@ -210,34 +323,14 @@ def test_fit_px_is_the_bubble_capacity():
     assert _fill_for_px([0, 0, 100, 210], 2, 20, True, 0.9) == pytest.approx(0.2)
 
 
-def test_run_dirs_follow_the_probe_layout():
-    assert run_tag("stage0709", "t1") == "scale_stage0709_t1"
-    assert data_dir("stage0709", "t1").name == "data_scale_stage0709_t1"
-    assert arm_dir("stage0709", "t1").name == "rows_scale_stage0709_t1"
-    with pytest.raises(AssertionError):
-        run_tag("stage0709", "a b")
-
-
-def test_front_door_parser():
-    import scale
-
-    a = scale.build_parser().parse_args(
-        ["--stage", "stage0709", "--tag", "t1", "--steps", "data", "train"]
-    )
-    assert a.command == "run" and a.steps == ["data", "train"] and a.run is None
-    a = scale.build_parser().parse_args(
-        ["--run", "run0923_micro", "--stage", "stage0709", "--steps", "eval"]
-    )
-    assert a.run == "run0923_micro" and a.tag is None
-    a = scale.build_parser().parse_args(["windows"])
-    assert a.command == "windows"
+def test_primitives_exist():
+    from common.render.scene import H_PITCH, V_PITCH, region_capacity, render_into_scene  # noqa: F401
+    from data.grid import _Deck, render_grid  # noqa: F401
 
 
 def test_horizontal_marker_and_grid_share():
     """30 % of multi-glyph items are drawn as lines and say so: the scene
     caption's marker per frame, the grid's per-cell draw."""
-    import random
-
     from common.prompts import grid_caption
     from common.render.flat import find_fonts
     from data.grid import render_grid
@@ -262,6 +355,7 @@ def test_horizontal_marker_and_grid_share():
         'horizontal Japanese text reads as "あ".'
     )
     fonts = find_fonts()
+    assert any(str(LINE / "assets" / "fonts") in f for f in fonts), "the line's fonts"
     for frac, want in ((0.0, set()), (1.0, {0, 1, 3})):
         lines: list = []
         render_grid(
@@ -279,27 +373,142 @@ def test_horizontal_marker_and_grid_share():
         assert set(lines) == want, (frac, lines)  # the single glyph あ never
     cap = grid_caption("flat", 2, 2, ["って", "んだ", "あ", "先生"], horizontal={0, 3})
     assert cap.count("horizontal Japanese text reads as") == 2
-    for c in config.stage_names():
-        assert config.load(c).data["horizontal_frac"] == 0.3
-        assert config.load(c).data["horizontal_scenes"] == "sl1w"
+    assert config.DATA["horizontal_frac"] == 0.3
+    assert config.DATA["horizontal_scenes"] == "sl1w"
 
 
-def test_probe_eval_namespace_builds():
-    from cjk_scale.eval import probe_args
-
-    cfg = config.load("stage0507")
-    a = probe_args(cfg, "t1", ["eval", "native", "cf_sense"], ["--eval_limit", "3"])
-    assert a.data_tag == "scale_stage0507_t1" and a.arm == "rows" and a.no_floor
-    assert a.cf_lang == "ja" and a.cf_rows == "piece" and a.eval_limit == 3
-    assert a.native_clauses == "en,swap"
+# ---------------------------------------------------------------------------
+# train
 
 
-def test_seed_wrapper_restricts_to_the_inventory(tmp_path, monkeypatch):
-    """--seed_only: the run's seed table, rows the stage's words.json names,
-    under rows_scale_<stage>_<tag>_seed (the probe's --arm_tag seed)."""
-    import json
-    from dataclasses import replace
+def test_vocab_idx_is_the_tokenizer_map():
+    """The vocabs file is the inventory, the tokenizer maps it (plan.md § 4)."""
+    from cjk_scale.train import vocab_idx
 
+    class Tok:
+        ids = {"あ": [186], "ちょっと": [901], "それを": [55]}
+
+        def encode(self, text, add_special_tokens=False):
+            return self.ids[text]
+
+        def decode(self, ids):
+            return {186: "あ", 901: "ちょっと", 55: "それを"}[ids[0]]
+
+    qmap = {186: 186, 901: 40001, 55: 26585}
+    assert vocab_idx(["あ", "ちょっと", "それを"], (Tok(), qmap)) == {186, 40001, 26585}
+
+
+def test_items_carry_their_band(tmp_path):
+    from cjk_scale.train import load_items
+
+    rec = {
+        "file": "x.png",
+        "text": "あ",
+        "caption": "c",
+        "src": "scene",
+        "shape": [512, 512],
+    }
+    (tmp_path / "eval.json").write_text("[]", encoding="utf-8")
+    (tmp_path / "vocabs.json").write_text('["あ"]', encoding="utf-8")
+    (tmp_path / "train.jsonl").write_text(
+        json.dumps({**rec, "band": [0.7, 0.9]}) + "\n", encoding="utf-8"
+    )
+    recs, ev, vocabs = load_items(tmp_path)
+    assert recs[0]["band"] == [0.7, 0.9] and ev == [] and vocabs == ["あ"]
+    (tmp_path / "train.jsonl").write_text(json.dumps(rec) + "\n", encoding="utf-8")
+    with pytest.raises(AssertionError, match="band"):
+        load_items(tmp_path)
+
+
+def test_box_share_curve():
+    from cjk_scale.loss import box_share_of, glyph_count
+
+    assert glyph_count("じゃ ない") == 4 and glyph_count("") == 1
+    assert box_share_of(1, 0.25, 0.5, 8) == 0.25
+    assert abs(box_share_of(2, 0.25, 0.5, 8) - (0.25 + 0.25 / 3)) < 1e-9
+    assert abs(box_share_of(4, 0.25, 0.5, 8) - (0.25 + 0.5 / 3)) < 1e-9
+    assert box_share_of(8, 0.25, 0.5, 8) == 0.5 == box_share_of(40, 0.25, 0.5, 8)
+    assert box_share_of(5, 0.25, 0.5, 1) == 0.25  # n_cap 1: flat
+
+
+def test_grid_box_union_mask():
+    """grid_box: a grid item's cells become the loss box (union); off, and for
+    a flat 1×1, the item is the plain canvas mean."""
+    import torch
+
+    from cjk_scale.loss import box_mask, box_share_fm_loss, item_boxes
+
+    scene = {"layout": "scene", "src": "scene", "text": "聞", "box": [64, 64, 128, 128]}
+    grid = {
+        "layout": "grid",
+        "src": "grid",
+        "text": "はじ ファ",
+        "boxes": [[0, 0, 64, 32], [128, 128, 192, 160]],
+    }
+    flat = {
+        "layout": "flat",
+        "src": "font",
+        "text": "口",
+        "boxes": [[32, 32, 224, 224]],
+    }
+    assert item_boxes(scene, False) == [[64, 64, 128, 128]] == item_boxes(scene, True)
+    assert item_boxes(grid, False) == [] and item_boxes(grid, True) == grid["boxes"]
+    assert item_boxes(flat, False) == [] == item_boxes(flat, True)
+    m = box_mask((3, 4, 32, 32), [scene, grid, flat], "cpu", grid_box=True)
+    assert m[0].sum() == 8 * 8 and m[1].sum() == 8 * 4 + 8 * 4 and m[2].sum() == 0
+    assert (
+        box_mask((3, 4, 32, 32), [scene, grid, flat], "cpu", grid_box=False)[1].sum()
+        == 0
+    )
+    g = torch.Generator().manual_seed(0)
+    pred = torch.randn(1, 4, 32, 32, generator=g)
+    target = torch.zeros_like(pred)
+    plain = ((pred - target) ** 2).mean()
+    off = box_share_fm_loss(pred, target, [grid], 0.25, 0.5, 8, grid_box=False)
+    on = box_share_fm_loss(pred, target, [grid], 0.25, 0.5, 8, grid_box=True)
+    assert torch.isclose(off, plain)
+    se = ((pred - target) ** 2).mean(dim=1)[0]
+    m1 = box_mask((1, 4, 32, 32), [grid], "cpu", grid_box=True)[0, 0].bool()
+    s = 0.25 + 0.25 * (torch.log(torch.tensor(4.0)) / torch.log(torch.tensor(8.0)))
+    want = s * se[m1].mean() + (1 - s) * se[~m1].mean()
+    assert torch.isclose(on, want, atol=1e-6)
+    assert torch.isclose(
+        box_share_fm_loss(pred, target, [flat], 0.25, 0.5, 8, grid_box=True), plain
+    )
+
+
+# ---------------------------------------------------------------------------
+# eval
+
+
+def _rc(name="t1", read=("はい",)):
+    return config.RunConfig(name=name, path=LINE / "x.toml", vocabs="v.txt", read=read)
+
+
+def test_stage_eval_namespace_builds():
+    import common.paths as stage_paths
+    from cjk_scale import eval as ev
+
+    rc = _rc()
+    a = ev.probe_args(rc, ev.FLOOR_ARM, ["eval", "native"], ["--eval_limit", "3"])
+    assert stage_paths.data_dir(a) == data_dir("t1")
+    assert stage_paths.arm_dir(a) == arm_dir("t1", "floor")
+    assert a.arm == "rows" and a.no_floor and a.seeds == 2 and a.eval_limit == 3
+    assert a.native_chars == "あ,い" and a.native_clauses == "en,swap"
+    assert a.steps == 28 and a.cfg == 4.0 and a.seed == 0
+    s = ev.ruler_args(rc, ev.CTX_ARM, "sent")
+    assert (
+        s.eval_tag == "sent" and s.native_chars == "はい" and s.native_clauses == "en"
+    )
+    assert stage_paths.arm_dir(s) == arm_dir("t1", "ctx")
+    assert ev.rulers(rc) == ["eval", "native", "sent", "target"]
+    assert ev.rulers(_rc(read=())) == ["eval", "native", "target"]
+
+
+def test_floor_and_ctx_arms(tmp_path, monkeypatch):
+    """load / overwrite are the whole table algebra: the floor arm is
+    load(seed) — every row — and the ctx arm is overwrite(seed, trained) in
+    the trained table's row_scale; both land under the run dir."""
     import torch
 
     from cjk_scale import eval as ev
@@ -321,92 +530,108 @@ def test_seed_wrapper_restricts_to_the_inventory(tmp_path, monkeypatch):
         },
         seed,
     )
-    cfg = config.load("stage0709", "run0923_micro")
-    cfg = replace(cfg, run=replace(cfg.run, seed_table=str(seed)))
-    d = paths.data_dir("stage0709", "t1")
-    d.mkdir()
-    (d / "words.json").write_text(
-        json.dumps({"kana_pieces": ["あ", "それを"], "held": []})
-    )
-    out = ev.seed_wrapper(
-        cfg, "t1", row_text={10: "あ", 11: "い", 12: "それを", 13: "x"}
-    )
-    assert out == tmp_path / "rows_scale_stage0709_t1_seed"
+    rc = _rc()
+    out = ev.floor_arm(rc, seed)
+    assert out == tmp_path / "t1" / "floor"
     sd = torch.load(out / "trained.pt", weights_only=False)
-    assert sd["delta"]["ext_ids"] == [10, 12] and sd["delta"]["row_scale"] == 1.5
-    assert torch.equal(sd["delta"]["raw"], torch.tensor([[0.0, 1.0], [4.0, 5.0]]))
-    assert sd["arm"] == "rows" and sd["args"]["seed_only"] and sd["warm_rows"] == 2
-    # no decoder → the whole table, still the trained shape
-    out = ev.seed_wrapper(cfg, "t1", row_text={})
-    assert (
-        len(torch.load(out / "trained.pt", weights_only=False)["delta"]["ext_ids"]) == 4
+    assert sd["delta"]["ext_ids"] == [10, 11, 12, 13]
+    assert sd["delta"]["row_scale"] == 1.5
+    assert torch.equal(sd["delta"]["raw"], torch.arange(8.0).view(4, 2))
+    assert sd["arm"] == "rows" and sd["args"]["floor"] and sd["warm_rows"] == 4
+    torch.save(
+        {
+            "delta": {
+                "ext_ids": [12, 20],
+                "raw": torch.full((2, 2), 7.0),
+                "row_scale": 3.0,
+            },
+            "arm": "rows",
+            "killed": "",
+        },
+        tmp_path / "t1" / "trained.pt",
     )
-    # the probe resolves the same dir from --arm_tag
-    a = ev.probe_args(cfg, "t1", ["eval"], ["--arm_tag", ev.SEED_ARM_TAG])
-    from common.paths import arm_dir as probe_arm_dir
-
-    assert probe_arm_dir(a).name == out.name and a.data_tag == "scale_stage0709_t1"
-
-
-def test_stage_table_carries_the_inventory():
-    """A unit the band draws nothing on stays in the table (micro_chain_result.md
-    § 4: 'untouched is exact'): table = captions' rows ∪ the inventory's."""
-    from cjk_scale.train import inventory_ext
-
-    words = {"kana_pieces": ["あ", "それを"], "held": [], "freq": []}
-    ev_ext = {"あ": [186], "それを": [26585], "HELLO": [], "extra_char": [7]}
-    inv = inventory_ext(words, ev_ext)
-    assert inv == {186, 26585}
-    touched = {186, 58974}
-    assert touched | inv == {186, 26585, 58974}
-    # a unit the eval set did not sample resolves through the tokenizer (the
-    # 300-piece run: `word` is 18 of them; the rest must not ride as context)
-    words = {"kana_pieces": ["あ", "それを", "ちょっと"], "held": [], "freq": []}
-
-    class Tok:
-        def encode(self, text, add_special_tokens=False):
-            return {"ちょっと": [901]}[text]
-
-        def decode(self, ids):
-            return "ちょっと"
-
-    inv = inventory_ext(words, ev_ext, (Tok(), {901: 40001}))
-    assert inv == {186, 26585, 40001}
+    out = ev.ctx_arm(rc, seed)
+    assert out == tmp_path / "t1" / "ctx"
+    sd = torch.load(out / "trained.pt", weights_only=False)
+    assert sd["delta"]["ext_ids"] == [10, 11, 12, 13, 20]
+    assert sd["delta"]["row_scale"] == 3.0 and sd["context_rows"] == 4
+    k = 1.5 / 3.0  # seed rows land at raw × (seed scale / trained scale)
+    assert torch.equal(sd["delta"]["raw"][0], torch.tensor([0.0, 1.0]) * k)
+    assert torch.equal(
+        sd["delta"]["raw"][2], torch.full((2,), 7.0)
+    )  # trained wins on 12
+    assert ev.overwrite({1: "a", 2: "b"}, {2: "c"}) == {1: "a", 2: "c"}
 
 
-def test_grid_box_union_mask():
-    """grid_box: a grid item's cells become the loss box (union); off, and for
-    a flat 1×1, the item is the plain canvas mean."""
-    import torch
+def test_compose_one_sheet(tmp_path, monkeypatch):
+    """Both arms' reads → reads.json (official / loose / contained per string
+    and per group) + sheet.png; a floor with reads on hand is not re-rendered."""
+    from PIL import Image
 
-    from cjk_scale.loss import box_mask, box_share_fm_loss, item_boxes
+    from cjk_scale import eval as ev
+    from cjk_scale import paths
 
-    scene = {"layout": "scene", "src": "scene", "text": "聞", "box": [64, 64, 128, 128]}
-    grid = {
-        "layout": "grid",
-        "src": "grid",
-        "text": "はじ ファ",
-        "boxes": [[0, 0, 64, 32], [128, 128, 192, 160]],
-    }
-    flat = {"layout": "flat", "src": "font", "text": "口", "boxes": [[32, 32, 224, 224]]}
-    assert item_boxes(scene, False) == [[64, 64, 128, 128]] == item_boxes(scene, True)
-    assert item_boxes(grid, False) == [] and item_boxes(grid, True) == grid["boxes"]
-    assert item_boxes(flat, False) == [] == item_boxes(flat, True)
-    m = box_mask((3, 4, 32, 32), [scene, grid, flat], "cpu", grid_box=True)
-    assert m[0].sum() == 8 * 8 and m[1].sum() == 8 * 4 + 8 * 4 and m[2].sum() == 0
-    assert box_mask((3, 4, 32, 32), [scene, grid, flat], "cpu", grid_box=False)[1].sum() == 0
-    g = torch.Generator().manual_seed(0)
-    pred = torch.randn(1, 4, 32, 32, generator=g)
-    target = torch.zeros_like(pred)
-    plain = ((pred - target) ** 2).mean()
-    off = box_share_fm_loss(pred, target, [grid], 0.25, 0.5, 8, grid_box=False)
-    on = box_share_fm_loss(pred, target, [grid], 0.25, 0.5, 8, grid_box=True)
-    assert torch.isclose(off, plain)
-    se = ((pred - target) ** 2).mean(dim=1)[0]
-    m1 = box_mask((1, 4, 32, 32), [grid], "cpu", grid_box=True)[0, 0].bool()
-    s = 0.25 + 0.25 * (torch.log(torch.tensor(4.0)) / torch.log(torch.tensor(8.0)))
-    want = s * se[m1].mean() + (1 - s) * se[~m1].mean()
-    assert torch.isclose(on, want, atol=1e-6)
-    assert torch.isclose(
-        box_share_fm_loss(pred, target, [flat], 0.25, 0.5, 8, grid_box=True), plain
-    )
+    monkeypatch.setattr(paths, "OUT", tmp_path)
+    rc = _rc()
+    img = tmp_path / "x.png"
+    Image.new("RGB", (32, 32), "white").save(img)
+
+    def box(sfx, vl):
+        return [{"box": [0, 0, 8, 8], "whole": False, "sfx": sfx, "vl": vl}]
+
+    for arm, word_read, sent_read in (
+        ("floor", "すずごい", "は"),
+        ("ctx", "すごい", "はい"),
+    ):
+        d = paths.arm_dir("t1", arm)
+        (d / "native_sent").mkdir(parents=True)
+        (d / "eval_reads.json").write_text(
+            json.dumps(
+                [
+                    {
+                        "file": str(img),
+                        "cond": "trained",
+                        "seed": s,
+                        "group": "word",
+                        "text": "すごい",
+                        "reads": box(word_read, word_read),
+                        "exact": word_read == "すごい",
+                        "cer_vl": 0.0 if word_read == "すごい" else 0.5,
+                    }
+                    for s in (0, 1)
+                ]
+            ),
+            encoding="utf-8",
+        )
+        (d / "native_sent" / "native_reads.json").write_text(
+            json.dumps(
+                [
+                    {
+                        "file": str(img),
+                        "cond": "trained",
+                        "seed": s,
+                        "pi": pi,
+                        "text": "はい",
+                        "clause": "en",
+                        "reads": box(sent_read, "はい"),
+                        "hit_sfx": sent_read == "はい",
+                        "hit_vl": True,
+                    }
+                    for pi in (0, 1)
+                    for s in (0, 1)
+                ]
+            ),
+            encoding="utf-8",
+        )
+    out = ev.compose(rc)
+    r = json.loads((out / "reads.json").read_text(encoding="utf-8"))
+    word = r["rulers"]["eval"]["totals"]["word"]
+    assert word["floor"] == {"n": 2, "official": 0, "loose": 0, "contained": 0}
+    assert word["ctx"] == {"n": 2, "official": 2, "loose": 2, "contained": 2}
+    sent = r["rulers"]["sent"]["strings"]["はい|en"]
+    assert sent["floor"] == {"n": 4, "official": 0, "loose": 4, "contained": 4}
+    assert sent["ctx"] == {"n": 4, "official": 4, "loose": 4, "contained": 4}
+    assert (out / "sheet.png").exists()
+    assert ev._fresh(rc, paths.arm_dir("t1", "floor"), "sent")
+    assert not ev._fresh(_rc(read=("おしい",)), paths.arm_dir("t1", "floor"), "sent")
+    assert not ev._fresh(rc, paths.arm_dir("t1", "floor"), "target")

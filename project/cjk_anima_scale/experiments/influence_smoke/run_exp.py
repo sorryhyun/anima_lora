@@ -49,7 +49,8 @@ from types import SimpleNamespace
 
 LINE = Path(__file__).resolve().parents[2]  # project/cjk_anima_scale
 sys.path.insert(0, str(LINE))
-from cjk_scale.paths import OUT, bootstrap, data_dir  # noqa: E402
+from cjk_scale.paths import OUT, bootstrap  # noqa: E402
+from cjk_scale.paths import legacy_data_dir as data_dir  # noqa: E402  (old stage dirs, records)
 
 bootstrap()
 
@@ -76,7 +77,7 @@ def parse_args():
     )
     p.add_argument(
         "--moved_table",
-        default=str(OUT / "rows_scale_joint0507_0305_run0925_300f" / "trained.pt"),
+        default=str(OUT / "rows_joint0507_0305_run0925_300f" / "trained.pt"),
     )
     p.add_argument("--items_per_cell", type=int, default=192)
     p.add_argument(
@@ -184,7 +185,7 @@ def main():
     from library.runtime.noise import fm_training_batch
     from train.stage import LatentStore, _encode_text
 
-    from cjk_scale.config import load
+    from cjk_scale.legacy import load_stage as load  # the archived stage configs
     from cjk_scale.loss import box_mask, box_share_fm_loss
     from cjk_scale.rows import RowTable
 

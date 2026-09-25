@@ -32,8 +32,8 @@ scene_piece composites × 3 σ bins × 2 noises).
    exposure ledger already implied.
 2. **Objective scope (the binding one).** The dev target (in-box FM loss
    on product-shaped composites) improved across a delta whose
-   acceptance rulers read ≈ 0. With the piecenat read
-   (`piecenat_2026_09_25.md`) this resolves precisely: the loss tracked
+   acceptance rulers read ≈ 0. With the piece read
+   (`piece_2026_09_25.md`) this resolves precisely: the loss tracked
    the **real piece-native gains** the run bought (すごい, a dev string,
    went 1 → 6 official), but it cannot see what the acceptance axis
    measures — doubling and sentence assembly. So the surrogate as
@@ -46,7 +46,7 @@ scene_piece composites × 3 σ bins × 2 noises).
 reading below — that the dev loss tracked the run's real piece-native gains —
 is withdrawn. Measured per piece, the loss gain ranks the unrendered
 3+-glyph pieces first (ちょっと +0.020, ありがとう +0.016) and the one piece
-with a real official gain at zero (すごい −0.001); ρ vs piecenat +0.02. The
+with a real official gain at zero (すごい −0.001); ρ vs piece +0.02. The
 loss read the pseudo-text line, on rendered and unrendered pieces alike.
 Loss-target influence is closed for both axes; (a) below is moot and (b)'s
 certified-delta anchor is the only candidate left.

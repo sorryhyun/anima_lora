@@ -1,4 +1,4 @@
-"""conflict — do the band stages pull a row the same way? Read without training.
+"""conflict — do a run's band groups pull a row the same way? Read without training.
 
 A row is its own parameter: the only thing stage B can do to what stage A
 bought is push the same row somewhere else. So "chain the bands" vs "one run
@@ -6,11 +6,13 @@ with per-item bands" is a per-row question about the two data gradients,
 and it can be read at one table point with no optimizer step — the
 boxprobe primitive with a different split.
 
-For every stage in ``--conflict_stages``, on a sample of its built data dir,
-this draws σ inside the stage band, backprops the *trained* loss (the
-box-share FM loss on scene items, plain MSE on grid / flat — or the cells'
-union on grid items under ``[train].grid_box``) onto the warm
-table's rows, and accumulates per row, per stage, the mean per-draw
+``scale.py <run> conflict`` (2026-09-25: the run's own data, no flags). A
+"stage" below is one of the run's **band groups** (``builder.TABLE``:
+``b0709`` / ``b0507`` / ``b0305`` — the old stages' data, now one dir with a
+band per item). For every group, on a sample of its items, this draws σ
+inside the group's band, backprops the *trained* loss (the box-share FM
+loss on scene items and — ``train.GRID_BOX`` — grid items' cells, plain MSE
+on flat) onto the seed table's rows, and accumulates per row, per group, the mean per-draw
 gradient ``ḡ_S`` (two halves by item parity, for a split-half reliability).
 Per row it then reports:
 
@@ -20,20 +22,21 @@ Per row it then reports:
   noise floor every cross-stage cosine is read against);
 - per stage pair, ``cos(ḡ_A, ḡ_B)`` and the cancellation
   ``‖ḡ_A + ḡ_B‖ / (‖ḡ_A‖ + ‖ḡ_B‖)`` — what a joint run's summed pull keeps;
-- if the stages' ``trained.pt`` exist under the tag, ``cos(Δ_A, −ḡ_B)``
-  with ``Δ_A`` = what stage A moved the row by (its table minus its warm
-  table): negative says B's descent runs against what A bought.
+- if the run's ``trained.pt`` exists, ``cos(Δ, −ḡ_B)`` with ``Δ`` = what the
+  run moved the row by (its table minus the seed), keyed on the first group
+  (``Δ<first>·−g<B>``): negative says B's descent runs against what the run
+  bought.
 
 Reading: ``cos`` at or below ``−half`` on the rows both stages touch → the
 bands fight over the row, the anchor is a truce and no per-stage budget
 fixes it; ``cos`` inside ``±half`` → orthogonal, the chain is free either
 way and one mixed run with per-item bands is the same thing; ``cos`` at or
 above ``half`` → they agree, sequencing is unnecessary. Gradients are taken
-at one table point (``--warm_from``; default the first stage's warm table,
-i.e. the run's seed table) — run it again at a later stage's table to read
-the same question where that stage actually starts.
+at one table point, the seed table.
 
-Outputs ``output/cjk_anima_scale/conflict_<tag>/{rows.json, report.md}``.
+Outputs ``<run>/conflict/{rows.json, report.md}``. The math below the data
+plumbing is the 2026-09-25 probe's, unchanged
+(``reports/conflict_joint_2026_09_25.md``).
 """
 
 from __future__ import annotations
@@ -49,15 +52,15 @@ from types import SimpleNamespace
 import torch
 import torch.nn.functional as F
 
-from .config import StageConfig, load
-from .paths import OUT, arm_dir, data_dir
+from .config import RunConfig
+from .paths import SEED_TABLE, data_dir, run_dir, table_path
 from .rows import RowTable
 
 KINDS = ("single", "piece", "multi")
 
 
-def probe_dir(tag: str) -> Path:
-    return OUT / f"conflict_{tag}"
+def probe_dir(run: str) -> Path:
+    return run_dir(run) / "conflict"
 
 
 def _load_table(path: Path, ext_ids: list[int], row_scale: float) -> torch.Tensor:
@@ -85,24 +88,17 @@ def spec_key(stage: str, band) -> str:
 
 
 def probe(
-    stages: list[str],
-    run: str | None,
-    tag: str,
+    rc: RunConfig,
     *,
-    warm: Path | None,
     items: int = 600,
     draws: int = 1,
     seed: int = 0,
-    bands: list | None = None,
-    recipes: list[str] | None = None,
-    grid_box: int | None = None,
-    out_tag: str = "",
 ) -> Path:
-    """``stages`` may repeat a stage with a different ``bands[i]`` (``None`` =
-    the stage's own): the same data read at another σ band, keyed
-    ``<stage>@<lo>-<hi>``. ``recipes`` keeps only those items. Per
-    (key, recipe) reads go in the report's price table."""
+    """Per band group of the run's data, ``items`` items × ``draws`` σ draws
+    (the 2026-09-25 reads: 600 × 1). Per (group, recipe) reads go in the
+    report's price table."""
     from common.models import checkpoints, dit_forward, gen_args
+    from data.inventory import qwen_pieces
     from library.anima.vocab_pack import attached_pack_rows, strategy_pack
     from library.inference.generation import get_generation_settings
     from library.inference.models import load_dit_model
@@ -110,68 +106,54 @@ def probe(
     from library.runtime.noise import fm_training_batch
     from train.stage import LatentStore, _encode_text
 
+    from . import train as T
     from .loss import box_share_fm_loss
-    from .train import inventory_ext
+    from .train import load_items, vocab_idx
 
-    assert len(stages) >= 2, "a conflict needs two stages"
-    bands = list(bands) if bands else [None] * len(stages)
-    assert len(bands) == len(stages), "one band (or None) per stage"
-    specs = [(sn, b) for sn, b in zip(stages, bands)]
-    keys = [spec_key(sn, b) for sn, b in specs]
-    assert len(set(keys)) == len(keys), f"duplicate spec: {keys}"
-    cfgs: dict[str, StageConfig] = {}
+    tag = rc.name
+    warm = SEED_TABLE
+    recipes = None
+    data = data_dir(rc.name)
+    all_recs, ev, vocabs = load_items(data)
     band_of: dict[str, tuple] = {}
-    for (sn, b), key in zip(specs, keys):
-        cfgs[key] = load(sn, run)
-        band_of[key] = tuple(b) if b else tuple(cfgs[key].band)
-    stages = keys  # from here on a "stage" is a spec key
-    out = probe_dir(tag + (f"_{out_tag}" if out_tag else ""))
+    by_group: dict[str, list] = defaultdict(list)
+    for i, r in enumerate(all_recs):
+        g = r.get("group") or f"{r['band'][0]:g}-{r['band'][1]:g}"
+        by_group[g].append(i)
+        band_of.setdefault(g, tuple(r["band"]))
+        assert band_of[g] == tuple(r["band"]), f"group {g}: two bands"
+    stages = [g for g in ("b0709", "b0507", "b0305") if g in by_group] + sorted(
+        g for g in by_group if g not in ("b0709", "b0507", "b0305")
+    )
+    assert len(stages) >= 2, (
+        f"{rc.name}: a conflict needs two band groups, got {stages}"
+    )
+    out = probe_dir(rc.name)
     out.mkdir(parents=True, exist_ok=True)
-    args = gen_args(512, int(cfgs[stages[0]].train["steps"]), 4.0, out)
+    args = gen_args(512, T.GEN_STEPS, 4.0, out)
     device = get_generation_settings(args).device
     rng = random.Random(seed)
 
     # -- captions, latents, the union table -----------------------------------
-    per: dict[str, dict] = {}
-    table_ext: set[int] = set()
+    cache, train_ext, ev_ext = _encode_text(
+        all_recs, ev, device, out, te_cache=data / "te_cache"
+    )
+    table_ext: set[int] = train_ext | vocab_idx(vocabs, qwen_pieces())
     label: dict[int, str] = {}
-    for s, cfg in cfgs.items():
-        data = data_dir(cfg.stage, tag)
-        assert (data / "train.jsonl").exists(), f"no data dir {data} — run the data step"
-        recs = [
-            json.loads(ln)
-            for ln in (data / "train.jsonl").read_text(encoding="utf-8").splitlines()
-            if ln
-        ]
-        ev = json.loads((data / "eval.json").read_text(encoding="utf-8"))
-        sdir = out / s
-        sdir.mkdir(exist_ok=True)
-        cache, train_ext, ev_ext = _encode_text(
-            recs, ev, device, sdir, te_cache=data / "te_cache"
-        )
-        words = json.loads((data / "words.json").read_text(encoding="utf-8"))
-        table_ext |= train_ext | inventory_ext(words, ev_ext)
-        for text, ids in ev_ext.items():
-            if len(ids) == 1:
-                label.setdefault(int(ids[0]), text)
-        keep = list(range(len(recs)))
-        pool = [i for i in keep if not recipes or recs[i].get("recipe") in recipes]
-        assert pool, f"{s}: no items of recipes {recipes}"
+    for text, ids in ev_ext.items():
+        if len(ids) == 1:
+            label.setdefault(int(ids[0]), text)
+    ns = SimpleNamespace(
+        seed=seed, batch=1, train_size=512, row_blocks=0, row_boost="", arm="rows"
+    )
+    lat = LatentStore(ns, data, all_recs, list(range(len(all_recs))), device)
+    per: dict[str, dict] = {}
+    for s in stages:
+        pool = by_group[s]
         pick = sorted(rng.sample(pool, min(items, len(pool)))) if items else pool
-        ns = SimpleNamespace(
-            seed=seed, batch=1, train_size=512, row_blocks=0, row_boost="", arm="rows"
-        )
-        per[s] = {
-            "cfg": cfg,
-            "recs": recs,
-            "cache": cache,
-            "pick": pick,
-            "lat": LatentStore(ns, data, recs, keep, device),
-        }
+        per[s] = {"recs": all_recs, "cache": cache, "pick": pick, "lat": lat}
         print(
-            f"conflict {s}: σ {list(band_of[s])}, {len(pick)} of {len(pool)} items × {draws} draws"
-            + (f" (recipes {recipes})" if recipes else "")
-            + f", {len(train_ext)} rows touched",
+            f"conflict {s}: σ {list(band_of[s])}, {len(pick)} of {len(pool)} items × {draws} draws",
             flush=True,
         )
 
@@ -204,14 +186,9 @@ def probe(
     t0 = time.time()
     n_reads = 0
     for s in stages:
-        p, cfg = per[s], cfgs[s]
-        t = cfg.train
-        bs_cfg, cap, n_cap = (
-            float(t["box_share"]),
-            float(t["box_share_cap"]),
-            float(t["box_share_glyphs"]),
-        )
-        gbox = bool(int(t.get("grid_box", 0) if grid_box is None else grid_box))
+        p = per[s]
+        bs_cfg, cap, n_cap = T.BOX_SHARE, T.BOX_SHARE_CAP, float(T.BOX_SHARE_GLYPHS)
+        gbox = bool(T.GRID_BOX)
         t_min, t_max = band_of[s]
         for k, i in enumerate(p["pick"]):
             r = p["recs"][i]
@@ -232,7 +209,11 @@ def probe(
                     pred = dit_forward(
                         anima, noisy, ts, p["cache"], [r["caption"]], device
                     )
-                bs = bs_cfg if r["src"] == "scene" or (gbox and r["src"] == "grid") else 0.0
+                bs = (
+                    bs_cfg
+                    if r["src"] == "scene" or (gbox and r["src"] == "grid")
+                    else 0.0
+                )
                 loss = box_share_fm_loss(pred, target, [r], bs, cap, n_cap, gbox)
                 (gr,) = torch.autograd.grad(loss, raw)
                 nrm = gr.norm(dim=1)
@@ -262,16 +243,14 @@ def probe(
                 )
     print(f"conflict: {n_reads} reads in {(time.time() - t0) / 60:.1f} min", flush=True)
 
-    # -- the tables the chain produced (Δ per stage) ----------------------------
+    # -- what the run moved (Δ, keyed on the first group) -----------------------
     delta: dict[str, torch.Tensor] = {}
-    for s, cfg in cfgs.items():
-        tp = arm_dir(cfg.stage, tag) / "trained.pt"
-        wp = cfg.warm_table(tag)
-        if tp.exists() and wp is not None and wp.exists():
-            delta[s] = _load_table(tp, ext_ids, rows.row_scale) - _load_table(
-                wp, ext_ids, rows.row_scale
-            )
-            print(f"Δ {s}: {tp} − {wp}", flush=True)
+    tp = table_path(rc.name)
+    if tp.exists():
+        delta[stages[0]] = _load_table(tp, ext_ids, rows.row_scale) - _load_table(
+            warm, ext_ids, rows.row_scale
+        )
+        print(f"Δ (as {stages[0]}): {tp} − {warm}", flush=True)
 
     # -- per row ------------------------------------------------------------------
     Gc = {s: G[s].cpu() for s in stages}
@@ -348,7 +327,7 @@ def probe(
             {
                 "stages": stages,
                 "tag": tag,
-                "run": run,
+                "run": rc.name,
                 "warm": str(warm),
                 "items": items,
                 "draws": draws,
@@ -392,7 +371,9 @@ def report(
         "",
         f"Stages {' → '.join(stages)}"
         + (
-            " (σ " + ", ".join(f"{short[s]} {list(b)}" for s, b in band_of.items()) + ")"
+            " (σ "
+            + ", ".join(f"{short[s]} {list(b)}" for s, b in band_of.items())
+            + ")"
             if band_of
             else ""
         )
@@ -429,7 +410,9 @@ def report(
         for a, b, _ in dcols:
             x = r["delta"].get(f"{a}|{b}")
             cells.append("–" if x is None else f"{x:+.2f}")
-        lines.append(f"| {r['label'] or r['ext']} | {r['kind']} | " + " | ".join(cells) + " |")
+        lines.append(
+            f"| {r['label'] or r['ext']} | {r['kind']} | " + " | ".join(cells) + " |"
+        )
 
     lines += ["", "## By kind (medians)", ""]
     lines += [
@@ -483,7 +466,8 @@ def report(
             groups[(r["stage"], r["recipe"], r["kind"])].append(r)
         order = {k: i for i, k in enumerate(KINDS)}
         for (s, rcp, kind), rs in sorted(
-            groups.items(), key=lambda kv: (stages.index(kv[0][0]), kv[0][1], order.get(kv[0][2], 9))
+            groups.items(),
+            key=lambda kv: (stages.index(kv[0][0]), kv[0][1], order.get(kv[0][2], 9)),
         ):
             g = st.median([r["g"] for r in rs])
             coh = st.median([r["coh"] for r in rs])

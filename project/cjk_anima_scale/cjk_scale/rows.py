@@ -1,25 +1,24 @@
-"""rows — the trainable table: an ``ExtDelta`` on the ext rows the stage's
-captions touch, warm-started from the previous stage's table, anchored to it.
+"""rows — the trainable table: an ``ExtDelta`` on the run's vocabs' rows,
+warm-started from the seed table (``paths.SEED_TABLE``).
 
-The rows arm of ``train/trainables.py`` with the probe levers left behind
-(no ``c_flat``, no pin, no encoder, no adapter LoRA). ``raw`` is in row-norm
-units (× ``row_scale``); a source table's rows are rescaled by the ratio of
-the two runs' ``row_scale`` on the way in, its ``common`` / ``c_flat``
-vector (a flat-layout component the old encoder arms carried) dropped.
+The rows arm of the stages' ``train/trainables.py`` with the levers left
+behind (no ``c_flat``, no pin, no encoder, no adapter LoRA). ``raw`` is in
+row-norm units (× ``row_scale``); a source table's rows are rescaled by the
+ratio of the two tables' ``row_scale`` on the way in, its ``common`` /
+``c_flat`` vector (a flat-layout component the old encoder arms carried)
+dropped.
 
-The table is ``table_ext`` — every row the run's inventory names, not only
-the rows this stage's captions touch — so a row the band gives no draw
-(pieces at ``stage0709``, singles at ``stage0305``) rides through the chain
-at its warm value instead of falling out of the table and coming up cold in
-the next stage. ``touched`` are the rows with draws: the norm pull applies to
-them only, so an untouched row is exact (zero FM gradient, zero pull,
-``weight_decay`` 0 → Adam leaves it).
+The table is ``table_ext`` — every vocab's idx, not only the ones the
+captions touch — so a vocab the data gives no draw stays at its seed row.
+``touched`` are the rows with draws: the norm pull applies to them only, so
+an untouched row is exact (zero FM gradient, zero pull, ``weight_decay`` 0 →
+Adam leaves it).
 
-``frozen`` rows (a run with ``context = "seed"``) are the rows outside the
-inventory that a corpus line carries: they sit in the hook at their
-``context`` table value so the line renders as it would on the seed, get a
-zero gradient, no anchor, no pull, and are stripped from ``trained.pt`` —
-the table stays the inventory's; eval overlays the same context back.
+``frozen`` rows are the rows outside the vocabs that a corpus line carries:
+they sit in the hook at their ``context`` (seed) table value so the line
+renders as it would on the seed, get a zero gradient, no anchor, no pull,
+and are stripped from ``trained.pt`` — the table stays the vocabs'; eval
+overlays the same seed back (``eval.ctx_arm``).
 """
 
 from __future__ import annotations

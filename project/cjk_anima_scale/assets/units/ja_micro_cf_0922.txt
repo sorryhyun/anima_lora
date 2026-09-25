@@ -1,0 +1,18 @@
+# micro_cf_0922 (idea.md Gates 1-2): 16 untrained kana-only multi-glyph pieces (8 hiragana + 8 katakana), ranks 1901+ of reports/piece_coverage_ranked_2026_09_21.tsv, single Qwen piece each, not in rows_step1_0921_merged
+# piece	count	class	glyphs	ext_id	src_rank
+かつ	7	multi	2	27168	1994
+からない	7	multi	4	26088	1995
+さらに	7	multi	3	26396	2032
+てしま	7	multi	3	25601	2050
+やは	7	multi	2	26724	2057
+のですが	6	multi	4	26166	2093
+おそらく	6	multi	4	28696	2097
+があり	6	multi	3	25932	2098
+ガイ	7	multi	2	28587	1984
+チュ	7	multi	2	27057	1988
+チェック	7	multi	4	26796	2008
+ショー	7	multi	3	28401	2013
+ウェ	7	multi	2	26507	2017
+オス	7	multi	2	27788	2024
+グル	7	multi	2	26092	2025
+プレ	7	multi	2	25664	2036

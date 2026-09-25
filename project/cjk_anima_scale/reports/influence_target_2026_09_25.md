@@ -3,7 +3,7 @@
 Step 1 after `influence_smoke_2026_09_25.md`: before building a
 row-conditioned bank, check that the target it would be pointed at can see
 what the rulers see. Value-only, no gradients — the in-box FM loss on
-matched correct / doubled renders of the 8 piecenat pieces, at the seed, the
+matched correct / doubled renders of the 8 piece pieces, at the seed, the
 step-5 000 (drift 1.39) and the final (drift 1.66) run0925_300f tables.
 Envelope `experiments/influence_target/results/20260925-2037-t1/`; renders,
 latents and every read under `output/cjk_anima_scale/influence_target_t1/`;
@@ -15,12 +15,12 @@ same bubble, font, fill, orientation, tilt, colour; the doubled string a
 step smaller to fit), 3 σ bins × 2 noises, noise and σ shared across the
 pair and the tables. CIs are 95 % bootstrap over items.
 
-## T1 — identity: does the loss gain rank the pieces like piecenat?
+## T1 — identity: does the loss gain rank the pieces like piece?
 
 In-box loss gain on the correct render, seed − table (+ = the table fits
 the correct render better), final table:
 
-| piece | glyphs | gain @final [CI] | piecenat lenient | official |
+| piece | glyphs | gain @final [CI] | piece lenient | official |
 |---|---|---|---|---|
 | ちょっと | 4 | **+0.0196** [+0.014, +0.025] | 0 → 2 | 0 → 0 |
 | ありがとう | 5 | **+0.0164** [+0.011, +0.022] | 0 → 3 | 0 → 0 |
@@ -40,8 +40,8 @@ The two largest loss gains are the two long pieces that never rendered;
 the one piece with a real official gain gets nothing. The delta reduced the
 in-box loss on every piece, rendered or not — the loss is reading the
 **pseudo-text line the rows learned** (the wipe of `next.md` § 4a), not the
-glyph identity piecenat measured. Within the 2-glyph group the order is
-compatible with piecenat (った > メン ≈ です > しい at ceiling), which is
+glyph identity piece measured. Within the 2-glyph group the order is
+compatible with piece (った > メン ≈ です > しい at ceiling), which is
 why the smoke's E2 looked like tracking; across glyph counts it is not.
 
 ## T2 — doubling: does the correct-vs-doubled margin move?
@@ -49,7 +49,7 @@ why the smoke's E2 looked like tracking; across glyph counts it is not.
 M = L_in(doubled) − L_in(correct) under the correct caption; ΔM = M_table −
 M_seed (+ = the table prefers the correct render more than the seed did):
 
-| piece | doubled | M @seed | ΔM @k5 [CI] | ΔM @final [CI] | piecenat doubled |
+| piece | doubled | M @seed | ΔM @k5 [CI] | ΔM @final [CI] | piece doubled |
 |---|---|---|---|---|---|
 | です | ですす | +0.000 | −0.0011 [−0.006, +0.005] | −0.0007 [−0.007, +0.006] | |
 | すごい | すごいい | +0.014 | **−0.0040** [−0.007, −0.001] | −0.0005 [−0.004, +0.003] | yes |
@@ -62,7 +62,7 @@ M_seed (+ = the table prefers the correct render more than the seed did):
 
 Group means at the final table +0.002 / +0.002 (2-glyph / 3+), ρ(ΔM,
 official gain) **0.00**; the CI clears zero on 2 of 8 pieces, both positive,
-one of them a piece piecenat saw doubled (メン → メンン). The seed already
+one of them a piece piece saw doubled (メン → メンン). The seed already
 prefers the correct render one-step on 7 of 8 pieces, すごい by the second
 largest margin — and すごい doubles in the samples. The one-step margin at
 three σ bins is not the sampled doubling, and the delta moved it by a
@@ -84,7 +84,7 @@ Consequences:
   asked for would sharpen a number that points the wrong way.
 - The smoke's E2 reading ("the loss tracked the real piece-native gains")
   is withdrawn — it tracked the pseudo-text line, which also improved the
-  loss on pieces that never rendered. The smoke report and the piecenat
+  loss on pieces that never rendered. The smoke report and the piece
   report carry the correction.
 - What survives of `idea.md`: only a **non-loss target** — anchoring on
   certified table deltas (Δ of a ruler-verified table, e.g.
@@ -92,7 +92,7 @@ Consequences:
   Untested, and the only candidate left; it is a table-space direction
   read, not a validation loss, so it inherits none of this report's
   machinery beyond the bank loop.
-- The reads stay the rulers: piecenat with a seed floor for pieces,
+- The reads stay the rulers: piece with a seed floor for pieces,
   `native_sent` / `target` for the acceptance axis. `next.md` step (2), the
   scene_piece-only arm, is judged on those, not on any surrogate.
 

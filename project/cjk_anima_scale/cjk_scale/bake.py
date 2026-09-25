@@ -1,6 +1,8 @@
-"""bake — a stage table → a vocab pack pair, through the repo's baker
+"""bake — a run's table → a vocab pack pair, through the repo's baker
 (``scripts/toolkits/bake_vocab_pack.py``), which folds ``trained.pt`` into
-the pack the DiT trained against and stamps the provenance."""
+the pack the DiT trained against and stamps the provenance. Not a
+``scale.py`` verb: ``python -c "from cjk_scale.bake import bake; bake('<run>')"``
+from the line dir."""
 
 from __future__ import annotations
 
@@ -8,21 +10,20 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .paths import REPO, arm_dir
+from .paths import REPO, run_dir, table_path
 
 
-def bake(stage: str, tag: str, out: str | None = None) -> Path:
-    arm = arm_dir(stage, tag)
-    assert (arm / "trained.pt").exists(), f"no table at {arm / 'trained.pt'}"
+def bake(run: str, out: str | None = None) -> Path:
+    assert table_path(run).exists(), f"no table at {table_path(run)}"
     dest = (
         Path(out)
         if out
-        else REPO / "models" / "vocab_packs" / f"anima_cjk_vocab_pack_{stage}_{tag}"
+        else REPO / "models" / "vocab_packs" / f"anima_cjk_vocab_pack_{run}"
     )
     cmd = [
         sys.executable,
         str(REPO / "scripts" / "toolkits" / "bake_vocab_pack.py"),
-        str(arm),
+        str(run_dir(run)),
         "--out",
         str(dest),
     ]

@@ -1,19 +1,19 @@
 #!/usr/bin/env python
-"""influence_target — does the dev target see what piecenat saw? (value-only)
+"""influence_target — does the dev target see what piece saw? (value-only)
 
 Step 1 of the influence line after the smoke (`../influence_smoke`,
-`reports/influence_smoke_2026_09_25.md`) and the piecenat read
-(`reports/piecenat_2026_09_25.md`). No gradients, no bank: the in-box FM
-loss is *measured* on the 8 piecenat pieces at three table points of
+`reports/influence_smoke_2026_09_25.md`) and the piece read
+(`reports/piece_2026_09_25.md`). No gradients, no bank: the in-box FM
+loss is *measured* on the 8 piece pieces at three table points of
 run0925_300f (seed / step 5 000 / final), and read against the ruler that
 now exists for those pieces.
 
 Two reads on one set of matched renders:
 
 T1  identity — ΔL_in(correct)[s] = L_seed − L_table on the correct render.
-    piecenat says 2-glyph pieces were bought (った / です / すごい / メン)
+    piece says 2-glyph pieces were bought (った / です / すごい / メン)
     and the 3+-glyph ones were not (ちょっと / ありがとう / こんにちは).
-    The read is whether the per-piece loss gain ranks like the piecenat
+    The read is whether the per-piece loss gain ranks like the piece
     gains (Spearman against the lenient and the official en gains; the
     2-glyph vs 3+-glyph group means). A pass means the existing target sees
     identity at the piece level; a fail on ありがとう (largest loss gain in
@@ -24,7 +24,7 @@ T2  doubling — M[s] = L_in(doubled) − L_in(correct) on a matched pair (the
     glyph string differs: すごい vs すごいい), the diffusion-classifier
     margin under the correct caption. ΔM = M_table − M_seed: positive, the
     table prefers the correct render more than the seed did; negative, it
-    moved toward the doubled one. piecenat read すごい / メン doubled in
+    moved toward the doubled one. piece read すごい / メン doubled in
     `word` (すごいい / メンン). If ΔM does not move at the scale of T1, or
     moves against those reads, the FM-loss family cannot see the
     acceptance axis and the influence line closes for Axis 1.
@@ -46,11 +46,11 @@ import sys
 import time
 from collections import defaultdict
 from pathlib import Path
-from types import SimpleNamespace
 
 LINE = Path(__file__).resolve().parents[2]  # project/cjk_anima_scale
 sys.path.insert(0, str(LINE))
-from cjk_scale.paths import OUT, bootstrap, data_dir  # noqa: E402
+from cjk_scale.paths import OUT, bootstrap  # noqa: E402
+from cjk_scale.paths import legacy_data_dir as data_dir  # noqa: E402  (old stage dirs, records)
 
 bootstrap()
 
@@ -59,7 +59,7 @@ from bench._common import make_run_dir, write_result  # noqa: E402
 BINS = ((0.3, 0.5), (0.5, 0.7), (0.7, 0.9))
 STAGES = ("stage0507", "stage0305")
 
-# reports/piecenat_2026_09_25.md — `native` ruler, piece alone in a native
+# reports/piece_2026_09_25.md — `native` ruler, piece alone in a native
 # scene, `en` clause, of 16 renders: (seed, 300f) official = hit_sfx ∧ hit_vl,
 # lenient = the piece string in any box read.
 PIECENAT = {
@@ -72,7 +72,7 @@ PIECENAT = {
     "ありがとう": {"official": (0, 0), "lenient": (0, 3)},
     "こんにちは": {"official": (0, 0), "lenient": (0, 0)},
 }
-# the doubled forms piecenat read in `word` (§ The other two layers)
+# the doubled forms piece read in `word` (§ The other two layers)
 DOUBLED_SEEN = {"すごい": "すごいい", "メン": "メンン"}
 
 
@@ -85,9 +85,9 @@ def parse_args():
         "--doubled",
         default="",
         help="s:doubled,… overrides; default doubles the last glyph "
-        "(すごい → すごいい, the piecenat form)",
+        "(すごい → すごいい, the piece form)",
     )
-    run = OUT / "rows_scale_joint0507_0305_run0925_300f"
+    run = OUT / "rows_joint0507_0305_run0925_300f"
     p.add_argument(
         "--tables",
         default=(
@@ -329,7 +329,7 @@ def main():
     from library.runtime.noise import fm_training_batch
     from train.stage import _encode_text
 
-    from cjk_scale.config import load
+    from cjk_scale.legacy import load_stage as load  # the archived stage configs
     from cjk_scale.loss import box_mask
     from cjk_scale.rows import RowTable
 
@@ -506,7 +506,7 @@ def main():
             )
         t2[s]["n_items"] = len(ks)
 
-    # ranking against piecenat, per moved table
+    # ranking against piece, per moved table
     rank = {}
     for tn in moved:
         gains = [t1[s][tn]["gain"] for s in pieces]
@@ -543,7 +543,7 @@ def main():
         "## T1 — identity: in-box loss gain on the correct render (seed − table; + = improved)",
         "",
         "| piece | glyphs | " + " | ".join(f"gain @{tn} [CI]" for tn in moved)
-        + f" | bins @{fin} (0.3-0.5 / 0.5-0.7 / 0.7-0.9) | piecenat lenient | official |",
+        + f" | bins @{fin} (0.3-0.5 / 0.5-0.7 / 0.7-0.9) | piece lenient | official |",
         "|---|---|" + "---|" * len(moved) + "---|---|---|",
     ]
     for s in sorted(pieces, key=lambda s: -t1[s][fin]["gain"]):
@@ -569,7 +569,7 @@ def main():
         "## T2 — doubling: margin M = L_in(doubled) − L_in(correct); ΔM = M_table − M_seed (+ = prefers correct more)",
         "",
         "| piece | doubled | M @seed | " + " | ".join(f"ΔM @{tn} [CI]" for tn in moved)
-        + f" | bins @{fin} | piecenat doubled |",
+        + f" | bins @{fin} | piece doubled |",
         "|---|---|---|" + "---|" * len(moved) + "---|---|",
     ]
     for s in sorted(pieces, key=lambda s: t2[s][fin]["dmargin"]):
@@ -591,10 +591,10 @@ def main():
         )
     lines += [
         "",
-        "Reads: T1 passes if the gains rank like piecenat (ρ vs lenient clearly positive, "
+        "Reads: T1 passes if the gains rank like piece (ρ vs lenient clearly positive, "
         "2-glyph mean above 3+-glyph) — the existing target sees piece identity. T2 is "
         "the acceptance-axis read: a ΔM that sits at zero (CI straddles 0 on every piece) "
-        "or goes negative on the pieces piecenat saw doubled means the delta did not buy "
+        "or goes negative on the pieces piece saw doubled means the delta did not buy "
         "the correct-over-doubled preference the rulers need; the sign and size against "
         "T1 says whether the FM-loss family can see doubling at all.",
         "",

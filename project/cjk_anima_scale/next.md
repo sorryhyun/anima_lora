@@ -203,7 +203,7 @@ Job `20260925-144054-bcf21e` (the first launch, `…-141129-9171b5`, trained
 35 rows — `inventory_ext` read the inventory off the eval sample; fixed,
 `e1ff8719`). 300 rows, 27 000 steps, 2.32 it/s; drift 0.79 (2 500) →
 1.39 (5 000) → 1.74 (12 500, plateau) → 1.66 (end), cos 0.49, norm ×1.38.
-Every 5 k table kept under `rows_scale_joint0507_0305_run0925_300f/intermediate/`.
+Every 5 k table kept under `rows_joint0507_0305_run0925_300f/intermediate/`.
 
 | ruler | step 5 000 (drift 1.39) | step 27 000 (drift 1.66) |
 |---|---|---|
@@ -228,13 +228,16 @@ word at 1.4 or 1.7. The comparator that did move pieces
 piece row's draws were mostly a fragment of a `scene_sentence` /
 `scene_short` line or a `grid_string` cell, and the rows learned "a small
 line of text in the bubble". Suspect first: the sentence / short / grid
-share, not the freeze and not the budget. Next, in order: (1) the seed
-floor on the five strings; (2) the same 300 rows and freeze on
-`scene_piece`-only data (0507 + 0305 tiers, no sentence / short / grid).
+share, not the freeze and not the budget. Next, in order: (1) ~~the seed
+floor on the five strings~~ **done 2026-09-25**
+(`floor_score.md`: sent floor はい 3 / おしい 5, rest 0;
+おしい fell below it; doubling predates the run); (2) the same 300 vocabs
+and freeze on `scene_piece`-only data (0507 + 0305 tiers, no sentence /
+short / grid), judged on piece + word contained-vs-exact.
 
-### 4b. Correction (2026-09-25, piecenat) — the rulers were blind, not the run
+### 4b. Correction (2026-09-25, piece) — the rulers were blind, not the run
 
-`reports/piecenat_2026_09_25.md`: a trained piece **alone in a native
+`reports/piece_2026_09_25.md`: a trained piece **alone in a native
 scene** (the cell § 4a never measured — its `native` group was only the
 frozen あ/い) improved hard against the seed floor — lenient った 0 → 12,
 です 3 → 14, すごい 4 → 10 of 16; official both-reader en 5 → 11, swap
@@ -244,6 +247,6 @@ frozen あ/い) improved hard against the seed floor — lenient った 0 → 12
 strings sit at 0. The run's real failure list is **doubling, sentence
 assembly, and 3+-glyph pieces** (こんにちは 0/16 everywhere) — not glyph
 identity. The § 4a "buys no word" stands for the acceptance rulers only;
-"nothing bought" is withdrawn. Read piecenat (+ seed floor) before
+"nothing bought" is withdrawn. Read piece (+ seed floor) before
 calling any piece run dead; step (2)'s scene_piece-only arm should be
 judged on it too.

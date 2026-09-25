@@ -1,0 +1,18 @@
+# micro_warm_0923: 16 kana-only multi-glyph pieces (8 hiragana + 8 katakana) already trained at 0.7-0.9 in step1_0921z (ranks 600+ of ja_cold_0001_1900.txt, nonzero row in rows_step1_0921_merged) - retrain band test, warm from merge vs cold
+# piece	count	class	glyphs	ext_id	src_rank
+それを	35	multi	3	26585	602
+はじ	35	multi	2	26858	603
+やはり	35	multi	3	26725	604
+もいい	35	multi	3	27267	606
+さんに	35	multi	3	27351	607
+まれ	35	multi	2	25779	608
+つつ	35	multi	2	27027	616
+すご	35	multi	2	26073	617
+メン	35	multi	2	26007	629
+ガン	33	multi	2	27401	653
+アン	32	multi	2	26425	686
+プロ	29	multi	2	25877	759
+ヴァ	29	multi	2	27977	768
+ファ	28	multi	2	25597	769
+ラン	28	multi	2	1231	770
+モノ	28	multi	2	27916	775

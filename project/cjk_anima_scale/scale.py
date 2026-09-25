@@ -1,31 +1,20 @@
 #!/usr/bin/env python
-"""scale — the JA vocab pack at scale, one stage at a time (``design.md``).
+"""scale — the JA vocab pack at scale: a run is one file, everything else is a rule.
 
-    scale.py --run run_full --stage stage0709 --steps data train eval [--submit [--queue]]
-    scale.py --run run_full --stage stage0507 --steps train eval    # warm from stage0709/run_full
-    scale.py --run run_full --stage stage0709 --steps bake
-    scale.py --stage stage0507 --tag bp --steps data boxprobe --n_items 240
-        --warm_from output/cjk_anima_scale/rows_step1_0921_merged/trained.pt   # gradient read, no training
-    scale.py --run run0923_micro --tag run0923_micro_b30 --stage joint --steps data train eval
-        # the joint stage: the three band stages' data dirs merged, σ per item from its stage's band
-    scale.py --run run0923_micro --tag run0923_micro_b30 --steps conflict          # do the band stages pull a
-        [--conflict_stages stage0709 stage0507 stage0305] [--probe_items 600]     # row the same way (no training)
-    scale.py windows                                               # the band law
-    scale.py stages | runs                                         # the configs
+    scale.py <run> data        # CPU: vocabs → items (recipe table by kind, σ band stamped per item)
+    scale.py <run> train       # GPU: the vocabs' rows, everything else frozen at the seed
+    scale.py <run> eval        # GPU: floor + trained on the rulers → <run>/sheet.png + reads.json
+    scale.py <run> conflict    # GPU: do the run's band groups pull a row the same way (no training)
+    scale.py <run> <verb> --submit [--queue]   # enqueue on the daemon (GPU verbs must)
+    scale.py <run> data --workers N            # render processes (default cpu − 2)
+    scale.py windows | runs | ledger           # the band law, the run files, the job ledger
 
-A stage is ``configs/<stage>.toml`` (the band recipe); a run is
-``configs/runs/<run>.toml`` (which rows, the seed table, steps per row per
-stage — ``cjk_scale/config.py``). ``--run`` names the chain: its name is
-the tag every stage dir carries, and ``warm_from = "<stage>"`` resolves to
-that stage's table under it (``--tag`` alone runs a stage without a run
-file — smoke builds). Steps: ``data`` (CPU: renders +
-``train.jsonl`` / ``eval.json``), ``train`` (GPU), ``eval`` (GPU: exact /
-native / cf_sense / sent / target + the regression check), ``bake``.
-
-``--submit`` enqueues this same command on the daemon (agent-launched GPU
-work must go through it) and records it in ``runs/ledger.jsonl``; the
-submit shell must name the pack (``ANIMA_VOCAB_PACK=…``), since a job
-inherits an unset var from whichever shell booted the daemon.
+A run is ``configs/runs/<run>.toml`` = ``{vocabs, read}`` (``cjk_scale/config.py``);
+it lands in ``output/cjk_anima_scale/<run>/``. ``--submit`` enqueues this
+same command on the daemon (agent-launched GPU work must go through it) and
+records it in ``runs/ledger.jsonl``; the submit shell must name the pack
+(``ANIMA_VOCAB_PACK=…``), since a job inherits an unset var from whichever
+shell booted the daemon.
 """
 
 from __future__ import annotations
@@ -40,7 +29,8 @@ from cjk_scale.paths import REPO, bootstrap  # noqa: E402
 
 bootstrap()
 
-STEPS = ("data", "train", "eval", "bake", "boxprobe", "conflict")
+VERBS = ("data", "train", "eval", "conflict")
+COMMANDS = ("windows", "runs", "ledger")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -48,92 +38,12 @@ def build_parser() -> argparse.ArgumentParser:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     p.add_argument(
-        "command",
-        nargs="?",
-        default="run",
-        choices=["run", "windows", "stages", "runs", "ledger"],
+        "run", help=f"configs/runs/<run>.toml, or one of {', '.join(COMMANDS)}"
     )
-    p.add_argument("--stage", help="configs/<stage>.toml")
+    p.add_argument("verb", nargs="?", choices=VERBS)
     p.add_argument(
-        "--run", help="configs/runs/<run>.toml — rows, seed table, budgets; = the tag"
+        "--workers", type=int, help="data: render processes (default cpu − 2)"
     )
-    p.add_argument(
-        "--tag",
-        help="the chain's tag (default: the run's name; required without --run)",
-    )
-    p.add_argument(
-        "--steps", nargs="+", default=["data", "train", "eval"], choices=STEPS
-    )
-    # data
-    p.add_argument("--n_items", type=int, help="override [data].n_items (smoke builds)")
-    p.add_argument(
-        "--workers", type=int, help="render processes (default: cpu count - 2)"
-    )
-    p.add_argument("--seed", type=int, help="override [data].seed / [train].seed")
-    # train
-    p.add_argument(
-        "--warm_from",
-        help="override warm_from: a stage name, a trained.pt path, or 'cold'",
-    )
-    p.add_argument("--train_steps", type=int, help="override [train].train_steps")
-    p.add_argument("--steps_per_row", type=int, help="override [train].steps_per_row")
-    p.add_argument("--init_anchor", type=float, help="override [train].init_anchor")
-    p.add_argument("--lr_rows", type=float, help="override [train].lr_rows")
-    p.add_argument(
-        "--grid_box",
-        type=int,
-        help="override [train].grid_box: 1 = grid items take their cells' union as the loss box",
-    )
-    p.add_argument("--batch", type=int)
-    p.add_argument("--compile", type=int)
-    # eval
-    p.add_argument(
-        "--eval_only",
-        nargs="+",
-        choices=["eval", "native", "cf_sense", "sent", "target"],
-        help="run a subset of the rulers",
-    )
-    p.add_argument(
-        "--seed_only",
-        action="store_true",
-        help="eval: the run's seed_table under rows_scale_<stage>_<run>_seed/, no training",
-    )
-    p.add_argument(
-        "--eval_extra",
-        nargs=argparse.REMAINDER,
-        help="verbatim flags for the probe's eval parser",
-    )
-    # bake
-    p.add_argument("--bake_out", help="bake: output pack dir")
-    # boxprobe
-    p.add_argument(
-        "--probe_draws", type=int, default=3, help="boxprobe: σ draws per item"
-    )
-    p.add_argument(
-        "--probe_items",
-        type=int,
-        default=0,
-        help="boxprobe: cap on scene items (0 = all); conflict: items per stage (default 600)",
-    )
-    p.add_argument(
-        "--conflict_stages",
-        nargs="+",
-        default=["stage0709", "stage0507", "stage0305"],
-        help="conflict: the stages whose data gradients are compared, in chain order "
-        "(a stage may repeat with another --conflict_bands entry)",
-    )
-    p.add_argument(
-        "--conflict_bands",
-        nargs="+",
-        help="conflict: per stage, 'lo:hi' to read its data at that σ band, or '-' for its own",
-    )
-    p.add_argument(
-        "--conflict_recipes", nargs="+", help="conflict: keep only items of these recipes"
-    )
-    p.add_argument(
-        "--conflict_tag", default="", help="conflict: suffix for the output dir"
-    )
-    # daemon
     p.add_argument(
         "--submit", action="store_true", help="enqueue this command on the daemon"
     )
@@ -142,160 +52,66 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="with --submit: detach instead of attaching",
     )
-    p.add_argument(
-        "--label", help="with --submit: the job label (default scale-<stage>-<tag>)"
-    )
-    p.add_argument(
-        "--stall_timeout", type=float, default=0.0, help="with --submit: 0 = off"
-    )
     return p
 
 
 def main(argv=None):
     a = build_parser().parse_args(argv)
-    if a.command == "windows":
+    if a.run in COMMANDS:
+        assert a.verb is None, f"`{a.run}` takes no verb"
+        return command(a.run)
+    assert a.verb, f"scale.py {a.run} <{'|'.join(VERBS)}>"
+    from cjk_scale.config import load_run
+
+    rc = load_run(a.run)
+    if a.submit:
+        return submit(a)
+    print(f"===== {rc.name}: {a.verb}", flush=True)
+    if a.verb == "data":
+        from cjk_scale.builder import build
+
+        build(rc, workers=a.workers)
+    elif a.verb == "train":
+        from cjk_scale.train import train
+
+        train(rc)
+    elif a.verb == "eval":
+        from cjk_scale.eval import run
+
+        run(rc)
+    elif a.verb == "conflict":
+        from cjk_scale.conflict import probe
+
+        probe(rc)
+
+
+def command(name: str) -> None:
+    if name == "windows":
         from cjk_scale.windows import table
 
         print(table())
-        return
-    if a.command == "stages":
-        from cjk_scale.config import load, stage_names
-
-        for s in stage_names():
-            c = load(s, a.run)
-            print(
-                f"{s}: band {c.band[0]:.2f}–{c.band[1]:.2f}, gate {c.gate}, warm_from "
-                f"{c.warm_from or (c.run.seed_table if c.run else '') or 'cold'}, "
-                f"mix {' '.join(f'{m.name}={m.share:g}' for m in c.mix)}, "
-                f"{c.train['steps_per_row']} steps/row"
-                + (f"  [run {c.run.name}]" if c.run else "")
-            )
-        return
-    if a.command == "runs":
+    elif name == "runs":
         from cjk_scale.config import load_run, run_names
 
         for r in run_names():
             c = load_run(r)
-            budget = " ".join(f"{k}={v}" for k, v in c.budget.items())
-            print(
-                f"{r}: seed_table {c.seed_table or 'cold'}, units {c.data.get('units')}, "
-                f"n_items {c.data.get('n_items')}, budget {budget or '-'}"
-            )
-        return
-    if a.command == "ledger":
+            vocabs = c.vocabs if isinstance(c.vocabs, str) else ", ".join(c.vocabs)
+            print(f"{r}: vocabs {vocabs}; read {' '.join(c.read) or '-'}")
+    elif name == "ledger":
         from cjk_scale.ledger import rows
 
         for r in rows():
-            print(
-                f"{r['ts']}  {r.get('job_id', '-'):<26} {r['stage']}/{r['tag']}  {' '.join(r['steps'])}"
+            what = (
+                f"{r['run']} {r['verb']}"
+                if "verb" in r
+                else f"{r['stage']}/{r['tag']}  {' '.join(r['steps'])}"
             )
-        return
-    if a.run and not a.tag:
-        a.tag = Path(a.run).stem
-    if not a.stage and a.steps == ["conflict"]:
-        a.stage = a.conflict_stages[0]
-    assert a.stage and a.tag, "--stage and --run (or --tag) are required"
-    if a.submit:
-        return submit(a)
-    from cjk_scale.config import load
-
-    cfg = load(a.stage, a.run)
-    for step in a.steps:
-        print(f"===== {cfg.stage} / {a.tag}: {step}", flush=True)
-        if step == "data" and cfg.joint_from:
-            from cjk_scale.joint import merge
-
-            merge(cfg, a.tag)
-        elif step == "data":
-            from cjk_scale.builder import build
-
-            build(cfg, a.tag, n_items=a.n_items, seed=a.seed, workers=a.workers)
-        elif step == "conflict":
-            from cjk_scale.conflict import probe as conflict
-
-            first = load(a.conflict_stages[0], a.run)
-            warm = first.warm_table(a.tag)
-            if a.warm_from:
-                warm = None if a.warm_from == "cold" else REPO / a.warm_from
-            bands = None
-            if a.conflict_bands:
-                bands = [
-                    None if b == "-" else tuple(float(x) for x in b.split(":"))
-                    for b in a.conflict_bands
-                ]
-            conflict(
-                a.conflict_stages,
-                a.run,
-                a.tag,
-                warm=warm,
-                items=a.probe_items or 600,
-                draws=a.probe_draws,
-                seed=a.seed or 0,
-                bands=bands,
-                recipes=a.conflict_recipes,
-                grid_box=a.grid_box,
-                out_tag=a.conflict_tag,
-            )
-        elif step in ("train", "boxprobe"):
-            warm = cfg.warm_table(a.tag)
-            if a.warm_from:
-                warm = (
-                    None
-                    if a.warm_from == "cold"
-                    else cfg.__class__(
-                        **{**cfg.__dict__, "warm_from": a.warm_from}
-                    ).warm_table(a.tag)
-                )
-            if warm is not None:
-                assert warm.exists(), f"warm table {warm} does not exist"
-            if step == "boxprobe":
-                from cjk_scale.boxprobe import probe
-
-                probe(
-                    cfg,
-                    a.tag,
-                    warm=warm,
-                    draws=a.probe_draws,
-                    max_items=a.probe_items,
-                    seed=a.seed or 0,
-                )
-                continue
-            from cjk_scale.train import train
-
-            ov = {
-                k: getattr(a, k)
-                for k in (
-                    "train_steps",
-                    "steps_per_row",
-                    "init_anchor",
-                    "lr_rows",
-                    "grid_box",
-                    "batch",
-                    "compile",
-                    "seed",
-                )
-                if getattr(a, k) is not None
-            }
-            train(cfg, a.tag, warm=warm, overrides=ov)
-        elif step == "eval":
-            from cjk_scale.eval import RULERS, run
-
-            run(
-                cfg,
-                a.tag,
-                which=tuple(a.eval_only or RULERS),
-                extra=a.eval_extra,
-                seed_only=a.seed_only,
-            )
-        elif step == "bake":
-            from cjk_scale.bake import bake
-
-            bake(cfg.stage, a.tag, a.bake_out)
+            print(f"{r['ts']}  {r.get('job_id', '-'):<26} {what}")
 
 
 def submit(a) -> int:
-    """Enqueue ``scale.py <this argv minus --submit/--queue/--label>`` as a
-    daemon command job and record it in the ledger."""
+    """Enqueue ``scale.py <run> <verb>`` as a daemon command job and record it
+    in the ledger."""
     from anima_daemon import client as _client
     from anima_daemon import config as _dconfig
     from cjk_scale.ledger import append
@@ -304,29 +120,15 @@ def submit(a) -> int:
         "set ANIMA_VOCAB_PACK in the submit shell (every launch names the pack; "
         "an unset var falls through to the shell that booted the daemon)"
     )
-    argv = list(sys.argv[1:])
-    for flag in ("--submit", "--queue"):
-        argv = [x for x in argv if x != flag]
-    for flag in ("--label", "--stall_timeout"):
-        if flag in argv:
-            i = argv.index(flag)
-            del argv[i : i + 2]
     script = str(Path(__file__).resolve().relative_to(REPO))
-    label = a.label or f"scale-{a.stage}-{a.tag}-{'-'.join(a.steps)}"
+    argv = [script, a.run, a.verb] + (
+        ["--workers", str(a.workers)] if a.workers else []
+    )
+    label = f"scale-{a.run}-{a.verb}"
     cl = _client.ensure_daemon(expected_root=_dconfig.ROOT)
-    resp = cl.submit_command(
-        label=label, argv=[script, *argv], stall_timeout=a.stall_timeout
-    )
+    resp = cl.submit_command(label=label, argv=argv, stall_timeout=0.0)
     job_id = resp.get("job_id")
-    row = append(
-        job_id=job_id,
-        label=label,
-        stage=a.stage,
-        tag=a.tag,
-        steps=a.steps,
-        argv=[script, *argv],
-        run=a.run,
-    )
+    row = append(job_id=job_id, label=label, run=a.run, verb=a.verb, argv=argv)
     print(f"submitted {job_id} ({label}) — ledger: {row['ts']}", flush=True)
     if a.queue:
         return 0

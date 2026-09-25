@@ -1,6 +1,6 @@
 """Line-local tests — run as
 ``.venv/bin/python -m pytest project/cjk_anima_scale/tests`` (never part of
-the repo suite). The line dir and the probe's ``src/`` go on ``sys.path`` the
+the repo suite). The line dir and its own ``src/`` go on ``sys.path`` the
 way ``scale.py`` puts them."""
 
 import sys

@@ -1,10 +1,12 @@
 # runs — the ledger
 
-`ledger.jsonl`: one line per `scale.py --submit`, written at submit time —
-timestamp, job id, label, stage, tag, steps, the child argv, and the
-`ANIMA_VOCAB_PACK` the submit shell named. `scale.py ledger` prints it.
+`ledger.jsonl`: one line per `scale.py <run> <verb> --submit`, written at
+submit time — timestamp, job id, label, run, verb, the child argv, and the
+`ANIMA_VOCAB_PACK` the submit shell named. Rows before 2026-09-25 carry
+`stage` / `tag` / `steps` instead of `run` / `verb`. `scale.py ledger`
+prints both.
 
-Reads go in the stage's own dirs under `output/cjk_anima_scale/` (`build.json`,
-`train_log.json`, `train_record.json`, `eval_reads.json`, `regress.json`,
-`native/`, `cf_sense_ja*/`) and, once digested, in
-`../../cjk_renderable_anima/reports/` like every other read.
+Reads go in the run's dir under `output/cjk_anima_scale/<run>/`
+(`data/build.json`, `train_log.json`, `train_record.json`, `reads.json`,
+`sheet.png`, the arms' `eval_reads.json` / `native*/` / `target/`) and, once
+digested, in `../reports/` like every other read.

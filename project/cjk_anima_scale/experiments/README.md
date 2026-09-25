@@ -3,7 +3,9 @@
 One directory per experiment; each validates one idea (usually from
 `../idea.md`) before any production code changes. This is the line's
 `bench/`: same envelope, same discipline, but scoped to the line and free
-to import `cjk_scale/` and the probe's `src/` primitives.
+to import `cjk_scale/` and the line's `src/` primitives. The two influence
+experiments read the old stage-layout dirs (`data_<stage>_<tag>`) through
+`cjk_scale/legacy.py` (the archived stage configs).
 
 ## Contract
 
@@ -20,7 +22,7 @@ to import `cjk_scale/` and the probe's `src/` primitives.
   (`make daemon-run ARGS="project/cjk_anima_scale/experiments/<exp>/run_exp.py …"`)
   and every launch names the pack
   (`ANIMA_VOCAB_PACK=models/vocab_packs/anima_cjk_vocab_pack`).
-- Never write into a `data_scale_*` dir: sample records, keep sub-set
+- Never write into a `data_*` dir: sample records, keep sub-set
   latent/TE caches in the experiment's own output dir.
 - A verdict that closes (or opens) an idea is written into
   `../reports/` and the wake roll-up like any other read; this tree holds
@@ -36,9 +38,9 @@ to import `cjk_scale/` and the probe's `src/` primitives.
   estimator needs row-conditioned sampling; the dev-loss target can't see
   the acceptance axis).
 - `influence_target/` — step 1 after the smoke: does the dev target see what
-  piecenat saw? Value-only (no bank): in-box FM loss on matched
-  correct / doubled renders of the 8 piecenat pieces at the seed, step-5 000
-  and final 300f tables. T1 = per-piece identity gain vs the piecenat gains
+  piece saw? Value-only (no bank): in-box FM loss on matched
+  correct / doubled renders of the 8 piece pieces at the seed, step-5 000
+  and final 300f tables. T1 = per-piece identity gain vs the piece gains
   (2-glyph bought, 3+ not); T2 = the doubled-vs-correct margin, the
   acceptance-axis read. **Ran 2026-09-25** (`--label t1`) → verdict in
   `../reports/influence_target_2026_09_25.md`: **both fail** — the loss gain

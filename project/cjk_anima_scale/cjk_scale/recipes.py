@@ -1,9 +1,10 @@
-"""recipes — the item generators (design § 4), over the probe line's render
-primitives (``common/render/``) and its inventory / scene / phrase readers.
+"""recipes — the item generators (design § 4), over the vendored render
+primitives (``src/common/render/``) and the inventory / scene / phrase readers.
 
-A recipe draws one item — unit(s), px, layout — and returns an ``Item`` or
-``None`` on a render miss. It knows nothing about the stage: the builder
-measures the item's px, looks up its window and keeps or re-draws it.
+A recipe draws one item — vocab(s), px, layout — and returns an ``Item`` or
+``None`` on a render miss. It knows nothing about bands: the builder
+measures the item's px, looks up its window, keeps or re-draws it and
+stamps the item with its band.
 
     scene_single    one glyph in a bubble; px = the bubble fit (fill 0.7 → 48–53)
                     or a ``glyph_px`` range that sets the fill per item;
@@ -29,7 +30,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .paths import UNITS_DIR
+from .config import DATA, SEED
 from .windows import glyph_count
 
 # scene-fit rules the probe settled (data/synth.py): a text goes to the
@@ -115,10 +116,23 @@ def _quietly(fn, *args, width: int = 160):
     return out
 
 
-def build_pools(cfg, out: Path, rng: random.Random) -> Pools:
-    """Inventory (``--units`` semantics), scenes, phrase kinds, eval groups —
-    the probe's resolvers on a small namespace, so a unit means what it
-    meant in every read of record."""
+def build_pools(
+    units: list,
+    context: Path | None,
+    phrase_file,
+    rng: random.Random,
+) -> Pools:
+    """The run's vocabs (``units``: ``data.units`` specs), scenes, phrase
+    kinds, eval groups — the stage resolvers on a small namespace, so a vocab
+    means what it meant in every read of record. ``context`` (the seed
+    table): a corpus line is drawable when its pieces are vocabs or seed
+    rows, at least one a vocab. ``phrase_file`` (a path, or a callable that
+    resolves one) is read only when the run has piece vocabs — the corpus
+    lines feed the piece tiers alone. Deterministic in ``rng``'s state — the
+    builder rebuilds the pools' draw state per band group from one snapshot.
+    The resolvers' manifests (``words.json`` / ``small.json`` / ``kanji.json``)
+    go to a scratch dir: the run's manifest is ``vocabs.json``."""
+    import tempfile
     from types import SimpleNamespace
 
     from data.inventory import pieces as qpieces
@@ -133,28 +147,12 @@ def build_pools(cfg, out: Path, rng: random.Random) -> Pools:
     from data.synth import _SENT_DISTINCT, _SHORT_DISTINCT, _letters, load_scenes
     from common.render.flat import find_fonts
 
-    d = cfg.data
-    units = list(d["units"])
-    if d["pieces"]:
-        # the inventory keeps ONE `list:` source (Inventory.source), so the
-        # file rides on the punctuation list, as the probe's step-2 data stage had it
-        p = d["pieces"]
-        path = Path(p) if "/" in p else UNITS_DIR / p
-        assert path.is_file(), f"pieces file {path}"
-        lists = [i for i, u in enumerate(units) if u.startswith("list:")]
-        assert len(lists) <= 1, (
-            "one list: source in data.units — the pieces file joins it"
-        )
-        if lists:
-            spec = units[lists[0]]
-            body, star, weight = spec.partition("*")
-            units[lists[0]] = f"{body},@{path}{star}{weight}"
-        else:
-            units.append(f"list:@{path}*1")
+    d = dict(DATA)
+    units = list(units)
     a = SimpleNamespace(
         units=units,
         balanced=0,
-        seed=int(d["seed"]),
+        seed=SEED,
         phrase_file="",
         phrase_pieces=0,
         phrase_min_pieces=int(d["phrase_min_pieces"]),
@@ -169,10 +167,12 @@ def build_pools(cfg, out: Path, rng: random.Random) -> Pools:
     inv = _base_inventory(a)
     tokq = qwen_pieces()
     _eval_strings(a, rng, inv)
-    _quietly(
-        _resolve_singles, a, out, tokq, inv
-    )  # its `extra units:` line lists every piece
-    _quietly(_word_set, a, out, tokq, inv)  # no words source here: `words: 0` noise
+    with tempfile.TemporaryDirectory() as scratch:
+        out = Path(scratch)
+        _quietly(
+            _resolve_singles, a, out, tokq, inv
+        )  # its `extra units:` line lists every piece
+        _quietly(_word_set, a, out, tokq, inv)  # no words source here: `words: 0` noise
     for g in ("combo", "corpus", "line", "word", "word_held"):
         inv.evals.pop(g, None)
     # the pool by kind: single (1 token, 1 glyph), piece (1 token, ≥ 2 glyphs),
@@ -189,10 +189,9 @@ def build_pools(cfg, out: Path, rng: random.Random) -> Pools:
         else:
             pieces.append(u)
     if not singles:
-        # a pieces-only inventory (the freeze arm: `context = "seed"`, the
-        # singles ride frozen outside it) — the single recipes drop via
-        # missing_source and their shares renormalise over the rest
-        print("pools: no one-glyph unit — single recipes drop", flush=True)
+        # a pieces-only run (run0925_300f): the singles ride frozen at the
+        # seed and the table has no single tier to draw
+        print("pools: no single vocab — no single tier", flush=True)
     small = {d for ds in inv.small_of.values() for d in ds}
     stray = sorted(set(digraphs) - small)
     assert not stray, f"≥ 2-token units outside the small digraphs: {stray[:10]}"
@@ -221,6 +220,9 @@ def build_pools(cfg, out: Path, rng: random.Random) -> Pools:
 
     phrase: dict = {"short": [], "sentence": []}
     held: dict = {"short": [], "sentence": []}
+    d["phrase_file"] = ""
+    if pieces and phrase_file:
+        d["phrase_file"] = phrase_file() if callable(phrase_file) else str(phrase_file)
     if d["phrase_file"]:
         tok, qmap = tokq
         plines = phrase_file_lines(
@@ -249,7 +251,6 @@ def build_pools(cfg, out: Path, rng: random.Random) -> Pools:
             return None
 
         line_ok = inv.piece_ok
-        context = cfg.context_table()
         if context is not None:
             line_ok = _context_line_ok(inv.piece_ok, tokq, context)
         train_set = set()
@@ -286,12 +287,20 @@ def build_pools(cfg, out: Path, rng: random.Random) -> Pools:
             flush=True,
         )
     if pieces:
-        # the piece rows' own exact ruler, under the probe's `word` group
+        # the piece vocabs' own exact ruler, under the stages' `word` group
         # (single-piece multi-glyph words — what a piece is)
         erng = random.Random(a.seed + 43)
         distinct = list(dict.fromkeys(pieces))
         inv.evals["word"] = sorted(
             erng.sample(distinct, min(int(d["n_piece_eval"]), len(distinct)))
+        )
+    if singles and not inv.evals.get("single"):
+        # a units-file run has no kana base, so `single` is empty: 18 of its
+        # single vocabs instead, on their own stream (the main rng untouched)
+        srng = random.Random(a.seed + 47)
+        distinct = list(dict.fromkeys(singles))
+        inv.evals["single"] = sorted(
+            srng.sample(distinct, min(int(d["n_single_eval"]), len(distinct)))
         )
     print(
         f"pools: {len(set(singles))} singles ({len(singles)} weighted), "
@@ -320,10 +329,10 @@ def build_pools(cfg, out: Path, rng: random.Random) -> Pools:
 
 
 def _context_line_ok(piece_ok, tokq, context: Path):
-    """``context = "seed"``: a line is drawable when every piece has a row
-    that is either an inventory row or a row of the context table (it rides
-    frozen at that value), and at least one piece is the inventory's — a
-    line of context rows only trains nothing."""
+    """A line is drawable when every piece has a row that is either a vocab
+    of the run or a row of the context (seed) table (it rides frozen at that
+    value), and at least one piece is the run's — a line of context rows
+    only trains nothing."""
     import torch
 
     from data.inventory import pieces as qpieces
@@ -795,11 +804,10 @@ def _grid_string_pool(pools: Pools, p: dict) -> list:
 
 
 def missing_source(name: str, p: dict, pools: Pools) -> str | None:
-    """Why ``name`` cannot draw from ``pools`` (None when it can). A recipe
-    whose source is empty under the run's inventory is dropped by the
-    builder and its share renormalised over the rest (``build.json``
-    ``dropped``) — a 24-row run has no corpus line, production has all of
-    them; the stage file is never edited for it."""
+    """Why ``name`` cannot draw from ``pools`` (None when it can). The
+    builder skips such a tier and says so (``build.json`` ``skipped``) — its
+    items are not handed to the other tiers (a tiny run: three pieces fill
+    no 2×2 grid)."""
     if name == "scene_piece" and not pools.pieces:
         return "no pieces"
     if name == "scene_single" and not (

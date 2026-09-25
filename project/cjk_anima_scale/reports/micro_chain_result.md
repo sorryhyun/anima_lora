@@ -76,7 +76,7 @@ can do.
 
 1. **`--seed_only`** on `eval` (`cjk_scale/eval.py::seed_wrapper`): the run's
    `seed_table` as a rows-arm `trained.pt` with a synthetic `args`, under
-   `rows_scale_<stage>_<run>_seed/` (the probe's `--arm_tag seed`, so the
+   `rows_<stage>_<run>_seed/` (the probe's `--arm_tag seed`, so the
    stage's data dir is read unchanged), restricted to the rows the stage's
    `words.json` names (24 of 2 274) so `cf_sense` draws from the rows a
    trained table carries; no `regress`.
@@ -93,8 +93,8 @@ can do.
 3. `init_anchor` 0 / 0.01 / 0.01 → **0.1** on all three stages (the config
    comments carry the read).
 
-Preserved tables: `rows_scale_stage0709_run0923_micro_v0_17rows/` (the
-17-row table), `_mu0/`, `rows_scale_stage0507_run0923_micro_mu001/`; the
+Preserved tables: `rows_stage0709_run0923_micro_v0_17rows/` (the
+17-row table), `_mu0/`, `rows_stage0507_run0923_micro_mu001/`; the
 unsuffixed dirs are the μ = 0.1 chain.
 
 ## 5. Open

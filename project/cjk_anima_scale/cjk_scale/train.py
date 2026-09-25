@@ -1,18 +1,24 @@
-"""train — rows-only plain FM on one σ band, warm from the previous stage.
+"""train — the run's vocabs' rows, plain FM, σ drawn per item inside its band.
 
-The probe's ``train/stage.py`` rows-arm path with the levers left behind
+The stages' ``train/stage.py`` rows-arm path with the levers left behind
 (design § 5): no pair loss, no counterfactual input, no ``c_flat``, no
-out-vec, no row blocks / boosts, no encoder. What stays is exactly what
-every read of record used — the box-share FM loss on scene batches, plain
-MSE on grid / flat batches, cosine decay with warmup, the warm anchor.
+out-vec, no row blocks / boosts, no encoder. What stays is exactly what the
+reads of record used — the box-share FM loss (scene items, and grid items'
+cells under ``GRID_BOX``), cosine decay with warmup, the seed as the warm
+start and the frozen context.
 
-Reused from the probe, unchanged: ``LatentStore`` (per-shape latent cache in
-the data dir), ``Batcher`` (one shape × one source per batch),
+The table is the run's vocabs (their idx through the Qwen tokenizer, from
+``vocabs.json``), warm from the seed table; every other row a training
+caption touches rides frozen at its seed value and is stripped from
+``trained.pt``. A vocab the seed lacks starts cold (``RowTable`` prints it).
+
+Reused from the stage packages, unchanged: ``LatentStore`` (per-shape latent
+cache in the data dir), ``Batcher`` (one shape × one source per batch),
 ``BoxSplit`` (in / out split logging), ``_encode_text`` (TE cache +
 ``eval_coverage.json``), ``dit_forward``.
 
 Order (lazy loading): captions → TE cache → VAE latents → DiT → rows →
-compile → loop → ``trained.pt``.
+compile → loop → ``<run>/trained.pt``.
 """
 
 from __future__ import annotations
@@ -26,43 +32,50 @@ from types import SimpleNamespace
 
 import torch
 
-from .config import StageConfig
-from .paths import arm_dir, data_dir, run_tag
+from .config import RunConfig
+from .paths import SEED_TABLE, data_dir, run_dir
 from .rows import RowTable
 
+# The trainer is fixed (plan.md § 2); a different trainer is a code change with
+# a new report beside it, never a flag. Each value names the read that set it.
+INIT_ANCHOR = (
+    0.0  # μ 0: the vocabs need the displacement; the rest is frozen, not anchored
+)
+#                    (reports/conflict_joint_2026_09_25.md § 4 verdict 3; run0925_300f)
+LR = 1e-3  # the lr that moved pieces (micro_warm_0923; conflict_joint report § 3)
+BATCH = 4
+LR_DECAY = "cosine"
+WARMUP_RATIO = 0.1  # of the run's steps (micro_warm_0923: 100 / 640, 200 / 1280)
+STEPS_PER_VOCAB = (
+    90  # run0925_300f's joint budget (joint0507_0305 = 90; conflict_joint report)
+)
+GRID_BOX = True  # grid cells' union as the loss box (reports/grid_box_2026_09_25.md)
+BOX_SHARE = 0.25  # a single glyph's in-box share, log up to …
+BOX_SHARE_CAP = 0.5  # … the cap, at …
+BOX_SHARE_GLYPHS = 8  # … this many glyphs (loss.py; every stage file of record)
+FREE_RESIDUAL = (
+    1e-3  # μ‖f‖² on the touched rows when there is no anchor (a constant, not a lever)
+)
+SEED = 0
+COMPILE = True
+SAVE_EVERY = 5000
+GEN_STEPS, GEN_CFG = 28, 4.0  # the generation settings the stage helpers want
 
-def inventory_ext(words: dict, ev_ext: dict, tokq=None) -> set[int]:
-    """The ext rows of every unit the run names (``words.json``): read off
-    the eval strings' captions (``_encode_text``'s ``ev_ext``: text → ext
-    ids) and, with ``tokq`` (the Qwen tokenizer + qwen → ext map), off the
-    tokenizer for every unit the eval set did not sample — the ``word``
-    group is 18 of the pieces, so a 300-piece inventory is not in ``ev_ext``
-    (run0925_300f's first launch trained 35 rows, 2026-09-25). The stage
-    table is these ∪ the rows the training captions touch, so a unit the
-    band gives no draw stays in the table at its warm value; under
-    ``context = "seed"`` a unit missing here would ride frozen instead."""
-    inventory = {t for v in words.values() for t in v}
-    out: set[int] = set()
-    for text, ids in ev_ext.items():
-        if text in inventory:
-            out.update(int(i) for i in ids)
-    if tokq is not None:
-        from data.inventory import pieces as qpieces
 
-        tok, qmap = tokq
-        for text in inventory:
-            if text in ev_ext:
-                continue
-            out.update(int(e) for _p, e in qpieces(tok, qmap, text) if e is not None)
-    return out
+def vocab_idx(vocabs: list, tokq) -> set[int]:
+    """The run's vocabs → their idx: the Qwen tokenizer maps each vocab to
+    its pieces, every piece with a pack row is in the table (plan.md § 4:
+    the vocabs file is the inventory, the tokenizer maps it, done)."""
+    from data.inventory import pieces as qpieces
+
+    tok, qmap = tokq
+    return {int(e) for v in vocabs for _p, e in qpieces(tok, qmap, v) if e is not None}
 
 
 def noisy_by_band(latents, noise, bands, device):
     """``fm_training_batch`` with σ drawn per item inside its own band: the
     batch is split by band, each part drawn with its ``t_min`` / ``t_max``,
-    and the parts put back in batch order (a band stage's items all carry
-    the stage band, so this is the plain call there; a joint stage's items
-    carry their source stage's band — ``joint.py``)."""
+    and the parts put back in batch order."""
     from library.runtime.noise import fm_training_batch
 
     groups: dict = {}
@@ -91,10 +104,27 @@ def noisy_by_band(latents, noise, bands, device):
     return torch.stack(noisy), torch.stack(ts), torch.stack(target)
 
 
-def train(
-    cfg: StageConfig, tag: str, *, warm: Path | None, overrides: dict | None = None
-) -> Path:
+def load_items(data: Path) -> tuple[list, list, list]:
+    """``train.jsonl`` / ``eval.json`` / ``vocabs.json`` of a run's data dir;
+    every item must carry its band (stamped at build time)."""
+    assert (data / "train.jsonl").exists(), (
+        f"no data dir {data} — run `scale.py <run> data` first"
+    )
+    recs = [
+        json.loads(ln)
+        for ln in (data / "train.jsonl").read_text(encoding="utf-8").splitlines()
+        if ln
+    ]
+    assert all("shape" in r for r in recs), "every record needs a shape"
+    assert all(r.get("band") for r in recs), "every record needs its band (builder)"
+    ev = json.loads((data / "eval.json").read_text(encoding="utf-8"))
+    vocabs = json.loads((data / "vocabs.json").read_text(encoding="utf-8"))
+    return recs, ev, vocabs
+
+
+def train(rc: RunConfig) -> Path:
     from common.models import checkpoints, dit_forward, gen_args
+    from data.inventory import qwen_pieces
     from library.anima.vocab_pack import attached_pack_rows, strategy_pack
     from library.inference.generation import get_generation_settings
     from library.inference.models import load_dit_model
@@ -103,51 +133,31 @@ def train(
 
     from .loss import box_share_fm_loss
 
-    t = {**cfg.train, **(overrides or {})}
-    t_min, t_max = cfg.band
-    torch.manual_seed(int(t["seed"]))
-    data = data_dir(cfg.stage, tag)
-    out = arm_dir(cfg.stage, tag)
+    torch.manual_seed(SEED)
+    data = data_dir(rc.name)
+    out = run_dir(rc.name)
     out.mkdir(parents=True, exist_ok=True)
-    assert (data / "train.jsonl").exists(), (
-        f"no data dir {data} — run the data step first"
-    )
-    recs = [
-        json.loads(ln)
-        for ln in (data / "train.jsonl").read_text(encoding="utf-8").splitlines()
-        if ln
-    ]
-    ev = json.loads((data / "eval.json").read_text(encoding="utf-8"))
-    assert all("shape" in r for r in recs), "every record needs a shape"
-    args = gen_args(512, int(t["steps"]), float(t["cfg"]), out)
+    recs, ev, vocabs = load_items(data)
+    args = gen_args(512, GEN_STEPS, GEN_CFG, out)
     device = get_generation_settings(args).device
 
-    cache, train_ext, ev_ext = _encode_text(
+    cache, touched, _ev_idx = _encode_text(
         recs, ev, device, out, te_cache=data / "te_cache"
     )
-    words = json.loads((data / "words.json").read_text(encoding="utf-8"))
-    from data.inventory import qwen_pieces
-
-    inv_ext = inventory_ext(words, ev_ext, qwen_pieces())
-    context = cfg.context_table()
-    frozen: set[int] = set()
-    if context is not None:
-        # corpus lines carry rows outside the inventory: they ride frozen at
-        # the seed value; the table (what trains, what steps count) is the inventory's
-        frozen = train_ext - inv_ext
-        train_ext = train_ext & inv_ext
-        table_ext = inv_ext
-    else:
-        table_ext = train_ext | inv_ext
+    table = vocab_idx(vocabs, qwen_pieces())
+    # captions carry rows outside the vocabs (corpus lines): they ride frozen
+    # at the seed; the table (what trains, what the steps count) is the vocabs'
+    frozen = touched - table
+    touched = touched & table
     print(
-        f"table: {len(table_ext)} rows = {len(train_ext)} touched by the captions "
-        f"+ {len(table_ext - train_ext)} inventory rows this band draws nothing on"
-        + (f"; {len(frozen)} context rows frozen at {context}" if context else ""),
+        f"table: {len(table)} rows ({len(vocabs)} vocabs) — {len(touched)} touched "
+        f"by the captions, {len(table - touched)} with no draw; {len(frozen)} context "
+        f"rows frozen at {SEED_TABLE}",
         flush=True,
     )
     ns = SimpleNamespace(
-        seed=int(t["seed"]),
-        batch=int(t["batch"]),
+        seed=SEED,
+        batch=BATCH,
         train_size=512,
         row_blocks=0,
         row_boost="",
@@ -162,32 +172,33 @@ def train(
     rows = RowTable(
         anima,
         device,
-        table_ext,
+        table,
         strategy_pack(tok),
-        warm=warm,
-        init_anchor=float(t["init_anchor"]),
-        free_residual=float(t["free_residual"]),
-        lr=float(t["lr_rows"]),
-        touched=train_ext,
+        warm=SEED_TABLE,
+        init_anchor=INIT_ANCHOR,
+        free_residual=FREE_RESIDUAL,
+        lr=LR,
+        touched=touched,
         frozen=frozen,
-        context=context,
+        context=SEED_TABLE,
     )
     n_rows = rows.n_rows
-    steps = int(t["train_steps"]) or int(t["steps_per_row"]) * n_rows
-    warmup, decay = cfg.warmup_steps(steps), t["lr_decay"]
+    steps = STEPS_PER_VOCAB * n_rows
+    warmup = int(round(WARMUP_RATIO * steps))
+    bands = sorted({tuple(r["band"]) for r in recs})
     print(
-        f"train {cfg.stage} ({run_tag(cfg.stage, tag)}): σ [{t_min}, {t_max}], {n_rows} rows, "
-        f"{steps} steps ({steps / n_rows:.0f}/row) × batch {t['batch']}, lr {t['lr_rows']:g} "
-        f"{decay} warmup {warmup} ({float(t['lr_warmup_ratio']):g}), box_share {t['box_share']} → cap {t['box_share_cap']} "
-        f"at {t['box_share_glyphs']} glyphs (log), grid_box {int(t.get('grid_box', 0))}, "
-        f"warm {'cold' if warm is None else warm}",
+        f"train {rc.name}: σ per item in {bands}, {n_rows} rows, {steps} steps "
+        f"({STEPS_PER_VOCAB}/row) × batch {BATCH}, lr {LR:g} {LR_DECAY} warmup {warmup} "
+        f"({WARMUP_RATIO:g}), μ {INIT_ANCHOR:g}, box_share {BOX_SHARE} → cap "
+        f"{BOX_SHARE_CAP} at {BOX_SHARE_GLYPHS} glyphs (log), grid_box {int(GRID_BOX)}, "
+        f"warm {SEED_TABLE}",
         flush=True,
     )
     opt = torch.optim.AdamW(rows.params, weight_decay=0.0, betas=(0.9, 0.99))
 
     def lr_mult(st):
         m = 1.0
-        if decay == "cosine":
+        if LR_DECAY == "cosine":
             m = 0.5 * (1 + math.cos(math.pi * min(st / steps, 1.0)))
         if warmup > 0:
             m *= min((st + 1) / warmup, 1.0)
@@ -195,7 +206,7 @@ def train(
 
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lr_mult)
     anima.train()
-    if int(t["compile"]):
+    if COMPILE:
         from library.runtime.harness import compile_blocks_for_training
 
         compile_blocks_for_training(
@@ -205,32 +216,31 @@ def train(
     split = BoxSplit()
     log: list = []
     record = {
-        "stage": cfg.stage,
-        "tag": tag,
-        "data_tag": run_tag(cfg.stage, tag),
-        "band": [t_min, t_max],
-        "t_min": t_min,
-        "t_max": t_max,
-        "per_item_band": sorted({tuple(r["band"]) for r in recs if "band" in r}),
+        "run": rc.name,
+        "run_config": str(rc.path),
+        "vocabs": rc.vocabs if isinstance(rc.vocabs, str) else list(rc.vocabs),
+        "data": str(data),
+        "bands": [list(b) for b in bands],
         "train_steps": steps,
+        "steps_per_row": STEPS_PER_VOCAB,
         "lr_warmup": warmup,
+        "lr_warmup_ratio": WARMUP_RATIO,
+        "lr_rows": LR,
+        "lr_decay": LR_DECAY,
+        "init_anchor": INIT_ANCHOR,
+        "free_residual": FREE_RESIDUAL,
+        "batch": BATCH,
+        "box_share": BOX_SHARE,
+        "box_share_cap": BOX_SHARE_CAP,
+        "box_share_glyphs": BOX_SHARE_GLYPHS,
+        "grid_box": int(GRID_BOX),
+        "seed": SEED,
         "n_rows": n_rows,
-        "n_touched": len(train_ext),
-        "context": str(context) if context else "",
+        "n_touched": len(touched),
+        "context": str(SEED_TABLE),
         "n_context": len(frozen),
-        "run": cfg.run.name if cfg.run else None,
-        "run_config": str(cfg.run.path) if cfg.run else None,
-        **{k: t[k] for k in sorted(t)},
-        "config": str(cfg.path),
         "arm": "rows",
     }
-    bs_cfg, cap, n_cap = (
-        float(t["box_share"]),
-        float(t["box_share_cap"]),
-        float(t["box_share_glyphs"]),
-    )
-    grid_box = bool(int(t.get("grid_box", 0)))  # grid cells' union as the box (loss.py)
-    save_every = int(t["save_every"])
     t0 = time.time()
     for step in range(1, steps + 1):
         idx = batcher.next(step)
@@ -238,15 +248,17 @@ def train(
         noise = torch.randn_like(latents)
         brecs = [recs[i] for i in idx]
         noisy, ts, target = noisy_by_band(
-            latents, noise, [tuple(r.get("band") or cfg.band) for r in brecs], device
+            latents, noise, [tuple(r["band"]) for r in brecs], device
         )
         is_scene = brecs[0]["src"] == "scene"
-        bs = bs_cfg if is_scene or (grid_box and brecs[0]["src"] == "grid") else 0.0
+        bs = BOX_SHARE if is_scene or (GRID_BOX and brecs[0]["src"] == "grid") else 0.0
         with torch.autocast("cuda", dtype=torch.bfloat16):
             pred = dit_forward(
                 anima, noisy, ts, cache, [r["caption"] for r in brecs], device
             )
-        loss_fm = box_share_fm_loss(pred, target, brecs, bs, cap, n_cap, grid_box)
+        loss_fm = box_share_fm_loss(
+            pred, target, brecs, bs, BOX_SHARE_CAP, BOX_SHARE_GLYPHS, GRID_BOX
+        )
         loss = rows.regularized(loss_fm)
         if is_scene:
             split.add(pred, target, brecs, ts)
@@ -259,7 +271,7 @@ def train(
             rec["lr"] = opt.param_groups[0]["lr"]
             log.append(rec)
             print(json.dumps(rec), flush=True)
-        if save_every and step % save_every == 0 and step < steps:
+        if SAVE_EVERY and step % SAVE_EVERY == 0 and step < steps:
             torch.save(rows.state_dict(record, step), out / "trained_partial.tmp")
             os.replace(out / "trained_partial.tmp", out / "trained_partial.pt")
             (out / "train_log.json").write_text(json.dumps(log, indent=1))

@@ -10,7 +10,8 @@ a killed job to get right (`next.md` § 4). This plan collapses it.
 
 ```toml
 # runs/run0925_300f.toml
-rows = "ja_pieces_0925_300.txt"      # what trains — one unit per line; everything else is frozen at the seed
+vocabs = "ja_pieces_0925_300.txt"    # what trains — one vocab per line; everything else is frozen at the seed
+                                     # (terminology fixed 2026-09-25: vocab = token string, idx = ext id, row = trained weight)
 read = ["はい", "おしい", "やったネ", "ちょっと来い", "こんにちは"]   # native_sent + target; the exact word/en rulers are automatic
 ```
 
@@ -53,8 +54,8 @@ scale.py run0925_300f eval     # daemon: read + word + en + control → one cont
 
 `data` writes one dir per run (`output/cjk_anima_scale/<run>/data/`),
 `train` one table (`<run>/trained.pt`), `eval` one sheet
-(`<run>/sheet.png`) + `reads.json`. No `data_scale_<stage>_<tag>` /
-`rows_scale_<stage>_<tag>` layout, no joint merge, no symlinked arm dirs.
+(`<run>/sheet.png`) + `reads.json`. No `data_<stage>_<tag>` /
+`rows_<stage>_<tag>` layout, no joint merge, no symlinked arm dirs.
 
 ## 4. What this deletes
 
@@ -80,9 +81,13 @@ scale.py run0925_300f eval     # daemon: read + word + en + control → one cont
 ## 6. Order
 
 1. Let `run0925_300f` (job `20260925-144054-bcf21e`) finish and read it on
-   the current code — do not refactor under a running job.
-2. New `RunConfig` = `{rows, read}`; recipe table by kind; per-item band
+   the current code — do not refactor under a running job. **Done** (read in
+   `reports/piece_2026_09_25.md` + `floor_score.md`).
+2. New `RunConfig` = `{vocabs, read}`; recipe table by kind; per-item band
    at build time; one output dir per run. Old configs move to `_archive/`.
+   **Done 2026-09-25** — `scale.py <run> data|train|eval|conflict`,
+   `builder.TABLE`, `<run>/{data,trained.pt,sheet.png,reads.json}`; the line's
+   stage code vendored into `src/` (no probe-line reference left).
 3. Re-run `run0925_300f` as the first run of the new shape; its numbers
    must match the old run's (same rows, same data seed) — that is the
    refactor's test.

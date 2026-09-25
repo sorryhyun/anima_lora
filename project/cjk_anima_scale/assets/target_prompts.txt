@@ -1,0 +1,16 @@
+# The user's own target renders (ComfyUI, 2026-09-17 00:05–00:13, output/pid/new2__00182–206):
+# hoshino ai by @akipeko at the bar, saying はい / こんにちは. Each line is one full
+# caption, rendered verbatim by `--stage target`; the expected text is the quoted span.
+# The Comfy stack (soup LoRA + Spectrum mod-guidance + CNS, 768×1344, 30 steps, cfg 4)
+# is not reproduced — this reads the delta alone on the repo's plain sampler.
+#
+# --- はい, the clause shapes the user tried (new2__00197–206)
+sensitive, 1girl, hoshino ai, oshi no ko, @akipeko, looking at viewer, solo, photo background, indoors, skirt, v, speech bubble, japanese text. She is at the bar. Japanese text that reads "はい".
+sensitive, 1girl, hoshino ai, oshi no ko, @akipeko, looking at viewer, solo, photo background, indoors, skirt, v, speech bubble. She is at the bar. Japanese text that reads as "はい"
+sensitive, 1girl, hoshino ai, oshi no ko, @akipeko, looking at viewer, solo, photo background, indoors, skirt, v, speech bubble. She is at the bar. Text that reads as "はい"
+# the trained clause shape (TPL_SCENE_JA), same scene — the in-distribution control
+sensitive, 1girl, hoshino ai, oshi no ko, @akipeko, looking at viewer, solo, photo background, indoors, skirt, v, speech bubble, japanese text. She is at the bar. Japanese text reads as "はい".
+# --- こんにちは (new2__00183–186)
+sensitive, 1girl, hoshino ai, oshi no ko, @akipeko, looking at viewer, solo, photo background, indoors, skirt, v, speech bubble, japanese text. She is at the bar. She is saying "こんにちは"
+sensitive, 1girl, hoshino ai, oshi no ko, @akipeko, looking at viewer, solo, photo background, indoors, skirt, v. She is at the bar. She is saying "こんにちは"
+sensitive, 1girl, hoshino ai, oshi no ko, @akipeko, looking at viewer, solo, photo background, indoors, skirt, v, speech bubble, japanese text. She is at the bar. Japanese text reads as "こんにちは".

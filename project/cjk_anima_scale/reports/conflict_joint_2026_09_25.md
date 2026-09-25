@@ -5,7 +5,7 @@ The question after `micro_chain_result.md` (30 / 30 / 30 on 24 warm rows: pieces
 stage, warm chain, anchor) or **band per item, one run** is the design — and
 how to set the budget. Two things were done: a training-free gradient read of
 the question (`cjk_scale/conflict.py`), then ten trained arms on the *same*
-15 000 renders (`data_scale_stage*_run0923_micro_b30`) crossing chain / joint ×
+15 000 renders (`data_stage*_run0923_micro_b30`) crossing chain / joint ×
 steps × μ × lr. Every arm on the raw pack (sha `7b9fce0b…`), 24 rows
 (`configs/runs/run0923_micro.toml`), through the daemon; job ids in
 `runs/ledger.jsonl`. Rulers: `single` 16 × 2 seeds, `word` 8 × 2, `en` 12 × 2
@@ -134,7 +134,7 @@ the same probe with `stage0309` as a fourth stage.
   `band`; `run0923_micro.toml [budget] joint = 90`.
 - `scale.py --lr_rows` override (beside `--init_anchor`, `--steps_per_row`).
 - Data dirs under a new tag can be symlinks to an existing build
-  (`data_scale_*_run0923_micro_b100 → …_b30`), so an arm re-uses renders,
+  (`data_*_run0923_micro_b100 → …_b30`), so an arm re-uses renders,
   latents and the TE cache; the ledger's argv records the tag.
 
 ## 6. Addendum (2026-09-25 evening) — the drift column re-read against the seed

@@ -43,13 +43,15 @@ A new read that changes a row of the law goes into
 | [`band_experiment_results.md`](band_experiment_results.md) | **the vocab band law** — the verdict, the per-px window table, the training reads, what is left unrun |
 | [`design.md`](design.md) | the scale pipeline: stage schedule, data builder, thin trainer, open questions (§ 6) |
 | [`plan_canvas.md`](plan_canvas.md) | plan only — does the law hold on a ~500-token canvas (2× throughput) |
-| [`micro_chain_result.md`](micro_chain_result.md) | **the first run of the chain** — the three band stages at 30 / 30 / 30 on 24 warm rows (8 kana + 8 kanji + 8 pieces), read rule by rule; the seed-baseline and table-membership tool changes it forced |
-| `reports/` | dated reads: [`conflict_joint_2026_09_25.md`](reports/conflict_joint_2026_09_25.md) — the gradient conflict probe + ten chain / joint arms on one data set: chain ≡ joint, steps/row is not the budget, singles and pieces want opposite regimes; [`grid_box_2026_09_25.md`](reports/grid_box_2026_09_25.md) — grid cells as the loss box: the `grid_string` price ×8–19, warm singles unmoved |
+| [`micro_chain_result.md`](reports/micro_chain_result.md) | **the first run of the chain** — the three band stages at 30 / 30 / 30 on 24 warm rows (8 kana + 8 kanji + 8 pieces), read rule by rule; the seed-baseline and table-membership tool changes it forced |
+| `reports/` | dated reads: [`conflict_joint_2026_09_25.md`](reports/conflict_joint_2026_09_25.md) — the gradient conflict probe + ten chain / joint arms on one data set: chain ≡ joint, steps/row is not the budget, singles and pieces want opposite regimes; [`grid_box_2026_09_25.md`](reports/grid_box_2026_09_25.md) — grid cells as the loss box: the `grid_string` price ×8–19, warm singles unmoved; [`piece_2026_09_25.md`](reports/piece_2026_09_25.md) — where 300f actually failed, by layer; [`floor_score.md`](floor_score.md) — **the seed floor of record** on sent / target / word / en |
 | [`idea.md`](idea.md) | not scheduled — a per-cell gradient bank + validation-influence price in place of `‖ḡ‖·coh` and trained arms, the matched-σ sweep that would tell band from weighting; from the 2026-09-25 outside review |
-| `configs/joint.toml` | the joint stage — the band stages' data dirs merged, σ per item from its stage's band (`cjk_scale/joint.py`, `train.py::noisy_by_band`) |
-| `configs/stage*.toml` | the four stages — the band recipes: band, gate, warm chain, recipe mix, trainer surface, eval; never which rows |
-| `configs/runs/*.toml` | the runs — which rows, the seed table, steps per row per stage: `run_full` (production), `run0923_micro` (the 24-row chain read) |
-| `cjk_scale/` | the code (`windows` = the law, `recipes` + `builder` = data, `rows` + `train`, `eval`, `bake`, `ledger`); `scale.py` is the front door |
+| [`plan.md`](plan.md) | the collapse spec: a run is one file, everything else is a rule (§§ 1–5; § 6 = the order, 1–2 done) |
+| `configs/runs/*.toml` | the runs — `{vocabs, read}` and nothing else: `run0925_300f` (300 pieces, the freeze arm; its re-run on this shape is plan.md § 6-3) |
+| `cjk_scale/` | the code (`windows` = the law, `config` = the run file + data pools, `recipes` + `builder` = data and the recipe table by kind, `rows` + `train` = the fixed trainer, `eval` = floor + trained on one sheet, `conflict`, `bake`, `ledger`); `scale.py` is the front door |
+| `src/` | the stage packages the line runs on (render, readers, scoring, sheets, eval / native / target / cf_sense / scenes), vendored 2026-09-25 byte-faithful; `src/run_stage.py` runs one by hand |
+| `assets/` | what `src/` reads: `fonts/` (binaries gitignored, `FONTS.md`), `units/` (vocab files), `target_prompts.txt` |
+| `_archive/` | the retired stage surface — `configs/stage*|joint*.toml`, the stage-shaped run files, `joint.py`, `boxprobe.py` (see its README) |
 | `runs/` | `ledger.jsonl` — every submitted job |
 
 ## Where it stands (2026-09-25)
@@ -79,17 +81,25 @@ report's drift column is per warm-from table, so the chain's pieces are at
 so "more steps/row" is not the open branch; the freeze arm is. Row exposure
 is grid-dominated (a piece row: 313 `scene_piece` vs 622–1 664 `grid_string`
 items per stage dir). Pieces trained alone with the singles frozen (`run0925_300f`, 300 pieces,
-`next.md` § 4a): **nothing bought** at drift 1.4 or 1.7 — the rows learned a
-fake dialogue line, not the word; suspect the sentence / short / grid share.
-Next: the seed floor on the five strings, then `scene_piece`-only data. `product_criteria.md` now splits a dev
-set (choose arms) from the acceptance set (accept one). The paragraph below
-is the state before that read.
+`next.md` § 4a): the acceptance rulers read **nothing bought** at drift 1.4
+or 1.7, but piece (§ 4b) showed 2-glyph piece identity + native trigger
+WAS bought — the failure list is doubling, sentence assembly, 3+-glyph
+pieces. The seed floor is now nailed
+([`floor_score.md`](floor_score.md),
+full-seed floor arm): sent floor はい 3 / おしい 5 (the rest 0), target 0/14,
+word exact 6/36 contained 11/36 — so the run's はい = floor exactly (freeze
+control ✓), **おしい went below floor** (5 → 2, piece identity up while the
+string fell), and **doubling predates the run** (the seed's own misses
+double). Next: `scene_piece`-only data on the same 300 vocabs, judged on
+piece + whether containment rises without exact falling.
+`product_criteria.md` now splits a dev set (choose arms) from the acceptance
+set (accept one). The paragraph below is the state before these reads.
 
 
 The law is written and encoded (`cjk_scale/windows.py`); the four stage
 configs, the data builder with the band gate, the thin trainer, the eval
 delegation and the front door exist. **The chain has run once, on 24 warm
-rows** ([`micro_chain_result.md`](micro_chain_result.md)): at μ = 0.1 on
+rows** (reports/micro_chain_result.md): at μ = 0.1 on
 every stage it passes the chain-end rule (singles 24 → 26 / 32, pieces
 2 → 5 / 16, EN held), which set `init_anchor = 0.1` in the stage files; at
 μ ≤ 0.01 stage0507 undid stage0709's singles. The piece read is a budget
@@ -101,37 +111,43 @@ scale.** Seed table for the chain:
 the raw pack (`ANIMA_VOCAB_PACK=models/vocab_packs/anima_cjk_vocab_pack`,
 sha `7b9fce0b…`) and goes through the daemon.
 
-## Running a stage
+## Running a run
 
 ```bash
 export ANIMA_VOCAB_PACK=models/vocab_packs/anima_cjk_vocab_pack   # MANGA109S comes from .env
-.venv/bin/python project/cjk_anima_scale/scale.py --run run_full --stage stage0709 --steps data   # CPU
-.venv/bin/python project/cjk_anima_scale/scale.py --run run_full --stage stage0709 --steps train eval --submit --queue
-.venv/bin/python project/cjk_anima_scale/scale.py --run run_full --stage stage0507 --steps data train eval --submit
-.venv/bin/python project/cjk_anima_scale/scale.py stages | runs | windows | ledger
+.venv/bin/python project/cjk_anima_scale/scale.py run0925_300f data              # CPU
+.venv/bin/python project/cjk_anima_scale/scale.py run0925_300f train --submit --queue
+.venv/bin/python project/cjk_anima_scale/scale.py run0925_300f eval --submit
+.venv/bin/python project/cjk_anima_scale/scale.py run0925_300f conflict --submit
+.venv/bin/python project/cjk_anima_scale/scale.py windows | runs | ledger
 ```
 
-`--run` names the chain (`configs/runs/<run>.toml`: the rows, the seed
-table, steps per row per stage); its name is the tag every stage dir of the
-chain carries, and `warm_from = "<stage>"` in a stage file resolves to that
-stage's table under it. `--tag` alone runs a stage without a run file (smoke
-builds on the default inventory). Everything lands under `output/cjk_anima_scale/` — the stage dirs
-`{data,rows}_scale_<stage>_<tag>/`, the scene pools `scenes_<tag>/`, the EN
-reference cache and the seed table — and `paths.bootstrap()` points the
-probe's output root there, so its `eval` / `native` / `cf_sense` and every
-`probe/*.py` reader open them unchanged (the probe's own `output/wake_probe/`
-holds symlinks to the shared pools). `--submit` records the job in
-`runs/ledger.jsonl`.
+A run is `configs/runs/<run>.toml` = `vocabs` (a units file: one vocab per
+line) + `read` (the `native_sent` strings). `data` draws the items by the
+vocabs' kinds (singles → `scene_single` + `grid_single` at 0.7–0.9; pieces →
+`scene_piece` at two px tiers, `grid_string`, `scene_short`,
+`scene_sentence` at 0.5–0.7 / 0.3–0.5), ≈ 67 items per vocab, every item
+stamped with its band; `train` trains the vocabs' rows from the seed table
+with every other row frozen at it (μ 0, lr 1e-3, batch 4, cosine, warmup
+10 %, grid box, 90 steps/row — `cjk_scale/train.py`); `eval` renders the
+floor (`load(seed)`) and the trained table (`overwrite(seed, trained)`) on
+`word` / `single` / `en`, あ / い native, the `read` strings and the target
+captions, and writes one `sheet.png` + `reads.json`. Everything lands in
+`output/cjk_anima_scale/<run>/`; `--submit` records the job in
+`runs/ledger.jsonl`. The stage-shaped runs before 2026-09-25 stay on disk
+as `{data,rows}_<stage>_<tag>/` records.
+
 ## Scene pools
 
-The four pools the stage files draw on (`scenes = "s1,s1w,sl1w,ja_comic"`)
+The four pools the recipes draw on (`config.DATA["scenes"] = "s1,s1w,sl1w,ja_comic"`)
 are grown, not rebuilt: the prompt stream is deterministic in `--seed`, so a
 pool's own argv with a larger `--scene_n` keeps every stored row and renders
 only the new indices (`src/scenes/stage.py`). `--scene_prune 1` deletes the
 rejected renders (rows stay in `scenes_all.jsonl`); the pools were pruned on
 2026-09-24 and every grow run prunes its own rejects. The argv per pool —
-`S=project/cjk_renderable_anima/src/wake_probe.py --stage scenes`, raw pack
-in the env, through `make daemon-run --stall-timeout 0`:
+`S=project/cjk_anima_scale/src/run_stage.py --stage scenes`, raw pack
+in the env, through `make daemon-run --stall-timeout 0` (pools land in
+`output/cjk_anima_scale/scenes_<pool>/`):
 
 | pool | argv after `--scene_tag <pool>` | grown to |
 |---|---|---|
@@ -140,6 +156,6 @@ in the env, through `make daemon-run --stall-timeout 0`:
 | `sl1w` | `--seed 1 --scene_shapes 576x448,…,384x640 --scene_frames reads_as,bubble_reads,saying --scene_anchors <the 55 EN sentences: `sorted({r["anchor"]})` over the pool's `prompts.jsonl`>` | 2000 |
 | `ja_comic` | `--seed 2 --scene_shapes 384x640,448x640,448x576 --scene_frames ja_reads_as,ja_bubble_reads,ja_saying --scene_extra_tags comic --scene_min_box 40` | 4400 |
 
-The code is the `cjk_scale/` package (not `src/`: the probe's `src/` exposes
-top-level `common` / `data` / `train` / `eval`, which a second `src/` would
-shadow); tests: `.venv/bin/python -m pytest project/cjk_anima_scale/tests`.
+The line's code is `cjk_scale/`; the stage packages it runs on are its
+own `src/` (nothing is imported from another line); tests:
+`.venv/bin/python -m pytest project/cjk_anima_scale/tests`.
