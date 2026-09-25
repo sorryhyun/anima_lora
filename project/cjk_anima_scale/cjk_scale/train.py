@@ -31,17 +31,29 @@ from .paths import arm_dir, data_dir, run_tag
 from .rows import RowTable
 
 
-def inventory_ext(words: dict, ev_ext: dict) -> set[int]:
-    """The ext rows of every unit the run names (``words.json``), read off
-    the eval strings' captions (``_encode_text``'s ``ev_ext``: text → ext ids;
-    the eval set carries every inventory unit by construction). The stage
+def inventory_ext(words: dict, ev_ext: dict, tokq=None) -> set[int]:
+    """The ext rows of every unit the run names (``words.json``): read off
+    the eval strings' captions (``_encode_text``'s ``ev_ext``: text → ext
+    ids) and, with ``tokq`` (the Qwen tokenizer + qwen → ext map), off the
+    tokenizer for every unit the eval set did not sample — the ``word``
+    group is 18 of the pieces, so a 300-piece inventory is not in ``ev_ext``
+    (run0925_300f's first launch trained 35 rows, 2026-09-25). The stage
     table is these ∪ the rows the training captions touch, so a unit the
-    band gives no draw stays in the table at its warm value."""
+    band gives no draw stays in the table at its warm value; under
+    ``context = "seed"`` a unit missing here would ride frozen instead."""
     inventory = {t for v in words.values() for t in v}
     out: set[int] = set()
     for text, ids in ev_ext.items():
         if text in inventory:
             out.update(int(i) for i in ids)
+    if tokq is not None:
+        from data.inventory import pieces as qpieces
+
+        tok, qmap = tokq
+        for text in inventory:
+            if text in ev_ext:
+                continue
+            out.update(int(e) for _p, e in qpieces(tok, qmap, text) if e is not None)
     return out
 
 
@@ -114,7 +126,9 @@ def train(
         recs, ev, device, out, te_cache=data / "te_cache"
     )
     words = json.loads((data / "words.json").read_text(encoding="utf-8"))
-    inv_ext = inventory_ext(words, ev_ext)
+    from data.inventory import qwen_pieces
+
+    inv_ext = inventory_ext(words, ev_ext, qwen_pieces())
     context = cfg.context_table()
     frozen: set[int] = set()
     if context is not None:

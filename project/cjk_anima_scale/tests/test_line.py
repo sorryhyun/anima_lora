@@ -359,6 +359,19 @@ def test_stage_table_carries_the_inventory():
     assert inv == {186, 26585}
     touched = {186, 58974}
     assert touched | inv == {186, 26585, 58974}
+    # a unit the eval set did not sample resolves through the tokenizer (the
+    # 300-piece run: `word` is 18 of them; the rest must not ride as context)
+    words = {"kana_pieces": ["あ", "それを", "ちょっと"], "held": [], "freq": []}
+
+    class Tok:
+        def encode(self, text, add_special_tokens=False):
+            return {"ちょっと": [901]}[text]
+
+        def decode(self, ids):
+            return "ちょっと"
+
+    inv = inventory_ext(words, ev_ext, (Tok(), {901: 40001}))
+    assert inv == {186, 26585, 40001}
 
 
 def test_grid_box_union_mask():
