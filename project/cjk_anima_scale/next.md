@@ -197,7 +197,7 @@ sheet against the seed. Dev vs acceptance: this run's strings *are* the
 acceptance set — the first freeze read is a go / no-go on the design, not a
 share choice; the `word` group (18 of the 300) is the dev-side exact ruler.
 
-### 4a. Result (2026-09-25 evening) — nothing bought, at any displacement
+### 4a. Result (2026-09-25 evening) — ~~nothing bought, at any displacement~~ (corrected in § 4b: piece natives WERE bought; these rulers can't see them)
 
 Job `20260925-144054-bcf21e` (the first launch, `…-141129-9171b5`, trained
 35 rows — `inventory_ext` read the inventory off the eval sample; fixed,
@@ -231,3 +231,19 @@ line of text in the bubble". Suspect first: the sentence / short / grid
 share, not the freeze and not the budget. Next, in order: (1) the seed
 floor on the five strings; (2) the same 300 rows and freeze on
 `scene_piece`-only data (0507 + 0305 tiers, no sentence / short / grid).
+
+### 4b. Correction (2026-09-25, piecenat) — the rulers were blind, not the run
+
+`reports/piecenat_2026_09_25.md`: a trained piece **alone in a native
+scene** (the cell § 4a never measured — its `native` group was only the
+frozen あ/い) improved hard against the seed floor — lenient った 0 → 12,
+です 3 → 14, すごい 4 → 10 of 16; official both-reader en 5 → 11, swap
+0 → 7. Re-reading the § 4a evals: `word` carries the piece in 18/36 reads
+(exact 4/36 is doubling — すごいい / ここと / メンン), and the
+`native_sent` reads *contain* った 13/16 / しい 11/16 while the full
+strings sit at 0. The run's real failure list is **doubling, sentence
+assembly, and 3+-glyph pieces** (こんにちは 0/16 everywhere) — not glyph
+identity. The § 4a "buys no word" stands for the acceptance rulers only;
+"nothing bought" is withdrawn. Read piecenat (+ seed floor) before
+calling any piece run dead; step (2)'s scene_piece-only arm should be
+judged on it too.
