@@ -11,11 +11,11 @@ from cjk_scale.windows import (
     covers,
     kind_of,
     overlap,
-    unit_kind,
+    vocab_kind,
     window,
 )
 
-# a stand-in tokenizer: one token per unit except the small-kana digraphs
+# a stand-in tokenizer: one token per vocab except the small-kana digraphs
 _TOKENS = {"あっ": 2, "きゃ": 2, "ってる": 1, "って": 1, "先生": 1}
 
 
@@ -60,9 +60,9 @@ def test_nothing_above_sigma_max():
 
 
 def test_kind_is_tokens_then_glyphs():
-    assert unit_kind("あ", 1) == "single"
-    assert unit_kind("って", 1) == "piece"  # one token, two glyphs
-    assert unit_kind("あっ", 2) == "multi"  # host row + small row
+    assert vocab_kind("あ", 1) == "single"
+    assert vocab_kind("って", 1) == "piece"  # one token, two glyphs
+    assert vocab_kind("あっ", 2) == "multi"  # host row + small row
     assert kind_of(["あ", "日", "！"], n_tokens) == "single"  # a grid of singles
     assert kind_of(["って", "先生"], n_tokens) == "piece"  # a grid of pieces
     assert kind_of(["あっ"], n_tokens) == "multi"

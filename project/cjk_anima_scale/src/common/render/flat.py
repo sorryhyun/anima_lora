@@ -1,4 +1,4 @@
-"""Font renders of kana strings, and square crops of corpus bubbles.
+"""Font renders of kana strings.
 
 Bit-identity contract: a layout draws its random choices in the pre-W2a
 order, so an unbalanced ``--layout v1`` data dir rebuilds identically.
@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import random
 from glob import glob
-from pathlib import Path
 
 from ..paths import FONT_DIR
 from ..shapes import wh
@@ -253,20 +252,3 @@ def render_string(
     if lay["rot"] is not None:
         im = im.rotate(lay["rot"], fillcolor=bg, resample=Image.BICUBIC)
     return im, bubble
-
-
-def crop_bubble(img_path: Path, box, size=512):
-    """Square crop around a corpus bubble box (1.35× + margin), resized."""
-    from PIL import Image
-
-    im = Image.open(img_path).convert("RGB")
-    x0, y0, x1, y1 = box
-    w, h = x1 - x0, y1 - y0
-    side = int(max(w, h) * 1.35) + 24
-    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
-    L = int(max(0, min(cx - side / 2, im.width - side)))
-    T = int(max(0, min(cy - side / 2, im.height - side)))
-    crop = im.crop((L, T, min(im.width, L + side), min(im.height, T + side)))
-    canvas = Image.new("RGB", (side, side), (240, 240, 240))
-    canvas.paste(crop, (0, 0))
-    return canvas.resize((size, size), Image.LANCZOS)

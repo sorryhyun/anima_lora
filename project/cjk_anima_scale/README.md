@@ -49,8 +49,8 @@ A new read that changes a row of the law goes into
 | [`plan.md`](plan.md) | the collapse spec: a run is one file, everything else is a rule (§§ 1–5; § 6 = the order, 1–2 done) |
 | `configs/runs/*.toml` | the runs — `{vocabs, read}` and nothing else: `run0925_300f` (300 pieces, the freeze arm; its re-run on this shape is plan.md § 6-3) |
 | `cjk_scale/` | the code (`windows` = the law, `config` = the run file + data pools, `recipes` + `builder` = data and the recipe table by kind, `rows` + `train` = the fixed trainer, `eval` = floor + trained on one sheet, `conflict`, `bake`, `ledger`); `scale.py` is the front door |
-| `src/` | the stage packages the line runs on (render, readers, scoring, sheets, eval / native / target / cf_sense / scenes), vendored 2026-09-25 byte-faithful; `src/run_stage.py` runs one by hand |
-| `assets/` | what `src/` reads: `fonts/` (binaries gitignored, `FONTS.md`), `units/` (vocab files), `target_prompts.txt` |
+| `src/` | the stage packages the line runs on (render, readers, scoring, sheets, eval / native / target / cf_sense / scenes), vendored 2026-09-25 byte-faithful and pruned the same day to the code the line runs; `src/run_stage.py` runs one by hand |
+| `assets/` | what `src/` reads: `fonts/` (binaries gitignored, `FONTS.md`), `vocabs/` (vocab files), `target_prompts.txt` |
 | `_archive/` | the retired stage surface — `configs/stage*|joint*.toml`, the stage-shaped run files, `joint.py`, `boxprobe.py` (see its README) |
 | `runs/` | `ledger.jsonl` — every submitted job |
 
@@ -105,7 +105,7 @@ every stage it passes the chain-end rule (singles 24 → 26 / 32, pieces
 μ ≤ 0.01 stage0507 undid stage0709's singles. The piece read is a budget
 statement (the next cell is 60 / 60 / 60), and the piece `cf_sense` ruler
 renders too large to read the 0.3–0.5 band. **No stage has trained at
-scale.** Seed table for the chain:
+scale.** Seed rows for the chain:
 `output/cjk_anima_scale/rows_step1_0921_merged` (2 274 rows, the probe line's
 `step1_0921` + `step1_0921z` merge). Every launch states
 the raw pack (`ANIMA_VOCAB_PACK=models/vocab_packs/anima_cjk_vocab_pack`,
@@ -122,15 +122,17 @@ export ANIMA_VOCAB_PACK=models/vocab_packs/anima_cjk_vocab_pack   # MANGA109S co
 .venv/bin/python project/cjk_anima_scale/scale.py windows | runs | ledger
 ```
 
-A run is `configs/runs/<run>.toml` = `vocabs` (a units file: one vocab per
+A run is `configs/runs/<run>.toml` = `vocabs` (a vocabs file: one vocab per
 line) + `read` (the `native_sent` strings). `data` draws the items by the
 vocabs' kinds (singles → `scene_single` + `grid_single` at 0.7–0.9; pieces →
 `scene_piece` at two px tiers, `grid_string`, `scene_short`,
 `scene_sentence` at 0.5–0.7 / 0.3–0.5), ≈ 67 items per vocab, every item
-stamped with its band; `train` trains the vocabs' rows from the seed table
-with every other row frozen at it (μ 0, lr 1e-3, batch 4, cosine, warmup
-10 %, grid box, 90 steps/row — `cjk_scale/train.py`); `eval` renders the
-floor (`load(seed)`) and the trained table (`overwrite(seed, trained)`) on
+stamped with its band; `train` trains the vocabs' rows from the seed rows
+with every other row frozen at them, and saves `trained.pt` as the whole
+merged rows — the seed's rows with the run's on top (μ 0, lr 1e-3, batch 4,
+cosine, warmup 10 %, grid box, 90 steps/row — `cjk_scale/train.py`); `eval`
+renders the floor (`load(seed)`, the `floor/` sidecar) and the trained rows
+(`trained.pt` in place — no `ctx/`) on
 `word` / `single` / `en`, あ / い native, the `read` strings and the target
 captions, and writes one `sheet.png` + `reads.json`. Everything lands in
 `output/cjk_anima_scale/<run>/`; `--submit` records the job in

@@ -1,0 +1,20 @@
+# stage0507 — the count / piece band (design.md § 2): multi-glyph pieces
+# 32–48 px in scenes, single glyphs 24–32 px, 2–5-piece short lines ≈ 32 px.
+# Warm from stage0709 (same tag).
+
+# (trainer half of the pre-collapse stage file; split 2026-09-25 —
+# data recipe: configs/data_build/stage0507.toml)
+
+warm_from = "stage0709"
+
+batch = 4
+lr_rows = 1e-3
+lr_decay = "cosine"
+lr_warmup_ratio = 0.1                       # of the stage's steps (micro_warm_0923: 100 / 640, 200 / 1280; the former 500 was 0.007 of 70 k)
+init_anchor = 0.1                           # μ to the previous stage (user, 2026-09-24: 0.01 let stage0507 undo 0709's singles 27 → 20 / 32 — micro_chain_result.md § 3)
+box_share = 0.25                            # single glyph's in-box share; log up to …
+box_share_cap = 0.5                         # … the cap, at …
+box_share_glyphs = 8                        # … this many glyphs (loss.py)
+grid_box = 1                                # grid cells' union as the loss box (loss.py; user, 2026-09-25: joint j90 μ0 gbox vs plain — single 26 vs 24, native 36/29 vs 33/23, pieces +15 % drift, en held; 0 = the plain-MSE grid of every arm before)
+compile = 1
+save_every = 5000

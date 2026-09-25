@@ -1,11 +1,13 @@
 """legacy — the stage configs before the 2026-09-25 collapse, read-only, for
 the ``experiments/`` that re-read old ``data_<stage>_<tag>`` dirs.
 
-``load_stage(stage)`` returns what those scripts took from the old
-``config.load(stage, None)``: ``band``, ``data`` (the stage's ``[data]`` over
-the old defaults) and ``train`` (its ``[train]`` over the old defaults). The
-files are ``_archive/configs/<stage>.toml``; nothing in the line trains or
-builds from them.
+The pre-collapse stage files are split records now (data generation and
+training kept apart): ``configs/data_build/<stage>.toml`` = band + pools +
+``[[mix]]`` recipes, ``configs/train/<stage>.toml`` = the trainer values.
+``load_stage(stage)`` reads both halves and returns what those scripts took
+from the old ``config.load(stage, None)``: ``band``, ``data`` (the data-build
+keys over the old defaults) and ``train`` (the trainer keys over the old
+defaults). Nothing in the line trains or builds from them.
 """
 
 from __future__ import annotations
@@ -14,9 +16,12 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from .paths import LINE
+from .paths import CONFIGS
 
-ARCHIVE = LINE / "_archive" / "configs"
+DATA_BUILD = CONFIGS / "data_build"
+TRAIN = CONFIGS / "train"
+# data-build keys that are not [data] pool keys
+_BUILD_META = ("band", "gate", "min_overlap", "joint_from", "mix")
 
 # the old config.py defaults, as they stood on 2026-09-25
 _DATA = {
@@ -55,14 +60,18 @@ class LegacyStage:
 
 def load_stage(stage: str, run=None) -> LegacyStage:
     assert run is None, "legacy stages load without a run"
-    path = ARCHIVE / f"{stage}.toml"
-    assert path.is_file(), f"no archived stage config {path}"
-    raw = tomllib.loads(path.read_text(encoding="utf-8"))
-    data = {k: v for k, v in raw.get("data", {}).items() if k != "mix"}
+    dpath = DATA_BUILD / f"{stage}.toml"
+    tpath = TRAIN / f"{stage}.toml"
+    assert dpath.is_file(), f"no legacy data-build config {dpath}"
+    assert tpath.is_file(), f"no legacy train config {tpath}"
+    draw = tomllib.loads(dpath.read_text(encoding="utf-8"))
+    traw = tomllib.loads(tpath.read_text(encoding="utf-8"))
+    data = {k: v for k, v in draw.items() if k not in _BUILD_META}
+    train = {k: v for k, v in traw.items() if k != "warm_from"}
     return LegacyStage(
-        stage=raw.get("stage", stage),
-        band=tuple(float(x) for x in raw["band"]),
+        stage=stage,
+        band=tuple(float(x) for x in draw["band"]),
         data={**_DATA, **data},
-        train={**_TRAIN, **raw.get("train", {})},
-        path=path,
+        train={**_TRAIN, **train},
+        path=dpath,
     )

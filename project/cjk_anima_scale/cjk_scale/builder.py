@@ -37,7 +37,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .config import SEED, RunConfig, phrase_file
-from .paths import SEED_TABLE, data_dir
+from .paths import SEED_ROWS, data_dir
 from .recipes import RECIPES, Pools, build_pools, missing_source
 from .windows import covers, kind_of, window
 
@@ -194,7 +194,7 @@ EVAL_ORDER = (
 
 def vocab_kinds(pools: Pools) -> dict:
     """kind → the run's distinct vocabs of that kind (``multi`` = the small
-    digraphs a unit spec like ``small`` brings; no tier draws them)."""
+    digraphs a vocab spec like ``small`` brings; no tier draws them)."""
     return {
         "single": list(dict.fromkeys(pools.singles)),
         "piece": list(dict.fromkeys(pools.pieces)),
@@ -221,7 +221,7 @@ def build(rc: RunConfig, workers: int | None = None) -> Path:
     workers = default_workers() if workers is None else max(1, int(workers))
     # the pools every group restarts from (piece vocabs bring the corpus lines)
     rng = random.Random(SEED)
-    pools = build_pools(rc.units(), SEED_TABLE, phrase_file, rng)
+    pools = build_pools(rc.vocab_specs(), SEED_ROWS, phrase_file, rng)
     snap = (rng.getstate(), pools.shapes.rng.getstate())
     kinds = vocab_kinds(pools)
     groups = plan_groups(kinds)
@@ -289,10 +289,10 @@ def build(rc: RunConfig, workers: int | None = None) -> Path:
         "run": rc.name,
         "run_config": str(rc.path),
         "vocabs": rc.vocabs if isinstance(rc.vocabs, str) else list(rc.vocabs),
-        "units": rc.units(),
+        "vocab_specs": rc.vocab_specs(),
         "n_vocabs": {k: len(v) for k, v in kinds.items()},
         "seed": SEED,
-        "seed_table": str(SEED_TABLE),
+        "seed_rows": str(SEED_ROWS),
         "items_per_vocab": ITEMS_PER_VOCAB,
         "min_overlap": MIN_OVERLAP,
         "groups": {
@@ -442,7 +442,7 @@ def _draw_loop(g: Group, t: Tier, n: int, pools: Pools, rng, out: Path, first: i
             continue
         px = item.px()
         px_seen.append(px)
-        kind = kind_of(item.units, pools.n_tokens)
+        kind = kind_of(item.vocabs, pools.n_tokens)
         w = window(kind, px, item.layout)
         if not covers(g.band, w, MIN_OVERLAP):
             rejects["no_window" if w is None else "band"] += 1
@@ -459,7 +459,7 @@ def _draw_loop(g: Group, t: Tier, n: int, pools: Pools, rng, out: Path, first: i
             "recipe": t.recipe,
             "group": g.name,
             "layout": item.layout,
-            "units": item.units,
+            "units": item.vocabs,  # on-disk key, frozen
             "shape": list(item.shape),
             "px": round(px, 1),
             "law_kind": kind,

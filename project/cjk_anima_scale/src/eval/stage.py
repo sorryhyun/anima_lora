@@ -12,7 +12,7 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
-from common.hooks import AdapterLoRA, ExtDelta, OutVec
+from common.hooks import ExtDelta
 from common.models import generate_to, load_generator, load_trained, load_vae
 from common.paths import arm_dir, data_dir
 from common.prompts import EVAL_GROUPS
@@ -63,41 +63,14 @@ def stage_eval(a):
     anima = shared["model"]
     anima.eval()
     delta = ExtDelta.from_state(anima, sd["delta"], device)
-    if a.with_c_flat:
-        # S0: the flat-template eval with the per-source switch on (native
-        # never adds it — the scene is the composite source)
-        assert "c_flat" in sd, (
-            "--with_c_flat: the table has no c_flat (not an S-line rows arm)"
-        )
-        delta.raw.data.add_(sd["c_flat"].to(delta.raw))
-        print(
-            f"eval: + c_flat (norm {float(sd['c_flat'].norm()):.3f} row norms)",
-            flush=True,
-        )
-    lora = None
-    if "lora" in sd:
-        lora = AdapterLoRA(anima, sd["adapter_rank"], device)
-        lora.load(sd["lora"])
-    outvec = None
-    if "out_vec" in sd:
-        # trained with Q fixed on: the deployed cond is rows + Q
-        outvec = OutVec(anima, device)
-        print(
-            f"eval: + saved out_vec ‖{float(sd['out_vec'].norm()):.2f}‖ (Q on)",
-            flush=True,
-        )
     vae = load_vae(device)
     manifest = []
     t0 = time.time()
     conds = ("trained",) if a.no_floor else ("floor", "trained")
     for cond in conds:
         s = 0.0 if cond == "floor" else 1.0
-        # --delta_scale: the table only (norm probe); LoRA / out_vec stay at 1
+        # --delta_scale: the table only (norm probe)
         delta.scale = s * a.delta_scale
-        if outvec is not None:
-            outvec.set(sd["out_vec"] if s else None)
-        if lora is not None:
-            lora.scale = s
         shared["conds_cache"].clear()
         for ei, e in enumerate(ev):
             for seed in range(a.seeds):

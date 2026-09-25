@@ -6,10 +6,8 @@ CPU-only (tokenizer + pack mapping, no model weights).
 from __future__ import annotations
 
 import json
-import random
 import re
 from collections import Counter
-from itertools import permutations
 from pathlib import Path
 
 from common.models import checkpoints
@@ -77,18 +75,6 @@ def phrase_file_lines(
     return out
 
 
-def phrase_pieces(tok, q, lines: list, covered: set, n: int) -> list:
-    """The ``n`` most frequent pieces (each with a pack row) over ``lines``
-    that are not already in ``covered`` — the rows a phrase set needs beyond
-    the singles inventory. Returns ``[(piece, count)]``."""
-    cnt: Counter = Counter()
-    for text, _book, _n in lines:
-        for p, row in pieces(tok, q, text):
-            if row is not None and p not in covered:
-                cnt[p] += 1
-    return cnt.most_common(n)
-
-
 def qwen_pieces():
     """(Qwen3 tokenizer, qwen id → pack ext row). The pack's ext rows are
     Qwen pieces, many of them whole words (ありがとう / 行く / 明日 are one
@@ -122,7 +108,7 @@ _GAIRAIGO = (
 
 
 def small_digraphs(tok, q, hosts, per: int) -> dict:
-    """``--units small``: small kana → ``per`` two-glyph digraphs (host + small;
+    """The ``small`` vocab spec: small kana → ``per`` two-glyph digraphs (host + small;
     っ / ッ also small + host) whose Qwen pieces are exactly the two glyphs,
     each with an ext row, the host a trained single. Corpus-attested digraphs
     (>= 3 bubbles) first, by count, then the yōon / gairaigo tables, then the
@@ -157,7 +143,7 @@ def small_digraphs(tok, q, hosts, per: int) -> dict:
         if host in hosts and small in out and len(out[small]) < per:
             out[small].append(d)
     missing = [s for s, ds in out.items() if not ds]
-    assert not missing, f"--units small: no splitting digraph for {missing}"
+    assert not missing, f"vocab spec small: no splitting digraph for {missing}"
     return {s: [ds[i % len(ds)] for i in range(per)] for s, ds in out.items()}
 
 
@@ -191,44 +177,4 @@ def kanji_inventory(tok, q, n: int):
             out.append((c, k))
             if len(out) >= n:
                 break
-    return out
-
-
-def tokenizes_clean(tok, q, s: str, rows: dict | None = None) -> bool:
-    """Every permutation of ``s`` tokenizes to exactly its own single-char
-    pieces, each with a pack row (``rows`` given: that char's row) — so an
-    order flip is a pure order contrast, never a merged word piece."""
-    for perm in permutations(s):
-        ps = pieces(tok, q, "".join(perm))
-        if len(ps) != len(s):
-            return False
-        for (p, r), c in zip(ps, perm):
-            if p != c or (r is None if rows is None else r != rows[c]):
-                return False
-    return True
-
-
-def clean_kana_strings(
-    tok,
-    qmap,
-    kana: list,
-    rng: random.Random,
-    n: int,
-    k: int,
-    excl=(),
-    rows: dict | None = None,
-    skip_reversed: bool = True,
-):
-    """``n`` clean (see ``tokenizes_clean``) strings of ``k`` distinct kana,
-    none in ``excl`` (nor, with ``skip_reversed``, the reverse of one)."""
-    out, seen = [], set(excl)
-    tries = 0
-    while len(out) < n and tries < 20_000:
-        tries += 1
-        s = "".join(rng.sample(kana, k))
-        if s in seen or (skip_reversed and s[::-1] in seen):
-            continue
-        if tokenizes_clean(tok, qmap, s, rows):
-            out.append(s)
-            seen.add(s)
     return out

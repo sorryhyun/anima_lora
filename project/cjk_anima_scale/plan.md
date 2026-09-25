@@ -53,7 +53,7 @@ scale.py run0925_300f eval     # daemon: read + word + en + control → one cont
 ```
 
 `data` writes one dir per run (`output/cjk_anima_scale/<run>/data/`),
-`train` one table (`<run>/trained.pt`), `eval` one sheet
+`train` one rows file (`<run>/trained.pt`, the seed merged in), `eval` one sheet
 (`<run>/sheet.png`) + `reads.json`. No `data_<stage>_<tag>` /
 `rows_<stage>_<tag>` layout, no joint merge, no symlinked arm dirs.
 
@@ -75,8 +75,9 @@ scale.py run0925_300f eval     # daemon: read + word + en + control → one cont
 ## 5. What it keeps
 
 `windows.py` (the law, with provenance), `recipes.py` drawers, `loss.py`
-(box share, grid box), `rows.py` (the table, frozen rows), `eval.py` /
-`bake.py`, the scene pools, the seed table, `reports/`.
+(box share, grid box), `rows.py` (the rows, frozen context, merged save),
+`eval.py`, the scene pools, the seed rows, `reports/`. (`bake.py` dropped
+2026-09-25 — baking is one `bake_vocab_pack.py` command, see CLAUDE.md.)
 
 ## 6. Order
 

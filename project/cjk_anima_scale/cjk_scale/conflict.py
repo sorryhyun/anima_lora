@@ -3,7 +3,7 @@
 A row is its own parameter: the only thing stage B can do to what stage A
 bought is push the same row somewhere else. So "chain the bands" vs "one run
 with per-item bands" is a per-row question about the two data gradients,
-and it can be read at one table point with no optimizer step — the
+and it can be read at one point of the rows with no optimizer step — the
 boxprobe primitive with a different split.
 
 ``scale.py <run> conflict`` (2026-09-25: the run's own data, no flags). A
@@ -12,7 +12,7 @@ boxprobe primitive with a different split.
 band per item). For every group, on a sample of its items, this draws σ
 inside the group's band, backprops the *trained* loss (the box-share FM
 loss on scene items and — ``train.GRID_BOX`` — grid items' cells, plain MSE
-on flat) onto the seed table's rows, and accumulates per row, per group, the mean per-draw
+on flat) onto the seed rows, and accumulates per row, per group, the mean per-draw
 gradient ``ḡ_S`` (two halves by item parity, for a split-half reliability).
 Per row it then reports:
 
@@ -23,7 +23,7 @@ Per row it then reports:
 - per stage pair, ``cos(ḡ_A, ḡ_B)`` and the cancellation
   ``‖ḡ_A + ḡ_B‖ / (‖ḡ_A‖ + ‖ḡ_B‖)`` — what a joint run's summed pull keeps;
 - if the run's ``trained.pt`` exists, ``cos(Δ, −ḡ_B)`` with ``Δ`` = what the
-  run moved the row by (its table minus the seed), keyed on the first group
+  run moved the row by (its merged rows minus the seed), keyed on the first group
   (``Δ<first>·−g<B>``): negative says B's descent runs against what the run
   bought.
 
@@ -32,7 +32,7 @@ bands fight over the row, the anchor is a truce and no per-stage budget
 fixes it; ``cos`` inside ``±half`` → orthogonal, the chain is free either
 way and one mixed run with per-item bands is the same thing; ``cos`` at or
 above ``half`` → they agree, sequencing is unnecessary. Gradients are taken
-at one table point, the seed table.
+at one point of the rows, the seed.
 
 Outputs ``<run>/conflict/{rows.json, report.md}``. The math below the data
 plumbing is the 2026-09-25 probe's, unchanged
@@ -53,8 +53,8 @@ import torch
 import torch.nn.functional as F
 
 from .config import RunConfig
-from .paths import SEED_TABLE, data_dir, run_dir, table_path
-from .rows import RowTable
+from .paths import SEED_ROWS, data_dir, run_dir, trained_path
+from .rows import Rows
 
 KINDS = ("single", "piece", "multi")
 
@@ -63,8 +63,8 @@ def probe_dir(run: str) -> Path:
     return run_dir(run) / "conflict"
 
 
-def _load_table(path: Path, ext_ids: list[int], row_scale: float) -> torch.Tensor:
-    """A ``trained.pt``'s rows in this table's units, aligned to ``ext_ids``
+def _load_rows(path: Path, ext_ids: list[int], row_scale: float) -> torch.Tensor:
+    """A ``trained.pt``'s rows in these rows' units, aligned to ``ext_ids``
     (rows it lacks are zero)."""
     src = torch.load(path, map_location="cpu", weights_only=False)
     raw = src["delta"]["raw"].float()
@@ -111,7 +111,7 @@ def probe(
     from .train import load_items, vocab_idx
 
     tag = rc.name
-    warm = SEED_TABLE
+    warm = SEED_ROWS
     recipes = None
     data = data_dir(rc.name)
     all_recs, ev, vocabs = load_items(data)
@@ -134,18 +134,16 @@ def probe(
     device = get_generation_settings(args).device
     rng = random.Random(seed)
 
-    # -- captions, latents, the union table -----------------------------------
+    # -- captions, latents, the union of the rows -----------------------------
     cache, train_ext, ev_ext = _encode_text(
         all_recs, ev, device, out, te_cache=data / "te_cache"
     )
-    table_ext: set[int] = train_ext | vocab_idx(vocabs, qwen_pieces())
+    idx: set[int] = train_ext | vocab_idx(vocabs, qwen_pieces())
     label: dict[int, str] = {}
     for text, ids in ev_ext.items():
         if len(ids) == 1:
             label.setdefault(int(ids[0]), text)
-    ns = SimpleNamespace(
-        seed=seed, batch=1, train_size=512, row_blocks=0, row_boost="", arm="rows"
-    )
+    ns = SimpleNamespace(seed=seed, batch=1, train_size=512)
     lat = LatentStore(ns, data, all_recs, list(range(len(all_recs))), device)
     per: dict[str, dict] = {}
     for s in stages:
@@ -161,10 +159,10 @@ def probe(
     anima.requires_grad_(False)
     assert attached_pack_rows(anima), "no vocab pack attached to the DiT"
     tok, _ = ensure_text_strategies(checkpoints().text_encoder, vocab_pack=None)
-    rows = RowTable(
+    rows = Rows(
         anima,
         device,
-        table_ext,
+        idx,
         strategy_pack(tok),
         warm=warm,
         init_anchor=0.0,
@@ -245,9 +243,9 @@ def probe(
 
     # -- what the run moved (Δ, keyed on the first group) -----------------------
     delta: dict[str, torch.Tensor] = {}
-    tp = table_path(rc.name)
+    tp = trained_path(rc.name)
     if tp.exists():
-        delta[stages[0]] = _load_table(tp, ext_ids, rows.row_scale) - _load_table(
+        delta[stages[0]] = _load_rows(tp, ext_ids, rows.row_scale) - _load_rows(
             warm, ext_ids, rows.row_scale
         )
         print(f"Δ (as {stages[0]}): {tp} − {warm}", flush=True)

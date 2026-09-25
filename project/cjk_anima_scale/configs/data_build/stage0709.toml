@@ -1,0 +1,33 @@
+# stage0709 — the glyph-identity band (design.md § 2): single glyphs ≥ 48 px
+# — scene bubble fit (48–53 px), grid cells (85–200 px), large flat singles.
+# First stage of the chain: warms from the run file's seed_table.
+
+# (data-build half of the pre-collapse stage file; split 2026-09-25 —
+# trainer values: configs/train/stage0709.toml)
+
+band = [0.7, 0.9]
+gate = "contain"
+min_overlap = 0.8
+
+scenes = "s1,s1w,sl1w,ja_comic"
+scene_one_bubble = "ja_comic"
+single_scenes = "s1,s1w"
+horizontal_scenes = "sl1w"                  # left-to-right scene items go to the EN-sentence pool only (user, 2026-09-24)
+single_max_ar = 2.0
+shapes = "448,512:2,448x512,512x448"
+horizontal_frac = 0.3                       # multi-glyph items (scene) / cells (grid) drawn as left-to-right lines, marked in the caption; a single glyph has no orientation
+
+[[mix]]                                # step 1a's scene half: bubble fit, 48–53 px as built
+recipe = "scene_single"
+share = 0.5
+fill = 0.7
+min_glyph = 28
+px_target = 50
+
+[[mix]]                                # step 1a's grid half + the flat single (1×1)
+recipe = "grid_single"
+share = 0.5
+grids = "1x1:1,2x2:1,3x3:1,2x3:1,3x2:1"
+fill = [0.3, 0.8]                           # one draw per item, × cell short side: 3×3 → 51–136 px, 1×1 → 150–400
+bubble_frac = 0.5
+mark_horizontal = true

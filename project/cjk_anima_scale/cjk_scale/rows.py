@@ -1,24 +1,28 @@
-"""rows — the trainable table: an ``ExtDelta`` on the run's vocabs' rows,
-warm-started from the seed table (``paths.SEED_TABLE``).
+"""rows — the trainable rows: an ``ExtDelta`` on the run's vocabs' idx,
+warm-started from the seed rows (``paths.SEED_ROWS``).
 
 The rows arm of the stages' ``train/trainables.py`` with the levers left
 behind (no ``c_flat``, no pin, no encoder, no adapter LoRA). ``raw`` is in
-row-norm units (× ``row_scale``); a source table's rows are rescaled by the
-ratio of the two tables' ``row_scale`` on the way in, its ``common`` /
-``c_flat`` vector (a flat-layout component the old encoder arms carried)
-dropped.
+row-norm units (× ``row_scale``); a source's rows are rescaled by the ratio
+of the two ``row_scale``\\ s on the way in, its ``common`` / ``c_flat``
+vector (a flat-layout component the old encoder arms carried) dropped.
 
-The table is ``table_ext`` — every vocab's idx, not only the ones the
-captions touch — so a vocab the data gives no draw stays at its seed row.
-``touched`` are the rows with draws: the norm pull applies to them only, so
-an untouched row is exact (zero FM gradient, zero pull, ``weight_decay`` 0 →
-Adam leaves it).
+What trains is ``idx`` — every vocab's idx, not only the ones the captions
+touch — so a vocab the data gives no draw stays at its seed row. ``touched``
+are the rows with draws: the norm pull applies to them only, so an untouched
+row is exact (zero FM gradient, zero pull, ``weight_decay`` 0 → Adam leaves
+it).
 
 ``frozen`` rows are the rows outside the vocabs that a corpus line carries:
-they sit in the hook at their ``context`` (seed) table value so the line
-renders as it would on the seed, get a zero gradient, no anchor, no pull,
-and are stripped from ``trained.pt`` — the table stays the vocabs'; eval
-overlays the same seed back (``eval.ctx_arm``).
+they sit in the hook at their ``context`` (seed) value so the line renders
+as it would on the seed, and get a zero gradient, no anchor, no pull.
+
+**``trained.pt`` is the whole merged rows** (2026-09-25, the ctx-arm merge
+folded into the save): the seed's rows — rescaled into this run's
+``row_scale`` — with the run's rows on top, so a vocab outside the run
+renders at its seed row, never as a raw pack row, everywhere the file is
+read (eval, bake, Δ reads). The ``seed_merged`` key marks the format; a
+pre-merge vocabs-only file fails eval's check and needs a retrain.
 """
 
 from __future__ import annotations
@@ -29,12 +33,12 @@ import torch
 import torch.nn.functional as F
 
 
-class RowTable:
+class Rows:
     def __init__(
         self,
         anima,
         device,
-        table_ext,
+        idx,
         pack,
         *,
         warm,
@@ -47,23 +51,23 @@ class RowTable:
     ):
         from common.hooks import ExtDelta
 
-        table_ext = set(int(e) for e in table_ext)
-        touched = table_ext if touched is None else set(int(e) for e in touched)
-        assert touched <= table_ext, "touched rows must be in the table"
-        frozen = set(int(e) for e in frozen) - table_ext
-        rows = pack.table[sorted(table_ext)].float()
+        idx = set(int(e) for e in idx)
+        touched = idx if touched is None else set(int(e) for e in touched)
+        assert touched <= idx, "touched rows must be the run's"
+        frozen = set(int(e) for e in frozen) - idx
+        rows = pack.table[sorted(idx)].float()
         self.row_scale = float(rows.norm(dim=1).mean())
         dim = rows.shape[1]
         print(
-            f"pack rows: {len(table_ext)} in the table, {len(touched)} touched "
-            f"({len(table_ext) - len(touched)} untouched — no draw, held exact), "
+            f"pack rows: {len(idx)} in the run, {len(touched)} touched "
+            f"({len(idx) - len(touched)} untouched — no draw, held exact), "
             f"mean norm {self.row_scale:.3f} (std {rows.norm(dim=1).std():.3f}), dim {dim}",
             flush=True,
         )
         self.device = device
         self.init_anchor = float(init_anchor)
         self.free_residual = float(free_residual)
-        self.delta = ExtDelta(anima, table_ext | frozen, dim, device, self.row_scale)
+        self.delta = ExtDelta(anima, idx | frozen, dim, device, self.row_scale)
         self.params = [{"params": [self.delta.raw], "lr": lr}]
         self.touched_mask = torch.tensor(
             [int(e) in touched for e in self.delta.ext_ids],
@@ -80,18 +84,18 @@ class RowTable:
         )
         self.raw0 = None
         self.warm_from = ""
-        self.context = ""
+        self.context = str(context) if context else ""
         self.n_context = 0
         if warm:
             self._warm_start(warm)
         if frozen:
-            self._context(context)
+            self._fill_frozen()
             live = (~self.frozen_mask).float()[:, None]
             self.delta.raw.register_hook(lambda g: g * live)
 
     @property
     def n_rows(self) -> int:
-        """Trainable rows (the table's); frozen context rows do not count."""
+        """Trainable rows (the run's); frozen context rows do not count."""
         return int((~self.frozen_mask).sum())
 
     # -- warm chain ----------------------------------------------------------
@@ -148,12 +152,12 @@ class RowTable:
                 flush=True,
             )
 
-    def _context(self, path):
-        """Fill the frozen rows from the context table (rescaled to this
-        table's ``row_scale``); a frozen row the context lacks stays zero —
+    def _fill_frozen(self):
+        """Fill the frozen rows from the context (seed) rows, rescaled to this
+        run's ``row_scale``; a frozen row the context lacks stays zero —
         the raw pack row (the builder keeps such lines out)."""
-        assert path, "frozen rows need a context table"
-        src = torch.load(path, map_location="cpu", weights_only=False)
+        assert self.context, "frozen rows need a context (the seed rows)"
+        src = torch.load(self.context, map_location="cpu", weights_only=False)
         src_idx = {int(e): i for i, e in enumerate(src["delta"]["ext_ids"])}
         k = float(src["delta"]["row_scale"]) / self.row_scale
         n = 0
@@ -166,10 +170,10 @@ class RowTable:
                 n += 1
         if self.raw0 is not None:
             self.raw0 = self.delta.raw.detach().clone()
-        self.context, self.n_context = str(path), n
+        self.n_context = n
         n_frozen = int(self.frozen_mask.sum())
         print(
-            f"rows context: {n}/{n_frozen} frozen rows from {path} (× {k:.4f})"
+            f"rows context: {n}/{n_frozen} frozen rows from {self.context} (× {k:.4f})"
             + (f"; {n_frozen - n} not in it — raw pack rows" if n < n_frozen else ""),
             flush=True,
         )
@@ -180,7 +184,7 @@ class RowTable:
         """FM loss + the anchor on warm rows (μ · mean ‖f − f₀‖²) + the norm
         pull on cold rows (μ_free · mean ‖f‖²). No anchor: the pull is on
         every touched row, the one guard against norm creep besides the
-        cosine decay (``train/stage.py``). Untouched rows get neither pull
+        cosine decay (``train.py``). Untouched rows get neither pull
         (the anchor is zero on them by construction)."""
         loss = loss_fm
         raw = self.delta.raw
@@ -219,16 +223,39 @@ class RowTable:
         return rec
 
     def state_dict(self, args: dict, step: int | None = None) -> dict:
-        """The probe's ``trained.pt`` shape: ``delta`` (ExtDelta state),
-        ``arm`` ``rows``, ``args`` (this run's record), ``killed`` ``""``."""
+        """The probe's ``trained.pt`` shape — ``delta`` (ExtDelta state),
+        ``arm`` ``rows``, ``args``, ``killed`` ``""`` — holding the **whole
+        merged rows**: every seed row this run does not carry is appended at
+        its seed value × (seed ``row_scale`` / ours), so the file renders any
+        caption as training did. ``seed_merged`` marks the format."""
         delta = self.delta.state_dict()
-        if bool(self.frozen_mask.any()):
-            keep = (~self.frozen_mask).cpu()
-            delta = {
-                **delta,
-                "ext_ids": [e for e, k in zip(delta["ext_ids"], keep.tolist()) if k],
-                "raw": delta["raw"][keep].clone(),
-            }
+        n_seed = int(self.frozen_mask.sum())
+        if self.context:
+            src = torch.load(self.context, map_location="cpu", weights_only=False)
+            k = float(src["delta"]["row_scale"]) / self.row_scale
+            have = {int(e) for e in delta["ext_ids"]}
+            extra = [
+                i
+                for i, e in enumerate(src["delta"]["ext_ids"])
+                if int(e) not in have
+            ]
+            if extra:
+                ids = [int(e) for e in delta["ext_ids"]] + [
+                    int(src["delta"]["ext_ids"][i]) for i in extra
+                ]
+                raw = torch.cat(
+                    [
+                        delta["raw"].float(),
+                        src["delta"]["raw"][extra].float() * k,
+                    ]
+                )
+                order = sorted(range(len(ids)), key=ids.__getitem__)
+                delta = {
+                    **delta,
+                    "ext_ids": [ids[j] for j in order],
+                    "raw": raw[order].clone(),
+                }
+                n_seed += len(extra)
         sd = {
             "delta": delta,
             "arm": "rows",
@@ -238,8 +265,8 @@ class RowTable:
             "touched_rows": int(self.touched_mask.sum()),
         }
         if self.context:
-            sd["context"] = self.context
-            sd["context_rows"] = self.n_context
+            sd["seed_merged"] = self.context
+            sd["seed_rows"] = n_seed
         if step is not None:
             sd["step"] = step
         return sd

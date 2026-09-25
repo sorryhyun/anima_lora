@@ -1,6 +1,6 @@
 """Imports and the line's boundary (its stage packages are its own ``src/``),
 the one-file run, the recipe table by kind, the run layout, the front door,
-the eval arms (``load`` / ``overwrite``) and the one-sheet compose."""
+the eval arms (the merged trained rows + the floor) and the one-sheet compose."""
 
 from __future__ import annotations
 
@@ -15,14 +15,14 @@ from cjk_scale.paths import (
     LINE,
     OUT,
     REPO,
-    SEED_TABLE,
+    SEED_ROWS,
     SRC,
-    arm_dir,
     data_dir,
+    floor_dir,
     legacy_arm_dir,
     legacy_data_dir,
     run_dir,
-    table_path,
+    trained_path,
 )
 
 MODULES = [
@@ -36,7 +36,6 @@ MODULES = [
     "loss",
     "eval",
     "conflict",
-    "bake",
     "ledger",
     "legacy",
 ]
@@ -117,48 +116,47 @@ def test_output_root_is_ours():
     the EN reference cache) see the same root; assets resolve in the line."""
     import common.paths as stage_paths
     from common.prompts import TARGET_PROMPTS
-    from data.units import UNITS_DIR as STAGE_UNITS
+    from data.vocabs import VOCABS_DIR as STAGE_VOCABS
 
-    from cjk_scale.paths import UNITS_DIR
+    from cjk_scale.paths import VOCABS_DIR
 
     assert OUT == REPO / "output" / "cjk_anima_scale"
     assert stage_paths.OUT == OUT and stage_paths.REPO == REPO
     assert importlib.import_module("data.synth").OUT == OUT
     assert importlib.import_module("eval.enref").OUT == OUT
     assert stage_paths.FONT_DIR == LINE / "assets" / "fonts"
-    assert STAGE_UNITS == UNITS_DIR == LINE / "assets" / "units"
+    assert STAGE_VOCABS == VOCABS_DIR == LINE / "assets" / "vocabs"
     assert TARGET_PROMPTS == LINE / "assets" / "target_prompts.txt"
-    assert TARGET_PROMPTS.is_file() and (UNITS_DIR / "ja_pieces_0925_300.txt").is_file()
+    assert TARGET_PROMPTS.is_file() and (VOCABS_DIR / "ja_pieces_0925_300.txt").is_file()
 
 
 def test_run_layout():
     assert run_dir("r1") == OUT / "r1"
     assert data_dir("r1") == OUT / "r1" / "data"
-    assert table_path("r1") == OUT / "r1" / "trained.pt"
-    assert arm_dir("r1", "ctx") == OUT / "r1" / "ctx"
-    assert arm_dir("r1", "floor") == OUT / "r1" / "floor"
-    assert SEED_TABLE == OUT / "rows_step1_0921_merged" / "trained.pt"
+    assert trained_path("r1") == OUT / "r1" / "trained.pt"
+    assert floor_dir("r1") == OUT / "r1" / "floor"
+    assert SEED_ROWS == OUT / "rows_step1_0921_merged" / "trained.pt"
     with pytest.raises(AssertionError):
         run_dir("a b")
-    with pytest.raises(AssertionError):
-        arm_dir("r1", "seed")
     # the stage-layout records, prefix-less since 2026-09-25
     assert legacy_data_dir("stage0507", "t").name == "data_stage0507_t"
     assert legacy_arm_dir("stage0507", "t").name == "rows_stage0507_t"
 
 
 def test_stage_paths_take_the_run_dirs():
-    """The vendored ``data_dir`` / ``arm_dir`` take ``--data_path`` /
-    ``--arm_path``; without them they fall back to the tag layout."""
+    """The vendored ``data_dir`` / ``arm_dir`` are ``--data_path`` /
+    ``--arm_path``; there is no tag-layout fallback."""
     from types import SimpleNamespace as NS
 
     import common.paths as stage_paths
 
-    a = NS(arm="rows", data_tag="x", arm_tag="", data_path="/d", arm_path="/a")
+    a = NS(arm="rows", data_path="/d", arm_path="/a")
     assert str(stage_paths.data_dir(a)) == "/d" and str(stage_paths.arm_dir(a)) == "/a"
-    b = NS(arm="rows", data_tag="stage0507_t", arm_tag="ctx", data_path="", arm_path="")
-    assert stage_paths.data_dir(b) == OUT / "data_stage0507_t"
-    assert stage_paths.arm_dir(b) == OUT / "rows_stage0507_t_ctx"
+    b = NS(arm="rows", data_path="", arm_path="")
+    with pytest.raises(AssertionError):
+        stage_paths.data_dir(b)
+    with pytest.raises(AssertionError):
+        stage_paths.arm_dir(b)
 
 
 # ---------------------------------------------------------------------------
@@ -169,13 +167,13 @@ def test_run_file_is_vocabs_and_read(tmp_path):
     assert "run0925_300f" in config.run_names()
     rc = config.load_run("run0925_300f")
     assert rc.vocabs == "ja_pieces_0925_300.txt"
-    assert rc.units() == ["list:@ja_pieces_0925_300.txt"]
+    assert rc.vocab_specs() == ["list:@ja_pieces_0925_300.txt"]
     assert rc.vocabs_file().is_file()
     assert rc.read == ("はい", "おしい", "やったネ", "ちょっと来い", "こんにちは")
     spec = tmp_path / "specs.toml"
     spec.write_text('vocabs = ["kana", "kanji:200"]\n', encoding="utf-8")
     rs = config.load_run(str(spec))
-    assert rs.units() == ["kana", "kanji:200"] and rs.read == ()
+    assert rs.vocab_specs() == ["kana", "kanji:200"] and rs.read == ()
     for body in (
         'vocabs = "ja_pieces_0925_300.txt"\nseed = 0\n',
         'vocabs = "ja_pieces_0925_300.txt"\n[budget]\njoint = 90\n',
@@ -189,6 +187,9 @@ def test_run_file_is_vocabs_and_read(tmp_path):
     missing.write_text('vocabs = "no_such_file.txt"\n', encoding="utf-8")
     with pytest.raises(AssertionError, match="does not exist"):
         config.load_run(str(missing))
+    # the pre-collapse stage-shaped run files are records: on disk, not loadable
+    with pytest.raises(AssertionError, match="rules in code"):
+        config.load_run("run0923_micro")
 
 
 def test_front_door_parser():
@@ -492,23 +493,25 @@ def test_stage_eval_namespace_builds():
     rc = _rc()
     a = ev.probe_args(rc, ev.FLOOR_ARM, ["eval", "native"], ["--eval_limit", "3"])
     assert stage_paths.data_dir(a) == data_dir("t1")
-    assert stage_paths.arm_dir(a) == arm_dir("t1", "floor")
+    assert stage_paths.arm_dir(a) == floor_dir("t1")
     assert a.arm == "rows" and a.no_floor and a.seeds == 2 and a.eval_limit == 3
     assert a.native_chars == "あ,い" and a.native_clauses == "en,swap"
     assert a.steps == 28 and a.cfg == 4.0 and a.seed == 0
-    s = ev.ruler_args(rc, ev.CTX_ARM, "sent")
+    s = ev.ruler_args(rc, ev.TRAINED_ARM, "sent")
     assert (
         s.eval_tag == "sent" and s.native_chars == "はい" and s.native_clauses == "en"
     )
-    assert stage_paths.arm_dir(s) == arm_dir("t1", "ctx")
+    # the trained arm is the run dir itself — no ctx sidecar
+    assert stage_paths.arm_dir(s) == run_dir("t1")
     assert ev.rulers(rc) == ["eval", "native", "sent", "target"]
     assert ev.rulers(_rc(read=())) == ["eval", "native", "target"]
 
 
-def test_floor_and_ctx_arms(tmp_path, monkeypatch):
-    """load / overwrite are the whole table algebra: the floor arm is
-    load(seed) — every row — and the ctx arm is overwrite(seed, trained) in
-    the trained table's row_scale; both land under the run dir."""
+def test_floor_arm_and_merged_guard(tmp_path, monkeypatch):
+    """The floor arm is load(seed) — every row, verbatim — and eval refuses a
+    pre-merge vocabs-only trained.pt (no ``seed_merged``): since 2026-09-25
+    the merge (seed rows under the run's, one row_scale) happens at save,
+    in ``rows.Rows.state_dict``, not in an eval sidecar."""
     import torch
 
     from cjk_scale import eval as ev
@@ -538,6 +541,7 @@ def test_floor_and_ctx_arms(tmp_path, monkeypatch):
     assert sd["delta"]["row_scale"] == 1.5
     assert torch.equal(sd["delta"]["raw"], torch.arange(8.0).view(4, 2))
     assert sd["arm"] == "rows" and sd["args"]["floor"] and sd["warm_rows"] == 4
+    assert ev.arm_out(rc, ev.TRAINED_ARM) == tmp_path / "t1"
     torch.save(
         {
             "delta": {
@@ -550,17 +554,8 @@ def test_floor_and_ctx_arms(tmp_path, monkeypatch):
         },
         tmp_path / "t1" / "trained.pt",
     )
-    out = ev.ctx_arm(rc, seed)
-    assert out == tmp_path / "t1" / "ctx"
-    sd = torch.load(out / "trained.pt", weights_only=False)
-    assert sd["delta"]["ext_ids"] == [10, 11, 12, 13, 20]
-    assert sd["delta"]["row_scale"] == 3.0 and sd["context_rows"] == 4
-    k = 1.5 / 3.0  # seed rows land at raw × (seed scale / trained scale)
-    assert torch.equal(sd["delta"]["raw"][0], torch.tensor([0.0, 1.0]) * k)
-    assert torch.equal(
-        sd["delta"]["raw"][2], torch.full((2,), 7.0)
-    )  # trained wins on 12
-    assert ev.overwrite({1: "a", 2: "b"}, {2: "c"}) == {1: "a", 2: "c"}
+    with pytest.raises(AssertionError, match="seed_merged"):
+        ev.run(rc)
 
 
 def test_compose_one_sheet(tmp_path, monkeypatch):
@@ -581,9 +576,9 @@ def test_compose_one_sheet(tmp_path, monkeypatch):
 
     for arm, word_read, sent_read in (
         ("floor", "すずごい", "は"),
-        ("ctx", "すごい", "はい"),
+        ("trained", "すごい", "はい"),
     ):
-        d = paths.arm_dir("t1", arm)
+        d = ev.arm_out(rc, arm)
         (d / "native_sent").mkdir(parents=True)
         (d / "eval_reads.json").write_text(
             json.dumps(
@@ -627,11 +622,11 @@ def test_compose_one_sheet(tmp_path, monkeypatch):
     r = json.loads((out / "reads.json").read_text(encoding="utf-8"))
     word = r["rulers"]["eval"]["totals"]["word"]
     assert word["floor"] == {"n": 2, "official": 0, "loose": 0, "contained": 0}
-    assert word["ctx"] == {"n": 2, "official": 2, "loose": 2, "contained": 2}
+    assert word["trained"] == {"n": 2, "official": 2, "loose": 2, "contained": 2}
     sent = r["rulers"]["sent"]["strings"]["はい|en"]
     assert sent["floor"] == {"n": 4, "official": 0, "loose": 4, "contained": 4}
-    assert sent["ctx"] == {"n": 4, "official": 4, "loose": 4, "contained": 4}
+    assert sent["trained"] == {"n": 4, "official": 4, "loose": 4, "contained": 4}
     assert (out / "sheet.png").exists()
-    assert ev._fresh(rc, paths.arm_dir("t1", "floor"), "sent")
-    assert not ev._fresh(_rc(read=("おしい",)), paths.arm_dir("t1", "floor"), "sent")
-    assert not ev._fresh(rc, paths.arm_dir("t1", "floor"), "target")
+    assert ev._fresh(rc, paths.floor_dir("t1"), "sent")
+    assert not ev._fresh(_rc(read=("おしい",)), paths.floor_dir("t1"), "sent")
+    assert not ev._fresh(rc, paths.floor_dir("t1"), "target")

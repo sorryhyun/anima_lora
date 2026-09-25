@@ -20,7 +20,8 @@ stamps the item with its band.
 
 Records follow the probe's ``train.jsonl`` schema (``file`` / ``text`` /
 ``caption`` / ``src`` / ``kind`` / ``shape`` / ``box`` or ``boxes`` /
-``units``), plus ``recipe`` / ``layout`` / ``px`` / ``window`` (design § 4).
+``units`` — the on-disk key for the item's vocabs), plus ``recipe`` /
+``layout`` / ``px`` / ``window`` (design § 4).
 """
 
 from __future__ import annotations
@@ -42,9 +43,9 @@ SCENE_TRIES = 8
 @dataclass
 class Item:
     image: object  # PIL image
-    units: list
+    vocabs: list
     layout: str  # scene | flat | grid
-    boxes: list  # ink boxes, one per unit (scene: one box)
+    boxes: list  # ink boxes, one per vocab (scene: one box)
     caption: str
     src: str  # scene | font | grid
     shape: tuple
@@ -52,14 +53,14 @@ class Item:
 
     @property
     def text(self) -> str:
-        return " ".join(self.units)
+        return " ".join(self.vocabs)
 
     def px(self) -> float:
         """√(box area / glyphs) — the ink-stat px of ``data/stage.py``."""
         from common.render.ink import box_area
 
         area = sum(box_area(b) for b in self.boxes)
-        return (area / max(1, sum(glyph_count(u) for u in self.units))) ** 0.5
+        return (area / max(1, sum(glyph_count(u) for u in self.vocabs))) ** 0.5
 
 
 @dataclass
@@ -68,7 +69,7 @@ class Pools:
 
     fonts: list
     tokq: tuple
-    inv: object  # data.units.Inventory
+    inv: object  # data.vocabs.Inventory
     scenes: list
     single_idx: set  # scenes a lone glyph may go to
     horiz_idx: set  # scenes a left-to-right item may go to
@@ -103,7 +104,7 @@ class Pools:
 
 def _quietly(fn, *args, width: int = 160):
     """Run a probe resolver with its stdout captured; print each of its
-    lines cut to ``width`` (they are provenance, not a unit dump)."""
+    lines cut to ``width`` (they are provenance, not a vocab dump)."""
     import contextlib
     import io
 
@@ -117,15 +118,15 @@ def _quietly(fn, *args, width: int = 160):
 
 
 def build_pools(
-    units: list,
+    vocabs: list,
     context: Path | None,
     phrase_file,
     rng: random.Random,
 ) -> Pools:
-    """The run's vocabs (``units``: ``data.units`` specs), scenes, phrase
+    """The run's vocabs (``data.vocabs`` specs), scenes, phrase
     kinds, eval groups — the stage resolvers on a small namespace, so a vocab
     means what it meant in every read of record. ``context`` (the seed
-    table): a corpus line is drawable when its pieces are vocabs or seed
+    rows): a corpus line is drawable when its pieces are vocabs or seed
     rows, at least one a vocab. ``phrase_file`` (a path, or a callable that
     resolves one) is read only when the run has piece vocabs — the corpus
     lines feed the piece tiers alone. Deterministic in ``rng``'s state — the
@@ -148,13 +149,11 @@ def build_pools(
     from common.render.flat import find_fonts
 
     d = dict(DATA)
-    units = list(units)
+    vocabs = list(vocabs)
     a = SimpleNamespace(
-        units=units,
+        vocabs=vocabs,
         balanced=0,
         seed=SEED,
-        phrase_file="",
-        phrase_pieces=0,
         phrase_min_pieces=int(d["phrase_min_pieces"]),
         phrase_max_pieces=int(d["phrase_max_pieces"]),
         phrase_norm=bool(d["phrase_norm"]),
@@ -171,7 +170,7 @@ def build_pools(
         out = Path(scratch)
         _quietly(
             _resolve_singles, a, out, tokq, inv
-        )  # its `extra units:` line lists every piece
+        )  # its `extra vocabs:` line lists every piece
         _quietly(_word_set, a, out, tokq, inv)  # no words source here: `words: 0` noise
     for g in ("combo", "corpus", "line", "word", "word_held"):
         inv.evals.pop(g, None)
@@ -194,7 +193,7 @@ def build_pools(
         print("pools: no single vocab — no single tier", flush=True)
     small = {d for ds in inv.small_of.values() for d in ds}
     stray = sorted(set(digraphs) - small)
-    assert not stray, f"≥ 2-token units outside the small digraphs: {stray[:10]}"
+    assert not stray, f"≥ 2-token vocabs outside the small digraphs: {stray[:10]}"
     scenes = load_scenes(d["scenes"], 0.0, 0, "", d["scene_one_bubble"])
     single_pools = {t for t in d["single_scenes"].split(",") if t}
     max_ar = float(d["single_max_ar"])
@@ -295,7 +294,7 @@ def build_pools(
             erng.sample(distinct, min(int(d["n_piece_eval"]), len(distinct)))
         )
     if singles and not inv.evals.get("single"):
-        # a units-file run has no kana base, so `single` is empty: 18 of its
+        # a vocabs-file run has no kana base, so `single` is empty: 18 of its
         # single vocabs instead, on their own stream (the main rng untouched)
         srng = random.Random(a.seed + 47)
         distinct = list(dict.fromkeys(singles))
@@ -330,14 +329,14 @@ def build_pools(
 
 def _context_line_ok(piece_ok, tokq, context: Path):
     """A line is drawable when every piece has a row that is either a vocab
-    of the run or a row of the context (seed) table (it rides frozen at that
+    of the run or a row of the context (seed) rows (it rides frozen at that
     value), and at least one piece is the run's — a line of context rows
     only trains nothing."""
     import torch
 
     from data.inventory import pieces as qpieces
 
-    ctx = {
+    context_idx = {
         int(e)
         for e in torch.load(context, map_location="cpu", weights_only=False)["delta"][
             "ext_ids"
@@ -356,11 +355,14 @@ def _context_line_ok(piece_ok, tokq, context: Path):
                 mine = own[p] = piece_ok(p)
             if mine:
                 hit = True
-            elif row not in ctx:
+            elif row not in context_idx:
                 return False
         return hit
 
-    print(f"phrase lines: context rows from {context} ({len(ctx)} rows)", flush=True)
+    print(
+        f"phrase lines: context rows from {context} ({len(context_idx)} rows)",
+        flush=True,
+    )
     return ok
 
 
@@ -369,7 +371,7 @@ def _context_line_ok(piece_ok, tokq, context: Path):
 
 
 def _cuts(pools: Pools, text: str) -> list:
-    """Line cuts at Qwen piece boundaries: a row's unit is never split."""
+    """Line cuts at Qwen piece boundaries: a row's vocab is never split."""
     from data.inventory import pieces as qpieces
 
     tok, qmap = pools.tokq
@@ -508,7 +510,7 @@ def _draw_scene(
         pools.used[j] += 1
         return Item(
             image=im,
-            units=[text],
+            vocabs=[text],
             layout="scene",
             boxes=[box],
             caption=scene_caption(sc, text, horizontal=horiz),
@@ -540,13 +542,13 @@ def scene_single(pools: Pools, rng: random.Random, p: dict):
     # `digraphs = true`: the small-kana digraphs ride along (kind multi — the
     # gate keeps them only where a multi row holds the stage band)
     pool = pools.singles + (pools.digraphs if p.get("digraphs") else [])
-    unit = rng.choice(pool)
+    vocab = rng.choice(pool)
     px = p.get("glyph_px")
     target = rng.uniform(*px) if px else None
     return _draw_scene(
         pools,
         rng,
-        unit,
+        vocab,
         min_glyph=int(p.get("min_glyph", 28)),
         fill=float(p.get("fill", 0.7)),
         max_lines=1,
@@ -565,14 +567,14 @@ def _target(rng, p: dict):
 
 def scene_piece(pools: Pools, rng: random.Random, p: dict):
     assert pools.pieces, "scene_piece needs data.pieces"
-    unit = rng.choice(pools.pieces)
+    vocab = rng.choice(pools.pieces)
     f = p.get("fill", [0.7, 1.0])
     lo, hi = f if isinstance(f, list) else (f, f)
     fill = rng.uniform(float(lo), float(hi))
     return _draw_scene(
         pools,
         rng,
-        unit,
+        vocab,
         min_glyph=int(p.get("min_glyph", 28)),
         fill=fill,
         max_lines=1,
@@ -701,7 +703,7 @@ def _grid_item(
         layout, src = "grid", "grid"
     return Item(
         image=im,
-        units=list(got),
+        vocabs=list(got),
         layout=layout,
         boxes=boxes,
         caption=caption,
@@ -718,7 +720,7 @@ def _grid_item(
 
 def _fillable_grids(grids: list, n_distinct: int) -> list:
     """The grids whose cell count the inventory can fill (``_Deck.deal``
-    asserts ``cells ≤ distinct units``); a small run drops the big ones."""
+    asserts ``cells ≤ distinct vocabs``); a small run drops the big ones."""
     return [(g, w) for g, w in grids if GRIDS[g][0] * GRIDS[g][1] <= n_distinct]
 
 

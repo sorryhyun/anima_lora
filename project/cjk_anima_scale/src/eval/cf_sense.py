@@ -53,13 +53,42 @@ from common.render.flat import (
 from common.render.ink import glyph_count, glyph_features, ink_pixels
 from common.shapes import wh
 from common.text import KANA
-from eval.classify import _en_word_pairs
 
 # --cf_layout → share of pairs drawn inside the flat renderer's ellipse
 _BUBBLE_FRAC = {"mixed": 0.6, "flat": 0.0, "bubble": 1.0}
 _LETTERS = "ABDEFGHKLMNPRSTUVWXYZ"  # no I / J / O / Q / C: a stroke, not a glyph
 # the ink ruler of plan_kanji C.0 (`--cf_units kanji` terciles)
 _INK_FONT = "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc"
+
+
+def _en_word_pairs(rng: random.Random, n_pairs: int) -> list[str]:
+    """Nonsense two-word Latin strings "ZORP KAV" whose word swap keeps the T5
+    piece multiset (words are space-separated, so pieces never cross a word);
+    every word must be ≥ 2 pieces so the contrast is piece order, not one id."""
+    from library.anima.weights import load_t5_tokenizer
+
+    t5 = load_t5_tokenizer(None)
+    cons, vow = "BDFGKLMNPRSTVZ", "AEIOU"
+
+    def word():
+        n = rng.randint(2, 3)
+        w = "".join(rng.choice(cons) + rng.choice(vow) for _ in range(n))
+        if rng.random() < 0.6:
+            w += rng.choice(cons)
+        return w
+
+    out, seen = [], set()
+    while len(out) < n_pairs:
+        a, b = word(), word()
+        if a == b or (a, b) in seen:
+            continue
+        if len(t5.tokenize(a)) < 2 or len(t5.tokenize(b)) < 2:
+            continue
+        if sorted(t5.tokenize(f"{a} {b}")) != sorted(t5.tokenize(f"{b} {a}")):
+            continue
+        seen.add((a, b))
+        out.append(f"{a} {b}")
+    return out
 
 
 def _glyph_ink(ch: str, px: int = 48, font: str = _INK_FONT) -> float:

@@ -1,0 +1,15 @@
+# joint0507_0305 — the piece bands' data (stage0507 + stage0305) in one run,
+# σ per item from its stage's band (cjk_scale/joint.py). Built for the freeze
+# arm (reports/conflict_joint_2026_09_25.md § 4 / § 6, next.md A-F): the run
+# names the pieces as its inventory with `context = "seed"`, so every single
+# rides frozen at the seed and stage0709's single data has nothing to train —
+# 0 / 45 / 45. stage0507's single recipes drop under such a run
+# (recipes.missing_source, shares renormalised — build.json `dropped`).
+# Otherwise joint.toml.
+
+# (data-build half of the pre-collapse stage file; split 2026-09-25 —
+# trainer values: configs/train/joint0507_0305.toml)
+
+band = [0.3, 0.7]                           # the envelope the items' bands lie in (log / cf_sense); not a draw band
+gate = "none"
+joint_from = ["stage0507", "stage0305"]

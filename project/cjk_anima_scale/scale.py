@@ -94,7 +94,11 @@ def command(name: str) -> None:
         from cjk_scale.config import load_run, run_names
 
         for r in run_names():
-            c = load_run(r)
+            try:
+                c = load_run(r)
+            except AssertionError:  # a pre-collapse stage-shaped run file (records)
+                print(f"{r}: stage-shaped run file (record only)")
+                continue
             vocabs = c.vocabs if isinstance(c.vocabs, str) else ", ".join(c.vocabs)
             print(f"{r}: vocabs {vocabs}; read {' '.join(c.read) or '-'}")
     elif name == "ledger":

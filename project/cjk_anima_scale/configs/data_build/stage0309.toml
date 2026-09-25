@@ -1,0 +1,34 @@
+# stage0309 — the consolidation pass (design.md § 2): sentences and pieces at
+# natural sizes over the whole live range; the sentence run's role, with a
+# low anchor so the rows compose without leaving where the band stages put
+# them. No band gate. Whether this is accumulate or a merge of per-band
+# tables is band_experiment_results.md § 6 item 1 (unread).
+
+# (data-build half of the pre-collapse stage file; split 2026-09-25 —
+# trainer values: configs/train/stage0309.toml)
+
+band = [0.3, 0.9]
+gate = "none"
+
+scenes = "s1,s1w,sl1w,ja_comic"
+scene_one_bubble = "ja_comic"
+single_scenes = "s1,s1w"
+horizontal_scenes = "sl1w"                  # left-to-right scene items go to the EN-sentence pool only (user, 2026-09-24)
+single_max_ar = 2.0
+shapes = "448,512:2,448x512,512x448"
+horizontal_frac = 0.3                       # multi-glyph items (scene) / cells (grid) drawn as left-to-right lines, marked in the caption; a single glyph has no orientation
+short_pieces = "2-5"
+sentence_min_letters = 6
+
+[[mix]]                                # sentences + pieces only (user, 2026-09-24): no single / grid / short draws here
+recipe = "scene_sentence"
+share = 0.7
+min_glyph = [16, 28]
+fill = 0.9
+max_lines = 2
+
+[[mix]]
+recipe = "scene_piece"
+share = 0.3
+fill = [0.7, 1.0]
+min_glyph = 28

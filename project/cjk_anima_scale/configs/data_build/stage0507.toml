@@ -1,0 +1,59 @@
+# stage0507 — the count / piece band (design.md § 2): multi-glyph pieces
+# 32–48 px in scenes, single glyphs 24–32 px, 2–5-piece short lines ≈ 32 px.
+# Warm from stage0709 (same tag).
+
+# (data-build half of the pre-collapse stage file; split 2026-09-25 —
+# trainer values: configs/train/stage0507.toml)
+
+band = [0.5, 0.7]
+gate = "contain"
+min_overlap = 0.8
+
+scenes = "s1,s1w,sl1w,ja_comic"
+scene_one_bubble = "ja_comic"
+single_scenes = "s1,s1w"
+horizontal_scenes = "sl1w"                  # left-to-right scene items go to the EN-sentence pool only (user, 2026-09-24)
+single_max_ar = 2.0
+shapes = "448,512:2,448x512,512x448"
+horizontal_frac = 0.3                       # multi-glyph items (scene) / cells (grid) drawn as left-to-right lines, marked in the caption; a single glyph has no orientation
+short_pieces = "2-5"
+sentence_min_letters = 6
+
+[[mix]]                                # step 1b: one piece per bubble, fill 0.7–1.0 (≈ 35–48 px)
+recipe = "scene_piece"
+share = 0.4
+fill = [0.7, 1.0]
+min_glyph = 28
+px_target = 40
+
+[[mix]]                                # pieces in word cells at 24–32 px (user, 2026-09-24): the piece row's grid
+recipe = "grid_string"                      # layout below the +0.1 grid shift that starts at 32 px (band law § 2);
+share = 0.15                                # the 85–200 px piece grid that lost (micro_warmg_0923) is a different px
+grids = "2x2,2x3,3x2"
+glyph_px = [27, 36]                         # font px; the ink px the gate reads is ≈ 0.9 of it → 24–32 kept
+source = "pieces"
+max_glyphs = 8
+bubble_frac = 0.5
+
+[[mix]]                                # small singles: the 24–32 px letter window (ceiling only)
+recipe = "scene_single"
+share = 0.15
+glyph_px = [24, 32]
+fill = 0.7
+min_glyph = 20
+digraphs = true                             # small-kana digraphs (あっ: 2 tokens, multi) train here, not in stage0709
+
+[[mix]]                                # small singles in cells at 24–32 px (user, 2026-09-24): the 24–40 px single
+recipe = "grid_single"                      # row's grid layout (plan_band B.2, never run); no 1×1 — a 24 px glyph on
+share = 0.1                                 # a 448 px page is not a flat single
+grids = "2x2,3x3,2x3,3x2"
+glyph_px = [27, 36]                         # font px → ink px 24–32 (the single row's 24–40 edge)
+bubble_frac = 0.5
+mark_horizontal = true
+
+[[mix]]                                # 2–5-piece lines, one column, ≈ 32 px
+recipe = "scene_short"
+share = 0.2
+min_glyph = 28
+fill = 0.7
+max_lines = 1

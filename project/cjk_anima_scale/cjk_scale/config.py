@@ -1,15 +1,21 @@
 """A run is one file: ``configs/runs/<run>.toml`` = ``{vocabs, read}`` (plan.md § 1).
 
-    vocabs = "ja_pieces_0925_300.txt"     # what trains: a units file, one vocab per line
-                                          # (assets/units/, or a path) — or a list of unit
-                                          # specs (["kana", "kanji:200"], the data.units grammar)
+    vocabs = "ja_pieces_0925_300.txt"     # what trains: a vocabs file, one vocab per line
+                                          # (assets/vocabs/, or a path) — or a list of vocab
+                                          # specs (["kana", "kanji:200"], the data.vocabs grammar)
     read = ["はい", "おしい"]              # the strings native_sent reads (en clause)
 
 Everything else is a rule in code (plan.md § 2): σ per item from the band law
 (``windows.py``), the recipe table by kind (``builder.TABLE``), the volume
 (``builder.ITEMS_PER_VOCAB``), the trainer (``train.py``), the seed table
-(``paths.SEED_TABLE``), the automatic rulers (``eval.py``). A vocab outside
+(``paths.SEED_ROWS``), the automatic rulers (``eval.py``). A vocab outside
 the file rides frozen at the seed; a vocab the seed lacks starts cold.
+
+The pre-collapse configs are records: the stage-shaped run files stay in
+``configs/runs/`` as they ran, and the stage / joint configs live split under
+``configs/data_build/`` (the data recipe: band + pools + mix) and
+``configs/train/`` (the trainer values) — ``legacy.py`` reads the split for
+``experiments/``.
 
 The constants below are the data pools every recipe shares — the old stage
 files' ``[data]`` blocks, which were identical across the four stages.
@@ -22,7 +28,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from .paths import RUN_CONFIGS, UNITS_DIR
+from .paths import RUN_CONFIGS, VOCABS_DIR
 
 RUN_KEYS = ("vocabs", "read")
 
@@ -45,7 +51,7 @@ DATA = {
     "phrase_held_books": 2,
     "n_phrase_eval": 8,
     "n_piece_eval": 18,  # the `word` ruler: 18 of the piece vocabs
-    "n_single_eval": 18,  # the `single` ruler of a units-file run: 18 of the single vocabs
+    "n_single_eval": 18,  # the `single` ruler of a vocabs-file run: 18 of the single vocabs
     "vertical": True,  # no horizontal fit fallback: orientation is a draw (below)
     "stroke": 0.0,
     "horizontal_frac": 0.3,  # multi-glyph items (scene) / cells (grid) drawn as lines, marked in the caption
@@ -58,14 +64,14 @@ DATA = {
 class RunConfig:
     name: str
     path: Path
-    vocabs: str | tuple  # a units file, or unit specs
+    vocabs: str | tuple  # a vocabs file, or vocab specs
     read: tuple
 
-    def units(self) -> list[str]:
-        """The ``data.units`` specs the vocabs stand for: a file is one
+    def vocab_specs(self) -> list[str]:
+        """The ``data.vocabs`` specs the vocabs stand for: a file is one
         ``list:@<file>`` source (every line one Qwen piece with an ext row)."""
         if isinstance(self.vocabs, str):
-            # a bare name resolves under data.units.UNITS_DIR (= UNITS_DIR), as
+            # a bare name resolves under data.vocabs.VOCABS_DIR (= VOCABS_DIR), as
             # the stage builds of record spelled it
             f = self.vocabs if "/" not in self.vocabs else self.vocabs_file()
             return [f"list:@{f}"]
@@ -75,7 +81,7 @@ class RunConfig:
         if not isinstance(self.vocabs, str):
             return None
         v = Path(os.path.expanduser(self.vocabs))
-        return v if "/" in self.vocabs else UNITS_DIR / self.vocabs
+        return v if "/" in self.vocabs else VOCABS_DIR / self.vocabs
 
 
 def run_names() -> list[str]:
@@ -106,7 +112,7 @@ def load_run(run: str) -> RunConfig:
     v = raw["vocabs"]
     assert isinstance(v, str) or (
         isinstance(v, list) and v and all(isinstance(x, str) for x in v)
-    ), f"{path}: vocabs is a units file or a list of unit specs"
+    ), f"{path}: vocabs is a vocabs file or a list of vocab specs"
     read = raw.get("read", [])
     assert isinstance(read, list) and all(isinstance(x, str) and x for x in read), (
         f"{path}: read is a list of strings"

@@ -7,10 +7,12 @@ reads of record used — the box-share FM loss (scene items, and grid items'
 cells under ``GRID_BOX``), cosine decay with warmup, the seed as the warm
 start and the frozen context.
 
-The table is the run's vocabs (their idx through the Qwen tokenizer, from
-``vocabs.json``), warm from the seed table; every other row a training
-caption touches rides frozen at its seed value and is stripped from
-``trained.pt``. A vocab the seed lacks starts cold (``RowTable`` prints it).
+What trains is the run's vocabs' rows (their idx through the Qwen
+tokenizer, from ``vocabs.json``), warm from the seed rows; every other row a
+training caption touches rides frozen at its seed value. ``trained.pt`` is
+the whole merged rows — the seed's rows with the run's on top
+(``rows.Rows.state_dict``). A vocab the seed lacks starts cold (``Rows``
+prints it).
 
 Reused from the stage packages, unchanged: ``LatentStore`` (per-shape latent
 cache in the data dir), ``Batcher`` (one shape × one source per batch),
@@ -33,8 +35,8 @@ from types import SimpleNamespace
 import torch
 
 from .config import RunConfig
-from .paths import SEED_TABLE, data_dir, run_dir
-from .rows import RowTable
+from .paths import SEED_ROWS, data_dir, run_dir
+from .rows import Rows
 
 # The trainer is fixed (plan.md § 2); a different trainer is a code change with
 # a new report beside it, never a flag. Each value names the read that set it.
@@ -64,7 +66,7 @@ GEN_STEPS, GEN_CFG = 28, 4.0  # the generation settings the stage helpers want
 
 def vocab_idx(vocabs: list, tokq) -> set[int]:
     """The run's vocabs → their idx: the Qwen tokenizer maps each vocab to
-    its pieces, every piece with a pack row is in the table (plan.md § 4:
+    its pieces, every piece with a pack row trains (plan.md § 4:
     the vocabs file is the inventory, the tokenizer maps it, done)."""
     from data.inventory import pieces as qpieces
 
@@ -144,43 +146,36 @@ def train(rc: RunConfig) -> Path:
     cache, touched, _ev_idx = _encode_text(
         recs, ev, device, out, te_cache=data / "te_cache"
     )
-    table = vocab_idx(vocabs, qwen_pieces())
+    idx = vocab_idx(vocabs, qwen_pieces())
     # captions carry rows outside the vocabs (corpus lines): they ride frozen
-    # at the seed; the table (what trains, what the steps count) is the vocabs'
-    frozen = touched - table
-    touched = touched & table
+    # at the seed; what trains (and what the steps count) is the vocabs' rows
+    frozen = touched - idx
+    touched = touched & idx
     print(
-        f"table: {len(table)} rows ({len(vocabs)} vocabs) — {len(touched)} touched "
-        f"by the captions, {len(table - touched)} with no draw; {len(frozen)} context "
-        f"rows frozen at {SEED_TABLE}",
+        f"rows: {len(idx)} ({len(vocabs)} vocabs) — {len(touched)} touched "
+        f"by the captions, {len(idx - touched)} with no draw; {len(frozen)} context "
+        f"rows frozen at {SEED_ROWS}",
         flush=True,
     )
-    ns = SimpleNamespace(
-        seed=SEED,
-        batch=BATCH,
-        train_size=512,
-        row_blocks=0,
-        row_boost="",
-        arm="rows",
-    )
+    ns = SimpleNamespace(seed=SEED, batch=BATCH, train_size=512)
     lat = LatentStore(ns, data, recs, list(range(len(recs))), device)
 
     anima = load_dit_model(args, device, torch.bfloat16)
     anima.requires_grad_(False)
     assert attached_pack_rows(anima), "no vocab pack attached to the DiT"
     tok, _ = ensure_text_strategies(checkpoints().text_encoder, vocab_pack=None)
-    rows = RowTable(
+    rows = Rows(
         anima,
         device,
-        table,
+        idx,
         strategy_pack(tok),
-        warm=SEED_TABLE,
+        warm=SEED_ROWS,
         init_anchor=INIT_ANCHOR,
         free_residual=FREE_RESIDUAL,
         lr=LR,
         touched=touched,
         frozen=frozen,
-        context=SEED_TABLE,
+        context=SEED_ROWS,
     )
     n_rows = rows.n_rows
     steps = STEPS_PER_VOCAB * n_rows
@@ -191,7 +186,7 @@ def train(rc: RunConfig) -> Path:
         f"({STEPS_PER_VOCAB}/row) × batch {BATCH}, lr {LR:g} {LR_DECAY} warmup {warmup} "
         f"({WARMUP_RATIO:g}), μ {INIT_ANCHOR:g}, box_share {BOX_SHARE} → cap "
         f"{BOX_SHARE_CAP} at {BOX_SHARE_GLYPHS} glyphs (log), grid_box {int(GRID_BOX)}, "
-        f"warm {SEED_TABLE}",
+        f"warm {SEED_ROWS}",
         flush=True,
     )
     opt = torch.optim.AdamW(rows.params, weight_decay=0.0, betas=(0.9, 0.99))
@@ -237,7 +232,7 @@ def train(rc: RunConfig) -> Path:
         "seed": SEED,
         "n_rows": n_rows,
         "n_touched": len(touched),
-        "context": str(SEED_TABLE),
+        "context": str(SEED_ROWS),
         "n_context": len(frozen),
         "arm": "rows",
     }

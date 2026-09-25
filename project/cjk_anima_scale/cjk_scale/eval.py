@@ -1,5 +1,5 @@
 """eval — a run's rulers on two arms, one sheet: the seed floor and the
-trained table, delegated to the vendored stages so every number is on the
+trained rows, delegated to the vendored stages so every number is on the
 ruler the reads of record used.
 
   eval      ``eval``: the automatic groups — ``word`` (18 of the piece vocabs),
@@ -16,17 +16,19 @@ kind — single / piece / multi), **idx** = its ext id, **row** = its trained
 weight. The on-disk ``trained.pt`` schema keeps its keys (``ext_ids``,
 ``raw``) — every stage reader opens them.
 
-A table an eval renders with is built from exactly two operations —
-``load`` (a ``trained.pt`` → idx → row) and ``overwrite`` (one table's rows
-over another's, by idx):
+Two arms, no ``ctx`` sidecar (2026-09-25 — the merge lives in the save,
+``rows.Rows.state_dict``):
 
-- **ctx arm** ``<run>/ctx/``: ``overwrite(seed, trained)`` — a vocab outside
-  the run renders as it rode in training (at its seed row), never as a raw
-  pack row.
-- **floor arm** ``<run>/floor/``: ``load(seed)`` — the whole seed table, the
+- **trained**: the run dir itself. ``<run>/trained.pt`` is already the whole
+  merged rows — the seed's rows with the run's on top, one ``row_scale`` —
+  so a vocab outside the run renders as it rode in training (at its seed
+  row), never as a raw pack row. Ruler outputs land at the run root
+  (``<run>/native/``, ``<run>/eval_reads.json`` …). A pre-merge vocabs-only
+  ``trained.pt`` (no ``seed_merged`` key) is refused — retrain.
+- **floor** ``<run>/floor/``: ``load(seed)`` — the whole seed rows, the
   baseline every "vs seed" read is against. Its rulers render once per
   string set (the seed never changes); the floor **of record** stays flat in
-  the seed table's own dir (``floor_score.md``).
+  the seed rows' own dir (``floor_score.md``).
 
 The stages open the run's dirs through ``--data_path`` / ``--arm_path``.
 ``compose`` then reads both arms' read files into ``<run>/reads.json``
@@ -43,11 +45,11 @@ from collections import defaultdict
 from pathlib import Path
 
 from .config import RunConfig
-from .paths import SEED_TABLE, arm_dir, data_dir, run_dir, table_path
+from .paths import SEED_ROWS, data_dir, floor_dir, run_dir, trained_path
 
-CTX_ARM = "ctx"
 FLOOR_ARM = "floor"
-ARMS = (FLOOR_ARM, CTX_ARM)
+TRAINED_ARM = "trained"
+ARMS = (FLOOR_ARM, TRAINED_ARM)
 RULERS = ("eval", "native", "sent", "target")
 EVAL_GROUPS = ("single", "single_kanji", "word", "en")  # the ones a run's eval.json has
 NATIVE_CHARS = "あ,い"  # the frozen-row control (plan.md § 2)
@@ -62,6 +64,13 @@ READ_FILES = {
     "sent": "native_sent/native_reads.json",
     "target": "target/native_reads.json",
 }
+
+
+def arm_out(rc: RunConfig, arm: str) -> Path:
+    """The arm's dir: the run dir itself for ``trained``, the ``floor/``
+    sidecar for the floor."""
+    assert arm in ARMS, arm
+    return run_dir(rc.name) if arm == TRAINED_ARM else floor_dir(rc.name)
 
 
 def eval_groups(rc: RunConfig) -> list[str]:
@@ -83,7 +92,7 @@ def probe_args(rc: RunConfig, arm: str, stage_names: list, extra: list | None = 
         "--data_path",
         str(data_dir(rc.name)),
         "--arm_path",
-        str(arm_dir(rc.name, arm)),
+        str(arm_out(rc, arm)),
         "--seeds",
         str(SEEDS),
         "--no_floor",
@@ -129,16 +138,24 @@ def rulers(rc: RunConfig) -> list[str]:
 
 
 def run(rc: RunConfig) -> Path:
-    """Both arms' rulers, then ``compose``. The ctx arm renders every time
-    (the table may have been retrained); the floor arm renders a ruler only
-    when its reads are missing or were read on other strings."""
+    """Both arms' rulers, then ``compose``. The trained side reads the run's
+    merged ``trained.pt`` in place and renders every time (the run may have
+    been retrained); the floor arm renders a ruler only when its reads are
+    missing or were read on other strings."""
+    import torch
+
     from stages import run as run_stage
 
-    assert table_path(rc.name).exists(), (
-        f"no table at {table_path(rc.name)} — run `scale.py {rc.name} train` first"
+    tp = trained_path(rc.name)
+    assert tp.exists(), f"no rows at {tp} — run `scale.py {rc.name} train` first"
+    sd = torch.load(tp, map_location="cpu", weights_only=False)
+    assert sd.get("seed_merged"), (
+        f"{tp} is a pre-merge vocabs-only file (no seed_merged) — retrain: "
+        f"since 2026-09-25 trained.pt is the whole merged rows"
     )
     for arm in ARMS:
-        out = floor_arm(rc) if arm == FLOOR_ARM else ctx_arm(rc)
+        if arm == FLOOR_ARM:
+            out = floor_arm(rc)
         for ruler in rulers(rc):
             if arm == FLOOR_ARM and _fresh(rc, out, ruler):
                 print(
@@ -169,21 +186,12 @@ def _fresh(rc: RunConfig, out: Path, ruler: str) -> bool:
 
 def load(path: Path) -> tuple[dict, dict]:
     """A ``trained.pt`` → (idx → row, the state dict). Rows come back in
-    their table's own raw units; the table's ``row_scale`` is in the state
-    dict, and composing two tables means bringing one into the other's
-    scale first (see ``ctx_arm``)."""
+    the file's own raw units (delta = raw × its ``row_scale``)."""
     import torch
 
     sd = torch.load(path, map_location="cpu", weights_only=False)
     d = sd["delta"]
     return {int(i): r.float() for i, r in zip(d["ext_ids"], d["raw"])}, sd
-
-
-def overwrite(base: dict, top: dict) -> dict:
-    """top's rows over base's, by idx. The only composition an eval table
-    needs: the ctx arm is ``overwrite(seed, trained)``, the floor arm is
-    the seed alone."""
-    return {**base, **top}
 
 
 def save_arm(out: Path, rows: dict, sd: dict) -> Path:
@@ -209,45 +217,24 @@ def save_arm(out: Path, rows: dict, sd: dict) -> Path:
     return out
 
 
-def ctx_arm(rc: RunConfig, seed: Path = SEED_TABLE) -> Path:
-    """``overwrite(seed, trained)``: the seed rows with the run's trained rows
-    on top, in the trained table's ``row_scale`` (the ``merge_tables``
-    rescale). Rebuilt on every eval — the run may have been retrained."""
-    trained, own = load(table_path(rc.name))
-    seed_rows, sd = load(seed)
-    k = float(sd["delta"]["row_scale"]) / float(own["delta"]["row_scale"])
-    rows = overwrite({i: r * k for i, r in seed_rows.items()}, trained)
-    out = save_arm(
-        arm_dir(rc.name, CTX_ARM),
-        rows,
-        {**own, "context": str(seed), "context_rows": len(seed_rows)},
-    )
-    print(
-        f"ctx arm: {len(trained)} trained rows over {len(seed_rows)} seed rows "
-        f"({seed}, × {k:.4f}) → {out / 'trained.pt'} ({len(rows)} rows)",
-        flush=True,
-    )
-    return out
-
-
-def floor_arm(rc: RunConfig, seed: Path = SEED_TABLE) -> Path:
-    """``load(seed)`` alone — the whole seed table as a rows-arm
+def floor_arm(rc: RunConfig, seed: Path = SEED_ROWS) -> Path:
+    """``load(seed)`` alone — the whole seed rows as a rows-arm
     ``trained.pt``: the floor every "vs seed" read is against, carrying
-    every row the ctx arm does (a vocab outside the run renders at its seed
-    row, never as a raw pack row). The merged seed table has no ``args``; a
-    synthetic one is added so the stage readers that open it see the
-    trained shape."""
-    assert seed.exists(), f"seed table {seed} does not exist"
+    every row the trained side does (a vocab outside the run renders at its
+    seed row, never as a raw pack row). The merged seed file has no
+    ``args``; a synthetic one is added so the stage readers that open it see
+    the trained shape."""
+    assert seed.exists(), f"seed rows {seed} do not exist"
     rows, src = load(seed)
     out = save_arm(
-        arm_dir(rc.name, FLOOR_ARM),
+        floor_dir(rc.name),
         rows,
         {
             "delta": src["delta"],
             "arm": "rows",
             "args": {
                 "floor": True,
-                "seed_table": str(seed),
+                "seed_rows": str(seed),
                 "run": rc.name,
                 "init_rows": str(seed),
             },
@@ -297,7 +284,7 @@ def _key(ruler: str, m: dict) -> str:
 
 
 def _reads(rc: RunConfig, arm: str, ruler: str) -> list:
-    f = arm_dir(rc.name, arm) / READ_FILES[ruler]
+    f = arm_out(rc, arm) / READ_FILES[ruler]
     if not f.exists():
         return []
     return [
@@ -312,7 +299,7 @@ def compose(rc: RunConfig) -> Path:
     from common.readers import contact_sheet
     from PIL import Image
 
-    reads: dict = {"run": rc.name, "arms": {a: str(arm_dir(rc.name, a)) for a in ARMS}}
+    reads: dict = {"run": rc.name, "arms": {a: str(arm_out(rc, a)) for a in ARMS}}
     rows_out: dict = {}
     tiles = []
     for ruler in rulers(rc):
@@ -352,7 +339,7 @@ def compose(rc: RunConfig) -> Path:
         contact_sheet(tiles, out / "sheet.png", thumb=192, cols=4)
     for ruler, block in rows_out.items():
         for g, by_arm in block["totals"].items():
-            f, t = by_arm[FLOOR_ARM], by_arm[CTX_ARM]
+            f, t = by_arm[FLOOR_ARM], by_arm[TRAINED_ARM]
             print(
                 f"{ruler:<7} {g:<14} floor {f['official']}/{f['n']} "
                 f"(loose {f['loose']}, contained {f['contained']})  trained "
@@ -376,7 +363,7 @@ def _label(ruler: str, key: str, arm: str, m: dict) -> list:
     ok = m.get("exact") if ruler == "eval" else (m.get("hit_sfx") and m.get("hit_vl"))
     return [
         f"{ruler} {key}",
-        f"{'trained' if arm == CTX_ARM else 'floor'} s{m['seed']} {'HIT' if ok else '-'}",
+        f"{arm} s{m['seed']} {'HIT' if ok else '-'}",
         f"sfx {r0.get('sfx') or ''}",
         f"vl {r0.get('vl') or ''}",
     ]

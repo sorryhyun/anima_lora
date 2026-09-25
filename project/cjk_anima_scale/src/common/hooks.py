@@ -1,8 +1,6 @@
-"""The trainable hooks on the frozen model: ext-row delta and adapter LoRA."""
+"""The trainable hook on the frozen model: the ext-row delta."""
 
 from __future__ import annotations
-
-import math
 
 import torch
 
@@ -102,96 +100,3 @@ class ExtDelta:
         assert sd["ext_ids"] == self.ext_ids
         self.raw.data.copy_(sd["raw"].to(self.raw.device))
         self.row_scale = sd["row_scale"]
-
-
-class AdapterLoRA:
-    """Rank-r LoRA on every Linear of ``llm_adapter.blocks`` (monkeypatched
-    forward, B zero-init). ``scale`` 0 restores the stock adapter."""
-
-    def __init__(self, anima, rank: int, device):
-        self.params = torch.nn.ParameterList()
-        self.scale = 1.0
-        self.patched = []
-        for name, m in anima.llm_adapter.blocks.named_modules():
-            if not isinstance(m, torch.nn.Linear):
-                continue
-            a = torch.nn.Parameter(
-                torch.randn(rank, m.in_features, device=device)
-                / math.sqrt(m.in_features)
-            )
-            b = torch.nn.Parameter(torch.zeros(m.out_features, rank, device=device))
-            self.params.append(a)
-            self.params.append(b)
-            orig = m.forward
-            alpha = 1.0 / rank
-
-            def fwd(x, orig=orig, a=a, b=b):
-                y = orig(x)
-                if self.scale == 0.0:
-                    return y
-                h = (x.to(a.dtype) @ a.t()) @ b.t()
-                return y + (h * (alpha * self.scale)).to(y.dtype)
-
-            m.forward = fwd
-            self.patched.append(name)
-
-    def state_dict(self):
-        return {
-            "params": [p.detach().cpu() for p in self.params],
-            "names": self.patched,
-        }
-
-    def load(self, sd):
-        for p, q in zip(self.params, sd["params"]):
-            p.data.copy_(q.to(p.device))
-
-
-class OutVec:
-    """Add one fixed vector at the ext-row positions of ``llm_adapter``'s
-    *output* (post-norm crossattn code) — the quote-probe test: give trained
-    rows the pretrained "quoted text" direction the adapter builds for EN
-    tokens, instead of a trained ``c_flat``. ``vec`` is ``None`` = off."""
-
-    def __init__(self, anima, device):
-        from library.anima.ext_vocab import T5_TABLE_SIZE
-
-        self.T = T5_TABLE_SIZE
-        self.vec = None
-        self.device = device
-        self.state: dict = {}
-        adapter = anima.llm_adapter
-
-        def pre(module, args):
-            if args and torch.is_tensor(args[0]):
-                self.state["mask"] = args[0] >= self.T
-
-        def post(module, args, output):
-            mask = self.state.pop("mask", None)
-            if self.vec is None or mask is None or not bool(mask.any()):
-                return None
-            out = output.clone()
-            out[mask] = out[mask] + self.vec.to(out.dtype)
-            return out
-
-        self.handles = [
-            # prepend: the pack's clamp pre-hook rewrites ext ids to <unk>, so a
-            # later pre-hook would never see them
-            adapter.embed.register_forward_pre_hook(pre, prepend=True),
-            adapter.register_forward_hook(post),
-        ]
-
-    def set(self, vec):
-        self.vec = None if vec is None else vec.to(self.device)
-
-
-def load_out_vec(path: str, frame: str):
-    """``(unit direction, EN shift norm)`` from ``quote_dir_save.py``'s .pt —
-    ``dirs[<frame>]`` / ``shift_norm[<frame>]``, or the cross-frame ``avg``."""
-    q = torch.load(path, map_location="cpu", weights_only=False)
-    vec = q["avg"] if frame == "avg" else q["dirs"][frame]
-    norm = (
-        sum(q["shift_norm"].values()) / len(q["shift_norm"])
-        if frame == "avg"
-        else q["shift_norm"][frame]
-    )
-    return vec.float() / vec.float().norm(), float(norm)

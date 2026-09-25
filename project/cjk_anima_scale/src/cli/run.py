@@ -1,33 +1,22 @@
-"""``--stage`` / ``--arm`` / tags, and the generation settings every sampler stage reads."""
+"""``--stage`` / ``--arm`` / the run dirs, and the generation settings every sampler stage reads."""
 
 from __future__ import annotations
 
 
 def run_args(g, stages):
     g.add_argument("--stage", nargs="+", default=["all"], choices=["all", *stages])
-    g.add_argument("--arm", default="rows", choices=["rows", "rows_adapter", "encoder"])
+    g.add_argument("--arm", default="rows", choices=["rows"])
     g.add_argument("--device", default="cuda")
     g.add_argument("--seed", type=int, default=0)
     g.add_argument(
-        "--data_tag",
-        default="",
-        help="suffix for output/cjk_anima_scale/data_<tag> and <arm>_<tag> (legacy layout)",
-    )
-    g.add_argument(
         "--data_path",
         default="",
-        help="an explicit data dir (cjk_anima_scale: <run>/data); overrides --data_tag",
+        help="the data dir (cjk_anima_scale: <run>/data)",
     )
     g.add_argument(
         "--arm_path",
         default="",
-        help="an explicit arm dir (cjk_anima_scale: a run's eval arm); overrides the tags",
-    )
-    g.add_argument(
-        "--arm_tag",
-        default="",
-        help="suffix for the arm dir only (<arm>_<data_tag>_<arm_tag>): a second "
-        "train recipe on the same data without overwriting the first",
+        help="the arm dir (cjk_anima_scale: a run's eval arm)",
     )
 
 
@@ -42,7 +31,6 @@ def generation_args(g):
     g.add_argument(
         "--seeds", type=int, default=2, help="seeds per prompt (salad: 3 recommended)"
     )
-    g.add_argument("--salad_size", type=int, default=768)
     g.add_argument("--train_size", type=int, default=512)
     g.add_argument("--eval_size", type=int, default=512)
     g.add_argument(

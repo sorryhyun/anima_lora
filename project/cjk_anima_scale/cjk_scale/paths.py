@@ -4,9 +4,11 @@ A run lands in one dir, ``output/cjk_anima_scale/<run>/``:
 
     data/          the items (``img/``, ``train.jsonl``, ``eval.json``,
                    ``vocabs.json``, ``build.json``, latent + TE caches)
-    trained.pt     the table (the run's vocabs' rows only)
-    ctx/ floor/    the eval arms — ``overwrite(seed, trained)`` and
-                   ``load(seed)`` — each a rows-arm dir the stages write into
+    trained.pt     the merged rows — the seed's rows (rescaled into the run's
+                   ``row_scale``) with the run's vocabs' rows on top, whole
+    floor/         the floor arm, ``load(seed)`` — the one eval sidecar
+    native/ …      the trained side's ruler outputs, at the run root (the
+                   run dir is the trained arm; no ``ctx/`` sidecar)
     sheet.png      floor and trained side by side, every ruler
     reads.json     the numbers behind the sheet
     conflict/      ``scale.py <run> conflict``
@@ -36,11 +38,11 @@ RUN_CONFIGS = CONFIGS / "runs"
 RUNS = LINE / "runs"
 LEDGER = RUNS / "ledger.jsonl"
 OUT = REPO / "output" / "cjk_anima_scale"
-UNITS_DIR = LINE / "assets" / "units"
-# the seed table (one constant, plan.md § 2): the probe line's step1_0921 +
+VOCABS_DIR = LINE / "assets" / "vocabs"
+# the seed rows (one constant, plan.md § 2): the probe line's step1_0921 +
 # step1_0921z merge, 2 274 rows. Every run's vocabs train from it, every other
 # row rides frozen at it, and the floor arm is it whole.
-SEED_TABLE = OUT / "rows_step1_0921_merged" / "trained.pt"
+SEED_ROWS = OUT / "rows_step1_0921_merged" / "trained.pt"
 
 
 def bootstrap() -> None:
@@ -71,15 +73,17 @@ def data_dir(run: str) -> Path:
     return run_dir(run) / "data"
 
 
-def table_path(run: str) -> Path:
+def trained_path(run: str) -> Path:
+    """The run's merged rows: the seed's rows with the run's on top, one
+    ``row_scale`` (written whole by ``rows.Rows.state_dict``)."""
     return run_dir(run) / "trained.pt"
 
 
-def arm_dir(run: str, arm: str) -> Path:
-    """An eval arm dir under the run (``ctx`` / ``floor``): a rows-arm dir
-    holding its ``trained.pt`` and every ruler's reads."""
-    assert arm in ("ctx", "floor"), arm
-    return run_dir(run) / arm
+def floor_dir(run: str) -> Path:
+    """The one eval sidecar under the run: the floor arm, ``load(seed)`` —
+    a rows-arm dir holding its ``trained.pt`` and every ruler's reads. The
+    trained side has no sidecar: its arm dir is the run dir itself."""
+    return run_dir(run) / "floor"
 
 
 # ---------------------------------------------------------------------------

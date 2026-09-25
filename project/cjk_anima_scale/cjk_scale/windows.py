@@ -9,7 +9,7 @@ a formula off the EN ceiling table cannot reproduce the reads (it puts a
 trained at 0.7–0.9). A new read that changes a row changes it here, with
 its report.
 
-Kinds, by the unit's Qwen tokens and glyphs (``kind_of``):
+Kinds, by the vocab's Qwen tokens and glyphs (``vocab_kind`` / ``kind_of``):
 
     single   one token, one glyph            あ 日 ！
     piece    one token, two or more glyphs   って 先生 ・・・  (one ext row carries the string)
@@ -127,24 +127,24 @@ def glyph_count(text: str) -> int:
     return sum(not c.isspace() for c in text)
 
 
-def unit_kind(unit: str, n_tokens: int) -> str:
-    """One unit's kind from its Qwen token count and glyph count."""
-    assert n_tokens >= 1, (unit, n_tokens)
+def vocab_kind(vocab: str, n_tokens: int) -> str:
+    """One vocab's kind from its Qwen token count and glyph count."""
+    assert n_tokens >= 1, (vocab, n_tokens)
     if n_tokens >= 2:
         return "multi"
-    return "single" if glyph_count(unit) == 1 else "piece"
+    return "single" if glyph_count(vocab) == 1 else "piece"
 
 
 _RANK = {k: i for i, k in enumerate(KINDS)}
 
 
-def kind_of(units, n_tokens: Callable[[str], int]) -> str:
-    """The item's kind: the heaviest of its units' kinds (single < piece <
+def kind_of(vocabs, n_tokens: Callable[[str], int]) -> str:
+    """The item's kind: the heaviest of its vocabs' kinds (single < piece <
     multi). A grid of single glyphs is ``single``; a grid of pieces is
-    ``piece``; anything holding a ≥ 2-token unit — a line, a small-kana
+    ``piece``; anything holding a ≥ 2-token vocab — a line, a small-kana
     digraph — is ``multi``. Recipes draw one kind per item; a mixed grid
     (``grid_string`` with ``source = "both"``) takes the heavier band."""
-    return max((unit_kind(u, n_tokens(u)) for u in units), key=_RANK.__getitem__)
+    return max((vocab_kind(u, n_tokens(u)) for u in vocabs), key=_RANK.__getitem__)
 
 
 def window(kind: str, px: float, layout: str) -> Window | None:

@@ -6,10 +6,10 @@
   prompts      TPL_* templates, EVAL_GROUPS, NATIVE_PROMPTS / NATIVE_CLAUSES, EN_WORDS
   shapes       wh, parse_shape, parse_shapes
   models       checkpoints, generation requests, VAE, text encoding, DiT forward
-  hooks        ExtDelta (the ext-row delta), AdapterLoRA, OutVec (the Q shift)
+  hooks        ExtDelta (the ext-row delta)
   readers      detector + two OCR readers, contact sheets
   bubble       bubble flood-mask geometry (mask / interior / bbox)
-  render/flat  font layouts: find_fonts, sample_layout, render_string, crop_bubble
+  render/flat  font layouts: find_fonts, sample_layout, render_string
   render/scene the S-line compositor: JA text drawn into a generated scene's bubble
 
 Importing any ``common.*`` module runs the bootstrap below: the repo root
@@ -17,8 +17,8 @@ Importing any ``common.*`` module runs the bootstrap below: the repo root
 ``src/`` holds generic top-level names (``train`` ``eval`` ``bench`` ``cli``)
 and the repo root has ``train.py`` and ``bench/``.
 
-Torch is imported only by the modules that need it, so ``--stage data``
-stays CPU-only.
+Torch is imported only by the modules that need it, so the data resolvers
+(``data/``) stay CPU-only.
 """
 
 import sys
