@@ -196,3 +196,38 @@ Read by `product_criteria.md`: Axis 1 on the five strings (こんにちは / お
 sheet against the seed. Dev vs acceptance: this run's strings *are* the
 acceptance set — the first freeze read is a go / no-go on the design, not a
 share choice; the `word` group (18 of the 300) is the dev-side exact ruler.
+
+### 4a. Result (2026-09-25 evening) — nothing bought, at any displacement
+
+Job `20260925-144054-bcf21e` (the first launch, `…-141129-9171b5`, trained
+35 rows — `inventory_ext` read the inventory off the eval sample; fixed,
+`e1ff8719`). 300 rows, 27 000 steps, 2.32 it/s; drift 0.79 (2 500) →
+1.39 (5 000) → 1.74 (12 500, plateau) → 1.66 (end), cos 0.49, norm ×1.38.
+Every 5 k table kept under `rows_scale_joint0507_0305_run0925_300f/intermediate/`.
+
+| ruler | step 5 000 (drift 1.39) | step 27 000 (drift 1.66) |
+|---|---|---|
+| `native_sent` はい / おしい / やったネ / ちょっと来い / こんにちは (of 16) | 2 / 2 / 0 / 0 / 0 = 4/80 | 3 / 2 / 0 / 0 / 0 = 5/80 |
+| `target` (verbatim, 14) | – | 0/14 |
+| `word` exact (18 × 2) | 3/36 | 4/36 |
+| `en` | 24/24 | 24/24 |
+| frozen あ / い native en·swap (of 16) | – | 14·14 / 9·7 (seed 14·15 / 11·8) |
+
+The reads are the doubling signature grown into **fake dialogue lines**
+(こんにちは → こんはこんちは / がほがはいくにはしてまは。/ スムリにたの歩音は;
+やったネ → ややったたたーう), already at 5 000 — not an overshoot. On the
+sheet the page and the bubble hold (no new paste beyond the seed's flat
+backgrounds) and the bubble carries a 14–22 px line of pseudo-Japanese:
+the **wipe** shape of `product_criteria.md`. The frozen singles read as
+the seed (±2 = the render noise floor). No seed floor exists for the five
+strings yet (`--seed_only --eval_only sent target`, never run).
+
+Read: with the singles frozen, piece displacement on **this mix** buys no
+word at 1.4 or 1.7. The comparator that did move pieces
+(`micro_warm_0923`, 2 → 13/32) was `scene_piece` only at 0.5–0.7; here a
+piece row's draws were mostly a fragment of a `scene_sentence` /
+`scene_short` line or a `grid_string` cell, and the rows learned "a small
+line of text in the bubble". Suspect first: the sentence / short / grid
+share, not the freeze and not the budget. Next, in order: (1) the seed
+floor on the five strings; (2) the same 300 rows and freeze on
+`scene_piece`-only data (0507 + 0305 tiers, no sentence / short / grid).

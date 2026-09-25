@@ -78,8 +78,10 @@ report's drift column is per warm-from table, so the chain's pieces are at
 (not 0.55) — that arm bought the comparator's displacement without its hits,
 so "more steps/row" is not the open branch; the freeze arm is. Row exposure
 is grid-dominated (a piece row: 313 `scene_piece` vs 622–1 664 `grid_string`
-items per stage dir). Next: pieces trained alone with the singles frozen as
-`context = "seed"` (`next.md` A-F). `product_criteria.md` now splits a dev
+items per stage dir). Pieces trained alone with the singles frozen (`run0925_300f`, 300 pieces,
+`next.md` § 4a): **nothing bought** at drift 1.4 or 1.7 — the rows learned a
+fake dialogue line, not the word; suspect the sentence / short / grid share.
+Next: the seed floor on the five strings, then `scene_piece`-only data. `product_criteria.md` now splits a dev
 set (choose arms) from the acceptance set (accept one). The paragraph below
 is the state before that read.
 
