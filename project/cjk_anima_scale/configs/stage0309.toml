@@ -1,4 +1,4 @@
-# stage0309 — the consolidation pass (design.md § 2): everything, mixed, at
+# stage0309 — the consolidation pass (design.md § 2): sentences and pieces at
 # natural sizes over the whole live range; the sentence run's role, with a
 # low anchor so the rows compose without leaving where the band stages put
 # them. No band gate. Whether this is accumulate or a merge of per-band
@@ -20,36 +20,18 @@ horizontal_frac = 0.3                       # multi-glyph items (scene) / cells 
 short_pieces = "2-5"
 sentence_min_letters = 6
 
-[[data.mix]]
-recipe = "scene_single"
-share = 0.1
-fill = 0.7
-min_glyph = 28
-
-[[data.mix]]
-recipe = "grid_single"
-share = 0.1
-grids = "1x1:1,2x2:1,3x3:1,2x3:1,3x2:1"
-fill = [0.15, 0.8]
-
-[[data.mix]]
-recipe = "scene_piece"
-share = 0.2
-fill = [0.7, 1.0]
-min_glyph = 28
-
-[[data.mix]]
-recipe = "scene_short"
-share = 0.3
-min_glyph = 28
-fill = 0.7
-
-[[data.mix]]
+[[data.mix]]                                # sentences + pieces only (user, 2026-09-24): no single / grid / short draws here
 recipe = "scene_sentence"
-share = 0.3
+share = 0.7
 min_glyph = [16, 28]
 fill = 0.9
 max_lines = 2
+
+[[data.mix]]
+recipe = "scene_piece"
+share = 0.3
+fill = [0.7, 1.0]
+min_glyph = 28
 
 [train]
 batch = 4
@@ -60,6 +42,7 @@ init_anchor = 0.1                           # step 2's μ (warm_cos 0.996 at 30 
 box_share = 0.05                            # step 2's values; log up to the cap at box_share_glyphs
 box_share_cap = 0.25
 box_share_glyphs = 8
+grid_box = 1                                # grid cells' union as the loss box (loss.py; user, 2026-09-25: joint j90 μ0 gbox vs plain — single 26 vs 24, native 36/29 vs 33/23, pieces +15 % drift, en held; 0 = the plain-MSE grid of every arm before)
 compile = 1
 save_every = 5000
 
@@ -71,3 +54,5 @@ seeds = 2
 cf_sense = true
 cf_rows = "single"
 regress = ["stage0709", "stage0507", "stage0305"]
+sent_strings = "はい,おしい,やったネ,ちょっと来い"   # multi-glyph native (the probe's `--eval_tag sent`), en clause
+target = true                               # the user's verbatim captions (はい / こんにちは)

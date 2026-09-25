@@ -244,9 +244,13 @@ def build_pools(cfg, out: Path, rng: random.Random) -> Pools:
                 return "short"
             return None
 
+        line_ok = inv.piece_ok
+        context = cfg.context_table()
+        if context is not None:
+            line_ok = _context_line_ok(inv.piece_ok, tokq, context)
         train_set = set()
         for t, b, _n in plines:
-            if not inv.piece_ok(t):
+            if not line_ok(t):
                 continue
             k = kind_of(t)
             if k is None:
@@ -309,6 +313,42 @@ def build_pools(cfg, out: Path, rng: random.Random) -> Pools:
         stroke=float(d["stroke"]),
         horizontal_frac=float(d["horizontal_frac"]),
     )
+
+
+def _context_line_ok(piece_ok, tokq, context: Path):
+    """``context = "seed"``: a line is drawable when every piece has a row
+    that is either an inventory row or a row of the context table (it rides
+    frozen at that value), and at least one piece is the inventory's — a
+    line of context rows only trains nothing."""
+    import torch
+
+    from data.inventory import pieces as qpieces
+
+    ctx = {
+        int(e)
+        for e in torch.load(context, map_location="cpu", weights_only=False)["delta"][
+            "ext_ids"
+        ]
+    }
+    tok, qmap = tokq
+    own: dict = {}
+
+    def ok(text: str) -> bool:
+        hit = False
+        for p, row in qpieces(tok, qmap, text):
+            if row is None:
+                return False
+            mine = own.get(p)
+            if mine is None:
+                mine = own[p] = piece_ok(p)
+            if mine:
+                hit = True
+            elif row not in ctx:
+                return False
+        return hit
+
+    print(f"phrase lines: context rows from {context} ({len(ctx)} rows)", flush=True)
+    return ok
 
 
 # ----------------------------------------------------------------------------

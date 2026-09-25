@@ -356,3 +356,41 @@ def test_stage_table_carries_the_inventory():
     assert inv == {186, 26585}
     touched = {186, 58974}
     assert touched | inv == {186, 26585, 58974}
+
+
+def test_grid_box_union_mask():
+    """grid_box: a grid item's cells become the loss box (union); off, and for
+    a flat 1×1, the item is the plain canvas mean."""
+    import torch
+
+    from cjk_scale.loss import box_mask, box_share_fm_loss, item_boxes
+
+    scene = {"layout": "scene", "src": "scene", "text": "聞", "box": [64, 64, 128, 128]}
+    grid = {
+        "layout": "grid",
+        "src": "grid",
+        "text": "はじ ファ",
+        "boxes": [[0, 0, 64, 32], [128, 128, 192, 160]],
+    }
+    flat = {"layout": "flat", "src": "font", "text": "口", "boxes": [[32, 32, 224, 224]]}
+    assert item_boxes(scene, False) == [[64, 64, 128, 128]] == item_boxes(scene, True)
+    assert item_boxes(grid, False) == [] and item_boxes(grid, True) == grid["boxes"]
+    assert item_boxes(flat, False) == [] == item_boxes(flat, True)
+    m = box_mask((3, 4, 32, 32), [scene, grid, flat], "cpu", grid_box=True)
+    assert m[0].sum() == 8 * 8 and m[1].sum() == 8 * 4 + 8 * 4 and m[2].sum() == 0
+    assert box_mask((3, 4, 32, 32), [scene, grid, flat], "cpu", grid_box=False)[1].sum() == 0
+    g = torch.Generator().manual_seed(0)
+    pred = torch.randn(1, 4, 32, 32, generator=g)
+    target = torch.zeros_like(pred)
+    plain = ((pred - target) ** 2).mean()
+    off = box_share_fm_loss(pred, target, [grid], 0.25, 0.5, 8, grid_box=False)
+    on = box_share_fm_loss(pred, target, [grid], 0.25, 0.5, 8, grid_box=True)
+    assert torch.isclose(off, plain)
+    se = ((pred - target) ** 2).mean(dim=1)[0]
+    m1 = box_mask((1, 4, 32, 32), [grid], "cpu", grid_box=True)[0, 0].bool()
+    s = 0.25 + 0.25 * (torch.log(torch.tensor(4.0)) / torch.log(torch.tensor(8.0)))
+    want = s * se[m1].mean() + (1 - s) * se[~m1].mean()
+    assert torch.isclose(on, want, atol=1e-6)
+    assert torch.isclose(
+        box_share_fm_loss(pred, target, [flat], 0.25, 0.5, 8, grid_box=True), plain
+    )

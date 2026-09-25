@@ -67,6 +67,7 @@ init_anchor = 0.1                           # μ to the previous stage (user, 20
 box_share = 0.25                            # single glyph's in-box share; log up to …
 box_share_cap = 0.5                         # … the cap, at …
 box_share_glyphs = 8                        # … this many glyphs (loss.py)
+grid_box = 1                                # grid cells' union as the loss box (loss.py; user, 2026-09-25: joint j90 μ0 gbox vs plain — single 26 vs 24, native 36/29 vs 33/23, pieces +15 % drift, en held; 0 = the plain-MSE grid of every arm before)
 compile = 1
 save_every = 5000
 

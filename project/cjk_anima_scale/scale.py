@@ -6,6 +6,10 @@
     scale.py --run run_full --stage stage0709 --steps bake
     scale.py --stage stage0507 --tag bp --steps data boxprobe --n_items 240
         --warm_from output/cjk_anima_scale/rows_step1_0921_merged/trained.pt   # gradient read, no training
+    scale.py --run run0923_micro --tag run0923_micro_b30 --stage joint --steps data train eval
+        # the joint stage: the three band stages' data dirs merged, σ per item from its stage's band
+    scale.py --run run0923_micro --tag run0923_micro_b30 --steps conflict          # do the band stages pull a
+        [--conflict_stages stage0709 stage0507 stage0305] [--probe_items 600]     # row the same way (no training)
     scale.py windows                                               # the band law
     scale.py stages | runs                                         # the configs
 
@@ -16,7 +20,7 @@ the tag every stage dir carries, and ``warm_from = "<stage>"`` resolves to
 that stage's table under it (``--tag`` alone runs a stage without a run
 file — smoke builds). Steps: ``data`` (CPU: renders +
 ``train.jsonl`` / ``eval.json``), ``train`` (GPU), ``eval`` (GPU: exact /
-native / cf_sense + the regression check), ``bake``.
+native / cf_sense / sent / target + the regression check), ``bake``.
 
 ``--submit`` enqueues this same command on the daemon (agent-launched GPU
 work must go through it) and records it in ``runs/ledger.jsonl``; the
@@ -36,7 +40,7 @@ from cjk_scale.paths import REPO, bootstrap  # noqa: E402
 
 bootstrap()
 
-STEPS = ("data", "train", "eval", "bake", "boxprobe")
+STEPS = ("data", "train", "eval", "bake", "boxprobe", "conflict")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -74,13 +78,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--train_steps", type=int, help="override [train].train_steps")
     p.add_argument("--steps_per_row", type=int, help="override [train].steps_per_row")
     p.add_argument("--init_anchor", type=float, help="override [train].init_anchor")
+    p.add_argument("--lr_rows", type=float, help="override [train].lr_rows")
+    p.add_argument(
+        "--grid_box",
+        type=int,
+        help="override [train].grid_box: 1 = grid items take their cells' union as the loss box",
+    )
     p.add_argument("--batch", type=int)
     p.add_argument("--compile", type=int)
     # eval
     p.add_argument(
         "--eval_only",
         nargs="+",
-        choices=["eval", "native", "cf_sense"],
+        choices=["eval", "native", "cf_sense", "sent", "target"],
         help="run a subset of the rulers",
     )
     p.add_argument(
@@ -103,7 +113,25 @@ def build_parser() -> argparse.ArgumentParser:
         "--probe_items",
         type=int,
         default=0,
-        help="boxprobe: cap on scene items (0 = all)",
+        help="boxprobe: cap on scene items (0 = all); conflict: items per stage (default 600)",
+    )
+    p.add_argument(
+        "--conflict_stages",
+        nargs="+",
+        default=["stage0709", "stage0507", "stage0305"],
+        help="conflict: the stages whose data gradients are compared, in chain order "
+        "(a stage may repeat with another --conflict_bands entry)",
+    )
+    p.add_argument(
+        "--conflict_bands",
+        nargs="+",
+        help="conflict: per stage, 'lo:hi' to read its data at that σ band, or '-' for its own",
+    )
+    p.add_argument(
+        "--conflict_recipes", nargs="+", help="conflict: keep only items of these recipes"
+    )
+    p.add_argument(
+        "--conflict_tag", default="", help="conflict: suffix for the output dir"
     )
     # daemon
     p.add_argument(
@@ -164,6 +192,8 @@ def main(argv=None):
         return
     if a.run and not a.tag:
         a.tag = Path(a.run).stem
+    if not a.stage and a.steps == ["conflict"]:
+        a.stage = a.conflict_stages[0]
     assert a.stage and a.tag, "--stage and --run (or --tag) are required"
     if a.submit:
         return submit(a)
@@ -172,10 +202,40 @@ def main(argv=None):
     cfg = load(a.stage, a.run)
     for step in a.steps:
         print(f"===== {cfg.stage} / {a.tag}: {step}", flush=True)
-        if step == "data":
+        if step == "data" and cfg.joint_from:
+            from cjk_scale.joint import merge
+
+            merge(cfg, a.tag)
+        elif step == "data":
             from cjk_scale.builder import build
 
             build(cfg, a.tag, n_items=a.n_items, seed=a.seed, workers=a.workers)
+        elif step == "conflict":
+            from cjk_scale.conflict import probe as conflict
+
+            first = load(a.conflict_stages[0], a.run)
+            warm = first.warm_table(a.tag)
+            if a.warm_from:
+                warm = None if a.warm_from == "cold" else REPO / a.warm_from
+            bands = None
+            if a.conflict_bands:
+                bands = [
+                    None if b == "-" else tuple(float(x) for x in b.split(":"))
+                    for b in a.conflict_bands
+                ]
+            conflict(
+                a.conflict_stages,
+                a.run,
+                a.tag,
+                warm=warm,
+                items=a.probe_items or 600,
+                draws=a.probe_draws,
+                seed=a.seed or 0,
+                bands=bands,
+                recipes=a.conflict_recipes,
+                grid_box=a.grid_box,
+                out_tag=a.conflict_tag,
+            )
         elif step in ("train", "boxprobe"):
             warm = cfg.warm_table(a.tag)
             if a.warm_from:
@@ -208,6 +268,8 @@ def main(argv=None):
                     "train_steps",
                     "steps_per_row",
                     "init_anchor",
+                    "lr_rows",
+                    "grid_box",
                     "batch",
                     "compile",
                     "seed",
@@ -216,12 +278,12 @@ def main(argv=None):
             }
             train(cfg, a.tag, warm=warm, overrides=ov)
         elif step == "eval":
-            from cjk_scale.eval import run
+            from cjk_scale.eval import RULERS, run
 
             run(
                 cfg,
                 a.tag,
-                which=tuple(a.eval_only or ("eval", "native", "cf_sense")),
+                which=tuple(a.eval_only or RULERS),
                 extra=a.eval_extra,
                 seed_only=a.seed_only,
             )

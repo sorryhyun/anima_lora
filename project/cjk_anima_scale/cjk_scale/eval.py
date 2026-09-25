@@ -5,6 +5,13 @@ number is on the ruler the reads of record used.
   native    ``native``: the fixed row sample on scene prompts, ``en`` / ``swap``
   cf_sense  ``cf_sense --cf_lang ja``: the trained rows' caption leverage by σ —
             does it land in the band the stage trained in
+  sent      ``native --eval_tag sent``: ``sent_strings`` (multi-glyph) × ``en``
+  target    ``target``: the user's verbatim captions (はい / こんにちは)
+
+A run with ``context = "seed"`` reads every ruler on the overlay — the
+seed table with this table's rows on top — under
+``rows_scale_<stage>_<tag>_ctx/`` (``--arm_tag ctx``): a string's pieces
+outside the inventory render as they rode in training, not as raw pack rows.
 
 The probe stages open ``data_scale_<stage>_<tag>`` / ``rows_scale_<stage>_<tag>``
 through their own ``--data_tag``, so nothing is copied. The warm-chain
@@ -67,10 +74,13 @@ def probe_args(
     return build_parser(STAGES).parse_args(argv)
 
 
+RULERS = ("eval", "native", "cf_sense", "sent", "target")
+
+
 def run(
     cfg: StageConfig,
     tag: str,
-    which=("eval", "native", "cf_sense"),
+    which=("eval", "native", "cf_sense", "sent", "target"),
     extra=None,
     seed_only: bool = False,
 ) -> None:
@@ -80,22 +90,95 @@ def run(
     if seed_only:
         out = seed_wrapper(cfg, tag)
         extra += ["--arm_tag", SEED_ARM_TAG]
+    elif cfg.context_table() is not None:
+        out = context_wrapper(cfg, tag)
+        extra += ["--arm_tag", CTX_ARM_TAG]
     else:
         out = arm_dir(cfg.stage, tag)
     assert (out / "trained.pt").exists(), f"no table at {out / 'trained.pt'}"
-    which = [w for w in which if w != "cf_sense" or cfg.eval["cf_sense"]]
-    a = probe_args(cfg, tag, which, extra)
+    e = cfg.eval
+    which = [
+        w
+        for w in which
+        if (w != "cf_sense" or e["cf_sense"])
+        and (w != "sent" or e["sent_strings"])
+        and (w != "target" or e["target"])
+    ]
+    probe = [w for w in which if w not in ("sent",)]
+    a = probe_args(cfg, tag, probe, extra)
     for name in which:
         print(
             f"===== {cfg.stage} eval{' (seed)' if seed_only else ''}: {name}",
             flush=True,
         )
-        run_stage(name, a)
-    if not seed_only:
-        regress(cfg, tag)
+        if name == "sent":
+            s = probe_args(
+                cfg,
+                tag,
+                ["native"],
+                extra
+                + [
+                    "--eval_tag",
+                    "sent",
+                    "--native_chars",
+                    str(e["sent_strings"]),
+                    "--native_clauses",
+                    "en",
+                ],
+            )
+            run_stage("native", s)
+        else:
+            run_stage(name, a)
+    if not seed_only and "eval" in which:
+        regress(cfg, tag, out)
 
 
 SEED_ARM_TAG = "seed"
+CTX_ARM_TAG = "ctx"
+
+
+def context_wrapper(cfg: StageConfig, tag: str) -> Path:
+    """``rows_scale_<stage>_<tag>_ctx/trained.pt``: the context (seed) table
+    with this stage's rows on top, in this table's ``row_scale`` (the
+    ``merge_tables`` rescale). Rebuilt on every eval — the stage table may
+    have been retrained since."""
+    import torch
+
+    ctx_path = cfg.context_table()
+    own = torch.load(
+        arm_dir(cfg.stage, tag) / "trained.pt", map_location="cpu", weights_only=False
+    )
+    ctx = torch.load(ctx_path, map_location="cpu", weights_only=False)
+    rs = float(own["delta"]["row_scale"])
+    k = float(ctx["delta"]["row_scale"]) / rs
+    rows = {
+        int(e): r.float() * k for e, r in zip(ctx["delta"]["ext_ids"], ctx["delta"]["raw"])
+    }
+    n_ctx = len(rows)
+    for e, r in zip(own["delta"]["ext_ids"], own["delta"]["raw"]):
+        rows[int(e)] = r.float()
+    ids = sorted(rows)
+    out = arm_dir(cfg.stage, f"{tag}_{CTX_ARM_TAG}")
+    out.mkdir(parents=True, exist_ok=True)
+    sd = {
+        **{k2: v for k2, v in own.items() if k2 != "delta"},
+        "delta": {
+            **own["delta"],
+            "ext_ids": ids,
+            "raw": torch.stack([rows[e] for e in ids]),
+            "row_scale": rs,
+        },
+        "context": str(ctx_path),
+        "context_rows": n_ctx,
+    }
+    torch.save(sd, out / "trained.pt")
+    print(
+        f"context wrapper: {len(own['delta']['ext_ids'])} stage rows over "
+        f"{n_ctx} context rows ({ctx_path}, × {k:.4f}) → {out / 'trained.pt'} "
+        f"({len(ids)} rows)",
+        flush=True,
+    )
+    return out
 
 
 def seed_arm_dir(cfg: StageConfig, tag: str) -> Path:
@@ -176,18 +259,24 @@ def exact_by_group(arm: Path) -> dict:
     return {k: (v[0], v[1], frozenset(v[2])) for k, v in agg.items()}
 
 
-def regress(cfg: StageConfig, tag: str) -> dict:
+def regress(cfg: StageConfig, tag: str, here: Path | None = None) -> dict:
     """The warm-chain check (design § 5): the earlier stages' exact groups,
     read on this table vs on theirs. Writes ``regress.json`` in the arm
-    dir and prints one line per (stage, group)."""
-    here = arm_dir(cfg.stage, tag)
+    dir the rulers wrote to (``here``; a context run's ``_ctx`` dir, read
+    against the earlier stages' ``_ctx`` dirs when they have one) and prints
+    one line per (stage, group)."""
+    here = here or arm_dir(cfg.stage, tag)
     mine = exact_by_group(here)
+    ctx = here.name.endswith(f"_{CTX_ARM_TAG}")
     out: dict = {}
     for prev in cfg.eval.get("regress", []):
-        theirs = exact_by_group(arm_dir(prev, tag))
+        pdir = arm_dir(prev, tag)
+        if ctx and (arm_dir(prev, f"{tag}_{CTX_ARM_TAG}") / "eval_reads.json").exists():
+            pdir = arm_dir(prev, f"{tag}_{CTX_ARM_TAG}")
+        theirs = exact_by_group(pdir)
         if not theirs:
             print(
-                f"regress vs {prev}: no eval_reads.json under {arm_dir(prev, tag)}",
+                f"regress vs {prev}: no eval_reads.json under {pdir}",
                 flush=True,
             )
             continue

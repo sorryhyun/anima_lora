@@ -25,14 +25,23 @@ Stage file keys:
     [train]                   # the trainer surface (steps_per_row comes from the run's [budget])
     batch, lr_rows, lr_decay, lr_warmup_ratio, init_anchor, box_share, box_share_cap, compile, save_every
 
+    joint_from = ["stage0709", "stage0507", "stage0305"]   # a joint stage (no [[data.mix]]): its data
+                              # step merges those stages' built dirs under the same tag, every item
+                              # keeping its stage's band; train draws σ per item (cjk_scale/joint.py)
+
     [eval]
-    groups, native_chars, native_clauses, seeds, cf_sense (bool), cf_rows, regress (list of stages)
+    groups, native_chars, native_clauses, seeds, cf_sense (bool), cf_rows, regress (list of stages),
+    sent_strings (multi-glyph native, `native_sent/`; "" = off), target (bool: the user's
+    verbatim target captions, `target/`)
 
 Run file keys:
 
     run = "run0923_micro"     # = the tag
     seed_table = "output/…/trained.pt"   # what a stage with warm_from = "" starts from
     seed = 0                  # data draw + train seed
+    context = "seed"          # optional: rows outside the inventory ride at their seed_table
+                              # value — frozen in training, overlaid at eval (`_ctx` arm dir);
+                              # corpus lines may carry them ("" = off: inventory rows only)
 
     [data]                    # units, pieces, phrase_file, n_items (+ any [data] key, over the stage's)
     [budget]                  # <stage> = steps per row
@@ -74,6 +83,7 @@ _TRAIN_DEFAULTS = {
     "box_share": 0.25,  # in-box share at one glyph (loss.py: log in the glyph count)
     "box_share_cap": 0.5,  # the ceiling …
     "box_share_glyphs": 8,  # … reached at this many glyphs
+    "grid_box": 1,  # grid items take their cells' union as the loss box (loss.py); 0 = plain MSE (arms before 2026-09-25)
     "compile": 1,
     "seed": 0,
     "save_every": 5000,
@@ -88,6 +98,8 @@ _EVAL_DEFAULTS = {
     "cf_sense": True,
     "cf_rows": "single",
     "regress": [],
+    "sent_strings": "",  # multi-glyph native strings (en clause), e.g. はい,おしい,やったネ,ちょっと来い
+    "target": False,  # the probe's `target` stage on its default captions (はい / こんにちは)
 }
 _DATA_DEFAULTS = {
     "seed": 0,
@@ -126,6 +138,7 @@ class RunConfig:
     path: Path
     seed_table: str  # "" = cold
     seed: int | None
+    context: str  # "" | "seed": rows outside the inventory ride at their seed_table value
     data: dict
     budget: dict  # stage → steps per row
     train: dict
@@ -145,6 +158,7 @@ class StageConfig:
     eval: dict
     path: Path
     run: RunConfig | None = None
+    joint_from: tuple = ()  # a joint stage: the stages whose built data dirs it merges (cjk_scale/joint.py)
 
     def warm_table(self, tag: str) -> Path | None:
         """``warm_from`` → the table to start from: a stage name is that
@@ -158,6 +172,16 @@ class StageConfig:
         if "/" not in w and not w.endswith(".pt"):
             return arm_dir(w, tag) / "trained.pt"
         p = Path(os.path.expanduser(os.path.expandvars(w)))
+        return p if p.is_absolute() else REPO / p
+
+    def context_table(self) -> Path | None:
+        """The table whose rows ride frozen outside the inventory — the
+        run's ``seed_table`` when the run sets ``context = "seed"``."""
+        if not (self.run and self.run.context):
+            return None
+        assert self.run.context == "seed", f"context {self.run.context!r}: '' or 'seed'"
+        assert self.run.seed_table, f"{self.run.path}: context = 'seed' needs a seed_table"
+        p = Path(os.path.expanduser(os.path.expandvars(self.run.seed_table)))
         return p if p.is_absolute() else REPO / p
 
     def train_steps(self, n_rows: int) -> int:
@@ -204,6 +228,7 @@ def load_run(run: str) -> RunConfig:
         path=path,
         seed_table=str(raw.get("seed_table", "")),
         seed=None if seed is None else int(seed),
+        context=str(raw.get("context", "")),
         data=dict(raw.get("data", {})),
         budget=budget,
         train=train,
@@ -234,10 +259,12 @@ def load(stage: str, run: str | RunConfig | None = None) -> StageConfig:
         )
         for m in raw.get("data", {}).get("mix", [])
     ]
-    assert mix, f"{path}: [[data.mix]] is empty"
+    joint_from = tuple(str(x) for x in raw.get("joint_from", []))
+    assert mix or joint_from, f"{path}: [[data.mix]] is empty"
+    assert not (mix and joint_from), f"{path}: a joint stage has no [[data.mix]]"
     for m in mix:
         assert m.name in RECIPES, f"{path}: recipe {m.name!r}: one of {RECIPES}"
-    assert abs(sum(m.share for m in mix) - 1.0) < 1e-6, (
+    assert joint_from or abs(sum(m.share for m in mix) - 1.0) < 1e-6, (
         f"{path}: recipe shares sum to {sum(m.share for m in mix)}"
     )
     stage_train = dict(raw.get("train", {}))
@@ -271,4 +298,5 @@ def load(stage: str, run: str | RunConfig | None = None) -> StageConfig:
         eval=ev,
         path=path,
         run=rc,
+        joint_from=joint_from,
     )

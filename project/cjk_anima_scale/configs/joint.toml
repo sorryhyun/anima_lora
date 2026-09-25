@@ -1,0 +1,34 @@
+# joint — the three band stages' data in one run (conflict_result.md): the
+# stages' built data dirs merged under the same tag, every item keeping its
+# stage's band, σ drawn per item inside it. No band gate of its own, no
+# recipe mix — `joint_from` names whose data it takes. Warm from the run's
+# seed table, one anchor to it. Steps per row = the run's [budget].joint (the
+# chain's stages summed for an equal-budget read).
+
+stage = "joint"
+band = [0.3, 0.9]                           # the envelope the items' bands lie in (log / cf_sense); not a draw band
+gate = "none"
+warm_from = ""                              # the run's seed_table
+joint_from = ["stage0709", "stage0507", "stage0305"]
+
+[train]
+batch = 4
+lr_rows = 1e-3
+lr_decay = "cosine"
+lr_warmup_ratio = 0.1
+init_anchor = 0.1                           # the chain's μ, to the seed table
+box_share = 0.25
+box_share_cap = 0.5
+box_share_glyphs = 8
+grid_box = 1                                # grid cells' union as the loss box (loss.py; user, 2026-09-25: joint j90 μ0 gbox vs plain — single 26 vs 24, native 36/29 vs 33/23, pieces +15 % drift, en held; 0 = the plain-MSE grid of every arm before)
+compile = 1
+save_every = 5000
+
+[eval]
+groups = "single,single_ext,single_small,single_kanji,single_extra,word,short,short_held,phrase,phrase_held,en"
+native_chars = "あ,か,す,日"
+native_clauses = "en,swap"
+seeds = 2
+cf_sense = true
+cf_rows = "piece"
+regress = []

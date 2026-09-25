@@ -14,6 +14,12 @@ at its warm value instead of falling out of the table and coming up cold in
 the next stage. ``touched`` are the rows with draws: the norm pull applies to
 them only, so an untouched row is exact (zero FM gradient, zero pull,
 ``weight_decay`` 0 → Adam leaves it).
+
+``frozen`` rows (a run with ``context = "seed"``) are the rows outside the
+inventory that a corpus line carries: they sit in the hook at their
+``context`` table value so the line renders as it would on the seed, get a
+zero gradient, no anchor, no pull, and are stripped from ``trained.pt`` —
+the table stays the inventory's; eval overlays the same context back.
 """
 
 from __future__ import annotations
@@ -37,12 +43,15 @@ class RowTable:
         free_residual,
         lr,
         touched=None,
+        frozen=(),
+        context=None,
     ):
         from common.hooks import ExtDelta
 
         table_ext = set(int(e) for e in table_ext)
         touched = table_ext if touched is None else set(int(e) for e in touched)
         assert touched <= table_ext, "touched rows must be in the table"
+        frozen = set(int(e) for e in frozen) - table_ext
         rows = pack.table[sorted(table_ext)].float()
         self.row_scale = float(rows.norm(dim=1).mean())
         dim = rows.shape[1]
@@ -55,10 +64,15 @@ class RowTable:
         self.device = device
         self.init_anchor = float(init_anchor)
         self.free_residual = float(free_residual)
-        self.delta = ExtDelta(anima, table_ext, dim, device, self.row_scale)
+        self.delta = ExtDelta(anima, table_ext | frozen, dim, device, self.row_scale)
         self.params = [{"params": [self.delta.raw], "lr": lr}]
         self.touched_mask = torch.tensor(
             [int(e) in touched for e in self.delta.ext_ids],
+            dtype=torch.bool,
+            device=device,
+        )
+        self.frozen_mask = torch.tensor(
+            [int(e) in frozen for e in self.delta.ext_ids],
             dtype=torch.bool,
             device=device,
         )
@@ -67,8 +81,19 @@ class RowTable:
         )
         self.raw0 = None
         self.warm_from = ""
+        self.context = ""
+        self.n_context = 0
         if warm:
             self._warm_start(warm)
+        if frozen:
+            self._context(context)
+            live = (~self.frozen_mask).float()[:, None]
+            self.delta.raw.register_hook(lambda g: g * live)
+
+    @property
+    def n_rows(self) -> int:
+        """Trainable rows (the table's); frozen context rows do not count."""
+        return int((~self.frozen_mask).sum())
 
     # -- warm chain ----------------------------------------------------------
 
@@ -88,7 +113,7 @@ class RowTable:
         with torch.no_grad():
             for i, e in enumerate(self.delta.ext_ids):
                 j = src_idx.get(int(e))
-                if j is None:
+                if j is None or bool(self.frozen_mask[i]):
                     continue
                 row = src_raw[j]
                 if common is not None:
@@ -98,10 +123,10 @@ class RowTable:
                 n_warm += 1
         self.raw0 = self.delta.raw.detach().clone()
         self.warm_from = str(path)
-        dn = self.delta.raw.detach().norm(dim=1)
-        cold = len(self.delta.ext_ids) - n_warm
+        dn = self.delta.raw.detach()[~self.frozen_mask].norm(dim=1)
+        cold = self.n_rows - n_warm
         print(
-            f"rows warm start: {n_warm}/{len(self.delta.ext_ids)} rows from {path} "
+            f"rows warm start: {n_warm}/{self.n_rows} rows from {path} "
             f"(arm {src.get('arm')}, {len(src_idx)} rows); row_scale "
             f"{'–' if src_rs is None else f'{float(src_rs):.3f}'} → {self.row_scale:.3f} "
             f"(× {k:.4f}); row norm mean {float(dn.mean()):.3f} max {float(dn.max()):.3f}"
@@ -123,6 +148,32 @@ class RowTable:
                 ),
                 flush=True,
             )
+
+    def _context(self, path):
+        """Fill the frozen rows from the context table (rescaled to this
+        table's ``row_scale``); a frozen row the context lacks stays zero —
+        the raw pack row (the builder keeps such lines out)."""
+        assert path, "frozen rows need a context table"
+        src = torch.load(path, map_location="cpu", weights_only=False)
+        src_idx = {int(e): i for i, e in enumerate(src["delta"]["ext_ids"])}
+        k = float(src["delta"]["row_scale"]) / self.row_scale
+        n = 0
+        with torch.no_grad():
+            for i, e in enumerate(self.delta.ext_ids):
+                j = src_idx.get(int(e))
+                if j is None or not bool(self.frozen_mask[i]):
+                    continue
+                self.delta.raw[i] = (src["delta"]["raw"][j].float() * k).to(self.device)
+                n += 1
+        if self.raw0 is not None:
+            self.raw0 = self.delta.raw.detach().clone()
+        self.context, self.n_context = str(path), n
+        n_frozen = int(self.frozen_mask.sum())
+        print(
+            f"rows context: {n}/{n_frozen} frozen rows from {path} (× {k:.4f})"
+            + (f"; {n_frozen - n} not in it — raw pack rows" if n < n_frozen else ""),
+            flush=True,
+        )
 
     # -- loss ----------------------------------------------------------------
 
@@ -147,7 +198,8 @@ class RowTable:
     # -- logging / export ----------------------------------------------------
 
     def log_record(self, step, loss_fm, loss, t0, extra=None) -> dict:
-        dn = (self.delta.raw.detach() * self.row_scale).norm(dim=1)
+        live = ~self.frozen_mask
+        dn = (self.delta.raw.detach()[live] * self.row_scale).norm(dim=1)
         rec = {
             "step": step,
             "loss": float(loss_fm),
@@ -170,14 +222,25 @@ class RowTable:
     def state_dict(self, args: dict, step: int | None = None) -> dict:
         """The probe's ``trained.pt`` shape: ``delta`` (ExtDelta state),
         ``arm`` ``rows``, ``args`` (this run's record), ``killed`` ``""``."""
+        delta = self.delta.state_dict()
+        if bool(self.frozen_mask.any()):
+            keep = (~self.frozen_mask).cpu()
+            delta = {
+                **delta,
+                "ext_ids": [e for e, k in zip(delta["ext_ids"], keep.tolist()) if k],
+                "raw": delta["raw"][keep].clone(),
+            }
         sd = {
-            "delta": self.delta.state_dict(),
+            "delta": delta,
             "arm": "rows",
             "args": {**args, "init_rows": self.warm_from},
             "killed": "",
             "warm_rows": int(self.warm_mask.sum()),
             "touched_rows": int(self.touched_mask.sum()),
         }
+        if self.context:
+            sd["context"] = self.context
+            sd["context_rows"] = self.n_context
         if step is not None:
             sd["step"] = step
         return sd

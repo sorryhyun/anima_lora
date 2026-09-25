@@ -44,12 +44,45 @@ A new read that changes a row of the law goes into
 | [`design.md`](design.md) | the scale pipeline: stage schedule, data builder, thin trainer, open questions (§ 6) |
 | [`plan_canvas.md`](plan_canvas.md) | plan only — does the law hold on a ~500-token canvas (2× throughput) |
 | [`micro_chain_result.md`](micro_chain_result.md) | **the first run of the chain** — the three band stages at 30 / 30 / 30 on 24 warm rows (8 kana + 8 kanji + 8 pieces), read rule by rule; the seed-baseline and table-membership tool changes it forced |
+| `reports/` | dated reads: [`conflict_joint_2026_09_25.md`](reports/conflict_joint_2026_09_25.md) — the gradient conflict probe + ten chain / joint arms on one data set: chain ≡ joint, steps/row is not the budget, singles and pieces want opposite regimes; [`grid_box_2026_09_25.md`](reports/grid_box_2026_09_25.md) — grid cells as the loss box: the `grid_string` price ×8–19, warm singles unmoved |
+| [`idea.md`](idea.md) | not scheduled — a per-cell gradient bank + validation-influence price in place of `‖ḡ‖·coh` and trained arms, the matched-σ sweep that would tell band from weighting; from the 2026-09-25 outside review |
+| `configs/joint.toml` | the joint stage — the band stages' data dirs merged, σ per item from its stage's band (`cjk_scale/joint.py`, `train.py::noisy_by_band`) |
 | `configs/stage*.toml` | the four stages — the band recipes: band, gate, warm chain, recipe mix, trainer surface, eval; never which rows |
 | `configs/runs/*.toml` | the runs — which rows, the seed table, steps per row per stage: `run_full` (production), `run0923_micro` (the 24-row chain read) |
 | `cjk_scale/` | the code (`windows` = the law, `recipes` + `builder` = data, `rows` + `train`, `eval`, `bake`, `ledger`); `scale.py` is the front door |
 | `runs/` | `ledger.jsonl` — every submitted job |
 
-## Where it stands (2026-09-24)
+## Where it stands (2026-09-25)
+
+**Grid items now train under the box-share loss**
+([`reports/grid_box_2026_09_25.md`](reports/grid_box_2026_09_25.md)): every
+grid draw before this date was the plain canvas mean, a 24–32 px cell ≈ 0.3–0.8 %
+of it — the price table's 10–60 × `grid_string` gap was the loss form.
+`grid_box = 1` (all stage files) takes the cells' union as the box:
+`grid_string` buys a piece row a quarter to a third of `scene_piece` per
+draw (parity per item), and matches it at 0.7–0.9; warm singles' grid
+gradient is unchanged (no in-box residual to weight). The `next.md` § 0
+`grid_string` → 0 decision is superseded; the shares and the grid-piece
+band are open.
+
+**The chain question is closed** ([`reports/conflict_joint_2026_09_25.md`](reports/conflict_joint_2026_09_25.md)):
+the band stages' gradients agree per row (a training-free read,
+`scale.py --steps conflict`), and ten arms on the same 15 000 renders —
+30 / 30 / 30, 100 / 100 / 100, joint 90 / 300, μ 0.1 / 0.01 / 0, lr 1e-3 / 1e-4
+— land within ±2 of each other whenever the rows stay near the seed (drift
+≤ 0.1), and lose native when they leave it (μ 0 / lr 1e-3, drift 0.55). What
+moves pieces is displacement ≈ 1.0 at μ 0 / lr 1e-3 (`micro_warm_0923`),
+which the seed's singles cannot ride. **Re-read 2026-09-25 (report § 6)**: the
+report's drift column is per warm-from table, so the chain's pieces are at
+0.39 vs the seed (not 0.07) and the μ 0 / lr 1e-3 joint's pieces at 0.89
+(not 0.55) — that arm bought the comparator's displacement without its hits,
+so "more steps/row" is not the open branch; the freeze arm is. Row exposure
+is grid-dominated (a piece row: 313 `scene_piece` vs 622–1 664 `grid_string`
+items per stage dir). Next: pieces trained alone with the singles frozen as
+`context = "seed"` (`next.md` A-F). `product_criteria.md` now splits a dev
+set (choose arms) from the acceptance set (accept one). The paragraph below
+is the state before that read.
+
 
 The law is written and encoded (`cjk_scale/windows.py`); the four stage
 configs, the data builder with the band gate, the thin trainer, the eval

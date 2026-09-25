@@ -17,6 +17,7 @@ n_items = 4000                              # ≥ 2 880 draws a stage (24 rows �
 stage0709 = 30
 stage0507 = 30
 stage0305 = 30
+joint = 90                                  # the three stages' data in one run, σ per item: same total (3 × 30)
 
 [eval]
 groups = "single,word,en"                   # single = the 16 chars (kana + kanji; chars: base → the base is the eval),

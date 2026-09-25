@@ -45,6 +45,40 @@ def inventory_ext(words: dict, ev_ext: dict) -> set[int]:
     return out
 
 
+def noisy_by_band(latents, noise, bands, device):
+    """``fm_training_batch`` with σ drawn per item inside its own band: the
+    batch is split by band, each part drawn with its ``t_min`` / ``t_max``,
+    and the parts put back in batch order (a band stage's items all carry
+    the stage band, so this is the plain call there; a joint stage's items
+    carry their source stage's band — ``joint.py``)."""
+    from library.runtime.noise import fm_training_batch
+
+    groups: dict = {}
+    for k, b in enumerate(bands):
+        groups.setdefault((float(b[0]), float(b[1])), []).append(k)
+    if len(groups) == 1:
+        (lo, hi), _ = next(iter(groups.items()))
+        return fm_training_batch(
+            latents, noise, dtype=torch.bfloat16, device=device, t_min=lo, t_max=hi
+        )
+    B = latents.shape[0]
+    noisy = [None] * B
+    ts = [None] * B
+    target = [None] * B
+    for (lo, hi), ks in groups.items():
+        n_, t_, g_ = fm_training_batch(
+            latents[ks],
+            noise[ks],
+            dtype=torch.bfloat16,
+            device=device,
+            t_min=lo,
+            t_max=hi,
+        )
+        for j, k in enumerate(ks):
+            noisy[k], ts[k], target[k] = n_[j], t_[j], g_[j]
+    return torch.stack(noisy), torch.stack(ts), torch.stack(target)
+
+
 def train(
     cfg: StageConfig, tag: str, *, warm: Path | None, overrides: dict | None = None
 ) -> Path:
@@ -53,7 +87,6 @@ def train(
     from library.inference.generation import get_generation_settings
     from library.inference.models import load_dit_model
     from library.inference.text import ensure_text_strategies
-    from library.runtime.noise import fm_training_batch
     from train.stage import Batcher, BoxSplit, LatentStore, _encode_text
 
     from .loss import box_share_fm_loss
@@ -81,10 +114,21 @@ def train(
         recs, ev, device, out, te_cache=data / "te_cache"
     )
     words = json.loads((data / "words.json").read_text(encoding="utf-8"))
-    table_ext = train_ext | inventory_ext(words, ev_ext)
+    inv_ext = inventory_ext(words, ev_ext)
+    context = cfg.context_table()
+    frozen: set[int] = set()
+    if context is not None:
+        # corpus lines carry rows outside the inventory: they ride frozen at
+        # the seed value; the table (what trains, what steps count) is the inventory's
+        frozen = train_ext - inv_ext
+        train_ext = train_ext & inv_ext
+        table_ext = inv_ext
+    else:
+        table_ext = train_ext | inv_ext
     print(
         f"table: {len(table_ext)} rows = {len(train_ext)} touched by the captions "
-        f"+ {len(table_ext - train_ext)} inventory rows this band draws nothing on",
+        f"+ {len(table_ext - train_ext)} inventory rows this band draws nothing on"
+        + (f"; {len(frozen)} context rows frozen at {context}" if context else ""),
         flush=True,
     )
     ns = SimpleNamespace(
@@ -111,15 +155,17 @@ def train(
         free_residual=float(t["free_residual"]),
         lr=float(t["lr_rows"]),
         touched=train_ext,
+        frozen=frozen,
+        context=context,
     )
-    n_rows = len(rows.delta.ext_ids)
+    n_rows = rows.n_rows
     steps = int(t["train_steps"]) or int(t["steps_per_row"]) * n_rows
     warmup, decay = cfg.warmup_steps(steps), t["lr_decay"]
     print(
         f"train {cfg.stage} ({run_tag(cfg.stage, tag)}): σ [{t_min}, {t_max}], {n_rows} rows, "
         f"{steps} steps ({steps / n_rows:.0f}/row) × batch {t['batch']}, lr {t['lr_rows']:g} "
         f"{decay} warmup {warmup} ({float(t['lr_warmup_ratio']):g}), box_share {t['box_share']} → cap {t['box_share_cap']} "
-        f"at {t['box_share_glyphs']} glyphs (log), "
+        f"at {t['box_share_glyphs']} glyphs (log), grid_box {int(t.get('grid_box', 0))}, "
         f"warm {'cold' if warm is None else warm}",
         flush=True,
     )
@@ -151,10 +197,13 @@ def train(
         "band": [t_min, t_max],
         "t_min": t_min,
         "t_max": t_max,
+        "per_item_band": sorted({tuple(r["band"]) for r in recs if "band" in r}),
         "train_steps": steps,
         "lr_warmup": warmup,
         "n_rows": n_rows,
         "n_touched": len(train_ext),
+        "context": str(context) if context else "",
+        "n_context": len(frozen),
         "run": cfg.run.name if cfg.run else None,
         "run_config": str(cfg.run.path) if cfg.run else None,
         **{k: t[k] for k in sorted(t)},
@@ -166,28 +215,24 @@ def train(
         float(t["box_share_cap"]),
         float(t["box_share_glyphs"]),
     )
+    grid_box = bool(int(t.get("grid_box", 0)))  # grid cells' union as the box (loss.py)
     save_every = int(t["save_every"])
     t0 = time.time()
     for step in range(1, steps + 1):
         idx = batcher.next(step)
         latents = lat[idx].to(device)
         noise = torch.randn_like(latents)
-        noisy, ts, target = fm_training_batch(
-            latents,
-            noise,
-            dtype=torch.bfloat16,
-            device=device,
-            t_min=t_min,
-            t_max=t_max,
-        )
         brecs = [recs[i] for i in idx]
+        noisy, ts, target = noisy_by_band(
+            latents, noise, [tuple(r.get("band") or cfg.band) for r in brecs], device
+        )
         is_scene = brecs[0]["src"] == "scene"
-        bs = bs_cfg if is_scene else 0.0
+        bs = bs_cfg if is_scene or (grid_box and brecs[0]["src"] == "grid") else 0.0
         with torch.autocast("cuda", dtype=torch.bfloat16):
             pred = dit_forward(
                 anima, noisy, ts, cache, [r["caption"] for r in brecs], device
             )
-        loss_fm = box_share_fm_loss(pred, target, brecs, bs, cap, n_cap)
+        loss_fm = box_share_fm_loss(pred, target, brecs, bs, cap, n_cap, grid_box)
         loss = rows.regularized(loss_fm)
         if is_scene:
             split.add(pred, target, brecs, ts)
