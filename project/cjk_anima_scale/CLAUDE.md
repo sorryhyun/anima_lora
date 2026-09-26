@@ -60,7 +60,8 @@ nothing here imports, paths into or configures from `../cjk_renderable_anima/`
   top — `seed_merged` marks the format), the trained side's ruler outputs
   at the run root (no `ctx/`, no `floor/` since 2026-09-26), `sheet.png` + `reads.json` (floor and trained on every ruler),
   `conflict/`. Beside the runs: the scene pools `scenes_<tag>/`, the EN
-  reference cache `native_enref/`, the seed rows `rows_step1_0921_merged/` —
+  reference cache `native_enref/`, the experiments' row arms
+  `experiments/<arm>/` (`tl_*`, `tp_*`), the seed rows `rows_step1_0921_merged/` —
   seed-side reads of record (`cf_sense_*`, the floor of `floor_score.md`)
   live flat inside it, and it is **every run's floor arm**: one read cache,
   a run renders only the keys it lacks (`eval.ensure_floor`) — and the pre-collapse stage records

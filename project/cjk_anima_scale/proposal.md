@@ -1,6 +1,8 @@
 # proposal — the line mode as a transferable direction, and what doubling is (2026-09-26)
 
-Status: **proposal, not scheduled.** Origin: `reports/transplant_line_2026_09_26.md`
+Status: **Stage A ran 2026-09-26 — the piece direction transfers out of
+sample** (`reports/transplant_piece_2026_09_26.md`, § 1 below); Stage B and
+the doubling track are not scheduled. Origin: `reports/transplant_line_2026_09_26.md`
 and the user's question — train many singles (なにしてる-like, not just
 ありがとう) in diverse lines with more budget, extract their shared Δ
 direction, and use it to adapt single / piece rows that were trained for
@@ -25,9 +27,10 @@ second track: what the doubling factor is and how to bound it.
   direction bought no training steps. The seed rows are scene-trained, so
   they are the modular kind.
 
-What no read has tested: **a shared direction estimated on one set of
-rows, applied at a fixed coefficient to rows that never trained with it.**
-Everything in `transplant_line` § 4 is in-sample.
+What no read had tested before Stage A: **a shared direction estimated on
+one set of rows, applied at a fixed coefficient to rows that never trained
+with it.** Everything in `transplant_line` § 4 is in-sample. Stage A (§ 1)
+is the first such read, on pieces.
 
 ## 1. Stage A — piece leave-out transplant (no training, no floor renders)
 
@@ -43,13 +46,36 @@ ruler reads (`あと きて こう こと こんにちは しい ちょっと �
 - Read: the piece ruler (native, en + swap, the 8 alone) — floor 3 / 256
   official from the cache, 300f_sp's own rows 16 / 256 official, 76
   contained (`spell_2026_09_26.md` § 8), on disk. ≈ 12 min / arm.
-- Leak: the 292 rows were trained on items that sometimes carried the 8
-  (grid strings); a positive read is an upper bound.
+- Leak: expected from grid strings, but 300f_sp is `scene_piece`-only and
+  every one of its 20 000 items carries one vocab, so no donor item shows a
+  held-out piece (leak 0).
 
 Decision: ≥ half of 300f_sp's gain over the floor, above the random arm →
 a generic direction exists for pieces and Stage B is worth its budget. At
 the floor → the line mode is per row (or per training set) and the
 transplant route closes for both kinds.
+
+**Result (2026-09-26, `experiments/transplant_piece/`, job
+`20260926-144514-d7e712`) — passes on contained, just under on official.**
+`u_P` is stable (split-half cos 0.97) and the 8's own trained Δ sits at
+cos 0.83 to it. Step = 94.1, 65–85 % of a held-out seed row's norm.
+
+| arm | official | contained | repeat |
+|---|---|---|---|
+| floor | 3 | 27 | 2 |
+| u0.5 | 7 | 43 | 4 |
+| u1 | 9 | 52 | 3 |
+| random ⟂, α 1 | 5 | 11 | 0 |
+| 300f_sp (trained) | 16 | 76 | 5 |
+
+(/ 256.) Paired: u1 vs random contained 45 / 4 (p 8e-10), u1 vs floor
+30 / 5 (p 2e-5), official 8 / 2 (p 0.11). u0.5 → u1 is flat. The gain is
+concentrated in こう / こと / きて. あと / った keep their training gain in
+the per-row rest, and the 3+ glyph pieces are 0 in every arm, 300f_sp
+included. The piece direction carries no doubling. Caveat: u1 renders some
+kana in 223 / 256 vs the floor's 179, so part of the contained gain may be
+"more Japanese text" rather than the piece. Official is the reading that
+does not depend on it, and it is +6 (n.s.).
 
 ## 2. Stage B — a diverse singles donor, held-out kana
 
@@ -172,8 +198,11 @@ H1 and H2 are read training-free; H3 is the data fix.
 
 ## 4. Order and cost
 
-1. Stage A (≈ 40 min GPU, cached floor) and 3.3 b (CPU) — independent,
-   either first.
+1. ~~Stage A~~ (done: transfers, § 1) and 3.3 b (CPU, open).
+   A cheap bridge before Stage B, no training and no floor render: the
+   `u_P` step (94) onto the single rows of `こ ん に ち は`, read en-only
+   (the floor cache holds those keys). It tests a piece direction on
+   singles at piece scale (`transplant_line` § 2 only went to 43).
 2. 3.3 a (≈ 35 min GPU, cached floor).
 3. If Stage A transfers: Stage B donor with the § 3.4 a count tier (data
    CPU + ≈ 1 h train + eval; the one new floor render).
@@ -181,7 +210,7 @@ H1 and H2 are read training-free; H3 is the data fix.
 
 ## 5. What closes it
 
-- Stage A at the floor and Stage B's transplant at the floor → the line
+- Stage B's transplant at the floor (Stage A was not) → the line
   mode is not a transferable direction; composition is bought per row
   (exposure), and the scale line's budget question stays per-row draws.
 - Doubling rising with composition at every α (3.3 a) and surviving the

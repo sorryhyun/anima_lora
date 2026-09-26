@@ -51,6 +51,7 @@ sys.path.insert(0, str(LINE))
 from cjk_scale.paths import OUT, SEED_ROWS, bootstrap  # noqa: E402
 
 bootstrap()
+EXP = OUT / "experiments"  # the row arms (a trained.pt each)
 
 from bench._common import make_run_dir, write_result  # noqa: E402
 
@@ -197,7 +198,7 @@ def build_arm(name: str, vec, step: float, tgt_ids: list[int], seed_path: Path):
         "seed_merged": str(seed_path),
         "transplant": {"step": step, "rows": tgt_ids, "rel": moved},
     }
-    dst = OUT / name
+    dst = EXP / name
     dst.mkdir(parents=True, exist_ok=True)
     torch.save(out, dst / "trained.pt")
     return moved
@@ -205,11 +206,11 @@ def build_arm(name: str, vec, step: float, tgt_ids: list[int], seed_path: Path):
 
 def native_read(name: str, chars: list, tag: str) -> Path:
     from cjk_scale.config import RunConfig
-    from cjk_scale.eval import TRAINED_ARM, arm_out, probe_args
+    from cjk_scale.eval import TRAINED_ARM, probe_args
     from stages import run as run_stage
 
     rc = RunConfig(name=name, path=Path(__file__), vocabs=(), read=())
-    reads = arm_out(rc, TRAINED_ARM) / f"native_{tag}" / "native_reads.json"
+    reads = EXP / name / f"native_{tag}" / "native_reads.json"
     if reads.exists():
         held = {(m["text"], m["clause"]) for m in json.loads(reads.read_text("utf-8"))}
         if all((k, c) in held for k in chars for c in ("en", "swap")):
@@ -221,8 +222,9 @@ def native_read(name: str, chars: list, tag: str) -> Path:
         ["native"],
         ["--eval_tag", tag, "--native_chars", ",".join(chars)],
     )
+    a.arm_path, a.data_path = str(EXP / name), str(EXP / name / "data")
     run_stage("native", a)
-    return arm_out(rc, TRAINED_ARM) / f"native_{tag}" / "native_reads.json"
+    return reads
 
 
 def tally(path: Path, chars, target: str) -> dict:
@@ -314,7 +316,7 @@ def build_strip(name: str, mag_ids: list[int], seed: dict, mode: str) -> dict:
             "dnorm": round(float(delta.norm()), 2),
             "removed_energy": round(c * c / float(delta.norm()) ** 2, 3),
         }
-    dst = OUT / name
+    dst = EXP / name
     dst.mkdir(parents=True, exist_ok=True)
     torch.save({**sd, "delta": {**d, "raw": raw}, mode: info}, dst / "trained.pt")
     return info
@@ -363,7 +365,7 @@ def main_strip(args, ext):
         args=args,
         label=args.label,
         metrics=metrics,
-        artifacts=[str(OUT / name)],
+        artifacts=[str(EXP / name)],
     )
     print(f"→ {run_dir / 'result.json'}", flush=True)
 
@@ -413,7 +415,7 @@ def main():
         args=args,
         label=args.label,
         metrics=metrics,
-        artifacts=[str(OUT / n) for n in arms],
+        artifacts=[str(EXP / n) for n in arms],
     )
     print(f"→ {run_dir / 'result.json'}", flush=True)
 

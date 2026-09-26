@@ -85,7 +85,7 @@ Paired (same prompt × seed × clause, McNemar): repeats spell_b vs strip
 36 / 5, **p 8e-7**; strip vs floor 16 / 13, p 0.71. Held-out ≤ 2 spell_b vs
 strip 11 / 3, **p 0.057**; strip vs floor 4 / 0, p 0.125.
 
-Sheets (`tl_s1_bstrip/native_spell/`): the held-out spelled string renders
+Sheets (`output/cjk_anima_scale/experiments/tl_s1_bstrip/native_spell/`): the held-out spelled string renders
 the training word あり / おり (two glyphs, often on a single-glyph canvas)
 instead of spell_b's kana line; あ alone is mostly one あ, a few ああああ
 left.

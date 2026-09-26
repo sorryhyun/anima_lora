@@ -17,7 +17,10 @@ experiments read the old stage-layout dirs (`data_<stage>_<tag>`) through
   (`project_bench_run_dir_collision`).
 - Heavy artifacts (gradient tensors, latent caches) go under
   `output/cjk_anima_scale/<exp>_<label>/`, referenced from `result.json`,
-  never into this tree (it is committed).
+  never into this tree (it is committed). Row arms (a `trained.pt` the
+  eval renders, one dir per arm: `tl_*`, `tp_*`) go under
+  `output/cjk_anima_scale/experiments/<arm>/`, with the stage's
+  `--arm_path` pointed there.
 - GPU work goes through the daemon
   (`make daemon-run ARGS="project/cjk_anima_scale/experiments/<exp>/run_exp.py …"`)
   and every launch names the pack
@@ -72,3 +75,11 @@ experiments read the old stage-layout dirs (`data_<stage>_<tag>`) through
   each beside the 512² reads the seed dir already holds. **Ran 2026-09-26
   (d0)** → 256×512 / 512×256 pass (EN 23/24, identity kept, peak 0.7 ≈ 0.8;
   the tall canvas doubles); taken into `recipes.GRIDS` as `1x2` / `2x1`.
+- `transplant_piece/` — `../proposal.md` Stage A, training-free and out of
+  sample: `u_P` = the mean tangential Δ of 292 of 300f_sp's pieces, added at
+  one coefficient (their mean projection, 94.1) × α to the seed rows of the
+  8 piece-ruler pieces, plus a random ⟂ control; read on the floor cache's
+  `native_piece/` keys. 300f_sp is `scene_piece`-only, so no item carries a
+  held-out piece beside a donor (leak 0). **Ran 2026-09-26** → transfers:
+  contained 27 → 52 / 256 (300f_sp 76), random control 11
+  (`../reports/transplant_piece_2026_09_26.md`).
