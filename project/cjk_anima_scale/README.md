@@ -43,9 +43,10 @@ A new read that changes a row of the law goes into
 | [`band_experiment_results.md`](band_experiment_results.md) | **the vocab band law** — the verdict, the per-px window table, the training reads, what is left unrun |
 | [`design.md`](design.md) | the scale pipeline: stage schedule, data builder, thin trainer, open questions (§ 6) |
 | [`micro_chain_result.md`](reports/micro_chain_result.md) | **the first run of the chain** — the three band stages at 30 / 30 / 30 on 24 warm rows (8 kana + 8 kanji + 8 pieces), read rule by rule; the seed-baseline and table-membership tool changes it forced |
-| `reports/` | dated reads: [`conflict_joint_2026_09_25.md`](reports/conflict_joint_2026_09_25.md) — the gradient conflict probe + ten chain / joint arms on one data set: chain ≡ joint, steps/row is not the budget, singles and pieces want opposite regimes; [`grid_box_2026_09_25.md`](reports/grid_box_2026_09_25.md) — grid cells as the loss box: the `grid_string` price ×8–19, warm singles unmoved; [`piece_2026_09_25.md`](reports/piece_2026_09_25.md) — where 300f actually failed, by layer; [`piece_only_2026_09_26.md`](reports/piece_only_2026_09_26.md) — the one-file parity by replay + the scene_piece-only arm (not the doubling lever); [`spell_2026_09_26.md`](reports/spell_2026_09_26.md) — singles spelled in a line (layout, not identity, blocked composition; line-trained singles double), the piece row vs its glyphs in row space, the paired re-read vs the seed floor; [`transplant_line_2026_09_26.md`](reports/transplant_line_2026_09_26.md) — spell_b's Δ split into its shared "line" component and the per-row rest (strip / shared-only / a transplant of 300f_sp's direction): composition splits, doubling is the shared part; [`floor_score.md`](floor_score.md) — **the seed floor of record** on sent / target / word / en |
+| `reports/` | dated reads: [`conflict_joint_2026_09_25.md`](reports/conflict_joint_2026_09_25.md) — the gradient conflict probe + ten chain / joint arms on one data set: chain ≡ joint, steps/row is not the budget, singles and pieces want opposite regimes; [`grid_box_2026_09_25.md`](reports/grid_box_2026_09_25.md) — grid cells as the loss box: the `grid_string` price ×8–19, warm singles unmoved; [`piece_2026_09_25.md`](reports/piece_2026_09_25.md) — where 300f actually failed, by layer; [`piece_only_2026_09_26.md`](reports/piece_only_2026_09_26.md) — the one-file parity by replay + the scene_piece-only arm (not the doubling lever); [`spell_2026_09_26.md`](reports/spell_2026_09_26.md) — singles spelled in a line (layout, not identity, blocked composition; line-trained singles double), the piece row vs its glyphs in row space, the paired re-read vs the seed floor; [`transplant_line_2026_09_26.md`](reports/transplant_line_2026_09_26.md) — spell_b's Δ split into its shared "line" component and the per-row rest (strip / shared-only / a transplant of 300f_sp's direction): composition splits, doubling is the shared part; [`transplant_piece_2026_09_26.md`](reports/transplant_piece_2026_09_26.md) — proposal Stage A: a piece direction out of sample, contained 27 → 52 / 256; [`stage_b_2026_09_26.md`](reports/stage_b_2026_09_26.md) — proposal Stage B: a 36-kana donor's direction on 10 held-out kana, composition transfers and doubling with it; [`floor_score.md`](floor_score.md) — **the seed floor of record** on sent / target / word / en |
 | [`idea.md`](idea.md) | not scheduled — a per-cell gradient bank + validation-influence price in place of `‖ḡ‖·coh` and trained arms, the matched-σ sweep that would tell band from weighting; from the 2026-09-25 outside review |
-| [`proposal.md`](proposal.md) | not scheduled — the line mode as a transferable direction (piece leave-out transplant, a diverse singles donor with held-out kana) and a doubling track (per-row dose, fill prior vs row-bound line mode, a count tier at line px) |
+| [`proposal.md`](proposal.md) | the line mode as a transferable direction — Stage A (pieces) and Stage B (singles, held-out kana) ran 2026-09-26 and transfer; the doubling track (per-row dose, fill prior vs row-bound line mode, a count tier at line px, a count direction) is next |
+| [`proposal_factorizedrows.md`](proposal_factorizedrows.md) | proposed 2026-09-26: rows = identity, modes (line, count, horizontal, later SFX) = shared vectors gated by context at the hook; F1 = a factorized Stage B donor, Stage I = which scene recipe makes the least layout-bound identity (grid 50 : scene 50 is the incumbent) |
 | [`plan.md`](plan.md) | the collapse spec: a run is one file, everything else is a rule (§§ 1–5; § 6 = the order, 1–2 done) |
 | `configs/runs/*.toml` | the runs — `{vocabs, read}` and nothing else: `run0925_300f` (300 pieces, the freeze arm; its re-run on this shape is plan.md § 6-3) |
 | `cjk_scale/` | the code (`windows` = the law, `config` = the run file + data pools, `recipes` + `builder` = data and the recipe table by kind, `rows` + `train` = the fixed trainer, `eval` = floor + trained on one sheet, `conflict`, `bake`, `ledger`); `scale.py` is the front door |
@@ -55,6 +56,22 @@ A new read that changes a row of the law goes into
 | `runs/` | `ledger.jsonl` — every submitted job |
 
 ## Where it stands (2026-09-26)
+
+**The singles' line mode transfers to held-out kana, and doubling travels
+with it** ([`reports/stage_b_2026_09_26.md`](reports/stage_b_2026_09_26.md),
+proposal Stage B). The shared Δ direction of 36 donor kana, trained on
+in-line words with a count tier, was added at one coefficient to the seed
+rows of 10 kana no donor word contains. On spelled held-out words
+(ひまわり さくら みどり くもり まくら) ≤ 1 edit goes 11 → 66 / 160
+(norm-matched random 9), exact 0 → 12. Held-out singles repeat 25 → 53 /
+320 and official drops 149 → 109. The count tier at 0.3 split neither in
+the donor's own rows nor in the transplant. Stage A had shown the same
+transfer for pieces ([`reports/transplant_piece_2026_09_26.md`](reports/transplant_piece_2026_09_26.md)).
+The α sweep (report § 7) puts the operating dose at α 1 (words ≤ 1 edit
+11 / 40 / 66 / 34 at floor / 0.5 / 1 / 2). No dose bounds doubling. Alone
+(repeat 25 → 60) it can be gated by context; in words (`dup` 26 → 44–73)
+it cannot. Next: `proposal_factorizedrows.md` F0 (adapter-only
+context-interaction probe), then F1.
 
 **The shared "line" Δ is half the composition and most of the doubling**
 ([`reports/transplant_line_2026_09_26.md`](reports/transplant_line_2026_09_26.md)):
