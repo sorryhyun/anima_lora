@@ -60,3 +60,8 @@ experiments read the old stage-layout dirs (`data_<stage>_<tag>`) through
   row) at the piece bands, ありがとう held out; read spelled + alone.
   **Ran 2026-09-26** → composition bought, count lost
   (`../reports/spell_2026_09_26.md` § 4).
+- `transplant_line/` — the shared "line" Δ, training-free: `transplant`
+  (300f_sp's piece direction added to the seed singles), `strip` (spell_b's
+  rows minus their shared component), `shared` (the seed plus only it); read
+  on keys the floor cache holds — the eval refuses a missing floor key.
+  **Ran 2026-09-26** → `../reports/transplant_line_2026_09_26.md`.

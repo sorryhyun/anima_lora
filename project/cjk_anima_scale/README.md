@@ -44,8 +44,9 @@ A new read that changes a row of the law goes into
 | [`design.md`](design.md) | the scale pipeline: stage schedule, data builder, thin trainer, open questions (§ 6) |
 | [`plan_canvas.md`](plan_canvas.md) | plan only — does the law hold on a ~500-token canvas (2× throughput) |
 | [`micro_chain_result.md`](reports/micro_chain_result.md) | **the first run of the chain** — the three band stages at 30 / 30 / 30 on 24 warm rows (8 kana + 8 kanji + 8 pieces), read rule by rule; the seed-baseline and table-membership tool changes it forced |
-| `reports/` | dated reads: [`conflict_joint_2026_09_25.md`](reports/conflict_joint_2026_09_25.md) — the gradient conflict probe + ten chain / joint arms on one data set: chain ≡ joint, steps/row is not the budget, singles and pieces want opposite regimes; [`grid_box_2026_09_25.md`](reports/grid_box_2026_09_25.md) — grid cells as the loss box: the `grid_string` price ×8–19, warm singles unmoved; [`piece_2026_09_25.md`](reports/piece_2026_09_25.md) — where 300f actually failed, by layer; [`piece_only_2026_09_26.md`](reports/piece_only_2026_09_26.md) — the one-file parity by replay + the scene_piece-only arm (not the doubling lever); [`spell_2026_09_26.md`](reports/spell_2026_09_26.md) — singles spelled in a line (layout, not identity, blocked composition; line-trained singles double), the piece row vs its glyphs in row space, the paired re-read vs the seed floor; [`floor_score.md`](floor_score.md) — **the seed floor of record** on sent / target / word / en |
+| `reports/` | dated reads: [`conflict_joint_2026_09_25.md`](reports/conflict_joint_2026_09_25.md) — the gradient conflict probe + ten chain / joint arms on one data set: chain ≡ joint, steps/row is not the budget, singles and pieces want opposite regimes; [`grid_box_2026_09_25.md`](reports/grid_box_2026_09_25.md) — grid cells as the loss box: the `grid_string` price ×8–19, warm singles unmoved; [`piece_2026_09_25.md`](reports/piece_2026_09_25.md) — where 300f actually failed, by layer; [`piece_only_2026_09_26.md`](reports/piece_only_2026_09_26.md) — the one-file parity by replay + the scene_piece-only arm (not the doubling lever); [`spell_2026_09_26.md`](reports/spell_2026_09_26.md) — singles spelled in a line (layout, not identity, blocked composition; line-trained singles double), the piece row vs its glyphs in row space, the paired re-read vs the seed floor; [`transplant_line_2026_09_26.md`](reports/transplant_line_2026_09_26.md) — spell_b's Δ split into its shared "line" component and the per-row rest (strip / shared-only / a transplant of 300f_sp's direction): composition splits, doubling is the shared part; [`floor_score.md`](floor_score.md) — **the seed floor of record** on sent / target / word / en |
 | [`idea.md`](idea.md) | not scheduled — a per-cell gradient bank + validation-influence price in place of `‖ḡ‖·coh` and trained arms, the matched-σ sweep that would tell band from weighting; from the 2026-09-25 outside review |
+| [`proposal.md`](proposal.md) | not scheduled — the line mode as a transferable direction (piece leave-out transplant, a diverse singles donor with held-out kana) and a doubling track (per-row dose, fill prior vs row-bound line mode, a count tier at line px) |
 | [`plan.md`](plan.md) | the collapse spec: a run is one file, everything else is a rule (§§ 1–5; § 6 = the order, 1–2 done) |
 | `configs/runs/*.toml` | the runs — `{vocabs, read}` and nothing else: `run0925_300f` (300 pieces, the freeze arm; its re-run on this shape is plan.md § 6-3) |
 | `cjk_scale/` | the code (`windows` = the law, `config` = the run file + data pools, `recipes` + `builder` = data and the recipe table by kind, `rows` + `train` = the fixed trainer, `eval` = floor + trained on one sheet, `conflict`, `bake`, `ledger`); `scale.py` is the front door |
@@ -55,6 +56,15 @@ A new read that changes a row of the law goes into
 | `runs/` | `ledger.jsonl` — every submitted job |
 
 ## Where it stands (2026-09-26)
+
+**The shared "line" Δ is half the composition and most of the doubling**
+([`reports/transplant_line_2026_09_26.md`](reports/transplant_line_2026_09_26.md)):
+split spell_b's five rows into their shared Δ component and the per-row
+rest — held-out `あ り が と う` ≤ 2 edits: per-row only 5, shared only 7,
+both 13 / 32 (floor 1); repeats: per-row only 22 (= floor 19), shared only
+37, both 53 / 160. A line mode transplanted by row arithmetic carries the
+doubling with it (singles official 90 → 60); 300f_sp's piece direction
+added to the seed singles renders the seed. Count has to come from data (B2).
 
 **Spelled singles compose once trained in lines**
 ([`reports/spell_2026_09_26.md`](reports/spell_2026_09_26.md)):
