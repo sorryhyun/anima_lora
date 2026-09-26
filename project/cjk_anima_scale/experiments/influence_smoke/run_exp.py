@@ -6,7 +6,7 @@ rulers did, and does the linearization it rests on hold across a real
 training delta? Everything runs on run0925_300f's built data dirs and its
 trained table, so the ground truth is a run whose ruler verdict is known
 (nothing bought at drift 1.4/1.7; the comparator that did buy hits was
-scene_piece-only — next.md § 4a).
+scene_piece-only — reports/next_2026_09_25.md § 4a).
 
 Three reads, one job:
 

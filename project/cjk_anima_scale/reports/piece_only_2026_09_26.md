@@ -2,7 +2,7 @@
 
 Two reads. § 1 is the refactor's test (plan.md § 6-3) done without the 3.2 h
 retrain: the one-file code replays run0925_300f and matches it. § 2 is
-`next.md` § 4a step (2): the same 300 pieces and freeze, trained on
+`next_2026_09_25.md` § 4a step (2): the same 300 pieces and freeze, trained on
 `scene_piece` items only. **Verdict: the mix was not the cause of doubling.**
 Dropping `scene_sentence` / `scene_short` / `grid_string` buys a little `word`
 exact (4 → 9 / 36), holds piece identity (official tied, contained −12),
@@ -107,7 +107,7 @@ official tie is not a difference. *(Re-read paired 2026-09-26,
 ## 3. What it closes, what stays open
 
 - **Closed**: "the sentence / short / grid share causes the doubling / wipe"
-  (`next.md` § 4a's suspect). The mix trades sentence strings for a few
+  (`next_2026_09_25.md` § 4a's suspect). The mix trades sentence strings for a few
   `word` exacts; it is not the lever. `builder.TABLE` keeps its piece mix.
 - **Open**: doubling itself. It predates training (seed misses double) and
   survives both mixes at the same displacement, so it looks like a property

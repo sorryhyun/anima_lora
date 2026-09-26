@@ -39,7 +39,7 @@ lenient +0.36 on noise-sized numbers).
 The two largest loss gains are the two long pieces that never rendered;
 the one piece with a real official gain gets nothing. The delta reduced the
 in-box loss on every piece, rendered or not — the loss is reading the
-**pseudo-text line the rows learned** (the wipe of `next.md` § 4a), not the
+**pseudo-text line the rows learned** (the wipe of `next_2026_09_25.md` § 4a), not the
 glyph identity piece measured. Within the 2-glyph group the order is
 compatible with piece (った > メン ≈ です > しい at ceiling), which is
 why the smoke's E2 looked like tracking; across glyph counts it is not.
@@ -93,7 +93,7 @@ Consequences:
   read, not a validation loss, so it inherits none of this report's
   machinery beyond the bank loop.
 - The reads stay the rulers: piece with a seed floor for pieces,
-  `native_sent` / `target` for the acceptance axis. `next.md` step (2), the
+  `native_sent` / `target` for the acceptance axis. `next_2026_09_25.md` step (2), the
   scene_piece-only arm, is judged on those, not on any surrogate.
 
 Repro: `run_exp.py --label t1` (defaults; `--dry_run` plans), submitted via

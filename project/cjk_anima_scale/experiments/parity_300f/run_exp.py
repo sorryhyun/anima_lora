@@ -55,7 +55,7 @@ RECORD_ALIASES = {"bands": "per_item_band"}
 RECORD_SKIP = {"run", "run_config", "vocabs", "data", "train_steps"}
 # the log fields compared in the steps leg; lr is exact, the rest bf16 + compile
 LOG_KEYS = ("loss", "in_box", "out_box", "warm_drift", "warm_cos", "rel", "lr")
-# reads.json totals may differ by the render noise floor (next.md § 4a: ±2)
+# reads.json totals may differ by the render noise floor (reports/next_2026_09_25.md § 4a: ±2)
 NOISE = 2
 
 

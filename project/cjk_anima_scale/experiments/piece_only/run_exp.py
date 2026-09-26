@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""piece_only — run0925_300f's 300 pieces on scene_piece items only (next.md § 4a (2))
+"""piece_only — run0925_300f's 300 pieces on scene_piece items only (reports/next_2026_09_25.md § 4a (2))
 
 run0925_300f bought 2-glyph piece identity and the native trigger
 (reports/piece_2026_09_25.md) and failed on doubling, sentence assembly and

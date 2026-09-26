@@ -51,7 +51,7 @@ experiments read the old stage-layout dirs (`data_<stage>_<tag>`) through
   record, save-time merge; `steps`: the first N steps vs the old log; `eval`:
   the old rows under the new eval vs the old reads). **Ran 2026-09-26** →
   parity holds (`../reports/piece_only_2026_09_26.md` § 1).
-- `piece_only/` — next.md § 4a (2): the 300 pieces on `scene_piece` items
+- `piece_only/` — reports/next_2026_09_25.md § 4a (2): the 300 pieces on `scene_piece` items
   only (`build(…, table=)` with the piece groups cut to that tier), data →
   train → eval as `run0926_300f_sp`. **Ran 2026-09-26** → not the doubling
   lever (`../reports/piece_only_2026_09_26.md` § 2).

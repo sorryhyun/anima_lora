@@ -171,7 +171,7 @@ What changes:
   40/row point" by matching the mixed-table mean 0.55 to the comparator's
   0.52; per kind, the pieces got the displacement of the 80–188/row points
   (0.72–1.04) and read 4/16 — the comparator read 8–13 / 32 there. The
-  displacement was bought; the hits were not. So `next.md` § 3's "A flat at
+  displacement was bought; the hits were not. So `next_2026_09_25.md` § 3's "A flat at
   drift ≈ 0.5 → rerun at 200/row" is not a supported branch: more
   displacement is not what that table lacked. What differs from the
   comparator is the inventory (singles present), the recipe mix (grid

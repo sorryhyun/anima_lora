@@ -4,7 +4,7 @@ The line has grown a stage chain, a joint stage, a run file, a units file,
 a budget table, an eval block, a context switch and ~25 CLI overrides to
 say one thing: **train these rows, on data drawn for them, and read these
 strings.** Today that took two config files, a units file, a code fix and
-a killed job to get right (`next.md` § 4). This plan collapses it.
+a killed job to get right (`reports/next_2026_09_25.md` § 4). This plan collapses it.
 
 ## 1. A run is one file
 
@@ -95,7 +95,7 @@ scale.py run0925_300f eval     # daemon: read + word + en + control → one cont
    `experiments/parity_300f` (record, merge, 50 steps, eval on the old rows;
    `reports/piece_only_2026_09_26.md` § 1).
 4. A singles run (`rows = kana + kanji:200`) is the same file shape; the
-   kanji band question (`next.md`) is then just another run.
+   kanji band question (`reports/next_2026_09_25.md`) is then just another run.
 
 Open: whether two px tiers of `scene_piece` (36 px and 19 px) stay one
 recipe with a drawn px or two rows in the table — decide from

@@ -94,7 +94,7 @@ of it — the price table's 10–60 × `grid_string` gap was the loss form.
 `grid_box = 1` (all stage files) takes the cells' union as the box:
 `grid_string` buys a piece row a quarter to a third of `scene_piece` per
 draw (parity per item), and matches it at 0.7–0.9; warm singles' grid
-gradient is unchanged (no in-box residual to weight). The `next.md` § 0
+gradient is unchanged (no in-box residual to weight). The `reports/next_2026_09_25.md` § 0
 `grid_string` → 0 decision is superseded; the shares and the grid-piece
 band are open.
 
@@ -112,7 +112,7 @@ report's drift column is per warm-from table, so the chain's pieces are at
 so "more steps/row" is not the open branch; the freeze arm is. Row exposure
 is grid-dominated (a piece row: 313 `scene_piece` vs 622–1 664 `grid_string`
 items per stage dir). Pieces trained alone with the singles frozen (`run0925_300f`, 300 pieces,
-`next.md` § 4a): the acceptance rulers read **nothing bought** at drift 1.4
+`reports/next_2026_09_25.md` § 4a): the acceptance rulers read **nothing bought** at drift 1.4
 or 1.7, but piece (§ 4b) showed 2-glyph piece identity + native trigger
 WAS bought — the failure list is doubling, sentence assembly, 3+-glyph
 pieces. The seed floor is now nailed
