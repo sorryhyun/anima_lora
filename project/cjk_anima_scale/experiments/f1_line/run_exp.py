@@ -20,6 +20,10 @@ Legs:
             ``ronly``, vs the floor and the plain Stage B donor (on disk)
   transplant (GPU) the held-out keys (en + swap) on ``tf_<label>_line`` vs
             the floor and Stage B's ``tb_t1_u1`` (on disk)
+  dose      (GPU) ``tf_<label>_line<d>`` = the seed rows + d · ``v_line``
+            (``--doses``, from ``run0926_f1_line``), built and read on the
+            held-out keys like ``transplant`` — does in-word ``dup`` fall
+            back toward u1's while composition holds? (report § 4)
 
 Reads of record to beat (proposal § 3): donor singles alone official ·
 repeat / 144 floor 91 · 29, plain donor 43 · 50; こんにちは ≤ 2 edits plain
@@ -63,8 +67,9 @@ def parse_args():
         "--legs",
         nargs="+",
         default=["train"],
-        choices=["train", "build", "read", "transplant"],
+        choices=["train", "build", "read", "transplant", "dose"],
     )
+    p.add_argument("--doses", type=float, nargs="+", default=[0.5])
     p.add_argument("--dry_run", action="store_true")
     return p.parse_args()
 
@@ -129,22 +134,47 @@ def build(ids: dict, label: str) -> dict:
         {**sd, "delta": {k: x for k, x in d.items() if k != "line"}},
         dst / "trained.pt",
     )
-    # line: the seed rows (held-out 10 untouched) + v_line in the seed's units
+    line_arm(names["line"], 1.0)
+    return info
+
+
+def line_arm(name: str, dose: float) -> None:
+    """The seed rows (the held-out 10 untouched) + ``dose`` · ``v_line``, in
+    the seed's row units."""
+    import torch
+
+    d = torch.load(OUT / NAME / "trained.pt", map_location="cpu", weights_only=False)[
+        "delta"
+    ]
+    seed_sd = torch.load(SEED_ROWS, map_location="cpu", weights_only=False)
     sdd = seed_sd["delta"]
-    k = rs / float(sdd["row_scale"])
-    dst = EXP / names["line"]
+    k = float(d["row_scale"]) / float(sdd["row_scale"])
+    dst = EXP / name
     dst.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
             **seed_sd,
-            "delta": {**sdd, "line": d["line"].float() * k},
+            "delta": {**sdd, "line": d["line"].float() * k * dose},
             "arm": "rows",
             "seed_merged": str(SEED_ROWS),
-            "transplant": {"line_from": NAME, "rescale": k},
+            "transplant": {"line_from": NAME, "rescale": k, "dose": dose},
         },
         dst / "trained.pt",
     )
-    return info
+
+
+def read_held(metrics: dict, key: str, path: Path, fh: dict, uh: dict) -> None:
+    chars = SB.held_keys()
+    print(f"{path.name}, held-out keys:", flush=True)
+    h = SB.hits(SB.native_read(path, path / "data", chars, "en,swap"), chars, "en,swap")
+    metrics[key] = SB.tally(h)
+    metrics[key]["paired_vs_floor"] = SB.paired(h, fh)
+    metrics[key]["paired_vs_u1"] = SB.paired(h, uh)
+    print(
+        f"  vs floor {metrics[key]['paired_vs_floor']}\n"
+        f"  vs u1 {metrics[key]['paired_vs_u1']}",
+        flush=True,
+    )
 
 
 def main():
@@ -191,7 +221,7 @@ def main():
                 f"  vs plain {metrics[f'donor_{arm}']['paired_vs_plain']}",
                 flush=True,
             )
-    if "transplant" in args.legs:
+    if {"transplant", "dose"} & set(args.legs):
         chars = SB.held_keys()
         floor = SB.check_floor(chars, "en,swap")
         fh = SB.hits(floor, chars, "en,swap")
@@ -200,19 +230,14 @@ def main():
         uh = SB.hits(U1 / f"native_{SB.TAG}" / "native_reads.json", chars, "en,swap")
         print("tb_t1_u1 (post-hoc u_S), held-out keys:", flush=True)
         metrics["held_u1"] = SB.tally(uh)
-        path = EXP / names["line"]
-        print(f"{names['line']}, held-out keys:", flush=True)
-        h = SB.hits(
-            SB.native_read(path, path / "data", chars, "en,swap"), chars, "en,swap"
-        )
-        metrics["held_line"] = SB.tally(h)
-        metrics["held_line"]["paired_vs_floor"] = SB.paired(h, fh)
-        metrics["held_line"]["paired_vs_u1"] = SB.paired(h, uh)
-        print(
-            f"  vs floor {metrics['held_line']['paired_vs_floor']}\n"
-            f"  vs u1 {metrics['held_line']['paired_vs_u1']}",
-            flush=True,
-        )
+    if "transplant" in args.legs:
+        read_held(metrics, "held_line", EXP / names["line"], fh, uh)
+    if "dose" in args.legs:
+        for dose in args.doses:
+            name = f"{names['line']}{dose:g}"
+            line_arm(name, dose)
+            names[f"line{dose:g}"] = name
+            read_held(metrics, f"held_line{dose:g}", EXP / name, fh, uh)
     write_result(
         run_dir,
         script=__file__,

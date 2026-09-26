@@ -106,4 +106,5 @@ experiments read the old stage-layout dirs (`data_<stage>_<tag>`) through
   without it) and `tf_*_line` (seed rows + `v_line`). **Ran 2026-09-26** →
   `v_line` composes held-out words like `u_S` with singles at the floor,
   in-word `dup` 77; the rows keep the line layout alone
-  (`../reports/f1_line_2026_09_26.md`).
+  (`../reports/f1_line_2026_09_26.md`). The `dose` leg (`--doses`) reads
+  seed + d · `v_line`: at 0.5, ≤ 1 edit 80 / 160, `dup` 54 (report § 5).

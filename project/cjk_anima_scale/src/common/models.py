@@ -45,7 +45,10 @@ def load_generator(
     size, steps: int, cfg: int | float, save: Path, negative_prompt: str = ""
 ):
     """``(args, gen settings, device, shared models)`` ready for ``generate``;
-    the DiT is ``shared['model']``."""
+    the DiT is ``shared['model']``. The text encoder stays resident on
+    ``device`` (2026-09-26): ``prepare_text_inputs`` encodes there anyway and
+    moves a shared encoder back to where it found it, so a CPU-loaded one
+    shuttled ≈ 1.2 GB per new caption."""
     import torch
 
     from library.inference.generation import get_generation_settings
@@ -55,6 +58,7 @@ def load_generator(
     gen = get_generation_settings(args)
     device = gen.device
     shared = load_shared_models(args)
+    shared["text_encoder"].to(device)
     shared["conds_cache"] = {}
     shared["model"] = load_dit_model(args, device, torch.bfloat16)
     return args, gen, device, shared

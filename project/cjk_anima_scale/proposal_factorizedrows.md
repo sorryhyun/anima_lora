@@ -171,9 +171,11 @@ glyphs alone, though (94 / 144, floor 47, plain 102), and official stays at
 50 (floor 91). こんにちは holds with the gate live (≤ 2 edits 11 / 16, rows
 only 7). Seed rows + `v_line` on the held-out 10: words ≤ 1 edit 64 / 160
 (u1 66), singles at the floor (official 152, repeat 24), in-word `dup` 77
-(u1 44). `v_line` projects 2.15 × `u_S`'s step. Next: a `v_line` dose
-read (0.5) for B, F1b once a band-law row exists for alone items at the
-b0305 px, and Stage I against `v_line`.
+(u1 44). `v_line` projects 2.15 × `u_S`'s step. **At dose 0.5 (report
+§ 5), the words go to ≤ 1 edit 80 / 160 (u1 66), ≤ 2 edits 131 and `dup`
+54 (u1 44, p 0.17), with the singles at the floor. That is the best
+held-out composition so far.** Next: F1b once a band-law row exists for
+alone items at the b0305 px, and Stage I against 0.5 · `v_line`.
 
 ## 4. Stage I — which scene makes a good identity
 
@@ -246,8 +248,8 @@ explains one of those failures.
 2. ~~F0~~ (§ 2, ran 2026-09-26): the adapter is context-blind to a
    row's change, so the gate sits at the hook and F1 is the next GPU spend.
 3. ~~F1~~ (§ 3, ran 2026-09-26): `v_line` works as a gated mode on seed
-   rows. The rows keep the line layout alone. A `v_line` dose read (0.5,
-   training-free) is next, for in-word `dup`.
+   rows. The rows keep the line layout alone. At dose 0.5 it beats `u_S`
+   on the held-out words (≤ 1 edit 80 vs 66), with `dup` 54.
 4. **Stage I** (§ 4): I0 / I1 / I2 first (3 micro arms + one floor render
    of the micro set's strings); I3 / I4 only if I1 moves 1 or 2.
 5. `proposal.md` 3.3 d, the count twin, which is also § 5's first mode

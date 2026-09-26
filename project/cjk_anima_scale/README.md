@@ -77,8 +77,10 @@ the embed hook. F1 ([`reports/f1_line_2026_09_26.md`](reports/f1_line_2026_09_26
 trained the donor with a gated `v_line`. The seed rows + `v_line` compose
 the held-out words like post-hoc `u_S` (≤ 1 edit 64 vs 66 / 160) with the
 singles at the floor, but in-word `dup` rises to 77 (u1 44). The trained
-rows still render a line alone (94 / 144, floor 47). Next: a `v_line`
-dose read.
+rows still render a line alone (94 / 144, floor 47). At half dose
+(report § 5), seed + 0.5 · `v_line` reaches ≤ 1 edit 80 / 160 (u1 66) with
+`dup` 54 and the singles at the floor: the best held-out composition so
+far.
 
 **The shared "line" Δ is half the composition and most of the doubling**
 ([`reports/transplant_line_2026_09_26.md`](reports/transplant_line_2026_09_26.md)):
