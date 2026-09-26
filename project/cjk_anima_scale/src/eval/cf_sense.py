@@ -51,7 +51,7 @@ from common.render.flat import (
     sample_layout,
 )
 from common.render.ink import glyph_count, glyph_features, ink_pixels
-from common.shapes import wh
+from common.shapes import parse_shape, wh
 from common.text import KANA
 
 # --cf_layout → share of pairs drawn inside the flat renderer's ellipse
@@ -415,6 +415,8 @@ def stage_cf_sense(a):
     )
     assert layout != "grid" or en, "cf_sense --cf_layout grid is the EN ceiling probe"
     px_list = [int(x) for x in a.cf_glyph_px.split(",") if x.strip()]
+    # plan_canvas D.0 / D.1: a WxH canvas; --train_size² otherwise
+    size = parse_shape(a.eval_shape) if a.eval_shape else a.train_size
     font = a.cf_font or None
     name = (
         f"cf_sense_{a.cf_lang}"
@@ -453,7 +455,7 @@ def stage_cf_sense(a):
             # every pair every px
             px = px_list[len(items) % len(px_list)] if px_list else None
             it = _render_pair(
-                p, fonts, rng, a.train_size, out, len(items), en, layout, px, font
+                p, fonts, rng, size, out, len(items), en, layout, px, font
             )
             if "stratum" in p:  # plan_kanji: the stratum × px cell
                 it["cell"] = f"s{p['stratum']}@{it['px']}"
@@ -466,7 +468,7 @@ def stage_cf_sense(a):
         flush=True,
     )
 
-    args = gen_args(a.train_size, a.steps, a.cfg, out)
+    args = gen_args(size, a.steps, a.cfg, out)
     device = get_generation_settings(args).device
     captions = sorted({c for it in items for c in (it["cap_a"], it["cap_b"])})
     cache = encode_captions(captions, device)
@@ -539,7 +541,7 @@ def stage_cf_sense(a):
         "seed": a.seed,
         "cf_pairs": a.cf_pairs,
         "cf_per_pair": a.cf_per_pair,
-        "size": a.train_size,
+        "size": list(wh(size)),
     }
     torch.save(
         {

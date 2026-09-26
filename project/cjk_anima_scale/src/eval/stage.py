@@ -153,7 +153,9 @@ def _read_eval(a, out: Path, manifest, train_dir: Path):
         summarize_quietly(train_dir)
 
 
-def blank_cell(size: int):
+def blank_cell(size):
     from PIL import Image
 
-    return Image.new("RGB", (size, size), "lightgray"), ["enref: missing"]
+    from common.shapes import wh
+
+    return Image.new("RGB", wh(size), "lightgray"), ["enref: missing"]

@@ -13,7 +13,7 @@ Three numbers per trained render, all against ``enref_p<pi>_s<seed>.png``:
                   glyph land where the word would"
 
 The references are arm-independent (no ext id in the caption, so the delta
-is inert) and shared under ``output/wake_probe/native_enref/<size>_<steps>_<cfg>/``.
+is inert) and shared under ``native_enref/<size or WxH>_<steps>_<cfg>/``.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from common.paths import OUT
 
 
 def enref_dir(a) -> Path:
-    return OUT / "native_enref" / f"{a.eval_size}_{a.steps}_{a.cfg:g}"
+    return OUT / "native_enref" / f"{a.eval_shape or a.eval_size}_{a.steps}_{a.cfg:g}"
 
 
 def enref_caption(prompt: str, word: str) -> str:
@@ -147,15 +147,19 @@ class EnRef:
         return self.cache[key]
 
     @staticmethod
-    def _grid(n: int) -> tuple[int, int]:
-        g = int(round(math.sqrt(n)))
-        assert g * g == n, f"enref: non-square token grid ({n} tokens)"
-        return g, g
+    def _grid(n: int, hw) -> tuple[int, int]:
+        """``(gh, gw)`` of the patch grid, from the image's aspect (a WxH
+        canvas, plan_canvas: 256×512 → 46 × 23); square images as before."""
+        H, W = hw
+        gw = int(round(math.sqrt(n * W / H)))
+        gh = n // max(gw, 1)
+        assert gh * gw == n, f"enref: {n} tokens is no grid for {W}x{H}"
+        return gh, gw
 
     def _outside_mask(self, n: int, hw, boxes):
         import torch
 
-        gh, gw = self._grid(n)
+        gh, gw = self._grid(n, hw)
         H, W = hw
         keep = torch.ones(gh, gw, dtype=torch.bool)
         for b in boxes:

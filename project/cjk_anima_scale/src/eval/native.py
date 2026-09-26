@@ -24,6 +24,7 @@ from common.models import (
 from common.paths import arm_dir
 from common.prompts import NATIVE_CLAUSES
 from common.readers import Readers, contact_sheet, hit, read_scored
+from common.shapes import parse_shape
 from common.text import CJK_RE
 
 from .enref import EnRef, enref_boxes, enref_dir, enref_file, render_enref
@@ -61,7 +62,8 @@ def stage_native(a):
         for k in chars
         for cl in clauses
     ]
-    args, gen, device, shared = load_generator(a.eval_size, a.steps, a.cfg, out / "img")
+    size = parse_shape(a.eval_shape) if a.eval_shape else a.eval_size
+    args, gen, device, shared = load_generator(size, a.steps, a.cfg, out / "img")
     anima = shared["model"]
     anima.eval()
     delta = ExtDelta.from_state(anima, sd["delta"], device)
@@ -389,7 +391,15 @@ def _read_native(
                     if not cells:
                         continue
                     if enref is not None:
-                        cells.insert(0, _enref_row(pi, seed) or blank_cell(a.eval_size))
+                        cells.insert(
+                            0,
+                            _enref_row(pi, seed)
+                            or blank_cell(
+                                parse_shape(a.eval_shape)
+                                if a.eval_shape
+                                else a.eval_size
+                            ),
+                        )
                     rows += cells
             if rows:
                 contact_sheet(

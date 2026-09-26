@@ -635,6 +635,10 @@ GRIDS = {
     "3x3": (3, 3, (512, 512)),
     "2x3": (2, 3, (416, 624)),
     "3x2": (3, 2, (624, 416)),
+    # the half canvases (plan_canvas D.0, 2026-09-26: 512 tokens, EN 23/24,
+    # native identity kept); one 256² cell per half — not in TABLE yet
+    "1x2": (1, 2, (256, 512)),
+    "2x1": (2, 1, (512, 256)),
 }
 
 

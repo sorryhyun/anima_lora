@@ -65,3 +65,10 @@ experiments read the old stage-layout dirs (`data_<stage>_<tag>`) through
   rows minus their shared component), `shared` (the seed plus only it); read
   on keys the floor cache holds — the eval refuses a missing floor key.
   **Ran 2026-09-26** → `../reports/transplant_line_2026_09_26.md`.
+- `canvas/` — `plan_canvas.md` (the plan and its verdict, beside the
+  script): does the base spell on a 512-token canvas? Training-free on the
+  seed rows: per `--canvas` WxH, the EN control, native あ / い and the
+  `cf_sense ja` identity peak (`d0`), or A.1's EN per-px ceiling (`d1`),
+  each beside the 512² reads the seed dir already holds. **Ran 2026-09-26
+  (d0)** → 256×512 / 512×256 pass (EN 23/24, identity kept, peak 0.7 ≈ 0.8;
+  the tall canvas doubles); taken into `recipes.GRIDS` as `1x2` / `2x1`.

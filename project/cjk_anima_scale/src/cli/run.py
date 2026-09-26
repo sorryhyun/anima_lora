@@ -36,5 +36,5 @@ def generation_args(g):
     g.add_argument(
         "--eval_shape",
         default="",
-        help="eval: WxH canvas instead of --eval_size² (e.g. 384x512); pair with --eval_tag",
+        help="eval / native / target / cf_sense: WxH canvas instead of --eval_size² (cf_sense: --train_size²), e.g. 384x512; pair with --eval_tag",
     )
