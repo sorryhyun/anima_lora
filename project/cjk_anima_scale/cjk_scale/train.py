@@ -183,11 +183,13 @@ def train(
     data: Path | None = None,
     out: Path | None = None,
     max_steps: int | None = None,
+    line_mode: bool = False,
 ) -> Path:
     """Train the run. ``data`` / ``out`` default to the run's dirs;
     ``max_steps`` stops the loop early with the full-length schedule
-    (``experiments/parity_300f`` replays a run's first steps) — ``scale.py``
-    passes none of them."""
+    (``experiments/parity_300f`` replays a run's first steps); ``line_mode``
+    trains a gated ``v_line`` beside the rows (``rows.Rows``,
+    ``experiments/f1_line``) — ``scale.py`` passes none of them."""
     from common.models import checkpoints, dit_forward, gen_args
     from library.anima.vocab_pack import attached_pack_rows, strategy_pack
     from library.inference.generation import get_generation_settings
@@ -209,6 +211,8 @@ def train(
         recs, ev, device, out, te_cache=data / "te_cache"
     )
     p = plan(rc, data, recs, vocabs, touched)
+    if line_mode:
+        p.record["line_mode"] = True
     print(
         f"rows: {len(p.idx)} ({len(vocabs)} vocabs) — {len(p.touched)} touched "
         f"by the captions, {len(p.idx - p.touched)} with no draw; {len(p.frozen)} "
@@ -234,6 +238,7 @@ def train(
         touched=p.touched,
         frozen=p.frozen,
         context=SEED_ROWS,
+        line_mode=line_mode,
     )
     assert rows.n_rows == len(p.idx), (rows.n_rows, len(p.idx))
     steps, warmup, record = p.steps, p.warmup, p.record

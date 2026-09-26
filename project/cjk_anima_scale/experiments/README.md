@@ -100,3 +100,10 @@ experiments read the old stage-layout dirs (`data_<stage>_<tag>`) through
   passes a row's change through blind to its neighbours (out cos
   0.95–0.97, gain 0.97; donor ≈ random), so the gate lives at the hook
   (`../reports/f0_interaction_2026_09_26.md`).
+- `f1_line/` — `../proposal_factorizedrows.md` § 3 (F1): Stage B's donor
+  retrained with a gated `v_line` beside the rows (`train(…, line_mode=True)`;
+  the hook adds it to pack rows in a run of ≥ 2). Arms `tf_*_ronly` (rows
+  without it) and `tf_*_line` (seed rows + `v_line`). **Ran 2026-09-26** →
+  `v_line` composes held-out words like `u_S` with singles at the floor,
+  in-word `dup` 77; the rows keep the line layout alone
+  (`../reports/f1_line_2026_09_26.md`).

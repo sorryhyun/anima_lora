@@ -15,7 +15,14 @@ class ExtDelta:
     an optional ``(dim,)`` vector in the same units added to every *trained*
     row on top of ``raw`` for the current batch — the per-source layout
     vector ``c_flat``; the train stage sets it per batch, eval leaves it
-    ``None``."""
+    ``None``.
+
+    ``line`` (proposal_factorizedrows.md § 1, F1): an optional ``(dim,)``
+    mode vector in the same units, added to every pack row that sits in a
+    **run** — a pack position whose left or right neighbour in the T5 ids is
+    also a pack row (a spelled word; a lone glyph or a lone piece is not).
+    It is read from the ids at the hook, never from the row, and saved as
+    ``delta['line']``; a state without it reads exactly as before."""
 
     def __init__(self, anima, ext_ids, dim, device, row_scale: float):
         from library.anima.ext_vocab import T5_TABLE_SIZE
@@ -29,6 +36,7 @@ class ExtDelta:
         self.row_scale = row_scale
         self.scale = 1.0
         self.common = None
+        self.line = None
         # ``pinned`` (rows, dim), fixed, added to every trained row on every
         # item: the inherited shared direction a_r · m̂ (``--pin_dir``); the
         # trainable ``raw`` is then the per-row residual only. Saved tables
@@ -48,9 +56,15 @@ class ExtDelta:
                 if bool(mask.any()):
                     self.state["mask"] = mask
                     self.state["ext"] = args[0][mask] - self.T
+                    if self.line is not None:
+                        nb = torch.zeros_like(mask)
+                        nb[..., 1:] |= mask[..., :-1]
+                        nb[..., :-1] |= mask[..., 1:]
+                        self.state["run"] = (mask & nb)[mask]
 
         def post(module, args, output):
             mask = self.state.pop("mask", None)
+            run = self.state.pop("run", None)
             if mask is None or self.scale == 0.0:
                 self.state.pop("ext", None)
                 return None
@@ -70,6 +84,10 @@ class ExtDelta:
             if self.common is not None:
                 rows = rows + self.common.to(rows.dtype)
             d[known] = rows * self.row_scale
+            if self.line is not None and run is not None and bool(run.any()):
+                d = d + run[:, None].to(d.dtype) * (
+                    self.line.to(d.dtype) * self.row_scale
+                )
             out = output.clone()
             out[mask] = out[mask] + (d * self.scale).to(out.dtype)
             return out
@@ -90,13 +108,18 @@ class ExtDelta:
         raw = self.raw.detach().cpu()
         if self.pinned is not None:
             raw = raw + self.pinned.detach().cpu().to(raw.dtype)
-        return {
+        sd = {
             "ext_ids": self.ext_ids,
             "raw": raw,
             "row_scale": self.row_scale,
         }
+        if self.line is not None:
+            sd["line"] = self.line.detach().cpu().float()
+        return sd
 
     def load(self, sd):
         assert sd["ext_ids"] == self.ext_ids
         self.raw.data.copy_(sd["raw"].to(self.raw.device))
         self.row_scale = sd["row_scale"]
+        if sd.get("line") is not None:
+            self.line = sd["line"].float().to(self.raw.device)

@@ -23,6 +23,11 @@ folded into the save): the seed's rows — rescaled into this run's
 renders at its seed row, never as a raw pack row, everywhere the file is
 read (eval, bake, Δ reads). The ``seed_merged`` key marks the format; a
 pre-merge vocabs-only file fails eval's check and needs a retrain.
+
+``line_mode`` (experiments only; proposal_factorizedrows.md F1): one shared
+``v_line`` (``ExtDelta.line``, zero-init, the rows' lr, no pull) added at the
+hook to every pack row in a run of ≥ 2, so the rows ``r_i`` and the line
+mode split by the data's gate on / off exposure. Saved as ``delta['line']``.
 """
 
 from __future__ import annotations
@@ -68,6 +73,7 @@ class Rows:
         touched=None,
         frozen=(),
         context=None,
+        line_mode=False,
     ):
         from common.hooks import ExtDelta
 
@@ -89,6 +95,10 @@ class Rows:
         self.free_residual = float(free_residual)
         self.delta = ExtDelta(anima, idx | frozen, dim, device, self.row_scale)
         self.params = [{"params": [self.delta.raw], "lr": lr}]
+        if line_mode:
+            self.delta.line = torch.nn.Parameter(torch.zeros(dim, device=device))
+            self.params.append({"params": [self.delta.line], "lr": lr})
+            print("rows: line mode on — v_line (zero-init) at runs of ≥ 2", flush=True)
         self.touched_mask = torch.tensor(
             [int(e) in touched for e in self.delta.ext_ids],
             dtype=torch.bool,
@@ -233,6 +243,8 @@ class Rows:
             "it_s": step / max(time.time() - t0, 1e-6),
             **(extra or {}),
         }
+        if self.delta.line is not None:
+            rec["line_norm"] = float(self.delta.line.detach().norm() * self.row_scale)
         if self.raw0 is not None and bool(self.warm_mask.any()):
             r = self.delta.raw.detach()[self.warm_mask]
             r0 = self.raw0[self.warm_mask]

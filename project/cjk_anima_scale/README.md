@@ -73,7 +73,12 @@ The α sweep (report § 7) puts the operating dose at α 1 (words ≤ 1 edit
 it cannot. F0 (adapter only, [`reports/f0_interaction_2026_09_26.md`](reports/f0_interaction_2026_09_26.md))
 found the adapter context-blind to a row's change (out cos 0.95–0.97 alone
 vs in a word, line-trained rows like a random step), so the gate belongs at
-the embed hook. Next: `proposal_factorizedrows.md` F1.
+the embed hook. F1 ([`reports/f1_line_2026_09_26.md`](reports/f1_line_2026_09_26.md))
+trained the donor with a gated `v_line`. The seed rows + `v_line` compose
+the held-out words like post-hoc `u_S` (≤ 1 edit 64 vs 66 / 160) with the
+singles at the floor, but in-word `dup` rises to 77 (u1 44). The trained
+rows still render a line alone (94 / 144, floor 47). Next: a `v_line`
+dose read.
 
 **The shared "line" Δ is half the composition and most of the doubling**
 ([`reports/transplant_line_2026_09_26.md`](reports/transplant_line_2026_09_26.md)):

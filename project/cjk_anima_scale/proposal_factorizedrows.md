@@ -2,8 +2,10 @@
 
 Status: **F0 ran 2026-09-26: the adapter passes a row's change through
 almost blind to its neighbours (out cos 0.95–0.97, gain 0.97), so the gate
-lives at the embed hook as § 1 has it, and F1 is next**
-(`reports/f0_interaction_2026_09_26.md`, result under § 2). It follows from `proposal.md` § 3.1
+lives at the embed hook as § 1 has it** (`reports/f0_interaction_2026_09_26.md`,
+result under § 2). **F1 ran the same day: `v_line` is a working learned
+mode, but the line layout stays in `r_i`** (`reports/f1_line_2026_09_26.md`,
+result under § 3). It follows from `proposal.md` § 3.1
 ("Two doublings, one direction"; "A is gated away by context") and the
 user's question: train identity only, and get the rest (line, vertical,
 manga, eventually SFX) from shared **modes** switched on by context.
@@ -161,6 +163,18 @@ Decision:
 - In-word `dup` is not expected to move here (it happens with the gate
   on). The α sweep and `proposal.md` § 3.3 b / d own it.
 
+**Result (2026-09-26, `experiments/f1_line/`, job `20260926-193243-8773e0`)
+— the second branch.** The shared direction left the rows (`u_S` energy
+24 % → 5 %, `v_line` cos 0.79 to `u_S`), and same-glyph repeats alone
+dropped 50 → 35 / 144 (floor 29). The singles still render a line of other
+glyphs alone, though (94 / 144, floor 47, plain 102), and official stays at
+50 (floor 91). こんにちは holds with the gate live (≤ 2 edits 11 / 16, rows
+only 7). Seed rows + `v_line` on the held-out 10: words ≤ 1 edit 64 / 160
+(u1 66), singles at the floor (official 152, repeat 24), in-word `dup` 77
+(u1 44). `v_line` projects 2.15 × `u_S`'s step. Next: a `v_line` dose
+read (0.5) for B, F1b once a band-law row exists for alone items at the
+b0305 px, and Stage I against `v_line`.
+
 ## 4. Stage I — which scene makes a good identity
 
 With modes carried by `v_m`, the question for `r_i` is: **which training
@@ -231,8 +245,9 @@ explains one of those failures.
    at +18–23 over the floor at α 0.5–1 and climbs at 2.
 2. ~~F0~~ (§ 2, ran 2026-09-26): the adapter is context-blind to a
    row's change, so the gate sits at the hook and F1 is the next GPU spend.
-3. **F1** (§ 3): the `--modes line` code in `rows.Rows` + the hook
-   (half a day), then one train + read (≈ 25 + 25 min GPU).
+3. ~~F1~~ (§ 3, ran 2026-09-26): `v_line` works as a gated mode on seed
+   rows. The rows keep the line layout alone. A `v_line` dose read (0.5,
+   training-free) is next, for in-word `dup`.
 4. **Stage I** (§ 4): I0 / I1 / I2 first (3 micro arms + one floor render
    of the micro set's strings); I3 / I4 only if I1 moves 1 or 2.
 5. `proposal.md` 3.3 d, the count twin, which is also § 5's first mode

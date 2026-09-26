@@ -713,3 +713,51 @@ def test_compose_one_sheet(tmp_path, monkeypatch):
     assert (out / "sheet.png").exists()
     assert ev.floor_keys(rc, "sent") == {"はい|en"}
     assert ev.floor_keys(rc, "target") is None
+
+
+def test_ext_delta_line_gate():
+    """``ExtDelta.line`` (F1): added only to pack rows with a pack neighbour
+    (a run of ≥ 2), gradient into it, round-trips the state; no ``line`` →
+    the output is the rows alone."""
+    import torch
+    from types import SimpleNamespace
+
+    from common.hooks import ExtDelta
+
+    T = 32128
+    emb = torch.nn.Embedding(T + 10, 4)
+    torch.nn.init.zeros_(emb.weight)
+    anima = SimpleNamespace(llm_adapter=SimpleNamespace(embed=emb))
+    d = ExtDelta(anima, [1, 2, 3], 4, "cpu", row_scale=2.0)
+    with torch.no_grad():
+        d.raw.copy_(torch.eye(3, 4))
+    # "…" lone 1 | run 2 3 | text | run 3 1 2 at the end
+    ids = torch.tensor([[5, T + 1, 7, T + 2, T + 3, 9, T + 3, T + 1, T + 2]])
+    no_line = emb(ids).detach().clone()
+    d.line = torch.nn.Parameter(torch.zeros(4))
+    with torch.no_grad():
+        d.line.fill_(0.5)
+    out = emb(ids)
+    run = torch.tensor([0, 0, 0, 1, 1, 0, 1, 1, 1], dtype=torch.bool)
+    rows = torch.zeros(9, 4)
+    for p, e in enumerate(ids[0].tolist()):
+        if e >= T:
+            rows[p] = d.raw.detach()[d.index[e - T]] * 2.0
+    want = rows + run[:, None] * 1.0  # 0.5 × row_scale 2
+    assert torch.allclose(out[0], want)
+    out.sum().backward()
+    assert float(d.line.grad.sum()) == 5 * 4 * 2.0  # 5 run positions × dim × row_scale
+    sd = d.state_dict()
+    assert torch.allclose(sd["line"], torch.full((4,), 0.5))
+    d2 = ExtDelta.from_state(anima, sd, "cpu")
+    assert torch.allclose(d2.line, torch.full((4,), 0.5))
+    for h in d.handles:
+        h.remove()
+    for h in d2.handles:
+        h.remove()
+    d3 = ExtDelta(anima, [1, 2, 3], 4, "cpu", row_scale=2.0)
+    with torch.no_grad():
+        d3.raw.copy_(torch.eye(3, 4))
+    assert "line" not in d3.state_dict()
+    assert torch.allclose(no_line[0], rows)
+    assert torch.allclose(emb(ids)[0], rows)
