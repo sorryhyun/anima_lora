@@ -17,7 +17,7 @@ class ExtDelta:
     vector ``c_flat``; the train stage sets it per batch, eval leaves it
     ``None``.
 
-    ``line`` (proposal_factorizedrows.md § 1, F1): an optional ``(dim,)``
+    ``line`` (proposal.md § 1, F1): an optional ``(dim,)``
     mode vector in the same units, added to every pack row that sits in a
     **run** — a pack position whose left or right neighbour in the T5 ids is
     also a pack row (a spelled word; a lone glyph or a lone piece is not).

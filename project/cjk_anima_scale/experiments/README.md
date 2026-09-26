@@ -75,7 +75,7 @@ experiments read the old stage-layout dirs (`data_<stage>_<tag>`) through
   each beside the 512² reads the seed dir already holds. **Ran 2026-09-26
   (d0)** → 256×512 / 512×256 pass (EN 23/24, identity kept, peak 0.7 ≈ 0.8;
   the tall canvas doubles); taken into `recipes.GRIDS` as `1x2` / `2x1`.
-- `transplant_piece/` — `../proposal.md` Stage A, training-free and out of
+- `transplant_piece/` — the line-mode proposal's Stage A, training-free and out of
   sample: `u_P` = the mean tangential Δ of 292 of 300f_sp's pieces, added at
   one coefficient (their mean projection, 94.1) × α to the seed rows of the
   8 piece-ruler pieces, plus a random ⟂ control; read on the floor cache's
@@ -83,7 +83,7 @@ experiments read the old stage-layout dirs (`data_<stage>_<tag>`) through
   held-out piece beside a donor (leak 0). **Ran 2026-09-26** → transfers:
   contained 27 → 52 / 256 (300f_sp 76), random control 11
   (`../reports/transplant_piece_2026_09_26.md`).
-- `stage_b/` — `../proposal.md` Stage B: 36 donor kana trained on 568
+- `stage_b/` — the line-mode proposal's Stage B: 36 donor kana trained on 568
   manga109s lines (`scene_spelled`, glyph-balanced draw, no repeated glyph)
   plus a count tier (`scene_single_small`: one glyph at 24–40 px in a bubble
   it fills 0.2–0.4 of, 0.3 of b0507). `u_S` = the donors' mean tangential Δ,
@@ -93,14 +93,14 @@ experiments read the old stage-layout dirs (`data_<stage>_<tag>`) through
   `native_spell/`. **Ran 2026-09-26** → composition transfers (≤ 1 edit
   11 → 66 / 160, random 9) and doubling with it (repeats 25 → 53 / 320)
   (`../reports/stage_b_2026_09_26.md`).
-- `f0_interaction/` — `../proposal_factorizedrows.md` § 2 (F0), no DiT: the
+- `f0_interaction/` — the factorized-rows proposal's F0, no DiT: the
   Qwen + `llm_adapter` forward at a glyph's position, alone vs in a spelled
   word, with only its own row changed (`self`) or every glyph's (`all`), on
   Stage B's u1 / random ⟂ / donor rows. **Ran 2026-09-26** → the adapter
   passes a row's change through blind to its neighbours (out cos
   0.95–0.97, gain 0.97; donor ≈ random), so the gate lives at the hook
   (`../reports/f0_interaction_2026_09_26.md`).
-- `f1_line/` — `../proposal_factorizedrows.md` § 3 (F1): Stage B's donor
+- `f1_line/` — the factorized-rows proposal's F1: Stage B's donor
   retrained with a gated `v_line` beside the rows (`train(…, line_mode=True)`;
   the hook adds it to pack rows in a run of ≥ 2). Arms `tf_*_ronly` (rows
   without it) and `tf_*_line` (seed rows + `v_line`). **Ran 2026-09-26** →

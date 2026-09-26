@@ -24,7 +24,7 @@ renders at its seed row, never as a raw pack row, everywhere the file is
 read (eval, bake, Δ reads). The ``seed_merged`` key marks the format; a
 pre-merge vocabs-only file fails eval's check and needs a retrain.
 
-``line_mode`` (experiments only; proposal_factorizedrows.md F1): one shared
+``line_mode`` (experiments only; proposal.md § 1, F1): one shared
 ``v_line`` (``ExtDelta.line``, zero-init, the rows' lr, no pull) added at the
 hook to every pack row in a run of ≥ 2, so the rows ``r_i`` and the line
 mode split by the data's gate on / off exposure. Saved as ``delta['line']``.

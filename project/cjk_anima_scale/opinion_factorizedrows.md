@@ -1,6 +1,6 @@
 # Opinion — observe and replay line control inside the adapter
 
-2026-09-26. Advisory follow-up to [proposal_factorizedrows.md](proposal_factorizedrows.md).
+2026-09-26. Advisory follow-up to the factorized-rows proposal (now merged into [proposal.md](proposal.md); parked there, § 2.7).
 **No experiment or implementation performed for this note.** Code and existing
 reports were read; the mechanisms below are hypotheses unless identified as observations.
 

@@ -1,298 +1,247 @@
-# proposal — the line mode as a transferable direction, and what doubling is (2026-09-26)
+# proposal — the line mode: what is left (2026-09-26)
 
-Status: **Stage A ran 2026-09-26 — the piece direction transfers out of
-sample** (`reports/transplant_piece_2026_09_26.md`, § 1 below). **Stage B
-ran the same day — the singles' line mode transfers to held-out kana, and
-doubling travels with it** (`reports/stage_b_2026_09_26.md`, § 2 below).
-**The doubling track (§ 3) is next**; § 4 has the order. Origin: `reports/transplant_line_2026_09_26.md`
-and the user's question — train many singles (なにしてる-like, not just
-ありがとう) in diverse lines with more budget, extract their shared Δ
-direction, and use it to adapt single / piece rows that were trained for
-identity only. Doubling rides that direction, so this proposal carries a
-second track: what the doubling factor is and how to bound it.
+This file merges `proposal.md` (the line mode as a transferable direction,
+and the doubling track) with `proposal_factorizedrows.md` (rows = identity,
+modes by context). It keeps only the open items. What ran is in the reports.
+Section numbers that reports and experiment docstrings cite refer to the
+pre-merge files at git `48e1d6ab`.
 
-## 0. What the reads already say
+## 0. Where it stands
 
-- Singles trained in lines (spell_b) compose a held-out spelled string
-  (≤ 2 edits 13 / 32, floor 1) and double when rendered alone (repeats
-  53 / 160, floor 19) — `reports/spell_2026_09_26.md` § 4.
-- Their Δ splits into a shared component `uB` (20–41 % of each row's Δ
-  energy) and a per-row rest. Composition splits between them (per-row
-  only 5, shared only 7, both 13); doubling is the shared part's (per-row
-  only 22 = floor, shared only 37, both 53) — `transplant_line` § 3–4.
-- A direction from another kind does not transfer: 300f_sp's piece
-  direction (cos 0.30 to `uB`, ≈ 3 % of the singles' Δ energy) on the seed
-  singles renders the seed at 1× and 3× — `transplant_line` § 2.
-- 09-16 (`../cjk_renderable_anima/reports/transplant_2026_09_16.md`):
-  scene-trained residuals are modular across shared directions (23 / 64 on
-  a foreign one), flat-trained ones are not (0 / 64); pinning the shared
-  direction bought no training steps. The seed rows are scene-trained, so
-  they are the modular kind.
+| read | verdict | report |
+|---|---|---|
+| Stage A: a piece direction `u_P` on held-out pieces | transfers (contained 27 → 52 / 256) | `reports/transplant_piece_2026_09_26.md` |
+| Stage B: a 36-kana donor's `u_S` on 10 held-out kana | composition transfers (≤ 1 edit 11 → 66 / 160), and doubling travels with it | `reports/stage_b_2026_09_26.md` |
+| α sweep of `u_S` | composition peaks at α 1; no dose bounds either doubling | `reports/stage_b_2026_09_26.md` § 7 |
+| F0: does the adapter modulate a row by its neighbours? | no (out cos 0.95–0.97, gain 0.97), so the gate lives at the embed hook | `reports/f0_interaction_2026_09_26.md` |
+| F1: a factorized donor, rows + a gated `v_line` | `v_line` is a working mode. The rows still render a line when alone | `reports/f1_line_2026_09_26.md` § 1–4 |
+| `v_line` dose 0.5 on the held-out 10 | ≤ 1 edit 80 / 160 (u1 66), ≤ 2 edits 131, singles at the floor, in-word `dup` 54 (floor 26) | `reports/f1_line_2026_09_26.md` § 5 |
 
-What no read had tested before Stage A: **a shared direction estimated on
-one set of rows, applied at a fixed coefficient to rows that never trained
-with it.** Everything in `transplant_line` § 4 is in-sample. Stage A (§ 1)
-is the first such read, on pieces.
+The best configuration on record for a vocab without line training is
+**the seed rows + 0.5 · `v_line` + the run gate**. Two kinds of doubling
+remain:
+- **A, a glyph alone repeating itself (あ → ああ):** bounded. The gate
+  keeps a lone row at its seed value.
+- **B, a doubled glyph inside a word (ひまわり → ひまわりり):** open, +28
+  over the floor. Collapsing doubled glyphs lifts the words from 80 to 89,
+  so B costs about a tenth of the words.
 
-## 1. Stage A — piece leave-out transplant (no training, no floor renders)
+Bound by the wake roll-up:
+- Transplant + a pinned trigger is not a step saver, so nothing here
+  claims fewer steps per row.
+- No row-space geometry penalties (decorrelation, orthogonality,
+  whitening).
 
-All 12 pieces the `native_piece` floor cache holds are among
-run0926_300f_sp's 300 trained pieces, and 8 of them are what the piece
-ruler reads (`あと きて こう こと こんにちは しい ちょっと った`).
+## 1. The model, and what is built
 
-- `u_P` = the normalized mean of the **other 292** pieces' Δ (own-row part
-  removed, as in `transplant_line` § 1); step = their mean projection on
-  `u_P` (one coefficient for every row, no per-row fit).
-- Arms: the seed rows of the 8 held-out pieces + α · step · `u_P`,
-  α ∈ {0.5, 1}; a random unit direction ⟂ `u_P` at α 1 (the norm control).
-- Read: the piece ruler (native, en + swap, the 8 alone) — floor 3 / 256
-  official from the cache, 300f_sp's own rows 16 / 256 official, 76
-  contained (`spell_2026_09_26.md` § 8), on disk. ≈ 12 min / arm.
-- Leak: expected from grid strings, but 300f_sp is `scene_piece`-only and
-  every one of its 20 000 items carries one vocab, so no donor item shows a
-  held-out piece (leak 0).
+```
+row_eff(i, ctx) = r_i + g_line(ctx) · v_line
+```
 
-Decision: ≥ half of 300f_sp's gain over the floor, above the random arm →
-a generic direction exists for pieces and Stage B is worth its budget. At
-the floor → the line mode is per row (or per training set) and the
-transplant route closes for both kinds.
+- `g_line = 1` iff the pack row has a pack neighbour in the T5 ids. A
+  spelled word's glyphs are adjacent ext ids. A lone glyph or a lone piece
+  has no pack neighbour.
+- **Built:**
+  - `src/common/hooks.py::ExtDelta.line` holds the vector and applies the
+    gate at the hook. It is saved as `delta['line']`, and a state without
+    it reads exactly as before.
+  - `cjk_scale/rows.py` / `train.py` take `line_mode`, which trains it
+    beside the rows. It is for experiments only; `scale.py` never passes
+    it.
+  - `v_line` itself: `output/cjk_anima_scale/run0926_f1_line/trained.pt`
+    (norm 204, cos 0.79 to `u_S`), used at 0.5.
+- **Not built:** the inference side (§ 2.5).
 
-**Result (2026-09-26, `experiments/transplant_piece/`, job
-`20260926-144514-d7e712`) — passes on contained, just under on official.**
-`u_P` is stable (split-half cos 0.97) and the 8's own trained Δ sits at
-cos 0.83 to it. Step = 94.1, 65–85 % of a held-out seed row's norm.
+## 2. Open items
 
-| arm | official | contained | repeat |
+### 2.1 In-word doubling (B) — the main open cost
+
+What is known:
+- B rides the line mode. It jumps above the floor at the first dose
+  (`u_S` α 0.5: `dup` 49) and does not fall below +18 at any dose tried
+  (`u_S` α 1: 44; `v_line` 0.5: 54; `v_line` 1: 77). Composition and B
+  have not separated on any dose axis.
+- A reading, not a verdict (Stage B § 7): the line is switched on before
+  the sequence is resolved. Doubling fills the line with the glyphs it
+  has, and it falls only as composition gets stronger.
+- The recipes fill the box. `scene_spelled` / `scene_piece` draw `fill`
+  0.7–1.0 of the bubble, so a word has never been trained in a bubble
+  wider than itself.
+
+Hypotheses for B:
+- **H1, a fill prior:** the line fills its box, and a word shorter than
+  the box's capacity pads by doubling. Predicts that `dup` rises with the
+  box's capacity in glyphs minus the word's length, and that doubled
+  glyphs sit at the trained line px.
+- **H2, a sequence failure:** the mode is on but the order is weak.
+  Predicts that `dup` is independent of box size, concentrates on
+  particular positions or bigrams, and falls with composition strength.
+
+Analyses:
+- **(a) px, box and position of the doubled renders (CPU, reads on
+  disk).**
+  - Renders: every word render in floor / u1 / `v_line` 1 / `v_line` 0.5,
+    and spell_b's and the Stage B donor's own words.
+  - Per render: the reader box (`reads[].box`), the glyphs read,
+    px = √(box area / glyphs), the bubble where the sheet shows it, and
+    which position doubled (first / inner / last; the preceding glyph).
+  - H1 predicts box-driven doubling, H2 position- or bigram-driven.
+  - This is the old § 3.3 b, extended from singles to words.
+- **(b) Cross-attention placement (costs code).** Where the doubled glyph's
+  token lands in the image, per block: one blob or two. Only if (a) leaves
+  H1 vs H2 open.
+
+Levers, chosen by (a):
+- **H1 → data:** a `scene_spelled` tier at low fill (0.3–0.6, a word in a
+  bubble wider than itself). Retrain `v_line` on Stage B's words with it,
+  then read the held-out 10 at dose 0.5. It is the same data axis as
+  F1b's alone items (§ 2.2), but for words.
+- **H2 → the mode side:** a finer `v_line` dose (0.35 / 0.75 around 0.5,
+  training-free, ≈ 25 min each) to find the `dup` minimum. Then a caption
+  marker (§ 2.7), which is the last resort.
+- **Not** a training-time cap on a row's projection. It sits in the
+  closed geometry-penalty family and would act on `r_i`, while B lives in
+  the mode.
+
+### 2.2 Trained rows alone still render a line
+
+F1's rows, gate off, read as a line of other glyphs in 94 / 144 renders
+(floor 47), and official is 50 (floor 91). `u_S` left them (energy 24 % →
+5 %), but the layout did not. Until this moves, **the "alone" value of a
+trained single is its seed row**, and trained rows are line-only.
+
+- **F1b:** alone items at the b0305 px (≈ 18 px). The count tier covers
+  24–40 px only, because a single under 24 px has no window in the band
+  law. **It needs a band-law row first:** a read of the single's window at
+  16–24 px (`band_experiment_results.md`). Then retrain F1 with the tier
+  and read the donor singles alone (line ≥ 3 glyphs, official, repeat)
+  against F1's 94 · 50 · 35.
+- **The count twin** (old § 3.3 d): the Stage B donor with the count tier
+  off, same words and seed. The Δ difference between the twins, own-row
+  part removed, is the count direction: roughly ⟂ `u_S` means a separate
+  transplantable component, roughly −`u_S` means the tier only shrinks the
+  line mode. It is also the first run of the mode-discovery recipe (§ 2.6).
+  Data CPU + ≈ 25 min train.
+- Score the singles with the line metric (either reader reads ≥ 3 kana /
+  kanji) beside `repeat`. `repeat` counts あ → ああ only and missed F1's
+  misses.
+
+### 2.3 Stage I — which scene makes a good identity
+
+With the line carried by `v_line`, the question for `r_i` is **which
+training context gives the identity with the least layout baked in.** Grid
+50 % : scene 50 % (the seed's `b0709`) is the incumbent. It buys identity
+and native together, and it binds "one big glyph filling the bubble" into
+the row: the seed's spelled string renders as one big first glyph.
+
+A good `r_i`:
+1. **Alone:** renders its glyph once in a native scene (official, repeat
+   and line at floor).
+2. **Under the mode:** composes with 0.5 · `v_line` in a run (≤ 1 edit on
+   spelled words, `dup` at the floor).
+3. **Modular:** renders on a foreign shared direction (the 09-16 test).
+
+Candidates. Each is `r_i` data only (gate off, one glyph per item), and
+the recipes exist unless marked:
+- **I0**, the incumbent: `b0709` as is, `scene_single` 0.5 (fill 0.7,
+  ≈ 50 px) + `grid_single` 0.5 (1×1–3×3).
+- **I1**, scene only with a px spread: `scene_single` at bubble fill
+  0.2–1.0, so one glyph at 20–60 px and never always filling.
+- **I2**, grid only at small cells (3×3 / 2×3, 25–85 px). The negative
+  control for "native needs scene" (a grid alone was never a seed table).
+- **I3**: I0 + I1's small-fill tier at 1 : 1 : 1.
+- **I4**, pool diversity: I0 on the non-manga / `sl1w` pools as well. It
+  needs a pool check, not code.
+
+Setup:
+- **Cold rows on a micro set** (≈ 12 vocabs the seed lacks: katakana or
+  common kanji, pack raw rows). A warm start would measure the candidate
+  on top of `b0709`'s identity, which is the confound.
+- Micro arms (≈ 25 min each), same draws per row, singles band 0.7–0.9.
+- Read per glyph with sheets.
+- For criterion 2, read 0.5 · `v_line` on spelled strings of the micro
+  set. Those strings need new floor keys, which is the one floor render
+  here.
+- Pick the recipe that wins 2 without losing 1.
+
+Order: I0 / I1 / I2 first; I3 / I4 only if I1 moves 1 or 2. It closes if
+every candidate ties on 2: then the identity source does not matter beyond
+scene vs flat (09-16), `b0709` stays, and the gain is all in the mode.
+
+### 2.4 The mode for pieces
+
+`v_line` was trained on singles. The gate fires on any run, so a caption
+with adjacent piece rows (って ください) gets it too. Nothing has read that.
+- **Read first (training-free):** the piece ruler and the sent ruler with
+  0.5 · `v_line` on the seed rows, against the floor.
+- **If pieces lose:** gate by kind (single-kind rows only) until a piece
+  mode exists. `u_P` (Stage A) is the post-hoc candidate for one, and a
+  `v_line` trained on pieces is the learned one.
+
+### 2.5 Shipping the mode
+
+Once § 2.1 and § 2.4 settle the dose and the kind rule:
+- **The inference hook:** the same run gate in
+  `library/anima/vocab_pack.py`'s hook, with the pack carrying `line` (a
+  pack without it reads as today).
+- **ComfyUI:** the node's `_vendor/` follows through `make vendor-sync`.
+- **Baking:** `scripts/toolkits/bake_vocab_pack.py` carries
+  `delta['line']` into the pack.
+- **The post-train comparison** Stage B deferred: seed + mode + a short
+  post-train against the post-train alone, on a vocab set with line
+  data. It decides whether the mode is worth adding to a production run's
+  rows, or only to vocabs without line data.
+- **The sent test:** `300f_sp`'s rows + 0.5 · `v_line` on the sent ruler.
+  Does sent contained recover 4 → 11? It tells whether the sentence mix
+  can shrink per vocab once the mode carries line composition.
+
+### 2.6 Modes beyond line (discovery)
+
+The recipe is twin donors: same vocabs and seed, one context axis
+changed. Then the Δ difference with the own-row part removed, split-half
+stability, a transplant onto held-out rows and the ruler. A mode that
+passes becomes a gated `v_m`.
+
+| mode | gate | first read | note |
 |---|---|---|---|
-| floor | 3 | 27 | 2 |
-| u0.5 | 7 | 43 | 4 |
-| u1 | 9 | 52 | 3 |
-| random ⟂, α 1 | 5 | 11 | 0 |
-| 300f_sp (trained) | 16 | 76 | 5 |
+| count / alone | no pack neighbour | the count twin (§ 2.2) | the first run of the recipe |
+| horizontal | the existing caption marker | a horizontal ruler on the seed: is there a failure? | no horizontal read on record; skip the mode if there is no failure |
+| manga vs other surfaces | a new caption marker | twin: manga-bubble pools vs sign / cloth / UI pools | the data is all manga bubble today |
+| SFX | a new caption marker | none possible yet | no SFX data recipe (the renderers are font-based); the reader and corpus exist (Manga109-s + COO) |
 
-(/ 256.) Paired: u1 vs random contained 45 / 4 (p 8e-10), u1 vs floor
-30 / 5 (p 2e-5), official 8 / 2 (p 0.11). u0.5 → u1 is flat. The gain is
-concentrated in こう / こと / きて. あと / った keep their training gain in
-the per-row rest, and the 3+ glyph pieces are 0 in every arm, 300f_sp
-included. The piece direction carries no doubling. Caveat: u1 renders some
-kana in 223 / 256 vs the floor's 179, so part of the contained gain may be
-"more Japanese text" rather than the piece. Official is the reading that
-does not depend on it, and it is +6 (n.s.).
+Order by the rulers' failure list (doubling, sentence assembly, 3+ glyph
+pieces), not by the taxonomy. A mode is worth training only if it explains
+one of those failures.
 
-## 2. Stage B — a diverse singles donor, held-out kana
+### 2.7 Parked
 
-- **Donor**: ≈ 30–40 kana singles, trained on real words spelled from them
-  (the `scene_spelled` recipe of `experiments/spell_b/`, word list from
-  the manga109s phrase pool filtered to the donor glyphs, both
-  orientations, all four scene pools), at the piece bands **plus a count
-  tier** (§ 3.4 — without one the donor learns doubling as part of the
-  line mode). Budget at the trainer's 90 steps / row first, then 2×.
-- **Held out**: ≈ 10 kana no donor word contains, and ≈ 5 spelled words
-  made only of them.
-- **Extract** `u_S` from the donor rows (split-half cos of the two halves'
-  means as the stability check); **transplant** onto the held-out rows'
-  seed values at one coefficient, α sweep {0.5, 1, 2}; random control.
-- **Read**: the held-out spelled words (≤ 1 / ≤ 2 edits) and the held-out
-  singles alone (official, repeats). **Needs new floor keys** — the ≈ 5
-  spelled words + 10 singles, rendered once into `native_spell/`; that is
-  the one place this proposal asks for a floor render
-  (`feedback_experiments_use_existing_floor`).
-- The donor run doubles as a B2-style read on its own rows (does count hold
-  with the count tier in).
+- **A caption marker for the line mode** (spelled items captioned
+  `, spelled.` or similar). It touches the caption convention and the TE
+  path, so it is the last resort for B.
+- **The outside opinion's adapter replay / distillation**
+  (`opinion_factorizedrows.md` § 2–4). F0 found no context-dependent
+  component in the adapter worth localizing, and adapter distances have
+  not predicted renders (piece ↔ glyph R² ≈ 0.03).
+- **The `u_P` → こんにちは-singles bridge** (no training, cached floor):
+  low priority.
 
-Decision: transplant reaches the shared-only in-sample level (≈ 7 / 32
-≤ 2 edits) with repeats at floor → the adaptation route is real; then test
-transplant + a short post-train against the post-train alone (the 09-16
-pinning read says it may buy no steps; this is the one comparison that
-decides whether the transplant is worth shipping).
+## 3. Order
 
-**Result (2026-09-26, `experiments/stage_b/`, jobs `20260926-155507-64a8f8`
-+ `20260926-165905-77019b`) — composition passes, repeats fail.**
-- Held out: ひ ま わ り さ く ら み ど も. Words: ひまわり さくら みどり
-  くもり まくら.
-- Donors: 36 kana on 568 manga109s lines (2–6 glyphs, none repeated).
-  の was swapped for ふ: の and を cannot be spelled, because their
-  space-prefixed form is another Qwen token.
-- Count tier: 0.3 of b0507, ≈ 10 items / glyph, 24–40 px only (a single
-  under 24 px has no window).
-- `u_S`: split-half cos 0.82, 24 % of the donors' Δ energy, step 75
-  (26–32 % of a held-out row).
+1. **§ 2.1 (a)** (CPU, reads on disk): what B is.
+2. **§ 2.4 read** (training-free, GPU): does the gate hurt pieces?
+3. **§ 2.1 lever**, as (a) says: the low-fill spelled tier (H1) or the
+   finer dose (H2).
+4. **§ 2.3 Stage I**: I0 / I1 / I2 against 0.5 · `v_line`.
+5. **§ 2.2**: the count twin, then F1b once its band-law row exists.
+6. **§ 2.5**: shipping, then the sent test.
 
-| read (en + swap) | floor | u1 | random ⟂ |
-|---|---|---|---|
-| held-out words ≤ 1 edit / 160 | 11 | **66** | 9 |
-| held-out words official | 0 | 12 | 0 |
-| held-out singles official / 320 | 149 | 109 | 157 |
-| held-out singles repeat | 25 | **53** | 32 |
+## 4. What closes it
 
-u1 vs random, ≤ 1 edit: 60 / 3 (p 9e-15). u1 vs floor, repeats: 38 / 10
-(p 6e-5). Every word gains, and the 4-glyph ひまわり goes 0 → 14 / 32. The
-donor's own rows show the same pair: こんにちは, no trigram of which is in
-any donor word, goes to ≤ 2 edits 0 → 13 / 16 (en), while its singles'
-repeats go 29 → 50 / 144 and official 91 → 43. **The line mode is a
-transferable direction, and doubling is part of it; the count tier as run
-did not split the two.** The post-train comparison waits until doubling
-is bounded (§ 3).
-
-## 3. Doubling — what it is, and how to bound it
-
-### 3.1 Hints already on disk
-
-- **Per-row dose.** Per glyph (repeats of 32, en + swap), against each
-  row's projection on `uB`:
-
-  | glyph | `uB` coef | floor | spell_b | shared only | strip |
-  |---|---|---|---|---|---|
-  | あ | 55.5 | 3 | 17 | 8 | 9 |
-  | り | 48.3 | 4 | 9 | 11 | 2 |
-  | が | **29.6** | 2 | **5** | **1** | 2 |
-  | と | 53.9 | 4 | 10 | 9 | 4 |
-  | う | 54.4 | 6 | 12 | 8 | 5 |
-
-  が — the smallest coefficient (and the fewest training items, 75) — is
-  the one glyph that barely doubles in any arm. n = 5; a hint, not a fit.
-- **Doubling predates training**: the seed's own misses double
-  (`floor_score.md`), and scene_piece-only did not remove it
-  (`reports/piece_only_2026_09_26.md`) — the base model has a
-  "fill the text region" prior that a row can switch on.
-- **A count tier at 0.3 does not hold count** (Stage B, § 2): one glyph
-  alone at 24–40 px in a bubble it fills 0.2–0.4 of, ≈ 10 items / glyph
-  among 36 line-trained donors. The donor singles still double
-  (repeats 29 → 50 / 144), and `u_S` fit on those rows carries doubling to
-  held-out rows (25 → 53 / 320). Either the signal was too weak, or it
-  entered along the line direction itself. § 3.3 d separates the two.
-- **The recipes fill the box**: `scene_spelled` / `scene_piece` draw
-  `fill` 0.7–1.0 of the bubble; the single canvas draws one glyph at
-  ≈ 50 px. A row trained only in lines has only ever seen its glyph as
-  part of a box-filling line at 19–38 px.
-- **The reads carry boxes** (`reads[].box`, per reader region), so a
-  rendered glyph's px and the box it fills are measurable from the
-  renders already on disk.
-- **Two doublings, one direction** (CPU re-read of the reads on disk,
-  2026-09-26). Stage B's `repeat` counts only a single alone turning into a
-  line of itself (**A**, あ → ああ). A word's read with a doubled glyph
-  (**B**, ひまわり → まひかりり, こんにちは → こんにに…) was never counted.
-  `run_exp.py` now scores it (`dup`, and `le1c` = ≤ 1 edit once doubled
-  glyphs are collapsed). B rides the same direction as A:
-
-  | read | floor | line arm | control |
-  |---|---|---|---|
-  | Stage B words, dup / 160 | 26 | u1 **44** | rand 20 |
-  | spell_b strings, dup / 128 | 13 | spell_b **54**, shared 49 | strip 15 |
-  | こんにちは (donor's own), dup / 16 | 0 | donor **13** | — |
-
-  u1 vs floor dup 36 / 18 (p 0.02). What B costs grows with dose. At the
-  transplant step (26–32 % of a row), collapsing moves the words' ≤ 1 edit
-  only 66 → 69. On the donor's trained rows (rel Δ 0.46–0.69) it moves
-  こんにちは 6 → 12 / 16: half its misses are B.
-- **A is gated away by context; B is not.** A span's row count tells a
-  row that stands alone from one in a line. Adding `u_S` only to rows in a
-  run of ≥ 2 gives, by construction on Stage B's arms, the u1 words (≤ 1
-  edit 66) and the floor singles (official 149, repeat 25). For trained
-  rows, the in-sample version is spell_b's rows in a run and the `strip`
-  rows (Δ minus its `uB` part) alone. Singles あ り が と う, official ·
-  repeat / 160: floor 90 · 19, spell_b 43 · 53, **strip 76 · 22**, shared
-  60 · 37. The strip rows still lose 14 official to the floor, so the seed
-  row alone is the better "alone" value where the seed is kept. B happens
-  inside a run, where the gate keeps the line mode, so the gate cannot
-  touch it.
-
-### 3.2 Hypotheses
-
-- **H1 — fill prior.** A line-trained row learns "text at line px that
-  fills the bubble"; alone, one glyph at that px cannot fill it, so it
-  repeats. Predicts: repeats rise with bubble width / fall with glyph px,
-  and the doubled render's glyphs sit at the trained line px.
-- **H2 — a context-free line mode.** The row carries "I am part of a
-  line" regardless of its neighbours in the caption; the adapter cannot
-  tell alone from spelled. Predicts: repeats scale with the row's `uB`
-  coefficient (the § 3.1 table), independent of bubble size.
-- **H3 — a missing count signal.** No training item ever shows a line-mode
-  row alone at line px, so nothing penalises the repeat. Predicts: a count
-  tier at line px (§ 3.4 a) removes doubling without moving the shared
-  direction much.
-
-H1 and H2 are read training-free; H3 is the data fix.
-
-### 3.3 Analyses (training-free unless marked)
-
-- **(a) Dose-response along `uB`** — seed singles + α · c̄ · `uB` (c̄ = the
-  five rows' mean coefficient), α ∈ {0.5, 1, 1.5}, on spell_b's keys
-  (floor cached). Two curves on one axis: held-out ≤ 2 edits and repeats.
-  If composition saturates before repeats rise, there is an operating α;
-  if they rise together, the direction is one thing (H2).
-- **(b) Size and fill from existing renders** — for every render of a
-  single alone (floor, spell_b, strip, shared, u1): the text box (reader
-  region), the glyph count read, px = √(box area / glyphs), and the scene's
-  bubble size where the sheet shows one. Repeats vs px vs box width across
-  arms separates H1 (box-driven) from H2 (row-driven). CPU only.
-- **(c) Where the row lands in the image** — cross-attention from image
-  tokens to the row's token position, per block, averaged over σ steps:
-  one attention blob (one glyph) vs several (a line of it). Compare seed
-  vs spell_b vs strip for `"あ"` alone and for the spelled string. Needs a
-  cross-attn capture hook on the DiT (not in the line's `src/` today);
-  the only analysis here that costs code.
-- **(d) A count direction** *(needs the Stage B donor or B2)* — the Δ
-  difference between rows trained in lines with the count tier and
-  without it, own-row part removed. If it is roughly ⟂ `uB` it is a
-  separate, transplantable "one glyph" component; if it is −`uB` the
-  count tier just shrinks the line mode.
-
-### 3.4 Levers to bound it (after 3.3 says which)
-
-- **(0) Gate the line mode by context (A only; § 3.1).** At the
-  vocab-pack embed hook, a row alone gets its seed (or stripped) value and
-  a row in a run of ≥ 2 pack rows gets the line mode. It is render time
-  only: no caption convention change and no TE re-cache, but the ComfyUI
-  node's vendored hook has to follow. Open: what counts as a run
-  (punctuation, a neighbouring English word). It does not bound B.
-- **(a) Data: a count tier at line px** — a `scene_single_small` recipe:
-  one glyph at the line bands' px (19–38) in a bubble with low fill
-  (0.2–0.4), captioned alone. It breaks the "line px ⇒ fill the box" link
-  that the current tiers never break (the single canvas is ≈ 50 px, one
-  glyph, full frame). Cheaper than B2's 0.7–0.9 single canvas and aimed
-  at H1 / H3. First candidate.
-- **(b) Row arithmetic** — if (a)/(d) find a count direction ⟂ `uB`,
-  transplant line mode + count together; if the dose-response (3.3 a)
-  shows an operating α, cap each row's `uB` coefficient at it (a per-row
-  clip, not a penalty).
-- **(c) A training-time cap** — clip each trained row's projection on a
-  frozen `uB` to c_max after every step. Caution: row-space geometry
-  penalties (decorrelation / orthogonality / whitening) closed on the W2d
-  line (wake roll-up); a hard cap on one measured direction is narrower,
-  but it is the same family — only after (a) fails.
-- **(d) A caption marker** — the line mode bound to a caption token
-  (spelled items captioned `, spelled.` or similar) instead of the rows,
-  so a row alone never carries it. Touches the caption convention and the
-  TE path; last resort.
-
-## 4. Order and cost
-
-1. ~~Stage A~~ (done: transfers, § 1). ~~Stage B~~ (done: composition
-   transfers, doubling with it; § 2).
-2. ~~3.3 a on Stage B's arms~~ — **ran 2026-09-26**
-   (`reports/stage_b_2026_09_26.md` § 7). Words ≤ 1 edit 11 / 40 / **66** /
-   34 and in-word `dup` 26 / 49 / **44** / 73 at floor / α 0.5 / 1 / 2.
-   Singles repeat 25 / 36 / 53 / 60, official 149 / 139 / 109 / 49. α 1 is
-   the operating dose: composition peaks there, and `dup` is at its dosed
-   minimum but still +18 over the floor. No α bounds either doubling, so
-   § 3.4 b as a per-row cap only picks α 1, the gate (§ 3.4 (0)) bounds A,
-   and B stays open.
-3. **3.3 d, a count direction**: a Stage B donor twin with the count tier
-   off (or at 0.6, or with B2's 0.7–0.9 canvas), same words, same seed
-   (data CPU + ≈ 25 min train). The Δ difference between the twins, own-row
-   part removed: ⟂ `u_S` → transplant line mode + count together; ≈ −`u_S`
-   → the count tier only shrinks the line mode.
-4. 3.3 b (CPU, open): px and box width of the doubled renders across
-   floor / spell_b / the Stage B donor / u1.
-5. 3.3 c only if 3.3 a/b leave H1 vs H2 open. The `u_P` → こんにちは-singles
-   bridge (no training, cached floor) stays open and is now low priority.
-
-## 5. What closes it
-
-- ~~Stage B's transplant at the floor~~ — it was not (§ 2): the line
-  mode is a transferable direction for singles as well as pieces.
-- Doubling rising with composition at every α (3.3 a) and surviving the
-  count tier (3.4 a) → count is not separable from the line mode in row
-  space; the fix moves to the caption / TE side (3.4 d) or is accepted
-  as a render-time filter.
+- **B survives both levers** (a low-fill tier and the dose minimum) →
+  doubling inside a word is part of the line mode in this
+  parameterization. The fix moves to a caption marker, or B is accepted as
+  a render-time filter.
+- **F1b leaves the rows rendering a line alone** → the factorization does
+  not clean `r_i` by gradient. The seed row stays the "alone" value, and
+  trained rows are line-only (already the working assumption).
+- **Stage I ties** → `b0709` stays the identity recipe.
