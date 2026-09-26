@@ -70,8 +70,10 @@ transfer for pieces ([`reports/transplant_piece_2026_09_26.md`](reports/transpla
 The α sweep (report § 7) puts the operating dose at α 1 (words ≤ 1 edit
 11 / 40 / 66 / 34 at floor / 0.5 / 1 / 2). No dose bounds doubling. Alone
 (repeat 25 → 60) it can be gated by context; in words (`dup` 26 → 44–73)
-it cannot. Next: `proposal_factorizedrows.md` F0 (adapter-only
-context-interaction probe), then F1.
+it cannot. F0 (adapter only, [`reports/f0_interaction_2026_09_26.md`](reports/f0_interaction_2026_09_26.md))
+found the adapter context-blind to a row's change (out cos 0.95–0.97 alone
+vs in a word, line-trained rows like a random step), so the gate belongs at
+the embed hook. Next: `proposal_factorizedrows.md` F1.
 
 **The shared "line" Δ is half the composition and most of the doubling**
 ([`reports/transplant_line_2026_09_26.md`](reports/transplant_line_2026_09_26.md)):

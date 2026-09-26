@@ -1,6 +1,9 @@
 # proposal — factorized rows: identity per row, modes by context (2026-09-26)
 
-Status: **proposed, nothing run.** It follows from `proposal.md` § 3.1
+Status: **F0 ran 2026-09-26: the adapter passes a row's change through
+almost blind to its neighbours (out cos 0.95–0.97, gain 0.97), so the gate
+lives at the embed hook as § 1 has it, and F1 is next**
+(`reports/f0_interaction_2026_09_26.md`, result under § 2). It follows from `proposal.md` § 3.1
 ("Two doublings, one direction"; "A is gated away by context") and the
 user's question: train identity only, and get the rest (line, vertical,
 manga, eventually SFX) from shared **modes** switched on by context.
@@ -117,6 +120,16 @@ Decision (this selects where the gate lives, not whether doubling goes):
 Cost: CPU is enough for a few hundred captions. Qwen-side caching means
 the captions are encoded once.
 
+**Result (2026-09-26, `experiments/f0_interaction/`, job
+`20260926-192406-09fee4`) — branch 1: the gate acts outside.** At `out`,
+cos(D_self, D_lone) is 0.954 (u1), 0.962 (random ⟂) and 0.967 (donor rows),
+with gain 0.96–0.97 in all three: the change is slightly smaller in a line,
+not smaller alone. Line-trained rows interact no more than a random step.
+The one `u_S`-specific effect is collective (every neighbour on `u_S`: cos
+0.90 vs random 0.94, carried by neighbour spill), which is the gate-on
+state. The interaction builds through self-attention and the MLP in B5–B6,
+and cross-attention is the smallest branch there.
+
 ## 3. Stage F1 — factorized donor on Stage B's data
 
 Stage B's donor data unchanged (36 donors, 568 words, count tier 0.3),
@@ -216,8 +229,8 @@ explains one of those failures.
 1. ~~`proposal.md` 3.3 a~~ (ran 2026-09-26): the line mode's dose is α 1.
    In-word `dup` does not separate from composition by dose; it sits
    at +18–23 over the floor at α 0.5–1 and climbs at 2.
-2. **F0** (§ 2): the adapter-only interaction probe (CPU, a small
-   script, no renders). It decides whether F1 is the next GPU spend.
+2. ~~F0~~ (§ 2, ran 2026-09-26): the adapter is context-blind to a
+   row's change, so the gate sits at the hook and F1 is the next GPU spend.
 3. **F1** (§ 3): the `--modes line` code in `rows.Rows` + the hook
    (half a day), then one train + read (≈ 25 + 25 min GPU).
 4. **Stage I** (§ 4): I0 / I1 / I2 first (3 micro arms + one floor render

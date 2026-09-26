@@ -93,3 +93,10 @@ experiments read the old stage-layout dirs (`data_<stage>_<tag>`) through
   `native_spell/`. **Ran 2026-09-26** → composition transfers (≤ 1 edit
   11 → 66 / 160, random 9) and doubling with it (repeats 25 → 53 / 320)
   (`../reports/stage_b_2026_09_26.md`).
+- `f0_interaction/` — `../proposal_factorizedrows.md` § 2 (F0), no DiT: the
+  Qwen + `llm_adapter` forward at a glyph's position, alone vs in a spelled
+  word, with only its own row changed (`self`) or every glyph's (`all`), on
+  Stage B's u1 / random ⟂ / donor rows. **Ran 2026-09-26** → the adapter
+  passes a row's change through blind to its neighbours (out cos
+  0.95–0.97, gain 0.97; donor ≈ random), so the gate lives at the hook
+  (`../reports/f0_interaction_2026_09_26.md`).
