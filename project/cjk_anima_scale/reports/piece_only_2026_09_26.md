@@ -100,7 +100,9 @@ Per piece (official · contained, of 16), where they move:
 
 One seed each; read ±3–4 per 64–128-render cell as noise (§ 1). The `word`
 gain (+5 / 36) and the sent loss (−7 contained) are past that; the piece
-official tie is not a difference.
+official tie is not a difference. *(Re-read paired 2026-09-26,
+`spell_2026_09_26.md` § 8: the `word` gain is not significant — 300f → sp
++8 / −3 renders, p 0.23; the sent loss is, per render, but sits in おしい.)*
 
 ## 3. What it closes, what stays open
 

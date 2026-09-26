@@ -44,7 +44,7 @@ A new read that changes a row of the law goes into
 | [`design.md`](design.md) | the scale pipeline: stage schedule, data builder, thin trainer, open questions (§ 6) |
 | [`plan_canvas.md`](plan_canvas.md) | plan only — does the law hold on a ~500-token canvas (2× throughput) |
 | [`micro_chain_result.md`](reports/micro_chain_result.md) | **the first run of the chain** — the three band stages at 30 / 30 / 30 on 24 warm rows (8 kana + 8 kanji + 8 pieces), read rule by rule; the seed-baseline and table-membership tool changes it forced |
-| `reports/` | dated reads: [`conflict_joint_2026_09_25.md`](reports/conflict_joint_2026_09_25.md) — the gradient conflict probe + ten chain / joint arms on one data set: chain ≡ joint, steps/row is not the budget, singles and pieces want opposite regimes; [`grid_box_2026_09_25.md`](reports/grid_box_2026_09_25.md) — grid cells as the loss box: the `grid_string` price ×8–19, warm singles unmoved; [`piece_2026_09_25.md`](reports/piece_2026_09_25.md) — where 300f actually failed, by layer; [`piece_only_2026_09_26.md`](reports/piece_only_2026_09_26.md) — the one-file parity by replay + the scene_piece-only arm (not the doubling lever); [`floor_score.md`](floor_score.md) — **the seed floor of record** on sent / target / word / en |
+| `reports/` | dated reads: [`conflict_joint_2026_09_25.md`](reports/conflict_joint_2026_09_25.md) — the gradient conflict probe + ten chain / joint arms on one data set: chain ≡ joint, steps/row is not the budget, singles and pieces want opposite regimes; [`grid_box_2026_09_25.md`](reports/grid_box_2026_09_25.md) — grid cells as the loss box: the `grid_string` price ×8–19, warm singles unmoved; [`piece_2026_09_25.md`](reports/piece_2026_09_25.md) — where 300f actually failed, by layer; [`piece_only_2026_09_26.md`](reports/piece_only_2026_09_26.md) — the one-file parity by replay + the scene_piece-only arm (not the doubling lever); [`spell_2026_09_26.md`](reports/spell_2026_09_26.md) — singles spelled in a line (layout, not identity, blocked composition; line-trained singles double), the piece row vs its glyphs in row space, the paired re-read vs the seed floor; [`floor_score.md`](floor_score.md) — **the seed floor of record** on sent / target / word / en |
 | [`idea.md`](idea.md) | not scheduled — a per-cell gradient bank + validation-influence price in place of `‖ḡ‖·coh` and trained arms, the matched-σ sweep that would tell band from weighting; from the 2026-09-25 outside review |
 | [`plan.md`](plan.md) | the collapse spec: a run is one file, everything else is a rule (§§ 1–5; § 6 = the order, 1–2 done) |
 | `configs/runs/*.toml` | the runs — `{vocabs, read}` and nothing else: `run0925_300f` (300 pieces, the freeze arm; its re-run on this shape is plan.md § 6-3) |
@@ -55,6 +55,17 @@ A new read that changes a row of the law goes into
 | `runs/` | `ledger.jsonl` — every submitted job |
 
 ## Where it stands (2026-09-26)
+
+**Spelled singles compose once trained in lines**
+([`reports/spell_2026_09_26.md`](reports/spell_2026_09_26.md)):
+`"あ り が と う"` (five single ids — a half-width space is dropped) renders one
+big あ on the seed; the five rows trained on in-line words at the piece
+bands spell the held-out ありがとう within 2 edits 13 / 32 (seed 1, the
+piece row alone 4) and double when rendered alone (あ → ああ 16 / 32). Row
+geometry does not show it (piece ↔ glyph R² ≈ 0.03 everywhere). Paired
+against the seed floor, the only gain on record is piece-alone native;
+`word` exact moved nowhere. The floor is now one cache in the seed dir.
+
 
 **The one-file shape reproduces run0925_300f**, and **the scene_piece-only
 mix is not the doubling lever** ([`reports/piece_only_2026_09_26.md`](reports/piece_only_2026_09_26.md)).
@@ -142,7 +153,8 @@ stamped with its band; `train` trains the vocabs' rows from the seed rows
 with every other row frozen at them, and saves `trained.pt` as the whole
 merged rows — the seed's rows with the run's on top (μ 0, lr 1e-3, batch 4,
 cosine, warmup 10 %, grid box, 90 steps/row — `cjk_scale/train.py`); `eval`
-renders the floor (`load(seed)`, the `floor/` sidecar) and the trained rows
+renders the floor (the seed rows' dir, a read cache shared by every run —
+only the keys it lacks render) and the trained rows
 (`trained.pt` in place — no `ctx/`) on
 `word` / `single` / `en`, あ / い native, up to 8 trained pieces alone in a
 native scene (`native_piece/`), the `read` strings and the target

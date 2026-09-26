@@ -31,10 +31,14 @@ Two arms, no ``ctx`` sidecar (2026-09-25 — the merge lives in the save,
   row), never as a raw pack row. Ruler outputs land at the run root
   (``<run>/native/``, ``<run>/eval_reads.json`` …). A pre-merge vocabs-only
   ``trained.pt`` (no ``seed_merged`` key) is refused — retrain.
-- **floor** ``<run>/floor/``: ``load(seed)`` — the whole seed rows, the
-  baseline every "vs seed" read is against. Its rulers render once per
-  string set (the seed never changes); the floor **of record** stays flat in
-  the seed rows' own dir (``floor_score.md``).
+- **floor**: the seed rows' own dir (``paths.floor_dir()``; its
+  ``trained.pt`` is the seed, whole — never vocab-filtered). **One read cache
+  for every run** (2026-09-26): a ruler renders only the keys (``_key``: a
+  string × clause, or group × string) no earlier run read, into the same
+  read files the floor of record lives in (``floor_score.md``); a run's
+  floor reads are that cache restricted to its own keys. Renders do not
+  repeat bit-for-bit across jobs, so a floor cell may come from another job
+  than its trained cell (hit-level drift 0–1 per cell, piece_only § 1).
 
 The stages open the run's dirs through ``--data_path`` / ``--arm_path``.
 ``compose`` then reads both arms' read files into ``<run>/reads.json``
@@ -52,7 +56,7 @@ from functools import cache
 from pathlib import Path
 
 from .config import RunConfig
-from .paths import SEED_ROWS, data_dir, floor_dir, run_dir, trained_path
+from .paths import data_dir, floor_dir, run_dir, trained_path
 
 FLOOR_ARM = "floor"
 TRAINED_ARM = "trained"
@@ -77,10 +81,10 @@ READ_FILES = {
 
 
 def arm_out(rc: RunConfig, arm: str) -> Path:
-    """The arm's dir: the run dir itself for ``trained``, the ``floor/``
-    sidecar for the floor."""
+    """The arm's dir: the run dir itself for ``trained``, the seed rows' dir
+    (the shared floor cache) for the floor."""
     assert arm in ARMS, arm
-    return run_dir(rc.name) if arm == TRAINED_ARM else floor_dir(rc.name)
+    return run_dir(rc.name) if arm == TRAINED_ARM else floor_dir()
 
 
 def eval_groups(rc: RunConfig) -> list[str]:
@@ -203,8 +207,8 @@ def rulers(rc: RunConfig) -> list[str]:
 def run(rc: RunConfig) -> Path:
     """Both arms' rulers, then ``compose``. The trained side reads the run's
     merged ``trained.pt`` in place and renders every time (the run may have
-    been retrained); the floor arm renders a ruler only when its reads are
-    missing or were read on other strings."""
+    been retrained); the floor renders only the keys the cache lacks
+    (``ensure_floor``)."""
     import torch
 
     from stages import run as run_stage
@@ -217,15 +221,16 @@ def run(rc: RunConfig) -> Path:
         f"since 2026-09-25 trained.pt is the whole merged rows"
     )
     for arm in ARMS:
-        if arm == FLOOR_ARM:
-            out = floor_arm(rc)
         for ruler in rulers(rc):
             if ruler == "piece" and not piece_vocabs(rc):
                 print(f"===== {rc.name} {arm}: piece — no piece vocab, skipped")
                 continue
-            if arm == FLOOR_ARM and _fresh(rc, out, ruler):
+            if arm == FLOOR_ARM:
+                n = ensure_floor(rc, ruler)
                 print(
-                    f"===== {rc.name} {arm}: {ruler} — reads on hand, kept", flush=True
+                    f"===== {rc.name} floor: {ruler} — "
+                    + (f"{n} key(s) rendered" if n else "every key cached"),
+                    flush=True,
                 )
                 continue
             print(f"===== {rc.name} {arm}: {ruler}", flush=True)
@@ -234,22 +239,177 @@ def run(rc: RunConfig) -> Path:
     return compose(rc)
 
 
-def _fresh(rc: RunConfig, out: Path, ruler: str) -> bool:
-    """The floor's reads of ``ruler`` exist and cover the strings this run
-    would render (eval: the eval.json texts of its groups; sent: ``read``)."""
-    f = out / READ_FILES[ruler]
-    if not f.exists():
-        return False
-    have = {m["text"] for m in json.loads(f.read_text(encoding="utf-8"))}
+# ---------------------------------------------------------------------------
+# the floor cache (the seed rows' dir)
+
+NATIVE_RULERS = {  # ruler → (its chars, its clauses) as ruler_args renders them
+    "native": lambda rc: (NATIVE_CHARS.split(","), NATIVE_CLAUSES),
+    "piece": lambda rc: (list(piece_vocabs(rc)), PIECE_CLAUSES),
+    "sent": lambda rc: (list(rc.read), SENT_CLAUSES),
+}
+
+
+def native_keys(chars, clauses: str) -> set:
+    return {f"{k}|{c}" for k in chars if k for c in clauses.split(",") if c}
+
+
+def floor_keys(rc: RunConfig, ruler: str) -> set | None:
+    """The ``_key``\\ s the run's floor needs on ``ruler``; ``None`` for
+    ``target`` (fixed captions: the whole ruler)."""
+    if ruler == "target":
+        return None
     if ruler == "eval":
-        ev = json.loads((data_dir(rc.name) / "eval.json").read_text(encoding="utf-8"))
-        groups = set(eval_groups(rc))
-        return have == {e["text"] for e in ev if e["group"] in groups}
-    if ruler == "sent":
-        return have == set(rc.read)
-    if ruler == "piece":
-        return have == set(piece_vocabs(rc))
-    return True
+        return set(_eval_entries(rc))
+    chars, clauses = NATIVE_RULERS[ruler](rc)
+    return native_keys(chars, clauses)
+
+
+def _eval_entries(rc: RunConfig) -> dict:
+    """``group|text`` → the run's ``eval.json`` entry, its eval groups only."""
+    ev = json.loads((data_dir(rc.name) / "eval.json").read_text(encoding="utf-8"))
+    groups = set(eval_groups(rc))
+    return {f"{e['group']}|{e['text']}": e for e in ev if e["group"] in groups}
+
+
+def _load_reads(f: Path) -> list:
+    return json.loads(f.read_text(encoding="utf-8")) if f.exists() else []
+
+
+def _fold(ruler: str, recs: list, dst: Path, *, move: bool) -> int:
+    """Add ``recs`` (a ruler's read records from another arm dir) to the read
+    file ``dst``, skipping keys it already holds; each image lands in the
+    file's own ``img/`` (moved or copied), ``eval`` images renamed by their
+    key (their ``ei`` index names collide across runs). Returns the keys added."""
+    import hashlib
+    import shutil
+
+    have = _load_reads(dst)
+    held = {_key(ruler, m) for m in have}
+    add = [m for m in recs if _key(ruler, m) not in held]
+    if not add:
+        return 0
+    img = dst.parent / "img"
+    img.mkdir(parents=True, exist_ok=True)
+    for m in add:
+        src = Path(m["file"])
+        name = src.name
+        if ruler == "eval":
+            h = hashlib.md5(f"{m['group']}|{m['text']}".encode()).hexdigest()[:10]
+            name = f"trained_{m['group']}_{h}_s{m['seed']}.png"
+        to = img / name
+        if src.exists():
+            (shutil.move if move else shutil.copy2)(src, to)
+        m = dict(m, file=str(to))
+        have.append(m)
+    dst.write_text(json.dumps(have, ensure_ascii=False, indent=1), encoding="utf-8")
+    return len({_key(ruler, m) for m in add})
+
+
+def ensure_native_floor(rc: RunConfig, sub: str, chars, clauses: str) -> int:
+    """The ``native`` stage's floor for ``chars`` × ``clauses`` in the cache's
+    ``<sub>/`` (``native``, ``native_piece``, ``native_spell`` …): render the
+    missing keys — one scratch ``native_add_<sub>/`` per clause, folded in
+    and removed — and keep the rest."""
+    import shutil
+
+    from stages import run as run_stage
+
+    dst = floor_dir() / sub / "native_reads.json"
+    held = {_key("native", m) for m in _load_reads(dst)}
+    n = 0
+    for cl in (c for c in clauses.split(",") if c):
+        miss = [k for k in chars if k and f"{k}|{cl}" not in held]
+        if not miss:
+            continue
+        a = probe_args(
+            rc,
+            FLOOR_ARM,
+            ["native"],
+            [
+                "--eval_tag",
+                f"add_{sub}",
+                "--native_chars",
+                ",".join(miss),
+                "--native_clauses",
+                cl,
+            ],
+        )
+        run_stage("native", a)
+        scratch = floor_dir() / f"native_add_{sub}"
+        n += _fold("native", _load_reads(scratch / "native_reads.json"), dst, move=True)
+        shutil.rmtree(scratch)
+    return n
+
+
+def ensure_floor(rc: RunConfig, ruler: str) -> int:
+    """Render into the floor cache the keys this run needs on ``ruler`` and
+    the cache lacks; returns the keys rendered (0: all cached). An ``eval``
+    key already cached under another caption is refused — one key, one
+    render."""
+    import shutil
+
+    from stages import run as run_stage
+
+    if ruler in NATIVE_RULERS:
+        chars, clauses = NATIVE_RULERS[ruler](rc)
+        return ensure_native_floor(
+            rc, Path(READ_FILES[ruler]).parent.name, chars, clauses
+        )
+    dst = floor_dir() / READ_FILES[ruler]
+    if ruler == "target":
+        if dst.exists():
+            return 0
+        run_stage("target", ruler_args(rc, FLOOR_ARM, "target"))
+        return len({_key("target", m) for m in _load_reads(dst)})
+    need = _eval_entries(rc)
+    held = {_key("eval", m): m for m in _load_reads(dst)}
+    for k, m in held.items():
+        if k in need:
+            assert m["caption"] == need[k]["caption"], (
+                f"floor cache {dst}: {k} was read under another caption "
+                f"({m['caption']!r} vs {need[k]['caption']!r})"
+            )
+    miss = [e for k, e in need.items() if k not in held]
+    if not miss:
+        return 0
+    scratch = floor_dir() / "_add_eval"
+    (scratch / "data").mkdir(parents=True, exist_ok=True)
+    (scratch / "data" / "eval.json").write_text(
+        json.dumps(miss, ensure_ascii=False, indent=1), encoding="utf-8"
+    )
+    a = probe_args(
+        rc,
+        FLOOR_ARM,
+        ["eval"],
+        [
+            "--eval_groups",
+            ",".join(eval_groups(rc)),
+            "--data_path",
+            str(scratch / "data"),
+            "--eval_tag",
+            "add",
+        ],
+    )
+    run_stage("eval", a)
+    out = floor_dir() / "eval_add"
+    n = _fold("eval", _load_reads(out / "eval_reads.json"), dst, move=True)
+    shutil.rmtree(out)
+    shutil.rmtree(scratch)
+    return n
+
+
+def import_floor(src: Path) -> dict:
+    """Fold an older per-run ``<run>/floor/`` arm's reads into the cache
+    (copies — ``src`` is left as it was); keys the cache holds win. Returns
+    ruler → keys added."""
+    out = {}
+    for ruler, rel in READ_FILES.items():
+        recs = [
+            m for m in _load_reads(src / rel) if m.get("cond", "trained") != "floor"
+        ]
+        if recs:
+            out[ruler] = _fold(ruler, recs, floor_dir() / rel, move=False)
+    return out
 
 
 def load(path: Path) -> tuple[dict, dict]:
@@ -260,59 +420,6 @@ def load(path: Path) -> tuple[dict, dict]:
     sd = torch.load(path, map_location="cpu", weights_only=False)
     d = sd["delta"]
     return {int(i): r.float() for i, r in zip(d["ext_ids"], d["raw"])}, sd
-
-
-def save_arm(out: Path, rows: dict, sd: dict) -> Path:
-    """Serialize idx → row as a rows-arm ``trained.pt`` in ``out`` (an arm
-    dir the stages open through ``--arm_path``). ``sd`` carries the metadata
-    and the ``row_scale`` the rows are in; only ``ext_ids`` / ``raw`` are
-    replaced."""
-    import torch
-
-    ids = sorted(rows)
-    out.mkdir(parents=True, exist_ok=True)
-    torch.save(
-        {
-            **{k: v for k, v in sd.items() if k != "delta"},
-            "delta": {
-                **sd["delta"],
-                "ext_ids": ids,
-                "raw": torch.stack([rows[i] for i in ids]),
-            },
-        },
-        out / "trained.pt",
-    )
-    return out
-
-
-def floor_arm(rc: RunConfig, seed: Path = SEED_ROWS) -> Path:
-    """``load(seed)`` alone — the whole seed rows as a rows-arm
-    ``trained.pt``: the floor every "vs seed" read is against, carrying
-    every row the trained side does (a vocab outside the run renders at its
-    seed row, never as a raw pack row). The merged seed file has no
-    ``args``; a synthetic one is added so the stage readers that open it see
-    the trained shape."""
-    assert seed.exists(), f"seed rows {seed} do not exist"
-    rows, src = load(seed)
-    out = save_arm(
-        floor_dir(rc.name),
-        rows,
-        {
-            "delta": src["delta"],
-            "arm": "rows",
-            "args": {
-                "floor": True,
-                "seed_rows": str(seed),
-                "run": rc.name,
-                "init_rows": str(seed),
-            },
-            "killed": "",
-            "warm_rows": len(rows),
-            "merged_from": src.get("merged_from"),
-        },
-    )
-    print(f"floor arm: {seed} → {out / 'trained.pt'}: all {len(rows)} rows", flush=True)
-    return out
 
 
 # ---------------------------------------------------------------------------
@@ -352,14 +459,24 @@ def _key(ruler: str, m: dict) -> str:
 
 
 def _reads(rc: RunConfig, arm: str, ruler: str) -> list:
+    """An arm's reads of ``ruler``; the floor's restricted to the run's keys,
+    its image paths re-pointed at the cache's ``img/`` when a record names a
+    dir it no longer lives in (the floor of record was read under the old
+    ``rows_scale_*_seed/`` dir)."""
     f = arm_out(rc, arm) / READ_FILES[ruler]
-    if not f.exists():
-        return []
-    return [
-        m
-        for m in json.loads(f.read_text(encoding="utf-8"))
-        if m.get("cond", "trained") != "floor"
-    ]
+    ms = [m for m in _load_reads(f) if m.get("cond", "trained") != "floor"]
+    if arm != FLOOR_ARM:
+        return ms
+    keys = floor_keys(rc, ruler)
+    out = []
+    for m in ms:
+        if keys is not None and _key(ruler, m) not in keys:
+            continue
+        p = Path(m["file"])
+        if not p.exists() and (f.parent / "img" / p.name).exists():
+            m = dict(m, file=str(f.parent / "img" / p.name))
+        out.append(m)
+    return out
 
 
 def compose(rc: RunConfig) -> Path:

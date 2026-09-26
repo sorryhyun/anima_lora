@@ -6,7 +6,6 @@ A run lands in one dir, ``output/cjk_anima_scale/<run>/``:
                    ``vocabs.json``, ``build.json``, latent + TE caches)
     trained.pt     the merged rows — the seed's rows (rescaled into the run's
                    ``row_scale``) with the run's vocabs' rows on top, whole
-    floor/         the floor arm, ``load(seed)`` — the one eval sidecar
     native/ …      the trained side's ruler outputs, at the run root (the
                    run dir is the trained arm; no ``ctx/`` sidecar)
     sheet.png      floor and trained side by side, every ruler
@@ -14,8 +13,8 @@ A run lands in one dir, ``output/cjk_anima_scale/<run>/``:
     conflict/      ``scale.py <run> conflict``
 
 Beside the runs: the scene pools (``scenes_<tag>``), the EN reference cache
-(``native_enref``), the seed table (``rows_step1_0921_merged`` — its floor
-reads of record live flat in it) and the old stage-layout records
+(``native_enref``), the seed rows (``rows_step1_0921_merged`` — the floor
+arm: every run's floor reads are cached flat in it) and the old stage-layout records
 (``{data,rows}_<stage>_<tag>``, readable through ``legacy_*``).
 
 The stage packages (``common`` / ``data`` / ``train`` / ``eval`` /
@@ -79,11 +78,12 @@ def trained_path(run: str) -> Path:
     return run_dir(run) / "trained.pt"
 
 
-def floor_dir(run: str) -> Path:
-    """The one eval sidecar under the run: the floor arm, ``load(seed)`` —
-    a rows-arm dir holding its ``trained.pt`` and every ruler's reads. The
-    trained side has no sidecar: its arm dir is the run dir itself."""
-    return run_dir(run) / "floor"
+def floor_dir() -> Path:
+    """The floor arm: the seed rows' own dir (its ``trained.pt`` is the seed,
+    whole). One read cache for every run — a ruler renders only the strings
+    no earlier run read (``eval.ensure_floor``); since 2026-09-26, before
+    which each run carried a ``<run>/floor/`` copy."""
+    return OUT / SEED_ROWS.parent.name
 
 
 # ---------------------------------------------------------------------------

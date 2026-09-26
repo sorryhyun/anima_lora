@@ -136,8 +136,8 @@ def test_run_layout():
     assert run_dir("r1") == OUT / "r1"
     assert data_dir("r1") == OUT / "r1" / "data"
     assert trained_path("r1") == OUT / "r1" / "trained.pt"
-    assert floor_dir("r1") == OUT / "r1" / "floor"
     assert SEED_ROWS == OUT / "rows_step1_0921_merged" / "trained.pt"
+    assert floor_dir() == SEED_ROWS.parent  # the shared floor cache
     with pytest.raises(AssertionError):
         run_dir("a b")
     # the stage-layout records, prefix-less since 2026-09-25
@@ -495,7 +495,7 @@ def test_stage_eval_namespace_builds():
     rc = _rc()
     a = ev.probe_args(rc, ev.FLOOR_ARM, ["eval", "native"], ["--eval_limit", "3"])
     assert stage_paths.data_dir(a) == data_dir("t1")
-    assert stage_paths.arm_dir(a) == floor_dir("t1")
+    assert stage_paths.arm_dir(a) == floor_dir()
     assert a.arm == "rows" and a.no_floor and a.seeds == 2 and a.eval_limit == 3
     assert a.native_chars == "あ,い" and a.native_clauses == "en,swap"
     assert a.steps == 28 and a.cfg == 4.0 and a.seed == 0
@@ -528,10 +528,12 @@ def test_piece_ruler(tmp_path, monkeypatch):
     a = ev.ruler_args(rc, ev.TRAINED_ARM, "piece")
     assert a.eval_tag == "piece" and a.native_chars == "すごい,った"
     assert a.native_clauses == "en,swap"
-    f = paths.floor_dir("t1") / ev.READ_FILES["piece"]
-    f.parent.mkdir(parents=True)
-    f.write_text(json.dumps([{"text": "すごい"}, {"text": "った"}]), encoding="utf-8")
-    assert ev._fresh(rc, paths.floor_dir("t1"), "piece")
+    assert ev.floor_keys(rc, "piece") == {
+        "すごい|en",
+        "すごい|swap",
+        "った|en",
+        "った|swap",
+    }
 
 
 def test_merge_seed(tmp_path):
@@ -561,41 +563,62 @@ def test_merge_seed(tmp_path):
     assert merged["row_scale"] == 2.0
 
 
-def test_floor_arm_and_merged_guard(tmp_path, monkeypatch):
-    """The floor arm is load(seed) — every row, verbatim — and eval refuses a
-    pre-merge vocabs-only trained.pt (no ``seed_merged``): since 2026-09-25
-    the merge (seed rows under the run's, one row_scale) happens at save,
-    in ``rows.Rows.state_dict``, not in an eval sidecar."""
+def test_floor_cache_and_merged_guard(tmp_path, monkeypatch):
+    """The floor arm is the seed rows' dir — one read cache for every run
+    (2026-09-26): a key it holds is never re-rendered, another run's keys stay
+    out of this run's floor reads, and an older per-run floor/ folds in by
+    copy. Eval refuses a pre-merge vocabs-only trained.pt (no ``seed_merged``)."""
     import torch
+    from PIL import Image
 
     from cjk_scale import eval as ev
     from cjk_scale import paths
 
     monkeypatch.setattr(paths, "OUT", tmp_path)
-    seed = tmp_path / "seed" / "trained.pt"
-    seed.parent.mkdir()
-    torch.save(
-        {
-            "delta": {
-                "ext_ids": [10, 11, 12, 13],
-                "raw": torch.arange(8.0).view(4, 2),
-                "row_scale": 1.5,
-            },
-            "arm": "rows",
-            "merged_from": ["a", "b"],
-            "killed": "",
-        },
-        seed,
-    )
     rc = _rc()
-    out = ev.floor_arm(rc, seed)
-    assert out == tmp_path / "t1" / "floor"
-    sd = torch.load(out / "trained.pt", weights_only=False)
-    assert sd["delta"]["ext_ids"] == [10, 11, 12, 13]
-    assert sd["delta"]["row_scale"] == 1.5
-    assert torch.equal(sd["delta"]["raw"], torch.arange(8.0).view(4, 2))
-    assert sd["arm"] == "rows" and sd["args"]["floor"] and sd["warm_rows"] == 4
+    assert ev.arm_out(rc, ev.FLOOR_ARM) == tmp_path / "rows_step1_0921_merged"
     assert ev.arm_out(rc, ev.TRAINED_ARM) == tmp_path / "t1"
+
+    def rec(text, clause, d):
+        f = d / "img" / f"trained_p00_{text}_{clause}_s0.png"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (8, 8), "white").save(f)
+        return {
+            "file": str(f),
+            "cond": "trained",
+            "seed": 0,
+            "pi": 0,
+            "text": text,
+            "clause": clause,
+            "reads": [],
+        }
+
+    # an old per-run floor/ with a sent read → folded into the cache (copied)
+    old = tmp_path / "old_run" / "floor"
+    (old / "native_sent").mkdir(parents=True)
+    (old / "native_sent" / "native_reads.json").write_text(
+        json.dumps(
+            [
+                rec("はい", "en", old / "native_sent"),
+                rec("おしい", "en", old / "native_sent"),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    assert ev.import_floor(old) == {"sent": 2}
+    assert ev.import_floor(old) == {"sent": 0}  # keys the cache holds win
+    assert (old / "native_sent" / "img" / "trained_p00_はい_en_s0.png").exists()
+    cached = paths.floor_dir() / "native_sent" / "img" / "trained_p00_はい_en_s0.png"
+    assert cached.exists()
+    # cached → no render (the stage is never reached); this run sees its key only
+    monkeypatch.setattr(
+        "stages.run", lambda *a, **k: pytest.fail("rendered a cached key")
+    )
+    assert ev.ensure_floor(rc, "sent") == 0
+    got = ev._reads(rc, ev.FLOOR_ARM, "sent")
+    assert [m["text"] for m in got] == ["はい"] and got[0]["file"] == str(cached)
+
+    (tmp_path / "t1").mkdir()
     torch.save(
         {
             "delta": {
@@ -614,7 +637,8 @@ def test_floor_arm_and_merged_guard(tmp_path, monkeypatch):
 
 def test_compose_one_sheet(tmp_path, monkeypatch):
     """Both arms' reads → reads.json (official / loose / contained per string
-    and per group) + sheet.png; a floor with reads on hand is not re-rendered."""
+    and per group) + sheet.png; the floor side is the cache restricted to
+    the run's keys."""
     from PIL import Image
 
     from cjk_scale import eval as ev
@@ -624,6 +648,12 @@ def test_compose_one_sheet(tmp_path, monkeypatch):
     rc = _rc()
     img = tmp_path / "x.png"
     Image.new("RGB", (32, 32), "white").save(img)
+    d = paths.data_dir("t1")
+    d.mkdir(parents=True)
+    (d / "eval.json").write_text(
+        json.dumps([{"group": "word", "text": "すごい", "caption": "c"}]),
+        encoding="utf-8",
+    )
 
     def box(sfx, vl):
         return [{"box": [0, 0, 8, 8], "whole": False, "sfx": sfx, "vl": vl}]
@@ -681,6 +711,5 @@ def test_compose_one_sheet(tmp_path, monkeypatch):
     assert sent["floor"] == {"n": 4, "official": 0, "loose": 4, "contained": 4}
     assert sent["trained"] == {"n": 4, "official": 4, "loose": 4, "contained": 4}
     assert (out / "sheet.png").exists()
-    assert ev._fresh(rc, paths.floor_dir("t1"), "sent")
-    assert not ev._fresh(_rc(read=("おしい",)), paths.floor_dir("t1"), "sent")
-    assert not ev._fresh(rc, paths.floor_dir("t1"), "target")
+    assert ev.floor_keys(rc, "sent") == {"はい|en"}
+    assert ev.floor_keys(rc, "target") is None

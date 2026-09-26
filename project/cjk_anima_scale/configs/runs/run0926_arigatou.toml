@@ -1,0 +1,10 @@
+# run0926_arigatou — arm A of the spelled-vs-piece read (2026-09-26): the one
+# 5-glyph piece row ありがとう (ext 1118) trains alone, every other row rides
+# frozen at the seed — its own singles あ り が と う included. Seed floor
+# (native_spell/ on rows_step1_0921_merged): the piece 0/32 (a pseudo-text
+# line ending in とう), the spelled "あ り が と う" 0/32 (one big あ); the
+# singles 3–14/16 official. Arm B (singles on in-line strings, spelled read)
+# is unbuilt.
+
+vocabs = ["list:ありがとう"]
+read = ["ありがとう"]

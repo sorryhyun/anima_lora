@@ -55,3 +55,8 @@ experiments read the old stage-layout dirs (`data_<stage>_<tag>`) through
   only (`build(…, table=)` with the piece groups cut to that tier), data →
   train → eval as `run0926_300f_sp`. **Ran 2026-09-26** → not the doubling
   lever (`../reports/piece_only_2026_09_26.md` § 2).
+- `spell_b/` — the five singles あ り が と う trained on in-line real words
+  (`scene_spelled`: unspaced image, spaced caption → each glyph its single
+  row) at the piece bands, ありがとう held out; read spelled + alone.
+  **Ran 2026-09-26** → composition bought, count lost
+  (`../reports/spell_2026_09_26.md` § 4).

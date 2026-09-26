@@ -57,13 +57,13 @@ nothing here imports, paths into or configures from `../cjk_renderable_anima/`
 - Outputs: `output/cjk_anima_scale/<run>/` — `data/` (items, `vocabs.json`,
   `build.json`, caches), `trained.pt` (**the whole merged rows**: the seed's
   rows, rescaled into the run's `row_scale`, with the run's vocabs' rows on
-  top — `seed_merged` marks the format), the one eval sidecar `floor/`
-  (`load(seed)`; the trained side's ruler outputs land at the run root —
-  no `ctx/`), `sheet.png` + `reads.json` (floor and trained on every ruler),
+  top — `seed_merged` marks the format), the trained side's ruler outputs
+  at the run root (no `ctx/`, no `floor/` since 2026-09-26), `sheet.png` + `reads.json` (floor and trained on every ruler),
   `conflict/`. Beside the runs: the scene pools `scenes_<tag>/`, the EN
   reference cache `native_enref/`, the seed rows `rows_step1_0921_merged/` —
   seed-side reads of record (`cf_sense_*`, the floor of `floor_score.md`)
-  live flat inside it — and the pre-collapse stage records
+  live flat inside it, and it is **every run's floor arm**: one read cache,
+  a run renders only the keys it lacks (`eval.ensure_floor`) — and the pre-collapse stage records
   `{data,rows}_<stage>_<tag>/` (read-only, `paths.legacy_*`).
 
 ## Invariants
@@ -77,8 +77,8 @@ nothing here imports, paths into or configures from `../cjk_renderable_anima/`
   are retired terms** (2026-09-25): `trained.pt` is *the rows*, and the merge
   that the old `ctx/` sidecar performed (`overwrite(seed, trained)`, with the
   row_scale rescale) happens once, at save (`rows.Rows.state_dict`) — the
-  trained eval arm is the run dir itself, the floor arm `floor/` is
-  `load(seed)` (the whole seed rows, never inventory-filtered). Eval refuses
+  trained eval arm is the run dir itself, the floor arm the seed rows' dir
+  (the whole seed rows, never inventory-filtered; `paths.floor_dir()`). Eval refuses
   a pre-merge vocabs-only `trained.pt` (no `seed_merged` key) — retrain.
 
 - A run's vocabs train from their seed row (`paths.SEED_ROWS`); every other row a
