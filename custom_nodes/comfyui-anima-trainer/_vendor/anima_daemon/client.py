@@ -312,25 +312,43 @@ class DaemonClient:
                 return {"error": "no active job"}
         return self._request("POST", f"/jobs/{job_id}/stop")
 
-    def pause_job(self, job_id: Optional[str] = None) -> dict:
+    def pause_job(
+        self, job_id: Optional[str] = None, *, release_model: bool = False
+    ) -> dict:
         """Freeze a running job's tree (SIGSTOP). ``None`` → the active job.
         Returns ``{job_id, state, error?}``; ``error`` on a refusal (wrong state
-        / multi-GPU accelerate run)."""
+        / multi-GPU accelerate run).
+
+        ``release_model=True`` (train.py jobs only): the trainer saves a
+        resumable state at its next optimizer step and exits, freeing the GPU;
+        the job parks as ``paused`` (``released``) and :meth:`resume_job`
+        relaunches it with ``--resume``."""
         if job_id is None:
             health = self.health() or {}
             job_id = health.get("active_job")
             if not job_id:
                 return {"error": "no active job"}
-        return self._request("POST", f"/jobs/{job_id}/pause")
+        body = {"release_model": True} if release_model else None
+        return self._request("POST", f"/jobs/{job_id}/pause", body)
 
     def resume_job(self, job_id: Optional[str] = None) -> dict:
-        """Thaw a paused job's tree (SIGCONT) back to running. ``None`` → the
-        active (paused) job. Returns ``{job_id, state, error?}``."""
+        """Thaw a paused job's tree (SIGCONT) back to running, or re-enqueue a
+        release-paused one with ``--resume``. ``None`` → the active (frozen)
+        job, else the most recent release-paused job. Returns
+        ``{job_id, state, error?}``."""
         if job_id is None:
             health = self.health() or {}
             job_id = health.get("active_job")
             if not job_id:
-                return {"error": "no active job"}
+                released = [
+                    j
+                    for j in (self.list_jobs() or [])
+                    if j.get("state") == "paused" and j.get("released")
+                ]
+                if released:
+                    job_id = released[-1]["id"]
+            if not job_id:
+                return {"error": "no active or release-paused job"}
         return self._request("POST", f"/jobs/{job_id}/resume")
 
     def shutdown(self, *, kill_jobs: bool = True) -> Optional[dict]:

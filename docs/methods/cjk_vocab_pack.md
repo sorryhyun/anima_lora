@@ -104,6 +104,16 @@ EN-only datasets are unaffected either way (identical ids, identical caches).
   (`output/ckpt/*_isoq`), not published. `HybridT5Encoder` handles it when a
   local pack carries one; the shipped pack routes every CJK span to the
   trained rows.
+- Not in this pack: a **line block** (`mapping["line"]`, 2026-09-26). It is
+  one vector plus its source rows, and the block `rows + vec` is regenerated
+  at load (`ext_vocab.materialize_line`). The encoder moves every ext id
+  that has an ext neighbour in the T5 stream (a spelled word, a line of
+  pieces) to its mirror there, so a lone glyph keeps its row and the model
+  side stays a row lookup. It is the pack form of the cjk_anima_scale line's
+  gated `v_line` (`project/cjk_anima_scale/proposal.md` § 1), baked with
+  `bake_vocab_pack.py --line_from <trained.pt> --line_dose 0.5`. The first
+  build is `models/vocab_packs/anima_cjk_vocab_pack_300fsp_line05/`
+  (run0926_300f_sp rows + 0.5 · `v_line`), local only.
 
 ## Rebuilding a pack
 

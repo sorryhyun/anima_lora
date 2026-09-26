@@ -24,6 +24,13 @@ directory because ``vocab_pack`` accepts a directory holding exactly one pair).
 ``--comfy_dir`` additionally symlinks the pair into a ComfyUI ``vocab_packs``
 folder.
 
+``--line_from`` (a ``trained.pt`` whose ``delta`` carries ``line``, the
+cjk_anima_scale line's gated ``v_line``) adds a line block: the vector ×
+``row_scale`` × ``--line_dose`` goes into ``mapping["line"]`` and the block
+(the baked rows + the vector) is regenerated at load
+(``ext_vocab.materialize_line``); the encoder routes ext ids with an ext
+neighbour to it. The safetensors stays the stored rows only.
+
 The json gains a ``render`` block (source arm, ext ids, row → piece text,
 scale, base pack digest, git rev) and the safetensors header carries the
 same summary under ``anima_render``; ``provenance`` marks the summed rows
@@ -46,7 +53,13 @@ REPO = Path(__file__).resolve().parents[2]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from library.anima.ext_vocab import T5_TABLE_SIZE, pack_digest  # noqa: E402
+from library.anima.ext_vocab import (  # noqa: E402
+    T5_TABLE_SIZE,
+    IsoSpec,
+    LineSpec,
+    materialize_iso,
+    pack_digest,
+)
 from library.env import resolve_under_home  # noqa: E402
 
 PROVENANCE_TIER = "render"
@@ -144,6 +157,39 @@ def bake(
         "t5_table_size": T5_TABLE_SIZE,
     }
     return out, m, summary
+
+
+def add_line(table: torch.Tensor, mapping: dict, src: Path, dose: float) -> dict:
+    """Write ``mapping["line"]`` for the (baked, stored) ``table``: the
+    ``line`` vector of ``src``'s delta in effective units × ``dose``. The
+    block mirrors every trained row (``[0, iso.start)`` when the pack has an
+    isotropic block, else all stored rows) and sits after the iso block.
+    Returns the summary."""
+    if mapping.get("line"):
+        raise ValueError("the base pack already carries a line block")
+    sd = torch.load(src, map_location="cpu", weights_only=False)
+    d = sd["delta"]
+    if d.get("line") is None:
+        raise ValueError(f"{src}: its delta carries no line vector")
+    vec = d["line"].float() * float(d["row_scale"]) * float(dose)
+    if vec.shape != (table.shape[1],):
+        raise ValueError(f"line vector {tuple(vec.shape)} vs pack dim {table.shape[1]}")
+    iso = IsoSpec.from_mapping(mapping)
+    src_end = iso.start if iso else int(table.shape[0])
+    start = int(materialize_iso(table, mapping).shape[0])
+    spec = LineSpec(src_end=src_end, start=start, vec=tuple(vec.tolist()))
+    summary = {
+        "source": str(src),
+        "dose": float(dose),
+        "row_scale": float(d["row_scale"]),
+        "norm": float(vec.norm()),
+    }
+    mapping["line"] = spec.to_json(**summary)
+    mapping["rows"] = spec.end
+    prov = mapping.get("provenance")
+    if isinstance(prov, list) and len(prov) == start:
+        prov.extend(["line"] * src_end)
+    return {**summary, "rows": [spec.start, spec.end]}
 
 
 def _git_rev() -> str:
@@ -260,6 +306,17 @@ def main() -> None:
         default=None,
         help="also symlink the pair into this ComfyUI vocab_packs folder",
     )
+    p.add_argument(
+        "--line_from",
+        default=None,
+        help="trained.pt whose delta carries a line vector: add the line block",
+    )
+    p.add_argument(
+        "--line_dose",
+        type=float,
+        default=1.0,
+        help="scale on the line vector (the read of record: 0.5)",
+    )
     p.add_argument("--overwrite", action="store_true")
     a = p.parse_args()
 
@@ -287,6 +344,11 @@ def main() -> None:
         ext_ids=delta["ext_ids"],
         row_text={str(k): v for k, v in row_text.items()},
     )
+    if a.line_from:
+        summary["line"] = add_line(
+            baked, m, resolve_under_home(a.line_from), a.line_dose
+        )
+        m["render"]["line"] = summary["line"]
 
     out = resolve_under_home(a.out)
     if out.suffix in (".safetensors", ".json"):
@@ -305,6 +367,13 @@ def main() -> None:
         f"named rows {len(row_text)}/{summary['rows']}",
         flush=True,
     )
+    if "line" in summary:
+        ln = summary["line"]
+        print(
+            f"  line block rows {ln['rows']} (dose {ln['dose']:g}, |v| {ln['norm']:.2f}) "
+            f"from {ln['source']}",
+            flush=True,
+        )
     if a.comfy_dir:
         link_into(Path(a.comfy_dir).expanduser(), st, js, a.overwrite)
 

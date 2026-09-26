@@ -40,6 +40,16 @@ stay on their usual path (``「」`` → trained row, ``"`` → spiece). A pack
 without ``iso`` encodes bit-identically to before. :func:`pack_digest` is
 the hash a LoRA trained through the pack stamps (``ss_ext_pack_sha``).
 
+Line block: a pack may carry a **line mode** (``mapping["line"]``: a vector
+``vec`` and the source rows ``[0, src_end)``). The block ``table[:src_end] +
+vec`` is regenerated at load and appended after every other block; the
+encoder moves each ext id that has an ext neighbour in the T5 id stream (a
+spelled word, a line of pieces — a lone glyph or piece has none) to its
+mirror there (:func:`line_gate`). It is the vocab-pack form of the
+cjk_anima_scale line's gated ``v_line`` (``project/cjk_anima_scale/
+proposal.md`` § 1): the model side stays a plain row lookup. A pack without
+``line`` encodes bit-identically to before.
+
 Pure-CPU module — no model load; consumers pass embedding tensors in.
 """
 
@@ -261,10 +271,109 @@ def materialize_iso(table: torch.Tensor, mapping: dict) -> torch.Tensor:
     return torch.cat([table, spec.build().to(table.dtype)])
 
 
+# ---------------------------------------------------------------------------
+# Line block — the source rows plus one mode vector, regenerated at load
+# ---------------------------------------------------------------------------
+
+LINE_RECIPE = "row_plus_vec_v1"
+
+
+@dataclass(frozen=True)
+class LineSpec:
+    """The ``mapping["line"]`` record: the block ``table[:src_end] + vec`` at
+    rows ``[start, start + src_end)`` (after the trained blocks and ``iso``)."""
+
+    src_end: int
+    start: int
+    vec: tuple[float, ...]
+    recipe: str = LINE_RECIPE
+
+    @property
+    def end(self) -> int:
+        return self.start + self.src_end
+
+    @classmethod
+    def from_mapping(cls, mapping: dict | None) -> "LineSpec | None":
+        spec = (mapping or {}).get("line")
+        if not spec:
+            return None
+        start, end = spec["rows"]
+        src0, src_end = spec["src"]
+        if int(src0) != 0 or int(end) - int(start) != int(src_end):
+            raise ValueError(f"bad line record: src {spec['src']} rows {spec['rows']}")
+        return cls(
+            src_end=int(src_end),
+            start=int(start),
+            vec=tuple(float(x) for x in spec["vec"]),
+            recipe=str(spec.get("recipe", LINE_RECIPE)),
+        )
+
+    def to_json(self, **extra) -> dict:
+        return {
+            "recipe": self.recipe,
+            "src": [0, self.src_end],
+            "rows": [self.start, self.end],
+            "gate": "ext_neighbour",
+            "vec": list(self.vec),
+            **extra,
+        }
+
+    def build(self, table: torch.Tensor) -> torch.Tensor:
+        if self.recipe != LINE_RECIPE:
+            raise ValueError(
+                f"unknown line recipe {self.recipe!r} (have {LINE_RECIPE})"
+            )
+        v = torch.tensor(self.vec, dtype=torch.float32)
+        return (table[: self.src_end].float() + v).to(table.dtype)
+
+
+def materialize_line(table: torch.Tensor, mapping: dict) -> torch.Tensor:
+    """Append the line block (after :func:`materialize_iso`) when the pack
+    shipped without its rows. Raises when the table is neither
+    ``[0, start)`` nor ``[0, end)`` rows."""
+    spec = LineSpec.from_mapping(mapping)
+    if spec is None:
+        return table
+    if table.shape[0] == spec.end:
+        return table
+    if table.shape[0] != spec.start:
+        raise ValueError(
+            f"vocab pack mismatch: line block starts at row {spec.start} but the "
+            f"table has {table.shape[0]} rows"
+        )
+    return torch.cat([table, spec.build(table)])
+
+
+def materialize(table: torch.Tensor, mapping: dict) -> torch.Tensor:
+    """Every regenerated block, in table order (``iso``, then ``line``)."""
+    return materialize_line(materialize_iso(table, mapping), mapping)
+
+
+def line_gate(ids: list[int]) -> list[bool]:
+    """The line mode's gate on a T5 id stream: an ext id (``>= T5_TABLE_SIZE``)
+    with an ext id directly left or right of it."""
+    ext = [int(i) >= T5_TABLE_SIZE for i in ids]
+    n = len(ext)
+    return [
+        ext[k] and ((k > 0 and ext[k - 1]) or (k + 1 < n and ext[k + 1]))
+        for k in range(n)
+    ]
+
+
 # Mapping keys that describe the *rows and routing* — what a LoRA trained
 # through the pack is coupled to. Provenance (``training`` / ``stats``) is
 # excluded so a re-annotated json keeps its digest.
-_DIGEST_KEYS = ("qwen", "char", "sym", "sym_char", "word", "word_sub", "route", "iso")
+_DIGEST_KEYS = (
+    "qwen",
+    "char",
+    "sym",
+    "sym_char",
+    "word",
+    "word_sub",
+    "route",
+    "iso",
+    "line",
+)
 
 
 def pack_digest(table: torch.Tensor, mapping: dict) -> str:
@@ -274,7 +383,7 @@ def pack_digest(table: torch.Tensor, mapping: dict) -> str:
     ComfyUI node compute it the same way so a LoRA meeting a different pack
     (rows, ids or quote rule) is detectable, never silent.
     """
-    table = materialize_iso(table, mapping)
+    table = materialize(table, mapping)
     h = hashlib.sha256()
     h.update(table.detach().to("cpu", torch.float32).contiguous().numpy().tobytes())
     sub = {k: mapping[k] for k in _DIGEST_KEYS if mapping.get(k)}
@@ -611,6 +720,10 @@ class HybridT5Encoder:
     # With ``route.quotes`` set, routed spans inside a quote pair land on
     # ``T5_TABLE_SIZE + iso_offset + row`` instead of the trained row.
     iso_offset: int | None = None
+    # The line block (``mapping["line"]``): ext ids below ``line_src_end``
+    # with an ext neighbour move to ``T5_TABLE_SIZE + line_start + row``.
+    line_start: int | None = None
+    line_src_end: int | None = None
 
     @classmethod
     def from_mapping(cls, t5_tok, qwen_tok, mapping: dict) -> "HybridT5Encoder":
@@ -638,7 +751,20 @@ class HybridT5Encoder:
             word_sub=mapping.get("word_sub") or None,
             route=Route.from_mapping(mapping),
             iso_offset=(iso.start if (iso := IsoSpec.from_mapping(mapping)) else None),
+            line_start=(ln.start if (ln := LineSpec.from_mapping(mapping)) else None),
+            line_src_end=ln.src_end if ln else None,
         )
+
+    def apply_line(self, ids: list[int]) -> list[int]:
+        """Move every gated ext id (:func:`line_gate`) with a source row to
+        its line-block mirror; unchanged when the pack has no line block."""
+        if self.line_start is None:
+            return ids
+        lo, hi = T5_TABLE_SIZE, T5_TABLE_SIZE + int(self.line_src_end)
+        return [
+            i + self.line_start if g and lo <= i < hi else i
+            for i, g in zip(ids, line_gate(ids))
+        ]
 
     @property
     def quote_routing(self) -> bool:
@@ -785,6 +911,7 @@ class HybridT5Encoder:
             ids.extend(s_ids)
             offs.extend((base + a, base + b) for a, b in s_offs)
             base += len(span)
+        ids = self.apply_line(ids)
 
         keep = max_length - 1
         ids, offs = ids[:keep], offs[:keep]
@@ -855,13 +982,13 @@ class HybridT5Encoder:
 def load_ext_assets(prefix: Path) -> tuple[torch.Tensor, dict]:
     """Load (table, mapping) written by build_ext.py from a path prefix.
 
-    A pack that ships its ``iso`` record without the rows gets the block
-    regenerated here (:func:`materialize_iso`), so every consumer sees the
-    full table.
+    A pack that ships its ``iso`` / ``line`` record without the rows gets
+    the block regenerated here (:func:`materialize`), so every consumer sees
+    the full table.
     """
     from safetensors.torch import load_file
 
     prefix = Path(prefix)
     table = load_file(str(prefix.with_suffix(".safetensors")))["ext_embed"]
     mapping = json.loads(prefix.with_suffix(".json").read_text(encoding="utf-8"))
-    return materialize_iso(table, mapping), mapping
+    return materialize(table, mapping), mapping
