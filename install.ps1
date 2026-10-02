@@ -239,7 +239,7 @@ trampoline .exe files. To fix:
 
 if ($Backend -eq 'rocm') {
   Say 'verifying the ROCm PyTorch runtime'
-  uv run --no-group cuda-windows --group rocm-windows python tests/rocm_smoke_test.py
+  uv run --no-sync python tests/rocm_smoke_test.py
   if ($LASTEXITCODE -ne 0) { Die 'ROCm PyTorch smoke test failed' }
 }
 
@@ -247,11 +247,13 @@ if ($Backend -eq 'rocm') {
 # Always lands an 'Anima LoRA GUI.lnk' in the install dir (policy-proof), and a
 # desktop copy when login/OneDrive policy allows it.
 Say 'creating shortcuts (Anima LoRA GUI)'
+# The environment was synced above. A flagless uv run would sync it again with
+# the default CUDA group and replace a validated ROCm install (GH #105).
 try {
-  uv run python tasks.py gui-shortcut
+  uv run --no-sync python tasks.py gui-shortcut
   if ($LASTEXITCODE -ne 0) { throw "gui-shortcut exited $LASTEXITCODE" }
 } catch {
-  Say "shortcut skipped; find 'Anima LoRA GUI.lnk' in $Dir or run: uv run python tasks.py gui-shortcut"
+  Say "shortcut skipped; find 'Anima LoRA GUI.lnk' in $Dir or run: uv run --no-sync python tasks.py gui-shortcut"
 }
 
 Write-Host ""
@@ -283,7 +285,7 @@ or launch from the desktop shortcut (which does not inherit Conda's PATH).
 # visible; a launch failure on a headless box just falls back to the shortcut.
 Say 'launching the Anima LoRA GUI'
 try {
-  Start-Process -FilePath 'uv' -ArgumentList 'run', 'python', 'tasks.py', 'gui' -WorkingDirectory (Resolve-Path '.').Path
+  Start-Process -FilePath 'uv' -ArgumentList 'run', '--no-sync', 'python', 'tasks.py', 'gui' -WorkingDirectory (Resolve-Path '.').Path -WindowStyle Hidden
 } catch {
   Say 'GUI launch skipped; start it later with: python tasks.py gui'
 }

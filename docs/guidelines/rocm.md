@@ -89,6 +89,10 @@ uv sync
 The two groups are mutually exclusive. Reuse the same ROCm flags for every
 later manual sync — a flagless `uv sync` reverts to CUDA.
 
+`uv run` also syncs the environment by default. After installing ROCm, use
+`uv run --no-sync python tasks.py gui` to launch with the installed packages,
+or pass `--no-group cuda-windows --group rocm-windows` to `uv run` as well.
+
 To force ROCm when using the one-line installer:
 
 ```powershell
@@ -110,6 +114,24 @@ uv run --no-group cuda-windows --group rocm-windows python tests/rocm_smoke_test
 It exercises the training path, not just `import torch`.
 
 ## Troubleshooting
+
+### `Found no NVIDIA driver` on an AMD GPU
+
+The environment contains CUDA PyTorch instead of ROCm PyTorch. Older Windows
+installers could replace the verified ROCm build during shortcut creation or
+GUI launch by running `uv run` without the ROCm group flags.
+
+Close the GUI and stop active jobs, then repair the existing installation from
+PowerShell in the install directory:
+
+```powershell
+uv sync --no-group cuda-windows --group rocm-windows
+uv run --no-sync python tests/rocm_smoke_test.py
+uv run --no-sync python tasks.py gui
+```
+
+ROCm still uses PyTorch's `torch.cuda` API and the `cuda` device name. Those
+names alone do not indicate that the wrong PyTorch build is installed.
 
 ### The installer selected ROCm for an older or unverified AMD GPU
 
