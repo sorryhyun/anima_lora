@@ -22,7 +22,8 @@ from pathlib import Path
 
 import pytest
 import torch
-from safetensors.torch import save_file
+from safetensors import safe_open
+from safetensors.torch import load_file, save_file
 
 from library.anima import vocab_pack as vp
 from library.anima.ext_vocab import T5_TABLE_SIZE, T5_UNK_ID
@@ -298,6 +299,60 @@ def test_checkpoint_stamp_round_trip_and_mismatch_warning(
         )
         vp.warn_checkpoint_pack_mismatch(lora, other)
         assert "ext rows differ" in caplog.text
+
+
+# --- merged checkpoints --------------------------------------------------------
+
+
+def _fake_dit(path: Path) -> dict:
+    sd = {
+        "net.llm_adapter.embed.weight": torch.randn(8, DIM).to(torch.bfloat16),
+        "net.blocks.0.attn.q.weight": torch.randn(DIM, DIM).to(torch.bfloat16),
+    }
+    save_file(sd, str(path), metadata={"ss_num_blocks": "1"})
+    return sd
+
+
+def test_merge_round_trip_keeps_the_dit_and_the_pack_digest(
+    synthetic_pack: Path, tmp_path: Path
+):
+    dit = tmp_path / "dit.safetensors"
+    base = _fake_dit(dit)
+    out = tmp_path / "merged.safetensors"
+    digest = vp.merge_pack_into_dit(dit, synthetic_pack, out)
+    assert digest == vp.load_vocab_pack(synthetic_pack).digest
+
+    with safe_open(str(out), framework="pt") as f:
+        md = f.metadata()
+        assert set(f.keys()) == set(base) | {"net.llm_adapter.ext_embed.weight"}
+        for k, t in base.items():
+            assert torch.equal(f.get_tensor(k), t)
+    assert md["ss_num_blocks"] == "1"
+    assert (md[vp.CKPT_META_NAME], md[vp.CKPT_META_SHA]) == ("tiny_pack", digest)
+
+    table, mapping, read_digest = vp.read_merged_pack(out)
+    assert read_digest == digest
+    assert mapping["char"] == {"猫": 0, "耳": 1}
+    assert torch.equal(table, vp.load_vocab_pack(synthetic_pack).table)
+
+    assert vp.read_merged_pack(dit) is None
+    with pytest.raises(ValueError, match="already carries"):
+        vp.merge_pack_into_dit(out, synthetic_pack, tmp_path / "twice.safetensors")
+
+
+def test_merged_pack_with_a_wrong_stamp_is_refused(
+    synthetic_pack: Path, tmp_path: Path
+):
+    dit = tmp_path / "dit.safetensors"
+    _fake_dit(dit)
+    out = tmp_path / "merged.safetensors"
+    vp.merge_pack_into_dit(dit, synthetic_pack, out)
+    with safe_open(str(out), framework="pt") as f:
+        md = dict(f.metadata())
+    md[vp.CKPT_META_SHA] = "0" * 64
+    save_file(load_file(str(out)), str(out), metadata=md)
+    with pytest.raises(ValueError, match="stamped digest"):
+        vp.read_merged_pack(out)
 
 
 def test_cache_stamp_warns_once_per_mismatch_kind(synthetic_pack: Path, caplog):
