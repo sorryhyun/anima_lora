@@ -132,6 +132,15 @@ Two grids, base vs jp-extended, same seeds, same everything but the pack:
 
 Rendered through `make gen` (daemon) into `output/cjk_anima_reseed/release/`.
 
+**Done instead 10-08 (user, ComfyUI):** one prompt, seeds 0–3, pack on/off
+via `AnimaVocabPackLoader` on base (`../comfy/output/cjk/jp_{ja,en}prompt_{on,off}_*`),
+plus `jp_pack_trained_` 2–5 (caststation LoRA, no JA string) and
+`jp_pack_turbo_` (official `anima-turbo-v1.1` + pack; its `llm_adapter.embed`
+= base's bitwise, 60 of 118 adapter tensors differ). EN on/off agree within
+3/255 at base res (the ResShift seed differs). Grids + `test_00001_`
+(workflow EXIF, drag-and-drop) uploaded with README § 4 and new sections
+"LoRAs trained with the rows" / "Other Anima derivatives" (HF `9091158`).
+
 ### 2.4 Repo follow-ups (after the upload, each its own commit)
 
 - **The default moves to jp_v1** (user, 10-08) — **done 10-08**
