@@ -21,7 +21,7 @@ coarse Euler step == two finer sub-steps" on a stop-grad EMA copy of the student
 straightening the trajectory. Output is a plain LoRA, inferred at
 `--infer_steps 4 --cfg 1.0` exactly like the DP-DMD student.
 
-The motivation ([[project_turbo_teacher_gap_2026_06_29]]) was that DP-DMD
+The motivation was that DP-DMD
 mode-collapses (pose-diversity loss, garbled text) — a fidelity objective that
 just matches the teacher looked like the cheaper, structurally-right arm for the
 gap we measured. SCFM is also ~6× cheaper per step than DP-DMD+GAN.
@@ -105,7 +105,7 @@ distribution-matching on Anima at 4 steps, because (a) the teacher's few-step fi
 is washed out and (b) its consistency residual is at the base floor everywhere, so
 the straightening term has no purchase. The sharp-4-step frontier is back on
 DP-DMD (`anima_turbo_R`) and its teacher-gap levers (`div_weight↑`, f-distill,
-softrank — [[project_turbo_teacher_gap_2026_06_29]]).
+softrank).
 
 ## What survives in-tree
 

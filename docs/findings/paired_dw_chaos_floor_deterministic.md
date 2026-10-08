@@ -70,8 +70,8 @@ flash backward trades atomics for extra recompute/semaphores. Same
 GPU/driver/library assumed (determinism is per-environment, not portable).
 
 Scope caveat: train.py path only. Bespoke loops (turbo / spd / mod-distill /
-RSD) do not inherit it — the standing mirroring rule
-([[project_daemon_wiring_pattern]]) applies before running a paired A/B there.
+RSD) do not inherit it — mirror the `--deterministic` wiring into the loop before
+running a paired A/B there.
 
 ## What this buys — and what it doesn't
 

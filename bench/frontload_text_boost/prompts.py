@@ -7,8 +7,7 @@ Three kinds:
                    tags to check in the grid (the G1 signal). Selected by hand
                    (tag_influence.py deliberately NOT used — its Phase-0 gate
                    has never run, so it can't be trusted for selection either).
-* ``border``     — the known border-artifact reproducer
-                   ([[project_border_artifact_reproducer]]). Arm (a) failure
+* ``border``     — the known border-artifact reproducer. Arm (a) failure
                    mode: high CFG at high σ is the burn/border regime. Checked
                    WITH the `cropped` tag (the likely data-prior trigger kept
                    in deliberately — we want the worst case for G2).

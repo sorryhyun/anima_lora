@@ -137,8 +137,8 @@ functional truncation) — same rank and size as the plain SVD extraction, stric
 better capture (a rank-96 ASVD delta reconstructs about as well as a plain rank-128
 one). Prefer it.
 
-Why this and not a cold start: the official turbo is polished but mode-collapsed
-([[project_official_turbo_v10_eval]]) — starting there hands the student the
+Why this and not a cold start: the official turbo is polished but mode-collapsed —
+starting there hands the student the
 few-step map for free and leaves DP-DMD's diversity anchor with the one job it is
 actually good at, re-expanding the modes. It also sidesteps the plain-LoRA
 cold-start tangent problem entirely.
@@ -158,7 +158,7 @@ It changes the length of a run. A warm-started student is already a working
 few-step map at step 0, so distillation is fine-tuning, not construction: the
 shipped default is now `iterations = 750` (was 2000+ cold), and the 750-step
 student renders excellently at `--infer_steps 4 --cfg 1.0`. Rank checkpoints by
-rendered 4-step grids, not `fm_mse` ([[project_turbo_lr_instability_threshold]]).
+rendered 4-step grids, not `fm_mse`.
 
 ## Config surface (`configs/methods/turbo.toml`)
 
@@ -177,13 +177,13 @@ Sectioned, bespoke. Every key has a matching CLI override flag (see
 | `[dmd]` | `teacher_cfg` (α) | `4` | CFG scale baked into the teacher anchor + DMD real score (Anima prod CFG=4) |
 | `[dmd]` | `grad_step` | `random` | which refinement step(s) carry the DMD grad: `all` (BPTT) / `last` (tail-only, memory-flat) / `random` (one-step x0-pred at `g~U{1..N−1}`, memory-flat, trains every head). Honored under both `base_loss`. |
 | `[dmd]` | `dynamic_schedule` | `true` | CDM-style continuous schedule (arXiv:2605.06376 §3.2; line plan): per-iteration random rollout grid — length `N~U{2..student_steps}` (dpdmd; `{1..}` plain dmd), interior anchors continuous-uniform, `t₁=1` pinned so the DP anchor composes unchanged. Trains v_θ over continuous t instead of the 4 fixed inference points. `false` = bit-identical legacy fixed-grid loop; validation renders + inference always stay on the static `flow_shift` grid. Incompatible with `per_step_expert` (heads keyed to fixed grid steps). |
-| `[dmd]` | `dm_x0_norm` | `true` | per-sample x0-space magnitude normalization of the DM grad ([[project_turbo_dmd_x0_norm_wins]]) |
+| `[dmd]` | `dm_x0_norm` | `true` | per-sample x0-space magnitude normalization of the DM grad |
 | `[dmd]` | `norm_floor` | `0.05` | clamp_min for the `dm_x0_norm` denominator (latent scale) |
 | `[dpdmd]` | `k_anchor` (K) | `6` | teacher steps rolled to the diversity anchor |
 | `[dpdmd]` | `teacher_anchor_steps` | `12` | teacher σ-grid the K is counted against |
 | `[dpdmd]` | `div_weight` (λ) | `0.05` | weight on the first-step diversity MSE |
 | `[dpdmd]` | `detach_after_first` | `true` | **load-bearing** stop-grad after step 1; keep True (A/B only) |
-| `[optim]` | `student_lr` / `fake_lr` | `1e-5` / `2e-5` | fake runs hotter. Cold start only: do not raise the student to 2e-5 (adversarial instability). On the shipped warm start 5e-5/5e-5 is stable but near-edge — expect an excursion around ~1k and rank keepers from 2k+; fm_mse is anti-correlated with quality, rank by rendered 4-step samples ([[project_turbo_lr_instability_threshold]], [[project_turbo_T_sweep_verdict]]) |
+| `[optim]` | `student_lr` / `fake_lr` | `1e-5` / `2e-5` | fake runs hotter. Cold start only: do not raise the student to 2e-5 (adversarial instability). On the shipped warm start 5e-5/5e-5 is stable but near-edge — expect an excursion around ~1k and rank keepers from 2k+; fm_mse is anti-correlated with quality, rank by rendered 4-step samples |
 | `[optim]` | `fake_steps_per_student_step` | `4` | keep the fake ahead of the moving x_θ |
 | `[optim]` | `fake_warmup_steps` | `50` | fake (critic) head-start before the main loop — kills the early grad_signal_rms spike (~step 50); `0` = off |
 | `[optim]` | `grad_clip` | `1.0` | grad-norm cap (both nets) |
@@ -208,8 +208,7 @@ metrics are a wash. `dm_cos` (~0.979), `dm_mag_ratio` (~0.99), and `dm_rel_gap`
 (~0.18–0.19) are flat within run-to-run noise; `div_loss` is equal-to-marginally
 lower under k4/t8 (tailμ 0.093 vs 0.095); no instability spike. The only
 systematic difference is `v_student_rms` / `x_pred_std` sitting ~1–2% higher in the
-low-k run — the variance-inflation / over-bake lean ([[project_turbo_alpha4_overdistill]],
-[[project_turbo_dmd_x0_norm_wins]]) — but well inside noise at this length.
+low-k run — the variance-inflation / over-bake lean — but well inside noise at this length.
 
 Caveat before reading this as "lower K is free": `div_loss` measures how well the
 student hits the anchor, not how diverse the anchor is. A k4 anchor is a
@@ -217,7 +216,7 @@ coarser, smoother target, so equal-or-lower `div_loss` does not prove the divers
 injection survived — a less-faithfully-integrated anchor can land off the teacher's
 true trajectory, which these scalars can't see. The anchor's whole job is pose
 de-collapse on real captions, and that only shows in sample grids (the PE-pooled
-metric is blind to pose — [[project_dpdmd_pivot_phase0]]). Verdict on the lowered
+metric is blind to pose). Verdict on the lowered
 defaults is therefore metrics-green / grid-pending: A/B `anima_turbo_J500_500`
 (k4/t8) vs `anima_turbo_I_sigmoid_500` (k14/t28) at `--infer_steps 2 --cfg 1.0` and
 read pose diversity + saturation, not the scalars.
@@ -231,7 +230,7 @@ loss is trained at random τ, not on the N-step grid; only step 0 is
 grid-anchored), so it can integrate better at more Euler steps than it was
 trained for — the 2-step era made this concrete: a single `0.75→0` Euler jump
 crosses the entire detail-forming band below σ≈0.5
-([[project_sigma_signal_resolves_by_045]]), while 4 steps get a function evaluation
+(`docs/findings/sigma_signal_where_anima_resolves.md`), while 4 steps get a function evaluation
 at σ=0.5 and preserve the σ=0.75 anchor (one motivation for the 2→4 move). If a
 checkpoint looks better at more steps than its trained grid, that's the tell that
 distillation hasn't reached a true N-step map yet — train longer or raise
@@ -254,7 +253,7 @@ Turn it on in `[network]` (`per_step_expert = true`) or `--per_step_expert`. Tre
 it as a hypothesis test vs the single-head student, not a presumed win: if the
 shared LoRA was never capacity/interference-bound it buys a heavier checkpoint +
 inference plumbing for nothing. Promote only if it beats baseline on the CMMD val
-signal ([[project_cmmd_val_signal]]) with visibly preserved step-0 diversity.
+signal with visibly preserved step-0 diversity.
 
 ### What it costs — the plain-LoRA property is gone
 
@@ -383,11 +382,31 @@ Regression probe: `bench/turbo/caption_ranking_probe.py --adapter <ckpt>`. The
 ship-gate A/B (0 vs 0.05) was never run — treat the knob as experimental. Tests:
 `tests/test_turbo_softrank.py`. Design: `_archive/proposals/turbo_caption_ranking.md`.
 
+## Loop gotchas no metric catches
+
+- **A key in the wrong TOML section silently defaults.** `toml_get(cfg, "dmd.dynamic_schedule", …)`
+  ignores a misplaced key with no warning (2026-07-17: both arms of a dynamic A/B trained the same
+  grid). Verify every arm via the `ss_turbo_*` safetensors metadata or the `.snapshot.toml`, and
+  read the snapshot's `# source config:` line — GUI/daemon runs read
+  `configs/gui-methods/custom/turbo.toml`, not `configs/methods/turbo.toml`.
+- **NFE=2 GAN runaway.** `superturbo_div01` (`student_steps=2`) collapsed to noise at ~1750 via
+  token-disc runaway (`gan_margin` 0.22→6.94, `gan_spread`→0.99) with every DM term healthy; the
+  byte-identical NFE=4 sibling ran flat. Signature: at NFE=4 the token head has an equilibrium
+  plateau of 0.27–0.30 by step 2–3k, so a rising spread alone is not the tell — runaway = sustained
+  bin-median >0.40 **plus** `gan_disc_margin` >0.5 **plus** `gan_disc_loss` below ~1.1 (healthy
+  1.33–1.36). Damp with `gan_r1_weight ≈ 100` and/or `gan_disc_lr` 1e-5→3e-6; do not cut
+  `fake_steps_per_student_step` (disc cadence is coupled to the fake inner loop).
+- **`gan_logit_spread` and `cdm_grad_rms` are hard-zero under `gan_disc_head="pooled"`** — never
+  baseline a token-head run against a pooled one.
+- **The `anima_turbo_R` plateau bites diversity, not DMD health** — every DM scalar stayed fine while
+  pose diversity flattened. The Eq.7 `mean_var` shield was removed 2026-07-14 without ever running;
+  the `f_distill` wiring was kept.
+
 ## Limitations & composition
 
 - Plain-LoRA bake is the hard constraint. Anything needing a step-size or
   per-t input at inference (Shortcut / MeanFlow Δt-conditioning, timestep-conditioned
-  T-LoRA — its mask is training-only, see [[project_tlora_inference_full_rank]])
+  T-LoRA — its mask is training-only)
   gives nothing after the bake.
 - Spectrum: incompatible by construction — Spectrum's Chebyshev cache assumes
   ≥16 steps. Don't stack.
@@ -396,7 +415,7 @@ ship-gate A/B (0 vs 0.05) was never run — treat the knob as experimental. Test
   assume.
 - Block swap. The student rolls `N` forwards and the teacher `K` anchor
   forwards per step (multi-forward); the offloader desyncs on a 2nd DiT forward
-  ([[project_blockswap_extra_forwards_gradcache]]). The loop calls
+  (`library/runtime/offloading.py::ModelOffloader`). The loop calls
   `prepare_block_swap_before_forward(free_cache=False)` before each forward, but the
   default path keeps `blocks_to_swap=0` (activation-dtype LoRA GEMMs keep
   activation memory low enough to run full-res on 16 GB without swap). Audit the

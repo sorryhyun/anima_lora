@@ -243,7 +243,7 @@ Two reasons this is correctness work, not just memory hygiene:
 2. Peak activations stay at one forward. The two losses share no graph, so a
    single combined backward would pay 2× activation memory for nothing. Severing lets
    grad-ckpt stay *optional* at small $N$ — the unroll it tames is the $N{-}1$-step DMD
-   chain, not the freed step-0 graph (see [[project_custom_down_autograd_distill_lever]]).
+   chain, not the freed step-0 graph.
 
 With the detach off (A/B only) the graphs are entangled and the diversity term
 must ride the single combined backward at assembly time.

@@ -17,8 +17,7 @@ Two-line summary:
 
 Archived bench (driver, machinery, all runs + images): `_archive/bench/freetext/`
 (report `stage2_report.md`, Stage-1 writeup `stage1_progress.md`). Paper PDF archived
-alongside. Related memory: [[project_freetext_phase0_localization_go]],
-[[project_freetext_stage2_sgmi_deepwindow]], [[project_sigma_signal_resolves_by_045]].
+alongside.
 
 ---
 

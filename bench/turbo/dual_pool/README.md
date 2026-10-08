@@ -43,7 +43,7 @@ merged concat reproduces `ΔW_A + ΔW_B`; div_scale dial) — run it first:
 python -m pytest tests/test_turbo_dual_pool.py -q
 ```
 
-## Reads (rank by rendered NFE=4 grids, NOT fm_mse — [[project_turbo_lr_instability_threshold]])
+## Reads (rank by rendered NFE=4 grids, NOT fm_mse)
 
 - **Primary** — rendered 4-step grids at `--cfg 1.0` (`make gen`), fixed prompt
   set × seed sweep, human A/B on the 750 ckpts.

@@ -34,7 +34,7 @@ handler in `library/training/losses.py`, and the kwarg allowlist in
 
 Probe: `bench/repa/discriminability.py` (run
 `bench/repa/results/20260613-1249-discriminability/`, N=3058, no model
-forward). Memory: `[[project_pe_cls_collapse_patchmean]]`. Depends on REPA v2
+forward). Depends on REPA v2
 Phase 0 (closed 2026-06-12, relational/Gram arm won — `docs/experimental/repa.md`).
 
 ## Why now
@@ -101,7 +101,7 @@ component from the relational arm, so the global-anchor term re-injects exactly
 that — using the most discriminative available target rather than the dead CLS.
 
 Config (`configs/methods/lora.toml` + allowlist in `networks/__init__.py`
-`*_KWARG_FLAGS`, else inert + config-test fail — `[[project_network_kwarg_toml_allowlist]]`):
+`*_KWARG_FLAGS`, else inert + config-test fail):
 `repa_global_weight` (0.0 off), `repa_global_norm = "zscore"`,
 `repa_global_calib = "networks/calibration/pe_patchmean_stats.safetensors"`.
 
@@ -111,11 +111,10 @@ Single arm vs current relational-only, same data/preset/steps:
 
 - **Arm**: `--repa_global_weight 0.03` (≈ half the relational weight; the
   relational arm is ~4% of total loss at 0.05, so start smaller and tune up).
-- **Primary metric**: CMMD val signal (`[[project_cmmd_val_signal]]`) — lower
+- **Primary metric**: CMMD val signal — lower
   wins. (FM val loss is uninformative here, `[[project_fm_val_loss_uninformative]]`.)
 - **Hard gate (style)**: qualitative anime-style pass on the fixed sample
-  prompts. The global/style axis is the v1 burn hazard
-  (`[[project_repa_v2_relational_won]]`); any visible style drift = FAIL
+  prompts. The global/style axis is the v1 burn hazard; any visible style drift = FAIL
   regardless of CMMD.
 - **Readout**: CMMD improves and style holds → keep, tune weight. CMMD flat /
   style drifts → close; the spatial arm already owns the usable structure.

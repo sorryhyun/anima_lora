@@ -63,7 +63,7 @@ target) with `--infer_steps = student_steps`, plain Euler.
 ## 0. Why now (read this first)
 
 The shipped DP-DMD+GAN student has **plateaued, and the plateau is a deficit, not
-teacher-parity** ([[project_turbo_R_plateau]], [[project_turbo_teacher_gap_2026_06_29]]).
+teacher-parity**.
 On `anima_turbo_R` (6k iters, GAN@0.03, rank 96):
 
 - training converged by ~2–4.5k (4.5k ≈ 6k by eye; `div_loss` 85%-done by 2k);
@@ -78,7 +78,7 @@ On `anima_turbo_R` (6k iters, GAN@0.03, rank 96):
 
 The wired levers aimed at this gap are nearly exhausted:
 
-- **REPA** — empirically net-negative on turbo ([[project_turbo_repa_phase0_drift]]); a
+- **REPA** — empirically net-negative on turbo; a
   representation-space pull fights the reverse-KL grad. Out.
 - **GAN@0.03** — already on in the plateaued run; spent.
 - **f-distill (KL reweighting)** — tried; no win. Spent.
@@ -174,8 +174,7 @@ the straightening term; near-zero = SCFM adds little over naive Euler.
   knobs). The consistency-residual scan disambiguates the marginal middle case.
 
 Metric caveat (same as DP-DMD's): score **pose/structure**, not pooled cosine —
-PE-Core pooled is blind to the axis we care about ([[project_dpdmd_pivot_phase0]],
-[[project_fm_val_loss_uninformative]]). Read the grids; use `pe_spatial` spatial
+PE-Core pooled is blind to the axis we care about. Read the grids; use `pe_spatial` spatial
 tokens for a number. Bench home: `bench/turbo/`, standard `result.json` envelope
 (`bench/_common.py`).
 
@@ -269,8 +268,7 @@ and the (now-EMA) fake stack are discarded, so the artifact stays a plain LoRA.
 ### 3.3 Constraints that survive contact with Anima
 
 - **Block-swap + multi-forward.** SCFM runs 1 student-grad + 2 EMA + (CFG) teacher
-  forwards per step — multi-forward, same offloader hazard as DP-DMD
-  ([[project_blockswap_extra_forwards_gradcache]]). Keep `blocks_to_swap=0` for
+  forwards per step — multi-forward, same offloader hazard as DP-DMD. Keep `blocks_to_swap=0` for
   Phase 1 (default already); the cost analysis says we don't need swap (see §below).
 - **Compile.** `compile_blocks()` keys on token count; all forwards reuse the same
   bucket. View flips (student↔fake) are flag flips on the frozen base, no
@@ -322,7 +320,7 @@ critic maintenance (~10f) and the anchor rollout (~12f).
    ceiling is high enough to beat the DP-DMD student. If the naive-Euler teacher
    is itself collapsed at 4 steps, SCFM is NO-GO — this is the load-bearing risk.
 2. **Inert-EMA — less of a threat here than the archive feared.** The shelved
-   consistency aux ([[project_turbo_consistency_aux_shelved]]) was flagged
+   consistency aux was flagged
    "EMA-LoRA teacher inert on frozen backbone". But SCFM's `θ⁻` is **not** a
    capability gap (teacher-vs-student); it is a stop-grad *stabilizer* of a
    **geometric** constraint (one big step = two small steps) evaluated on the same
@@ -343,7 +341,7 @@ critic maintenance (~10f) and the anchor rollout (~12f).
    detail/text resolves, [[project_sigma_signal_resolves_by_045]]) the student
    won't straighten in the band that carries the text we're trying to recover.
    Bias the grid toward the low-σ tail.
-5. **CMMD blind to the win.** Our live val ([[project_cmmd_val_signal]]) is blind
+5. **CMMD blind to the win.** Our live val is blind
    to pose and only partly sees text. Checkpoint selection must use the
    structure-sensitive diversity metric + grids, like DP-DMD.
 
@@ -381,14 +379,11 @@ measure it against DP-DMD before mixing).
 
 - SCFM — Cai, Y. Wu, Chen, H. Wu, Xiang, Wen, NeurIPS 2025. `shortcutfm.github.io`;
   PDF `2431_Shortcutting_Pre_trained_.pdf` (repo root). Prior review:
-  [[project_scfm_paper_verdict]].
 - `_archive/proposals/dpdmd.md` — the incumbent's migration proposal (this doc
   mirrors its structure + dual-path discipline).
 - `docs/structure/turbo.md` / `docs/methods/turbo.md` — incumbent math + ops.
 - Plateau / teacher-gap evidence: [[project_turbo_R_plateau]],
-  [[project_turbo_teacher_gap_2026_06_29]], [[project_turbo_caption_ranking_phase0]].
 - Shelved-aux context (why the inert-EMA objection is weaker here):
-  [[project_turbo_consistency_aux_shelved]].
 - Phase-0 probes (live): `bench/turbo/probe_consistency_residual.py`,
   `bench/turbo/probe_teacher_straightness.py`; montage
   `bench/turbo/results/20260629-1440-scfm-consistency-residual/`.

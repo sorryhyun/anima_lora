@@ -139,11 +139,10 @@ Each `montages/<tag>__capN.png` is one row, **thumbnailed**:
 - **Instability confounds legit variation** (a "smile" genuinely varies). That's
   why it's normalized to whole-image variance (`instability_rel`) — and why the
   final shortlist still needs the **human eye**, not a variance threshold alone.
-- **Base-owned ceiling**: x̂₀-wander is ~90% base-owned ([[project_x0_contradiction_bench]]);
+- **Base-owned ceiling**: x̂₀-wander is ~90% base-owned;
   the `train_freq` split is the guard — only high-freq failures are plausibly
   adapter-addressable.
-- **Per-σ-reweight graveyard**: any Phase-1 lever must be *localized*
-  ([[project_sigma_reshape_no_win]]) — a global per-σ guidance reweight is a
+- **Per-σ-reweight graveyard**: any Phase-1 lever must be *localized* — a global per-σ guidance reweight is a
   settled no-win.
 
 ## Re-running

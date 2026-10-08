@@ -52,6 +52,55 @@ time (training-only surface, essentially unused — scripts run directly, see
   throughput bench.
 - `_archive/proposals/resshift_sr_sidecar.md` — founding proposal (retired —
   shipped).
-- Ceiling/plateau/tiling evidence with full numbers lives in project memory
-  (`project_rsd_x2_24k_plateau_and_tile_noise`, `project_sr_x2_text_fidelity`,
-  `project_rsd_distill_scale_and_bottleneck`).
+- Ceiling/plateau/tiling/text-fidelity mechanics: the sections below.
+
+## Mechanics (the record)
+
+Predecessor: the PiD decode/SR line was retired 2026-07-05 in favour of this
+sidecar. Its surviving reads: the tile-vs-whole tone gap is mostly SDE variance
+(not GroupNorm); a static 3×3 color calibration generalizes; a zero/null caption
+is off-distribution for it.
+
+### Training
+
+- Train at native/4096 scale, never 1024 — deployment is 1024→4096, so HR
+  patches must carry 4096-scale detail; the 1024-HR eval set is itself
+  mis-scaled for this target.
+- VAE latents are not disk-cacheable: `data.py::__getitem__` ignores `idx`
+  (fresh file + crop + degradation per call), so a cache would freeze the
+  augmentation.
+- VAE/teacher `torch.compile` reverted (Blackwell inductor stall); only the
+  student SwinUNet block-compile survives. The real throughput lever is bf16 +
+  batch 4–6.
+- Never infer while training: ~5.5 GB + ~12 GB OOMs a 16 GB card and kills the
+  trainer (exit 247); `train.py` has no resume. EMA is teacher-heavy before
+  ~1500 steps (eyeball early checkpoints with `--weights student`). The
+  checkpoint picker uses mtime, not name.
+
+### Tiling (×2)
+
+- The boundary-gradient seam metric is content-confounded and non-monotonic —
+  do not rank overlaps by it; compare excess gradient at known boundaries
+  against random control positions.
+- Seam cause: two independent unseeded noise draws per tile. Fix: one
+  full-image latent noise field sliced per tile (`shared_noise=True`, default
+  on). The residual floor is the VAE conv receptive field. Box-average blending
+  → raised-cosine `FeatheredSpliter` (y-seam 0.605→0.031).
+- `swin_align` is 256 regardless of sf (f_vq 4 · 2^(L−1) 8 · window 8) — the
+  ×2 bug multiplied it by sf. Recipe: chop 512 / overlap 64 / shared_noise on;
+  at true ×2 inference use CHOP=256 (512 OOMs the VQ quantize on 16 GB).
+
+### Text fidelity (levers exhausted)
+
+- The LPIPS+DC 45k teacher arm tied on MUSIQ and was worse on ref-LPIPS —
+  never promoted; the wired teacher is the 2026-07-05 30k text-knob run.
+  Untried levers only: DC-on / LPIPS ≤ 0.1.
+- The CTD seg head alone is unusable (halo/hair false positives; thin strokes
+  score lower than solid curves) — use the yolo `blk` head (conf 0.4 / NMS
+  0.35) + a stroke-coverage cross-check.
+- MUSIQ rewards glyph hallucination (70 vs 58) — never gate text fidelity on
+  it.
+- Pre-2026-07 masks under `post_image_dataset/masks/` are un-gated by CTD.
+
+Launch runs through the daemon (`make daemon-run`); this loop bypasses
+`train.py`, so none of its queue/compile-cache/`--deterministic` infra applies.

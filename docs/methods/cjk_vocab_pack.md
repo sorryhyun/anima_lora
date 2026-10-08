@@ -83,10 +83,11 @@ strategy and the DiT loader see the same table.
 
 ## Cache invalidation
 
-TE caches skip on **existence only** — no content hash. Enabling, disabling or
-swapping a pack changes the cached T5 ids and `crossattn_emb` for every caption
-that carries CJK, but the files still exist, so the trainer would silently use
-them. Two guards:
+TE caches invalidate on **caption mtime only** (`_cache_is_current` re-encodes a
+stem whose cache is older than its caption or `.variants.txt`) — no content hash
+of the encoder state. Enabling, disabling or swapping a pack changes the cached T5
+ids and `crossattn_emb` for every caption that carries CJK, but the caption did
+not change, so the trainer would silently use the stale files. Two guards:
 
 - Every cache written through a pack carries `vocab_pack` / `vocab_pack_sha`
   in its safetensors metadata. At train start the cache check compares the

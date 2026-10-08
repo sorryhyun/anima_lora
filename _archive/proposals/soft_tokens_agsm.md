@@ -3,8 +3,7 @@
 Status: **ARCHIVED 2026-05-29 — LANDED.** The bounded AGSM target shipped on the
 soft-tokens path (`contrastive_objective=agsm`, paper-faithful Plackett–Luce Δ +
 γ⁺/γ⁻ self-anneal, dual-bank ψ⁺/ψ⁻ behind `agsm_dual_bank`) and an A/B showed it
-**helps prompt-following and quality**. Phase 0 reward premise held
-([[project_agsm_reward_premise_holds]]); the implementation and PL correction are
+**helps prompt-following and quality**. Phase 0 reward premise held; the implementation and PL correction are
 recorded in [[project_soft_tokens_agsm_pl_correction]]. Open items below are
 faithfulness refinements, not blockers: **3b renoise = DEFER** (probe MATTERS by
 the literal gate but is weak in practice), **3c time-shaping = PARKED**, and the
@@ -163,8 +162,7 @@ checked before any training:
   anchors, k=2, run `results/20260529-1157-phase0-agsm/`): LoRA-off **shuffled
   rank@1 = 0.993**, **hard rank@1 = 0.958**, both with positive margin, vs chance
   0.333 → **PASS**. The reward premise holds: matched text explains the anchor's
-  latent better than mismatched, *even though* absolute FM-MSE is uninformative
-  ([[project_fm_val_loss_uninformative]]) — relative ranking survives. Two notes:
+  latent better than mismatched, *even though* absolute FM-MSE is uninformative — relative ranking survives. Two notes:
   (1) the margin **grows monotonically with σ** (perfect rank@1 by σ≥0.45, near-chance
   for hard at σ=0.15) — caption-conditioning is most discriminable when `x_t` is
   mostly noise and the model must guess `x0` from text, weakest near the clean latent;
@@ -363,6 +361,5 @@ checked before any training:
 - Sibling proposal (gates this one): `docs/proposal/soft_tokens_contrastive.md`
 - Method doc: `docs/experimental/soft_tokens.md`
 - Quality-signal context: [[project_fm_val_loss_uninformative]],
-  [[project_cmmd_val_signal]]
 - Papers: AGSM (ICML 2026, https://jaayeon.github.io/AGSM/); SoftREPA
   (arXiv:2503.08250, NeurIPS 2025)

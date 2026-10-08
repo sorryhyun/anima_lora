@@ -71,9 +71,8 @@ CFG=4.0, `student_sample_steps=4`. Those are real starting hyperparameters, not 
 ### torch.compile / block-swap caveats (flagged from memory)
 - `compile_blocks()` traces the block forward; a forward hook added **after** compile may
   land on a stale graph. Register the disc hook in the same place block hooks are managed,
-  and re-verify under `--torch_compile` before trusting numbers
-  (see `[[project_blockcompile_rebuilds_dit_strands_hooks]]`).
-- Block-swap desyncs on extra DiT forwards (`[[project_blockswap_extra_forwards_gradcache]]`).
+  and re-verify under `--torch_compile` before trusting numbers.
+- Block-swap desyncs on extra DiT forwards.
   The GAN adds **no new teacher forward** if we tap the disc features from the
   teacher forward we already run for the real score — capture features *during* the
   existing `_teacher_cfg_velocity` call rather than a second pass. Audit this explicitly;

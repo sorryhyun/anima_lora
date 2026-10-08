@@ -195,6 +195,18 @@ _grad_t = Union[tuple[torch.Tensor, ...], torch.Tensor]
 class ModelOffloader(Offloader):
     """
     supports forward offloading
+
+    The sliding window is tied to exactly one forward + one backward per step.
+    A second full DiT forward in the same step with ``blocks_to_swap > 0``
+    starts ``_run_blocks`` at a CPU-parked block 0 and dies with
+    ``aten.mm cuda:0 vs cpu`` (under compile it surfaces as a fake-tensor device
+    error, not as an offloader fault). Extra-forward objectives must either
+    split into a ``no_grad`` value pass + a deferred grad-cache replay
+    (soft-tokens' ``after_backward``) or bracket the extra forward with
+    ``prepare_block_swap_before_forward(free_cache=False)``, which leaves the
+    tail resident. The extra-forward sites in ``train.py`` (VR-loss, inversion
+    func-loss, IP-Adapter) and the turbo multi-forward loop were never audited
+    for this.
     """
 
     def __init__(

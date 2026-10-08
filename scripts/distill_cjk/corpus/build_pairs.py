@@ -132,9 +132,8 @@ def load_captions(
     collide across the roots by construction (``image_dataset`` was curated
     *out of* ``retrieved``, 2,933 of 3,008 overlap), so the first root wins —
     the curated, already-normalized copy. Note the stem convention: plain
-    digits are gelbooru ids, ``dan_``-prefixed are danbooru
-    ([[project_booru_id_space_collision]]), and both boorus share each artist
-    directory, so the stem is only unique *with* that prefix — hence the
+    digits are gelbooru ids, ``dan_``-prefixed are danbooru, and both boorus
+    share each artist directory, so the stem is only unique *with* that prefix — hence the
     artist-relative path, not the bare stem, is the dedup key.
     """
     rules = parse_caption = None

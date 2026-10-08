@@ -636,10 +636,9 @@ def contaminated(cand: str, tag: str, src: str | None, lang: str = "ja") -> bool
 
 
 # Danbooru emoticon / symbol tags. `:d`, `^^^`, `\m/` are typed latin in every
-# language ([[feedback_emoticon_tags_stay_latin]]): MT fullwidth-converts them
-# (`!` → `！`) or echoes the exemplar list at them, and the community field
-# offers *descriptions* (びっくりマーク), not the tag. The rules are shape-based
-# so a new emoticon needs no override.
+# language: MT fullwidth-converts them (`!` → `！`) or echoes the exemplar list
+# at them, and the community field offers *descriptions* (びっくりマーク), not
+# the tag. The rules are shape-based so a new emoticon needs no override.
 _EMOTICON_RES = (
     re.compile(r"^[:;]\S{1,3}$"),  # :d :t ;) :<=
     re.compile(r"^\S{1,3}[:;]$"),  # c: d: 3:

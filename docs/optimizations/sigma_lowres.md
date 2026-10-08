@@ -11,10 +11,12 @@ LoRA checkpoint.
 > Background and derivation: [arXiv:2608.04448](https://arxiv.org/abs/2608.04448).
 > The per-route certification map, the RoPE/residual decomposition of the demote
 > gap, and the trajectory-propagator argument behind the schedule knobs all come
-> from there. The experiment records are archived in `_archive/sigma_lowres/`
-> (line closed 2026-08-19) (E4 the
-> harness/yardstick protocol, E14 the per-σ route map, E16 the routing and
-> placement study this doc's shipped recipe is drawn from).
+> from there. The experiment records (line closed 2026-08-19) live only on the
+> private `preserve` remote — `github.com/sorryhyun/demoted-training`, branch
+> `sigma-lowres-yarnsig` (`git fetch preserve sigma-lowres-yarnsig:sigma-lowres-yarnsig`);
+> never push them to `origin`. E4 is the harness/yardstick protocol, E14 the
+> per-σ route map, E16 the routing and placement study this doc's shipped recipe
+> is drawn from.
 
 ## Quick start
 

@@ -102,8 +102,7 @@ upstream signal (adaptive steering `w` on base quality), not proj retraining.
 > reachable `cos` ceiling for any pooled-AdaLN head is 0.05–0.17 (architectural,
 > not a fit gap) and the head already sits at it. GAD-for-mod-guidance ships at
 > `gad_weight=0` (dead); σ-FiLM inert even when opted in. Full verdict:
-> `_archive/gad/gad.md` → "GAD for mod-guidance" (archived 2026-06-12);
-> see [[project_mod_guidance_sigma_film]].
+> `_archive/gad/gad.md` → "GAD for mod-guidance" (archived 2026-06-12).
 
 `_archive/bench/mod_guidance/text_jacobian.py` (generation-free) perturbs the text from sample A
 toward B on held-out `(latent, σ, noise)` and compares pathway output deltas: teacher

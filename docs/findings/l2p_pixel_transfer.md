@@ -15,8 +15,7 @@ noise from noise, even when the scalar FM loss says it succeeded.
 The single most reusable lesson is methodological: single-step teacher-forced FM
 loss is a false positive for "is this a generator." A run dropped FM loss −84%
 while iterative sampling still produced pure noise. Gate latent→pixel (and similar
-frozen-core distill) work on montages, not loss. This is a sharp instance of
-[[project_fm_val_loss_uninformative]].
+frozen-core distill) work on montages, not loss.
 
 Method reference: Chen et al., *Unlocking Latent Potential for Pixel Generation*,
 arXiv:2605.12013. Proposal + module-swap table: `_archive/proposals/l2p_pixel_anima.md`

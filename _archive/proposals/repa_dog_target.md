@@ -155,11 +155,11 @@ Single arm vs current relational-only + `spatial_norm`, same data/preset/steps:
   part of their reported win may be the std change, not the band-pass. Hold
   `repa_dog_norm_std` equal to the shipped `spatial_norm` std, or the A/B can't
   attribute the delta to DoG.
-- **Primary metric**: CMMD val signal (`[[project_cmmd_val_signal]]`) — lower
-  wins. FM val loss is uninformative (`[[project_fm_val_loss_uninformative]]`).
+- **Primary metric**: CMMD val signal — lower
+  wins. FM val loss is uninformative.
 - **Hard gate (style)**: qualitative anime-style pass on the fixed sample
   prompts. Aggressive low-freq stripping touches the global/style axis — the v1
-  burn hazard (`[[project_repa_v2_relational_won]]`); any visible style drift =
+  burn hazard; any visible style drift =
   FAIL regardless of CMMD.
 - **Readout**: CMMD improves and style holds → keep, tune σ₁. Flat / style
   drifts → close; `spatial_norm` already owns the usable structure.
@@ -172,8 +172,7 @@ Single arm vs current relational-only + `spatial_norm`, same data/preset/steps:
   ablated** in the paper. The std confound (above) is unaddressed. Treat the
   paper as motivation, not validation.
 - **Encoder mismatch.** Their evidence is DINOv2/v3; we align to **PE-Spatial**
-  (CLIP-lineage), which already behaves differently — PE CLS collapsed
-  (`[[project_pe_cls_collapse_patchmean]]`). The RMSC↔quality correlation that
+  (CLIP-lineage), which already behaves differently — PE CLS collapsed. The RMSC↔quality correlation that
   justifies DoG may not replicate on PE; that's exactly what Phase 0 tests.
 - **Could be a no-op.** `spatial_norm` already removes DC. If the mid-low band
   carries no extra distractor energy, DoG adds nothing — likely outcome is

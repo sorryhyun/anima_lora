@@ -8,11 +8,10 @@ Pérez, arXiv:2606.20536) — paper PDF in repo root `2606.20536v1.pdf`.
 ## The problem this fixes
 
 We make a *lot* of method calls on **single training runs** with small effect
-sizes — REPA relational-vs-absolute "won ~6:4–7:3" and the layer-8-vs-26 anchor
-([[project_repa_v2_relational_won]], [[project_repa_layer_ab_settled]]),
-channel-scaling quality "never A/B'd" ([[project_per_channel_scaling_audit]]),
-chimera content-half gate std 0.004 ([[project_chimera_content_half_weak_overprovisioned]]),
-turbo lr "non-monotonic ckpt quality 1k>4k>2k>3k" ([[project_turbo_lr_instability_threshold]]).
+sizes — REPA relational-vs-absolute "won ~6:4–7:3" and the layer-8-vs-26 anchor,
+channel-scaling quality "never A/B'd",
+chimera content-half gate std 0.004,
+turbo lr "non-monotonic ckpt quality 1k>4k>2k>3k".
 
 The FID Lottery paper measures, on several hundred SiT models, that **retraining
 the same recipe with a different seed moves FID 3.2× more than resampling a fixed
@@ -24,15 +23,14 @@ data-order ~51%) is regenerated every batch and never averages out. A
 necessarily a real effect.
 
 Two of their findings we already arrived at independently — FM val loss doesn't
-track quality ([[project_fm_val_loss_uninformative]]) so we moved to CMMD
-([[project_cmmd_val_signal]]), and we rank turbo by rendered samples not fm_mse.
+track quality so we moved to CMMD, and we rank turbo by rendered samples not fm_mse.
 But we have **never measured our own floor**, so we can't tell which banked A/B
 conclusions are real and which are inside it.
 
 **We are exposed worse than the paper's authors.** They hold ImageNet fixed
 across ~100k GPU-hours. We change the *data pool* constantly — new artists,
-re-preprocess, free-fit tier changes ([[project_freefit_only_pool_removed]]),
-caption edits ([[project_text_cache_dir_te_redirect]]). The paper's D.3 factorial
+re-preprocess, free-fit tier changes,
+caption edits. The paper's D.3 factorial
 (10 init seeds × 15 data/noise pairings) shows "good init" transfers only weakly
 even under data-*ordering* changes (avg pairwise Spearman ρ = 0.36; same init
 top-3 under one pairing, bottom-3 under another). Changing the data *pool* is a
@@ -55,7 +53,7 @@ surface already cleanly separates the two axes — no new knobs needed for v1:
 | Paper axis | Drives | Our control |
 |---|---|---|
 | **Training lottery** (`N`) | init + data order + per-step FM noise | `--seed` → `set_seed(args.seed)` (`train.py:1973`); already bundles all three exactly as the paper's "training seed" does. `args.seed=None` → random (`train.py:1971`). |
-| **Evaluation lottery** (`K`) | the sampling noise of CMMD validation | `validation_seed` (`configs/base.toml:81`, currently fixed `42`) + the CMMD `validation_split_num` path ([[project_cmmd_val_signal]]). |
+| **Evaluation lottery** (`K`) | the sampling noise of CMMD validation | `validation_seed` (`configs/base.toml:81`, currently fixed `42`) + the CMMD `validation_split_num` path. |
 
 So `σ_between` = spread of per-seed mean CMMD across `N` values of `--seed`;
 `σ_within` = spread across `K` validation seeds for one fixed checkpoint. The
@@ -86,7 +84,7 @@ Before any of this is worth building, one question decides everything:
 under sampling noise, selection is hopeless and the answer to "how many seeds"
 is "one — seed-fishing is pointless, just train and ship." This is the real risk
 flagged by the null-TTA conclusion that **no reliable quality reward exists for
-Anima** ([[project_null_tta_phase0_bounded_nudge]]) and that CMMD is a
+Anima** and that CMMD is a
 "global-tone lever" — CMMD may simply not rank LoRAs by the quality we care about.
 
 **Run:** pick one representative config (suggest plain LoRA on a stable ~200-image
@@ -121,15 +119,14 @@ Only if Phase 0 gates. Two thin deliverables, no new training infra:
    `{"floor_cov": <measured>, "delta_cov": <observed gap>, "verdict":
    "REAL"|"INCONCLUSIVE"}`. The rule, straight from the paper: a gap **below the
    measured CoV** is `INCONCLUSIVE` and must not be reported as a win without
-   multi-seed confirmation. This is the spectral-fraction-metric-inverts lesson
-   ([[project_spectral_fraction_metric_inverts]]) generalized: "is this gap above
+   multi-seed confirmation. This is the spectral-fraction-metric-inverts lesson generalized: "is this gap above
    the noise floor?" becomes a standard question every `result.json` answers.
 
 2. **`make seed-floor METHOD=… PRESET=… DATA=…`** — a task wrapper that runs the
    Phase-0 probe on demand for a given pipeline, so the floor is re-measurable
    whenever the data pool changes (which, for us, is the trigger that invalidates
    the previous number). Mirrors the bespoke-loop wiring pattern — turbo/spd
-   loops won't get it free ([[project_daemon_wiring_pattern]]); note as a known
+   loops won't get it free; note as a known
    gap, not silent.
 
 ## How many seeds — the order-statistics answer (for the doc/help)
@@ -163,7 +160,7 @@ realized gain collapses toward zero regardless of K.
   naturally.
 - **Not claiming a universal constant.** The floor is measured per (method,
   preset, data pool) and re-measured when the pool changes — the whole point is
-  that it does *not* transfer ([[project_freefit_only_pool_removed]]).
+  that it does *not* transfer.
 - **DDP/numerical noise not chased** — the paper shows it's below the sampling
   floor (σ_between collapses to 0.047 even with EMA weights 5–6% apart); not a
   meaningful source, so we don't isolate it.
@@ -223,8 +220,7 @@ durable output is a guard, not a floor number:
 - **cfg-1 CMMD misranks within a family across seeds**, not just across
   adapter families (the reft GOTCHA generalizes). Rendered comparisons that
   must rank models use 28-step / CFG-4.
-- CMMD stays fine as the *coarse within-run* val signal
-  ([[project_cmmd_val_signal]]) — the fragility is seed-level resolution at
+- CMMD stays fine as the *coarse within-run* val signal — the fragility is seed-level resolution at
   small n, not the metric wholesale.
 
 **Reopening gate:** a per-item paired metric that clears a plain-vs-base

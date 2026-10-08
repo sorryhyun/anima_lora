@@ -2,7 +2,7 @@
 
 Status: **ARCHIVED — REFUTED (2026-06-17).** REPA on the DP-DMD student did not
 work: the post-fix retrain (`repa2`) showed REPA *amplifying* visual drift 5–10×
-rather than reducing it (`[[project_turbo_repa_phase0_drift]]`). Line closed.
+rather than reducing it. Line closed.
 Original status preserved below.
 
 Status: **Phase 0 PASSED (DRIFT confirmed) — Phase 1 wired; first A/B arm

@@ -123,7 +123,7 @@ To recover pre-0413 uniform behavior (not recommended — prone to pink-collapse
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--pooled_text_proj` | — | Path to trained projection weights (.safetensors) |
+| `--pooled_text_proj` | — | Path to trained projection weights (.safetensors). Required for any effect: the weights load only inside `load_dit_model` (gated on this flag), not in `setup_mod_guidance` — without it the output layer stays zero-init, `delta_norm=0.0000`, and mod-guidance is silently inert (byte-identical trajectory). Check `delta_norm > 0` before trusting a mod arm. |
 | `--mod_w` | 3.0 | Peak guidance strength (`w` applied inside `[start_layer, end_layer)`) |
 | `--mod_pos_prompt` | `"absurdres, masterpiece, score_9"` | Positive quality prompt |
 | `--mod_neg_prompt` | `"worst quality, low quality, score_1"` | Negative quality prompt |

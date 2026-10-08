@@ -46,7 +46,7 @@ near σ=0.45 and have opposite slope below it.
 
 ## Caveats / what this does NOT prove
 - Unguided single forwards. Under CFG the velocity is already amplified at the
-  noise end ([[project_crossattn_drive_frontloaded]]); SSC's noise-end boost is
+  noise end; SSC's noise-end boost is
   even more likely redundant there, but a guided run wasn't measured.
 - This is conditional-mean *geometry*, not a rendered-quality A/B. The geometry
   predicts SSC won't help; a sampling A/B (CMMD) is the only thing that could

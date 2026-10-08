@@ -7,7 +7,6 @@
 > "Phase 2 make-or-break" framing below is settled (positive), not open work. The
 > proposal is archived as LANDED at `_archive/proposals/soft_tokens_agsm.md`. This
 > note remains the standing Phase-0 premise record.
-> See [[project_soft_tokens_agsm_pl_correction]].
 
 AGSM (`_archive/proposals/soft_tokens_agsm.md`) builds its entire alignment signal from
 the model's own denoising likelihood — the per-candidate FM error

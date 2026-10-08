@@ -55,8 +55,11 @@ write_result(run_dir, script=__file__, args=args,
 ```
 
 Gotcha: everything after `run_dir` is **keyword-only** — a positional
-`write_result(run_dir, metrics)` fails. When a script runs as a daemon job the
-envelope path is auto-lifted into the job record (`ANIMA_DAEMON_JOB_DIR`); a
+`write_result(run_dir, metrics)` fails. And `make_run_dir` is
+`<YYYYMMDD-HHMM>[-label]` with `exist_ok=True`: two runs of one script in the same
+minute with the same (or no) label share a dir and the second overwrites
+`result.json` — pass a distinct `--label` per run. When a script runs as a daemon
+job the envelope path is auto-lifted into the job record (`ANIMA_DAEMON_JOB_DIR`); a
 plain inline run is unaffected — zero daemon coupling.
 
 **`bench/_anima.py` — the model-loading surface.** If your bench loads the DiT,

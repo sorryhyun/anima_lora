@@ -116,8 +116,7 @@ act on. The most likely mechanism is the one the proposal pre-registered as the
 meaningful null: the diversity anchor (introduced to de-collapse exactly the
 mode-seeking behavior the old band lever chased) already fixed the over-blur. Site A's
 no-over-low directly supports that — the DP-DMD anchor + `dm_x0_norm`
-(`docs/methods/turbo.md`) absorbed the over-blur the lever was born from
-([[project_turbo_alpha4_overdistill]], [[project_turbo_dmd_x0_norm_wins]]).
+(`docs/methods/turbo.md`) absorbed the over-blur the lever was born from.
 
 ## What survives
 

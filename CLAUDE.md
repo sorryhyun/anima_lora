@@ -73,8 +73,11 @@ Knobs and gotchas:
   (LoRA/T-LoRA only) and refuses Hydra-moe / postfix unless `--allow-partial`.
   `turbo` output is a normal LoRA — infer with `--infer_steps` matched to the DP-DMD
   `student_steps` rollout (currently 4) and `--cfg 1.0`. `make print-config METHOD=…
-  PRESET=…` dumps the merged chain; `make test-unit` runs pytest; `ruff check . --fix &&
-  ruff format .` (touched files only — see [[feedback_ruff_scope_collateral]]).
+  PRESET=…` dumps the merged chain; `make test-unit` runs pytest. Lint only the files you
+  touched — `ruff check --fix <files>` (a repo-wide F401 autofix strips the re-exports
+  that `library/train_util.py` and `anima_lora/__init__.py` exist for) — and run
+  `ruff format <files>` only right before a commit, never mid-task (it reflows lines
+  and breaks the next patch).
 - **Run the test suite at most twice per task** (here or in `../anime_tools`): once
   after the change, once after fixing what it caught; scope the re-run to the affected
   test file. If a third run is required, say why.
@@ -220,7 +223,7 @@ hook. Channel scaling (per-channel LoRA gradient rebalance, on by default):
 | **EasyControl** | Extended self-attn image conditioning; frozen DiT, per-block cond LoRA + scalar `b_cond` gate. Source `easycontrol-dataset/`. | `docs/experimental/easycontrol.md` |
 | **Soft Tokens** | SoftREPA per-layer × per-t soft text tokens (~1M params); frozen DiT, per-block `Block.forward` splice into `crossattn_emb`. | Contrastive term (`infonce` default in code; shipped config uses `softrank`, weight 0.15). `configs/methods/soft_tokens.toml` |
 | **Turbo** | DP-DMD (diversity-preserved DMD) distillation; output is a normal LoRA. Shipped as `make turbo` / `make test-turbo`; published 4-step student at `huggingface.co/sorryhyun/anima-turbo-4step`. | Bespoke sectioned schema + two-optimizer loop under `scripts/distill_turbo/`, kept out of `train.py` — don't `print-config METHOD=turbo`. Honors `--queue`, writes a canonical `.snapshot.toml`. `docs/methods/turbo.md` (ops), `docs/structure/turbo.md` (structure) |
-| **CJK vocab pack** | Text-encoder asset (not a LoRA): extra T5-side rows for JA / KO / ZH spans. One key — `vocab_pack` in `configs/base.toml` (**on by default since v2**; `""` = off) — drives training, TE caching, `inference.py` and `GenerationRequest`; `library/anima/vocab_pack.py` owns the strategy subclass + `llm_adapter.embed` hooks (state dict stays 32128 rows). | TE caches skip on existence only — enabling/changing a pack needs `make preprocess-te ARGS=--overwrite` for CJK captions; caches and LoRAs carry the pack digest and warn on mismatch. EN captions never route to a pack row. `docs/methods/cjk_vocab_pack.md` |
+| **CJK vocab pack** | Text-encoder asset (not a LoRA): extra T5-side rows for JA / KO / ZH spans. One key — `vocab_pack` in `configs/base.toml` (**on by default since v2**; `""` = off) — drives training, TE caching, `inference.py` and `GenerationRequest`; `library/anima/vocab_pack.py` owns the strategy subclass + `llm_adapter.embed` hooks (state dict stays 32128 rows). | TE caches invalidate on caption mtime only (`library/preprocess/text.py::_cache_is_current`; latents/PE are existence-keyed), so a caption rewrite is picked up by a plain `make preprocess-te` but enabling/changing a pack is invisible to it — run `make preprocess-te ARGS=--overwrite` for CJK captions; caches and LoRAs carry the pack digest and warn on mismatch. EN captions never route to a pack row. `docs/methods/cjk_vocab_pack.md` |
 
 ## Preprocessing & scripts
 
@@ -287,8 +290,8 @@ writes); `make caption-full` (position → OCR read → OCR clause) writes by de
 
 ComfyUI nodes mostly live in standalone repos symlinked into `../comfy/custom_nodes/` —
 edit the source repo, not the symlink. `_vendor/` subsets inside nodes: **regenerate with
-`make vendor-sync`, never `cp` by hand**, and re-run before every node publish (see
-[[feedback_vendor_sync]]). Repo map and in-tree nodes: **`custom-nodes` skill**.
+`make vendor-sync`, never `cp` by hand**, and re-run before every node publish. Repo map
+and in-tree nodes: **`custom-nodes` skill**.
 
 ## External tools
 

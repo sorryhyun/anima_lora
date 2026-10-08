@@ -10,9 +10,7 @@
 > STATUS (2026-06-28). Measurement-only finding. Two probes added under
 > `_archive/bench/cross_attn_drive/`: `attn_evolution.py` (cross-attn map re-routing —
 > "where patches look") and `attn_contribution.py` (gated residual contribution
-> per pathway — "what each pathway writes"). Extends the velocity-level result
-> [[project_crossattn_drive_frontloaded]] and [[project_crossattn_map_evolution]].
-> No code path changed.
+> per pathway — "what each pathway writes"). No code path changed.
 >
 > UPDATE (2026-06-29). Added Result 4 — `attn_evolution.py` run on literal
 > text-in-image glyph strings (the text a speech bubble "reads"), EN + KO,
@@ -108,10 +106,9 @@ tags), and the LoRA changes that allocation by ~0 (slightly lowers it,
 Δmass −3e-4…−6e-4). So the adapter does not steer by making patches look harder at
 its trigger; the trigger is a switch, and the style is delivered downstream.
 
-This cross-checks [[project_lora_crossattn_learns_labeled_only]] (text tags are a
-data/capability limit, not a cross-attn-mass deficit the adapter can fix) and
-explains why late cross-attn levers are inert ([[project_tag_boost_late_sigma_kill]]):
-there is almost no cross-attn budget to lever below mid-σ.
+This fits text tags being a data/capability limit, not a cross-attn-mass deficit
+the adapter can fix, and explains why late cross-attn levers are inert: there is
+almost no cross-attn budget to lever below mid-σ.
 
 ## Result 4 — literal glyph tokens hit the same wall (EN + KO), but attention mass is not yet a portable glyph-rendering metric
 
@@ -169,8 +166,8 @@ category-vs-glyph mass gap.
 OPEN — is there a glyph-rendering proxy here at all? A usable one would need
 (a) per-column mass to strip the sink subtokens (the recorder currently sums over
 a tag's columns — a per-column variant is a small change), and (b) calibration against
-by-eye legibility — which Anima has no quality reward to anchor
-([[project_null_tta_phase0_bounded_nudge]]). Until then, read the glyph result as
+by-eye legibility — which Anima has no quality reward to anchor. Until then, read
+the glyph result as
 "confirms the text wall (EN + KO), via re-routing + the category-vs-content gap", not
 as a rendering-quality number.
 

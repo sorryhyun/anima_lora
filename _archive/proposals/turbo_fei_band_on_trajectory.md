@@ -161,7 +161,7 @@ w_low    = 1 + β · dl_pos          # simplex ⇒ at most one ≠ 1
 ### Hard guardrails (from memory — these killed the neighbors)
 
 - **Feedback control on the gradient only, never a target on the image.** Direct
-  FEI-statistic matching destroyed quality ([[project_fera_probe_2band_decision]]).
+  FEI-statistic matching destroyed quality.
 - **Don't respond to a weak arm by raising β** — that is exactly the falsified
   move ("amplify an unvalidated arm"). If the arm is weak at the right
   distribution, the lever isn't there.

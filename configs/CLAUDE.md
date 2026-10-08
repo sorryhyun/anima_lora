@@ -107,7 +107,11 @@ fields; the `[half]` / `[quarter]` presets are CLI shorthand for the same key.
 
 Subsets accept `cache_dir` — redirects all VAE/TE/PE caches to that dir with
 stem-mirrored names (EasyControl uses this to keep source dirs user-facing while caches
-live under `post_image_dataset/`).
+live under `post_image_dataset/`). `text_cache_dir` redirects only the TE cache;
+`latent_cache_dir` redirects only the target VAE latents (PE sidecars stay on
+`cache_dir`) — and a latent missing from it at train time is silently encoded from
+the ORIGINAL image (a warning, then training proceeds), so after any target re-encode
+verify the redirected dir is fully populated.
 
 Outputs split by kind: checkpoints (+ `.snapshot.toml` + `_moe` siblings) in
 `output/ckpt/`, inference images in `output/tests/`.

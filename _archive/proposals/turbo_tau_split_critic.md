@@ -167,8 +167,8 @@ is something else (data freshness, LR), which is worth knowing.
     `LoRAModule.forward`, i.e. a dynamo guard — today's 3 views are 3 graph
     specializations per block; a second bank adds a 4th. Bounded and
     identical in kind to what already runs, but budget for it: the pinned
-    recompile limit is a ContextVar ([[project_dynamo_limit_contextvar]]) and
-    the cache is isolated per run ([[project_compile_cache_guard_poisoning]]).
+    recompile limit is a ContextVar and
+    the cache is isolated per run.
     No new buffer machinery needed — do NOT invent a fused dual-weight module
     unless recompile counts actually blow up.
 - **`scripts/distill_turbo/distill.py`** — two routing sites, both by the
