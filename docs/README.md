@@ -35,7 +35,7 @@ Wired and runnable, but not part of the default stack — may break or change.
 | [experimental/byg.md](experimental/byg.md) | BYG — unpaired instruction editing (no paired data, no reward model) |
 | [experimental/soup.md](experimental/soup.md) | Soup — uncond-init ΔW LoRA soup (`make soup`) |
 | [experimental/cjk_ext_vocab_coverage.md](experimental/cjk_ext_vocab_coverage.md) | CJK ext-vocab row coverage — measured reachable/unreachable rows and the symbol block |
-| [experimental/anima_cjk_vocab_ext.md](experimental/anima_cjk_vocab_ext.md) | CJK vocab ext rows — how the shipped preview5 / preview51 rows are made: per-glyph routing + fold, self-generated canvas, per-band data mix, in-box loss, the run chain, the shared direction × 0.8 |
+| [experimental/anima_cjk_vocab_ext.md](experimental/anima_cjk_vocab_ext.md) | CJK vocab ext rows — how the preview5 / preview51 rows (the base of the shipped jp_v1) are made: per-glyph routing + fold, self-generated canvas, per-band data mix, in-box loss, the run chain, the shared direction × 0.8 |
 
 Curation docs — Anima Tagger, position captions, multiview audit, grouping,
 masking — live with their code in the sibling

@@ -59,13 +59,18 @@ DEFAULT_PACK_PREFIX = f"{DEFAULT_PACK_DIR}/{PACK_STEM}"
 
 _PACK_SUFFIXES = (".safetensors", ".json")
 
-# safetensors metadata keys stamped into TE caches encoded through a pack, and
-# the checkpoint metadata keys train.py stamps on a LoRA trained through one
-# (the ComfyUI Adapter node reads the same ``ss_`` names).
+# safetensors metadata keys stamped into TE caches encoded through a pack.
 CACHE_META_NAME = "vocab_pack"
 CACHE_META_SHA = "vocab_pack_sha"
-CKPT_META_NAME = "ss_ext_pack"
-CKPT_META_SHA = "ss_ext_pack_sha"
+
+# A merged checkpoint is a DiT file carrying a pack (`merge_pack_into_dit`; the
+# ComfyUI ``AnimaMergedLoader`` reads it — keep both sides' names in step): the
+# pack's raw ``ext_embed`` under ``<prefix>llm_adapter.ext_embed.weight`` beside
+# the stock 32128-row ``llm_adapter.embed``, its JSON sidecar verbatim under
+# MERGED_META_MAPPING. A stock loader sees one unexpected key and loads plain
+# Anima.
+MERGED_EXT_SUFFIX = "llm_adapter.ext_embed.weight"
+MERGED_META_MAPPING = "ss_ext_pack_mapping"
 
 
 def resolve_pack_prefix(path: Union[str, Path, None]) -> Optional[Path]:
@@ -169,19 +174,8 @@ class VocabPack:
         t = self.mapping.get("training")
         return dict(t) if isinstance(t, dict) else {}
 
-    def identity(self) -> dict[str, str]:
-        """Stamp-ready identity for cache / checkpoint metadata."""
-        return {
-            "name": self.name,
-            "sha": self.digest,
-            "rows": str(self.rows),
-        }
-
     def cache_metadata(self) -> dict[str, str]:
         return {CACHE_META_NAME: self.name, CACHE_META_SHA: self.digest}
-
-    def checkpoint_metadata(self) -> dict[str, str]:
-        return {CKPT_META_NAME: self.name, CKPT_META_SHA: self.digest}
 
     def build_encoder(self, t5_tokenizer, qwen3_tokenizer) -> HybridT5Encoder:
         """``ANIMA_VOCAB_GLYPH_ROUTE`` (``1`` / ``0``) overrides the pack's
@@ -410,54 +404,50 @@ def detach_vocab_pack(model_or_adapter) -> None:
         delattr(embed, _ROWS_ATTR)
 
 
-# --- Identity checks ---------------------------------------------------------
+# --- Merged checkpoints (DiT + pack in one file) -----------------------------
 
 
-def read_checkpoint_stamp(path: Union[str, Path]) -> tuple[str, str]:
-    """``(name, sha)`` a LoRA file was stamped with, ``("", "")`` when unstamped."""
-    try:
-        from safetensors import safe_open
-
-        with safe_open(str(path), framework="pt") as f:
-            md = f.metadata() or {}
-    except Exception:
-        return "", ""
-    return str(md.get(CKPT_META_NAME, "") or ""), str(md.get(CKPT_META_SHA, "") or "")
-
-
-def warn_checkpoint_pack_mismatch(
-    path: Union[str, Path], active: Optional[VocabPack]
+def merge_pack_into_dit(
+    dit_path: Union[str, Path],
+    pack_prefix: Union[str, Path],
+    out_path: Union[str, Path],
 ) -> None:
-    """Log when a LoRA's stamped pack disagrees with the active one.
+    """Write ``dit_path`` + the pack at ``pack_prefix`` as one safetensors.
 
-    A LoRA trained through a pack expects that pack's rows behind ids
-    ``>= T5_TABLE_SIZE``; no pack (or a different one) means CJK / quoted
-    prompt spans reach rows it never saw. EN prompts are unaffected either
-    way, so this is a warning, not an error.
+    Every DiT tensor and metadata key is copied unchanged; the pack's raw
+    ``ext_embed`` (as stored — a seed-only ``iso`` block stays seed-only) and
+    its JSON text are added.
     """
-    name, sha = read_checkpoint_stamp(path)
-    if not sha:
-        return
-    if active is None:
-        logger.warning(
-            "%s was trained through vocab pack %s (sha %s…) but no vocab pack is "
-            "active — CJK / quoted prompt spans will not reach the rows it was "
-            "trained on (set vocab_pack in configs/base.toml or pass --vocab_pack; "
-            "EN prompts are unaffected).",
-            path,
-            name or "?",
-            sha[:12],
-        )
-    elif active.digest != sha:
-        logger.warning(
-            "%s was trained through vocab pack %s (sha %s…) but the active pack is "
-            "%s (sha %s…) — ext rows differ; expect CJK drift.",
-            path,
-            name or "?",
-            sha[:12],
-            active.name,
-            active.digest[:12],
-        )
+    from safetensors import safe_open
+    from safetensors.torch import load_file, save_file
+
+    prefix = resolve_pack_prefix(pack_prefix)
+    if prefix is None:
+        raise ValueError("merge_pack_into_dit needs a pack prefix")
+    raw = load_file(str(prefix.with_suffix(".safetensors")))["ext_embed"]
+    mapping_text = prefix.with_suffix(".json").read_text(encoding="utf-8")
+
+    with safe_open(str(dit_path), framework="pt") as f:
+        metadata = dict(f.metadata() or {})
+        keys = list(f.keys())
+        if any(k.endswith(MERGED_EXT_SUFFIX) for k in keys):
+            raise ValueError(f"{dit_path} already carries a vocab pack")
+        embed = [k for k in keys if k.endswith("llm_adapter.embed.weight")]
+        if len(embed) != 1:
+            raise ValueError(
+                f"{dit_path}: expected one llm_adapter.embed.weight, found {embed}"
+            )
+        sd = {k: f.get_tensor(k) for k in keys}
+    sd[embed[0][: -len("embed.weight")] + "ext_embed.weight"] = raw.contiguous()
+    metadata[MERGED_META_MAPPING] = mapping_text
+    save_file(sd, str(out_path), metadata=metadata)
+    logger.info(
+        "merged %s (%d ext rows) into %s → %s",
+        prefix.name,
+        raw.shape[0],
+        Path(dit_path).name,
+        out_path,
+    )
 
 
 _warned_cache_stamps: set[str] = set()

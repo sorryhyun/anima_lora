@@ -189,11 +189,9 @@ block that is exactly that:
   a pack with neither, or only one, encodes bit-identically to before.
 - `ext_vocab.pack_digest(table, mapping)` = sha256 over the materialised
   float32 table bytes + the id/route keys (`qwen char sym sym_char word
-  word_sub route iso`; `training`/`stats` excluded). `train.py --ext_pack
-  <prefix>` stamps it as `ss_ext_pack_sha` (+ `ss_ext_pack` name) on the
-  LoRA (`run_unmask_r2.py` passes it); `load_dit_model` warns when a stamped
-  LoRA is loaded with no pack; the ComfyUI Adapter node (3.10.0) compares it
-  with the loaded pack's digest in either node order and warns on mismatch.
+  word_sub route iso`; `training`/`stats` excluded). Stamped on TE caches
+  and merged checkpoints. (A LoRA stamp + load-time check existed from
+  09-05 to 10-08 and was removed: the LoRA trains no pack parameter.)
 - The caption grammar is quote-aware since anime_tools `efb235c`
   (`position_clauses.quoted_spans`): a comma or `. On the` inside an open
   pair is content, `compose_caption` round-trips. `cache_te_ext._quote_safe`
@@ -206,7 +204,7 @@ Compatibility matrix (extends the one above):
 | new (`iso`-aware) | partitioned (`iso` + `route.quotes`) | quoted spans → mirror, bare CJK → trained rows |
 | new | seed-only partitioned (no iso rows in the safetensors) | block regenerated at load; same digest |
 | new | old (no `iso`) | identical to before |
-| old (≤ 3.9.1 vendor tree) | partitioned with rows | row-count check passes; quoted spans hit *trained* rows (no quote rule) — the digest check does not exist there either |
+| old (≤ 3.9.1 vendor tree) | partitioned with rows | row-count check passes; quoted spans hit *trained* rows (no quote rule) |
 | old | seed-only partitioned | refused (row-count mismatch) |
 
 First built pack: `output/ckpt/cjk_vocab/cjk_vocab_pack_synthjakozh1sym_r256_isoq`

@@ -4,8 +4,7 @@ A pack may carry a content-free isotropic block regenerated from a seed
 (``mapping["iso"]``) plus a quote rule (``route.quotes``); routed spans
 inside ``「…」`` / ``『…』`` / ``"…"`` land on that block, bare CJK keeps the
 trained rows, the delimiters stay on their old path, and a pack without the
-partition encodes bit-identically to before. ``pack_digest`` is what a LoRA
-trained through the pack stamps (``ss_ext_pack_sha``).
+partition encodes bit-identically to before.
 """
 
 from __future__ import annotations
@@ -245,30 +244,3 @@ def test_caption_grammar_keeps_a_quoted_line_whole():
         "「大丈夫、本当に」",
         "b",
     )
-
-
-# ---------------------------------------------------------------------------
-# LoRA stamp: the inference loader says when a pack-trained LoRA meets none
-# ---------------------------------------------------------------------------
-
-
-def test_inference_loader_warns_on_a_pack_stamped_lora(tmp_path, caplog):
-    import logging
-
-    from safetensors.torch import save_file
-
-    from library.inference import models as inf_models
-
-    stamped = tmp_path / "stamped.safetensors"
-    save_file(
-        {"lora_unet_x.weight": torch.zeros(1)},
-        str(stamped),
-        metadata={"ss_ext_pack": "pack_a", "ss_ext_pack_sha": "ab" * 32},
-    )
-    plain = tmp_path / "plain.safetensors"
-    save_file({"lora_unet_x.weight": torch.zeros(1)}, str(plain), metadata={})
-    with caplog.at_level(logging.WARNING, logger=inf_models.logger.name):
-        inf_models._warn_ext_pack_stamp(str(plain))
-        assert not caplog.records
-        inf_models._warn_ext_pack_stamp(str(stamped))
-    assert any("pack_a" in r.getMessage() for r in caplog.records)

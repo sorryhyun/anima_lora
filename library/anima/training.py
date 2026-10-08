@@ -49,10 +49,8 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         help="CJK vocab pack prefix (path without .safetensors/.json; '' = off). "
         "Same key as configs/base.toml `vocab_pack`. Routes the T5 stream of "
         "inline TE caching + sample prompts through the pack, hooks its rows onto "
-        "the DiT's llm_adapter for sampling, and stamps ss_ext_pack / "
-        "ss_ext_pack_sha on the saved LoRA so a different pack at inference is "
-        "detectable (library.anima.vocab_pack). Training steps read only the "
-        "cached embeddings, which must have been encoded through the same pack.",
+        "the DiT's llm_adapter for sampling (library.anima.vocab_pack). Training "
+        "steps read only the cached embeddings.",
     )
     parser.add_argument(
         "--qwen3",
