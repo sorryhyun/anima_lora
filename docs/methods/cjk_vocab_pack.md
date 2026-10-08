@@ -11,7 +11,7 @@ itself if the default is missing. Setting the key to `""` turns the whole path
 off (stock tokenizer).
 
 Public pack: <https://huggingface.co/sorryhyun/anima-vocab-pack-cjk>
-(`anima_cjk_vocab_pack_preview51.{safetensors,json}`, ~285 MB; the model card carries the
+(`anima_cjk_vocab_pack_jp_v1.{safetensors,json}`, ~285 MB; the model card carries the
 training label). Research history lives under `project/finished/cjk_aware_anima/`; the
 builder is `bench/cjk_adapter/build_ext.py` (ext table) + `scripts/distill_cjk/`
 (corpus builders under `corpus/`, cache, distill) — see [Rebuilding a pack](#rebuilding-a-pack).
@@ -39,10 +39,10 @@ rows; rendering them is not trained.
 ## Default on, how to turn off
 
 ```bash
-make download-models              # first-run set — includes the pack (→ models/vocab_packs/anima_cjk_vocab_pack_preview51.{safetensors,json})
+make download-models              # first-run set — includes the pack (→ models/vocab_packs/anima_cjk_vocab_pack_jp_v1.{safetensors,json})
 make download-vocab-pack          # re-fetch just the pack
 # configs/base.toml (the shipped default)
-vocab_pack = "models/vocab_packs/anima_cjk_vocab_pack_preview51"
+vocab_pack = "models/vocab_packs/anima_cjk_vocab_pack_jp_v1"
 # off: stock tokenizer, bit-exact
 vocab_pack = ""
 make preprocess-te ARGS=--overwrite   # after any change, only if a caption carries CJK (see below)
@@ -61,7 +61,7 @@ pair there is still a `FileNotFoundError` with the download hint.
 | `make preprocess-te` | forwarded automatically when the key is set | Caches are encoded through the pack (T5 ids and `crossattn_emb`) and stamped with its digest. |
 | `inference.py` / `make test` / `make gen` | `--vocab_pack PREFIX` overrides, `--no_vocab_pack` forces off, default = the key | Tokenizer + `llm_adapter.embed` hook, same table as the caches. |
 | `GenerationRequest` | `vocab_pack=…` / `no_vocab_pack=True` | `examples/09_cjk_vocab_pack.py`; the diffusers variant is `examples/10_cjk_vocab_pack_diffusers.py`. |
-| ComfyUI | `AnimaVocabPackLoader` (Adapter node ≥ 3.9) | Same hook design. |
+| ComfyUI | `AnimaVocabPackLoader` (Adapter node ≥ 3.9; `_jp_v1` needs ≥ 3.14) | Same hook design. `AnimaMergedLoader` (≥ 3.15) loads a DiT with the pack merged in (see below). |
 | Python | `anima_lora.load_vocab_pack` / `attach_vocab_pack` / `VocabPack` | Primitives in `library/anima/vocab_pack.py`; `ext_vocab.py` owns the encoder + digest. |
 
 ## What it patches
@@ -104,13 +104,10 @@ EN-only datasets are unaffected either way (identical ids, identical caches).
   same-seed grids (`猫耳` ≈ `cat ears`); mixed EN + CJK prompts; symbols the
   stock T5 cannot spell (the pack's symbol block, e.g. `♡`); KO / ZH tag rows
   are trained (glossary-derived) but were not grid-validated as widely as JA.
-  These tag results were measured on the pre-render pack. The shipped
-  `_preview51` pack (`_preview4`'s retrained seed rows, baked with routing on,
-  plus the stick rescaled × 0.8 — `_preview5` — and the marks `～ … ♡ ♥ 、 。`
-  retrained inside words — `project/cjk_anima_scale/`,
-  `project/cjk_anima_reseed/`) retrains the kana / kanji rows on quoted-text
-  rendering composites, so JA tag behaviour on it is not re-verified.
-- Encode rules `_preview51` adds (json `fold` / `dots`): `〜` → `～`, `―` →
+  These tag results were measured on the pre-render pack. The rendering packs
+  from `_preview5` on retrain the kana / kanji rows on quoted-text rendering
+  composites, so JA tag behaviour on them is not re-verified.
+- Encode rules `_preview51` adds and `_jp_v1` keeps (json `fold` / `dots`): `〜` → `～`, `―` →
   `ー`, `，` → `、`; a dot run → its own `…` row (one `・` → `.`, 2–3 dots →
   `…`, 4+ → `……`). `...` / `…` take the row only beside Japanese text, so an
   English prompt is unchanged. A reader without `dots` support (an older
@@ -136,6 +133,36 @@ EN-only datasets are unaffected either way (identical ids, identical caches).
   — and `bake_vocab_pack.py` has no `--line_*` flags. The retrain line
   composes through per-glyph routing on cold singles instead
   (`project/cjk_anima_scale/retrain_experiments.md`).
+
+## The shipped pack: `_jp_v1` (2026-10-08)
+
+1 573 trained rows (kana 163, kanji 1 410) on the punct pack (`_preview51`'s
+encode rules and its retrained marks `～ … ♡ ♥ 、 。「」`, carried as is); digest
+`ce0ec15f7168…`. Kanji with a row cover 96.7 % of Manga109-s kanji
+occurrences (`_preview51`: 92.8 %). Trained glyph list:
+`anima_cjk_vocab_pack_jp_v1_trained.json` on the Hub. Recipe of record, all in
+`project/cjk_anima_reseed/` (`plan.md` § 3):
+
+1. **A — identity** (`retrain_kanji_b5`, `project/cjk_anima_scale/`): 225 new
+   kanji trained cold on the scale table, every other row frozen at
+   `_preview51`'s.
+2. **B — dialogue** (`sent_kanji_225`): every row free from A's, Manga109
+   dialogue lines, sent_kanji_pres's recipe (λ 10 · L_pres at σ 0.8–0.9).
+3. **Transplant** (`transplant.py`): B's 225 onto sent_kanji_pres's rows. On
+   the 96-string ruler it reads as pres on every measure
+   (`results/20261008-2025-ruler-sensitive-seed_1008/`).
+
+Against `_preview51` (pres's read, `progress.md` § 4): glyph F1 +0.029
+(p 0.0035), the page up (en_match +0.097, p 5e-8), cer n.s.; it draws text
+about a third smaller. Upgrading from
+`_preview51`: `make preprocess-te ARGS=--overwrite` for CJK captions.
+
+**ComfyUI without a pack loader:** `sorryhyun/anima-jp-extended` is the base
+DiT with `_jp_v1` merged in (`scripts/toolkits/merge_vocab_pack.py` →
+`merge_pack_into_dit`: the rows as `llm_adapter.ext_embed.weight`, the JSON in
+`ss_ext_pack_mapping`), loaded by `AnimaMergedLoader` (Adapter node ≥ 3.15.0).
+A stock UNet loader loads it as plain Anima. anima_lora does not read the
+merged file; it uses `vocab_pack` with the stock DiT.
 
 ## Rebuilding a pack
 
