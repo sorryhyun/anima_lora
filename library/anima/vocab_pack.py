@@ -30,6 +30,7 @@ resolved prefix) because the strategy and the DiT loader both need it.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from dataclasses import dataclass, field
@@ -66,6 +67,15 @@ CACHE_META_NAME = "vocab_pack"
 CACHE_META_SHA = "vocab_pack_sha"
 CKPT_META_NAME = "ss_ext_pack"
 CKPT_META_SHA = "ss_ext_pack_sha"
+
+# A merged checkpoint is a DiT file carrying a pack (`merge_pack_into_dit`; the
+# ComfyUI ``AnimaMergedLoader`` reads it — keep both sides' names in step): the
+# pack's raw ``ext_embed`` under ``<prefix>llm_adapter.ext_embed.weight`` beside
+# the stock 32128-row ``llm_adapter.embed``, its JSON sidecar verbatim under
+# MERGED_META_MAPPING, and the CKPT_META_* stamp. A stock loader sees one
+# unexpected key and loads plain Anima.
+MERGED_EXT_SUFFIX = "llm_adapter.ext_embed.weight"
+MERGED_META_MAPPING = "ss_ext_pack_mapping"
 
 
 def resolve_pack_prefix(path: Union[str, Path, None]) -> Optional[Path]:
@@ -458,6 +468,86 @@ def warn_checkpoint_pack_mismatch(
             active.name,
             active.digest[:12],
         )
+
+
+# --- Merged checkpoints (DiT + pack in one file) -----------------------------
+
+
+def merge_pack_into_dit(
+    dit_path: Union[str, Path],
+    pack_prefix: Union[str, Path],
+    out_path: Union[str, Path],
+) -> str:
+    """Write ``dit_path`` + the pack at ``pack_prefix`` as one safetensors.
+
+    Every DiT tensor and metadata key is copied unchanged; the pack's raw
+    ``ext_embed`` (as stored — a seed-only ``iso`` block stays seed-only) and
+    its JSON text are added. Returns the pack digest the file is stamped with.
+    """
+    from safetensors import safe_open
+    from safetensors.torch import load_file, save_file
+
+    prefix = resolve_pack_prefix(pack_prefix)
+    if prefix is None:
+        raise ValueError("merge_pack_into_dit needs a pack prefix")
+    raw = load_file(str(prefix.with_suffix(".safetensors")))["ext_embed"]
+    mapping_text = prefix.with_suffix(".json").read_text(encoding="utf-8")
+    digest = ext_vocab.pack_digest(raw, json.loads(mapping_text))
+
+    with safe_open(str(dit_path), framework="pt") as f:
+        metadata = dict(f.metadata() or {})
+        keys = list(f.keys())
+        if any(k.endswith(MERGED_EXT_SUFFIX) for k in keys):
+            raise ValueError(f"{dit_path} already carries a vocab pack")
+        embed = [k for k in keys if k.endswith("llm_adapter.embed.weight")]
+        if len(embed) != 1:
+            raise ValueError(
+                f"{dit_path}: expected one llm_adapter.embed.weight, found {embed}"
+            )
+        sd = {k: f.get_tensor(k) for k in keys}
+    sd[embed[0][: -len("embed.weight")] + "ext_embed.weight"] = raw.contiguous()
+    metadata.update(
+        {
+            CKPT_META_NAME: prefix.name,
+            CKPT_META_SHA: digest,
+            MERGED_META_MAPPING: mapping_text,
+        }
+    )
+    save_file(sd, str(out_path), metadata=metadata)
+    logger.info(
+        "merged %s (%d ext rows, sha %s…) into %s → %s",
+        prefix.name,
+        raw.shape[0],
+        digest[:12],
+        Path(dit_path).name,
+        out_path,
+    )
+    return digest
+
+
+def read_merged_pack(
+    path: Union[str, Path],
+) -> Optional[tuple[torch.Tensor, dict, str]]:
+    """``(table, mapping, digest)`` of the pack inside a merged checkpoint
+    (table materialised as :func:`ext_vocab.load_ext_assets` does), ``None``
+    for a plain DiT file."""
+    from safetensors import safe_open
+
+    with safe_open(str(path), framework="pt") as f:
+        ext = [k for k in f.keys() if k.endswith(MERGED_EXT_SUFFIX)]
+        if not ext:
+            return None
+        md = f.metadata() or {}
+        raw = f.get_tensor(ext[0])
+    mapping = json.loads(md[MERGED_META_MAPPING])
+    table = ext_vocab.materialize(raw, mapping)
+    digest = ext_vocab.pack_digest(table, mapping)
+    if md.get(CKPT_META_SHA) and md[CKPT_META_SHA] != digest:
+        raise ValueError(
+            f"{path}: pack rows / mapping do not match the stamped digest "
+            f"({md[CKPT_META_SHA][:12]}… vs {digest[:12]}…)"
+        )
+    return table, mapping, digest
 
 
 _warned_cache_stamps: set[str] = set()

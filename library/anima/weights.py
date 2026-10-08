@@ -242,6 +242,18 @@ def load_anima_model(
         weight_transform_hooks=rename_hooks,
     )
 
+    # A merged checkpoint (vocab_pack.merge_pack_into_dit) carries pack rows for
+    # the ComfyUI loader; here the pack comes from `vocab_pack`, so drop them.
+    ext_keys = [k for k in sd if k.endswith("llm_adapter.ext_embed.weight")]
+    for k in ext_keys:
+        del sd[k]
+    if ext_keys:
+        logger.warning(
+            "%s carries vocab pack rows (a merged checkpoint); they are ignored "
+            "here — set `vocab_pack` to the pack itself to use them",
+            dit_path,
+        )
+
     missing, unexpected = model.load_state_dict(sd, strict=False, assign=True)
     if missing:
         # Filter out expected missing buffers (initialized in __init__, not saved in checkpoint)
