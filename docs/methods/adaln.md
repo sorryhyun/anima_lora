@@ -290,8 +290,8 @@ Consequences:
   (Turbo inference runs CFG 1.0 / 4-step without mod-guidance, so the turbo
   student arm is unaffected.)
 - The "adaln is text-blind" claim is stock-model-only. On a mod-distilled
-  model (`pooled_text_proj` installed and loaded — note the gotcha in
-  [[project_sea_delta_generalizes_guidance]]: it loads in `load_dit_model`),
+  model (`pooled_text_proj` installed and loaded — it loads only in
+  `load_dit_model`, gated on `--pooled_text_proj`),
   the t-embedding carries max-pooled text, so an adaln LoRA *trained on such a
   model* would learn a weakly pooled-text-conditioned modulation response
   (global tags, not token-level). Tested 2026-07-18 — refuted at Phase 0:
@@ -303,7 +303,7 @@ Consequences:
   effect is a cost: the checkpoint becomes proj-coupled (~1.7× higher
   injection dependence at render, i.e. off-distribution in a stock ComfyUI
   flow without the proj). Don't re-propose mod-aware LoRA training without an
-  explicit text→modulation objective. [[project_modaware_adaln_phase0]]
+  explicit text→modulation objective.
 - Independent evidence convergence: mod-guidance's effectiveness (ICLR'26
   result) and the official turbo's adaln movement both say the modulation
   pathway is the high-leverage lever for global behavior — and neither says

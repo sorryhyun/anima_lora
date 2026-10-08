@@ -12,8 +12,8 @@ AGSM (`_archive/proposals/soft_tokens_agsm.md`) builds its entire alignment sign
 the model's own denoising likelihood — the per-candidate FM error
 `r(x_t, c) = −‖v_θ(x_t, c) − v_target‖²` that the Plackett–Luce weighting ranks
 across candidate captions. That collides head-on with a hard, repeatedly confirmed
-Anima finding: FM-MSE does not track quality ([[project_fm_val_loss_uninformative]],
-why we moved to CMMD). If the reward is noise, AGSM is dead on arrival — the
+Anima finding: FM-MSE does not track quality (why validation moved to CMMD,
+`docs/guidelines/base-config.md` `use_cmmd`). If the reward is noise, AGSM is dead on arrival — the
 proposal flagged this as "the single most important early kill-check."
 
 Phase 0 ran it (`bench/soft_tokens_contrastive/reward_premise_probe.py`, no
@@ -54,7 +54,7 @@ random negatives and robustly even for same-artist/different-character siblings.
 The two statements are about different quantities, and the distinction is the whole
 reason AGSM can work here:
 
-- [[project_fm_val_loss_uninformative]] is about the absolute FM-MSE of one
+- The FM-MSE-uninformative finding is about the absolute FM-MSE of one
   model across training — lower val FM-MSE has not tracked better samples.
 - AGSM (and this probe) uses FM error as a relative ranking across candidate
   captions for the same fixed `(x_t, ε, t)`. Everything that makes absolute MSE
@@ -92,7 +92,7 @@ mechanism:
   from the text. The matched caption points at the right content; a mismatched one
   points at the wrong content → large, reliable error gap.
 
-This dovetails with [[project_sigma_signal_resolves_by_045]] (x0 resolves by
+This dovetails with `sigma_signal_where_anima_resolves.md` (x0 resolves by
 σ≈0.45) from the other side: σ≥0.45 is exactly where caption-ranking becomes
 perfect. Implication for AGSM: the PL reward is most trustworthy at mid/high σ.
 If a `Ã(t)` time-shaping is ever added (proposal Phase 3c), it should up-weight

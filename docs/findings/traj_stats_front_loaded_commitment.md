@@ -20,7 +20,7 @@ The anime domain is latent-sparse (flat cel shading, line art, uniform
 backgrounds), so static corpus statistics scream redundancy — but the one
 intervention previously built on redundancy signals, the deferred-foveated
 merge, died because its damage lived in the *process*, not the endpoint
-([[project_foveated_denoise_p0]]: the periphery blur was constitutive, P4t).
+(`foveated_denoise.md`: the periphery blur was constitutive, P4t).
 This line inverted the order: record per-step / per-token / per-channel
 statistics of x̂₀ = z − σ·v during generation (bit-exact, 1.35 % overhead
 at 1024²), build the domain atlas, build a process-intactness gauge, and only

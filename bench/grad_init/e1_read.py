@@ -8,7 +8,7 @@ per row under every arm and reports two things:
 
 1. **arm-vs-arm PE cos** — the ruler. Two arms that land the same image are not
    separated by their init, whatever their loss curves did. Read against the
-   recorded rungs of this ruler (memory ``project_cjk_dit_line_2026_09_05``):
+   recorded rungs of this ruler:
    unrelated images ≈ 0.935, LoRA-vs-base ≈ 0.984, α32-vs-α128 ≈ 0.982. This
    run measures its own unrelated floor (cos across *different* prompts) so the
    rungs are comparable on this prompt set.

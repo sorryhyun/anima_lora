@@ -133,7 +133,6 @@ no-over-low directly supports that — the DP-DMD anchor + `dm_x0_norm`
 - `_archive/proposals/turbo_fei_band_on_trajectory.md` — the revival design (archived
   2026-06-20, closed by this finding); `item2_plan.md` / `proposal.md` §2 — the
   original CA-era wiring, marked falsified.
-- Memory: `project_turbo_fei_gap_phase0` (annotated with the inversion).
 - Context: `sigma_signal_where_anima_resolves.md` (the σ-window motivation),
   `project_turbo_dmd_x0_norm_wins` / `project_fera_probe_2band_decision` (the
   over-blur / seed-diversity history, why direct FEI matching fails).

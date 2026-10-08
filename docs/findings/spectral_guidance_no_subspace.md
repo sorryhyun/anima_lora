@@ -16,7 +16,7 @@ DirectEdit actually edits, so the proposed spectral-anchoring arm has no lever.
 The single most reusable lesson: **"the signal resolves by σ≈0.45" (accuracy) and
 "the guidable subspace becomes low-dimensional" (operator rank) are different
 σ-axes, and on Anima they do not coincide.** The proposal assumed they would; they
-don't. See the reconciliation with [[project_sigma_signal_resolves_by_045]] below.
+don't. See the reconciliation with `sigma_signal_where_anima_resolves.md` below.
 
 Proposal: `_archive/proposals/spectral_guidance_anima.md` (header flipped to SHELVED).
 The Phase-0 probe and its runs (`-2001-cond`, `-2010-quarter`, `-2034-uncond`) are no
@@ -35,7 +35,7 @@ Two separable claims (paper §3, Fig 6–7):
   all info erased).
 
 The proposal additionally assumed the P2 window lines up with σ≈0.45 (where
-Anima's `x0_pred` resolves, [[project_sigma_signal_resolves_by_045]]), giving a
+Anima's `x0_pred` resolves, `sigma_signal_where_anima_resolves.md`), giving a
 principled DirectEdit schedule. Phase 0.1 tests P1+P2 directly; this assumption is
 what fails hardest.
 
@@ -84,13 +84,13 @@ top-4 energy is M-robust at the collapsed end and directly answers P1.
   direction for finding collapse, and it still fails. Uncond can confirm, not
   rescue.
 
-The feared killer ([[project_pe_feature_diagnostics]], PR≈6.2 collapsed manifold)
+The feared killer (PE features' PR≈6.2 collapsed manifold)
 did not fire: the operator is high-rank, not degenerate. The proposal dies
 for the opposite reason — too high-rank, with the transition too late.
 
 ## Reconciliation: this does NOT falsify σ≈0.75/0.45
 
-[[project_sigma_signal_resolves_by_045]] measures reconstruction accuracy —
+`sigma_signal_where_anima_resolves.md` measures reconstruction accuracy —
 how close `x̂₀` lands to the true `x₀` (a bias curve; normalized lat-MSE crosses
 20% at σ≈0.55). This probe measures the rank of how `x̂₀` varies under noise (a
 variance-structure curve). Different axes; one cannot falsify the other, and they

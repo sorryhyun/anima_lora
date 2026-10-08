@@ -124,4 +124,3 @@ uv run python bench/reft/eval_cmmd.py --adapters ... --steps 28 --cfg 4.0
 uv run python bench/reft/compare_sheet.py results/<run>/ --height 800
 ```
 
-Memory: `project_reft_phase1p_bench` (verdicts + the CMMD-convention gotcha).

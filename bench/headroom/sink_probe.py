@@ -73,8 +73,7 @@ from library.runtime.device import clean_memory_on_device  # noqa: E402
 _BLOCK_RE = re.compile(r"blocks\.(\d+)$")
 
 # The user-confirmed thick-border reproducer (2026-07-01). Carries the tag
-# ``cropped`` (knockout target) and ``from below``. See memory
-# project_border_artifact_reproducer.
+# ``cropped`` (knockout target) and ``from below``.
 _REPRO = (
     "sensitive, 2girls, gotoh hitori, chitanda eru, bocchi the rock!, hyouka, "
     "@channel (castsation), playboy bunny, bunny ears, from below, cropped, "

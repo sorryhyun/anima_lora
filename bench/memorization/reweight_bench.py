@@ -60,8 +60,8 @@ BANKED_AUC_FALLBACK = 0.822
 # defaults MUTATE over time (the 2026-07-06 state drifted to lr 2e-5 + the
 # active T-LoRA mask, which killed the overfit and invalidated the first
 # Phase-0 run), so every knob the banked snapshot disagrees with today's TOML
-# on is pinned here explicitly. sample_ratio is pinned on CLI per
-# [[project_uncond_soup_bench]] ("not in tracked config — pin on CLI").
+# on is pinned here explicitly. sample_ratio is pinned on CLI because it is not
+# in tracked config (docs/experimental/soup.md).
 RECIPE = [
     "--method",
     "lora",

@@ -21,8 +21,8 @@
 
 ## The question
 
-[[project_crossattn_drive_frontloaded]] showed the velocity-level text drive is
-front-loaded: `‖v_cond − v_uncond‖/‖v_cond‖` peaks at σ=1 and `cos(v_cond,v_uncond)`
+`_archive/bench/cross_attn_drive/report.md` showed the velocity-level text drive
+is front-loaded: `‖v_cond − v_uncond‖/‖v_cond‖` peaks at σ=1 and `cos(v_cond,v_uncond)`
 →0.997 below σ≈0.85, so below mid-σ text only rescales the base velocity. Open
 question: is the cross-attention pattern itself frozen early, and is the late-σ
 detail formation driven by self-attn rather than cross-attn? If so, why, and what
@@ -147,7 +147,7 @@ Two robust signals:
    "there is Korean text here" far better than the specific characters — the model
    holds no sustained token-level attention on the glyphs where they'd be drawn. Direct
    read of why the bubble's presence renders but its text garbles, and a multilingual
-   confirmation of [[project_lora_crossattn_learns_labeled_only]].
+   confirmation that cross-attn only discriminates labeled tags.
 
 Why mass is *not* (yet) a glyph-rendering metric — the context-flip. The same
 EN glyph `this is anima image` reads clean-decaying in Run A (1.06×→0.55×, rate

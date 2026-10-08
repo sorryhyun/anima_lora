@@ -21,8 +21,7 @@ Both inherit the CDM + div0.1 superturbo recipe
 A vs B differs in **only** the routing.
 
 > **NFE=2 caveat.** This recipe is `student_steps=2` (the superturbo NFE=2 line,
-> marked closed with a critic collapse ~1750 —
-> [[project_superturbo_nfe2_line]] / [[project_superturbo_nfe2_critic_collapse]]).
+> marked closed with a critic collapse ~1750).
 > Dual-pool is an objective-side lever (the one open bucket), so reopening here is
 > defensible, but the diversity read happens where the critic is touchiest. Keep
 > the run ≤750 iters; if the critic runs away before the gate, re-run at NFE=4
@@ -76,9 +75,8 @@ python -m pytest tests/test_turbo_dual_pool.py -q
 
 ## Runtime-verify (before trusting a full run)
 
-The routing toggles `requires_grad` on the pools every iteration. Memory says
-`requires_grad` flips don't force a dynamo re-trace
-([[project_dynamo_limit_contextvar]] neighbourhood), and the proposal counts on
+The routing toggles `requires_grad` on the pools every iteration. The
+flips are expected not to force a dynamo re-trace, and the proposal counts on
 it — but the **first full compiled run must confirm** the recompile counter stays
 flat (`make run-status` it/s should not tank after step 1). If it recompiles per
 iteration, that is the compile-guard interaction to fix, not a routing bug.

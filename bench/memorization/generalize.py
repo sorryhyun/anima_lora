@@ -11,8 +11,7 @@ Design (paired, like the trainer's CMMD validation):
     adapter ever trained on — cleaner than a validation_split_num replay,
     which would straddle the member half). Same prompts, same per-item seeds,
     same sizes for every model → per-model deltas are model-driven.
-  * Render at 20 steps / CFG 1.0 (the trainer's CMMD convention, see memory
-    `project_cmmd_val_signal`).
+  * Render at 20 steps / CFG 1.0 (the trainer's CMMD convention).
   * Score: PE-Core pooled embeddings → Gaussian MMD² (library.training.cmmd)
     against TWO reference pools of real images:
       cmmd_holdout  vs real holdout images  — the generalization headline

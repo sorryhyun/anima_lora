@@ -182,7 +182,5 @@ on a future advocate to clear C1 above, not on us to keep it on the table.
   Fig 5 / Table 1 (rank + PCA ablation), §5–5.2 (latent→pixel + VR loss).
 - The §5.2 VR-loss headroom rig (no longer in-tree) — its `proposal.md` (lines 94–97)
   is where the "not the AsymFlow parameterization" boundary was first drawn.
-- `[[project_vr_loss_status]]` — VR-loss (§5.2) status: v1.5 ships, v2/v3 falsified.
-- `[[project_spd_spectrum_precondition]]` — Anima latent power-law `β≈2.26` (relevant to C2).
-- `[[project_pe_feature_diagnostics]]` — collapsed-manifold / participation-ratio evidence.
+- `docs/experimental/vr_loss.md` — VR-loss (§5.2) status: v1.5 ships, v2/v3 falsified.
 - Anima dims: `library/anima/weights.py:148–158`, `library/anima/models.py:1169,1181`.

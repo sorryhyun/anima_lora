@@ -80,8 +80,7 @@ conviction). `loss_gap.py` asks the earlier, cheaper question: **do the
 adapter's weights carry member-specific information**, using the standard
 loss-based membership-inference statistic (re-noise the cached clean latent,
 score the velocity-field's noise-recovery error) with two calibrations that
-cancel the image-easiness confound (see memory
-`project_solace_confidence_is_flatness` — the raw statistic is a flatness
+cancel the image-easiness confound (the raw statistic is a flatness
 detector, inherited from the archived `bench/solace` probe):
 
 1. paired `delta = R_lora(x) − R_base(x)` on the same image, and

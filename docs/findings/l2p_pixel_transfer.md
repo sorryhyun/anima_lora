@@ -112,4 +112,3 @@ The Phase-0 probe is no longer in-tree. Three configs were run in order — shel
 NOT the loss. Open question never
 reached: whether existing mid-stack identity/style LoRAs carry over to a pixel
 model unchanged (the core is bit-frozen) — moot until a Phase-1 model exists.
-Related frozen-DiT + shallow-train shape: [[project_spd_finetune_lora_proposal]].

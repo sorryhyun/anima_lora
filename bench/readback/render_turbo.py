@@ -14,7 +14,7 @@ Arms:
                           are the gate-(iii) training-progress family.
 
 Prompts are REAL captions (bench/turbo/real_prompts.txt — real captions are
-mandatory for turbo evaluation, see project memory). Each caption doubles as the
+mandatory for turbo evaluation). Each caption doubles as the
 read-back target, so the manifest carries it verbatim.
 
 Writes bench/readback/results/<run>/:

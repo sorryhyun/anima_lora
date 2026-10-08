@@ -18,7 +18,7 @@ loss-based membership-inference statistic for diffusion models (white-box MIA
 arXiv:2308.06405, score-based MIA 2509.25003); fine-tuned/LoRA'd diffusion
 models are its most vulnerable case (2601.21628, 2402.11989).
 
-THE CALIBRATION (load-bearing — see memory `project_solace_confidence_is_flatness`).
+THE CALIBRATION (load-bearing).
 Raw confidence tracks image *easiness* (flat/simple images score high — the
 exact artifact that sank SOLACE-as-quality-reward), the known failure of naive
 loss MIA (difficulty calibration: Watson et al. 2111.08440). Two paired

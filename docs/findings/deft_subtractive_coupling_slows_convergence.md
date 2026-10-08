@@ -12,7 +12,7 @@ proving the coupling — not the warm start — is the culprit.
 
 Bench (archived): `_archive/bench/deft/` — `probe_convergence.py` (the race),
 `analyze_gradient.py` (the mechanism), `plan.md` (the gate), `impl/deft.py` (the
-module). **Shelved at Phase 0**; Phase 1 not run. Memory: `project_deft_convergence_shelved`.
+module). **Shelved at Phase 0**; Phase 1 not run.
 
 ---
 

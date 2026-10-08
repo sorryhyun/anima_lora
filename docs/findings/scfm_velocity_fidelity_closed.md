@@ -122,8 +122,5 @@ needs to re-measure base-field geometry. Do not re-add the SCFM loss.
 
 - `_archive/proposals/turbo_scfm.md` — the full design + the §9 progress log
   (Phase-0 probes, Phase-1 build, lr/k_ratio/rollout runs), archived 2026-06-30.
-- [[project_scfm_paper_verdict]] — the running verdict memory (updated to CLOSED).
-- [[project_turbo_teacher_gap_2026_06_29]], [[project_turbo_R_plateau]] — the gap
-  SCFM was meant to attack; still owned by the DP-DMD arm.
-- [[project_turbo_consistency_aux_shelved]] — the earlier shelving of a related
-  consistency aux (same inert-EMA failure family).
+- `docs/methods/turbo.md` — the teacher gap SCFM was meant to attack; still owned
+  by the DP-DMD arm.

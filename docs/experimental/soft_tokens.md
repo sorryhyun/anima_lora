@@ -184,8 +184,8 @@ InfoNCE too; the live softrank run shows ψ⁻ training via `tokens_neg_mean_nor
 
 Gradient flow mirrors InfoNCE exactly — `L` rides the anchor's FM backward (grad
 via the live `v_pos`, negatives detached), and `∂L/∂v_neg` is deferred to
-`after_backward` (the block-swap-safe grad-cache split,
-[[project_blockswap_extra_forwards_gradcache]]). The objective leaves no learned
+`after_backward` (the block-swap-safe grad-cache split, `ModelOffloader` in
+`library/runtime/offloading.py`). The objective leaves no learned
 parameters beyond the bank(s) — inference ignores it entirely, same as InfoNCE.
 
 | Knob | Default | Meaning |

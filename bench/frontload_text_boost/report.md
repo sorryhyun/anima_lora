@@ -58,7 +58,7 @@ The two universal fails are exactly the predicted capability-limit class:
 concepts with ~no signal to amplify (multiplicative lever × ~0 = ~0). The
 lever moves **relations/bindings between things the model knows**; it does
 not conjure unknown concepts. Same law as
-[[project_lora_crossattn_learns_labeled_only]], now seen at inference.
+LoRA training (cross-attn only discriminates labeled tags), now seen at inference.
 
 ## G2 (no-harm)
 

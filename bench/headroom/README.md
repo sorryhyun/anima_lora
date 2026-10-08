@@ -31,7 +31,7 @@ Results land in `bench/headroom/results/<ts>-<label>/` (result.json + rows.csv +
 ### 1. The border is real but a rare stochastic event (~1/6 seeds)
 
 On the user-confirmed reproducer (a 2-girl bunnysuit bar prompt carrying the tag
-`cropped`; see memory `project_border_artifact_reproducer`), thick near-black
+`cropped`), thick near-black
 letterbox bars appear on ~1 in 6 seeds. `cropped` is a **muddy proxy** — in tag
 semantics it means "subject cut off by frame," not "rendered bar." Seeds that border
 on this prompt at 1024/28/cfg4: **4, 10, 23, 25, 29**.
@@ -152,8 +152,6 @@ budget," not "never on Anima."
 general-quality line is negative-at-budget (RQ3, above). Reopen only via the
 fuller experiment (block-8 insertion + K≈36 + QKV unfreeze) or if an Anima
 per-image quality reward appears (`sink_intervention.py` remains the reopener).
-See memory `project_headroom_registers_rq1_falsified` and
-`project_headroom_registers_rq3_negative`.
 
 ## Follow-up (2026-07-02): RQ2 proxies on the trained arms — the "different images" are LoRA drift
 

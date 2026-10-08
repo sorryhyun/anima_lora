@@ -1,7 +1,7 @@
 """unsloth reentrant-checkpoint grad-flow invariant.
 
 The reentrant unsloth checkpoint silently ZEROES grads that reach only
-closed-over params ([[project_unsloth_reentrant_drops_grad]] — it broke BYG); a
+closed-over params (it broke BYG); a
 grad-requiring tensor *input* resurrects them (the EasyControl precedent). Any
 loop that checkpoints a forward whose only trainable weights are closed-over
 LoRA params (turbo's GAN path via ``selective_block_grad_ckpt``, EasyControl)

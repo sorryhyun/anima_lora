@@ -92,8 +92,8 @@ then spends the σ<0.45 tail copying that answer into the latent itself.
    the σ>0.55 region where the base is uncertain. NB this is a
    *training-time* capacity-allocation hypothesis and is still unconfirmed
    — the related *inference-time* idea (reshaping the sampler's σ schedule
-   to densify one end at fixed NFE) was later refuted; see
-   [[project_sigma_reshape_no_win]]. Different
+   to densify one end at fixed NFE) was later refuted
+   (`_archive/bench/sigma_reshape/`). Different
    axis, but don't read this as an endorsed lever.
 
 2. Adapter training capacity has two regimes to choose between:
@@ -119,7 +119,7 @@ then spends the σ<0.45 tail copying that answer into the latent itself.
 
 - This is a "where is the base uncertain" diagnostic, not a quality
   predictor. Lower FM-MSE has historically not tracked CMMD on Anima
-  (`project_fm_val_loss_uninformative`). A real schedule sweep needs
+  (`docs/guidelines/base-config.md`, `use_cmmd`). A real schedule sweep needs
   CMMD-scored training to settle "optimal." This probe exists to inform
   the arms of that sweep.
 

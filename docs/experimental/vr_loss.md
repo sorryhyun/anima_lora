@@ -371,6 +371,5 @@ can run VR — they just pay the ~+40% compute.
   variance-reduction section; §6.1 covers the `σ_min` clamp.
 - The VR-loss headroom bench (no longer in-tree) — the diagnostic that gated v1 + the full integration plan.
 - `docs/methods/hydra-lora.md` — FEI routing background.
-- `[[project_fera_probe_2band_decision]]` — why we use 2 bands, not 3.
-- `[[project_fm_val_loss_uninformative]]` — why Stage 1 needs HPSv3/VQA,
+- `docs/guidelines/base-config.md` (`use_cmmd`) — why Stage 1 needs HPSv3/VQA,
   not just val FM curves.

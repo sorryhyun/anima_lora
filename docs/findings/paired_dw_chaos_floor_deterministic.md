@@ -2,8 +2,7 @@
 
 > **STATUS (2026-07-27).** TRAP (measurement methodology) + the fix LANDED the
 > same day: `--deterministic` (train.py) produces bit-identical checkpoints
-> across runs, twin-validated over full compiled 1200-step runs. Memory:
-> [[project_deterministic_flag_chaos_floor]]. Data:
+> across runs, twin-validated over full compiled 1200-step runs. Data:
 > `_archive/sigma_lowres/bench/report.md` §"Twin controls".
 
 ## The trap
