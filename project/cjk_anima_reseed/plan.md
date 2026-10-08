@@ -102,10 +102,40 @@ sent_kanji's data dir was built from the current one).
   changes before it runs: the windows' line file is a per-run key (a
   Manga109 file on the new charset in place of dialogue_2_10, which starves
   80 of the rows); and the read is § 4's.
-- **B — dialogue (this line).** f0's recipe over the 1 185 + 163 kana + the
-  225 warm from A, on a `sent_kanji` table rebuilt with the new charset's
-  lines; free_residual 0, lr 2e-4, 40 / row (≈ 63 k steps). The kana keep
-  row_lr 0.12.
+- **B — dialogue (this line), the 225 alone, then onto pres (user, 10-08).**
+  `sent_kanji_225`: `rows_from = "retrain_kanji_b5"` (A's merged rows:
+  stick080 + the 225), only the 225 in `rows` — every other row held at
+  stick080's, A's own context. sent_kanji_pres's recipe (free_residual 0,
+  lr 2e-4, 40 / row → ≈ 9 k steps, ≈ 1.8 h at pres's 0.72 s / step; λ 10 ·
+  L_pres at σ 0.8–0.9 every 2nd step). Data: a `sent` build on the new
+  charset's lines, items carrying ≥ 1 of the 225, the kana : kanji glyph
+  share as `sent_kanji`'s build; `b5_held.tsv` out by 5-gram.
+- **Then the 225 alone go onto `sent_kanji_pres`'s rows** (no training);
+  its 1 185 + 163 stay as measured. Before the read, `probe_stick_move`'s
+  read of the 225's mean against pres's kanji stick (pres's sits 11.5° off
+  stick080's, |stick| 114 → 125): if it differs materially, decide then —
+  the ready option adds pres's kanji Δstick (pres − start, its shared
+  vector; one direction for both families, cos +0.89) to the 225, read
+  beside the plain transplant.
+- **Watch in B:** with the rest held, L_pres's page demand has only the 225
+  to answer it (`sent_stick`: the one free thing ran 6 × as far). The 225's
+  mean move — size and cos to pres's Δstick — through the run; off if it
+  runs.
+- In place of the first B (f0's recipe over every row, 1 185 + 163 + 225
+  free, ≈ 63 k steps): pres's rows keep what the ruler measured, and B
+  costs a seventh.
+
+**A's prep (10-08, done):** `configs/runs/retrain_kanji_b5.toml` on
+context `seed_fixed_1005_stick080` (rows only; its singles = preview51's
+trained list in its `data/vocabs.json`); the 225 regenerated from the rule
+and matched to § 1's list, ink pinned (158 at 337.5 / row, 67 at 225 →
+≈ 68.4 k steps); windows cut `$MANGA109S/derived/dialogue_pack_b5.tsv`
+(`make_dialogue_pack.py --extra`, 89 390 lines) and hold out
+`b5_held.tsv` — § 4's strings: 160 lines of 5–14 chars covering 211 of the
+225, a line dropped when it would leave a new kanji under 60 % of its free
+windows (median 311 → 268); 藩 鉛 緋 昴 眞 燈 柏 薩 帖 駕 彗 兒 杖 詫 are
+read by the single ruler only. Pack: `anima_cjk_vocab_pack_punct`. Stick
+scale: A trains at full length; the × 0.8 decision is after A.
 
 **Decide before A:**
 
@@ -113,7 +143,8 @@ sent_kanji's data dir was built from the current one).
   trains the 225 cold beside them at full length. Either scale the 225's mean
   × 0.8 after A (as preview5 was made), or let B absorb it. B is warm and
   free, so its stick is trained; but B at 2e-4 moved the kanji stick by only
-  ~11 %.
+  ~11 %. (10-08: settled at the transplant — the 225's mean read against
+  pres's kanji stick, B above.)
 - **A micro arm first?** (`feedback_micro_arms`.) The top 36 of the 225
   (C3's size) both ways — scale table at 225 / 338, and this line's table
   with the grid / lone tiers on at the same budget and lr 1e-3 — read on
@@ -139,9 +170,11 @@ set's captions. Two parts:
 ```bash
 # 0. the vocabs file and the line file (CPU)
 # A
-.venv/bin/python project/cjk_anima_scale/scale.py retrain_kanji_b5 data
-.venv/bin/python project/cjk_anima_scale/scale.py retrain_kanji_b5 train --submit --queue
+ANIMA_VOCAB_PACK=models/vocab_packs/anima_cjk_vocab_pack_punct .venv/bin/python project/cjk_anima_scale/scale.py retrain_kanji_b5 data
+ANIMA_VOCAB_PACK=models/vocab_packs/anima_cjk_vocab_pack_punct .venv/bin/python project/cjk_anima_scale/scale.py retrain_kanji_b5 train --submit --queue
 # B
 .venv/bin/python project/cjk_anima_reseed/run.py sent_kanji_225 data
 make daemon-run ARGS="project/cjk_anima_reseed/run.py sent_kanji_225 train"
+# the 225 onto sent_kanji_pres's rows (script to write), then the stick read
+.venv/bin/python project/cjk_anima_reseed/probes/probe_stick_move.py
 ```
