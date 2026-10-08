@@ -7,9 +7,9 @@ Invariants:
   inert for EN-only users.
 * **The hook pair never touches the state dict.** ``llm_adapter.embed`` keeps its
   32128 rows; ext ids resolve to pack rows through hooks, base ids are unchanged.
-* **Identity is stamped, and mismatches warn once.** TE caches carry the pack
-  digest; a LoRA carries ``ss_ext_pack_sha``; a different active pack (or none)
-  logs a warning instead of silently training / sampling on the wrong rows.
+* **TE caches carry the pack digest, and mismatches warn once.** A cache encoded
+  through a different pack (or none) logs a warning instead of silently
+  training on the wrong rows.
 * **EN captions tokenize identically through the pack** (G1 of the CJK line,
   lifted to the strategy level) — needs the real tokenizers, skipped otherwise.
 """
@@ -147,10 +147,6 @@ def test_load_is_memoised_and_carries_identity(synthetic_pack: Path):
     assert a.rows == ROWS
     assert a.training == {"label": "tiny"}
     assert len(a.digest) >= 12
-    assert a.checkpoint_metadata() == {
-        "ss_ext_pack": "tiny_pack",
-        "ss_ext_pack_sha": a.digest,
-    }
     assert a.cache_metadata() == {"vocab_pack": "tiny_pack", "vocab_pack_sha": a.digest}
     # A loaded pack passes through load_vocab_pack untouched.
     assert vp.load_vocab_pack(a) is a
@@ -273,34 +269,6 @@ def test_load_anima_model_style_helper_skips_when_off(synthetic_pack: Path):
     assert vp.attached_pack_digest(adapter) is not None
 
 
-# --- identity stamps ------------------------------------------------------------
-
-
-def test_checkpoint_stamp_round_trip_and_mismatch_warning(
-    synthetic_pack: Path, tmp_path: Path, caplog
-):
-    pack = vp.load_vocab_pack(synthetic_pack)
-    lora = tmp_path / "lora.safetensors"
-    save_file({"w": torch.zeros(1)}, str(lora), metadata=pack.checkpoint_metadata())
-    assert vp.read_checkpoint_stamp(lora) == ("tiny_pack", pack.digest)
-    assert vp.read_checkpoint_stamp(tmp_path / "missing.safetensors") == ("", "")
-
-    with caplog.at_level(logging.WARNING, logger=vp.__name__):
-        vp.warn_checkpoint_pack_mismatch(lora, pack)  # same pack: silent
-        assert not caplog.records
-        vp.warn_checkpoint_pack_mismatch(lora, None)
-        assert "no vocab pack is active" in caplog.text
-        caplog.clear()
-        other = vp.VocabPack(
-            prefix=Path("other_pack"),
-            table=pack.table,
-            mapping={},
-            digest="deadbeef" * 5,
-        )
-        vp.warn_checkpoint_pack_mismatch(lora, other)
-        assert "ext rows differ" in caplog.text
-
-
 # --- merged checkpoints --------------------------------------------------------
 
 
@@ -313,46 +281,27 @@ def _fake_dit(path: Path) -> dict:
     return sd
 
 
-def test_merge_round_trip_keeps_the_dit_and_the_pack_digest(
-    synthetic_pack: Path, tmp_path: Path
-):
+def test_merge_keeps_the_dit_and_carries_the_pack(synthetic_pack: Path, tmp_path: Path):
     dit = tmp_path / "dit.safetensors"
     base = _fake_dit(dit)
     out = tmp_path / "merged.safetensors"
-    digest = vp.merge_pack_into_dit(dit, synthetic_pack, out)
-    assert digest == vp.load_vocab_pack(synthetic_pack).digest
+    vp.merge_pack_into_dit(dit, synthetic_pack, out)
 
     with safe_open(str(out), framework="pt") as f:
         md = f.metadata()
         assert set(f.keys()) == set(base) | {"net.llm_adapter.ext_embed.weight"}
         for k, t in base.items():
             assert torch.equal(f.get_tensor(k), t)
+        ext = f.get_tensor("net.llm_adapter.ext_embed.weight")
     assert md["ss_num_blocks"] == "1"
-    assert (md[vp.CKPT_META_NAME], md[vp.CKPT_META_SHA]) == ("tiny_pack", digest)
+    assert md[vp.MERGED_META_MAPPING] == synthetic_pack.with_suffix(".json").read_text(
+        encoding="utf-8"
+    )
+    raw = load_file(str(synthetic_pack.with_suffix(".safetensors")))["ext_embed"]
+    assert torch.equal(ext, raw)
 
-    table, mapping, read_digest = vp.read_merged_pack(out)
-    assert read_digest == digest
-    assert mapping["char"] == {"猫": 0, "耳": 1}
-    assert torch.equal(table, vp.load_vocab_pack(synthetic_pack).table)
-
-    assert vp.read_merged_pack(dit) is None
     with pytest.raises(ValueError, match="already carries"):
         vp.merge_pack_into_dit(out, synthetic_pack, tmp_path / "twice.safetensors")
-
-
-def test_merged_pack_with_a_wrong_stamp_is_refused(
-    synthetic_pack: Path, tmp_path: Path
-):
-    dit = tmp_path / "dit.safetensors"
-    _fake_dit(dit)
-    out = tmp_path / "merged.safetensors"
-    vp.merge_pack_into_dit(dit, synthetic_pack, out)
-    with safe_open(str(out), framework="pt") as f:
-        md = dict(f.metadata())
-    md[vp.CKPT_META_SHA] = "0" * 64
-    save_file(load_file(str(out)), str(out), metadata=md)
-    with pytest.raises(ValueError, match="stamped digest"):
-        vp.read_merged_pack(out)
 
 
 def test_cache_stamp_warns_once_per_mismatch_kind(synthetic_pack: Path, caplog):

@@ -57,11 +57,11 @@ pair there is still a `FileNotFoundError` with the download hint.
 | Surface | Selection | Notes |
 |---|---|---|
 | `configs/base.toml` `vocab_pack` | path prefix of the pair (shipped default: the CJK pack); `""` = off | The one key every surface below defaults to. `ANIMA_VOCAB_PACK` env overrides it (like `ANIMA_DIT`). |
-| `train.py` | `--vocab_pack` (config chain fills it; `--ext_pack` is the pre-v2 alias) | Routes inline TE caching + sample prompts, hooks the rows for sampling, stamps `ss_ext_pack` / `ss_ext_pack_sha` on the LoRA. Training steps read only the caches. |
+| `train.py` | `--vocab_pack` (config chain fills it; `--ext_pack` is the pre-v2 alias) | Routes inline TE caching + sample prompts, hooks the rows for sampling. Training steps read only the caches. |
 | `make preprocess-te` | forwarded automatically when the key is set | Caches are encoded through the pack (T5 ids and `crossattn_emb`) and stamped with its digest. |
 | `inference.py` / `make test` / `make gen` | `--vocab_pack PREFIX` overrides, `--no_vocab_pack` forces off, default = the key | Tokenizer + `llm_adapter.embed` hook, same table as the caches. |
 | `GenerationRequest` | `vocab_pack=…` / `no_vocab_pack=True` | `examples/09_cjk_vocab_pack.py`; the diffusers variant is `examples/10_cjk_vocab_pack_diffusers.py`. |
-| ComfyUI | `AnimaVocabPackLoader` (Adapter node ≥ 3.9) | Same hook design; compares the LoRA's `ss_ext_pack_sha` against its loaded pack. |
+| ComfyUI | `AnimaVocabPackLoader` (Adapter node ≥ 3.9) | Same hook design. |
 | Python | `anima_lora.load_vocab_pack` / `attach_vocab_pack` / `VocabPack` | Primitives in `library/anima/vocab_pack.py`; `ext_vocab.py` owns the encoder + digest. |
 
 ## What it patches
@@ -95,8 +95,6 @@ them. Two guards:
   pre-v2 dataset whose caches carry no stamp logs a single `none → pack` line
   under the v2 default. The fix is always `make preprocess-te
   ARGS=--overwrite`; for EN-only captions the line is informational.
-- A LoRA trained through a pack carries `ss_ext_pack` / `ss_ext_pack_sha`.
-  Loading it with no pack, or a different one, logs a warning naming both.
 
 EN-only datasets are unaffected either way (identical ids, identical caches).
 

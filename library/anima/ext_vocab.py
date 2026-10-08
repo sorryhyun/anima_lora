@@ -37,8 +37,7 @@ mirrors the trained blocks row-for-row at an offset. Routed spans *inside a
 quote pair* (``route.quotes``: ``「…」`` / ``『…』`` / ``"…"``) resolve to the
 isotropic block; bare CJK keeps the trained rows; the delimiters themselves
 stay on their usual path (``「」`` → trained row, ``"`` → spiece). A pack
-without ``iso`` encodes bit-identically to before. :func:`pack_digest` is
-the hash a LoRA trained through the pack stamps (``ss_ext_pack_sha``).
+without ``iso`` encodes bit-identically to before.
 
 Per-glyph routing (``mapping["glyph_route"]``, or ``ANIMA_VOCAB_GLYPH_ROUTE``
 through :class:`~library.anima.vocab_pack.VocabPack`): every JA Qwen token
@@ -395,9 +394,8 @@ _DIGEST_KEYS = (
 def pack_digest(table: torch.Tensor, mapping: dict) -> str:
     """sha256 over the (materialised, float32) table bytes + the id/route maps.
 
-    Stamped by ``save_weights`` as ``ss_ext_pack_sha``; the trainer and the
-    ComfyUI node compute it the same way so a LoRA meeting a different pack
-    (rows, ids or quote rule) is detectable, never silent.
+    Stamped on TE caches and merged checkpoints; the ComfyUI node computes it
+    the same way.
     """
     table = materialize(table, mapping)
     h = hashlib.sha256()

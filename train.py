@@ -1769,14 +1769,6 @@ class AnimaTrainer:
         metadata["ss_sigmoid_scale"] = args.sigmoid_scale
         metadata["ss_sigmoid_bias"] = getattr(args, "sigmoid_bias", 0.0)
         metadata["ss_discrete_flow_shift"] = args.discrete_flow_shift
-        # A LoRA trained through a CJK vocab pack is coupled to that pack's
-        # rows + routing (ids ≥ 32128 in every cached caption). Stamp the
-        # digest so a mismatch at load time is detectable, never silent.
-        from library.anima.vocab_pack import load_vocab_pack
-
-        pack = load_vocab_pack(getattr(args, "vocab_pack", None))
-        if pack is not None:
-            metadata.update(pack.checkpoint_metadata())
 
     def is_text_encoder_not_needed_for_training(self, args):
         return args.cache_text_encoder_outputs and not self.is_train_text_encoder(args)
