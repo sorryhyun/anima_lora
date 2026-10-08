@@ -139,7 +139,8 @@ plus `jp_pack_trained_` 2–5 (caststation LoRA, no JA string) and
 = base's bitwise, 60 of 118 adapter tensors differ). EN on/off agree within
 3/255 at base res (the ResShift seed differs). Grids + `test_00001_`
 (workflow EXIF, drag-and-drop) uploaded with README § 4 and new sections
-"LoRAs trained with the rows" / "Other Anima derivatives" (HF `9091158`).
+"LoRAs trained with the rows" / "Other Anima derivatives" (HF `9091158`);
+grids cut to 2×3, seeds 1–3 (user; HF `ebc5acf`).
 
 ### 2.4 Repo follow-ups (after the upload, each its own commit)
 
