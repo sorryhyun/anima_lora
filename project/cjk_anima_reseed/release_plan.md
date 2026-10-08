@@ -218,3 +218,9 @@ Done: 1.1, 1.2, § 2.0 code + merged file + node, § 2.A, § 2.4, § 2.1–2.2
 private upload (without the grids). Left: 1.3 on jp_v1 (user training) →
 § 2.3 renders (GPU after 1.3) → README § 4 + `assets/` → user reads →
 public (+ the pack card's link and stamp line) → § 3.
+
+**The PR to main** (user, 10-08): not this branch. A branch off `main`
+carries only the release code — `vocab-pack-jp-v1` = `b432b6ed`,
+`ee39fbd6`, `3c11f6f1`, `484dce33` without `project/` (CLAUDE.md: only the
+stamp clause; the doc sweeps stay here). PR #108; vocab-pack tests 28
+passed / 3 skipped (the bench-asset skips, as on `main`).
