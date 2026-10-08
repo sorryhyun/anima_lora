@@ -359,7 +359,8 @@ def test_factory_returns_the_stock_class_when_off(monkeypatch):
 # --- G1 at the strategy level (real tokenizers) ------------------------------------
 
 _REAL_PACKS = (
-    REPO / "models" / "vocab_packs" / "anima_cjk_vocab_pack_preview51",
+    REPO / "models" / "vocab_packs" / "anima_cjk_vocab_pack_jp_v1",
+    REPO / "models" / "vocab_packs" / "anima_cjk_vocab_pack_jp_v1" / "anima_cjk_vocab_pack_jp_v1",
     REPO / "output" / "ckpt" / "cjk_vocab" / "cjk_vocab_pack_synthjakozh1sym_r256",
 )
 
