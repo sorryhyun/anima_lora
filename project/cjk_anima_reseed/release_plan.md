@@ -42,12 +42,12 @@ kanji 1 185) + B's 225 kanji, on the punct pack; 1 573 trained rows, sha
 - Card (HF `7eb745e`): pack table, jp_v1 in the examples, limits.
   **Open:** the `anima-jp-extended` link once that repo exists.
 
-### 2.0 Code — done 10-08; node publish open
+### 2.0 Code — done 10-08; node pushed
 
 - anima_lora: `merge_pack_into_dit`, `scripts/toolkits/merge_vocab_pack.py`,
   `load_anima_model` drops the ext key, tests (commit `b432b6ed`).
 - Node `AnimaMergedLoader` (`~/ComfyUI-Anima_lora-Adapter`), 3.15.0,
-  README + changelog. **Open:** commit + push, `comfy node publish` before
+  README + changelog. commit + push done (origin in sync, 10-08). **Open:** `comfy node publish` before
   the HF repo goes public.
 - Built `models/diffusion_models/anima_jp_extended.safetensors` (base +
   jp_v1, 4.47 GB). Headless ComfyUI check (job `20261008-205913-aa29d2`):
@@ -75,6 +75,13 @@ No pack files here; the pack lives in `anima-vocab-pack-cjk` (§ 2.A).
 
 Upload with `hf upload` to a **private** repo first; the user flips it
 public after reading the rendered README.
+
+**Status 10-08:** private repo created; README + `workflows/` (HF `b641cb8`)
+and the merged file uploaded (its `ext_embed` and `ss_ext_pack_mapping`
+checked equal to jp_v1's before upload). `assets/` and README § 4 wait on
+§ 2.3 (a placeholder in the README). The node's registry id is
+`comfyui-hydralora` (pyproject `name`), not `comfyui-anima-lora-adapter`;
+the README names the GitHub repo and ComfyUI-Manager.
 
 ### 2.2 README
 
@@ -127,11 +134,10 @@ Rendered through `make gen` (daemon) into `output/cjk_anima_reseed/release/`.
 
 ### 2.4 Repo follow-ups (after the upload, each its own commit)
 
-- **The default moves to jp_v1** (user, 10-08) — **next.** Until it does,
-  `channel_(caststation)`'s TE caches in `post_image_dataset/lora/` are
-  jp_v1's while `configs/base.toml` says preview51: training reads the
-  caches as they are (one stamp-mismatch warning, no error), but `make
-  preprocess-te ARGS=--overwrite` would re-encode them through preview51.
+- **The default moves to jp_v1** (user, 10-08) — **done 10-08**
+  (commits `3c11f6f1`, docs `484dce33`; `tests/test_vocab_pack.py` 20
+  passed on the local jp_v1 dir). The release note line is still to write
+  at the tag (`gh release edit`).
   - `configs/base.toml` `vocab_pack` → `models/vocab_packs/anima_cjk_vocab_pack_jp_v1`
     (a dir or a flat prefix both resolve: local jp_v1 sits in a dir, a
     download lands flat).
@@ -145,7 +151,11 @@ Rendered through `make gen` (daemon) into `output/cjk_anima_reseed/release/`.
     `docs/experimental/anima_cjk_vocab_ext.md`, `docs/README.md:38`.
   - Release note: re-cache CJK TE (`make preprocess-te ARGS=--overwrite`).
 - `docs/methods/cjk_vocab_pack.md`: jp_v1, the recipe of record
-  (A → B → transplant), the `anima-jp-extended` repo for ComfyUI.
+  (A → B → transplant), the `anima-jp-extended` repo for ComfyUI — done
+  10-08 (`484dce33`).
+- The pack card's anima_lora section still says a LoRA is stamped with
+  `ss_ext_pack_sha` — removed in `ee39fbd6`; fix it with the
+  `anima-jp-extended` link.
 - No catalog row for the merged DiT: anima_lora doesn't use it.
 - The ComfyUI node is published (§ 2.0) **before** the HF repo goes
   public, since the README points at it.
@@ -204,6 +214,7 @@ and § 2.3's grids; the brief lists paths, the blog agent copies.
 
 ## Order
 
-Done: 1.1, 1.2, § 2.0 code + merged file, § 2.A. Left: 1.3 on jp_v1 →
-§ 2.4 (anima_lora default → jp_v1) → § 2.3 renders → node published →
-§ 2.1–2.2 private upload → user reads → public (+ the pack card's link) → § 3.
+Done: 1.1, 1.2, § 2.0 code + merged file + node, § 2.A, § 2.4, § 2.1–2.2
+private upload (without the grids). Left: 1.3 on jp_v1 (user training) →
+§ 2.3 renders (GPU after 1.3) → README § 4 + `assets/` → user reads →
+public (+ the pack card's link and stamp line) → § 3.
