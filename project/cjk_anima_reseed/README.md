@@ -1,6 +1,6 @@
 # cjk_anima_reseed
 
-The JA vocab pack's rows re-seeded cold, then trained warm on dialogue lines. Where the line stands — methods, data mix, the ruler, progress over preview51: **`progress.md`**. What an arm is judged on: `criteria.md`. Next: `plan.md` (225 new kanji rows). How to read a trained row: `structure_candidate.md`. The live reads: `reports/` (the ruler, sent_ball / sent_whole / sent_stick, sent_kanji). Why the line started: `_archive/motivation2.md`.
+The JA vocab pack's rows re-seeded cold, then trained warm on dialogue lines. Where the line stands — methods, data mix, the ruler, progress over preview51: **`progress.md`**. What an arm is judged on: `criteria.md`. Next: `plan.md` (225 new kanji rows), then `release_plan.md` (`anima-jp-extended` on HF). How to read a trained row: `structure_candidate.md`. The live reads: `reports/` (the ruler, sent_ball / sent_whole / sent_stick, sent_kanji). Why the line started: `_archive/motivation2.md`.
 
 `_archive/` (10-06): the banner-grid era's reports and the configs of the arms that lost (cold kana tables, stick / ball re-fits, sent_ball / lr2 / stick), and the done `sent_plan.md`. A config there still runs by path: `run.py project/cjk_anima_reseed/_archive/configs/<run>.toml …`.
 
