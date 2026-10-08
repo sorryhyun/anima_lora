@@ -102,12 +102,14 @@ sent_kanji's data dir was built from the current one).
   changes before it runs: the windows' line file is a per-run key (a
   Manga109 file on the new charset in place of dialogue_2_10, which starves
   80 of the rows); and the read is § 4's.
-- **B — dialogue (this line), the 225 alone, then onto pres (user, 10-08).**
-  `sent_kanji_225`: `rows_from = "retrain_kanji_b5"` (A's merged rows:
-  stick080 + the 225), only the 225 in `rows` — every other row held at
-  stick080's, A's own context. sent_kanji_pres's recipe (free_residual 0,
-  lr 2e-4, 40 / row → ≈ 9 k steps, ≈ 1.8 h at pres's 0.72 s / step; λ 10 ·
-  L_pres at σ 0.8–0.9 every 2nd step). Data: a `sent` build on the new
+- **B — dialogue (this line), every row free, the 225 taken out (user,
+  10-08).** `sent_kanji_225`: `rows_from = "retrain_kanji_b5"` (A's merged
+  rows: stick080 + the 225), the 1 185 + 163 kana + the 225 all in `rows`
+  and trained (kana row_lr 0.12), so L_pres's page demand spreads over every
+  row as in pres. sent_kanji_pres's recipe (free_residual 0, lr 2e-4; λ 10 ·
+  L_pres at σ 0.8–0.9 every 2nd step); the step count set by the 225 at
+  40 / row (≈ 9 k steps, ≈ 1.8 h at pres's 0.72 s / step — a config key or
+  `--max_steps`, not 40 × every free row). Data: a `sent` build on the new
   charset's lines, items carrying ≥ 1 of the 225, the kana : kanji glyph
   share as `sent_kanji`'s build; `b5_held.tsv` out by 5-gram.
 - **Then the 225 alone go onto `sent_kanji_pres`'s rows** (no training);
@@ -117,13 +119,13 @@ sent_kanji's data dir was built from the current one).
   the ready option adds pres's kanji Δstick (pres − start, its shared
   vector; one direction for both families, cos +0.89) to the 225, read
   beside the plain transplant.
-- **Watch in B:** with the rest held, L_pres's page demand has only the 225
-  to answer it (`sent_stick`: the one free thing ran 6 × as far). The 225's
-  mean move — size and cos to pres's Δstick — through the run; off if it
-  runs.
+- **Watch in B:** the 225 adapt to a context that moved ≈ 9 k steps from
+  stick080, where pres's moved 54 k. B's own Δstick (kana / the 1 185)
+  against pres's — size and cos — says how close that context is to the one
+  the 225 land in.
 - In place of the first B (f0's recipe over every row, 1 185 + 163 + 225
-  free, ≈ 63 k steps): pres's rows keep what the ruler measured, and B
-  costs a seventh.
+  free, ≈ 63 k steps): pres's rows keep what the ruler measured, B's other
+  rows are trained for their gradient and dropped, and B costs a seventh.
 
 **A's prep (10-08, done):** `configs/runs/retrain_kanji_b5.toml` on
 context `seed_fixed_1005_stick080` (rows only; its singles = preview51's
