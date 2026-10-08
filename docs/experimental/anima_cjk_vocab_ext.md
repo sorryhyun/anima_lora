@@ -1,8 +1,9 @@
 # CJK vocab ext rows — how preview5's rows are made
 
-How the Japanese rows of the shipped [CJK vocab pack](../methods/cjk_vocab_pack.md)
-(`anima_cjk_vocab_pack_preview5`; the default is now `_preview51` = preview5
-plus the mark rows below) are trained so that the
+How the Japanese rows of the [CJK vocab pack](../methods/cjk_vocab_pack.md)'s
+`anima_cjk_vocab_pack_preview5` (and `_preview51` = preview5 plus the mark rows
+below; the shipped `_jp_v1` is built on them — the method page's § The shipped
+pack) are trained so that the
 base model **renders** them as glyphs. This page covers which rows a caption
 reaches (per-glyph routing and the encode fold), where the images come from
 (a self-generated canvas with pasted text), which σ each item trains at (the

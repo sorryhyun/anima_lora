@@ -8,7 +8,7 @@ means patching two places — the T5-side tokenizer and the LLM adapter's
 embedding table — and ``library.anima.vocab_pack`` owns both, so on the front
 door it is one field:
 
-    GenerationRequest(prompt='1girl, speech bubble. Text reads as "はい".', vocab_pack="models/vocab_packs/anima_cjk_vocab_pack_preview51")
+    GenerationRequest(prompt='1girl, speech bubble. Text reads as "はい".', vocab_pack="models/vocab_packs/anima_cjk_vocab_pack_jp_v1")
 
 ``generate()`` installs the pack-routing tokenize strategy and ``load_dit_model``
 hooks the rows onto ``llm_adapter.embed`` (the module's state dict stays at the
