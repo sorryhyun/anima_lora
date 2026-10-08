@@ -127,16 +127,23 @@ Rendered through `make gen` (daemon) into `output/cjk_anima_reseed/release/`.
 
 ### 2.4 Repo follow-ups (after the upload, each its own commit)
 
-- **The default moves to jp_v1** (user, 10-08): `library/downloads.py`
-  `VOCAB_PACK_STEM` → `anima_cjk_vocab_pack_jp_v1` (same repo), and
-  `configs/base.toml` `vocab_pack` → its prefix. That also updates
-  `scripts/tasks/downloads.py` (reads the stem); the literal `preview51`s
-  are in `tests/test_vocab_pack.py:358`, `examples/09_cjk_vocab_pack.py`,
-  `examples/10_cjk_vocab_pack_diffusers.py` (`PACK_STEM`), the four
-  guidebooks (line 81; the translator agent for ko / ja / zh),
-  `docs/methods/cjk_vocab_pack.md`, `docs/experimental/anima_cjk_vocab_ext.md`
-  and the root README's v2 blurb. A release note says to re-cache CJK TE
-  (`make preprocess-te ARGS=--overwrite`).
+- **The default moves to jp_v1** (user, 10-08) — **next.** Until it does,
+  `channel_(caststation)`'s TE caches in `post_image_dataset/lora/` are
+  jp_v1's while `configs/base.toml` says preview51: training reads the
+  caches as they are (one stamp-mismatch warning, no error), but `make
+  preprocess-te ARGS=--overwrite` would re-encode them through preview51.
+  - `configs/base.toml` `vocab_pack` → `models/vocab_packs/anima_cjk_vocab_pack_jp_v1`
+    (a dir or a flat prefix both resolve: local jp_v1 sits in a dir, a
+    download lands flat).
+  - `library/downloads.py` `VOCAB_PACK_STEM` → `anima_cjk_vocab_pack_jp_v1`
+    (same HF repo; also the l.91 docstring); `scripts/tasks/downloads.py`
+    reads the stem.
+  - literal `preview51`s: `tests/test_vocab_pack.py:362`,
+    `examples/09_cjk_vocab_pack.py:11`, `examples/10_cjk_vocab_pack_diffusers.py:50`
+    (`PACK_STEM`), the four guidebooks (l.81; the translator agent for
+    ko / ja / zh), `docs/methods/cjk_vocab_pack.md`,
+    `docs/experimental/anima_cjk_vocab_ext.md`, `docs/README.md:38`.
+  - Release note: re-cache CJK TE (`make preprocess-te ARGS=--overwrite`).
 - `docs/methods/cjk_vocab_pack.md`: jp_v1, the recipe of record
   (A → B → transplant), the `anima-jp-extended` repo for ComfyUI.
 - No catalog row for the merged DiT: anima_lora doesn't use it.
