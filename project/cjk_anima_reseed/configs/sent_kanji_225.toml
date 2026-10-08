@@ -1,0 +1,35 @@
+# sent_kanji_225 — cjk_anima_reseed/plan.md § 3 stage B (user, 10-08): warm from
+# retrain_kanji_b5's merged rows (stick080 + the 225 trained cold, their stick at 0.8), the 163 kana + 1 185 + the
+# 225 all in rows and free, so L_pres's page demand spreads over every row as in
+# sent_kanji_pres; that run's recipe (free_residual 0, lr 2e-4, λ 10 · L_pres at σ 0.8–0.9
+# every 2nd step, kana row_lr 0.12, its tier shares). Only the 225 are kept: they go onto
+# sent_kanji_pres's rows at the transplant, every other row here is trained for its gradient.
+# Every item holds one of the 225 (focus); items and steps are the 225 × 40 (≈ 9 k steps). The
+# kana : kanji share kept near sent_kanji's 0.22 (user, 10-08) by the lines a focus item may
+# draw: sent lines with ≤ 3 kanji (878 lines on dialogue_pack_b5 at 8–14 cells, share 0.221;
+# 36 of the 225 have none and train in windows / alone), windows with 1 kanji (share 0.245).
+# The lines: every Manga109-s text on preview51's charset + the 225 (m109_b5); plan.md § 4's
+# new-kanji strings (b5_held.tsv) held out — of the windows by trigram (as retrain_kanji_b5),
+# of the sent lines by 5-gram.
+rows = [
+    "chars:ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろわをんゔ",
+    "chars:ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロワヲンヴー",
+    "chars:人何大見気今日言行私子一事出思来生前手本女俺間中時待分当話悪帰知聞入好先上自方学合死食夫心年変目会早者下理無丈父様家太勝長君誰体物後持母最度部全小男二月力動名考不実魔郎逃校道高助空違明意信少彼水使兄美通用元地別強世楽次仕所初場山結負新切天感然友教原同神達着願奴白田味野十外愛由作足安星国屋金立落失開形終近我決命森王面泣礼士情的解娘殺忘樹笑緒良香直買起残親配歩身返休覚夢平急相万回嫌花連恋正法口番性真幸球試取始書葉遠呼業確木止千電他代以青三付機現界約久寝必茶離頭可魚内成追飲南宙海走怒消夜引打朝要進遊主売景痛許風和問宇店飛仲客第習重五局数迷読選供伝危婚文色藤記喜室師料特流続運題乗声多定春社若調似放村束素島能談赤院冷恐犬練貴車員関予故桃込化向困守完想火羅警都捨昔石萌勉服期格城芹邪集音光四報弱念望殿甘苦馬宝敵突谷任優博張怖眠船計速限静園坊未武答過利将怪息探欲軍倒受器座断東治疲降奥川式役育英葵円写吉告官影御指昨状科義血質難件係歳深犯皆退雨余保刀半参婆悟旅族渡術在夏弁惑曜置草語議鐵仁加商存密悲歌点猫病納送冗条秘街週鳥井修傷右品姿常弟徹態抜授申程紙腹裏隊兵席徒永活盛腕階位住冬夕寒察居曲構浩清焼画佐判技段源玉視認課門鬼麗共哲得才松果熱産町舞謝路龍京便備公六務匹坂工左普桐極波温衛角飯驚乱協去庭忙晴暑背超酒陸之八制反増寄押捕敗有根案浦減異百瞳貸輩逆陛丸了勇勢北彬悩暮槽移閉令個印土届昼暗暴洗種聖職裕際乃伊単吹嫁宿燃片破簡精線脱表補触越雁雪魂具司因妹寺封志憶投接救求況注独秀組翌耳胸虫識責量除館互借健像再堂寿屈庸朗末泉津準照等老耶鏡介例台号型奇妻寮導帝政更替泳狩玄甲留碧荷輪途七九亡交刑功匠古句妖妙嬉慣振支杏横泊演禁穴端級肉装首丘側働充占婦崎市府悔抱掃散材浅滅症眼督細絡罪羽芸論類鹿停卒周嘘容建戻払折改映梅械標混湯激牛登監研秋純編跡遺骨鼻乳低刻厳唯固基契如宅差幼忍握撮操杠椿毒氏民汚沙派琴療盲究竹紀翼臭蘭袋護趣造非偶創卑卵否噂己希底復怯恨愚担拾描毛浮浴涼測瞬福積西資跳避銀雲順並企剛勘叔委宮快慮憎札江為爆獄矢短砂策緊葬裂誕誤諸辞陣麻乙儀副卓墓壁射岩布殴汗油浪熟狙珍祭秒給績腰興舟襲講貧貨贈適陰乾亭僧勤医即吐損曹杷桂池河溺璧疑盗章箱節荒華躍載辛逢陽養午塔奈季忠慢拳橋祈評誓貫踏尻妊奮濃液濡勃孕姉満対絶毎顔頑恥裸提発吞専戯暇説頃僕処呂喫属従抗挿掛櫻看締衣購録隠験鳴両催凸吾哀団圧嬢床庫廉戦抑推攣痙祓稚管粘舌舎舐製褒覧訳誘豚賀距遅遣閲険霊黒与伴伸依促候偉偵僚凄凜則剥効包却厄厚双吟吸咲唾喘図垂垢執塚境壊壮奉奢姫娠媚孫宕尋尾履巨広康延彩往徳応怨悅惚憑懐懸扇扱択抵拠挟捲揖揺搾撃撫擬整旧昇晩板林枚枝柄柚桜棄棒棟椎概樂模欠此歯比汁沢沸浸湮溜滿漏漫潜潰煮爾牬狭狼環癒癖皮省睡祝祷穏童笹筋算籍紹経綾罰群羨耐肢脳致航芽茎菜葛蒸蓮虚虜虹蛙蟲註証謹貞賑賞転迂郁針釣镬闊雀雅雌雑露頂須領額飼騎髪鬱魅鳩齢",
+    "chars:剣頼薬瀬絵蔵帯攻戸鉄啓岡闘観騒捜辺労査絹仮値弾権総渉喰敷迎里児検織示幻暁港設鶴菊雛字巻黙価援割呪荘争軽郷駄掘銃継亜幽幕恵獣区済系賊収囲害換摩各斬費云倍訓嘩州象聴虎努規防隣丁奪闇免展梨氷率竜蛮酔尽洋競駆砲藩祖豆駅杯砦米飾挙染障拓涙牙皇県統臓伯億埋審狂窓肩詠豪迫凍善慎誌雄響威恩植縁那侵及嵐斎旦栄瑠臣仏刺財邦史慶粉薄詳伏営岸招歴稼至謎鉛略萩訪朋栗湘緋貰昴祐辻叶枇橘眞也癌喋灼鷹勿燈翔嶋馴柏篠紗智淋竿筈薩揃駿鳳丞兜冴厨帖莉駕彗柴儲兒弘杖梢棲槍琵琶綺舵蘇詫阿",
+]
+row_lr = [0.12, 0.12, 1.0, 1.0]
+read = ["こんにちは", "たいせつ", "かなしい", "かんがえ", "たすけて", "こうえん", "てつだう", "ことば", "なにしてる", "テレビ", "カメラ", "パソコン", "アイドル"]
+seed = "0930"  # unused: the rows are rows_from's
+steps_per_row = 40
+shares = { grid_44 = 0, grid_29 = 0, grid_16 = 0, lone_44 = 0, lone_28 = 0, lone_16 = 0, bubble1_52 = 2, bubble1_32 = 3, bubbleN_34 = 15, bubbleN_18 = 10, grid_64 = 0, sent_34 = 40, sent_22 = 30 }
+# the 225 sat at their own unscaled stick in b5 (|m| 152 vs stick080's kanji 114, cos 0.98):
+# retrain_kanji_b5_stick080 = b5 with the 225 only at row + (0.8 − 1)·m_225 (|m| 122), the
+# rest bit-identical (user, 10-08; the first B, killed at step 1 425, ran on b5 as trained)
+rows_from = "retrain_kanji_b5_stick080"
+pack = "punct"
+lines = "m109_b5"
+free_residual = 0.0
+lr = 2e-4
+pres = { lam = 10, band = [0.8, 0.9], every = 2 }
+focus = { rows = "chars:剣頼薬瀬絵蔵帯攻戸鉄啓岡闘観騒捜辺労査絹仮値弾権総渉喰敷迎里児検織示幻暁港設鶴菊雛字巻黙価援割呪荘争軽郷駄掘銃継亜幽幕恵獣区済系賊収囲害換摩各斬費云倍訓嘩州象聴虎努規防隣丁奪闇免展梨氷率竜蛮酔尽洋競駆砲藩祖豆駅杯砦米飾挙染障拓涙牙皇県統臓伯億埋審狂窓肩詠豪迫凍善慎誌雄響威恩植縁那侵及嵐斎旦栄瑠臣仏刺財邦史慶粉薄詳伏営岸招歴稼至謎鉛略萩訪朋栗湘緋貰昴祐辻叶枇橘眞也癌喋灼鷹勿燈翔嶋馴柏篠紗智淋竿筈薩揃駿鳳丞兜冴厨帖莉駕彗柴儲兒弘杖梢棲槍琵琶綺舵蘇詫阿", line_kanji = 3, window_kanji = 1 }
+held = "$MANGA109S/derived/b5_held.tsv"

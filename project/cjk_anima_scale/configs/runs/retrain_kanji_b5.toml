@@ -1,0 +1,16 @@
+# retrain_kanji_b5 — cjk_anima_reseed/plan.md § 3 stage A (user 2026-10-08): the 225 frequent
+# kanji preview51 holds no trained row for (joyo ≥ 30 + jinmeiyo ≥ 10 in Manga109-s; the list
+# and its rule in the vocabs file), cold at the ink budget (225 / 337.5 per row), b4's recipe.
+# Context = preview51's rows (seed_fixed_1005_stick080: rows only, no run config — its singles
+# from its data/vocabs.json = preview51's trained list). The windows cut dialogue_pack_b5.tsv
+# (every Manga109-s text on preview51's charset + the 225; dialogue_2_10 has no line for ~80 of
+# them) and hold out plan.md § 4's new-kanji strings (b5_held.tsv, 170 Manga109-s lines of 5–14
+# chars covering 221 of the 225; 杖 薩 藩 駕 have no such line) by trigram. The read of record is
+# § 4's (ruler.py on those strings) plus scale's single ruler; `read` is empty — no corpus text
+# in the repo.
+
+vocabs = "ja_retrain_kanji_b5.txt"
+read = []
+context = "seed_fixed_1005_stick080"
+phrases = "$MANGA109S/derived/dialogue_pack_b5.tsv"
+held = "$MANGA109S/derived/b5_held.tsv"

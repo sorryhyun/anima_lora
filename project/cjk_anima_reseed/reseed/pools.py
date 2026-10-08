@@ -265,6 +265,7 @@ def window_pool(glyphs: set, lines, held=(), length: tuple = WINDOW_LEN) -> list
     for h in held:
         n = min(3, len(h))
         grams |= {h[i : i + n] for i in range(len(h) - n + 1)}
+    glens = sorted({len(g) for g in grams})  # look the window's own pieces up
     lo, hi = length
     out = set()
     for ln in lines:
@@ -280,7 +281,11 @@ def window_pool(glyphs: set, lines, held=(), length: tuple = WINDOW_LEN) -> list
                     w = run[i : i + n]
                     if len(w) < n:
                         break
-                    if len(set(w)) == n and not any(g in w for g in grams):
+                    if len(set(w)) == n and not any(
+                        w[j : j + k] in grams
+                        for k in glens
+                        for j in range(len(w) - k + 1)
+                    ):
                         out.add(w)
             run = ""
     return sorted(out)
@@ -467,12 +472,17 @@ def routed(ext, texts: list, workers: int = 1) -> list:
 
 
 def add_windows(
-    pools: Pools, read: tuple, out: Path, phrase: str, workers: int = 1
+    pools: Pools,
+    read: tuple,
+    out: Path,
+    phrase: str,
+    workers: int = 1,
+    held: tuple = (),
 ) -> dict:
     """``pools.windows`` (glyph → its windows) over the dialogue lines (``phrase``) and
-    the training set's own JA text, the read strings held out by trigram,
-    every window routed to its glyphs' rows and nothing else (else dropped).
-    Writes ``windows.json``; returns the stats for ``build.json``."""
+    the training set's own JA text, the read strings and ``held`` held out by
+    trigram, every window routed to its glyphs' rows and nothing else (else
+    dropped). Writes ``windows.json``; returns the stats for ``build.json``."""
     from cjk_scale.config import dataset_ja_lines
 
     glyphs = window_glyphs(pools.singles)
@@ -481,7 +491,7 @@ def add_windows(
         for ln in Path(phrase).read_text(encoding="utf-8").splitlines()
     ]
     ds = dataset_ja_lines()
-    ws = window_pool(glyphs, lines + ds, read)
+    ws = window_pool(glyphs, lines + ds, (*read, *held))
     ext = ext_encoder()
     ids = {}
     for c in sorted(glyphs):
@@ -490,7 +500,11 @@ def add_windows(
         ids[c] = a[0]
     got = routed(ext, ws, workers)
     ok = [w for w, g in zip(ws, got) if g == [ids[c] for c in w]]
-    pools.windows = {g: v for g in sorted(glyphs) if (v := [w for w in ok if g in w])}
+    by_glyph: dict = {}  # one pass over ok (glyph × window was 2 G `in`s on 1 573 rows)
+    for w in ok:
+        for g in w:
+            by_glyph.setdefault(g, []).append(w)
+    pools.windows = {g: by_glyph[g] for g in sorted(glyphs) if g in by_glyph}
     marks = mark_singles(pools.singles)
     pools.lone = [
         g
@@ -511,6 +525,7 @@ def add_windows(
     stats = {
         "length": list(WINDOW_LEN),
         "held": list(read),
+        **({"held_file": len(held)} if held else {}),
         "lines": {"dialogue": len(lines), "dataset": len(ds)},
         "n": len(ok),
         "dropped_by_encoding": len(ws) - len(ok),
@@ -583,6 +598,54 @@ def add_mark_windows(
     return stats
 
 
+def kanji_count(s: str) -> int:
+    """The CJK ideographs in ``s``."""
+    import unicodedata
+
+    return sum(unicodedata.name(c, "").startswith("CJK UNIFIED") for c in s)
+
+
+def focus_pools(pools: Pools, focus: tuple, window_kanji: int) -> dict:
+    """A ``focus`` run's draws: bubble1 / grid draw only ``focus`` alone
+    (``pools.lone``), bubbleN only their windows of ≤ ``window_kanji`` kanji
+    (glyph-first over ``focus``). The ``sent`` lines are cut in
+    ``add_sentences``. Returns the stats."""
+    fs = set(focus)
+    lone = pools.singles if pools.lone is None else pools.lone
+    pools.lone = [g for g in lone if g in fs]
+    pools.windows = {
+        g: v
+        for g in focus
+        if (v := [w for w in pools.windows.get(g, ()) if kanji_count(w) <= window_kanji])
+    }
+    pools.windows_len = {
+        g: {k: [w for w in v if len(w) == k] for k in sorted({len(w) for w in v})}
+        for g, v in pools.windows.items()
+    }
+    n = sorted(len(v) for v in pools.windows.values())
+    ws = {w for v in pools.windows.values() for w in v}
+    stats = {
+        "rows": len(focus),
+        "lone": len(pools.lone),
+        "window_kanji": window_kanji,
+        "windows": len(ws),
+        "windows_kanji_share": round(
+            sum(map(kanji_count, ws)) / max(1, sum(map(len, ws))), 3
+        ),
+        "glyphs_without_windows": "".join(g for g in focus if g not in pools.windows),
+        "per_glyph_min": n[0] if n else 0,
+        "per_glyph_median": n[len(n) // 2] if n else 0,
+    }
+    print(
+        f"focus: {len(focus)} rows, {len(pools.lone)} alone; {len(ws)} windows of ≤ "
+        f"{window_kanji} kanji (kanji share {stats['windows_kanji_share']}), per "
+        f"glyph min {stats['per_glyph_min']} median {stats['per_glyph_median']}; none "
+        f"for {stats['glyphs_without_windows'] or '-'}",
+        flush=True,
+    )
+    return stats
+
+
 # ----------------------------------------------------------------------------
 # the dialogue lines (``sent``)
 
@@ -632,20 +695,30 @@ def sentence_ok(s: str, lengths: tuple) -> str | None:
 
 
 def add_sentences(
-    pools: Pools, read: tuple, lengths: tuple, out: Path, phrase: str
+    pools: Pools,
+    read: tuple,
+    lengths: tuple,
+    out: Path,
+    phrase: str,
+    held: tuple = (),
+    focus: tuple = (),
+    line_kanji: int = 0,
 ) -> dict:
     """``pools.sentences`` (cells → lines): the dialogue lines (``phrase``) with their
     ellipses normalised, every char routed to its own single row (per glyph,
     as the windows are) or one of ``SENT_BASE`` with none; held out: a
-    ``read`` string by trigram (``window_pool``'s rule) and the dialogue
-    ruler's 5+ glyph strings by 5-gram. With mark rows (``mark_singles``), the
-    synthesised heart lines (``pools.synth``) join and a line must hold a mark. Writes
+    ``read`` string by trigram (``window_pool``'s rule), the dialogue
+    ruler's 5+ glyph strings and ``held`` by 5-gram. With mark rows (``mark_singles``), the
+    synthesised heart lines (``pools.synth``) join and a line must hold a mark;
+    with ``focus``, a line holds one of them and ≤ ``line_kanji`` kanji. Writes
     ``sentences.json``; returns the stats."""
     lines = [
         ln.split("\t")[0].strip()
         for ln in Path(phrase).read_text(encoding="utf-8").splitlines()
     ] + pools.synth
     grams, r5 = held_grams(read)
+    r5 |= {h[i : i + 5] for h in held for i in range(len(h) - 4)}
+    fs = set(focus)
     ext = ext_encoder()
     mark_of = {ext.glyph_row(m): m for m in mark_singles(pools.singles)}
     mark_rows = set(mark_of)
@@ -660,6 +733,10 @@ def add_sentences(
                 why = "char"
             elif mark_rows and not mark_rows & set(ids):
                 why = "no_mark"
+            elif fs and not fs & set(s):
+                why = "no_focus"
+            elif fs and kanji_count(s) > line_kanji:
+                why = "kanji"
             elif any(g in s for g in grams):
                 why = "read"
             elif any(s[i : i + 5] in r5 for i in range(len(s) - 4)):
@@ -681,6 +758,18 @@ def add_sentences(
         "n": len(keep),
         "by_length": {n: len(v) for n, v in sorted(pools.sentences.items())},
         "ellipsis": sum("…" in s for s in keep),
+        **(
+            {
+                "focus_kanji_share": round(
+                    sum(map(kanji_count, keep)) / max(1, sum(map(len, keep))), 3
+                ),
+                "focus_without": "".join(
+                    g for g in focus if not any(g in s for s in keep)
+                ),
+            }
+            if fs
+            else {}
+        ),
         **(
             {
                 "per_mark": {

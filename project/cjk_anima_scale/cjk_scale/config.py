@@ -8,7 +8,16 @@
                                           # seed rows (plan_retrain § 2) — warm-from, frozen
                                           # context and merge base; its trained singles (and
                                           # its own context's, down the chain) may sit in
-                                          # this run's windows
+                                          # this run's windows. A rows dir under OUT with no
+                                          # run config (seed_fixed_1005_stick080 = preview51's
+                                          # rows) ends the chain; its singles are its
+                                          # data/vocabs.json (merge.idx_source)
+    phrases = "$MANGA109S/derived/dialogue_pack_b5.tsv"  # optional: the dialogue lines the
+                                          # windows cut (default PHRASE_FILE, every run of
+                                          # record; retrain_kanji_b5)
+    held = "$MANGA109S/derived/b5_held.tsv"  # optional: strings held out of the windows
+                                          # as ``read`` is (trigram), not read by eval — a
+                                          # corpus file outside the repo (first tsv column)
 
 Everything else is a rule in code (plan.md § 2): σ per item from the band law
 (``windows.py``), the recipe table by kind (``builder.TABLE``), the volume
@@ -36,7 +45,7 @@ from pathlib import Path
 from . import paths
 from .paths import RUN_CONFIGS, VOCABS_DIR, trained_path
 
-RUN_KEYS = ("vocabs", "read", "context")
+RUN_KEYS = ("vocabs", "read", "context", "phrases", "held")
 
 SEED = 0  # the data draw and the trainer seed (every run of record used 0)
 
@@ -82,6 +91,17 @@ class RunConfig:
     vocabs: str | tuple  # a vocabs file, or vocab specs
     read: tuple
     context: str | None = None  # a run name: its merged rows replace the seed rows
+    phrases: str = ""  # the dialogue lines (a path, $MANGA109S expanded); "" = PHRASE_FILE
+    held: str = ""  # strings held out of the windows beside ``read`` (a path, as ``phrases``)
+
+    def held_strings(self) -> tuple:
+        """``read`` plus the ``held`` file's strings (first tsv column,
+        blank / ``#`` lines skipped): what the windows hold out."""
+        if not self.held:
+            return self.read
+        lines = Path(_expand(self.held)).read_text(encoding="utf-8").splitlines()
+        extra = [ln.split("\t")[0] for ln in lines if ln.strip() and ln[0] != "#"]
+        return tuple(dict.fromkeys((*self.read, *extra)))
 
     def vocab_specs(self) -> list[str]:
         """The ``data.vocabs`` specs the vocabs stand for: a file is one
@@ -124,6 +144,8 @@ class RunConfig:
                 f"{self.name}: context cycle through {rc.context}"
             )
             out.append(rc.context)
+            if not (RUN_CONFIGS / f"{rc.context}.toml").is_file():
+                break  # a rows-only context (no run config) ends the chain
             rc = load_run(rc.context)
         return out
 
@@ -132,15 +154,19 @@ def run_names() -> list[str]:
     return sorted(p.stem for p in RUN_CONFIGS.glob("*.toml"))
 
 
-def phrase_file() -> str:
-    """``PHRASE_FILE`` with ``$MANGA109S`` expanded (``load_dotenv`` first, so a
-    daemon child finds it too)."""
+def phrase_file(rc: RunConfig | None = None) -> str:
+    """The run's ``phrases`` (else ``PHRASE_FILE``) with ``$MANGA109S``
+    expanded (``load_dotenv`` first, so a daemon child finds it too)."""
+    return _expand((rc.phrases if rc else "") or PHRASE_FILE)
+
+
+def _expand(raw: str) -> str:
     from library.env import load_dotenv
 
     load_dotenv()  # never overrides a real var
-    p = os.path.expandvars(PHRASE_FILE)
+    p = os.path.expandvars(raw)
     if "$" in p:
-        raise SystemExit(f"{PHRASE_FILE}: env var unset — put MANGA109S=<root> in .env")
+        raise SystemExit(f"{raw}: env var unset — put MANGA109S=<root> in .env")
     return os.path.expanduser(p)
 
 
@@ -197,7 +223,7 @@ def load_run(run: str) -> RunConfig:
     raw = tomllib.loads(path.read_text(encoding="utf-8"))
     extra = sorted(set(raw) - set(RUN_KEYS))
     assert not extra, (
-        f"{path}: a run is {{vocabs, read[, context]}} — {extra} are rules in code "
+        f"{path}: a run is {{vocabs, read[, context, phrases, held]}} — {extra} are rules in code "
         "(plan.md § 2)"
     )
     assert "vocabs" in raw, f"{path}: no vocabs"
@@ -214,12 +240,16 @@ def load_run(run: str) -> RunConfig:
         f"{path}: context is a run name"
     )
     assert ctx != path.stem, f"{path}: a run cannot be its own context"
+    ph, held = raw.get("phrases", ""), raw.get("held", "")
+    assert isinstance(ph, str) and isinstance(held, str), f"{path}: phrases / held are paths"
     rc = RunConfig(
         name=path.stem,
         path=path,
         vocabs=v if isinstance(v, str) else tuple(v),
         read=tuple(read),
         context=ctx,
+        phrases=ph,
+        held=held,
     )
     f = rc.vocabs_file()
     assert f is None or f.is_file(), f"{path}: vocabs file {f} does not exist"

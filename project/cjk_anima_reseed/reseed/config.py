@@ -52,6 +52,18 @@
     pres = { lam = 10, band = [0.8, 0.9], every = 2 }  # optional: λ · L_pres on every
                                   # ``every``-th step at σ ~ U(band) (``cjk_scale.train
                                   # (pres=)``, probes/probe_pres_train.py)
+    focus = { rows = "chars:剣頼…", line_kanji = 3, window_kanji = 1 }  # optional: every
+                                  # item holds one of these rows (a subset of ``rows``,
+                                  # every row still trained): bubble1 draws them alone,
+                                  # bubbleN their windows of ≤ window_kanji kanji, sent
+                                  # the lines holding one with ≤ line_kanji kanji (the
+                                  # kana : kanji share kept near sent_kanji's); items and
+                                  # steps are ``steps_per_row`` × these rows
+                                  # (``sent_kanji_225``)
+    held = "$MANGA109S/derived/b5_held.tsv"  # optional: strings held out beside ``read``
+                                  # — of the windows by trigram, of the ``sent`` lines by
+                                  # 5-gram (the ruler's rule); a corpus file outside the
+                                  # repo (first tsv column, ``#`` lines skipped)
 
 Its outputs land in ``output/cjk_anima_reseed/<run>/`` (``data/``,
 ``trained.pt``).
@@ -86,6 +98,8 @@ KEYS = (
     "row_lr",
     "free_residual",
     "pres",
+    "focus",
+    "held",
 )
 # the base packs a run may sit on (``punct_pack.py``): the raw pack's rows and
 # ids plus encode rules / appended rows, so the seed rows ride on it unchanged
@@ -93,7 +107,11 @@ PACKS = {"punct": "models/vocab_packs/anima_cjk_vocab_pack_punct"}
 # the dialogue line files a run may draw from (``~/manga109s/derived/make_*.py``):
 # ``m109_pack`` = every Manga109-s text on the pack's rows (10-05; dialogue_2_10
 # holds the old cjk_renderable charset — no 応 / 転 / 壊)
-LINES = {"m109_pack": "$MANGA109S/derived/dialogue_pack.tsv"}
+# ``m109_b5`` = the same on the pack's rows + retrain_kanji_b5's 225 (10-08)
+LINES = {
+    "m109_pack": "$MANGA109S/derived/dialogue_pack.tsv",
+    "m109_b5": "$MANGA109S/derived/dialogue_pack_b5.tsv",
+}
 UPPER_MAX = 0.9  # tests/test_boundary.py: no band past it
 
 
@@ -121,6 +139,9 @@ class Run:
     row_lr: tuple = ()  # one step factor per ``rows`` spec; () = all 1
     free_residual: float | None = None  # the norm pull; None = the trainer's
     pres: tuple | None = None  # (λ, σ_lo, σ_hi, every): L_pres on; None = off
+    focus: tuple = ()  # every item holds one of these glyphs; () = off
+    focus_kanji: tuple = ()  # (line, window): the most kanji a focus item may hold
+    held: str = ""  # strings held out beside ``read`` (a path, $MANGA109S expanded)
 
     def phrase_file(self) -> str:
         """The dialogue line file: ``LINES[lines]``, else the scale line's
@@ -129,14 +150,24 @@ class Run:
 
         if not self.lines:
             return phrase_file()
-        import os
+        return _expand(LINES[self.lines])
 
-        from library.env import load_dotenv
+    def held_strings(self) -> tuple:
+        """The ``held`` file's strings (first tsv column, blank / ``#`` lines
+        skipped); () without one."""
+        if not self.held:
+            return ()
+        lines = Path(_expand(self.held)).read_text(encoding="utf-8").splitlines()
+        return tuple(
+            dict.fromkeys(ln.split("\t")[0] for ln in lines if ln.strip() and ln[0] != "#")
+        )
 
-        load_dotenv()
-        p = os.path.expanduser(os.path.expandvars(LINES[self.lines]))
-        assert "$" not in p and Path(p).is_file(), f"{self.lines}: no line file {p}"
-        return p
+    def steps(self, steps_per_row: int | None = None) -> int | None:
+        """The whole step count a ``focus`` run trains (its rows ×
+        ``steps_per_row``); ``None`` without one (every trained row's)."""
+        if not self.focus:
+            return None
+        return (steps_per_row or self.steps_per_row) * len(self.focus)
 
     def row_step_scale(self) -> dict | None:
         """``{glyph: factor}`` for the rows ``row_lr`` scales (factor ≠ 1)."""
@@ -218,6 +249,19 @@ class Run:
         )
 
 
+def _expand(raw: str) -> str:
+    """``raw`` with ``$MANGA109S`` / ``~`` expanded (``load_dotenv`` first, so a
+    daemon child finds it); asserts the file is there."""
+    import os
+
+    from library.env import load_dotenv
+
+    load_dotenv()
+    p = os.path.expanduser(os.path.expandvars(raw))
+    assert "$" not in p and Path(p).is_file(), f"{raw}: no file {p}"
+    return p
+
+
 def load(run: str) -> Run:
     path = CONFIGS / f"{run}.toml" if "/" not in run else Path(run)
     assert path.is_file(), f"no run config {path}"
@@ -289,6 +333,21 @@ def load(run: str) -> Run:
         assert pres["lam"] > 0 and 0 <= lo_p < hi_p <= UPPER_MAX, f"{path}: pres {pres}"
         assert int(pres["every"]) >= 1, f"{path}: pres every {pres['every']}"
         pres = (float(pres["lam"]), float(lo_p), float(hi_p), int(pres["every"]))
+    focus, focus_kanji = raw.get("focus"), ()
+    if focus is not None:
+        assert set(focus) == {"rows", "line_kanji", "window_kanji"}, (
+            f"{path}: focus {{rows, line_kanji, window_kanji}}"
+        )
+        assert focus["rows"].startswith("chars:"), f"{path}: focus rows is a chars: spec"
+        trained = {g for r in raw["rows"] for g in r.split(":", 1)[1]}
+        focus_kanji = (int(focus["line_kanji"]), int(focus["window_kanji"]))
+        focus = tuple(dict.fromkeys(focus["rows"].split(":", 1)[1]))
+        assert set(focus) <= trained, (
+            f"{path}: focus rows outside rows {sorted(set(focus) - trained)[:10]}"
+        )
+        assert min(focus_kanji) >= 1, f"{path}: focus kanji caps {focus_kanji}"
+    held = raw.get("held", "")
+    assert isinstance(held, str), f"{path}: held is a path"
     return Run(
         name=path.stem,
         path=path,
@@ -312,4 +371,7 @@ def load(run: str) -> Run:
         row_lr=row_lr,
         free_residual=None if fr is None else float(fr),
         pres=pres,
+        focus=tuple(focus or ()),
+        focus_kanji=focus_kanji,
+        held=held,
     )

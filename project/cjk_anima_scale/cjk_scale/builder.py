@@ -428,7 +428,7 @@ def build(
     # the pools every group restarts from (piece vocabs bring the corpus lines)
     rng = random.Random(SEED)
     ctx = rc.context_rows()
-    pools = build_pools(rc.vocab_specs(), ctx, phrase_file, rng)
+    pools = build_pools(rc.vocab_specs(), ctx, lambda: phrase_file(rc), rng)
     snap = (rng.getstate(), pools.shapes.rng.getstate())
     kinds = vocab_kinds(pools)
     budget = run_budget(
@@ -583,10 +583,11 @@ def _windows(rc: RunConfig, pools: Pools, out: Path, weights: dict) -> dict:
     ctx = window_glyphs(context_singles(rc)) - glyphs
     lines = [
         ln.split("\t")[0]
-        for ln in Path(phrase_file()).read_text(encoding="utf-8").splitlines()
+        for ln in Path(phrase_file(rc)).read_text(encoding="utf-8").splitlines()
     ]
     ds = dataset_ja_lines()
-    ws = window_pool(glyphs | ctx, lines + ds, rc.read, WINDOW_LEN)
+    held = rc.held_strings()
+    ws = window_pool(glyphs | ctx, lines + ds, held, WINDOW_LEN)
     ws = [w for w in ws if any(c in glyphs for c in w)]
     ok, _ids = routed_windows(ws, glyphs | ctx)
     pools.windows = {g: [w for w in ok if g in w] for g in sorted(glyphs)}
@@ -596,8 +597,10 @@ def _windows(rc: RunConfig, pools: Pools, out: Path, weights: dict) -> dict:
     stats = {
         "length": list(WINDOW_LEN),
         "held": list(rc.read),
+        "held_file": (rc.held, len(held) - len(rc.read)) if rc.held else None,
         "context_glyphs": len(ctx),
         "lines": {"dialogue": len(lines), "dataset": len(ds)},
+        "phrases": phrase_file(rc),
         "n": len(ok),
         "dropped_by_encoding": len(ws) - len(ok),
         "glyphs": len(pools.windows),

@@ -20,7 +20,12 @@ nothing here imports, paths into or configures from `../finished/cjk_renderable_
   `data.vocabs` specs), `read` (the `native_sent` strings) and optional
   `context` (a run whose merged rows replace the seed rows for this run —
   warm-from, frozen context, merge base, and the singles its windows may
-  carry; `retrain_kanji_b*` chain on it). Everything else
+  carry; `retrain_kanji_b*` chain on it; a rows dir with no run config, as
+  b5's `seed_fixed_1005_stick080`, ends the chain and names its singles in
+  its `data/vocabs.json`), `phrases` (the dialogue lines the windows cut;
+  default `config.PHRASE_FILE`) and `held` (a corpus file of strings held
+  out of the windows as `read` is, never read by eval — both `$MANGA109S`
+  paths, so no corpus text enters the repo). Everything else
   is a rule in code: the recipe table by kind + volume (`builder.TABLE`,
   `ITEMS_PER_VOCAB`), the trainer constants (`train.py`, each naming the
   report that set it), the seed rows (`paths.SEED_ROWS`), the rulers

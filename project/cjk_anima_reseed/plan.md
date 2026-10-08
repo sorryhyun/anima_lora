@@ -112,6 +112,17 @@ sent_kanji's data dir was built from the current one).
   `--max_steps`, not 40 × every free row). Data: a `sent` build on the new
   charset's lines, items carrying ≥ 1 of the 225, the kana : kanji glyph
   share as `sent_kanji`'s build; `b5_held.tsv` out by 5-gram.
+  **Built as (10-08, user):** `configs/sent_kanji_225.toml`, `focus` = the
+  225 (items and steps = 225 × 40 → 15 k items, 9 000 steps). Both can't hold
+  at once: sent_kanji's glyph share is kanji 0.22, and the 225-carrying
+  lines (8–14 cells) sit at 0.335, windows at 0.48 (≈ 0.41 at sent_kanji's
+  tier mix). Mixing in plain items to reach 0.22 leaves ≈ 2 % of items
+  holding one of the 225, so the share is kept by the lines a focus item may
+  draw instead: sent lines with ≤ 3 kanji (878, share 0.221; 36 of the 225
+  have none and train in windows / alone, median 2 lines per kanji),
+  windows with 1 kanji (share 0.245). `b5_held.tsv` out of the windows by
+  trigram (as A), of the sent lines by 5-gram. Steps via
+  `cjk_scale.train(steps=)` (full-length schedule, not `--max_steps`).
 - **Then the 225 alone go onto `sent_kanji_pres`'s rows** (no training);
   its 1 185 + 163 stay as measured. Before the read, `probe_stick_move`'s
   read of the 225's mean against pres's kanji stick (pres's sits 11.5° off

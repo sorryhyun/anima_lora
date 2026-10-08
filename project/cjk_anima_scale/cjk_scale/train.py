@@ -241,6 +241,7 @@ def train(
     cold: bool | None = None,
     row_cap: float | str | None = None,
     steps_per_row: int | None = None,
+    steps: int | None = None,
     context: Path | None = None,
     row_step_scale: dict | None = None,
     drop_tiers: tuple = (),
@@ -260,7 +261,9 @@ def train(
     row's effective norm after each step — ``"t5"`` = the T5 table's mean
     row norm (``experiments/p1_cap``, hypothesis.md § 4 P1);
     ``steps_per_row`` replaces the budget's (a mix that adds items keeps
-    the old items' exposure); ``context`` replaces the seed rows as the
+    the old items' exposure); ``steps`` replaces the whole count instead (a
+    run whose step count is set by some of its rows, ``cjk_anima_reseed``
+    ``focus``); ``context`` replaces the seed rows as the
     warm-from / frozen-context / merge file (plan_retrain § 2: the kanji run
     sits on the kana run's merged rows; the run file's ``context`` is the
     default, ``paths.SEED_ROWS`` without one); ``row_step_scale`` = {vocab:
@@ -384,9 +387,12 @@ def train(
     if route:
         p.record["glyph_route"] = True
     cold = p.cold if cold is None else cold
-    if steps_per_row:
-        p.steps_per_row = int(steps_per_row)
-        p.steps = p.steps_per_row * len(p.idx)
+    assert not (steps_per_row and steps), "steps_per_row or steps, not both"
+    if steps_per_row or steps:
+        p.steps = int(steps) if steps else int(steps_per_row) * len(p.idx)
+        p.steps_per_row = (
+            int(steps_per_row) if steps_per_row else round(p.steps / len(p.idx), 2)
+        )
         p.warmup = int(round(WARMUP_RATIO * p.steps))
         p.record.update(
             train_steps=p.steps,
@@ -517,7 +523,7 @@ def train(
     steps, warmup, record = p.steps, p.warmup, p.record
     spr = (
         p.steps_per_row
-        if isinstance(p.steps_per_row, int)
+        if not isinstance(p.steps_per_row, dict)
         else " + ".join(f"{n} × {k}" for k, n in p.steps_per_row.items())
     )
     print(

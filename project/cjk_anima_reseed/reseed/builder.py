@@ -25,7 +25,7 @@ from pathlib import Path
 
 from . import table as T
 from .config import Run
-from .pools import add_sentences, add_windows, build_pools
+from .pools import add_sentences, add_windows, build_pools, focus_pools
 from .recipes import RECIPES
 
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
@@ -58,11 +58,13 @@ def build(run: Run, workers: int | None = None, frac: float = 1.0) -> Path:
     rng = random.Random(T.SEED)
     pools = build_pools(list(run.rows), rng)
     phrase = run.phrase_file()
-    win = add_windows(pools, run.read, out, phrase, workers)
+    held = run.held_strings()
+    win = add_windows(pools, run.read, out, phrase, workers, held)
+    focus = focus_pools(pools, run.focus, run.focus_kanji[1]) if run.focus else None
+    n_rows = len(run.focus) if run.focus else len(pools.singles)
     table = run.table()
     plan = [
-        (t, int(round(T.ITEMS_PER_ROW * len(pools.singles) * t.share * frac)))
-        for t in table
+        (t, int(round(T.ITEMS_PER_ROW * n_rows * t.share * frac))) for t in table
     ]
     plan = [(t, n) for t, n in plan if n]  # a share-0 tier is not drawn
     sent = [t.params["lengths"] for t, _n in plan if t.recipe == "sent"]
@@ -73,12 +75,17 @@ def build(run: Run, workers: int | None = None, frac: float = 1.0) -> Path:
             (min(a for a, _ in sent), max(b for _, b in sent)),
             out,
             phrase,
+            held,
+            run.focus,
+            run.focus_kanji[0] if run.focus else 0,
         )
         if sent
         else None
     )
     print(
-        f"build {run.name} → {out}: {len(pools.singles)} rows; "
+        f"build {run.name} → {out}: {len(pools.singles)} rows"
+        + (f" ({n_rows} focus)" if run.focus else "")
+        + "; "
         + ", ".join(f"{t.name} σ {t.band[0]:g}–{t.band[1]:g} {n}" for t, n in plan)
         + f"; {workers} workers",
         flush=True,
@@ -121,6 +128,8 @@ def build(run: Run, workers: int | None = None, frac: float = 1.0) -> Path:
         "glyph_route": True,
         "lines": phrase,  # the windows: train.py routes the captions per glyph
         "windows": win,
+        **({"focus": focus} if focus else {}),
+        **({"held": run.held} if run.held else {}),
         **({"sentences": sents} if sents else {}),
         "scenes": {
             "pools": T.SCENES,
