@@ -487,6 +487,7 @@ PACK_ARMS = {
         "sent_kanji": OUT / "sent_kanji",
         "sent_kanji_f0": OUT / "sent_kanji_f0",
         "sent_kanji_pres": OUT / "sent_kanji_pres",
+        "seed_1008": OUT / "seed_1008",  # pres + sent_kanji_225's 225 (transplant.py)
     }
 }
 

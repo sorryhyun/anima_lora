@@ -138,6 +138,58 @@ sent_kanji's data dir was built from the current one).
   free, ≈ 63 k steps): pres's rows keep what the ruler measured, B's other
   rows are trained for their gradient and dropped, and B costs a seventh.
 
+**B and the transplant (10-08, done) → `seed_1008`.** `sent_kanji_225`
+trained 9 000 steps (job `20261008-181347-2c8d0d`, 112 min, rc 0).
+`transplant.py stick` (effective units; pres's kanji = the 1 178 ids both
+files hold):
+
+| | \|m\| | × pres's kanji stick (125.1) | angle to it |
+|---|---|---|---|
+| the 225 at B's start (b5_stick080) | 121.7 | 0.973 | 16.0° |
+| **the 225 after B** | 127.6 | 1.020 | **12.2°** |
+| + pres's kanji Δstick | 141.0 | 1.127 | 11.8° |
+| + (pres − B) kanji Δstick | 140.2 | 1.121 | 11.1° |
+| random 225 of pres's kanji (2 000 draws) | — | 0.984–1.027 (p5–p95) | 5.7° median, 6.8° max |
+| pres's 225 shortest / longest rows | — | — | 21.2° / 15.1° |
+
+- Length matches (inside the random-subset range); the direction sits at
+  twice the subset noise, as any structured subset of pres's own kanji does.
+- The 12° is the 225's own, not B's context lag: they sit 12.6° off B's own
+  kanji stick too. B's context barely left its start (kanji Δstick 3.8 vs
+  pres's 26.2, cos +0.74; kana 4.4 vs 16.5, cos +0.87; B's 1 178-kanji stick
+  10.0° off pres's), but the 225's own move ran along pres's (Δstick 19.1,
+  cos +0.857 to pres's kanji Δstick) and closed 16.0° → 12.2°.
+- So the plain transplant: adding pres's Δstick turns the 225 by under a
+  degree and makes them ×1.12 long. None of the 225 is in pres's file
+  (225 added, 0 replaced); the row norms match (median 246 vs pres's
+  kanji 245).
+
+`transplant.py write` → `output/cjk_anima_reseed/seed_1008/trained.pt`
+(pres's 2 686 ids + the 225 at B's values × row_scale 207.35 / 206.26),
+baked as pres was (punct base, `--glyph_route`) →
+`models/vocab_packs/anima_cjk_vocab_pack_seed_1008/` (sha `ce0ec15f7168…`,
+symlinked into `../comfy`). Checked: its table differs from pres's on the
+225's rows only, routing maps identical.
+
+**The ruler (10-08):** `results/20261008-2025-ruler-sensitive-seed_1008/`
+(job `20261008-201134-5500d1`; preview51 / f0 / pres from cache). seed_1008
+g_f1 0.269, g_p 0.219, g_r 0.629, g_r_kanji 0.280, exact 5, le2 12, cer
+0.677 (pres 0.270 / 0.224 / 0.611 / 0.294 / 4 / 13 / 0.676). Paired against
+pres, every read n.s. on all 96 (g_f1 −0.001 p 0.19, g_r_kanji −0.014 p 1.0,
+en_match −0.0004 p 0.69, en_tok_out +0.0008 p 0.22, iou_en +0.0013 p 0.24)
+and on the 42 unseen. Expected: no ruler string holds one of the 225 and
+the two files' rows are equal on every id pres holds, yet 95 / 96 renders
+differ from pres's cached ones (mean |Δ| median 3.8 / 255, max 18.9) — the
+render's own run-to-run noise between sessions. The ruler says the 225 cost
+pres nothing; whether they draw is unread (§ 4's new-kanji set not built,
+user 10-08: by eye in ComfyUI).
+
+**jp_v1 (10-08):** seed_1008's pair copied as
+`models/vocab_packs/anima_cjk_vocab_pack_jp_v1/` (the name it ships under,
+`release_plan.md` § 2.A; digest `ce0ec15f7168…` = seed_1008's) and
+symlinked into `../comfy/models/vocab_packs/`; the node's
+`load_vocab_pack` reads it.
+
 **A's prep (10-08, done):** `configs/runs/retrain_kanji_b5.toml` on
 context `seed_fixed_1005_stick080` (rows only; its singles = preview51's
 trained list in its `data/vocabs.json`); the 225 regenerated from the rule

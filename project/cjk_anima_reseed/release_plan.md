@@ -5,175 +5,55 @@ the result holds on the 96-string read and under a LoRA, publish it as a new
 HF repo with a README (two usage paths + a base / jp-extended comparison),
 and hand the blog a `content.md` for a post on the band law and L_pres.
 
-**Two artifacts, one table** (user, 10-08). The table is sent_kanji_pres's
-1 185 kanji + 163 kana rows with B's 225 transplanted onto them, on the
-punct pack: 1 573 trained rows (§ 1.2).
+**Two artifacts, one table.** jp_v1 = sent_kanji_pres's rows (kana 163,
+kanji 1 185) + B's 225 kanji, on the punct pack; 1 573 trained rows, sha
+`ce0ec15f7168…`.
 
-- **`anima_cjk_vocab_pack_jp_v1`**: the pack pair, uploaded to the existing
-  `sorryhyun/anima-vocab-pack-cjk` first (§ 2.A). anima_lora keeps using
-  the pack (`vocab_pack`), and anyone who wants the pack alone is sent here.
-- **`anima-jp-extended`**: a new repo with one merged DiT checkpoint built
-  from jp_v1, for ComfyUI through a new node (§ 2.0).
+- **`anima_cjk_vocab_pack_jp_v1`** → `sorryhyun/anima-vocab-pack-cjk` (§ 2.A, done).
+- **`anima-jp-extended`** → new repo, one merged DiT for ComfyUI's
+  `AnimaMergedLoader` (§ 2.1). Format: stock 32 128-row `embed` + the rows
+  as `llm_adapter.ext_embed.weight` + the JSON in metadata; stock loaders
+  load it as plain Anima. anima_lora doesn't read it (uses `vocab_pack`).
 
-The merged checkpoint:
+## 1. Gates
 
-- `llm_adapter.embed.weight` stays at the stock 32 128 rows; the
-  materialized ext rows go in under their own key
-  (`llm_adapter.ext_embed.weight`, `[rows, 1024]`), and the pack's JSON
-  sidecar (route / dots / row maps) and digest go into the safetensors
-  metadata. A stock loader sees one unexpected key and still loads a working
-  base Anima (EN fine, JA → `<unk>` as today). Widening `embed` instead
-  would break stock loaders on the size mismatch.
-- The Qwen3 text encoder and both tokenizers stay stock. The hybrid
-  encoder is built at load time from the stock T5 + Qwen3 tokenizers and
-  the mapping in the checkpoint (`VocabPack.build_encoder(t5, qwen3)`), so
-  there is no tokenizer file to ship.
-- To check before building: that ComfyUI's stock UNet loader tolerates
-  the extra key (unexpected keys logged, not raised), and the metadata
-  header size (~1.9 MB JSON; safetensors allows up to 100 MB).
-- anima_lora does not load the merged file as a pack source; it runs on
-  jp_v1 via `vocab_pack`.
-
-## 1. Gates — nothing is uploaded until all three pass
-
-### 1.1 The 225 trained (B, `sent_kanji_225`)
-
-`plan.md` § 3 B, then § 4's read. Pass:
-
-- **New-kanji strings** (`b5_held.tsv`: 160 lines covering 211 of the 225,
-  plus the single read for the 14 it misses — 藩 鉛 緋 昴 眞 燈 柏 薩 帖 駕 彗
-  兒 杖 詫): `g_r` on the 225 above preview51 and pres (no row → their
-  floor), paired, p < 0.05.
-- **B's own Δstick** (kana / the 1 185) against pres's, size and cos — says
-  how close B's context is to the one the 225 land in (§ 1.2).
-
-Fail → back to `plan.md` (A's budget or B's data), no release.
-
-### 1.2 The transplant (the 225 onto pres)
-
-A script (to write, `reseed/transplant.py` or a `run.py` verb): pres's pack
-with B's 225 rows copied in, nothing else changed → `models/vocab_packs/anima_cjk_vocab_pack_jp_v1/`.
-Before reading it, `probe_stick_move`'s read of the 225's mean against pres's
-kanji stick (pres's sits 11.5° off stick080's, |stick| 114 → 125). If it
-differs materially, two arms: plain transplant and + pres's kanji Δstick on
-the 225; the read below picks.
-
-Pass, against `sent_kanji_pres` on the **96-string dialogue ruler**
-(`ruler.py run --pack punct --arms sent_kanji_pres,<jp_v1>`):
-
-| read | rule |
-|---|---|
-| `g_f1`, `g_r_kanji`, `g_r_kana` | no paired loss (p ≥ 0.05 or better) |
-| `en_match`, `en_tok_out`, `iou_en` | no paired loss — pres's page gain is the reason pres is the base |
-| `cer`, exact, le2 | reported; no gate (every arm sits at 0–1 past a word) |
-
-and on the new-kanji strings: `g_r` on the 225 within B's own (the move
-onto pres costs them little), above pres's.
-
-### 1.3 A LoRA on top (`channel_(caststation)`)
-
-30 images; the revised captions (`post_image_dataset/resized/`, what TE
-caching reads — the `image_dataset/` masters are EN only) carry an OCR text
-clause on **12 of 30** (`Japanese text reads as "満足でしょうか"`, `"※危険なので
-真似しないでください"`, `"後藤ひとり156cm50kg"` …; 120 strings with the
-`.variants.txt`, 6–88 chars, median 21). So this is the case the pack is
-for downstream: an artist LoRA on real pages whose captions quote their JA
-text. It reads three things: training with the pack on is ordinary, the
-LoRA does not take the text away on unseen strings, and the pack helps the
-LoRA learn its own pages' text.
-
-0. Coverage first (CPU): the 12 images' strings against the jp_v1 charset —
-   the share of their glyphs with a trained row (鬱 and the like route to
-   no row and draw as noise whatever the LoRA does). Reported, not a gate.
-1. `vocab_pack` → the jp_v1 prefix (CLI or a local config; not `base.toml`
-   yet, § 2.4), `make preprocess-te ARGS=--overwrite` on that dataset
-   alone (TE caches carry the pack digest).
-2. `make lora --queue` at the default preset; `log-analyst` on the run.
-3. Render through `make gen`, same seeds:
-   - (a) 8 EN prompts in the artist's style, LoRA on: the style lands.
-   - (b) 16 of the ruler's unseen strings with their prompts, LoRA on vs
-     off: the text survives (`g_f1` / `g_r` by the ruler's scorer).
-   - (c) the 12 images' own captions, LoRA on: their quoted text read by
-     the ruler's scorer against the caption string.
-Pass: a normal run verdict, style visible, (b) LoRA-on not below LoRA-off
-by more than the run-to-run noise on the 16. A collapse in (b) is a README
-warning at minimum and blocks the release until understood. (c) is a read,
-not a gate. No base-TE control arm (user, 10-08), so the README makes no
-claim that the pack helps a LoRA learn its pages' text.
-
-Run 1.3 on jp_v1 through `vocab_pack` with the stock base DiT. Which one
-it trains on doesn't matter: the merged file is base's DiT weights plus
-jp_v1's rows, both frozen under a LoRA, so the forward and the LoRA are the
-same. A LoRA trained either way loads on either (§ 2.0's digest test is
-what keeps that true).
+- **1.1 B (`sent_kanji_225`) — done 10-08.** 9 000 steps, job
+  `20261008-181347-2c8d0d`. The new-kanji `g_r` read was not run (user:
+  by eye in ComfyUI). Detail: `plan.md` § 3.
+- **1.2 Transplant → jp_v1 — done 10-08.** `transplant.py` (plain; adding
+  pres's Δstick turned the 225 < 1°). Ruler vs pres: every read n.s.
+  (`results/20261008-2025-ruler-sensitive-seed_1008/`). Detail: `plan.md` § 3.
+- **1.3 LoRA (`channel_(caststation)`) — open.** The user's run
+  (`anima_lora_channel`, job `20261008-204941-265453`, GUI) looked good but
+  trained on **preview51** (base.toml default, `lora/` TE caches). For
+  jp_v1: the dataset's TE caches in `post_image_dataset/lora/` are now
+  jp_v1's (30, stamped `ce0ec15f7168`), and `configs/gui-methods/custom/lora.toml`
+  sets `vocab_pack` to jp_v1.
 
 ## 2. The HF repos
 
-### 2.A The pack repo (`sorryhyun/anima-vocab-pack-cjk`), first
+### 2.A The pack repo — done 10-08
 
-Now at the root: `preview`, `preview2`–`preview5` and `preview51`
-(`.safetensors` + `.json`, `_trained.json` for 3 / 4 / 5 / 51), `assets/`
-(`preview3_hentai.webp`, `preview_hai.png`, `training_diagram.png`),
-`README.md`.
+- `old/`: preview … preview4 (HF `161ada4`). preview5 / preview51 stay at
+  the root (anima_lora v2.x fetches preview51).
+- jp_v1 pair + `_jp_v1_trained.json` (HF `df9797f`, `0ade7f5`); the
+  re-downloaded pair reads `ce0ec15f7168`. Punctuation `～…♡♥、。「」` =
+  preview51's retrained rows (max |Δ| ≤ 1.9e-6), listed as carried.
+- Card (HF `7eb745e`): pack table, jp_v1 in the examples, limits.
+  **Open:** the `anima-jp-extended` link once that repo exists.
 
-1. Upload `anima_cjk_vocab_pack_jp_v1.{safetensors,json}` and
-   `_jp_v1_trained.json` (the 1 573 trained rows) to the root. Check that
-   the uploaded pair loads and prints the same `sha[:12]` as the local one.
-2. Move `preview`, `preview2`, `preview3`, `preview4` (and the
-   `_trained.json` of 3 / 4) to `old/`, in one commit (**done 10-08**,
-   HF commit `161ada4`, with the card's "stay in the repo" line → "under
-   `old/`"; v2.0.0.beta2's default `anima_cjk_vocab_pack_preview` is now
-   only under `old/`)
-   (`HfApi.create_commit` with `CommitOperationCopy` +
-   `CommitOperationDelete`; the copy is server-side, no 285 MB re-upload).
-   **`preview5` and `preview51` stay at the root** (user, 10-08), so
-   released anima_lora (v2.x, whose `base.toml` and `_fetch_shipped_pack`
-   fetch `anima_cjk_vocab_pack_preview51.*` from the root) keeps working.
-3. The model card: jp_v1 as the current pack, preview5 / preview51 as the
-   previous ones, the old/ files listed as history, a link to
-   `anima-jp-extended` for ComfyUI users who want one checkpoint, and the
-   `assets/` images either kept under a "previous versions" section or
-   moved to `old/assets/`.
+### 2.0 Code — done 10-08; node publish open
 
-### 2.0 Code (built 10-08; the real-file check pending)
-
-**anima_lora**
-
-- `library/anima/vocab_pack.py`: `merge_pack_into_dit(dit, pack, out)`
-  (every DiT tensor and metadata key copied, the pack's raw `ext_embed` as
-  `<prefix>llm_adapter.ext_embed.weight`, the JSON text as
-  `ss_ext_pack_mapping`, the `ss_ext_pack` / `ss_ext_pack_sha` stamp) and
-  `read_merged_pack(path)` (refuses a file whose rows don't match its stamp).
-- `scripts/toolkits/merge_vocab_pack.py`: the CLI (`--dit` defaults to the
-  base DiT, `--pack`, `--out`), with a read-back digest check.
-- `load_anima_model` drops the ext key with a warning (it raised on
-  unexpected keys before), so a merged file still loads in anima_lora as a
-  plain DiT; the rows come from `vocab_pack`.
-- Tests (`tests/test_vocab_pack.py`): the round trip keeps every DiT
-  tensor bit-exact, the digest equals the pack's, an already-merged file and
-  a tampered stamp are refused. So a LoRA trained on jp_v1 (stamped
-  `ss_ext_pack_sha`) meets the same digest on `AnimaMergedLoader` and the
-  node's `check_pack_vs_adapter` stays silent.
-
-**ComfyUI** (`~/ComfyUI-Anima_lora-Adapter`, symlinked into `../comfy`)
-
-- **`AnimaMergedLoader`** ("Anima Merged Loader (CJK)"): `unet_name`
-  (`diffusion_models/`), `clip_name` (`text_encoders/`, the stock Qwen3
-  0.6B; it loads as Anima under the default CLIP type), `weight_dtype` as
-  UNETLoader → MODEL + CLIP. `vocab_pack.load_merged_diffusion_model` splits
-  the pack off the state dict before the DiT is built, registers itself as
-  the patcher's `cached_patcher_init` (DiT only; clones keep the hooks),
-  then `apply_vocab_pack` + `VocabPackTokenizer` as the pack loader does. A
-  file without a pack loads as plain Anima, with a warning.
-- Checked on CPU: the node's `split_merged` on a file written by
-  anima_lora's merge gives the same digest and leaves a plain state dict.
-- `AnimaVocabPackLoader` stays (pack pairs).
-- **Still to do:** the real-file check after B frees the GPU (merge the
-  base DiT + pres's pack; ComfyUI: EN prompt identical to UNETLoader +
-  CLIPLoader, a JA prompt identical to AnimaVocabPackLoader on the pair,
-  UNETLoader on the merged file loads with one "unet unexpected" line);
-  then version bump, `make vendor-sync` (check `_vendor` drift first),
-  `comfy node publish` at release.
+- anima_lora: `merge_pack_into_dit` / `read_merged_pack`,
+  `scripts/toolkits/merge_vocab_pack.py`, `load_anima_model` drops the ext
+  key, tests (commit `b432b6ed`).
+- Node `AnimaMergedLoader` (`~/ComfyUI-Anima_lora-Adapter`), 3.15.0,
+  README + changelog. **Open:** commit + push, `comfy node publish` before
+  the HF repo goes public.
+- Built `models/diffusion_models/anima_jp_extended.safetensors` (base +
+  jp_v1, 4.47 GB). Headless ComfyUI check (job `20261008-205913-aa29d2`):
+  EN bitwise equal across stock / pair / merged / UNETLoader-on-merged; JA
+  merged = pair bitwise; UNETLoader logs one `unet unexpected` line.
 
 ### 2.1 Files
 
@@ -312,8 +192,6 @@ and § 2.3's grids; the brief lists paths, the blog agent copies.
 
 ## Order
 
-§ 2.0 code (can start now, against pres's pack) ∥ 1.1 → 1.2 → jp_v1 →
-1.3 on it (anima_lora, `vocab_pack` = jp_v1) → § 2.A (upload jp_v1, preview–preview4 → old/)
-→ § 2.4 (anima_lora default → jp_v1) → merge the checkpoint → § 2.3
-renders through `AnimaMergedLoader` and anima_lora both → node published →
-§ 2.1–2.2 private upload → user reads → public → § 3.
+Done: 1.1, 1.2, § 2.0 code + merged file, § 2.A. Left: 1.3 on jp_v1 →
+§ 2.4 (anima_lora default → jp_v1) → § 2.3 renders → node published →
+§ 2.1–2.2 private upload → user reads → public (+ the pack card's link) → § 3.
