@@ -44,9 +44,8 @@ kanji 1 185) + B's 225 kanji, on the punct pack; 1 573 trained rows, sha
 
 ### 2.0 Code — done 10-08; node publish open
 
-- anima_lora: `merge_pack_into_dit` / `read_merged_pack`,
-  `scripts/toolkits/merge_vocab_pack.py`, `load_anima_model` drops the ext
-  key, tests (commit `b432b6ed`).
+- anima_lora: `merge_pack_into_dit`, `scripts/toolkits/merge_vocab_pack.py`,
+  `load_anima_model` drops the ext key, tests (commit `b432b6ed`).
 - Node `AnimaMergedLoader` (`~/ComfyUI-Anima_lora-Adapter`), 3.15.0,
   README + changelog. **Open:** commit + push, `comfy node publish` before
   the HF repo goes public.
@@ -54,6 +53,12 @@ kanji 1 185) + B's 225 kanji, on the punct pack; 1 573 trained rows, sha
   jp_v1, 4.47 GB). Headless ComfyUI check (job `20261008-205913-aa29d2`):
   EN bitwise equal across stock / pair / merged / UNETLoader-on-merged; JA
   merged = pair bitwise; UNETLoader logs one `unet unexpected` line.
+- **Removed 10-08 (user):** the LoRA pack stamp (`ss_ext_pack` /
+  `ss_ext_pack_sha` on a LoRA, the inference-side warning, the node's
+  LoRA↔pack check) and the merged file's name / sha + self-check — a LoRA
+  trains no pack parameter. The merged file carries only the rows and
+  `ss_ext_pack_mapping`; rebuilt after the change, node re-checked on CPU
+  (JA t5 tokens merged = pair). TE cache stamps stay.
 
 ### 2.1 Files
 
@@ -86,7 +91,7 @@ public after reading the rendered README.
    `AnimaMergedLoader` (it takes the stock Qwen3 text encoder too) in place
    of the UNet and CLIP loaders, and type Japanese directly in the prompt.
    Say that a stock UNet loader loads the file as plain Anima (no JA), and
-   that a LoRA trained in anima_lora on jp_v1 stacks on it as is. The
+   that any Anima LoRA stacks on it as is. The
    workflow file, and how to quote the text (the caption grammar the rows
    were trained under: `japanese text`, `"…"` in a speech bubble).
 3. **anima_lora** — uses the pack, not this checkpoint: with § 2.4's

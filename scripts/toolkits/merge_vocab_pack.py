@@ -23,7 +23,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from library import downloads as DL  # noqa: E402
-from library.anima.vocab_pack import merge_pack_into_dit, read_merged_pack  # noqa: E402
+from library.anima.vocab_pack import merge_pack_into_dit  # noqa: E402
 from library.env import resolve_under_home  # noqa: E402
 from library.log import setup_logging  # noqa: E402
 
@@ -52,12 +52,7 @@ def main() -> int:
     if out.exists():
         parser.error(f"{out} exists")
     out.parent.mkdir(parents=True, exist_ok=True)
-    digest = merge_pack_into_dit(resolve_under_home(args.dit), args.pack, out)
-    _, _, read_back = read_merged_pack(out)
-    if read_back != digest:
-        logger.error("read-back digest %s… != %s…", read_back[:12], digest[:12])
-        return 1
-    logger.info("read back OK (sha %s…)", digest[:12])
+    merge_pack_into_dit(resolve_under_home(args.dit), args.pack, out)
     return 0
 
 

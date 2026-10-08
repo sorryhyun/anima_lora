@@ -228,15 +228,6 @@ def attach_adapters(
             model._step_expert_networks = step_nets
 
 
-def _warn_ext_pack_stamp(path: str, active=None) -> None:
-    """A LoRA trained through a CJK vocab pack (``ss_ext_pack_sha``) expects
-    that pack's rows behind ids ≥ 32128 — warn when the active pack (or no
-    pack) disagrees. Thin alias kept for callers of the pre-v2 name."""
-    from library.anima.vocab_pack import warn_checkpoint_pack_mismatch
-
-    warn_checkpoint_pack_mismatch(path, active)
-
-
 def load_dit_model(
     args: argparse.Namespace,
     device: torch.device,
@@ -270,8 +261,6 @@ def load_dit_model(
 
     step_expert_mode = False
     if args.lora_weight is not None and len(args.lora_weight) > 0:
-        for p in args.lora_weight:
-            _warn_ext_pack_stamp(p, vocab_pack)
         se_flags = [_is_step_expert_turbo(p) for p in args.lora_weight]
         if any(se_flags):
             if not all(se_flags) or len(args.lora_weight) > 1:
