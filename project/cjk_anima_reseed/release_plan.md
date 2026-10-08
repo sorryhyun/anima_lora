@@ -222,6 +222,9 @@ d8db5265, 92a80b1b, 3e81e605), `reports/sent_kanji_pres_2026_10_07.md`.
 Images: pick from the ruler result dirs (`results/*-ruler-sent_kanji_pres/`)
 and § 2.3's grids; the brief lists paths, the blog agent copies.
 
+**Written 10-08**: `/home/sorryhyun/sorryhyunblog/content.md` (untracked
+there), reference-first; grids copied to `../comfy/output/cjk/release_grids/`.
+
 ## Order
 
 Done: 1.1, 1.2, § 2.0 code + merged file + node, § 2.A, § 2.4, § 2.1–2.2
