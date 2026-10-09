@@ -13,7 +13,7 @@ Edits TOML configs and submits jobs to the daemon; no training/torch logic. Layo
 
 | Package | Holds |
 |---|---|
-| `core/` | **Qt-free** (no PySide6 import, headless-unit-testable): `paths.py` (ROOT, `gui_settings.json`), `config_io.py`, `submit.py`, `validation.py`, `discovery.py`, `anime_tools_panel.py`, `debug_report.py` |
+| `core/` | **Qt-free** (no PySide6 import, headless-unit-testable): `paths.py` (ROOT, `gui_settings.json`), `config_io.py`, `variant_form.py` (ConfigTab's field grouping + Save writeback), `submit.py`, `validation.py`, `discovery.py`, `anime_tools_panel.py`, `debug_report.py` |
 | `jobs/` | `daemon.py` (client), `mixin.py` (`DaemonJobMixin`), `progress.py`, `process.py` (`StreamingProcess`, tree kill) |
 | `dialogs/` | `confirm.py` (pre-launch confirmations + cache/checkpoint probes), `guidebook.py`, `settings.py`, `system.py` (Models + Update) |
 | `tabs/` | one module per tab, the `preprocess/` package, `tensorboard.py` (overlay panel) |

@@ -210,21 +210,17 @@ class EasyControlTab(ConfigTab):
     def _show_descriptor_form(self, variant: str) -> None:
         """Render the descriptor's scalar knob tables as grouped form fields.
 
-        Mirrors ConfigTab._reload's teardown (clear self._fl, reset explain, clear
+        Mirrors ConfigTab._reload's teardown (``_clear_form``, reset explain, clear
         dirty), then builds one QGroupBox per editable table (top-level scalars like
         ``name`` first, then [staging]/[preprocess]/[training]) reusing ConfigTab's
         _widget / ClickableLabel / dirty wiring. The parsed tomlkit doc is stashed
         on self so Save can write changed values back in place — comments and the
         [[datasets]] blueprint survive untouched."""
         self._origin = {}
-        self._w.clear()
+        self._clear_form()
         # (table-or-None, key, widget, original-plain-value) so Save can route each
         # value back into the right tomlkit table.
         self._desc_widgets: list[tuple[str | None, str, QWidget, object]] = []
-        while self._fl.count():
-            it = self._fl.takeAt(0)
-            if it.widget():
-                it.widget().deleteLater()
 
         path = _DESCRIPTOR_DIR / f"{variant}.toml"
         rel = path.relative_to(ROOT)

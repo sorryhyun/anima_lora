@@ -8,7 +8,6 @@ from typing import Any
 
 import html
 
-import toml
 from PySide6.QtCore import QEvent, Qt, QTimer
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
@@ -33,23 +32,16 @@ from PySide6.QtWidgets import (
 from gui import (
     CONFIGS_DIR,
     ROOT,
-    _GROUPS,
-    _K2G,
     _SKIP,
-    _VIRTUAL_KEYS,
     _load,
     _load_base,
     _read,
-    _base_folder_repeats,
     _save,
     _widget,
-    apply_folder_repeats_choice,
-    apply_validation_choice,
     confirm_existing_caches,
     confirm_resumable_checkpoint,
     confirm_train_using_cache,
     get_setting,
-    is_basic_field,
     lint_variant_configs,
     list_gui_variants,
     list_hardware_presets,
@@ -59,7 +51,7 @@ from gui import (
     remove_unknown_dataset_keys,
     variant_path,
 )
-from gui.core import submit
+from gui.core import submit, variant_form
 from gui.jobs import daemon as gui_daemon
 from gui.jobs.mixin import DaemonJobMixin
 from gui.theme import action_button_qss, tok
@@ -84,40 +76,6 @@ from gui.jobs.progress import (
 
 # gui_settings.json key holding the Hardware preset picked in the top bar.
 _HW_PRESET_SETTING = "hardware_preset"
-_FIELD_ORDER = {
-    submit.PATH_SCOPE_KEY: 10,
-    "source_image_dir": 11,
-    "resized_image_dir": 12,
-    "lora_cache_dir": 13,
-    "output_dir": 14,
-    "output_name": 15,
-    "save_model_as": 16,
-    "path_pattern": 20,
-    "pretrained_model_name_or_path": 30,
-    "qwen3": 31,
-    "vae": 32,
-    # Pins must stay BELOW the unpinned default (100) or alphabetical sort
-    # interleaves the block with the rest of its group box.
-    "use_repa": 80,
-    "repa_target_dog": 81,
-    "train_adaln": 82,
-    "adaln_rank": 83,
-    "adaln_alpha": 84,
-    "sigma_lowres": 85,
-    "sigma_lowres_route": 86,
-    "sigma_lowres_threshold": 87,
-    "sigma_lowres_threshold_max": 88,
-    "sigma_lowres_yarnsig": 89,
-    "sigma_lowres_span": 90,
-    "sigma_lowres_route2": 91,
-    "sigma_lowres_threshold2": 92,
-    "sigma_lowres_threshold2_max": 93,
-    "sigma_lowres_span2": 94,
-    "sample_prompts": 10,
-    "sample_every_n_epochs": 11,
-    "sample_at_first": 12,
-    "sample_decode_inline": 13,
-}
 
 
 class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
@@ -402,24 +360,36 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         if hasattr(self, "_explain"):
             self._show_explain_placeholder()
 
+        self._clear_form()
+        basic, advanced = variant_form.group_fields(cfg)
+        styles = self._origin_styles(variant)
+        self._fl.addWidget(self._basic_section(basic, styles))
+        self._fl.addWidget(self._advanced_section(advanced, styles))
+        self._fl.addStretch()
+
+        # Connect change signals AFTER the values are seeded by _widget, so the
+        # initial setValue/addItems calls don't trip the dirty flag.
+        for w in self._w.values():
+            self._connect_dirty_signal(w)
+
+        self._wire_validation_widgets(int(merged.get("validation_split_num") or 0))
+
+        self._clear_dirty()
+
+        self._refresh_config_warnings(variant)
+
+    def _clear_form(self) -> None:
         self._w.clear()
         while self._fl.count():
             it = self._fl.takeAt(0)
             if it.widget():
                 it.widget().deleteLater()
 
-        basic: dict[str, dict] = {g: {} for g in _GROUPS}
-        basic["Other"] = {}
-        advanced: dict[str, dict] = {g: {} for g in _GROUPS}
-        advanced["Other"] = {}
-        for k, v in cfg.items():
-            sub = _K2G.get(k, "Other")
-            (basic if is_basic_field(k) else advanced)[sub][k] = v
-
-        # Origin shows where the value comes from today, but Save always writes
-        # to the variant file — no preset/variant split.
+    def _origin_styles(self, variant: str) -> dict[str, tuple[str, str]]:
+        """Origin → (label style, note). The origin says where a value comes
+        from today; Save always writes to the variant file."""
         variant_label = f"gui-methods/{variant}.toml"
-        origin_style = {
+        return {
             "base": (
                 f"color:{tok('text_dim')}; text-decoration: underline dotted;",
                 "from base.toml",
@@ -434,73 +404,65 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
             ),
         }
 
-        def _build_subgroup_box(gn: str, flds: dict) -> QGroupBox:
-            box = QGroupBox(gn)
-            form = QFormLayout()
-            for k in sorted(flds, key=lambda key: (_FIELD_ORDER.get(key, 100), key)):
-                w = _widget(flds[k], key=k)
-                self._w[k] = w
-                help_text = field_help(k)
-                style, note = origin_style.get(
-                    self._origin.get(k, "base"), origin_style["base"]
-                )
-                notes = (note,)
-                lbl = make_field_label(
-                    k,
-                    style=style,
-                    on_click=lambda _k=k, _h=help_text, _n=notes: self._show_explain(
-                        _k, _h, _n
-                    ),
-                )
-                form.addRow(lbl, w)
-            box.setLayout(form)
-            return box
+    def _field_group_box(
+        self, title: str, fields: dict, styles: dict[str, tuple[str, str]]
+    ) -> QGroupBox:
+        """One group of fields; registers each widget in ``self._w``."""
+        box = QGroupBox(title)
+        form = QFormLayout()
+        for k in sorted(fields, key=variant_form.field_sort_key):
+            w = _widget(fields[k], key=k)
+            self._w[k] = w
+            help_text = field_help(k)
+            style, note = styles.get(self._origin.get(k, "base"), styles["base"])
+            lbl = make_field_label(
+                k,
+                style=style,
+                on_click=lambda _k=k, _h=help_text, _n=(note,): self._show_explain(
+                    _k, _h, _n
+                ),
+            )
+            form.addRow(lbl, w)
+        box.setLayout(form)
+        return box
 
-        basic_box = QGroupBox(t("basic_section"))
-        basic_layout = QVBoxLayout()
-        basic_layout.setContentsMargins(8, 12, 8, 8)
-        for gn, flds in basic.items():
-            if not flds:
-                continue
-            basic_layout.addWidget(_build_subgroup_box(gn, flds))
-        basic_box.setLayout(basic_layout)
-        self._fl.addWidget(basic_box)
+    def _basic_section(
+        self, groups: dict[str, dict], styles: dict[str, tuple[str, str]]
+    ) -> QGroupBox:
+        box = QGroupBox(t("basic_section"))
+        lay = QVBoxLayout()
+        lay.setContentsMargins(8, 12, 8, 8)
+        for title, fields in groups.items():
+            if fields:
+                lay.addWidget(self._field_group_box(title, fields, styles))
+        box.setLayout(lay)
+        return box
 
-        advanced_box = QGroupBox(t("advanced_section"))
-        advanced_box.setCheckable(True)
-        advanced_box.setChecked(self._advanced_expanded)
-        adv_outer = QVBoxLayout()
-        adv_outer.setContentsMargins(8, 12, 8, 8)
-        adv_inner = QWidget()
-        adv_inner_layout = QVBoxLayout(adv_inner)
-        adv_inner_layout.setContentsMargins(0, 0, 0, 0)
-        for gn, flds in advanced.items():
-            if not flds:
-                continue
-            adv_inner_layout.addWidget(_build_subgroup_box(gn, flds))
-        adv_inner.setVisible(self._advanced_expanded)
-        adv_outer.addWidget(adv_inner)
-        advanced_box.setLayout(adv_outer)
+    def _advanced_section(
+        self, groups: dict[str, dict], styles: dict[str, tuple[str, str]]
+    ) -> QGroupBox:
+        """The checkable "Advanced" fold; its open state survives reloads."""
+        box = QGroupBox(t("advanced_section"))
+        box.setCheckable(True)
+        box.setChecked(self._advanced_expanded)
+        outer = QVBoxLayout()
+        outer.setContentsMargins(8, 12, 8, 8)
+        inner = QWidget()
+        inner_lay = QVBoxLayout(inner)
+        inner_lay.setContentsMargins(0, 0, 0, 0)
+        for title, fields in groups.items():
+            if fields:
+                inner_lay.addWidget(self._field_group_box(title, fields, styles))
+        inner.setVisible(self._advanced_expanded)
+        outer.addWidget(inner)
+        box.setLayout(outer)
 
-        def _on_advanced_toggled(checked: bool, _inner=adv_inner):
+        def _on_toggled(checked: bool) -> None:
             self._advanced_expanded = checked
-            _inner.setVisible(checked)
+            inner.setVisible(checked)
 
-        advanced_box.toggled.connect(_on_advanced_toggled)
-        self._fl.addWidget(advanced_box)
-
-        self._fl.addStretch()
-
-        # Connect change signals AFTER the values are seeded by _widget, so the
-        # initial setValue/addItems calls don't trip the dirty flag.
-        for w in self._w.values():
-            self._connect_dirty_signal(w)
-
-        self._wire_validation_widgets(int(merged.get("validation_split_num") or 0))
-
-        self._clear_dirty()
-
-        self._refresh_config_warnings(variant)
+        box.toggled.connect(_on_toggled)
+        return box
 
     def _refresh_config_warnings(self, variant: str) -> None:
         """Show/hide the config-health banner from a scan of the active
@@ -640,101 +602,22 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
     def _save_preset(self, *, silent: bool = False):
         """Write the form (and any extra-args TOML) into the current variant
         file — the single source of truth for the GUI."""
-        variant = self._current_variant()
-        path = variant_path(variant)
-
-        method_orig = _load(path)
-        base = _load_base()
-        # A value the hardware preset already provides must NOT be baked into
-        # the variant file, or it would pin the key against future preset
-        # switches (method wins over preset in the merge).
+        try:
+            extras = variant_form.parse_extra_args(self.extra_args_edit.toPlainText())
+        except variant_form.ExtraArgsError as e:
+            QMessageBox.warning(self, t("invalid_toml"), str(e))
+            return
         from gui import _load_all_presets  # local import: only needed for save
 
-        preset_overlay = _load_all_presets().get(self._current_preset(), {})
-
-        out: dict[str, Any] = dict(method_orig)
-
-        for k, w in self._w.items():
-            if k in _VIRTUAL_KEYS:
-                # Not real flat TOML keys; writeback handled below via per-key apply helpers.
-                continue
-            if k == submit.PATH_SCOPE_KEY:
-                scope = str(_read(w, "") or "").strip()
-                meta = out.get("variant")
-                if not isinstance(meta, dict):
-                    meta = {}
-                if scope:
-                    meta[submit.PATH_SCOPE_KEY] = scope
-                    out["variant"] = meta
-                else:
-                    meta.pop(submit.PATH_SCOPE_KEY, None)
-                    if meta:
-                        out["variant"] = meta
-                    else:
-                        out.pop("variant", None)
-                out.pop(submit.PATH_SCOPE_KEY, None)
-                continue
-            baseline = method_orig.get(k, preset_overlay.get(k, base.get(k)))
-            v = _read(w, baseline)
-            if k in method_orig or v != baseline:
-                out[k] = v
-
-        use_valid_w = self._w.get("use_valid")
-        if use_valid_w is not None:
-            vsn_w = self._w.get("validation_split_num")
-            vsn_val: int | None = None
-            if vsn_w is not None:
-                try:
-                    vsn_val = int(_read(vsn_w))
-                except (TypeError, ValueError):
-                    vsn_val = None
-            base_vsn = None
-            base_datasets = base.get("datasets")
-            if isinstance(base_datasets, list) and base_datasets:
-                first = base_datasets[0]
-                if isinstance(first, dict):
-                    raw = first.get("validation_split_num")
-                    if raw is not None:
-                        try:
-                            base_vsn = int(raw)
-                        except (TypeError, ValueError):
-                            base_vsn = None
-            apply_validation_choice(
-                out,
-                bool(_read(use_valid_w)),
-                split_num=vsn_val,
-                base_split_num=base_vsn,
-            )
-
-        rbf_w = self._w.get("repeat_by_folder_name")
-        if rbf_w is not None:
-            apply_folder_repeats_choice(
-                out,
-                bool(_read(rbf_w)),
-                base_enabled=_base_folder_repeats(base),
-            )
-
-        # Parse as TOML and merge in (overrides the form on duplicate keys).
-        # Bare backslashes (Windows path paste) break TOML escapes — try
-        # verbatim, then retry after \->/ before surfacing the error.
-        extra_text = self.extra_args_edit.toPlainText().strip()
-        extras: dict[str, Any] = {}
-        if extra_text:
-            try:
-                parsed = toml.loads(extra_text)
-            except toml.TomlDecodeError as e:
-                if "\\" in extra_text:
-                    try:
-                        parsed = toml.loads(extra_text.replace("\\", "/"))
-                    except toml.TomlDecodeError:
-                        QMessageBox.warning(self, t("invalid_toml"), str(e))
-                        return
-                else:
-                    QMessageBox.warning(self, t("invalid_toml"), str(e))
-                    return
-            extras = {k: v for k, v in parsed.items() if not isinstance(v, dict)}
-            out.update(extras)
-
+        path = variant_path(self._current_variant())
+        out = variant_form.variant_from_form(
+            _load(path),
+            self._w,
+            lambda k, baseline: _read(self._w[k], baseline),
+            base=_load_base(),
+            preset_overlay=_load_all_presets().get(self._current_preset(), {}),
+            extras=extras,
+        )
         path.parent.mkdir(parents=True, exist_ok=True)
         _save(path, out)
 

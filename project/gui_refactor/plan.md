@@ -33,8 +33,17 @@ Behaviour-preserving cleanup of the PySide6 GUI. Architecture and invariants liv
   the gallery-signature skip — plus `newest_images`. ConfigTab keeps only which guide /
   directory to show; the distill editors and PreprocessingTab use the same panel, so their
   field help now renders inline markdown and uses the `text_dim` token instead of `#888`.
+- **Form ↔ variant file → `gui/core/variant_form.py`** (Qt-free): `FIELD_ORDER` /
+  `field_sort_key`, `group_fields` (basic / advanced split), `parse_extra_args` (Windows
+  backslash retry, `ExtraArgsError`), and `variant_from_form` — the whole Save writeback
+  (preset values never baked in, `path_scope` → `[variant]`, validation / folder-repeat
+  `[[datasets]]` override, extras last) over a `read(key, baseline)` callback. ConfigTab's
+  `_reload` builds through `_origin_styles` / `_field_group_box` / `_basic_section` /
+  `_advanced_section`; `_clear_form` is shared with EasyControl's descriptor form. Save
+  output verified identical over every variant × hardware preset (plain, edited + extra
+  args, malformed extra args: 330 cases). Tests: `tests/test_gui_variant_form.py`.
 
-`config_tab.py`: 1664 → 1349 lines.
+`config_tab.py`: 1664 → 1232 lines.
 
 ## Next
 
@@ -43,17 +52,12 @@ Rough order. Each step should keep the submit-plan equivalence check passing: du
 `_chain_train_spec` / `_resolve_cache_dir` over every variant × preset before and after,
 then compare.
 
-1. **Split ConfigTab's form building.** `_reload` (~120 lines, contains the nested
-   `_build_subgroup_box`) and `_save_preset` (~110 lines: path_scope meta,
-   validation/folder-repeat writeback, extra-args TOML parse). Move the pure
-   "form values → variant dict" part into `gui/core/` next to `config_io` so it can be
-   tested headless.
-2. **EasyControlTab.** It subclasses ConfigTab and overrides 10+ methods (`_ec_*`,
+1. **EasyControlTab.** It subclasses ConfigTab and overrides 10+ methods (`_ec_*`,
    `_attach_to_job` / `_restore_idle_ui` / `_try_reattach`), and
-   `_ec_start_train_descriptor` open-codes the submit dance `_submit_job` already owns. Once
-   step 1 shrinks ConfigTab, decide between composition and a smaller documented set of
+   `_ec_start_train_descriptor` open-codes the submit dance `_submit_job` already owns. Now that ConfigTab is
+   smaller, decide between composition and a smaller documented set of
    override points.
-3. **Small items**
+2. **Small items**
    - The config-warning banner hardcodes `#5c1a1a` / `#ffd9d9` / `#a33`; switch to
      theme tokens. `dialogs/guidebook.py` and other files also hardcode hex colors
      (`grep -rln "#[0-9a-fA-F]\{6\}" gui`).
