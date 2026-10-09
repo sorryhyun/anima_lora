@@ -532,6 +532,28 @@ def build_argparser() -> argparse.ArgumentParser:
         help="Probe disc LR (LoRA stack + head, constant). Default: TOML "
         "(dmad_probe.lr, default 5e-5).",
     )
+    parser.add_argument(
+        "--dmad_probe_grad_clip",
+        type=float,
+        default=None,
+        help="Probe disc grad-norm clip; 0 disables. Default: TOML "
+        "(dmad_probe.grad_clip, default the run's optim.grad_clip).",
+    )
+    parser.add_argument(
+        "--dmad_probe_disc_steps",
+        type=int,
+        default=None,
+        help="Probe disc updates per step, each at a fresh (τ, ε) on the same "
+        "teacher/student pair. Default: TOML (dmad_probe.disc_steps, default 1).",
+    )
+    parser.add_argument(
+        "--dmad_probe_stop_on_collapse",
+        type=int,
+        default=None,
+        help="Stop the run once the probe disc's |margin| < 1e-2 for this many "
+        "consecutive steps; 0 = never. Default: TOML "
+        "(dmad_probe.stop_on_collapse, default 0).",
+    )
 
     # f-distill reweighting (needs the GAN disc).
     parser.add_argument(
@@ -723,6 +745,9 @@ class TurboConfig:
     # DMAD Phase −1 premise probe (scripts/distill_turbo/dmad_probe.py)
     dmad_probe: bool = False
     dmad_probe_lr: float = 5e-5
+    dmad_probe_grad_clip: float = 1.0  # 0 → unclipped
+    dmad_probe_disc_steps: int = 1  # disc updates per step on one pair
+    dmad_probe_stop_on_collapse: int = 0  # consecutive flat-margin steps; 0 → off
     dmad_probe_feature_block_idx: int = -1  # -1 → middle block
     dmad_probe_head: str = "token"  # "pooled" | "token"
     dmad_probe_ceiling: bool = True  # second independent DM draw per probe
@@ -1080,6 +1105,17 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         )
     dmad_probe = bool(_pick(args.dmad_probe, cfg, "dmad_probe.enabled", False))
     dmad_probe_lr = float(_pick(args.dmad_probe_lr, cfg, "dmad_probe.lr", 5e-5))
+    dmad_probe_grad_clip = float(
+        _pick(args.dmad_probe_grad_clip, cfg, "dmad_probe.grad_clip", grad_clip)
+    )
+    dmad_probe_disc_steps = int(
+        _pick(args.dmad_probe_disc_steps, cfg, "dmad_probe.disc_steps", 1)
+    )
+    dmad_probe_stop_on_collapse = int(
+        _pick(
+            args.dmad_probe_stop_on_collapse, cfg, "dmad_probe.stop_on_collapse", 0
+        )
+    )
     dmad_probe_feature_block_idx = int(
         _flatten(cfg, "dmad_probe.feature_block_idx", -1)
     )
@@ -1096,13 +1132,20 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
                 "dmad_probe requires blocks_to_swap=0 — the probe's extra "
                 "forwards are unaudited under block swap."
             )
+        if dmad_probe_disc_steps < 1:
+            raise ValueError(
+                f"dmad_probe.disc_steps={dmad_probe_disc_steps}: must be >= 1"
+            )
         if dmad_probe_head not in ("pooled", "token"):
             raise ValueError(
                 f"dmad_probe.head={dmad_probe_head!r}: expected 'pooled' or 'token'"
             )
         logger.info(
             "DMAD Phase −1 probe ON (measure-only): "
-            f"lr={dmad_probe_lr}, feature_block_idx={dmad_probe_feature_block_idx} "
+            f"lr={dmad_probe_lr}, grad_clip={dmad_probe_grad_clip}, "
+            f"disc_steps={dmad_probe_disc_steps}, "
+            f"stop_on_collapse={dmad_probe_stop_on_collapse}, "
+            f"feature_block_idx={dmad_probe_feature_block_idx} "
             f"(-1 = middle), head={dmad_probe_head}, ceiling={dmad_probe_ceiling}."
         )
     if cdm_weight < 0.0:
@@ -1418,6 +1461,9 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         ),
         dmad_probe=dmad_probe,
         dmad_probe_lr=dmad_probe_lr,
+        dmad_probe_grad_clip=dmad_probe_grad_clip,
+        dmad_probe_disc_steps=dmad_probe_disc_steps,
+        dmad_probe_stop_on_collapse=dmad_probe_stop_on_collapse,
         dmad_probe_feature_block_idx=dmad_probe_feature_block_idx,
         dmad_probe_head=dmad_probe_head,
         dmad_probe_ceiling=dmad_probe_ceiling,

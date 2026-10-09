@@ -78,6 +78,28 @@ def test_toml_and_cli_enable():
     assert c.dmad_probe is True and c.dmad_probe_lr == pytest.approx(1e-4)
 
 
+def test_grad_clip_inherits_run_clip_unless_set():
+    on = {"dmad_probe": {"enabled": True}}
+    assert _resolve(cfg=on).dmad_probe_grad_clip == pytest.approx(1.0)
+    half = {**on, "optim": {"grad_clip": 0.5}}
+    assert _resolve(cfg=half).dmad_probe_grad_clip == pytest.approx(0.5)
+    c = _resolve(["--dmad_probe_grad_clip", "0"], cfg=half)
+    assert c.dmad_probe_grad_clip == 0.0 and c.grad_clip == pytest.approx(0.5)
+
+
+def test_disc_steps_and_collapse_stop():
+    on = {"dmad_probe": {"enabled": True}}
+    c = _resolve(cfg=on)
+    assert c.dmad_probe_disc_steps == 1 and c.dmad_probe_stop_on_collapse == 0
+    c = _resolve(
+        ["--dmad_probe_disc_steps", "3", "--dmad_probe_stop_on_collapse", "10"],
+        cfg=on,
+    )
+    assert c.dmad_probe_disc_steps == 3 and c.dmad_probe_stop_on_collapse == 10
+    with pytest.raises(ValueError, match="disc_steps"):
+        _resolve(["--dmad_probe_disc_steps", "0"], cfg=on)
+
+
 def test_refuses_plain_dmd():
     with pytest.raises(ValueError, match="dpdmd"):
         _resolve(["--dmad_probe", "--base_loss", "dmd", "--student_steps", "4"])

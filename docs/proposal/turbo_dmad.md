@@ -1,7 +1,9 @@
 # Turbo DMAD — discriminator-carried distribution matching inside DP-DMD
 
-Status: PROPOSAL. Phase −1 (premise probe) gates Phase 0; arm P1 ran 2026-10-09 →
-**UNCONVERGED** (head T plateaued at accuracy 0.58, no read; see § Phase −1 results).
+Status: PROPOSAL. Phase −1 (premise probe) gates Phase 0; arms P1–P3 ran
+2026-10-09, all **UNCONVERGED** (P1: head T plateaued at accuracy 0.58; P2 / P3:
+unclipped steps separate teacher from student, then diverge and collapse to chance;
+no read; see § Phase −1 results).
 Source: Yu et al., *DMAD: Distribution
 Matching as Adversarial Distillation for Fast Visual Generation*, arXiv:2610.02188
 (ByteDance, 2026-10-01). Wiring claims below were checked against
@@ -177,10 +179,62 @@ GAN + L_CDM on) from the warm-start init, 150 steps, `--dmad_probe` defaults;
 - The DM signal itself is noisy: two independent single-draw DM estimates agree at
   cos ≈ 0.12 (0.01–0.19 by τ). Any per-step alignment with DM is capped near there.
 
-**Next arm (P2), not run:** same read and gate, disc LR 2e-4 and the disc exempt
-from the run's grad clip (both step-size knobs). If head T still plateaus below
-0.75, a disc this cheap cannot be built well enough to read — evidence against the
-cheap-disc premise, which is the speed case for DMAD.
+**P2 (2026-10-09) — UNCONVERGED.** P1 with the disc's two step-size knobs: LR 2e-4
+and the disc exempt from the run's grad clip (`--dmad_probe_lr 2e-4
+--dmad_probe_grad_clip 0`; the new knob defaults to the run's `optim.grad_clip`, so
+P1 is unchanged by it). 150 steps, ~13.9 s/step, peak 14.1 GiB. Rows:
+`output/logs/turbo/20261009-155349/dmad_probe.jsonl`; read:
+`bench/turbo/results/20261009-1631-dmad_probe_p2/result.json`.
+
+- Not a plateau like P1's: the disc separates in short bursts (acc 0.81 at step 9,
+  0.95 at step 41), and each burst is followed by a grad-norm spike (14–24; P1's sat
+  at 3–6) and a BCE jump (2.1 at step 11, 4.1 at step 47). After step 47 it has
+  collapsed: margin 0.000 ± 0.000, acc 0.500, BCE 1.396 ≈ 2 ln 2 for the rest of the
+  run. `h_probe` still moves (±0.4), so the head is not dead — it gives teacher and
+  student the same score and has stopped separating them.
+- Alignment in the window is at the null (cos −0.007 ± 0.005, null −0.001; agree Δ
+  −0.004 ± 0.003), as expected from a sample-blind head; not a reading. The ceiling
+  cos(DM, DM') = 0.128 ± 0.014 reproduces P1's 0.119.
+- Read against the pre-registered P2 rule ("if head T still plateaus below 0.75 …
+  evidence against the cheap-disc premise"): accuracy is below 0.75, but by
+  diverging rather than plateauing. P1 stepped too little and P2 too much, so neither
+  run shows how far a tuned head T can go at this capacity. Whether that counts
+  against the premise, or a P3 between the two is run first (e.g. LR 2e-4 with a disc
+  clip of ~5, or LR 1e-4 unclipped), is the owner's call.
+
+**P3 (2026-10-09) — UNCONVERGED, stopped at step 80 on collapse.** P2 at LR 1e-4
+(`--dmad_probe_lr 1e-4 --dmad_probe_grad_clip 0 --dmad_probe_stop_on_collapse 10`).
+Rows: `output/logs/turbo/20261009-163511/dmad_probe.jsonl`; read:
+`bench/turbo/results/20261009-1656-dmad_probe_p3/result.json`. Two probe knobs are
+new with this arm: `dmad_probe.stop_on_collapse` (end the run after N consecutive
+steps of |margin| < 1e-2; P1 never has 10 such steps, P2 reaches 10 at step 56) and
+`dmad_probe.disc_steps` (k disc updates per step on the same pair at fresh (τ, ε);
+unused so far). Rows now carry per-stage wall time.
+
+- Head T can separate teacher from student at this capacity: acc 0.83 at step 10,
+  0.997 / 0.999 at steps 17–18 (margin 2.4 / 5.8). Saturated, it diverges (grad norm
+  46 at step 19, 43 at step 22) and settles at chance, as in P2. Window (steps
+  41–80): acc 0.540 ± 0.019, cos −0.010 ± 0.010 vs null +0.004, ceiling 0.138.
+- So P1's plateau was not a capacity limit, and the P2 rule's "evidence against the
+  cheap-disc premise" branch, which was written for a plateau, does not apply. The
+  failure is stability once the disc saturates.
+- **Post hoc, not a read** (window chosen after seeing the deciles, n = 8): over
+  steps 9–16, while the disc was learning but not saturated (margin 0.37 ± 0.08),
+  cos(g_T, DM) = +0.179 ± 0.048 against the null +0.000 and a ceiling of 0.120 ±
+  0.031. Over steps 17–24 (saturated, then collapsing) it is +0.008 ± 0.014. This is
+  consistent with Prop. 1 holding in the unsaturated regime, where its optimum
+  h* = log p_teacher − log p_student applies, and failing once a perfectly
+  separating head's logit no longer tracks the density ratio. The pre-registered
+  gate (acc ≥ 0.75) cannot tell the two regimes apart.
+- Cost per step (rows' stage timings): teacher finish 2.46 s, one disc update 0.90 s,
+  probe grad 0.43 s, ceiling 0.64 s — ~4.4 s of the 13.9 s step; the DP-DMD loop is
+  the rest. An extra disc update per step costs ~0.9 s.
+
+**Next arm (P4), not run:** P3 with the disc clipped at 5 (normal disc grad norms
+are 3–6; the collapses follow 40+ spikes), with stop_on_collapse 10. Before it runs,
+the read should add a saturation split (e.g. window rows with |margin| ≤ 1 vs
+larger), since an always-saturated disc could pass the acc gate and still read
+near zero.
 
 ## Phase 0 — one knob: the DM term
 

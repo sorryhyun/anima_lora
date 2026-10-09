@@ -13,7 +13,8 @@ fake) + head T over one block's tokens. The critic is not touched. Per step:
 1. Teacher sample: finish the step-0 anchor rollout (``k_anchor`` →
    ``teacher_anchor_steps`` CFG Euler steps) from the same ε, so the teacher and
    student samples share their noise.
-2. Disc update: renoise teacher and ``x_pred`` at one (τ, ε), balanced BCE.
+2. Disc update: renoise teacher and ``x_pred`` at one (τ, ε), balanced BCE —
+   ``disc_steps`` times on the same pair, a fresh (τ, ε) each.
 3. Probe: ``g_T = ∂(−h_T)/∂x_pred`` at the DMD's own (τ_dm, ε_dm), compared with
    ``grad_signal`` (pre f-distill reweight) — cosine and agree-energy, each with a
    permutation null on the same tensors. With ``ceiling``, a second DM estimate
@@ -22,7 +23,8 @@ fake) + head T over one block's tokens. The critic is not touched. Per step:
 
 Every random draw here comes from a dedicated generator, so the training RNG
 stream — and with it the student/critic numerics — is the same as with the probe
-off. One JSONL row per step lands in the run's log dir; read it with
+off. ``stop_on_collapse`` ends the run once the disc's margin has gone flat.
+One JSONL row per step lands in the run's log dir; read it with
 ``bench/turbo/dmad_probe_read.py``.
 """
 
@@ -30,6 +32,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -46,6 +49,10 @@ from .primitives import renoise
 from .steps import selective_block_grad_ckpt
 
 logger = logging.getLogger(__name__)
+
+
+def _acc(h_t: torch.Tensor, h_s: torch.Tensor) -> float:
+    return float(0.5 * ((h_t > 0).float().mean() + (h_s < 0).float().mean()))
 
 
 def alignment_stats(
@@ -114,6 +121,9 @@ class DmadProbe:
         self.gen = torch.Generator(device=device)
         self.gen.manual_seed(int(cfg.seed) + 7919)
         self.out_path: Path | None = None
+        self.collapsed = False
+        self._flat_run = 0
+        self._t = 0.0
         n = sum(p.numel() for p in self.stack_params) + sum(
             p.numel() for p in self.head.parameters()
         )
@@ -147,6 +157,14 @@ class DmadProbe:
             return_features_early=True,
         )
         return self.head([feats[self.tap]])  # (B, 1) pooled | (B, N) token
+
+    def _lap(self) -> float:
+        """Seconds since the previous lap (synced, so GPU work is counted)."""
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        now = time.perf_counter()
+        dt, self._t = now - self._t, now
+        return dt
 
     def _randn_like(self, x: torch.Tensor) -> torch.Tensor:
         return torch.randn(x.shape, generator=self.gen, device=x.device, dtype=x.dtype)
@@ -183,34 +201,47 @@ class DmadProbe:
     ) -> dict:
         turbo = ctx.turbo
         B = x_pred.shape[0]
+        self._lap()
         x_s = x_pred.detach().to(self.dtype)
         x_t = self._teacher_sample(ctx, cfg, eps, v_target, crossattn_emb, c_null, B)
+
+        t_teacher = self._lap()
 
         # --- disc update: teacher (real) vs student (fake), one shared (τ, ε) ---
         # The two branches backward one at a time under block checkpointing (a
         # batched pair OOM'd on the larger buckets at 16 GB). The input must
         # require grad: the unsloth checkpoint drops the LoRA param grads when
-        # every input is detached (see cdm_off_trajectory_loss).
-        tau_d = self._rand_tau(B)
-        eps_d = self._randn_like(x_s)
-        h_parts = []
-        with self._disc_view(turbo), selective_block_grad_ckpt(ctx.model):
-            for x_src, loss_fn in (
-                (x_t, lambda h: F.softplus(-h).mean()),
-                (x_s, lambda h: F.softplus(h).mean()),
-            ):
-                x_r = renoise(x_src, tau_d, eps_d).requires_grad_()
-                h = self._h(ctx, x_r, tau_d, crossattn_emb, no_grad=False)
-                loss_fn(h).backward()
-                h_parts.append(h.detach())
-        h_t, h_s = h_parts
+        # every input is detached (see cdm_off_trajectory_loss). With
+        # disc_steps > 1 the pair is reused at a fresh (τ, ε) per update; the
+        # row's bce / margin / acc are the first update's, scored before the
+        # disc has trained on this pair.
+        clip = cfg.dmad_probe_grad_clip if cfg.dmad_probe_grad_clip > 0 else None
+        for k in range(cfg.dmad_probe_disc_steps):
+            tau_d = self._rand_tau(B)
+            eps_d = self._randn_like(x_s)
+            h_parts = []
+            with self._disc_view(turbo), selective_block_grad_ckpt(ctx.model):
+                for x_src, loss_fn in (
+                    (x_t, lambda h: F.softplus(-h).mean()),
+                    (x_s, lambda h: F.softplus(h).mean()),
+                ):
+                    x_r = renoise(x_src, tau_d, eps_d).requires_grad_()
+                    h = self._h(ctx, x_r, tau_d, crossattn_emb, no_grad=False)
+                    loss_fn(h).backward()
+                    h_parts.append(h.detach())
+            gn = torch.nn.utils.clip_grad_norm_(
+                self.stack_params + list(self.head.parameters()),
+                max_norm=clip if clip is not None else float("inf"),
+            )
+            self.opt.step()
+            self.opt.zero_grad(set_to_none=True)
+            if k == 0:
+                h_t, h_s = h_parts
+                tau_d0 = tau_d
+                disc_grad_norm = gn
+            h_t_last, h_s_last = h_parts
         loss = gan_loss_discriminator(h_t, h_s)
-        disc_grad_norm = torch.nn.utils.clip_grad_norm_(
-            self.stack_params + list(self.head.parameters()),
-            max_norm=cfg.grad_clip if cfg.grad_clip > 0 else float("inf"),
-        )
-        self.opt.step()
-        self.opt.zero_grad(set_to_none=True)
+        t_disc = self._lap()
 
         # --- probe: generator gradient of −h_T at the DMD's (τ_dm, ε_dm) ---
         for p in self.stack_params:
@@ -233,22 +264,18 @@ class DmadProbe:
             self.head.requires_grad_(True)
 
         stats = alignment_stats(g_t, dmd.grad_signal, self.gen)
+        t_probe = self._lap()
         row: dict = {
             "step": step,
             "tau_dm": float(dmd.tau_dm[0]),
-            "tau_d": float(tau_d[0]),
+            "tau_d": float(tau_d0[0]),
             "grad_step": grad_step_idx,
             "grad_step_sigma": grad_step_sigma,
             "bce": float(loss),
             "disc_grad_norm": float(disc_grad_norm),
             "margin": float(h_t.detach().mean() - h_s.detach().mean()),
-            "acc": float(
-                0.5
-                * (
-                    (h_t.detach() > 0).float().mean()
-                    + (h_s.detach() < 0).float().mean()
-                )
-            ),
+            "acc": _acc(h_t, h_s),
+            "acc_last": _acc(h_t_last, h_s_last),
             "h_probe": float(h_probe.detach().mean()),
             "g_t_rms": float(g_t.float().pow(2).mean().sqrt()),
             "dm_rms": float(dmd.grad_signal.float().pow(2).mean().sqrt()),
@@ -283,6 +310,17 @@ class DmadProbe:
             # comparing at (τ_dm, ε_dm) is visible as cos − cos_dm2.
             row["cos_dm2"] = alignment_stats(g_t, dm2, self.gen)["cos"]
             row["tau_2"] = float(tau2[0])
+            row["t_ceil"] = self._lap()
+        row.update(t_teacher=t_teacher, t_disc=t_disc, t_probe=t_probe)
+
+        n = cfg.dmad_probe_stop_on_collapse
+        self._flat_run = self._flat_run + 1 if abs(row["margin"]) < 1e-2 else 0
+        if n > 0 and self._flat_run >= n and not self.collapsed:
+            self.collapsed = True
+            logger.warning(
+                f"DMAD probe: |margin| < 1e-2 for {n} consecutive steps at step "
+                f"{step} — disc collapsed; stopping the run (stop_on_collapse)."
+            )
 
         if self.out_path is not None:
             with open(self.out_path, "a", encoding="utf-8") as f:

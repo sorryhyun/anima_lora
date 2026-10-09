@@ -442,6 +442,8 @@ def run_loop(ctx: RunContext, cfg):
                     grad_step_idx=grad_step_idx,
                     grad_step_sigma=grad_step_sigma,
                 )
+                if ctx.dmad_probe.collapsed:
+                    break
 
             # --- logging accumulators (all GPU-side; flushed below every log_interval
             # in one stacked .tolist() so per-step CUDA syncs go to zero) ---
