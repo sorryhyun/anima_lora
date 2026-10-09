@@ -81,6 +81,7 @@ class LoRAModule(BaseLoRAModule):
         down_init="kaiming",
         grad_basis=None,
         svd_slice=0,
+        svd_slice_count=0,
     ):
         """if alpha == 0 or None, alpha is rank (no scaling).
 
@@ -96,6 +97,8 @@ class LoRAModule(BaseLoRAModule):
         ``[k·r, (k+1)·r)`` instead of the top-r, so adapters trained with
         different slices own mutually orthogonal input subspaces (slices of one
         orthonormal basis) — a per-artist address for merging. 0 = top-r.
+        ``svd_slice_count=N`` (> 0) interleaves instead: slice k takes vectors
+        ``{k, k+N, k+2N, …}``, so every slice gets one of the top-N directions.
         See docs/methods/svd-down-lora.md, docs/proposal/grad_basis_init.md.
         """
         super().__init__(
@@ -131,7 +134,7 @@ class LoRAModule(BaseLoRAModule):
         torch.nn.init.zeros_(self.lora_up.weight)
 
         if down_init == "weight_svd":
-            self._init_down_weight_svd(org_module, svd_slice)
+            self._init_down_weight_svd(org_module, svd_slice, svd_slice_count)
         elif down_init in ("grad_svd", "basis_file"):
             self._init_down_grad_basis(grad_basis, down_init)
         elif down_init != "kaiming":
@@ -150,13 +153,15 @@ class LoRAModule(BaseLoRAModule):
         self._fused = False
 
     def _init_down_weight_svd(
-        self, org_module: torch.nn.Module, svd_slice: int = 0
+        self, org_module: torch.nn.Module, svd_slice: int = 0, svd_slice_count: int = 0
     ) -> None:
         """SVD-Down: seed ``lora_down`` with W0's top-r right singular vectors.
 
         ``svd_slice=k`` shifts the window to singular vectors ``[k·r, (k+1)·r)``;
-        the window must fit inside ``min(W.shape)`` or the init refuses — on the
-        base DiT the 256-row adaln ``.1`` Linears cap r=32 at slices 0–7.
+        with ``svd_slice_count=N`` it takes the interleaved comb ``k + N·j``
+        (j < r) instead. The window must fit inside ``min(W.shape)`` or the init
+        refuses — on the base DiT the 256-row adaln Linears cap r=32 at slices
+        0–7 (contiguous) or N·r ≤ 256 (interleaved).
 
         ``A_0 = V_r^T / sqrt(3)`` where ``W0 = U Σ V^T`` and the ``1/sqrt(3)``
         matches the expected row-norm of the Kaiming default (a row of V_r^T has
@@ -173,18 +178,22 @@ class LoRAModule(BaseLoRAModule):
             return
         W = org_module.weight.data.float()
         rank = self.lora_dim
-        offset = int(svd_slice) * rank
-        if offset + rank > min(W.shape):
+        if svd_slice_count:
+            idx = int(svd_slice) + int(svd_slice_count) * torch.arange(rank)
+        else:
+            idx = int(svd_slice) * rank + torch.arange(rank)
+        offset, end = int(idx[0]), int(idx[-1]) + 1
+        if end > min(W.shape):
             raise ValueError(
-                f"svd_slice={svd_slice}: window [{offset}, {offset + rank}) exceeds "
+                f"svd_slice={svd_slice}: window [{offset}, {end}) exceeds "
                 f"the {min(W.shape)}-vector spectrum of {self.lora_name} "
                 f"({tuple(W.shape)}); lower the slice or the rank."
             )
         # Exact basis: slice 0 is the actual top-r and every slice pair is
         # exactly orthogonal (a randomized sketch would break both).
-        V = _top_right_singular_vectors(W, offset + rank)
+        V = _top_right_singular_vectors(W, end)
         with torch.no_grad():
-            v_r = V[:, offset : offset + rank].T / math.sqrt(3)
+            v_r = V[:, idx].T / math.sqrt(3)
             self.lora_down.weight.copy_(v_r.to(self.lora_down.weight.dtype))
 
     def _init_down_grad_basis(self, grad_basis, mode: str) -> None:

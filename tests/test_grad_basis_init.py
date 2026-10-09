@@ -205,6 +205,79 @@ def test_cfg_svd_slice_needs_weight_svd():
     assert _cfg(down_init="kaiming").svd_slice == 0
 
 
+def test_interleaved_slices_take_the_comb_and_stay_orthogonal():
+    torch.manual_seed(0)
+    org = torch.nn.Linear(IN, OUT, bias=False)  # 8 vectors = 2 slices · r
+    kw = dict(down_init="weight_svd", svd_slice_count=2)
+    a = LoRAModule("m", org, 1.0, RANK, 1, svd_slice=0, **kw)
+    b = LoRAModule("m", org, 1.0, RANK, 1, svd_slice=1, **kw)
+    qa, qb = _right_basis(a), _right_basis(b)
+    assert _overlap(qa, qb) == pytest.approx(0.0, abs=1e-3)
+    _, _, vh = torch.linalg.svd(org.weight.data.float(), full_matrices=False)
+    assert _overlap(qa, vh[[0, 2, 4, 6]].T) == pytest.approx(1.0, abs=1e-3)
+    assert _overlap(qb, vh[[1, 3, 5, 7]].T) == pytest.approx(1.0, abs=1e-3)
+
+
+def test_interleaved_slice_beyond_spectrum_refuses():
+    org = torch.nn.Linear(IN, OUT, bias=False)
+    with pytest.raises(ValueError, match="exceeds"):
+        LoRAModule(
+            "m", org, 1.0, RANK, 1, down_init="weight_svd", svd_slice_count=3
+        )  # comb 0,3,6,9 runs past the 8-vector spectrum
+
+
+def test_cfg_svd_slice_count_validation():
+    with pytest.raises(ValueError, match="only applies to down_init='weight_svd'"):
+        _cfg(down_init="kaiming", svd_slice_count="8")
+    with pytest.raises(ValueError, match="must be < svd_slice_count"):
+        _cfg(down_init="weight_svd", svd_slice="8", svd_slice_count="8")
+    assert _cfg(down_init="weight_svd", svd_slice_count="8").svd_slice_count == 8
+
+
+def test_adaln_modules_ignore_the_slice():
+    """adaln_up_* takes the top-r whatever the slice; other modules take it."""
+    from networks.lora_anima.config import LoRANetworkCfg
+    from networks.lora_anima.network import LoRANetwork
+
+    class Block(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.q_proj = torch.nn.Linear(IN, IN, bias=False)
+            self.adaln_up_mlp = torch.nn.Linear(IN, 3 * IN, bias=False)
+
+    class Toy(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.blocks = torch.nn.ModuleList([Block()])
+
+    torch.manual_seed(0)
+    toy = Toy()
+    cfg = LoRANetworkCfg.from_kwargs(
+        {
+            "down_init": "weight_svd",
+            "svd_slice": "1",
+            "svd_slice_count": "2",
+            "train_adaln": "true",
+        },
+        network_dim=RANK,
+        network_alpha=float(RANK),
+        neuron_dropout=None,
+        module_class=LoRAModule,
+    )
+    mods = {m.lora_name: m for m in LoRANetwork([], toy, cfg).unet_loras}
+    blk = toy.blocks[0]
+
+    def vh(lin):
+        return torch.linalg.svd(lin.weight.data.float(), full_matrices=False)[2]
+
+    q = _right_basis(mods["lora_unet_blocks_0_q_proj"])
+    assert _overlap(q, vh(blk.q_proj)[1 : 2 * RANK : 2].T) == pytest.approx(
+        1.0, abs=1e-3
+    )
+    ad = _right_basis(mods["lora_unet_blocks_0_adaln_up_mlp"])
+    assert _overlap(ad, vh(blk.adaln_up_mlp)[:RANK].T) == pytest.approx(1.0, abs=1e-3)
+
+
 # --------------------------------------------------------------------------- #
 # cfg validation
 # --------------------------------------------------------------------------- #

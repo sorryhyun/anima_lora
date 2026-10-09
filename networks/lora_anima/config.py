@@ -230,7 +230,13 @@ class LoRANetworkCfg:
     # vectors [k·r, (k+1)·r) instead of the top-r. Slices of one orthonormal
     # basis are mutually orthogonal, so adapters trained with different slices
     # never share an input subspace at merge (a per-artist address). 0 = top-r.
+    # adaln_up_* modules ignore it and always take the top-r: their input is a
+    # σ-only vector that lives in W0's top ~2 directions, so no slice layout can
+    # split it (the shards would all learn a global bias, only one of them live).
     svd_slice: int = 0
+    # > 0: interleaved slices — slice k takes vectors {k, k+N, k+2N, …} so every
+    # slice owns one of the top-N directions. 0 = contiguous [k·r, (k+1)·r).
+    svd_slice_count: int = 0
 
     # Gradient-SVD basis, {lora_name: V (in, r_store)} — required by
     # down_init="grad_svd"/"basis_file", built by networks/grad_basis.py.
@@ -349,6 +355,20 @@ class LoRANetworkCfg:
             raise ValueError(
                 f"svd_slice={svd_slice} only applies to down_init='weight_svd' "
                 f"(got {down_init!r})."
+            )
+        svd_slice_count = int(kwargs.get("svd_slice_count", 0) or 0)
+        if svd_slice_count < 0:
+            raise ValueError(
+                f"svd_slice_count={svd_slice_count}: must be a non-negative integer."
+            )
+        if svd_slice_count and down_init != "weight_svd":
+            raise ValueError(
+                f"svd_slice_count={svd_slice_count} only applies to "
+                f"down_init='weight_svd' (got {down_init!r})."
+            )
+        if svd_slice_count and svd_slice >= svd_slice_count:
+            raise ValueError(
+                f"svd_slice={svd_slice} must be < svd_slice_count={svd_slice_count}."
             )
 
         _legacy_router_keys = [
@@ -535,6 +555,7 @@ class LoRANetworkCfg:
             router_tau=router_tau,
             down_init=down_init,
             svd_slice=svd_slice,
+            svd_slice_count=svd_slice_count,
             step_expert_K=step_expert_K,
             channel_scales_dict=channel_scales_dict,
             grad_basis_dict=grad_basis_dict,
