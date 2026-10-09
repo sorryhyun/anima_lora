@@ -24,3 +24,29 @@ Not fetched: やさしさアンチック (fontna.com page 404 / no link found), 
 brush / handwriting fonts (off the dialogue-and-SFX distribution we train).
 
 Re-fetch: `curl -L -o x.zip <source>` and unzip the listed face here.
+
+## `kozh/` — Korean / Chinese faces (2026-10-09)
+
+For the reseed line's `lang` runs (`../cjk_anima_reseed/configs/kozh16.toml`): `reseed.pools.lang_fonts` adds
+every face here to `find_fonts()`'s list, which never globs `kozh/` — several ZH faces cover kana and would
+otherwise join every JA run. A face whose cmap maps a run's row to an empty outline leaves that run's draw
+(`TanukiMagic.ttf` maps 你 to one; `render_grid` divides by its zero width). Coverage checked with
+fontTools: KS X 1001 = 2 350 Hangul syllables, GB2312 = 6 763 hanzi. All SIL OFL 1.1 (`licenses/kozh/`).
+
+| file | face | role | coverage | source |
+|---|---|---|---|---|
+| `NanumGothic-Regular.ttf` | Nanum Gothic | KO dialogue | KS X 1001 | google/fonts `ofl/nanumgothic` |
+| `DoHyeon-Regular.ttf` | Do Hyeon | KO emphasis | KS X 1001 | `ofl/dohyeon` |
+| `Jua-Regular.ttf` | Jua | KO rounded / playful | KS X 1001 | `ofl/jua` |
+| `BlackHanSans-Regular.ttf` | Black Han Sans | KO poster | KS X 1001 | `ofl/blackhansans` |
+| `NanumPenScript-Regular.ttf` | Nanum Pen Script | KO marker | KS X 1001 | `ofl/nanumpenscript` |
+| `NanumMyeongjo-Regular.ttf` | Nanum Myeongjo | KO serif | KS X 1001 | `ofl/nanummyeongjo` |
+| `NotoSansSC-Medium.otf` | Noto Sans SC Medium | ZH dialogue (+ kana) | GB2312 | notofonts/noto-cjk `Sans/SubsetOTF/SC` |
+| `SmileySans-Oblique.ttf` | Smiley Sans 得意黑 v2.0.1 | ZH emphasis (+ kana) | GB2312 | atelier-anchor/smiley-sans (release zip) |
+| `ZCOOLKuaiLe-Regular.ttf` | ZCOOL KuaiLe 站酷快乐体 | ZH playful | GB2312 | `ofl/zcoolkuaile` |
+| `DouyinSansBold.ttf` | Douyin Sans 抖音美好体 | ZH poster (+ kana) | GB2312 | bytedance/fonts `DouyinSans/` |
+| `LXGWMarkerGothic-Regular.ttf` | LXGW Marker Gothic 霞鹜漫黑 v1.003 | ZH marker (+ kana) | GB2312 | lxgw/LxgwMarkerGothic (release zip, `fonts/ttf/`) |
+| `LXGWWenKai-Regular.ttf` | LXGW WenKai 霞鹜文楷 v1.522 | handwriting; KO + ZH + JA in one face | KS X 1001, GB2312, kana | lxgw/LxgwWenKai (release asset) |
+
+Re-fetch: google/fonts faces from `https://github.com/google/fonts/raw/main/ofl/<dir>/<file>`, the rest from
+the release / repo paths above, into `kozh/`.

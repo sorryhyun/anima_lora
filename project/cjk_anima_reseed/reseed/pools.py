@@ -43,6 +43,7 @@ class Pools:
     )  # the draw loop's: scene → items
     scene_cap: int | None = None  # the draw loop's: items a scene may take
     decks: dict = field(default_factory=dict)
+    lang: dict = field(default_factory=dict)  # glyph → language (a ``lang`` run's rows)
 
 
 def _quietly(fn, *args):
@@ -59,10 +60,11 @@ def _quietly(fn, *args):
     return out
 
 
-def build_pools(rows: list, rng: random.Random) -> Pools:
+def build_pools(rows: list, rng: random.Random, lang: dict | None = None) -> Pools:
     """``rows``: ``data.vocabs`` specs (``chars:…``), single glyphs only —
     the stage resolvers on them, so a row means what it meant in every read
-    of record (and the eval groups ``eval.json`` carries)."""
+    of record (and the eval groups ``eval.json`` carries). ``lang`` (glyph →
+    language): the ``KOZH_FONTS`` faces join the fonts (``lang_fonts``)."""
     import tempfile
     from types import SimpleNamespace
 
@@ -132,8 +134,11 @@ def build_pools(rows: list, rng: random.Random) -> Pools:
         f"mono {len(mono)} / {len(scenes)} drawn at {T.MONO_SHARE}",
         flush=True,
     )
+    fonts = find_fonts()
+    if lang:
+        fonts = lang_fonts(fonts, singles)
     return Pools(
-        fonts=find_fonts(),
+        fonts=fonts,
         tokq=tokq,
         inv=inv,
         singles=singles,
@@ -143,7 +148,70 @@ def build_pools(rows: list, rng: random.Random) -> Pools:
         opt_in=opt_in,
         mono=mono,
         shapes=ShapePool(T.SHAPES, T.SEED),
+        lang=dict(lang or {}),
     )
+
+
+# ----------------------------------------------------------------------------
+# rows lettered in another language (a ``lang`` run)
+
+# the KO / ZH faces (task_report.md § 4; FONTS.md): out of the top-level
+# assets/fonts that ``find_fonts()`` globs for every JA run — several ZH faces
+# cover kana too
+KOZH_FONTS = "kozh"
+
+
+def empty_glyphs(font: str, glyphs) -> str:
+    """The glyphs ``font``'s cmap maps to an empty outline (``TanukiMagic.ttf``'s
+    你: ``font_covers`` passes it, ``render_grid`` divides by its zero width)."""
+    from common.render.flat import font_covers
+    from PIL import ImageFont
+
+    pf = ImageFont.truetype(font, 64, index=0)
+    out = ""
+    for g in glyphs:
+        if font_covers(font, g):
+            x0, y0, x1, y1 = pf.getbbox(g)
+            if x1 <= x0 or y1 <= y0:
+                out += g
+    return out
+
+
+def lang_fonts(fonts: list, singles) -> list:
+    """``fonts`` + the ``KOZH_FONTS`` faces, less every face that maps a row
+    to an empty outline."""
+    from common.render.flat import FONT_DIR
+
+    kozh = sorted(str(p) for p in (FONT_DIR / KOZH_FONTS).glob("*.[ot]tf"))
+    assert kozh, f"no faces in {FONT_DIR / KOZH_FONTS} (FONTS.md: re-fetch)"
+    out = []
+    for f in fonts + kozh:
+        bad = empty_glyphs(f, singles)
+        if bad:
+            print(f"fonts: {Path(f).name} out (an empty outline for {bad})", flush=True)
+        else:
+            out.append(f)
+    print(f"fonts: {len(out)} ({len(kozh)} KO / ZH faces joined)", flush=True)
+    return out
+
+
+LANG_TAGS = (("japanese text", "{l} text"), ("Japanese ", "{L} "))
+
+
+def relang(caption: str, language: str) -> str:
+    """A scene caption for an item lettered in ``language``: ``japanese text``
+    → ``korean text`` in the tags, ``Japanese text / SFX reads as`` →
+    ``Korean …`` in the clause."""
+    assert "korean" not in caption.lower() and "chinese" not in caption.lower(), caption
+    for a, b in LANG_TAGS:
+        caption = caption.replace(a, b.format(l=language, L=language.capitalize()))
+    return caption
+
+
+def item_lang(pools: Pools, text: str) -> str | None:
+    """The language of ``text``'s first glyph named in ``pools.lang`` (``None``:
+    lettered as Japanese)."""
+    return next((pools.lang[c] for c in text if c in pools.lang), None)
 
 
 # ----------------------------------------------------------------------------
@@ -616,7 +684,9 @@ def focus_pools(pools: Pools, focus: tuple, window_kanji: int) -> dict:
     pools.windows = {
         g: v
         for g in focus
-        if (v := [w for w in pools.windows.get(g, ()) if kanji_count(w) <= window_kanji])
+        if (
+            v := [w for w in pools.windows.get(g, ()) if kanji_count(w) <= window_kanji]
+        )
     }
     pools.windows_len = {
         g: {k: [w for w in v if len(w) == k] for k in sorted({len(w) for w in v})}
@@ -791,3 +861,9 @@ def add_sentences(
         flush=True,
     )
     return stats
+
+
+def lang_caption(pools: Pools, caption: str, text: str) -> str:
+    """``caption`` in the language of ``text``'s rows (a JA item's unchanged)."""
+    lang = item_lang(pools, text)
+    return relang(caption, lang) if lang else caption

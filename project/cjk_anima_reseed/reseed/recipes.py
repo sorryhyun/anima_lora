@@ -24,7 +24,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field
 
-from .pools import Pools
+from .pools import Pools, lang_caption
 from . import table as T
 
 MIN_FIT_SCENES = (
@@ -185,7 +185,9 @@ def _draw_scene(
             vocabs=[text],
             layout="scene",
             boxes=[box],
-            caption=scene_caption(sc, text, horizontal=horiz),
+            caption=lang_caption(
+                pools, scene_caption(sc, text, horizontal=horiz), text
+            ),
             src="scene",
             shape=im.size,
             extra={
@@ -383,7 +385,7 @@ def sent(pools: Pools, rng: random.Random, p: dict):
         assert list(im.size) == list(sc["shape"]), (sc["i"], im.size, sc["shape"])
         pools.used[j] += 1
         pools.tier_used[j] += 1
-        caption = scene_caption(sc, text)
+        caption = lang_caption(pools, scene_caption(sc, text), text)
         assert caption.count(f'"{text}"') == 1, caption
         return Item(
             image=im,

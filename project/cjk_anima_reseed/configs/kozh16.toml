@@ -1,0 +1,12 @@
+# kozh16 — 8 Hangul + 8 hanzi rows cold beside seed_1008 (task_report.md, user 10-09):
+# where KO / ZH rows sit against the kana and kanji balls of the shipped seed.
+# krzh16's set (finished/cjk_renderable_anima/reports/krzh16_2026_09_16.md), 国 → 东
+# (1008 trains 国). The cold recipe of record (lr 1e-3, the norm pull on, 225 steps a
+# row — plan.md § 3's scale budget for a new row) on the reseed table; no dialogue line
+# spells these rows, so the bubbleN tiers drop and grid / lone / bubble1 take their
+# share. Every other row frozen at seed_1008 on its punct pack.
+rows = ["chars:가힝ㄹ몹감없양한", "chars:你这个们说东时为"]
+lang = { korean = "가힝ㄹ몹감없양한", chinese = "你这个们说东时为" }
+seed = "1008"
+steps_per_row = 225
+pack = "punct"

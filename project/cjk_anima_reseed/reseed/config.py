@@ -8,7 +8,8 @@
                                  # spelling encodes to its row
     read = ["こんにちは", …]      # held out of the windows by trigram
     seed = "0921"                # the rows every other row rides frozen at: "0921" (the
-                                 # old seed, the kana run's) or "0930" (seed_retrain_0930)
+                                 # old seed, the kana run's), "0930" (seed_retrain_0930)
+                                 # or "1008" (seed_1008 = jp_v1's rows, on the punct pack)
     steps_per_row = 135
     shares = { grid_44 = 10, … }  # optional: % of the items per tier, every tier
                                   # named but the opt-in ones (table share 0: left
@@ -64,6 +65,14 @@
                                   # — of the windows by trigram, of the ``sent`` lines by
                                   # 5-gram (the ruler's rule); a corpus file outside the
                                   # repo (first tsv column, ``#`` lines skipped)
+    lang = { korean = "가힝…", chinese = "你这…" }  # optional: the rows lettered in
+                                  # another language (glyph → language, named per row:
+                                  # ``个`` is in Shift-JIS, so no encoding test tells): the
+                                  # faces in ``../cjk_anima_scale/assets/fonts/kozh/`` join
+                                  # the draw, a scene caption names the item's language
+                                  # (``korean text`` / ``Korean text reads as``), and a
+                                  # tier with nothing to draw for the rows (no window)
+                                  # drops, the others scaled back to the table's Σ
 
 Its outputs land in ``output/cjk_anima_reseed/<run>/`` (``data/``,
 ``trained.pt``).
@@ -100,7 +109,12 @@ KEYS = (
     "pres",
     "focus",
     "held",
+    "lang",
 )
+# a run's ``seed``: the rows every other row rides frozen at
+SEEDS = ("0921", "0930", "1008")
+SEED_1008 = OUT / "seed_1008" / "trained.pt"  # transplant.py write (plan.md § 3)
+LANGS = ("korean", "chinese")
 # the base packs a run may sit on (``punct_pack.py``): the raw pack's rows and
 # ids plus encode rules / appended rows, so the seed rows ride on it unchanged
 PACKS = {"punct": "models/vocab_packs/anima_cjk_vocab_pack_punct"}
@@ -142,6 +156,7 @@ class Run:
     focus: tuple = ()  # every item holds one of these glyphs; () = off
     focus_kanji: tuple = ()  # (line, window): the most kanji a focus item may hold
     held: str = ""  # strings held out beside ``read`` (a path, $MANGA109S expanded)
+    lang: dict | None = None  # glyph → language for the rows not lettered as Japanese
 
     def phrase_file(self) -> str:
         """The dialogue line file: ``LINES[lines]``, else the scale line's
@@ -159,7 +174,9 @@ class Run:
             return ()
         lines = Path(_expand(self.held)).read_text(encoding="utf-8").splitlines()
         return tuple(
-            dict.fromkeys(ln.split("\t")[0] for ln in lines if ln.strip() and ln[0] != "#")
+            dict.fromkeys(
+                ln.split("\t")[0] for ln in lines if ln.strip() and ln[0] != "#"
+            )
         )
 
     def steps(self, steps_per_row: int | None = None) -> int | None:
@@ -238,7 +255,11 @@ class Run:
         if self.stick_from:
             return OUT / self.stick_from / "trained.pt"
 
-        return {"0921": paths.SEED_ROWS_0921, "0930": paths.SEED_ROWS}[self.seed]
+        return {
+            "0921": paths.SEED_ROWS_0921,
+            "0930": paths.SEED_ROWS,
+            "1008": SEED_1008,
+        }[self.seed]
 
     def scale_config(self):
         """The ``cjk_scale.train`` view of the run."""
@@ -268,7 +289,7 @@ def load(run: str) -> Run:
     raw = tomllib.loads(path.read_text(encoding="utf-8"))
     extra = sorted(set(raw) - set(KEYS))
     assert not extra, f"{path}: a run is {{{', '.join(KEYS)}}} — not {extra}"
-    assert raw.get("seed") in ("0921", "0930"), f'{path}: seed is "0921" or "0930"'
+    assert raw.get("seed") in SEEDS, f"{path}: seed is one of {SEEDS}"
     shares = raw.get("shares")
     if shares is not None:
         from .table import TABLE
@@ -338,7 +359,9 @@ def load(run: str) -> Run:
         assert set(focus) == {"rows", "line_kanji", "window_kanji"}, (
             f"{path}: focus {{rows, line_kanji, window_kanji}}"
         )
-        assert focus["rows"].startswith("chars:"), f"{path}: focus rows is a chars: spec"
+        assert focus["rows"].startswith("chars:"), (
+            f"{path}: focus rows is a chars: spec"
+        )
         trained = {g for r in raw["rows"] for g in r.split(":", 1)[1]}
         focus_kanji = (int(focus["line_kanji"]), int(focus["window_kanji"]))
         focus = tuple(dict.fromkeys(focus["rows"].split(":", 1)[1]))
@@ -348,6 +371,14 @@ def load(run: str) -> Run:
         assert min(focus_kanji) >= 1, f"{path}: focus kanji caps {focus_kanji}"
     held = raw.get("held", "")
     assert isinstance(held, str), f"{path}: held is a path"
+    lang = raw.get("lang")
+    if lang is not None:
+        assert set(lang) <= set(LANGS), f"{path}: lang names {LANGS}"
+        trained = {g for r in raw["rows"] for g in r.split(":", 1)[1]}
+        lang = {g: name for name, gs in lang.items() for g in gs}
+        assert set(lang) <= trained, (
+            f"{path}: lang glyphs outside rows {sorted(set(lang) - trained)}"
+        )
     return Run(
         name=path.stem,
         path=path,
@@ -374,4 +405,5 @@ def load(run: str) -> Run:
         focus=tuple(focus or ()),
         focus_kanji=focus_kanji,
         held=held,
+        lang=lang,
     )
