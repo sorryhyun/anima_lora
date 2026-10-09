@@ -229,8 +229,7 @@ class EasyControlTab(ConfigTab):
         path = _DESCRIPTOR_DIR / f"{variant}.toml"
         rel = path.relative_to(ROOT)
         self._desc_doc = tomlkit.parse(path.read_text(encoding="utf-8"))
-        if hasattr(self, "_explain"):
-            self._set_explain_html(t("easycontrol_descriptor_note", path=str(rel)))
+        self._explain.show_guide(t("easycontrol_descriptor_note", path=str(rel)))
 
         header = QLabel(t("easycontrol_descriptor_form_header", path=str(rel)))
         header.setWordWrap(True)

@@ -4,7 +4,8 @@ Split by concern into sibling modules — ``mixins`` (LazyTabMixin,
 DirtyTrackingMixin), ``fields`` (the ``_widget``/``_read`` factory + label
 helpers), ``buttons`` (action-button variants + SplitButtonStyle),
 ``target_res`` (the multi-scale tier row), ``sample_prompts`` (the sample
-prompt editor), ``image_view`` (the zoom/pan image label) — all re-exported
+prompt editor), ``image_view`` (the zoom/pan image label), ``explain_panel``
+(the help / image-gallery pane) — all re-exported
 here; import from ``gui.widgets``.
 """
 
@@ -26,6 +27,7 @@ from gui.widgets.fields import (
     make_field_label,
     wrap_tooltip,
 )
+from gui.widgets.explain_panel import ExplainPanel, newest_images
 from gui.widgets.image_view import ImageViewerDialog, ScaledImageLabel
 from gui.widgets.mixins import DirtyTrackingMixin, LazyTabHolder, LazyTabMixin
 from gui.widgets.sample_prompts import (
@@ -38,6 +40,8 @@ from gui.widgets.sample_prompts import (
 from gui.widgets.target_res import _target_res_tiers, _TargetResWidget
 
 __all__ = [
+    "ExplainPanel",
+    "newest_images",
     "_ATTN_MODES",
     "LazyTabHolder",
     "LazyTabMixin",

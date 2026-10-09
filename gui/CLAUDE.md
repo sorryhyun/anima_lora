@@ -162,7 +162,10 @@ must not appear.
   `fields.py` (`_widget(value, key)` TOML value → Qt widget, `_read(widget)` back, label /
   tooltip helpers), `mixins.py` (`LazyTabMixin`, `LazyTabHolder`, `DirtyTrackingMixin`),
   `buttons.py` (`action_button` / `apply_variant` / `SplitButtonStyle`), `target_res.py`,
-  `sample_prompts.py`, `image_view.py`, `_qt_utils.py` (leaf helpers like `_no_wheel`).
+  `sample_prompts.py`, `image_view.py`, `explain_panel.py` (`ExplainPanel`: the right-hand
+  guide / field-help / image-gallery pane of ConfigTab, the distill editors and
+  PreprocessingTab; its `mode` tells ConfigTab's job tick whether the sample gallery may
+  refresh), `_qt_utils.py` (leaf helpers like `_no_wheel`).
   Imports are one-way — `fields.py`/`mixins.py` import the domain widgets, never the
   reverse — and nothing here imports `gui.jobs.daemon`.
 - **`i18n/`** — `en/ko/ja/cn.py`, each `STRINGS: dict[str,str]` (~420–470 keys).

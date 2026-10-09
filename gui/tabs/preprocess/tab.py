@@ -19,7 +19,6 @@ and ``tasks.py`` builds each request through the package's ``build_argv``.
 
 from __future__ import annotations
 
-import html
 import json
 import shutil
 import sys
@@ -38,7 +37,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSplitter,
-    QTextBrowser,
     QToolButton,
     QVBoxLayout,
     QHBoxLayout,
@@ -63,7 +61,7 @@ from gui.core import anime_tools_panel
 from gui.jobs import daemon as gui_daemon
 from gui.jobs.mixin import DaemonJobMixin
 from gui.core.paths import read_gui_settings
-from gui.explanations import field_help_html, preprocess_guide
+from gui.explanations import preprocess_guide
 from gui.i18n import t
 from gui.jobs.progress import TqdmProgressTracker, make_progress_bar
 from gui.core import submit
@@ -89,9 +87,10 @@ from gui.tabs.preprocess.stage_form import (
     seeded_defaults,
 )
 from gui.tabs.preprocess.text_caching import TextCachingSection
-from gui.theme import action_button_qss, rich_text_pt as _explain_pt, tok
+from gui.theme import action_button_qss, tok
 from gui.widgets import (
     DirtyTrackingMixin,
+    ExplainPanel,
     SplitButtonStyle,
     action_button,
     apply_variant,
@@ -211,13 +210,7 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
         hsplit = QSplitter(Qt.Horizontal)
         hsplit.addWidget(self._build_form())
 
-        self._explain = QTextBrowser()
-        self._explain.setOpenExternalLinks(True)
-        self._explain.setStyleSheet(
-            f"QTextBrowser {{ font-size: 120%; padding: 12px; "
-            f"background: {tok('panel')}; color: {tok('text')}; }}"
-        )
-        self._explain.setMinimumWidth(320)
+        self._explain = ExplainPanel()
         self._show_default_explain()
         hsplit.addWidget(self._explain)
         hsplit.setStretchFactor(0, 3)
@@ -522,24 +515,10 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
             self.save_btn.setToolTip(t("preprocess_save_settings_tip"))
 
     def _show_default_explain(self) -> None:
-        self._explain.setHtml(preprocess_guide())
+        self._explain.show_guide(preprocess_guide())
 
     def _show_field_help(self, field_label: str, help_text: str | None) -> None:
-        parts = [
-            f"<h2 style='margin:0 0 10px 0; font-size:{_explain_pt(18)};'>"
-            f"{html.escape(field_label)}</h2>"
-        ]
-        if help_text:
-            parts.append(
-                f"<p style='font-size:{_explain_pt(15)}; line-height:1.6;'>"
-                f"{field_help_html(help_text)}</p>"
-            )
-        else:
-            parts.append(
-                f"<p style='color:{tok('text_dim')}; font-style:italic;'>"
-                f"{html.escape(t('no_help_available'))}</p>"
-            )
-        self._explain.setHtml("".join(parts))
+        self._explain.show_field_help(field_label, help_text)
 
     def _refresh_status(self) -> None:
         snapshot = self.preprocess_config_snapshot()

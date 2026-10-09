@@ -34,7 +34,6 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSpinBox,
     QSplitter,
-    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -49,6 +48,7 @@ from gui.jobs.progress import TqdmProgressTracker, make_progress_bar
 from gui.theme import rich_text_pt as _explain_pt, tok
 from gui.widgets import (
     DirtyTrackingMixin,
+    ExplainPanel,
     action_button,
     apply_variant,
     make_field_label,
@@ -124,13 +124,7 @@ class _DistillConfigTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidge
         # Right-side explanation panel — mirrors the ConfigTab method tabs.
         # Defaults to the config's file-header block (a method overview); a
         # field label click swaps in that field's full doc comment.
-        self._explain = QTextBrowser()
-        self._explain.setOpenExternalLinks(True)
-        self._explain.setStyleSheet(
-            "QTextBrowser { font-size: 120%; padding: 12px; "
-            f"background: {tok('panel')}; color: {tok('text')}; }}"
-        )
-        self._explain.setMinimumWidth(300)
+        self._explain = ExplainPanel(min_width=300)
         hsplit.addWidget(self._explain)
         hsplit.setStretchFactor(0, 3)
         hsplit.setStretchFactor(1, 2)
@@ -262,7 +256,7 @@ class _DistillConfigTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidge
         # config's English file-header comment block built below.
         guide = method_overview(self._config_path.stem)
         if guide:
-            self._explain.setHtml(guide)
+            self._explain.show_guide(guide)
             return
         title = html.escape(self.METHOD_LABEL)
         paras: list[str] = []
@@ -282,28 +276,15 @@ class _DistillConfigTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidge
             )
         else:
             body = (
-                f"<p style='color:#888; font-style:italic;'>"
+                f"<p style='color:{tok('text_dim')}; font-style:italic;'>"
                 f"{html.escape(t('click_field_for_help'))}</p>"
             )
-        self._explain.setHtml(
+        self._explain.show_guide(
             f"<h2 style='margin:0 0 10px 0; font-size:{_explain_pt(18)};'>{title}</h2>{body}"
         )
 
     def _show_explain(self, field: str, help_text: str) -> None:
-        parts = [
-            f"<h2 style='margin:0 0 10px 0; font-size:{_explain_pt(18)};'>{html.escape(field)}</h2>"
-        ]
-        if help_text:
-            parts.append(
-                f"<p style='font-size:{_explain_pt(15)}; line-height:1.6;'>"
-                f"{html.escape(help_text)}</p>"
-            )
-        else:
-            parts.append(
-                f"<p style='color:#888; font-style:italic;'>"
-                f"{html.escape(t('no_help_available'))}</p>"
-            )
-        self._explain.setHtml("".join(parts))
+        self._explain.show_field_help(field, help_text)
 
     # Dirty tracking (_connect_dirty_signal / _mark_dirty / _clear_dirty /
     # _update_save_button) is inherited from DirtyTrackingMixin.

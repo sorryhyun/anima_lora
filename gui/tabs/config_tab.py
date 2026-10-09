@@ -9,8 +9,8 @@ from typing import Any
 import html
 
 import toml
-from PySide6.QtCore import QEvent, Qt, QTimer, QUrl
-from PySide6.QtGui import QDesktopServices, QTextCursor
+from PySide6.QtCore import QEvent, Qt, QTimer
+from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -25,7 +25,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSplitter,
-    QTextBrowser,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -33,7 +32,6 @@ from PySide6.QtWidgets import (
 
 from gui import (
     CONFIGS_DIR,
-    IMAGE_EXTS,
     ROOT,
     _GROUPS,
     _K2G,
@@ -64,17 +62,18 @@ from gui import (
 from gui.core import submit
 from gui.jobs import daemon as gui_daemon
 from gui.jobs.mixin import DaemonJobMixin
-from gui.theme import action_button_qss, rich_text_pt as _explain_pt, tok
-from gui.explanations import field_help, field_help_html, method_guide
+from gui.theme import action_button_qss, tok
+from gui.explanations import field_help, method_guide
 from gui.i18n import t
 from gui.jobs.process import StreamingProcess
 from gui.widgets import (
     DirtyTrackingMixin,
-    ImageViewerDialog,
+    ExplainPanel,
     SplitButtonStyle,
     action_button,
     apply_variant,
     make_field_label,
+    newest_images,
 )
 from gui.jobs.progress import (
     TQDM_RE,
@@ -301,17 +300,7 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         sc.setWidget(self._form)
         hsplit.addWidget(sc)
 
-        self._explain = QTextBrowser()
-        # Links are dispatched manually in _on_explain_anchor instead.
-        self._explain.setOpenLinks(False)
-        self._explain.anchorClicked.connect(self._on_explain_anchor)
-        self._explain.setStyleSheet(
-            f"QTextBrowser {{ font-size: 120%; padding: 12px; background: {tok('panel')}; color: {tok('text')}; }}"
-        )
-        self._explain.setMinimumWidth(320)
-        # Identity of the gallery render currently showing (None = not a
-        # gallery); lets the poll skip setHtml when nothing changed.
-        self._gallery_sig: tuple | None = None
+        self._explain = ExplainPanel()
         self._show_explain_placeholder()
         hsplit.addWidget(self._explain)
         hsplit.setStretchFactor(0, 3)
@@ -602,108 +591,24 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         vsn_w.valueChanged.connect(_on_split_changed)
 
     def _show_explain_placeholder(self) -> None:
-        self._explain_mode = None
         method = (
             self.method_combo.currentText() if hasattr(self, "method_combo") else ""
         )
         # Prefer a variant-specific guide (e.g. easycontrol vs colorize, which
         # share the "easycontrol" method); fall back to the method-family guide.
         variant = self._current_variant() if hasattr(self, "variant_combo") else ""
-        guide = method_guide(variant) or method_guide(method)
-        if guide:
-            self._set_explain_html(guide)
-            return
-        self._set_explain_html(
-            f"<p style='color:{tok('text_dim')}; font-style:italic;'>{html.escape(t('click_field_for_help'))}</p>"
-        )
+        self._explain.show_guide(method_guide(variant) or method_guide(method))
 
-    def _set_explain_html(
-        self, content: str, *, gallery_sig: tuple | None = None
+    def _show_explain(
+        self, field: str, help_text: str | None, notes: tuple[str, ...]
     ) -> None:
-        """Chokepoint for writing the explanation panel; records which gallery
-        render (if any) is showing so _render_image_gallery can tell a
-        poll-driven refresh from a real content change."""
-        self._gallery_sig = gallery_sig
-        self._explain.setHtml(content)
-
-    def _on_explain_anchor(self, url: QUrl) -> None:
-        """``magnify:`` is the gallery zoom scheme (a file URI with the scheme
-        swapped); in-document fragments scroll, everything else opens externally."""
-        if url.scheme() == "magnify":
-            fileurl = QUrl(url)
-            fileurl.setScheme("file")
-            ImageViewerDialog(Path(fileurl.toLocalFile()), self.window()).show()
-        elif url.isRelative() and url.hasFragment():
-            self._explain.scrollToAnchor(url.fragment())
-        else:
-            QDesktopServices.openUrl(url)
-
-    def _render_image_gallery(self, title_key: str, empty_key: str, imgs: list) -> None:
-        """Render the newest few images as an HTML ``<img>`` stack (shared by
-        test-output and training-sample views). Polled every 400ms, so an
-        unchanged image set skips setHtml (which resets scroll to top); a real
-        refresh restores the previous scroll offset after rendering."""
-
-        def _mtime(p: Path):
-            try:
-                return p.stat().st_mtime_ns
-            except OSError:
-                return None
-
-        sig = (title_key, tuple((str(p), _mtime(p)) for p in imgs))
-        if sig == self._gallery_sig:
-            return
-        title = html.escape(t(title_key))
-        if not imgs:
-            self._set_explain_html(
-                f"<h2 style='margin:0 0 10px 0; font-size:{_explain_pt(18)};'>{title}</h2>"
-                f"<p style='color:{tok('text_dim')}; font-style:italic;'>{html.escape(t(empty_key))}</p>",
-                gallery_sig=sig,
-            )
-            return
-        parts = [
-            f"<h2 style='margin:0 0 10px 0; font-size:{_explain_pt(18)};'>{title}</h2>"
-        ]
-        for p in imgs:
-            url = p.resolve().as_uri()
-            magnify = "magnify" + url[len("file") :]
-            parts.append(
-                f"<p style='margin:0 0 10px 0;'>"
-                f"<a href='{magnify}'><img src='{url}' style='max-width:100%;'/></a><br/>"
-                f"<span style='color:{tok('text_dim')}; font-size:{_explain_pt(11)};'>{html.escape(p.name)}</span> "
-                f"<a href='{magnify}' style='text-decoration:none; font-size:{_explain_pt(12)};'>🔍</a>"
-                f"</p>"
-            )
-        sb = self._explain.verticalScrollBar()
-        pos = sb.value()
-        self._set_explain_html("".join(parts), gallery_sig=sig)
-        sb.setValue(min(pos, sb.maximum()))
-
-    @staticmethod
-    def _newest_images(d: Path, limit: int = 4, *, since: float | None = None) -> list:
-        """Newest images in ``d`` by mtime. ``since`` (epoch seconds) drops any
-        written before it — the training-sample gallery passes the job's start
-        time so a fresh run never shows the previous run's stale samples."""
-        if not d.is_dir():
-            return []
-        dated: list[tuple[float, Path]] = []
-        for p in d.iterdir():
-            if p.suffix.lower() not in IMAGE_EXTS:
-                continue
-            try:
-                mt = p.stat().st_mtime
-            except OSError:  # file vanished mid-scan (e.g. a clobbering re-run)
-                continue
-            if since is not None and mt < since:
-                continue
-            dated.append((mt, p))
-        dated.sort(key=lambda t: t[0], reverse=True)
-        return [p for _, p in dated[:limit]]
+        self._explain.show_field_help(field, help_text, notes)
 
     def _show_test_output(self) -> None:
-        self._explain_mode = "test"
-        imgs = self._newest_images(ROOT / "output" / "tests")
-        self._render_image_gallery("test_output_title", "test_output_empty", imgs)
+        imgs = newest_images(ROOT / "output" / "tests")
+        self._explain.show_gallery(
+            "test", "test_output_title", "test_output_empty", imgs
+        )
 
     def _resolve_sample_dir(self) -> Path:
         """Absolute ``<output_dir>/sample`` for the current variant."""
@@ -725,34 +630,12 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         help with an empty placeholder); ``announce=True`` always renders,
         used when a training job finishes."""
         sample_dir = getattr(self, "_sample_dir", None) or self._resolve_sample_dir()
-        imgs = self._newest_images(
-            sample_dir, since=getattr(self, "_sample_floor", None)
-        )
+        imgs = newest_images(sample_dir, since=getattr(self, "_sample_floor", None))
         if not imgs and not announce:
             return
-        self._explain_mode = "sample"
-        self._render_image_gallery("sample_output_title", "sample_output_empty", imgs)
-
-    def _show_explain(
-        self, field: str, help_text: str | None, notes: tuple[str, ...]
-    ) -> None:
-        self._explain_mode = "help"
-        parts = [
-            f"<h2 style='margin:0 0 10px 0; font-size:{_explain_pt(18)};'>{html.escape(field)}</h2>"
-        ]
-        if help_text:
-            parts.append(
-                f"<p style='font-size:{_explain_pt(15)}; line-height:1.6;'>{field_help_html(help_text)}</p>"
-            )
-        else:
-            parts.append(
-                f"<p style='color:{tok('text_dim')}; font-style:italic;'>{html.escape(t('no_help_available'))}</p>"
-            )
-        for note in notes:
-            parts.append(
-                f"<p style='color:{tok('text_dim')}; font-style:italic; margin-top:12px;'>• {html.escape(note)}</p>"
-            )
-        self._set_explain_html("".join(parts))
+        self._explain.show_gallery(
+            "sample", "sample_output_title", "sample_output_empty", imgs
+        )
 
     def _save_preset(self, *, silent: bool = False):
         """Write the form (and any extra-args TOML) into the current variant
@@ -1294,10 +1177,7 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         self._jsonl_reader.poll()
         # Refresh the gallery as samples land, but only while the panel isn't
         # pinned to field help.
-        if self._job_kind == "train" and getattr(self, "_explain_mode", None) in (
-            None,
-            "sample",
-        ):
+        if self._job_kind == "train" and self._explain.mode in (None, "sample"):
             self._show_sample_output()
 
     def _on_job_finished(self, state: str | None) -> None:
