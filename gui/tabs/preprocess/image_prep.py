@@ -65,7 +65,7 @@ class _ResizeCropAnchorWidget(QWidget):
             btn.setFixedSize(32, 28)
             btn.setStyleSheet(
                 "QPushButton { padding:0; } "
-                f"QPushButton:checked {{ background:{tok('accent')}; color:#ffffff; "
+                f"QPushButton:checked {{ background:{tok('accent')}; color:{tok('accent_text')}; "
                 "font-weight:bold; }"
             )
             btn.setToolTip(t(f"resize_crop_anchor_{key}"))

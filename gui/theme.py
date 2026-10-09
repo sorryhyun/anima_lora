@@ -73,7 +73,9 @@ class Theme:
     * ``text`` primary; ``text_bright`` max-contrast; ``text_dim`` secondary/hint.
     * ``border`` / ``border_dim`` strong / subtle separators.
     * ``accent`` selection/highlight; ``accent_text`` text on accent.
-    * ``link`` / ``link_visited``; status ``ok`` / ``warn`` / ``err``.
+    * ``link`` / ``link_visited``; status ``ok`` / ``warn`` / ``err`` (text) and
+      ``ok_bg`` / ``warn_bg`` / ``err_bg`` (banner fills that the matching
+      status text reads on).
     * ``scroll_bg`` / ``scroll_handle`` / ``scroll_handle_hover`` scrollbars.
     * ``is_dark`` whether the theme reads as dark (lets callers branch when a
       token isn't enough).
@@ -102,6 +104,9 @@ class Theme:
     ok: str
     warn: str
     err: str
+    ok_bg: str
+    warn_bg: str
+    err_bg: str
     scroll_bg: str
     scroll_handle: str
     scroll_handle_hover: str
@@ -131,6 +136,9 @@ _DARK = Theme(
     ok="#4ade80",
     warn="#fbbf24",
     err="#f87171",
+    ok_bg="#0a3d2a",
+    warn_bg="#3d2e0a",
+    err_bg="#3d0a0a",
     scroll_bg="#242424",
     scroll_handle="#b8b8b8",
     scroll_handle_hover="#d0d0d0",
@@ -160,6 +168,9 @@ _LIGHT = Theme(
     ok="#1a7f37",
     warn="#9a6700",
     err="#c01c28",
+    ok_bg="#dcf5e3",
+    warn_bg="#fff1cc",
+    err_bg="#fde2e1",
     scroll_bg="#e0e0e0",
     scroll_handle="#b4b4b4",
     scroll_handle_hover="#909090",
@@ -189,6 +200,9 @@ _SEPIA = Theme(
     ok="#5a7d2a",
     warn="#9a6700",
     err="#b03028",
+    ok_bg="#e3ebcc",
+    warn_bg="#f5e2b8",
+    err_bg="#f2d3c8",
     scroll_bg="#e6dabe",
     scroll_handle="#c0ad88",
     scroll_handle_hover="#a89468",

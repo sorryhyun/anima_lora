@@ -209,14 +209,16 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         # reject before the run dies in the daemon. Rebuilt on every _reload.
         self._config_warning_box = QWidget()
         self._config_warning_box.setStyleSheet(
-            "background:#5c1a1a;border:1px solid #a33;border-radius:4px;"
+            f"background:{tok('err_bg')};border:1px solid {tok('err')};border-radius:4px;"
         )
         _cwl = QHBoxLayout(self._config_warning_box)
         _cwl.setContentsMargins(10, 8, 10, 8)
         self._config_warning = QLabel()
         self._config_warning.setWordWrap(True)
         self._config_warning.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self._config_warning.setStyleSheet("color:#ffd9d9;border:0;font-size:12px;")
+        self._config_warning.setStyleSheet(
+            f"color:{tok('text')};border:0;font-size:12px;"
+        )
         _cwl.addWidget(self._config_warning, 1)
         self._config_warning_btn = QPushButton(t("config_remove_keys_btn"))
         self._config_warning_btn.clicked.connect(self._remove_unknown_keys)

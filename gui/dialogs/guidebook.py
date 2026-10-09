@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 
 from gui.core.paths import ROOT
 from gui.i18n import current_language, t
+from gui.theme import tok
 
 _GUIDELINES = ROOT / "docs" / "guidelines"
 _GUIDEBOOK_BY_LANG: dict[str, Path] = {
@@ -49,16 +50,16 @@ class GuidebookDialog(QDialog):
         self.browser.document().setBaseUrl(
             QUrl.fromLocalFile(str(md_path.parent) + "/")
         )
-        # Default anchor color is pure blue — illegible on the dark bg.
+        # Qt's default anchor color is pure blue — illegible on a dark bg.
         self.browser.document().setDefaultStyleSheet(
-            "a { color: #ffb86b; text-decoration: underline; }"
-            "a:visited { color: #e6944e; }"
-            "code { background:#2a2a2a; padding:1px 4px; border-radius:3px; }"
-            "pre { background:#2a2a2a; padding:8px; border-radius:4px; }"
+            f"a {{ color: {tok('link')}; text-decoration: underline; }}"
+            f"a:visited {{ color: {tok('link_visited')}; }}"
+            f"code {{ background:{tok('input_bg')}; padding:1px 4px; border-radius:3px; }}"
+            f"pre {{ background:{tok('input_bg')}; padding:8px; border-radius:4px; }}"
         )
         self.browser.setStyleSheet(
-            "QTextBrowser { background:#1e1e1e; color:#dcdcdc; "
-            "border:1px solid #444; padding:12px; }"
+            f"QTextBrowser {{ background:{tok('window')}; color:{tok('text')}; "
+            f"border:1px solid {tok('border_dim')}; padding:12px; }}"
         )
         try:
             text = md_path.read_text(encoding="utf-8")

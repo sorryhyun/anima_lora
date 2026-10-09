@@ -663,7 +663,7 @@ class UpdateDialog(_StreamingDialog):
         warn = QLabel(t("update_warning"))
         warn.setWordWrap(True)
         warn.setStyleSheet(
-            f"padding:8px; border-radius:3px; background:#3d2e0a; color:{tok('warn')};"
+            f"padding:8px; border-radius:3px; background:{tok('warn_bg')}; color:{tok('warn')};"
         )
         layout.addWidget(warn)
 

@@ -221,7 +221,7 @@ class _DistillConfigTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidge
                 w.setToolTip(tip)
             lbl = make_field_label(
                 name,
-                style="text-decoration: underline dotted; color:#ddd;",
+                style=f"text-decoration: underline dotted; color:{tok('text')};",
                 tooltip=tip or None,
                 on_click=lambda _n=name, _t=tip: self._show_explain(_n, _t),
             )

@@ -56,7 +56,7 @@ class PickerLineEdit(QLineEdit):
         self.setStyleSheet(
             f"QLineEdit {{ background: {tok('input_bg')}; color: {tok('text')}; "
             f"border: 1px solid {tok('border')}; border-radius: 3px; padding: 2px 6px; }}"
-            f"QLineEdit:hover {{ border-color: #3c78c8; background: {tok('input_hover')}; }}"
+            f"QLineEdit:hover {{ border-color: {tok('accent')}; background: {tok('input_hover')}; }}"
             f"QLineEdit:disabled {{ color: {tok('text_dim')}; background: {tok('base')}; }}"
         )
 
@@ -483,9 +483,9 @@ class MergeTab(LazyTabMixin, QWidget):
         scan = _scan_adapter(p)
         self._current_scan = scan
         colors = {
-            "ok": ("#0a3d2a", tok("ok")),  # bg (darkened tint, kept), text
-            "partial": ("#3d2e0a", tok("warn")),
-            "block": ("#3d0a0a", tok("err")),
+            "ok": (tok("ok_bg"), tok("ok")),  # bg, text
+            "partial": (tok("warn_bg"), tok("warn")),
+            "block": (tok("err_bg"), tok("err")),
             "unknown": (tok("panel"), tok("text_dim")),
         }
         bg, fg = colors.get(scan["severity"], colors["unknown"])
@@ -829,7 +829,7 @@ class MergeTab(LazyTabMixin, QWidget):
                 shared=shared,
                 modules=modules,
             )
-            sev, bg = "warn", "#3d2e0a"
+            sev, bg = "warn", tok("warn_bg")
         elif mag < self._SAFE_COS:
             # Near-orthogonal — safe to merge regardless of sign.
             text = t(
@@ -839,7 +839,7 @@ class MergeTab(LazyTabMixin, QWidget):
                 shared=shared,
                 modules=modules,
             )
-            sev, bg = "ok", "#0a3d2a"
+            sev, bg = "ok", tok("ok_bg")
         else:
             strong = mag >= self._STRONG_COS
             strength = t(
@@ -864,9 +864,9 @@ class MergeTab(LazyTabMixin, QWidget):
             # cancellation, where the deltas erase each other, goes red when
             # strong. Mirrors the sign-aware CLI band in library.anima.merge_analysis.
             if reinforcing:
-                sev, bg = "warn", "#3d2e0a"
+                sev, bg = "warn", tok("warn_bg")
             else:
-                sev, bg = ("err", "#3d0a0a") if strong else ("warn", "#3d2e0a")
+                sev, bg = ("err", tok("err_bg")) if strong else ("warn", tok("warn_bg"))
 
         self.analysis_label.setText(text)
         self.analysis_label.setStyleSheet(
