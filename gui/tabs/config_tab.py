@@ -79,6 +79,15 @@ _HW_PRESET_SETTING = "hardware_preset"
 
 
 class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
+    """Variant form + Train / Test / Queue for the ``train.py --method`` methods.
+
+    Override points (EasyControlTab uses these): ``_reload`` / ``_save_preset``
+    (its descriptor form), ``_refresh_variant_row``, ``_set_pickers_enabled``
+    (extra controls that lock with the pickers), ``_attach_to_job`` /
+    ``_try_reattach`` (+ ``_reattach``), and ``_submit_training`` / ``_proc``
+    as building blocks for its own launches.
+    """
+
     def __init__(
         self, methods: list[str] | None = None, tb_panel=None, preprocess_tab=None
     ):
@@ -948,7 +957,20 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         detached, so training survives the GUI closing). The caller owns all
         pre-launch confirmations."""
         merged = self._scoped_merged(variant)
-        logging_dir = merged.get("logging_dir")
+        self._submit_training(
+            lambda: gui_daemon.submit_training(
+                method=variant,
+                preset=self._current_preset(),
+                methods_subdir="gui-methods",
+                config_snapshot=self._queue_config_snapshot(variant, merged),
+                start=True,  # main Train button: run now
+            ),
+            logging_dir=merged.get("logging_dir"),
+        )
+
+    def _submit_training(self, submit_fn, *, logging_dir: str | None) -> None:
+        """Busy UI → ``submit_fn`` (a ``gui_daemon.submit_training`` call) →
+        attach to the job. Every Train launch goes through here."""
         if logging_dir and self._tb_panel is not None:
             self._tb_panel.set_log_dir(logging_dir)
 
@@ -965,19 +987,9 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         self._log(t("daemon_submitting") + "\n")
         QApplication.processEvents()
 
-        job_id = self._submit_job(
-            lambda: gui_daemon.submit_training(
-                method=variant,
-                preset=self._current_preset(),
-                methods_subdir="gui-methods",
-                config_snapshot=self._queue_config_snapshot(variant, merged),
-                start=True,  # main Train button: run now
-            ),
-            on_fail=self._restore_idle_ui,
-        )
+        job_id = self._submit_job(submit_fn, on_fail=self._restore_idle_ui)
         if not job_id:
             return
-
         self._log(t("daemon_queued", job_id=job_id))
         self._attach_to_job(job_id, replay_log=False)
 
@@ -1004,11 +1016,15 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
             reattach_kind = "preprocess"
         else:
             reattach_kind = "train"
+        self._reattach(job_id, kind=reattach_kind)
+
+    def _reattach(self, job_id: str, *, kind: str) -> None:
+        """Attach to an already-running job, replaying its log from the top."""
         self.log.clear()
         self._reset_progress()
         self._progress_tracker.mark_starting(t("starting"))
         self._log(t("daemon_reattached", job_id=job_id))
-        self._attach_to_job(job_id, replay_log=True, kind=reattach_kind)
+        self._attach_to_job(job_id, replay_log=True, kind=kind)
 
     def _attach_to_job(
         self, job_id: str, *, replay_log: bool, kind: str = "train"

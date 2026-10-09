@@ -42,8 +42,15 @@ Behaviour-preserving cleanup of the PySide6 GUI. Architecture and invariants liv
   `_advanced_section`; `_clear_form` is shared with EasyControl's descriptor form. Save
   output verified identical over every variant × hardware preset (plain, edited + extra
   args, malformed extra args: 330 cases). Tests: `tests/test_gui_variant_form.py`.
+- **EasyControlTab stays a subclass**, over documented override points (ConfigTab's class
+  docstring): both Train paths go through `ConfigTab._submit_training` (busy UI → submit →
+  attach), so the descriptor train no longer open-codes the submit; Preprocess locks with
+  the pickers via a `_set_pickers_enabled` override (drops `_ec_set_busy` and the
+  `_restore_idle_ui` override); `_try_reattach` shares `_reattach`. Composition was
+  rejected: the subclass reuses the whole form / job UI, and the overrides are now few
+  and named.
 
-`config_tab.py`: 1664 → 1232 lines.
+`config_tab.py`: 1664 → 1248 lines; `easycontrol_tab.py`: 522 → 465.
 
 ## Next
 
@@ -52,12 +59,7 @@ Rough order. Each step should keep the submit-plan equivalence check passing: du
 `_chain_train_spec` / `_resolve_cache_dir` over every variant × preset before and after,
 then compare.
 
-1. **EasyControlTab.** It subclasses ConfigTab and overrides 10+ methods (`_ec_*`,
-   `_attach_to_job` / `_restore_idle_ui` / `_try_reattach`), and
-   `_ec_start_train_descriptor` open-codes the submit dance `_submit_job` already owns. Now that ConfigTab is
-   smaller, decide between composition and a smaller documented set of
-   override points.
-2. **Small items**
+1. **Small items**
    - The config-warning banner hardcodes `#5c1a1a` / `#ffd9d9` / `#a33`; switch to
      theme tokens. `dialogs/guidebook.py` and other files also hardcode hex colors
      (`grep -rln "#[0-9a-fA-F]\{6\}" gui`).
