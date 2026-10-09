@@ -1,6 +1,6 @@
 # proposal_refactor — reseed torn down and rebuilt, scale archived (2026-10-09)
 
-**Status: steps 0–3 done (10-09); 4–6 left.** Work happens on `cjk-reseed`;
+**Status: steps 0–4 done (10-09); 5–6 left.** Work happens on `cjk-reseed`;
 `main` holds a stale copy of both lines.
 
 | step | commit | what |
@@ -8,6 +8,7 @@
 | 0–1 | `0a23be0c` | freeze point `b3dee68e` (in `status.md`); the prune; `status.md`; README |
 | 2 | `9a6f6bf2` | scale's `src/` subset and the fonts vendored into reseed |
 | 3 | `19aac524` | `cjk_scale/{train,rows,loss}` → `reseed/{trainer,rows,loss}`; no live file imports `cjk_scale` |
+| 4 | (this commit) | the 7 dead config keys and their trainer paths dropped; `tests/test_config.py` |
 
 The verification of each is in its commit message.
 
@@ -24,8 +25,10 @@ commit).
   `_smoke_ref.sha256`, `build.json` in `_smoke_ref_build.json`.
 - The training check (step 3 (b)):
   `make daemon-run ARGS="project/cjk_anima_reseed/run.py kozh16 train --out output/cjk_anima_reseed/<scratch> --max_steps 50"`.
-  Step-1 loss was 0.15419110655784607 for the port and the freeze-point code
-  in one session; steps 25 / 50 vary by ~2e-4 run to run.
+  Step-1 loss is not deterministic: it falls on a few values ~5e-5 apart
+  (0.15404 / 0.15409 / 0.15414 / 0.15419 seen), so step 3's bit-equal pair
+  was luck; steps 25 / 50 vary by ~2e-4 run to run. Compare against the old
+  code run in the same session.
 
 ## 1. Config keys (step 4)
 

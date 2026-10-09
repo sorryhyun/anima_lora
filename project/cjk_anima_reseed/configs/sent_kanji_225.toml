@@ -19,7 +19,6 @@ rows = [
 ]
 row_lr = [0.12, 0.12, 1.0, 1.0]
 read = ["こんにちは", "たいせつ", "かなしい", "かんがえ", "たすけて", "こうえん", "てつだう", "ことば", "なにしてる", "テレビ", "カメラ", "パソコン", "アイドル"]
-seed = "0930"  # unused: the rows are rows_from's
 steps_per_row = 40
 shares = { grid_44 = 0, grid_29 = 0, grid_16 = 0, lone_44 = 0, lone_28 = 0, lone_16 = 0, bubble1_52 = 2, bubble1_32 = 3, bubbleN_34 = 15, bubbleN_18 = 10, grid_64 = 0, sent_34 = 40, sent_22 = 30 }
 # the 225 sat at their own unscaled stick in b5 (|m| 152 vs stick080's kanji 114, cos 0.98):

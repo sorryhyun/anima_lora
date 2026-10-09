@@ -36,7 +36,6 @@ from __future__ import annotations
 import json
 import math
 import os
-import random
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -78,16 +77,6 @@ def vocab_idx(vocabs: list, tokq) -> set[int]:
 
     tok, qmap = tokq
     return {int(e) for v in vocabs for _p, e in qpieces(tok, qmap, v) if e is not None}
-
-
-def without_tag(caption: str, tag: str) -> str:
-    """``caption`` with its tag-bag entry ``tag`` taken out — the bag is the
-    text before the first ``". "``; the clauses after it are untouched (a
-    clause's ``Japanese text reads as`` stays)."""
-    bag, sep, rest = caption.partition(". ")
-    tags = bag.split(", ")
-    assert tags.count(tag) == 1, f"{tag!r} not once in the bag: {caption!r}"
-    return ", ".join(t for t in tags if t != tag) + sep + rest
 
 
 def noisy_by_band(latents, noise, bands, device):
@@ -215,15 +204,9 @@ def train(
     context: Path,
     cold: bool,
     max_steps: int | None = None,
-    row_cap: float | str | None = None,
     steps_per_row: int | None = None,
     steps: int | None = None,
     row_step_scale: dict | None = None,
-    drop_tiers: tuple = (),
-    stick_only: bool = False,
-    band: tuple | None = None,
-    tag_drop: tuple | None = None,
-    ball_on: Path | None = None,
     lr: float | None = None,
     free_residual: float | None = None,
     pres: tuple | None = None,
@@ -235,27 +218,11 @@ def train(
     ``steps_per_row`` × the trained rows, or ``steps`` (a run whose step count
     is set by some of its rows, ``focus``) — one of them;
     ``max_steps`` stops the loop early with the full-length schedule;
-    ``row_cap`` clamps every trained
-    row's effective norm after each step — ``"t5"`` = the T5 table's mean
-    row norm (scale's ``experiments/p1_cap``); ``row_step_scale`` = {vocab:
+    ``row_step_scale`` = {vocab:
     factor} multiplies that vocab's rows' update each step — a per-row lr
     (AdamW normalizes a gradient scale away, so the step is scaled, not the
     gradient; ``experiments/garble_replace`` inverse frequency);
-    ``drop_tiers`` leaves those tiers' items out of the data dir;
-    ``band`` replaces every kept item's σ band (stamped at build);
-    ``tag_drop`` = (tag, p) takes ``tag`` out of an item's caption with
-    probability p, drawn per item per step (its own rng: the batches and the
-    noise stay the run's without it), both captions TE-cached in ``out``;
-    ``stick_only`` trains the trained rows' shared mean only: every live row
-    takes the sum of the live rows' gradients, so AdamW moves them all by one
-    vector and the rows less their mean stay as warm-started
-    (``cjk_anima_reseed`` stick runs); ``ball_on`` (a merged ``trained.pt``)
-    is the reverse on cold rows: every trained row starts at that file's mean
-    over the same rows and the mean is put back after every step, so only the
-    rows less their mean train (a gradient hook does not hold it: AdamW's
-    per-element scaling un-centres a centred gradient); with ``cold=False``
-    (``context`` = the same file) the rows start warm at that file's rows and
-    the same mean is held; ``lr`` replaces ``LR`` (the rows' peak lr);
+    ``lr`` replaces ``LR`` (the rows' peak lr);
     ``free_residual`` replaces ``FREE_RESIDUAL`` (0: no norm pull — under
     AdamW the pull alone steps a row absent from the batch by ~lr toward 0,
     so a warm run's rare rows go back to the pack row, ``cjk_anima_reseed``
@@ -282,19 +249,7 @@ def train(
 
     torch.manual_seed(SEED)
     out.mkdir(parents=True, exist_ok=True)
-    recs_all, ev, vocabs = load_items(data)
-    keep = [i for i, r in enumerate(recs_all) if r.get("tier") not in drop_tiers]
-    recs = [recs_all[i] for i in keep]
-    if drop_tiers:
-        print(
-            f"data: {len(recs)} of {len(recs_all)} items, tiers {sorted(drop_tiers)} left out",
-            flush=True,
-        )
-    if band:
-        lo, hi = map(float, band)
-        assert 0 <= lo < hi < 1, f"band {band}"
-        recs = [{**r, "band": [lo, hi]} for r in recs]
-        print(f"data: every item's σ band → {lo}–{hi}", flush=True)
+    recs, ev, vocabs = load_items(data)
     bj = data / "build.json"
     route = bj.exists() and json.loads(bj.read_text(encoding="utf-8")).get(
         "glyph_route", False
@@ -304,20 +259,8 @@ def train(
     args = gen_args(512, GEN_STEPS, GEN_CFG, out)
     device = get_generation_settings(args).device
 
-    te_recs, alt = recs, None
-    if tag_drop:
-        tag, p_drop = tag_drop[0], float(tag_drop[1])
-        assert 0 < p_drop < 1, f"tag_drop {tag_drop}"
-        alt = [without_tag(r["caption"], tag) for r in recs]
-        te_recs = recs + [{**r, "caption": a} for r, a in zip(recs, alt)]
-        drop_rng = random.Random(SEED)
-        print(f"captions: {tag!r} out of each item's at p {p_drop:g}", flush=True)
     cache, touched, _ev_idx = _encode_text(
-        te_recs,
-        ev,
-        device,
-        out,
-        te_cache=(out if tag_drop else data) / "te_cache",
+        recs, ev, device, out, te_cache=data / "te_cache"
     )
     en_of = None
     if pres:
@@ -332,9 +275,7 @@ def train(
             int(pres[3]),
         )
         assert lam_p > 0 and 0 <= lo_p < hi_p < 1 and every_p >= 1, f"pres {pres}"
-        en_of = {
-            i: en_caption(r, keep[i]) for i, r in enumerate(recs) if r["src"] == "scene"
-        }
+        en_of = {i: en_caption(r, i) for i, r in enumerate(recs) if r["src"] == "scene"}
         en_cache = encode_captions(list(en_of.values()), device, out / "te_en")
         # a prompt's own marks may route to a frozen row (``~`` in a series
         # tag → the 〜 row, on both captions alike); a trained row may not
@@ -364,7 +305,7 @@ def train(
         flush=True,
     )
     ns = SimpleNamespace(seed=SEED, batch=BATCH, train_size=512)
-    lat = LatentStore(ns, data, recs_all, keep, device)
+    lat = LatentStore(ns, data, recs, list(range(len(recs))), device)
 
     anima = load_dit_model(args, device, torch.bfloat16)
     anima.requires_grad_(False)
@@ -386,12 +327,8 @@ def train(
         "rows are deltas over it and cold rows start at it — "
         "ANIMA_VOCAB_PACK=models/vocab_packs/anima_cjk_vocab_pack"
     )
-    if row_cap == "t5":
-        row_cap = float(anima.llm_adapter.embed.weight.float().norm(dim=1).mean())
     if cold:
         p.record["cold"] = True
-    if row_cap is not None:
-        p.record["row_cap"] = float(row_cap)
     if free_residual is not None:
         p.record.update(free_residual=float(free_residual), free_residual_override=True)
     rows = Rows(
@@ -406,15 +343,8 @@ def train(
         touched=p.touched,
         frozen=p.frozen,
         context=ctx,
-        row_cap=row_cap,
     )
     assert rows.n_rows == len(p.idx), (rows.n_rows, len(p.idx))
-    if drop_tiers:
-        p.record["drop_tiers"] = sorted(drop_tiers)
-    if band:
-        p.record["band_override"] = [float(b) for b in band]
-    if tag_drop:
-        p.record["tag_drop"] = [tag, p_drop]
     if pres:
         from .loss import PRES_DIL
 
@@ -425,55 +355,6 @@ def train(
             "dil": PRES_DIL,
             "seed": PRES_SEED,
         }
-    stick0 = None
-    if stick_only:
-        live = ~rows.frozen_mask
-        assert bool(rows.warm_mask[live].all()), "stick_only: every live row warm"
-
-        def shared(g):
-            out = torch.zeros_like(g)
-            out[live] = g[live].sum(0)
-            return out
-
-        rows.delta.raw.register_hook(shared)
-        stick0 = rows.delta.raw.detach()[live].mean(0) * rows.row_scale
-        p.record["stick_only"] = True
-        print(
-            f"stick only: {int(live.sum())} rows move as one, stick "
-            f"|{float(stick0.norm()):.1f}|",
-            flush=True,
-        )
-    stick_raw = None
-    if ball_on:
-        live = ~rows.frozen_mask
-        assert not stick_only, "ball_on: the mean held, the rows less it trained"
-        assert bool(rows.touched_mask[live].all()), (
-            "ball_on: every trained row drawn (the hold moves them all)"
-        )
-        src = torch.load(ball_on, map_location="cpu", weights_only=False)["delta"]
-        pos = {int(e): i for i, e in enumerate(src["ext_ids"])}
-        ids = [int(e) for e, x in zip(rows.delta.ext_ids, live.tolist()) if x]
-        assert all(e in pos for e in ids), f"ball_on: {ball_on} lacks a trained row"
-        k = float(src["row_scale"]) / rows.row_scale
-        stick_raw = (src["raw"][[pos[e] for e in ids]].float().mean(0) * k).to(device)
-        if cold:
-            with torch.no_grad():
-                rows.delta.raw[live] = stick_raw
-        else:  # warm ball: the rows as ball_on has them (its file the warm-from)
-            assert ctx == Path(ball_on), f"warm ball: warm from {ctx}, not {ball_on}"
-            drift = float((rows.delta.raw[live].mean(0) - stick_raw).norm())
-            assert drift < 1e-3 * float(stick_raw.norm()) + 1e-6, (
-                f"warm ball: the warm rows' mean is off {ball_on}'s by {drift:g}"
-            )
-            p.record["ball_warm"] = True
-        stick0 = stick_raw * rows.row_scale
-        p.record["ball_on"] = str(ball_on)
-        print(
-            f"ball on {ball_on}: {int(live.sum())} rows "
-            f"{'cold at' if cold else 'warm, held at'} its mean over them, "
-            f"stick |{float(stick0.norm()):.1f}| held",
-            flush=True,
-        )
     steps, warmup, record = p.steps, p.warmup, p.record
     spr = (
         p.steps_per_row
@@ -486,7 +367,6 @@ def train(
         f"({WARMUP_RATIO:g}), μ {INIT_ANCHOR:g}, box_share {BOX_SHARE} → cap "
         f"{BOX_SHARE_CAP} at {BOX_SHARE_GLYPHS} glyphs (log), grid_box {int(GRID_BOX)}, "
         + ("cold (pack rows)" if cold else f"warm {ctx}")
-        + (f", row cap {row_cap:.3f}" if row_cap is not None else "")
         + (f"; stopping at step {max_steps}" if max_steps else ""),
         flush=True,
     )
@@ -545,10 +425,6 @@ def train(
         noise = torch.randn_like(latents)
         brecs = [recs[i] for i in idx]
         caps = [r["caption"] for r in brecs]
-        if alt is not None:
-            caps = [
-                alt[i] if drop_rng.random() < p_drop else c for i, c in zip(idx, caps)
-            ]
         noisy, ts, target = noisy_by_band(
             latents, noise, [tuple(r["band"]) for r in brecs], device
         )
@@ -593,10 +469,6 @@ def train(
         if step_scale is not None:
             with torch.no_grad():
                 rows.delta.raw.copy_(before + step_scale * (rows.delta.raw - before))
-        if stick_raw is not None:
-            with torch.no_grad():
-                raw = rows.delta.raw
-                raw[live] = raw[live] - (raw[live].mean(0) - stick_raw)
         rows.project()
         sched.step()
         if step % 25 == 0 or step == 1:
@@ -606,12 +478,6 @@ def train(
                 rec["pres"] = pres_acc[0] / pres_acc[1] if pres_acc[1] else None
                 rec["pres_n"] = pres_acc[1]
                 pres_acc[:] = [0.0, 0]
-            if stick0 is not None:
-                st = rows.delta.raw.detach()[live].mean(0) * rows.row_scale
-                rec["stick"] = float(st.norm())
-                rec["stick_cos0"] = float(
-                    torch.nn.functional.cosine_similarity(st, stick0, dim=0)
-                )
             log.append(rec)
             print(json.dumps(rec), flush=True)
         if SAVE_EVERY and step % SAVE_EVERY == 0 and step < steps:

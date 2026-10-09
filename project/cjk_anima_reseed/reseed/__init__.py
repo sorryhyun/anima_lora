@@ -26,10 +26,8 @@ SRC = HOME / "src"
 # the scene pools, the EN refs; ``pools`` appends to its two scene caches
 # (``experiments/scene_{bubble_check,colorful}.json``)
 SCALE_OUT = REPO / "output" / "cjk_anima_scale"
-# the seed rows: ``seed_retrain_0930`` (the singles retrain's, 2 683 rows) and
-# the old seed (the probe line's step1_0921 merge, 2 274 rows)
+# the seed rows ``seed_retrain_0930`` (the singles retrain's, 2 683 rows)
 SEED_ROWS = SCALE_OUT / "seed_retrain_0930" / "trained.pt"
-SEED_ROWS_0921 = SCALE_OUT / "rows_step1_0921_merged" / "trained.pt"
 # the raw pack's digest with its encode fold left out (the seed rows are deltas
 # over it, a cold row starts at it) and the punct pack's (``punct_pack.py``:
 # the raw pack's rows and ids, a ``…`` row appended); the trainer takes either

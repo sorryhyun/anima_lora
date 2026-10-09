@@ -45,9 +45,7 @@ def main():
     run = load(a.run)
     run.use_pack()
     if a.verb == "data":
-        assert not (run.stick_from or run.data_from), (
-            f"{run.name}: trains on {run.data}"
-        )
+        assert not run.data_from, f"{run.name}: trains on {run.data}"
         from reseed.builder import build
 
         build(run, a.workers, a.frac)
@@ -60,15 +58,10 @@ def main():
             data=Path(a.data) if a.data else run.data,
             out=Path(a.out) if a.out else run.dir,
             context=run.seed_rows(),
-            cold=not (run.stick_from or run.warm or run.rows_from),
+            cold=not run.rows_from,
             max_steps=a.max_steps,
             steps_per_row=None if run.focus else a.steps_per_row or run.steps_per_row,
             steps=run.steps(a.steps_per_row),
-            drop_tiers=run.drop_tiers,
-            stick_only=bool(run.stick_from),
-            band=run.band,
-            tag_drop=run.tag_drop,
-            ball_on=run.seed_rows() if run.ball_on else None,
             lr=run.lr or None,
             row_step_scale=run.row_step_scale(),
             free_residual=run.free_residual,

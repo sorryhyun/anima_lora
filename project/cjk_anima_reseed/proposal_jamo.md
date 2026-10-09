@@ -94,8 +94,8 @@ part of a glyph's identity that the jamo do not explain.
 5. **Trainer mode** (`reseed/trainer.py`): `factor = "jamo"`. The optimizer holds the factor tensors
    (and in phase 2 the residuals). Each step composes Δ for the live
    Hangul rows into `rows.delta.raw` before the forward, so gradients reach
-   the factors through the composition. It sits beside `stick_only` /
-   `ball_on`, which already restructure the update. The norm pull applies
+   the factors through the composition, restructuring the update as the
+   dropped `stick_only` / `ball_on` did (freeze point `b3dee68e`). The norm pull applies
    to the composed rows as it does to free rows (open: § 7).
 6. **Config.** `factor = "jamo"` plus the sets from 4 as `rows` / `held`
    specs. `lang = { korean = … }` as kozh16 has it (KO faces, `korean
