@@ -104,6 +104,9 @@ ResShift SR sidecar — no `make sr-*` targets, run its scripts directly); kille
 superseded lines go to `_archive/`. Code search skips most of `project/finished/`
 (per-line `.ignore`; files live code still reads stay visible) — ask the
 **`archive-explorer`** agent about finished or archived lines instead of grepping.
+**An experiment line's live work can sit on its own branch** (e.g.
+`project/cjk_anima_reseed/` on `cjk-reseed`), leaving `main` with a stale copy — run
+`git branch -a` and check the line's branch before working on a `project/<line>/`.
 
 ## Programmatic API (embedders)
 
