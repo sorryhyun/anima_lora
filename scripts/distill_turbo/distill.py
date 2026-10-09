@@ -260,6 +260,7 @@ def run_loop(ctx: RunContext, cfg):
                     if cdm_on:
                         cdm_src = (x, v_g, s_g)
                     x_pred = x - s_g * v_g  # one-step x0-prediction at step g
+                    grad_step_idx, grad_step_sigma = g, s_g
                 else:
                     # 'all' → full BPTT over 1..N-1; else ('last') → only the final step
                     # grads (1..N-2 backward-simulated under no_grad). Both memory-flat
@@ -284,6 +285,7 @@ def run_loop(ctx: RunContext, cfg):
                         if step_no_grad:
                             x = x.detach()
                     x_pred = x
+                    grad_step_idx, grad_step_sigma = last_step, sigmas_it[last_step]
                 v_student = v_first  # step-0 velocity for the runaway-student metric
             else:
                 # Plain DMD2. Non-grad steps are backward-SIMULATED under no_grad (the
@@ -423,6 +425,23 @@ def run_loop(ctx: RunContext, cfg):
             fake_loss_mean_t, gan_disc_mean_t, gan_margin_t, gan_spread_t = fake_update(
                 ctx, cfg, x_pred, latents, crossattn_emb, B
             )
+
+            # --- DMAD Phase −1 probe (measure-only, own RNG; never reaches the
+            # student or critic) ---
+            if ctx.dmad_probe is not None:
+                ctx.dmad_probe.step(
+                    ctx,
+                    cfg,
+                    step=step + 1,
+                    eps=eps,
+                    v_target=v_target,
+                    x_pred=x_pred,
+                    dmd=dmd,
+                    crossattn_emb=crossattn_emb,
+                    c_null=c_null,
+                    grad_step_idx=grad_step_idx,
+                    grad_step_sigma=grad_step_sigma,
+                )
 
             # --- logging accumulators (all GPU-side; flushed below every log_interval
             # in one stacked .tolist() so per-step CUDA syncs go to zero) ---

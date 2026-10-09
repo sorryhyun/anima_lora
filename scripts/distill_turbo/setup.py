@@ -143,6 +143,9 @@ class RunContext:
 
     start_step: int
 
+    # DMAD Phase −1 premise probe (None when dmad_probe is off).
+    dmad_probe: object | None = None
+
 
 def build_run(args, cfg: TurboConfig) -> RunContext:
     """Construct the full DP-DMD run state and return it as a ``RunContext``.
@@ -261,6 +264,15 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
     # casts the bf16 teacher features to float.
     if turbo.disc is not None:
         turbo.disc.to(device=device)
+    # DMAD Phase −1 probe: its disc stack is a LoRA on the DiT, so it must exist
+    # before compile like the other stacks. Off → nothing built, no RNG drawn.
+    dmad_probe = None
+    if cfg.dmad_probe:
+        from .dmad_probe import DmadProbe
+
+        dmad_probe = DmadProbe(
+            cfg, turbo=turbo, model=model, device=device, dtype=dtype
+        )
 
     # COMPILE LAST: apply_to above monkey-patches Linears, so compile must trace
     # the adapter forward, not the bare DiT (harness ordering invariant).
@@ -521,6 +533,8 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
     writer, run_log = create_tb_writer(
         cfg.log_dir, tb_config_text(cfg), enabled=not cfg.no_log, logger=logger
     )
+    if dmad_probe is not None:
+        dmad_probe.bind_log_dir(run_log if run_log is not None else cfg.output_dir)
     if run_log is not None:
         # Mirror the snapshot into the run log dir: a self-contained record of
         # "this run + the config that produced it".
@@ -744,4 +758,5 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         val_latent_shape=val_latent_shape,
         val_clean=val_clean,
         start_step=start_step,
+        dmad_probe=dmad_probe,
     )

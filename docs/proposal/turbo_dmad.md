@@ -1,6 +1,8 @@
 # Turbo DMAD — discriminator-carried distribution matching inside DP-DMD
 
-Status: PROPOSAL, no code or GPU work done. Phase −1 (premise probe) gates Phase 0. Source: Yu et al., *DMAD: Distribution
+Status: PROPOSAL. Phase −1 (premise probe) gates Phase 0; arm P1 ran 2026-10-09 →
+**UNCONVERGED** (head T plateaued at accuracy 0.58, no read; see § Phase −1 results).
+Source: Yu et al., *DMAD: Distribution
 Matching as Adversarial Distillation for Fast Visual Generation*, arXiv:2610.02188
 (ByteDance, 2026-10-01). Wiring claims below were checked against
 `scripts/distill_turbo/` and `configs/methods/turbo.toml` as of `3079e415`.
@@ -119,22 +121,66 @@ expected failure shape here: head T is what keeps prompt adherence.
 ## Phase −1 — does ∇ₓh_T point along the DM signal? (measure-only)
 
 Prop. 1 is the whole premise, and it is checkable on the current loop without
-building DMAD. Ride a warm DP-DMD resume with the DM term and fake critic
-**unchanged** (training numerics byte-identical), and add head T on the fake LoRA
-stack, trained alongside with balanced BCE on cached CFG-4 teacher samples vs
-`x_pred`. Head T's gradient is read, never applied.
+building DMAD. `--dmad_probe` (`[dmad_probe]`, `scripts/distill_turbo/dmad_probe.py`)
+rides an ordinary DP-DMD run — no resume bundle survives, so a fresh run from the
+shipped warm-start init — and leaves the DM term, the critic and the student
+untouched: every probe draw comes from its own generator, so the training RNG
+stream is the same as with the probe off.
 
-- **Probe:** at each flush point, `g_T = autograd.grad(h_T(renoise(x_pred)), x_pred)`
-  against the detached DM `grad_signal` at the same `x_pred`: cosine, elementwise
-  agree-energy, τ-binned (8 bins), with a permutation null on the same tensors.
-  This is the telemetry of the closed sign-gate line
-  (`docs/findings/turbo_gan_dm_grad_orthogonal.md` § What was measured); its code
-  was never committed, so it is rebuilt here.
-- **Pass:** agree-energy and cosine clearly above the null in aggregate, after
-  head T's BCE has converged (read its logit margin, not the loss).
-- **Kill:** indistinguishable from the null at convergence — the disc cannot carry
-  the DM gradient at this capacity, and Phase 0 does not start. Also record the
-  peak VRAM of the grad-bearing head-T forward (question 3).
+- **Disc:** its own fake-shaped LoRA stack (warm-started from `fake_init_weights`,
+  like the critic) + head T (`TeacherFeatureDiscriminator`, token head) on the
+  middle block, trained one update per step with balanced BCE, constant LR 5e-5.
+  The teacher and student branches backward one at a time under
+  `selective_block_grad_ckpt` (a batched pair OOM'd at step 9 on 16 GB); the
+  renoised input requires grad, else the unsloth checkpoint drops the LoRA grads.
+- **Teacher samples:** online, not cached — the step-0 anchor rollout is finished
+  from `k_anchor` to σ=0 on the 12-step CFG-4 grid (open question 2a), so teacher
+  and student share ε. Costs 6 more CFG steps per iteration; fine for a probe.
+- **Probe:** every step, `g_T = ∂(−h_T)/∂x_pred` at the DMD's own (τ_dm, ε_dm),
+  against `grad_signal` (pre f-distill): cosine and agree-energy, each with a
+  permutation null on the same tensors — the telemetry of the closed sign-gate
+  line (`docs/findings/turbo_gan_dm_grad_orthogonal.md` § What was measured), whose
+  code was never committed. **Ceiling:** a second DM estimate at an independent
+  (τ', ε') gives `cos(DM, DM')` — how far two DM draws agree with each other —
+  the scale `cos(g_T, DM)` is read against.
+- **Read** (`bench/turbo/dmad_probe_read.py`, pre-registered): window = second
+  half of the rows.
+  - UNCONVERGED: window disc accuracy < 0.75 — no read; run longer.
+  - KILL: paired `cos − cos_null` within 3 SEM of 0. The disc cannot carry the
+    DM gradient at this capacity; Phase 0 does not start.
+  - PASS: mean `cos` ≥ 0.5 × mean `cos(DM, DM')` AND `agree − agree_null` > 3 SEM.
+  - WEAK: between the two — aligned above the null but well short of DM's own
+    draw-to-draw agreement. Owner call.
+  - Also reported: τ-binned and per-DMD-grad-step `cos` (open question 7 — is head
+    T's ratio meaningful on blurry mid-rollout x0 predictions?), peak VRAM.
+
+### Phase −1 results
+
+**P1 (2026-10-09) — UNCONVERGED.** Shipped recipe (`configs/methods/turbo.toml`,
+GAN + L_CDM on) from the warm-start init, 150 steps, `--dmad_probe` defaults;
+~13.8 s/step, peak 14.1 GiB on a 16 GB card. Rows:
+`output/logs/turbo/20261009-093847/dmad_probe.jsonl`; read:
+`bench/turbo/results/20261009-1016-dmad_probe_p1/result.json`.
+
+- Head T stalled, not converging: disc accuracy 0.583 ± 0.017 in the read window
+  (steps 76–150), flat from step ~15 on (deciles 0.55–0.64). Split by τ_d it stays
+  ≤ 0.62 even at τ_d < 0.25, so the gate is not failing on the high-τ bins where
+  teacher and student are indistinguishable by construction — the disc is weak.
+- Likely cause, not yet tested: the run's `grad_clip = 1.0` is applied to the disc
+  too, and its grad norm sat at 3–6, so each update was clipped to a fraction of
+  an already small LR (5e-5), over 150 updates in total.
+- Alignment, **not a verdict** (disc unconverged): cos(g_T, DM) = +0.030 ± 0.010 vs
+  null +0.001; paired Δ +0.029 ± 0.010 (just under 3 SEM). Ceiling cos(DM, DM') =
+  0.119 ± 0.014, so cos is ~0.25× ceiling. Agree-energy Δ +0.015 ± 0.009. By τ_dm:
+  0.5 ≤ τ < 0.875 gives cos 0.057–0.076 (0.3–0.6× its ceiling); τ < 0.5 is near
+  zero. Not the orthogonality of the shipped GAN head, but unreadable as it stands.
+- The DM signal itself is noisy: two independent single-draw DM estimates agree at
+  cos ≈ 0.12 (0.01–0.19 by τ). Any per-step alignment with DM is capped near there.
+
+**Next arm (P2), not run:** same read and gate, disc LR 2e-4 and the disc exempt
+from the run's grad clip (both step-size knobs). If head T still plateaus below
+0.75, a disc this cheap cannot be built well enough to read — evidence against the
+cheap-disc premise, which is the speed case for DMAD.
 
 ## Phase 0 — one knob: the DM term
 

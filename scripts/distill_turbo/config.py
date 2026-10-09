@@ -513,6 +513,26 @@ def build_argparser() -> argparse.ArgumentParser:
         "per iteration. Default: TOML (cdm.weight, default 0).",
     )
 
+    # DMAD Phase −1 premise probe (measure-only; off by default).
+    parser.add_argument(
+        "--dmad_probe",
+        action="store_const",
+        const=True,
+        default=None,
+        help="Train a side discriminator (own LoRA stack + head T, balanced BCE on "
+        "teacher vs student samples) and log how its generator gradient aligns "
+        "with the DM signal. Never applied to the student; training numerics are "
+        "unchanged. docs/proposal/turbo_dmad.md Phase −1. Default: TOML "
+        "(dmad_probe.enabled, default false).",
+    )
+    parser.add_argument(
+        "--dmad_probe_lr",
+        type=float,
+        default=None,
+        help="Probe disc LR (LoRA stack + head, constant). Default: TOML "
+        "(dmad_probe.lr, default 5e-5).",
+    )
+
     # f-distill reweighting (needs the GAN disc).
     parser.add_argument(
         "--f_div",
@@ -699,6 +719,13 @@ class TurboConfig:
     activation_memory_budget: (
         float  # compile partitioner saved-act fraction (<1 → recompute)
     )
+
+    # DMAD Phase −1 premise probe (scripts/distill_turbo/dmad_probe.py)
+    dmad_probe: bool = False
+    dmad_probe_lr: float = 5e-5
+    dmad_probe_feature_block_idx: int = -1  # -1 → middle block
+    dmad_probe_head: str = "token"  # "pooled" | "token"
+    dmad_probe_ceiling: bool = True  # second independent DM draw per probe
 
 
 def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
@@ -1051,6 +1078,33 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
             f"softness={softrank_softness}, pool_size={softrank_pool_size} "
             f"(~{softrank_pool_size} MiB), warmup_ratio={softrank_warmup_ratio}."
         )
+    dmad_probe = bool(_pick(args.dmad_probe, cfg, "dmad_probe.enabled", False))
+    dmad_probe_lr = float(_pick(args.dmad_probe_lr, cfg, "dmad_probe.lr", 5e-5))
+    dmad_probe_feature_block_idx = int(
+        _flatten(cfg, "dmad_probe.feature_block_idx", -1)
+    )
+    dmad_probe_head = str(_flatten(cfg, "dmad_probe.head", "token"))
+    dmad_probe_ceiling = bool(_flatten(cfg, "dmad_probe.ceiling", True))
+    if dmad_probe:
+        if base_loss != "dpdmd":
+            raise ValueError(
+                "dmad_probe needs base_loss='dpdmd': its teacher samples finish "
+                "the step-0 anchor rollout."
+            )
+        if int(args.blocks_to_swap) > 0:
+            raise ValueError(
+                "dmad_probe requires blocks_to_swap=0 — the probe's extra "
+                "forwards are unaudited under block swap."
+            )
+        if dmad_probe_head not in ("pooled", "token"):
+            raise ValueError(
+                f"dmad_probe.head={dmad_probe_head!r}: expected 'pooled' or 'token'"
+            )
+        logger.info(
+            "DMAD Phase −1 probe ON (measure-only): "
+            f"lr={dmad_probe_lr}, feature_block_idx={dmad_probe_feature_block_idx} "
+            f"(-1 = middle), head={dmad_probe_head}, ceiling={dmad_probe_ceiling}."
+        )
     if cdm_weight < 0.0:
         raise ValueError(f"cdm.weight={cdm_weight}: must be >= 0")
     if cdm_weight > 0.0:
@@ -1362,6 +1416,11 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         partitioner_aggressive_recomputation=bool(
             _flatten(cfg, "partitioner_aggressive_recomputation", False)
         ),
+        dmad_probe=dmad_probe,
+        dmad_probe_lr=dmad_probe_lr,
+        dmad_probe_feature_block_idx=dmad_probe_feature_block_idx,
+        dmad_probe_head=dmad_probe_head,
+        dmad_probe_ceiling=dmad_probe_ceiling,
     )
 
 

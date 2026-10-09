@@ -504,6 +504,7 @@ class TurboDMDNetwork:
                 **_fake_kwargs,
             )
 
+        self._make_fake = _make_fake  # make_aux_stack builds fake-shaped stacks
         self.fake: LoRANetwork = _make_fake()  # bank 0 (banks=2: the low-τ bank)
         self.fake_hi: LoRANetwork | None = (
             _make_fake() if self.fake_tau_banks == 2 else None
@@ -767,6 +768,23 @@ class TurboDMDNetwork:
         return [
             p for bank in self.fake_banks for p in bank.parameters() if p.requires_grad
         ]
+
+    def make_aux_stack(self) -> LoRANetwork:
+        """A fake-shaped LoRA stack applied outermost and left disabled.
+
+        Not part of any view — the caller enables it around its own forwards
+        (the DMAD probe's disc backbone). Call after ``freeze_dit`` and before
+        ``compile_dit_blocks``; its params keep ``requires_grad=True``.
+        """
+        stack = self._make_fake()
+        stack.apply_to(
+            text_encoders=[],
+            unet=self.unet,
+            apply_text_encoder=False,
+            apply_unet=True,
+        )
+        stack.set_enabled(False)
+        return stack
 
     def freeze_dit(self) -> None:
         """Set ``requires_grad=False`` on every base DiT param.
