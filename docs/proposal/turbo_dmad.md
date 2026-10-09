@@ -1,9 +1,10 @@
 # Turbo DMAD — discriminator-carried distribution matching inside DP-DMD
 
-Status: PROPOSAL. Phase −1 (premise probe) gates Phase 0; arms P1–P4 ran
-2026-10-09, all **UNCONVERGED** (P1: head T plateaued at accuracy 0.58; P2–P4: the
-disc separates teacher from student in bursts, then its gradient blows up and it
-falls back to chance; no read; see § Phase −1 results).
+Status: **PARKED** (2026-10-09). Phase −1 (premise probe) gates Phase 0; arms P1–P5
+all failed to read (P1: head T plateaued at accuracy 0.58; P2–P5: the disc
+separates teacher from student in bursts, then its gradient blows up and it falls
+back to chance). No evidence for Prop. 1 on Anima; the one untested lever is a
+strong R1 (see § Phase −1 results, "Where this leaves Phase −1").
 Source: Yu et al., *DMAD: Distribution
 Matching as Adversarial Distillation for Fast Visual Generation*, arXiv:2610.02188
 (ByteDance, 2026-10-01). Wiring claims below were checked against
@@ -250,13 +251,31 @@ not voted; the verdict rule is unchanged). Rows:
   warm start better than Prop. 1: the disc stack starts from the critic's weights
   (`fake_init_weights`), and DM = teacher − fake. Untested.
 
-**Where this leaves Phase −1.** Four arms, no read. Step size alone (LR 5e-5 → 2e-4,
+**P5 (2026-10-09) — stopped by hand at step 39, no read.** P4 plus the approximate
+R1 of `gan.r1_weight` on the teacher branch (`--dmad_probe_r1_weight 1`, α 0.1; the
+probe's backbone trains, so the MSE gradient reaches the LoRA stack, split exactly
+across the two one-at-a-time branches) and a cold-started disc stack
+(`--dmad_probe_cold_start`: zero-init LoRA instead of `fake_init_weights`). Rows:
+`output/logs/turbo/20261009-174446/dmad_probe.jsonl`. Disc update 1.45 s (0.90 s
+without R1), peak 14.0 GiB.
+
+- Same cycle as P2–P4: acc 0.965 / 0.999 at steps 12–13 (margin 3.5), grad norm 25
+  at step 14 and back to chance; 0.98 at step 20, grad norm 64 at step 22 and back;
+  steps 31–39 at acc 0.50.
+- **R1 at weight 1 does not bite:** the term ran 0.0001–0.09 (mostly < 0.01) against
+  a BCE of ~1.4, so this arm says nothing about whether R1 stabilizes head T.
+- Cold start, early alignment: cos − null +0.028 (steps 1–10) and +0.034 (11–20),
+  against P4's warm-started +0.082 over steps ≤ 20. Small n, but the direction the
+  warm-start explanation predicts.
+
+**Where this leaves Phase −1.** Five arms, no read. Step size alone (LR 5e-5 → 2e-4,
 clip 1 → off → 5) moves head T between too slow to learn and unstable once it
-learns. What is left to try is the disc objective, not its step size: a logit or
-gradient penalty (R1 on the renoised teacher input, or a squared-logit term) so a
-separating head cannot blow up, and a cold-started disc stack to remove the
-warm-start confound. Both are new code; whether Phase −1 is worth that is the
-owner's call.
+learns, and the only positive alignment seen (early steps of P3 / P4) shrinks once
+the disc stack starts cold. Untested and the obvious next arm if the line is picked
+up: P5 with R1 strong enough to compete with the BCE (weight ~100 from the logged
+term's scale), or a squared-logit penalty. If head T still cannot hold acc ≥ 0.75
+over the read window with that, close the line: Phase 0 makes this disc the
+student's only quality gradient.
 
 ## Phase 0 — one knob: the DM term
 

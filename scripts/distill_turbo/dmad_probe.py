@@ -94,7 +94,7 @@ class DmadProbe:
         self.dtype = dtype
         self.stack = turbo.make_aux_stack()
         self.stack.to(device=device, dtype=dtype)
-        if cfg.fake_init_weights:
+        if cfg.dmad_probe_warm_start and cfg.fake_init_weights:
             warm_start_plain_lora(self.stack, cfg.fake_init_weights, "dmad_disc")
         bidx = cfg.dmad_probe_feature_block_idx
         if bidx < 0:
@@ -129,7 +129,8 @@ class DmadProbe:
         )
         logger.info(
             f"DMAD probe: disc stack + head T on block {bidx} "
-            f"({cfg.dmad_probe_head}), {n:,} params, lr={cfg.dmad_probe_lr}"
+            f"({cfg.dmad_probe_head}), {n:,} params, lr={cfg.dmad_probe_lr}, "
+            f"warm_start={cfg.dmad_probe_warm_start and bool(cfg.fake_init_weights)}"
         )
 
     def bind_log_dir(self, log_dir: str | Path) -> None:
@@ -215,20 +216,41 @@ class DmadProbe:
         # disc_steps > 1 the pair is reused at a fresh (τ, ε) per update; the
         # row's bce / margin / acc are the first update's, scored before the
         # disc has trained on this pair.
+        #
+        # Approximate R1 (APT, as gan.r1_weight): w · MSE(h(x_t), h(x_t + αδ)) on
+        # the teacher branch. The backbone trains here, so both logits carry grad;
+        # the branches can't share a graph, so the MSE gradient is split exactly:
+        # the clean branch takes w·MSE(h, h_a.detach()), the perturbed branch
+        # w·MSE(h_a, h.detach()) — h_a's value comes from one no-grad forward.
         clip = cfg.dmad_probe_grad_clip if cfg.dmad_probe_grad_clip > 0 else None
+        r1_w = cfg.dmad_probe_r1_weight
+        r1 = None
         for k in range(cfg.dmad_probe_disc_steps):
             tau_d = self._rand_tau(B)
             eps_d = self._randn_like(x_s)
-            h_parts = []
             with self._disc_view(turbo), selective_block_grad_ckpt(ctx.model):
-                for x_src, loss_fn in (
-                    (x_t, lambda h: F.softplus(-h).mean()),
-                    (x_s, lambda h: F.softplus(h).mean()),
-                ):
-                    x_r = renoise(x_src, tau_d, eps_d).requires_grad_()
-                    h = self._h(ctx, x_r, tau_d, crossattn_emb, no_grad=False)
-                    loss_fn(h).backward()
-                    h_parts.append(h.detach())
+                x_rt = renoise(x_t, tau_d, eps_d)
+                if r1_w > 0:
+                    x_ra = x_rt + cfg.dmad_probe_r1_alpha * self._randn_like(x_rt)
+                    h_a0 = self._h(ctx, x_ra, tau_d, crossattn_emb, no_grad=True)
+                h = self._h(
+                    ctx, x_rt.requires_grad_(), tau_d, crossattn_emb, no_grad=False
+                )
+                loss_t = F.softplus(-h).mean()
+                if r1_w > 0:
+                    loss_t = loss_t + r1_w * F.mse_loss(h, h_a0.detach())
+                loss_t.backward()
+                h_tk = h.detach()
+                if r1_w > 0:
+                    h_a = self._h(
+                        ctx, x_ra.requires_grad_(), tau_d, crossattn_emb, no_grad=False
+                    )
+                    (r1_w * F.mse_loss(h_a, h_tk)).backward()
+                    r1_k = float(F.mse_loss(h_a.detach(), h_tk))
+                x_rs = renoise(x_s, tau_d, eps_d).requires_grad_()
+                h = self._h(ctx, x_rs, tau_d, crossattn_emb, no_grad=False)
+                F.softplus(h).mean().backward()
+                h_parts = [h_tk, h.detach()]
             gn = torch.nn.utils.clip_grad_norm_(
                 self.stack_params + list(self.head.parameters()),
                 max_norm=clip if clip is not None else float("inf"),
@@ -239,6 +261,8 @@ class DmadProbe:
                 h_t, h_s = h_parts
                 tau_d0 = tau_d
                 disc_grad_norm = gn
+                if r1_w > 0:
+                    r1 = r1_k
             h_t_last, h_s_last = h_parts
         loss = gan_loss_discriminator(h_t, h_s)
         t_disc = self._lap()
@@ -276,6 +300,7 @@ class DmadProbe:
             "margin": float(h_t.detach().mean() - h_s.detach().mean()),
             "acc": _acc(h_t, h_s),
             "acc_last": _acc(h_t_last, h_s_last),
+            "r1": r1,
             "h_probe": float(h_probe.detach().mean()),
             "g_t_rms": float(g_t.float().pow(2).mean().sqrt()),
             "dm_rms": float(dmd.grad_signal.float().pow(2).mean().sqrt()),

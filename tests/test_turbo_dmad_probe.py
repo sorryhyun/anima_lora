@@ -100,6 +100,17 @@ def test_disc_steps_and_collapse_stop():
         _resolve(["--dmad_probe_disc_steps", "0"], cfg=on)
 
 
+def test_r1_and_cold_start():
+    on = {"dmad_probe": {"enabled": True}}
+    c = _resolve(cfg=on)
+    assert c.dmad_probe_r1_weight == 0.0 and c.dmad_probe_warm_start is True
+    c = _resolve(["--dmad_probe_r1_weight", "1", "--dmad_probe_cold_start"], cfg=on)
+    assert c.dmad_probe_r1_weight == pytest.approx(1.0)
+    assert c.dmad_probe_warm_start is False
+    with pytest.raises(ValueError, match="r1_weight"):
+        _resolve(cfg={"dmad_probe": {"enabled": True, "r1_weight": -0.5}})
+
+
 def test_refuses_plain_dmd():
     with pytest.raises(ValueError, match="dpdmd"):
         _resolve(["--dmad_probe", "--base_loss", "dmd", "--student_steps", "4"])

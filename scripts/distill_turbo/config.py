@@ -540,6 +540,22 @@ def build_argparser() -> argparse.ArgumentParser:
         "(dmad_probe.grad_clip, default the run's optim.grad_clip).",
     )
     parser.add_argument(
+        "--dmad_probe_r1_weight",
+        type=float,
+        default=None,
+        help="Approximate-R1 (APT) weight on the probe disc's teacher branch: "
+        "MSE between its logits at x and x + r1_alpha·δ; 0 disables. Default: "
+        "TOML (dmad_probe.r1_weight, default 0).",
+    )
+    parser.add_argument(
+        "--dmad_probe_cold_start",
+        action="store_const",
+        const=True,
+        default=None,
+        help="Start the probe disc stack from zero-init LoRA instead of "
+        "fake_init_weights. Default: TOML (dmad_probe.warm_start, default true).",
+    )
+    parser.add_argument(
         "--dmad_probe_disc_steps",
         type=int,
         default=None,
@@ -747,6 +763,9 @@ class TurboConfig:
     dmad_probe_lr: float = 5e-5
     dmad_probe_grad_clip: float = 1.0  # 0 → unclipped
     dmad_probe_disc_steps: int = 1  # disc updates per step on one pair
+    dmad_probe_r1_weight: float = 0.0
+    dmad_probe_r1_alpha: float = 0.1
+    dmad_probe_warm_start: bool = True  # stack from fake_init_weights
     dmad_probe_stop_on_collapse: int = 0  # consecutive flat-margin steps; 0 → off
     dmad_probe_feature_block_idx: int = -1  # -1 → middle block
     dmad_probe_head: str = "token"  # "pooled" | "token"
@@ -1111,6 +1130,15 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     dmad_probe_disc_steps = int(
         _pick(args.dmad_probe_disc_steps, cfg, "dmad_probe.disc_steps", 1)
     )
+    dmad_probe_r1_weight = float(
+        _pick(args.dmad_probe_r1_weight, cfg, "dmad_probe.r1_weight", 0.0)
+    )
+    dmad_probe_r1_alpha = float(_flatten(cfg, "dmad_probe.r1_alpha", 0.1))
+    dmad_probe_warm_start = (
+        False
+        if args.dmad_probe_cold_start
+        else bool(_flatten(cfg, "dmad_probe.warm_start", True))
+    )
     dmad_probe_stop_on_collapse = int(
         _pick(
             args.dmad_probe_stop_on_collapse, cfg, "dmad_probe.stop_on_collapse", 0
@@ -1132,6 +1160,10 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
                 "dmad_probe requires blocks_to_swap=0 — the probe's extra "
                 "forwards are unaudited under block swap."
             )
+        if dmad_probe_r1_weight < 0.0:
+            raise ValueError(
+                f"dmad_probe.r1_weight={dmad_probe_r1_weight}: must be >= 0"
+            )
         if dmad_probe_disc_steps < 1:
             raise ValueError(
                 f"dmad_probe.disc_steps={dmad_probe_disc_steps}: must be >= 1"
@@ -1144,6 +1176,8 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
             "DMAD Phase −1 probe ON (measure-only): "
             f"lr={dmad_probe_lr}, grad_clip={dmad_probe_grad_clip}, "
             f"disc_steps={dmad_probe_disc_steps}, "
+            f"r1_weight={dmad_probe_r1_weight} (alpha {dmad_probe_r1_alpha}), "
+            f"warm_start={dmad_probe_warm_start}, "
             f"stop_on_collapse={dmad_probe_stop_on_collapse}, "
             f"feature_block_idx={dmad_probe_feature_block_idx} "
             f"(-1 = middle), head={dmad_probe_head}, ceiling={dmad_probe_ceiling}."
@@ -1463,6 +1497,9 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         dmad_probe_lr=dmad_probe_lr,
         dmad_probe_grad_clip=dmad_probe_grad_clip,
         dmad_probe_disc_steps=dmad_probe_disc_steps,
+        dmad_probe_r1_weight=dmad_probe_r1_weight,
+        dmad_probe_r1_alpha=dmad_probe_r1_alpha,
+        dmad_probe_warm_start=dmad_probe_warm_start,
         dmad_probe_stop_on_collapse=dmad_probe_stop_on_collapse,
         dmad_probe_feature_block_idx=dmad_probe_feature_block_idx,
         dmad_probe_head=dmad_probe_head,
