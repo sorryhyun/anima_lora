@@ -1,6 +1,6 @@
 # Turbo DMAD — discriminator-carried distribution matching inside DP-DMD
 
-Status: PROPOSAL, no code or GPU work done. Source: Yu et al., *DMAD: Distribution
+Status: PROPOSAL, no code or GPU work done. Phase −1 (premise probe) gates Phase 0. Source: Yu et al., *DMAD: Distribution
 Matching as Adversarial Distillation for Fast Visual Generation*, arXiv:2610.02188
 (ByteDance, 2026-10-01). Wiring claims below were checked against
 `scripts/distill_turbo/` and `configs/methods/turbo.toml` as of `3079e415`.
@@ -77,6 +77,12 @@ expected failure shape here: head T is what keeps prompt adherence.
    The natural candidate is to **reuse the fake LoRA stack as the disc backbone**:
    the fake view, plus block features, plus two MLP heads. Its parameter and memory
    footprint is roughly the critic's, and it can keep the warm-start init.
+   The one measurement we have points the wrong way: the shipped GAN head's
+   generator gradient is elementwise orthogonal to the DM signal (agree-energy
+   0.489 vs permutation null 0.488, cos 0.006;
+   `docs/findings/turbo_gan_dm_grad_orthogonal.md`). That disc is a ~2 M hinge
+   head on real vs student, not a balanced-BCE teacher head, so it does not refute
+   Prop. 1 — but Prop. 1 holding on Anima is unmeasured. Phase −1 measures it.
 2. **Teacher-sample source.**
    - (a) Finish the per-step anchor rollout online, `k_anchor = 6` → 12 of the
      12-step grid. This gives a teacher sample on the same ε as the student, but
@@ -109,6 +115,26 @@ expected failure shape here: head T is what keeps prompt adherence.
    substitution is direct. But it has not been checked whether head T's ratio is
    meaningful for mid-rollout x0 predictions, which are blurrier than teacher
    endpoints.
+
+## Phase −1 — does ∇ₓh_T point along the DM signal? (measure-only)
+
+Prop. 1 is the whole premise, and it is checkable on the current loop without
+building DMAD. Ride a warm DP-DMD resume with the DM term and fake critic
+**unchanged** (training numerics byte-identical), and add head T on the fake LoRA
+stack, trained alongside with balanced BCE on cached CFG-4 teacher samples vs
+`x_pred`. Head T's gradient is read, never applied.
+
+- **Probe:** at each flush point, `g_T = autograd.grad(h_T(renoise(x_pred)), x_pred)`
+  against the detached DM `grad_signal` at the same `x_pred`: cosine, elementwise
+  agree-energy, τ-binned (8 bins), with a permutation null on the same tensors.
+  This is the telemetry of the closed sign-gate line
+  (`docs/findings/turbo_gan_dm_grad_orthogonal.md` § What was measured); its code
+  was never committed, so it is rebuilt here.
+- **Pass:** agree-energy and cosine clearly above the null in aggregate, after
+  head T's BCE has converged (read its logit margin, not the loss).
+- **Kill:** indistinguishable from the null at convergence — the disc cannot carry
+  the DM gradient at this capacity, and Phase 0 does not start. Also record the
+  peak VRAM of the grad-bearing head-T forward (question 3).
 
 ## Phase 0 — one knob: the DM term
 
@@ -147,5 +173,8 @@ Later arms, one knob each and only if Phase 0 passes:
 - **Added per step:**
   - one disc update over three sources (student, teacher, real);
   - grad-bearing disc forwards in the DM term and in L_CDM.
-- **Net:** likely faster, since the fake inner loop is the bulk. VRAM is the open
-  item (question 3).
+- **Net:** unknown. The fake inner loop is the bulk today, but with the fake LoRA
+  stack as the disc backbone each grad-bearing disc forward is a full fake-DiT
+  forward + backward into `x`, twice per step, plus a disc update over three
+  sources — plausibly close to even. VRAM is the open item (question 3); Phase −1
+  records both.
