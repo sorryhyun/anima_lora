@@ -66,6 +66,8 @@ def _chars() -> dict:
 
 
 def _family(c: str) -> str | None:
+    if len(c) != 1:
+        return None
     if "ぁ" <= c <= "ゖ" or "ァ" <= c <= "ヺ" or c == "ー":
         return "kana"
     if unicodedata.name(c, "").startswith("CJK UNIFIED"):
@@ -89,6 +91,7 @@ def main() -> None:
     from reseed.config import load
 
     run = load(a.run)
+    run.use_pack()
     assert run.lang, f"{run.name}: no lang"
     arm = J._offsets(str(run.dir / "trained.pt"))
     seed = J._offsets(str(run.seed_rows()))

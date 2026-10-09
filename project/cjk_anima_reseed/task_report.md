@@ -1,5 +1,6 @@
 # task_report — KO / ZH rows beside the 1008 seed (2026-10-09, session 12:19–13:36)
 
+**Redone on this branch (10-09): `reports/kozh16_2026_10_09.md`.** The run below:
 **Status: discarded.** The work ran on `main`'s stale copy of this line
 (`reseed/` as of `cf5f51f7`), not on `cjk-reseed`: none of the branch's data
 mix, data build or ruler eval was used, so the trained rows, their geometry
