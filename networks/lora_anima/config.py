@@ -223,7 +223,7 @@ class LoRANetworkCfg:
     # (seed from W0's top-r right singular vectors), or the gradient-seeded
     # "grad_svd" / "basis_file" (top-r row space of the task gradient; the basis
     # arrives in ``grad_basis_dict``). Plain LoRAModule only.
-    # See docs/methods/svd-down-lora.md, docs/proposal/grad_basis_init.md.
+    # See docs/methods/svd-down-lora.md.
     down_init: str = "kaiming"
 
     # weight_svd window: slice k seeds ``lora_down`` from W0's right singular

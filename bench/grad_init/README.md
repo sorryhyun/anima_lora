@@ -201,7 +201,7 @@ render.** A 3× first-step gradient capture (0.63 vs 0.21) is fully absorbed by
 "moved least from base" signature of the member read did not translate into a
 preference either way.
 
-Both kill conditions in `docs/proposal/grad_basis_init.md` §E1 fire: keep
+Both kill conditions in `_archive/proposals/grad_basis_init.md` §E1 fire: keep
 `weight_svd` as the default, keep `grad_svd` / `basis_file` as documented opt-in
 modes with the probe numbers as their record, do not ship a catalog basis.
 Reports: `project/finished/cjk_aware_anima/reports/blind_s2{2,3,4,5}_E1_*.md`.

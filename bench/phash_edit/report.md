@@ -53,7 +53,7 @@ arms in case 2 is plausibly colorize-arm (20%) bleed-through, untested.
 ## Diff localization (`run_diff_localize.py`, run 2225, 2026-08-21)
 
 Phase 0 for the position-clause proposal
-(`docs/proposal/phash_edit_position_clauses.md`): CPU 64×64 diff over all
+(`_archive/proposals/phash_edit_position_clauses.md`): CPU 64×64 diff over all
 1,856 unique edit pairs — where does each pair actually differ?
 
 - **30.0% single-region** (top blob ≥ 75% of diff mass) — one clause

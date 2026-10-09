@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """E1 — does the ``lora_down`` seed move the render?
 
-The render-level half of ``docs/proposal/grad_basis_init.md`` §E1. Given the
+The render-level half of ``_archive/proposals/grad_basis_init.md`` §E1. Given the
 paired arm checkpoints (same artist, same ``--seed``, ``--deterministic
 --paired_step_rng``, one knob apart), this renders ONE prompt set with ONE seed
 per row under every arm and reports two things:

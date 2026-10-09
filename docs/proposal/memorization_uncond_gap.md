@@ -217,8 +217,8 @@ routing-free merges. Verdict: caption-Δ member-level is a working
 loss-side merge-interference gauge, validated against visual ground truth;
 `Δ_member(merged) − Δ_member(solo)` is the statistic (strongly negative =
 overdriven/bad merge; ≈0 = healthy; spread compression = dilution).
-Shipping proposal: `merge_interference_probe.md` (calibration Phase 0 →
-`scripts/check_merge.py`).
+Shipping proposal `_archive/proposals/merge_interference_probe.md` was archived
+2026-08-30 without running its calibration Phase 0 (no `scripts/check_merge.py`).
 
 Ladder position after this: endpoint ✓, dose ✓, FP breadth ~ (3 negatives,
 one borderline pending render adjudication), merge auditing ✓. Remaining

@@ -8,6 +8,13 @@ is a valid per-image caption-*adherence* instrument, on both real and generated
 images; it is (by design) orthogonal to the turbo text/pose teacher-gap, which is a
 scope boundary, not a failure. Results:
 
+> **Judge changed after the PASS (2026-08-30).** The 0a numbers below were measured
+> on the PE-backed tagger, which was removed; `AnimaTagger` now runs the dbv4 backend
+> (`anime_tools.tagger.dbv4_backend`: dbv4 general/character/rating tags + a sidecar
+> head for copyright, dataset-only characters and people-count — no artist head).
+> Re-run `bench/readback/run_bench.py` on dbv4 before a consumer relies on the 0a
+> gates. Phase 0b loses its tagger-artist-head candidate.
+
 - Real-data controls (val N=756, cached PE, zero renders): shuffled-caption drop
   0.991 (gate ii ≥ 0.90); true-vs-random-caption AUROC 0.98 (≥ 0.80).
   logsigmoid ≈ calibrated-recall; general-only tags (identity stripped) still 0.97+,
@@ -32,7 +39,7 @@ scope boundary, not a failure. Results:
   student, consistent with distillation refining non-content axes.
 
 Net: ship the primitive for content-adherence selection consumers
-(`dave_mod_bestofn` `q_tag`, soup ingredient gating, seed selection, RWR
+(soup ingredient gating, seed selection, RWR
 self-captioning — all content-adherence use cases). Phase 0b (style verifier) and the
 RWR phases may proceed on this instrument. Supersedes PR #67
 (`reward_weighted_artist_lora.md`, unmerged): the RWR estimator and phase discipline
@@ -53,15 +60,9 @@ renders at `bench/readback/renders/20260722-1117-turbo/`.
     training-free T2I reward; group-relative use cancels the language prior; their
     ablation: scalar 1–5 judging degrades, VQA-decomposition is mid, likelihood
     wins — and reward-policy alignment rivals reward-model scale.
-  - `library/captioning/anima_tagger_model.py` — the in-house judge: multi-label
-    tag logits + 3-class rating + people-count off frozen PE, dual-encoder
-    hard-routed (PE-Core → identity/artist/character sub-head; PE-Spatial →
-    localized tags), per-tag calibrated thresholds.
-  - `bench/tagger_eval/run_bench.py` — per-tag / per-KB-slice / per-frequency-tier
-    calibration measurement already exists; the judge is verified, not assumed.
-  - `docs/proposal/dave_mod_bestofn.md` § Phase 0 — already wants a per-image
-    `q_tag` (tagger recall vs prompt tags). This proposal promotes that one-off
-    scorer to the shared primitive.
+  - `anime_tools.tagger.tagger::AnimaTagger` — the in-house judge: multi-label
+    tag scores over the Anima caption vocab, per-tag calibrated thresholds (dbv4
+    backend since 2026-08-30; see the Status note).
   - `docs/methods/turbo.md` — the <1 s 4-step grow engine; its caption-following
     degradation (teacher-gap: text lost, pose collapse) is a *known confound* the
     reward design must not punish blindly.
@@ -89,7 +90,7 @@ Two lines currently point at the same missing primitive:
 1. Selection consumers with no judge. Seed lottery, soup ingredient averaging
    (uniform, no gate — a bad draw is averaged in, not dropped), turbo checkpoint
    ranking (currently manual eyeballing of 4-step renders), best-of-N candidate
-   pools (`dave_mod_bestofn.md`). All need a cheap, per-image, caption-aware
+   pools. All need a cheap, per-image, caption-aware
    score. CMMD can't do per-image; FM val loss tracks nothing.
 2. RWR artist LoRA (PR #67) with a reward hole. Its composite reward
    (`style + λ_q·quality − λ_n·novelty`) has no prompt-alignment term, its grow
@@ -159,7 +160,7 @@ proceed on MLLM, note the cost. Both failing → stop; there is no instrument,
 and the RWR phases below do not start.
 
 Deliverable on pass: `library/` scoring helper + the pair-set harness, immediately
-reusable by `dave_mod_bestofn.md` Phase 0 (its `q_tag`), soup ingredient gating,
+reusable by soup ingredient gating,
 and seed selection — the consumers exist whether or not RWR proceeds.
 
 ## Phase 0b — style verifier, content-matched (gate; inherited from PR #67, hardened)
@@ -173,10 +174,8 @@ and seed selection — the consumers exist whether or not RWR proceeds.
    detector. The gate must show style separation at fixed content.
 2. Two verifier candidates, benched head-to-head:
    - PE-Core centroid cosine (PR #67's choice), content-matched as above.
-   - The tagger's own artist sub-head logit — for in-vocab artists this is a
-     trained style discriminator (identity head, PE-Core trunk), already
-     calibrated by `tagger_eval`. For out-of-vocab target artists it degrades to
-     the centroid path; both must be reported.
+   - ~~The tagger's own artist sub-head logit~~ — void: the dbv4 backend has no
+     artist head. A second candidate is open.
 
 Near-duplicate control reuses `bench/memorization/probe.py` (the xerox detector)
 instead of a new feature-space dedupe — the "style detector, not memorization
@@ -249,12 +248,11 @@ tagger forward per selected candidate — noise.
 ## Open questions
 
 - Readback aggregation. Mean log-confidence vs calibrated-threshold recall/F1
-  (the `dave_mod_bestofn.md` `q_tag` shape): log-confidence is denser, F1 is
+  (a `q_tag`-style recall): log-confidence is denser, F1 is
   threshold-honest. Phase 0a reports both; pick by gate AUC.
-- Tail tags. Per-tag calibration is weakest on tail-frequency tags
-  (`tagger_eval` per-tier readout); should readback weight tags by calibration
-  quality, or mask below a frequency floor? Phase 0a's per-pair-set breakdown
-  decides.
+- Tail tags. Per-tag calibration is weakest on tail-frequency tags; should
+  readback weight tags by calibration quality, or mask below a frequency floor?
+  Phase 0a's per-pair-set breakdown decides.
 - Self-caption drift. Self-captioning trains the LoRA toward *tagger-visible*
   content — a subtle bias toward the tagger's vocabulary. Bounded by the
   real-image anchor (real captions stay in every round), but worth one grid: do
@@ -274,11 +272,8 @@ tagger forward per selected candidate — noise.
 - PR #67 `docs/proposal/reward_weighted_artist_lora.md` (unmerged, superseded) —
   the RWR/ReST estimator rationale, turbo-grow safety argument (FM training is
   sampler-agnostic), cost model, and phase discipline inherited here.
-- `library/captioning/anima_tagger_model.py`, `bench/tagger_eval/run_bench.py` —
-  the judge and its calibration bench.
+- `anime_tools.tagger.tagger::AnimaTagger` — the judge.
 - `bench/memorization/probe.py` — xerox / near-duplicate control, novelty term.
-- `docs/proposal/dave_mod_bestofn.md` — `q_tag` consumer; best-of-N order
-  statistics for candidate pools.
 - `_archive/proposals/paired_gram_eval.md` (Phase 0 failed) — the content-dominance
   trap Phase 0b is designed against.
 - `_archive/proposals/seed_lottery_noise_floor.md`, `docs/experimental/soup.md` —

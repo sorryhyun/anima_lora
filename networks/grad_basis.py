@@ -24,7 +24,7 @@ basis must not seed a 40-block DiT (see ``docs/methods/anima-2.9b.md``).
 ``load_basis`` refuses the mismatch on the block count read back from the keys.
 
 Measurement and gates: ``bench/grad_init/README.md``,
-``docs/proposal/grad_basis_init.md``.
+``_archive/proposals/grad_basis_init.md`` (closed: E1 render-neutral).
 """
 
 from __future__ import annotations

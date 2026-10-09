@@ -2,7 +2,7 @@
 """Tag-dropout eval harness — render prompt sets per arm, score with the tag judge.
 
 The reusable render+score half of the tag-dropout proposal
-(``docs/proposal/tag_dropout_mechanism.md``). Consumes a ``prompt_sets.json``
+(``_archive/proposals/tag_dropout_mechanism.md``). Consumes a ``prompt_sets.json``
 (from :mod:`bench.tag_dropout.prompt_sets`) and one or more LoRA arms, renders
 every (prompt, seed) cell with matched noise across arms, and scores three
 group-relative content-adherence quantities via the frozen tag-readback judge

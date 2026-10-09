@@ -125,7 +125,10 @@ Measured on this DiT (`bench/grad_init/README.md`): `weight_svd` passes **0.21**
 of an artist's first-step gradient energy, the artist's own gradient basis
 **0.74**, a 20-artist universal basis **0.633** on held-out artists. A basis is
 **depth-baked** (module names carry the block index) and `load_basis` refuses a
-depth mismatch. Whether any of this survives training is `docs/proposal/grad_basis_init.md` §E1.
+depth mismatch. None of it survives training: E1 found every `down_init` arm
+render-neutral (`bench/grad_init/README.md` §E1), so `weight_svd` stays the default
+and the gradient modes stay opt-in. Pre-registration:
+`_archive/proposals/grad_basis_init.md`.
 
 ## Origin
 

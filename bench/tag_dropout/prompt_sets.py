@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Build the tag-dropout evaluation prompt sets off ``caption_index.json``.
 
-Phase 0 deliverable (``docs/proposal/tag_dropout_mechanism.md``). Pure data, no
+Phase 0 deliverable (``_archive/proposals/tag_dropout_mechanism.md``). Pure data, no
 GPU, no torch model — only the frozen tagger vocab (via :class:`TagReadback`) to
 type tags into content vs identity. Emits a ``prompt_sets.json`` the render+score
 harness (:mod:`bench.tag_dropout.run_eval`) consumes for every arm.

@@ -6,7 +6,7 @@ CPU-only pass over the miner's manifest (no GPU, no adapter). For every mined
 blobs, and which 3x3-grid header ("top left", "center", ...) the dominant
 blob lands in.
 
-The verdict this feeds (docs/proposal/phash_edit_position_clauses.md): a
+The verdict this feeds (_archive/proposals/phash_edit_position_clauses.md): a
 position-clause instruction (`On the upper left, -english text.`) is only
 worth re-mining for if a healthy fraction of pairs have a *clean,
 single-region* diff that a coarse header can address, and the header

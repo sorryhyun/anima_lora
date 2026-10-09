@@ -99,7 +99,7 @@ class LoRAModule(BaseLoRAModule):
         orthonormal basis) — a per-artist address for merging. 0 = top-r.
         ``svd_slice_count=N`` (> 0) interleaves instead: slice k takes vectors
         ``{k, k+N, k+2N, …}``, so every slice gets one of the top-N directions.
-        See docs/methods/svd-down-lora.md, docs/proposal/grad_basis_init.md.
+        See docs/methods/svd-down-lora.md.
         """
         super().__init__(
             lora_name,

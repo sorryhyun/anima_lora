@@ -1,7 +1,7 @@
 """Invariants for the gradient-SVD ``lora_down`` init and the min_snr weighting.
 
 Tier 1.5 companion to ``bench/grad_init/`` (the measurement) and
-``docs/proposal/grad_basis_init.md`` (E0/E1). What must hold:
+``_archive/proposals/grad_basis_init.md`` (E0/E1). What must hold:
 
 * a gradient-seeded ``A`` is ``V_rᵀ / sqrt(3)`` — the SAME row-norm match
   ``weight_svd`` uses, so an init arm is never also a step-size arm;
