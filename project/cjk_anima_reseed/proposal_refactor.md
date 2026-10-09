@@ -9,7 +9,29 @@ the § 3 moves, `run.py` without `read`, `ruler.py` without `gs_rkstick` /
 `rand_turn`, `kozh_geometry` with `_offsets` inlined, `status.md`, README.
 `reports/kozh16_2026_10_09.md` landed before step 1 and stays. Left:
 `models/pe/` (byte-equal to the repo's `models/pe/PE-Spatial-B16-512.pt`)
-for the user to delete. Next: step 2.
+for the user to delete.
+
+**Steps 2–3 done (10-09).** `DATA` came over as its three phrase keys
+(`table.PHRASE_*`); `is_ja_text` / `dataset_ja_lines` / `glyph_count` sit in
+`pools`, `PHRASE_FILE` in `config`. `train_record.json` also loses
+`steps_override` (always true now) and `context_run` (always null for
+reseed). Verified:
+- (a) the kozh16 smoke byte-equal to step 0's; and a `sent_kanji` build at
+  `--frac 0.004` (540 items: windows, `sent`, `m109_pack`) from a worktree at
+  `b3dee68e` against the port: every image equal, every json equal bar the
+  worktree's path prefix.
+- (b) `kozh16 train --max_steps 50`: step-1 loss 0.15419110655784607 for the
+  port and for the freeze-point code run the same session (jobs
+  `20261009-143913-c6e844`, `20261009-144021-ae478e`); the recorded run's is
+  0.15409. Steps 25 / 50 drift by ~2e-4 between port and old code, as much
+  as old code against its own record: not bit-equal across sessions, equal
+  within the trainer's run-to-run noise.
+- (c) `ruler.py render --pack punct --arms seed_1008 --only 0,1`: r01
+  bit-equal for cached / old code / port; r00 differs run to run for the old
+  code too (mean |Δ| 3.8 / 255 old vs cached, 3.84 old vs port), equal by
+  eye. The cached renders were put back.
+
+Next: step 4.
 
 The user (10-09): before the
 next experiment, prune `cjk_anima_reseed` (too many stale experiments and idea

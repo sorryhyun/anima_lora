@@ -28,6 +28,10 @@ runs from the freeze-point commit named in `status.md`, not from this tree.
 | `reseed/recipes.py` | `bubble1` / `bubbleN` / `sent` / `grid` |
 | `reseed/pools.py` | rows, scenes (+ the `s1s` pool, mono weighting), the windowed word pool, the dialogue lines (`sent`), the KO / ZH faces and captions (`lang`) |
 | `reseed/builder.py` | one pass over the table → `output/cjk_anima_reseed/<run>/data` |
+| `reseed/trainer.py` | the trainer (ported from scale's `cjk_scale/train.py`, numerics unchanged): the run's rows cold or warm on `context`, every other row frozen there, box-share FM, σ per item in its band, optional L_pres → `<run>/trained.pt` (the whole merged rows), `train_log.json`, `train_record.json`; `rows.py` (the `ExtDelta` rows) and `loss.py` (box-share FM, L_pres) beside it |
+| `reseed/__init__.py` | the paths (`HOME`, `OUT`, `SCALE_OUT`, the seed rows), the pack digests, `bootstrap()` |
+| `src/` | vendored from scale's `src/` under its top-level names (`common`, `data`, `train`, `eval`): renderers, scene pools, Qwen inventory, readers, TE / latent caches; byte-faithful to the reads of record — no cleanup |
+| `assets/fonts/` | the JA faces + `kozh/` (KO / ZH; FONTS.md, licences; the binaries are gitignored — copy them) |
 
 ```bash
 .venv/bin/python project/cjk_anima_reseed/run.py sent_kanji data --frac 0.03   # sizes: sheet_<tier>.png
@@ -37,10 +41,10 @@ make daemon-run ARGS="--stall-timeout 900 project/cjk_anima_reseed/ruler.py run 
 .venv/bin/python -m pytest project/cjk_anima_reseed/tests
 ```
 
-Renderers, scene pools, fonts and the trainer are `../cjk_anima_scale`'s
-(`src/`, `cjk_scale.train`) until `proposal_refactor.md` § 4 steps 2–3 vendor
-them here. Its `cjk_scale.builder` / `recipes` rebuild the seed of record and
-are not imported here (`tests/test_boundary.py`).
+The line stands alone (`tests/test_boundary.py`): no live file imports the
+scale line's `cjk_scale`. It reads the scale line's outputs
+(`output/cjk_anima_scale`: the seed rows, the arms of record, the scene pools,
+the EN refs) and appends to its two scene caches.
 
 ## The table
 

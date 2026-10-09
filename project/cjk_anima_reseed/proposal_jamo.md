@@ -1,8 +1,8 @@
 # proposal_jamo — Hangul rows from jamo identity, then warm (2026-10-09)
 
 **Status: proposal.** Runs after `proposal_refactor.md` lands (the trainer,
-renderers and KO fonts still live in `../cjk_anima_scale`). Nothing here is
-built yet.
+renderers and KO fonts live in this line since its step 3: `reseed/trainer.py`,
+`src/`, `assets/fonts/kozh/`). Nothing here is built yet.
 
 ## 1. Why
 
@@ -91,8 +91,7 @@ part of a glyph's identity that the jamo do not explain.
 4. **Fonts.** The six KO faces in `kozh/` (Nanum Gothic, Do Hyeon, Jua,
    Black Han Sans, Nanum Pen Script, Nanum Myeongjo) cover KS X 1001 only,
    so trained and held sets stay inside it. LXGW WenKai covers all 11 172.
-5. **Trainer mode** (`cjk_scale.train`, or its successor after the
-   refactor): `factor = "jamo"`. The optimizer holds the factor tensors
+5. **Trainer mode** (`reseed/trainer.py`): `factor = "jamo"`. The optimizer holds the factor tensors
    (and in phase 2 the residuals). Each step composes Δ for the live
    Hangul rows into `rows.delta.raw` before the forward, so gradients reach
    the factors through the composition. It sits beside `stick_only` /

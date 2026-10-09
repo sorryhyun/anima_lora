@@ -9,7 +9,7 @@
 
 ``<run>`` is ``configs/<run>.toml`` or a path to one.
 ``data`` → ``output/cjk_anima_reseed/<run>/data``; ``train`` →
-``…/<run>/trained.pt`` (the whole merged rows, ``cjk_scale.train``: the
+``…/<run>/trained.pt`` (the whole merged rows, ``reseed.trainer``: the
 run's rows trained cold or warm as its config says, every other row frozen
 at the run's context rows). A run is read on the dialogue ruler
 (``ruler.py``).
@@ -53,17 +53,17 @@ def main():
         build(run, a.workers, a.frac)
     else:
         assert a.frac == 1.0, "--frac is the data verb's"
-        from cjk_scale import train as T
+        from reseed import trainer as T
 
         T.train(
-            run.scale_config(),
+            run,
             data=Path(a.data) if a.data else run.data,
             out=Path(a.out) if a.out else run.dir,
-            max_steps=a.max_steps,
+            context=run.seed_rows(),
             cold=not (run.stick_from or run.warm or run.rows_from),
+            max_steps=a.max_steps,
             steps_per_row=None if run.focus else a.steps_per_row or run.steps_per_row,
             steps=run.steps(a.steps_per_row),
-            context=run.seed_rows(),
             drop_tiers=run.drop_tiers,
             stick_only=bool(run.stick_from),
             band=run.band,

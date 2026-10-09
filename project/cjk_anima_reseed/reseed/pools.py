@@ -68,7 +68,6 @@ def build_pools(rows: list, rng: random.Random, lang: dict | None = None) -> Poo
     import tempfile
     from types import SimpleNamespace
 
-    from cjk_scale.config import DATA
     from common.render.flat import find_fonts
     from data.inventory import pieces as qpieces
     from data.inventory import qwen_pieces
@@ -80,15 +79,14 @@ def build_pools(rows: list, rng: random.Random, lang: dict | None = None) -> Poo
         _word_set,
     )
     from data.synth import load_scenes
-    from cjk_scale.windows import glyph_count
 
     a = SimpleNamespace(
         vocabs=list(rows),
         balanced=0,
         seed=T.SEED,
-        phrase_min_pieces=int(DATA["phrase_min_pieces"]),
-        phrase_max_pieces=int(DATA["phrase_max_pieces"]),
-        phrase_norm=bool(DATA["phrase_norm"]),
+        phrase_min_pieces=T.PHRASE_MIN_PIECES,
+        phrase_max_pieces=T.PHRASE_MAX_PIECES,
+        phrase_norm=T.PHRASE_NORM,
         word_min_len=2,
         n_word_eval=0,
         line_max_len=16,
@@ -249,9 +247,9 @@ def bubble_check(sc: dict) -> dict:
 def whole_bubbles(scenes: list) -> list:
     """``scenes`` less those whose bubble the canvas cuts (``BUBBLE_EDGE_MIN``)
     or whose erase would leave the letters (``ERASE_LEFT_MAX``)."""
-    from cjk_scale.paths import OUT
+    from . import SCALE_OUT
 
-    path = OUT / "experiments" / "scene_bubble_check.json"
+    path = SCALE_OUT / "experiments" / "scene_bubble_check.json"
     cache = json.loads(path.read_text("utf-8")) if path.exists() else {}
     miss = [s for s in scenes if s["file"] not in cache]
     for s in miss:
@@ -296,9 +294,9 @@ def colorful(file: str) -> float:
 
 
 def mono_scenes(scenes: list) -> set:
-    from cjk_scale.paths import OUT
+    from . import SCALE_OUT
 
-    path = OUT / "experiments" / "scene_colorful.json"
+    path = SCALE_OUT / "experiments" / "scene_colorful.json"
     cache = json.loads(path.read_text("utf-8")) if path.exists() else {}
     miss = [s["file"] for s in scenes if s["file"] not in cache]
     for f in miss:
@@ -306,6 +304,68 @@ def mono_scenes(scenes: list) -> set:
     if miss:
         path.write_text(json.dumps(cache, indent=0), encoding="utf-8")
     return {j for j, s in enumerate(scenes) if cache[s["file"]] < T.COLOR_MIN}
+
+
+# ----------------------------------------------------------------------------
+# the training set's own JA text (scale's ``config``: plan_retrain § 2b)
+
+# the revised captions' text clauses: the window pool's second source beside
+# the dialogue lines; read live, the dataset never enters the repo
+DATASET_CAPTIONS = "post_image_dataset/resized"
+# a kana-less string with one of these is Chinese (你 是 很 …, plus the
+# traditional forms the OCR text carries)
+ZH_MARKERS = frozenset("你是很呢啊的了吗么这那们她他说吃吞得些讓點")
+
+
+def glyph_count(text: str) -> int:
+    return sum(not c.isspace() for c in text)
+
+
+def is_ja_text(s: str) -> bool:
+    """A string with a kana (ー aside) is Japanese; a kana-less one is not if
+    it holds hangul, a glyph outside JIS X 0208, or a Chinese function word
+    (``ZH_MARKERS``)."""
+    import unicodedata
+
+    def kana(c):
+        return c != "ー" and "぀" <= c <= "ヿ"
+
+    def jis(c):
+        try:
+            c.encode("iso2022_jp")
+            return True
+        except UnicodeEncodeError:
+            return False
+
+    if any(kana(c) for c in s):
+        return True
+    return not any(
+        "가" <= c <= "힯"
+        or c in ZH_MARKERS
+        or (unicodedata.category(c) == "Lo" and not jis(c))
+        for c in s
+    )
+
+
+def dataset_ja_lines() -> list[str]:
+    """The JA strings of the training set's text clauses (``Japanese text /
+    SFX reads as``), ``.variants.txt`` excluded, sorted and deduplicated."""
+    from anime_tools.captions.position_clauses import TEXT_PREFIXES, parse_caption
+
+    from library.env import resolve_under_home
+
+    out: set = set()
+    for f in resolve_under_home(DATASET_CAPTIONS).rglob("*.txt"):
+        if f.name.endswith(".variants.txt"):
+            continue
+        for cl in parse_caption(f.read_text(encoding="utf-8")).clauses:
+            if cl.prefix not in TEXT_PREFIXES:
+                continue
+            for t in cl.tags:
+                s = t.strip().rstrip(".").strip('"')
+                if s and is_ja_text(s):
+                    out.add(s)
+    return sorted(out)
 
 
 # ----------------------------------------------------------------------------
@@ -551,8 +611,6 @@ def add_windows(
     the training set's own JA text, the read strings and ``held`` held out by
     trigram, every window routed to its glyphs' rows and nothing else (else
     dropped). Writes ``windows.json``; returns the stats for ``build.json``."""
-    from cjk_scale.config import dataset_ja_lines
-
     glyphs = window_glyphs(pools.singles)
     lines = [
         ln.split("\t")[0]

@@ -58,9 +58,9 @@ def _deg(a, b) -> float:
 
 
 def _setup():
-    from cjk_scale.train import vocab_idx
     from data.inventory import qwen_pieces
     from reseed.config import load
+    from reseed.trainer import vocab_idx
 
     run = load(FROM)
     run.use_pack()

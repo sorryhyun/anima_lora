@@ -37,21 +37,21 @@
     data_from = "run1002_grid_small/data"  # optional, ball / plain warm runs: a scale-line data dir
                                   # (under ``output/cjk_anima_scale``) instead of a build;
                                   # a bare name (no ``/``) = that reseed run's ``data/``
-    lr = 2e-4                     # optional: the rows' peak lr (``cjk_scale.train.LR``,
+    lr = 2e-4                     # optional: the rows' peak lr (``trainer.LR``,
                                   # 1e-3, without it)
     pack = "punct"                # optional: the base pack (``PACKS``) instead of the raw
                                   # pack — its routing at build, train and read
     lines = "m109_pack"           # optional: the dialogue line file (``LINES``) the windows
-                                  # and ``sent`` lines draw from, instead of the scale
-                                  # line's ``PHRASE_FILE`` (dialogue_2_10)
-    free_residual = 0.0           # optional: the trainer's norm pull μ‖f‖² (``cjk_scale.train
+                                  # and ``sent`` lines draw from, instead of
+                                  # ``PHRASE_FILE`` (the scale line's dialogue_2_10)
+    free_residual = 0.0           # optional: the trainer's norm pull μ‖f‖² (``trainer
                                   # .FREE_RESIDUAL`` without it); 0 off — under AdamW it
                                   # walks a rare warm row to the pack row (``sent_kanji``)
     row_lr = [0.12, 1.0]          # optional: one factor per ``rows`` spec on its rows'
-                                  # step (``cjk_scale.train(row_step_scale=)``: AdamW's
+                                  # step (``trainer.train(row_step_scale=)``: AdamW's
                                   # update scaled, a per-row lr); ``chars:`` specs only
     pres = { lam = 10, band = [0.8, 0.9], every = 2 }  # optional: λ · L_pres on every
-                                  # ``every``-th step at σ ~ U(band) (``cjk_scale.train
+                                  # ``every``-th step at σ ~ U(band) (``trainer.train
                                   # (pres=)``, _archive/probes/probe_pres_train.py)
     focus = { rows = "chars:剣頼…", line_kanji = 3, window_kanji = 1 }  # optional: every
                                   # item holds one of these rows (a subset of ``rows``,
@@ -68,7 +68,7 @@
     lang = { korean = "가힝…", chinese = "你这…" }  # optional: the rows lettered in
                                   # another language (glyph → language, named per row:
                                   # ``个`` is in Shift-JIS, so no encoding test tells): the
-                                  # faces in ``../cjk_anima_scale/assets/fonts/kozh/`` join
+                                  # faces in ``assets/fonts/kozh/`` join
                                   # the draw, a scene caption names the item's language
                                   # (``korean text`` / ``Korean text reads as``), and a
                                   # tier with nothing to draw for the rows (no window)
@@ -84,7 +84,7 @@ import tomllib
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from . import CONFIGS, OUT
+from . import CONFIGS, OUT, SCALE_OUT, SEED_ROWS, SEED_ROWS_0921
 
 KEYS = (
     "rows",
@@ -126,6 +126,9 @@ LINES = {
     "m109_pack": "$MANGA109S/derived/dialogue_pack.tsv",
     "m109_b5": "$MANGA109S/derived/dialogue_pack_b5.tsv",
 }
+# without ``lines``: the scale line's dialogue lines (2–10 Qwen pieces on the
+# old cjk_renderable charset; every run of record before ``lines``)
+PHRASE_FILE = "$MANGA109S/derived/dialogue_2_10.tsv"
 UPPER_MAX = 0.9  # tests/test_boundary.py: no band past it
 
 
@@ -148,7 +151,7 @@ class Run:
     warm: bool = False  # a ball run: the rows warm at ball_on's, not cold at its mean
     data_from: str = ""  # a ball / plain warm run: this data dir
     pack: str = ""  # the base pack (``PACKS``); "" = the raw pack
-    lr: float = 0.0  # the rows' peak lr; 0 = cjk_scale.train.LR
+    lr: float = 0.0  # the rows' peak lr; 0 = trainer.LR
     lines: str = ""  # the dialogue line file (``LINES``); "" = the scale line's
     row_lr: tuple = ()  # one step factor per ``rows`` spec; () = all 1
     free_residual: float | None = None  # the norm pull; None = the trainer's
@@ -159,13 +162,8 @@ class Run:
     lang: dict | None = None  # glyph → language for the rows not lettered as Japanese
 
     def phrase_file(self) -> str:
-        """The dialogue line file: ``LINES[lines]``, else the scale line's
-        ``phrase_file()``."""
-        from cjk_scale.config import phrase_file
-
-        if not self.lines:
-            return phrase_file()
-        return _expand(LINES[self.lines])
+        """The dialogue line file: ``LINES[lines]``, else ``PHRASE_FILE``."""
+        return _expand(LINES[self.lines] if self.lines else PHRASE_FILE)
 
     def held_strings(self) -> tuple:
         """The ``held`` file's strings (first tsv column, blank / ``#`` lines
@@ -236,38 +234,26 @@ class Run:
     @property
     def data(self) -> Path:
         if self.data_from:
-            from cjk_scale import paths
-
             if "/" not in self.data_from:  # a reseed run's build
                 return OUT / self.data_from / "data"
-            return paths.OUT / self.data_from
+            return SCALE_OUT / self.data_from
         return (OUT / self.stick_from if self.stick_from else self.dir) / "data"
 
     def seed_rows(self) -> Path:
         """The rows the run sits on: a stick run's source rows (merged), else
         the seed's."""
-        from cjk_scale import paths
-
         if self.rows_from:
-            return paths.OUT / self.rows_from / "trained.pt"
+            return SCALE_OUT / self.rows_from / "trained.pt"
         if self.ball_on:
-            return paths.OUT / self.ball_on / "trained.pt"
+            return SCALE_OUT / self.ball_on / "trained.pt"
         if self.stick_from:
             return OUT / self.stick_from / "trained.pt"
 
         return {
-            "0921": paths.SEED_ROWS_0921,
-            "0930": paths.SEED_ROWS,
+            "0921": SEED_ROWS_0921,
+            "0930": SEED_ROWS,
             "1008": SEED_1008,
         }[self.seed]
-
-    def scale_config(self):
-        """The ``cjk_scale.train`` view of the run."""
-        from cjk_scale.config import RunConfig
-
-        return RunConfig(
-            name=self.name, path=self.path, vocabs=self.rows, read=self.read
-        )
 
 
 def _expand(raw: str) -> str:

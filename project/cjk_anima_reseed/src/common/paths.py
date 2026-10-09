@@ -1,6 +1,6 @@
 """Repo paths and the output dirs.
 
-Vendored from ``project/cjk_anima_scale/src/`` (2026-10-09; there since
+Vendored from the scale line's ``src/`` (2026-10-09; there since
 2026-09-25). ``OUT`` stays the scale line's output root and is read-only from
 here: the scene pools (``scenes_*``) and the EN reference cache
 (``native_enref``) live there. ``FONT_DIR`` is this line's

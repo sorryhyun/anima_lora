@@ -250,7 +250,8 @@ def pool() -> tuple[dict, Counter]:
     """stem → (prompt, [its JA dialogue strings], caption file); and every JA glyph's count
     over the whole dataset's text clauses (a kanji seen once is OCR noise)."""
     from anime_tools.captions.position_clauses import TEXT_PREFIXES, parse_caption
-    from cjk_scale.config import is_ja_text
+
+    from reseed.pools import is_ja_text
 
     text_prefix = TEXT_PREFIXES[0]  # `Japanese text reads as`, not SFX
     assert "SFX" not in text_prefix, TEXT_PREFIXES
@@ -456,7 +457,7 @@ def build() -> dict:
 
 def arm_dirs() -> dict:
     """The arms the ruler renders: name → run dir with a finished ``trained.pt``."""
-    from cjk_scale.paths import OUT as SCALE_OUT
+    from reseed import SCALE_OUT
 
     dirs = {
         "retrain_kana": SCALE_OUT / "retrain_kana",
@@ -538,7 +539,7 @@ def rows_pt(path: Path) -> dict:
     (``seed_fixed_1005_stick080``, the probe's start): those rows replaced, the
     rest as stick080 has them."""
     import torch
-    from cjk_scale.paths import OUT as SCALE_OUT
+    from reseed import SCALE_OUT
     from common.models import load_trained
 
     base = load_trained(SCALE_OUT / "seed_fixed_1005_stick080")["delta"]

@@ -28,6 +28,9 @@ SEED = 0
 # items per row at share 1: the scale line's ITEMS_PER_VOCAB (run0925_300f)
 ITEMS_PER_ROW = 20_000 / 300
 
+# the dialogue lines' Qwen-piece range and normalisation (scale's ``config.DATA``)
+PHRASE_MIN_PIECES, PHRASE_MAX_PIECES, PHRASE_NORM = 2, 10, True
+
 # the scene pools (``output/cjk_anima_scale/scenes_<tag>``)
 SCENES = "s1,s1w,sl1w,ja_comic"
 ONE_BUBBLE = "ja_comic"
