@@ -52,7 +52,7 @@
                                   # update scaled, a per-row lr); ``chars:`` specs only
     pres = { lam = 10, band = [0.8, 0.9], every = 2 }  # optional: λ · L_pres on every
                                   # ``every``-th step at σ ~ U(band) (``cjk_scale.train
-                                  # (pres=)``, probes/probe_pres_train.py)
+                                  # (pres=)``, _archive/probes/probe_pres_train.py)
     focus = { rows = "chars:剣頼…", line_kanji = 3, window_kanji = 1 }  # optional: every
                                   # item holds one of these rows (a subset of ``rows``,
                                   # every row still trained): bubble1 draws them alone,
@@ -113,7 +113,7 @@ KEYS = (
 )
 # a run's ``seed``: the rows every other row rides frozen at
 SEEDS = ("0921", "0930", "1008")
-SEED_1008 = OUT / "seed_1008" / "trained.pt"  # transplant.py write (plan.md § 3)
+SEED_1008 = OUT / "seed_1008" / "trained.pt"  # transplant.py write (_archive/plan.md § 3)
 LANGS = ("korean", "chinese")
 # the base packs a run may sit on (``punct_pack.py``): the raw pack's rows and
 # ids plus encode rules / appended rows, so the seed rows ride on it unchanged

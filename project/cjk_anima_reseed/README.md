@@ -1,46 +1,46 @@
 # cjk_anima_reseed
 
-The JA vocab pack's rows re-seeded cold, then trained warm on dialogue lines. Where the line stands — methods, data mix, the ruler, progress over preview51: **`progress.md`**. What an arm is judged on: `criteria.md`. Next: `proposal_refactor.md`, then `proposal_jamo.md`. How to read a trained row: `structure_candidate.md`. The live reads: `reports/` (the ruler, sent_ball / sent_whole / sent_stick, sent_kanji). Why the line started: `_archive/motivation2.md`.
+The JA vocab pack's rows re-seeded cold, then trained warm on dialogue lines;
+shipped `seed_1008` = jp_v1. Where the line stands — recipe of record, the
+ruler's table, what is settled, what is open: **`status.md`**. What an arm is
+judged on: `criteria.md`. Next: `proposal_refactor.md` (in progress), then
+`proposal_jamo.md`. The live reads: `reports/` (the ruler, sent_kanji,
+probe_pres, sent_kanji_pres, kozh16).
 
-`_archive/` (10-06): the banner-grid era's reports and the configs of the arms that lost (cold kana tables, stick / ball re-fits, sent_ball / lr2 / stick), and the done `sent_plan.md`. A config there still runs by path: `run.py project/cjk_anima_reseed/_archive/configs/<run>.toml …`.
+`_archive/` (force-tracked, skipped by search): the docs folded into
+`status.md` (progress, plan, idea / idea2 / idea3, structure_candidate,
+task_report), the banner-era and closed probes with their reports, the
+configs of the arms that lost, `stick_fit.py`, and the motivation docs. It
+runs from the freeze-point commit named in `status.md`, not from this tree.
 
 ## Code
 
 | file | what |
 |---|---|
-| `run.py` | front door: `run.py <run> data [--frac f] \| train \| read` (`read`: the plain read against `READ_AGAINST` → `results/`) |
-| `probes/probe_split.py` | rows swapped at render, no training: two runs' rows split at a σ switch, one run's rows as stick / spikes, x̂0 per σ (`_archive/reports/probe_split_2026_10_04.md`); a cold arm's ball on retrain_kana's stick and back (`_archive/reports/ball_2026_10_04.md`); the ball runs as trained (`_archive/reports/ball_rk_2026_10_04.md`) |
-| `stick_fit.py` | CPU: the stick runs' sticks, the kana / kanji burr, the band arms' sticks, the hiragana rows as stick + ball and the swap arms' EN-ref cos (`--legs ball`), scene numbers and sheets on cached renders (`_archive/reports/{ball,stick_fit,stick_scene,stick_rk,stick_rk_jt50}_2026_10_04.md`) |
+| `run.py` | front door: `run.py <run> data [--frac f] \| train` |
 | `ruler.py` | the dialogue ruler (`criteria.md`): `build` (CPU) draws 96 bubble-dialogue strings from the training set's captions, each with its own image's prompt and an EN reference line → `output/cjk_anima_reseed/ruler/ruler.json`; `run [--arms a,b] [--label l]` (GPU) renders what is missing — the floor (EN refs, retrain_kana, seed_retrain_0930) once — and reads every arm against it → `results/<ts>-ruler-<label>/` (`reports/ruler_2026_10_05.md`) |
-| `transplant.py` | CPU: a focus run's rows onto another run's (`FROM` / `ONTO` / `NAME` at its top; 10-08: `sent_kanji_225`'s 225 onto `sent_kanji_pres` → `seed_1008`). `stick` reads the focus rows' mean against ONTO's kanji stick and both runs' Δstick; `write` → `output/cjk_anima_reseed/<NAME>/trained.pt` and the baked pack (`plan.md` § 3) |
+| `transplant.py` | CPU: a focus run's rows onto another run's (`FROM` / `ONTO` / `NAME` at its top; 10-08: `sent_kanji_225`'s 225 onto `sent_kanji_pres` → `seed_1008`). `stick` reads the focus rows' mean against ONTO's kanji stick and both runs' Δstick; `write` → `output/cjk_anima_reseed/<NAME>/trained.pt` and the baked pack |
 | `punct_pack.py` | CPU: the punct base pack (10-05, the green leaf's fix) → `models/vocab_packs/anima_cjk_vocab_pack_punct`: the raw pack plus wider folds, dot runs and a `…` row (ext 69 558, at T5's `...`); the rules in its docstring |
-| `probes/probe_geom.py` | rows held, no step: f0's first batches' in-box / out-box gradients on the rows in `structure_candidate.md`'s terms, split-half signal, an AdamW replay against SGD, and the draws by σ / tier (`reports/probe_geom_2026_10_06.md`) |
-| `probes/probe_cf.py` | rows held, no step: counterfactual-input FM against plain FM per draw on f0's start rows — A′ / B sibling pairs re-lettered on the `sent` items' own scenes (`swap` / `dup`), σ 0.5–0.7, split-half signal and the CF leverage λ (`reports/probe_cf_2026_10_06.md`) |
-| `probes/probe_scene.py` | rows held, no step: a crossed lines × scenes × noise-draw block per row, the gradient's variance split by a three-way ANOVA — how much the scene sets, under the box-share loss, each of its terms and plain MSE (`reports/probe_scene_2026_10_06.md`) |
-| `probes/probe_accum.py` | GPU smoke: 32 mid-frequency kanji live on f0's data, plain AdamW against per-row accumulation (step a row once N items have held it) on the same draws, held-out in-box loss per row (`reports/probe_accum_2026_10_06.md`) |
-| `probes/probe_pres.py` | rows held, no step: Axis 2 as a loss — the student's prediction under the JA caption against the frozen base's under the EN-swapped caption, outside the dilated text box, same x_σ; its gradient on f0's start rows beside the data term's in-box / out-box, σ 0.5–0.95, and its value by σ × length (`reports/probe_pres_2026_10_06.md`) |
-| `probes/probe_pres_train.py` | GPU smoke: L_pres trained on f0's hiragana (live; `h16` 16 rows λ 5, `h32` 32 rows λ 10 on its own 7.5 k build via `data`), box-share FM + λ · L_pres at σ 0.8–0.95 against a λ 0 arm (`plain`), held-out band / high-σ evals and the rows' geometry; its `rows.pt` renders on the ruler via `ruler.py --rows_pt` |
-| `probes/probe_jl.py` | rows held, no step, **fp32** (bf16's row gradient is at cos 0.3–0.6 to it): `idea2.md`'s Jacobian lens — M_in / M_out = E[JᵀJ] from box / off-box output probes per σ band × family, two fits, f0's start rows; A / B stability, the trace ratio by σ, the cross-fit text-only λ, the trained moves through it (`--weight pair` takes the pairs' size tail off), `--drift` refits at other rows; `split` (σ inside a band) / `check` (the lens against the ruler's reads) on CPU (`reports/probe_jl_2026_10_07.md`) |
-| `probes/kozh_geometry.py` | CPU: a `lang` run's KO / ZH rows against its seed's kana / kanji balls — sticks, row norms, cos and stick components, the groups' spikes in either ball's top-40 beside 8 held-out seed rows, nearest seed rows (`task_report.md` § 2's reads; `reports/kozh16_2026_10_09.md`) |
+| `probes/kozh_geometry.py` | CPU: a `lang` run's KO / ZH rows against its seed's kana / kanji balls — sticks, row norms, cos and stick components, the groups' spikes in either ball's top-40 beside 8 held-out seed rows, nearest seed rows (`reports/kozh16_2026_10_09.md`) |
 | `probes/kozh_render.py` | GPU: a `lang` run's rows drawn against its seed through `ruler.Renderer` at 512², seed 0 — each row alone in a bubble, a few words in a bubble / on a sign / plain, captioned in the row's language → `results/<ts>-<run>-render/sheet.png` |
-| `probes/probe_grad.py` | the scale line's `grad_identity` pass 2 on tiers drawn here (`_archive/reports/grid_64_2026_10_03.md`) |
-| `configs/<run>.toml` | the run; keys and their meaning in `reseed/config.py`'s docstring: `rows`, `read`, `seed`, `steps_per_row`; optional `shares`, `upper_shift` (`kana_up`), `stick_from` (`stick_*`), `rows_from` (`stick_rk_*`, `sent_stick`; alone, a plain warm run: `sent_whole`), `drop_tiers`, `band`, `tag_drop` (`stick_rk_fb_jt50`), `ball_on` (`ball_rk*`), `warm` (`sent_ball`), `data_from` (`sent_ball_lr2`, `sent_whole`), `lr` (`sent_ball_lr2`), `pack` (`punct`), `lines` and `row_lr` (`sent_kanji`), `free_residual` (`sent_kanji_f0`), `pres` (`sent_kanji_pres`), `focus` and `held` (`sent_kanji_225`), `lang` (`kozh16`: KO / ZH rows, seed `1008`) |
+| `configs/<run>.toml` | the run; keys and their meaning in `reseed/config.py`'s docstring. Kept: `punct` (the mark rows → seed_fixed_1005), `sent_kanji` (the data of f0 / pres), `sent_kanji_pres` (the rows of record), `sent_kanji_225` (the 225 of record), `kozh16` (KO / ZH rows on seed `1008`) |
 | `reseed/table.py` | **the table**: one row per tier — recipe, share, σ band, glyph px, `px_keep` — and the scene knobs |
 | `reseed/recipes.py` | `bubble1` / `bubbleN` / `sent` / `grid` |
-| `reseed/pools.py` | rows, scenes (+ the `s1s` pool, mono weighting), the windowed word pool, the dialogue lines (`sent`) |
+| `reseed/pools.py` | rows, scenes (+ the `s1s` pool, mono weighting), the windowed word pool, the dialogue lines (`sent`), the KO / ZH faces and captions (`lang`) |
 | `reseed/builder.py` | one pass over the table → `output/cjk_anima_reseed/<run>/data` |
 
 ```bash
 .venv/bin/python project/cjk_anima_reseed/run.py sent_kanji data --frac 0.03   # sizes: sheet_<tier>.png
 .venv/bin/python project/cjk_anima_reseed/run.py sent_kanji data
-make daemon-run ARGS="project/cjk_anima_reseed/run.py sent_kanji_f0 train"
-make daemon-run ARGS="--stall-timeout 900 project/cjk_anima_reseed/ruler.py run --pack punct --arms seed_fixed_1005_stick080@punct,sent_kanji_f0 --label sent_kanji_f0"
+make daemon-run ARGS="project/cjk_anima_reseed/run.py sent_kanji_pres train"
+make daemon-run ARGS="--stall-timeout 900 project/cjk_anima_reseed/ruler.py run --pack punct --arms seed_fixed_1005_stick080@punct,sent_kanji_pres --label sent_kanji_pres"
 .venv/bin/python -m pytest project/cjk_anima_reseed/tests
 ```
 
 Renderers, scene pools, fonts and the trainer are `../cjk_anima_scale`'s
-(`src/`, `cjk_scale.train`). Its `cjk_scale.builder` / `recipes` rebuild the
-seed of record and are not imported here (`tests/test_boundary.py`).
+(`src/`, `cjk_scale.train`) until `proposal_refactor.md` § 4 steps 2–3 vendor
+them here. Its `cjk_scale.builder` / `recipes` rebuild the seed of record and
+are not imported here (`tests/test_boundary.py`).
 
 ## The table
 
@@ -66,7 +66,7 @@ rebuild passes (`derive` / `reband`), the per-row draw weights (one
 
 `grid_64` (10-03): 65 px grids at σ 0.65–0.8, the band read off the
 gradient (`_archive/reports/grid_64_2026_10_03.md`), in the table at share 0 and
-last — a run's `shares` turns it on (`kana_big`); a share-0 tier is not
+last — a run's `shares` turns it on (`_archive/configs/kana_big.toml`); a share-0 tier is not
 drawn, so the runs before it build what they built.
 
 `sent_34` / `sent_22` (10-05, share 0 — a run's `shares` turns them on): a

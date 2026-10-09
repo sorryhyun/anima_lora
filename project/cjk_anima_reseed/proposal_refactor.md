@@ -1,6 +1,17 @@
 # proposal_refactor — reseed torn down and rebuilt, scale archived (2026-10-09)
 
-**Status: proposal.** Nothing has been moved yet. The user (10-09): before the
+**Status: steps 0–1 done (10-09).** Freeze point `b3dee68e` (in
+`status.md`). Step 0's smoke reference:
+`output/cjk_anima_reseed/_smoke.toml` (kozh16 under its own name, kept out
+of `configs/`) → `_smoke/data`, file hashes in `_smoke_ref.sha256`,
+`build.json` in `_smoke_ref_build.json`; a rebuild is byte-equal. Step 1:
+the § 3 moves, `run.py` without `read`, `ruler.py` without `gs_rkstick` /
+`rand_turn`, `kozh_geometry` with `_offsets` inlined, `status.md`, README.
+`reports/kozh16_2026_10_09.md` landed before step 1 and stays. Left:
+`models/pe/` (byte-equal to the repo's `models/pe/PE-Spatial-B16-512.pt`)
+for the user to delete. Next: step 2.
+
+The user (10-09): before the
 next experiment, prune `cjk_anima_reseed` (too many stale experiments and idea
 docs) and archive `cjk_anima_scale`. Work happens on `cjk-reseed`; `main` holds a
 stale copy of both lines.

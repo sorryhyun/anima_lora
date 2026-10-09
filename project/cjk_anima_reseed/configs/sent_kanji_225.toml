@@ -1,4 +1,4 @@
-# sent_kanji_225 — cjk_anima_reseed/plan.md § 3 stage B (user, 10-08): warm from
+# sent_kanji_225 — cjk_anima_reseed/_archive/plan.md § 3 stage B (user, 10-08): warm from
 # retrain_kanji_b5's merged rows (stick080 + the 225 trained cold, their stick at 0.8), the 163 kana + 1 185 + the
 # 225 all in rows and free, so L_pres's page demand spreads over every row as in
 # sent_kanji_pres; that run's recipe (free_residual 0, lr 2e-4, λ 10 · L_pres at σ 0.8–0.9
@@ -8,7 +8,7 @@
 # kana : kanji share kept near sent_kanji's 0.22 (user, 10-08) by the lines a focus item may
 # draw: sent lines with ≤ 3 kanji (878 lines on dialogue_pack_b5 at 8–14 cells, share 0.221;
 # 36 of the 225 have none and train in windows / alone), windows with 1 kanji (share 0.245).
-# The lines: every Manga109-s text on preview51's charset + the 225 (m109_b5); plan.md § 4's
+# The lines: every Manga109-s text on preview51's charset + the 225 (m109_b5); _archive/plan.md § 4's
 # new-kanji strings (b5_held.tsv) held out — of the windows by trigram (as retrain_kanji_b5),
 # of the sent lines by 5-gram.
 rows = [

@@ -53,7 +53,6 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent / "probes"))
 
 from reseed import OUT, REPO, bootstrap  # noqa: E402
 
@@ -533,61 +532,8 @@ def render_file(arm: str, i: int) -> Path:
     return mode_dir() / arm / f"r{i:02d}_s{SEED_RENDER}.png"
 
 
-def gs_rkstick() -> dict:
-    """``probe_split``'s ``gs_rkstick`` (``_archive/reports/ball_2026_10_04.md``):
-    retrain_kana's table, its 81 hiragana rows = grid_small r0's less their
-    mean plus retrain_kana's mean — the banner grid's best words. Built by
-    ``probe_split.row_sets`` in kana_up's row units, as a delta state."""
-    from common.models import load_trained
-    from probe_split import UP, row_sets
-
-    sets, _ = row_sets()
-    up = load_trained(OUT / UP)["delta"]
-    return {
-        "ext_ids": up["ext_ids"],
-        "raw": sets["gs_rkstick"],
-        "row_scale": up["row_scale"],
-    }
-
-
-def rand_turn() -> dict:
-    """preview51's rows (``seed_fixed_1005_stick080``) with the kana spikes
-    sent_ball_lr2 trained each turned the same amount in a random direction:
-    row by row, lr2's spike cos and length ratio, the direction drawn ⊥ the
-    start spike (seed 0), the mean held. lr2's perturbation without its data
-    (``reports/sent_ball_2026_10_05.md`` § 4)."""
-    import torch
-    import torch.nn.functional as F
-    from cjk_scale.paths import OUT as SCALE_OUT
-    from common.models import load_trained
-
-    base = load_trained(SCALE_OUT / "seed_fixed_1005_stick080")["delta"]
-    arm = load_trained(OUT / "sent_ball_lr2")["delta"]
-    scale = float(base["row_scale"])
-    e0 = base["raw"].float() * scale
-    e1 = arm["raw"].float() * float(arm["row_scale"])
-    at1 = {int(e): i for i, e in enumerate(arm["ext_ids"])}
-    rows = [
-        i
-        for i, e in enumerate(base["ext_ids"])
-        if (e0[i] - e1[at1[int(e)]]).abs().max() > 1e-3
-    ]
-    r0 = e0[rows]
-    r1 = e1[[at1[int(base["ext_ids"][i])] for i in rows]]
-    m = r0.mean(0)
-    s0, s1 = r0 - m, r1 - r1.mean(0)
-    c = F.cosine_similarity(s0, s1, dim=1)[:, None]
-    n0 = F.normalize(s0, dim=1)
-    z = torch.randn(s0.shape, generator=torch.Generator().manual_seed(0))
-    u = F.normalize(z - (z * n0).sum(1, keepdim=True) * n0, dim=1)
-    s = s1.norm(dim=1, keepdim=True) * (c * n0 + (1 - c**2).sqrt() * u)
-    raw = base["raw"].float().clone()
-    raw[rows] = (m + s - s.mean(0)) / scale
-    return {"ext_ids": base["ext_ids"], "raw": raw, "row_scale": scale}
-
-
 def rows_pt(path: Path) -> dict:
-    """A probe's ``rows.pt`` (``probes/probe_pres_train.py``: the live rows'
+    """A probe's ``rows.pt`` (``_archive/probes/probe_pres_train.py``: the live rows'
     ``start`` / ``raw`` at its ``row_scale``) on preview51's rows
     (``seed_fixed_1005_stick080``, the probe's start): those rows replaced, the
     rest as stick080 has them."""
@@ -611,7 +557,7 @@ def rows_pt(path: Path) -> dict:
 
 # arms built from other runs' rows, not trained: name → its delta state
 # (``--rows_pt name=path`` adds a probe's rows.pt)
-DERIVED = {"gs_rkstick": gs_rkstick, "rand_turn": rand_turn}
+DERIVED: dict = {}
 
 
 def tables(names) -> tuple[list, dict]:

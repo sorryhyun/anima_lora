@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """kozh_geometry — where a ``lang`` run's KO / ZH rows sit against its seed's
-kana and kanji balls (task_report.md § 2's reads, for an arm).
+kana and kanji balls (``_archive/task_report.md`` § 2's reads, for an arm).
 
-Effective units (``raw × row_scale``, ``probe_jl._offsets``). The seed's
+Effective units (``raw × row_scale``, ``_offsets``). The seed's
 families by glyph: kana (hiragana / katakana / ー) and kanji (CJK ideographs)
 among the seed's rows. A family's stick = its rows' mean, its spikes = rows
 less the stick, its ball's top-``K`` = the spikes' first ``K`` PCs. Per new
@@ -31,17 +31,27 @@ import unicodedata
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # the reseed project
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 from reseed import REPO, bootstrap  # noqa: E402
 
 bootstrap()
 
 import numpy as np  # noqa: E402
-import probe_jl as J  # noqa: E402
 
 K = 40
 DRAWS = 200
 PACK_JSON = "models/vocab_packs/anima_cjk_vocab_pack_punct.json"
+
+
+def _offsets(path: str) -> dict:
+    """ext id → offset (effective units) of a trained file's rows."""
+    import torch
+
+    p = Path(path) if Path(path).is_absolute() else REPO / path
+    d = torch.load(p, map_location="cpu", weights_only=False)
+    if "delta" in d:
+        d = d["delta"]
+    rs = float(d["row_scale"])
+    return {int(e): (r.float() * rs).numpy() for e, r in zip(d["ext_ids"], d["raw"])}
 
 
 def _cos(a, b) -> float:
@@ -93,8 +103,8 @@ def main() -> None:
     run = load(a.run)
     run.use_pack()
     assert run.lang, f"{run.name}: no lang"
-    arm = J._offsets(str(run.dir / "trained.pt"))
-    seed = J._offsets(str(run.seed_rows()))
+    arm = _offsets(str(run.dir / "trained.pt"))
+    seed = _offsets(str(run.seed_rows()))
     ch = _chars()
     from reseed.pools import ext_encoder
 

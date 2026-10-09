@@ -1,7 +1,7 @@
 # sent_kanji_pres — sent_kanji_f0 + L_pres (user, 10-07): λ 10 at σ 0.8–0.9
 # (probe_pres_train h32 p10c09: σ 0.95 out of the band gave the text back at
 # plain's, the page held), on every 2nd step (the pres pass is ×2.4 a step).
-# Rows, data, lr, row_lr, free_residual: configs/sent_kanji_f0.toml.
+# Rows, data, lr, row_lr, free_residual: _archive/configs/sent_kanji_f0.toml.
 rows = [
     "chars:ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろわをんゔ",
     "chars:ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロワヲンヴー",

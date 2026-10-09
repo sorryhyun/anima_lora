@@ -154,7 +154,7 @@ ranking, before fixing phase 2's factor table.
   not at the pack row (`sent_kanji`: under AdamW the pull walks a rare warm
   row back to the pack).
 - **Data**: a KO dialogue corpus for the `sent` tier and windows. Candidates
-  (`task_report.md` § 4): songys Chatbot_data (MIT, 11.8 k pairs),
+  (`status.md` § KO / ZH): songys Chatbot_data (MIT, 11.8 k pairs),
   SmileStyle (CC BY-NC), OpenSubtitles ko (unclear). Lettering:
   **horizontal first**, since KO manga / webtoon dialogue is mostly
   horizontal. `HORIZONTAL_FRAC = 0.3` and the `tategaki` windows are

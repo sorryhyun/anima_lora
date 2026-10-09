@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""transplant — a focus run's rows onto another run's (plan.md § 3, 10-08).
+"""transplant — a focus run's rows onto another run's (``_archive/plan.md`` § 3, 10-08).
 
     .venv/bin/python project/cjk_anima_reseed/transplant.py stick   # CPU, the read
     .venv/bin/python project/cjk_anima_reseed/transplant.py write   # trained.pt + the pack

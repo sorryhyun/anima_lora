@@ -155,7 +155,7 @@ def build_pools(rows: list, rng: random.Random, lang: dict | None = None) -> Poo
 # ----------------------------------------------------------------------------
 # rows lettered in another language (a ``lang`` run)
 
-# the KO / ZH faces (task_report.md § 4; FONTS.md): out of the top-level
+# the KO / ZH faces (_archive/task_report.md § 4; FONTS.md): out of the top-level
 # assets/fonts that ``find_fonts()`` globs for every JA run — several ZH faces
 # cover kana too
 KOZH_FONTS = "kozh"
