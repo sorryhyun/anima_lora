@@ -379,6 +379,60 @@ steps at λ = 100; both after an eval prompt set is fixed.
   noisy, but already above DP-DMD's ~0.2 by step 25. Raw mode has nothing that
   caps the signal as the disc sharpens.
 
+### Phase 0c — raw signal + L_CDM, λ 150, 1500 steps
+
+- **Arm.** `anima_turbo_p0c_dmad_raw_cdm` (job `20261010-022218-ba9ff4`): shipped
+  `turbo.toml` (`cdm.weight` 1.0), `gan.weight_gen` 0, `[dmad]` with λ_T = λ_R =
+  150, `signal_rms` 0, `disc_warmup_steps` 0, seed 42, 1500 steps, checkpoints
+  every 250. 11.9 s/step, 4 h 56 min. No matched DP-DMD arm. Rows:
+  `output/logs/anima_turbo_p0c_dmad_raw_cdm.progress.jsonl`.
+
+**Scalars (50-step bin means).**
+
+| Steps | `grad` (max) | raw g_T / g_R | margin T / R | disc BCE T (mean) | `x_pred` std |
+|---|---|---|---|---|---|
+| 0–200 | 0.03 → 0.10 | 1e-4 → 3e-4 | 0.5 → 3.2 | 1.17 | 0.59–0.62 |
+| 200–300 | 0.22 (1.1 at step 275) | 7–8e-4 | ~3.5 | 0.84 | 0.61 |
+| 300–980 | 0.001–0.05 | 2e-6 – 8e-5 | 12–16 | 0.12 (mostly ~0) | 0.8 → 5.0 (6.5 peak) |
+| 980–1300 | 0.32–0.56 (1.3) | 1–2e-3 | 2–5 | 0.90 | 0.63–0.65 |
+| 1300–1500 | 0.22 | 6–10e-4 | 1.8–2.8 / 2.5–4.2 | 1.01 | 0.65–0.66 |
+
+- **Disc-saturation collapse, steps ~300–980.** Right after a signal spike at
+  step 275, the disc separates student from both targets completely (margin to
+  ~15, BCE mostly ~0) while its input gradient falls 100–300× (raw ~3e-6). The
+  student signal is ~0 for ~650 steps; `x_pred` std climbs from 0.6 to 5
+  while `v_student` stays at 1.13. It recovers at steps 975–985 on its own: `x_pred`
+  back to 0.6, the disc back to margins of ~2–5, and the signal at 0.3–0.5
+  for ~300 steps before settling near DP-DMD's ~0.2.
+- **Untested reads.** With the disc signal gone, the anchor and the diversity
+  term (0.1) are the only student terms, and diversity pushes dispersion up.
+  The disc's teacher features are flat far from the data, so the cue that
+  separates the student carries no direction. The step-0 anchor is the likely
+  restoring force. None of these is measured.
+- P0 (normalized `signal_rms` 0.18, 750 steps) peaked at raw 1.6e-3 per head
+  and never collapsed; its signal stays at 0.18 whatever the disc's gradient.
+
+**Read (4 steps, cfg 1.0, `bench/turbo/real_prompts.txt`, seed 42, prompts
+0 / 1 / 8 / 13).** Renders at 250 / 500 / 750 / 1k / 1500 in
+`output/tests/p0c_dmad_cdm_*`, against `v11_init`, `p0b_dpdmd_500`,
+`p0b_dmad_raw_500`.
+
+- **250:** intact; re-poses the most of any arm read so far (wink + hand on hip on
+  prompt 0, hand to cap on 13), more saturated colour. Moves about as much as
+  p0b DP-DMD.
+- **500, 750:** fully collapsed, prompt-independent stripe texture (yellow at
+  500, dark red at 750) on all four prompts. Matches the `x_pred` std blow-up.
+- **1k:** recovered, compositions back near the init; prompt 1 messy around the
+  hands and clothes.
+- **1500:** intact, compositions near the init and 1k. No gain over either p0b
+  arm read at grid scale.
+
+**Verdict.** Raw mode fails in two directions. Without a cap the signal
+overshoots (the λ 300 smoke). With a saturated disc whose input gradient
+vanishes, no force holds the student, and the run collapses to noise for
+hundreds of steps. λ cannot prevent the second. The 1500 checkpoint reads
+fine, but a run that spends 650 steps collapsed is not a usable recipe.
+
 ### Cost (unmeasured)
 
 - Removed per step: 4 fake FM forward + backward; the DM term's 2 CFG teacher
