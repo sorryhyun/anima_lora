@@ -104,9 +104,8 @@ must not appear.
     package's `build_argv` with the trainer's roots; the tab validates the same way at
     Save/Run (`_validate_stages`). Field labels/help come from
     `explanations/guides/<lang>/_stage_fields.json` (English from the schema as fallback).
-  - Legacy `tab.<widget>` names (`source_dir_edit`, `shuffle_spin`, …) resolve via
-    `_WIDGET_ALIASES` in `__getattr__` for one release — tests and the resize preview
-    still use them; new code uses `values()` / `stage_values()` / `tab.<section>.widgets[dest]`.
+  - One widget by key: `tab.widget(key)` (a trainer knob key or a stage dest, from
+    whichever section owns it); whole forms: `values()` / `stage_values()`.
     Tests monkeypatching `_load_preprocess_toml` / `read_gui_settings` must patch
     `gui.tabs.preprocess.tab`.
 - **`tabs/anime_tools_tab.py::AnimeToolsTab`** (lazy) — the `anime_tools` panel in a
@@ -189,10 +188,10 @@ must not appear.
   `validation_split_num`) are written into per-dataset `[[datasets]]` overrides, not flat
   keys. `_BASIC` (`core/config_io.py`) controls the "Advanced" fold. A knob in the wrong tab
   drifts silently.
-- **i18n key parity is manual.** Nothing enforces shared keys across the four language
-  files; a missing key silently shows English. Add every string to all four (and the
-  matching `_fields.json` / `.html` for help text); the `translator` agent propagates
-  English → ko/ja/cn.
+- **i18n key parity is tested.** `tests/test_gui_i18n_parity.py` fails when ko/ja/cn lacks
+  an English key, carries an extra one, or changes a `{field}`. Add every string to all
+  four (and the matching `_fields.json` / `.html` for help text); the `translator` agent
+  propagates English → ko/ja/cn.
 - **The daemon outlives the GUI.** Closing the window does not stop training.
 - **Process kill must walk the tree.** A directly-spawned `QProcess`'s real work runs in a
   grandchild, so `QProcess.kill()` leaks it. Spawn a Python child with

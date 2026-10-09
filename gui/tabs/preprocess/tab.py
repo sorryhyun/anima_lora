@@ -107,27 +107,6 @@ RESIZED_DIR = default_resized_dir()
 LORA_CACHE_DIR = default_lora_cache_dir()
 MASK_DIR = default_mask_dir()
 
-# Legacy widget attribute names → (section attribute, key). Kept for
-# one release so tests and the resize preview that reach into ``tab.<widget>``
-# stay valid; new code should go through ``tab.values()`` / ``tab.stage_values()``
-# or the owning section instead. A key is a knob-table key for a trainer row
-# (``knob_widgets``) or a stage dest (``widgets``).
-_WIDGET_ALIASES: dict[str, tuple[str, str]] = {
-    "source_dir_edit": ("image_section", "source_image_dir"),
-    "path_scope_edit": ("image_section", "path_scope"),
-    "preprocess_path_pattern_edit": ("image_section", "preprocess_path_pattern"),
-    "target_res_widget": ("image_section", "target_res"),
-    "resize_crop_anchor_widget": ("image_section", "resize_crop_anchor"),
-    "resize_crop_margins_widget": ("image_section", "resize_crop_margins"),
-    "freefit_max_ratio_spin": ("image_section", "freefit_max_ratio"),
-    "shuffle_spin": ("text_section", "caption_shuffle_variants"),
-    "dropout_edit": ("text_section", "caption_tag_dropout_rate"),
-    "caption_no_correct_chk": ("caption_section", "no_correct"),
-    "caption_insert_no_artist_chk": ("caption_section", "caption_insert_no_artist"),
-    "caption_trigger_word_edit": ("caption_section", "caption_trigger_word"),
-    "caption_trigger_at_front_chk": ("caption_section", "caption_trigger_at_front"),
-    "caption_drop_groups_edit": ("caption_section", "caption_drop_groups"),
-}
 
 # Placeholder roots for validating a stage form at Save / Run (the real
 # roots are filled by ``tasks.py`` at submit); ``src`` / ``dst`` are required
@@ -354,21 +333,14 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
         ``preprocess.toml`` seeded on top (``stage_form.seeded_defaults``)."""
         return {sid: seeded_defaults(self._schemas[sid], pp_cfg) for sid in STAGE_IDS}
 
-    def __getattr__(self, name: str):
-        # Legacy ``tab.<widget>`` access → the owning section's widget (see
-        # _WIDGET_ALIASES). Only reached when normal lookup fails, and never
-        # before the sections exist.
-        alias = _WIDGET_ALIASES.get(name)
-        if alias is not None and self.__dict__.get("sections"):
-            section = self.__dict__.get(alias[0])
-            if section is not None:
-                key = alias[1]
-                if key in section.widgets:
-                    return section.widgets[key]
-                knobs = getattr(section, "knob_widgets", {})
-                if key in knobs:
-                    return knobs[key]
-        raise AttributeError(name)
+    def widget(self, key: str) -> QWidget:
+        """The form widget for a trainer knob key or a stage dest, from
+        whichever section owns it."""
+        for section in self.sections:
+            for table in (section.widgets, getattr(section, "knob_widgets", {})):
+                if key in table:
+                    return table[key]
+        raise KeyError(key)
 
     def _lazy_init(self) -> None:
         self._refresh_status()
@@ -492,13 +464,13 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
         self.image_section.set_target_res(values)
 
     def _set_resize_crop_anchor(self, value) -> None:
-        self.resize_crop_anchor_widget.set_value(value, emit=False)
+        self.widget("resize_crop_anchor").set_value(value, emit=False)
 
     def _set_resize_crop_margins(self, value) -> None:
-        self.resize_crop_margins_widget.set_value(value)
+        self.widget("resize_crop_margins").set_value(value)
 
     def _resize_crop_margins(self) -> dict[str, float]:
-        return self.resize_crop_margins_widget.margins()
+        return self.widget("resize_crop_margins").margins()
 
     # -- dirty / help / status ----------------------------------------------
 
@@ -523,7 +495,7 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
     def _refresh_status(self) -> None:
         snapshot = self.preprocess_config_snapshot()
         preprocess_pattern = (
-            self.preprocess_path_pattern_edit.text().strip()
+            self.widget("preprocess_path_pattern").text().strip()
             or DEFAULT_PREPROCESS_PATH_PATTERN
         )
         path_pattern = (
@@ -589,7 +561,7 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
         return p if p.is_absolute() else ROOT / p
 
     def _normalize_scope_or_warn(self) -> str | None:
-        raw = self.path_scope_edit.text().strip()
+        raw = self.widget("path_scope").text().strip()
         if not raw:
             return ""
         scope = submit.normalize_path_scope(raw)
@@ -710,10 +682,10 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
         merged, _ = merged_gui_variant_preset(variant, "default")
         # Seed source dir from the editable field before scoping, so path_scope
         # appends onto the user-chosen root, not the hard default.
-        source_dir = self.source_dir_edit.text().strip()
+        source_dir = self.widget("source_image_dir").text().strip()
         if source_dir:
             merged["source_image_dir"] = source_dir
-        path_scope = self.path_scope_edit.text().strip()
+        path_scope = self.widget("path_scope").text().strip()
         if path_scope:
             merged["path_scope"] = path_scope
         else:
@@ -758,7 +730,7 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
     def _save_variant_preprocess_meta(self, *, validate_dropout: bool) -> bool:
         if not self._variant:
             return True
-        dropout_text = self.dropout_edit.text().strip()
+        dropout_text = self.widget("caption_tag_dropout_rate").text().strip()
         if validate_dropout:
             dropout = self._parse_float(
                 dropout_text, t("preprocess_caption_tag_dropout_rate")
@@ -809,7 +781,8 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
     def _save_all(self) -> bool:
         """Validate and persist every form value. Returns True on success."""
         dropout = self._parse_float(
-            self.dropout_edit.text().strip(), t("preprocess_caption_tag_dropout_rate")
+            self.widget("caption_tag_dropout_rate").text().strip(),
+            t("preprocess_caption_tag_dropout_rate"),
         )
         if dropout is None:
             return False

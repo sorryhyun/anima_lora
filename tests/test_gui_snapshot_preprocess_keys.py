@@ -96,8 +96,8 @@ def test_preprocess_queue_snapshot_keeps_scoped_source_separate_from_train_snaps
         config_tab, preprocess_tab = _make_config_and_preprocess_tabs()
         try:
             preprocess_tab.set_variant(variant, method="lora")
-            preprocess_tab.source_dir_edit.setText("image_dataset")
-            preprocess_tab.path_scope_edit.setText("scope1")
+            preprocess_tab.widget("source_image_dir").setText("image_dataset")
+            preprocess_tab.widget("path_scope").setText("scope1")
 
             preprocess_snapshot = config_tab._preprocess_config_snapshot(variant)
             train_snapshot = config_tab._queue_config_snapshot(variant)
@@ -111,7 +111,9 @@ def test_preprocess_queue_snapshot_keeps_scoped_source_separate_from_train_snaps
                 preprocess_tab.deleteLater()
 
     assert preprocess_snapshot["source_image_dir"] == "image_dataset/scope1"
-    assert preprocess_snapshot["resized_image_dir"] == "post_image_dataset/resized/scope1"
+    assert (
+        preprocess_snapshot["resized_image_dir"] == "post_image_dataset/resized/scope1"
+    )
     assert preprocess_snapshot["lora_cache_dir"] == "post_image_dataset/lora/scope1"
 
     assert "source_image_dir" not in train_snapshot

@@ -67,22 +67,22 @@ SCENARIOS: dict[str, dict[str, dict]] = {
 def _flip_every_knob(tab) -> None:
     """Set every widget to a value that is neither hardcoded default nor any
     scenario's populated default."""
-    tab.source_dir_edit.setText("flipped_images")
-    tab.path_scope_edit.setText("artist_a")
-    tab.preprocess_path_pattern_edit.setText("artist_a/**")
+    tab.widget("source_image_dir").setText("flipped_images")
+    tab.widget("path_scope").setText("artist_a")
+    tab.widget("preprocess_path_pattern").setText("artist_a/**")
     tab._set_target_res_widget([768, 1280])
     tab._set_resize_crop_anchor("bottom_right")
     tab._set_resize_crop_margins({"top": 1.5, "right": 2.5, "bottom": 3.5, "left": 4.5})
-    tab.freefit_max_ratio_spin.setValue(2.25)
+    tab.widget("freefit_max_ratio").setValue(2.25)
     tab.image_section.widgets["overwrite"].setChecked(True)
     tab.image_section.widgets["workers"].setValue(2)
-    tab.shuffle_spin.setValue(11)
-    tab.dropout_edit.setText("0.45")
-    tab.caption_no_correct_chk.setChecked(not tab.caption_no_correct_chk.isChecked())
-    tab.caption_insert_no_artist_chk.setChecked(True)
-    tab.caption_trigger_word_edit.setText("@flipped")
-    tab.caption_trigger_at_front_chk.setChecked(True)
-    tab.caption_drop_groups_edit.setText("artist,lighting")
+    tab.widget("caption_shuffle_variants").setValue(11)
+    tab.widget("caption_tag_dropout_rate").setText("0.45")
+    tab.widget("no_correct").setChecked(not tab.widget("no_correct").isChecked())
+    tab.widget("caption_insert_no_artist").setChecked(True)
+    tab.widget("caption_trigger_word").setText("@flipped")
+    tab.widget("caption_trigger_at_front").setChecked(True)
+    tab.widget("caption_drop_groups").setText("artist,lighting")
 
 
 def _make_tab(monkeypatch_targets, scenario: dict[str, dict]):

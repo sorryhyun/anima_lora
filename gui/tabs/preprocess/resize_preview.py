@@ -161,14 +161,17 @@ class ResizePreviewDialog(QDialog):
     def _config(self) -> dict:
         tab = self._tab
         try:
-            target_res = tab.target_res_widget.value()
-        except (AttributeError, TypeError, ValueError):
+            target_res = tab.widget("target_res").value()
+        except (KeyError, TypeError, ValueError):
             target_res = None
-        spin = getattr(tab, "freefit_max_ratio_spin", None)
+        try:
+            spin = tab.widget("freefit_max_ratio")
+        except KeyError:
+            spin = None
         return {
             "target_res": target_res,
-            "crop_anchor": tab.resize_crop_anchor_widget.value(),
-            "crop_margins": tab.resize_crop_margins_widget.margins(),
+            "crop_anchor": tab.widget("resize_crop_anchor").value(),
+            "crop_margins": tab.widget("resize_crop_margins").margins(),
             "max_ratio": float(spin.value()) if spin else DEFAULT_FREEFIT_MAX_RATIO,
         }
 

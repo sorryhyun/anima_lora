@@ -49,24 +49,20 @@ Behaviour-preserving cleanup of the PySide6 GUI. Architecture and invariants liv
   `_restore_idle_ui` override); `_try_reattach` shares `_reattach`. Composition was
   rejected: the subclass reuses the whole form / job UI, and the overrides are now few
   and named.
+- **Small items.** Status banner fills are theme tokens (`ok_bg` / `warn_bg` / `err_bg`,
+  per theme); no hex colour is left outside `theme.py` (and the separate `qwen21/`
+  window) — the guidebook dialog, config-warning banner, merge / update banners, target-res
+  danger tiers, distill/soup labels and the progress chunk all follow the theme. i18n:
+  ko (12) / ja / cn (53 each) gaps filled, `tests/test_gui_i18n_parity.py` pins key and
+  `{field}` parity. `_WIDGET_ALIASES` removed: `PreprocessingTab.widget(key)` looks a knob
+  key or stage dest up across the sections; tests and `resize_preview.py` use it.
 
 `config_tab.py`: 1664 → 1248 lines; `easycontrol_tab.py`: 522 → 465.
 
 ## Next
 
-Rough order. Each step should keep the submit-plan equivalence check passing: dump
-`_queue_config_snapshot` / `_preprocess_config_snapshot` / `_preprocess_env` /
-`_chain_train_spec` / `_resolve_cache_dir` over every variant × preset before and after,
-then compare.
-
-1. **Small items**
-   - The config-warning banner hardcodes `#5c1a1a` / `#ffd9d9` / `#a33`; switch to
-     theme tokens. `dialogs/guidebook.py` and other files also hardcode hex colors
-     (`grep -rln "#[0-9a-fA-F]\{6\}" gui`).
-   - i18n key-parity test across `gui/i18n/{en,ko,ja,cn}.py`. `gui/CLAUDE.md` currently
-     says parity is manual.
-   - Remove `_WIDGET_ALIASES` (`tabs/preprocess/tab.py`). It was meant to last one
-     release; port its remaining users (tests, `resize_preview.py`) first.
+Nothing queued. Candidates if the GUI is touched again: `dialogs/system.py` (873 lines,
+Models + Update in one module) and `tabs/merge_tab.py` (920).
 
 ## Out of scope
 

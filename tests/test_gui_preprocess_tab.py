@@ -84,9 +84,9 @@ def test_preprocess_tab_source_dir_editable_and_persists():
         tab.set_variant(variant, method="lora")
 
         # Editable + dirty-tracked (was read-only, never marked dirty before).
-        assert not tab.source_dir_edit.isReadOnly()
+        assert not tab.widget("source_image_dir").isReadOnly()
         assert not tab._dirty
-        tab.source_dir_edit.setText("/data/myset")
+        tab.widget("source_image_dir").setText("/data/myset")
         assert tab._dirty
 
         assert tab._save_all()
@@ -100,7 +100,7 @@ def test_preprocess_tab_source_dir_editable_and_persists():
             encoding="utf-8",
         )
         tab.set_variant(variant, method="lora")
-        assert tab.source_dir_edit.text() == "/data/myset"
+        assert tab.widget("source_image_dir").text() == "/data/myset"
         snapshot = tab.preprocess_config_snapshot()
         assert snapshot["source_image_dir"] == "/data/myset/group1"
 
@@ -119,7 +119,7 @@ def test_preprocess_tab_freefit_max_ratio_round_trips_to_variant():
     ):
         tab = _make_tab()
         tab.set_variant(variant, method="lora")
-        tab.freefit_max_ratio_spin.setValue(3.0)
+        tab.widget("freefit_max_ratio").setValue(3.0)
 
         assert tab.persist_preprocess_inputs()
         meta = _load(path)["variant"]
@@ -129,9 +129,9 @@ def test_preprocess_tab_freefit_max_ratio_round_trips_to_variant():
         assert meta["stages"]["resize"]["freefit_max_ratio"] == 3.0
 
         # Reload into a fresh widget and confirm the value comes back.
-        tab.freefit_max_ratio_spin.setValue(4.0)
+        tab.widget("freefit_max_ratio").setValue(4.0)
         tab.set_variant(variant, method="lora")
-        assert tab.freefit_max_ratio_spin.value() == 3.0
+        assert tab.widget("freefit_max_ratio").value() == 3.0
 
         if tab is not None:
             tab.deleteLater()
@@ -146,7 +146,7 @@ def test_preprocess_stage_values_carry_freefit_max_ratio():
     ):
         tab = _make_tab()
         tab.set_variant(variant, method="lora")
-        tab.freefit_max_ratio_spin.setValue(3.5)
+        tab.widget("freefit_max_ratio").setValue(3.5)
 
         resize = tab.stage_values()["resize"]
         assert "freefit" not in resize
@@ -172,11 +172,11 @@ def test_preprocess_tab_caption_options_round_trip_to_variant():
         tab = _make_tab()
         tab.set_variant(variant, method="lora")
 
-        tab.caption_no_correct_chk.setChecked(False)
-        tab.caption_insert_no_artist_chk.setChecked(True)
-        tab.caption_trigger_word_edit.setText("@dataset-trigger")
-        tab.caption_trigger_at_front_chk.setChecked(True)
-        tab.caption_drop_groups_edit.setText("artist")
+        tab.widget("no_correct").setChecked(False)
+        tab.widget("caption_insert_no_artist").setChecked(True)
+        tab.widget("caption_trigger_word").setText("@dataset-trigger")
+        tab.widget("caption_trigger_at_front").setChecked(True)
+        tab.widget("caption_drop_groups").setText("artist")
 
         assert tab._save_all()
         meta = _load(path)["variant"]
@@ -196,16 +196,16 @@ def test_preprocess_tab_caption_options_round_trip_to_variant():
         assert form["caption_trigger_word"] == "@dataset-trigger"
         assert form["no_correct"] is False and form["caption_drop_groups"] == "artist"
 
-        tab.caption_no_correct_chk.setChecked(True)
-        tab.caption_insert_no_artist_chk.setChecked(False)
-        tab.caption_trigger_word_edit.clear()
-        tab.caption_trigger_at_front_chk.setChecked(False)
+        tab.widget("no_correct").setChecked(True)
+        tab.widget("caption_insert_no_artist").setChecked(False)
+        tab.widget("caption_trigger_word").clear()
+        tab.widget("caption_trigger_at_front").setChecked(False)
         tab.set_variant(variant, method="lora")
-        assert not tab.caption_no_correct_chk.isChecked()
-        assert tab.caption_insert_no_artist_chk.isChecked()
-        assert tab.caption_trigger_word_edit.text() == "@dataset-trigger"
-        assert tab.caption_trigger_at_front_chk.isChecked()
-        assert tab.caption_drop_groups_edit.text() == "artist"
+        assert not tab.widget("no_correct").isChecked()
+        assert tab.widget("caption_insert_no_artist").isChecked()
+        assert tab.widget("caption_trigger_word").text() == "@dataset-trigger"
+        assert tab.widget("caption_trigger_at_front").isChecked()
+        assert tab.widget("caption_drop_groups").text() == "artist"
 
         if tab is not None:
             tab.deleteLater()
@@ -276,7 +276,7 @@ def test_resize_preview_lists_each_source_with_its_bucket(tmp_path, monkeypatch)
     monkeypatch.setattr(RP, "workspace_excluded_rels", lambda: ())
 
     tab = _make_tab()
-    tab.source_dir_edit.setText(str(src))
+    tab.widget("source_image_dir").setText(str(src))
     tab._set_target_res_widget([768, 1024])
     dlg = RP.ResizePreviewDialog(tab)
     dlg.refresh()
