@@ -1,8 +1,9 @@
 # Turbo DMAD — discriminator-carried distribution matching inside DP-DMD
 
-Status: **Phase −1 closed without a verdict; Phase 0 DMAD arm trained (750 steps),
-not yet rendered; matched DP-DMD arm not run**
-(2026-10-09). Branch `turbo_dmad`. Source: Yu et al., *DMAD: Distribution Matching
+Status: **Phase −1 closed without a verdict; Phase 0 DMAD arm trained (750 steps);
+Phase 0b (paper-style raw signal, no disc warmup, λ = 100) and a matched 500-step
+DP-DMD arm trained and rendered: no quality gain read, DMAD moved less**
+(2026-10-10). Branch `turbo_dmad`. Source: Yu et al., *DMAD: Distribution Matching
 as Adversarial Distillation for Fast Visual Generation*, arXiv:2610.02188
 (ByteDance, 2026-10-01).
 
@@ -200,7 +201,7 @@ One arm against a matched DP-DMD arm, read on rendered grids.
 |---|---|---|
 | `enabled` | `false` | off → byte-identical loop, no RNG drawn, nothing built |
 | `lambda_t` / `lambda_r` | `1.0` / `1.0` | head mix; 0 drops a head (and its disc branch) |
-| `signal_rms` | `0.18` | per-sample RMS of the student signal |
+| `signal_rms` | `0.18` | per-sample RMS of the student signal; `0` = raw (λ sets the size) |
 | `lr` | `4e-5` | disc stack + heads, constant |
 | `grad_clip` | `0` | disc only; 0 = unclipped |
 | `window` | `4` | replay pairs per disc update |
@@ -306,6 +307,63 @@ own is unknown.
 **Matched DP-DMD arm** (`anima_turbo_p0_dpdmd`, job `20261009-191035-6e1aeb`):
 stopped by hand at start, not run. The grid read below needs it, or a stand-in
 the owner names.
+
+### Phase 0b — raw signal, no disc warmup, against a matched DP-DMD arm
+
+The paper has no disc head start (App. B: one disc update per generator update
+from the first step) and no signal normalization; an untrained disc's gradient
+is small, so the student is not pushed by it early. Phase 0b drops both:
+`dmad.signal_rms = 0` (new: the raw `∂(−λ_T h_T − λ_R h_R)/∂x_pred` is used as
+`grad_signal`) and `disc_warmup_steps = 0`.
+
+- **λ = 100 (T and R).** The loop's DM loss is the element mean of
+  `grad_signal · x_pred`, the convention the DP-DMD signal (RMS ~0.2) lives in.
+  The paper's literal `−λ·E_b[h_b]` with λ = 1 is ~10³× that and would make the
+  diversity anchor negligible and pin the student clip. λ = 100 puts a disc at
+  P0's mid-run sharpness (raw RMS ~1e-3 per head, cos ~0.8) near 0.18.
+- **Arms.** Shipped `turbo.toml`, `cdm.weight = 0`, `gan.weight_gen = 0`, seed 42,
+  500 iterations, checkpoints at 250 / 500. DMAD `anima_turbo_p0b_dmad_raw` (job
+  `20261009-220442-b34a0e`, 11.9 s/step, 1 h 39 min); DP-DMD
+  `anima_turbo_p0b_dpdmd` (job `20261009-220400-b13d79`, 200 fake-warmup steps
+  then 6.6 s/step, 57.5 min). Rows: `output/logs/anima_turbo_p0b_*.progress.jsonl`.
+
+| Steps | DMAD `grad` RMS | DP-DMD `grad` RMS | raw g_T / g_R RMS | cos(g_T, g_R) | rank acc T / R | margin T / R | gap_r | DMAD `div` | DP-DMD `div` |
+|---|---|---|---|---|---|---|---|---|---|
+| 1–25 | 0.016 | 0.29 | 7.4e-5 / 9.0e-5 | 0.79 | 0.92 / 0.88 | 0.8 / 0.8 | −0.04 | 0.132 | 0.159 |
+| 26–100 | 0.051 | 0.23 | 2.9e-4 / 2.3e-4 | 0.97 | 0.91 / 0.88 | 1.9 / 1.9 | 0.02 | 0.116 | 0.120 |
+| 101–200 | 0.071 | 0.22 | 3.5e-4 / 3.6e-4 | 0.97 | 0.86 / 0.85 | 1.8 / 2.0 | 0.13 | 0.112 | 0.112 |
+| 201–300 | 0.093 | 0.21 | 4.6e-4 / 4.7e-4 | 0.97 | 0.88 / 0.89 | 1.6 / 1.9 | 0.29 | 0.114 | 0.105 |
+| 301–400 | 0.076 | 0.19 | 3.9e-4 / 3.8e-4 | 0.93 | 0.82 / 0.83 | 1.6 / 1.8 | 0.26 | 0.100 | 0.098 |
+| 401–500 | 0.117 | 0.21 | 6.0e-4 / 5.9e-4 | 0.91 | 0.91 / 0.90 | 2.0 / 2.4 | 0.50 | 0.085 | 0.095 |
+
+- **The self-warmup happens.** With no head start the disc ranks from the first
+  bin and its signal grows 7× as it sharpens, as the paper's setup implies.
+- **But the signal stays 2–18× below DP-DMD's** for the whole run (0.016 →
+  0.12 against ~0.2), so the anchor carries more of the student update than
+  under DP-DMD. λ = 100 was calibrated on P0's sharper disc (raw ~1e-3 by step
+  ~450); this disc reached ~6e-4.
+- **Disc healthy, as in P0:** no runaway, margins ~2, heads one detector early
+  (cos 0.97) and separating late (cos 0.91, gap_r 0.50). Student scalars calm
+  (`xpred` 0.56–0.66, `v_student` 1.13–1.16).
+- **Step time.** DMAD 11.9 s/step against DP-DMD 6.6 s/step plus its 200-step
+  fake warmup (2.7 min): at window 4 DMAD is ~1.8× slower per step, not the
+  paper's 4–5× faster.
+
+**Read (4 steps, cfg 1.0, `bench/turbo/real_prompts.txt`, seed 42).** Renders
+for v1.1 init, both arms at 250 / 500, and the P0 arm at 500
+(`output/tests/{v11_init,p0b_dpdmd_250,p0b_dpdmd_500,p0b_dmad_raw_250,p0b_dmad_raw_500,p0_dmad_norm_500}`).
+Read on prompts 0, 1, 8 and 13 only; the other 12 are not suitable for the grid
+read, and a full read needs a replacement eval set (with text and pose prompts).
+
+- Nothing broken in either arm at 250 or 500.
+- DMAD raw stays closer to the init than DP-DMD: compositions and poses kept
+  (prompts 8, 13), where DP-DMD re-poses, adds props and brightens sea / sky.
+- DMAD raw adds side clutter in places (prompt 1), like the P0 smoke.
+- No quality gain over DP-DMD read; on this subset DMAD reads as "moved less",
+  which the signal scale accounts for. Not a kill under the Phase 0 criteria.
+
+**Next, one knob:** λ = 300–500 so the late-run signal lands near 0.2, or 1000
+steps at λ = 100; both after an eval prompt set is fixed.
 
 ### Cost (unmeasured)
 

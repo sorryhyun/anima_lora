@@ -89,7 +89,7 @@ ratio_normalization = true
 # enabled = true
 # lambda_t = 1.0
 # lambda_r = 1.0
-# signal_rms = 0.18
+# signal_rms = 0.18  # 0 = raw disc gradient (lambda sets its size)
 # lr = 4e-5
 # grad_clip = 0
 # window = 4

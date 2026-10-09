@@ -107,7 +107,7 @@ def test_toml_and_cli_precedence():
         (["--resume", "auto"], {}, "resume"),
         (["--dmad_lambda_t", "0", "--dmad_lambda_r", "0"], {}, "both 0"),
         (["--dmad_lambda_t", "-0.5"], {}, "lambda_t"),  # -1 is the CLI sentinel
-        (["--dmad_signal_rms", "0"], {}, "signal_rms"),
+        (["--dmad_signal_rms=-0.1"], {}, "signal_rms"),
         (["--dmad_grad_clip=-1e-3"], {}, "grad_clip"),
         (["--dmad_window", "0"], {}, "window"),
     ],
@@ -342,6 +342,10 @@ def test_student_signal_is_normalized_head_mix():
     (g,) = torch.autograd.grad(-(h_t + 0.5 * h_r).sum(), x)
     torch.testing.assert_close(signal, normalize_signal_rms(g, 0.18))
     assert set(stats) == {"g_t_rms", "g_r_rms", "cos_tr"}
+
+    disc.signal_rms = 0.0
+    raw, _ = disc.student_signal(ctx, p["x_student"], tau, eps, p["crossattn_emb"])
+    torch.testing.assert_close(raw, g.float())
 
 
 def test_metrics_tolerate_missing_dm_terms():

@@ -17,8 +17,9 @@ term and the critic are replaced by :class:`DmadDisc`:
   pass (both heads) are backwarded one at a time, losses scaled 1/n, then one
   AdamW (β = (0, 0.99)) step.
 * Student signal: ``g = ∂(−λ_T h_T − λ_R h_R)/∂x_pred`` at the step's (τ, ε),
-  RMS-normalized per sample to ``signal_rms`` — the ``grad_signal`` the loop
-  assembles exactly like the DM one.
+  RMS-normalized per sample to ``signal_rms`` (``signal_rms = 0``: raw, so λ
+  alone sets its size) — the ``grad_signal`` the loop assembles exactly like
+  the DM one.
 
 :func:`run_disc_warmup` trains the disc alone for ``disc_warmup_steps`` before
 the student uses it. The Phase −1 probe (``dmad_probe.py``) shares the
@@ -309,7 +310,8 @@ class DmadDisc:
         eps: torch.Tensor,
         crossattn_emb: torch.Tensor,
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-        """``∂(−λ_T h_T − λ_R h_R)/∂x_pred`` at (τ, ε), RMS-normalized per sample.
+        """``∂(−λ_T h_T − λ_R h_R)/∂x_pred`` at (τ, ε), RMS-normalized per sample
+        unless ``signal_rms`` is 0.
 
         One grad-bearing disc forward on a detached leaf of ``x_pred``; disc
         params are frozen around it, since the unsloth checkpoint's recompute
@@ -343,7 +345,9 @@ class DmadDisc:
             stats["cos_tr"] = F.cosine_similarity(
                 grads["t"].flatten(), grads["r"].flatten(), dim=0
             )
-        return normalize_signal_rms(g, self.signal_rms).detach(), stats
+        if self.signal_rms > 0:
+            g = normalize_signal_rms(g, self.signal_rms)
+        return g.detach(), stats
 
 
 def run_disc_warmup(ctx, cfg):

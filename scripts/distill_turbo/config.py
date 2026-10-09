@@ -621,7 +621,8 @@ def build_argparser() -> argparse.ArgumentParser:
         type=float,
         default=None,
         help="Per-sample RMS the disc gradient is normalized to before it is used "
-        "as grad_signal. Default: TOML (dmad.signal_rms, default 0.18).",
+        "as grad_signal; 0 = off (raw lambda-weighted gradient, as the paper). "
+        "Default: TOML (dmad.signal_rms, default 0.18).",
     )
     parser.add_argument(
         "--dmad_lr",
@@ -865,7 +866,7 @@ class TurboConfig:
     dmad: bool = False
     dmad_lambda_t: float = 1.0  # 0 → no head T / teacher branch
     dmad_lambda_r: float = 1.0  # 0 → no head R / real branch
-    dmad_signal_rms: float = 0.18  # per-sample RMS of the student signal
+    dmad_signal_rms: float = 0.18  # per-sample RMS of the student signal; 0 = raw
     dmad_lr: float = 4e-5
     dmad_grad_clip: float = 0.0  # 0 → unclipped
     dmad_window: int = 4  # replay pairs per disc update
@@ -1361,8 +1362,8 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
             )
         if dmad_lambda_t == 0.0 and dmad_lambda_r == 0.0:
             raise ValueError("dmad: lambda_t and lambda_r are both 0 — no head.")
-        if dmad_signal_rms <= 0.0:
-            raise ValueError(f"dmad.signal_rms={dmad_signal_rms}: must be > 0")
+        if dmad_signal_rms < 0.0:
+            raise ValueError(f"dmad.signal_rms={dmad_signal_rms}: must be >= 0")
         if dmad_grad_clip < 0.0:
             raise ValueError(f"dmad.grad_clip={dmad_grad_clip}: must be >= 0")
         if dmad_window < 1:
