@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import re
-import sys
 from pathlib import Path
 from typing import Any
 
 import html
 
 import toml
-from PySide6.QtCore import QEvent, QProcess, Qt, QTimer, QUrl
+from PySide6.QtCore import QEvent, Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
@@ -68,7 +67,7 @@ from gui.jobs.mixin import DaemonJobMixin
 from gui.theme import action_button_qss, rich_text_pt as _explain_pt, tok
 from gui.explanations import field_help, field_help_html, method_guide
 from gui.i18n import t
-from gui.jobs.process import kill_process_tree, setup_kill_safe
+from gui.jobs.process import StreamingProcess
 from gui.widgets import (
     DirtyTrackingMixin,
     ImageViewerDialog,
@@ -343,15 +342,11 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         vsplit.setSizes([500, 200])
         lay.addWidget(vsplit)
 
-        # Run the child in its own session so kill_process_tree can take down
-        # the whole subtree (it forks a real training process) on Stop / close.
-        self._proc = QProcess(self)
-        self._proc.setWorkingDirectory(str(ROOT))
-        setup_kill_safe(self._proc)
-        self._proc.readyReadStandardOutput.connect(self._read_stdout)
-        self._proc.readyReadStandardError.connect(self._read_stderr)
+        # Test (and EasyControl's preprocess) run as a direct child; Stop / close
+        # kill its whole subtree (it forks a real inference process).
+        self._proc = StreamingProcess(self)
+        self._proc.line.connect(lambda line, _err: self._route_line(line))
         self._proc.finished.connect(self._on_finished)
-        self._stderr_buf = ""
 
         # Training / auto-chain preprocess are daemon jobs (not children of this
         # QProcess), so they survive the GUI closing; observed via on-disk files.
@@ -924,7 +919,6 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
             QMessageBox.warning(self, t("error"), t("no_lora_for_test"))
             return
 
-        python = sys.executable
         args = ["tasks.py", "test"]
 
         self.log.clear()
@@ -932,7 +926,7 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         self._progress_tracker.mark_starting(t("starting"))
         self._log(f"> python {' '.join(args)}\n")
         self._running_mode = "test"
-        self._proc.start(python, args)
+        self._proc.start(args)
         self.test_btn.setText(t("test") + " ...")
         apply_variant(self.test_btn, "busy")
         self.test_btn.setEnabled(False)
@@ -1409,11 +1403,11 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
             self._tb_panel.clear_current_run()
 
     def _stop_training(self):
-        # A daemon job is aborted via the daemon; a QProcess test run is killed directly.
+        # A daemon job is aborted via the daemon; a direct child is killed as a tree.
         if self._job_id:
             self._stop_job()
             return
-        kill_process_tree(self._proc)
+        self._proc.kill()
 
     def _on_run_start_event(self, ev: dict) -> None:
         """Called by JsonlProgressReader on a run_start event; highlights the
@@ -1426,29 +1420,16 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         """App-shutdown hook. Kills a running test subprocess, but deliberately
         leaves a daemon training job alive — it runs detached and survives."""
         self._job_timer.stop()
-        kill_process_tree(self._proc)
-
-    def _read_stdout(self):
-        data = self._proc.readAllStandardOutput().data().decode(errors="replace")
-        self._stdout_buf = self._consume_lines(self._stdout_buf + data)
-
-    def _read_stderr(self):
-        data = self._proc.readAllStandardError().data().decode(errors="replace")
-        self._stderr_buf = self._consume_lines(self._stderr_buf + data)
+        self._proc.kill()
 
     def _reset_progress(self):
         self._stdout_buf = ""
-        self._stderr_buf = ""
         self._progress_tracker.reset()
         self._jsonl_reader.reset()
 
-    def _on_finished(self, exit_code: int, _status: QProcess.ExitStatus):
-        # QProcess backs only the Test button (training/preprocess are daemon jobs).
-        for buf_name in ("_stdout_buf", "_stderr_buf"):
-            leftover = getattr(self, buf_name, "")
-            if leftover and not TQDM_RE.search(leftover):
-                self._log(leftover + "\n")
-            setattr(self, buf_name, "")
+    def _on_finished(self, exit_code: int):
+        # The direct child: Test, or EasyControl's preprocess (training and the
+        # auto-chain preprocess are daemon jobs).
         self._jsonl_reader.poll()
         self._jsonl_reader.reset()
         self.progress.setVisible(False)

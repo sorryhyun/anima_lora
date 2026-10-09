@@ -30,12 +30,11 @@ button and custom entries are suppressed here.
 
 from __future__ import annotations
 
-import sys
 import tomllib
 from pathlib import Path
 
 import tomlkit
-from PySide6.QtCore import Qt, QProcess, QProcessEnvironment
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication,
     QFormLayout,
@@ -323,18 +322,6 @@ class EasyControlTab(ConfigTab):
             return variant
         return self._VARIANT_ENV.get(variant)
 
-    def _ec_proc_env(self) -> QProcessEnvironment:
-        """System env with EASYADAPTER set (or cleared) for the active variant.
-        Rebuilt each launch so a stale value can't leak across runs (the QProcess
-        is reused)."""
-        env = QProcessEnvironment.systemEnvironment()
-        adapter = self._ec_adapter()
-        if adapter:
-            env.insert("EASYADAPTER", adapter)
-        else:
-            env.remove("EASYADAPTER")
-        return env
-
     def _ec_cache_dir(self) -> Path:
         # Descriptor variants cache under their `name` slug, which can differ from
         # the dropdown stem (e.g. near_twins.toml ships name = "sanitize").
@@ -353,7 +340,7 @@ class EasyControlTab(ConfigTab):
         return ROOT / rel
 
     def _ec_launch(self, argv: list[str], mode: str) -> None:
-        if self._proc.state() != QProcess.NotRunning:
+        if self._proc.is_running():
             return
         self.log.clear()
         self._reset_progress()
@@ -362,9 +349,9 @@ class EasyControlTab(ConfigTab):
         adapter = self._ec_adapter()
         prefix = f"EASYADAPTER={adapter} " if adapter else ""
         self._log(f"> {prefix}python {' '.join(argv)}\n")
-        self._proc.setProcessEnvironment(self._ec_proc_env())
         self._ec_set_busy(True)
-        self._proc.start(sys.executable, argv)
+        # Set or cleared every launch, so one variant's adapter never leaks into the next.
+        self._proc.start(argv, env={"EASYADAPTER": adapter})
 
     def _flush_dirty_descriptor(self) -> bool:
         """Flush unsaved descriptor form edits before a descriptor run (preprocess
@@ -502,7 +489,7 @@ class EasyControlTab(ConfigTab):
         Discriminate by method so we don't hijack another tab's job (e.g. a
         LoRA-tab training run): the daemon's single active job is shared across
         the ConfigTab subclasses, and this tab only owns its own family's
-        variants. EasyControl preprocess runs as a QProcess (not a daemon
+        variants. EasyControl preprocess runs as a direct child (not a daemon
         command job), so there's nothing of ours to re-attach but the train."""
         try:
             job_id = gui_daemon.active_job_id()

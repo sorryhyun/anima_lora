@@ -13,7 +13,7 @@ import time
 import urllib.error
 import urllib.request
 
-from PySide6.QtCore import QProcess, QThread, QUrl, Signal
+from PySide6.QtCore import QThread, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QTextCursor
 from PySide6.QtWidgets import (
     QDialog,
@@ -37,7 +37,7 @@ from gui import ROOT
 from library import downloads as DL
 from gui.core.paths import get_setting, set_setting
 from gui.i18n import t
-from gui.jobs.process import kill_process_tree, setup_kill_safe
+from gui.jobs.process import StreamingProcess
 from gui.theme import tok
 from gui.widgets import apply_variant
 
@@ -100,7 +100,7 @@ def _tooltip(asset) -> str:
 
 
 class _StreamingDialog(QDialog):
-    """Base — owns the QProcess, log pane, and busy-state plumbing.
+    """Base — owns the child process, log pane, and busy-state plumbing.
 
     Subclasses build the action UI in ``_build_actions(layout)`` and call
     ``self._run([...])`` to launch a ``python tasks.py ...`` invocation.
@@ -136,11 +136,8 @@ class _StreamingDialog(QDialog):
         bottom.addWidget(bb)
         self._lay.addLayout(bottom)
 
-        self._proc = QProcess(self)
-        self._proc.setWorkingDirectory(str(ROOT))
-        setup_kill_safe(self._proc)
-        self._proc.readyReadStandardOutput.connect(self._read_stdout)
-        self._proc.readyReadStandardError.connect(self._read_stderr)
+        self._proc = StreamingProcess(self)
+        self._proc.chunk.connect(lambda text, _err: self._log(text))
         self._proc.finished.connect(self._on_finished)
 
     def _build_actions(self, layout: QVBoxLayout) -> None:  # override
@@ -150,23 +147,17 @@ class _StreamingDialog(QDialog):
         self.stop_btn.setEnabled(busy)
 
     def _run(self, args: list[str]) -> None:
-        if self._proc.state() != QProcess.NotRunning:
+        if self._proc.is_running():
             return
         cmd = [sys.executable, "tasks.py", *args]
         self._log(f"> {' '.join(cmd)}\n")
         self._set_busy(True)
-        self._proc.start(cmd[0], cmd[1:])
+        self._proc.start(cmd[1:])
 
     def _stop(self) -> None:
-        kill_process_tree(self._proc)
+        self._proc.kill()
 
-    def _read_stdout(self):
-        self._log(self._proc.readAllStandardOutput().data().decode(errors="replace"))
-
-    def _read_stderr(self):
-        self._log(self._proc.readAllStandardError().data().decode(errors="replace"))
-
-    def _on_finished(self, exit_code: int, _status: QProcess.ExitStatus):
+    def _on_finished(self, exit_code: int):
         self._log(f"\n{t('finished', code=exit_code)}\n")
         self._set_busy(False)
         self._after_finished(exit_code)
@@ -180,7 +171,7 @@ class _StreamingDialog(QDialog):
         self.log.moveCursor(QTextCursor.End)
 
     def closeEvent(self, ev):
-        kill_process_tree(self._proc)
+        self._proc.kill()
         super().closeEvent(ev)
 
 

@@ -19,7 +19,17 @@ Behaviour-preserving cleanup of the PySide6 GUI. Architecture and invariants liv
   `_on_job_finished` starts with `_end_job_watch()`. Dead `_jsonl_timer` removed.
 - ConfigTab picker lock/unlock → `_set_pickers_enabled`.
 
-`config_tab.py`: 1664 → 1488 lines.
+- **`StreamingProcess`** (`gui/jobs/process.py`): one QObject owns the kill-safe
+  `QProcess`, per-stream incremental UTF-8 decode and line splitting, and emits
+  `chunk` / `line` / `finished`. Hosts: ConfigTab Test + EasyControl preprocess (lines →
+  the mixin's `_route_line`), MergeTab (stdout lines for `ANALYZE_RESULT`, stderr chunks),
+  `dialogs/system.py::_StreamingDialog` (chunks). EasyControl's launch env now keeps
+  `PYTHONUNBUFFERED=1` (its old `QProcessEnvironment` dropped it). Left alone:
+  `widgets/gpu_status.py` (a one-shot `nvidia-smi` probe read at exit, not a stream) and
+  `bench/ip_adapter/impl/gui_adapter_tab.py` (bench copy, merged channels).
+  Tests: `tests/test_gui_streaming_process.py`.
+
+`config_tab.py`: 1664 → 1469 lines.
 
 ## Next
 
@@ -28,26 +38,22 @@ Rough order. Each step should keep the submit-plan equivalence check passing: du
 `_chain_train_spec` / `_resolve_cache_dir` over every variant × preset before and after,
 then compare.
 
-1. **`StreamingProcess` helper** (`gui/jobs/`). Five copies of the QProcess pattern
-   (`setup_kill_safe` + readyRead + line buffering + finished): ConfigTab Test,
-   EasyControl `_ec_launch`, MergeTab (+ `ANALYZE_RESULT` marker), `dialogs/system.py`
-   `_StreamingDialog`, `widgets/gpu_status.py`. Make it one QObject that emits lines and
-   a finished signal; the hosts keep only their own line handling.
-2. **Explanation / gallery panel out of ConfigTab.** `_show_explain*`,
+1. **Explanation / gallery panel out of ConfigTab.** `_show_explain*`,
    `_set_explain_html`, `_on_explain_anchor`, `_render_image_gallery`,
    `_newest_images`, `_show_test_output`, `_show_sample_output` (~150 lines) become a
    `widgets/` panel that ConfigTab owns. Watch the `_explain_mode` / `_gallery_sig`
    state that the job tick reads.
-3. **Split ConfigTab's form building.** `_reload` (~120 lines, contains the nested
+2. **Split ConfigTab's form building.** `_reload` (~120 lines, contains the nested
    `_build_subgroup_box`) and `_save_preset` (~110 lines: path_scope meta,
    validation/folder-repeat writeback, extra-args TOML parse). Move the pure
    "form values → variant dict" part into `gui/core/` next to `config_io` so it can be
    tested headless.
-4. **EasyControlTab.** It subclasses ConfigTab and overrides 10+ methods (`_ec_*`, its
-   own QProcess path, `_attach_to_job` / `_restore_idle_ui` / `_try_reattach`). Once
-   1–3 shrink ConfigTab, decide between composition and a smaller documented set of
+3. **EasyControlTab.** It subclasses ConfigTab and overrides 10+ methods (`_ec_*`,
+   `_attach_to_job` / `_restore_idle_ui` / `_try_reattach`), and
+   `_ec_start_train_descriptor` open-codes the submit dance `_submit_job` already owns. Once
+   1–2 shrink ConfigTab, decide between composition and a smaller documented set of
    override points.
-5. **Small items**
+4. **Small items**
    - The config-warning banner hardcodes `#5c1a1a` / `#ffd9d9` / `#a33`; switch to
      theme tokens. `dialogs/guidebook.py` and other files also hardcode hex colors
      (`grep -rln "#[0-9a-fA-F]\{6\}" gui`).

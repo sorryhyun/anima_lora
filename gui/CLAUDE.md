@@ -14,7 +14,7 @@ Edits TOML configs and submits jobs to the daemon; no training/torch logic. Layo
 | Package | Holds |
 |---|---|
 | `core/` | **Qt-free** (no PySide6 import, headless-unit-testable): `paths.py` (ROOT, `gui_settings.json`), `config_io.py`, `submit.py`, `validation.py`, `discovery.py`, `anime_tools_panel.py`, `debug_report.py` |
-| `jobs/` | `daemon.py` (client), `mixin.py` (`DaemonJobMixin`), `progress.py`, `process.py` |
+| `jobs/` | `daemon.py` (client), `mixin.py` (`DaemonJobMixin`), `progress.py`, `process.py` (`StreamingProcess`, tree kill) |
 | `dialogs/` | `confirm.py` (pre-launch confirmations + cache/checkpoint probes), `guidebook.py`, `settings.py`, `system.py` (Models + Update) |
 | `tabs/` | one module per tab, the `preprocess/` package, `tensorboard.py` (overlay panel) |
 | `widgets/` | reusable widgets (incl. `gpu_status.py`) |
@@ -150,7 +150,8 @@ must not appear.
   `_emit_log_line` (log sink), `_route_progress_line` (which lines feed the bar) and
   `_on_job_tick` (per-poll extras). ConfigTab uses the last two for progress.jsonl and
   the live sample gallery; its `_on_job_finished` adds the preprocess→train chain and
-  queue-successor follow. `_consume_lines` is also what ConfigTab's Test `QProcess` feeds.
+  queue-successor follow. ConfigTab's direct child (Test, EasyControl preprocess) feeds the
+  same `_route_line`.
 - **`core/submit.py`** — the submit plan, pure dict-in/dict-out: `path_scope` layering
   (`scoped_paths`), `training_snapshot` (strips `PREPROCESS_ONLY_KEYS` + merge
   bookkeeping, resolves the dataset blueprint), `preprocess_snapshot`, `preprocess_env`,
@@ -191,8 +192,10 @@ must not appear.
   English → ko/ja/cn.
 - **The daemon outlives the GUI.** Closing the window does not stop training.
 - **Process kill must walk the tree.** A directly-spawned `QProcess`'s real work runs in a
-  grandchild, so `QProcess.kill()` leaks it — use `jobs/process.py::kill_process_tree`. Daemon
-  jobs stop via `daemon.stop_job()`.
+  grandchild, so `QProcess.kill()` leaks it. Spawn a Python child with
+  `jobs/process.py::StreamingProcess` (kill-safe session, `PYTHONUNBUFFERED`, decoded
+  `chunk` / `line` / `finished` signals; `.kill()` walks the tree). Daemon jobs stop via
+  `daemon.stop_job()`.
 - **`gui_settings.json`** holds UI state (language, 6 h update-check cache, preprocess
   knobs, hardware preset) — outside `configs/` so it survives a config reset.
 - **No app-wide Python event filter.** `app.installEventFilter` routes every Qt event

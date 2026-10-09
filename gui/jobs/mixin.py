@@ -97,11 +97,13 @@ class DaemonJobMixin:
         return the incomplete trailing fragment for the next call."""
         parts = re.split(r"[\r\n]", buf)
         for line in parts[:-1]:
-            if self._route_progress_line(line):
-                continue
-            if line:
-                self._emit_log_line(line)
+            self._route_line(line)
         return parts[-1]
+
+    def _route_line(self, line: str) -> None:
+        """Send one complete line to the progress bar or the log."""
+        if not self._route_progress_line(line) and line:
+            self._emit_log_line(line)
 
     def _drain_job_stdout(self) -> None:
         chunk = self._stdout_tailer.read_new()
