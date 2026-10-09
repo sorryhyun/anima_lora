@@ -1,6 +1,6 @@
 # proposal_refactor — reseed torn down and rebuilt, scale archived (2026-10-09)
 
-**Status: steps 0–4 done (10-09); 5–6 left.** Work happens on `cjk-reseed`;
+**Status: steps 0–5 done (10-09); 6 left.** Work happens on `cjk-reseed`;
 `main` holds a stale copy of both lines.
 
 | step | commit | what |
@@ -8,7 +8,8 @@
 | 0–1 | `0a23be0c` | freeze point `b3dee68e` (in `status.md`); the prune; `status.md`; README |
 | 2 | `9a6f6bf2` | scale's `src/` subset and the fonts vendored into reseed |
 | 3 | `19aac524` | `cjk_scale/{train,rows,loss}` → `reseed/{trainer,rows,loss}`; no live file imports `cjk_scale` |
-| 4 | (this commit) | the 7 dead config keys and their trainer paths dropped; `tests/test_config.py` |
+| 4 | `fa56f808` | the 7 dead config keys and their trainer paths dropped; `tests/test_config.py` |
+| 5 | (this commit) | scale → `project/finished/cjk_anima_scale/` (depth bumped, `.ignore` `*`); outside readers repointed |
 
 The verification of each is in its commit message.
 

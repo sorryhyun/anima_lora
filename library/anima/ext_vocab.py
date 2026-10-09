@@ -45,13 +45,13 @@ through :class:`~library.anima.vocab_pack.VocabPack`): every JA Qwen token
 rows instead of its own row — a piece (こんにちは) becomes five single ids,
 a space-prefixed glyph (`` の``) its glyph's row. The Qwen text is untouched.
 A token with a glyph that has no single row keeps its own row. It is the
-cjk_anima_scale line's P2 (``project/cjk_anima_scale/retrain_experiments.md`` § 2).
+cjk_anima_scale line's P2 (``project/finished/cjk_anima_scale/retrain_experiments.md`` § 2).
 Off, the encoder is bit-identical to before.
 
 Encode fold (``mapping["fold"]``: one char → one char): applied to the text
 before routing and encoding, on the T5 side only (the Qwen text is the text
 as typed) — ``！`` → ``!``, ``~`` → ``～``, ``『`` → ``「`` … so variant forms
-share one row (``project/cjk_anima_scale/plan_retrain.md`` § 2c). Char for
+share one row (``project/finished/cjk_anima_scale/_archive/plan_retrain.md`` § 2c). Char for
 char, so every offset still indexes the typed text. A pack without it encodes
 bit-identically to before.
 

@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 _SRC = Path(__file__).resolve().parents[1]
-_REPO = Path(__file__).resolve().parents[4]
+_REPO = Path(__file__).resolve().parents[5]
 _at = next(
     (i + 1 for i, p in enumerate(sys.path) if p and Path(p).resolve() == _SRC), 0
 )

@@ -42,7 +42,7 @@ make daemon-run ARGS="--stall-timeout 900 project/cjk_anima_reseed/ruler.py run 
 ```
 
 The line stands alone (`tests/test_boundary.py`): no live file imports the
-scale line's `cjk_scale`. It reads the scale line's outputs
+scale line's `cjk_scale` (`../finished/cjk_anima_scale/`). It reads its outputs
 (`output/cjk_anima_scale`: the seed rows, the arms of record, the scene pools,
 the EN refs) and appends to its two scene caches.
 

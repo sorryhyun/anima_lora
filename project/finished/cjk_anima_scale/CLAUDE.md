@@ -1,11 +1,14 @@
 # cjk_anima_scale
 
+**Finished 2026-10-09** (`README.md` § Finished): frozen, runnable by path;
+live work is in `../../cjk_anima_reseed/`.
+
 Production line for the JA vocab pack: a run is its vocabs + what to read;
 one loss, one trainer, σ per item from the band law. `README.md`
 = state, `proposal_seed_synthesis.md` = the open question, `band_experiment_results.md` = the
 vocab band law; the finished plans (`plan.md` = the collapse spec the code
 implements, `plan_retrain.md`, …) are in `_archive/`. The line is self-contained: its stage code is its own `src/`, and
-nothing here imports, paths into or configures from `../finished/cjk_renderable_anima/`
+nothing here imports, paths into or configures from `../cjk_renderable_anima/`
 (the independent research line) — `tests/test_line.py` asserts it.
 
 ## Layout
@@ -47,8 +50,8 @@ nothing here imports, paths into or configures from `../finished/cjk_renderable_
   module:
   `.venv/bin/python scripts/toolkits/bake_vocab_pack.py output/cjk_anima_scale/<run> --out models/vocab_packs/anima_cjk_vocab_pack_<run>` (`--glyph_route` ships routing on, as a routed run's rows need).
   **`builder` / `recipes` are frozen** (2026-10-03): they rebuild the seed of
-  record; new data recipes go to `../cjk_anima_reseed/reseed/`, which imports
-  `src/` and the trainer from here but never these two.
+  record; new data recipes went to `../../cjk_anima_reseed/reseed/`, which
+  since 2026-10-09 carries its own copy of `src/` and the trainer.
 - `src/` — **the stage packages, vendored 2026-09-25** (top-level `common` /
   `data` / `train` / `eval` / `scenes` / `probe`, `cli`, `stages`,
   `run_stage.py`) and **pruned the same day to the code the line runs**: the
@@ -162,5 +165,5 @@ nothing here imports, paths into or configures from `../finished/cjk_renderable_
   and GPU verbs go through the daemon (`--submit`). The piece tiers read
   `MANGA109S` from the repo's `.env` (`config.phrase_file` calls `load_dotenv`,
   so a daemon child finds it too); the path never enters the repo.
-- Tests: `.venv/bin/python -m pytest project/cjk_anima_scale/tests` (line-local,
+- Tests: `.venv/bin/python -m pytest project/finished/cjk_anima_scale/tests` (line-local,
   not part of the repo suite).

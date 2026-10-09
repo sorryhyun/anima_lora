@@ -17,7 +17,7 @@ ran to the end: `step1_0921z` trained, merged with `step1_0921`, the band2
 μ 0.1 30 k sentence run on the merged table, baked and uploaded as
 **`anima_cjk_vocab_pack_preview2`** (2026-09-23, sha256 `feb9208fa82a…`).
 Production of the JA pack continued in
-[`../../cjk_anima_scale/`](../../cjk_anima_scale/README.md) (opened
+[`../cjk_anima_scale/`](../cjk_anima_scale/README.md) (opened
 2026-09-23 from this line), which re-derived the recipe as a band law and a
 cold singles retrain (`preview3`, `preview4`). That line vendored the stage
 code it runs into its own `src/` and never imports from here, so this

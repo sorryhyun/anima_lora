@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[4]
+REPO = Path(__file__).resolve().parents[5]
 OUT = REPO / "output" / "cjk_anima_scale"
 CORPUS_TRAIN = REPO / "post_image_dataset" / "render" / "ja" / "resized"
 CORPUS_HELD = REPO / "post_image_dataset" / "render" / "ja" / "heldout"

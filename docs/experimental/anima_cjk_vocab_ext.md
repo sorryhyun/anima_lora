@@ -11,11 +11,12 @@ band law and a per-band data mix), how the loss weighs the text (in-box
 share), the chain of runs that built the rows, and the one change preview5
 makes on top of them (the shared direction × 0.8).
 
-The code and records live in `project/cjk_anima_scale/` (the trainer, the
-data builder, the band law in `band_experiment_results.md`, the seed's floor
-in `floor_score.md`). Runs go through that project's
-`scale.py <run> data | train | eval`. There is no `make` target. Work on the
-next pack is in `project/cjk_anima_reseed/`.
+The code and records live in `project/finished/cjk_anima_scale/` (the
+trainer, the data builder, the band law in `band_experiment_results.md`, the
+seed's floor in `floor_score.md`), runnable by path through its
+`scale.py <run> data | train | eval`. There is no `make` target. The line is
+finished; cold training and the next pack are in `project/cjk_anima_reseed/`,
+which carries the trainer (`reseed/trainer.py`) and its own data table.
 
 ## What preview5 is
 
@@ -99,7 +100,7 @@ so its FM loss is high everywhere, and the rows absorb the image's whole
 mismatch, not just the text's.
 
 So the canvas is the base model's own render, and only the text is foreign
-(`project/cjk_anima_scale/src/scenes/stage.py`):
+(`project/finished/cjk_anima_scale/src/scenes/stage.py`):
 
 1. **Generate.** The base model draws a scene from a combinatorial tag
    prompt plus an EN anchor clause:
@@ -258,7 +259,7 @@ shows no visible degradation against the stock one. Nothing was scored.
 
 - **Repeats.** Glyphs drawn more than once, or a word filling more slots than
   it has (`こんんにちちは`). The base decides the text region and its slot
-  count; the rows fill it (`project/cjk_anima_scale/proposal_seed_synthesis.md`).
+  count; the rows fill it (`project/finished/cjk_anima_scale/proposal_seed_synthesis.md`).
   Rescaling the stick does not lower them.
 - **The reseed** (`project/cjk_anima_reseed/`): cold kana rows on a flattened
   data table aimed at manga-size dialogue. Its arms so far read under the

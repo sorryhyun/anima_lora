@@ -1,6 +1,6 @@
 # cjk_anima_scale — the JA vocab pack at scale
 
-Opened 2026-09-23 out of [`../finished/cjk_renderable_anima/`](../finished/cjk_renderable_anima/).
+Opened 2026-09-23 out of [`../cjk_renderable_anima/`](../cjk_renderable_anima/).
 That line is the research surface (probe code, `reports/`, `findings.md`);
 this one is the production line that builds the pack on what it settled:
 one loss, one trainer, σ per item from the band law. The **singles retrain**
@@ -10,6 +10,17 @@ it (`plan.md`, `plan_retrain.md`, `plan_polish.md`, `hypothesis.md`,
 before — the stage chain, the 300-piece runs, line mode, plan_2900 (see its
 README). The open question is [`proposal_seed_synthesis.md`](proposal_seed_synthesis.md)
 (`proposal_length.md` ran its step 1 and is superseded).
+
+## Finished (2026-10-09)
+
+Moved from `project/` to `finished/` on 2026-10-09. Cold training continued
+in [`../../cjk_anima_reseed/`](../../cjk_anima_reseed/README.md), which ported
+the trainer (`cjk_scale/{train,rows,loss}` → `reseed/{trainer,rows,loss}`),
+vendored this line's `src/` subset and fonts, and imports nothing from here;
+a cold-batch capability reseed lacks is ported into its table / recipes, not
+run from this tree. This tree is frozen and runnable by path; its outputs
+stay at `output/cjk_anima_scale/`, which reseed reads (the seed rows, the
+scene pools, the EN refs).
 
 ## The vocab band law
 
@@ -36,7 +47,7 @@ The plans that produced it (`plan_band.md`, `plan_kanji.md`) closed on
 probe line's step 1a / 1b / merge / step 2 recipe (`recipe.md`) was retired
 the same day — `configs/stage*.toml` carry its settings, the band law § 3–4
 its reads (git `ff2f70f9` has the last copy). The
-reads themselves are the dated reports under `../finished/cjk_renderable_anima/reports/`
+reads themselves are the dated reports under `../cjk_renderable_anima/reports/`
 (`cf_rebin_gate0`, `cf_band_a1`, `band_b1`, `cf_kanji_c1`, `band_c2_kanji`).
 A new read that changes a row of the law goes into
 `band_experiment_results.md`, with its report there.
@@ -92,17 +103,17 @@ lost identity, `kana_reband` (the kana run's hiragana items at 0.75–0.93,
 cold) included — and the target is manga-size dialogue, not the `sent`
 banner. Identity does not need large glyphs (`p1_cold`); `grid_small` (small
 glyphs only, grids 60 %) is training. A reseed draft sits in
-`../cjk_anima_reseed/_archive/motivation.md` (archived 10-05).
+`../../cjk_anima_reseed/_archive/motivation.md` (archived 10-05).
 
 ## Running a run
 
 ```bash
 export ANIMA_VOCAB_PACK=models/vocab_packs/anima_cjk_vocab_pack   # MANGA109S comes from .env
-.venv/bin/python project/cjk_anima_scale/scale.py retrain_kanji_b2 data              # CPU
-.venv/bin/python project/cjk_anima_scale/scale.py retrain_kanji_b2 train --submit --queue
-.venv/bin/python project/cjk_anima_scale/scale.py retrain_kanji_b2 eval --submit
-.venv/bin/python project/cjk_anima_scale/scale.py retrain_kanji_b2 conflict --submit
-.venv/bin/python project/cjk_anima_scale/scale.py windows | runs | ledger
+.venv/bin/python project/finished/cjk_anima_scale/scale.py retrain_kanji_b2 data              # CPU
+.venv/bin/python project/finished/cjk_anima_scale/scale.py retrain_kanji_b2 train --submit --queue
+.venv/bin/python project/finished/cjk_anima_scale/scale.py retrain_kanji_b2 eval --submit
+.venv/bin/python project/finished/cjk_anima_scale/scale.py retrain_kanji_b2 conflict --submit
+.venv/bin/python project/finished/cjk_anima_scale/scale.py windows | runs | ledger
 ```
 
 A run is `configs/runs/<run>.toml` = `vocabs` (a vocabs file: one vocab per
@@ -184,7 +195,7 @@ pool's own argv with a larger `--scene_n` keeps every stored row and renders
 only the new indices (`src/scenes/stage.py`). `--scene_prune 1` deletes the
 rejected renders (rows stay in `scenes_all.jsonl`); the pools were pruned on
 2026-09-24 and every grow run prunes its own rejects. The argv per pool —
-`S=project/cjk_anima_scale/src/run_stage.py --stage scenes`, raw pack
+`S=project/finished/cjk_anima_scale/src/run_stage.py --stage scenes`, raw pack
 in the env, through `make daemon-run --stall-timeout 0` (pools land in
 `output/cjk_anima_scale/scenes_<pool>/`):
 
@@ -198,4 +209,4 @@ in the env, through `make daemon-run --stall-timeout 0` (pools land in
 
 The line's code is `cjk_scale/`; the stage packages it runs on are its
 own `src/` (nothing is imported from another line); tests:
-`.venv/bin/python -m pytest project/cjk_anima_scale/tests`.
+`.venv/bin/python -m pytest project/finished/cjk_anima_scale/tests`.

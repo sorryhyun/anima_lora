@@ -30,8 +30,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-LINE = Path(__file__).resolve().parents[1]  # project/cjk_anima_scale
-REPO = LINE.parents[1]
+LINE = Path(__file__).resolve().parents[1]  # project/finished/cjk_anima_scale
+REPO = LINE.parents[2]
 SRC = LINE / "src"
 CONFIGS = LINE / "configs"
 RUN_CONFIGS = CONFIGS / "runs"
@@ -54,7 +54,7 @@ SEED_ROWS_0921 = OUT / "rows_step1_0921_merged" / "trained.pt"
 # the seed rows are deltas over it and a cold row starts at its rows, so the
 # trainer refuses any other attached pack (colab.md's pack row)
 RAW_PACK_SHA = "7b9fce0bb57b"
-# the punct base pack (``../cjk_anima_reseed/punct_pack.py``, 10-05): the raw
+# the punct base pack (``../../cjk_anima_reseed/punct_pack.py``, 10-05): the raw
 # pack's rows and ids, a `…` row appended and dot runs (``dots``) on top —
 # accepted beside it (the same digest, fold left out)
 PUNCT_PACK_SHA = "6c09442810af"

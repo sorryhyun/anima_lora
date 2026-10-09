@@ -25,7 +25,7 @@ from library.anima.ext_vocab import T5_TABLE_SIZE, pack_digest
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts" / "toolkits"))
-sys.path.insert(0, str(REPO / "project" / "cjk_anima_scale" / "src"))
+sys.path.insert(0, str(REPO / "project" / "cjk_anima_reseed" / "src"))
 
 import bake_vocab_pack as bvp  # noqa: E402
 

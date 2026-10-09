@@ -15,11 +15,11 @@ pointers, shipped artifacts, and any small open remainder. It does not
 duplicate code or bench tables — canonical sources stay where they live.
 
 **Search.** Each CJK line carries a `.ignore` that hides its record material
-(docs, reports, dead probes; `cjk_renderable_anima/` whole) from ripgrep, so
+(docs, reports, dead probes; `cjk_renderable_anima/` and `cjk_anima_scale/` whole) from ripgrep, so
 Grep / Glob / Explore stay on live code; the `archive-explorer` agent searches
 it (`rg --no-ignore-dot`). What stays visible is what live code outside
 `finished/` reads or runs: `sr/`, `mod_guidance/`, `cjk_aware_anima/{assets,
-datasets,probes}/` (the scale line's and `scripts/distill_cjk`'s eval prompts,
+datasets,probes}/` (the reseed line's and `scripts/distill_cjk`'s eval prompts,
 `tests/test_cjk_ocr_captions.py`, `bench/grad_init`'s `blind_pairs.py`) and
 `cjk_aware_anima_dit/{ocr,render}/` (`tests/test_ocr_textnorm.py`, the
 `render_*` targets in `scripts/tasks/training.py`). A new outside reference
@@ -69,7 +69,7 @@ Finished lines:
   — five arms decoupled in-domain COO from the doujin gate, so the headroom is
   ♡ / small-kana labels. The DiT goals were **handed off, not measured**
   (G-A read on one 351-image shard only, G-B never run); the question lives on
-  in [`cjk_renderable_anima/`](cjk_renderable_anima/) and `../cjk_anima_scale/`. Code runnable by
+  in [`cjk_renderable_anima/`](cjk_renderable_anima/) and [`cjk_anima_scale/`](cjk_anima_scale/). Code runnable by
   path; the `render_*` EasyControl descriptors in `scripts/tasks/training.py`
   still call its `render/` scripts. Verdicts:
   [`cjk_aware_anima_dit/findings.md`](cjk_aware_anima_dit/findings.md);
@@ -82,7 +82,18 @@ Finished lines:
   2026-09-23). Settled: trained addresses are hash-like (held-out anything is
   0, the cost is exposure per row), a static row table can carry order and
   count at the price of a unit-count prior. Production continued in
-  `../cjk_anima_scale/` (vendored its own `src/`, imports nothing from here).
-  Code runnable by path. Verdicts:
+  [`cjk_anima_scale/`](cjk_anima_scale/) (vendored its own `src/`, imports
+  nothing from here). Code runnable by path. Verdicts:
   [`cjk_renderable_anima/findings.md`](cjk_renderable_anima/findings.md);
   digest: [`cjk_renderable_anima/README.md`](cjk_renderable_anima/README.md).
+- [`cjk_anima_scale/`](cjk_anima_scale/) — the production line for the JA
+  pack (opened 2026-09-23 out of the wake line, moved here 2026-10-09).
+  Shipped: the **vocab band law** (`band_experiment_results.md`: the band
+  keyed on glyph count, px sets the floor, nothing above 0.9 — all measured),
+  the singles retrain's seed `seed_retrain_0930`, `preview3` / `preview4`, and
+  A of jp_v1's recipe (`retrain_kanji_b5`, 225 kanji cold). Its trainer, the
+  stage code it vendored into `src/` and its fonts now live in
+  `../cjk_anima_reseed/`, the home for cold training; this tree is frozen,
+  runnable by path (`project/finished/cjk_anima_scale/scale.py`). Its outputs
+  stay at `output/cjk_anima_scale/` (reseed reads the seed rows, scene pools
+  and EN refs there). Digest: [`cjk_anima_scale/README.md`](cjk_anima_scale/README.md).

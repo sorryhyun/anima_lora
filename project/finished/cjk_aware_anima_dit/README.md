@@ -23,7 +23,7 @@ first). Premise: ext rows are content-free addresses; what a CJK address
   clauses tie; G-B (a LoRA learning CJK tag meaning) was never run. The
   DiT question continues as the wake line
   [`../cjk_renderable_anima/`](../cjk_renderable_anima/README.md) and the
-  production line [`../../cjk_anima_scale/`](../../cjk_anima_scale/README.md);
+  production line [`../cjk_anima_scale/`](../cjk_anima_scale/README.md);
   neither is a verdict on G-A / G-B.
 - **Open remainder** — the reader label pass, R3 / R4.4, heart positives, a
   KO / ZH gate set, the S0b reader-disagreement pass: `findings.md` § Still

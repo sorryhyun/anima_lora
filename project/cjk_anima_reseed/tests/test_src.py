@@ -1,6 +1,4 @@
-"""The vendored ``src/`` and fonts: what resolves where after ``bootstrap()``,
-and (until the scale line moves to ``finished/``) the copy is scale's bar the
-path plumbing."""
+"""The vendored ``src/`` and fonts: what resolves where after ``bootstrap()``."""
 
 import json
 import subprocess
@@ -9,21 +7,6 @@ from pathlib import Path
 
 HOME = Path(__file__).resolve().parents[1]
 SRC = HOME / "src"
-SCALE_SRC = HOME.parent / "cjk_anima_scale" / "src"
-# the files the vendoring edits (proposal_refactor.md § 2's path plumbing)
-PLUMBING = {"common/paths.py", "common/prompts.py", "eval/__init__.py"}
-
-
-def _vendored() -> list:
-    return sorted(str(f.relative_to(SRC)) for f in SRC.rglob("*.py"))
-
-
-def test_byte_equal_to_scale():
-    # one-time: deleted when the scale line moves (proposal_refactor.md § 4 step 5)
-    for rel in _vendored():
-        if rel in PLUMBING:
-            continue
-        assert (SRC / rel).read_bytes() == (SCALE_SRC / rel).read_bytes(), rel
 
 
 def test_resolution():

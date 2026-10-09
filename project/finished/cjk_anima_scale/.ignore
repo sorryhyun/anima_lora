@@ -1,0 +1,6 @@
+# Code search (ripgrep: Grep / Glob / Explore) skips this finished line's record
+# material; the archive-explorer agent searches it. Kept per-directory because
+# ripgrep applies anchored rules from a root .ignore only when the search starts
+# at the root. Paths live code outside finished/ reads or runs stay searchable
+# (see ../README.md); moving one into a listed path means narrowing the rule.
+*

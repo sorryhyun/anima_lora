@@ -2,7 +2,7 @@
 """bake_vocab_pack — fold a wake-line ext-row delta (``trained.pt``) into a
 vocab pack, producing a new ``.safetensors`` + ``.json`` pair.
 
-The JA line (``project/cjk_anima_scale/``) trains a delta on the
+The JA line (``project/cjk_anima_reseed/``) trains a delta on the
 pack's ext rows through the ``ExtDelta`` hook. That hook adds
 ``raw[i] * row_scale * scale`` to the pack row of every ext id in
 ``delta.ext_ids`` at lookup time. Baking applies the same sum to the stored

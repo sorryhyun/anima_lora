@@ -3,7 +3,7 @@
 From the user (10-06, after f0 in ComfyUI: the longer the JA line, the more
 often it lands as a column across the page and the subject goes): one glyph
 or a sentence, the page outside the text should stay as the base draws it —
-`../cjk_anima_scale/product_criteria.md` Axis 2, read so far only as a
+`../finished/cjk_anima_scale/product_criteria.md` Axis 2, read so far only as a
 ruler column (`en_match`, `en_tok_out`). Can it be a training term?
 
     L_pres = mean_out (v_θ(x_σ, c_JA; rows) − sg[v_base(x_σ, c_EN)])²
