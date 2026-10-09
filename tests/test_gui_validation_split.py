@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import os
 
-from gui.validation import _DEFAULT_VALIDATION_SPLIT_NUM, apply_validation_choice
+from gui.core.validation import _DEFAULT_VALIDATION_SPLIT_NUM, apply_validation_choice
 
 
 def _make_config_tab():

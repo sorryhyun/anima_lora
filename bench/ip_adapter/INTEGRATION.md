@@ -97,7 +97,7 @@ rewrite. Restoring is mechanical.
 
 ### 8. GUI surface (`gui/`)
 - `gui/app.py`: `ip_adapter` in the methods list.
-- `gui/tabs/adapter_tab.py`, `gui/tabs/config_tab.py`, `gui/_paths.py`: the IP-Adapter
+- `gui/tabs/adapter_tab.py`, `gui/tabs/config_tab.py`, `gui/core/paths.py`: the IP-Adapter
   form fields / path handling.
 - `gui/i18n/{en,ja,ko,cn}.py`: the IP-Adapter UI strings (4 languages).
 

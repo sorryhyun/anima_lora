@@ -1,162 +1,108 @@
 """Anima LoRA — PySide6 GUI package.
 
-The package root is a thin facade over :mod:`gui._paths` and these submodules:
+Subpackages: ``core`` (Qt-free paths / config / validation / discovery / submit
+plan), ``jobs`` (daemon client, observer mixin, progress, process kill),
+``dialogs``, ``widgets``, ``tabs``, ``i18n``, ``explanations``, ``qwen21``.
 
-* :mod:`gui.config_io`   — variant/preset discovery, load/save, merge, lint (Qt-free)
-* :mod:`gui.validation`  — validation-split encoding (Qt-free)
-* :mod:`gui.dialogs`     — resume/cache confirmation popups + on-disk probes
-* :mod:`gui.discovery`   — image/adapter/dataset directory walks (Qt-free)
-* :mod:`gui.widgets`     — LazyTabMixin, the config-form field factory, ScaledImageLabel
-
-Their public names are re-exported here (``from gui import <name>``).
+The package root re-exports the commonly used names (``from gui import <name>``)
+lazily, so importing a ``gui.core`` module never pulls in PySide6.
 """
 
 from __future__ import annotations
 
-from gui._paths import (
-    CONFIGS_DIR,
-    CUSTOM_DIR,
-    CUSTOM_VARIANTS_DIR,
-    DEFAULT_THEME_COLOR,
-    GUI_METHODS_DIR,
-    GUI_SETTINGS_FILE,
-    IMAGE_EXTS,
-    METHODS_DIR,
-    PRESETS_FILE,
-    ROOT,
-    get_setting,
-    set_setting,
-)
-from gui.config_io import (
-    _BASIC,
-    _GROUPS,
-    _K2G,
-    _SKIP,
-    _VIRTUAL_KEYS,
-    _builtin_variants_by_family,
-    _dataset_lint_sources,
-    _load,
-    _load_all_presets,
-    _load_base,
-    _read_variant_metadata,
-    _save,
-    custom_preset_path,
-    custom_variant_path,
-    dataset_cache_root,
-    default_lora_cache_dir,
-    default_mask_dir,
-    default_resized_dir,
-    is_basic_field,
-    is_custom_preset,
-    is_custom_variant,
-    lint_variant_configs,
-    list_gui_variants,
-    list_hardware_presets,
-    list_methods,
-    list_presets,
-    merged_gui_variant_preset,
-    merged_method_preset,
-    remove_unknown_dataset_keys,
-    variant_metadata,
-    variant_path,
-)
-from gui.dialogs import (
-    confirm_existing_caches,
-    confirm_resumable_checkpoint,
-    confirm_train_using_cache,
-    count_preprocess_caches,
-    find_resumable_checkpoint,
-)
-from gui.discovery import (
-    _adapter_dirs,
-    _imgs,
-    _safetensors_in,
-)
-from gui.validation import (
-    _base_folder_repeats,
-    apply_folder_repeats_choice,
-    apply_validation_choice,
-)
-from gui.widgets import (
-    ClickableLabel,
-    DirtyTrackingMixin,
-    LazyTabMixin,
-    ScaledImageLabel,
-    _SamplePromptsWidget,
-    _no_wheel,
-    _read,
-    _TargetResWidget,
-    _widget,
-    make_field_label,
-)
+import importlib
 
-__all__ = [
-    "ROOT",
-    "CONFIGS_DIR",
-    "IMAGE_EXTS",
-    "METHODS_DIR",
-    "GUI_METHODS_DIR",
-    "PRESETS_FILE",
-    "CUSTOM_DIR",
-    "CUSTOM_VARIANTS_DIR",
-    "GUI_SETTINGS_FILE",
-    "DEFAULT_THEME_COLOR",
-    "get_setting",
-    "set_setting",
-    "ClickableLabel",
-    "DirtyTrackingMixin",
-    "LazyTabMixin",
-    "ScaledImageLabel",
-    "_SamplePromptsWidget",
-    "_TargetResWidget",
-    "_no_wheel",
-    "_read",
-    "_widget",
-    "make_field_label",
-    "_load",
-    "_load_base",
-    "_save",
-    "default_lora_cache_dir",
-    "default_resized_dir",
-    "default_mask_dir",
-    "dataset_cache_root",
-    "_load_all_presets",
-    "_builtin_variants_by_family",
-    "_read_variant_metadata",
-    "_dataset_lint_sources",
-    "_GROUPS",
-    "_K2G",
-    "_SKIP",
-    "_BASIC",
-    "_VIRTUAL_KEYS",
-    "is_basic_field",
-    "list_methods",
-    "list_gui_variants",
-    "list_hardware_presets",
-    "list_presets",
-    "is_custom_variant",
-    "is_custom_preset",
-    "custom_variant_path",
-    "custom_preset_path",
-    "variant_path",
-    "variant_metadata",
-    "lint_variant_configs",
-    "remove_unknown_dataset_keys",
-    "merged_method_preset",
-    "merged_gui_variant_preset",
-    "apply_validation_choice",
-    "apply_folder_repeats_choice",
-    "_base_folder_repeats",
-    "confirm_resumable_checkpoint",
-    "confirm_existing_caches",
-    "confirm_train_using_cache",
-    "count_preprocess_caches",
-    "find_resumable_checkpoint",
-    "_imgs",
-    "_safetensors_in",
-    "_adapter_dirs",
-    "main",
-]
+_EXPORTS: dict[str, tuple[str, ...]] = {
+    "gui.core.paths": (
+        "CONFIGS_DIR",
+        "CUSTOM_DIR",
+        "CUSTOM_VARIANTS_DIR",
+        "DEFAULT_THEME_COLOR",
+        "GUI_METHODS_DIR",
+        "GUI_SETTINGS_FILE",
+        "IMAGE_EXTS",
+        "METHODS_DIR",
+        "PRESETS_FILE",
+        "ROOT",
+        "get_setting",
+        "set_setting",
+    ),
+    "gui.core.config_io": (
+        "_BASIC",
+        "_GROUPS",
+        "_K2G",
+        "_SKIP",
+        "_VIRTUAL_KEYS",
+        "_builtin_variants_by_family",
+        "_dataset_lint_sources",
+        "_load",
+        "_load_all_presets",
+        "_load_base",
+        "_read_variant_metadata",
+        "_save",
+        "custom_preset_path",
+        "custom_variant_path",
+        "dataset_cache_root",
+        "default_lora_cache_dir",
+        "default_mask_dir",
+        "default_resized_dir",
+        "is_basic_field",
+        "is_custom_preset",
+        "is_custom_variant",
+        "lint_variant_configs",
+        "list_gui_variants",
+        "list_hardware_presets",
+        "list_methods",
+        "list_presets",
+        "merged_gui_variant_preset",
+        "merged_method_preset",
+        "remove_unknown_dataset_keys",
+        "variant_metadata",
+        "variant_path",
+    ),
+    "gui.dialogs.confirm": (
+        "confirm_existing_caches",
+        "confirm_resumable_checkpoint",
+        "confirm_train_using_cache",
+        "count_preprocess_caches",
+        "find_resumable_checkpoint",
+    ),
+    "gui.core.discovery": (
+        "_adapter_dirs",
+        "_imgs",
+        "_safetensors_in",
+    ),
+    "gui.core.validation": (
+        "_base_folder_repeats",
+        "apply_folder_repeats_choice",
+        "apply_validation_choice",
+    ),
+    "gui.widgets": (
+        "ClickableLabel",
+        "DirtyTrackingMixin",
+        "LazyTabMixin",
+        "ScaledImageLabel",
+        "_SamplePromptsWidget",
+        "_no_wheel",
+        "_read",
+        "_TargetResWidget",
+        "_widget",
+        "make_field_label",
+    ),
+}
+
+_ORIGIN = {name: mod for mod, names in _EXPORTS.items() for name in names}
+
+__all__ = [*_ORIGIN, "main"]
+
+
+def __getattr__(name: str):
+    mod = _ORIGIN.get(name)
+    if mod is None:
+        raise AttributeError(f"module 'gui' has no attribute {name!r}")
+    value = getattr(importlib.import_module(mod), name)
+    globals()[name] = value
+    return value
 
 
 def main():

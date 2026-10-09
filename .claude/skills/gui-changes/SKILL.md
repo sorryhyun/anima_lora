@@ -15,13 +15,15 @@ Architecture these plug into: `gui/CLAUDE.md`.
 - **New language**: `gui/i18n/<code>.py` with `STRINGS`, register in `TRANSLATIONS`, add
   `guides/<code>/` files.
 - **Change job submission**: `ConfigTab._start_training` and `PreprocessingTab._submit`
-  (the helper its `_run_*` handlers call) — both go through `daemon.submit_training` /
+  (the helper its `_run_*` handlers call) — both go through `jobs.daemon.submit_training` /
   `submit_command`, wrapped by `DaemonJobMixin._submit_job` (pass the submit call as a
-  lambda + an `on_fail` rollback).
+  lambda + an `on_fail` rollback). What rides in the job (config snapshot, env, chain
+  spec, `path_scope`) is built by the Qt-free `gui/core/submit.py`; change it there.
 - **New job-submitting / config-editing tab**: compose `DaemonJobMixin` +
   `DirtyTrackingMixin` rather than hand-rolling. Call `_init_job_observer()` in
-  `__init__`, set `self._dirty`, provide `_on_job_finished(state)`, and override
-  `_emit_log_line` only if your log sink isn't `appendPlainText`. The Save button's dirty
+  `__init__`, set `self._dirty`, provide `_on_job_finished(state)` (start it with
+  `job_id = self._end_job_watch()`), and override `_emit_log_line` only if your log sink
+  isn't `appendPlainText` (`_route_progress_line` / `_on_job_tick` for custom progress). The Save button's dirty
   look is the mixin's default `"warning"` variant — override `_save_btn_dirty_variant`
   only to change it.
 - **A colored action button**: colors live in one table — `theme.ACTION_COLORS`

@@ -3,6 +3,8 @@ import tomllib
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 import library.runtime.backend as backend
 from library.runtime.backend import (
     diagnose_cuda_unavailable,
@@ -106,12 +108,54 @@ def test_update_sync_persists_backend_marker(monkeypatch, tmp_path):
     monkeypatch.setattr(update, "ROOT", tmp_path)
     monkeypatch.setattr(update.sys, "platform", "win32")
     monkeypatch.delenv("ANIMA_BACKEND", raising=False)
+    monkeypatch.delenv("ANIMA_TORCH", raising=False)
     monkeypatch.setattr(update, "_detect_windows_gpu_vendor", lambda: "nvidia")
 
     command, chosen = update._uv_sync_command()
     assert command == ["uv", "sync"]
     assert chosen == "cuda"
     assert (tmp_path / ".anima_backend").read_text(encoding="ascii").strip() == "cuda"
+
+
+def test_update_torch_choice_is_saved_and_reused(monkeypatch, tmp_path):
+    monkeypatch.setattr(update, "ROOT", tmp_path)
+    monkeypatch.setattr(update.sys, "platform", "linux")
+    monkeypatch.setenv("ANIMA_TORCH", "2.13")
+
+    opt_in = ["uv", "sync", "--no-default-groups", "--group", "torch-213"]
+    assert update._uv_sync_command() == (opt_in, None)
+    assert (tmp_path / ".anima_torch").read_text(encoding="ascii").strip() == "2.13"
+
+    monkeypatch.delenv("ANIMA_TORCH")
+    monkeypatch.setattr(update.sys, "platform", "win32")
+    monkeypatch.setenv("ANIMA_BACKEND", "cuda")
+    assert update._uv_sync_command() == (opt_in, "cuda")
+
+
+def test_update_torch_choice_ignored_on_rocm(monkeypatch, tmp_path):
+    (tmp_path / ".anima_torch").write_text("2.12\n", encoding="ascii")
+    monkeypatch.setattr(update, "ROOT", tmp_path)
+    monkeypatch.setattr(update.sys, "platform", "win32")
+    monkeypatch.setenv("ANIMA_BACKEND", "rocm")
+    monkeypatch.delenv("ANIMA_TORCH", raising=False)
+
+    command, _ = update._uv_sync_command()
+    assert command == [
+        "uv",
+        "sync",
+        "--no-group",
+        "cuda-windows",
+        "--group",
+        "rocm-windows",
+    ]
+
+
+def test_update_default_torch_choice_needs_no_flags(monkeypatch, tmp_path):
+    monkeypatch.setattr(update, "ROOT", tmp_path)
+    monkeypatch.setattr(update.sys, "platform", "linux")
+    monkeypatch.setenv("ANIMA_TORCH", "2.14")
+
+    assert update._uv_sync_command() == (["uv", "sync"], None)
 
 
 def _torch_full(*, available, hip=None, cuda=None):
@@ -197,7 +241,7 @@ def test_flagless_sync_resolves_cuda_torch_on_windows():
     ]
     assert torch_lines, "no torch pin in the default export"
     non_darwin = [line for line in torch_lines if "== 'darwin'" not in line]
-    assert non_darwin and all("torch==2.12.0+cu132" in line for line in non_darwin), (
+    assert non_darwin and all("torch==2.14.1+cu132" in line for line in non_darwin), (
         torch_lines
     )
     torchvision_lines = [
@@ -207,7 +251,7 @@ def test_flagless_sync_resolves_cuda_torch_on_windows():
         line for line in torchvision_lines if "== 'darwin'" not in line
     ]
     assert non_darwin_vision and all(
-        "torchvision==0.27.0+cu132" in line for line in non_darwin_vision
+        "torchvision==0.29.1+cu132" in line for line in non_darwin_vision
     ), torchvision_lines
     assert "+rocm" not in result.stdout
     assert "rocm-sdk" not in result.stdout
@@ -217,6 +261,81 @@ def test_flagless_sync_resolves_cuda_torch_on_windows():
         if line.startswith("flash-attn") and "win_amd64" in line
     ]
     assert flash_win, "the default export must ship the Windows flash-attn wheel"
+
+
+def _export(*args):
+    return subprocess.run(
+        ["uv", "export", "--frozen", "--no-hashes", "--no-emit-project", *args],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+
+
+def _flash_wheels(lines):
+    """Map each flash-attn wheel's platform tag to its torch minor."""
+    wheels = {}
+    for line in lines:
+        if line.startswith("flash-attn"):
+            name = line.split(" ; ")[0].rsplit("/", 1)[1]
+            torch_minor = name.split("torch", 1)[1].split("-", 1)[0]
+            wheels[name.rsplit("-", 1)[1].removesuffix(".whl")] = torch_minor
+    return wheels
+
+
+ALL_PLATFORMS = {"linux_x86_64", "linux_aarch64", "win_amd64"}
+
+
+@pytest.mark.parametrize(
+    "args, torch_pin, vision_pin, minor, triton",
+    [
+        ((), "2.14.1+cu132", "0.29.1+cu132", "2.14", "3.8."),
+        (
+            ("--no-default-groups", "--group", "torch-213"),
+            "2.13.0+cu132",
+            "0.28.0+cu132",
+            "2.13",
+            "3.7.",
+        ),
+        (
+            ("--no-default-groups", "--group", "torch-212"),
+            "2.12.0+cu132",
+            "0.27.0+cu132",
+            "2.12",
+            "3.7.",
+        ),
+    ],
+)
+def test_torch_stacks_pair_flash_attn_and_triton(
+    args, torch_pin, vision_pin, minor, triton
+):
+    """Every selectable stack ships torch, flash-attn and triton of one minor on
+    all three locked platforms; triton comes from PyPI (the AMD index carries
+    local `+rocm` builds that also match torch's `triton==X` pin)."""
+    lines = _export(*args)
+    torch_lines = [
+        line
+        for line in lines
+        if line.startswith("torch==") and "== 'darwin'" not in line
+    ]
+    assert torch_lines and all(f"torch=={torch_pin}" in line for line in torch_lines)
+    vision_lines = [
+        line
+        for line in lines
+        if line.startswith("torchvision==") and "== 'darwin'" not in line
+    ]
+    assert vision_lines and all(
+        f"torchvision=={vision_pin}" in line for line in vision_lines
+    )
+    wheels = _flash_wheels(lines)
+    assert set(wheels) == ALL_PLATFORMS and set(wheels.values()) == {minor}, wheels
+    tritons = [line for line in lines if line.startswith("triton==")]
+    assert tritons and all(
+        line.startswith(f"triton=={triton}") and "+" not in line.split(" ; ")[0]
+        for line in tritons
+    ), tritons
+    assert any(line.startswith(f"triton-windows=={triton}") for line in lines)
 
 
 def test_rocm_group_resolves_pytorch_213_rocm10():

@@ -5,7 +5,7 @@ A job is a **process tree** (``train.py`` → dataloader workers, plus an
 reused. Every spawn / kill / liveness check goes through psutil so the same
 code works on Linux and Windows.
 
-``Popen``-based sibling of ``gui/process.py`` (``QProcess``): same
+``Popen``-based sibling of ``gui/jobs/process.py`` (``QProcess``): same
 snapshot-then-terminate-then-kill tree walk.
 """
 

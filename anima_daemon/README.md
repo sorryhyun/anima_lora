@@ -356,7 +356,7 @@ output/daemon/
 ```
 
 `job.json` → `state` is the fast, dependency-free check; the GUI reads these
-files directly (`gui/daemon.py`) rather than polling HTTP in the Qt thread.
+files directly (`gui/jobs/daemon.py`) rather than polling HTTP in the Qt thread.
 
 ### Retention — `jobs/` is bounded
 

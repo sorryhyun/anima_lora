@@ -19,8 +19,6 @@ and ``tasks.py`` builds each request through the package's ``build_argv``.
 
 from __future__ import annotations
 
-import copy
-import html
 import json
 import shutil
 import sys
@@ -39,7 +37,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSplitter,
-    QTextBrowser,
     QToolButton,
     QVBoxLayout,
     QHBoxLayout,
@@ -60,14 +57,14 @@ from gui import (
     merged_gui_variant_preset,
     variant_path,
 )
-from gui import anime_tools_panel
-from gui import daemon as gui_daemon
-from gui._job_mixin import DaemonJobMixin
-from gui._paths import read_gui_settings
-from gui.explanations import field_help_html, preprocess_guide
+from gui.core import anime_tools_panel
+from gui.jobs import daemon as gui_daemon
+from gui.jobs.mixin import DaemonJobMixin
+from gui.core.paths import read_gui_settings
+from gui.explanations import preprocess_guide
 from gui.i18n import t
-from gui.progress import TQDM_RE, TqdmProgressTracker, make_progress_bar
-from gui.tabs.config_tab import ConfigTab, SplitButtonStyle
+from gui.jobs.progress import TqdmProgressTracker, make_progress_bar
+from gui.core import submit
 from gui.tabs.preprocess.captions import CaptionEditingSection
 from gui.tabs.preprocess.image_prep import ImagePrepSection
 from gui.tabs.preprocess.knobs import (
@@ -90,41 +87,26 @@ from gui.tabs.preprocess.stage_form import (
     seeded_defaults,
 )
 from gui.tabs.preprocess.text_caching import TextCachingSection
-from gui.theme import action_button_qss, rich_text_pt as _explain_pt, tok
-from gui.widgets import DirtyTrackingMixin, action_button, apply_variant
+from gui.theme import action_button_qss, tok
+from gui.widgets import (
+    DirtyTrackingMixin,
+    ExplainPanel,
+    SplitButtonStyle,
+    action_button,
+    apply_variant,
+)
 from library.datasets.path_filter import filter_paths_by_glob
 
 PREPROCESS_TOML = ROOT / "configs" / "preprocess.toml"
 
 PREPROCESS_METHODS = ["lora", "tlora", "hydralora"]
 
-# Sourced from base.toml via gui.config_io (shared with the Config/EasyControl tabs);
+# Sourced from base.toml via gui.core.config_io (shared with the Config/EasyControl tabs);
 # fallback only, when the variant doesn't override the path.
 RESIZED_DIR = default_resized_dir()
 LORA_CACHE_DIR = default_lora_cache_dir()
 MASK_DIR = default_mask_dir()
 
-# Legacy widget attribute names → (section attribute, key). Kept for
-# one release so tests and the resize preview that reach into ``tab.<widget>``
-# stay valid; new code should go through ``tab.values()`` / ``tab.stage_values()``
-# or the owning section instead. A key is a knob-table key for a trainer row
-# (``knob_widgets``) or a stage dest (``widgets``).
-_WIDGET_ALIASES: dict[str, tuple[str, str]] = {
-    "source_dir_edit": ("image_section", "source_image_dir"),
-    "path_scope_edit": ("image_section", "path_scope"),
-    "preprocess_path_pattern_edit": ("image_section", "preprocess_path_pattern"),
-    "target_res_widget": ("image_section", "target_res"),
-    "resize_crop_anchor_widget": ("image_section", "resize_crop_anchor"),
-    "resize_crop_margins_widget": ("image_section", "resize_crop_margins"),
-    "freefit_max_ratio_spin": ("image_section", "freefit_max_ratio"),
-    "shuffle_spin": ("text_section", "caption_shuffle_variants"),
-    "dropout_edit": ("text_section", "caption_tag_dropout_rate"),
-    "caption_no_correct_chk": ("caption_section", "no_correct"),
-    "caption_insert_no_artist_chk": ("caption_section", "caption_insert_no_artist"),
-    "caption_trigger_word_edit": ("caption_section", "caption_trigger_word"),
-    "caption_trigger_at_front_chk": ("caption_section", "caption_trigger_at_front"),
-    "caption_drop_groups_edit": ("caption_section", "caption_drop_groups"),
-}
 
 # Placeholder roots for validating a stage form at Save / Run (the real
 # roots are filled by ``tasks.py`` at submit); ``src`` / ``dst`` are required
@@ -207,13 +189,7 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
         hsplit = QSplitter(Qt.Horizontal)
         hsplit.addWidget(self._build_form())
 
-        self._explain = QTextBrowser()
-        self._explain.setOpenExternalLinks(True)
-        self._explain.setStyleSheet(
-            f"QTextBrowser {{ font-size: 120%; padding: 12px; "
-            f"background: {tok('panel')}; color: {tok('text')}; }}"
-        )
-        self._explain.setMinimumWidth(320)
+        self._explain = ExplainPanel()
         self._show_default_explain()
         hsplit.addWidget(self._explain)
         hsplit.setStretchFactor(0, 3)
@@ -357,21 +333,14 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
         ``preprocess.toml`` seeded on top (``stage_form.seeded_defaults``)."""
         return {sid: seeded_defaults(self._schemas[sid], pp_cfg) for sid in STAGE_IDS}
 
-    def __getattr__(self, name: str):
-        # Legacy ``tab.<widget>`` access → the owning section's widget (see
-        # _WIDGET_ALIASES). Only reached when normal lookup fails, and never
-        # before the sections exist.
-        alias = _WIDGET_ALIASES.get(name)
-        if alias is not None and self.__dict__.get("sections"):
-            section = self.__dict__.get(alias[0])
-            if section is not None:
-                key = alias[1]
-                if key in section.widgets:
-                    return section.widgets[key]
-                knobs = getattr(section, "knob_widgets", {})
-                if key in knobs:
-                    return knobs[key]
-        raise AttributeError(name)
+    def widget(self, key: str) -> QWidget:
+        """The form widget for a trainer knob key or a stage dest, from
+        whichever section owns it."""
+        for section in self.sections:
+            for table in (section.widgets, getattr(section, "knob_widgets", {})):
+                if key in table:
+                    return table[key]
+        raise KeyError(key)
 
     def _lazy_init(self) -> None:
         self._refresh_status()
@@ -495,13 +464,13 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
         self.image_section.set_target_res(values)
 
     def _set_resize_crop_anchor(self, value) -> None:
-        self.resize_crop_anchor_widget.set_value(value, emit=False)
+        self.widget("resize_crop_anchor").set_value(value, emit=False)
 
     def _set_resize_crop_margins(self, value) -> None:
-        self.resize_crop_margins_widget.set_value(value)
+        self.widget("resize_crop_margins").set_value(value)
 
     def _resize_crop_margins(self) -> dict[str, float]:
-        return self.resize_crop_margins_widget.margins()
+        return self.widget("resize_crop_margins").margins()
 
     # -- dirty / help / status ----------------------------------------------
 
@@ -518,29 +487,15 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
             self.save_btn.setToolTip(t("preprocess_save_settings_tip"))
 
     def _show_default_explain(self) -> None:
-        self._explain.setHtml(preprocess_guide())
+        self._explain.show_guide(preprocess_guide())
 
     def _show_field_help(self, field_label: str, help_text: str | None) -> None:
-        parts = [
-            f"<h2 style='margin:0 0 10px 0; font-size:{_explain_pt(18)};'>"
-            f"{html.escape(field_label)}</h2>"
-        ]
-        if help_text:
-            parts.append(
-                f"<p style='font-size:{_explain_pt(15)}; line-height:1.6;'>"
-                f"{field_help_html(help_text)}</p>"
-            )
-        else:
-            parts.append(
-                f"<p style='color:{tok('text_dim')}; font-style:italic;'>"
-                f"{html.escape(t('no_help_available'))}</p>"
-            )
-        self._explain.setHtml("".join(parts))
+        self._explain.show_field_help(field_label, help_text)
 
     def _refresh_status(self) -> None:
         snapshot = self.preprocess_config_snapshot()
         preprocess_pattern = (
-            self.preprocess_path_pattern_edit.text().strip()
+            self.widget("preprocess_path_pattern").text().strip()
             or DEFAULT_PREPROCESS_PATH_PATTERN
         )
         path_pattern = (
@@ -606,10 +561,10 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
         return p if p.is_absolute() else ROOT / p
 
     def _normalize_scope_or_warn(self) -> str | None:
-        raw = self.path_scope_edit.text().strip()
+        raw = self.widget("path_scope").text().strip()
         if not raw:
             return ""
-        scope = ConfigTab._normalize_path_scope(raw)
+        scope = submit.normalize_path_scope(raw)
         if scope is None:
             QMessageBox.warning(
                 self, t("error"), t("preprocess_invalid_path_scope", value=raw)
@@ -727,38 +682,15 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
         merged, _ = merged_gui_variant_preset(variant, "default")
         # Seed source dir from the editable field before scoping, so path_scope
         # appends onto the user-chosen root, not the hard default.
-        source_dir = self.source_dir_edit.text().strip()
+        source_dir = self.widget("source_image_dir").text().strip()
         if source_dir:
             merged["source_image_dir"] = source_dir
-        path_scope = self.path_scope_edit.text().strip()
+        path_scope = self.widget("path_scope").text().strip()
         if path_scope:
             merged["path_scope"] = path_scope
         else:
             merged.pop("path_scope", None)
-        snapshot = ConfigTab._gui_scoped_paths(copy.deepcopy(merged))
-        snapshot.update(self.preprocess_overrides())
-        for key in (
-            "base_config",
-            "dataset_config",
-            "variant",
-            "method",
-            "preset",
-            "methods_subdir",
-            "path_scope",
-            "preprocess_path_pattern",
-        ):
-            snapshot.pop(key, None)
-
-        def _clean(value):
-            if isinstance(value, dict):
-                return {k: _clean(v) for k, v in value.items() if v is not None}
-            if isinstance(value, list):
-                return [_clean(v) for v in value if v is not None]
-            if isinstance(value, Path):
-                return str(value)
-            return value
-
-        return _clean(snapshot)
+        return submit.preprocess_snapshot(merged, self.preprocess_overrides())
 
     def persist_target_res(self) -> None:
         """Mark dirty on tier change; ConfigTab's auto-chain/queue calls
@@ -798,7 +730,7 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
     def _save_variant_preprocess_meta(self, *, validate_dropout: bool) -> bool:
         if not self._variant:
             return True
-        dropout_text = self.dropout_edit.text().strip()
+        dropout_text = self.widget("caption_tag_dropout_rate").text().strip()
         if validate_dropout:
             dropout = self._parse_float(
                 dropout_text, t("preprocess_caption_tag_dropout_rate")
@@ -849,7 +781,8 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
     def _save_all(self) -> bool:
         """Validate and persist every form value. Returns True on success."""
         dropout = self._parse_float(
-            self.dropout_edit.text().strip(), t("preprocess_caption_tag_dropout_rate")
+            self.widget("caption_tag_dropout_rate").text().strip(),
+            t("preprocess_caption_tag_dropout_rate"),
         )
         if dropout is None:
             return False
@@ -994,15 +927,7 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
         self._watch_job(job_id, replay_log=replay_log)
 
     def _on_job_finished(self, state: str | None) -> None:
-        self._job_timer.stop()
-        # A half-written tqdm fragment is dropped here; the bar already reflected it.
-        self._drain_job_stdout()
-        if self._stdout_buf and not TQDM_RE.search(self._stdout_buf):
-            self.log.appendPlainText(self._stdout_buf)
-        self._stdout_buf = ""
-        job_id = self._job_id
-        self._job_id = None
-        self._stdout_tailer.reset()
+        job_id = self._end_job_watch()
         self._progress_tracker.reset()
         self.log.appendPlainText(gui_daemon.format_finish_banner(job_id, state))
         self._restore_idle_ui()

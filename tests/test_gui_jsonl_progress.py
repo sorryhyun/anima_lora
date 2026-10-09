@@ -17,7 +17,7 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtWidgets import QApplication, QProgressBar  # noqa: E402
 
-from gui.progress import JsonlProgressReader  # noqa: E402
+from gui.jobs.progress import JsonlProgressReader  # noqa: E402
 
 
 @pytest.fixture(scope="module")

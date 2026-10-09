@@ -8,6 +8,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QWidget
 
 from gui.i18n import t
+from gui.theme import tok
 
 
 @functools.cache
@@ -59,9 +60,13 @@ class _TargetResWidget(QWidget):
             label = QLabel(str(edge))
             if edge in danger:
                 tip = t("target_res_danger_tooltip", edge=edge, tokens=danger[edge])
-                cb.setStyleSheet("QCheckBox { color: #d9822b; font-weight: bold; }")
+                cb.setStyleSheet(
+                    f"QCheckBox {{ color: {tok('warn')}; font-weight: bold; }}"
+                )
                 cb.setToolTip(tip)
-                label.setStyleSheet("QLabel { color: #d9822b; font-weight: bold; }")
+                label.setStyleSheet(
+                    f"QLabel {{ color: {tok('warn')}; font-weight: bold; }}"
+                )
                 label.setToolTip(tip)
             edge_lay.addWidget(cb)
             edge_lay.addWidget(label)

@@ -8,7 +8,7 @@ Missing keys fall back to English via ``t()``.
 
 from __future__ import annotations
 
-from gui._paths import get_setting, set_setting
+from gui.core.paths import get_setting, set_setting
 from gui.i18n import cn, en, ja, ko
 
 TRANSLATIONS: dict[str, dict[str, str]] = {

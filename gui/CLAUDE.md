@@ -9,8 +9,19 @@ action-button colors) **load the `gui-changes` skill**.
 
 ## What it is
 
-Edits TOML configs and submits jobs to the daemon; no training/torch logic. `config_io.py`, `_paths.py` and `tabs/preprocess/knobs.py`
-are **Qt-free** (no PySide6 import) so they stay headless-unit-testable. `library/` imports are torch-free leaves only (e.g. `library.config.dataset_keys`,
+Edits TOML configs and submits jobs to the daemon; no training/torch logic. Layout:
+
+| Package | Holds |
+|---|---|
+| `core/` | **Qt-free** (no PySide6 import, headless-unit-testable): `paths.py` (ROOT, `gui_settings.json`), `config_io.py`, `variant_form.py` (ConfigTab's field grouping + Save writeback), `submit.py`, `validation.py`, `discovery.py`, `anime_tools_panel.py`, `debug_report.py` |
+| `jobs/` | `daemon.py` (client), `mixin.py` (`DaemonJobMixin`), `progress.py`, `process.py` (`StreamingProcess`, tree kill) |
+| `dialogs/` | `confirm.py` (pre-launch confirmations + cache/checkpoint probes), `guidebook.py`, `settings.py`, `system.py` (Models + Update) |
+| `tabs/` | one module per tab, the `preprocess/` package, `tensorboard.py` (overlay panel) |
+| `widgets/` | reusable widgets (incl. `gpu_status.py`) |
+
+`app.py` (MainWindow) and `theme.py` stay at the root. `gui/__init__.py` re-exports the
+common names (`from gui import ROOT, variant_path, …`) **lazily**, so importing a `core`
+module never pulls in Qt; `tabs/preprocess/knobs.py` is Qt-free too. `library/` imports are torch-free leaves only (e.g. `library.config.dataset_keys`,
 `library.config.io`, `library.datasets.path_filter`, `library.preprocess.resize_preview`,
 `library.datasets.curation_actions`, `library.downloads`); a torch/cv2-importing module
 slows startup by seconds. Verify with `python -X importtime -c "import gui.app"` — torch
@@ -25,7 +36,7 @@ must not appear.
   boot doesn't block the window) → Qt loop.
 - `make gui-qwen` → `python -m gui.qwen21` — a separate en/cn window for the
   Qwen-Image-2.1 line (not Anima; see `library/qwen21/CLAUDE.md`). Reuses `theme`,
-  `daemon`, `DaemonJobMixin`, `widgets` only; its strings live in `gui/qwen21/strings.py`,
+  `jobs.daemon`, `DaemonJobMixin`, `widgets` only; its strings live in `gui/qwen21/strings.py`,
   not `gui/i18n/`.
 - `make lora-gui GUI_PRESETS=<variant>` trains from `gui-methods/` configs; it does not
   launch the GUI.
@@ -33,7 +44,7 @@ must not appear.
 ## Architecture
 
 - **`app.py::MainWindow`** — top bar (Guidebook / Models / Update / Queue + TensorBoard
-  overlay toggles / ⚙ Settings → `settings_dialog.py::SettingsDialog`: language, theme,
+  overlay toggles / ⚙ Settings → `dialogs/settings.py::SettingsDialog`: language, theme,
   MCP registration; a language change offers an in-place rebuild via `_reload_ui`) over
   one tab set in a `QStackedWidget` shared with the Queue and TensorBoard overlays. Tabs:
   Config (MethodsTab over the LoRA family + Turbo), anime_tools, Preprocess, Merge,
@@ -50,9 +61,9 @@ must not appear.
   `ConfigTab` (flat `train.py --method` methods) + the distill editors (`TurboTrainTab`,
   soup) in a `QStackedWidget`. `EasyControlTab` extends `ConfigTab`; `_DistillConfigTab`
   (distill editors' base) is standalone and lazy. Config-style tabs compose
-  `DirtyTrackingMixin` (`widgets/mixins.py`) + `DaemonJobMixin` (`_job_mixin.py`), mixed
+  `DirtyTrackingMixin` (`widgets/mixins.py`) + `DaemonJobMixin` (`jobs/mixin.py`), mixed
   in **before** `LazyTabMixin`/`QWidget`.
-- **`config_io.py`** — config discovery + merge + lint, pure TOML/pathlib.
+- **`core/config_io.py`** — config discovery + merge + lint, pure TOML/pathlib.
   `merged_gui_variant_preset(variant, preset)` returns `(dict, origin_map)` (key →
   base/preset/method). Variants are auto-discovered from `configs/gui-methods/*.toml`
   `[variant]` blocks (`family`/`order`); customs live in `gui-methods/custom/`. The
@@ -61,7 +72,7 @@ must not appear.
   persisted machine-wide as `hardware_preset` in `gui_settings.json`, threaded through
   every merge/save/submit by `ConfigTab._current_preset()`. Variant files must not pin
   hardware keys (method beats preset).
-- **`tabs/preprocess/`** (`preprocess_tab.py` is a re-export shim). `tab.py` =
+- **`tabs/preprocess/`** — `tab.py` =
   `PreprocessingTab`, the **cache builder** (resize → VAE → caption mirror → TE, plus
   PE). Curation (autotag, position clauses, SAM masks) is the `anime_tools` panel's:
   every env the tab builds, the Train auto-chain's included, pins `CAPTION_AUTOTAG` /
@@ -93,13 +104,12 @@ must not appear.
     package's `build_argv` with the trainer's roots; the tab validates the same way at
     Save/Run (`_validate_stages`). Field labels/help come from
     `explanations/guides/<lang>/_stage_fields.json` (English from the schema as fallback).
-  - Legacy `tab.<widget>` names (`source_dir_edit`, `shuffle_spin`, …) resolve via
-    `_WIDGET_ALIASES` in `__getattr__` for one release — tests and the resize preview
-    still use them; new code uses `values()` / `stage_values()` / `tab.<section>.widgets[dest]`.
+  - One widget by key: `tab.widget(key)` (a trainer knob key or a stage dest, from
+    whichever section owns it); whole forms: `values()` / `stage_values()`.
     Tests monkeypatching `_load_preprocess_toml` / `read_gui_settings` must patch
     `gui.tabs.preprocess.tab`.
 - **`tabs/anime_tools_tab.py::AnimeToolsTab`** (lazy) — the `anime_tools` panel in a
-  `QWebEngineView`, over `gui/anime_tools_panel.py` (Qt-free). First open seeds the
+  `QWebEngineView`, over `gui/core/anime_tools_panel.py` (Qt-free). First open seeds the
   panel's `<home>/.anime_tools_gui.json` (Export form → `sidecars_only`; `dataset.src`
   only when the Preprocess tab's `source_image_dir` isn't `image_dataset`), reuses a panel
   already serving this home (ports 8790+, `/api/info`), else spawns `python -m
@@ -128,23 +138,35 @@ must not appear.
   (fixture `tests/fixtures/gui_preprocess_knobs.json`, regenerate only deliberately via
   `--write`); unit tests in `tests/test_gui_preprocess_knobs.py` and
   `tests/test_gui_stage_form.py`.
-- **`daemon.py`** — client wrapper over `anima_daemon.client`. `submit_training()` /
+- **`jobs/daemon.py`** — client wrapper over `anima_daemon.client`. `submit_training()` /
   `submit_command()` POST to the localhost daemon; jobs are **observed** by `QTimer`
   polling of on-disk job.json / progress.jsonl / stdout.log (no thread, no SSE).
   `active_job_id()` re-attaches to a job from a previous session / the ComfyUI node / CLI.
-- **`_job_mixin.py::DaemonJobMixin`** — `_submit_job(submit_fn, *, on_fail)` (submit →
-  error-check → job-id, used by every launch site) and the 400 ms stdout observer
-  (`_init_job_observer` / `_watch_job` / `_drain_job_stdout` / `_poll_job` / `_stop_job`,
-  log sink `_emit_log_line`) used by distill + preprocess. ConfigTab/EasyControl keep
-  their own observer (progress.jsonl + live sample preview + preprocess→train chain) and
-  borrow only `_submit_job`.
+- **`jobs/mixin.py::DaemonJobMixin`** — `_submit_job(submit_fn, *, on_fail)` (submit →
+  error-check → job-id, used by every launch site) and the one 400 ms stdout observer
+  every daemon-watching tab uses (`_init_job_observer` / `_watch_job` / `_poll_job` /
+  `_end_job_watch` / `_stop_job`). Hosts customise it through hooks only:
+  `_emit_log_line` (log sink), `_route_progress_line` (which lines feed the bar) and
+  `_on_job_tick` (per-poll extras). ConfigTab uses the last two for progress.jsonl and
+  the live sample gallery; its `_on_job_finished` adds the preprocess→train chain and
+  queue-successor follow. ConfigTab's direct child (Test, EasyControl preprocess) feeds the
+  same `_route_line`.
+- **`core/submit.py`** — the submit plan, pure dict-in/dict-out: `path_scope` layering
+  (`scoped_paths`), `training_snapshot` (strips `PREPROCESS_ONLY_KEYS` + merge
+  bookkeeping, resolves the dataset blueprint), `preprocess_snapshot`, `preprocess_env`,
+  `chain_train_spec`, `cache_dir`, `repa_requirements`. ConfigTab / EasyControl /
+  PreprocessingTab pass in the widget state they own; unit tests in
+  `tests/test_gui_submit.py`, snapshot contract in `tests/test_gui_snapshot_preprocess_keys.py`.
 - **`widgets/`** — package re-exporting its modules (`from gui.widgets import <name>`):
   `fields.py` (`_widget(value, key)` TOML value → Qt widget, `_read(widget)` back, label /
   tooltip helpers), `mixins.py` (`LazyTabMixin`, `LazyTabHolder`, `DirtyTrackingMixin`),
   `buttons.py` (`action_button` / `apply_variant` / `SplitButtonStyle`), `target_res.py`,
-  `sample_prompts.py`, `image_view.py`, `_qt_utils.py` (leaf helpers like `_no_wheel`).
+  `sample_prompts.py`, `image_view.py`, `explain_panel.py` (`ExplainPanel`: the right-hand
+  guide / field-help / image-gallery pane of ConfigTab, the distill editors and
+  PreprocessingTab; its `mode` tells ConfigTab's job tick whether the sample gallery may
+  refresh), `_qt_utils.py` (leaf helpers like `_no_wheel`).
   Imports are one-way — `fields.py`/`mixins.py` import the domain widgets, never the
-  reverse — and nothing here imports `gui.daemon`.
+  reverse — and nothing here imports `gui.jobs.daemon`.
 - **`i18n/`** — `en/ko/ja/cn.py`, each `STRINGS: dict[str,str]` (~420–470 keys).
   `t(key, **kwargs)` falls back to English, then to the key itself. New language: see the
   `gui-changes` skill.
@@ -153,10 +175,6 @@ must not appear.
   `_stage_fields.json` (stage-form overlay keyed `<stage_id>.<dest>` → `{label, help,
   choices?}`, read by `stage_form.label_for` / `help_for`), `<method>.html`, all with English
   fallback.
-- Support modules: `progress.py` (JSONL/tqdm parse), `process.py` (`kill_process_tree`),
-  `tensorboard.py`, `validation.py`, `dialogs.py` (pre-launch confirmations +
-  `GuidebookDialog`), `settings_dialog.py`, `discovery.py`, `system_dialog.py` (update +
-  model manager), `theme.py`.
 
 ## Gotchas
 
@@ -168,16 +186,18 @@ must not appear.
   config); the retired `drop_lowres_images` / `min_pixels` stay in `_SKIP` so a stale key
   in a user's TOML never draws a widget. `_VIRTUAL_KEYS` (`use_valid`,
   `validation_split_num`) are written into per-dataset `[[datasets]]` overrides, not flat
-  keys. `_BASIC` (`config_io.py`) controls the "Advanced" fold. A knob in the wrong tab
+  keys. `_BASIC` (`core/config_io.py`) controls the "Advanced" fold. A knob in the wrong tab
   drifts silently.
-- **i18n key parity is manual.** Nothing enforces shared keys across the four language
-  files; a missing key silently shows English. Add every string to all four (and the
-  matching `_fields.json` / `.html` for help text); the `translator` agent propagates
-  English → ko/ja/cn.
+- **i18n key parity is tested.** `tests/test_gui_i18n_parity.py` fails when ko/ja/cn lacks
+  an English key, carries an extra one, or changes a `{field}`. Add every string to all
+  four (and the matching `_fields.json` / `.html` for help text); the `translator` agent
+  propagates English → ko/ja/cn.
 - **The daemon outlives the GUI.** Closing the window does not stop training.
 - **Process kill must walk the tree.** A directly-spawned `QProcess`'s real work runs in a
-  grandchild, so `QProcess.kill()` leaks it — use `process.py::kill_process_tree`. Daemon
-  jobs stop via `daemon.stop_job()`.
+  grandchild, so `QProcess.kill()` leaks it. Spawn a Python child with
+  `jobs/process.py::StreamingProcess` (kill-safe session, `PYTHONUNBUFFERED`, decoded
+  `chunk` / `line` / `finished` signals; `.kill()` walks the tree). Daemon jobs stop via
+  `daemon.stop_job()`.
 - **`gui_settings.json`** holds UI state (language, 6 h update-check cache, preprocess
   knobs, hardware preset) — outside `configs/` so it survives a config reset.
 - **No app-wide Python event filter.** `app.installEventFilter` routes every Qt event

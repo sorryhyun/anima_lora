@@ -101,6 +101,9 @@ ResShift SR sidecar — no `make sr-*` targets, run its scripts directly); kille
 superseded lines go to `_archive/`. Code search skips most of `project/finished/`
 (per-line `.ignore`; files live code still reads stay visible) — ask the
 **`archive-explorer`** agent about finished or archived lines instead of grepping.
+**An experiment line's live work can sit on its own branch** (e.g.
+`project/cjk_anima_reseed/` on `cjk-reseed`), leaving `main` with a stale copy — run
+`git branch -a` and check the line's branch before working on a `project/<line>/`.
 
 ## Programmatic API (embedders)
 
@@ -248,7 +251,7 @@ only through a caption stage run, and a dataset that skips every caption stage c
 empty prompts.
 
 **The trainer GUI does not curate.** Its **anime_tools** tab (`gui/tabs/anime_tools_tab.py`
-over `gui/anime_tools_panel.py`) embeds the package's web panel on this checkout; the panel
+over `gui/core/anime_tools_panel.py`) embeds the package's web panel on this checkout; the panel
 curates in `workspace/` and its Export — seeded to `sidecars_only` — publishes captions /
 masks / the revised master, never images. Order: Export → `make preprocess`.
 

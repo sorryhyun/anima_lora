@@ -5,11 +5,16 @@ description = "Standalone Anima LoRA training pipeline"
 requires-python = "==3.13.*"
 dependencies = [
     # Core ML.
-    # Windows torch lives in the backend dependency-groups below (cuda-windows
-    # is default-on); keeping the two groups mutually exclusive prevents a
-    # later uv resolution from crossing CUDA and ROCm package indexes.
-    "torch>=2.12.0,<2.13 ; sys_platform != 'win32'",
-    "torchvision>=0.27.0,<0.28 ; sys_platform != 'win32'",
+    # The exact torch version is picked by a dependency group below: torch-214
+    # (Linux) + cuda-windows (Windows) are default-on; torch-213 / torch-212 are
+    # opt-in (`uv sync --no-default-groups --group torch-213`). Windows torch
+    # lives only in the groups; keeping the backend groups mutually exclusive
+    # prevents a uv resolution from crossing CUDA and ROCm package indexes.
+    "torch>=2.12.0,<2.15 ; sys_platform != 'win32'",
+    "torchvision>=0.27.0,<0.30 ; sys_platform != 'win32'",
+    # Version comes from each torch's own pin; listed only so the PyPI source
+    # in [tool.uv.sources] binds (sources apply to direct deps only).
+    "triton ; sys_platform == 'linux'",
     "accelerate>=1.13.0",
     "transformers>=5.10.1",
     # Pinned to a git commit in [tool.uv.sources]: the QwenImage21 classes
@@ -48,8 +53,6 @@ dependencies = [
     "sam3 @ git+https://github.com/facebookresearch/sam3.git",
     "packaging",
     "pycocotools>=2.0.11",
-    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.17/flash_attn-2.8.3+cu132torch2.12-cp313-cp313-linux_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'",
-    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.22/flash_attn-2.8.3+cu132torch2.12-cp313-cp313-linux_aarch64.whl ; sys_platform == 'linux' and platform_machine == 'aarch64'",
     "pyside6>=6.11.0",
     "ruff>=0.15.9",
     "matplotlib",
@@ -104,20 +107,55 @@ index-strategy = "unsafe-best-match"
 # `cuda-windows` is default-on so the no-flag `uv sync` run by old updaters
 # lands the CUDA stack on Windows (GH #92). ROCm opts in with
 # `uv sync --no-group cuda-windows --group rocm-windows`.
-default-groups = ["dev", "cuda-windows"]
+# Torch version: the default stack is torch 2.14 (`torch-214` on Linux,
+# `cuda-windows` on Windows). torch-214 carries no Windows deps, so it does not
+# conflict with rocm-windows and the ROCm command above needs no extra flag.
+# The opt-in stacks carry every platform: `uv sync --no-default-groups --group
+# torch-213` (or torch-212).
+default-groups = ["dev", "torch-214", "cuda-windows"]
 conflicts = [
     [
         { group = "cuda-windows" },
         { group = "rocm-windows" },
+        { group = "torch-213" },
+        { group = "torch-212" },
+    ],
+    [
+        { group = "torch-214" },
+        { group = "torch-213" },
+        { group = "torch-212" },
     ],
 ]
 prerelease = "allow"
 override-dependencies = [
     "numpy>=2.0.0",
-    # AMD's torch metadata requests a Linux-only triton distribution even on
-    # Windows. triton-windows is declared in both Windows backend extras.
-    "triton ; sys_platform != 'win32'",
 ]
+
+# uv resolves every wheel of a version from one wheel's metadata, and for the
+# ROCm torch it reads the linux_x86_64 wheel's, which pins a Linux-only
+# `triton==…+rocm10.0.0` that has no Windows wheel. This is the win_amd64
+# wheel's own METADATA (no triton; triton-windows comes from rocm-windows),
+# trimmed to the device extras rocm-windows selects. It replaces a blanket
+# `triton` override that also erased each cu132 torch's own triton pin.
+[[tool.uv.dependency-metadata]]
+name = "torch"
+version = "2.13.0+rocm10.0.0"
+requires-dist = [
+    "filelock",
+    "typing-extensions>=4.10.0",
+    "setuptools>=77.0.3",
+    "sympy>=1.13.3",
+    "networkx>=2.5.1",
+    "jinja2",
+    "fsspec>=0.8.5",
+    "rocm[libraries]==10.0.0",
+    "rocm-bootstrap",
+    "amd-torch-device-gfx1200==2.13.0+rocm10.0.0 ; extra == 'device-gfx1200'",
+    "amd-torch-device-gfx12-0==2.13.0+rocm10.0.0 ; extra == 'device-gfx1200'",
+    "amd-torch-device-gfx1201==2.13.0+rocm10.0.0 ; extra == 'device-gfx1201'",
+    "amd-torch-device-gfx12-0==2.13.0+rocm10.0.0 ; extra == 'device-gfx1201'",
+]
+provides-extras = ["device-gfx1200", "device-gfx1201"]
 
 [tool.uv.sources]
 # diffusers: `QwenImage21Pipeline` / `QwenImage21Transformer2DModel` /
@@ -131,17 +169,30 @@ diffusers = { git = "https://github.com/huggingface/diffusers", rev = "80c7ed262
 # lock would then reference ../anime_tools, and a flagless `uv sync` fails on
 # every machine without one. Test an unreleased change with
 # PYTHONPATH=../anime_tools instead.
-anime-tools = { git = "https://github.com/sorryhyun/anime_tools", tag = "v0.7.8" }
+anime-tools = { git = "https://github.com/sorryhyun/anime_tools", tag = "v0.7.9" }
 torch = [
     { index = "pytorch-cu132", marker = "sys_platform != 'darwin' and sys_platform != 'win32'" },
     { index = "pytorch-cu132", group = "cuda-windows" },
+    { index = "pytorch-cu132", group = "torch-213" },
+    { index = "pytorch-cu132", group = "torch-212" },
     { index = "amd-rocm-100", group = "rocm-windows" },
 ]
 torchvision = [
     { index = "pytorch-cu132", marker = "sys_platform != 'darwin' and sys_platform != 'win32'" },
     { index = "pytorch-cu132", group = "cuda-windows" },
+    { index = "pytorch-cu132", group = "torch-213" },
+    { index = "pytorch-cu132", group = "torch-212" },
     { index = "amd-rocm-100", group = "rocm-windows" },
 ]
+
+# PyPI triton only: amd-rocm-100 is not explicit, and torch's `triton==3.8.0`
+# also matches its local `3.8.0+git….rocm…` builds.
+triton = { index = "pypi" }
+
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple"
+explicit = true
 
 [[tool.uv.index]]
 name = "pytorch-cu132"
@@ -195,14 +246,43 @@ build-backend = "setuptools.build_meta"
 
 [dependency-groups]
 dev = []
-# Windows accelerator backends. `cuda-windows` is in default-groups (see
-# [tool.uv]) so it composes into every plain `uv sync`; every dep is
-# win32-marked, so both groups are inert on Linux/macOS.
-cuda-windows = [
+# Torch stacks (see [tool.uv] for how they compose). The default 2.14 stack is
+# split: `torch-214` holds the Linux pins, `cuda-windows` the Windows ones.
+# Every flash-attn row is a cu132 mjun0812 prebuild matched to its torch minor.
+torch-214 = [
+    "torch>=2.14.0,<2.15 ; sys_platform != 'win32'",
+    "torchvision>=0.29.0,<0.30 ; sys_platform != 'win32'",
+    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.10.0/flash_attn-2.8.3+cu132torch2.14-cp313-cp313-linux_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.10.1/flash_attn-2.8.3+cu132torch2.14-cp313-cp313-linux_aarch64.whl ; sys_platform == 'linux' and platform_machine == 'aarch64'",
+]
+torch-213 = [
+    "torch>=2.13.0,<2.14 ; sys_platform != 'win32'",
+    "torchvision>=0.28.0,<0.29 ; sys_platform != 'win32'",
+    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.47/flash_attn-2.8.3+cu132torch2.13-cp313-cp313-linux_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.49/flash_attn-2.8.3+cu132torch2.13-cp313-cp313-linux_aarch64.whl ; sys_platform == 'linux' and platform_machine == 'aarch64'",
+    "torch==2.13.0+cu132 ; sys_platform == 'win32'",
+    "torchvision==0.28.0+cu132 ; sys_platform == 'win32'",
+    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.52/flash_attn-2.8.3+cu132torch2.13-cp313-cp313-win_amd64.whl ; sys_platform == 'win32'",
+    "triton-windows>=3.7.0,<3.8.0 ; sys_platform == 'win32'",
+]
+torch-212 = [
+    "torch>=2.12.0,<2.13 ; sys_platform != 'win32'",
+    "torchvision>=0.27.0,<0.28 ; sys_platform != 'win32'",
+    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.17/flash_attn-2.8.3+cu132torch2.12-cp313-cp313-linux_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.22/flash_attn-2.8.3+cu132torch2.12-cp313-cp313-linux_aarch64.whl ; sys_platform == 'linux' and platform_machine == 'aarch64'",
     "torch==2.12.0+cu132 ; sys_platform == 'win32'",
     "torchvision==0.27.0+cu132 ; sys_platform == 'win32'",
     "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.25/flash_attn-2.8.3+cu132torch2.12-cp313-cp313-win_amd64.whl ; sys_platform == 'win32'",
     "triton-windows>=3.7.0,<3.8.0 ; sys_platform == 'win32'",
+]
+# Windows accelerator backends. `cuda-windows` is in default-groups (see
+# [tool.uv]) so it composes into every plain `uv sync`; every dep is
+# win32-marked, so both groups are inert on Linux/macOS.
+cuda-windows = [
+    "torch==2.14.1+cu132 ; sys_platform == 'win32'",
+    "torchvision==0.29.1+cu132 ; sys_platform == 'win32'",
+    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.10.2/flash_attn-2.8.3+cu132torch2.14-cp313-cp313-win_amd64.whl ; sys_platform == 'win32'",
+    "triton-windows>=3.8.0,<3.9.0 ; sys_platform == 'win32'",
 ]
 rocm-windows = [
     # Initial RDNA 4 path. AMD's device-all extra currently includes Linux-only

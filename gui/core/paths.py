@@ -9,13 +9,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 CONFIGS_DIR = ROOT / "configs"
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 
 # Persistent UI state (language, update-check cache, preprocess knobs, prefs).
 # Separate from configs/ so it survives a config reset.
-GUI_SETTINGS_FILE = Path(__file__).resolve().parent / "gui_settings.json"
+GUI_SETTINGS_FILE = ROOT / "gui" / "gui_settings.json"
 
 DEFAULT_THEME_COLOR = "#3c78c8"  # backward compat; live accent comes from gui/theme.py
 DEFAULT_THEME = "dark"  # one of "dark" / "light" / "sepia" (gui/theme.py THEMES)

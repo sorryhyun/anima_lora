@@ -4,7 +4,7 @@ Layout: top directory combo, left file list, right details panel (file stats
 + bakeability scan + merge options + log).
 
 Runs ``scripts/toolkits/merge_to_dit.py`` (and the merge/extract toolkits) via
-``QProcess`` and streams stdout/stderr into the log pane.
+a ``StreamingProcess`` and streams stdout/stderr into the log pane.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QProcess, Qt, Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -39,7 +39,7 @@ from gui import ROOT, LazyTabMixin, _adapter_dirs, _safetensors_in
 from gui.i18n import t
 from gui.theme import tok
 from gui.widgets import action_button, apply_variant
-from gui.process import kill_process_tree, setup_kill_safe
+from gui.jobs.process import StreamingProcess
 
 _DEFAULT_DIT = "models/diffusion_models/anima-base-v1.0.safetensors"
 
@@ -56,7 +56,7 @@ class PickerLineEdit(QLineEdit):
         self.setStyleSheet(
             f"QLineEdit {{ background: {tok('input_bg')}; color: {tok('text')}; "
             f"border: 1px solid {tok('border')}; border-radius: 3px; padding: 2px 6px; }}"
-            f"QLineEdit:hover {{ border-color: #3c78c8; background: {tok('input_hover')}; }}"
+            f"QLineEdit:hover {{ border-color: {tok('accent')}; background: {tok('input_hover')}; }}"
             f"QLineEdit:disabled {{ color: {tok('text_dim')}; background: {tok('base')}; }}"
         )
 
@@ -176,7 +176,6 @@ class MergeTab(LazyTabMixin, QWidget):
         self._dirs = _adapter_dirs()
         self._files: list[Path] = []
         self._current_scan: dict | None = None
-        self._stdout_buf = ""  # line buffer for ANALYZE_RESULT marker detection
 
         lay = QVBoxLayout(self)
 
@@ -401,12 +400,11 @@ class MergeTab(LazyTabMixin, QWidget):
         sp.setSizes([260, 760])
         lay.addWidget(sp, 1)
 
-        # Kill-safe setup so Stop kills the whole subtree (frees the loaded DiT weights).
-        self._proc = QProcess(self)
-        self._proc.setWorkingDirectory(str(ROOT))
-        setup_kill_safe(self._proc)
-        self._proc.readyReadStandardOutput.connect(self._read_stdout)
-        self._proc.readyReadStandardError.connect(self._read_stderr)
+        # Stop kills the whole subtree (frees the loaded DiT weights). stdout is
+        # read by line for the ANALYZE_RESULT marker; stderr goes to the log as is.
+        self._proc = StreamingProcess(self, separators="\n")
+        self._proc.line.connect(self._on_stdout_line)
+        self._proc.chunk.connect(self._on_stderr_chunk)
         self._proc.finished.connect(self._on_finished)
 
         self._clear_details()
@@ -485,9 +483,9 @@ class MergeTab(LazyTabMixin, QWidget):
         scan = _scan_adapter(p)
         self._current_scan = scan
         colors = {
-            "ok": ("#0a3d2a", tok("ok")),  # bg (darkened tint, kept), text
-            "partial": ("#3d2e0a", tok("warn")),
-            "block": ("#3d0a0a", tok("err")),
+            "ok": (tok("ok_bg"), tok("ok")),  # bg, text
+            "partial": (tok("warn_bg"), tok("warn")),
+            "block": (tok("err_bg"), tok("err")),
             "unknown": (tok("panel"), tok("text_dim")),
         }
         bg, fg = colors.get(scan["severity"], colors["unknown"])
@@ -506,8 +504,7 @@ class MergeTab(LazyTabMixin, QWidget):
             return
         # Only "ok" / "partial" are mergeable.
         self.merge_btn.setEnabled(
-            self._proc.state() == QProcess.NotRunning
-            and scan["severity"] in ("ok", "partial")
+            not self._proc.is_running() and scan["severity"] in ("ok", "partial")
         )
 
     def _clear_details(self):
@@ -611,12 +608,12 @@ class MergeTab(LazyTabMixin, QWidget):
             "\n".join(f"{i + 1}. {p.name}" for i, p in enumerate(sel))
             or t("merge_lora_need_two")
         )
-        enabled = self._proc.state() == QProcess.NotRunning and len(sel) >= 2
+        enabled = not self._proc.is_running() and len(sel) >= 2
         self.merge_btn.setEnabled(enabled)
         self.analyze_btn.setEnabled(enabled)
 
     def _start_merge(self):
-        if self._proc.state() != QProcess.NotRunning:
+        if self._proc.is_running():
             return
         if self._extract_mode():
             self._start_extract()
@@ -633,7 +630,7 @@ class MergeTab(LazyTabMixin, QWidget):
         if not self._extract_mode():
             return
         ok = (
-            self._proc.state() == QProcess.NotRunning
+            not self._proc.is_running()
             and bool(self.extract_tuned_edit.text().strip())
             and bool(self.extract_out_edit.text().strip())
         )
@@ -724,7 +721,7 @@ class MergeTab(LazyTabMixin, QWidget):
 
     def _start_analyze(self):
         """Dry-run interference report for the selected LoRAs (writes nothing)."""
-        if self._proc.state() != QProcess.NotRunning:
+        if self._proc.is_running():
             return
         sel = self._selected_loras()
         if len(sel) < 2:
@@ -746,7 +743,6 @@ class MergeTab(LazyTabMixin, QWidget):
         import sys as _sys
 
         self.log.clear()
-        self._stdout_buf = ""
         self.analysis_label.setVisible(False)
         self._log(f"> {_sys.executable} {' '.join(args)}\n")
 
@@ -758,30 +754,27 @@ class MergeTab(LazyTabMixin, QWidget):
         self.dir_combo.setEnabled(False)
         self.mode_combo.setEnabled(False)
 
-        self._proc.start(_sys.executable, args)
+        self._proc.start(args)
 
     def _stop_merge(self):
-        kill_process_tree(self._proc)
+        self._proc.kill()
 
     def cleanup_subprocess(self):
         """Hook for app shutdown — kill any running launcher + descendants."""
-        kill_process_tree(self._proc)
+        self._proc.kill()
 
-    def _read_stdout(self):
-        data = self._proc.readAllStandardOutput().data().decode(errors="replace")
-        # Scan complete lines for the ANALYZE_RESULT marker; route it to the
-        # styled banner and keep it out of the visible log. Anything before the
-        # last newline is a complete line; the remainder stays buffered.
-        self._stdout_buf += data
-        *lines, self._stdout_buf = self._stdout_buf.split("\n")
-        visible = []
-        for ln in lines:
-            if ln.startswith("ANALYZE_RESULT "):
-                self._apply_analysis_marker(ln[len("ANALYZE_RESULT ") :])
-            else:
-                visible.append(ln)
-        if visible:
-            self._log("\n".join(visible) + "\n")
+    def _on_stdout_line(self, line: str, is_stderr: bool):
+        # The ANALYZE_RESULT marker goes to the styled banner, not the log.
+        if is_stderr:
+            return
+        if line.startswith("ANALYZE_RESULT "):
+            self._apply_analysis_marker(line[len("ANALYZE_RESULT ") :])
+        else:
+            self._log(line + "\n")
+
+    def _on_stderr_chunk(self, text: str, is_stderr: bool):
+        if is_stderr:
+            self._log(text)
 
     # Banner severity grades on the strongest pairwise |cos| (operator alignment),
     # NOT the verdict word or the N-inflated energy ratio. Near-orthogonal LoRAs
@@ -836,7 +829,7 @@ class MergeTab(LazyTabMixin, QWidget):
                 shared=shared,
                 modules=modules,
             )
-            sev, bg = "warn", "#3d2e0a"
+            sev, bg = "warn", tok("warn_bg")
         elif mag < self._SAFE_COS:
             # Near-orthogonal — safe to merge regardless of sign.
             text = t(
@@ -846,7 +839,7 @@ class MergeTab(LazyTabMixin, QWidget):
                 shared=shared,
                 modules=modules,
             )
-            sev, bg = "ok", "#0a3d2a"
+            sev, bg = "ok", tok("ok_bg")
         else:
             strong = mag >= self._STRONG_COS
             strength = t(
@@ -871,9 +864,9 @@ class MergeTab(LazyTabMixin, QWidget):
             # cancellation, where the deltas erase each other, goes red when
             # strong. Mirrors the sign-aware CLI band in library.anima.merge_analysis.
             if reinforcing:
-                sev, bg = "warn", "#3d2e0a"
+                sev, bg = "warn", tok("warn_bg")
             else:
-                sev, bg = ("err", "#3d0a0a") if strong else ("warn", "#3d2e0a")
+                sev, bg = ("err", tok("err_bg")) if strong else ("warn", tok("warn_bg"))
 
         self.analysis_label.setText(text)
         self.analysis_label.setStyleSheet(
@@ -881,18 +874,7 @@ class MergeTab(LazyTabMixin, QWidget):
         )
         self.analysis_label.setVisible(True)
 
-    def _read_stderr(self):
-        data = self._proc.readAllStandardError().data().decode(errors="replace")
-        self._log(data)
-
-    def _on_finished(self, exit_code: int, _status: QProcess.ExitStatus):
-        # Flush any trailing partial line left in the stdout buffer.
-        if self._stdout_buf:
-            tail, self._stdout_buf = self._stdout_buf, ""
-            if tail.startswith("ANALYZE_RESULT "):
-                self._apply_analysis_marker(tail[len("ANALYZE_RESULT ") :])
-            else:
-                self._log(tail)
+    def _on_finished(self, exit_code: int):
         self._log(f"\n{t('finished', code=exit_code)}\n")
         apply_variant(self.merge_btn, "success")
         self.stop_btn.setEnabled(False)

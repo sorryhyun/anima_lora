@@ -23,6 +23,7 @@ import shlex
 from PySide6.QtWidgets import QFormLayout, QGroupBox, QLineEdit, QMessageBox
 
 from gui.i18n import t
+from gui.theme import tok
 from gui.tabs.distill_tab import _DistillConfigTab
 from gui.widgets import make_field_label
 
@@ -50,7 +51,7 @@ class SoupTrainTab(_DistillConfigTab):
             widget.setToolTip(tip)
             lbl = make_field_label(
                 t(key),
-                style="text-decoration: underline dotted; color:#ddd;",
+                style=f"text-decoration: underline dotted; color:{tok('text')};",
                 tooltip=tip,
                 on_click=lambda _k=key, _t=tip: self._show_explain(t(_k), _t),
             )

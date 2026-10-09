@@ -22,7 +22,7 @@ import time
 
 from PySide6.QtWidgets import QProgressBar
 
-from gui.theme import tok
+from gui.theme import ACTION_COLORS, tok
 
 # The trailing "[...]" rate block is captured optionally so non-timed bars still parse.
 TQDM_RE = re.compile(
@@ -46,7 +46,7 @@ def make_progress_bar() -> QProgressBar:
     bar.setStyleSheet(
         f"QProgressBar {{ border: 1px solid {tok('border_dim')}; border-radius: 3px;"
         " text-align: center; padding: 1px; font-size: 11px; }"
-        "QProgressBar::chunk { background: #27ae60; }"
+        f"QProgressBar::chunk {{ background: {ACTION_COLORS['primary']}; }}"
     )
     return bar
 

@@ -30,14 +30,12 @@ button and custom entries are suppressed here.
 
 from __future__ import annotations
 
-import sys
 import tomllib
 from pathlib import Path
 
 import tomlkit
-from PySide6.QtCore import Qt, QProcess, QProcessEnvironment
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QApplication,
     QFormLayout,
     QGroupBox,
     QLabel,
@@ -55,11 +53,11 @@ from gui import (
     list_gui_variants,
     merged_gui_variant_preset,
 )
-from gui import daemon as gui_daemon
+from gui.jobs import daemon as gui_daemon
 from gui.explanations import field_help
 from gui.i18n import t
 from gui.tabs.config_tab import ConfigTab
-from gui.theme import action_button_qss, tok
+from gui.theme import tok
 from gui.widgets import action_button, apply_variant, make_field_label
 
 _DESCRIPTOR_DIR = ROOT / "configs" / "easycontrol"
@@ -134,7 +132,7 @@ class EasyControlTab(ConfigTab):
         self.train_btn.clicked.connect(self._ec_start_train)
 
     def _open_adapter_guide(self) -> None:
-        from gui.dialogs import GuidebookDialog
+        from gui.dialogs.guidebook import GuidebookDialog
         from gui.i18n import current_language
 
         # Localized guide: ADAPTER_GUIDE.<lang>.md, English (ADAPTER_GUIDE.md) fallback.
@@ -211,27 +209,22 @@ class EasyControlTab(ConfigTab):
     def _show_descriptor_form(self, variant: str) -> None:
         """Render the descriptor's scalar knob tables as grouped form fields.
 
-        Mirrors ConfigTab._reload's teardown (clear self._fl, reset explain, clear
+        Mirrors ConfigTab._reload's teardown (``_clear_form``, reset explain, clear
         dirty), then builds one QGroupBox per editable table (top-level scalars like
         ``name`` first, then [staging]/[preprocess]/[training]) reusing ConfigTab's
         _widget / ClickableLabel / dirty wiring. The parsed tomlkit doc is stashed
         on self so Save can write changed values back in place — comments and the
         [[datasets]] blueprint survive untouched."""
         self._origin = {}
-        self._w.clear()
+        self._clear_form()
         # (table-or-None, key, widget, original-plain-value) so Save can route each
         # value back into the right tomlkit table.
         self._desc_widgets: list[tuple[str | None, str, QWidget, object]] = []
-        while self._fl.count():
-            it = self._fl.takeAt(0)
-            if it.widget():
-                it.widget().deleteLater()
 
         path = _DESCRIPTOR_DIR / f"{variant}.toml"
         rel = path.relative_to(ROOT)
         self._desc_doc = tomlkit.parse(path.read_text(encoding="utf-8"))
-        if hasattr(self, "_explain"):
-            self._set_explain_html(t("easycontrol_descriptor_note", path=str(rel)))
+        self._explain.show_guide(t("easycontrol_descriptor_note", path=str(rel)))
 
         header = QLabel(t("easycontrol_descriptor_form_header", path=str(rel)))
         header.setWordWrap(True)
@@ -323,18 +316,6 @@ class EasyControlTab(ConfigTab):
             return variant
         return self._VARIANT_ENV.get(variant)
 
-    def _ec_proc_env(self) -> QProcessEnvironment:
-        """System env with EASYADAPTER set (or cleared) for the active variant.
-        Rebuilt each launch so a stale value can't leak across runs (the QProcess
-        is reused)."""
-        env = QProcessEnvironment.systemEnvironment()
-        adapter = self._ec_adapter()
-        if adapter:
-            env.insert("EASYADAPTER", adapter)
-        else:
-            env.remove("EASYADAPTER")
-        return env
-
     def _ec_cache_dir(self) -> Path:
         # Descriptor variants cache under their `name` slug, which can differ from
         # the dropdown stem (e.g. near_twins.toml ships name = "sanitize").
@@ -353,7 +334,7 @@ class EasyControlTab(ConfigTab):
         return ROOT / rel
 
     def _ec_launch(self, argv: list[str], mode: str) -> None:
-        if self._proc.state() != QProcess.NotRunning:
+        if self._proc.is_running():
             return
         self.log.clear()
         self._reset_progress()
@@ -362,9 +343,11 @@ class EasyControlTab(ConfigTab):
         adapter = self._ec_adapter()
         prefix = f"EASYADAPTER={adapter} " if adapter else ""
         self._log(f"> {prefix}python {' '.join(argv)}\n")
-        self._proc.setProcessEnvironment(self._ec_proc_env())
-        self._ec_set_busy(True)
-        self._proc.start(sys.executable, argv)
+        self.train_btn.setEnabled(False)
+        self.stop_btn.setEnabled(True)
+        self._set_pickers_enabled(False)
+        # Set or cleared every launch, so one variant's adapter never leaks into the next.
+        self._proc.start(argv, env={"EASYADAPTER": adapter})
 
     def _flush_dirty_descriptor(self) -> bool:
         """Flush unsaved descriptor form edits before a descriptor run (preprocess
@@ -432,48 +415,19 @@ class EasyControlTab(ConfigTab):
         try:
             extra = _easy_train_extra(variant, [])
         except SystemExit as e:  # descriptor missing a [[datasets]] blueprint, etc.
-            from PySide6.QtWidgets import QMessageBox
-
             QMessageBox.warning(self, t("error"), str(e))
             return
-        # Submit the base easycontrol method (methods/ tree, not gui-methods) with
-        # the descriptor argv appended; mirror ConfigTab's busy-UI + attach.
-        merged = self._descriptor_merged(variant)
-        logging_dir = merged.get("logging_dir")
-        if logging_dir and self._tb_panel is not None:
-            self._tb_panel.set_log_dir(logging_dir)
-        self.train_btn.setText(t("train") + " ...")
-        self.train_btn.setStyleSheet(action_button_qss("busy"))
-        self._ec_set_busy(True)
-        self.log.clear()
-        self._reset_progress()
-        self._progress_tracker.mark_starting(t("starting"))
-        self._log(t("daemon_submitting") + "\n")
-        QApplication.processEvents()
-        try:
-            resp = gui_daemon.submit_training(
+        # The base easycontrol method (methods/ tree, not gui-methods) with the
+        # descriptor argv appended.
+        self._submit_training(
+            lambda: gui_daemon.submit_training(
                 method="easycontrol",
                 preset=self._current_preset(),
                 methods_subdir=None,
                 extra=extra,
-            )
-        except Exception as e:  # noqa: BLE001 — daemon failed to start / submit
-            from PySide6.QtWidgets import QMessageBox
-
-            QMessageBox.warning(self, t("error"), t("daemon_submit_failed", err=str(e)))
-            self._restore_idle_ui()
-            return
-        job_id = resp.get("job_id") if isinstance(resp, dict) else None
-        if not job_id:
-            from PySide6.QtWidgets import QMessageBox
-
-            QMessageBox.warning(
-                self, t("error"), t("daemon_submit_failed", err=str(resp))
-            )
-            self._restore_idle_ui()
-            return
-        self._log(t("daemon_queued", job_id=job_id))
-        self._attach_to_job(job_id, replay_log=False)
+            ),
+            logging_dir=self._descriptor_merged(variant).get("logging_dir"),
+        )
 
     # Also gray out the EasyControl-only Preprocess button on attach. Overriding
     # _attach_to_job (not just the launch site) covers re-attach on GUI reopen too.
@@ -483,17 +437,10 @@ class EasyControlTab(ConfigTab):
         super()._attach_to_job(job_id, replay_log=replay_log, kind=kind)
         self.preprocess_btn.setEnabled(False)
 
-    def _ec_set_busy(self, busy: bool) -> None:
-        self.preprocess_btn.setEnabled(not busy)
-        self.train_btn.setEnabled(not busy)
-        self.stop_btn.setEnabled(busy)
-        self.method_combo.setEnabled(not busy)
-        self.variant_combo.setEnabled(not busy)
-        self.preset_combo.setEnabled(not busy)
-
-    def _restore_idle_ui(self):
-        super()._restore_idle_ui()
-        self.preprocess_btn.setEnabled(True)
+    # Preprocess launches like Train, so it locks and unlocks with the pickers.
+    def _set_pickers_enabled(self, enabled: bool) -> None:
+        super()._set_pickers_enabled(enabled)
+        self.preprocess_btn.setEnabled(enabled)
 
     def _try_reattach(self) -> None:
         """Re-bind to an easycontrol/colorize daemon training job still running
@@ -502,7 +449,7 @@ class EasyControlTab(ConfigTab):
         Discriminate by method so we don't hijack another tab's job (e.g. a
         LoRA-tab training run): the daemon's single active job is shared across
         the ConfigTab subclasses, and this tab only owns its own family's
-        variants. EasyControl preprocess runs as a QProcess (not a daemon
+        variants. EasyControl preprocess runs as a direct child (not a daemon
         command job), so there's nothing of ours to re-attach but the train."""
         try:
             job_id = gui_daemon.active_job_id()
@@ -515,8 +462,4 @@ class EasyControlTab(ConfigTab):
         }
         if gui_daemon.read_job_label(job_id) not in family:
             return
-        self.log.clear()
-        self._reset_progress()
-        self._progress_tracker.mark_starting(t("starting"))
-        self._log(t("daemon_reattached", job_id=job_id))
-        self._attach_to_job(job_id, replay_log=True, kind="train")
+        self._reattach(job_id, kind="train")
