@@ -71,7 +71,7 @@ and the fake critic**. The anchor's graph is detached from the DM steps
 | Head R | the `[gan]` disc scores real `latents` vs `x_pred` (hinge, frozen-teacher features, ~2 M head) | new head on the DMAD backbone, balanced BCE |
 | Disc backbone | — | teacher + its own LoRA stack (`turbo.make_aux_stack`, built for the probe) |
 | CFG | baked into the DM real score (α = 4) | only through head T's teacher samples, rendered at CFG 4 |
-| L_CDM | real − fake surrogate at an off-trajectory `x0_off` | `−h` at the same point (later arm) |
+| L_CDM | real − fake surrogate at an off-trajectory `x0_off` | `∂(−λ_T h_T − λ_R h_R)/∂x0_off` (`student_signal` at the same point); on when `cdm.weight > 0` |
 | Gap reweighting | — | later arm |
 
 f-distill ([[project_turbo_rollup]]) reweights the score-difference gradient by disc
@@ -200,7 +200,7 @@ One arm against a matched DP-DMD arm, read on rendered grids.
 | Key | Default | Notes |
 |---|---|---|
 | `enabled` | `false` | off → byte-identical loop, no RNG drawn, nothing built |
-| `lambda_t` / `lambda_r` | `1.0` / `1.0` | head mix; 0 drops a head (and its disc branch) |
+| `lambda_t` / `lambda_r` | `300` / `300` | head mix; 0 drops a head (and its disc branch). Sets the signal's size only when `signal_rms = 0` |
 | `signal_rms` | `0.18` | per-sample RMS of the student signal; `0` = raw (λ sets the size) |
 | `lr` | `4e-5` | disc stack + heads, constant |
 | `grad_clip` | `0` | disc only; 0 = unclipped |
@@ -209,7 +209,7 @@ One arm against a matched DP-DMD arm, read on rendered grids.
 | `feature_block_idx` | `-1` | −1 = middle block |
 
 Every key gets a `--dmad_*` CLI flag. Guards at resolve: requires `base_loss =
-"dpdmd"`; refuses `gan.weight_gen > 0`, `cdm.weight > 0`, `f_distill`, `dmad_probe`,
+"dpdmd"`; refuses `gan.weight_gen > 0`, `f_distill`, `dmad_probe`,
 `fake_tau_banks > 1`, `blocks_to_swap > 0`, and `--resume` (the disc is not in the
 resume bundle in this phase).
 
@@ -364,6 +364,20 @@ read, and a full read needs a replacement eval set (with text and pose prompts).
 
 **Next, one knob:** λ = 300–500 so the late-run signal lands near 0.2, or 1000
 steps at λ = 100; both after an eval prompt set is fixed.
+
+### Smokes after Phase 0b (30 steps each, p0b raw recipe, seed 42)
+
+- **Disc update without checkpointing** (`anima_turbo_dmad_nockpt_smoke`, λ 100):
+  the window update runs through the compiled blocks. 10.6 s/step against p0b's
+  12.2 over steps 10–30, peak 14.3 GiB. `student_signal` keeps the unsloth
+  checkpoint: the student graph is alive there, and dropping it OOMs at step 1.
+- **L_CDM under DMAD + λ 300 default** (`anima_turbo_dmad_cdm_smoke`, `cdm.weight`
+  1.0 from the TOML): L_CDM takes `student_signal` at `x0_off` in place of
+  teacher − fake. Runs, 12.1 s/step (+1.5 s for CDM), peak 14.3 GiB. The raw
+  signal grows fast: `grad` 0.05 → 0.25 → 0.89 at steps 10 / 25 / 30 (λ 100
+  without CDM: 0.015 → 0.038), `cdm` 0.54 at step 30. 5-step means at B = 1, so
+  noisy, but already above DP-DMD's ~0.2 by step 25. Raw mode has nothing that
+  caps the signal as the disc sharpens.
 
 ### Cost (unmeasured)
 

@@ -278,8 +278,9 @@ def cdm_off_trajectory_loss(
     From the grad step's on-trajectory (x_g, v_g, σ_g), Euler-extrapolate a large
     random stride to x_off at t' ~ U(0,1) (velocity-driven; detached, so this is
     a fresh leaf — one grad forward, no second BPTT chain). The student's local
-    clean estimate there, x0_off = x_off − t'·v_off, gets the same real-vs-fake
-    DMD surrogate as the DM branch. Supervises the truncation-drift region
+    clean estimate there, x0_off = x_off − t'·v_off, gets the same signal as the
+    DM branch: the real-vs-fake DMD surrogate, or under ``[dmad]`` the disc's
+    input gradient (``DmadDisc.student_signal``). Supervises the truncation-drift region
     few-step Euler traverses off-manifold, which on-trajectory rollouts never
     visit.
 
@@ -320,25 +321,30 @@ def cdm_off_trajectory_loss(
         dtype=ctx.dtype,
     )
     eps_cdm = torch.randn_like(latents)
-    x_renoised_cdm = renoise(x0_off.detach().to(ctx.dtype), tau_cdm, eps_cdm)
-    v_real_cdm = ctx.teacher_cfg_velocity(
-        x_renoised_cdm, tau_cdm, crossattn_emb, c_null
-    )
-    v_fake_cdm = ctx.forward(
-        "fake", x_renoised_cdm, tau_cdm, crossattn_emb, no_grad=True
-    ).squeeze(2)
-    delta_cdm = v_real_cdm - v_fake_cdm
-    tau_cdm_e = tau_cdm.view(B, 1, 1, 1).float()
-    grad_cdm = tau_cdm_e * delta_cdm.float()
-    if cfg.dm_x0_norm:
-        denom_cdm = (
-            (tau_cdm_e * v_real_cdm.float())
-            .abs()
-            .mean(dim=(1, 2, 3), keepdim=True)
-            .clamp_min(cfg.norm_floor)
+    if ctx.dmad is not None:
+        grad_cdm, _ = ctx.dmad.student_signal(
+            ctx, x0_off, tau_cdm, eps_cdm, crossattn_emb
         )
-        grad_cdm = grad_cdm / denom_cdm
-    grad_cdm = grad_cdm.detach()
+    else:
+        x_renoised_cdm = renoise(x0_off.detach().to(ctx.dtype), tau_cdm, eps_cdm)
+        v_real_cdm = ctx.teacher_cfg_velocity(
+            x_renoised_cdm, tau_cdm, crossattn_emb, c_null
+        )
+        v_fake_cdm = ctx.forward(
+            "fake", x_renoised_cdm, tau_cdm, crossattn_emb, no_grad=True
+        ).squeeze(2)
+        delta_cdm = v_real_cdm - v_fake_cdm
+        tau_cdm_e = tau_cdm.view(B, 1, 1, 1).float()
+        grad_cdm = tau_cdm_e * delta_cdm.float()
+        if cfg.dm_x0_norm:
+            denom_cdm = (
+                (tau_cdm_e * v_real_cdm.float())
+                .abs()
+                .mean(dim=(1, 2, 3), keepdim=True)
+                .clamp_min(cfg.norm_floor)
+            )
+            grad_cdm = grad_cdm / denom_cdm
+        grad_cdm = grad_cdm.detach()
     if mask is not None:
         cdm_loss = (grad_cdm * x0_off * mask).mean()
     else:

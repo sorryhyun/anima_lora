@@ -598,23 +598,23 @@ def build_argparser() -> argparse.ArgumentParser:
         help="Replace the DM term and the fake critic with DMAD: a balanced-BCE "
         "disc (cold LoRA stack on the teacher + head T: teacher samples vs "
         "student, head R: real latents vs student), whose input gradient, "
-        "RMS-normalized per sample, is the student's grad_signal. Needs "
-        "cdm.weight = 0 and gan.weight_gen = 0. Default: TOML (dmad.enabled, "
-        "default false).",
+        "RMS-normalized per sample, is the student's grad_signal (and L_CDM's "
+        "when cdm.weight > 0). Needs gan.weight_gen = 0. Default: TOML "
+        "(dmad.enabled, default false).",
     )
     parser.add_argument(
         "--dmad_lambda_t",
         type=float,
         default=None,
         help="Head T weight in the student signal; 0 drops head T and its disc "
-        "branch. Default: TOML (dmad.lambda_t, default 1.0).",
+        "branch. Default: TOML (dmad.lambda_t, default 300).",
     )
     parser.add_argument(
         "--dmad_lambda_r",
         type=float,
         default=None,
         help="Head R weight in the student signal; 0 drops head R and its "
-        "real-data branch. Default: TOML (dmad.lambda_r, default 1.0).",
+        "real-data branch. Default: TOML (dmad.lambda_r, default 300).",
     )
     parser.add_argument(
         "--dmad_signal_rms",
@@ -864,8 +864,8 @@ class TurboConfig:
 
     # DMAD Phase 0 (scripts/distill_turbo/dmad.py): disc replaces DM + critic
     dmad: bool = False
-    dmad_lambda_t: float = 1.0  # 0 → no head T / teacher branch
-    dmad_lambda_r: float = 1.0  # 0 → no head R / real branch
+    dmad_lambda_t: float = 300.0  # 0 → no head T / teacher branch
+    dmad_lambda_r: float = 300.0  # 0 → no head R / real branch
     dmad_signal_rms: float = 0.18  # per-sample RMS of the student signal; 0 = raw
     dmad_lr: float = 4e-5
     dmad_grad_clip: float = 0.0  # 0 → unclipped
@@ -1290,8 +1290,8 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
             f"(-1 = middle), head={dmad_probe_head}, ceiling={dmad_probe_ceiling}."
         )
     dmad = bool(_pick(args.dmad, cfg, "dmad.enabled", False))
-    dmad_lambda_t = float(_pick(args.dmad_lambda_t, cfg, "dmad.lambda_t", 1.0))
-    dmad_lambda_r = float(_pick(args.dmad_lambda_r, cfg, "dmad.lambda_r", 1.0))
+    dmad_lambda_t = float(_pick(args.dmad_lambda_t, cfg, "dmad.lambda_t", 300.0))
+    dmad_lambda_r = float(_pick(args.dmad_lambda_r, cfg, "dmad.lambda_r", 300.0))
     dmad_signal_rms = float(_pick(args.dmad_signal_rms, cfg, "dmad.signal_rms", 0.18))
     dmad_lr = float(_pick(args.dmad_lr, cfg, "dmad.lr", 4e-5))
     dmad_grad_clip = float(_pick(args.dmad_grad_clip, cfg, "dmad.grad_clip", 0.0))
@@ -1324,10 +1324,6 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
             raise ValueError(
                 "dmad requires gan.weight_gen = 0 (head R replaces the [gan] "
                 "real-vs-student disc in this phase)."
-            )
-        if cdm_weight > 0.0:
-            raise ValueError(
-                "dmad requires cdm.weight = 0 (L_CDM under dmad is a later arm)."
             )
         if dmad_probe:
             raise ValueError("dmad and dmad_probe are exclusive: turn one off.")

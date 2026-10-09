@@ -7,6 +7,7 @@
   is BCE_T + BCE_R, the window accumulates n pairs into one optimizer step, a
   head with λ = 0 adds no branch, and the student signal is the normalized
   ``−(λ_T ∇h_T + λ_R ∇h_R)`` with the disc left untouched.
+* L_CDM under DMAD takes ``student_signal`` at ``x0_off`` (no teacher, no fake).
 * ``TurboDMDNetwork(build_fake=False)`` — no critic stack is built.
 """
 
@@ -30,6 +31,7 @@ from scripts.distill_turbo.dmad import (
 )
 from scripts.distill_turbo.metrics import TurboMetrics
 from scripts.distill_turbo.primitives import renoise
+from scripts.distill_turbo.steps import cdm_off_trajectory_loss
 
 ON = {"dmad": {"enabled": True}}
 
@@ -45,7 +47,7 @@ def _resolve(cli: list[str] | None = None, cfg: dict | None = None):
 def test_off_by_default():
     c = _resolve()
     assert c.dmad is False
-    assert (c.dmad_lambda_t, c.dmad_lambda_r) == (1.0, 1.0)
+    assert (c.dmad_lambda_t, c.dmad_lambda_r) == (300.0, 300.0)
     assert c.dmad_signal_rms == pytest.approx(0.18)
     assert c.dmad_lr == pytest.approx(4e-5)
     assert c.dmad_grad_clip == 0.0
@@ -98,7 +100,6 @@ def test_toml_and_cli_precedence():
     [
         (["--base_loss", "dmd", "--student_steps", "4"], {}, "dpdmd"),
         ([], {"gan": {"weight_gen": 0.03}}, "weight_gen"),
-        ([], {"cdm": {"weight": 1.0}}, "cdm.weight"),
         (["--f_div", "kl"], {}, "f_distill"),
         (["--dmad_probe"], {}, "dmad_probe"),
         (["--fake_tau_banks", "2"], {}, "fake_tau_banks"),
@@ -363,6 +364,54 @@ def test_metrics_tolerate_missing_dm_terms():
     )
     out = m.flush(1)
     assert out.dm == 0.0 and out.cos == 0.0 and out.grad > 0.0
+
+
+# --- L_CDM under DMAD -----------------------------------------------------------
+
+
+def test_cdm_under_dmad_takes_the_disc_signal_at_x0_off():
+    torch.manual_seed(0)
+    w = nn.Parameter(torch.tensor(0.7))
+    g = torch.randn(B, C, 3, 3)
+    seen = {}
+
+    def forward(view, x, t, c, *, no_grad):
+        assert view == "student" and not no_grad
+        seen["x_off"], seen["t_off"] = x.detach(), t.detach()
+        return (w * x).unsqueeze(2)
+
+    def student_signal(ctx, x0, tau, eps, c):
+        seen["x0"] = x0.detach()
+        return g, {}
+
+    def no_teacher(*a, **k):
+        raise AssertionError("teacher CFG queried under DMAD")
+
+    ctx = SimpleNamespace(
+        device=torch.device("cpu"),
+        dtype=torch.float32,
+        model=SimpleNamespace(blocks=[]),
+        turbo=SimpleNamespace(set_view=lambda view: None),
+        dmad=SimpleNamespace(student_signal=student_signal),
+        metrics=SimpleNamespace(add_cdm=lambda grad: None),
+        forward=forward,
+        teacher_cfg_velocity=no_teacher,
+    )
+    cfg = SimpleNamespace(
+        fake_tau_banks=1,
+        fake_tau_boundary=0.5,
+        sigmoid_scale=1.0,
+        cdm_weight=2.0,
+        dm_x0_norm=True,
+        norm_floor=0.05,
+    )
+    x_g, v_g = torch.randn(B, C, 3, 3), torch.randn(B, C, 3, 3)
+    c = torch.randn(B, 5, 6)
+    cdm_off_trajectory_loss(ctx, cfg, (x_g, v_g, 0.5), c, None, x_g, None, B)
+
+    x_off, t_e = seen["x_off"], seen["t_off"].view(B, 1, 1, 1)
+    torch.testing.assert_close(seen["x0"], x_off - t_e * w.detach() * x_off)
+    torch.testing.assert_close(w.grad, 2.0 * (g * -t_e * x_off).mean())
 
 
 # --- no critic under DMAD -------------------------------------------------------
