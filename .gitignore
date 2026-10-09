@@ -44,6 +44,7 @@ _logs/
 .claude/agents/archive-explorer.md
 .env
 .anima_backend
+.anima_torch
 .anima-update-backups
 node.zip
 _archive/
@@ -73,3 +74,10 @@ workspace/
 # a search starts at the repo root, so ignored files there leak into any search
 # started below it. Nested: configs/gui-methods, bench/cjk_{adapter,distill},
 # project/finished/{sr,cjk_aware_anima,cjk_aware_anima_dit,…/datasets}.
+
+# Font binaries (CJK lines fetch their own; on main their per-dir ignores are absent).
+# The GUI ships Pretendard.
+*.ttf
+*.otf
+*.ttc
+!gui/fonts/*.ttf

@@ -59,7 +59,7 @@ The supported Windows ROCm environment is pinned to:
 - `triton-windows` for the Windows `torch.compile` runtime
 
 ROCm uses PyTorch 2.13 because ROCm 10.0 validates that combination on
-Windows; the CUDA path stays on PyTorch 2.12 + CUDA 13.2. (The ROCm path has
+Windows; the CUDA path defaults to PyTorch 2.14 + CUDA 13.2 (2.13 / 2.12 opt-in). (The ROCm path has
 also run locally on PyTorch 2.14/2.15 alpha builds; those are not supported
 configurations.)
 

@@ -1,6 +1,6 @@
 # anima_lora runtime image — environment only, no model weights.
 #
-# torch 2.12 + cu132 and flash-attn 2.8.3 come from uv.lock (the torch wheels
+# torch 2.14 + cu132 and flash-attn 2.8.3 come from uv.lock (the torch wheels
 # carry the CUDA runtime as nvidia-* packages). The CUDA 13.2 base adds only
 # ptxas / headers for the torch.compile → Triton path, matching install.sh.
 #

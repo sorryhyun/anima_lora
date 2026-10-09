@@ -80,6 +80,12 @@ for the recompile-limit juggling, not a speed win. `make test-unit` (not-slow
 suite) under 2.14 passed 1592/1593; the one failure is the pre-existing
 `CLAUDE.md` placeholder path caught by `test_doc_refs`, unrelated to torch.
 
+**Update 2026-10-09:** the support-matrix blocker in §2 is gone — mjun0812 now
+ships `cu132torch2.13` / `torch2.14` flash-attn wheels for linux x86_64,
+linux aarch64 and win_amd64 — so the CUDA default moved to 2.14 for hygiene,
+with 2.13 / 2.12 kept as opt-in `torch-213` / `torch-212` dependency groups.
+The perf verdict above still stands: the bump is not a speed win.
+
 Trap for next time: check `max_autotune_gemm_backends` and the backend's
 arch gate (`grep sm100 site-packages/cutlass/operators`) before spending GPU
 hours on an "auto" Inductor backend — a 10-minute `TORCH_LOGS=autotuning`
