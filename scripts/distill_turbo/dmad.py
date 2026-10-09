@@ -227,10 +227,9 @@ class DmadDisc:
 
         Per pair, at one (τ, ε): head T's teacher branch, head R's real
         branch, then one student pass scored by every head. Each branch
-        backwards on its own under block checkpointing; its renoised input
-        must require grad, or the unsloth checkpoint drops the LoRA param
-        grads (see ``cdm_off_trajectory_loss``). Losses are scaled 1/n, so the
-        accumulated grad is that of the window-mean of BCE_T + BCE_R.
+        backwards on its own, through the compiled blocks (no checkpointing).
+        Losses are scaled 1/n, so the accumulated grad is that of the
+        window-mean of BCE_T + BCE_R.
 
         Returns detached stats: the newest pair's per-head BCE / margin /
         rank accuracy (scored before the disc trains on it), the real − teacher
@@ -254,11 +253,11 @@ class DmadDisc:
             eps = gen_randn_like(self.gen, xs)
             h_tgt: dict[str, torch.Tensor] = {}
             h_r_teacher = None
-            with disc_view(ctx.turbo, self.stack), selective_block_grad_ckpt(ctx.model):
+            with disc_view(ctx.turbo, self.stack):
                 for key, x_tgt in (("t", xt), ("r", xr)):
                     if key not in heads:
                         continue
-                    x_in = renoise(x_tgt, tau, eps).requires_grad_()
+                    x_in = renoise(x_tgt, tau, eps)
                     f = self._features(ctx, x_in, tau, c, no_grad=False)
                     h = self._logit(heads[key], f)
                     loss = F.softplus(-h).mean()
@@ -268,7 +267,7 @@ class DmadDisc:
                     if key == "t" and "r" in heads and j == 0:
                         with torch.no_grad():
                             h_r_teacher = self._logit(heads["r"], f.detach())
-                x_in = renoise(xs, tau, eps).requires_grad_()
+                x_in = renoise(xs, tau, eps)
                 f = self._features(ctx, x_in, tau, c, no_grad=False)
                 h_s = {key: self._logit(head, f) for key, head in heads.items()}
                 loss = sum(F.softplus(h).mean() for h in h_s.values())
@@ -313,9 +312,11 @@ class DmadDisc:
         """``∂(−λ_T h_T − λ_R h_R)/∂x_pred`` at (τ, ε), RMS-normalized per sample
         unless ``signal_rms`` is 0.
 
-        One grad-bearing disc forward on a detached leaf of ``x_pred``; disc
-        params are frozen around it, since the unsloth checkpoint's recompute
-        backward would otherwise accumulate into their ``.grad``. With both
+        One grad-bearing disc forward on a detached leaf of ``x_pred``, under
+        block checkpointing: the student's grad graph is still alive here, and
+        the two together do not fit 16 GB. Disc params are frozen around it,
+        since the unsloth checkpoint's recompute backward would otherwise
+        accumulate into their ``.grad``. With both
         heads on, each head's input gradient is taken separately (two backwards
         through the tapped half of the DiT) for the raw-RMS / cosine stats.
         Returns ``(grad_signal fp32 detached, stats)``.
