@@ -5,6 +5,18 @@ next experiment, prune `cjk_anima_reseed` (too many stale experiments and idea
 docs) and archive `cjk_anima_scale`. Work happens on `cjk-reseed`; `main` holds a
 stale copy of both lines.
 
+**Decided (user, 10-09):**
+- Scale → `project/finished/cjk_anima_scale/` (Q1).
+- **Reseed is the home for cold training.** A future pack's new rows (e.g. more
+  kanji for a jp_v2) train cold through reseed's `run.py`, not through scale's
+  builder (Q2). The port keeps `cold` and the explicit `steps_per_row` / `steps`.
+  A cold-batch capability reseed lacks is ported into reseed's table / recipes
+  when found, not run from `finished/`. Scale's depth bump (step 5) stays as a
+  cheap fallback that keeps it runnable by path.
+- No tag (Q3). Archived configs and probes re-run from the commit before
+  step 1, whose hash goes into `status.md`.
+- `release_plan.md` is done and deleted (Q4).
+
 The first line of work the rebuilt tree has to host is
 [`proposal_jamo.md`](proposal_jamo.md) (Hangul rows from jamo factors; being
 written separately). It needs the trainer (a new `factor = "jamo"` mode beside
@@ -150,7 +162,6 @@ project/cjk_anima_reseed/
   README.md            home: code table, run lines, the table (rewritten, shorter)
   status.md            where the line stands (new, § 2.1)
   criteria.md          the ruler's definition (kept)
-  release_plan.md      until anima-jp-extended is public, then _archive/
   proposal_jamo.md     next line of work
   run.py               data | train  (the `read` verb goes)
   ruler.py             the dialogue ruler (gs_rkstick / rand_turn derived arms go)
@@ -253,7 +264,7 @@ structure_candidate.md and task_report.md § 4:
 | `idea2.md` | `_archive/` (one line in status) | both probes stopped (10-07, 10-08) |
 | `idea3.md` | `_archive/` (one line in status) | stopped 10-08 |
 | `structure_candidate.md` | fold (convention + decomposition table), `_archive/` | reference; the jamo reads need its terms |
-| `release_plan.md` | keep until public, then `_archive/` | § Order: 1.3 (LoRA on jp_v1) and the public flip left |
+| `release_plan.md` | deleted 10-09 | done (user) |
 | `task_report.md` | fold § 2 / § 4, `_archive/` | discarded run; its redo notes survive |
 | `proposal_jamo.md` | keep (not touched here) | next line |
 | `proposal_refactor.md` | `_archive/` once done | this |
@@ -325,7 +336,7 @@ Changes:
 - The `lines` default (scale's `PHRASE_FILE`, dialogue_2_10, used by `punct`
   and `kozh16`) becomes a `LINES` entry.
 - The `_archive/configs/` stop loading, which ends README's "still runs by
-  path". The tag in step 0 is how to re-run them.
+  path". The commit before step 1 (hash in `status.md`) is how to re-run them.
 
 ## 4. Steps
 
@@ -334,8 +345,8 @@ Each step is one commit and leaves `pytest project/cjk_anima_reseed/tests` green
 holds no job running a reseed or scale script. The code imports lazily inside
 functions, so a running job that loses a file mid-run fails.
 
-0. **Freeze point.** Tag `cjk-reseed-pre-refactor` at the branch head (user
-   OK). Build a smoke data dir there: `configs/_smoke.toml` = kozh16 under
+0. **Freeze point.** No tag (user, 10-09); note the branch head's hash for
+   `status.md`. Build a smoke data dir there: `configs/_smoke.toml` = kozh16 under
    its own name, `run.py _smoke data --frac 0.05` (CPU; never into `kozh16/`,
    whose data is live). Keep it as the byte-reference for step 3. Baseline
    tests: 2 / 86 (§ 1.1).
@@ -421,7 +432,8 @@ repointed first. If the user wants `band_experiment_results.md` to stay
 searchable, the rule becomes `/*` plus `!/band_experiment_results.md`.
 
 Staying runnable by path (the depth bump) keeps `scale.py <run> data | train`
-for a future cold kanji batch (stage A) and keeps its 86 tests running. The
+and its 86 tests as a fallback only. Cold batches go through reseed (§ 0
+decisions). The
 cost is two copies of `src/` that may drift: scale's is frozen, reseed's is
 live.
 
@@ -466,16 +478,8 @@ live.
 
 ## 7. Open questions
 
-1. Scale → `project/finished/` (recommended) or `_archive/`? Should it stay
-   runnable by path (the depth bump), or freeze as a record?
-2. Will a future pack need another cold stage A (scale's builder and
-   `retrain_kanji_b*` recipe, e.g. more kanji for a jp_v2)? If yes, scale must
-   stay runnable (Q1), or its builder is ported, which this proposal does not
-   do.
-3. Tag `cjk-reseed-pre-refactor` and push it? After step 4 the archived
-   configs and probes run only from that tag.
-4. `release_plan.md`: is 1.3 (LoRA on jp_v1) closed, and is `anima-jp-extended`
-   public? If both, it goes to `_archive/` at step 1.
+1–4. Decided 10-09 (top of file): scale → `finished/`; cold training lives
+   in reseed; no tag; `release_plan.md` deleted.
 5. `sent_kanji_f0.toml`: archive (proposed; pres = f0 + `pres`), or keep as the
    text arm of record?
 6. `structure_candidate.md`: fold into status (proposed), or keep whole as the
