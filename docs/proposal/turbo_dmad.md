@@ -1,6 +1,7 @@
 # Turbo DMAD — discriminator-carried distribution matching inside DP-DMD
 
-Status: **Phase −1 closed without a verdict; Phase 0 built, not run**
+Status: **Phase −1 closed without a verdict; Phase 0 DMAD arm trained (750 steps),
+not yet rendered; matched DP-DMD arm not run**
 (2026-10-09). Branch `turbo_dmad`. Source: Yu et al., *DMAD: Distribution Matching
 as Adversarial Distillation for Fast Visual Generation*, arXiv:2610.02188
 (ByteDance, 2026-10-01).
@@ -263,6 +264,48 @@ resume bundle in this phase).
     `signal_rms` values (0.18, then 0.09); or
   - a disc runaway: rank accuracy at chance for 20+ steps after warmup, at
     `grad_clip` 0 and again at 5.
+
+### Results so far
+
+**Smoke (30 steps, `anima_turbo_dmad_smoke`).** ~12 s/step after the disc warmup
+(10.5 s/step). Both heads rank at warmup end; by step 30 both saturate (margin T
++2.9, R +3.3; disc grad norm 34). Renders at 4 steps / cfg 1.0 against the v1.1
+init (`bench/turbo/real_prompts.txt`, seed 42; `output/tests/dmad_smoke30`,
+`output/tests/v11_init`): nothing broken (people, poses, anatomy and prompt
+content kept in all 16), but flat backgrounds become busy scenes, skies pick up a
+streaky high-frequency texture, colour turns duller, and compositions vary more.
+No same-step DP-DMD reference was rendered, so how much of that change is DMAD's
+own is unknown.
+
+**DMAD arm (`anima_turbo_p0_dmad`, 750 steps, job `20261009-191035-30614c`).**
+~12.5 s/step, 2 h 45 min including warmup; checkpoints at 250 / 500 / 750. Rows:
+`output/logs/anima_turbo_p0_dmad.progress.jsonl` (`dmad_*` keys); TensorBoard
+`output/logs/turbo/20261009-191043`. Means over 150-step bins:
+
+| Steps | rank acc T / R | margin T / R | BCE T (chance 1.39) | disc grad norm | raw g_T RMS | cos(g_T, g_R) | gap_r |
+|---|---|---|---|---|---|---|---|
+| 1–150 | 0.81 / 0.89 | 1.9 / 2.0 | 1.08 | 24 | 2.6e-4 | 0.85 | 0.22 |
+| 151–300 | 0.88 / 0.89 | 3.0 / 3.2 | 0.94 | 35 | 1.3e-3 | 0.94 | 0.34 |
+| 301–450 | 0.91 / 0.91 | 2.1 / 2.4 | 1.01 | 32 | 9.3e-4 | 0.78 | 0.40 |
+| 451–600 | 0.85 / 0.90 | 1.7 / 2.2 | 1.09 | 30 | 7.8e-4 | 0.74 | 0.63 |
+| 601–750 | 0.90 / 0.91 | 2.1 / 2.4 | 1.01 | 28 | 9.3e-4 | 0.62 | 0.70 |
+
+- **No runaway, no collapse.** Rank accuracy never fell to chance; the disc grad
+  norm peaked at 136 (step 270) and settled near 28.
+- **The disc wins throughout.** Margins of ~2 from step 100 on: the student does
+  not erase what the disc separates on, which the game should do.
+- **The heads start as one detector and separate late.** cos(g_T, g_R) 0.85–0.94
+  over the first 300 steps with gap_r (h_R on real minus on teacher) ~0.2–0.3:
+  both heads scoring "is a student sample". From step ~300, cos falls to 0.62 and
+  gap_r rises to 0.70, so head R starts telling real data from teacher samples.
+- **The raw disc gradient sharpened ~4–5×** (2.6e-4 → ~1e-3); per-sample
+  normalization keeps the student's update size fixed regardless.
+- **Student scalars calm:** `xpred` 0.62–0.66, `v_student` ~1.14; the diversity
+  anchor loss drifts down (0.114 → 0.085).
+
+**Matched DP-DMD arm** (`anima_turbo_p0_dpdmd`, job `20261009-191035-6e1aeb`):
+stopped by hand at start, not run. The grid read below needs it, or a stand-in
+the owner names.
 
 ### Cost (unmeasured)
 
