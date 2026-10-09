@@ -66,6 +66,7 @@ def main():
             row_step_scale=run.row_step_scale(),
             free_residual=run.free_residual,
             pres=run.pres,
+            factor=run.factor,
         )
 
 

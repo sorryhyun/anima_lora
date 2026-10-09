@@ -210,6 +210,7 @@ def train(
     lr: float | None = None,
     free_residual: float | None = None,
     pres: tuple | None = None,
+    factor: str = "",
 ) -> Path:
     """Train ``run`` (a ``reseed.config.Run``: its name, path and rows) on
     ``data`` into ``out``. ``context`` is the warm-from / frozen-context /
@@ -236,7 +237,11 @@ def train(
     it; the EN captions are TE-cached in ``out/te_en``.
     A data dir built with windows (``build.json`` ``glyph_route``) is
     trained routed: ``ANIMA_VOCAB_GLYPH_ROUTE=1`` is set in-process before
-    the TE cache (whose key carries it)."""
+    the TE cache (whose key carries it); ``glyph_route_ko`` likewise sets
+    ``ANIMA_VOCAB_GLYPH_ROUTE_KO=1`` (Hangul pieces per syllable).
+    ``factor = "jamo"`` (``jamo.Jamo``): the trained rows are Hangul
+    syllables composed from jamo factors each step; ``trained.pt`` carries
+    every syllable's composed row and the factors (``jamo``)."""
     from common.models import checkpoints, dit_forward, gen_args
     from library.anima.ext_vocab import pack_digest
     from library.anima.vocab_pack import attached_pack_rows, strategy_pack
@@ -251,11 +256,15 @@ def train(
     out.mkdir(parents=True, exist_ok=True)
     recs, ev, vocabs = load_items(data)
     bj = data / "build.json"
-    route = bj.exists() and json.loads(bj.read_text(encoding="utf-8")).get(
-        "glyph_route", False
+    build = json.loads(bj.read_text(encoding="utf-8")) if bj.exists() else {}
+    route, route_ko = (
+        build.get("glyph_route", False),
+        build.get("glyph_route_ko", False),
     )
     if route:
         os.environ["ANIMA_VOCAB_GLYPH_ROUTE"] = "1"
+    if route_ko:
+        os.environ["ANIMA_VOCAB_GLYPH_ROUTE_KO"] = "1"
     args = gen_args(512, GEN_STEPS, GEN_CFG, out)
     device = get_generation_settings(args).device
 
@@ -295,6 +304,8 @@ def train(
             print(f"pres: EN captions hold frozen rows {sorted(en_ext)}", flush=True)
     if route:
         p.record["glyph_route"] = True
+    if route_ko:
+        p.record["glyph_route_ko"] = True
     lr = lr or LR
     if lr != LR:
         p.record.update(lr_rows=lr, lr_override=True)
@@ -345,6 +356,35 @@ def train(
         context=ctx,
     )
     assert rows.n_rows == len(p.idx), (rows.n_rows, len(p.idx))
+    jamo = None
+    if factor:
+        from .jamo import Jamo, syllable_rows
+
+        assert factor == "jamo", factor
+        assert not row_step_scale, "factor rows take no row_lr"
+        assert cold, "factor rows start cold (Δ 0)"
+        syl_ext = syllable_rows()
+        ext_syl = {e: s for s, e in syl_ext.items()}
+        jamo = Jamo(rows, {e: ext_syl[e] for e in p.idx}, lr)
+        p.record.update(factor=factor, factor_vectors=Jamo.N_VECTORS)
+        print(
+            f"factor: {len(p.idx)} syllable rows composed from {Jamo.N_VECTORS} "
+            f"jamo vectors (b + C[cho, cls] + V + F); trained.pt carries all "
+            f"{len(syl_ext)} syllables' rows",
+            flush=True,
+        )
+
+    def save(path: Path, at: int | None) -> None:
+        if jamo is None:
+            torch.save(rows.state_dict(record, at), path)
+            return
+        with torch.no_grad():
+            jamo.apply()
+        sd = rows.state_dict(record, at)
+        n = jamo.merge_all(sd, syl_ext)
+        sd["jamo"] = {**jamo.state(), "composed_added": n}
+        torch.save(sd, path)
+
     if pres:
         from .loss import PRES_DIL
 
@@ -420,6 +460,8 @@ def train(
     last = min(steps, max_steps or steps)
     t0 = time.time()
     for step in range(1, last + 1):
+        if jamo is not None:
+            jamo.apply()
         idx = batcher.next(step)
         latents = lat[idx].to(device)
         noise = torch.randn_like(latents)
@@ -453,6 +495,8 @@ def train(
             x_s = ((1.0 - sv) * latents.float() + sv * eps).to(torch.bfloat16)
             # grad mode on (a no_grad forward guards its own compiled graphs):
             # detach is the stop-gradient; the EN caption holds no ext id
+            if jamo is not None:
+                jamo.apply()  # the data term's backward freed the composition
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 teach = dit_forward(
                     anima, x_s, s, cache, [en_of[i] for i in idx], device
@@ -481,13 +525,11 @@ def train(
             log.append(rec)
             print(json.dumps(rec), flush=True)
         if SAVE_EVERY and step % SAVE_EVERY == 0 and step < steps:
-            torch.save(rows.state_dict(record, step), out / "trained_partial.tmp")
+            save(out / "trained_partial.tmp", step)
             os.replace(out / "trained_partial.tmp", out / "trained_partial.pt")
             (out / "train_log.json").write_text(json.dumps(log, indent=1))
     # a stopped-early loop marks its rows with the step it reached
-    torch.save(
-        rows.state_dict(record, last if last < steps else None), out / "trained.pt"
-    )
+    save(out / "trained.pt", last if last < steps else None)
     (out / "train_log.json").write_text(json.dumps(log, indent=1))
     (out / "train_record.json").write_text(
         json.dumps(record, ensure_ascii=False, indent=1)

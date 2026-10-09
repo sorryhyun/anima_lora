@@ -46,7 +46,11 @@ rows instead of its own row — a piece (こんにちは) becomes five single id
 a space-prefixed glyph (`` の``) its glyph's row. The Qwen text is untouched.
 A token with a glyph that has no single row keeps its own row. It is the
 cjk_anima_scale line's P2 (``project/finished/cjk_anima_scale/retrain_experiments.md`` § 2).
-Off, the encoder is bit-identical to before.
+Off, the encoder is bit-identical to before. Hangul tokens (회사, `` 하세요``)
+split the same way only under their own key, ``mapping["glyph_route_ko"]``
+(or ``ANIMA_VOCAB_GLYPH_ROUTE_KO``): a token holding a Hangul syllable becomes
+its syllables' single rows (``project/cjk_anima_reseed/proposal_jamo.md`` § 3).
+Either key works without the other; a pack with neither encodes as before.
 
 Encode fold (``mapping["fold"]``: one char → one char): applied to the text
 before routing and encoding, on the T5 side only (the Qwen text is the text
@@ -110,6 +114,12 @@ def is_ja_glyph(ch: str) -> bool:
         or 0x4E00 <= o <= 0x9FFF
         or 0x3400 <= o <= 0x4DBF
     )
+
+
+def is_hangul_syllable(ch: str) -> bool:
+    """A precomposed Hangul syllable (U+AC00–U+D7A3): what KO glyph routing
+    splits a token into."""
+    return 0xAC00 <= ord(ch) <= 0xD7A3
 
 
 def is_hangul_char(ch: str) -> bool:
@@ -386,6 +396,7 @@ _DIGEST_KEYS = (
     "route",
     "iso",
     "glyph_route",
+    "glyph_route_ko",
     "fold",
     "dots",
 )
@@ -734,8 +745,9 @@ class HybridT5Encoder:
     # With ``route.quotes`` set, routed spans inside a quote pair land on
     # ``T5_TABLE_SIZE + iso_offset + row`` instead of the trained row.
     iso_offset: int | None = None
-    # Per-glyph routing: Qwen id of a JA token → its glyphs' single rows
-    # (a glyph's row: the token that is exactly it, else its char row).
+    # Per-glyph routing: Qwen id of a JA (or, with ``glyph_route_ko``, a
+    # Hangul) token → its glyphs' single rows (a glyph's row: the token that
+    # is exactly it, else its char row).
     # Tokens absent keep their own row; ``None`` when off.
     glyph_split: dict[int, list[int]] | None = None
     # Encode fold (``mapping["fold"]``) as a ``str.translate`` table; ``None``
@@ -747,10 +759,16 @@ class HybridT5Encoder:
 
     @classmethod
     def from_mapping(
-        cls, t5_tok, qwen_tok, mapping: dict, glyph_route: bool | None = None
+        cls,
+        t5_tok,
+        qwen_tok,
+        mapping: dict,
+        glyph_route: bool | None = None,
+        glyph_route_ko: bool | None = None,
     ) -> "HybridT5Encoder":
-        """``glyph_route``: per-glyph routing; ``None`` = the pack's
-        ``mapping["glyph_route"]`` (off when absent)."""
+        """``glyph_route`` / ``glyph_route_ko``: per-glyph routing of JA /
+        Hangul tokens; ``None`` = the pack's ``mapping`` key of that name
+        (off when absent)."""
         qwen_map = {int(k): v for k, v in mapping["qwen"].items()}
         # The symbol block (if the pack has one) is a plain extension of the
         # same two lookups — kept separate in the json only so the CJK row
@@ -769,8 +787,10 @@ class HybridT5Encoder:
                 char_map.setdefault(core, qwen_map[qid])
         if glyph_route is None:
             glyph_route = bool(mapping.get("glyph_route"))
+        if glyph_route_ko is None:
+            glyph_route_ko = bool(mapping.get("glyph_route_ko"))
         glyph_split = None
-        if glyph_route:
+        if glyph_route or glyph_route_ko:
             # A glyph's single row is the token that is exactly it (not the
             # space-prefixed `` の``, which char_map may hold), else its char row.
             glyph = {
@@ -781,7 +801,10 @@ class HybridT5Encoder:
             for qid, s in surf.items():
                 core = "".join(s.split())
                 rows = [glyph.get(c) for c in core]
-                if any(is_ja_glyph(c) for c in core) and None not in rows:
+                split = (glyph_route and any(is_ja_glyph(c) for c in core)) or (
+                    glyph_route_ko and any(is_hangul_syllable(c) for c in core)
+                )
+                if split and None not in rows:
                     if rows != [qwen_map[qid]]:
                         glyph_split[qid] = rows
         fold = mapping.get("fold") or None

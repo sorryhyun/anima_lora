@@ -18,8 +18,9 @@
                                   # scale-line run's merged rows
                                   # (``output/cjk_anima_scale/<it>/trained.pt``), every
                                   # row free (``sent_kanji``)
-    data_from = "sent_kanji"      # optional, ``rows_from`` runs: that reseed run's
-                                  # ``data/`` instead of a build
+    data_from = "sent_kanji"      # optional: that reseed run's ``data/`` instead of a
+                                  # build (``sent_kanji_pres``; ``jamo_f64`` on
+                                  # ``jamo_j64``'s)
     lr = 2e-4                     # optional: the rows' peak lr (``trainer.LR``,
                                   # 1e-3, without it)
     pack = "punct"                # optional: the base pack (``PACKS``) instead of the raw
@@ -56,6 +57,11 @@
                                   # (``korean text`` / ``Korean text reads as``), and a
                                   # tier with nothing to draw for the rows (no window)
                                   # drops, the others scaled back to the table's Σ
+    factor = "jamo"               # optional: the rows (every one a Hangul syllable)
+                                  # composed each step from jamo factors, b + C[cho,
+                                  # cls] + V[jung] + F[jong] (``jamo.Jamo``,
+                                  # proposal_jamo § 2); cold, no ``row_lr``;
+                                  # ``trained.pt`` holds every syllable's composed row
 
 Its outputs land in ``output/cjk_anima_reseed/<run>/`` (``data/``,
 ``trained.pt``).
@@ -86,12 +92,14 @@ KEYS = (
     "focus",
     "held",
     "lang",
+    "factor",
 )
 # a run's ``seed``: the rows every other row rides frozen at
 SEEDS = ("0930", "1008")
 # seed_1008: transplant.py write (_archive/plan.md § 3)
 SEED_1008 = OUT / "seed_1008" / "trained.pt"
 LANGS = ("korean", "chinese")
+FACTORS = ("jamo",)
 # the base packs a run may sit on (``punct_pack.py``): the raw pack's rows and
 # ids plus encode rules / appended rows, so the seed rows ride on it unchanged
 PACKS = {"punct": "models/vocab_packs/anima_cjk_vocab_pack_punct"}
@@ -130,6 +138,7 @@ class Run:
     focus_kanji: tuple = ()  # (line, window): the most kanji a focus item may hold
     held: str = ""  # strings held out beside ``read`` (a path, $MANGA109S expanded)
     lang: dict | None = None  # glyph → language for the rows not lettered as Japanese
+    factor: str = ""  # the rows composed from factors (``FACTORS``); "" = free rows
 
     def phrase_file(self) -> str:
         """The dialogue line file, ``LINES[lines]``."""
@@ -236,7 +245,6 @@ def load(run: str) -> Run:
         assert abs(sum(shares.values()) - 100) < 1e-9, f"{path}: shares sum to 100"
     data_from = raw.get("data_from", "")
     if data_from:
-        assert rows_from, f"{path}: data_from is a rows_from run's"
         assert "/" not in data_from, f"{path}: data_from names a reseed run"
     lr = float(raw.get("lr", 0.0))
     assert 0 <= lr < 1e-2, f"{path}: lr {lr}"
@@ -287,6 +295,16 @@ def load(run: str) -> Run:
         assert set(lang) <= trained, (
             f"{path}: lang glyphs outside rows {sorted(set(lang) - trained)}"
         )
+    factor = raw.get("factor", "")
+    if factor:
+        from .jamo import is_syllable
+
+        assert factor in FACTORS, f"{path}: factor is one of {FACTORS}"
+        assert seed and not row_lr, f"{path}: factor rows are cold, without row_lr"
+        bad = [g for r in raw["rows"] for g in r.split(":", 1)[1] if not is_syllable(g)]
+        assert not bad and all(r.startswith("chars:") for r in raw["rows"]), (
+            f"{path}: factor rows are chars: specs of Hangul syllables — not {bad[:10]}"
+        )
     return Run(
         name=path.stem,
         path=path,
@@ -307,4 +325,5 @@ def load(run: str) -> Run:
         focus_kanji=focus_kanji,
         held=held,
         lang=lang,
+        factor=factor,
     )

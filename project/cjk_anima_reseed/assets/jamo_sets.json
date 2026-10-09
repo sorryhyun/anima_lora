@@ -1,0 +1,162 @@
+{
+ "J64": "이는력활로용함됐의것붙쉽맺벧챦최퓨권싶폐넣꽃짧묶흙퀭쟬닮뚫돐싻템봤숍뺏녘뤽값규죄뭐앉꽤좋쏟띄쫓깥훑읊캬톺떫눼출크뿐퇴쭤씌퓌뾔밖잖",
+ "J96": "이는력활로용함됐의것붙쉽맺벧챦최퓨권싶폐넣꽃짧묶흙퀭쟬닮뚫돐싻템봤숍뺏녘뤽값규죄뭐앉꽤좋쏟띄쫓깥훑읊캬톺떫눼출크뿐퇴쭤씌퓌뾔밖잖례찾삶닭몫끓핥곬를수트드면터보된과원주화능째까품평씀키축없큼때쪽",
+ "J128": "이는력활로용함됐의것붙쉽맺벧챦최퓨권싶폐넣꽃짧묶흙퀭쟬닮뚫돐싻템봤숍뺏녘뤽값규죄뭐앉꽤좋쏟띄쫓깥훑읊캬톺떫눼출크뿐퇴쭤씌퓌뾔밖잖례찾삶닭몫끓핥곬를수트드면터보된과원주화능째까품평씀키축없큼때쪽빠씨뜻취봐좌쉬뢰뭔뇌뛰쁜뀌쾌튀얘얹엌쫙쏴퐈다하을에가기지한스자서",
+ "H": "리정시어인일성으은해고습요제우장세번소입호할도음그체록라문아래열",
+ "report": {
+  "J64": {
+   "n": 64,
+   "cells": 112,
+   "cells_twice": 49,
+   "one_token": 64,
+   "layouts": {
+    "C": 12,
+    "CF": 7,
+    "H": 4,
+    "HF": 17,
+    "V": 3,
+    "VF": 21
+   }
+  },
+  "J96": {
+   "n": 96,
+   "cells": 112,
+   "cells_twice": 89,
+   "one_token": 96,
+   "layouts": {
+    "C": 14,
+    "CF": 9,
+    "H": 9,
+    "HF": 27,
+    "V": 9,
+    "VF": 28
+   }
+  },
+  "J128": {
+   "n": 128,
+   "cells": 112,
+   "cells_twice": 110,
+   "one_token": 128,
+   "layouts": {
+    "C": 26,
+    "CF": 11,
+    "H": 10,
+    "HF": 30,
+    "V": 20,
+    "VF": 31
+   }
+  },
+  "H": {
+   "n": 32,
+   "cells": 35,
+   "cells_twice": 25,
+   "one_token": 32,
+   "layouts": {
+    "H": 8,
+    "HF": 5,
+    "V": 10,
+    "VF": 9
+   }
+  }
+ },
+ "fonts": [
+  {
+   "face": "NotoSerifCJK-Black.ttc",
+   "ksx1001": 2350,
+   "all": 11172,
+   "sets_missing": "",
+   "sets_empty": ""
+  },
+  {
+   "face": "NotoSerifCJK-Bold.ttc",
+   "ksx1001": 2350,
+   "all": 11172,
+   "sets_missing": "",
+   "sets_empty": ""
+  },
+  {
+   "face": "NotoSerifCJK-ExtraLight.ttc",
+   "ksx1001": 2350,
+   "all": 11172,
+   "sets_missing": "",
+   "sets_empty": ""
+  },
+  {
+   "face": "NotoSerifCJK-Light.ttc",
+   "ksx1001": 2350,
+   "all": 11172,
+   "sets_missing": "",
+   "sets_empty": ""
+  },
+  {
+   "face": "NotoSerifCJK-Medium.ttc",
+   "ksx1001": 2350,
+   "all": 11172,
+   "sets_missing": "",
+   "sets_empty": ""
+  },
+  {
+   "face": "NotoSerifCJK-Regular.ttc",
+   "ksx1001": 2350,
+   "all": 11172,
+   "sets_missing": "",
+   "sets_empty": ""
+  },
+  {
+   "face": "NotoSerifCJK-SemiBold.ttc",
+   "ksx1001": 2350,
+   "all": 11172,
+   "sets_missing": "",
+   "sets_empty": ""
+  },
+  {
+   "face": "BlackHanSans-Regular.ttf",
+   "ksx1001": 2350,
+   "all": 2581,
+   "sets_missing": "",
+   "sets_empty": ""
+  },
+  {
+   "face": "DoHyeon-Regular.ttf",
+   "ksx1001": 2350,
+   "all": 2437,
+   "sets_missing": "",
+   "sets_empty": ""
+  },
+  {
+   "face": "Jua-Regular.ttf",
+   "ksx1001": 2350,
+   "all": 2367,
+   "sets_missing": "",
+   "sets_empty": ""
+  },
+  {
+   "face": "LXGWWenKai-Regular.ttf",
+   "ksx1001": 2350,
+   "all": 11172,
+   "sets_missing": "",
+   "sets_empty": ""
+  },
+  {
+   "face": "NanumGothic-Regular.ttf",
+   "ksx1001": 2350,
+   "all": 11172,
+   "sets_missing": "",
+   "sets_empty": ""
+  },
+  {
+   "face": "NanumMyeongjo-Regular.ttf",
+   "ksx1001": 2350,
+   "all": 11172,
+   "sets_missing": "",
+   "sets_empty": ""
+  },
+  {
+   "face": "NanumPenScript-Regular.ttf",
+   "ksx1001": 2350,
+   "all": 11172,
+   "sets_missing": "",
+   "sets_empty": ""
+  }
+ ]
+}

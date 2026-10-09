@@ -211,6 +211,8 @@ def _te_key(uniq) -> str:
     # per-glyph routing changes the T5 ids (retrain_experiments § 2); keyed only when set
     if route := os.environ.get("ANIMA_VOCAB_GLYPH_ROUTE", "").strip():
         h.update(f"glyph_route={route}".encode())
+    if route := os.environ.get("ANIMA_VOCAB_GLYPH_ROUTE_KO", "").strip():
+        h.update(f"glyph_route_ko={route}".encode())
     return h.hexdigest()[:16]
 
 

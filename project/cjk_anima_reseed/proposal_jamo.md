@@ -1,8 +1,23 @@
 # proposal_jamo — Hangul rows from jamo identity, then warm (2026-10-09)
 
-**Status: proposal.** Runs after `proposal_refactor.md` lands (the trainer,
-renderers and KO fonts live in this line since its step 3: `reseed/trainer.py`,
-`src/`, `assets/fonts/kozh/`). Nothing here is built yet.
+**Status: prerequisites built (10-09), bar the floor (3, needs the user's
+OK); phase 1 not run.** What landed, by § 3 item:
+
+| # | what | where |
+|---|---|---|
+| 1 | `mapping["glyph_route_ko"]` / `ANIMA_VOCAB_GLYPH_ROUTE_KO`: a token holding a Hangul syllable → its syllables' single rows (961 tokens split on the punct pack: 755 multi-syllable, the rest space-prefixed singles); in the digest; JA / EN encode as without it. The trainer sets the env from `build.json` `glyph_route_ko` (no builder writes it yet: phase 2's) | `library/anima/ext_vocab.py`, `vocab_pack.py`, `tests/test_ext_vocab_glyph_route.py`; `src/common/models._te_key` |
+| 2 | `vl` on font-drawn lone syllables, the crop path: **44 % exact** (7 680 reads: 160 syllables × 8 faces × 32 / 64 / 128 px × bubble / flat; 9.7 min). J64's syllables 31 %, H 62 %; Nanum Pen Script 14 %, the rest 41–56 %; px and frame barely matter. A lone glyph has no script cue and `vl` reads it as the script it resembles: 트 → E, 그 → ユ, 는 → ل / と, 으 → و; 114 of 160 syllables under 75 %. **A per-syllable `vl` miss on a lone render is not evidence**; § 4's reads need another reader (open, § 7) | `probes/ko_reader_cal.py` → `results/20261009-1527-ko-reader-cal/` |
+| 4 | fonts checked: § 3 item 4 corrected below | `probes/jamo_sets.py`, `assets/fonts/FONTS.md` |
+| 5 | `factor = "jamo"`: `reseed/jamo.py` (`Jamo`); 50-step smoke ran (0.5 min; `trained.pt` 14 083 rows = the run's + seed's + 11 108 composed syllables, `jamo` = the factors) | `reseed/trainer.py`, `tests/test_jamo.py` |
+| 6 | `configs/jamo_j64.toml` (data built: 6 401 items, Hangul only, bubbleN dropped), `configs/jamo_f64.toml` (`data_from = "jamo_j64"`; `data_from` no longer needs `rows_from`) | `reseed/config.py` |
+| sets | J64 ⊂ J96 ⊂ J128 and H (§ 4 corrected below) | `assets/jamo_sets.json` |
+
+Two things the smoke showed: a composed row moves ~2× a free row's pace
+(Δ 9.2 at step 50 against kozh16's 4.5; four Adam-stepped vectors sum into
+it) — a factor lr below the free rows' is an open knob (§ 7); and with 106
+vectors over 64 rows the fit is underdetermined, so J64 can hold each
+trained syllable exactly and its H transfer rests on the implicit bias and
+the norm pull (J96 / J128 move the ratio).
 
 ## 1. Why
 
@@ -88,9 +103,13 @@ part of a glyph's identity that the jamo do not explain.
 3. **Floor.** No Hangul string has a cached floor. The floor is the pack's
    untrained Hangul rows on seed_1008, rendered on the read sets. **Adding
    this floor key needs the user's OK.**
-4. **Fonts.** The six KO faces in `kozh/` (Nanum Gothic, Do Hyeon, Jua,
-   Black Han Sans, Nanum Pen Script, Nanum Myeongjo) cover KS X 1001 only,
-   so trained and held sets stay inside it. LXGW WenKai covers all 11 172.
+4. **Fonts** (checked 10-09, `probes/jamo_sets.py`). Every Hangul face
+   covers KS X 1001; Do Hyeon, Jua and Black Han Sans stop there (+87 / +17
+   / +231 syllables), Nanum Gothic / Myeongjo / Pen Script, LXGW WenKai and
+   Noto Serif CJK cover all 11 172. Noto Serif CJK is in `find_fonts()`
+   (seven weights), so a lang run draws ~half its Hangul in it (kozh16 did
+   too). Trained and held sets stay inside KS X 1001; no set glyph maps to an
+   empty outline.
 5. **Trainer mode** (`reseed/trainer.py`): `factor = "jamo"`. The optimizer holds the factor tensors
    (and in phase 2 the residuals). Each step composes Δ for the live
    Hangul rows into `rows.delta.raw` before the forward, so gradients reach
@@ -103,14 +122,19 @@ part of a glyph's identity that the jamo do not explain.
 
 ## 4. Phase 1 — jamo identity (cold, micro arms)
 
-**Sets** (`probes/jamo_sets.py`, CPU). Every jamo occurs in KS X 1001
-(19 / 21 / 28; layouts VF 1 069, HF 585, CF 347, V 149, C 109, H 91). Cells
-to cover: 19 initials × 3 classes + 21 vowels + 28 finals + 6 layouts =
-112. A coverage-greedy pick covers all 112 cells with 96 syllables and 109
-with 64 (checked 10-09). A pure-coverage pick lands on rare syllables
-(찮 쉽 쮸 흗 …); break ties by frequency once a KO frequency list exists.
-**Held-out H**: 32 common syllables (가 나 다 … 요 했 습 …) whose cells
-the trained set covers. No arm trains H.
+**Sets** (`probes/jamo_sets.py`, CPU → `assets/jamo_sets.json`). Every
+jamo occurs in KS X 1001 (19 / 21 / 28; layouts VF 1 069, HF 585, CF 347,
+V 149, C 109, H 91). Cells to cover: 19 initials × 3 classes + 21 vowels +
+28 finals + 6 layouts = 112. One greedy order: most new cells, then most
+cells seen once so far, then frequency (proxy: Qwen3's BPE merge order — a
+one-token syllable ranks by its id, 이 0th, 다 1st; no KO frequency list
+here). 62 syllables cover all 112; the prefixes: **J64** all 112, 49 twice;
+**J96** 89 twice; **J128** 110 twice (the most: ㅉ + compound vowel and the
+final ㄿ occur in one KS X 1001 syllable each). All 128 are one-token
+syllables, but coverage pulls in rare ones (챦 벧 퓨 쟬 퀭 뾔 톺 떫).
+**Held-out H**: the 32 most frequent outside J128 whose cells J64 covers
+(리 정 시 어 인 일 성 … 습 요 …; simple vowels only, V / H layouts). No arm
+trains H.
 
 **Arms**, ~25 min each (3 600 steps):
 - **J64**: `factor = "jamo"`, the 64 trained syllables.
@@ -141,8 +165,8 @@ identity drops, phase 2's residual is the fix, so go on. If H does not
 transfer, stop here: either per-syllable cold on a frequency-ranked subset,
 or a glyph-image init in place of jamo.
 
-Scaling, if G1 passes: J96 (all 112 cells), then J256 on a frequency
-ranking, before fixing phase 2's factor table.
+Scaling, if G1 passes: J96 / J128 (cells twice), then J256 on a frequency
+ranking with H kept out, before fixing phase 2's factor table.
 
 ## 5. Phase 2 — warm on Korean dialogue
 
@@ -188,5 +212,9 @@ ranking, before fixing phase 2's factor table.
 - Compound jamo as sums of simple ones, or one vector each (§ 2).
 - Phase 2: factors trainable at a lower lr, or frozen.
 - KO corpus and its licence.
-- `vl`'s Korean accuracy on these renders (prerequisite 2).
+- The KO reader (prerequisite 2: stock `vl` reads 44 % of font-drawn lone
+  syllables). Candidates: forced choice — `vl`'s teacher-forced log-prob of
+  each KS X 1001 syllable on the crop, the read its argmax (no script
+  ambiguity; recalibrate on the same 7 680 images); the syllable drawn and
+  read inside a fixed Korean carrier word; or reads by eye, as kozh16.
 - The floor key (prerequisite 3).

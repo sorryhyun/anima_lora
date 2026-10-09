@@ -178,10 +178,15 @@ class VocabPack:
         return {CACHE_META_NAME: self.name, CACHE_META_SHA: self.digest}
 
     def build_encoder(self, t5_tokenizer, qwen3_tokenizer) -> HybridT5Encoder:
-        """``ANIMA_VOCAB_GLYPH_ROUTE`` (``1`` / ``0``) overrides the pack's
-        ``glyph_route`` (per-glyph routing, :mod:`~library.anima.ext_vocab`)."""
+        """``ANIMA_VOCAB_GLYPH_ROUTE`` / ``ANIMA_VOCAB_GLYPH_ROUTE_KO`` (``1`` /
+        ``0``) override the pack's ``glyph_route`` / ``glyph_route_ko``
+        (per-glyph routing, :mod:`~library.anima.ext_vocab`)."""
         return HybridT5Encoder.from_mapping(
-            t5_tokenizer, qwen3_tokenizer, self.mapping, glyph_route_override()
+            t5_tokenizer,
+            qwen3_tokenizer,
+            self.mapping,
+            glyph_route_override(),
+            glyph_route_override("ANIMA_VOCAB_GLYPH_ROUTE_KO"),
         )
 
     @classmethod
@@ -200,9 +205,9 @@ class VocabPack:
         return cls(prefix=prefix, table=table, mapping=mapping, digest=digest)
 
 
-def glyph_route_override() -> Optional[bool]:
-    """``ANIMA_VOCAB_GLYPH_ROUTE``: ``1`` on, ``0`` off, unset = the pack's."""
-    v = os.environ.get("ANIMA_VOCAB_GLYPH_ROUTE", "").strip()
+def glyph_route_override(var: str = "ANIMA_VOCAB_GLYPH_ROUTE") -> Optional[bool]:
+    """``var``: ``1`` on, ``0`` off, unset = the pack's."""
+    v = os.environ.get(var, "").strip()
     return None if not v else v not in ("0", "false", "False")
 
 
