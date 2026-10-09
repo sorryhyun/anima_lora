@@ -83,6 +83,19 @@ ratio_ema_rate = 0.0
 bin_num = 10
 ratio_normalization = true
 
+# DMAD (docs/proposal/turbo_dmad.md § Phase 0, off by default): a disc replaces
+# the DM term and the fake critic. Needs cdm.weight = 0 and gan.weight_gen = 0.
+# [dmad]
+# enabled = true
+# lambda_t = 1.0
+# lambda_r = 1.0
+# signal_rms = 0.18
+# lr = 4e-5
+# grad_clip = 0
+# window = 4
+# disc_warmup_steps = 50
+# feature_block_idx = -1
+
 [softrank]
 weight = 0.0
 k = 2

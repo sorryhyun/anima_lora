@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import math
 import random
 
 import pytest
@@ -17,7 +18,7 @@ import torch
 
 from bench.turbo.dmad_probe_read import read
 from scripts.distill_turbo.config import build_argparser, resolve_config
-from scripts.distill_turbo.dmad_probe import alignment_stats
+from scripts.distill_turbo.dmad_probe import alignment_stats, pair_stats
 
 
 def _resolve(cli: list[str] | None = None, cfg: dict | None = None):
@@ -109,6 +110,28 @@ def test_r1_and_cold_start():
     assert c.dmad_probe_warm_start is False
     with pytest.raises(ValueError, match="r1_weight"):
         _resolve(cfg={"dmad_probe": {"enabled": True, "r1_weight": -0.5}})
+
+
+def test_window_and_scalar_logit():
+    on = {"dmad_probe": {"enabled": True}}
+    c = _resolve(cfg=on)
+    assert c.dmad_probe_window == 1 and c.dmad_probe_scalar_logit is False
+    c = _resolve(["--dmad_probe_window", "4", "--dmad_probe_scalar_logit"], cfg=on)
+    assert c.dmad_probe_window == 4 and c.dmad_probe_scalar_logit is True
+    with pytest.raises(ValueError, match="window"):
+        _resolve(["--dmad_probe_window", "0"], cfg=on)
+
+
+def test_pair_stats_separates_offset_from_texture():
+    g = torch.Generator().manual_seed(0)
+    x_s = torch.randn(1, 16, 32, 32, generator=g)
+    shifted = pair_stats(x_s + 0.5, x_s)
+    assert shifted["dc_share"] == pytest.approx(1.0, abs=1e-5)
+    assert shifted["ch_std_logratio"] == pytest.approx(0.0, abs=1e-5)
+    noisy = pair_stats(x_s + torch.randn(1, 16, 32, 32, generator=g), x_s)
+    assert noisy["dc_share"] < 0.01
+    scaled = pair_stats(2.0 * x_s, x_s)
+    assert scaled["ch_std_logratio"] == pytest.approx(math.log(2.0), abs=1e-5)
 
 
 def test_refuses_plain_dmd():

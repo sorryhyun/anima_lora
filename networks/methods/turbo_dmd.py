@@ -334,6 +334,7 @@ class TurboDMDNetwork:
         gan_feature_indices: set[int] | None = None,
         gan_disc_hidden: int | None = None,
         gan_disc_head: Literal["pooled", "token"] = "pooled",
+        build_fake: bool = True,
     ) -> None:
         self.unet = unet
         self.student_rank = int(student_rank)
@@ -370,6 +371,11 @@ class TurboDMDNetwork:
         self.fake_tau_banks = int(fake_tau_banks)
         if self.fake_tau_banks not in (1, 2):
             raise ValueError(f"fake_tau_banks={self.fake_tau_banks}: expected 1 or 2.")
+        # build_fake=False (turbo DMAD, where a discriminator replaces the
+        # critic): no fake stack exists — fake_banks is empty and the "fake"
+        # view raises. make_aux_stack still builds fake-shaped stacks.
+        if not build_fake and self.fake_tau_banks != 1:
+            raise ValueError("build_fake=False requires fake_tau_banks=1.")
         # SmoothQuant-style per-input-channel rebalance absorbed into each
         # lora_down (bit-equivalent at init, merges out cleanly). 0.0 = off,
         # 0.5 = sqrt-balance. Applied to both student and fake — conditions the
@@ -505,7 +511,8 @@ class TurboDMDNetwork:
             )
 
         self._make_fake = _make_fake  # make_aux_stack builds fake-shaped stacks
-        self.fake: LoRANetwork = _make_fake()  # bank 0 (banks=2: the low-τ bank)
+        # bank 0 (banks=2: the low-τ bank)
+        self.fake: LoRANetwork | None = _make_fake() if build_fake else None
         self.fake_hi: LoRANetwork | None = (
             _make_fake() if self.fake_tau_banks == 2 else None
         )
@@ -525,12 +532,13 @@ class TurboDMDNetwork:
                 apply_text_encoder=False,
                 apply_unet=True,
             )
-        self.fake.apply_to(
-            text_encoders=[],
-            unet=unet,
-            apply_text_encoder=False,
-            apply_unet=True,
-        )
+        if self.fake is not None:
+            self.fake.apply_to(
+                text_encoders=[],
+                unet=unet,
+                apply_text_encoder=False,
+                apply_unet=True,
+            )
         if self.fake_hi is not None:
             self.fake_hi.apply_to(
                 text_encoders=[],
@@ -539,13 +547,19 @@ class TurboDMDNetwork:
                 apply_unet=True,
             )
 
+        if self.fake is None:
+            fake_desc = "no fake stack"
+        else:
+            banks = (
+                f", x{self.fake_tau_banks} τ-banks" if self.fake_tau_banks > 1 else ""
+            )
+            fake_desc = (
+                f"fake rank={self.fake_rank} "
+                f"({len(self.fake.unet_loras)} modules{banks})"
+            )
         logger.info(
             f"TurboDMDNetwork: student rank={self.student_rank} "
-            f"({len(self.student.unet_loras)} modules), "
-            f"fake rank={self.fake_rank} "
-            f"({len(self.fake.unet_loras)} modules"
-            + (f", x{self.fake_tau_banks} τ-banks" if self.fake_tau_banks > 1 else "")
-            + ")"
+            f"({len(self.student.unet_loras)} modules), {fake_desc}"
         )
 
         # GOTCHA: LoRAModule defaults enabled=True, and set_view short-circuits
@@ -555,7 +569,8 @@ class TurboDMDNetwork:
         self.student.set_enabled(False)
         if self.student_div is not None:
             self.student_div.set_enabled(False)
-        self.fake.set_enabled(False)
+        if self.fake is not None:
+            self.fake.set_enabled(False)
         if self.fake_hi is not None:
             self.fake_hi.set_enabled(False)
         self._view: View = "teacher"
@@ -640,6 +655,8 @@ class TurboDMDNetwork:
             raise ValueError(
                 f"Unknown view {view!r}; expected teacher/student/fake"
             ) from e
+        if want_fake and self.fake is None:
+            raise RuntimeError("set_view('fake'): built with build_fake=False.")
         cur_student, cur_fake = self._VIEW_FLAGS[self._view]
         if want_student != cur_student:
             # Both dual pools toggle together — "student" view is always A+B
@@ -658,7 +675,10 @@ class TurboDMDNetwork:
 
     @property
     def fake_banks(self) -> list[LoRANetwork]:
-        """The fake stacks in bank order (bank 0 = low-τ; length 1 unless split)."""
+        """The fake stacks in bank order (bank 0 = low-τ; length 1 unless split,
+        0 under build_fake=False)."""
+        if self.fake is None:
+            return []
         return [self.fake] if self.fake_hi is None else [self.fake, self.fake_hi]
 
     @property

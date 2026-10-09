@@ -151,14 +151,18 @@ def teacher_anchor(
 
 @dataclass
 class DmdResult:
-    """Outputs of the DMD-on-x_θ surrogate (all fp32 / detached as noted)."""
+    """Outputs of the DMD-on-x_θ surrogate (all fp32 / detached as noted).
+
+    Under DMAD (:func:`dmad_signal`) there is no score difference:
+    ``delta_dm`` / ``v_real_cond_dm`` / ``v_fake_cond_dm`` are None.
+    """
 
     grad_signal: torch.Tensor  # detached DMD signal (pre f-distill reweight)
-    delta_dm: torch.Tensor  # v_real − v_fake (metrics)
+    delta_dm: torch.Tensor | None  # v_real − v_fake (metrics)
     tau_dm: torch.Tensor  # DMD query τ (reused by the GAN gen renoise)
     tau_dm_e: torch.Tensor  # τ broadcast to (B,1,1,1)
-    v_real_cond_dm: torch.Tensor
-    v_fake_cond_dm: torch.Tensor
+    v_real_cond_dm: torch.Tensor | None
+    v_fake_cond_dm: torch.Tensor | None
     eps_dm: torch.Tensor  # DMD renoise ε (reused by the GAN gen renoise)
 
 
@@ -218,6 +222,43 @@ def dmd_surrogate(
         tau_dm_e=tau_dm_e,
         v_real_cond_dm=v_real_cond_dm,
         v_fake_cond_dm=v_fake_cond_dm,
+        eps_dm=eps_dm,
+    )
+
+
+def dmad_signal(
+    ctx: RunContext,
+    cfg,
+    x_pred: torch.Tensor,
+    crossattn_emb: torch.Tensor,
+    B: int,
+) -> DmdResult:
+    """DMAD's student signal in the DM slot (docs/proposal/turbo_dmad.md § Phase 0).
+
+    Draws (τ, ε) as the DM query does (uniform τ; the critic's bank routing
+    does not exist here), then ``ctx.dmad.student_signal`` returns
+    ``∂(−λ_T h_T − λ_R h_R)/∂x_pred``, RMS-normalized per sample, as
+    ``grad_signal``. Records the raw-gradient stats into ``ctx.dmad_metrics``.
+    """
+    tau_dm = sample_t(
+        B,
+        distribution="uniform",
+        sigmoid_scale=cfg.sigmoid_scale,
+        device=ctx.device,
+        dtype=ctx.dtype,
+    )
+    eps_dm = torch.randn_like(x_pred)
+    grad_signal, stats = ctx.dmad.student_signal(
+        ctx, x_pred, tau_dm, eps_dm, crossattn_emb
+    )
+    ctx.dmad_metrics.add(stats)
+    return DmdResult(
+        grad_signal=grad_signal,
+        delta_dm=None,
+        tau_dm=tau_dm,
+        tau_dm_e=tau_dm.view(B, 1, 1, 1).float(),
+        v_real_cond_dm=None,
+        v_fake_cond_dm=None,
         eps_dm=eps_dm,
     )
 

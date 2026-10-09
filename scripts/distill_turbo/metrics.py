@@ -88,19 +88,23 @@ class TurboMetrics:
         *,
         fake_loss_mean_t: torch.Tensor,
         grad_signal: torch.Tensor,
-        delta_dm: torch.Tensor,
+        delta_dm: torch.Tensor | None,
         x_pred: torch.Tensor,
         v_student: torch.Tensor,
         tau_dm_e: torch.Tensor,
-        v_real_cond_dm: torch.Tensor,
-        v_fake_cond_dm: torch.Tensor,
+        v_real_cond_dm: torch.Tensor | None,
+        v_fake_cond_dm: torch.Tensor | None,
     ) -> None:
+        """``delta_dm`` / ``v_*_cond_dm`` are None under DMAD (no score
+        difference): the DM-tracking scalars then stay at 0."""
         eps_r = 1e-8
         self._acc.add("fake", fake_loss_mean_t.float())
         self._acc.add("grad", grad_signal.float().pow(2).mean().sqrt())
-        self._acc.add("dm", delta_dm.float().pow(2).mean().sqrt())
         self._acc.add("xpred", x_pred.detach().float().std())
         self._acc.add("v_student", v_student.detach().float().pow(2).mean().sqrt())
+        if delta_dm is None:
+            return
+        self._acc.add("dm", delta_dm.float().pow(2).mean().sqrt())
         vr = v_real_cond_dm.float()
         vf = v_fake_cond_dm.float()
         dm_w = (tau_dm_e * delta_dm.float()).pow(2).mean().sqrt()
@@ -163,6 +167,53 @@ class TurboMetrics:
 
     def reset(self) -> None:
         self._acc.reset()
+
+
+class DmadMetrics:
+    """DMAD scalars (``dmad.py``): GPU-side sums + host-side per-key counts.
+
+    A key is only touched when its head / branch exists (``*_r`` needs head R,
+    ``gap_r`` and ``cos_tr`` need both heads), so each is meaned over the steps
+    that produced it and a missing key is simply not written.
+
+    * ``bce_{t,r}`` / ``margin_{t,r}`` / ``rank_acc_{t,r}`` — the newest pair,
+      scored before the disc trains on it (rank acc = h_target > h_student).
+    * ``gap_r`` — h_R(real) − h_R(teacher sample), the gap-reweighting signal.
+    * ``loss`` / ``grad_norm`` — window-mean disc loss, pre-clip grad norm.
+    * ``g_{t,r}_rms`` / ``cos_tr`` — each head's raw student-signal gradient
+      before the RMS normalization, and their cosine.
+    """
+
+    def __init__(self, device: torch.device):
+        self._acc = ScalarAccumulator(device)
+        self._n: dict[str, int] = {}
+
+    @torch.no_grad()
+    def add(self, stats: dict[str, torch.Tensor]) -> None:
+        for k, v in stats.items():
+            self._acc.add(k, v.detach().float())
+            self._n[k] = self._n.get(k, 0) + 1
+
+    def flush(self) -> dict[str, float]:
+        """One CUDA sync; per-key means, then reset."""
+        sums = self._acc.flush() if self._n else {}
+        out = {k: sums[k] / n for k, n in self._n.items()}
+        self._acc.reset()
+        self._n.clear()
+        return out
+
+    @staticmethod
+    def write(writer, m: dict[str, float], step: int, *, prefix: str = "dmad/") -> None:
+        if writer is None:
+            return
+        for k, v in m.items():
+            writer.add_scalar(f"{prefix}{k}", v, step)
+
+    @staticmethod
+    def line(m: dict[str, float]) -> str:
+        """Short ``key=value`` summary for console / tqdm."""
+        keys = ("rank_acc_t", "rank_acc_r", "margin_t", "margin_r", "loss", "grad_norm")
+        return " ".join(f"{k}={m[k]:.3f}" for k in keys if k in m)
 
 
 class TauBinCriticLoss:

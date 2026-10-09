@@ -40,7 +40,9 @@ from library.training.progress import run_scope
 
 from .config import build_argparser, load_turbo_config, resolve_config
 from .diversity import run_diversity_validation
+from .dmad import finish_anchor_rollout
 from .metrics import (
+    DmadMetrics,
     console_step_line,
     tqdm_postfix,
     tqdm_rate,
@@ -52,6 +54,7 @@ from .setup import RunContext, build_run
 from .softrank import caption_rank_loss
 from .steps import (
     cdm_off_trajectory_loss,
+    dmad_signal,
     dmd_surrogate,
     fake_update,
     gan_generator_term,
@@ -101,6 +104,8 @@ def run_loop(ctx: RunContext, cfg):
     writer = ctx.writer
     progress_sink = ctx.progress_sink
     metrics = ctx.metrics
+    dmad = ctx.dmad  # None unless [dmad] (Phase 0: disc replaces DM + critic)
+    dmad_metrics = ctx.dmad_metrics
 
     progress = tqdm(
         range(ctx.start_step, cfg.iterations),
@@ -344,7 +349,11 @@ def run_loop(ctx: RunContext, cfg):
                     v_student = v_g
 
             # --- DMD on x_θ (steps 2..N), against teacher + fake ---
-            dmd = dmd_surrogate(ctx, cfg, x_pred, crossattn_emb, c_null, B)
+            # Under DMAD the disc's normalized input gradient fills the same slot.
+            if dmad is not None:
+                dmd = dmad_signal(ctx, cfg, x_pred, crossattn_emb, B)
+            else:
+                dmd = dmd_surrogate(ctx, cfg, x_pred, crossattn_emb, c_null, B)
             grad_signal = dmd.grad_signal
             delta_dm = dmd.delta_dm
             tau_dm = dmd.tau_dm
@@ -422,9 +431,28 @@ def run_loop(ctx: RunContext, cfg):
             # --- fake (critic) + discriminator update against x_pred.detach() ---
             # Runs the fake + disc optimizer/scheduler steps in-place; returns the
             # mean fake / disc loss over the inner steps for logging.
-            fake_loss_mean_t, gan_disc_mean_t, gan_margin_t, gan_spread_t = fake_update(
-                ctx, cfg, x_pred, latents, crossattn_emb, B
-            )
+            # Under DMAD: the disc update instead, on (teacher sample, x_pred, real
+            # latents) — the teacher sample finishes this step's anchor rollout.
+            if dmad is not None:
+                x_teacher = None
+                if dmad.head_t is not None:
+                    x_teacher = finish_anchor_rollout(
+                        ctx, cfg, eps, v_target, crossattn_emb, c_null, B
+                    )
+                dmad_metrics.add(
+                    dmad.update(
+                        ctx,
+                        x_teacher=x_teacher,
+                        x_student=x_pred,
+                        x_real=latents,
+                        crossattn_emb=crossattn_emb,
+                    )
+                )
+                fake_loss_mean_t = torch.zeros((), device=device)
+            else:
+                fake_loss_mean_t, gan_disc_mean_t, gan_margin_t, gan_spread_t = (
+                    fake_update(ctx, cfg, x_pred, latents, crossattn_emb, B)
+                )
 
             # --- DMAD Phase −1 probe (measure-only, own RNG; never reaches the
             # student or critic) ---
@@ -467,14 +495,16 @@ def run_loop(ctx: RunContext, cfg):
 
             if (step + 1) % cfg.log_interval == 0:
                 m = metrics.flush(cfg.log_interval)
+                dm_m = dmad_metrics.flush() if dmad_metrics is not None else {}
                 if writer is not None:
                     write_scalars(writer, m, step + 1)
                     writer.add_scalar(
                         "train/student_lr", student_sched.get_last_lr()[0], step + 1
                     )
-                    writer.add_scalar(
-                        "train/fake_lr", fake_sched.get_last_lr()[0], step + 1
-                    )
+                    if fake_sched is not None:
+                        writer.add_scalar(
+                            "train/fake_lr", fake_sched.get_last_lr()[0], step + 1
+                        )
                     if disc_sched is not None:
                         writer.add_scalar(
                             "train/disc_lr", disc_sched.get_last_lr()[0], step + 1
@@ -484,22 +514,33 @@ def run_loop(ctx: RunContext, cfg):
                         # (deterministic from step; makes the delay/warmup window
                         # legible next to the margin/spread curves).
                         writer.add_scalar("train/gan_weight_gen_eff", gan_w, step + 1)
+                    DmadMetrics.write(writer, dm_m, step + 1)
                 # log_interval cadence (per-step would add CUDA syncs).
-                progress.set_postfix(**tqdm_postfix(m))
+                postfix = tqdm_postfix(m)
+                for k in ("rank_acc_t", "rank_acc_r"):
+                    if k in dm_m:
+                        postfix[k.replace("rank_acc_", "racc_")] = f"{dm_m[k]:.2f}"
+                progress.set_postfix(**postfix)
                 if ctx.console_steps:
-                    logger.info(
-                        console_step_line(
-                            m,
-                            step=step + 1,
-                            total=cfg.iterations,
-                            rate=tqdm_rate(progress),
-                        )
+                    line = console_step_line(
+                        m,
+                        step=step + 1,
+                        total=cfg.iterations,
+                        rate=tqdm_rate(progress),
                     )
+                    if dm_m:
+                        line += f" | dmad {DmadMetrics.line(dm_m)}"
+                    logger.info(line)
                 if progress_sink is not None:
                     # FlushedMetrics → dict of scalar floats; sink emits a `step`
                     # event (no _cmmd key, so it's not misread as a val pass).
                     progress_sink.log(
-                        dataclasses.asdict(m), global_step=step + 1, epoch=0
+                        {
+                            **dataclasses.asdict(m),
+                            **{f"dmad_{k}": v for k, v in dm_m.items()},
+                        },
+                        global_step=step + 1,
+                        epoch=0,
                     )
                 metrics.reset()
                 for tp in ctx.tau_profiles:
@@ -558,7 +599,22 @@ def run_loop(ctx: RunContext, cfg):
                     "ss_turbo_gan_warmup_steps": str(cfg.gan_warmup_steps),
                     "ss_turbo_cdm_weight": str(cfg.cdm_weight),
                     "ss_turbo_f_div": cfg.f_div,
+                    "ss_turbo_dmad": "1" if cfg.dmad else "0",
                 }
+                if cfg.dmad:
+                    for key in (
+                        "lambda_t",
+                        "lambda_r",
+                        "signal_rms",
+                        "lr",
+                        "grad_clip",
+                        "window",
+                        "disc_warmup_steps",
+                        "feature_block_idx",
+                    ):
+                        metadata[f"ss_turbo_dmad_{key}"] = str(
+                            getattr(cfg, f"dmad_{key}")
+                        )
                 if cfg.train_adaln:
                     # The student targets adaln_up_{branch}; save_student ships the
                     # adaln keys in the ComfyUI layout (adaln.md).
@@ -601,7 +657,8 @@ def run_loop(ctx: RunContext, cfg):
                 # disc, three optimizers, three schedulers, f-distill EMA, RNG). Rolling
                 # single file, written atomically — see resume.py. Skipped on the final
                 # step: the run is complete, and the bundle is ~10× a student ckpt.
-                if not is_final:
+                # Skipped under DMAD: no critic, and the DMAD disc is not in it.
+                if not is_final and dmad is None:
                     rp = resume_path_for(cfg.output_dir, cfg.output_name)
                     save_resume_state(
                         rp,

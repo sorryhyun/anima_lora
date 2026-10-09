@@ -14,7 +14,10 @@ fake) + head T over one block's tokens. The critic is not touched. Per step:
    ``teacher_anchor_steps`` CFG Euler steps) from the same ε, so the teacher and
    student samples share their noise.
 2. Disc update: renoise teacher and ``x_pred`` at one (τ, ε), balanced BCE —
-   ``disc_steps`` times on the same pair, a fresh (τ, ε) each.
+   ``disc_steps`` times, a fresh (τ, ε) each. With ``window`` > 1 each update
+   accumulates over the newest ``window`` pairs (a replay window: the student is
+   batch 1, so this is the disc's batch). ``scalar_logit`` averages the token
+   head's logits into one logit per sample before the BCE.
 3. Probe: ``g_T = ∂(−h_T)/∂x_pred`` at the DMD's own (τ_dm, ε_dm), compared with
    ``grad_signal`` (pre f-distill reweight) — cosine and agree-energy, each with a
    permutation null on the same tensors. With ``ceiling``, a second DM estimate
@@ -33,7 +36,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from contextlib import contextmanager
+from collections import deque
 from pathlib import Path
 
 import torch
@@ -45,6 +48,13 @@ from networks.methods.turbo_dmd import (
     warm_start_plain_lora,
 )
 
+from .dmad import (
+    disc_view,
+    finish_anchor_rollout,
+    gen_rand_tau,
+    gen_randn_like,
+    resolve_tap_block,
+)
 from .primitives import renoise
 from .steps import selective_block_grad_ckpt
 
@@ -53,6 +63,30 @@ logger = logging.getLogger(__name__)
 
 def _acc(h_t: torch.Tensor, h_s: torch.Tensor) -> float:
     return float(0.5 * ((h_t > 0).float().mean() + (h_s < 0).float().mean()))
+
+
+def pair_stats(x_t: torch.Tensor, x_s: torch.Tensor) -> dict[str, float]:
+    """How the teacher and student samples differ, before any renoise.
+
+    ``dc_share`` = share of ``‖x_t − x_s‖²`` carried by the per-channel spatial
+    means — a global colour / brightness offset survives heavy noise, so a disc
+    can separate on it at high τ. ``ch_std_logratio`` = RMS over channels of
+    ``log(std_t / std_s)`` (contrast / saturation).
+    """
+    x_t = x_t.detach().float()
+    x_s = x_s.detach().float()
+    sp = tuple(range(2, x_t.ndim))
+    diff = x_t - x_s
+    dc = diff.mean(dim=sp, keepdim=True)
+    total = diff.pow(2).mean()
+    log_ratio = torch.log(
+        x_t.std(dim=sp).clamp_min(1e-6) / x_s.std(dim=sp).clamp_min(1e-6)
+    )
+    return {
+        "pair_rms": float(total.sqrt()),
+        "dc_share": float(dc.pow(2).mean() / total.clamp_min(1e-30)),
+        "ch_std_logratio": float(log_ratio.pow(2).mean().sqrt()),
+    }
 
 
 def alignment_stats(
@@ -96,14 +130,9 @@ class DmadProbe:
         self.stack.to(device=device, dtype=dtype)
         if cfg.dmad_probe_warm_start and cfg.fake_init_weights:
             warm_start_plain_lora(self.stack, cfg.fake_init_weights, "dmad_disc")
-        bidx = cfg.dmad_probe_feature_block_idx
-        if bidx < 0:
-            bidx = model.num_blocks // 2
-        if not 0 <= bidx < model.num_blocks:
-            raise ValueError(
-                f"dmad_probe.feature_block_idx resolved to {bidx}, out of range "
-                f"[0, {model.num_blocks})"
-            )
+        bidx = resolve_tap_block(
+            model, cfg.dmad_probe_feature_block_idx, "dmad_probe.feature_block_idx"
+        )
         self.tap = bidx
         self.head = TeacherFeatureDiscriminator(
             inner_dim=model.model_channels,
@@ -120,6 +149,7 @@ class DmadProbe:
         )
         self.gen = torch.Generator(device=device)
         self.gen.manual_seed(int(cfg.seed) + 7919)
+        self.pairs: deque = deque(maxlen=cfg.dmad_probe_window)
         self.out_path: Path | None = None
         self.collapsed = False
         self._flat_run = 0
@@ -130,6 +160,7 @@ class DmadProbe:
         logger.info(
             f"DMAD probe: disc stack + head T on block {bidx} "
             f"({cfg.dmad_probe_head}), {n:,} params, lr={cfg.dmad_probe_lr}, "
+            f"window={cfg.dmad_probe_window}, scalar_logit={cfg.dmad_probe_scalar_logit}, "
             f"warm_start={cfg.dmad_probe_warm_start and bool(cfg.fake_init_weights)}"
         )
 
@@ -137,15 +168,8 @@ class DmadProbe:
         self.out_path = Path(log_dir) / "dmad_probe.jsonl"
         logger.info(f"DMAD probe rows → {self.out_path}")
 
-    @contextmanager
     def _disc_view(self, turbo):
-        """Teacher view + the disc stack on: the base DiT as the disc backbone."""
-        turbo.set_view("teacher")
-        self.stack.set_enabled(True)
-        try:
-            yield
-        finally:
-            self.stack.set_enabled(False)
+        return disc_view(turbo, self.stack)
 
     def _h(self, ctx, x_t, tau, c, *, no_grad: bool) -> torch.Tensor:
         feats = ctx.forward(
@@ -157,7 +181,10 @@ class DmadProbe:
             return_block_features={self.tap},
             return_features_early=True,
         )
-        return self.head([feats[self.tap]])  # (B, 1) pooled | (B, N) token
+        h = self.head([feats[self.tap]])  # (B, 1) pooled | (B, N) token
+        if self.cfg.dmad_probe_scalar_logit:
+            h = h.mean(dim=1, keepdim=True)
+        return h
 
     def _lap(self) -> float:
         """Seconds since the previous lap (synced, so GPU work is counted)."""
@@ -168,22 +195,10 @@ class DmadProbe:
         return dt
 
     def _randn_like(self, x: torch.Tensor) -> torch.Tensor:
-        return torch.randn(x.shape, generator=self.gen, device=x.device, dtype=x.dtype)
+        return gen_randn_like(self.gen, x)
 
     def _rand_tau(self, B: int) -> torch.Tensor:
-        u = torch.rand(B, generator=self.gen, device=self.device)
-        return u.to(self.dtype)
-
-    @torch.no_grad()
-    def _teacher_sample(self, ctx, cfg, eps, v_target, c, c_null, B):
-        """Finish the anchor rollout: z_tk → σ=0 on the teacher's CFG grid."""
-        z = (eps.float() - (1.0 - ctx.t_k_anchor) * v_target).to(self.dtype)
-        sig = ctx.teacher_anchor_sigmas
-        for i in range(cfg.k_anchor, cfg.teacher_anchor_steps):
-            t_b = torch.full((B,), sig[i], device=self.device, dtype=self.dtype)
-            v = ctx.teacher_cfg_velocity(z, t_b, c, c_null)
-            z = (z.float() - (sig[i] - sig[i + 1]) * v).to(self.dtype)
-        return z
+        return gen_rand_tau(self.gen, B, self.device, self.dtype)
 
     def step(
         self,
@@ -204,7 +219,7 @@ class DmadProbe:
         B = x_pred.shape[0]
         self._lap()
         x_s = x_pred.detach().to(self.dtype)
-        x_t = self._teacher_sample(ctx, cfg, eps, v_target, crossattn_emb, c_null, B)
+        x_t = finish_anchor_rollout(ctx, cfg, eps, v_target, crossattn_emb, c_null, B)
 
         t_teacher = self._lap()
 
@@ -212,45 +227,57 @@ class DmadProbe:
         # The two branches backward one at a time under block checkpointing (a
         # batched pair OOM'd on the larger buckets at 16 GB). The input must
         # require grad: the unsloth checkpoint drops the LoRA param grads when
-        # every input is detached (see cdm_off_trajectory_loss). With
-        # disc_steps > 1 the pair is reused at a fresh (τ, ε) per update; the
-        # row's bce / margin / acc are the first update's, scored before the
-        # disc has trained on this pair.
+        # every input is detached (see cdm_off_trajectory_loss). Each update
+        # accumulates over the replay window (newest pair first, each at its own
+        # (τ, ε), losses scaled 1/n), then takes one optimizer step. The row's
+        # bce / margin / acc are the newest pair's on the first update, scored
+        # before the disc has trained on it; acc_window covers every pair in that
+        # update (older ones already trained on).
         #
         # Approximate R1 (APT, as gan.r1_weight): w · MSE(h(x_t), h(x_t + αδ)) on
         # the teacher branch. The backbone trains here, so both logits carry grad;
         # the branches can't share a graph, so the MSE gradient is split exactly:
         # the clean branch takes w·MSE(h, h_a.detach()), the perturbed branch
         # w·MSE(h_a, h.detach()) — h_a's value comes from one no-grad forward.
+        self.pairs.appendleft((x_t, x_s, crossattn_emb.detach()))
+        n_pairs = len(self.pairs)
         clip = cfg.dmad_probe_grad_clip if cfg.dmad_probe_grad_clip > 0 else None
         r1_w = cfg.dmad_probe_r1_weight
         r1 = None
         for k in range(cfg.dmad_probe_disc_steps):
-            tau_d = self._rand_tau(B)
-            eps_d = self._randn_like(x_s)
-            with self._disc_view(turbo), selective_block_grad_ckpt(ctx.model):
-                x_rt = renoise(x_t, tau_d, eps_d)
-                if r1_w > 0:
-                    x_ra = x_rt + cfg.dmad_probe_r1_alpha * self._randn_like(x_rt)
-                    h_a0 = self._h(ctx, x_ra, tau_d, crossattn_emb, no_grad=True)
-                h = self._h(
-                    ctx, x_rt.requires_grad_(), tau_d, crossattn_emb, no_grad=False
-                )
-                loss_t = F.softplus(-h).mean()
-                if r1_w > 0:
-                    loss_t = loss_t + r1_w * F.mse_loss(h, h_a0.detach())
-                loss_t.backward()
-                h_tk = h.detach()
-                if r1_w > 0:
-                    h_a = self._h(
-                        ctx, x_ra.requires_grad_(), tau_d, crossattn_emb, no_grad=False
-                    )
-                    (r1_w * F.mse_loss(h_a, h_tk)).backward()
-                    r1_k = float(F.mse_loss(h_a.detach(), h_tk))
-                x_rs = renoise(x_s, tau_d, eps_d).requires_grad_()
-                h = self._h(ctx, x_rs, tau_d, crossattn_emb, no_grad=False)
-                F.softplus(h).mean().backward()
-                h_parts = [h_tk, h.detach()]
+            accs = []
+            for j, (xt_j, xs_j, c_j) in enumerate(self.pairs):
+                tau_d = self._rand_tau(B)
+                eps_d = self._randn_like(xs_j)
+                with self._disc_view(turbo), selective_block_grad_ckpt(ctx.model):
+                    x_rt = renoise(xt_j, tau_d, eps_d)
+                    if r1_w > 0:
+                        x_ra = x_rt + cfg.dmad_probe_r1_alpha * self._randn_like(x_rt)
+                        h_a0 = self._h(ctx, x_ra, tau_d, c_j, no_grad=True)
+                    h = self._h(ctx, x_rt.requires_grad_(), tau_d, c_j, no_grad=False)
+                    loss_t = F.softplus(-h).mean()
+                    if r1_w > 0:
+                        loss_t = loss_t + r1_w * F.mse_loss(h, h_a0.detach())
+                    (loss_t / n_pairs).backward()
+                    h_tk = h.detach()
+                    if r1_w > 0:
+                        h_a = self._h(
+                            ctx, x_ra.requires_grad_(), tau_d, c_j, no_grad=False
+                        )
+                        (r1_w * F.mse_loss(h_a, h_tk) / n_pairs).backward()
+                        r1_k = float(F.mse_loss(h_a.detach(), h_tk))
+                    x_rs = renoise(xs_j, tau_d, eps_d).requires_grad_()
+                    h = self._h(ctx, x_rs, tau_d, c_j, no_grad=False)
+                    (F.softplus(h).mean() / n_pairs).backward()
+                    h_parts = [h_tk, h.detach()]
+                accs.append(_acc(*h_parts))
+                if k == 0 and j == 0:
+                    h_t, h_s = h_parts
+                    tau_d0 = tau_d
+                    if r1_w > 0:
+                        r1 = r1_k
+                if j == 0:
+                    h_t_last, h_s_last = h_parts
             gn = torch.nn.utils.clip_grad_norm_(
                 self.stack_params + list(self.head.parameters()),
                 max_norm=clip if clip is not None else float("inf"),
@@ -258,12 +285,8 @@ class DmadProbe:
             self.opt.step()
             self.opt.zero_grad(set_to_none=True)
             if k == 0:
-                h_t, h_s = h_parts
-                tau_d0 = tau_d
                 disc_grad_norm = gn
-                if r1_w > 0:
-                    r1 = r1_k
-            h_t_last, h_s_last = h_parts
+                acc_window = sum(accs) / len(accs)
         loss = gan_loss_discriminator(h_t, h_s)
         t_disc = self._lap()
 
@@ -300,6 +323,8 @@ class DmadProbe:
             "margin": float(h_t.detach().mean() - h_s.detach().mean()),
             "acc": _acc(h_t, h_s),
             "acc_last": _acc(h_t_last, h_s_last),
+            "acc_window": acc_window,
+            "n_pairs": n_pairs,
             "r1": r1,
             "h_probe": float(h_probe.detach().mean()),
             "g_t_rms": float(g_t.float().pow(2).mean().sqrt()),
@@ -310,6 +335,7 @@ class DmadProbe:
                 else 0.0
             ),
             **stats,
+            **pair_stats(x_t, x_s),
         }
 
         if cfg.dmad_probe_ceiling:

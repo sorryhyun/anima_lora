@@ -78,6 +78,9 @@ def read(rows: list[dict]) -> dict:
             "acc",
             "margin",
             "bce",
+            "acc_window",
+            "dc_share",
+            "ch_std_logratio",
         )
     }
     d_cos = _mean_sem([r["cos"] - r["cos_null"] for r in window])
@@ -187,6 +190,12 @@ def main() -> None:
     print(
         f"disc acc {_fmt(a['acc'])}  margin {_fmt(a['margin'])}  bce {_fmt(a['bce'])}"
     )
+    if not math.isnan(a["acc_window"][0]):
+        print(
+            f"  acc over the replay window {_fmt(a['acc_window'])}  "
+            f"teacher−student: dc_share {_fmt(a['dc_share'])}  "
+            f"ch_std_logratio {_fmt(a['ch_std_logratio'])}"
+        )
     print(f"cos(g_T, DM)      {_fmt(a['cos'])}   null {_fmt(a['cos_null'])}")
     print(f"  paired Δ        {_fmt(res['d_cos'])}")
     print(f"agree-energy      {_fmt(a['agree'])}   null {_fmt(a['agree_null'])}")
