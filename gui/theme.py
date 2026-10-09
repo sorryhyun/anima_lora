@@ -43,7 +43,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QProxyStyle, QStyle
 
-from gui._paths import DEFAULT_THEME, get_setting, set_setting
+from gui.core.paths import DEFAULT_THEME, get_setting, set_setting
 
 # Bundled UI font (Pretendard, OFL) — the design system's primary sans. Three
 # static weights live next to this module; see gui/fonts/README.md.

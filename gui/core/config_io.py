@@ -13,7 +13,7 @@ from pathlib import Path
 
 import toml
 
-from gui._paths import (
+from gui.core.paths import (
     CONFIGS_DIR,
     CUSTOM_DIR,
     CUSTOM_VARIANTS_DIR,
@@ -22,7 +22,7 @@ from gui._paths import (
     ROOT,
     _METHOD_ORDER,
 )
-from gui.validation import (
+from gui.core.validation import (
     _base_folder_repeats,
     _base_validation_enabled,
     _base_validation_split_num,

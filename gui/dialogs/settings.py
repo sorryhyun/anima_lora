@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 
 from gui import get_setting, set_setting
 from gui import theme as gui_theme
-from gui._paths import ROOT
+from gui.core.paths import ROOT
 from gui.i18n import available_languages, current_language, save_language, t
 
 LANG_NAMES = {"en": "English", "ko": "한국어", "cn": "简体中文", "ja": "日本語"}
@@ -205,7 +205,7 @@ class SettingsDialog(QDialog):
             os.environ.pop("ANIMA_DEBUG", None)
 
     def _copy_debug_report(self) -> None:
-        from gui.debug_report import build_debug_report
+        from gui.core.debug_report import build_debug_report
 
         try:
             report = build_debug_report()

@@ -248,7 +248,7 @@ only through a caption stage run, and a dataset that skips every caption stage c
 empty prompts.
 
 **The trainer GUI does not curate.** Its **anime_tools** tab (`gui/tabs/anime_tools_tab.py`
-over `gui/anime_tools_panel.py`) embeds the package's web panel on this checkout; the panel
+over `gui/core/anime_tools_panel.py`) embeds the package's web panel on this checkout; the panel
 curates in `workspace/` and its Export — seeded to `sidecars_only` — publishes captions /
 masks / the revised master, never images. Order: Export → `make preprocess`.
 

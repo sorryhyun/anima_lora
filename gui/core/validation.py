@@ -3,7 +3,7 @@
 Pure-dict logic (no Qt, no other ``gui`` imports): reads virtual-key state
 (``use_valid`` / ``validation_split_num`` / ``repeat_by_folder_name``) out of
 a TOML ``[[datasets]]`` block and writes the user's choice back into a variant
-dict. Consumed by ``gui.config_io`` (merge-time injection of the virtual keys)
+dict. Consumed by ``gui.core.config_io`` (merge-time injection of the virtual keys)
 and the Config tab (apply on save).
 """
 

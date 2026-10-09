@@ -41,11 +41,11 @@ from PySide6.QtWidgets import (
 from tomlkit.items import Table, Whitespace
 
 from gui import ROOT, CONFIGS_DIR, LazyTabMixin, _read, _widget
-from gui import daemon as gui_daemon
+from gui.jobs import daemon as gui_daemon
 from gui.explanations import method_overview
 from gui.i18n import t
-from gui._job_mixin import DaemonJobMixin
-from gui.progress import TqdmProgressTracker, make_progress_bar
+from gui.jobs.mixin import DaemonJobMixin
+from gui.jobs.progress import TqdmProgressTracker, make_progress_bar
 from gui.theme import rich_text_pt as _explain_pt, tok
 from gui.widgets import (
     DirtyTrackingMixin,
@@ -384,14 +384,7 @@ class _DistillConfigTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidge
         self._log(line + "\n")
 
     def _on_job_finished(self, state: str | None) -> None:
-        self._job_timer.stop()
-        self._drain_job_stdout()
-        if self._stdout_buf:
-            self._log(self._stdout_buf + "\n")
-        self._stdout_buf = ""
-        job_id = self._job_id
-        self._job_id = None
-        self._stdout_tailer.reset()
+        job_id = self._end_job_watch()
         self.progress.setVisible(False)
         self._log("\n" + gui_daemon.format_finish_banner(job_id, state) + "\n")
         self._restore_idle()

@@ -44,12 +44,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from gui import daemon as gui_daemon
+from gui.jobs import daemon as gui_daemon
 from gui import i18n as main_i18n
 from gui import theme as gui_theme
-from gui._job_mixin import DaemonJobMixin
-from gui._paths import ROOT, get_setting, set_setting
-from gui.progress import TQDM_RE
+from gui.jobs.mixin import DaemonJobMixin
+from gui.core.paths import ROOT, get_setting, set_setting
+from gui.jobs.progress import TQDM_RE
 from gui.qwen21.strings import FIELDS_CN, FIELDS_CN_GENERATE, LANGUAGES, UI
 from gui.widgets import action_button, apply_variant
 from library.env import resolve_under_home
@@ -631,11 +631,9 @@ class QwenWindow(DaemonJobMixin, QMainWindow):
         self._stop_job()
 
     def _on_job_finished(self, state: str) -> None:
-        self._job_timer.stop()
-        self._drain_job_stdout()
+        self._end_job_watch()
         label = self._job_label or "job"
         self.log.appendPlainText(tr("finished", label=label, state=state))
-        self._job_id = None
         self._progress_tracker.reset()
         self._set_busy(False)
         self.status.setText(tr("finished", label=label, state=state))

@@ -452,7 +452,7 @@ try:
 except ImportError:  # pragma: no cover — headless import of the Qt-free half
     StageFormSection = None  # type: ignore[assignment]
 else:
-    from gui._paths import ROOT
+    from gui.core.paths import ROOT
     from gui.i18n import t
     from gui.tabs.preprocess._section import (
         KnobSection,

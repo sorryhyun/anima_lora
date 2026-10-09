@@ -8,18 +8,16 @@ Two independent pieces a host tab can use à la carte:
   config-style tabs (ConfigTab's four launch sites, EasyControl, distill,
   preprocess).
 * the stdout *observer* (:meth:`_init_job_observer`, :meth:`_watch_job`,
-  :meth:`_drain_job_stdout`, :meth:`_poll_job`, :meth:`_stop_job`) — a 400 ms
-  ``QTimer`` that tails a job's ``stdout.log``, routes tqdm lines to the
-  progress bar and the rest to the log, and calls ``_on_job_finished(state)``
-  once the daemon reports a terminal state. Used by the standalone observers
-  (distill, preprocess). ConfigTab keeps its own richer observer (progress.jsonl
-  + live sample preview + preprocess→train chain) and only borrows
-  :meth:`_submit_job`.
+  :meth:`_poll_job`, :meth:`_end_job_watch`, :meth:`_stop_job`) — a 400 ms
+  ``QTimer`` that tails a job's ``stdout.log``, routes progress lines to the bar
+  and the rest to the log, and calls ``_on_job_finished(state)`` once the daemon
+  reports a terminal state. Used by every daemon-observing tab.
 
-Host requirements for the observer: a ``self.log`` widget, a
-``self._progress_tracker``, and an ``_on_job_finished(state)`` method. The log
-sink for stdout lines is :meth:`_emit_log_line` (default ``appendPlainText``);
-override it when the host writes the log differently (distill uses its ``_log``).
+Host requirements for the observer: a ``self._progress_tracker`` and an
+``_on_job_finished(state)`` method, which starts with :meth:`_end_job_watch`.
+Hooks a host may override: :meth:`_emit_log_line` (log sink, default
+``self.log.appendPlainText``), :meth:`_route_progress_line` (default: tqdm lines
+drive the bar) and :meth:`_on_job_tick` (per-poll extras, default none).
 """
 
 from __future__ import annotations
@@ -29,8 +27,9 @@ import re
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QMessageBox
 
-from gui import daemon as gui_daemon
+from gui.jobs import daemon as gui_daemon
 from gui.i18n import t
+from gui.jobs.progress import TQDM_RE
 
 
 class DaemonJobMixin:
@@ -87,30 +86,51 @@ class DaemonJobMixin:
         own newline; override when the host's log sink differs."""
         self.log.appendPlainText(line)
 
-    def _drain_job_stdout(self) -> None:
-        """Append new stdout.log lines to the log (carriage-return aware).
+    def _route_progress_line(self, line: str) -> bool:
+        """True when ``line`` went to the progress bar and stays out of the log.
+        Default: tqdm lines drive the bar (preprocess/mask and the distill
+        scripts emit no progress.jsonl, so tqdm is the only progress signal)."""
+        return self._progress_tracker.feed(line)
 
-        tqdm progress lines drive the bar via ``_progress_tracker.feed`` instead
-        of spamming the log (preprocess/mask + the distill scripts emit no
-        progress.jsonl, so tqdm is the only progress signal)."""
-        chunk = self._stdout_tailer.read_new()
-        if not chunk:
-            return
-        parts = re.split(r"[\r\n]", self._stdout_buf + chunk)
-        self._stdout_buf = parts[-1]  # incomplete trailing fragment
+    def _consume_lines(self, buf: str) -> str:
+        """Route every complete line in ``buf`` (``\r`` or ``\n`` terminated) and
+        return the incomplete trailing fragment for the next call."""
+        parts = re.split(r"[\r\n]", buf)
         for line in parts[:-1]:
-            if self._progress_tracker.feed(line):
+            if self._route_progress_line(line):
                 continue
             if line:
                 self._emit_log_line(line)
+        return parts[-1]
+
+    def _drain_job_stdout(self) -> None:
+        chunk = self._stdout_tailer.read_new()
+        if chunk:
+            self._stdout_buf = self._consume_lines(self._stdout_buf + chunk)
+
+    def _on_job_tick(self) -> None:
+        """Per-poll hook, run before the stdout drain."""
 
     def _poll_job(self) -> None:
         if not self._job_id:
             return
+        self._on_job_tick()
         self._drain_job_stdout()
         state = gui_daemon.read_job_state(self._job_id)
         if gui_daemon.is_terminal(state):
             self._on_job_finished(state)
+
+    def _end_job_watch(self) -> str | None:
+        """Stop polling, flush the last stdout (a trailing tqdm fragment is
+        dropped — the bar already showed it) and detach. Returns the job id."""
+        self._job_timer.stop()
+        self._drain_job_stdout()
+        tail, self._stdout_buf = self._stdout_buf, ""
+        if tail and not TQDM_RE.search(tail):
+            self._emit_log_line(tail)
+        job_id, self._job_id = self._job_id, None
+        self._stdout_tailer.reset()
+        return job_id
 
     def _stop_job(self) -> None:
         """Abort the attached daemon job; the poll loop then observes the

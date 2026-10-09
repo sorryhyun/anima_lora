@@ -24,7 +24,7 @@ The contract is pinned byte-for-byte by
 ``preprocess.toml`` but is *elided* against the hardcoded default — are
 reproduced on purpose; collapsing the policies is a separate decision.
 
-Like ``gui/config_io.py`` this module must stay importable without PySide6
+Like ``gui/core/config_io.py`` this module must stay importable without PySide6
 and without torch (``tests/test_gui_launch_speed.py``).
 """
 
@@ -103,7 +103,7 @@ KNOBS: tuple[Knob, ...] = (
         persist="if_changed_resolved",
         empty_fallback="resolved",
     ),
-    # Layered on top at submit time by ConfigTab._gui_scoped_paths; the field
+    # Layered on top at submit time by gui.core.submit.scoped_paths; the field
     # edits the *unscoped* root. Normalised (and validated) by the tab before save.
     Knob("path_scope", "image", "str", "", persist="if_truthy"),
     Knob(

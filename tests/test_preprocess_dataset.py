@@ -184,7 +184,7 @@ def test_partition_cached(tmp_path: Path) -> None:
 def test_count_preprocess_caches_path_pattern_filters_nested_caches(
     tmp_path: Path,
 ) -> None:
-    from gui.dialogs import count_preprocess_caches
+    from gui.dialogs.confirm import count_preprocess_caches
 
     (tmp_path / "charA").mkdir()
     (tmp_path / "charB").mkdir()
@@ -292,7 +292,7 @@ def test_confirm_train_using_cache_requires_pe_when_repa_on(tmp_path: Path) -> N
     Only the ``None`` branches are exercised — they return before any
     QMessageBox is constructed, so no QApplication is needed.
     """
-    from gui.dialogs import confirm_train_using_cache
+    from gui.dialogs.confirm import confirm_train_using_cache
 
     # Core caches present, PE absent.
     (tmp_path / "cover_1024x1024_anima.npz").touch()
@@ -303,7 +303,7 @@ def test_confirm_train_using_cache_requires_pe_when_repa_on(tmp_path: Path) -> N
 
 
 def test_confirm_train_using_cache_empty_returns_none(tmp_path: Path) -> None:
-    from gui.dialogs import confirm_train_using_cache
+    from gui.dialogs.confirm import confirm_train_using_cache
 
     assert confirm_train_using_cache(None, tmp_path) is None
     assert confirm_train_using_cache(None, tmp_path, require_pe=True) is None

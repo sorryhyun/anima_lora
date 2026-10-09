@@ -48,7 +48,7 @@ image_dataset/                         originals, read-only for the panel
 ## As built (phases 2–3)
 
 - **Pin**: `v0.7.8` (`pyproject.toml`, `uv.lock`).
-- **Launcher**: `gui.anime_tools_panel` (Qt-free), called by the GUI's
+- **Launcher**: `gui.core.anime_tools_panel` (Qt-free), called by the GUI's
   **anime_tools** tab (`gui/tabs/anime_tools_tab.py`, a `QWebEngineView`). The
   button first shipped in `ca6af718` was replaced by the tab, and the server now
   runs with `--exit-with-window` instead of `--open`.

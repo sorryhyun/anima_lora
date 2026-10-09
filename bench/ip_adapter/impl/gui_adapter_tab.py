@@ -42,8 +42,8 @@ from gui import (
     merged_method_preset,
 )
 from gui.i18n import t
-from gui.process import kill_process_tree, setup_kill_safe
-from gui.progress import TqdmProgressTracker, make_progress_bar
+from gui.jobs.process import kill_process_tree, setup_kill_safe
+from gui.jobs.progress import TqdmProgressTracker, make_progress_bar
 
 LATENT_SUFFIX = "_anima.npz"
 TE_SUFFIX = "_anima_te.safetensors"

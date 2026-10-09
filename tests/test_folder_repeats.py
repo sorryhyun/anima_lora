@@ -90,7 +90,7 @@ def test_dataset_level_key_ascends_to_subset():
 
 
 def test_gui_base_default_reads_dataset_table_and_general():
-    from gui.validation import _base_folder_repeats
+    from gui.core.validation import _base_folder_repeats
 
     assert _base_folder_repeats({}) is False
     assert _base_folder_repeats({"datasets": [{"repeat_by_folder_name": True}]})
@@ -102,7 +102,7 @@ def test_gui_base_default_reads_dataset_table_and_general():
 
 
 def test_gui_apply_writes_and_strips_override():
-    from gui.validation import apply_folder_repeats_choice
+    from gui.core.validation import apply_folder_repeats_choice
 
     out = {}
     apply_folder_repeats_choice(out, True, base_enabled=False)

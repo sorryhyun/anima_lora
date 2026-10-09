@@ -25,21 +25,21 @@ from PySide6.QtWidgets import (
 )
 
 from gui import get_setting
-from gui import daemon as gui_daemon
+from gui.jobs import daemon as gui_daemon
 from gui import theme as gui_theme
-from gui.dialogs import GuidebookDialog, _guidebook_path
-from gui.gpu_status import GpuStatusBar
+from gui.dialogs.guidebook import GuidebookDialog, _guidebook_path
+from gui.widgets.gpu_status import GpuStatusBar
 from gui.widgets import LazyTabHolder, action_button, wrap_tooltip
 from gui.i18n import load_language, t
-from gui.settings_dialog import SettingsDialog
+from gui.dialogs.settings import SettingsDialog
 from gui.tabs.anime_tools_tab import AnimeToolsTab
 from gui.tabs.easycontrol_tab import EasyControlTab
 from gui.tabs.merge_tab import MergeTab
 from gui.tabs.methods_tab import MethodsTab
 from gui.tabs.preprocess import PreprocessingTab
 from gui.tabs.queue_tab import QueueTab
-from gui.tensorboard import TensorBoardTab
-from gui.system_dialog import (
+from gui.tabs.tensorboard import TensorBoardTab
+from gui.dialogs.system import (
     GITHUB_ISSUES_URL,
     GITHUB_REPO_URL,
     check_for_update_async,

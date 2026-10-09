@@ -255,7 +255,7 @@ def test_models_dialog_rows_come_from_the_catalog():
     one the task can resolve, and every labelled row has to be a real one."""
     pytest.importorskip("PySide6")
     import tasks
-    from gui.system_dialog import _TITLE_KEYS
+    from gui.dialogs.system import _TITLE_KEYS
 
     assert "download-model" in tasks.COMMANDS
     assert set(_TITLE_KEYS) <= set(DL.by_id())
@@ -270,7 +270,7 @@ def test_the_two_tabs_show_the_two_catalog_halves():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication, QGroupBox
 
-    from gui.system_dialog import ModelsDialog, _pack_title
+    from gui.dialogs.system import ModelsDialog, _pack_title
 
     QApplication.instance() or QApplication([])
     dlg = ModelsDialog()
@@ -311,7 +311,7 @@ def test_every_title_key_exists_in_every_language():
     users who are most of the base."""
     pytest.importorskip("PySide6")
     from gui.i18n import TRANSLATIONS
-    from gui.system_dialog import _PACK_KEYS, _TITLE_KEYS
+    from gui.dialogs.system import _PACK_KEYS, _TITLE_KEYS
 
     extra = (
         "curation_models_intro",

@@ -19,7 +19,6 @@ and ``tasks.py`` builds each request through the package's ``build_argv``.
 
 from __future__ import annotations
 
-import copy
 import html
 import json
 import shutil
@@ -60,14 +59,14 @@ from gui import (
     merged_gui_variant_preset,
     variant_path,
 )
-from gui import anime_tools_panel
-from gui import daemon as gui_daemon
-from gui._job_mixin import DaemonJobMixin
-from gui._paths import read_gui_settings
+from gui.core import anime_tools_panel
+from gui.jobs import daemon as gui_daemon
+from gui.jobs.mixin import DaemonJobMixin
+from gui.core.paths import read_gui_settings
 from gui.explanations import field_help_html, preprocess_guide
 from gui.i18n import t
-from gui.progress import TQDM_RE, TqdmProgressTracker, make_progress_bar
-from gui.tabs.config_tab import ConfigTab, SplitButtonStyle
+from gui.jobs.progress import TqdmProgressTracker, make_progress_bar
+from gui.core import submit
 from gui.tabs.preprocess.captions import CaptionEditingSection
 from gui.tabs.preprocess.image_prep import ImagePrepSection
 from gui.tabs.preprocess.knobs import (
@@ -91,14 +90,19 @@ from gui.tabs.preprocess.stage_form import (
 )
 from gui.tabs.preprocess.text_caching import TextCachingSection
 from gui.theme import action_button_qss, rich_text_pt as _explain_pt, tok
-from gui.widgets import DirtyTrackingMixin, action_button, apply_variant
+from gui.widgets import (
+    DirtyTrackingMixin,
+    SplitButtonStyle,
+    action_button,
+    apply_variant,
+)
 from library.datasets.path_filter import filter_paths_by_glob
 
 PREPROCESS_TOML = ROOT / "configs" / "preprocess.toml"
 
 PREPROCESS_METHODS = ["lora", "tlora", "hydralora"]
 
-# Sourced from base.toml via gui.config_io (shared with the Config/EasyControl tabs);
+# Sourced from base.toml via gui.core.config_io (shared with the Config/EasyControl tabs);
 # fallback only, when the variant doesn't override the path.
 RESIZED_DIR = default_resized_dir()
 LORA_CACHE_DIR = default_lora_cache_dir()
@@ -609,7 +613,7 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
         raw = self.path_scope_edit.text().strip()
         if not raw:
             return ""
-        scope = ConfigTab._normalize_path_scope(raw)
+        scope = submit.normalize_path_scope(raw)
         if scope is None:
             QMessageBox.warning(
                 self, t("error"), t("preprocess_invalid_path_scope", value=raw)
@@ -735,30 +739,7 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
             merged["path_scope"] = path_scope
         else:
             merged.pop("path_scope", None)
-        snapshot = ConfigTab._gui_scoped_paths(copy.deepcopy(merged))
-        snapshot.update(self.preprocess_overrides())
-        for key in (
-            "base_config",
-            "dataset_config",
-            "variant",
-            "method",
-            "preset",
-            "methods_subdir",
-            "path_scope",
-            "preprocess_path_pattern",
-        ):
-            snapshot.pop(key, None)
-
-        def _clean(value):
-            if isinstance(value, dict):
-                return {k: _clean(v) for k, v in value.items() if v is not None}
-            if isinstance(value, list):
-                return [_clean(v) for v in value if v is not None]
-            if isinstance(value, Path):
-                return str(value)
-            return value
-
-        return _clean(snapshot)
+        return submit.preprocess_snapshot(merged, self.preprocess_overrides())
 
     def persist_target_res(self) -> None:
         """Mark dirty on tier change; ConfigTab's auto-chain/queue calls
@@ -994,15 +975,7 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
         self._watch_job(job_id, replay_log=replay_log)
 
     def _on_job_finished(self, state: str | None) -> None:
-        self._job_timer.stop()
-        # A half-written tqdm fragment is dropped here; the bar already reflected it.
-        self._drain_job_stdout()
-        if self._stdout_buf and not TQDM_RE.search(self._stdout_buf):
-            self.log.appendPlainText(self._stdout_buf)
-        self._stdout_buf = ""
-        job_id = self._job_id
-        self._job_id = None
-        self._stdout_tailer.reset()
+        job_id = self._end_job_watch()
         self._progress_tracker.reset()
         self.log.appendPlainText(gui_daemon.format_finish_banner(job_id, state))
         self._restore_idle_ui()

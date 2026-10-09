@@ -24,9 +24,9 @@ from PySide6.QtWidgets import (
 )
 
 from gui import LazyTabMixin
-from gui import daemon as gui_daemon
+from gui.jobs import daemon as gui_daemon
 from gui.i18n import t
-from gui.progress import TQDM_RE, make_progress_bar
+from gui.jobs.progress import TQDM_RE, make_progress_bar
 from gui.theme import tok
 from gui.widgets import action_button, apply_variant
 

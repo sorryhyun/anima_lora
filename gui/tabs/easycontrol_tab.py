@@ -55,7 +55,7 @@ from gui import (
     list_gui_variants,
     merged_gui_variant_preset,
 )
-from gui import daemon as gui_daemon
+from gui.jobs import daemon as gui_daemon
 from gui.explanations import field_help
 from gui.i18n import t
 from gui.tabs.config_tab import ConfigTab
@@ -134,7 +134,7 @@ class EasyControlTab(ConfigTab):
         self.train_btn.clicked.connect(self._ec_start_train)
 
     def _open_adapter_guide(self) -> None:
-        from gui.dialogs import GuidebookDialog
+        from gui.dialogs.guidebook import GuidebookDialog
         from gui.i18n import current_language
 
         # Localized guide: ADAPTER_GUIDE.<lang>.md, English (ADAPTER_GUIDE.md) fallback.

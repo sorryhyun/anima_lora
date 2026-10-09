@@ -39,7 +39,7 @@ from gui import ROOT, LazyTabMixin, _adapter_dirs, _safetensors_in
 from gui.i18n import t
 from gui.theme import tok
 from gui.widgets import action_button, apply_variant
-from gui.process import kill_process_tree, setup_kill_safe
+from gui.jobs.process import kill_process_tree, setup_kill_safe
 
 _DEFAULT_DIT = "models/diffusion_models/anima-base-v1.0.safetensors"
 

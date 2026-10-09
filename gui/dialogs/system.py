@@ -35,9 +35,9 @@ from PySide6.QtWidgets import (
 
 from gui import ROOT
 from library import downloads as DL
-from gui._paths import get_setting, set_setting
+from gui.core.paths import get_setting, set_setting
 from gui.i18n import t
-from gui.process import kill_process_tree, setup_kill_safe
+from gui.jobs.process import kill_process_tree, setup_kill_safe
 from gui.theme import tok
 from gui.widgets import apply_variant
 

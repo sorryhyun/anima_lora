@@ -1,4 +1,4 @@
-"""``gui.anime_tools_panel``: the panel's settings seed, the stale-Export check
+"""``gui.core.anime_tools_panel``: the panel's settings seed, the stale-Export check
 and the launch argv. Qt-free."""
 
 from __future__ import annotations
@@ -7,7 +7,7 @@ import json
 import os
 import time
 
-from gui import anime_tools_panel as P
+from gui.core import anime_tools_panel as P
 
 
 def _settings(home):

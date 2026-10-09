@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 import re
 import sys
 from pathlib import Path
@@ -52,7 +51,6 @@ from gui import (
     confirm_existing_caches,
     confirm_resumable_checkpoint,
     confirm_train_using_cache,
-    default_lora_cache_dir,
     get_setting,
     is_basic_field,
     lint_variant_configs,
@@ -64,33 +62,32 @@ from gui import (
     remove_unknown_dataset_keys,
     variant_path,
 )
-from gui import daemon as gui_daemon
-from gui._job_mixin import DaemonJobMixin
+from gui.core import submit
+from gui.jobs import daemon as gui_daemon
+from gui.jobs.mixin import DaemonJobMixin
 from gui.theme import action_button_qss, rich_text_pt as _explain_pt, tok
 from gui.explanations import field_help, field_help_html, method_guide
 from gui.i18n import t
-from gui.process import kill_process_tree, setup_kill_safe
+from gui.jobs.process import kill_process_tree, setup_kill_safe
 from gui.widgets import (
-    ClickableLabel,  # noqa: F401 — re-exported
     DirtyTrackingMixin,
     ImageViewerDialog,
-    SplitButtonStyle,  # noqa: F401 — re-exported; preprocess_tab imports it from here
+    SplitButtonStyle,
     action_button,
     apply_variant,
     make_field_label,
 )
-from gui.progress import (
+from gui.jobs.progress import (
     TQDM_RE,
     JsonlProgressReader,
     TqdmProgressTracker,
     make_progress_bar,
 )
 
-_GUI_PATH_SCOPE_KEY = "path_scope"
 # gui_settings.json key holding the Hardware preset picked in the top bar.
 _HW_PRESET_SETTING = "hardware_preset"
 _FIELD_ORDER = {
-    _GUI_PATH_SCOPE_KEY: 10,
+    submit.PATH_SCOPE_KEY: 10,
     "source_image_dir": 11,
     "resized_image_dir": 12,
     "lora_cache_dir": 13,
@@ -269,9 +266,6 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         self._jsonl_reader = JsonlProgressReader(
             self.progress, on_run_start=self._on_run_start_event
         )
-        self._jsonl_timer = QTimer(self)
-        self._jsonl_timer.setInterval(400)
-        self._jsonl_timer.timeout.connect(self._jsonl_reader.poll)
         lay.addWidget(self.progress)
 
         vsplit = QSplitter(Qt.Vertical)
@@ -357,19 +351,14 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         self._proc.readyReadStandardOutput.connect(self._read_stdout)
         self._proc.readyReadStandardError.connect(self._read_stderr)
         self._proc.finished.connect(self._on_finished)
-        self._stdout_buf = ""
         self._stderr_buf = ""
 
-        # Submitted to the local daemon (not a child of this QProcess) so it
-        # survives the GUI closing; observed by polling on-disk job files.
-        self._job_id: str | None = None
+        # Training / auto-chain preprocess are daemon jobs (not children of this
+        # QProcess), so they survive the GUI closing; observed via on-disk files.
+        self._init_job_observer()
         # "train" or "preprocess" (auto-chain cache build); drives the
         # chain-to-train decision in _on_job_finished and the busy-button label.
         self._job_kind: str | None = None
-        self._stdout_tailer = gui_daemon.FileTailer()
-        self._job_timer = QTimer(self)
-        self._job_timer.setInterval(400)
-        self._job_timer.timeout.connect(self._poll_job)
 
         self._origin: dict[str, str] = {}
         self._reload()
@@ -585,7 +574,7 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         count at save time."""
         from PySide6.QtWidgets import QCheckBox, QSpinBox
 
-        from gui.validation import _DEFAULT_VALIDATION_SPLIT_NUM
+        from gui.core.validation import _DEFAULT_VALIDATION_SPLIT_NUM
 
         use_valid_w = self._w.get("use_valid")
         vsn_w = self._w.get("validation_split_num")
@@ -724,11 +713,10 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
     def _resolve_sample_dir(self) -> Path:
         """Absolute ``<output_dir>/sample`` for the current variant."""
         try:
-            merged, _ = merged_gui_variant_preset(
-                self._current_variant(), self._current_preset()
+            out = (
+                self._scoped_merged(self._current_variant()).get("output_dir")
+                or "output/ckpt"
             )
-            merged = self._gui_scoped_paths(merged)
-            out = merged.get("output_dir") or "output/ckpt"
         except Exception:
             out = "output/ckpt"
         d = Path(out)
@@ -792,21 +780,21 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
             if k in _VIRTUAL_KEYS:
                 # Not real flat TOML keys; writeback handled below via per-key apply helpers.
                 continue
-            if k == _GUI_PATH_SCOPE_KEY:
+            if k == submit.PATH_SCOPE_KEY:
                 scope = str(_read(w, "") or "").strip()
                 meta = out.get("variant")
                 if not isinstance(meta, dict):
                     meta = {}
                 if scope:
-                    meta[_GUI_PATH_SCOPE_KEY] = scope
+                    meta[submit.PATH_SCOPE_KEY] = scope
                     out["variant"] = meta
                 else:
-                    meta.pop(_GUI_PATH_SCOPE_KEY, None)
+                    meta.pop(submit.PATH_SCOPE_KEY, None)
                     if meta:
                         out["variant"] = meta
                     else:
                         out.pop("variant", None)
-                out.pop(_GUI_PATH_SCOPE_KEY, None)
+                out.pop(submit.PATH_SCOPE_KEY, None)
                 continue
             baseline = method_orig.get(k, preset_overlay.get(k, base.get(k)))
             v = _read(w, baseline)
@@ -950,148 +938,45 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         self.test_btn.setEnabled(False)
         self.train_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
-        self.method_combo.setEnabled(False)
-        self.variant_combo.setEnabled(False)
-        self.new_variant_btn.setEnabled(False)
-        self.preset_combo.setEnabled(False)
+        self._set_pickers_enabled(False)
+
+    # -- submit plan (pure logic lives in gui.core.submit) --------------------
+
+    def _scoped_merged(self, variant: str) -> dict[str, Any]:
+        """The variant's merged chain under the current preset, ``path_scope`` applied."""
+        merged, _ = merged_gui_variant_preset(variant, self._current_preset())
+        return submit.scoped_paths(merged)
 
     def _resolve_cache_dir(self, variant: str) -> Path:
-        """Absolute lora_cache_dir for the given variant."""
-        merged, _ = merged_gui_variant_preset(variant, self._current_preset())
-        merged = self._gui_scoped_paths(merged)
-        cache_rel = merged.get("lora_cache_dir")
-        if not cache_rel:
-            return default_lora_cache_dir()
-        cache_dir = Path(cache_rel)
-        if not cache_dir.is_absolute():
-            cache_dir = ROOT / cache_dir
-        return cache_dir
+        return submit.cache_dir(self._scoped_merged(variant))
 
     def _preprocess_env(self, variant: str) -> dict[str, str]:
-        env = {
-            "METHOD": variant,
-            "METHODS_SUBDIR": "gui-methods",
-            "PRESET": self._current_preset(),
-        }
-        if self._preprocess_tab is not None:
-            env.update(self._preprocess_tab.preprocess_env())
-        return env
+        tab_env = (
+            self._preprocess_tab.preprocess_env()
+            if self._preprocess_tab is not None
+            else None
+        )
+        return submit.preprocess_env(variant, self._current_preset(), tab_env)
 
     def _chain_train_spec(
         self, variant: str, *, config_snapshot: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        spec: dict[str, Any] = {
-            "method": variant,
-            "preset": self._current_preset(),
-            "methods_subdir": "gui-methods",
-        }
-        if config_snapshot is not None:
-            spec["config_snapshot"] = config_snapshot
-        return spec
-
-    @staticmethod
-    def _normalize_path_scope(scope: Any) -> str | None:
-        """A safe relative GUI path scope like ``data_group1``."""
-        if not isinstance(scope, str):
-            return None
-        value = scope.strip().replace("\\", "/").strip("/")
-        if not value:
-            return None
-        if value.endswith("/*"):
-            value = value[:-2].strip("/")
-        if not value or "|" in value or any(ch in value for ch in "*?[]:"):
-            return None
-        parts = value.split("/")
-        if any(not part or part in {".", ".."} for part in parts):
-            return None
-        return "/".join(parts)
-
-    @staticmethod
-    def _append_scope(path_value: Any, scope: str) -> str:
-        base = str(path_value).strip() if path_value is not None else ""
-        if not base:
-            return scope
-        norm = base.replace("\\", "/").rstrip("/")
-        if norm == scope or norm.endswith("/" + scope):
-            return base
-        return f"{norm}/{scope}"
-
-    @staticmethod
-    def _gui_scoped_paths(merged: dict[str, Any]) -> dict[str, Any]:
-        """Apply GUI-only path_scope to concrete run paths. ``path_pattern``
-        keeps its training-filter meaning, evaluated relative to the scoped
-        image/cache directories."""
-        scope = ConfigTab._normalize_path_scope(merged.get(_GUI_PATH_SCOPE_KEY))
-        if not scope:
-            return merged
-        out = copy.deepcopy(merged)
-        defaults = {
-            "source_image_dir": "image_dataset",
-            "resized_image_dir": "post_image_dataset/resized",
-            "lora_cache_dir": "post_image_dataset/lora",
-            "output_dir": "output/ckpt",
-        }
-        for key, default in defaults.items():
-            out[key] = ConfigTab._append_scope(out.get(key) or default, scope)
-        out.pop(_GUI_PATH_SCOPE_KEY, None)
-        out.pop("variant", None)
-        return out
+        return submit.chain_train_spec(
+            variant, self._current_preset(), config_snapshot=config_snapshot
+        )
 
     def _queue_config_snapshot(
         self, variant: str, merged: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """Full config snapshot captured at GUI submit time."""
-        from library.config.io import load_dataset_config_from_base
-
-        snapshot = copy.deepcopy(
-            merged
-            if merged is not None
-            else merged_gui_variant_preset(variant, self._current_preset())[0]
+        """Full training config snapshot captured at GUI submit time."""
+        if merged is None:
+            merged = merged_gui_variant_preset(variant, self._current_preset())[0]
+        overrides = (
+            self._preprocess_tab.preprocess_overrides()
+            if self._preprocess_tab is not None
+            else {}
         )
-        snapshot = self._gui_scoped_paths(snapshot)
-        if self._preprocess_tab is not None:
-            snapshot.update(self._preprocess_tab.preprocess_overrides())
-        # Preprocess-only knobs leak into `merged`/`preprocess_overrides()` but
-        # must NOT ride into the training config: `caption_tag_dropout_rate`
-        # collides with a real train arg meaning *live* dataloader tag dropout,
-        # and tag dropout is already baked into cached caption variants at
-        # preprocess time — running it live too trips the TE-cache assertion.
-        from gui.tabs.preprocess.knobs import PREPROCESS_ONLY_KEYS
-
-        for key in (
-            "base_config",
-            "dataset_config",
-            "variant",
-            "method",
-            "preset",
-            "methods_subdir",
-            _GUI_PATH_SCOPE_KEY,
-            "preprocess_path_pattern",
-            "caption_tag_randomize_rate",
-            *PREPROCESS_ONLY_KEYS,
-            *_VIRTUAL_KEYS,
-        ):
-            snapshot.pop(key, None)
-
-        dataset_cfg = load_dataset_config_from_base(
-            overrides=snapshot,
-            method=variant,
-            methods_subdir="gui-methods",
-        )
-        if dataset_cfg:
-            snapshot["general"] = dataset_cfg.get("general", {})
-            snapshot["datasets"] = dataset_cfg.get("datasets", [])
-
-        def _clean(value):
-            if isinstance(value, dict):
-                return {k: _clean(v) for k, v in value.items() if v is not None}
-            if isinstance(value, list):
-                return [_clean(v) for v in value if v is not None]
-            if isinstance(value, Path):
-                return str(value)
-            return value
-
-        return _clean(snapshot)
+        return submit.training_snapshot(variant, merged, overrides)
 
     def _preprocess_config_snapshot(self, variant: str) -> dict[str, Any]:
         """Config snapshot for the queued preprocess command. Training
@@ -1099,8 +984,7 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         the Preprocess tab's own snapshot when available."""
         if self._preprocess_tab is not None:
             return self._preprocess_tab.preprocess_config_snapshot()
-        merged, _ = merged_gui_variant_preset(variant, self._current_preset())
-        return self._gui_scoped_paths(copy.deepcopy(merged))
+        return self._scoped_merged(variant)
 
     def _launch_preprocess(self, variant: str) -> None:
         """Submit the auto-chain preprocess step to the daemon. Only caller is
@@ -1120,10 +1004,7 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
             self.train_btn.setStyleSheet(action_button_qss("busy"))
         self.train_btn.setEnabled(False)
         self.test_btn.setEnabled(False)
-        self.method_combo.setEnabled(False)
-        self.variant_combo.setEnabled(False)
-        self.new_variant_btn.setEnabled(False)
-        self.preset_combo.setEnabled(False)
+        self._set_pickers_enabled(False)
         self.log.clear()
         self._reset_progress()
         self._progress_tracker.mark_starting(t("starting"))
@@ -1190,17 +1071,8 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         # Resolve use_repa before the cache-state branch: a config preprocessed
         # before REPA was enabled must re-run preprocess to build the missing PE
         # sidecars rather than launching a silent no-op REPA run.
-        merged, _ = merged_gui_variant_preset(variant, self._current_preset())
-        merged = self._gui_scoped_paths(merged)
-        _use_repa = merged.get("use_repa")
-        require_pe = _use_repa is True or str(_use_repa).strip().lower() in (
-            "1",
-            "true",
-            "yes",
-        )
-        # PE sidecar suffix is encoder-specific ({stem}_anima_{encoder}.…), so
-        # the probe must look for the encoder REPA will actually read.
-        pe_encoder = str(merged.get("repa_encoder") or "pe_spatial").strip() or None
+        merged = self._scoped_merged(variant)
+        require_pe, pe_encoder = submit.repa_requirements(merged)
 
         # Three-way: cache exists -> confirm reuse; missing -> auto-chain
         # Preprocess -> Train. With use_repa on, a cache lacking PE sidecars
@@ -1236,8 +1108,7 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
             self._save_preset(silent=True)
 
         variant = self._current_variant()
-        merged, _ = merged_gui_variant_preset(variant, self._current_preset())
-        merged = self._gui_scoped_paths(merged)
+        merged = self._scoped_merged(variant)
         if not confirm_resumable_checkpoint(self, merged):
             return
 
@@ -1271,8 +1142,7 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         if not confirm_existing_caches(self, cache_dir):
             return
 
-        merged, _ = merged_gui_variant_preset(variant, self._current_preset())
-        merged = self._gui_scoped_paths(merged)
+        merged = self._scoped_merged(variant)
         if train_after and not confirm_resumable_checkpoint(self, merged):
             return
 
@@ -1317,8 +1187,7 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         """Submit a training job to the local daemon (runs ``train.py``
         detached, so training survives the GUI closing). The caller owns all
         pre-launch confirmations."""
-        merged, _ = merged_gui_variant_preset(variant, self._current_preset())
-        merged = self._gui_scoped_paths(merged)
+        merged = self._scoped_merged(variant)
         logging_dir = merged.get("logging_dir")
         if logging_dir and self._tb_panel is not None:
             self._tb_panel.set_log_dir(logging_dir)
@@ -1329,10 +1198,7 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         self.train_btn.setStyleSheet(action_button_qss("busy"))
         self.train_btn.setEnabled(False)
         self.test_btn.setEnabled(False)
-        self.method_combo.setEnabled(False)
-        self.variant_combo.setEnabled(False)
-        self.new_variant_btn.setEnabled(False)
-        self.preset_combo.setEnabled(False)
+        self._set_pickers_enabled(False)
         self.log.clear()
         self._reset_progress()
         self._progress_tracker.mark_starting(t("starting"))
@@ -1392,7 +1258,6 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         after a GUI restart); otherwise a fresh launch shows only new lines.
         ``kind`` "preprocess" jobs emit no progress.jsonl, so the bar falls
         back to tqdm parsing in _drain_job_stdout."""
-        self._job_id = job_id
         self._job_kind = kind
         self._running_mode = kind
         # Cache the sample dir once so the 400ms poll doesn't re-merge the
@@ -1403,11 +1268,7 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         self._sample_floor = (
             gui_daemon.read_job_started_at(job_id) if kind == "train" else None
         )
-        self._stdout_buf = ""
         self._jsonl_reader.watch(gui_daemon.progress_path(job_id))
-        self._stdout_tailer.watch(gui_daemon.stdout_path(job_id))
-        if not replay_log:
-            self._stdout_tailer.read_new()  # discard backlog
         chain_after = getattr(self, "_chain_train_after_preprocess", False)
         if kind == "preprocess":
             self.train_btn.setText(
@@ -1421,36 +1282,22 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         # the form afterward can't disturb it.
         self.train_btn.setEnabled(True)
         self.test_btn.setEnabled(False)
-        self.method_combo.setEnabled(True)
-        self.variant_combo.setEnabled(True)
-        self.new_variant_btn.setEnabled(True)
-        self.preset_combo.setEnabled(True)
+        self._set_pickers_enabled(True)
         self.stop_btn.setEnabled(True)
-        self._job_timer.start()
+        self._watch_job(job_id, replay_log=replay_log)
 
-    def _drain_job_stdout(self) -> None:
-        """Append new stdout.log lines to the log widget. When progress.jsonl
-        drives the bar (training), tqdm lines are swallowed; otherwise tqdm
-        drives the bar instead — mirrors the QProcess _handle_stream path."""
-        chunk = self._stdout_tailer.read_new()
-        if not chunk:
-            return
-        parts = re.split(r"[\r\n]", self._stdout_buf + chunk)
-        self._stdout_buf = parts[-1]  # incomplete trailing fragment
-        for line in parts[:-1]:
-            if self._jsonl_reader.active:
-                if TQDM_RE.search(line):
-                    continue
-            elif self._progress_tracker.feed(line):
-                continue
-            if line:
-                self._log(line + "\n")
+    def _route_progress_line(self, line: str) -> bool:
+        # Once progress.jsonl drives the bar (training), tqdm lines are only
+        # swallowed; before that (preprocess, Test) tqdm drives the bar.
+        if self._jsonl_reader.active:
+            return bool(TQDM_RE.search(line))
+        return self._progress_tracker.feed(line)
 
-    def _poll_job(self) -> None:
-        if not self._job_id:
-            return
+    def _emit_log_line(self, line: str) -> None:
+        self._log(line + "\n")
+
+    def _on_job_tick(self) -> None:
         self._jsonl_reader.poll()
-        self._drain_job_stdout()
         # Refresh the gallery as samples land, but only while the panel isn't
         # pinned to field help.
         if self._job_kind == "train" and getattr(self, "_explain_mode", None) in (
@@ -1458,24 +1305,12 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
             "sample",
         ):
             self._show_sample_output()
-        state = gui_daemon.read_job_state(self._job_id)
-        if gui_daemon.is_terminal(state):
-            self._on_job_finished(state)
 
     def _on_job_finished(self, state: str | None) -> None:
-        self._job_timer.stop()
         self._jsonl_reader.poll()
-        self._drain_job_stdout()
-        if self._stdout_buf:
-            self._log(self._stdout_buf + "\n")
-        self._stdout_buf = ""
-        job_id = self._job_id
-        kind = self._job_kind
-        self._job_id = None
-        self._job_kind = None
-        self._jsonl_timer.stop()
+        job_id = self._end_job_watch()
+        kind, self._job_kind = self._job_kind, None
         self._jsonl_reader.reset()
-        self._stdout_tailer.reset()
         self.progress.setVisible(False)
         self._log("\n" + gui_daemon.format_finish_banner(job_id, state) + "\n")
 
@@ -1549,6 +1384,17 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         self._progress_tracker.mark_starting(t("starting"))
         self._attach_to_job(job_id, replay_log=False, kind="train")
 
+    def _set_pickers_enabled(self, enabled: bool) -> None:
+        """Method / variant / + New / Hardware pickers. Locked while a launch
+        is in flight; left live while attached so another variant can be queued."""
+        for w in (
+            self.method_combo,
+            self.variant_combo,
+            self.new_variant_btn,
+            self.preset_combo,
+        ):
+            w.setEnabled(enabled)
+
     def _restore_idle_ui(self):
         """Return every control to its idle state."""
         self.train_btn.setText(t("train"))
@@ -1558,20 +1404,14 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
         apply_variant(self.test_btn, "secondary")
         self.test_btn.setEnabled(self._has_lora_output())
         self.stop_btn.setEnabled(False)
-        self.method_combo.setEnabled(True)
-        self.variant_combo.setEnabled(True)
-        self.new_variant_btn.setEnabled(True)
-        self.preset_combo.setEnabled(True)
+        self._set_pickers_enabled(True)
         if self._tb_panel is not None:
             self._tb_panel.clear_current_run()
 
     def _stop_training(self):
         # A daemon job is aborted via the daemon; a QProcess test run is killed directly.
         if self._job_id:
-            try:
-                gui_daemon.stop_job(self._job_id)
-            except Exception as e:  # noqa: BLE001
-                self._log(f"stop failed: {e}\n")
+            self._stop_job()
             return
         kill_process_tree(self._proc)
 
@@ -1590,31 +1430,16 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
 
     def _read_stdout(self):
         data = self._proc.readAllStandardOutput().data().decode(errors="replace")
-        self._stdout_buf = self._handle_stream(self._stdout_buf + data)
+        self._stdout_buf = self._consume_lines(self._stdout_buf + data)
 
     def _read_stderr(self):
         data = self._proc.readAllStandardError().data().decode(errors="replace")
-        self._stderr_buf = self._handle_stream(self._stderr_buf + data)
-
-    def _handle_stream(self, buf: str) -> str:
-        parts = re.split(r"[\r\n]", buf)
-        tail = parts[-1]  # incomplete trailing fragment — keep buffered
-        for line in parts[:-1]:
-            if self._jsonl_reader.active:
-                # JSONL drives the bar; swallow tqdm lines so they don't move it.
-                if TQDM_RE.search(line):
-                    continue
-            elif self._progress_tracker.feed(line):
-                continue
-            if line:
-                self._log(line + "\n")
-        return tail
+        self._stderr_buf = self._consume_lines(self._stderr_buf + data)
 
     def _reset_progress(self):
         self._stdout_buf = ""
         self._stderr_buf = ""
         self._progress_tracker.reset()
-        self._jsonl_timer.stop()
         self._jsonl_reader.reset()
 
     def _on_finished(self, exit_code: int, _status: QProcess.ExitStatus):
@@ -1624,7 +1449,6 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
             if leftover and not TQDM_RE.search(leftover):
                 self._log(leftover + "\n")
             setattr(self, buf_name, "")
-        self._jsonl_timer.stop()
         self._jsonl_reader.poll()
         self._jsonl_reader.reset()
         self.progress.setVisible(False)

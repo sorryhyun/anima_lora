@@ -11,7 +11,7 @@ from pathlib import Path
 
 from anime_tools._walk import glob_images_pathlib
 
-from gui._paths import ROOT
+from gui.core.paths import ROOT
 
 
 def _imgs(d: Path) -> list[Path]:

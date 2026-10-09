@@ -1,6 +1,6 @@
 """AnimeToolsTab — the ``anime_tools`` curation panel, rendered in a tab.
 
-On first open it seeds the panel's settings (``gui.anime_tools_panel``), reuses a
+On first open it seeds the panel's settings (``gui.core.anime_tools_panel``), reuses a
 panel already serving this checkout or starts one, and loads the page into a
 ``QWebEngineView``. The server runs with ``--exit-with-window``: the page holds
 its ``/api/alive`` stream open, so the server stops a few seconds after this
@@ -19,7 +19,7 @@ from PySide6.QtCore import QTimer, QUrl
 from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import QLabel, QStackedWidget, QVBoxLayout, QWidget
 
-from gui import anime_tools_panel
+from gui.core import anime_tools_panel
 from gui.i18n import t
 from gui.tabs.preprocess.knobs import DEFAULT_SOURCE_IMAGE_DIR
 from gui.theme import ACTION_COLORS, Pad, tok
