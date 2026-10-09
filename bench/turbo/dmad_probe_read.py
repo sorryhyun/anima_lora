@@ -17,6 +17,12 @@ Pre-registered read (fixed before the first run):
 * WEAK — anything between: aligned above the null but well short of how two DM
   draws agree with each other.
 
+Reported beside the verdict, not part of it (added before arm P4): the window
+split at |margin| ≤ 1 vs > 1. Prop. 1's optimum h* = log p_teacher − log
+p_student describes a disc that is learning but not saturated; a head that
+separates every pair can pass the accuracy gate with a logit that no longer
+tracks the density ratio.
+
     python bench/turbo/dmad_probe_read.py output/logs/turbo/<run>/dmad_probe.jsonl
 """
 
@@ -37,6 +43,7 @@ N_TAU_BINS = 8
 ACC_FLOOR = 0.75
 CEIL_FRACTION = 0.5
 SEM_K = 3.0
+SATURATED_MARGIN = 1.0
 
 
 def _mean_sem(xs: list[float]) -> tuple[float, float]:
@@ -91,6 +98,19 @@ def read(rows: list[dict]) -> dict:
     else:
         verdict = "WEAK"
 
+    saturation = {}
+    for name, sel in (
+        ("unsaturated", [r for r in window if abs(r["margin"]) <= SATURATED_MARGIN]),
+        ("saturated", [r for r in window if abs(r["margin"]) > SATURATED_MARGIN]),
+    ):
+        saturation[name] = {
+            "n": len(sel),
+            "acc": _mean_sem(_col(sel, "acc")),
+            "cos": _mean_sem(_col(sel, "cos")),
+            "d_cos": _mean_sem([r["cos"] - r["cos_null"] for r in sel]),
+            "ceil_cos": _mean_sem(_col(sel, "ceil_cos")),
+        }
+
     tau_bins = []
     for b in range(N_TAU_BINS):
         lo, hi = b / N_TAU_BINS, (b + 1) / N_TAU_BINS
@@ -140,6 +160,7 @@ def read(rows: list[dict]) -> dict:
         "aggregate": agg,
         "d_cos": d_cos,
         "d_agree": d_agree,
+        "saturation": saturation,
         "tau_bins": tau_bins,
         "by_grad_step": by_grad_step,
         "deciles": deciles,
@@ -173,6 +194,15 @@ def main() -> None:
     print(
         f"ceiling cos(DM, DM') {_fmt(a['ceil_cos'])}   cos(g_T, DM') {_fmt(a['cos_dm2'])}"
     )
+    print(
+        f"saturation split, |margin| vs {SATURATED_MARGIN} "
+        "(n | acc | cos | Δ vs null | ceiling):"
+    )
+    for name, v in res["saturation"].items():
+        print(
+            f"  {name:<11}  {v['n']:4d} | {_fmt(v['acc'])} | {_fmt(v['cos'])} | "
+            f"{_fmt(v['d_cos'])} | {_fmt(v['ceil_cos'])}"
+        )
     print("τ-binned cos (n | cos | null | ceiling):")
     for b in res["tau_bins"]:
         print(

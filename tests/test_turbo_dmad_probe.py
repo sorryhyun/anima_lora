@@ -165,3 +165,13 @@ def test_read_window_is_second_half():
     res = read(rows)
     assert res["window_steps"] == [101, 200]
     assert res["verdict"] == "PASS"
+
+
+def test_saturation_split_is_reported_not_voted():
+    rows = _rows(200, cos=0.3, ceil=0.4, acc=0.9)
+    for r in rows[150:]:
+        r["margin"] = 5.0
+    res = read(rows)
+    assert res["verdict"] == "PASS"
+    assert res["saturation"]["unsaturated"]["n"] == 50
+    assert res["saturation"]["saturated"]["n"] == 50

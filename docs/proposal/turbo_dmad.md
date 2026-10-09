@@ -1,9 +1,9 @@
 # Turbo DMAD — discriminator-carried distribution matching inside DP-DMD
 
-Status: PROPOSAL. Phase −1 (premise probe) gates Phase 0; arms P1–P3 ran
-2026-10-09, all **UNCONVERGED** (P1: head T plateaued at accuracy 0.58; P2 / P3:
-unclipped steps separate teacher from student, then diverge and collapse to chance;
-no read; see § Phase −1 results).
+Status: PROPOSAL. Phase −1 (premise probe) gates Phase 0; arms P1–P4 ran
+2026-10-09, all **UNCONVERGED** (P1: head T plateaued at accuracy 0.58; P2–P4: the
+disc separates teacher from student in bursts, then its gradient blows up and it
+falls back to chance; no read; see § Phase −1 results).
 Source: Yu et al., *DMAD: Distribution
 Matching as Adversarial Distillation for Fast Visual Generation*, arXiv:2610.02188
 (ByteDance, 2026-10-01). Wiring claims below were checked against
@@ -230,11 +230,33 @@ unused so far). Rows now carry per-stage wall time.
   probe grad 0.43 s, ceiling 0.64 s — ~4.4 s of the 13.9 s step; the DP-DMD loop is
   the rest. An extra disc update per step costs ~0.9 s.
 
-**Next arm (P4), not run:** P3 with the disc clipped at 5 (normal disc grad norms
-are 3–6; the collapses follow 40+ spikes), with stop_on_collapse 10. Before it runs,
-the read should add a saturation split (e.g. window rows with |margin| ≤ 1 vs
-larger), since an always-saturated disc could pass the acc gate and still read
-near zero.
+**P4 (2026-10-09) — UNCONVERGED.** P3 with the disc clipped at 5
+(`--dmad_probe_grad_clip 5`), collapse stop 10 (never fired: 150 steps). The reader
+now reports the window split at |margin| ≤ 1 vs > 1 beside the verdict (reported,
+not voted; the verdict rule is unchanged). Rows:
+`output/logs/turbo/20261009-170245/dmad_probe.jsonl`; read:
+`bench/turbo/results/20261009-1739-dmad_probe_p4/result.json`.
+
+- The clip bounds each update but not the gradient: pre-clip norms still reach 23–38
+  (20 of 150 steps above 5). Instead of one collapse, head T cycles — margin up to
+  0.8 (steps 31–45), down to 0.02 (76–90), up to 0.2 (121–135) — and never holds
+  separation: window acc 0.556 ± 0.013, best decile 0.65.
+- Window alignment at the null: cos −0.011 ± 0.012 (null +0.004), ceiling 0.106.
+  Saturation split: 73 unsaturated rows read −0.015 ± 0.012; 2 saturated rows.
+- **The P3 post-hoc reading does not hold up.** In P4 the positive alignment is
+  confined to the first steps (steps ≤ 20: cos − null = +0.082 ± 0.031), and later
+  steps with a learning, unsaturated disc (margin 0.3–1) read +0.004 ± 0.023
+  (n = 17). P3's steps 9–16 are also early. An early-steps-only effect fits the
+  warm start better than Prop. 1: the disc stack starts from the critic's weights
+  (`fake_init_weights`), and DM = teacher − fake. Untested.
+
+**Where this leaves Phase −1.** Four arms, no read. Step size alone (LR 5e-5 → 2e-4,
+clip 1 → off → 5) moves head T between too slow to learn and unstable once it
+learns. What is left to try is the disc objective, not its step size: a logit or
+gradient penalty (R1 on the renoised teacher input, or a squared-logit term) so a
+separating head cannot blow up, and a cold-started disc stack to remove the
+warm-start confound. Both are new code; whether Phase −1 is worth that is the
+owner's call.
 
 ## Phase 0 — one knob: the DM term
 
