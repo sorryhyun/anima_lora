@@ -124,16 +124,57 @@ def _selected_windows_backend() -> str:
     return "cuda"
 
 
+# Opt-in CUDA torch stacks (pyproject `torch-213` / `torch-212` groups); the
+# default 2.14 stack needs no flags.
+TORCH_STACKS = {"2.12": "torch-212", "2.13": "torch-213", "2.14": None}
+
+
+def _selected_torch_group() -> str | None:
+    """Return the opt-in torch group to sync, or None for the default stack.
+
+    ``ANIMA_TORCH=2.13`` picks one (and is saved to ``.anima_torch`` so later
+    updates keep it); otherwise the saved marker is reused.
+    """
+    marker = ROOT / ".anima_torch"
+    choice = os.environ.get("ANIMA_TORCH", "").strip()
+    if choice:
+        if choice not in TORCH_STACKS:
+            print(
+                f"  ignoring ANIMA_TORCH={choice!r} "
+                f"(expected one of {', '.join(TORCH_STACKS)})"
+            )
+            return None
+        try:
+            marker.write_text(choice + "\n", encoding="ascii")
+        except OSError:
+            pass
+    elif marker.is_file():
+        choice = marker.read_text(encoding="ascii").strip()
+    return TORCH_STACKS.get(choice)
+
+
 def _uv_sync_command() -> tuple[list[str], str | None]:
     """Return the sync command and the Windows backend it targets (None off-Windows)."""
+    torch_group = _selected_torch_group()
     command = ["uv", "sync"]
+    # An opt-in stack carries every platform's torch, so it replaces both
+    # default groups (torch-214 + cuda-windows), which it conflicts with.
+    cuda_command = (
+        command + ["--no-default-groups", "--group", torch_group]
+        if torch_group
+        else command
+    )
     if sys.platform != "win32":
-        return command, None
+        return cuda_command, None
     backend = _selected_windows_backend()
     # cuda-windows is a DEFAULT dependency group (GH #92), so the CUDA stack
     # needs no flags; ROCm swaps the default group out explicitly.
     if backend == "rocm":
+        if torch_group:
+            print(f"  ROCm ships its own torch; ignoring the {torch_group} choice")
         command.extend(["--no-group", "cuda-windows", "--group", "rocm-windows"])
+    else:
+        command = cuda_command
     # Persist the decision so later updates (and manual `make update` runs)
     # stop re-deriving it — install.ps1 writes the same marker.
     try:
@@ -166,11 +207,13 @@ def _verify_windows_backend(backend: str) -> None:
         return
     build = result.stdout.strip()
     if build != backend:
-        fix = (
-            "uv sync"
-            if backend == "cuda"
-            else "uv sync --no-group cuda-windows --group rocm-windows"
-        )
+        torch_group = _selected_torch_group()
+        if backend == "rocm":
+            fix = "uv sync --no-group cuda-windows --group rocm-windows"
+        elif torch_group:
+            fix = f"uv sync --no-default-groups --group {torch_group}"
+        else:
+            fix = "uv sync"
         print(
             f"\nWARNING: the installed PyTorch is a {build} build but the "
             f"selected backend is {backend} — training/caching would fall back "
