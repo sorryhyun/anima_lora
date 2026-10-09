@@ -18,11 +18,11 @@ runs from the freeze-point commit named in `status.md`, not from this tree.
 | file | what |
 |---|---|
 | `run.py` | front door: `run.py <run> data [--frac f] \| train` |
-| `ruler.py` | the dialogue ruler (`criteria.md`): `build` (CPU) draws 96 bubble-dialogue strings from the training set's captions, each with its own image's prompt and an EN reference line → `output/cjk_anima_reseed/ruler/ruler.json`; `run [--arms a,b] [--label l]` (GPU) renders what is missing — the floor (EN refs, retrain_kana, seed_retrain_0930) once — and reads every arm against it → `results/<ts>-ruler-<label>/` (`reports/ruler_2026_10_05.md`) |
+| `ruler.py` | the dialogue ruler's CLI (`criteria.md`; the code is `src/eval/ruler/`: `build` / `arms` / `render` / `score` / `stats` / `read`): `build` (CPU) draws 96 bubble-dialogue strings from the training set's captions, each with its own image's prompt and an EN reference line → `output/cjk_anima_reseed/ruler/ruler.json`; `run [--arms a,b] [--label l]` (GPU) renders what is missing — the floor (EN refs, retrain_kana, seed_retrain_0930) once — and reads every arm against it → `results/<ts>-ruler-<label>/` (`reports/ruler_2026_10_05.md`) |
 | `transplant.py` | CPU: a focus run's rows onto another run's (`FROM` / `ONTO` / `NAME` at its top; 10-08: `sent_kanji_225`'s 225 onto `sent_kanji_pres` → `seed_1008`). `stick` reads the focus rows' mean against ONTO's kanji stick and both runs' Δstick; `write` → `output/cjk_anima_reseed/<NAME>/trained.pt` and the baked pack |
 | `punct_pack.py` | CPU: the punct base pack (10-05, the green leaf's fix) → `models/vocab_packs/anima_cjk_vocab_pack_punct`: the raw pack plus wider folds, dot runs and a `…` row (ext 69 558, at T5's `...`); the rules in its docstring |
 | `probes/kozh_geometry.py` | CPU: a `lang` run's KO / ZH rows against its seed's kana / kanji balls — sticks, row norms, cos and stick components, the groups' spikes in either ball's top-40 beside 8 held-out seed rows, nearest seed rows (`reports/kozh16_2026_10_09.md`) |
-| `probes/kozh_render.py` | GPU: a `lang` run's rows drawn against its seed through `ruler.Renderer` at 512², seed 0 — each row alone in a bubble, a few words in a bubble / on a sign / plain, captioned in the row's language → `results/<ts>-<run>-render/sheet.png` |
+| `probes/kozh_render.py` | GPU: a `lang` run's rows drawn against its seed through the ruler's `Renderer` at 512², seed 0 — each row alone in a bubble, a few words in a bubble / on a sign / plain, captioned in the row's language → `results/<ts>-<run>-render/sheet.png` |
 | `configs/<run>.toml` | the run; keys and their meaning in `reseed/config.py`'s docstring. Kept: `punct` (the mark rows → seed_fixed_1005), `sent_kanji` (the data of f0 / pres), `sent_kanji_pres` (the rows of record), `sent_kanji_225` (the 225 of record), `kozh16` (KO / ZH rows on seed `1008`) |
 | `reseed/table.py` | **the table**: one row per tier — recipe, share, σ band, glyph px, `px_keep` — and the scene knobs |
 | `reseed/recipes.py` | `bubble1` / `bubbleN` / `sent` / `grid` |
@@ -30,7 +30,7 @@ runs from the freeze-point commit named in `status.md`, not from this tree.
 | `reseed/builder.py` | one pass over the table → `output/cjk_anima_reseed/<run>/data` |
 | `reseed/trainer.py` | the trainer (ported from scale's `cjk_scale/train.py`, numerics unchanged): the run's rows cold or warm on `context`, every other row frozen there, box-share FM, σ per item in its band, optional L_pres → `<run>/trained.pt` (the whole merged rows), `train_log.json`, `train_record.json`; `rows.py` (the `ExtDelta` rows) and `loss.py` (box-share FM, L_pres) beside it |
 | `reseed/__init__.py` | the paths (`HOME`, `OUT`, `SCALE_OUT`, the seed rows), the pack digests, `bootstrap()` |
-| `src/` | vendored from scale's `src/` under its top-level names (`common`, `data`, `train`, `eval`): renderers, scene pools, Qwen inventory, readers, TE / latent caches; byte-faithful to the reads of record — no cleanup |
+| `src/` | vendored from scale's `src/` under its top-level names (`common`, `data`, `train`, `eval`): renderers, scene pools, Qwen inventory, readers, TE / latent caches; byte-faithful to the reads of record — no cleanup. `eval/ruler/` is this line's own: the dialogue ruler |
 | `assets/fonts/` | the JA faces + `kozh/` (KO / ZH; FONTS.md, licences; the binaries are gitignored — copy them) |
 
 ```bash

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """kozh_render — a ``lang`` run's rows drawn, against its seed: the ruler's
-render path (``ruler.Renderer``: one ``ExtDelta``, routed, 28 steps, cfg 4,
+render path (``eval.ruler.render.Renderer``: one ``ExtDelta``, routed, 28 steps, cfg 4,
 seed 0) on the run's pack, at 512² (the training px), one seed.
 
 Each row alone in a speech bubble, and a few words of the rows in a bubble,
@@ -68,24 +68,26 @@ def main() -> None:
 
     bootstrap()
     os.environ["ANIMA_VOCAB_GLYPH_ROUTE"] = "1"
-    import ruler as R
+    from eval.ruler import SEED_RENDER, VIEW
+    from eval.ruler.arms import arm_dirs, tables
+    from eval.ruler.render import Renderer, check
 
-    R.PACK = run.pack
+    VIEW.pack = run.pack
     seed = run.seed_rows().parent.name
     arms = [seed, run.name]
-    known = R.arm_dirs()
-    assert set(arms) <= set(known), f"ruler.PACK_ARMS lacks {set(arms) - set(known)}"
+    known = arm_dirs()
+    assert set(arms) <= set(known), f"arms.PACK_ARMS lacks {set(arms) - set(known)}"
     its = prompts(run, run.lang)
-    _, tabs = R.tables(arms + ["retrain_kana"])
-    r = R.Renderer()
-    info = {"check_rk": R.check(r, tabs["retrain_kana"])}
+    _, tabs = tables(arms + ["retrain_kana"])
+    r = Renderer()
+    info = {"check_rk": check(r, tabs["retrain_kana"])}
     t0 = time.time()
     files = {}
     for arm in arms:
         r.set_arm(tabs[arm])
         for n, (key, _t, cap) in enumerate(its):
-            fn = OUT / run.name / "render" / arm / f"{key}_s{R.SEED_RENDER}.png"
-            r.render(fn, cap, R.SEED_RENDER, SIZE)
+            fn = OUT / run.name / "render" / arm / f"{key}_s{SEED_RENDER}.png"
+            r.render(fn, cap, SEED_RENDER, SIZE)
             files[arm, key] = fn
             print(
                 f"  {arm}: {n + 1} / {len(its)} {key} ({(time.time() - t0) / 60:.1f} min)",
