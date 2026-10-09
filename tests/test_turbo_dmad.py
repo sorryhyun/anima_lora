@@ -47,7 +47,7 @@ def _resolve(cli: list[str] | None = None, cfg: dict | None = None):
 def test_off_by_default():
     c = _resolve()
     assert c.dmad is False
-    assert (c.dmad_lambda_t, c.dmad_lambda_r) == (300.0, 300.0)
+    assert (c.dmad_lambda_t, c.dmad_lambda_r) == (150.0, 150.0)
     assert c.dmad_signal_rms == pytest.approx(0.18)
     assert c.dmad_lr == pytest.approx(4e-5)
     assert c.dmad_grad_clip == 0.0

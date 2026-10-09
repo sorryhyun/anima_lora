@@ -200,7 +200,7 @@ One arm against a matched DP-DMD arm, read on rendered grids.
 | Key | Default | Notes |
 |---|---|---|
 | `enabled` | `false` | off → byte-identical loop, no RNG drawn, nothing built |
-| `lambda_t` / `lambda_r` | `300` / `300` | head mix; 0 drops a head (and its disc branch). Sets the signal's size only when `signal_rms = 0` |
+| `lambda_t` / `lambda_r` | `150` / `150` | head mix; 0 drops a head (and its disc branch). Sets the signal's size only when `signal_rms = 0` |
 | `signal_rms` | `0.18` | per-sample RMS of the student signal; `0` = raw (λ sets the size) |
 | `lr` | `4e-5` | disc stack + heads, constant |
 | `grad_clip` | `0` | disc only; 0 = unclipped |

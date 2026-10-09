@@ -87,8 +87,8 @@ ratio_normalization = true
 # the DM term and the fake critic (and L_CDM's signal). Needs gan.weight_gen = 0.
 # [dmad]
 # enabled = true
-# lambda_t = 300.0
-# lambda_r = 300.0
+# lambda_t = 150.0
+# lambda_r = 150.0
 # signal_rms = 0.18  # 0 = raw disc gradient (lambda sets its size)
 # lr = 4e-5
 # grad_clip = 0

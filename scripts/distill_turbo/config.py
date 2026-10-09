@@ -607,14 +607,14 @@ def build_argparser() -> argparse.ArgumentParser:
         type=float,
         default=None,
         help="Head T weight in the student signal; 0 drops head T and its disc "
-        "branch. Default: TOML (dmad.lambda_t, default 300).",
+        "branch. Default: TOML (dmad.lambda_t, default 150).",
     )
     parser.add_argument(
         "--dmad_lambda_r",
         type=float,
         default=None,
         help="Head R weight in the student signal; 0 drops head R and its "
-        "real-data branch. Default: TOML (dmad.lambda_r, default 300).",
+        "real-data branch. Default: TOML (dmad.lambda_r, default 150).",
     )
     parser.add_argument(
         "--dmad_signal_rms",
@@ -864,8 +864,8 @@ class TurboConfig:
 
     # DMAD Phase 0 (scripts/distill_turbo/dmad.py): disc replaces DM + critic
     dmad: bool = False
-    dmad_lambda_t: float = 300.0  # 0 → no head T / teacher branch
-    dmad_lambda_r: float = 300.0  # 0 → no head R / real branch
+    dmad_lambda_t: float = 150.0  # 0 → no head T / teacher branch
+    dmad_lambda_r: float = 150.0  # 0 → no head R / real branch
     dmad_signal_rms: float = 0.18  # per-sample RMS of the student signal; 0 = raw
     dmad_lr: float = 4e-5
     dmad_grad_clip: float = 0.0  # 0 → unclipped
@@ -1290,8 +1290,8 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
             f"(-1 = middle), head={dmad_probe_head}, ceiling={dmad_probe_ceiling}."
         )
     dmad = bool(_pick(args.dmad, cfg, "dmad.enabled", False))
-    dmad_lambda_t = float(_pick(args.dmad_lambda_t, cfg, "dmad.lambda_t", 300.0))
-    dmad_lambda_r = float(_pick(args.dmad_lambda_r, cfg, "dmad.lambda_r", 300.0))
+    dmad_lambda_t = float(_pick(args.dmad_lambda_t, cfg, "dmad.lambda_t", 150.0))
+    dmad_lambda_r = float(_pick(args.dmad_lambda_r, cfg, "dmad.lambda_r", 150.0))
     dmad_signal_rms = float(_pick(args.dmad_signal_rms, cfg, "dmad.signal_rms", 0.18))
     dmad_lr = float(_pick(args.dmad_lr, cfg, "dmad.lr", 4e-5))
     dmad_grad_clip = float(_pick(args.dmad_grad_clip, cfg, "dmad.grad_clip", 0.0))
