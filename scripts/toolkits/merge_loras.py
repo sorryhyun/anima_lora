@@ -24,6 +24,13 @@ overdriving the DiT into high-freq noise. 'global' applies one scalar so the
 global RMS ‖ΔW‖_F matches the average single-LoRA norm (≈1/√N when orthogonal,
 →1/N when similar); 'off' reproduces the raw exact-concat sum.
 
+--adaln (default 'average') merges the adaln modulation modules
+(``adaln_modulation_*_2``) as a weighted average instead: their input is a
+σ-only vector, so each input's adaln delta is a global per-channel
+shift/scale/gate bias on every image, not an orthogonally addressed term.
+Averaged modules are left out of the --normalize energy budget. 'sum' treats
+them like every other module.
+
 Usage:
     uv run python scripts/toolkits/merge_loras.py \
         output/ckpt/anima_artist1.safetensors \
@@ -99,6 +106,14 @@ def main() -> int:
         "(≈1/√N when orthogonal, →1/N when similar); 'per_module' matches each "
         "module exactly but reweights layers; 'off' = raw exact concat sum.",
     )
+    ap.add_argument(
+        "--adaln",
+        choices=["average", "sum"],
+        default="average",
+        help="How the adaln modulation modules merge: 'average' (default) takes "
+        "the weighted mean of the inputs' adaln deltas and skips --normalize; "
+        "'sum' concatenates and normalizes them like every other module.",
+    )
     args = ap.parse_args()
 
     if len(args.loras) < 2:
@@ -147,13 +162,18 @@ def main() -> int:
     rank_hist: dict[int, int] = {}
     sumsq_actual = 0.0  # Σ_m ‖merged ΔW_m‖²  (at chosen weights)
     sumsq_target = 0.0  # Σ_m (avg single-LoRA ‖ΔW_m‖)²
+    averaged: set[str] = set()
     for stem in stems:
+        avg = args.adaln == "average" and "adaln_modulation" in stem
+        w_sum = sum(w for (downs, _, _), w in zip(loaded, weights) if stem in downs)
         downs_cat, ups_cat, indiv = [], [], []
         for (downs, ups, alphas), w in zip(loaded, weights):
             if stem not in downs:
                 continue
             r = downs[stem].shape[0]
             s = alphas.get(stem, float(r)) / r  # α/r
+            if avg:
+                w = w / w_sum
             downs_cat.append(downs[stem])
             ups_cat.append(ups[stem] * (s * w))  # (α/r)·w folded into up
             indiv.append(s * fro2(ups[stem], downs[stem]).sqrt().item())  # weight-1 ref
@@ -161,8 +181,11 @@ def main() -> int:
         up = torch.cat(ups_cat, dim=1)  # (out, Σr)
         actual = fro2(up, down).item()
         target = sum(indiv) / len(indiv)  # avg single-LoRA norm at this module
-        sumsq_actual += actual
-        sumsq_target += target * target
+        if avg:
+            averaged.add(stem)
+        else:
+            sumsq_actual += actual
+            sumsq_target += target * target
         built[stem] = (down, up, target)
         rank = down.shape[0]
         rank_hist[rank] = rank_hist.get(rank, 0) + 1
@@ -177,8 +200,12 @@ def main() -> int:
             len(args.loras),
         )
     merged: dict[str, torch.Tensor] = {}
+    if averaged:
+        logger.info("adaln=average: %d modules averaged, not normalized", len(averaged))
     for stem, (down, up, target) in built.items():
-        if args.normalize == "global":
+        if stem in averaged:
+            pass
+        elif args.normalize == "global":
             up = up * g_scale
         elif args.normalize == "per_module":
             actual = fro2(up, down).sqrt().item()
@@ -196,6 +223,7 @@ def main() -> int:
         "merge_kind": "concat_exact",
         "normalize": args.normalize,
         "normalize_global_scale": f"{g_scale:.6f}",
+        "adaln_merge": args.adaln,
     }
     save_file(merged, str(args.out), metadata=metadata)
     logger.info(

@@ -199,3 +199,66 @@ def test_marker_payload_carries_overlap():
     assert {a, b} == {"a", "b"}
     assert abs(out - 1.0) < 1e-3
     assert x > ma.OVERLAP_COLLIDING_X
+
+
+def _run_merge(tmp_path, *extra):
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    from safetensors.torch import load_file, save_file
+
+    spec = importlib.util.spec_from_file_location(
+        "merge_loras",
+        Path(__file__).resolve().parents[1] / "scripts/toolkits/merge_loras.py",
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    torch.manual_seed(3)
+    paths, deltas = [], {"attn": [], "adaln": []}
+    stems = {
+        "attn": "lora_unet_blocks_0_self_attn_q_proj",
+        "adaln": "lora_unet_blocks_0_adaln_modulation_mlp_2",
+    }
+    for i in range(2):
+        sd = {}
+        for kind, stem in stems.items():
+            down, up = torch.randn(2, 6), torch.randn(8, 2)
+            sd[f"{stem}.lora_down.weight"] = down
+            sd[f"{stem}.lora_up.weight"] = up
+            sd[f"{stem}.alpha"] = torch.tensor(2.0)
+            deltas[kind].append(up @ down)
+        p = tmp_path / f"in{i}.safetensors"
+        save_file(sd, str(p))
+        paths.append(str(p))
+    out = tmp_path / "out.safetensors"
+    argv = sys.argv
+    sys.argv = ["merge_loras.py", *paths, "--out", str(out), "--dtype", "fp32", *extra]
+    try:
+        assert mod.main() == 0
+    finally:
+        sys.argv = argv
+    merged = load_file(str(out))
+
+    def dw(stem):
+        return merged[f"{stem}.lora_up.weight"] @ merged[f"{stem}.lora_down.weight"]
+
+    return {k: dw(s) for k, s in stems.items()}, deltas
+
+
+def test_merge_averages_adaln_and_keeps_it_out_of_the_normalize(tmp_path):
+    got, deltas = _run_merge(tmp_path, "--normalize", "global")
+    assert torch.allclose(
+        got["adaln"], (deltas["adaln"][0] + deltas["adaln"][1]) / 2, atol=1e-5
+    )
+    # global scale is fit on the attn module alone: ‖merged‖ = avg single norm
+    target = sum(d.norm() for d in deltas["attn"]) / 2
+    assert torch.isclose(got["attn"].norm(), target, rtol=1e-4)
+
+
+def test_merge_adaln_sum_restores_the_old_path(tmp_path):
+    got, deltas = _run_merge(tmp_path, "--normalize", "off", "--adaln", "sum")
+    assert torch.allclose(
+        got["adaln"], deltas["adaln"][0] + deltas["adaln"][1], atol=1e-5
+    )

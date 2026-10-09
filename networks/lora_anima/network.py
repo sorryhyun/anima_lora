@@ -422,8 +422,12 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
                 # kwarg never reaches Hydra/StepExpert.
                 if cfg.down_init != "kaiming" and effective_module_class is LoRAModule:
                     extra_kwargs["down_init"] = cfg.down_init
-                    if cfg.down_init == "weight_svd" and cfg.svd_slice:
-                        extra_kwargs["svd_slice"] = int(cfg.svd_slice)
+                    # adaln_up_* stays on the shared top-r (see cfg.svd_slice).
+                    if cfg.down_init == "weight_svd" and "adaln_up_" not in lora_name:
+                        if cfg.svd_slice:
+                            extra_kwargs["svd_slice"] = int(cfg.svd_slice)
+                        if cfg.svd_slice_count:
+                            extra_kwargs["svd_slice_count"] = int(cfg.svd_slice_count)
                     # Gradient-SVD modes carry a per-layer basis; DiT-only (the
                     # sketch never ran on the TE) and a missing key means that
                     # module keeps Kaiming, counted for the summary below.
@@ -1449,6 +1453,8 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
             metadata["ss_down_init"] = str(self.cfg.down_init)
             if self.cfg.down_init == "weight_svd":
                 metadata["ss_svd_slice"] = str(int(getattr(self.cfg, "svd_slice", 0)))
+                if getattr(self.cfg, "svd_slice_count", 0):
+                    metadata["ss_svd_slice_count"] = str(int(self.cfg.svd_slice_count))
 
         # Scalars the loader needs to size the FEI router input.
         if self.cfg.router_source == "fei" and self.cfg.fei_feature_dim > 0:

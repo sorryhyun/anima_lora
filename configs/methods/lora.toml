@@ -25,8 +25,13 @@ down_init = "weight_svd"
 # each artist its own k (0, 1, 2, …) when the LoRAs are meant to be merged.
 # 0 = top-r (the shipped default). Cap: (k+1)*r must fit every targeted
 # layer — the 256-row adaln .1 Linears allow k <= 7 at r=32 (8 artists).
-# Stamped as ss_svd_slice in the adapter.
+# Stamped as ss_svd_slice in the adapter. adaln_up_* modules ignore the slice
+# and always take the top-r (their σ-only input lives in W0's top ~2 directions).
 svd_slice = 0
+# > 0: interleaved slices — slice k takes vectors {k, k+N, k+2N, …} so every
+# artist owns one of the top-N directions. Set it to the shard count (8 for
+# k = 0..7); needs N*r <= min(W.shape). 0 = contiguous windows.
+svd_slice_count = 0
 path_pattern = "*"
 
 use_timestep_mask = true
