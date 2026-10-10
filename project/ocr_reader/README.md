@@ -38,6 +38,21 @@ split (tower LoRA + LM full FT). The first probe is in
 Plan and gates: [`roadmap.md`](roadmap.md). Open questions:
 [`questions.md`](questions.md).
 
+## The gate — sincos 597
+
+This line scores sincos with
+**`--labels project/ocr_reader/assets/sfx_labels_sincos_597.tsv`** (933 rows,
+597 scored SFX). It is the finished line's 617-row file minus the 8 pages that
+were deliberately removed from the dataset (2026-10-10). Every arm, v3
+included, is scored on it. Never mix it with the `/ 617` figures in
+`finished/…/eval.md`. v3 on this basis: strict 289, ♡-blind 336.
+
+```
+ANIMA_MANGA109S_ROOT=~/manga109s/Manga109s_released_2026_05_21 make daemon-run ARGS="--stall-timeout 900 \
+  project/finished/cjk_aware_anima_dit/ocr/eval_sfx.py --reader vl16 --ckpt output/ocr/<run>/ep1 \
+  --name <run>_597 --labels project/ocr_reader/assets/sfx_labels_sincos_597.tsv"
+```
+
 ## Inherited — read before any arm
 
 - Baseline ledger (rescored key): `finished/cjk_aware_anima_dit/findings.md`

@@ -62,7 +62,8 @@ Eight of the 163 label pages are missing from
 `retrieved/sincos/`, but label boxes are in resized-page coordinates, so the
 originals cannot stand in. The directory mtime is 2026-10-10. Both models
 were re-scored on the 155 pages that remain, using a filtered label file
-(975 → 933 rows; scored SFX 617 → 597). **Compare these numbers only with
+(975 → 933 rows; scored SFX 617 → 597). The removals were deliberate, so 597
+is now the line's gate, saved as `assets/sfx_labels_sincos_597.tsv`. **Compare these numbers only with
 each other, never with the `/ 617` rows in `finished/…/eval.md`.**
 
 Cross-check: v3 on 597 gives ♡-blind 336 / strict 289. Its recorded 617-row
