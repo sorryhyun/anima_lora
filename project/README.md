@@ -56,3 +56,7 @@ Active projects:
 
 - [`qwen21_lora/`](qwen21_lora/) — the Qwen-Image-2.1 LoRA line (not Anima;
   `library/qwen21/CLAUDE.md`).
+
+- [`ocr_reader/`](ocr_reader/) — opened 2026-10-10 on branch `ocr-reader`:
+  PaddleOCR-VL reader v4 (JA + KO + ZH), out of
+  `finished/cjk_aware_anima_dit`. Home: `README.md` (state), `roadmap.md`.
