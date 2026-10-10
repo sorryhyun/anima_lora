@@ -182,7 +182,10 @@ row_i = m_pack + s + (1 − α_i)·q_i + e_i
 each script grows its own stick ~57° off both seed sticks, its spikes sit
 outside both seed balls (0.09–0.12 of their energy in the seed balls' top-40
 vs 0.28–0.30 held-out); hanzi 6 / 8 exact, Hangul 2 / 8 exact with the other
-6 one jamo off. Next: `proposal_jamo.md`.
+6 one jamo off. Then `proposal_jamo.md` phase 1
+(`reports/jamo_phase1_2026_10_10.md`): jamo factors carry the glyph form
+and the jamo positions to untrained syllables, not their identity (exact
+~6 % of H at J64–J128).
 
 From `_archive/task_report.md` § 2 / § 4:
 

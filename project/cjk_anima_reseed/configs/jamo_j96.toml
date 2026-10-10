@@ -1,0 +1,10 @@
+# jamo_j96 — proposal_jamo § 4 scaling: jamo_j64 with probes/jamo_sets.py's J96 (96
+# syllables, all 112 cells, 89 of them twice; assets/jamo_sets.json), so the factors see
+# each cell more often. Same recipe as jamo_j64 (56 steps a row); read on the held-out H
+# against jamo_j64 (10-10: J64 drew one glyph on 19 / 32 of H, 1 exact).
+rows = ["chars:이는력활로용함됐의것붙쉽맺벧챦최퓨권싶폐넣꽃짧묶흙퀭쟬닮뚫돐싻템봤숍뺏녘뤽값규죄뭐앉꽤좋쏟띄쫓깥훑읊캬톺떫눼출크뿐퇴쭤씌퓌뾔밖잖례찾삶닭몫끓핥곬를수트드면터보된과원주화능째까품평씀키축없큼때쪽"]
+lang = { korean = "이는력활로용함됐의것붙쉽맺벧챦최퓨권싶폐넣꽃짧묶흙퀭쟬닮뚫돐싻템봤숍뺏녘뤽값규죄뭐앉꽤좋쏟띄쫓깥훑읊캬톺떫눼출크뿐퇴쭤씌퓌뾔밖잖례찾삶닭몫끓핥곬를수트드면터보된과원주화능째까품평씀키축없큼때쪽" }
+factor = "jamo"
+seed = "1008"
+steps_per_row = 56
+pack = "punct"

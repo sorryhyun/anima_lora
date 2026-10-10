@@ -1,7 +1,10 @@
 # proposal_jamo — Hangul rows from jamo identity, then warm (2026-10-09)
 
-**Status: prerequisites built (10-09), bar the floor (3, needs the user's
-OK); phase 1 not run.** What landed, by § 3 item:
+**Status: phase 1 run (10-10, `reports/jamo_phase1_2026_10_10.md`), the
+floor skipped (user 10-10). J64 beats F64 on its trained 64; on H the glyph
+form and the jamo positions transfer, syllable identity does not (exact
+1 / 2 / 2 of 32 at J64 / J96 / J128). G1 half-passed; the report's § 5 holds
+the next steps.** What landed before it, by § 3 item:
 
 | # | what | where |
 |---|---|---|

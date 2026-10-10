@@ -262,7 +262,7 @@ class Rows:
         en = self.effective()[live].norm(dim=1)
         rec = {
             "step": step,
-            "loss": float(loss_fm),
+            "loss": float(loss_fm.detach()),
             "loss_total": float(loss.detach()),
             "delta_norm_mean": float(dn.mean()),
             "delta_norm_max": float(dn.max()),
