@@ -49,7 +49,7 @@ included, is scored on it. Never mix it with the `/ 617` figures in
 
 ```
 ANIMA_MANGA109S_ROOT=/media/sorryhyun/new/dataset/manga109s/Manga109s_released_2026_05_21 make daemon-run ARGS="--stall-timeout 900 \
-  project/finished/cjk_aware_anima_dit/ocr/eval_sfx.py --reader vl16 --ckpt output/ocr/<run>/ep1 \
+  project/ocr_reader/ocr/eval_sfx.py --reader vl16 --ckpt output/ocr/<run>/ep1 \
   --name <run>_597 --labels project/ocr_reader/assets/sfx_labels_sincos_597.tsv"
 ```
 
@@ -84,8 +84,11 @@ so older commands still resolve.
   - Check the tokenizer before choosing any target spelling.
 - Licence: AnimeText is CC-BY-NC-SA. A shipped reader must be built without
   it, and without any pseudo rows derived from it.
-- Training / eval code stays in `finished/cjk_aware_anima_dit/ocr/`
-  (`finetune_vl16_lora.py`, `eval_sfx.py`, `rescore_eval.py`,
-  `pseudo_label.py`). Code search skips `project/finished/`, so open those
-  files by path. Every GPU step goes through the daemon.
+- Training / eval code lives in [`ocr/`](ocr/) (`finetune_vl16_lora.py`,
+  `eval_sfx.py`, `rescore_eval.py`, `pseudo_label.py` and their imports),
+  copied 2026-10-10 from `finished/cjk_aware_anima_dit/ocr/`; `ocr/pilot.py`
+  holds the helpers it used to load from `finished/cjk_aware_anima/datasets/`.
+  Edit here, not the finished copy. `eval_sfx.py` defaults to the 597 labels and
+  writes its reports to this line's `reports/`. Every GPU step goes through the
+  daemon.
 - Hardware: RTX 5070 Ti 16 GB. No bitsandbytes on cu132.

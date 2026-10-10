@@ -21,8 +21,9 @@ it (`rg --no-ignore-dot`). What stays visible is what live code outside
 `finished/` reads or runs: `sr/`, `mod_guidance/`, `cjk_aware_anima/{assets,
 datasets,probes}/` (the scale line's and `scripts/distill_cjk`'s eval prompts,
 `tests/test_cjk_ocr_captions.py`, `bench/grad_init`'s `blind_pairs.py`) and
-`cjk_aware_anima_dit/{ocr,render}/` (`tests/test_ocr_textnorm.py`, the
-`render_*` targets in `scripts/tasks/training.py`). A new outside reference
+`cjk_aware_anima_dit/render/` (the `render_*` targets in
+`scripts/tasks/training.py`). `cjk_aware_anima_dit/ocr/` is hidden: its live
+copy is `project/ocr_reader/ocr/`. A new outside reference
 into a hidden path means narrowing that line's `.ignore`.
 
 A finished line's whole working tree may move here when its top-level surface

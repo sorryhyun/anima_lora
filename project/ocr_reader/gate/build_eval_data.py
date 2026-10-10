@@ -39,7 +39,7 @@ SINCOS_PAGES = REPO / "post_image_dataset/resized/sincos"
 GELNOTE_DEFAULT = "/media/sorryhyun/new/dataset/gelnote_crops"
 PAD = 0.12  # eval_sfx.py's --pad default
 
-sys.path.insert(0, str(REPO / "project/finished/cjk_aware_anima_dit/ocr"))
+sys.path.insert(0, str(LINE / "ocr"))
 import manga109 as m109  # noqa: E402
 
 
