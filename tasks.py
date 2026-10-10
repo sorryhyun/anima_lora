@@ -133,8 +133,9 @@ COMMANDS = {
     ),
     "daemon-attach": (
         daemon.cmd_daemon_attach,
-        "Follow the daemon (read-only). JOB=<id> tails that job's stdout; "
-        "ctrl-C detaches only — training keeps running.",
+        "Follow the daemon (read-only): JOB=<id>'s stdout, else the active "
+        "job's, else the event stream (ARGS=--events forces it); ctrl-C "
+        "detaches only — training keeps running.",
     ),
     "daemon-pause": (
         daemon.cmd_daemon_pause,
