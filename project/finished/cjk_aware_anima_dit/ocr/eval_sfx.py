@@ -54,6 +54,11 @@ import manga109 as m109  # noqa: E402
 
 LABELS = m109.ASSETS / "sfx_labels_sincos.tsv"
 PAGES = m109.REPO / "post_image_dataset/resized/sincos"
+# Frozen gate images (``project/ocr_reader/gate/build_eval_data.py``): crops cut
+# at the default pad, and the pages behind them. Preferred over ``PAGES``, a
+# training tree that lost 8 label pages on 2026-10-10.
+FROZEN = m109.REPO / "project/ocr_reader/eval_data/sincos"
+FROZEN_PAD = 0.12
 
 
 def load_labels(
@@ -76,13 +81,27 @@ def load_labels(
 
 def crops_for(df: pd.DataFrame, pad: float):
     mt = m109.pilot_manga_text()
+    frozen = {}
+    if pad == FROZEN_PAD and (FROZEN / "index.tsv").is_file():
+        idx = pd.read_csv(FROZEN / "index.tsv", sep="\t", dtype=str)
+        frozen = dict(zip(idx.row, idx.orient))
     crops, orients = [], []
+    n_frozen = 0
     for _, r in df.iterrows():
-        img = cv2.imread(str(PAGES / f"{r.stem}.png"))
+        if r.row in frozen:
+            crops.append(cv2.imread(str(FROZEN / "crops" / f"{r.row}.png")))
+            orients.append(frozen[r.row])
+            n_frozen += 1
+            continue
+        page = FROZEN / "pages" / f"{r.stem}.png"
+        img = cv2.imread(str(page if page.is_file() else PAGES / f"{r.stem}.png"))
         x0, y0, x1, y1 = r.box
         crop, orient = mt.deskew_crop(img, [x0, y0, x1, y0, x1, y1, x0, y1], pad, 8)
         crops.append(crop)
         orients.append(orient)
+    print(
+        f"crops: {n_frozen} frozen, {len(crops) - n_frozen} cut from pages", flush=True
+    )
     return crops, orients
 
 

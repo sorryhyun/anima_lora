@@ -29,8 +29,8 @@ split (tower LoRA + LM full FT). The first probe is in
 
 | phase | status |
 |---|---|
-| P0 — gates (K3 KO/ZH set) | not started |
-| P1 — data intake | user collecting |
+| P0 — gates (K3 KO/ZH set) | gelnote holdout cut — 50 KO + 50 ZH crops, one per page, whole pages held out (`assets/k3_gelnote.tsv`, `gate/k3_gelnote.py`); hand labels not written, no scorer yet |
+| P1 — data intake | gelnote KO/ZH pseudo rows: stock VL-1.6 teacher × hayai v2.5 Nova voter, `pseudo_label.py --pool gelnote` → KO 1 706 / ZH 2 132 kept of 11 326 (`derived/manifest_pseudo_gelnote_{ko,zh}.parquet`); P2b smoke with both appended ok |
 | P2a — rank-truncated tower eval | spectrum probe done; eval skipped |
 | P2b — tower LoRA + LM full FT arm | run 1 beats v3 on sincos (+31 strict, paired z 3.1), ties COO, 7.0 vs 12.1 GB — [`reports/p2b_tower_lora_lm_full.md`](reports/p2b_tower_lora_lm_full.md); seed 2 + attribution arm owed |
 | P3 — mixed-language v4 run | blocked on P0 + P1 |
@@ -48,10 +48,26 @@ included, is scored on it. Never mix it with the `/ 617` figures in
 `finished/…/eval.md`. v3 on this basis: strict 289, ♡-blind 336.
 
 ```
-ANIMA_MANGA109S_ROOT=~/manga109s/Manga109s_released_2026_05_21 make daemon-run ARGS="--stall-timeout 900 \
+ANIMA_MANGA109S_ROOT=/media/sorryhyun/new/dataset/manga109s/Manga109s_released_2026_05_21 make daemon-run ARGS="--stall-timeout 900 \
   project/finished/cjk_aware_anima_dit/ocr/eval_sfx.py --reader vl16 --ckpt output/ocr/<run>/ep1 \
   --name <run>_597 --labels project/ocr_reader/assets/sfx_labels_sincos_597.tsv"
 ```
+
+## Gate images — `eval_data/` (gitignored)
+
+Labels stay in the tracked `assets/` TSVs. The images every gate reads are
+frozen under `project/ocr_reader/eval_data/` by `gate/build_eval_data.py`:
+
+- `sincos/crops/<row>.png` + `index.tsv`: the 933 label rows cut at pad 0.12,
+  the same cut `eval_sfx.py` makes. `sincos/pages/` holds the 155 pages behind
+  them. `eval_sfx.py` reads the frozen crops first (at pad 0.12) and then the
+  frozen pages, so the gate no longer depends on `post_image_dataset/`.
+  Checked pixel-identical to the on-the-fly cut (926 / 926 scored rows).
+- `k3_gelnote/crops/` + `pages/`: the 100 K3 rows of `assets/k3_gelnote.tsv`.
+
+Manga109-s (corpus + `derived/` manifests and crops) lives at
+`/media/sorryhyun/new/dataset/manga109s/`. `~/manga109s` is a symlink to it,
+so older commands still resolve.
 
 ## Inherited — read before any arm
 

@@ -35,12 +35,26 @@ Three subcommands, one per plan step:
 
 The draw is written once (``<name>_draw.parquet``) and both readers consume it,
 so the two prediction tables are row-aligned by ``(image_id, k)``.
+
+**gelnote pool (``project/ocr_reader`` P1, 2026-10-10).** ``--pool gelnote``
+draws from the gelbooru-note KO/ZH crops (``ANIMA_GELNOTE_ROOT``) instead of
+AnimeText: every crop, ``k`` = the note id, minus the pages held out for the
+K3 gate (``project/ocr_reader/assets/k3_gelnote.tsv``, ``gate/k3_gelnote.py``).
+The pool carries its language from page tags, so there is no hayai screen —
+both readers sweep the whole draw. Voter = hayai v2.5 Nova (``hayai25``).
+
+    … --pool gelnote --name gelnote sweep --reader stock
+    … --pool gelnote --name gelnote sweep --reader hayai25
+    … --pool gelnote --name gelnote filter --teacher stock --voter hayai25 --script ko
+    … --pool gelnote --name gelnote filter --teacher stock --voter hayai25 --script zh_han
+    … --pool gelnote --name gelnote manifest --in_suffix ko --out_name gelnote_ko
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import re
 import sys
@@ -67,7 +81,17 @@ CKPT: dict[str, object] = {
     # ``models/paddleocr_vl_1.6``); hayai is pinned to the scored revision.
     "stock": None,
     "hayai": "JustANormalTinkerer/hayai-ocr-v2@v2.1.5",
+    "hayai25": "JustANormalTinkerer/hayai-ocr-v2.5-nova@2803d0dc005fa4396ab1e7c5a472d2c450a247f7",
 }
+GELNOTE_DEFAULT = "/media/sorryhyun/new/dataset/gelnote_crops"
+K3_GELNOTE = m109.REPO / "project/ocr_reader/assets/k3_gelnote.tsv"
+
+
+def pool_root(pool: str) -> Path:
+    if pool == "gelnote":
+        return Path(os.environ.get("ANIMA_GELNOTE_ROOT", GELNOTE_DEFAULT)).expanduser()
+    return animetext_root()
+
 
 # --------------------------------------------------------------------------- script
 
@@ -117,7 +141,16 @@ def simplified_zh(s: str) -> bool:
     )
 
 
-SCRIPT = {"ko": hangul_dominant, "zh": simplified_zh}
+def han_only(s: str) -> bool:
+    """Carries a CJK ideograph and neither kana nor hangul — simplified or
+    traditional. Only meaningful on a pool whose page tags already say ZH."""
+    s = str(s)
+    if KANA.search(s) or HANGUL.search(s):
+        return False
+    return any(0x4E00 <= ord(c) <= 0x9FFF or 0x3400 <= ord(c) <= 0x4DBF for c in s)
+
+
+SCRIPT = {"ko": hangul_dominant, "zh": simplified_zh, "zh_han": han_only}
 # The processor's own bounds — mirrored from ssl_tower_simmim.py's wiring so the
 # token estimate matches what the tower will actually be handed.
 MIN_PX, MAX_PX = 112896, 1280 * 28 * 28
@@ -126,13 +159,49 @@ MIN_PX, MAX_PX = 112896, 1280 * 28 * 28
 # --------------------------------------------------------------------------- draw
 
 
-def load_draw(name: str, n: int | None, seed: int) -> pd.DataFrame:
-    """The seeded draw, stratified over the three AnimeText splits. Written once."""
+def gelnote_draw(seed: int) -> pd.DataFrame:
+    """Every gelnote crop off a K3 page, shuffled. ``lang`` is the page tag."""
+    if not K3_GELNOTE.is_file():
+        raise SystemExit(
+            f"missing {K3_GELNOTE} — build the K3 holdout before the draw "
+            "(project/ocr_reader/gate/k3_gelnote.py)"
+        )
+    held = set(pd.read_csv(K3_GELNOTE, sep="\t").image_id)
+    pool = pd.read_json(pool_root("gelnote") / "manifest.jsonl", lines=True)
+    pool = pool[~pool.image_id.isin(held)]
+    df = pd.DataFrame(
+        {
+            "image_id": pool.image_id.astype("int64"),
+            "k": pool.note_id.astype("int64"),
+            "w": pool.w,
+            "h": pool.h,
+            "box": pool.box,
+            "path": pool.path,
+            "lang": pool.lang,
+        }
+    )
+    return df.sample(frac=1.0, random_state=seed).reset_index(drop=True)
+
+
+def load_draw(
+    name: str, n: int | None, seed: int, pool: str = "animetext"
+) -> pd.DataFrame:
+    """The seeded draw, stratified over the three AnimeText splits (or the whole
+    gelnote pool minus K3). Written once."""
     OUT.mkdir(parents=True, exist_ok=True)
     path = OUT / f"{name}_draw.parquet"
     if path.is_file():
         df = pd.read_parquet(path)
         print(f"draw {path.name}: {len(df)} rows (existing)", flush=True)
+        return df
+    if pool == "gelnote":
+        df = gelnote_draw(seed)
+        df.to_parquet(path, index=False)
+        print(
+            f"draw {path.name}: {len(df)} gelnote rows (K3 pages held out), "
+            f"lang {df.lang.value_counts().to_dict()}",
+            flush=True,
+        )
         return df
     if n is None:
         raise SystemExit(f"{path} does not exist — pass --n to build the draw")
@@ -251,11 +320,37 @@ class HayaiSweeper:
         return [(t, 0, float("nan")) for t in self.r.read(crops, orients, len(crops))]
 
 
+class Hayai25Sweeper:
+    """hayai v2.5 Nova — the gelnote voter. Its own ``generate`` is greedy on a
+    fused static-KV engine (``num_beams`` is accepted and ignored), so the v2.1
+    ``hayai_beam`` path does not apply; patch budget 512, the card's quality
+    setting (``ANIMA_HAYAI_PATCHES`` overrides)."""
+
+    name = "hayai25"
+
+    def __init__(self, ckpt: str | None, device: str):
+        self.r = ev.HayaiReader(ckpt, device)
+        self.r.patches = int(os.environ.get("ANIMA_HAYAI_PATCHES", 512))
+
+    def read(self, crops: list) -> list[tuple[str, int, float]]:
+        inputs = self.r.prepare(crops).to(self.r.device)
+        with self.r.torch.no_grad():
+            texts = self.r.model.generate(
+                pixel_values=inputs["pixel_values"],
+                pixel_attention_mask=inputs["pixel_attention_mask"],
+                spatial_shapes=inputs["spatial_shapes"],
+                tokenizer=self.r.tok,
+                max_new_tokens=ev.MAX_NEW_TOKENS,
+            )
+        return [((t or "").strip(), 0, float("nan")) for t in texts]
+
+
 SWEEPERS = {
     "vl16": Vl16Sweeper,
     "manga_ocr": MangaOcrSweeper,
     "stock": Vl16Sweeper,
     "hayai": HayaiSweeper,
+    "hayai25": Hayai25Sweeper,
 }
 
 
@@ -311,8 +406,8 @@ def _fan_out(a: argparse.Namespace, out_path: Path) -> None:
 
 
 def cmd_sweep(a: argparse.Namespace) -> None:
-    draw = load_draw(a.name, a.n, a.seed)
-    root = animetext_root()
+    draw = load_draw(a.name, a.n, a.seed, a.pool)
+    root = pool_root(a.pool)
     out_path = OUT / f"{a.name}_{a.reader}.parquet"
 
     if a.rows_from:
@@ -500,7 +595,7 @@ def coo_train_baseline() -> tuple[list[str], int]:
 
 
 def cmd_filter(a: argparse.Namespace) -> None:
-    draw = load_draw(a.name, None, a.seed)
+    draw = load_draw(a.name, None, a.seed, a.pool)
     tabs = {}
     for reader in (a.teacher, a.voter):
         p = OUT / f"{a.name}_{reader}.parquet"
@@ -519,6 +614,10 @@ def cmd_filter(a: argparse.Namespace) -> None:
         # has already cut the draw down; this re-asserts the call on the
         # teacher's own output, which is what K2 routes on.
         df = df[[bool(SCRIPT[a.script](p)) for p in df.b_pred.fillna("")]]
+        if "lang" in df.columns:
+            # gelnote: the page tag must agree with the teacher's script call,
+            # so a kanji-only line off a ja+ko page never lands in the ZH arm.
+            df = df[df.lang.str.contains(a.script[:2], regex=False)]
         df = df.reset_index(drop=True)
     n = len(df)
     print(
@@ -562,7 +661,7 @@ def cmd_filter(a: argparse.Namespace) -> None:
         f"(the voter's spacing is ignored — exact_key is whitespace-blind)"
     )
 
-    if a.script in ("ko", "zh"):
+    if a.script:
         # The ♡ precondition and the COO character profile are Japanese
         # questions; a KO/ZH arm is gated by K3's held-out set instead.
         kept_path = OUT / f"{a.name}_kept_{a.out_suffix or a.script}.parquet"
@@ -639,7 +738,8 @@ def cmd_manifest(a: argparse.Namespace) -> None:
     kept = pd.read_parquet(OUT / f"{a.name}_kept{suffix}.parquet")
     if a.rows and a.rows < len(kept):
         kept = kept.sample(a.rows, random_state=a.seed)
-    root = animetext_root()
+    root = pool_root(a.pool)
+    prefix = "gn" if a.pool == "gelnote" else "at"
 
     def poly(box) -> str:
         x0, y0, x1, y1 = [float(v) for v in box]
@@ -651,7 +751,7 @@ def cmd_manifest(a: argparse.Namespace) -> None:
             # load_split only draws sfx / speech — an unknown kind is dropped silently.
             "kind": "sfx",
             "id": [f"{i}_{k}" for i, k in zip(kept.image_id, kept.k)],
-            "book": [f"at{i}" for i in kept.image_id],
+            "book": [f"{prefix}{i}" for i in kept.image_id],
             "page": 0,
             "text": list(kept.b_pred),
             "joined": False,
@@ -696,6 +796,12 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--name", default="pl100k", help="draw / output name")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument(
+        "--pool",
+        choices=("animetext", "gelnote"),
+        default="animetext",
+        help="crop pool the draw comes from (gelnote = project/ocr_reader P1)",
+    )
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     s = sub.add_parser("sweep", help="one reader over the draw")
