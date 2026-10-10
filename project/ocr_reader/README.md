@@ -29,11 +29,11 @@ split (tower LoRA + LM full FT). The first probe is in
 
 | phase | status |
 |---|---|
-| P0 — gates (K3 KO/ZH set) | gelnote holdout cut — 50 KO + 50 ZH crops, one per page, whole pages held out (`assets/k3_gelnote.tsv`, `gate/k3_gelnote.py`); hand labels not written, no scorer yet |
+| P0 — gates (K3 KO/ZH set) | gelnote holdout cut — 50 KO + 50 ZH crops, one per page, whole pages held out (`assets/k3_gelnote.tsv`, `gate/k3_gelnote.py`); Opus draft labels in progress (user review owed); scorer `ocr/eval_k3.py` (exact / 띄어쓰기 spaced / CER / kana leak, `--compare` for paired counts) |
 | P1 — data intake | gelnote KO/ZH pseudo rows: stock VL-1.6 teacher × hayai v2.5 Nova voter, `pseudo_label.py --pool gelnote` → KO 1 706 / ZH 2 132 kept of 11 326 (`derived/manifest_pseudo_gelnote_{ko,zh}.parquet`); P2b smoke with both appended ok |
 | P2a — rank-truncated tower eval | spectrum probe done; eval skipped |
 | P2b — tower LoRA + LM full FT arm | run 1 beats v3 on sincos (+31 strict, paired z 3.1), ties COO, 7.0 vs 12.1 GB — [`reports/p2b_tower_lora_lm_full.md`](reports/p2b_tower_lora_lm_full.md); seed 2 + attribution arm owed |
-| P3 — mixed-language v4 run | blocked on P0 + P1 |
+| P3 — mixed-language v4 run | `vl16_p2b_kozh` queued 2026-10-10: the P2b recipe + gelnote KO/ZH pseudo (`--extra_manifest pseudo_gelnote_{ko,zh} --speech_ratio 0.909525`, 81 002 rows); K3 read waits on labels |
 
 Plan and gates: [`roadmap.md`](roadmap.md). Open questions:
 [`questions.md`](questions.md).
