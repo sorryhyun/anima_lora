@@ -16,7 +16,7 @@ ANIMA_MANGA109S_ROOT=… make daemon-run ARGS="--stall-timeout 900 \
 Checkpoint: `output/ocr/vl16_p2b_kozh/ep1/` (`adapter_model.safetensors` +
 `lm.safetensors`). Hub: `sorryhyun/paddleocr-vl-1.6-manga-lora`, folder `v4/`.
 
-## K3 — KO / ZH (48 + 48 scored rows; **Opus draft labels, user review owed**)
+## K3 — KO / ZH (48 + 48 scored rows; Opus labels, user-reviewed 2026-10-11)
 
 `ocr/eval_k3.py --compare stock v3 pl_kozh p2b p2b_kozh`, paired against stock.
 
@@ -62,10 +62,9 @@ COO rows are rescored on the current `exact_key`. One COO SE is about 18 rows.
 
 | clause | result |
 |---|---|
-| K3 KO and ZH both above v3 | yes (z +5.0 / +3.0), on draft labels |
+| K3 KO and ZH both above v3 | yes (z +5.0 / +3.0) |
 | sincos within 1 SE of v3 | yes (316 vs 289) |
 | COO SFX / speech within 1 SE of v3 | yes (both above) |
 
-Owed before the line can call this v4 final: the user's K3 label review
-(re-score with `--compare`, no model re-run), a second seed, and more
-licence-clean KO / ZH data to clear stock.
+Shipped as Hub `v4/` (commit `8335e223`; root card `9fe3d41e`). Still owed: a
+second seed, and more licence-clean KO / ZH data to clear stock.
