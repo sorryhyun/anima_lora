@@ -138,12 +138,18 @@ def summary(scored: pd.DataFrame, name: str, wall: float) -> str:
     return "\n".join(md) + "\n"
 
 
-def compare(names: list[str]) -> str:
-    """Per-language table over stored runs + paired wins / losses against the first."""
-    runs = {
-        n: pd.read_json(ev.OUT / f"k3_{n}.jsonl", lines=True).set_index("id")
-        for n in names
-    }
+def compare(names: list[str], labels: Path = LABELS) -> str:
+    """Per-language table over stored runs + paired wins / losses against the first.
+
+    Each run's stored ``pred`` is re-scored against the *current* labels, so a
+    label edit needs no model re-run; rows the labels now skip drop out."""
+    df = load_labels(labels)
+    runs = {}
+    for n in names:
+        pred = pd.read_json(ev.OUT / f"k3_{n}.jsonl", lines=True, dtype={"id": str})
+        pred = dict(zip(pred.id, pred.pred))
+        d = df[df.id.isin(pred.keys())]
+        runs[n] = score(d, [pred[i] for i in d.id]).set_index("id")
     ids = sorted(set.intersection(*(set(d.index) for d in runs.values())))
     base = runs[names[0]].loc[ids]
     md = [
@@ -183,7 +189,7 @@ def main():
     ap.add_argument("--max_new_tokens", type=int, default=ev.MAX_NEW_TOKENS)
     a = ap.parse_args()
     if a.compare:
-        print(compare(a.compare))
+        print(compare(a.compare, a.labels))
         return
     if not a.reader:
         ap.error("--reader is required unless --compare")
