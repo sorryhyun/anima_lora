@@ -31,8 +31,8 @@ split (tower LoRA + LM full FT). The first probe is in
 |---|---|
 | P0 — gates (K3 KO/ZH set) | not started |
 | P1 — data intake | user collecting |
-| P2a — rank-truncated tower eval | spectrum probe done; eval owed |
-| P2b — tower LoRA + LM full FT arm | not started |
+| P2a — rank-truncated tower eval | spectrum probe done; eval skipped |
+| P2b — tower LoRA + LM full FT arm | run 1 beats v3 on sincos (+31 strict, paired z 3.1), ties COO, 7.0 vs 12.1 GB — [`reports/p2b_tower_lora_lm_full.md`](reports/p2b_tower_lora_lm_full.md); seed 2 + attribution arm owed |
 | P3 — mixed-language v4 run | blocked on P0 + P1 |
 
 Plan and gates: [`roadmap.md`](roadmap.md). Open questions:

@@ -9,6 +9,7 @@
     … --extra_replace                # …swapped in for their grey originals instead of appended
     … --init_adapter output/ocr/vl16_lr1e-4/ep2 --train_tower   # LP-FT stage 2: start from arm B's LoRA
     … --train_tower --init_tower output/ocr/simmim_at/ep5/tower.safetensors   # SSL-adapted tower (ssl_tower_simmim.py)
+    … --tower_rank 64 --lm_full --lm_lr 1e-5   # ocr_reader P2b: tower LoRA + LM decoder layers full FT
 
 Tower + projector frozen; LoRA (``--rank``, α = 2r) on the ERNIE LM's attention
 (q/k/v/o) + MLP (gate/up/down) projections, selected by module path so the
@@ -25,6 +26,13 @@ forward, an fp32 master copy takes the AdamW update at ``--tower_lr`` and is
 copied back each step (a 1e-5 update is below bf16 resolution otherwise).
 The trained tower is saved beside the adapter as ``tower.safetensors`` (bf16,
 base-model key names) and ``Vl16Reader`` loads it after the merge.
+
+``--tower_rank R`` (``project/ocr_reader`` P2b) puts a LoRA (α = 2R) on the
+tower's attention / MLP Linears and the projector's two Linears instead.
+``--lm_full`` drops the LM LoRA and trains the 18 LM decoder layers (255 M) in
+full through the same fp32-master path at ``--lm_lr``; embed_tokens, the final
+norm and lm_head stay frozen. Those weights land in ``lm.safetensors`` beside
+the adapter, which ``Vl16Reader`` also loads after the merge.
 
 ``--init_adapter <dir>`` (LP-FT, Kumar et al. 2022) loads an already-trained
 adapter dir as the starting point instead of a zero-init LoRA — its
@@ -44,6 +52,7 @@ import argparse
 import json
 import os
 import random
+import re
 import shutil
 import sys
 import time
@@ -98,8 +107,25 @@ def lm_lora_targets(model) -> list[str]:
     return names
 
 
+TOWER_LORA_LEAVES = {"q_proj", "k_proj", "v_proj", "out_proj", "fc1", "fc2"}
+
+
+def tower_lora_targets(model) -> list[str]:
+    """Full names of the tower's attention / MLP Linears + the projector's two."""
+    return [
+        n
+        for n, m in model.named_modules()
+        if isinstance(m, torch.nn.Linear)
+        and (
+            (n.startswith("model.visual.") and n.split(".")[-1] in TOWER_LORA_LEAVES)
+            or n.startswith("model.projector.linear_")
+        )
+    ]
+
+
 PEFT_PREFIX = "base_model.model."
 TOWER_FILE = "tower.safetensors"
+LM_FILE = "lm.safetensors"
 
 
 def is_tower_param(name: str) -> bool:
@@ -110,15 +136,20 @@ def is_tower_param(name: str) -> bool:
     return n.startswith("model.visual.") or n.startswith("model.projector.")
 
 
-def save_tower(ep_dir: Path, tower_params) -> None:
-    """bf16 state dict of the trained tower under base-model key names."""
+def is_lm_layer_param(name: str) -> bool:
+    """The LM's decoder layers — embed_tokens, final norm and lm_head excluded."""
+    return name.removeprefix(PEFT_PREFIX).startswith("model.language_model.layers.")
+
+
+def save_full(path: Path, params) -> None:
+    """bf16 state dict of fully-trained params under base-model key names."""
     from safetensors.torch import save_file
 
     sd = {
         n.removeprefix(PEFT_PREFIX): p.detach().to(torch.bfloat16).contiguous().cpu()
-        for n, p in tower_params
+        for n, p in params
     }
-    save_file(sd, str(ep_dir / TOWER_FILE))
+    save_file(sd, str(path))
 
 
 class Collate:
@@ -250,6 +281,18 @@ def main():
     )
     ap.add_argument("--tower_lr", type=float, default=1e-5)
     ap.add_argument(
+        "--tower_rank",
+        type=int,
+        default=0,
+        help="LoRA rank on the tower + projector Linears (0 = no tower LoRA)",
+    )
+    ap.add_argument(
+        "--lm_full",
+        action="store_true",
+        help="full-finetune the LM decoder layers (fp32 master) instead of the LM LoRA",
+    )
+    ap.add_argument("--lm_lr", type=float, default=1e-5)
+    ap.add_argument(
         "--init_adapter",
         help="start from this trained adapter dir (LP-FT stage 2); "
         "its adapter_config.json overrides --rank/--dropout",
@@ -285,6 +328,12 @@ def main():
     ap.add_argument("--skip_stock_val", action="store_true")
     ap.add_argument("--smoke", action="store_true")
     a = ap.parse_args()
+    if a.tower_rank and a.train_tower:
+        ap.error("--tower_rank and --train_tower both train the tower; pick one")
+    if a.init_adapter and (a.tower_rank or a.lm_full):
+        ap.error(
+            "--init_adapter carries its own targets; not with --tower_rank/--lm_full"
+        )
     if a.smoke:
         a.max_train, a.val_limit, a.epochs = a.max_train or 480, 64, 1
 
@@ -323,7 +372,10 @@ def main():
         print(f"init tower {a.init_tower} ({len(sd)} tensors)", flush=True)
     for p in base.parameters():
         p.requires_grad_(False)
-    targets = lm_lora_targets(base)
+    targets = [] if a.lm_full else lm_lora_targets(base)
+    tower_targets = tower_lora_targets(base) if a.tower_rank else []
+    targets += tower_targets
+    assert targets, "no LoRA targets — --lm_full needs --tower_rank"
     if a.init_adapter:
         init_dir = Path(a.init_adapter)
         model = PeftModel.from_pretrained(base, str(init_dir), is_trainable=True)
@@ -350,17 +402,26 @@ def main():
             lora_alpha=2 * a.rank,
             lora_dropout=a.dropout,
             target_modules=targets,
+            rank_pattern={re.escape(t): a.tower_rank for t in tower_targets},
+            alpha_pattern={re.escape(t): 2 * a.tower_rank for t in tower_targets},
             bias="none",
         )
         model = get_peft_model(base, cfg)
-    tower_params: list[tuple[str, torch.nn.Parameter]] = []
-    if a.train_tower:
-        for n, p in model.named_parameters():
-            if is_tower_param(n):
-                p.requires_grad_(True)
-                tower_params.append((n, p))
-    tower_masters = [
-        p.detach().float().clone().requires_grad_(True) for _, p in tower_params
+    # (file, params, lr) per fully-trained block; each takes an fp32 master copy
+    full_groups: list[tuple[str, list[tuple[str, torch.nn.Parameter]], float]] = []
+    for on, file, pick, lr in (
+        (a.train_tower, TOWER_FILE, is_tower_param, a.tower_lr),
+        (a.lm_full, LM_FILE, is_lm_layer_param, a.lm_lr),
+    ):
+        if not on:
+            continue
+        ps = [(n, p) for n, p in model.named_parameters() if pick(n)]
+        for _, p in ps:
+            p.requires_grad_(True)
+        full_groups.append((file, ps, lr))
+    full_params = [np_ for _, ps, _ in full_groups for np_ in ps]
+    full_masters = [
+        p.detach().float().clone().requires_grad_(True) for _, p in full_params
     ]
     if not a.no_grad_ckpt:
         try:
@@ -371,10 +432,14 @@ def main():
         except Exception as e:  # custom modeling file without the hook
             print(f"(gradient checkpointing unavailable: {e})", flush=True)
     n_train = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    n_tower = sum(p.numel() for _, p in tower_params)
+    full_desc = ", ".join(
+        f"{file} {sum(p.numel() for _, p in ps) / 1e6:.1f}M in {len(ps)} tensors"
+        for file, ps, _ in full_groups
+    )
     print(
-        f"lora targets {len(targets)} modules (e.g. {targets[0]} … {targets[-1]}); "
-        f"trainable {n_train / 1e6:.1f}M (tower {n_tower / 1e6:.1f}M in {len(tower_params)} tensors)",
+        f"lora targets {len(targets)} modules (e.g. {targets[0]} … {targets[-1]}; "
+        f"{len(tower_targets)} tower at r {a.tower_rank}); "
+        f"trainable {n_train / 1e6:.1f}M (full: {full_desc or 'none'})",
         flush=True,
     )
     print(f"prompt {prompt!r}", flush=True)
@@ -404,15 +469,17 @@ def main():
     if a.smoke:
         total = min(total, 30)
     warm = max(1, int(total * a.warmup))
-    tower_ids = {id(p) for _, p in tower_params}
+    full_ids = {id(p) for _, p in full_params}
     lora_params = [
-        p for p in model.parameters() if p.requires_grad and id(p) not in tower_ids
+        p for p in model.parameters() if p.requires_grad and id(p) not in full_ids
     ]
     groups = [{"params": lora_params, "lr": a.lr}]
-    if tower_masters:
-        groups.append({"params": tower_masters, "lr": a.tower_lr})
+    i = 0
+    for _, ps, lr in full_groups:
+        groups.append({"params": full_masters[i : i + len(ps)], "lr": lr})
+        i += len(ps)
     opt = torch.optim.AdamW(groups, lr=a.lr, weight_decay=0.0)
-    clip_params = lora_params + tower_masters
+    clip_params = lora_params + full_masters
     sched = torch.optim.lr_scheduler.LambdaLR(
         opt,
         lambda s: (
@@ -467,7 +534,7 @@ def main():
             losses.append(loss.item() * a.grad_accum)
             if micro % a.grad_accum:
                 continue
-            for (_, p), m in zip(tower_params, tower_masters):
+            for (_, p), m in zip(full_params, full_masters):
                 m.grad = p.grad.float()
                 p.grad = None
             torch.nn.utils.clip_grad_norm_(clip_params, 1.0)
@@ -475,7 +542,7 @@ def main():
             sched.step()
             opt.zero_grad(set_to_none=True)
             with torch.no_grad():
-                for (_, p), m in zip(tower_params, tower_masters):
+                for (_, p), m in zip(full_params, full_masters):
                     p.copy_(m)
             step += 1
             if step % 25 == 0 or step == total:
@@ -492,8 +559,8 @@ def main():
         # anime_tools pin, 2026-09-08) must not cost the epoch's weights.
         ep_dir = out / f"ep{ep}"
         model.save_pretrained(ep_dir)
-        if tower_params:
-            save_tower(ep_dir, tower_params)
+        for file, ps, _ in full_groups:
+            save_full(ep_dir / file, ps)
         m = evaluate(f"ep{ep}", step)
         m["train_loss"] = float(np.mean(losses))
         if m["sfx_exact"] > best[0]:
@@ -509,6 +576,8 @@ def main():
     md = [
         f"# {a.run} — PaddleOCR-VL-1.6 crop LoRA (r {a.rank}, lr {a.lr}, bs {a.bs}x{a.grad_accum}, "
         + (f"tower full FT lr {a.tower_lr}, " if a.train_tower else "")
+        + (f"tower LoRA r {a.tower_rank}, " if a.tower_rank else "")
+        + (f"LM layers full FT lr {a.lm_lr}, " if a.lm_full else "")
         + (f"init {a.init_adapter}, " if a.init_adapter else "")
         + f"speech_ratio {a.speech_ratio}, train {len(tr)}, val {len(va)})\n",
         "| tag | sfx exact | sfx sim | sfx runaway | speech exact | speech sim | speech runaway |",

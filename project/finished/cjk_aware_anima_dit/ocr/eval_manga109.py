@@ -122,14 +122,17 @@ class Vl16Reader:
             from peft import PeftModel
 
             model = PeftModel.from_pretrained(model, adapter).merge_and_unload()
-            tower = Path(adapter) / "tower.safetensors"
-            if tower.is_file():  # O2b: the full-finetuned vision tower + projector
+            # O2b: the full-finetuned tower + projector; ocr_reader P2b: LM layers
+            for name in ("tower.safetensors", "lm.safetensors"):
+                full = Path(adapter) / name
+                if not full.is_file():
+                    continue
                 from safetensors.torch import load_file
 
-                sd = load_file(str(tower))
+                sd = load_file(str(full))
                 unexpected = model.load_state_dict(sd, strict=False).unexpected_keys
                 assert not unexpected, unexpected[:5]
-                print(f"loaded tower {tower} ({len(sd)} tensors)")
+                print(f"loaded {full} ({len(sd)} tensors)")
         self.model = model.to(device).eval()
         self.proc = AutoProcessor.from_pretrained(path)
         self.device = device
