@@ -66,7 +66,7 @@ def cmd_daemon(extra):
     print(
         f"daemon up on {cl.base} (pid {health.get('pid')}). "
         f"Logs: {_cfg.DAEMON_LOG}\n"
-        "  make daemon-attach        # follow events\n"
+        "  make daemon-attach        # follow the active job (or events)\n"
         "  make daemon-kill          # abort the running job\n"
         "  make daemon-terminate     # stop the daemon"
     )
@@ -298,9 +298,11 @@ def _start_attach_ticker(stop: threading.Event, last_line: list[float]) -> None:
 
 
 def cmd_daemon_attach(extra):
-    """Read-only viewer. ``JOB=<id>`` follows that job's stdout; otherwise the
-    daemon event stream. Ctrl-C detaches this terminal only — never the daemon
-    or the training subprocess (we are the parent of nothing).
+    """Read-only viewer. ``JOB=<id>`` follows that job's stdout; without it, the
+    active job's stdout, or the daemon event stream when nothing is running
+    (``ARGS=--events`` forces the event stream). Ctrl-C detaches this terminal
+    only — never the daemon or the training subprocess (we are the parent of
+    nothing).
 
     Every write is flushed. On a job that is already terminal it returns as
     soon as the log is drained (the SSE endpoint closes at ``eof``)."""
@@ -309,6 +311,8 @@ def cmd_daemon_attach(extra):
         sys.exit(1)
     cl = _client.DaemonClient()
     job = _job_arg(extra)
+    if not job and "--events" not in extra:
+        job = (cl.health() or {}).get("active_job")
     stream = cl.stream_logs(job) if job else cl.stream_events()
     what = f"job {job}" if job else "daemon events"
     print(f"attached to {what} ({cl.base}) — ctrl-C to detach\n", flush=True)
