@@ -93,7 +93,9 @@ ratio_normalization = true
 # lr = 4e-5
 # grad_clip = 0
 # window = 4
-# disc_warmup_steps = 50
+# disc_warmup_steps = 0
+# gap_routing = false  # head T weight per σ decile from the h_R real − teacher gap
+# gap_tau = 2.0
 # feature_block_idx = -1
 
 [softrank]

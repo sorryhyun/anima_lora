@@ -179,6 +179,8 @@ class DmadMetrics:
     * ``bce_{t,r}`` / ``margin_{t,r}`` / ``rank_acc_{t,r}`` — the newest pair,
       scored before the disc trains on it (rank acc = h_target > h_student).
     * ``gap_r`` — h_R(real) − h_R(teacher sample), the gap-reweighting signal.
+    * ``gap_ready`` / ``gap_w`` — gap-routing bands with >= 10 updates, and
+      head T's routed weight ``w_b / E_w`` at the student query (routing on).
     * ``loss`` / ``grad_norm`` — window-mean disc loss, pre-clip grad norm.
     * ``g_{t,r}_rms`` / ``cos_tr`` — each head's raw student-signal gradient
       before the RMS normalization, and their cosine.

@@ -20,6 +20,10 @@ term and the critic are replaced by :class:`DmadDisc`:
   RMS-normalized per sample to ``signal_rms`` (``signal_rms = 0``: raw, so λ
   alone sets its size) — the ``grad_signal`` the loop assembles exactly like
   the DM one.
+* Gap routing (``gap_routing``, the official H3 trainer's rule): per critic-τ
+  decile band, a bias-corrected EMA of ``h_R(real) − h_R(teacher)``; head T's
+  weight in the student signal is ``sigmoid((median − gap_b)/gap_tau) / E_w``
+  over the ready bands. The gap is tracked whenever both heads exist.
 
 :func:`run_disc_warmup` trains the disc alone for ``disc_warmup_steps`` before
 the student uses it. The Phase −1 probe (``dmad_probe.py``) shares the
@@ -46,6 +50,12 @@ logger = logging.getLogger(__name__)
 
 # Offset on cfg.seed for the disc's own generator (the probe uses 7919).
 _GEN_SEED_OFFSET = 7927
+
+# Gap routing constants, as the official MiniMax-H3 DMAD trainer.
+GAP_BANDS = 10
+GAP_EMA_BETA = 0.99
+GAP_READY_MIN = 5  # ready bands before the routing engages
+GAP_BAND_MIN_COUNT = 10  # updates before a band counts as ready
 
 
 def resolve_tap_block(model, idx: int, key: str) -> int:
@@ -152,6 +162,10 @@ class DmadDisc:
         self.lambda_r = float(cfg.dmad_lambda_r)
         self.signal_rms = float(cfg.dmad_signal_rms)
         self.grad_clip = float(cfg.dmad_grad_clip)
+        self.gap_routing = bool(cfg.dmad_gap_routing)
+        self.gap_tau = float(cfg.dmad_gap_tau)
+        self._gap_ema = torch.zeros(GAP_BANDS, device=self.device)
+        self._gap_cnt = torch.zeros(GAP_BANDS, device=self.device)
         self.stack = turbo.make_aux_stack()
         self.stack.to(device=self.device, dtype=dtype)
         self.tap = resolve_tap_block(
@@ -182,7 +196,8 @@ class DmadDisc:
         logger.info(
             f"DMAD disc: cold stack + heads {'/'.join(self._heads())} on block "
             f"{self.tap}, {sum(p.numel() for p in self.params):,} params, "
-            f"lr={cfg.dmad_lr}, window={cfg.dmad_window}"
+            f"lr={cfg.dmad_lr}, window={cfg.dmad_window}, "
+            f"gap_routing={self.gap_routing}"
         )
 
     def _heads(self) -> dict[str, torch.nn.Module]:
@@ -209,6 +224,38 @@ class DmadDisc:
     def _logit(head, f: torch.Tensor) -> torch.Tensor:
         """One logit per sample: the token head's logits averaged, (B, 1)."""
         return head([f]).mean(dim=1, keepdim=True)
+
+    @staticmethod
+    def _band(tau: torch.Tensor) -> torch.Tensor:
+        """CDF-decile band of each τ; τ ~ U(0, 1), so the CDF is τ itself."""
+        return (tau.float() * GAP_BANDS).long().clamp(0, GAP_BANDS - 1)
+
+    @torch.no_grad()
+    def _gap_update(
+        self, tau: torch.Tensor, h_real: torch.Tensor, h_teacher: torch.Tensor
+    ) -> None:
+        band = self._band(tau)
+        gap = (h_real - h_teacher).float().view(-1)
+        for i in range(gap.numel()):
+            b = band[i]
+            self._gap_ema[b] = (
+                GAP_EMA_BETA * self._gap_ema[b] + (1.0 - GAP_EMA_BETA) * gap[i]
+            )
+            self._gap_cnt[b] += 1
+
+    @torch.no_grad()
+    def gap_weight(self, tau: torch.Tensor) -> torch.Tensor:
+        """Head T's per-sample weight ``w_b / E_w``, (B,); 1 until
+        ``GAP_READY_MIN`` bands are ready, and for a sample whose band is not."""
+        ones = torch.ones(tau.shape[0], device=self.device)
+        ready = self._gap_cnt >= GAP_BAND_MIN_COUNT
+        if int(ready.sum()) < GAP_READY_MIN:
+            return ones
+        corr = self._gap_ema / (1.0 - GAP_EMA_BETA ** self._gap_cnt.clamp(min=1.0))
+        w = torch.sigmoid((corr[ready].median() - corr) / self.gap_tau)
+        e_w = w[ready].mean().clamp(min=1e-4)
+        band = self._band(tau)
+        return torch.where(ready[band], w[band] / e_w, ones)
 
     def _set_trainable(self, flag: bool) -> None:
         for p in self.params:
@@ -281,8 +328,11 @@ class DmadDisc:
                     stats[f"rank_acc_{key}"] = (ht > hs).float().mean()
                 if h_r_teacher is not None:
                     stats["gap_r"] = (h_tgt["r"] - h_r_teacher).mean()
+                    self._gap_update(tau, h_tgt["r"], h_r_teacher)
         stats["loss"] = loss_sum / n
         stats["n_pairs"] = torch.tensor(float(n), device=self.device)
+        if "r" in heads and "t" in heads:
+            stats["gap_ready"] = (self._gap_cnt >= GAP_BAND_MIN_COUNT).sum().float()
         return stats
 
     def step(self) -> torch.Tensor:
@@ -323,6 +373,10 @@ class DmadDisc:
         """
         heads = self._heads()
         weights = {"t": self.lambda_t, "r": self.lambda_r}
+        w_gap = None
+        if self.gap_routing:
+            w_gap = self.gap_weight(tau)
+            weights["t"] = self.lambda_t * w_gap.view(-1, *([1] * (x_pred.ndim - 1)))
         grads: dict[str, torch.Tensor] = {}
         self._set_trainable(False)
         try:
@@ -342,6 +396,8 @@ class DmadDisc:
             self._set_trainable(True)
         g = -sum(weights[key] * grads[key] for key in grads)
         stats = {f"g_{key}_rms": _rms(grads[key]) for key in grads}
+        if w_gap is not None:
+            stats["gap_w"] = w_gap.mean()
         if len(grads) == 2:
             stats["cos_tr"] = F.cosine_similarity(
                 grads["t"].flatten(), grads["r"].flatten(), dim=0

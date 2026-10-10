@@ -650,7 +650,24 @@ def build_argparser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="Disc-only updates before the main loop (student untouched). "
-        "Default: TOML (dmad.disc_warmup_steps, default 50).",
+        "Default: TOML (dmad.disc_warmup_steps, default 0).",
+    )
+    parser.add_argument(
+        "--dmad_gap_routing",
+        action="store_const",
+        const=True,
+        default=None,
+        help="Gap routing (official DMAD): head T's weight per critic-σ decile "
+        "band is sigmoid((median − gap_b)/gap_tau) / E_w, with gap_b the "
+        "bias-corrected EMA (0.99) of h_R(real) − h_R(teacher). Engages once 5 "
+        "bands have >= 10 updates; weight 1 before that. Default: TOML "
+        "(dmad.gap_routing, default false).",
+    )
+    parser.add_argument(
+        "--dmad_gap_tau",
+        type=float,
+        default=None,
+        help="Gap-routing temperature. Default: TOML (dmad.gap_tau, default 2.0).",
     )
     parser.add_argument(
         "--dmad_feature_block_idx",
@@ -870,7 +887,9 @@ class TurboConfig:
     dmad_lr: float = 4e-5
     dmad_grad_clip: float = 0.0  # 0 → unclipped
     dmad_window: int = 4  # replay pairs per disc update
-    dmad_disc_warmup_steps: int = 50
+    dmad_disc_warmup_steps: int = 0
+    dmad_gap_routing: bool = False  # head T weight per σ band from the h_R gap
+    dmad_gap_tau: float = 2.0
     dmad_feature_block_idx: int = -1  # -1 → middle block
 
 
@@ -1297,8 +1316,12 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     dmad_grad_clip = float(_pick(args.dmad_grad_clip, cfg, "dmad.grad_clip", 0.0))
     dmad_window = int(_pick(args.dmad_window, cfg, "dmad.window", 4))
     dmad_disc_warmup_steps = int(
-        _pick(args.dmad_disc_warmup_steps, cfg, "dmad.disc_warmup_steps", 50)
+        _pick(args.dmad_disc_warmup_steps, cfg, "dmad.disc_warmup_steps", 0)
     )
+    dmad_gap_routing = bool(
+        _pick(args.dmad_gap_routing, cfg, "dmad.gap_routing", False)
+    )
+    dmad_gap_tau = float(_pick(args.dmad_gap_tau, cfg, "dmad.gap_tau", 2.0))
     # -1 is a real value here (middle block), so only None means "unset".
     dmad_feature_block_idx = int(
         _pick(
@@ -1368,12 +1391,20 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
             raise ValueError(
                 f"dmad.disc_warmup_steps={dmad_disc_warmup_steps}: must be >= 0"
             )
+        if dmad_gap_routing and (dmad_lambda_t == 0.0 or dmad_lambda_r == 0.0):
+            raise ValueError(
+                "dmad.gap_routing needs both heads: the gap is h_R(real) − "
+                "h_R(teacher) and it weights head T."
+            )
+        if dmad_gap_tau <= 0.0:
+            raise ValueError(f"dmad.gap_tau={dmad_gap_tau}: must be > 0")
         logger.info(
             "DMAD ON (Phase 0): disc replaces the DM term and the fake critic — "
             f"lambda_t={dmad_lambda_t}, lambda_r={dmad_lambda_r}, "
             f"signal_rms={dmad_signal_rms}, lr={dmad_lr}, "
             f"grad_clip={dmad_grad_clip}, window={dmad_window}, "
             f"disc_warmup_steps={dmad_disc_warmup_steps}, "
+            f"gap_routing={dmad_gap_routing} (tau {dmad_gap_tau}), "
             f"feature_block_idx={dmad_feature_block_idx} (-1 = middle). "
             "fake_lr / fake_steps_per_student_step / fake_warmup_steps are unused."
         )
@@ -1709,6 +1740,8 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         dmad_grad_clip=dmad_grad_clip,
         dmad_window=dmad_window,
         dmad_disc_warmup_steps=dmad_disc_warmup_steps,
+        dmad_gap_routing=dmad_gap_routing,
+        dmad_gap_tau=dmad_gap_tau,
         dmad_feature_block_idx=dmad_feature_block_idx,
     )
 

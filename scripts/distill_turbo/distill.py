@@ -610,6 +610,8 @@ def run_loop(ctx: RunContext, cfg):
                         "grad_clip",
                         "window",
                         "disc_warmup_steps",
+                        "gap_routing",
+                        "gap_tau",
                         "feature_block_idx",
                     ):
                         metadata[f"ss_turbo_dmad_{key}"] = str(
