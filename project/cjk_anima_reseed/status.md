@@ -192,7 +192,9 @@ J64's 17, exact 2 vs 1 — J64 cold's factors sit orthogonal to the standalone
 rows (cos ~0), so a jamo's lone row is not its block component.
 At J128's total steps J64 falls back (`jamo_j64_112`: H jamo F1 0.17 vs
 J64's 0.25 and J128's 0.27, chance ~0.13; `reports/jamo_vl_reads_2026_10_11.md`
-§ 4): more syllables, not more steps a row — J256 next (`proposal_jamo.md` § 3).
+§ 4): more syllables, not more steps a row. Next D128 (common syllables,
+the most varied jamo pairs) against J128 at one budget, then J256
+(`proposal_jamo.md` § 3).
 
 From `_archive/task_report.md` § 2 / § 4:
 

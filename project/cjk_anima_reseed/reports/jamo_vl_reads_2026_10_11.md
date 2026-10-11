@@ -126,5 +126,6 @@ jamo. Not read: the trained 64 under J64-112 (whether it gained what H lost).
 
 ## 5. Next
 
-The scaling direction is more syllables, not more steps a row: J256 on a
-frequency ranking with H kept out, at 56 a row (proposal_jamo § 3).
+The scaling direction is more syllables, not more steps a row. Next D128
+(common syllables, the most varied jamo pairs) against J128 at one budget,
+then J256 (proposal_jamo § 3).

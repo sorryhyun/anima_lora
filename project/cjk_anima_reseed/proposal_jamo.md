@@ -1,6 +1,6 @@
 # proposal_jamo — Hangul rows from jamo identity, then warm (2026-10-09)
 
-**Status (10-11): phase 1 done, G1 not passed; next J256.** The jamo factors
+**Status (10-11): phase 1 done, G1 not passed; next D128, then J256.** The jamo factors
 carry glyph form and jamo positions to held-out syllables, not syllable
 identity. The runs and their reads:
 
@@ -84,19 +84,47 @@ is an open question (§ 6).
 `r(s)` is a per-syllable free residual, 0 at phase 2's start. It is the
 part of a glyph's identity that the jamo do not explain.
 
-## 3. Next — J256
+## 3. Next — D128, then J256
 
-At one budget wider beat deeper (J128 vs J64-112), so the next arm scales
-syllables, not steps a row: **J256**, `factor = "jamo"` at 56 steps a row
-(14 336 steps, ~1.7 h at 2.3 it/s).
+**Why the set's design matters** (design matrix: a syllable → its b / C[cho,
+cls] / V / F indicators, 106 columns; CPU, 10-11). A *memorizable* row is
+one outside the span of the set's other rows: the factors can fit it
+without touching what the others share. H is *determined* when its row lies
+in the set's row space, so its composition follows from the trained rows
+and not from the init.
 
-- **Set**: J128, then the next 128 of KS X 1001 by frequency (the Qwen
-  merge-rank proxy `probes/jamo_sets.py` uses), **H kept out**, written into
-  `assets/jamo_sets.json` beside J64 / J96 / J128. Its own data build
-  (Hangul only, as `jamo_j64`).
+| set | rank | memorizable | H determined | distinct pairs CV / VF / CF |
+|---|---|---|---|---|
+| J64 | 64 | **64 / 64** | 0 / 32 | 64 / 56 / 58 |
+| J96 | 95 | 80 / 96 | 17 / 32 | 88 / 76 / 80 |
+| J128 | 102 | **2 / 128** | 32 / 32 | 109 / 83 / 84 |
+| D128 (top 1000) | 94 | 6 / 128 | 32 / 32 | **125 / 108 / 113** |
+
+Every J64 row is memorizable, which reads J64-112's drop: more steps fit
+each of the 64 on its own. J128 covers nearly every cell twice and leaves 2.
+
+**D128** (user 10-11): 128 syllables whose jamo combinations differ as much
+as possible, from common syllables only. Greedy over the 1 000 most
+frequent KS X 1001 syllables (the Qwen merge-rank proxy of
+`probes/jamo_sets.py`), H kept out: most cells seen 0 times, then most seen
+once (each cell twice, as J's order), then most new (cho, jung) / (jung,
+jong) / (cho, jong) pairs, then frequency. Against J128 it keeps the
+memorizable count low (6 vs 2) and draws more pairs (VF 108 vs 83, CF 113
+vs 84), with no rare blocks (its rarest: 뉘 뷔 뚫 흙 몫 얘; J128's: 챦 퐈 곬
+퀭 뾔 쟬). The cost: 8 cells no common syllable holds are left out —
+ㅃ / ㅆ / ㅉ / ㅍ before a compound vowel, the finals ㄽ ㄾ ㄿ ㅋ — so rank
+94 vs 102; ㄳ, ㄵ and ㅒ are seen once.
+
+- **Arm**: `jamo_d128`, `factor = "jamo"` at 56 steps a row (7 168 = J128's
+  total, ~50 min). The set into `assets/jamo_sets.json` as `D128`; its own
+  data build (Hangul only, as `jamo_j64`).
 - **Read**: H and the words, v4 free (`jamo_read.py render --held`,
-  `jamo_vl.py score`, `jamo_vl_sheet.py`), against J128: exact, glyph R,
-  jamo P / R / F1 over chance. The trained set's reads are optional.
+  `jamo_vl.py score`, `jamo_vl_sheet.py`), against J128 at the same
+  budget: exact, glyph R, jamo P / R / F1 over chance. Separates the set's
+  design from its size.
+- **Then J256**, 56 a row (14 336 steps, ~1.7 h): D128 extended by the same
+  rule if D128 ≥ J128 on H, else J128 + the next 128 by frequency; H kept
+  out either way.
 - **Gate G1 → phase 2**: H identity well above J128 (exact and jamo P, not
   recall alone). If J256 moves only recall, as J64 → J128 did, the factor
   model's ceiling is form, not identity: stop at phase 1 and take
@@ -129,7 +157,8 @@ syllables, not steps a row: **J256**, `factor = "jamo"` at 56 steps a row
 
 | step | cost |
 |---|---|
-| J256 data build | CPU |
+| D128 / J256 sets + data builds | CPU |
+| D128 train | ~50 min |
 | J256 train | ~1.7 h |
 | H render + v4 read + sheet | GPU, ~5 min |
 | phase 2 | set by the corpus; for comparison, per-syllable cold on KS X 1001 ≈ 63 h |
