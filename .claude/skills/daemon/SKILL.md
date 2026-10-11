@@ -40,6 +40,24 @@ behind a live train run instead of OOM-colliding, and survive the terminal.
   `bench/_common.py::start_heartbeat()` (the watchdog also spares a quiet-but-CPU-burning
   tree).
 
+## Waiting on a job (agent sessions)
+
+A foreground Bash call caps at 10 min. Wait on a job with **Bash `run_in_background:
+true`** running `make daemon-wait JOB=<id>`: it re-invokes the agent once, when the job
+is terminal (the default — send step / ETA updates only when the user asks for them). In
+an interactive local session a background command has no time limit (Claude Code docs,
+"Time limit for background commands"). `daemon-wait` is CPU-only, so the harness's
+GPU-process kill should not reach it (not yet observed on a wait past ~1 min). Linux reaps background shells under critical
+memory pressure once the session has idled 30 min (`CLAUDE_CODE_DISABLE_BG_SHELL_PRESSURE_REAP=1`
+turns it off) — a waiter can vanish during a RAM-heavy run; `daemon-jobs` still has the
+answer.
+
+Not **Monitor**: its deadline is hard-capped at 30 min (a larger `timeout_ms` is clamped
+silently; Claude Code 2.1.296) and it kills the command at expiry. Use it only for
+per-line events mid-run, re-armed each expiry; `ARGS="--timeout 1740"` makes
+`daemon-wait` exit 124 first with a JSON snapshot (state, last progress event, its
+staleness).
+
 ## Job environment
 
 A job's env is **daemon-env ← `captured_env` ← `extra_env`**. `captured_env` is the
@@ -107,7 +125,9 @@ unaffected).
 `step N/total`, it/s, ETA, last losses, last ckpt, and `RUNNING`/`OK`/`ERROR`/`DEAD` (no
 `run_end` + dead pid), digested from the run's `progress.jsonl`
 (`library/training/progress.py::read_status` — importable; `scripts/run_status.py` is the
-CLI). Covers train.py methods **and** `make turbo`.
+CLI). Covers train.py methods **and** `make turbo`; a bespoke loop that writes no
+`progress.jsonl` (e.g. `project/cjk_anima_reseed/run.py`) shows nothing here — read the
+step off `make daemon-log JOB=<id>`.
 
 **Both launch paths are scanned**: an inline run's `output/logs/<name>.progress.jsonl`
 *and* a daemon job's `output/daemon/jobs/<id>/progress.jsonl` (the daemon overrides
