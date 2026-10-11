@@ -1,4 +1,4 @@
-# jamo_j64 — proposal_jamo § 4, phase 1: 64 Hangul syllables cold beside seed_1008,
+# jamo_j64 — proposal_jamo phase 1: 64 Hangul syllables cold beside seed_1008,
 # their rows composed from jamo factors (factor = "jamo": b + C[cho, cls] + V + F,
 # 106 vectors). The set: probes/jamo_sets.py's J64 (all 112 cells, 49 of them twice;
 # assets/jamo_sets.json). Read against jamo_f64 (the same rows free, on this run's

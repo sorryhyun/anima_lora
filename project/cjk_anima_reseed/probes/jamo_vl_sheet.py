@@ -36,7 +36,7 @@ sys.path.insert(0, str(HOME / "probes"))
 
 from jamo_vl import RENDER  # noqa: E402
 
-ARMS = "jamo_j64,jamo_j96,jamo_j128,jamo_j64_lone,jamo_f64_reg"
+ARMS = "jamo_j64,jamo_j64_112,jamo_j96,jamo_j128,jamo_j64_lone,jamo_f64_reg"
 CELL = 200
 LABEL_H = 44
 HEAD_W = 120

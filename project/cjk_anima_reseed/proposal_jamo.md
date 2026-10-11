@@ -1,26 +1,20 @@
 # proposal_jamo — Hangul rows from jamo identity, then warm (2026-10-09)
 
-**Status: phase 1 run (10-10, `reports/jamo_phase1_2026_10_10.md`), the
-floor skipped (user 10-10). J64 beats F64 on its trained 64; on H the glyph
-form and the jamo positions transfer, syllable identity does not (exact
-1 / 2 / 2 of 32 at J64 / J96 / J128). G1 half-passed; the report's § 5 holds
-the next steps.** What landed before it, by § 3 item:
+**Status (10-11): phase 1 done, G1 not passed; next J256.** The jamo factors
+carry glyph form and jamo positions to held-out syllables, not syllable
+identity. The runs and their reads:
 
-| # | what | where |
+| run | report | on held-out H (32): v4 free exact · jamo F1 (chance ~0.13) |
 |---|---|---|
-| 1 | `mapping["glyph_route_ko"]` / `ANIMA_VOCAB_GLYPH_ROUTE_KO`: a token holding a Hangul syllable → its syllables' single rows (961 tokens split on the punct pack: 755 multi-syllable, the rest space-prefixed singles); in the digest; JA / EN encode as without it. The trainer sets the env from `build.json` `glyph_route_ko` (no builder writes it yet: phase 2's) | `library/anima/ext_vocab.py`, `vocab_pack.py`, `tests/test_ext_vocab_glyph_route.py`; `src/common/models._te_key` |
-| 2 | `vl` on font-drawn lone syllables, the crop path: **44 % exact** (7 680 reads: 160 syllables × 8 faces × 32 / 64 / 128 px × bubble / flat; 9.7 min). J64's syllables 31 %, H 62 %; Nanum Pen Script 14 %, the rest 41–56 %; px and frame barely matter. A lone glyph has no script cue and `vl` reads it as the script it resembles: 트 → E, 그 → ユ, 는 → ل / と, 으 → و; 114 of 160 syllables under 75 %. **A per-syllable `vl` miss on a lone render is not evidence**; § 4's reads need another reader (open, § 7) | `probes/ko_reader_cal.py` → `results/20261009-1527-ko-reader-cal/` |
-| 4 | fonts checked: § 3 item 4 corrected below | `probes/jamo_sets.py`, `assets/fonts/FONTS.md` |
-| 5 | `factor = "jamo"`: `reseed/jamo.py` (`Jamo`); 50-step smoke ran (0.5 min; `trained.pt` 14 083 rows = the run's + seed's + 11 108 composed syllables, `jamo` = the factors) | `reseed/trainer.py`, `tests/test_jamo.py` |
-| 6 | `configs/jamo_j64.toml` (data built: 6 401 items, Hangul only, bubbleN dropped), `configs/jamo_f64.toml` (`data_from = "jamo_j64"`; `data_from` no longer needs `rows_from`) | `reseed/config.py` |
-| sets | J64 ⊂ J96 ⊂ J128 and H (§ 4 corrected below) | `assets/jamo_sets.json` |
+| J64 / F64 / J96 / J128, R3 | `reports/jamo_phase1_2026_10_10.md` (floor skipped, user 10-10) | J64 1 · 0.25, J96 2 · 0.25, J128 3 · 0.27; F64-reg 0 · 0.15 |
+| the jamo curriculum (`jamo_lone` → `jamo_j64_lone`) | `reports/jamo_curriculum_2026_10_11.md` | 1 · 0.23: a jamo's standalone row is not its block component |
+| J64 at J128's steps (`jamo_j64_112`) | `reports/jamo_vl_reads_2026_10_11.md` § 4 | 0 · 0.17: more steps on the same 64 cost the transfer |
 
-Two things the smoke showed: a composed row moves ~2× a free row's pace
-(Δ 9.2 at step 50 against kozh16's 4.5; four Adam-stepped vectors sum into
-it) — a factor lr below the free rows' is an open knob (§ 7); and with 106
-vectors over 64 rows the fit is underdetermined, so J64 can hold each
-trained syllable exactly and its H transfer rests on the implicit bias and
-the norm pull (J96 / J128 move the ratio).
+Settled on the way: R3 keeps `C × cls` over plain `C`; F64's free rows hold
+no additive jamo structure; the KO reader is v4 (`probes/jamo_vl.py`, 71 %
+on font-drawn H); `jamo_vl_sheet.py` scores glyph / jamo P / R / F1.
+Hangul per-glyph routing (`glyph_route_ko`) and `factor = "jamo"` are in
+(`reseed/jamo.py`, `reseed/trainer.py`).
 
 ## 1. Why
 
@@ -78,104 +72,42 @@ Delta units (`raw × row_scale`, over the pack row, as every reseed run).
 absorbs it. 1 + 57 + 21 + 27 = 106 vectors of 1 024. `C × cls` because an
 initial's place and shape follow the vowel (ㄱ in 가 vs 고); the final
 always sits at the bottom. The plain additive model (`C[cho]`, 68 vectors)
-is the fallback; R3 (§ 4) decides between them.
+is the fallback; R3 (phase 1) kept `cls`.
 
 Compound jamo are one index each in the syllable code: 11 compound finals
 (ㄳ ㄵ ㄶ ㄺ ㄻ ㄼ ㄽ ㄾ ㄿ ㅀ ㅄ) and 7 compound vowels (ㅘ ㅙ ㅚ ㅝ ㅞ ㅟ
 ㅢ). A further variant writes them as sums, e.g. `F[ㅄ] = F₁[ㅂ] + F₂[ㅅ]`
 and `V[ㅘ] = V[ㅗ] + V[ㅏ]` (+ a small own term). That moves the rare
 compound finals onto the common simple ones (ㅄ: 없 / 값; ㄳ: 몫 / 넋). It
-is an R3 read on F64's rows before it becomes an arm.
+is an open question (§ 6).
 
 `r(s)` is a per-syllable free residual, 0 at phase 2's start. It is the
 part of a glyph's identity that the jamo do not explain.
 
-## 3. Prerequisites (CPU unless noted)
+## 3. Next — J256
 
-1. **Hangul per-glyph routing.** `glyph_route` splits JA tokens only
-   (`ext_vocab.is_ja_glyph`). The pack has 755 multi-syllable Hangul Qwen
-   tokens with rows of their own (회사, 처럼, 다시, 여기 …; `하세요` → ext
-   1 208, routed or not). Phase 1 draws single glyphs and does not need
-   this; phase 2's dialogue lines do. Extend the glyph test to Hangul
-   syllables, space-prefixed forms included, behind the pack's mapping so
-   that existing packs and pure-JA prompts encode bit-identically.
-2. **Reader.** The ruler reads with `sfx` (JA SFX reader) and `vl` (stock
-   PaddleOCR-VL 1.6, multilingual). KO reads use `vl` alone. Before
-   trusting a miss, calibrate it per syllable on font-drawn Hangul through
-   the same crop path (GPU, minutes).
-3. **Floor.** No Hangul string has a cached floor. The floor is the pack's
-   untrained Hangul rows on seed_1008, rendered on the read sets. **Adding
-   this floor key needs the user's OK.**
-4. **Fonts** (checked 10-09, `probes/jamo_sets.py`). Every Hangul face
-   covers KS X 1001; Do Hyeon, Jua and Black Han Sans stop there (+87 / +17
-   / +231 syllables), Nanum Gothic / Myeongjo / Pen Script, LXGW WenKai and
-   Noto Serif CJK cover all 11 172. Noto Serif CJK is in `find_fonts()`
-   (seven weights), so a lang run draws ~half its Hangul in it (kozh16 did
-   too). Trained and held sets stay inside KS X 1001; no set glyph maps to an
-   empty outline.
-5. **Trainer mode** (`reseed/trainer.py`): `factor = "jamo"`. The optimizer holds the factor tensors
-   (and in phase 2 the residuals). Each step composes Δ for the live
-   Hangul rows into `rows.delta.raw` before the forward, so gradients reach
-   the factors through the composition, restructuring the update as the
-   dropped `stick_only` / `ball_on` did (freeze point `b3dee68e`). The norm pull applies
-   to the composed rows as it does to free rows (open: § 7).
-6. **Config.** `factor = "jamo"` plus the sets from 4 as `rows` / `held`
-   specs. `lang = { korean = … }` as kozh16 has it (KO faces, `korean
-   text` / `Korean text reads as` captions).
+At one budget wider beat deeper (J128 vs J64-112), so the next arm scales
+syllables, not steps a row: **J256**, `factor = "jamo"` at 56 steps a row
+(14 336 steps, ~1.7 h at 2.3 it/s).
 
-## 4. Phase 1 — jamo identity (cold, micro arms)
+- **Set**: J128, then the next 128 of KS X 1001 by frequency (the Qwen
+  merge-rank proxy `probes/jamo_sets.py` uses), **H kept out**, written into
+  `assets/jamo_sets.json` beside J64 / J96 / J128. Its own data build
+  (Hangul only, as `jamo_j64`).
+- **Read**: H and the words, v4 free (`jamo_read.py render --held`,
+  `jamo_vl.py score`, `jamo_vl_sheet.py`), against J128: exact, glyph R,
+  jamo P / R / F1 over chance. The trained set's reads are optional.
+- **Gate G1 → phase 2**: H identity well above J128 (exact and jamo P, not
+  recall alone). If J256 moves only recall, as J64 → J128 did, the factor
+  model's ceiling is form, not identity: stop at phase 1 and take
+  per-syllable cold on a frequency-ranked subset, or a glyph-image init in
+  place of jamo.
 
-**Sets** (`probes/jamo_sets.py`, CPU → `assets/jamo_sets.json`). Every
-jamo occurs in KS X 1001 (19 / 21 / 28; layouts VF 1 069, HF 585, CF 347,
-V 149, C 109, H 91). Cells to cover: 19 initials × 3 classes + 21 vowels +
-28 finals + 6 layouts = 112. One greedy order: most new cells, then most
-cells seen once so far, then frequency (proxy: Qwen3's BPE merge order — a
-one-token syllable ranks by its id, 이 0th, 다 1st; no KO frequency list
-here). 62 syllables cover all 112; the prefixes: **J64** all 112, 49 twice;
-**J96** 89 twice; **J128** 110 twice (the most: ㅉ + compound vowel and the
-final ㄿ occur in one KS X 1001 syllable each). All 128 are one-token
-syllables, but coverage pulls in rare ones (챦 벧 퓨 쟬 퀭 뾔 톺 떫).
-**Held-out H**: the 32 most frequent outside J128 whose cells J64 covers
-(리 정 시 어 인 일 성 … 습 요 …; simple vowels only, V / H layouts). No arm
-trains H.
-
-**Arms**, ~25 min each (3 600 steps):
-- **J64**: `factor = "jamo"`, the 64 trained syllables.
-- **F64**: free cold rows (kozh16's recipe), the same 64 syllables, data
-  and steps (56 steps a row, under the 225 recipe: an equal budget is the
-  comparison).
-
-Data: lone / bubble1 / grid tiers, **Hangul-only grids**. kozh16 put
-Hangul and hanzi in the same grids (887 of 1 600 items), which confounds
-any "Hangul sits near hanzi" geometry read. Every other row stays frozen at
-seed_1008.
-
-**Reads** (per glyph, sheets viewed):
-- **R1, trained 64**: J64 vs F64 vs the floor. Does the factorisation cost
-  identity on the glyphs it trained? Score each miss **per jamo position**
-  (initial / vowel / final right or wrong), not only per syllable: kozh16
-  got every initial right and missed mostly vowels.
-- **R2, zero-shot on H** (the main read): J64's composed rows vs the floor
-  vs F64-regressed (the jamo model fitted to F64's free rows by least
-  squares, composed on H). Does jamo identity reach syllables never drawn?
-- **R3, CPU**: how much of F64's free-row energy the jamo model explains
-  (fit R², leave-one-out cos), with and without `cls`. Does free training
-  already learn the composition, and does `cls` earn its 38 extra vectors?
-
-**Gate G1 → phase 2**: J64 reads H well above the floor, glyph by glyph,
-and stays level with F64 on its trained 64. If H transfers but trained
-identity drops, phase 2's residual is the fix, so go on. If H does not
-transfer, stop here: either per-syllable cold on a frequency-ranked subset,
-or a glyph-image init in place of jamo.
-
-Scaling, if G1 passes: J96 / J128 (cells twice), then J256 on a frequency
-ranking with H kept out, before fixing phase 2's factor table.
-
-## 5. Phase 2 — warm on Korean dialogue
+## 4. Phase 2 — warm on Korean dialogue (if G1 passes)
 
 - **Init**: every syllable's row = the phase-1 composition. All 11 172 get
   one for free; KS X 1001 is what the fonts train. `r(s) = 0`, factors
-  and residuals both trainable (factor lr below the residuals': open, § 7).
+  and residuals both trainable (factor lr below the residuals': open, § 6).
 - **Norm pull on `r(s)` only**, so a rare row rests at its composition and
   not at the pack row (`sent_kanji`: under AdamW the pull walks a rare warm
   row back to the pack).
@@ -185,25 +117,24 @@ ranking with H kept out, before fixing phase 2's factor table.
   **horizontal first**, since KO manga / webtoon dialogue is mostly
   horizontal. `HORIZONTAL_FRAC = 0.3` and the `tategaki` windows are
   JA-tuned, so a KO item draws horizontal by default and vertical as the
-  minority. Needs prerequisite 1.
+  minority. Routing is in; the builder must write `build.json`
+  `glyph_route_ko` (no builder writes it yet).
 - **Standalone jamo** (ㅋㅋ, ㅠㅠ, ㄹㅇ, common in dialogue) are their own
   glyphs: free rows outside the factor model.
 - **Reads**: KO strings held out of the lines by 5-gram (the ruler's rule),
-  `vl`, per glyph, against the floor. Spot-check the JA ruler on seed_1008
+  v4, per glyph. Spot-check the JA ruler on seed_1008
   (the JA rows are frozen, so only shared-caption leakage can move it).
 
-## 6. Budget
+## 5. Budget
 
 | step | cost |
 |---|---|
-| sets, routing, trainer mode, R3 | CPU |
-| reader calibration | GPU, minutes |
-| floor render (needs OK) | GPU, one pass over H + 64 + 96 |
-| J64, F64 | 2 × ~25 min |
-| J96 / J256 | ~40 min / ~1.5 h (if G1 passes) |
+| J256 data build | CPU |
+| J256 train | ~1.7 h |
+| H render + v4 read + sheet | GPU, ~5 min |
 | phase 2 | set by the corpus; for comparison, per-syllable cold on KS X 1001 ≈ 63 h |
 
-## 7. Open questions
+## 6. Open questions
 
 - **Delta or effective factorisation.** Default: the delta, with the pack
   row kept. On seed_1008 the trained delta's per-row component runs against
@@ -211,13 +142,6 @@ ranking with H kept out, before fixing phase 2's factor table.
   pack's per-syllable part may fight the composed one. Fallback arm:
   replace each Hangul pack row with the Hangul pack mean, so the
   composition carries the whole identity.
-- `C × cls` or plain `C`: R3 decides, or run both as J64 variants.
 - Compound jamo as sums of simple ones, or one vector each (§ 2).
 - Phase 2: factors trainable at a lower lr, or frozen.
 - KO corpus and its licence.
-- The KO reader (prerequisite 2: stock `vl` reads 44 % of font-drawn lone
-  syllables). Candidates: forced choice — `vl`'s teacher-forced log-prob of
-  each KS X 1001 syllable on the crop, the read its argmax (no script
-  ambiguity; recalibrate on the same 7 680 images); the syllable drawn and
-  read inside a fixed Korean carrier word; or reads by eye, as kozh16.
-- The floor key (prerequisite 3).

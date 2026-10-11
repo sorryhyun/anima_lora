@@ -104,9 +104,27 @@ Table (the whole-image read; **✓** exact on some crop, ~ shares a jamo):
 - F64-reg (the jamo model fitted to free rows) draws dialogue text on nearly
   every cell — the free rows hold no composable jamo, as R3 said.
 
-## 4. Next
+## 4. J64 at J128's budget (`jamo_j64_112`)
 
-`jamo_j64_112` (J64's 64 at J128's total steps, 7 168; running 10-11) joins
-these columns: its H renders (`jamo_read.py render --held`), the arm added to
-`jamo_vl.py`'s `RENDER`, `jamo_vl.py score`, then `jamo_vl_sheet.py <score dir>
---arms jamo_j64,jamo_j64_112,jamo_j128,…`.
+`configs/jamo_j64_112.toml`: J64's 64 syllables and data at 112 steps a row
+(7 168 = J128's total; the factor model is the same 106 vectors). H and the
+words rendered (`results/20261011-1511-jamo-read/`), all arms re-read by v4
+free (`results/20261011-1511-jamo-vl-score/`: the old arms' reads identical,
+185 / 185), sheets `results/20261011-1512-jamo-vl-sheet/`.
+
+| arm (total steps) | free exact | one glyph / 4+ glyphs | glyph R | jamo P | jamo R | jamo F1 | chance |
+|---|---|---|---|---|---|---|---|
+| J64 (3 584) | 1 | 13 / 8 | 0.03 | 0.20 | 0.46 | 0.25 | 0.12 |
+| **J64-112 (7 168)** | **0** | 8 / 14 | 0.06 | **0.12** | 0.40 | **0.17** | 0.13 |
+| J128 (7 168) | 3 | 5 / 14 | 0.12 | 0.20 | 0.56 | 0.27 | 0.13 |
+
+At one budget, wider beats deeper: J64-112 falls below J64 on H (jamo F1
+0.25 → 0.17, near chance 0.13; precision 0.20 → 0.12) and draws more text,
+while J128 at the same steps holds precision and gains recall. More steps on
+the same 64 syllables cost the transfer — the factors fit the 64, not the
+jamo. Not read: the trained 64 under J64-112 (whether it gained what H lost).
+
+## 5. Next
+
+The scaling direction is more syllables, not more steps a row: J256 on a
+frequency ranking with H kept out, at 56 a row (proposal_jamo § 3).

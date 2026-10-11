@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""jamo_read — ``proposal_jamo`` § 4's reads on ``jamo_j64`` / ``jamo_f64``.
+"""jamo_read — ``proposal_jamo`` phase 1's reads on ``jamo_j64`` / ``jamo_f64``.
 
 ``fit`` (CPU, R3): the jamo model fitted to F64's free rows (effective units,
 least squares, minimum norm — 64 rows under 106 / 68 vectors), with and without
