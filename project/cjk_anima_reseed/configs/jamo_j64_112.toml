@@ -1,0 +1,12 @@
+# jamo_j64_112 — jamo_j64 (its data, its factor model) at 112 steps a row (7 168, user
+# 10-11): jamo_j128's total steps on J64's 64 syllables. The factor model is the same 106
+# vectors either way, so this reads "the same 64 deeper" vs "128 wider" at one budget.
+# Read on the held-out H against jamo_j64 / jamo_j128 (v4 free: one glyph 17 / 10,
+# exact 1 / 3).
+rows = ["chars:이는력활로용함됐의것붙쉽맺벧챦최퓨권싶폐넣꽃짧묶흙퀭쟬닮뚫돐싻템봤숍뺏녘뤽값규죄뭐앉꽤좋쏟띄쫓깥훑읊캬톺떫눼출크뿐퇴쭤씌퓌뾔밖잖"]
+lang = { korean = "이는력활로용함됐의것붙쉽맺벧챦최퓨권싶폐넣꽃짧묶흙퀭쟬닮뚫돐싻템봤숍뺏녘뤽값규죄뭐앉꽤좋쏟띄쫓깥훑읊캬톺떫눼출크뿐퇴쭤씌퓌뾔밖잖" }
+factor = "jamo"
+data_from = "jamo_j64"
+seed = "1008"
+steps_per_row = 112
+pack = "punct"

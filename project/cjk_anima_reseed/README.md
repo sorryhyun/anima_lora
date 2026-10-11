@@ -5,9 +5,10 @@ shipped `seed_1008` = jp_v1. Where the line stands — recipe of record, the
 ruler's table, what is settled, what is open: **`status.md`**. What an arm is
 judged on: `criteria.md`. Next: `proposal_jamo.md` (phase 1 read,
 `reports/jamo_phase1_2026_10_10.md` § 5; the jamo curriculum,
-`reports/jamo_curriculum_2026_10_11.md`). The live reads: `reports/` (the
+`reports/jamo_curriculum_2026_10_11.md`; the v4 reads by glyph,
+`reports/jamo_vl_reads_2026_10_11.md`). The live reads: `reports/` (the
 ruler, sent_kanji, probe_pres, sent_kanji_pres, kozh16, jamo_phase1,
-jamo_curriculum).
+jamo_curriculum, jamo_vl_reads).
 
 `_archive/` (force-tracked, skipped by search): the docs folded into
 `status.md` (progress, plan, idea / idea2 / idea3, structure_candidate,
@@ -28,6 +29,7 @@ runs from the freeze-point commit named in `status.md`, not from this tree.
 | `probes/jamo_sets.py` | CPU: `proposal_jamo`'s syllable sets (J64 ⊂ J96 ⊂ J128 by jamo-cell coverage, H held out) and the Hangul font check → `assets/jamo_sets.json` |
 | `probes/jamo_read.py` | `proposal_jamo` § 4's reads: `fit` (CPU, R3: the jamo model fitted to F64's free rows, LOO cos; writes the regressed arm `jamo_f64_reg`), `render [--held a,b]` (GPU: each syllable alone in a KO bubble, the trained 64 and H, or H only under the named arms) → `results/<ts>-jamo-read/` |
 | `probes/jamo_vl.py` | GPU: the jamo arms read by VL — `cal` (font-drawn lone glyphs: the reader's ceiling) / `score [--groups H,words]` (the cached renders); v4 (`SfxReader`) free read by default, `--readers v4,stock` / `--forced` opt-in; the vision tower runs once per crop (`VisionCache`) → `results/<ts>-jamo-vl-<mode>/` (`reports/jamo_curriculum_2026_10_11.md` § 6) |
+| `probes/jamo_vl_sheet.py` | CPU: a `jamo_vl.py score` run glyph by glyph — one row per target, one column per arm, the render with v4's whole-image read under it (green exact, amber one jamo shared) + `reads.md`; per arm the glyph and positioned-jamo P / R / F1 of what was drawn against the target, and the jamo F1 against the other targets (chance) → `results/<ts>-jamo-vl-sheet/` (`reports/jamo_vl_reads_2026_10_11.md`) |
 | `probes/ko_reader_cal.py` | GPU: `vl` on font-drawn lone Hangul through the ruler's crop path, per syllable / face / px → `results/<ts>-ko-reader-cal/` |
 | `configs/<run>.toml` | the run; keys and their meaning in `reseed/config.py`'s docstring. Kept: `punct` (the mark rows → seed_fixed_1005), `sent_kanji` (the data of f0 / pres), `sent_kanji_pres` (the rows of record), `sent_kanji_225` (the 225 of record), `kozh16` (KO / ZH rows on seed `1008`), `jamo_j64` / `jamo_f64` (`proposal_jamo` phase 1: factor vs free rows, one data dir), `jamo_j96` / `jamo_j128` (the factor arm on the larger sets), `jamo_lone` / `jamo_j64_lone` (the jamo curriculum: the 51 standalone jamo, then J64's factors started at them) |
 | `reseed/table.py` | **the table**: one row per tier — recipe, share, σ band, glyph px, `px_keep` — and the scene knobs |
