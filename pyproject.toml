@@ -169,7 +169,7 @@ diffusers = { git = "https://github.com/huggingface/diffusers", rev = "80c7ed262
 # lock would then reference ../anime_tools, and a flagless `uv sync` fails on
 # every machine without one. Test an unreleased change with
 # PYTHONPATH=../anime_tools instead.
-anime-tools = { git = "https://github.com/sorryhyun/anime_tools", tag = "v0.7.9" }
+anime-tools = { git = "https://github.com/sorryhyun/anime_tools", tag = "v0.7.10" }
 torch = [
     { index = "pytorch-cu132", marker = "sys_platform != 'darwin' and sys_platform != 'win32'" },
     { index = "pytorch-cu132", group = "cuda-windows" },
