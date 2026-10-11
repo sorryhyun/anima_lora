@@ -67,6 +67,7 @@ def main():
             free_residual=run.free_residual,
             pres=run.pres,
             factor=run.factor,
+            factor_init=run.factor_init_rows(),
         )
 
 

@@ -211,6 +211,7 @@ def train(
     free_residual: float | None = None,
     pres: tuple | None = None,
     factor: str = "",
+    factor_init: tuple = (),
 ) -> Path:
     """Train ``run`` (a ``reseed.config.Run``: its name, path and rows) on
     ``data`` into ``out``. ``context`` is the warm-from / frozen-context /
@@ -241,7 +242,9 @@ def train(
     ``ANIMA_VOCAB_GLYPH_ROUTE_KO=1`` (Hangul pieces per syllable).
     ``factor = "jamo"`` (``jamo.Jamo``): the trained rows are Hangul
     syllables composed from jamo factors each step; ``trained.pt`` carries
-    every syllable's composed row and the factors (``jamo``)."""
+    every syllable's composed row and the factors (``jamo``);
+    ``factor_init`` = (trained.pt, scale) starts them at that run's
+    compatibility-jamo rows (``Jamo.init_from``)."""
     from common.models import checkpoints, dit_forward, gen_args
     from library.anima.ext_vocab import pack_digest
     from library.anima.vocab_pack import attached_pack_rows, strategy_pack
@@ -367,6 +370,20 @@ def train(
         ext_syl = {e: s for s, e in syl_ext.items()}
         jamo = Jamo(rows, {e: ext_syl[e] for e in p.idx}, lr)
         p.record.update(factor=factor, factor_vectors=Jamo.N_VECTORS)
+        if factor_init:
+            from .jamo import compat_rows
+
+            src, scale = factor_init
+            sd0 = torch.load(src, map_location="cpu", weights_only=False)["delta"]
+            at = {int(e): i for i, e in enumerate(sd0["ext_ids"])}
+            k = float(sd0["row_scale"])
+            lone = {
+                j: pack.table[e].float().cpu() + sd0["raw"][at[e]].float() * k
+                for j, e in compat_rows().items()
+            }
+            norms = jamo.init_from(lone, scale)
+            p.record["factor_init"] = {"from": str(src), "scale": scale, **norms}
+            print(f"factor init: {src} × {scale} — {norms}", flush=True)
         print(
             f"factor: {len(p.idx)} syllable rows composed from {Jamo.N_VECTORS} "
             f"jamo vectors (b + C[cho, cls] + V + F); trained.pt carries all "

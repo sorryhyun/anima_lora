@@ -16,7 +16,13 @@ from common.text import KANA, KANA_RE, KANA_SMALL, KANJI_RE, WORD_RE
 
 
 def corpus_lines(boxes_jsonl: Path, max_len: int):
-    """Kana-only bubble lines of 1..max_len chars → ``[(line, rel, box)]``."""
+    """Kana-only bubble lines of 1..max_len chars → ``[(line, rel, box)]``;
+    ``[]`` when the corpus is gone (deleted 10-10 — only the eval strings
+    read it; a build on it draws its pools from another rng state than the
+    builds before)."""
+    if not boxes_jsonl.is_file():
+        print(f"corpus_lines: no {boxes_jsonl} — no corpus eval strings", flush=True)
+        return []
     out = []
     for ln in boxes_jsonl.read_text().splitlines():
         r = json.loads(ln)
@@ -200,6 +206,8 @@ def word_inventory(tok, q, n: int, min_len: int = 2):
     """The ``n`` most frequent multi-char single-piece words in the training
     corpus bubbles (piece frequency over every line, not the length-capped
     subset) plus their counts."""
+    if n <= 0:
+        return []
     cnt: Counter = Counter()
     for ln in (CORPUS_TRAIN / "boxes.jsonl").read_text().splitlines():
         r = json.loads(ln)

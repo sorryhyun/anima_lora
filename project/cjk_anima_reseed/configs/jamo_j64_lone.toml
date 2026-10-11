@@ -1,0 +1,13 @@
+# jamo_j64_lone — the jamo curriculum's stage 2 (user 10-11): jamo_j64 (its data,
+# its 56 steps a row) with the factors started at jamo_lone's compatibility-jamo rows
+# (C[cho, every cls] / V / F ← scale × the letter's row centred over the 51; b at 0)
+# instead of Δ 0. Read against jamo_j64 on the trained 64 and on H: does a
+# lone-drawn jamo's identity carry into the block?
+rows = ["chars:이는력활로용함됐의것붙쉽맺벧챦최퓨권싶폐넣꽃짧묶흙퀭쟬닮뚫돐싻템봤숍뺏녘뤽값규죄뭐앉꽤좋쏟띄쫓깥훑읊캬톺떫눼출크뿐퇴쭤씌퓌뾔밖잖"]
+lang = { korean = "이는력활로용함됐의것붙쉽맺벧챦최퓨권싶폐넣꽃짧묶흙퀭쟬닮뚫돐싻템봤숍뺏녘뤽값규죄뭐앉꽤좋쏟띄쫓깥훑읊캬톺떫눼출크뿐퇴쭤씌퓌뾔밖잖" }
+factor = "jamo"
+factor_init = { from = "jamo_lone", scale = 0.577 }
+data_from = "jamo_j64"
+seed = "1008"
+steps_per_row = 56
+pack = "punct"

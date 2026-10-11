@@ -62,6 +62,11 @@
                                   # cls] + V[jung] + F[jong] (``jamo.Jamo``,
                                   # proposal_jamo § 2); cold, no ``row_lr``;
                                   # ``trained.pt`` holds every syllable's composed row
+    factor_init = { from = "jamo_lone", scale = 0.577 }  # optional, with ``factor``:
+                                  # the jamo curriculum's stage 2 (user 10-11) — C[cho,
+                                  # every cls] / V[jung] / F[jong] start at scale × that
+                                  # reseed run's compatibility-jamo rows (pack + Δ,
+                                  # centred over the 51), ``b`` at 0
 
 Its outputs land in ``output/cjk_anima_reseed/<run>/`` (``data/``,
 ``trained.pt``).
@@ -93,6 +98,7 @@ KEYS = (
     "held",
     "lang",
     "factor",
+    "factor_init",
 )
 # a run's ``seed``: the rows every other row rides frozen at
 SEEDS = ("0930", "1008")
@@ -139,6 +145,7 @@ class Run:
     held: str = ""  # strings held out beside ``read`` (a path, $MANGA109S expanded)
     lang: dict | None = None  # glyph → language for the rows not lettered as Japanese
     factor: str = ""  # the rows composed from factors (``FACTORS``); "" = free rows
+    factor_init: tuple = ()  # (reseed run, scale): the factors' start; () = Δ 0
 
     def phrase_file(self) -> str:
         """The dialogue line file, ``LINES[lines]``."""
@@ -207,6 +214,13 @@ class Run:
         if self.rows_from:
             return SCALE_OUT / self.rows_from / "trained.pt"
         return {"0930": SEED_ROWS, "1008": SEED_1008}[self.seed]
+
+    def factor_init_rows(self) -> tuple:
+        """``(trained.pt, scale)`` of ``factor_init``; () without it."""
+        if not self.factor_init:
+            return ()
+        name, scale = self.factor_init
+        return OUT / name / "trained.pt", scale
 
 
 def _expand(raw: str) -> str:
@@ -305,6 +319,13 @@ def load(run: str) -> Run:
         assert not bad and all(r.startswith("chars:") for r in raw["rows"]), (
             f"{path}: factor rows are chars: specs of Hangul syllables — not {bad[:10]}"
         )
+    fi = raw.get("factor_init")
+    if fi is not None:
+        assert factor, f"{path}: factor_init needs factor"
+        assert set(fi) == {"from", "scale"}, f"{path}: factor_init {{from, scale}}"
+        assert "/" not in fi["from"], f"{path}: factor_init from names a reseed run"
+        assert 0 < float(fi["scale"]) <= 2, f"{path}: factor_init scale {fi['scale']}"
+        fi = (fi["from"], float(fi["scale"]))
     return Run(
         name=path.stem,
         path=path,
@@ -326,4 +347,5 @@ def load(run: str) -> Run:
         held=held,
         lang=lang,
         factor=factor,
+        factor_init=tuple(fi or ()),
     )

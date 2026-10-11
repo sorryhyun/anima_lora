@@ -185,7 +185,11 @@ vs 0.28–0.30 held-out); hanzi 6 / 8 exact, Hangul 2 / 8 exact with the other
 6 one jamo off. Then `proposal_jamo.md` phase 1
 (`reports/jamo_phase1_2026_10_10.md`): jamo factors carry the glyph form
 and the jamo positions to untrained syllables, not their identity (exact
-~6 % of H at J64–J128).
+~6 % of H at J64–J128). The jamo curriculum (`reports/jamo_curriculum_2026_10_11.md`,
+user 10-11): the 51 standalone jamo trained alone draw 31 / 51 (no final
+cluster); J64's factors started at them draw one glyph on 10 / 32 of H vs
+J64's 17, exact 2 vs 1 — J64 cold's factors sit orthogonal to the standalone
+rows (cos ~0), so a jamo's lone row is not its block component.
 
 From `_archive/task_report.md` § 2 / § 4:
 

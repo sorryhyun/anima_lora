@@ -1,0 +1,10 @@
+# jamo_lone — the jamo curriculum's stage 1 (user 10-11): the 51 compatibility jamo
+# (U+3131–U+3163, every cho / jung / jong the factor model names) as free cold rows
+# beside seed_1008, drawn full-size alone, in bubbles and in grids. Each routes to
+# its own row (the standalone jamo of ㅋㅋ / ㅠㅠ). Stage 2 (jamo_j64_lone) starts
+# J64's factors from these rows. kozh16's cold recipe at phase 1's 56 steps a row.
+rows = ["chars:ㄱㄲㄳㄴㄵㄶㄷㄸㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅃㅄㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ"]
+lang = { korean = "ㄱㄲㄳㄴㄵㄶㄷㄸㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅃㅄㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ" }
+seed = "1008"
+steps_per_row = 56
+pack = "punct"

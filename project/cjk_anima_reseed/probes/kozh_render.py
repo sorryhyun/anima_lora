@@ -69,12 +69,13 @@ def main() -> None:
     bootstrap()
     os.environ["ANIMA_VOCAB_GLYPH_ROUTE"] = "1"
     from eval.ruler import SEED_RENDER, VIEW
-    from eval.ruler.arms import arm_dirs, tables
+    from eval.ruler.arms import PACK_ARMS, arm_dirs, tables
     from eval.ruler.render import Renderer, check
 
     VIEW.pack = run.pack
     seed = run.seed_rows().parent.name
     arms = [seed, run.name]
+    PACK_ARMS[run.pack].setdefault(run.name, OUT / run.name)
     known = arm_dirs()
     assert set(arms) <= set(known), f"arms.PACK_ARMS lacks {set(arms) - set(known)}"
     its = prompts(run, run.lang)

@@ -24,6 +24,9 @@ BASE, N_CHO, N_JUNG, N_JONG = 0xAC00, 19, 21, 28
 CHO = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"
 JUNG = "ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ"
 JONG = " ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ"
+# the compatibility jamo (U+3131–U+3163): the standalone glyphs, one ext row
+# each — every letter CHO / JUNG / JONG names
+COMPAT = "".join(map(chr, range(0x3131, 0x3164)))
 CLASSES = ("vertical", "horizontal", "compound")
 _CLS = {**dict.fromkeys("ㅏㅐㅑㅒㅓㅔㅕㅖㅣ", 0), **dict.fromkeys("ㅗㅛㅜㅠㅡ", 1)}
 JUNG_CLS = tuple(_CLS.get(v, 2) for v in JUNG)
@@ -85,6 +88,19 @@ def syllable_rows() -> dict:
     return out
 
 
+def compat_rows() -> dict:
+    """{compatibility jamo: its ext row} on the run's pack."""
+    from data.inventory import pieces, qwen_pieces
+
+    tok, q = qwen_pieces(char_rows=True)
+    out = {}
+    for j in COMPAT:
+        got = pieces(tok, q, j)
+        assert len(got) == 1 and got[0][1] is not None, (j, got)
+        out[j] = int(got[0][1])
+    return out
+
+
 def codes(syllables) -> torch.Tensor:
     """``(n, 4)`` long: cho, cls, jung, jong per syllable."""
     out = []
@@ -130,6 +146,31 @@ class Jamo:
             p(N_JONG - 1),
         )
         rows.params = [{"params": [self.b, self.C, self.V, self.F], "lr": lr}]
+
+    @torch.no_grad()
+    def init_from(self, lone: dict, scale: float) -> dict:
+        """The jamo curriculum's stage 2 (user 10-11): ``lone`` = {compat
+        jamo: its full row (pack + Δ, absolute units)} from a run that
+        trained them alone; each is centred over the 51 and ``C[cho, every
+        cls]`` / ``V[jung]`` / ``F[jong]`` start at scale × its letter's,
+        ``b`` at 0. Returns the norms for the record."""
+        assert set(lone) == set(COMPAT), sorted(set(COMPAT) - set(lone))[:10]
+        full = torch.stack([lone[j] for j in COMPAT]).float().to(self.b.device)
+        e = dict(zip(COMPAT, (full - full.mean(0)) * scale / self.rows.row_scale))
+        for i, j in enumerate(CHO):
+            self.C[i] = e[j]
+        for i, j in enumerate(JUNG):
+            self.V[i] = e[j]
+        for i, j in enumerate(JONG[1:]):
+            self.F[i] = e[j]
+        rs = self.rows.row_scale
+        return {
+            "lone_norm": round(float(full.norm(dim=1).mean()), 1),
+            "centred_norm": round(float((full - full.mean(0)).norm(dim=1).mean()), 1),
+            "init_delta_norm": round(
+                float(self.compose(self.code).norm(dim=1).mean()) * rs, 1
+            ),
+        }
 
     def compose(self, code: torch.Tensor) -> torch.Tensor:
         """Δ (raw units) for ``code`` (``codes``' rows)."""
