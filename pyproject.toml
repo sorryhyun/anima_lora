@@ -43,6 +43,12 @@ dependencies = [
     "Pillow",
     "psutil",
     "opencv-python>=4.11.0.86",
+    # Both opencv wheels write the same cv2/ tree. Venvs synced before 840298b1
+    # carry headless (via albumentations); letting a later sync uninstall it
+    # deletes cv2/ out from under opencv-python, which stays "installed" so no
+    # sync repairs it. Declaring headless keeps the pair, and reinstalls cv2/
+    # into venvs that already lost it.
+    "opencv-python-headless>=4.11.0.86",
     # Masking moved to anime-tools (curation split). The direct sam3 row is now
     # redundant -- its last trainer-side consumer, probe_autocaption.py, moved to
     # _archive/bench/position_captions/ (2026-09-08), and anime-tools declares sam3
