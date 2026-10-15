@@ -225,7 +225,7 @@ strings excluded). b4's rows are `seed_retrain_0930`, published as `preview4`.
 
 The trained rows of each family (kana, kanji) share a mean delta, the
 "stick", that holds ≈ 30 % of their delta energy; the per-row residuals are
-near-orthogonal (`project/cjk_anima_reseed/reports/stick_2026_10_03.md`).
+near-orthogonal (`project/cjk_anima_reseed/_archive/reports/stick_2026_10_03.md`).
 preview5 moves every trained row of a family by `(s − 1) · m_family` with
 s = 0.8, leaving the residuals as they are. No other row changes.
 

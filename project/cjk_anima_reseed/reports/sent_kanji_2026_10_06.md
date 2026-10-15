@@ -2,7 +2,7 @@
 
 From the user (10-05, after `sent_ball_2026_10_05.md` § 7): sent_whole's run
 with preview51's 1 185 kanji rows free too. `configs/sent_kanji.toml`,
-`configs/sent_kanji_f0.toml`.
+`_archive/configs/sent_kanji_f0.toml`.
 
 - **The trainer's norm pull walked the rare kanji home** (§ 2). With μ 0
   every touched row carries `FREE_RESIDUAL` 1e-3 · ‖f‖²; under AdamW a row

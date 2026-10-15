@@ -1,6 +1,6 @@
 # band C.2 — kana / simple kanji / dense kanji at 0.7–0.9 vs 0.8–0.95 (2026-09-23)
 
-`project/cjk_anima_scale/plan_kanji.md` § 3: the training read. Block K —
+`plan_kanji.md` (cjk_anima_scale, deleted in 06e09f6d) § 3: the training read. Block K —
 24 cold rows in three ink strata of 8 (C.0), on B.1's scene composites at
 the bubble fit (48–55 px), B.1's train argv, two bands. The 0.5–0.7 arm was
 left out by decision (user, 2026-09-23) and is queued only if a stratum's

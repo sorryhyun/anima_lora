@@ -256,6 +256,25 @@ def _check_path(tok: str, top: set[str], base: Path | None = None) -> str | None
     return tok
 
 
+def _project_line_root(doc: Path) -> Path | None:
+    """``project/<line>/`` (or ``project/finished/<line>/``) holding ``doc``.
+
+    A line's reports cite the line's own tree root-relative (``configs/x.toml``
+    meaning ``project/<line>/configs/x.toml``), so those refs also resolve
+    against the line root. None for docs outside ``project/``.
+    """
+    try:
+        parts = doc.relative_to(REPO_ROOT).parts
+    except ValueError:
+        return None
+    if len(parts) < 3 or parts[0] != "project":
+        return None
+    depth = 3 if parts[1] == "finished" else 2
+    if len(parts) <= depth:
+        return None
+    return REPO_ROOT.joinpath(*parts[:depth])
+
+
 def _anchor_family_ref(tok: str, next_char: str) -> str | None:
     """The path token to verify, or ``None`` when there is nothing to verify.
 
@@ -298,6 +317,7 @@ def collect_issues(include_bench: bool = False) -> list[Issue]:
             continue
         lines = text.splitlines()
         skip_flags_doc = _IGNORE_FLAGS_MARKER in text
+        line_root = _project_line_root(doc)
 
         for lineno, line in enumerate(lines, 1):
             if line.lstrip().startswith(("```", "~~~")):
@@ -309,10 +329,16 @@ def collect_issues(include_bench: bool = False) -> list[Issue]:
             seen: set[str] = set()
             for rx in (_MULTI_RE, _SINGLE_RE):
                 for m in rx.finditer(line):
+                    # Tail of a home/absolute path (`~/anima_lora/output` on a
+                    # remote box) — not a repo-relative reference.
+                    if m.start() > 0 and line[m.start() - 1] in "/~":
+                        continue
                     tok = _anchor_family_ref(m.group(0), line[m.end() : m.end() + 1])
                     if tok is None:
                         continue
                     bad = _check_path(tok, top, base=doc.parent)
+                    if bad and line_root is not None:
+                        bad = _check_path(tok, top, base=line_root)
                     if bad and bad not in seen:
                         seen.add(bad)
                         issues.append(

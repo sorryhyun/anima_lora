@@ -129,7 +129,7 @@ the same probe with `stage0309` as a fourth stage.
 
 - `cjk_scale/conflict.py` + `scale.py --steps conflict [--conflict_stages …]
   [--probe_items N] [--warm_from …]` — the gradient read, at any table point.
-- `configs/joint.toml` (`joint_from = [...]`, no mix) + `cjk_scale/joint.py`
+- `configs/train/joint.toml` (`joint_from = [...]`, no mix) + `cjk_scale/joint.py`
   — the merged data dir; `train.py::noisy_by_band` draws σ per item from its
   `band`; `run0923_micro.toml [budget] joint = 90`.
 - `scale.py --lr_rows` override (beside `--init_anchor`, `--steps_per_row`).

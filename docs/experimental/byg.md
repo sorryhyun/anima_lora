@@ -178,7 +178,7 @@ caches by basename, so the sidecar dir is flat. The dataset
 
 ```bash
 make exp-byg-data        # build edit-tuple sidecars first
-make exp-byg             # train (configs/methods/byg.toml)
+python train.py --method byg --preset default   # train (configs/methods/byg.toml)
 ```
 
 Key config (`configs/methods/byg.toml`, read by `BYGMethodAdapter` via args):

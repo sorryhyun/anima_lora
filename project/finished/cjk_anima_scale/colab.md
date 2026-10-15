@@ -167,7 +167,7 @@ the scene records store absolute paths.
 | DiT, TE, VAE (`anima` catalog pack) | 5.6 GB | fetched on the VM from the Hub |
 | raw pack `models/vocab_packs/anima_cjk_vocab_pack.{safetensors,json}` | 274 MB | not on the Hub. Load-log sha `7b9fce0bb57b…` (a pack digest, not the file's sha256) |
 | seed rows `output/cjk_anima_scale/rows_step1_0921_merged/trained.pt` | 8.9 MB | all `train` reads of that dir |
-| `project/cjk_anima_scale/assets/fonts/` | 80 MB | gitignored |
+| `project/finished/cjk_anima_scale/assets/fonts/` | 80 MB | gitignored |
 | `output/cjk_anima_scale/scenes_{s1,s1w,sl1w,ja_comic}/` | 630 MB | all four for every run: `config.py`'s pool list loads them regardless of kind |
 | `output/wake_probe/scenes_<p>` → `../cjk_anima_scale/scenes_<p>` | symlinks | the scene records' `file` paths go through `wake_probe/` |
 | `post_image_dataset/render/ja/{resized,heldout}/boxes.jsonl` | 1.9 MB | the only corpus files `data` reads |
@@ -177,7 +177,7 @@ the scene records store absolute paths.
 ## Running
 
 - No daemon on the VM. Run the verbs directly:
-  `.venv/bin/python project/cjk_anima_scale/scale.py <run> data`, then
+  `.venv/bin/python project/finished/cjk_anima_scale/scale.py <run> data`, then
   `… <run> train`. The default `--workers` (cpu − 2) fits every shape.
 - Smokes: 270 steps, batch 4. "Steady" is the rate between logged steps
   after compile (`train_log.json`'s `it_s` is the running mean from step 0).

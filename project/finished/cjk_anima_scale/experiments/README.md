@@ -31,7 +31,7 @@ table is `../README.md` § Item pools, and `builder.tier_of` reads both.
   `output/cjk_anima_scale/experiments/<arm>/`, with the stage's
   `--arm_path` pointed there.
 - GPU work goes through the daemon
-  (`make daemon-run ARGS="project/cjk_anima_scale/experiments/<exp>/run_exp.py …"`)
+  (`make daemon-run ARGS="project/finished/cjk_anima_scale/experiments/<exp>/run_exp.py …"`)
   and every launch names the pack
   (`ANIMA_VOCAB_PACK=models/vocab_packs/anima_cjk_vocab_pack`).
 - Never write into a `data_*` dir: sample records, keep sub-set
