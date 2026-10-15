@@ -62,7 +62,7 @@ def test_config_toml_and_cli_precedence():
     assert c.softrank_softness == 0.2
     assert c.softrank_pool_size == 128
     assert c.softrank_warmup_ratio == 0.5
-    # CLI sentinel overrides win over TOML.
+    # CLI overrides win over TOML.
     c = _resolve(
         [
             "--softrank_weight",

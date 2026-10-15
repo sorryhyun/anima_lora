@@ -144,9 +144,6 @@ class RunContext:
 
     start_step: int
 
-    # DMAD Phase −1 premise probe (None when dmad_probe is off).
-    dmad_probe: object | None = None
-
     # DMAD Phase 0 disc + its metrics (None when dmad is off).
     dmad: object | None = None
     dmad_metrics: object | None = None
@@ -208,11 +205,7 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         fake_rank=cfg.fake_rank,
         student_alpha=cfg.student_alpha,
         fake_alpha=cfg.fake_alpha,
-        use_custom_down_autograd=cfg.use_custom_down_autograd,
         channel_scaling_alpha=cfg.channel_scaling_alpha,
-        student_step_expert_K=cfg.step_expert_K,
-        dual_pool=cfg.dual_pool,
-        div_pool_rank=cfg.div_pool_rank,
         student_down_init=cfg.student_down_init,
         fake_down_init=cfg.fake_down_init,
         fake_tau_banks=cfg.fake_tau_banks,
@@ -226,8 +219,7 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         build_fake=not cfg.dmad,
     )
     turbo.freeze_dit()
-    for pool in turbo.student_pools:
-        pool.to(device=device, dtype=dtype)
+    turbo.student.to(device=device, dtype=dtype)
     for bank in turbo.fake_banks:
         bank.to(device=device, dtype=dtype)
 
@@ -270,15 +262,6 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
     # casts the bf16 teacher features to float.
     if turbo.disc is not None:
         turbo.disc.to(device=device)
-    # DMAD Phase −1 probe: its disc stack is a LoRA on the DiT, so it must exist
-    # before compile like the other stacks. Off → nothing built, no RNG drawn.
-    dmad_probe = None
-    if cfg.dmad_probe:
-        from .dmad_probe import DmadProbe
-
-        dmad_probe = DmadProbe(
-            cfg, turbo=turbo, model=model, device=device, dtype=dtype
-        )
     # DMAD Phase 0 disc: a LoRA on the DiT too, so built before compile. Off →
     # nothing built, no RNG drawn.
     dmad = None
@@ -383,9 +366,7 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
     logger.info(f"trainable: student={n_student:,}  fake={n_fake:,}")
 
     student_opt = torch.optim.AdamW(
-        # Under dual_pool this is two param groups (pool B at student_lr, pool A at
-        # div_pool_lr); single-pool collapses to one group == the flat build.
-        turbo.student_param_groups(cfg.student_lr, cfg.div_pool_lr),
+        turbo.student.parameters(),
         lr=cfg.student_lr,
         weight_decay=cfg.weight_decay,
         fused=torch.cuda.is_available(),
@@ -547,8 +528,6 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
     writer, run_log = create_tb_writer(
         cfg.log_dir, tb_config_text(cfg), enabled=not cfg.no_log, logger=logger
     )
-    if dmad_probe is not None:
-        dmad_probe.bind_log_dir(run_log if run_log is not None else cfg.output_dir)
     if run_log is not None:
         # Mirror the snapshot into the run log dir: a self-contained record of
         # "this run + the config that produced it".
@@ -776,7 +755,6 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         val_latent_shape=val_latent_shape,
         val_clean=val_clean,
         start_step=start_step,
-        dmad_probe=dmad_probe,
         dmad=dmad,
         dmad_metrics=DmadMetrics(device) if dmad is not None else None,
     )

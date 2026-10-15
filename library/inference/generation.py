@@ -19,7 +19,6 @@ from library.inference.adapters import (
     compute_and_set_hydra_fei,
     set_hydra_crossattn,
     set_hydra_sigma,
-    set_step_expert_index,
     set_xattn_boost_state,
 )
 from library.inference import sampling as inference_utils
@@ -372,7 +371,6 @@ def generate_body_tiled(
 
                 t_expand = t.expand(latents.shape[0])
                 set_hydra_sigma(anima, t_expand)
-                set_step_expert_index(anima, i)
                 # computed on the full latent (pre-tile) so every tile sees the
                 # same per-sample FEI; no-op when no FEI router is attached
                 compute_and_set_hydra_fei(anima, latents)
@@ -882,7 +880,6 @@ def generate_body(
                             pooled_neg=_pooled_text_neg,
                         )
                     set_hydra_sigma(anima, t_expand)
-                    set_step_expert_index(anima, i)
                     compute_and_set_hydra_fei(anima, latents)
 
                     # below cutoff: alternate (or boosted) embedding; else embed

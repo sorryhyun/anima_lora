@@ -188,10 +188,6 @@ def run_loop(ctx: RunContext, cfg):
                 x.requires_grad_()  # grad-ckpt needs a grad-requiring forward input
                 s0, s0_next = sigmas_it[0], sigmas_it[1]
                 t_b = torch.full((B,), s0, device=device, dtype=dtype)
-                turbo.set_student_step(0)  # head 0 (no-op unless per-step-expert)
-                # Dual-pool routing: gate grads to pool A so the step-0 diversity
-                # (+ soft-rank) backward below lands on A alone (no-op single-pool).
-                turbo.route_div()
                 v_first = _forward(
                     "student", x, t_b, crossattn_emb, no_grad=False
                 ).squeeze(2)
@@ -199,7 +195,7 @@ def run_loop(ctx: RunContext, cfg):
                 div_loss_t = nn.functional.mse_loss(v_first.float(), v_target)
 
                 # --- soft-rank caption-discrimination auxiliary -------------------
-                # k extra no_grad student forwards at the SAME step-0 (ε, t=1, head 0),
+                # k extra no_grad student forwards at the SAME step-0 (ε, t=1),
                 # only crossattn_emb swapped for a pooled sample's caption. Soft-rank
                 # the matched caption's position against these negatives and push it
                 # to 0 — grad flows through v_first ONLY (negatives detached), so the
@@ -208,8 +204,7 @@ def run_loop(ctx: RunContext, cfg):
                     if step % cfg.softrank_every_n == 0 and softrank_pool.ready(
                         ctx.softrank_min_pool
                     ):
-                        # Pool negatives → works at any batch size (B=1 included). Head
-                        # 0 stays selected → no per-step-expert recompute hazard.
+                        # Pool negatives → works at any batch size (B=1 included).
                         v_negs = [
                             _forward("student", eps, t_b, c_neg, no_grad=True).squeeze(
                                 2
@@ -235,37 +230,30 @@ def run_loop(ctx: RunContext, cfg):
                     ).backward()
                     softrank_loss = softrank_loss.detach()  # metrics-only from here
                     x = x.detach().requires_grad_()
-                    # Route grads to pool B for everything downstream: the DMD
-                    # rollout, the L_CDM branch, and the GAN generator all build
-                    # graphs that must reach B alone (no-op single-pool).
-                    turbo.route_quality()
                 if cfg.dmd_grad_step == "random":
                     # Memory-flat anchored DMD: sample ONE refinement step g~U{1..N-1},
                     # backward-simulate the prefix under no_grad, grad only step g's
                     # one-step x0-prediction (x_g − σ_g·v_g). Supervises every grid
-                    # point over training (vs 'last') and trains head g under
-                    # per_step_expert. Step 0's diversity graph rides v_first untouched.
+                    # point over training (vs 'last'). Step 0's diversity graph rides
+                    # v_first untouched.
                     g = int(torch.randint(1, n_steps_it, (1,)).item())
                     for i in range(1, g):  # backward simulation (no graph kept)
                         s_i = sigmas_it[i]
                         s_next = sigmas_it[i + 1]
                         t_b = torch.full((B,), s_i, device=device, dtype=dtype)
-                        turbo.set_student_step(i)
                         v = _forward(
                             "student", x, t_b, crossattn_emb, no_grad=True
                         ).squeeze(2)
                         x = x - (s_i - s_next) * v
-                    x = x.detach().requires_grad_()  # fresh leaf; head g trains
+                    x = x.detach().requires_grad_()  # fresh leaf
                     s_g = sigmas_it[g]
                     t_b = torch.full((B,), s_g, device=device, dtype=dtype)
-                    turbo.set_student_step(g)
                     v_g = _forward(
                         "student", x, t_b, crossattn_emb, no_grad=False
                     ).squeeze(2)
                     if cdm_on:
                         cdm_src = (x, v_g, s_g)
                     x_pred = x - s_g * v_g  # one-step x0-prediction at step g
-                    grad_step_idx, grad_step_sigma = g, s_g
                 else:
                     # 'all' → full BPTT over 1..N-1; else ('last') → only the final step
                     # grads (1..N-2 backward-simulated under no_grad). Both memory-flat
@@ -275,7 +263,6 @@ def run_loop(ctx: RunContext, cfg):
                         s_i = sigmas_it[i]
                         s_next = sigmas_it[i + 1]
                         t_b = torch.full((B,), s_i, device=device, dtype=dtype)
-                        turbo.set_student_step(i)
                         step_no_grad = grad_dmd_last_only and i != last_step
                         if grad_dmd_last_only and i == last_step:
                             x = (
@@ -290,7 +277,6 @@ def run_loop(ctx: RunContext, cfg):
                         if step_no_grad:
                             x = x.detach()
                     x_pred = x
-                    grad_step_idx, grad_step_sigma = last_step, sigmas_it[last_step]
                 v_student = v_first  # step-0 velocity for the runaway-student metric
             else:
                 # Plain DMD2. Non-grad steps are backward-SIMULATED under no_grad (the
@@ -306,7 +292,6 @@ def run_loop(ctx: RunContext, cfg):
                         s_i = sigmas_it[i]
                         s_next = sigmas_it[i + 1]
                         t_b = torch.full((B,), s_i, device=device, dtype=dtype)
-                        turbo.set_student_step(i)
                         v = _forward(
                             "student", x, t_b, crossattn_emb, no_grad=False
                         ).squeeze(2)
@@ -331,15 +316,13 @@ def run_loop(ctx: RunContext, cfg):
                         s_i = sigmas_it[i]
                         s_next = sigmas_it[i + 1]
                         t_b = torch.full((B,), s_i, device=device, dtype=dtype)
-                        turbo.set_student_step(i)
                         v = _forward(
                             "student", x, t_b, crossattn_emb, no_grad=True
                         ).squeeze(2)
                         x = x - (s_i - s_next) * v
-                    x = x.detach().requires_grad_()  # fresh leaf; head g trains
+                    x = x.detach().requires_grad_()  # fresh leaf
                     s_g = sigmas_it[g]
                     t_b = torch.full((B,), s_g, device=device, dtype=dtype)
-                    turbo.set_student_step(g)
                     v_g = _forward(
                         "student", x, t_b, crossattn_emb, no_grad=False
                     ).squeeze(2)
@@ -416,10 +399,6 @@ def run_loop(ctx: RunContext, cfg):
                 loss_student = loss_student + gan_w * gan_gen_loss
 
             loss_student.backward()
-            # Restore grad-on for both dual pools BEFORE clip/step: student_params()
-            # filters requires_grad, so a still-gated pool's grads (pool A's, from the
-            # step-0 backward) would otherwise escape clipping (no-op single-pool).
-            turbo.route_all_on()
             if cfg.grad_clip > 0:
                 torch.nn.utils.clip_grad_norm_(
                     turbo.student_params(), max_norm=cfg.grad_clip
@@ -453,25 +432,6 @@ def run_loop(ctx: RunContext, cfg):
                 fake_loss_mean_t, gan_disc_mean_t, gan_margin_t, gan_spread_t = (
                     fake_update(ctx, cfg, x_pred, latents, crossattn_emb, B)
                 )
-
-            # --- DMAD Phase −1 probe (measure-only, own RNG; never reaches the
-            # student or critic) ---
-            if ctx.dmad_probe is not None:
-                ctx.dmad_probe.step(
-                    ctx,
-                    cfg,
-                    step=step + 1,
-                    eps=eps,
-                    v_target=v_target,
-                    x_pred=x_pred,
-                    dmd=dmd,
-                    crossattn_emb=crossattn_emb,
-                    c_null=c_null,
-                    grad_step_idx=grad_step_idx,
-                    grad_step_sigma=grad_step_sigma,
-                )
-                if ctx.dmad_probe.collapsed:
-                    break
 
             # --- logging accumulators (all GPU-side; flushed below every log_interval
             # in one stacked .tolist() so per-step CUDA syncs go to zero) ---
@@ -554,7 +514,6 @@ def run_loop(ctx: RunContext, cfg):
                 dm = run_diversity_validation(
                     model=ctx.model,
                     forward_fn=_forward,
-                    set_student_step=turbo.set_student_step,
                     student_sigmas=student_sigmas,
                     crossattn_emb=ctx.val_cond,
                     latent_shape=ctx.val_latent_shape,
@@ -629,12 +588,6 @@ def run_loop(ctx: RunContext, cfg):
                     metadata["ss_turbo_student_init_weights"] = os.path.basename(
                         cfg.student_init_weights
                     )
-                if cfg.per_step_expert:
-                    # Drives loader detection (CLI + ComfyUI build StepExpertLoRAModule
-                    # and keep it live instead of merging). step_expert_K == the head
-                    # count == student_steps.
-                    metadata["ss_turbo_per_step_expert"] = "1"
-                    metadata["ss_turbo_step_expert_K"] = str(cfg.step_expert_K)
                 # Step-tagged intermediates live in a per-run subdir so they don't
                 # clutter output/ckpt/; the canonical bare {output_name} stays at the
                 # root where inference / merge / `make test` look for it.

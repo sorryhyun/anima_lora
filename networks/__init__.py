@@ -13,7 +13,6 @@ from typing import Any, Callable, Dict, Mapping, Optional, Tuple, Type
 from networks.lora_modules import (
     HydraLoRAModule,
     LoRAModule,
-    StepExpertLoRAModule,
 )
 
 
@@ -107,14 +106,6 @@ NETWORK_REGISTRY: Dict[str, NetworkSpec] = {
         save_variant="hydra_moe",
         post_init=_post_init_hydra,
     ),
-    # Step-expert: shared down-proj + K step-indexed up-heads, hard-selected by
-    # diffusion step (no router). Turbo DP-DMD student only; kept-live at
-    # inference (K heads can't fold into one DiT weight), so save is bespoke.
-    "step_expert": NetworkSpec(
-        name="step_expert",
-        module_class=StepExpertLoRAModule,
-        save_variant="step_expert",
-    ),
 }
 
 
@@ -130,14 +121,8 @@ def all_network_kwargs() -> Tuple[str, ...]:
 def resolve_network_spec(kwargs: Mapping[str, Any]) -> NetworkSpec:
     """Resolve which NetworkSpec to instantiate from create_network kwargs.
 
-    Precedence (first match wins): step_expert_K > 1 -> step_expert;
     use_moe_style="shared_A" -> hydra; else lora.
     """
-    # Step-expert short-circuits when step_expert_K > 1; K==1 collapses to plain LoRA
-    raw_step_K = kwargs.get("step_expert_K")
-    if raw_step_K is not None and int(raw_step_K) > 1:
-        return NETWORK_REGISTRY["step_expert"]
-
     raw_moe = kwargs.get("use_moe_style")
     if isinstance(raw_moe, str):
         moe_style = raw_moe.strip()

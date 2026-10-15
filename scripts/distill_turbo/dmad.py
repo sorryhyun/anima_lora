@@ -26,8 +26,7 @@ term and the critic are replaced by :class:`DmadDisc`:
   over the ready bands. The gap is tracked whenever both heads exist.
 
 :func:`run_disc_warmup` trains the disc alone for ``disc_warmup_steps`` before
-the student uses it. The Phase −1 probe (``dmad_probe.py``) shares the
-module-level helpers here.
+the student uses it.
 """
 
 from __future__ import annotations
@@ -125,11 +124,9 @@ def rollout_x_pred(ctx, cfg, eps, c, B) -> torch.Tensor:
     x = eps
     for i in range(g):
         t_b = torch.full((B,), sig[i], device=ctx.device, dtype=ctx.dtype)
-        ctx.turbo.set_student_step(i)
         v = ctx.forward("student", x, t_b, c, no_grad=True).squeeze(2)
         x = x - (sig[i] - sig[i + 1]) * v
     t_b = torch.full((B,), sig[g], device=ctx.device, dtype=ctx.dtype)
-    ctx.turbo.set_student_step(g)
     v = ctx.forward("student", x, t_b, c, no_grad=True).squeeze(2)
     return x - sig[g] * v
 

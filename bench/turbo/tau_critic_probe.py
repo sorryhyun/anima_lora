@@ -73,7 +73,7 @@ from networks.methods.turbo_dmd import (  # noqa: E402
     TurboDMDNetwork,
     warm_start_plain_lora,
 )
-from scripts.distill_turbo.distill import _cached_token_counts  # noqa: E402
+from scripts.distill_turbo.setup import _cached_token_counts  # noqa: E402
 from scripts.distill_turbo.primitives import (  # noqa: E402
     PadCache,
     make_collate,
@@ -177,7 +177,7 @@ def main() -> None:
         )
     # The snapshot is the same run's resolved dump, so it must agree with the
     # bundle fingerprint on topology. A mismatch means a wrong --snapshot.
-    for k in ("student_rank", "fake_rank", "step_expert_K", "base_loss"):
+    for k in ("student_rank", "fake_rank", "base_loss"):
         if k in fp and k in snap and fp[k] != snap[k]:
             raise SystemExit(
                 f"bundle fingerprint {k}={fp[k]!r} != snapshot {k}={snap[k]!r} "
@@ -254,7 +254,6 @@ def main() -> None:
         student_alpha=float(snap.get("student_alpha", snap["student_rank"])),
         fake_alpha=fake_alpha,
         channel_scaling_alpha=float(snap.get("channel_scaling_alpha", 0.0)),
-        student_step_expert_K=int(snap.get("step_expert_K", 0)),
     )
     turbo.freeze_dit()
     turbo.student.to(device=device, dtype=dtype)
@@ -373,11 +372,9 @@ def main() -> None:
         x = eps0
         for i in range(g):
             t_b = torch.full((1,), sigmas[i], device=device, dtype=dtype)
-            turbo.set_student_step(i)
             v = _forward("student", x, t_b, c, no_grad=True).squeeze(2)
             x = x - (sigmas[i] - sigmas[i + 1]) * v
         t_b = torch.full((1,), sigmas[g], device=device, dtype=dtype)
-        turbo.set_student_step(g)
         v_g = _forward("student", x, t_b, c, no_grad=True).squeeze(2)
         return (x - sigmas[g] * v_g).detach()
 

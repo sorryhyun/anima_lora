@@ -15,8 +15,8 @@ the residual ``h − μ`` (the **AC**) carries the seed-specific structure. So:
     means the run is destabilising the conditioning, not diversifying.
 
 We fix ONE held-out conditioning and roll the student's N-step Euler grid (the
-same ``forward_fn`` / ``set_student_step`` / ``student_sigmas`` the training loop
-uses) across N seeds under ``no_grad``, hooking every block. Layout-robust: the
+same ``forward_fn`` / ``student_sigmas`` the training loop uses) across N
+seeds under ``no_grad``, hooking every block. Layout-robust: the
 DC = mean over all non-(batch,channel) axes, so it reads correctly whether the
 block emits eager 5D ``(B,T,H,W,D)`` or the compiled native-flatten
 ``(B,1,seq,1,D)`` (channel D is last in both). The AC residual is pooled to a
@@ -140,7 +140,6 @@ def run_diversity_validation(
     *,
     model,
     forward_fn,
-    set_student_step,
     student_sigmas: list[float],
     crossattn_emb: torch.Tensor,
     latent_shape: tuple[int, ...],
@@ -155,7 +154,7 @@ def run_diversity_validation(
     measure cross-seed DC/AC convergence of the block features (+ the x_pred),
     plus (if ``clean_latent`` is given) a flow-matching reconstruction MSE.
 
-    ``forward_fn`` / ``set_student_step`` / ``student_sigmas`` are the live
+    ``forward_fn`` / ``student_sigmas`` are the live
     training-loop primitives; ``crossattn_emb`` is one held-out sample's cached
     text features (shape ``(1, seq, D)``); ``latent_shape`` is ``(1, C, H, W)``;
     ``clean_latent`` is the held-out sample's cached clean latent ``(1, C, H, W)``.
@@ -179,7 +178,6 @@ def run_diversity_validation(
             for i in range(student_steps):
                 s_i, s_next = student_sigmas[i], student_sigmas[i + 1]
                 t_b = torch.full((latent_shape[0],), s_i, device=device, dtype=dtype)
-                set_student_step(i)
                 v = forward_fn("student", x, t_b, crossattn_emb, no_grad=True).squeeze(
                     2
                 )
@@ -189,7 +187,6 @@ def run_diversity_validation(
     finally:
         for h in handles:
             h.remove()
-        set_student_step(0)
 
     ac_sim, dc_sim = probe.summary()
 
@@ -199,8 +196,7 @@ def run_diversity_validation(
 
     # Flow-matching reconstruction MSE (fidelity half). Rectified flow's velocity
     # target is constant along the straight path (v* = ε − x0, σ-independent), so
-    # evaluate the student at its OWN grid sigmas through each matching per-step
-    # head. Fixed disjoint seed so the number is comparable across passes.
+    # evaluate the student at its OWN grid sigmas. Fixed disjoint seed so the number is comparable across passes.
     fm_mse = float("nan")
     if clean_latent is not None:
         x0 = clean_latent.to(device, dtype=dtype)
@@ -213,10 +209,8 @@ def run_diversity_validation(
             s_i = student_sigmas[i]
             x_t = ((1.0 - s_i) * x0.float() + s_i * eps.float()).to(dtype)
             t_b = torch.full((x0.shape[0],), s_i, device=device, dtype=dtype)
-            set_student_step(i)
             v = forward_fn("student", x_t, t_b, crossattn_emb, no_grad=True).squeeze(2)
             errs.append(float(F.mse_loss(v.float(), v_target)))
-        set_student_step(0)
         fm_mse = sum(errs) / len(errs)
 
     return DiversityMetrics(

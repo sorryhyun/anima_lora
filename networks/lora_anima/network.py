@@ -20,7 +20,6 @@ from networks.lora_anima.loading import (
 from networks.lora_modules import (
     HydraLoRAModule,
     LoRAModule,
-    StepExpertLoRAModule,
     _sigma_sinusoidal_features,
 )
 from networks.lora_anima.network_metrics import _NetworkMetricsMixin
@@ -354,11 +353,7 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
                         effective_module_class = LoRAModule
 
                 extra_kwargs = {}
-                if effective_module_class == StepExpertLoRAModule:
-                    # Shared down + K step-indexed up-heads, selected per
-                    # forward via set_step_index / the turbo coordinator.
-                    extra_kwargs["step_expert_K"] = cfg.step_expert_K
-                elif effective_module_class == HydraLoRAModule:
+                if effective_module_class == HydraLoRAModule:
                     extra_kwargs["num_experts"] = cfg.num_experts
                     if cfg.expert_init_std > 0.0:
                         extra_kwargs["expert_init_std"] = cfg.expert_init_std
@@ -419,7 +414,7 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
                         self._fei_router_hits += 1
 
                 # SVD-Down init — plain two-factor LoRAModule only; gate so the
-                # kwarg never reaches Hydra/StepExpert.
+                # kwarg never reaches Hydra.
                 if cfg.down_init != "kaiming" and effective_module_class is LoRAModule:
                     extra_kwargs["down_init"] = cfg.down_init
                     # adaln_up_* stays on the shared top-r (see cfg.svd_slice).
@@ -697,17 +692,6 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
     def set_enabled(self, is_enabled):
         for lora in self.text_encoder_loras + self.unet_loras:
             lora.enabled = is_enabled
-
-    def set_step_index(self, step: int) -> None:
-        """Select the active step-expert up-head on every adapted module.
-
-        No-op on non-step-expert modules (no ``set_step``). Mirrors the turbo
-        coordinator's ``set_student_step``; both reach ``StepExpertLoRAModule._step``.
-        """
-        for lora in self.text_encoder_loras + self.unet_loras:
-            set_step = getattr(lora, "set_step", None)
-            if callable(set_step):
-                set_step(step)
 
     def fuse_weights(self):
         """Merge all LoRA deltas into base model weights for zero-overhead inference."""

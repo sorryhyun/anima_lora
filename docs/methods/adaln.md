@@ -222,8 +222,7 @@ untouched. The in-repo loader renames back on load
 (`create_network_from_weights` → `relayout_adaln_comfy_to_runtime`), so one file
 round-trips both ecosystems. Every method on the standard path is covered,
 turbo included; the Hydra MoE `_moe` siblings are not ComfyUI-loadable
-regardless, and the turbo per-step-expert layout (`step_expert_K > 1`) writes
-verbatim and stays runtime-layout.
+regardless.
 
 Checkpoints trained with `train_adaln = false` (including every LoRA trained
 here before it became the default) carry no adaln keys.

@@ -75,12 +75,11 @@ Per training step:
    the anchor — `[dmd].grad_step`): `all` rolls 2..N with grad (BPTT, holds the
    N-graph) onto the true endpoint `x_θ`; `last` (default) backward-simulates
    2..N−1 under no_grad and grads only the cleanest-σ final step onto `x_θ`
-   (memory-flat, but the noisy refinement steps train only indirectly — and under
-   `per_step_expert` only head N−1 trains); `random` samples one refinement step
+   (memory-flat, but the noisy refinement steps train only indirectly);
+   `random` samples one refinement step
    `g~U{1..N−1}`, backward-simulates the `1..g−1` prefix under no_grad from the
    post-anchor latent, and grads only step `g`'s one-step x0-prediction
-   `x_g − σ_g·v_g` (memory-flat; supervises every refinement grid point + trains
-   every head, at the cost of spreading the mode-seeking DMD grad across all
+   `x_g − σ_g·v_g` (memory-flat; supervises every refinement grid point, at the cost of spreading the mode-seeking DMD grad across all
    refinement σ rather than concentrating it on the tail).
 3. DMD on `x_θ` (no-grad teacher + no-grad fake, τ_DM ∈ [0,1]). The real score
    is CFG-guided (`v_u + α·(v_c − v_u)`) — not cond-only — since the DMD real
@@ -142,11 +141,10 @@ the warm-start distribution, so a matched critic starts calibrated instead of
 chasing it from zero.
 
 Constraints. Warm start needs plain single-head Linear LoRA modules, so it is
-mutually exclusive with `per_step_expert` and
-`*_down_init = "weight_svd"` (config validation rejects the combination — set
+mutually exclusive with `*_down_init = "weight_svd"` (config validation rejects the combination — set
 `student_down_init = "kaiming"` when enabling). It runs after `.to(device)` (SVD
-on-device) and before `compile_dit_blocks` traces the forwards. A MoE /
-step-expert checkpoint is refused outright.
+on-device) and before `compile_dit_blocks` traces the forwards. A MoE
+checkpoint is refused outright.
 
 A warm-started student is already a few-step map at step 0, so distillation is
 fine-tuning rather than construction. Rank checkpoints by rendered 4-step grids,
@@ -168,8 +166,8 @@ Sectioned, bespoke. Every key has a matching CLI override flag (see
 | `[network]` | `fake_tau_banks` / `fake_tau_boundary` | `1` / `0.5` | τ-split critic. `1` = single fake. `2` = dual fake banks, bank 0 owning `τ < boundary`; updates AND DMD queries route by drawn τ (matched compute by construction). Requires `batch_size=1`; memory +1 fake LoRA (params/grads/Adam). Showed no gain over `1` (`docs/findings/turbo_tau_critic_interference_lr_artifact.md`) |
 | `[dmd]` | `student_steps` (N) | `4` | Euler steps the student rolls; inference matches (`--infer_steps 4`) |
 | `[dmd]` | `teacher_cfg` (α) | `4` | CFG scale baked into the teacher anchor + DMD real score (Anima prod CFG=4) |
-| `[dmd]` | `grad_step` | `random` | which refinement step(s) carry the DMD grad: `all` (BPTT) / `last` (tail-only, memory-flat) / `random` (one-step x0-pred at `g~U{1..N−1}`, memory-flat, trains every head). Honored under both `base_loss`. |
-| `[dmd]` | `dynamic_schedule` | `true` | CDM-style continuous schedule (arXiv:2605.06376 §3.2): per-iteration random rollout grid — length `N~U{2..student_steps}` (dpdmd; `{1..}` plain dmd), interior anchors continuous-uniform, `t₁=1` pinned so the DP anchor composes unchanged. Trains v_θ over continuous t instead of the 4 fixed inference points. `false` = bit-identical legacy fixed-grid loop; validation renders + inference always stay on the static `flow_shift` grid. Incompatible with `per_step_expert` (heads keyed to fixed grid steps). |
+| `[dmd]` | `grad_step` | `random` | which refinement step(s) carry the DMD grad: `all` (BPTT) / `last` (tail-only, memory-flat) / `random` (one-step x0-pred at `g~U{1..N−1}`, memory-flat). Honored under both `base_loss`. |
+| `[dmd]` | `dynamic_schedule` | `true` | CDM-style continuous schedule (arXiv:2605.06376 §3.2): per-iteration random rollout grid — length `N~U{2..student_steps}` (dpdmd; `{1..}` plain dmd), interior anchors continuous-uniform, `t₁=1` pinned so the DP anchor composes unchanged. Trains v_θ over continuous t instead of the 4 fixed inference points. `false` = bit-identical legacy fixed-grid loop; validation renders + inference always stay on the static `flow_shift` grid. |
 | `[dmd]` | `dm_x0_norm` | `true` | per-sample x0-space magnitude normalization of the DM grad |
 | `[dmd]` | `norm_floor` | `0.05` | clamp_min for the `dm_x0_norm` denominator (latent scale) |
 | `[dpdmd]` | `k_anchor` (K) | `6` | teacher steps rolled to the diversity anchor |
@@ -211,38 +209,6 @@ checkpoint looks better at more steps than its trained grid, that's the tell tha
 distillation hasn't reached a true N-step map yet — train longer or raise
 `student_steps`. Always keep `--cfg 1.0` regardless of step count (CFG is baked;
 don't double-guide).
-
-## Per-step expert (`per_step_expert`, default off)
-
-One rank-`student_rank` LoRA normally absorbs two conflicting gradients: the
-diversity loss on step 0 (`div_loss = MSE(v_first, v_target)`, then a detach)
-and the DMD reverse-KL on steps 1..N. The detach already severs the two
-backward graphs, so `per_step_expert=true` splits the student into one shared
-`lora_down` plus K = `student_steps` up-heads (`StepExpertLoRAModule`),
-selecting head `k` for denoise step `k` by the step counter — no router (the step
-index is known at call time, unlike HydraLoRA's FEI/σ-routed case). Head 0 then sees only the
-diversity gradient, head k only step-k's DMD gradient; only the shared down-proj is
-trained by both. Per-step inference compute is unchanged (one head active per step).
-
-Turn it on in `[network]` (`per_step_expert = true`) or `--per_step_expert`.
-
-### What it costs — the plain-LoRA property is gone
-
-The single-head student is a normal LoRA (merges via `make merge`, loads through any
-stock LoRA path). A per-step-expert student is not:
-
-- `make merge` refuses it — K per-step heads can't fold into one static DiT
-  weight (it would need K baked copies). It's caught by the `.lora_ups.` non-bakeable
-  marker, same as Hydra moe.
-- Kept-live only. Inference rebuilds a router-free `StepExpertLoRAModule` network
-  on the (fused-qkv) DiT and selects the head per step — CLI via
-  `set_step_index(i)` in the denoise loop (the loader keys off the
-  `ss_turbo_per_step_expert` metadata stamp), ComfyUI via the dedicated
-  `AnimaTurboPerStepExpertLoader` node (stock LoRA / `AnimaAdapterLoader` raise,
-  since they can't drive step-indexed head selection).
-- `make test-turbo` pins `--infer_steps` to the trained head count K (read from
-  metadata); head k binds to step k, so `infer_steps` must equal K. Overshoot repeats
-  the last (quality) head; undershoot skips it. Keep `--cfg 1.0`.
 
 ## Reading the metrics
 
@@ -312,7 +278,7 @@ by default at the FastGen `weight_gen = 0.03`, f-distill is off:
 
 Cost. There is no early exit after the tapped block, so the GAN adds +1 grad-bearing teacher forward in the student step (the generator
 term must flow grad through the teacher into `x_pred`) and +2 no_grad teacher
-forwards per disc step. `--grad_ckpt` is a valid VRAM lever here, with one loop invariant: `set_view`/`set_student_step` are global state read at forward time and checkpoint recompute defers to `.backward()`, so every checkpointed forward must be backwarded while its own view/head is still live (the loop enforces this in `steps.py`; nothing in the metrics catches a violation — the recompute silently runs under the wrong view). `weight_gen=0`
+forwards per disc step. `--grad_ckpt` is a valid VRAM lever here, with one loop invariant: `set_view` is global state read at forward time and checkpoint recompute defers to `.backward()`, so every checkpointed forward must be backwarded while its own view is still live (the loop enforces this in `steps.py`; nothing in the metrics catches a violation — the recompute silently runs under the wrong view). `weight_gen=0`
 keeps the entire path off → byte-identical DP-DMD (no disc, no hooks, no extra
 forwards).
 

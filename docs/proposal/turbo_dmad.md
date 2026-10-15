@@ -80,13 +80,13 @@ closed line.
 
 ## Phase −1 — premise probe (closed, no verdict)
 
-**What it measured.** `--dmad_probe` (`scripts/distill_turbo/dmad_probe.py`) trains a
+**What it measured.** (Removed from the tree — `--dmad_probe*`, `scripts/distill_turbo/dmad_probe.py`, `bench/turbo/dmad_probe_read.py` and its test are gone; recover from git history. Frozen results under `bench/turbo/results/*dmad_probe*` remain.) The probe trained a
 side disc (head T on a cold or warm LoRA stack over the teacher) beside an unchanged
 DP-DMD run, and every step compares `g_T = ∂(−h_T)/∂x_pred` with that step's DM
 `grad_signal` at the same (τ_dm, ε_dm): cosine and agree-energy, each against a
 permutation null, plus a ceiling `cos(DM, DM')` from a second DM draw. Teacher
 samples finish the step-0 anchor rollout on the 12-step CFG-4 grid, so teacher and
-student share ε. Pre-registered read (`bench/turbo/dmad_probe_read.py`), window =
+student share ε. Pre-registered read (`bench/turbo/dmad_probe_read.py`, removed), window =
 second half of the rows: UNCONVERGED if disc acc < 0.75; KILL if `cos − null` is
 within 3 SEM of 0; PASS if `cos ≥ 0.5 × ceiling` and agree-energy beats its null by
 3 SEM; WEAK otherwise. The reader also reports the window split at |margin| ≤ 1.
@@ -209,7 +209,7 @@ One arm against a matched DP-DMD arm, read on rendered grids.
 | `feature_block_idx` | `-1` | −1 = middle block |
 
 Every key gets a `--dmad_*` CLI flag. Guards at resolve: requires `base_loss =
-"dpdmd"`; refuses `gan.weight_gen > 0`, `f_distill`, `dmad_probe`,
+"dpdmd"`; refuses `gan.weight_gen > 0`, `f_distill`,
 `fake_tau_banks > 1`, `blocks_to_swap > 0`, and `--resume` (the disc is not in the
 resume bundle in this phase).
 

@@ -8,7 +8,7 @@ Two surfaces:
   and a detached fresh launch point (no graph back into the rollout — the
   deliberate one-grad-forward deviation the proposal documents).
 * config resolve — ``cdm.weight`` default-off + CLI/TOML precedence, and the
-  guards: per_step_expert (no head owns an off-grid t'), --grad_ckpt (view ×
+  guards: --grad_ckpt (view ×
   ckpt-recompute hazard class), blocks_to_swap (extra forwards unaudited under
   swap), and the resume-fingerprint warn field.
 """
@@ -86,7 +86,7 @@ def test_cdm_weight_defaults_off():
 
 def test_cdm_weight_toml_and_cli_precedence():
     assert _resolve(cfg={"cdm": {"weight": 0.5}}).cdm_weight == 0.5
-    # CLI sentinel -1.0 = "use TOML"; an explicit CLI value wins over TOML.
+    # No CLI flag = "use TOML"; an explicit CLI value wins over TOML.
     assert (
         _resolve(["--cdm_weight", "0.25"], cfg={"cdm": {"weight": 0.5}}).cdm_weight
         == 0.25
@@ -96,11 +96,6 @@ def test_cdm_weight_toml_and_cli_precedence():
 def test_cdm_weight_negative_refused():
     with pytest.raises(ValueError, match="cdm.weight"):
         _resolve(["--cdm_weight", "-0.1"])
-
-
-def test_cdm_refuses_per_step_expert():
-    with pytest.raises(ValueError, match="per_step_expert"):
-        _resolve(["--cdm_weight", "0.1", "--per_step_expert"])
 
 
 def test_cdm_refuses_grad_ckpt():

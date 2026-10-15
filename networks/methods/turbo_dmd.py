@@ -112,71 +112,6 @@ def gan_loss_discriminator(
     return F.softplus(fake_logits).mean() + F.softplus(-real_logits).mean()
 
 
-def load_step_expert_student(
-    unet,
-    weights_sd: dict[str, torch.Tensor],
-    metadata: dict[str, str],
-    *,
-    multiplier: float = 1.0,
-) -> LoRANetwork:
-    """Rebuild a per-step-expert turbo student as a router-free, kept-live net.
-
-    Per-step-expert checkpoints can't go through ``merge_to_dit`` (K up-heads
-    don't fold into one DiT weight) nor the shared key-sniff (the
-    ``.lora_ups.{k}.weight`` layout collides with Hydra's). Builds a fresh
-    ``StepExpertLoRAModule`` network on the same fused DiT and
-    ``load_state_dict`` matches directly — no split→re-fuse.
-
-    This applies + loads + freezes, returning a net ready for
-    ``set_step_index`` per denoise step.
-    """
-    K = int(metadata.get("ss_turbo_step_expert_K", "0") or "0")
-    if K <= 1:
-        raise RuntimeError(
-            "load_step_expert_student called on a checkpoint without "
-            "ss_turbo_step_expert_K > 1 — not a per-step-expert turbo file."
-        )
-    rank = int(metadata.get("ss_turbo_student_rank", "0") or "0")
-    if rank <= 0:
-        raise RuntimeError(
-            "per-step-expert turbo checkpoint missing ss_turbo_student_rank "
-            "metadata — cannot rebuild the student at the right rank."
-        )
-    # GOTCHA: scale = alpha/rank is fixed at module construction (load_state_dict
-    # only overwrites the alpha buffer, not the cached scale), so build with the
-    # trained alpha; fall back to rank (scale 1.0) when the stamp is absent.
-    alpha = float(metadata.get("ss_turbo_student_alpha", str(rank)) or rank)
-
-    network = create_network(
-        multiplier=multiplier,
-        network_dim=rank,
-        network_alpha=alpha,
-        vae=None,
-        text_encoders=[],
-        unet=unet,
-        step_expert_K=K,
-    )
-    network.apply_to([], unet, apply_text_encoder=False, apply_unet=True)
-    info = network.load_state_dict(weights_sd, strict=False)
-    if info.unexpected_keys:
-        logger.warning(
-            f"step-expert turbo: unexpected keys in state dict: "
-            f"{info.unexpected_keys[:5]}..."
-        )
-    if info.missing_keys:
-        # Surface the count so a rank/target mismatch is loud, not silent.
-        logger.warning(
-            f"step-expert turbo: {len(info.missing_keys)} missing keys "
-            f"(first: {info.missing_keys[:5]})"
-        )
-    network.set_step_index(0)
-    logger.info(
-        f"step-expert turbo: router-free kept-live attached "
-        f"({len(network.unet_loras)} modules, K={K} heads, rank={rank})"
-    )
-    return network
-
-
 def _plain_lora_module_delta(
     weights_sd: dict[str, torch.Tensor], lora_name: str
 ) -> tuple[torch.Tensor, torch.Tensor] | None:
@@ -266,7 +201,7 @@ def warm_start_plain_lora(network: LoRANetwork, weights_path: str, label: str) -
         )
     if any(".lora_ups." in k or ".lora_up_weight" in k for k in weights_sd):
         raise RuntimeError(
-            f"{weights_path}: MoE/step-expert layout — warm start needs a "
+            f"{weights_path}: MoE layout — warm start needs a "
             "plain single-head LoRA checkpoint."
         )
     logger.info(
@@ -319,11 +254,7 @@ class TurboDMDNetwork:
         fake_rank: int,
         student_alpha: float | None = None,
         fake_alpha: float | None = None,
-        use_custom_down_autograd: bool = False,
         channel_scaling_alpha: float = 0.0,
-        student_step_expert_K: int = 0,
-        dual_pool: bool = False,
-        div_pool_rank: int = 16,
         student_down_init: str = "kaiming",
         fake_down_init: str = "kaiming",
         fake_tau_banks: int = 1,
@@ -382,29 +313,16 @@ class TurboDMDNetwork:
         # LoRA gradient on the DiT's outlier-DC input channels only, so it
         # leaves the DP-DMD objective untouched.
         self.channel_scaling_alpha = float(channel_scaling_alpha)
-        # Per-step expert: when > 1 the student's adapted Linears become
-        # StepExpertLoRAModule (shared down + K step-indexed up-heads); head k
-        # is trained only by step-k's gradient (set_student_step + the detach
-        # in distill.py). The fake/critic stays a plain single-head LoRA.
-        self.student_step_expert_K = int(student_step_expert_K)
 
-        # SVD-Down init (down_init="weight_svd"): seed the plain-LoRA student's
-        # lora_down from W0's top-r right singular vectors (scale-matched).
-        # Targets the plain LoRAModule only, so mutually exclusive with the
-        # per-step-expert student.
+        # SVD-Down init (down_init="weight_svd"): seed the student's lora_down
+        # from W0's top-r right singular vectors (scale-matched).
         self.student_down_init = str(student_down_init)
         if self.student_down_init not in ("kaiming", "weight_svd"):
             raise ValueError(
                 f"student_down_init={self.student_down_init!r}: "
                 "expected 'kaiming' or 'weight_svd'."
             )
-        if self.student_down_init == "weight_svd" and self.student_step_expert_K > 1:
-            raise ValueError(
-                "student_down_init='weight_svd' is incompatible with the "
-                "per-step-expert student (step_expert_K>1): StepExpertLoRAModule "
-                "is not a plain LoRAModule. Disable per_step_expert."
-            )
-        # Same lever on the fake/critic. It is always a plain single-head LoRA.
+        # Same lever on the fake/critic.
         self.fake_down_init = str(fake_down_init)
         if self.fake_down_init not in ("kaiming", "weight_svd"):
             raise ValueError(
@@ -413,10 +331,7 @@ class TurboDMDNetwork:
             )
 
         # Plain LoRA on both (LoRANetworkCfg defaults: no MoE/T-LoRA); alpha =
-        # rank by default. use_custom_down_autograd is forwarded for config
-        # compat but a deprecated no-op. step_expert_K rides **kwargs; >1 flips
-        # resolve_network_spec to StepExpertLoRAModule for the student only.
-        # adaln_rank > 0 builds the adaln modules at their own (lower) rank via
+        # rank by default. adaln_rank > 0 builds the adaln modules at their own (lower) rank via
         # network_reg_dims: the official turbo's adaln ΔW is near-lossless well
         # below attn rank, so uniform rank there is wasted VRAM. NB the reg_dims
         # path keeps the NETWORK alpha, so adaln runs a higher alpha/rank scale
@@ -428,8 +343,6 @@ class TurboDMDNetwork:
             f".*adaln_up_.*={self.adaln_alpha}" if self.adaln_alpha > 0 else None
         )
         _student_kwargs: dict = {}
-        if self.student_step_expert_K > 1:
-            _student_kwargs["step_expert_K"] = self.student_step_expert_K
         if self.student_down_init != "kaiming":
             _student_kwargs["down_init"] = self.student_down_init
         if self.train_adaln:
@@ -447,46 +360,10 @@ class TurboDMDNetwork:
             vae=None,
             text_encoders=[],
             unet=unet,
-            use_custom_down_autograd=use_custom_down_autograd,
             channel_scaling_alpha=self.channel_scaling_alpha,
             **_student_kwargs,
         )
 
-        # Dual-pool gradient routing: a SECOND always-on plain-LoRA pool. Pool A
-        # (this one) receives only the step-0 diversity gradient; pool B
-        # (self.student) only the DMD/GAN/CDM refinement gradients (routing is
-        # `requires_grad` gating in distill.py — both pools stay *enabled*, so
-        # activations always flow through A+B). Pool A is deliberately MINIMAL:
-        # plain LoRA on attn/MLP only, no adaln/per-step-expert/channel scaling.
-        # Zero-init up means at step 0 the merged student IS the warm-started
-        # pool B, and A grows a pure de-collapse correction from zero.
-        self.dual_pool = bool(dual_pool)
-        self.div_pool_rank = int(div_pool_rank)
-        self.student_div: LoRANetwork | None = None
-        if self.dual_pool:
-            if self.student_step_expert_K > 1:
-                raise ValueError(
-                    "dual_pool is incompatible with the per-step-expert student "
-                    "(step_expert_K>1): both restructure the student stack."
-                )
-            if self.div_pool_rank < 1:
-                raise ValueError(f"div_pool_rank must be >= 1, got {div_pool_rank}")
-            self.student_div = create_network(
-                multiplier=1.0,
-                network_dim=self.div_pool_rank,
-                network_alpha=self.div_pool_rank,  # scale 1.0; zero-init up
-                vae=None,
-                text_encoders=[],
-                unet=unet,
-                use_custom_down_autograd=use_custom_down_autograd,
-                channel_scaling_alpha=0.0,
-            )
-        # Both pools train under the student optimizer and toggle together in the
-        # "student" view. Bank order mirrors fake_banks: pool B first (the warm
-        # start / save anchor), pool A second.
-        self.student_pools: list[LoRANetwork] = [self.student]
-        if self.student_div is not None:
-            self.student_pools.append(self.student_div)
         _fake_kwargs: dict = {}
         if self.fake_down_init != "kaiming":
             _fake_kwargs["down_init"] = self.fake_down_init
@@ -505,7 +382,6 @@ class TurboDMDNetwork:
                 vae=None,
                 text_encoders=[],
                 unet=unet,
-                use_custom_down_autograd=use_custom_down_autograd,
                 channel_scaling_alpha=self.channel_scaling_alpha,
                 **_fake_kwargs,
             )
@@ -525,13 +401,6 @@ class TurboDMDNetwork:
             apply_text_encoder=False,
             apply_unet=True,
         )
-        if self.student_div is not None:
-            self.student_div.apply_to(
-                text_encoders=[],
-                unet=unet,
-                apply_text_encoder=False,
-                apply_unet=True,
-            )
         if self.fake is not None:
             self.fake.apply_to(
                 text_encoders=[],
@@ -567,8 +436,6 @@ class TurboDMDNetwork:
         # — else the set_view invariant (cur state matches _VIEW_FLAGS[_view])
         # breaks once any stack carries nonzero weights.
         self.student.set_enabled(False)
-        if self.student_div is not None:
-            self.student_div.set_enabled(False)
         if self.fake is not None:
             self.fake.set_enabled(False)
         if self.fake_hi is not None:
@@ -659,10 +526,7 @@ class TurboDMDNetwork:
             raise RuntimeError("set_view('fake'): built with build_fake=False.")
         cur_student, cur_fake = self._VIEW_FLAGS[self._view]
         if want_student != cur_student:
-            # Both dual pools toggle together — "student" view is always A+B
-            # (grad routing is `requires_grad`, not enablement; see route_*).
-            for pool in self.student_pools:
-                pool.set_enabled(want_student)
+            self.student.set_enabled(want_student)
         if want_fake != cur_fake:
             # Only the ACTIVE bank ever toggles — inactive banks stay disabled
             # from __init__ on.
@@ -704,80 +568,9 @@ class TurboDMDNetwork:
             banks[i].set_enabled(True)
         self._fake_bank = i
 
-    def set_student_step(self, i: int) -> None:
-        """Select the student's step-``i`` up-head before its forward.
-
-        No-op when per-step-expert is off. The detach between the diversity
-        step-0 backward and the DMD steps-1..N chain (distill.py) means head 0
-        only ever sees the diversity gradient and head k only step-k's DMD
-        gradient — the shared lora_down is trained by both. Kept as a
-        coordinator method so the training loop never reaches into the student
-        network directly.
-        """
-        if self.student_step_expert_K > 1:
-            self.student.set_step_index(i)
-
     def student_params(self):
-        """Trainable params for the student optimizer (all pools under dual_pool).
-
-        GOTCHA: filtered by ``requires_grad`` — the caller must restore both
-        pools to grad-on (``route_all_on``) BEFORE grad-clip/step, else a
-        transiently-gated pool's grads escape clipping.
-        """
-        return [
-            p
-            for pool in self.student_pools
-            for p in pool.parameters()
-            if p.requires_grad
-        ]
-
-    def student_param_groups(self, student_lr: float, div_pool_lr: float = 0.0):
-        """AdamW param groups: pool B at ``student_lr``, pool A at ``div_pool_lr``.
-
-        ``div_pool_lr=0`` inherits ``student_lr``. Under single-pool this is one
-        group.
-        """
-        groups = [{"params": list(self.student.parameters()), "lr": student_lr}]
-        if self.student_div is not None:
-            groups.append(
-                {
-                    "params": list(self.student_div.parameters()),
-                    "lr": div_pool_lr if div_pool_lr > 0.0 else student_lr,
-                }
-            )
-        return groups
-
-    def _set_pool_requires_grad(self, pool: "LoRANetwork | None", flag: bool) -> None:
-        if pool is None:
-            return
-        for p in pool.parameters():
-            p.requires_grad_(flag)
-
-    def route_div(self) -> None:
-        """Gate grads to pool A only (the step-0 diversity backward).
-
-        No-op under single-pool. Both pools stay ENABLED (activations flow); only
-        pool B's grad accumulation is switched off so the diversity/soft-rank
-        backward lands on pool A alone.
-        """
-        if self.student_div is None:
-            return
-        self._set_pool_requires_grad(self.student_div, True)
-        self._set_pool_requires_grad(self.student, False)
-
-    def route_quality(self) -> None:
-        """Gate grads to pool B only (DMD / GAN / CDM refinement backwards)."""
-        if self.student_div is None:
-            return
-        self._set_pool_requires_grad(self.student, True)
-        self._set_pool_requires_grad(self.student_div, False)
-
-    def route_all_on(self) -> None:
-        """Restore grad-on for both pools (call before grad-clip / optimizer step)."""
-        if self.student_div is None:
-            return
-        self._set_pool_requires_grad(self.student, True)
-        self._set_pool_requires_grad(self.student_div, True)
+        """Trainable params for the student optimizer."""
+        return [p for p in self.student.parameters() if p.requires_grad]
 
     def fake_params(self):
         """Trainable params for the fake optimizer — all banks, bank order.
@@ -815,7 +608,7 @@ class TurboDMDNetwork:
         ``unet`` params whose name doesn't start with a LoRA prefix.
         """
         lora_prefixes = tuple(
-            {m.lora_name for pool in self.student_pools for m in pool.unet_loras}
+            {m.lora_name for m in self.student.unet_loras}
             | {m.lora_name for bank in self.fake_banks for m in bank.unet_loras}
         )
         n_frozen = 0
@@ -832,162 +625,11 @@ class TurboDMDNetwork:
         *,
         dtype: torch.dtype = torch.bfloat16,
         metadata: dict[str, str] | None = None,
-        div_scale: float = 1.0,
     ) -> None:
         """Serialize only the student LoRA in the standard plain-LoRA layout.
 
         Output is loadable by ``inference.py --lora_weight <file>`` — the
         fake network is training scaffolding and never shipped.
-
-        Under dual_pool the two pools are merged EXACTLY into one plain LoRA of
-        rank ``student_rank + div_pool_rank`` via factor concatenation (no SVD).
-        ``div_scale`` dials pool A at merge time (0 = the warm-start-ish quality
-        map, 1 = full anchor correction) — the free diversity knob.
         """
-        if self.student_div is not None:
-            self._save_dual_pool(file, dtype, metadata, div_scale)
-            return
-        if self.student_step_expert_K > 1:
-            sd = self.student.state_dict()
-            # Strip any non-LoRA keys defensively (per-step-expert layout is
-            # written verbatim).
-            sd = {k: v for k, v in sd.items() if ".lora_" in k or ".alpha" in k}
-            self._save_student_step_expert(sd, file, dtype, metadata)
-            return
-
         self.student.save_weights(file, dtype, metadata)
         logger.info(f"saved student LoRA → {file}")
-
-    @staticmethod
-    def _finalize_pool_state_dict(
-        pool: "LoRANetwork", metadata: dict[str, str] | None
-    ) -> tuple[dict[str, torch.Tensor], dict[str, str] | None]:
-        """One plain-LoRA pool → its on-disk (defused, adaln-relayed) fp32 dict.
-
-        dtype=None keeps fp32 so the concat/scale-bake is exact; the caller casts
-        the merged dict once at the end.
-        """
-        from networks import lora_save
-
-        sd = pool.state_dict()
-        for prefix in getattr(pool, "_training_only_prefixes", ()):
-            for key in [k for k in sd if k.startswith(prefix)]:
-                del sd[key]
-        return lora_save.build_standard_state_dict(sd, None, metadata)
-
-    def _save_dual_pool(
-        self,
-        file: str,
-        dtype: torch.dtype,
-        metadata: dict[str, str] | None,
-        div_scale: float,
-    ) -> None:
-        """Merge pool B (quality) + pool A (diversity) into one exact plain LoRA.
-
-        Two rank-r LoRAs on the same Linear fold to rank r_B+r_A by factor
-        concatenation: ``down = concat(rows)``, ``up = concat(cols)`` reproduces
-        ``ΔW_B + ΔW_A`` identically. Per-pool scale (alpha/rank) is baked into
-        ``up`` and the merged alpha set to the merged rank (scale 1). ``div_scale``
-        multiplies pool A's up — the merge-time diversity dial. Pool A's module
-        set ⊆ pool B's; adaln-only keys pass through from B untouched.
-        """
-        from safetensors.torch import save_file
-        from library.training.hashing import precalculate_safetensors_hashes
-
-        sd_b, meta = self._finalize_pool_state_dict(self.student, dict(metadata or {}))
-        sd_a, _ = self._finalize_pool_state_dict(self.student_div, None)
-        meta = meta or {}
-
-        merged: dict[str, torch.Tensor] = dict(sd_b)  # adaln-only keys ride through
-        down_suffix = ".lora_down.weight"
-        for a_down_key in [k for k in sd_a if k.endswith(down_suffix)]:
-            prefix = a_down_key[: -len(down_suffix)]
-            up_key = prefix + ".lora_up.weight"
-            alpha_key = prefix + ".alpha"
-            if prefix + down_suffix not in sd_b or up_key not in sd_b:
-                raise ValueError(
-                    f"dual-pool merge: pool A module {prefix!r} absent from pool B "
-                    "(pool A must be a subset of pool B's module set)."
-                )
-            down_a, up_a = sd_a[a_down_key].float(), sd_a[up_key].float()
-            down_b, up_b = sd_b[a_down_key].float(), sd_b[up_key].float()
-            r_a, r_b = down_a.shape[0], down_b.shape[0]
-            scale_a = (float(sd_a[alpha_key]) / r_a) if alpha_key in sd_a else 1.0
-            scale_b = (float(sd_b[alpha_key]) / r_b) if alpha_key in sd_b else 1.0
-            # Bake scale into up; div_scale dials pool A. B first, A second.
-            up_merged = torch.cat([up_b * scale_b, up_a * (scale_a * div_scale)], dim=1)
-            down_merged = torch.cat([down_b, down_a], dim=0)
-            merged[prefix + down_suffix] = down_merged
-            merged[up_key] = up_merged
-            r_merged = r_a + r_b
-            if alpha_key in sd_b:
-                merged[alpha_key] = torch.tensor(
-                    float(r_merged), dtype=sd_b[alpha_key].dtype
-                )
-            else:
-                merged[alpha_key] = torch.tensor(float(r_merged))
-
-        # Provenance: this IS a plain LoRA (loads with no special path); the
-        # dual-pool stamps are for arm verification only — never trust the TOML.
-        spec = getattr(self.student, "_network_spec", None)
-        if spec is not None:
-            meta["ss_network_spec"] = spec.name
-        meta["ss_turbo_dual_pool"] = "true"
-        meta["ss_turbo_quality_pool_rank"] = str(int(self.student_rank))
-        meta["ss_turbo_div_pool_rank"] = str(int(self.div_pool_rank))
-        if div_scale != 1.0:
-            meta["ss_turbo_div_scale"] = str(float(div_scale))
-
-        if dtype is not None:
-            merged = {
-                k: v.detach().clone().to("cpu").to(dtype) for k, v in merged.items()
-            }
-        model_hash, legacy_hash = precalculate_safetensors_hashes(merged, meta)
-        meta["sshs_model_hash"] = model_hash
-        meta["sshs_legacy_hash"] = legacy_hash
-        save_file(merged, file, meta)
-        logger.info(
-            f"saved dual-pool student LoRA → {file}  (merged rank "
-            f"{self.student_rank}+{self.div_pool_rank}={self.student_rank + self.div_pool_rank}, "
-            f"div_scale={div_scale}; exact plain-LoRA concat)"
-        )
-
-    def _save_student_step_expert(
-        self,
-        sd: dict[str, torch.Tensor],
-        file: str,
-        dtype: torch.dtype,
-        metadata: dict[str, str] | None,
-    ) -> None:
-        """Write the per-step-expert student in its bespoke layout.
-
-        Multi-head keys (``...lora_ups.{k}.weight``) are NOT plain-LoRA loadable,
-        so the standard defuse-qkv save pipeline can't run. Keeps the fused-qkv
-        key layout the training-runtime DiT uses verbatim — CLI/ComfyUI
-        step-expert loaders rebuild the network on the same fused DiT and
-        ``load_state_dict`` matches directly. The ``.lora_ups.`` keys
-        deliberately make a stock loader fail loudly rather than silently
-        mis-merging only head 0.
-        """
-        from safetensors.torch import save_file
-        from library.training.hashing import precalculate_safetensors_hashes
-        from networks.lora_modules.lora import bake_inv_scale
-
-        # Fold any per-channel scaling into lora_down (no-op when absent) so the
-        # on-disk delta acts on raw inputs.
-        bake_inv_scale(sd)
-
-        if dtype is not None:
-            sd = {k: v.detach().clone().to("cpu").to(dtype) for k, v in sd.items()}
-
-        meta = dict(metadata or {})
-        model_hash, legacy_hash = precalculate_safetensors_hashes(sd, meta)
-        meta["sshs_model_hash"] = model_hash
-        meta["sshs_legacy_hash"] = legacy_hash
-
-        save_file(sd, file, meta)
-        n_heads = self.student_step_expert_K
-        logger.info(
-            f"saved step-expert student LoRA → {file}  ({len(sd)} keys, "
-            f"K={n_heads} up-heads/Linear; kept-live only — not plain-LoRA mergeable)"
-        )

@@ -51,28 +51,6 @@ def _has_te_keys(path: str) -> bool:
         return False
 
 
-def _is_step_expert_turbo(path: str) -> bool:
-    """Peek at safetensors metadata for ``ss_turbo_per_step_expert``.
-
-    Per-step-expert turbo files carry ``.lora_ups.{k}.weight`` keys (so
-    ``_is_hydra_moe`` ALSO returns True), but they are not Hydra — head
-    selection is by denoise-step counter, not a router. This metadata stamp is
-    the authoritative discriminator and must be checked before ``hydra_mode``.
-    """
-    from safetensors import safe_open
-
-    try:
-        with safe_open(path, framework="pt") as f:
-            md = f.metadata() or {}
-            return str(md.get("ss_turbo_per_step_expert", "")).strip() in (
-                "1",
-                "true",
-                "True",
-            )
-    except Exception:
-        return False
-
-
 def attach_adapters(
     model: anima_models.Anima,
     args: argparse.Namespace,
@@ -80,7 +58,6 @@ def attach_adapters(
     *,
     pgraft_mode: bool,
     hydra_mode: bool,
-    step_expert_mode: bool = False,
 ) -> None:
     """Attach LoRA-family adapters that ride as dynamic forward hooks.
 
@@ -197,36 +174,6 @@ def attach_adapters(
                 f"cutoff_step={getattr(args, 'lora_cutoff_step', None)})"
             )
 
-    # Per-step-expert turbo: kept-live (K up-heads can't merge), head selected
-    # by the denoise step counter in the sampler loop. Like Hydra it can't ride
-    # the static merge; unlike Hydra there is no router — generation.py calls
-    # network.set_step_index(i) once per step.
-    if step_expert_mode:
-        from safetensors import safe_open
-        from networks.methods.turbo_dmd import load_step_expert_student
-
-        logger.info("step-expert turbo: loading as router-free kept-live hooks")
-        for lora_weight_path in args.lora_weight:
-            with safe_open(lora_weight_path, framework="pt") as f:
-                se_metadata = dict(f.metadata() or {})
-            lora_sd = load_file(lora_weight_path)
-            lora_sd = {k: v for k, v in lora_sd.items() if k.startswith("lora_unet_")}
-            multiplier = (
-                args.lora_multiplier
-                if isinstance(args.lora_multiplier, (int, float))
-                else args.lora_multiplier[0]
-            )
-            network = load_step_expert_student(
-                model, lora_sd, se_metadata, multiplier=multiplier
-            )
-            network.to(device, dtype=torch.bfloat16)
-            network.eval().requires_grad_(False)
-            # Dedicated slot so generation.py finds it for set_step_index, kept
-            # separate from the Hydra/P-GRAFT slots (no router, no cutoff reuse).
-            step_nets = list(getattr(model, "_step_expert_networks", []))
-            step_nets.append(network)
-            model._step_expert_networks = step_nets
-
 
 def load_dit_model(
     args: argparse.Namespace,
@@ -248,9 +195,6 @@ def load_dit_model(
     # Detect early so we can skip the baked-down path and take the dynamic hook
     # route regardless of whether --pgraft is set. ``_is_hydra_moe`` matches
     # the ``lora_ups.{i}.weight`` key pattern.
-    # Per-step-expert turbo is detected FIRST: its files also match
-    # ``_is_hydra_moe`` (shared ``.lora_ups.{k}.weight`` key shape) but are
-    # router-free and head-selected by step counter, so the metadata stamp wins.
     # CJK vocab pack: --no_vocab_pack > --vocab_pack > base.toml `vocab_pack`.
     # Resolved once here (memoised) and hooked onto llm_adapter.embed below;
     # the prompt side is routed by the tokenize strategy prepare_text_inputs
@@ -259,25 +203,8 @@ def load_dit_model(
 
     vocab_pack = resolve_active_pack(args)
 
-    step_expert_mode = False
-    if args.lora_weight is not None and len(args.lora_weight) > 0:
-        se_flags = [_is_step_expert_turbo(p) for p in args.lora_weight]
-        if any(se_flags):
-            if not all(se_flags) or len(args.lora_weight) > 1:
-                raise ValueError(
-                    "Per-step-expert turbo must be loaded alone (one "
-                    "--lora_weight). Its K up-heads are kept-live and head "
-                    "selection is by denoise step — composing it with other "
-                    "LoRAs / merge is unsupported."
-                )
-            step_expert_mode = True
-
     hydra_mode = False
-    if (
-        not step_expert_mode
-        and args.lora_weight is not None
-        and len(args.lora_weight) > 0
-    ):
+    if args.lora_weight is not None and len(args.lora_weight) > 0:
         hydra_flags = [_is_hydra_moe(p) for p in args.lora_weight]
         if any(hydra_flags):
             if not all(hydra_flags):
@@ -296,12 +223,11 @@ def load_dit_model(
         and len(args.lora_weight) > 0
     )
 
-    # load LoRA weights (skip static merge for P-GRAFT, HydraLoRA moe,
-    # and per-step-expert turbo — all ride dynamic hooks)
+    # load LoRA weights (skip static merge for P-GRAFT and HydraLoRA moe —
+    # both ride dynamic hooks)
     if (
         not pgraft_mode
         and not hydra_mode
-        and not step_expert_mode
         and args.lora_weight is not None
         and len(args.lora_weight) > 0
     ):
@@ -362,7 +288,6 @@ def load_dit_model(
         device,
         pgraft_mode=pgraft_mode,
         hydra_mode=hydra_mode,
-        step_expert_mode=step_expert_mode,
     )
 
     if getattr(args, "compile", False):

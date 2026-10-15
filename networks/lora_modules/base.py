@@ -139,8 +139,8 @@ class BaseLoRAModule(torch.nn.Module):
 
     # Forward scaffold (template method): the invariant chain (enable/fuse
     # short-circuit, eval delegation, module dropout, dtype policy, T-LoRA
-    # gate, dropout, residual add) lives here once; two-GEMM variants (LoRA,
-    # StepExpert) supply only _down/_gate/_up. The router-gated Hydra module
+    # gate, dropout, residual add) lives here once; the two-GEMM LoRA variant
+    # supplies only _down/_gate/_up. The router-gated Hydra module
     # (gate consumed inside the up-projection) keeps its own forward.
 
     def forward(self, x):

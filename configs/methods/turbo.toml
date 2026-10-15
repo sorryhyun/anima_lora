@@ -27,8 +27,6 @@ adaln_alpha = 90
 fake_tau_banks = 1
 fake_tau_boundary = 0.5
 
-per_step_expert = false
-
 student_init_weights = "models/extracted/anima_turbo_v1.1_delta_r96_asvd_adaln.safetensors"
 fake_init_weights = "models/extracted/anima_turbo_v1.1_delta_r96_asvd_adaln.safetensors"
 

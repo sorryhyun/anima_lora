@@ -42,12 +42,6 @@ _STRICT_FIELDS = (
     "student_rank",
     "fake_rank",
     "fake_tau_banks",
-    "step_expert_K",
-    # Pool-A presence + rank are topology: they change the student param list the
-    # shared optimizer state is keyed by (apply_resume_state also refuses a
-    # presence mismatch outright, but this catches a rank change too).
-    "dual_pool",
-    "div_pool_rank",
     "gan_disc_hidden",
     "gan_feature_block_idx",
     "channel_scaling_alpha",
@@ -123,15 +117,6 @@ def save_resume_state(
         "output_name": cfg.output_name,
         "fingerprint": _fingerprint(cfg),
         "student": turbo.student.state_dict(),
-        # Dual-pool diversity pool A (None on the single-pool loop; getattr keeps
-        # pre-dual-pool stand-ins loadable). Its params share the ONE student
-        # optimizer, so the bundle must round-trip it or the optimizer state
-        # misaligns — apply_resume_state refuses a presence mismatch, like fake_hi.
-        "student_div": (
-            turbo.student_div.state_dict()
-            if getattr(turbo, "student_div", None) is not None
-            else None
-        ),
         "fake": turbo.fake.state_dict(),
         # τ-split critic second bank (None on the shipped single-critic loop;
         # getattr keeps pre-bank TurboDMDNetwork stand-ins loadable).
@@ -290,23 +275,6 @@ def apply_resume_state(
     _check_fingerprint(state, cfg)
 
     turbo.student.load_state_dict(state["student"])
-    # Dual-pool pool A: both pools share ONE student optimizer whose state is keyed
-    # by the combined param list, so a presence mismatch would half-load it silently
-    # — refuse hard in both directions (same discipline as the τ-split fake_hi).
-    student_div = getattr(turbo, "student_div", None)
-    if student_div is not None:
-        if state.get("student_div") is None:
-            raise ResumeMismatchError(
-                "config sets dual_pool=true but the resume bundle carries no "
-                "diversity pool A (it was written by a single-pool run). Start "
-                "fresh, or resume with dual_pool=false."
-            )
-        student_div.load_state_dict(state["student_div"])
-    elif state.get("student_div") is not None:
-        raise ResumeMismatchError(
-            "resume bundle carries a diversity pool A but dual_pool=false — the "
-            "shared student optimizer state cannot align. Resume with dual_pool=true."
-        )
     turbo.fake.load_state_dict(state["fake"])
     # τ-split critic bank count must match EXACTLY — unlike the disc (whose
     # optimizer is separate, so an extra disc state can be dropped with a

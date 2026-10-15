@@ -355,9 +355,7 @@ clamp). Normalization stays `/numel` (no renorm by mask area, matching
 
 `TurboDMDNetwork.save_student` serializes only the student in the standard
 plain-LoRA layout (`save_variant="standard"`); the fake is training scaffolding and
-never shipped. (The off-by-default `per_step_expert` variant — a shared-down student
-with one up-head per rollout step — saves a bespoke step-expert layout instead: not
-a plain LoRA, kept live at inference, refused by merge.) The default student is an
+never shipped. The default student is an
 ordinary rank-$r$ LoRA with CFG=4 baked in — load
 it through the normal inference path and run `--infer_steps <student_steps> --cfg 1.0`
 (currently 4). No turbo code runs at inference.

@@ -45,7 +45,6 @@ class _Cfg:
     # strict (shape / topology)
     student_rank: int = 96
     fake_rank: int = 96
-    step_expert_K: int = 0
     gan_disc_hidden: int = 0
     gan_feature_block_idx: int = -1
     channel_scaling_alpha: float = 0.0

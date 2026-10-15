@@ -69,9 +69,8 @@ def build_standard_state_dict(
     """Run the standard finalize chain WITHOUT writing a file.
 
     Defuse fused qkv + bake channel scaling, relay adaln keys to the ComfyUI
-    layout, cast dtype. Returns the finalized ``(state_dict, metadata)``. Factored
-    out of :func:`save_network_weights` so the dual-pool turbo save can finalize
-    each pool to its on-disk plain-LoRA layout and concat the two exactly.
+    layout, cast dtype. Returns the finalized ``(state_dict, metadata)`` for
+    :func:`save_network_weights` to hash and write.
     """
     defuse_and_bake_standard(state_dict)
     metadata = _relayout_adaln_to_comfy(state_dict, metadata)

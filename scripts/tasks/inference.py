@@ -388,25 +388,7 @@ def cmd_test_turbo(extra):
     weight = latest_output("anima_turbo")
     base = list(INFERENCE_BASE)
     base = override_arg(base, "--sampler", "euler")
-    # Per-step-expert checkpoints bind head k to denoise step k, so infer_steps
-    # MUST equal the trained head count K (= student_steps); pin it from metadata.
-    infer_steps = "4"
-    try:
-        from safetensors import safe_open
-
-        with safe_open(str(weight), framework="pt") as f:
-            md = f.metadata() or {}
-        if str(md.get("ss_turbo_per_step_expert", "")).strip() in ("1", "true", "True"):
-            K = int(md.get("ss_turbo_step_expert_K", "4") or "4")
-            infer_steps = str(K)
-            print(
-                f"[test-turbo] per-step-expert checkpoint: pinning "
-                f"--infer_steps {K} (= trained head count). Override at your own "
-                "risk — heads beyond K repeat the last (quality) head."
-            )
-    except Exception:
-        pass
-    base = override_arg(base, "--infer_steps", infer_steps)
+    base = override_arg(base, "--infer_steps", "4")
     base = override_arg(base, "--guidance_scale", "1.0")
     run(
         [

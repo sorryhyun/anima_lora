@@ -37,7 +37,6 @@ from networks import lora_save
 EXPECTED_VARIANTS = {
     "lora",
     "hydra",
-    "step_expert",
 }
 
 
@@ -140,8 +139,6 @@ def test_factory_only_keys_are_derived():
     [
         ({}, "lora"),
         ({"use_moe_style": "shared_A"}, "hydra"),
-        ({"step_expert_K": "4"}, "step_expert"),
-        ({"step_expert_K": "1"}, "lora"),
         # Falsey forms of use_moe_style resolve to plain LoRA.
         ({"use_moe_style": False}, "lora"),
         ({"use_moe_style": "false"}, "lora"),

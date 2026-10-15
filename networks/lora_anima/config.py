@@ -261,10 +261,6 @@ class LoRANetworkCfg:
     router_hidden_dim: int = 64
     router_tau: float = 0.7
 
-    # Step-expert (turbo per-step head split). >1 → StepExpertLoRAModule:
-    # shared lora_down + K up-heads selected by diffusion step. 0/1 = inactive.
-    step_expert_K: int = 0
-
     # SmoothQuant-style per-channel input pre-scaling
     channel_scales_dict: Optional[Dict[str, torch.Tensor]] = None
 
@@ -493,9 +489,6 @@ class LoRANetworkCfg:
                 "per-Linear variant."
             )
 
-        step_expert_K_raw = kwargs.get("step_expert_K")
-        step_expert_K = int(step_expert_K_raw) if step_expert_K_raw is not None else 0
-
         reg_dims_str = kwargs.get("network_reg_dims")
         reg_dims = _parse_kv_pairs(reg_dims_str, is_int=True) if reg_dims_str else None
         reg_lrs_str = kwargs.get("network_reg_lrs")
@@ -556,7 +549,6 @@ class LoRANetworkCfg:
             down_init=down_init,
             svd_slice=svd_slice,
             svd_slice_count=svd_slice_count,
-            step_expert_K=step_expert_K,
             channel_scales_dict=channel_scales_dict,
             grad_basis_dict=grad_basis_dict,
             verbose=verbose,
@@ -587,7 +579,6 @@ class LoRANetworkCfg:
         new_use_moe_style: Optional[str] = None,
         new_route_per_layer: Optional[bool] = None,
         new_router_source: Optional[str] = None,
-        step_expert_K: int = 0,
     ) -> "LoRANetworkCfg":
         """Build cfg from a checkpoint key-sniff (warm-start / inference path).
 
@@ -652,5 +643,4 @@ class LoRANetworkCfg:
                 float(fei_sigma_low_div) if fei_sigma_low_div is not None else 4.0
             ),
             fei_router_names=fei_router_names,
-            step_expert_K=int(step_expert_K),
         )

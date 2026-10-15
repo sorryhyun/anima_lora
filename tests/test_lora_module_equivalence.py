@@ -112,23 +112,6 @@ def _b_lora(channel_scale=None, conv=False):
     return base, module
 
 
-def _b_step_expert():
-    from networks.lora_modules.step_expert import StepExpertLoRAModule
-
-    base = _linear_base()
-    with _force_cpu():
-        module = StepExpertLoRAModule(
-            "m", base, multiplier=1.0, lora_dim=4, alpha=4, step_expert_K=2
-        )
-    with torch.no_grad():
-        for up in module.lora_ups:
-            up.weight.copy_(torch.randn_like(up.weight) * 0.1)
-    module.set_step(1)
-    module.apply_to()
-    _set_mask(module, 4)
-    return base, module
-
-
 def _b_hydra(channel_scale=None):
     from networks.lora_modules.hydra import HydraLoRAModule
 
@@ -163,7 +146,6 @@ _VARIANTS = {
         _x_seq,
     ),
     "lora_conv2d": (lambda: _b_lora(conv=True), ("eval",), lambda: _x_img()),
-    "step_expert": (_b_step_expert, ("train", "eval"), _x_seq),
     "hydra": (_b_hydra, ("train", "eval"), _x_seq),
     "hydra_channel_scale": (
         lambda: _b_hydra(channel_scale=_channel_scale(32)),
@@ -174,7 +156,7 @@ _VARIANTS = {
 
 # Variants whose eval forward calls ``nn.Linear`` submodules directly (no
 # internal dtype cast), so the adapter params must be bf16 to match the base.
-_EVAL_BF16 = {"lora", "lora_channel_scale", "lora_conv2d", "step_expert"}
+_EVAL_BF16 = {"lora", "lora_channel_scale", "lora_conv2d"}
 
 
 def _capture(name: str) -> dict:

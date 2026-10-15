@@ -32,10 +32,10 @@ At network build (`networks/lora_anima/factory.py::_load_channel_scales`):
 
 1. Load the per-module `mean|x|` vector for every adapted Linear that has a calibration entry.
 2. Compute `s = (mean|x|.clamp_min(1e-6))^α`, mean-normalize so `s.mean() == 1`.
-3. Pass `s` into each `LoRAModule` / `HydraLoRAModule` / `StepExpertLoRAModule` constructor.
+3. Pass `s` into each `LoRAModule` / `HydraLoRAModule` constructor.
 4. `BaseLoRAModule._register_channel_scale` mutates the down-projection weight (`down[:, c] *= s[c]`) in place and registers `inv_scale = 1 / s` as a persistent fp32 buffer.
 
-At forward (`networks/lora_modules/{lora,hydra,step_expert}.py`):
+At forward (`networks/lora_modules/{lora,hydra}.py`):
 
 ```python
 x_lora = self._rebalance(x)   # x * inv_scale, in the activation dtype
@@ -56,7 +56,6 @@ The scale is absorbed into the down-projection, and **whether that tensor is tra
 |---|---|---|
 | LoRA | trainable `lora_down` | Live |
 | HydraLoRA (shared-A) | trainable shared `lora_down` | Live |
-| step_expert (turbo) | trainable per-step `lora_down` | Live |
 | EasyControl cond LoRA (`_LoRAProj`) | trainable `lora_down` | Live |
 | T-LoRA mask | — (rank axis) | Orthogonal; composes with any row above |
 

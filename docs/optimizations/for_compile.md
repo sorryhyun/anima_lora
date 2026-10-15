@@ -216,8 +216,8 @@ sd-scripts: Zero `_orig_mod_` awareness — loading a checkpoint trained with `t
 the `lora_fp32_bottleneck` bench). Training forwards now run the rank GEMMs in the
 frozen Linear's output dtype (`org_forwarded.dtype`, `networks/lora_modules/base.py`);
 inference paths keep fp32. Regression tests: `tests/test_lora_dtype_policy.py`.
-`use_custom_down_autograd` is still accepted as a logged no-op so old snapshot TOMLs
-replay.
+`use_custom_down_autograd` is still accepted as a logged no-op in the LoRA-family and
+EasyControl factories so old snapshot TOMLs replay (turbo's own flag is gone).
 
 The removal changed the AOT partitioner's saved-activation set and OOMed the
 16 GB no-grad-ckpt run; the replacement is `activation_memory_budget` (base.toml,

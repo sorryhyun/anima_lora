@@ -29,7 +29,6 @@ from library.inference.adapters import (
     compute_and_set_hydra_fei,
     set_hydra_crossattn,
     set_hydra_sigma,
-    set_step_expert_index,
 )
 from library.inference.corrections.fsg_core import FSGCalibrator as _FSGCalibratorCore
 from library.inference.corrections.fsg_core import cfgpp_guidance_weight
@@ -51,14 +50,13 @@ class FSGCalibrator(_FSGCalibratorCore):
     def _velocity(anima, x, sigma, step_i, embed, padding_mask, pooled):
         """Full DiT velocity forward, mirroring ``generate_body``'s per-step call.
 
-        Sets the hydra/step/FEI/content/crossattn context exactly as the sampler
+        Sets the hydra/FEI/crossattn context exactly as the sampler
         does (all no-ops on a base DiT), so adapter-routed checkpoints calibrate
         with the same routing the real step will use. ``embed`` selects
         conditional vs unconditional.
         """
         t_b = torch.full((x.shape[0],), float(sigma), device=x.device, dtype=x.dtype)
         set_hydra_sigma(anima, t_b)
-        set_step_expert_index(anima, step_i)
         compute_and_set_hydra_fei(anima, x)
         set_hydra_crossattn(anima, embed)
         kw = {"pooled_text_override": pooled} if pooled is not None else {}
