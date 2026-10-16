@@ -1,0 +1,14 @@
+# hira_cold_l3b — proposal_template § 4 L3b (user 10-16): sball_lr3 with
+# bubble1_52's share moved to lone_72, the glyph at font px 64 – 96 in σ 0.65 – 0.9,
+# alone on a flat white page (no bubble). One glyph an item in place of one, so the rows'
+# occurrences stay (grid_44 kept, user 10-16). Its own build: the grid and lone
+# tiers draw as hira_cold_hp's, the tiers after bubble1_52 are a new draw, and
+# l3a / l3b share every item but this tier's. Read at 4050 (--max_steps, the
+# full-length schedule) against sball_lr3's s4050.
+rows = ["chars:ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろわをんゔ"]
+read = ["こんにちは", "たいせつ", "かなしい", "かんがえ", "たすけて", "こうえん", "てつだう", "ことば", "なにしてる", "テレビ", "カメラ", "パソコン", "アイドル"]
+seed = "0930"
+steps_per_row = 150
+shares = { grid_44 = 10, grid_29 = 20, grid_16 = 20, lone_44 = 3.3, lone_28 = 3.3, lone_16 = 3.4, bubbleN_34 = 8.2, bubbleN_18 = 11.8, bubble1_52 = 0, bubble1_32 = 8.9, lone_72 = 11.1 }
+init = "stick_ball"
+lr = 3e-4

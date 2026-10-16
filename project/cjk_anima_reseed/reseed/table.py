@@ -264,4 +264,30 @@ TABLE = (
         },
         px_keep=(None, 40),
     ),
+    # opt-in: the large glyph at the σ where the canvas is decided
+    # (proposal_template § 4 L3, user 10-16), each in place of bubble1_52's share
+    # (one glyph an item, so a row's occurrences stay): in a coloured scene
+    # bubble (L3a), its ink centred there, or alone on a flat white page (L3b)
+    Tier(
+        "bubble1_72",
+        "bubble1",
+        0.0,
+        (0.65, 0.9),
+        {
+            "glyph_px": [64, 96],
+            "fill": [0.4, 0.95],
+            "min_glyph": 28,
+            "mono": False,
+            "pose": True,  # the ink centred in its bubble / sign (user 10-16)
+        },
+        px_keep=(56, None),
+    ),
+    Tier(
+        "lone_72",
+        "grid",
+        0.0,
+        (0.65, 0.9),
+        {"grids": LONE, "glyph_px": [64, 96], "bubble_frac": 0.0, "bg": "white"},
+        px_keep=(56, None),
+    ),
 )

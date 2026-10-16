@@ -117,7 +117,7 @@ where retrain_kana's singles score 0.236 against kana_mix's 0.154. Run only if L
 |---|---|---|---|
 | P0a | negswap (done 10-16) | 20 min | confounded; leans template-in-S (`reports/negswap_2026_10_16.md`) |
 | P0b | M2 with its controls (done 10-16) | 15 min | failed on `up` > hp; `pale` at σ 1 kept as a secondary read (`reports/freeswap_2026_10_16.md`) |
-| P1 | L3a / L3b pair on sball_lr3's base, each read on the identity grid + the template read | 2 × 25 min train + reads | L3b brings the template where L3a does not; L3a's words at or above sball_lr3's |
+| P1 | L3a / L3b pair on sball_lr3's base (done 10-16, micro at 4050) | 2 × 28 min train + reads | **null** (`reports/l3_micro_2026_10_16.md`): no identity gain, and L3b brings no template; underdosed (2.6 % of occurrences against retrain_kana's 18.8 %). L3c (grid_44 on white at σ 0.75 – 0.95) proposed |
 | P2 | L2 micro pair | 25 min | the same |
 | P3 | the winner at 150 / row, then warm on `sent_kanji_pres`'s recipe | as § 8 | the dialogue ruler |
 

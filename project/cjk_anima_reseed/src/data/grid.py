@@ -75,6 +75,7 @@ def render_grid(
     spell=None,
     masks=None,
     fonts_for=None,
+    bg=None,
 ):
     """Draw ``units[i]`` in cell ``i`` (row-major). Returns ``(image, boxes)``,
     ``boxes[i]`` the ink bbox of cell i's unit in canvas pixels. ``box`` = the
@@ -102,13 +103,15 @@ def render_grid(
     same date): ``masks(unit, font_path)`` → ``at(font_px)`` → an ``L`` ink
     image cropped to the ink, drawn in place of the unit's text (a
     counterfactual syllable). ``fonts_for`` (opt-in, cjk_ko 2026-10-12):
-    unit → the faces it is picked among, instead of ``fonts``."""
+    unit → the faces it is picked among, instead of ``fonts``. ``bg``
+    (opt-in, L3 2026-10-16): the canvas colour, instead of a draw from
+    `JITTER_BG_LIGHT`."""
     from PIL import Image, ImageDraw, ImageFont
 
     W, H = size
     cw, ch = W / cols, H / rows
     pad_range = pad
-    bg = rng.choice(JITTER_BG_LIGHT)
+    bg = bg or rng.choice(JITTER_BG_LIGHT)
     if bgs is not None:
         bgs.append(bg)
     im = Image.new("RGB", (W, H), bg)

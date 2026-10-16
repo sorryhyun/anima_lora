@@ -104,6 +104,7 @@ def _draw_scene(
     fonts: list | None = None,
     mask=None,
     extra: dict | None = None,
+    pose: bool | None = None,
 ):
     """Text first, then a scene of ``cands`` whose bubble holds it in one
     column (one line when drawn horizontal), weighted by use and colour.
@@ -114,7 +115,8 @@ def _draw_scene(
     caption); a KO text always, on any scene, unmarked (KO lettering is
     horizontal). ``fonts``: the faces picked among, instead of
     ``pools.fonts_for``; ``mask`` (a counterfactual host, cjk_ko 2026-10-13):
-    font path → ``render_into_scene``'s ``mask``; ``extra`` joins the record's."""
+    font path → ``render_into_scene``'s ``mask``; ``extra`` joins the record's;
+    ``pose``: the tier's own, in place of the run's ``pools.pose``."""
     from common.render.flat import pick_font
     from common.render.scene import region_capacity, render_into_scene
     from data.synth import scene_caption
@@ -186,7 +188,7 @@ def _draw_scene(
             tategaki=lettering,
             vert_forms=lettering,
             keep_outline=True,
-            pose=pools.pose,
+            pose=pools.pose if pose is None else pose,
             mask=mask(font_path) if mask else None,
         )
         if drawn is None:
@@ -266,6 +268,8 @@ def bubble1(pools: Pools, rng: random.Random, p: dict):
             for j in pools.single_idx | _opted(pools, p)
             if ok(pools.scenes[j]["region"])
         )
+    if p.get("mono", True) is False:  # coloured scenes only (L3a)
+        cands = [j for j in cands if j not in pools.mono]
     return _draw_scene(
         pools,
         rng,
@@ -275,6 +279,7 @@ def bubble1(pools: Pools, rng: random.Random, p: dict):
         cands=cands,
         target_px=target,
         fill_min=lo,
+        pose=p.get("pose"),
         **kw,
     )
 
@@ -524,7 +529,9 @@ def grid(pools: Pools, rng: random.Random, p: dict):
     if deck is None:
         deck = pools.decks[key] = _Deck(src, rng)
     grids = [
-        (g, w) for g, w in parse_grids(p["grids"]) if GRIDS[g][0] * GRIDS[g][1] <= len(src)
+        (g, w)
+        for g, w in parse_grids(p["grids"])
+        if GRIDS[g][0] * GRIDS[g][1] <= len(src)
     ]
     assert grids, "grid: no grid the rows can fill"
     name = rng.choices([g for g, _ in grids], weights=[w for _, w in grids])[0]
@@ -544,6 +551,8 @@ def grid(pools: Pools, rng: random.Random, p: dict):
         kw["bubble_centre"] = True
     if spell:
         kw["spell"] = spell
+    if p.get("bg"):
+        kw["bg"] = p["bg"]
     fonts = pools.fonts_at(target)
     srcs = []
     if p.get("cf"):

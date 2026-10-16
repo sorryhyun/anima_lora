@@ -68,6 +68,7 @@ X2, LR3, UP, HP = (
     "hira_cold_hp",
 )
 ARMS = [FLOOR, X2, LR3, HP, UP]
+GATE_ARMS = (X2, LR3, HP, UP)
 SIGMAS = (1.0, 0.95, 0.9, 0.85)
 FREE = (1.0, 0.95)  # the σ where the canvas is free: the gate's
 K = 3
@@ -299,8 +300,12 @@ def run(a) -> None:
     from library.inference.traj_stats import QWEN_LATENTS_STD
     from PIL import Image
 
-    names = [x for x in ARMS if x in arm_dirs()]
-    assert names == ARMS, f"arms not on disk: {sorted(set(ARMS) - set(names))}"
+    arms = a.arms.split(",") if a.arms else ARMS
+    assert arms[0] == FLOOR, f"the floor first: {arms}"
+    names = [x for x in arms if x in arm_dirs()]
+    assert names == arms, f"arms not on disk: {sorted(set(arms) - set(names))}"
+    pairs = [tuple(x.split(":")) for x in a.pairs.split(",")] if a.pairs else []
+    assert all(x in names and y in names for x, y in pairs), pairs
     g, prompts = grid(a.words)
     cache = encode_captions(
         [c for m in g for c in m["caps"]] + [UNC], "cuda", ROOT / "te_cache"
@@ -424,7 +429,7 @@ def run(a) -> None:
                     }
                 )
 
-    res = summarize(rows, divs, names, [m["key"] for m in g if m["pi"] == 0])
+    res = summarize(rows, divs, names, [m["key"] for m in g if m["pi"] == 0], pairs)
     from bench._common import make_run_dir, write_result
 
     run_dir = make_run_dir(
@@ -450,14 +455,18 @@ def run(a) -> None:
     write_result(
         run_dir,
         script="project/cjk_anima_reseed/probes/freeswap.py",
-        args={**vars(a), "K": K, "sigmas": SIGMAS, "free": FREE, "arms": ARMS},
+        args={**vars(a), "K": K, "sigmas": SIGMAS, "free": FREE, "arms": names},
         metrics=res,
     )
     print((run_dir / "table.md").read_text(encoding="utf-8"), flush=True)
     print(f"freeswap → {run_dir}", flush=True)
 
 
-def summarize(rows: list, divs: list, names: list, words: list) -> dict:
+def summarize(
+    rows: list, divs: list, names: list, words: list, pairs: list = ()
+) -> dict:
+    """With every gate arm in ``names``, § 2's gate; ``pairs`` ((a, b): a read
+    against b) are read per word and slot-paired in any case."""
     import statistics as stt
 
     from scipy.stats import binomtest, wilcoxon
@@ -490,6 +499,7 @@ def summarize(rows: list, divs: list, names: list, words: list) -> dict:
         )
 
     res: dict = {
+        "pairs": {},
         "words": words,
         "by_sigma": {},
         "gate": {},
@@ -548,6 +558,32 @@ def summarize(rows: list, divs: list, names: list, words: list) -> dict:
             p = binomtest(k, n, 0.5, alternative="greater").pvalue if n else 1.0
             return k, float(p)
 
+        lines += [
+            f"## {key} per word (σ {FREE} pooled)",
+            "",
+            "| word | " + " | ".join(names) + " |",
+            "|---" * (len(names) + 1) + "|",
+        ]
+        for w in words:
+            lines.append(
+                f"| {w} | " + " | ".join(f"{pw[t][w]:.4f}" for t in names) + " |"
+            )
+        lines.append("")
+        for x, y in pairs:
+            kxy, pxy = sign(x, y)
+            res["pairs"].setdefault(key, {})[f"{x}>{y}"] = {
+                "words": kxy,
+                "n": n,
+                "p": pxy,
+                "mean_d": mean(pw[x][w] - pw[y][w] for w in hira),
+            }
+            lines.append(
+                f"{key}: {x} > {y} on {kxy} / {n} words (p {pxy:.2g}, mean Δ "
+                f"{res['pairs'][key][f'{x}>{y}']['mean_d']:+.4f})"
+            )
+        lines.append("")
+        if not set(GATE_ARMS) <= set(names):
+            continue
         (k_x2, p_x2), (k_lr3, p_lr3), (k_up, p_up) = (
             sign(FLOOR, X2),
             sign(FLOOR, LR3),
@@ -577,17 +613,6 @@ def summarize(rows: list, divs: list, names: list, words: list) -> dict:
         )
         res["gate"][key] = gate
         lines += [
-            f"## {key} per word (σ {FREE} pooled)",
-            "",
-            "| word | " + " | ".join(names) + " |",
-            "|---" * (len(names) + 1) + "|",
-        ]
-        for w in words:
-            lines.append(
-                f"| {w} | " + " | ".join(f"{pw[t][w]:.4f}" for t in names) + " |"
-            )
-        lines += [
-            "",
             f"gate {key}: floor > x2 on {k_x2} / {n} (p {p_x2:.2g}), floor > lr3 on "
             f"{k_lr3} / {n} (p {p_lr3:.2g}); up > hp on {k_up} / {n} "
             f"(p {p_up:.2g}, mean Δ {gate['up_minus_hp']:+.4f}); "
@@ -602,17 +627,20 @@ def summarize(rows: list, divs: list, names: list, words: list) -> dict:
             for x in rows
             if x["key"] in hira and x["sigma"] in FREE
         }
-        for o in (X2, LR3):
-            d = [v - by[(o, *k[1:])] for k, v in by.items() if k[0] == FLOOR]
+        slot_pairs = list(pairs)
+        if set(GATE_ARMS) <= set(names):
+            slot_pairs += [(FLOOR, X2), (FLOOR, LR3)]
+        for x, o in slot_pairs:
+            d = [v - by[(o, *k[1:])] for k, v in by.items() if k[0] == x]
             p = float(wilcoxon(d).pvalue) if any(d) else 1.0
-            res["paired"][f"{key}:{FLOOR}-{o}"] = {
+            res["paired"][f"{key}:{x}-{o}"] = {
                 "mean_d": mean(d),
                 "up": sum(x > 0 for x in d),
                 "down": sum(x < 0 for x in d),
                 "p": p,
             }
             lines.append(
-                f"paired {key} {FLOOR} − {o}: {mean(d):+.4f}, "
+                f"paired {key} {x} − {o}: {mean(d):+.4f}, "
                 f"{sum(x > 0 for x in d)} / {sum(x < 0 for x in d)}, p {p:.2g}"
             )
     res["md"] = "\n".join(lines) + "\n"
@@ -625,6 +653,10 @@ def main():
     p.add_argument("--seeds", type=int, default=6)
     p.add_argument(
         "--words", type=int, default=0, help="smoke: the first N hiragana + 1 katakana"
+    )
+    p.add_argument("--arms", default="", help="comma list, the floor first (else ARMS)")
+    p.add_argument(
+        "--pairs", default="", help="a:b,… — a read against b, per word and per slot"
     )
     run(p.parse_args())
 

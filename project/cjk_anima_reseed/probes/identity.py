@@ -151,6 +151,32 @@ def enref(recs: dict, rd) -> None:
             m["text"], m["seed"] = m["key"], SEED
             m["file"] = str(ROOT / a / f"{m['stem']}.png")
             m["en_cos"], m["en_cos_out"], m["box_iou"] = er.score(m)
+            m.update(plain(m))
+
+
+def plain(m: dict) -> dict:
+    """The plain-type read (L3, 10-16; negswap's pixels): ``white`` / ``sat``
+    over the render and inside the glyph box (the box that read the word, else
+    the largest) — pale band / white box: box white up, box sat down."""
+    import numpy as np
+    from PIL import Image
+
+    from eval.enref import glyph_box
+
+    px = np.asarray(Image.open(m["file"]).convert("RGB"), np.float32) / 255.0
+
+    def reads(p):
+        hi, lo = p.max(-1), p.min(-1)
+        return float(((lo > 0.85) & (hi - lo < 0.08)).mean()), float((hi - lo).mean())
+
+    out = dict(zip(("white", "sat"), reads(px)))
+    b = glyph_box(m)
+    if b:
+        x0, y0, x1, y1 = (int(v) for v in b)
+        c = px[max(0, y0) : y1, max(0, x0) : x1]
+        if c.size:
+            out["box_white"], out["box_sat"] = reads(c)
+    return out
 
 
 def tally(rs: list) -> dict:
@@ -166,6 +192,12 @@ def tally(rs: list) -> dict:
         "en_cos": mean("en_cos"),
         "en_cos_out": mean("en_cos_out"),
         "box_iou": mean("box_iou"),
+        **{
+            k: round(
+                sum(r[k] for r in rs if k in r) / max(1, sum(k in r for r in rs)), 3
+            )
+            for k in ("white", "sat", "box_white", "box_sat")
+        },
     }
 
 

@@ -25,7 +25,7 @@ def arm_dirs() -> dict:
     }
     # the cold hiragana arms (motivation2.md § 8, A / B / C, and A from a random /
     # stick+ball / stick+predicted-glyph start, bitmap or PE-Spatial; stick × 0.55 + a
-    # leaning ball; sball at lr 3e-4, at 150 and 300 / row) and their kept saves
+    # leaning ball; sball at lr 3e-4, at 150 and 300 / row; L3a / L3b) and their kept saves
     # (``run.py train --save_every``: ``<run>/s<step>/``) as ``<run>_s<step>``
     for run in (
         "hira_cold_hp",
@@ -38,6 +38,8 @@ def arm_dirs() -> dict:
         "hira_cold_slean",
         "hira_cold_sball_lr3",
         "hira_cold_sball_lr3_x2",
+        "hira_cold_l3a",
+        "hira_cold_l3b",
     ):
         dirs[run] = OUT / run
         for d in sorted((OUT / run).glob("s[0-9]*")):
