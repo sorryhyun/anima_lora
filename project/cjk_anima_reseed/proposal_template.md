@@ -20,7 +20,7 @@ probe added as P0a.
 | M1's word-free side (`T_in_lo`, `rho`) | meant as the template | **blind.** The canvas is in x_σ. Per glyph it does not follow template exposure (ρ +0.14, n.s.). Whether its in-box low-pass energy is text-ness or a "large centred glyph" habit is undecided |
 | commit step-3 seed diversity (`probes/commit.py`) | the plain-type template on the generation path | separates `retrain_kana` (0.40 / 0.58 of EN) from x2 (0.47 / 0.65); only 3 arms are read |
 | **negswap** (`probes/negswap.py`, P0a) | the render with the word's swap as the negative prompt | **confounded** (`reports/negswap_2026_10_16.md`): the matched negative cancels the prompt's guidance, and every page washes out, the katakana control too. By eye, retrain_kana-trained rows letter thin dark type under it and the cold rows stay coloured: a lean that the template rides on S (bound to identity), not M |
-| **M2** (to build after P0a) | the template where the canvas is free | § 2 |
+| **M2** (`probes/freeswap.py`, P0b) | the template where the canvas is free | **gate fails** on the positive control (`reports/freeswap_2026_10_16.md`): the floor reads paler than x2 and sball_lr3 on 8 / 9 words each (−Δsat of M at σ 1), but `up` does not read above hp. Carried into P1 as a secondary read; L3b is its control |
 
 ## 2. M2 — the template where the base chooses the canvas
 
@@ -116,7 +116,7 @@ where retrain_kana's singles score 0.236 against kana_mix's 0.154. Run only if L
 | phase | what | GPU | gate |
 |---|---|---|---|
 | P0a | negswap (done 10-16) | 20 min | confounded; leans template-in-S (`reports/negswap_2026_10_16.md`) |
-| P0b | M2 with its controls | ≈ 30 min | § 2's gate |
+| P0b | M2 with its controls (done 10-16) | 15 min | failed on `up` > hp; `pale` at σ 1 kept as a secondary read (`reports/freeswap_2026_10_16.md`) |
 | P1 | L3a / L3b pair on sball_lr3's base, each read on the identity grid + the template read | 2 × 25 min train + reads | L3b brings the template where L3a does not; L3a's words at or above sball_lr3's |
 | P2 | L2 micro pair | 25 min | the same |
 | P3 | the winner at 150 / row, then warm on `sent_kanji_pres`'s recipe | as § 8 | the dialogue ruler |
