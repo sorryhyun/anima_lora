@@ -96,7 +96,7 @@ where retrain_kana's singles score 0.236 against kana_mix's 0.154. Run only if L
 |---|---|---|---|
 | P0a | negswap (done 10-16) | 20 min | confounded; leans template-in-S (`reports/negswap_2026_10_16.md`) |
 | P0b | M2 with its controls (done 10-16) | 15 min | failed on `up` > hp; `pale` at σ 1 kept as a secondary read (`reports/freeswap_2026_10_16.md`) |
-| P1 | L3 (the high-σ large glyph, in a scene / on a white page) | – | moved to the reports: `reports/l3_micro_2026_10_16.md` (null at 50 / row), `reports/l3_full_2026_10_16.md` (L3a at 150 / row) |
+| P1 | L3 (the high-σ large glyph, in a scene / on a white page) | – | moved to the reports: `reports/l3_micro_2026_10_16.md` (null at 50 / row), `reports/l3_full_2026_10_16.md` (L3a at 150 / row: no identity gain, singles 14 against sball_lr3's 17; no template). L3c (grid_44 on white at σ 0.75 – 0.95) open |
 | P2 | L2 micro pair | 25 min | the same |
 | P3 | the winner at 150 / row, then warm on `sent_kanji_pres`'s recipe | as § 8 | the dialogue ruler |
 

@@ -265,7 +265,7 @@ TABLE = (
         px_keep=(None, 40),
     ),
     # opt-in: the large glyph at the σ where the canvas is decided
-    # (proposal_template § 4 L3, user 10-16), each in place of bubble1_52's share
+    # (L3, `reports/l3_full_2026_10_16.md`, user 10-16), each in place of bubble1_52's share
     # (one glyph an item, so a row's occurrences stay): in a coloured scene
     # bubble (L3a), its ink centred there, or alone on a flat white page (L3b)
     Tier(
