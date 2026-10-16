@@ -236,7 +236,13 @@ class Rows:
         and length, the ball each row's predicted ``e_i`` instead
         (``probes/glyph_init.py``'s ``OUT/glyph_init/<set>.pt``: a ridge from
         the glyph's bitmap, fitted on other trained rows), centred over the
-        rows, ⟂ the stick."""
+        rows, ⟂ the stick.
+        ``stick_lean:<c>`` (``hira_cold_slean``, user 10-16): the stick × c, and
+        the ball the context's lean against the pack spike (the mean of
+        (x_i − stick)·q̂_i, q_i = pack row − the rows' mean pack row, ⟂ the
+        stick; § 7's α shrink) along each row's q̂_i plus the random direction
+        ⟂ both at the rest of the spike length, so the ball keeps the context's
+        length and training need not add the lean on top of a random ball."""
         live = ~self.frozen_mask
         g = torch.Generator().manual_seed(int(seed))
         u = F.normalize(
@@ -251,7 +257,7 @@ class Rows:
             what = "isotropic at their pack row's norm"
         else:
             kind, _, gset = mode.partition(":")
-            assert kind in ("stick_ball", "stick_glyph"), mode
+            assert kind in ("stick_ball", "stick_glyph", "stick_lean"), mode
             assert self.context, "a stick start needs the context (seed) rows"
             src = torch.load(self.context, map_location="cpu", weights_only=False)
             src_idx = {int(e): i for i, e in enumerate(src["delta"]["ext_ids"])}
@@ -276,6 +282,15 @@ class Rows:
                 ball = f"a predicted ball (glyph_init {gset}, train {gi['train']})"
             u = F.normalize(u - (u @ s1)[:, None] * s1, dim=1)
             off = stick + radius * u
+            if kind == "stick_lean":
+                q = p - p.mean(0)
+                qh = F.normalize(q - (q @ s1)[:, None] * s1, dim=1)
+                lean = ((x - stick) * qh).sum(1).mean()
+                assert lean.abs() < radius, f"lean {float(lean):.1f} ≥ {float(radius):.1f}"
+                u = F.normalize(u - (u * qh).sum(1, keepdim=True) * qh, dim=1)
+                stick = float(gset) * stick
+                off = stick + lean * qh + (radius**2 - lean**2).sqrt() * u
+                ball = f"a ball leaning {float(lean):.1f} along q̂ + a random rest"
             pair = (u @ u.T)[torch.triu(torch.ones_like(u @ u.T), 1).bool()].mean()
             what = (
                 f"pack row + the context's stick |{float(stick.norm()):.1f}| + {ball} "

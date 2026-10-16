@@ -249,7 +249,8 @@ def train(
     norm pull centred there (``hira_cold_rand``); ``"stick_ball"`` starts them
     at pack row + the context's stick + a random ball (``hira_cold_sball``),
     ``"stick_glyph:<set>"`` the ball a predicted glyph component
-    (``hira_cold_sglyph``).
+    (``hira_cold_sglyph``), ``"stick_lean:<c>"`` the stick × c and the ball
+    leaning against the pack spike (``hira_cold_slean``).
     ``save_every`` replaces ``SAVE_EVERY`` and keeps each save as
     ``out/s<step>/trained.pt`` (a dir the ruler reads as an arm) instead of
     overwriting ``trained_partial.pt``.
@@ -368,7 +369,9 @@ def train(
         "rows are deltas over it and cold rows start at it — "
         "ANIMA_VOCAB_PACK=models/vocab_packs/anima_cjk_vocab_pack"
     )
-    assert init in ("", "random", "stick_ball") or init.startswith("stick_glyph:"), init
+    assert init in ("", "random", "stick_ball") or init.startswith(
+        ("stick_glyph:", "stick_lean:")
+    ), init
     assert not init or (cold and not factor), "a random start is a cold free-row run"
     if cold:
         p.record["cold"] = True

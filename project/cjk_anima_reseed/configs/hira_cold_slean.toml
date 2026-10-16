@@ -1,0 +1,12 @@
+# hira_cold_slean — sball with the stick × 0.55 and the ball leaning against the pack
+# spike as 0930's does (user 10-16): sball grew its stick 156 → 197 and its ball 209 → 252
+# (training added the lean on top of the random ball). A start of c · stick ends
+# ≈ 107 + 0.58 · c|s| by the A / sball line, c 0.55 ≈ 0930's 156. Data, bands,
+# 150 / row, seed context and σ / ε draws are sball's: against it the start only.
+rows = ["chars:ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろわをんゔ"]
+read = ["こんにちは", "たいせつ", "かなしい", "かんがえ", "たすけて", "こうえん", "てつだう", "ことば", "なにしてる", "テレビ", "カメラ", "パソコン", "アイドル"]
+seed = "0930"
+steps_per_row = 150
+shares = { grid_44 = 10, grid_29 = 20, grid_16 = 20, lone_44 = 3.3, lone_28 = 3.3, lone_16 = 3.4, bubbleN_34 = 8.2, bubbleN_18 = 11.8, bubble1_52 = 11.1, bubble1_32 = 8.9 }
+data_from = "hira_cold_hp"
+init = "stick_lean:0.55"

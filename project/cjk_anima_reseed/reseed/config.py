@@ -122,6 +122,9 @@
                                   # "stick_glyph:<set>": the ball each row's predicted
                                   # glyph component (``probes/glyph_init.py``,
                                   # ``hira_cold_sglyph``, user 10-15);
+                                  # "stick_lean:<c>": the stick × c, the ball
+                                  # leaning against the pack spike as the seed's
+                                  # does (``hira_cold_slean``, user 10-16);
                                   # "" = the pack rows
     pose = true                   # optional: the glyph's ink centred in its scene
                                   # bubble / sign and tilted with it, a grid bubble's
@@ -505,9 +508,11 @@ def load(run: str) -> Run:
     upper_shift = float(raw.get("upper_shift", 0.0))
     assert 0 <= upper_shift <= 0.3, f"{path}: upper_shift {upper_shift}"
     init = raw.get("init", "")
-    assert init in ("", "random", "stick_ball") or init.startswith("stick_glyph:"), (
-        f"{path}: init {init!r}"
-    )
+    assert (
+        init in ("", "random", "stick_ball")
+        or init.startswith("stick_glyph:")
+        or (init.startswith("stick_lean:") and 0 < float(init[11:]) <= 1.5)
+    ), f"{path}: init {init!r}"
     assert not init or not (rows_from or factor), (
         f"{path}: init random is cold free rows"
     )

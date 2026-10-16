@@ -1,0 +1,12 @@
+# hira_cold_sball_lr3 — sball at lr 3e-4 (user 10-16): the stick + random ball start already
+# carries the cold displacement, and sball / slean grew their rows by s4050 at peak
+# lr 1e-3 (stick +40, ball +50). Data, bands, 150 / row, seed context, start and σ / ε
+# draws are sball's: against it the lr only.
+rows = ["chars:ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろわをんゔ"]
+read = ["こんにちは", "たいせつ", "かなしい", "かんがえ", "たすけて", "こうえん", "てつだう", "ことば", "なにしてる", "テレビ", "カメラ", "パソコン", "アイドル"]
+seed = "0930"
+steps_per_row = 150
+shares = { grid_44 = 10, grid_29 = 20, grid_16 = 20, lone_44 = 3.3, lone_28 = 3.3, lone_16 = 3.4, bubbleN_34 = 8.2, bubbleN_18 = 11.8, bubble1_52 = 11.1, bubble1_32 = 8.9 }
+data_from = "hira_cold_hp"
+init = "stick_ball"
+lr = 3e-4
