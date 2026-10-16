@@ -20,7 +20,7 @@ probe added as P0a.
 | M1's word-free side (`T_in_lo`, `rho`) | meant as the template | **blind.** The canvas is in x_σ. Per glyph it does not follow template exposure (ρ +0.14, n.s.). Whether its in-box low-pass energy is text-ness or a "large centred glyph" habit is undecided |
 | commit step-3 seed diversity (`probes/commit.py`) | the plain-type template on the generation path | separates `retrain_kana` (0.40 / 0.58 of EN) from x2 (0.47 / 0.65); only 3 arms are read |
 | **negswap** (`probes/negswap.py`, P0a) | the render with the word's swap as the negative prompt | **confounded** (`reports/negswap_2026_10_16.md`): the matched negative cancels the prompt's guidance, and every page washes out, the katakana control too. By eye, retrain_kana-trained rows letter thin dark type under it and the cold rows stay coloured: a lean that the template rides on S (bound to identity), not M |
-| **M2** (`probes/freeswap.py`, P0b) | the template where the canvas is free | **gate fails** on the positive control (`reports/freeswap_2026_10_16.md`): the floor reads paler than x2 and sball_lr3 on 8 / 9 words each (−Δsat of M at σ 1), but `up` does not read above hp. Carried into P1 as a secondary read; L3b is its control |
+| **M2** (`probes/freeswap.py`, P0b) | the template where the canvas is free | **gate fails** on the positive control (`reports/freeswap_2026_10_16.md`): the floor reads paler than x2 and sball_lr3 on 8 / 9 words each (−Δsat of M at σ 1), but `up` does not read above hp. Carried into L3 as a secondary read (`reports/l3_full_2026_10_16.md`) |
 
 ## 2. M2 — the template where the base chooses the canvas
 
@@ -60,27 +60,6 @@ probe added as P0a.
 
 ## 4. Candidate levers
 
-**L3 — the high-σ plain canvas (data), recast first.** `probes/canvas.py`
-(`results/20261016-1327-canvas/`): 18.8 % of `retrain_kana`'s hiragana glyph
-occurrences sit on a flat / grid page at σ ≥ 0.8 (80 px median). For hp the
-figure is 0.8 % and for mix 0.4 %. retrain_kana is the template bearer, and
-81 % of its glyphs are in scenes, so canvas variety overall is not the
-marker. A plain page at the σ where the canvas is decided is.
-`motivation2.md` § 7.1 has retrain_kana's identity riding on those same σ
-0.7 – 0.9 large items. So identity and template may come together, and the
-lever is to keep the high σ and the large glyph while taking the plain page
-away:
-- Arm **L3a**: sball_lr3's data plus a `bubble1` tier at 64 – 96 px glyphs,
-  σ 0.65 – 0.9, on scene bubbles (coloured pools, `mono` off). It replaces
-  grid_44's share, at equal steps. The question is whether identity rises
-  with the high-σ large glyph while the plain-type template stays at the
-  cold arms' level.
-- Arm **L3b** (the template's direct test): the same tier on flat white
-  pages. If L3b brings the plain-type habit and L3a does not, the template
-  is the canvas × σ, and the data rule follows.
-- Risk: `motivation2.md` § 6 has `kana_big` (a 65 px grid at σ 0.65 – 0.8)
-  not closing the gap. That was a grid on flat canvases, at 0.8.
-
 **L2 — the wrong word as a negative (a loss).** A hinge on the margin,
 max(0, m − (L_wrong − L_true)) in the box, with one swapped caption an item
 (K = 1, one more forward).
@@ -117,7 +96,7 @@ where retrain_kana's singles score 0.236 against kana_mix's 0.154. Run only if L
 |---|---|---|---|
 | P0a | negswap (done 10-16) | 20 min | confounded; leans template-in-S (`reports/negswap_2026_10_16.md`) |
 | P0b | M2 with its controls (done 10-16) | 15 min | failed on `up` > hp; `pale` at σ 1 kept as a secondary read (`reports/freeswap_2026_10_16.md`) |
-| P1 | L3a / L3b pair on sball_lr3's base (done 10-16, micro at 4050) | 2 × 28 min train + reads | **null** (`reports/l3_micro_2026_10_16.md`): no identity gain, and L3b brings no template; underdosed (2.6 % of occurrences against retrain_kana's 18.8 %). L3c (grid_44 on white at σ 0.75 – 0.95) proposed |
+| P1 | L3 (the high-σ large glyph, in a scene / on a white page) | – | moved to the reports: `reports/l3_micro_2026_10_16.md` (null at 50 / row), `reports/l3_full_2026_10_16.md` (L3a at 150 / row) |
 | P2 | L2 micro pair | 25 min | the same |
 | P3 | the winner at 150 / row, then warm on `sent_kanji_pres`'s recipe | as § 8 | the dialogue ruler |
 
