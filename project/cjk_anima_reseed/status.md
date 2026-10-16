@@ -240,3 +240,10 @@ From `_archive/task_report.md` § 2 / § 4:
 - **The ruler's strings are not held out of the window pool**
   (`criteria.md`).
 - **Release remainder**: the 225 unread (§ 1).
+- **Glyphs memorized, templates not** (user 10-16): train identity as hard
+  as a row takes while it learns no template / canvas.
+  `reports/commit_2026_10_16.md`: retrain_kana's plain-type habit is a
+  text-style template that shows as low early seed diversity (step-3 x̂₀
+  0.40 / 0.58 of EN vs x2's 0.47 / 0.65). The σ = 1 departure is the
+  cond injection × g by construction and does not grow 150 → 300 / row.
+  Next read: cross-word variance across the saves.
