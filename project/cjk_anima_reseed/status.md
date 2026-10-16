@@ -246,4 +246,10 @@ From `_archive/task_report.md` § 2 / § 4:
   text-style template that shows as low early seed diversity (step-3 x̂₀
   0.40 / 0.58 of EN vs x2's 0.47 / 0.65). The σ = 1 departure is the
   cond injection × g by construction and does not grow 150 → 300 / row.
-  Next read: cross-word variance across the saves.
+  `reports/swapword_2026_10_16.md` (one step on 202 held-out items, the
+  word swapped): the word-specific side reads identity (`I` / `V_in` vs
+  word exact, Spearman +0.66 / +0.71 over 17 cold checkpoints); the
+  word-free low-pass side is text-ness, not the template (with single
+  exact +0.72), and retrain_kana's rows do not separate on it. The plan:
+  `proposal_template.md` (M2: the same split on the EN trajectory, gated on
+  the floor reading above x2).
