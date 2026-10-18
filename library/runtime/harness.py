@@ -94,7 +94,7 @@ def build_anima(
     requested_attn_mode = getattr(args, "attn_mode", "flash")
     attn_mode = resolve_attention_mode(requested_attn_mode, torch)
     if needs_rocm_attention_fallback(requested_attn_mode, torch):
-        log.warning("ROCm detected: using PyTorch SDPA instead of CUDA Flash Attention")
+        log.warning("No compatible ROCm FlashAttention build: using PyTorch SDPA")
 
     if dit_path is None:
         dit_path = getattr(args, "dit", None)

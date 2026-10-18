@@ -141,13 +141,13 @@ override-dependencies = [
 
 # uv resolves every wheel of a version from one wheel's metadata, and for the
 # ROCm torch it reads the linux_x86_64 wheel's, which pins a Linux-only
-# `triton==…+rocm10.0.0` that has no Windows wheel. This is the win_amd64
+# `triton==…+rocm10.1.0` that has no Windows wheel. This is the win_amd64
 # wheel's own METADATA (no triton; triton-windows comes from rocm-windows),
 # trimmed to the device extras rocm-windows selects. It replaces a blanket
 # `triton` override that also erased each cu132 torch's own triton pin.
 [[tool.uv.dependency-metadata]]
 name = "torch"
-version = "2.13.0+rocm10.0.0"
+version = "2.14.0+rocm10.1.0"
 requires-dist = [
     "filelock",
     "typing-extensions>=4.10.0",
@@ -156,12 +156,12 @@ requires-dist = [
     "networkx>=2.5.1",
     "jinja2",
     "fsspec>=0.8.5",
-    "rocm[libraries]==10.0.0",
+    "rocm[libraries]~=10.1.0",
     "rocm-bootstrap",
-    "amd-torch-device-gfx1200==2.13.0+rocm10.0.0 ; extra == 'device-gfx1200'",
-    "amd-torch-device-gfx12-0==2.13.0+rocm10.0.0 ; extra == 'device-gfx1200'",
-    "amd-torch-device-gfx1201==2.13.0+rocm10.0.0 ; extra == 'device-gfx1201'",
-    "amd-torch-device-gfx12-0==2.13.0+rocm10.0.0 ; extra == 'device-gfx1201'",
+    "amd-torch-device-gfx1200==2.14.0+rocm10.1.0 ; extra == 'device-gfx1200'",
+    "amd-torch-device-gfx12-0==2.14.0+rocm10.1.0 ; extra == 'device-gfx1200'",
+    "amd-torch-device-gfx1201==2.14.0+rocm10.1.0 ; extra == 'device-gfx1201'",
+    "amd-torch-device-gfx12-0==2.14.0+rocm10.1.0 ; extra == 'device-gfx1201'",
 ]
 provides-extras = ["device-gfx1200", "device-gfx1201"]
 
@@ -183,17 +183,17 @@ torch = [
     { index = "pytorch-cu132", group = "cuda-windows" },
     { index = "pytorch-cu132", group = "torch-213" },
     { index = "pytorch-cu132", group = "torch-212" },
-    { index = "amd-rocm-100", group = "rocm-windows" },
+    { index = "amd-rocm-101", group = "rocm-windows" },
 ]
 torchvision = [
     { index = "pytorch-cu132", marker = "sys_platform != 'darwin' and sys_platform != 'win32'" },
     { index = "pytorch-cu132", group = "cuda-windows" },
     { index = "pytorch-cu132", group = "torch-213" },
     { index = "pytorch-cu132", group = "torch-212" },
-    { index = "amd-rocm-100", group = "rocm-windows" },
+    { index = "amd-rocm-101", group = "rocm-windows" },
 ]
 
-# PyPI triton only: amd-rocm-100 is not explicit, and torch's `triton==3.8.0`
+# PyPI triton only: amd-rocm-101 is not explicit, and torch's `triton==3.8.0`
 # also matches its local `3.8.0+git….rocm…` builds.
 triton = { index = "pypi" }
 
@@ -210,7 +210,7 @@ explicit = true
 # This index also hosts the ROCm runtime/device packages pulled by the device
 # extras, so it cannot be explicit-only.
 [[tool.uv.index]]
-name = "amd-rocm-100"
+name = "amd-rocm-101"
 url = "https://stable.repo.amd.com/rocm/whl-next/"
 
 [tool.ruff.lint.per-file-ignores]
@@ -295,12 +295,16 @@ cuda-windows = [
 rocm-windows = [
     # Initial RDNA 4 path. AMD's device-all extra currently includes Linux-only
     # Instinct packages and cannot resolve on Windows, so select gfx120X only.
-    "torch[device-gfx1200,device-gfx1201]==2.13.0+rocm10.0.0 ; sys_platform == 'win32'",
-    "torchvision[device-gfx1200,device-gfx1201]==0.28.0+rocm10.0.0 ; sys_platform == 'win32'",
+    "torch[device-gfx1200,device-gfx1201]==2.14.0+rocm10.1.0 ; sys_platform == 'win32'",
+    "torchvision[device-gfx1200,device-gfx1201]==0.29.0a0+rocm10.1.0 ; sys_platform == 'win32'",
+    # Windows Triton queries rocm-sdk for headers/tools when compiling kernels.
+    "rocm[devel]==10.1.0 ; sys_platform == 'win32'",
+    # Custom CPython 3.13 / torch 2.14 / ROCm 10.1 native build with gfx12 tail fix.
+    "flash-attn @ https://github.com/qweqweewqe7-create/flash-attention/releases/download/windows-rocm101-torch214-gfx12-20261016/flash_attn-2.8.4%2Brocm101torch214.gfx12tail20261016-cp313-cp313-win_amd64.whl ; sys_platform == 'win32'",
     # AMD's Windows wheel metadata currently points at a Linux-only `triton`
     # distribution. The Windows package provides the same import/runtime used
     # by torch.compile in the working ROCm environment.
-    "triton-windows>=3.7.0,<3.8.0 ; sys_platform == 'win32'",
+    "triton-windows>=3.8.0,<3.9.0 ; sys_platform == 'win32'",
 ]
 # ResShift super-resolution sidecar (finished line — project/finished/sr/). Kept as
 # an OPT-IN group rather than core `dependencies` so the heavy metrics closure
