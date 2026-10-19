@@ -19,18 +19,123 @@ import pytest
 import torch
 import torchvision
 
+# Running this file directly does not put the repository on sys.path.
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 
 def _validate_runtime() -> None:
     if not torch.cuda.is_available():
         raise RuntimeError("ROCm PyTorch cannot access an AMD GPU")
     if torch.version.hip is None:
         raise RuntimeError("installed PyTorch is not a ROCm build")
-    if not str(torch.__version__).startswith("2.13.0+rocm10.0.0"):
-        raise RuntimeError(f"expected torch 2.13.0+rocm10.0.0, got {torch.__version__}")
-    if not str(torchvision.__version__).startswith("0.28.0+rocm10.0.0"):
+    if str(torch.__version__) != "2.14.0+rocm10.1.0":
+        raise RuntimeError(f"expected torch 2.14.0+rocm10.1.0, got {torch.__version__}")
+    if not str(torchvision.__version__).startswith("0.29.0a0+rocm10.1.0"):
         raise RuntimeError(
-            f"expected torchvision 0.28.0+rocm10.0.0, got {torchvision.__version__}"
+            f"expected torchvision 0.29.0a0+rocm10.1.0, got {torchvision.__version__}"
         )
+
+
+def _check_native_flash(device: torch.device) -> None:
+    from flash_attn import flash_attn_func
+    from library.runtime.backend import resolve_attention_mode
+    from networks.attention_dispatch import AttentionParams, dispatch_attention
+
+    if resolve_attention_mode("flash", torch) != "flash":
+        raise RuntimeError("the rebuilt ROCm FlashAttention path was not selected")
+
+    # Unequal, non-tile-aligned lengths cover the tail repair. Use independent
+    # CPU/FP64 SDPA outputs and gradients rather than an import/finite-only check.
+    for dtype in (torch.bfloat16, torch.float16):
+        rtol, atol = (0.06, 0.015) if dtype == torch.bfloat16 else (0.015, 0.003)
+        for dim in (32, 64, 128, 256):
+            for causal in (False, True):
+                for kv_heads in (2, 4):
+                    q = (
+                        torch.randn(1, 33, 4, dim, device=device, dtype=dtype) * 0.2
+                    ).requires_grad_()
+                    k = (
+                        torch.randn(1, 65, kv_heads, dim, device=device, dtype=dtype)
+                        * 0.2
+                    ).requires_grad_()
+                    v = (torch.randn_like(k) * 0.2).requires_grad_()
+                    output = flash_attn_func(q, k, v, causal=causal)
+                    dout = torch.randn_like(output) * 0.1
+                    grads = torch.autograd.grad(output, (q, k, v), dout)
+                    ref_q, ref_k, ref_v = [
+                        t.detach().cpu().double().requires_grad_() for t in (q, k, v)
+                    ]
+                    # FlashAttention's causal mask aligns at bottom-right for
+                    # Q != K; construct it explicitly for the SDPA reference.
+                    mask = None
+                    if causal:
+                        mask = (
+                            torch.arange(65)[None, :] <= torch.arange(33)[:, None] + 32
+                        )
+                    reference = torch.nn.functional.scaled_dot_product_attention(
+                        ref_q.transpose(1, 2),
+                        ref_k.transpose(1, 2),
+                        ref_v.transpose(1, 2),
+                        attn_mask=mask,
+                        enable_gqa=kv_heads != 4,
+                    ).transpose(1, 2)
+                    ref_grads = torch.autograd.grad(
+                        reference, (ref_q, ref_k, ref_v), dout.cpu().double()
+                    )
+                    for actual, expected in zip(
+                        (output, *grads), (reference, *ref_grads)
+                    ):
+                        torch.testing.assert_close(
+                            actual.detach().cpu().double(),
+                            expected,
+                            rtol=rtol,
+                            atol=atol,
+                        )
+
+    # Exercise Anima's real masked/varlen dispatch and a compiled training loss.
+    mask = torch.ones(1, 65, device=device, dtype=torch.int32)
+    mask[:, 33:] = 0
+    params = AttentionParams.create_attention_params_from_mask("flash", 0, mask)
+    values = [
+        torch.randn(
+            1, 65, 4, 128, device=device, dtype=torch.bfloat16, requires_grad=True
+        )
+        for _ in range(3)
+    ]
+    varlen_out = dispatch_attention(values[0], values[1], values[2], attn_params=params)
+    varlen_out.float().square().mean().backward()
+    for value in (varlen_out, *(t.grad for t in values)):
+        if not torch.isfinite(value).all():
+            raise RuntimeError(
+                "Anima FlashAttention varlen path produced non-finite values"
+            )
+
+    @torch.compile
+    def flash_loss(q, k, v):
+        out = dispatch_attention(q, k, v, attn_params=AttentionParams("flash"))
+        return out.float().square().mean()
+
+    for _ in range(3):
+        values = [
+            torch.randn(
+                1, 65, 4, 128, device=device, dtype=torch.bfloat16, requires_grad=True
+            )
+            for _ in range(3)
+        ]
+        loss = flash_loss(*values)
+        loss.backward()
+        if not torch.isfinite(loss) or not all(
+            torch.isfinite(t.grad).all() for t in values
+        ):
+            raise RuntimeError(
+                "compiled Anima FlashAttention backward produced non-finite values"
+            )
+    print(
+        "native FlashAttention: 32 FP64 reference cases, varlen and compiled backward passed",
+        flush=True,
+    )
 
 
 def _run_visible_device() -> None:
@@ -65,6 +170,7 @@ def _run_visible_device() -> None:
     torch.cuda.synchronize()
     if not torch.isfinite(attention).all() or not torch.isfinite(q.grad).all():
         raise RuntimeError(f"ROCm PyTorch SDPA produced non-finite values on {name}")
+    _check_native_flash(device)
     print(f"passed: {name} ({arch})", flush=True)
 
 
@@ -112,7 +218,7 @@ def main() -> int:
 
     run_smoke()
 
-    print("ROCm tensor/compile/SDPA/backward smoke test: OK")
+    print("ROCm tensor/compile/SDPA/FlashAttention/backward smoke test: OK")
     return 0
 
 

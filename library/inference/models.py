@@ -323,9 +323,7 @@ def load_dit_model(
 
     attn_mode = resolve_attention_mode(args.attn_mode, torch)
     if needs_rocm_attention_fallback(args.attn_mode, torch):
-        logger.warning(
-            "ROCm detected: using PyTorch SDPA instead of CUDA Flash Attention"
-        )
+        logger.warning("No compatible ROCm FlashAttention build: using PyTorch SDPA")
 
     model = anima_utils.load_anima_model(
         device,

@@ -1,4 +1,5 @@
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 from types import SimpleNamespace
@@ -49,6 +50,81 @@ def test_only_explicit_rocm_flash_request_reports_fallback():
     assert needs_rocm_attention_fallback("flash", _torch("7.14.0"))
     assert not needs_rocm_attention_fallback("torch", _torch("7.14.0"))
     assert not needs_rocm_attention_fallback("flash", _torch(None))
+
+
+def _native_rocm_flash(monkeypatch, *, arch="gfx1201", version="2.14.0+rocm10.1.0"):
+    monkeypatch.setattr(backend.sys, "platform", "win32")
+    package = SimpleNamespace(
+        __rocm_build__={
+            "torch": "2.14.0+rocm10.1.0",
+            "archs": ("gfx1200", "gfx1201"),
+            "tail_fix": True,
+        },
+        flash_attn_func=lambda: None,
+        flash_attn_varlen_func=lambda: None,
+    )
+    monkeypatch.setitem(sys.modules, "flash_attn", package)
+    torch = SimpleNamespace(
+        __version__=version,
+        version=SimpleNamespace(hip="7.16"),
+        cuda=SimpleNamespace(
+            is_available=lambda: True,
+            current_device=lambda: 1,
+            get_device_properties=lambda index: SimpleNamespace(gcnArchName=arch),
+        ),
+    )
+    return torch, package
+
+
+@pytest.mark.parametrize("arch", ["gfx1200", "gfx1201", "gfx1201:sramecc-:xnack-"])
+def test_matching_rocm_flash_build_keeps_flash(monkeypatch, arch):
+    torch, _ = _native_rocm_flash(monkeypatch, arch=arch)
+    assert resolve_attention_mode("flash", torch) == "flash"
+    assert not needs_rocm_attention_fallback("flash", torch)
+
+
+@pytest.mark.parametrize("arch", ["gfx1100", "gfx1151", "unknown"])
+def test_rocm_flash_falls_back_on_unbuilt_arch(monkeypatch, arch):
+    torch, _ = _native_rocm_flash(monkeypatch, arch=arch)
+    assert resolve_attention_mode("flash", torch) == "torch"
+
+
+def test_rocm_flash_falls_back_on_torch_abi_mismatch(monkeypatch):
+    torch, _ = _native_rocm_flash(monkeypatch, version="2.15.0a0+rocm10.2.0")
+
+    def do_not_load(_):
+        raise AssertionError("an incompatible native extension must not be loaded")
+
+    monkeypatch.setattr(backend.importlib, "import_module", do_not_load)
+    assert resolve_attention_mode("flash", torch) == "torch"
+
+
+def test_rocm_flash_requires_tail_fix_build_marker(monkeypatch):
+    torch, package = _native_rocm_flash(monkeypatch)
+    del package.__rocm_build__
+    assert resolve_attention_mode("flash", torch) == "torch"
+
+
+def test_rocm_flash_requires_both_attention_entry_points(monkeypatch):
+    torch, package = _native_rocm_flash(monkeypatch)
+    package.flash_attn_varlen_func = None
+    assert resolve_attention_mode("flash", torch) == "torch"
+
+
+def test_rocm_flash_requires_available_gpu(monkeypatch):
+    torch, _ = _native_rocm_flash(monkeypatch)
+    torch.cuda.is_available = lambda: False
+    assert resolve_attention_mode("flash", torch) == "torch"
+
+
+def test_rocm_flash_handles_missing_or_unloadable_extension(monkeypatch):
+    torch, _ = _native_rocm_flash(monkeypatch)
+
+    def missing(_):
+        raise ImportError("native extension unavailable")
+
+    monkeypatch.setattr(backend.importlib, "import_module", missing)
+    assert resolve_attention_mode("flash", torch) == "torch"
 
 
 def test_update_reuses_saved_rocm_backend(monkeypatch, tmp_path):
@@ -203,19 +279,20 @@ def test_windows_backend_dependencies_are_isolated():
 
     assert "+cu132" in cuda
     assert "flash_attn" in cuda
-    assert "torch[device-gfx1200,device-gfx1201]==2.13.0+rocm10.0.0" in rocm
-    assert "torchvision[device-gfx1200,device-gfx1201]==0.28.0+rocm10.0.0" in rocm
+    assert "torch[device-gfx1200,device-gfx1201]==2.14.0+rocm10.1.0" in rocm
+    assert "torchvision[device-gfx1200,device-gfx1201]==0.29.0a0+rocm10.1.0" in rocm
     assert "+rocm7.14.0" not in rocm
     assert "device-gfx1200" in rocm and "device-gfx1201" in rocm
-    assert "flash" not in rocm
+    assert "rocm[devel]==10.1.0" in rocm
+    assert "flash_attn-2.8.4%2Brocm101torch214.gfx12tail20261016" in rocm
 
     sources = project["tool"]["uv"]["sources"]
     assert any(
-        source.get("index") == "amd-rocm-100" and source.get("group") == "rocm-windows"
+        source.get("index") == "amd-rocm-101" and source.get("group") == "rocm-windows"
         for source in sources["torch"]
     )
     indices = project["tool"]["uv"]["index"]
-    rocm_index = next(index for index in indices if index["name"] == "amd-rocm-100")
+    rocm_index = next(index for index in indices if index["name"] == "amd-rocm-101")
     assert rocm_index["url"] == "https://stable.repo.amd.com/rocm/whl-next/"
 
     # GH #92: a flagless `uv sync` (old updaters) must install the CUDA stack
@@ -338,8 +415,8 @@ def test_torch_stacks_pair_flash_attn_and_triton(
     assert any(line.startswith(f"triton-windows=={triton}") for line in lines)
 
 
-def test_rocm_group_resolves_pytorch_213_rocm10():
-    """The ROCm group must resolve the stable Windows ROCm 10 / torch 2.13 stack."""
+def test_rocm_group_resolves_pytorch_214_rocm101():
+    """The ROCm group resolves the stable runtime and its rebuilt native Flash wheel."""
     result = subprocess.run(
         [
             "uv",
@@ -361,9 +438,9 @@ def test_rocm_group_resolves_pytorch_213_rocm10():
     torch_lines = [line for line in lines if line.startswith("torch==")]
     torchvision_lines = [line for line in lines if line.startswith("torchvision==")]
 
-    assert any("torch==2.13.0+rocm10.0.0" in line for line in torch_lines), torch_lines
+    assert any("torch==2.14.0+rocm10.1.0" in line for line in torch_lines), torch_lines
     assert any(
-        "torchvision==0.28.0+rocm10.0.0" in line for line in torchvision_lines
+        "torchvision==0.29.0a0+rocm10.1.0" in line for line in torchvision_lines
     ), torchvision_lines
     assert not any("+rocm7.14.0" in line for line in torch_lines), torch_lines
     assert not any("+rocm7.14.0" in line for line in torchvision_lines), (
@@ -371,6 +448,8 @@ def test_rocm_group_resolves_pytorch_213_rocm10():
     )
     assert any("amd-torch-device-gfx1200" in line for line in lines)
     assert any("amd-torch-device-gfx1201" in line for line in lines)
-    assert not any(
-        line.startswith("flash-attn") and "win_amd64" in line for line in lines
-    )
+    flash_win = [
+        line for line in lines if line.startswith("flash-attn") and "win_amd64" in line
+    ]
+    assert len(flash_win) == 1 and "rocm101torch214.gfx12tail20261016" in flash_win[0]
+    assert "cu132" not in flash_win[0]

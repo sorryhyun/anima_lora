@@ -452,7 +452,7 @@ class AnimaTrainer:
         attn_mode = resolve_attention_mode(requested_attn_mode, torch)
         if needs_rocm_attention_fallback(requested_attn_mode, torch):
             logger.warning(
-                "ROCm detected: using PyTorch SDPA instead of CUDA Flash Attention"
+                "No compatible ROCm FlashAttention build: using PyTorch SDPA"
             )
 
         if attn_mode == "flash4":
