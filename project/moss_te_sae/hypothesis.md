@@ -1,6 +1,6 @@
 # hypothesis — the caption is a user turn to an instruct model (2026-10-29)
 
-Status: hypothesis, nothing run. Every test below needs the 9B TE on the GPU (no CPU
+Status: hypothesis; test 3 run (2026-10-29), tests 1 / 2 / 4 not. Every test below needs the 9B TE on the GPU (no CPU
 runs while a training job holds the box).
 
 MOSS encodes every caption as a **user turn of the post-trained Qwen3.5-9B** (instruct,
@@ -23,10 +23,10 @@ difference alone cannot be pinned on the framing.
 
 - **The DiT can use a name as a key.** Neru, GUMI, Haku, MEIKO render from the name
   although the TE does not know them; splicing the name's own rows into an invented-name
-  caption keeps 0.96–0.98 of the name's one-step effect ([entity_dit](reports/entity_dit_2026_10_27.md)). So MOSS has per-name slots for names it saw in pretraining.
+  caption keeps 0.96–0.98 of the name's one-step effect ([name_rows](reports/name_rows.md)). So MOSS has per-name slots for names it saw in pretraining.
 - **A trained LoRA does not use one.** `caststation_ema097_lr1e4` keeps cos 0.74 / 0.83
   (σ 0.3 / 0.7) with an empty prompt; artist and character tokens each carry 2.2 % of
-  its gradient × input, the top tokens are commas and JSON delimiters ([lora_use](reports/lora_use_2026_10_27.md)). The trigger is written as text on a name plate in all three
+  its gradient × input, the top tokens are commas and JSON delimiters ([text_read_path](reports/text_read_path.md) §4). The trigger is written as text on a name plate in all three
   optimizer arms (`docs/moss/findings/muon_lora.md`).
 - **The style is not routed through the template rows.** Keeping a LoRA's delta off the
   10 template rows leaves the style in place and changes content details on 4 of 8 seeds
@@ -38,9 +38,9 @@ difference alone cannot be pinned on the framing.
   (`docs/moss/findings/dcfree_svd_init.md`).
 - **The template moves caption rows off the Base distribution.** The Base-trained SAE
   reconstructs raw text better than the same text inside the template: FVU 0.21 vs 0.25
-  (layer 31), 0.24 vs 0.41 (layer 15) on the NL prompts ([sae_recon](reports/sae_recon_2026_10_27.md)).
+  (layer 31), 0.24 vs 0.41 (layer 15) on the NL prompts ([sae_fit](reports/sae_fit.md)).
   Confounded: the SAE is Base, the TE is instruct, so this mixes "instruct weights" with
-  "user-turn framing". Test 3 ([base_contrast](reports/base_contrast_2026_10_29.md)) separates
+  "user-turn framing". Test 3 ([text_read_path](reports/text_read_path.md) §3) separates
   them: the template alone moves Base's layout rows 0.10, the weights alone 0.24, both
   0.60 at L31. The L15 FVU gap was most likely the raw sink token.
 
