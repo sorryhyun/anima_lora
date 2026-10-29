@@ -87,6 +87,7 @@ class HostMasters:
     def __init__(self):
         self._views: dict[int, dict[str, torch.Tensor]] = {}
         self._flats: list[torch.Tensor] = []
+        self._mode = "register"
 
     def get(self, block: nn.Module) -> dict[str, torch.Tensor]:
         views = self._views.get(id(block))
@@ -105,11 +106,7 @@ class HostMasters:
             total = -(-total // self._ALIGN) * self._ALIGN
             offsets[name] = total
             total += w.numel() * w.element_size()
-        flat = torch.empty(total, dtype=torch.uint8)
-        err = torch.cuda.cudart().cudaHostRegister(flat.data_ptr(), total, 0)
-        if int(err) != 0:
-            raise RuntimeError(f"cudaHostRegister failed ({err}) for {total} bytes")
-        self._flats.append(flat)
+        flat = self._alloc(total)
         views = {}
         for name, w in weights.items():
             off = offsets[name]
@@ -118,6 +115,29 @@ class HostMasters:
             view.copy_(w)
             views[name] = view
         return views
+
+    def _alloc(self, total: int) -> torch.Tensor:
+        """Exact-size registered buffer; on failure (Windows/WDDM refuses
+        ``cudaHostRegister`` on some drivers and caps page-locked memory) fall
+        back to the caching host allocator, then to pageable memory — slower
+        H2D copies, same results."""
+        if self._mode == "register":
+            flat = torch.empty(total, dtype=torch.uint8)
+            err = torch.cuda.cudart().cudaHostRegister(flat.data_ptr(), total, 0)
+            if int(err) == 0:
+                self._flats.append(flat)
+                return flat
+            self._fallback(f"cudaHostRegister failed ({int(err)}) for {total} bytes")
+        if self._mode == "pin":
+            try:
+                return torch.empty(total, dtype=torch.uint8, pin_memory=True)
+            except RuntimeError as e:
+                self._fallback(f"pin_memory failed for {total} bytes: {e}")
+        return torch.empty(total, dtype=torch.uint8)
+
+    def _fallback(self, reason: str) -> None:
+        self._mode = "pin" if self._mode == "register" else "pageable"
+        print(f"HostMasters: {reason}; falling back to {self._mode} host memory")
 
     def release(self) -> None:
         """Unregister the buffers; tensors still viewing them stay valid (pageable)."""
