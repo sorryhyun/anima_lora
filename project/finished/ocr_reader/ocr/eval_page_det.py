@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Page-level text detection on Manga109-s COO test pages: OvisOCR3's boxed
-prompts against the AnimeText YOLO detector.
+prompts against the AnimeText YOLO detector and the PP-OCRv6_manga DB
+detector (``Kellenok/PP-OCRv6_manga``, ONNX on the CPU).
 
     ANIMA_MANGA109S_ROOT=… make daemon-run ARGS="project/finished/ocr_reader/ocr/eval_page_det.py --reader ovis3"
     … --reader ovis3 --task document_structured --name ovis3_struct
     … --reader animetext
+    .venv/bin/python project/finished/ocr_reader/ocr/eval_page_det.py --reader ppocr_manga --device cpu
     .venv/bin/python project/finished/ocr_reader/ocr/eval_page_det.py --rescore animetext ovis3   # CPU
 
 Ground truth is exhaustive on these pages: every Manga109-s ``<text>`` box
@@ -27,7 +29,8 @@ order, and scores ``exact_key`` equality with the GT text (vertical reading
 order inside a balloon is the model's).
 
 AnimeText was trained on 735k anime / manga pages; whether Manga109 is among
-them is not stated, so its numbers here may be in-domain.
+them is not stated, so its numbers here may be in-domain. PP-OCRv6_manga lists
+Manga109-s as training data, so its numbers here are likely in-domain too.
 
 Writes ``output/ocr/eval/det_<name>.jsonl`` (one row per page: boxes, texts,
 raw) and ``reports/ocr_eval_det_<name>.md``.
@@ -154,6 +157,85 @@ def run_animetext(pages, a) -> list[dict]:
     return rows
 
 
+PPOCR_REPO = "Kellenok/PP-OCRv6_manga"
+
+
+def _ppocr_unclip(box, ratio):
+    import pyclipper
+
+    x, y = box[:, 0], box[:, 1]
+    area = 0.5 * abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
+    perimeter = np.linalg.norm(np.roll(box, -1, axis=0) - box, axis=1).sum()
+    if area <= 0 or perimeter <= 0:
+        return None
+    off = pyclipper.PyclipperOffset()
+    off.AddPath(box.tolist(), pyclipper.JT_ROUND, pyclipper.ET_CLOSEDPOLYGON)
+    paths = off.Execute(area * ratio / perimeter)
+    return np.asarray(paths[0], np.float32) if len(paths) == 1 else None
+
+
+def ppocr_detect(sess, img, thresh=0.15, box_thresh=0.25, unclip_ratio=1.4):
+    """The card's ``examples/onnx_openvino.py`` det + DB post-process, op for
+    op; returns axis-aligned bboxes of the min-area rects."""
+    import cv2
+
+    H, W = img.shape[:2]
+    if max(H, W) / min(H, W) > 2:
+        ratio = min(1.0, (0.75 * 960.0 * 960.0 / (H * W)) ** 0.5)
+    else:
+        ratio = 960.0 / max(H, W)
+    rh = max(int(round(H * ratio / 32) * 32), 32)
+    rw = max(int(round(W * ratio / 32) * 32), 32)
+    inp = cv2.resize(img, (rw, rh)).astype(np.float32) / 255.0
+    inp = (inp - np.array([0.485, 0.456, 0.406])) / np.array([0.229, 0.224, 0.225])
+    inp = inp.transpose(2, 0, 1)[None].astype(np.float32)
+    feed = {sess.get_inputs()[0].name: inp.astype(sess._in_dtype)}
+    pred = sess.run(None, feed)[0][0, 0].astype(np.float32)
+    contours, _ = cv2.findContours(
+        ((pred > thresh) * 255).astype(np.uint8), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE
+    )
+    out = []
+    for cnt in contours:
+        pts = cnt.squeeze(1)
+        if pts.ndim != 2 or pts.shape[0] < 4:
+            continue
+        b = pts.astype(np.int32)
+        x0, x1 = (int(np.clip(v, 0, rw - 1)) for v in (b[:, 0].min(), b[:, 0].max()))
+        y0, y1 = (int(np.clip(v, 0, rh - 1)) for v in (b[:, 1].min(), b[:, 1].max()))
+        m = np.zeros((y1 - y0 + 1, x1 - x0 + 1), np.uint8)
+        cv2.fillPoly(m, [(b - [x0, y0]).reshape(-1, 2)], 1)
+        if cv2.mean(pred[y0 : y1 + 1, x0 : x1 + 1], m)[0] < box_thresh:
+            continue
+        pts = _ppocr_unclip(pts, unclip_ratio)
+        if pts is None or len(pts) == 0:
+            continue
+        rect = cv2.minAreaRect(pts.astype(np.float32))
+        if min(rect[1]) < 3:
+            continue
+        q = cv2.boxPoints(rect)
+        xs = np.clip(np.round(q[:, 0] / rw * W), 0, W)
+        ys = np.clip(np.round(q[:, 1] / rh * H), 0, H)
+        out.append([int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())])
+    return out
+
+
+def run_ppocr(pages, a) -> list[dict]:
+    import cv2
+    import onnxruntime as ort
+    from huggingface_hub import hf_hub_download
+
+    path = a.ckpt or hf_hub_download(PPOCR_REPO, a.det_file)
+    sess = ort.InferenceSession(path, providers=["CPUExecutionProvider"])
+    sess._in_dtype = np.float16 if "float16" in sess.get_inputs()[0].type else np.float32
+    rows = []
+    for b, p in pages:
+        img = cv2.imread(str(m109.page_path(b, p)))
+        h, w = img.shape[:2]
+        preds = [dict(box=bx, text="") for bx in ppocr_detect(sess, img)]
+        rows.append(dict(book=b, page=p, w=w, h=h, raw="", preds=preds))
+    return rows
+
+
 def _mask(boxes, h, w, pad=0) -> np.ndarray:
     m = np.zeros((h, w), bool)
     for x0, y0, x1, y1 in boxes:
@@ -234,7 +316,12 @@ def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--reader", choices=["ovis3", "animetext"])
+    ap.add_argument("--reader", choices=["ovis3", "animetext", "ppocr_manga"])
+    ap.add_argument(
+        "--det_file",
+        default="det/manga_det_v0.2.onnx",
+        help="ppocr_manga: file in the Hub repo",
+    )
     ap.add_argument("--task", default="word_spotting")
     ap.add_argument("--ckpt")
     ap.add_argument("--name")
@@ -261,7 +348,8 @@ def main():
     name = a.name or (a.reader if a.task == "word_spotting" else f"{a.reader}_{a.task}")
 
     t0 = time.time()
-    rows = (run_ovis if a.reader == "ovis3" else run_animetext)(list(gt), a)
+    run = dict(ovis3=run_ovis, animetext=run_animetext, ppocr_manga=run_ppocr)
+    rows = run[a.reader](list(gt), a)
     wall = time.time() - t0
     ev.OUT.mkdir(parents=True, exist_ok=True)
     with (ev.OUT / f"det_{name}.jsonl").open("w", encoding="utf-8") as f:
