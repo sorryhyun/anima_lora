@@ -78,11 +78,49 @@ about 1.2 GB at 4.5k tokens (not run).
 - At +1.5% inference time it is cheap to keep as an option. Making it the default
   needs a blind preference pass over more prompts.
 
+## Training with an fp32 stream
+
+`ama_mitsuki_muon_ema_fp32s` is `ama_mitsuki_muon_ema` retrained with `--stream fp32`,
+same request and seed. Its 848 σ draws and sample order match the bf16 run exactly.
+The memory plan moved from swap 36 / budget 0.5 to swap 38 / budget 0.45, because the
+first run OOMed at the worst-case sample (4200 + 340 tokens) with 72 MB short.
+Those two settings change speed, not numerics.
+
+| | bf16 | fp32 stream |
+|---|---|---|
+| s/step | 1.80 | 1.85 |
+| peak reserved | 13.73 GB | 13.98 GB |
+| mean loss, all steps / last epoch | 0.2832 / 0.2833 | 0.2829 / 0.2829 |
+
+- The loss is 0.0002–0.0004 lower throughout, including step 1 (−0.0003), before any
+  update. It is the forward's own error, not better learning.
+- The renders form a 2×2 of train stream × inference stream. They use the A/B above at
+  LoRA ×1.0; grids are in `output/tests/ab_ama_mitsuki_muon_ema{,_fp32s}_50st{,_fp32s}/`.
+  Mean |Δ| out of 255:
+
+| changed | Base | SFT |
+|---|---|---|
+| inference stream, bf16-trained LoRA | 4.3 | 12.1 |
+| inference stream, fp32-trained LoRA | 5.5 | 8.9 |
+| training stream, bf16 inference | 14.6 | 26.6 |
+| training stream, fp32 inference | 14.8 | 24.2 |
+
+- Changing the training stream moves a render about 3x more than changing the inference
+  stream. The LoRA itself changes. Matching the inference stream to the training one
+  shows no extra effect.
+- The style is learned equally in both. On the 8 cells with visible hands, cropped,
+  the fp32-trained LoRA looked better in 4, tied in 3 and worse in 1. Fewer fused or
+  smeared fingers.
+- This is one run per arm, with no bf16 retrain to show the run-to-run spread, and the
+  judging was not blind. The hand lean is a lead, not a result.
+
 ## Not tested
 
 - int8 linears with an fp32 stream. In quadrature this lands near today's bf16
   prediction error.
-- Training a LoRA with an fp32 stream, and whether the late-block gradient gain shows
-  in the result.
+- A bf16 retrain of the same request, for the run-to-run spread the training-stream
+  difference has to beat; then a blind pass on hands over more seeds.
+- i2i tasks that hinge on fine detail (`swap_text`, `sanitize`). There the training
+  stream may matter more than on a style LoRA.
 - Text rendering (the `bench/_moss.py` zh / ja / ko prompts), where small errors could
   show first.
