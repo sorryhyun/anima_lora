@@ -15,7 +15,7 @@ the others. Cross-attention stays on FA2. It is 12% of the attention forward tim
 
 Script: [`src/attn_bench.py`](../src/attn_bench.py), kernel
 [`src/int8_attn.py`](../src/int8_attn.py). Raw numbers of the final run:
-[`attn_fwd.json`](attn_fwd.json); earlier runs: `attn_fwd_run{1,2,3}.json`.
+[`attn_fwd.json`](../assets/attn_fwd.json); earlier runs: `attn_fwd_run{1,2,3}.json`.
 
 ## Setup
 

@@ -28,13 +28,13 @@ def _ref(q, k, v):
 
 
 @pytest.mark.parametrize("lq,lk", [(1000, 1000), (1000, 512)])
-@pytest.mark.parametrize("qk", ["bf16", "int8"])
+@pytest.mark.parametrize("qk", ["bf16", "fp16acc", "int8"])
 @pytest.mark.parametrize("pv", list(PV_MODES))
 @pytest.mark.parametrize(
     "gran,rot", [("block", False), ("token", False), ("token", True)]
 )
 def test_fwd_matches_fp32(lq, lk, qk, pv, gran, rot):
-    if qk == "bf16" and (gran, rot) != ("block", False):
+    if qk != "int8" and (gran, rot) != ("block", False):
         pytest.skip("gran and rot apply to int8 QKᵀ only")
     q, k, v = _qkv(lq, lk)
     # sharpen the logits so the softmax is not near-uniform

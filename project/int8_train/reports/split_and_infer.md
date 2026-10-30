@@ -25,7 +25,7 @@ emulation to the eager reference and to the kernel's error size, not to its exac
 rounding.
 
 Job `20261030-111545-c74021`, same images and σ as phase 1b. Raw:
-[`grad_error_split.json`](grad_error_split.json).
+[`grad_error_split.json`](../assets/grad_error_split.json).
 
 Prediction error relative to the fp32 prediction (mean over 6 images):
 

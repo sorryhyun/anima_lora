@@ -11,7 +11,7 @@ backward follows it. Forward arms are now judged on these gradients (proposal.md
 
 Script: [`src/attn_bwd_bench.py`](../src/attn_bwd_bench.py), kernels in
 [`src/int8_attn.py`](../src/int8_attn.py) (`attn_fwd_train`, `attn_bwd`). Raw numbers:
-[`attn_bwd.json`](attn_bwd.json) (job `20261030-131458-007ef8`); the first run without
+[`attn_bwd.json`](../assets/attn_bwd.json) (job `20261030-131458-007ef8`); the first run without
 the FA2-backward arm: `attn_bwd_run1.json` (`20261030-131136-122e62`), same numbers.
 
 ## Setup

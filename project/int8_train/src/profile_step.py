@@ -41,7 +41,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--warmup", type=int, default=15)
 ap.add_argument("--timed", type=int, default=20)
 ap.add_argument("--profiled", type=int, default=8)
-ap.add_argument("--out", default="project/int8_train/reports/step_profile.json")
+ap.add_argument("--out", default="project/int8_train/assets/step_profile.json")
 own, train_argv = ap.parse_known_args()
 if train_argv and train_argv[0] == "--":
     train_argv = train_argv[1:]

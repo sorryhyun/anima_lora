@@ -6,7 +6,7 @@ step speedup; at a pessimistic 2.0x it is still 1.31x. The 1.25x gate passes.
 
 Script: [`src/profile_step.py`](../src/profile_step.py), run as
 `make daemon-run ARGS="--stall-timeout 1200 project/int8_train/src/profile_step.py --warmup 15 --timed 20 --profiled 8 -- --method lora --preset default"`
-(job `20261030-094716-a9566b`). Raw numbers: [`step_profile.json`](step_profile.json).
+(job `20261030-094716-a9566b`). Raw numbers: [`step_profile.json`](../assets/step_profile.json).
 
 ## Setup
 

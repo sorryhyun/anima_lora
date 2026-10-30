@@ -105,7 +105,7 @@ def main():
     ap.add_argument("--negative_prompt", default=NEGATIVE)
     ap.add_argument("--cache_root", default="post_image_dataset/lora")
     ap.add_argument("--n_real", type=int, default=28)
-    ap.add_argument("--out", default="project/int8_train/reports/traj_eval.json")
+    ap.add_argument("--out", default="project/int8_train/assets/traj_eval.json")
     args = ap.parse_args()
     torch.set_grad_enabled(False)
     t0 = time.perf_counter()

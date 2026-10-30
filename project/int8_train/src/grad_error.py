@@ -244,7 +244,7 @@ def main():
     ap.add_argument("--sketch_q", type=int, default=64)
     ap.add_argument("--min_tokens", type=int, default=3500)
     ap.add_argument("--max_tokens", type=int, default=4608)
-    ap.add_argument("--out", default="project/int8_train/reports/grad_error_fp32.json")
+    ap.add_argument("--out", default="project/int8_train/assets/grad_error_fp32.json")
     args = ap.parse_args()
     # torch non-reentrant: eager activations at 4k tokens next to the bf16 weights
     # and two int8 copies do not fit in 16 GB. The sketch hooks park X on the CPU.

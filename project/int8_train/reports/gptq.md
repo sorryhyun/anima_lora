@@ -16,7 +16,7 @@ feeding the next through the W8A8 kernel.
 Output: `models/diffusion_models/anima-base-v1.0_int8_gptq.safetensors` (NVMe), 2.37 GiB, the full
 DiT in ComfyUI's `int8_tensorwise` + `convrot` layout, `int8_id 9dad0c30a67e4d48…`.
 Per-linear errors: `anima-base-v1.0_int8_gptq.report.json` next to it, copied to
-[`gptq_linears.json`](gptq_linears.json).
+[`gptq_linears.json`](../assets/gptq_linears.json).
 
 Mean over the 168 linears, relative output error energy:
 
@@ -32,7 +32,7 @@ raised above 1e-4 for some linears (mean 1.2e-4), where `H̃` is not positive de
 ## End to end: trajectories against held-out real images
 
 `src/traj_eval.py`, job `20261030-120640-c9289f`. Raw numbers:
-[`traj_eval.json`](traj_eval.json).
+[`traj_eval.json`](../assets/traj_eval.json).
 
 - `traj`: bf16-base Euler trajectories (CFG 4, 28 steps, shift 3, 1024²), the 4 A/B
   prompts × seeds 11, 22, all 224 states.

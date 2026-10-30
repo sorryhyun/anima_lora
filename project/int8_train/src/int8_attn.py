@@ -6,7 +6,8 @@ One kernel, FA2's loop: a program owns a ``BLOCK_M`` slice of Q for one (batch, 
 walks K/V in ``BLOCK_N`` blocks with an online softmax in the log2 domain, and writes
 O and the log2 logsumexp (the backward's input). Two compile-time switches:
 
-- ``qk``: ``bf16`` or ``int8``. int8 quantizes Q in the kernel (``sm_scale·log2 e``
+- ``qk``: ``bf16``, ``fp16acc`` (fp16 inputs and accumulation, no quantization) or
+  ``int8``. int8 quantizes Q in the kernel (``sm_scale·log2 e``
   folded into its scale) and reads a K copy made by :func:`quant_k`: K minus its token
   mean (per batch, head). Subtracting a vector from every key adds a per-row constant
   to QKᵀ, which the softmax ignores. ``gran`` sets the scale granularity of both:
@@ -215,7 +216,8 @@ if os.environ.get("INT8_ATTN_FIXED"):  # tests: one config, no autotune sweep
 
 
 @triton.autotune(
-    configs=_CONFIGS, key=["LQ", "LK", "QK_INT8", "PV_MODE", "TOKEN", "ROT", "Q_PRE"]
+    configs=_CONFIGS,
+    key=["LQ", "LK", "QK_INT8", "QK_F16ACC", "PV_MODE", "TOKEN", "ROT", "Q_PRE"],
 )
 @triton.jit
 def _fwd_kernel(
@@ -249,6 +251,7 @@ def _fwd_kernel(
     qk_scale,
     D: tl.constexpr,
     QK_INT8: tl.constexpr,
+    QK_F16ACC: tl.constexpr,
     PV_MODE: tl.constexpr,
     KBLK: tl.constexpr,
     TOKEN: tl.constexpr,
@@ -308,6 +311,13 @@ def _fwd_kernel(
             else:
                 ks = tl.load(KS + bh * NKS + cols // KBLK, mask=kmask, other=0.0)
             s = tl.dot(q, k, out_dtype=tl.int32).to(tl.float32) * (q_s * ks[None, :])
+        elif QK_F16ACC:
+            s = (
+                tl.dot(q.to(tl.float16), k.to(tl.float16), out_dtype=tl.float16).to(
+                    tl.float32
+                )
+                * qk_scale
+            )
         else:
             s = tl.dot(q, k) * qk_scale
         s = tl.where(kmask[None, :], s, float("-inf"))
@@ -422,6 +432,7 @@ def attn_fwd(
         scale,
         D=D,
         QK_INT8=qk == "int8",
+        QK_F16ACC=qk == "fp16acc",
         PV_MODE=PV_MODES[pv],
         KBLK=KBLK,
         TOKEN=gran == "token",

@@ -24,7 +24,7 @@ the bf16 one by more than one image's gradient differs from another's.
 
 Script: [`src/grad_error.py`](../src/grad_error.py), run as
 `make daemon-run ARGS="--stall-timeout 900 project/int8_train/src/grad_error.py"`
-(job `20261030-095523-c2007d`, 6 min). Raw numbers: [`grad_error.json`](grad_error.json).
+(job `20261030-095523-c2007d`, 6 min). Raw numbers: [`grad_error.json`](../assets/grad_error.json).
 
 ## Setup
 
@@ -82,7 +82,7 @@ Script: the same [`src/grad_error.py`](../src/grad_error.py) with an fp32 phase 
 (params cast to fp32, SDPA, no autocast, TF32 off; cast back before any int8 copy),
 job `20261030-101108-72571d`, 11 min. Same images, ε and Ω as the first pass; its
 bf16-referenced numbers reproduce the first pass to ±0.003. Raw numbers:
-[`grad_error_fp32.json`](grad_error_fp32.json). Noise is now measured between fp32
+[`grad_error_fp32.json`](../assets/grad_error_fp32.json). Noise is now measured between fp32
 gradients.
 
 Median over modules, distance from the fp32 gradient / noise:

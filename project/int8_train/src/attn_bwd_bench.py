@@ -102,7 +102,7 @@ def arm_bwd(do, q, k, v, fwd, arm):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--capture", default="output/int8_train/attn_capture.pt")
-    ap.add_argument("--out", default="project/int8_train/reports/attn_bwd.json")
+    ap.add_argument("--out", default="project/int8_train/assets/attn_bwd.json")
     args = ap.parse_args()
     start_heartbeat(label="attn_bwd_bench")
     t0 = time.perf_counter()

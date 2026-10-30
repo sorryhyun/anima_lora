@@ -176,6 +176,9 @@ line.
   SageAttention2); and a Q-only / K-only rounding split to show which operand carries
   the error. Ceiling if one passes: about 14 ms of the 433 ms step from the forward
   alone.
+  *Result:* int8 QKᵀ is out (either operand alone is ~2x, both ~3x; Q smoothing does
+  not help). fp16acc QKᵀ and PV pass narrowly: 1.03–1.40x FA2's gradient error, 1.31x
+  its forward, about 11 ms per step ([reports/attn_fwd_grad.md](reports/attn_fwd_grad.md)).
 - **5c, end to end**, only if 5a′ passes: the op behind `dispatch_attention` in
   `train_int8.py`, phase 1b's gradient gate, then phase 3's A/B.
 

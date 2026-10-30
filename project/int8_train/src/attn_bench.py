@@ -233,7 +233,7 @@ def main():
     ap.add_argument("--max_tokens", type=int, default=4608)
     ap.add_argument("--capture", default="output/int8_train/attn_capture.pt")
     ap.add_argument("--recapture", action="store_true")
-    ap.add_argument("--out", default="project/int8_train/reports/attn_fwd.json")
+    ap.add_argument("--out", default="project/int8_train/assets/attn_fwd.json")
     args = ap.parse_args()
     start_heartbeat(label="attn_bench")
     t0 = time.perf_counter()

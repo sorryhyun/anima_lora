@@ -20,7 +20,7 @@ not change `library/` or `networks/`.
 | offline GPTQ base | done: W8A8 per-linear error −36%, predictions −10%, CFG velocity −2–7%; same on trajectories and held-out real ([report](reports/gptq.md)) |
 | 5a, int8 attention forward (Triton) | self-attention passes: per-token + Hadamard int8 QKᵀ, fp16acc PV, 1.44x FA2 at 1.5–1.8x its error; cross-attention fails (repeated pad key, sink key) and stays FA2 ([report](reports/attn_fwd.md)). **Re-judged after 5b: fails**, dQ/dK/dV through FA2's backward are 2.5–3.4x FA2's error |
 | 5b, int8 attention backward (Triton) | fails: the int8 forward alone puts dK and dV at 2.5–3.4x FA2's error with any backward (FA2's included), int8 dV 5–8x, fastest arm 1.17x; the backward stays FA2 ([report](reports/attn_bwd.md)) |
-| 5a′, forward re-measured on gradients | open: forward arms through FA2's backward, dQ/dK/dV ≤ 2x FA2's distance from fp32 (fp16-accumulate QKᵀ, Q smoothing, Q/K rounding split) |
+| 5a′, forward re-measured on gradients | int8 QKᵀ out: Q or K rounding alone is ~2x FA2's gradient error, both ~3x, Q smoothing no help; fp16-accumulate QKᵀ and PV pass narrowly, 1.03–1.40x error at 1.31x speed, ~11 ms per step ([report](reports/attn_fwd_grad.md)) |
 
 ## Layout
 
@@ -46,7 +46,10 @@ not change `library/` or `networks/`.
   `output/int8_train/attn_capture.pt`) and the forward error and speed against FA2.
 - `src/attn_bwd_bench.py`: phase 5b, dQ, dK, dV error and backward speed against FA2 on
   the 5a capture.
+- `src/attn_fwd_grad_bench.py`: phase 5a′, forward arms (kernels and torch emulations of
+  the int8 rounding) scored on dQ, dK, dV through FA2's backward.
 - `src/test_int8_attn.py`: phase 5 tests (`INT8_ATTN_FIXED=1` skips the autotune sweep).
 - `src/test_int8_linear.py`: phase 2 tests (`.venv/bin/python -m pytest project/int8_train/src/test_int8_linear.py`).
 - `src/ab_prompts.txt`: phase 3 sample prompts.
 - `reports/`: one report per phase.
+- `assets/`: the raw JSON each bench writes, linked from its report.
