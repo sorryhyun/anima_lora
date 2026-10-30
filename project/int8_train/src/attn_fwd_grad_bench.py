@@ -3,7 +3,7 @@
 Each arm produces O and a natural-log logsumexp for the 24 self-attention calls of the
 5a capture; FA2's CUDA backward (``_flash_attn_backward``) takes them with the captured
 dO, and dQ, dK, dV are compared with fp32 SDPA autograd (TF32 off) on the same bf16
-inputs. Gate (proposal.md, 5a′): each gradient at most 2x FA2's distance from fp32,
+inputs. Gate (reports.md): each gradient at most 2x FA2's distance from fp32,
 median per σ; kernel arms also at least 1.3x FA2's forward.
 
 Kernel arms run ``int8_attn``. ``emu_*`` arms are fp32 torch emulations of the int8

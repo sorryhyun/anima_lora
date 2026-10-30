@@ -16,7 +16,7 @@ bf16 W, as ``fwd`` does. Per module:
     e16_mode = RMS_i ‖S_mode,i − S_bf16,i‖       (distance from the bf16 gradient)
     noise    = RMS_i ‖S_fp32,i − S_fp32,i-1‖
 
-Gate (proposal.md): median over modules of e16_full / noise < 0.1 at every σ. The fp32
+First gate (reports.md; since revised): median over modules of e16_full / noise < 0.1 at every σ. The fp32
 columns ask the calibrating question: is int8 much further from fp32 than bf16 is?
 The prediction itself is compared too, against ‖pred‖ and against the residual
 ‖pred − target‖ that drives the gradient.

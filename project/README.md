@@ -66,7 +66,7 @@ Active projects:
 - [`int8_train/`](int8_train/) — opened 2026-10-30: the frozen DiT's large
   linears as ConvRot int8 GEMMs in the forward and the backward dX during Anima
   LoRA training, all code in the project's `src/` (trainer patched from its own
-  entry point). Home: `README.md`, design `proposal.md`.
+  entry point). Home: `README.md`, completed work `reports.md`, current task `tasks.md`.
 
 - [`qwen21_lora/`](qwen21_lora/) — the Qwen-Image-2.1 LoRA line (not Anima;
   `library/qwen21/CLAUDE.md`).

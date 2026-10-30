@@ -7,7 +7,7 @@ backward GEMM is int8. Running dV = Pᵀ·dO in int8 raises dV to 5–8x. The fa
 (every GEMM int8) is 1.17x FA2's backward, under the 1.3x gate. Feeding the int8
 forward's O and logsumexp into FA2's own backward is also 2.5–3.4x, so 5a's forward
 cannot ship alone either: the gradient error comes from the int8 forward, whichever
-backward follows it. Forward arms are now judged on these gradients (proposal.md, 5a′).
+backward follows it. Forward arms are now judged on these gradients (reports.md).
 
 Script: [`src/attn_bwd_bench.py`](../src/attn_bwd_bench.py), kernels in
 [`src/int8_attn.py`](../src/int8_attn.py) (`attn_fwd_train`, `attn_bwd`). Raw numbers:

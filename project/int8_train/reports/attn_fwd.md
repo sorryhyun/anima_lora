@@ -3,7 +3,7 @@
 > **Re-judged after 5b ([attn_bwd.md](attn_bwd.md)): fails.** The gate below scores the
 > output O only. Through FA2's backward, this forward's O and logsumexp put dQ, dK, dV
 > at 2.5–3.4x FA2's distance from fp32, because dS = P ∘ (dP − Δ) amplifies the logit
-> error about twice. The gate is now on those gradients (proposal.md, 5a′).
+> error about twice. The gate is now on those gradients (reports.md).
 
 **Verdict: passes for self-attention, fails for cross-attention.** With int8 QKᵀ
 (per-token scales, Q and K Hadamard-rotated along D, K mean-removed) and PV in fp16

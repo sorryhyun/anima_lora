@@ -1,4 +1,4 @@
-"""Triton attention with int8 QKᵀ, for the phase 5 gates (proposal.md §Phase 5).
+"""Triton attention with int8 QKᵀ, for the phase 5 gates (reports.md).
 
 The forward is below; the 5b backward is under ``# --- backward``.
 

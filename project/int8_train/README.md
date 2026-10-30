@@ -2,35 +2,95 @@
 
 Opened 2026-10-30. The frozen DiT's large linears run as ConvRot int8 × int8 → int32, in
 the forward and in the backward input-gradient GEMM, through comfy_kitchen's existing
-kernel. Anima first. The design, phases and gates are in [proposal.md](proposal.md).
+kernel. Anima first. All code lives in `src/`: the line patches the trainer from its own
+entry point and does not change `library/` or `networks/`.
 
-All code lives in `src/`. The line patches the trainer from its own entry point and does
-not change `library/` or `networks/`.
+- **Completed work and its results:** [reports.md](reports.md). In short, the int8 base
+  trains 1.37x faster than bf16 with matching loss and samples; no int8 attention arm in
+  Triton has passed the accuracy gate.
+- **Current task:** [tasks.md](tasks.md).
 
-## Status
+## Why the scope is narrow
 
-| phase | state |
+LoRA training freezes the DiT, so each base linear needs two GEMMs per step: the forward
+`Y = X Wᵀ` and the input gradient `dX = dY W`. The weight gradient, the hard part of int8
+training, is never computed (SwitchBack, Wortsman et al., 2023, keeps only dW in 16-bit
+for this reason). Both GEMMs run as int8 with ConvRot rotation through
+`torch.ops.comfy_kitchen.int8_linear` (comfy_kitchen 0.2.40, already a dependency). It
+fuses the per-256-column Hadamard rotation, per-token quantization and the CUTLASS int8
+GEMM, and has a fake implementation, so `torch.compile` traces it.
+
+- **The backward is the same op.** With a second int8 copy of `Wᵀ`, rotated along N and
+  scaled per row, `dX = int8_linear(dY, Wᵀ_q, s_t, convrot=True)`. The online rotation
+  acts on dY, where gradient outliers sit. Two int8 copies take the memory of one bf16
+  weight.
+- **Inputs are not saved for the base.** Its backward needs only W. LoRA still saves its
+  own input.
+- Attention, norms, softmax, adaLN modulation, the residual stream and the LoRA rank
+  GEMMs stay in float. The rank 16–64 GEMMs are bandwidth-bound and gain nothing in int8.
+
+## Design
+
+### `src/int8_linear.py`
+
+- `Int8TrainLinear`, an `nn.Linear` subclass with the bf16 `weight` removed. It holds
+  `wq` (N, K) int8 rotated along K with per-row fp32 scale `s`, and, in mode `full`,
+  `wq_t` (K, N) int8 rotated along N with per-row scale `s_t`. Mode `fwd` keeps the bf16
+  `weight` for a bf16 backward instead of `wq_t`; mode `infer` keeps the forward copy
+  only.
+- Forward and backward go through one `torch.library.custom_op` (`int8_train::linear`)
+  with `register_fake` and `register_autograd`, so a compiled block sees one opaque node
+  per linear.
+- `convert_(module, mode)` changes an `nn.Linear` **in place** with a `__class__` swap,
+  because LoRA modules keep a reference to the original module object.
+- Quantization reuses `library.moss.int8.quantize_weight` (rotate, row scale, round to
+  nearest) on the GPU at load, or reads a GPTQ file (`--int8_file`).
+- `Int8TrainLinear._apply` keeps the row scales fp32 through the trainer's
+  `unet.to(dtype=bf16)`.
+
+### `src/train_int8.py`
+
+Strips its own `--int8 {off,fwd,full}` flag, installs two patches and calls
+`library.anima.trainer.cli.main(argv)` with the rest.
+
+- **`LoRANetwork.apply_to`** is wrapped to convert the DiT's linears first. This is after
+  `create_network`, so `down_init=weight_svd` and the `grad_svd` sketch still read bf16
+  weights, and before LoRA captures `org_forward` and before `compile_blocks`.
+- **`AnimaTrainer._update_metadata`** is wrapped to stamp `ss_int8_base=<mode>` into the
+  saved LoRA.
+- It is a command job, not a `make lora` train job, so `--queue` / pause-release follow
+  command-job semantics.
+
+### Which linears
+
+| converted | kept bf16 |
 |---|---|
-| 0, GEMM microbench | done: int8 2.6x bf16 for forward and dX ([report](reports/gemm_microbench.md)) |
-| 1a, step split | done: converted GEMMs are 47% of a 594 ms step, predicted 1.41x ([report](reports/step_profile.md)) |
-| 1b, real-gradient error | passed on the revised gate (≤ 2x bf16's distance from fp32): int8 is 1.3–1.5x, a real but bf16-sized extra error ([report](reports/grad_error.md)) |
-| 2, implement in `src/` | done: `train_int8.py`, 7 unit tests pass ([report](reports/phase3_ab.md)) |
-| 3, step time and A/B | passed: 1.37x step, loss and bf16-base samples match on ama mitsuki, 8 epochs ([report](reports/phase3_ab.md)) |
-| error split, int8-base inference | weight term 35–50% of the forward error; int8 base moves samples 4/255, the LoRA swap 26/255 ([report](reports/split_and_infer.md)) |
-| offline GPTQ base | done: W8A8 per-linear error −36%, predictions −10%, CFG velocity −2–7%; same on trajectories and held-out real ([report](reports/gptq.md)) |
-| 5a, int8 attention forward (Triton) | self-attention passes: per-token + Hadamard int8 QKᵀ, fp16acc PV, 1.44x FA2 at 1.5–1.8x its error; cross-attention fails (repeated pad key, sink key) and stays FA2 ([report](reports/attn_fwd.md)). **Re-judged after 5b: fails**, dQ/dK/dV through FA2's backward are 2.5–3.4x FA2's error |
-| 5b, int8 attention backward (Triton) | fails: the int8 forward alone puts dK and dV at 2.5–3.4x FA2's error with any backward (FA2's included), int8 dV 5–8x, fastest arm 1.17x; the backward stays FA2 ([report](reports/attn_bwd.md)) |
-| 5a′, forward re-measured on gradients | int8 QKᵀ out: Q or K rounding alone is ~2x FA2's gradient error, both ~3x, Q smoothing no help; fp16-accumulate QKᵀ and PV pass narrowly, 1.03–1.40x error at 1.31x speed, ~11 ms per step ([report](reports/attn_fwd_grad.md)) |
+| self-attn `qkv_proj`, `output_proj` | cross-attn `kv_proj` (M = 512 context tokens; int8 measured slower) |
+| cross-attn `q_proj`, `output_proj` | adaLN modulation (M = batch) |
+| MLP `layer1`, `layer2` | `llm_adapter`, embedders, final layer |
+
+### Refused
+
+The entry point exits on these rather than running them wrong:
+
+- `blocks_to_swap > 0`: the Anima offloader moves only `module.weight`
+  (`library/runtime/offloading.py`) and would leave `wq` / `wq_t` behind.
+- Anything that reads or writes `org_module.weight` after conversion: `backup_weights`,
+  `restore_weights` and `pre_calculation` in `LoRANetwork`.
+- `make turbo`: its bespoke loop does not go through `train.py`.
+
+`make merge` is unaffected: it reads the bf16 checkpoint from disk.
 
 ## Layout
 
-- `proposal.md`: the design and gates.
-- `gptq_offline.md`: the GPTQ plan; carried out in [reports/gptq.md](reports/gptq.md).
-- `src/gemm_bench.py`: phase 0 microbench, run as
+- `reports.md`: what is done, with links to the per-bench reports.
+- `tasks.md`: the current task.
+- `gptq_offline.md`: the GPTQ plan, carried out in [reports/gptq.md](reports/gptq.md).
+- `src/gemm_bench.py`: GEMM microbench, run as
   `make daemon-run ARGS="project/int8_train/src/gemm_bench.py 4096"`.
-- `src/profile_step.py`: phase 1a step profile of the stock trainer (argv after `--`).
+- `src/profile_step.py`: step profile of the stock trainer (argv after `--`).
 - `src/int8_linear.py`: the int8 custom ops and the in-place `convert_`.
-- `src/grad_error.py`: phase 1b sketched-gradient error, bf16 vs `fwd` vs `full`.
+- `src/grad_error.py`: sketched LoRA-gradient error, bf16 vs `fwd` vs `full`.
 - `src/train_int8.py`: the trainer on an int8 base, run as
   `make daemon-run ARGS="--stall-timeout 900 project/int8_train/src/train_int8.py --int8 full --method lora --preset default"`.
 - `src/infer_int8.py`: `inference.py` on the int8 base, LoRAs as hooks, run as
@@ -40,16 +100,15 @@ not change `library/` or `networks/`.
   `infer_int8.py` take it as `--int8_file`.
 - `src/traj_eval.py`: RTN against a GPTQ file on bf16 sampling trajectories and held-out
   real images.
-- `src/int8_attn.py`: phase 5 Triton attention, int8 QKᵀ and the PV variants, and the
-  5b backward (`attn_fwd_train`, `attn_bwd`).
-- `src/attn_bench.py`: phase 5a capture (q, k, v, dO from real calls, saved to
-  `output/int8_train/attn_capture.pt`) and the forward error and speed against FA2.
-- `src/attn_bwd_bench.py`: phase 5b, dQ, dK, dV error and backward speed against FA2 on
-  the 5a capture.
-- `src/attn_fwd_grad_bench.py`: phase 5a′, forward arms (kernels and torch emulations of
-  the int8 rounding) scored on dQ, dK, dV through FA2's backward.
-- `src/test_int8_attn.py`: phase 5 tests (`INT8_ATTN_FIXED=1` skips the autotune sweep).
-- `src/test_int8_linear.py`: phase 2 tests (`.venv/bin/python -m pytest project/int8_train/src/test_int8_linear.py`).
-- `src/ab_prompts.txt`: phase 3 sample prompts.
-- `reports/`: one report per phase.
+- `src/int8_attn.py`: Triton attention, int8 QKᵀ and the PV variants, and the backward
+  (`attn_fwd_train`, `attn_bwd`).
+- `src/attn_bench.py`: attention capture (q, k, v, dO from real calls, saved to
+  `output/int8_train/attn_capture.pt`) and the forward error and speed.
+- `src/attn_bwd_bench.py`: dQ, dK, dV error and backward speed on the capture.
+- `src/attn_fwd_grad_bench.py`: forward arms (kernels and torch emulations of the int8
+  rounding) scored on dQ, dK, dV through a 16-bit backward.
+- `src/test_int8_attn.py`: attention tests (`INT8_ATTN_FIXED=1` skips the autotune sweep).
+- `src/test_int8_linear.py`: linear tests (`.venv/bin/python -m pytest project/int8_train/src/test_int8_linear.py`).
+- `src/ab_prompts.txt`: A/B sample prompts.
+- `reports/`: one report per bench.
 - `assets/`: the raw JSON each bench writes, linked from its report.

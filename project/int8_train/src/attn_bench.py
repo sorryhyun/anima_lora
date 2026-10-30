@@ -1,4 +1,4 @@
-"""Phase 5a: Triton int8-QKᵀ attention forward against FA2 (proposal.md §Phase 5).
+"""Phase 5a: Triton int8-QKᵀ attention forward against FA2 (reports.md).
 
 Capture: the bf16 DiT (flash, eager, non-reentrant checkpointing) runs one training
 forward and backward per (σ, image) on real cached batches. A wrapper on ``dispatch_attention``

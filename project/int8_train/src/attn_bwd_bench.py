@@ -1,4 +1,4 @@
-"""Phase 5b: Triton int8 attention backward against FA2 (proposal.md §Phase 5).
+"""Phase 5b: Triton int8 attention backward against FA2 (reports.md).
 
 Reads phase 5a's capture (``src/attn_bench.py`` writes it: q, k, v and dO of real
 training calls) and scores the self-attention calls only; cross-attention stays FA2.

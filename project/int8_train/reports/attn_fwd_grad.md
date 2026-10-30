@@ -16,7 +16,7 @@ Script: [`src/attn_fwd_grad_bench.py`](../src/attn_fwd_grad_bench.py) (job
 The 24 self-attention calls of the 5a capture. Each arm produces O and a natural-log
 logsumexp; FA2's CUDA backward (`_flash_attn_backward`) takes them with the captured
 dO. dQ, dK, dV and O are compared with fp32 SDPA autograd (TF32 off) on the same bf16
-inputs. Gate (proposal.md, 5a′): each gradient's median per σ at most 2x FA2's, and a
+inputs. Gate (reports.md): each gradient's median per σ at most 2x FA2's, and a
 kernel arm at least 1.3x FA2's forward on q `[1, 4131, 16, 128]`.
 
 The `emu_*` arms are fp32 torch emulations of the kernel's rounding (centering, bf16
