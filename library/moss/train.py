@@ -70,6 +70,7 @@ from library.moss.loader import (
     empty_cache,
     free_vram_gb,
     load_transformer,
+    stream_fp32_,
 )
 from library.moss.lora import LoRANetwork, load_channel_stats
 from library.moss.requests import LORA_ALPHA, TrainRequest
@@ -772,6 +773,8 @@ def train(
 
     transformer = load_transformer(req.model_dir, req.model)
     transformer.requires_grad_(False)
+    if req.stream == "fp32":
+        stream_fp32_(transformer)
     transformer.ref_timestep = req.ref_timestep if req.ref_timestep >= 0 else None
     transformer.ref_isolate = req.ref_isolate
     alpha = req.alpha if req.alpha is not None or req.algo != "lora" else LORA_ALPHA
@@ -973,6 +976,8 @@ def train(
     if accum > 1:
         meta["grad_accum"] = accum
     meta["optimizer"] = optimizer_name
+    if req.stream != "bf16":
+        meta["stream"] = req.stream
     if req.delta_rows != "all":
         meta["delta_rows"] = req.delta_rows
     if req.trigger:

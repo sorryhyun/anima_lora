@@ -672,6 +672,14 @@ class TrainRequest(Request):
         "make preprocess-pe-spatial writes them)",
         advanced=True,
     )
+    stream: str = _f(
+        "bf16",
+        "residual stream precision (GenerateRequest.stream): fp32 runs the stream, "
+        "modulation, norms, embedders and head in fp32 around the bf16 block GEMMs; "
+        "the late blocks' LoRA gradients land 1.5-3x closer to fp32. Stamped in the LoRA",
+        choices=("bf16", "fp32"),
+        advanced=True,
+    )
     lora_dtype: str = _f(
         "bf16",
         "dtype the LoRA is saved in; training keeps fp32 masters and runs the "
@@ -724,7 +732,7 @@ class TrainRequest(Request):
         "--no-grad_checkpointing, ignored otherwise. 0.5 at swap 36 leaves 0.85 GB "
         "free on 16 GB at t2i's ~4.6k joint tokens (1.9 vs 2.05 s/step at 0.3; "
         "speed flat past ~0.45). i2i samples carry reference tokens: the i2i "
-        "configs run 0.175 at swap 38 with --swap_h2d_only (~9% faster than 0.15 "
+        "configs run 0.175 at swap 38 with --swap_h2d_only (~9%% faster than 0.15 "
         "at swap 28, where 0.2 OOMs)",
         advanced=True,
     )
@@ -732,7 +740,7 @@ class TrainRequest(Request):
         36,
         "DiT blocks to swap to CPU (-1 = size from free VRAM). 36 is the room "
         "budget 0.5 needs at rank 32 on 16 GB; swap 28-38 run at the same speed, "
-        "past ~40 the PCIe time stops hiding (--swap_h2d_only narrows that: 8% "
+        "past ~40 the PCIe time stops hiding (--swap_h2d_only narrows that: 8%% "
         "faster at 40). scripts/moss/tune_swap.py measures this machine's pair",
         advanced=True,
     )
@@ -742,7 +750,7 @@ class TrainRequest(Request):
         "of every swapped block (~0.21 GB each, up to the whole DiT, 8.8 GB) and "
         "an evicted block is repointed at it instead of copied back. Same numerics "
         "and VRAM as the classic swap; on gen 4 x16 it ties up to swap 38 and is "
-        "8% faster at 40. --no-swap_h2d_only for the classic swap",
+        "8%% faster at 40. --no-swap_h2d_only for the classic swap",
         advanced=True,
     )
     fit_report: bool = _f(

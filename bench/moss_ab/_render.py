@@ -4,7 +4,6 @@ Spectrum, latent cache keyed by its settings, decode to PNG, a labelled grid."""
 import dataclasses
 import hashlib
 import json
-import re
 from pathlib import Path
 
 import torch
@@ -13,13 +12,17 @@ from safetensors.torch import load_file, save_file
 
 from library.env import resolve_under_home
 from library.moss.generate import build_spectrum, cached_embeds, denoise, initial_noise
-from library.moss.loader import compile_blocks, load_transformer, pad_embeds
+from library.moss.loader import (
+    compile_blocks,
+    load_transformer,
+    pad_embeds,
+    stream_fp32_,
+)
 from library.moss.lora import load_for_inference
 from library.moss.model import decode
 from library.moss.requests import GenerateRequest
 
 PROMPT_TE = "post_image_dataset/moss_prompt_te"
-BLOCK_LINEAR = re.compile(r"^layers\.\d+\.proj\.\w+$")
 
 
 def lora_id(path: Path) -> str:
@@ -53,22 +56,12 @@ def uncond_embeds(device, texts=("",), precision="bf16"):
     return embeds, uncond, mask
 
 
-def stream_fp32_(tr) -> None:
-    """Every parameter but the block linears' weights to fp32: the residual stream,
-    modulation, gates and norms run fp32 around the bf16 block GEMMs (the
-    ``bf16_f32s`` arm of ``project/int8_train/src/grad_error_moss.py``)."""
-    keep = {id(m.weight) for n, m in tr.named_modules() if BLOCK_LINEAR.match(n)}
-    for p in tr.parameters():
-        if id(p) not in keep:
-            p.data = p.data.float()
-
-
 def load_dit(
     lora, device, variant: str = "base", compile: bool = True, stream: str = "bf16"
 ):
     """A fresh DiT with ``lora`` attached, blocks compiled after the attach (the
     compiled blocks trace the adapter, so one DiT per LoRA). ``stream`` ``fp32``:
-    :func:`stream_fp32_` before the compile."""
+    ``stream_fp32_`` before the compile."""
     tr = load_transformer("", variant, device=device)
     net = load_for_inference(tr, lora)
     if stream == "fp32":
