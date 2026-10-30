@@ -202,6 +202,8 @@ REPA, parked, `_archive/moss_lora/repa.md`); `--ref_timestep` / `--ref_isolate` 
 - Channel scaling and `dc_isolate` (removed): `docs/moss/channel_scaling.md`. DAVE: `docs/moss/dave.md`. The i2i tone term: `docs/moss/tone_loss.md`.
 - Findings (attention sink, vision-tower reference, σ staircase, Spectrum schedule):
   `docs/moss/findings/`.
+- Massive channels (1356, 42) as a semantic carrier, from arXiv 2605.13974 (reading note,
+  unmeasured): `docs/moss/proposal/massive_activation_semantics.md`.
 - i2i design + probes: `project/finished/moss_lora/done/i2i.md`. The Anima-negatives sweep is archived (`_archive/proposals/moss_anima_negatives_revisit.md`).
 - Run logs: `project/finished/moss_lora/` (`README.md`, sub-line logs, technical-report notes);
   settled logs (sampler, channel scaling, DAVE, seed soup) in `project/finished/moss_lora/done/`;
