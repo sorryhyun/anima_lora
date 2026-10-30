@@ -517,6 +517,37 @@ class TrainRequest(Request):
         "x this. Only a cache built with variants carries them",
         advanced=True,
     )
+    delta_rows: str = _f(
+        "all",
+        "which joint-sequence rows the adapter delta applies to: all; text (the "
+        "whole TE context); caption (the context minus the 3 prefix and 7 suffix "
+        "template rows); trigger (the rows whose tokens overlap --trigger in the "
+        "caption the step trains on, found with the tokenizer at start; an "
+        "empty prompt has none). Anything but all is an attention-path "
+        "constraint: the image is then reached only through its reads of those "
+        "text rows (project/moss_te_sae). Stamped as delta_rows",
+        choices=("all", "text", "caption", "trigger"),
+        advanced=True,
+    )
+    trigger: str = _f(
+        "",
+        "the trigger string, as written in the captions (e.g. '@channel "
+        "(caststation)'); needed by delta_rows=trigger and stamped with it",
+        advanced=True,
+    )
+    preserve_weight: float = _f(
+        0.0,
+        "weight of the trigger-preservation term: on the same noisy latent and "
+        "σ, the MSE between the LoRA's and the base model's prediction for the "
+        "trigger-stripped caption (embeds / embeds_plain in "
+        "{stem}.moss_te_neg.safetensors, written by "
+        "project/moss_te_sae/src/trigger_neg_cache.py, which also re-encodes the "
+        "full caption into embeds_pos / embeds_plain_pos so the pair shares one "
+        "encoder; the main term then trains on those). Pulls the delta onto "
+        "whatever distinguishes the two captions, i.e. the trigger rows. Costs "
+        "one no-grad and one grad forward per step. 0 = off",
+        advanced=True,
+    )
     ref_timestep: float = _f(
         0.0,
         "timestep (1000·σ) whose block modulation the reference tokens get (a "

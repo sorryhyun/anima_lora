@@ -488,3 +488,47 @@ def test_load_for_inference_sets_ref_settings(tmp_path, meta, want):
     fresh.ref_timestep, fresh.ref_isolate = 123.0, True
     load_for_inference(fresh, path)
     assert (fresh.ref_timestep, fresh.ref_isolate) == want
+
+
+def test_row_mask_confines_delta():
+    """A row mask keeps the delta on its rows: an all-zero mask is the base
+    model exactly, an all-one mask the unmasked adapter, and per linear the
+    masked-out rows carry no delta (lokr in bypass, loha through its dense ΔW)."""
+    from library.lines.adapters import LoHaAdapter, LoKrAdapter, LoRAAdapter
+
+    model = _tiny()
+    x, e = _inputs()
+    base = _out(model, x, e)
+    net = LoRANetwork(model, rank=4)
+    net.apply_to()
+    for adapter in net.adapters.values():
+        torch.nn.init.normal_(adapter.up.weight)
+    full = _out(model, x, e)
+    L = x.shape[-1] * x.shape[-2] + e.shape[1]
+    net.set_row_mask(torch.zeros(1, L, 1))
+    assert torch.equal(_out(model, x, e), base)
+    net.set_row_mask(torch.ones(1, L, 1))
+    assert torch.allclose(_out(model, x, e), full)
+    net.set_row_mask(None)
+    assert torch.equal(_out(model, x, e), full)
+
+    lin = torch.nn.Linear(6, 5, bias=False)
+    inp = torch.randn(1, 7, 6)
+    out = lin(inp)
+    keep = torch.zeros(1, 7, 1)
+    keep[0, 2:4] = 1
+    for adapter in (
+        LoRAAdapter(6, 5, 2, 2.0, torch.float32),
+        LoKrAdapter(lin, 2, 2.0, -1, torch.float32),
+        LoHaAdapter(lin, 2, 2.0, torch.float32),
+    ):
+        for p in adapter.parameters():
+            torch.nn.init.normal_(p)
+        base_fwd = torch.nn.Linear.forward
+        dense = adapter.patched(lin, base_fwd, inp)
+        assert not torch.allclose(dense, out)
+        adapter.row_mask = keep
+        masked = adapter.patched(lin, base_fwd, inp)
+        assert torch.allclose(masked[0, 2:4], dense[0, 2:4], atol=1e-5)
+        assert torch.allclose(masked[0, :2], out[0, :2], atol=1e-6)
+        assert torch.allclose(masked[0, 4:], out[0, 4:], atol=1e-6)

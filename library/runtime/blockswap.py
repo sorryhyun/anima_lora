@@ -216,8 +216,12 @@ class Attached:
         self.model = model
         self.handles: list = []
 
-    def prepare(self) -> None:
-        self.offloader.prepare_block_devices_before_forward(self.blocks)
+    def prepare(self, free_cache: bool = True) -> None:
+        """The starting layout: resident blocks on the device, the swapped tail
+        on the CPU. Also the restore after a forward that no backward follows
+        (``forward_only`` is off, so that forward evicted the head for the tail
+        and nothing walked it back)."""
+        self.offloader.prepare_block_devices_before_forward(self.blocks, free_cache)
 
     def detach(self) -> None:
         """Remove the hooks, stop the mover, and bring every block back to CPU."""

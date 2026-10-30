@@ -23,6 +23,15 @@ error is multiplied before the mean: ``region_weight`` on the tokens the edit
 changes (``edit_region``, moving linearly to ``region_weight_end`` by the last
 step), ``rest_weight`` on the copied ones.
 
+Two ways to push the training signal through the DiT's caption-row reads instead
+of the prompt-independent shift a style set invites (``project/moss_te_sae``):
+``delta_rows`` confines the adapter delta to the text / caption / trigger rows of
+the joint sequence (``row_mask``, a per-step mask on ``LoRANetwork``; the trigger
+rows are found with the tokenizer, ``loader.trigger_rows``), and
+``preserve_weight`` adds, on the same noisy latent, the MSE between the LoRA's and
+the base model's prediction for the trigger-stripped caption (``preserve_loss``;
+the pair comes from ``{stem}.moss_te_neg.safetensors``, ``load_neg``).
+
 σ follows the final Stage-3 interval exactly: ``Z ~ N(μ, s²)``, ``S = 1 − sigmoid(Z)``,
 truncated to ``S ≤ cutoff`` and rescaled onto the grid ``{1/1000 … 1}``
 (``σ = ⌈1000·S/cutoff⌉ / 1000``), mixed with 1 % discrete uniform. Shift 1, no
@@ -90,6 +99,7 @@ class Sample:
     load_variant: Callable[[int], torch.Tensor] | None = None  # embeds_v{k}, from disk
     latent_hw: tuple[int, int] | None = None  # (h, w) latent tokens, from the file name
     n_text_min: int = 0  # the shortest text it can train on; 0 = n_text
+    te_path: Path | None = None  # its captions (metadata) and the neg sidecar beside it
 
 
 def samples_from_cache(cache_dir: Path) -> list[Sample]:
@@ -118,9 +128,102 @@ def samples_from_cache(cache_dir: Path) -> list[Sample]:
                 else None,
                 (item.height // 16, item.width // 16),
                 item.n_text_min,
+                item.te_path,
             )
         )
     return out
+
+
+def sample_captions(te_path: Path) -> dict[str, str]:
+    """The captions a TE file's embeddings encode, by ``choose_embeds`` kind:
+    ``full`` (metadata ``caption``), ``plain`` (the ``.txt`` beside ``source``,
+    when the file has ``embeds_plain``), ``v{k}`` (``caption_v{k}``), ``empty``."""
+    from safetensors import safe_open
+
+    with safe_open(str(te_path), "pt") as f:
+        meta = f.metadata() or {}
+        has_plain = "embeds_plain" in f.keys()
+    out = {"full": meta["caption"], "empty": ""}
+    if has_plain:
+        out["plain"] = Path(meta["source"]).with_suffix(".txt").read_text().strip()
+    for k, v in meta.items():
+        if k.startswith("caption_v"):
+            out["v" + k[len("caption_v") :]] = v
+    return out
+
+
+TEMPLATE_PREFIX, TEMPLATE_SUFFIX = 3, 7  # chat-template rows around the caption
+
+
+def delta_row_ids(delta_rows: str, n_text: int, trigger_rows: list[int]) -> list[int]:
+    """The text rows (0-based in the context) ``delta_rows`` keeps."""
+    if delta_rows == "text":
+        return list(range(n_text))
+    if delta_rows == "caption":
+        return list(
+            range(TEMPLATE_PREFIX, max(TEMPLATE_PREFIX, n_text - TEMPLATE_SUFFIX))
+        )
+    if delta_rows == "trigger":
+        return [r for r in trigger_rows if r < n_text]
+    raise ValueError(f"delta_rows={delta_rows!r} has no row set")
+
+
+def row_mask(n_img: int, n_text: int, rows: list[int], n_ref: int = 0, device=None):
+    """``(1, n_img + n_text + n_ref, 1)`` bf16 mask keeping the text ``rows``."""
+    mask = torch.zeros(
+        1, n_img + n_text + n_ref, 1, dtype=torch.bfloat16, device=device
+    )
+    if rows:
+        mask[0, [n_img + r for r in rows], 0] = 1
+    return mask
+
+
+NEG_SUFFIX = ".moss_te_neg.safetensors"
+
+
+def load_neg(te_path: Path) -> dict[str, torch.Tensor]:
+    """The trigger-stripped pair beside ``te_path`` (``preserve_weight``):
+    ``full`` / ``plain`` → ``(pos, neg)`` bf16 CPU, both from the sidecar's own
+    encoder (``embeds_pos`` / ``embeds``, ``embeds_plain_pos`` / ``embeds_plain``).
+    Refuses a sidecar whose ``caption_sha256`` is not the TE file's."""
+    from safetensors import safe_open
+
+    path = te_path.with_name(te_path.name.replace(".moss_te.safetensors", NEG_SUFFIX))
+    if not path.exists():
+        raise SystemExit(
+            f"preserve_weight needs {path.name} (project/moss_te_sae/src/trigger_neg_cache.py)"
+        )
+    with safe_open(str(te_path), "pt") as f:
+        sha = (f.metadata() or {}).get("caption_sha256")
+    with safe_open(str(path), "pt") as f:
+        meta = f.metadata() or {}
+        if meta.get("caption_sha256") != sha:
+            raise SystemExit(f"{path.name}: stale, its caption is not the TE file's")
+        out = {"full": (f.get_tensor("embeds_pos"), f.get_tensor("embeds"))}
+        if "embeds_plain" in f.keys():
+            out["plain"] = (
+                f.get_tensor("embeds_plain_pos"),
+                f.get_tensor("embeds_plain"),
+            )
+    return out
+
+
+def preserve_loss(
+    transformer, network, noisy, timestep, neg_embeds, ref=None, attached=None
+):
+    """MSE between the adapter's and the base model's prediction on ``noisy`` for
+    the trigger-stripped ``neg_embeds (1, S', 4096)``: the base one under
+    ``multiplier`` 0 without grad, the adapter's with. ``attached`` (the block
+    swapper): the no-grad forward has no backward to walk the swapped tail back,
+    so its layout is restored by hand before the next forward."""
+    network.set_multiplier(0.0)
+    with torch.no_grad():
+        base = transformer(noisy, timestep, neg_embeds, return_dict=False, ref=ref)[0]
+    if attached is not None:
+        attached.prepare(free_cache=False)
+    network.set_multiplier(1.0)
+    pred = transformer(noisy, timestep, neg_embeds, return_dict=False, ref=ref)[0]
+    return F.mse_loss(pred.float(), base.float())
 
 
 def choose_embeds(
@@ -273,19 +376,23 @@ def training_loss(
     rest_weight: float = 1.0,
     parts: dict | None = None,
     tone: dict | None = None,
+    state: dict | None = None,
 ):
     """``latent (1,128,h,w)`` fp32, ``embeds (1,S,4096)`` at true length,
     ``ref (1,128,h',w')`` an optional clean reference latent (never noised),
     ``region (h,w)`` bool on the latent's device: :func:`region_mse` instead of
     the plain MSE. ``tone``: ``rest`` mask, ``pool``, ``proj``, ``weight`` for
     :func:`tone_loss` on ``x̂₀ − x₀ = σ·(target − pred)``, added at ``weight``
-    and logged in ``parts`` as ``tone``."""
+    and logged in ``parts`` as ``tone``. ``state`` receives ``noisy`` and
+    ``timestep`` (:func:`preserve_loss` runs on the same ones)."""
     noise = torch.randn(
         latent.shape, generator=gen, device=latent.device, dtype=latent.dtype
     )
     noisy = (1.0 - sigma) * latent + sigma * noise
     target = noise - latent
     timestep = torch.tensor([NUM_TRAIN_TIMESTEPS * sigma], device=latent.device)
+    if state is not None:
+        state.update(noisy=noisy, timestep=timestep)
     pred = transformer(noisy, timestep, embeds, return_dict=False, ref=ref)[0]
     if region is not None:
         loss = region_mse(pred, target, region, region_weight, rest_weight, parts)
@@ -606,7 +713,62 @@ def train(
         drop_rng=random.Random(req.seed + 2),
         variant_rng=random.Random(req.seed + 3),
     )
-    kinds = {"plain": 0, "variant": 0, "empty": 0}
+    kinds = {"plain": 0, "variant": 0, "empty": 0, "preserve": 0}
+
+    # delta_rows: the text rows (per sample and caption kind) the adapter may touch.
+    rows_of: dict[tuple[str, str], list[int]] = {}
+    if req.delta_rows != "all":
+        if req.delta_rows == "trigger" and not req.trigger:
+            raise SystemExit("delta_rows=trigger needs --trigger")
+        if req.mod_rank:
+            raise SystemExit("delta_rows applies to token rows; drop mod_rank")
+        tok = None
+        if req.delta_rows == "trigger":
+            from library.moss.loader import load_tokenizer, trigger_rows
+
+            tok = load_tokenizer(req.model_dir)
+        found = {"full": 0, "plain": 0}
+        for s in samples:
+            if s.te_path is None:
+                raise SystemExit(f"{s.stem}: delta_rows needs the cache's TE files")
+            _, full, alt, _ = get(s)
+            for kind, caption in sample_captions(s.te_path).items():
+                if kind == "full":
+                    n = full.shape[0]
+                elif kind == "plain":
+                    n = alt.shape[0] if alt is not None else s.load_plain().shape[0]
+                elif kind == "empty":
+                    n = TEMPLATE_PREFIX + TEMPLATE_SUFFIX
+                else:
+                    n = s.load_variant(int(kind[1:])).shape[0]
+                hits = trigger_rows(tok, caption, req.trigger) if tok else []
+                rows_of[s.stem, kind] = delta_row_ids(req.delta_rows, n, hits)
+                if kind in found and hits:
+                    found[kind] += 1
+        if req.delta_rows == "trigger":
+            print(
+                f"delta rows: trigger {req.trigger!r} found in {found['full']}/{len(samples)} "
+                f"full and {found['plain']}/{sum(s.load_plain is not None for s in samples)} "
+                "plain captions",
+                flush=True,
+            )
+            if not found["full"]:
+                raise SystemExit("the trigger is in none of the full captions")
+        else:
+            print(f"delta rows: {req.delta_rows}", flush=True)
+    negs: dict[str, dict[str, tuple[torch.Tensor, torch.Tensor]]] = {}
+    if req.preserve_weight > 0:
+        for s in samples:
+            if s.te_path is None:
+                raise SystemExit(
+                    f"{s.stem}: preserve_weight needs the cache's TE files"
+                )
+            negs[s.stem] = load_neg(s.te_path)
+        print(
+            f"preserve: x{req.preserve_weight:g} on the trigger-stripped caption "
+            f"({NEG_SUFFIX} beside every TE file; full and plain steps)",
+            flush=True,
+        )
 
     transformer = load_transformer(req.model_dir, req.model)
     transformer.requires_grad_(False)
@@ -711,11 +873,24 @@ def train(
 
         def shortest(s):
             n = s.n_text_min or s.n_text
+            for _pos, neg in negs.get(s.stem, {}).values():
+                n = min(n, neg.shape[0])
             return n if empty is None else min(n, len(empty))
 
         seq_range = (min(s.n_img + s.n_ref + shortest(s) for s in samples), joint)
         print(f"compile: token axis marked {seq_range[0]}-{seq_range[1]}", flush=True)
         compile_blocks(transformer.layers, seq_range)
+    else:
+        seq_range = None
+
+    def set_rows(n_text: int, rows: list[int], s: Sample) -> None:
+        """The step's row mask on the network; its token axis marked like the
+        block inputs' (``compile_blocks``), or it would specialise against them."""
+        mask = row_mask(s.n_img, n_text, rows, s.n_ref, device)
+        if seq_range is not None and seq_range[0] <= mask.shape[1] <= seq_range[1]:
+            torch._dynamo.mark_dynamic(mask, 1, min=seq_range[0], max=seq_range[1])
+        network.set_row_mask(mask)
+
     if req.grad_checkpointing:
         checkpoint_blocks(transformer.layers)
     empty_cache()
@@ -798,6 +973,12 @@ def train(
     if accum > 1:
         meta["grad_accum"] = accum
     meta["optimizer"] = optimizer_name
+    if req.delta_rows != "all":
+        meta["delta_rows"] = req.delta_rows
+    if req.trigger:
+        meta["trigger"] = req.trigger
+    if req.preserve_weight:
+        meta["preserve_weight"] = req.preserve_weight
     if n_refs:
         meta["ref_timestep"] = req.ref_timestep
         if req.ref_isolate:
@@ -889,6 +1070,11 @@ def train(
                     worst_case=step == 0 and req.fit_report,
                     **rates,
                 )
+                neg = negs.get(s.stem, {}).get(kind)
+                if neg is not None:
+                    embeds, neg = neg  # the sidecar's own encode of the full caption
+                    kinds["preserve"] += 1
+                text_rows = rows_of.get((s.stem, kind))
                 kind = "variant" if kind.startswith("v") else kind
                 if kind in kinds:
                     kinds[kind] += 1
@@ -896,6 +1082,8 @@ def train(
                 embeds = embeds.unsqueeze(0).to(device)
                 if ref is not None:
                     ref = ref.unsqueeze(0).to(device, torch.float32)
+                if rows_of:
+                    set_rows(embeds.shape[1], text_rows or [], s)
                 sigma = sample_sigma(
                     gen, req.sigma_mu, req.sigma_s, req.sigma_cutoff, req.sigma_uniform
                 )
@@ -906,7 +1094,7 @@ def train(
                         grid,
                         tuple(latent.shape[-2:]),
                     )
-                parts = {}
+                parts, state = {}, {}
                 tone = None
                 if s.stem in rests:
                     tone = dict(
@@ -935,15 +1123,39 @@ def train(
                         rest_weight=req.rest_weight,
                         parts=parts,
                         tone=tone,
+                        state=state,
                     )
                 else:
-                    loss = training_loss(transformer, latent, embeds, sigma, ref=ref)
+                    loss = training_loss(
+                        transformer, latent, embeds, sigma, ref=ref, state=state
+                    )
                 align = repa.loss() if repa is not None else None
                 if align is not None:
                     ((loss + req.repa_weight * align) / accum).backward()
                     aligns.append(align.item())
                 else:
                     (loss / accum).backward()
+                if neg is not None:
+                    # Its own backward: the two graphs never sit on the card together.
+                    neg = neg.unsqueeze(0).to(device)
+                    if rows_of:
+                        # The stripped caption has no trigger rows.
+                        set_rows(
+                            neg.shape[1],
+                            delta_row_ids(req.delta_rows, neg.shape[1], []),
+                            s,
+                        )
+                    pres = preserve_loss(
+                        transformer,
+                        network,
+                        state["noisy"],
+                        state["timestep"],
+                        neg,
+                        ref,
+                        attached,
+                    )
+                    (req.preserve_weight * pres / accum).backward()
+                    parts["pres"] = pres.item()
                 step += 1
                 updated = step % accum == 0 or step == total
                 if updated:
@@ -1053,6 +1265,7 @@ def train(
             "plain_steps": kinds["plain"],
             "variant_steps": kinds["variant"],
             "dropout_steps": kinds["empty"],
+            "preserve_steps": kinds["preserve"],
             "minutes": seconds / 60,
             "s_per_step": seconds / max(1, step - 1),
             "peak_allocated_gb": torch.cuda.max_memory_allocated() / 1024**3,

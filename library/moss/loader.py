@@ -131,15 +131,32 @@ def load_text_encoder(
     return tok, te
 
 
-def prompt_ids(tok, text: str, max_length=MAX_SEQUENCE_LENGTH):
-    """The pipeline's tokenisation of one prompt (chat template, no padding)."""
-    formatted = tok.apply_chat_template(
+def prompt_text(tok, text: str) -> str:
+    """The prompt inside the chat template, as the TE reads it."""
+    return tok.apply_chat_template(
         [{"role": "user", "content": text}],
         tokenize=False,
         add_generation_prompt=True,
         enable_thinking=True,
     )
+
+
+def prompt_ids(tok, text: str, max_length=MAX_SEQUENCE_LENGTH):
+    """The pipeline's tokenisation of one prompt (chat template, no padding)."""
+    formatted = prompt_text(tok, text)
     return tok(formatted, return_tensors="pt", truncation=True, max_length=max_length)
+
+
+def trigger_rows(tok, text: str, trigger: str) -> list[int]:
+    """The token rows of ``text``'s prompt whose span overlaps ``trigger`` (the
+    first occurrence); empty when the caption lacks it."""
+    formatted = prompt_text(tok, text)
+    start = formatted.find(trigger) if trigger else -1
+    if start < 0:
+        return []
+    end = start + len(trigger)
+    offsets = tok(formatted, return_offsets_mapping=True).offset_mapping
+    return [i for i, (a, b) in enumerate(offsets) if b > start and a < end]
 
 
 @torch.no_grad()
@@ -213,12 +230,18 @@ def compile_blocks(blocks, seq_range=None) -> None:
     embedders are frozen) is made a grad leaf so every block shares one graph."""
     from library.runtime.dynamo import (
         pin_compiler_flag,
+        pin_dynamo_flag,
         pin_dynamo_limit,
         pin_inductor_flag,
     )
     from library.runtime.harness import compile_signature, isolate_compile_cache
 
     pin_dynamo_limit("recompile_limit", 16)
+    # The LoRA row mask (``LoRANetwork.set_row_mask``) reaches the graph as an
+    # nn.Module attribute, whose shapes this flag forces static whatever
+    # ``mark_dynamic`` says; its token axis would then guard the block inputs'
+    # to one length. Under dynamic=False nothing else turns dynamic by it.
+    pin_dynamo_flag("force_nn_module_property_static_shapes", False)
     # dynamic=True otherwise lifts float attributes (the LoRA's scale ·
     # multiplier) into 0-dim CPU float64 inputs, and Inductor emits a C++ CPU
     # kernel for them, which needs cl.exe on Windows (InvalidCxxCompiler).

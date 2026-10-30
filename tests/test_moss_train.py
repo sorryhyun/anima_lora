@@ -204,3 +204,89 @@ def test_training_loss_logs_output_space_grad_norms():
     assert {"g_fm", "g_tone", "g_cos"} <= parts.keys()
     assert parts["g_fm"] > 0 and parts["g_tone"] > 0 and -1 <= parts["g_cos"] <= 1
     loss.backward()  # the logged grads leave the graph intact
+
+
+def test_delta_row_ids_and_row_mask():
+    from library.moss.train import delta_row_ids, row_mask
+
+    assert delta_row_ids("text", 12, []) == list(range(12))
+    assert delta_row_ids("caption", 12, []) == [3, 4]
+    assert delta_row_ids("caption", 9, []) == []
+    assert delta_row_ids("trigger", 12, [5, 6, 30]) == [5, 6]
+    mask = row_mask(4, 12, [5, 6], n_ref=2)
+    assert mask.shape == (1, 18, 1) and mask.dtype == torch.bfloat16
+    assert mask[0, :, 0].nonzero().flatten().tolist() == [9, 10]
+    assert row_mask(4, 12, []).sum() == 0
+
+
+def test_sample_captions_and_load_neg(tmp_path):
+    from safetensors.torch import save_file
+
+    from library.moss.train import NEG_SUFFIX, load_neg, sample_captions
+
+    (tmp_path / "a.png").touch()
+    (tmp_path / "a.txt").write_text("1girl, @x (y), smile. On the left, cat.\n")
+    te = tmp_path / "a.moss_te.safetensors"
+    save_file(
+        {"embeds": _rows(5), "embeds_plain": _rows(4)},
+        str(te),
+        metadata={
+            "caption": '{"summary":{"artists":["@x (y)"]}}',
+            "caption_sha256": "abc",
+            "source": str(tmp_path / "a.png"),
+            "caption_v1": '{"summary":{}}',
+        },
+    )
+    caps = sample_captions(te)
+    assert caps == {
+        "full": '{"summary":{"artists":["@x (y)"]}}',
+        "plain": "1girl, @x (y), smile. On the left, cat.",
+        "v1": '{"summary":{}}',
+        "empty": "",
+    }
+    import pytest
+
+    with pytest.raises(SystemExit, match="needs"):
+        load_neg(te)
+    neg = tmp_path / ("a" + NEG_SUFFIX)
+    save_file(
+        {
+            "embeds_pos": _rows(5),
+            "embeds": _rows(3),
+            "embeds_plain_pos": _rows(4),
+            "embeds_plain": _rows(2),
+        },
+        str(neg),
+        metadata={"caption_sha256": "zzz"},
+    )
+    with pytest.raises(SystemExit, match="stale"):
+        load_neg(te)
+    save_file(
+        {"embeds_pos": _rows(5), "embeds": _rows(3)},
+        str(neg),
+        metadata={"caption_sha256": "abc"},
+    )
+    pair = load_neg(te)
+    assert set(pair) == {"full"} and pair["full"][1].shape[0] == 3
+
+
+def test_trigger_rows_cover_the_trigger_tokens():
+    import pytest
+
+    from library.moss.loader import (
+        load_tokenizer,
+        prompt_ids,
+        trigger_rows,
+        variant_dir,
+    )
+
+    if not (variant_dir(None, "base") / "tokenizer").exists():
+        pytest.skip("MOSS tokenizer not downloaded")
+    tok = load_tokenizer(None)
+    caption = '{"summary":{"artists":["@channel (caststation)"],"caption":"1girl"}}'
+    rows = trigger_rows(tok, caption, "@channel (caststation)")
+    ids = prompt_ids(tok, caption).input_ids[0]
+    assert rows == list(range(rows[0], rows[-1] + 1)) and rows[0] >= 3
+    assert "@channel (caststation)" in tok.decode(ids[rows])
+    assert "@channel (caststation)" not in tok.decode(ids[: rows[0]])
+    assert trigger_rows(tok, caption, "absent") == []

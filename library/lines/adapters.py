@@ -45,6 +45,12 @@ at their own rank and alpha (MOSS's ``mod_rank``: ``shared_block_modulation``). 
 are built after the ``targets`` pass under a forked RNG, so the ``targets`` adapters'
 init and the training noise drawn after it match a run without them. Stamped as JSON
 (``rank_pattern``) and read back by ``from_file``.
+
+``LoRANetwork.set_row_mask(mask)`` (``(1, L, 1)`` over the joint token axis, or
+None) confines every adapter's delta to the rows the mask keeps: a token-shaped
+input ``(B, L, in)`` gets ``base + mask · delta``, a 2-D input (``mod_rank``'s
+modulation) is left untouched. The mask is a tensor attribute, so a compiled
+block takes it as an input and a new mask per step is not a recompile.
 """
 
 from __future__ import annotations
@@ -65,6 +71,13 @@ ALGOS = ("lora", "lokr", "loha")
 FILE_PREFIX = "lora_unet_"
 _LORA_FILE_KEYS = {"down.weight": "lora_down.weight", "up.weight": "lora_up.weight"}
 _LORA_STATE_KEYS = {v: k for k, v in _LORA_FILE_KEYS.items()}
+
+
+def _masked(delta: torch.Tensor, row_mask: torch.Tensor | None) -> torch.Tensor:
+    """``delta`` confined to the rows ``row_mask`` keeps (``set_row_mask``)."""
+    if row_mask is None or delta.ndim != 3:
+        return delta
+    return delta * row_mask.to(delta.dtype)
 
 
 def _drop_directions(
@@ -101,6 +114,7 @@ class LoRAAdapter(nn.Module):
         nn.init.zeros_(self.up.weight)
         self.scale = alpha / rank
         self.multiplier = 1.0
+        self.row_mask = None
 
     @torch.no_grad()
     def init_down_weight_svd(
@@ -147,7 +161,7 @@ class LoRAAdapter(nn.Module):
         work = base_out.dtype
         lx = F.linear(x.to(work), self.down.weight.to(work))
         delta = F.linear(lx, self.up.weight.to(work))
-        return base_out + delta * (self.scale * self.multiplier)
+        return base_out + _masked(delta, self.row_mask) * (self.scale * self.multiplier)
 
     def patched(self, module: nn.Linear, base, x: torch.Tensor) -> torch.Tensor:
         return self(x, base(module, x))
@@ -181,6 +195,7 @@ class LoKrAdapter(nn.Module):
         self.register_buffer("alpha", torch.tensor(float(alpha)))
         self.scale = alpha / rank
         self.multiplier = 1.0
+        self.row_mask = None
 
     def forward(self, x: torch.Tensor, base_out: torch.Tensor) -> torch.Tensor:
         if self.multiplier == 0.0:
@@ -201,7 +216,7 @@ class LoKrAdapter(nn.Module):
             scale=self.scale * self.multiplier,
             backend="torch",
         )
-        return base_out + delta
+        return base_out + _masked(delta, self.row_mask)
 
     def patched(self, module: nn.Linear, base, x: torch.Tensor) -> torch.Tensor:
         return self(x, base(module, x))
@@ -227,6 +242,7 @@ class LoHaAdapter(nn.Module):
         self.register_buffer("_unit", torch.ones(()), persistent=False)
         self.scale = alpha / rank
         self.multiplier = 1.0
+        self.row_mask = None
 
     def delta_weight(self, dtype: torch.dtype) -> torch.Tensor:
         from lycoris.functional import loha
@@ -247,6 +263,9 @@ class LoHaAdapter(nn.Module):
         if self.multiplier == 0.0:
             return base(module, x)
         weight = module.weight
+        if self.row_mask is not None:
+            delta = F.linear(x.to(weight.dtype), self.delta_weight(weight.dtype))
+            return base(module, x) + _masked(delta, self.row_mask)
         merged = weight + self.delta_weight(weight.dtype)
         return F.linear(x.to(weight.dtype), merged, module.bias)
 
@@ -411,6 +430,12 @@ class LoRANetwork(nn.Module):
         needs neither a reload nor a second model."""
         for adapter in self.adapters.values():
             adapter.multiplier = float(multiplier)
+
+    def set_row_mask(self, mask: torch.Tensor | None) -> None:
+        """Confine every adapter's delta to the rows ``mask`` ``(1, L, 1)`` keeps
+        (module docstring); None lifts it."""
+        for adapter in self.adapters.values():
+            adapter.row_mask = mask
 
     def restore(self) -> None:
         """Un-patch the targets (the adapters stay built)."""

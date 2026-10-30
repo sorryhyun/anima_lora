@@ -49,6 +49,25 @@ def pin_dynamo_limit(name: str, value: int) -> int:
     return target
 
 
+def pin_dynamo_flag(name: str, value: object) -> None:
+    """:func:`pin_dynamo_limit` for a non-numeric ``torch._dynamo.config`` entry:
+    the override plus the canonical entry's ``.default``, so the backward-compile
+    context reads it too."""
+    import torch._dynamo as _dynamo
+
+    cfg_mod = _dynamo.config
+    setattr(cfg_mod, name, value)
+    try:
+        entry = cfg_mod._config[name]
+        canon = (entry.alias or name).rsplit(".", 1)[-1]
+        cfg_mod._config[canon].default = value
+    except Exception as e:  # noqa: BLE001 - defensive against torch internals
+        logger.warning(
+            f"could not pin dynamo {name} default ({e}); the value may revert in "
+            "the backward-compile context"
+        )
+
+
 def pin_inductor_flag(name: str, value: object) -> None:
     """Set a ``torch._inductor.config`` value so it holds in EVERY execution context.
 
