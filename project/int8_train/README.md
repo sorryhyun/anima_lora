@@ -9,6 +9,7 @@ entry point and does not change `library/` or `networks/`.
   trains 1.37x faster than bf16 with matching loss and samples; no int8 attention arm in
   Triton has passed the accuracy gate.
 - **Current task:** [tasks.md](tasks.md).
+- **Where a step's time goes, bf16 against int8:** [status.md](status.md).
 
 ## Why the scope is narrow
 
@@ -85,6 +86,7 @@ The entry point exits on these rather than running them wrong:
 
 - `reports.md`: what is done, with links to the per-bench reports.
 - `tasks.md`: the current task.
+- `status.md`: per-kernel step breakdown, bf16 against int8.
 - `gptq_offline.md`: the GPTQ plan, carried out in [reports/gptq.md](reports/gptq.md).
 - `src/gemm_bench.py`: GEMM microbench, run as
   `make daemon-run ARGS="project/int8_train/src/gemm_bench.py 4096"`.

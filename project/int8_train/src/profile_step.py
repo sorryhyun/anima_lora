@@ -17,6 +17,7 @@ GEMMs fall outside.
 import argparse
 import json
 import os
+import re
 import statistics
 import sys
 import time
@@ -42,6 +43,8 @@ ap.add_argument("--warmup", type=int, default=15)
 ap.add_argument("--timed", type=int, default=20)
 ap.add_argument("--profiled", type=int, default=8)
 ap.add_argument("--out", default="project/int8_train/assets/step_profile.json")
+ap.add_argument("--int8", choices=("off", "fwd", "full"), default="off")
+ap.add_argument("--int8_file", default=None)
 own, train_argv = ap.parse_known_args()
 if train_argv and train_argv[0] == "--":
     train_argv = train_argv[1:]
@@ -106,6 +109,50 @@ def _end(state):
         os._exit(0)
 
 
+# First match wins: the quantize kernel's signature names `signed char` too, so it goes
+# before the int8 GEMM; inductor's fused kernels by the ops in their names.
+KERNEL_CATEGORIES = [
+    ("rotate_quant", r"quantize_int8|convrot"),
+    ("int8_gemm", r"signed char"),
+    ("attention", r"^void flash::"),
+    ("gemm", r"gemm|gemv|cutlass"),
+    ("optimizer", r"multi_tensor"),
+    ("norm", r"^triton_.*layer_norm"),
+    ("gelu", r"^triton_.*gelu"),
+    ("rope_qknorm", r"^triton_.*(rsqrt|neg|pow)"),
+    ("triton_other", r"^triton_"),
+    ("copy_cast", r"copy|elementwise_kernel"),
+]
+
+
+def _kernel_breakdown():
+    by_name = defaultdict(lambda: [0.0, 0])
+    for e in prof.events():
+        if e.device_type != torch.autograd.DeviceType.CUDA or getattr(
+            e, "is_user_annotation", False
+        ):
+            continue
+        by_name[e.name][0] += e.device_time
+        by_name[e.name][1] += 1
+    cats = defaultdict(float)
+    kernels = []
+    for name, (us, cnt) in by_name.items():
+        cat = next(
+            (c for c, pat in KERNEL_CATEGORIES if re.search(pat, name)), "other"
+        )
+        cats[cat] += us / 1e3 / own.profiled
+        kernels.append(
+            {
+                "name": name[:160],
+                "category": cat,
+                "ms": us / 1e3 / own.profiled,
+                "calls_per_step": cnt / own.profiled,
+            }
+        )
+    kernels.sort(key=lambda r: -r["ms"])
+    return dict(sorted(cats.items(), key=lambda kv: -kv[1])), kernels[:80]
+
+
 def _report():
     by_shape = defaultdict(lambda: [0.0, 0])  # (name, shapes) -> [device us, count]
     for ev in prof.key_averages(group_by_input_shape=True):
@@ -149,8 +196,10 @@ def _report():
     saving = conv_ms * (1 - 1 / R)
     pred = {f"r={r}": step / (step - conv_ms * (1 - 1 / r)) for r in (2.0, 2.3)}
     pred[f"phase0 r={R:.2f}"] = step / (step - saving)
+    categories, kernels = _kernel_breakdown()
     out = {
         "argv": train_argv,
+        "int8": own.int8,
         "steps": {"warmup": own.warmup, "timed": own.timed, "profiled": own.profiled},
         "step_ms_median": step,
         "step_ms": step_ms,
@@ -163,6 +212,8 @@ def _report():
         "converted_share_of_step": conv_ms / step,
         "predicted_saving_ms": saving,
         "predicted_speedup": pred,
+        "kernel_category_ms": categories,
+        "cuda_kernels": kernels,
         "gemm_rows": rows[:40],
         "top_kernels": [
             {"name": e.key[:120], "ms": e.device_time_total / 1e3 / own.profiled}
@@ -180,7 +231,8 @@ def _report():
             {
                 k: v
                 for k, v in out.items()
-                if k not in ("gemm_rows", "top_kernels", "step_ms", "tokens")
+                if k
+                not in ("gemm_rows", "top_kernels", "cuda_kernels", "step_ms", "tokens")
             },
             indent=1,
         )
@@ -191,6 +243,11 @@ def _report():
 loop._run_step = _run_step
 loop._profiler_step_begin = _begin
 loop._profiler_step_end = _end
+
+if own.int8 != "off":
+    from train_int8 import install  # noqa: E402  (sibling module)
+
+    install(own.int8, own.int8_file)
 
 from library.anima.trainer.cli import main  # noqa: E402
 

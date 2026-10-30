@@ -28,31 +28,22 @@ from library.runtime.allocator import default_expandable_segments
 
 default_expandable_segments()  # train.py sets this before torch loads; match it
 
-ap = argparse.ArgumentParser(add_help=False)
-ap.add_argument("--int8", choices=("off", "fwd", "full"), required=True)
-ap.add_argument("--int8_file", default=None)
-own, train_argv = ap.parse_known_args()
-if own.int8_file and own.int8 == "off":
-    ap.error("--int8_file needs --int8 fwd or full")
 
-from library.anima.trainer import cli  # noqa: E402
-from library.log import setup_logging  # noqa: E402
+def install(mode: str, int8_file: str | None) -> None:
+    """The two patches and the refusals above, for ``mode`` ``fwd`` or ``full``.
+    ``profile_step.py --int8`` calls this too."""
+    from safetensors import safe_open
 
-setup_logging()
-
-if own.int8 != "off":
-    from safetensors import safe_open  # noqa: E402
-
-    from int8_linear import convert_dit_  # noqa: E402  (sibling module)
-    from library.env import resolve_under_home  # noqa: E402
+    from int8_linear import convert_dit_  # sibling module
+    from library.env import resolve_under_home
 
     int8_id = "rtn"
-    if own.int8_file:
-        own.int8_file = str(resolve_under_home(own.int8_file))
-        with safe_open(own.int8_file, framework="pt") as f:
+    if int8_file:
+        int8_file = str(resolve_under_home(int8_file))
+        with safe_open(int8_file, framework="pt") as f:
             int8_id = (f.metadata() or {})["int8_id"]
-    from library.anima.trainer.trainer import AnimaTrainer  # noqa: E402
-    from networks.lora_anima.network import LoRANetwork  # noqa: E402
+    from library.anima.trainer.trainer import AnimaTrainer
+    from networks.lora_anima.network import LoRANetwork
 
     converted: list[str] = []
     orig_apply_to = LoRANetwork.apply_to
@@ -65,10 +56,10 @@ if own.int8 != "off":
                     "int8 base: blocks_to_swap > 0 is refused (the offloader moves "
                     "only .weight, not wq / wq_t)"
                 )
-            converted.extend(convert_dit_(unet, own.int8, own.int8_file))
+            converted.extend(convert_dit_(unet, mode, int8_file))
             print(
-                f"int8 {own.int8}: converted {len(converted)} linears, forward copy "
-                f"{own.int8_file or 'round to nearest'}",
+                f"int8 {mode}: converted {len(converted)} linears, forward copy "
+                f"{int8_file or 'round to nearest'}",
                 flush=True,
             )
         return orig_apply_to(self, text_encoders, unet, apply_text_encoder, apply_unet)
@@ -80,7 +71,7 @@ if own.int8 != "off":
                 "LoRANetwork, so this run would train on bf16"
             )
         orig_update_metadata(metadata, args)
-        metadata["ss_int8_base"] = own.int8
+        metadata["ss_int8_base"] = mode
         metadata["ss_int8_base_id"] = int8_id
 
     def refuse(name):
@@ -100,4 +91,19 @@ if own.int8 != "off":
     ):
         setattr(LoRANetwork, name, refuse(name))
 
-sys.exit(cli.main(train_argv))
+
+if __name__ == "__main__":
+    ap = argparse.ArgumentParser(add_help=False)
+    ap.add_argument("--int8", choices=("off", "fwd", "full"), required=True)
+    ap.add_argument("--int8_file", default=None)
+    own, train_argv = ap.parse_known_args()
+    if own.int8_file and own.int8 == "off":
+        ap.error("--int8_file needs --int8 fwd or full")
+
+    from library.anima.trainer import cli  # noqa: E402
+    from library.log import setup_logging  # noqa: E402
+
+    setup_logging()
+    if own.int8 != "off":
+        install(own.int8, own.int8_file)
+    sys.exit(cli.main(train_argv))
