@@ -106,6 +106,10 @@ The entry point exits with an error on these combinations rather than letting th
   batches at the same σ. **Gate: ‖g_int8 − g_bf16‖ < 0.1 · ‖g_batchA − g_batchB‖** per
   module, median over modules, at every σ. Report the worst modules by name. Mode `fwd`
   separates forward error from gradient-quantization error.
+  *Revised 2026-10-30:* bf16 itself sits at 0.15–0.20 of noise from the fp32 gradient,
+  so this gate fails bf16 too. The gate is now: the int8 gradient's distance from fp32
+  is at most 2x bf16's, median over modules, at every σ
+  ([reports/grad_error.md](reports/grad_error.md)).
 
 **Phase 2, implement.** The two `src/` files and
 `project/int8_train/src/test_int8_linear.py`:
