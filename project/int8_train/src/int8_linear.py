@@ -167,16 +167,17 @@ def ckpt_keys(name: str) -> list[str]:
     return [f"net.{name}.weight"]
 
 
-def load_int8_file(path: str) -> tuple[dict, dict]:
+def load_int8_file(path: str, name_keys=ckpt_keys) -> tuple[dict, dict]:
     """``({module name: (wq, s)}, metadata)`` from a ``dit_gptq.py`` file, for the
-    converted module names (q / k / v rows concatenated into ``qkv_proj``)."""
+    converted module names (q / k / v rows concatenated into ``qkv_proj``).
+    ``name_keys``: module name → its checkpoint weight keys (MOSS's ``moss_keys``)."""
     out = {}
     with safe_open(path, framework="pt") as f:
         meta = dict(f.metadata() or {})
         keys = set(f.keys())
         names = json.loads(meta["int8_modules"])
         for name in names:
-            ks = ckpt_keys(name)
+            ks = name_keys(name)
             missing = [k for k in ks if k not in keys]
             if missing:
                 raise ValueError(f"{path}: no {missing[0]}")
@@ -222,11 +223,11 @@ def convert_targets(dit: nn.Module) -> list[tuple[str, nn.Linear]]:
     ]
 
 
-def base_fingerprint(dit: nn.Module) -> str:
+def base_fingerprint(dit: nn.Module, targets=None) -> str:
     """sha256 over the bf16 bytes of the first and last target weights, before any
     conversion: an int8 file applies only to the checkpoint it was made from."""
     h = hashlib.sha256()
-    targets = convert_targets(dit)
+    targets = targets or convert_targets(dit)
     for name, mod in (targets[0], targets[-1]):
         h.update(name.encode())
         h.update(

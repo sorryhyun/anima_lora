@@ -103,6 +103,12 @@ The entry point exits on these rather than running them wrong:
 - `src/dit_gptq.py`: offline GPTQ of the forward copies, writes a ComfyUI-layout int8 DiT
   (`models/diffusion_models/anima-base-v1.0_int8_gptq.safetensors`, on the NVMe). `train_int8.py` and
   `infer_int8.py` take it as `--int8_file`.
+- `src/dit_gptq_moss.py`: the same for MOSS-Image, t2i and i2i
+  (`models/moss_image/moss_image_base_int8_gptq.safetensors`). `train_int8_moss.py`,
+  `infer_int8_moss.py` and `grad_error_moss.py` take it as `--int8_file`.
+- `src/infer_int8_moss.py`: `library.moss.generate` on the int8 base, run as
+  `make daemon-run ARGS="project/int8_train/src/infer_int8_moss.py --int8 on --int8_file <file> -- <generate args>"`.
+- `src/grad_spike.py`: traces one image's gradient outlier by block and token.
 - `src/traj_eval.py`: RTN against a GPTQ file on bf16 sampling trajectories and held-out
   real images.
 - `src/int8_attn.py`: Triton attention, int8 QKᵀ and the PV variants, and the backward

@@ -48,7 +48,7 @@ from library.moss.train import NUM_TRAIN_TIMESTEPS, checkpoint_blocks  # noqa: E
 # sibling modules; the script dir is on sys.path
 from grad_error import _SplitArm, sq  # noqa: E402
 from int8_linear import linear_full, linear_fwd, quantize  # noqa: E402
-from train_int8_moss import MOSS_TARGET  # noqa: E402
+from train_int8_moss import check_base, load_copies, moss_targets  # noqa: E402
 
 # after the fp32 phase. ``bf16_f32s``: every parameter but the block linears' weights in
 # fp32, so the residual stream, modulation and gates are fp32 around bf16 GEMMs.
@@ -62,6 +62,10 @@ MODES = (
     "w16a8",
     "bf16_f32s",
     "bf16_noreduce",
+    "gptq",
+    "gptq_w8a16",
+    "full_f32s",
+    "gptq_f32s",
 )
 DEFAULT_MODES = "bf16,bf16_rep,fwd,full,w8a16,w16a8"
 GROUP_BLOCKS = 7
@@ -75,7 +79,9 @@ class F32Linear(nn.Linear):
 
 
 class Int8Arm(nn.Linear):
-    """One int8 arm, its copies quantized from the bf16 ``weight`` per call."""
+    """One int8 arm, its copies quantized from the bf16 ``weight`` per call. The
+    ``gptq`` arms read the forward copy from ``--int8_file`` (``self.copy``, held on
+    the CPU); the backward copy stays round to nearest."""
 
     arm: str
 
@@ -83,8 +89,11 @@ class Int8Arm(nn.Linear):
         w = self.weight
         if self.arm == "w16a8":
             return _SplitArm.apply(x, w, w, True)
-        wq, s = quantize(w)
-        if self.arm == "w8a16":
+        if self.arm.startswith("gptq"):
+            wq, s = (t.to(w.device) for t in self.copy)
+        else:
+            wq, s = quantize(w)
+        if self.arm.endswith("w8a16"):
             return _SplitArm.apply(x, rotate(wq.float() * s), w, False)
         x = x.to(torch.bfloat16)
         if self.arm == "fwd":
@@ -98,7 +107,7 @@ def set_mode(mods: list[nn.Linear], mode: str) -> None:
             m.__class__ = nn.Linear
         else:
             m.__class__ = Int8Arm
-            m.arm = mode
+            m.arm = mode.removesuffix("_f32s")
 
 
 def cast_fp32_except(tr, linears) -> dict:
@@ -139,7 +148,7 @@ def exit_fp32(tr, linears, dtypes) -> None:
 @contextlib.contextmanager
 def arm(tr, mods, mode):
     set_mode(mods, mode)
-    if mode == "bf16_f32s":
+    if mode.endswith("_f32s"):
         dtypes = cast_fp32_except(tr, mods)
         try:
             yield
@@ -196,29 +205,37 @@ class Sketcher:
         return out
 
 
-def pick_items(cache_dir, n, min_tokens, max_tokens, seed):
+def pick_items(cache_dir, n, min_tokens, max_tokens, seed, exclude=frozenset()):
     items = [
         it
         for it in moss_cache.list_items(cache_dir)
         if min_tokens <= (it.width // 16) * (it.height // 16) <= max_tokens
+        and it.stem not in exclude
     ]
     gen = torch.Generator().manual_seed(seed)
     return [items[i] for i in torch.randperm(len(items), generator=gen)[:n].tolist()]
 
 
-def load_batch(item, j, seed, device):
+def centre_crop(t, n):
+    top, left = (t.shape[-2] - n) // 2, (t.shape[-1] - n) // 2
+    return t[..., top : top + n, left : left + n] if n else t
+
+
+def load_batch(item, j, seed, device, crop=0):
     latent, embeds = moss_cache.load_item(item)
-    latent = latent.unsqueeze(0).to(device)
+    latent = centre_crop(latent.unsqueeze(0), crop).to(device)
+    ref = moss_cache.load_ref(item)
+    ref = None if ref is None else centre_crop(ref.unsqueeze(0), crop).to(device)
     gen = torch.Generator(device=device).manual_seed(seed * 1000 + j)
     noise = torch.randn(latent.shape, generator=gen, device=device)
-    return latent, embeds.unsqueeze(0).to(device), noise
+    return latent, embeds.unsqueeze(0).to(device), noise, ref
 
 
-def one_pass(tr, sk, latent, embeds, noise, sigma):
+def one_pass(tr, sk, latent, embeds, noise, ref, sigma):
     noisy = ((1.0 - sigma) * latent + sigma * noise).requires_grad_(True)
     timestep = torch.tensor([NUM_TRAIN_TIMESTEPS * sigma], device=latent.device)
     sk.capturing = True
-    pred = tr(noisy, timestep, embeds, return_dict=False)[0]
+    pred = tr(noisy, timestep, embeds, return_dict=False, ref=ref)[0]
     sk.capturing = False
     loss = F.mse_loss(pred.float(), noise - latent)
     loss.backward()
@@ -244,6 +261,18 @@ def main():
     ap.add_argument("--max_tokens", type=int, default=1 << 30)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--modes", default=DEFAULT_MODES, help=f"bf16 first; of {MODES}")
+    ap.add_argument("--int8_file", default="", help="dit_gptq_moss.py file (gptq arms)")
+    ap.add_argument(
+        "--crop",
+        type=int,
+        default=0,
+        help="centre crop of the latent and reference, N×N tokens (i2i: 48 fits 16 GB)",
+    )
+    ap.add_argument(
+        "--exclude_report",
+        default="",
+        help="its .report.json: skip the stems it calibrated on",
+    )
     ap.add_argument("--out", default="project/int8_train/assets/moss_grad_error.json")
     args = ap.parse_args()
     modes = args.modes.split(",")
@@ -256,21 +285,32 @@ def main():
     tr = load_transformer(args.model_dir, args.model, device=device)
     tr.requires_grad_(False)
     checkpoint_blocks(tr.layers)
-    targets = [(n, m) for n, m in tr.named_modules() if MOSS_TARGET.match(n)]
+    tr.ref_timestep, tr.ref_isolate = 0.0, True  # every i2i recipe; t2i ignores them
+    targets = moss_targets(tr)
     mods = [m for _n, m in targets]
+    if args.int8_file:
+        copies, meta = load_copies(args.int8_file)
+        check_base(meta, dict(targets))
+        for n, m in targets:
+            m.copy = copies[n]
     sk = Sketcher(targets, args.sketch_q, args.sketch_q_in, device, args.seed)
+    exclude = frozenset()
+    if args.exclude_report:
+        report = json.loads(resolve_under_home(args.exclude_report).read_text())
+        exclude = frozenset(s for v in report["stems"].values() for s in v)
     items = pick_items(
         resolve_under_home(args.cache),
         args.n_images,
         args.min_tokens,
         args.max_tokens,
         args.seed,
+        exclude,
     )
     sigmas = [float(s) for s in args.sigmas.split(",")]
     print(
         f"{len(targets)} linears, images: "
         + ", ".join(
-            f"{it.stem} ({(it.width // 16) * (it.height // 16)}+{it.n_text})"
+            f"{it.stem} ({(it.width // 16) * (it.height // 16)}+{it.n_text}+{it.n_ref})"
             for it in items
         ),
         flush=True,
@@ -284,8 +324,8 @@ def main():
     ref32 = {}
     for sigma in sigmas:
         for j, it in enumerate(items):
-            latent, embeds, noise = load_batch(it, j, args.seed, device)
-            S, loss, pred = one_pass(tr, sk, latent, embeds, noise, sigma)
+            latent, embeds, noise, ref = load_batch(it, j, args.seed, device, args.crop)
+            S, loss, pred = one_pass(tr, sk, latent, embeds, noise, ref, sigma)
             ref32[sigma, j] = (S, pred.cpu(), loss)
             print(
                 f"fp32 σ={sigma} image {j + 1}/{len(items)} loss={loss:.4f} "
@@ -299,9 +339,10 @@ def main():
     acc = {s: defaultdict(lambda: defaultdict(float)) for s in sigmas}
     pred_err = {s: defaultdict(list) for s in sigmas}
     losses = {s: defaultdict(list) for s in sigmas}
+    per_image = []
     for sigma in sigmas:
         for j, it in enumerate(items):
-            latent, embeds, noise = load_batch(it, j, args.seed, device)
+            latent, embeds, noise, ref = load_batch(it, j, args.seed, device, args.crop)
             S32, pred32, loss32 = ref32[sigma, j]
             pred32 = pred32.to(device)
             resid = float((pred32 - (noise - latent)).norm())
@@ -309,12 +350,29 @@ def main():
             S = {}
             for mode in modes:
                 with arm(tr, mods, mode):
-                    S[mode], loss, pred = one_pass(tr, sk, latent, embeds, noise, sigma)
+                    S[mode], loss, pred = one_pass(
+                        tr, sk, latent, embeds, noise, ref, sigma
+                    )
                 losses[sigma][mode].append(loss)
                 d = float((pred - pred32).norm())
                 pred_err[sigma][f"{mode}_vs_pred"].append(d / float(pred32.norm()))
                 pred_err[sigma][f"{mode}_vs_resid"].append(d / resid)
             set_mode(mods, "bf16")
+            depth_err = {m: defaultdict(float) for m in modes}
+            for mode in modes:
+                for name, s in S[mode].items():
+                    g = int(name.split(".")[1]) // GROUP_BLOCKS * GROUP_BLOCKS
+                    depth_err[mode][g] += sq(s, S32[name])
+            per_image.append({"sigma": sigma, "image": it.stem, "err": depth_err})
+            for mode in others:
+                print(
+                    f"σ={sigma} {it.stem} {mode}/bf16 by depth: "
+                    + " ".join(
+                        f"{(depth_err[mode][g] / depth_err['bf16'][g]) ** 0.5:.2f}"
+                        for g in sorted(depth_err[mode])
+                    ),
+                    flush=True,
+                )
             for name, r16 in S["bf16"].items():
                 a = acc[sigma][name]
                 r32 = S32[name]
@@ -337,7 +395,12 @@ def main():
 
     stats = [f"e32_{m}" for m in modes] + [f"e16_{m}" for m in others]
     ratios = [f"{m}_over_bf16_e32" for m in others]
-    report = {"args": vars(args), "images": [it.stem for it in items], "sigmas": {}}
+    report = {
+        "args": vars(args),
+        "images": [it.stem for it in items],
+        "per_image": per_image,
+        "sigmas": {},
+    }
     for sigma in sigmas:
         rows = []
         for name, _m in targets:

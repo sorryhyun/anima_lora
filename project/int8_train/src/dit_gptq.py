@@ -266,14 +266,16 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def write_file(src: Path, out: Path, copies: dict, meta: dict) -> str:
-    """Every source tensor, the converted linears replaced by their int8 copies.
-    Returns ``int8_id``."""
+def write_file(
+    srcs: list[Path], out: Path, copies: dict, meta: dict, name_keys=ckpt_keys
+) -> str:
+    """Every source tensor (``srcs``: the checkpoint's shards), the converted linears
+    replaced by their int8 copies. Returns ``int8_id``."""
     conf = torch.tensor(list(json.dumps(int8.QUANT_CONF).encode()), dtype=torch.uint8)
     replaced, digest = {}, hashlib.sha256()
     for name in sorted(copies):
         wq, s = copies[name]
-        keys = ckpt_keys(name)
+        keys = name_keys(name)
         rows = wq.shape[0] // len(keys)
         for j, key in enumerate(keys):
             q = wq[j * rows : (j + 1) * rows].contiguous()
@@ -285,12 +287,15 @@ def write_file(src: Path, out: Path, copies: dict, meta: dict) -> str:
             digest.update(key.encode())
             digest.update(q.numpy().tobytes())
             digest.update(sc.numpy().tobytes())
-    with safe_open(str(src), framework="pt") as f:
-        src_keys = set(f.keys())
-        tensors = {k: f.get_tensor(k) for k in src_keys if k not in replaced}
+    src_keys, tensors = set(), {}
+    for src in srcs:
+        with safe_open(str(src), framework="pt") as f:
+            keys = set(f.keys())
+            src_keys |= keys
+            tensors.update({k: f.get_tensor(k) for k in keys if k not in replaced})
     stray = [k for k in replaced if k.endswith(".weight") and k not in src_keys]
     if stray:
-        raise ValueError(f"{len(stray)} converted keys not in {src}, e.g. {stray[0]}")
+        raise ValueError(f"{len(stray)} converted keys not in {srcs}, e.g. {stray[0]}")
     tensors.update(replaced)
     int8_id = digest.hexdigest()
     meta = {
@@ -443,7 +448,7 @@ def main():
             }
         ),
     }
-    int8_id = write_file(src, out, copies, meta)
+    int8_id = write_file([src], out, copies, meta)
     out.with_suffix(".report.json").write_text(
         json.dumps(
             {"meta": meta, "int8_id": int8_id, "mean": total, "linears": report},
