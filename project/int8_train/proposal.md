@@ -151,15 +151,32 @@ line.
   Triton-against-CUDA gap from the int8 gain. `src/attn_bench.py` also saves dO for 5b.
   *Result:* passes for self-attention only; cross-attention stays FA2
   ([reports/attn_fwd.md](reports/attn_fwd.md)).
+  *Revised 2026-10-30, after 5b:* the output error understates what training sees.
+  dS = P ∘ (dP − Δ) is a difference of near-equal terms, so the same logit error moves
+  dQ, dK, dV about twice as far as O: FA2's own backward on the 5a forward's O and
+  logsumexp is 2.5–3.4x FA2's gradient error. A forward arm is now judged on the
+  gradients it yields through FA2's backward: **dQ, dK, dV each at most 2x FA2's
+  distance from fp32, median per σ**, plus the same 1.3x speed. The reference stays
+  fp32 SDPA (autograd, TF32 off) on the captured bf16 inputs; FA2's distance from it is
+  the tolerance unit, as in phase 1b. The 5a forward fails this gate and is re-measured
+  as **5a′** below.
 - **5b, backward**, only if 5a passes: recompute QKᵀ with the forward's int8 Q and K
   copy (so the stored logsumexp matches), int8 dV, dQ, dK, fp16 dO·Vᵀ, with int8 dOᵀ,
   Qᵀ, Kᵀ copies made by a prep kernel, since int8 MMA needs the reduction axis
   contiguous. Same gate against FA2's backward on the captured dO.
   *Result:* fails. Recomputing P from the int8 Q and K alone puts dK and dV at
   2.5–3.3x FA2's error, and FA2's own backward on the int8 forward's O and logsumexp
-  is 2.5–3.4x; the fastest arm is 1.17x. 5c is not run
+  is 2.5–3.4x; the fastest arm is 1.17x
   ([reports/attn_bwd.md](reports/attn_bwd.md)).
-- **5c, end to end**, only if 5b passes: the op behind `dispatch_attention` in
+- **5a′, forward re-measured on gradients.** Forward variants on the 5a capture, each
+  through FA2's backward, on the revised gate above. Arms: the 5a forward (the failing
+  baseline); QKᵀ in fp16 with fp16 accumulation, no int8 (GeForce runs fp16
+  accumulation at twice fp32's rate; PV fp16acc already matched fp32 accumulation in
+  5a); Q smoothing (Q minus its mean, the q̄·kᵀ bias added back per key, as
+  SageAttention2); and a Q-only / K-only rounding split to show which operand carries
+  the error. Ceiling if one passes: about 14 ms of the 433 ms step from the forward
+  alone.
+- **5c, end to end**, only if 5a′ passes: the op behind `dispatch_attention` in
   `train_int8.py`, phase 1b's gradient gate, then phase 3's A/B.
 
 ## Out of scope

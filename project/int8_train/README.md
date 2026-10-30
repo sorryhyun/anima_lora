@@ -18,8 +18,9 @@ not change `library/` or `networks/`.
 | 3, step time and A/B | passed: 1.37x step, loss and bf16-base samples match on ama mitsuki, 8 epochs ([report](reports/phase3_ab.md)) |
 | error split, int8-base inference | weight term 35–50% of the forward error; int8 base moves samples 4/255, the LoRA swap 26/255 ([report](reports/split_and_infer.md)) |
 | offline GPTQ base | done: W8A8 per-linear error −36%, predictions −10%, CFG velocity −2–7%; same on trajectories and held-out real ([report](reports/gptq.md)) |
-| 5a, int8 attention forward (Triton) | self-attention passes: per-token + Hadamard int8 QKᵀ, fp16acc PV, 1.44x FA2 at 1.5–1.8x its error; cross-attention fails (repeated pad key, sink key) and stays FA2 ([report](reports/attn_fwd.md)) |
-| 5b, int8 attention backward (Triton) | fails: the int8 forward alone puts dK and dV at 2.5–3.4x FA2's error with any backward (FA2's included), int8 dV 5–8x, fastest arm 1.17x; phase 5 closed, attention stays FA2 ([report](reports/attn_bwd.md)) |
+| 5a, int8 attention forward (Triton) | self-attention passes: per-token + Hadamard int8 QKᵀ, fp16acc PV, 1.44x FA2 at 1.5–1.8x its error; cross-attention fails (repeated pad key, sink key) and stays FA2 ([report](reports/attn_fwd.md)). **Re-judged after 5b: fails**, dQ/dK/dV through FA2's backward are 2.5–3.4x FA2's error |
+| 5b, int8 attention backward (Triton) | fails: the int8 forward alone puts dK and dV at 2.5–3.4x FA2's error with any backward (FA2's included), int8 dV 5–8x, fastest arm 1.17x; the backward stays FA2 ([report](reports/attn_bwd.md)) |
+| 5a′, forward re-measured on gradients | open: forward arms through FA2's backward, dQ/dK/dV ≤ 2x FA2's distance from fp32 (fp16-accumulate QKᵀ, Q smoothing, Q/K rounding split) |
 
 ## Layout
 

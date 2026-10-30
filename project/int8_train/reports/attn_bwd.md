@@ -1,13 +1,13 @@
 # Phase 5b — int8 attention backward in Triton (2026-10-30)
 
-**Verdict: fails, on both accuracy and speed. Phase 5 stops here; self-attention stays
-FA2 in the forward and the backward.** Recomputing P from the forward's int8 Q and K
+**Verdict: fails, on both accuracy and speed. The int8 backward is dropped; the
+backward stays FA2.** Recomputing P from the forward's int8 Q and K
 alone puts dK and dV at 2.5–3.3x FA2's distance from fp32, over the 2x gate, before any
 backward GEMM is int8. Running dV = Pᵀ·dO in int8 raises dV to 5–8x. The fastest arm
 (every GEMM int8) is 1.17x FA2's backward, under the 1.3x gate. Feeding the int8
 forward's O and logsumexp into FA2's own backward is also 2.5–3.4x, so 5a's forward
 cannot ship alone either: the gradient error comes from the int8 forward, whichever
-backward follows it.
+backward follows it. Forward arms are now judged on these gradients (proposal.md, 5a′).
 
 Script: [`src/attn_bwd_bench.py`](../src/attn_bwd_bench.py), kernels in
 [`src/int8_attn.py`](../src/int8_attn.py) (`attn_fwd_train`, `attn_bwd`). Raw numbers:
@@ -91,5 +91,6 @@ Preparation kernels: `quant_tok` 0.045 ms, `quant_t` 0.021 ms per tensor.
 
 ## Next
 
-Phase 5 is closed. The int8 step stays at phase 3's 1.37x with FA2 for all attention.
-The Triton kernels stay in `src/` as the record.
+The backward stays FA2. 5a′ re-measures forward variants by the gradients they yield
+through FA2's backward (the `int8fwd_fa2bwd` arm here), at most 2x FA2's per gradient.
+Until one passes, the int8 step stays at phase 3's 1.37x with FA2 for all attention.
