@@ -182,8 +182,36 @@ steps at 13.7 GB peak. Seed 0 on the four held-out pages, against `1300_ema5e5`:
   (1300: `분인나요`) and writes `이건` as `이컨` (1300: `이전`), so one seed on five lines
   cannot separate the two. The misread line is still drawn as captioned, in magenta.
 
-Next: count Hangul syllables in the `ko` captions (all 1,690 held-in `ko` pairs cover only
-106 works), and drop misread lines from the captions.
+**Gradient accumulation (`moss_i2i_swap_text_en200_ko800_rw2_mod16_ga4_lr1e4`).**
+`en200_ko800_rw2_mod16_ema5e5` (`pairs_en200_ko800.jsonl`, `region_weight 2`,
+`mod_rank 16`, Muon 5e-5, batch 1) retrained with `grad_accum 4` and lr 1e-4 (√batch),
+the rest of the request identical: 2,000 samples = 500 updates, 134 min. Same seed, so
+both runs draw the same samples at the same σ (per-sample region loss correlates 0.95
+between them); the logged loss is per sample at any `grad_accum`.
+
+- Loss. The copy is learned ~2× later in samples (rest loss at reference level by ~500
+  against ~200) and faster per update. The edit region never drops below the reference:
+  +0.003 to +0.010 through epoch 2, both flat at 0.15–0.16. Epoch means 0.126 / 0.034
+  against 0.088 / 0.031.
+- Seed 0 on the four held-out pages, EMA: English exact on all 4 lines in both. Korean
+  wrong syllables 3 against 2: `분인나요` (reference `분이가요`), `이건` → `이큰`
+  (reference exact), `싼다` → `씬다` in both. Line breaks follow the balloon a little
+  better, letters heavier, `Uwah…`'s outline nearly gone.
+
+No gain. The errors that move between checkpoints (`이건` → `이전` / `이컨` / `이큰`,
+`분인가요`) did not shrink with a 4× averaged gradient, and `싼다` → `씬다` held.
+
+**Syllable coverage and tokenisation.** In `pairs_en300_ko1000_full.jsonl` the 959 `ko`
+pairs (99 works) hold 30,180 Hangul syllables, 852 distinct, 138 seen once. The syllables
+the runs keep missing are not rare: `건` 76, `인` 70, `분` 184, `싼` 21 (`씬` 2). The
+Qwen3.5 tokenizer splits `싼` into two byte tokens while `씬` is one token, and writes
+`인가요` as a single token. `건` → `전` is a single-syllable token drawn as a near
+glyph. The whole pool holds 1,684 `ko` pairs (107 works).
+
+Next: a larger held-out `ko` set scored by OCR, the errors split by token kind
+(byte-split / multi-syllable / single-syllable), to choose between exposing the
+syllables to the TE and a glyph-level loss; drop misread lines from the captions
+(Hangul-for-Hangul misreads such as `벌거` / `씻겨` pass the JA-script check).
 
 **ComfyUI.** Toolkit 0.7.0 or later: the sanitize wiring, with the layout-JSON prompt as
 the positive (typed into `CLIP Text Encode`, or through Caption Helper `task layout`, which
