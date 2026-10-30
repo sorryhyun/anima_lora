@@ -102,14 +102,24 @@ def main() -> None:
         help="prompt TE weights (match the LoRA's cache encoder)",
     )
     ap.add_argument(
-        "--out", default="", help="default: output/tests/ab_<lora stem>_<steps>st"
+        "--stream",
+        default="bf16",
+        choices=("bf16", "fp32"),
+        help="residual stream / modulation / norm precision around the bf16 block GEMMs",
+    )
+    ap.add_argument(
+        "--out",
+        default="",
+        help="default: output/tests/ab_<lora stem>_<steps>st (+ _fp32s with --stream fp32)",
     )
     args = ap.parse_args()
     w, h = map(int, args.size.split("x"))
     seeds = [int(s) for s in args.seeds.split(",")]
     arms = [(a.split(":")[0], float(a.split(":")[1])) for a in args.arms.split(",")]
     out = resolve_under_home(
-        args.out or f"output/tests/ab_{Path(args.lora).stem}_{args.steps}st"
+        args.out
+        or f"output/tests/ab_{Path(args.lora).stem}_{args.steps}st"
+        + ("_fp32s" if args.stream == "fp32" else "")
     )
     out.mkdir(parents=True, exist_ok=True)
     device = torch.device("cuda")
@@ -135,6 +145,7 @@ def main() -> None:
         spectrum=spectrum_settings(args.spectrum),
         # bf16 stays out of the digest so latents rendered before the flag resume.
         **({"te": args.te_precision} if args.te_precision != "bf16" else {}),
+        **({"stream": args.stream} if args.stream != "bf16" else {}),
     )
     cns_tag = settings_tag(base=tag, cns_gamma=args.cns_gamma)
     lat_dir = out / "latents"
@@ -159,7 +170,9 @@ def main() -> None:
         todo = [j for j in jobs if j[0] == variant and not lat_path(j).exists()]
         if not todo:
             continue
-        tr, net = load_dit(lora, device, variant, compile=args.compile)
+        tr, net = load_dit(
+            lora, device, variant, compile=args.compile, stream=args.stream
+        )
         for job in todo:
             _, pi, seed, (sampler, m) = job
             net.set_multiplier(m)

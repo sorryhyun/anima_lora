@@ -1155,7 +1155,7 @@ def add_dataset_arguments(
     parser.add_argument(
         "--caption_extension",
         type=str,
-        default=".caption",
+        default=".txt",
         help="extension of caption files",
     )
     parser.add_argument(

@@ -2,7 +2,7 @@
 
 Status: proposal (2026-10-27). Phase 0 passed on `malfoid` (name only 0.29 → with tags 0.83
 tagger recall); `akita neru` turned out to be known to the DiT already. Evidence:
-`project/moss_te_sae/reports/phase0_teacher_ceiling_2026_10_27.md`. The D gate is now the four-way split in
+`project/moss_te_sae/reports/character_knowledge.md`. The D gate is now the four-way split in
 [D](#approaches-cheapest-first); next are B on `malfoid` and the case-② sweep.
 
 Goal: a prompt that names a character (`akita neru`) should reach the DiT as if it also

@@ -92,7 +92,7 @@ class BaseSubsetParams:
 class DreamBoothSubsetParams(BaseSubsetParams):
     is_reg: bool = False
     class_tokens: Optional[str] = None
-    caption_extension: str = ".caption"
+    caption_extension: str = ".txt"
     cache_info: bool = False
     alpha_mask: bool = False
     mask_dir: Optional[str] = None
