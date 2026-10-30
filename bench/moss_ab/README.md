@@ -7,7 +7,7 @@ arm, so a row differs by the arm only. Moved from `project/finished/moss_lora/sr
 
 | Script | What it renders |
 |---|---|
-| `lora_ab.py` | each prompt × seed over `--arms` (`<sampler>:<multiplier>`, sampler `euler` / `er_sde` / `cns`), Base and SFT |
+| `lora_ab.py` | each prompt × seed over `--arms` (`<sampler>:<multiplier>`, sampler `euler` / `er_sde` / `cns`), Base and SFT; `--stream fp32` runs the residual stream, modulation and norms in fp32 (out dir `_fp32s`; `docs/moss/findings/bf16_residual_stream.md`) |
 | `ab_cols.py` | one sheet per cell from several `lora_ab.py` grid dirs, side by side (stacked when wide) |
 | `schedule_ab.py` | the pipeline's snapped σ grid against ComfyUI's `normal` / `sgm_uniform` / `simple`, base DiT, no LoRA; `--ref` adds a fine-grid solve and per-arm rel-L2 |
 | `_render.py` | the shared render loop (DiT + LoRA + block compile, ER-SDE + Spectrum, latent cache keyed by its settings, labelled grid); `bench.moss_i2i_eval` and `correction_ab.py` import it |
