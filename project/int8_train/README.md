@@ -12,7 +12,8 @@ not change `library/` or `networks/`.
 | phase | state |
 |---|---|
 | 0, GEMM microbench | done: int8 2.6x bf16 for forward and dX ([report](reports/gemm_microbench.md)) |
-| 1, step split and real-gradient error | next |
+| 1a, step split | done: converted GEMMs are 47% of a 594 ms step, predicted 1.41x ([report](reports/step_profile.md)) |
+| 1b, real-gradient error | next |
 | 2, implement in `src/` | — |
 | 3, step time and 25-min A/B | — |
 
@@ -21,4 +22,5 @@ not change `library/` or `networks/`.
 - `proposal.md`: the design and gates.
 - `src/gemm_bench.py`: phase 0 microbench, run as
   `make daemon-run ARGS="project/int8_train/src/gemm_bench.py 4096"`.
+- `src/profile_step.py`: phase 1a step profile of the stock trainer (argv after `--`).
 - `reports/`: one report per phase.
