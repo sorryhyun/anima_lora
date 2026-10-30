@@ -89,8 +89,14 @@ Settled:
 
 ## MOSS-Image
 
-**Scoped, not ported.** On MOSS's block shapes int8 runs 2.85x forward and 2.72x dX; the
+**Ported (`src/train_int8_moss.py`), gradient gate passed; A/B not run.** On MOSS's block shapes int8 runs 2.85x forward and 2.72x dX; the
 converted linears are 47% of the default compiled step (895 of 1902 ms, swap 36, budget
 0.5), a predicted 1.43x if the H2D block swap stays hidden. After int8 a swapped block's
 forward (~7.6 ms) is about one 8.5 ms block move, so the swap/budget knee moves down. The
 offloader moves `.weight` only ([report](reports/moss_scoping.md)).
+
+| work | result |
+|---|---|
+| int8 base trainer, swap 0 + checkpointing | 1.44–1.49 s/step, 1.57x bf16 on the same plan, 1.28x the bf16 default ([report](reports/moss_scoping.md)) |
+| real-gradient error | int8 `full` at 0.53x / 1.17x / 0.98x bf16's distance from fp32 at σ 0.1 / 0.5 / 0.9; MOSS's bf16 gradient is itself far from fp32 in blocks 0–27. Prediction error 1.24–1.46x bf16's, weight term 57–60% of the excess; late blocks 28–41 at 1.3–3.1x, all weight term ([report](reports/moss_grad_error.md)) |
+| bf16 precision arms | an fp32 residual stream around bf16 GEMMs cuts bf16's prediction error 2.4–3.5x (loss = fp32) but leaves the early-block gradient error; turning off reduced-precision reduction helps at σ 0.1 and hurts at 0.9 ([report](reports/moss_grad_error.md#bf16-precision-arms)) |

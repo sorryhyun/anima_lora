@@ -95,6 +95,7 @@ The entry point exits on these rather than running them wrong:
   `src/gemm_bench.py <M> moss` benches MOSS's block shapes.
 - `src/int8_linear.py`: the int8 custom ops and the in-place `convert_`.
 - `src/grad_error.py`: sketched LoRA-gradient error, bf16 vs `fwd` vs `full`.
+- `src/grad_error_moss.py`: the same for MOSS (per-call quantization, two-sided sketch).
 - `src/train_int8.py`: the trainer on an int8 base, run as
   `make daemon-run ARGS="--stall-timeout 900 project/int8_train/src/train_int8.py --int8 full --method lora --preset default"`.
 - `src/infer_int8.py`: `inference.py` on the int8 base, LoRAs as hooks, run as
