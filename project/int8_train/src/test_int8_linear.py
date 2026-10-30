@@ -46,6 +46,40 @@ def test_forward_and_dx_match_bf16(mode):
     assert rel(dx, dy @ w) < 0.03
 
 
+def test_infer_mode_matches_bf16_and_drops_weight():
+    lin = linear()
+    w = lin.weight.detach().clone()
+    convert_(lin, "infer")
+    assert "weight" not in lin._parameters and not hasattr(lin, "wq_t")
+    x = torch.randn(2, M, K, device=DEV, dtype=torch.bfloat16)
+    with torch.no_grad():
+        assert rel(lin(x), x @ w.T) < 0.03
+
+
+def test_split_emulation_matches_kernel_error():
+    """grad_error.py's w8a16 / w16a8 arms are halves of the kernel's error only if
+    emulating both sides at once is the eager reference and lands at the kernel's
+    distance from bf16. The CUDA kernel and the eager reference round differently
+    (0.5% apart on these shapes) at the same distance, so the realisation is not
+    compared."""
+    from comfy_kitchen.backends.eager.quantization import int8_linear as eager_linear
+    from grad_error import qdq_tokens
+
+    from library.moss.int8 import rotate
+
+    lin = linear()
+    w = lin.weight.detach().clone()
+    convert_(lin, "fwd")
+    x = torch.randn(M, K, device=DEV, dtype=torch.bfloat16)
+    ref = x.float() @ w.float().T
+    y_kernel = int8_mm(x, lin.wq, lin.s)
+    y_eager = eager_linear(x, lin.wq, lin.s, convrot=True, convrot_groupsize=256)
+    y_emul = F.linear(qdq_tokens(x), rotate(lin.wq.float() * lin.s))
+    e_kernel = rel(y_kernel, ref)
+    assert rel(y_emul, y_eager) < 0.3 * e_kernel
+    assert abs(rel(y_emul, ref) - e_kernel) < 0.1 * e_kernel
+
+
 @pytest.mark.parametrize("mode", ["fwd", "full"])
 def test_lora_grads_match_eager_reference(mode):
     lin = linear()

@@ -16,12 +16,13 @@ not change `library/` or `networks/`.
 | 1b, real-gradient error | passed on the revised gate (≤ 2x bf16's distance from fp32): int8 is 1.3–1.5x, a real but bf16-sized extra error ([report](reports/grad_error.md)) |
 | 2, implement in `src/` | done: `train_int8.py`, 7 unit tests pass ([report](reports/phase3_ab.md)) |
 | 3, step time and A/B | passed: 1.37x step, loss and bf16-base samples match on ama mitsuki, 8 epochs ([report](reports/phase3_ab.md)) |
+| error split, int8-base inference | weight term 35–50% of the forward error; int8 base moves samples 4/255, the LoRA swap 26/255 ([report](reports/split_and_infer.md)) |
+| offline GPTQ base | done: W8A8 per-linear error −36%, predictions −10%, CFG velocity −2–7%; same on trajectories and held-out real ([report](reports/gptq.md)) |
 
 ## Layout
 
 - `proposal.md`: the design and gates.
-- `gptq_offline.md`: deferred plan to GPTQ-calibrate the int8 weights if phase 3 fails
-  on quality.
+- `gptq_offline.md`: the GPTQ plan; carried out in [reports/gptq.md](reports/gptq.md).
 - `src/gemm_bench.py`: phase 0 microbench, run as
   `make daemon-run ARGS="project/int8_train/src/gemm_bench.py 4096"`.
 - `src/profile_step.py`: phase 1a step profile of the stock trainer (argv after `--`).
@@ -29,6 +30,13 @@ not change `library/` or `networks/`.
 - `src/grad_error.py`: phase 1b sketched-gradient error, bf16 vs `fwd` vs `full`.
 - `src/train_int8.py`: the trainer on an int8 base, run as
   `make daemon-run ARGS="--stall-timeout 900 project/int8_train/src/train_int8.py --int8 full --method lora --preset default"`.
+- `src/infer_int8.py`: `inference.py` on the int8 base, LoRAs as hooks, run as
+  `make daemon-run ARGS="project/int8_train/src/infer_int8.py --int8 on <inference args>"`.
+- `src/dit_gptq.py`: offline GPTQ of the forward copies, writes a ComfyUI-layout int8 DiT
+  (`models/diffusion_models/anima-base-v1.0_int8_gptq.safetensors`, on the NVMe). `train_int8.py` and
+  `infer_int8.py` take it as `--int8_file`.
+- `src/traj_eval.py`: RTN against a GPTQ file on bf16 sampling trajectories and held-out
+  real images.
 - `src/test_int8_linear.py`: phase 2 tests (`.venv/bin/python -m pytest project/int8_train/src/test_int8_linear.py`).
 - `src/ab_prompts.txt`: phase 3 sample prompts.
 - `reports/`: one report per phase.
