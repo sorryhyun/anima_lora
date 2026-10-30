@@ -123,9 +123,7 @@ def _kernel_breakdown():
     cats = defaultdict(float)
     kernels = []
     for name, (us, cnt) in by_name.items():
-        cat = next(
-            (c for c, pat in KERNEL_CATEGORIES if re.search(pat, name)), "other"
-        )
+        cat = next((c for c, pat in KERNEL_CATEGORIES if re.search(pat, name)), "other")
         cats[cat] += us / 1e3 / own.profiled
         kernels.append(
             {

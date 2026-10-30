@@ -109,3 +109,20 @@ outside kernels, assuming any swap stays hidden.
   (~0.15 by a linear fit to the default's peak), not measured.
 - **Swap 0 needs no offloader change**: the int8 base can be measured there first, as
   Anima's `train_int8.py` runs, and the swap packing judged on what is left (~6%).
+
+## int8 base, swap 0, `grad_checkpointing` (measured)
+
+`src/train_int8_moss.py --int8 full` on the same config and cache, `--blocks_to_swap 0
+--grad_checkpointing`, round-to-nearest weights; job `20261030-144409-8f98f2`, stopped
+after 70 of 240 steps.
+
+| plan | s/step (steps 10–40) | peak |
+|---|---|---|
+| bf16, swap 36, budget 0.5 (default) | 1.83–1.91 | 13.46 GB |
+| bf16, swap 0, checkpointing | 2.26–2.34 | 11.96 GB |
+| **int8, swap 0, checkpointing** | **1.44–1.49** | 11.96 GB |
+
+1.57x over bf16 on the same plan and 1.28x over the bf16 default, against a predicted
+~1.51 s. The step-10 and step-20 losses, the same sample and σ, differ from both bf16
+runs (0.1806 / 0.1010 against 0.2083 / 0.1151) while step 30 matches (0.1483 / 0.1470);
+not looked into.

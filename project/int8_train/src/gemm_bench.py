@@ -55,7 +55,9 @@ if LINE == "moss":
         for name in ("q", "k", "v", "o", "ffn_up_gate", "ffn_down")
     }
 else:
-    CKPT = str(resolve_under_home("models/diffusion_models/anima-base-v1.0.safetensors"))
+    CKPT = str(
+        resolve_under_home("models/diffusion_models/anima-base-v1.0.safetensors")
+    )
     f = safe_open(CKPT, "pt", device="cpu")
     P = "net.blocks.10."
     layers = {
