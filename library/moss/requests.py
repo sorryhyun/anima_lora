@@ -332,6 +332,13 @@ class GenerateRequest(Request):
         choices=("bf16", "fp32"),
         advanced=True,
     )
+    blocks_to_swap: int = _f(
+        0,
+        "DiT blocks held on CPU and streamed in per forward (0: all resident); "
+        "sets expandable_segments. An fp32 stream with a full-size i2i reference "
+        "needs 10 (peak 13.5 GiB, +10%% time)",
+        advanced=True,
+    )
     spectrum: bool = _f(
         True,
         "Spectrum: forecast the last block's image tokens on most steps instead of "

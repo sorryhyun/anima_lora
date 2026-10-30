@@ -574,7 +574,10 @@ def _denoise_pending(req, model_dir, out_dir, pending, device) -> None:
     refs = ref_latents(model_dir, refs, device) if refs else {}
 
     t0 = time.time()
-    transformer = load_transformer(model_dir, req.model, device=device)
+    swap = req.blocks_to_swap
+    transformer = load_transformer(
+        model_dir, req.model, device=None if swap else device
+    )
     print(
         f"[dit] {req.model} loaded in {time.time() - t0:.1f}s, "
         f"{torch.cuda.memory_allocated() / 2**30:.1f} GiB",
@@ -583,12 +586,21 @@ def _denoise_pending(req, model_dir, out_dir, pending, device) -> None:
     if req.lora:
         from library.moss.lora import load_for_inference
 
-        load_for_inference(
+        network = load_for_inference(
             transformer, resolve_under_home(req.lora), req.lora_multiplier
         )
+        # Held outside the blocks: the swapper never moves it.
+        network.to(device)
         print(f"[lora] {req.lora} x{req.lora_multiplier}", flush=True)
     if req.stream == "fp32":
         stream_fp32_(transformer)
+    attached = None
+    if swap:
+        from library.runtime.blockswap import place
+
+        attached = place(
+            transformer, "layers", device, blocks_to_swap=swap, label="[dit]"
+        )
     if req.compile:
         compile_blocks(transformer.layers)
     dave = _build_dave(req, len(transformer.layers))
@@ -640,6 +652,8 @@ def _denoise_pending(req, model_dir, out_dir, pending, device) -> None:
             flush=True,
         )
     # fp32 decode with the DiT off the card.
+    if attached is not None:
+        attached.detach()
     transformer.to("cpu")
     del transformer
     empty_cache()
