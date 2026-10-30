@@ -114,13 +114,40 @@ Those two settings change speed, not numerics.
 - This is one run per arm, with no bf16 retrain to show the run-to-run spread, and the
   judging was not blind. The hand lean is a lead, not a result.
 
+## swap_text with an fp32 stream
+
+`moss_i2i_swap_text_en200_ko800_rw2_mod16_ema5e5_fp32s` is the `en200_ko800_rw2_mod16`
+swap_text run retrained with `--stream fp32`, same request and seed.
+
+- Memory. The fp32 parameters take 0.6 GB before step 1 (13.24 → 12.64 GB free), and
+  the reference rows ride the fp32 stream too. At the largest sample (4104 image + 4104
+  reference + 702 text tokens) the bf16 plan (swap 38, budget 0.17) left 0.66 GB, and fp32
+  OOMs there at budget 0.17, 0.15 and 0.10 and at swap 40 / 0.17. Swap 40 / 0.10 fits with
+  0.07 GB. **Swap 36 / budget 0.05** fits with 1.34 GB (12.70 GB allocated): below 0.1
+  the saved set drops ~1.3 GB. 4.30 s/step against 4.18 (+3%).
+- Inference with an fp32 stream on a full-size reference OOMs fully resident (bf16 peaks
+  at 13.0 GiB). `generate.py --blocks_to_swap 10` fits it at 13.5 GiB, +10% time.
+- Four held-out pages (`output/tests/moss_i2i_swap_text_region/`), seed 0, train × inference
+  stream:
+
+| train / inference | wrong EN lines (of 4) | wrong KO syllables |
+|---|---|---|
+| bf16 / bf16 | 0 | 3 |
+| bf16 / fp32 | 0 | 3 |
+| fp32 / bf16 | 1 (`THE BEST` → `THEST`) | 4 |
+| fp32 / fp32 | 1 (drops `THE`) | 3 |
+
+- The inference stream barely moves the bf16-trained LoRA; the training stream changes
+  line breaks and letters. fp32 / fp32 is the first checkpoint of any swap_text run to
+  write `싼다` (every other writes `씬다`), and writes `분인가요` as `분입어요`.
+- One seed, within the ±1 syllable checkpoints already differ by: a tie, not a gain.
+
 ## Not tested
 
 - int8 linears with an fp32 stream. In quadrature this lands near today's bf16
   prediction error.
 - A bf16 retrain of the same request, for the run-to-run spread the training-stream
   difference has to beat; then a blind pass on hands over more seeds.
-- i2i tasks that hinge on fine detail (`swap_text`, `sanitize`). There the training
-  stream may matter more than on a style LoRA.
+- swap_text over more seeds, and `sanitize`.
 - Text rendering (the `bench/_moss.py` zh / ja / ko prompts), where small errors could
   show first.
