@@ -131,6 +131,15 @@ class Int8TrainLinear(nn.Linear):
 
     int8_mode: str
 
+    def _apply(self, fn, recurse=True):
+        # the trainer's unet.to(dtype=bf16) would round the fp32 row scales; keep
+        # them fp32 and follow wq (int8, so dtype casts skip it) to its device
+        scales = {k: v for k, v in self._buffers.items() if k in ("s", "s_t")}
+        super()._apply(fn, recurse)
+        for k, v in scales.items():
+            self._buffers[k] = v.to(self.wq.device)
+        return self
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.int8_mode == "full":
             return linear_full(x, self.wq, self.s, self.wq_t, self.s_t)

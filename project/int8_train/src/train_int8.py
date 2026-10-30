@@ -1,0 +1,82 @@
+"""Phase 2 entry point: the stock Anima trainer on an int8 base.
+
+Strips ``--int8 {off,fwd,full}`` and runs ``library.anima.trainer.cli.main`` with the
+rest. ``off`` runs the trainer untouched, so a bf16 arm goes through the same command.
+Otherwise two patches go in first:
+
+- ``LoRANetwork.apply_to`` converts the DiT's large linears (``int8_linear``) before
+  the LoRA modules capture ``org_forward``. That is after ``create_network``, so
+  ``weight_svd`` / ``grad_svd`` init still read bf16, and before ``compile_blocks``.
+- ``AnimaTrainer._update_metadata`` stamps ``ss_int8_base=<mode>`` into the LoRA, and
+  fails if no conversion happened (a network class that is not ``LoRANetwork``).
+
+Refused: block swap (the offloader moves only ``.weight``), and every
+``LoRANetwork`` method that reads or writes the base weight.
+
+    make daemon-run ARGS="--stall-timeout 900 project/int8_train/src/train_int8.py \
+        --int8 full --method lora --preset default"
+"""
+
+import argparse
+import sys
+
+from library.runtime.allocator import default_expandable_segments
+
+default_expandable_segments()  # train.py sets this before torch loads; match it
+
+ap = argparse.ArgumentParser(add_help=False)
+ap.add_argument("--int8", choices=("off", "fwd", "full"), required=True)
+own, train_argv = ap.parse_known_args()
+
+from library.anima.trainer import cli  # noqa: E402
+from library.log import setup_logging  # noqa: E402
+
+setup_logging()
+
+if own.int8 != "off":
+    from int8_linear import convert_dit_  # noqa: E402  (sibling module)
+    from library.anima.trainer.trainer import AnimaTrainer  # noqa: E402
+    from networks.lora_anima.network import LoRANetwork  # noqa: E402
+
+    converted: list[str] = []
+    orig_apply_to = LoRANetwork.apply_to
+    orig_update_metadata = AnimaTrainer._update_metadata
+
+    def apply_to(self, text_encoders, unet, apply_text_encoder=True, apply_unet=True):
+        if apply_unet:
+            if getattr(unet, "blocks_to_swap", None):
+                raise SystemExit(
+                    "int8 base: blocks_to_swap > 0 is refused (the offloader moves "
+                    "only .weight, not wq / wq_t)"
+                )
+            converted.extend(convert_dit_(unet, own.int8))
+            print(f"int8 {own.int8}: converted {len(converted)} linears", flush=True)
+        return orig_apply_to(self, text_encoders, unet, apply_text_encoder, apply_unet)
+
+    def update_metadata(metadata, args):
+        if not converted:
+            raise SystemExit(
+                "int8 base: no DiT linear was converted; the network is not a "
+                "LoRANetwork, so this run would train on bf16"
+            )
+        orig_update_metadata(metadata, args)
+        metadata["ss_int8_base"] = own.int8
+
+    def refuse(name):
+        def method(self, *a, **k):
+            raise SystemExit(f"int8 base: LoRANetwork.{name} reads the base weight")
+
+        return method
+
+    LoRANetwork.apply_to = apply_to
+    AnimaTrainer._update_metadata = staticmethod(update_metadata)
+    for name in (
+        "backup_weights",
+        "restore_weights",
+        "pre_calculation",
+        "fuse_weights",
+        "unfuse_weights",
+    ):
+        setattr(LoRANetwork, name, refuse(name))
+
+sys.exit(cli.main(train_argv))
