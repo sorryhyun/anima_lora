@@ -89,8 +89,11 @@ workspace/
 *.ttc
 !gui/fonts/*.ttf
 
-# ocr_reader gate images (labels stay tracked in project/finished/ocr_reader/assets/)
+# ocr_reader gate images
 project/finished/ocr_reader/eval_data/
 
 # scratch list at the repo root
 /candidates.txt
+
+# project asset JSONs (probe inputs and result dumps) stay local
+project/**/assets/*.json
