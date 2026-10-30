@@ -171,6 +171,12 @@ needs `anime_tools`) does the same conversion.
   Spectrum (Spectrum + compile 20 s vs plain eager 72 s at 1024²), for a few seconds of
   compile per job. Fine detail drifts from the eager image; composition does not.
 - **DAVE** (`--dave auto`, off): more same-prompt variety across seeds; `docs/moss/dave.md`.
+- **`--stream fp32`** (`bf16` default): the residual stream, modulation, norms, embedders
+  and head run in fp32 around the bf16 block GEMMs. Prediction error against an fp32
+  forward drops 2.4–3.5×, for +1.5% time and +0.6 GB; renders change in detail (a few
+  /255, occasionally the composition on SFT) with neither precision consistently better.
+  Inference only: training stays bf16, and a bf16-trained LoRA loads either way. The
+  ComfyUI MOSS Toolkit loader has the same `stream` knob.
 - **CNS** has no `generate.py` flag. The six MOSS γ files
   (`networks/calibration/moss_cns_gamma*.npz`, `docs/cns.md`) are used by the
   bench and by the ComfyUI Spectrum node's `er_sde_cns`, which picks one by variant and cfg.

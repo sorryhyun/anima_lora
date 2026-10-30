@@ -38,6 +38,7 @@ from library.moss.loader import (
     load_transformer,
     load_vae,
     pad_embeds,
+    stream_fp32_,
 )
 from library.moss.model import decode, snapped_sigmas
 from library.moss.requests import (
@@ -505,6 +506,7 @@ def _fingerprint(req: GenerateRequest, job: dict) -> dict:
             else None
         ),
         **({"cns": dict(spec=req.cns, strength=req.cns_strength)} if req.cns else {}),
+        **({"stream": req.stream} if req.stream != "bf16" else {}),
     )
 
 
@@ -585,6 +587,8 @@ def _denoise_pending(req, model_dir, out_dir, pending, device) -> None:
             transformer, resolve_under_home(req.lora), req.lora_multiplier
         )
         print(f"[lora] {req.lora} x{req.lora_multiplier}", flush=True)
+    if req.stream == "fp32":
+        stream_fp32_(transformer)
     if req.compile:
         compile_blocks(transformer.layers)
     dave = _build_dave(req, len(transformer.layers))

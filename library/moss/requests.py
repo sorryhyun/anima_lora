@@ -324,6 +324,14 @@ class GenerateRequest(Request):
         "job. --no-compile for eager",
         advanced=True,
     )
+    stream: str = _f(
+        "bf16",
+        "residual stream precision: fp32 runs the stream, modulation, norms, "
+        "embedders and head in fp32 around the bf16 block GEMMs (+1.5%% time, "
+        "+0.6 GB; renders move a few /255 in detail, neither consistently better)",
+        choices=("bf16", "fp32"),
+        advanced=True,
+    )
     spectrum: bool = _f(
         True,
         "Spectrum: forecast the last block's image tokens on most steps instead of "
