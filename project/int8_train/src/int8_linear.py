@@ -148,6 +148,9 @@ class Int8TrainLinear(nn.Linear):
         return self
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # cast outside the opaque op, where inductor fuses it into the producer (inside
+        # it ran as its own copy kernel, ~3.5 ms per step: status.md)
+        x = x.to(torch.bfloat16)
         if self.int8_mode == "infer":
             return int8_mm(x, self.wq, self.s)
         if self.int8_mode == "full":

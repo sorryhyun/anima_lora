@@ -36,7 +36,27 @@ ms per step:
   of them would bound the step at about 1.13x.
 - Around the opaque int8 op, norm, add/mul and copy grow by about 10 ms over bf16: some
   fusions across the op are lost.
-- Two levers, not yet tried: move the bf16 cast out of the custom op so inductor fuses it
-  into its producer (~3.5 ms); fuse rotate + quantize into the producing norm/modulate or
-  GELU kernel (up to ~15–25 ms), which needs a comfy_kitchen GEMM entry that takes a
-  pre-quantized input (unchecked).
+
+## Cast moved out of the op
+
+`Int8TrainLinear.forward` now casts `x` to bf16 before the custom op. Re-profiled
+([`step_profile_kernels_full_castout.json`](assets/step_profile_kernels_full_castout.json)):
+the 102 fp32 → bf16 copies are gone (copy_cast 4.1 → 0.9 ms) and the LayerNorm kernels
+drop 29.3 → 26.1 ms, as the cast folds into them. Step 430.7 → 424.5 ms. Attention moved
+10 ms between the two runs on identical kernels, so the step delta is within run noise;
+the kernel-level saving is 3–6 ms.
+
+## Fusing rotate + quantize into the producer: not worth it
+
+- comfy_kitchen 0.2.40's public API has no GEMM that takes a pre-quantized activation.
+  The private `_C.cutlass_int8_dequant(xq, wq, x_scale, w_scale, …)` is that GEMM,
+  ABI not stable.
+- The public `int8_linear` fusions do not fit Anima's block: `input_act` folds
+  `gelu_tanh`, `swiglu` or `rms_norm` into the quantizer, but Anima uses exact
+  `nn.GELU()` and LayerNorm with shift + scale modulation; the `residual` epilogue
+  would need the LoRA output added before the gate.
+- LoRA sits on every converted linear and reads the same bf16 input, so the producer has
+  to write it regardless. Fusing saves only the quantizer's bf16 read. The quantize
+  kernels already run at 525–615 GB/s (60–70% of 896 GB/s); removing that read is at
+  most ~16 ms, realistically ~10 ms (~2.5%), for custom Triton norm / modulate / GELU +
+  rotate + quantize kernels in the forward and the backward on a private ABI.
