@@ -134,12 +134,33 @@ The entry point exits with an error on these combinations rather than letting th
 - The turbo loop: the teacher and fake-score forwards are forward-only.
 - An int8 forward path for `inference.py`.
 
+**Phase 5, int8 attention in Triton (opened 2026-10-30).** After phase 3, flash
+attention is about 40% of the 433 ms int8 step (51 ms forward, 127 ms backward in the
+bf16 profile). No public int8 attention has a backward: comfy_kitchen and SageAttention
+1–3 are forward only, and SageBwd (SageAttention3 paper, six of seven matmuls int8,
+dO·Vᵀ kept fp16) is unreleased. The kernels live in `src/int8_attn.py`, in Triton, on
+FA2's loop. The rule above that own kernels move to a separate repo is dropped for this
+line.
+
+- **5a, forward.** int8 QKᵀ (Q per block in the kernel, K mean-removed and per 64
+  tokens), with PV in bf16, fp16, fp16-accumulate or int8. Scored on q, k, v captured
+  from real training calls (4 self- and 4 cross-attention blocks, σ ∈ {0.1, 0.5, 0.9})
+  against fp32 SDPA. **Gate: an arm whose output error is at most 2x FA2's, median per
+  kind and σ, and that runs at least 1.3x FA2's forward on the self-attention shape,
+  quantization included.** A Triton bf16 arm on the same loop separates the
+  Triton-against-CUDA gap from the int8 gain. `src/attn_bench.py` also saves dO for 5b.
+  *Result:* passes for self-attention only; cross-attention stays FA2
+  ([reports/attn_fwd.md](reports/attn_fwd.md)).
+- **5b, backward**, only if 5a passes: recompute QKᵀ with the forward's int8 Q and K
+  copy (so the stored logsumexp matches), int8 dV, dQ, dK, fp16 dO·Vᵀ, with int8 dOᵀ,
+  Qᵀ, Kᵀ copies made by a prep kernel, since int8 MMA needs the reduction axis
+  contiguous. Same gate against FA2's backward on the captured dO.
+- **5c, end to end**, only if 5b passes: the op behind `dispatch_attention` in
+  `train_int8.py`, phase 1b's gradient gate, then phase 3's A/B.
+
 ## Out of scope
 
-- int8 attention. comfy_kitchen ships a forward (`int8_attention`) but no backward.
 - int8 LoRA rank GEMMs: rank 16–64 GEMMs are bandwidth-bound and gain nothing.
-- Writing kernels. If phase 3 shows the rotate-and-quantize overhead or attention as the
-  next bottleneck and own kernels are needed, that work moves to a separate repo.
 
 ## Risks
 

@@ -18,6 +18,7 @@ not change `library/` or `networks/`.
 | 3, step time and A/B | passed: 1.37x step, loss and bf16-base samples match on ama mitsuki, 8 epochs ([report](reports/phase3_ab.md)) |
 | error split, int8-base inference | weight term 35–50% of the forward error; int8 base moves samples 4/255, the LoRA swap 26/255 ([report](reports/split_and_infer.md)) |
 | offline GPTQ base | done: W8A8 per-linear error −36%, predictions −10%, CFG velocity −2–7%; same on trajectories and held-out real ([report](reports/gptq.md)) |
+| 5a, int8 attention forward (Triton) | self-attention passes: per-token + Hadamard int8 QKᵀ, fp16acc PV, 1.44x FA2 at 1.5–1.8x its error; cross-attention fails (repeated pad key, sink key) and stays FA2 ([report](reports/attn_fwd.md)) |
 
 ## Layout
 
@@ -37,6 +38,10 @@ not change `library/` or `networks/`.
   `infer_int8.py` take it as `--int8_file`.
 - `src/traj_eval.py`: RTN against a GPTQ file on bf16 sampling trajectories and held-out
   real images.
+- `src/int8_attn.py`: phase 5 Triton attention, int8 QKᵀ and the PV variants.
+- `src/attn_bench.py`: phase 5a capture (q, k, v, dO from real calls, saved to
+  `output/int8_train/attn_capture.pt`) and the forward error and speed against FA2.
+- `src/test_int8_attn.py`: phase 5 tests (`INT8_ATTN_FIXED=1` skips the autotune sweep).
 - `src/test_int8_linear.py`: phase 2 tests (`.venv/bin/python -m pytest project/int8_train/src/test_int8_linear.py`).
 - `src/ab_prompts.txt`: phase 3 sample prompts.
 - `reports/`: one report per phase.
