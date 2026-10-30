@@ -1,6 +1,7 @@
 # hypothesis — the caption is a user turn to an instruct model (2026-10-29)
 
-Status: hypothesis; test 3 run (2026-10-29), tests 1 / 2 / 4 not. Every test below needs the 9B TE on the GPU (no CPU
+Status: hypothesis; test 3 run (2026-10-29), tests 1 / 2 / 4 not. The two binding arms
+from text_read_path.md §4 ran on 2026-10-30 ([trigger_binding](reports/trigger_binding.md)). Every test below needs the 9B TE on the GPU (no CPU
 runs while a training job holds the box).
 
 MOSS encodes every caption as a **user turn of the post-trained Qwen3.5-9B** (instruct,

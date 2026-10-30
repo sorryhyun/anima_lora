@@ -41,13 +41,15 @@ Each report opens with its claims and the evidence follows per claim.
 | [name_rows](reports/name_rows.md) | the identity sits in the name's own TE rows (splice keeps 0.96–0.98); the DiT expands it in place (peak block 30) and the image reads it in blocks 16–31; series is linear over name vectors; tag directions / a series centroid on the name rows recover part of it without training; the distilled `malfoid` patch fails the gate (24 % vs 80 %, lr confounded) |
 | [text_read_path](reports/text_read_path.md) | 10 template rows take ~95 % of image→text attention with prompt-constant values; the template gates and the caption rows carry (suffix swap changes nothing, caption cut loses the prompt, template cut collapses the image); the template's effect on caption rows is an instruct × template interaction (0.10 / 0.24 alone, 0.60 together); the channel LoRA is a prompt-independent shift that does not use the caption path |
 | [string_read](reports/string_read.md) | a quoted string is read locally by the lettering's queries through fixed heads (b21 h20, blocks 19–21); its rows carry the words, the rest of the caption the balloon and script; the swap_text LoRA binds each box to its own string the same way, and the four t2i heads alone are not needed |
+| [trigger_binding](reports/trigger_binding.md) | a delta confined to the trigger rows binds by construction and carries outfit / eyes / composition but not the palette, and once writes the trigger as a logo; the preservation term (×10) shrinks the delta everywhere instead of binding it (it outweighs the learnable part of the main loss) |
 | [sae_fit](reports/sae_fit.md) | Base SAEs fit the instruct caption rows at FVU 0.25–0.46; ~1/3 of what the DiT reads is in the error term; the DiT's projection amplifies tag-content features and suppresses structural ones |
 
 ## Open
 
-- Trigger binding: the two training arms in `configs/` (delta confined to the trigger
-  rows; + the trigger-preservation term) against `caststation_ema097_lr1e4`, read with
-  `src/lora_use.py` (trigger share of gradient × input, empty-prompt cos).
+- Trigger binding, after [trigger_binding](reports/trigger_binding.md): the palette needs
+  a path besides the trigger rows. Candidates: a delta on the image rows gated on the
+  trigger's presence; a learned trigger vector on the trigger rows with the row-confined
+  LoRA.
 - Which blocks carry the caption read: a per-block `no_caption_keys` cut
   (text_read_path cut all blocks at once; single heads in blocks 8 / 19 / 35 / 37 are the
   candidates).

@@ -1,0 +1,9 @@
+# Arm A: the adapter delta confined to the trigger's token rows.
+# Everything else = caststation_ema097_lr1e4 (output/ckpt_moss/caststation_ema097_lr1e4.json);
+# ema_window 0.139 of 240 updates = the decay 0.97 that run used.
+cache = "post_image_dataset/moss/channel_(caststation)_layout"
+output = "output/ckpt_moss/caststation_rows_trigger.safetensors"
+lr = 1e-4
+ema_window = 0.139
+delta_rows = "trigger"
+trigger = "@channel (caststation)"

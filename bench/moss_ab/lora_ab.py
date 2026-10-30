@@ -10,6 +10,10 @@ against compiled arms). Latent names carry a digest of the LoRA (path + mtime),
 prompts, steps, cfg, size, compile, Spectrum (and CNS γ on cns arms), so a rerun
 resumes only what matches.
 
+A LoRA stamped with ``delta_rows`` (``library/moss/train.py``) renders with the row
+mask it trained under, eager: the cond rows keep the delta on the trigger (or
+caption / text) rows, the uncond rows keep none of it under ``trigger``.
+
     make daemon-run ARGS="bench/moss_ab/lora_ab.py --lora output/ckpt_moss/x.safetensors"
 """
 
@@ -33,8 +37,16 @@ from bench.moss_ab._render import (
 from library.env import resolve_under_home
 from library.moss.cache import caption_converter
 from library.moss.cns import MossCNS
-from library.moss.loader import TE_PRECISIONS, empty_cache, load_vae
+from library.downloads import default_moss_dir
+from library.moss.loader import (
+    TE_PRECISIONS,
+    empty_cache,
+    load_tokenizer,
+    load_vae,
+    trigger_rows,
+)
 from library.moss.model import snapped_sigmas
+from library.moss.train import delta_row_ids
 
 PROMPTS = [
     # Tag bag in the training captions' own format, characters it saw.
@@ -47,6 +59,45 @@ PROMPTS = [
     "An illustration in the style of {artist}: a girl with short black hair "
     "in a sailor school uniform sitting on a bench under cherry blossoms, smiling.",
 ]
+
+
+def lora_rows(lora: Path) -> tuple[str, str]:
+    """The ``delta_rows`` / ``trigger`` stamps of ``lora`` (``all`` when unstamped)."""
+    from safetensors import safe_open
+
+    with safe_open(str(lora), "pt") as f:
+        meta = f.metadata() or {}
+    return meta.get("delta_rows", "all"), meta.get("trigger", "")
+
+
+def confine_rows(tr, net, cond_rows: dict):
+    """Wrap ``tr.run_layers`` so ``net``'s delta keeps, on every batch row whose
+    text length is ``cond_rows["n"]``, the text rows ``cond_rows["rows"]``, and no
+    row elsewhere (the uncond). ``cond_rows`` is updated per prompt."""
+    run = tr.run_layers
+
+    def run_layers(
+        x, rope, mod, skip_layers=frozenset(), key_mask=None, n_img=None, n_ref=0
+    ):
+        n_text = x.shape[1] - n_img - n_ref
+        lengths = (
+            [n_text] * x.shape[0]
+            if key_mask is None
+            else key_mask[:, n_img : n_img + n_text].sum(1).tolist()
+        )
+        mask = torch.zeros(
+            x.shape[0], x.shape[1], 1, dtype=torch.bfloat16, device=x.device
+        )
+        for b, n in enumerate(lengths):
+            if n == cond_rows["n"]:
+                mask[b, [n_img + r for r in cond_rows["rows"]], 0] = 1
+        net.set_row_mask(mask)
+        try:
+            return run(x, rope, mod, skip_layers, key_mask, n_img, n_ref)
+        finally:
+            net.set_row_mask(None)
+
+    tr.run_layers = run_layers
 
 
 def main() -> None:
@@ -133,6 +184,11 @@ def main() -> None:
     ]
 
     lora = resolve_under_home(args.lora)
+    delta_rows, trigger = lora_rows(lora)
+    if delta_rows != "all":
+        args.compile = False
+        tok = load_tokenizer(default_moss_dir())
+        print(f"delta_rows={delta_rows} trigger={trigger!r}: eager", flush=True)
     embeds, uncond, uncond_mask = uncond_embeds(device, prompts, args.te_precision)
     sigmas = snapped_sigmas(args.steps)
     tag = settings_tag(
@@ -173,9 +229,21 @@ def main() -> None:
         tr, net = load_dit(
             lora, device, variant, compile=args.compile, stream=args.stream
         )
+        cond_rows = {"n": -1, "rows": []}
+        if delta_rows != "all":
+            confine_rows(tr, net, cond_rows)
         for job in todo:
             _, pi, seed, (sampler, m) = job
             net.set_multiplier(m)
+            if delta_rows != "all":
+                n = embeds[prompts[pi]].shape[0]
+                hits = (
+                    trigger_rows(tok, prompts[pi], trigger)
+                    if delta_rows == "trigger"
+                    else []
+                )
+                cond_rows.update(n=n, rows=delta_row_ids(delta_rows, n, hits))
+                print(f"  p{pi}: {len(cond_rows['rows'])} of {n} text rows", flush=True)
             cns = (
                 MossCNS.from_spec(args.cns_gamma, variant, args.cfg)
                 if sampler == "cns"

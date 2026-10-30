@@ -1,0 +1,8 @@
+# Arm B: + the trigger-preservation term at x10 on the trigger-stripped caption
+# (pairs from src/trigger_neg_cache.py, INT8 TE). Base otherwise as rows_trigger.toml.
+cache = "post_image_dataset/moss/channel_(caststation)_layout"
+output = "output/ckpt_moss/caststation_preserve10.safetensors"
+lr = 1e-4
+ema_window = 0.139
+trigger = "@channel (caststation)"
+preserve_weight = 10.0

@@ -14,6 +14,10 @@ same noise). Three reads:
 
 TE: bf16 Qwen3.5-9B (what the channel cache was encoded with); the full re-encode is
 checked against the cached ``embeds``.
+
+A LoRA stamped with ``delta_rows`` (``library/moss/train.py``) runs with the row mask it
+trained under, built per conditioning from its ``trigger``; a caption without the
+trigger then has no rows and a zero delta.
 """
 
 from __future__ import annotations
@@ -34,10 +38,14 @@ from library.env import resolve_under_home
 from library.moss import cache as moss_cache
 from library.moss import loader
 from library.moss.lora import load_for_inference
+from library.moss.loader import trigger_rows
 from library.moss.train import (
     NUM_TRAIN_TIMESTEPS,
     checkpoint_blocks,
+    delta_row_ids,
     place,
+    row_mask,
+    sample_captions,
     step_reserve_gb,
 )
 
@@ -221,6 +229,7 @@ def main():
                     "latent": latent,
                     "cached": cached,
                     "plain": plain,
+                    "plain_text": sample_captions(it.te_path).get("plain"),
                     "variants": vs,
                 }
             )
@@ -247,6 +256,17 @@ def main():
     transformer.requires_grad_(False)
     network = load_for_inference(transformer, lora_path, 1.0)
     network.to(device)
+    with safe_open(str(lora_path), "pt") as f:
+        lmeta = f.metadata() or {}
+    delta_rows, trigger = lmeta.get("delta_rows", "all"), lmeta.get("trigger", "")
+    log(f"delta_rows={delta_rows} trigger={trigger!r}")
+
+    def rows_for(text, n_text):
+        if delta_rows == "all":
+            return None
+        hits = trigger_rows(tok, text, trigger) if delta_rows == "trigger" else []
+        return delta_row_ids(delta_rows, n_text, hits)
+
     joint = max(
         j["latent"].shape[1] * j["latent"].shape[2]
         + enc[j["variants"]["full"]][0].shape[0]
@@ -255,14 +275,27 @@ def main():
     place(transformer, device, -1, step_reserve_gb(joint, grad_checkpointing=True))
     checkpoint_blocks(transformer.layers)
 
-    def velocity(noisy, sigma, embeds, mult):
+    def velocity(noisy, sigma, embeds, mult, rows=None):
         network.set_multiplier(mult)
+        network.set_row_mask(
+            None
+            if rows is None
+            else row_mask(
+                noisy.shape[2] * noisy.shape[3], embeds.shape[0], rows, 0, device
+            )
+        )
         t = torch.tensor([NUM_TRAIN_TIMESTEPS * sigma], device=device)
         return transformer(
             noisy, t, embeds[None].to(device, torch.bfloat16), return_dict=False
         )[0].float()
 
-    report = {"lora": str(lora_path), "sigmas": sigmas, "samples": []}
+    report = {
+        "lora": str(lora_path),
+        "delta_rows": delta_rows,
+        "trigger": trigger,
+        "sigmas": sigmas,
+        "samples": [],
+    }
     for j in jobs:
         latent = j["latent"][None].to(device)
         rec = {
@@ -280,12 +313,13 @@ def main():
             noisy = (1.0 - sigma) * latent + sigma * noise
             deltas, base_norm = {}, None
             with torch.no_grad():
-                conds = {k: enc[t][0] for k, t in texts.items()}
+                conds = {k: (enc[t][0], t) for k, t in texts.items()}
                 if j["plain"] is not None and j["kind"] == "train":
-                    conds["plain"] = j["plain"]
-                for name, emb in conds.items():
+                    conds["plain"] = (j["plain"], j["plain_text"])
+                for name, (emb, text) in conds.items():
+                    rows = rows_for(text, emb.shape[0])
                     vb = velocity(noisy, sigma, emb, 0.0)
-                    deltas[name] = velocity(noisy, sigma, emb, 1.0) - vb
+                    deltas[name] = velocity(noisy, sigma, emb, 1.0, rows) - vb
                     if name == "full":
                         base_norm = float(vb.norm())
             full = deltas["full"]
@@ -301,8 +335,9 @@ def main():
                 }
             if j["kind"] == "train":
                 e = enc[texts["full"]][0].float().to(device).requires_grad_(True)
+                rows = rows_for(texts["full"], e.shape[0])
                 for mult, sign in ((1.0, 1.0), (0.0, -1.0)):
-                    v = velocity(noisy, sigma, e, mult)
+                    v = velocity(noisy, sigma, e, mult, rows)
                     (sign * (v * full).sum()).backward()
                 g = e.grad.detach().cpu()
                 rec.setdefault("grads", []).append(g)
