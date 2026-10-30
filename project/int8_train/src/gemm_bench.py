@@ -1,4 +1,5 @@
 """Phase 0 microbench (reports/gemm_microbench.md). Anima block GEMMs: bf16 vs int8 (raw _int_mm, ConvRot W8A8 via comfy_kitchen) vs fp8.
+``gemm_bench.py <M> moss`` runs MOSS-Image block 10's six linears instead.
 
 Forward Y = X W^T and backward dX = dY W (frozen base, LoRA training: no dW).
 Backward int8 reuses the same kernel with a second int8 copy of W^T, rotated on N.
@@ -17,8 +18,8 @@ from library.moss.int8 import quantize_weight
 
 torch.manual_seed(0)
 dev = "cuda"
-CKPT = str(resolve_under_home("models/diffusion_models/anima-base-v1.0.safetensors"))
 M = int(sys.argv[1]) if len(sys.argv) > 1 else 4096  # 1024^2 -> 64x64 tokens
+LINE = sys.argv[2] if len(sys.argv) > 2 else "anima"
 CTX = 512
 
 
@@ -39,25 +40,41 @@ def relerr(a, ref):
     return ((a.float() - ref).norm() / ref.norm()).item()
 
 
-f = safe_open(CKPT, "pt", device="cpu")
-P = "net.blocks.10."
-layers = {
-    "sa.qkv": (
-        torch.cat([f.get_tensor(P + f"self_attn.{c}_proj.weight") for c in "qkv"]),
-        M,
-        True,
-    ),
-    "sa.out": (f.get_tensor(P + "self_attn.output_proj.weight"), M, True),
-    "ca.q": (f.get_tensor(P + "cross_attn.q_proj.weight"), M, True),
-    "ca.kv": (
-        torch.cat([f.get_tensor(P + f"cross_attn.{c}_proj.weight") for c in "kv"]),
-        CTX,
-        False,
-    ),
-    "ca.out": (f.get_tensor(P + "cross_attn.output_proj.weight"), M, True),
-    "mlp.1": (f.get_tensor(P + "mlp.layer1.weight"), M, True),
-    "mlp.2": (f.get_tensor(P + "mlp.layer2.weight"), M, True),
-}
+if LINE == "moss":
+    MOSS = resolve_under_home("models/moss_image/MOSS-Image-Base/transformer")
+    wmap = json.loads(
+        (MOSS / "diffusion_pytorch_model.safetensors.index.json").read_text()
+    )["weight_map"]
+
+    def get(key):
+        with safe_open(str(MOSS / wmap[key]), "pt", device="cpu") as f:
+            return f.get_tensor(key)
+
+    layers = {
+        name: (get(f"layers.10.proj.{name}.weight"), M, True)
+        for name in ("q", "k", "v", "o", "ffn_up_gate", "ffn_down")
+    }
+else:
+    CKPT = str(resolve_under_home("models/diffusion_models/anima-base-v1.0.safetensors"))
+    f = safe_open(CKPT, "pt", device="cpu")
+    P = "net.blocks.10."
+    layers = {
+        "sa.qkv": (
+            torch.cat([f.get_tensor(P + f"self_attn.{c}_proj.weight") for c in "qkv"]),
+            M,
+            True,
+        ),
+        "sa.out": (f.get_tensor(P + "self_attn.output_proj.weight"), M, True),
+        "ca.q": (f.get_tensor(P + "cross_attn.q_proj.weight"), M, True),
+        "ca.kv": (
+            torch.cat([f.get_tensor(P + f"cross_attn.{c}_proj.weight") for c in "kv"]),
+            CTX,
+            False,
+        ),
+        "ca.out": (f.get_tensor(P + "cross_attn.output_proj.weight"), M, True),
+        "mlp.1": (f.get_tensor(P + "mlp.layer1.weight"), M, True),
+        "mlp.2": (f.get_tensor(P + "mlp.layer2.weight"), M, True),
+    }
 
 rows = []
 tot = {

@@ -86,3 +86,11 @@ Settled:
   switching those three to int8 saved 0.007 ms of 4.236.
 - **The two-kernel backward layout** recomputes S and dP in both kernels, 7 GEMMs against
   FA2's 5.
+
+## MOSS-Image
+
+**Scoped, not ported.** On MOSS's block shapes int8 runs 2.85x forward and 2.72x dX; the
+converted linears are 47% of the default compiled step (895 of 1902 ms, swap 36, budget
+0.5), a predicted 1.43x if the H2D block swap stays hidden. After int8 a swapped block's
+forward (~7.6 ms) is about one 8.5 ms block move, so the swap/budget knee moves down. The
+offloader moves `.weight` only ([report](reports/moss_scoping.md)).

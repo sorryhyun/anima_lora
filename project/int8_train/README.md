@@ -91,6 +91,8 @@ The entry point exits on these rather than running them wrong:
 - `src/gemm_bench.py`: GEMM microbench, run as
   `make daemon-run ARGS="project/int8_train/src/gemm_bench.py 4096"`.
 - `src/profile_step.py`: step profile of the stock trainer (argv after `--`).
+- `src/profile_step_moss.py`: the same for the MOSS trainer (TrainRequest argv after `--`).
+  `src/gemm_bench.py <M> moss` benches MOSS's block shapes.
 - `src/int8_linear.py`: the int8 custom ops and the in-place `convert_`.
 - `src/grad_error.py`: sketched LoRA-gradient error, bf16 vs `fwd` vs `full`.
 - `src/train_int8.py`: the trainer on an int8 base, run as
