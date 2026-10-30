@@ -83,3 +83,29 @@ backward.
 - **Outliers.** FFN-input channel 42 is 11–26x the median with a peak-to-mean of 2.7
   (`docs/moss/channel_scaling.md`); spread by the 256-column Hadamard it is ~1.6x within
   its group. `ffn_down`'s input is bounded by SiTU's soft cap (±100).
+
+## Lower swap, lower budget (bf16, measured; int8, predicted)
+
+The same profile at three plans that trade swap for recompute (jobs
+`20261030-143303-{4f1eb7,da987c,f7afaa}`, raw numbers in
+`assets/moss_step_profile_{ckpt0,b005s0,b01s12}.json`). "int8 step" is the compute
+kernels with the converted GEMMs divided by the bench's 2.78x, plus the measured time
+outside kernels, assuming any swap stays hidden.
+
+| plan | bf16 step | converted GEMMs | attention | H2D | peak | int8 step |
+|---|---|---|---|---|---|---|
+| swap 36, budget 0.5 (default) | 1902 | 895 | 519 | 622 | 13.46 GB | ~1330 |
+| swap 12, budget 0.1 | 2152 | 1160 | 522 | 216 | 10.86 GB | ~1410 |
+| swap 0, budget 0.05 | 2186 | 1194 | 522 | 12 | 12.34 GB | ~1420 |
+| swap 0, `grad_checkpointing` | 2332 | 1286 | 513 | 12 | 11.96 GB | ~1510 |
+
+- Attention costs the same in every plan: budget 0.5 already recomputes its forward
+  in almost every block. What the budget buys is GEMM recompute, 895 → 1194 ms from
+  budget 0.5 to 0.05, and int8 shrinks that 299 ms to ~108.
+- The plans' spread shrinks from 1.23x in bf16 (1902–2332) to ~1.14x in int8, and the
+  default stays fastest only if its 622 ms of H2D keeps hiding behind a ~7.6 ms
+  block forward.
+- Swap 0 at budget 0.05 peaks at 12.34 GB, so swap 0 has room for a higher budget
+  (~0.15 by a linear fit to the default's peak), not measured.
+- **Swap 0 needs no offloader change**: the int8 base can be measured there first, as
+  Anima's `train_int8.py` runs, and the swap packing judged on what is left (~6%).
