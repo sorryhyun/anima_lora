@@ -201,6 +201,24 @@ between them); the logged loss is per sample at any `grad_accum`.
 No gain. The errors that move between checkpoints (`이건` → `이전` / `이컨` / `이큰`,
 `분인가요`) did not shrink with a 4× averaged gradient, and `싼다` → `씬다` held.
 
+**Third epoch on the int8 base (`moss_i2i_swap_text_en200_ko800_rw2_mod16_ema5e5_int8_e3`).**
+The `fp32s` request (`pairs_en200_ko800.jsonl`, `region_weight 2`, `mod_rank 16`, Muon 5e-5,
+fp32 stream) on the GPTQ int8 base, 3 epochs = 3,000 steps, swap 38, budget 0.1, EMA on the
+card: 135 min at 2.71 s/step against 145 min at 4.34 s/step for `fp32s`'s 2,000. Renders:
+`output/moss_i2i_eval/swap_text/results/`.
+
+- The extra epoch made it slightly better. Region loss falls from 0.153 at steps 1,500–2,000
+  to 0.144–0.145 over the third epoch, and rest loss from 0.012 to 0.006–0.007.
+- The base did not change training. Both runs draw the same σ, and over steps 1,000–2,000
+  their per-sample region loss correlates 0.989 with a mean difference of −0.0001.
+- Seed 0 on the four held-out pages, EMA, fp32 stream: `싼다` is written, as in `fp32s`, and
+  Korean wrong syllables are 3 against `fp32s`'s 3: `분인머요`, `이건` → `이긴`,
+  `아타고씨` → `아타고싸`. There is no second-epoch checkpoint to compare, so the epoch's
+  effect on the letters is not separated.
+- English is exact on the bf16 base apart from `BEST…` losing a dot, and `Uwah…` keeps its
+  outline. Generating on the int8 base gives the same Korean, and draws `YOU'RE THE` run
+  together.
+
 **Syllable coverage and tokenisation.** In `pairs_en300_ko1000_full.jsonl` the 959 `ko`
 pairs (99 works) hold 30,180 Hangul syllables, 852 distinct, 138 seen once. The syllables
 the runs keep missing are not rare: `건` 76, `인` 70, `분` 184, `싼` 21 (`씬` 2). The
