@@ -21,8 +21,9 @@ import re
 from pathlib import Path
 
 import torch
+from torch.utils.flop_counter import register_flop_formula
 
-from library.moss.model import MOSSImageTransformer
+from library.moss.model import MOSSImageTransformer, flash_attn_func
 from library.moss.requests import variant_dir
 from library.runtime.device import clean_memory as empty_cache
 from library.runtime.device import free_vram_gb
@@ -272,7 +273,7 @@ def compile_blocks(blocks, seq_range=None) -> None:
             compile_signature(
                 n_token_families=None, seq_range=(lo, hi), dynamic_seq=True
             )
-            + ";line=moss;static"
+            + ";line=moss;static;flops=fa2,int8"
         )
         # A Python int is a constant under dynamic=False: ref_start would specialise
         # per sample and contradict the strict mark.
@@ -283,6 +284,17 @@ def compile_blocks(blocks, seq_range=None) -> None:
         block.forward = _marked(
             torch.compile(block.forward, dynamic=dynamic), seq_range, warned
         )
+
+
+def _flash_flops(q_shape, *args, **kwargs) -> int:
+    """QKᵀ and PV, ``[B, L, H, D]``. Unpriced, the partitioner's knapsack recomputes the
+    attention forward in every block at any budget (2.5 ms each, 100 ms of the step)."""
+    b, length, heads, head_dim = q_shape
+    return 2 * b * heads * head_dim * length * length
+
+
+if flash_attn_func is not None:
+    register_flop_formula(torch.ops.flash_attn._flash_attn_forward)(_flash_flops)
 
 
 def _marked(compiled, seq_range, warned):

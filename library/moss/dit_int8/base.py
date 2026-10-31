@@ -80,7 +80,9 @@ def stream_targets(by_name: dict, n_blocks: int) -> WqtStream:
     stream = stream_wqt_(blocks)
     # what stays sat between the dropped weights and wq_t and would pin their pages
     device = blocks[0][0].wq.device
-    kept = [(m, k) for mods in blocks for m in mods for k in ("wq", "s", "s_t")]
+    mods = [m for block in blocks for m in block]
+    kept = [(m.held_wq, "weight") for m in mods]
+    kept += [(m, k) for m in mods for k in ("s", "s_t")]
     for m, k in kept:
         m._buffers[k] = m._buffers[k].cpu()
     torch.cuda.empty_cache()
@@ -91,11 +93,6 @@ def stream_targets(by_name: dict, n_blocks: int) -> WqtStream:
 
 def check_plan(req: TrainRequest) -> None:
     """The plans an int8 base cannot run; before anything loads."""
-    if req.blocks_to_swap != 0:
-        raise SystemExit(
-            "int8 base: --blocks_to_swap 0 is required (the offloader moves only "
-            f".weight, not wq / wq_t); {_BF16_PLAN}"
-        )
     if req.algo == "loha":
         raise SystemExit(
             f"int8 base: loha builds W + ΔW against the base weight; {_BF16_PLAN}"

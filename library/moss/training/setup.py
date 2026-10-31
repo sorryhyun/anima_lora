@@ -20,6 +20,7 @@ from library.moss.training.data import (
 )
 from library.moss.training.ema import ema_decay
 from library.moss.training.losses import edit_region, tone_projection
+from library.moss.training.muon import BatchedMuon
 
 PRELOAD_LIMIT_GB = 16  # above this the samples are read from disk each step
 
@@ -280,7 +281,7 @@ def make_optimizer(
     if name != "muon":
         return torch.optim.AdamW(params, lr=req.lr), name
     # weight_decay = torch's AdamW default, so only the update rule changes.
-    optimizer = torch.optim.Muon(
+    optimizer = BatchedMuon(
         params, lr=req.lr, weight_decay=0.01, adjust_lr_fn="match_rms_adamw"
     )
     print(f"muon on {len(params)} matrices", flush=True)

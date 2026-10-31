@@ -45,7 +45,8 @@ def find_blocks(model: nn.Module, path: str) -> nn.ModuleList:
 
 def block_size_gb(blocks: nn.ModuleList) -> float:
     b = blocks[0]
-    return sum(p.numel() * p.element_size() for p in b.parameters()) / 1024**3
+    tensors = (*b.parameters(), *b.buffers())
+    return sum(t.numel() * t.element_size() for t in tensors) / 1024**3
 
 
 def resident_size_gb(model: nn.Module, blocks: nn.ModuleList) -> float:

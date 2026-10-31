@@ -146,11 +146,11 @@ make download-model ARGS=moss-sft
 
 ### 4.2 メモリ構成（16 GB）
 
-デフォルト: `grad_checkpointing` オフ、`compile` オン、**Advanced** の `int8 stream` と GPTQ ファイル（DiT のブロック重みを int8 で実行。ファイルは初回使用時にダウンロード）、`stream fp32`（ブロックの残りは fp32 で実行）、`blocks_to_swap 0`（全ブロックをカードに置く）、`activation_memory_budget 0.2`（forward の結果のうち backward 用に保持する割合。残りは再計算）、`ema_card` オン、`expandable_segments` オン（シーケンス長が変わっても CUDA メモリプールが断片化しないようにする）。
+デフォルト: `grad_checkpointing` オフ、`compile` オン、**Advanced** の `int8 stream` と GPTQ ファイル（DiT のブロック重みを int8 で実行。ファイルは初回使用時にダウンロード）、`stream fp32`（ブロックの残りは fp32 で実行）、`blocks_to_swap 0`（全ブロックをカードに置く）、`activation_memory_budget 0.1`（forward の結果のうち backward 用に保持する割合。残りは再計算）、`ema_card` オン、`expandable_segments` オン（シーケンス長が変わっても CUDA メモリプールが断片化しないようにする）。
 
-この構成は 1024² のサンプルで 1 step あたり 1.30 秒、ピーク 12.04 GB で、システムメモリも 4.4 GiB 固定（pin）します。この構成では budget で速度は買えません。0.05–0.4 は同じ速度で、0.1 上げるごとにピークが約 1 GB 増えるので、メモリ不足なら下げてください。この構成で最後まで学習した LoRA はまだありません（[詳細](../moss/optimization/int8.md)）。
+この構成は 1024² のサンプルで 1 step あたり 1.07 秒、ピーク 10.78 GB で、システムメモリも 4.4 GiB 固定（pin）します。この構成では 0.1–0.3 は同じ速度で、0.1 上げるごとにピークが約 1 GB 増えます。0.05 ではピークが 9.98 GB に下がりますが、attention を再計算するため step は 1.16 秒に遅くなります。この構成で最後まで学習した LoRA はまだありません（[詳細](../moss/optimization/int8.md)）。
 
-**bf16 構成。** int8 ベースは block swap と LoHa を拒否し、i2i のステップも実行したことがないため、i2i のタスク設定は bf16 のままです。`--config configs/moss/lora_bf16.toml`、または **Advanced** で `int8 off`、`stream bf16`、`ema_card` オフ、`blocks_to_swap 36`（CPU に置き、必要なときに転送する DiT ブロック数）、`activation_memory_budget 0.5`。
+**bf16 構成。** int8 ベースは LoHa を拒否し、i2i のステップも実行したことがないため、i2i のタスク設定は bf16 のままです。`--config configs/moss/lora_bf16.toml`、または **Advanced** で `int8 off`、`stream bf16`、`ema_card` オフ、`blocks_to_swap 36`（CPU に置き、必要なときに転送する DiT ブロック数）、`activation_memory_budget 0.5`。
 
 | 構成 | 項目 | s/step | 空き VRAM |
 |---|---|---|---|
@@ -159,7 +159,7 @@ make download-model ARGS=moss-sft
 | 余裕あり | swap 24、budget 0.2 | 1.78 | 2.26 GiB |
 | チェックポイント | `grad_checkpointing` オン、swap 0 | 2.09 | 1.60 GiB |
 
-bf16 構成（swap 36、budget 0.5、`swap_h2d_only`、`expandable_segments`、ランク 32）は、caststation セットで 1 step あたり 1.9 秒、最大のサンプル（画像 4.2k + テキスト 0.4k トークン）で空き 0.85 GB です。budget は約 0.45 を超えると上げても効果がなく（0.3: 2.05 s/step）、swap 28～36 は速度が同じなので、swap を下げても空き VRAM を手放すだけです。i2i のサンプルは参照画像も含むため、i2i のタスク設定では swap 38、budget 0.175 を使います。swap 28 では budget 0.2 でメモリ不足になり、swap 38 にすると高い budget の余地ができます。約 8.3k の結合トークン（sanitize）で、swap 38 / budget 0.175 は 1 step あたり 3.79 秒で、swap 28 / budget 0.15 の 4.17 秒より速くなります。`swap_h2d_only` はスワップされる全ブロックの page-locked コピーを RAM に保持し（最大 8.8 GB）、スワップがカードへのコピーだけで済み、戻しのコピーが発生しないようにします。結果と VRAM はオフのときと同じで、swap 38 までは速度も同じ、swap 40 では 8% 速くなります。デフォルトでオンで、ブロックをスワップするときだけ働き、`--no-swap_h2d_only` でオフにできます。
+bf16 構成（swap 36、budget 0.5、`swap_h2d_only`、`expandable_segments`、ランク 32）は、caststation セットで 1 step あたり 1.66 秒、最大のサンプル（画像 4.2k + テキスト 0.4k トークン）で空き 0.85 GB です。budget は約 0.45 を超えると上げても効果がなく（0.3: 2.05 s/step）、swap 28～36 は速度が同じなので、swap を下げても空き VRAM を手放すだけです。i2i のサンプルは参照画像も含むため、i2i のタスク設定では swap 38、budget 0.175 を使います。swap 28 では budget 0.2 でメモリ不足になり、swap 38 にすると高い budget の余地ができます。約 8.3k の結合トークン（sanitize）で、swap 38 / budget 0.175 は 1 step あたり 3.79 秒で、swap 28 / budget 0.15 の 4.17 秒より速くなります。`swap_h2d_only` はスワップされる全ブロックの page-locked コピーを RAM に保持し（最大 8.8 GB）、スワップがカードへのコピーだけで済み、戻しのコピーが発生しないようにします。結果と VRAM はオフのときと同じで、swap 38 までは速度も同じ、swap 40 では 8% 速くなります。デフォルトでオンで、ブロックをスワップするときだけ働き、`--no-swap_h2d_only` でオフにできます。
 
 表の条件: 合成 1024² 画像 + テキスト 300 トークン（合計約 4.4k トークン）、LoRA ランク 16、RTX 5070 Ti。以前のデフォルト（ランク 32、budget 0.1、swap 12）は約 4.5k トークン（画像 4096 + テキスト 455）で 1.85 s/step、空き約 1.7 GB、ピーク reserved 約 13.1 GB。ランク 16、budget 0.1 では 1.82 s/step、空き約 2.0 GB でした。実際のサンプルは最大約 4.9k トークンで、キャプションが長いほどメモリを使いますが、`swap 24` なら同じ速度でその分の余裕が残ります。
 
@@ -206,8 +206,8 @@ bf16 構成（swap 36、budget 0.5、`swap_h2d_only`、`expandable_segments`、�
 
 | 症状 | 対処 |
 |---|---|
-| 学習中にメモリ不足 | Advanced: `activation_memory_budget 0.1`、または `grad_checkpointing` オン（int8 構成でピーク 9.36 GB、やや遅い）。それでも駄目なら `blocks_to_swap 24` の bf16 構成（§4.2）、または `tune_swap.py` を実行。この構成では LoKr/LoHa は 24 / 0.1 が必要 |
-| `int8 base: --blocks_to_swap 0 is required` または `loha builds W + ΔW` | int8 ベースは swap も LoHa も扱えません。bf16 構成（§4.2）を使ってください |
+| 学習中にメモリ不足 | Advanced: `blocks_to_swap 20`（int8 構成でピークが 2.1 GB 下がり、速度は同じ）、`activation_memory_budget 0.05`（1 GB 減、8% 遅い）、または `grad_checkpointing` オン（int8 構成でピーク 9.61 GB、16% 遅い）。それでも駄目なら `blocks_to_swap 24` の bf16 構成（§4.2）、または `tune_swap.py` を実行。この構成では LoKr/LoHa は 24 / 0.1 が必要 |
+| `int8 base: loha builds W + ΔW` | int8 ベースは LoHa を扱えません。bf16 構成（§4.2）を使ってください |
 | スタイルが弱すぎる | エポックを増やす（計測した学習は 20）。プロンプトの絵師タグがキャプションと同じ表記か、`prompt_format` が `caption_format` と一致しているかを確認 |
 | スタイルが強すぎる、セットのサインやウォーターマークが出る、どの画像も同じ構図になる | 早いエポックの `_e<N>` チェックポイントをテストするか、`lora_multiplier` を下げる。サインを写し始めたのは実効 lr を上げた設定。`lr 2e-5` を試してください |
 | セットの衣装や色が他のキャラクターに漏れる | `caption_format layout_json` を使う（デフォルト。通常のタグより漏れが少なかった）。LoHa は LoRA か LoKr に戻す |

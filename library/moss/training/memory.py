@@ -57,6 +57,9 @@ def set_activation_memory_budget(budget: float) -> None:
     import torch._functorch.config as functorch_config
 
     functorch_config.activation_memory_budget = budget
+    # custom ops (FA2, the int8 linears) stay out of the budget's knapsack without this:
+    # always recomputed, whatever their flop formula says
+    functorch_config.is_non_builtin_to_include = True
 
 
 def place(

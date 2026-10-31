@@ -18,7 +18,7 @@ Base only; SFT has no file and trains on round-to-nearest weights.
 ## Running it
 
 Train: the defaults are `--int8 stream --ema_card --stream fp32 --blocks_to_swap 0
---activation_memory_budget 0.2`.
+--activation_memory_budget 0.1`.
 
     make daemon-run ARGS="--stall-timeout 900 scripts/moss/train.py --cache post_image_dataset/moss/<set>"
 
@@ -38,9 +38,11 @@ Generate:
 
 - `--int8_file rtn` in training, or `--int8_file` omitted in generation: round-to-nearest
   (RTN) weights, quantized at load.
-- Both refuse `blocks_to_swap != 0` (the offloader moves `.weight`, not `wq` / `wq_t`) and
-  `algo loha` (it builds `W + ΔW`). `lora` and `lokr` run. `configs/moss/lora_bf16.toml` is
-  the plan for either.
+- Both refuse `algo loha` (it builds `W + ΔW`). `lora` and `lokr` run.
+  `configs/moss/lora_bf16.toml` is the plan for it.
+- Training takes `--blocks_to_swap`: `wq` (and `wq_t` in `full`) sit in `HeldCopy` children,
+  whose `.weight` the offloader moves. A swapped block is about 0.11 GB against bf16's 0.21
+  GB. Generation (`infer_int8_moss.py`) still has no swap run behind it.
 - The i2i configs stay on bf16 (`int8 = "off"`, swap 38): i2i on the int8 base has run no
   step.
 - A LoRA trained this way carries `int8_base` and `int8_base_id`. A bf16-trained LoRA
@@ -48,7 +50,26 @@ Generate:
 
 ## Speed and VRAM
 
-Training, `channel_(caststation)_layout` unless noted:
+The plan today, `hews_layout`, `stream`, `--ema_card`, one run per row:
+
+| plan | s/step | peak |
+|---|---|---|
+| swap 0, budget 0.1 (default) | 1.07 | 10.78 GB |
+| swap 0, budget 0.2 | 1.06 | 11.83 GB |
+| swap 0, budget 0.3 | 1.05 | 12.88 GB |
+| swap 0, budget 0.05 | 1.16 | 9.98 GB |
+| swap 20, budget 0.1 | 1.08 | 8.67 GB |
+| swap 0, checkpointing | 1.24 | 9.61 GB |
+| bf16 plan (`lora_bf16.toml`) | 1.59 | 12.92 GB |
+
+The step is GPU-bound: kernels take 1054 of its 1059 ms. Attention is 387 ms, the int8 GEMMs
+316 ms ([`moss_step_split_int8.md`](../../../project/int8_train/reports/moss_step_split_int8.md)).
+Two changes took it from 1.30 s/step: `BatchedMuon` (154 → 15 ms) and saving FA2's output
+instead of recomputing it (84 → 42 forward calls). The partitioner needs
+`is_non_builtin_to_include` and flop formulas to see custom ops at all, so every figure
+below this section, budget sweeps included, predates them.
+
+Earlier measurements, `channel_(caststation)_layout` unless noted:
 
 | plan | s/step | peak |
 |---|---|---|
@@ -76,6 +97,13 @@ GPTQ, fp32 stream, swap 0, `hews_layout`, 30 steps, median of steps 11–30, one
 | `stream`, budget 0.2, `--ema_card` (60 steps, two runs) | 1.30 | 12.04 GB |
 
 The same paired runs with the CPU shadow read 1.37 s/step at 11.77 GB.
+
+Block swap, before the changes above: swap 0 at budget 0.2 ran 1.30 s/step at 11.99 GB,
+swap 20 at 0.2 ran 1.32 at 9.88 GB, swap 20 at 0.5 ran 1.31 at 14.41 GB.
+
+Step losses at swap 20 stay within 3e-4 of swap 0 at either budget, the size of the gap
+between two swap-0 runs. In eager, loss and dX match the resident stack bit for bit
+(`test_swapped_dx_is_resident_dx`).
 
 Generation, one render per arm (ER-SDE 50 steps + Spectrum, CFG 3, seed 7, compiled, all
 blocks resident):
@@ -109,19 +137,16 @@ slots on the card: the block the backward is in and the one below it, loading on
 thread. dX is bit-identical to `full` in the unit test, and the step costs at most 0.03 s
 more. At equal plans the peak drops 4.2 GB (13.58 → 9.36 GB with checkpointing).
 
-**The activation budget does not buy speed on this plan.** Budgets 0.05–0.4 run at
-1.33–1.37 s/step, while the peak climbs about 1 GB per 0.1. `full` at budget 0.05 already
-runs at 1.33 s/step. Spend the room on something else: pick the budget for the peak you
-need, 0.1–0.2 in the usual case. `--ema_card` is the better use: keeping the EMA shadow on
+**Past budget 0.1 the activation budget buys little.** It needs 0.1 to hold FA2's output;
+above that the peak climbs about 1 GB per 0.1 for 0.01 s/step. `--ema_card` is the better
+use of the room: keeping the EMA shadow on
 the card saves 0.065 s/step (4.8%) for 0.27 GB. The bf16 plan turns it off, since it leaves
-only 0.85 GB free on 16 GB. Attention recompute, the part budget should save, is
-already nearly total at 0.5 (`moss_scoping.md`), and 0.5 does not fit on a 16 GB card at
-this plan even with `stream`.
+only 0.85 GB free on 16 GB. Budget 0.5 does not fit on a 16 GB card at swap 0 even with `stream`.
 
-Packing `wq` and `wq_t` into one `.weight` so the existing swapper runs them would lift
-the swap-0 refusal, but keeps bf16's peaks: same bytes, same swap traffic. Running dX on
-`wq` itself, transposed, would drop `wq_t` with no host copy, but dY could no longer be
-rotated along N, which is what handles its outliers. Neither has been tried.
+Swap is a VRAM lever here: swap 20 takes 2.1 GB off the peak for 0.01–0.02 s/step.
+
+Running dX on `wq` itself, transposed, would drop `wq_t` with no host copy, but dY could no
+longer be rotated along N, which is what handles its outliers. Not tried.
 
 ## Accuracy
 
@@ -193,9 +218,10 @@ The mechanism is unresolved. In training it would arrive as one outlier gradient
 - **Multi-seed render A/B** of the int8 base against bf16.
 - **The effect of the outliers on training**: loss, convergence or samples, and how often
   they occur during a run.
-- **i2i training on the int8 base.** It has run no recorded step. i2i plans normally use
-  swap, which int8 refuses, so whether a full-size reference fits at swap 0 under
-  `stream` is the open question.
+- **i2i training on the int8 base.** It has run no recorded step, so whether a full-size
+  reference fits under `stream`, and at what swap, is the open question.
+- **Block swap beyond swap 20**, `full` mode with swap in a trainer run, and `--blocks_to_swap
+  -1` sizing, whose reserve is fit to bf16.
 - **i2i error beyond `sanitize` crops**: no `swap_text`, no full-size pairs.
 - **Step time as a proper bench.** The GPTQ figures come from 30 steps on one set, one run
   per arm.
@@ -204,6 +230,8 @@ The mechanism is unresolved. In training it would arrive as one outlier gradient
 
 ## Records
 
+- [`moss_step_split_int8.md`](../../../project/int8_train/reports/moss_step_split_int8.md):
+  phase and kernel split of the step, `BatchedMuon`, FA2 in the budget's knapsack.
 - [`moss_gptq.md`](../../../project/int8_train/reports/moss_gptq.md): GPTQ base, held-out
   error, outliers, trainer smoke test, generation, with job ids.
 - [`moss_wqt_stream.md`](../../../project/int8_train/reports/moss_wqt_stream.md): `wq_t`

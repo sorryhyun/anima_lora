@@ -6,6 +6,7 @@ import pytest
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.flop_counter import flop_registry
 
 from library import downloads
 from library.moss.dit_int8.base import check_plan, forward_file
@@ -17,6 +18,9 @@ from library.moss.dit_int8.linear import (
 )
 from library.moss.requests import TrainRequest
 from library.moss.train import ema_step, ema_step_card
+from library.moss.training.memory import set_activation_memory_budget
+from library.moss.training.muon import BatchedMuon
+from library.runtime.blockswap import place
 
 needs_cuda = pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
 
@@ -35,10 +39,10 @@ def linear(seed=0):
     return lin
 
 
-def test_default_plan_is_stream_at_budget_02_swap_0():
+def test_default_plan_is_stream_at_budget_01_swap_0():
     req = TrainRequest()
     assert (req.int8, req.ema_card, req.stream) == ("stream", True, "fp32")
-    assert (req.blocks_to_swap, req.activation_memory_budget) == (0, 0.2)
+    assert (req.blocks_to_swap, req.activation_memory_budget) == (0, 0.1)
     check_plan(req)
 
 
@@ -48,12 +52,10 @@ def test_bf16_config_is_the_swap_plan():
     assert (req.blocks_to_swap, req.activation_memory_budget) == (36, 0.5)
 
 
-@pytest.mark.parametrize(
-    "change", [{"blocks_to_swap": 36}, {"blocks_to_swap": -1}, {"algo": "loha"}]
-)
-def test_int8_refuses_swap_and_loha(change):
+def test_int8_refuses_loha_and_runs_swap():
+    check_plan(TrainRequest(blocks_to_swap=20))
     with pytest.raises(SystemExit, match="lora_bf16.toml"):
-        check_plan(TrainRequest(**change))
+        check_plan(TrainRequest(algo="loha"))
 
 
 def test_forward_file_order(monkeypatch, tmp_path):
@@ -166,13 +168,13 @@ class MiniBlock(nn.Module):
         return x + self.layer2(F.gelu(self.layer1(self.norm(x)), approximate="tanh"))
 
 
-def full_stack(n=4):
+def full_stack(n=4, mode="full"):
     torch.manual_seed(0)
     stack = nn.Sequential(*[MiniBlock() for _ in range(n)])
     stack.to(DEV, torch.bfloat16).requires_grad_(False)
     for block in stack:
-        convert_(block.layer1, "full")
-        convert_(block.layer2, "full")
+        convert_(block.layer1, mode)
+        convert_(block.layer2, mode)
     return stack
 
 
@@ -212,6 +214,51 @@ def test_stream_out_of_order_block_is_copied_in():
         assert torch.equal(got, wq_t[b])
 
 
+class SwappedStack(nn.Module):
+    def __init__(self, layers):
+        super().__init__()
+        self.layers = nn.ModuleList(layers)
+
+    def forward(self, x):
+        for layer in self.layers:
+            x = layer(x)
+        return x
+
+
+@needs_cuda
+@pytest.mark.parametrize("h2d_only", [False, True])
+@pytest.mark.parametrize("mode", ["fwd", "full", "stream"])
+def test_swapped_dx_is_resident_dx(mode, h2d_only):
+    torch.manual_seed(1)
+    x0 = torch.randn(M, K, device=DEV, dtype=torch.bfloat16)
+
+    def step(net):
+        x = x0.clone().requires_grad_()
+        y = net(x)
+        y.square().mean().backward()
+        return y.detach(), x.grad
+
+    net = SwappedStack(full_stack(6, "full" if mode == "stream" else mode))
+    stream = stream_blocks(net.layers) if mode == "stream" else None
+    y_ref, dx_ref = step(net)
+    attached = place(
+        net,
+        "layers",
+        torch.device(DEV),
+        blocks_to_swap=3,
+        supports_backward=True,
+        h2d_only=h2d_only,
+    )
+    tail = net.layers[5].layer1
+    assert tail.wq.device.type == "cpu" and tail.s.device.type == "cuda"
+    for _ in range(3):  # the masters are reused, not rebuilt
+        y, dx = step(net)
+        assert torch.equal(y, y_ref) and torch.equal(dx, dx_ref)
+    if stream is not None:
+        stream.close()
+    attached.detach()
+
+
 @needs_cuda
 @pytest.mark.parametrize("mode", ["fwd", "full", "stream"])
 def test_compiled_block_has_no_graph_break(mode):
@@ -233,3 +280,56 @@ def test_compiled_block_has_no_graph_break(mode):
     assert rel(y, ref) < 0.03
     y.square().mean().backward()
     assert xg.grad is not None and torch.isfinite(xg.grad).all()
+
+
+def test_budget_prices_custom_ops(monkeypatch):
+    import library.moss.loader  # noqa: F401  (registers FA2's formula)
+    import torch._functorch.config as functorch_config
+
+    monkeypatch.setattr(functorch_config, "activation_memory_budget", 1.0)
+    monkeypatch.setattr(functorch_config, "is_non_builtin_to_include", False)
+    set_activation_memory_budget(0.1)
+    assert functorch_config.is_non_builtin_to_include
+    priced = (
+        torch.ops.flash_attn._flash_attn_forward,
+        torch.ops.int8_train.linear_stream,
+    )
+    assert all(op in flop_registry for op in priced)
+
+
+MUON_TOL = 0.02  # both run Newton-Schulz in bf16; the rounding differs
+
+
+def lora_matrices(device):
+    torch.manual_seed(3)
+    shapes = [(32, 3072)] * 3 + [(3072, 32)] * 3 + [(16384, 32)] * 2 + [(32, 8192)] * 2
+    return [torch.randn(sh, device=device) * 1e-3 for sh in shapes]
+
+
+@needs_cuda
+def test_batched_muon_matches_torch():
+    kwargs = dict(lr=5e-5, weight_decay=0.01, adjust_lr_fn="match_rms_adamw")
+    ref, got, start = lora_matrices(DEV), lora_matrices(DEV), lora_matrices(DEV)
+    ref_opt, got_opt = torch.optim.Muon(ref, **kwargs), BatchedMuon(got, **kwargs)
+    torch.manual_seed(4)
+    for _ in range(5):
+        for a, b in zip(ref, got):
+            a.grad = torch.randn_like(a)
+            b.grad = a.grad.clone()
+        ref_opt.step()
+        got_opt.step()
+    for a, b, s in zip(ref, got, start):
+        assert rel(b - s, a - s) < MUON_TOL
+        assert torch.equal(
+            ref_opt.state[a]["momentum_buffer"], got_opt.state[b]["momentum_buffer"]
+        )
+
+
+@needs_cuda
+def test_batched_muon_skips_param_without_grad():
+    a, b = lora_matrices(DEV)[:2]
+    a0, b0 = a.clone(), b.clone()
+    a.grad = torch.randn_like(a)
+    kwargs = dict(lr=5e-5, weight_decay=0.01, adjust_lr_fn="match_rms_adamw")
+    BatchedMuon([a, b], **kwargs).step()
+    assert not torch.equal(a, a0) and torch.equal(b, b0)

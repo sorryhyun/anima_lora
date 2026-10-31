@@ -684,7 +684,7 @@ class TrainRequest(Request):
         "the frozen DiT's 252 block linears as int8 GEMMs: stream runs dX on a second "
         "int8 copy held in pinned host memory (4.4 GiB) and loaded block by block, "
         "4.2 GB off the peak; full keeps that copy on the card; fwd keeps the bf16 "
-        "weight for dX; off is the bf16 base. int8 refuses blocks_to_swap and loha "
+        "weight for dX; off is the bf16 base. int8 refuses loha "
         "(configs/moss/lora_bf16.toml is the bf16 plan). Stamped as int8_base. "
         "docs/moss/optimization/int8.md",
         choices=("off", "fwd", "full", "stream"),
@@ -755,24 +755,26 @@ class TrainRequest(Request):
     grad_checkpointing: bool = _f(
         False,
         "per-block activation checkpointing. Off by default: the activation budget "
-        "below is faster (1.45 vs 1.35 s/step on the int8 plan) for ~2.4 GB of peak. "
+        "below is faster (1.24 vs 1.07 s/step on the int8 plan) for ~1.2 GB of peak. "
         "Turn it on with --no-compile, or for that peak",
     )
     activation_memory_budget: float = _f(
-        0.2,
+        0.1,
         "cap on the compiled blocks' saved-for-backward set (Inductor's min-cut "
         "partitioner recomputes the rest); applies with --compile and "
         "--no-grad_checkpointing, ignored otherwise. On the int8 plan speed is flat "
-        "from 0.05 to 0.4 and the peak climbs ~1 GB per 0.1 (0.2: 12.04 GB; 0.5 OOMs "
-        "on 16 GB). The bf16 plan runs 0.5 at swap 36. i2i samples carry reference "
+        "from 0.1 to 0.3 (1.05-1.07 s/step) and the peak climbs ~1 GB per 0.1 (0.1: "
+        "10.78 GB); at 0.05 FA2's output no longer fits and attention is recomputed "
+        "(1.16 s/step, 9.98 GB). The bf16 plan runs 0.5 at swap 36. i2i samples carry reference "
         "tokens: the i2i configs run 0.175 at swap 38 with --swap_h2d_only (~9%% "
         "faster than 0.15 at swap 28, where 0.2 OOMs)",
         advanced=True,
     )
     blocks_to_swap: int = _f(
         0,
-        "DiT blocks to swap to CPU (-1 = size from free VRAM); the int8 base refuses "
-        "anything but 0. The bf16 plan runs 36, the room budget 0.5 needs at rank 32 on "
+        "DiT blocks to swap to CPU (-1 = size from free VRAM). On the int8 plan this "
+        "trades VRAM, not speed: swap 20 at budget 0.1 peaks at 8.67 GB against "
+        "10.78 GB at about the same s/step. The bf16 plan runs 36, the room budget 0.5 needs at rank 32 on "
         "16 GB; swap 28-38 run at the same speed, past ~40 the PCIe time stops hiding "
         "(--swap_h2d_only narrows that: 8%% faster at 40). scripts/moss/tune_swap.py "
         "measures this machine's bf16 pair",

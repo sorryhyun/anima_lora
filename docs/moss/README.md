@@ -71,18 +71,17 @@ int8 became the default re-encodes on the next `cache` run unless it passes
   Muon made them no-ops; mechanism and the lr / alpha history:
   `docs/moss/channel_scaling.md`.
 - **Time**: 30 images × 20 epochs (600 steps) took about 18–21 min on a 5070 Ti at the
-  bf16 plan's 1.9 s/step. The
+  bf16 plan's then 1.9 s/step (1.66 now; the int8 plan runs 1.07). The
   LoRA moves line work and palette toward the set; character identity holds, including
   characters the set does not contain.
 - **Memory**: the default plan is the int8 base (`--int8 stream`, GPTQ forward copies,
-  `--stream fp32`), `--blocks_to_swap 0`, `--activation_memory_budget 0.2`, `--ema_card`,
-  no checkpointing: 1.30 s/step at a 12.04 GB peak on 1024² samples, plus 4.4 GiB of pinned
+  `--stream fp32`), `--blocks_to_swap 0`, `--activation_memory_budget 0.1`, `--ema_card`,
+  no checkpointing: 1.07 s/step at a 10.78 GB peak on 1024² samples, plus 4.4 GiB of pinned
   host memory. The file downloads on first use, or via `make download-model
   ARGS=moss-dit-int8`. No LoRA has been trained to completion on this plan:
   `docs/moss/optimization/int8.md`.
-- **bf16 plan** (`--config configs/moss/lora_bf16.toml`): needed for `--algo loha`, block
-  swap, and the i2i configs, since the int8 base refuses swap and LoHa and has run no i2i
-  step. `--blocks_to_swap 36`, `--activation_memory_budget 0.5`, `--swap_h2d_only`: 1.9
+- **bf16 plan** (`--config configs/moss/lora_bf16.toml`): needed for `--algo loha` and the
+  i2i configs, since the int8 base refuses LoHa and has run no i2i step. `--blocks_to_swap 36`, `--activation_memory_budget 0.5`, `--swap_h2d_only`: 1.66
   s/step at 1024² with 0.85 GB free on the largest caststation sample (4.2k image + 0.4k
   text tokens). The step time stops improving past budget ~0.45 (0.3: 2.05 s/step), and
   swap 28–36 run at the same speed, so the swap count trades VRAM, not step time. The i2i

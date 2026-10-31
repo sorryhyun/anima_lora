@@ -13,7 +13,8 @@ block the backward is in.
 ``convert_(module, mode)`` swaps the class in place, so LoRA modules that hold a
 reference to the original module object keep working. The forward copy is round to
 nearest unless a calibrated one is given; the backward copy ``wq_t`` is always round
-to nearest.
+to nearest. Both sit in :class:`HeldCopy` children, where the block swapper's walk
+over ``.weight`` finds them.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ import comfy_kitchen
 import torch
 import torch.nn as nn
 from safetensors import safe_open
+from torch.utils.flop_counter import register_flop_formula
 
 from library.moss.dit_int8.stream import WqtStream
 from library.moss.int8 import INT8_MAX, rotate, row_scale
@@ -179,10 +181,36 @@ def _stream_backward(ctx, dy):
 linear_stream.register_autograd(_stream_backward, setup_context=_stream_setup)
 
 
+# The partitioner's knapsack prices an op by its flops, and an op with no formula at 1:
+# recomputed first at any budget. 0.5 = int8's 0.42 ms against bf16's 0.87 ms (gemm_bench).
+@register_flop_formula(
+    [torch.ops.int8_train.linear_full, torch.ops.int8_train.linear_stream]
+    + [torch.ops.int8_train.linear_fwd, torch.ops.int8_train.mm]
+)
+def _int8_flops(x_shape, wq_shape, *args, **kwargs) -> int:
+    return int(0.5 * x_shape[-2] * wq_shape[0] * wq_shape[1])
+
+
+class HeldCopy(nn.Module):
+    """One int8 copy as a child's ``weight``, the name the block swapper moves."""
+
+    def __init__(self, copy: torch.Tensor):
+        super().__init__()
+        self.register_buffer("weight", copy, persistent=False)
+
+
 class Int8TrainLinear(nn.Linear):
     """Only ever made by :func:`convert_`; never constructed directly."""
 
     int8_mode: str
+
+    @property
+    def wq(self) -> torch.Tensor:
+        return self.held_wq.weight
+
+    @property
+    def wq_t(self) -> torch.Tensor:
+        return self.held_wq_t.weight
 
     def _apply(self, fn, recurse=True):
         # the trainer's unet.to(dtype=bf16) would round the fp32 row scales; keep
@@ -242,11 +270,11 @@ def convert_(module: nn.Linear, mode: str, forward_copy=None) -> None:
         wq, s = quantize(w)
     else:
         wq, s = (t.to(w.device) for t in forward_copy)
-    module.register_buffer("wq", wq, persistent=False)
+    module.held_wq = HeldCopy(wq)
     module.register_buffer("s", s, persistent=False)
     if mode == "full":
         wq_t, s_t = quantize(w.t().contiguous())
-        module.register_buffer("wq_t", wq_t, persistent=False)
+        module.held_wq_t = HeldCopy(wq_t)
         module.register_buffer("s_t", s_t, persistent=False)
     if mode != "fwd":
         del module.weight

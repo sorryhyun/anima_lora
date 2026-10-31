@@ -146,11 +146,11 @@ make download-model ARGS=moss-sft
 
 ### 4.2 显存方案（16 GB）
 
-默认：梯度检查点（`grad_checkpointing`）关闭，`compile` 开启，**高级** 中 `int8 stream` 配合 GPTQ 文件（DiT 的块权重以 int8 运行，文件首次使用时下载）、`stream fp32`（块的其余部分以 fp32 运行）、`blocks_to_swap 0`（所有块都留在显卡上）、`activation_memory_budget 0.2`（前向结果中为反向保留的比例，其余重新计算）、`ema_card` 开启以及 `expandable_segments` 开启（序列长度变化时避免 CUDA 显存池碎片化）。
+默认：梯度检查点（`grad_checkpointing`）关闭，`compile` 开启，**高级** 中 `int8 stream` 配合 GPTQ 文件（DiT 的块权重以 int8 运行，文件首次使用时下载）、`stream fp32`（块的其余部分以 fp32 运行）、`blocks_to_swap 0`（所有块都留在显卡上）、`activation_memory_budget 0.1`（前向结果中为反向保留的比例，其余重新计算）、`ema_card` 开启以及 `expandable_segments` 开启（序列长度变化时避免 CUDA 显存池碎片化）。
 
-该方案在 1024² 样本上为 1.30 s/step，峰值 12.04 GB，并且还会锁定 4.4 GiB 系统内存。在此方案上 budget 买不到速度：0.05–0.4 速度相同，每提高 0.1 峰值约增加 1 GB，所以显存不足时请调低。目前还没有用它完整训练出 LoRA（[详情](../moss/optimization/int8.md)）。
+该方案在 1024² 样本上为 1.07 s/step，峰值 10.78 GB，并且还会锁定 4.4 GiB 系统内存。在此方案上 0.1–0.3 速度相同，每提高 0.1 峰值约增加 1 GB。0.05 时峰值降到 9.98 GB，但需要重新计算 attention，速度降为 1.16 s/step。目前还没有用它完整训练出 LoRA（[详情](../moss/optimization/int8.md)）。
 
-**bf16 方案。** int8 基座拒绝 block swap 和 LoHa，也没有跑过 i2i 步骤，所以 i2i 任务配置仍用 bf16。使用 `--config configs/moss/lora_bf16.toml`，或在 **高级** 中设置 `int8 off`、`stream bf16`、`ema_card` 关闭、`blocks_to_swap 36`（放在 CPU 上、用时再传入的 DiT 块数）、`activation_memory_budget 0.5`。
+**bf16 方案。** int8 基座拒绝 LoHa，也没有跑过 i2i 步骤，所以 i2i 任务配置仍用 bf16。使用 `--config configs/moss/lora_bf16.toml`，或在 **高级** 中设置 `int8 off`、`stream bf16`、`ema_card` 关闭、`blocks_to_swap 36`（放在 CPU 上、用时再传入的 DiT 块数）、`activation_memory_budget 0.5`。
 
 | 方案 | 字段 | s/step | 剩余显存 |
 |---|---|---|---|
@@ -159,7 +159,7 @@ make download-model ARGS=moss-sft
 | 留更多余量 | swap 24，budget 0.2 | 1.78 | 2.26 GiB |
 | 检查点 | 梯度检查点开启，swap 0 | 2.09 | 1.60 GiB |
 
-bf16 方案（swap 36，budget 0.5，`swap_h2d_only`，`expandable_segments`，秩 32）在 caststation 数据集上为 1.9 s/step，最大样本（图像 4.2k + 文本 0.4k token）剩余 0.85 GB。budget 超过约 0.45 后再提高也没有帮助（0.3：2.05 s/step），swap 28–36 速度相同，所以调低 swap 只会损失剩余显存。i2i 样本还带有参考图，因此 i2i 任务配置使用 swap 38、budget 0.175：swap 28 时 budget 0.2 会显存不足，而 swap 38 能为更高的 budget 腾出空间；在约 8.3k 联合 token（sanitize）下为 3.79 s/step，swap 28 / budget 0.15 则为 4.17 s/step。`swap_h2d_only` 会在 RAM 中为每个被换出的块保留一份锁页副本（最多 8.8 GB），这样换出只需复制到显卡，无需再复制回来。结果和显存与不开启时相同；swap 38 以内速度相同，swap 40 时快 8%。默认开启，且只在有块被换出时起作用，可用 `--no-swap_h2d_only` 关闭。
+bf16 方案（swap 36，budget 0.5，`swap_h2d_only`，`expandable_segments`，秩 32）在 caststation 数据集上为 1.66 s/step，最大样本（图像 4.2k + 文本 0.4k token）剩余 0.85 GB。budget 超过约 0.45 后再提高也没有帮助（0.3：2.05 s/step），swap 28–36 速度相同，所以调低 swap 只会损失剩余显存。i2i 样本还带有参考图，因此 i2i 任务配置使用 swap 38、budget 0.175：swap 28 时 budget 0.2 会显存不足，而 swap 38 能为更高的 budget 腾出空间；在约 8.3k 联合 token（sanitize）下为 3.79 s/step，swap 28 / budget 0.15 则为 4.17 s/step。`swap_h2d_only` 会在 RAM 中为每个被换出的块保留一份锁页副本（最多 8.8 GB），这样换出只需复制到显卡，无需再复制回来。结果和显存与不开启时相同；swap 38 以内速度相同，swap 40 时快 8%。默认开启，且只在有块被换出时起作用，可用 `--no-swap_h2d_only` 关闭。
 
 表格测试条件：合成 1024² 图像 + 300 个文本 token（共约 4.4k token），LoRA 秩 16，RTX 5070 Ti。此前的默认值（秩 32，budget 0.1，swap 12）在约 4.5k token（图像 4096 + 文本 455）下实测 1.85 s/step，剩余约 1.7 GB，峰值 reserved 约 13.1 GB；秩 16、budget 0.1 为 1.82 s/step，剩余约 2.0 GB。真实样本最多约 4.9k token，标注越长显存占用越多，`swap 24` 在相同速度下留出了这部分余量。
 
@@ -206,8 +206,8 @@ bf16 方案（swap 36，budget 0.5，`swap_h2d_only`，`expandable_segments`，�
 
 | 现象 | 处理 |
 |---|---|
-| 训练时显存不足 | 高级：`activation_memory_budget 0.1`，或开启梯度检查点（int8 方案上峰值 9.36 GB，稍慢）。再不行用 `blocks_to_swap 24` 的 bf16 方案（§4.2），或运行 `tune_swap.py`；在该方案上 LoKr/LoHa 需要 24 / 0.1 |
-| `int8 base: --blocks_to_swap 0 is required` 或 `loha builds W + ΔW` | int8 基座不支持 swap 和 LoHa：请使用 bf16 方案（§4.2） |
+| 训练时显存不足 | 高级：`blocks_to_swap 20`（int8 方案上峰值降低 2.1 GB，速度不变）、`activation_memory_budget 0.05`（峰值降低 1 GB，慢 8%），或开启梯度检查点（int8 方案上峰值 9.61 GB，慢 16%）。再不行用 `blocks_to_swap 24` 的 bf16 方案（§4.2），或运行 `tune_swap.py`；在该方案上 LoKr/LoHa 需要 24 / 0.1 |
+| `int8 base: loha builds W + ΔW` | int8 基座不支持 LoHa：请使用 bf16 方案（§4.2） |
 | 风格太弱 | 增加轮数（实测训练用 20）。确认提示词中的画师标签与标注写法一致，`prompt_format` 与 `caption_format` 一致 |
 | 风格太强、出现数据集的签名或水印、所有图构图相同 | 测试更早的 `_e<N>` 检查点，或降低 LoRA 强度（`lora_multiplier`）。开始复制签名的正是提高了有效学习率的那一组；可尝试 `lr 2e-5` |
 | 数据集的服装或颜色泄漏到其他角色 | 使用 `caption_format layout_json`（默认值，泄漏比普通标签少）。LoHa 改回 LoRA 或 LoKr |

@@ -36,7 +36,7 @@ class WqtStream:
             flat = self.masters._alloc(total)
             for j, mod in enumerate(mods):
                 self._view(flat, offsets[j], shapes[j]).copy_(mod.wq_t)
-                del mod.wq_t
+                del mod.held_wq_t
                 mod.register_buffer(
                     "sid", torch.tensor([b * self.per_block + j]), persistent=False
                 )
