@@ -52,6 +52,18 @@ def test_bf16_config_is_the_swap_plan():
     assert (req.blocks_to_swap, req.activation_memory_budget) == (36, 0.5)
 
 
+@needs_cuda
+@pytest.mark.parametrize("mode", ["infer", "full"])
+def test_forward_hands_the_kernel_fp32(mode):
+    lin = linear()
+    convert_(lin, mode)
+    x = torch.randn(M, K, device=DEV, dtype=torch.bfloat16)
+    y = lin(x)
+    assert y.dtype == torch.bfloat16
+    assert torch.equal(y, int8_mm(x.float(), lin.wq, lin.s))
+    assert not torch.equal(y, int8_mm(x, lin.wq, lin.s))
+
+
 def test_int8_refuses_loha_and_runs_swap():
     check_plan(TrainRequest(blocks_to_swap=20))
     with pytest.raises(SystemExit, match="lora_bf16.toml"):

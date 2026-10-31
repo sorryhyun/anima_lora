@@ -45,9 +45,11 @@ def quantize(w: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
 @torch.library.custom_op("int8_train::mm", mutates_args=())
 def int8_mm(x: torch.Tensor, wq: torch.Tensor, s: torch.Tensor) -> torch.Tensor:
-    """``x (…, K) @ dequant(wq)ᵀ`` → bf16 ``(…, N)``."""
+    """``x (…, K) @ dequant(wq)ᵀ`` → bf16 ``(…, N)``. The kernel rounds around its
+    activation division to ``x``'s dtype: the forward passes fp32, the backward its bf16
+    ``dY``."""
     y = comfy_kitchen.int8_linear(
-        x.reshape(-1, x.shape[-1]).to(torch.bfloat16),
+        x.reshape(-1, x.shape[-1]),
         wq,
         s,
         out_dtype=torch.bfloat16,
@@ -227,7 +229,7 @@ class Int8TrainLinear(nn.Linear):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # cast outside the opaque op, where inductor fuses it into the producer (inside
         # it ran as its own copy kernel, ~3.5 ms per step: status.md)
-        x = x.to(torch.bfloat16)
+        x = x.float()
         if self.int8_mode == "infer":
             return int8_mm(x, self.wq, self.s)
         if self.int8_mode == "full":

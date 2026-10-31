@@ -95,7 +95,7 @@ class Int8Arm(nn.Linear):
             wq, s = quantize(w)
         if self.arm.endswith("w8a16"):
             return _SplitArm.apply(x, rotate(wq.float() * s), w, False)
-        x = x.to(torch.bfloat16)
+        x = x.float()
         if self.arm == "fwd":
             return linear_fwd(x, wq, s, w)
         return linear_full(x, wq, s, *quantize(w.t().contiguous()))

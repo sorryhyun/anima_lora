@@ -273,7 +273,7 @@ def compile_blocks(blocks, seq_range=None) -> None:
             compile_signature(
                 n_token_families=None, seq_range=(lo, hi), dynamic_seq=True
             )
-            + ";line=moss;static;flops=fa2,int8"
+            + ";line=moss;static;flops=fa2,int8;int8_in=fp32"
         )
         # A Python int is a constant under dynamic=False: ref_start would specialise
         # per sample and contradict the strict mark.

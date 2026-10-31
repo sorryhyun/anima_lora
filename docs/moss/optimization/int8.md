@@ -202,6 +202,52 @@ Generation: all arms render cleanly. On the i2i page, mean |Δ| from bf16 is 0.7
 (GPTQ) and 0.68/255 (with an fp32 stream). One t2i seed is chaotic (12.4–13.9/255 against
 11.7 between bf16 and its own fp32 stream), so it orders nothing.
 
+The tables above and the speed tables were measured on a bf16 kernel input; the next section
+gives what the fp32 input changes.
+
+## `comfy_kitchen` rounds activations to the input dtype
+
+On a bf16 input, `int8_linear`'s CUDA quantizer (0.2.40, `quant_div_to_float` and
+`quant_div_float_to_float` in `ops/int8_linear.cu`) adds three bf16 roundings. The rotation
+itself runs in fp32.
+
+- The rotated value is rounded to bf16 before the division.
+- The scale is rounded to bf16 for the division, while the dequant multiplies by the fp32
+  scale. Each token keeps a gain error of up to about 0.4%.
+- The quotient is rounded to bf16 before `nearbyintf`, so values of 64 and above are on a 0.5
+  step when they reach the int8 rounding.
+
+An fp32 input skips all three. `Int8TrainLinear.forward` passes one in training and generation;
+the backward's `dY` stays bf16, and `wq` is unchanged, so `int8_id` and LoRAs are not affected.
+
+Prediction error on the fp32 stream, %, GPTQ, the same held-out images and seeds, 18 of 18
+(image, σ) pairs better on the six-image rows:
+
+| σ | bf16 input | fp32 input | change |
+|---|---|---|---|
+| 0.1 | 3.849 | 3.637 | −5.5% |
+| 0.5 | 1.711 | 1.618 | −5.4% |
+| 0.5, 30 images | 1.654 | 1.568 | −5.2% |
+| 0.9 | 1.336 | 1.201 | −10.1% |
+
+LoRA gradient on the fp32 stream, as in the table above, σ = 0.5, 30 images:
+
+| input | 0–6 | 7–13 | 14–20 | 21–27 | 28–34 | 35–41 |
+|---|---|---|---|---|---|---|
+| bf16 | 1.01 [1.48] | 1.05 [1.57] | 1.07 [1.79] | 0.98 [1.69] | 1.12 [1.38] | 0.92 [1.04] |
+| fp32 | 1.03 [1.37] | 1.04 [1.40] | 1.02 [1.28] | 0.97 [1.23] | 1.07 [1.38] | 0.89 [0.97] |
+
+The cost is 1.05 → 1.10 s/step (`ama_mitsuki_layout`, budget 0.3, median of steps 11–40, one
+run per arm), peak unchanged at 12.98 GB. The same weights through ComfyUI, the MOSS Toolkit and
+the int8 TE still reach the kernel in bf16; those paths were not scored. i2i was not scored.
+Numbers: [`moss_act_scale.md`](../../../project/int8_train/reports/moss_act_scale.md).
+
+Upstream: [comfy-kitchen#289](https://github.com/Comfy-Org/comfy-kitchen/issues/289), with a fix
+on [`sorryhyun/comfy-kitchen`](https://github.com/sorryhyun/comfy-kitchen/tree/int8-activation-fp32-division).
+It divides in fp32, so a bf16 input gives the fp32 input's output bit for bit, the same
+prediction error, and bf16's speed. Once a release carries it, `Int8TrainLinear.forward` can go
+back to bf16 and drop the 0.05 s/step.
+
 ## Single-token gradient outliers
 
 A few (image, arm) pairs carry one token whose gradient dominates. `src/grad_spike.py`
@@ -227,6 +273,9 @@ the outliers are not an int8 effect and are not reproducible run to run.
 - [`methods/fp32_stream.md`](../methods/fp32_stream.md): the fp32 residual stream.
 - [`moss_step_split_int8.md`](../../../project/int8_train/reports/moss_step_split_int8.md):
   phase and kernel split of the step, `BatchedMuon`, FA2 in the budget's knapsack.
+- [`moss_act_scale.md`](../../../project/int8_train/reports/moss_act_scale.md): activation
+  clipping, the kernel's input dtype. [`moss_fold_vo.md`](../../../project/int8_train/reports/moss_fold_vo.md):
+  SmoothQuant fold from `o` into `v`, no gain.
 - [`moss_gptq.md`](../../../project/int8_train/reports/moss_gptq.md): GPTQ base, held-out
   error, outliers, trainer smoke test, generation, with job ids.
 - [`moss_wqt_stream.md`](../../../project/int8_train/reports/moss_wqt_stream.md): `wq_t`
