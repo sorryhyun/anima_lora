@@ -18,6 +18,7 @@ not trained on.
 | MOSS step split | int8 plan 1.30 → 1.07 s/step: `BatchedMuon`, FA2 in the budget's knapsack ([report](reports/moss_step_split_int8.md)) |
 | Anima `wq_t` stream, budget 1.0 | `stream` peak 12.38 → 10.96 GB for 17 ms/step; budget 1.0 OOMs at step 0 and, where it fits, ties 0.99 at 333 ms for 4 GB more; turbo wired, not run ([report](reports/anima_wqt_stream.md)) |
 | Anima fp32 stream | bf16 stream error is real, about half MOSS's: fp32 stream 1.5–2.1x on prediction around bf16, 21–36% around int8, which then beats bf16; gradient mixed, untraced tail in blocks 0–13; cost and training not measured ([report](reports/anima_fp32_stream.md)) |
+| Anima stream attribution | blocks 0–13 too sensitive to compare arms on (fp32 + rounding-sized noise reads the same); blocks 14–27 clean, int8's forward dominates; `wide` (+ `mod`, `head`) 1.8–3.3x on prediction and halves a 6–8% mean-gradient bias in blocks 21–27; dX, FA2 not sources ([report](reports/anima_stream_attrib.md)) |
 | step split | converted GEMMs are 47% of a 594 ms step (forward ~137 ms, dX ~143 ms), predicted 1.41x ([report](reports/step_profile.md), titled *Phase 1a*) |
 | real-gradient error | int8 `full` is 1.3–1.5x bf16's distance from the fp32 LoRA gradient, a bf16-sized extra error; it comes from the int8 forward (`fwd` ≈ `full`) ([report](reports/grad_error.md), titled *Phase 1b*) |
 | implementation | `src/int8_linear.py`, `src/train_int8.py`, 7 unit tests pass ([report](reports/phase3_ab.md), titled *Phase 2–3*) |

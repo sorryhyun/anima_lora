@@ -6,7 +6,7 @@ they were. On the int8 base it is what brings prediction error below bf16.
 
 **Status:** on by default in training (`TrainRequest.stream`), off by default in generation
 (`GenerateRequest.stream`). `configs/moss/lora_bf16.toml` and the i2i configs run bf16.
-Closer to fp32 has not been shown to look better. Measurements and renders:
+It reads better on text rendering and finger placement. Measurements and renders:
 [`findings/bf16_residual_stream.md`](../findings/bf16_residual_stream.md).
 
 ## Why
@@ -80,7 +80,8 @@ resident.
   stream moves a render about 3x more than changing the inference stream (14.6 against 4.3/255
   on Base). Matching the two shows no extra effect.
 - **Renders, in detail.** On Base accessories, eyes and small marks change and the composition
-  holds; on SFT the composition can change. Across 24 cells neither stream wins consistently.
+  holds; on SFT the composition can change. Read as whole images, neither stream wins across the
+  24 cells of the findings. Read on text and fingers, fp32 wins (no blind count yet).
 - **Loss, slightly.** 0.0002–0.0004 lower from step 1 on, before any update, so this is the
   forward's own error and not better learning.
 

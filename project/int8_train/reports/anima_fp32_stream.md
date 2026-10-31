@@ -121,6 +121,6 @@ Whether this is the same mechanism was not traced.
 - **The tail**: the hot token's share of `‖dY‖²` per arm, as `src/grad_spike.py` did on MOSS, and
   30 images, about an hour.
 - **Anything trained.** No LoRA has run on an fp32 stream on Anima, so the effect on samples is
-  unknown. MOSS found no consistent quality gain, and closer to fp32 is not a target in itself.
+  unknown. On MOSS it visibly changed text rendering and finger placement for the better.
 - **The backward's `dY`** stays bf16 in every int8 arm and goes through the kernel's rounding
   (comfy-kitchen#289).
