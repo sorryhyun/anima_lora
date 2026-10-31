@@ -324,6 +324,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Step at which to disable LoRA during inference (for P-GRAFT). "
         "LoRA is active for steps 0..cutoff_step-1, disabled for cutoff_step..end.",
     )
+    parser.add_argument(
+        "--int8",
+        action="store_true",
+        help="Generate on the int8 base: the DiT's large linears as int8 GEMMs, LoRAs "
+        "as P-GRAFT hooks. docs/anima/optimizations/int8.md.",
+    )
+    parser.add_argument(
+        "--int8_file",
+        type=str,
+        default=None,
+        help="Forward copies from dit_gptq.py. Default: <dit>_int8_gptq.safetensors "
+        "beside the DiT if present, else round to nearest; 'rtn' forces round to "
+        "nearest.",
+    )
 
     parser.add_argument(
         "--tiled_diffusion",

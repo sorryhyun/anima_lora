@@ -29,6 +29,7 @@ _MOSS_HOMES = (
 _SHARED = (
     "library.env",
     "library.downloads",
+    "library.int8",
     "library.lines",
     "library.runtime.offloading",
     "library.runtime.blockswap",
@@ -65,6 +66,15 @@ def test_moss_uses_only_shared_library_helpers():
             if not name.startswith(_SHARED):
                 offenders.append(f"{path.name}: {name}")
     assert not offenders, f"library.moss reaches past the shared helpers: {offenders}"
+
+
+def test_shared_int8_stays_out_of_the_lines():
+    offenders = []
+    for path in (ROOT / "library" / "int8").rglob("*.py"):
+        for name in imports_of(path):
+            if name.startswith(("library.moss", "library.anima", "networks")):
+                offenders.append(f"{path.name}: {name}")
+    assert not offenders, f"library.int8 imports a line: {offenders}"
 
 
 def test_requests_is_torch_free():

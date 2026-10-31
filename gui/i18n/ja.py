@@ -393,6 +393,8 @@ STRINGS: dict[str, str] = {
     "models_redownload_pack": "パックを再ダウンロード",
     "models_pack_anima": "Anima ベース",
     "models_pack_anima_desc": "DiT、Qwen3-0.6B テキストエンコーダー、Qwen-Image VAE — すべての学習 / 推論の実行に 3 点とも必要です。",
+    "models_pack_anima_dit_int8": "Anima INT8 DiT",
+    "models_pack_anima_dit_int8_desc": "Anima ベースの DiT のブロック linear を int8 GPTQ にしたファイル（約 2.4 GB）。--int8 で使い、初回使用時に取得します。",
     "models_pack_pe": "PE-Core",
     "models_pack_pe_desc": "PE-Core-L14-336: CMMD 検証メトリック専用 (use_cmmd、既定で無効)。REPA の特徴キャッシュは PE-Spatial を使います — 「キュレーション」タブの「グルーピング」パック。",
     "models_pack_cjk": "CJK 語彙パック",

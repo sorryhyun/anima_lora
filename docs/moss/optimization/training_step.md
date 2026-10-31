@@ -10,12 +10,12 @@ visits the blocks in a known order.
 
 | trick | effect | code |
 |---|---|---|
-| [int8 ConvRot GEMMs, both directions](#int8-convrot-in-both-directions) | RTN alone: 1.57x bf16 on the same plan | `dit_int8/linear.py` |
-| [`wq_t` streamed from the host](#backward-copy-on-the-host) | 4.2 GB off the peak, at most 0.03 s/step | `dit_int8/stream.py` |
+| [int8 ConvRot GEMMs, both directions](#int8-convrot-in-both-directions) | RTN alone: 1.57x bf16 on the same plan | `library/int8/linear.py` |
+| [`wq_t` streamed from the host](#backward-copy-on-the-host) | 4.2 GB off the peak, at most 0.03 s/step | `library/int8/stream.py` |
 | [Custom ops priced for the partitioner](#custom-ops-in-the-partitioners-knapsack) | FA2 forward 84 → 42 calls, 207 → 104 ms | `loader.py`, `training/memory.py` |
 | [`Muon` batched by shape](#muon-batched-by-shape) | 154 → 15 ms per step | `training/muon.py` |
 | [EMA shadow on the card](#ema-shadow-on-the-card) | 0.065 s/step for 0.27 GB | `training/ema.py` |
-| [Block swap over the int8 copies](#block-swap-over-the-int8-copies) | 2.1 GB off the peak, about 0.01 s/step | `dit_int8/linear.py` |
+| [Block swap over the int8 copies](#block-swap-over-the-int8-copies) | 2.1 GB off the peak, about 0.01 s/step | `library/int8/linear.py` |
 
 Each row is its own before/after on the plan of its day, so the effects do not add up.
 Paths are under `library/moss/`.

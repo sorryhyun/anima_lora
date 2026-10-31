@@ -10,7 +10,7 @@ from torch.utils.flop_counter import flop_registry
 
 from library import downloads
 from library.moss.dit_int8.base import check_plan, forward_file
-from library.moss.dit_int8.linear import (
+from library.int8.linear import (
     Int8TrainLinear,
     convert_,
     int8_mm,

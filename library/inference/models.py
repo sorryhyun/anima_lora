@@ -290,8 +290,9 @@ def load_dit_model(
             hydra_mode = True
 
     # P-GRAFT: load without LoRA merge, attach dynamic hooks instead
+    int8 = getattr(args, "int8", False)
     pgraft_mode = (
-        getattr(args, "pgraft", False)
+        (getattr(args, "pgraft", False) or int8)
         and args.lora_weight is not None
         and len(args.lora_weight) > 0
     )
@@ -353,6 +354,11 @@ def load_dit_model(
     model.to(device, dtype=torch.bfloat16)  # ensure model is in bfloat16 for inference
 
     model.eval().requires_grad_(False)
+
+    if int8:
+        from library.anima.int8 import convert_for_inference
+
+        convert_for_inference(model, args)
 
     # Dynamic-hook adapters (P-GRAFT toggle / HydraLoRA router-live) that can't
     # ride the static merge above.

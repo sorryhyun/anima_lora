@@ -262,6 +262,9 @@ class AnimaTrainer:
         metadata["ss_sigmoid_scale"] = args.sigmoid_scale
         metadata["ss_sigmoid_bias"] = getattr(args, "sigmoid_bias", 0.0)
         metadata["ss_discrete_flow_shift"] = args.discrete_flow_shift
+        if getattr(args, "int8", "off") != "off":
+            metadata["ss_int8_base"] = args.int8
+            metadata["ss_int8_base_id"] = args.int8_base_id
 
     def train(self, args):
         from library.runtime.backend import warn_if_cuda_unavailable
@@ -271,6 +274,10 @@ class AnimaTrainer:
         training_started_at = time.time()
         normalize_sample_args(args)
         verify_training_args(args)
+        if args.int8 != "off":
+            from library.anima.int8 import check_plan
+
+            check_plan(args)
         train_util.prepare_dataset_args(args, True)
         setup_logging(args, reset=True)
 

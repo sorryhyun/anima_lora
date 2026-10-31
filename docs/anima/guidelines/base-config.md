@@ -121,6 +121,7 @@ disk; training reads only the caches.
 | `gradient_checkpointing` | `false` | Recompute activations to save VRAM. Reach for `torch_compile` / `blocks_to_swap` first. |
 | `unsloth_offload_checkpointing` | `false` | Unsloth offload variant of grad checkpointing — auto-enables `gradient_checkpointing`; incompatible with `blocks_to_swap`. |
 | `channel_scaling_alpha` | `0.5` | SmoothQuant-style per-channel input pre-scaling, baked into the adapter at training-init time (not an inference knob). `0.0` disables; `0.5` = sqrt balance; `1.0` = fully flatten channel dominance. Calibration is vendored at `networks/calibration/channel_stats.safetensors` (cond-stream sibling for EasyControl). See `docs/anima/optimizations/channel_scaling.md`. |
+| `int8` | `"off"` | Run the frozen DiT's large linears as int8 GEMMs: `fwd` (forward only) or `full` (forward and input gradient, base weight dropped). Refuses `blocks_to_swap`. See `docs/anima/optimizations/int8.md`. |
 | `dataloader_pin_memory` | `true` | Pin DataLoader tensors in host RAM for faster GPU transfer. |
 | `persistent_data_loader_workers` | `true` | Keep DataLoader workers alive across epochs. |
 

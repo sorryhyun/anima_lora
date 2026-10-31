@@ -382,6 +382,8 @@ STRINGS: dict[str, str] = {
     "models_redownload_pack": "重新下载整包",
     "models_pack_anima": "Anima 基础",
     "models_pack_anima_desc": "DiT、Qwen3-0.6B 文本编码器与 Qwen-Image VAE — 每次训练 / 推理运行都需要这三者。",
+    "models_pack_anima_dit_int8": "Anima INT8 DiT",
+    "models_pack_anima_dit_int8_desc": "Anima 基础模型的 DiT，其块线性层为 int8 GPTQ（约 2.4 GB）。用于 --int8，首次使用时自动获取。",
     "models_pack_pe": "PE-Core",
     "models_pack_pe_desc": "PE-Core-L14-336: 仅用于 CMMD 验证指标 (use_cmmd, 默认关闭)。REPA 特征缓存使用 PE-Spatial — 位于「策展」标签页的「分组」包。",
     "models_pack_cjk": "CJK 词表包",

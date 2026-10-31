@@ -247,6 +247,12 @@ def create_and_apply_network(
             "Use block compile for memory instead."
         )
 
+    int8 = getattr(args, "int8", "off")
+    if int8 != "off":
+        from library.anima.int8 import convert_for_training
+
+        convert_for_training(unet, network, args)
+
     # DiT only: the text encoder is never trained.
     network.apply_to(text_encoders, unet, False, True)
 
@@ -289,6 +295,7 @@ def create_and_apply_network(
             seq_range=seq_range,
             seq_bands=seq_bands,
             dynamic_seq=bool(getattr(args, "compile_dynamic_seq", False)),
+            signature_suffix="" if int8 == "off" else f";int8={int8};int8_in=fp32",
             activation_memory_budget=float(
                 getattr(args, "activation_memory_budget", 1.0) or 1.0
             ),

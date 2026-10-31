@@ -61,6 +61,11 @@ ANIMA_REPO = "circlestone-labs/Anima"
 ANIMA_DIT_FILE = "anima-base-v1.0.safetensors"
 ANIMA_TE_FILE = "qwen_3_06b_base.safetensors"
 ANIMA_VAE_FILE = "qwen_image_vae.safetensors"
+# The base DiT with its block linears in int8 (GPTQ forward copies); read by
+# ``library/anima/int8.py`` under ``--int8``. The name is the DiT's stem plus
+# ``_int8_gptq``, which is how it is found beside the DiT.
+ANIMA_DIT_INT8_REPO = "sorryhyun/anima-base-v1.0-int8"
+ANIMA_DIT_INT8_FILE = "anima-base-v1.0_int8_gptq.safetensors"
 
 # PE-Core-L14-336 — global/CLIP-aligned vision features (CMMD validation
 # only). PE-Spatial, the REPA/grouping tower, is the package's row.
@@ -147,6 +152,12 @@ TRAINER_PACKS: tuple[Pack, ...] = (
         "Anima base",
         "The DiT, the Qwen3-0.6B text encoder and the Qwen-Image VAE — every "
         "training and inference run needs all three.",
+    ),
+    Pack(
+        "anima-dit-int8",
+        "Anima INT8 DiT",
+        "Anima base's DiT with its block linears in int8 GPTQ (~2.4 GB), for "
+        "--int8: fetched on first use.",
     ),
     Pack(
         "pe",
@@ -401,6 +412,18 @@ def catalog() -> tuple[Asset, ...]:
             ANIMA_VAE_FILE,
             "Qwen-Image VAE",
             "latent caching · decoding samples",
+        ),
+        Asset(
+            id="anima_dit_int8",
+            pack="anima-dit-int8",
+            title="Anima base DiT, INT8 GPTQ",
+            repo=ANIMA_DIT_INT8_REPO,
+            files=(ANIMA_DIT_INT8_FILE,),
+            dest=models_dir() / kind_dir("dit"),
+            used_by="--int8 (forward copies)",
+            notes="~2.4 GB. The block linears INT8 ConvRot with offline GPTQ, the "
+            "rest bf16. A fingerprint refuses any other DiT, so the 40-block "
+            "Anima-2.9B needs its own file or round to nearest.",
         ),
         Asset(
             id="pe_core",

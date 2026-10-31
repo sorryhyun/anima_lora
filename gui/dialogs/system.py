@@ -65,6 +65,7 @@ _TITLE_KEYS: dict[str, str] = {
 # pack the package adds later falls back to its catalog title until translated.
 _PACK_KEYS: dict[str, str] = {
     "anima": "models_pack_anima",
+    "anima-dit-int8": "models_pack_anima_dit_int8",
     "pe": "models_pack_pe",
     "cjk": "models_pack_cjk",
     "moss-base": "models_pack_moss_base",

@@ -10,7 +10,7 @@ Generation on the file works and is the better-supported half: 6.3 GiB against 1
 1024². In training, `--int8 full` gains speed and saves no VRAM; `--int8 stream` also saves
 about 4 GB ([VRAM](#vram)).
 
-Training is `TrainRequest.int8`, code in `library/moss/dit_int8/`. Generation and the GPTQ
+Training is `TrainRequest.int8`, code in `library/moss/dit_int8/` and, shared with Anima, `library/int8/`. Generation and the GPTQ
 build stay in `project/int8_train/src/`. The GPTQ file is the catalog row `moss_dit_int8`
 ([`sorryhyun/MOSS-Image-Base-int8`](https://huggingface.co/sorryhyun/MOSS-Image-Base-int8)).
 Base only; SFT has no file and trains on round-to-nearest weights.

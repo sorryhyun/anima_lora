@@ -52,6 +52,7 @@ def test_every_visible_row_belongs_to_a_listed_pack():
     assert DL.PACKS[: len(DL.TRAINER_PACKS)] == DL.TRAINER_PACKS
     assert [p.id for p in DL.TRAINER_PACKS] == [
         "anima",
+        "anima-dit-int8",
         "pe",
         "cjk",
         "moss-base",
@@ -114,6 +115,7 @@ def test_by_pack_keeps_pack_order_and_drops_empty_packs():
     trainer_only = DL.by_pack(DL.catalog())
     assert list(trainer_only) == [
         "anima",
+        "anima-dit-int8",
         "pe",
         "cjk",
         "moss-base",
@@ -332,6 +334,7 @@ def test_the_two_tabs_show_the_two_catalog_halves():
             ]
         assert [pid for pid, _i, _b in anima._packs] == [
             "anima",
+            "anima-dit-int8",
             "pe",
             "cjk",
             "moss-base",

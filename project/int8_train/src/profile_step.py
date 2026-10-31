@@ -137,9 +137,7 @@ def _kernel_breakdown():
     cats = defaultdict(float)
     kernels = []
     for name, (us, cnt) in by_name.items():
-        cat = next(
-            (c for c, pat in KERNEL_CATEGORIES if re.search(pat, name)), "other"
-        )
+        cat = next((c for c, pat in KERNEL_CATEGORIES if re.search(pat, name)), "other")
         cats[cat] += us / 1e3 / own.profiled
         kernels.append(
             {
@@ -244,11 +242,9 @@ loop._run_step = _run_step
 loop._profiler_step_begin = _begin
 loop._profiler_step_end = _end
 
-if own.int8 != "off":
-    from train_int8 import install  # noqa: E402  (sibling module)
-
-    install(own.int8, own.int8_file)
-
 from library.anima.trainer.cli import main  # noqa: E402
 
-main(train_argv + ["--output_name", "int8_profile"])
+train_argv += ["--int8", own.int8, "--output_name", "int8_profile"]
+if own.int8_file:
+    train_argv += ["--int8_file", own.int8_file]
+main(train_argv)

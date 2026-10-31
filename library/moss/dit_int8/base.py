@@ -16,13 +16,13 @@ from dataclasses import dataclass
 import torch
 
 from library.env import resolve_under_home
-from library.moss.dit_int8.linear import (
+from library.int8.linear import (
     base_fingerprint,
     convert_,
     load_int8_file,
     stream_wqt_,
 )
-from library.moss.dit_int8.stream import WqtStream
+from library.int8.stream import WqtStream
 from library.moss.requests import TrainRequest
 
 ROUND_TO_NEAREST = "rtn"  # TrainRequest.int8_file, and int8_base_id on a LoRA

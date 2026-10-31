@@ -120,6 +120,7 @@ points** (`scripts/**`, `bench/**/run_bench.py`, `tasks.py` — thin argparse wr
 (`train.py`, `inference.py`, `tasks.py`) and `i2i_tasks/` are not installed.
 
 Shared across lines: `library.runtime.{offloading,blockswap,dynamo}`, `library.env`,
+`library.int8` (the int8 base linears),
 the ER-SDE sampler and CNS core (`library.inference.sampling`,
 `library.inference.corrections.cns_core`), `library.lines` (request base, LoRA / LoKr /
 LoHa adapters and GUI scan counts for MOSS and Qwen). Nothing Anima-side imports
@@ -197,6 +198,10 @@ routing axes: `lora-routing` skill).
   skill** first.
 - Inference: `make test` (interactive) / `make gen` (daemon batch: grids, seed sweeps).
   `SPECTRUM=1` / `MOD=1` / `NOLORA=1` compose into every `test-*` target.
+- `--int8 fwd|full` (off by default; `inference.py --int8`, `INT8=1` on `test-*`) runs the
+  frozen DiT's large linears as int8 GEMMs: LoRA-family networks, no block swap. Forward
+  copies come from `<dit>_int8_gptq.safetensors` beside the DiT (catalog `anima_dit_int8`,
+  fetched on first use), else round to nearest. `docs/anima/optimizations/int8.md`.
 - `make merge ADAPTER_DIR=… [MULTIPLIER=0.8]` bakes a LoRA / T-LoRA into the DiT;
   refuses Hydra-moe / postfix unless `--allow-partial`.
 - `--sigma_lowres` (σ-demoted training, opt-in): the research line is archived but the

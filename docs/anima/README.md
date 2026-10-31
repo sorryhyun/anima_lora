@@ -62,6 +62,7 @@ Compiler, kernel, hardware setup, and training-time optimizer geometry.
 | Doc | Description |
 |-----|-------------|
 | [optimizations/for_compile.md](optimizations/for_compile.md) | Changes from sd-scripts for torch.compile / dynamo |
+| [optimizations/int8.md](optimizations/int8.md) | int8 base — ConvRot int8 GEMMs on the frozen DiT's large linears (`--int8`, opt-in, 1.37x per step) |
 | [optimizations/channel_scaling.md](optimizations/channel_scaling.md) | Channel Scaling — SmoothQuant-style per-channel LoRA gradient rebalance (on by default, α=0.5) |
 | [optimizations/sigma_lowres.md](optimizations/sigma_lowres.md) | σ-demoted training (`--sigma_lowres`) — route each step's latent grid by noise level; stacked 768 router + placement spans (opt-in, ~−14% wall) |
 | [optimizations/fa4.md](optimizations/fa4.md) | Flash Attention 4 — why it was evaluated and removed |

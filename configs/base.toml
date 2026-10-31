@@ -53,6 +53,9 @@ torch_compile = true
 attn_mode = "flash"
 compile_dynamic_seq = true
 activation_memory_budget = 0.99
+# int8 GEMMs on the frozen DiT's large linears: off | fwd | full. Refuses block swap;
+# docs/anima/optimizations/int8.md.
+int8 = "off"
 log_every_n_steps=2
 dataloader_pin_memory = true
 persistent_data_loader_workers= true

@@ -28,8 +28,8 @@ import torch.nn as nn
 from safetensors import safe_open
 from torch.utils.flop_counter import register_flop_formula
 
-from library.moss.dit_int8.stream import WqtStream
-from library.moss.int8 import INT8_MAX, rotate, row_scale
+from library.int8.stream import WqtStream
+from library.int8.convrot import INT8_MAX, rotate, row_scale
 
 GROUP = 256
 MODES = ("fwd", "full", "infer")

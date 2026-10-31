@@ -469,6 +469,7 @@ def compile_blocks_for_training(
     seq_range: Optional[tuple] = None,
     seq_bands: Optional[list] = None,
     dynamic_seq: bool = False,
+    signature_suffix: str = "",
     activation_memory_budget: float = 1.0,
     partitioner_recompute_views: bool = False,
     partitioner_aggressive_recomputation: bool = False,
@@ -478,7 +479,8 @@ def compile_blocks_for_training(
     """The LoRA-training (``train.py``) compile sequence, post ``apply_to``.
 
     Native-shape flattening + per-block torch.compile. COMPILE LAST — run only
-    after ``network.apply_to`` + ``load_weights``.
+    after ``network.apply_to`` + ``load_weights``. ``signature_suffix`` keeps a
+    base the signature cannot see (int8) in its own compile cache.
 
     Sequence: partitioner budget/tuning (skipped under grad-ckpt) →
     per-signature compile cache isolation → ``unet.compile_blocks(...)`` with
@@ -508,6 +510,7 @@ def compile_blocks_for_training(
             mode=mode,
             seq_bands=seq_bands,
         )
+        + signature_suffix
     )
     unet.compile_blocks(
         backend,

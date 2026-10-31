@@ -434,6 +434,8 @@ STRINGS: dict[str, str] = {
     "models_redownload_pack": "팩 재다운로드",
     "models_pack_anima": "Anima 베이스",
     "models_pack_anima_desc": "DiT, Qwen3-0.6B 텍스트 인코더, Qwen-Image VAE — 모든 학습 / 추론 실행에 세 가지가 모두 필요합니다.",
+    "models_pack_anima_dit_int8": "Anima INT8 DiT",
+    "models_pack_anima_dit_int8_desc": "Anima 베이스의 DiT에서 블록 linear를 int8 GPTQ로 바꾼 파일 (약 2.4 GB). --int8에서 쓰며 처음 쓸 때 자동으로 받습니다.",
     "models_pack_pe": "PE-Core",
     "models_pack_pe_desc": "PE-Core-L14-336: CMMD 검증 지표 전용 (use_cmmd, 기본 OFF). REPA 특징 캐시는 PE-Spatial을 씁니다 — '큐레이션' 탭의 '그룹화' 팩.",
     "models_pack_cjk": "CJK 어휘 팩",

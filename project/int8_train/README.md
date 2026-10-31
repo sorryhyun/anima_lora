@@ -2,10 +2,9 @@
 
 Opened 2026-10-30. The frozen DiT's large linears run as ConvRot int8 × int8 → int32, in
 the forward and in the backward input-gradient GEMM, through comfy_kitchen's existing
-kernel. Anima first. Anima's code lives in `src/`: the line patches the trainer from its
-own entry point and does not change `library/anima/` or `networks/`. MOSS training moved to
-`library/moss/dit_int8/` (`TrainRequest.int8`), the linears with it; `src/int8_linear.py`
-keeps Anima's half and re-exports them.
+kernel. Anima first. The linears are `library/int8/`; Anima's side is `library/anima/int8.py`
+(`--int8`), MOSS's `library/moss/dit_int8/` (`TrainRequest.int8`). `src/int8_linear.py`
+re-exports them for this folder's scripts.
 
 - **Completed work and its results:** [reports.md](reports.md). In short, the int8 base
   trains 1.37x faster than bf16 with matching loss and samples; no int8 attention arm in
@@ -51,18 +50,9 @@ GEMM, and has a fake implementation, so `torch.compile` traces it.
 - `Int8TrainLinear._apply` keeps the row scales fp32 through the trainer's
   `unet.to(dtype=bf16)`.
 
-### `src/train_int8.py`
+### `library/anima/int8.py`
 
-Strips its own `--int8 {off,fwd,full}` flag, installs two patches and calls
-`library.anima.trainer.cli.main(argv)` with the rest.
-
-- **`LoRANetwork.apply_to`** is wrapped to convert the DiT's linears first. This is after
-  `create_network`, so `down_init=weight_svd` and the `grad_svd` sketch still read bf16
-  weights, and before LoRA captures `org_forward` and before `compile_blocks`.
-- **`AnimaTrainer._update_metadata`** is wrapped to stamp `ss_int8_base=<mode>` into the
-  saved LoRA.
-- It is a command job, not a `make lora` train job, so `--queue` / pause-release follow
-  command-job semantics.
+The trainer converts the DiT after `create_network` and before `apply_to` (`--int8 fwd|full`), and stamps `ss_int8_base` / `ss_int8_base_id`. `inference.py --int8` converts in mode `infer` and takes LoRAs through the P-GRAFT hooks. [`docs/anima/optimizations/int8.md`](../../docs/anima/optimizations/int8.md).
 
 ### Which linears
 
@@ -95,22 +85,18 @@ The entry point exits on these rather than running them wrong:
 - `src/profile_step.py`: step profile of the stock trainer (argv after `--`).
 - `src/profile_step_moss.py`: the same for the MOSS trainer (TrainRequest argv after `--`).
   `src/gemm_bench.py <M> moss` benches MOSS's block shapes.
-- `src/int8_linear.py`: the int8 custom ops and the in-place `convert_`.
+- `src/int8_linear.py`: this folder's import path for `library/int8/linear.py` and `library/anima/int8.py`.
 - `src/grad_error.py`: sketched LoRA-gradient error, bf16 vs `fwd` vs `full`.
 - `src/grad_error_moss.py`: the same for MOSS (per-call quantization, two-sided sketch).
-- `src/train_int8.py`: the trainer on an int8 base, run as
-  `make daemon-run ARGS="--stall-timeout 900 project/int8_train/src/train_int8.py --int8 full --method lora --preset default"`.
-- `src/infer_int8.py`: `inference.py` on the int8 base, LoRAs as hooks, run as
-  `make daemon-run ARGS="project/int8_train/src/infer_int8.py --int8 on <inference args>"`.
 - `src/dit_gptq.py`: offline GPTQ of the forward copies, writes a ComfyUI-layout int8 DiT
-  (`models/diffusion_models/anima-base-v1.0_int8_gptq.safetensors`, on the NVMe). `train_int8.py` and
-  `infer_int8.py` take it as `--int8_file`.
+  (`models/diffusion_models/anima-base-v1.0_int8_gptq.safetensors`, on the NVMe). `train.py --int8` and
+  `inference.py --int8` read it from beside the DiT.
 - `src/dit_gptq_moss.py`: the same for MOSS-Image, t2i and i2i
   (`models/moss_image/moss_image_base_int8_gptq.safetensors`, published as
   `sorryhyun/MOSS-Image-Base-int8`). `TrainRequest.int8_file`, `infer_int8_moss.py` and
   `grad_error_moss.py` take it.
 - `library/moss/dit_int8/`: `scripts/moss/train.py --int8 stream` is `full` with `wq_t` on
-  the host, loaded block by block during the backward (`stream.WqtStream`,
+  the host, loaded block by block during the backward (`library/int8/stream.py`,
   [report](reports/moss_wqt_stream.md)).
 - `src/infer_int8_moss.py`: `library.moss.generate` on the int8 base, run as
   `make daemon-run ARGS="project/int8_train/src/infer_int8_moss.py --int8 on --int8_file <file> -- <generate args>"`.

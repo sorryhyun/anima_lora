@@ -795,6 +795,22 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
         default=None,
         help="[EXPERIMENTAL] Sets the number of blocks to swap during the forward and backward passes.",
     )
+    parser.add_argument(
+        "--int8",
+        choices=("off", "fwd", "full"),
+        default="off",
+        help="Run the frozen DiT's large linears as int8 GEMMs. fwd: int8 forward, "
+        "bf16 input gradient. full: both int8, base weight dropped. Refuses block "
+        "swap; docs/anima/optimizations/int8.md.",
+    )
+    parser.add_argument(
+        "--int8_file",
+        type=str,
+        default=None,
+        help="Forward copies from dit_gptq.py. Default: <dit>_int8_gptq.safetensors "
+        "beside the DiT if present, else round to nearest; 'rtn' forces round to "
+        "nearest.",
+    )
 
 
 def add_network_arguments(parser: argparse.ArgumentParser):

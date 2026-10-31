@@ -13,7 +13,7 @@ import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from library.moss.dit_int8.linear import convert_, int8_mm  # noqa: E402
+from library.int8.linear import convert_, int8_mm  # noqa: E402
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
 
