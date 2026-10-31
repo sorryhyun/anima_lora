@@ -2,8 +2,10 @@
 
 Opened 2026-10-30. The frozen DiT's large linears run as ConvRot int8 × int8 → int32, in
 the forward and in the backward input-gradient GEMM, through comfy_kitchen's existing
-kernel. Anima first. All code lives in `src/`: the line patches the trainer from its own
-entry point and does not change `library/` or `networks/`.
+kernel. Anima first. Anima's code lives in `src/`: the line patches the trainer from its
+own entry point and does not change `library/anima/` or `networks/`. MOSS training moved to
+`library/moss/dit_int8/` (`TrainRequest.int8`), the linears with it; `src/int8_linear.py`
+keeps Anima's half and re-exports them.
 
 - **Completed work and its results:** [reports.md](reports.md). In short, the int8 base
   trains 1.37x faster than bf16 with matching loss and samples; no int8 attention arm in
@@ -104,10 +106,12 @@ The entry point exits on these rather than running them wrong:
   (`models/diffusion_models/anima-base-v1.0_int8_gptq.safetensors`, on the NVMe). `train_int8.py` and
   `infer_int8.py` take it as `--int8_file`.
 - `src/dit_gptq_moss.py`: the same for MOSS-Image, t2i and i2i
-  (`models/moss_image/moss_image_base_int8_gptq.safetensors`). `train_int8_moss.py`,
-  `infer_int8_moss.py` and `grad_error_moss.py` take it as `--int8_file`.
-- `src/train_int8_moss.py --int8 stream`: `full` with `wq_t` on the host, loaded block by
-  block during the backward (`int8_linear.WqtStream`, [report](reports/moss_wqt_stream.md)).
+  (`models/moss_image/moss_image_base_int8_gptq.safetensors`, published as
+  `sorryhyun/MOSS-Image-Base-int8`). `TrainRequest.int8_file`, `infer_int8_moss.py` and
+  `grad_error_moss.py` take it.
+- `library/moss/dit_int8/`: `scripts/moss/train.py --int8 stream` is `full` with `wq_t` on
+  the host, loaded block by block during the backward (`stream.WqtStream`,
+  [report](reports/moss_wqt_stream.md)).
 - `src/infer_int8_moss.py`: `library.moss.generate` on the int8 base, run as
   `make daemon-run ARGS="project/int8_train/src/infer_int8_moss.py --int8 on --int8_file <file> -- <generate args>"`.
 - `src/grad_spike.py`: traces one image's gradient outlier by block and token.
@@ -121,7 +125,9 @@ The entry point exits on these rather than running them wrong:
 - `src/attn_fwd_grad_bench.py`: forward arms (kernels and torch emulations of the int8
   rounding) scored on dQ, dK, dV through a 16-bit backward.
 - `src/test_int8_attn.py`: attention tests (`INT8_ATTN_FIXED=1` skips the autotune sweep).
-- `src/test_int8_linear.py`: linear tests (`.venv/bin/python -m pytest project/int8_train/src/test_int8_linear.py`).
+- `tests/test_moss_int8.py`: linear, stream and plan tests (`ANIMA_TEST_GPU=1
+  .venv/bin/python -m pytest tests/test_moss_int8.py`); `src/test_int8_linear.py`: the
+  split-emulation test that needs `grad_error.py`.
 - `src/ab_prompts.txt`: A/B sample prompts.
 - `reports/`: one report per bench.
 - `assets/`: the raw JSON each bench writes, linked from its report.

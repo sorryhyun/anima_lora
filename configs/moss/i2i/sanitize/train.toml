@@ -12,10 +12,14 @@ ref_isolate = true             # ref queries see only ref keys (colorize v3)
 # Tone term over the second half: holds the untouched page's L / b at the input's.
 tone_weight = 0.003
 tone_start = 0.5
-# i2i samples carry reference tokens: the t2i default (swap 36, budget 0.5) OOMs.
+# i2i samples carry reference tokens: the bf16 t2i plan (swap 36, budget 0.5) OOMs.
 # Swap 38 makes room for budget 0.175, which runs ~9% faster than swap 28 / 0.15 at
 # ~8.3k joint tokens (sanitize, 2026-10-26); the H2D-only swap keeps 38 off the
 # PCIe knee (classic and H2D tie up to 38, H2D is 8% faster at 40).
+# int8 has run no i2i step: these stay the measured bf16 plan.
+int8 = "off"
+stream = "bf16"
+ema_card = false
 blocks_to_swap = 38
 activation_memory_budget = 0.175
 swap_h2d_only = true

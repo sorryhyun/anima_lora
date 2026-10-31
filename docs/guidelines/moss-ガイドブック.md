@@ -139,27 +139,32 @@ make download-model ARGS=moss-sft
 | LoKr f8 | `rank 100000`、`factor 8` | 2.26 s/step、空き 3.6 GB | LoRA に近い。顔の個性はやや弱い |
 | LoHa r16 | `rank 16` | 2.49 s/step、空き 1.7 GB | 行き過ぎ: 灰青緑へのパレット変化、セットの衣装が他のキャラクターに出る |
 
-- どちらも LoRA よりメモリを使います。**Advanced** で `activation_memory_budget 0.1` を設定し、`blocks_to_swap` は 24 以上にしてください。swap 12・budget 0.15 では 1024² でメモリ不足になりました。
+- この数値は bf16 構成（§4.2）で測定したものです。LoHa は bf16 が必要で、デフォルトの int8 ベースは LoHa を拒否します。LoKr は int8 でも動きますが、そのときのピークは未測定です。
+- bf16 構成では、どちらも LoRA よりメモリを使います。**Advanced** で `activation_memory_budget 0.1` を設定し、`blocks_to_swap` は 24 以上にしてください。swap 12・budget 0.15 では 1024² でメモリ不足になりました。
 - LoKr の `rank` が大きい因子の辺の半分以上（上の `rank 100000`）だと、その因子はフル行列になり、alpha は無視されます（scale 1）。
 - LoHa: 次に試す値は lr 5e-5 で、まだ計測していません。
 
 ### 4.2 メモリ構成（16 GB）
 
-デフォルト: `grad_checkpointing` オフ、`compile` オン、**Advanced** の `blocks_to_swap 36`（CPU に置き、必要なときに転送する DiT ブロック数）、`activation_memory_budget 0.5`（forward の結果のうち backward 用に保持する割合。残りは再計算）、`expandable_segments` オン（シーケンス長が変わっても CUDA メモリプールが断片化しないようにする）。
+デフォルト: `grad_checkpointing` オフ、`compile` オン、**Advanced** の `int8 stream` と GPTQ ファイル（DiT のブロック重みを int8 で実行。ファイルは初回使用時にダウンロード）、`stream fp32`（ブロックの残りは fp32 で実行）、`blocks_to_swap 0`（全ブロックをカードに置く）、`activation_memory_budget 0.2`（forward の結果のうち backward 用に保持する割合。残りは再計算）、`ema_card` オン、`expandable_segments` オン（シーケンス長が変わっても CUDA メモリプールが断片化しないようにする）。
+
+この構成は 1024² のサンプルで 1 step あたり 1.30 秒、ピーク 12.04 GB で、システムメモリも 4.4 GiB 固定（pin）します。この構成では budget で速度は買えません。0.05–0.4 は同じ速度で、0.1 上げるごとにピークが約 1 GB 増えるので、メモリ不足なら下げてください。この構成で最後まで学習した LoRA はまだありません（[詳細](../moss/optimization/int8.md)）。
+
+**bf16 構成。** int8 ベースは block swap と LoHa を拒否し、i2i のステップも実行したことがないため、i2i のタスク設定は bf16 のままです。`--config configs/moss/lora_bf16.toml`、または **Advanced** で `int8 off`、`stream bf16`、`ema_card` オフ、`blocks_to_swap 36`（CPU に置き、必要なときに転送する DiT ブロック数）、`activation_memory_budget 0.5`。
 
 | 構成 | 項目 | s/step | 空き VRAM |
 |---|---|---|---|
-| 以前のデフォルト | swap 12、budget 0.1（ランク 32） | 1.85 | 約 1.7 GiB |
-| さらに前のデフォルト | swap 12、budget 0.15（ランク 16） | 1.77 | 約 0.7 GiB |
+| 以前の bf16 デフォルト | swap 12、budget 0.1（ランク 32） | 1.85 | 約 1.7 GiB |
+| さらに前の bf16 デフォルト | swap 12、budget 0.15（ランク 16） | 1.77 | 約 0.7 GiB |
 | 余裕あり | swap 24、budget 0.2 | 1.78 | 2.26 GiB |
 | チェックポイント | `grad_checkpointing` オン、swap 0 | 2.09 | 1.60 GiB |
 
-現在のデフォルト（swap 36、budget 0.5、`swap_h2d_only`、`expandable_segments`、ランク 32）は、caststation セットで 1 step あたり 1.9 秒、最大のサンプル（画像 4.2k + テキスト 0.4k トークン）で空き 0.85 GB です。budget は約 0.45 を超えると上げても効果がなく（0.3: 2.05 s/step）、swap 28～36 は速度が同じなので、swap を下げても空き VRAM を手放すだけです。i2i のサンプルは参照画像も含むため、i2i のタスク設定では swap 38、budget 0.175 を使います。swap 28 では budget 0.2 でメモリ不足になり、swap 38 にすると高い budget の余地ができます。約 8.3k の結合トークン（sanitize）で、swap 38 / budget 0.175 は 1 step あたり 3.79 秒で、swap 28 / budget 0.15 の 4.17 秒より速くなります。`swap_h2d_only` はスワップされる全ブロックの page-locked コピーを RAM に保持し（最大 8.8 GB）、スワップがカードへのコピーだけで済み、戻しのコピーが発生しないようにします。結果と VRAM はオフのときと同じで、swap 38 までは速度も同じ、swap 40 では 8% 速くなります。デフォルトでオンで、`--no-swap_h2d_only` でオフにできます。
+bf16 構成（swap 36、budget 0.5、`swap_h2d_only`、`expandable_segments`、ランク 32）は、caststation セットで 1 step あたり 1.9 秒、最大のサンプル（画像 4.2k + テキスト 0.4k トークン）で空き 0.85 GB です。budget は約 0.45 を超えると上げても効果がなく（0.3: 2.05 s/step）、swap 28～36 は速度が同じなので、swap を下げても空き VRAM を手放すだけです。i2i のサンプルは参照画像も含むため、i2i のタスク設定では swap 38、budget 0.175 を使います。swap 28 では budget 0.2 でメモリ不足になり、swap 38 にすると高い budget の余地ができます。約 8.3k の結合トークン（sanitize）で、swap 38 / budget 0.175 は 1 step あたり 3.79 秒で、swap 28 / budget 0.15 の 4.17 秒より速くなります。`swap_h2d_only` はスワップされる全ブロックの page-locked コピーを RAM に保持し（最大 8.8 GB）、スワップがカードへのコピーだけで済み、戻しのコピーが発生しないようにします。結果と VRAM はオフのときと同じで、swap 38 までは速度も同じ、swap 40 では 8% 速くなります。デフォルトでオンで、ブロックをスワップするときだけ働き、`--no-swap_h2d_only` でオフにできます。
 
 表の条件: 合成 1024² 画像 + テキスト 300 トークン（合計約 4.4k トークン）、LoRA ランク 16、RTX 5070 Ti。以前のデフォルト（ランク 32、budget 0.1、swap 12）は約 4.5k トークン（画像 4096 + テキスト 455）で 1.85 s/step、空き約 1.7 GB、ピーク reserved 約 13.1 GB。ランク 16、budget 0.1 では 1.82 s/step、空き約 2.0 GB でした。実際のサンプルは最大約 4.9k トークンで、キャプションが長いほどメモリを使いますが、`swap 24` なら同じ速度でその分の余裕が残ります。
 
 - swap 8 から 36 の間は速度がほとんど変わらず（1.75–1.84 s/step）、budget 0.1–0.3 も速度にほぼ影響しません。swap 40 では PCIe 転送が計算の裏に隠れきれず遅くなります（2.34 s/step）。それより下では、swap 数は速度ではなく VRAM を決める値です。
-- 最適な組み合わせは PCIe リンクと GPU によって変わります。`scripts/moss/tune_swap.py`（CLI、[付録](#付録-cli)、約 4 分）がキャッシュ内の最大サンプルで swap 数ごとの速度を測り、学習に使う項目の値を表示します。
+- 最適な組み合わせは PCIe リンクと GPU によって変わります。`scripts/moss/tune_swap.py`（CLI、[付録](#付録-cli)、約 4 分）がキャッシュ内の最大サンプルで bf16 構成の swap 数ごとの速度を測り、学習に使う項目の値を表示します。
 - `blocks_to_swap -1` は空き VRAM から swap 数を決めます。LoRA 基準で調整されているため、LoKr/LoHa では確保量が足りません。
 - `compile` をオフにするには `grad_checkpointing` をオンにする必要があります。compile ありの学習は 3.1 に対して 2.0 s/step で、開始時に約 30 秒のコンパイルが入ります。
 
@@ -201,7 +206,8 @@ make download-model ARGS=moss-sft
 
 | 症状 | 対処 |
 |---|---|
-| 学習中にメモリ不足 | Advanced: `blocks_to_swap 24`、次に `activation_memory_budget 0.1`。または `tune_swap.py` を実行。LoKr/LoHa は 24 / 0.1 が必要。`grad_checkpointing` オン + `blocks_to_swap 0` は swap なしで収まる遅めの構成 |
+| 学習中にメモリ不足 | Advanced: `activation_memory_budget 0.1`、または `grad_checkpointing` オン（int8 構成でピーク 9.36 GB、やや遅い）。それでも駄目なら `blocks_to_swap 24` の bf16 構成（§4.2）、または `tune_swap.py` を実行。この構成では LoKr/LoHa は 24 / 0.1 が必要 |
+| `int8 base: --blocks_to_swap 0 is required` または `loha builds W + ΔW` | int8 ベースは swap も LoHa も扱えません。bf16 構成（§4.2）を使ってください |
 | スタイルが弱すぎる | エポックを増やす（計測した学習は 20）。プロンプトの絵師タグがキャプションと同じ表記か、`prompt_format` が `caption_format` と一致しているかを確認 |
 | スタイルが強すぎる、セットのサインやウォーターマークが出る、どの画像も同じ構図になる | 早いエポックの `_e<N>` チェックポイントをテストするか、`lora_multiplier` を下げる。サインを写し始めたのは実効 lr を上げた設定。`lr 2e-5` を試してください |
 | セットの衣装や色が他のキャラクターに漏れる | `caption_format layout_json` を使う（デフォルト。通常のタグより漏れが少なかった）。LoHa は LoRA か LoKr に戻す |
@@ -219,6 +225,7 @@ GUI が投入するジョブと同じもので、デーモン経由で直接実�
 make daemon-run ARGS="--stall-timeout 900 scripts/moss/cache.py --src 'post_image_dataset/resized/<set>' --out 'post_image_dataset/moss/<set>'"
 make daemon-run ARGS="--stall-timeout 900 scripts/moss/train.py --cache 'post_image_dataset/moss/<set>' --epochs 20"
 make daemon-run ARGS="--stall-timeout 900 scripts/moss/train.py --config configs/moss/lora.toml"
+make daemon-run ARGS="--stall-timeout 900 scripts/moss/train.py --config configs/moss/lora_bf16.toml"
 make daemon-run ARGS="--stall-timeout 900 scripts/moss/generate.py --lora output/ckpt_moss/moss_lora.safetensors"
 make daemon-run ARGS="scripts/moss/tune_swap.py --cache post_image_dataset/moss/<set>"
 ```
@@ -226,8 +233,8 @@ make daemon-run ARGS="scripts/moss/tune_swap.py --cache post_image_dataset/moss/
 LoKr / LoHa:
 
 ```bash
-make daemon-run ARGS="scripts/moss/train.py --cache 'post_image_dataset/moss/<set>' --epochs 20 --algo lokr --rank 100000 --factor 8 --blocks_to_swap 24 --activation_memory_budget 0.1"
-make daemon-run ARGS="scripts/moss/train.py --cache 'post_image_dataset/moss/<set>' --epochs 20 --algo loha --rank 16 --lr 5e-5 --blocks_to_swap 24 --activation_memory_budget 0.1"
+make daemon-run ARGS="scripts/moss/train.py --cache 'post_image_dataset/moss/<set>' --epochs 20 --algo lokr --rank 100000 --factor 8 --config configs/moss/lora_bf16.toml --blocks_to_swap 24 --activation_memory_budget 0.1"
+make daemon-run ARGS="scripts/moss/train.py --cache 'post_image_dataset/moss/<set>' --epochs 20 --algo loha --rank 16 --lr 5e-5 --config configs/moss/lora_bf16.toml --blocks_to_swap 24 --activation_memory_budget 0.1"
 ```
 
 詳しい計測結果: [`docs/moss/README.md`](../moss/README.md)。

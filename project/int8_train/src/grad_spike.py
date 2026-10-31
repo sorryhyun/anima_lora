@@ -27,7 +27,7 @@ from library.moss.train import NUM_TRAIN_TIMESTEPS, checkpoint_blocks  # noqa: E
 
 # sibling modules
 from grad_error_moss import arm, enter_fp32, exit_fp32, load_batch, pick_items  # noqa: E402
-from train_int8_moss import check_base, load_copies, moss_targets  # noqa: E402
+from library.moss.dit_int8.base import check_base, load_copies, moss_targets  # noqa: E402
 
 
 def main():

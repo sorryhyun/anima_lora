@@ -69,6 +69,7 @@ _PACK_KEYS: dict[str, str] = {
     "cjk": "models_pack_cjk",
     "moss-base": "models_pack_moss_base",
     "moss-sft": "models_pack_moss_sft",
+    "moss-dit-int8": "models_pack_moss_dit_int8",
     "moss-te-int8": "models_pack_moss_te_int8",
     "moss-te-fp8": "models_pack_moss_te_fp8",
     "tagger": "models_pack_tagger",

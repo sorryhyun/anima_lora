@@ -9,7 +9,7 @@ torch.profiler with input shapes recorded. Then it writes the report JSON and
 hard-exits (no checkpoint save).
 
     make daemon-run ARGS="--stall-timeout 1200 project/int8_train/src/profile_step_moss.py \\
-        -- --config configs/moss/lora.toml --cache 'post_image_dataset/moss/channel_(caststation)_layout'"
+        -- --config configs/moss/lora_bf16.toml --cache 'post_image_dataset/moss/channel_(caststation)_layout'"
 
 GEMMs are classified by the second operand of ``aten::mm``: the converted linears are
 the six per-block projections ``q, k, v, o`` (3072²), ``ffn_up_gate`` (3072 → 16384)

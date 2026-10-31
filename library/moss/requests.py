@@ -679,11 +679,30 @@ class TrainRequest(Request):
         "make preprocess-pe-spatial writes them)",
         advanced=True,
     )
+    int8: str = _f(
+        "stream",
+        "the frozen DiT's 252 block linears as int8 GEMMs: stream runs dX on a second "
+        "int8 copy held in pinned host memory (4.4 GiB) and loaded block by block, "
+        "4.2 GB off the peak; full keeps that copy on the card; fwd keeps the bf16 "
+        "weight for dX; off is the bf16 base. int8 refuses blocks_to_swap and loha "
+        "(configs/moss/lora_bf16.toml is the bf16 plan). Stamped as int8_base. "
+        "docs/moss/optimization/int8.md",
+        choices=("off", "fwd", "full", "stream"),
+        advanced=True,
+    )
+    int8_file: str = _f(
+        "",
+        "dit_gptq_moss.py file with the calibrated forward copies. Empty: on Base the "
+        "catalog's moss_dit_int8, fetched on first use; on SFT round to nearest. "
+        "rtn = round to nearest. Stamped as int8_base_id",
+        advanced=True,
+    )
     stream: str = _f(
-        "bf16",
+        "fp32",
         "residual stream precision (GenerateRequest.stream): fp32 runs the stream, "
-        "modulation, norms, embedders and head in fp32 around the bf16 block GEMMs; "
-        "the late blocks' LoRA gradients land 1.5-3x closer to fp32. Stamped in the LoRA",
+        "modulation, norms, embedders and head in fp32 around the block GEMMs; the "
+        "late blocks' LoRA gradients land 1.5-3x closer to fp32, and the int8 base's "
+        "prediction error drops below bf16's. Stamped in the LoRA",
         choices=("bf16", "fp32"),
         advanced=True,
     )
@@ -714,8 +733,8 @@ class TrainRequest(Request):
         0.1,
         "EMA of the adapter weights, its span as a fraction of the run's optimizer "
         "updates: decay 1 - 1/(ema_window x updates), so 0.1 is 0.958 at 240 "
-        "updates and 0.983 at 600. Starts at the end of warmup (fp32 shadow on the CPU, ~0.3 GB at "
-        "r32). Saves write the EMA; the final raw weights go to "
+        "updates and 0.983 at 600. Starts at the end of warmup (fp32 shadow, ~0.3 GB at r32; "
+        "ema_card places it). Saves write the EMA; the final raw weights go to "
         "<output dir>/<name>/<name>_raw. 0 = off (docs/moss/findings/ema_lr1e4.md)",
         advanced=True,
     )
@@ -723,32 +742,40 @@ class TrainRequest(Request):
         "",
         "more EMA spans tracked beside ema_window, comma-separated fractions "
         "(e.g. 0.05,0.3); each final EMA goes to <output dir>/<name>/<name>_ema<span>. "
-        "One more CPU shadow and lerp per update each",
+        "One more shadow and lerp per update each",
+        advanced=True,
+    )
+    ema_card: bool = _f(
+        True,
+        "keep the EMA shadows on the card (~0.28 GB each at r32) instead of copying "
+        "the adapter to the host every update: 0.065 s/step (4.8%%) faster on the int8 "
+        "plan. --no-ema_card for the CPU shadow",
         advanced=True,
     )
     grad_checkpointing: bool = _f(
         False,
-        "per-block activation checkpointing. Off by default: the activation "
-        "budget plus block swap below is faster. Turn it on with --no-compile, or "
-        "with --blocks_to_swap 0 to keep the whole DiT on the card",
+        "per-block activation checkpointing. Off by default: the activation budget "
+        "below is faster (1.45 vs 1.35 s/step on the int8 plan) for ~2.4 GB of peak. "
+        "Turn it on with --no-compile, or for that peak",
     )
     activation_memory_budget: float = _f(
-        0.5,
+        0.2,
         "cap on the compiled blocks' saved-for-backward set (Inductor's min-cut "
         "partitioner recomputes the rest); applies with --compile and "
-        "--no-grad_checkpointing, ignored otherwise. 0.5 at swap 36 leaves 0.85 GB "
-        "free on 16 GB at t2i's ~4.6k joint tokens (1.9 vs 2.05 s/step at 0.3; "
-        "speed flat past ~0.45). i2i samples carry reference tokens: the i2i "
-        "configs run 0.175 at swap 38 with --swap_h2d_only (~9%% faster than 0.15 "
-        "at swap 28, where 0.2 OOMs)",
+        "--no-grad_checkpointing, ignored otherwise. On the int8 plan speed is flat "
+        "from 0.05 to 0.4 and the peak climbs ~1 GB per 0.1 (0.2: 12.04 GB; 0.5 OOMs "
+        "on 16 GB). The bf16 plan runs 0.5 at swap 36. i2i samples carry reference "
+        "tokens: the i2i configs run 0.175 at swap 38 with --swap_h2d_only (~9%% "
+        "faster than 0.15 at swap 28, where 0.2 OOMs)",
         advanced=True,
     )
     blocks_to_swap: int = _f(
-        36,
-        "DiT blocks to swap to CPU (-1 = size from free VRAM). 36 is the room "
-        "budget 0.5 needs at rank 32 on 16 GB; swap 28-38 run at the same speed, "
-        "past ~40 the PCIe time stops hiding (--swap_h2d_only narrows that: 8%% "
-        "faster at 40). scripts/moss/tune_swap.py measures this machine's pair",
+        0,
+        "DiT blocks to swap to CPU (-1 = size from free VRAM); the int8 base refuses "
+        "anything but 0. The bf16 plan runs 36, the room budget 0.5 needs at rank 32 on "
+        "16 GB; swap 28-38 run at the same speed, past ~40 the PCIe time stops hiding "
+        "(--swap_h2d_only narrows that: 8%% faster at 40). scripts/moss/tune_swap.py "
+        "measures this machine's bf16 pair",
         advanced=True,
     )
     swap_h2d_only: bool = _f(

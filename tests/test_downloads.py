@@ -56,6 +56,7 @@ def test_every_visible_row_belongs_to_a_listed_pack():
         "cjk",
         "moss-base",
         "moss-sft",
+        "moss-dit-int8",
         "moss-te-int8",
         "moss-te-fp8",
     ]
@@ -117,6 +118,7 @@ def test_by_pack_keeps_pack_order_and_drops_empty_packs():
         "cjk",
         "moss-base",
         "moss-sft",
+        "moss-dit-int8",
         "moss-te-int8",
         "moss-te-fp8",
     ]
@@ -334,6 +336,7 @@ def test_the_two_tabs_show_the_two_catalog_halves():
             "cjk",
             "moss-base",
             "moss-sft",
+            "moss-dit-int8",
             "moss-te-int8",
             "moss-te-fp8",
         ]

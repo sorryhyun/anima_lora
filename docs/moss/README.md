@@ -65,20 +65,28 @@ int8 became the default re-encodes on the next `cache` run unless it passes
   alpha = rank), `--optimizer muon`, `--lr 5e-5`, `--down_init kaiming`,
   no channel scaling, `--ema_window 0.1` (an EMA over 10 % of the updates, t2i and i2i;
   the saved file is the EMA, the raw weights land in
-  `<name>/<name>_raw`, `--ema_extra` adds more spans; `docs/moss/findings/ema_lr1e4.md`). Why kaiming and no channel scaling under Muon:
+  `<name>/<name>_raw`, `--ema_extra` adds more spans, `--ema_card` keeps them on the card; `docs/moss/findings/ema_lr1e4.md`). Why kaiming and no channel scaling under Muon:
   `docs/moss/findings/muon_channel_init.md`, `muon_no_channel_scaling.md`. Channel scaling
   and `dc_isolate`, the AdamW-era fixes for the loud FFN input channel, were removed once
   Muon made them no-ops; mechanism and the lr / alpha history:
   `docs/moss/channel_scaling.md`.
-- **Time**: 30 images × 20 epochs (600 steps) takes about 18–21 min on a 5070 Ti. The
+- **Time**: 30 images × 20 epochs (600 steps) took about 18–21 min on a 5070 Ti at the
+  bf16 plan's 1.9 s/step. The
   LoRA moves line work and palette toward the set; character identity holds, including
   characters the set does not contain.
-- **Memory**: the default plan is no checkpointing, `--blocks_to_swap 36`,
-  `--activation_memory_budget 0.5`, `--swap_h2d_only`, `--expandable_segments`: 1.9 s/step at 1024² with
-  0.85 GB free on the largest caststation sample (4.2k image + 0.4k text tokens). The step
-  time stops improving past budget ~0.45 (0.3: 2.05 s/step), and swap 28–36 run at the
-  same speed, so the swap count trades VRAM, not step time. The i2i configs run swap 38 /
-  budget 0.175: reference tokens make their samples larger, and at
+- **Memory**: the default plan is the int8 base (`--int8 stream`, GPTQ forward copies,
+  `--stream fp32`), `--blocks_to_swap 0`, `--activation_memory_budget 0.2`, `--ema_card`,
+  no checkpointing: 1.30 s/step at a 12.04 GB peak on 1024² samples, plus 4.4 GiB of pinned
+  host memory. The file downloads on first use, or via `make download-model
+  ARGS=moss-dit-int8`. No LoRA has been trained to completion on this plan:
+  `docs/moss/optimization/int8.md`.
+- **bf16 plan** (`--config configs/moss/lora_bf16.toml`): needed for `--algo loha`, block
+  swap, and the i2i configs, since the int8 base refuses swap and LoHa and has run no i2i
+  step. `--blocks_to_swap 36`, `--activation_memory_budget 0.5`, `--swap_h2d_only`: 1.9
+  s/step at 1024² with 0.85 GB free on the largest caststation sample (4.2k image + 0.4k
+  text tokens). The step time stops improving past budget ~0.45 (0.3: 2.05 s/step), and
+  swap 28–36 run at the same speed, so the swap count trades VRAM, not step time. The i2i
+  configs run swap 38 / budget 0.175: reference tokens make their samples larger, and at
   swap 28 budget 0.2 runs out of memory. At ~8.3k joint tokens (sanitize) 38 / 0.175 runs
   3.79 s/step against 4.17 for 28 / 0.15. `--swap_h2d_only` keeps a page-locked CPU copy
   of each swapped block (up to 8.8 GB of RAM) and drops the device-to-host half of every
@@ -86,8 +94,8 @@ int8 became the default re-encodes on the next `cache` run unless it passes
   (4.69 vs 5.09 s/step on gen 4 x16); `--no-swap_h2d_only` turns it off. `--grad_checkpointing --blocks_to_swap 0` fits
   without swap, slower. The best swap
   count depends on the PCIe link and GPU; `tune_swap.py` times each count on the cache's
-  largest sample (about 4 min) and prints the flags to train with. Full plan table:
-  guidebook §4.2.
+  largest sample on this plan (about 4 min) and prints the flags to train with. Full plan
+  table: guidebook §4.2.
 
   ```bash
   make daemon-run ARGS="scripts/moss/tune_swap.py --cache post_image_dataset/moss/<set>"
@@ -107,8 +115,10 @@ int8 became the default re-encodes on the next `cache` run unless it passes
   Kronecker product (`--factor` caps the small factor; a `--rank` at or above half the
   larger factor's side makes `w2` full and the scale 1, hence `--rank 100000 --factor 8`),
   LoHa the Hadamard product of two rank-r pairs. Files keep LyCORIS tensor names and load
-  through the same `--lora`. Both need `--activation_memory_budget 0.1` with
-  `--blocks_to_swap 24` or more at 1024² (swap 12 / budget 0.15 ran out of memory); `tune_swap.py` measures a LoRA only.
+  through the same `--lora`. LoHa needs the bf16 plan, and on it both need
+  `--activation_memory_budget 0.1` with `--blocks_to_swap 24` or more at 1024² (swap 12 /
+  budget 0.15 ran out of memory); `tune_swap.py` measures a LoRA only. LoKr runs on the int8
+  base, but its peak there is unmeasured.
   `--down_init` applies to `lora` only. At lr 1e-4, LoKr f8 came close to the LoRA and LoHa
   r16 overshot (palette shift, costume leakage); LoHa at lr 5e-5 is unmeasured.
 - **`--mod_rank`** (opt-in, 0 = off; `lora` only): also adapts `shared_block_modulation`,

@@ -147,10 +147,8 @@ def main():
     p.add_argument("--lr", type=float, default=2e-4)
     p.add_argument("--warmup", type=float, default=0.05)
     p.add_argument("--max_grad_norm", type=float, default=1.0)
-    p.add_argument("--blocks_to_swap", type=int, default=d.blocks_to_swap)
-    p.add_argument(
-        "--activation_memory_budget", type=float, default=d.activation_memory_budget
-    )
+    p.add_argument("--blocks_to_swap", type=int, default=36)
+    p.add_argument("--activation_memory_budget", type=float, default=0.5)
     p.add_argument("--no_compile", action="store_true")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--model", default="base")

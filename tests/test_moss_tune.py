@@ -55,8 +55,9 @@ def test_pick_respects_margin():
     assert pick(arms, margin_gb=1.0)["blocks_to_swap"] == 28
     assert pick(arms, margin_gb=1.0, tolerance=0.05)["blocks_to_swap"] == 24
     arms[2]["free_gb"] = 0.6
-    assert flags(chosen) == "--blocks_to_swap 24 --activation_memory_budget 0.2"
-    assert flags(arms[0]) == "--grad_checkpointing --blocks_to_swap 0"
+    bf16 = "--int8 off --stream bf16 --no-ema_card"
+    assert flags(chosen) == f"{bf16} --blocks_to_swap 24 --activation_memory_budget 0.2"
+    assert flags(arms[0]) == f"{bf16} --grad_checkpointing --blocks_to_swap 0"
     assert pick(arms, margin_gb=5.0) is None
 
 

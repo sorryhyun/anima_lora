@@ -459,6 +459,8 @@ STRINGS: dict[str, str] = {
     "models_pack_moss_base_desc": "MOSS-Image-Base (not Anima): the 5B DiT, the Qwen3.5-9B text encoder, the FLUX.2 VAE and tokenizer — ~27 GB. The MOSS line's LoRA substrate.",
     "models_pack_moss_sft": "MOSS-Image SFT",
     "models_pack_moss_sft_desc": "MOSS-Image-SFT's DiT alone (~10 GB); it reuses the Base pack's text encoder, VAE and tokenizer.",
+    "models_pack_moss_dit_int8": "MOSS-Image INT8 DiT",
+    "models_pack_moss_dit_int8_desc": "MOSS-Image Base's DiT with its 252 block linears in int8 GPTQ (~5 GB), the default int8 training base: fetched on first use.",
     "models_pack_moss_te_int8": "MOSS-Image INT8 text encoder",
     "models_pack_moss_te_int8_desc": "The Qwen3.5-9B text encoder in INT8 W8A8 (~9.2 GB instead of 16.8 GB), the default text_encoder=int8: all 32 layers fit on a 16 GB card. The tokenizer still comes from the Base pack.",
     "models_pack_moss_te_fp8": "MOSS-Image fp8 text encoder",

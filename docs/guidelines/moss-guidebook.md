@@ -139,27 +139,32 @@ The comparisons ran on 30 images of one artist (`@channel (caststation)`), Base,
 | LoKr f8 | `rank 100000`, `factor 8` | 2.26 s/step, 3.6 GB free | Close to the LoRA, slightly less character in the faces |
 | LoHa r16 | `rank 16` | 2.49 s/step, 1.7 GB free | Overshot: grey-teal palette shift, the set's costume on other characters |
 
-- Both need more memory than a LoRA: set `activation_memory_budget 0.1` (Advanced) and keep `blocks_to_swap` at 24 or more. Swap 12 with budget 0.15 ran out of memory at 1024².
+- These were measured on the bf16 plan (§4.2), which LoHa requires: the default int8 base refuses it. LoKr runs on int8, but its peak there is unmeasured.
+- On the bf16 plan both need more memory than a LoRA: set `activation_memory_budget 0.1` (Advanced) and keep `blocks_to_swap` at 24 or more. Swap 12 with budget 0.15 ran out of memory at 1024².
 - LoKr with `rank` at or above half the larger factor's side (the `rank 100000` above) uses a full matrix for that factor and ignores alpha (scale 1).
 - LoHa: lr 5e-5 is the next setting to try; it has not been measured.
 
 ### 4.2 Memory plan (16 GB)
 
-Defaults: `grad_checkpointing` off, `compile` on, and under Advanced `blocks_to_swap 36` (DiT blocks kept on the CPU and streamed in), `activation_memory_budget 0.5` (how much of the forward pass is kept for the backward; the rest is recomputed) and `expandable_segments` on (keeps the CUDA memory pool from fragmenting when sequence lengths vary).
+Defaults: `grad_checkpointing` off, `compile` on, and under Advanced `int8 stream` with the GPTQ file (the DiT's block weights run as int8; the file downloads on first use), `stream fp32` (the rest of the block runs in fp32), `blocks_to_swap 0` (every block stays on the card), `activation_memory_budget 0.2` (how much of the forward pass is kept for the backward; the rest is recomputed), `ema_card` on and `expandable_segments` on (keeps the CUDA memory pool from fragmenting when sequence lengths vary).
+
+This runs 1.30 s/step at a 12.04 GB peak on 1024² samples and also pins 4.4 GiB of system memory. On this plan the budget does not buy speed: 0.05–0.4 run at the same speed, and each 0.1 adds about 1 GB of peak, so lower it if you run out of memory. No LoRA has been trained to completion on it yet ([details](../moss/optimization/int8.md)).
+
+**bf16 plan.** The int8 base refuses block swap and LoHa, and has run no i2i step, so the i2i task configs stay on bf16. `--config configs/moss/lora_bf16.toml`, or under Advanced `int8 off`, `stream bf16`, `ema_card` off, `blocks_to_swap 36` (DiT blocks kept on the CPU and streamed in), `activation_memory_budget 0.5`.
 
 | Plan | Fields | s/step | Free VRAM |
 |---|---|---|---|
-| Earlier default | swap 12, budget 0.1 (rank 32) | 1.85 | ~1.7 GiB |
-| Older default | swap 12, budget 0.15 (rank 16) | 1.77 | ~0.7 GiB |
+| Earlier bf16 default | swap 12, budget 0.1 (rank 32) | 1.85 | ~1.7 GiB |
+| Older bf16 default | swap 12, budget 0.15 (rank 16) | 1.77 | ~0.7 GiB |
 | More room | swap 24, budget 0.2 | 1.78 | 2.26 GiB |
 | Checkpointing | `grad_checkpointing` on, swap 0 | 2.09 | 1.60 GiB |
 
-The current default (swap 36, budget 0.5, `swap_h2d_only`, `expandable_segments`, rank 32) runs 1.9 s/step on the caststation set with 0.85 GB free on its largest sample (4.2k image + 0.4k text tokens). Raising the budget stops helping past ~0.45 (0.3: 2.05 s/step), and swap 28–36 run at the same speed, so a lower swap only gives up free VRAM. i2i samples also carry a reference image, so the i2i task configs use swap 38, budget 0.175: at swap 28, budget 0.2 runs out of memory, and swap 38 makes room for the higher budget, 3.79 s/step against 4.17 for swap 28 / budget 0.15 at ~8.3k joint tokens (sanitize). `swap_h2d_only` keeps a page-locked copy of every swapped block in RAM (up to 8.8 GB) so a swap only copies to the card, never back. The results and VRAM are the same as without it; it is as fast up to swap 38 and 8% faster at swap 40. It is on by default; `--no-swap_h2d_only` turns it off.
+The bf16 plan (swap 36, budget 0.5, `swap_h2d_only`, `expandable_segments`, rank 32) runs 1.9 s/step on the caststation set with 0.85 GB free on its largest sample (4.2k image + 0.4k text tokens). Raising the budget stops helping past ~0.45 (0.3: 2.05 s/step), and swap 28–36 run at the same speed, so a lower swap only gives up free VRAM. i2i samples also carry a reference image, so the i2i task configs use swap 38, budget 0.175: at swap 28, budget 0.2 runs out of memory, and swap 38 makes room for the higher budget, 3.79 s/step against 4.17 for swap 28 / budget 0.15 at ~8.3k joint tokens (sanitize). `swap_h2d_only` keeps a page-locked copy of every swapped block in RAM (up to 8.8 GB) so a swap only copies to the card, never back. The results and VRAM are the same as without it; it is as fast up to swap 38 and 8% faster at swap 40. It is on by default and only acts when blocks are swapped; `--no-swap_h2d_only` turns it off.
 
 Table: synthetic 1024² image + 300 text tokens (~4.4k tokens in all), LoRA rank 16, RTX 5070 Ti. The earlier default (rank 32, budget 0.1, swap 12) measured 1.85 s/step with ~1.7 GB free and a peak reserved of ~13.1 GB at ~4.5k joint tokens (image 4096 + text 455); rank 16 at budget 0.1 measured 1.82 s/step with ~2.0 GB free. Real samples ran up to ~4.9k tokens, and longer captions use more memory, which `swap 24` leaves room for at the same speed.
 
 - Between swap 8 and 36 the speed barely moves (1.75–1.84 s/step), and budgets 0.1–0.3 barely change it either; swap 40 is slower (2.34 s/step) because the PCIe transfers stop hiding behind compute. Below that point, the swap count trades VRAM, not speed.
-- The best pair depends on the PCIe link and the GPU. `scripts/moss/tune_swap.py` (CLI, [Appendix](#appendix-cli), about 4 minutes) times each swap count on the cache's largest sample and prints the fields to train with.
+- The best pair depends on the PCIe link and the GPU. `scripts/moss/tune_swap.py` (CLI, [Appendix](#appendix-cli), about 4 minutes) times each swap count on the cache's largest sample on the bf16 plan and prints the fields to train with.
 - `blocks_to_swap -1` sizes the swap from free VRAM; it is calibrated for LoRA and under-reserves for LoKr/LoHa.
 - `compile` off needs `grad_checkpointing` on. Compiled training ran 2.0 against 3.1 s/step, for ~30 s of compile at the start.
 
@@ -201,7 +206,8 @@ The sampler defaults come from MOSS's reference pipeline; Anima's sampler habits
 
 | Symptom | What to do |
 |---|---|
-| Out of memory in training | Advanced: `blocks_to_swap 24`, then `activation_memory_budget 0.1`; or run `tune_swap.py`. LoKr/LoHa need 24 / 0.1. `grad_checkpointing` on with `blocks_to_swap 0` is the slower plan that fits without swap |
+| Out of memory in training | Advanced: `activation_memory_budget 0.1`, or `grad_checkpointing` on (9.36 GB peak on the int8 plan, slightly slower). Then the bf16 plan (§4.2) with `blocks_to_swap 24`, or run `tune_swap.py`; on it LoKr/LoHa need 24 / 0.1 |
+| `int8 base: --blocks_to_swap 0 is required` or `loha builds W + ΔW` | The int8 base does not swap or run LoHa: use the bf16 plan (§4.2) |
 | Style too weak | More epochs (the measured run used 20). Check the prompt carries the artist tag spelled as in the captions, and that `prompt_format` matches `caption_format` |
 | Style too strong, the set's signature or watermark shows up, every image has the same composition | Test an earlier `_e<N>` checkpoint or lower `lora_multiplier`. A higher effective lr is what started copying the signature; try `lr 2e-5` |
 | The set's costume or colours leak onto other characters | Use `caption_format layout_json` (the default; it leaked less than plain tags). Switch LoHa back to LoRA or LoKr |
@@ -219,6 +225,7 @@ The GUI submits these jobs; they can also be run through the daemon directly. `-
 make daemon-run ARGS="--stall-timeout 900 scripts/moss/cache.py --src 'post_image_dataset/resized/<set>' --out 'post_image_dataset/moss/<set>'"
 make daemon-run ARGS="--stall-timeout 900 scripts/moss/train.py --cache 'post_image_dataset/moss/<set>' --epochs 20"
 make daemon-run ARGS="--stall-timeout 900 scripts/moss/train.py --config configs/moss/lora.toml"
+make daemon-run ARGS="--stall-timeout 900 scripts/moss/train.py --config configs/moss/lora_bf16.toml"
 make daemon-run ARGS="--stall-timeout 900 scripts/moss/generate.py --lora output/ckpt_moss/moss_lora.safetensors"
 make daemon-run ARGS="scripts/moss/tune_swap.py --cache post_image_dataset/moss/<set>"
 ```
@@ -226,8 +233,8 @@ make daemon-run ARGS="scripts/moss/tune_swap.py --cache post_image_dataset/moss/
 LoKr / LoHa:
 
 ```bash
-make daemon-run ARGS="scripts/moss/train.py --cache 'post_image_dataset/moss/<set>' --epochs 20 --algo lokr --rank 100000 --factor 8 --blocks_to_swap 24 --activation_memory_budget 0.1"
-make daemon-run ARGS="scripts/moss/train.py --cache 'post_image_dataset/moss/<set>' --epochs 20 --algo loha --rank 16 --lr 5e-5 --blocks_to_swap 24 --activation_memory_budget 0.1"
+make daemon-run ARGS="scripts/moss/train.py --cache 'post_image_dataset/moss/<set>' --epochs 20 --algo lokr --rank 100000 --factor 8 --config configs/moss/lora_bf16.toml --blocks_to_swap 24 --activation_memory_budget 0.1"
+make daemon-run ARGS="scripts/moss/train.py --cache 'post_image_dataset/moss/<set>' --epochs 20 --algo loha --rank 16 --lr 5e-5 --config configs/moss/lora_bf16.toml --blocks_to_swap 24 --activation_memory_budget 0.1"
 ```
 
 More measurements: [`docs/moss/README.md`](../moss/README.md).

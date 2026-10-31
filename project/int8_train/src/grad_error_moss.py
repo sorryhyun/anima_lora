@@ -4,14 +4,14 @@ LoRA gradient, measured against fp32 and against bf16's own distance from fp32.
 Same passes per (σ, image) as ``grad_error.py``: fp32 first, then bf16, bf16 again,
 int8 ``fwd``, ``full`` and the split arms ``w8a16`` / ``w16a8``, on the 252 block
 linears ``layers.N.proj.{q,k,v,o,ffn_up_gate,ffn_down}`` (the set
-``train_int8_moss.py`` converts). Three changes for a 5B DiT on 16 GB:
+``TrainRequest.int8`` converts). Three changes for a 5B DiT on 16 GB:
 
 - fp32 reference: every linear keeps its bf16 weight (``w16``) and runs an fp32 GEMM
   on an upcast copy per call, exact since the checkpoint is bf16; its ``weight`` is an
   empty fp32 buffer, so the model casts activations to fp32. Biases and norms are cast
   to fp32. SDPA (FA2 has no fp32 kernel), TF32 off.
 - The int8 copies are quantized from the bf16 weight on every call (round to nearest,
-  as ``train_int8_moss.py``) instead of held: bf16 plus both int8 copies is ~19 GB.
+  as ``library/moss/dit_int8/base.py``) instead of held: bf16 plus both int8 copies is ~19 GB.
 - Both sides are sketched, ``S = (dY Ω)ᵀ (X Ψ)``, so a linear's input is not parked
   until its gradient arrives. Ω and Ψ are Gaussian, one per width.
 
@@ -48,7 +48,7 @@ from library.moss.train import NUM_TRAIN_TIMESTEPS, checkpoint_blocks  # noqa: E
 # sibling modules; the script dir is on sys.path
 from grad_error import _SplitArm, sq  # noqa: E402
 from int8_linear import linear_full, linear_fwd, quantize  # noqa: E402
-from train_int8_moss import check_base, load_copies, moss_targets  # noqa: E402
+from library.moss.dit_int8.base import check_base, load_copies, moss_targets  # noqa: E402
 
 # after the fp32 phase. ``bf16_f32s``: every parameter but the block linears' weights in
 # fp32, so the residual stream, modulation and gates are fp32 around bf16 GEMMs.

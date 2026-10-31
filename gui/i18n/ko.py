@@ -442,6 +442,8 @@ STRINGS: dict[str, str] = {
     "models_pack_moss_base_desc": "MOSS-Image-Base (Anima 아님): 5B DiT, Qwen3.5-9B 텍스트 인코더, FLUX.2 VAE와 토크나이저 — 약 27 GB. MOSS 라인의 LoRA 학습 기반 모델입니다.",
     "models_pack_moss_sft": "MOSS-Image SFT",
     "models_pack_moss_sft_desc": "MOSS-Image-SFT의 DiT만 포함 (약 10 GB). 텍스트 인코더·VAE·토크나이저는 Base 팩의 것을 사용합니다.",
+    "models_pack_moss_dit_int8": "MOSS-Image INT8 DiT",
+    "models_pack_moss_dit_int8_desc": "MOSS-Image Base의 DiT에서 블록 linear 252개를 int8 GPTQ로 바꾼 파일 (약 5 GB). 기본 int8 학습 베이스이며 처음 쓸 때 자동으로 받습니다.",
     "models_pack_moss_te_int8": "MOSS-Image INT8 텍스트 인코더",
     "models_pack_moss_te_int8_desc": "INT8 W8A8 Qwen3.5-9B 텍스트 인코더 (16.8 GB 대신 약 9.2 GB). 기본값 text_encoder=int8이며 32개 레이어 전부가 16 GB 카드에 올라갑니다. 토크나이저는 여전히 Base 팩의 것을 사용합니다.",
     "models_pack_moss_te_fp8": "MOSS-Image fp8 텍스트 인코더",

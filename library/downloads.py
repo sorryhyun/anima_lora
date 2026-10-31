@@ -98,6 +98,10 @@ MOSS_TE_FP8_DIR = "fp8"
 MOSS_TE_INT8_REPO = "sorryhyun/MOSS-Image-Qwen3.5-9B-int8"
 MOSS_TE_INT8_FILE = "qwen35_9b_int8_convrot.safetensors"
 MOSS_TE_INT8_DIR = "int8"
+# Base's DiT with its block linears in int8 (GPTQ forward copies); read by
+# ``library/moss/dit_int8/base.py``, the ``TrainRequest.int8`` default.
+MOSS_DIT_INT8_REPO = "sorryhyun/MOSS-Image-Base-int8"
+MOSS_DIT_INT8_FILE = "moss_image_base_int8_gptq.safetensors"
 
 
 def default_pe_core_path() -> Path:
@@ -168,6 +172,12 @@ TRAINER_PACKS: tuple[Pack, ...] = (
         "MOSS-Image SFT",
         "MOSS-Image-SFT's DiT alone (~10 GB); it reuses the Base pack's text "
         "encoder, VAE and tokenizer.",
+    ),
+    Pack(
+        "moss-dit-int8",
+        "MOSS-Image INT8 DiT",
+        "MOSS-Image Base's DiT with its 252 block linears in int8 GPTQ (~5 GB), the "
+        "default int8 training base: fetched on first use.",
     ),
     Pack(
         "moss-te-int8",
@@ -303,6 +313,17 @@ def _moss_rows() -> tuple[Asset, ...]:
             "MOSS-Image scheduler config",
             ("scheduler_config.json",),
             used,
+        ),
+        Asset(
+            id="moss_dit_int8",
+            pack="moss-dit-int8",
+            title="MOSS-Image Base DiT, INT8 GPTQ",
+            repo=MOSS_DIT_INT8_REPO,
+            files=(MOSS_DIT_INT8_FILE,),
+            dest=default_moss_dir(),
+            used_by=f"{used} · TrainRequest.int8, the default (forward copies)",
+            notes="~5 GB. The 252 block linears INT8 ConvRot with offline GPTQ, the "
+            "rest bf16. Base only; a fingerprint refuses any other DiT.",
         ),
         Asset(
             id="moss_te_int8",

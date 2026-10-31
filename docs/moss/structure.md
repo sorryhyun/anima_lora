@@ -170,7 +170,7 @@ averaged over image tokens and channels, with **no σ / SNR weighting**. i2i rec
    L = mean ‖v̂ − (ε − z₀)‖²           ← image tokens only
 ```
 
-Training reads only the cache (`post_image_dataset/moss[/<set>]`, two files per image), so neither the TE nor the VAE is loaded. On 16 GB the DiT (9.7 GiB bf16) runs compiled with 12 blocks swapped and the compiled blocks' saved activations capped by `activation_memory_budget = 0.1` instead of gradient checkpointing; `scripts/moss/tune_swap.py` measures the pair for a machine.
+Training reads only the cache (`post_image_dataset/moss[/<set>]`, two files per image), so neither the TE nor the VAE is loaded. On 16 GB the DiT runs compiled and fully resident on its int8 base, with the compiled blocks' saved activations capped by `activation_memory_budget = 0.2` instead of gradient checkpointing (`docs/moss/optimization/int8.md`). The bf16 plan swaps 36 blocks at budget 0.5; `scripts/moss/tune_swap.py` measures that pair for a machine.
 
 ### 5.2 Sampling
 

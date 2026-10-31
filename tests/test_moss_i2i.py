@@ -26,6 +26,8 @@ def test_task_recipes_load(task):
     # The test reference matches what the cache encoded.
     ref_scale = cache.get("ref_scale", I2I_CACHE[task]().ref_scale)
     assert gen.get("ref_scale", GenerateRequest().ref_scale) == ref_scale
+    # int8 refuses the swap these run.
+    assert train["int8"] == "off" and train["blocks_to_swap"] > 0
 
 
 def test_ref_jobs_follow_each_reference(tmp_path):

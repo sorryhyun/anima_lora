@@ -32,10 +32,15 @@ caption_variant_rate = 0.0     # cache with embeds_v{k} (colorize probe): x (1 -
 ema_window = 0.1               # adapter EMA over 10 % of the updates (0.958 at 240); saves write it, raw goes to <name>/<name>_raw; docs/moss/findings/ema_lr1e4.md
 lora_dtype = "bf16"            # bf16 | fp16 | fp32
 
-# Memory / speed (16 GB card). scripts/moss/tune_swap.py measures this machine's pair.
-blocks_to_swap = 36
-swap_h2d_only = true           # page-locked CPU copy per block, no device-to-host copy back
-activation_memory_budget = 0.5
+# Memory / speed (16 GB card): int8 base, every block resident. docs/moss/optimization/int8.md.
+# The int8 base refuses block swap and loha; configs/moss/lora_bf16.toml is the bf16 plan.
+int8 = "stream"                # off | fwd | full | stream
+int8_file = ""                 # empty: the catalog's GPTQ file on Base, fetched on first use; round to nearest on SFT; "rtn" forces that
+stream = "fp32"                # residual stream: int8 + fp32 sits below bf16's prediction error
+ema_card = true                # EMA shadow on the card, no host copy per update
+blocks_to_swap = 0
+activation_memory_budget = 0.2
+swap_h2d_only = true           # only with blocks_to_swap > 0
 compile = true
 expandable_segments = true
 grad_checkpointing = false

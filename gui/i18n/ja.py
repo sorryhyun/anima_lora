@@ -401,6 +401,8 @@ STRINGS: dict[str, str] = {
     "models_pack_moss_base_desc": "MOSS-Image-Base（Anima ではありません）: 5B DiT、Qwen3.5-9B テキストエンコーダー、FLUX.2 VAE とトークナイザー — 約 27 GB。MOSS ラインの LoRA 学習のベースです。",
     "models_pack_moss_sft": "MOSS-Image SFT",
     "models_pack_moss_sft_desc": "MOSS-Image-SFT の DiT のみ（約 10 GB）。テキストエンコーダー・VAE・トークナイザーは Base パックのものを使います。",
+    "models_pack_moss_dit_int8": "MOSS-Image INT8 DiT",
+    "models_pack_moss_dit_int8_desc": "MOSS-Image Base の DiT のブロック linear 252 個を int8 GPTQ にしたファイル（約 5 GB）。既定の int8 学習ベースで、初回使用時に取得します。",
     "models_pack_moss_te_int8": "MOSS-Image INT8 テキストエンコーダー",
     "models_pack_moss_te_int8_desc": "INT8 W8A8 の Qwen3.5-9B テキストエンコーダー（16.8 GB ではなく約 9.2 GB）。既定の text_encoder=int8 で、32 層すべてが 16 GB のカードに載ります。トークナイザーは引き続き Base パックのものを使います。",
     "models_pack_moss_te_fp8": "MOSS-Image fp8 テキストエンコーダー",

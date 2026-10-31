@@ -1,0 +1,13 @@
+# MOSS-Image LoRA training on the bf16 base: for loha, block swap, or a card that does
+# not fit the int8 plan. Over configs/moss/lora.toml's defaults.
+#
+#   make daemon-run ARGS="--stall-timeout 900 scripts/moss/train.py --config configs/moss/lora_bf16.toml"
+#
+# scripts/moss/tune_swap.py measures this machine's swap / budget pair for this plan.
+
+int8 = "off"
+stream = "bf16"
+ema_card = false
+blocks_to_swap = 36
+swap_h2d_only = true           # page-locked CPU copy per block, no device-to-host copy back
+activation_memory_budget = 0.5

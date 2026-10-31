@@ -13,8 +13,8 @@ still run block 22. The sets keep ``channel_(caststation)_layout`` out, the imag
 Blocks are quantized in order, each quantized block (W8A8, the kernel) feeding the
 next. GPTQ runs against the summed t2i + i2i input statistics. ``rtn`` and ``gptq`` are
 scored per domain as well, so a cost to t2i from the i2i tokens would show. The file
-and metadata are ``dit_gptq.py``'s; ``train_int8_moss.py`` and ``infer_int8_moss.py``
-take it as ``--int8_file``. ``--max_blocks`` stops early and writes nothing.
+and metadata are ``dit_gptq.py``'s; ``TrainRequest.int8_file`` and ``infer_int8_moss.py``
+take it. ``--max_blocks`` stops early and writes nothing.
 
     make daemon-run ARGS="--stall-timeout 1800 project/int8_train/src/dit_gptq_moss.py"
 """
@@ -44,10 +44,11 @@ from library.moss.requests import (  # noqa: E402
 )
 from library.moss.train import EMPTY_PROMPT_PATH, NUM_TRAIN_TIMESTEPS  # noqa: E402
 
+from library.moss.dit_int8.base import convert_moss_, moss_keys, moss_targets  # noqa: E402
+
 # sibling modules
 from dit_gptq import Acc, gptq, out_err, sha256_file, w8a8_err, write_file  # noqa: E402
 from int8_linear import base_fingerprint  # noqa: E402
-from train_int8_moss import convert_moss_, moss_keys, moss_targets  # noqa: E402
 
 SETS = (
     "ama_mitsuki_layout,group_wsw_layout,hews_layout,sincos_layout,_calib_mixed,"

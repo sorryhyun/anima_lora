@@ -4,33 +4,31 @@ The 252 block linears (`layers.N.proj.{q,k,v,o,ffn_up_gate,ffn_down}`) of the fr
 as ConvRot int8 GEMMs instead of bf16. Attention, norms, modulation, the residual stream
 and the LoRA's own GEMMs stay in float.
 
-**Status (2026-10-31): measured up to 30-step trainer runs. No LoRA has been trained to
-completion on the GPTQ base and no multi-seed render A/B exists.** Generation on the file
-works and is the better-supported half: 6.3 GiB against 10.7 GiB at 1024². In training,
-`--int8 full` gains speed and saves no VRAM; `--int8 stream` also saves about 4 GB
-([VRAM](#vram)).
+**Status (2026-10-31): the default training plan, measured up to 60-step trainer runs. No
+LoRA has been trained to completion on the GPTQ base and no multi-seed render A/B exists.**
+Generation on the file works and is the better-supported half: 6.3 GiB against 10.7 GiB at
+1024². In training, `--int8 full` gains speed and saves no VRAM; `--int8 stream` also saves
+about 4 GB ([VRAM](#vram)).
 
-All code lives in `project/int8_train/src/`. Nothing here is in `library/moss/`, the GUI
-or the model catalog: the GPTQ file is local, built with the command below. Base only;
-SFT has no file.
+Training is `TrainRequest.int8`, code in `library/moss/dit_int8/`. Generation and the GPTQ
+build stay in `project/int8_train/src/`. The GPTQ file is the catalog row `moss_dit_int8`
+([`sorryhyun/MOSS-Image-Base-int8`](https://huggingface.co/sorryhyun/MOSS-Image-Base-int8)).
+Base only; SFT has no file and trains on round-to-nearest weights.
 
 ## Running it
 
-Build the GPTQ file (64.6 min, peak 14.1 GB; 233 images across t2i and i2i sets):
+Train: the defaults are `--int8 stream --ema_card --stream fp32 --blocks_to_swap 0
+--activation_memory_budget 0.2`.
+
+    make daemon-run ARGS="--stall-timeout 900 scripts/moss/train.py --cache post_image_dataset/moss/<set>"
+
+The file downloads to `models/moss_image/moss_image_base_int8_gptq.safetensors` on first
+use (5.04 GiB: 4.43 GiB int8, 0.60 GiB bf16), or via `make download-model
+ARGS=moss-dit-int8`. A fingerprint ties it to the DiT it was made from, and both entry
+points refuse any other. Rebuild it (64.6 min, peak 14.1 GB; 233 images across t2i and i2i
+sets) with:
 
     make daemon-run ARGS="--stall-timeout 1800 project/int8_train/src/dit_gptq_moss.py"
-
-Output: `models/moss_image/moss_image_base_int8_gptq.safetensors`, 5.04 GiB (4.43 GiB
-int8, 0.60 GiB bf16). A fingerprint ties it to the DiT it was made from, and both
-entry points refuse any other.
-
-Train:
-
-    make daemon-run ARGS="--stall-timeout 900 project/int8_train/src/train_int8_moss.py \
-        --int8 stream --ema_card \
-        --int8_file models/moss_image/moss_image_base_int8_gptq.safetensors \
-        -- --config configs/moss/lora.toml --blocks_to_swap 0 \
-        --activation_memory_budget 0.2 --stream fp32"
 
 Generate:
 
@@ -38,9 +36,13 @@ Generate:
         --int8_file models/moss_image/moss_image_base_int8_gptq.safetensors \
         -- --lora <path> --stream fp32 --out_dir output/tests/int8"
 
-- `--int8_file` omitted: round-to-nearest (RTN) weights, quantized at load.
+- `--int8_file rtn` in training, or `--int8_file` omitted in generation: round-to-nearest
+  (RTN) weights, quantized at load.
 - Both refuse `blocks_to_swap != 0` (the offloader moves `.weight`, not `wq` / `wq_t`) and
-  `algo loha` (it builds `W + ΔW`). `lora` and `lokr` run.
+  `algo loha` (it builds `W + ΔW`). `lora` and `lokr` run. `configs/moss/lora_bf16.toml` is
+  the plan for either.
+- The i2i configs stay on bf16 (`int8 = "off"`, swap 38): i2i on the int8 base has run no
+  step.
 - A LoRA trained this way carries `int8_base` and `int8_base_id`. A bf16-trained LoRA
   loads on the int8 base: the sanitize LoRA removed the page's text there.
 
@@ -50,7 +52,7 @@ Training, `channel_(caststation)_layout` unless noted:
 
 | plan | s/step | peak |
 |---|---|---|
-| bf16, swap 36, budget 0.5 (default) | 1.83–1.91 | 13.46 GB |
+| bf16, swap 36, budget 0.5 (`lora_bf16.toml`) | 1.83–1.91 | 13.46 GB |
 | bf16, swap 0, checkpointing | 2.26–2.34 | 11.96 GB |
 | int8 RTN, swap 0, checkpointing | 1.44–1.49 | 11.96 GB |
 | int8 GPTQ, fp32 stream, swap 0, checkpointing (`hews_layout`, 12 steps) | 1.47 | 13.52 GB |
@@ -111,8 +113,8 @@ more. At equal plans the peak drops 4.2 GB (13.58 → 9.36 GB with checkpointing
 1.33–1.37 s/step, while the peak climbs about 1 GB per 0.1. `full` at budget 0.05 already
 runs at 1.33 s/step. Spend the room on something else: pick the budget for the peak you
 need, 0.1–0.2 in the usual case. `--ema_card` is the better use: keeping the EMA shadow on
-the card saves 0.065 s/step (4.8%) for 0.27 GB. It stays a trainer patch because the bf16
-default leaves only 0.85 GB free on 16 GB. Attention recompute, the part budget should save, is
+the card saves 0.065 s/step (4.8%) for 0.27 GB. The bf16 plan turns it off, since it leaves
+only 0.85 GB free on 16 GB. Attention recompute, the part budget should save, is
 already nearly total at 0.5 (`moss_scoping.md`), and 0.5 does not fit on a 16 GB card at
 this plan even with `stream`.
 

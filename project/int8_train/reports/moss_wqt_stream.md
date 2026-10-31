@@ -4,8 +4,9 @@
 training peak drops about 4.2 GB. Raising the activation budget with that room buys no
 speed: budgets 0.05–0.4 all run at 1.33–1.37 s/step.**
 
-`--int8 stream` in `src/train_int8_moss.py`: `full` with `wq_t` in pinned host buffers
-and two block-sized slots on the card (`int8_linear.WqtStream`, 0.21 GiB). The first dX
+`--int8 stream` (then `src/train_int8_moss.py`, since moved to `library/moss/dit_int8/`):
+`full` with `wq_t` in pinned host buffers and two block-sized slots on the card
+(`WqtStream`, 0.21 GiB). The first dX
 of a block takes its slot and queues the block below on a worker thread. Block ids reach
 the op as a CPU tensor: an int would be a graph constant, and the 42 blocks share one
 graph (`library/moss/loader.py::compile_blocks`). After `wq_t` leaves the card,
@@ -40,7 +41,7 @@ budget 0.4 OOMed with 12.79 GiB allocated of 15.17 in use.
 
 ## EMA shadow on the card
 
-`--ema_card` (`train_int8_moss.ema_step_card`) lerps the shadow on the card instead of
+`--ema_card` (`ema_step_card`, now `library/moss/training/ema.py`) lerps the shadow on the card instead of
 copying the parameters to the host each update. `stream`, budget 0.2, one shadow, 60 steps,
 median of steps 11–60, arms alternating (jobs `20261031-113552-{567084,4750a8,014cc0,02f197}`):
 
@@ -62,6 +63,13 @@ saved EMA sits at the same distance from the raw weights as the CPU shadow's (1.
   exactly) and from then on by no more than two runs of one mode differ. The forward uses
   the same weights, so this reads as a different graph's bf16 rounding; not traced.
   Gradient norms cannot settle it, as below.
+
+The two compiled arms' step 1 sits 0.0095 from the eager one because they trained a
+different sample order, not a different prediction: the compile line's rich log record drew
+from the global `random` the shuffle used, and importing `library.anima` had turned that
+logging on. So every compiled int8 run from `train_int8_moss.py` shuffled differently from
+bf16 runs of the same seed. Fixed with its own RNG in `library.moss.train` (2026-10-31); same
+order as a bf16 run now, and step losses within 5e-4 of it on `hews_layout`.
 
 ## Same-seed gradient norms
 

@@ -390,6 +390,8 @@ STRINGS: dict[str, str] = {
     "models_pack_moss_base_desc": "MOSS-Image-Base（不是 Anima）: 5B DiT、Qwen3.5-9B 文本编码器、FLUX.2 VAE 与分词器 — 约 27 GB。MOSS 线 LoRA 训练的基础模型。",
     "models_pack_moss_sft": "MOSS-Image SFT",
     "models_pack_moss_sft_desc": "仅含 MOSS-Image-SFT 的 DiT（约 10 GB）; 文本编码器、VAE 与分词器沿用 Base 包。",
+    "models_pack_moss_dit_int8": "MOSS-Image INT8 DiT",
+    "models_pack_moss_dit_int8_desc": "MOSS-Image Base 的 DiT，其 252 个块线性层为 int8 GPTQ（约 5 GB）。默认的 int8 训练底模，首次使用时自动获取。",
     "models_pack_moss_te_int8": "MOSS-Image INT8 文本编码器",
     "models_pack_moss_te_int8_desc": "INT8 W8A8 的 Qwen3.5-9B 文本编码器（约 9.2 GB，而非 16.8 GB），即默认的 text_encoder=int8: 全部 32 层可放入 16 GB 显卡。分词器仍来自 Base 包。",
     "models_pack_moss_te_fp8": "MOSS-Image fp8 文本编码器",

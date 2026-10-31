@@ -8,7 +8,7 @@ rather than 10:
 
 - With a LoRA, in ``LoRANetwork.apply_to``: after the network's ``__init__`` (LoKr reads
   the bf16 weight's shape) and before the hooks capture ``module.__class__.forward``.
-  The base then runs ``int8(x, W_q) + ΔW x``, what ``train_int8_moss.py`` trained.
+  The base then runs ``int8(x, W_q) + ΔW x``, what ``TrainRequest.int8`` trained.
 - Without one, right after ``load_transformer``.
 
 ``--int8_file`` (a ``dit_gptq_moss.py`` file made from the loaded DiT) supplies the
@@ -31,8 +31,12 @@ from pathlib import Path
 from library.env import resolve_under_home
 from library.moss.requests import GenerateRequest
 
-# sibling module
-from train_int8_moss import check_base, convert_moss_, load_copies, moss_targets
+from library.moss.dit_int8.base import (
+    check_base,
+    convert_moss_,
+    load_copies,
+    moss_targets,
+)
 
 
 def install(req: GenerateRequest, int8_file: str) -> GenerateRequest:

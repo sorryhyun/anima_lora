@@ -5,7 +5,7 @@ blocks' saved set can use, so the budget rises and the backward recomputes
 less; past some swap count the PCIe transfers stop hiding behind compute and
 the step slows again. Where that knee sits depends on the link (generation,
 lanes) and on the GPU, so this measures it instead of assuming the 16 GB
-default.
+figures. It times the bf16 base: the int8 default never swaps.
 
 One process loads the DiT once. Each arm places it with ``N`` blocks swapped,
 reads the free VRAM, picks the largest budget :func:`train.budget_for_free`
@@ -79,10 +79,12 @@ def pick(arms: list[dict], margin_gb: float, tolerance: float = 0.02) -> dict | 
 
 
 def flags(arm: dict) -> str:
+    """The arm as flags on the bf16 plan: this times bf16, and int8 refuses swap."""
+    base = "--int8 off --stream bf16 --no-ema_card"
     if arm["grad_checkpointing"]:
-        return "--grad_checkpointing --blocks_to_swap 0"
+        return f"{base} --grad_checkpointing --blocks_to_swap 0"
     return (
-        f"--blocks_to_swap {arm['blocks_to_swap']} "
+        f"{base} --blocks_to_swap {arm['blocks_to_swap']} "
         f"--activation_memory_budget {arm['budget']:g}"
         + (" --swap_h2d_only" if arm.get("swap_h2d_only") else "")
     )
