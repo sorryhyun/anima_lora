@@ -48,9 +48,11 @@ def ref_settings(path) -> tuple[float | None, bool]:
     )
 
 
-def load_for_inference(transformer, path, multiplier: float = 1.0) -> LoRANetwork:
+def load_for_inference(
+    transformer, path, multiplier: float = 1.0, before_apply=None
+) -> LoRANetwork:
     """``LoRANetwork.for_inference``, plus the reference settings the LoRA trained
     with (``ref_settings``) set on ``transformer``."""
-    network = LoRANetwork.for_inference(transformer, path, multiplier)
+    network = LoRANetwork.for_inference(transformer, path, multiplier, before_apply)
     transformer.ref_timestep, transformer.ref_isolate = ref_settings(path)
     return network

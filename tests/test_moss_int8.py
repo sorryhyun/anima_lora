@@ -345,3 +345,18 @@ def test_batched_muon_skips_param_without_grad():
     kwargs = dict(lr=5e-5, weight_decay=0.01, adjust_lr_fn="match_rms_adamw")
     BatchedMuon([a, b], **kwargs).step()
     assert not torch.equal(a, a0) and torch.equal(b, b0)
+
+
+def test_generate_refuses_swap_and_stamps_the_fingerprint():
+    from library.moss.dit_int8.base import generate_base
+    from library.moss.generation.jobs import build_jobs, fingerprint
+    from library.moss.requests import GenerateRequest
+
+    with pytest.raises(SystemExit, match="blocks_to_swap"):
+        generate_base(GenerateRequest(int8="on", blocks_to_swap=10))
+
+    bf16 = GenerateRequest(prompt="x", prompt_format="text")
+    job = build_jobs(bf16)[0]
+    assert "int8" not in fingerprint(bf16, job)
+    on = GenerateRequest(prompt="x", prompt_format="text", int8="on")
+    assert fingerprint(on, job)["int8"] == "on"

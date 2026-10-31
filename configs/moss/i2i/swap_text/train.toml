@@ -10,7 +10,7 @@ ref_isolate = true             # ref queries see only ref keys (colorize v3)
 # Swap 38 makes room for budget 0.175, which runs ~9% faster than swap 28 / 0.15 at
 # ~8.3k joint tokens (sanitize, 2026-10-26); the H2D-only swap keeps 38 off the
 # PCIe knee (classic and H2D tie up to 38, H2D is 8% faster at 40).
-# int8 has run no i2i step: these stay the measured bf16 plan.
+# int8 has trained no i2i LoRA: these stay the measured bf16 plan.
 int8 = "off"
 stream = "bf16"
 ema_card = false

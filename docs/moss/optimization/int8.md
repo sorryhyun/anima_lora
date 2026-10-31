@@ -10,8 +10,8 @@ Generation on the file works and is the better-supported half: 6.3 GiB against 1
 1024². In training, `--int8 full` gains speed and saves no VRAM; `--int8 stream` also saves
 about 4 GB ([VRAM](#vram)).
 
-Training is `TrainRequest.int8`, code in `library/moss/dit_int8/` and, shared with Anima, `library/int8/`. Generation and the GPTQ
-build stay in `project/int8_train/src/`. The GPTQ file is the catalog row `moss_dit_int8`
+Training is `TrainRequest.int8`, generation `GenerateRequest.int8`, code in `library/moss/dit_int8/` and, shared with Anima,
+`library/int8/`. The GPTQ build stays in `project/int8_train/src/`. The GPTQ file is the catalog row `moss_dit_int8`
 ([`sorryhyun/MOSS-Image-Base-int8`](https://huggingface.co/sorryhyun/MOSS-Image-Base-int8)).
 Base only; SFT has no file and trains on round-to-nearest weights.
 
@@ -32,21 +32,22 @@ sets) with:
 
     make daemon-run ARGS="--stall-timeout 1800 project/int8_train/src/dit_gptq_moss.py"
 
-Generate:
+Generate (the GUI's `(int8)` items in the `model` dropdown set the same flags):
 
-    make daemon-run ARGS="project/int8_train/src/infer_int8_moss.py --int8 on \
-        --int8_file models/moss_image/moss_image_base_int8_gptq.safetensors \
-        -- --lora <path> --stream fp32 --out_dir output/tests/int8"
+    make daemon-run ARGS="scripts/moss/generate.py --int8 on --lora <path> --stream fp32 \
+        --out_dir output/tests/int8"
 
-- `--int8_file rtn` in training, or `--int8_file` omitted in generation: round-to-nearest
-  (RTN) weights, quantized at load.
+- `--int8_file rtn`: round-to-nearest (RTN) weights, quantized at load. Empty is the
+  catalog's file on Base, RTN on SFT.
 - Both refuse `algo loha` (it builds `W + ΔW`). `lora` and `lokr` run.
   `configs/moss/lora_bf16.toml` is the plan for it.
 - Training takes `--blocks_to_swap`: `wq` (and `wq_t` in `full`) sit in `HeldCopy` children,
   whose `.weight` the offloader moves. A swapped block is about 0.11 GB against bf16's 0.21
-  GB. Generation (`infer_int8_moss.py`) still has no swap run behind it.
-- The i2i configs stay on bf16 (`int8 = "off"`, swap 38): i2i on the int8 base has run no
-  step.
+  GB. Generation has no swap run behind it and refuses `--blocks_to_swap`.
+- The i2i configs stay on bf16 (`int8 = "off"`, swap 38): no i2i LoRA has trained on the
+  int8 base. A six-step fit on sanitize's largest sample (4150 image tokens, full-size
+  reference) OOMs at swap 0 / budget 0.3 and peaks at 12.33 GB at swap 20 / budget 0.1,
+  the GUI's i2i `(int8)` items.
 - A LoRA trained this way carries `int8_base` and `int8_base_id`. A bf16-trained LoRA
   loads on the int8 base: the sanitize LoRA removed the page's text there.
 

@@ -58,6 +58,7 @@ from __future__ import annotations
 import json
 import math
 import re
+from collections.abc import Callable
 from typing import ClassVar
 
 import torch
@@ -524,15 +525,22 @@ class LoRANetwork(nn.Module):
 
     @classmethod
     def for_inference(
-        cls, transformer: nn.Module, path, multiplier: float = 1.0
+        cls,
+        transformer: nn.Module,
+        path,
+        multiplier: float = 1.0,
+        before_apply: Callable[[nn.Module], None] | None = None,
     ) -> LoRANetwork:
         """Load a LoRA onto ``transformer`` (hooked, not merged), on its device, at
         ``multiplier``. Call before compiling the blocks. ``set_multiplier``
         switches strength later; ``0.0`` is the base model exactly, ``restore()``
-        takes the hooks off."""
+        takes the hooks off. ``before_apply(transformer)`` runs between the
+        network's build and the hooks, which capture the linears' forward."""
         network, _meta = cls.from_file(transformer, path)
         network.to(next(transformer.parameters()).device)
         network.requires_grad_(False)
+        if before_apply is not None:
+            before_apply(transformer)
         network.apply_to()
         network.set_multiplier(multiplier)
         return network

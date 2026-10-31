@@ -1,19 +1,24 @@
 """MOSS-Image's side of the int8 base: its 252 target linears, the GPTQ file's forward
-copies, and the conversion ``library.moss.train`` runs (``TrainRequest.int8``).
+copies, and the conversions ``library.moss.train`` and ``library.moss.generate`` run
+(``TrainRequest.int8``, ``GenerateRequest.int8``).
 
 ``train`` converts after the network's ``__init__``, so ``down_init weight_svd*`` still
 reads bf16, and before ``apply_to``, whose patched forward captures
 ``module.__class__.forward``, and ``compile_blocks``. A converted linear that drops its
 weight keeps an empty bf16 ``weight`` buffer, since the block forward reads
-``proj["q"].weight.dtype``.
+``proj["q"].weight.dtype``. ``generate`` converts after the network's ``__init__`` too
+(LoKr reads the bf16 weight's shape) and before ``apply_to``; with no LoRA, right after
+the DiT loads.
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import torch
+from safetensors import safe_open
 
 from library.env import resolve_under_home
 from library.int8.linear import (
@@ -23,9 +28,9 @@ from library.int8.linear import (
     stream_wqt_,
 )
 from library.int8.stream import WqtStream
-from library.moss.requests import TrainRequest
+from library.moss.requests import GenerateRequest, TrainRequest
 
-ROUND_TO_NEAREST = "rtn"  # TrainRequest.int8_file, and int8_base_id on a LoRA
+ROUND_TO_NEAREST = "rtn"  # the requests' int8_file, and int8_base_id on a LoRA
 BLOCK_LINEARS = ("q", "k", "v", "o", "ffn_up_gate", "ffn_down")
 _TARGET = re.compile(TrainRequest.TARGETS)
 _BF16_PLAN = "--config configs/moss/lora_bf16.toml is the bf16 plan"
@@ -99,7 +104,7 @@ def check_plan(req: TrainRequest) -> None:
         )
 
 
-def forward_file(req: TrainRequest) -> str:
+def forward_file(req: TrainRequest | GenerateRequest) -> str:
     """The file of the forward copies: ``int8_file``, else on Base the catalog's,
     fetched on first use; empty = round to nearest (SFT has no file)."""
     if req.int8_file == ROUND_TO_NEAREST:
@@ -166,3 +171,44 @@ def convert_for_training(transformer, req: TrainRequest) -> TrainBase:
         flush=True,
     )
     return TrainBase(req.int8, base_id, stream)
+
+
+def generate_base(req: GenerateRequest) -> Callable[[torch.nn.Module], None]:
+    """The renders an int8 base cannot run, before anything loads; returns the
+    conversion to mode ``infer`` (forward copy only, bf16 weight dropped)."""
+    if req.blocks_to_swap:
+        raise SystemExit(
+            "int8 base: --blocks_to_swap 0 is required (generation on this base "
+            "has run no swap)"
+        )
+    copies, meta, base_id = {}, {}, ROUND_TO_NEAREST
+    int8_file = forward_file(req)
+    if int8_file:
+        copies, meta = load_copies(int8_file)
+        base_id = meta["int8_id"]
+    if req.lora:
+        with safe_open(str(resolve_under_home(req.lora)), framework="pt") as f:
+            lora_meta = f.metadata() or {}
+        if lora_meta.get("algo") == "loha":
+            raise SystemExit("int8 base: loha builds W + ΔW against the base weight")
+        lora_id = lora_meta.get("int8_base_id", "")
+        print(
+            f"int8 infer: {req.lora} trained on "
+            f"{lora_meta.get('int8_base', 'a bf16 base')} {lora_id[:16] or '-'}, "
+            f"{'matches' if lora_id == base_id else 'differs from'} this base",
+            flush=True,
+        )
+
+    def convert(transformer) -> None:
+        targets = moss_targets(transformer)
+        if copies:
+            check_base(meta, dict(targets))
+        for name, mod in targets:
+            convert_moss_(mod, "infer", copies.get(name))
+        torch.cuda.empty_cache()
+        print(
+            f"int8 infer: converted {len(targets)} linears, base {base_id[:16]}",
+            flush=True,
+        )
+
+    return convert

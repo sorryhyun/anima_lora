@@ -268,6 +268,11 @@ def _build_dave(req: GenerateRequest, num_blocks: int):
 def _denoise_pending(req, model_dir, out_dir, pending, device) -> None:
     """TE for the pending jobs only, then the DiT; each latent hits disk as soon
     as its denoise returns, so a killed job loses at most the one in flight."""
+    convert_int8 = None
+    if req.int8 == "on":
+        from library.moss.dit_int8.base import generate_base
+
+        convert_int8 = generate_base(req)
     jobs = [j for j, _ in pending]
     texts = [j["prompt"] for j in jobs if not j.get("ref_vision")]
     texts += [j["negative"] for j in jobs if j["cfg"] != 1.0]
@@ -291,11 +296,16 @@ def _denoise_pending(req, model_dir, out_dir, pending, device) -> None:
         from library.moss.lora import load_for_inference
 
         network = load_for_inference(
-            transformer, resolve_under_home(req.lora), req.lora_multiplier
+            transformer,
+            resolve_under_home(req.lora),
+            req.lora_multiplier,
+            before_apply=convert_int8,
         )
         # Held outside the blocks: the swapper never moves it.
         network.to(device)
         print(f"[lora] {req.lora} x{req.lora_multiplier}", flush=True)
+    elif convert_int8 is not None:
+        convert_int8(transformer)
     if req.stream == "fp32":
         stream_fp32_(transformer)
     attached = None

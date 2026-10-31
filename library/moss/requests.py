@@ -322,6 +322,21 @@ class GenerateRequest(Request):
         "job. --no-compile for eager",
         advanced=True,
     )
+    int8: str = _f(
+        "off",
+        "on runs the frozen DiT's 252 block linears as int8 GEMMs, forward copy only, "
+        "the bf16 weight dropped: 6.3 against 10.7 GiB at 1024². Needs "
+        "--blocks_to_swap 0 and refuses loha. docs/moss/optimization/int8.md",
+        choices=("off", "on"),
+        advanced=True,
+    )
+    int8_file: str = _f(
+        "",
+        "dit_gptq_moss.py file with the calibrated forward copies. Empty: on Base the "
+        "catalog's moss_dit_int8, fetched on first use; on SFT round to nearest. "
+        "rtn = round to nearest",
+        advanced=True,
+    )
     stream: str = _f(
         "bf16",
         "residual stream precision: fp32 runs the stream, modulation, norms, "

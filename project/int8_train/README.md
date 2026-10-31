@@ -93,13 +93,12 @@ The entry point exits on these rather than running them wrong:
   `inference.py --int8` read it from beside the DiT.
 - `src/dit_gptq_moss.py`: the same for MOSS-Image, t2i and i2i
   (`models/moss_image/moss_image_base_int8_gptq.safetensors`, published as
-  `sorryhyun/MOSS-Image-Base-int8`). `TrainRequest.int8_file`, `infer_int8_moss.py` and
+  `sorryhyun/MOSS-Image-Base-int8`). `TrainRequest.int8_file`, `GenerateRequest.int8_file` and
   `grad_error_moss.py` take it.
 - `library/moss/dit_int8/`: `scripts/moss/train.py --int8 stream` is `full` with `wq_t` on
   the host, loaded block by block during the backward (`library/int8/stream.py`,
   [report](reports/moss_wqt_stream.md)).
-- `src/infer_int8_moss.py`: `library.moss.generate` on the int8 base, run as
-  `make daemon-run ARGS="project/int8_train/src/infer_int8_moss.py --int8 on --int8_file <file> -- <generate args>"`.
+- Generation on the base is `scripts/moss/generate.py --int8 on` (`library/moss/dit_int8/base.py`).
 - `src/grad_spike.py`: traces one image's gradient outlier by block and token.
 - `src/traj_eval.py`: RTN against a GPTQ file on bf16 sampling trajectories and held-out
   real images.
