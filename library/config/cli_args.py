@@ -344,7 +344,8 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         "--max_train_epochs",
         type=int,
         default=None,
-        help="training epochs (overrides max_train_steps)",
+        help="training epochs (overrides max_train_steps, unless a config set the "
+        "epochs and --max_train_steps is on the command line)",
     )
     parser.add_argument(
         "--max_data_loader_n_workers",

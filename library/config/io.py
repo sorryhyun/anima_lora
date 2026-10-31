@@ -709,6 +709,22 @@ def _write_config_snapshot(
     return path
 
 
+def _cli_steps_beat_config_epochs(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+    argv: Optional[Sequence[str]],
+) -> None:
+    """``--max_train_steps`` alone on the CLI clears a config's ``max_train_epochs``,
+    which would otherwise replace it once the dataloader's length is known."""
+    unset = object()
+    cli = parser.parse_args(
+        args=argv,
+        namespace=argparse.Namespace(max_train_steps=unset, max_train_epochs=unset),
+    )
+    if cli.max_train_steps is not unset and cli.max_train_epochs is unset:
+        args.max_train_epochs = None
+
+
 def read_config_from_file(
     args: argparse.Namespace,
     parser: argparse.ArgumentParser,
@@ -747,6 +763,7 @@ def read_config_from_file(
 
         config_args = argparse.Namespace(**merged)
         args = parser.parse_args(args=argv, namespace=config_args)
+        _cli_steps_beat_config_epochs(args, parser, argv)
         args.config_file = os.path.join("configs", methods_subdir, f"{method}.toml")
 
         if print_config:
@@ -812,6 +829,7 @@ def read_config_from_file(
 
     config_args = argparse.Namespace(**merged)
     args = parser.parse_args(args=argv, namespace=config_args)
+    _cli_steps_beat_config_epochs(args, parser, argv)
     args.config_file = os.path.splitext(args.config_file)[0]
 
     if print_config:

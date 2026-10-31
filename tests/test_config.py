@@ -21,7 +21,12 @@ import pytest
 import toml
 
 from library.config import schema as config_schema
-from library.config.io import _flatten_toml, _render_merged_toml, load_method_preset
+from library.config.io import (
+    _flatten_toml,
+    _render_merged_toml,
+    load_method_preset,
+    read_config_from_file,
+)
 from tests.conftest import iter_method_names
 
 
@@ -53,6 +58,24 @@ def test_schema_has_known_keys(populated_parser):
         "use_moe_style",  # network-module allowlist (three-axis routing)
     ):
         assert k in schema, f"expected {k!r} in populated schema"
+
+
+@pytest.mark.parametrize(
+    "cli, steps, epochs",
+    [
+        (["--max_train_steps", "12"], 12, None),
+        (["--max_train_steps", "1600"], 1600, None),  # the argparse default, typed
+        (["--max_train_epochs", "2"], 1600, 2),
+        (["--max_train_steps", "12", "--max_train_epochs", "2"], 12, 2),
+        ([], 1600, 8),
+    ],
+)
+def test_cli_steps_beat_config_epochs(populated_parser, cli, steps, epochs):
+    argv = ["--method", "lora", "--preset", "default", *cli]
+    args = read_config_from_file(
+        populated_parser.parse_args(argv), populated_parser, argv
+    )
+    assert (args.max_train_steps, args.max_train_epochs) == (steps, epochs)
 
 
 def test_choices_preserved(populated_parser):
