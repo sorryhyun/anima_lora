@@ -27,7 +27,8 @@ entry points refuse any other.
 Train:
 
     make daemon-run ARGS="--stall-timeout 900 project/int8_train/src/train_int8_moss.py \
-        --int8 stream --int8_file models/moss_image/moss_image_base_int8_gptq.safetensors \
+        --int8 stream --ema_card \
+        --int8_file models/moss_image/moss_image_base_int8_gptq.safetensors \
         -- --config configs/moss/lora.toml --blocks_to_swap 0 \
         --activation_memory_budget 0.2 --stream fp32"
 
@@ -70,6 +71,9 @@ GPTQ, fp32 stream, swap 0, `hews_layout`, 30 steps, median of steps 11–30, one
 | `stream`, budget 0.3 | 1.33 | 12.80 GB |
 | `stream`, budget 0.4 | 1.35 | 13.83 GB |
 | `stream`, budget 0.5 | OOM | – |
+| `stream`, budget 0.2, `--ema_card` (60 steps, two runs) | 1.30 | 12.04 GB |
+
+The same paired runs with the CPU shadow read 1.37 s/step at 11.77 GB.
 
 Generation, one render per arm (ER-SDE 50 steps + Spectrum, CFG 3, seed 7, compiled, all
 blocks resident):
@@ -106,7 +110,9 @@ more. At equal plans the peak drops 4.2 GB (13.58 → 9.36 GB with checkpointing
 **The activation budget does not buy speed on this plan.** Budgets 0.05–0.4 run at
 1.33–1.37 s/step, while the peak climbs about 1 GB per 0.1. `full` at budget 0.05 already
 runs at 1.33 s/step. Spend the room on something else: pick the budget for the peak you
-need, 0.1–0.2 in the usual case. Attention recompute, the part budget should save, is
+need, 0.1–0.2 in the usual case. `--ema_card` is the better use: keeping the EMA shadow on
+the card saves 0.065 s/step (4.8%) for 0.27 GB. It stays a trainer patch because the bf16
+default leaves only 0.85 GB free on 16 GB. Attention recompute, the part budget should save, is
 already nearly total at 0.5 (`moss_scoping.md`), and 0.5 does not fit on a 16 GB card at
 this plan even with `stream`.
 

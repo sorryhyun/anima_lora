@@ -14,6 +14,8 @@ import torch.nn.functional as F
 sys.path.insert(0, str(Path(__file__).parent))
 
 from int8_linear import Int8TrainLinear, convert_, int8_mm, stream_wqt_  # noqa: E402
+from library.moss.train import ema_step  # noqa: E402
+from train_int8_moss import ema_step_card  # noqa: E402
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
 
@@ -106,6 +108,21 @@ def test_lora_grads_match_eager_reference(mode):
     assert rel(dA, ref_dA) < 1e-2
     assert rel(dB, ref_dB) < 1e-2
     assert rel(dx, ref_dx) < 1e-2
+
+
+def test_ema_on_card_matches_cpu_shadow():
+    torch.manual_seed(0)
+    params = [torch.randn(32, K, device=DEV), torch.randn(N, 32, device=DEV)]
+    staging = [torch.empty(p.shape).pin_memory() for p in params]
+    cpu, card = [[]], [[]]
+    for _ in range(20):
+        ema_step(cpu, staging, params, [0.958])
+        ema_step_card(card, staging, params, [0.958])
+        for p in params:
+            p.add_(torch.randn_like(p) * 0.01)
+    for c, g in zip(cpu[0], card[0]):
+        assert g.device.type == "cuda"
+        assert rel(g.cpu(), c) < 1e-6
 
 
 def test_dtype_cast_keeps_fp32_scales():

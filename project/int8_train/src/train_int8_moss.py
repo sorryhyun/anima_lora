@@ -13,7 +13,8 @@ two patches go in first:
 - ``LoRANetwork.metadata`` stamps ``int8_base=<mode>`` and ``int8_base_id`` (``rtn``,
   or the ``int8_id`` of ``--int8_file``).
 
-``stream`` is ``full`` with ``wq_t`` on the host (``int8_linear.WqtStream``): the same
+``--ema_card`` keeps the EMA shadows on the card (:func:`ema_step_card`), ~0.28 GB each
+at r32. ``stream`` is ``full`` with ``wq_t`` on the host (``int8_linear.WqtStream``): the same
 numbers, about 4.2 GiB less on the card, 4.4 GiB more pinned host memory.
 
 Refused: ``blocks_to_swap != 0`` (the offloader moves only ``.weight``) and
@@ -78,6 +79,21 @@ def convert_moss_(mod, mode: str, forward_copy=None) -> None:
             torch.empty(0, dtype=torch.bfloat16, device=device),
             persistent=False,
         )
+
+
+def ema_step_card(
+    shadows: list[list], staging: list, params: list, decays: list[float]
+) -> None:
+    """``library.moss.train.ema_step`` with the shadows on the card: no host copy, and
+    ``staging`` serves only the saves."""
+    import torch
+
+    with torch.no_grad():
+        for shadow, decay in zip(shadows, decays):
+            if shadow:
+                torch._foreach_lerp_(shadow, params, 1.0 - decay)
+            else:
+                shadow.extend(p.detach().clone() for p in params)
 
 
 def stream_targets(by_name: dict) -> None:
@@ -167,6 +183,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--int8", choices=("off", "fwd", "full", "stream"), required=True)
     ap.add_argument("--int8_file", default="")
+    ap.add_argument("--ema_card", action="store_true")
     own, train_argv = ap.parse_known_args()
     if train_argv and train_argv[0] == "--":
         train_argv = train_argv[1:]
@@ -178,6 +195,8 @@ if __name__ == "__main__":
         os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     if own.int8 != "off":
         install(own.int8, req, own.int8_file)
-    from library.moss.train import run_train
+    import library.moss.train as moss_train
 
-    run_train(req)
+    if own.ema_card:
+        moss_train.ema_step = ema_step_card
+    moss_train.run_train(req)

@@ -213,6 +213,12 @@ class WqtStream:
             self.loading = block - 1
             self.pending = self.pool.submit(self._copy, block - 1, 1 - free)
 
+    def close(self) -> None:
+        """Unregister the host buffers, or CUDA keeps their old sizes for the addresses."""
+        self.pool.shutdown(wait=True)
+        self.pending = None
+        self.masters.release()
+
     def get(self, sid: int) -> torch.Tensor:
         block, j = divmod(sid, self.per_block)
         if block != self.current:
@@ -227,6 +233,8 @@ def stream_wqt_(blocks: list[list[nn.Linear]]) -> WqtStream:
     """``full`` linears to ``stream``: ``blocks`` holds each DiT block's converted
     linears in one order, in execution order, with the same shapes block to block."""
     global _stream
+    if _stream is not None:
+        _stream.close()
     _stream = WqtStream(blocks)
     return _stream
 

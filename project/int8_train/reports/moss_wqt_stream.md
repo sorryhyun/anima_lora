@@ -38,6 +38,21 @@ budget 0.4 OOMed with 12.79 GiB allocated of 15.17 in use.
   blocked on the GPU's own queue, which the step time shows is not lost.
 - `stream` adds 4.4 GiB of pinned host memory.
 
+## EMA shadow on the card
+
+`--ema_card` (`train_int8_moss.ema_step_card`) lerps the shadow on the card instead of
+copying the parameters to the host each update. `stream`, budget 0.2, one shadow, 60 steps,
+median of steps 11–60, arms alternating (jobs `20261031-113552-{567084,4750a8,014cc0,02f197}`):
+
+| shadow | s/step, runs 1 / 2 | p90 | peak |
+|---|---|---|---|
+| CPU | 1.368 / 1.365 | 1.441 / 1.450 | 11.77 GB |
+| card | 1.300 / 1.303 | 1.336 / 1.335 | 12.04 GB |
+
+0.065 s/step (4.8%) faster for 0.27 GB. A synthetic bench had predicted about 0.04 s. The
+saved EMA sits at the same distance from the raw weights as the CPU shadow's (1.17% against
+1.12%, sampled `up` matrices), and the lerp matches the CPU's to 1e-6 in the unit test.
+
 ## Same numbers as `full`
 
 - `test_stream_dx_is_full_dx_and_prefetches`: dX bit-identical to `full` through four
