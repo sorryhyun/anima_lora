@@ -29,7 +29,11 @@ from library.anima.uncond import (
 )
 from library.datasets.cache import CachedDataset
 from library.inference.sampling import get_timesteps_sigmas
-from library.runtime.dynamo import compile_signature, isolate_compile_cache
+from library.runtime.dynamo import (
+    compile_signature,
+    isolate_compile_cache,
+    set_activation_memory_budget,
+)
 from library.runtime.dynamo import pin_dynamo_limit as _pin_dynamo_limit
 from library.runtime.harness import (
     _apply_partitioner_tuning,
@@ -333,9 +337,7 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
     # under grad_ckpt: repartitioning can pick a different backward graph than
     # forward → CheckpointError (torch #166926).
     if cfg.torch_compile and cfg.activation_memory_budget < 1.0 and not cfg.grad_ckpt:
-        import torch._functorch.config as _functorch_config
-
-        _functorch_config.activation_memory_budget = cfg.activation_memory_budget
+        set_activation_memory_budget(cfg.activation_memory_budget)
         logger.info(
             f"torch.compile activation_memory_budget = {cfg.activation_memory_budget} "
             "(partitioner recomputes cheap intermediates in backward)"
@@ -367,7 +369,11 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
                 dynamic_seq=dynamic_seq,
                 mode="",
             )
-            + ("" if cfg.int8 == "off" else f";int8={cfg.int8};int8_in=fp32")
+            + (
+                ""
+                if cfg.int8 == "off"
+                else f";int8={cfg.int8};int8_in=fp32;flops=fa2,int8"
+            )
         )
     compile_dit_blocks(
         model,

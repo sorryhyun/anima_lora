@@ -29,7 +29,11 @@ from typing import Optional
 
 import torch
 
-from library.runtime.dynamo import compile_signature, isolate_compile_cache
+from library.runtime.dynamo import (
+    compile_signature,
+    isolate_compile_cache,
+    set_activation_memory_budget,
+)
 
 log = logging.getLogger("library.runtime.harness")
 
@@ -372,9 +376,7 @@ def _apply_activation_memory_budget(
     (torch #166926).
     """
     if budget < 1.0 and not grad_ckpt:
-        import torch._functorch.config as _functorch_config
-
-        _functorch_config.activation_memory_budget = budget
+        set_activation_memory_budget(budget)
         logger.info(
             "torch.compile activation_memory_budget = %.3g "
             "(partitioner recomputes cheap intermediates in backward)",

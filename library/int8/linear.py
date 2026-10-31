@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 
 import comfy_kitchen
 import torch
@@ -221,7 +222,7 @@ linear_stream.register_autograd(_stream_backward, setup_context=_stream_setup)
     + [torch.ops.int8_train.linear_fwd, torch.ops.int8_train.mm]
 )
 def _int8_flops(x_shape, wq_shape, *args, **kwargs) -> int:
-    return int(0.5 * x_shape[-2] * wq_shape[0] * wq_shape[1])
+    return int(0.5 * math.prod(x_shape[:-1]) * wq_shape[0] * wq_shape[1])
 
 
 class HeldCopy(nn.Module):

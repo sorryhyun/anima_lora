@@ -9,6 +9,7 @@ import torch
 from torch.utils.checkpoint import checkpoint
 
 from library.moss.loader import free_vram_gb
+from library.runtime.dynamo import set_activation_memory_budget  # noqa: F401
 
 
 def checkpoint_blocks(blocks) -> None:
@@ -49,17 +50,6 @@ def budget_for_free(free_gb: float, joint: int, step: float = 0.05) -> float:
     ``free_gb``; 0.0 when not even one ``step`` fits."""
     room = (free_gb - _BUDGET_BASE_GB) / (_BUDGET_MB_PER_TOKEN * joint / 1024)
     return min(1.0, math.floor(max(0.0, room) / step + 1e-9) * step)
-
-
-def set_activation_memory_budget(budget: float) -> None:
-    """Inductor's partitioner reads this at compile time: set it before
-    ``compile_blocks`` (and reset ``torch._dynamo`` to change it later)."""
-    import torch._functorch.config as functorch_config
-
-    functorch_config.activation_memory_budget = budget
-    # custom ops (FA2, the int8 linears) stay out of the budget's knapsack without this:
-    # always recomputed, whatever their flop formula says
-    functorch_config.is_non_builtin_to_include = True
 
 
 def place(

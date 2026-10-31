@@ -12,7 +12,7 @@ visits the blocks in a known order.
 |---|---|---|
 | [int8 ConvRot GEMMs, both directions](#int8-convrot-in-both-directions) | RTN alone: 1.57x bf16 on the same plan | `library/int8/linear.py` |
 | [`wq_t` streamed from the host](#backward-copy-on-the-host) | 4.2 GB off the peak, at most 0.03 s/step | `library/int8/stream.py` |
-| [Custom ops priced for the partitioner](#custom-ops-in-the-partitioners-knapsack) | FA2 forward 84 → 42 calls, 207 → 104 ms | `loader.py`, `training/memory.py` |
+| [Custom ops priced for the partitioner](#custom-ops-in-the-partitioners-knapsack) | FA2 forward 84 → 42 calls, 207 → 104 ms | `library/runtime/dynamo.py` |
 | [`Muon` batched by shape](#muon-batched-by-shape) | 154 → 15 ms per step | `training/muon.py` |
 | [EMA shadow on the card](#ema-shadow-on-the-card) | 0.065 s/step for 0.27 GB | `training/ema.py` |
 | [Block swap over the int8 copies](#block-swap-over-the-int8-copies) | 2.1 GB off the peak, about 0.01 s/step | `library/int8/linear.py` |
@@ -76,7 +76,7 @@ cost:
 
 - `functorch_config.is_non_builtin_to_include = True`, in `set_activation_memory_budget`.
 - `register_flop_formula` on `flash_attn::_flash_attn_forward` and the int8 ops, calibrated on
-  the kernels: `2·B·H·D·L²` for FA2 (2.46 ms), and `0.5·M·N·K` for int8 (0.42 ms against 0.87 ms
+  the kernels: `2·B·H·D·L_q·L_k` for FA2 (2.46 ms), and `0.5·M·N·K` for int8 (0.42 ms against 0.87 ms
   for a bf16 3072² GEMM).
 
 The saved set stays the same size (209 → 200 MB per block at budget 0.2) and now holds FA2's

@@ -295,7 +295,6 @@ def test_compiled_block_has_no_graph_break(mode):
 
 
 def test_budget_prices_custom_ops(monkeypatch):
-    import library.moss.loader  # noqa: F401  (registers FA2's formula)
     import torch._functorch.config as functorch_config
 
     monkeypatch.setattr(functorch_config, "activation_memory_budget", 1.0)

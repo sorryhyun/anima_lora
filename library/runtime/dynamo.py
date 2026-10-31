@@ -13,6 +13,33 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
+def _flash_flops(q_shape, k_shape, *args, **kwargs) -> int:
+    """QKᵀ and PV, ``[B, L, H, D]``. Unpriced, the partitioner's knapsack recomputes the
+    attention forward in every block at any budget."""
+    b, length_q, heads, head_dim = q_shape
+    return 2 * b * heads * head_dim * length_q * k_shape[1]
+
+
+def set_activation_memory_budget(budget: float) -> None:
+    """Inductor's partitioner reads this at compile time: set it before the block
+    compile (and reset ``torch._dynamo`` to change it later). Below the cut that
+    bans every op outside the recompute allowlist (about 0.47 on Anima), custom ops
+    are recomputed whatever their flop formula says, unless they join the knapsack."""
+    import torch
+    import torch._functorch.config as functorch_config
+    from torch.utils.flop_counter import flop_registry, register_flop_formula
+
+    functorch_config.activation_memory_budget = budget
+    functorch_config.is_non_builtin_to_include = True
+    try:
+        import flash_attn.flash_attn_interface  # noqa: F401
+    except ImportError:
+        return
+    op = torch.ops.flash_attn._flash_attn_forward
+    if op not in flop_registry:
+        register_flop_formula(op)(_flash_flops)
+
+
 def pin_dynamo_limit(name: str, value: int) -> int:
     """Raise a dynamo recompile budget so it holds in EVERY execution context.
 

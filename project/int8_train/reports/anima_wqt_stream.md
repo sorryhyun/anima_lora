@@ -79,3 +79,20 @@ these cover the first one; the gap was not traced.
   refuses `dmad` and `dmad_probe`, and its teacher would run on the int8 base too.
 - A complete LoRA on `stream`, and samples from one.
 - Budgets below 0.99 on `stream`. The peak of 10.96 GB already leaves about 3 GB on 16 GB.
+
+## Added the same day: the partition behind these budgets
+
+`src/anima_partition_probe.py` logs the partitioner's cuts and each step's kernel calls.
+
+- At 0.99 the partitioner returns its second cut, where custom ops stay banned from recompute: 56
+  FA2 and 168 int8 forwards per step, one per call site. By the code, 1.0 returns the first cut,
+  which bans them too, so both budgets differ only in elementwise recompute. That fits the 0.1 ms
+  tie; 1.0's calls were not counted.
+- The second cut sits at ratio 0.47, so budgets from about 0.48 to 0.99 are one partition. Below it,
+  before FA2 and the int8 ops joined the knapsack, 0.4 ran 514 ms at 9.40 GB (job
+  `20261031-195952-192297`) and 0.2 ran 553 ms at 6.51 GB (`20261031-200655-54b608`), with FA2
+  forwards doubled to 112. MOSS's fix, now shared, takes them to 434–439 ms at 10.00 GB and
+  476–495 ms at 6.16 GB. Table: `docs/anima/optimizations/int8.md`.
+- Step split at 0.99, 6 steps under the profiler, 4100-token samples, ms/step: attention 185 (FA2
+  backward 121), Triton fused 91, int8 GEMM 78, other GEMM 38, activation quantization 27,
+  copy/cast 1, with `wq_t` copies alongside at 65. Kernels sum to about the step: it is GPU-bound.

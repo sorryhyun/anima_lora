@@ -66,8 +66,24 @@ file or round to nearest.
 | `stream`, budget 0.99 | 13 at ~3000 tokens | 333 ms | 8.84 GB |
 | `stream`, budget 1.0 | 13 at ~3000 tokens | 333 ms | 12.90 GB |
 
-Keep budget 0.99. 1.0 saves 1.75x the activations for no speed, and needs about 16.5 GB at 4200
-tokens.
+Keep budget 0.99 on 16 GB. 1.0 saves 1.75x the activations for no speed, and needs about 16.5 GB at
+4200 tokens.
+
+Below 16 GB, lower the budget: with block swap refused it is the VRAM lever on this plan. FA2 and
+the int8 linears are in the partitioner's knapsack (`set_activation_memory_budget`), so these are
+the calls each budget recomputes on purpose. `stream`, one run per arm, median of 23–25 steps over
+the set's first 30, peak over those steps, same day; two runs of one partition differed by 20 ms:
+
+| budget | ms/step | peak | FA2 forwards | int8 forwards |
+|---|---|---|---|---|
+| 0.99 | 427 | 10.87 GB | 56 | 168 |
+| 0.4 | 434–439 | 10.00 GB | 56 | 168 |
+| 0.3 | 472 | 6.87 GB | 84 | 280 |
+| 0.2 | 476–495 | 6.16 GB | 56 | 280 |
+| 0.1 | 511 | 5.32 GB | 56 | 336 |
+
+Budgets from about 0.48 to 0.99 are one partition. The 0.4 and 0.1 rows ran before the FA2 formula
+read the key length; 0.4 does not reach the knapsack, 0.1 does. No full LoRA has run below 0.99.
 
 ## Measurements
 
@@ -84,8 +100,9 @@ nearest. Swapping the bf16 base for the int8 base moves generated pixels by abou
 
 **The accuracy figures predate the fp32 kernel input.** `comfy_kitchen` 0.2.40 rounds to bf16
 around its activation division on a bf16 input ([comfy-kitchen#289](https://github.com/Comfy-Org/comfy-kitchen/issues/289)),
-so `Int8TrainLinear.forward` passes fp32. On MOSS's fp32 stream that cut prediction error 5–10%.
-Anima's stream is bf16, and on MOSS's bf16 stream the gradient p90 of blocks 7–27 rose
-([moss_act_scale.md](../../../project/int8_train/reports/moss_act_scale.md)). The accuracy effect
-on Anima has not been measured. The same 848-step run with the fp32 input, 2026-10-31, took
-424 ms/step including the first compile and ended at `avr_loss` 0.0739.
+so `Int8TrainLinear.forward` passes fp32. On Anima that cuts prediction error 6–8%. Anima's stream
+is bf16, and an fp32 stream, which it does not have, would cut the int8 base's error a further
+21–36%; the gradient effect is mixed
+([anima_fp32_stream.md](../../../project/int8_train/reports/anima_fp32_stream.md)). The same
+848-step run with the fp32 input, 2026-10-31, took 424 ms/step including the first compile and
+ended at `avr_loss` 0.0739.

@@ -7,6 +7,7 @@ import dataclasses
 from types import SimpleNamespace
 
 import pytest
+import torch
 import torch.nn as nn
 
 from library import downloads
@@ -22,6 +23,9 @@ from library.anima.int8 import (
 )
 from library.anima.trainer.cli import setup_parser
 from library.anima.trainer.trainer import AnimaTrainer
+from library.int8.linear import _int8_flops
+from library.runtime.dynamo import _flash_flops
+from library.runtime.harness import _apply_activation_memory_budget
 
 
 def args(**over):
@@ -149,3 +153,26 @@ def test_stream_groups_each_block_by_suffix(monkeypatch):
 
 def test_stream_flag_parses():
     assert setup_parser().parse_args(["--int8", "stream"]).int8 == "stream"
+
+
+def test_int8_flops_count_tokens_on_fake_5d():
+    wq = torch.empty(2048, 2048, dtype=torch.int8)
+    flat = _int8_flops(torch.empty(1, 4096, 2048), wq)
+    assert _int8_flops(torch.empty(1, 1, 4096, 1, 2048), wq) == flat
+    assert flat == int(0.5 * 4096 * 2048 * 2048)
+
+
+def test_fa2_flops_read_the_key_length():
+    q, k = (1, 4096, 16, 128), (1, 512, 16, 128)
+    assert _flash_flops(q, k) == 2 * 16 * 128 * 4096 * 512
+
+
+@pytest.mark.parametrize("budget, ckpt, on", [(0.4, False, True), (0.4, True, False)])
+def test_budget_joins_custom_ops_to_the_knapsack(monkeypatch, budget, ckpt, on):
+    import torch._functorch.config as functorch_config
+
+    monkeypatch.setattr(functorch_config, "activation_memory_budget", 1.0)
+    monkeypatch.setattr(functorch_config, "is_non_builtin_to_include", False)
+    _apply_activation_memory_budget(budget, grad_ckpt=ckpt)
+    assert functorch_config.is_non_builtin_to_include is on
+    assert functorch_config.activation_memory_budget == (budget if on else 1.0)
