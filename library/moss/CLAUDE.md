@@ -6,9 +6,10 @@ invariants in the root `CLAUDE.md` are wrong here. Shared with Anima: `library.r
 `library.env`, the daemon, the ER-SDE sampler + CNS core (`library.inference.sampling`,
 `library.inference.corrections.cns_core`), `library.training.repa`. Shared with
 `library/qwen21/`: `library.lines` (`requests.py` request base, `adapters.py` LoRA / LoKr /
-LoHa). `spectrum.py` re-implements Anima's forecaster rather than importing `networks/`
-(`tests/test_moss_spectrum.py` checks it against the core). Nothing Anima-side imports
-`library.moss`.
+LoHa, `scan.py` the GUI's counts). `spectrum.py` re-implements Anima's forecaster rather than
+importing `networks/` (`tests/test_moss_spectrum.py` checks it against the core). Nothing
+Anima-side imports `library.moss`, and it imports the rest of `library` only through the
+list in `tests/test_moss_boundary.py`.
 
 | Module | Role |
 |---|---|
@@ -18,8 +19,10 @@ LoHa). `spectrum.py` re-implements Anima's forecaster rather than importing `net
 | `fp8.py` | fp8 TE export (`quantize_te`, ComfyUI `comfy_quant` format) and `load_fp8_text_encoder`; `text_encoder=` picks catalog row `moss_te_{precision}`, and TE caches stamp `encoder_id(precision)` so a switch re-encodes |
 | `dit_int8/` | the DiT's 252 block linears as int8 GEMMs, the training default (`TrainRequest.int8`): `linear.py` custom ops + `Int8TrainLinear` (shared with `project/int8_train`'s Anima half), `stream.py` `WqtStream`, `base.py` targets, GPTQ forward copies (catalog `moss_dit_int8`), `convert_for_training`. Refuses loha; block swap moves `wq` / `wq_t` as `HeldCopy` children's `.weight`. Generation on it is still `project/int8_train/src/infer_int8_moss.py`. `docs/moss/optimization/int8.md`, `docs/moss/optimization/training_step.md` |
 | `int8.py` | INT8 ConvRot TE (`Int8ConvRotLinear`, W8A8 or weight-only with `int8_act=False`). **The default TE** (`DEFAULT_TEXT_ENCODER = "int8"`, row `moss_te_int8`); SmoothQuant scales are folded into its RMSNorm weights, so its norms differ from Base's. Regenerate with `project/finished/moss_lora/src/te_gptq.py --grid int8_convrot --smooth 0.5 --act_aware` |
-| `cache.py` | TE cache at natural length (never padded) + packed, BN-normalised latent cache; caption variants `embeds_v{k}` survive a re-encode while the caption is unchanged |
-| `generate.py` | `run_generate(req)`: ER-SDE or Euler, CFG + uncond skip-22, Spectrum. Benches reuse `denoise`, `cached_embeds`, `build_spectrum`. `ref_image` makes a job i2i: `ref_latents` (fitted as `cache_refs` does) into every forward, and with `ref_vision` the page through the vision tower ahead of the prompt (`vision_embeds`) |
+| `caching/` | `cache.py`'s parts: `items.py` reads a cache folder (`list_items`, `load_*`, `read_te`) and rewrites caption variants; `images.py` `target_size`, `fit`, `ref_size`, `prefetch`; `sources.py` `find_pairs`, `manifest_pairs`, `caption_converter`. `cache.py` re-exports them: it stays their import path, so a monkeypatch of what they call goes on `caching.<module>` |
+| `cache.py` | the passes (`cache_text`, `cache_latents`, `cache_refs`, `run_cache`): TE cache at natural length (never padded) + packed, BN-normalised latent cache; caption variants `embeds_v{k}` survive a re-encode while the caption is unchanged |
+| `generation/` | `generate.py`'s parts: `jobs.py` request → jobs + resume `fingerprint`; `conditioning.py` `cached_embeds`, `vision_embeds`, `ref_latents`; `records.py` the latent / PNG paths and the manifest. `generate.py` re-exports them as `train.py` does |
+| `generate.py` | `denoise` and `run_generate(req)`: ER-SDE or Euler, CFG + uncond skip-22, Spectrum. Benches reuse `denoise`, `cached_embeds`, `build_spectrum`. `ref_image` makes a job i2i: `ref_latents` (fitted as `cache_refs` does) into every forward, and with `ref_vision` the page through the vision tower ahead of the prompt (`vision_embeds`) |
 | `vision_te.py` | the TE call with an image in the user turn (Qwen3.5's own processor settings); `load_te` keeps the vision tower resident, any `text_encoder` precision; `encode_variants` prefills the page once for several captions |
 | `colorize.py` | `run_colorize_cache(req)`: staged B&W page → vision-tower TE (OCR layout over full / sparse / bare colour captions; page alone with vision on) + `*.moss_ref`, colour target latent; OCR floors shared with the ComfyUI MOSS Toolkit's caption helper |
 | `cns.py` | CNS recolor on the un-patchified 32 ch grid; bench-only |

@@ -25,6 +25,7 @@ from typing import ClassVar
 from library.env import resolve_under_home
 from library.lines.requests import Request, env_model_dir
 from library.lines.requests import request_field as _f
+from library.lines.requests import resolve_model_dir as _resolve_model_dir
 
 MODEL_DIR_ENV = "ANIMA_QWEN21_MODEL_DIR"
 MODEL_DIR_NAME = "qwen_image_2.1"
@@ -59,10 +60,7 @@ def default_model_dir() -> Path:
 
 
 def resolve_model_dir(model_dir: str | Path | None) -> Path:
-    """An explicit ``model_dir`` wins; empty/None falls back to the default."""
-    if model_dir:
-        return resolve_under_home(model_dir)
-    return default_model_dir()
+    return _resolve_model_dir(model_dir, default_model_dir)
 
 
 @dataclass

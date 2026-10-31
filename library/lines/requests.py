@@ -22,6 +22,7 @@ import argparse
 import dataclasses
 import os
 import tomllib
+from collections.abc import Callable
 from dataclasses import field
 from pathlib import Path
 from typing import Any, ClassVar
@@ -36,6 +37,15 @@ def env_model_dir(env_name: str, fallback: Path) -> Path:
     if override:
         return resolve_under_home(override)
     return fallback
+
+
+def resolve_model_dir(
+    model_dir: str | Path | None, default: Callable[[], Path]
+) -> Path:
+    """An explicit ``model_dir`` wins; empty/None falls back to ``default()``."""
+    if model_dir:
+        return resolve_under_home(model_dir)
+    return default()
 
 
 def request_field(

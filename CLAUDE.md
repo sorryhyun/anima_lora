@@ -121,8 +121,9 @@ points** (`scripts/**`, `bench/**/run_bench.py`, `tasks.py` — thin argparse wr
 
 Shared across lines: `library.runtime.{offloading,blockswap,dynamo}`, `library.env`,
 the ER-SDE sampler and CNS core (`library.inference.sampling`,
-`library.inference.corrections.cns_core`), `library.lines` (request base + LoRA / LoKr /
-LoHa adapters for MOSS and Qwen). Nothing Anima-side imports `library.moss`.
+`library.inference.corrections.cns_core`), `library.lines` (request base, LoRA / LoKr /
+LoHa adapters and GUI scan counts for MOSS and Qwen). Nothing Anima-side imports
+`library.moss` (`tests/test_moss_boundary.py`).
 
 ### Curation lives in `anime_tools`
 

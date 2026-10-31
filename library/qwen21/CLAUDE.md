@@ -5,8 +5,8 @@ invariants are load-bearing *there* — carrying them over here has produced wro
 than once. Qwen-Image-2.1 is a different architecture, VAE, text encoder, rope and sampler
 schedule. What the two share is `library.runtime.offloading` (the block swapper) with
 `library.runtime.blockswap` (its hook attachment for block lists we don't own; shared with `library/moss/`),
-`library.runtime.dynamo` (torch config pins), the `library.env` path helpers, and `library.lines` (the request base and
-adapters shared with `library/moss/`), and nothing else: the rest of `library/`, `networks/`,
+`library.runtime.dynamo` (torch config pins), the `library.env` path helpers, and `library.lines` (the request base,
+adapters and scan counts shared with `library/moss/`), and nothing else: the rest of `library/`, `networks/`,
 `configs/` and `train.py` are Anima-only, and nothing Anima-side imports `library.qwen21`.
 
 | Module | Role |

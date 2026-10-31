@@ -36,7 +36,7 @@ from bench.moss_bbox_grounding.probe import box_cells
 from library.env import resolve_under_home
 from library.moss import loader
 from library.moss.generate import (
-    _parse_skip,
+    parse_skip,
     build_spectrum,
     cached_embeds,
     denoise,
@@ -333,7 +333,7 @@ def main():
                     uncond_mask,
                     sigmas,
                     cfg=req.cfg,
-                    uncond_skip=_parse_skip(req.uncond_skip),
+                    uncond_skip=parse_skip(req.uncond_skip),
                     spectrum=build_spectrum(req),
                     sampler=req.sampler,
                     seed=0,

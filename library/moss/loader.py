@@ -244,12 +244,13 @@ def compile_blocks(blocks, seq_range=None) -> None:
     on the mark's bounds). Under grad, an ``x`` without grad (block 0: the
     embedders are frozen) is made a grad leaf so every block shares one graph."""
     from library.runtime.dynamo import (
+        compile_signature,
+        isolate_compile_cache,
         pin_compiler_flag,
         pin_dynamo_flag,
         pin_dynamo_limit,
         pin_inductor_flag,
     )
-    from library.runtime.harness import compile_signature, isolate_compile_cache
 
     pin_dynamo_limit("recompile_limit", 16)
     # The LoRA row mask (``LoRANetwork.set_row_mask``) reaches the graph as an

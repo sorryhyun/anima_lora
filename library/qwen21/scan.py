@@ -6,20 +6,13 @@ until its text cache is rebuilt; ``stale_text`` counts those.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
+from library.lines.scan import CacheCounts, CacheScan
+from library.lines.scan import cache_counts as _cache_counts
+
 IMAGE_EXTS = (".webp", ".png", ".jpg", ".jpeg")
-
-
-@dataclass(frozen=True)
-class CacheScan:
-    images: int  # images in the source folder
-    pairs: int  # of those, with a .txt caption
-    text_cached: int
-    latents_cached: int
-    stale_text: int  # caption newer than its text cache
-    duplicates: int  # file names in more than one subfolder — caching refuses
+_LATENT_SUFFIX = ".latent.safetensors"
 
 
 def find_images(src: Path) -> list[Path]:
@@ -63,19 +56,11 @@ def scan(src: Path | None, out: Path | None) -> CacheScan:
     return CacheScan(images, len(stems), text, latents, stale, dupes)
 
 
-@dataclass(frozen=True)
-class CacheCounts:
-    text: int
-    latents: int
-    samples: int  # stems with both files — what training will actually see
-
-
 def cache_counts(cache: Path) -> CacheCounts:
-    if not cache.is_dir():
-        return CacheCounts(0, 0, 0)
-    text = {p.name[: -len(".te.safetensors")] for p in cache.glob("*.te.safetensors")}
-    latents = {
-        p.name[: -len(".latent.safetensors")]
-        for p in cache.glob("*.latent.safetensors")
-    }
-    return CacheCounts(len(text), len(latents), len(text & latents))
+    return _cache_counts(
+        cache,
+        ".te.safetensors",
+        lambda d: (
+            p.name[: -len(_LATENT_SUFFIX)] for p in d.glob(f"*{_LATENT_SUFFIX}")
+        ),
+    )

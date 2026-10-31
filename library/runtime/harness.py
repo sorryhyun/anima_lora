@@ -29,6 +29,8 @@ from typing import Optional
 
 import torch
 
+from library.runtime.dynamo import compile_signature, isolate_compile_cache
+
 log = logging.getLogger("library.runtime.harness")
 
 
@@ -351,83 +353,6 @@ def compile_dit_blocks(
         dynamic_seq=dynamic_seq,
         seq_range=seq_range,
     )
-
-
-def compile_signature(
-    *,
-    n_token_families: Optional[int],
-    seq_range: Optional[tuple],
-    dynamic_seq: bool,
-    backend: str = "inductor",
-    mode: Optional[str] = None,
-    seq_bands: Optional[list] = None,
-) -> str:
-    """Canonical signature string for ``maybe_clear_stale_compile_cache``.
-
-    Every compile entry point must build the marker through this one
-    formatter so equivalent configs serialize identically. ``mode`` is
-    normalized so ``None`` and ``""`` ("inductor default") don't read as a
-    signature change. ``seq_bands`` (per-band dynamic-seq) is appended only
-    when set, so pre-existing union-range signatures — and their persistent
-    cache dirs — stay byte-identical.
-    """
-    sig = (
-        f"families={n_token_families};seq_range={seq_range};"
-        f"dynamic_seq={dynamic_seq};backend={backend};mode={mode or None}"
-    )
-    if seq_bands:
-        sig += f";seq_bands={sorted(tuple(b) for b in seq_bands)}"
-    return sig
-
-
-# captured on the first isolate_compile_cache call so later calls in the same
-# process re-derive from the same root instead of nesting per-signature dirs
-_compile_cache_base: Optional[str] = None
-
-
-def isolate_compile_cache(signature: str) -> str:
-    """Route this run's torch.compile caches to a per-signature directory.
-
-    GOTCHA: the persistent compile caches key on the FX graph but NOT on the
-    ``mark_dynamic`` value range, so processes compiled with different
-    seq-range bounds poison each other through the shared default cache dir —
-    e.g. an inference run's narrower stored guard gets replayed into a wider
-    training-run mark and raises ``ConstraintViolationError`` instead of
-    cleanly missing (hint-dependent, so it strikes "sometimes"). Wiping the
-    shared dir doesn't fix it since inference keeps re-depositing; instead
-    this points ``TORCHINDUCTOR_CACHE_DIR`` at a per-signature subdir so
-    every entry inside was compiled under the same seq bounds.
-
-    Must run BEFORE the first ``torch.compile`` trace in the process (torch
-    reads the env var lazily per cache access). Build ``signature`` via
-    ``compile_signature``. Returns the directory used.
-    """
-    global _compile_cache_base
-    import hashlib
-    import os
-
-    if _compile_cache_base is None:
-        base = os.environ.get("TORCHINDUCTOR_CACHE_DIR")
-        if not base:
-            try:
-                from torch._inductor.runtime.cache_dir_utils import default_cache_dir
-
-                base = default_cache_dir()
-            except Exception:  # noqa: BLE001 — torch internals move across versions
-                import getpass
-                import tempfile
-
-                base = os.path.join(
-                    tempfile.gettempdir(), f"torchinductor_{getpass.getuser()}"
-                )
-        _compile_cache_base = base
-
-    digest = hashlib.sha1(signature.encode("utf-8")).hexdigest()[:16]
-    target = os.path.join(_compile_cache_base, f"anima-sig-{digest}")
-    os.environ["TORCHINDUCTOR_CACHE_DIR"] = target
-    log.info(f"torch.compile cache isolated per compile signature: {target}")
-    log.info(f"compile signature: {signature}")
-    return target
 
 
 def _apply_activation_memory_budget(

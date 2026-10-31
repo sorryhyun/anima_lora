@@ -311,7 +311,7 @@ def run_colorize_cache(req) -> Path:
 
     cc = _color_caption()
     copyright_tags = cc.load_copyright_tags()
-    kb = moss_cache._tag_knowledge_base()
+    kb = moss_cache.tag_knowledge_base()
     # stem: (colour caption, OCR caption, sparse OCR captions)
     captions = {}
     for stem, cond, target, _, (w, h) in jobs:

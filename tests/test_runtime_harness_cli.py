@@ -100,7 +100,7 @@ def test_compile_signature_normalizes_mode() -> None:
     A formatting drift between the two entry points would thrash-wipe the
     shared inductor cache on every lora <-> turbo switch.
     """
-    from library.runtime.harness import compile_signature
+    from library.runtime.dynamo import compile_signature
 
     kw = dict(n_token_families=4, seq_range=(3000, 4200), dynamic_seq=True)
     assert compile_signature(**kw, mode="") == compile_signature(**kw, mode=None)
@@ -115,21 +115,21 @@ def test_isolate_compile_cache(tmp_path: Path, monkeypatch) -> None:
     """Per-signature TORCHINDUCTOR_CACHE_DIR subdirs off a stable base."""
     import os
 
-    import library.runtime.harness as harness
+    from library.runtime import dynamo
 
-    monkeypatch.setattr(harness, "_compile_cache_base", None)
+    monkeypatch.setattr(dynamo, "_compile_cache_base", None)
     monkeypatch.setenv("TORCHINDUCTOR_CACHE_DIR", str(tmp_path))
 
-    dir_a = harness.isolate_compile_cache("sig-a")
+    dir_a = dynamo.isolate_compile_cache("sig-a")
     assert os.environ["TORCHINDUCTOR_CACHE_DIR"] == dir_a
     assert Path(dir_a).parent == tmp_path  # nested under the original base
 
     # deterministic: same signature -> same dir (warm cache reuse across runs)
-    assert harness.isolate_compile_cache("sig-a") == dir_a
+    assert dynamo.isolate_compile_cache("sig-a") == dir_a
 
     # different signature -> sibling dir off the SAME base (no nesting under
     # the previous per-signature dir, even though the env var now points there)
-    dir_b = harness.isolate_compile_cache("sig-b")
+    dir_b = dynamo.isolate_compile_cache("sig-b")
     assert dir_b != dir_a
     assert Path(dir_b).parent == tmp_path
 

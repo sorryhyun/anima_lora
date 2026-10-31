@@ -31,36 +31,36 @@ def test_task_recipes_load(task):
 
 
 def test_ref_jobs_follow_each_reference(tmp_path):
-    from library.moss.generate import _fingerprint, _jobs
+    from library.moss.generate import build_jobs, fingerprint
 
     Image.new("RGB", (1200, 1700)).save(tmp_path / "page one.png")
     Image.new("RGB", (800, 800)).save(tmp_path / "b.webp")
     (tmp_path / "notes.txt").write_text("x")
     req = GenerateRequest(prompt="", ref_image=str(tmp_path), ref_vision=True)
-    jobs = _jobs(req)
+    jobs = build_jobs(req)
     assert [(j["key"], j["width"], j["height"]) for j in jobs] == [
         ("000_b", 800, 800),  # never upscaled
         ("000_page_one", 864, 1216),
     ]
     assert all(j["prompt"] == "" and j["ref_vision"] for j in jobs)
     # A reference edit invalidates the saved latent.
-    assert _fingerprint(req, jobs[0])["ref_mtime"] == jobs[0]["ref_mtime"]
+    assert fingerprint(req, jobs[0])["ref_mtime"] == jobs[0]["ref_mtime"]
 
     # Any reference may stand alone (sanitize's fixed caption), vision or not;
     # without one an empty prompt is an error.
-    alone = _jobs(GenerateRequest(prompt="", ref_image=str(tmp_path)))
+    alone = build_jobs(GenerateRequest(prompt="", ref_image=str(tmp_path)))
     assert [j["prompt"] for j in alone] == ["", ""]
     assert not any(j["ref_vision"] for j in alone)
     with pytest.raises(SystemExit, match="no prompts"):
-        _jobs(GenerateRequest(prompt=""))
+        build_jobs(GenerateRequest(prompt=""))
 
 
 def test_plain_jobs_unchanged():
     """No reference: the job dicts (and so saved-latent fingerprints) carry no
     ref keys."""
-    from library.moss.generate import _jobs
+    from library.moss.generate import build_jobs
 
-    (job,) = _jobs(GenerateRequest(prompt="a", prompt_format="text"))
+    (job,) = build_jobs(GenerateRequest(prompt="a", prompt_format="text"))
     assert not {k for k in job if k.startswith("ref")}
 
 

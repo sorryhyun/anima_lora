@@ -19,22 +19,34 @@ of the output's sides and rides every forward (``denoise(ref=…)``); with
 
 from __future__ import annotations
 
-import dataclasses
-import hashlib
-import json
-import math
-import re
 import time
 from pathlib import Path
 
 import torch
 
 from library.env import resolve_under_home
+from library.moss.generation.conditioning import (  # noqa: F401  (this module is their import path)
+    cached_embeds,
+    ref_latents,
+    vision_embeds,
+)
+from library.moss.generation.jobs import (  # noqa: F401
+    build_jobs,
+    fingerprint,
+    parse_skip,
+    ref_images,
+)
+from library.moss.generation.records import (  # noqa: F401
+    image_path,
+    latent_path,
+    load_latent,
+    read_latent_record,
+    save_latent,
+    write_manifest,
+)
 from library.moss.loader import (
-    MAX_SEQUENCE_LENGTH,
     compile_blocks,
     empty_cache,
-    encode_prompts,
     load_transformer,
     load_vae,
     pad_embeds,
@@ -47,12 +59,6 @@ from library.moss.requests import (
     GenerateRequest,
     resolve_model_dir,
 )
-
-
-def _parse_skip(value) -> tuple[int, ...]:
-    if isinstance(value, (list, tuple)):
-        return tuple(int(v) for v in value)
-    return tuple(int(v) for v in str(value).split(",") if v.strip())
 
 
 def _features(transformer, latents, t, embeds, mask, skip, batched, ref=None):
@@ -216,230 +222,6 @@ def initial_noise(
     )
 
 
-def _jobs(req: GenerateRequest) -> list[dict]:
-    base = dict(
-        negative=req.negative_prompt,
-        width=req.width,
-        height=req.height,
-        cfg=req.cfg,
-        skip=_parse_skip(req.uncond_skip),
-    )
-    if req.example:
-        jobs = []
-        for n, path in enumerate(
-            filter(None, (p.strip() for p in req.example.split(",")))
-        ):
-            path = resolve_under_home(path)
-            p = json.loads(path.read_text(encoding="utf-8"))
-            p = p.get("parameters", p)
-            jobs.append(
-                dict(
-                    # Gallery entries are <id>/parameters.json: key by the folder.
-                    key=f"{n:03d}_space{path.parent.name if path.stem == 'parameters' else path.stem}",
-                    prompt=p["prompt"],
-                    negative=p.get("negative_prompt", ""),
-                    width=int(p["width"]),
-                    height=int(p["height"]),
-                    cfg=float(p.get("cfg", p.get("guidance_scale", req.cfg))),
-                    seed=int(p["seed"]),
-                    skip=_parse_skip(p.get("uncond_skip_layers", req.uncond_skip)),
-                    steps=int(p.get("steps", p.get("num_inference_steps", req.steps))),
-                    shift=float(p.get("shift", req.shift)),
-                )
-            )
-        return jobs
-    if req.prompts_file:
-        source = resolve_under_home(req.prompts_file)
-        prompts = [
-            ln.strip()
-            for ln in source.read_text(encoding="utf-8").splitlines()
-            if ln.strip()
-        ]
-    else:
-        source, prompts = "prompt", [req.prompt.strip()] if req.prompt.strip() else []
-    if not prompts:
-        if not req.ref_image:
-            raise SystemExit(f"no prompts in {source}")
-        prompts = [""]  # the reference alone
-    if req.prompt_format != "text":
-        from library.moss.cache import caption_converter
-
-        convert = caption_converter(req.prompt_format)
-        prompts = [convert(p) if p else "" for p in prompts]
-    jobs = [
-        dict(
-            base,
-            key=f"{i:03d}",
-            prompt=p,
-            seed=req.seed + i,
-            steps=req.steps,
-            shift=req.shift,
-        )
-        for i, p in enumerate(prompts)
-    ]
-    return _with_refs(req, jobs) if req.ref_image else jobs
-
-
-def ref_images(spec: str) -> list[Path]:
-    """``ref_image``: one image, or every image directly in a folder."""
-    from library.moss.scan import IMAGE_EXTS
-
-    path = resolve_under_home(spec)
-    if path.is_dir():
-        found = sorted(p for p in path.iterdir() if p.suffix.lower() in IMAGE_EXTS)
-        if not found:
-            raise SystemExit(f"no images in {path}")
-        return found
-    if not path.is_file():
-        raise SystemExit(f"no reference image at {path}")
-    return [path]
-
-
-def _with_refs(req: GenerateRequest, jobs: list[dict]) -> list[dict]:
-    """Each job once per reference image, sized to it: its aspect, area capped at
-    ``width × height``, multiples of 16."""
-    from PIL import Image
-
-    from library.moss.cache import target_size
-
-    if req.example:
-        raise SystemExit("ref_image does not combine with example")
-    resolution = round(math.sqrt(req.width * req.height))
-    out = []
-    for ref in ref_images(req.ref_image):
-        with Image.open(ref) as im:
-            width, height = target_size(*im.size, resolution)
-        tag = re.sub(r"[^\w.-]+", "_", ref.stem)[:48]
-        for j in jobs:
-            out.append(
-                dict(
-                    j,
-                    key=f"{j['key']}_{tag}",
-                    width=width,
-                    height=height,
-                    ref=str(ref),
-                    ref_mtime=ref.stat().st_mtime_ns,
-                    ref_scale=req.ref_scale,
-                    ref_vision=req.ref_vision,
-                )
-            )
-    return out
-
-
-def cached_embeds(
-    model_dir, texts, cache_dir: Path, precision="bf16"
-) -> dict[str, torch.Tensor]:
-    """TE outputs keyed by text (and TE precision), read from / written to
-    ``cache_dir`` so a rerun of the same prompts skips the text encoder."""
-    from safetensors.torch import load_file, save_file
-
-    def path(text):
-        key = f"{MAX_SEQUENCE_LENGTH}\0{text}"
-        if precision != "bf16":
-            key = f"{precision}\0{key}"
-        digest = hashlib.sha1(key.encode()).hexdigest()[:16]
-        return cache_dir / f"{digest}.safetensors"
-
-    out, missing = {}, []
-    for text in dict.fromkeys(texts):
-        if path(text).is_file():
-            out[text] = load_file(path(text))["embeds"]
-        else:
-            missing.append(text)
-    if missing:
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        for text, emb in encode_prompts(
-            model_dir, missing, precision=precision
-        ).items():
-            save_file({"embeds": emb.contiguous()}, path(text))
-            out[text] = emb
-    print(f"[te] {len(out) - len(missing)} cached, {len(missing)} encoded", flush=True)
-    return out
-
-
-def vision_embeds(
-    model_dir, jobs: list[dict], cache_dir: Path, precision: str
-) -> dict[str, torch.Tensor]:
-    """Per ``ref_vision`` job key, the TE output of its reference page (fitted to
-    the job's size) followed by its prompt, through the vision tower; read from /
-    written to ``cache_dir`` like ``cached_embeds``."""
-    from safetensors.torch import load_file, save_file
-
-    from library.moss.cache import fit, load_rgb
-
-    def path(j):
-        key = "\0".join(
-            map(
-                str,
-                (
-                    "vision",
-                    precision,
-                    j["ref"],
-                    j["ref_mtime"],
-                    j["width"],
-                    j["height"],
-                    j["prompt"],
-                ),
-            )
-        )
-        return (
-            cache_dir / f"v_{hashlib.sha1(key.encode()).hexdigest()[:16]}.safetensors"
-        )
-
-    out, missing = {}, []
-    for j in jobs:
-        if path(j).is_file():
-            out[j["key"]] = load_file(path(j))["embeds"]
-        else:
-            missing.append(j)
-    if missing:
-        from library.moss.loader import load_tokenizer
-        from library.moss.vision_te import encode, load_te
-
-        device = torch.device("cuda")
-        tok = load_tokenizer(model_dir)
-        te = load_te(tok, device, model_dir, precision=precision)
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        for j in missing:
-            w, h = j["width"], j["height"]
-            page = fit(load_rgb(Path(j["ref"])), w, h)
-            emb, n_img = encode(tok, te, page, j["prompt"], w * h, device)
-            emb = emb.to("cpu", torch.bfloat16).contiguous()
-            save_file({"embeds": emb}, path(j))
-            out[j["key"]] = emb
-            print(
-                f"[te] {j['key']} page {w}x{h}: {emb.shape[0]} rows ({n_img} image)",
-                flush=True,
-            )
-        del te, tok
-        empty_cache()
-    print(
-        f"[te] vision: {len(out) - len(missing)} cached, {len(missing)} encoded",
-        flush=True,
-    )
-    return out
-
-
-def ref_latents(model_dir, jobs: list[dict], device) -> dict[str, torch.Tensor]:
-    """Per job key, its reference fitted to the job's size and then to
-    ``ref_size`` (as ``cache.cache_refs`` builds ``*.moss_ref``), ``(1,128,h,w)``
-    fp32 on the CPU."""
-    from library.moss.cache import fit, load_rgb, ref_size, to_pixels
-    from library.moss.model import encode
-
-    vae = load_vae(model_dir, device=device)
-    out = {}
-    for j in jobs:
-        w, h = j["width"], j["height"]
-        rw, rh = ref_size(w, h, j["ref_scale"])
-        image = fit(fit(load_rgb(Path(j["ref"])), w, h), rw, rh)
-        out[j["key"]] = encode(to_pixels(image), vae).float().cpu()
-        print(f"[ref] {j['key']}: {w}x{h} -> {rw}x{rh}", flush=True)
-    del vae
-    empty_cache()
-    return out
-
-
 def build_spectrum(req: GenerateRequest):
     """A fresh Spectrum forecaster at ``req``'s settings (one per denoise), or None."""
     if not req.spectrum:
@@ -481,84 +263,6 @@ def _build_dave(req: GenerateRequest, num_blocks: int):
             flush=True,
         )
     return dave
-
-
-def _fingerprint(req: GenerateRequest, job: dict) -> dict:
-    """What a saved latent was made from; a resume reuses it only on a match."""
-    spectrum = {
-        k: v for k, v in dataclasses.asdict(req).items() if k.startswith("spectrum")
-    }
-    # Stamped only off bf16, so bf16 latents without the field still match.
-    te = {} if req.text_encoder == "bf16" else {"text_encoder": req.text_encoder}
-    return dict(
-        {k: v for k, v in job.items() if k != "skip"},
-        **te,
-        uncond_skip=list(job["skip"]),
-        model=req.model,
-        lora=str(resolve_under_home(req.lora)) if req.lora else None,
-        lora_multiplier=req.lora_multiplier if req.lora else None,
-        batched=req.batched,
-        sampler=req.sampler,
-        spectrum=spectrum if req.spectrum else None,
-        dave=(
-            dict(spec=req.dave, strength=req.dave_strength, tau=req.dave_tau)
-            if req.dave
-            else None
-        ),
-        **({"cns": dict(spec=req.cns, strength=req.cns_strength)} if req.cns else {}),
-        **({"stream": req.stream} if req.stream != "bf16" else {}),
-    )
-
-
-def _latent_path(out_dir: Path, rec: dict) -> Path:
-    return (
-        out_dir / "latents" / f"{rec['key']}_{rec['model']}_s{rec['seed']}.safetensors"
-    )
-
-
-def _image_path(out_dir: Path, rec: dict) -> Path:
-    return out_dir / f"{rec['key']}_{rec['model']}_s{rec['seed']}.png"
-
-
-def save_latent(path: Path, latent: torch.Tensor, record: dict) -> None:
-    """Final latent + its record in the metadata, written atomically."""
-    from safetensors.torch import save_file
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    save_file(
-        {"latent": latent.contiguous()},
-        tmp,
-        metadata={"record": json.dumps(record, ensure_ascii=False)},
-    )
-    tmp.replace(path)
-
-
-def read_latent_record(path: Path) -> dict | None:
-    from safetensors import safe_open
-
-    try:
-        with safe_open(path, framework="pt") as f:
-            return json.loads((f.metadata() or {})["record"])
-    except Exception:
-        return None
-
-
-def load_latent(path: Path) -> torch.Tensor:
-    from safetensors.torch import load_file
-
-    return load_file(path)["latent"]
-
-
-def _write_manifest(out_dir: Path, req: GenerateRequest, records: list[dict]) -> Path:
-    manifest = out_dir / "manifest.json"
-    manifest.write_text(
-        json.dumps(
-            {"request": req.to_argv(), "images": records}, indent=2, ensure_ascii=False
-        ),
-        encoding="utf-8",
-    )
-    return manifest
 
 
 def _denoise_pending(req, model_dir, out_dir, pending, device) -> None:
@@ -643,12 +347,12 @@ def _denoise_pending(req, model_dir, out_dir, pending, device) -> None:
             denoise_peak_gib=round(peak, 2),
             compiled=req.compile,
         )
-        save_latent(_latent_path(out_dir, rec), latent, rec)
+        save_latent(latent_path(out_dir, rec), latent, rec)
         print(
             f"[{req.model}] {j['key']} {j['width']}x{j['height']} cfg {j['cfg']} "
             f"{len(sigmas)} steps{f' ({dave.describe()})' if dave else ''}: "
             f"{seconds:.1f}s, peak {peak:.1f} GiB -> "
-            f"{_latent_path(out_dir, rec).name}",
+            f"{latent_path(out_dir, rec).name}",
             flush=True,
         )
     # fp32 decode with the DiT off the card.
@@ -661,9 +365,9 @@ def _denoise_pending(req, model_dir, out_dir, pending, device) -> None:
 
 def _decode_all(model_dir, out_dir, records, device) -> None:
     """Decode each record's latent from disk; an existing PNG is kept."""
-    todo = [r for r in records if not _image_path(out_dir, r).is_file()]
+    todo = [r for r in records if not image_path(out_dir, r).is_file()]
     for r in records:
-        r["image"] = str(_image_path(out_dir, r))
+        r["image"] = str(image_path(out_dir, r))
     if not todo:
         return
     from diffusers.image_processor import VaeImageProcessor
@@ -672,7 +376,7 @@ def _decode_all(model_dir, out_dir, records, device) -> None:
     processor = VaeImageProcessor(vae_scale_factor=16)
     for rec in todo:
         torch.cuda.reset_peak_memory_stats()
-        image = decode(load_latent(_latent_path(out_dir, rec)).to(device), vae)
+        image = decode(load_latent(latent_path(out_dir, rec)).to(device), vae)
         processor.postprocess(image, output_type="pil")[0].save(rec["image"])
         rec["decode_peak_gib"] = round(torch.cuda.max_memory_allocated() / 2**30, 2)
         print(
@@ -709,7 +413,7 @@ def run_generate(req: GenerateRequest) -> Path:
         if not records:
             raise SystemExit(f"no latents in {out_dir / 'latents'}")
     else:
-        jobs = _jobs(req)
+        jobs = build_jobs(req)
         for j in jobs:
             if j["width"] % 16 or j["height"] % 16:
                 raise SystemExit(
@@ -717,8 +421,8 @@ def run_generate(req: GenerateRequest) -> Path:
                 )
         records, pending = [], []
         for j in jobs:
-            rec = _fingerprint(req, j)
-            saved = _latent_path(out_dir, rec)
+            rec = fingerprint(req, j)
+            saved = latent_path(out_dir, rec)
             old = read_latent_record(saved) if saved.is_file() else None
             if old is not None and all(old.get(k) == v for k, v in rec.items()):
                 print(f"[resume] {j['key']}: latent on disk, skipped", flush=True)
@@ -729,13 +433,13 @@ def run_generate(req: GenerateRequest) -> Path:
                     f"[resume] {j['key']}: saved latent was made differently, redoing",
                     flush=True,
                 )
-                _image_path(out_dir, rec).unlink(missing_ok=True)
+                image_path(out_dir, rec).unlink(missing_ok=True)
             records.append(rec)
             pending.append((j, rec))
         if pending:
             _denoise_pending(req, model_dir, out_dir, pending, device)
 
     _decode_all(model_dir, out_dir, records, device)
-    manifest = _write_manifest(out_dir, req, records)
+    manifest = write_manifest(out_dir, req, records)
     print(f"manifest -> {manifest}", flush=True)
     return out_dir

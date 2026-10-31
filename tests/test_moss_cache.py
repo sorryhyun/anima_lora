@@ -222,26 +222,26 @@ def test_find_pairs_layout_json(tmp_path, monkeypatch):
 
 
 def test_layout_json_passes_layout_captions_through(monkeypatch):
-    import library.moss.cache as cache
+    from library.moss.caching import sources
 
     def no_kb():
         raise AssertionError("an already-converted caption needs no tag CSV")
 
-    monkeypatch.setattr(cache, "_tag_knowledge_base", no_kb)
-    convert = cache.caption_converter("layout_json")
+    monkeypatch.setattr(sources, "tag_knowledge_base", no_kb)
+    convert = sources.caption_converter("layout_json")
     done = '{"summary":{"characters":["hatsune miku"],"caption":"1girl"}}'
     assert convert(done) == done
-    assert not cache.is_layout_json('{"items":[]}')
-    assert not cache.is_layout_json("{broken, tags")
+    assert not sources.is_layout_json('{"items":[]}')
+    assert not sources.is_layout_json("{broken, tags")
 
 
 def test_find_pairs_prefers_a_current_layout_sidecar(tmp_path, monkeypatch):
     import os
 
-    import library.moss.cache as cache
+    from library.moss.caching import sources
 
     monkeypatch.setattr(
-        cache, "caption_converter", lambda fmt: lambda raw: f"converted:{raw}"
+        sources, "caption_converter", lambda fmt: lambda raw: f"converted:{raw}"
     )
     src = tmp_path / "src"
     src.mkdir()

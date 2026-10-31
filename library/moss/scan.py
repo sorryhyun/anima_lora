@@ -14,10 +14,11 @@ import json
 import re
 import struct
 from collections.abc import Iterator
-from dataclasses import dataclass
 from pathlib import Path
 
 from library.env import resolve_under_home
+from library.lines.scan import CacheCounts, CacheScan
+from library.lines.scan import cache_counts as _cache_counts
 
 IMAGE_EXTS = (".webp", ".png", ".jpg", ".jpeg")
 TE_SUFFIX = ".moss_te.safetensors"
@@ -136,16 +137,6 @@ def header_metadata(path: Path) -> dict:
         return {}
 
 
-@dataclass(frozen=True)
-class CacheScan:
-    images: int  # images in the source folder
-    pairs: int  # of those, with a .txt caption
-    text_cached: int  # current TE files
-    latents_cached: int
-    stale_text: int  # TE file whose caption changed; re-encoded on the next run
-    duplicates: int  # stems prefixed with their folder because they collide
-
-
 def scan(src: Path | None, out: Path | None) -> CacheScan:
     images: list[Path] = []
     pairs: list[tuple[str, Path, Path]] = []
@@ -168,16 +159,7 @@ def scan(src: Path | None, out: Path | None) -> CacheScan:
     return CacheScan(len(images), len(pairs), text, latents, stale, dupes)
 
 
-@dataclass(frozen=True)
-class CacheCounts:
-    text: int
-    latents: int
-    samples: int  # stems with both files: what training sees
-
-
 def cache_counts(cache: Path) -> CacheCounts:
-    if not cache.is_dir():
-        return CacheCounts(0, 0, 0)
-    text = {p.name[: -len(TE_SUFFIX)] for p in cache.glob(f"*{TE_SUFFIX}")}
-    latents = {stem for stem, *_ in latent_files(cache)}
-    return CacheCounts(len(text), len(latents), len(text & latents))
+    return _cache_counts(
+        cache, TE_SUFFIX, lambda d: (stem for stem, *_ in latent_files(d))
+    )
