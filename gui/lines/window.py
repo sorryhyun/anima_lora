@@ -108,6 +108,8 @@ class LineSpec:
     )
     # Panel → the ``LinePage`` tabs to add after Train.
     extra_pages: Callable[[Any], list] | None = None
+    # Called with the Train and Test ``RequestForm``s, before saved values load.
+    setup_forms: Callable[[Any, Any], None] | None = None
 
     @property
     def labels(self) -> tuple[str, str, str]:
@@ -174,9 +176,10 @@ class RequestForm(QWidget):
         super().__init__(parent)
         self.cls = cls
         self.widgets: dict[str, QWidget] = {}
+        self._help: dict[str, str] = {}
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        basic = QFormLayout()
+        basic = self._basic = QFormLayout()
         advanced_box = QGroupBox(tr("advanced"))
         advanced_box.setCheckable(True)
         advanced_box.setChecked(False)
@@ -193,12 +196,20 @@ class RequestForm(QWidget):
             name = make_field_label(
                 label,
                 tooltip=help_text,
-                on_click=lambda _l=label, _h=help_text: help_cb(_l, _h),
+                on_click=lambda _l=label, _n=f.name: help_cb(_l, self._help[_n]),
             )
+            self._help[f.name] = help_text
             (advanced if f.metadata.get("advanced") else basic).addRow(name, row)
             self.widgets[f.name] = widget
         layout.addLayout(basic)
         layout.addWidget(advanced_box)
+
+    def set_help(self, field: str, help_text: str) -> None:
+        """Replace basic field ``field``'s tooltip and click-through help."""
+        widget = self.widgets[field]
+        self._help[field] = help_text
+        widget.setToolTip(help_text)
+        self._basic.labelForField(widget).setToolTip(help_text)
 
     def _make(self, f: dataclasses.Field) -> tuple[QWidget, QWidget]:
         kind = _base_type(f)
@@ -265,7 +276,8 @@ class RequestForm(QWidget):
             if isinstance(w, QCheckBox):
                 values[f.name] = w.isChecked()
             elif isinstance(w, QComboBox):
-                values[f.name] = w.currentText()
+                # An item's data is the field value when its text is not.
+                values[f.name] = w.currentData() or w.currentText()
             elif isinstance(w, QSpinBox):
                 values[f.name] = w.value()
             elif isinstance(w, QPlainTextEdit):
@@ -298,7 +310,8 @@ class RequestForm(QWidget):
             if isinstance(w, QCheckBox):
                 w.setChecked(bool(value))
             elif isinstance(w, QComboBox):
-                w.setCurrentText(str(value))
+                i = w.findData(value)
+                w.setCurrentIndex(i) if i >= 0 else w.setCurrentText(str(value))
             elif isinstance(w, QSpinBox):
                 w.setValue(int(value))
             elif isinstance(w, QPlainTextEdit):
@@ -441,7 +454,6 @@ class LinePanel(DaemonJobMixin, QWidget):
         )
         saved = get_setting(self._settings_key, {}) or {}
         self.cache_form.set_values(saved.get("cache", {}))
-        self.train_form.set_values(saved.get("train", {}))
 
         self.cache_summary = QLabel()
         self.cache_summary.setWordWrap(True)
@@ -463,6 +475,9 @@ class LinePanel(DaemonJobMixin, QWidget):
             tr("run_chain"), variant="secondary", on_click=self._run_chain
         )
         self.test_form = RequestForm(spec.test_cls, self.train_explain.show_field_help)
+        if spec.setup_forms:
+            spec.setup_forms(self.train_form, self.test_form)
+        self.train_form.set_values(saved.get("train", {}))
         self.test_form.set_values(saved.get("test", {}))
         self.btn_test = action_button(
             tr("run_test"), variant="info", on_click=self._run_test
@@ -649,11 +664,31 @@ class LinePanel(DaemonJobMixin, QWidget):
             )
         self.cache_summary.setText("\n".join(lines))
         cache = self.train_form.text_of("cache")
-        n = cache_counts(resolve_under_home(cache)).samples if cache else 0
-        self.train_summary.setText(tr("train_ready", n=n) if n else tr("train_empty"))
+        cache_dir = resolve_under_home(cache) if cache else None
+        n = cache_counts(cache_dir).samples if cache_dir else 0
+        subfolders = self._cache_subfolders(cache_dir) if cache_dir and not n else []
+        if n:
+            summary = tr("train_ready", n=n)
+        elif subfolders:
+            summary = tr("train_subfolders", folders=" · ".join(subfolders))
+        else:
+            summary = tr("train_empty")
+        self.train_summary.setText(summary)
         self.test_form.widgets["lora"].setPlaceholderText(
             tr("test_lora_placeholder", path=self._train_output())
         )
+
+    def _cache_subfolders(self, cache: Path) -> list[str]:
+        """``name (samples)`` of ``cache``'s subfolders that hold samples: a
+        cache is flat, so training does not read them from ``cache``."""
+        if not cache.is_dir():
+            return []
+        counts = (
+            (p.name, self.spec.cache_counts(p).samples)
+            for p in sorted(cache.iterdir())
+            if p.is_dir()
+        )
+        return [f"{name} ({n})" for name, n in counts if n]
 
     def _train_output(self) -> Path:
         return resolve_under_home(

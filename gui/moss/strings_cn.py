@@ -41,6 +41,20 @@ UI: dict[str, str] = {
     "i2i_need_ref": "请把 ref_image 设为一张图片或图片文件夹。",
     "i2i_need_prompt": "ref_vision 关闭时，测试需要提示词：该页的标注。",
     "test_ref": "参考图",
+    "model_help_test": "用于生成的 DiT（base / sft）及其运行方式。bf16（默认）：1024² 下 "
+    "10.7 GiB。int8：块权重以 int8、其余以 fp32 stream 运行，1024² 下 7.8 GiB；Base 文件在"
+    "首次使用时下载，sft 使用就近舍入。不能用 loha 和块交换。切换时会同时改动 int8、stream "
+    "和 blocks_to_swap，这些值仍可在高级中调整。",
+    "model_help_i2i": "要训练的 DiT（base / sft）及其运行方式。bf16（此处默认）：此任务"
+    "实测过的设置。int8：swap 20、budget 0.1。sanitize 最大的样本在 6 步内峰值为 12.3 GB，"
+    "但还没有用此设置完整训练过 i2i LoRA。不能用 loha。切换时会同时改动 int8、stream、"
+    "ema_card、blocks_to_swap、swap_h2d_only 和 activation_memory_budget，这些值仍可在"
+    "高级中调整。",
+    "model_help": "要训练的 DiT（base / sft）及其运行方式。int8（默认）：块权重以 int8 "
+    "运行，约 1.1 s/step，峰值 13 GB，并锁定 4.4 GiB 系统内存；Base 文件在首次使用时下载，"
+    "sft 使用就近舍入。不能用 loha。bf16：交换 36 个块，相同峰值下约 1.6 s/step，可以用 "
+    "loha。切换时会同时改动 int8、stream、ema_card、blocks_to_swap、swap_h2d_only 和 "
+    "activation_memory_budget，这些值仍可在高级中调整。",
 }
 
 FIELDS: dict[str, tuple[str, str]] = {

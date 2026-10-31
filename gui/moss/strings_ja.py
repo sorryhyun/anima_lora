@@ -48,6 +48,23 @@ UI: dict[str, str] = {
     "i2i_need_prompt": "ref_vision がオフの場合、テストにはプロンプトが必要です: "
     "ページのキャプション。",
     "test_ref": "参照画像",
+    "model_help_test": "生成に使う DiT(base / sft)とその動かし方。bf16(デフォルト): "
+    "1024² で 10.7 GiB。int8: ブロックの重みを int8、残りを fp32 stream で動かします。1024² "
+    "で 7.8 GiB、Base のファイルは初回使用時に取得し、sft は最近傍丸めを使います。loha と"
+    "ブロックスワップは使えません。切り替えると int8、stream、blocks_to_swap がまとめて変わり、"
+    "これらは詳細で引き続き調整できます。",
+    "model_help_i2i": "学習する DiT(base / sft)とその動かし方。bf16(ここでのデフォルト): "
+    "このタスクで測定済みの設定。int8: swap 20、budget 0.1。sanitize の最大サンプルは 6 "
+    "ステップの間ピーク 12.3 GB に収まりましたが、この設定で i2i LoRA を最後まで学習した"
+    "ことはまだありません。loha は使えません。切り替えると int8、stream、ema_card、"
+    "blocks_to_swap、swap_h2d_only、activation_memory_budget がまとめて変わり、これらは"
+    "詳細で引き続き調整できます。",
+    "model_help": "学習する DiT(base / sft)とその動かし方。int8(デフォルト): ブロックの"
+    "重みを int8 で動かします。約 1.1 s/step、ピーク 13 GB で、システムメモリ 4.4 GiB が"
+    "固定され、Base のファイルは初回使用時に取得し、sft は最近傍丸めを使います。loha は"
+    "使えません。bf16: 36 ブロックのスワップで同じピークのまま約 1.6 s/step で、loha を"
+    "使えます。切り替えると int8、stream、ema_card、blocks_to_swap、swap_h2d_only、"
+    "activation_memory_budget がまとめて変わり、これらは詳細で引き続き調整できます。",
 }
 
 FIELDS: dict[str, tuple[str, str]] = {

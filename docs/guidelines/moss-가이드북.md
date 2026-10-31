@@ -150,7 +150,7 @@ make download-model ARGS=moss-sft
 
 이 구성은 1024² 샘플에서 step당 약 1.1초, peak 13 GB이며 시스템 메모리 4.4 GiB도 고정(pin)합니다. bf16 구성보다 빠르고 정확합니다. bf16 구성은 같은 peak에서 step당 1.6초이고, 예측 오차도 측정한 모든 σ에서 더 높습니다 (σ = 0.5에서 1.93% 대 1.62%, [정확도](../moss/optimization/int8.md#accuracy)). budget을 0.1 올릴 때마다 peak가 약 1 GB 늘고 step은 0.01–0.02초 빨라집니다. 16 GB 미만 카드에서는 0.1 (step당 1.07초, 10.78 GB)을 쓰세요. 0.4는 16 GB에서도 메모리가 부족할 수 있습니다. 0.05에서는 peak가 9.98 GB로 줄지만 attention을 재계산하게 되어 step이 1.16초로 느려집니다. 이 구성으로 끝까지 학습한 LoRA는 아직 하나뿐입니다 ([자세히](../moss/optimization/int8.md)).
 
-**bf16 구성.** int8 베이스는 LoHa를 거부하고 i2i 스텝도 실행해 본 적이 없으므로, i2i 작업 설정은 bf16에 남아 있습니다. `--config configs/moss/lora_bf16.toml`, 또는 **Advanced** 에서 `int8 off`, `stream bf16`, `ema_card` 끔, `blocks_to_swap 36` (CPU에 두고 필요할 때 올리는 DiT 블록 수), `activation_memory_budget 0.5`.
+**bf16 구성.** int8 베이스는 LoHa를 거부하고 i2i LoRA를 학습해 본 적도 없으므로, i2i 작업 설정은 bf16에 남아 있습니다. 학습 탭 `model` 드롭다운에서 `(bf16)` 항목을 고르거나(`(int8)` 항목을 고르면 기본값으로 돌아갑니다), `--config configs/moss/lora_bf16.toml`을 씁니다. 어느 쪽이든 `int8 off`, `stream bf16`, `ema_card` 끔, `blocks_to_swap 36` (CPU에 두고 필요할 때 올리는 DiT 블록 수), `activation_memory_budget 0.5`. 테스트 상자의 `model` 드롭다운에도 같은 항목이 있습니다: `(int8)`은 int8 베이스와 fp32 stream으로 생성합니다 (1024²에서 bf16의 10.7 GiB 대비 7.8 GiB). i2i 학습 탭에도 있지만, 그곳의 `(int8)`은 swap 20, budget 0.1로 돕니다. sanitize의 가장 큰 샘플이 6스텝 동안 피크 12.3 GB로 들어갔지만, 끝까지 학습한 적은 없습니다.
 
 | 구성 | 필드 | s/step | 여유 VRAM |
 |---|---|---|---|

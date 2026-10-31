@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
 
 from gui.core.paths import get_setting, set_setting
 from gui.lines.window import LineJob, LinePage, RequestForm, tr
+from gui.moss.plans import generate_plans, model_items, train_plans
 from gui.theme import Pad, rich_text_pt, tok
 from gui.widgets import ExplainPanel, action_button
 from library.env import resolve_under_home
@@ -159,6 +160,12 @@ class _Task:
             "train": RequestForm(TrainRequest, train_help),
             "test": RequestForm(GenerateRequest, train_help),
         }
+        model_items(
+            self.forms["train"], train_plans(self.seeds["train"]), "model_help_i2i"
+        )
+        model_items(
+            self.forms["test"], generate_plans(self.seeds["test"]), "model_help_test"
+        )
         for kind, form in self.forms.items():
             form.set_values(self.seeds[kind])
             form.set_values(saved.get(kind, {}))

@@ -45,4 +45,22 @@ UI: dict[str, str] = {
     "i2i_need_prompt": "With ref_vision off, the test needs a prompt: the page's "
     "caption.",
     "test_ref": "reference",
+    "model_help_test": "The DiT to render with (base / sft) and how it runs. bf16 "
+    "(default): 10.7 GiB at 1024². int8: its block weights run as int8 on an fp32 stream, "
+    "7.8 GiB at 1024²; the Base file downloads on first use, sft rounds to nearest. It "
+    "refuses loha and block swap. Changing between them sets int8, stream and "
+    "blocks_to_swap, which stay editable under Advanced.",
+    "model_help_i2i": "The DiT to train (base / sft) and how it runs. bf16 (default "
+    "here): this task's measured settings. int8: swap 20 at budget 0.1, which fit "
+    "sanitize's largest sample at a 12.3 GB peak over six steps; no i2i LoRA has been "
+    "trained on it yet. It refuses loha. Changing between them sets int8, stream, "
+    "ema_card, blocks_to_swap, swap_h2d_only and activation_memory_budget, which stay "
+    "editable under Advanced.",
+    "model_help": "The DiT to train (base / sft) and how it runs. int8 (default): its "
+    "block weights run as int8, about 1.1 s/step at a 13 GB peak, and 4.4 GiB of system "
+    "memory stays pinned; the Base file downloads on first use, sft rounds to nearest. "
+    "It refuses loha. bf16: about 1.6 s/step at the same peak with 36 blocks swapped, "
+    "and it runs loha. Changing between them sets int8, stream, ema_card, "
+    "blocks_to_swap, swap_h2d_only and activation_memory_budget, which stay editable "
+    "under Advanced.",
 }

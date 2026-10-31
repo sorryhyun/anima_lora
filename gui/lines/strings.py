@@ -40,6 +40,8 @@ UI: dict[str, dict[str, str]] = {
         "(text {text} · latents {latents})",
         "train_ready": "{n} cached samples ready.",
         "train_empty": "No cached samples in this folder yet — run preprocessing first.",
+        "train_subfolders": "No cached samples directly in this folder, and training "
+        "does not read subfolders. Set the cache folder to one of: {folders}",
         "bad_value": "{field}: '{value}' is not a valid number.",
         "running": "Running: {label} ({job})",
         "finished": "{label} finished: {state}",
@@ -85,6 +87,8 @@ UI: dict[str, dict[str, str]] = {
         "(텍스트 {text} · 잠재변수 {latents})",
         "train_ready": "캐시된 샘플 {n}개, 학습 준비 완료.",
         "train_empty": "이 폴더에 아직 캐시된 샘플이 없습니다 — 먼저 전처리를 실행하세요.",
+        "train_subfolders": "이 폴더 바로 아래에는 캐시된 샘플이 없고, 학습은 하위 폴더를 "
+        "읽지 않습니다. 캐시 폴더를 다음 중 하나로 지정하세요: {folders}",
         "bad_value": "{field}: '{value}'은(는) 올바른 숫자가 아닙니다.",
         "running": "실행 중: {label} ({job})",
         "finished": "{label} 종료: {state}",
@@ -132,6 +136,9 @@ UI: dict[str, dict[str, str]] = {
         "train_ready": "キャッシュ済みサンプル {n} 件、学習できます。",
         "train_empty": "このフォルダにはまだキャッシュ済みサンプルがありません — "
         "先に前処理を実行してください。",
+        "train_subfolders": "このフォルダの直下にはキャッシュ済みサンプルがなく、学習は"
+        "サブフォルダを読みません。キャッシュフォルダを次のいずれかに設定してください: "
+        "{folders}",
         "bad_value": "{field}: 「{value}」は有効な数値ではありません。",
         "running": "実行中: {label}（{job}）",
         "finished": "{label} 終了: {state}",
@@ -177,6 +184,8 @@ UI: dict[str, dict[str, str]] = {
         "（文本 {text} · 潜变量 {latents}）",
         "train_ready": "已缓存 {n} 个样本，可以训练。",
         "train_empty": "此文件夹中还没有缓存样本——请先运行预处理。",
+        "train_subfolders": "此文件夹下没有直接存放的缓存样本，训练也不会读取子文件夹。"
+        "请把缓存文件夹设为以下之一：{folders}",
         "bad_value": "{field}：「{value}」不是有效的数字。",
         "running": "运行中：{label}（{job}）",
         "finished": "{label} 已结束：{state}",

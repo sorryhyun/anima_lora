@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 
 from gui.lines.window import LineSpec, run
+from gui.moss.plans import generate_plans, model_items, train_plans
 from gui.moss.strings import FIELDS, FIELDS_GENERATE, UI
 from library.moss.requests import (
     CacheRequest,
@@ -28,6 +29,11 @@ def _extra_pages(panel) -> list:
     from gui.moss.i2i import pages
 
     return pages(panel)
+
+
+def _setup_forms(train, test) -> None:
+    model_items(train, train_plans(), "model_help")
+    model_items(test, generate_plans(), "model_help_test")
 
 
 def _test_runs(req: GenerateRequest) -> list[GenerateRequest]:
@@ -72,6 +78,7 @@ SPEC = LineSpec(
     fields=FIELDS,
     fields_test=FIELDS_GENERATE,
     extra_pages=_extra_pages,
+    setup_forms=_setup_forms,
 )
 
 

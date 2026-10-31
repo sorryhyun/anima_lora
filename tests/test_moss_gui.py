@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -81,3 +82,126 @@ def test_ui_keys_match_english():
     for table in (UI, line_strings.UI):
         for lang, strings in table.items():
             assert set(strings) == set(table["en"]), lang
+
+
+@pytest.fixture
+def qapp():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    return QApplication.instance() or QApplication([])
+
+
+@pytest.fixture
+def panel(monkeypatch, qapp):
+    from gui.lines import window
+    from gui.moss.app import SPEC
+
+    monkeypatch.setattr(window, "get_setting", lambda key, default=None: default)
+    monkeypatch.setattr(window, "_spec", SPEC)
+    monkeypatch.setattr(window, "_lang", "en")
+    monkeypatch.setattr(window.LinePanel, "_reattach", lambda self: None)
+    p = window.LinePanel(SPEC)
+    yield p
+    p.cleanup_subprocess()
+
+
+def _pick(combo, text: str) -> None:
+    combo.setCurrentText(text)
+    combo.activated.emit(combo.currentIndex())
+
+
+def test_model_items_change_the_whole_plan(panel):
+    import tomllib
+
+    from library.moss.requests import TrainRequest
+
+    form = panel.train_form
+    combo = form.widgets["model"]
+    assert combo.currentText() == "base (int8)"
+    assert form.changed_values() == {}
+
+    bf16 = tomllib.loads((ROOT / "configs/moss/lora_bf16.toml").read_text("utf-8"))
+    _pick(combo, "sft (bf16)")
+    req = form.request()
+    assert req.model == "sft"
+    assert {k: getattr(req, k) for k in bf16} == bf16
+
+    _pick(combo, "base (int8)")
+    assert form.request() == TrainRequest()
+
+
+def test_model_item_follows_the_int8_field_and_saved_values(panel):
+    form = panel.train_form
+    combo = form.widgets["model"]
+    form.set_values({"model": "sft", "int8": "off", "activation_memory_budget": 0.1})
+    assert combo.currentText() == "sft (bf16)"
+    form.set_values({"int8": "fwd"})
+    assert combo.currentText() == "sft (int8)"
+    # Following the field, or a variant change on one plan, writes nothing back.
+    _pick(combo, "base (int8)")
+    req = form.request()
+    assert (req.model, req.int8, req.activation_memory_budget) == ("base", "fwd", 0.1)
+
+
+def test_train_summary_names_cache_subfolders(panel, tmp_path):
+    set_a = tmp_path / "set_a"
+    set_a.mkdir()
+    (tmp_path / "empty").mkdir()
+    save_file({"embeds": torch.zeros(1)}, set_a / f"img{TE_SUFFIX}")
+    save_file({"latent": torch.zeros(1)}, set_a / f"img_32x32{LATENT_SUFFIX}")
+
+    panel.train_form.set_values({"cache": str(tmp_path)})
+    panel._rescan()
+    assert "set_a (1)" in panel.train_summary.text()
+    assert "empty" not in panel.train_summary.text()
+
+    panel.train_form.set_values({"cache": str(set_a)})
+    panel._rescan()
+    assert panel.train_summary.text() == "1 cached samples ready."
+
+    panel.train_form.set_values({"cache": str(tmp_path / "empty")})
+    panel._rescan()
+    assert "run preprocessing first" in panel.train_summary.text()
+
+
+def test_test_form_items_set_the_int8_render(panel):
+    from library.moss.requests import GenerateRequest
+
+    form = panel.test_form
+    combo = form.widgets["model"]
+    assert combo.currentText() == "base (bf16)"
+
+    _pick(combo, "base (int8)")
+    req = form.request()
+    assert (req.model, req.int8, req.stream, req.blocks_to_swap) == (
+        "base",
+        "on",
+        "fp32",
+        0,
+    )
+    assert "--int8" in req.to_argv()
+
+    _pick(combo, "base (bf16)")
+    assert form.request() == GenerateRequest()
+
+
+def test_i2i_forms_return_to_the_tasks_bf16_plan(qapp):
+    from gui.lines import window
+    from gui.moss.app import SPEC
+    from gui.moss.i2i import _Task
+
+    window._spec, window._lang = SPEC, "en"
+    task = _Task("sanitize", {}, lambda *_: None, lambda *_: None)
+    train = task.forms["train"]
+    combo = train.widgets["model"]
+    assert combo.currentText() == "base (bf16)"
+    assert task.state()["train"] == {}
+
+    _pick(combo, "base (int8)")
+    assert train.request().int8 == "stream"
+    assert task.state()["train"]["blocks_to_swap"] == 20
+    assert train.request().activation_memory_budget == 0.1
+
+    _pick(combo, "base (bf16)")
+    assert task.state()["train"] == {}

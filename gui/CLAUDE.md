@@ -41,7 +41,9 @@ must not appear.
   strings). Reuses `theme`, `jobs.daemon`, `DaemonJobMixin`, `widgets` only; strings
   live in `gui/lines/strings.py` + `gui/<line>/strings.py`, not `gui/i18n/` (MOSS splits
   its table per language into `gui/moss/strings_{en,ko,ja,cn}.py`). The same
-  MOSS panel also runs inside `make gui` (MOSS mode, below). `LineSpec.extra_pages` adds
+  MOSS panel also runs inside `make gui` (MOSS mode, below). `LineSpec.setup_forms` adjusts
+  the Train and Test forms before saved values load (MOSS's `model` items are variant ×
+  int8 / bf16 plan, `gui/moss/plans.py`, also on the i2i forms). `LineSpec.extra_pages` adds
   `LinePage` tabs after Train that submit through `LinePanel.submit([LineJob…])`, sharing
   the log, Stop and chain queue (unlike `add_tab`, which hides them); MOSS's are the two
   i2i tabs (`gui/moss/i2i.py`: i2i Preprocess = stage → preprocess, i2i Train = train →
