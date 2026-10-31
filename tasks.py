@@ -194,7 +194,8 @@ COMMANDS = {
         inference.cmd_test,
         "Inference with latest LoRA. SPECTRUM=1 enables Spectrum acceleration; "
         "MOD=1 adds the latest distilled pooled_text_proj (modulation guidance); "
-        "NOLORA=1 runs against the bare DiT (skips --lora_weight).",
+        "NOLORA=1 runs against the bare DiT (skips --lora_weight); "
+        "STREAM=bf16 leaves the default fp32 stream.",
     ),
     "gen": (
         inference.cmd_gen,

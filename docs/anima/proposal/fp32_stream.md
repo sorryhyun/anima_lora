@@ -1,6 +1,7 @@
 # Anima fp32 stream — the `wide` arm in the library and the adapter node
 
-Status: **proposed, nothing implemented** (2026-10-31). Measurements:
+Status: **Phases 1–2 implemented, not published; Phases 3–4 open** (2026-10-31). User doc:
+[`fp32_stream.md`](../optimizations/fp32_stream.md). Measurements:
 `project/int8_train/src/anima_stream_attrib.py`, jobs `20261031-204232-0a9054` (gradient) and
 `20261031-204232-4c4103` (prediction). Earlier arm:
 [`anima_fp32_stream.md`](../../../project/int8_train/reports/anima_fp32_stream.md).
@@ -163,6 +164,22 @@ Compatibility to test, each with a LoRA attached:
 | KSampler (Spectrum) | caches block residuals, now fp32 |
 | Block Compile | **hooks installed per call do not reach a compiled block.** The likeliest blocker |
 | INT8 / fp8 files | `to_compute` drops the kernel's fp32 input, the 6–8% the trainer keeps. Acceptable for v1, fixed if the op allows |
+
+## What Phases 1–2 changed from this plan
+
+- Autocast is entered by `forward_mini_train_dit`, installed by `stream_fp32_`, not around
+  generation, so every runner and direct call gets it and `models.py` is unchanged.
+- `x` turns fp32 at the embedder, so `_run_blocks` needs no cast.
+- σ follows the latent too: `generation.py` rounded it to bf16, which no arm measured.
+- `STREAM=bf16|fp32`, not `STREAM=1`: fp32 is the default.
+- ComfyUI: `APPLY_MODEL` plus `DIFFUSION_MODEL` wrappers instead of overriding `dit.forward`, and
+  the pre-hooks are object patches on the four kinds of stream readers.
+- Phase 1's full bench was stopped: only a smoke exists.
+- Added: `Anima INT8 Loader`, and an fp32 kernel input on INT8 block linears for
+  comfy-kitchen#289, so the table's "`to_compute` drops the kernel's fp32 input" no longer holds.
+- Run: `base`, `lora`, and `int8_lora` on `anima-base-v1.0_int8_gptq.safetensors`. Not run: the
+  rest of the table, Block Compile (judged from code), ComfyUI's dynamic VRAM (the harness runs
+  without it), and `--compile_blocks` with the stream. The node is unpublished.
 
 ## Phases
 

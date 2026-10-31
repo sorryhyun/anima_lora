@@ -13,6 +13,7 @@ from tqdm import tqdm
 from diffusers.utils.torch_utils import randn_tensor
 
 from library.anima import models as anima_models
+from library.anima.stream import latent_dtype
 from library.inference.adapters import (
     clear_hydra_fei,
     clear_hydra_sigma,
@@ -301,7 +302,9 @@ def generate_body_tiled(
     h_latent = height // 8
     w_latent = width // 8
     shape = (1, num_channels_latents, 1, h_latent, w_latent)
-    latents = randn_tensor(shape, generator=seed_g, device=device, dtype=torch.bfloat16)
+    latents = randn_tensor(
+        shape, generator=seed_g, device=device, dtype=latent_dtype(anima)
+    )
 
     positions = compute_tile_positions(h_latent, w_latent, tile_size, overlap)
     logger.info(
@@ -313,7 +316,7 @@ def generate_body_tiled(
         tile_h = min(tile_size, h_latent - y)
         tile_w = min(tile_size, w_latent - x)
         blend_weights[(y, x)] = create_tile_blend_weight(
-            tile_h, tile_w, overlap, y, x, h_latent, w_latent, device, torch.bfloat16
+            tile_h, tile_w, overlap, y, x, h_latent, w_latent, device, latents.dtype
         )
 
     embed = embed.to(torch.bfloat16)
@@ -325,7 +328,7 @@ def generate_body_tiled(
         device,
         tail_power=getattr(args, "sigma_tail_power", 1.0),
     )
-    timesteps = timesteps.to(device, dtype=torch.bfloat16)  # σ∈[0,1] — DiT time arg
+    timesteps = timesteps.to(device, dtype=latents.dtype)  # σ∈[0,1] — DiT time arg
 
     # `er_sde` also holds an LCMSampler when selected; both share .step()
     cns = _build_cns_recolorer(args)
@@ -379,13 +382,13 @@ def generate_body_tiled(
 
                 noise_acc = torch.zeros_like(latents)
                 weight_acc = torch.zeros(
-                    1, 1, 1, h_latent, w_latent, device=device, dtype=torch.bfloat16
+                    1, 1, 1, h_latent, w_latent, device=device, dtype=latents.dtype
                 )
 
                 if do_cfg:
                     uncond_noise_acc = torch.zeros_like(latents)
                     uncond_weight_acc = torch.zeros(
-                        1, 1, 1, h_latent, w_latent, device=device, dtype=torch.bfloat16
+                        1, 1, 1, h_latent, w_latent, device=device, dtype=latents.dtype
                     )
 
                 _boost_step = (
@@ -558,7 +561,7 @@ def generate_body(
         num_channels_latents = anima_models.Anima.LATENT_CHANNELS
         shape = (1, num_channels_latents, 1, height // 8, width // 8)
         latents = randn_tensor(
-            shape, generator=seed_g, device=device, dtype=torch.bfloat16
+            shape, generator=seed_g, device=device, dtype=latent_dtype(anima)
         )
 
     bs = latents.shape[0]
@@ -633,7 +636,7 @@ def generate_body(
         device,
         tail_power=getattr(args, "sigma_tail_power", 1.0),
     )
-    timesteps = timesteps.to(device, dtype=torch.bfloat16)  # σ∈[0,1] — DiT time arg
+    timesteps = timesteps.to(device, dtype=latents.dtype)  # σ∈[0,1] — DiT time arg
 
     # `er_sde` also holds an LCMSampler when selected; both share .step()
     cns = _build_cns_recolorer(args)

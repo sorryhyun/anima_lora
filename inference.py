@@ -21,6 +21,7 @@ from library.anima import (
     strategy as strategy_anima,
     text_strategies,
 )
+from library.anima.stream import latent_dtype
 from library.models import qwen_vae as qwen_image_autoencoder_kl
 from library.runtime.device import clean_memory_on_device
 from library.inference import (
@@ -283,7 +284,7 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
                             single_shape,
                             generator=g,
                             device=device,
-                            dtype=torch.bfloat16,
+                            dtype=latent_dtype(anima),
                         )
                     )
 

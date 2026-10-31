@@ -215,7 +215,7 @@ def spd_denoise(
 
             v = velocity(x5, sigma, pad).float()
             dt = float(sigmas[i + 1]) - sigma
-            x5 = (x5.float() + v * dt).to(torch.bfloat16)
+            x5 = (x5.float() + v * dt).to(latents.dtype)
             pbar.update(1)
 
     if cur_scale < 1.0:  # never handed off to full res — bicubic rescue so decode works
@@ -229,7 +229,7 @@ def spd_denoise(
                 align_corners=False,
             )
             .unsqueeze(2)
-            .to(torch.bfloat16)
+            .to(latents.dtype)
         )
     return x5
 

@@ -331,6 +331,14 @@ def build_parser() -> argparse.ArgumentParser:
         "as P-GRAFT hooks. docs/anima/optimizations/int8.md.",
     )
     parser.add_argument(
+        "--stream",
+        choices=("fp32", "bf16"),
+        default="fp32",
+        help="Residual stream precision: fp32 runs the stream, modulation, q / k norms, "
+        "RoPE, embedder and head in fp32 around the block GEMMs, which stay bf16 or int8. "
+        "EasyControl stays on bf16. docs/anima/optimizations/fp32_stream.md.",
+    )
+    parser.add_argument(
         "--int8_file",
         type=str,
         default=None,

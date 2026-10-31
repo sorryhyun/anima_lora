@@ -73,6 +73,7 @@ class GenerationRequest:
     # the `vocab_pack` key in configs/base.toml; ``no_vocab_pack`` forces off.
     vocab_pack: Optional[str] = None
     no_vocab_pack: bool = False
+    stream: Optional[str] = None  # ``fp32`` | ``bf16``
 
     dit: Optional[str] = None
     vae: Optional[str] = None
@@ -138,6 +139,8 @@ class GenerationRequest:
             argv += ["--pooled_text_proj", self.pooled_text_proj]
         if self.vocab_pack is not None:
             argv += ["--vocab_pack", self.vocab_pack]
+        if self.stream is not None:
+            argv += ["--stream", self.stream]
 
         if self.lora_weight is not None:
             argv += ["--lora_weight", *self.lora_weight]

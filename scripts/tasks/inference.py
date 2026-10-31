@@ -59,6 +59,7 @@ def _base_test_args(*, lora_default: bool = True) -> list[str]:
       gain, cond forward only, σ ≥ band; band via ``XATTN_BOOST_BAND=``,
       default 0.85). Composes with every other lever here.
     - ``INT8=1`` appends ``--int8`` (the int8 base, LoRAs as hooks).
+    - ``STREAM=bf16|fp32`` appends ``--stream`` (fp32 by default).
     """
     args = list(INFERENCE_BASE)
     nolora_env = os.environ.get("NOLORA")
@@ -80,6 +81,8 @@ def _base_test_args(*, lora_default: bool = True) -> list[str]:
         args += _mod_flags()
     if _env_truthy("INT8"):
         args += ["--int8"]
+    if stream := os.environ.get("STREAM", "").strip():
+        args += ["--stream", stream]
     if _env_truthy("DAVE"):
         args += _dave_flags()
     if _env_truthy("FSG"):

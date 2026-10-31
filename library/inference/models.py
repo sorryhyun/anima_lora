@@ -360,6 +360,16 @@ def load_dit_model(
 
         convert_for_inference(model, args)
 
+    if getattr(args, "stream", "bf16") == "fp32":
+        if getattr(args, "easycontrol_weight", None):
+            logger.warning(
+                "EasyControl runs on the bf16 stream; ignoring --stream fp32"
+            )
+        else:
+            from library.anima.stream import stream_fp32_
+
+            stream_fp32_(model)
+
     # Dynamic-hook adapters (P-GRAFT toggle / HydraLoRA router-live) that can't
     # ride the static merge above.
     attach_adapters(
