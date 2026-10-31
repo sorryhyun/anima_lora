@@ -1,9 +1,12 @@
 """Anima's side of the int8 base (``library/int8/``): its convert targets, its checkpoint
 keys, and the conversions the trainer and ``inference.py`` run.
 
-Training (``--int8 fwd|full``) converts after ``create_network``, so ``weight_svd`` /
-``grad_svd`` init still read bf16, and before ``apply_to``, so the LoRA modules capture
-the int8 forward as ``org_forward``, and ``compile_blocks``. Generation (``--int8``)
+Training (``--int8 fwd|full|stream``) converts after ``create_network``, so
+``weight_svd`` / ``grad_svd`` init still read bf16, and before ``apply_to``, so the LoRA
+modules capture the int8 forward as ``org_forward``, and ``compile_blocks``. ``stream``
+is ``full`` with ``wq_t`` moved to pinned host memory (``library/int8/stream.py``). The
+bespoke turbo loop converts at the same point through ``TurboDMDNetwork``'s
+``before_apply``. Generation (``--int8``)
 converts in mode ``infer`` with the model on the GPU, before the adapters attach. LoRAs
 then ride the P-GRAFT hook path, since a static merge would fold them into the bf16
 weight the conversion drops: the base runs ``int8(x, W_q) + B·A·x``, the function the
@@ -20,13 +23,14 @@ import logging
 import re
 from pathlib import Path
 
+import torch
 import torch.nn as nn
 from safetensors import safe_open
 
 from library.anima.weights import _SELF_ATTN_QKV_ORDER
 from library.env import resolve_under_home
 from library.int8 import linear as _linear
-from library.int8.linear import convert_
+from library.int8.linear import close_stream, convert_, stream_compacted_
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +99,13 @@ def convert_dit_(dit: nn.Module, mode: str, int8_file: str | None = None) -> lis
     return names
 
 
+def stream_blocks_(dit: nn.Module) -> None:
+    """``full`` linears to ``stream``, block by block, in :data:`CONVERT_SUFFIXES` order."""
+    stream_compacted_(
+        [[b.get_submodule(s) for s in CONVERT_SUFFIXES] for b in dit.blocks]
+    )
+
+
 def forward_file(int8_file: str | None, dit_path: str) -> str:
     """The file of the forward copies: ``int8_file``, else the one beside the DiT, which
     on the catalog's DiT is fetched on first use; empty = round to nearest."""
@@ -119,9 +130,12 @@ def forward_file(int8_file: str | None, dit_path: str) -> str:
 def _convert(dit: nn.Module, mode: str, int8_file: str | None, dit_path: str) -> str:
     """Convert and log; returns the id LoRAs are stamped with."""
     path = forward_file(int8_file, dit_path)
-    names = convert_dit_(dit, mode, path or None)
+    names = convert_dit_(dit, "full" if mode == "stream" else mode, path or None)
     if not names:
         raise SystemExit("int8 base: no DiT linear was converted")
+    if mode == "stream":
+        stream_blocks_(dit)
+    torch.cuda.empty_cache()
     base_id = ROUND_TO_NEAREST
     if path:
         with safe_open(path, framework="pt") as f:
@@ -157,9 +171,25 @@ def convert_for_training(unet: nn.Module, network, args) -> None:
         raise SystemExit(
             f"int8 base: {type(network).__name__} is not a LoRANetwork; run --int8 off"
         )
+    if args.int8 == "stream":  # grad_svd's sketch leaves the DiT on the host
+        unet.to(torch.device("cuda"))
     args.int8_base_id = _convert(
         unet, args.int8, args.int8_file, args.pretrained_model_name_or_path
     )
+
+
+def convert_for_turbo(model: nn.Module, mode: str, int8_file, dit_path: str) -> str:
+    """Convert the resident DiT; returns the id the student LoRA is stamped with."""
+    return _convert(model, mode, int8_file, dit_path)
+
+
+def finish_training() -> None:
+    """Peak VRAM, then the stream's counters and host buffers."""
+    logger.info(
+        f"int8 base: peak {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB "
+        f"allocated, {torch.cuda.max_memory_reserved() / 1024**3:.2f} GB reserved"
+    )
+    close_stream()
 
 
 def convert_for_inference(model: nn.Module, args) -> None:

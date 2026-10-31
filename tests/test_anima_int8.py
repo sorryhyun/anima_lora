@@ -11,6 +11,8 @@ import torch.nn as nn
 
 from library import downloads
 from library.anima.int8 import (
+    CONVERT_SUFFIXES,
+    stream_blocks_,
     ROUND_TO_NEAREST,
     check_plan,
     ckpt_keys,
@@ -123,4 +125,27 @@ def test_flags_default_off():
     parsed = setup_parser().parse_args([])
     assert (parsed.int8, parsed.int8_file) == ("off", None)
     with pytest.raises(SystemExit):
-        setup_parser().parse_args(["--int8", "stream"])
+        setup_parser().parse_args(["--int8", "half"])
+
+
+def test_stream_groups_each_block_by_suffix(monkeypatch):
+    class Block(nn.Module):
+        def __init__(self):
+            super().__init__()
+            for path in CONVERT_SUFFIXES:
+                head, tail = path.split(".")
+                if not hasattr(self, head):
+                    setattr(self, head, nn.Module())
+                setattr(getattr(self, head), tail, nn.Linear(4, 4, bias=False))
+
+    dit = nn.Module()
+    dit.blocks = nn.ModuleList([Block(), Block()])
+    seen = []
+    monkeypatch.setattr("library.anima.int8.stream_compacted_", seen.extend)
+    stream_blocks_(dit)
+    assert [len(b) for b in seen] == [len(CONVERT_SUFFIXES)] * 2
+    assert seen[1][0] is dit.blocks[1].self_attn.qkv_proj
+
+
+def test_stream_flag_parses():
+    assert setup_parser().parse_args(["--int8", "stream"]).int8 == "stream"

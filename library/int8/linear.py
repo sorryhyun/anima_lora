@@ -139,6 +139,37 @@ def stream_wqt_(blocks: list[list[nn.Linear]]) -> WqtStream:
     return _stream
 
 
+def stream_compacted_(blocks: list[list[nn.Linear]]) -> WqtStream:
+    """:func:`stream_wqt_` on a resident DiT. What stays on the card sat between the
+    dropped weights and ``wq_t`` and would pin their pages, so it moves off and back."""
+    stream = stream_wqt_(blocks)
+    device = blocks[0][0].wq.device
+    mods = [m for block in blocks for m in block]
+    kept = [(m.held_wq, "weight") for m in mods]
+    kept += [(m, k) for m in mods for k in ("s", "s_t")]
+    for m, k in kept:
+        m._buffers[k] = m._buffers[k].cpu()
+    torch.cuda.empty_cache()
+    for m, k in kept:
+        m._buffers[k] = m._buffers[k].to(device)
+    return stream
+
+
+def close_stream() -> None:
+    """Log the stream's counters and unregister its host buffers; no-op without one."""
+    global _stream
+    if _stream is None:
+        return
+    s = _stream
+    print(
+        f"wq_t stream: {s.entered} blocks entered, {s.cold} cold, "
+        f"{s.wait_s:.2f} s waited",
+        flush=True,
+    )
+    s.close()
+    _stream = None
+
+
 @torch.library.custom_op("int8_train::dx_stream", mutates_args=())
 def dx_stream(dy: torch.Tensor, s_t: torch.Tensor, sid: torch.Tensor) -> torch.Tensor:
     return int8_mm(dy, _stream.get(int(sid)), s_t)

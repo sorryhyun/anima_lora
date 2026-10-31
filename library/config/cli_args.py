@@ -797,11 +797,12 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
     )
     parser.add_argument(
         "--int8",
-        choices=("off", "fwd", "full"),
+        choices=("off", "fwd", "full", "stream"),
         default="off",
         help="Run the frozen DiT's large linears as int8 GEMMs. fwd: int8 forward, "
-        "bf16 input gradient. full: both int8, base weight dropped. Refuses block "
-        "swap; docs/anima/optimizations/int8.md.",
+        "bf16 input gradient. full: both int8, base weight dropped. stream: full "
+        "with the backward copy on the host, streamed to the card per block. Refuses "
+        "block swap; docs/anima/optimizations/int8.md.",
     )
     parser.add_argument(
         "--int8_file",

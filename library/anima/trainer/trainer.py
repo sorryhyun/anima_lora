@@ -820,6 +820,11 @@ class AnimaTrainer:
             saver.cleanup_resumable()
             saver.save_final(network, loop_state.global_step, num_train_epochs)
 
+        if args.int8 != "off":
+            from library.anima.int8 import finish_training
+
+            finish_training()
+
         if is_main_process and loop_state.global_step < 2:
             _cleanup_short_log_dir(args)
 

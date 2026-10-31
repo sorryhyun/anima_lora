@@ -309,6 +309,21 @@ def build_argparser() -> argparse.ArgumentParser:
         "grad_ckpt is off (the two repartition the same graph and conflict). "
         "Sentinel None → TOML (activation_memory_budget, default 1.0 = off).",
     )
+    parser.add_argument(
+        "--int8",
+        choices=("off", "fwd", "full", "stream"),
+        default=None,
+        help="Run the frozen DiT's large linears as int8 GEMMs, teacher included "
+        "(docs/anima/optimizations/int8.md). Sentinel None → TOML (int8, default off).",
+    )
+    parser.add_argument(
+        "--int8_file",
+        type=str,
+        default=None,
+        help="Forward copies from dit_gptq.py. Sentinel None → TOML (int8_file), "
+        "else <dit>_int8_gptq.safetensors beside the DiT, else round to nearest; "
+        "'rtn' forces round to nearest.",
+    )
     parser.add_argument("--save_every", type=int, default=-1)
     parser.add_argument(
         "--resume",
@@ -863,6 +878,8 @@ class TurboConfig:
     activation_memory_budget: (
         float  # compile partitioner saved-act fraction (<1 → recompute)
     )
+    int8: str = "off"  # off | fwd | full | stream
+    int8_file: str | None = None
 
     # DMAD Phase −1 premise probe (scripts/distill_turbo/dmad_probe.py)
     dmad_probe: bool = False
@@ -1309,6 +1326,17 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
             f"(-1 = middle), head={dmad_probe_head}, ceiling={dmad_probe_ceiling}."
         )
     dmad = bool(_pick(args.dmad, cfg, "dmad.enabled", False))
+    int8 = str(_pick(args.int8, cfg, "int8", "off"))
+    if int8 != "off":
+        if int(args.blocks_to_swap) > 0:
+            raise ValueError(
+                "int8 requires blocks_to_swap=0 (not validated on Anima's offloader)."
+            )
+        if dmad or dmad_probe:
+            raise ValueError(
+                "int8 does not run dmad / dmad_probe: their stacks are built after "
+                "the conversion dropped the base weights."
+            )
     dmad_lambda_t = float(_pick(args.dmad_lambda_t, cfg, "dmad.lambda_t", 150.0))
     dmad_lambda_r = float(_pick(args.dmad_lambda_r, cfg, "dmad.lambda_r", 150.0))
     dmad_signal_rms = float(_pick(args.dmad_signal_rms, cfg, "dmad.signal_rms", 0.18))
@@ -1713,6 +1741,8 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         activation_memory_budget=float(
             _pick(args.activation_memory_budget, cfg, "activation_memory_budget", 1.0)
         ),
+        int8=int8,
+        int8_file=_pick(args.int8_file, cfg, "int8_file", None),
         partitioner_recompute_views=bool(
             _flatten(cfg, "partitioner_recompute_views", False)
         ),

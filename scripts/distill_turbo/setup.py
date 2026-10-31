@@ -149,6 +149,7 @@ class RunContext:
     # DMAD Phase 0 disc + its metrics (None when dmad is off).
     dmad: object | None = None
     dmad_metrics: object | None = None
+    int8_base_id: str = ""
 
 
 def build_run(args, cfg: TurboConfig) -> RunContext:
@@ -201,6 +202,17 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
             )
         gan_indices = {bidx}
 
+    int8_base_id = ""
+
+    def convert_int8() -> None:
+        nonlocal int8_base_id
+        if cfg.int8 != "off":
+            from library.anima.int8 import convert_for_turbo
+
+            int8_base_id = convert_for_turbo(
+                model, cfg.int8, cfg.int8_file, cfg.dit_path
+            )
+
     turbo = TurboDMDNetwork(
         unet=model,
         student_rank=cfg.student_rank,
@@ -223,6 +235,7 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         gan_disc_hidden=cfg.gan_disc_hidden if cfg.gan_disc_hidden > 0 else None,
         gan_disc_head=cfg.gan_disc_head,
         build_fake=not cfg.dmad,
+        before_apply=convert_int8,
     )
     turbo.freeze_dit()
     for pool in turbo.student_pools:
@@ -354,6 +367,7 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
                 dynamic_seq=dynamic_seq,
                 mode="",
             )
+            + ("" if cfg.int8 == "off" else f";int8={cfg.int8};int8_in=fp32")
         )
     compile_dit_blocks(
         model,
@@ -768,6 +782,7 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         fdistill_bins=fdistill_bins,
         writer=writer,
         progress_sink=progress_sink,
+        int8_base_id=int8_base_id,
         console_steps=console_steps,
         metrics=metrics,
         tau_profiles=tau_profiles,

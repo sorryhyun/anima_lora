@@ -584,6 +584,14 @@ def run_loop(ctx: RunContext, cfg):
                 n = step + 1
                 is_final = n == cfg.iterations
                 metadata = {
+                    **(
+                        {
+                            "ss_int8_base": cfg.int8,
+                            "ss_int8_base_id": ctx.int8_base_id,
+                        }
+                        if cfg.int8 != "off"
+                        else {}
+                    ),
                     "ss_turbo_objective": cfg.base_loss,
                     "ss_turbo_student_rank": str(cfg.student_rank),
                     "ss_turbo_student_alpha": str(cfg.student_alpha),
@@ -677,6 +685,10 @@ def run_loop(ctx: RunContext, cfg):
                     )
                     logger.info(f"saved resume bundle: {rp} (step {n})")
 
+    if cfg.int8 != "off":
+        from library.anima.int8 import finish_training
+
+        finish_training()
     if writer is not None:
         writer.close()
     logger.info("turbo distillation complete.")

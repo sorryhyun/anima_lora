@@ -23,9 +23,10 @@ from safetensors import safe_open
 from library.env import resolve_under_home
 from library.int8.linear import (
     base_fingerprint,
+    close_stream,
     convert_,
     load_int8_file,
-    stream_wqt_,
+    stream_compacted_,
 )
 from library.int8.stream import WqtStream
 from library.moss.requests import GenerateRequest, TrainRequest
@@ -82,18 +83,7 @@ def stream_targets(by_name: dict, n_blocks: int) -> WqtStream:
         [by_name[f"layers.{b}.proj.{p}"] for p in BLOCK_LINEARS]
         for b in range(n_blocks)
     ]
-    stream = stream_wqt_(blocks)
-    # what stays sat between the dropped weights and wq_t and would pin their pages
-    device = blocks[0][0].wq.device
-    mods = [m for block in blocks for m in block]
-    kept = [(m.held_wq, "weight") for m in mods]
-    kept += [(m, k) for m in mods for k in ("s", "s_t")]
-    for m, k in kept:
-        m._buffers[k] = m._buffers[k].cpu()
-    torch.cuda.empty_cache()
-    for m, k in kept:
-        m._buffers[k] = m._buffers[k].to(device)
-    return stream
+    return stream_compacted_(blocks)
 
 
 def check_plan(req: TrainRequest) -> None:
@@ -136,15 +126,8 @@ class TrainBase:
 
     def close(self) -> None:
         """The stream's counters, then its host buffers."""
-        if self.stream is None:
-            return
-        s = self.stream
-        print(
-            f"wq_t stream: {s.entered} blocks entered, {s.cold} cold, "
-            f"{s.wait_s:.2f} s waited",
-            flush=True,
-        )
-        s.close()
+        if self.stream is not None:
+            close_stream()
 
 
 def convert_for_training(transformer, req: TrainRequest) -> TrainBase:

@@ -16,6 +16,7 @@ not trained on.
 |---|---|
 | GEMM microbench | int8 2.6x bf16 for forward and dX on Anima's block shapes; raw int8 3.3x, fp8 only 1.9x (GeForce halves fp32 accumulation, not int32) ([report](reports/gemm_microbench.md), titled *Phase 0*) |
 | MOSS step split | int8 plan 1.30 → 1.07 s/step: `BatchedMuon`, FA2 in the budget's knapsack ([report](reports/moss_step_split_int8.md)) |
+| Anima `wq_t` stream, budget 1.0 | `stream` peak 12.38 → 10.96 GB for 17 ms/step; budget 1.0 OOMs at step 0 and, where it fits, ties 0.99 at 333 ms for 4 GB more; turbo wired, not run ([report](reports/anima_wqt_stream.md)) |
 | step split | converted GEMMs are 47% of a 594 ms step (forward ~137 ms, dX ~143 ms), predicted 1.41x ([report](reports/step_profile.md), titled *Phase 1a*) |
 | real-gradient error | int8 `full` is 1.3–1.5x bf16's distance from the fp32 LoRA gradient, a bf16-sized extra error; it comes from the int8 forward (`fwd` ≈ `full`) ([report](reports/grad_error.md), titled *Phase 1b*) |
 | implementation | `src/int8_linear.py`, `src/train_int8.py`, 7 unit tests pass ([report](reports/phase3_ab.md), titled *Phase 2–3*) |

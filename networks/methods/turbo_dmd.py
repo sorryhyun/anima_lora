@@ -22,6 +22,7 @@ Distillation" (arXiv:2602.03139).
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Literal
 
 import torch
@@ -335,6 +336,7 @@ class TurboDMDNetwork:
         gan_disc_hidden: int | None = None,
         gan_disc_head: Literal["pooled", "token"] = "pooled",
         build_fake: bool = True,
+        before_apply: Callable[[], None] | None = None,
     ) -> None:
         self.unet = unet
         self.student_rank = int(student_rank)
@@ -516,6 +518,11 @@ class TurboDMDNetwork:
         self.fake_hi: LoRANetwork | None = (
             _make_fake() if self.fake_tau_banks == 2 else None
         )
+
+        # The stacks are built and still hold the DiT's own forward: an int8 base
+        # converts here, so weight_svd reads bf16 and org_forward is the int8 forward.
+        if before_apply is not None:
+            before_apply()
 
         # Apply student-first so the runtime chain is
         # linear -> [fake_hi ->] fake -> student -> original (fake_hi outermost)

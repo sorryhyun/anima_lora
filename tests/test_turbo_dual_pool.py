@@ -245,9 +245,7 @@ def test_merge_reproduces_sum_of_deltas(tmp_path):
 
     # Every pool-A module (⊆ pool B) merges to ΔW_A + ΔW_B exactly.
     prefixes = [
-        k[: -len(".lora_down.weight")]
-        for k in sd_a
-        if k.endswith(".lora_down.weight")
+        k[: -len(".lora_down.weight")] for k in sd_a if k.endswith(".lora_down.weight")
     ]
     assert prefixes  # sanity: the merge actually covered modules
     for pfx in prefixes:
@@ -267,9 +265,7 @@ def test_div_scale_dials_pool_a(tmp_path):
     sd_b = TurboDMDNetwork._finalize_pool_state_dict(turbo.student, None)[0]
     sd_a = TurboDMDNetwork._finalize_pool_state_dict(turbo.student_div, None)[0]
     pfx = next(
-        k[: -len(".lora_down.weight")]
-        for k in sd_a
-        if k.endswith(".lora_down.weight")
+        k[: -len(".lora_down.weight")] for k in sd_a if k.endswith(".lora_down.weight")
     )
 
     for scale in (0.0, 0.5):
@@ -298,7 +294,9 @@ def test_dual_pool_cli_and_toml():
     assert _resolve(["--dual_pool"]).dual_pool is True
     assert _resolve(cfg={"network": {"dual_pool": True}}).dual_pool is True
     assert (
-        _resolve(["--div_pool_rank", "24"], cfg={"network": {"div_pool_rank": 8}}).div_pool_rank
+        _resolve(
+            ["--div_pool_rank", "24"], cfg={"network": {"div_pool_rank": 8}}
+        ).div_pool_rank
         == 24  # CLI wins
     )
     assert _resolve(cfg={"network": {"div_pool_rank": 8}}).div_pool_rank == 8
@@ -438,3 +436,36 @@ def test_resume_dual_bundle_refused_at_single(tmp_path):
     fresh, *frest = _toy_build(cfg1, dual_pool=False)
     with pytest.raises(ResumeMismatchError):
         _toy_apply(load_resume_state(path), cfg1, fresh, *frest)
+
+
+def test_before_apply_runs_with_stacks_built_and_unpatched():
+    dit = _TinyDiT()
+    target = dit.blocks[0].mlp_layer1
+    original = target.forward
+    seen = []
+
+    class Converted(nn.Linear):
+        def forward(self, x):
+            seen.append("converted")
+            return super().forward(x)
+
+    def convert() -> None:
+        assert target.forward == original  # no apply_to yet
+        target.__class__ = Converted
+
+    turbo = TurboDMDNetwork(
+        unet=dit, student_rank=RANK_B, fake_rank=RANK_B, before_apply=convert
+    )
+    assert len(turbo.student.unet_loras) > 0
+    target(torch.zeros(1, IN))
+    assert seen == ["converted"]
+
+
+def test_int8_config_and_its_refusals():
+    assert _resolve().int8 == "off"
+    assert _resolve(["--int8", "stream"]).int8 == "stream"
+    assert _resolve(cfg={"int8": "full"}).int8 == "full"
+    with pytest.raises(ValueError, match="blocks_to_swap=0"):
+        _resolve(["--int8", "stream", "--blocks_to_swap", "4"])
+    with pytest.raises(ValueError, match="dmad"):
+        _resolve(["--int8", "full"], {"dmad_probe": {"enabled": True}})

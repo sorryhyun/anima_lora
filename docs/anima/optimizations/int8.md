@@ -19,6 +19,7 @@ Train through the usual targets, with `--int8` on the CLI or in a method TOML:
 | `off` | bf16 | bf16 | kept |
 | `fwd` | int8 | bf16 | kept |
 | `full` | int8 | int8, second copy of `Wᵀ` | dropped |
+| `stream` | int8 | as `full`, the copy on the host and streamed per block | dropped |
 
 Generate with `inference.py --int8`, or `INT8=1` on any `make test-*`. LoRAs then attach as
 P-GRAFT hooks whatever `--pgraft` says, because a static merge would fold them into the bf16
@@ -44,12 +45,29 @@ file or round to nearest.
 
 - `--blocks_to_swap > 0` is refused in training and generation. It has not been validated on
   Anima's offloader, so the `low_vram` preset does not run on int8.
-- Training takes `LoRANetwork` only, and only method `lora` has been measured. Anything else
-  (`EasyControl`, the bespoke turbo and soup loops) trains on bf16 or is refused.
+- Training takes `LoRANetwork` only, and only method `lora` has been measured. `EasyControl` and
+  the soup loop train on bf16 or are refused.
+- `make turbo ARGS="--int8 stream"` is wired and has not run a step. It refuses `dmad` and
+  `dmad_probe`, and its teacher runs on the int8 base.
 - `--base_weights` with forward copies is refused: they were calibrated on the unmerged weights.
   `--int8_file rtn` quantizes the merged weights instead.
 - `--lora_cutoff_step` is refused in generation.
-- MOSS's `stream` mode, which moves `wq_t` to the host, is not wired for Anima.
+
+## `stream` and the budget
+
+`ama mitsuki`, one run per arm, 2026-10-31, 5070 Ti
+([anima_wqt_stream.md](../../../project/int8_train/reports/anima_wqt_stream.md)):
+
+| arm | samples | median | peak |
+|---|---|---|---|
+| `full`, budget 0.99 | all 106 | 482 ms | 12.38 GB |
+| `stream`, budget 0.99 | all 106 | 499 ms | 10.96 GB |
+| `stream`, budget 1.0 | all 106 | OOM at step 0 | – |
+| `stream`, budget 0.99 | 13 at ~3000 tokens | 333 ms | 8.84 GB |
+| `stream`, budget 1.0 | 13 at ~3000 tokens | 333 ms | 12.90 GB |
+
+Keep budget 0.99. 1.0 saves 1.75x the activations for no speed, and needs about 16.5 GB at 4200
+tokens.
 
 ## Measurements
 
