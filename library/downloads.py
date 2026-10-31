@@ -394,6 +394,14 @@ def kind_dir(kind: str) -> str:
 
 def catalog() -> tuple[Asset, ...]:
     """The trainer's own rows, rebuilt per call so they follow the home."""
+    return (*anima_catalog(), *moss_catalog())
+
+
+def moss_catalog() -> tuple[Asset, ...]:
+    return _moss_rows()
+
+
+def anima_catalog() -> tuple[Asset, ...]:
     return (
         _anima_row(
             "dit",
@@ -451,7 +459,6 @@ def catalog() -> tuple[Asset, ...]:
             "`make preprocess-te ARGS=--overwrite` for CJK captions; EN-only "
             "captions are bit-exact either way.",
         ),
-        *_moss_rows(),
     )
 
 

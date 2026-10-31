@@ -373,14 +373,26 @@ def _missing_all(assets) -> tuple[str, list[str] | None]:
     return t("models_download_missing", n=len(missing)), ["download-model", *missing]
 
 
-class ModelsDialog(_StreamingDialog):
-    """Model downloads: a HuggingFace token field, two catalog tabs, one log.
+# What the MOSS line's default plan loads; SFT and the fp8 TE stay opt-in.
+_MOSS_FIRST_RUN = ("moss-base", "moss-te-int8", "moss-dit-int8")
 
-    The tabs are the two halves of the catalog — ``library/downloads.py``'s
-    Anima rows (packs anima / pe / cjk) and ``anime_tools.downloads``' curation
-    rows minus the trainer's ``HIDDEN_PACKS`` (empty today). Splitting them
-    inside one modal keeps each list short and keeps the token field, the log
-    and the single QProcess shared, which two dialogs could not do.
+
+def _moss_all(assets) -> tuple[str, list[str] | None]:
+    missing = [a.id for a in assets if a.pack in _MOSS_FIRST_RUN and not a.installed]
+    if not missing:
+        return t("models_first_run_installed"), None
+    return t("models_download_all"), ["download-model", *missing]
+
+
+class ModelsDialog(_StreamingDialog):
+    """Model downloads: a HuggingFace token field, three catalog tabs, one log.
+
+    The tabs are the catalog's parts — ``library/downloads.py``'s Anima rows
+    (packs anima / pe / cjk) and MOSS rows, and ``anime_tools.downloads``'
+    curation rows minus the trainer's ``HIDDEN_PACKS`` (empty today). It opens on
+    the top bar's model mode. Splitting them inside one modal keeps each list
+    short and keeps the token field, the log and the single QProcess shared,
+    which separate dialogs could not do.
     """
 
     # Emitted after any successful (exit_code 0) download run so live tabs can
@@ -402,7 +414,8 @@ class ModelsDialog(_StreamingDialog):
 
         self.tabs = QTabWidget()
         for label_key, intro_key, rows_fn, all_fn in (
-            ("models_tab_anima", "models_intro", DL.catalog, _anima_all),
+            ("models_tab_anima", "models_intro", DL.anima_catalog, _anima_all),
+            ("models_tab_moss", "moss_models_intro", DL.moss_catalog, _moss_all),
             (
                 "models_tab_curation",
                 "curation_models_intro",
@@ -413,6 +426,8 @@ class ModelsDialog(_StreamingDialog):
             panel = _CatalogPanel(self, intro_key, rows_fn, all_fn)
             self._panels.append(panel)
             self.tabs.addTab(panel, t(label_key))
+        if get_setting("model_mode") == "moss":
+            self.tabs.setCurrentIndex(1)
         layout.addWidget(self.tabs, 1)
 
     # -- auth --------------------------------------------------------------

@@ -299,7 +299,7 @@ def test_models_dialog_rows_come_from_the_catalog():
     assert set(_TITLE_KEYS) <= set(DL.by_id())
 
 
-def test_the_two_tabs_show_the_two_catalog_halves():
+def test_the_tabs_show_the_catalog_parts():
     """One modal, one QProcess, one log — the split is a tab, so neither list
     grows long enough to push the log pane off the dialog."""
     import os
@@ -313,9 +313,11 @@ def test_the_two_tabs_show_the_two_catalog_halves():
     QApplication.instance() or QApplication([])
     dlg = ModelsDialog()
     try:
-        assert dlg.tabs.count() == 2
-        anima, curation = dlg._panels
-        assert [a.id for a in anima.assets()] == [a.id for a in DL.catalog()]
+        assert dlg.tabs.count() == 3
+        anima, moss, curation = dlg._panels
+        assert [a.id for a in anima.assets()] == [a.id for a in DL.anima_catalog()]
+        assert [a.id for a in moss.assets()] == [a.id for a in DL.moss_catalog()]
+        assert not {a.pack for a in anima.assets()} & {a.pack for a in moss.assets()}
         assert [a.id for a in curation.assets()] == [
             a.id for a in DL.curation_catalog()
         ]
@@ -337,6 +339,8 @@ def test_the_two_tabs_show_the_two_catalog_halves():
             "anima-dit-int8",
             "pe",
             "cjk",
+        ]
+        assert [pid for pid, _i, _b in moss._packs] == [
             "moss-base",
             "moss-sft",
             "moss-dit-int8",
@@ -364,6 +368,9 @@ def test_every_title_key_exists_in_every_language():
     extra = (
         "curation_models_intro",
         "models_tab_anima",
+        "models_tab_moss",
+        "moss_models_intro",
+        "models_first_run_installed",
         "models_tab_curation",
         "models_download_missing",
         "models_all_installed",
