@@ -2,7 +2,7 @@
 
 A guide to training and testing LoRAs for MOSS-Image in the GUI. Open it with `make gui` and set the top-bar **Model** dropdown to **MOSS-Image** (`make gui-moss` opens the same panel in its own window). The panel is in English, or in Chinese when the GUI language is Chinese.
 
-The MOSS line is **alpha**: one style set so far (30 images of one artist), with many A/Bs on it, and flags and defaults may still move. The numbers below come from those A/Bs and from benchmarks on a 16 GB RTX 5070 Ti.
+The numbers below come from A/Bs on one style set (30 images of one artist) and from benchmarks on a 16 GB RTX 5070 Ti.
 
 ---
 
@@ -148,7 +148,7 @@ The comparisons ran on 30 images of one artist (`@channel (caststation)`), Base,
 
 Defaults: `grad_checkpointing` off, `compile` on, and under Advanced `int8 stream` with the GPTQ file (the DiT's block weights run as int8; the file downloads on first use), `stream fp32` (the rest of the block runs in fp32), `blocks_to_swap 0` (every block stays on the card), `activation_memory_budget 0.3` (how much of the forward pass is kept for the backward; the rest is recomputed), `ema_card` on and `expandable_segments` on (keeps the CUDA memory pool from fragmenting when sequence lengths vary).
 
-This runs 1.05 s/step at a 12.88 GB peak on 1024² samples and also pins 4.4 GiB of system memory. Each 0.1 of budget adds about 1 GB of peak for 0.01–0.02 s/step: on a card under 16 GB use 0.1 (1.07 s/step, 10.78 GB), and 0.4 can run out of memory even on 16 GB. At 0.05 the peak drops to 9.98 GB but attention is recomputed and the step slows to 1.16 s. One LoRA has been trained to completion on it so far, with no comparison against bf16 yet ([details](../moss/optimization/int8.md)).
+This runs about 1.1 s/step at a 13 GB peak on 1024² samples and also pins 4.4 GiB of system memory. That is faster and more accurate than the bf16 plan: 1.6 s/step at the same peak, and a higher prediction error at every σ tested (1.93% against 1.62% at σ = 0.5, [accuracy](../moss/optimization/int8.md#accuracy)). Each 0.1 of budget adds about 1 GB of peak for 0.01–0.02 s/step: on a card under 16 GB use 0.1 (1.07 s/step, 10.78 GB), and 0.4 can run out of memory even on 16 GB. At 0.05 the peak drops to 9.98 GB but attention is recomputed and the step slows to 1.16 s. One LoRA has been trained to completion on it so far ([details](../moss/optimization/int8.md)).
 
 **bf16 plan.** The int8 base refuses LoHa and has run no i2i step, so the i2i task configs stay on bf16. `--config configs/moss/lora_bf16.toml`, or under Advanced `int8 off`, `stream bf16`, `ema_card` off, `blocks_to_swap 36` (DiT blocks kept on the CPU and streamed in), `activation_memory_budget 0.5`.
 

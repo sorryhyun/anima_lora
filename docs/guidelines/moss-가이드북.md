@@ -2,7 +2,7 @@
 
 GUI에서 MOSS-Image용 LoRA를 학습하고 테스트하는 가이드입니다. `make gui` 로 열고 상단 바의 **모델** 드롭다운을 **MOSS-Image** 로 바꾸면 됩니다 (`make gui-moss` 는 같은 패널을 별도 창으로 엽니다). 패널은 영어로 표시되며, GUI 언어가 중국어일 때만 중국어로 표시됩니다.
 
-MOSS 라인은 **알파** 단계입니다. 지금까지 스타일 세트는 하나(작가 한 명의 이미지 30장)뿐이고 그 위에서 A/B를 많이 돌렸으며, 플래그와 기본값은 바뀔 수 있습니다. 아래 수치는 그 A/B와 16 GB RTX 5070 Ti에서 돌린 벤치마크에서 나온 것입니다.
+아래 수치는 스타일 세트 하나(작가 한 명의 이미지 30장)로 돌린 A/B와 16 GB RTX 5070 Ti에서 돌린 벤치마크에서 나온 것입니다.
 
 ---
 
@@ -148,7 +148,7 @@ make download-model ARGS=moss-sft
 
 기본값: `grad_checkpointing` 끔, `compile` 켬, 그리고 **Advanced** 의 `int8 stream` + GPTQ 파일 (DiT 블록 가중치를 int8로 실행하며, 파일은 처음 사용할 때 내려받음), `stream fp32` (블록의 나머지는 fp32로 실행), `blocks_to_swap 0` (모든 블록을 카드에 둠), `activation_memory_budget 0.3` (forward 결과 중 backward용으로 보관하는 비율, 나머지는 재계산), `ema_card` 켬, `expandable_segments` 켬 (시퀀스 길이가 달라질 때 CUDA 메모리 풀이 조각나지 않게 함).
 
-이 구성은 1024² 샘플에서 step당 1.05초, peak 12.88 GB이며 시스템 메모리 4.4 GiB도 고정(pin)합니다. budget을 0.1 올릴 때마다 peak가 약 1 GB 늘고 step은 0.01–0.02초 빨라집니다. 16 GB 미만 카드에서는 0.1 (step당 1.07초, 10.78 GB)을 쓰세요. 0.4는 16 GB에서도 메모리가 부족할 수 있습니다. 0.05에서는 peak가 9.98 GB로 줄지만 attention을 재계산하게 되어 step이 1.16초로 느려집니다. 이 구성으로 끝까지 학습한 LoRA는 아직 하나뿐이고, bf16과의 비교는 아직 없습니다 ([자세히](../moss/optimization/int8.md)).
+이 구성은 1024² 샘플에서 step당 약 1.1초, peak 13 GB이며 시스템 메모리 4.4 GiB도 고정(pin)합니다. bf16 구성보다 빠르고 정확합니다. bf16 구성은 같은 peak에서 step당 1.6초이고, 예측 오차도 측정한 모든 σ에서 더 높습니다 (σ = 0.5에서 1.93% 대 1.62%, [정확도](../moss/optimization/int8.md#accuracy)). budget을 0.1 올릴 때마다 peak가 약 1 GB 늘고 step은 0.01–0.02초 빨라집니다. 16 GB 미만 카드에서는 0.1 (step당 1.07초, 10.78 GB)을 쓰세요. 0.4는 16 GB에서도 메모리가 부족할 수 있습니다. 0.05에서는 peak가 9.98 GB로 줄지만 attention을 재계산하게 되어 step이 1.16초로 느려집니다. 이 구성으로 끝까지 학습한 LoRA는 아직 하나뿐입니다 ([자세히](../moss/optimization/int8.md)).
 
 **bf16 구성.** int8 베이스는 LoHa를 거부하고 i2i 스텝도 실행해 본 적이 없으므로, i2i 작업 설정은 bf16에 남아 있습니다. `--config configs/moss/lora_bf16.toml`, 또는 **Advanced** 에서 `int8 off`, `stream bf16`, `ema_card` 끔, `blocks_to_swap 36` (CPU에 두고 필요할 때 올리는 DiT 블록 수), `activation_memory_budget 0.5`.
 

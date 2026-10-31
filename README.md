@@ -1,6 +1,6 @@
 # anima_lora
 
-> **New (alpha): [MOSS-Image LoRA](docs/moss/README.md).** Train LoRAs for OpenMOSS's 5B [MOSS-Image](https://huggingface.co/OpenMOSS-Team/MOSS-Image-Base) on a 16 GB card, with Spectrum sampling (2.6×) — `make gui-moss`. A separate line from Anima; flags and defaults may still change.
+> **New: [MOSS-Image LoRA](docs/moss/README.md).** Train LoRAs for OpenMOSS's 5B [MOSS-Image](https://huggingface.co/OpenMOSS-Team/MOSS-Image-Base) on a 16 GB card at 1.1 s/step, with Spectrum sampling (2.6×) — `make gui-moss`. A separate line from Anima.
 
 🛠️ Install: [English](docs/installation/README.md) · [한국어](docs/installation/설치.md) · [日本語](docs/installation/インストール.md) · [中文](docs/installation/安装.md)
 
@@ -33,7 +33,9 @@ Diagrams for every method: [`docs/anima/structure_images/`](docs/anima/structure
 
 ### Fast training
 
-**13.4 GB peak VRAM · 1.1 s/step** on an RTX 5060 Ti (rank 32, 1 MP). Per-block `torch.compile` with a dynamic sequence axis (one graph per token-count tier), fused QKV/KV, an activation memory budget instead of gradient checkpointing, and a compile-clean hot path. Details: [for_compile.md](docs/anima/optimizations/for_compile.md).
+**MOSS-Image, fast and accurate: 13 GB peak VRAM · 1.1 s/step** on an RTX 5070 Ti (rank 32, 1024²), against 1.6 s/step on bf16 at the same peak, with lower prediction error than bf16 at every σ tested (1.62% vs 1.93% at σ = 0.5). A LoRA freezes the base, so its linears run as GPTQ-calibrated int8 ConvRot GEMMs in both directions, over an fp32 residual stream. Details: [training_step.md](docs/moss/optimization/training_step.md), [accuracy](docs/moss/optimization/int8.md#accuracy).
+
+**Anima (bf16): 13.4 GB peak VRAM · 1.1 s/step** on an RTX 5060 Ti (rank 32, 1 MP). Per-block `torch.compile` with a dynamic sequence axis (one graph per token-count tier), fused QKV/KV, an activation memory budget instead of gradient checkpointing, and a compile-clean hot path. Details: [for_compile.md](docs/anima/optimizations/for_compile.md).
 
 ### On by default
 

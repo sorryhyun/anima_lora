@@ -78,8 +78,8 @@ int8 became the default re-encodes on the next `cache` run unless it passes
   `--stream fp32`), `--blocks_to_swap 0`, `--activation_memory_budget 0.3`, `--ema_card`,
   no checkpointing: 1.05 s/step at a 12.88 GB peak on 1024² samples, plus 4.4 GiB of pinned
   host memory. Below 16 GB run budget 0.1 (1.07 s/step, 10.78 GB). The file downloads on first use, or via `make download-model
-  ARGS=moss-dit-int8`. One LoRA has completed on this plan (848 steps), with no A/B
-  against bf16 yet: `docs/moss/optimization/int8.md`. What each part of the plan buys:
+  ARGS=moss-dit-int8`. One LoRA has completed on this plan (848 steps):
+  `docs/moss/optimization/int8.md`. What each part of the plan buys:
   `docs/moss/optimization/training_step.md`.
 - **bf16 plan** (`--config configs/moss/lora_bf16.toml`): needed for `--algo loha` and the
   i2i configs, since the int8 base refuses LoHa and has run no i2i step. `--blocks_to_swap 36`, `--activation_memory_budget 0.5`, `--swap_h2d_only`: 1.66

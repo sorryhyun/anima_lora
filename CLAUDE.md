@@ -97,7 +97,7 @@ Invariants that bite:
 - **Training defaults to an int8 DiT base** (`int8 = stream`, GPTQ file `moss_dit_int8`,
   fp32 stream, swap 0, budget 0.3, EMA on the card; `library/moss/dit_int8/`). It refuses
   LoHa, and the i2i configs stay on bf16: `configs/moss/lora_bf16.toml` is the bf16 plan.
-  Block swap runs on it and trades VRAM, not speed. One LoRA has completed on it (848 steps, ama mitsuki); no A/B against bf16 yet (`docs/moss/optimization/int8.md`).
+  Block swap runs on it and trades VRAM, not speed. One LoRA has completed on it (848 steps, ama mitsuki; `docs/moss/optimization/int8.md`).
 - Adapters live in `library/moss/lora.py`, held outside the blocks (the block swapper
   moves every `.weight` under a block); `networks/` is bound to Anima module names.
 - Decode with the DiT off the card — the fp32 VAE decode at ~2 MP does not fit beside it.

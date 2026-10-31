@@ -5,8 +5,7 @@ as ConvRot int8 GEMMs instead of bf16. Attention, norms, modulation, the residua
 and the LoRA's own GEMMs stay in float.
 
 **Status (2026-10-31): the default training plan. One LoRA has completed on the GPTQ base
-(ama mitsuki, 848 steps, 14.6 min, 1.08 s/step, 10.95 GB). It has no A/B against a
-bf16-trained LoRA, and no multi-seed render A/B exists.**
+(ama mitsuki, 848 steps, 14.6 min, 1.08 s/step, 10.95 GB).**
 Generation on the file works and is the better-supported half: 6.3 GiB against 10.7 GiB at
 1024². In training, `--int8 full` gains speed and saves no VRAM; `--int8 stream` also saves
 about 4 GB ([VRAM](#vram)).

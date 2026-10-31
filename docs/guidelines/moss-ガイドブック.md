@@ -2,7 +2,7 @@
 
 GUI で MOSS-Image 用の LoRA を学習・テストするためのガイドです。`make gui` で開き、上部バーの **モデル** ドロップダウンを **MOSS-Image** に切り替えます（`make gui-moss` は同じパネルを別ウィンドウで開きます）。パネルは英語で表示され、GUI の言語が中国語のときだけ中国語で表示されます。
 
-MOSS ラインは **アルファ** 段階です。スタイルのセットはこれまで 1 つ（1 人の絵師の画像 30 枚）だけですが、それで多くの A/B を行っており、フラグやデフォルト値は今後変わる可能性があります。以下の数値は、その A/B と 16 GB の RTX 5070 Ti でのベンチマークによるものです。
+以下の数値は、1 つのスタイルセット（1 人の絵師の画像 30 枚）で行った A/B と、16 GB の RTX 5070 Ti でのベンチマークによるものです。
 
 ---
 
@@ -148,7 +148,7 @@ make download-model ARGS=moss-sft
 
 デフォルト: `grad_checkpointing` オフ、`compile` オン、**Advanced** の `int8 stream` と GPTQ ファイル（DiT のブロック重みを int8 で実行。ファイルは初回使用時にダウンロード）、`stream fp32`（ブロックの残りは fp32 で実行）、`blocks_to_swap 0`（全ブロックをカードに置く）、`activation_memory_budget 0.3`（forward の結果のうち backward 用に保持する割合。残りは再計算）、`ema_card` オン、`expandable_segments` オン（シーケンス長が変わっても CUDA メモリプールが断片化しないようにする）。
 
-この構成は 1024² のサンプルで 1 step あたり 1.05 秒、ピーク 12.88 GB で、システムメモリも 4.4 GiB 固定（pin）します。budget を 0.1 上げるごとにピークが約 1 GB 増え、step は 0.01–0.02 秒速くなります。16 GB 未満のカードでは 0.1（1 step あたり 1.07 秒、10.78 GB）を使ってください。0.4 は 16 GB でもメモリ不足になることがあります。0.05 ではピークが 9.98 GB に下がりますが、attention を再計算するため step は 1.16 秒に遅くなります。この構成で最後まで学習した LoRA はまだ 1 つだけで、bf16 との比較もまだありません（[詳細](../moss/optimization/int8.md)）。
+この構成は 1024² のサンプルで 1 step あたり約 1.1 秒、ピーク 13 GB で、システムメモリも 4.4 GiB 固定（pin）します。bf16 構成より速く、正確です。bf16 構成は同じピークで 1 step あたり 1.6 秒で、予測誤差も測定したすべての σ で高くなります（σ = 0.5 で 1.93% 対 1.62%、[精度](../moss/optimization/int8.md#accuracy)）。budget を 0.1 上げるごとにピークが約 1 GB 増え、step は 0.01–0.02 秒速くなります。16 GB 未満のカードでは 0.1（1 step あたり 1.07 秒、10.78 GB）を使ってください。0.4 は 16 GB でもメモリ不足になることがあります。0.05 ではピークが 9.98 GB に下がりますが、attention を再計算するため step は 1.16 秒に遅くなります。この構成で最後まで学習した LoRA はまだ 1 つだけです（[詳細](../moss/optimization/int8.md)）。
 
 **bf16 構成。** int8 ベースは LoHa を拒否し、i2i のステップも実行したことがないため、i2i のタスク設定は bf16 のままです。`--config configs/moss/lora_bf16.toml`、または **Advanced** で `int8 off`、`stream bf16`、`ema_card` オフ、`blocks_to_swap 36`（CPU に置き、必要なときに転送する DiT ブロック数）、`activation_memory_budget 0.5`。
 

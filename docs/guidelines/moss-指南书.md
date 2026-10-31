@@ -2,7 +2,7 @@
 
 在 GUI 中为 MOSS-Image 训练和测试 LoRA 的指南。用 `make gui` 打开，把顶栏的 **模型** 下拉框切换到 **MOSS-Image** 即可（`make gui-moss` 会在独立窗口中打开同一个面板）。GUI 语言为中文时面板显示中文，其他语言时显示英文。下文的界面名称按中文面板书写，括号中是字段名；面板未翻译的字段直接显示字段名。
 
-MOSS 线目前处于 **alpha** 阶段：迄今只有一个风格数据集（同一画师的 30 张图），并在其上做了大量 A/B，参数和默认值仍可能变化。下文的数字来自这些 A/B 以及在 16 GB RTX 5070 Ti 上的基准测试。
+下文的数字来自在一个风格数据集（同一画师的 30 张图）上做的 A/B，以及在 16 GB RTX 5070 Ti 上的基准测试。
 
 ---
 
@@ -148,7 +148,7 @@ make download-model ARGS=moss-sft
 
 默认：梯度检查点（`grad_checkpointing`）关闭，`compile` 开启，**高级** 中 `int8 stream` 配合 GPTQ 文件（DiT 的块权重以 int8 运行，文件首次使用时下载）、`stream fp32`（块的其余部分以 fp32 运行）、`blocks_to_swap 0`（所有块都留在显卡上）、`activation_memory_budget 0.3`（前向结果中为反向保留的比例，其余重新计算）、`ema_card` 开启以及 `expandable_segments` 开启（序列长度变化时避免 CUDA 显存池碎片化）。
 
-该方案在 1024² 样本上为 1.05 s/step，峰值 12.88 GB，并且还会锁定 4.4 GiB 系统内存。budget 每提高 0.1，峰值约增加 1 GB，每步快 0.01–0.02 s。显存低于 16 GB 的显卡请用 0.1（1.07 s/step，10.78 GB）；0.4 在 16 GB 上也可能显存不足。0.05 时峰值降到 9.98 GB，但需要重新计算 attention，速度降为 1.16 s/step。目前只用它完整训练过一个 LoRA，尚未与 bf16 对比（[详情](../moss/optimization/int8.md)）。
+该方案在 1024² 样本上约为 1.1 s/step，峰值 13 GB，并且还会锁定 4.4 GiB 系统内存。它比 bf16 方案更快也更准确：bf16 方案在相同峰值下为 1.6 s/step，预测误差在测试的所有 σ 上也更高（σ = 0.5 时 1.93% 对 1.62%，[精度](../moss/optimization/int8.md#accuracy)）。budget 每提高 0.1，峰值约增加 1 GB，每步快 0.01–0.02 s。显存低于 16 GB 的显卡请用 0.1（1.07 s/step，10.78 GB）；0.4 在 16 GB 上也可能显存不足。0.05 时峰值降到 9.98 GB，但需要重新计算 attention，速度降为 1.16 s/step。目前只用它完整训练过一个 LoRA（[详情](../moss/optimization/int8.md)）。
 
 **bf16 方案。** int8 基座拒绝 LoHa，也没有跑过 i2i 步骤，所以 i2i 任务配置仍用 bf16。使用 `--config configs/moss/lora_bf16.toml`，或在 **高级** 中设置 `int8 off`、`stream bf16`、`ema_card` 关闭、`blocks_to_swap 36`（放在 CPU 上、用时再传入的 DiT 块数）、`activation_memory_budget 0.5`。
 
