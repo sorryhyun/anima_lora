@@ -71,6 +71,22 @@ one run of 15–40 steps. Step losses match the runs before the change within 5e
 After both, kernels take 1054 of the 1059 ms step: the step is GPU-bound, about 6.9k
 kernels. Attention is 387 ms and the int8 GEMMs 316 ms.
 
+## Default moved to budget 0.3 (same day)
+
+`ama_mitsuki_layout`, same plan, seed 0, median of steps 11–40, one run per arm. The 0.1 arm is
+the first 40 steps of the 848-step run; the others ran `--max_steps 40`.
+
+| budget | job | s/step | mean | peak |
+|---|---|---|---|---|
+| 0.1 | `20261031-132857-1a36c3` | 1.090 | 1.051 | 10.95 GB |
+| 0.2 | `20261031-135426-211764` | 1.069 | 1.045 | 11.92 GB |
+| 0.3 | `20261031-135612-034f0e` | 1.052 | 1.019 | 12.98 GB |
+| 0.4 | `20261031-135746-540997` | OOM at step 3 | – | 14.39 GB allocated |
+
+Step losses at steps 1, 2, 20 and 40 stay within 4e-4 of the 0.1 arm. The 0.4 OOM is a forward
+allocation of 70 MiB with 86.5 MiB free, at a block's `model.py:215`. Its allocation already
+sits above the 14 GB the 1 GB per 0.1 trend predicts; why was not traced.
+
 ## Not measured
 
 - A complete LoRA with `BatchedMuon` against torch's `Muon`. The updates match per step

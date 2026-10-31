@@ -19,11 +19,13 @@ Qwen-Image-2.1 has no docs folder; its reference is `library/qwen21/CLAUDE.md`.
 |-----|-------------|
 | [moss/README.md](moss/README.md) | MOSS-Image LoRA — setup, GUI, CLI, defaults and what to expect |
 | [moss/structure.md](moss/structure.md) | The MOSS-Image model end to end — Qwen3.5 text pass, FLUX.2 latent boundary, single-stream DiT, training step and sampler |
-| [moss/i2i.md](moss/i2i.md) | i2i — tasks, reference flags, status (design + probes: [../project/finished/moss_lora/done/i2i.md](../project/finished/moss_lora/done/i2i.md)) |
+| [moss/methods/i2i.md](moss/methods/i2i.md) | i2i — tasks, reference flags, status (design + probes: [../project/finished/moss_lora/done/i2i.md](../project/finished/moss_lora/done/i2i.md)) |
 | [moss/channel_scaling.md](moss/channel_scaling.md) | Channel scaling + `dc_isolate` on MOSS (removed), and how the lr / alpha defaults got here |
-| [moss/dave.md](moss/dave.md) | DAVE on MOSS — same-prompt seed variety (`--dave auto`), ComfyUI node |
-| [moss/tone_loss.md](moss/tone_loss.md) | i2i tone term — keeps the input's brightness and colour outside the edit (`--tone_weight`), sanitize v3 |
-| [moss/optimization/int8.md](moss/optimization/int8.md) | int8 base — GPTQ file, speed, VRAM, accuracy, and what has not been measured (no LoRA trained on it yet) |
+| [moss/inference/dave.md](moss/inference/dave.md) | DAVE on MOSS — same-prompt seed variety (`--dave auto`), ComfyUI node |
+| [moss/methods/tone_loss.md](moss/methods/tone_loss.md) | i2i tone term — keeps the input's brightness and colour outside the edit (`--tone_weight`), sanitize v3 |
+| [moss/optimization/int8.md](moss/optimization/int8.md) | int8 base — GPTQ file, speed, VRAM, accuracy |
+| [moss/optimization/training_step.md](moss/optimization/training_step.md) | What makes the training step fast — int8 ConvRot both ways, `wq_t` streaming, FA2 in the budget's knapsack, batched Muon, EMA on the card |
+| [moss/methods/fp32_stream.md](moss/methods/fp32_stream.md) | fp32 residual stream — fp32 around the block GEMMs: why, cost, what it changes |
 | [moss/findings/README.md](moss/findings/README.md) | Findings — the chat template as attention sink, the vision tower as zero-shot reference |
 | [moss/proposal/](moss/proposal/) | Active MOSS design docs |
 

@@ -146,9 +146,9 @@ make download-model ARGS=moss-sft
 
 ### 4.2 显存方案（16 GB）
 
-默认：梯度检查点（`grad_checkpointing`）关闭，`compile` 开启，**高级** 中 `int8 stream` 配合 GPTQ 文件（DiT 的块权重以 int8 运行，文件首次使用时下载）、`stream fp32`（块的其余部分以 fp32 运行）、`blocks_to_swap 0`（所有块都留在显卡上）、`activation_memory_budget 0.1`（前向结果中为反向保留的比例，其余重新计算）、`ema_card` 开启以及 `expandable_segments` 开启（序列长度变化时避免 CUDA 显存池碎片化）。
+默认：梯度检查点（`grad_checkpointing`）关闭，`compile` 开启，**高级** 中 `int8 stream` 配合 GPTQ 文件（DiT 的块权重以 int8 运行，文件首次使用时下载）、`stream fp32`（块的其余部分以 fp32 运行）、`blocks_to_swap 0`（所有块都留在显卡上）、`activation_memory_budget 0.3`（前向结果中为反向保留的比例，其余重新计算）、`ema_card` 开启以及 `expandable_segments` 开启（序列长度变化时避免 CUDA 显存池碎片化）。
 
-该方案在 1024² 样本上为 1.07 s/step，峰值 10.78 GB，并且还会锁定 4.4 GiB 系统内存。在此方案上 0.1–0.3 速度相同，每提高 0.1 峰值约增加 1 GB。0.05 时峰值降到 9.98 GB，但需要重新计算 attention，速度降为 1.16 s/step。目前只用它完整训练过一个 LoRA，尚未与 bf16 对比（[详情](../moss/optimization/int8.md)）。
+该方案在 1024² 样本上为 1.05 s/step，峰值 12.88 GB，并且还会锁定 4.4 GiB 系统内存。budget 每提高 0.1，峰值约增加 1 GB，每步快 0.01–0.02 s。显存低于 16 GB 的显卡请用 0.1（1.07 s/step，10.78 GB）；0.4 在 16 GB 上也可能显存不足。0.05 时峰值降到 9.98 GB，但需要重新计算 attention，速度降为 1.16 s/step。目前只用它完整训练过一个 LoRA，尚未与 bf16 对比（[详情](../moss/optimization/int8.md)）。
 
 **bf16 方案。** int8 基座拒绝 LoHa，也没有跑过 i2i 步骤，所以 i2i 任务配置仍用 bf16。使用 `--config configs/moss/lora_bf16.toml`，或在 **高级** 中设置 `int8 off`、`stream bf16`、`ema_card` 关闭、`blocks_to_swap 36`（放在 CPU 上、用时再传入的 DiT 块数）、`activation_memory_budget 0.5`。
 
@@ -183,7 +183,7 @@ bf16 方案（swap 36，budget 0.5，`swap_h2d_only`，`expandable_segments`，�
 | 采样器（`sampler`） | `er_sde` | `er_sde` 或 `euler` |
 | 宽度 / 高度（`width` / `height`） | `1024` | 16 的倍数 |
 | 反向提示词（`negative_prompt`） | 空 | 管线默认值 |
-| `dave` | 空 | `auto` = DAVE：同一提示词在不同种子下变化更多（构图、姿势、布局），代价是手部略松；见 `docs/moss/dave.md` |
+| `dave` | 空 | `auto` = DAVE：同一提示词在不同种子下变化更多（构图、姿势、布局），代价是手部略松；见 `docs/moss/inference/dave.md` |
 | `dave_strength` | `0.3` | DAVE 去除的程度；`dave_tau`（高级，`0.10`）= 其生效的前期步数占比 |
 
 - **er_sde 与 euler**：`euler` 是参考管线的采样器。`er_sde` 耗时相同，线条更锐利、细节更密；加载 LoRA 时手部也更干净。但它会偏离部分提示词细节（夕阳光、发色、"sitting on a bench"），也会损失一点数据集的画风。两者在同一种子下生成不同的图，所以 LoRA 与基础模型的比较要在同一采样器内进行。
@@ -206,7 +206,7 @@ bf16 方案（swap 36，budget 0.5，`swap_h2d_only`，`expandable_segments`，�
 
 | 现象 | 处理 |
 |---|---|
-| 训练时显存不足 | 高级：`blocks_to_swap 20`（int8 方案上峰值降低 2.1 GB，速度不变）、`activation_memory_budget 0.05`（峰值降低 1 GB，慢 8%），或开启梯度检查点（int8 方案上峰值 9.61 GB，慢 16%）。再不行用 `blocks_to_swap 24` 的 bf16 方案（§4.2），或运行 `tune_swap.py`；在该方案上 LoKr/LoHa 需要 24 / 0.1 |
+| 训练时显存不足 | 高级：`blocks_to_swap 20`（int8 方案上峰值降低 2.1 GB，速度不变）、`activation_memory_budget 0.1`（峰值降低 2 GB，慢 2–4%）、`activation_memory_budget 0.05`（峰值降低 2.9 GB，慢 10%），或开启梯度检查点（int8 方案上峰值 9.61 GB，慢 18%）。再不行用 `blocks_to_swap 24` 的 bf16 方案（§4.2），或运行 `tune_swap.py`；在该方案上 LoKr/LoHa 需要 24 / 0.1 |
 | `int8 base: loha builds W + ΔW` | int8 基座不支持 LoHa：请使用 bf16 方案（§4.2） |
 | 风格太弱 | 增加轮数（实测训练用 20）。确认提示词中的画师标签与标注写法一致，`prompt_format` 与 `caption_format` 一致 |
 | 风格太强、出现数据集的签名或水印、所有图构图相同 | 测试更早的 `_e<N>` 检查点，或降低 LoRA 强度（`lora_multiplier`）。开始复制签名的正是提高了有效学习率的那一组；可尝试 `lr 2e-5` |

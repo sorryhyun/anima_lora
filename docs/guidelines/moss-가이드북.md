@@ -146,9 +146,9 @@ make download-model ARGS=moss-sft
 
 ### 4.2 메모리 구성 (16 GB)
 
-기본값: `grad_checkpointing` 끔, `compile` 켬, 그리고 **Advanced** 의 `int8 stream` + GPTQ 파일 (DiT 블록 가중치를 int8로 실행하며, 파일은 처음 사용할 때 내려받음), `stream fp32` (블록의 나머지는 fp32로 실행), `blocks_to_swap 0` (모든 블록을 카드에 둠), `activation_memory_budget 0.1` (forward 결과 중 backward용으로 보관하는 비율, 나머지는 재계산), `ema_card` 켬, `expandable_segments` 켬 (시퀀스 길이가 달라질 때 CUDA 메모리 풀이 조각나지 않게 함).
+기본값: `grad_checkpointing` 끔, `compile` 켬, 그리고 **Advanced** 의 `int8 stream` + GPTQ 파일 (DiT 블록 가중치를 int8로 실행하며, 파일은 처음 사용할 때 내려받음), `stream fp32` (블록의 나머지는 fp32로 실행), `blocks_to_swap 0` (모든 블록을 카드에 둠), `activation_memory_budget 0.3` (forward 결과 중 backward용으로 보관하는 비율, 나머지는 재계산), `ema_card` 켬, `expandable_segments` 켬 (시퀀스 길이가 달라질 때 CUDA 메모리 풀이 조각나지 않게 함).
 
-이 구성은 1024² 샘플에서 step당 1.07초, peak 10.78 GB이며 시스템 메모리 4.4 GiB도 고정(pin)합니다. 이 구성에서 0.1–0.3은 같은 속도이고 0.1 올릴 때마다 peak가 약 1 GB 늘어납니다. 0.05에서는 peak가 9.98 GB로 줄지만 attention을 재계산하게 되어 step이 1.16초로 느려집니다. 이 구성으로 끝까지 학습한 LoRA는 아직 하나뿐이고, bf16과의 비교는 아직 없습니다 ([자세히](../moss/optimization/int8.md)).
+이 구성은 1024² 샘플에서 step당 1.05초, peak 12.88 GB이며 시스템 메모리 4.4 GiB도 고정(pin)합니다. budget을 0.1 올릴 때마다 peak가 약 1 GB 늘고 step은 0.01–0.02초 빨라집니다. 16 GB 미만 카드에서는 0.1 (step당 1.07초, 10.78 GB)을 쓰세요. 0.4는 16 GB에서도 메모리가 부족할 수 있습니다. 0.05에서는 peak가 9.98 GB로 줄지만 attention을 재계산하게 되어 step이 1.16초로 느려집니다. 이 구성으로 끝까지 학습한 LoRA는 아직 하나뿐이고, bf16과의 비교는 아직 없습니다 ([자세히](../moss/optimization/int8.md)).
 
 **bf16 구성.** int8 베이스는 LoHa를 거부하고 i2i 스텝도 실행해 본 적이 없으므로, i2i 작업 설정은 bf16에 남아 있습니다. `--config configs/moss/lora_bf16.toml`, 또는 **Advanced** 에서 `int8 off`, `stream bf16`, `ema_card` 끔, `blocks_to_swap 36` (CPU에 두고 필요할 때 올리는 DiT 블록 수), `activation_memory_budget 0.5`.
 
@@ -183,7 +183,7 @@ bf16 구성(swap 36, budget 0.5, `swap_h2d_only`, `expandable_segments`, 랭크 
 | `sampler` | `er_sde` | `er_sde` 또는 `euler` |
 | `width` / `height` | `1024` | 16의 배수 |
 | `negative_prompt` | 비어 있음 | 파이프라인 기본값 |
-| `dave` | 비어 있음 | `auto` = DAVE: 한 프롬프트에서 시드마다 더 다양한 결과(구도, 포즈, 레이아웃), 대신 손이 약간 느슨해짐; `docs/moss/dave.md` |
+| `dave` | 비어 있음 | `auto` = DAVE: 한 프롬프트에서 시드마다 더 다양한 결과(구도, 포즈, 레이아웃), 대신 손이 약간 느슨해짐; `docs/moss/inference/dave.md` |
 | `dave_strength` | `0.3` | DAVE가 제거하는 정도; `dave_tau` (Advanced, `0.10`) = DAVE가 적용되는 초반 스텝의 비율 |
 
 - **er_sde와 euler**: `euler` 는 레퍼런스 파이프라인의 샘플러입니다. `er_sde` 는 비용이 같고 선이 더 선명하며 디테일이 더 촘촘합니다. LoRA를 걸었을 때 손도 더 깔끔하게 나왔습니다. 대신 프롬프트의 일부 디테일(노을빛, 머리색, "sitting on a bench")에서 벗어나고, 세트의 그림체도 조금 잃었습니다. 같은 시드에서도 두 샘플러는 다른 이미지를 내므로, LoRA와 베이스 비교는 한 샘플러 안에서 하세요.
@@ -206,7 +206,7 @@ bf16 구성(swap 36, budget 0.5, `swap_h2d_only`, `expandable_segments`, 랭크 
 
 | 증상 | 조치 |
 |---|---|
-| 학습 중 메모리 부족 | Advanced: `blocks_to_swap 20` (int8 구성에서 peak 2.1 GB 감소, 속도 동일), `activation_memory_budget 0.05` (1 GB 감소, 8% 느림), 또는 `grad_checkpointing` 켬 (int8 구성에서 peak 9.61 GB, 16% 느림). 그다음 `blocks_to_swap 24` 의 bf16 구성(§4.2), 또는 `tune_swap.py` 실행. 이 구성에서 LoKr/LoHa는 24 / 0.1 필요 |
+| 학습 중 메모리 부족 | Advanced: `blocks_to_swap 20` (int8 구성에서 peak 2.1 GB 감소, 속도 동일), `activation_memory_budget 0.1` (2 GB 감소, 2–4% 느림), `activation_memory_budget 0.05` (2.9 GB 감소, 10% 느림), 또는 `grad_checkpointing` 켬 (int8 구성에서 peak 9.61 GB, 18% 느림). 그다음 `blocks_to_swap 24` 의 bf16 구성(§4.2), 또는 `tune_swap.py` 실행. 이 구성에서 LoKr/LoHa는 24 / 0.1 필요 |
 | `int8 base: loha builds W + ΔW` | int8 베이스는 LoHa를 지원하지 않습니다. bf16 구성(§4.2)을 쓰세요 |
 | 스타일이 너무 약함 | 에폭을 늘립니다 (측정한 학습은 20). 프롬프트에 캡션과 같은 철자의 작가 태그가 있는지, `prompt_format` 이 `caption_format` 과 같은지 확인 |
 | 스타일이 너무 강함, 세트의 서명·워터마크가 나옴, 모든 이미지 구도가 같음 | 앞 에폭의 `_e<N>` 체크포인트를 테스트하거나 `lora_multiplier` 를 낮춥니다. 서명을 베끼기 시작한 것은 실효 lr을 올렸을 때였음; `lr 2e-5`를 시도해 보세요 |

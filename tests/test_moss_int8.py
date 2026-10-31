@@ -39,10 +39,10 @@ def linear(seed=0):
     return lin
 
 
-def test_default_plan_is_stream_at_budget_01_swap_0():
+def test_default_plan_is_stream_at_budget_03_swap_0():
     req = TrainRequest()
     assert (req.int8, req.ema_card, req.stream) == ("stream", True, "fp32")
-    assert (req.blocks_to_swap, req.activation_memory_budget) == (0, 0.1)
+    assert (req.blocks_to_swap, req.activation_memory_budget) == (0, 0.3)
     check_plan(req)
 
 

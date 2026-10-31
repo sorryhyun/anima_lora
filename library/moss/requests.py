@@ -618,7 +618,7 @@ class TrainRequest(Request):
         "i2i: weight of the tone term on the unedited tokens (outside the edit "
         "region grown by tone_dilate): the x̂₀ error's masked mean per tone_pool "
         "cell, projected on tone_dirs, squared. Needs a full-size reference. "
-        "0 = off. docs/moss/tone_loss.md",
+        "0 = off. docs/moss/methods/tone_loss.md",
         advanced=True,
     )
     tone_log: bool = _f(
@@ -755,17 +755,17 @@ class TrainRequest(Request):
     grad_checkpointing: bool = _f(
         False,
         "per-block activation checkpointing. Off by default: the activation budget "
-        "below is faster (1.24 vs 1.07 s/step on the int8 plan) for ~1.2 GB of peak. "
+        "below is faster (1.24 vs 1.05 s/step on the int8 plan) for ~3.3 GB of peak. "
         "Turn it on with --no-compile, or for that peak",
     )
     activation_memory_budget: float = _f(
-        0.1,
+        0.3,
         "cap on the compiled blocks' saved-for-backward set (Inductor's min-cut "
         "partitioner recomputes the rest); applies with --compile and "
-        "--no-grad_checkpointing, ignored otherwise. On the int8 plan speed is flat "
-        "from 0.1 to 0.3 (1.05-1.07 s/step) and the peak climbs ~1 GB per 0.1 (0.1: "
-        "10.78 GB); at 0.05 FA2's output no longer fits and attention is recomputed "
-        "(1.16 s/step, 9.98 GB). The bf16 plan runs 0.5 at swap 36. i2i samples carry reference "
+        "--no-grad_checkpointing, ignored otherwise. On the int8 plan 0.3 runs 1.05 "
+        "s/step at 12.9 GB and 0.1 runs 1.07 at 10.8 GB; 0.4 can OOM on 16 GB. Below "
+        "16 GB take 0.1. At 0.05 FA2's output no longer fits and attention is "
+        "recomputed (1.16 s/step, 9.98 GB). The bf16 plan runs 0.5 at swap 36. i2i samples carry reference "
         "tokens: the i2i configs run 0.175 at swap 38 with --swap_h2d_only (~9%% "
         "faster than 0.15 at swap 28, where 0.2 OOMs)",
         advanced=True,

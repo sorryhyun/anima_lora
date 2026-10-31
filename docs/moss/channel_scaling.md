@@ -22,7 +22,7 @@ calibration files stay for `down_init weight_svd_nodc` and `svd_drop_loud`.
 
 MOSS's residual stream carries a handful of massive-activation channels (1356, 42, …) that
 hold almost all of the image tokens' DC offset, the same on every prompt and seed
-(`docs/moss/dave.md`). RMSNorm and the adaLN modulation damp them but do not remove them: at
+(`docs/moss/inference/dave.md`). RMSNorm and the adaLN modulation damp them but do not remove them: at
 the FFN input, channel 42 is the loudest of 3072 channels on blocks 11–41, 11 to 26× the
 median, with a peak-to-mean of only 2.7, so it is loud on every token. It behaves like a
 constant input: a bias line.

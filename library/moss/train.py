@@ -40,8 +40,8 @@ targets.
 
 Default memory plan: the DiT's block linears on int8 (``int8`` stream, GPTQ forward
 copies, ``library/moss/dit_int8/``), every block resident, the compiled blocks' saved
-set capped by ``activation_memory_budget`` and the EMA shadow on the card. The int8
-base refuses block swap; ``configs/moss/lora_bf16.toml`` is the bf16 plan.
+set capped by ``activation_memory_budget`` and the EMA shadow on the card.
+``configs/moss/lora_bf16.toml`` is the bf16 plan.
 ``--grad_checkpointing`` wraps each block's ``forward`` (``checkpoint_blocks``;
 not ``__call__``), so the block swapper's forward hooks fire once per step and
 never again during the recompute.

@@ -2,7 +2,7 @@
 
 Shipped 2026-10-18 for Base at s 0.3 · τ 0.10, pool blocks 19–30: `dave=auto` +
 `~/ComfyUI-Anima-DAVE` 0.2.0. Port of Anima's DAVE (`docs/anima/inference/dave.md`) to
-`library/moss/dave.py`; user doc `docs/moss/dave.md`. Diversity tool only: same-prompt
+`library/moss/dave.py`; user doc `docs/moss/inference/dave.md`. Diversity tool only: same-prompt
 seed variety, at the cost of text / hand coherence when the window is too wide.
 
 ## Differences from Anima

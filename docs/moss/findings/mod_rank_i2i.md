@@ -148,7 +148,7 @@ gain over Base lost, `E` / `K`:
 (Superseded by § mod16 without the tone term: the term shrinks the FFN shift rather than
 adding to it.) The FFN shift adds one per-channel offset to every token at a given t: a
 page-wide colour handle. The tone term, on from step 139, can pull b through it and overshoot warm, as
-`tone_b_weight 3` did (Δb +1.3, `docs/moss/tone_loss.md`); without the term sanitize drifts
+`tone_b_weight 3` did (Δb +1.3, `docs/moss/methods/tone_loss.md`); without the term sanitize drifts
 cool (Δb −1.10). mod16 trained with `tone_weight 0` separates this from the adapter holding
 tone by itself.
 

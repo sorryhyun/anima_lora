@@ -19,7 +19,9 @@ Base only; SFT has no file and trains on round-to-nearest weights.
 ## Running it
 
 Train: the defaults are `--int8 stream --ema_card --stream fp32 --blocks_to_swap 0
---activation_memory_budget 0.1`.
+--activation_memory_budget 0.3`. How the step gets there:
+[training_step.md](training_step.md). The fp32 stream:
+[methods/fp32_stream.md](../methods/fp32_stream.md).
 
     make daemon-run ARGS="--stall-timeout 900 scripts/moss/train.py --cache post_image_dataset/moss/<set>"
 
@@ -55,13 +57,22 @@ The plan today, `hews_layout`, `stream`, `--ema_card`, one run per row:
 
 | plan | s/step | peak |
 |---|---|---|
-| swap 0, budget 0.1 (default) | 1.07 | 10.78 GB |
+| swap 0, budget 0.3 (default) | 1.05 | 12.88 GB |
 | swap 0, budget 0.2 | 1.06 | 11.83 GB |
-| swap 0, budget 0.3 | 1.05 | 12.88 GB |
+| swap 0, budget 0.1 | 1.07 | 10.78 GB |
 | swap 0, budget 0.05 | 1.16 | 9.98 GB |
 | swap 20, budget 0.1 | 1.08 | 8.67 GB |
 | swap 0, checkpointing | 1.24 | 9.61 GB |
 | bf16 plan (`lora_bf16.toml`) | 1.59 | 12.92 GB |
+
+`ama_mitsuki_layout`, same plan, median of steps 11–40, one run per arm:
+
+| budget | s/step | peak |
+|---|---|---|
+| 0.1 | 1.09 | 10.95 GB |
+| 0.2 | 1.07 | 11.92 GB |
+| 0.3 | 1.05 | 12.98 GB |
+| 0.4 | OOM at step 3 | 14.39 GB allocated |
 
 The step is GPU-bound: kernels take 1054 of its 1059 ms. Attention is 387 ms, the int8 GEMMs
 316 ms ([`moss_step_split_int8.md`](../../../project/int8_train/reports/moss_step_split_int8.md)).
@@ -138,11 +149,14 @@ slots on the card: the block the backward is in and the one below it, loading on
 thread. dX is bit-identical to `full` in the unit test, and the step costs at most 0.03 s
 more. At equal plans the peak drops 4.2 GB (13.58 → 9.36 GB with checkpointing).
 
-**Past budget 0.1 the activation budget buys little.** It needs 0.1 to hold FA2's output;
-above that the peak climbs about 1 GB per 0.1 for 0.01 s/step. `--ema_card` is the better
-use of the room: keeping the EMA shadow on
-the card saves 0.065 s/step (4.8%) for 0.27 GB. The bf16 plan turns it off, since it leaves
-only 0.85 GB free on 16 GB. Budget 0.5 does not fit on a 16 GB card at swap 0 even with `stream`.
+**The budget needs 0.1 to hold FA2's output; past that each 0.1 costs about 1 GB for
+0.01–0.02 s/step.** The default is 0.3, the fastest budget that ran on 16 GB on both sets
+tried, 2–4% faster than 0.1. Below 16 GB run 0.1. Budget 0.4 is not safe on 16 GB: it ran
+on `hews_layout` before FA2 joined the saved set and OOMs on `ama_mitsuki_layout` now. 0.5 does
+not fit at swap 0 even with `stream`.
+
+`--ema_card` gives more for the room: keeping the EMA shadow on the card saves 0.065 s/step
+(4.8%) for 0.27 GB. The bf16 plan turns it off, since it leaves only 0.85 GB free on 16 GB.
 
 Swap is a VRAM lever here: swap 20 takes 2.1 GB off the peak for 0.01–0.02 s/step.
 
@@ -207,30 +221,10 @@ The gradient norm also moves between runs of one seed, in bf16 as well as int8: 
 against 0.378 at step 2 for bf16 on an fp32 stream, eager, with the loss within 1e-5. So
 the outliers are not an int8 effect and are not reproducible run to run.
 
-The mechanism is unresolved. In training it would arrive as one outlier gradient.
-
-## Not measured
-
-- **A GPTQ-trained LoRA against a bf16-trained one.** The one complete run renders cleanly
-  and moves the palette on one prompt and seed. Whether it matches a bf16-trained LoRA, in
-  loss or samples, is unknown.
-- **Any complete LoRA on the RTN base.** Its only MOSS run stopped at 70 of 240 steps.
-  The Anima A/B (848 steps, 1.37x, loss and samples matching) has no MOSS counterpart.
-- **Multi-seed render A/B** of the int8 base against bf16.
-- **The effect of the outliers on training**: loss, convergence or samples, and how often
-  they occur during a run.
-- **i2i training on the int8 base.** It has run no recorded step, so whether a full-size
-  reference fits under `stream`, and at what swap, is the open question.
-- **Block swap beyond swap 20**, `full` mode with swap in a trainer run, and `--blocks_to_swap
-  -1` sizing, whose reserve is fit to bf16.
-- **i2i error beyond `sanitize` crops**: no `swap_text`, no full-size pairs.
-- **Step time as a proper bench.** The GPTQ figures come from 30 steps on one set, one run
-  per arm.
-- **Budgets above 0.5**, which need more VRAM than a 16 GB card has at swap 0.
-- **SFT.**
-
 ## Records
 
+- [`training_step.md`](training_step.md): each trick in the default step and how it carries over.
+- [`methods/fp32_stream.md`](../methods/fp32_stream.md): the fp32 residual stream.
 - [`moss_step_split_int8.md`](../../../project/int8_train/reports/moss_step_split_int8.md):
   phase and kernel split of the step, `BatchedMuon`, FA2 in the budget's knapsack.
 - [`moss_gptq.md`](../../../project/int8_train/reports/moss_gptq.md): GPTQ base, held-out

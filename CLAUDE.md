@@ -75,7 +75,7 @@ Running it:
 - **i2i**: `make i2i-stage TASK=<task>` → `make i2i-preprocess TASK=<task> MODEL=moss`
   → train / generate with `configs/moss/i2i/<task>/{cache,train,generate}.toml`. Tasks,
   ref flags (`ref_timestep` / `ref_isolate` are stamped in the LoRA) and status:
-  `docs/moss/i2i.md`.
+  `docs/moss/methods/i2i.md`.
 - Caches land in `post_image_dataset/moss[/<set>]` (flat, two files per image), LoRAs in
   `output/ckpt_moss/` (i2i: `output/ckpt_moss_i2i/`).
 
@@ -95,7 +95,7 @@ Invariants that bite:
   `anime_tools.captions.layout_json`) and re-encode when either changes — **cache, train
   and generate with the same `text_encoder` and caption/prompt format.**
 - **Training defaults to an int8 DiT base** (`int8 = stream`, GPTQ file `moss_dit_int8`,
-  fp32 stream, swap 0, budget 0.1, EMA on the card; `library/moss/dit_int8/`). It refuses
+  fp32 stream, swap 0, budget 0.3, EMA on the card; `library/moss/dit_int8/`). It refuses
   LoHa, and the i2i configs stay on bf16: `configs/moss/lora_bf16.toml` is the bf16 plan.
   Block swap runs on it and trades VRAM, not speed. One LoRA has completed on it (848 steps, ama mitsuki); no A/B against bf16 yet (`docs/moss/optimization/int8.md`).
 - Adapters live in `library/moss/lora.py`, held outside the blocks (the block swapper

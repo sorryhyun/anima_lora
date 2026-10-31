@@ -2,7 +2,7 @@
 
 Status: **shipped 2026-10-28** as sanitize v3 (`tone_weight 0.003`, `tone_start 0.5`, b ×1
 on the w0005 lr 5e-5 e8 recipe; Hub `sorryhyun/MOSS-I2I-LORAs`, `sanitize/moss_i2i_sanitize_v3`).
-Mean over five pages × three seeds: ΔL −0.03, Δb −0.23. User doc: `docs/moss/tone_loss.md`.
+Mean over five pages × three seeds: ΔL −0.03, Δb −0.23. User doc: `docs/moss/methods/tone_loss.md`.
 Open: the ~20-page held-out check, Δa +0.4 (unchanged in every run), swap_text.
 
 The sanitize LoRA `moss_i2i_sanitize_wm` (e6) brightens, cools and slightly desaturates

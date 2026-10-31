@@ -7,7 +7,7 @@ Status: idea, 2026-10-29. Nothing below is built. Measurements it rests on:
 The goal is one LoRA that takes a page and an instruction ("remove the watermark", "colour
 this", "letter this balloon in English") and edits only what the instruction names. Today
 each i2i task is its own LoRA with a fixed caption or a fixed caption format
-([i2i.md](../i2i.md)); the edit target is learned from the pairs, not read from the prompt.
+([i2i.md](../methods/i2i.md)); the edit target is learned from the pairs, not read from the prompt.
 
 ## Four tasks, two axes
 

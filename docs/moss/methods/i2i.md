@@ -24,7 +24,7 @@ is `library.moss.requests.I2I_CACHE`.
 | Task | Reference | Text encoder input | Status |
 |---|---|---|---|
 | `colorize` | B&W page, full size, isolated | the colour caption's layout JSON plus one text item per OCR line (no vision tower) | v4 recipe in the configs (`moss_colorize_3k_textref1_iso_muon_ema`, on the Hub as `colorize/moss_colorize_3k_v4`). v2 (`moss_colorize_3k_ocr`: half size, joint, vision tower) needs `ref_scale = 2`, `vision = true`: `project/finished/moss_lora/README.md` |
-| `sanitize` | texted image, full size, isolated | one fixed caption for every pair: `no sfx, no dialogue, no watermark` | v3 on the Hub (`sanitize/moss_i2i_sanitize_v3`): the tone term, `docs/moss/tone_loss.md` |
+| `sanitize` | texted image, full size, isolated | one fixed caption for every pair: `no sfx, no dialogue, no watermark` | v3 on the Hub (`sanitize/moss_i2i_sanitize_v3`): the tone term, `docs/moss/methods/tone_loss.md` |
 | `swap_text` | JA manga page, full size, isolated | layout JSON, one text item per line to letter (translated text + bbox) | 1,300-pair run (`moss_i2i_swap_text_1300_ema5e5`): English clean on the held-out pages, Korean down to one-syllable swaps |
 
 ## Running
@@ -77,7 +77,7 @@ came out nearly identical. Still, use the fixed caption, since it is what the Lo
 image. v3 adds the tone term late in training: `tone_weight 0.003`, `tone_start 0.5`, on
 277 pairs (39 of them clean → clean, `post_image_dataset/moss/i2i_sanitize_idt`), Muon
 lr 5e-5, 8 epochs = 2,216 steps. On the five held-out pages it averages ΔL −0.03 /
-Δb −0.23 against the input outside the edit. Method and numbers: `docs/moss/tone_loss.md`.
+Δb −0.23 against the input outside the edit. Method and numbers: `docs/moss/methods/tone_loss.md`.
 `configs/moss/i2i/sanitize/{cache,train}.toml` carry this recipe.
 
 **ComfyUI.** [ComfyUI-MOSS-Toolkit](https://github.com/sorryhyun/ComfyUI-MOSS-Toolkit) 0.7.0

@@ -146,9 +146,9 @@ The comparisons ran on 30 images of one artist (`@channel (caststation)`), Base,
 
 ### 4.2 Memory plan (16 GB)
 
-Defaults: `grad_checkpointing` off, `compile` on, and under Advanced `int8 stream` with the GPTQ file (the DiT's block weights run as int8; the file downloads on first use), `stream fp32` (the rest of the block runs in fp32), `blocks_to_swap 0` (every block stays on the card), `activation_memory_budget 0.1` (how much of the forward pass is kept for the backward; the rest is recomputed), `ema_card` on and `expandable_segments` on (keeps the CUDA memory pool from fragmenting when sequence lengths vary).
+Defaults: `grad_checkpointing` off, `compile` on, and under Advanced `int8 stream` with the GPTQ file (the DiT's block weights run as int8; the file downloads on first use), `stream fp32` (the rest of the block runs in fp32), `blocks_to_swap 0` (every block stays on the card), `activation_memory_budget 0.3` (how much of the forward pass is kept for the backward; the rest is recomputed), `ema_card` on and `expandable_segments` on (keeps the CUDA memory pool from fragmenting when sequence lengths vary).
 
-This runs 1.07 s/step at a 10.78 GB peak on 1024² samples and also pins 4.4 GiB of system memory. On this plan 0.1–0.3 run at the same speed and each 0.1 adds about 1 GB of peak. At 0.05 the peak drops to 9.98 GB but attention is recomputed and the step slows to 1.16 s. One LoRA has been trained to completion on it so far, with no comparison against bf16 yet ([details](../moss/optimization/int8.md)).
+This runs 1.05 s/step at a 12.88 GB peak on 1024² samples and also pins 4.4 GiB of system memory. Each 0.1 of budget adds about 1 GB of peak for 0.01–0.02 s/step: on a card under 16 GB use 0.1 (1.07 s/step, 10.78 GB), and 0.4 can run out of memory even on 16 GB. At 0.05 the peak drops to 9.98 GB but attention is recomputed and the step slows to 1.16 s. One LoRA has been trained to completion on it so far, with no comparison against bf16 yet ([details](../moss/optimization/int8.md)).
 
 **bf16 plan.** The int8 base refuses LoHa and has run no i2i step, so the i2i task configs stay on bf16. `--config configs/moss/lora_bf16.toml`, or under Advanced `int8 off`, `stream bf16`, `ema_card` off, `blocks_to_swap 36` (DiT blocks kept on the CPU and streamed in), `activation_memory_budget 0.5`.
 
@@ -183,7 +183,7 @@ The sampler defaults come from MOSS's reference pipeline; Anima's sampler habits
 | `sampler` | `er_sde` | `er_sde` or `euler` |
 | `width` / `height` | `1024` | Multiples of 16 |
 | `negative_prompt` | empty | The pipeline default |
-| `dave` | empty | `auto` = DAVE: more variety across seeds for one prompt (framing, pose, layout), with slightly looser hands; `docs/moss/dave.md` |
+| `dave` | empty | `auto` = DAVE: more variety across seeds for one prompt (framing, pose, layout), with slightly looser hands; `docs/moss/inference/dave.md` |
 | `dave_strength` | `0.3` | How much DAVE removes; `dave_tau` (Advanced, `0.10`) = the share of early steps it runs on |
 
 - **er_sde vs euler**: `euler` is the reference pipeline's sampler. `er_sde` costs the same and gives sharper line work and denser detail; with the LoRA, hands came out cleaner. It also drifts from some prompt details (sunset light, hair colour, "sitting on a bench") and gave up a little of the set's look. The two give different images at the same seed, so compare LoRA against base within one sampler.
@@ -206,7 +206,7 @@ The sampler defaults come from MOSS's reference pipeline; Anima's sampler habits
 
 | Symptom | What to do |
 |---|---|
-| Out of memory in training | Advanced: `blocks_to_swap 20` (2.1 GB off the peak on the int8 plan, same speed), `activation_memory_budget 0.05` (1 GB off, 8% slower), or `grad_checkpointing` on (9.61 GB peak on the int8 plan, 16% slower). Then the bf16 plan (§4.2) with `blocks_to_swap 24`, or run `tune_swap.py`; on it LoKr/LoHa need 24 / 0.1 |
+| Out of memory in training | Advanced: `blocks_to_swap 20` (2.1 GB off the peak on the int8 plan, same speed), `activation_memory_budget 0.1` (2 GB off, 2–4% slower), `activation_memory_budget 0.05` (2.9 GB off, 10% slower), or `grad_checkpointing` on (9.61 GB peak on the int8 plan, 18% slower). Then the bf16 plan (§4.2) with `blocks_to_swap 24`, or run `tune_swap.py`; on it LoKr/LoHa need 24 / 0.1 |
 | `int8 base: loha builds W + ΔW` | The int8 base does not run LoHa: use the bf16 plan (§4.2) |
 | Style too weak | More epochs (the measured run used 20). Check the prompt carries the artist tag spelled as in the captions, and that `prompt_format` matches `caption_format` |
 | Style too strong, the set's signature or watermark shows up, every image has the same composition | Test an earlier `_e<N>` checkpoint or lower `lora_multiplier`. A higher effective lr is what started copying the signature; try `lr 2e-5` |

@@ -71,15 +71,16 @@ int8 became the default re-encodes on the next `cache` run unless it passes
   Muon made them no-ops; mechanism and the lr / alpha history:
   `docs/moss/channel_scaling.md`.
 - **Time**: 30 images × 20 epochs (600 steps) took about 18–21 min on a 5070 Ti at the
-  bf16 plan's then 1.9 s/step (1.66 now; the int8 plan runs 1.07). The
+  bf16 plan's then 1.9 s/step (1.66 now; the int8 plan runs 1.05). The
   LoRA moves line work and palette toward the set; character identity holds, including
   characters the set does not contain.
 - **Memory**: the default plan is the int8 base (`--int8 stream`, GPTQ forward copies,
-  `--stream fp32`), `--blocks_to_swap 0`, `--activation_memory_budget 0.1`, `--ema_card`,
-  no checkpointing: 1.07 s/step at a 10.78 GB peak on 1024² samples, plus 4.4 GiB of pinned
-  host memory. The file downloads on first use, or via `make download-model
+  `--stream fp32`), `--blocks_to_swap 0`, `--activation_memory_budget 0.3`, `--ema_card`,
+  no checkpointing: 1.05 s/step at a 12.88 GB peak on 1024² samples, plus 4.4 GiB of pinned
+  host memory. Below 16 GB run budget 0.1 (1.07 s/step, 10.78 GB). The file downloads on first use, or via `make download-model
   ARGS=moss-dit-int8`. One LoRA has completed on this plan (848 steps), with no A/B
-  against bf16 yet: `docs/moss/optimization/int8.md`.
+  against bf16 yet: `docs/moss/optimization/int8.md`. What each part of the plan buys:
+  `docs/moss/optimization/training_step.md`.
 - **bf16 plan** (`--config configs/moss/lora_bf16.toml`): needed for `--algo loha` and the
   i2i configs, since the int8 base refuses LoHa and has run no i2i step. `--blocks_to_swap 36`, `--activation_memory_budget 0.5`, `--swap_h2d_only`: 1.66
   s/step at 1024² with 0.85 GB free on the largest caststation sample (4.2k image + 0.4k
@@ -179,14 +180,13 @@ needs `anime_tools`) does the same conversion.
 - **`--compile`** (on; `--no-compile` for eager): about 1.37× on top, with or without
   Spectrum (Spectrum + compile 20 s vs plain eager 72 s at 1024²), for a few seconds of
   compile per job. Fine detail drifts from the eager image; composition does not.
-- **DAVE** (`--dave auto`, off): more same-prompt variety across seeds; `docs/moss/dave.md`.
-- **`--stream fp32`** (`bf16` default): the residual stream, modulation, norms, embedders
+- **DAVE** (`--dave auto`, off): more same-prompt variety across seeds; `docs/moss/inference/dave.md`.
+- **`--stream fp32`** (`bf16` default in generation, `fp32` in training): the residual stream, modulation, norms, embedders
   and head run in fp32 around the bf16 block GEMMs. Prediction error against an fp32
   forward drops 2.4–3.5×, for +1.5% time and +0.6 GB; renders change in detail (a few
   /255, occasionally the composition on SFT) with neither precision consistently better.
-  A LoRA loads under either, whatever it trained with (`train.py --stream fp32` exists;
-  it needs ~0.25 GB more at the worst-case sample). The ComfyUI MOSS Toolkit loader has
-  the same `stream` knob. `docs/moss/findings/bf16_residual_stream.md`.
+  A LoRA loads under either, whatever it trained with. The ComfyUI MOSS Toolkit loader has
+  the same `stream` knob. `docs/moss/methods/fp32_stream.md`.
 - **CNS** has no `generate.py` flag. The six MOSS γ files
   (`networks/calibration/moss_cns_gamma*.npz`, `docs/cns.md`) are used by the
   bench and by the ComfyUI Spectrum node's `er_sde_cns`, which picks one by variant and cfg.
@@ -205,17 +205,17 @@ file is in ComfyUI's `int8_tensorwise` + `convrot` format for the same loader.
 An i2i LoRA learns a reference → target edit; the reference rides every forward as clean
 latent tokens on RoPE's `r` axis. Recipes for `colorize` and `sanitize` live in
 `configs/moss/i2i/<task>/`. Tasks, flags, commands, the sanitize run and its ComfyUI
-workflow: `docs/moss/i2i.md`.
+workflow: `docs/moss/methods/i2i.md`.
 
 ## Research flags
 
 Advanced, not recommended: `--repa_weight` / `--repa_layer` / `--repa_pe_root` (relational
 REPA, parked, `_archive/moss_lora/repa.md`); `--ref_timestep` / `--ref_isolate` /
-`--caption_variant_rate` (set by the i2i recipes, `docs/moss/i2i.md`; probes in `project/finished/moss_lora/done/i2i.md`).
+`--caption_variant_rate` (set by the i2i recipes, `docs/moss/methods/i2i.md`; probes in `project/finished/moss_lora/done/i2i.md`).
 
 ## More
 
-- Channel scaling and `dc_isolate` (removed): `docs/moss/channel_scaling.md`. DAVE: `docs/moss/dave.md`. The i2i tone term: `docs/moss/tone_loss.md`.
+- Channel scaling and `dc_isolate` (removed): `docs/moss/channel_scaling.md`. DAVE: `docs/moss/inference/dave.md`. The i2i tone term: `docs/moss/methods/tone_loss.md`.
 - Findings (attention sink, vision-tower reference, σ staircase, Spectrum schedule):
   `docs/moss/findings/`.
 - Massive channels (1356, 42) as a semantic carrier, from arXiv 2605.13974 (reading note,

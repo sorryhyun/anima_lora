@@ -1,6 +1,6 @@
 # MOSS i2i training for the sanitize task (text / bubble removal) — TrainRequest fields; the
 # v3 recipe (moss_i2i_sanitize_idt_w0003_late_lr5e5_e8: muon, lr 5e-5, 8 epochs,
-# ema_window 0.1 are the TrainRequest defaults; docs/moss/tone_loss.md).
+# ema_window 0.1 are the TrainRequest defaults; docs/moss/methods/tone_loss.md).
 #
 #   make daemon-run ARGS="--stall-timeout 900 scripts/moss/train.py --config configs/moss/i2i/sanitize/train.toml"
 

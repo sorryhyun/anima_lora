@@ -104,7 +104,7 @@ steps, seed 1), `lora_ocr`:
 
 1. **Done** (2026-10-27): `configs/moss/i2i/colorize/{cache,train,generate}.toml` and
    `ColorizeCacheRequest` (`vision = false`, `ref_scale = 1`, `ref_isolate = true`,
-   `ref_vision = false`, `plain_caption_rate 0`, generate prompt `comic`), `docs/moss/i2i.md`,
+   `ref_vision = false`, `plain_caption_rate 0`, generate prompt `comic`), `docs/moss/methods/i2i.md`,
    the GUI task text. Swap stays at the i2i configs' 38 / 0.175 / H2D-only.
 2. Stamp `ref_scale` and whether the TE saw the page into the LoRA metadata. Today only
    `ref_timestep` / `ref_isolate` are stamped, while ComfyUI-MOSS-Toolkit reads
@@ -124,8 +124,8 @@ steps, seed 1), `lora_ocr`:
 
 `done/`: `channel_scaling.md` (shipped, removed 2026-10-25 with `dc_isolate` once Muon made both no-ops), `dave.md` (shipped),
 `sampler.md` (ER-SDE default; CNS bench-only), `soup.md` (3-seed soup keeps the style),
-`i2i.md` (the i2i design + probes; shipped as `docs/moss/i2i.md`),
-`i2i_tone_loss.md` (the i2i tone term; shipped 2026-10-28 as sanitize v3, user doc `docs/moss/tone_loss.md`).
+`i2i.md` (the i2i design + probes; shipped as `docs/moss/methods/i2i.md`),
+`i2i_tone_loss.md` (the i2i tone term; shipped 2026-10-28 as sanitize v3, user doc `docs/moss/methods/tone_loss.md`).
 Archived: REPA (parked), caption dropout, template mask → `_archive/moss_lora/`; the latent HF
 budget + VR headroom proposals (closed 2026-10-23: the matched-σ loss gap is 72 % HF texture,
 VR's control variate is uncorrelated with it at ρ² ≈ 0.01, so no VR port and no HF loss

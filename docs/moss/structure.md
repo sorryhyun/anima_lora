@@ -134,7 +134,7 @@ All additive; `None` / off is the reference model.
 
 ### 4.5 i2i references
 
-`ref=` adds clean reference latents after the image tokens on RoPE's `r = 1` axis, never noised. `ref_timestep` gives them their own modulation set (a second row in `(B, 6, 2, D)`, `0` = clean); `ref_isolate` restricts reference queries to reference keys while image and text still read them. Both are stamped in the LoRA and applied by `lora.py::load_for_inference`. Tasks and recipes: [`moss/i2i.md`](i2i.md).
+`ref=` adds clean reference latents after the image tokens on RoPE's `r = 1` axis, never noised. `ref_timestep` gives them their own modulation set (a second row in `(B, 6, 2, D)`, `0` = clean); `ref_isolate` restricts reference queries to reference keys while image and text still read them. Both are stamped in the LoRA and applied by `lora.py::load_for_inference`. Tasks and recipes: [`moss/methods/i2i.md`](methods/i2i.md).
 
 ---
 
@@ -170,7 +170,7 @@ averaged over image tokens and channels, with **no σ / SNR weighting**. i2i rec
    L = mean ‖v̂ − (ε − z₀)‖²           ← image tokens only
 ```
 
-Training reads only the cache (`post_image_dataset/moss[/<set>]`, two files per image), so neither the TE nor the VAE is loaded. On 16 GB the DiT runs compiled and fully resident on its int8 base, with the compiled blocks' saved activations capped by `activation_memory_budget = 0.2` instead of gradient checkpointing (`docs/moss/optimization/int8.md`). The bf16 plan swaps 36 blocks at budget 0.5; `scripts/moss/tune_swap.py` measures that pair for a machine.
+Training reads only the cache (`post_image_dataset/moss[/<set>]`, two files per image), so neither the TE nor the VAE is loaded. On 16 GB the DiT runs compiled and fully resident on its int8 base, with the compiled blocks' saved activations capped by `activation_memory_budget = 0.3` instead of gradient checkpointing (`docs/moss/optimization/int8.md`). The bf16 plan swaps 36 blocks at budget 0.5; `scripts/moss/tune_swap.py` measures that pair for a machine.
 
 ### 5.2 Sampling
 
@@ -179,7 +179,7 @@ Defaults come from the reference pipeline (`requests.py`: `DEFAULT_STEPS` 50, `D
 - **σ grid** (`model.snapped_sigmas`): a shift-5 warped linspace, each σ snapped to the nearest σ of the 1000-step training grid and duplicates collapsed (so a high step count can return fewer steps). Timestep input is `1000·σ`.
 - **CFG with a skipped uncond.** The uncond branch runs the negative prompt (default `''`, the bare template) with **block 22 skipped**; $\hat v = v_u + 3\,(v_c - v_u)$. Still two forwards per step, batched together via per-sample `skip_layers`.
 - **Sampler.** `er_sde` (default here: the shared ER-SDE-Solver-3, `library.inference.sampling`, fed $\hat x_0 = x_t - \sigma \hat v$) or `euler`, the pipeline's ODE.
-- Training-free extras on the same loop (`generate.py::denoise`): Spectrum (forecast the last block's features on most steps), DAVE (`--dave auto`, [`moss/dave.md`](dave.md)), CNS noise recolouring under ER-SDE.
+- Training-free extras on the same loop (`generate.py::denoise`): Spectrum (forecast the last block's features on most steps), DAVE (`--dave auto`, [`moss/inference/dave.md`](inference/dave.md)), CNS noise recolouring under ER-SDE.
 
 ---
 

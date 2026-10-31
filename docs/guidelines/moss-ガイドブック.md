@@ -146,9 +146,9 @@ make download-model ARGS=moss-sft
 
 ### 4.2 メモリ構成（16 GB）
 
-デフォルト: `grad_checkpointing` オフ、`compile` オン、**Advanced** の `int8 stream` と GPTQ ファイル（DiT のブロック重みを int8 で実行。ファイルは初回使用時にダウンロード）、`stream fp32`（ブロックの残りは fp32 で実行）、`blocks_to_swap 0`（全ブロックをカードに置く）、`activation_memory_budget 0.1`（forward の結果のうち backward 用に保持する割合。残りは再計算）、`ema_card` オン、`expandable_segments` オン（シーケンス長が変わっても CUDA メモリプールが断片化しないようにする）。
+デフォルト: `grad_checkpointing` オフ、`compile` オン、**Advanced** の `int8 stream` と GPTQ ファイル（DiT のブロック重みを int8 で実行。ファイルは初回使用時にダウンロード）、`stream fp32`（ブロックの残りは fp32 で実行）、`blocks_to_swap 0`（全ブロックをカードに置く）、`activation_memory_budget 0.3`（forward の結果のうち backward 用に保持する割合。残りは再計算）、`ema_card` オン、`expandable_segments` オン（シーケンス長が変わっても CUDA メモリプールが断片化しないようにする）。
 
-この構成は 1024² のサンプルで 1 step あたり 1.07 秒、ピーク 10.78 GB で、システムメモリも 4.4 GiB 固定（pin）します。この構成では 0.1–0.3 は同じ速度で、0.1 上げるごとにピークが約 1 GB 増えます。0.05 ではピークが 9.98 GB に下がりますが、attention を再計算するため step は 1.16 秒に遅くなります。この構成で最後まで学習した LoRA はまだ 1 つだけで、bf16 との比較もまだありません（[詳細](../moss/optimization/int8.md)）。
+この構成は 1024² のサンプルで 1 step あたり 1.05 秒、ピーク 12.88 GB で、システムメモリも 4.4 GiB 固定（pin）します。budget を 0.1 上げるごとにピークが約 1 GB 増え、step は 0.01–0.02 秒速くなります。16 GB 未満のカードでは 0.1（1 step あたり 1.07 秒、10.78 GB）を使ってください。0.4 は 16 GB でもメモリ不足になることがあります。0.05 ではピークが 9.98 GB に下がりますが、attention を再計算するため step は 1.16 秒に遅くなります。この構成で最後まで学習した LoRA はまだ 1 つだけで、bf16 との比較もまだありません（[詳細](../moss/optimization/int8.md)）。
 
 **bf16 構成。** int8 ベースは LoHa を拒否し、i2i のステップも実行したことがないため、i2i のタスク設定は bf16 のままです。`--config configs/moss/lora_bf16.toml`、または **Advanced** で `int8 off`、`stream bf16`、`ema_card` オフ、`blocks_to_swap 36`（CPU に置き、必要なときに転送する DiT ブロック数）、`activation_memory_budget 0.5`。
 
@@ -183,7 +183,7 @@ bf16 構成（swap 36、budget 0.5、`swap_h2d_only`、`expandable_segments`、�
 | `sampler` | `er_sde` | `er_sde` または `euler` |
 | `width` / `height` | `1024` | 16 の倍数 |
 | `negative_prompt` | 空 | パイプラインのデフォルト |
-| `dave` | 空 | `auto` = DAVE: 同じプロンプトでシードごとのバリエーションが増える（構図、ポーズ、レイアウト）代わりに、手が少し甘くなる。`docs/moss/dave.md` |
+| `dave` | 空 | `auto` = DAVE: 同じプロンプトでシードごとのバリエーションが増える（構図、ポーズ、レイアウト）代わりに、手が少し甘くなる。`docs/moss/inference/dave.md` |
 | `dave_strength` | `0.3` | DAVE が取り除く量。`dave_tau`（Advanced、`0.10`）= DAVE を適用する序盤ステップの割合 |
 
 - **er_sde と euler**: `euler` はリファレンスパイプラインのサンプラーです。`er_sde` は同じコストで線がよりシャープになり、ディテールも密になります。LoRA 適用時は手もきれいに出ました。一方で、プロンプトの一部のディテール（夕焼けの光、髪色、"sitting on a bench"）から外れ、セットの絵柄も少し失われました。同じシードでも 2 つのサンプラーは別の画像を出すので、LoRA とベースの比較は同じサンプラー内で行ってください。
@@ -206,7 +206,7 @@ bf16 構成（swap 36、budget 0.5、`swap_h2d_only`、`expandable_segments`、�
 
 | 症状 | 対処 |
 |---|---|
-| 学習中にメモリ不足 | Advanced: `blocks_to_swap 20`（int8 構成でピークが 2.1 GB 下がり、速度は同じ）、`activation_memory_budget 0.05`（1 GB 減、8% 遅い）、または `grad_checkpointing` オン（int8 構成でピーク 9.61 GB、16% 遅い）。それでも駄目なら `blocks_to_swap 24` の bf16 構成（§4.2）、または `tune_swap.py` を実行。この構成では LoKr/LoHa は 24 / 0.1 が必要 |
+| 学習中にメモリ不足 | Advanced: `blocks_to_swap 20`（int8 構成でピークが 2.1 GB 下がり、速度は同じ）、`activation_memory_budget 0.1`（2 GB 減、2–4% 遅い）、`activation_memory_budget 0.05`（2.9 GB 減、10% 遅い）、または `grad_checkpointing` オン（int8 構成でピーク 9.61 GB、18% 遅い）。それでも駄目なら `blocks_to_swap 24` の bf16 構成（§4.2）、または `tune_swap.py` を実行。この構成では LoKr/LoHa は 24 / 0.1 が必要 |
 | `int8 base: loha builds W + ΔW` | int8 ベースは LoHa を扱えません。bf16 構成（§4.2）を使ってください |
 | スタイルが弱すぎる | エポックを増やす（計測した学習は 20）。プロンプトの絵師タグがキャプションと同じ表記か、`prompt_format` が `caption_format` と一致しているかを確認 |
 | スタイルが強すぎる、セットのサインやウォーターマークが出る、どの画像も同じ構図になる | 早いエポックの `_e<N>` チェックポイントをテストするか、`lora_multiplier` を下げる。サインを写し始めたのは実効 lr を上げた設定。`lr 2e-5` を試してください |

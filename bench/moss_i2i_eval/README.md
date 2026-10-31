@@ -1,7 +1,7 @@
 # bench/moss_i2i_eval
 
 Held-out evals for MOSS i2i LoRAs. Moved from `project/finished/moss_lora/src/`
-(2026-10-28). Recipes and results: `docs/moss/i2i.md`, `docs/moss/tone_loss.md`,
+(2026-10-28). Recipes and results: `docs/moss/methods/i2i.md`, `docs/moss/methods/tone_loss.md`,
 `project/finished/moss_lora/{README,colorize_ocr}.md`.
 
 | Script | What it measures |
@@ -25,4 +25,4 @@ settings. `tone_map.py` reads the render dirs and needs no GPU.
 
 Last baseline (colorize v4 `moss_colorize_3k_textref1_iso_muon_ema`, `lora_ocr`, seed 1,
 ER-SDE + Spectrum + RefCache, 30 steps): luma r 0.995, chroma error 11.2 (8 illustrations
-11.5 / 4 manga 10.5). Sanitize v3's tone numbers: `docs/moss/tone_loss.md`.
+11.5 / 4 manga 10.5). Sanitize v3's tone numbers: `docs/moss/methods/tone_loss.md`.

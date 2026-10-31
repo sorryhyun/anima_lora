@@ -1,6 +1,6 @@
 # The bf16 residual stream is most of MOSS's bf16 error
 
-Measured 2026-10-30 on MOSS-Image Base and SFT. The measurements come from the int8 line:
+The method as shipped: [`methods/fp32_stream.md`](../methods/fp32_stream.md). Measured 2026-10-30 on MOSS-Image Base and SFT. The measurements come from the int8 line:
 [`project/int8_train/reports/moss_grad_error.md`](../../../project/int8_train/reports/moss_grad_error.md)
 (script `project/int8_train/src/grad_error_moss.py`). The renders come from
 `bench/moss_ab/lora_ab.py --stream fp32`.
@@ -144,8 +144,6 @@ swap_text run retrained with `--stream fp32`, same request and seed.
 
 ## Not tested
 
-- int8 linears with an fp32 stream. In quadrature this lands near today's bf16
-  prediction error.
 - A bf16 retrain of the same request, for the run-to-run spread the training-stream
   difference has to beat; then a blind pass on hands over more seeds.
 - swap_text over more seeds, and `sanitize`.
