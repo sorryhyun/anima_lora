@@ -1,6 +1,6 @@
 """The Anima fp32 stream's invariants: ``bf16`` is today's forward and sampler bit for bit,
 ``fp32`` keeps every parameter's dtype, runs the stream in fp32 and the block linears in
-bf16, and survives what generation does around it."""
+bf16, and survives what generation and the trainer do around it."""
 
 from __future__ import annotations
 
@@ -15,14 +15,19 @@ from library.anima.models import Anima
 from library.anima.stream import (
     Fp32Linear,
     Fp32RMSNorm,
+    check_plan,
     fp32_linears,
     latent_dtype,
     stream_fp32_,
 )
+from library.anima.trainer.cli import setup_parser
+from library.anima.trainer.step import AnimaStep
+from library.anima.trainer.trainer import AnimaTrainer
 from library.inference import generation
 from library.inference.args import build_default_args
 from library.inference.models import load_dit_model
 from library.inference.request import GenerationRequest
+from networks import attention_dispatch
 from networks.lora_modules.lora import LoRAModule
 
 
@@ -260,3 +265,130 @@ def test_load_gates_the_conversion(monkeypatch, stream, easycontrol, swapped):
     out = load_dit_model(args, torch.device("cpu"), torch.bfloat16)
     assert any(isinstance(m, Fp32Linear) for m in out.modules()) is swapped
     assert latent_dtype(out) == (torch.float32 if swapped else torch.bfloat16)
+
+
+def test_training_flag_defaults_to_bf16():
+    assert setup_parser().parse_args([]).stream == "bf16"
+    assert setup_parser().parse_args(["--stream", "fp32"]).stream == "fp32"
+    with pytest.raises(SystemExit):
+        setup_parser().parse_args(["--stream", "fp16"])
+
+
+def test_training_refuses_easycontrol():
+    with pytest.raises(SystemExit):
+        check_plan(SimpleNamespace(network_module="networks.methods.easycontrol"))
+    check_plan(SimpleNamespace(network_module="networks.lora_anima"))
+
+
+@pytest.mark.parametrize(("stream", "stamped"), [("bf16", False), ("fp32", True)])
+def test_lora_records_the_stream(stream, stamped):
+    meta = {}
+    args = SimpleNamespace(
+        weighting_scheme="none",
+        logit_mean=0.0,
+        logit_std=1.0,
+        mode_scale=1.29,
+        timestep_sampling="sigma",
+        sigmoid_scale=1.0,
+        discrete_flow_shift=1.0,
+        stream=stream,
+    )
+    AnimaTrainer._update_metadata(meta, args)
+    assert ("ss_stream" in meta) is stamped
+    if stamped:
+        assert meta["ss_stream"] == "fp32"
+
+
+@pytest.mark.parametrize(
+    ("stream", "weight_dtype", "expected"),
+    [
+        ("bf16", torch.bfloat16, torch.bfloat16),
+        ("bf16", torch.float32, torch.float32),
+        ("fp32", torch.bfloat16, torch.float32),
+    ],
+)
+def test_training_input_and_sigma_follow_the_stream(stream, weight_dtype, expected):
+    args = SimpleNamespace(
+        sampler="default",
+        ip_noise_gamma=None,
+        stream=stream,
+    )
+    ctx = SimpleNamespace(
+        args=args,
+        noise_scheduler=SimpleNamespace(
+            config=SimpleNamespace(num_train_timesteps=1000)
+        ),
+        accelerator=SimpleNamespace(device=torch.device("cpu")),
+        weight_dtype=weight_dtype,
+        network=SimpleNamespace(),
+    )
+    latents = torch.randn(1, 16, 8, 8)
+    noisy, timesteps, _ = AnimaStep._sample_noisy_input(
+        SimpleNamespace(_hydra_warmup_step=0),
+        ctx,
+        latents,
+        torch.randn_like(latents),
+        is_train=True,
+        sigmas=torch.tensor([0.3]),
+    )
+    assert noisy.dtype == timesteps.dtype == expected
+
+
+def test_preview_keeps_the_dits_dtype_off_the_stream():
+    assert latent_dtype(SimpleNamespace(), torch.float32) == torch.float32
+    assert latent_dtype(SimpleNamespace(stream="fp32")) == torch.float32
+
+
+def test_training_gradient_reaches_a_lora_past_the_stream():
+    model = tiny().train()
+    model.requires_grad_(False)
+    stream_fp32_(model)
+    block = model.blocks[0]
+    loras = [
+        LoRAModule(f"lora_unet_{i}", target, 1.0, 4, 1)
+        for i, target in enumerate((block.adaln_up_mlp, block.self_attn.output_proj))
+    ]
+    for lora in loras:
+        lora.to(torch.bfloat16)
+        lora.apply_to()
+        lora.train()
+    x, t, c = inputs()
+    with torch.autocast("cpu", dtype=torch.bfloat16):
+        out = model(x, t, c)
+    assert out.dtype == torch.float32
+    out.square().mean().backward()
+    for lora in loras:
+        grad = lora.lora_up.weight.grad
+        assert grad.dtype == torch.bfloat16
+        assert torch.isfinite(grad).all() and grad.abs().sum() > 0
+    assert all(p.grad is None for p in model.parameters())
+
+
+def test_a_compiled_block_is_one_graph_with_fa2_rounding(monkeypatch):
+    """The modulation's autocast exit and ``Attention.forward``'s FA2 rounding stay in the
+    block's graph, so ``compile_dynamic_seq`` keeps one graph per block."""
+    model = tiny()
+    stream_fp32_(model)
+    model.requires_grad_(False)
+    params = attention_dispatch.AttentionParams.create_attention_params("torch", None)
+    monkeypatch.setattr(
+        type(params), "supports_fp32", property(lambda self: False), raising=True
+    )
+    x = torch.randn(1, 1, 16, 1, 64).requires_grad_()
+    args = (
+        x,
+        torch.randn(1, 1, 64),
+        torch.randn(1, 8, 64).to(torch.bfloat16),
+        params,
+        (torch.randn(1, 16, 16), torch.randn(1, 16, 16)),
+        torch.randn(1, 1, 3 * 64),
+    )
+    torch.set_autocast_enabled("cuda", True)  # the state FA2's branch reads
+    try:
+        assert torch.is_autocast_enabled()
+        with torch.autocast("cpu", dtype=torch.bfloat16):
+            explained = torch._dynamo.explain(model.blocks[0]._forward)(*args)
+    finally:
+        torch.set_autocast_enabled("cuda", False)
+    assert explained.graph_count == 1
+    assert explained.graph_break_count == 0

@@ -265,6 +265,8 @@ class AnimaTrainer:
         if getattr(args, "int8", "off") != "off":
             metadata["ss_int8_base"] = args.int8
             metadata["ss_int8_base_id"] = args.int8_base_id
+        if getattr(args, "stream", "bf16") != "bf16":
+            metadata["ss_stream"] = args.stream
 
     def train(self, args):
         from library.runtime.backend import warn_if_cuda_unavailable
@@ -278,6 +280,10 @@ class AnimaTrainer:
             from library.anima.int8 import check_plan
 
             check_plan(args)
+        if args.stream == "fp32":
+            from library.anima.stream import check_plan as check_stream_plan
+
+            check_stream_plan(args)
         train_util.prepare_dataset_args(args, True)
         setup_logging(args, reset=True)
 

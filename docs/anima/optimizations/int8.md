@@ -100,9 +100,9 @@ nearest. Swapping the bf16 base for the int8 base moves generated pixels by abou
 
 **The accuracy figures predate the fp32 kernel input.** `comfy_kitchen` 0.2.40 rounds to bf16
 around its activation division on a bf16 input ([comfy-kitchen#289](https://github.com/Comfy-Org/comfy-kitchen/issues/289)),
-so `Int8TrainLinear.forward` passes fp32. On Anima that cuts prediction error 6–8%. Anima's stream
-is bf16, and an fp32 stream, which it does not have, would cut the int8 base's error a further
-21–36%; the gradient effect is mixed
+so `Int8TrainLinear.forward` passes fp32. On Anima that cuts prediction error 6–8%. An fp32 stream
+([`--stream fp32`](fp32_stream.md)) cuts the int8 base's error a further 21–36% in that report; the
+gradient effect is mixed
 ([anima_fp32_stream.md](../../../project/int8_train/reports/anima_fp32_stream.md)). The same
 848-step run with the fp32 input, 2026-10-31, took 424 ms/step including the first compile and
 ended at `avr_loss` 0.0739.

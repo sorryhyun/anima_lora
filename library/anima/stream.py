@@ -70,6 +70,12 @@ def stream_fp32_(dit: Anima, rope: bool = True) -> None:
     dit.stream = "fp32"
 
 
-def latent_dtype(dit: nn.Module) -> torch.dtype:
-    """The sampler state's dtype on ``dit``."""
-    return torch.float32 if getattr(dit, "stream", "bf16") == "fp32" else torch.bfloat16
+def latent_dtype(dit: nn.Module, narrow: torch.dtype = torch.bfloat16) -> torch.dtype:
+    """The sampler state's dtype on ``dit``; ``narrow`` off the fp32 stream."""
+    return torch.float32 if getattr(dit, "stream", "bf16") == "fp32" else narrow
+
+
+def check_plan(args) -> None:
+    """The training plans an fp32 stream cannot run; before anything loads."""
+    if args.network_module == "networks.methods.easycontrol":
+        raise SystemExit("fp32 stream: EasyControl runs on --stream bf16")

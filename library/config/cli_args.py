@@ -813,6 +813,14 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
         "beside the DiT if present, else round to nearest; 'rtn' forces round to "
         "nearest.",
     )
+    parser.add_argument(
+        "--stream",
+        choices=("bf16", "fp32"),
+        default="bf16",
+        help="Residual stream precision: fp32 runs the stream, modulation, q / k norms, "
+        "RoPE, embedder and head in fp32 around the block GEMMs, which stay bf16 or int8. "
+        "Refuses EasyControl. docs/anima/optimizations/fp32_stream.md.",
+    )
 
 
 def add_network_arguments(parser: argparse.ArgumentParser):

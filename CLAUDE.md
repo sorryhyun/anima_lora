@@ -202,9 +202,10 @@ routing axes: `lora-routing` skill).
   frozen DiT's large linears as int8 GEMMs: LoRA-family networks, no block swap. Forward
   copies come from `<dit>_int8_gptq.safetensors` beside the DiT (catalog `anima_dit_int8`,
   fetched on first use), else round to nearest. `docs/anima/optimizations/int8.md`.
-- `--stream fp32|bf16` (generation, fp32 by default; `STREAM=bf16` on `test-*`) runs the stream,
-  modulation, q / k norms, RoPE, embedder and head in fp32 around the block GEMMs; a seed renders
-  differently on each. `library/anima/stream.py`, `docs/anima/optimizations/fp32_stream.md`.
+- `--stream fp32|bf16` (generation, fp32 by default, `STREAM=bf16` on `test-*`; training, bf16 by
+  default, `stream` in `configs/base.toml`) runs the stream, modulation, q / k norms, RoPE, embedder
+  and head in fp32 around the block GEMMs; a seed renders differently on each. Training refuses
+  EasyControl. `library/anima/stream.py`, `docs/anima/optimizations/fp32_stream.md`.
 - `make merge ADAPTER_DIR=… [MULTIPLIER=0.8]` bakes a LoRA / T-LoRA into the DiT;
   refuses Hydra-moe / postfix unless `--allow-partial`.
 - `--sigma_lowres` (σ-demoted training, opt-in): the research line is archived but the

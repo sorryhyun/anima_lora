@@ -253,6 +253,12 @@ def create_and_apply_network(
 
         convert_for_training(unet, network, args)
 
+    stream = getattr(args, "stream", "bf16")
+    if stream == "fp32":
+        from library.anima.stream import stream_fp32_
+
+        stream_fp32_(unet)
+
     # DiT only: the text encoder is never trained.
     network.apply_to(text_encoders, unet, False, True)
 
@@ -295,9 +301,10 @@ def create_and_apply_network(
             seq_range=seq_range,
             seq_bands=seq_bands,
             dynamic_seq=bool(getattr(args, "compile_dynamic_seq", False)),
-            signature_suffix=""
-            if int8 == "off"
-            else f";int8={int8};int8_in=fp32;flops=fa2,int8",
+            signature_suffix=(
+                "" if int8 == "off" else f";int8={int8};int8_in=fp32;flops=fa2,int8"
+            )
+            + ("" if stream == "bf16" else f";stream={stream}"),
             activation_memory_budget=float(
                 getattr(args, "activation_memory_budget", 1.0) or 1.0
             ),

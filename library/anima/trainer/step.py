@@ -197,7 +197,10 @@ class AnimaStep:
                 latents=latents,
                 noise=noise,
                 device=ctx.accelerator.device,
-                weight_dtype=ctx.weight_dtype,
+                # the input and σ the DiT reads: generation's latent dtype
+                weight_dtype=torch.float32
+                if getattr(args, "stream", "bf16") == "fp32"
+                else ctx.weight_dtype,
                 sigmas=sigmas,
             )
         )

@@ -19,6 +19,7 @@ from library.training.checkpoints import (
     save_sd_model_on_train_end_common,
 )
 from library.anima import models as anima_models, weights as anima_utils
+from library.anima.stream import latent_dtype
 from library.models import qwen_vae as qwen_image_autoencoder_kl
 
 from library.log import setup_logging
@@ -1191,7 +1192,7 @@ def _sample_image_inference(
         dit,
         crossattn_emb,
         sample_steps,
-        dit.dtype,
+        latent_dtype(dit, dit.dtype),
         accelerator.device,
         scale,
         flow_shift,
@@ -1303,7 +1304,7 @@ def sample_image_latents(
     clean_cache: bool = True,
 ) -> torch.Tensor:
     """Sample one image's latents and return the 5D latent tensor
-    ``(1, 16, 1, H//8, W//8)`` (on ``accelerator.device``, ``dit.dtype``)
+    ``(1, 16, 1, H//8, W//8)`` (on ``accelerator.device``, ``latent_dtype(dit, dit.dtype)``)
     WITHOUT decoding to pixels.
 
     Splitting the VAE decode out of the sample step lets callers park the
@@ -1336,7 +1337,7 @@ def sample_image_latents(
         dit,
         crossattn_emb,
         sample_steps,
-        dit.dtype,
+        latent_dtype(dit, dit.dtype),
         accelerator.device,
         guidance_scale,
         flow_shift,
