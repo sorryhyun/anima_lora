@@ -6,7 +6,9 @@ activations, per-row int8 weight). Its input gradient ``dX = dY W`` runs either 
 bf16 against the kept weight (mode ``fwd``) or through the same kernel against a
 second int8 copy of ``Wᵀ`` rotated along N (mode ``full``, the weight is dropped).
 The base weight gradient is never computed. Mode ``infer`` keeps only the forward copy,
-for generation on the int8 base.
+for generation on the int8 base. :func:`stream_wqt_` turns ``full`` linears into
+``stream`` ones, whose ``wq_t`` lives on the host and reaches the card only for the
+block the backward is in.
 
 ``convert_(module, mode)`` swaps the class in place, so LoRA modules that hold a
 reference to the original module object keep working. The forward copy is round to
@@ -19,6 +21,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 import comfy_kitchen
 import torch
@@ -27,6 +31,7 @@ from safetensors import safe_open
 
 from library.anima.weights import _SELF_ATTN_QKV_ORDER
 from library.moss.int8 import INT8_MAX, rotate, row_scale
+from library.runtime.offloading import HostMasters
 
 GROUP = 256
 MODES = ("fwd", "full", "infer")
@@ -133,6 +138,143 @@ def _fwd_backward(ctx, dy):
 linear_fwd.register_autograd(_fwd_backward, setup_context=_fwd_setup)
 
 
+class WqtStream:
+    """Every block's ``wq_t`` in a page-locked host buffer, with two block-sized slots
+    on the card: the block the backward is in and, loading on a worker thread, the one
+    below it. The backward finds its copy through :meth:`get`, so the mover needs no
+    hooks and the weights are not inputs of the compiled graph. A block reached out of
+    order is copied in on the spot, at the cost of the wait.
+    """
+
+    def __init__(self, blocks: list[list[nn.Linear]]):
+        shapes = [m.wq_t.shape for m in blocks[0]]
+        device = blocks[0][0].wq_t.device
+        offsets, total = [], 0
+        for shape in shapes:
+            total = -(-total // HostMasters._ALIGN) * HostMasters._ALIGN
+            offsets.append(total)
+            total += shape.numel()
+        self.per_block = len(shapes)
+        self.masters = HostMasters()
+        self.host: list[torch.Tensor] = []
+        for b, mods in enumerate(blocks):
+            if [m.wq_t.shape for m in mods] != shapes:
+                raise ValueError(f"block {b}: wq_t shapes differ from block 0's")
+            flat = self.masters._alloc(total)
+            for j, mod in enumerate(mods):
+                self._view(flat, offsets[j], shapes[j]).copy_(mod.wq_t)
+                del mod.wq_t
+                mod.register_buffer(
+                    "sid", torch.tensor([b * self.per_block + j]), persistent=False
+                )
+                mod.int8_mode = "stream"
+            self.host.append(flat)
+        self.slots = [
+            torch.empty(total, dtype=torch.uint8, device=device) for _ in "ab"
+        ]
+        self.views = [
+            [self._view(slot, o, sh) for o, sh in zip(offsets, shapes)]
+            for slot in self.slots
+        ]
+        self.copy_stream = torch.Stream(device=device.type)
+        self.pool = ThreadPoolExecutor(max_workers=1)
+        self.pending = None
+        self.loading = -1
+        self.current = -1
+        self.active = 0
+        self.entered = 0
+        self.cold = 0
+        self.wait_s = 0.0
+
+    @staticmethod
+    def _view(flat: torch.Tensor, off: int, shape: torch.Size) -> torch.Tensor:
+        return flat[off : off + shape.numel()].view(torch.int8).view(shape)
+
+    def _copy(self, block: int, slot: int) -> None:
+        # the slot's last user may still be queued on the default stream
+        torch.cuda.current_stream().synchronize()
+        with torch.cuda.stream(self.copy_stream):
+            self.slots[slot].copy_(self.host[block], non_blocking=True)
+        self.copy_stream.synchronize()
+
+    def _enter(self, block: int) -> None:
+        start = time.perf_counter()
+        self.entered += 1
+        if self.pending is not None:
+            self.pending.result()
+            self.pending = None
+        free = 1 - self.active
+        if block != self.loading:
+            self.cold += 1
+            self._copy(block, free)
+        self.wait_s += time.perf_counter() - start
+        self.current, self.active, self.loading = block, free, -1
+        if block > 0:
+            self.loading = block - 1
+            self.pending = self.pool.submit(self._copy, block - 1, 1 - free)
+
+    def get(self, sid: int) -> torch.Tensor:
+        block, j = divmod(sid, self.per_block)
+        if block != self.current:
+            self._enter(block)
+        return self.views[self.active][j]
+
+
+_stream: WqtStream | None = None
+
+
+def stream_wqt_(blocks: list[list[nn.Linear]]) -> WqtStream:
+    """``full`` linears to ``stream``: ``blocks`` holds each DiT block's converted
+    linears in one order, in execution order, with the same shapes block to block."""
+    global _stream
+    _stream = WqtStream(blocks)
+    return _stream
+
+
+@torch.library.custom_op("int8_train::dx_stream", mutates_args=())
+def dx_stream(dy: torch.Tensor, s_t: torch.Tensor, sid: torch.Tensor) -> torch.Tensor:
+    return int8_mm(dy, _stream.get(int(sid)), s_t)
+
+
+@dx_stream.register_fake
+def _(dy, s_t, sid):
+    return dy.new_empty((*dy.shape[:-1], s_t.shape[0]), dtype=torch.bfloat16)
+
+
+# sid is a tensor: as an int it would be a constant, one graph per block
+@torch.library.custom_op("int8_train::linear_stream", mutates_args=())
+def linear_stream(
+    x: torch.Tensor,
+    wq: torch.Tensor,
+    s: torch.Tensor,
+    s_t: torch.Tensor,
+    sid: torch.Tensor,
+) -> torch.Tensor:
+    return int8_mm(x, wq, s)
+
+
+@linear_stream.register_fake
+def _(x, wq, s, s_t, sid):
+    return x.new_empty((*x.shape[:-1], wq.shape[0]), dtype=torch.bfloat16)
+
+
+def _stream_setup(ctx, inputs, output):
+    x, _wq, _s, s_t, sid = inputs
+    ctx.save_for_backward(s_t, sid)
+    ctx.x_dtype = x.dtype
+
+
+def _stream_backward(ctx, dy):
+    s_t, sid = ctx.saved_tensors
+    dx = None
+    if ctx.needs_input_grad[0]:
+        dx = dx_stream(dy, s_t, sid).to(ctx.x_dtype)
+    return dx, None, None, None, None
+
+
+linear_stream.register_autograd(_stream_backward, setup_context=_stream_setup)
+
+
 class Int8TrainLinear(nn.Linear):
     """Only ever made by :func:`convert_`; never constructed directly."""
 
@@ -142,9 +284,12 @@ class Int8TrainLinear(nn.Linear):
         # the trainer's unet.to(dtype=bf16) would round the fp32 row scales; keep
         # them fp32 and follow wq (int8, so dtype casts skip it) to its device
         scales = {k: v for k, v in self._buffers.items() if k in ("s", "s_t")}
+        sid = self._buffers.get("sid")
         super()._apply(fn, recurse)
         for k, v in scales.items():
             self._buffers[k] = v.to(self.wq.device)
+        if sid is not None:  # read in Python by the op, so it stays on the CPU
+            self._buffers["sid"] = sid
         return self
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -155,6 +300,8 @@ class Int8TrainLinear(nn.Linear):
             return int8_mm(x, self.wq, self.s)
         if self.int8_mode == "full":
             return linear_full(x, self.wq, self.s, self.wq_t, self.s_t)
+        if self.int8_mode == "stream":
+            return linear_stream(x, self.wq, self.s, self.s_t, self.sid)
         return linear_fwd(x, self.wq, self.s, self.weight)
 
 

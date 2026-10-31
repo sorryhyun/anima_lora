@@ -1,6 +1,6 @@
 """The MOSS-Image trainer on an int8 base (the MOSS counterpart of ``train_int8.py``).
 
-Strips ``--int8 {off,fwd,full}`` and runs ``library.moss.train.run_train`` on the
+Strips ``--int8 {off,fwd,full,stream}`` and runs ``library.moss.train.run_train`` on the
 ``TrainRequest`` built from the rest. ``off`` runs the trainer untouched. Otherwise
 two patches go in first:
 
@@ -13,6 +13,9 @@ two patches go in first:
 - ``LoRANetwork.metadata`` stamps ``int8_base=<mode>`` and ``int8_base_id`` (``rtn``,
   or the ``int8_id`` of ``--int8_file``).
 
+``stream`` is ``full`` with ``wq_t`` on the host (``int8_linear.WqtStream``): the same
+numbers, about 4.2 GiB less on the card, 4.4 GiB more pinned host memory.
+
 Refused: ``blocks_to_swap != 0`` (the offloader moves only ``.weight``) and
 ``algo loha`` (it builds ``W + ΔW``).
 
@@ -21,6 +24,7 @@ Refused: ``blocks_to_swap != 0`` (the offloader moves only ``.weight``) and
 """
 
 import argparse
+import atexit
 import os
 import re
 
@@ -76,8 +80,39 @@ def convert_moss_(mod, mode: str, forward_copy=None) -> None:
         )
 
 
+def stream_targets(by_name: dict) -> None:
+    """``wq_t`` to the host, block by block, in the block's forward order."""
+    import torch
+
+    from int8_linear import stream_wqt_  # sibling module
+
+    linears = ("q", "k", "v", "o", "ffn_up_gate", "ffn_down")
+    blocks = [[by_name[f"layers.{b}.proj.{p}"] for p in linears] for b in range(42)]
+    stream = stream_wqt_(blocks)
+    # what stays sat between the dropped weights and wq_t and would pin their pages
+    device = blocks[0][0].wq.device
+    kept = [(m, k) for mods in blocks for m in mods for k in ("wq", "s", "s_t")]
+    for m, k in kept:
+        m._buffers[k] = m._buffers[k].cpu()
+    torch.cuda.empty_cache()
+    for m, k in kept:
+        m._buffers[k] = m._buffers[k].to(device)
+
+    def report():
+        peak = torch.cuda.max_memory_allocated() / 1024**3
+        reserved = torch.cuda.max_memory_reserved() / 1024**3
+        print(
+            f"wq_t stream: {stream.entered} blocks entered, {stream.cold} cold, "
+            f"{stream.wait_s:.2f} s waited; peak {peak:.2f} GB allocated / "
+            f"{reserved:.2f} GB reserved",
+            flush=True,
+        )
+
+    atexit.register(report)
+
+
 def install(mode: str, req, int8_file: str = "") -> None:
-    """The two patches and the refusals above, for ``mode`` ``fwd`` or ``full``.
+    """The two patches and the refusals above, for ``mode`` ``fwd``, ``full`` or ``stream``.
     ``int8_file`` (``dit_gptq_moss.py``) supplies the forward copies, checked against
     the loaded DiT; the backward copy stays round to nearest. ``profile_step_moss.py
     --int8`` calls this too."""
@@ -107,8 +142,10 @@ def install(mode: str, req, int8_file: str = "") -> None:
         for name, mod in self._targets:
             if not MOSS_TARGET.match(name):
                 continue
-            convert_moss_(mod, mode, copies.get(name))
+            convert_moss_(mod, "full" if mode == "stream" else mode, copies.get(name))
             converted.append(name)
+        if mode == "stream":
+            stream_targets(dict(self._targets))
         torch.cuda.empty_cache()
         print(
             f"int8 {mode}: converted {len(converted)} linears, forward copies "
@@ -128,7 +165,7 @@ def install(mode: str, req, int8_file: str = "") -> None:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(add_help=False)
-    ap.add_argument("--int8", choices=("off", "fwd", "full"), required=True)
+    ap.add_argument("--int8", choices=("off", "fwd", "full", "stream"), required=True)
     ap.add_argument("--int8_file", default="")
     own, train_argv = ap.parse_known_args()
     if train_argv and train_argv[0] == "--":

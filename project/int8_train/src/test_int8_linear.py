@@ -13,7 +13,7 @@ import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from int8_linear import Int8TrainLinear, convert_, int8_mm  # noqa: E402
+from int8_linear import Int8TrainLinear, convert_, int8_mm, stream_wqt_  # noqa: E402
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
 
@@ -131,14 +131,60 @@ class MiniBlock(nn.Module):
         return x + self.layer2(F.gelu(self.layer1(self.norm(x)), approximate="tanh"))
 
 
-@pytest.mark.parametrize("mode", ["fwd", "full"])
+def full_stack(n=4):
+    torch.manual_seed(0)
+    stack = nn.Sequential(*[MiniBlock() for _ in range(n)])
+    stack.to(DEV, torch.bfloat16).requires_grad_(False)
+    for block in stack:
+        convert_(block.layer1, "full")
+        convert_(block.layer2, "full")
+    return stack
+
+
+def stream_blocks(stack):
+    return stream_wqt_([[b.layer1, b.layer2] for b in stack])
+
+
+def test_stream_dx_is_full_dx_and_prefetches():
+    torch.manual_seed(1)
+    x0 = torch.randn(M, K, device=DEV, dtype=torch.bfloat16)
+
+    def grad(stack):
+        x = x0.clone().requires_grad_()
+        stack(x).square().mean().backward()
+        return x.grad
+
+    stack = full_stack()
+    ref = grad(stack)
+    stream = stream_blocks(stack)
+    assert not hasattr(stack[0].layer1, "wq_t")
+    assert stack[3].layer2.sid.device.type == "cpu"
+    assert torch.equal(grad(stack), ref)
+    assert stream.entered == 4 and stream.cold == 1  # block 3; the rest prefetched
+    assert torch.equal(grad(stack), ref)  # the next step restarts at block 3
+    assert stream.entered == 8 and stream.cold == 2
+
+
+def test_stream_out_of_order_block_is_copied_in():
+    stack = full_stack(3)
+    linears = [b.layer1 for b in stack]
+    wq_t = [lin.wq_t.clone() for lin in linears]
+    stream = stream_blocks(stack)
+    for b in (0, 2, 1, 1, 0, 2):
+        got = stream.get(int(linears[b].sid))
+        assert torch.equal(got, wq_t[b])
+
+
+@pytest.mark.parametrize("mode", ["fwd", "full", "stream"])
 def test_compiled_block_has_no_graph_break(mode):
     torch.manual_seed(0)
     block = MiniBlock().to(DEV, torch.bfloat16).requires_grad_(False)
     x = torch.randn(1, M, K, device=DEV, dtype=torch.bfloat16)
     ref = block(x)
     for lin in (block.layer1, block.layer2):
-        convert_(lin, mode)
+        convert_(lin, "full" if mode == "stream" else mode)
+    if mode == "stream":
+        stream_wqt_([[block.layer1, block.layer2]])
     torch._dynamo.reset()
     explained = torch._dynamo.explain(block)(x)
     assert explained.graph_break_count == 0, explained.break_reasons

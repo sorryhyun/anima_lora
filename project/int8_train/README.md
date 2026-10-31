@@ -106,6 +106,8 @@ The entry point exits on these rather than running them wrong:
 - `src/dit_gptq_moss.py`: the same for MOSS-Image, t2i and i2i
   (`models/moss_image/moss_image_base_int8_gptq.safetensors`). `train_int8_moss.py`,
   `infer_int8_moss.py` and `grad_error_moss.py` take it as `--int8_file`.
+- `src/train_int8_moss.py --int8 stream`: `full` with `wq_t` on the host, loaded block by
+  block during the backward (`int8_linear.WqtStream`, [report](reports/moss_wqt_stream.md)).
 - `src/infer_int8_moss.py`: `library.moss.generate` on the int8 base, run as
   `make daemon-run ARGS="project/int8_train/src/infer_int8_moss.py --int8 on --int8_file <file> -- <generate args>"`.
 - `src/grad_spike.py`: traces one image's gradient outlier by block and token.

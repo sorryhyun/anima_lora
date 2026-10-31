@@ -23,6 +23,7 @@ Qwen-Image-2.1 has no docs folder; its reference is `library/qwen21/CLAUDE.md`.
 | [moss/channel_scaling.md](moss/channel_scaling.md) | Channel scaling + `dc_isolate` on MOSS (removed), and how the lr / alpha defaults got here |
 | [moss/dave.md](moss/dave.md) | DAVE on MOSS — same-prompt seed variety (`--dave auto`), ComfyUI node |
 | [moss/tone_loss.md](moss/tone_loss.md) | i2i tone term — keeps the input's brightness and colour outside the edit (`--tone_weight`), sanitize v3 |
+| [moss/optimization/int8.md](moss/optimization/int8.md) | int8 base — GPTQ file, speed, VRAM, accuracy, and what has not been measured (no LoRA trained on it yet) |
 | [moss/findings/README.md](moss/findings/README.md) | Findings — the chat template as attention sink, the vision tower as zero-shot reference |
 | [moss/proposal/](moss/proposal/) | Active MOSS design docs |
 
