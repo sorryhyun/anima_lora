@@ -25,19 +25,20 @@ bf16 autocast in `forward_mini_train_dit`, so a block linear's input rounds to b
 linear keeps its fp32 kernel input. The sampler state and σ follow the latent's dtype, which also
 removes the per-step rounding of the sampler state.
 
-ComfyUI (`~/ComfyUI-Anima_lora-Adapter/stream.py`) does the same around its fused norm + RoPE
-kernel, so it leaves those two in the compute dtype.
+ComfyUI (`~/ComfyUI-Anima_lora-Adapter/stream.py`) fuses the norm and RoPE into one kernel that
+follows its input's dtype. Forward hooks widen what `q_proj` and `k_proj` return, and an `attn_op`
+object patch rounds q and k back on entry to FA2.
 
 ## Accuracy
 
 Prediction error, `‖v − v_fp32‖ / ‖v_fp32‖` in %, mean over six images, no LoRA
 (`bench/anima_stream/comfy_check.py`):
 
-| σ | `library` bf16 | `library` fp32, no RoPE | ComfyUI bf16 | ComfyUI fp32 | ComfyUI to `library` |
-|---|---|---|---|---|---|
-| 0.1 | 1.76 | 0.55 | 1.74 | **0.54** | 0.63 |
-| 0.5 | 0.85 | 0.24 | 0.85 | **0.23** | 0.26 |
-| 0.9 | 1.15 | 0.25 | 0.94 | **0.23** | 0.23 |
+| σ | `library` bf16 | `library` fp32 | ComfyUI bf16 | ComfyUI fp32, no RoPE | ComfyUI fp32 | ComfyUI to `library` |
+|---|---|---|---|---|---|---|
+| 0.1 | 1.76 | 0.52 | 1.74 | 0.54 | **0.53** | 0.59 |
+| 0.5 | 0.85 | 0.22 | 0.85 | 0.23 | **0.22** | 0.24 |
+| 0.9 | 1.15 | 0.23 | 0.94 | 0.23 | **0.23** | 0.22 |
 
 One 8-step trajectory at 768² and two images (`bench/anima_stream/run_bench.py`, a smoke, one draw
 per cell; the full run was stopped, so these are not a result):
@@ -55,11 +56,11 @@ activation division ([comfy-kitchen#289](https://github.com/Comfy-Org/comfy-kitc
 
 | σ | stock | fp32 kernel input | fp32 stream | `library` int8 fp32, no RoPE |
 |---|---|---|---|---|
-| 0.1 | 2.29 | 2.13 | **1.33** | 1.32 |
+| 0.1 | 2.29 | 2.13 | **1.32** | 1.32 |
 | 0.5 | 0.99 | 0.95 | **0.48** | 0.48 |
 | 0.9 | 1.07 | 1.05 | **0.50** | 0.51 |
 
-Forward time was 186, 208 and 229 ms in the same order, one run each with the model load
-included, so read it as a rough cost.
+RoPE moved the INT8 stream by less than 0.01 at every σ. Forward time was 155, 193 and 228 ms in
+the same order, one run each with the model load included, so read it as a rough cost.
 
 The attribution and the gradient: [`anima_stream_attrib.md`](../../../project/int8_train/reports/anima_stream_attrib.md).

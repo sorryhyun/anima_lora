@@ -51,8 +51,7 @@ def fp32_linears(dit: Anima) -> Iterator[nn.Linear]:
 
 
 def stream_fp32_(dit: Anima, rope: bool = True) -> None:
-    """``rope=False`` leaves the q / k norms and RoPE in the block's dtype, the gap ComfyUI
-    has: its norm and RoPE are one fused kernel."""
+    """``rope=False`` leaves the q / k norms and RoPE in the block's dtype."""
     for m in fp32_linears(dit):
         m.__class__ = Fp32Linear
     if rope:

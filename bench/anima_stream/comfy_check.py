@@ -1,7 +1,7 @@
 """The ComfyUI side of Anima's fp32 stream (``~/ComfyUI-Anima_lora-Adapter/stream.py``).
 
 ``numeric``: one step through ComfyUI's ``apply_model``, patched and not, against the library
-forward without RoPE, the gap the node has. ``compat``: a short ``common_ksampler`` per row of
+forward, each with and without RoPE. ``compat``: a short ``common_ksampler`` per row of
 the proposal's table, off and on, with the dtypes that reach the GEMMs and the head.
 
     make daemon-run ARGS="--stall-timeout 900 bench/anima_stream/comfy_check.py"
@@ -95,7 +95,7 @@ def run_numeric(args, out):
         args.seed,
     )
     sigmas = [float(s) for s in args.sigmas.split(",")]
-    cells, ref, lib = {}, {}, {"bf16": {}, "fp32_norope": {}}
+    cells, ref, lib = {}, {}, {"bf16": {}, "fp32_norope": {}, "fp32": {}}
     with fp32_reference(anima):
         for s in sigmas:
             for j, ci in enumerate(images):
@@ -111,10 +111,12 @@ def run_numeric(args, out):
 
     base = comfy.sd.load_diffusion_model(str(resolve_under_home(args.dit)))
     print("comfy compute dtype:", base.model.get_dtype_inference(), flush=True)
+    no_rope = base.clone()
+    assert stream_fp32_(no_rope, rope=False)
     patched = base.clone()
     assert stream_fp32_(patched)
-    comfy_preds = {"bf16": {}, "fp32": {}}
-    for arm, patcher in (("bf16", base), ("fp32", patched)):
+    comfy_preds = {"bf16": {}, "fp32_norope": {}, "fp32": {}}
+    for arm, patcher in (("bf16", base), ("fp32_norope", no_rope), ("fp32", patched)):
         for (s, j), (latents, crossattn, noise) in cells.items():
             x = ((1.0 - s) * latents + s * noise).unsqueeze(2).float()
             comfy_preds[arm][s, j] = comfy_v(
@@ -130,10 +132,14 @@ def run_numeric(args, out):
         row = {
             "library bf16": [dist(lib["bf16"], ref, k) for k in keys],
             "library fp32, no rope": [dist(lib["fp32_norope"], ref, k) for k in keys],
+            "library fp32": [dist(lib["fp32"], ref, k) for k in keys],
             "comfy bf16": [dist(comfy_preds["bf16"], ref, k) for k in keys],
+            "comfy fp32, no rope": [
+                dist(comfy_preds["fp32_norope"], ref, k) for k in keys
+            ],
             "comfy fp32": [dist(comfy_preds["fp32"], ref, k) for k in keys],
             "comfy fp32 to library": [
-                dist(comfy_preds["fp32"], lib["fp32_norope"], k) for k in keys
+                dist(comfy_preds["fp32"], lib["fp32"], k) for k in keys
             ],
             "comfy bf16 to library": [
                 dist(comfy_preds["bf16"], lib["bf16"], k) for k in keys
@@ -268,6 +274,7 @@ def dtypes_seen(dit):
         id(dit.blocks[-1]): "block",
         id(dit.blocks[0].self_attn.q_proj): "q_proj",
         id(dit.blocks[0].cross_attn.k_proj): "k_proj",
+        id(dit.blocks[0].cross_attn.q_norm): "q_norm",
         id(dit.blocks[0].mlp.layer1): "layer1",
         id(dit.final_layer.linear): "head",
     }

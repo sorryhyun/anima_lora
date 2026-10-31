@@ -3,7 +3,7 @@ on ``--stream bf16``, against ``library.anima.stream`` on ``--stream fp32``.
 
 Prediction error at fixed noised images, final-latent distance over full trajectories
 through ``generate_body``, each against a true fp32 forward (SDPA, no autocast), plus
-ms/step and peak. ``*_norope`` is the gap ComfyUI's patch has; ``bf16_ac`` is the trainer's
+ms/step and peak. ``*_norope`` leaves the q / k norms and RoPE in bf16; ``bf16_ac`` is the trainer's
 forward, the base of ``project/int8_train/reports/anima_stream_attrib.md``.
 
     make daemon-run ARGS="--stall-timeout 600 bench/anima_stream/run_bench.py"
