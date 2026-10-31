@@ -148,7 +148,7 @@ make download-model ARGS=moss-sft
 
 默认：梯度检查点（`grad_checkpointing`）关闭，`compile` 开启，**高级** 中 `int8 stream` 配合 GPTQ 文件（DiT 的块权重以 int8 运行，文件首次使用时下载）、`stream fp32`（块的其余部分以 fp32 运行）、`blocks_to_swap 0`（所有块都留在显卡上）、`activation_memory_budget 0.1`（前向结果中为反向保留的比例，其余重新计算）、`ema_card` 开启以及 `expandable_segments` 开启（序列长度变化时避免 CUDA 显存池碎片化）。
 
-该方案在 1024² 样本上为 1.07 s/step，峰值 10.78 GB，并且还会锁定 4.4 GiB 系统内存。在此方案上 0.1–0.3 速度相同，每提高 0.1 峰值约增加 1 GB。0.05 时峰值降到 9.98 GB，但需要重新计算 attention，速度降为 1.16 s/step。目前还没有用它完整训练出 LoRA（[详情](../moss/optimization/int8.md)）。
+该方案在 1024² 样本上为 1.07 s/step，峰值 10.78 GB，并且还会锁定 4.4 GiB 系统内存。在此方案上 0.1–0.3 速度相同，每提高 0.1 峰值约增加 1 GB。0.05 时峰值降到 9.98 GB，但需要重新计算 attention，速度降为 1.16 s/step。目前只用它完整训练过一个 LoRA，尚未与 bf16 对比（[详情](../moss/optimization/int8.md)）。
 
 **bf16 方案。** int8 基座拒绝 LoHa，也没有跑过 i2i 步骤，所以 i2i 任务配置仍用 bf16。使用 `--config configs/moss/lora_bf16.toml`，或在 **高级** 中设置 `int8 off`、`stream bf16`、`ema_card` 关闭、`blocks_to_swap 36`（放在 CPU 上、用时再传入的 DiT 块数）、`activation_memory_budget 0.5`。
 

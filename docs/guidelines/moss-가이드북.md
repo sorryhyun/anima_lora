@@ -148,7 +148,7 @@ make download-model ARGS=moss-sft
 
 기본값: `grad_checkpointing` 끔, `compile` 켬, 그리고 **Advanced** 의 `int8 stream` + GPTQ 파일 (DiT 블록 가중치를 int8로 실행하며, 파일은 처음 사용할 때 내려받음), `stream fp32` (블록의 나머지는 fp32로 실행), `blocks_to_swap 0` (모든 블록을 카드에 둠), `activation_memory_budget 0.1` (forward 결과 중 backward용으로 보관하는 비율, 나머지는 재계산), `ema_card` 켬, `expandable_segments` 켬 (시퀀스 길이가 달라질 때 CUDA 메모리 풀이 조각나지 않게 함).
 
-이 구성은 1024² 샘플에서 step당 1.07초, peak 10.78 GB이며 시스템 메모리 4.4 GiB도 고정(pin)합니다. 이 구성에서 0.1–0.3은 같은 속도이고 0.1 올릴 때마다 peak가 약 1 GB 늘어납니다. 0.05에서는 peak가 9.98 GB로 줄지만 attention을 재계산하게 되어 step이 1.16초로 느려집니다. 아직 이 구성으로 끝까지 학습한 LoRA는 없습니다 ([자세히](../moss/optimization/int8.md)).
+이 구성은 1024² 샘플에서 step당 1.07초, peak 10.78 GB이며 시스템 메모리 4.4 GiB도 고정(pin)합니다. 이 구성에서 0.1–0.3은 같은 속도이고 0.1 올릴 때마다 peak가 약 1 GB 늘어납니다. 0.05에서는 peak가 9.98 GB로 줄지만 attention을 재계산하게 되어 step이 1.16초로 느려집니다. 이 구성으로 끝까지 학습한 LoRA는 아직 하나뿐이고, bf16과의 비교는 아직 없습니다 ([자세히](../moss/optimization/int8.md)).
 
 **bf16 구성.** int8 베이스는 LoHa를 거부하고 i2i 스텝도 실행해 본 적이 없으므로, i2i 작업 설정은 bf16에 남아 있습니다. `--config configs/moss/lora_bf16.toml`, 또는 **Advanced** 에서 `int8 off`, `stream bf16`, `ema_card` 끔, `blocks_to_swap 36` (CPU에 두고 필요할 때 올리는 DiT 블록 수), `activation_memory_budget 0.5`.
 

@@ -148,7 +148,7 @@ make download-model ARGS=moss-sft
 
 デフォルト: `grad_checkpointing` オフ、`compile` オン、**Advanced** の `int8 stream` と GPTQ ファイル（DiT のブロック重みを int8 で実行。ファイルは初回使用時にダウンロード）、`stream fp32`（ブロックの残りは fp32 で実行）、`blocks_to_swap 0`（全ブロックをカードに置く）、`activation_memory_budget 0.1`（forward の結果のうち backward 用に保持する割合。残りは再計算）、`ema_card` オン、`expandable_segments` オン（シーケンス長が変わっても CUDA メモリプールが断片化しないようにする）。
 
-この構成は 1024² のサンプルで 1 step あたり 1.07 秒、ピーク 10.78 GB で、システムメモリも 4.4 GiB 固定（pin）します。この構成では 0.1–0.3 は同じ速度で、0.1 上げるごとにピークが約 1 GB 増えます。0.05 ではピークが 9.98 GB に下がりますが、attention を再計算するため step は 1.16 秒に遅くなります。この構成で最後まで学習した LoRA はまだありません（[詳細](../moss/optimization/int8.md)）。
+この構成は 1024² のサンプルで 1 step あたり 1.07 秒、ピーク 10.78 GB で、システムメモリも 4.4 GiB 固定（pin）します。この構成では 0.1–0.3 は同じ速度で、0.1 上げるごとにピークが約 1 GB 増えます。0.05 ではピークが 9.98 GB に下がりますが、attention を再計算するため step は 1.16 秒に遅くなります。この構成で最後まで学習した LoRA はまだ 1 つだけで、bf16 との比較もまだありません（[詳細](../moss/optimization/int8.md)）。
 
 **bf16 構成。** int8 ベースは LoHa を拒否し、i2i のステップも実行したことがないため、i2i のタスク設定は bf16 のままです。`--config configs/moss/lora_bf16.toml`、または **Advanced** で `int8 off`、`stream bf16`、`ema_card` オフ、`blocks_to_swap 36`（CPU に置き、必要なときに転送する DiT ブロック数）、`activation_memory_budget 0.5`。
 

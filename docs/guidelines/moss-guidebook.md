@@ -148,7 +148,7 @@ The comparisons ran on 30 images of one artist (`@channel (caststation)`), Base,
 
 Defaults: `grad_checkpointing` off, `compile` on, and under Advanced `int8 stream` with the GPTQ file (the DiT's block weights run as int8; the file downloads on first use), `stream fp32` (the rest of the block runs in fp32), `blocks_to_swap 0` (every block stays on the card), `activation_memory_budget 0.1` (how much of the forward pass is kept for the backward; the rest is recomputed), `ema_card` on and `expandable_segments` on (keeps the CUDA memory pool from fragmenting when sequence lengths vary).
 
-This runs 1.07 s/step at a 10.78 GB peak on 1024² samples and also pins 4.4 GiB of system memory. On this plan 0.1–0.3 run at the same speed and each 0.1 adds about 1 GB of peak. At 0.05 the peak drops to 9.98 GB but attention is recomputed and the step slows to 1.16 s. No LoRA has been trained to completion on it yet ([details](../moss/optimization/int8.md)).
+This runs 1.07 s/step at a 10.78 GB peak on 1024² samples and also pins 4.4 GiB of system memory. On this plan 0.1–0.3 run at the same speed and each 0.1 adds about 1 GB of peak. At 0.05 the peak drops to 9.98 GB but attention is recomputed and the step slows to 1.16 s. One LoRA has been trained to completion on it so far, with no comparison against bf16 yet ([details](../moss/optimization/int8.md)).
 
 **bf16 plan.** The int8 base refuses LoHa and has run no i2i step, so the i2i task configs stay on bf16. `--config configs/moss/lora_bf16.toml`, or under Advanced `int8 off`, `stream bf16`, `ema_card` off, `blocks_to_swap 36` (DiT blocks kept on the CPU and streamed in), `activation_memory_budget 0.5`.
 

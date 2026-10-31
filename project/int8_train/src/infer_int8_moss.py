@@ -16,7 +16,7 @@ forward copies instead of round to nearest. Images land in
 ``<out_dir>/int8_<base id>/``: a saved latent is reused on its job fingerprint, which
 does not name the base, so the arms of an A/B can share ``--out_dir``. A LoRA's
 ``int8_base`` / ``int8_base_id`` stamps are logged against this base. Refused:
-``blocks_to_swap`` (the offloader moves only ``.weight``) and LoHa (it builds
+``blocks_to_swap`` (generation on this base has run no swap) and LoHa (it builds
 ``W + ΔW``).
 
     make daemon-run ARGS="project/int8_train/src/infer_int8_moss.py --int8 on \\
@@ -44,8 +44,8 @@ def install(req: GenerateRequest, int8_file: str) -> GenerateRequest:
     this base's ``out_dir``."""
     if req.blocks_to_swap:
         raise SystemExit(
-            "int8 base: --blocks_to_swap 0 is required (the offloader moves only "
-            ".weight, not wq)"
+            "int8 base: --blocks_to_swap 0 is required (generation on this base "
+            "has run no swap)"
         )
 
     import torch

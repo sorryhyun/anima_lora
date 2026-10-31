@@ -4,8 +4,9 @@ The 252 block linears (`layers.N.proj.{q,k,v,o,ffn_up_gate,ffn_down}`) of the fr
 as ConvRot int8 GEMMs instead of bf16. Attention, norms, modulation, the residual stream
 and the LoRA's own GEMMs stay in float.
 
-**Status (2026-10-31): the default training plan, measured up to 60-step trainer runs. No
-LoRA has been trained to completion on the GPTQ base and no multi-seed render A/B exists.**
+**Status (2026-10-31): the default training plan. One LoRA has completed on the GPTQ base
+(ama mitsuki, 848 steps, 14.6 min, 1.08 s/step, 10.95 GB). It has no A/B against a
+bf16-trained LoRA, and no multi-seed render A/B exists.**
 Generation on the file works and is the better-supported half: 6.3 GiB against 10.7 GiB at
 1024². In training, `--int8 full` gains speed and saves no VRAM; `--int8 stream` also saves
 about 4 GB ([VRAM](#vram)).
@@ -210,9 +211,9 @@ The mechanism is unresolved. In training it would arrive as one outlier gradient
 
 ## Not measured
 
-- **A complete LoRA on the GPTQ base.** Training on it has stopped at 30 steps, on one
-  set. Whether a LoRA trained there matches a bf16-trained one, in loss or samples, is
-  unknown.
+- **A GPTQ-trained LoRA against a bf16-trained one.** The one complete run renders cleanly
+  and moves the palette on one prompt and seed. Whether it matches a bf16-trained LoRA, in
+  loss or samples, is unknown.
 - **Any complete LoRA on the RTN base.** Its only MOSS run stopped at 70 of 240 steps.
   The Anima A/B (848 steps, 1.37x, loss and samples matching) has no MOSS counterpart.
 - **Multi-seed render A/B** of the int8 base against bf16.
