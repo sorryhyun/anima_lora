@@ -2,18 +2,19 @@
 
 `--stream fp32` runs everything around the block GEMMs in fp32: the residual stream `x`, the
 modulation, the q / k norms and RoPE, the embedder and the head. The block linears and FA2 stay
-bf16 (or int8), and no parameter changes dtype. It is the default for generation, and opt-in for
-training.
+bf16 (or int8), and no parameter changes dtype. It is the default for generation and training.
 
 ```bash
 make test                # fp32
 make test STREAM=bf16    # the forward and sampler of before, bit for bit
-make lora ARGS="--stream fp32"   # training; bf16 by default (`stream` in configs/base.toml)
+make lora                # fp32 (`stream` in configs/base.toml)
+make lora ARGS="--stream bf16"
 ```
 
-`GenerationRequest(stream=...)` is the same switch. EasyControl stays on bf16: generation warns,
-training refuses. Turbo has no `--stream`. In ComfyUI, `Anima Adapter Loader` has a `stream` input
-and `Anima fp32 Stream` patches a MODEL with no adapter. `Anima INT8 Loader` loads an INT8 file.
+`GenerationRequest(stream=...)` is the same switch. EasyControl stays on bf16, with a warning in
+generation and training; its `.snapshot.toml` still reads `fp32`, the configured value. Turbo has no
+`--stream`. In ComfyUI, `Anima Adapter Loader` has a `stream` input and `Anima fp32 Stream` patches a
+MODEL with no adapter. `Anima INT8 Loader` loads an INT8 file.
 
 **The same seed gives a different image from `bf16`.** The noise is the same, since an fp32 draw
 rounds to the bf16 one. Final latents moved 12–24% in five 6–12 step runs at 768².
@@ -31,7 +32,7 @@ Training converts at the same point, after int8 and before `apply_to`. The noisy
 fp32 and previews sample in fp32. A LoRA on an fp32 output keeps bf16 weights and records
 `ss_stream`, a record only. The compile cache gets a `;stream=fp32` suffix. `Fp32Linear`'s autocast
 exit stays inside the compiled block: one graph, no break. The stream's saved set is larger, so the
-budget table in [`int8.md`](int8.md) does not carry over, and no training run has used it yet.
+budget table in [`int8.md`](int8.md) does not carry over.
 
 ComfyUI (`~/ComfyUI-Anima_lora-Adapter/stream.py`) fuses the norm and RoPE into one kernel that
 follows its input's dtype. Forward hooks widen what `q_proj` and `k_proj` return, and an `attn_op`

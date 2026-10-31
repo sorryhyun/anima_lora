@@ -12,6 +12,7 @@ and feeds the int8 linears fp32.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 
 import torch
@@ -19,6 +20,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from library.anima.models import Anima, RMSNorm
+
+logger = logging.getLogger(__name__)
 
 
 class Fp32Linear(nn.Linear):
@@ -75,7 +78,8 @@ def latent_dtype(dit: nn.Module, narrow: torch.dtype = torch.bfloat16) -> torch.
     return torch.float32 if getattr(dit, "stream", "bf16") == "fp32" else narrow
 
 
-def check_plan(args) -> None:
-    """The training plans an fp32 stream cannot run; before anything loads."""
+def settle_training_stream(args) -> None:
+    """Writes back the stream this run trains on; before anything loads."""
     if args.network_module == "networks.methods.easycontrol":
-        raise SystemExit("fp32 stream: EasyControl runs on --stream bf16")
+        logger.warning("EasyControl runs on the bf16 stream; ignoring --stream fp32")
+        args.stream = "bf16"

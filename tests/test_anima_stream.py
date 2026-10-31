@@ -15,9 +15,9 @@ from library.anima.models import Anima
 from library.anima.stream import (
     Fp32Linear,
     Fp32RMSNorm,
-    check_plan,
     fp32_linears,
     latent_dtype,
+    settle_training_stream,
     stream_fp32_,
 )
 from library.anima.trainer.cli import setup_parser
@@ -267,17 +267,21 @@ def test_load_gates_the_conversion(monkeypatch, stream, easycontrol, swapped):
     assert latent_dtype(out) == (torch.float32 if swapped else torch.bfloat16)
 
 
-def test_training_flag_defaults_to_bf16():
-    assert setup_parser().parse_args([]).stream == "bf16"
-    assert setup_parser().parse_args(["--stream", "fp32"]).stream == "fp32"
+def test_training_flag_defaults_to_fp32():
+    assert setup_parser().parse_args([]).stream == "fp32"
+    assert setup_parser().parse_args(["--stream", "bf16"]).stream == "bf16"
     with pytest.raises(SystemExit):
         setup_parser().parse_args(["--stream", "fp16"])
 
 
-def test_training_refuses_easycontrol():
-    with pytest.raises(SystemExit):
-        check_plan(SimpleNamespace(network_module="networks.methods.easycontrol"))
-    check_plan(SimpleNamespace(network_module="networks.lora_anima"))
+@pytest.mark.parametrize(
+    ("network_module", "stream"),
+    [("networks.methods.easycontrol", "bf16"), ("networks.lora_anima", "fp32")],
+)
+def test_easycontrol_trains_on_bf16(network_module, stream):
+    args = SimpleNamespace(network_module=network_module, stream="fp32")
+    settle_training_stream(args)
+    assert args.stream == stream
 
 
 @pytest.mark.parametrize(("stream", "stamped"), [("bf16", False), ("fp32", True)])

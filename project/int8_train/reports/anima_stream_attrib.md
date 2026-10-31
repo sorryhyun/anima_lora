@@ -157,4 +157,4 @@ of the residual is where it could matter. That is a judgement, not a measurement
   draws. Not worth running on one σ.
 - `int8` at σ 0.1 in blocks 0–13 on 30 images.
 
-Proposal: [`docs/anima/proposal/fp32_stream.md`](../../../docs/anima/proposal/fp32_stream.md).
+User doc: [`docs/anima/optimizations/fp32_stream.md`](../../../docs/anima/optimizations/fp32_stream.md).

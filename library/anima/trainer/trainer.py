@@ -281,9 +281,9 @@ class AnimaTrainer:
 
             check_plan(args)
         if args.stream == "fp32":
-            from library.anima.stream import check_plan as check_stream_plan
+            from library.anima.stream import settle_training_stream
 
-            check_stream_plan(args)
+            settle_training_stream(args)
         train_util.prepare_dataset_args(args, True)
         setup_logging(args, reset=True)
 

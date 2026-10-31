@@ -816,10 +816,10 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
     parser.add_argument(
         "--stream",
         choices=("bf16", "fp32"),
-        default="bf16",
+        default="fp32",
         help="Residual stream precision: fp32 runs the stream, modulation, q / k norms, "
         "RoPE, embedder and head in fp32 around the block GEMMs, which stay bf16 or int8. "
-        "Refuses EasyControl. docs/anima/optimizations/fp32_stream.md.",
+        "EasyControl stays on bf16. docs/anima/optimizations/fp32_stream.md.",
     )
 
 
