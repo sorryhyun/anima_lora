@@ -103,15 +103,6 @@ dependencies = [
 
 [project.optional-dependencies]
 gui = ["PySide6>=6.7"]
-# Transition shims (GH #92): v1.16.1/v1.16.2 shipped `update.py` scripts that
-# pass `--extra cuda-windows|rocm-windows`, so these names must keep resolving
-# without error. The real backend selection lives in [dependency-groups] below
-# — `cuda-windows` is a DEFAULT group, so a plain `uv sync` (what every
-# pre-v1.16.1 updater runs) installs the CUDA stack on Windows instead of
-# letting the resolver pick the ROCm torch. Removable once no shipped updater
-# passes the --extra form (~v1.18).
-cuda-windows = []
-rocm-windows = []
 dev = [
     "pytest>=8.0",
     "pytest-xdist>=3.6",

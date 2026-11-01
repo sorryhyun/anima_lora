@@ -223,10 +223,8 @@ def test_windows_backend_dependencies_are_isolated():
     assert rocm_index["url"] == "https://stable.repo.amd.com/rocm/whl-next/"
 
     # GH #92: a flagless `uv sync` (old updaters) must install the CUDA stack
-    # on Windows, and the legacy --extra flags must keep resolving as stubs.
+    # on Windows.
     assert "cuda-windows" in project["tool"]["uv"]["default-groups"]
-    extras = project["project"]["optional-dependencies"]
-    assert extras["cuda-windows"] == [] and extras["rocm-windows"] == []
 
 
 def test_flagless_sync_resolves_cuda_torch_on_windows():

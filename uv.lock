@@ -453,7 +453,7 @@ requires-dist = [
     { name = "voluptuous", specifier = ">=0.15.2" },
     { name = "yarl", specifier = ">=1.23.0" },
 ]
-provides-extras = ["gui", "cuda-windows", "rocm-windows", "dev"]
+provides-extras = ["gui", "dev"]
 
 [package.metadata.requires-dev]
 cuda-windows = [
