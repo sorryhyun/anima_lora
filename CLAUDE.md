@@ -4,6 +4,9 @@ Orientation and invariants for this repository. Task-shaped detail lives in skil
 .claude/skills`) and in the nested `CLAUDE.md` files: `library/moss/`, `library/qwen21/`,
 `configs/`, `networks/`, `gui/`.
 
+**Read memory before the first action of a session.** Only the `MEMORY.md` index loads by
+itself. Read the memory files whose index line bears on the task.
+
 ## What this repo is
 
 A LoRA training and inference workbench for several diffusion models, sharing one GPU
