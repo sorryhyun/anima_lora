@@ -430,7 +430,7 @@ def run_scope(
     ``run_start`` must already have fired (the sink is constructed earlier so it
     can be handed to the checkpoint saver). On block exit this maps the outcome
     to a status: normal return → ``ok``; ``KeyboardInterrupt`` → ``stopped``;
-    :class:`~library.training.pause.TrainingPaused` → ``paused`` (with the
+    :class:`~library.runtime.pause.TrainingPaused` → ``paused`` (with the
     ``state_dir`` to resume from); any other exception → ``error`` (re-raised
     either way). ``final_step`` is
     read lazily at exit so the event records where training actually stopped;
@@ -455,7 +455,7 @@ def run_scope(
     if sink is None:
         yield
         return
-    from library.training.pause import TrainingPaused
+    from library.runtime.pause import TrainingPaused
 
     try:
         yield

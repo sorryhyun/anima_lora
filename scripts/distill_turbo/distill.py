@@ -36,7 +36,7 @@ import torch.nn as nn
 from tqdm import tqdm
 
 from library.anima.uncond import uncond_for_batch
-from library.training.progress import run_scope
+from library.runtime.progress import run_scope
 
 from .config import build_argparser, load_turbo_config, resolve_config
 from .diversity import run_diversity_validation

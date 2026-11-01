@@ -3,7 +3,7 @@
 One block's image-token output, pooled to the PE-Spatial grid, is matched to the
 image's PE-Spatial patch tokens by Gram MSE after per-token L2-norm, with the
 target DoG band-passed (``σ₁ = min(gh, gw)/16``): Anima's shipped form
-(``docs/anima/methods/repa.md``), math from ``library/training/repa.py``. No head, no
+(``docs/anima/methods/repa.md``), math from ``library/vision/repa.py``. No head, no
 inference-time parameters; the gradient reaches the LoRA in blocks ≤ the layer.
 
 MOSS-specific DiT side: before the Gram the pooled tokens drop the massive-activation
@@ -28,7 +28,7 @@ from safetensors import safe_open
 from safetensors.torch import load_file
 
 from library.moss.dave import massive_channels
-from library.training.repa import (
+from library.vision.repa import (
     dog_standardize,
     pool_dit_tokens_to_grid,
     relational_gram_loss,

@@ -33,7 +33,7 @@ from library.training.checkpoints import CheckpointSaver
 from library.training.contexts import TrainCtx, ValCtx
 from library.training.method_adapter import StepCtx
 from library.training.metrics import MetricContext, collect_metrics
-from library.training.pause import PauseWatcher, TrainingPaused
+from library.runtime.pause import PauseWatcher, TrainingPaused
 from library.training.validation import run_validation
 
 logger = logging.getLogger(__name__)

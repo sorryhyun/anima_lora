@@ -102,7 +102,7 @@ from library.moss.training.memory import (  # noqa: F401
     set_activation_memory_budget,
     step_reserve_gb,
 )
-from library.training.progress import ProgressSink, command_job_path, run_scope
+from library.runtime.progress import ProgressSink, command_job_path, run_scope
 
 PROGRESS_EVERY = 2  # steps per "  progress i/n" line (the GUI bar reads them)
 

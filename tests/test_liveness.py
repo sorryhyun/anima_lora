@@ -24,7 +24,7 @@ from library.training.losses import (
     LossContext,
     build_loss_composer,
 )
-from library.training.progress import ProgressSink, run_scope
+from library.runtime.progress import ProgressSink, run_scope
 
 
 def _make_args(**overrides) -> argparse.Namespace:

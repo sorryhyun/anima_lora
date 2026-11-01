@@ -32,7 +32,7 @@ behind a live train run instead of OOM-colliding, and survive the terminal.
   GPU is freed and the queue advances; the job parks as `paused` + `released` and
   `daemon-resume` re-enqueues it at the front with `--resume <state_dir>` (reload +
   recompile, not instant). Protocol: `pause.request` / `pause.ack.json` in the job dir,
-  `library/training/pause.py`.
+  `library/runtime/pause.py`.
 - Append `--queue` to any train/distill target to enqueue instead of running inline
   (`make lora --queue`, `make turbo --queue`). GUI Train button, ComfyUI trainer node,
   and preprocessing all submit here.
@@ -124,7 +124,7 @@ unaffected).
 
 `step N/total`, it/s, ETA, last losses, last ckpt, and `RUNNING`/`OK`/`ERROR`/`DEAD` (no
 `run_end` + dead pid), digested from the run's `progress.jsonl`
-(`library/training/progress.py::read_status` — importable; `scripts/run_status.py` is the
+(`library/runtime/progress.py::read_status` — importable; `scripts/run_status.py` is the
 CLI). Covers train.py methods, `make turbo` **and** moss train (`scripts/moss/train.py`); a bespoke loop that writes no
 `progress.jsonl` (e.g. `project/cjk_anima_reseed/run.py`) shows nothing here — read the
 step off `make daemon-log JOB=<id>`.

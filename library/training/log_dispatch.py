@@ -1,7 +1,7 @@
 """Log-dispatch: fan an assembled ``logs`` dict out to its sinks.
 
 Sends a ``logs`` dict to every configured Accelerate tracker (tensorboard /
-wandb / others) plus the :class:`~library.training.progress.ProgressSink`.
+wandb / others) plus the :class:`~library.runtime.progress.ProgressSink`.
 This is the *output* end of the metrics pipeline — the values are produced via
 the :mod:`library.training.metrics` collector protocol, assembled into a dict,
 then handed here. Distinct from :mod:`library.log`, which configures Python's

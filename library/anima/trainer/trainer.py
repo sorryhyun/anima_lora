@@ -55,8 +55,8 @@ from library.training.log_dispatch import (
 )
 from library.training.loop import build_loop_state, run_training_loop
 from library.training.method_adapter import SetupCtx, resolve_adapters
-from library.training.pause import TrainingPaused
-from library.training.progress import ProgressSink, run_scope
+from library.runtime.pause import TrainingPaused
+from library.runtime.progress import ProgressSink, run_scope
 from library.training.sampling_config import normalize_sample_args
 
 logger = logging.getLogger(__name__)

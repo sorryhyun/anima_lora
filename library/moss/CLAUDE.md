@@ -4,7 +4,7 @@
 frozen Qwen3.5-9B text encoder and the frozen FLUX.2 VAE; the Anima
 invariants in the root `CLAUDE.md` are wrong here. Shared with Anima: `library.runtime.{offloading,blockswap,dynamo}`,
 `library.env`, the daemon, the ER-SDE sampler + CNS core (`library.inference.sampling`,
-`library.inference.corrections.cns_core`), `library.training.repa`. Shared with
+`library.inference.corrections.cns_core`), `library.vision.repa`, `library.runtime.progress`. Shared with
 `library/qwen21/`: `library.lines` (`requests.py` request base, `adapters.py` LoRA / LoKr /
 LoHa, `scan.py` the GUI's counts). `spectrum.py` re-implements Anima's forecaster rather than
 importing `networks/` (`tests/test_moss_spectrum.py` checks it against the core). Nothing

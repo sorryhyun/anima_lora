@@ -31,7 +31,7 @@ import sys
 from pathlib import Path
 
 from library.env import resolve_under_home
-from library.training.progress import _pid_alive, read_status
+from library.runtime.progress import _pid_alive, read_status
 
 _SUFFIX = ".progress.jsonl"
 # The daemon points every train job's sink here (manager._build_cmd), one dir

@@ -130,7 +130,7 @@ class JsonlProgressReader:
     """Drives a QProgressBar from a training ``progress.jsonl`` event stream.
 
     The trainer writes structured ``run_start`` / ``step`` / ``val`` /
-    ``run_end`` events (``library/training/progress.py``) next to the
+    ``run_end`` events (``library/runtime/progress.py``) next to the
     checkpoint, and this reader tails that file. The caller keeps the tqdm
     :class:`TqdmProgressTracker` as a fallback and only hands the bar over once
     ``active`` flips True (first event seen). When the file never appears

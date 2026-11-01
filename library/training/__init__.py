@@ -121,7 +121,7 @@ from library.training.checkpoints import (
     save_checkpoint_state,
 )
 
-from library.training.progress import (
+from library.runtime.progress import (
     ProgressSink,
     run_scope,
 )

@@ -28,7 +28,7 @@ from library.datasets import base as _datasets_base
 from library.log import add_logging_arguments
 from library.models import sai_spec as sai_model_spec
 from library.training import add_custom_train_arguments
-from library.training.pause import TrainingPaused
+from library.runtime.pause import TrainingPaused
 from networks import all_network_kwargs as _all_network_kwargs
 
 logger = logging.getLogger(__name__)

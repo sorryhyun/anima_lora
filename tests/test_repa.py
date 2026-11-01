@@ -20,9 +20,9 @@ import torch.nn.functional as F
 from library.training.repa import (
     REPAHead,
     REPAMethodAdapter,
-    dog_standardize,
 )
 from library.vision.buckets import get_bucket_spec
+from library.vision.repa import dog_standardize
 
 
 def _make_adapter(mode: str, *, patch: int = 2) -> REPAMethodAdapter:
@@ -248,7 +248,7 @@ def test_dog_replaces_spatial_norm_in_adapter():
     """With _dog on the adapter band-passes the target then Gram-matches — it
     must equal hand-computed dog_standardize + relational_gram_loss(spatial_norm
     off), proving DoG slots in *instead of* the spatial_norm block."""
-    from library.training.repa import (
+    from library.vision.repa import (
         pool_dit_tokens_to_grid,
         relational_gram_loss,
     )

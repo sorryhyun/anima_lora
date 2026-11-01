@@ -49,7 +49,7 @@ from library.training.distill_runtime import (
     resolve_device_dtype,
     write_config_snapshot,
 )
-from library.training.progress import ProgressSink
+from library.runtime.progress import ProgressSink
 from networks.methods.turbo_dmd import TurboDMDNetwork, warm_start_plain_lora
 
 from .config import TurboConfig, snapshot_toml_text, tb_config_text

@@ -39,8 +39,8 @@ _SHARED = (
     "library.runtime.dynamo",
     "library.inference.sampling",
     "library.inference.corrections.cns_core",
-    "library.training.progress",
-    "library.training.repa",
+    "library.runtime.progress",
+    "library.vision.repa",
     "library.vision.buckets",
     "library.datasets.curation_actions",
 )
@@ -78,6 +78,15 @@ def test_shared_int8_stays_out_of_the_lines():
             if name.startswith(("library.moss", "library.anima", "networks")):
                 offenders.append(f"{path.name}: {name}")
     assert not offenders, f"library.int8 imports a line: {offenders}"
+
+
+def test_moss_trainer_does_not_load_the_anima_training_package():
+    code = (
+        "import sys, library.moss.train, library.moss.repa; "
+        "sys.exit(any(m.startswith('library.training') for m in sys.modules))"
+    )
+    result = subprocess.run([sys.executable, "-c", code], cwd=ROOT)
+    assert result.returncode == 0, "library.moss.train loads library.training"
 
 
 def test_requests_is_torch_free():

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from library.training.progress import (
+from library.runtime.progress import (
     ProgressSink,
     command_job_path,
     read_status,

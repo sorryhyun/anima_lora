@@ -87,7 +87,7 @@ back to the on-disk records, so they answer with the daemon down.
 | kind | what it runs | how it finalizes |
 |------|--------------|------------------|
 | `train` (default) | a `train.py` run built from `method` + `preset` + `overrides` + `extra` | `progress.jsonl` stream + exit code |
-| `command` | a plain `python <argv>` task (preprocess, mask, a distill loop) | exit code; a loop that writes `$ANIMA_DAEMON_JOB_DIR/progress.jsonl` (moss train, via `library.training.progress.command_job_path`) is read like a train job's, but a nonzero exit outranks its `run_end` "ok" |
+| `command` | a plain `python <argv>` task (preprocess, mask, a distill loop) | exit code; a loop that writes `$ANIMA_DAEMON_JOB_DIR/progress.jsonl` (moss train, via `library.runtime.progress.command_job_path`) is read like a train job's, but a nonzero exit outranks its `run_end` "ok" |
 
 A train job's record keeps `method`/`preset`/`overrides`/`extra` and builds its
 launch argv at spawn, so its `argv` field stays empty; a command job's `argv` is
@@ -218,7 +218,7 @@ no id resolve the active job.
 **`{"release_model": true}`** in the body (`make daemon-pause RELEASE=1`,
 `client.pause_job(id, release_model=True)`) is the cooperative variant for
 **train.py jobs only**: the daemon drops `pause.request` in the job dir, the
-trainer picks it up at its next optimizer step (`library/training/pause.py`),
+trainer picks it up at its next optimizer step (`library/runtime/pause.py`),
 writes the resumable `<output_name>-checkpoint` weights + `-checkpoint-state`
 dir (the same files auto-resume uses, regardless of `checkpointing_epochs`),
 writes `pause.ack.json`, and exits with `run_end status="paused"` carrying

@@ -43,7 +43,7 @@ logger = logging.getLogger("anima.daemon")
 
 _POLL_INTERVAL = 1.0  # seconds between liveness checks
 _SENTINEL = "__stop__"
-# Release-pause request file in the job dir (library/training/pause.py reads it).
+# Release-pause request file in the job dir (library/runtime/pause.py reads it).
 PAUSE_REQUEST_NAME = "pause.request"
 
 # Stall watchdog CPU-activity cross-check (see _stall_reason /

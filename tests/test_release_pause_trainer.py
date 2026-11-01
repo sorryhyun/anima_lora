@@ -1,13 +1,13 @@
-"""Trainer side of the daemon release-pause (library/training/pause.py):
+"""Trainer side of the daemon release-pause (library/runtime/pause.py):
 request polling, ack, and the ``paused`` run_end mapping in run_scope."""
 
 import json
 
 import pytest
 
-from library.training import pause as pause_mod
-from library.training.pause import PauseWatcher, TrainingPaused
-from library.training.progress import ProgressSink, run_scope
+from library.runtime import pause as pause_mod
+from library.runtime.pause import PauseWatcher, TrainingPaused
+from library.runtime.progress import ProgressSink, run_scope
 
 
 def test_watcher_polls_request_and_acks(tmp_path):

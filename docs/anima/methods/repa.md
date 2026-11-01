@@ -70,7 +70,7 @@ features load but the block hook never fires, the adapter warns once.
   both sides are `N = gh·gw` tokens in the same row-major order. `(gh, gw)` is
   recovered from the encoder feature's own token count, disambiguated by the
   latent's orientation.
-- DoG band-pass (`dog_standardize` in `library/training/repa.py`):
+- DoG band-pass (`dog_standardize` in `library/vision/repa.py`):
   target-side only, relational mode only — reshape to the `(gh, gw)` grid,
   `Z − LP(σ₁)` low-band strip, standardize, flatten back for the per-token
   L2-norm + Gram match. `repa_dog_sigma1_div` / `repa_dog_sigma2_div` /
@@ -110,7 +110,7 @@ features load but the block hook never fires, the adapter warns once.
 
 ## References
 
-- `library/training/repa.py` — adapter + relational loss + DoG band-pass (module
+- `library/training/repa.py` — adapter; `library/vision/repa.py` — relational loss + DoG band-pass (adapter module
   docstring covers grid / native_flatten mechanics in depth).
 - `networks/lora_anima/factory.py` (kwargs + optional head attach),
   `library/training/losses.py::_repa_loss`,

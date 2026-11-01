@@ -126,7 +126,7 @@ points** (`scripts/**`, `bench/**/run_bench.py`, `tasks.py` — thin argparse wr
 `bench.<dir>.<mod>` / `scripts.<dir>.<mod>`, no `sys.path` bootstrap. Repo-root modules
 (`train.py`, `inference.py`, `tasks.py`) and `i2i_tasks/` are not installed.
 
-Shared across lines: `library.runtime.{offloading,blockswap,dynamo}`, `library.env`,
+Shared across lines: `library.runtime.{offloading,blockswap,dynamo,progress}`, `library.env`,
 `library.int8` (the int8 base linears),
 the ER-SDE sampler and CNS core (`library.inference.sampling`,
 `library.inference.corrections.cns_core`), `library.lines` (request base, LoRA / LoKr /
