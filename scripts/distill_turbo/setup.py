@@ -23,6 +23,7 @@ import torch
 
 from library.anima import weights as anima_utils
 from library.anima.models import Anima
+from library.anima.stream import latent_dtype, stream_fp32_
 from library.anima.uncond import (
     default_uncond_path,
     load_uncond_crossattn,
@@ -98,7 +99,8 @@ class RunContext:
     model: Anima
     turbo: TurboDMDNetwork
     device: torch.device
-    dtype: torch.dtype
+    dtype: torch.dtype  # sampler state: latents, noise, σ
+    cond_dtype: torch.dtype  # text embeddings
 
     # Optimizers / schedulers (disc pair is None when the GAN is off; fake
     # pair is None under DMAD, which builds no critic).
@@ -183,6 +185,7 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         attn_mode=cfg.attn_mode,
         loading_device="cpu" if cfg.blocks_to_swap > 0 else device,
         dit_weight_dtype=dtype,
+        dit_nonquant_path=cfg.dit_nonquant_path,
     )
 
     # Block swap; compile_dit_blocks deferred until after apply_to (COMPILE LAST
@@ -208,7 +211,7 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
 
     int8_base_id = ""
 
-    def convert_int8() -> None:
+    def convert_base() -> None:
         nonlocal int8_base_id
         if cfg.int8 != "off":
             from library.anima.int8 import convert_for_turbo
@@ -216,6 +219,8 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
             int8_base_id = convert_for_turbo(
                 model, cfg.int8, cfg.int8_file, cfg.dit_path
             )
+        if cfg.stream == "fp32":
+            stream_fp32_(model)
 
     turbo = TurboDMDNetwork(
         unet=model,
@@ -239,9 +244,10 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         gan_disc_hidden=cfg.gan_disc_hidden if cfg.gan_disc_hidden > 0 else None,
         gan_disc_head=cfg.gan_disc_head,
         build_fake=not cfg.dmad,
-        before_apply=convert_int8,
+        before_apply=convert_base,
     )
     turbo.freeze_dit()
+    state_dtype = latent_dtype(model, dtype)
     for pool in turbo.student_pools:
         pool.to(device=device, dtype=dtype)
     for bank in turbo.fake_banks:
@@ -374,6 +380,7 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
                 if cfg.int8 == "off"
                 else f";int8={cfg.int8};int8_in=fp32;flops=fa2,int8"
             )
+            + ("" if cfg.stream == "bf16" else f";stream={cfg.stream}")
         )
     compile_dit_blocks(
         model,
@@ -527,7 +534,7 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         val_cond = v_ca.unsqueeze(0).to(device, dtype=dtype)  # (1, seq, D)
         val_latent_shape = (1, *tuple(v_lat.shape))  # (1, C, H, W)
         val_clean = v_lat.unsqueeze(0).to(
-            device, dtype=dtype
+            device, dtype=state_dtype
         )  # (1, C, H, W) for FM MSE
         logger.info(
             f"diversity validation: every {cfg.validate_every_n_steps} steps, "
@@ -709,7 +716,8 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
             t_distribution=cfg.t_distribution,
             sigmoid_scale=cfg.sigmoid_scale,
             device=device,
-            dtype=dtype,
+            dtype=state_dtype,
+            cond_dtype=dtype,
             log_interval=cfg.log_interval,
             writer=writer,
             fake_tau_banks=cfg.fake_tau_banks,
@@ -763,7 +771,8 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         model=model,
         turbo=turbo,
         device=device,
-        dtype=dtype,
+        dtype=state_dtype,
+        cond_dtype=dtype,
         student_opt=student_opt,
         fake_opt=fake_opt,
         disc_opt=disc_opt,

@@ -31,10 +31,17 @@ trained. Each LoRA's `ss_int8_base` / `ss_int8_base_id` are logged against the b
 In order:
 
 1. `--int8_file <path>`.
-2. `<dit>_int8_gptq.safetensors` beside the DiT. On the catalog's `anima-base-v1.0` that is
+2. The DiT itself, when `dit_path` names an int8 checkpoint.
+3. `<dit>_int8_gptq.safetensors` beside the DiT. On the catalog's `anima-base-v1.0` that is
    `models/diffusion_models/anima-base-v1.0_int8_gptq.safetensors`, row `anima_dit_int8`,
    downloaded on first use (2.37 GiB) or via `make download-model ARGS=anima-dit-int8`.
-3. Round to nearest, also forced by `--int8_file rtn`.
+4. Round to nearest, also forced by `--int8_file rtn`.
+
+The GPTQ file is a full DiT: block linears int8, everything else bf16. As `dit_path` it needs
+`dit_nonquant_path`, the bf16 DiT, for the float weights `wq_t` and `weight_svd` / `grad_svd` init
+read; `make turbo` ships both. Without it the loader rebuilds them from the int8 copies, 1.1% from
+the true weight, which moves `wq_t` 1.6%. Generation needs neither. A static LoRA merge on a rebuilt
+base is refused.
 
 The GPTQ file is made by `project/int8_train/src/dit_gptq.py` and published as
 [sorryhyun/anima-base-v1.0-int8](https://huggingface.co/sorryhyun/anima-base-v1.0-int8). A
@@ -47,8 +54,10 @@ file or round to nearest.
   Anima's offloader, so the `low_vram` preset does not run on int8.
 - Training takes `LoRANetwork` only, and only method `lora` has been measured. `EasyControl` and
   the soup loop train on bf16 or are refused.
-- `make turbo ARGS="--int8 stream"` is wired and has not run a step. It refuses `dmad` and
-  `dmad_probe`, and its teacher runs on the int8 base.
+- `make turbo` ships `int8 = "stream"` and has run 30-step smokes only, no full student. It refuses
+  `dmad` and `dmad_probe`, and its teacher runs on the int8 base. 2026-11-01, warm start, budget
+  0.99: 6.28 s/step and 11.87 GB peak on the bf16 stream, 6.7–7.0 s/step and 12.39 GB on fp32. The
+  bf16 base read 9.65 s/step on the same plan, 2026-08-29.
 - `--base_weights` with forward copies is refused: they were calibrated on the unmerged weights.
   `--int8_file rtn` quantizes the merged weights instead.
 - `--lora_cutoff_step` is refused in generation.

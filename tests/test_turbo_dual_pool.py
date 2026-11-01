@@ -469,3 +469,23 @@ def test_int8_config_and_its_refusals():
         _resolve(["--int8", "stream", "--blocks_to_swap", "4"])
     with pytest.raises(ValueError, match="dmad"):
         _resolve(["--int8", "full"], {"dmad_probe": {"enabled": True}})
+
+
+def test_stream_config_and_its_refusals():
+    assert _resolve().stream == "bf16"
+    assert _resolve(["--stream", "fp32"]).stream == "fp32"
+    assert _resolve(cfg={"stream": "fp32"}).stream == "fp32"
+    assert _resolve(["--stream", "bf16"], {"stream": "fp32"}).stream == "bf16"
+    with pytest.raises(ValueError, match="dmad"):
+        _resolve(["--stream", "fp32"], {"dmad_probe": {"enabled": True}})
+
+
+def test_dit_nonquant_path_config():
+    assert _resolve().dit_nonquant_path is None
+    assert _resolve(cfg={"dit_nonquant_path": "a"}).dit_nonquant_path == "a"
+    assert (
+        _resolve(
+            ["--dit_nonquant_path", "b"], {"dit_nonquant_path": "a"}
+        ).dit_nonquant_path
+        == "b"
+    )

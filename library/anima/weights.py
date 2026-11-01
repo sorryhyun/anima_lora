@@ -167,6 +167,22 @@ def _dit_concat_hook(
     return None, None
 
 
+def is_int8_checkpoint(dit_path: str) -> bool:
+    """A ``dit_gptq.py`` file: a full DiT, its block linears int8, the rest bf16. The
+    catalog's is fetched on first use."""
+    resolved = str(resolve_under_home(dit_path))
+    if not os.path.isfile(resolved):
+        from library import downloads
+
+        asset = downloads.by_id()["anima_dit_int8"]
+        catalog = asset.dest / downloads.ANIMA_DIT_INT8_FILE
+        if os.path.realpath(resolved) != os.path.realpath(catalog):
+            return False
+        downloads.fetch(asset)
+    with safe_open(resolved, framework="pt", device="cpu") as f:
+        return "int8_modules" in (f.metadata() or {})
+
+
 def load_anima_model(
     device: Union[str, torch.device],
     dit_path: str,
@@ -177,6 +193,7 @@ def load_anima_model(
     lora_multipliers: Optional[list[float]] = None,
     attn_softmax_scale: Optional[float] = None,
     vocab_pack=None,
+    dit_nonquant_path: Optional[str] = None,
 ) -> anima_models.Anima:
     """
     Load Anima model from the specified checkpoint.
@@ -199,6 +216,9 @@ def load_anima_model(
             prefix, a loaded ``VocabPack``, or ``None``/``""`` for off. The
             hook pair leaves the state dict at the stock 32128 rows
             (``library.anima.vocab_pack.attach_vocab_pack``).
+        dit_nonquant_path: The bf16 DiT ``dit_path`` was quantized from, when ``dit_path``
+            is an int8 checkpoint. Supplies the float weights; without it they are
+            rebuilt from the int8 copies.
     """
     if dit_weight_dtype is None:
         dit_weight_dtype = torch.bfloat16
@@ -206,6 +226,24 @@ def load_anima_model(
     dit_path = str(resolve_under_home(dit_path))
     device = torch.device(device)
     loading_device = torch.device(loading_device)
+    int8_checkpoint = is_int8_checkpoint(dit_path)
+    if int8_checkpoint:
+        if dit_nonquant_path:
+            dit_path, int8_checkpoint = (
+                str(resolve_under_home(dit_nonquant_path)),
+                False,
+            )
+            logger.info(f"int8 checkpoint: float weights from {dit_path}")
+        else:
+            logger.warning(
+                f"{dit_path}: no dit_nonquant_path; wq_t and LoRA init read weights "
+                "rebuilt from int8"
+            )
+    if int8_checkpoint and lora_weights_list:
+        raise ValueError(
+            "a static LoRA merge reads the float weights an int8 checkpoint does not "
+            "hold; pass --int8 (the LoRA attaches as a hook) or a bf16 DiT"
+        )
 
     # Everything but depth/width is fixed across Anima releases; those two are
     # read off the checkpoint so depth-expanded derivatives (Anima-2.9B: 40
@@ -253,6 +291,12 @@ def load_anima_model(
             "here — set `vocab_pack` to the pack itself to use them",
             dit_path,
         )
+
+    if int8_checkpoint:
+        from library.anima.int8 import dequantize_checkpoint_
+
+        dequantize_checkpoint_(sd, dit_path)
+        model.int8_checkpoint = dit_path
 
     missing, unexpected = model.load_state_dict(sd, strict=False, assign=True)
     if missing:

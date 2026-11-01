@@ -1,5 +1,6 @@
 output_name = "anima_turbo_v3_longer"
-dit_path = "models/diffusion_models/anima-base-v1.0.safetensors"
+dit_path = "models/diffusion_models/anima-base-v1.0_int8_gptq.safetensors"
+dit_nonquant_path = "models/diffusion_models/anima-base-v1.0.safetensors"
 data_dir = "post_image_dataset/lora"
 output_dir = "output/ckpt"
 
@@ -11,6 +12,8 @@ use_masked_loss = false  # v2: masks are opt-in (`make mask` + this key)
 channel_scaling_alpha = 0.0
 compile_dynamic_seq = true
 activation_memory_budget = 0.99
+int8 = "stream"
+stream = "fp32"
 
 base_loss = "dpdmd"
 
@@ -84,7 +87,8 @@ bin_num = 10
 ratio_normalization = true
 
 # DMAD (docs/anima/proposal/turbo_dmad.md § Phase 0, off by default): a disc replaces
-# the DM term and the fake critic (and L_CDM's signal). Needs gan.weight_gen = 0.
+# the DM term and the fake critic (and L_CDM's signal). Needs gan.weight_gen = 0,
+# int8 = "off" and stream = "bf16".
 # [dmad]
 # enabled = true
 # lambda_t = 150.0

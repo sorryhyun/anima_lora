@@ -50,6 +50,7 @@ def run_fake_warmup(
     sigmoid_scale: float,
     device: torch.device,
     dtype: torch.dtype,
+    cond_dtype: torch.dtype,
     log_interval: int,
     writer,
     fake_tau_banks: int = 1,
@@ -73,7 +74,7 @@ def run_fake_warmup(
             batch = next(data_iter)
         latents = batch["latents"].to(device, dtype=dtype, non_blocking=True)
         crossattn_emb = batch["crossattn_emb"].to(
-            device, dtype=dtype, non_blocking=True
+            device, dtype=cond_dtype, non_blocking=True
         )
         B = latents.shape[0]
         torch.compiler.cudagraph_mark_step_begin()

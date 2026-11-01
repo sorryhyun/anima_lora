@@ -56,6 +56,14 @@ def build_argparser() -> argparse.ArgumentParser:
     # CLI overrides — every TOML key has a matching flag. Default sentinels
     # (None / -1.0) mean "use the TOML value".
     parser.add_argument("--dit_path", type=str, default=None)
+    parser.add_argument(
+        "--dit_nonquant_path",
+        type=str,
+        default=None,
+        help="The bf16 DiT an int8 --dit_path was quantized from: the float weights "
+        "wq_t is built from. Sentinel None → TOML (dit_nonquant_path), else they are "
+        "rebuilt from the int8 copies.",
+    )
     parser.add_argument("--data_dir", type=str, default=None)
     parser.add_argument("--output_dir", type=str, default=None)
     parser.add_argument("--output_name", type=str, default=None)
@@ -323,6 +331,14 @@ def build_argparser() -> argparse.ArgumentParser:
         help="Forward copies from dit_gptq.py. Sentinel None → TOML (int8_file), "
         "else <dit>_int8_gptq.safetensors beside the DiT, else round to nearest; "
         "'rtn' forces round to nearest.",
+    )
+    parser.add_argument(
+        "--stream",
+        choices=("bf16", "fp32"),
+        default=None,
+        help="Residual stream precision, teacher included "
+        "(docs/anima/optimizations/fp32_stream.md). Sentinel None → TOML (stream, "
+        "default bf16).",
     )
     parser.add_argument("--save_every", type=int, default=-1)
     parser.add_argument(
@@ -880,6 +896,8 @@ class TurboConfig:
     )
     int8: str = "off"  # off | fwd | full | stream
     int8_file: str | None = None
+    dit_nonquant_path: str | None = None
+    stream: str = "bf16"  # bf16 | fp32
 
     # DMAD Phase −1 premise probe (scripts/distill_turbo/dmad_probe.py)
     dmad_probe: bool = False
@@ -1337,6 +1355,12 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
                 "int8 does not run dmad / dmad_probe: their stacks are built after "
                 "the conversion dropped the base weights."
             )
+    stream = str(_pick(args.stream, cfg, "stream", "bf16"))
+    if stream == "fp32" and (dmad or dmad_probe):
+        raise ValueError(
+            "stream fp32 does not run dmad / dmad_probe: their loops have not been "
+            "moved to the fp32 sampler state."
+        )
     dmad_lambda_t = float(_pick(args.dmad_lambda_t, cfg, "dmad.lambda_t", 150.0))
     dmad_lambda_r = float(_pick(args.dmad_lambda_r, cfg, "dmad.lambda_r", 150.0))
     dmad_signal_rms = float(_pick(args.dmad_signal_rms, cfg, "dmad.signal_rms", 0.18))
@@ -1743,6 +1767,8 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         ),
         int8=int8,
         int8_file=_pick(args.int8_file, cfg, "int8_file", None),
+        dit_nonquant_path=_pick(args.dit_nonquant_path, cfg, "dit_nonquant_path", None),
+        stream=stream,
         partitioner_recompute_views=bool(
             _flatten(cfg, "partitioner_recompute_views", False)
         ),

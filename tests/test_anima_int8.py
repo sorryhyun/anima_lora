@@ -4,11 +4,13 @@ refuses, the LoRA stamps and the flags. The GEMMs themselves: ``test_moss_int8.p
 from __future__ import annotations
 
 import dataclasses
+import json
 from types import SimpleNamespace
 
 import pytest
 import torch
 import torch.nn as nn
+from safetensors.torch import save_file
 
 from library import downloads
 from library.anima.int8 import (
@@ -19,11 +21,13 @@ from library.anima.int8 import (
     ckpt_keys,
     convert_for_training,
     convert_targets,
+    dequantize_checkpoint_,
     forward_file,
 )
 from library.anima.trainer.cli import setup_parser
 from library.anima.trainer.trainer import AnimaTrainer
-from library.int8.linear import _int8_flops
+from library.anima.weights import is_int8_checkpoint
+from library.int8.linear import _int8_flops, quantize
 from library.runtime.dynamo import _flash_flops
 from library.runtime.harness import _apply_activation_memory_budget
 
@@ -176,3 +180,41 @@ def test_budget_joins_custom_ops_to_the_knapsack(monkeypatch, budget, ckpt, on):
     _apply_activation_memory_budget(budget, grad_ckpt=ckpt)
     assert functorch_config.is_non_builtin_to_include is on
     assert functorch_config.activation_memory_budget == (budget if on else 1.0)
+
+
+def _write_int8_checkpoint(path, w):
+    wq, s = quantize(w)
+    save_file(
+        {
+            "net.blocks.0.mlp.layer1.weight": wq,
+            "net.blocks.0.mlp.layer1.weight_scale": s,
+            "net.blocks.0.mlp.layer1.comfy_quant": torch.zeros(4, dtype=torch.uint8),
+        },
+        str(path),
+        metadata={"int8_modules": json.dumps(["blocks.0.mlp.layer1"])},
+    )
+
+
+def test_an_int8_checkpoint_is_its_own_forward_file(tmp_path):
+    dit = tmp_path / "dit.safetensors"
+    _write_int8_checkpoint(dit, torch.randn(8, 256))
+    (tmp_path / "dit_int8_gptq.safetensors").touch()
+    assert is_int8_checkpoint(str(dit))
+    assert forward_file(None, str(dit)) == str(dit)
+    assert forward_file(ROUND_TO_NEAREST, str(dit)) == ""
+
+
+def test_dequantize_rebuilds_the_weight_and_drops_side_keys(tmp_path):
+    dit = tmp_path / "dit.safetensors"
+    w = torch.randn(8, 256)
+    _write_int8_checkpoint(dit, w)
+    key = "blocks.0.mlp.layer1"
+    sd = {
+        f"{key}.weight": torch.zeros(8, 256, dtype=torch.bfloat16),
+        f"{key}.weight_scale": torch.zeros(8, 1),
+        f"{key}.comfy_quant": torch.zeros(4),
+    }
+    dequantize_checkpoint_(sd, str(dit))
+    assert list(sd) == [f"{key}.weight"]
+    assert sd[f"{key}.weight"].dtype == torch.bfloat16
+    assert (sd[f"{key}.weight"].float() - w).norm() / w.norm() < 0.03

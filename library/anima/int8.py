@@ -12,9 +12,11 @@ then ride the P-GRAFT hook path, since a static merge would fold them into the b
 weight the conversion drops: the base runs ``int8(x, W_q) + B·A·x``, the function the
 trainer trained.
 
-The forward copies are ``--int8_file``, else ``<dit>_int8_gptq.safetensors`` beside the
-DiT, else round to nearest (``--int8_file rtn`` forces that). User doc:
-``docs/anima/optimizations/int8.md``.
+The forward copies are ``--int8_file``, else the DiT itself when it is an int8 checkpoint,
+else ``<dit>_int8_gptq.safetensors`` beside the DiT, else round to nearest
+(``--int8_file rtn`` forces that). An int8 checkpoint takes its float weights from
+``dit_nonquant_path``, else the loader rebuilds them from the int8 copies; only ``wq_t`` and
+``weight_svd`` / ``grad_svd`` init read them. User doc: ``docs/anima/optimizations/int8.md``.
 """
 
 from __future__ import annotations
@@ -27,9 +29,10 @@ import torch
 import torch.nn as nn
 from safetensors import safe_open
 
-from library.anima.weights import _SELF_ATTN_QKV_ORDER
+from library.anima.weights import _SELF_ATTN_QKV_ORDER, is_int8_checkpoint
 from library.env import resolve_under_home
 from library.int8 import linear as _linear
+from library.int8.convrot import rotate
 from library.int8.linear import close_stream, convert_, stream_compacted_
 
 logger = logging.getLogger(__name__)
@@ -63,6 +66,17 @@ def load_int8_file(path: str, name_keys=ckpt_keys) -> tuple[dict, dict]:
     return _linear.load_int8_file(path, name_keys)
 
 
+def dequantize_checkpoint_(sd: dict, path: str) -> None:
+    """``sd``, loaded from the int8 checkpoint ``path``, to the float state dict: each
+    converted linear's weight back from ``(wq, s)``, its side keys dropped."""
+    for k in [k for k in sd if k.endswith((".weight_scale", ".comfy_quant"))]:
+        del sd[k]
+    for name, (wq, s) in load_int8_file(path)[0].items():
+        key = f"{name}.weight"
+        ref = sd[key]
+        sd[key] = rotate(wq.to(ref.device).float() * s.to(ref.device)).to(ref.dtype)
+
+
 def convert_targets(dit: nn.Module) -> list[tuple[str, nn.Linear]]:
     """Every DiT block's large linears (not the llm_adapter's)."""
     return [
@@ -86,7 +100,9 @@ def convert_dit_(dit: nn.Module, mode: str, int8_file: str | None = None) -> lis
     copies = {}
     if int8_file:
         copies, meta = load_int8_file(int8_file)
-        if meta.get("base_fingerprint") != base_fingerprint(dit):
+        if getattr(dit, "int8_checkpoint", None) != int8_file and meta.get(
+            "base_fingerprint"
+        ) != base_fingerprint(dit):
             raise ValueError(
                 f"{int8_file} was made from {meta.get('source')}, not the loaded DiT"
             )
@@ -113,6 +129,8 @@ def forward_file(int8_file: str | None, dit_path: str) -> str:
         return ""
     if int8_file:
         return str(resolve_under_home(int8_file))
+    if is_int8_checkpoint(dit_path):
+        return str(resolve_under_home(dit_path))
     dit = Path(resolve_under_home(dit_path))
     beside = dit.with_name(f"{dit.stem}_int8_gptq.safetensors")
     if beside.is_file():

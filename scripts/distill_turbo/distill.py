@@ -135,7 +135,9 @@ def run_loop(ctx: RunContext, cfg):
                 mask = None
 
             latents = latents.to(device, dtype=dtype, non_blocking=True)
-            crossattn_emb = crossattn_emb.to(device, dtype=dtype, non_blocking=True)
+            crossattn_emb = crossattn_emb.to(
+                device, dtype=ctx.cond_dtype, non_blocking=True
+            )
             B = latents.shape[0]
 
             # No-op today (mode="default" doesn't enable cudagraphs), but the right
@@ -592,6 +594,7 @@ def run_loop(ctx: RunContext, cfg):
                         if cfg.int8 != "off"
                         else {}
                     ),
+                    **({"ss_stream": cfg.stream} if cfg.stream != "bf16" else {}),
                     "ss_turbo_objective": cfg.base_loss,
                     "ss_turbo_student_rank": str(cfg.student_rank),
                     "ss_turbo_student_alpha": str(cfg.student_alpha),

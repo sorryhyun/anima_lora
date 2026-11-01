@@ -82,6 +82,7 @@ _WARN_FIELDS = (
     "teacher_cfg",
     "dynamic_schedule",
     "cdm_weight",
+    "stream",
 )
 
 
