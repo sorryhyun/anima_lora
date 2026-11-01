@@ -1787,7 +1787,7 @@ class Anima(nn.Module):
         )
 
         self.offloader = custom_offloading_utils.ModelOffloader(
-            self.blocks, self.blocks_to_swap, device
+            self.blocks, self.blocks_to_swap, device, rewindable=True
         )
         logger.info(
             f"Anima: Block swap enabled. Swapping {num_blocks} blocks, total blocks: {self.num_blocks}, device: {device}."
@@ -1849,6 +1849,11 @@ class Anima(nn.Module):
         self.offloader.prepare_block_devices_before_forward(
             self.blocks, free_cache=free_cache
         )
+
+    def rewind_block_swap(self):
+        # The start layout on the same slots, for a forward while another's graph lives.
+        if self.blocks_to_swap:
+            self.offloader.seek(self.blocks, 0)
 
     def _run_blocks(
         self,

@@ -221,6 +221,8 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
             )
         if cfg.stream == "fp32":
             stream_fp32_(model)
+        # the conversion placed the tail's new tensors on the device of each weight
+        model.prepare_block_swap_before_forward(free_cache=False)
 
     turbo = TurboDMDNetwork(
         unet=model,
@@ -643,11 +645,7 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         ``selective_block_grad_ckpt``).
         """
         turbo.set_view(view)
-        if model.blocks_to_swap:
-            # free_cache=False: frozen DiT + constant LoRA/activation shapes let
-            # the allocator reach steady state; per-forward empty_cache() would be
-            # pure sync + refragmentation overhead.
-            model.prepare_block_swap_before_forward(free_cache=False)
+        model.rewind_block_swap()
         pad = pad_cache.get(x)
         x_in = x.unsqueeze(2)  # add temporal dim
         ctx = torch.no_grad() if no_grad else torch.enable_grad()

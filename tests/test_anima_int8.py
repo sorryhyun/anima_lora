@@ -19,17 +19,25 @@ from library.anima.int8 import (
     ROUND_TO_NEAREST,
     check_plan,
     ckpt_keys,
+    convert_dit_,
     convert_for_training,
+    convert_for_turbo,
     convert_targets,
     dequantize_checkpoint_,
     forward_file,
 )
+from library.anima.models import Anima
+from library.anima.stream import stream_fp32_
 from library.anima.trainer.cli import setup_parser
 from library.anima.trainer.trainer import AnimaTrainer
 from library.anima.weights import is_int8_checkpoint
-from library.int8.linear import _int8_flops, quantize
+from library.int8.linear import _int8_flops, close_stream, quantize
 from library.runtime.dynamo import _flash_flops
-from library.runtime.harness import _apply_activation_memory_budget
+from library.runtime.harness import (
+    _apply_activation_memory_budget,
+    place_dit_for_training,
+)
+from scripts.distill_turbo.steps import selective_block_grad_ckpt
 
 
 def args(**over):
@@ -68,10 +76,149 @@ def test_catalog_dit_fetches_its_forward_file(monkeypatch, tmp_path):
     assert forward_file(None, dit) == str(target) and len(fetched) == 1
 
 
-def test_check_plan_refuses_swap():
-    check_plan(args())
-    with pytest.raises(SystemExit, match="blocks_to_swap"):
-        check_plan(args(blocks_to_swap=20))
+def test_check_plan_takes_swap():
+    check_plan(args(blocks_to_swap=20))
+
+
+def tiny_dit(num_blocks: int = 6) -> Anima:
+    torch.manual_seed(0)
+    model = Anima(
+        max_img_h=256,
+        max_img_w=256,
+        max_frames=4,
+        in_channels=16,
+        out_channels=16,
+        patch_spatial=2,
+        patch_temporal=1,
+        concat_padding_mask=False,
+        model_channels=256,
+        num_blocks=num_blocks,
+        num_heads=4,
+        mlp_ratio=2.0,
+        crossattn_emb_channels=64,
+        use_adaln_lora=True,
+        adaln_lora_dim=16,
+        use_llm_adapter=False,
+        attn_mode="torch",
+    )
+    for block in model.blocks:
+        block.reset_parameters()
+    for p in model.parameters():
+        nn.init.normal_(p, std=0.05)
+    return model.to(torch.bfloat16).train().requires_grad_(False)
+
+
+def convert_tiny(model: Anima, mode: str) -> None:
+    if mode == "stream":
+        model.to("cuda")
+    convert_dit_(model, "full" if mode == "stream" else mode)
+    if mode == "stream":
+        stream_blocks_(model)
+
+
+def swapped_step(model: Anima):
+    """One forward + backward from the swap start layout; ``(output, dX)``."""
+    model.prepare_block_swap_before_forward()
+    torch.manual_seed(1)
+    x = torch.randn(1, 16, 1, 8, 8, device="cuda", dtype=torch.bfloat16)
+    x.requires_grad_()
+    t = torch.tensor([0.5], device="cuda")
+    c = torch.randn(1, 8, 64, device="cuda", dtype=torch.bfloat16)
+    with torch.autocast("cuda", dtype=torch.bfloat16):
+        y = model.forward_mini_train_dit(x, t, c)
+    y.square().mean().backward()
+    return y.detach(), x.grad
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="needs a card")
+@pytest.mark.parametrize("swap", [3, 4])
+@pytest.mark.parametrize("stream", ["bf16", "fp32"])
+@pytest.mark.parametrize("mode", ["fwd", "full", "stream"])
+@pytest.mark.parametrize("order", ["train", "turbo"])
+def test_swapped_step_is_the_resident_step(order, mode, stream, swap):
+    """Both places the swapper attaches: train.py before the conversion, turbo after.
+    The resident reference is the same model with the swapper off, so the int8 copies
+    are the same bytes."""
+    device = torch.device("cuda")
+    model = tiny_dit()
+    if order == "train":
+        model.enable_block_swap(swap, device)
+        convert_tiny(model, mode)
+    else:
+        place_dit_for_training(model, device, blocks_to_swap=swap)
+        convert_for_turbo(model, mode, ROUND_TO_NEAREST, "/nowhere/dit.safetensors")
+    if stream == "fp32":
+        stream_fp32_(model)
+    model.to(dtype=torch.bfloat16)
+    model.move_to_device_except_swap_blocks(device)
+    model.prepare_block_swap_before_forward()
+
+    tail = model.blocks[-1].mlp.layer1
+    assert tail.wq.device.type == "cpu" and tail.s.device.type == "cuda"
+    steps = [swapped_step(model) for _ in range(3)]
+
+    model.pause_block_swap()
+    for handle in model.offloader.remove_handles:
+        handle.remove()
+    assert tail.wq.device.type == "cuda"
+    y_ref, dx_ref = swapped_step(model)
+    assert dx_ref.abs().sum() > 0
+    for y, dx in steps:
+        assert torch.equal(y, y_ref) and torch.equal(dx, dx_ref)
+    close_stream()
+
+
+def turbo_step(model: Anima, cdm: bool) -> list[torch.Tensor]:
+    """A student forward whose graph outlives teacher and fake forwards, then under
+    ``cdm`` a second student forward, checkpointed, backwarded first; every ``dX``."""
+
+    def forward(x, no_grad=False):
+        model.rewind_block_swap()
+        grad = torch.no_grad() if no_grad else torch.enable_grad()
+        with grad, torch.autocast("cuda", dtype=torch.bfloat16):
+            return model.forward_mini_train_dit(x, t, c)
+
+    torch.manual_seed(1)
+    x = torch.randn(1, 16, 1, 8, 8, device="cuda", dtype=torch.bfloat16)
+    x.requires_grad_()
+    t = torch.tensor([0.5], device="cuda")
+    c = torch.randn(1, 8, 64, device="cuda", dtype=torch.bfloat16)
+    y = forward(x)
+    forward(x.detach(), no_grad=True)
+    fake = forward(x.detach(), no_grad=True)
+    leaves = [x]
+    if cdm:
+        x_off = (x.detach() + 0.1 * fake).requires_grad_()
+        with selective_block_grad_ckpt(model):
+            y_off = forward(x_off)
+        forward(x_off.detach(), no_grad=True)
+        y_off.square().mean().backward()
+        leaves.append(x_off)
+    y.square().mean().backward()
+    return [leaf.grad for leaf in leaves]
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="needs a card")
+@pytest.mark.parametrize("cdm", [False, True])
+@pytest.mark.parametrize("mode", ["off", "fwd", "full", "stream"])
+def test_turbo_step_on_swap_is_the_resident_step(mode, cdm):
+    device = torch.device("cuda")
+    model = tiny_dit()
+    model.enable_block_swap(3, device)
+    if mode != "off":
+        convert_tiny(model, mode)
+    model.to(dtype=torch.bfloat16)
+    model.move_to_device_except_swap_blocks(device)
+    model.prepare_block_swap_before_forward()
+    got = turbo_step(model, cdm)
+    assert model.offloader.moved == 0
+
+    model.pause_block_swap()
+    for handle in model.offloader.remove_handles:
+        handle.remove()
+    for dx, dx_ref in zip(got, turbo_step(model, cdm), strict=True):
+        assert dx_ref.abs().sum() > 0 and torch.equal(dx, dx_ref)
+    close_stream()
 
 
 def test_base_weights_need_round_to_nearest(tmp_path):

@@ -346,8 +346,15 @@ class ModelOffloader(Offloader):
     (soft-tokens' ``after_backward``) or bracket the extra forward with
     ``prepare_block_swap_before_forward(free_cache=False)``, which leaves the
     tail resident. The extra-forward sites in ``train.py`` (VR-loss, inversion
-    func-loss, IP-Adapter) and the turbo multi-forward loop were never audited
-    for this.
+    func-loss, IP-Adapter) were never audited for this.
+
+    A forward whose graph is still live pins each weight's device slot in its
+    saved tensors. A backward finds its weights there because it replays the
+    forward's moves in reverse, on the same slots; ``prepare_block_devices`` moves
+    to new storage and strands them on another block's data. ``rewindable`` keeps
+    the slots across several forwards and backwards in any order, as turbo needs:
+    :meth:`seek` to 0 before a forward, and a pre-hook on the last block seeks to
+    the end of the forward moves before a backward walks them back.
     """
 
     def __init__(
@@ -358,9 +365,11 @@ class ModelOffloader(Offloader):
         supports_backward: bool = True,
         debug: bool = False,
         h2d_only: bool = False,
+        rewindable: bool = False,
     ):
         super().__init__(len(blocks), blocks_to_swap, device, debug, h2d_only)
 
+        self.moved = 0  # forward moves applied since the start layout
         self.supports_backward = supports_backward
         self.forward_only = (
             not supports_backward
@@ -373,6 +382,27 @@ class ModelOffloader(Offloader):
                 if hook is not None:
                     handle = block.register_full_backward_hook(hook)
                     self.remove_handles.append(handle)
+            if rewindable:
+                handle = blocks[-1].register_full_backward_pre_hook(
+                    lambda _module, _grad: self.seek(blocks, blocks_to_swap)
+                )
+                self.remove_handles.append(handle)
+
+    def seek(self, blocks: Union[list[nn.Module], nn.ModuleList], moved: int) -> None:
+        """Apply or undo forward moves on the current slots, until ``moved`` are in."""
+        if moved == self.moved:
+            return
+        for block_idx in list(self.futures.keys()):
+            self._wait_blocks_move(block_idx)
+        tail = self.num_blocks - self.blocks_to_swap
+        while self.moved < moved:
+            i = self.moved
+            self.swap_weight_devices(blocks[i], blocks[tail + i])
+            self.moved += 1
+        while self.moved > moved:
+            self.moved -= 1
+            i = self.moved
+            self.swap_weight_devices(blocks[tail + i], blocks[i])
 
     def set_forward_only(self, forward_only: bool):
         # switching must wait for all pending transfers
@@ -408,6 +438,7 @@ class ModelOffloader(Offloader):
 
             if swapping:
                 self._submit_move_blocks(blocks, block_idx_to_cpu, block_idx_to_cuda)
+                self.moved -= 1
             if waiting:
                 self._wait_blocks_move(block_idx_to_wait)
             return None
@@ -441,6 +472,7 @@ class ModelOffloader(Offloader):
             )  # move block to device first. this makes sure that buffers (non weights) are on the device
             weighs_to_device(b, torch.device("cpu"))  # make sure weights are on cpu
 
+        self.moved = 0
         synchronize_device(self.device)
         if free_cache:
             clean_memory_on_device(self.device)
@@ -460,6 +492,8 @@ class ModelOffloader(Offloader):
         if not self.forward_only and block_idx >= self.blocks_to_swap:
             return
 
+        if not self.forward_only:
+            self.moved += 1
         block_idx_to_cpu = block_idx
         block_idx_to_cuda = self.num_blocks - self.blocks_to_swap + block_idx
         # this works for forward-only offloading. move upstream blocks to cuda

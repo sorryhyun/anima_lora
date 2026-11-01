@@ -53,6 +53,12 @@ before adding or moving a weight or changing a loader's default path.
 - **Run the test suite at most twice per task** (here or in `../anime_tools`): once after
   the change, once after fixing what it caught, scoped to the affected test file. Say why
   if a third run is needed. `make test-unit` runs pytest.
+- **pytest hides the GPU by default** (`tests/conftest.py` blanks `CUDA_VISIBLE_DEVICES`),
+  so tests that need a card **skip** and a green run says nothing about them; read the
+  `skipped` count. To run them: `ANIMA_TEST_GPU=1 make daemon-run ARGS="--stall-timeout 300
+  -m pytest tests/<file>.py -q -k <name>"`. Work on the int8 base, block swap and the
+  streams has tests of this kind (`test_moss_int8.py`, `test_anima_int8.py`,
+  `test_blockswap_h2d.py`).
 - New code opening a repo-relative path calls `resolve_under_home()` (`library.env`;
   `ANIMA_HOME` relocates the checkout) — paths resolve against the repo home, not the CWD.
 
@@ -192,7 +198,8 @@ routing axes: `lora-routing` skill).
   for multi-GPU (forces inline).
 - `make turbo` — DP-DMD distiller: bespoke loop under `scripts/distill_turbo/`, so
   `train.py` infra (compile cache, `--deterministic`, `print-config`) does not reach it.
-  Ships on `int8 = "stream"` + `stream = "fp32"`, which refuse `dmad` and block swap.
+  Ships on `int8 = "stream"` + `stream = "fp32"`, which refuse `dmad`; block swap needs the GAN
+  off, on any base.
   Output is a normal LoRA — infer with `--infer_steps 4 --cfg 1.0` (`make test-turbo`).
   `docs/anima/methods/turbo.md`.
 - `make soup TARGET=<artist>` — uncond-init soup, plain LoRA only; **load the `soup`
@@ -200,7 +207,8 @@ routing axes: `lora-routing` skill).
 - Inference: `make test` (interactive) / `make gen` (daemon batch: grids, seed sweeps).
   `SPECTRUM=1` / `MOD=1` / `NOLORA=1` compose into every `test-*` target.
 - `--int8 fwd|full|stream` (off by default; `inference.py --int8`, `INT8=1` on `test-*`) runs the
-  frozen DiT's large linears as int8 GEMMs: LoRA-family networks, no block swap. Forward
+  frozen DiT's large linears as int8 GEMMs: LoRA-family networks; `blocks_to_swap` runs on
+  training, and `inference.py` has no swap on any base. Forward
   copies come from `<dit>_int8_gptq.safetensors` beside the DiT (catalog `anima_dit_int8`,
   fetched on first use), else round to nearest. `docs/anima/optimizations/int8.md`.
 - `--stream fp32|bf16` (fp32 by default; `STREAM=bf16` on `test-*`, `stream` in

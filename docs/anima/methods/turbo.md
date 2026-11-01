@@ -21,7 +21,7 @@ Structural walkthrough: `docs/anima/structure/turbo.md`.
 
 ```bash
 make turbo                                       # configs/methods/turbo.toml defaults
-make turbo ARGS="--int8 off --stream bf16"       # bf16 base, needed for dmad / blocks_to_swap
+make turbo ARGS="--int8 off --stream bf16"       # bf16 base, needed for dmad
 make turbo ARGS="--student_rank 128 --iterations 5000"
 make turbo ARGS="--single_prompt_idx 0"          # single-prompt overfit
 make turbo PRESET=low_vram                        # grad ckpt + offload + sample_ratio
@@ -368,12 +368,13 @@ Regression probe: `bench/turbo/caption_ranking_probe.py --adapter <ckpt>`. Tests
 - Mod guidance: not characterized on turbo students (they also move the adaln
   modulation pathway the guidance steers through).
 - Block swap. The student rolls `N` forwards and the teacher `K` anchor
-  forwards per step (multi-forward); the offloader desyncs on a 2nd DiT forward
-  (`library/runtime/offloading.py::ModelOffloader`). The loop calls
-  `prepare_block_swap_before_forward(free_cache=False)` before each forward, but the
-  default path keeps `blocks_to_swap=0` (activation-dtype LoRA GEMMs keep
-  activation memory low enough to run full-res on 16 GB without swap). The
-  multi-forward offloader path is not exercised by the default config.
+  forwards per step, with graphs alive across them. Each forward calls
+  `rewind_block_swap()`, which undoes the last forward's moves on the same device
+  slots, and a backward first seeks to the end of those moves
+  (`library/runtime/offloading.py::ModelOffloader`, `rewindable`). The GAN needs
+  `blocks_to_swap=0`: its feature tap stops early. So do soft-rank, `dmad` and
+  `dmad_probe`, still unaudited on it. The default config keeps swap off: it costs
+  about 1.5x step time for 1 GB of peak. No full student has trained on it.
 
 ## References
 

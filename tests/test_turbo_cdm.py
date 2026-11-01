@@ -9,8 +9,7 @@ Two surfaces:
   deliberate one-grad-forward deviation the proposal documents).
 * config resolve — ``cdm.weight`` default-off + CLI/TOML precedence, and the
   guards: per_step_expert (no head owns an off-grid t'), --grad_ckpt (view ×
-  ckpt-recompute hazard class), blocks_to_swap (extra forwards unaudited under
-  swap), and the resume-fingerprint warn field.
+  ckpt-recompute hazard class), and the resume-fingerprint warn field.
 """
 
 from __future__ import annotations
@@ -108,9 +107,10 @@ def test_cdm_refuses_grad_ckpt():
         _resolve(["--cdm_weight", "0.1", "--grad_ckpt"])
 
 
-def test_cdm_refuses_block_swap():
-    with pytest.raises(ValueError, match="blocks_to_swap"):
-        _resolve(["--cdm_weight", "0.1", "--blocks_to_swap", "10"])
+def test_cdm_runs_on_block_swap():
+    assert (
+        _resolve(["--cdm_weight", "0.1", "--blocks_to_swap", "10"]).blocks_to_swap == 10
+    )
 
 
 def test_cdm_weight_in_resume_warn_fingerprint():

@@ -167,11 +167,6 @@ def _convert(dit: nn.Module, mode: str, int8_file: str | None, dit_path: str) ->
 
 def check_plan(args) -> None:
     """The training plans an int8 base cannot run; before anything loads."""
-    if args.blocks_to_swap:
-        raise SystemExit(
-            "int8 base: blocks_to_swap > 0 is refused (not validated on Anima's "
-            "offloader); run --int8 off for a swap plan"
-        )
     if args.base_weights and forward_file(
         args.int8_file, args.pretrained_model_name_or_path
     ):
@@ -189,7 +184,7 @@ def convert_for_training(unet: nn.Module, network, args) -> None:
         raise SystemExit(
             f"int8 base: {type(network).__name__} is not a LoRANetwork; run --int8 off"
         )
-    if args.int8 == "stream":  # grad_svd's sketch leaves the DiT on the host
+    if args.int8 == "stream":  # block swap and grad_svd's sketch leave it on the host
         unet.to(torch.device("cuda"))
     args.int8_base_id = _convert(
         unet, args.int8, args.int8_file, args.pretrained_model_name_or_path
@@ -197,7 +192,8 @@ def convert_for_training(unet: nn.Module, network, args) -> None:
 
 
 def convert_for_turbo(model: nn.Module, mode: str, int8_file, dit_path: str) -> str:
-    """Convert the resident DiT; returns the id the student LoRA is stamped with."""
+    """Convert the placed DiT; returns the id the student LoRA is stamped with. Under
+    block swap the tail converts on the host; the next ``prepare`` settles its devices."""
     return _convert(model, mode, int8_file, dit_path)
 
 
@@ -213,8 +209,6 @@ def finish_training() -> None:
 def convert_for_inference(model: nn.Module, args) -> None:
     """Mode ``infer``, then each LoRA's stamps against this base, so a LoRA trained on
     another base is visible."""
-    if getattr(model, "blocks_to_swap", None):
-        raise SystemExit("int8 base: blocks_to_swap > 0 is refused")
     if getattr(args, "lora_cutoff_step", None) is not None:
         raise SystemExit("int8 base: --lora_cutoff_step is not supported")
     base_id = _convert(model, "infer", getattr(args, "int8_file", None), args.dit)

@@ -1345,16 +1345,11 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         )
     dmad = bool(_pick(args.dmad, cfg, "dmad.enabled", False))
     int8 = str(_pick(args.int8, cfg, "int8", "off"))
-    if int8 != "off":
-        if int(args.blocks_to_swap) > 0:
-            raise ValueError(
-                "int8 requires blocks_to_swap=0 (not validated on Anima's offloader)."
-            )
-        if dmad or dmad_probe:
-            raise ValueError(
-                "int8 does not run dmad / dmad_probe: their stacks are built after "
-                "the conversion dropped the base weights."
-            )
+    if int8 != "off" and (dmad or dmad_probe):
+        raise ValueError(
+            "int8 does not run dmad / dmad_probe: their stacks are built after "
+            "the conversion dropped the base weights."
+        )
     stream = str(_pick(args.stream, cfg, "stream", "bf16"))
     if stream == "fp32" and (dmad or dmad_probe):
         raise ValueError(
@@ -1481,13 +1476,6 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
                 "view to teacher/fake — the recomputed blocks drop the student "
                 "LoRA and the gradient is silently corrupted "
                 "(project_turbo_view_ckpt_recompute_hazard). Turn one off."
-            )
-        if int(args.blocks_to_swap) > 0:
-            # Block swap desyncs on extra per-step forwards; turbo keeps the
-            # DiT resident by default. Fail at config time.
-            raise ValueError(
-                "cdm.weight > 0 requires blocks_to_swap=0 — the off-trajectory "
-                "forwards are unaudited under block swap."
             )
         logger.info(
             f"L_CDM off-trajectory loss ON: "
