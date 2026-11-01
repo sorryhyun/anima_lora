@@ -7,7 +7,7 @@ This directory holds two kinds of file:
   Auto-discovered by `--method easycontrol` / `make easycontrol` via
   `_resolve_method_path` (the per-method-dir layout takes precedence over the
   flat `configs/methods/` folder). This is the EasyControl pilot for the
-  consolidated per-method layout — see CLAUDE.md "Config flow".
+  consolidated per-method layout — see `configs/CLAUDE.md`.
 - **EasyControl descriptors** (`near_twins.toml`, `colorize.toml`, …) — the
   EasyControl half of an i2i task (`[preprocess]` / `[training]` knobs, the
   miner-written blueprint tail, the GUI `[variant]` block), selected via

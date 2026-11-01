@@ -104,7 +104,8 @@ Invariants that bite:
   and generate with the same `text_encoder` and caption/prompt format.**
 - **Training defaults to an int8 DiT base** (`int8 = stream`, GPTQ file `moss_dit_int8`,
   fp32 stream, swap 0, budget 0.3, EMA on the card; `library/moss/dit_int8/`). It refuses
-  LoHa, and the i2i configs stay on bf16: `configs/moss/lora_bf16.toml` is the bf16 plan.
+  LoHa. `configs/moss/lora_bf16.toml` is the bf16 plan; the i2i `train.toml`s stay on bf16, and
+  `configs/moss/i2i/swap_text/train_v3_en200_ko800.toml` is the int8 i2i config.
   Block swap runs on it and trades VRAM, not speed. Two LoRAs have completed on it: ama mitsuki, 848 steps (`docs/moss/optimization/int8.md`), and swap_text i2i, 3,000 steps (`docs/moss/methods/i2i.md`).
 - Adapters live in `library/moss/lora.py`, held outside the blocks (the block swapper
   moves every `.weight` under a block); `networks/` is bound to Anima module names.
@@ -204,8 +205,8 @@ routing axes: `lora-routing` skill).
 - `make soup TARGET=<artist>` — uncond-init soup, plain LoRA only.
 - Inference: `make test` (interactive) / `make gen` (daemon batch: grids, seed sweeps).
   `SPECTRUM=1` / `MOD=1` / `NOLORA=1` compose into every `test-*` target.
-- `--int8 fwd|full|stream` (off by default; `inference.py --int8`, `INT8=1` on `test-*`) runs the
-  frozen DiT's large linears as int8 GEMMs: LoRA-family networks; `blocks_to_swap` runs on
+- `--int8 fwd|full|stream` on training (off by default), and the boolean `inference.py --int8`
+  (`INT8=1` on `test-*`), run the frozen DiT's large linears as int8 GEMMs: LoRA-family networks; `blocks_to_swap` runs on
   training, and `inference.py` has no swap on any base. Forward
   copies come from `<dit>_int8_gptq.safetensors` beside the DiT (catalog `anima_dit_int8`,
   fetched on first use), else round to nearest. `docs/anima/optimizations/int8.md`.

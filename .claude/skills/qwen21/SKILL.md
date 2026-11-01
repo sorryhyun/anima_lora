@@ -6,7 +6,7 @@ description: Qwen-Image-2.1 LoRA line (NOT Anima) — running cache/train throug
 # Qwen-Image-2.1 LoRA (`library/qwen21/`)
 
 **Not Anima.** Read `library/qwen21/CLAUDE.md` first — the root invariants (5D latents,
-max-padded text, free-fit bucketing, block-compile first) are wrong here. Research state
+max-padded text, free-fit bucketing) are wrong here. Research state
 and measured numbers: `project/qwen21_lora/README.md` + `report.md`.
 
 ## Layout

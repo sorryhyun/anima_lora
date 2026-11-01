@@ -31,14 +31,13 @@ Full-vs-shallow is decided by `load_dataset_config_from_base` on whether the met
 ## `preprocess.toml` — user-owned, preserved across updates
 
 Preprocess knobs split out of `base.toml` (`source_image_dir`, **`target_res`**,
-**`mask_dir`**). Read by the preprocess pipeline via
+**`mask_dir`**, the `caption_*` knobs, `sigma_demote`, `freefit_max_ratio`). Read by the preprocess pipeline via
 `load_path_overrides`, layered **`preprocess.toml → base.toml → preset → method`** —
 preprocess.toml is read *first*, so a legacy copy of any of these keys still in
 `base.toml` keeps winning.
 
-`train.py` never reads the filter knobs, **but `target_res` and `mask_dir` are dual-use**:
-`load_method_preset` seeds both from preprocess.toml at lowest priority (preset / method /
-CLI still override).
+**`target_res` and `mask_dir` are dual-use**: `load_method_preset` seeds both from
+preprocess.toml at lowest priority (preset / method / CLI still override).
 
 - `target_res` is **inert at train time** (seeded for the snapshot only).
 - **`mask_dir` is load-bearing.** It is the single mask-root knob for `make mask` /
@@ -81,8 +80,9 @@ cross-reference. `_resolve_method_path` (`library/config/io.py`) **prefers**
 present (default `methods` subdir only — `gui-methods` stays flat); `--method <m>` picks
 it up with no extra flag.
 
-EasyControl uses it: `configs/easycontrol/easycontrol.toml`, with the miner-generated
-descriptors `near_twins.toml` / `colorize.toml` in the same dir (the task's `name`/`[staging]` live in `i2i_tasks/configs/<task>.toml`).
+EasyControl uses it: `configs/easycontrol/easycontrol.toml`, with one descriptor per i2i
+task in the same dir (`near_twins.toml`, `colorize.toml`, …; `EASYADAPTER=<task>`, list in
+`configs/easycontrol/README.md`; the task's `name`/`[staging]` live in `i2i_tasks/configs/<task>.toml`).
 `configs/gui-methods/easycontrol.toml` still points at the standalone
 `configs/datasets/easycontrol.toml` — keep the inline subset in sync until gui-methods is
 migrated.
@@ -105,8 +105,8 @@ fields; the `[half]` / `[quarter]` presets are CLI shorthand for the same key.
 
 ## `moss/` — not the merge chain
 
-`configs/moss/lora.toml` / `cache.toml` are flat tables of `library.moss.requests`
-`TrainRequest` / `CacheRequest` field names, read by `scripts/moss/{train,cache}.py --config` (`Request.load_config` in
+`configs/moss/lora.toml` / `lora_bf16.toml` / `cache.toml` and `i2i/<task>/` are flat tables of
+`library.moss.requests` field names, read by `scripts/moss/*.py --config` (`Request.load_config` in
 `library/lines/requests.py`): field default → TOML → CLI. None of the chain above applies.
 
 ## Subset knobs

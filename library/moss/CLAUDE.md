@@ -22,10 +22,10 @@ list in `tests/test_moss_boundary.py`.
 | `caching/` | `cache.py`'s parts: `items.py` reads a cache folder (`list_items`, `load_*`, `read_te`) and rewrites caption variants; `images.py` `target_size`, `fit`, `ref_size`, `prefetch`; `sources.py` `find_pairs`, `manifest_pairs`, `caption_converter`. `cache.py` re-exports them: it stays their import path, so a monkeypatch of what they call goes on `caching.<module>` |
 | `cache.py` | the passes (`cache_text`, `cache_latents`, `cache_refs`, `run_cache`): TE cache at natural length (never padded) + packed, BN-normalised latent cache; caption variants `embeds_v{k}` survive a re-encode while the caption is unchanged |
 | `generation/` | `generate.py`'s parts: `jobs.py` request → jobs + resume `fingerprint`; `conditioning.py` `cached_embeds`, `vision_embeds`, `ref_latents`; `records.py` the latent / PNG paths and the manifest. `generate.py` re-exports them as `train.py` does |
-| `generate.py` | `denoise` and `run_generate(req)`: ER-SDE or Euler, CFG + uncond skip-22, Spectrum. Benches reuse `denoise`, `cached_embeds`, `build_spectrum`. `ref_image` makes a job i2i: `ref_latents` (fitted as `cache_refs` does) into every forward, and with `ref_vision` the page through the vision tower ahead of the prompt (`vision_embeds`) |
+| `generate.py` | `denoise` and `run_generate(req)`: ER-SDE or Euler, CFG + uncond skip-22, Spectrum, CNS. Benches reuse `denoise`, `cached_embeds`, `build_spectrum`. `ref_image` makes a job i2i: `ref_latents` (fitted as `cache_refs` does) into every forward, and with `ref_vision` the page through the vision tower ahead of the prompt (`vision_embeds`) |
 | `vision_te.py` | the TE call with an image in the user turn (Qwen3.5's own processor settings); `load_te` keeps the vision tower resident, any `text_encoder` precision; `encode_variants` prefills the page once for several captions |
 | `colorize.py` | `run_colorize_cache(req)`: staged B&W page → vision-tower TE (OCR layout over full / sparse / bare colour captions; page alone with vision on) + `*.moss_ref`, colour target latent; OCR floors shared with the ComfyUI MOSS Toolkit's caption helper |
-| `cns.py` | CNS recolor on the un-patchified 32 ch grid; bench-only |
+| `cns.py` | CNS recolor on the un-patchified 32 ch grid, `GenerateRequest.cns` (`auto` = the shipped γ per variant × CFG, `networks/calibration/moss_cns_gamma*.npz`) |
 | `spectrum.py` | forecasts cond and uncond separately; `MossSpectrum()` defaults are `GenerateRequest`'s |
 | `dave.py` | DAVE on image tokens via `model.layer_hook` (sees only rows that ran the block, so skip-22 is handled); τ is a step count; massive channels (`calibration/massive_channels.npz`) excluded. `auto` = `calibration/dave_alpha.npz`; the ComfyUI node `~/ComfyUI-Anima-DAVE` bundles the same pool + channel list. User doc `docs/moss/inference/dave.md` |
 | `lora.py` | adapters bound to `layers`, held **outside** the blocks (the swapper moves every `.weight` under a block). `down_init weight_svd_nodc` / `svd_drop_loud` read `calibration/` stats from `scripts/calibration/moss_channel_stats.py`; `load_for_inference` applies the LoRA's stamped `ref_timestep` / `ref_isolate` (`ref_settings`) |
@@ -35,7 +35,7 @@ list in `tests/test_moss_boundary.py`.
 | `tune.py` | `run_tune(req)`: recommends `--blocks_to_swap` / `--activation_memory_budget` on the bf16 plan |
 | `scan.py` | **torch-free** cache layout + GUI counts; its stale check (`source_sha256` vs `.txt`) can disagree with `cache.py`'s (`_te_current`) |
 
-Sidecars `scripts/moss/{cache,colorize_cache,generate,train,tune_swap}.py` are thin argparse
+Sidecars `scripts/moss/{cache,colorize_cache,generate,quantize_te_fp8,train,tune_swap}.py` are thin argparse
 over the requests, submitted through the daemon; `make gui-moss` submits the same jobs (its
 i2i tabs: `gui/moss/i2i.py`). User doc: `docs/moss/README.md`. Weights: catalog packs
 `moss-base` / `moss-sft` under `models/moss_image/MOSS-Image-{Base,SFT}`; SFT ships its DiT

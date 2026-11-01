@@ -33,7 +33,7 @@ must not appear.
   `ensure_daemon_quietly()` (deferred via `QTimer.singleShot(0, ...)` so a cold daemon
   boot doesn't block the window) → Qt loop.
 - `make gui-qwen` → `python -m gui.qwen21`, `make gui-moss` → `python -m gui.moss` —
-  separate en/cn windows for the non-Anima lines (`library/qwen21/`, `library/moss/`).
+  separate windows for the non-Anima lines (Qwen en/cn, MOSS en/ko/ja/cn).
   Both are `gui/lines/window.py::LineWindow` (a window around one `LinePanel`) over a
   `LineSpec` built in `gui/<line>/app.py` (request classes, scan helpers, test passes,
   strings). Reuses `theme`, `jobs.daemon`, `DaemonJobMixin`, `widgets` only; strings
@@ -59,7 +59,7 @@ must not appear.
   **Model mode**: the top bar's Model dropdown (Anima / MOSS-Image, `theme.MODES`,
   persisted as `model_mode` in `gui_settings.json`) swaps the stack's content page
   between the tab set and a MOSS page built on first switch:
-  `gui.lines.window.build_panel(gui.moss.app.SPEC, lang)` (en, or cn when the GUI is cn),
+  `gui.lines.window.build_panel(gui.moss.app.SPEC, lang)` (the GUI's language when the line has it, else en),
   whose Preprocess / Train row gets a second anime_tools view as a third tab
   (`LinePanel.add_tab`; the line's status + log hide on it; the same panel server serves
   both views). View-only: daemon jobs keep running
@@ -191,7 +191,7 @@ must not appear.
   refresh), `_qt_utils.py` (leaf helpers like `_no_wheel`).
   Imports are one-way — `fields.py`/`mixins.py` import the domain widgets, never the
   reverse — and nothing here imports `gui.jobs.daemon`.
-- **`i18n/`** — `en/ko/ja/cn.py`, each `STRINGS: dict[str,str]` (~420–470 keys).
+- **`i18n/`** — `en/ko/ja/cn.py`, each `STRINGS: dict[str,str]`.
   `t(key, **kwargs)` falls back to English, then to the key itself. New language: see the
   `gui-changes` skill.
 - **`explanations/`** — lazy-loaded help under `guides/<lang>/`: `_fields.json` (field

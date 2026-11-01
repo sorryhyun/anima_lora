@@ -191,9 +191,9 @@ def create_network(
     apply_ffn_lora = bool(int(kwargs.get("apply_ffn_lora", 1)))
     cond_res_scale = float(kwargs.get("cond_res_scale", DEFAULT_COND_RES_SCALE))
 
-    # Target-stream adaln LoRA (opt-in; docs/anima/methods/adaln.md §EasyControl).
-    # base.toml sets train_adaln=true for the LoRA family, so
-    # configs/easycontrol/*.toml MUST pin train_adaln=false to keep this opt-in.
+    # Target-stream adaln LoRA (docs/anima/methods/adaln.md §EasyControl). base.toml's
+    # train_adaln=true reaches every network module, so a config that wants it off
+    # pins false, as configs/gui-methods/easycontrol.toml does.
     from networks.lora_anima.config import _as_bool
 
     train_adaln = _as_bool(kwargs.get("train_adaln"))

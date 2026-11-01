@@ -5,13 +5,13 @@ invariants are load-bearing *there* — carrying them over here has produced wro
 than once. Qwen-Image-2.1 is a different architecture, VAE, text encoder, rope and sampler
 schedule. What the two share is `library.runtime.offloading` (the block swapper) with
 `library.runtime.blockswap` (its hook attachment for block lists we don't own; shared with `library/moss/`),
-`library.runtime.dynamo` (torch config pins), the `library.env` path helpers, and `library.lines` (the request base,
+`library.runtime.dynamo` (torch config pins), `library.runtime.device`, the `library.env` path helpers, and `library.lines` (the request base,
 adapters and scan counts shared with `library/moss/`), and nothing else: the rest of `library/`, `networks/`,
 `configs/` and `train.py` are Anima-only, and nothing Anima-side imports `library.qwen21`.
 
 | Module | Role |
 |---|---|
-| `requests.py` | **torch-free** `CacheRequest` / `TrainRequest` — every flag, its default and help; argv round-trip from `library.lines.requests.Request`; model-dir resolution |
+| `requests.py` | **torch-free** `CacheRequest` / `TrainRequest` / `GenerateRequest` — every flag, its default and help; argv round-trip from `library.lines.requests.Request`; model-dir resolution |
 | `loader.py` | phase-split loading under a 16 GB budget, `load_transformer`; re-exports `place()` (`library.runtime.blockswap`) |
 | `accel.py` | attention backend + per-block `torch.compile` |
 | `lora.py` | `library.lines.adapters` bound to `transformer_blocks` (LoRA / LoKr / LoHa, held **outside** the swapped blocks); `--algo` / `--down_init` default to LoRA + Kaiming |
@@ -23,7 +23,7 @@ The research line — smokes, benches, reports, measured numbers — is
 
 ## What does NOT carry over
 
-| Root `CLAUDE.md` (Anima) says | Here |
+| Anima habit | Here |
 |---|---|
 | Latents are 5D `(B,C,T=1,H,W)`, singleton at **dim 2**; always `unsqueeze(2)`/`squeeze(2)` | The transformer takes **packed 3D** `(B, T, 64)` — `_pack_latents` is a plain spatial flatten. 5D is only the VAE's own boundary: `(B,4,1,H,W)` in, `(B,64,1,h,w)` out |
 | TE outputs **must** be max-padded; trimming gives black images; never mask padding | Padding the text is **wrong** here. Rope gives the image block a frame position equal to the text length, so a padded caption trains an offset inference never reproduces. `encoder_hidden_states_mask` excludes padded keys properly |
@@ -33,7 +33,7 @@ The research line — smokes, benches, reports, measured numbers — is
 | DiT depth probed from the checkpoint (28 vs 40 blocks); a LoRA is depth-specific | Fixed 32 `transformer_blocks`, `num_layers` in the config. No probing, no depth-baked calibration artifacts |
 | CFG is standard | `true_cfg_scale` defaults to **1.0** and the transformer has no guidance embedding. `>1` costs a second forward per step |
 | Adapters live in `networks/`, selected by `network_module` | `networks/` is bound to Anima module names. `lora.py` keeps its pairs **outside** `transformer_blocks` — the swapper moves every `.weight` under a block, so a nested adapter (peft) pages trainable weights to CPU while their `.grad` stays on the card |
-| `make lora`, config chain `base → preset → method → CLI`, `masked_loss` | None of it. Flags only: `requests.py` (`CacheRequest` / `TrainRequest`) defines them once for the sidecar CLIs `scripts/qwen21/{cache,train}.py` and the GUI |
+| `make lora`, config chain `base → preset → method → CLI`, `masked_loss` | None of it. Flags only: `requests.py` defines them once for the sidecar CLIs `scripts/qwen21/{cache,train,generate}.py` and the GUI |
 
 ## Standing rules
 
