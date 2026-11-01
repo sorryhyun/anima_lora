@@ -1,0 +1,23 @@
+# swap_text on the v3 staging tree: the int8 3-epoch run
+# (moss_i2i_swap_text_en200_ko800_rw2_mod16_ema5e5_int8_e3) with its request unchanged.
+# Pairs: post_image_dataset/i2i/swap_text_v3/staging/pairs_en200_ko800.jsonl, the old
+# set's pages that survived into v3 plus a seed-0 fill, the eval works held out.
+#
+#   make daemon-run ARGS="--stall-timeout 900 scripts/moss/train.py --config configs/moss/i2i/swap_text/train_v3_en200_ko800.toml"
+
+cache = "post_image_dataset/moss/i2i_swap_text_v3_en200_ko800"
+output = "output/ckpt_moss_i2i/moss_i2i_swap_text_v3_en200_ko800_rw2_mod16_ema5e5_int8_e3.safetensors"
+ref_timestep = 0.0
+ref_isolate = true
+mod_rank = 16
+region_weight = 2.0
+optimizer = "muon"
+lr = 5e-5
+epochs = 3
+int8 = "stream"
+stream = "fp32"
+ema_card = true
+blocks_to_swap = 38
+activation_memory_budget = 0.1
+swap_h2d_only = true
+fit_report = true

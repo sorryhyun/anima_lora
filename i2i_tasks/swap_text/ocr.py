@@ -2,9 +2,9 @@
 ``--max_resid`` / ``--max_uncovered``.
 
 **ocr** reads every twin ``.tgt.webp`` through the anime_tools reader, with the
-MOSS caption helper's floors (``library.moss.colorize.readable``) and a Latin
-line at reader score ``LATIN_MIN_SCORE`` whatever its det, into
-``<root>/ocr.json``.
+MOSS caption helper's floors (``library.moss.colorize.readable``), a Latin line
+at reader score ``LATIN_MIN_SCORE`` whatever its det, and the Latin glyph floor
+on a Hangul line, into ``<root>/ocr.json``.
 
 **det** runs AnimeText text blocks on both sides of the same pages
 (``.src.webp`` and ``.tgt.webp``) into ``<root>/det.json``: the text mask the
@@ -15,14 +15,22 @@ pool's colour gates measure around, independent of the build's diff regions
 from __future__ import annotations
 
 import json
+import re
 import time
 from pathlib import Path
 
 import cv2
 
-from i2i_tasks.swap_text.common import ok_pages, read_cache, read_json, write_text
+from i2i_tasks.swap_text.common import (
+    JA_SCRIPT,
+    ok_pages,
+    read_cache,
+    read_json,
+    write_text,
+)
 
 LATIN_MIN_SCORE = 0.8
+HANGUL = re.compile(r"[\uac00-\ud7a3]")
 
 
 def _gated_pages(a) -> list[dict]:
@@ -33,24 +41,28 @@ def _gated_pages(a) -> list[dict]:
     ]
 
 
-def _ocr_reader(a):
-    """``(engine, readable)``: the anime_tools reader with the MOSS caption
-    helper's floors (``library.moss.colorize.readable``), plus a Latin line
-    read at ``LATIN_MIN_SCORE`` whatever its det — the detector scores
-    scanlation lettering 0.3–0.6 and the reader 0.8–0.9 on reads that are
-    right."""
+def keep_line(ln) -> bool:
+    """A line ``readable`` keeps, a Latin line read at ``LATIN_MIN_SCORE``
+    whatever its det — the detector scores scanlation lettering 0.3–0.6 and the
+    reader 0.8–0.9 on reads that are right — or a Hangul line ``readable``
+    lost to its glyph floor alone: small balloon lettering sits at 12–16 px and
+    reads at 0.96–1.00."""
+    from anime_tools.ocr.reread import LINE_MIN_DET
     from anime_tools.ocr.sfx import is_latin
 
-    from library.moss.colorize import LATIN_MIN_GLYPH, load_reread_engine, readable
+    from library.moss.colorize import LATIN_MIN_GLYPH, LOW_DET_SCORE, readable
 
-    def keep(ln) -> bool:
-        return readable(ln) or (
-            is_latin(ln.text)
-            and ln.score >= LATIN_MIN_SCORE
-            and ln.glyph_px >= LATIN_MIN_GLYPH
-        )
-
-    return load_reread_engine(a.device), keep
+    if readable(ln):
+        return True
+    if ln.glyph_px < LATIN_MIN_GLYPH:
+        return False
+    if is_latin(ln.text):
+        return ln.score >= LATIN_MIN_SCORE
+    return (
+        bool(HANGUL.search(ln.text))
+        and not JA_SCRIPT.search(ln.text)
+        and (ln.det >= LINE_MIN_DET or ln.score >= LOW_DET_SCORE)
+    )
 
 
 def read_into(a, path: Path, todo: list, paths: list[Path], label: str) -> dict:
@@ -97,11 +109,13 @@ def _read_shard(job) -> dict:
     """Read ``keep`` (``[(key, path)]``), checkpointing to ``out`` every 200
     pages and reporting every 50."""
     a, out, keep, label = job
-    engine, readable = _ocr_reader(a)
+    from library.moss.colorize import load_reread_engine
+
+    engine = load_reread_engine(a.device)
     reads, t0 = {}, time.time()
     lines_iter = engine.read_iter([p for _, p in keep])
     for k, ((key, _), lines) in enumerate(zip(keep, lines_iter), 1):
-        reads[key] = [[ln.text, list(ln.box)] for ln in lines if readable(ln)]
+        reads[key] = [[ln.text, list(ln.box)] for ln in lines if keep_line(ln)]
         if k % 200 == 0 or k == len(keep):
             write_text(out, json.dumps(reads, ensure_ascii=False))
         # the daemon kills a job silent for 120 s; a shard does ~1 page/s

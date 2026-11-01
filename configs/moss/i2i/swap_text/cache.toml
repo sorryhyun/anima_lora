@@ -8,8 +8,8 @@
 # captions are already layout JSON (one text item per target line), which
 # layout_json passes through.
 
-pairs = "post_image_dataset/i2i/swap_text/staging/pairs.jsonl"
-out = "post_image_dataset/moss/i2i_swap_text"
+pairs = "post_image_dataset/i2i/swap_text_v3/staging/pairs.jsonl"
+out = "post_image_dataset/moss/i2i_swap_text_v3"
 resolution = 1024
 # Full-size reference: everything but the lettering is copied.
 ref_scale = 1

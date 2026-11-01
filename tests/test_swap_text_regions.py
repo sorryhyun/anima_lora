@@ -3,12 +3,15 @@ misregistration dropped."""
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import cv2
 import numpy as np
 
 from i2i_tasks.swap_text.align import refine_ecc
 from i2i_tasks.swap_text.build import colour_match
 from i2i_tasks.swap_text.common import worker_pool
+from i2i_tasks.swap_text.ocr import keep_line
 from i2i_tasks.swap_text.regions import diff_regions, grow_regions
 
 SIZE = (900, 640)
@@ -124,3 +127,14 @@ def test_worker_pool_forks_from_a_parent_that_ran_cv2():
     _shrink(0)
     with worker_pool(2) as pool:
         assert pool.map_async(_shrink, range(4)).get(timeout=30) == [500] * 4
+
+
+def test_small_hangul_line_clears_the_latin_glyph_floor():
+    def line(text, det, score, glyph):
+        return SimpleNamespace(text=text, det=det, score=score, glyph_px=glyph)
+
+    assert keep_line(line("만화에서 이런 걸 하고 있었어?", 0.90, 0.99, 14.7))
+    assert not keep_line(line("만화에서 이런 걸", 0.90, 0.99, 11.9))
+    assert not keep_line(line("아앙", 0.42, 0.80, 14.0))
+    assert not keep_line(line("ざわっ", 0.74, 0.72, 15.9))
+    assert keep_line(line("I DUNNO", 0.35, 0.80, 12.2))
