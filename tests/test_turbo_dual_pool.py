@@ -465,8 +465,7 @@ def test_int8_config_and_its_refusals():
     assert _resolve().int8 == "off"
     assert _resolve(["--int8", "stream"]).int8 == "stream"
     assert _resolve(cfg={"int8": "full"}).int8 == "full"
-    with pytest.raises(ValueError, match="blocks_to_swap=0"):
-        _resolve(["--int8", "stream", "--blocks_to_swap", "4"])
+    assert _resolve(["--int8", "stream", "--blocks_to_swap", "4"]).blocks_to_swap == 4
     with pytest.raises(ValueError, match="dmad"):
         _resolve(["--int8", "full"], {"dmad_probe": {"enabled": True}})
 

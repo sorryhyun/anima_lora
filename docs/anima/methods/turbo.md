@@ -370,11 +370,12 @@ Regression probe: `bench/turbo/caption_ranking_probe.py --adapter <ckpt>`. Tests
 - Block swap. The student rolls `N` forwards and the teacher `K` anchor
   forwards per step, with graphs alive across them. Each forward calls
   `rewind_block_swap()`, which undoes the last forward's moves on the same device
-  slots, and a backward first seeks to the end of those moves
-  (`library/runtime/offloading.py::ModelOffloader`, `rewindable`). The GAN needs
-  `blocks_to_swap=0`: its feature tap stops early. So do soft-rank, `dmad` and
-  `dmad_probe`, still unaudited on it. The default config keeps swap off: it costs
-  about 1.5x step time for 1 GB of peak. No full student has trained on it.
+  slots, and a backward first seeks to where it starts: the end of those moves, or
+  the tap of the GAN's early-stopped forward, which moves only the blocks it runs
+  (`library/runtime/offloading.py::ModelOffloader`, `rewindable`). Soft-rank, `dmad`
+  and `dmad_probe` need `blocks_to_swap=0`, still unaudited on it. The default
+  config keeps swap off: it costs about 1.5x step time for 1 GB of peak. No full
+  student has trained on it.
 
 ## References
 

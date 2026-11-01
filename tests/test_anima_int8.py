@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+from contextlib import nullcontext
 from types import SimpleNamespace
 
 import pytest
@@ -218,6 +219,64 @@ def test_turbo_step_on_swap_is_the_resident_step(mode, cdm):
         handle.remove()
     for dx, dx_ref in zip(got, turbo_step(model, cdm), strict=True):
         assert dx_ref.abs().sum() > 0 and torch.equal(dx, dx_ref)
+    close_stream()
+
+
+def gan_step(model: Anima, tap: int, ckpt: bool, between: bool) -> list[torch.Tensor]:
+    """A tapped teacher forward on the student's output, backwarded with the student's
+    graph (``between``: a full forward in the way), then the disc's tapped forwards
+    around a fake update; every ``dX``."""
+
+    def forward(x, no_grad=False, **tapped):
+        model.rewind_block_swap()
+        grad = torch.no_grad() if no_grad else torch.enable_grad()
+        with grad, torch.autocast("cuda", dtype=torch.bfloat16):
+            return model.forward_mini_train_dit(x, t, c, **tapped)
+
+    tapped = dict(return_block_features={tap}, return_features_early=True)
+    torch.manual_seed(1)
+    x = torch.randn(1, 16, 1, 8, 8, device="cuda", dtype=torch.bfloat16)
+    x.requires_grad_()
+    t = torch.tensor([0.5], device="cuda")
+    c = torch.randn(1, 8, 64, device="cuda", dtype=torch.bfloat16)
+    y = forward(x)
+    forward(x.detach(), no_grad=True)
+    with selective_block_grad_ckpt(model) if ckpt else nullcontext():
+        feats = forward(0.9 * y, **tapped)
+    if between:
+        forward(x.detach(), no_grad=True)
+    (y.square().mean() + feats[tap].square().mean()).backward()
+
+    x_fake = y.detach().requires_grad_()
+    forward(x_fake).square().mean().backward()
+    disc_x = forward(x_fake.detach(), no_grad=True, **tapped)[tap]
+    disc_real = forward(x.detach(), no_grad=True, **tapped)[tap]
+    return [x.grad, x_fake.grad, disc_x, disc_real]
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="needs a card")
+@pytest.mark.parametrize("between", [False, True])
+@pytest.mark.parametrize("ckpt", [False, True])
+@pytest.mark.parametrize("swap", [3, 4])
+@pytest.mark.parametrize("tap", [1, 2, 3, 4, 5])
+@pytest.mark.parametrize("mode", ["off", "stream"])
+def test_gan_step_on_swap_is_the_resident_step(mode, tap, swap, ckpt, between):
+    device = torch.device("cuda")
+    model = tiny_dit()
+    model.enable_block_swap(swap, device)
+    if mode != "off":
+        convert_tiny(model, mode)
+    model.to(dtype=torch.bfloat16)
+    model.move_to_device_except_swap_blocks(device)
+    model.prepare_block_swap_before_forward()
+    got = gan_step(model, tap, ckpt, between)
+
+    model.pause_block_swap()
+    for handle in model.offloader.remove_handles:
+        handle.remove()
+    ref = gan_step(model, tap, ckpt, between)
+    for a, b in zip(got, ref, strict=True):
+        assert b.abs().sum() > 0 and torch.equal(a, b)
     close_stream()
 
 

@@ -353,8 +353,10 @@ class ModelOffloader(Offloader):
     forward's moves in reverse, on the same slots; ``prepare_block_devices`` moves
     to new storage and strands them on another block's data. ``rewindable`` keeps
     the slots across several forwards and backwards in any order, as turbo needs:
-    :meth:`seek` to 0 before a forward, and a pre-hook on the last block seeks to
-    the end of the forward moves before a backward walks them back.
+    :meth:`seek` to 0 before a forward, and a pre-hook on each block seeks to where
+    a backward starting there stands. That is a no-op once the walk is under way, so
+    only the first block of a backward moves anything: the last block, or the tap of
+    a forward stopped early.
     """
 
     def __init__(
@@ -383,10 +385,13 @@ class ModelOffloader(Offloader):
                     handle = block.register_full_backward_hook(hook)
                     self.remove_handles.append(handle)
             if rewindable:
-                handle = blocks[-1].register_full_backward_pre_hook(
-                    lambda _module, _grad: self.seek(blocks, blocks_to_swap)
-                )
-                self.remove_handles.append(handle)
+                tail = self.num_blocks - blocks_to_swap
+                for i, block in enumerate(blocks):
+                    start = min(max(i + 2 - tail, 0), blocks_to_swap)
+                    handle = block.register_full_backward_pre_hook(
+                        lambda _module, _grad, start=start: self.seek(blocks, start)
+                    )
+                    self.remove_handles.append(handle)
 
     def seek(self, blocks: Union[list[nn.Module], nn.ModuleList], moved: int) -> None:
         """Apply or undo forward moves on the current slots, until ``moved`` are in."""

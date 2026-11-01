@@ -56,8 +56,7 @@ file or round to nearest.
 - `make turbo` ships `int8 = "stream"` and has run 30-step smokes only, no full student. It refuses
   `dmad` and `dmad_probe`, and its teacher runs on the int8 base. 2026-11-01, warm start, budget
   0.99: 6.28 s/step and 11.87 GB peak on the bf16 stream, 6.7–7.0 s/step and 12.39 GB on fp32. The
-  bf16 base read 9.65 s/step on the same plan, 2026-08-29. Block swap there needs the GAN off, on
-  any base: `--blocks_to_swap 14 --gan_loss_weight_gen 0`.
+  bf16 base read 9.65 s/step on the same plan, 2026-08-29.
 - `--base_weights` with forward copies is refused: they were calibrated on the unmerged weights.
   `--int8_file rtn` quantizes the merged weights instead.
 - `--lora_cutoff_step` is refused in generation.
@@ -116,7 +115,7 @@ teacher and fake forwards, matches too, CDM's second student forward included
 
 Turbo, 30 steps, CDM on, GAN off, fp32 stream: 5.8 s/step and 12.36 GB at swap 0, 8.4 s/step and
 11.32 GB at swap 14. Every forward there rewinds the swap, so a step moves each swapped block
-several times.
+several times. With the GAN on, 20 steps at swap 14 read 9.6 s/step and 11.35 GB.
 
 A seed draws different samples with swap on: losses across swap and resident runs are not
 comparable step by step, and `loss/epoch_average` read 0.0749 against 0.0733 for that reason. A

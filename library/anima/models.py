@@ -1906,7 +1906,11 @@ class Anima(nn.Module):
             if capture_blocks is not None and block_idx in capture_blocks:
                 feature_sink[block_idx] = x
 
-            if self.blocks_to_swap:
+            # A move past the stop brings in a block this forward never runs.
+            if self.blocks_to_swap and (
+                stop_after_block is None
+                or self.num_blocks - self.blocks_to_swap + block_idx <= stop_after_block
+            ):
                 self.offloader.submit_move_blocks(self.blocks, block_idx)
 
             if stop_after_block is not None and block_idx == stop_after_block:
@@ -1942,20 +1946,13 @@ class Anima(nn.Module):
             return_block_features: block indices to tap into a dict of raw outputs
             return_features_early: stops right after the deepest tap, skipping
                 final_layer/unpatchify — fast path for a mid-stack-only forward.
-                Default off -> bit-exact no-op; unsupported with block swap.
+                Default off -> bit-exact no-op.
             token_merger (``networks.foveated.FoveatedTokenMerge``): reduced-seq
                 stack (fovea 1:1, periphery averaged). ``None`` -> no-op.
         """
         if return_features_early and not return_block_features:
             raise ValueError(
                 "return_features_early=True requires a non-empty return_block_features"
-            )
-        if return_block_features is not None and self.blocks_to_swap:
-            # Early-exit would leave tail-block offloader moves un-submitted,
-            # desyncing swap state. Fails loud rather than corrupting silently.
-            raise RuntimeError(
-                "feature tap (return_block_features) is unsupported with block swap "
-                f"(blocks_to_swap={self.blocks_to_swap}); keep the tapped DiT resident"
             )
         if (
             t5_input_ids is not None
