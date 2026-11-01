@@ -2,7 +2,7 @@
 
 Each ComfyUI node tries to import the live ``library.*`` first, falling back
 to a bundled vendor copy when the host install isn't sitting inside the
-anima_lora repo. This script keeps those vendor copies fresh.
+anima_lora repo.
 
 Four targets:
 
@@ -13,10 +13,9 @@ Four targets:
   directly (no tagger / vision / edit dispatcher vendored).
 * ``ComfyUI-Anima_lora-Adapter/_vendor/`` — the pure-compute router kernels
   imported by ``adapter.py`` + ``fera.py`` (FEI 2-band / n-band, σ sinusoidal
-  features, σ-band partition mask). This node was **extracted to a standalone
-  published repo** (a sibling checkout, default ``../../ComfyUI-Anima_lora-Adapter``;
-  override with ``ANIMA_ADAPTER_NODE_REPO``); sync_vendor writes the vendor tree
-  *into that repo*, which is the authoritative copy the node imports at runtime.
+  features, σ-band partition mask). The node is a standalone published repo (a
+  sibling checkout, default ``../../ComfyUI-Anima_lora-Adapter``; override with
+  ``ANIMA_ADAPTER_NODE_REPO``); sync_vendor writes the vendor tree *into that repo*.
   ``library/inference/router_compute.py`` is the single import surface; it pulls
   ``library/runtime/fei.py`` and ``networks/lora_modules/router_state.py``
   transitively, so we vendor all three verbatim. Trained router weights are
@@ -36,10 +35,9 @@ Four targets:
   needs — it errors if the daemon isn't already up rather than auto-starting).
 * ``ComfyUI-Spectrum-KSampler/_vendor/`` — the pure-compute ``*_core`` kernels
   (FSG / SMC / CNS / SPD numerics) shared verbatim between the library's
-  sampler-boundary plugins and the node's ComfyUI seam wrappers. Like the
-  hydralora target this is a standalone published repo (default a sibling of
-  anima_lora's parent; override ``ANIMA_SPECTRUM_NODE_REPO``); sync_vendor writes
-  the tree *into that repo*. Each core is torch/numpy only — no ``comfy`` and no
+  sampler-boundary plugins and the node's ComfyUI seam wrappers. Also a standalone
+  published repo (default a sibling of anima_lora's parent; override
+  ``ANIMA_SPECTRUM_NODE_REPO``), written the same way. Each core is torch/numpy only — no ``comfy`` and no
   anima-model imports. Skipped (with a warning) when the repo isn't checked out
   beside anima_lora.
 
@@ -151,7 +149,7 @@ EDGE_TOKEN_BANDS = {{EDGE_TOKEN_BANDS_LITERAL}}
 STUB_ANIMA_MODELS = '''"""Stub of library.anima.models for the vendored DirectEdit path.
 
 The live module is ~2.4k LOC and defines the full Anima DiT. The vendored
-``library/inference/directedit.py`` imports it solely for a type annotation
+``library/inference/editing/directedit.py`` imports it solely for a type annotation
 that is already lazy (``from __future__ import annotations``), so a tiny
 placeholder class is enough to keep the import succeeding. The actual model
 passed at runtime is whatever the ComfyUI MODEL socket carries.

@@ -7,18 +7,15 @@ early grad_signal_rms / v_student_rms spike (~step 50). Pre-train the fake net
 for ``warmup_steps`` fake-only updates against the student's (init ≈ teacher)
 x_pred distribution so the critic is calibrated before the student moves.
 
-``warmup_steps`` counts **fake gradient updates directly** — one per iteration,
-each on a fresh batch (and a fresh no-grad student x_pred). It is intentionally
-*decoupled* from ``fake_steps_per_student_step`` (the main-loop critic cadence):
-the head-start is fake-only, so there is no student step to pair with, and a
-critic-cadence knob shouldn't silently rescale the calibration budget. Size the
-head-start in updates (e.g. 400), not in main-loop steps.
+``warmup_steps`` counts **fake gradient updates directly**, one per iteration, each
+on a fresh batch and a fresh no-grad student x_pred. ``fake_steps_per_student_step``
+(the main-loop critic cadence) does not scale it; size the head-start in updates
+(e.g. 400), not in main-loop steps.
 
 The student is left untouched (no-grad forward, no student optimizer step). The
 fake scheduler IS stepped through this phase (caller sizes it over ``iterations
 · fake_steps_per_student_step + warmup_steps``), so the fake's 0.02 LR warmup
-overlaps the head-start and the fake enters the main loop at full LR with a
-calibrated critic.
+overlaps the head-start and the fake enters the main loop at full LR.
 """
 
 from __future__ import annotations
@@ -95,8 +92,6 @@ def run_fake_warmup(
             ).squeeze(2)
             x_pred_d = (x_t.squeeze(2) - t_e * v_student).detach()
 
-        # One fake update per iteration (decoupled from the main-loop cadence —
-        # see module docstring). Resampled (τ_fake, ε_fake) on a fresh batch.
         # τ-split critic: the draw routes to the owner bank so both banks enter
         # the main loop calibrated on their own band (banks=1 → identical
         # sample_t call).

@@ -116,8 +116,7 @@ def _await_down(client: "DaemonClient", timeout: float) -> None:
 def _has_live_jobs(client: "DaemonClient") -> bool:
     try:
         return any(
-            (job.get("state") or "") in RUNNABLE_STATES
-            for job in client.list_jobs()
+            (job.get("state") or "") in RUNNABLE_STATES for job in client.list_jobs()
         )
     except Exception:
         return True
@@ -307,13 +306,9 @@ class DaemonClient:
         self, job_id: Optional[str] = None, *, release_model: bool = False
     ) -> dict:
         """Freeze a running job's tree (SIGSTOP). ``None`` → the active job.
-        Returns ``{job_id, state, error?}``; ``error`` on a refusal (wrong state
-        / multi-GPU accelerate run).
-
-        ``release_model=True`` (train.py jobs only): the trainer saves a
-        resumable state at its next optimizer step and exits, freeing the GPU;
-        the job parks as ``paused`` (``released``) and :meth:`resume_job`
-        relaunches it with ``--resume``."""
+        ``release_model=True`` (train.py jobs only) has the trainer save and exit
+        instead, freeing the GPU. Returns ``{job_id, state, error?}``; ``error``
+        on a refusal."""
         if job_id is None:
             health = self.health() or {}
             job_id = health.get("active_job")
@@ -431,7 +426,7 @@ def ensure_daemon(
                     "it still has queued or running jobs"
                 )
         time.sleep(interval)
-        interval = min(interval * 1.5, 0.5)  # ramp 0.1 → 0.5s
+        interval = min(interval * 1.5, 0.5)
     raise RuntimeError(
         f"daemon did not come up within {timeout:.0f}s; see {config.DAEMON_LOG}"
     )

@@ -20,16 +20,10 @@ Output schema (default JSON form):
       }
     }
 
-Note the two gotchas:
-  - Top level is wrapped (``run`` + ``tags``), not a flat tag → series map.
-    Iterate ``payload["tags"].items()``, not ``payload.items()``.
-  - Each row is ``[step, wall_time, value]`` — wall_time is in the middle.
-    Read ``row[2]`` for the metric value, not ``row[1]``.
+Iterate ``payload["tags"].items()``; the metric value is ``row[2]``.
 
-``--jsonl`` flattens to one ``{tag, step, wall_time, value}`` object per
-line, which sidesteps both gotchas if you're piping to ``jq`` / pandas.
+``--jsonl`` flattens to one ``{tag, step, wall_time, value}`` object per line.
 
-For the 90%-case "where is this run at?" query, skip the parse entirely:
 ``--summary`` prints the last value (and its step) per tag, plus the run's max
 step. Add ``--stdout`` for the same thing as JSON.
 """
@@ -75,11 +69,7 @@ def _run_payload(run_root: Path) -> dict:
 
 
 def _summary_payload(payload: dict) -> dict:
-    """Collapse a run payload to last-value-per-tag + max step.
-
-    The "where is this run at" query, answered without the caller
-    reimplementing the ``[step, wall_time, value]`` parse.
-    """
+    """Collapse a run payload to last-value-per-tag + max step."""
     tags = {}
     for tag, series in sorted(payload["tags"].items()):
         if not series:

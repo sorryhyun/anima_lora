@@ -1,12 +1,10 @@
 """Crash-resume state for the turbo distillation loop.
 
-``save_student`` ships only the student LoRA — the critic, discriminator, and
-all three optimizer/scheduler pairs are training scaffolding that only ever
-lived in RAM. A mid-run death loses all of it: restarting from a step-tagged
-checkpoint would re-warm a *cold* critic against an *already trained* student
-and reset the LR cosine to its peak — the exact regime the critic runaway lives
-in. This module checkpoints the rest of the loop so a restart continues the run
-instead of re-opening it.
+``save_student`` ships only the student LoRA. Restarting from a step-tagged
+checkpoint would re-warm a *cold* critic against an *already trained* student and
+reset the LR cosine to its peak, the regime the critic runaway lives in. This
+module checkpoints the critic, discriminator and all three optimizer/scheduler
+pairs as well.
 
 The bundle is a single rolling ``{output_name}_resume.pt`` next to the
 step-tagged students, overwritten each ``save_every`` and written atomically
@@ -292,8 +290,8 @@ def apply_resume_state(
 
     turbo.student.load_state_dict(state["student"])
     # Dual-pool pool A: both pools share ONE student optimizer whose state is keyed
-    # by the combined param list, so a presence mismatch would half-load it silently
-    # — refuse hard in both directions (same discipline as the τ-split fake_hi).
+    # by the combined param list, so a presence mismatch would half-load it silently.
+    # Refused in both directions.
     student_div = getattr(turbo, "student_div", None)
     if student_div is not None:
         if state.get("student_div") is None:

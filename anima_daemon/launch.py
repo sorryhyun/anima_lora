@@ -29,8 +29,8 @@ def build_cmd(job: Job) -> tuple[list[str], dict]:
     env["ANIMA_DAEMON_JOB_ID"] = job.id
     env["ANIMA_DAEMON_JOB_DIR"] = str(job.dir)
 
-    # Windowless interpreter (see client.venv_python). No --progress_jsonl:
-    # command jobs finalize on exit code.
+    # Windowless interpreter (see client.venv_python). No --progress_jsonl: a
+    # command job's loop finds its sink through ANIMA_DAEMON_JOB_DIR.
     if job.kind == "command":
         env.update(job.extra_env or {})
         return [venv_python(windowless=True), *job.argv], env
@@ -54,7 +54,6 @@ def build_cmd(job: Job) -> tuple[list[str], dict]:
             extra += [flag, *[str(v) for v in val]]
         else:
             extra += [flag, str(val)]
-    # Point the progress stream at the job dir.
     if "--progress_jsonl" not in extra:
         extra += ["--progress_jsonl", job.progress_path or ""]
     if job.config_file:
@@ -66,6 +65,5 @@ def build_cmd(job: Job) -> tuple[list[str], dict]:
             methods_subdir=job.methods_subdir,
             extra=extra,
         )
-    # Windowless interpreter (see client.venv_python).
     cmd = build_launch_cmd(*args, python_exe=venv_python(windowless=True))
     return cmd, env

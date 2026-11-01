@@ -13,17 +13,13 @@ term adds an explicit penalty on it. Off by default. Code: `tone_loss` in
 make daemon-run ARGS="--stall-timeout 900 scripts/moss/train.py --config configs/moss/i2i/sanitize/train.toml"
 ```
 
-The shipped config sets `tone_weight 0.003`, `tone_start 0.5`.
-
-The shipped sanitize v3 (`sorryhyun/MOSS-I2I-LORAs`, `sanitize/moss_i2i_sanitize_v3`) is
-this setting on the 277-pair identity tree (`post_image_dataset/moss/i2i_sanitize_idt`:
-the near-twin pairs plus 39 clean → clean pairs), Muon lr 5e-5, 8 epochs = 2,216 steps,
-`ema_window 0.1`. The settings are stamped in the LoRA's metadata.
+The shipped config sets `tone_weight 0.003`, `tone_start 0.5`, stamped in the LoRA's
+metadata. Sanitize v3 is this setting: recipe in [i2i.md](i2i.md#sanitize).
 
 | Flag | Default | What it does |
 |---|---|---|
-| `--tone_weight` | `0` (off) | Weight of the term. The shipped value is 0.003 |
-| `--tone_start` | `0` | Fraction of the run before which the term is only logged, not added. The shipped value is 0.5 |
+| `--tone_weight` | `0` (off) | Weight of the term |
+| `--tone_start` | `0` | Fraction of the run before which the term is only logged, not added |
 | `--tone_pool` | `8` | Cell side in latent tokens (8 = 128 px); `0` = one cell over the whole unedited area |
 | `--tone_dilate` | `2` | Tokens the edit region grows by for the term, beyond `region_dilate`, so seams stay out |
 | `--tone_dirs` | `library/moss/calibration/tone_dirs.safetensors` | Latent → Lab projection; `''` = the raw 128 channels |
@@ -89,5 +85,5 @@ watermarks and handles all go, and non-text art (hearts, a halo's symbols) stays
 - Δa ≈ +0.4 (slightly redder) is the same with and without the term in every run.
 - One dark, high-contrast page (hard_to_sanitize2) still loses up to 1 L at one seed.
 
-Research log (measurements, the hypotheses ruled out — CNS, CFG, identity pairs, tone
-jitter, the small VAE decoder — and every arm): `project/finished/moss_lora/done/i2i_tone_loss.md`.
+Research log (measurements, the hypotheses ruled out: CNS, CFG, identity pairs, tone
+jitter, the small VAE decoder; every arm): `project/finished/moss_lora/done/i2i_tone_loss.md`.

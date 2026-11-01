@@ -1,4 +1,4 @@
-"""Stdlib HTTP surface for the daemon — zero new deps, localhost only.
+"""Stdlib HTTP surface for the daemon, localhost only.
 
 A hand-written ``(method, path)`` dispatch on a ``BaseHTTPRequestHandler``;
 request bodies are unvalidated ``json.loads``'d dicts. Served by
@@ -35,6 +35,7 @@ _JOB_LOGS_RE = re.compile(r"^/jobs/(?P<id>[^/]+)/logs$")
 _JOB_PROGRESS_RE = re.compile(r"^/jobs/(?P<id>[^/]+)/progress$")
 
 _README = Path(__file__).resolve().parent / "README.md"
+
 
 class _Handler(BaseHTTPRequestHandler):
     server_version = "AnimaDaemon/1.0"
@@ -160,8 +161,6 @@ class _Handler(BaseHTTPRequestHandler):
                 "pid": os.getpid(),
                 "port": self.server.server_address[1],
                 "root": str(config.ROOT),
-                # Fingerprint we BOOTED with, not re-hashed live — see
-                # config.source_fingerprint / client.daemon_is_stale.
                 "fingerprint": getattr(self.server, "boot_fingerprint", None),
                 "active_job": active.id if active else None,
                 "paused": self.manager.is_paused(),
@@ -172,7 +171,6 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _handle_submit(self) -> None:
         body = self._read_json()
-        # start: True → run now (resume queue), False → enqueue paused, None → as-is.
         start = body.get("start")
         if (body.get("kind") or "train") == "command":
             argv = body.get("argv")
@@ -282,7 +280,6 @@ class _Handler(BaseHTTPRequestHandler):
         if result is None:
             self._send_json({"error": "no such job", "job_id": job_id}, 404)
             return
-        # A refusal rides an `error` field in a 200 body; only a missing job 404s.
         self._send_json(result)
 
     def _handle_resume(self, job_id: str) -> None:

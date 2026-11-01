@@ -195,7 +195,7 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
 
     # GAN feature tap: resolve the tapped block (−1 → middle) and hand the index
     # set to TurboDMDNetwork to build the disc + block hooks. gan_indices=None
-    # when weight_gen==0 → byte-identical DP-DMD.
+    # when weight_gen==0.
     gan_on = cfg.gan_loss_weight_gen > 0.0
     gan_indices = None
     if gan_on:
@@ -496,15 +496,14 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
 
     # Soft-rank caption auxiliary (_archive/proposals/turbo_caption_ranking.md): ranks
     # the matched caption against k shuffled-caption negatives at the DP-DMD
-    # step-0 anchor. weight=0 → fully off, byte-identical DP-DMD. Negatives come
+    # step-0 anchor. weight=0 → fully off. Negatives come
     # from a cross-step pool (CaptionNegativePool) so the term fires even at
     # batch_size=1; must fill to `softrank_min_pool` before firing.
     from .softrank import CaptionNegativePool
 
     softrank_on = cfg.softrank_weight > 0.0
     softrank_pool = CaptionNegativePool(cfg.softrank_pool_size) if softrank_on else None
-    # L_CDM off-trajectory loss. weight=0 → fully off (no extra forwards/RNG
-    # draws) → byte-identical.
+    # L_CDM off-trajectory loss. weight=0 → fully off (no extra forwards/RNG draws).
     cdm_on = cfg.cdm_weight > 0.0
     softrank_min_pool = max(
         cfg.softrank_k, round(cfg.softrank_warmup_ratio * cfg.softrank_pool_size)
@@ -548,7 +547,7 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         # Single-prompt overfit — wrap as a 1-sample list so the dataloader cycles it.
         apply_single_prompt_slice(dataset, cfg.single_prompt_idx, logger=logger)
 
-    # Bucket-grouped batch sampler (mirrors distill_mod): every batch is one
+    # Bucket-grouped batch sampler: every batch is one
     # resolution — free-fit gives each image its own token count, so a
     # cross-resolution batch can't stack. Order shuffled per epoch, seeded by
     # cfg.seed (data-order axis of the training lottery); largest-token bucket
@@ -564,8 +563,8 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
     Path(cfg.output_dir).mkdir(parents=True, exist_ok=True)
 
     snapshot_text = snapshot_toml_text(cfg, source_config=args.config)
-    # Canonical config snapshot beside the checkpoint (train.py convention) —
-    # written unconditionally, independent of --no_log.
+    # Config snapshot beside the checkpoint (train.py convention), written even
+    # under --no_log.
     write_config_snapshot(
         Path(cfg.output_dir) / f"{cfg.output_name}.snapshot.toml",
         snapshot_text,
@@ -578,17 +577,13 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
     if dmad_probe is not None:
         dmad_probe.bind_log_dir(run_log if run_log is not None else cfg.output_dir)
     if run_log is not None:
-        # Mirror the snapshot into the run log dir: a self-contained record of
-        # "this run + the config that produced it".
         write_config_snapshot(
             run_log / f"{cfg.output_name}.snapshot.toml",
             snapshot_text,
             logger=logger,
         )
 
-    # Structured progress sink: reuse train.py's ProgressSink so a turbo run is
-    # followable by tailing one file (train.py path convention). Disabled under
-    # --no_log.
+    # train.py's ProgressSink, same path convention. Disabled under --no_log.
     progress_sink = None
     if not cfg.no_log:
         sink_path = ProgressSink.resolve_path(cfg)
@@ -692,8 +687,7 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         return v_u.float() + cfg.teacher_cfg * (v_c.float() - v_u.float())
 
     # Fake head-start skipped on resume: the restored critic is already
-    # calibrated against the restored student; re-running it here would recreate
-    # the pathology this resume path exists to avoid.
+    # calibrated against the restored student.
     # Under DMAD the disc head-start replaces this one; it runs once the
     # RunContext exists (end of this function).
     data_iter = iter(dataloader)
@@ -741,10 +735,8 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         f"steps {start_step} → {cfg.iterations}"
     )
 
-    # tqdm repaints one `\r` line on stderr — fine interactively, but a redirected
-    # or daemon-headless run then has no periodic step record between the
-    # save_every / validate_every lines. Off a TTY, mirror the same metrics as a
-    # throttled logger.info at log_interval cadence.
+    # Off a TTY, mirror the tqdm metrics as a throttled logger.info at log_interval
+    # cadence (``metrics.console_step_line``).
     try:
         console_steps = not sys.stderr.isatty()
     except Exception:  # stderr detached (pythonw) → no live line either way

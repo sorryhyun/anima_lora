@@ -89,10 +89,9 @@ def _write_shortcut(shortcut_path: Path, target: Path, icon: Path) -> bool:
 def cmd_gui_shortcut(_extra):
     """Create Windows shortcuts ('Anima LoRA GUI.lnk') that launch the GUI.
 
-    Always writes one into the install dir (``ROOT``) — this is policy-proof and
-    works even when locked-down login policies or OneDrive redirection prevent
-    writing to the Desktop. Additionally writes one to the Desktop on a
-    best-effort basis. Targets ``pythonw.exe`` from the active venv with
+    Always writes one into the install dir (``ROOT``), which works when login
+    policies or OneDrive redirection prevent writing to the Desktop, plus one to
+    the Desktop on a best-effort basis. Targets ``pythonw.exe`` from the active venv with
     ``tasks.py gui``, so it runs without flashing a console window.
     """
     if sys.platform != "win32":

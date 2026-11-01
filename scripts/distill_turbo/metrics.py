@@ -61,9 +61,8 @@ class FlushedMetrics:
     cdm: float
 
 
-# Single source of truth for the accumulator key set — adding a logged scalar is
-# one field on FlushedMetrics (+ its accumulate call + a write_scalars line),
-# never a fourth edit to a parallel stack/reset list.
+# The accumulator key set: adding a logged scalar is one field on FlushedMetrics
+# plus its accumulate call and a write_scalars line.
 _FIELDS: tuple[str, ...] = tuple(f.name for f in fields(FlushedMetrics))
 
 
@@ -311,8 +310,7 @@ def tqdm_rate(bar: tqdm) -> float | None:
     """Steps/sec off a tqdm bar: its EMA rate, or the run average as a fallback.
 
     ``format_dict['rate']`` is ``None`` until the bar has recorded an EMA
-    interval, so fall back to (steps done / elapsed) rather than reporting no
-    rate at all — the caller wants an ETA on the very first log line too.
+    interval, so the fallback is steps done / elapsed.
     """
     fd = bar.format_dict
     rate = fd.get("rate")

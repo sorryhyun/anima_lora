@@ -20,15 +20,14 @@ under ``make exp-test-directedit`` — that task picks a random source image,
 runs the Anima Tagger to seed ``--prompt_src``, and forms ``--prompt_tar``
 from ``PROMPT`` env (the user's edit instruction).
 
-Status:
-  * V-injection: WIRED. ``--t_inj N`` injects src self-attn V into the tar
-    pass for the first N steps (paper Eq. 13). ``--t_inj_blocks`` selects
-    the block subset (default = all but the final block, SD3.5-style).
-  * Mask blending: ``--mask`` implements the anchor-side half of paper
-    Eq. 12 — Δz dropped inside the edit region (the full background-lock
-    latent blend remains future work). ``--easycontrol_mask`` composes the
-    learned counterpart: gray-hole the EC cond over the same region so the
-    inpaint prior clamps outside it (_archive/directedit_ec/bench).
+Notes:
+  * V-injection: ``--t_inj N`` injects src self-attn V into the tar pass for the
+    first N steps (paper Eq. 13). ``--t_inj_blocks`` selects the block subset
+    (default = all but the final block, SD3.5-style).
+  * Mask blending: ``--mask`` implements the anchor-side half of paper Eq. 12,
+    dropping Δz inside the edit region; the background-lock latent blend is not
+    implemented. ``--easycontrol_mask`` gray-holes the EC cond over the same
+    region so the inpaint prior clamps outside it (_archive/directedit_ec/bench).
   * Inversion runs at ``--invert_guidance 1.0`` (no CFG); the edit pass uses
     the user's ``--guidance_scale`` (default 4.0, Anima base-v1.0 standard).
 """
@@ -114,7 +113,7 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=0.92,
         help="Dispatcher: top-1 cosine must exceed this to fire REPLACE. "
-        "Tuned against scripts/probes/edit_nearest_tag.py.",
+        "Tuned against _archive/text_enc_probes/edit_nearest_tag.py.",
     )
     p.add_argument(
         "--replace_gap",
@@ -216,7 +215,7 @@ def parse_args() -> argparse.Namespace:
         "--smc_cfg",
         action="store_true",
         help="α-adaptive Sliding-Mode Control on the edit pass's CFG combine "
-        "(library/inference/smc_cfg.py). Clamps small/noisy CFG-residual "
+        "(library/inference/corrections/smc_cfg.py). Clamps small/noisy CFG-residual "
         "voxels while preserving large semantic moves; composes with t_inj "
         "V-injection (SMC operates on the post-injection v_cond_tar / v_neg "
         "residual). No-op on the inversion pass.",
@@ -788,7 +787,6 @@ def main() -> None:
         args_tar.negative_prompt = args.negative_prompt
 
         logger.info("Encoding prompts...")
-        # Share the TE instance across both prompt encodings.
         shared = {"text_encoder": text_encoder, "conds_cache": {}}
 
         ctx_src, ctx_neg = prepare_text_inputs(args_src, device, anima, shared)
@@ -945,7 +943,6 @@ def main() -> None:
                 tuple(z_cond.shape),
             )
 
-    # Move VAE off-device for the DiT loop, bring it back for decode.
     vae.to("cpu")
     clean_memory_on_device(device)
 

@@ -61,7 +61,7 @@ make download-model ARGS=moss-sft
 
 ## 3. 전처리, 학습, 테스트
 
-패널에는 **Preprocess** 와 **Train** 두 탭이 있고, **Test** 상자는 Train 탭 아래쪽에 있습니다. 자주 쓰지 않는 필드는 **Advanced** 안에 접혀 있습니다. 각 버튼은 학습 데몬에 작업을 제출합니다. 모델 드롭다운을 Anima로 되돌리거나 GUI를 닫아도 작업은 계속 실행되고, 다시 열면 실행 중인 작업에 재연결되며(`Re-attached to running job …`), **Stop** 으로 취소합니다.
+패널에는 t2i용 **Preprocess** 와 **Train** 두 탭에 이어 **i2i Preprocess** 와 **i2i Train** 탭(`docs/moss/methods/i2i.md`)이 있고, **Test** 상자는 Train 탭 아래쪽에 있습니다. 자주 쓰지 않는 필드는 **Advanced** 안에 접혀 있습니다. 각 버튼은 학습 데몬에 작업을 제출합니다. 모델 드롭다운을 Anima로 되돌리거나 GUI를 닫아도 작업은 계속 실행되고, 다시 열면 실행 중인 작업에 재연결되며(`Re-attached to running job …`), **Stop** 으로 취소합니다.
 
 ### 3.1 데이터셋과 캡션
 
@@ -124,8 +124,8 @@ make download-model ARGS=moss-sft
 | `epochs` | `8` | 측정한 학습은 20 |
 | `plain_caption_rate` | `0.2` | `layout_json` 캐시 전용: 스텝 중 layout JSON 대신 일반 Anima 캡션으로 학습하는 비율 |
 
-- **lr, 채널 스케일링, DC 격리**: FFN 입력에서 한 입력 채널이 나머지보다 훨씬 큽니다. AdamW에서는 LoRA가 이 채널을 통해 전역 이동에 업데이트를 낭비하지 않도록 두 가지 보정(채널 스케일링과 `dc_isolate`)을 썼습니다. Muon 기본값에 kaiming `down` 초기화를 쓰면 둘 다 학습된 LoRA를 바꾸지 않아 둘 다 제거했습니다. 이전 기본값과 각 변경의 근거가 된 비교: `docs/moss/channel_scaling.md`.
-- **optimizer**: Muon(MOSS를 사전학습할 때 쓴 옵티마이저)은 같은 lr에서 AdamW와 LoRA를 같은 크기만큼 움직이되 더 많은 방향에 분산시키며, 같은 시드에서 더 좋아 보였습니다. 전역 이동에 업데이트를 낭비하지 않는 것도 스스로 해냅니다. `docs/moss/findings/muon_lora.md`.
+- **lr, 채널 스케일링, DC 격리**: 채널 스케일링과 `dc_isolate`는 제거했습니다. Muon 기본값에 kaiming `down` 초기화를 쓰면 둘 다 학습된 LoRA를 바꾸지 않기 때문입니다. 이전 기본값과 각 변경의 근거가 된 비교: `docs/moss/channel_scaling.md`.
+- **optimizer**: Muon(MOSS를 사전학습할 때 쓴 옵티마이저)은 같은 lr에서 AdamW와 LoRA를 같은 크기만큼 움직이되 더 많은 방향에 분산시키며, 같은 시드에서 더 좋아 보였습니다. LoRA가 FFN에서 가장 큰 입력 채널을 통해 전역 이동에 업데이트를 낭비하는 것도 스스로 막아 줍니다. `docs/moss/findings/muon_lora.md`.
 - **down_init**: `kaiming` 은 무작위 초기화이고, `weight_svd` 는 LoRA의 down 행렬을 베이스 가중치의 상위 특이 벡터로 시작합니다. 이 벡터들은 입력의 상수 오프셋을 강하게 읽어 들이며, Muon에서는 `weight_svd` LoRA가 모든 토큰의 출력을 `kaiming` LoRA보다 약 3배 더 멀리 이동시킵니다. 이미지 차이는 시드를 바꾼 정도입니다. `docs/moss/findings/muon_channel_init.md`.
 - **epochs**: 20 에폭 중 10 에폭 시점의 결과는 더 느슨하고 다양했고, 20 에폭은 더 깔끔하고 균일했지만 정면·중앙 상반신 구도로 약간 쏠렸습니다. `save_every_epochs` 를 설정하면 한 번의 학습으로 둘을 비교할 수 있습니다.
 - **sigma_\*** (Advanced): 기본값은 MOSS의 최종 사전학습 노이즈 스케줄입니다. Anima의 스케줄(`sigma_mu 0`, `sigma_s 1`, `sigma_cutoff 1.0`, `sigma_uniform 0`)은 모든 설정 중 전이가 가장 약했습니다.
@@ -150,7 +150,7 @@ make download-model ARGS=moss-sft
 
 이 구성은 1024² 샘플에서 step당 약 1.1초, peak 13 GB이며 시스템 메모리 4.4 GiB도 고정(pin)합니다. bf16 구성보다 빠르고 정확합니다. bf16 구성은 같은 peak에서 step당 1.6초이고, 예측 오차도 측정한 모든 σ에서 더 높습니다 (σ = 0.5에서 1.93% 대 1.62%, [정확도](../moss/optimization/int8.md#accuracy)). budget을 0.1 올릴 때마다 peak가 약 1 GB 늘고 step은 0.01–0.02초 빨라집니다. 16 GB 미만 카드에서는 0.1 (step당 1.07초, 10.78 GB)을 쓰세요. 0.4는 16 GB에서도 메모리가 부족할 수 있습니다. 0.05에서는 peak가 9.98 GB로 줄지만 attention을 재계산하게 되어 step이 1.16초로 느려집니다. 이 구성으로 끝까지 학습한 LoRA는 아직 하나뿐입니다 ([자세히](../moss/optimization/int8.md)).
 
-**bf16 구성.** int8 베이스는 LoHa를 거부하고 i2i LoRA를 학습해 본 적도 없으므로, i2i 작업 설정은 bf16에 남아 있습니다. 학습 탭 `model` 드롭다운에서 `(bf16)` 항목을 고르거나(`(int8)` 항목을 고르면 기본값으로 돌아갑니다), `--config configs/moss/lora_bf16.toml`을 씁니다. 어느 쪽이든 `int8 off`, `stream bf16`, `ema_card` 끔, `blocks_to_swap 36` (CPU에 두고 필요할 때 올리는 DiT 블록 수), `activation_memory_budget 0.5`. 테스트 상자의 `model` 드롭다운에도 같은 항목이 있습니다: `(int8)`은 int8 베이스와 fp32 stream으로 생성합니다 (1024²에서 bf16의 10.7 GiB 대비 7.8 GiB). i2i 학습 탭에도 있지만, 그곳의 `(int8)`은 swap 20, budget 0.1로 돕니다. sanitize의 가장 큰 샘플이 6스텝 동안 피크 12.3 GB로 들어갔지만, 끝까지 학습한 적은 없습니다.
+**bf16 구성.** int8 베이스는 LoHa를 거부하며, i2i 작업 설정은 bf16으로 제공됩니다. 학습 탭 `model` 드롭다운에서 `(bf16)` 항목을 고르거나(`(int8)` 항목을 고르면 기본값으로 돌아갑니다), `--config configs/moss/lora_bf16.toml`을 씁니다. 어느 쪽이든 `int8 off`, `stream bf16`, `ema_card` 끔, `blocks_to_swap 36` (CPU에 두고 필요할 때 올리는 DiT 블록 수), `activation_memory_budget 0.5`. 테스트 상자의 `model` 드롭다운에도 같은 항목이 있습니다: `(int8)`은 int8 베이스와 fp32 stream으로 생성합니다 (1024²에서 bf16의 10.7 GiB 대비 7.8 GiB). i2i 학습 탭에도 있지만, 그곳의 `(int8)`은 swap 20, budget 0.1로 돕니다. sanitize의 가장 큰 샘플이 6스텝 동안 피크 12.3 GB로 들어갔고, swap_text를 int8 베이스에서 끝까지 학습한 적이 한 번 있습니다(`docs/moss/methods/i2i.md`).
 
 | 구성 | 필드 | s/step | 여유 VRAM |
 |---|---|---|---|
@@ -159,9 +159,9 @@ make download-model ARGS=moss-sft
 | 여유 확보 | swap 24, budget 0.2 | 1.78 | 2.26 GiB |
 | 체크포인팅 | `grad_checkpointing` 켬, swap 0 | 2.09 | 1.60 GiB |
 
-bf16 구성(swap 36, budget 0.5, `swap_h2d_only`, `expandable_segments`, 랭크 32)은 caststation 세트에서 step당 1.66초이며, 가장 큰 샘플(이미지 4.2k + 텍스트 0.4k 토큰)에서 여유 VRAM이 0.85 GB입니다. budget은 약 0.45를 넘으면 더 올려도 도움이 되지 않고(0.3: 2.05 s/step), swap 28–36은 속도가 같으므로 swap을 낮추면 여유 VRAM만 포기하게 됩니다. i2i 샘플에는 참조 이미지도 포함되므로 i2i 작업 설정은 swap 38, budget 0.175를 사용합니다. swap 28에서는 budget 0.2에서 메모리가 부족하고, swap 38이면 더 높은 budget을 쓸 여유가 생깁니다. 약 8.3k 결합 토큰(sanitize)에서 swap 38 / budget 0.175는 step당 3.79초로, swap 28 / budget 0.15의 4.17초보다 빠릅니다. `swap_h2d_only`는 스왑되는 모든 블록의 page-locked 사본을 RAM에 보관해(최대 8.8 GB) 스왑이 카드로 복사만 하고 되돌려 복사하지 않게 합니다. 결과와 VRAM은 켜지 않았을 때와 같고, swap 38까지는 속도도 같으며 swap 40에서는 8% 더 빠릅니다. 기본으로 켜져 있고 블록을 스왑할 때만 작동하며 `--no-swap_h2d_only`로 끌 수 있습니다.
+bf16 구성(swap 36, budget 0.5, `swap_h2d_only`, `expandable_segments`, 랭크 32)은 caststation 세트에서 step당 1.66초이며, 가장 큰 샘플(이미지 4.2k + 텍스트 0.4k 토큰)에서 여유 VRAM이 0.85 GB입니다. budget은 약 0.45를 넘으면 더 올려도 도움이 되지 않고(0.3: 2.05 s/step), swap 28–36은 속도가 같습니다. i2i 샘플에는 참조 이미지도 포함되므로 i2i 작업 설정은 swap 38, budget 0.175를 사용합니다. swap 28에서는 budget 0.2에서 메모리가 부족하고, swap 38이면 더 높은 budget을 쓸 여유가 생깁니다. 약 8.3k 결합 토큰(sanitize)에서 swap 38 / budget 0.175는 step당 3.79초로, swap 28 / budget 0.15의 4.17초보다 빠릅니다. `swap_h2d_only`(기본으로 켜져 있고 블록을 스왑할 때만 작동하며 `--no-swap_h2d_only`로 끌 수 있음)는 스왑되는 모든 블록의 page-locked 사본을 RAM에 보관해(최대 8.8 GB) 스왑이 카드로 복사만 하고 되돌려 복사하지 않게 합니다. 결과와 VRAM은 같고, swap 38까지는 속도도 같으며 swap 40에서는 8% 더 빠릅니다.
 
-표: 합성 1024² 이미지 + 텍스트 300 토큰(합계 약 4.4k 토큰), LoRA 랭크 16, RTX 5070 Ti 기준입니다. 이전 기본값(랭크 32, budget 0.1, swap 12)은 약 4.5k 토큰(이미지 4096 + 텍스트 455)에서 1.85 s/step, 여유 약 1.7 GB, 최대 reserved 약 13.1 GB였고, 랭크 16에 budget 0.1은 1.82 s/step, 여유 약 2.0 GB였습니다. 실제 샘플은 최대 약 4.9k 토큰까지 나왔고, 캡션이 길수록 메모리를 더 쓰는데, `swap 24` 는 같은 속도로 그만큼의 여유를 남깁니다.
+표: 합성 1024² 이미지 + 텍스트 300 토큰(합계 약 4.4k 토큰), LoRA 랭크는 행에 따로 적지 않으면 16, RTX 5070 Ti 기준입니다. 랭크 32 행은 약 4.5k 토큰(이미지 4096 + 텍스트 455)에서 돌렸고 최대 reserved는 약 13.1 GB였습니다. 랭크 16에 budget 0.1은 1.82 s/step, 여유 약 2.0 GB였습니다. 실제 샘플은 최대 약 4.9k 토큰까지 나왔고, 캡션이 길수록 메모리를 더 쓰는데, `swap 24` 는 같은 속도로 그만큼의 여유를 남깁니다.
 
 - swap 8에서 36 사이는 속도가 거의 같고(1.75–1.84 s/step), budget 0.1–0.3도 속도에 거의 영향이 없습니다. swap 40은 PCIe 전송이 연산 뒤에 숨지 못해 느려집니다(2.34 s/step). 그 아래 구간에서 swap 수는 속도가 아니라 VRAM을 정하는 값입니다.
 - 최적 조합은 PCIe 링크와 GPU에 따라 다릅니다. `scripts/moss/tune_swap.py` (CLI, [부록](#부록-cli), 약 4분)가 캐시에서 가장 큰 샘플로 bf16 구성에서 swap 수별 속도를 재고, 학습에 쓸 필드 값을 출력합니다.
@@ -172,7 +172,7 @@ bf16 구성(swap 36, budget 0.5, `swap_h2d_only`, `expandable_segments`, 랭크 
 
 ## 5. 테스트
 
-샘플러 기본값은 MOSS 레퍼런스 파이프라인을 따릅니다. Anima에서 쓰던 샘플러 설정은 그대로 옮겨 오지 않습니다.
+샘플러 기본값은 MOSS 레퍼런스 파이프라인을 따릅니다.
 
 | 필드 | 기본값 | 하는 일 |
 |---|---|---|

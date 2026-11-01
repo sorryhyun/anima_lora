@@ -17,7 +17,7 @@ Changes from the reference, all additive:
 - ``layer_hook``: optional ``(index, x, n_img) -> x`` run on each block's output
   (rows that ran the block only), outside the compiled block. DAVE
   (``library.moss.dave``) and its probe use it; ``None`` is the reference.
-- ``ref`` (i2i probe): clean reference latents on RoPE's ``r = 1`` axis, last in
+- ``ref`` (i2i): clean reference latents on RoPE's ``r = 1`` axis, last in
   the sequence (image, text, reference), so one int ``ref_start`` bounds them.
   ``ref_timestep`` (None = the image's timestep) gives the reference tokens their
   own block modulation, e.g. ``0`` for a clean latent. ``ref_isolate`` restricts

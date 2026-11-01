@@ -6,12 +6,12 @@ and the LoRA's own GEMMs stay in float.
 
 **Status (2026-10-31): the default training plan. One LoRA has completed on the GPTQ base
 (ama mitsuki, 848 steps, 14.6 min, 1.08 s/step, 10.95 GB).**
-Generation on the file works and is the better-supported half: 6.3 GiB against 10.7 GiB at
-1024². In training, `--int8 full` gains speed and saves no VRAM; `--int8 stream` also saves
-about 4 GB ([VRAM](#vram)).
+Generation on the file takes 6.3 GiB against 10.7 GiB at 1024². In training, `--int8 full`
+gains speed and saves no VRAM; `--int8 stream` also saves about 4 GB ([VRAM](#vram)).
 
-Training is `TrainRequest.int8`, generation `GenerateRequest.int8`, code in `library/moss/dit_int8/` and, shared with Anima,
-`library/int8/`. The GPTQ build stays in `project/int8_train/src/`. The GPTQ file is the catalog row `moss_dit_int8`
+Training is `TrainRequest.int8`, generation `GenerateRequest.int8`, code in
+`library/moss/dit_int8/` and, shared with Anima, `library/int8/`. The GPTQ build stays in
+`project/int8_train/src/`. The GPTQ file is the catalog row `moss_dit_int8`
 ([`sorryhyun/MOSS-Image-Base-int8`](https://huggingface.co/sorryhyun/MOSS-Image-Base-int8)).
 Base only; SFT has no file and trains on round-to-nearest weights.
 
@@ -44,10 +44,10 @@ Generate (the GUI's `(int8)` items in the `model` dropdown set the same flags):
 - Training takes `--blocks_to_swap`: `wq` (and `wq_t` in `full`) sit in `HeldCopy` children,
   whose `.weight` the offloader moves. A swapped block is about 0.11 GB against bf16's 0.21
   GB. Generation has no swap run behind it and refuses `--blocks_to_swap`.
-- The i2i configs stay on bf16 (`int8 = "off"`, swap 38): no i2i LoRA has trained on the
-  int8 base. A six-step fit on sanitize's largest sample (4150 image tokens, full-size
-  reference) OOMs at swap 0 / budget 0.3 and peaks at 12.33 GB at swap 20 / budget 0.1,
-  the GUI's i2i `(int8)` items.
+- The i2i configs stay on bf16 (`int8 = "off"`, swap 38); one swap_text run has finished on
+  the int8 base ([i2i.md](../methods/i2i.md)). A six-step fit on sanitize's largest sample
+  (4150 image tokens, full-size reference) OOMs at swap 0 / budget 0.3 and peaks at 12.33 GB
+  at swap 20 / budget 0.1, the GUI's i2i `(int8)` items.
 - A LoRA trained this way carries `int8_base` and `int8_base_id`. A bf16-trained LoRA
   loads on the int8 base: the sanitize LoRA removed the page's text there.
 
@@ -74,12 +74,9 @@ The plan today, `hews_layout`, `stream`, `--ema_card`, one run per row:
 | 0.3 | 1.05 | 12.98 GB |
 | 0.4 | OOM at step 3 | 14.39 GB allocated |
 
-The step is GPU-bound: kernels take 1054 of its 1059 ms. Attention is 387 ms, the int8 GEMMs
-316 ms ([`moss_step_split_int8.md`](../../../project/int8_train/reports/moss_step_split_int8.md)).
-Two changes took it from 1.30 s/step: `BatchedMuon` (154 → 15 ms) and saving FA2's output
-instead of recomputing it (84 → 42 forward calls). The partitioner needs
-`is_non_builtin_to_include` and flop formulas to see custom ops at all, so every figure
-below this section, budget sweeps included, predates them.
+Two changes took the step from 1.30 s: `BatchedMuon` and saving FA2's output instead of
+recomputing it ([training_step.md](training_step.md)). Every figure below, budget sweeps
+included, predates them.
 
 Earlier measurements, `channel_(caststation)_layout` unless noted:
 
@@ -144,10 +141,9 @@ backward, and two int8 copies are the bytes of one bf16 weight, so its peak matc
 on the same plan (11.96 GB in both swap-0 rows). The fp32 stream adds about 1.5 GB on top.
 Mode `fwd` is worse: it keeps `wq` and the bf16 weight.
 
-Mode `stream` is `full` with `wq_t` in pinned host memory (4.4 GiB) and two block-sized
-slots on the card: the block the backward is in and the one below it, loading on a worker
-thread. dX is bit-identical to `full` in the unit test, and the step costs at most 0.03 s
-more. At equal plans the peak drops 4.2 GB (13.58 → 9.36 GB with checkpointing).
+Mode `stream` is `full` with `wq_t` in pinned host memory (4.4 GiB): at equal plans the peak
+drops 4.2 GB, for at most 0.03 s/step more
+([mechanism](training_step.md#backward-copy-on-the-host)).
 
 **The budget needs 0.1 to hold FA2's output; past that each 0.1 costs about 1 GB for
 0.01–0.02 s/step.** The default is 0.3, the fastest budget that ran on 16 GB on both sets
@@ -155,13 +151,10 @@ tried, 2–4% faster than 0.1. Below 16 GB run 0.1. Budget 0.4 is not safe on 16
 on `hews_layout` before FA2 joined the saved set and OOMs on `ama_mitsuki_layout` now. 0.5 does
 not fit at swap 0 even with `stream`.
 
-`--ema_card` gives more for the room: keeping the EMA shadow on the card saves 0.065 s/step
-(4.8%) for 0.27 GB. The bf16 plan turns it off, since it leaves only 0.85 GB free on 16 GB.
-
-Swap is a VRAM lever here: swap 20 takes 2.1 GB off the peak for 0.01–0.02 s/step.
-
-Running dX on `wq` itself, transposed, would drop `wq_t` with no host copy, but dY could no
-longer be rotated along N, which is what handles its outliers. Not tried.
+`--ema_card` and swap 20 are the other levers:
+[EMA](training_step.md#ema-shadow-on-the-card),
+[swap](training_step.md#block-swap-over-the-int8-copies). The bf16 plan turns `--ema_card`
+off, since it leaves only 0.85 GB free on 16 GB.
 
 ## Accuracy
 
@@ -202,8 +195,7 @@ Generation: all arms render cleanly. On the i2i page, mean |Δ| from bf16 is 0.7
 (GPTQ) and 0.68/255 (with an fp32 stream). One t2i seed is chaotic (12.4–13.9/255 against
 11.7 between bf16 and its own fp32 stream), so it orders nothing.
 
-The tables above and the speed tables were measured on a bf16 kernel input; the next section
-gives what the fp32 input changes.
+The tables above and the speed tables were measured on a bf16 kernel input.
 
 ## `comfy_kitchen` rounds activations to the input dtype
 
@@ -269,8 +261,6 @@ the outliers are not an int8 effect and are not reproducible run to run.
 
 ## Records
 
-- [`training_step.md`](training_step.md): each trick in the default step and how it carries over.
-- [`methods/fp32_stream.md`](../methods/fp32_stream.md): the fp32 residual stream.
 - [`moss_step_split_int8.md`](../../../project/int8_train/reports/moss_step_split_int8.md):
   phase and kernel split of the step, `BatchedMuon`, FA2 in the budget's knapsack.
 - [`moss_act_scale.md`](../../../project/int8_train/reports/moss_act_scale.md): activation

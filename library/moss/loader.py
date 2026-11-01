@@ -219,9 +219,8 @@ def load_transformer(model_dir, variant="base", dtype=torch.bfloat16, device=Non
 def stream_fp32_(tr) -> None:
     """Every parameter but the block linears' weights to fp32: the residual stream,
     modulation, gates, norms, embedders and head run fp32 around the bf16 block
-    GEMMs (FA2 and the LoRA stay bf16). Prediction error against an fp32 forward
-    2.4-3.5x lower, +1.5% time, +0.6 GB. Call after the LoRA is applied and before
-    ``compile_blocks``."""
+    GEMMs (FA2 and the LoRA stay bf16; ``docs/moss/methods/fp32_stream.md``). Call
+    after the LoRA is applied and before ``compile_blocks``."""
     keep = {id(m.weight) for n, m in tr.named_modules() if BLOCK_LINEAR.fullmatch(n)}
     for p in tr.parameters():
         if id(p) not in keep:

@@ -5,7 +5,7 @@ Discovery mirrors ``anima_daemon/`` (a localhost HTTP port + a pidfile at a
 fixed per-user location). ``generate(args, settings, shared_models=…)`` reuses
 a warm DiT out of ``shared_models["model"]``; this file is the HTTP shell,
 discovery, and the coexistence handshake. It is a separate process because the
-daemon frees the GPU between jobs (``manager._gpu_guard``), so a resident model
+daemon frees the GPU between jobs (``gpu_guard.wait_for_free_gpu``), so a resident model
 instead *yields* the card on request.
 
 GPU coexistence with the training daemon (two services, one card):
@@ -13,20 +13,20 @@ GPU coexistence with the training daemon (two services, one card):
   1. **Cooperative eviction.** ``POST /unload`` drops the models to free VRAM but
      keeps the process alive + discoverable; the next ``/generate`` lazily
      reloads. The daemon pings this before launching a job (see
-     ``manager._evict_resident_inference``).
+     ``gpu_guard.evict_resident_inference``).
   2. **Idle TTL.** A background reaper unloads after ``ANIMA_INFERENCE_IDLE_TTL``
      seconds idle (default 600), so a forgotten server doesn't camp on the card.
 
-HTTP surface (all 127.0.0.1 only — non-goal: remote / auth):
+HTTP surface (127.0.0.1 only):
 
-  GET  /            human-readable README (this docstring's gist)
+  GET  /            human-readable README
   GET  /tools       JSON-Schema manifest of the callable endpoints
   GET  /health      {ok, loaded, idle_seconds, port, device, loaded_sig}
   POST /generate    body = a generation request (see TOOLS); → {ok, path, seed, …}
   POST /unload      free VRAM, stay alive → {ok, unloaded}
   POST /stop        graceful shutdown → {ok, stopping}
 
-CLI (the same file is the client — no extra module to import):
+CLI (this file is also the client):
 
   python scripts/inference_server.py serve [--port N] [--warm] [--idle-ttl S]
   python scripts/inference_server.py generate --prompt "…" [--steps 30 --cfg 3.5 …]

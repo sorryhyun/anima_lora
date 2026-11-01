@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Nsight Systems timeline pass for training-loop bottleneck inspection.
 #
-# What this answers (in order of usefulness):
+# What to read off the report:
 #   1. Where does wall-clock time go per step? — forward vs backward vs
 #      optimizer NVTX ranges are emitted by library/training/loop.py.
 #   2. Is the GPU busy or starved? — look for gaps between kernels on the
@@ -13,8 +13,7 @@
 #      cudagraph_trees fell back to eager.
 #
 # For per-kernel comp-vs-mem (SOL %, memory workload) use ncu instead
-# (memory `project_attention_compute_bound`: attention is 86-89% SM SOL on
-# this box).
+# (attention is 86-89% SM SOL on this box).
 #
 # CUDA Graphs stay on: nsys traces through cudaGraphLaunch, so the production
 # reduce-overhead path is what gets profiled.

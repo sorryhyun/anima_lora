@@ -1,28 +1,23 @@
 """Mask generation: SAM3 rule passes → merged.
 
-``make mask`` is a one-shot orchestrator: it runs every SAM rule into a
-``tempfile.TemporaryDirectory()`` (cross-platform — honors ``TMPDIR`` /
-``TEMP``) and writes only the merged result to
-``<mask_dir>/<rel>/{stem}_mask.png``, where ``mask_dir`` comes from the
-merged config chain (``configs/preprocess.toml``, default
-``post_image_dataset/masks``). Per-rule intermediates are never persisted
-under the project root.
+``make mask`` runs every SAM rule into a ``tempfile.TemporaryDirectory()``
+(honors ``TMPDIR`` / ``TEMP``) and writes only the merged result to
+``<mask_dir>/<rel>/{stem}_mask.png``, where ``mask_dir`` comes from the merged
+config chain (``configs/preprocess.toml``, default ``post_image_dataset/masks``).
 
 Every stage runs as an ``anime_tools`` **request object**
 (``anime_tools.masking.requests.{SamMaskRequest,MergeMasksRequest}``) through
-``_common.execute_stage``: in-process under a daemon job (``make daemon-run
-ARGS="tasks.py mask"``), so one SAM3 load is shared by every
-rule pass and the package's ``_progress`` heartbeat keeps a quiet model load from
-tripping the daemon's stall watchdog; a ``python -m`` child per stage from a plain
-shell.
+``_common.execute_stage``. Under a daemon job (``make daemon-run ARGS="tasks.py
+mask"``) one SAM3 load is shared by every rule pass and the package's
+``_progress`` heartbeat keeps a quiet model load from tripping the daemon's stall
+watchdog.
 
 The rules come from ``configs/sam_mask.yaml``: a flat ``masks`` list
 (``ROLE:KIND:VALUE`` regions) or a ``rules:`` list routed by ``path_pattern``,
 plus the optional ``run_sam`` switch. A pre-0.6.4 ``prompts`` /
 ``focus_prompts`` pair still reads (``library.config.sam_masks``). Every knob
-absent from the config falls back to the package's request default; the trainer
-carries no literal of its own. The GUI does not mask — that is the
-``anime_tools`` panel's.
+absent from the config falls back to the package's request default. The GUI does
+not mask; that is the ``anime_tools`` panel's.
 
 Each rule becomes one SAM pass into its own temp dir; the merge step's
 pixel-min union composes them (ignore regions unioned).

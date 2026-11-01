@@ -1,12 +1,8 @@
 """RunPod REST client — pods, network volumes, the GPU catalog.
 
-``urllib``-only like ``anima_daemon.client``. Pods / volumes / templates live on
-the v1 REST API (``rest.runpod.io/v1``); GPU prices and stock only exist in the
-v2 catalog (``api.runpod.io/v2/catalog/gpus``).
-
-The API key comes from ``RUNPOD_API_KEY`` (the environment, then the repo's
-``.env``), else ``apikey`` in ``~/.runpod/config.toml`` (the file
-``runpodctl config --apiKey`` writes).
+``urllib``-only like ``anima_daemon.client``. API split and key lookup:
+``anima_daemon/README.md`` "RunPod pods". ``~/.runpod/config.toml`` is the file
+``runpodctl config --apiKey`` writes.
 """
 
 from __future__ import annotations
@@ -27,8 +23,8 @@ API_URL = "https://api.runpod.io/v2"
 CONFIG_PATH = Path.home() / ".runpod" / "config.toml"
 DOTENV_PATH = Path(__file__).resolve().parents[2] / ".env"
 
-# Pods this tooling creates carry the prefix, so the daemon can tell its own
-# pods from ones made in the web console.
+# Pods this tooling creates carry the prefix, so `ls` can tell them from ones
+# made in the web console.
 NAME_PREFIX = "anima-"
 
 # Cloudflare in front of api.runpod.io 403s urllib's default "Python-urllib/x".

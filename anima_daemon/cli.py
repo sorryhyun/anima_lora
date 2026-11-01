@@ -1,17 +1,9 @@
 """Client-side verbs for ``python -m anima_daemon`` — submit / wait / status / prune.
 
-The command-line front door to ``DaemonClient``. Imports neither ``tasks.py``
-nor ``library.*``, so it works from a bare checkout, a vendored node tree, or
-an agent shell. ``prune`` is filesystem maintenance, not a client call.
-
-    python -m anima_daemon submit [--label L] [--stall-timeout S] [--wait]
-                                  [--hold] -- <argv…>
-    python -m anima_daemon wait <job_id> [--timeout S]
-    python -m anima_daemon status [job_id]
-    python -m anima_daemon prune [--days N] [--keep N] [--apply]
-
-``make daemon-run`` (``scripts/tasks/daemon.py``) is the repo-flavored wrapper
-over ``submit`` with attach-by-default streaming; this module is the plumbing.
+Imports neither ``tasks.py`` nor ``library.*``, so it works from a bare checkout
+or an agent shell. ``prune`` is filesystem maintenance, not a client call.
+``make daemon-run`` (``scripts/tasks/daemon.py``) wraps ``submit`` with
+attach-by-default streaming.
 """
 
 from __future__ import annotations
@@ -111,8 +103,6 @@ def cmd_submit(args: argparse.Namespace) -> int:
         label=label,
         argv=argv,
         stall_timeout=args.stall_timeout,
-        # `--hold` → start=False (the manager pauses the gate only when the
-        # queue is idle); the default leaves the gate alone.
         start=False if args.hold else None,
     )
     job_id = resp.get("job_id")
@@ -203,9 +193,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     if health is None:
         _print_json({"up": False, "base_url": None})
         return 1
-    # `stale_code`: the daemon is serving source older than the on-disk
-    # `anima_daemon/*` (the next submit restarts it). /health carries only the
-    # boot `fingerprint`; this is the only surface that does the comparison.
+    # /health carries only the boot `fingerprint`, so `stale_code` is computed here.
     _print_json(
         {
             "up": True,

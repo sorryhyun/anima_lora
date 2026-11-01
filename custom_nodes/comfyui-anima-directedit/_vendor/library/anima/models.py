@@ -1,7 +1,7 @@
 """Stub of library.anima.models for the vendored DirectEdit path.
 
 The live module is ~2.4k LOC and defines the full Anima DiT. The vendored
-``library/inference/directedit.py`` imports it solely for a type annotation
+``library/inference/editing/directedit.py`` imports it solely for a type annotation
 that is already lazy (``from __future__ import annotations``), so a tiny
 placeholder class is enough to keep the import succeeding. The actual model
 passed at runtime is whatever the ComfyUI MODEL socket carries.

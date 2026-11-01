@@ -4,9 +4,8 @@ The default plan runs 1.05 s/step at a 12.88 GB peak on a 16 GB card, against 1.
 12.92 GB for the bf16 plan (`hews_layout`, rank 32, every run on the code as it stands).
 Numerics stay close to bf16's or better: [int8.md](int8.md#accuracy).
 
-Every trick below rests on one fact: a LoRA freezes the base. Nothing computes the base
-weights' gradient, so the base only has to answer two products per linear, and the backward
-visits the blocks in a known order.
+A LoRA freezes the base: nothing computes the base weights' gradient, so the base only has to
+answer two products per linear, and the backward visits the blocks in a known order.
 
 | trick | effect | code |
 |---|---|---|
@@ -83,9 +82,8 @@ The saved set stays the same size (209 → 200 MB per block at budget 0.2) and n
 `o` and `lse`, so FA2's forward runs once per block.
 
 Budget 0.1 is the point where the saved set holds that output. At 0.05 it no longer fits and
-the recompute returns (1.16 s/step). Past 0.1 each 0.1 buys 0.01–0.02 s/step for about 1 GB,
-and 0.3 is the default: the fastest budget that has run on 16 GB on both sets tried
-([table](int8.md#speed-and-vram)).
+the recompute returns (1.16 s/step). What each 0.1 past that buys, and the default:
+[int8.md](int8.md#vram).
 
 The compile cache signature carries `flops=fa2,int8`, so graphs partitioned before the formulas
 are not reused.
@@ -108,8 +106,8 @@ update. 0.065 s/step (4.8%) for 0.27 GB, in paired runs. The lerp matches the CP
 
 The block swapper moves every `.weight` under a block. `wq`, and `wq_t` in `full`, sit in
 `HeldCopy` children under that name, so the existing swapper moves them unchanged. Under
-`stream` a block is about 0.11 GB against bf16's 0.21 GB. Swap 20 takes 2.1 GB off the peak for 0.01–0.02
-s/step. It is the VRAM lever on this plan: the step stays GPU-bound, so copies hide behind it.
+`stream` a block is about 0.11 GB against bf16's 0.21 GB. Swap 20 takes 2.1 GB off the peak for
+0.01–0.02 s/step: the step stays GPU-bound, so copies hide behind it.
 
 ## What is left
 
@@ -128,5 +126,3 @@ A further gain has to come from a kernel. No Triton int8 attention arm has passe
 - **Anything compiled with custom ops under an activation budget:** check that the ops are in
   the knapsack. Without a flop formula and `is_non_builtin_to_include` the budget cannot save
   them, and it fails silently, as a budget that buys nothing.
-- **Any trainer that keeps per-parameter loops in Python:** count kernels before optimizing the
-  GPU work. `Muon.step` ran 17k of the step's 23k kernels for 40 ms of GPU time.

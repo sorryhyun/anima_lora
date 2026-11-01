@@ -18,8 +18,7 @@ python scripts/calibration/cns_calibrate.py --cfg 4.0 --n_aspects 3   # compiled
 - `gamma_probe.py` — read-only Phase-0 staircase check + the shared γ/FFT helpers
   `cns_calibrate` imports. `--out_dir` for its standalone npz/heatmaps.
 
-Phase log / precondition / composition tensions: `_archive/bench/cns/plan.md`
-(premise corroborated by `project_sigma_signal_resolves_by_045`).
+Phase log / precondition / composition tensions: `_archive/bench/cns/plan.md`.
 
 MOSS-Image has its own γ, one file per (variant, cfg) —
 `networks/calibration/moss_cns_gamma*.npz`, listed in `library.moss.cns.GAMMA_PATHS` —
@@ -50,13 +49,11 @@ python scripts/calibration/cond_stream_profile.py --per_artist \
   dataset/dump helpers); cond calib does **not** transfer from the main file.
 
 The DC-bias-vs-attention-sink decomposition: `_archive/bench/channel_stats/channel_dominance_analysis.md`
-(its claim that pre-scaling targets GraLoRA's mechanism is wrong — that mechanism is the
-`up` gradient, which the scale does not reach; `docs/anima/optimizations/channel_scaling.md`
+(its GraLoRA claim is wrong: `docs/anima/optimizations/channel_scaling.md`
 § "What it does not touch").
 
 Consumer: `networks/lora_anima/factory.py` (`_CHANNEL_STATS_PATH`) and
-`networks/methods/easycontrol.py`. Regime analysis: memory
-`project_per_channel_scaling_audit`. User doc:
+`networks/methods/easycontrol.py`. User doc:
 `docs/anima/optimizations/channel_scaling.md`.
 
 ## MOSS-Image (`library/moss/calibration/`, `networks/calibration/moss_cns_gamma*.npz`)

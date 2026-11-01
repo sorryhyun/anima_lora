@@ -96,10 +96,7 @@ def cmd_turbo(extra):
 def cmd_soup(extra):
     """Uncond-init soup training (docs: docs/anima/experimental/soup.md).
 
-    One pipeline (``scripts/soup/pipeline.py``): a short uncond inter-train on a
-    diluted pool (reused if the checkpoint already exists) → 3 seeded captioned
-    fine-tunes from that init → an exact ΔW soup SVD-truncated back to the
-    method's ``network_dim``. Output:
+    Runs ``scripts/soup/pipeline.py`` as ONE daemon command job. Output:
     ``output/ckpt/anima_soup_<slug>.safetensors`` (+ ``.snapshot.toml``)::
 
         make soup                                     # uses soup.toml path_pattern
@@ -111,26 +108,21 @@ def cmd_soup(extra):
         make soup TARGET=sincos ARGS="--network_dim 32 --max_train_epochs 8"
 
     Selection is a fnmatch **path_pattern** (``|`` = alternatives, matched
-    against each image's path relative to its subset image_dir) rather than a
-    single artist dir. ``ARTISTS_SHARD=k_N`` is an alternative selector — one
-    round-robin shard of the artist subdirs (slug ``shard1of6``); mutually
-    exclusive with ``PATH_PATTERN``/``TARGET``. With none set it falls back to
+    against each image's path relative to its subset image_dir).
+    ``ARTISTS_SHARD=k_N`` selects one round-robin shard of the artist subdirs
+    instead (slug ``shard1of6``); mutually exclusive with
+    ``PATH_PATTERN``/``TARGET``. With none set it falls back to
     the top-level ``path_pattern`` / ``artists_shard`` in the soup config.
     ``TARGET`` is shorthand: ``TARGET=x`` ⇒ ``PATH_PATTERN="x/*" NAME=x``.
-    ``ARGS`` reaches the fine-tune runs. Env knobs (all optional): ``NAME``
+    Env knobs (all optional): ``NAME``
     (output slug), ``POOL_PATH_PATTERN`` (Phase-1 uncond pool glob, default
     "*" = whole dataset), ``UNCOND_RATIO`` (0.5), ``UNCOND_EPOCHS`` (2),
     ``NUM_SOUP`` (3 — fine-tunes to soup, seeds 1001..1000+N), ``LR_POOL``
     (per-ingredient LRs, e.g. ``"1e-5,2e-5,4e-5"``, cycled) or
     ``LR_INTERVAL`` (``"1e-5:4e-5"``, geometric over NUM_SOUP points),
     ``RANK`` (default network_dim), ``PRESET``.
-    ``ARGS`` normally reaches the fine-tunes only; ``--sigma_lowres*`` is the
-    exception — it is a whole-pipeline data-routing knob, so it is replayed onto
-    the uncond run too and folded into that checkpoint's name (a sigma soup
-    can't reuse an init trained without it).
-    Submitted as ONE daemon command job — the pipeline runs train.py
-    subprocesses directly (nested daemon submission would deadlock the serial
-    queue).
+    ``ARGS`` reaches the fine-tunes only, except ``--sigma_lowres*``, which is
+    replayed onto the uncond run and folded into that checkpoint's name.
     """
     pattern = os.environ.get("PATH_PATTERN")
     shard = os.environ.get("ARTISTS_SHARD")
@@ -472,7 +464,6 @@ def _near_twins_preprocess(adapter: str, cfg: dict, base: str, extra) -> None:
     if not isinstance(target_res, (list, tuple)):
         target_res = [target_res]
 
-    # Resize staging tree into buckets.
     _resize_tree(
         staging,
         resized,
@@ -695,9 +686,8 @@ def _inpaint_prep_paths(base: str) -> list[str]:
     """Slug-derived prep.py path flags so ``name`` reroutes inpaint's trees.
 
     ``--src`` stays the shared corpus (``post_image_dataset/resized``); only
-    the masked staging tree + cond/text caches ride the slug. Injected before
-    the descriptor knob tables so a ``[staging]``/``[preprocess]`` key (or
-    user ``extra``) still wins via last-flag precedence."""
+    the masked staging tree + cond/text caches ride the slug. Injected as in
+    :func:`_colorize_prep_paths`."""
     return [
         "--staging",
         f"{base}/staging",

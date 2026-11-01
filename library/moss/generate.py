@@ -140,7 +140,7 @@ def denoise(
     (``library.moss.cns.MossCNS``) recolors it. ``on_step(i, x̂₀)`` sees each
     step's guided x̂₀ (CNS calibration).
 
-    ``ref (B,128,h,w)``: clean reference latents in every forward (i2i probe).
+    ``ref (B,128,h,w)``: clean reference latents in every forward (i2i).
     Under ``ref_isolate`` at a fixed ``ref_timestep`` the reference stream runs
     once for the loop (``RefCache``) and every forward reads its keys and values.
 

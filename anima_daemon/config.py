@@ -18,11 +18,8 @@ JOBS_DIR = STATE_DIR / "jobs"
 PIDFILE = STATE_DIR / "daemon.json"
 DAEMON_LOG = STATE_DIR / "daemon.log"
 
-# Shortcuts to the job the daemon is currently driving (the last one launched
-# when idle): ``output/daemon/current`` -> ``jobs/<id>/`` and
-# ``output/daemon/current.log`` -> that job's ``stdout.log``. Relative symlinks,
-# retargeted atomically by the manager at launch/adopt; best-effort on hosts
-# without symlink privileges (Windows outside developer mode).
+# ``current`` / ``current.log`` shortcuts (README "Observing without HTTP");
+# best-effort on hosts without symlink privileges (Windows outside developer mode).
 CURRENT_LINK_NAME = "current"
 CURRENT_LOG_NAME = "current.log"
 
@@ -42,8 +39,6 @@ def point_current_job(job_id: str) -> None:
             os.symlink(target, tmp, target_is_directory=name == CURRENT_LINK_NAME)
             os.replace(tmp, link)
         except OSError:
-            # No symlink privilege / exotic FS: the shortcut is a convenience,
-            # never a contract — job.json + stdout.log stay the source of truth.
             tmp.unlink(missing_ok=True)
             return
 
@@ -68,9 +63,7 @@ GPU_GUARD_DELAY = float(os.environ.get("ANIMA_DAEMON_GPU_DELAY", "2.0"))
 CMD_STALL_TIMEOUT = float(os.environ.get("ANIMA_DAEMON_CMD_STALL_TIMEOUT", "120"))
 JOB_STALL_TIMEOUT = float(os.environ.get("ANIMA_DAEMON_JOB_STALL_TIMEOUT", "0"))
 
-# Job-dir retention (jobs.prune_jobs): terminal jobs older than RETENTION_DAYS
-# are deleted at boot, always keeping the newest RETENTION_KEEP regardless of
-# age. Queued/running/paused dirs are never candidates. 0 days disables pruning.
+# Job-dir retention (jobs.prune_jobs, README "Retention"). 0 days disables pruning.
 JOB_RETENTION_DAYS = float(os.environ.get("ANIMA_DAEMON_JOB_RETENTION_DAYS", "30"))
 JOB_RETENTION_KEEP = int(os.environ.get("ANIMA_DAEMON_JOB_RETENTION_KEEP", "200"))
 

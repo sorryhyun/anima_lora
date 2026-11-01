@@ -76,11 +76,10 @@ _TE_SUFFIX = "_anima_te.safetensors"
 def _sample_real_prompts(n: int) -> list[str]:
     """Pick the ``n`` richest real captions (most tags) across distinct artists.
 
-    γ should reflect the model on its *own* data distribution, not synthetic
-    prompts — and long, tag-dense captions excite the cross-attn (and thus the
-    spectral staircase) the hardest. Deterministic (longest-first, one per
-    artist for spectral diversity); falls back to DEFAULT_PROMPTS if the dataset
-    isn't present (e.g. a fresh checkout).
+    Long, tag-dense captions excite the cross-attn (and thus the spectral
+    staircase) the hardest. Deterministic (longest-first, one per artist for
+    spectral diversity); falls back to DEFAULT_PROMPTS if the dataset isn't
+    present (e.g. a fresh checkout).
     """
     cache_root = resolve_under_home(LORA_CACHE_DIR)
     cap_root = resolve_under_home(CAPTION_DIR)

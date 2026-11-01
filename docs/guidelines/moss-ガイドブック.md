@@ -61,7 +61,7 @@ make download-model ARGS=moss-sft
 
 ## 3. 前処理・学習・テスト
 
-パネルには **Preprocess** と **Train** の 2 つのタブがあり、**Test** ボックスは Train タブの下部にあります。あまり使わない項目は **Advanced** の中に折りたたまれています。各ボタンは学習デーモンにジョブを投入します。モデルのドロップダウンを Anima に戻しても GUI を閉じてもジョブは動き続け、再度開くと実行中のジョブに再接続し（`Re-attached to running job …`）、**Stop** でキャンセルします。
+パネルには t2i 用の **Preprocess** と **Train** の 2 つのタブに続いて、**i2i Preprocess** と **i2i Train** のタブ（`docs/moss/methods/i2i.md`）があり、**Test** ボックスは Train タブの下部にあります。あまり使わない項目は **Advanced** の中に折りたたまれています。各ボタンは学習デーモンにジョブを投入します。モデルのドロップダウンを Anima に戻しても GUI を閉じてもジョブは動き続け、再度開くと実行中のジョブに再接続し（`Re-attached to running job …`）、**Stop** でキャンセルします。
 
 ### 3.1 データセットとキャプション
 
@@ -124,8 +124,8 @@ make download-model ARGS=moss-sft
 | `epochs` | `8` | 計測した学習は 20 |
 | `plain_caption_rate` | `0.2` | `layout_json` キャッシュのみ: layout JSON の代わりに通常の Anima キャプションで学習するステップの割合 |
 
-- **lr、チャンネルスケーリング、DC 分離**: FFN の入力では 1 つの入力チャンネルだけが他よりはるかに大きくなっています。AdamW では、LoRA がそのチャンネルを通じて全体的なシフトに更新を使ってしまうのを防ぐ 2 つの補正（チャンネルスケーリングと `dc_isolate`）を使っていました。Muon のデフォルトで kaiming の `down` 初期化なら、どちらも学習後の LoRA を変えないため、両方とも削除しました。以前のデフォルトと各変更の根拠となった比較: `docs/moss/channel_scaling.md`。
-- **optimizer**: Muon（MOSS の事前学習に使われたオプティマイザ）は、同じ lr で AdamW と同じ大きさだけ LoRA を動かしつつ、より多くの方向に分散させ、同じシードでより良く見えました。全体的なシフトに更新を使わないことも、それ自体で果たします。`docs/moss/findings/muon_lora.md`。
+- **lr、チャンネルスケーリング、DC 分離**: チャンネルスケーリングと `dc_isolate` は削除しました。Muon のデフォルトで kaiming の `down` 初期化なら、どちらも学習後の LoRA を変えないためです。以前のデフォルトと各変更の根拠となった比較: `docs/moss/channel_scaling.md`。
+- **optimizer**: Muon（MOSS の事前学習に使われたオプティマイザ）は、同じ lr で AdamW と同じ大きさだけ LoRA を動かしつつ、より多くの方向に分散させ、同じシードでより良く見えました。LoRA が FFN の最も大きな入力チャンネルを通じて全体的なシフトに更新を使ってしまうことも、それ自体で防ぎます。`docs/moss/findings/muon_lora.md`。
 - **down_init**: `kaiming` はランダム初期化で、`weight_svd` は LoRA の down 行列をベース重みの上位特異ベクトルから始めます。これらのベクトルは入力の定数オフセットを強く読み取り、Muon では `weight_svd` の LoRA が全トークンの出力を `kaiming` の約 3 倍も大きくシフトさせます。画像の差はシードを変えた程度です。`docs/moss/findings/muon_channel_init.md`。
 - **epochs**: 20 エポック中 10 エポック時点の結果はゆるく多様で、20 エポックではより整って均一になる一方、正面・中央の上半身構図へ少し寄りました。`save_every_epochs` を設定すれば 1 回の学習で両方を比べられます。
 - **sigma_\***（Advanced）: デフォルトは MOSS の最終事前学習段階のノイズ分布です。Anima の分布（`sigma_mu 0`、`sigma_s 1`、`sigma_cutoff 1.0`、`sigma_uniform 0`）は全設定の中で転写が最も弱くなりました。
@@ -150,7 +150,7 @@ make download-model ARGS=moss-sft
 
 この構成は 1024² のサンプルで 1 step あたり約 1.1 秒、ピーク 13 GB で、システムメモリも 4.4 GiB 固定（pin）します。bf16 構成より速く、正確です。bf16 構成は同じピークで 1 step あたり 1.6 秒で、予測誤差も測定したすべての σ で高くなります（σ = 0.5 で 1.93% 対 1.62%、[精度](../moss/optimization/int8.md#accuracy)）。budget を 0.1 上げるごとにピークが約 1 GB 増え、step は 0.01–0.02 秒速くなります。16 GB 未満のカードでは 0.1（1 step あたり 1.07 秒、10.78 GB）を使ってください。0.4 は 16 GB でもメモリ不足になることがあります。0.05 ではピークが 9.98 GB に下がりますが、attention を再計算するため step は 1.16 秒に遅くなります。この構成で最後まで学習した LoRA はまだ 1 つだけです（[詳細](../moss/optimization/int8.md)）。
 
-**bf16 構成。** int8 ベースは LoHa を拒否し、i2i の LoRA を学習したこともないため、i2i のタスク設定は bf16 のままです。学習タブの `model` ドロップダウンで `(bf16)` の項目を選ぶか(`(int8)` の項目を選ぶとデフォルトに戻ります)、`--config configs/moss/lora_bf16.toml` を使います。どちらも `int8 off`、`stream bf16`、`ema_card` オフ、`blocks_to_swap 36`（CPU に置き、必要なときに転送する DiT ブロック数）、`activation_memory_budget 0.5`。テストボックスの `model` ドロップダウンにも同じ項目があります: `(int8)` は int8 ベースと fp32 stream で生成します (1024² で bf16 の 10.7 GiB に対し 7.8 GiB)。i2i 学習タブにもありますが、そこでの `(int8)` は swap 20、budget 0.1 で動きます。sanitize の最大サンプルは 6 ステップの間ピーク 12.3 GB に収まりましたが、最後まで学習したことはありません。
+**bf16 構成。** int8 ベースは LoHa を拒否し、i2i のタスク設定は bf16 で提供されます。学習タブの `model` ドロップダウンで `(bf16)` の項目を選ぶか(`(int8)` の項目を選ぶとデフォルトに戻ります)、`--config configs/moss/lora_bf16.toml` を使います。どちらも `int8 off`、`stream bf16`、`ema_card` オフ、`blocks_to_swap 36`（CPU に置き、必要なときに転送する DiT ブロック数）、`activation_memory_budget 0.5`。テストボックスの `model` ドロップダウンにも同じ項目があります: `(int8)` は int8 ベースと fp32 stream で生成します (1024² で bf16 の 10.7 GiB に対し 7.8 GiB)。i2i 学習タブにもありますが、そこでの `(int8)` は swap 20、budget 0.1 で動きます。sanitize の最大サンプルは 6 ステップの間ピーク 12.3 GB に収まり、swap_text を int8 ベースで最後まで学習できたことが 1 回あります（`docs/moss/methods/i2i.md`）。
 
 | 構成 | 項目 | s/step | 空き VRAM |
 |---|---|---|---|
@@ -159,9 +159,9 @@ make download-model ARGS=moss-sft
 | 余裕あり | swap 24、budget 0.2 | 1.78 | 2.26 GiB |
 | チェックポイント | `grad_checkpointing` オン、swap 0 | 2.09 | 1.60 GiB |
 
-bf16 構成（swap 36、budget 0.5、`swap_h2d_only`、`expandable_segments`、ランク 32）は、caststation セットで 1 step あたり 1.66 秒、最大のサンプル（画像 4.2k + テキスト 0.4k トークン）で空き 0.85 GB です。budget は約 0.45 を超えると上げても効果がなく（0.3: 2.05 s/step）、swap 28～36 は速度が同じなので、swap を下げても空き VRAM を手放すだけです。i2i のサンプルは参照画像も含むため、i2i のタスク設定では swap 38、budget 0.175 を使います。swap 28 では budget 0.2 でメモリ不足になり、swap 38 にすると高い budget の余地ができます。約 8.3k の結合トークン（sanitize）で、swap 38 / budget 0.175 は 1 step あたり 3.79 秒で、swap 28 / budget 0.15 の 4.17 秒より速くなります。`swap_h2d_only` はスワップされる全ブロックの page-locked コピーを RAM に保持し（最大 8.8 GB）、スワップがカードへのコピーだけで済み、戻しのコピーが発生しないようにします。結果と VRAM はオフのときと同じで、swap 38 までは速度も同じ、swap 40 では 8% 速くなります。デフォルトでオンで、ブロックをスワップするときだけ働き、`--no-swap_h2d_only` でオフにできます。
+bf16 構成（swap 36、budget 0.5、`swap_h2d_only`、`expandable_segments`、ランク 32）は、caststation セットで 1 step あたり 1.66 秒、最大のサンプル（画像 4.2k + テキスト 0.4k トークン）で空き 0.85 GB です。budget は約 0.45 を超えると上げても効果がなく（0.3: 2.05 s/step）、swap 28～36 は速度が同じです。i2i のサンプルは参照画像も含むため、i2i のタスク設定では swap 38、budget 0.175 を使います。swap 28 では budget 0.2 でメモリ不足になり、swap 38 にすると高い budget の余地ができます。約 8.3k の結合トークン（sanitize）で、swap 38 / budget 0.175 は 1 step あたり 3.79 秒で、swap 28 / budget 0.15 の 4.17 秒より速くなります。`swap_h2d_only`（デフォルトでオン、ブロックをスワップするときだけ働き、`--no-swap_h2d_only` でオフにできる）はスワップされる全ブロックの page-locked コピーを RAM に保持し（最大 8.8 GB）、スワップがカードへのコピーだけで済み、戻しのコピーが発生しないようにします。結果と VRAM は同じで、swap 38 までは速度も同じ、swap 40 では 8% 速くなります。
 
-表の条件: 合成 1024² 画像 + テキスト 300 トークン（合計約 4.4k トークン）、LoRA ランク 16、RTX 5070 Ti。以前のデフォルト（ランク 32、budget 0.1、swap 12）は約 4.5k トークン（画像 4096 + テキスト 455）で 1.85 s/step、空き約 1.7 GB、ピーク reserved 約 13.1 GB。ランク 16、budget 0.1 では 1.82 s/step、空き約 2.0 GB でした。実際のサンプルは最大約 4.9k トークンで、キャプションが長いほどメモリを使いますが、`swap 24` なら同じ速度でその分の余裕が残ります。
+表の条件: 合成 1024² 画像 + テキスト 300 トークン（合計約 4.4k トークン）、LoRA ランクは行に明記がなければ 16、RTX 5070 Ti。ランク 32 の行は約 4.5k トークン（画像 4096 + テキスト 455）で測定し、ピーク reserved は約 13.1 GB でした。ランク 16、budget 0.1 では 1.82 s/step、空き約 2.0 GB でした。実際のサンプルは最大約 4.9k トークンで、キャプションが長いほどメモリを使いますが、`swap 24` なら同じ速度でその分の余裕が残ります。
 
 - swap 8 から 36 の間は速度がほとんど変わらず（1.75–1.84 s/step）、budget 0.1–0.3 も速度にほぼ影響しません。swap 40 では PCIe 転送が計算の裏に隠れきれず遅くなります（2.34 s/step）。それより下では、swap 数は速度ではなく VRAM を決める値です。
 - 最適な組み合わせは PCIe リンクと GPU によって変わります。`scripts/moss/tune_swap.py`（CLI、[付録](#付録-cli)、約 4 分）がキャッシュ内の最大サンプルで bf16 構成の swap 数ごとの速度を測り、学習に使う項目の値を表示します。
@@ -172,7 +172,7 @@ bf16 構成（swap 36、budget 0.5、`swap_h2d_only`、`expandable_segments`、�
 
 ## 5. テスト
 
-サンプラーのデフォルトは MOSS のリファレンスパイプラインに従います。Anima で使っていたサンプラー設定はそのままでは当てはまりません。
+サンプラーのデフォルトは MOSS のリファレンスパイプラインに従います。
 
 | 項目 | デフォルト | 役割 |
 |---|---|---|

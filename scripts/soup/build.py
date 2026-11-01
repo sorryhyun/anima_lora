@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """ΔW-level LoRA soups: exact rank-concat average + rank-r SVD truncation.
 
-Souping LoRAs *parameterwise* (averaging A's and B's) is wrong twice over:
-``avg(B) @ avg(A) != avg(B @ A)``, and with ``down_init="weight_svd"`` the
-randomized SVD's per-vector sign ambiguity means row-wise A averaging can
-actively cancel rows. So we soup at the ΔW level, which is invariant to any
-per-ingredient ``(A, B)`` reparameterization — and a weighted average of
-rank-r deltas is *exactly* representable as one rank-``sum(r_i)`` LoRA:
+Soups at the ΔW level, because ``avg(B) @ avg(A) != avg(B @ A)`` and, with
+``down_init="weight_svd"``, the randomized SVD's per-vector sign ambiguity lets
+row-wise A averaging cancel rows. ΔW is invariant to any per-ingredient
+``(A, B)`` reparameterization, and a weighted average of rank-r deltas is
+*exactly* representable as one rank-``sum(r_i)`` LoRA:
 
     dW_soup = sum_i w_i * scale_i * up_i @ down_i'
             = [w_1*scale_1*up_1 | w_2*scale_2*up_2 | ...] @ [down_1' ; down_2' ; ...]
@@ -24,13 +23,12 @@ module at the ingredients' rank (a rank-16 adaln module stays 16 under
 ``--rank 32``). The full ΔW is
 never materialized: QR on the concatenated factors reduces the SVD to an
 (R x R) core where R = sum of ingredient ranks. Per-module retained energy
-(sum sigma_kept^2 / sum sigma^2) is returned so the truncation loss is
-measured, not assumed — on shared weight_svd-init ingredients it is ~99.9%
-(bench/memorization/report.md, Act 5).
+(sum sigma_kept^2 / sum sigma^2) is returned; on shared weight_svd-init
+ingredients it is ~99.9% (bench/memorization/report.md, Act 5).
 
-Plain-LoRA checkpoints only (the lora.toml weight_svd / T-LoRA family —
+Plain-LoRA checkpoints only (the lora.toml weight_svd / T-LoRA family;
 T-LoRA is training-only so its checkpoints are plain). Hydra key shapes are
-refused loudly.
+refused.
 
 Usage
 -----

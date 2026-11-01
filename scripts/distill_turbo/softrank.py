@@ -24,8 +24,7 @@ def soft_rank(scores: torch.Tensor, tau: float = 0.1, dim: int = -1) -> torch.Te
     ``rank_i = Σ_{j≠i} sigmoid((s_j − s_i) / tau)`` — the soft count of entries
     that out-score ``i``. Higher ``scores`` ⇒ lower (better) rank. Shape-preserving
     along ``dim``. As ``tau → 0`` this converges to the integer rank; larger ``tau``
-    spreads gradient onto near-ties (the near-miss credit a detached argsort can't
-    deliver). Bounded in ``[0, n−1]`` along ``dim``.
+    spreads gradient onto near-ties. Bounded in ``[0, n−1]`` along ``dim``.
     """
     s = scores.transpose(dim, -1)
     diff = s.unsqueeze(-1) - s.unsqueeze(-2)  # diff[..., i, j] = s_i − s_j
@@ -53,8 +52,7 @@ def caption_rank_loss(
     Returns the batch-mean soft rank of the matched caption — ``0`` when it wins
     every pair (self-annealing at the win, so the term needs no negative-push
     bound). Gradient flows through ``v_pos`` only; ``v_negs`` are expected detached
-    (computed under ``no_grad``), so the objective is "make the matched caption
-    explain the anchor better", never "push the others away".
+    (computed under ``no_grad``).
 
     Shapes: ``v_pos`` / each ``v_negs[j]`` / ``v_target`` are ``[B, C, H, W]``;
     ``v_target`` is the (detached, fp32) diversity anchor. Reward reduces over all
@@ -72,10 +70,8 @@ def caption_rank_loss(
 class CaptionNegativePool:
     """Cross-step ring buffer of past caption embeddings → shuffled negatives.
 
-    Sourcing negatives from a pool of *previous* steps' captions (rather than
-    sibling samples in the current batch) is what lets the soft-rank term fire at
-    ``batch_size=1`` — where within-batch negatives don't exist. Text embeddings
-    are max-padded (the padding invariant → constant seq length), so captions from
+    Sourcing negatives from *previous* steps' captions lets the soft-rank term
+    fire at ``batch_size=1``. Text embeddings are max-padded (the padding invariant → constant seq length), so captions from
     any step or image bucket stack cleanly into a single negative tensor.
 
     Entries are detached on-device clones (no per-step D2H sync); the buffer is

@@ -40,8 +40,8 @@ def sample_t_routed(
 ) -> torch.Tensor:
     """Draw τ for a fake update/query and arm the owner fake bank (τ-split critic).
 
-    ``fake_tau_banks <= 1`` → a plain on-device :func:`sample_t`, byte-identical
-    to the pre-bank loop (same RNG stream, no extra work). With 2 banks the draw
+    ``fake_tau_banks <= 1`` → a plain on-device :func:`sample_t` (same RNG stream
+    as without banks, no extra work). With 2 banks the draw
     happens on CPU (B=1, enforced at config resolve) so the routing comparison
     costs no GPU sync; the owner bank is selected via ``turbo.set_fake_bank``
     (bank 0 owns τ < boundary) and τ is then moved to ``device``. Callers must
@@ -108,7 +108,7 @@ def gan_effective_weight(cfg, step: int) -> float:
     head froze pose at the init's mode), then a linear 0 → ``gan_loss_weight_gen``
     ramp over ``gan_warmup_steps`` (instant-on when 0). The disc trains from
     step 0 regardless — only the student-side λ ramps. Both knobs 0 → constant
-    ``gan_loss_weight_gen`` (byte-identical shipped loop).
+    ``gan_loss_weight_gen``.
     """
     if cfg.gan_loss_weight_gen == 0.0 or step < cfg.gan_delay_steps:
         return 0.0
@@ -122,8 +122,7 @@ def make_scheduler(opt, total_steps: int, lr: float):
     """Warmup (2% of ``total_steps``, ≥1 step) → cosine annealing to ``0.1·lr``.
 
     Cosine is the only shape: a constant schedule never settles (full-magnitude
-    updates to the last step) and rendered worse. The tail is settling, not
-    dead time.
+    updates to the last step) and rendered worse.
     """
     warmup_steps = max(1, int(0.02 * total_steps))
     return make_warmup_cosine_scheduler(

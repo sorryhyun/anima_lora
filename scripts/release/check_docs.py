@@ -231,11 +231,8 @@ def _check_path(
     tok = tok.strip().rstrip(".")
     if not tok or tok.startswith(("http", "..", "/", "~", "mailto")):
         return None
-    # ``_archive/`` is retired material: docs cite it as provenance ("the design
-    # lives at _archive/proposals/x.md"), and the archive is pruned on its own
-    # schedule. A dangling archive citation is history, not drift — never an
-    # ERROR. Archived docs are already excluded as *sources* (`doc_files`); this
-    # is the same call applied to them as *targets*.
+    # ``_archive/`` is pruned on its own schedule, so a dangling citation is never
+    # an ERROR. Archived docs are already excluded as *sources* (`doc_files`).
     if tok.startswith("_archive/"):
         return None
     if "/" not in tok and "." not in tok:

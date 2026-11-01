@@ -95,9 +95,7 @@ def _base_test_args(*, lora_default: bool = True) -> list[str]:
 
 
 def _fsg_flags() -> list[str]:
-    """FSG pre-step latent calibration (Foresight Guidance). ``FSG_BAND='lo,hi'``,
-    ``FSG_K``, ``FSG_D_SIGMA``, ``FSG_GAMMA`` tune the live knobs; all optional.
-    Composes with SPECTRUM (incl. SEA); no-op under SPD (it replaces the loop)."""
+    """FSG pre-step latent calibration; env knobs in ``_base_test_args``."""
     flags = ["--fsg"]
     if band := os.environ.get("FSG_BAND", "").strip():
         lo, hi = (x.strip() for x in band.split(","))
@@ -186,10 +184,9 @@ def cmd_gen(extra):
 
     Same argv as ``make test`` (shares ``_base_test_args`` — NOLORA / SPECTRUM /
     MOD / DAVE / FSG env levers all compose), but submitted as a GPU command job
-    so it **queues behind** a live training run instead of OOM-colliding with it,
-    survives the terminal closing, and lands a generation manifest in the job
-    record. ``--queue`` detaches (overnight seed/ckpt
-    sweeps), ``--inline`` bypasses the daemon (identical to ``make test``).
+    so it queues behind a live training run, survives the terminal closing, and
+    lands a generation manifest in the job record. ``--queue`` detaches (overnight
+    seed/ckpt sweeps), ``--inline`` bypasses the daemon (identical to ``make test``).
 
     Point at a specific adapter / prompt file / seed grid via ARGS, e.g.
     ``make gen ARGS="--lora_weight output/ckpt/foo.safetensors --from_file prompts.txt"``.

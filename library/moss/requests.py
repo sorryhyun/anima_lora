@@ -1,8 +1,8 @@
 """Typed requests for the MOSS-Image jobs: caching, generation, LoRA training.
 
-Torch-free on purpose (a GUI form can be built from these without importing
-torch). Each field carries its CLI help in ``metadata``, so the sidecar CLIs
-(``scripts/moss/``) read one definition:
+Torch-free, so a GUI form can be built from these without importing torch. Each
+field carries its CLI help in ``metadata``, so the sidecar CLIs (``scripts/moss/``)
+read one definition:
 
     req = GenerateRequest(prompt="…", steps=30)
     argv = req.to_argv()                  # → daemon job argv

@@ -5,7 +5,8 @@ One worker thread drains a ``queue.Queue`` of job ids, spawns each detached
 ``(pid, create_time)`` liveness rather than awaiting a subprocess transport
 (avoids Windows ProactorEventLoop bugs). On boot it reconciles ``jobs/`` to
 re-attach a still-alive orphan or finalize a dead one as ``error`` (detail
-``orphaned``). Exactly one job runs at a time. See ``anima_daemon/README.md`` for the job lifecycle.
+``orphaned``). Exactly one job runs at a time. Job lifecycle:
+``anima_daemon/README.md``.
 """
 
 from __future__ import annotations
@@ -205,10 +206,10 @@ class JobManager:
         job.config_file = str(dst)
 
     def _register_and_queue(self, job: Job, *, start: Optional[bool] = None) -> Job:
-        # `start` sets the run gate atomically with enqueue. False pauses the
-        # gate only when the queue is otherwise idle — with a job already
-        # running/queued, pausing would stop this one auto-advancing behind it.
-        # True resumes (flushing any held backlog); None leaves the gate as-is.
+        # `start`: False pauses the run gate only when the queue is otherwise
+        # idle (with a job already running/queued, pausing would stop this one
+        # auto-advancing behind it). True resumes, flushing any held backlog;
+        # None leaves the gate as-is.
         if start is False:
             with self._lock:
                 queue_idle = self._queue_is_idle_locked()
@@ -285,26 +286,19 @@ class JobManager:
                 return job
             job.persist()
         if state in ACTIVE_STATES:
-            # Running or paused (frozen): either way tree-kill it. _kill_job_tree
-            # thaws a paused tree first so the SIGTERM is actually delivered.
             self._kill_job_tree(job)
         return job
 
     def pause_job(self, job_id: str, *, release_model: bool = False) -> Optional[dict]:
-        """Freeze a running job's process tree (SIGSTOP), method-agnostically.
-        CUDA context/VRAM stay put. The queue does NOT advance past a paused
-        job — it still owns its slot. Refuses anything not ``running`` and a
-        multi-GPU ``accelerate launch`` run (a frozen NCCL rank trips the
-        collective heartbeat). Returns ``{job_id, state, error?}``, or
-        ``None`` when no such job (server maps that to 404).
+        """Freeze a running job's process tree (SIGSTOP). Refuses anything not
+        ``running`` and a multi-GPU ``accelerate launch`` run. Returns
+        ``{job_id, state, error?}``, or ``None`` when no such job (server maps
+        that to 404).
 
-        ``release_model=True`` is the cooperative variant for train.py jobs:
-        drop a ``pause.request`` in the job dir; the trainer saves a resumable
-        state at its next optimizer step and exits with ``run_end paused``,
-        the job parks as ``paused`` with no process (``released``), the GPU is
-        free and the queue advances. ``resume_job`` relaunches it with
-        ``--resume``. The job stays ``running`` until the trainer has actually
-        exited; ``release_requested`` marks the in-between."""
+        ``release_model=True`` drops a ``pause.request`` for the trainer instead
+        (README ``POST /jobs/{id}/pause``). The job stays ``running`` until the
+        trainer has actually exited; ``release_requested`` marks the in-between.
+        """
         if release_model:
             return self._request_release(job_id)
         with self._lock:
@@ -508,8 +502,7 @@ class JobManager:
                 )
 
     def _process_one(self, job_id: str) -> None:
-        """Launch + monitor a single dequeued job. Uses ``return`` (not the
-        loop's ``continue``) so it can run under the crash guard in ``_run``."""
+        """Launch + monitor a single dequeued job."""
         job = self._jobs.get(job_id)
         if job is None or job.state != STATE_QUEUED:
             return
@@ -542,8 +535,7 @@ class JobManager:
             logger.exception("failed to finalize crashed job %s", job_id)
 
     def worker_idle_for(self) -> float:
-        """Seconds since the worker last advanced. Large + a job stuck ``queued``
-        ⇒ the worker is wedged or dead. Exposed via /health."""
+        """Seconds since the worker last advanced (``_worker_heartbeat``)."""
         return round(time.time() - self._worker_heartbeat, 1)
 
     def worker_alive(self) -> bool:
@@ -597,7 +589,6 @@ class JobManager:
                 job.started_at = time.time()
                 job.pid = popen.pid
                 job.create_time = proc.create_time(popen.pid)
-                # pause_job refuses accelerate-launched (multi-GPU) runs.
                 job.accelerate_launched = "accelerate.commands.accelerate_cli" in cmd
                 job.persist()
                 self._popens[job.id] = popen
@@ -703,9 +694,8 @@ class JobManager:
                 job.status_detail = detail
             job.ckpt_path = tail.last_ckpt_path(job.progress_path)
             self._lift_result(job)
-            # Auto-chain: a done command job with a chain_train spec enqueues its
-            # follow-on train job. chained_job_id persists in the same write that
-            # flips the state to `done`.
+            # Auto-chain: chained_job_id persists in the same write that flips
+            # the state to `done`.
             if (
                 state == STATE_DONE
                 and job.kind == "command"
@@ -722,7 +712,6 @@ class JobManager:
                     overrides=ct.get("overrides") or {},
                     extra=ct.get("extra") or [],
                     from_chain=True,
-                    # Inherit the originating command's captured env.
                     captured_env=job.captured_env,
                 )
                 job.chained_job_id = follow.id
@@ -833,8 +822,7 @@ class JobManager:
         )
 
     def _current_running_locked(self) -> Optional[Job]:
-        # The job occupying the worker/GPU slot — running or frozen. A paused
-        # job still owns its VRAM, so stop/shutdown/health must all see it.
+        # Frozen jobs count: stop, shutdown and health must all see them.
         for job in self._jobs.values():
             if self._occupies_slot(job):
                 return job

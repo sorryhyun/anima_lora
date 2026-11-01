@@ -107,6 +107,5 @@ until [ "$($SSH root@<ip> 'kill -0 $(cat /root/<run>.pid) 2>/dev/null && echo up
 done
 ```
 
-Not the Monitor tool: its deadline is capped at 30 min and it kills the command at
-expiry (`daemon` skill § Waiting on a job). Read progress with
+Not the Monitor tool (`daemon` skill § Waiting on a job). Read progress with
 `$SSH root@<ip> tail -n 40 /root/<run>.log` when the user asks.

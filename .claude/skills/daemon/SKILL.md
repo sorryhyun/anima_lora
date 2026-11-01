@@ -5,8 +5,8 @@ description: Submit, monitor, and manage GPU jobs through the anima daemon (make
 
 # Daemon job queue & GPU work
 
-Local FIFO job queue (`anima_daemon/`), auto-starts on first submit. Full HTTP contract:
-`anima_daemon/README.md`.
+Local FIFO job queue (`anima_daemon/`), auto-starts on first submit. Reference (HTTP API,
+CLI, env vars, on-disk layout, pause semantics, MCP bridge): `anima_daemon/README.md`.
 
 **Agent-launched GPU work must go through the daemon.** A GPU process started from a
 Claude Code background Bash gets killed by the harness sandbox layer after ~1 min (silent
@@ -17,28 +17,22 @@ behind a live train run instead of OOM-colliding, and survive the terminal.
 
 `make daemon | daemon-run ARGS="<script.py> …" | daemon-wait [JOB=<id>] | daemon-attach [JOB=<id>] | daemon-status [JOB=<id>] | daemon-jobs | daemon-log [JOB=<id>] | daemon-pause [JOB=<id>] | daemon-resume [JOB=<id>] | daemon-kill | daemon-terminate | daemon-prune`
 
-- Front door: **`make daemon-run ARGS="<script.py> [flags]"`** — attach-by-default, exits
-  with the job's code; `--queue` detaches, `--inline` bypasses the daemon;
-  `--stall-timeout S` where `0` = off. daemon-run's own `--label`/`--stall-timeout` go
-  **before** the script path — after it every token reaches the child untouched (bench
-  scripts take `--label` themselves), and `--` passes everything after it verbatim.
-- **`make daemon-wait [JOB=<id>]`** blocks to terminal and prints the record + result
-  envelope, exiting with the job's code (`DaemonClient.wait()` programmatically) — don't
-  hand-roll an HTTP poll loop.
-- `daemon-pause` tree-freezes the running job (SIGSTOP — VRAM held, SM idle, resume
-  instant; the queue does NOT advance past it; refuses `accelerate launch` runs).
-  `daemon-pause RELEASE=1` is the cooperative variant for train.py jobs: the trainer
-  saves a resumable state at its next optimizer step and exits (`run_end paused`), the
-  GPU is freed and the queue advances; the job parks as `paused` + `released` and
-  `daemon-resume` re-enqueues it at the front with `--resume <state_dir>` (reload +
-  recompile, not instant). Protocol: `pause.request` / `pause.ack.json` in the job dir,
-  `library/runtime/pause.py`.
-- Append `--queue` to any train/distill target to enqueue instead of running inline
-  (`make lora --queue`, `make turbo --queue`). GUI Train button, ComfyUI trainer node,
-  and preprocessing all submit here.
-- Long-quiet phases: prefer `--stall-timeout` over a heartbeat, else
-  `bench/_common.py::start_heartbeat()` (the watchdog also spares a quiet-but-CPU-burning
-  tree).
+- **`make daemon-run ARGS="<script.py> [flags]"`** attaches by default and exits with the
+  job's code; `--queue` detaches, `--inline` bypasses the daemon; `--stall-timeout S`,
+  `0` = off. daemon-run's own `--label`/`--stall-timeout` go **before** the script path:
+  after it every token reaches the child (bench scripts take `--label` themselves), and
+  `--` passes everything after it verbatim.
+- **`make daemon-wait [JOB=<id>]`** blocks to terminal, prints the record + result
+  envelope and exits with the job's code. Do not hand-roll an HTTP poll loop.
+- `daemon-pause` freezes the running job (SIGSTOP: VRAM held, the queue does not advance,
+  resume instant; refuses `accelerate launch` runs). `daemon-pause RELEASE=1` (train.py
+  jobs) has the trainer save and exit, freeing the GPU and advancing the queue;
+  `daemon-resume` relaunches it (reload + recompile).
+- Train and distill targets take the same `--queue` / `--inline` (`make lora --queue`,
+  `make turbo --queue`).
+- Long-quiet phases: command jobs are killed after 120 s of silence by default. Prefer
+  `--stall-timeout` over a heartbeat, else `bench/_common.py::start_heartbeat()` (the
+  watchdog also spares a quiet-but-CPU-burning tree, up to 8× the budget).
 
 ## Waiting on a job (agent sessions)
 
@@ -60,11 +54,11 @@ staleness).
 
 ## Job environment
 
-A job's env is **daemon-env ← `captured_env` ← `extra_env`**. `captured_env` is the
-submitter's `ANIMA_*` / `CUDA_*` / `HF_*` / `PYTORCH_*` / `TORCH_*` / `NCCL_*` at submit
-time (recorded in `job.json`); everything else — and every whitelisted var the submit
-shell does **not** set — comes from the shell that booted the daemon, possibly days ago
-(a stale-code respawn re-boots it from whichever shell submitted next).
+A job's env is **daemon-env ← `captured_env` ← `extra_env`**. `captured_env` holds the
+whitelisted prefixes (README § `POST /jobs`) at submit time, recorded in `job.json`;
+everything else, and every whitelisted var the submit shell does **not** set, comes from
+the shell that booted the daemon, possibly days ago (a stale-code respawn re-boots it from
+whichever shell submitted next).
 
 - An unset var cannot override: if the daemon booted with
   `ANIMA_VOCAB_PACK=<preview pack>`, a later submit without the var trains on the
@@ -82,43 +76,36 @@ shell does **not** set — comes from the shell that booted the daemon, possibly
 
 | question | command | what comes back |
 |---|---|---|
-| Is a job running / is the queue busy? | `make daemon-status` (health line + unfinished jobs), or `make daemon-jobs ARGS="--state queued,running,paused"` | one line per unfinished job, then `N of M jobs` — a bare `0 of M` **is** the "nothing running" answer (exit 1 = daemon down) |
+| Is a job running / is the queue busy? | `make daemon-status` (health line + unfinished jobs), or `make daemon-jobs ARGS="--state queued,running,paused"` | one line per unfinished job; `0 of M` = nothing running (exit 1 = daemon down) |
 | How far along is the current run? | `make run-status` | `step N/total`, it/s, ETA, last losses, last ckpt (§ Run status below) |
-| Did job `<id>` finish, and with what exit code? | `make daemon-jobs ARGS="--all" \| grep <id>` | one line: when · id · state · `rc=` · duration · target · first error line |
-| …and block until it does? | `make daemon-wait JOB=<id>` | exits with the job's own code (record + envelope on stdout) |
-| What argv did job `<id>` run? | `python -c "import json;print(' '.join(json.load(open('output/daemon/jobs/<id>/job.json'))['argv']))"` | the child argv on one line. **Command jobs only** — a train job persists `method`/`preset`/`overrides`/`extra` and builds its launch cmd at spawn, so its `argv` is empty |
-| One job's full record + its bench `result.json`? | `python -m anima_daemon status <id>` | the whole record, envelope inlined under `result`; reads the on-disk `job.json` when the daemon is down |
+| Did job `<id>` finish, and with what exit code? | `make daemon-jobs ARGS="--all" \| grep <id>` | one line with state, `rc=` and the first error line |
+| …and block until it does? | `make daemon-wait JOB=<id>` | exits with the job's own code |
+| What argv did job `<id>` run? | `python -c "import json;print(' '.join(json.load(open('output/daemon/jobs/<id>/job.json'))['argv']))"` | the child argv on one line. **Command jobs only**: a train job's `argv` is empty |
+| One job's full record + its bench `result.json`? | `python -m anima_daemon status <id>` | the whole record, envelope inlined under `result` |
 | Is the daemon up, on which port, running stale code? | `python -m anima_daemon status` | `up`, resolved `base_url`, `stale_code`, `paused`, `active_job` (exit 1 when down) |
 
 `daemon-jobs`, `daemon-log`, `run-status` and the `job.json` read all work with the
 daemon down.
 
 `daemon-jobs` prints **oldest first** (`| tail -5` = the five most recent), capped at 15;
-filter with `ARGS="--running|--failed|--done|--state s[,s]|--limit N|--all"`. Jobs do not
-always start in submit order (a chained job waits on its parent), so ask for pending work
-by state rather than trusting the newest-15 slice to contain it. `make daemon-log
-[JOB=<id>]` dumps a job's stdout from disk (`ARGS="-n 200"`; `-n 0` = all);
-`daemon-attach` follows a *live* stream only, so it has nothing for a finished job.
+filter with `ARGS="--running|--failed|--done|--state s[,s]|--limit N|--all"`. A chained
+job waits on its parent, so ask for pending work by state rather than trusting the
+newest-15 slice to contain it. `make daemon-log [JOB=<id>]` dumps a job's stdout from disk
+(`ARGS="-n 200"`; `-n 0` = all); `daemon-attach` follows a live stream only.
 
-## Discovery & agent surface
+## Discovery
 
-- Discovery is pidfile-based: `output/daemon/daemon.json` / `~/.anima/daemon.json` →
-  `{port, root}`. **Never hardcode 8765** — the port falls back to ephemeral on collision.
-- `python -m anima_daemon submit|wait|status` is the stdlib-only equivalent of the `make`
-  targets, for callers that can't import `tasks.py`.
-- The daemon self-describes at `GET /` (README) and `GET /tools` (JSON-Schema manifest).
-  `anima_daemon/mcp.py` is a stdio MCP bridge over the same surface — register the script
-  path as the MCP command; it discovers the daemon itself.
-- Job dirs are retention-bounded. `make daemon-prune` is the manual sweep — dry-run
-  unless `ARGS="--apply"`. Rules and knobs: `anima_daemon/README.md` § Retention.
+- `output/daemon/daemon.json` / `~/.anima/daemon.json` → `{port, root}`. **Never hardcode
+  8765**: the port falls back to ephemeral on collision.
+- Callers that can't import `tasks.py` use `python -m anima_daemon submit|wait|status`.
+  MCP clients use `anima_daemon/mcp.py` (README § MCP bridge).
+- `make daemon-prune` sweeps old job dirs, dry-run unless `ARGS="--apply"` (README
+  § Retention).
 
 ## Batch generation: `make gen`
 
-Daemon-routed batch generation — same argv + env levers as `make test`, submitted as a
-GPU command job (attach-by-default; `--queue` detaches, `--inline` bypasses). Lands a
-`gen_manifest.json` in the job record: `write_gen_manifest` drops a `result_path.json`
-pointer when the daemon exports `ANIMA_DAEMON_JOB_DIR` (a plain `python inference.py` is
-unaffected).
+`make test`'s argv and env levers as a GPU command job, with the same `--queue` /
+`--inline`. The job's `result_path` points at its `gen_manifest.json`.
 
 ## Run status: `make run-status`
 
@@ -129,15 +116,12 @@ CLI). Covers train.py methods, `make turbo` **and** moss train (`scripts/moss/tr
 `progress.jsonl` (e.g. `project/cjk_anima_reseed/run.py`) shows nothing here — read the
 step off `make daemon-log JOB=<id>`.
 
-**Both launch paths are scanned**: an inline run's `output/logs/<name>.progress.jsonl`
-*and* a daemon job's `output/daemon/jobs/<id>/progress.jsonl` (the daemon overrides
-`--progress_jsonl` with a per-job path, so the run dir under `output/logs/` holds the
-snapshot + TB events but no stream). Defaults to the newest stream from either — or, while the daemon's running job has
-no stream yet (a train loop still loading), names that job instead;
-`RUN=<output_name|job id|path>` selects — a daemon stream's filename is bare, so a run
-name there is matched against the `run_start` event inside it, and the header prints
-`(job <id>)`. `ARGS="--list"` for all, `ARGS="--json"` for the dict, `ARGS="--jobs-dir
-''"` to skip the daemon dirs.
+It scans an inline run's `output/logs/<name>.progress.jsonl` and a daemon job's
+`output/daemon/jobs/<id>/progress.jsonl` (a daemon run's dir under `output/logs/` holds the
+snapshot + TB events but no stream). It defaults to the newest stream from either, or
+names the daemon's running job while that has no stream yet (a train loop still loading).
+`RUN=<output_name|job id|path>` selects. `ARGS="--list"` for all, `ARGS="--json"` for the
+dict, `ARGS="--jobs-dir ''"` to skip the daemon dirs.
 
 For every scalar instead: `make export-logs RUN=output/logs/<run> SUMMARY=1` prints
 max-step + last value per tag (raw payload `{"run", "tags": {tag: [[step, wall_time,

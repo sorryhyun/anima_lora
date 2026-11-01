@@ -61,7 +61,7 @@ make download-model ARGS=moss-sft
 
 ## 3. 预处理、训练、测试
 
-面板有 **预处理** 和 **训练** 两个标签页，**测试** 区域位于训练页底部。不常用的字段折叠在 **高级** 中。每个按钮都会向训练守护进程提交一个任务：把模型下拉框切回 Anima 或关闭 GUI，任务都会继续运行；重新打开时会自动重新连接（「已重新连接到正在运行的任务 …」）；**停止** 用于取消任务。
+面板有 t2i 的 **预处理** 和 **训练** 两个标签页，之后是 **i2i 预处理** 和 **i2i 训练** 标签页（`docs/moss/methods/i2i.md`），**测试** 区域位于训练页底部。不常用的字段折叠在 **高级** 中。每个按钮都会向训练守护进程提交一个任务：把模型下拉框切回 Anima 或关闭 GUI，任务都会继续运行；重新打开时会自动重新连接（「已重新连接到正在运行的任务 …」）；**停止** 用于取消任务。
 
 ### 3.1 数据集与标注
 
@@ -124,8 +124,8 @@ make download-model ARGS=moss-sft
 | 轮数（`epochs`） | `8` | 实测训练用 20 |
 | `plain_caption_rate` | `0.2` | 仅 `layout_json` 缓存：用普通 Anima 标注而非 layout JSON 训练的步数占比 |
 
-- **学习率、通道缩放、DC 隔离**：FFN 输入处有一个输入通道比其余通道强得多。在 AdamW 下曾用两种修正（通道缩放和 `dc_isolate`）避免 LoRA 通过它把更新浪费在全局平移上。在 Muon 默认设置并使用 kaiming `down` 初始化时，两者都不改变训练出的 LoRA，因此都已移除。此前的默认值以及每次改动背后的对比见 `docs/moss/channel_scaling.md`。
-- **optimizer**：Muon（MOSS 预训练所用的优化器）在相同学习率下让 LoRA 的移动幅度与 AdamW 相同，但分散到更多方向上，同一随机种子下看起来更好。它自身也能避免把更新浪费在全局平移上。`docs/moss/findings/muon_lora.md`。
+- **学习率、通道缩放、DC 隔离**：通道缩放和 `dc_isolate` 已移除，因为在 Muon 默认设置并使用 kaiming `down` 初始化时，两者都不改变训练出的 LoRA。此前的默认值以及每次改动背后的对比见 `docs/moss/channel_scaling.md`。
+- **optimizer**：Muon（MOSS 预训练所用的优化器）在相同学习率下让 LoRA 的移动幅度与 AdamW 相同，但分散到更多方向上，同一随机种子下看起来更好。它自身也能避免 LoRA 通过 FFN 中最强的输入通道把更新浪费在全局平移上。`docs/moss/findings/muon_lora.md`。
 - **down 初始化**：`kaiming` 是随机初始化，`weight_svd` 用基础权重的前几个奇异向量初始化 LoRA 的 down 矩阵。这些向量对输入的恒定偏移读取很强，搭配 Muon 时，`weight_svd` 的 LoRA 让每个 token 的输出平移幅度约为 `kaiming` 的三倍。图像差异约等于换一个种子。`docs/moss/findings/muon_channel_init.md`。
 - **轮数**：20 轮训练中，第 10 轮的结果更松散、更多样；第 20 轮更干净、更统一，但略微偏向正面居中的半身构图。设置 每 N 轮保存（`save_every_epochs`）即可在一次训练中比较两者。
 - **sigma_\***（高级）：默认值是 MOSS 最终预训练阶段的噪声分布。Anima 的分布（`sigma_mu 0`、`sigma_s 1`、`sigma_cutoff 1.0`、`sigma_uniform 0`）在所有设置中迁移最弱。
@@ -150,7 +150,7 @@ make download-model ARGS=moss-sft
 
 该方案在 1024² 样本上约为 1.1 s/step，峰值 13 GB，并且还会锁定 4.4 GiB 系统内存。它比 bf16 方案更快也更准确：bf16 方案在相同峰值下为 1.6 s/step，预测误差在测试的所有 σ 上也更高（σ = 0.5 时 1.93% 对 1.62%，[精度](../moss/optimization/int8.md#accuracy)）。budget 每提高 0.1，峰值约增加 1 GB，每步快 0.01–0.02 s。显存低于 16 GB 的显卡请用 0.1（1.07 s/step，10.78 GB）；0.4 在 16 GB 上也可能显存不足。0.05 时峰值降到 9.98 GB，但需要重新计算 attention，速度降为 1.16 s/step。目前只用它完整训练过一个 LoRA（[详情](../moss/optimization/int8.md)）。
 
-**bf16 方案。** int8 基座拒绝 LoHa，也没有训练过 i2i LoRA，所以 i2i 任务配置仍用 bf16。在训练页的 `model` 下拉框中选择 `(bf16)` 项（选 `(int8)` 项恢复默认），或使用 `--config configs/moss/lora_bf16.toml`。两者都会设置 `int8 off`、`stream bf16`、`ema_card` 关闭、`blocks_to_swap 36`（放在 CPU 上、用时再传入的 DiT 块数）、`activation_memory_budget 0.5`。测试框的 `model` 下拉框有相同的项：`(int8)` 用 int8 基座和 fp32 stream 生成（1024² 下 7.8 GiB，bf16 为 10.7 GiB）。i2i 训练页也有这些项，那里的 `(int8)` 使用 swap 20、budget 0.1：sanitize 最大的样本在 6 步内峰值为 12.3 GB，但还没有完整训练过。
+**bf16 方案。** int8 基座拒绝 LoHa，i2i 任务配置默认使用 bf16。在训练页的 `model` 下拉框中选择 `(bf16)` 项（选 `(int8)` 项恢复默认），或使用 `--config configs/moss/lora_bf16.toml`。两者都会设置 `int8 off`、`stream bf16`、`ema_card` 关闭、`blocks_to_swap 36`（放在 CPU 上、用时再传入的 DiT 块数）、`activation_memory_budget 0.5`。测试框的 `model` 下拉框有相同的项：`(int8)` 用 int8 基座和 fp32 stream 生成（1024² 下 7.8 GiB，bf16 为 10.7 GiB）。i2i 训练页也有这些项，那里的 `(int8)` 使用 swap 20、budget 0.1：sanitize 最大的样本在 6 步内峰值为 12.3 GB，并且已有一次 swap_text 在 int8 基座上完整训练完成（`docs/moss/methods/i2i.md`）。
 
 | 方案 | 字段 | s/step | 剩余显存 |
 |---|---|---|---|
@@ -159,9 +159,9 @@ make download-model ARGS=moss-sft
 | 留更多余量 | swap 24，budget 0.2 | 1.78 | 2.26 GiB |
 | 检查点 | 梯度检查点开启，swap 0 | 2.09 | 1.60 GiB |
 
-bf16 方案（swap 36，budget 0.5，`swap_h2d_only`，`expandable_segments`，秩 32）在 caststation 数据集上为 1.66 s/step，最大样本（图像 4.2k + 文本 0.4k token）剩余 0.85 GB。budget 超过约 0.45 后再提高也没有帮助（0.3：2.05 s/step），swap 28–36 速度相同，所以调低 swap 只会损失剩余显存。i2i 样本还带有参考图，因此 i2i 任务配置使用 swap 38、budget 0.175：swap 28 时 budget 0.2 会显存不足，而 swap 38 能为更高的 budget 腾出空间；在约 8.3k 联合 token（sanitize）下为 3.79 s/step，swap 28 / budget 0.15 则为 4.17 s/step。`swap_h2d_only` 会在 RAM 中为每个被换出的块保留一份锁页副本（最多 8.8 GB），这样换出只需复制到显卡，无需再复制回来。结果和显存与不开启时相同；swap 38 以内速度相同，swap 40 时快 8%。默认开启，且只在有块被换出时起作用，可用 `--no-swap_h2d_only` 关闭。
+bf16 方案（swap 36，budget 0.5，`swap_h2d_only`，`expandable_segments`，秩 32）在 caststation 数据集上为 1.66 s/step，最大样本（图像 4.2k + 文本 0.4k token）剩余 0.85 GB。budget 超过约 0.45 后再提高也没有帮助（0.3：2.05 s/step），swap 28–36 速度相同。i2i 样本还带有参考图，因此 i2i 任务配置使用 swap 38、budget 0.175：swap 28 时 budget 0.2 会显存不足，而 swap 38 能为更高的 budget 腾出空间；在约 8.3k 联合 token（sanitize）下为 3.79 s/step，swap 28 / budget 0.15 则为 4.17 s/step。`swap_h2d_only`（默认开启，只在有块被换出时起作用，可用 `--no-swap_h2d_only` 关闭）会在 RAM 中为每个被换出的块保留一份锁页副本（最多 8.8 GB），这样换出只需复制到显卡，无需再复制回来。结果和显存相同；swap 38 以内速度相同，swap 40 时快 8%。
 
-表格测试条件：合成 1024² 图像 + 300 个文本 token（共约 4.4k token），LoRA 秩 16，RTX 5070 Ti。此前的默认值（秩 32，budget 0.1，swap 12）在约 4.5k token（图像 4096 + 文本 455）下实测 1.85 s/step，剩余约 1.7 GB，峰值 reserved 约 13.1 GB；秩 16、budget 0.1 为 1.82 s/step，剩余约 2.0 GB。真实样本最多约 4.9k token，标注越长显存占用越多，`swap 24` 在相同速度下留出了这部分余量。
+表格测试条件：合成 1024² 图像 + 300 个文本 token（共约 4.4k token），LoRA 秩除非该行另有说明均为 16，RTX 5070 Ti。秩 32 的行在约 4.5k 联合 token（图像 4096 + 文本 455）下运行，峰值 reserved 约 13.1 GB；秩 16、budget 0.1 为 1.82 s/step，剩余约 2.0 GB。真实样本最多约 4.9k token，标注越长显存占用越多，`swap 24` 在相同速度下留出了这部分余量。
 
 - swap 在 8 到 36 之间速度几乎不变（1.75–1.84 s/step），budget 0.1–0.3 对速度也几乎没有影响；swap 40 时 PCIe 传输无法被计算掩盖，变慢（2.34 s/step）。在此之下，swap 数决定的是显存，不是速度。
 - 最佳组合取决于 PCIe 链路和 GPU。`scripts/moss/tune_swap.py`（CLI，[附录](#附录-cli)，约 4 分钟）会用缓存中最大的样本在 bf16 方案上测试各个 swap 数的速度，并输出训练应使用的字段值。
@@ -172,7 +172,7 @@ bf16 方案（swap 36，budget 0.5，`swap_h2d_only`，`expandable_segments`，�
 
 ## 5. 测试
 
-采样默认值来自 MOSS 的参考管线，Anima 的采样习惯在这里不适用。
+采样默认值来自 MOSS 的参考管线。
 
 | 字段 | 默认值 | 作用 |
 |---|---|---|

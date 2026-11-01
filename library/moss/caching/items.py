@@ -25,7 +25,7 @@ class CacheItem:
     height: int
     n_text: int
     n_text_plain: int = 0  # 0 = no plain-caption embedding in the TE file
-    ref_path: Path | None = None  # clean reference latent (i2i probe)
+    ref_path: Path | None = None  # clean reference latent (i2i)
     n_ref: int = 0
     n_variants: int = 0  # embeds_v1 … embeds_v{n} in the TE file
     n_text_variants: int = 0  # the longest variant, its shared prefix included

@@ -10,7 +10,7 @@ table once, so the pair loads through every existing pack surface with no
 hook: the ``vocab_pack`` config key, ``--vocab_pack`` on inference / TE
 caching, ``GenerationRequest``, and the ComfyUI ``AnimaVocabPackLoader``
 node (>= 3.9.1). Tokenization is untouched — the json keeps every routing
-map — so EN prompts stay bit-exact and only the summed rows differ from the
+map — so EN prompts are unchanged and only the summed rows differ from the
 base pack (``pack_digest`` changes, which is what makes stale TE caches and
 LoRA stamps warn).
 

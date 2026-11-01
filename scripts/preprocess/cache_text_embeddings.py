@@ -6,14 +6,10 @@ Qwen3 text encoder, and optionally runs the LLM adapter to produce crossattn_emb
 Saves results as *_anima_te.safetensors alongside each image (or under
 ``--cache_dir``).
 
-Supports caption shuffle variants: with --caption_shuffle_variants N, generates
-N variants per image and caches them all in one file. v0 is the pristine
-original caption (no shuffle, no dropout); v1..v{N-1} are smart-shuffled and,
-if --caption_tag_dropout_rate > 0, have non-prefix tags independently dropped
-at that rate, and if --caption_tag_randomize_rate > 0, have surviving tags'
-identities erased (replaced by meaningless tokens, prefix included) at that
-rate. The strategy loader picks v0 with 20% probability and uniform
-v1..v{N-1} with 80% probability when use_shuffled_caption_variants is on.
+With --caption_shuffle_variants N, caches N variants per image in one file
+(``anime_tools.captions.variants.generate_caption_variants``). The strategy
+loader picks v0 with 20% probability and uniform v1..v{N-1} with 80% probability
+when use_shuffled_caption_variants is on.
 
 The encode loop lives in ``library/preprocess/text.py``; this file is argparse +
 model load + the one-time uncond sidecar staging.

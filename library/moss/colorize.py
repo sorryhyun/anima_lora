@@ -30,7 +30,7 @@ detector's 0.25 is kept when the read scores ``LOW_DET_SCORE``, and an all-ASCII
 line's glyph floor is ``LATIN_MIN_GLYPH``. Boxes are MOSS's ``abs_centralized``
 ``yxyx`` in the canvas's pixels.
 
-Every encode, ``<out>/uncond.safetensors`` included, uses ``text_encoder`` (fp8 by
+Every encode, ``<out>/uncond.safetensors`` included, uses ``text_encoder`` (int8 by
 default; ``te_file`` overrides the catalog's file). Holdout (``holdout``
 illustration pairs, one page each of ``manga_holdout`` works, no edition of which
 trains; ``holdout_json`` names the pages instead; ``train_json`` names the

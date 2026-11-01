@@ -61,7 +61,7 @@ The default caption format (`layout_json`, §3.1) also needs the danbooru tag CS
 
 ## 3. Preprocess, Train, Test
 
-The panel has two tabs, **Preprocess** and **Train**; the **Test** box sits at the bottom of the Train tab. Less-used fields are folded under **Advanced**. Each button submits a job to the training daemon: switching the Model dropdown back to Anima or closing the GUI leaves it running, reopening re-attaches to it (`Re-attached to running job …`), and **Stop** cancels it.
+The panel has two t2i tabs, **Preprocess** and **Train**, followed by the **i2i Preprocess** and **i2i Train** tabs (`docs/moss/methods/i2i.md`); the **Test** box sits at the bottom of the Train tab. Less-used fields are folded under **Advanced**. Each button submits a job to the training daemon: switching the Model dropdown back to Anima or closing the GUI leaves it running, reopening re-attaches to it (`Re-attached to running job …`), and **Stop** cancels it.
 
 ### 3.1 Dataset and captions
 
@@ -124,8 +124,8 @@ The comparisons ran on 30 images of one artist (`@channel (caststation)`), Base,
 | `epochs` | `8` | the measured run used 20 |
 | `plain_caption_rate` | `0.2` | `layout_json` caches only: share of steps trained on the plain Anima caption instead of its layout JSON |
 
-- **lr, channel scaling, DC isolation**: one input channel is far louder than the rest at the FFN input. Under AdamW two fixes kept the LoRA from spending its updates on a global shift through it (channel scaling and `dc_isolate`). Under the Muon default with a kaiming `down` init neither changed the trained LoRA, so both were removed. The earlier defaults and the comparisons behind each change: `docs/moss/channel_scaling.md`.
-- **optimizer**: Muon (the optimizer MOSS was pretrained with) at the same lr moves the LoRA by the same amount as AdamW, spread over more directions, and looked better on the same seed. It also keeps the LoRA off that global shift on its own. `docs/moss/findings/muon_lora.md`.
+- **lr, channel scaling, DC isolation**: channel scaling and `dc_isolate` were removed, since under the Muon default with a kaiming `down` init neither changed the trained LoRA. The earlier defaults and the comparisons behind each change: `docs/moss/channel_scaling.md`.
+- **optimizer**: Muon (the optimizer MOSS was pretrained with) at the same lr moves the LoRA by the same amount as AdamW, spread over more directions, and looked better on the same seed. It also keeps the LoRA from spending its updates on a global shift through the FFN's loudest input channel. `docs/moss/findings/muon_lora.md`.
 - **down_init**: `kaiming` is the random init; `weight_svd` starts the LoRA's down projection on the base weight's top singular vectors. Those vectors read the input's constant offset strongly, and with Muon a `weight_svd` LoRA shifts every token's output about three times as far as a `kaiming` one. The images are about a seed change apart. `docs/moss/findings/muon_channel_init.md`.
 - **epochs**: at 10 of 20 epochs the results were looser and more varied; at 20 they were cleaner and more uniform, with a mild drift toward frontal, centred upper bodies. Set `save_every_epochs` to compare both from one run.
 - **sigma_\*** (Advanced): the defaults are MOSS's final pretraining noise schedule. Anima's schedule (`sigma_mu 0`, `sigma_s 1`, `sigma_cutoff 1.0`, `sigma_uniform 0`) gave the weakest transfer of every arm.
@@ -150,7 +150,7 @@ Defaults: `grad_checkpointing` off, `compile` on, and under Advanced `int8 strea
 
 This runs about 1.1 s/step at a 13 GB peak on 1024² samples and also pins 4.4 GiB of system memory. That is faster and more accurate than the bf16 plan: 1.6 s/step at the same peak, and a higher prediction error at every σ tested (1.93% against 1.62% at σ = 0.5, [accuracy](../moss/optimization/int8.md#accuracy)). Each 0.1 of budget adds about 1 GB of peak for 0.01–0.02 s/step: on a card under 16 GB use 0.1 (1.07 s/step, 10.78 GB), and 0.4 can run out of memory even on 16 GB. At 0.05 the peak drops to 9.98 GB but attention is recomputed and the step slows to 1.16 s. One LoRA has been trained to completion on it so far ([details](../moss/optimization/int8.md)).
 
-**bf16 plan.** The int8 base refuses LoHa and has trained no i2i LoRA, so the i2i task configs stay on bf16. Pick a `(bf16)` item in the `model` dropdown on the Train tab (an `(int8)` item puts the defaults back), or `--config configs/moss/lora_bf16.toml`. Either sets `int8 off`, `stream bf16`, `ema_card` off, `blocks_to_swap 36` (DiT blocks kept on the CPU and streamed in), `activation_memory_budget 0.5`. The Test box's `model` dropdown has the same items: `(int8)` renders on the int8 base with an fp32 stream (7.8 GiB at 1024² against 10.7 for bf16). The i2i Train tab has them too, where `(int8)` runs swap 20 at budget 0.1: sanitize's largest sample fit at a 12.3 GB peak over six steps, but no full i2i run has finished on it.
+**bf16 plan.** The int8 base refuses LoHa, and the i2i task configs ship on bf16. Pick a `(bf16)` item in the `model` dropdown on the Train tab (an `(int8)` item puts the defaults back), or `--config configs/moss/lora_bf16.toml`. Either sets `int8 off`, `stream bf16`, `ema_card` off, `blocks_to_swap 36` (DiT blocks kept on the CPU and streamed in), `activation_memory_budget 0.5`. The Test box's `model` dropdown has the same items: `(int8)` renders on the int8 base with an fp32 stream (7.8 GiB at 1024² against 10.7 for bf16). The i2i Train tab has them too, where `(int8)` runs swap 20 at budget 0.1: sanitize's largest sample fit at a 12.3 GB peak over six steps, and one full swap_text run has finished on the int8 base (`docs/moss/methods/i2i.md`).
 
 | Plan | Fields | s/step | Free VRAM |
 |---|---|---|---|
@@ -159,9 +159,9 @@ This runs about 1.1 s/step at a 13 GB peak on 1024² samples and also pins 4.4 G
 | More room | swap 24, budget 0.2 | 1.78 | 2.26 GiB |
 | Checkpointing | `grad_checkpointing` on, swap 0 | 2.09 | 1.60 GiB |
 
-The bf16 plan (swap 36, budget 0.5, `swap_h2d_only`, `expandable_segments`, rank 32) runs 1.66 s/step on the caststation set with 0.85 GB free on its largest sample (4.2k image + 0.4k text tokens). Raising the budget stops helping past ~0.45 (0.3: 2.05 s/step), and swap 28–36 run at the same speed, so a lower swap only gives up free VRAM. i2i samples also carry a reference image, so the i2i task configs use swap 38, budget 0.175: at swap 28, budget 0.2 runs out of memory, and swap 38 makes room for the higher budget, 3.79 s/step against 4.17 for swap 28 / budget 0.15 at ~8.3k joint tokens (sanitize). `swap_h2d_only` keeps a page-locked copy of every swapped block in RAM (up to 8.8 GB) so a swap only copies to the card, never back. The results and VRAM are the same as without it; it is as fast up to swap 38 and 8% faster at swap 40. It is on by default and only acts when blocks are swapped; `--no-swap_h2d_only` turns it off.
+The bf16 plan (swap 36, budget 0.5, `swap_h2d_only`, `expandable_segments`, rank 32) runs 1.66 s/step on the caststation set with 0.85 GB free on its largest sample (4.2k image + 0.4k text tokens). Raising the budget stops helping past ~0.45 (0.3: 2.05 s/step), and swap 28–36 run at the same speed. i2i samples also carry a reference image, so the i2i task configs use swap 38, budget 0.175: at swap 28, budget 0.2 runs out of memory, and swap 38 makes room for the higher budget, 3.79 s/step against 4.17 for swap 28 / budget 0.15 at ~8.3k joint tokens (sanitize). `swap_h2d_only` (on by default, acts only when blocks are swapped; `--no-swap_h2d_only` turns it off) keeps a page-locked copy of every swapped block in RAM (up to 8.8 GB) so a swap only copies to the card, never back: same results and VRAM, as fast up to swap 38, 8% faster at swap 40.
 
-Table: synthetic 1024² image + 300 text tokens (~4.4k tokens in all), LoRA rank 16, RTX 5070 Ti. The earlier default (rank 32, budget 0.1, swap 12) measured 1.85 s/step with ~1.7 GB free and a peak reserved of ~13.1 GB at ~4.5k joint tokens (image 4096 + text 455); rank 16 at budget 0.1 measured 1.82 s/step with ~2.0 GB free. Real samples ran up to ~4.9k tokens, and longer captions use more memory, which `swap 24` leaves room for at the same speed.
+Table: synthetic 1024² image + 300 text tokens (~4.4k tokens in all), LoRA rank 16 unless the row says otherwise, RTX 5070 Ti. The rank 32 row ran at ~4.5k joint tokens (image 4096 + text 455) with a peak reserved of ~13.1 GB. Rank 16 at budget 0.1 measured 1.82 s/step with ~2.0 GB free. Real samples ran up to ~4.9k tokens, and longer captions use more memory, which `swap 24` leaves room for at the same speed.
 
 - Between swap 8 and 36 the speed barely moves (1.75–1.84 s/step), and budgets 0.1–0.3 barely change it either; swap 40 is slower (2.34 s/step) because the PCIe transfers stop hiding behind compute. Below that point, the swap count trades VRAM, not speed.
 - The best pair depends on the PCIe link and the GPU. `scripts/moss/tune_swap.py` (CLI, [Appendix](#appendix-cli), about 4 minutes) times each swap count on the cache's largest sample on the bf16 plan and prints the fields to train with.
@@ -172,7 +172,7 @@ Table: synthetic 1024² image + 300 text tokens (~4.4k tokens in all), LoRA rank
 
 ## 5. Testing
 
-The sampler defaults come from MOSS's reference pipeline; Anima's sampler habits do not carry over.
+The sampler defaults come from MOSS's reference pipeline.
 
 | Field | Default | What it does |
 |---|---|---|

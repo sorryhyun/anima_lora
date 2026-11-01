@@ -6,14 +6,11 @@ poll or stream rather than holding the run open. The GUI Train button, the
 ComfyUI trainer node and `make … --queue` all submit here; this doc is the same
 surface for direct use from a script, an MCP server, or an agent.
 
-`http://127.0.0.1:<port>` (8765 unless taken — resolve it from the pidfile),
-JSON in / JSON out, no auth, localhost only (`config.py`). All state is on disk
-under `output/daemon/`, so anything that can read files can observe a run with
-the HTTP port down.
-
-`GET /` returns this file; `GET /tools` returns a manifest — one entry per
-operation with a JSON-Schema `input_schema`, HTTP `method`+`path`, and a
-description.
+`http://127.0.0.1:<port>`, JSON in / JSON out, no auth, localhost only
+(`config.py`). The port is 8765 unless taken, then ephemeral, so resolve it from
+the pidfile; `DaemonClient()` and `ensure_daemon()` do. All state is on disk under
+`output/daemon/`, so anything that can read files can observe a run with the HTTP
+port down.
 
 ## Start / discover the daemon
 
@@ -47,12 +44,12 @@ The same verbs exist inside the package for callers that can't import `tasks.py`
 
 ```bash
 python -m anima_daemon submit [--label L] [--stall-timeout S] [--wait] [--hold] -- <argv…>
-python -m anima_daemon wait <job_id> [--timeout S]   # exit = job's exit code, 124 on timeout
+python -m anima_daemon wait <job_id> [--timeout S]   # exit = job's exit code
 python -m anima_daemon status [job_id]
 ```
 
-`wait --timeout S` exits `124` and prints a JSON snapshot — `state`, the last
-`progress.jsonl` event, its staleness.
+`wait --timeout S` exits `124` on timeout and prints a JSON snapshot: `state`, the
+last `progress.jsonl` event, its staleness.
 
 ## Reading the queue
 
@@ -100,14 +97,14 @@ the command job's `chained_job_id`.
 
 ## REST endpoints
 
-Bodies are plain JSON dicts; no schema validation (trusted localhost callers).
-Field reference for the `Job` record is in `jobs.py`.
+Bodies are plain JSON dicts; no schema validation. Field reference for the `Job`
+record is in `jobs.py`.
 
 ### `GET /` · `GET /tools` — self-description
 
 `GET /` (alias `/readme`) serves this README. `GET /tools` returns the operation
-manifest (`[{name, description, method, path, input_schema}, …]`) — the catalog
-an MCP bridge registers.
+manifest (`[{name, description, method, path, input_schema}, …]`, JSON-Schema
+inputs), which is what the MCP bridge registers.
 
 ### `POST /jobs` — submit
 
@@ -126,8 +123,9 @@ Training job:
 ```
 Only `method` is required. `overrides` become `--key value`; `extra` is appended
 verbatim. `config_snapshot` (a merged config dict) or `config_file` (a path) pin
-the exact config instead of re-resolving the merge chain. Optional
-`captured_env` is a whitelisted snapshot of the submitter's shell (`ANIMA_*`,
+the exact config; without one the daemon re-runs the `base → preset → method →
+overrides` merge at launch, so a config edit made while the job is queued reaches
+it. Optional `captured_env` is a whitelisted snapshot of the submitter's shell (`ANIMA_*`,
 `CUDA_*`, `HF_*`, `PYTORCH_*`, `TORCH_*`, `NCCL_*`) layered under the job's env at
 spawn (**daemon-env ← captured_env ← extra_env**). The Python client and MCP
 bridge fill it automatically; pass `{}` to opt out.
@@ -201,10 +199,9 @@ Tree-kills a running or queued job. Returns `{job_id, state}`. The client's
 
 `pause` SIGSTOPs the job's whole process tree (dataloader workers included);
 `resume` SIGCONTs it. Works on any job with no cooperation from the child. The
-CUDA context and VRAM survive, so resume is instant (no reload, no recompile,
-optimizer state intact). Returns `{job_id, state, error?}`
-(`error` on a refusal; 404 only for an unknown id). `pause_job`/`resume_job` with
-no id resolve the active job.
+CUDA context and VRAM survive, so resume is instant. Returns
+`{job_id, state, error?}` (`error` on a refusal; 404 only for an unknown id).
+`pause_job`/`resume_job` with no id resolve the active job.
 
 - **The queue does NOT advance past a paused job** — it still owns its VRAM slot.
 - **Refused** for anything not `running`, and for a multi-GPU `accelerate launch`
@@ -237,9 +234,8 @@ so). A frozen (SIGSTOP) job is thawed first so it can act on the request.
 - `stop` on a released job finalizes it `stopped` (nothing to kill). A released
   job survives a daemon restart as-is. Refused for command jobs (no
   cooperative checkpoint) — use the plain freeze there.
-- Multi-GPU: every rank reaches the save collective together (the main
-  process's verdict is broadcast), so unlike the freeze this is not refused for
-  `accelerate launch` runs.
+- Not refused for `accelerate launch` runs: every rank reaches the save
+  collective together (the main process's verdict is broadcast).
 
 ### `POST /queue/pause` · `POST /queue/start`
 
@@ -261,8 +257,8 @@ Job start/finish and friends, plus `: keepalive` comments while idle.
 `{"ok", "pid", "port", "root", "fingerprint", "active_job", "paused",
 "worker_alive", "worker_idle_for"}`. `root` is the checkout the daemon belongs to
 (`daemon_matches_root` in `client.py`). `fingerprint` is the content hash of
-`anima_daemon/*.py` the daemon booted with; if it differs from the on-disk source
-the next `ensure_daemon()` submit restarts it. `worker_idle_for` is seconds since
+`anima_daemon/*.py` the daemon booted with (see Restarts and run modes).
+`worker_idle_for` is seconds since
 the job worker last advanced — large while a job sits `queued` means the worker
 is behind a long run, or, with `worker_alive` false, has died.
 
@@ -306,9 +302,9 @@ command job. Methods map 1:1 onto the endpoints, with two client-side extras:
 
 - **`wait(job_id, poll=5.0, timeout=None)`** — block to terminal, return the final
   record. Interval ramps 0.25s → `poll`. Raises `LookupError` for an unknown id
-  and `TimeoutError` on `timeout`, so a still-running job never reads as an outcome.
+  and `TimeoutError` on `timeout`.
 - **`job_record(job_id)`** — one record, falling back to the on-disk `job.json`
-  when HTTP fails, which is why `wait` survives a restart mid-poll.
+  when HTTP fails, so `wait` survives a restart mid-poll.
 
 `ensure_daemon(expected_root=…)` refuses to attach to another checkout's daemon
 while that daemon has live jobs.
@@ -330,12 +326,8 @@ One pointer file: the daemon exports `ANIMA_DAEMON_JOB_ID` /
 schema is bench-owned). Both stay `null` for a job that wrote no envelope; the
 artifacts never move. `write_result(run_dir, script=__file__, args=args,
 metrics={…})` drops the pointer under the daemon and is a plain envelope write
-otherwise. Reading one back:
-
-```bash
-python -m anima_daemon status <id>       # full record + envelope inlined under "result"
-JOB=<id> python tasks.py daemon-wait     # block first, then the same
-```
+otherwise. `python -m anima_daemon status <id>` and `daemon-wait` inline the
+envelope under `result`.
 
 ## Observing without HTTP
 
@@ -347,7 +339,7 @@ output/daemon/
   current.log -> jobs/<id>/stdout.log    symlinks, retargeted at launch/adopt,
                          so `tail -f output/daemon/current.log` follows whatever
                          the queue is driving. Best-effort (skipped where the
-                         host refuses symlinks) — never a contract.
+                         host refuses symlinks).
   jobs/<id>/
     job.json             the full Job record (atomic-replaced on each change;
                          carries `returncode` once the job process exits)
@@ -355,10 +347,10 @@ output/daemon/
     progress.jsonl       structured training progress (train jobs; command jobs that write one)
 ```
 
-`job.json` → `state` is the fast, dependency-free check; the GUI reads these
-files directly (`gui/jobs/daemon.py`) rather than polling HTTP in the Qt thread.
+`state` in `job.json` is the fast check; the GUI reads these files directly
+(`gui/jobs/daemon.py`).
 
-### Retention — `jobs/` is bounded
+### Retention
 
 `jobs.prune_jobs()` runs at **daemon boot**, before `load_all()`. A dir is a
 candidate only when its `job.json` parses, its state is terminal, it is older
@@ -390,9 +382,6 @@ one up, pruned jobs linger in its in-memory table until its next restart.
 
 ## Restarts and run modes
 
-All state is on disk, so the daemon can be restarted at any time without losing
-jobs.
-
 - **Eager restart on stale code.** Each daemon fingerprints its own
   `anima_daemon/*.py` at boot; every submit goes through `ensure_daemon()`, which
   compares it to the on-disk source and on a mismatch does
@@ -416,28 +405,23 @@ holds a model (`tests/test_daemon.py` enforces the imports).
   `make daemon-wait JOB=<id>`).
 - **SSE responses are one-per-connection** (`Connection: close`); the socket
   closing is the client's EOF signal.
-- **Port drift.** Resolve from the pidfile, not a constant. `DaemonClient()` and
-  `ensure_daemon()` handle it.
-- **`config_snapshot` vs re-resolve.** Without a snapshot/file the daemon re-runs
-  the `base → preset → method → overrides` merge at launch; pin a snapshot when
-  you need bit-stable config across a queued delay.
 - **Agent-launched GPU work must go through the daemon.** A GPU process started
   from an agent's background shell gets SIGKILLed by the harness sandbox after
   ~1 min with no trace.
 
 ## MCP bridge (`mcp.py`)
 
-A stdio MCP server over the same surface — newline-delimited JSON-RPC. Register
-it as a **command, not an address**: the bridge resolves the daemon via the
-pidfile, so it survives port drift and restarts.
+A stdio MCP server over the same surface, newline-delimited JSON-RPC. Register it
+as a command: the bridge resolves the daemon via the pidfile, so it survives port
+changes and restarts.
 
 ```bash
 # absolute paths; any cwd works. Other clients: the same command/args as JSON.
 claude mcp add anima-daemon -- <repo>/.venv/bin/python <repo>/anima_daemon/mcp.py
 ```
 
-The tool catalog **is** the `GET /tools` manifest (`tools.TOOLS`, registered
-verbatim), with three deviations:
+The tool catalog is the `GET /tools` manifest (`tools.TOOLS`), with three
+deviations:
 
 - `tail_logs` (SSE) is replaced by **`tail_log`** `{id, lines=80}` — last N lines
   + current state in one call, reading the on-disk `job.json` + `stdout.log` as
@@ -445,8 +429,7 @@ verbatim), with three deviations:
 - **`get_progress`** is served from the on-disk `progress.jsonl` (same filters as
   the HTTP endpoint), so it answers with the daemon down.
 - Only `submit_training` / `submit_command` auto-start the daemon; every other
-  tool is passive, so "is anything running?" never boots one (`health` returns
-  `{"up": false}` instead of erroring).
+  tool is passive (`health` returns `{"up": false}` instead of erroring).
 
 ## RunPod pods (`anima_daemon.runpod`)
 

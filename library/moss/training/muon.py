@@ -1,8 +1,9 @@
 """``torch.optim.Muon`` batched by matrix shape.
 
 A LoRA has hundreds of matrices in a handful of shapes. torch's step runs them one by
-one, ~34 kernels each, and the launches cost more than the kernels: 154 ms of a 1.30 s
-step for 40 ms of GPU time (17k kernels). Same update, one bf16 Newton-Schulz per shape.
+one, and the launches cost more than the kernels
+(``docs/moss/optimization/training_step.md``). Same update, one bf16 Newton-Schulz per
+shape.
 """
 
 from __future__ import annotations

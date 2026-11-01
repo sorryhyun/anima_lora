@@ -30,7 +30,7 @@ def read_events(
       carry no ``global_step`` (``run_start``, ``log``, ``run_end``) inherit
       the most recent step seen before them in the stream.
     - ``every_nth``: thin ``step`` events to every n-th (the latest ``step``
-      is always kept so the caller sees where the run currently is).
+      is always kept).
     - ``last_n``: final cap — keep only the trailing n events.
     """
     if not progress_path:

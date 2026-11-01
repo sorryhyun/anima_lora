@@ -44,12 +44,8 @@ def is_alive(pid: Optional[int], ct: Optional[float], *, tol: float = 1.0) -> bo
 
 
 def tree_cpu_seconds(pid: Optional[int]) -> Optional[float]:
-    """Total CPU seconds (user+system) burned by ``pid`` and every descendant.
-
-    The stall watchdog samples this twice and differences it: a quiet embed/eval
-    loop still burns CPU, a wedged process does not. ``None`` when the tree
-    can't be read (pid gone / no permission), so the caller falls back to its
-    output-mtime-only verdict.
+    """Total CPU seconds (user+system) burned by ``pid`` and every descendant,
+    or ``None`` when the tree can't be read (pid gone / no permission).
     """
     if pid is None:
         return None

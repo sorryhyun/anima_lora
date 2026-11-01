@@ -7,19 +7,14 @@ Usage:
     python scripts/run_status.py --list           # every known run, newest first
     python scripts/run_status.py --json           # machine-readable digest
 
-Answers "where is this run at?" without exporting the TensorBoard events file:
-step N/total, rate, ETA, last losses, last checkpoint, and whether the run is
-still alive (``running``), finished (``ok``), or died (``error`` / ``stopped`` /
-``dead``). Works for any run that emits the sink — ``train.py`` methods and the
-bespoke ``make turbo`` loop alike.
+Prints step N/total, rate, ETA, last losses, last checkpoint, and whether the
+run is still alive (``running``), finished (``ok``), or died (``error`` /
+``stopped`` / ``dead``), for any run that emits the sink.
 
-Both launch paths are covered: an inline run writes
-``output/logs/<output_name>.progress.jsonl``, while a **daemon** job (the default
-launch mode) is handed an explicit per-job path,
-``output/daemon/jobs/<id>/progress.jsonl`` — same stream, different home and a
-bare filename that carries no run name. So daemon job dirs are scanned too, and
-a run name there is matched against the ``run_start`` event inside the stream
-(a job id works as a target as well).
+An inline run writes ``output/logs/<output_name>.progress.jsonl``; a daemon job
+writes ``output/daemon/jobs/<id>/progress.jsonl``, a bare filename, so a run name
+there is matched against the ``run_start`` event inside the stream (a job id
+works as a target as well).
 """
 
 from __future__ import annotations
@@ -35,7 +30,7 @@ from library.env import resolve_under_home
 from library.runtime.progress import _pid_alive, read_status
 
 _SUFFIX = ".progress.jsonl"
-# The daemon points every train job's sink here (manager._build_cmd), one dir
+# The daemon points every train job's sink here (launch.build_cmd), one dir
 # per job id, so the filename is bare — no `<run>` prefix to match on.
 _DAEMON_NAME = "progress.jsonl"
 
@@ -169,8 +164,6 @@ def format_status(st: dict, *, metric_limit: int = 6) -> str:
     total = st["total_steps"] or "?"
     pct = f" ({st['pct']:.1f}%)" if st["pct"] is not None else ""
     rate = f"{st['rate']:.2f} it/s" if st["rate"] else "? it/s"
-    # A daemon-launched run: name the job so the follow-up (`make daemon-attach
-    # JOB=<id>`, `make daemon-log JOB=<id>`) needs no lookup step.
     job = _job_id_for(Path(st["path"]))
     where = f" (job {job})" if job else ""
     head = (

@@ -145,9 +145,8 @@ def _split_tags(text: str) -> tuple[str, ...]:
 class RandomPool:
     """Named tag groups backing ``__random__`` / ``__random:<group>__``.
 
-    ``default`` names the groups a bare ``__random__`` unions — the point of
-    the split is that mutually-exclusive axes (position, framing, …) stay out
-    of the default draw and are asked for by name.
+    ``default`` names the groups a bare ``__random__`` unions; mutually-exclusive
+    axes (position, framing, …) stay out of it and are asked for by name.
     """
 
     def __init__(

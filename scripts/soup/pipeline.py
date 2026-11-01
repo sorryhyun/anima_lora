@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """`make soup` orchestrator: uncond inter-train → seeded fine-tunes → SVD soup.
 
-Ships the recipe validated in ``bench/memorization/report.md`` (the uncond-init
-ladder) as one pipeline:
+The recipe from ``bench/memorization/report.md`` (the uncond-init ladder):
 
 1. **Uncond inter-train** (Self-Soupervision, arXiv:2602.02890): a short
    ``caption_dropout_rate 1.0`` run on a *diluted* pool. The pool is selected by
@@ -21,28 +20,25 @@ ladder) as one pipeline:
    absorbs the training-seed lottery (a catastrophic draw is invisible to
    loss/AUC — report Act 5). Seed is the only axis that varies by default;
    ``--lr_pool`` / ``--lr_interval`` add per-ingredient learning-rate diversity
-   (the model-soup recipe's other axis — see ``resolve_lrs`` for the caveat that
-   we have no greedy-selection gate to protect a uniform average from a bad draw).
+   (see ``resolve_lrs``).
 3. **ΔW soup, SVD-truncated to the ingredient rank** (``scripts/soup/build.py``)
    so the artifact stays single-adapter-sized (~99.9% retained energy on
    shared-init ingredients). The first ingredient's ``.snapshot.toml`` is
    copied next to the soup — the memorization probes replay membership from it.
 
 Selection is by fnmatch **path_pattern** (``|``-separated alternatives, matched
-against each image's path relative to its subset ``image_dir``) rather than a
-single artist directory — so a soup can span any glob-expressible slice of the
-dataset, not just one artist. ``--artists_shard k_N`` is the alternative
-selector: it expands to one round-robin shard of the artist subdirectories
-(``<artist>/*|…``) before anything else runs, so the pool union / slug / Phase-2
-flags all see a plain glob. The output slug derives from the selection (or an
-explicit ``--name``).
+against each image's path relative to its subset ``image_dir``).
+``--artists_shard k_N`` expands to one round-robin shard of the artist
+subdirectories (``<artist>/*|…``) before anything else runs, so the pool union /
+slug / Phase-2 flags all see a plain glob. The output slug derives from the
+selection (or an explicit ``--name``).
 
-Runs ``train.py`` as direct subprocesses (single daemon command job — never
-submit nested daemon jobs from here; that deadlocks the serial queue).
-Unknown CLI args are forwarded to the fine-tune runs (that's how
-``make soup ARGS="--network_dim 32"`` reaches Phase 2). The ``--sigma_lowres*``
-family is the one exception: it is a whole-pipeline data-routing knob, so it is
-*also* replayed onto Phase 1 and folded into the uncond checkpoint name.
+Runs ``train.py`` as direct subprocesses (single daemon command job; never submit
+nested daemon jobs from here, that deadlocks the serial queue). Unknown CLI args
+are forwarded to the fine-tune runs (``make soup ARGS="--network_dim 32"``
+reaches Phase 2). The ``--sigma_lowres*`` family is the one exception: a
+whole-pipeline data-routing knob, it is *also* replayed onto Phase 1 and folded
+into the uncond checkpoint name.
 """
 
 from __future__ import annotations
@@ -163,13 +159,12 @@ def expand_artists_shard(
 ) -> str:
     """Expand ``--artists_shard k_N`` into an explicit ``<artist>/*|…`` glob.
 
-    train.py expands the shard *inside* its own blueprint build, which is too
-    late for us — the pipeline needs the concrete selection up front to union it
-    into the Phase-1 uncond pool, derive the output slug, and hand Phase 2 a
-    plain ``--path_pattern``. So we replay the same expansion here against the
-    same blueprint (``library.datasets.artist_shard.apply_artist_shard``) and
-    then hand train.py the resulting glob with ``--artists_shard ""``, keeping
-    exactly one selection mechanism live per run.
+    train.py expands the shard inside its own blueprint build, but the pipeline
+    needs the concrete selection up front to union it into the Phase-1 uncond
+    pool, derive the output slug, and hand Phase 2 a plain ``--path_pattern``. So
+    the same expansion is replayed here against the same blueprint
+    (``library.datasets.artist_shard.apply_artist_shard``), and train.py gets the
+    resulting glob with ``--artists_shard ""``.
     """
     from library.config.io import load_dataset_config_from_base, load_method_preset
     from library.datasets.artist_shard import apply_artist_shard, parse_shard

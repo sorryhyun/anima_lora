@@ -18,9 +18,9 @@ from data already in the repo:
 *never* co-occur when independence predicts they should are incompatible, so
 comfy_batch won't draw them into one prompt.
 
-This file is pure mechanism. Everything corpus-specific — the slot→group
-mapping, curated act/block/allow lists, context slice, crawl-pool path —
-lives in ``workflows/randoms_build.yaml`` (gitignored, like the output).
+Everything corpus-specific (the slot→group mapping, curated act/block/allow
+lists, context slice, crawl-pool path) lives in ``workflows/randoms_build.yaml``
+(gitignored, like the output).
 
 Usage:
     python scripts/toolkits/build_randoms.py                    # writes workflows/randoms.yaml
@@ -290,7 +290,7 @@ def build(args, spec: dict) -> dict:
 
 
 def render(pool: dict, n_ctx: int, default_slots: list, args) -> str:
-    """Emit YAML by hand — the header comments are the point of this file."""
+    """Emit YAML by hand, so the header comments survive."""
     out = [
         HEADER.format(
             n_ctx=n_ctx,

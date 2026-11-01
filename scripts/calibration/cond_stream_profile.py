@@ -10,13 +10,10 @@ DiT's Linear inputs, collected on the MAIN (target) stream by
 `analyze_lora_input_channels.py`.
 
 EasyControl's cond-LoRA (`_LoRAProj`) targets the *same* DiT Linears
-(self_attn qkv / output_proj, mlp layer1 / layer2) but on the COND stream, and
-currently passes `None` for the scale (no rebalance). Before wiring channel
-scaling into the cond stream we want to know: do the cond-stream inputs have the
-same per-channel profile the shipped (main-stream) calibration was built on? If
-yes, reusing the shipped file rebalances them correctly; if the cond inputs are
-skewed differently, we'd be applying the wrong scale and would need a
-cond-specific calibration.
+(self_attn qkv / output_proj, mlp layer1 / layer2) but on the COND stream, which
+reads its own `cond_channel_stats.safetensors` (`networks/methods/easycontrol.py`).
+This script compares the cond-stream input profile with the main-stream one and
+regenerates that file.
 
 What this does
 --------------
@@ -43,8 +40,7 @@ What this does
                    ≤0 = the shipped scale doesn't help (or hurts) the cond stream.
 
 3. Dumps the collected cond profile to a safetensors (same keying + fused-qkv
-   mirroring as the shipped file) so that — if transfer is poor — you already
-   have the cond-specific calibration to load instead. Free byproduct.
+   mirroring as the shipped file).
 
 Usage
 -----

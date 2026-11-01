@@ -3,9 +3,8 @@
 Without checkpointing, every swapped block frees VRAM that the compiled
 blocks' saved set can use, so the budget rises and the backward recomputes
 less; past some swap count the PCIe transfers stop hiding behind compute and
-the step slows again. Where that knee sits depends on the link (generation,
-lanes) and on the GPU, so this measures it instead of assuming the 16 GB
-figures. It times the bf16 base; the int8 plan's swap only trades VRAM.
+the step slows again. That knee depends on the link (generation, lanes) and on
+the GPU. This times the bf16 base; the int8 plan's swap only trades VRAM.
 
 One process loads the DiT once. Each arm places it with ``N`` blocks swapped,
 reads the free VRAM, picks the largest budget :func:`train.budget_for_free`

@@ -36,12 +36,9 @@ def wait_for_free_gpu(
     stranger that reused the pid (issue #83). If memory can't be probed,
     assume free. Tunable via ANIMA_DAEMON_GPU_{BUSY_FRAC,RETRIES,DELAY}.
     """
-    # Ask a resident inference server to free VRAM before we launch — it
-    # stays alive and reloads on its next request. Best-effort.
     evict_resident_inference()
 
     for attempt in range(retries):
-        # Reap only holders matching a known job on (pid, create_time).
         holders = gpu.gpu_pids() or set()
         known = {
             j.pid: j
@@ -86,7 +83,8 @@ def wait_for_free_gpu(
 
 
 def evict_resident_inference() -> None:
-    """Ask a resident inference server (if any) to free VRAM before launch.
+    """Ask a resident inference server (if any) to free VRAM before launch; it
+    stays alive and reloads on its next request.
 
     Discovery mirrors scripts/inference_server.py's pidfiles (inline, no
     import). Every failure is swallowed; the server's idle-TTL frees the

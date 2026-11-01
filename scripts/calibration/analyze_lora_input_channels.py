@@ -1,15 +1,9 @@
 #!/usr/bin/env python
 """Channel-dominance analysis for LoRA-adapted Linear inputs in the Anima DiT.
 
-Motivation
-----------
-GraLoRA (arXiv:2505.20355) argues that LoRA degrades at rank >=64 because a few
-"outlier" input channels dominate the gradient of the down-projection, and the
-low-rank shared B matrix propagates that distortion across every rank. Their
-evidence is LLaMA3-8B layer-1 down-proj: channel ~198 has mean|x| ~100 while
-typical channels sit at ~1-5 (20-100x dominance). Their fix — partitioning
-weights into k*k adapter sub-blocks — only helps if the same pathology exists
-in *your* model.
+GraLoRA (arXiv:2505.20355) attributes LoRA degradation at rank >=64 to a few
+"outlier" input channels dominating the down-projection's gradient (LLaMA3-8B
+layer-1: 20-100x dominance). This script measures that skew on the Anima DiT.
 
 What this script checks
 -----------------------
@@ -18,15 +12,14 @@ collect per-input-channel statistics (|x| averaged over tokens) across a small
 batch of real dataset samples at several flow-matching timesteps, then report:
 
   * mean_abs[c] = average |x| over all tokens we saw
-  * channel_dominance = max(mean_abs) / median(mean_abs) — the single number
-    from the GraLoRA paper. >=10 means severe skew; <3 probably means the
-    motivation for GraLoRA doesn't transfer to your model.
+  * channel_dominance = max(mean_abs) / median(mean_abs), the GraLoRA paper's
+    number. >=10 means severe skew; <3 means the GraLoRA premise probably does
+    not hold here.
   * top-K offending channels and their indices
 
-Stats are grouped by module role (self_attn.q_proj, cross_attn.kv_proj, ...)
-so you can see where the worst channel concentration lives — if it's in the
-cross-attention inputs (T5 features), that's different from the self-attention
-inputs (image patch tokens), and the remediation differs.
+Stats are grouped by module role (self_attn.q_proj, cross_attn.kv_proj, ...),
+which separates cross-attention inputs (T5 features) from self-attention inputs
+(image patch tokens).
 
 Usage
 -----

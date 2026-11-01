@@ -4,11 +4,9 @@ copies, and the conversions ``library.moss.train`` and ``library.moss.generate``
 
 ``train`` converts after the network's ``__init__``, so ``down_init weight_svd*`` still
 reads bf16, and before ``apply_to``, whose patched forward captures
-``module.__class__.forward``, and ``compile_blocks``. A converted linear that drops its
-weight keeps an empty bf16 ``weight`` buffer, since the block forward reads
-``proj["q"].weight.dtype``. ``generate`` converts after the network's ``__init__`` too
-(LoKr reads the bf16 weight's shape) and before ``apply_to``; with no LoRA, right after
-the DiT loads.
+``module.__class__.forward``, and ``compile_blocks``. ``generate`` converts after the
+network's ``__init__`` too (LoKr reads the bf16 weight's shape) and before ``apply_to``;
+with no LoRA, right after the DiT loads.
 """
 
 from __future__ import annotations
@@ -65,7 +63,7 @@ def check_base(meta: dict, by_name: dict) -> None:
 
 def convert_moss_(mod, mode: str, forward_copy=None) -> None:
     """``convert_`` on the card. Modes that drop the weight keep an empty bf16
-    ``weight`` buffer: the block forward reads its dtype."""
+    ``weight`` buffer: the block forward reads ``proj["q"].weight.dtype``."""
     device = torch.device("cuda")
     mod.to(device)
     convert_(mod, mode, forward_copy)

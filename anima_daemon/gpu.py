@@ -1,8 +1,9 @@
 """Best-effort GPU-occupancy probe for the serial dequeue guard.
 
-Before launching the next job the manager asks who holds the GPU, to tell
-"free" from "a known dead job leaked VRAM, reap it" from "an unknown process
-is using the card, leave it alone".
+Before launching the next job the pre-launch guard
+(``gpu_guard.wait_for_free_gpu``) asks who holds the GPU, to tell "free" from
+"a known dead job leaked VRAM, reap it" from "an unknown process is using the
+card, leave it alone".
 
 pynvml first, ``nvidia-smi`` fallback; if neither is available (e.g. CPU-only
 CI) the probes return ``None`` and the guard assumes the GPU is free.
@@ -34,9 +35,7 @@ def gpu_pids() -> Optional[set[int]]:
     ``None`` means "couldn't tell" (no NVML, no nvidia-smi) — distinct from an
     empty set, which means "queried successfully, no compute job is running".
 
-    Compute contexts only: graphics contexts (desktop compositor, browsers)
-    must not count, or on Windows WDDM the guard would stall every launch on
-    innocent renderers.
+    Compute contexts only, not graphics ones (desktop compositor, browsers).
     """
     pids = _gpu_pids_nvml()
     if pids is not None:

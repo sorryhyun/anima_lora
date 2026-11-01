@@ -5,10 +5,9 @@ single-daemon lock, binds the preferred port (falling back to an ephemeral
 one if a stranger holds it), reconciles ``jobs/``, then serves until
 ``POST /shutdown``. See ``anima_daemon/README.md``.
 
-A first argument naming a client verb (``submit``/``wait``/``status``, see
-``cli.py``) dispatches to that verb and exits instead — the CLI front door
-for talking *to* a daemon. ``-h``/``--help`` prints the usage; any other
-argument must be the port.
+A first argument naming a client verb (``cli.VERBS``) dispatches to ``cli.py``
+and exits instead. ``-h``/``--help`` prints the usage; any other argument must
+be the port.
 """
 
 from __future__ import annotations

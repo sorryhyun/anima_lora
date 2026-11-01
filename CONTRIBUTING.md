@@ -177,7 +177,7 @@ A new entry in `networks/lora_modules/` or `networks/methods/`, or a new variant
                 metrics={...}, artifacts=[...], device=device)
    ```
 
-   **Benches that load the DiT must use `bench/_anima.py`.** It owns the model-side boilerplate — argparse surface, DiT + adapter loading in the correct order, bucketed sample discovery from `post_image_dataset/lora/`. `add_common_args(parser)` injects `--label`, `--seed`, `--device`, `--dtype`, `--attn_mode`, `--gradient_checkpointing`, `--cpu_offload_checkpointing`, `--compile`, `--compile_mode`. `build_anima(args, adapter=..., train_mode=...)` does the load in the right order — in particular, **`compile_blocks` runs after `apply_to` + `load_weights`** so adapter monkey-patches are part of the compiled graph. Open-coding this is a footgun (skipping `--compile` entirely, or compiling in the wrong order so the adapter is bypassed). Use the helper:
+   **Benches that load the DiT must use `bench/_anima.py`.** It owns the model-side boilerplate — argparse surface, DiT + adapter loading in the correct order, bucketed sample discovery from `post_image_dataset/lora/`. `add_common_args(parser)` injects `--label`, `--seed`, `--device`, `--dtype`, `--attn_mode`, `--gradient_checkpointing`, `--compile`, `--compile_mode`. `build_anima(args, adapter=..., train_mode=...)` does the load in the right order — in particular, **`compile_blocks` runs after `apply_to` + `load_weights`** so adapter monkey-patches are part of the compiled graph. Open-coding this is a footgun (skipping `--compile` entirely, or compiling in the wrong order so the adapter is bypassed). Use the helper:
 
    ```python
    from bench._anima import add_common_args, build_anima, discover_bucketed_samples

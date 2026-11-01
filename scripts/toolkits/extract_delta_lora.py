@@ -15,8 +15,8 @@ Example — seed the DP-DMD student from the official anima_turboV10 release:
 
 ``--include_adaln`` additionally extracts the adaln up-projections
 (``adaln_up_{branch}``, checkpoint key ``adaln_modulation_{branch}.2``) — the
-largest movers in the official turbo delta. Off by default: the student does
-not target adaln yet, and stock loaders skip the keys (default exclude regex).
+largest movers in the official turbo delta. Off by default: stock loaders skip
+the keys (default exclude regex).
 ``--adaln_layout comfy`` names those keys after ComfyUI's model paths
 (``lora_unet_blocks_{b}_adaln_modulation_{branch}_2``) so the file ships as a
 ComfyUI-native LoRA — core's generic key map covers every model weight,

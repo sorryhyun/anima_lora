@@ -1,7 +1,6 @@
 """Job states and the read side of the on-disk ``job.json`` record.
 
-The state vocabulary is shared by every daemon client, so it lives here rather
-than beside ``jobs.Job``: the ComfyUI node vendors this module with
+Shared by every daemon client: the ComfyUI node vendors this module with
 ``client.py``, and the GUI and CLI read records while the daemon is down.
 """
 

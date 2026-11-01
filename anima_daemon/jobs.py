@@ -36,9 +36,8 @@ class Job:
     overrides: dict = field(default_factory=dict)
     extra: list[str] = field(default_factory=list)
 
-    # "train" (a train.py run) or "command" (plain ``python <argv>``, finalized
-    # on exit code with no progress.jsonl). Default "train" keeps legacy
-    # job.json records without this field loading.
+    # "train" (a train.py run) or "command" (plain ``python <argv>``). Default
+    # "train" keeps legacy job.json records without this field loading.
     kind: str = "train"
     argv: list[str] = field(default_factory=list)
     extra_env: dict = field(default_factory=dict)
@@ -47,9 +46,8 @@ class Job:
     # layered daemon-env ← captured_env ← extra_env at spawn. See README.
     captured_env: dict = field(default_factory=dict)
 
-    # Auto-chain: a command job carrying a chain_train spec (README "Two job
-    # kinds") makes the manager enqueue that train job on success.
-    # chained_job_id records the follow-on it spawned.
+    # Auto-chain (README "Two job kinds"): chain_train is enqueued on success;
+    # chained_job_id records the follow-on.
     chain_train: Optional[dict] = None
     chained_job_id: Optional[str] = None
 
@@ -70,7 +68,7 @@ class Job:
     # Observability only.
     paused_at: Optional[float] = None
 
-    # Release-pause (README "pause with release_model"): `release_requested`
+    # Release-pause (README `POST /jobs/{id}/pause`): `release_requested`
     # is set while train.py is asked to save + exit; `released` marks a paused
     # job with no process (GPU free, queue advances past it); `resume_state_dir`
     # is what `resume` appends as `--resume` on relaunch; `resume_count` counts
@@ -80,13 +78,12 @@ class Job:
     resume_state_dir: Optional[str] = None
     resume_count: int = 0
 
-    # Whether the train tree was spawned under `accelerate launch` (multi-GPU).
-    # pause_job refuses these: a frozen NCCL rank trips the collective heartbeat
-    # timeout. Command jobs and the single-GPU direct-invoke path are False.
+    # Train tree spawned under `accelerate launch` (multi-GPU); pause_job refuses
+    # these. Command jobs and the single-GPU direct-invoke path are False.
     accelerate_launched: bool = False
 
     # (pid, create_time) identifies the spawned process so a reused PID is
-    # never mistaken for our job (see manager._gpu_guard).
+    # never mistaken for our job (see gpu_guard.wait_for_free_gpu).
     pid: Optional[int] = None
     create_time: Optional[float] = None
 
@@ -106,7 +103,7 @@ class Job:
     result_summary: Optional[dict] = None
 
     error: Optional[str] = None
-    # Free-text hint for terminal states ("orphaned", "gpu_held_by_unknown", …).
+    # Free-text hint ("orphaned", "launched despite busy GPU", …).
     status_detail: Optional[str] = None
     # Set by an explicit stop request so the monitor records `stopped`, not
     # `error`, when it sees the process vanish. Runtime + persisted.
@@ -167,17 +164,11 @@ def prune_jobs(
     keep_recent: Optional[int] = None,
     dry_run: bool = False,
 ) -> dict:
-    """Delete the job dirs of terminal jobs older than ``max_age_days``.
+    """Delete the job dirs of terminal jobs older than ``max_age_days``, keeping
+    the ``keep_recent`` newest (README "Retention").
 
-    Called once at boot, **before** ``load_all()`` — a pruned job must never
-    enter the in-memory table, or a later ``persist()`` would resurrect the
-    dir. Also exposed as ``python -m anima_daemon prune`` (dry-run by default).
-
-    A dir is a candidate only when its ``job.json`` parses with a terminal
-    state (queued/running/paused and unreadable records are always kept), it's
-    older than ``max_age_days`` (by ``ended_at`` / ``submitted_at`` / mtime),
-    and it's not among the ``keep_recent`` newest terminal jobs.
-    ``max_age_days=0`` disables pruning. Returns
+    Called at boot from ``JobManager._reconcile`` and by
+    ``python -m anima_daemon prune``. ``max_age_days=0`` disables pruning. Returns
     ``{scanned, pruned: [ids], kept, freed_bytes, errors}``; never raises.
     """
     days = config.JOB_RETENTION_DAYS if max_age_days is None else max_age_days

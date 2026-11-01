@@ -7,12 +7,12 @@ the SDE-injected noise by sqrt(1−γ) so the fixed stochastic-energy budget lan
 in the bands the network has NOT yet built. This probe checks the staircase is
 sharp on Anima. See _archive/bench/cns/plan.md.
 
-What it does (no engine edits):
+What it does:
   1. Drive deterministic ODE (euler) generations through the real pipeline via
      GenerationRequest (sampler defaults to "euler").
   2. Wrap `library.inference.sampling.step` (the Euler ODE step, called as
      `inference_utils.step` in generation.py) to record, per step, the clean
-     prediction x0_pred = latents − σ_i · v.  Zero changes to generation.py.
+     prediction x0_pred = latents − σ_i · v.
   3. γ(f,t) = 1 − |X_pred(f,t) − X₀(f)|² / |X₀(f)|², radially binned over the
      latent (H, W) FFT grid, averaged over channels and trajectories.
   4. Report staircase sharpness + emit beta_preview = the exact per-step colored
@@ -320,7 +320,7 @@ def main() -> None:
         "staircase_s50_spread": s50_spread,  # >0 ⇒ low-freq resolves earlier (CNS premise)
         "s50_lowfreq": s50_low,
         "s50_highfreq": s50_high,
-        "aggregate_s50": aggregate_s50,  # cross-check vs project_sigma_signal (~0.45)
+        "aggregate_s50": aggregate_s50,  # expected ~0.45
         "linear_target_mae": linear_mae,  # bigger ⇒ stronger spectral bias to exploit
     }
     metrics["device"] = str(device)

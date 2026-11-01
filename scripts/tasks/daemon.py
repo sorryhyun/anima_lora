@@ -17,7 +17,6 @@ plus the submit/observe front door:
 
 ``daemon`` starts the daemon **console-detached** (see ``proc.spawn_detached``),
 so the terminal's SIGINT reaches only the foreground group, never the daemon.
-``daemon-attach`` is the parent of nothing, so its ctrl-C can't touch training.
 Both teardown verbs verify the pidfile's ``(pid, create_time)`` before acting so
 they never touch a PID-reused stranger.
 """
@@ -141,8 +140,7 @@ def _job_target(job: dict) -> str | None:
     to ``method``.
 
     ``--label`` is scanned last and is what separates a grid of N bench runs of
-    the same script. Derived at read time, so it also applies to jobs already on
-    disk."""
+    the same script."""
     argv = job.get("argv") or []
     if job.get("kind") == "command":
         for flag in ("--name", "--path_pattern", "--output_name", "--label"):
@@ -212,17 +210,12 @@ def cmd_daemon_status(extra):
 
 
 def cmd_daemon_jobs(extra):
-    """The job history as **lines, oldest first** — the newest row is the last
-    one printed.
-
-    Log-ordered, so ``| tail -5`` means the five most recent and each job is one
-    greppable line. Jobs do not always start in submit order (a chained job
-    waits on its parent), so ask for pending work by ``--state`` rather than
-    trusting the newest-N slice to contain it.
+    """The job history as greppable lines, oldest first (``| tail -5`` = the five
+    most recent).
 
     Filters: ``--limit N`` · ``--all`` · ``--running``/``--active`` ·
     ``--failed`` · ``--done`` · ``--state s[,s]``. Falls back to the on-disk
-    records when the daemon is down, so history survives ``daemon-terminate``.
+    records when the daemon is down.
     """
     opts = _parse_status_flags(extra)
     if opts["bad_states"]:
@@ -257,9 +250,8 @@ def cmd_daemon_jobs(extra):
 def cmd_daemon_log(extra):
     """Dump a job's captured stdout — ``JOB=<id>``, else the most recent job.
 
-    ``daemon-attach`` *follows* a live stream over SSE; this reads the log file
-    off disk, so it works on a finished job and with the daemon down.
-    ``ARGS="-n 200"`` bounds the tail (default 100; ``-n 0`` = the whole file).
+    Reads the log file off disk, so it works on a finished job and with the
+    daemon down. ``ARGS="-n 200"`` bounds the tail (default 100; ``-n 0`` = the whole file).
     """
     extra = list(extra or [])
     n = 100
@@ -317,11 +309,8 @@ def cmd_daemon_attach(extra):
     """Read-only viewer. ``JOB=<id>`` follows that job's stdout; without it, the
     active job's stdout, or the daemon event stream when nothing is running
     (``ARGS=--events`` forces the event stream). Ctrl-C detaches this terminal
-    only — never the daemon or the training subprocess (we are the parent of
-    nothing).
-
-    Every write is flushed. On a job that is already terminal it returns as
-    soon as the log is drained (the SSE endpoint closes at ``eof``)."""
+    only, since this process is the parent of nothing. On a job that is already
+    terminal it returns as soon as the log is drained."""
     if not _client.is_running():
         print("no daemon; `make daemon` to start.", file=sys.stderr)
         sys.exit(1)
@@ -362,12 +351,10 @@ def cmd_daemon_wait(extra):
     record + any bench result envelope as JSON. Exits with the job's own exit code
     (``done`` → 0), so ``make daemon-wait JOB=… && next-step`` composes.
 
-    The non-streaming half of "submit → wait → read the result": no log volume,
-    and it reads the persisted ``job.json`` if the daemon restarts mid-wait.
-    Ctrl-C detaches (exit 130) — the job keeps running. ``ARGS="--timeout 600"``
-    bounds the wait (exit 124, like ``timeout(1)``) and prints a JSON snapshot —
-    state plus the last progress event and its staleness — so a caller that
-    gives up still learns whether the job is healthy-but-slow or wedged.
+    Reads the persisted ``job.json`` if the daemon restarts mid-wait. Ctrl-C
+    detaches (exit 130); the job keeps running. ``ARGS="--timeout 600"`` bounds
+    the wait (exit 124, like ``timeout(1)``) and prints a JSON snapshot: state,
+    the last progress event and its staleness.
     """
     extra = list(extra or [])
     timeout = None
@@ -454,12 +441,11 @@ def split_daemon_run_args(
 def cmd_daemon_run(extra):
     """Submit an arbitrary GPU command job (``ARGS="<script.py> [flags…]"``).
 
-    The generic front door for "run this on the serial GPU queue": a bench script,
-    a one-off probe, anything that would otherwise be started from a background
-    shell and silently SIGKILLed by an agent harness after ~60s. Same run modes as
-    the train/gen targets — attach by default (stream stdout, exit with the job's
-    code, ctrl-C detaches), ``--queue`` to detach, ``--inline`` to bypass the
-    daemon.
+    For a bench script or one-off probe that a background shell would lose: an
+    agent harness silently SIGKILLs GPU work started there after ~60s. Same run
+    modes as the train/gen targets: attach by default (stream stdout, exit with
+    the job's code, ctrl-C detaches), ``--queue`` to detach, ``--inline`` to
+    bypass the daemon.
 
     Own flags: ``--label NAME`` (display label, default: script basename) and
     ``--stall-timeout S`` (stall-watchdog budget, 0 = off), both before the
@@ -507,14 +493,13 @@ def cmd_daemon_kill(extra):
 
 
 def cmd_daemon_pause(extra):
-    """Freeze the running job's process tree (SIGSTOP) in place — VRAM stays put,
-    resume is instant. ``JOB=<id>`` targets a specific job; otherwise the active
-    one. The queue does not advance past a paused job (it still owns the card).
+    """Freeze the running job's process tree (SIGSTOP); VRAM stays put and the
+    queue does not advance. ``JOB=<id>`` targets a specific job; otherwise the
+    active one.
 
-    ``RELEASE=1`` (or ``--release``): cooperative release instead — the trainer
-    saves a resumable state at its next optimizer step and exits, the GPU is
-    freed and the queue advances; ``make daemon-resume`` relaunches it from that
-    state (train.py jobs only; resume reloads + recompiles)."""
+    ``RELEASE=1`` (or ``--release``, train.py jobs only): the trainer saves a
+    resumable state and exits, freeing the GPU; ``make daemon-resume`` relaunches
+    it. Details: ``anima_daemon/README.md``."""
     if not _client.is_running():
         print("no daemon running.", file=sys.stderr)
         sys.exit(1)
@@ -562,10 +547,8 @@ def cmd_daemon_resume(extra):
 def cmd_daemon_prune(extra):
     """Delete old terminal job dirs. Dry-run by default; ``ARGS="--apply"`` acts.
 
-    The daemon already sweeps at boot (``jobs.prune_jobs`` from
-    ``manager._reconcile``), so this is for reclaiming space from a daemon that's
-    been up for weeks, or for previewing what the sweep would take. Forwards
-    ``--days`` / ``--keep`` / ``--apply`` / ``--verbose`` straight through.
+    The daemon already sweeps at boot; this covers a daemon that has been up for
+    weeks, or a preview. Takes ``--days`` / ``--keep`` / ``--apply`` / ``--verbose``.
     """
     from anima_daemon import cli as _cli
 

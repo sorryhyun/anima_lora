@@ -1,10 +1,10 @@
 # MOSS-Image LoRA
 
-**Not Anima.** [MOSS-Image](https://huggingface.co/OpenMOSS-Team/MOSS-Image-Base)
-(OpenMOSS, Apache-2.0) is a 5B single-stream DiT on a frozen Qwen3.5-9B text encoder and
-the FLUX.2 VAE. This repo trains LoRAs for it and samples it with Spectrum on a 16 GB
-card. It is a separate line (`library/moss/`): Anima configs, presets, `make lora`,
-caches and LoRAs do not apply to it, and a MOSS LoRA does not load on Anima.
+[MOSS-Image](https://huggingface.co/OpenMOSS-Team/MOSS-Image-Base) (OpenMOSS, Apache-2.0)
+is a 5B single-stream DiT on a frozen Qwen3.5-9B text encoder and the FLUX.2 VAE. This repo
+trains LoRAs for it and samples it with Spectrum on a 16 GB card. It is a separate line
+(`library/moss/`): Anima configs, presets, `make lora`, caches and LoRAs do not apply to it,
+and a MOSS LoRA does not load on Anima.
 
 The measurements below come from one style set (caststation, 30 images of one artist).
 Step-by-step GUI walkthrough, field tables and troubleshooting:
@@ -55,8 +55,8 @@ Both quantized files are GPTQ-calibrated on MOSS prompts and pages. Their embedd
 from bf16 by ~4–5 % (relative L2) on captions and ~10 % on long JSON prompts and on pages
 through the vision tower; fp8 images on the same seed keep composition and text and change
 in small details (`_archive/bench/moss_te_fp8`). **Cache and generate with the same setting**: the TE
-cache records which encoder wrote it and switching re-encodes it, so a cache made before
-int8 became the default re-encodes on the next `cache` run unless it passes
+cache records which encoder wrote it and switching re-encodes it. A cache made before int8
+became the default re-encodes on the next `cache` run unless that run passes
 `--text_encoder bf16` (or `text_encoder = "bf16"` in a copy of `cache.toml`).
 
 ## Training
@@ -64,12 +64,11 @@ int8 became the default re-encodes on the next `cache` run unless it passes
 - **Defaults**: `--rank 32`, alpha 128 for `lora` (scale 4; `lokr` / `loha` use
   alpha = rank), `--optimizer muon`, `--lr 5e-5`, `--down_init kaiming`,
   no channel scaling, `--ema_window 0.1` (an EMA over 10 % of the updates, t2i and i2i;
-  the saved file is the EMA, the raw weights land in
-  `<name>/<name>_raw`, `--ema_extra` adds more spans, `--ema_card` keeps them on the card; `docs/moss/findings/ema_lr1e4.md`). Why kaiming and no channel scaling under Muon:
-  `docs/moss/findings/muon_channel_init.md`, `muon_no_channel_scaling.md`. Channel scaling
-  and `dc_isolate`, the AdamW-era fixes for the loud FFN input channel, were removed once
-  Muon made them no-ops; mechanism and the lr / alpha history:
-  `docs/moss/channel_scaling.md`.
+  the saved file is the EMA, the raw weights land in `<name>/<name>_raw`, `--ema_extra` adds
+  more spans, `--ema_card` keeps them on the card; `docs/moss/findings/ema_lr1e4.md`). Why
+  kaiming and no channel scaling under Muon: `docs/moss/findings/muon_channel_init.md`,
+  `muon_no_channel_scaling.md`. Channel scaling and `dc_isolate` were removed; mechanism and
+  the lr / alpha history: `docs/moss/channel_scaling.md`.
 - **Time**: 30 images × 20 epochs (600 steps) took about 18–21 min on a 5070 Ti at the
   bf16 plan's then 1.9 s/step (1.66 now; the int8 plan runs 1.05). The
   LoRA moves line work and palette toward the set; character identity holds, including
@@ -77,61 +76,54 @@ int8 became the default re-encodes on the next `cache` run unless it passes
 - **Memory**: the default plan is the int8 base (`--int8 stream`, GPTQ forward copies,
   `--stream fp32`), `--blocks_to_swap 0`, `--activation_memory_budget 0.3`, `--ema_card`,
   no checkpointing: 1.05 s/step at a 12.88 GB peak on 1024² samples, plus 4.4 GiB of pinned
-  host memory. Below 16 GB run budget 0.1 (1.07 s/step, 10.78 GB). The file downloads on first use, or via `make download-model
-  ARGS=moss-dit-int8`. One LoRA has completed on this plan (848 steps):
-  `docs/moss/optimization/int8.md`. What each part of the plan buys:
+  host memory. Below 16 GB run budget 0.1 (1.07 s/step, 10.78 GB). The file downloads on
+  first use, or via `make download-model ARGS=moss-dit-int8`. One LoRA has completed on this
+  plan (848 steps): `docs/moss/optimization/int8.md`. What each part of the plan buys:
   `docs/moss/optimization/training_step.md`.
 - **bf16 plan** (`--config configs/moss/lora_bf16.toml`): needed for `--algo loha` and the
-  i2i configs, since the int8 base refuses LoHa and has run no i2i step. `--blocks_to_swap 36`, `--activation_memory_budget 0.5`, `--swap_h2d_only`: 1.66
-  s/step at 1024² with 0.85 GB free on the largest caststation sample (4.2k image + 0.4k
-  text tokens). The step time stops improving past budget ~0.45 (0.3: 2.05 s/step), and
-  swap 28–36 run at the same speed, so the swap count trades VRAM, not step time. The i2i
-  configs run swap 38 / budget 0.175: reference tokens make their samples larger, and at
-  swap 28 budget 0.2 runs out of memory. At ~8.3k joint tokens (sanitize) 38 / 0.175 runs
-  3.79 s/step against 4.17 for 28 / 0.15. `--swap_h2d_only` keeps a page-locked CPU copy
-  of each swapped block (up to 8.8 GB of RAM) and drops the device-to-host half of every
-  swap: same numerics and VRAM, tied with the classic swap up to 38, 8% faster at 40
-  (4.69 vs 5.09 s/step on gen 4 x16); `--no-swap_h2d_only` turns it off. `--grad_checkpointing --blocks_to_swap 0` fits
-  without swap, slower. The best swap
+  i2i configs, since the int8 base refuses LoHa and the i2i task configs ship on bf16 (one
+  swap_text run has finished on the int8 base: `docs/moss/methods/i2i.md`).
+  `--blocks_to_swap 36`, `--activation_memory_budget 0.5`, `--swap_h2d_only`: 1.66 s/step at
+  1024² with 0.85 GB free on the largest caststation sample. Up to swap 36 the swap count
+  trades VRAM, not step time. The i2i configs run swap 38 / budget 0.175. Budget, swap and
+  i2i measurements and the plan table: guidebook §4.2. `--swap_h2d_only` drops the device-to-host half of
+  every swap for up to 8.8 GB of RAM: same numerics and VRAM, tied with the classic swap up
+  to 38, 8% faster at 40 (4.69 vs 5.09 s/step on gen 4 x16); `--no-swap_h2d_only` turns it
+  off. `--grad_checkpointing --blocks_to_swap 0` fits without swap, slower. The best swap
   count depends on the PCIe link and GPU; `tune_swap.py` times each count on the cache's
-  largest sample on this plan (about 4 min) and prints the flags to train with. Full plan
-  table: guidebook §4.2.
+  largest sample on this plan (about 4 min) and prints the flags to train with.
 
   ```bash
   make daemon-run ARGS="scripts/moss/tune_swap.py --cache post_image_dataset/moss/<set>"
   ```
 
-- **`--down_init`**: `kaiming` (default) or `weight_svd`, which starts `down` on the base
-  weight's top-r right singular vectors. Under AdamW `weight_svd` kept the artist's style
-  better by eye; under Muon it was dropped because its basis feeds 4–6× more input DC into
-  the adapter (output DC shift 1.24 vs 0.43 with kaiming, images about a seed change
-  apart). A DC-free variant is proposed in `docs/moss/proposal/lora_dcfree_svd_init.md`.
+- **`--down_init`**: `kaiming` (default), `weight_svd` or `weight_svd_nodc`. `weight_svd`
+  starts `down` on the base weight's top-r right singular vectors. Under Muon that basis
+  feeds 4–6× more input DC into the adapter (output DC shift 1.24 vs 0.43 with kaiming,
+  images about a seed change apart): `docs/moss/findings/muon_channel_init.md`.
+  `weight_svd_nodc` projects the calibrated input DC direction out of that basis:
+  `docs/moss/findings/dcfree_svd_init.md`.
   `--svd_slice k` (needs `--down_init weight_svd`) seeds from singular vectors
   `[k·r, (k+1)·r)` and `--svd_slice_count N` interleaves `{k, k+N, …}`, as in Anima's
   `svd_slice` (`docs/anima/methods/svd-down-lora.md`), so LoRAs on different slices start in
   orthogonal input subspaces. MOSS's targets are all ≥ 3072 wide, so rank 32 fits 96
   slices.
-- **LyCORIS** (`--algo lokr` / `--algo loha`, from `lycoris-lora`): LoKr is the
-  Kronecker product (`--factor` caps the small factor; a `--rank` at or above half the
-  larger factor's side makes `w2` full and the scale 1, hence `--rank 100000 --factor 8`),
-  LoHa the Hadamard product of two rank-r pairs. Files keep LyCORIS tensor names and load
-  through the same `--lora`. LoHa needs the bf16 plan, and on it both need
-  `--activation_memory_budget 0.1` with `--blocks_to_swap 24` or more at 1024² (swap 12 /
-  budget 0.15 ran out of memory); `tune_swap.py` measures a LoRA only. LoKr runs on the int8
-  base, but its peak there is unmeasured.
-  `--down_init` applies to `lora` only. At lr 1e-4, LoKr f8 came close to the LoRA and LoHa
-  r16 overshot (palette shift, costume leakage); LoHa at lr 5e-5 is unmeasured.
+- **LyCORIS** (`--algo lokr` / `--algo loha`, from `lycoris-lora`): `--factor` caps LoKr's
+  small factor; a `--rank` at or above half the larger factor's side makes `w2` full and the
+  scale 1, hence `--rank 100000 --factor 8`. LoHa needs the bf16 plan. `--down_init` applies
+  to `lora` only, and `tune_swap.py` measures a LoRA only. Memory settings and the lr 1e-4
+  comparison: guidebook §4.1.
 - **`--mod_rank`** (opt-in, 0 = off; `lora` only): also adapts `shared_block_modulation`,
   the one timestep → shift / scale / gate Linear all 42 blocks share, at its own rank
-  (`--mod_alpha`, default `alpha · √(mod_rank / rank)`, Anima's adaln √r law). The
-  block adapters' init and the training noise stay those of the same run without it.
-  Stamped as `rank_pattern` in the file. On caststation (240 updates) and ama_mitsuki
-  (848) at r16 the loss matched the run without it; the modulation moved < 1.2 % (shift
-  only), and on ama_mitsuki its shift flips sign between low and high σ. Images differ
-  mostly on prompts far from the set. On i2i (uncensor) it kept the area outside the edit
-  visibly better, text most of all, with the edit a tie: `docs/moss/findings/mod_rank_i2i.md`.
-  ComfyUI's LoRA loader patches it like the block adapters
-  (`lora_unet_shared_block_modulation`; checked against the `moss-image` node's HF loader).
+  (`--mod_alpha`, default `alpha · √(mod_rank / rank)`, Anima's adaln √r law). The block
+  adapters' init and the training noise stay those of the same run without it. Stamped as
+  `rank_pattern` in the file. On caststation (240 updates) and ama_mitsuki (848) at r16 the
+  loss matched the run without it; the modulation moved < 1.2 % (shift only), and on
+  ama_mitsuki its shift flips sign between low and high σ. Images differ mostly on prompts
+  far from the set. On i2i (uncensor) it kept the area outside the edit visibly better, text
+  most of all, with the edit a tie: `docs/moss/findings/mod_rank_i2i.md`. ComfyUI's LoRA
+  loader patches it like the block adapters (`lora_unet_shared_block_modulation`; checked
+  against the `moss-image` node's HF loader).
 - **Checkpoints**: `--save_every_epochs N` also saves `<name>/<name>_eN.safetensors`
   beside the final file (the last epoch is the final file). A `.json` run report
   (per-step loss) lands beside the LoRA.
@@ -169,24 +161,23 @@ needs `anime_tools`) does the same conversion.
 
 ## Sampling
 
+Trade-offs and the timing table: guidebook §5.
+
 - **Sampler defaults** come from the reference pipeline: CFG 3, the uncond branch skips
-  block 22, shift 5. Don't carry Anima habits over.
+  block 22, shift 5.
 - **`--sampler er_sde`** (default; `euler` is the pipeline's ODE): Anima's ER-SDE-Solver-3
-  on the same σ grid, same speed, composes with Spectrum. Sharper line work and denser
-  detail than Euler, but drifts from some prompt details (sunset light, hair colour); a
-  different sample at the same seed.
+  on the same σ grid, same speed, composes with Spectrum; a different sample at the same
+  seed.
 - **`--spectrum`** (on; `--no-spectrum` runs every step in full): 2.6× at 50 steps with
-  the default `flex_window 0.5`, hard to tell apart from the full 50 steps at grid scale.
+  the default `flex_window 0.5`.
 - **`--compile`** (on; `--no-compile` for eager): about 1.37× on top, with or without
-  Spectrum (Spectrum + compile 20 s vs plain eager 72 s at 1024²), for a few seconds of
-  compile per job. Fine detail drifts from the eager image; composition does not.
+  Spectrum, for a few seconds of compile per job. Fine detail drifts from the eager image;
+  composition does not.
 - **DAVE** (`--dave auto`, off): more same-prompt variety across seeds; `docs/moss/inference/dave.md`.
-- **`--stream fp32`** (`bf16` default in generation, `fp32` in training): the residual stream, modulation, norms, embedders
-  and head run in fp32 around the bf16 block GEMMs. Prediction error against an fp32
-  forward drops 2.4–3.5×, for +1.5% time and +0.6 GB; renders change in detail (a few
-  /255, occasionally the composition on SFT) with neither precision consistently better.
-  A LoRA loads under either, whatever it trained with. The ComfyUI MOSS Toolkit loader has
-  the same `stream` knob. `docs/moss/methods/fp32_stream.md`.
+- **`--stream fp32`** (`bf16` default in generation, `fp32` in training): fp32 around the
+  bf16 block GEMMs. Prediction error against an fp32 forward drops 2.4–3.5×, for +1.5% time
+  and +0.6 GB. A LoRA loads under either, whatever it trained with.
+  `docs/moss/methods/fp32_stream.md`.
 - **CNS** has no `generate.py` flag. The six MOSS γ files
   (`networks/calibration/moss_cns_gamma*.npz`, `docs/cns.md`) are used by the
   bench and by the ComfyUI Spectrum node's `er_sde_cns`, which picks one by variant and cfg.
@@ -203,7 +194,7 @@ file is in ComfyUI's `int8_tensorwise` + `convrot` format for the same loader.
 ## i2i (image to image)
 
 An i2i LoRA learns a reference → target edit; the reference rides every forward as clean
-latent tokens on RoPE's `r` axis. Recipes for `colorize` and `sanitize` live in
+latent tokens on RoPE's `r` axis. Recipes for `colorize`, `sanitize`, `swap_text` and `uncensor` live in
 `configs/moss/i2i/<task>/`. Tasks, flags, commands, the sanitize run and its ComfyUI
 workflow: `docs/moss/methods/i2i.md`.
 
@@ -215,12 +206,12 @@ REPA, parked, `_archive/moss_lora/repa.md`); `--ref_timestep` / `--ref_isolate` 
 
 ## More
 
-- Channel scaling and `dc_isolate` (removed): `docs/moss/channel_scaling.md`. DAVE: `docs/moss/inference/dave.md`. The i2i tone term: `docs/moss/methods/tone_loss.md`.
+- The i2i tone term: `docs/moss/methods/tone_loss.md`.
 - Findings (attention sink, vision-tower reference, σ staircase, Spectrum schedule):
   `docs/moss/findings/`.
 - Massive channels (1356, 42) as a semantic carrier, from arXiv 2605.13974 (reading note,
   unmeasured): `docs/moss/proposal/massive_activation_semantics.md`.
-- i2i design + probes: `project/finished/moss_lora/done/i2i.md`. The Anima-negatives sweep is archived (`_archive/proposals/moss_anima_negatives_revisit.md`).
+- The Anima-negatives sweep is archived (`_archive/proposals/moss_anima_negatives_revisit.md`).
 - Run logs: `project/finished/moss_lora/` (`README.md`, sub-line logs, technical-report notes);
   settled logs (sampler, channel scaling, DAVE, seed soup) in `project/finished/moss_lora/done/`;
   parked lines (caption dropout, REPA) in `_archive/moss_lora/`. LoRA / sampler A/B grids:

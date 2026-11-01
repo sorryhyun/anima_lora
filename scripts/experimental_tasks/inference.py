@@ -94,12 +94,8 @@ def cmd_test_soft(extra):
     """Inference with latest soft_tokens weight (SoftREPA-style per-layer × per-t bank).
 
     Resolves the newest ``anima_soft_tokens*.safetensors`` under ``output/ckpt/``
-    and passes it via ``--soft_tokens_weight``. The network is built in
-    ``library/inference/generation.py``, ``apply_to`` monkey-patches the first
-    ``n_layers`` ``Block.forward``s, and ``append_postfix(..., timesteps=t)``
-    fires per CFG branch inside the denoising loop (mirrored in the Spectrum
-    runner). Composes freely with ``--spectrum``; cached spectrum steps skip
-    blocks so soft_tokens silently no-ops on those steps.
+    and passes it via ``--soft_tokens_weight``. Composes with ``--spectrum``;
+    cached spectrum steps skip blocks, so soft_tokens no-ops on those steps.
     """
     run(
         [
@@ -238,8 +234,7 @@ def cmd_test_directedit_dry(extra):
 
     Add ``--fm_score`` to also rank each variant's ψ_src by its intrinsic
     flow-matching error (AGSM-style reward; lower = more on-manifold) and
-    correlate that ranking against each variant's reconstruction MSE — a
-    quantitative replacement for eyeballing the side-by-side divergence.
+    correlate that ranking against each variant's reconstruction MSE.
 
     Examples:
       make exp-test-directedit-dry

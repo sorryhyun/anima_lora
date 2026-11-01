@@ -1,11 +1,8 @@
-"""Dataset curation tasks — organize / select images, distinct from preprocess.
+"""Command bodies for the ``make curate-*`` targets.
 
-``preprocess-*`` makes data training-ready (resize → latent/text/PE caches);
-``curate-*`` is about *curation* — grouping, dedup, coverage — over the native
-source tree. Command bodies for the ``make curate-*`` targets live here. Each
-runs an ``anime_tools`` stage as its request object (``GroupRequest``)
-through ``_common.execute_stage``: in-process under a daemon job, a
-``python -m`` child from a shell.
+Grouping, dedup and coverage over the native source tree. Each runs an
+``anime_tools`` stage as its request object (``GroupRequest``) through
+``_common.execute_stage``.
 """
 
 from __future__ import annotations

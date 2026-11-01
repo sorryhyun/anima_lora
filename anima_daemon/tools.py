@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-# Machine-readable manifest served at GET /tools and registered by mcp.py — one
-# entry per operation with a JSON-Schema `input_schema`. Kept in sync with the
-# handlers by hand.
+# Kept in sync with the handlers by hand.
 TOOLS = [
     {
         "name": "submit_training",
@@ -124,7 +122,7 @@ TOOLS = [
         "name": "get_job",
         "description": (
             "Fetch one job record plus live fields: 'latest' (last progress.jsonl event, "
-            "train jobs only) and 'stale_for' (seconds since last progress tick). Poll this for completion."
+            "when the job writes one) and 'stale_for' (seconds since last progress tick). Poll this for completion."
         ),
         "method": "GET",
         "path": "/jobs/{id}",

@@ -16,8 +16,8 @@ MOSS runs bf16 end to end and nothing runs under autocast, so each block's
 rounding is most of bf16's error, more than the GEMMs. Turning off cuBLAS's reduced-precision
 reduction does not move the prediction.
 
-The precision goes where it is cheap. The expensive kernels are the GEMMs and attention, and
-those stay narrow; the fp32 work is elementwise adds, norms and modulation.
+The expensive kernels, the GEMMs and attention, stay narrow; the fp32 work is elementwise
+adds, norms and modulation.
 
 ## How it works
 
@@ -39,18 +39,11 @@ it, and a LoRA loads under either stream. The ComfyUI MOSS Toolkit loader has th
 
 ## Accuracy
 
-Prediction error, `‖v − v_fp32‖ / ‖v_fp32‖` in %, on held-out t2i images:
-
-| σ | bf16 | bf16, fp32 stream | int8 GPTQ | int8 GPTQ, fp32 stream |
-|---|---|---|---|---|
-| 0.1 | 4.81 | 1.64 | 5.93 | **3.85** |
-| 0.5 | 1.93 | 0.81 | 2.43 | **1.71** |
-| 0.9 | 2.08 | 0.59 | 2.30 | **1.34** |
+Prediction error per σ, t2i and i2i: [int8.md](../optimization/int8.md#accuracy).
 
 - Around bf16 GEMMs the stream cuts the error 2.4–3.5x, and the loss matches fp32 to the
   fourth decimal.
-- Around int8 GPTQ it lands below today's bf16 at every σ tested, in t2i and in i2i
-  ([table](../optimization/int8.md#accuracy)).
+- Around int8 GPTQ it lands below bf16 at every σ tested, in t2i and in i2i.
 - LoRA gradients improve only in the late blocks: blocks 28–41 move 1.5–3x closer to fp32 around
   bf16 GEMMs. Blocks 0–27 barely move, since they still pass back through every later block's
   dX GEMMs and the FA2 backward.
@@ -92,7 +85,6 @@ target in itself.
 
 ## Trying it on another model
 
-The arm is a parameter cast, so it costs little to test on any residual network run in bf16
-without autocast. Cast everything but the block GEMMs, then score `‖v − v_fp32‖` against a true
-fp32 forward with TF32 off. If the error drops by about this much, the stream was the main
-source. Attention and the dX GEMMs are what it leaves behind.
+On any residual network run in bf16 without autocast: cast everything but the block GEMMs, then
+score `‖v − v_fp32‖` against a true fp32 forward with TF32 off. If the error drops by about this
+much, the stream was the main source. Attention and the dX GEMMs are what it leaves behind.

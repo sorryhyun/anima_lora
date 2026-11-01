@@ -4,8 +4,7 @@ The Train button submits a job to the daemon (so training survives the GUI
 closing) and the tab then *observes* that job by polling the per-job files the
 daemon writes to local disk — ``job.json`` for state, ``progress.jsonl`` for the
 bar, ``stdout.log`` for the log. Everything is poll-driven off the tab's
-``QTimer``; there is no background thread / SSE consumer (the daemon is
-localhost-only, so the files are local).
+``QTimer``, with no background thread or SSE consumer.
 
 The daemon client is pure ``urllib`` and ``config`` is pure ``pathlib``, so no
 ``library.*`` / torch import reaches the GUI.
@@ -53,13 +52,11 @@ def is_running() -> bool:
 
 
 def ensure_daemon_quietly(*, timeout: float = 20.0) -> bool:
-    """Bring the daemon up at GUI launch — idempotent, never blocks startup.
+    """Bring the daemon up at GUI launch; idempotent.
 
-    ``ensure_daemon`` is a no-op when ``/health`` already answers, so this is
-    safe to call unconditionally (a daemon left running by the CLI / a previous
-    GUI session is reused, not duplicated). Any startup failure is swallowed and
-    reported via the return value: the GUI must always open, and the Train
-    button's own ``ensure_daemon`` will surface a real error if it's still down.
+    A startup failure is swallowed and reported via the return value: the GUI
+    must always open, and the Train button's own ``ensure_daemon`` surfaces a
+    real error if it's still down.
     """
     try:
         ensure_daemon(timeout=timeout)
@@ -81,8 +78,8 @@ def submit_training(
 ) -> dict:
     """Auto-start the daemon if needed and enqueue a training job.
 
-    Equivalent to ``tasks.py lora-gui <variant>``: ``method`` is the gui-methods variant stem and ``methods_subdir`` is
-    ``"gui-methods"``. ``start`` controls the queue gate: ``True`` (the main
+    Equivalent to ``tasks.py lora-gui <variant>``: ``method`` is the gui-methods
+    variant stem and ``methods_subdir`` is ``"gui-methods"``. ``start`` controls the queue gate: ``True`` (the main
     Train button) runs it now, ``False`` (the queue dropdown) holds it until
     "Start Queue". Returns the daemon's ``{job_id, state}`` response.
     """
@@ -112,12 +109,11 @@ def submit_command(
     """Auto-start the daemon if needed and enqueue a plain task job.
 
     Equivalent to ``python tasks.py <target>`` (e.g. preprocess / mask), but
-    runs it through the daemon's serial queue so it
-    survives the GUI closing and can't fight a training run for the GPU.
+    runs it through the daemon's serial queue so it survives the GUI closing and
+    can't fight a training run for the GPU.
 
     ``chain_train`` (``{method, preset, methods_subdir}``) makes the daemon
-    enqueue that training job itself once this one finishes successfully — the
-    "preprocess → train" auto-chain then completes even if the GUI closes
+    enqueue that training job once this one succeeds, even if the GUI closes
     mid-way. ``start`` controls the queue gate: ``True`` (a main Run action)
     runs it now, ``False`` (the "add to queue" dropdown) holds it until "Start
     Queue". Returns the daemon's ``{job_id, state}`` response.
@@ -157,11 +153,10 @@ def list_jobs() -> list:
 def list_jobs_passive() -> list:
     """List jobs only if a root-matching daemon is already up.
 
-    Unlike :func:`list_jobs`, this never spawns a daemon and never blocks waiting
-    for one to boot — it is for passive monitors (the Queue tab) that poll on a
-    timer and must not start a daemon merely by being viewed, nor freeze the UI
-    thread on a slow/failed daemon launch. Raises :class:`DaemonUnavailable` when
-    no matching daemon answers ``/health``.
+    Unlike :func:`list_jobs`, this never spawns a daemon or waits for one to
+    boot, so a monitor polling on a timer (the Queue tab) neither starts a daemon
+    nor freezes the UI thread. Raises :class:`DaemonUnavailable` when no matching
+    daemon answers ``/health``.
     """
     if _current_health() is None:
         raise DaemonUnavailable("no training daemon is running for this checkout")
@@ -171,9 +166,7 @@ def list_jobs_passive() -> list:
 def queue_snapshot_passive() -> tuple[list, bool]:
     """``(jobs, paused)`` for the Queue tab — passive, never spawns a daemon.
 
-    One ``/health`` probe (also the root-match check) plus the job list, so the
-    tab gets the queue's pause state without an extra round-trip. Raises
-    :class:`DaemonUnavailable` when no matching daemon answers ``/health``.
+    Raises :class:`DaemonUnavailable` when no matching daemon answers ``/health``.
     """
     health = _current_health()
     if health is None:
@@ -201,12 +194,9 @@ def stdout_path(job_id: str) -> str:
 
 
 def read_job_state(job_id: str) -> Optional[str]:
-    """Read the persisted job state straight from ``job.json``.
-
-    Cheaper and hang-proof vs. an HTTP round-trip every poll tick: the daemon
-    writes ``job.json`` atomically on every state transition, so a local read is
-    always a complete, current record. Returns ``None`` if the file isn't there
-    yet (job dir not created) or is mid-rewrite.
+    """Read the persisted job state straight from ``job.json``, which the daemon
+    writes atomically on every transition. ``None`` if the file isn't there yet
+    (job dir not created) or is unreadable.
     """
     data = _read_job_record(job_id)
     return data.get("state") if data else None
@@ -215,10 +205,9 @@ def read_job_state(job_id: str) -> Optional[str]:
 def read_job_kind(job_id: str) -> str:
     """Job kind ('train' | 'command') from ``job.json``.
 
-    Lets the two daemon-observing tabs (ConfigTab, PreprocessingTab) share the
-    daemon's single active job without each other's job: each only re-attaches
-    to jobs of its own kind. Defaults to 'train' for a missing/legacy record so
-    pre-existing checkpoints still re-attach to the training tab.
+    ConfigTab and PreprocessingTab each re-attach only to jobs of their own
+    kind. Defaults to 'train' for a missing/legacy record so pre-existing
+    checkpoints still re-attach to the training tab.
     """
     data = _read_job_record(job_id)
     return (data.get("kind") if data else None) or "train"
@@ -248,10 +237,9 @@ def read_job_started_at(job_id: str) -> Optional[float]:
     """Wall-clock epoch when the daemon began running ``job_id`` (falling back to
     its submit time, then ``None`` for a missing/legacy record).
 
-    Used as a floor for the training-sample gallery: only previews written at or
-    after this time belong to the current run, so a fresh launch never surfaces
-    the previous run's stale sample PNGs — they accumulate under
-    ``<output_dir>/sample`` with timestamped names and are never deleted.
+    Floor for the training-sample gallery: sample PNGs accumulate under
+    ``<output_dir>/sample`` and are never deleted, so only those written at or
+    after this time belong to the current run.
     """
     data = _read_job_record(job_id)
     if not data:
@@ -263,15 +251,12 @@ def read_job_started_at(job_id: str) -> Optional[float]:
 
 
 def read_job_chain_variant(job_id: str) -> Optional[str]:
-    """The training variant a command job is the auto-chain preprocess for.
+    """The training variant a command job is the auto-chain preprocess for
+    (``chain_train.method``), or ``None`` for a job that isn't one.
 
-    The ConfigTab's Train button submits its auto-chain preprocess as a
-    ``command`` job carrying a ``chain_train`` spec (the daemon uses it to
-    enqueue the follow-on training; persisted in ``job.json``). The variant is
-    ``chain_train.method``. This marker is how the ConfigTab re-claims *its own*
-    preprocess on GUI reopen — distinguishing it from a standalone
-    preprocess/mask the PreprocessingTab owns — to keep the bar live and Train
-    blocked. Returns ``None`` for a job that isn't an auto-chain step.
+    ConfigTab re-claims its own preprocess by this marker on GUI reopen, to keep
+    the bar live and Train blocked; a standalone preprocess/mask belongs to
+    PreprocessingTab.
     """
     data = _read_job_record(job_id)
     if not data:
@@ -280,13 +265,11 @@ def read_job_chain_variant(job_id: str) -> Optional[str]:
 
 
 def read_job_chained_id(job_id: str) -> Optional[str]:
-    """The follow-on training job id the daemon spawned for ``job_id``, if any.
+    """The follow-on training job id the daemon spawned for ``job_id``, or
+    ``None`` until the chain fires (``manager._finalize``).
 
-    Set by the daemon when an auto-chain preprocess finishes successfully (see
-    ``manager._finalize``). Lets the ConfigTab hop straight from observing the
-    preprocess to observing the training the daemon just enqueued — instead of
-    launching training itself (which would double-submit). ``None`` until/unless
-    the chain fired.
+    ConfigTab hops to this job instead of launching training itself, which would
+    double-submit.
     """
     data = _read_job_record(job_id)
     if not data:
@@ -295,12 +278,8 @@ def read_job_chained_id(job_id: str) -> Optional[str]:
 
 
 def read_job_error(job_id: str) -> Optional[str]:
-    """The daemon's terminal-state diagnosis from ``job.json`` (None if clean).
-
-    The manager always records *why* a job ended in ``error``/``stopped`` —
-    e.g. ``"process exited (code=137): killed (SIGKILL) — almost always out of
-    memory…"`` for a silent OOM-killer death that left no traceback. The GUI
-    reads it here so the finish banner can show the reason, not just the state.
+    """The daemon's terminal-state diagnosis from ``job.json`` (None if clean),
+    for the finish banner.
     """
     data = _read_job_record(job_id)
     if not data:
@@ -366,11 +345,7 @@ def extract_error_summary(job_id: str) -> Optional[str]:
 def format_finish_banner(job_id: str, state: Optional[str]) -> str:
     """The GUI finish banner: state line + the daemon's error reason + a
     best-guess cause line scraped from stdout.log. Multi-line, no surrounding
-    newlines. Shared by ConfigTab and PreprocessingTab so they stay in sync.
-
-    On a clean ``done`` it's just the plain banner; on ``error`` it carries the
-    daemon's diagnosis (``job.error``) and, when distinct, the salient
-    traceback line so the user doesn't have to scroll up for the cause.
+    newlines. Shared by ConfigTab and PreprocessingTab.
     """
     from gui.i18n import t
 
@@ -388,12 +363,10 @@ def format_finish_banner(job_id: str, state: Optional[str]) -> str:
 
 
 class FileTailer:
-    """Tail a growing text file by byte offset — thread-free, poll-driven.
+    """Tail a growing text file by byte offset, poll-driven.
 
-    The daemon captures the training subprocess's stdout+stderr to
-    ``stdout.log``; this reads whatever's been appended since the last call. A
-    fresh :meth:`watch` (pos 0) replays the whole file, which is what re-attach
-    relies on to repopulate the log widget after a GUI restart.
+    A fresh :meth:`watch` (pos 0) replays the whole file, which re-attach relies
+    on to repopulate the log widget after a GUI restart.
     """
 
     def __init__(self) -> None:

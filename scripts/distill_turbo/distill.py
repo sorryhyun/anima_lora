@@ -3,12 +3,9 @@
 Usage:
     python -m scripts.distill_turbo.distill [--config configs/methods/turbo.toml] ...
 
-The math walkthrough lives in :mod:`scripts.distill_turbo`; this file is the
-per-step orchestrator (teacher K-step anchor → diversity-supervised first step →
-DMD-refined N-step student rollout → fake/critic update → save). Run construction
-(model, adapters, optimizers, dataloader, resume, warmup) lives in
-:mod:`scripts.distill_turbo.setup`; ``run_loop`` below consumes the ``RunContext``
-it returns.
+The per-step orchestrator: teacher K-step anchor → diversity-supervised first step
+→ DMD-refined N-step student rollout → fake/critic update → save. ``run_loop``
+consumes the ``RunContext`` that :mod:`scripts.distill_turbo.setup` builds.
 """
 
 from __future__ import annotations
@@ -140,8 +137,7 @@ def run_loop(ctx: RunContext, cfg):
             )
             B = latents.shape[0]
 
-            # No-op today (mode="default" doesn't enable cudagraphs), but the right
-            # cadence if/when the script switches to "reduce-overhead".
+            # No-op under mode="default"; "reduce-overhead" needs it once per step.
             torch.compiler.cudagraph_mark_step_begin()
 
             # Student update: roll an N-step Euler grid from pure noise ε (dpdmd
@@ -365,21 +361,15 @@ def run_loop(ctx: RunContext, cfg):
             eps_dm = dmd.eps_dm
 
             # --- L_CDM off-trajectory loss ---
-            # Encapsulated in steps.cdm_off_trajectory_loss (extrapolate → one grad
-            # forward → real-vs-fake surrogate → in-branch backward, view restored to
-            # student, + metrics.add_cdm). ORDER MATTERS: it MUST run BEFORE the GAN
-            # gen forward — that forward's checkpointed recompute happens at backward
-            # under the then-current view, so CDM must be the last view flip before it.
+            # ORDER MATTERS: must run BEFORE the GAN gen forward, whose checkpointed
+            # recompute happens at backward under the then-current view, so CDM must
+            # be the last view flip before it.
             if cdm_on and cdm_src is not None:
                 cdm_off_trajectory_loss(
                     ctx, cfg, cdm_src, crossattn_emb, c_null, latents, mask, B
                 )
 
             # --- GAN generator term + f-distill reweighting ---
-            # No-op when the GAN is off or the delay/warmup ramp still holds the
-            # generator-side λ at 0 (disc keeps training below); otherwise returns
-            # the gen loss, the (possibly f-distill-reweighted) grad_signal, and
-            # the updated EMA bins.
             gan_w = gan_effective_weight(cfg, step)
             gan_gen_loss, grad_signal, fdistill_bins = gan_generator_term(
                 ctx,
@@ -431,8 +421,6 @@ def run_loop(ctx: RunContext, cfg):
             student_sched.step()
 
             # --- fake (critic) + discriminator update against x_pred.detach() ---
-            # Runs the fake + disc optimizer/scheduler steps in-place; returns the
-            # mean fake / disc loss over the inner steps for logging.
             # Under DMAD: the disc update instead, on (teacher sample, x_pred, real
             # latents) — the teacher sample finishes this step's anchor rollout.
             if dmad is not None:
@@ -579,9 +567,6 @@ def run_loop(ctx: RunContext, cfg):
                     f"(fidelity; not a quality score)"
                 )
 
-            # Each checkpoint is kept under a step-tagged name (no overwrite, so the
-            # whole trajectory survives); the final step also writes the canonical
-            # bare `{output_name}` that inference / merge / `make test` look for.
             if (step + 1) % cfg.save_every == 0 or (step + 1) == cfg.iterations:
                 n = step + 1
                 is_final = n == cfg.iterations
@@ -646,9 +631,9 @@ def run_loop(ctx: RunContext, cfg):
                     # count == student_steps.
                     metadata["ss_turbo_per_step_expert"] = "1"
                     metadata["ss_turbo_step_expert_K"] = str(cfg.step_expert_K)
-                # Step-tagged intermediates live in a per-run subdir so they don't
-                # clutter output/ckpt/; the canonical bare {output_name} stays at the
-                # root where inference / merge / `make test` look for it.
+                # Step-tagged checkpoints go to a per-run subdir; the final step also
+                # writes the bare {output_name} at the root, where inference / merge /
+                # `make test` look for it.
                 ckpt_subdir = Path(cfg.output_dir) / cfg.output_name
                 ckpt_subdir.mkdir(parents=True, exist_ok=True)
                 save_paths = [

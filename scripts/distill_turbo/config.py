@@ -23,9 +23,8 @@ from library.config.resolved import pick as _pick
 def _default_mask_dir() -> str:
     """Shared ``mask_dir`` default (configs/preprocess.toml → base → preset).
 
-    The bespoke DP-DMD loop bypasses ``train.py``'s merge chain, so read the
-    same key here rather than re-hardcoding the path — otherwise moving the
-    mask root silently leaves turbo pointed at the old one.
+    The bespoke DP-DMD loop bypasses ``train.py``'s merge chain, so it reads the
+    same key itself.
     """
     try:
         from library.config.io import load_path_overrides
@@ -254,7 +253,7 @@ def build_argparser() -> argparse.ArgumentParser:
         "≈ τ·mean|v_real|, the τ CANCELS across the bulk → ≈ no-τ, magnitude-"
         "normalized. This REPLACES the default τ-damping (policy 'a'); it does NOT "
         "stack with it (that would be policy 'c'). A/B lever — see "
-        "docs/anima/proposal/dmd2_decoupled_improvements.md §2B.",
+        "_archive/proposals/dmd2_decoupled_improvements.md §2B.",
     )
     parser.add_argument(
         "--norm_floor",
@@ -759,15 +758,14 @@ class TurboConfig:
     fake_rank: int
     student_alpha: float
     fake_alpha: float
-    # τ-split critic: 1 = single fake (the
-    # shipped, byte-identical loop); 2 = dual banks split at fake_tau_boundary
+    # τ-split critic: 1 = single fake; 2 = dual banks split at fake_tau_boundary
     # (bank 0 owns [0, b)). Requires batch_size=1.
     fake_tau_banks: int
     fake_tau_boundary: float
     attn_mode: str
     use_custom_down_autograd: bool
-    # Per-input-channel rebalance on each lora_down. Bit-equivalent at init,
-    # merges out — a gradient-conditioning lever, not an inference correction.
+    # Per-input-channel rebalance on each lora_down. A no-op at init that merges
+    # out at save, so it only conditions gradients.
     channel_scaling_alpha: float
     # Per-step expert (dual-B-head student): step_expert_K = student_steps, head
     # k serves denoise step k. Off → single-head student.
@@ -778,7 +776,7 @@ class TurboConfig:
     # step-0 diversity gradient, pool B (student_rank) only the DMD/GAN/CDM
     # refinement gradients. Merged ΔW_A+ΔW_B saves as one plain LoRA. Requires
     # dpdmd + detach_after_first; mutually exclusive with per_step_expert. Off →
-    # single-pool student, byte-identical to the shipped loop.
+    # single-pool student.
     dual_pool: bool
     div_pool_rank: int
     div_pool_lr: float  # 0 = inherit student_lr
@@ -846,7 +844,7 @@ class TurboConfig:
     # CDM off-trajectory loss (L_CDM, arXiv:2605.06376): supervise
     # the student's local x0 estimate at a velocity-extrapolated off-trajectory
     # point (t' ~ U(0,1)) with the same real-vs-fake delta as the DM branch.
-    # 0 = the whole path off (byte-identical loop).
+    # 0 = the whole path off.
     cdm_weight: float
     cdm_grad_ckpt: bool  # checkpoint ONLY the grad-bearing CDM student forward
 
@@ -1018,7 +1016,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         )
     else:
         use_custom_down_autograd = bool(args.use_custom_down_autograd)
-    # Defaults off so existing turbo snapshots reproduce bit-for-bit.
+    # Defaults off so existing turbo snapshots reproduce.
     channel_scaling_alpha = float(
         _pick(args.channel_scaling_alpha, cfg, "channel_scaling_alpha", 0.0)
     )
@@ -1038,13 +1036,12 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     dm_x0_norm = bool(_pick(args.dm_x0_norm, cfg, "dmd.dm_x0_norm", False))
     norm_floor = float(_pick(args.norm_floor, cfg, "dmd.norm_floor", 0.05))
     dmd_grad_step = str(_pick(args.dmd_grad_step, cfg, "dmd.grad_step", "all"))
-    # Default off so existing turbo snapshots reproduce bit-for-bit.
+    # Default off so existing turbo snapshots reproduce.
     dynamic_schedule = bool(_flatten(cfg, "dmd.dynamic_schedule", False))
 
     base_loss = _pick(args.base_loss, cfg, "base_loss", "dpdmd")
 
-    # weight=0 keeps the whole L_CDM path off → byte-identical loop (no extra
-    # forwards, no extra RNG draws).
+    # weight=0 keeps the whole L_CDM path off (no extra forwards or RNG draws).
     cdm_weight = float(_pick(args.cdm_weight, cfg, "cdm.weight", 0.0))
     cdm_grad_ckpt = bool(
         _flatten(cfg, "cdm.grad_ckpt", True)
@@ -1052,7 +1049,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         else args.cdm_grad_ckpt
     )
 
-    # weight_gen=0 keeps the whole GAN/disc path off → byte-identical DP-DMD.
+    # weight_gen=0 keeps the whole GAN/disc path off.
     # feature_block_idx sentinel is -2 (not -1) because -1 means middle block.
     gan_loss_weight_gen = float(
         _pick(args.gan_loss_weight_gen, cfg, "gan.weight_gen", 0.0)
@@ -1064,8 +1061,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     gan_disc_lr = float(_pick(args.gan_disc_lr, cfg, "gan.disc_lr", 1e-5))
     gan_disc_hidden = int(_flatten(cfg, "gan.disc_hidden", 0))
     gan_disc_head = str(_pick(args.gan_disc_head, cfg, "gan.disc_head", "pooled"))
-    # Both default 0 → the generator term engages at full weight from step 0
-    # (byte-identical shipped loop).
+    # Both default 0 → the generator term engages at full weight from step 0.
     gan_delay_steps = int(_pick(args.gan_delay_steps, cfg, "gan.delay_steps", 0))
     gan_warmup_steps = int(_pick(args.gan_warmup_steps, cfg, "gan.warmup_steps", 0))
     gan_r1_weight = float(_pick(args.gan_r1_weight, cfg, "gan.r1_weight", 0.0))
@@ -1083,8 +1079,8 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     f_bin_num = int(_flatten(cfg, "f_distill.bin_num", 10))
     f_ratio_normalization = bool(_flatten(cfg, "f_distill.ratio_normalization", True))
 
-    # weight=0 keeps the whole soft-rank path off → byte-identical DP-DMD (no
-    # extra forwards, no extra RNG draws, no negatives loaded).
+    # weight=0 keeps the whole soft-rank path off (no extra forwards, RNG draws
+    # or negatives loaded).
     softrank_weight = float(_pick(args.softrank_weight, cfg, "softrank.weight", 0.0))
     softrank_k = int(_pick(args.softrank_k, cfg, "softrank.k", 2))
     softrank_every_n = int(_pick(args.softrank_every_n, cfg, "softrank.every_n", 4))
@@ -1805,13 +1801,10 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
 
 
 def snapshot_toml_text(c: TurboConfig, *, source_config: str | None = None) -> str:
-    """Render the fully-resolved turbo config as a provenance TOML snapshot.
+    """Render every resolved field (CLI overrides folded in) as a TOML snapshot.
 
-    Unlike :func:`tb_config_text` (a TB summary of a hand-picked subset), this
-    dumps *every* resolved field — CLI overrides folded in — so the run log dir
-    becomes a self-contained record of "this run + the config that produced it".
-    It's the turbo analogue of the ``<output_name>.snapshot.toml`` that
-    ``train.py`` writes for the LoRA family.
+    The turbo analogue of the ``<output_name>.snapshot.toml`` that ``train.py``
+    writes for the LoRA family.
     """
     return dataclass_snapshot_toml(
         c,
@@ -1820,7 +1813,7 @@ def snapshot_toml_text(c: TurboConfig, *, source_config: str | None = None) -> s
     )
 
 
-# TensorBoard config summary — the hand-picked subset (v1 key set/order).
+# TensorBoard config summary: a hand-picked subset of the resolved fields.
 _TB_KEYS = (
     "base_loss",
     "gan_loss_weight_gen",
@@ -1851,5 +1844,5 @@ _TB_KEYS = (
 
 
 def tb_config_text(c: TurboConfig) -> str:
-    """Formatted TensorBoard config summary (same key set as v1)."""
+    """Formatted TensorBoard config summary (``_TB_KEYS``)."""
     return dataclass_tb_text(c, include=_TB_KEYS)

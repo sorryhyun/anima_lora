@@ -1,12 +1,12 @@
 # CLAUDE.md — `library/moss/`
 
-**This is not Anima.** MOSS-Image (OpenMOSS, Apache-2.0) is a 5B single-stream DiT on a
-frozen Qwen3.5-9B text encoder and the frozen FLUX.2 VAE; the Anima
-invariants in the root `CLAUDE.md` are wrong here. Shared with Anima: `library.runtime.{offloading,blockswap,dynamo}`,
+MOSS-Image (OpenMOSS, Apache-2.0) is a 5B single-stream DiT on a frozen Qwen3.5-9B text
+encoder and the frozen FLUX.2 VAE. **The Anima invariants in the root `CLAUDE.md` are wrong
+here.** Shared with Anima: `library.runtime.{offloading,blockswap,dynamo,progress}`,
 `library.env`, the daemon, the ER-SDE sampler + CNS core (`library.inference.sampling`,
-`library.inference.corrections.cns_core`), `library.vision.repa`, `library.runtime.progress`. Shared with
+`library.inference.corrections.cns_core`), `library.vision.repa`. Shared with
 `library/qwen21/`: `library.lines` (`requests.py` request base, `adapters.py` LoRA / LoKr /
-LoHa, `scan.py` the GUI's counts). `spectrum.py` re-implements Anima's forecaster rather than
+LoHa, `scan.py` the GUI's counts). `spectrum.py` re-implements Anima's forecaster without
 importing `networks/` (`tests/test_moss_spectrum.py` checks it against the core). Nothing
 Anima-side imports `library.moss`, and it imports the rest of `library` only through the
 list in `tests/test_moss_boundary.py`.
@@ -30,17 +30,18 @@ list in `tests/test_moss_boundary.py`.
 | `dave.py` | DAVE on image tokens via `model.layer_hook` (sees only rows that ran the block, so skip-22 is handled); τ is a step count; massive channels (`calibration/massive_channels.npz`) excluded. `auto` = `calibration/dave_alpha.npz`; the ComfyUI node `~/ComfyUI-Anima-DAVE` bundles the same pool + channel list. User doc `docs/moss/inference/dave.md` |
 | `lora.py` | adapters bound to `layers`, held **outside** the blocks (the swapper moves every `.weight` under a block). `down_init weight_svd_nodc` / `svd_drop_loud` read `calibration/` stats from `scripts/calibration/moss_channel_stats.py`; `load_for_inference` applies the LoRA's stamped `ref_timestep` / `ref_isolate` (`ref_settings`) |
 | `training/` | `train.py`'s parts: `data.py` samples, `choose_embeds`, σ; `losses.py` the terms; `ema.py`; `muon.py` `BatchedMuon`, torch's Muon stacked by matrix shape; `memory.py` placement, budget, fit report; `setup.py` what `train` builds before its loop. `train.py` re-exports them: it stays their import path and the seam finished scripts patch (`T.training_loss`, `T.place`, `T.LoRANetwork`, `T.load_transformer`) |
-| `train.py` | `run_train(req)`, the loop; `choose_embeds` picks plain / variant / empty caption per step, one RNG each (the empty prompt is the shipped `asset/empty_prompt.safetensors`). Reference latents (`*.moss_ref`) train with `ref_timestep` / `ref_isolate`, stamped in the LoRA. `tone_weight` (off) adds the x̂₀ tone term on the unedited tokens, projected to Lab by `calibration/tone_dirs.safetensors` (`docs/moss/methods/tone_loss.md`). Streams `progress.jsonl` (the daemon job dir, else `output/logs/<stem>.progress.jsonl`) so `make run-status` follows it. `--fit_report` measures peak VRAM on the largest sample; above `PRELOAD_LIMIT_GB` samples stream from disk |
+| `train.py` | `run_train(req)`, the loop; `choose_embeds` picks plain / variant / empty caption per step, one RNG each (the empty prompt is the shipped `asset/empty_prompt.safetensors`). Reference latents (`*.moss_ref`) train with `ref_timestep` / `ref_isolate`, stamped in the LoRA. `tone_weight` (off): `docs/moss/methods/tone_loss.md`. Streams `progress.jsonl` (the daemon job dir, else `output/logs/<stem>.progress.jsonl`) so `make run-status` follows it. Above `PRELOAD_LIMIT_GB` samples stream from disk |
 | `repa.py` | relational REPA on one block via `layer_hook`; parked (`repa_weight` 0 = off) |
 | `tune.py` | `run_tune(req)`: recommends `--blocks_to_swap` / `--activation_memory_budget` on the bf16 plan |
 | `scan.py` | **torch-free** cache layout + GUI counts; its stale check (`source_sha256` vs `.txt`) can disagree with `cache.py`'s (`_te_current`) |
 
-Sidecars `scripts/moss/{cache,colorize_cache,generate,train,tune_swap}.py` are thin argparse over the
-requests, submitted through the daemon; `make gui-moss` submits the same jobs (its i2i tabs:
-`gui/moss/i2i.py`). User doc
-`docs/moss/README.md`. Weights: catalog packs `moss-base` / `moss-sft` under
-`models/moss_image/MOSS-Image-{Base,SFT}`; SFT ships its DiT alone, TE / VAE / tokenizer
-always load from Base. Research line (finished): `project/finished/moss_lora/`; A/B and i2i eval scripts: `bench/moss_ab/`, `bench/moss_i2i_eval/`.
+Sidecars `scripts/moss/{cache,colorize_cache,generate,train,tune_swap}.py` are thin argparse
+over the requests, submitted through the daemon; `make gui-moss` submits the same jobs (its
+i2i tabs: `gui/moss/i2i.py`). User doc: `docs/moss/README.md`. Weights: catalog packs
+`moss-base` / `moss-sft` under `models/moss_image/MOSS-Image-{Base,SFT}`; SFT ships its DiT
+alone, TE / VAE / tokenizer always load from Base. Research line (finished):
+`project/finished/moss_lora/`; A/B and i2i eval scripts: `bench/moss_ab/`,
+`bench/moss_i2i_eval/`.
 
 ## What does NOT carry over
 
@@ -50,7 +51,7 @@ always load from Base. Research line (finished): `project/finished/moss_lora/`; 
 | TE outputs **must** be max-padded; never mask padding | **Never pad.** Each prompt is encoded alone at its true length (Qwen3.5's GDN layers misbehave on padding); `forward_batched` masks padded keys. RoPE places the image at frame position = text length, so padding shifts the image |
 | Free-fit bucketing via `EDGE_TOKEN_BANDS`, edges 512…1536 | Native aspect, both sides **multiples of 16** |
 | DiT depth probed from the checkpoint (28 vs 40) | Fixed **42** blocks (`num_layers` in `transformer/config.json`) |
-| Standard CFG | **CFG 3**, the **uncond branch skips block 22** (still 2 forwards/step); optional SLG third forward. Timestep input is `1000·σ`. Defaults come from `pipeline_moss_image.py` |
+| Standard CFG | **CFG 3**, the **uncond branch skips block 22** (still 2 forwards/step); optional SLG third forward. Timestep input is `1000·σ` |
 | Anima's sampler shift | **Shift 5 snapped to the nearest training-grid σ** (`model.snapped_sigmas`); ER-SDE by default, Euler is the pipeline's ODE |
 | Adapters live in `networks/`, selected by `network_module` | `networks/` is bound to Anima module names; `lora.py` targets the six bias-free linears per block (`proj.{q,k,v,o,ffn_up_gate,ffn_down}`) |
 | `make lora`, config chain `base → preset → method → CLI`, `masked_loss` | None of it. `--config configs/moss/lora.toml` (flat field-name TOML) layers field default → TOML → CLI |

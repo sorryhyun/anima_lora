@@ -38,9 +38,7 @@ truncated to ``S ≤ cutoff`` and rescaled onto the grid ``{1/1000 … 1}``
 resolution shift: that interval trained at area ≤ 1024², the size the cache
 targets.
 
-Default memory plan: the DiT's block linears on int8 (``int8`` stream, GPTQ forward
-copies, ``library/moss/dit_int8/``), every block resident, the compiled blocks' saved
-set capped by ``activation_memory_budget`` and the EMA shadow on the card.
+Default memory plan: ``docs/moss/optimization/training_step.md``;
 ``configs/moss/lora_bf16.toml`` is the bf16 plan.
 ``--grad_checkpointing`` wraps each block's ``forward`` (``checkpoint_blocks``;
 not ``__call__``), so the block swapper's forward hooks fire once per step and
