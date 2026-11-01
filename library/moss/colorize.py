@@ -108,28 +108,33 @@ def readable(ln) -> bool:
     return bool(ln.text) and sure and ln.glyph_px >= floor
 
 
-def read_pages(conditions: list[Path], device: str) -> list[list]:
-    """Per condition, the readable lines as ``[text, [x0, y0, x1, y1]]`` in reading
-    order, in the condition's pixels."""
+def load_reread_engine(device: str):
+    """The detector with the SFX reader re-reading its boxes."""
     from anime_tools.ocr import load_ocr
     from anime_tools.ocr.animetext import DEFAULT_CONF
     from anime_tools.ocr.reread import RereadEngine
     from anime_tools.ocr.sfx import SfxReader
 
     reader = SfxReader.load(device=device)
-    engine = RereadEngine(
+    return RereadEngine(
         engine=load_ocr(device=device),
         read_boxes=reader.read_boxes_scored,
         resized_dir=Path("/"),
         skip_en=False,
         min_det=DEFAULT_CONF,
     )
+
+
+def read_pages(conditions: list[Path], device: str) -> list[list]:
+    """Per condition, the readable lines as ``[text, [x0, y0, x1, y1]]`` in reading
+    order, in the condition's pixels."""
+    engine = load_reread_engine(device)
     out, t0 = [], time.time()
     for i, lines in enumerate(engine.read_iter(conditions), 1):
         out.append([[ln.text, list(ln.box)] for ln in lines if readable(ln)])
         if i % 50 == 0 or i == len(conditions):
             print(f"  ocr {i}/{len(conditions)}, {time.time() - t0:.0f}s", flush=True)
-    del engine, reader
+    del engine
     empty_cache()
     return out
 

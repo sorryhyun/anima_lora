@@ -39,12 +39,9 @@ def _ocr_reader(a):
     read at ``LATIN_MIN_SCORE`` whatever its det — the detector scores
     scanlation lettering 0.3–0.6 and the reader 0.8–0.9 on reads that are
     right."""
-    from anime_tools.ocr import load_ocr
-    from anime_tools.ocr.animetext import DEFAULT_CONF
-    from anime_tools.ocr.reread import RereadEngine
-    from anime_tools.ocr.sfx import SfxReader, is_latin
+    from anime_tools.ocr.sfx import is_latin
 
-    from library.moss.colorize import LATIN_MIN_GLYPH, readable
+    from library.moss.colorize import LATIN_MIN_GLYPH, load_reread_engine, readable
 
     def keep(ln) -> bool:
         return readable(ln) or (
@@ -53,15 +50,7 @@ def _ocr_reader(a):
             and ln.glyph_px >= LATIN_MIN_GLYPH
         )
 
-    reader = SfxReader.load(device=a.device)
-    engine = RereadEngine(
-        engine=load_ocr(device=a.device),
-        read_boxes=reader.read_boxes_scored,
-        resized_dir=Path("/"),
-        skip_en=False,
-        min_det=DEFAULT_CONF,
-    )
-    return engine, keep
+    return load_reread_engine(a.device), keep
 
 
 def read_into(a, path: Path, todo: list, paths: list[Path], label: str) -> dict:
