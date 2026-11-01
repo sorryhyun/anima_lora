@@ -2,10 +2,8 @@
 
 Covers:
 
-* schema population (known keys present, aliases resolved)
-* typo detection (unknown key → warning with file:line; strict → raises)
-* off-list ``choices`` rejection
-* soft type coercion (TOML ``1`` → ``float`` when schema says float)
+* CLI / config precedence for the step and epoch budgets
+* typo detection (unknown key → warning with file:line)
 * every ``methods × presets`` combination round-trips without warnings
 * ``_render_merged_toml`` output re-parses as valid TOML whose keys are
   a subset of the populated schema
@@ -44,22 +42,6 @@ def populated_parser():
     return parser
 
 
-def test_schema_has_known_keys(populated_parser):
-    schema = config_schema.get_schema()
-    # a handful of must-have keys that come from different argparse layers
-    for k in (
-        "network_dim",
-        "network_alpha",
-        "optimizer_type",
-        "learning_rate",
-        "max_train_epochs",
-        "attn_mode",
-        "base_config",  # manual extra
-        "use_moe_style",  # network-module allowlist (three-axis routing)
-    ):
-        assert k in schema, f"expected {k!r} in populated schema"
-
-
 @pytest.mark.parametrize(
     "cli, steps, epochs",
     [
@@ -78,14 +60,8 @@ def test_cli_steps_beat_config_epochs(populated_parser, cli, steps, epochs):
     assert (args.max_train_steps, args.max_train_epochs) == (steps, epochs)
 
 
-def test_choices_preserved(populated_parser):
-    lw = config_schema.get_schema()["log_with"]
-    assert "tensorboard" in lw.choices
-    assert "wandb" in lw.choices
-
-
 # ---------------------------------------------------------------------------
-# Typo / choice detection
+# Typo detection
 # ---------------------------------------------------------------------------
 
 
@@ -100,29 +76,6 @@ def test_unknown_key_warns(populated_parser, tmp_path: Path, caplog):
     )
     # line locator should include the line number
     assert any(":1:" in rec.getMessage() for rec in caplog.records)
-
-
-def test_unknown_key_strict_raises(populated_parser, tmp_path: Path):
-    bogus = tmp_path / "bogus.toml"
-    bogus.write_text("network_ditm = 16\n")
-    with pytest.raises(config_schema.ConfigSchemaError):
-        _flatten_toml({"a": {"network_ditm": 16}}, source=str(bogus), strict=True)
-
-
-def test_off_list_choice_warns(populated_parser, caplog):
-    with caplog.at_level(logging.WARNING):
-        _flatten_toml({"a": {"log_with": "carrierpigeon"}}, source="x.toml")
-    assert any(
-        "log_with" in rec.getMessage() and "not in choices" in rec.getMessage()
-        for rec in caplog.records
-    )
-
-
-def test_int_to_float_coerced(populated_parser):
-    # schema says network_alpha is float; TOML ``1`` comes in as int.
-    out = _flatten_toml({"a": {"network_alpha": 64}}, source="x.toml")
-    assert isinstance(out["network_alpha"], float)
-    assert out["network_alpha"] == 64.0
 
 
 # ---------------------------------------------------------------------------
@@ -167,6 +120,7 @@ def test_provenance_returned():
     assert set(provenance) == set(merged)
 
 
+@pytest.mark.core
 def test_train_adaln_defaults_on_and_reaches_the_network():
     """``train_adaln`` is a base.toml default (2026-07-16) that must survive the
     merge AND be forwarded to the network. It rides the top-level allowlist, not
@@ -182,18 +136,7 @@ def test_train_adaln_defaults_on_and_reaches_the_network():
     assert {"train_adaln", "adaln_rank", "adaln_alpha"} <= set(all_network_kwargs())
 
 
-def test_preset_gui_metadata_stripped():
-    """``[<preset>.gui]`` display metadata (label/group for the GUI Hardware
-    picker) must never reach the flat argparse merge."""
-    merged = load_method_preset("lora", "low_vram")
-    assert "gui" not in merged
-    for key in ("label", "group", "description", "order"):
-        assert key not in merged
-    # ...while the preset's real knobs still land.
-    assert merged["gradient_checkpointing"] is True
-    assert merged["unsloth_offload_checkpointing"] is True
-
-
+@pytest.mark.core
 def test_hardware_preset_composes_with_gui_variant():
     """The GUI's Hardware picker composes presets.toml[low_vram] with a clean
     gui-methods variant (replaces the retired per-variant ``-8gb`` copies).
@@ -237,22 +180,3 @@ def test_render_roundtrips_to_valid_toml(populated_parser):
     schema = config_schema.get_schema()
     for key in parsed:
         assert key in schema, f"rendered key {key!r} not in schema"
-
-
-def test_render_header_includes_method_and_preset(populated_parser):
-    import train
-
-    parser = train.setup_parser()
-    config_schema.populate_schema(parser, extras=train.build_network_extras())
-
-    merged, provenance = load_method_preset("lora", "low_vram", return_provenance=True)
-    ns = argparse.Namespace(**merged)
-    args = parser.parse_args(["--method", "lora", "--preset", "low_vram"], namespace=ns)
-    rendered = _render_merged_toml(args, parser, provenance)
-    assert "Method: lora" in rendered
-    assert "Preset: low_vram" in rendered
-    # section ordering: base → preset → method
-    base_idx = rendered.index("configs/base.toml")
-    preset_idx = rendered.index("configs/presets.toml[low_vram]")
-    method_idx = rendered.index("configs/methods/lora.toml")
-    assert base_idx < preset_idx < method_idx

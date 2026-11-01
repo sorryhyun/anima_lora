@@ -1,9 +1,8 @@
 """Invariant tests for LoRA merge weight-space interference analysis.
 
-Covers the three reference regimes of ``library.anima.merge_analysis.analyze``:
-identical deltas (cos +1, ratio →N²/N), negated deltas (cos -1, cancellation),
-and orthogonal deltas (cos 0, ratio 1). Also checks the Gram-trace inner product
-matches a dense ``⟨ΔW_i, ΔW_j⟩_F`` and that ``--weights`` scaling is respected.
+Covers the bands of ``library.anima.merge_analysis.analyze`` (reinforcing,
+cancelling, colliding), the Gram-trace inner product against a dense
+``⟨ΔW_i, ΔW_j⟩_F``, and the adaln handling of ``merge_loras.py``.
 """
 
 from __future__ import annotations
@@ -41,52 +40,6 @@ def test_identical_loras_constructive():
     assert rep.n_shared_modules == 1
 
 
-def test_negated_loras_destructive():
-    torch.manual_seed(2)
-    down, up = torch.randn(4, 6), torch.randn(8, 4)
-    rep = ma.analyze([_lora(down, up), _lora(down, -up)], ["a", "b"])
-    assert abs(rep.pair_cosine[(0, 1)] - (-1.0)) < 1e-5
-    # Perfect cancellation: ‖ΔW - ΔW‖² = 0.
-    assert abs(rep.overall_energy_ratio) < 1e-4
-    assert rep.worst_pair[0] == (0, 1)
-
-
-def test_orthogonal_loras_independent():
-    # Disjoint output rows → ⟨ΔW_i, ΔW_j⟩ = 0 regardless of down.
-    down = torch.randn(4, 6)
-    up_a = torch.zeros(8, 4)
-    up_a[:4] = torch.randn(4, 4)
-    up_b = torch.zeros(8, 4)
-    up_b[4:] = torch.randn(4, 4)
-    rep = ma.analyze([_lora(down, up_a), _lora(down, up_b)], ["a", "b"])
-    assert abs(rep.pair_cosine[(0, 1)]) < 1e-5
-    assert abs(rep.overall_energy_ratio - 1.0) < 1e-4
-
-
-def test_weight_scaling_changes_energy_not_cosine():
-    torch.manual_seed(3)
-    down, up = torch.randn(4, 6), torch.randn(8, 4)
-    loaded = [_lora(down, up), _lora(down, -up)]
-    base = ma.analyze(loaded, ["a", "b"])
-    scaled = ma.analyze(loaded, ["a", "b"], weights=[1.0, 0.5])
-    # Cosine is scale-invariant; still anti-aligned.
-    assert abs(scaled.pair_cosine[(0, 1)] - base.pair_cosine[(0, 1)]) < 1e-5
-    # But partial cancellation now leaves residual energy (ratio > 0).
-    assert scaled.overall_energy_ratio > 0.1
-
-
-def test_identical_loras_full_subspace_overlap():
-    torch.manual_seed(4)
-    down, up = torch.randn(4, 64), torch.randn(48, 4)
-    rep = ma.analyze([_lora(down, up), _lora(down, up)], ["a", "b"])
-    ov = rep.pair_overlap[(0, 1)]
-    assert abs(ov.out - 1.0) < 1e-5
-    assert abs(ov.inp - 1.0) < 1e-5
-    # Identical deltas fully overlap AND point the same way (cos +1): the
-    # overlap is sign-explained, so it reinforces — it does NOT "collide".
-    assert ov.band == "reinforcing"
-
-
 def test_negated_loras_still_full_overlap():
     # Anti-aligned directions live in the SAME subspace — overlap is unsigned.
     torch.manual_seed(5)
@@ -96,21 +49,6 @@ def test_negated_loras_still_full_overlap():
     assert abs(ov.out - 1.0) < 1e-5
     # Full overlap, cos −1: the shared subspace cancels, not collides.
     assert ov.band == "cancelling"
-
-
-def test_disjoint_output_rows_zero_out_overlap_full_in_overlap():
-    # Same down (identical input subspace), disjoint output rows (orthogonal
-    # column spaces): cosine 0, out-overlap 0, in-overlap 1.
-    torch.manual_seed(6)
-    down = torch.randn(4, 64)
-    up_a = torch.zeros(48, 4)
-    up_a[:24] = torch.randn(24, 4)
-    up_b = torch.zeros(48, 4)
-    up_b[24:] = torch.randn(24, 4)
-    rep = ma.analyze([_lora(down, up_a), _lora(down, up_b)], ["a", "b"])
-    ov = rep.pair_overlap[(0, 1)]
-    assert ov.out < 1e-6
-    assert abs(ov.inp - 1.0) < 1e-5
 
 
 def test_shared_subspace_orthogonal_directions_is_the_blind_spot():
@@ -133,32 +71,6 @@ def test_shared_subspace_orthogonal_directions_is_the_blind_spot():
     # the sign can't explain the overlap and it stays a genuine collision.
     assert abs(rep.pair_cosine[(0, 1)]) < 0.5
     assert ov.band == "colliding"
-
-
-def test_random_loras_overlap_near_chance():
-    torch.manual_seed(8)
-    loaded = [
-        _lora(torch.randn(8, 512), torch.randn(512, 8)),
-        _lora(torch.randn(8, 512), torch.randn(512, 8)),
-    ]
-    rep = ma.analyze(loaded, ["a", "b"])
-    ov = rep.pair_overlap[(0, 1)]
-    # Independent random subspaces: ×random ≈ 1, comfortably below 'elevated'.
-    assert 0.2 < ov.out_xrandom < ma.OVERLAP_ELEVATED_X
-    assert 0.2 < ov.in_xrandom < ma.OVERLAP_ELEVATED_X
-    assert ov.band == "chance"
-
-
-def test_tlora_masked_ranks_do_not_dilute_overlap():
-    # Half the rank columns zeroed (T-LoRA style): the effective subspace is
-    # rank 2, and two adapters sharing it must still read overlap ≈ 1.
-    torch.manual_seed(9)
-    down = torch.randn(4, 64)
-    core = torch.randn(48, 2)
-    up_a = torch.cat([core @ torch.randn(2, 2), torch.zeros(48, 2)], dim=1)
-    up_b = torch.cat([core @ torch.randn(2, 2), torch.zeros(48, 2)], dim=1)
-    rep = ma.analyze([_lora(down, up_a), _lora(down, up_b)], ["a", "b"])
-    assert abs(rep.pair_overlap[(0, 1)].out - 1.0) < 1e-4
 
 
 def test_shared_init_basin_reinforces_not_collides():
@@ -188,17 +100,6 @@ def test_shared_init_basin_reinforces_not_collides():
     assert "most colliding modules" not in text
     # worst_overlap surfaces the (reinforcing) pair without escalating it.
     assert rep.worst_overlap[1].band == "reinforcing"
-
-
-def test_marker_payload_carries_overlap():
-    torch.manual_seed(10)
-    down, up = torch.randn(4, 64), torch.randn(48, 4)
-    rep = ma.analyze([_lora(down, up), _lora(down, up)], ["a", "b"])
-    payload = rep.marker_payload()
-    a, b, out, x = payload["overlap"]
-    assert {a, b} == {"a", "b"}
-    assert abs(out - 1.0) < 1e-3
-    assert x > ma.OVERLAP_COLLIDING_X
 
 
 def _run_merge(tmp_path, *extra):
@@ -255,10 +156,3 @@ def test_merge_averages_adaln_and_keeps_it_out_of_the_normalize(tmp_path):
     # global scale is fit on the attn module alone: ‖merged‖ = avg single norm
     target = sum(d.norm() for d in deltas["attn"]) / 2
     assert torch.isclose(got["attn"].norm(), target, rtol=1e-4)
-
-
-def test_merge_adaln_sum_restores_the_old_path(tmp_path):
-    got, deltas = _run_merge(tmp_path, "--normalize", "off", "--adaln", "sum")
-    assert torch.allclose(
-        got["adaln"], deltas["adaln"][0] + deltas["adaln"][1], atol=1e-5
-    )

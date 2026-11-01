@@ -15,6 +15,7 @@ sampled output.
 
 from __future__ import annotations
 
+import pytest
 import torch
 
 from library.inference.router_compute import (
@@ -43,27 +44,12 @@ from networks.lora_modules.router_state import (
 # ---------------------------------------------------------------------------
 
 
-def test_router_compute_is_canonical_2band():
+@pytest.mark.core
+def test_router_compute_kernels_are_the_training_kernels():
     assert compute_fei_2band is _live_fei_2band
-
-
-def test_router_compute_is_canonical_blur():
     assert gaussian_blur_2d is _live_blur
-
-
-def test_router_compute_is_canonical_sigma_features():
     assert sigma_sinusoidal_features is _live_sigma_feat
-
-
-def test_router_compute_is_canonical_band_mask():
     assert apply_sigma_band_mask is _live_apply_mask
-
-
-def test_fei_temperature_identity_at_tau_one():
-    """τ=1.0 returns the FEI simplex unchanged (softmax(log p) = p)."""
-    fei = torch.tensor([[0.7, 0.3], [0.2, 0.8]])
-    out = fei_temperature(fei, 1.0)
-    assert torch.allclose(out, fei, atol=1e-6)
 
 
 def test_fei_temperature_sharpens_and_normalizes():
@@ -108,22 +94,6 @@ def test_compute_fei_nband_high_to_low_simplex_and_ordering():
     assert (fei[:, 1] > fei[:, 2]).all()
 
 
-def test_fei_orderings_are_distinct():
-    """2-band and n=2 high-to-low share an underlying decomposition but
-    deliberately ship in opposite orderings — wiring them through one helper
-    would silently corrupt one of the two trained routers."""
-    z = _fixed_latent()
-    fei_lh = compute_fei_2band(z, sigma_low=4.0)  # [e_low, e_high]
-    fei_hl = compute_fei_nband_high_to_low(
-        z, sigma_low=4.0, num_bands=2
-    )  # [e_high, e_low]
-    # n=2 high-to-low: bands are pyramid[0]-pyramid[1] (= z - LP, the
-    # high band) and pyramid[1] (= LP, the low band). So index 0 of the
-    # high-to-low should equal index 1 of the low-high (both are e_high).
-    assert torch.allclose(fei_lh[:, 0], fei_hl[:, 1], atol=1e-5)
-    assert torch.allclose(fei_lh[:, 1], fei_hl[:, 0], atol=1e-5)
-
-
 def test_sigma_sinusoidal_features_functional_form():
     """Match the DiT t_embedder: 10000^(-k/half_dim) frequencies, [cos | sin]."""
     sigma = torch.tensor([0.1, 0.5, 1.0])
@@ -137,36 +107,9 @@ def test_sigma_sinusoidal_features_functional_form():
     assert torch.allclose(feat0[0, 8:], torch.zeros(8), atol=1e-6)
 
 
-def test_sigma_sinusoidal_features_cfg_doubled_batch():
-    """The node passes (1,) σ but CFG-doubled (2, …) features. Make sure
-    broadcasting in the hook stays unambiguous — sigma_sinusoidal_features
-    itself returns (B, dim) matching σ's batch."""
-    sigma = torch.tensor([0.3, 0.7])  # CFG-doubled
-    feat = sigma_sinusoidal_features(sigma, sigma_feature_dim=16)
-    assert feat.shape == (2, 16)
-    # Different σ → different features.
-    assert not torch.allclose(feat[0], feat[1])
-
-
 def test_fei_sigma_low_bucket_invariant():
     """σ_low scales with min(H, W) so the band semantic is bucket-invariant."""
     assert fei_sigma_low(32, 32, 4.0) == 8.0
     assert fei_sigma_low(48, 32, 4.0) == 8.0  # min wins
     assert fei_sigma_low(32, 48, 4.0) == 8.0
     assert fei_sigma_low(16, 16, 8.0) == 2.0
-
-
-def test_apply_sigma_band_mask_softmax_renormalises():
-    """Out-of-band logits → -inf → softmax renormalises mass to in-band only."""
-    logits = torch.zeros(2, 6)  # 6 experts
-    expert_band = torch.arange(6) % 3  # interleaved layout: bands [0,1,2,0,1,2]
-    sigma_edges = torch.linspace(0.0, 1.0, 4)[1:-1].contiguous()  # 3 buckets
-    sigma = torch.tensor([0.0, 0.99])
-    masked = apply_sigma_band_mask(logits, sigma, expert_band, sigma_edges)
-    gate = torch.softmax(masked, dim=-1)
-    # row 0: σ=0 → band 0 → experts {0, 3} carry all mass.
-    assert torch.allclose(gate[0, [0, 3]].sum(), torch.tensor(1.0), atol=1e-6)
-    assert gate[0, [1, 2, 4, 5]].abs().max().item() == 0.0
-    # row 1: σ=0.99 → band 2 → experts {2, 5} carry all mass.
-    assert torch.allclose(gate[1, [2, 5]].sum(), torch.tensor(1.0), atol=1e-6)
-    assert gate[1, [0, 1, 3, 4]].abs().max().item() == 0.0

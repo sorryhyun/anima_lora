@@ -11,7 +11,10 @@ silently turn such a term into a no-op.
 
 from __future__ import annotations
 
+import pytest
 import torch
+
+pytestmark = pytest.mark.core
 
 
 def test_unsloth_ckpt_propagates_param_grads_via_input():

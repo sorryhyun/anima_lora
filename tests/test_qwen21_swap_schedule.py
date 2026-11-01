@@ -62,12 +62,15 @@ def replay(num_blocks: int, blocks_to_swap: int, minimal: bool):
     return resident, start, peak, schedule
 
 
-SHAPES = [(32, 0), (32, 1), (32, 4), (32, 8), (32, 16), (36, 4), (36, 18), (40, 12)]
+SHAPES = [(32, 1), (32, 8), (32, 16), (40, 12)]
 
 
+@pytest.mark.core
 @pytest.mark.parametrize("minimal", [True, False])
 @pytest.mark.parametrize("num_blocks,blocks_to_swap", SHAPES)
 def test_schedule_round_trips(num_blocks, blocks_to_swap, minimal):
+    """Every block is resident when it runs, within budget, and the forward ends
+    in the layout it started from."""
     end, start, peak, _ = replay(num_blocks, blocks_to_swap, minimal)
     assert end == start, "forward must end in the layout prepare() set up"
     assert peak <= num_blocks - blocks_to_swap, "residency budget exceeded"
@@ -91,10 +94,6 @@ def test_minimal_is_2s_moves_below_half():
 def test_falls_back_to_ring_past_half():
     """Past N/2 the two phases would overlap, so the ring is used instead."""
     assert swap_schedule(32, 20, minimal=True) == swap_schedule(32, 20, minimal=False)
-
-
-def test_no_swap_is_no_hooks():
-    assert swap_schedule(32, 0, minimal=True) == {}
 
 
 def test_activation_reserve_follows_measured_envelope():

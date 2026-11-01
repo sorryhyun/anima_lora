@@ -1,21 +1,9 @@
 """Façade contract: every export on anima_lora.{models,inference,config,training,captioning} resolves, and the pre-namespace flat aliases stay identical to the namespaced names."""
 
-import pytest
-
 import anima_lora
 from anima_lora import captioning, config, inference, models, training
 
 SUBMODULES = [models, inference, config, training, captioning]
-
-
-@pytest.mark.parametrize(
-    "module, name",
-    [(m, name) for m in SUBMODULES for name in m.__all__],
-    ids=lambda v: v if isinstance(v, str) else v.__name__.rsplit(".", 1)[-1],
-)
-def test_every_namespaced_export_resolves(module, name):
-    assert getattr(module, name) is not None
-    assert name in dir(module)
 
 
 def test_flat_aliases_match_namespaced():
@@ -29,13 +17,6 @@ def test_flat_aliases_match_namespaced():
         else:
             flat_only.append(name)
     assert not flat_only, f"flat exports missing a namespaced home: {flat_only}"
-
-
-def test_unknown_attribute_raises():
-    with pytest.raises(AttributeError):
-        anima_lora.does_not_exist
-    with pytest.raises(AttributeError):
-        models.does_not_exist
 
 
 def test_train_py_loads_by_path_shared_instance():

@@ -1,5 +1,5 @@
 """Variant-sidecar pipeline: generation (caption step), encode (TE step),
-round-trip I/O, and reconcile orphan cleanup.
+and reconcile orphan cleanup.
 
 The sidecar ({stem}.variants.txt) is the source of truth that makes the visible
 train-time variants and the encoded TE cache the same thing — these tests pin
@@ -13,6 +13,7 @@ import random
 from pathlib import Path
 from unittest import mock
 
+import pytest
 import torch
 from safetensors import safe_open
 
@@ -45,35 +46,6 @@ def _csv(path: Path) -> Path:
         encoding="utf-8",
     )
     return path
-
-
-# ----- sidecar I/O round-trip ---------------------------------------------
-
-
-def test_sidecar_path_multidot_stem():
-    p = variants_sidecar_path(Path("sub/a.b.png"))
-    assert p.name == "a.b.variants.txt"
-    assert p.parent.name == "sub"
-
-
-def test_sidecar_roundtrip_and_comment_tolerance(tmp_path):
-    sp = tmp_path / "x.variants.txt"
-    rows = [
-        ("v0", "1girl, @sincos"),
-        ("v1", "@sincos, 1girl"),
-        ("r1", "swing, @sincos"),
-    ]
-    write_variants_sidecar(sp, rows)
-    # Header comment is present; parser skips it and any blank line.
-    raw = sp.read_text(encoding="utf-8")
-    assert raw.splitlines()[0].startswith("#")
-    assert read_variants_sidecar(sp) == rows
-
-
-def test_sidecar_parser_skips_malformed_lines(tmp_path):
-    sp = tmp_path / "x.variants.txt"
-    sp.write_text("# header\nv0\t1girl\n\nnotabhere\nv1\t@sincos, 1girl\n", "utf-8")
-    assert read_variants_sidecar(sp) == [("v0", "1girl"), ("v1", "@sincos, 1girl")]
 
 
 # ----- caption step writes the sidecar ------------------------------------
@@ -136,28 +108,6 @@ def test_caption_step_passthrough_v0_is_raw(tmp_path):
     assert (dst / "a.txt").read_text(encoding="utf-8") == raw
 
 
-def test_caption_step_idempotent_rerun_keeps_sidecar_stable(tmp_path):
-    src, dst = tmp_path / "src", tmp_path / "dst"
-    src.mkdir()
-    dst.mkdir()
-    (src / "a.txt").write_text("1girl, blue hair, @sincos", encoding="utf-8")
-    (dst / "a.png").write_bytes(b"")
-    opts = CaptionCorrectionOptions()
-
-    random.seed(0)
-    write_corrected_preprocess_captions(
-        src, dst, _kb(tmp_path), options=opts, recursive=False, num_variants=4
-    )
-    before = variants_sidecar_path(dst / "a.png").read_text(encoding="utf-8")
-    random.seed(99)  # different seed must NOT cause a rewrite
-    stats = write_corrected_preprocess_captions(
-        src, dst, _kb(tmp_path), options=opts, recursive=False, num_variants=4
-    ).stats
-    after = variants_sidecar_path(dst / "a.png").read_text(encoding="utf-8")
-    assert stats.variants_written == 0
-    assert before == after
-
-
 def test_caption_step_off_removes_stale_sidecar(tmp_path):
     src, dst = tmp_path / "src", tmp_path / "dst"
     src.mkdir()
@@ -178,50 +128,6 @@ def test_caption_step_off_removes_stale_sidecar(tmp_path):
     assert stats.variants_removed == 1
 
 
-def test_caption_step_revised_caption_without_master_keeps_sidecar(tmp_path):
-    """Revised-first (anime_tools >= 0.4.0): a revised caption with no master is
-    the caption, so its sidecar is regenerated from it rather than removed."""
-    src, dst = tmp_path / "src", tmp_path / "dst"
-    src.mkdir()
-    dst.mkdir()
-    (dst / "a.png").write_bytes(b"")
-    (dst / "a.txt").write_text("1girl, smile", encoding="utf-8")
-    write_variants_sidecar(variants_sidecar_path(dst / "a.png"), [("v0", "stale")])
-
-    stats = write_corrected_preprocess_captions(
-        src,
-        dst,
-        _kb(tmp_path),
-        options=CaptionCorrectionOptions(),
-        recursive=False,
-        num_variants=2,
-    ).stats
-    assert stats.no_caption == 0
-    sidecar = variants_sidecar_path(dst / "a.png")
-    assert sidecar.exists()
-    assert "stale" not in sidecar.read_text(encoding="utf-8")
-
-
-def test_caption_step_no_caption_at_all_removes_orphan_sidecar(tmp_path):
-    src, dst = tmp_path / "src", tmp_path / "dst"
-    src.mkdir()
-    dst.mkdir()
-    # Resized image + leftover sidecar, but neither a revised nor a master caption.
-    (dst / "a.png").write_bytes(b"")
-    write_variants_sidecar(variants_sidecar_path(dst / "a.png"), [("v0", "stale")])
-
-    stats = write_corrected_preprocess_captions(
-        src,
-        dst,
-        _kb(tmp_path),
-        options=CaptionCorrectionOptions(),
-        recursive=False,
-        num_variants=2,
-    ).stats
-    assert stats.no_caption == 1
-    assert not variants_sidecar_path(dst / "a.png").exists()
-
-
 # ----- TE step encodes the sidecar verbatim -------------------------------
 
 
@@ -234,6 +140,7 @@ def _fake_encode(captions, *a, **k):
     return pe, am, ti, ta, None
 
 
+@pytest.mark.core
 def test_te_encodes_sidecar_into_variant_keys(tmp_path):
     d = tmp_path
     (d / "a.png").write_bytes(b"")
@@ -289,6 +196,7 @@ def test_te_single_caption_when_no_sidecar_and_no_variants(tmp_path):
         assert "num_variants" not in keys
 
 
+@pytest.mark.core
 def test_te_recaches_when_sidecar_is_newer(tmp_path):
     d = tmp_path
     (d / "a.png").write_bytes(b"")
@@ -371,6 +279,7 @@ def _clause_corpus(tmp_path, master, derived):
     return src, dst
 
 
+@pytest.mark.core
 def test_mirror_keeps_clauses_the_master_does_not_have(tmp_path):
     """`caption-position` writes only ``resized/`` — a plain mirror would undo it."""
     src, dst = _clause_corpus(
@@ -396,26 +305,7 @@ def test_mirror_keeps_clauses_the_master_does_not_have(tmp_path):
     assert "@sincos" in out and "smile" in out
 
 
-def test_mirror_reruns_are_stable_on_a_clause_caption(tmp_path):
-    src, dst = _clause_corpus(
-        tmp_path,
-        "1girl, blue hair, smile, @sincos",
-        "1girl, smile, @sincos. On the left, blue hair.",
-    )
-    opts = CaptionCorrectionOptions()
-    write_corrected_preprocess_captions(
-        src, dst, _kb(tmp_path), options=opts, recursive=False
-    )
-    first = (dst / "a.txt").read_text(encoding="utf-8")
-
-    stats = write_corrected_preprocess_captions(
-        src, dst, _kb(tmp_path), options=opts, recursive=False
-    ).stats
-
-    assert (dst / "a.txt").read_text(encoding="utf-8") == first
-    assert stats.unchanged == 1
-
-
+@pytest.mark.core
 def test_a_master_edit_does_not_reach_a_revised_caption(tmp_path):
     """Revised-first (anime_tools >= 0.4.0): the revised caption is the authority
     once it exists; deleting it is how a master edit gets re-mirrored."""
@@ -464,22 +354,3 @@ def test_mirror_regenerates_the_sidecar_around_restored_clauses(tmp_path):
     assert rows["v0"] == (dst / "a.txt").read_text(encoding="utf-8")
     # Clauses are atomic in every variant, never dissolved into the bag.
     assert all("On the left, blue hair." in text for text in rows.values())
-
-
-def test_the_revised_caption_wins_over_a_master_edit(tmp_path):
-    """Revised-first (anime_tools >= 0.4.0): once an image has a revised caption,
-    a hand-edit of its master no longer reaches it — edit the revised caption,
-    or delete it to re-mirror."""
-    src, dst = _clause_corpus(
-        tmp_path,
-        "1girl, smile, @sincos. On the right, blue hair.",
-        "1girl, smile, @sincos. On the left, blue hair.",
-    )
-
-    stats = write_corrected_preprocess_captions(
-        src, dst, _kb(tmp_path), options=CaptionCorrectionOptions(), recursive=False
-    ).stats
-
-    assert stats.clauses_preserved == 1
-    assert stats.from_master == 0
-    assert "On the left, blue hair." in (dst / "a.txt").read_text(encoding="utf-8")

@@ -175,7 +175,7 @@ class GenerationRequest:
         Routes ``to_argv()`` through ``library.inference.args.build_default_args``
         (lazy-imported) — the same parser ``inference.parse_args`` delegates
         to. Pass an explicit ``parse_args``
-        to inject a different parser (the test suite does this). The parser fills
+        to inject a different parser. The parser fills
         every knob this dataclass doesn't model, and validates choices/requireds —
         so a request with no ``prompt`` raises here, the same as the CLI.
         """

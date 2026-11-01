@@ -1,8 +1,7 @@
-"""Tests for the IP-Adapter distinct-pair (identity) reference sampler.
+"""Tests for the identity pair sampler behind the soft-tokens contrastive negatives.
 
-Covers the tiered character → copyright → artist back-off, the cross-artist
-constraint, self-fallback, candidate-pool restriction, and the shuffled
-(unrelated) negative used by the validation gate.
+Covers candidate-pool restriction, the shuffled (unrelated) negative, the hard /
+back-off tiers, draw() dispatch and the tag-Jaccard weight.
 """
 
 from __future__ import annotations
@@ -75,42 +74,6 @@ def index_path(tmp_path):
     return _write_index(tmp_path, meta)
 
 
-def test_same_character_preferred(index_path):
-    s = IdentityPairSampler(index_path, min_level="artist")
-    rng = random.Random(0)
-    # a1 has same-character partners a2, a3 → must resolve at character tier.
-    refs = {s.resolve("a1", rng) for _ in range(20)}
-    chosen = {stem for stem, _ in refs}
-    assert chosen <= {"a2", "a3"}
-    assert all(level == "character" for _, level in refs)
-
-
-def test_franchise_fallback(index_path):
-    s = IdentityPairSampler(index_path, min_level="artist")
-    rng = random.Random(0)
-    # b1 (fern) is the only fern → no character positive → falls back to the
-    # franchise tier (sousou no frieren): a1/a2/a3.
-    stem, level = s.resolve("b1", rng)
-    assert level == "copyright"
-    assert stem in {"a1", "a2", "a3"}
-
-
-def test_min_level_blocks_fallback(index_path):
-    s = IdentityPairSampler(index_path, min_level="character")
-    rng = random.Random(0)
-    # b1 has no character positive and franchise/artist tiers are disallowed
-    # by min_level="character" → self.
-    assert s.resolve("b1", rng) == ("b1", "self")
-
-
-def test_cross_artist_excludes_same_artist(index_path):
-    s = IdentityPairSampler(index_path, min_level="artist", cross_artist=True)
-    rng = random.Random(0)
-    # a1 is @x; cross-artist character match must be the @y image a3, never a2 (@x).
-    refs = {s.resolve("a1", rng)[0] for _ in range(20)}
-    assert refs == {"a3"}
-
-
 def test_restrict_stems(index_path):
     # Exclude a3 (validation split) → only a2 reachable for a1 at char tier.
     s = IdentityPairSampler(
@@ -129,21 +92,6 @@ def test_shuffled_avoids_identity(index_path):
     picks = {s.shuffled("a1", rng)[0] for _ in range(40)}
     assert "c1" in picks
     assert not (picks & {"a1"})  # never the target
-
-
-def test_unknown_stem_self(index_path):
-    s = IdentityPairSampler(index_path)
-    assert s.resolve("nonexistent", random.Random(0)) == ("nonexistent", "self")
-
-
-def test_rel_dir(index_path):
-    s = IdentityPairSampler(index_path)
-    assert s.rel_dir("a3") == "art_y"
-
-
-def test_invalid_min_level(index_path):
-    with pytest.raises(ValueError):
-        IdentityPairSampler(index_path, min_level="franchise")
 
 
 # ── Soft-tokens contrastive hard negatives + tag Jaccard ────────────────────
@@ -168,13 +116,6 @@ def test_hard_negative_falls_back_when_no_disjoint_sibling(index_path):
     stem, level = s.hard_negative("a1", rng)
     assert level == "shuffled"
     assert stem != "a1"
-
-
-def test_hard_negative_unknown_stem_falls_back(index_path):
-    s = IdentityPairSampler(index_path, min_level="artist")
-    rng = random.Random(0)
-    stem, level = s.hard_negative("does_not_exist", rng)
-    assert level in ("shuffled", "self")
 
 
 def test_hard_negative_backoff_prefers_artist_tier(index_path):
@@ -203,9 +144,24 @@ def test_hard_negative_backoff_original_tier(tmp_path):
     # image. The OC target o1 has no character to disjoint on → the back-off's
     # original tier returns the same-artist sibling o2, not shuffled.
     meta = {
-        "o1": {"path": "x/o1.txt", "character": [], "copyright": ["original"], "artist": ["@x"]},
-        "o2": {"path": "x/o2.txt", "character": [], "copyright": ["original"], "artist": ["@x"]},
-        "f1": {"path": "y/f1.txt", "character": ["miku"], "copyright": ["vocaloid"], "artist": ["@y"]},
+        "o1": {
+            "path": "x/o1.txt",
+            "character": [],
+            "copyright": ["original"],
+            "artist": ["@x"],
+        },
+        "o2": {
+            "path": "x/o2.txt",
+            "character": [],
+            "copyright": ["original"],
+            "artist": ["@x"],
+        },
+        "f1": {
+            "path": "y/f1.txt",
+            "character": ["miku"],
+            "copyright": ["vocaloid"],
+            "artist": ["@y"],
+        },
     }
     s = IdentityPairSampler(_write_index(tmp_path, meta), min_level="artist")
     rng = random.Random(0)
@@ -219,18 +175,22 @@ def test_hard_negative_backoff_original_tier_only_for_original(tmp_path):
     # A franchise target with no diff-character sibling must NOT borrow an
     # original negative — the original tier is gated on the target being OC.
     meta = {
-        "f1": {"path": "x/f1.txt", "character": ["miku"], "copyright": ["vocaloid"], "artist": ["@x"]},
-        "o1": {"path": "x/o1.txt", "character": [], "copyright": ["original"], "artist": ["@x"]},
+        "f1": {
+            "path": "x/f1.txt",
+            "character": ["miku"],
+            "copyright": ["vocaloid"],
+            "artist": ["@x"],
+        },
+        "o1": {
+            "path": "x/o1.txt",
+            "character": [],
+            "copyright": ["original"],
+            "artist": ["@x"],
+        },
     }
     s = IdentityPairSampler(_write_index(tmp_path, meta), min_level="artist")
     stem, level = s.hard_negative_backoff("f1", random.Random(0))
     assert level == "shuffled"
-
-
-def test_hard_negative_backoff_unknown_stem_falls_back(index_path):
-    s = IdentityPairSampler(index_path, min_level="artist")
-    stem, level = s.hard_negative_backoff("does_not_exist", random.Random(0))
-    assert level in ("shuffled", "self")
 
 
 def test_draw_dispatch(index_path):

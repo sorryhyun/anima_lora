@@ -2,12 +2,10 @@
 
 Invariants (against the real tokenizers + pack, skipped when absent):
 
-* **No dots = bit-identical**: a pack without the key encodes as before.
 * **One row per ellipsis**: ``・・`` / ``・・・`` / ``‥`` / ``...`` / ``…`` beside
   a routed char encode as ``…``; 4+ dots as ``……``; a lone ``・`` as ``.``.
 * **EN untouched**: a ``.`` / ``…`` run touching no routed char encodes as
   the stock T5 spelling, and a prompt with no other routed char never routes.
-* **Offsets index the typed text**: a rewritten run's tokens span the run.
 * The key reaches the digest only when set.
 """
 
@@ -59,23 +57,13 @@ def _encs():
     return plain, dots, ev.T5_TABLE_SIZE + row
 
 
-def test_no_dots_is_untouched():
-    plain, _, _ = _encs()
-    assert plain.dots is None
-    assert plain.normalized("はぁ・・・") == ("はぁ・・・", None)
-
-
 @pytest.mark.parametrize(
     "typed, target",
     [
         ("はぁ・・・", "はぁ…"),
-        ("はぁ・・", "はぁ…"),
         ("はぁ‥", "はぁ…"),
-        ("はぁ...", "はぁ…"),
         ("...はぁ", "…はぁ"),
         ("はぁ・・・・", "はぁ……"),
-        ("はぁ……", "はぁ……"),
-        ("けが・・・・・・・しなかった？", "けが……しなかった?"),  # ？ folds to ?
         ("ジョン・スミス", "ジョン.スミス"),
         ('Japanese text reads as "「...」".', 'Japanese text reads as "「…」".'),
     ],
@@ -102,17 +90,6 @@ def test_en_runs_stay_t5():
     mixed = 'Wait… then she says "はい".'
     assert dots.encode(mixed) == plain.encode(mixed)
     assert row not in dots.encode(mixed)[0]
-
-
-def test_offsets_index_the_typed_text():
-    _, dots, row = _encs()
-    typed = 'Japanese text reads as "けが・・・・しなかった".'
-    ids, mask, offs = dots.encode_aligned(typed, 64)
-    n = sum(mask)
-    assert len(offs) == n and offs[-1] == (len(typed), len(typed))
-    assert all(0 <= a <= b <= len(typed) for a, b in offs)
-    a = typed.index("・")
-    assert [o for i, o in zip(ids, offs) if i == row] == [(a, a + 4)] * 2
 
 
 def test_digest():

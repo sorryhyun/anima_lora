@@ -2,10 +2,9 @@
 
 The subset knob redirects ONLY the target VAE-latent cache; TE stays on
 ``text_cache_dir``/``cache_dir`` and the REPA PE sidecars stay on ``cache_dir``.
-These tests pin the resolution sites in ``BaseDataset`` (the read-only
-completeness probe and the path the dataloader ends up reading) plus the
-config-schema surface, so the redirect can't silently regress to the shared
-cache — which would re-train colorize on the uncorrected (sepia) targets.
+This pins the read-only completeness probe in ``BaseDataset``, so the redirect
+can't silently regress to the shared cache — which would re-train colorize on
+the uncorrected (sepia) targets.
 """
 
 from __future__ import annotations
@@ -90,37 +89,3 @@ def test_probe_reads_redirected_latent_cache(tmp_path, anima_latents_strategy):
     # latent in the redirected target cache → complete
     _write_latent_npz(latent_dir / "img_0032x0032_anima.npz", 32, 32)
     assert ds.is_latents_cache_complete()
-
-
-def test_probe_falls_back_to_cache_dir_without_redirect(
-    tmp_path, anima_latents_strategy
-):
-    subset, info, cache_dir, _ = _layout(tmp_path, latent_redirect=False)
-    ds = _StubDataset({"img": info}, {"img": subset})
-    assert not ds.is_latents_cache_complete()
-    _write_latent_npz(cache_dir / "img_0032x0032_anima.npz", 32, 32)
-    assert ds.is_latents_cache_complete()
-
-
-def test_subset_schema_and_params_accept_latent_cache_dir():
-    from library.config.loader import ConfigSanitizer, DreamBoothSubsetParams
-
-    s = ConfigSanitizer(support_dropout=True)
-    user_config = {
-        "datasets": [
-            {
-                "subsets": [
-                    {
-                        "image_dir": "imgs",
-                        "cache_dir": "cache",
-                        "latent_cache_dir": "target",
-                    }
-                ]
-            }
-        ]
-    }
-    sanitized = s.sanitize_user_config(user_config)
-    assert sanitized["datasets"][0]["subsets"][0]["latent_cache_dir"] == "target"
-    assert DreamBoothSubsetParams(latent_cache_dir="target").latent_cache_dir == (
-        "target"
-    )

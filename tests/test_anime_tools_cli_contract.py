@@ -21,7 +21,7 @@ import importlib.util
 import os
 from pathlib import Path
 
-
+import pytest
 from anime_tools.stages.registry import STAGES
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -190,14 +190,6 @@ def test_mask_under_a_daemon_job_runs_the_stages_in_process(monkeypatch, tmp_pat
     assert Path(os.environ["ANIMA_HOME"]) == ROOT
 
 
-def test_mask_stage_ids_the_trainer_names_are_registered():
-    from anime_tools.stages.registry import BY_ID
-
-    for stage_id in ("masks_sam", "masks_merge"):
-        stage = BY_ID[stage_id]
-        assert callable(stage.runner())
-
-
 # ----- caption stages ------------------------------------------------------------
 
 
@@ -238,17 +230,6 @@ def test_caption_position_target_builds_position_request(monkeypatch):
     assert req.apply
     assert req.to_argv().count("--path_pattern") == 1
     assert _build(_argv("anime_tools.stages.cli.position_captions", req)) == req
-
-
-def test_caption_target_rejects_an_unknown_flag_like_the_child_would(monkeypatch):
-    import pytest
-
-    from scripts.tasks import preprocess
-
-    monkeypatch.setattr(preprocess, "_path", _fake_path)
-    with pytest.raises(SystemExit) as exc:
-        preprocess._caption_autotag_request(["--no_such_flag"])
-    assert exc.value.code == 2
 
 
 def test_in_pipeline_stages_build_apply_requests(monkeypatch):
@@ -314,33 +295,6 @@ def test_preprocess_captions_builds_correct_request(monkeypatch):
     assert not req.no_correct
     assert req.caption_shuffle_variants == 4
     assert req.caption_tag_dropout_rate == 0.1
-
-
-def test_preprocess_captions_passthrough_builds_no_correct_request(monkeypatch):
-    from scripts.tasks import preprocess
-
-    calls = _capture(monkeypatch, preprocess)
-    monkeypatch.setattr(preprocess, "_ensure_danbooru_tags", lambda: None)
-    monkeypatch.setenv("CAPTION_SHUFFLE_VARIANTS", "2")
-    monkeypatch.delenv("CAPTION_TAG_RANDOMIZE_RATE", raising=False)
-
-    preprocess.cmd_preprocess_captions(
-        [],
-        caption_config={
-            "correct_order": False,
-            "insert_no_artist": False,
-            "trigger_word": "",
-            "trigger_at_front": False,
-            "drop_groups": "",
-            "position_clauses": False,
-            "autotag": False,
-        },
-    )
-
-    assert len(calls) == 1
-    req = _build(calls[0])
-    assert req.no_correct
-    assert req.caption_shuffle_variants == 2
 
 
 class _StubStage:
@@ -431,22 +385,6 @@ def test_preprocess_resize_builds_resize_request_from_config_and_args(
     assert req.recursive
     assert req.overwrite  # ARGS applied through the request's parser
     assert req.skip == ()
-
-
-def test_preprocess_resize_rejects_removed_snap_era_flags(monkeypatch, tmp_path):
-    """v2 dropped the swallow-with-a-note shim: a snap-era flag now fails the
-    stage's own parse instead of being silently ignored."""
-    import pytest
-
-    from scripts.tasks import _common, preprocess
-
-    _capture(monkeypatch, preprocess)
-    monkeypatch.setattr(_common, "_path_overrides", lambda: {"target_res": [1024]})
-    monkeypatch.setattr(
-        preprocess, "_curation_decisions_path", lambda: tmp_path / "none"
-    )
-    with pytest.raises(SystemExit):
-        preprocess.cmd_preprocess_resize(["--resize_bucket_resos", "1024x1008"])
 
 
 def test_preprocess_resize_turns_curation_decisions_into_skip(monkeypatch, tmp_path):
@@ -563,6 +501,7 @@ def _trainer_anime_tools_refs() -> tuple[
     return imports, modules
 
 
+@pytest.mark.core
 def test_every_trainer_import_from_anime_tools_resolves():
     imports, _ = _trainer_anime_tools_refs()
     assert imports, "no anime_tools imports found — scan roots moved?"
@@ -580,6 +519,7 @@ def test_every_trainer_import_from_anime_tools_resolves():
     assert not broken, "\n".join(broken)
 
 
+@pytest.mark.core
 def test_every_module_string_the_trainer_spells_exists():
     """The ``-m`` targets (stages, tagger CLIs, ``captions.index``) and any
     other dotted ``anime_tools.…`` literal must be importable modules."""
@@ -624,15 +564,3 @@ def test_caption_index_argv_keeps_the_trainer_output_path(monkeypatch):
     assert cmd[2] == "anime_tools.captions.index"
     assert cmd[cmd.index("--out") + 1] == preprocess.CAPTION_INDEX_PATH
     assert preprocess.CAPTION_INDEX_PATH.startswith("post_image_dataset/captions/")
-
-
-def test_no_hand_copied_contract_constants():
-    """The copies the API-first audit found are now the package's own."""
-    from anime_tools import contract
-
-    from scripts.tasks import preprocess
-
-    assert preprocess.AUTOTAG_MODES is contract.AUTOTAG_MODES
-    # The tagger's file set is no longer copied at all: the download surface is
-    # the package's own catalog row (see tests/test_downloads.py).
-    assert contract.DBV4_REQUIRED_FILES

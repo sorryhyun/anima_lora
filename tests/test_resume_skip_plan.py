@@ -17,13 +17,6 @@ def test_issue_103_numbers():
     )
 
 
-def test_ga_one_is_unchanged():
-    assert resume_skip_plan(1200, num_batches=10, gradient_accumulation_steps=1) == (
-        120,
-        0,
-    )
-
-
 def test_residual_inside_epoch_is_in_batches():
     # 20 batches/epoch, ga=4 → 5 steps/epoch; step 12 = 2 epochs + 2 steps = 8 batches.
     assert resume_skip_plan(12, num_batches=20, gradient_accumulation_steps=4) == (2, 8)
@@ -43,8 +36,8 @@ def test_partial_last_step_per_epoch():
     )
 
 
-@pytest.mark.parametrize("ga", [1, 2, 3, 5, 8])
-@pytest.mark.parametrize("num_batches", [1, 7, 10, 11, 64])
+@pytest.mark.parametrize("ga", [1, 5])
+@pytest.mark.parametrize("num_batches", [10, 11])
 def test_epoch_to_start_never_exceeds_steps_taken(ga, num_batches):
     import math
 

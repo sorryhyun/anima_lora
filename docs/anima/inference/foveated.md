@@ -78,7 +78,7 @@ python inference.py ... --fovea_sigma_c 0.75 --fovea_frac 0.25   # faster, knee 
 - Merged rope is the exact mean-position rope (synthetic-angle test).
 - `score_to_cells` lands on the target fraction post-morphology and never
   emits isolated fovea cells (scattered cells lose their attention
-  neighborhood — +47 % subject error in P2).
+  neighborhood — +47 % subject error in P2). This one has no test.
 
 Bench regression surface (archived): `_archive/bench/foveated/` probes
 (`probe_token_merge.py` = speed + startup invariants, `probe_mask_sources.py` /

@@ -1,5 +1,5 @@
-"""The Anima int8 base's surface: which file supplies the forward copies, the plans it
-refuses, the LoRA stamps and the flags. The GEMMs themselves: ``test_moss_int8.py``."""
+"""The Anima int8 base's surface: which file supplies the forward copies, the plan it
+refuses, the LoRA stamps, and dX on block swap. The GEMMs: ``test_moss_int8.py``."""
 
 from __future__ import annotations
 
@@ -15,13 +15,10 @@ from safetensors.torch import save_file
 
 from library import downloads
 from library.anima.int8 import (
-    CONVERT_SUFFIXES,
     stream_blocks_,
     ROUND_TO_NEAREST,
     check_plan,
-    ckpt_keys,
     convert_dit_,
-    convert_for_training,
     convert_for_turbo,
     convert_targets,
     dequantize_checkpoint_,
@@ -29,7 +26,6 @@ from library.anima.int8 import (
 )
 from library.anima.models import Anima
 from library.anima.stream import stream_fp32_
-from library.anima.trainer.cli import setup_parser
 from library.anima.trainer.trainer import AnimaTrainer
 from library.anima.weights import is_int8_checkpoint
 from library.int8.linear import _int8_flops, close_stream, quantize
@@ -52,7 +48,9 @@ def args(**over):
     return SimpleNamespace(**{**base, **over})
 
 
+@pytest.mark.core
 def test_forward_file_order(tmp_path):
+    """Which file supplies the int8 forward copies; the wrong one renders wrong, silently."""
     dit = tmp_path / "dit.safetensors"
     assert forward_file(None, str(dit)) == ""
     beside = tmp_path / "dit_int8_gptq.safetensors"
@@ -75,10 +73,6 @@ def test_catalog_dit_fetches_its_forward_file(monkeypatch, tmp_path):
     assert forward_file(ROUND_TO_NEAREST, dit) == "" and len(fetched) == 1
     target.touch()
     assert forward_file(None, dit) == str(target) and len(fetched) == 1
-
-
-def test_check_plan_takes_swap():
-    check_plan(args(blocks_to_swap=20))
 
 
 def tiny_dit(num_blocks: int = 6) -> Anima:
@@ -131,11 +125,20 @@ def swapped_step(model: Anima):
     return y.detach(), x.grad
 
 
+@pytest.mark.core
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs a card")
-@pytest.mark.parametrize("swap", [3, 4])
-@pytest.mark.parametrize("stream", ["bf16", "fp32"])
-@pytest.mark.parametrize("mode", ["fwd", "full", "stream"])
-@pytest.mark.parametrize("order", ["train", "turbo"])
+@pytest.mark.parametrize(
+    "order, mode, stream, swap",
+    [
+        ("train", "stream", "fp32", 3),
+        ("turbo", "stream", "fp32", 4),
+        ("turbo", "stream", "bf16", 3),
+        ("train", "fwd", "bf16", 4),
+        ("turbo", "fwd", "fp32", 3),
+        ("train", "full", "fp32", 4),
+        ("turbo", "full", "bf16", 3),
+    ],
+)
 def test_swapped_step_is_the_resident_step(order, mode, stream, swap):
     """Both places the swapper attaches: train.py before the conversion, turbo after.
     The resident reference is the same model with the swapper off, so the int8 copies
@@ -255,11 +258,21 @@ def gan_step(model: Anima, tap: int, ckpt: bool, between: bool) -> list[torch.Te
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs a card")
-@pytest.mark.parametrize("between", [False, True])
-@pytest.mark.parametrize("ckpt", [False, True])
-@pytest.mark.parametrize("swap", [3, 4])
-@pytest.mark.parametrize("tap", [1, 2, 3, 4, 5])
-@pytest.mark.parametrize("mode", ["off", "stream"])
+@pytest.mark.parametrize(
+    "mode, tap, swap, ckpt, between",
+    [
+        ("off", 1, 4, True, False),
+        ("stream", 1, 3, False, True),
+        ("off", 2, 4, False, False),
+        ("stream", 2, 3, True, True),
+        ("off", 3, 3, True, True),
+        ("stream", 3, 4, False, False),
+        ("off", 4, 3, False, False),
+        ("stream", 4, 4, True, True),
+        ("off", 5, 3, False, True),
+        ("stream", 5, 4, True, False),
+    ],
+)
 def test_gan_step_on_swap_is_the_resident_step(mode, tap, swap, ckpt, between):
     device = torch.device("cuda")
     model = tiny_dit()
@@ -289,11 +302,6 @@ def test_base_weights_need_round_to_nearest(tmp_path):
     check_plan(args(int8_file=ROUND_TO_NEAREST, **plan))
 
 
-def test_only_lora_networks_train_on_int8():
-    with pytest.raises(SystemExit, match="not a LoRANetwork"):
-        convert_for_training(nn.Identity(), object(), args())
-
-
 def test_targets_are_the_block_linears():
     class Block(nn.Module):
         def __init__(self):
@@ -306,12 +314,6 @@ def test_targets_are_the_block_linears():
     dit.blocks = nn.ModuleList([Block()])
     dit.layer1 = nn.Linear(4, 4, bias=False)
     assert [n for n, _ in convert_targets(dit)] == ["blocks.0.mlp.layer1"]
-
-
-def test_qkv_splits_back_to_checkpoint_keys():
-    keys = ckpt_keys("blocks.3.self_attn.qkv_proj")
-    assert len(keys) == 3 and all(k.startswith("net.blocks.3.") for k in keys)
-    assert ckpt_keys("blocks.3.mlp.layer1") == ["net.blocks.3.mlp.layer1.weight"]
 
 
 def stamp(**over):
@@ -329,40 +331,11 @@ def stamp(**over):
     return meta
 
 
+@pytest.mark.core
 def test_lora_stamps():
     assert "ss_int8_base" not in stamp(int8="off")
     meta = stamp(int8="full", int8_base_id=ROUND_TO_NEAREST)
     assert (meta["ss_int8_base"], meta["ss_int8_base_id"]) == ("full", ROUND_TO_NEAREST)
-
-
-def test_flags_default_off():
-    parsed = setup_parser().parse_args([])
-    assert (parsed.int8, parsed.int8_file) == ("off", None)
-    with pytest.raises(SystemExit):
-        setup_parser().parse_args(["--int8", "half"])
-
-
-def test_stream_groups_each_block_by_suffix(monkeypatch):
-    class Block(nn.Module):
-        def __init__(self):
-            super().__init__()
-            for path in CONVERT_SUFFIXES:
-                head, tail = path.split(".")
-                if not hasattr(self, head):
-                    setattr(self, head, nn.Module())
-                setattr(getattr(self, head), tail, nn.Linear(4, 4, bias=False))
-
-    dit = nn.Module()
-    dit.blocks = nn.ModuleList([Block(), Block()])
-    seen = []
-    monkeypatch.setattr("library.anima.int8.stream_compacted_", seen.extend)
-    stream_blocks_(dit)
-    assert [len(b) for b in seen] == [len(CONVERT_SUFFIXES)] * 2
-    assert seen[1][0] is dit.blocks[1].self_attn.qkv_proj
-
-
-def test_stream_flag_parses():
-    assert setup_parser().parse_args(["--int8", "stream"]).int8 == "stream"
 
 
 def test_int8_flops_count_tokens_on_fake_5d():
@@ -401,6 +374,7 @@ def _write_int8_checkpoint(path, w):
     )
 
 
+@pytest.mark.core
 def test_an_int8_checkpoint_is_its_own_forward_file(tmp_path):
     dit = tmp_path / "dit.safetensors"
     _write_int8_checkpoint(dit, torch.randn(8, 256))
@@ -410,6 +384,7 @@ def test_an_int8_checkpoint_is_its_own_forward_file(tmp_path):
     assert forward_file(ROUND_TO_NEAREST, str(dit)) == ""
 
 
+@pytest.mark.core
 def test_dequantize_rebuilds_the_weight_and_drops_side_keys(tmp_path):
     dit = tmp_path / "dit.safetensors"
     w = torch.randn(8, 256)

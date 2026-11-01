@@ -103,7 +103,6 @@ rewrite. Restoring is mechanical.
 
 ### 9. Tests
 - `tests/test_method_network_lifecycle.py`: the `IPAdapterNetwork` import + lifecycle case.
-- `tests/test_smoke.py`: the IP-Adapter smoke reference.
 
 ### 10. Docs
 - Restore `docs/anima/experimental/ip-adapter.md` from `impl/`.

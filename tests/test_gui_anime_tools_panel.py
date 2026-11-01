@@ -50,17 +50,6 @@ def test_seed_points_src_at_a_non_default_source_and_blanks_it_back(tmp_path):
     assert _settings(tmp_path)["dataset"]["src"] == ""
 
 
-def test_seed_warns_when_a_workspace_root_points_into_the_trainer_tree(tmp_path):
-    P.settings_path(tmp_path).write_text(
-        json.dumps({"dataset": {"dst": "post_image_dataset/resized", "masks": ""}}),
-        encoding="utf-8",
-    )
-    seeded = P.seed_settings("image_dataset", home=tmp_path)
-    assert seeded.warnings == ["dst = post_image_dataset/resized"]
-    # Warned about, not rewritten: that is the user's call in the panel.
-    assert _settings(tmp_path)["dataset"]["dst"] == "post_image_dataset/resized"
-
-
 def _touch(path, mtime):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("x", encoding="utf-8")

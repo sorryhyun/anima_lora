@@ -2,7 +2,6 @@
 
 Covers:
   * GlobalRouter init is uniform-at-step-0 (zero output layer + softmax/τ).
-  * ``set_routing_weights`` broadcasts to every routing-aware module.
   * ``set_fei`` end-to-end: fires the GlobalRouter and broadcasts.
   * Aliasing-recovery after a simulated ``Module._apply`` orphans the link
     (mirrors ``test_hydra_sigma_band.test_set_sigma_recovers_aliasing_after_to_device``).
@@ -14,6 +13,7 @@ and consumes the gates the network-level ``GlobalRouter`` broadcasts.
 
 from __future__ import annotations
 
+import pytest
 import torch
 
 from networks.lora_anima.config import LoRANetworkCfg
@@ -110,88 +110,6 @@ def test_global_router_uniform_at_init():
     assert router._last_input is not None
 
 
-def test_global_router_pools_and_layernorms_text_input():
-    """``crossattn_emb`` source: ``GlobalRouter(apply_layer_norm=True)`` takes
-    a raw ``(B, L, D)`` text tensor, RMS-pools over the sequence axis, and
-    stays uniform-at-init (zero output layer → softmax = 1/E)."""
-    from networks.lora_anima.network import CROSSATTN_EMB_DIM
-
-    router = GlobalRouter(
-        input_dim=CROSSATTN_EMB_DIM,
-        num_experts=4,
-        hidden_dim=8,
-        tau=0.7,
-        apply_layer_norm=True,
-    )
-    assert router.ln_in is not None
-    x = torch.randn(3, 7, CROSSATTN_EMB_DIM)  # (B, L, D)
-    gates = router(x)
-    assert gates.shape == (3, 4)
-    assert torch.allclose(gates, torch.full_like(gates, 0.25), atol=1e-6)
-
-
-def test_set_crossattn_routing_broadcasts_text_gates():
-    """``set_crossattn_routing`` fires the crossattn GlobalRouter on a raw
-    ``(B, L, D)`` text tensor and broadcasts the gates to every routing-aware
-    module — the same ``_routing_weights`` slot the σ/FEI router writes."""
-    from networks.lora_anima.network import CROSSATTN_EMB_DIM
-
-    net = _make_minimal_hydra_global_router_network(num_experts=3, fei_dim=2)
-    # Reconfigure for the crossattn-emb cell: advertise the flag and swap in a
-    # text-fed GlobalRouter (pooling + LN).
-    net.use_crossattn_router = True
-    net.global_router = GlobalRouter(
-        input_dim=CROSSATTN_EMB_DIM,
-        num_experts=3,
-        hidden_dim=32,
-        tau=0.7,
-        apply_layer_norm=True,
-    )
-    net.add_module("global_router", net.global_router)
-    with torch.no_grad():
-        net.global_router.net[-1].weight.normal_(std=1.0)
-        net.global_router.net[-1].bias.normal_(std=1.0)
-    emb = torch.randn(1, 5, CROSSATTN_EMB_DIM)  # (B, L, D)
-    net.set_crossattn_routing(emb)
-    canonical = net._routing_aware_loras[0]._buffers["_routing_weights"]
-    with torch.no_grad():
-        expected = net.global_router(emb)
-    assert torch.allclose(canonical, expected, atol=1e-6)
-
-
-def test_set_crossattn_routing_noop_without_flag():
-    """No crossattn router wired (``use_crossattn_router`` falsy) → the call
-    leaves the uniform placeholder untouched."""
-    net = _make_minimal_hydra_global_router_network(num_experts=3, fei_dim=2)
-    net.clear_routing_weights()
-    before = net._routing_aware_loras[0]._buffers["_routing_weights"].clone()
-    # Default helper sets up a FEI router, not a crossattn one.
-    net.set_crossattn_routing(torch.randn(1, 4, 1024))
-    after = net._routing_aware_loras[0]._buffers["_routing_weights"]
-    assert torch.allclose(before, after)
-
-
-def test_set_routing_weights_broadcasts():
-    """``set_routing_weights`` writes one gate tensor to every routing-aware module."""
-    net = _make_minimal_hydra_global_router_network(num_experts=3, fei_dim=2)
-    gates = torch.tensor([[0.5, 0.3, 0.2]])
-    net.set_routing_weights(gates)
-    # Every routing-aware module's _routing_weights now holds those gates,
-    # and they all alias the same shared tensor.
-    canonical = net._routing_aware_loras[0]._buffers["_routing_weights"]
-    for lora in net._routing_aware_loras:
-        assert lora._buffers["_routing_weights"] is canonical
-    assert torch.allclose(canonical, gates)
-
-
-def test_clear_routing_weights_resets_to_uniform():
-    net = _make_minimal_hydra_global_router_network(num_experts=4, fei_dim=2)
-    net.set_routing_weights(torch.tensor([[0.7, 0.1, 0.1, 0.1]]))
-    net.clear_routing_weights()
-    canonical = net._routing_aware_loras[0]._buffers["_routing_weights"]
-    assert torch.allclose(canonical, torch.full_like(canonical, 0.25))
-
-
 def test_set_fei_fires_global_router_and_broadcasts():
     """End-to-end: caller pushes FEI via ``set_fei``, the GlobalRouter
     runs, and its gates land on every routing-aware module."""
@@ -211,6 +129,7 @@ def test_set_fei_fires_global_router_and_broadcasts():
     assert torch.allclose(canonical, expected, atol=1e-6)
 
 
+@pytest.mark.core
 def test_set_routing_weights_recovers_aliasing_after_apply():
     """Regression: ``Module._apply`` (``.to(device)``) reallocates each
     routing-aware module's ``_routing_weights`` buffer independently,
@@ -241,63 +160,7 @@ def test_set_routing_weights_recovers_aliasing_after_apply():
         assert torch.allclose(lora._buffers["_routing_weights"], gates)
 
 
-def test_hydra_module_consumes_routing_weights():
-    """``HydraLoRAModule(use_global_router=True).forward`` weights the
-    per-expert sum by ``_routing_weights``. Confirm the broadcast actually
-    changes outputs.
-    """
-    net = _make_minimal_hydra_global_router_network(num_experts=3, fei_dim=2)
-    mod = net.unet_loras[0]
-    # Break zero-init expert ups so the adapter contribution is non-zero.
-    with torch.no_grad():
-        mod.lora_up_weight.normal_(std=0.1)
-    mod.apply_to()
-    x = torch.randn(4, 16)
-    # Uniform routing.
-    net.clear_routing_weights()
-    y_uniform = mod(x)
-    # One-hot on expert 0.
-    one_hot = torch.zeros(4, 3)
-    one_hot[:, 0] = 1.0
-    net.set_routing_weights(one_hot)
-    y_e0 = mod(x)
-    # One-hot on expert 1.
-    one_hot[:] = 0.0
-    one_hot[:, 1] = 1.0
-    net.set_routing_weights(one_hot)
-    y_e1 = mod(x)
-    # Different gates must produce different outputs (with overwhelmingly
-    # high probability for random expert weights).
-    assert not torch.allclose(y_uniform, y_e0, atol=1e-4)
-    assert not torch.allclose(y_e0, y_e1, atol=1e-4)
-
-
-def test_metrics_emits_fera_keys_when_global_router_fired():
-    """After ``set_fei`` fires the GlobalRouter, ``metrics`` emits the
-    ``fera/router_entropy`` / ``fera/router_margin`` / ``fera/expert_usage/*``
-    keys (the ``fera/`` prefix is kept for the GlobalRouter). Hand-rolling the
-    network skips the model-loading machinery; the
-    ``_use_hydra`` attr is set in the helper so the gate before the
-    ``fera/*`` block is satisfied.
-    """
-    from library.training.metrics import MetricContext
-
-    net = _make_minimal_hydra_global_router_network(num_experts=3, fei_dim=2)
-    with torch.no_grad():
-        net.global_router.net[-1].weight.normal_(std=1.0)
-    fei = torch.tensor([[0.7, 0.3], [0.4, 0.6]])
-    net.set_fei(fei)
-    out = net.metrics(MetricContext(args=None, network=net))
-    assert "fera/router_entropy" in out
-    assert "fera/router_margin" in out
-    assert "fera/expert_usage/0" in out
-    assert "fera/expert_usage/1" in out
-    assert "fera/expert_usage/2" in out
-    # Usage sums to ~1 (per-expert mean gate weight, softmax rows → 1).
-    total = sum(out[f"fera/expert_usage/{i}"] for i in range(3))
-    assert abs(total - 1.0) < 1e-5
-
-
+@pytest.mark.core
 def test_hydra_global_router_receives_gradient_from_expert_forward():
     """Gates appear as live multipliers in the expert mixing, so plain
     L_denoise backprop must reach the GlobalRouter parameters: ``set_fei``

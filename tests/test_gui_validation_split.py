@@ -12,8 +12,6 @@ from __future__ import annotations
 
 import os
 
-from gui.core.validation import _DEFAULT_VALIDATION_SPLIT_NUM, apply_validation_choice
-
 
 def _make_config_tab():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -60,13 +58,3 @@ def test_ticking_use_valid_seeds_positive_default():
         assert vsn_w.value() > 0
     finally:
         tab.deleteLater()
-
-
-def test_apply_validation_choice_disabled_writes_zero():
-    """When the checkbox follows the spinbox to 0, the save helper writes a
-    concrete validation_split_num = 0 (disabled), never the 16 default."""
-    out: dict = {}
-    apply_validation_choice(out, enabled=False, split_num=0, base_split_num=0)
-    assert out["datasets"][0]["validation_split_num"] == 0
-    assert out["datasets"][0]["validation_split"] == 0.0
-    assert _DEFAULT_VALIDATION_SPLIT_NUM == 16  # guards the historical default

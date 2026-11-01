@@ -215,7 +215,8 @@ sd-scripts: Zero `_orig_mod_` awareness — loading a checkpoint trained with `t
 `accelerator.autocast()` the fp32 matmuls never executed (bit-identical forward in
 the `lora_fp32_bottleneck` bench). Training forwards now run the rank GEMMs in the
 frozen Linear's output dtype (`org_forwarded.dtype`, `networks/lora_modules/base.py`);
-inference paths keep fp32. Regression tests: `tests/test_lora_dtype_policy.py`.
+inference paths keep fp32. Regression tests: `tests/test_lora_dtype_policy.py`,
+`tests/test_lora_module_equivalence.py` (the fp32 inference goldens).
 `use_custom_down_autograd` is still accepted as a logged no-op so old snapshot TOMLs
 replay.
 

@@ -240,6 +240,7 @@ def _write_goldens():
         print(f"wrote {_golden_path(name).relative_to(GOLDEN_DIR.parent.parent)}")
 
 
+@pytest.mark.core
 @pytest.mark.parametrize("name", list(_VARIANTS))
 def test_module_forward_matches_golden(name):
     path = _golden_path(name)

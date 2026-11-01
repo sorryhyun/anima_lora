@@ -41,6 +41,7 @@ def _out(model, x, e):
         return model(x, torch.tensor([600.0]), e).sample
 
 
+@pytest.mark.core
 def test_targets_six_per_block():
     model = _tiny(layers=4)
     net = LoRANetwork(model, rank=4)
@@ -51,6 +52,7 @@ def test_targets_six_per_block():
     assert all(re.fullmatch(DEFAULT_TARGETS, n) for n in net.target_names)
 
 
+@pytest.mark.core
 def test_zero_init_and_multiplier_zero_are_base():
     model = _tiny()
     x, e = _inputs()
@@ -67,7 +69,9 @@ def test_zero_init_and_multiplier_zero_are_base():
     assert torch.equal(_out(model, x, e), base)
 
 
+@pytest.mark.core
 def test_save_load_round_trip(tmp_path):
+    """A saved LoRA renders the same after a load, with its depth stamped and checked."""
     model = _tiny()
     x, e = _inputs()
     net = LoRANetwork(model, rank=4, alpha=2.0)
@@ -124,6 +128,7 @@ def test_rank_pattern_adds_modulation_and_round_trips(tmp_path):
     assert torch.allclose(_out(fresh, x, e), want, atol=1e-6)
 
 
+@pytest.mark.core
 def test_saved_keys_match_comfy_lora_map(tmp_path):
     # ComfyUI's model_lora_keys_unet maps lora_unet_<weight key, dots → _>;
     # the loader then reads .lora_down/.lora_up/.alpha under it.
@@ -167,8 +172,10 @@ def test_saved_keys_match_comfy_lora_map(tmp_path):
     assert torch.allclose(_out(fresh, x, e), want, atol=1e-6)
 
 
+@pytest.mark.core
 @pytest.mark.parametrize("algo", ["lora", "lokr", "loha"])
 def test_one_step_decreases_loss(algo):
+    """The training path on a tiny DiT: every adapter param gets a grad, the loss drops."""
     model = _tiny()
     model.requires_grad_(False)
     net = LoRANetwork(model, rank=4, algo=algo)
@@ -468,6 +475,7 @@ def test_weight_svd_nodc_starts_orthogonal_to_the_dc(tmp_path):
         LoRANetwork(model, rank=4, down_init="weight_svd_nodc")
 
 
+@pytest.mark.core
 @pytest.mark.parametrize(
     "meta, want",
     [

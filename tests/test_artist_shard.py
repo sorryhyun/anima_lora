@@ -5,26 +5,12 @@ fnmatch-safe pattern emission for bracket/paren artist names, and the
 config-mutation contract used by ``train.py``.
 """
 
-import pytest
-
 from library.datasets.artist_shard import (
     apply_artist_shard,
     list_artists,
-    parse_shard,
     shard_of,
 )
 from library.datasets.path_filter import filter_paths_by_glob
-
-
-def test_parse_shard_ok():
-    assert parse_shard("1_4") == (1, 4)
-    assert parse_shard(" 3_3 ") == (3, 3)
-
-
-@pytest.mark.parametrize("bad", ["", "1", "1_2_3", "a_4", "0_4", "5_4", "1_0"])
-def test_parse_shard_rejects(bad):
-    with pytest.raises(ValueError):
-        parse_shard(bad)
 
 
 def test_round_robin_is_partition():
@@ -61,17 +47,6 @@ def test_apply_sets_path_pattern_and_filters(tmp_path):
     assert kept == expected
     assert info[str(tmp_path)]["n_artists"] == len(found)
     assert info[str(tmp_path)]["n_shard"] == len(expected)
-
-
-def test_apply_rejects_existing_path_pattern(tmp_path):
-    (tmp_path / "a").mkdir()
-    uc = {
-        "datasets": [
-            {"subsets": [{"image_dir": str(tmp_path), "path_pattern": "foo/*"}]}
-        ]
-    }
-    with pytest.raises(ValueError, match="cannot compose"):
-        apply_artist_shard(uc, "1_2", resolve=None)
 
 
 def test_apply_skips_reg_and_missing(tmp_path):

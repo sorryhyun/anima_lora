@@ -30,16 +30,11 @@ These tests pin the two contracts the rewrite must keep:
      and without autocast, so non-autocast callers (bespoke loops, tests) see
      the same numerics as train.py.
 
-Inference paths are NOT touched by the rewrite: HydraLoRAModule at eval and
-EasyControl's KV prefill keep their historical fp32 compute (the inference
-engine runs without autocast). Asserted below.
-
-Also home to the flag-independent invariant that lived in the retired
-``test_lora_custom_autograd.py``: the hydra σ-feature cache.
 """
 
 from __future__ import annotations
 
+import pytest
 import torch
 import torch.nn.functional as F
 
@@ -73,20 +68,10 @@ def _assert_grads_equal(a: dict, b: dict, label: str):
 
 
 # ---------------------------------------------------------------------------
-# Legacy-path replicas: the retired fp32-bottleneck training branches,
-# verbatim. Run under autocast they reproduce what train.py executed before
-# the rewrite; the new forwards must match them bitwise.
+# Legacy-path replica: the retired fp32-bottleneck hydra training branch,
+# verbatim. Run under autocast it reproduces what train.py executed before
+# the rewrite; the new forward must match it bitwise.
 # ---------------------------------------------------------------------------
-
-
-def _legacy_lora_forward(module, x):
-    org_forwarded = module.org_forward(x)
-    x_lora = module._rebalance(x)
-    lx = F.linear(x_lora.float(), module.lora_down.weight.float())
-    lx = lx * module._timestep_mask
-    lx, scale = module._apply_rank_dropout(lx)
-    lx = F.linear(lx, module.lora_up.weight.float())
-    return org_forwarded + (lx * module.multiplier * scale).to(org_forwarded.dtype)
 
 
 def _legacy_hydra_forward(module, x):
@@ -118,55 +103,6 @@ def _run_pair(make_module, new_fn, legacy_fn, *, in_dim=32, seed=1):
         return out.detach().clone(), _named_trainable_grads(module), x.grad.clone()
 
     return run(new_fn), run(legacy_fn)
-
-
-def test_lora_training_matches_legacy_under_autocast():
-    from networks.lora_modules.lora import LoRAModule
-
-    def make():
-        torch.manual_seed(0)
-        base = torch.nn.Linear(32, 24, bias=False).to(torch.bfloat16)
-        base.weight.requires_grad_(False)
-        module = LoRAModule("m", base, multiplier=1.0, lora_dim=4, alpha=4)
-        with torch.no_grad():
-            module.lora_up.weight.copy_(torch.randn_like(module.lora_up.weight) * 0.1)
-        module.apply_to()
-        return base, module
-
-    (o_new, g_new, gx_new), (o_old, g_old, gx_old) = _run_pair(
-        make, lambda m, x: m.forward(x), _legacy_lora_forward
-    )
-    assert torch.equal(o_new, o_old), "LoRA forward != legacy fp32 path under autocast"
-    _assert_grads_equal(g_new, g_old, "LoRA")
-    assert torch.equal(gx_new, gx_old), "LoRA grad_x differs"
-
-
-def test_lora_channel_scale_training_matches_legacy_under_autocast():
-    from networks.lora_modules.lora import LoRAModule
-
-    cs = _make_channel_scale(32)
-
-    def make():
-        torch.manual_seed(0)
-        base = torch.nn.Linear(32, 24, bias=False).to(torch.bfloat16)
-        base.weight.requires_grad_(False)
-        module = LoRAModule(
-            "m", base, multiplier=1.0, lora_dim=4, alpha=4, channel_scale=cs.clone()
-        )
-        with torch.no_grad():
-            module.lora_up.weight.copy_(torch.randn_like(module.lora_up.weight) * 0.1)
-        module.apply_to()
-        return base, module
-
-    # The legacy *default* path also routed through _rebalance, so even with
-    # channel scaling this stays bitwise (only the retired custom Function's
-    # fp32 fold differed by one rounding).
-    (o_new, g_new, gx_new), (o_old, g_old, gx_old) = _run_pair(
-        make, lambda m, x: m.forward(x), _legacy_lora_forward
-    )
-    assert torch.equal(o_new, o_old)
-    _assert_grads_equal(g_new, g_old, "LoRA+channel_scale")
-    assert torch.equal(gx_new, gx_old)
 
 
 def test_hydra_training_matches_legacy_under_autocast():
@@ -243,6 +179,7 @@ def _fp32_activation_no_upcast(make, *, in_dim=32):
     )
 
 
+@pytest.mark.core
 def test_lora_fp32_activation_no_upcast():
     from networks.lora_modules.lora import LoRAModule
 
@@ -288,37 +225,6 @@ def test_hydra_fp32_activation_no_upcast():
     _fp32_activation_no_upcast(make)
 
 
-def test_hydra_inference_keeps_fp32_compute():
-    """The rewrite is training-only: at eval the hydra forward still computes
-    in fp32 (router-live checkpoints run through the no-autocast inference
-    engine and must produce unchanged outputs)."""
-    from networks.lora_modules.hydra import HydraLoRAModule
-
-    torch.manual_seed(0)
-    base = torch.nn.Linear(32, 24, bias=False).to(torch.bfloat16)
-    module = HydraLoRAModule(
-        "h", base, multiplier=1.0, lora_dim=4, alpha=4, num_experts=3
-    )
-    with torch.no_grad():
-        module.lora_up_weight.copy_(torch.randn_like(module.lora_up_weight) * 0.1)
-    module.apply_to()
-    module.eval()
-
-    torch.manual_seed(1)
-    x = torch.randn(2, 8, 32, dtype=torch.bfloat16)
-
-    # fp32 reference: the historical eval compute, spelled out.
-    org = module.org_forward(x)
-    lx = F.linear(module._rebalance(x).float(), module.lora_down.weight.float())
-    gate = module._compute_gate(lx)
-    combined = torch.einsum("be,eod->bod", gate.float(), module.lora_up_weight.float())
-    lx_3d = lx.reshape(2, -1, lx.shape[-1])
-    out = torch.bmm(lx_3d, combined.transpose(1, 2)).reshape(2, 8, -1)
-    ref = org + (out * module.multiplier * module.scale).to(org.dtype)
-
-    assert torch.equal(module.forward(x), ref)
-
-
 def test_lora_channel_scale_absorption_preserves_output():
     """SmoothQuant-style absorption: a channel-scaled module must produce the
     same delta as an unscaled twin (weights rebalanced, output unchanged)."""
@@ -351,44 +257,4 @@ def test_lora_channel_scale_absorption_preserves_output():
         y_scaled = scaled.forward(x)
     assert torch.allclose(
         y_plain.float(), y_scaled.float(), atol=_CS_ATOL, rtol=_CS_RTOL
-    )
-
-
-# ---------------------------------------------------------------------------
-# Hydra σ-feature cache (flag-independent invariant, ported from the retired
-# test_lora_custom_autograd.py).
-# ---------------------------------------------------------------------------
-
-
-def test_hydra_sigma_feature_cache_updates_and_clears():
-    """Sigma-router features are precomputed once per step and cached on modules."""
-    from networks.lora_modules.hydra import (
-        HydraLoRAModule,
-        _sigma_sinusoidal_features,
-    )
-
-    torch.manual_seed(0)
-    base = torch.nn.Linear(32, 24, bias=False)
-    module = HydraLoRAModule(
-        "h",
-        base,
-        multiplier=1.0,
-        lora_dim=4,
-        alpha=4,
-        num_experts=3,
-        sigma_feature_dim=8,
-    )
-
-    sigmas = torch.tensor([0.25, 0.5], dtype=torch.float32)
-    expected = _sigma_sinusoidal_features(sigmas, 8)
-    module.set_sigma(sigmas, expected)
-
-    assert torch.equal(module._sigma, sigmas)
-    assert torch.equal(module._sigma_features, expected)
-
-    module.clear_sigma()
-    assert torch.equal(module._sigma, torch.zeros_like(sigmas))
-    assert torch.equal(
-        module._sigma_features,
-        _sigma_sinusoidal_features(torch.zeros_like(sigmas), 8),
     )

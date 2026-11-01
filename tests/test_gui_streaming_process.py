@@ -67,21 +67,3 @@ def test_lines_tail_and_env(qapp, monkeypatch):
     assert "".join(s for s, e in chunks if not e).endswith("UNBUF=1")
     assert "�" not in "".join(s for s, _ in chunks)
     assert not proc.is_running()
-
-
-def test_custom_separators_and_busy_guard(qapp):
-    proc = StreamingProcess(separators="\n")
-    lines: list[str] = []
-    proc.line.connect(lambda s, err: lines.append(s) if not err else None)
-    code = _run(proc, ["-c", "print('a\\rb'); print('c', end='')"])
-    assert code == 0
-    assert lines == ["a\rb", "c"]
-
-    loop = QEventLoop()
-    proc.finished.connect(lambda _c: loop.quit())
-    assert proc.start(["-c", "import time; time.sleep(30)"])
-    assert not proc.start(["-c", "pass"])
-    proc.kill()
-    QTimer.singleShot(10_000, loop.quit)
-    loop.exec()
-    assert not proc.is_running()

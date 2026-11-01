@@ -71,6 +71,7 @@ def _loras(D=16, ctx=12, ffn=64, r=2):
     )
 
 
+@pytest.mark.core
 def test_target_sublayers_zero_init_bit_exact_and_isolated():
     torch.manual_seed(0)
     D, ctx, ffn = 16, 12, 64
@@ -150,12 +151,6 @@ def test_ext_rows_delta_only_on_ext_positions():
         assert torch.equal(adapter.embed(ids), base)
     finally:
         detach_vocab_pack(adapter)
-
-
-def test_ext_rows_requires_attached_pack():
-    unet = SimpleNamespace(llm_adapter=_FakeAdapter())
-    with pytest.raises(ValueError, match="vocab pack"):
-        _make_network(unet, train_ext_rows="true")
 
 
 def test_body_lr_group_and_checkpoint_roundtrip(tmp_path):

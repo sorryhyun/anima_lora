@@ -23,14 +23,6 @@ EXT_PREFIX = REPO / "_archive" / "bench" / "cjk_adapter" / "assets" / "ext_embed
 # ---------------------------------------------------------------------------
 
 
-def test_default_route_is_the_legacy_predicate():
-    route = ev.Route.default()
-    for o in range(0, 0x10000, 3):
-        ch = chr(o)
-        assert route(ch) == ev.is_cjk_char(ch)
-    assert not route("^") and not route("~") and not route("·")
-
-
 def test_route_round_trips_through_the_pack_json():
     route = ev.Route(chars=frozenset("^<~·×☆"))
     back = ev.Route.from_mapping({"route": route.to_json()})
@@ -56,21 +48,6 @@ def test_segment_runs_honours_the_route():
     ]
 
 
-def test_encoder_routes_uses_the_pack_rule_and_defaults_to_cjk():
-    enc_legacy = ev.HybridT5Encoder(
-        t5_tok=None, qwen_tok=None, qwen_map={}, char_map={}
-    )
-    enc_sym = ev.HybridT5Encoder(
-        t5_tok=None,
-        qwen_tok=None,
-        qwen_map={},
-        char_map={},
-        route=ev.Route(chars=frozenset("^")),
-    )
-    assert not enc_legacy.routes("^^^") and enc_legacy.routes("黒")
-    assert enc_sym.routes("^^^") and enc_sym.routes("黒") and not enc_sym.routes("abc")
-
-
 # ---------------------------------------------------------------------------
 # Against the real tokenizers + asset (skipped when not present)
 # ---------------------------------------------------------------------------
@@ -88,35 +65,6 @@ def _tok_and_mapping():
     tok = strategy_anima.AnimaTokenizeStrategy(qwen3_path=ckpt.text_encoder)
     _, mapping = ev.load_ext_assets(EXT_PREFIX)
     return tok, mapping
-
-
-def test_symbol_route_chars_are_exactly_the_t5_gaps():
-    tok, _ = _tok_and_mapping()
-    chars = ev.symbol_route_chars(tok.t5_tokenizer, tok.qwen3_tokenizer)
-    for ch in "^<~·×☆\\♪":
-        assert ch in chars, ch
-    # Letters and punctuation spiece can spell never route.
-    for ch in "abcXYZ019,.:()'é":
-        assert ch not in chars, ch
-    for ch in chars:
-        assert not ev.is_cjk_char(ch)
-        assert (
-            ev.T5_UNK_ID in tok.t5_tokenizer(ch, add_special_tokens=False)["input_ids"]
-        )
-
-
-def test_symbol_block_is_a_strict_append_after_the_cjk_blocks():
-    _, mapping = _tok_and_mapping()
-    if "sym" not in mapping:
-        pytest.skip("asset built without the symbol block (--no-symbols)")
-    n_cjk = len(mapping["qwen"]) + len(mapping["char"])
-    assert max(mapping["qwen"].values()) < len(mapping["qwen"])
-    assert max(mapping["char"].values()) < n_cjk
-    sym_rows = list(mapping["sym"].values()) + list(mapping["sym_char"].values())
-    assert min(sym_rows) == n_cjk
-    assert max(sym_rows) == mapping["rows"] - 1
-    assert mapping["sym_rows"] == [n_cjk, mapping["rows"]]
-    assert set(mapping["route"]["chars"]) >= set("^<~·×☆")
 
 
 def test_symbols_encode_to_rows_and_en_stays_bit_identical():

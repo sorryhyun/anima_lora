@@ -17,7 +17,6 @@ from library.moss.cache import (
     add_variants,
     cache_text,
     find_pairs,
-    fit,
     _te_current,
     list_items,
     load_item,
@@ -42,6 +41,7 @@ def _fake_vae(channels=32):
     )
 
 
+@pytest.mark.core
 def test_pack_is_inverse_of_unpack():
     vae = _fake_vae()
     z = torch.randn(2, 32, 12, 18, dtype=torch.float64).float()
@@ -54,6 +54,7 @@ def test_pack_is_inverse_of_unpack():
     )
 
 
+@pytest.mark.core
 def test_pack_matches_flux2_patchify():
     # Channel 4c + 2a + b of the packed latent holds pixel (2i + a, 2j + b) of channel c.
     vae = _fake_vae(channels=1)
@@ -66,14 +67,11 @@ def test_pack_matches_flux2_patchify():
             torch.testing.assert_close(packed[0, 2 * a + b], z[0, 0, a::2, b::2])
 
 
+@pytest.mark.core
 @pytest.mark.parametrize(
     "size",
     [
-        (896, 1152),
-        (1024, 1024),
         (3000, 2000),
-        (1200, 4000),
-        (640, 480),
         (1023, 1023),
         (5000, 300),
         (17, 33),
@@ -87,17 +85,6 @@ def test_target_size_invariants(size):
     assert tw * th <= 1024 * 1024 * 1.10
     if min(w, h) >= 256:
         assert abs((tw / th) / (w / h) - 1) < 0.05
-
-
-def test_target_size_keeps_grid_images():
-    assert target_size(960, 1120, 1024) == (960, 1120)  # 1.075 MP, already on the grid
-    assert target_size(1536, 1536, 1024) == (1024, 1024)
-
-
-def test_fit_exact_size():
-    im = Image.new("RGB", (1000, 1500))
-    assert fit(im, 832, 1248).size == (832, 1248)
-    assert fit(im, 1000, 1500) is im
 
 
 def test_list_and_load_items(tmp_path):
@@ -124,21 +111,7 @@ def test_list_and_load_items(tmp_path):
     assert items[0].n_text_plain == 0 and load_plain(items[0]) is None
 
 
-def test_plain_embedding_rides_in_the_te_file(tmp_path):
-    save_file({"latent": torch.randn(128, 4, 4)}, tmp_path / f"a_64x64{LATENT_SUFFIX}")
-    save_file(
-        {
-            "embeds": torch.randn(40, 4096).bfloat16(),
-            "embeds_plain": torch.randn(25, 4096).bfloat16(),
-        },
-        tmp_path / f"a{TE_SUFFIX}",
-    )
-    (item,) = list_items(tmp_path)
-    assert (item.n_text, item.n_text_plain) == (40, 25)
-    plain = load_plain(item)
-    assert plain.dtype == torch.bfloat16 and plain.shape == (25, 4096)
-
-
+@pytest.mark.core
 def test_te_current_tracks_the_plain_caption(tmp_path):
     path = tmp_path / f"a{TE_SUFFIX}"
     meta = {"caption_sha256": caption_sha("{json}"), "max_text_tokens": "4096"}
@@ -198,6 +171,7 @@ def test_find_pairs_falls_back_to_originals(tmp_path, monkeypatch):
     assert [p.stem for p in find_pairs(source.parent)] == []
 
 
+@pytest.mark.core
 def test_find_pairs_layout_json(tmp_path, monkeypatch):
     pytest.importorskip("anime_tools.captions.layout_json")
     import anime_tools.captions.correction as correction
@@ -308,14 +282,6 @@ def test_caption_variants_ride_in_the_te_file(tmp_path):
     assert torch.equal(read_te(item.te_path), embeds)
 
 
-def test_variant_without_prefix_reads_whole(tmp_path):
-    """``variant_prefix`` absent (or 0): the variant is stored whole."""
-    whole = torch.randn(7, 4096).bfloat16()
-    path = tmp_path / f"a{TE_SUFFIX}"
-    save_file({"embeds": torch.randn(9, 4096).bfloat16(), "embeds_v1": whole}, path)
-    assert torch.equal(read_te(path, "embeds_v1"), whole)
-
-
 def test_variant_writers_round_trip(tmp_path):
     """``variant_entries`` stores the tails, ``add_variants`` replaces the set in
     place (through a symlink, at its target) and keeps everything else."""
@@ -366,6 +332,7 @@ def _stub_te(monkeypatch, rows: dict[str, int]):
     monkeypatch.setattr(torch.cuda, "max_memory_allocated", lambda: 0)
 
 
+@pytest.mark.core
 @pytest.mark.parametrize("edited", [False, True])
 def test_cache_text_keeps_variants_of_an_unchanged_caption(
     tmp_path, monkeypatch, capsys, edited

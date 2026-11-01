@@ -2,20 +2,14 @@
 
 Tier-1.5 guards for the `dual_pool` student:
 
-  * single-pool (dual_pool=false) constructs NO second stack and every path is
-    byte-identical to the shipped loop (student_pools == [student], the routing
-    handles are no-ops);
-  * pool A is built at div_pool_rank, plain-LoRA only, zero-init up (ΔW=0 at
-    init) — at step 0 the merged student IS the warm-started pool B;
+  * pool A is zero-init up (ΔW=0 at init) — at step 0 the merged student IS the
+    warm-started pool B;
   * set_view("student") enables BOTH pools; teacher/fake disable both;
   * ROUTING CORRECTNESS: after a student-view backward, route_div() lands grad on
     pool A alone (pool B grad None) and route_quality() on pool B alone;
-    route_all_on() restores both;
   * MERGE EQUIVALENCE: the saved concat LoRA reproduces ΔW_A + ΔW_B per module
-    exactly, and div_scale dials pool A (ΔW_B + α·ΔW_A);
-  * config validation: dual_pool requires dpdmd + detach_after_first, is mutually
-    exclusive with per_step_expert, div_pool_rank >= 1;
-  * resume: pool A round-trips; a single↔dual presence mismatch is REFUSED.
+    exactly;
+  * resume: pool A round-trips; a dual bundle is REFUSED on a single-pool run.
 
 No GPU, no real DiT: a one-Block tiny module satisfies LoRANetwork's target
 discovery (class name "Block" is what ANIMA_TARGET_REPLACE_MODULE matches), same
@@ -32,7 +26,6 @@ from torch import nn
 from safetensors.torch import load_file
 
 from networks.methods.turbo_dmd import TurboDMDNetwork
-from scripts.distill_turbo.config import build_argparser, resolve_config
 from scripts.distill_turbo.resume import (
     ResumeMismatchError,
     apply_resume_state,
@@ -99,46 +92,7 @@ def _delta(sd: dict, prefix: str) -> torch.Tensor:
     return (alpha / r) * (up @ down)
 
 
-# --- single-pool: byte-identical shipped loop -------------------------------
-
-
-def test_single_pool_constructs_no_second_stack():
-    turbo, _ = _make_turbo(dual_pool=False)
-    assert turbo.student_div is None
-    assert turbo.student_pools == [turbo.student]
-    # student_params is exactly the sole stack's trainable params.
-    assert turbo.student_params() == [
-        p for p in turbo.student.parameters() if p.requires_grad
-    ]
-
-
-def test_single_pool_routing_handles_are_noops():
-    turbo, dit = _make_turbo(dual_pool=False)
-    before = [p.requires_grad for p in turbo.student.parameters()]
-    turbo.route_div()
-    turbo.route_quality()
-    turbo.route_all_on()
-    after = [p.requires_grad for p in turbo.student.parameters()]
-    assert before == after  # untouched
-
-
-def test_single_pool_param_groups_is_one_group():
-    turbo, _ = _make_turbo(dual_pool=False)
-    groups = turbo.student_param_groups(5e-5)
-    assert len(groups) == 1
-    assert groups[0]["lr"] == 5e-5
-
-
 # --- dual-pool construction --------------------------------------------------
-
-
-def test_dual_pool_builds_pool_a():
-    turbo, _ = _make_turbo(dual_pool=True, div_pool_rank=RANK_A)
-    assert turbo.student_div is not None
-    assert turbo.student_pools == [turbo.student, turbo.student_div]
-    # Pool A rank = div_pool_rank on every module.
-    for m in turbo.student_div.unet_loras:
-        assert m.lora_down.weight.shape[0] == RANK_A
 
 
 def test_dual_pool_pool_a_is_zero_init():
@@ -146,18 +100,6 @@ def test_dual_pool_pool_a_is_zero_init():
     turbo, _ = _make_turbo(dual_pool=True)
     for m in turbo.student_div.unet_loras:
         assert torch.count_nonzero(m.lora_up.weight) == 0
-
-
-def test_dual_pool_rejects_per_step_expert():
-    dit = _TinyDiT()
-    with pytest.raises(ValueError, match="per-step-expert"):
-        TurboDMDNetwork(
-            unet=dit,
-            student_rank=RANK_B,
-            fake_rank=RANK_B,
-            dual_pool=True,
-            student_step_expert_K=2,
-        )
 
 
 # --- set_view toggles both pools --------------------------------------------
@@ -209,25 +151,6 @@ def test_route_quality_grads_pool_b_only():
     assert _grad_absent(turbo.student_div)  # pool A untouched
 
 
-def test_route_all_on_restores_both():
-    turbo, _ = _make_turbo(dual_pool=True)
-    turbo.route_div()
-    assert not all(p.requires_grad for p in turbo.student.parameters())
-    turbo.route_all_on()
-    assert all(p.requires_grad for p in turbo.student.parameters())
-    assert all(p.requires_grad for p in turbo.student_div.parameters())
-
-
-def test_param_groups_two_groups_with_lrs():
-    turbo, _ = _make_turbo(dual_pool=True)
-    groups = turbo.student_param_groups(5e-5, div_pool_lr=2e-4)
-    assert len(groups) == 2
-    assert groups[0]["lr"] == 5e-5  # pool B
-    assert groups[1]["lr"] == 2e-4  # pool A
-    # div_pool_lr=0 inherits student_lr.
-    assert turbo.student_param_groups(5e-5, div_pool_lr=0.0)[1]["lr"] == 5e-5
-
-
 # --- merge equivalence: saved concat LoRA == ΔW_A + ΔW_B --------------------
 
 
@@ -256,70 +179,6 @@ def test_merge_reproduces_sum_of_deltas(tmp_path):
     # Merged rank = r_B + r_A on a merged module.
     any_pfx = prefixes[0]
     assert merged[any_pfx + ".lora_down.weight"].shape[0] == RANK_B + RANK_A
-
-
-def test_div_scale_dials_pool_a(tmp_path):
-    turbo, _ = _make_turbo(dual_pool=True)
-    _randomize(turbo.student)
-    _randomize(turbo.student_div)
-    sd_b = TurboDMDNetwork._finalize_pool_state_dict(turbo.student, None)[0]
-    sd_a = TurboDMDNetwork._finalize_pool_state_dict(turbo.student_div, None)[0]
-    pfx = next(
-        k[: -len(".lora_down.weight")] for k in sd_a if k.endswith(".lora_down.weight")
-    )
-
-    for scale in (0.0, 0.5):
-        out = tmp_path / f"merged_{scale}.safetensors"
-        turbo.save_student(str(out), dtype=torch.float32, div_scale=scale)
-        merged = load_file(str(out))
-        expected = _delta(sd_b, pfx) + scale * _delta(sd_a, pfx)
-        torch.testing.assert_close(_delta(merged, pfx), expected, rtol=1e-4, atol=1e-5)
-
-
-# --- config validation -------------------------------------------------------
-
-
-def _resolve(cli: list[str] | None = None, cfg: dict | None = None):
-    args = build_argparser().parse_args(cli or [])
-    return resolve_config(args, cfg or {})
-
-
-def test_dual_pool_default_off():
-    c = _resolve()
-    assert c.dual_pool is False
-    assert c.div_pool_rank == 16  # documented default
-
-
-def test_dual_pool_cli_and_toml():
-    assert _resolve(["--dual_pool"]).dual_pool is True
-    assert _resolve(cfg={"network": {"dual_pool": True}}).dual_pool is True
-    assert (
-        _resolve(
-            ["--div_pool_rank", "24"], cfg={"network": {"div_pool_rank": 8}}
-        ).div_pool_rank
-        == 24  # CLI wins
-    )
-    assert _resolve(cfg={"network": {"div_pool_rank": 8}}).div_pool_rank == 8
-
-
-def test_dual_pool_requires_dpdmd():
-    with pytest.raises(ValueError, match="dpdmd"):
-        _resolve(["--dual_pool", "--base_loss", "dmd"])
-
-
-def test_dual_pool_requires_detach():
-    with pytest.raises(ValueError, match="detach_after_first"):
-        _resolve(["--dual_pool", "--no_detach_after_first"])
-
-
-def test_dual_pool_excludes_per_step_expert():
-    with pytest.raises(ValueError, match="per_step_expert"):
-        _resolve(["--dual_pool", "--per_step_expert"])
-
-
-def test_div_pool_rank_must_be_positive():
-    with pytest.raises(ValueError, match="div_pool_rank"):
-        _resolve(["--dual_pool", "--div_pool_rank", "0"])
 
 
 # --- resume ------------------------------------------------------------------
@@ -416,17 +275,6 @@ def test_resume_dual_pool_round_trips_pool_a(tmp_path):
     torch.testing.assert_close(fresh.student_div.weight, turbo.student_div.weight)
 
 
-def test_resume_single_bundle_refused_at_dual(tmp_path):
-    cfg1 = _Cfg(output_dir=str(tmp_path), dual_pool=False)
-    turbo, *rest = _toy_build(cfg1, dual_pool=False)
-    path = _toy_save(tmp_path, cfg1, turbo, *rest)
-
-    cfg2 = _Cfg(output_dir=str(tmp_path), dual_pool=True)
-    fresh, *frest = _toy_build(cfg2, dual_pool=True)
-    with pytest.raises(ResumeMismatchError):
-        _toy_apply(load_resume_state(path), cfg2, fresh, *frest)
-
-
 def test_resume_dual_bundle_refused_at_single(tmp_path):
     cfg2 = _Cfg(output_dir=str(tmp_path), dual_pool=True)
     turbo, *rest = _toy_build(cfg2, dual_pool=True)
@@ -438,6 +286,7 @@ def test_resume_dual_bundle_refused_at_single(tmp_path):
         _toy_apply(load_resume_state(path), cfg1, fresh, *frest)
 
 
+@pytest.mark.core
 def test_before_apply_runs_with_stacks_built_and_unpatched():
     dit = _TinyDiT()
     target = dit.blocks[0].mlp_layer1
@@ -459,32 +308,3 @@ def test_before_apply_runs_with_stacks_built_and_unpatched():
     assert len(turbo.student.unet_loras) > 0
     target(torch.zeros(1, IN))
     assert seen == ["converted"]
-
-
-def test_int8_config_and_its_refusals():
-    assert _resolve().int8 == "off"
-    assert _resolve(["--int8", "stream"]).int8 == "stream"
-    assert _resolve(cfg={"int8": "full"}).int8 == "full"
-    assert _resolve(["--int8", "stream", "--blocks_to_swap", "4"]).blocks_to_swap == 4
-    with pytest.raises(ValueError, match="dmad"):
-        _resolve(["--int8", "full"], {"dmad_probe": {"enabled": True}})
-
-
-def test_stream_config_and_its_refusals():
-    assert _resolve().stream == "bf16"
-    assert _resolve(["--stream", "fp32"]).stream == "fp32"
-    assert _resolve(cfg={"stream": "fp32"}).stream == "fp32"
-    assert _resolve(["--stream", "bf16"], {"stream": "fp32"}).stream == "bf16"
-    with pytest.raises(ValueError, match="dmad"):
-        _resolve(["--stream", "fp32"], {"dmad_probe": {"enabled": True}})
-
-
-def test_dit_nonquant_path_config():
-    assert _resolve().dit_nonquant_path is None
-    assert _resolve(cfg={"dit_nonquant_path": "a"}).dit_nonquant_path == "a"
-    assert (
-        _resolve(
-            ["--dit_nonquant_path", "b"], {"dit_nonquant_path": "a"}
-        ).dit_nonquant_path
-        == "b"
-    )

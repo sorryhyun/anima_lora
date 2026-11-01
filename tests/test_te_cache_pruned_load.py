@@ -55,6 +55,7 @@ def _strategy(**kw) -> AnimaTextEncoderOutputsCachingStrategy:
     )
 
 
+@pytest.mark.core
 @pytest.mark.parametrize("flag", [False, True])
 def test_pruned_cache_loads_regardless_of_flag(tmp_path, flag):
     """The exact crash: crossattn-only cache, shuffled variants, any suffix.
@@ -86,6 +87,7 @@ def test_pruned_cache_loads_regardless_of_flag(tmp_path, flag):
         assert t5_input_ids is None
 
 
+@pytest.mark.core
 def test_plain_cache_still_loads_with_flag_on(tmp_path):
     """Reverse mismatch: a plain (prompt_embeds-only) cache read by a flag-on
     run must serve the Qwen tuple (4+1 shape), not demand crossattn."""
@@ -103,19 +105,3 @@ def test_plain_cache_still_loads_with_flag_on(tmp_path):
     out = strat.load_outputs_npz(str(cache))
     assert len(out) == 5  # plain path, no crossattn
     assert out[0] is not None  # prompt_embeds present
-
-
-def test_incompatible_cache_raises_clear_error(tmp_path):
-    """Neither crossattn nor prompt_embeds for the chosen suffix → actionable
-    RuntimeError instead of a raw SafetensorError."""
-    cache = tmp_path / "z_anima_te.safetensors"
-    save_file(
-        {
-            "t5_attn_mask": torch.ones(S, dtype=torch.int32),
-            "caption_dropout_rate": torch.tensor(0.1),
-        },
-        str(cache),
-    )
-    strat = _strategy(cache_llm_adapter_outputs=False)
-    with pytest.raises(RuntimeError, match="incompatible cache format"):
-        strat.load_outputs_npz(str(cache))

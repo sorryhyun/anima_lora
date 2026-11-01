@@ -62,35 +62,6 @@ def _fresh_caches():
 # --- resolution ----------------------------------------------------------------
 
 
-def test_off_values_resolve_to_none():
-    assert vp.resolve_pack_prefix(None) is None
-    assert vp.resolve_pack_prefix("") is None
-    assert vp.resolve_pack_prefix("   ") is None
-    assert vp.load_vocab_pack("") is None
-    assert vp.load_vocab_pack(None) is None
-
-
-def test_prefix_accepts_bare_either_file_or_dir(synthetic_pack: Path):
-    assert vp.resolve_pack_prefix(synthetic_pack) == synthetic_pack
-    assert vp.resolve_pack_prefix(synthetic_pack.with_suffix(".json")) == synthetic_pack
-    assert (
-        vp.resolve_pack_prefix(synthetic_pack.with_suffix(".safetensors"))
-        == synthetic_pack
-    )
-    assert vp.resolve_pack_prefix(synthetic_pack.parent) == synthetic_pack
-
-
-def test_half_installed_pack_is_an_error_with_the_download_hint(tmp_path: Path):
-    prefix = tmp_path / "half"
-    save_file(
-        {"ext_embed": torch.zeros(1, DIM)}, str(prefix.with_suffix(".safetensors"))
-    )
-    with pytest.raises(FileNotFoundError, match="download-vocab-pack"):
-        vp.resolve_pack_prefix(prefix)
-    with pytest.raises(FileNotFoundError):
-        vp.resolve_pack_prefix(tmp_path / "does_not_exist")
-
-
 def test_the_shipped_default_is_fetched_when_missing(tmp_path: Path, monkeypatch):
     """base.toml enables the pack and `make update` overwrites base.toml, so a
     pre-v2 checkout must not hard-fail at first load: the shipped default (and
@@ -120,36 +91,6 @@ def test_the_shipped_default_is_fetched_when_missing(tmp_path: Path, monkeypatch
     with pytest.raises(FileNotFoundError, match="download-vocab-pack"):
         vp.resolve_pack_prefix(tmp_path / "custom" / "pack")
     assert fetched == ["vocab_pack"]
-
-
-def test_a_failed_auto_fetch_reads_as_the_missing_pack_error(
-    tmp_path: Path, monkeypatch
-):
-    from library import downloads as DL
-
-    monkeypatch.setenv("ANIMA_HOME", str(tmp_path))
-
-    def _boom(asset, log=print, force=False):
-        raise OSError("offline")
-
-    monkeypatch.setattr(DL, "fetch", _boom)
-    with pytest.raises(FileNotFoundError, match="download-vocab-pack") as exc:
-        vp.resolve_pack_prefix(vp.DEFAULT_PACK_PREFIX)
-    assert "offline" in str(exc.value)
-    assert isinstance(exc.value.__cause__, OSError)
-
-
-def test_load_is_memoised_and_carries_identity(synthetic_pack: Path):
-    a = vp.load_vocab_pack(synthetic_pack)
-    b = vp.load_vocab_pack(str(synthetic_pack.with_suffix(".json")))
-    assert a is b
-    assert a.name == "tiny_pack"
-    assert a.rows == ROWS
-    assert a.training == {"label": "tiny"}
-    assert len(a.digest) >= 12
-    assert a.cache_metadata() == {"vocab_pack": "tiny_pack", "vocab_pack_sha": a.digest}
-    # A loaded pack passes through load_vocab_pack untouched.
-    assert vp.load_vocab_pack(a) is a
 
 
 def test_default_pack_reads_env_then_base_toml(monkeypatch):
@@ -196,6 +137,7 @@ def _adapter():
     return LLMAdapter(source_dim=DIM, target_dim=DIM, model_dim=DIM, num_layers=1)
 
 
+@pytest.mark.core
 def test_hooks_substitute_ext_rows_and_leave_the_state_dict_alone(synthetic_pack: Path):
     pack = vp.load_vocab_pack(synthetic_pack)
     adapter = _adapter()
@@ -214,15 +156,6 @@ def test_hooks_substitute_ext_rows_and_leave_the_state_dict_alone(synthetic_pack
     assert list(adapter.state_dict().keys()) == keys_before
     assert adapter.embed.weight.shape[0] == T5_TABLE_SIZE
     assert vp.attached_pack_digest(adapter) == pack.digest
-
-
-def test_hooks_are_a_no_op_without_ext_ids(synthetic_pack: Path):
-    pack = vp.load_vocab_pack(synthetic_pack)
-    adapter = _adapter()
-    ids = torch.tensor([[3, 1, 4, 1, 5]])
-    before = adapter.embed(ids).clone()
-    vp.attach_vocab_pack(adapter, pack)
-    torch.testing.assert_close(adapter.embed(ids), before)
 
 
 def test_attach_is_idempotent_and_detach_restores(synthetic_pack: Path):
@@ -245,30 +178,6 @@ def test_attach_is_idempotent_and_detach_restores(synthetic_pack: Path):
     )
 
 
-def test_attach_accepts_a_dit_like_object(synthetic_pack: Path):
-    class FakeDiT:
-        def __init__(self):
-            self.llm_adapter = _adapter()
-
-    pack = vp.load_vocab_pack(synthetic_pack)
-    dit = FakeDiT()
-    vp.attach_vocab_pack(dit, pack)
-    assert vp.attached_pack_digest(dit) == pack.digest
-    with pytest.raises(RuntimeError, match="llm_adapter"):
-        vp.attach_vocab_pack(object(), pack)
-
-
-def test_load_anima_model_style_helper_skips_when_off(synthetic_pack: Path):
-    from library.anima.weights import _attach_vocab_pack_if_set
-
-    adapter = _adapter()
-    _attach_vocab_pack_if_set(adapter, None)
-    _attach_vocab_pack_if_set(adapter, "")
-    assert vp.attached_pack_digest(adapter) is None
-    _attach_vocab_pack_if_set(adapter, str(synthetic_pack))
-    assert vp.attached_pack_digest(adapter) is not None
-
-
 # --- merged checkpoints --------------------------------------------------------
 
 
@@ -281,6 +190,7 @@ def _fake_dit(path: Path) -> dict:
     return sd
 
 
+@pytest.mark.core
 def test_merge_keeps_the_dit_and_carries_the_pack(synthetic_pack: Path, tmp_path: Path):
     dit = tmp_path / "dit.safetensors"
     base = _fake_dit(dit)
@@ -304,6 +214,7 @@ def test_merge_keeps_the_dit_and_carries_the_pack(synthetic_pack: Path, tmp_path
         vp.merge_pack_into_dit(out, synthetic_pack, tmp_path / "twice.safetensors")
 
 
+@pytest.mark.core
 def test_cache_stamp_warns_once_per_mismatch_kind(synthetic_pack: Path, caplog):
     pack = vp.load_vocab_pack(synthetic_pack)
     with caplog.at_level(logging.WARNING, logger=vp.__name__):
@@ -319,29 +230,10 @@ def test_cache_stamp_warns_once_per_mismatch_kind(synthetic_pack: Path, caplog):
         assert "no pack is active" in caplog.text
 
 
-def test_te_cache_writer_stamps_the_pack(synthetic_pack: Path, tmp_path: Path):
-    """The strategy-level writer passes the stamp through to safetensors."""
-    from safetensors import safe_open
-
-    pack = vp.load_vocab_pack(synthetic_pack)
-    path = tmp_path / "x_anima_te.safetensors"
-    save_file({"t": torch.zeros(1)}, str(path), metadata=pack.cache_metadata())
-    with safe_open(str(path), framework="pt") as f:
-        assert f.metadata()["vocab_pack_sha"] == pack.digest
-
-
 # --- front door ---------------------------------------------------------------
 
 
-def test_generation_request_threads_the_pack_flags():
-    from library.inference.request import GenerationRequest
-
-    args = GenerationRequest(prompt="x", vocab_pack="p/q").to_args()
-    assert args.vocab_pack == "p/q" and args.no_vocab_pack is False
-    args = GenerationRequest(prompt="x", no_vocab_pack=True).to_args()
-    assert args.vocab_pack is None and args.no_vocab_pack is True
-
-
+@pytest.mark.core
 def test_factory_returns_the_stock_class_when_off(monkeypatch):
     """Off must be inert: no subclass, no encoder, nothing pack-shaped."""
     from library.anima.strategy import AnimaTokenizeStrategy
@@ -360,7 +252,11 @@ def test_factory_returns_the_stock_class_when_off(monkeypatch):
 
 _REAL_PACKS = (
     REPO / "models" / "vocab_packs" / "anima_cjk_vocab_pack_jp_v1",
-    REPO / "models" / "vocab_packs" / "anima_cjk_vocab_pack_jp_v1" / "anima_cjk_vocab_pack_jp_v1",
+    REPO
+    / "models"
+    / "vocab_packs"
+    / "anima_cjk_vocab_pack_jp_v1"
+    / "anima_cjk_vocab_pack_jp_v1",
     REPO / "output" / "ckpt" / "cjk_vocab" / "cjk_vocab_pack_synthjakozh1sym_r256",
 )
 
@@ -384,6 +280,7 @@ def _real_strategies():
     return stock, packed
 
 
+@pytest.mark.core
 def test_en_prompts_tokenize_bit_identically_through_the_pack():
     stock, packed = _real_strategies()
     prompts = [
@@ -396,6 +293,7 @@ def test_en_prompts_tokenize_bit_identically_through_the_pack():
         assert torch.equal(x, y)
 
 
+@pytest.mark.core
 def test_cjk_prompt_lands_on_pack_rows():
     _, packed = _real_strategies()
     _, _, t5_ids, t5_mask = packed.tokenize("1girl, 猫耳, 銀髪, セーラー服")

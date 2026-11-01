@@ -25,6 +25,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 FIXTURE = Path(__file__).parent / "fixtures" / "gui_preprocess_knobs.json"
 
 # Default sources the tab consults, per scenario. "populated" deliberately
@@ -152,6 +154,7 @@ def _dump(data: dict) -> str:
     return json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
 
 
+@pytest.mark.core
 def test_preprocess_knob_contract_matches_fixture(monkeypatch):
     def _patch(module, attrs):
         for name, value in attrs.items():

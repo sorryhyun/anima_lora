@@ -1,11 +1,10 @@
 """The Preprocess panel drawn off ``anime_tools`` stage schemas (P0–P3).
 
-Qt-free half: the schemas load in the trainer venv, bound / trainer-owned
-dests are hidden, ``argv_for`` round-trips through each stage's own generated
-parser, the ``preprocess.toml`` seeds land, and the ``[variant.stages.*]``
-persistence elides against them. Qt half (offscreen): ``StageFormSection``
-renders a schema, values written are values read, the read-back builds a
-parseable argv, and the chain gate disables the stage rows.
+The schemas load in the trainer venv, bound / trainer-owned dests are hidden,
+``argv_for`` round-trips through each stage's own generated parser, the
+``preprocess.toml`` seeds land, and a saved form reaches the job as its request.
+The rendered forms and their ``[variant.stages.*]`` persistence are pinned by
+``test_gui_preprocess_characterization.py``.
 
 Dests asserted here are ones the requests have carried since the API-first
 migration (``min_chars`` / ``det_conf`` / ``skip_en`` on OCR, ``threshold`` /
@@ -14,8 +13,6 @@ migration (``min_chars`` / ``det_conf`` / ``skip_en`` on OCR, ``threshold`` /
 """
 
 from __future__ import annotations
-
-import os
 
 import pytest
 
@@ -44,9 +41,6 @@ def _parse(sid, argv):
     from anime_tools.gui.stages import load_parser
 
     return load_parser(_stage(sid)).parse_args(argv)
-
-
-# -- Qt-free ---------------------------------------------------------------
 
 
 def test_schemas_load_for_the_pilot_stages(schemas):
@@ -108,25 +102,6 @@ def test_visible_fields_hide_bound_and_auto(schemas):
     assert "apply" not in {f["dest"] for f in SF.visible_fields(schemas["autotag"])}
 
 
-def test_knob_for_maps_schema_kinds_onto_the_knob_table(schemas):
-    sam = {f["dest"]: f for f in schemas["masks_sam"]["fields"]}
-    assert SF.knob_for(sam["threshold"]).kind == "float"
-    assert SF.knob_for(sam["dilate"]).kind == "int"
-    assert SF.knob_for(sam["force"]).kind == "bool"
-    # The region list is csv text; blank falls back to the request default.
-    assert (SF.knob_for(sam["masks"]).kind, SF.knob_for(sam["masks"]).default) == (
-        "str",
-        "",
-    )
-    mode = next(f for f in schemas["autotag"]["fields"] if f["dest"] == "mode")
-    knob = SF.knob_for(mode)
-    assert knob.kind == "str" and knob.default == "missing"
-    # A None-default numeric is free text; a gate becomes enabled_by.
-    export = {f["dest"]: f for f in schemas["export"]["fields"]}
-    assert SF.knob_for(export["ocr_dir"]).enabled_by == "combine_ocr"
-    assert SF.knob_for(export["combine_ocr"]).enabled_by is None
-
-
 def test_argv_round_trips_masks_sam(schemas):
     sc = schemas["masks_sam"]
     argv = SF.argv_for(
@@ -175,19 +150,6 @@ def test_argv_round_trips_ocr(schemas):
     assert "--min_box_px" not in argv
 
 
-def test_argv_runs_the_requests_own_validation(schemas):
-    # A malformed region (MaskPrompt.parse) is refused before any job.
-    with pytest.raises(ValueError, match="ROLE:KIND:VALUE"):
-        SF.argv_for(
-            schemas["masks_sam"],
-            {"masks": ["girl"]},
-            roots=ROOTS,
-            settings=None,
-            report_root=None,
-            mask_root=None,
-        )
-
-
 def test_seeded_defaults_layer_preprocess_toml_over_the_schema(schemas):
     """The user-owned TOML is the lowest-priority default for the dests it
     names — the form opens on what the CLI would run — and ``no_correct``
@@ -219,55 +181,7 @@ def test_seeded_defaults_layer_preprocess_toml_over_the_schema(schemas):
     )
 
 
-def test_persistable_values_elide_against_the_seeded_defaults(schemas):
-    defaults = SF.seeded_defaults(schemas["correct"], {})
-    values = {**defaults, "caption_trigger_word": "@x", "tag_csv": ""}
-    assert SF.persistable_values("correct", values, defaults) == {
-        "caption_trigger_word": "@x"
-    }
-    # target_res is always written (the tiers are what a profile shows).
-    rd = SF.seeded_defaults(schemas["resize"], {"target_res": [1024]})
-    assert SF.persistable_values("resize", dict(rd), rd) == {"target_res": [1024]}
-
-
-def test_stage_meta_round_trips(schemas):
-    sids = ("resize", "autotag", "correct", "masks_sam")
-    defaults = {sid: SF.seeded_defaults(schemas[sid], {}) for sid in sids}
-    forms = {
-        "resize": {**defaults["resize"], "target_res": [768], "overwrite": True},
-        "autotag": {**defaults["autotag"], "mode": "merge"},
-        "correct": {**defaults["correct"], "caption_drop_groups": "artist"},
-        "masks_sam": [{**defaults["masks_sam"], "masks": ["ignore:text:bubble"]}],
-    }
-    meta = SF.merge_stages_into_meta(
-        {"family": "lora"}, forms, defaults, include_mask=True
-    )
-    assert meta["stages"]["resize"] == {"target_res": [768], "overwrite": True}
-    assert meta["stages"]["autotag"] == {"mode": "merge"}
-    assert meta["stages"]["correct"] == {"caption_drop_groups": "artist"}
-    assert meta["stages"]["masks_sam"] == [{"masks": ["ignore:text:bubble"]}]
-    for sid in ("resize", "autotag", "correct"):
-        assert SF.load_stage_values(meta, sid, defaults[sid]) == forms[sid]
-    cards = SF.load_stage_values(meta, "masks_sam", defaults["masks_sam"])
-    assert cards == forms["masks_sam"]
-    # A pre-0.6.4 card loads as its masks list; its elided `focus_prompts` was
-    # the old default `girl`, which is the default soft keep entry now.
-    legacy = {"stages": {"masks_sam": [{"prompts": "bubble", "dilate": 2}]}}
-    (card,) = SF.load_stage_values(legacy, "masks_sam", defaults["masks_sam"])
-    assert card["masks"] == [*defaults["masks_sam"]["masks"], "ignore:text:bubble"]
-    assert card["dilate"] == 2 and "prompts" not in card
-    # A variant without cards reports None.
-    assert SF.load_stage_values({}, "masks_sam", defaults["masks_sam"]) is None
-    # Mask cards move only with the mask section; an all-default stage vanishes.
-    meta2 = SF.merge_stages_into_meta(
-        {},
-        {"correct": dict(defaults["correct"]), "masks_sam": forms["masks_sam"]},
-        defaults,
-        include_mask=False,
-    )
-    assert meta2 == {}
-
-
+@pytest.mark.core
 def test_saved_correct_form_builds_the_env_ladders_request(schemas, monkeypatch):
     """P1 gate: a saved ``[variant.stages.correct]`` reaches ``tasks.py`` as
     the same ``CorrectRequest`` the retired ``CAPTION_*`` env ladder built
@@ -301,112 +215,3 @@ def test_saved_correct_form_builds_the_env_ladders_request(schemas, monkeypatch)
     # And the argv the daemon would receive reads back as the same request.
     parser = _stage("correct").request_class().parser()
     assert _stage("correct").request_class().from_argv(parser, req.to_argv()) == req
-
-
-# -- Qt (offscreen) ---------------------------------------------------------
-
-
-def _app():
-    pytest.importorskip("PySide6")
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtWidgets import QApplication
-
-    return QApplication.instance() or QApplication([])
-
-
-def test_masks_sam_form_renders_reads_back_and_builds_argv(schemas):
-    _app()
-    from PySide6.QtWidgets import QCheckBox, QDoubleSpinBox, QLineEdit, QSpinBox
-
-    from gui.tabs.preprocess.stage_form import StageFormSection
-
-    sc = schemas["masks_sam"]
-    sec = StageFormSection(sc, lambda *_: None)
-    try:
-        assert set(sec.keys()) == {f["dest"] for f in SF.visible_fields(sc)}
-        assert isinstance(sec.widgets["threshold"], QDoubleSpinBox)
-        assert isinstance(sec.widgets["dilate"], QSpinBox)
-        assert isinstance(sec.widgets["force"], QCheckBox)
-        assert isinstance(sec.widgets["masks"], QLineEdit)
-        # Advanced fields fold away until the toggle is on.
-        assert sec.advanced_box is not None and sec.advanced_box.isHidden()
-        assert sec.widgets["workers"].parentWidget() is sec.advanced_box
-        sec.advanced_toggle.setChecked(True)
-        assert not sec.advanced_box.isHidden()
-
-        seen = []
-        sec.changed.connect(lambda: seen.append(1))
-        sec.set_values(
-            {
-                "threshold": 0.7,
-                "dilate": 8,
-                "masks": "ignore:text:speech bubble, ignore:text:text",
-            }
-        )
-        v = sec.values()
-        assert v["threshold"] == 0.7 and v["dilate"] == 8
-        assert v["masks"] == ["ignore:text:speech bubble", "ignore:text:text"]
-        assert seen  # editing marks the section changed (dirty wiring)
-        # The card's own scope is a plain glob editor — no file chooser.
-        assert (
-            "path_pattern" in sec.widgets and "path_pattern" not in sec.browse_buttons
-        )
-
-        argv = sec.argv(
-            roots=ROOTS, settings={"path_pattern": "*"}, mask_root="post_image_dataset"
-        )
-        ns = _parse("masks_sam", argv)
-        assert ns.threshold == 0.7 and ns.dilate == 8
-        assert ns.image_dir == ROOTS["dst"]
-        req = _stage("masks_sam").request_class().from_namespace(ns)
-        assert [m.spec() for m in req.masks] == [
-            "ignore:text:speech bubble",
-            "ignore:text:text",
-        ]
-    finally:
-        sec.deleteLater()
-
-
-def test_ocr_form_path_browse_and_enum(schemas):
-    _app()
-    from PySide6.QtWidgets import QComboBox, QLineEdit
-
-    from gui.tabs.preprocess.stage_form import StageFormSection
-
-    sc = schemas["ocr"]
-    sec = StageFormSection(sc, lambda *_: None)
-    try:
-        # A path field is a line edit inside a composite row with a … button.
-        ocr_dir = sec.widgets["ocr_dir"]
-        assert isinstance(ocr_dir, QLineEdit)
-        assert "ocr_dir" in sec.browse_buttons
-        assert ocr_dir.parentWidget() is not sec
-        # Any enum the stage still carries renders as a combo over its choices.
-        for f in SF.visible_fields(sc):
-            if f["kind"] == "enum":
-                combo = sec.widgets[f["dest"]]
-                assert isinstance(combo, QComboBox)
-                assert combo.count() == len(f["choices"])
-        sec.set_values({"det_conf": 0.4, "min_chars": 5})
-        v = sec.values()
-        assert v["det_conf"] == 0.4 and v["min_chars"] == 5
-        ns = _parse("ocr", sec.argv(roots=ROOTS))
-        assert ns.det_conf == 0.4 and ns.min_chars == 5
-    finally:
-        sec.deleteLater()
-
-
-def test_gate_disables_its_drawer(schemas):
-    _app()
-    from gui.tabs.preprocess.stage_form import StageFormSection
-
-    sec = StageFormSection(schemas["export"], lambda *_: None)
-    try:
-        gate, drawer = sec.widgets["combine_ocr"], sec.widgets["ocr_dir"]
-        assert not gate.isChecked() and not drawer.isEnabled()
-        gate.setChecked(True)
-        assert drawer.isEnabled()
-        sec.set_values({"combine_ocr": False})
-        assert not drawer.isEnabled()
-    finally:
-        sec.deleteLater()

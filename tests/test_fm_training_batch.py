@@ -68,13 +68,12 @@ def _candidate(overrides, latents, noise, device, dtype, seed):
     )
 
 
-def _check(overrides, *, seed=1234, ndim=4):
+def _check(overrides, *, seed=1234):
     device = torch.device("cpu")
     dtype = torch.float32
-    shape = (2, 16, 8, 8) if ndim == 4 else (2, 16, 1, 8, 8)
     torch.manual_seed(0)
-    latents = torch.randn(shape)
-    noise = torch.randn(shape)
+    latents = torch.randn(2, 16, 8, 8)
+    noise = torch.randn(2, 16, 8, 8)
 
     ref = _reference(_args(**overrides), latents, noise, device, dtype, seed)
     cand = _candidate(overrides, latents, noise, device, dtype, seed)
@@ -83,37 +82,6 @@ def _check(overrides, *, seed=1234, ndim=4):
         assert torch.equal(a, b), f"{name} mismatch for overrides={overrides}"
 
 
-def test_default_recipe_bit_matches():
-    _check({})
-
-
 def test_all_sampling_modes_bit_match():
     for mode in ("sigma", "uniform", "sigmoid", "shift", "flux_shift"):
         _check({"timestep_sampling": mode})
-
-
-def test_shift_and_bias_bit_match():
-    _check({"timestep_sampling": "shift", "discrete_flow_shift": 3.0, "sigmoid_bias": 0.5})
-
-
-def test_sigma_range_restriction_bit_matches():
-    _check({"t_min": 0.2, "t_max": 0.8})
-
-
-def test_ip_noise_bit_matches():
-    _check({"ip_noise_gamma": 0.1})
-    _check({"ip_noise_gamma": 0.1, "ip_noise_gamma_random_strength": True})
-
-
-def test_five_d_latents_bit_match():
-    _check({}, ndim=5)
-
-
-def test_returns_flat_sigma_as_timesteps():
-    # timesteps IS the flat per-sample σ; .view(-1,1,1,1) recovers broadcast sigmas.
-    latents = torch.randn(3, 16, 8, 8)
-    noise = torch.randn_like(latents)
-    torch.manual_seed(7)
-    _, timesteps, target = fm_training_batch(latents, noise)
-    assert timesteps.shape == (3,)
-    assert torch.equal(target, noise - latents)

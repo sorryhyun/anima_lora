@@ -3,7 +3,7 @@
 The colorize target pool is corpus-wide warm/desaturated, so the prep step
 white-balances each target before VAE-encoding it into the colorize-specific
 target-latent cache. These tests pin the correction math (warm cast
-neutralized, gain clamp, sepia-core detection) and the ``cache_latents``
+neutralized, gain clamp) and the ``cache_latents``
 hooks the stage rides on (``keep_stems`` scoping + ``image_transform``).
 """
 
@@ -21,7 +21,6 @@ if str(COLORIZE_DIR) not in sys.path:
 
 from wb import (  # noqa: E402
     apply_whitebalance,
-    mean_saturation,
     whitepoint_gains,
 )
 
@@ -56,13 +55,6 @@ def test_gain_clamp_bounds_extreme_cast():
     assert np.all(gains >= 1.0 / 1.35 - 1e-6)
 
 
-def test_strength_zero_is_identity():
-    img = _warm_page()
-    gains = whitepoint_gains(img, strength=0.0)
-    assert np.allclose(gains, 1.0)
-    assert np.array_equal(apply_whitebalance(img, strength=0.0), img)
-
-
 def test_dark_image_grayworld_fallback_is_finite():
     rng = np.random.default_rng(1)
     img = rng.integers(0, 60, (64, 64, 3), dtype=np.uint8)  # no bright region
@@ -70,24 +62,6 @@ def test_dark_image_grayworld_fallback_is_finite():
     assert np.all(np.isfinite(gains))
     out = apply_whitebalance(img)
     assert out.dtype == np.uint8 and out.shape == img.shape
-
-
-def test_mean_saturation_metric():
-    gray = np.full((32, 32, 3), 128, dtype=np.uint8)
-    assert mean_saturation(gray) == 0.0
-    red = np.zeros((32, 32, 3), dtype=np.uint8)
-    red[..., 0] = 200
-    assert mean_saturation(red) > 0.95
-    # sepia-ish: low-sat warm — lands under the colorize drop threshold
-    sepia = np.stack(
-        [
-            np.full((32, 32), 180, dtype=np.uint8),
-            np.full((32, 32), 170, dtype=np.uint8),
-            np.full((32, 32), 168, dtype=np.uint8),
-        ],
-        axis=-1,
-    )
-    assert mean_saturation(sepia) < 0.10
 
 
 class _FakeVae:

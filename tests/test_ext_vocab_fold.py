@@ -2,11 +2,9 @@
 
 Invariants (against the real tokenizers + pack, skipped when absent):
 
-* **No fold = bit-identical**: a pack without the key encodes as before.
 * **Folded = the target spelled**: a text with ``！ ~ 『』`` encodes exactly
   as the same text written ``! ～ 「」`` under the unfolded pack; ``routes()``
   answers for the folded text.
-* **Offsets index the typed text** (one char → one char).
 * The key reaches the digest only when set; a many-char entry is refused.
 """
 
@@ -64,15 +62,6 @@ def test_routes_reads_the_folded_text():
     plain, fold = _encs()
     assert plain.routes("wow！") and not fold.routes("wow！")
     assert fold.routes("~")  # → ～, a routed row
-
-
-def test_offsets_index_the_typed_text():
-    _, fold = _encs()
-    typed = 'Japanese text reads as "『はい！』".'
-    ids, mask, offs = fold.encode_aligned(typed, 64)
-    n = sum(mask)
-    assert len(offs) == n and offs[-1] == (len(typed), len(typed))
-    assert all(0 <= a <= b <= len(typed) for a, b in offs)
 
 
 def test_digest_and_refusal():

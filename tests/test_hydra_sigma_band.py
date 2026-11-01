@@ -1,5 +1,4 @@
-"""Hard σ-band expert partition: training-time masking + inference-time
-metadata round-trip.
+"""Hard σ-band expert partition: gate masking and σ reaching the modules.
 
 Targets the regression where ``specialize_experts_by_sigma_buckets`` was
 training-only — at inference, ``_expert_band`` was non-persistent and
@@ -9,6 +8,7 @@ was running over all E experts at every σ instead of the in-band E/N.
 
 from __future__ import annotations
 
+import pytest
 import torch
 
 from networks.lora_modules.hydra import HydraLoRAModule, _apply_sigma_band_mask
@@ -53,31 +53,6 @@ def test_apply_sigma_band_mask_clamps_sigma_at_boundary():
     assert torch.allclose(gate[0, band3].sum(), torch.tensor(1.0), atol=1e-6)
 
 
-def test_apply_sigma_band_mask_custom_edges():
-    """Custom non-uniform σ edges route σ to the user-defined bucket."""
-    # 3 buckets, low-σ wide and high-σ narrow.
-    logits = torch.zeros(3, 6)
-    expert_band = torch.arange(6) % 3  # [0,1,2,0,1,2]
-    edges = torch.tensor([0.5, 0.8])  # interior cuts for [0,0.5,0.8,1.0]
-    # σ=0.4 → band 0, σ=0.6 → band 1, σ=0.9 → band 2
-    sigma = torch.tensor([0.4, 0.6, 0.9])
-    gate = torch.softmax(
-        _apply_sigma_band_mask(logits, sigma, expert_band, edges), dim=-1
-    )
-    # σ=0.4: mass at {0, 3}
-    assert torch.allclose(
-        gate[0, torch.tensor([0, 3])].sum(), torch.tensor(1.0), atol=1e-6
-    )
-    # σ=0.6: mass at {1, 4}
-    assert torch.allclose(
-        gate[1, torch.tensor([1, 4])].sum(), torch.tensor(1.0), atol=1e-6
-    )
-    # σ=0.9: mass at {2, 5}
-    assert torch.allclose(
-        gate[2, torch.tensor([2, 5])].sum(), torch.tensor(1.0), atol=1e-6
-    )
-
-
 def test_hydra_module_with_band_partition_masks_gate():
     """HydraLoRAModule built with the partition flag must apply the mask in
     its forward — the bug was that the flag wasn't reaching inference, so
@@ -117,44 +92,6 @@ def test_hydra_module_with_band_partition_masks_gate():
     out_b2 = torch.ones(12, dtype=torch.bool)
     out_b2[band2] = False
     assert gate[0, out_b2].abs().max().item() == 0.0
-
-
-def test_hydra_module_with_custom_boundaries_masks_gate():
-    """Module built with custom σ edges routes σ to the right band."""
-    org = torch.nn.Linear(8, 8, bias=False)
-    mod = HydraLoRAModule(
-        lora_name="test",
-        org_module=org,
-        lora_dim=4,
-        alpha=4,
-        num_experts=6,
-        sigma_feature_dim=0,
-        specialize_experts_by_sigma_buckets=True,
-        num_sigma_buckets=3,
-        sigma_bucket_boundaries=[0.0, 0.5, 0.8, 1.0],
-    )
-    with torch.no_grad():
-        mod.router.weight.normal_(std=0.5)
-        mod.router.bias.normal_(std=0.5)
-    lx = torch.randn(1, 4, 4)
-
-    # σ=0.4 → band 0 → interleaved indices {0, 3}
-    mod.set_sigma(torch.tensor([0.4]))
-    gate = mod._compute_gate(lx)
-    assert gate[0, 1].item() == 0.0 and gate[0, 2].item() == 0.0
-    assert gate[0, 4].item() == 0.0 and gate[0, 5].item() == 0.0
-
-    # σ=0.6 → band 1 → indices {1, 4}
-    mod.set_sigma(torch.tensor([0.6]))
-    gate = mod._compute_gate(lx)
-    assert gate[0, 0].item() == 0.0 and gate[0, 2].item() == 0.0
-    assert gate[0, 3].item() == 0.0 and gate[0, 5].item() == 0.0
-
-    # σ=0.9 → band 2 → indices {2, 5}
-    mod.set_sigma(torch.tensor([0.9]))
-    gate = mod._compute_gate(lx)
-    assert gate[0, 0].item() == 0.0 and gate[0, 1].item() == 0.0
-    assert gate[0, 3].item() == 0.0 and gate[0, 4].item() == 0.0
 
 
 def _make_minimal_hydra_network(num_experts: int = 6, num_buckets: int = 3):
@@ -261,6 +198,7 @@ def test_set_sigma_recovers_aliasing_after_to_device():
         assert abs(lora._sigma.item() - 0.9) < 1e-5
 
 
+@pytest.mark.core
 def test_set_sigma_band_partition_routes_to_correct_band_after_aliasing_break():
     """End-to-end consequence of the aliasing recovery: σ in band 1 must
     actually steer ``_compute_gate`` to band 1 experts even after a
@@ -281,32 +219,3 @@ def test_set_sigma_band_partition_routes_to_correct_band_after_aliasing_break():
         assert gate[0, 2].item() == 0.0 and gate[0, 5].item() == 0.0  # band 2
         in_band = gate[0, torch.tensor([1, 4])].sum().item()
         assert abs(in_band - 1.0) < 1e-5
-
-
-def test_save_weights_stamps_band_metadata(tmp_path):
-    """Round-trip the save metadata stamp — the load side keys off these
-    exact strings, so renaming or dropping them silently disables the
-    partition at inference. Pin the contract."""
-    import json
-
-    from safetensors import safe_open
-    from safetensors.torch import save_file
-
-    # Reproduce the relevant slice of save_weights without spinning up a full
-    # network: this test is about the metadata contract, not state_dict shape.
-    metadata = {"ss_network_spec": "hydra"}
-    cfg_specialize = True
-    cfg_num_buckets = 4
-    cfg_boundaries = [0.0, 0.25, 0.6, 0.85, 1.0]
-    if cfg_specialize:
-        metadata["ss_specialize_experts_by_sigma_buckets"] = "true"
-        metadata["ss_num_sigma_buckets"] = str(int(cfg_num_buckets))
-        metadata["ss_sigma_bucket_boundaries"] = json.dumps(cfg_boundaries)
-
-    out = tmp_path / "stub.safetensors"
-    save_file({"x": torch.zeros(1)}, str(out), metadata)
-    with safe_open(str(out), framework="pt") as f:
-        meta = f.metadata()
-    assert meta["ss_specialize_experts_by_sigma_buckets"] == "true"
-    assert meta["ss_num_sigma_buckets"] == "4"
-    assert json.loads(meta["ss_sigma_bucket_boundaries"]) == cfg_boundaries

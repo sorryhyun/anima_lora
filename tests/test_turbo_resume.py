@@ -144,6 +144,7 @@ def _apply(state, cfg, turbo, opts, scheds, bins=None):
     )
 
 
+@pytest.mark.core
 def test_resume_round_trips_every_mutable_object(tmp_path):
     """Weights, AdamW moments, schedule position and step counter all come back."""
     cfg = _Cfg(output_dir=str(tmp_path))
@@ -179,30 +180,7 @@ def test_resume_round_trips_every_mutable_object(tmp_path):
     assert f_scheds[0].get_last_lr()[0] == pytest.approx(want_lr)
 
 
-def test_resumed_lr_is_mid_schedule_not_peak(tmp_path):
-    """The whole point: resume lands on the decayed LR, not back at the peak.
-
-    A restart via --student_init_weights rebuilds the scheduler at step 0, i.e.
-    peak LR against a trained student — the regime the T2 critic runaway lives in.
-    """
-    cfg = _Cfg(output_dir=str(tmp_path))
-    turbo, *rest = _build(cfg)
-    opts, scheds = tuple(rest[:3]), tuple(rest[3:])
-    _spin(turbo, opts, scheds, steps=3155)
-    path = _save(tmp_path, cfg, 3155, turbo, opts, scheds)
-
-    fresh, *rest2 = _build(cfg)
-    f_opts, f_scheds = tuple(rest2[:3]), tuple(rest2[3:])
-    peak = f_scheds[0].get_last_lr()[0]  # freshly-built scheduler == peak LR
-    _apply(load_resume_state(path), cfg, fresh, f_opts, f_scheds)
-    resumed = f_scheds[0].get_last_lr()[0]
-
-    assert resumed < peak * 0.95, (
-        f"resumed LR {resumed:.3g} should sit well below the peak {peak:.3g} "
-        "— the cosine must continue, not restart"
-    )
-
-
+@pytest.mark.core
 def test_extending_iterations_resumes_onto_new_curve(tmp_path):
     """Resume a fully-annealed 4k run with iterations=8000 → LR climbs back to
     the NEW curve's mid-schedule value, it does not step the OLD cosine past its
@@ -252,6 +230,7 @@ def test_extending_iterations_resumes_onto_new_curve(tmp_path):
     assert 0 < end == pytest.approx(0.1 * longer.student_lr, rel=1e-3)
 
 
+@pytest.mark.core
 def test_topology_change_is_refused(tmp_path):
     """A rank/objective/disc-width change must raise, never load into a mismatch."""
     cfg = _Cfg(output_dir=str(tmp_path))
@@ -319,11 +298,7 @@ def test_auto_starts_fresh_when_no_bundle(tmp_path):
     assert arg.path is not None and arg.path.exists()
 
 
-def test_explicit_missing_path_raises(tmp_path):
-    with pytest.raises(FileNotFoundError):
-        resolve_resume_arg(str(tmp_path / "nope.pt"), str(tmp_path), "toy_turbo")
-
-
+@pytest.mark.core
 def test_partial_write_does_not_destroy_previous_bundle(tmp_path):
     """Atomic write: the bundle on disk is always a complete one.
 

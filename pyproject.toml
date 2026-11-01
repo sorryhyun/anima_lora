@@ -242,6 +242,7 @@ url = "https://stable.repo.amd.com/rocm/whl-next/"
 # Registered here so the marker isn't an "unknown mark" warning.
 markers = [
     "slow: sleep/subprocess-bound integration test — parallelize under xdist",
+    "core: guards a line-level invariant — `make test-core`; map in tests/README.md",
 ]
 
 [tool.setuptools.packages.find]

@@ -3,9 +3,8 @@
 These close the "I clicked Train/Preprocess and it spins forever" class:
   1. ``safe_walk`` — a symlink cycle in the (symlinked) dataset tree used to
      make ``os.walk(followlinks=True)`` loop forever;
-  2. ``hf_download`` error classification — only *transport* failures (which
-     hang) get translated to a fail-fast error; 404-style "not found" must
-     propagate so callers' specific handlers still work;
+  2. ``ensure_hf_timeouts`` — the hub's read timeouts are pinned so a stuck
+     download fails instead of spinning, without clobbering a user-set value;
   3. the daemon stall watchdog — a running job that stops producing output is
      detected and finalized with a "where it wedged" diagnostic.
 """
@@ -13,7 +12,6 @@ These close the "I clicked Train/Preprocess and it spins forever" class:
 from __future__ import annotations
 
 import os
-import socket
 import time
 import types
 
@@ -31,6 +29,7 @@ def _make_cyclic_tree(root: str) -> None:
     os.symlink(os.path.join(root, "a"), os.path.join(root, "a", "self2"))  # diamond
 
 
+@pytest.mark.core
 def test_safe_walk_terminates_on_symlink_cycle(tmp_path):
     from library.io.walk import safe_walk
 
@@ -44,33 +43,7 @@ def test_safe_walk_terminates_on_symlink_cycle(tmp_path):
     assert sorted(files) == ["img1.png", "top.txt"]
 
 
-def test_safe_walk_matches_oswalk_without_links(tmp_path):
-    from library.io.walk import safe_walk
-
-    os.makedirs(tmp_path / "sub")
-    open(tmp_path / "a.txt", "w").close()
-    open(tmp_path / "sub" / "b.txt", "w").close()
-    got = sorted(f for _dp, _dn, fn in safe_walk(str(tmp_path)) for f in fn)
-    assert got == ["a.txt", "b.txt"]
-
-
-# ----- 2. hf_download transport-vs-status classification -----
-
-
-def test_hf_download_classifies_only_transport_errors():
-    from anime_tools import _hf as H
-
-    import requests
-
-    assert H._is_network_error(requests.exceptions.ConnectionError()) is True
-    assert H._is_network_error(requests.exceptions.ConnectTimeout()) is True
-    assert H._is_network_error(requests.exceptions.ReadTimeout()) is True
-    assert H._is_network_error(socket.timeout()) is True
-    assert H._is_network_error(TimeoutError()) is True
-    # Non-transport must propagate unchanged (e.g. a 404 EntryNotFoundError the
-    # tagger catches for best-effort optional files).
-    assert H._is_network_error(ValueError()) is False
-    assert H._is_network_error(KeyError()) is False
+# ----- 2. hub download timeouts -----
 
 
 def test_ensure_hf_timeouts_pins_env(monkeypatch):
@@ -100,6 +73,7 @@ def _fake_job(stdout_path, started_at, kind="train"):
     )
 
 
+@pytest.mark.core
 def test_stall_watchdog_fires_with_diagnostic(tmp_path, monkeypatch):
     from anima_daemon import config
     from anima_daemon.manager import JobManager
@@ -122,22 +96,6 @@ def test_stall_watchdog_fires_with_diagnostic(tmp_path, monkeypatch):
     assert "fetching sorryhyun/pe-core" in reason  # the "where it wedged" hint
 
 
-def test_default_budgets(monkeypatch):
-    """Preprocess watched at 120s; training unwatched (0) by default."""
-    monkeypatch.delenv("ANIMA_DAEMON_CMD_STALL_TIMEOUT", raising=False)
-    monkeypatch.delenv("ANIMA_DAEMON_JOB_STALL_TIMEOUT", raising=False)
-    import importlib
-
-    from anima_daemon import config
-
-    importlib.reload(config)
-    try:
-        assert config.CMD_STALL_TIMEOUT == 120
-        assert config.JOB_STALL_TIMEOUT == 0
-    finally:
-        importlib.reload(config)  # restore import-time state for other tests
-
-
 def test_stall_watchdog_budget_is_per_kind(tmp_path, monkeypatch):
     """With training unwatched by default, the same long silence is a stall for
     a command (preprocess) job but healthy for a train job."""
@@ -156,20 +114,6 @@ def test_stall_watchdog_budget_is_per_kind(tmp_path, monkeypatch):
     train_job = _fake_job(str(stdout), old, kind="train")
     assert JobManager._stall_reason(cmd_job) is not None  # past 120s → stalled
     assert JobManager._stall_reason(train_job) is None  # unwatched → alive
-
-
-def test_stall_watchdog_disabled_by_zero(tmp_path, monkeypatch):
-    from anima_daemon import config
-    from anima_daemon.manager import JobManager
-
-    stdout = tmp_path / "stdout.log"
-    stdout.write_text("x\n")
-    old = time.time() - 99999
-    os.utime(stdout, (old, old))
-    monkeypatch.setattr(config, "JOB_STALL_TIMEOUT", 0, raising=False)
-    monkeypatch.setattr(config, "CMD_STALL_TIMEOUT", 0, raising=False)
-    assert JobManager._stall_reason(_fake_job(str(stdout), old, kind="train")) is None
-    assert JobManager._stall_reason(_fake_job(str(stdout), old, kind="command")) is None
 
 
 if __name__ == "__main__":

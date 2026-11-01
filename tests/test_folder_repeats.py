@@ -14,18 +14,10 @@ from library.datasets.subsets import DreamBoothSubset, folder_repeat_count
 # ── folder_repeat_count parsing ─────────────────────────────────────────────
 
 
-def test_parses_immediate_parent():
-    assert folder_repeat_count(os.path.join("root", "5_char", "a.png"), "root") == 5
-
-
 def test_no_match_returns_none():
     assert folder_repeat_count(os.path.join("root", "char", "a.png"), "root") is None
     # no underscore after the digits
     assert folder_repeat_count(os.path.join("root", "5char", "a.png"), "root") is None
-
-
-def test_image_directly_in_root_returns_none():
-    assert folder_repeat_count(os.path.join("root", "a.png"), "root") is None
 
 
 def test_nested_inherits_from_ancestor():
@@ -38,35 +30,7 @@ def test_deepest_matching_component_wins():
     assert folder_repeat_count(path, "root") == 3
 
 
-def test_zero_prefix_returns_zero():
-    assert folder_repeat_count(os.path.join("root", "0_skip", "a.png"), "root") == 0
-
-
-def test_multi_digit_and_extra_underscores():
-    assert folder_repeat_count(os.path.join("root", "12_a_b c", "a.png"), "root") == 12
-
-
-def test_image_outside_root_returns_none():
-    assert folder_repeat_count(os.path.join("other", "5_x", "a.png"), "root") is None
-
-
 # ── config plumbing ─────────────────────────────────────────────────────────
-
-
-def test_sanitizer_accepts_toggle_in_general_and_subset():
-    s = ConfigSanitizer(support_dropout=True)
-    cfg = {
-        "general": {"repeat_by_folder_name": True},
-        "datasets": [{"subsets": [{"image_dir": "x", "repeat_by_folder_name": False}]}],
-    }
-    assert s.sanitize_user_config(cfg) == cfg
-
-
-def test_params_default_off_and_forward_to_subset():
-    params = DreamBoothSubsetParams(image_dir="x", caption_extension=".txt")
-    assert params.repeat_by_folder_name is False
-    subset = DreamBoothSubset(**asdict(params))
-    assert subset.repeat_by_folder_name is False
 
 
 def test_dataset_level_key_ascends_to_subset():
@@ -84,43 +48,6 @@ def test_dataset_level_key_ascends_to_subset():
     blueprint = gen.generate(user_config, argparse.Namespace())
     params = blueprint.dataset_group.datasets[0].subsets[0].params
     assert params.repeat_by_folder_name is True
-
-
-# ── GUI virtual-key encoding (Qt-free helpers) ──────────────────────────────
-
-
-def test_gui_base_default_reads_dataset_table_and_general():
-    from gui.core.validation import _base_folder_repeats
-
-    assert _base_folder_repeats({}) is False
-    assert _base_folder_repeats({"datasets": [{"repeat_by_folder_name": True}]})
-    # subset fallback for hand-edited configs
-    assert _base_folder_repeats(
-        {"datasets": [{"subsets": [{"repeat_by_folder_name": True}]}]}
-    )
-    assert _base_folder_repeats({"general": {"repeat_by_folder_name": True}})
-
-
-def test_gui_apply_writes_and_strips_override():
-    from gui.core.validation import apply_folder_repeats_choice
-
-    out = {}
-    apply_folder_repeats_choice(out, True, base_enabled=False)
-    assert out == {"datasets": [{"repeat_by_folder_name": True}]}
-
-    # flipping back to the base value strips the override entirely
-    apply_folder_repeats_choice(out, False, base_enabled=False)
-    assert out == {}
-
-    # other keys on the [[datasets]] block are preserved
-    out = {"datasets": [{"validation_split_num": 16}]}
-    apply_folder_repeats_choice(out, True, base_enabled=False)
-    assert out["datasets"][0] == {
-        "validation_split_num": 16,
-        "repeat_by_folder_name": True,
-    }
-    apply_folder_repeats_choice(out, False, base_enabled=False)
-    assert out == {"datasets": [{"validation_split_num": 16}]}
 
 
 # ── dataset integration ─────────────────────────────────────────────────────

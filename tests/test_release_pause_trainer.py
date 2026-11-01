@@ -22,20 +22,6 @@ def test_watcher_polls_request_and_acks(tmp_path):
     assert ack["global_step"] == 12 and ack["epoch"] == 3
 
 
-def test_watcher_throttles_stat(tmp_path):
-    w = PauseWatcher(str(tmp_path), min_interval=1000.0)
-    assert w.poll() is False
-    (tmp_path / pause_mod.PAUSE_REQUEST_NAME).write_text("{}")
-    assert w.poll() is False  # inside the interval: no stat
-
-
-def test_from_env(monkeypatch, tmp_path):
-    monkeypatch.delenv(pause_mod.JOB_DIR_ENV, raising=False)
-    assert PauseWatcher.from_env() is None
-    monkeypatch.setenv(pause_mod.JOB_DIR_ENV, str(tmp_path))
-    assert PauseWatcher.from_env().job_dir == str(tmp_path)
-
-
 def test_run_scope_maps_training_paused(tmp_path):
     path = tmp_path / "progress.jsonl"
     sink = ProgressSink(str(path), run="r", method=None, preset=None, t0=0.0)

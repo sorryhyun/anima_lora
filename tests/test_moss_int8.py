@@ -39,6 +39,7 @@ def linear(seed=0):
     return lin
 
 
+@pytest.mark.core
 def test_default_plan_is_stream_at_budget_03_swap_0():
     req = TrainRequest()
     assert (req.int8, req.ema_card, req.stream) == ("stream", True, "fp32")
@@ -46,6 +47,7 @@ def test_default_plan_is_stream_at_budget_03_swap_0():
     check_plan(req)
 
 
+@pytest.mark.core
 def test_bf16_config_is_the_swap_plan():
     req = TrainRequest.from_argv(["--config", "configs/moss/lora_bf16.toml"])
     assert (req.int8, req.ema_card, req.stream) == ("off", False, "bf16")
@@ -64,6 +66,7 @@ def test_forward_hands_the_kernel_fp32(mode):
     assert not torch.equal(y, int8_mm(x, lin.wq, lin.s))
 
 
+@pytest.mark.core
 def test_int8_refuses_loha_and_runs_swap():
     check_plan(TrainRequest(blocks_to_swap=20))
     with pytest.raises(SystemExit, match="lora_bf16.toml"):
@@ -85,6 +88,7 @@ def test_forward_file_order(monkeypatch, tmp_path):
     assert forward_file(TrainRequest()) == str(target) and len(fetched) == 1
 
 
+@pytest.mark.core
 @needs_cuda
 @pytest.mark.parametrize("mode", ["fwd", "full"])
 def test_forward_and_dx_match_bf16(mode):
@@ -111,6 +115,7 @@ def test_infer_mode_matches_bf16_and_drops_weight():
         assert rel(lin(x), x @ w.T) < 0.03
 
 
+@pytest.mark.core
 @needs_cuda
 @pytest.mark.parametrize("mode", ["fwd", "full"])
 def test_lora_grads_match_eager_reference(mode):
@@ -237,6 +242,7 @@ class SwappedStack(nn.Module):
         return x
 
 
+@pytest.mark.core
 @needs_cuda
 @pytest.mark.parametrize("h2d_only", [False, True])
 @pytest.mark.parametrize("mode", ["fwd", "full", "stream"])

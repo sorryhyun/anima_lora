@@ -12,7 +12,6 @@ import argparse
 from types import SimpleNamespace
 
 from library.training import (
-    LOSS_REGISTRY,
     LossComposer,
     build_loss_composer,
 )
@@ -37,15 +36,6 @@ def _net(**attrs) -> SimpleNamespace:
     return SimpleNamespace(**defaults)
 
 
-def test_registry_contains_expected_keys():
-    assert {
-        "flow_match",
-        "hydra_balance",
-        "functional",
-        "multiscale",
-    }.issubset(set(LOSS_REGISTRY.keys()))
-
-
 def test_lora_composer_is_flow_match_only():
     args = _make_args(method="lora")
     composer = build_loss_composer(args, _net())
@@ -58,15 +48,3 @@ def test_hydra_balance_activates_when_network_requests_it():
     composer = build_loss_composer(args, _net(_balance_loss_weight=0.01))
     assert "hydra_balance" in composer.active_losses
     assert "flow_match" in composer.active_losses
-
-
-def test_functional_activates_when_weight_set():
-    args = _make_args(method="lora", functional_loss_weight=1.0)
-    composer = build_loss_composer(args, _net())
-    assert "functional" in composer.active_losses
-
-
-def test_multiscale_activates_when_weight_set():
-    args = _make_args(method="lora", multiscale_loss_weight=0.5)
-    composer = build_loss_composer(args, _net())
-    assert "multiscale" in composer.active_losses

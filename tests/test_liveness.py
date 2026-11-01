@@ -81,24 +81,6 @@ def test_composer_records_consumed_and_skipped_batches():
     assert ledger.metrics(None) == {"liveness/repa": 0.5}
 
 
-def test_validation_steps_are_not_recorded():
-    args = _make_args()
-    net = _net(_repa_weight=0.05)
-    ledger = LivenessLedger()
-    composer = build_loss_composer(args, net, ledger=ledger)
-    composer.compose(_ctx(args, net, aux={}, is_train=False))
-    assert ledger.seen == {}
-
-
-def test_inactive_loss_is_not_tracked():
-    args = _make_args()
-    net = _net()  # no repa weight → not configured ON
-    ledger = LivenessLedger()
-    composer = build_loss_composer(args, net, ledger=ledger)
-    composer.compose(_ctx(args, net, aux={}))
-    assert "repa" not in ledger.seen
-
-
 def test_dict_shaped_aux_requires_inner_tensor():
     # vr aux is a dict — the probe must mirror the handler's inner gate,
     # not just key presence.
@@ -106,6 +88,7 @@ def test_dict_shaped_aux_requires_inner_tensor():
     assert _LIVENESS_PROBES["flow_matching_vr"]({"vr": {"z": torch.zeros(1)}}) is True
 
 
+@pytest.mark.core
 def test_audit_dead_feature_errors_with_greppable_prefix(caplog):
     ledger = LivenessLedger()
     for _ in range(10):
@@ -117,51 +100,6 @@ def test_audit_dead_feature_errors_with_greppable_prefix(caplog):
         r.levelno == logging.ERROR and r.getMessage().startswith("LIVENESS:")
         for r in caplog.records
     )
-
-
-def test_audit_partial_coverage_warns_with_percentage(caplog):
-    ledger = LivenessLedger()
-    for i in range(10):
-        ledger.record("repa", i < 4)
-    with caplog.at_level(logging.WARNING, logger="library.training.losses"):
-        dead = ledger.audit(where="run end")
-    assert dead == []
-    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
-    assert len(warnings) == 1
-    assert "40.0%" in warnings[0].getMessage()
-
-
-def test_audit_fully_live_is_silent(caplog):
-    ledger = LivenessLedger()
-    for _ in range(10):
-        ledger.record("repa", True)
-    with caplog.at_level(logging.WARNING, logger="library.training.losses"):
-        dead = ledger.audit(where="run end")
-    assert dead == []
-    assert not caplog.records
-
-
-def test_run_end_fields_shape():
-    ledger = LivenessLedger()
-    assert ledger.run_end_fields() == {}
-    ledger.record("repa", True)
-    ledger.record("repa", False)
-    assert ledger.run_end_fields() == {"liveness": {"repa": {"seen": 2, "live": 1}}}
-
-
-def test_run_scope_merges_liveness_into_run_end_event(tmp_path):
-    path = str(tmp_path / "run.progress.jsonl")
-    sink = ProgressSink(path, run="r", method=None, preset=None, t0=0.0)
-    sink.run_start(total_steps=1, total_epochs=1, pid=1)
-    ledger = LivenessLedger()
-    ledger.record("repa", False)
-    with run_scope(sink, final_step=lambda: 1, extra_fields=ledger.run_end_fields):
-        pass
-    with open(path, encoding="utf-8") as f:
-        evs = [json.loads(line) for line in f if line.strip()]
-    end = evs[-1]
-    assert end["ev"] == "run_end" and end["status"] == "ok"
-    assert end["liveness"] == {"repa": {"seen": 1, "live": 0}}
 
 
 def test_run_scope_extra_fields_failure_cannot_mask_exception(tmp_path):

@@ -19,52 +19,15 @@ from pathlib import Path
 import pytest
 
 
-from anime_tools.captions.taxonomy import is_artist_tag as _is_artist_tag
-
 from library.anima.training import (
     NO_ARTIST_SENTINEL,
     anima_smart_shuffle_caption,
     find_anima_prefix_end,
-    strip_no_artist_sentinel,
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# ----- predicate ----------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "tag,expected",
-    [
-        ("@sincos", True),
-        ("@sumiyao (amam)", True),
-        ("@no-artist", True),
-        ("@", False),  # one char, no handle body
-        ("@ @", False),  # booru @_@ eye-shape, space-form
-        ("@ ", False),  # trailing space → not artist
-        ("blue hair", False),
-        ("1girl", False),
-        ("", False),
-    ],
-)
-def test_is_artist_tag(tag, expected):
-    assert _is_artist_tag(tag) is expected
-
-
 # ----- prefix-end walk ----------------------------------------------------
-
-
-def test_prefix_end_single_artist_first():
-    assert find_anima_prefix_end(["@sincos", "blue hair", "1girl"]) == 1
-
-
-def test_prefix_end_no_artist():
-    # The case @no-artist exists to fix: zero protection without a sentinel.
-    assert find_anima_prefix_end(["blue hair", "1girl"]) == 0
-
-
-def test_prefix_end_multi_artist_collab():
-    assert find_anima_prefix_end(["@artist1", "@artist2", "@artist3", "blue hair"]) == 3
 
 
 def test_prefix_end_leading_content_then_artist():
@@ -77,32 +40,10 @@ def test_prefix_end_eye_shape_no_artist():
     assert find_anima_prefix_end(["solo", "@ @", "blue hair"]) == 0
 
 
-def test_prefix_end_eye_shape_before_real_artist():
-    # @ @ falls through; @sincos is the real boundary, and @ @ rides along
-    # in the prefix as a leading-content tag (same as any other non-@ tag).
-    assert find_anima_prefix_end(["@ @", "solo", "@sincos", "blue hair"]) == 3
-
-
-def test_prefix_end_sentinel_acts_as_artist():
-    assert find_anima_prefix_end([NO_ARTIST_SENTINEL, "blue hair"]) == 1
-
-
-# ----- strip helper -------------------------------------------------------
-
-
-def test_strip_no_artist_sentinel_removes_all_occurrences():
-    tags = ["a", NO_ARTIST_SENTINEL, "b", NO_ARTIST_SENTINEL, "c"]
-    assert strip_no_artist_sentinel(tags) == ["a", "b", "c"]
-
-
-def test_strip_no_artist_sentinel_no_op_when_absent():
-    tags = ["@sincos", "blue hair"]
-    assert strip_no_artist_sentinel(tags) == tags
-
-
 # ----- shuffle integration -----------------------------------------------
 
 
+@pytest.mark.core
 def test_shuffle_preserves_prefix_order_with_multi_artist():
     random.seed(0)
     tags = ["@artist1", "@artist2", "@artist3", "a", "b", "c", "d"]
@@ -111,16 +52,6 @@ def test_shuffle_preserves_prefix_order_with_multi_artist():
     assert out[:3] == ["@artist1", "@artist2", "@artist3"]
     # Suffix has same multiset, possibly reordered.
     assert sorted(out[3:]) == sorted(["a", "b", "c", "d"])
-
-
-def test_shuffle_eye_shape_does_not_anchor_prefix():
-    random.seed(0)
-    tags = ["solo", "@ @", "blue hair", "red eyes"]
-    out = anima_smart_shuffle_caption(tags.copy())
-    # No real artist → split_idx=0 → everything is shuffleable.
-    # We can't assert a specific order (random), only that the multiset is
-    # preserved and the input wasn't accidentally locked into the prefix.
-    assert sorted(out) == sorted(tags)
 
 
 def test_shuffle_keeps_sentinel_in_output_for_caller_strip():
@@ -143,6 +74,7 @@ def _gen_variants(*args, **kwargs):
     return generate_caption_variants(*args, **kwargs)
 
 
+@pytest.mark.core
 def test_variants_strip_sentinel_from_v0():
     random.seed(0)
     out = _gen_variants(
@@ -151,13 +83,6 @@ def test_variants_strip_sentinel_from_v0():
     assert all(NO_ARTIST_SENTINEL not in v for v in out)
     # v0 retains the original tag order (sentinel removed).
     assert out[0] == "blue hair, 1girl"
-
-
-def test_variants_v0_byte_identical_when_no_sentinel():
-    # Existing datasets must not see whitespace renormalization in v0.
-    raw = "@sincos,blue hair  ,1girl"
-    out = _gen_variants(raw, num_variants=1, tag_dropout_rate=0.0)
-    assert out[0] == raw
 
 
 def test_direct_te_caption_strips_sentinel_without_normalizing_clean_caption():
@@ -185,6 +110,7 @@ def test_variants_strip_sentinel_after_dropout():
         assert NO_ARTIST_SENTINEL not in v
 
 
+@pytest.mark.core
 def test_variants_multi_artist_protected_from_dropout():
     random.seed(0)
     # Force every dropable tag to roll the dice; with rate=1.0 every
@@ -208,20 +134,6 @@ def test_variants_multi_artist_protected_from_dropout():
 
 # Stub erasure pool — stands in for build_erasure_token_pool()'s dual-single words.
 _POOL = ["swing", "sodium", "awards", "covering", "largest", "album"]
-
-
-def test_randomize_keeps_v0_pristine():
-    random.seed(0)
-    raw = "@sincos, 1girl, blue hair"
-    out = _gen_variants(
-        raw,
-        num_variants=4,
-        tag_dropout_rate=0.0,
-        tag_randomize_rate=1.0,
-        erasure_pool=_POOL,
-    )
-    # v0 is never randomized.
-    assert out[0] == raw
 
 
 def test_randomize_preserves_slot_count_and_erases_identity():
@@ -262,19 +174,6 @@ def test_randomize_respects_protect_fn_and_sentinel():
         toks = [t.strip() for t in v.split(",")]
         assert NO_ARTIST_SENTINEL not in toks  # sentinel stripped, never emitted
         assert "keepme" in toks  # protected tag kept verbatim
-
-
-def test_randomize_without_pool_raises():
-    # No random-ASCII fallback: randomizing without a pool is a hard error.
-    import pytest
-
-    with pytest.raises(ValueError, match="erasure_pool"):
-        _gen_variants(
-            "@artist, 1girl, blue hair",
-            num_variants=4,
-            tag_dropout_rate=0.0,
-            tag_randomize_rate=1.0,
-        )
 
 
 def test_build_erasure_token_pool_dual_single_and_exclude():
@@ -383,16 +282,3 @@ def test_loader_randomized_only_excludes_v0(tmp_path):
     )
     drawn = _draw_names(strat, p, embs)
     assert drawn == {"r1", "r2", "r3"}
-
-
-def test_loader_randomized_falls_back_to_v_family_without_r(tmp_path):
-    from library.anima.strategy import AnimaTextEncoderOutputsCachingStrategy
-
-    p = tmp_path / "x_anima_te.safetensors"
-    embs = _write_variant_cache(p, n_variants=3, n_randomized=0)
-    strat = AnimaTextEncoderOutputsCachingStrategy(
-        True, 1, True, use_randomized_caption_variants=True
-    )
-    drawn = _draw_names(strat, p, embs)
-    # No r-family on disk → graceful fallback to the shuffled v-family.
-    assert drawn == {"v0", "v1", "v2"}

@@ -38,6 +38,7 @@ def _randomize(network):
         torch.nn.init.normal_(p)
 
 
+@pytest.mark.core
 def test_pre_shared_qwen21_file_loads(tmp_path):
     torch.manual_seed(0)
     model = _Tiny()
@@ -63,6 +64,7 @@ def test_pre_shared_qwen21_file_loads(tmp_path):
         assert torch.equal(network.state_dict()[key], value), key
 
 
+@pytest.mark.core
 @pytest.mark.parametrize("algo", ["lora", "lokr", "loha"])
 def test_algos_round_trip(tmp_path, algo):
     torch.manual_seed(0)

@@ -122,7 +122,7 @@ FIELD_ORDER: dict[str, tuple[str, ...]] = {
 ALWAYS_PERSIST: dict[str, frozenset[str]] = {
     # Written to ``[variant.stages.<id>]`` even at the seeded default: the
     # tiers are what a user looks for in the profile (see
-    # ``test_preprocess_tab_persists_default_target_res_to_variant``).
+    # ``test_preprocess_knob_contract_matches_fixture``).
     "resize": frozenset({"target_res"}),
 }
 

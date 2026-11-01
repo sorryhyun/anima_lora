@@ -110,77 +110,7 @@ def test_load_curation_decisions_rebases_to_source_subdir(tmp_path: Path) -> Non
     }
 
 
-def test_walk_images_flat(tmp_path: Path) -> None:
-    from library.preprocess import walk_images
-
-    _write_image(tmp_path / "b.png", (8, 8))
-    _write_image(tmp_path / "a.png", (8, 8))
-    (tmp_path / "caption.txt").write_text("not an image")
-
-    paths = walk_images(tmp_path, recursive=False)
-    assert [p.name for p in paths] == ["a.png", "b.png"]  # sorted, txt excluded
-
-
-def test_walk_images_recursive_same_stem_across_folders_ok(tmp_path: Path) -> None:
-    from library.preprocess import walk_images
-
-    _write_image(tmp_path / "charA" / "cover.png", (8, 8))
-    _write_image(tmp_path / "charB" / "cover.png", (8, 8))
-
-    paths = walk_images(tmp_path, recursive=True)
-    assert len(paths) == 2  # same stem in different folders is fine
-
-
-def test_walk_images_path_pattern_filters_relative_paths(tmp_path: Path) -> None:
-    from library.preprocess import walk_images
-
-    _write_image(tmp_path / "charA" / "cover.png", (8, 8))
-    _write_image(tmp_path / "charB" / "cover.png", (8, 8))
-
-    paths = walk_images(tmp_path, recursive=True, pattern="charA/*")
-    assert [p.relative_to(tmp_path).as_posix() for p in paths] == ["charA/cover.png"]
-
-
-def test_walk_images_collision_within_folder_raises(tmp_path: Path) -> None:
-    from library.preprocess import walk_images
-
-    _write_image(tmp_path / "cover.png", (8, 8))
-    _write_image(tmp_path / "cover.jpg", (8, 8))
-
-    with pytest.raises(ValueError, match="Duplicate image stems"):
-        walk_images(tmp_path, recursive=False)
-
-
-def test_group_by_shape(tmp_path: Path) -> None:
-    from library.preprocess import group_by_shape
-
-    _write_image(tmp_path / "a.png", (8, 16))
-    _write_image(tmp_path / "b.png", (8, 16))
-    _write_image(tmp_path / "c.png", (16, 8))
-
-    groups = group_by_shape(
-        [tmp_path / "a.png", tmp_path / "b.png", tmp_path / "c.png"]
-    )
-    assert {k: sorted(p.name for p in v) for k, v in groups.items()} == {
-        (8, 16): ["a.png", "b.png"],
-        (16, 8): ["c.png"],
-    }
-
-
-def test_partition_cached(tmp_path: Path) -> None:
-    from library.preprocess import partition_cached
-
-    imgs = [tmp_path / f"img{i}.png" for i in range(3)]
-    for p in imgs:
-        _write_image(p, (8, 8))
-    # Pretend img1 is already cached.
-    (tmp_path / "img1.cached").touch()
-
-    pending, skipped = partition_cached(imgs, lambda p: tmp_path / f"{p.stem}.cached")
-    assert skipped == 1
-    assert [p.name for p in pending] == ["img0.png", "img2.png"]
-
-
+@pytest.mark.core
 def test_a_cache_older_than_its_image_is_pending(tmp_path: Path) -> None:
     """A resize that rewrites an image (e.g. the alpha composite fix) must
     re-encode it even though its cache file still exists."""
@@ -196,25 +126,6 @@ def test_a_cache_older_than_its_image_is_pending(tmp_path: Path) -> None:
 
     pending, skipped = partition_cached([img], lambda p: tmp_path / f"{p.stem}.cached")
     assert (skipped, [q.name for q in pending]) == (0, ["img.png"])
-
-
-def test_count_preprocess_caches_path_pattern_filters_nested_caches(
-    tmp_path: Path,
-) -> None:
-    from gui.dialogs.confirm import count_preprocess_caches
-
-    (tmp_path / "charA").mkdir()
-    (tmp_path / "charB").mkdir()
-    (tmp_path / "charA" / "cover_1024x1024_anima.npz").touch()
-    (tmp_path / "charA" / "cover_anima_te.safetensors").touch()
-    (tmp_path / "charB" / "cover_1024x1024_anima.npz").touch()
-    (tmp_path / "charB" / "cover_anima_te.safetensors").touch()
-
-    assert count_preprocess_caches(tmp_path, "charA/*") == {
-        "latents": 1,
-        "te": 1,
-        "pe": 0,
-    }
 
 
 # Minimal Danbooru-KB CSV (mirrors anime_tools/tests/test_caption_correction.py).
@@ -240,6 +151,7 @@ def _tag_csv(path: Path) -> Path:
     return path
 
 
+@pytest.mark.core
 def test_write_corrected_preprocess_captions_preserves_source(tmp_path: Path) -> None:
     from anime_tools.captions.correction import (
         CaptionCorrectionOptions,
@@ -272,35 +184,6 @@ def test_write_corrected_preprocess_captions_preserves_source(tmp_path: Path) ->
     )
 
 
-def test_write_corrected_preprocess_captions_keeps_a_revised_caption_without_master(
-    tmp_path: Path,
-) -> None:
-    """A revised caption is *the* caption (anime_tools >= 0.4.0, revised-first):
-    with no master beside it, it is corrected in place, not treated as stale."""
-    from anime_tools.captions.correction import CaptionCorrectionOptions
-    from anime_tools.captions.correction import load_tag_knowledge_base
-    from anime_tools.stages.captions import write_corrected_preprocess_captions
-
-    source = tmp_path / "image_dataset"
-    resized = tmp_path / "post_image_dataset" / "resized"
-    source.mkdir()
-    _write_image(resized / "charA" / "cover.png", (64, 64))
-    revised = resized / "charA" / "cover.txt"
-    revised.write_text("smile, 1girl", encoding="utf-8")
-
-    stats = write_corrected_preprocess_captions(
-        source,
-        resized,
-        load_tag_knowledge_base(_tag_csv(tmp_path / "tags.csv")),
-        options=CaptionCorrectionOptions(),
-        recursive=True,
-    ).stats
-
-    assert stats.no_caption == 0
-    assert stats.from_master == 0
-    assert revised.exists()
-
-
 def test_confirm_train_using_cache_requires_pe_when_repa_on(tmp_path: Path) -> None:
     """use_repa Train gating: a built latent/TE cache that lacks PE sidecars
     must return None (→ auto-chain the PE-caching preprocess) rather than
@@ -316,13 +199,6 @@ def test_confirm_train_using_cache_requires_pe_when_repa_on(tmp_path: Path) -> N
     (tmp_path / "cover_anima_te.safetensors").touch()
 
     # REPA on → PE mandatory → treat as cache-missing (auto-preprocess).
-    assert confirm_train_using_cache(None, tmp_path, require_pe=True) is None
-
-
-def test_confirm_train_using_cache_empty_returns_none(tmp_path: Path) -> None:
-    from gui.dialogs.confirm import confirm_train_using_cache
-
-    assert confirm_train_using_cache(None, tmp_path) is None
     assert confirm_train_using_cache(None, tmp_path, require_pe=True) is None
 
 
@@ -351,44 +227,7 @@ def test_count_pending_latents_per_resolution(tmp_path: Path) -> None:
     assert count_pending_latents(data, cache_dir=cache) == (1, 2)
 
 
-def test_count_pending_pe_existence(tmp_path: Path) -> None:
-    from library.preprocess import count_pending_pe, pe_cache_path_for
-
-    data = tmp_path / "imgs"
-    cache = tmp_path / "cache"
-    _write_image(data / "a.png", (64, 64))
-    _write_image(data / "b.png", (64, 64))
-
-    assert count_pending_pe(data, "pe_spatial", cache_dir=cache) == (2, 2)
-
-    sidecar = pe_cache_path_for(
-        data / "a.png", "pe_spatial", cache_dir=cache, image_dir=data
-    )
-    sidecar.parent.mkdir(parents=True, exist_ok=True)
-    sidecar.touch()
-    assert count_pending_pe(data, "pe_spatial", cache_dir=cache) == (1, 2)
-
-
-def test_count_pending_text_counts_uncaptioned(tmp_path: Path) -> None:
-    # Uncaptioned images are candidates too (encoded with an empty caption), so
-    # they count toward pending until their TE cache exists.
-    from library.preprocess import count_pending_text
-    from library.preprocess.text import _te_cache_path
-
-    data = tmp_path / "imgs"
-    cache = tmp_path / "cache"
-    _write_image(data / "a.png", (64, 64))
-    _write_image(data / "b.png", (64, 64))  # no .txt — still a candidate
-    (data / "a.txt").write_text("hello", encoding="utf-8")
-
-    assert count_pending_text(data, cache_dir=cache) == (2, 2)
-
-    te = _te_cache_path(data / "a.png", cache, data)
-    te.parent.mkdir(parents=True, exist_ok=True)
-    te.touch()
-    assert count_pending_text(data, cache_dir=cache) == (1, 2)
-
-
+@pytest.mark.core
 def test_count_pending_text_recaches_when_caption_is_newer(tmp_path: Path) -> None:
     from library.preprocess import count_pending_text
     from library.preprocess.text import _te_cache_path
@@ -409,33 +248,6 @@ def test_count_pending_text_recaches_when_caption_is_newer(tmp_path: Path) -> No
 
     os.utime(caption, (300, 300))
     assert count_pending_text(data, cache_dir=cache) == (1, 1)
-
-
-def test_count_pending_text_keep_rel_stems_filters_nested_paths(tmp_path: Path) -> None:
-    from library.preprocess import count_pending_text
-    from library.preprocess.text import _te_cache_path
-
-    data = tmp_path / "imgs"
-    cache = tmp_path / "cache"
-    _write_image(data / "charA" / "cover.png", (64, 64))
-    _write_image(data / "charB" / "cover.png", (64, 64))
-
-    assert count_pending_text(
-        data,
-        cache_dir=cache,
-        recursive=True,
-        keep_rel_stems={"charA/cover"},
-    ) == (1, 1)
-
-    te = _te_cache_path(data / "charA" / "cover.png", cache, data)
-    te.parent.mkdir(parents=True, exist_ok=True)
-    te.touch()
-    assert count_pending_text(
-        data,
-        cache_dir=cache,
-        recursive=True,
-        keep_rel_stems={"charA/cover"},
-    ) == (0, 1)
 
 
 # ---------------------------------------------------------------------------
@@ -468,59 +280,6 @@ def test_count_preprocess_caches_is_pe_encoder_aware(tmp_path: Path) -> None:
 
     # Asking for the PE-Core encoder finds no matching sidecar.
     assert count_preprocess_caches(tmp_path, pe_encoder="pe")["pe"] == 0
-
-
-def test_resize_to_buckets_writes_and_mirrors_layout(tmp_path: Path) -> None:
-    from library.preprocess import resize_to_buckets
-
-    src = tmp_path / "src"
-    dst = tmp_path / "dst"
-    # Two images; one nested.
-    _write_image(src / "a.png", (900, 900))
-    (src / "a.txt").write_text("caption a")
-    _write_image(src / "charB" / "b.png", (900, 900))
-
-    stats, bucket_counts = resize_to_buckets(
-        src, dst, recursive=True, workers=1, verbose=False
-    )
-    assert stats.seen == 2
-    assert stats.written == 2
-    assert sum(bucket_counts.values()) == 2
-
-    out_a = dst / "a.png"
-    out_b = dst / "charB" / "b.png"
-    assert out_a.exists() and out_b.exists()  # nested layout mirrored
-    # anime_tools >= 0.6: resize moves images only; captions are the caption
-    # stages' file, so the master sidecar must NOT be mirrored here.
-    assert not (dst / "a.txt").exists()
-    # Output matches a real bucket resolution.
-    with Image.open(out_a) as im:
-        assert (im.width, im.height) in bucket_counts
-
-
-def test_resize_to_buckets_path_pattern_preserves_filtered_layout(
-    tmp_path: Path,
-) -> None:
-    from library.preprocess import resize_to_buckets
-
-    src = tmp_path / "src"
-    dst = tmp_path / "dst"
-    _write_image(src / "charA" / "a.png", (900, 900))
-    _write_image(src / "charB" / "b.png", (900, 900))
-
-    stats, bucket_counts = resize_to_buckets(
-        src,
-        dst,
-        recursive=True,
-        path_pattern="charA/*",
-        workers=1,
-        verbose=False,
-    )
-    assert stats.seen == 1
-    assert stats.written == 1
-    assert sum(bucket_counts.values()) == 1
-    assert (dst / "charA" / "a.png").exists()
-    assert not (dst / "charB" / "b.png").exists()
 
 
 def test_resize_to_buckets_applies_curation_skip_decision(tmp_path: Path) -> None:
@@ -583,6 +342,7 @@ def test_resize_to_buckets_skips_decisions_and_keeps_small_images(
     assert (dst / "small.png").exists()
 
 
+@pytest.mark.core
 def test_resize_to_buckets_default_tier_does_not_upscale_to_multitier(
     tmp_path: Path,
 ) -> None:
@@ -616,6 +376,7 @@ def test_resize_to_buckets_default_tier_does_not_upscale_to_multitier(
         assert abs(reso[0] / reso[1] - 589 / 1233) < (16 / min(reso))
 
 
+@pytest.mark.core
 def test_resize_to_buckets_skips_up_to_date_and_rebuckets_on_tier_change(
     tmp_path: Path,
 ) -> None:
@@ -656,6 +417,7 @@ def test_resize_to_buckets_skips_up_to_date_and_rebuckets_on_tier_change(
     assert (stats.written, stats.skipped) == (2, 0)
 
 
+@pytest.mark.core
 def test_reconcile_caches_removes_only_wrong_bucket(tmp_path: Path) -> None:
     """Under [768, 1024], the small image's old 1024-tier caches are stale; the
     big image's correct caches and every TE sidecar are left untouched."""

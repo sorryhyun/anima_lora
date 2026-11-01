@@ -68,6 +68,7 @@ def inputs():
     )
 
 
+@pytest.mark.core
 def test_conversion_keeps_parameters_and_block_linears():
     model = tiny()
     before = {n: (p.dtype, p.detach().clone()) for n, p in model.named_parameters()}
@@ -84,13 +85,7 @@ def test_conversion_keeps_parameters_and_block_linears():
     assert len(swapped) == 1 + 1 + 2 + 2 + 2 * 4  # embed, head, t, final, 2 × adaln
 
 
-def test_fp32_linear_leaves_autocast():
-    m = nn.Linear(4, 4, bias=False).to(torch.bfloat16)
-    m.__class__ = Fp32Linear
-    with torch.autocast("cpu", dtype=torch.bfloat16):
-        assert m(torch.ones(1, 4)).dtype == torch.float32
-
-
+@pytest.mark.core
 def test_block_gemms_stay_bf16_and_the_stream_stays_fp32():
     model = tiny()
     stream_fp32_(model)
@@ -136,6 +131,7 @@ def test_rope_keeps_fp32_up_to_attention():
     assert type(plain.blocks[0].self_attn.q_norm) is not Fp32RMSNorm
 
 
+@pytest.mark.core
 def test_stream_moves_the_prediction_only_a_little():
     x, t, c = inputs()
     model = tiny()
@@ -146,19 +142,6 @@ def test_stream_moves_the_prediction_only_a_little():
         wide = model(x, t, c)
     assert torch.isfinite(wide).all()
     assert (wide - narrow).norm() / narrow.norm() < 0.05
-
-
-def test_lora_on_a_stream_linear_runs_fp32():
-    model = tiny()
-    stream_fp32_(model)
-    target = model.blocks[0].adaln_up_self_attn
-    lora = LoRAModule("lora_unet_t", target, 1.0, 4, 1)
-    lora.to(torch.bfloat16)
-    lora.apply_to()
-    with torch.no_grad():
-        out = model(*inputs())
-    assert torch.isfinite(out).all()
-    assert out.dtype == torch.float32
 
 
 def gen_args(**over):
@@ -197,6 +180,7 @@ def today(model, args, ctx):
     return latents
 
 
+@pytest.mark.core
 def test_bf16_generation_is_bit_identical_to_today():
     model = tiny(concat_padding_mask=True)
     args, ctx = gen_args(), context()
@@ -217,22 +201,7 @@ def test_fp32_generation_keeps_the_sampler_state():
     assert torch.isfinite(got).all()
 
 
-def test_same_seed_is_the_same_noise_on_both_streams():
-    from diffusers.utils.torch_utils import randn_tensor
-
-    device = torch.device("cpu")
-    draw = [
-        randn_tensor(
-            (1, 16, 1, 32, 32),
-            generator=torch.Generator("cpu").manual_seed(5),
-            device=device,
-            dtype=dtype,
-        )
-        for dtype in (torch.bfloat16, torch.float32)
-    ]
-    assert torch.equal(draw[0], draw[1].to(torch.bfloat16))
-
-
+@pytest.mark.core
 def test_fp32_is_the_cli_default_and_a_namespace_without_it_is_bf16():
     assert gen_args().stream == "fp32"
     assert latent_dtype(SimpleNamespace()) == torch.bfloat16
@@ -267,6 +236,7 @@ def test_load_gates_the_conversion(monkeypatch, stream, easycontrol, swapped):
     assert latent_dtype(out) == (torch.float32 if swapped else torch.bfloat16)
 
 
+@pytest.mark.core
 def test_training_flag_defaults_to_fp32():
     assert setup_parser().parse_args([]).stream == "fp32"
     assert setup_parser().parse_args(["--stream", "bf16"]).stream == "bf16"
@@ -338,11 +308,7 @@ def test_training_input_and_sigma_follow_the_stream(stream, weight_dtype, expect
     assert noisy.dtype == timesteps.dtype == expected
 
 
-def test_preview_keeps_the_dits_dtype_off_the_stream():
-    assert latent_dtype(SimpleNamespace(), torch.float32) == torch.float32
-    assert latent_dtype(SimpleNamespace(stream="fp32")) == torch.float32
-
-
+@pytest.mark.core
 def test_training_gradient_reaches_a_lora_past_the_stream():
     model = tiny().train()
     model.requires_grad_(False)

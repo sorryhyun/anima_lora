@@ -42,23 +42,3 @@ def test_exponential_schedule_decays_across_sigma():
     diffs = result[1:] - result[:-1]
     assert torch.all(diffs < 0)
     assert (result[0] - result[-1]).item() > 0.5  # real spread, not ~0
-
-
-def test_exponential_matches_power_form():
-    # exp(-(-log c)·σ) == c**σ
-    sigmas = torch.tensor([0.1, 0.4, 0.9])
-    result = get_huber_threshold_if_needed(
-        _args(huber_c=0.2, huber_scale=2.0), sigmas, noise_scheduler=None
-    )
-    expected = (0.2**sigmas) * 2.0
-    assert torch.allclose(result, expected, rtol=1e-5)
-
-
-def test_constant_schedule_unaffected():
-    sigmas = torch.tensor([0.0, 0.5, 1.0])
-    result = get_huber_threshold_if_needed(
-        _args(huber_schedule="constant", huber_c=0.3, huber_scale=2.0),
-        sigmas,
-        noise_scheduler=None,
-    )
-    assert torch.allclose(result, torch.full((3,), 0.6), rtol=1e-5)

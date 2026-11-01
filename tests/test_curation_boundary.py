@@ -95,6 +95,7 @@ def test_manifest_globs_resolve():
         )
 
 
+@pytest.mark.core
 @pytest.mark.parametrize(
     "path", _curation_files(), ids=lambda p: str(p.relative_to(REPO_ROOT))
 )

@@ -20,6 +20,8 @@ import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 
+import pytest
+
 
 @contextmanager
 def _temporary_custom_variant(name: str) -> Iterator[tuple[str, object]]:
@@ -65,6 +67,7 @@ def _make_config_and_preprocess_tabs():
     return ConfigTab(preprocess_tab=preprocess_tab), preprocess_tab
 
 
+@pytest.mark.core
 def test_snapshot_drops_preprocess_only_keys():
     from gui.tabs.preprocess.knobs import PREPROCESS_ONLY_KEYS as _GUI_PREPROCESS_KEYS
 
@@ -87,6 +90,7 @@ def test_snapshot_drops_preprocess_only_keys():
     assert "caption_dropout_rate" in snapshot
 
 
+@pytest.mark.core
 def test_preprocess_queue_snapshot_keeps_scoped_source_separate_from_train_snapshot():
     from gui.tabs.preprocess.knobs import PREPROCESS_ONLY_KEYS as _GUI_PREPROCESS_KEYS
 

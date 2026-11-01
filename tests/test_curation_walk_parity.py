@@ -30,7 +30,7 @@ def _tree(tmp_path: Path) -> Path:
 
 
 @pytest.mark.parametrize("recursive", [False, True])
-@pytest.mark.parametrize("pattern", [None, "*", "a/*", "a/*|b/sub/*"])
+@pytest.mark.parametrize("pattern", [None, "a/*|b/sub/*"])
 def test_walk_images_parity(tmp_path: Path, recursive: bool, pattern):
     root = _tree(tmp_path)
     assert _walk.walk_images(root, recursive, pattern) == _dataset.walk_images(

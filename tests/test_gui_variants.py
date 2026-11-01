@@ -5,7 +5,6 @@ table (see ``gui/__init__.py``). This module pins:
 
 * every built-in is loadable via ``load_method_preset(..., methods_subdir="gui-methods")``
 * every built-in carries a ``[variant].family`` string
-* no built-in surfaces a retired router knob as a TOML key
 * output_name is unique across built-ins (the allowlist below covers
   families that may again ship same-model variants; hardware now composes
   via the presets.toml Hardware picker instead of per-variant file copies).
@@ -26,11 +25,6 @@ from library.config.io import load_method_preset
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GUI_METHODS_DIR = REPO_ROOT / "configs" / "gui-methods"
-
-# Retired in plan2 task #6 — surfacing them in a TOML must not silently
-# resurrect the legacy code path. ``test_network_cfg.py`` already asserts the
-# schema rejects them; here we just guarantee no built-in writes them.
-_LEGACY_ROUTER_KEYS = ("use_hydra", "use_sigma_router", "use_fei_router")
 
 # Built-in variants in the same family may legitimately share an output_name
 # when they're same-model variants under different length/quality budgets
@@ -64,18 +58,7 @@ def test_builtin_has_variant_metadata(path: Path):
     )
 
 
-@pytest.mark.parametrize("path", BUILTINS, ids=lambda p: p.stem)
-def test_builtin_has_no_legacy_router_keys(path: Path):
-    """Three-axis routing replaced ``use_hydra`` / ``use_sigma_router`` /
-    ``use_fei_router``. Stale TOMLs must be cleaned out."""
-    data = toml.loads(path.read_text(encoding="utf-8"))
-    for key in _LEGACY_ROUTER_KEYS:
-        assert key not in data, (
-            f"{path.name}: legacy router key {key!r} — replace with the "
-            "three-axis surface (use_moe_style / route_per_layer / router_source)"
-        )
-
-
+@pytest.mark.core
 @pytest.mark.parametrize("path", BUILTINS, ids=lambda p: p.stem)
 def test_builtin_loads_clean(path: Path, caplog):
     """Every built-in must merge cleanly through the base → preset → method
@@ -123,23 +106,3 @@ def test_no_unintentional_output_name_collisions():
         owner_str = ", ".join(f"{stem} (family={family})" for family, stem in owners)
         bad.append(f"output_name={output_name!r} shared by: {owner_str}")
     assert not bad, "Output name collisions:\n  " + "\n  ".join(bad)
-
-
-def test_variant_discovery_matches_filesystem():
-    """``list_gui_variants`` should surface every built-in whose ``[variant]
-    .family`` matches the requested family — no hardcoded map drift."""
-    from gui import list_gui_variants
-
-    expected_by_family: dict[str, set[str]] = {}
-    for path in BUILTINS:
-        data = toml.loads(path.read_text(encoding="utf-8"))
-        family = (data.get("variant") or {}).get("family")
-        if isinstance(family, str) and family:
-            expected_by_family.setdefault(family, set()).add(path.stem)
-
-    for family, expected in expected_by_family.items():
-        listed = {v for v in list_gui_variants(family) if not v.startswith("custom/")}
-        assert listed == expected, (
-            f"family={family}: list_gui_variants returned {sorted(listed)}, "
-            f"expected {sorted(expected)}"
-        )

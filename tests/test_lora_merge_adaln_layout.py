@@ -9,6 +9,7 @@ skipped (only a "not all LoRA keys are used" warning) on ``--lora_weight``.
 
 from __future__ import annotations
 
+import pytest
 import torch
 from safetensors.torch import save_file
 
@@ -45,6 +46,7 @@ def _lora(prefix):
     }, up @ down
 
 
+@pytest.mark.core
 def test_comfy_layout_adaln_keys_merge(tmp_path):
     lora_sd, delta = _lora("lora_unet_blocks_0_adaln_modulation_mlp_2")
     base, merged = _merge(tmp_path, lora_sd)

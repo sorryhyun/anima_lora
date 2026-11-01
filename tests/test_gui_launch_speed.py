@@ -45,6 +45,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Warm launch is ~1.35s; the headroom absorbs a loaded CI box and a dataset /
@@ -71,6 +73,7 @@ def _run_in_fresh_interpreter(code: str, **env_extra: str) -> str:
     return proc.stdout
 
 
+@pytest.mark.core
 def test_gui_app_import_stays_torch_free():
     out = _run_in_fresh_interpreter(
         "import sys\n"

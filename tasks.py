@@ -414,6 +414,10 @@ COMMANDS = {
     ),
     "comfy-batch": (utilities.cmd_comfy_batch, "Run ComfyUI batch workflow"),
     "test-unit": (utilities.cmd_test_unit, "Run smoke/unit tests (pytest tests/)"),
+    "test-core": (
+        utilities.cmd_test_core,
+        "Run the tests marked core: the line-level invariants (tests/README.md)",
+    ),
     "export-logs": (
         utilities.cmd_export_logs,
         "Dump TB scalar logs to JSON (RUN=<dir>, ALL=1 for every subrun, JSONL=1 for "

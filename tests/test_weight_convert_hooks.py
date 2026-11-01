@@ -7,6 +7,7 @@ in (q, k, v) order and the AdaLN down-projections in (self_attn, cross_attn,
 mlp) order regardless of the on-disk key order.
 """
 
+import pytest
 import torch
 from safetensors.torch import save_file
 
@@ -37,6 +38,8 @@ _SOURCE = {
     "net.blocks.0.adaln_modulation_self_attn.2.weight": _const(9),
     "net.blocks.0.mlp.fc1.weight": _const(10),
 }
+
+pytestmark = pytest.mark.core
 
 _DIT_HOOKS = WeightTransformHooks(
     rename_hook=_dit_rename_hook,
@@ -71,6 +74,4 @@ def test_dit_concat_and_rename_hooks(tmp_path):
         assert torch.equal(
             adapter.get_tensor("blocks.0.adaln_up_self_attn.weight"), _const(9)
         )
-        assert torch.equal(
-            adapter.get_tensor("blocks.0.mlp.fc1.weight"), _const(10)
-        )
+        assert torch.equal(adapter.get_tensor("blocks.0.mlp.fc1.weight"), _const(10))

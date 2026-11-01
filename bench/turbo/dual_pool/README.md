@@ -36,7 +36,7 @@ make run-status RUN=anima_superturbo_dualpool_A_v1
 
 750 iterations, ckpt at 250 / 500 / 750. The routing itself is guarded by the
 invariant test `tests/test_turbo_dual_pool.py` (grad lands on A alone / B alone;
-merged concat reproduces `ΔW_A + ΔW_B`; div_scale dial) — run it first:
+merged concat reproduces `ΔW_A + ΔW_B`) — run it first:
 
 ```bash
 python -m pytest tests/test_turbo_dual_pool.py -q

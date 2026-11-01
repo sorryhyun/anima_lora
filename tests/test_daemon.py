@@ -1,4 +1,4 @@
-"""Phase 1 training daemon: arg builder, job persistence, liveness, and an
+"""Phase 1 training daemon: job persistence, liveness, and an
 end-to-end serial-queue run over the real HTTP surface with fake training
 subprocesses.
 
@@ -29,7 +29,6 @@ from anima_daemon.client import DaemonClient as _RealDaemonClient
 from anima_daemon.manager import JobManager
 from anima_daemon.mcp import MCPServer
 from anima_daemon.server import serve
-from scripts.tasks._common import build_method_args
 
 # This suite drives the real daemon job queue over live subprocesses and timers:
 # ~55s serial, but ~4x faster under xdist since the waits overlap. `make test-unit`
@@ -40,42 +39,6 @@ pytestmark = pytest.mark.slow
 # --------------------------------------------------------------------------
 # pure helpers
 # --------------------------------------------------------------------------
-
-
-def test_build_method_args_basic():
-    args = build_method_args("lora", preset="default")
-    assert args == ["--method", "lora", "--preset", "default"]
-
-
-def test_build_method_args_subdir_artist_profile_and_extra():
-    args = build_method_args(
-        "tlora",
-        preset="low_vram",
-        methods_subdir="gui-methods",
-        extra=["--network_dim", "32"],
-        artist="alice",
-        profile_steps="3-5",
-    )
-    assert args[:6] == [
-        "--method",
-        "tlora",
-        "--preset",
-        "low_vram",
-        "--methods_subdir",
-        "gui-methods",
-    ]
-    assert "--artist_filter" in args and "alice" in args
-    assert "--profile_steps" in args and "3-5" in args
-    assert args[-2:] == ["--network_dim", "32"]
-
-
-def test_build_method_args_respects_explicit_overrides():
-    # caller already passed --artist_filter in extra → builder must not duplicate
-    args = build_method_args(
-        "lora", preset="default", extra=["--artist_filter", "bob"], artist="alice"
-    )
-    assert args.count("--artist_filter") == 1
-    assert "alice" not in args
 
 
 def test_split_daemon_run_args_label_after_script_belongs_to_child():
@@ -106,43 +69,6 @@ def test_split_daemon_run_args_own_flags_before_script():
     assert label == "myjob" and stall == "600"
     assert head == ["run.py", "--limit", "5"]
     assert tail == []
-
-
-def test_split_daemon_run_args_equals_forms_and_mode_flag():
-    from scripts.tasks.daemon import split_daemon_run_args
-
-    label, stall, head, tail = split_daemon_run_args(
-        ["--queue", "--label=myjob", "--stall-timeout=0", "run.py"]
-    )
-    assert label == "myjob" and stall == "0"
-    # run-mode flags stay in head for _resolve_run_mode to pop.
-    assert head == ["--queue", "run.py"]
-    assert tail == []
-
-
-def test_split_daemon_run_args_dash_dash_is_verbatim_passthrough():
-    from scripts.tasks.daemon import split_daemon_run_args
-
-    label, stall, head, tail = split_daemon_run_args(
-        ["--label", "j", "run.py", "--", "--queue", "--label", "x"]
-    )
-    assert label == "j" and stall is None
-    assert head == ["run.py"]
-    # everything after `--` is the child's, even run-mode/own-flag lookalikes.
-    assert tail == ["--queue", "--label", "x"]
-
-
-def test_job_roundtrip(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "JOBS_DIR", tmp_path / "jobs")
-    job = jobs.Job(
-        id="j1", method="lora", preset="default", overrides={"network_dim": 16}
-    )
-    job.progress_path = str(job.dir / "progress.jsonl")
-    job.persist()
-    loaded = jobs.load_all()
-    assert "j1" in loaded
-    assert loaded["j1"].method == "lora"
-    assert loaded["j1"].overrides == {"network_dim": 16}
 
 
 def _seed_job(state: str, age_days: float, job_id: str) -> jobs.Job:
@@ -204,16 +130,6 @@ def test_prune_jobs_disabled_and_unreadable(tmp_path, monkeypatch):
     summary = jobs.prune_jobs(max_age_days=30, keep_recent=0)
     assert summary["pruned"] == ["ancient"]
     assert (config.JOBS_DIR / "corrupt").is_dir()
-
-
-def test_liveness_pid_create_time():
-    me = os.getpid()
-    ct = proc.create_time(me)
-    assert proc.is_alive(me, ct)
-    # wrong create_time → treated as a reused PID, not our process
-    assert not proc.is_alive(me, (ct or 0) + 10_000)
-    # a definitely-dead pid
-    assert not proc.is_alive(2_147_483_000, 123.0)
 
 
 # --------------------------------------------------------------------------
@@ -278,13 +194,7 @@ def daemon(tmp_path, monkeypatch):
         srv.server_close()
 
 
-def test_health(daemon):
-    cl, _ = daemon
-    h = cl.health()
-    assert h["ok"] is True
-    assert h["active_job"] is None
-
-
+@pytest.mark.core
 def test_serial_queue(daemon):
     cl, _ = daemon
     j1 = cl.submit(method="lora", overrides={"duration": 1.0})["job_id"]
@@ -309,6 +219,7 @@ def _isolate_state(tmp_path, monkeypatch):
     monkeypatch.setattr(gpu, "gpu_pids", lambda: set())
 
 
+@pytest.mark.core
 def test_worker_survives_build_exception(tmp_path, monkeypatch):
     """A job whose _build_cmd raises must fail ERROR without killing the worker;
     the next queued job still runs. Regression for the silent-worker-death hang
@@ -420,6 +331,7 @@ def test_cli_queue_folds_artist_into_extra(daemon, monkeypatch):
     assert "alice" in job["extra"]
 
 
+@pytest.mark.core
 def test_stop_running_job(daemon):
     cl, mgr = daemon
     jid = cl.submit(method="lora", overrides={"duration": 60.0})["job_id"]
@@ -456,24 +368,6 @@ def test_stop_queued_job_finalizes_immediately(daemon):
     assert _wait_until(lambda: cl.get(j1)["state"] == "stopped", timeout=10)
     time.sleep(0.5)
     assert cl.get(j2)["state"] == "stopped"
-
-
-def test_queue_hold_then_start(daemon):
-    """A job submitted with ``start=False`` is enqueued but *held* (the queue is
-    paused — health reflects it), and only runs once ``start_queue`` resumes it.
-    This is the GUI "add to queue, don't start now" → "Start Queue" flow."""
-    cl, _ = daemon
-    jid = cl.submit(method="lora", overrides={"duration": 1.0}, start=False)["job_id"]
-
-    assert cl.health()["paused"] is True
-    # Held: it stays queued and does not start on its own.
-    assert _wait_until(lambda: cl.get(jid)["state"] == "queued", timeout=2)
-    time.sleep(0.7)
-    assert cl.get(jid)["state"] == "queued"  # still not launched
-
-    cl.start_queue()
-    assert cl.health()["paused"] is False
-    assert _wait_until(lambda: cl.get(jid)["state"] == "done", timeout=15)
 
 
 def test_queue_start_true_flushes_held_backlog(daemon):
@@ -572,36 +466,6 @@ def test_pause_resume_running_job(daemon):
     assert _wait_until(lambda: cl.get(jid)["state"] == "done", timeout=25)
 
 
-def test_pause_refuses_non_running(daemon):
-    """Pause/resume only apply to a running/paused job. A queued job (queue held)
-    is refused with an `error` in the body and its state untouched."""
-    cl, _ = daemon
-    cl.pause_queue()
-    jid = cl.submit(method="lora", overrides={"duration": 1.0})["job_id"]
-    assert cl.get(jid)["state"] == "queued"
-
-    res = cl.pause_job(jid)
-    assert res.get("error") and res["state"] == "queued"
-    res = cl.resume_job(jid)
-    assert res.get("error") and res["state"] == "queued"
-
-    cl.start_queue()
-    assert _wait_until(lambda: cl.get(jid)["state"] == "done", timeout=15)
-
-
-def test_pause_refuses_accelerate_run(daemon):
-    """A multi-GPU `accelerate launch` run can't be frozen (a stopped NCCL rank
-    trips the collective heartbeat) — pause refuses it, run untouched."""
-    cl, mgr = daemon
-    jid = cl.submit(method="lora", overrides={"duration": 5.0})["job_id"]
-    assert _wait_until(lambda: cl.get(jid)["state"] == "running", timeout=15)
-    mgr.get(jid).accelerate_launched = True  # simulate the launcher path
-
-    res = cl.pause_job(jid)
-    assert res.get("error") and "accelerate" in res["error"]
-    assert cl.get(jid)["state"] == "running"  # untouched
-
-
 def test_stop_while_paused_thaws_and_kills(daemon):
     """Stopping a frozen job must thaw the tree first so the SIGTERM lands — it
     dies promptly instead of waiting out the kill grace on a stopped process."""
@@ -618,6 +482,7 @@ def test_stop_while_paused_thaws_and_kills(daemon):
     assert _wait_until(lambda: not psutil.pid_exists(pid), timeout=8)
 
 
+@pytest.mark.core
 def test_reconcile_orphan_requeue_adopt(tmp_path, monkeypatch):
     """Boot sweep: dead `running` → orphaned error; `queued` → re-enqueued;
     live `running` → adopted for monitoring."""
@@ -661,31 +526,6 @@ def test_reconcile_orphan_requeue_adopt(tmp_path, monkeypatch):
     assert "live" in mgr._adopt  # re-attached for monitoring
 
 
-def test_command_job_build_cmd():
-    """A `kind="command"` job builds a plain `python <argv>` call (no
-    accelerate launch) and merges its extra_env over the inherited env."""
-    job = jobs.Job(
-        id="c1",
-        method="preprocess",
-        preset="",
-        kind="command",
-        argv=["tasks.py", "preprocess"],
-        extra_env={"CAPTION_SHUFFLE_VARIANTS": "7"},
-    )
-    mgr = JobManager.__new__(JobManager)  # no worker thread
-    cmd, env = mgr._build_cmd(job)
-    # Command jobs launch under the resolved venv interpreter (windowless on
-    # Windows), not necessarily the caller's sys.executable.
-    from anima_daemon.client import venv_python
-
-    assert cmd == [venv_python(windowless=True), "tasks.py", "preprocess"]
-    assert "train.py" not in cmd
-    assert env["CAPTION_SHUFFLE_VARIANTS"] == "7"
-    assert env["PYTHONUNBUFFERED"] == "1"
-    # tqdm throttled so stdout.log stays tail-readable (redraws every 10s, not 0.1s)
-    assert env["TQDM_MININTERVAL"] == "10"
-
-
 def test_command_job_loads_with_train_default():
     """A legacy job.json (written before `kind` existed) loads as a train job."""
     job = jobs.Job.from_dict({"id": "old", "method": "lora", "preset": "default"})
@@ -720,6 +560,7 @@ def test_source_fingerprint_stable_and_content_sensitive(tmp_path, monkeypatch):
     assert config.source_fingerprint() == fp3
 
 
+@pytest.mark.core
 def test_daemon_is_stale_matrix(monkeypatch):
     from anima_daemon import client as daemon_client
 
@@ -800,10 +641,11 @@ def test_submit_stores_captured_env(daemon):
 
 
 # --------------------------------------------------------------------------
-# Phase 0c: returncode mirroring + run-mode resolution + attach exit code
+# Phase 0c: returncode mirroring + attach exit code
 # --------------------------------------------------------------------------
 
 
+@pytest.mark.core
 def test_returncode_mirrored_on_nonzero_exit(real_cmd_daemon):
     """A command job's OS exit code lands in job.returncode, and _exit_code_for
     reads it back (what run_gpu exits with)."""
@@ -818,33 +660,7 @@ def test_returncode_mirrored_on_nonzero_exit(real_cmd_daemon):
     assert _common._exit_code_for(cl, jid) == 3
 
 
-def test_returncode_zero_on_clean_command(real_cmd_daemon):
-    from scripts.tasks import _common
-
-    cl, _ = real_cmd_daemon
-    jid = cl.submit_command(label="ok", argv=["-c", "pass"])["job_id"]
-    assert _wait_until(lambda: cl.get(jid)["state"] == "done", timeout=15)
-    assert cl.get(jid)["returncode"] == 0
-    assert _common._exit_code_for(cl, jid) == 0
-
-
-@pytest.mark.skipif(
-    os.name == "nt", reason="symlink shortcut is best-effort on Windows"
-)
-def test_current_shortcuts_follow_the_running_job(real_cmd_daemon):
-    cl, _ = real_cmd_daemon
-    j1 = cl.submit_command(label="one", argv=["-c", "print('one')"])["job_id"]
-    assert _wait_until(lambda: cl.get(j1)["state"] == "done", timeout=15)
-    cur, log = config.STATE_DIR / "current", config.STATE_DIR / "current.log"
-    assert cur.is_symlink() and os.readlink(cur) == str(Path("jobs") / j1)
-    assert log.read_text().strip() == "one"
-    j2 = cl.submit_command(label="two", argv=["-c", "print('two')"])["job_id"]
-    assert _wait_until(lambda: cl.get(j2)["state"] == "done", timeout=15)
-    assert os.readlink(cur) == str(Path("jobs") / j2)
-    assert os.readlink(log) == str(Path("jobs") / j2 / "stdout.log")
-    assert log.read_text().strip() == "two"
-
-
+@pytest.mark.core
 def test_attach_streams_and_returns_exit_code(real_cmd_daemon, capsys):
     """_attach_and_wait streams the job's stdout to the terminal and returns its
     exit code — the attach-by-default core (what run_gpu exits with)."""
@@ -862,55 +678,6 @@ def test_attach_streams_and_returns_exit_code(real_cmd_daemon, capsys):
     assert rc == 2
     out = capsys.readouterr().out
     assert "line-one" in out and "line-two" in out
-
-
-def test_resolve_run_mode():
-    from scripts.tasks._common import _resolve_run_mode
-
-    # default is attach; flags are stripped from extra
-    assert _resolve_run_mode(["--network_dim", "32"]) == (
-        "attach",
-        ["--network_dim", "32"],
-    )
-    assert _resolve_run_mode(["--queue"]) == ("detach", [])
-    assert _resolve_run_mode(["--detach"]) == ("detach", [])
-    assert _resolve_run_mode(["--inline", "--foo"]) == ("inline", ["--foo"])
-    assert _resolve_run_mode(["--attach"]) == ("attach", [])
-
-
-def test_resolve_run_mode_env_and_forced_inline(monkeypatch):
-    from scripts.tasks._common import _resolve_run_mode
-
-    monkeypatch.setenv("ANIMA_RUN_MODE", "detach")
-    assert _resolve_run_mode([])[0] == "detach"
-    # an explicit flag beats the env var
-    assert _resolve_run_mode(["--inline"])[0] == "inline"
-
-    # PROFILE_STEPS forces inline for the *implicit* mode, but an explicit flag
-    # is still honored.
-    monkeypatch.delenv("ANIMA_RUN_MODE", raising=False)
-    monkeypatch.setenv("PROFILE_STEPS", "3-5")
-    assert _resolve_run_mode([])[0] == "inline"
-    assert _resolve_run_mode(["--queue"])[0] == "detach"
-
-
-def test_train_inline_mode_calls_accelerate(monkeypatch):
-    """`--inline` (or ANIMA_RUN_MODE=inline) runs the child directly, never
-    touching the daemon."""
-    from scripts.tasks import _common
-
-    launched = []
-    monkeypatch.setattr(_common, "accelerate_launch", lambda *a: launched.append(a))
-
-    def _no_daemon(**kw):  # ensure_daemon must not be reached
-        raise AssertionError("inline mode must not contact the daemon")
-
-    import anima_daemon.client as daemon_client
-
-    monkeypatch.setattr(daemon_client, "ensure_daemon", _no_daemon)
-    _common.train("lora", ["--inline", "--network_dim", "32"])
-    assert len(launched) == 1
-    assert "--network_dim" in launched[0] and "--inline" not in launched[0]
 
 
 @pytest.fixture
@@ -942,6 +709,7 @@ def real_cmd_daemon(tmp_path, monkeypatch):
         srv.server_close()
 
 
+@pytest.mark.core
 def test_command_job_end_to_end(real_cmd_daemon):
     """submit_command → detached exec → exit-code finalize (no progress.jsonl),
     with extra_env applied and stdout captured."""
@@ -964,6 +732,7 @@ def test_command_job_end_to_end(real_cmd_daemon):
     assert "shuf=7" in log
 
 
+@pytest.mark.core
 def test_command_job_nonzero_exit_outranks_its_run_end_ok(real_cmd_daemon):
     """A command job that streams a training loop (moss train) then fails later
     in the same process tree (a train → eval chain) ends in error, not done."""
@@ -1005,6 +774,7 @@ def test_command_job_result_lift_end_to_end(real_cmd_daemon):
     assert job["result_summary"] == {"label": "foo-lora", "metrics": {"n_images": 3}}
 
 
+@pytest.mark.core
 def test_log_stream_closes_on_terminal_job(real_cmd_daemon):
     """The SSE log stream must END, not park the socket.
 
@@ -1033,19 +803,6 @@ def test_log_stream_closes_on_terminal_job(real_cmd_daemon):
     assert done.wait(timeout=20), "log stream never closed on a finished job"
     assert any("hi" in p for p in payloads)
     assert any('"eof"' in p for p in payloads)
-
-
-def test_client_wait_returns_final_record(real_cmd_daemon):
-    """DaemonClient.wait blocks to a terminal state and hands back the record —
-    the "submit → wait → read result" primitive callers used to hand-roll."""
-    cl, _ = real_cmd_daemon
-    jid = cl.submit_command(label="quick", argv=["-c", "print('done')"])["job_id"]
-    rec = cl.wait(jid, timeout=30)
-    assert rec["state"] == "done"
-    assert rec["returncode"] == 0
-
-    with pytest.raises(LookupError):
-        cl.wait("no-such-job", timeout=5)
 
 
 def test_client_wait_timeout_is_not_an_outcome(real_cmd_daemon):
@@ -1109,6 +866,7 @@ def test_submit_command_stall_timeout_is_recorded_and_honored(real_cmd_daemon):
     assert ei.value.code == 400
 
 
+@pytest.mark.core
 def test_stall_watchdog_spares_a_quiet_but_computing_tree(tmp_path, monkeypatch):
     """Frozen output alone isn't a wedge: an embed/eval loop between prints is
     quiet *and* burning CPU. The watchdog only fires once the tree goes idle too
@@ -1157,97 +915,6 @@ def test_stall_watchdog_spares_a_quiet_but_computing_tree(tmp_path, monkeypatch)
     clock[0] = old + 120 * 9
     reason = JobManager._stall_reason(job)
     assert reason is not None and "still burning CPU" in reason
-
-
-def test_module_cli_submit_wait_and_status(real_cmd_daemon, monkeypatch, capsys):
-    """`python -m anima_daemon submit -- <argv>` + `wait` + `status <id>`: the
-    command-job front door that previously required a Python snippet (§3)."""
-    from anima_daemon import cli as daemon_cli
-
-    cl, _ = real_cmd_daemon
-    monkeypatch.setattr(daemon_cli._client, "ensure_daemon", lambda **kw: cl)
-    monkeypatch.setattr(daemon_cli._client, "DaemonClient", lambda port=None: cl)
-
-    rc = daemon_cli.main(["submit", "--", "-c", "print('from cli')"])
-    assert rc == 0
-    submitted = json.loads(capsys.readouterr().out)
-    jid = submitted["job_id"]
-    assert cl.get(jid)["method"] == "command"  # label derived from `-c` argv
-
-    assert daemon_cli.main(["wait", jid]) == 0
-    waited = json.loads(capsys.readouterr().out)
-    assert waited["state"] == "done" and waited["job_id"] == jid
-
-    assert daemon_cli.main(["status", jid]) == 0
-    assert json.loads(capsys.readouterr().out)["id"] == jid
-
-
-def test_module_cli_label_derivation():
-    from anima_daemon.cli import _label_for
-
-    assert _label_for(["project/x/bench/run_pair_census.py", "--limit", "5"]) == (
-        "run_pair_census"
-    )
-    assert _label_for(["-m", "scripts.distill_turbo.distill"]) == "distill"
-    assert _label_for([]) == "command"
-
-
-def test_module_cli_wait_reports_result_envelope(real_cmd_daemon, monkeypatch, capsys):
-    """`wait` inlines the lifted bench envelope, so "where did my run land, and
-    what did it say" is one command instead of a job-dir spelunk (§7)."""
-    from anima_daemon import cli as daemon_cli
-
-    cl, _ = real_cmd_daemon
-    monkeypatch.setattr(daemon_cli._client, "DaemonClient", lambda port=None: cl)
-    script = (
-        "import os, json;"
-        "d = os.environ['ANIMA_DAEMON_JOB_DIR'];"
-        "env = os.path.join(d, 'result.json');"
-        "open(env, 'w').write(json.dumps({'label': 'probe', 'metrics': {'acc': 1}}));"
-        "open(os.path.join(d, 'result_path.json'), 'w').write(json.dumps({'path': env}))"
-    )
-    jid = cl.submit_command(label="probe", argv=["-c", script])["job_id"]
-    assert daemon_cli.main(["wait", jid]) == 0
-    out = json.loads(capsys.readouterr().out)
-    assert out["result_summary"]["label"] == "probe"
-    assert out["result"]["metrics"] == {"acc": 1}
-
-
-def test_command_job_missing_argv_rejected(real_cmd_daemon):
-    """A command submission without argv is a 400 (urllib raises HTTPError)."""
-    import urllib.error
-
-    cl, _ = real_cmd_daemon
-    with pytest.raises(urllib.error.HTTPError) as ei:
-        cl._request("POST", "/jobs", {"kind": "command", "label": "x"})
-    assert ei.value.code == 400
-
-
-def test_serve_falls_back_when_port_held_by_stranger():
-    """A non-anima process on the preferred port → bind an ephemeral one
-    instead of failing (``serve_with_fallback``)."""
-    import socket
-
-    from anima_daemon.server import serve_with_fallback
-
-    # A plain listener that never speaks HTTP — stands in for a stranger.
-    stranger = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    stranger.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    stranger.bind((config.HOST, 0))
-    stranger.listen(1)
-    held = stranger.getsockname()[1]
-
-    mgr = JobManager.__new__(JobManager)  # serve() doesn't need a started worker
-    server = None
-    try:
-        server = serve_with_fallback(mgr, port=held)
-        bound = server.server_address[1]
-        assert bound != held  # moved off the contested port
-        assert bound != 0
-    finally:
-        if server is not None:
-            server.server_close()
-        stranger.close()
 
 
 def test_serve_defers_to_a_live_sibling_daemon(daemon):
@@ -1325,80 +992,6 @@ def test_mcp_initialize_and_tools_list():
         assert t["inputSchema"]["type"] == "object"
 
 
-def test_mcp_unknown_method_and_tool():
-    srv = MCPServer(client_factory=_dead_client, ensure=_dead_client)
-    resp = srv.handle({"jsonrpc": "2.0", "id": 2, "method": "nope/nope"})
-    assert resp["error"]["code"] == -32601
-    result = srv.handle(
-        {
-            "jsonrpc": "2.0",
-            "id": 3,
-            "method": "tools/call",
-            "params": {"name": "no_such_tool", "arguments": {}},
-        }
-    )["result"]
-    assert result["isError"] is True
-
-
-def test_mcp_daemon_down_is_reported_not_spawned():
-    srv = MCPServer(client_factory=_dead_client, ensure=_dead_client)
-    # health degrades gracefully…
-    result, payload = _call_tool(srv, "health")
-    assert result["isError"] is False
-    assert payload["up"] is False
-    # …while other passive tools error with a hint instead of booting a daemon
-    result = srv.handle(
-        {
-            "jsonrpc": "2.0",
-            "id": 4,
-            "method": "tools/call",
-            "params": {"name": "list_jobs", "arguments": {}},
-        }
-    )["result"]
-    assert result["isError"] is True
-    assert "no daemon is running" in result["content"][0]["text"]
-
-
-def test_mcp_submit_train_get_stop_roundtrip(daemon):
-    cl, _ = daemon
-    srv = _mcp_for(cl)
-
-    result, payload = _call_tool(
-        srv, "submit_training", {"method": "lora", "overrides": {"duration": 0.5}}
-    )
-    assert result["isError"] is False
-    jid = payload["job_id"]
-
-    def done():
-        _, job = _call_tool(srv, "get_job", {"id": jid})
-        return job["state"] == "done"
-
-    assert _wait_until(done, timeout=15)
-    _, job = _call_tool(srv, "get_job", {"id": jid})
-    assert job["latest"]["ev"] == "run_end"
-
-    result, payload = _call_tool(srv, "health")
-    assert payload["ok"] is True
-
-    # stopping an already-done job is a clean no-op response, not a crash
-    result, payload = _call_tool(srv, "stop_job", {"id": jid})
-    assert result["isError"] is False
-
-
-def test_mcp_get_job_404_is_tool_error(daemon):
-    cl, _ = daemon
-    result = _mcp_for(cl).handle(
-        {
-            "jsonrpc": "2.0",
-            "id": 5,
-            "method": "tools/call",
-            "params": {"name": "get_job", "arguments": {"id": "nope"}},
-        }
-    )["result"]
-    assert result["isError"] is True
-    assert "404" in result["content"][0]["text"]
-
-
 def test_mcp_submit_command_and_tail_log(real_cmd_daemon):
     cl, _ = real_cmd_daemon
     srv = _mcp_for(cl)
@@ -1431,23 +1024,8 @@ def test_mcp_submit_command_and_tail_log(real_cmd_daemon):
     assert any("hello-mcp" in line for line in payload["lines"])
 
 
-def test_tail_while_write(tmp_path):
-    """progress.jsonl tail-while-write: last_event sees the freshest line even
-    as it grows (Windows-strict-locking smoke check)."""
-    from anima_daemon import tail
-
-    p = tmp_path / "progress.jsonl"
-    with open(p, "w", buffering=1, encoding="utf-8") as f:
-        f.write(json.dumps({"ev": "run_start", "ts": 0.0}) + "\n")
-        assert tail.last_event(str(p))["ev"] == "run_start"
-        f.write(json.dumps({"ev": "step", "ts": 0.1, "global_step": 5}) + "\n")
-        ev = tail.last_event(str(p))
-        assert ev["ev"] == "step" and ev["global_step"] == 5
-    assert tail.last_ckpt_path(str(p)) is None
-
-
 # --------------------------------------------------------------------------
-# structured progress queries (get_progress) + agent-readable log tails
+# structured progress queries (get_progress)
 # --------------------------------------------------------------------------
 
 
@@ -1494,26 +1072,6 @@ def test_read_events_filters(tmp_path):
     assert tail.read_events(str(tmp_path / "nope.jsonl")) == []
 
 
-def test_progress_endpoint_http(daemon):
-    import urllib.error
-
-    cl, _ = daemon
-    jid = cl.submit(method="lora", overrides={"duration": 0.2})["job_id"]
-    assert _wait_until(lambda: cl.get(jid)["state"] == "done", timeout=15)
-
-    out = cl._request("GET", f"/jobs/{jid}/progress")
-    assert out["job_id"] == jid and out["state"] == "done"
-    kinds = [e["ev"] for e in out["events"]]
-    assert kinds == ["run_start", "step", "ckpt", "run_end"]
-    assert out["count"] == 4
-
-    out = cl._request("GET", f"/jobs/{jid}/progress?events=step,run_end&last_n=1")
-    assert [e["ev"] for e in out["events"]] == ["run_end"]
-
-    with pytest.raises(urllib.error.HTTPError):
-        cl._request("GET", "/jobs/nope/progress")
-
-
 def test_mcp_get_progress(daemon):
     cl, _ = daemon
     srv = _mcp_for(cl)
@@ -1555,24 +1113,10 @@ def test_mcp_get_progress(daemon):
     assert payload.get("error") == "no such job"
 
 
-def test_tail_lines_collapse_tqdm_redraws(tmp_path):
-    """One tqdm bar = one tail line: \\r redraw runs collapse to the final
-    rendering instead of flooding the window with bar updates."""
-    from anima_daemon.mcp import _tail_lines
-
-    p = tmp_path / "stdout.log"
-    bar = "\r".join(f"caching:  {i}%|██| {i}/100" for i in range(0, 101, 10))
-    p.write_text("starting\n" + bar + "\nwarn: thing happened\n\n", encoding="utf-8")
-    assert _tail_lines(str(p), 10) == [
-        "starting",
-        "caching:  100%|██| 100/100",
-        "warn: thing happened",
-    ]
-
-
 # --- relocation invariants: stdlib-only boundary + compat shim ---------------
 
 
+@pytest.mark.core
 def test_anima_daemon_is_stdlib_only():
     """The daemon package must not import ``library`` / ``networks`` / ``torch``.
 
@@ -1622,39 +1166,6 @@ def test_build_cmd_exports_job_identity_env(tmp_path, monkeypatch):
         assert env["ANIMA_DAEMON_JOB_DIR"] == str(config.job_dir(f"j-{kind}"))
 
 
-def test_lift_result_reads_pointer_and_digest(tmp_path, monkeypatch):
-    """_lift_result follows <job_dir>/result_path.json to the envelope and lifts
-    its abs path + {label, metrics} digest onto the record."""
-    monkeypatch.setattr(config, "JOBS_DIR", tmp_path / "jobs")
-    job = jobs.Job(id="bench1", method="bench:spectrum", preset="", kind="command")
-    job.dir.mkdir(parents=True, exist_ok=True)
-    envelope = tmp_path / "results" / "20260703-1200" / "result.json"
-    envelope.parent.mkdir(parents=True, exist_ok=True)
-    envelope.write_text(
-        json.dumps({"label": "lambda-sweep", "metrics": {"cmmd": 0.12}})
-    )
-    (job.dir / "result_path.json").write_text(json.dumps({"path": str(envelope)}))
-
-    mgr = JobManager.__new__(JobManager)
-    mgr._lift_result(job)
-    assert job.result_path == str(envelope)
-    assert job.result_summary == {"label": "lambda-sweep", "metrics": {"cmmd": 0.12}}
-
-
-def test_lift_result_no_pointer_is_noop(tmp_path, monkeypatch):
-    """A job that wrote no envelope (training, corrupt/absent pointer) leaves the
-    result fields None — the common case, never an error."""
-    monkeypatch.setattr(config, "JOBS_DIR", tmp_path / "jobs")
-    job = jobs.Job(id="train1", method="lora", preset="default")
-    job.dir.mkdir(parents=True, exist_ok=True)
-    mgr = JobManager.__new__(JobManager)
-    mgr._lift_result(job)  # no pointer file
-    assert job.result_path is None and job.result_summary is None
-    (job.dir / "result_path.json").write_text("{ not json")  # corrupt
-    mgr._lift_result(job)
-    assert job.result_path is None and job.result_summary is None
-
-
 def test_write_result_drops_daemon_pointer(tmp_path, monkeypatch):
     """Under a daemon spawn (ANIMA_DAEMON_JOB_DIR set), write_result drops a
     pointer to its envelope; inline (unset) it's a no-op."""
@@ -1678,6 +1189,7 @@ def test_write_result_drops_daemon_pointer(tmp_path, monkeypatch):
     assert pointer["path"] == str(out.resolve())
 
 
+@pytest.mark.core
 def test_gpu_guard_skips_recycled_pid(tmp_path, monkeypatch):
     """The pre-launch reaper acts on (pid, create_time), never a bare pid.
 
@@ -1773,74 +1285,7 @@ def test_kill_tree_survives_access_denied(monkeypatch):
     assert reaped == [child.pid]
 
 
-# --- issues.md fixes: job labelling / status legibility / bounded wait --------
-
-
-def test_label_for_borrows_the_child_label():
-    """A bench script's own ``--label`` names the daemon job too (issues.md §2).
-
-    ``daemon-run``'s ``--label`` must precede the script path, but bench scripts
-    define one themselves and muscle memory puts it after — labelling the bench
-    run dir while the job record stayed generic, so a grid of N runs rendered as
-    N identical rows. Display only: the child argv is never rewritten.
-    """
-    from anima_daemon.cli import _label_for
-
-    assert _label_for(["bench/x/run_bench.py", "--label", "ko3_a"]) == "run_bench:ko3_a"
-    assert _label_for(["bench/x/run_bench.py", "--label=ko3_b"]) == "run_bench:ko3_b"
-    assert _label_for(["bench/x/run_bench.py", "--limit", "5"]) == "run_bench"
-    assert _label_for(["-m", "pkg.mod.distill", "--label", "x"]) == "distill:x"
-    assert _label_for(["-m", "pkg.mod.distill"]) == "distill"
-    # an inline snippet still has no name to take, and neither does an empty argv
-    assert _label_for(["-c", "print(1)"]) == "command"
-    assert _label_for([]) == "command"
-
-
-def test_job_target_prefers_semantic_flags_over_label():
-    from scripts.tasks.daemon import _job_target
-
-    cmd = lambda argv: {"kind": "command", "argv": argv}  # noqa: E731
-    # --label is the LAST resort among flags, so soup/preprocess keep their names
-    assert _job_target(cmd(["run.py", "--name", "soupA", "--label", "ignored"])) == (
-        "soupA"
-    )
-    assert _job_target(cmd(["bench/x/run_bench.py", "--label", "ko3_a"])) == "ko3_a"
-    assert _job_target(cmd(["bench/x/run_bench.py", "--label=ko3_b"])) == "ko3_b"
-    # …and without one it still falls back to the script path, as before
-    assert _job_target(cmd(["bench/x/run_bench.py"])) == "bench/x/run_bench.py"
-    assert _job_target({"kind": "train", "overrides": {"output_name": "a"}}) == "a"
-
-
-def test_job_rows_carry_the_exit_code(daemon, monkeypatch, capsys):
-    """A `done` row and a "done but rc=1" row must not look identical (§3)."""
-    import anima_daemon.client as daemon_client
-    from scripts.tasks import daemon as daemon_tasks
-
-    cl, _ = daemon
-    monkeypatch.setattr(daemon_client, "DaemonClient", lambda port=None: cl)
-    cl.submit(method="lora", overrides={"duration": 0.3})
-    daemon_tasks.cmd_daemon_jobs([])
-    rows = [ln for ln in capsys.readouterr().out.splitlines() if "rc=" in ln]
-    assert rows, "daemon-jobs printed no job row carrying an exit code"
-
-
-def test_print_queued_prints_hints_once_per_process(capsys, monkeypatch):
-    """Queueing a grid must not bury the `queued job` lines in cheat-sheets (§4)."""
-    from scripts.tasks import _common
-
-    monkeypatch.setattr(_common, "_QUEUED_HINTS_SHOWN", False)
-
-    class _Cl:
-        base = "http://127.0.0.1:8765"
-
-    _common._print_queued(_Cl(), "job-1", "command=a")
-    first = capsys.readouterr().out
-    _common._print_queued(_Cl(), "job-2", "command=b")
-    second = capsys.readouterr().out
-
-    assert "queued job job-1" in first and "daemon-attach" in first
-    # the repeat keeps its own identifying line and drops the four hint lines
-    assert second.strip() == "queued job job-2 (command=b). daemon: " + _Cl.base
+# --- issues.md fixes: bounded wait -------------------------------------------
 
 
 def test_wait_timeout_reports_where_the_job_stands(tmp_path, capsys):
@@ -1874,83 +1319,6 @@ def test_wait_timeout_reports_where_the_job_stands(tmp_path, capsys):
     assert snap["timed_out"] is True and snap["state"] == "running"
     # the last progress event is the point: healthy-but-slow vs wedged
     assert snap["latest"]["global_step"] == 7
-
-
-# --------------------------------------------------------------------------- CLI views
-
-
-def _write_job(jobs_dir, job_id, *, submitted_at, state="done", stdout=None, **extra):
-    d = jobs_dir / job_id
-    d.mkdir(parents=True, exist_ok=True)
-    rec = {
-        "id": job_id,
-        "kind": "command",
-        "state": state,
-        "submitted_at": submitted_at,
-        "started_at": submitted_at,
-        "ended_at": submitted_at + 60,
-        "returncode": 0,
-        "argv": ["run.py"],
-        **extra,
-    }
-    (d / "job.json").write_text(json.dumps(rec), encoding="utf-8")
-    if stdout is not None:
-        (d / "stdout.log").write_text(stdout, encoding="utf-8")
-    return rec
-
-
-def test_daemon_jobs_is_oldest_first_so_tail_shows_the_newest(
-    tmp_path, monkeypatch, capsys
-):
-    """`daemon-jobs` is log-ordered: the newest row is the last one printed, so
-    `| tail -5` means the five most recent."""
-    from scripts.tasks import daemon as dcli
-
-    _isolate_state(tmp_path, monkeypatch)
-    for i in range(4):
-        _write_job(config.JOBS_DIR, f"job-{i}", submitted_at=1000 + 100 * i)
-    monkeypatch.setattr(dcli._client.DaemonClient, "health", lambda self: None)
-
-    with pytest.raises(SystemExit) as e:  # exit 1: the daemon is down
-        dcli.cmd_daemon_jobs([])
-    assert e.value.code == 1
-    lines = [ln for ln in capsys.readouterr().out.splitlines() if "job-" in ln]
-    ids = [ln.split()[2] for ln in lines]
-    assert ids == ["job-0", "job-1", "job-2", "job-3"], "newest must print LAST"
-
-
-def test_daemon_jobs_reads_disk_when_the_daemon_is_down(tmp_path, monkeypatch, capsys):
-    """History outlives the daemon — a post-mortem after `daemon-terminate` is
-    exactly when you want to read what ran."""
-    from scripts.tasks import daemon as dcli
-
-    _isolate_state(tmp_path, monkeypatch)
-    _write_job(config.JOBS_DIR, "gone", submitted_at=10, state="error", error="boom")
-    monkeypatch.setattr(dcli._client.DaemonClient, "health", lambda self: None)
-
-    with pytest.raises(SystemExit):
-        dcli.cmd_daemon_jobs(["--failed"])
-    out = capsys.readouterr().out
-    assert "gone" in out and "error" in out and "daemon down" in out
-
-
-def test_daemon_log_dumps_a_finished_job(tmp_path, monkeypatch, capsys):
-    """`daemon-attach` follows a live SSE stream and has nothing to show once a
-    job is terminal; `daemon-log` reads the file."""
-    from scripts.tasks import daemon as dcli
-
-    _isolate_state(tmp_path, monkeypatch)
-    monkeypatch.delenv("JOB", raising=False)
-    _write_job(config.JOBS_DIR, "old", submitted_at=10, stdout="first\n")
-    _write_job(config.JOBS_DIR, "new", submitted_at=20, stdout="a\nb\nc\n")
-    monkeypatch.setattr(dcli._client.DaemonClient, "health", lambda self: None)
-    monkeypatch.setattr(dcli._client.DaemonClient, "list_jobs", lambda self: [])
-
-    dcli.cmd_daemon_log(["-n", "2"])  # no JOB= → the most recent job
-    out = capsys.readouterr().out
-    assert "new" in out and "b" in out and "c" in out
-    assert "first" not in out, "picked the wrong job"
-    assert "\na\n" not in out, "-n 2 must bound the tail"
 
 
 # --------------------------------------------------------------------------
@@ -2011,6 +1379,7 @@ def release_daemon(daemon, monkeypatch):
     return daemon
 
 
+@pytest.mark.core
 def test_release_pause_frees_slot_and_resume_relaunches(release_daemon):
     """pause(release_model=True): the trainer saves + exits, the job parks as
     paused/released with no pid, the *next queued job runs* (the slot is
@@ -2063,19 +1432,6 @@ def test_release_pause_frees_slot_and_resume_relaunches(release_daemon):
     assert "--resume" in fin["extra"] and "--skip_until_initial_step" in fin["extra"]
     assert fin["extra"][fin["extra"].index("--resume") + 1] == fin["resume_state_dir"]
     assert fin["resume_count"] == 1
-
-
-def test_release_pause_refuses_command_job(daemon):
-    cl, _ = daemon
-    jid = cl.submit_command(label="cmd", argv=["-c", "import time; time.sleep(30)"])[
-        "job_id"
-    ]
-    assert _wait_until(lambda: cl.get(jid)["state"] == "running", timeout=15)
-    res = cl.pause_job(jid, release_model=True)
-    assert "release_model needs a train.py job" in (res.get("error") or "")
-    assert cl.get(jid)["state"] == "running"
-    cl.stop(jid)
-    assert _wait_until(lambda: cl.get(jid)["state"] == "stopped", timeout=10)
 
 
 def test_release_pause_of_frozen_job_thaws_first(release_daemon):

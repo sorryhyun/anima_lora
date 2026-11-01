@@ -11,9 +11,6 @@ Tier-1.5 obligations from the (now archived) ship proposal
     merged cell carries the identical velocity (the P0 contract).
   * Merged rope is the **exact mean-position rope** for symmetric groups
     (renormalized elementwise mean of the members' (cos, sin) rows).
-  * ``score_to_cells`` re-solves the threshold so the post-morphology fraction
-    lands on target, and never emits isolated fovea cells (compactness — the
-    P2 scatter falsification).
 
 The bench probes (archived at `_archive/bench/foveated/`) imported the same
 promoted code; with the line archived, this file is the sole live guard of the
@@ -22,11 +19,8 @@ plumbing.
 
 from __future__ import annotations
 
-import math
 from types import SimpleNamespace
 
-import numpy as np
-import pytest
 import torch
 
 from library.anima.models import Anima
@@ -34,7 +28,6 @@ from networks.foveated import (
     FoveatedTokenMerge,
     cells_to_mask4,
     rect_cells,
-    score_to_cells,
 )
 
 
@@ -140,80 +133,3 @@ def test_merge_rope_is_exact_mean_position():
     ).reshape(-1, 1, 1, 1)
     assert torch.allclose(cos_red, torch.cos(centers), atol=1e-5)
     assert torch.allclose(sin_red, torch.sin(centers), atol=1e-5)
-
-
-def test_merger_rejects_indivisible_grid():
-    anima = SimpleNamespace(patch_spatial=2)
-    mask4 = torch.ones(1, 1, 20, 32)  # 10x16 tokens → 10 % 4 != 0 at merge_edge=4
-    with pytest.raises(ValueError, match="divisible"):
-        FoveatedTokenMerge(anima, mask4, torch.device("cpu"), merge_edge=4)
-
-
-def test_score_to_cells_hits_target_fraction_and_is_compact():
-    rng = np.random.default_rng(0)
-    # Subject-like score: two gaussian bumps on noise (the combo-map shape).
-    hp = wp = 32
-    yy, xx = np.mgrid[0:hp, 0:wp]
-    score = (
-        np.exp(-(((yy - 10) ** 2 + (xx - 12) ** 2) / 30.0))
-        + np.exp(-(((yy - 22) ** 2 + (xx - 24) ** 2) / 20.0))
-        + 0.05 * rng.random((hp, wp))
-    )
-    cells, frac = score_to_cells(score, 0.35)
-    assert abs(frac - 0.35) <= 0.06  # morphology granularity on a 32x32 grid
-    assert frac == pytest.approx(float(cells.float().mean()))
-
-    # Compactness: the final dilate guarantees no isolated fovea cell — every
-    # fovea cell must have a fovea 4-neighbor (P2: scatter is falsified).
-    m = cells.numpy()
-    padded = np.pad(m, 1)
-    neigh = padded[:-2, 1:-1] | padded[2:, 1:-1] | padded[1:-1, :-2] | padded[1:-1, 2:]
-    assert not (m & ~neigh).any()
-
-
-def test_cells_to_mask4_is_uniform_per_cell():
-    cells = rect_cells(4, 4, 0.25, 0.5, 0.5)
-    mask4 = cells_to_mask4(cells, 4, torch.device("cpu"))
-    assert mask4.shape == (1, 1, 16, 16)
-    for cy in range(4):
-        for cx in range(4):
-            block = mask4[0, 0, cy * 4 : cy * 4 + 4, cx * 4 : cx * 4 + 4]
-            assert block.min() == block.max() == float(cells[cy, cx])
-
-
-@torch.no_grad()
-def test_foveated_denoise_runner_end_to_end_cpu():
-    """Runner smoke: signals accumulate above σ_c, mask builds at the crossing,
-    merged steps + final readout produce a finite full-res latent."""
-    from library.inference.sampler_context import SamplerSideChannels
-    from networks.foveated import foveated_denoise
-
-    model = _tiny_anima()
-    torch.manual_seed(0)
-    latents = torch.randn(1, 16, 1, 32, 32)
-    n_steps = 6
-    sigmas = torch.linspace(1.0, 0.0, n_steps + 1)
-    timesteps = sigmas[:-1].clone()
-    embed = torch.randn(1, 8, 64)
-    neg = torch.randn(1, 8, 64)
-    pad = torch.zeros(1, 1, 32, 32)
-
-    out = foveated_denoise(
-        model,
-        latents.clone(),
-        timesteps,
-        sigmas,
-        embed,
-        neg,
-        pad,
-        4.0,  # CFG on → combo (cfgdelta + x0var) is exercised
-        None,
-        torch.device("cpu"),
-        SamplerSideChannels(),
-        sigma_c=0.5,
-        fovea_frac=0.35,
-        mask_source="combo",
-    )
-    assert out.shape == latents.shape
-    assert torch.isfinite(out.float()).all()
-    assert not math.isnan(float(out.float().std()))

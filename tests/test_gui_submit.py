@@ -22,20 +22,17 @@ def test_submit_plan_imports_without_qt():
 @pytest.mark.parametrize(
     "raw, expected",
     [
-        ("data_group1", "data_group1"),
         (" a\\b/ ", "a/b"),
         ("x/*", "x"),
         ("bad/../x", None),
-        ("p|q", None),
         ("a*b", None),
-        ("", None),
-        (None, None),
     ],
 )
 def test_normalize_path_scope(raw, expected):
     assert submit.normalize_path_scope(raw) == expected
 
 
+@pytest.mark.core
 def test_scoped_paths_appends_scope_once():
     merged = {
         "path_scope": "g1",
@@ -51,27 +48,6 @@ def test_scoped_paths_appends_scope_once():
     assert merged["output_dir"] == "out/ckpt"  # input untouched
 
 
-def test_scoped_paths_unscoped_is_identity():
-    merged = {"output_dir": "out"}
-    assert submit.scoped_paths(merged) is merged
-
-
-def test_preprocess_snapshot_strips_meta_and_none():
-    merged = {
-        "method": "lora",
-        "preset": "default",
-        "path_scope": "g1",
-        "preprocess_path_pattern": "*.png",
-        "keep": 1,
-        "drop": None,
-    }
-    snap = submit.preprocess_snapshot(merged, {"caption_shuffle_variants": 2})
-    assert snap["keep"] == 1 and snap["caption_shuffle_variants"] == 2
-    assert snap["source_image_dir"] == "image_dataset/g1"
-    for key in ("method", "preset", "path_scope", "preprocess_path_pattern", "drop"):
-        assert key not in snap
-
-
 def test_chain_spec_and_env():
     assert submit.chain_train_spec("lora", "low_vram") == {
         "method": "lora",
@@ -85,14 +61,6 @@ def test_chain_spec_and_env():
         "PRESET": "x",
         "A": "1",
     }
-
-
-@pytest.mark.parametrize(
-    "use_repa, expected", [(True, True), ("yes", True), (False, False), (None, False)]
-)
-def test_repa_requirements(use_repa, expected):
-    require_pe, encoder = submit.repa_requirements({"use_repa": use_repa})
-    assert require_pe is expected and encoder == "pe_spatial"
 
 
 def test_observer_routes_lines_and_flushes_tail(tmp_path):

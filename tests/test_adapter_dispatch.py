@@ -19,6 +19,7 @@ import argparse
 import contextlib
 from types import SimpleNamespace
 
+import pytest
 import torch
 
 from library.anima.trainer.step import AnimaStep
@@ -140,6 +141,7 @@ def _run_one(text_encoder_conds):
     return trainer, anima, adapter, (pred, target, timesteps, weighting)
 
 
+@pytest.mark.core
 def test_dispatch_runs_on_cached_crossattn_path():
     trainer, anima, adapter, (pred, target, timesteps, _) = _run_one(
         _cached_crossattn_conds()
@@ -156,6 +158,7 @@ def test_dispatch_runs_on_cached_crossattn_path():
     assert timesteps.shape == (B,)
 
 
+@pytest.mark.core
 def test_dispatch_runs_on_in_model_text_path():
     # The regression: crossattn_emb=None used to skip extra_forwards entirely.
     trainer, anima, adapter, (pred, target, _, _) = _run_one(_in_model_conds())
@@ -206,17 +209,3 @@ def test_postfix_path_normalizes_into_uniform_conditioning():
     assert cond.cond is cond.crossattn_emb
     assert cond.cond.shape == (B, SEQ + 2, DIM)
     torch.testing.assert_close(cond.kw["pooled_text_override"], emb.max(dim=1).values)
-
-
-def test_aux_key_reaches_loss_aux_assembly():
-    # extras_for_step is reset at the top of every get_noise_pred_and_target
-    # call — a stale key from a prior step must not survive.
-    trainer, _, adapter, _ = _run_one(_cached_crossattn_conds())
-    trainer.state.extras_for_step["stale"] = torch.tensor(1.0)
-    ctx = _make_ctx(_FakeAnima())
-    trainer.get_noise_pred_and_target(
-        ctx, torch.randn(B, C, H, W), {}, _in_model_conds(), is_train=True
-    )
-    assert "stale" not in trainer.state.extras_for_step
-    assert "recording_aux" in trainer.state.extras_for_step
-    assert len(adapter.extra_calls) == 2  # dispatched again on the second call

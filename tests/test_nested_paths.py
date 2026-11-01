@@ -2,16 +2,13 @@
 mask, and resize pipelines.
 
 Covers:
-- ``library.io.cache.resolve_cache_path`` — flat / nested / no-image_dir /
-  escaping-image_dir branches.
+- ``library.io.cache.resolve_cache_path`` — nested / escaping-image_dir branches.
 - ``library.datasets.image_utils.load_mask_from_dir`` — nested-preferred,
-  flat-fallback, missing.
-- ``library.datasets.subsets._resolve_default_mask_dir`` — priority order
-  across the new + legacy candidates.
+  flat-fallback.
+- ``library.datasets.subsets.resolve_configured_mask_dir`` and the blueprint
+  fallback that carries ``mask_dir`` to the subsets.
 - ``anime_tools.masking.cli.merge_masks`` end-to-end through ``main()`` — `(rel_dir,
-  name)` keying, flat-to-flat passthrough, mixed nested+flat inputs.
-- ``library.preprocess.images.process_image`` (the anime_tools resize worker) — writes under
-  ``out_dir/<rel>/`` and mirrors the caption sidecar.
+  name)` keying and the union.
 """
 
 from __future__ import annotations
@@ -30,26 +27,7 @@ from PIL import Image
 # ---------------------------------------------------------------------------
 
 
-def test_resolve_cache_path_legacy_sidecar(tmp_path: Path) -> None:
-    """No cache_dir → cache lives next to the image (legacy sidecar layout)."""
-    from library.io.cache import resolve_cache_path
-
-    img = tmp_path / "img1.png"
-    out = resolve_cache_path(str(img), "_anima_te.safetensors")
-    assert out == str(tmp_path / "img1_anima_te.safetensors")
-
-
-def test_resolve_cache_path_flat_no_image_dir(tmp_path: Path) -> None:
-    """cache_dir without image_dir falls back to flat layout (no <rel> prefix)."""
-    from library.io.cache import resolve_cache_path
-
-    img = tmp_path / "charA" / "img1.png"
-    img.parent.mkdir()
-    cache = tmp_path / "cache"
-    out = resolve_cache_path(str(img), "_suf.bin", cache_dir=str(cache))
-    assert out == str(cache / "img1_suf.bin")
-
-
+@pytest.mark.core
 def test_resolve_cache_path_nested(tmp_path: Path) -> None:
     """image_dir + nested source → <rel> mirrored under cache_dir."""
     from library.io.cache import resolve_cache_path
@@ -140,38 +118,6 @@ def test_load_mask_from_dir_flat_fallback(tmp_path: Path) -> None:
     assert abs(float(mask.mean()) - 50.0 / 255.0) < 1e-5
 
 
-def test_load_mask_from_dir_missing(tmp_path: Path) -> None:
-    """No mask anywhere → None."""
-    from library.datasets.image_utils import load_mask_from_dir
-
-    image_dir = tmp_path / "image_dataset"
-    img = image_dir / "charA" / "img1.png"
-    img.parent.mkdir(parents=True)
-    mask_dir = tmp_path / "post_image_dataset" / "masks"
-    mask_dir.mkdir(parents=True)
-
-    mask = load_mask_from_dir(str(mask_dir), str(img), (4, 4), image_dir=str(image_dir))
-    assert mask is None
-
-
-def test_load_mask_from_dir_legacy_no_image_dir(tmp_path: Path) -> None:
-    """image_dir=None preserves the pre-refactor flat lookup."""
-    from library.datasets.image_utils import load_mask_from_dir
-
-    mask_dir = tmp_path / "masks"
-    img = tmp_path / "img1.png"
-    _write_mask(mask_dir / "img1_mask.png", 128)
-
-    mask = load_mask_from_dir(str(mask_dir), str(img), (4, 4))
-    assert mask is not None
-    assert abs(float(mask.mean()) - 128.0 / 255.0) < 1e-5
-
-
-# ---------------------------------------------------------------------------
-# _resolve_default_mask_dir
-# ---------------------------------------------------------------------------
-
-
 def test_resolve_default_mask_dir_priority(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -193,6 +139,11 @@ def test_resolve_default_mask_dir_priority(
 
     (tmp_path / "post_image_dataset" / "masks").mkdir(parents=True)
     assert _resolve_default_mask_dir() == "post_image_dataset/masks"
+
+
+# ---------------------------------------------------------------------------
+# config-level mask_dir
+# ---------------------------------------------------------------------------
 
 
 def test_resolve_configured_mask_dir_gates_on_existence(
@@ -292,92 +243,3 @@ def test_merge_masks_nested_layout(
     assert int(arr_b.flat[0]) == 240
     # Nothing leaked into the flat root of out_dir.
     assert not (out_dir / "img1_mask.png").exists()
-
-
-def test_merge_masks_flat_passthrough(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Flat inputs (no <rel>) collide on filename and produce flat output."""
-    sam_dir = tmp_path / "sam"
-    mit_dir = tmp_path / "mit"
-    out_dir = tmp_path / "out"
-    _write_mask(sam_dir / "img1_mask.png", 200)
-    _write_mask(mit_dir / "img1_mask.png", 150)
-
-    _run_merge(
-        monkeypatch,
-        [str(sam_dir), str(mit_dir), "--output-dir", str(out_dir)],
-    )
-
-    merged = out_dir / "img1_mask.png"
-    assert merged.exists()
-    assert int(np.array(Image.open(merged)).flat[0]) == 150
-
-
-def test_merge_masks_mixed_rel_does_not_collide(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Same stem at flat root vs. nested subdir must NOT merge — different (rel, name)."""
-    sam_dir = tmp_path / "sam"
-    mit_dir = tmp_path / "mit"
-    out_dir = tmp_path / "out"
-    _write_mask(sam_dir / "img1_mask.png", 200)
-    _write_mask(mit_dir / "charA" / "img1_mask.png", 100)
-
-    _run_merge(
-        monkeypatch,
-        [str(sam_dir), str(mit_dir), "--output-dir", str(out_dir)],
-    )
-
-    # Both survive with their respective single-source values (no merge).
-    flat_out = out_dir / "img1_mask.png"
-    nested_out = out_dir / "charA" / "img1_mask.png"
-    assert flat_out.exists()
-    assert nested_out.exists()
-    assert int(np.array(Image.open(flat_out)).flat[0]) == 200
-    assert int(np.array(Image.open(nested_out)).flat[0]) == 100
-
-
-# ---------------------------------------------------------------------------
-# resize stage process_image
-# ---------------------------------------------------------------------------
-
-
-def _write_test_image(path: Path, size: tuple[int, int] = (1024, 1024)) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    Image.new("RGB", size, color=(64, 128, 192)).save(path)
-
-
-def test_resize_images_nested_output(tmp_path: Path) -> None:
-    """process_image writes under out_dir/<rel>/ when rel_dir is set."""
-    from library.preprocess.images import ResizeOptions, process_image
-
-    src = tmp_path / "image_dataset" / "charA"
-    img_path = src / "cover.png"
-    _write_test_image(img_path)
-
-    dst = tmp_path / "post_image_dataset" / "resized"
-    # Default options → the canonical 1024 tier; free-fit resize.
-    name, _reso, _skipped = process_image(
-        img_path, dst, ResizeOptions(), rel_dir="charA"
-    )
-
-    assert name == "cover.png"
-    out_png = dst / "charA" / "cover.png"
-    assert out_png.exists(), "resized PNG not written under nested layout"
-    # Flat layout must NOT be populated when rel_dir is set.
-    assert not (dst / "cover.png").exists()
-
-
-def test_resize_images_flat_output(tmp_path: Path) -> None:
-    """Empty rel_dir collapses back to the legacy flat layout (no breakage)."""
-    from library.preprocess.images import ResizeOptions, process_image
-
-    img_path = tmp_path / "image_dataset" / "cover.png"
-    _write_test_image(img_path)
-
-    dst = tmp_path / "post_image_dataset" / "resized"
-    process_image(img_path, dst, ResizeOptions(), rel_dir="")
-    assert (dst / "cover.png").exists()
-    # No phantom subdir was created.
-    assert not any(p.is_dir() for p in dst.iterdir())

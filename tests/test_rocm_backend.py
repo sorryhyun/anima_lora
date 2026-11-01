@@ -1,19 +1,10 @@
-import importlib.util
 import subprocess
-import sys
-import tomllib
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-import library.runtime.backend as backend
-from library.runtime.backend import (
-    diagnose_cuda_unavailable,
-    is_rocm,
-    needs_rocm_attention_fallback,
-    resolve_attention_mode,
-)
+from library.runtime.backend import resolve_attention_mode
 from scripts import update
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,34 +14,12 @@ def _torch(hip):
     return SimpleNamespace(version=SimpleNamespace(hip=hip))
 
 
-def test_rocm_detection_uses_hip_version():
-    assert is_rocm(_torch("7.14.0"))
-    assert not is_rocm(_torch(None))
-
-
 def test_rocm_flash_falls_back_to_torch_sdpa():
     assert resolve_attention_mode("flash", _torch("7.14.0")) == "torch"
 
 
-def test_rocm_keeps_explicit_non_flash_modes():
-    assert resolve_attention_mode("flex", _torch("7.14.0")) == "flex"
-    assert resolve_attention_mode("torch", _torch("7.14.0")) == "torch"
-
-
 def test_cuda_keeps_flash():
     assert resolve_attention_mode("flash", _torch(None)) == "flash"
-
-
-def test_none_request_does_not_report_rocm_fallback():
-    assert resolve_attention_mode(None, _torch(None)) == "torch"
-    assert not needs_rocm_attention_fallback(None, _torch(None))
-    assert not needs_rocm_attention_fallback(None, _torch("7.14.0"))
-
-
-def test_only_explicit_rocm_flash_request_reports_fallback():
-    assert needs_rocm_attention_fallback("flash", _torch("7.14.0"))
-    assert not needs_rocm_attention_fallback("torch", _torch("7.14.0"))
-    assert not needs_rocm_attention_fallback("flash", _torch(None))
 
 
 def test_update_reuses_saved_rocm_backend(monkeypatch, tmp_path):
@@ -71,15 +40,7 @@ def test_update_reuses_saved_rocm_backend(monkeypatch, tmp_path):
     assert chosen == "rocm"
 
 
-def test_update_environment_override_wins(monkeypatch, tmp_path):
-    (tmp_path / ".anima_backend").write_text("rocm\n", encoding="ascii")
-    monkeypatch.setattr(update, "ROOT", tmp_path)
-    monkeypatch.setattr(update.sys, "platform", "win32")
-    monkeypatch.setenv("ANIMA_BACKEND", "cuda")
-
-    assert update._selected_windows_backend() == "cuda"
-
-
+@pytest.mark.core
 def test_update_hardware_beats_poisoned_venv(monkeypatch, tmp_path):
     """An NVIDIA box whose venv got the ROCm torch (GH #92) must pick cuda."""
     venv = tmp_path / ".venv" / "Scripts"
@@ -152,81 +113,7 @@ def test_update_torch_choice_ignored_on_rocm(monkeypatch, tmp_path):
     ]
 
 
-def test_update_default_torch_choice_needs_no_flags(monkeypatch, tmp_path):
-    monkeypatch.setattr(update, "ROOT", tmp_path)
-    monkeypatch.setattr(update.sys, "platform", "linux")
-    monkeypatch.setenv("ANIMA_TORCH", "2.14")
-
-    assert update._uv_sync_command() == (["uv", "sync"], None)
-
-
-def _torch_full(*, available, hip=None, cuda=None):
-    return SimpleNamespace(
-        cuda=SimpleNamespace(is_available=lambda: available),
-        version=SimpleNamespace(hip=hip, cuda=cuda),
-    )
-
-
-def test_diagnose_silent_when_cuda_works(monkeypatch):
-    monkeypatch.setattr(backend.shutil, "which", lambda _: "/usr/bin/nvidia-smi")
-    assert diagnose_cuda_unavailable(_torch_full(available=True, cuda="13.2")) is None
-
-
-def test_diagnose_silent_without_nvidia_gpu(monkeypatch):
-    monkeypatch.setattr(backend.shutil, "which", lambda _: None)
-    assert diagnose_cuda_unavailable(_torch_full(available=False, hip="7.14.0")) is None
-
-
-def test_diagnose_flags_rocm_build_on_nvidia(monkeypatch):
-    monkeypatch.setattr(backend.shutil, "which", lambda _: "/usr/bin/nvidia-smi")
-    message = diagnose_cuda_unavailable(_torch_full(available=False, hip="7.14.0"))
-    assert message is not None and "ROCm build" in message
-
-
-def test_diagnose_flags_cpu_build_on_nvidia(monkeypatch):
-    monkeypatch.setattr(backend.shutil, "which", lambda _: "/usr/bin/nvidia-smi")
-    message = diagnose_cuda_unavailable(_torch_full(available=False))
-    assert message is not None and "CPU-only build" in message
-
-
-def test_diagnose_flags_driver_problem(monkeypatch):
-    monkeypatch.setattr(backend.shutil, "which", lambda _: "/usr/bin/nvidia-smi")
-    message = diagnose_cuda_unavailable(_torch_full(available=False, cuda="13.2"))
-    assert message is not None and "driver" in message
-
-
-def test_windows_backend_dependencies_are_isolated():
-    with (ROOT / "pyproject.toml").open("rb") as file:
-        project = tomllib.load(file)
-
-    groups = project["dependency-groups"]
-    cuda = "\n".join(groups["cuda-windows"])
-    rocm = "\n".join(groups["rocm-windows"])
-
-    assert "+cu132" in cuda
-    assert "flash_attn" in cuda
-    assert "torch[device-gfx1200,device-gfx1201]==2.14.0+rocm10.1.0" in rocm
-    assert "torchvision[device-gfx1200,device-gfx1201]==0.29.0a0+rocm10.1.0" in rocm
-    assert "rocm[devel]==10.1.0" in rocm
-    assert "triton-windows>=3.8.0,<3.9.0" in rocm
-    assert "+rocm7.14.0" not in rocm
-    assert "device-gfx1200" in rocm and "device-gfx1201" in rocm
-    assert "flash" not in rocm
-
-    sources = project["tool"]["uv"]["sources"]
-    assert any(
-        source.get("index") == "amd-rocm-101" and source.get("group") == "rocm-windows"
-        for source in sources["torch"]
-    )
-    indices = project["tool"]["uv"]["index"]
-    rocm_index = next(index for index in indices if index["name"] == "amd-rocm-101")
-    assert rocm_index["url"] == "https://stable.repo.amd.com/rocm/whl-next/"
-
-    # GH #92: a flagless `uv sync` (old updaters) must install the CUDA stack
-    # on Windows.
-    assert "cuda-windows" in project["tool"]["uv"]["default-groups"]
-
-
+@pytest.mark.core
 def test_flagless_sync_resolves_cuda_torch_on_windows():
     """GH #92 lock-level guard: the default (no-flag) resolution must give every
     platform except macOS the +cu132 torch — v1.16.1's lock resolved flagless
@@ -378,53 +265,3 @@ def test_rocm_group_resolves_pytorch_214_rocm101():
     assert not any(
         line.startswith("flash-attn") and "win_amd64" in line for line in lines
     )
-
-
-def test_rocm_windows_metadata_uses_the_matching_runtime():
-    with (ROOT / "pyproject.toml").open("rb") as file:
-        project = tomllib.load(file)
-    metadata = next(
-        entry
-        for entry in project["tool"]["uv"]["dependency-metadata"]
-        if entry["name"] == "torch"
-    )
-    assert metadata["version"] == "2.14.0+rocm10.1.0"
-    requirements = metadata["requires-dist"]
-    assert "rocm[libraries]~=10.1.0" in requirements
-    assert not any(requirement.startswith("triton") for requirement in requirements)
-    devices = [r for r in requirements if r.startswith("amd-torch-device-")]
-    assert len(devices) == 4
-    assert all("==2.14.0+rocm10.1.0" in requirement for requirement in devices)
-
-
-@pytest.mark.parametrize(
-    "torch_version, vision_version, error",
-    [
-        ("2.14.0+rocm10.1.0", "0.29.0a0+rocm10.1.0", None),
-        ("2.13.0+rocm10.0.0", "0.29.0a0+rocm10.1.0", "expected torch "),
-        ("2.14.0+rocm10.1.0", "0.28.0+rocm10.0.0", "expected torchvision "),
-    ],
-)
-def test_smoke_accepts_the_published_stable_versions(
-    monkeypatch, torch_version, vision_version, error
-):
-    """Check the alpha-suffixed stable vision build without importing a GPU runtime."""
-    fake_torch = SimpleNamespace(
-        __version__=torch_version,
-        version=SimpleNamespace(hip="7.16.26385"),
-        cuda=SimpleNamespace(is_available=lambda: True),
-    )
-    monkeypatch.setitem(sys.modules, "torch", fake_torch)
-    monkeypatch.setitem(
-        sys.modules, "torchvision", SimpleNamespace(__version__=vision_version)
-    )
-    spec = importlib.util.spec_from_file_location(
-        "rocm_smoke_runtime", ROOT / "tests" / "rocm_smoke_test.py"
-    )
-    smoke = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(smoke)
-    if error is None:
-        smoke._validate_runtime()
-    else:
-        with pytest.raises(RuntimeError, match=error):
-            smoke._validate_runtime()

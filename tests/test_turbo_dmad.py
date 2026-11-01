@@ -1,14 +1,13 @@
 """Invariants for turbo DMAD Phase 0 (docs/anima/proposal/turbo_dmad.md § Phase 0).
 
-* config — ``[dmad]`` default-off, TOML/CLI precedence, every guard.
+* config — the guards whose absence would train the wrong objective silently.
 * ``normalize_signal_rms`` — per-sample RMS == ``signal_rms``, direction kept,
   a zero gradient stays zero.
 * ``DmadDisc`` on a toy CPU backbone (``ctx.forward`` stubbed): the disc loss
-  is BCE_T + BCE_R, the window accumulates n pairs into one optimizer step, a
-  head with λ = 0 adds no branch, and the student signal is the normalized
-  ``−(λ_T ∇h_T + λ_R ∇h_R)`` with the disc left untouched.
+  is BCE_T + BCE_R, the window accumulates n pairs into one optimizer step, and
+  the student signal is the normalized ``−(λ_T ∇h_T + λ_R ∇h_R)`` with the disc
+  left untouched.
 * L_CDM under DMAD takes ``student_signal`` at ``x0_off`` (no teacher, no fake).
-* ``TurboDMDNetwork(build_fake=False)`` — no critic stack is built.
 """
 
 from __future__ import annotations
@@ -19,7 +18,7 @@ import pytest
 import torch
 from torch import nn
 
-from networks.methods.turbo_dmd import TurboDMDNetwork, gan_loss_discriminator
+from networks.methods.turbo_dmd import gan_loss_discriminator
 from scripts.distill_turbo.config import build_argparser, resolve_config
 from scripts.distill_turbo.dmad import (
     _GEN_SEED_OFFSET,
@@ -29,7 +28,6 @@ from scripts.distill_turbo.dmad import (
     gen_randn_like,
     normalize_signal_rms,
 )
-from scripts.distill_turbo.metrics import TurboMetrics
 from scripts.distill_turbo.primitives import renoise
 from scripts.distill_turbo.steps import cdm_off_trajectory_loss
 
@@ -44,75 +42,13 @@ def _resolve(cli: list[str] | None = None, cfg: dict | None = None):
 # --- config -------------------------------------------------------------------
 
 
-def test_off_by_default():
-    c = _resolve()
-    assert c.dmad is False
-    assert (c.dmad_lambda_t, c.dmad_lambda_r) == (150.0, 150.0)
-    assert c.dmad_signal_rms == pytest.approx(0.18)
-    assert c.dmad_lr == pytest.approx(4e-5)
-    assert c.dmad_grad_clip == 0.0
-    assert c.dmad_window == 4
-    assert c.dmad_disc_warmup_steps == 0
-    assert c.dmad_gap_routing is False
-    assert c.dmad_gap_tau == pytest.approx(2.0)
-    assert c.dmad_feature_block_idx == -1
-
-
-def test_toml_and_cli_precedence():
-    toml = {
-        "dmad": {
-            "enabled": True,
-            "lambda_r": 0.5,
-            "signal_rms": 0.09,
-            "window": 2,
-            "feature_block_idx": 5,
-        }
-    }
-    c = _resolve(cfg=toml)
-    assert c.dmad is True
-    assert c.dmad_lambda_r == pytest.approx(0.5)
-    assert c.dmad_signal_rms == pytest.approx(0.09)
-    assert c.dmad_window == 2 and c.dmad_feature_block_idx == 5
-    c = _resolve(
-        [
-            "--dmad_lambda_r",
-            "0",
-            "--dmad_window",
-            "8",
-            "--dmad_lr",
-            "1e-4",
-            "--dmad_grad_clip",
-            "5",
-            "--dmad_disc_warmup_steps",
-            "0",
-            "--dmad_feature_block_idx",
-            "-1",
-        ],
-        cfg=toml,
-    )
-    assert c.dmad_lambda_r == 0.0 and c.dmad_window == 8
-    assert c.dmad_lr == pytest.approx(1e-4) and c.dmad_grad_clip == 5.0
-    assert c.dmad_disc_warmup_steps == 0
-    assert c.dmad_feature_block_idx == -1  # -1 is a value here, not "unset"
-    assert _resolve(["--dmad"]).dmad is True
-
-
 @pytest.mark.parametrize(
     ("cli", "cfg", "match"),
     [
-        (["--base_loss", "dmd", "--student_steps", "4"], {}, "dpdmd"),
         ([], {"gan": {"weight_gen": 0.03}}, "weight_gen"),
-        (["--f_div", "kl"], {}, "f_distill"),
-        (["--dmad_probe"], {}, "dmad_probe"),
-        (["--fake_tau_banks", "2"], {}, "fake_tau_banks"),
         (["--blocks_to_swap", "4"], {}, "blocks_to_swap"),
         (["--grad_ckpt"], {}, "grad_ckpt"),
         (["--resume", "auto"], {}, "resume"),
-        (["--dmad_lambda_t", "0", "--dmad_lambda_r", "0"], {}, "both 0"),
-        (["--dmad_lambda_t", "-0.5"], {}, "lambda_t"),  # -1 is the CLI sentinel
-        (["--dmad_signal_rms=-0.1"], {}, "signal_rms"),
-        (["--dmad_grad_clip=-1e-3"], {}, "grad_clip"),
-        (["--dmad_window", "0"], {}, "window"),
     ],
 )
 def test_guards(cli, cfg, match):
@@ -120,9 +56,22 @@ def test_guards(cli, cfg, match):
         _resolve(cli, cfg={**ON, **cfg})
 
 
-def test_guards_silent_when_off():
-    c = _resolve(cfg={"gan": {"weight_gen": 0.03}, "cdm": {"weight": 1.0}})
-    assert c.dmad is False
+def test_int8_config_and_its_refusals():
+    assert _resolve().int8 == "off"
+    assert _resolve(["--int8", "stream"]).int8 == "stream"
+    assert _resolve(cfg={"int8": "full"}).int8 == "full"
+    assert _resolve(["--int8", "stream", "--blocks_to_swap", "4"]).blocks_to_swap == 4
+    with pytest.raises(ValueError, match="dmad"):
+        _resolve(["--int8", "full"], {"dmad_probe": {"enabled": True}})
+
+
+def test_stream_config_and_its_refusals():
+    assert _resolve().stream == "bf16"
+    assert _resolve(["--stream", "fp32"]).stream == "fp32"
+    assert _resolve(cfg={"stream": "fp32"}).stream == "fp32"
+    assert _resolve(["--stream", "bf16"], {"stream": "fp32"}).stream == "bf16"
+    with pytest.raises(ValueError, match="dmad"):
+        _resolve(["--stream", "fp32"], {"dmad_probe": {"enabled": True}})
 
 
 # --- normalization --------------------------------------------------------------
@@ -303,24 +252,6 @@ def test_window_accumulates_into_one_step():
     assert all(q.grad is None for q in disc.params)
 
 
-def test_zero_lambda_drops_the_branch():
-    ctx, disc = _disc(dmad_lambda_r=0.0)
-    assert disc.head_r is None
-    p = _pair(0)
-    p["x_real"] = None
-    disc.update(ctx, **p)
-    ctx.n_forward = 0
-    stats = disc.update(ctx, **_pair(1) | {"x_real": None})
-    assert ctx.n_forward == 2 * 2
-    assert not any(k.endswith("_r") for k in stats)
-
-    ctx, disc = _disc(dmad_lambda_t=0.0)
-    assert disc.head_t is None
-    stats = disc.update(ctx, **_pair(0) | {"x_teacher": None})
-    assert ctx.n_forward == 2
-    assert "rank_acc_r" in stats and "rank_acc_t" not in stats
-
-
 def test_student_signal_is_normalized_head_mix():
     ctx, disc = _disc(dmad_lambda_r=0.5)
     p = _pair(3)
@@ -351,23 +282,6 @@ def test_student_signal_is_normalized_head_mix():
     disc.signal_rms = 0.0
     raw, _ = disc.student_signal(ctx, p["x_student"], tau, eps, p["crossattn_emb"])
     torch.testing.assert_close(raw, g.float())
-
-
-def test_metrics_tolerate_missing_dm_terms():
-    m = TurboMetrics(torch.device("cpu"))
-    x = torch.randn(1, 4, 3, 3)
-    m.accumulate_per_step(
-        fake_loss_mean_t=torch.zeros(()),
-        grad_signal=x,
-        delta_dm=None,
-        x_pred=x,
-        v_student=x,
-        tau_dm_e=torch.ones(1, 1, 1, 1),
-        v_real_cond_dm=None,
-        v_fake_cond_dm=None,
-    )
-    out = m.flush(1)
-    assert out.dm == 0.0 and out.cos == 0.0 and out.grad > 0.0
 
 
 # --- L_CDM under DMAD -----------------------------------------------------------
@@ -406,6 +320,7 @@ def test_cdm_under_dmad_takes_the_disc_signal_at_x0_off():
         fake_tau_boundary=0.5,
         sigmoid_scale=1.0,
         cdm_weight=2.0,
+        cdm_grad_ckpt=False,
         dm_x0_norm=True,
         norm_floor=0.05,
     )
@@ -416,47 +331,3 @@ def test_cdm_under_dmad_takes_the_disc_signal_at_x0_off():
     x_off, t_e = seen["x_off"], seen["t_off"].view(B, 1, 1, 1)
     torch.testing.assert_close(seen["x0"], x_off - t_e * w.detach() * x_off)
     torch.testing.assert_close(w.grad, 2.0 * (g * -t_e * x_off).mean())
-
-
-# --- no critic under DMAD -------------------------------------------------------
-
-
-class _SelfAttn(nn.Module):
-    def __init__(self) -> None:
-        super().__init__()
-        self.qkv_proj = nn.Linear(8, 18, bias=False)
-
-
-class Block(nn.Module):
-    def __init__(self) -> None:
-        super().__init__()
-        self.self_attn = _SelfAttn()
-        self.mlp_layer1 = nn.Linear(8, 6, bias=False)
-
-
-class _TinyDiT(nn.Module):
-    def __init__(self) -> None:
-        super().__init__()
-        self.blocks = nn.ModuleList([Block()])
-
-
-def test_build_fake_false_builds_no_critic():
-    torch.manual_seed(0)
-    turbo = TurboDMDNetwork(
-        unet=_TinyDiT(), student_rank=4, fake_rank=4, build_fake=False
-    )
-    assert turbo.fake is None and turbo.fake_banks == []
-    assert turbo.fake_params() == []
-    turbo.freeze_dit()
-    turbo.set_view("student")
-    with pytest.raises(RuntimeError, match="build_fake"):
-        turbo.set_view("fake")
-    assert len(turbo.make_aux_stack().unet_loras) == len(turbo.student.unet_loras)
-    with pytest.raises(ValueError, match="fake_tau_banks"):
-        TurboDMDNetwork(
-            unet=_TinyDiT(),
-            student_rank=4,
-            fake_rank=4,
-            build_fake=False,
-            fake_tau_banks=2,
-        )

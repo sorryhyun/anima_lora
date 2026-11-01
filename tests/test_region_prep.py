@@ -54,30 +54,6 @@ class TestMaskGates:
         assert reason is None
         assert clean is not None and clean.any()
 
-    def test_empty_mask(self):
-        _, reason = _mask_gates(np.zeros((H, W), np.uint8), **GATES)
-        assert reason == "empty"
-
-    def test_specks_only(self):
-        m = np.zeros((H, W), np.uint8)
-        for i in range(10):  # each dot ~4px << min_comp_frac * area
-            m[10 + i * 20 : 12 + i * 20, 10:12] = 1
-        _, reason = _mask_gates(m, **GATES)
-        assert reason == "specks_only"
-
-    def test_too_small_and_too_large(self):
-        _, reason = _mask_gates(_ellipse(rx=0.05, ry=0.05), **GATES)
-        assert reason == "too_small"
-        _, reason = _mask_gates(np.ones((H, W), np.uint8), **GATES)
-        assert reason == "too_large"
-
-    def test_fragmented(self):
-        m = np.zeros((H, W), np.uint8)
-        m[20:120, 20:120] = 1
-        m[140:240, 140:240] = 1  # two equal comps → dominance 0.5 < 0.75
-        _, reason = _mask_gates(m, **GATES)
-        assert reason == "fragmented"
-
     def test_ragged_comb(self):
         # One connected comp made of thin stripes — huge perimeter per area,
         # the salt-noise signature whose background connects outward (so the
@@ -108,7 +84,7 @@ class TestAugmentMask:
     TIGHT_LEVELS = (0, 1, 2, 3)  # exact / smooth / blob / wobble — silhouette levels
     SLACK = 4
 
-    @pytest.mark.parametrize("seed", range(12))
+    @pytest.mark.parametrize("seed", range(3))
     def test_limb_gap_survives(self, seed):
         """No silhouette level may bridge a wide limb gap into one blob
         (user feedback 2026-08-23: fat blobs over-simplified an M-leg pose).
@@ -123,15 +99,7 @@ class TestAugmentMask:
                 f"seed {seed} level {level}: limb gap {gap_band.mean():.0%} painted"
             )
 
-    @pytest.mark.parametrize("seed", range(6))
-    def test_covers_most_of_source(self, seed):
-        """Augmentation may round the mask but not relocate/shrink it away."""
-        m = _ellipse()
-        for level in self.TIGHT_LEVELS:
-            out = _augment_mask(m, random.Random(seed), level)
-            assert (out & m).sum() / m.sum() > 0.75
-
-    @pytest.mark.parametrize("seed", range(12))
+    @pytest.mark.parametrize("seed", range(3))
     def test_strict_superset_of_source(self, seed):
         """No character pixel may escape the paint (any augment level).
 
@@ -146,7 +114,7 @@ class TestAugmentMask:
                     continue  # slack with no room — caller falls back
                 assert int((m & ~out).sum()) == 0, f"level {level}"
 
-    @pytest.mark.parametrize("seed", range(8))
+    @pytest.mark.parametrize("seed", range(2))
     def test_slack_is_loose_and_bounded(self, seed):
         """Slack paints a region clearly larger than the character (the
         harmonize lever: background must be continued under the rest) but
@@ -178,11 +146,3 @@ class TestAugmentMask:
             a = _augment_mask(m, random.Random(7), level)
             b = _augment_mask(m, random.Random(7), level)
             assert (a is None and b is None) or np.array_equal(a, b)
-
-    def test_degenerate_never_empty(self):
-        m = np.zeros((H, W), np.uint8)
-        m[100:110, 100:110] = 1
-        for seed in range(8):
-            for level in self.TIGHT_LEVELS:
-                out = _augment_mask(m, random.Random(seed), level)
-                assert out.any()

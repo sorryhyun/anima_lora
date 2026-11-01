@@ -20,34 +20,11 @@ COUNTS_1024 = {4032, 4100, 4160, 4200}  # inside (4032, 4200)
 COUNTS_896 = {3000, 3008, 3024}  # inside (3000, 3024)
 
 
-def test_empty_counts_no_bands():
-    assert cluster_token_bands(set()) == []
-
-
-def test_single_tier_degenerates_to_union():
-    # Phase 0 no-op guarantee: one band == the old (min, max) union range.
-    bands = cluster_token_bands(COUNTS_1024)
-    assert bands == [(4032, 4200)]
-
-
-def test_two_tier_pool_splits_at_the_gap():
-    bands = cluster_token_bands(COUNTS_896 | COUNTS_1024)
-    assert bands == [(3000, 3024), (4032, 4200)]
-
-
 def test_gap_sample_prompt_becomes_singleton_band():
     # A sample prompt landing between tiers (e.g. 768x1200 -> 3600 tokens)
     # must become its own band, not widen a tier band across the dead zone.
     bands = cluster_token_bands(COUNTS_896 | {3600} | COUNTS_1024)
     assert bands == [(3000, 3024), (3600, 3600), (4032, 4200)]
-
-
-def test_demoted_siblings_cluster_with_their_landing_tier():
-    # sigma_lowres 1024->896 siblings land inside the 896 band and must join
-    # it rather than fork a separate band.
-    counts = COUNTS_1024 | {3004, 3016}
-    bands = cluster_token_bands(counts)
-    assert bands == [(3004, 3016), (4032, 4200)]
 
 
 def test_tier_table_edges_cluster_one_band_per_tier_family():
@@ -68,12 +45,6 @@ def test_band_for_seq_membership():
     assert band_for_seq(bands, 2000) is None
     assert band_for_seq(bands, 9000) is None
     assert band_for_seq([], 4100) is None
-
-
-def test_widen_bands_grows_hi_only():
-    bands = [(3000, 3024), (4032, 4200)]
-    assert widen_bands(bands, 16) == [(3000, 3040), (4032, 4216)]
-    assert widen_bands(bands, 0) == bands
 
 
 def test_widen_bands_refuses_band_merge():

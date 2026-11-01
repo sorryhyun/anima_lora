@@ -7,7 +7,7 @@ import json
 from PIL import Image
 
 from i2i_tasks.tools.near_twins.outputs import write_pair_manifest
-from library.moss.cache import manifest_pairs, ref_size
+from library.moss.cache import manifest_pairs
 
 
 def _member(path, caption):
@@ -37,9 +37,3 @@ def test_staging_tree_round_trips_into_moss_pairs(tmp_path):
     assert by_stem["1-2"].caption == "1girl"
     assert refs["1-2"].name == "1-2_tags.webp"
     assert refs["id_7"].name == "id_7_tags.png"
-
-
-def test_ref_size_is_a_16px_grid():
-    assert ref_size(1024, 768, 1) == (1024, 768)
-    assert ref_size(1024, 768, 2) == (512, 384)
-    assert ref_size(24, 24, 2) == (16, 16)

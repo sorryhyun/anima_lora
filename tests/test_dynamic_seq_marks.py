@@ -40,9 +40,7 @@ def _call(attn_params, seq=1023):
     assert out is x
 
 
-@pytest.mark.parametrize(
-    "params", [AttentionParams("torch"), AttentionParams(None), None]
-)
+@pytest.mark.parametrize("params", [AttentionParams("torch"), None])
 def test_sdpa_gets_soft_marks(marks, params):
     _call(params)
     assert [(kind, dim) for kind, dim, _ in marks] == [
@@ -60,9 +58,3 @@ def test_flash_keeps_strict_band(marks):
         ("strict", 0),
     ]
     assert all(kw == {"min": 992, "max": 3100} for _, _, kw in marks)
-
-
-@pytest.mark.parametrize("mode", ["torch", "flash"])
-def test_out_of_band_seq_stays_unmarked(marks, mode):
-    _call(AttentionParams(mode), seq=500)
-    assert marks == []

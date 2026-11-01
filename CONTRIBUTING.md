@@ -205,7 +205,7 @@ A new entry in `networks/lora_modules/` or `networks/methods/`, or a new variant
 
 3. **Documentation.** A method doc at `docs/anima/methods/<name>.md` covering the algorithm, config knobs, training/inference flow, and known failure modes. Cross-link from the README's "Experimental features" table.
 
-4. **Tests.** At least a smoke test that constructs the network and runs one forward pass on CPU/CUDA. Existing tests in `tests/` show the shape (`test_network_registry.py`, `test_loss_registry.py`, `test_smoke.py`).
+4. **Tests.** At least a smoke test that constructs the network and runs one forward pass on CPU/CUDA. Existing tests in `tests/` show the shape (`test_network_registry.py`, `test_loss_registry.py`); `tests/README.md` says what belongs in the suite.
 
 5. **Make/`tasks.py` entry points.** A new method needs `make <name>` and matching `python tasks.py <name>` invocations, plus a `test-<name>` target that runs `inference.py` against a checkpoint produced by the method. Follow the patterns in the `Makefile`.
 

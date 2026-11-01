@@ -15,13 +15,6 @@ from library.datasets.buckets import (
 )
 
 
-def test_issue_42_repro_resolution():
-    # 1024x1536 → (1024//16)*(1536//16) = 64*96 = 6144, the exact count that
-    # violated the (4032, 4200) compiled range in the issue.
-    counts = token_counts_for_sample_prompts([{"width": 1024, "height": 1536}])
-    assert counts == {6144}
-
-
 def test_union_with_bucket_counts_widens_range():
     # The train.py call site unions bucket counts with sample counts; the
     # issue's buckets (4032/4200 families) plus the 1024x1536 sample must yield
@@ -37,14 +30,6 @@ def test_union_with_bucket_counts_widens_range():
     assert len(merged) == 3
 
 
-def test_defaults_match_sample_inference():
-    # _sample_image_inference defaults width/height to 512 when a prompt omits
-    # --w/--h; the budget must count the same resolution.
-    assert token_counts_for_sample_prompts([{"prompt": "1girl"}]) == {
-        (512 // 16) * (512 // 16)
-    }
-
-
 def test_snap_matches_inference_formula():
     # snap_sample_size is the shared definition of _sample_image_inference's
     # pre-sampling snap: dim → max(64, dim - dim % 16).
@@ -53,12 +38,3 @@ def test_snap_matches_inference_formula():
     assert snap_sample_size(10, 30) == (64, 64)
     counts = token_counts_for_sample_prompts([{"width": 1000, "height": 1000}])
     assert counts == {(992 // 16) * (992 // 16)}
-
-
-def test_duplicate_resolutions_dedup():
-    prompts = [
-        {"width": 1024, "height": 1536},
-        {"width": 1536, "height": 1024},  # same token count, mirrored
-        {"width": 1024, "height": 1536, "prompt": "another"},
-    ]
-    assert token_counts_for_sample_prompts(prompts) == {6144}

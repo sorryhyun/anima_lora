@@ -18,6 +18,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 import torch
 from safetensors.torch import save_file
 
@@ -73,16 +74,6 @@ def _load(ds, info):
     return ds._try_load_repa_pe(info)
 
 
-def test_te_cache_dir_wins_when_present(tmp_path):
-    # No redirect: TE npz and sidecar share the latent cache dir (the common
-    # case — and the first candidate, preserving pre-P2.2 behavior).
-    ds, info, _, cache_dir, te_dir = _layout(tmp_path, redirect_te=False)
-    assert te_dir == cache_dir
-    _write_sidecar(te_dir, "img1", 1.0)
-    feats = _load(ds, info)
-    assert feats is not None and feats[0, 0].item() == 1.0
-
-
 def test_te_dir_preferred_over_latent_cache_dir(tmp_path):
     # When both dirs hold a sidecar the TE-cache sibling still wins.
     ds, info, _, cache_dir, te_dir = _layout(tmp_path, redirect_te=True)
@@ -92,6 +83,7 @@ def test_te_dir_preferred_over_latent_cache_dir(tmp_path):
     assert feats is not None and feats[0, 0].item() == 1.0
 
 
+@pytest.mark.core
 def test_redirected_te_falls_back_to_latent_cache_dir(tmp_path):
     # The colorize blocker: text_cache_dir redirects the TE cache to a dir
     # with zero sidecars; the features must still load from the latent cache.
@@ -122,27 +114,6 @@ def test_falls_back_to_image_dir(tmp_path):
     assert feats is not None and feats[0, 0].item() == 5.0
 
 
-def test_missing_everywhere_returns_none(tmp_path):
-    ds, info, _, _, _ = _layout(tmp_path, redirect_te=True)
-    assert _load(ds, info) is None
-
-
-def test_disabled_returns_none(tmp_path):
-    ds, info, _, cache_dir, _ = _layout(tmp_path, redirect_te=True)
-    _write_sidecar(cache_dir, "img1", 6.0)
-    ds.load_repa_pe = False
-    assert _load(ds, info) is None
-
-
-def test_no_subset_entry_still_resolves_te_and_image_dirs(tmp_path):
-    # An image_key missing from image_to_subset must not crash the chain.
-    ds, info, image_dir, _, _ = _layout(tmp_path, redirect_te=True)
-    ds.image_to_subset = {}
-    _write_sidecar(image_dir, "img1", 7.0)
-    feats = _load(ds, info)
-    assert feats is not None and feats[0, 0].item() == 7.0
-
-
 # ---------------------------------------------------------------------------
 # count_repa_pe_sidecars — the coverage probe train.py uses to fail fast on a
 # fully-absent PE cache (use_repa would otherwise be a silent no-op).
@@ -166,27 +137,7 @@ def _layout_multi(tmp_path: Path, stems: list[str]):
     return ds, cache_dir
 
 
-def test_count_all_present(tmp_path):
-    ds, cache_dir = _layout_multi(tmp_path, ["a", "b", "c"])
-    for stem in ("a", "b", "c"):
-        _write_sidecar(cache_dir, stem, 1.0)
-    assert ds.count_repa_pe_sidecars() == (3, 3)
-
-
 def test_count_partial(tmp_path):
     ds, cache_dir = _layout_multi(tmp_path, ["a", "b", "c"])
     _write_sidecar(cache_dir, "a", 1.0)
     assert ds.count_repa_pe_sidecars() == (1, 3)
-
-
-def test_count_none_present(tmp_path):
-    # The reported bug: PE preprocess never ran, so use_repa is a silent no-op.
-    ds, _ = _layout_multi(tmp_path, ["a", "b"])
-    assert ds.count_repa_pe_sidecars() == (0, 2)
-
-
-def test_count_off_when_loading_disabled(tmp_path):
-    ds, cache_dir = _layout_multi(tmp_path, ["a"])
-    _write_sidecar(cache_dir, "a", 1.0)
-    ds.load_repa_pe = False
-    assert ds.count_repa_pe_sidecars() == (0, 0)

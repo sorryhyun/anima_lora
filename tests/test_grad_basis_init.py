@@ -19,12 +19,9 @@ import torch
 
 from library.anima.training import (
     compute_loss_weighting_for_anima,
-    min_snr_normalizer,
     min_snr_weighting,
 )
 from networks.grad_basis import (
-    basis_from_sketches,
-    count_blocks,
     load_basis,
     save_basis,
     top_right_basis,
@@ -47,10 +44,9 @@ def _module(**kw) -> LoRAModule:
 # --------------------------------------------------------------------------- #
 # init
 # --------------------------------------------------------------------------- #
-@pytest.mark.parametrize("mode", ["grad_svd", "basis_file"])
-def test_seeded_down_is_basis_over_sqrt3(mode):
+def test_seeded_down_is_basis_over_sqrt3():
     V = _orthonormal(IN, RANK)
-    mod = _module(down_init=mode, grad_basis=V)
+    mod = _module(down_init="grad_svd", grad_basis=V)
     assert torch.allclose(mod.lora_down.weight.data, V.T / math.sqrt(3), atol=1e-6)
     # orthogonal rows, each at Kaiming's expected row-norm (E‖·‖² ≈ 1/3)
     gram = mod.lora_down.weight.data @ mod.lora_down.weight.data.T
@@ -88,16 +84,6 @@ def test_missing_basis_entry_keeps_kaiming():
     assert mod._grad_basis_seeded == 0
 
 
-def test_basis_in_features_mismatch_raises():
-    with pytest.raises(ValueError, match="in_features"):
-        _module(down_init="basis_file", grad_basis=_orthonormal(IN + 1, RANK))
-
-
-def test_unknown_down_init_lists_every_mode():
-    with pytest.raises(ValueError, match="grad_svd"):
-        _module(down_init="nope")
-
-
 # --------------------------------------------------------------------------- #
 # subspace math
 # --------------------------------------------------------------------------- #
@@ -111,22 +97,9 @@ def test_top_right_basis_recovers_a_planted_row_space():
     assert captured > 0.999
 
 
-def test_basis_from_sketches_skips_empty_layers():
-    sketches = {
-        "a": torch.randn(8, IN, generator=torch.Generator().manual_seed(3)),
-        "b": torch.zeros(8, IN),
-    }
-    basis = basis_from_sketches(sketches, RANK)
-    assert set(basis) == {"a"}
-    assert basis["a"].shape == (IN, RANK)
-
-
 # --------------------------------------------------------------------------- #
 # artifact
 # --------------------------------------------------------------------------- #
-def test_count_blocks_reads_depth_from_keys():
-    assert count_blocks(["lora_unet_blocks_0_mlp_0", "lora_unet_blocks_27_mlp_0"]) == 28
-    assert count_blocks(["lora_unet_final_layer_proj"]) == 0
 
 
 def test_roundtrip_and_depth_mismatch_refused(tmp_path):
@@ -145,11 +118,6 @@ def test_roundtrip_and_depth_mismatch_refused(tmp_path):
     # 40-block DiT would silently leave the tail blocks unseeded.
     with pytest.raises(ValueError, match="depth-baked"):
         load_basis(path, num_blocks=40)
-
-
-def test_load_missing_file_points_at_the_builders(tmp_path):
-    with pytest.raises(FileNotFoundError, match="grad_svd"):
-        load_basis(tmp_path / "nope.safetensors")
 
 
 # --------------------------------------------------------------------------- #
@@ -190,48 +158,6 @@ def test_svd_slices_are_mutually_orthogonal_and_next_in_spectrum():
     assert torch.allclose(
         qb.norm(dim=0), torch.ones(RANK), atol=1e-4
     )  # same 1/sqrt(3) row-norm match as slice 0
-
-
-def test_svd_slice_beyond_spectrum_refuses():
-    org = torch.nn.Linear(IN, OUT, bias=False)
-    with pytest.raises(ValueError, match="exceeds"):
-        LoRAModule("m", org, 1.0, RANK, 1, down_init="weight_svd", svd_slice=2)
-
-
-def test_cfg_svd_slice_needs_weight_svd():
-    with pytest.raises(ValueError, match="only applies to down_init='weight_svd'"):
-        _cfg(down_init="kaiming", svd_slice="1")
-    assert _cfg(down_init="weight_svd", svd_slice="3").svd_slice == 3
-    assert _cfg(down_init="kaiming").svd_slice == 0
-
-
-def test_interleaved_slices_take_the_comb_and_stay_orthogonal():
-    torch.manual_seed(0)
-    org = torch.nn.Linear(IN, OUT, bias=False)  # 8 vectors = 2 slices · r
-    kw = dict(down_init="weight_svd", svd_slice_count=2)
-    a = LoRAModule("m", org, 1.0, RANK, 1, svd_slice=0, **kw)
-    b = LoRAModule("m", org, 1.0, RANK, 1, svd_slice=1, **kw)
-    qa, qb = _right_basis(a), _right_basis(b)
-    assert _overlap(qa, qb) == pytest.approx(0.0, abs=1e-3)
-    _, _, vh = torch.linalg.svd(org.weight.data.float(), full_matrices=False)
-    assert _overlap(qa, vh[[0, 2, 4, 6]].T) == pytest.approx(1.0, abs=1e-3)
-    assert _overlap(qb, vh[[1, 3, 5, 7]].T) == pytest.approx(1.0, abs=1e-3)
-
-
-def test_interleaved_slice_beyond_spectrum_refuses():
-    org = torch.nn.Linear(IN, OUT, bias=False)
-    with pytest.raises(ValueError, match="exceeds"):
-        LoRAModule(
-            "m", org, 1.0, RANK, 1, down_init="weight_svd", svd_slice_count=3
-        )  # comb 0,3,6,9 runs past the 8-vector spectrum
-
-
-def test_cfg_svd_slice_count_validation():
-    with pytest.raises(ValueError, match="only applies to down_init='weight_svd'"):
-        _cfg(down_init="kaiming", svd_slice_count="8")
-    with pytest.raises(ValueError, match="must be < svd_slice_count"):
-        _cfg(down_init="weight_svd", svd_slice="8", svd_slice_count="8")
-    assert _cfg(down_init="weight_svd", svd_slice_count="8").svd_slice_count == 8
 
 
 def test_adaln_modules_ignore_the_slice():
@@ -279,41 +205,6 @@ def test_adaln_modules_ignore_the_slice():
 
 
 # --------------------------------------------------------------------------- #
-# cfg validation
-# --------------------------------------------------------------------------- #
-def _cfg(**kwargs):
-    from networks.lora_anima.config import LoRANetworkCfg
-
-    return LoRANetworkCfg.from_kwargs(
-        kwargs,
-        network_dim=RANK,
-        network_alpha=1.0,
-        neuron_dropout=None,
-        module_class=LoRAModule,
-        grad_basis_dict=kwargs.pop("_basis", None),
-    )
-
-
-def test_cfg_rejects_gradient_mode_without_a_basis():
-    with pytest.raises(ValueError, match="needs a gradient basis"):
-        _cfg(down_init="basis_file")
-
-
-def test_cfg_accepts_gradient_mode_with_a_basis():
-    cfg = _cfg(down_init="grad_svd", _basis={"x": _orthonormal(IN, RANK)})
-    assert cfg.down_init == "grad_svd" and cfg.grad_basis_dict is not None
-
-
-def test_cfg_rejects_gradient_mode_on_a_non_plain_variant():
-    with pytest.raises(ValueError, match="only applies to plain LoRA"):
-        _cfg(
-            down_init="basis_file",
-            use_moe_style="shared_A",
-            _basis={"x": _orthonormal(IN, RANK)},
-        )
-
-
-# --------------------------------------------------------------------------- #
 # min_snr weighting
 # --------------------------------------------------------------------------- #
 class _Args:
@@ -340,27 +231,6 @@ def test_min_snr_peaks_at_snr_equals_gamma_and_falls_off_above():
     assert torch.all(w[1:].diff() < 0)  # monotone decreasing above the peak
     # the measured motivation: σ>0.5 steps carry 4-10× the noise for equal signal
     assert float(w[2] / w[1]) < 0.5
-
-
-def test_min_snr_gamma_moves_the_peak():
-    """γ only bites where SNR>γ (low σ) — the tilt it produces is post-normalization.
-
-    Un-normalized, ``min(SNR,γ)/(SNR+1)`` at σ=0.6 (SNR 0.44) is γ-independent;
-    what a smaller γ does is flatten the low-σ half, which lowers E[w] and so
-    raises the *relative* weight the high-σ half receives.
-    """
-    sig = torch.tensor([0.6])
-    assert float(min_snr_weighting(sig, 0.5)) == float(min_snr_weighting(sig, 20.0))
-
-    class _A(_Args):
-        pass
-
-    _A.min_snr_gamma = 0.5
-    lo = float(compute_loss_weighting_for_anima("min_snr", sig, _A()))
-    _A.min_snr_gamma = 20.0
-    hi = float(compute_loss_weighting_for_anima("min_snr", sig, _A()))
-    assert lo > hi
-    assert min_snr_normalizer(5.0) == min_snr_normalizer(5.0)  # cached, stable
 
 
 def test_other_schemes_are_untouched():

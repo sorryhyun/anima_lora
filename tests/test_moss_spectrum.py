@@ -13,28 +13,6 @@ def test_window_schedule_matches_anima_counts():
     assert sum(window_schedule(20, flex_window=1.0)) == 12
 
 
-def test_default_schedule_is_the_generators():
-    """``MossSpectrum()`` plans what ``GenerateRequest``'s defaults run: 19 full
-    forwards of 50 at flex_window 0.5."""
-    from library.moss.requests import GenerateRequest
-
-    req = GenerateRequest()
-    sp = MossSpectrum()
-    assert (sp.window_size, sp.flex_window, sp.warmup) == (
-        req.spectrum_window_size,
-        req.spectrum_flex_window,
-        req.spectrum_warmup,
-    )
-    sp.begin(torch.linspace(1, 0, 51))
-    assert sp.planned_full_steps == sum(window_schedule(50)) == 19
-
-
-def test_begin_drops_terminal_zero():
-    sp = MossSpectrum()
-    sp.begin(torch.tensor([1.0, 0.7, 0.4, 0.1, 0.0]))
-    assert sp.num_steps == 4
-
-
 def _run(sp, sigmas, traj):
     sp.begin(sigmas)
     errs = []

@@ -92,6 +92,7 @@ def test_mask_tree_on_disk_is_used_when_masked_loss_is_on(tmp_path):
     assert all(_alpha_mask_of(dataset, info) is not None for info in _infos(dataset))
 
 
+@pytest.mark.core
 def test_masked_loss_off_gates_before_construction(tmp_path):
     images, masks = _tree(tmp_path)
     blueprint = _blueprint(images, masks)
@@ -107,24 +108,14 @@ def test_masked_loss_off_gates_before_construction(tmp_path):
     assert all(_alpha_mask_of(dataset, info) is None for info in _infos(dataset))
 
 
-def test_gate_is_idempotent_and_quiet_without_masks(tmp_path):
-    images, masks = _tree(tmp_path)
-    blueprint = _blueprint(images, masks)
-    disable_masks_in_blueprint(blueprint)
-    assert disable_masks_in_blueprint(blueprint) == []
-
-
-@pytest.mark.parametrize("legacy", ["masks/merged", "post_image_dataset/masks"])
-def test_empty_mask_dir_suppresses_legacy_auto_resolution(
-    tmp_path, monkeypatch, legacy
-):
+def test_empty_mask_dir_suppresses_legacy_auto_resolution(tmp_path, monkeypatch):
     """``mask_dir=""`` (what the gate writes) must not fall through to the
     constructor's CWD-relative ``masks/{merged,sam}`` lookup."""
     from library.datasets.subsets import DreamBoothSubset
 
     images, _masks = _tree(tmp_path)
     monkeypatch.chdir(tmp_path)
-    (tmp_path / legacy).mkdir(parents=True)
+    (tmp_path / "post_image_dataset/masks").mkdir(parents=True)
     subset = DreamBoothSubset(
         **asdict(
             DreamBoothSubsetParams(

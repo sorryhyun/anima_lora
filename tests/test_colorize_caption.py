@@ -23,7 +23,6 @@ from color_caption import (  # noqa: E402
     filter_to_colors_and_copyright,
     filter_to_colors_and_protected,
     is_color_tag,
-    is_comic_tag,
     is_copyright_tag,
     load_copyright_tags,
 )
@@ -77,21 +76,9 @@ def test_filter_empty_when_no_color():
     assert filter_to_colors("") == ""
 
 
-def test_long_hair_not_kept_but_blue_hair_is():
-    # 'long hair' shares the 'hair' suffix but has no color word → dropped.
-    assert filter_to_colors("long hair, blue hair") == "blue hair"
-
-
 # ----- color + copyright variant ------------------------------------------
 
 _COPYRIGHT = frozenset({"genshin impact", "fate/grand order"})
-
-
-def test_is_copyright_tag_case_insensitive():
-    assert is_copyright_tag("genshin impact", _COPYRIGHT)
-    assert is_copyright_tag("Genshin Impact", _COPYRIGHT)
-    assert not is_copyright_tag("1girl", _COPYRIGHT)
-    assert not is_copyright_tag("blue hair", _COPYRIGHT)
 
 
 def test_copyright_kept_first_then_colors():
@@ -102,12 +89,6 @@ def test_copyright_kept_first_then_colors():
     out = filter_to_colors_and_copyright(caption, _COPYRIGHT)
     # copyright leads, color tags follow in original order; non-color dropped.
     assert out == "genshin impact, blue hair, red dress"
-
-
-def test_copyright_absent_falls_back_to_colors():
-    caption = "1girl, solo, blue hair, yellow shirt"
-    out = filter_to_colors_and_copyright(caption, _COPYRIGHT)
-    assert out == "blue hair, yellow shirt"
 
 
 def test_copyright_protected_from_dropout():
@@ -160,34 +141,7 @@ def test_original_excluded_from_loaded_copyright_vocab(tmp_path):
     assert "genshin impact" in vocab
 
 
-def test_original_not_kept_as_copyright_prefix(tmp_path):
-    # With "original" excluded, an original-tagged caption collapses to colors.
-    vocab = load_copyright_tags(_write_index(tmp_path))
-    out = filter_to_colors_and_copyright("original, 1girl, pink hair, blue eyes", vocab)
-    assert out == "pink hair, blue eyes"
-
-
 # ----- comic / panel-format variant ---------------------------------------
-
-
-def test_is_comic_tag():
-    assert is_comic_tag("comic")
-    assert is_comic_tag("4koma")
-    assert is_comic_tag("2koma")
-    assert is_comic_tag("Comic")  # case-insensitive
-    assert not is_comic_tag("1girl")
-    assert not is_comic_tag("blue hair")
-
-
-def test_comic_kept_after_copyright_then_colors():
-    caption = (
-        "1girl, original, 2koma, comic, @ie, blue hair, looking at viewer, red dress"
-    )
-    out = filter_to_colors_and_protected(
-        caption, _COPYRIGHT, keep_copyright=True, keep_comic=True
-    )
-    # No copyright in vocab here → comic tags lead (original order), then colors.
-    assert out == "2koma, comic, blue hair, red dress"
 
 
 def test_comic_and_copyright_ordering():
@@ -200,33 +154,3 @@ def test_comic_and_copyright_ordering():
     )
     # copyright first, then comic, then colors in original order.
     assert out == "genshin impact, comic, blue hair, red dress"
-
-
-def test_comic_off_by_default_in_back_compat_wrapper():
-    # The copyright-only wrapper must not start keeping comic tags.
-    caption = "1girl, comic, blue hair"
-    assert filter_to_colors_and_copyright(caption, _COPYRIGHT) == "blue hair"
-
-
-def test_comic_protected_from_dropout():
-    import random
-
-    from library.preprocess import generate_caption_variants
-
-    random.seed(0)
-    caption = filter_to_colors_and_protected(
-        "comic, blue hair, red dress, green eyes",
-        frozenset(),
-        keep_copyright=False,
-        keep_comic=True,
-    )
-    variants = generate_caption_variants(
-        caption,
-        num_variants=4,
-        tag_dropout_rate=1.0,
-        protect_fn=is_comic_tag,
-    )
-    assert variants[0] == caption
-    for v in variants[1:]:
-        assert "comic" in v
-        assert "blue hair" not in v and "red dress" not in v

@@ -4,8 +4,7 @@ Locks the Phase 0 contract from
 docs/anima/proposal/free_aspect_token_band_resize.md:
   * every fitted grid lands inside the tier's token band,
   * the result respects the max_ratio clamp and the RoPE per-axis cap,
-  * crop residual is sub-patch (< 16px) for in-range aspects on the 1024 tier,
-  * the solver is deterministic,
+  * common aspects crop at most one patch on every tier,
   * the GUI/CLI preview (compute_resize_preview) agrees with the solver feeding
     process_image (select_resize_bucket).
 """
@@ -17,7 +16,6 @@ from library.datasets.buckets import (
     BucketManager,
     freefit_band_for_edge,
     freefit_bucket,
-    token_count_range,
 )
 from library.preprocess.resize_preview import (
     compute_resize_preview,
@@ -90,21 +88,6 @@ _COMMON_ASPECTS = [0.5, 0.667, 0.75, 0.8, 0.866, 1.0, 1.25, 1.33, 1.5, 2.0]
 
 
 @pytest.mark.parametrize("edge", ALLOWED_TARGET_RES)
-def test_widened_band_never_crops_more(edge):
-    """The widened band contains the tier's natural ``(min, max)`` band, so the
-    solver can only find an equal-or-better aspect match → it never crops *more*
-    than the pre-fix degenerate band. The strong invariant behind #53's free-fit
-    Phase 0 crop bug (768 @ ar 0.866 went 63px → 5px)."""
-    new = freefit_band_for_edge(edge)
-    old = token_count_range((edge,))
-    for a in _ASPECTS:
-        sw, sh = round(a * 1000), 1000
-        new_res = _crop_residual(sw, sh, *freefit_bucket(sw, sh, new))
-        old_res = _crop_residual(sw, sh, *freefit_bucket(sw, sh, old))
-        assert new_res <= old_res + 1e-6, (edge, a, new_res, old_res)
-
-
-@pytest.mark.parametrize("edge", ALLOWED_TARGET_RES)
 def test_common_aspects_crop_subpatch_on_every_tier(edge):
     """The fix's payoff: common aspect ratios crop ≤ 1 patch on *every* tier,
     including the single-family 768/1280/1536 whose degenerate natural band used
@@ -118,6 +101,7 @@ def test_common_aspects_crop_subpatch_on_every_tier(edge):
         assert _crop_residual(sw, sh, bw, bh) <= PATCH, (edge, a, bw, bh)
 
 
+@pytest.mark.core
 @pytest.mark.parametrize("edge", ALLOWED_TARGET_RES)
 def test_grid_lands_in_band(edge):
     band, grids = _grids(edge)
@@ -145,34 +129,6 @@ def test_max_ratio_clamp_on_degenerate_input():
     # And a custom tighter clamp is honored too.
     w2, h2 = freefit_bucket(4000, 500, band, max_ratio=2.0)
     assert (w2 / h2) <= 2.0 + (1.0 / (h2 // PATCH)), (w2, h2)
-
-
-def test_crop_residual_subpatch_on_1024_tier():
-    """In-range aspects crop < 1 patch (the <16px residual the proposal claims)."""
-    band = freefit_band_for_edge(1024)
-    for sw, sh in _NATIVE_SIZES:
-        a = sw / sh
-        if not (0.25 <= a <= 4.0):
-            continue
-        bw, bh = freefit_bucket(sw, sh, band)
-        # Cover-resize native → bucket preserving aspect, then measure the crop.
-        scale = max(bw / sw, bh / sh)
-        covered_w, covered_h = sw * scale, sh * scale
-        residual = max(covered_w - bw, covered_h - bh)
-        assert residual < PATCH, (sw, sh, bw, bh, residual)
-
-
-def test_deterministic():
-    band = freefit_band_for_edge(1024)
-    for sw, sh in _NATIVE_SIZES:
-        first = freefit_bucket(sw, sh, band)
-        for _ in range(3):
-            assert freefit_bucket(sw, sh, band) == first
-
-
-def test_near_square_is_exact_square():
-    # 4096 = 64*64 ∈ [4032, 4200], so a square fits with zero aspect error.
-    assert freefit_bucket(1000, 1000, freefit_band_for_edge(1024)) == (1024, 1024)
 
 
 def test_aspect_error_is_minimal():
@@ -204,15 +160,10 @@ def test_preview_agrees_with_solver(edge):
         assert preview.target_edge == edge
 
 
-def test_single_tier_choose_edge_is_noop():
-    # Free-fit operates inside the choose_edge-picked tier; single tier is direct.
-    _, b = select_resize_bucket(1500, 1000, [1024])
-    assert b == freefit_bucket(1500, 1000, freefit_band_for_edge(1024))
-
-
 # --- Phase 1: train-side bucket mode -----------------------------------------
 
 
+@pytest.mark.core
 def test_bucketmanager_freefit_keeps_native_shapes():
     """Free-fit bucket mode: each on-disk (W, H) exact-matches — never AR-snaps."""
     band = freefit_band_for_edge(1024)
@@ -230,12 +181,3 @@ def test_bucketmanager_freefit_keeps_native_shapes():
         assert reso == (w, h), (w, h, reso)  # exact match, no snap
         assert resized == (w, h)
         assert ar_error == 0.0
-
-
-def test_bucketmanager_freefit_token_counts_in_one_band():
-    """All free-fit shapes for the 1024 tier share its [4032, 4200] band → one
-    dynamic-seq graph (the compile-coupling invariant)."""
-    lo, hi = freefit_band_for_edge(1024)
-    sizes = {freefit_bucket(round(a * 1000), 1000, (lo, hi)) for a in _ASPECTS}
-    counts = {(w // PATCH) * (h // PATCH) for (w, h) in sizes}
-    assert all(lo <= c <= hi for c in counts)

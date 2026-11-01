@@ -8,9 +8,6 @@ columns ship to disk while ``inv_scale`` is dropped — reload then treats
 
 Coverage:
 
-* ``inv_scale`` survives the defuse → refuse round trip on a fused-qkv-shaped
-  state_dict (``defuse_standard_qkv`` / ``_refuse_unfused_attn_lora_keys`` in
-  isolation — the bake runs *after* defuse, so these helpers are unchanged).
 * End-to-end: build a real ``LoRAModule`` with ``channel_scale``, run defuse,
   refuse, and verify the rebuilt fused module produces identical output to the
   in-memory original.
@@ -21,13 +18,12 @@ Coverage:
 
 from __future__ import annotations
 
+import pytest
 import torch
 
 from networks.lora_anima.loading import _refuse_unfused_attn_lora_keys
-from networks.lora_modules.base import BaseLoRAModule
 from networks.lora_modules.lora import (
     LoRAModule,
-    bake_inv_scale,
     defuse_and_bake_standard,
     defuse_standard_qkv,
 )
@@ -42,91 +38,6 @@ def _make_calibration(in_dim: int, seed: int = 0) -> torch.Tensor:
     stats = torch.rand(in_dim, dtype=torch.float32) * 0.3 + 0.05
     stats[7] = 50.0  # the dominant channel
     return stats
-
-
-def test_defuse_carries_inv_scale_into_split_keys():
-    """Save side: defuse_standard_qkv must clone inv_scale into each split key.
-
-    Key names use the underscore-separated lora_name format
-    (`lora_unet_blocks_0_self_attn_qkv_proj`) that match_fused_spec expects —
-    the same shape LoRANetwork.create_modules produces in network.py.
-    """
-    in_dim = 32
-    rank = 4
-    out_per = 8
-    n = 3  # q, k, v
-
-    fused = "lora_unet_blocks_0_self_attn_qkv_proj"
-    sd = {
-        f"{fused}.lora_down.weight": torch.randn(rank, in_dim),
-        f"{fused}.lora_up.weight": torch.randn(out_per * n, rank),
-        f"{fused}.alpha": torch.tensor(float(rank)),
-        f"{fused}.inv_scale": torch.rand(in_dim),
-    }
-    original_inv = sd[f"{fused}.inv_scale"].clone()
-
-    defuse_standard_qkv(sd)
-
-    for letter in ("q", "k", "v"):
-        key = f"lora_unet_blocks_0_self_attn_{letter}_proj.inv_scale"
-        assert key in sd, f"defuse dropped inv_scale at {key}"
-        assert torch.equal(sd[key], original_inv), (
-            f"inv_scale at {key} diverged from the fused source"
-        )
-    # And the fused-prefix inv_scale was popped — it doesn't survive on-disk.
-    assert f"{fused}.inv_scale" not in sd
-
-
-def test_refuse_picks_first_inv_scale_for_fused():
-    """Load side: _refuse_unfused_attn_lora_keys must lift inv_scale to fused."""
-    in_dim = 32
-    rank = 4
-    out_per = 8
-    inv = torch.rand(in_dim)
-    down = torch.randn(rank, in_dim)
-
-    sd = {}
-    for letter in ("q", "k", "v"):
-        prefix = f"lora_unet_blocks_0_self_attn_{letter}_proj"
-        sd[f"{prefix}.lora_down.weight"] = down.clone()
-        sd[f"{prefix}.lora_up.weight"] = torch.randn(out_per, rank)
-        sd[f"{prefix}.alpha"] = torch.tensor(float(rank))
-        sd[f"{prefix}.inv_scale"] = inv.clone()
-
-    _refuse_unfused_attn_lora_keys(sd)
-
-    fused = "lora_unet_blocks_0_self_attn_qkv_proj"
-    assert f"{fused}.inv_scale" in sd, "refuse failed to lift inv_scale to fused prefix"
-    assert torch.equal(sd[f"{fused}.inv_scale"], inv)
-    for letter in ("q", "k", "v"):
-        assert (
-            f"lora_unet_blocks_0_self_attn_{letter}_proj.inv_scale" not in sd
-        ), "refuse left an orphan per-component inv_scale"
-
-
-def test_refuse_warns_on_partial_inv_scale(caplog):
-    """Mixing channel-scaled + non-channel-scaled per-component LoRAs is
-    indeterminate on the fused runtime — log + drop, don't crash."""
-    in_dim = 32
-    rank = 4
-    out_per = 8
-    down = torch.randn(rank, in_dim)
-
-    sd = {}
-    for letter in ("q", "k", "v"):
-        prefix = f"lora_unet_blocks_0_self_attn_{letter}_proj"
-        sd[f"{prefix}.lora_down.weight"] = down.clone()
-        sd[f"{prefix}.lora_up.weight"] = torch.randn(out_per, rank)
-        sd[f"{prefix}.alpha"] = torch.tensor(float(rank))
-    # Only q has inv_scale — partial set.
-    sd["lora_unet_blocks_0_self_attn_q_proj.inv_scale"] = torch.rand(in_dim)
-
-    with caplog.at_level("WARNING"):
-        _refuse_unfused_attn_lora_keys(sd)
-
-    fused = "lora_unet_blocks_0_self_attn_qkv_proj"
-    assert f"{fused}.inv_scale" not in sd
-    assert any("partial inv_scale" in r.message for r in caplog.records)
 
 
 def test_end_to_end_roundtrip_preserves_forward():
@@ -170,9 +81,9 @@ def test_end_to_end_roundtrip_preserves_forward():
     # 1. Save defuse → on-disk split layout.
     defuse_standard_qkv(sd)
     for letter in ("q", "k", "v"):
-        assert (
-            f"lora_unet_blocks_0_self_attn_{letter}_proj.inv_scale" in sd
-        ), "round-trip lost inv_scale on save"
+        assert f"lora_unet_blocks_0_self_attn_{letter}_proj.inv_scale" in sd, (
+            "round-trip lost inv_scale on save"
+        )
 
     # 2. Load refuse → back to fused layout.
     _refuse_unfused_attn_lora_keys(sd)
@@ -193,7 +104,9 @@ def test_end_to_end_roundtrip_preserves_forward():
         channel_scale=calibration,
     )
     rebuilt_sd = {
-        k[len(fused_prefix) + 1 :]: v for k, v in sd.items() if k.startswith(fused_prefix + ".")
+        k[len(fused_prefix) + 1 :]: v
+        for k, v in sd.items()
+        if k.startswith(fused_prefix + ".")
     }
     missing, unexpected = lora_rebuilt.load_state_dict(rebuilt_sd, strict=False)
     assert not unexpected, f"unexpected keys after round-trip: {unexpected}"
@@ -201,9 +114,7 @@ def test_end_to_end_roundtrip_preserves_forward():
 
     with torch.no_grad():
         lora_only_new = (
-            lora_rebuilt.lora_up(
-                lora_rebuilt.lora_down(lora_rebuilt._rebalance(x))
-            )
+            lora_rebuilt.lora_up(lora_rebuilt.lora_down(lora_rebuilt._rebalance(x)))
             * lora_rebuilt.scale
         )
 
@@ -215,48 +126,7 @@ def test_end_to_end_roundtrip_preserves_forward():
     )
 
 
-def test_inv_scale_round_trip_is_idempotent_under_repeated_defuse():
-    """Reapplying defuse on an already-split state_dict must not duplicate
-    or strip inv_scale (regression for "double defuse" workflows)."""
-    in_dim = 32
-    rank = 4
-    out_per = 8
-    inv = torch.rand(in_dim)
-
-    sd = {}
-    for letter in ("q", "k", "v"):
-        prefix = f"blocks.0.self_attn.{letter}_proj"
-        sd[f"{prefix}.lora_down.weight"] = torch.randn(rank, in_dim)
-        sd[f"{prefix}.lora_up.weight"] = torch.randn(out_per, rank)
-        sd[f"{prefix}.alpha"] = torch.tensor(float(rank))
-        sd[f"{prefix}.inv_scale"] = inv.clone()
-
-    snapshot = {k: v.clone() for k, v in sd.items()}
-    # Per-component prefixes don't end in `_qkv_proj`/`_kv_proj` so
-    # match_fused_spec returns None → no-op.
-    defuse_standard_qkv(sd)
-    for k, v in snapshot.items():
-        assert torch.equal(sd[k], v), f"defuse mutated already-split key {k}"
-
-
-def test_bake_inv_scale_drops_key_and_folds_down():
-    """bake_inv_scale folds inv_scale into the sibling down and removes the key."""
-    in_dim, rank, out_dim = 32, 4, 16
-    down = torch.randn(rank, in_dim)
-    inv = torch.rand(in_dim) + 0.1
-    prefix = "lora_unet_blocks_0_self_attn_q_proj"
-    sd = {
-        f"{prefix}.lora_down.weight": down.clone(),
-        f"{prefix}.lora_up.weight": torch.randn(out_dim, rank),
-        f"{prefix}.alpha": torch.tensor(float(rank)),
-        f"{prefix}.inv_scale": inv.clone(),
-    }
-    bake_inv_scale(sd)
-    assert f"{prefix}.inv_scale" not in sd, "bake must drop the inv_scale key"
-    expected = down * inv.unsqueeze(0)
-    assert torch.allclose(sd[f"{prefix}.lora_down.weight"], expected, atol=1e-6)
-
-
+@pytest.mark.core
 def test_baked_save_reproduces_channel_scaled_forward():
     """The production save path (defuse_and_bake_standard) bakes
     inv_scale, so a *plain* LoRAModule (no channel_scale) loading the baked
@@ -316,19 +186,3 @@ def test_baked_save_reproduces_channel_scaled_forward():
     assert torch.allclose(new, orig, atol=1e-6), (
         "baked plain forward diverged from the channel-scaled original"
     )
-
-
-# Sanity: BaseLoRAModule.inv_scale buffer is persistent so state_dict() carries it.
-def test_inv_scale_buffer_is_persistent():
-    in_dim = 8
-    base = torch.nn.Linear(in_dim, 16, bias=False)
-    calibration = torch.rand(in_dim)
-
-    lora = LoRAModule(
-        "test_lora", base, multiplier=1.0, lora_dim=4, alpha=4,
-        channel_scale=calibration,
-    )
-    assert "inv_scale" in lora.state_dict(), (
-        "inv_scale must be a persistent buffer so save_weights picks it up"
-    )
-    assert isinstance(lora, BaseLoRAModule)

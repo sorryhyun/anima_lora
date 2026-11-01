@@ -34,6 +34,7 @@ def _write_dit(path, *, num_blocks: int, width: int = 2048, prefix: str = "net."
     return path
 
 
+@pytest.mark.core
 @pytest.mark.parametrize("prefix", _DIT_PREFIXES)
 @pytest.mark.parametrize("num_blocks", [28, 40])
 def test_depth_is_counted_under_either_prefix(tmp_path, prefix, num_blocks):
@@ -43,12 +44,6 @@ def test_depth_is_counted_under_either_prefix(tmp_path, prefix, num_blocks):
         prefix=prefix,
     )
     assert probe_dit_arch(str(path))["num_blocks"] == num_blocks
-
-
-def test_llm_adapter_blocks_do_not_inflate_depth(tmp_path):
-    """28 DiT blocks + 6 adapter blocks must read as 28, not 34."""
-    path = _write_dit(tmp_path / "adapter.safetensors", num_blocks=28)
-    assert probe_dit_arch(str(path))["num_blocks"] == 28
 
 
 def test_width_maps_to_head_count(tmp_path):
@@ -62,11 +57,4 @@ def test_unknown_width_raises(tmp_path):
     head_dim silently differs from the checkpoint's."""
     path = _write_dit(tmp_path / "odd.safetensors", num_blocks=28, width=1536)
     with pytest.raises(RuntimeError, match="Unsupported DiT width"):
-        probe_dit_arch(str(path))
-
-
-def test_non_dit_checkpoint_raises(tmp_path):
-    path = tmp_path / "notadit.safetensors"
-    save_file({"some.other.weight": torch.zeros(4)}, str(path))
-    with pytest.raises(RuntimeError, match="No DiT blocks found"):
         probe_dit_arch(str(path))

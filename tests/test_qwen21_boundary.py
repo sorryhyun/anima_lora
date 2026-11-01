@@ -10,6 +10,8 @@ from __future__ import annotations
 import subprocess
 import sys
 
+import pytest
+
 from tests._boundary import ROOT, imports_of, python_files
 
 QWEN21 = ROOT / "library" / "qwen21"
@@ -33,6 +35,7 @@ _SHARED = (
 )
 
 
+@pytest.mark.core
 def test_anima_side_never_imports_qwen21():
     offenders = []
     for path in python_files():

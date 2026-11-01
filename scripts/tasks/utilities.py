@@ -90,6 +90,11 @@ def cmd_test_unit(extra):
     run([PY, "-m", "pytest", "-q", "-m", "slow", "-n", "auto", "tests/"])
 
 
+def cmd_test_core(extra):
+    """Run the tests marked ``core`` (the map is tests/README.md)."""
+    run([PY, "-m", "pytest", "-q", "-m", "core", "tests/", *extra])
+
+
 def cmd_update(extra):
     """Update anima_lora from a GitHub release (preserves datasets/output/models;
     prompts on configs/methods/ + configs/gui-methods/ conflicts; runs uv sync)."""

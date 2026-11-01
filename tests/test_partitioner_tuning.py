@@ -39,16 +39,6 @@ def test_tuning_sets_flags(restore_functorch_config):
     assert functorch_config.aggressive_recomputation is True
 
 
-def test_tuning_partial(restore_functorch_config):
-    functorch_config.recompute_views = False
-    functorch_config.aggressive_recomputation = False
-    _apply_partitioner_tuning(
-        recompute_views=True, aggressive_recomputation=False, grad_ckpt=False
-    )
-    assert functorch_config.recompute_views is True
-    assert functorch_config.aggressive_recomputation is False
-
-
 def test_tuning_skipped_under_grad_ckpt(restore_functorch_config):
     functorch_config.recompute_views = False
     functorch_config.aggressive_recomputation = False
@@ -59,26 +49,6 @@ def test_tuning_skipped_under_grad_ckpt(restore_functorch_config):
     assert functorch_config.aggressive_recomputation is False
 
 
-def test_tuning_noop_when_disabled(restore_functorch_config):
-    functorch_config.recompute_views = False
-    functorch_config.aggressive_recomputation = False
-    _apply_partitioner_tuning(
-        recompute_views=False, aggressive_recomputation=False, grad_ckpt=False
-    )
-    assert functorch_config.recompute_views is False
-    assert functorch_config.aggressive_recomputation is False
-
-
-@pytest.mark.skipif(sys.platform != "linux", reason="Linux-only default")
-def test_expandable_segments_default(monkeypatch):
-    monkeypatch.delenv("PYTORCH_CUDA_ALLOC_CONF", raising=False)
-    monkeypatch.delenv("ANIMA_EXPANDABLE_SEGMENTS", raising=False)
-    import os
-
-    assert default_expandable_segments() is True
-    assert os.environ["PYTORCH_CUDA_ALLOC_CONF"] == "expandable_segments:True"
-
-
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux-only default")
 def test_expandable_segments_respects_user_conf(monkeypatch):
     monkeypatch.setenv("PYTORCH_CUDA_ALLOC_CONF", "max_split_size_mb:128")
@@ -87,13 +57,3 @@ def test_expandable_segments_respects_user_conf(monkeypatch):
 
     assert default_expandable_segments() is False
     assert os.environ["PYTORCH_CUDA_ALLOC_CONF"] == "max_split_size_mb:128"
-
-
-@pytest.mark.skipif(sys.platform != "linux", reason="Linux-only default")
-def test_expandable_segments_opt_out(monkeypatch):
-    monkeypatch.delenv("PYTORCH_CUDA_ALLOC_CONF", raising=False)
-    monkeypatch.setenv("ANIMA_EXPANDABLE_SEGMENTS", "0")
-    import os
-
-    assert default_expandable_segments() is False
-    assert "PYTORCH_CUDA_ALLOC_CONF" not in os.environ

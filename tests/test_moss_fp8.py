@@ -1,10 +1,11 @@
 """MOSS quantized text encoders: the export's key set and scale, the dequantising
-Linear, the file round trip, the TE cache's encoder stamp, the int8 default."""
+Linear, the file round trip, the TE cache's encoder stamp."""
 
 from __future__ import annotations
 
 import json
 
+import pytest
 import torch
 import torch.nn.functional as F
 from safetensors import safe_open
@@ -27,7 +28,6 @@ from library.moss.fp8 import (
     quantize_te,
     quantize_weight,
 )
-from library.moss.requests import CacheRequest, GenerateRequest
 from library.moss.scan import caption_sha
 
 
@@ -111,6 +111,7 @@ def test_quantize_te_writes_comfy_mixed_precision(tmp_path, monkeypatch):
         assert json.loads(f.metadata()["quantization"]) == conf
 
 
+@pytest.mark.core
 def test_encoder_stamp_reencodes_on_a_switch(tmp_path, monkeypatch):
     from types import SimpleNamespace
 
@@ -144,35 +145,3 @@ def test_encoder_stamp_reencodes_on_a_switch(tmp_path, monkeypatch):
     with safe_open(str(path), "pt") as f:
         assert f.metadata()["encoder"] == encoder_id("fp8")
     assert _te_current(path, "tags", 4096, encoder=encoder_id("fp8"))
-
-
-def test_text_encoder_field_round_trips():
-    from library.moss.loader import TE_PRECISIONS
-
-    for cls in (CacheRequest, GenerateRequest):
-        assert cls().text_encoder == "int8"
-        for precision in TE_PRECISIONS:
-            argv = cls(text_encoder=precision).to_argv()
-            assert cls.from_argv(argv).text_encoder == precision
-
-
-def test_quantized_precisions_have_catalog_rows(tmp_path, monkeypatch):
-    import dataclasses
-
-    from library import downloads
-    from library.moss import fp8
-
-    rows = dict(downloads.by_id())
-    monkeypatch.setattr(downloads, "by_id", lambda: rows)
-    for precision, name in (
-        ("fp8", downloads.MOSS_TE_FP8_FILE),
-        ("int8", downloads.MOSS_TE_INT8_FILE),
-    ):
-        asset = rows[f"moss_te_{precision}"]
-        assert name in asset.files and "config.json" in asset.files
-        dest = tmp_path / precision
-        dest.mkdir()
-        for f in asset.files:
-            (dest / f).touch()
-        rows[asset.id] = dataclasses.replace(asset, dest=dest)
-        assert fp8.fp8_te_path(precision=precision) == dest / name

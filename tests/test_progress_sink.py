@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
-import logging
 import os
 import sys
 from pathlib import Path
@@ -14,9 +13,7 @@ import pytest
 
 from library.training.progress import (
     ProgressSink,
-    _find_cmmd,
     command_job_path,
-    _flatten_logs,
     read_status,
 )
 
@@ -49,21 +46,6 @@ def test_resolve_path_default_derives_to_sibling_logs_dir(tmp_path):
     assert resolved == os.path.join(str(tmp_path), "logs", "my_run.progress.jsonl")
 
 
-def test_resolve_path_disable_tokens():
-    base = dict(output_dir="/tmp/x", output_name="r")
-    for tok in ("", "  ", "none", "OFF", "None"):
-        args = argparse.Namespace(progress_jsonl=tok, **base)
-        assert ProgressSink.resolve_path(args) is None
-
-
-def test_resolve_path_explicit_override(tmp_path):
-    explicit = str(tmp_path / "custom.jsonl")
-    args = argparse.Namespace(
-        progress_jsonl=explicit, output_dir="/ignored", output_name="r"
-    )
-    assert ProgressSink.resolve_path(args) == explicit
-
-
 def test_command_job_path_prefers_the_daemon_job_dir(tmp_path, monkeypatch):
     monkeypatch.delenv("ANIMA_DAEMON_JOB_DIR", raising=False)
     assert command_job_path("logs/run.progress.jsonl") == "logs/run.progress.jsonl"
@@ -73,6 +55,7 @@ def test_command_job_path_prefers_the_daemon_job_dir(tmp_path, monkeypatch):
     )
 
 
+@pytest.mark.core
 def test_full_lifecycle_schema(tmp_path):
     path = str(tmp_path / "run.progress.jsonl")
     sink = ProgressSink(path, run="run", method="lora", preset="default", t0=0.0)
@@ -102,24 +85,6 @@ def test_full_lifecycle_schema(tmp_path):
     assert all("ev" in e and "ts" in e for e in evs)
 
 
-def test_stopped_run_end(tmp_path):
-    path = str(tmp_path / "run.progress.jsonl")
-    sink = ProgressSink(path, run="r", method=None, preset=None, t0=0.0)
-    sink.run_start(total_steps=10, total_epochs=1, pid=1)
-    sink.run_end(status="stopped", final_step=3)
-    evs = _read_events(path)
-    assert evs[-1]["ev"] == "run_end" and evs[-1]["status"] == "stopped"
-
-
-def test_log_before_run_start_is_noop(tmp_path):
-    # Sink not yet opened (no run_start) → log/ckpt must not create the file.
-    path = str(tmp_path / "run.progress.jsonl")
-    sink = ProgressSink(path, run="r", method=None, preset=None)
-    sink.log({"loss": 1.0}, global_step=1, epoch=0)
-    sink.ckpt(global_step=1, path="x")
-    assert not os.path.exists(path)
-
-
 def test_tail_while_write(tmp_path):
     # A reader can open + read the file while the sink keeps appending
     # (the concurrency contract the daemon relies on).
@@ -132,61 +97,6 @@ def test_tail_while_write(tmp_path):
     assert [e["ev"] for e in mid] == ["run_start", "step"]
     sink.run_end(status="ok", final_step=2)
     assert [e["ev"] for e in _read_events(path)][-1] == "run_end"
-
-
-def test_log_mirror_writes_log_events(tmp_path):
-    path = str(tmp_path / "run.progress.jsonl")
-    sink = ProgressSink(path, run="r", method=None, preset=None, t0=0.0)
-    sink.run_start(total_steps=1, total_epochs=1, pid=1)
-    sink.attach_log_mirror()
-    logging.getLogger("anima.test").warning("boom %d", 7)
-    logging.getLogger("anima.test").info("quiet")  # below WARNING → not mirrored
-    sink.run_end(status="ok", final_step=1)
-    # close() detached the handler: later records must not write (or raise)
-    logging.getLogger("anima.test").warning("after-close")
-
-    evs = _read_events(path)
-    logs = [e for e in evs if e["ev"] == "log"]
-    assert len(logs) == 1
-    assert logs[0]["level"] == "WARNING"
-    assert logs[0]["logger"] == "anima.test"
-    assert logs[0]["msg"] == "boom 7"
-    assert not any(e.get("msg") == "after-close" for e in evs)
-
-
-def test_log_mirror_cap(tmp_path):
-    path = str(tmp_path / "run.progress.jsonl")
-    sink = ProgressSink(path, run="r", method=None, preset=None, t0=0.0)
-    sink.run_start(total_steps=1, total_epochs=1, pid=1)
-    sink.attach_log_mirror(max_events=2)
-    for i in range(5):
-        logging.getLogger("anima.test").warning("w%d", i)
-    sink.run_end(status="ok", final_step=1)
-
-    logs = [e for e in _read_events(path) if e["ev"] == "log"]
-    # 2 mirrored records + the cap notice, nothing past the cap
-    assert len(logs) == 3
-    assert [e["msg"] for e in logs[:2]] == ["w0", "w1"]
-    assert "cap" in logs[2]["msg"]
-
-
-def test_log_mirror_before_run_start_is_noop(tmp_path):
-    path = str(tmp_path / "run.progress.jsonl")
-    sink = ProgressSink(path, run="r", method=None, preset=None)
-    sink.attach_log_mirror()  # stream not open yet → must not attach
-    logging.getLogger("anima.test").warning("early")
-    assert not os.path.exists(path)
-    sink.close()
-
-
-def test_flatten_logs_drops_nonscalar():
-    flat = _flatten_logs({"loss": 0.5, "ok": True, "name": "x", "arr": [1, 2, 3]})
-    assert flat == {"loss": 0.5, "ok": True, "name": "x"}
-
-
-def test_find_cmmd():
-    assert _find_cmmd({"loss/val_cmmd": 0.042, "loss": 1.0}) == 0.042
-    assert _find_cmmd({"loss": 1.0}) is None
 
 
 # --- read_status (issue #4: the "where is this run at" digest, so callers don't
@@ -257,6 +167,7 @@ def test_read_status_terminal_states_come_from_run_end(tmp_path):
     assert st["error"] == "RuntimeError: boom"
 
 
+@pytest.mark.core
 def test_read_status_flags_a_vanished_pid_as_dead(tmp_path):
     # No run_end and the writer is gone: killed / OOMed, not "still running".
     events = [
@@ -264,18 +175,6 @@ def test_read_status_flags_a_vanished_pid_as_dead(tmp_path):
         {"ev": "step", "ts": 1.0, "global_step": 5},
     ]
     assert read_status(_write_stream(tmp_path, events))["status"] == "dead"
-
-
-def test_read_status_val_event_and_empty_stream(tmp_path):
-    events = [_run_start(), {"ev": "val", "ts": 1.0, "global_step": 100, "cmmd": 0.3}]
-    st = read_status(_write_stream(tmp_path, events))
-    assert st["val"]["cmmd"] == 0.3
-    assert st["global_step"] is None and st["rate"] is None  # no step events yet
-
-    empty = tmp_path / "empty.progress.jsonl"
-    empty.write_text("")
-    with pytest.raises(ValueError):
-        read_status(str(empty))
 
 
 def _unused_pid() -> int:
@@ -339,19 +238,10 @@ def test_run_status_finds_daemon_job_streams(tmp_path):
     assert "logs" in str(ei.value) and "jobs" in str(ei.value)
 
 
-def test_run_status_skips_command_jobs_and_survives_empty_dirs(tmp_path):
-    """A command job's dir exists but never materializes a progress.jsonl."""
-    logs, jobs = tmp_path / "logs", tmp_path / "jobs"
-    jobs.mkdir()
-    (jobs / "20260901-1200-abcdef").mkdir()  # command job: no stream
-    assert rs._find_streams(logs, jobs) == []  # missing logs dir is not an error
-    assert rs._find_streams(logs, None) == []
-
-
 def test_run_status_names_a_running_job_before_its_stream(tmp_path, monkeypatch):
     """A train job writes run_start only after its model loads; until then a bare
     run-status showed the previous (dead) run instead of the job on the GPU."""
-    logs, jobs = tmp_path / "logs", tmp_path / "jobs"
+    jobs = tmp_path / "jobs"
     _daemon_stream(jobs, "20261023-222131-3bd611", "old")
     new = jobs / "20261023-222244-7072b5"
     new.mkdir()

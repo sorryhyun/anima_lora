@@ -15,11 +15,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from tests.config_closure import assert_closed, declared_argparse_keys, getattr_keys
 
 _REPO = Path(__file__).resolve().parent.parent
 
 
+@pytest.mark.core
 def test_inference_getattr_reads_are_declared_flags():
     """``getattr(args, …)`` in generation.py ⊆ inference argparse flags."""
     from library.inference import args as iargs
@@ -37,6 +40,7 @@ def _trainer_getattr_reads() -> set[str]:
     return reads
 
 
+@pytest.mark.core
 def test_train_getattr_reads_are_declared_flags():
     """``getattr(args, …)`` in library/anima/trainer/ ⊆ train argparse flags.
 

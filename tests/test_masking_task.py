@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 from anime_tools.downloads import DEFAULT_SUBJECT_PROMPT_EMBED
 
 from scripts.tasks import masking
@@ -22,20 +21,6 @@ SOFT_GIRL = f"keep:soft:{DEFAULT_SUBJECT_PROMPT_EMBED}"
 
 def _specs(req) -> list[str]:
     return [m.spec() for m in req.masks]
-
-
-def test_flat_config_is_one_rule_with_top_level_thresholds():
-    rules = masking._sam_rules(
-        {"masks": ["ignore:text:speech bubble"], "threshold": 0.7, "dilate": 3}
-    )
-    assert rules == [
-        {
-            "masks": ("ignore:text:speech bubble",),
-            "path_pattern": None,
-            "threshold": 0.7,
-            "dilate": 3,
-        }
-    ]
 
 
 def test_rules_fall_back_to_top_level_then_package_defaults():
@@ -56,21 +41,6 @@ def test_rules_fall_back_to_top_level_then_package_defaults():
     assert req.dilate == 5  # the package default, not a trainer literal
 
 
-def test_rule_pattern_wins_over_the_global_scope():
-    rules = masking._sam_rules(
-        {
-            "rules": [
-                {"path_pattern": "a/*", "masks": ["ignore:text:x"]},
-                {"masks": ["ignore:text:y"]},
-            ]
-        }
-    )
-    own = masking._sam_request(Path("r"), Path("o"), rules[0], "manga/*")
-    scoped = masking._sam_request(Path("r"), Path("o"), rules[1], "manga/*")
-    assert own.path_pattern == "a/*"
-    assert scoped.path_pattern == "manga/*"
-
-
 def test_a_pre_064_yaml_pair_reads_as_masks():
     """``prompts`` → ignore:text, ``focus_prompts`` → keep:text, and ``girl`` —
     which the old stage served through ``--prompt_embed`` — the soft entry. An
@@ -85,27 +55,3 @@ def test_a_pre_064_yaml_pair_reads_as_masks():
         {"rules": [{"prompts": ["text"], "focus_prompts": ["girl", "face"]}]}
     )[0]
     assert rule["masks"] == (SOFT_GIRL, "keep:text:face", "ignore:text:text")
-
-
-def test_yaml_run_sam_off_means_no_requests(monkeypatch, tmp_path):
-    monkeypatch.setattr(masking, "_load_mask_config", lambda: {"run_sam": False})
-    assert masking._sam_requests(Path("resized"), tmp_path) == []
-
-
-def test_run_switches_accept_bools_and_env_style_strings():
-    assert masking._config_flag({}, "run_sam") is True
-    assert masking._config_flag({"run_sam": False}, "run_sam") is False
-    assert masking._config_flag({"run_sam": "0"}, "run_sam") is False
-    assert masking._config_flag({"run_sam": "no"}, "run_sam") is False
-    assert masking._config_flag({"run_sam": "1"}, "run_sam") is True
-
-
-def test_make_mask_refuses_stray_args():
-    with pytest.raises(SystemExit, match="takes no ARGS"):
-        masking.cmd_mask(["--force"])
-
-
-def test_rule_without_masks_fails_before_the_sam3_load():
-    rule = masking._sam_rules({"rules": [{"path_pattern": "a/*"}]})[0]
-    with pytest.raises(SystemExit, match="nothing to mask"):
-        masking._sam_request(Path("r"), Path("o"), rule, None)

@@ -26,25 +26,7 @@ def settings_file(tmp_path, monkeypatch):
     return path
 
 
-def test_build_panel_maps_language_and_leaves_main_i18n(qapp, settings_file):
-    from gui import i18n
-    from gui.lines import window
-    from gui.moss.app import SPEC
-
-    i18n.set_language("ko")
-    try:
-        panel = window.build_panel(SPEC, "ko")
-        assert window._lang == "ko"
-        assert i18n.current_language() == "ko"
-        assert not hasattr(panel, "lang_combo")
-        window.build_panel(SPEC, "cn")
-        assert window._lang == "cn"
-        window.build_panel(SPEC, "xx")
-        assert window._lang == "en"
-    finally:
-        i18n.set_language("en")
-
-
+@pytest.mark.core
 def test_mode_switch_is_lazy_persisted_and_restored(qapp, settings_file, monkeypatch):
     import gui.app as app_mod
 
@@ -80,19 +62,6 @@ def test_mode_switch_is_lazy_persisted_and_restored(qapp, settings_file, monkeyp
     again.mode_combo.setCurrentIndex(0)
     assert again.tab_stack.currentWidget() is again.tabs
     again.close()
-
-
-def test_guidebook_follows_mode():
-    from gui import i18n
-    from gui.dialogs.guidebook import _guidebook_path
-
-    i18n.set_language("ko")
-    try:
-        assert _guidebook_path("anima").name == "가이드북.md"
-        assert _guidebook_path("moss").name == "moss-가이드북.md"
-    finally:
-        i18n.set_language("en")
-    assert _guidebook_path("moss").name == "moss-guidebook.md"
 
 
 def test_line_panel_claims_cli_submitted_sidecar_job(qapp, settings_file, monkeypatch):

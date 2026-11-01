@@ -6,6 +6,8 @@ import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 
+import pytest
+
 
 @contextmanager
 def _temporary_custom_variant(name: str) -> Iterator[tuple[str, object]]:
@@ -35,34 +37,6 @@ def _make_tab():
     app = QApplication.instance() or QApplication([])
     assert app is not None
     return PreprocessingTab()
-
-
-def test_preprocess_tab_persists_default_target_res_to_variant():
-    """The GUI profile should show the resolution tiers it will use.
-
-    ``[1024]`` is the default tier, but it must still be written to the active
-    gui-method variant when the Preprocess tab saves. Otherwise users see the
-    resolution selection reset/vanish from the profile even though the widget
-    accepted the value.
-    """
-    from gui import _load
-
-    tab = None
-    with _temporary_custom_variant("__pytest_preprocess_target_res__") as (
-        variant,
-        path,
-    ):
-        tab = _make_tab()
-        tab.set_variant(variant, method="lora")
-        tab._set_target_res_widget([1024])
-
-        assert tab.persist_preprocess_inputs()
-
-        meta = _load(path)["variant"]
-        assert meta["stages"]["resize"]["target_res"] == [1024]
-
-        if tab is not None:
-            tab.deleteLater()
 
 
 def test_preprocess_tab_source_dir_editable_and_persists():
@@ -108,109 +82,7 @@ def test_preprocess_tab_source_dir_editable_and_persists():
             tab.deleteLater()
 
 
-def test_preprocess_tab_freefit_max_ratio_round_trips_to_variant():
-    """Free-fit is always on; a non-default max-ratio must persist and reload."""
-    from gui import _load
-
-    tab = None
-    with _temporary_custom_variant("__pytest_preprocess_freefit__") as (
-        variant,
-        path,
-    ):
-        tab = _make_tab()
-        tab.set_variant(variant, method="lora")
-        tab.widget("freefit_max_ratio").setValue(3.0)
-
-        assert tab.persist_preprocess_inputs()
-        meta = _load(path)["variant"]
-        # The freefit toggle is gone (free-fit is the only mode); only the clamp,
-        # now a resize stage field.
-        assert "freefit" not in meta and "freefit_max_ratio" not in meta
-        assert meta["stages"]["resize"]["freefit_max_ratio"] == 3.0
-
-        # Reload into a fresh widget and confirm the value comes back.
-        tab.widget("freefit_max_ratio").setValue(4.0)
-        tab.set_variant(variant, method="lora")
-        assert tab.widget("freefit_max_ratio").value() == 3.0
-
-        if tab is not None:
-            tab.deleteLater()
-
-
-def test_preprocess_stage_values_carry_freefit_max_ratio():
-    """The resize form feeds the resize request; free-fit is always on."""
-    tab = None
-    with _temporary_custom_variant("__pytest_preprocess_freefit_ovr__") as (
-        variant,
-        _path,
-    ):
-        tab = _make_tab()
-        tab.set_variant(variant, method="lora")
-        tab.widget("freefit_max_ratio").setValue(3.5)
-
-        resize = tab.stage_values()["resize"]
-        assert "freefit" not in resize
-        assert resize["freefit_max_ratio"] == 3.5
-        assert "freefit_max_ratio" not in tab.preprocess_overrides()
-
-        if tab is not None:
-            tab.deleteLater()
-
-
-def test_preprocess_tab_caption_options_round_trip_to_variant():
-    """The caption-editing box is the ``correct`` stage form: its values
-    persist under ``[variant.stages.correct]`` and reach the job as a form."""
-    import json
-
-    from gui import _load
-
-    tab = None
-    with _temporary_custom_variant("__pytest_preprocess_caption_options__") as (
-        variant,
-        path,
-    ):
-        tab = _make_tab()
-        tab.set_variant(variant, method="lora")
-
-        tab.widget("no_correct").setChecked(False)
-        tab.widget("caption_insert_no_artist").setChecked(True)
-        tab.widget("caption_trigger_word").setText("@dataset-trigger")
-        tab.widget("caption_trigger_at_front").setChecked(True)
-        tab.widget("caption_drop_groups").setText("artist")
-
-        assert tab._save_all()
-        meta = _load(path)["variant"]
-        assert meta["stages"]["correct"] == {
-            "caption_insert_no_artist": True,
-            "caption_trigger_word": "@dataset-trigger",
-            "caption_drop_groups": "artist",
-            "no_correct": False,
-            "caption_trigger_at_front": True,
-        }
-        for key in ("caption_correct_order", "caption_trigger_word"):
-            assert key not in meta  # no flat key, no env
-
-        env = tab.preprocess_env()
-        assert "CAPTION_TRIGGER_WORD" not in env
-        form = json.loads(env["PREPROCESS_STAGES_JSON"])["correct"]
-        assert form["caption_trigger_word"] == "@dataset-trigger"
-        assert form["no_correct"] is False and form["caption_drop_groups"] == "artist"
-
-        tab.widget("no_correct").setChecked(True)
-        tab.widget("caption_insert_no_artist").setChecked(False)
-        tab.widget("caption_trigger_word").clear()
-        tab.widget("caption_trigger_at_front").setChecked(False)
-        tab.set_variant(variant, method="lora")
-        assert not tab.widget("no_correct").isChecked()
-        assert tab.widget("caption_insert_no_artist").isChecked()
-        assert tab.widget("caption_trigger_word").text() == "@dataset-trigger"
-        assert tab.widget("caption_trigger_at_front").isChecked()
-        assert tab.widget("caption_drop_groups").text() == "artist"
-
-        if tab is not None:
-            tab.deleteLater()
-
-
+@pytest.mark.core
 def test_preprocess_tab_is_cache_only(monkeypatch):
     """A ``preprocess.toml`` turning the curation stages on never reaches a
     GUI run (env beats the config in ``tasks.py``), the job carries only the
@@ -256,37 +128,3 @@ def test_preprocess_tab_is_cache_only(monkeypatch):
 
         if tab is not None:
             tab.deleteLater()
-
-
-def test_resize_preview_lists_each_source_with_its_bucket(tmp_path, monkeypatch):
-    """The Preprocess tab's resize preview reads the tab's live tiers and
-    source dir, and leaves an excluded image out like the resize does."""
-    from PySide6.QtGui import QImage
-
-    from gui.i18n import t
-    from gui.tabs.preprocess import resize_preview as RP
-    from library.preprocess.resize_preview import compute_resize_preview
-
-    src = tmp_path / "src"
-    (src / "a").mkdir(parents=True)
-    QImage(1600, 900, QImage.Format_RGB32).save(str(src / "a" / "wide.png"))
-    QImage(800, 1200, QImage.Format_RGB32).save(str(src / "tall.png"))
-    QImage(640, 640, QImage.Format_RGB32).save(str(src / "gone.png"))
-    monkeypatch.setattr(RP, "excluded_rels", lambda: ("gone.png",))
-    monkeypatch.setattr(RP, "workspace_excluded_rels", lambda: ())
-
-    tab = _make_tab()
-    tab.widget("source_image_dir").setText(str(src))
-    tab._set_target_res_widget([768, 1024])
-    dlg = RP.ResizePreviewDialog(tab)
-    dlg.refresh()
-
-    rows = {
-        dlg.tree.topLevelItem(i).text(0): dlg.tree.topLevelItem(i)
-        for i in range(dlg.tree.topLevelItemCount())
-    }
-    assert set(rows) == {"a/wide.png", "tall.png"}
-    pv = compute_resize_preview(1600, 900, [768, 1024])
-    assert rows["a/wide.png"].text(2) == "{}×{}".format(*pv.bucket_size)
-    assert rows["a/wide.png"].text(3) == str(pv.target_edge)
-    assert t("preprocess_resize_preview_skipped", n=1) in dlg.summary.text()

@@ -52,7 +52,8 @@ before adding or moving a weight or changing a loader's default path.
   lines and breaks the next patch.
 - **Run the test suite at most twice per task** (here or in `../anime_tools`): once after
   the change, once after fixing what it caught, scoped to the affected test file. Say why
-  if a third run is needed. `make test-unit` runs pytest.
+  if a third run is needed. `make test-unit` runs pytest; `make test-core` runs the
+  tests marked `core`, the line-level invariants (map and admission rule: `tests/README.md`).
 - **pytest hides the GPU by default** (`tests/conftest.py` blanks `CUDA_VISIBLE_DEVICES`),
   so tests that need a card **skip** and a green run says nothing about them; read the
   `skipped` count. To run them: `ANIMA_TEST_GPU=1 make daemon-run ARGS="--stall-timeout 300

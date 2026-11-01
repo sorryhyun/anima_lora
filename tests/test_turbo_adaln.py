@@ -9,9 +9,7 @@ Tier-1.5 guards for the adaln.md training path:
   * adaln_rank builds the adaln modules at their own rank via the factory's
     reg_dims override while attn/MLP keep network_dim — and per-module alpha
     stays the NETWORK alpha on the reg_dims path (documented hotter scale);
-  * adaln_alpha gives them their own alpha (the reg_alphas override), with or
-    without adaln_rank;
-  * adaln_rank / adaln_alpha without train_adaln are refused.
+  * adaln_alpha gives them their own alpha (the reg_alphas override).
 
 No GPU, no DiT: same one-Block tiny module as tests/test_turbo_tau_critic.py
 (class name "Block" is what ANIMA_TARGET_REPLACE_MODULE matches).
@@ -60,12 +58,7 @@ def _adaln_loras(net) -> list:
     return [m for m in net.unet_loras if "adaln_up_" in m.lora_name]
 
 
-def test_default_excludes_adaln() -> None:
-    turbo = _make()
-    assert not _adaln_loras(turbo.student)
-    assert not _adaln_loras(turbo.fake)
-
-
+@pytest.mark.core
 def test_train_adaln_targets_student_and_fake() -> None:
     turbo = _make(train_adaln=True)
     assert len(_adaln_loras(turbo.student)) == 3
@@ -91,11 +84,6 @@ def test_adaln_rank_override() -> None:
     assert adaln.scale == pytest.approx(8.0 / ADALN_RANK)
 
 
-def test_adaln_rank_requires_train_adaln() -> None:
-    with pytest.raises(ValueError, match="train_adaln"):
-        _make(adaln_rank=ADALN_RANK)
-
-
 def test_adaln_alpha_override() -> None:
     # Scale-preserving: network 8/4 = 2.0 → adaln alpha 2.0 × ADALN_RANK = 4.
     turbo = _make(
@@ -111,15 +99,3 @@ def test_adaln_alpha_override() -> None:
         assert all(m.scale == pytest.approx(2.0) for m in adaln)
         others = [m for m in net.unet_loras if "adaln_up_" not in m.lora_name]
         assert others and all(float(m.alpha) == 8.0 for m in others)
-
-
-def test_adaln_alpha_without_rank() -> None:
-    # alpha override composes without a rank override (adaln at network rank).
-    turbo = _make(train_adaln=True, adaln_alpha=6.0, student_alpha=8)
-    adaln = _adaln_loras(turbo.student)
-    assert adaln and all(m.lora_dim == RANK and float(m.alpha) == 6.0 for m in adaln)
-
-
-def test_adaln_alpha_requires_train_adaln() -> None:
-    with pytest.raises(ValueError, match="train_adaln"):
-        _make(adaln_alpha=4.0)

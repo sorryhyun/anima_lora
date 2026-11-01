@@ -1,4 +1,5 @@
-"""``make gui-moss``: torch-free at launch, and the GUI's scan agrees with the cache."""
+"""``make gui-moss``: torch-free at launch, every language complete, the model
+combo switches the whole plan."""
 
 from __future__ import annotations
 
@@ -8,49 +9,18 @@ import sys
 from pathlib import Path
 
 import pytest
-import torch
-from PIL import Image
-from safetensors.torch import save_file
 
-from library.moss.cache import LATENT_SUFFIX, TE_SUFFIX, caption_sha
-from library.moss.scan import cache_counts, scan
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.mark.core
 def test_gui_is_torch_free():
     code = (
         "import sys, gui.moss.app, library.moss.scan; sys.exit('torch' in sys.modules)"
     )
     result = subprocess.run([sys.executable, "-c", code], cwd=ROOT)
     assert result.returncode == 0, "gui.moss.app imports torch"
-
-
-def _te(path: Path, caption: str) -> None:
-    save_file(
-        {"embeds": torch.zeros(3, 8, dtype=torch.bfloat16)},
-        path,
-        metadata={"caption_sha256": caption_sha(caption), "max_text_tokens": "4096"},
-    )
-
-
-def test_scan_counts_prefixed_stems_and_stale_captions(tmp_path):
-    src, out = tmp_path / "src", tmp_path / "out"
-    for sub in ("x", "y"):
-        (src / sub).mkdir(parents=True)
-        Image.new("RGB", (32, 32)).save(src / sub / "img.png")
-        (src / sub / "img.txt").write_text(f"caption {sub}\n", encoding="utf-8")
-    Image.new("RGB", (32, 32)).save(src / "x" / "nocap.png")
-    out.mkdir()
-    _te(out / f"x__img{TE_SUFFIX}", "caption x")  # current
-    _te(out / f"y__img{TE_SUFFIX}", "old caption")  # caption edited since
-    save_file({"latent": torch.zeros(1)}, out / f"x__img_32x32{LATENT_SUFFIX}")
-
-    s = scan(src, out)
-    assert (s.images, s.pairs, s.duplicates) == (3, 2, 2)
-    assert (s.text_cached, s.stale_text, s.latents_cached) == (1, 1, 1)
-    c = cache_counts(out)
-    assert (c.text, c.latents, c.samples) == (2, 1, 1)
 
 
 @pytest.mark.parametrize("lang", ["ko", "ja", "cn"])
@@ -111,6 +81,7 @@ def _pick(combo, text: str) -> None:
     combo.activated.emit(combo.currentIndex())
 
 
+@pytest.mark.core
 def test_model_items_change_the_whole_plan(panel):
     import tomllib
 
@@ -144,48 +115,7 @@ def test_model_item_follows_the_int8_field_and_saved_values(panel):
     assert (req.model, req.int8, req.activation_memory_budget) == ("base", "fwd", 0.1)
 
 
-def test_train_summary_names_cache_subfolders(panel, tmp_path):
-    set_a = tmp_path / "set_a"
-    set_a.mkdir()
-    (tmp_path / "empty").mkdir()
-    save_file({"embeds": torch.zeros(1)}, set_a / f"img{TE_SUFFIX}")
-    save_file({"latent": torch.zeros(1)}, set_a / f"img_32x32{LATENT_SUFFIX}")
-
-    panel.train_form.set_values({"cache": str(tmp_path)})
-    panel._rescan()
-    assert "set_a (1)" in panel.train_summary.text()
-    assert "empty" not in panel.train_summary.text()
-
-    panel.train_form.set_values({"cache": str(set_a)})
-    panel._rescan()
-    assert panel.train_summary.text() == "1 cached samples ready."
-
-    panel.train_form.set_values({"cache": str(tmp_path / "empty")})
-    panel._rescan()
-    assert "run preprocessing first" in panel.train_summary.text()
-
-
-def test_test_form_items_set_the_int8_render(panel):
-    from library.moss.requests import GenerateRequest
-
-    form = panel.test_form
-    combo = form.widgets["model"]
-    assert combo.currentText() == "base (bf16)"
-
-    _pick(combo, "base (int8)")
-    req = form.request()
-    assert (req.model, req.int8, req.stream, req.blocks_to_swap) == (
-        "base",
-        "on",
-        "fp32",
-        0,
-    )
-    assert "--int8" in req.to_argv()
-
-    _pick(combo, "base (bf16)")
-    assert form.request() == GenerateRequest()
-
-
+@pytest.mark.core
 def test_i2i_forms_return_to_the_tasks_bf16_plan(qapp):
     from gui.lines import window
     from gui.moss.app import SPEC

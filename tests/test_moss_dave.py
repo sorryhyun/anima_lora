@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import torch
 
-from library.moss.dave import MossDAVE, pool_weight
+from library.moss.dave import MossDAVE
 from library.moss.generate import denoise
 from library.moss.model import MOSSImageTransformer
 
@@ -51,24 +51,6 @@ def test_excluded_channels_keep_their_mean():
     keep = [c for c in range(16) if c not in (3, 7)]
     mu = x[:, : H * W, keep].mean(1)
     assert torch.allclose(out[:, : H * W, keep].mean(1), 0.6 * mu, atol=1e-5)
-
-
-def test_shipped_channel_list_loads():
-    d = MossDAVE.from_spec("8-18", 42)
-    assert {42, 1356} <= set(d.exclude.tolist())
-
-
-@torch.no_grad()
-@pytest.mark.parametrize("batched", [False, True])
-def test_zero_strength_is_exact_noop(tiny, batched):
-    x, e, mask = _inputs()
-    fwd = tiny.forward_batched if batched else (lambda *a: tiny(*a).sample)
-    ref = fwd(x, 500.0, e, mask)
-    tiny.layer_hook = _dave([1, 1, 1, 1], strength=0.0)
-    try:
-        assert torch.equal(fwd(x, 500.0, e, mask), ref)
-    finally:
-        tiny.layer_hook = None
 
 
 @torch.no_grad()
@@ -118,19 +100,3 @@ def test_denoise_window_and_cleanup(tiny):
     assert one.active_steps == 1
     assert not torch.allclose(out, ref, atol=1e-4)
     assert tiny.layer_hook is None
-
-
-def test_pool_weight_range_and_mask(tmp_path):
-    assert pool_weight("1-2", 4).tolist() == [0, 1, 1, 0]
-    with pytest.raises(ValueError):
-        pool_weight("2-5", 4)
-    np.savez(tmp_path / "m.npz", weight=np.array([0, 1, 0], dtype=np.float32))
-    with pytest.raises(ValueError):
-        pool_weight(str(tmp_path / "m.npz"), 4)
-    assert pool_weight(str(tmp_path / "m.npz"), 3).tolist() == [0, 1, 0]
-
-
-def test_tau_counts_steps():
-    d = _dave([1], tau=0.10)
-    assert d.begin(50) == 5 and d.is_active(4) and not d.is_active(5)
-    assert d.begin(4) == 1

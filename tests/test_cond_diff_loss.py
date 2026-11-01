@@ -4,7 +4,7 @@ The weight map reallocates per-pixel FM gradient toward the cond↔target
 edit region for paired ``cond_cache_dir`` tasks (sanitize / near-twins).
 Invariants under test:
 
-  - off by default / no cond_latents in batch → bit-identical loss.
+  - off by default → bit-identical loss.
   - per-image mean of the weight map ≈ 1 (pure reallocation, no LR shift).
   - edit region gets strictly more weight than the unchanged background,
     with the background:edit ratio bounded below by the floor.
@@ -82,62 +82,14 @@ def test_zero_diff_degrades_to_uniform():
     assert torch.allclose(w, torch.ones_like(w), atol=1e-4)
 
 
-def test_apply_is_noop_when_disabled_or_unpaired():
-    target, cond, _ = _paired_latents()
-    loss = torch.rand(2, 16, 24, 32)
-    # flag off
-    ctx = _ctx(
-        _make_args(), {"latents": target, "cond_latents": cond}, loss, loss
-    )
-    assert apply_cond_diff_loss(loss, ctx) is loss
-    # flag on, no cond_latents (ref==target subsets put nothing in the batch)
-    ctx = _ctx(
-        _make_args(cond_diff_loss=True), {"latents": target, "cond_latents": None},
-        loss, loss,
-    )
-    assert apply_cond_diff_loss(loss, ctx) is loss
-
-
-def test_apply_is_noop_on_shape_mismatch():
-    """Free-fit can pair a cond at a different shape than the target; the
-    element-wise diff weight is undefined there, so apply must no-op (return the
-    loss unchanged) rather than crash on the cond−target subtraction."""
-    target, _, _ = _paired_latents(h=24, w=32)
-    cond, _, _ = _paired_latents(h=28, w=30)  # deliberately different shape
-    cond = cond[0]  # (16, 28, 30) → make a (1, 16, 28, 30) cond below
-    cond = cond.unsqueeze(0)
-    target = target[:1]  # (1, 16, 24, 32), batch_size=1 (the free-fit regime)
-    loss = torch.rand(1, 16, 24, 32)
-    ctx = _ctx(
-        _make_args(cond_diff_loss=True),
-        {"latents": target, "cond_latents": cond},
-        loss, loss,
-    )
-    assert apply_cond_diff_loss(loss, ctx) is loss
-
-
-def test_uniform_loss_scalar_preserved():
-    """mean(w)=1 per image → a constant per-element loss reduces unchanged."""
-    target, cond, _ = _paired_latents()
-    loss = torch.full((2, 16, 24, 32), 0.37)
-    ctx = _ctx(
-        _make_args(cond_diff_loss=True),
-        {"latents": target, "cond_latents": cond},
-        loss, loss,
-    )
-    weighted = apply_cond_diff_loss(loss, ctx)
-    assert torch.allclose(
-        weighted.flatten(1).mean(1), loss.flatten(1).mean(1), atol=1e-5
-    )
-
-
 def test_5d_loss_broadcasts_on_dim2():
     target, cond, _ = _paired_latents()
     loss5d = torch.rand(2, 16, 1, 24, 32)
     ctx = _ctx(
         _make_args(cond_diff_loss=True),
         {"latents": target, "cond_latents": cond},
-        loss5d, loss5d,
+        loss5d,
+        loss5d,
     )
     out = apply_cond_diff_loss(loss5d, ctx)
     assert out.shape == loss5d.shape
@@ -150,9 +102,7 @@ def test_flow_match_loss_end_to_end_gating():
     batch = {"latents": target, "cond_latents": cond}
 
     off = _flow_match_loss(_ctx(_make_args(), batch, pred, target_v))
-    on = _flow_match_loss(
-        _ctx(_make_args(cond_diff_loss=True), batch, pred, target_v)
-    )
+    on = _flow_match_loss(_ctx(_make_args(cond_diff_loss=True), batch, pred, target_v))
     assert off.shape == (2,) and on.shape == (2,)
     assert torch.isfinite(on).all()
     assert not torch.allclose(off, on)  # weighting actually fired

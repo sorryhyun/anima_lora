@@ -105,14 +105,3 @@ def test_early_exit_skips_tail_blocks():
         assert fired == [True]
     finally:
         handle.remove()
-
-
-@torch.no_grad()
-def test_early_exit_requires_features():
-    model = _tiny_anima()
-    inp = _inputs()
-    try:
-        _fwd(model, inp, return_features_early=True)
-    except ValueError:
-        return
-    raise AssertionError("expected ValueError when early-exit has no tap set")

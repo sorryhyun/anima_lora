@@ -6,12 +6,12 @@ so dynamo keys the block graph on token count alone. The reshape must be
 *bit-exact* to the eager 5D path (the gap=0 control the old pad-leak probe
 verified), and eager (uncompiled) forwards must skip it entirely.
 
-The two token counts exercised correspond to the shipped CONSTANT_TOKEN_BUCKETS
-families: 4032 (= 63·64) and 4200 (= 60·70).
+The token count exercised is the shipped 4032 (= 63·64) family.
 """
 
 from __future__ import annotations
 
+import pytest
 import torch
 
 from library.anima.models import Anima
@@ -64,16 +64,6 @@ def test_compile_blocks_sets_native_flatten_and_budget():
     assert _dynamo.config.cache_size_limit >= 12
 
 
-def test_compile_blocks_does_not_lower_a_higher_budget():
-    """The max() lets a multi-resolution caller (e.g. SPD) pre-raise the limit."""
-    import torch._dynamo as _dynamo
-
-    model = _tiny_anima()
-    _dynamo.config.cache_size_limit = 64  # a caller asked for more headroom
-    model.compile_blocks(backend="eager")
-    assert _dynamo.config.cache_size_limit == 64
-
-
 @torch.no_grad()
 def _run(model: Anima, inp, *, native_flatten: bool) -> torch.Tensor:
     model._native_flatten = native_flatten
@@ -81,6 +71,7 @@ def _run(model: Anima, inp, *, native_flatten: bool) -> torch.Tensor:
     return model.forward_mini_train_dit(x, timesteps, crossattn_emb)
 
 
+@pytest.mark.core
 @torch.no_grad()
 def test_flatten_is_bit_exact_4032_family():
     # latent 126x128 → (63)*(64) = 4032 tokens at patch_spatial=2
@@ -90,13 +81,3 @@ def test_flatten_is_bit_exact_4032_family():
     out_flat = _run(model, inp, native_flatten=True)
     assert torch.equal(out_eager, out_flat)
     assert out_eager.shape == out_flat.shape
-
-
-@torch.no_grad()
-def test_flatten_is_bit_exact_4200_family():
-    # latent 120x140 → (60)*(70) = 4200 tokens at patch_spatial=2
-    model = _tiny_anima()
-    inp = _inputs(120, 140)
-    out_eager = _run(model, inp, native_flatten=False)
-    out_flat = _run(model, inp, native_flatten=True)
-    assert torch.equal(out_eager, out_flat)

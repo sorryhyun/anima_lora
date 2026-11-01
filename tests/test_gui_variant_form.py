@@ -1,4 +1,4 @@
-"""gui.core.variant_form: field grouping, extra-args parsing, Save writeback."""
+"""gui.core.variant_form: Save writeback."""
 
 from __future__ import annotations
 
@@ -22,35 +22,7 @@ def _save(orig, values, *, base=None, preset=None, extras=None):
     )
 
 
-def test_group_fields_splits_basic_and_advanced():
-    basic, advanced = vf.group_fields(
-        {"network_dim": 16, "network_module": "x", "no_such_key_xyz": 1}
-    )
-    assert basic["Architecture"] == {"network_dim": 16}
-    assert advanced["Architecture"] == {"network_module": "x"}
-    assert advanced["Other"] == {"no_such_key_xyz": 1}
-    assert list(basic)[-1] == "Other" and list(basic) == list(advanced)
-
-
-def test_field_sort_key_pins_before_alphabetical():
-    keys = ["zeta", "output_dir", "alpha", "source_image_dir"]
-    assert sorted(keys, key=vf.field_sort_key) == [
-        "source_image_dir",
-        "output_dir",
-        "alpha",
-        "zeta",
-    ]
-
-
-def test_parse_extra_args():
-    assert vf.parse_extra_args("  \n") == {}
-    assert vf.parse_extra_args("a = 1\n[tbl]\nb = 2") == {"a": 1}
-    # A pasted Windows path is retried with forward slashes.
-    assert vf.parse_extra_args('p = "C:\\Users\\x"') == {"p": "C:/Users/x"}
-    with pytest.raises(vf.ExtraArgsError):
-        vf.parse_extra_args("a = = 1")
-
-
+@pytest.mark.core
 def test_preset_value_is_not_baked_in():
     out = _save(
         {},

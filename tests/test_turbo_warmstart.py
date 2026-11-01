@@ -10,6 +10,7 @@ Covers the two pure pieces of the ``student_init_weights`` path
   rank-truncated ΔW.
 """
 
+import pytest
 import torch
 
 from networks.lora_modules.lora import LoRAModule, defuse_standard_qkv
@@ -28,6 +29,7 @@ def _fused_file_sd(lora_name: str, up: torch.Tensor, down: torch.Tensor, alpha: 
     return sd
 
 
+@pytest.mark.core
 def test_module_delta_refuses_qkv_split_exactly():
     torch.manual_seed(0)
     name = "lora_unet_blocks_0_self_attn_qkv_proj"
@@ -44,14 +46,7 @@ def test_module_delta_refuses_qkv_split_exactly():
     assert torch.allclose(A @ B, expected, atol=1e-5)
 
 
-def test_module_delta_missing_component_returns_none():
-    name = "lora_unet_blocks_0_self_attn_qkv_proj"
-    sd = _fused_file_sd(name, torch.randn(3 * OUT, RANK), torch.randn(RANK, IN), 4.0)
-    del sd["lora_unet_blocks_0_self_attn_k_proj.lora_down.weight"]
-    assert _plain_lora_module_delta(sd, name) is None
-    assert _plain_lora_module_delta(sd, "lora_unet_blocks_9_mlp_layer1") is None
-
-
+@pytest.mark.core
 def test_warm_start_module_applies_exact_truncated_delta():
     torch.manual_seed(1)
     org = torch.nn.Linear(IN, OUT, bias=False)

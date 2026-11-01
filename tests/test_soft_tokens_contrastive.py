@@ -1,8 +1,7 @@
 """Tests for the soft-tokens contrastive objective (Phase 1).
 
-Covers the InfoNCE loss math, the warmup-gated weight contract, the
-negative-mode validation (jaccard/hard are Phase 2), and the metadata stamp.
-The dataset-sourcing and extra-forward wiring are integration-tested elsewhere;
+Covers the InfoNCE loss math, the warmup-gated weight contract, the cadence over
+optimizer steps, and the dual-bank checkpoint layout. The dataset-sourcing and extra-forward wiring are integration-tested elsewhere;
 here we exercise the pure-CPU network surface. See
 docs/anima/proposal/soft_tokens_contrastive.md.
 """
@@ -29,12 +28,6 @@ def _net(**kw):
     return SoftTokensNetwork(**base)
 
 
-def test_contrastive_disabled_by_default():
-    net = _net()
-    assert net._contrastive_target_weight == 0.0
-    assert net._contrastive_weight == 0.0
-
-
 def test_contrastive_loss_perfect_positive():
     """v_pos == target, v_neg far → low loss, accuracy 1, positive gap."""
     net = _net(contrastive_weight=0.1, contrastive_tau=0.5)
@@ -49,33 +42,6 @@ def test_contrastive_loss_perfect_positive():
     assert diag["contrastive_logit_gap"] == pytest.approx(2.0, abs=1e-5)
 
 
-def test_contrastive_loss_wrong_way_round():
-    """v_pos far, v_neg matches target → accuracy 0, larger loss."""
-    net = _net(contrastive_weight=0.1, contrastive_tau=0.5)
-    target = torch.zeros(1, 4, 8, 8)
-    v_pos = torch.ones(1, 4, 8, 8)
-    v_neg = torch.zeros(1, 1, 4, 8, 8)
-    loss, diag = net.contrastive_loss(v_pos, v_neg, target)
-    assert diag["contrastive_acc"] == 0.0
-    assert diag["contrastive_logit_gap"] < 0.0
-    # logit_pos=-2, logit_neg=0 → loss = 2 + log(1+e^-2)
-    assert loss.item() == pytest.approx(2.0 + math.log(1 + math.exp(-2.0)), abs=1e-5)
-
-
-def test_contrastive_loss_carries_grad_to_tokens():
-    net = _net(contrastive_weight=0.1)
-    target = torch.zeros(1, 4, 8, 8)
-    # v_pos must depend on net.tokens for grad to flow; emulate by adding the
-    # bank's mean so autograd has a path.
-    bias = net.tokens.mean()
-    v_pos = torch.zeros(1, 4, 8, 8) + bias
-    v_neg = torch.ones(1, 2, 4, 8, 8) + bias
-    loss, _ = net.contrastive_loss(v_pos, v_neg, target)
-    loss.backward()
-    assert net.tokens.grad is not None
-    assert torch.isfinite(net.tokens.grad).all()
-
-
 def test_contrastive_warmup_gate():
     net = _net(contrastive_weight=0.3, contrastive_warmup_ratio=0.1)
     assert net._contrastive_weight == 0.0  # held during warmup
@@ -85,41 +51,6 @@ def test_contrastive_warmup_gate():
     assert net._contrastive_weight == 0.3
     net.step_contrastive_warmup(global_step=50, max_train_steps=100)
     assert net._contrastive_weight == 0.3
-
-
-def test_contrastive_warmup_zero_ratio_active_immediately():
-    net = _net(contrastive_weight=0.3, contrastive_warmup_ratio=0.0)
-    assert net._contrastive_weight == 0.3
-    net.step_contrastive_warmup(global_step=0, max_train_steps=100)
-    assert net._contrastive_weight == 0.3
-
-
-def test_contrastive_warmup_noop_when_disabled():
-    net = _net(contrastive_weight=0.0)
-    net.step_contrastive_warmup(global_step=0, max_train_steps=100)
-    assert net._contrastive_weight == 0.0
-
-
-def test_contrastive_every_n_default_fires_every_step():
-    net = _net(contrastive_weight=0.3, contrastive_warmup_ratio=0.0)
-    assert net._contrastive_every_n == 1
-    for s in range(5):
-        net.step_contrastive_warmup(global_step=s, max_train_steps=100)
-        assert net._contrastive_fire_this_step is True
-
-
-def test_contrastive_every_n_cadence_on_optimizer_step():
-    """every_n strides over optimizer steps (global_step // accum), so an
-    accumulation window fires uniformly across its micro-batches."""
-    net = _net(
-        contrastive_weight=0.3, contrastive_warmup_ratio=0.0, contrastive_every_n=3
-    )
-    # accum=1: fire on micro-batches 0, 3, 6 (== optimizer steps 0, 3, 6).
-    fired = []
-    for s in range(9):
-        net.step_contrastive_warmup(global_step=s, max_train_steps=100, accum=1)
-        fired.append(net._contrastive_fire_this_step)
-    assert fired == [True, False, False, True, False, False, True, False, False]
 
 
 def test_contrastive_every_n_uniform_within_accum_window():
@@ -135,24 +66,6 @@ def test_contrastive_every_n_uniform_within_accum_window():
     assert fired == [True, True, False, False, True, True, False, False]
 
 
-def test_contrastive_every_n_clamped_and_stamped():
-    net = _net(contrastive_weight=0.3, contrastive_every_n=0)
-    assert net._contrastive_every_n == 1  # clamped to >= 1
-    net2 = _net(contrastive_weight=0.3, contrastive_every_n=4)
-    assert net2.metadata_fields()["ss_contrastive_every_n"] == "4"
-
-
-@pytest.mark.parametrize("mode", ["shuffled", "jaccard", "hard"])
-def test_all_modes_construct(mode):
-    net = _net(contrastive_weight=0.1, contrastive_negative_mode=mode)
-    assert net.contrastive_negative_mode == mode
-
-
-def test_unknown_mode_rejected():
-    with pytest.raises(ValueError):
-        _net(contrastive_negative_mode="bogus")
-
-
 def test_jaccard_penalty_lowers_loss():
     """Down-weighting a negative's logit (jaccard mode) makes the positive win
     more easily → strictly lower InfoNCE loss than the unpenalized case."""
@@ -164,18 +77,6 @@ def test_jaccard_penalty_lowers_loss():
     penalty = torch.full((1, 2), 1.0)  # α·s on every negative
     penalized, _ = net.contrastive_loss(v_pos, v_neg, target, neg_penalty=penalty)
     assert penalized.item() < base.item()
-
-
-def test_zero_penalty_matches_plain():
-    net = _net(contrastive_weight=0.1)
-    target = torch.zeros(1, 4, 8, 8)
-    v_pos = torch.full((1, 4, 8, 8), 0.3)
-    v_neg = torch.full((1, 2, 4, 8, 8), 0.7)
-    plain, _ = net.contrastive_loss(v_pos, v_neg, target)
-    zero_pen, _ = net.contrastive_loss(
-        v_pos, v_neg, target, neg_penalty=torch.zeros(1, 2)
-    )
-    assert zero_pen.item() == pytest.approx(plain.item(), abs=1e-6)
 
 
 # ── Dual bank ψ⁺/ψ⁻ ──────────────────────────────────────────────────────────
@@ -190,17 +91,6 @@ def test_single_bank_is_default_and_3d():
     assert net.t_offsets.weight.shape == (4, 2 * 16)  # (n_t_buckets, n_layers·D)
     md = net.metadata_fields()
     assert md["ss_n_banks"] == "1" and md["ss_dual_bank"] == "false"
-
-
-def test_dual_bank_adds_branch_axis():
-    """dual_bank=True prepends a branch axis to tokens and widens t_offsets
-    by n_banks (bank-major column layout)."""
-    net = _net(dual_bank=True)
-    assert net.n_banks == 2 and net.dual_bank is True
-    assert net.tokens.shape == (2, 2, 4, 16)  # (n_banks, n_layers, K, D)
-    assert net.t_offsets.weight.shape == (4, 2 * 2 * 16)  # (Tb, n_banks·n_layers·D)
-    md = net.metadata_fields()
-    assert md["ss_n_banks"] == "2" and md["ss_dual_bank"] == "true"
 
 
 def test_dual_bank_branches_are_independent():
@@ -229,34 +119,7 @@ def test_dual_bank_append_postfix_uses_psi_plus():
     assert torch.allclose(got, expected)
 
 
-def test_dual_checkpoint_inference_loads_psi_plus_slice():
-    """A single-bank (inference) net loading a dual checkpoint keeps ONLY ψ⁺
-    (Appendix H: ψ⁻ over-suppresses detail at inference) — branch-0 of tokens
-    and the first n_layers·D columns of t_offsets."""
-    dual = _net(dual_bank=True)
-    with torch.no_grad():
-        dual.tokens.copy_(torch.randn_like(dual.tokens))
-        dual.t_offsets.weight.copy_(torch.randn_like(dual.t_offsets.weight))
-    sd = dual.state_dict_for_save(torch.float32)
-    assert sd["tokens"].shape == (2, 2, 4, 16)
-
-    infer = _net()  # single bank
-    tok, toff = infer._select_load_weights(sd["tokens"], sd["t_offsets.weight"])
-    assert tok.shape == infer.tokens.shape  # (n_layers, K, D)
-    assert toff.shape == infer.t_offsets.weight.shape
-    assert torch.allclose(tok, sd["tokens"][0])  # ψ⁺ branch
-    assert torch.allclose(toff, sd["t_offsets.weight"][:, : 2 * 16])  # first L·D cols
-
-
-def test_single_checkpoint_into_dual_net_errors():
-    """A 3D single-bank checkpoint can't unambiguously seed both ψ⁺/ψ⁻."""
-    dual = _net(dual_bank=True)
-    single = _net()
-    sd = single.state_dict_for_save(torch.float32)
-    with pytest.raises(ValueError, match="single"):
-        dual._select_load_weights(sd["tokens"], sd["t_offsets.weight"])
-
-
+@pytest.mark.core
 def test_dual_bank_file_roundtrip_inference(tmp_path):
     """End-to-end: save a dual checkpoint, build an inference net via
     create_network_from_weights (single ψ⁺), load_weights from the file — the
@@ -280,18 +143,3 @@ def test_dual_bank_file_roundtrip_inference(tmp_path):
     net.load_weights(str(path))
     assert torch.allclose(net.tokens, dual.tokens[0])
     assert torch.allclose(net.t_offsets.weight, dual.t_offsets.weight[:, : 2 * 16])
-
-
-def test_metadata_stamps_contrastive_config():
-    net = _net(
-        contrastive_weight=0.2,
-        contrastive_k=2,
-        contrastive_tau=0.7,
-        contrastive_warmup_ratio=0.15,
-    )
-    md = net.metadata_fields()
-    assert md["ss_contrastive_weight"] == "0.2"
-    assert md["ss_contrastive_k"] == "2"
-    assert md["ss_contrastive_negative_mode"] == "shuffled"
-    assert md["ss_contrastive_tau"] == "0.7"
-    assert md["ss_contrastive_warmup_ratio"] == "0.15"

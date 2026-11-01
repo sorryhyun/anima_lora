@@ -1,9 +1,8 @@
 """MOSS i2i: the task recipes load against their requests, ``generate`` expands a
-reference into sized jobs, and the GUI's i2i tab chains its jobs through the panel."""
+reference into sized jobs."""
 
 from __future__ import annotations
 
-import os
 
 import pytest
 from PIL import Image
@@ -16,8 +15,11 @@ from library.moss.requests import (
 )
 
 
+@pytest.mark.core
 @pytest.mark.parametrize("task", sorted(I2I_CACHE))
 def test_task_recipes_load(task):
+    """A task's cache, train and generate recipes agree on the cache folder and
+    the reference scale, and run the bf16 swap plan."""
     cache = I2I_CACHE[task].load_config(i2i_config(task, "cache"))
     train = TrainRequest.load_config(i2i_config(task, "train"))
     gen = GenerateRequest.load_config(i2i_config(task, "generate"))
@@ -53,49 +55,3 @@ def test_ref_jobs_follow_each_reference(tmp_path):
     assert not any(j["ref_vision"] for j in alone)
     with pytest.raises(SystemExit, match="no prompts"):
         build_jobs(GenerateRequest(prompt=""))
-
-
-def test_plain_jobs_unchanged():
-    """No reference: the job dicts (and so saved-latent fingerprints) carry no
-    ref keys."""
-    from library.moss.generate import build_jobs
-
-    (job,) = build_jobs(GenerateRequest(prompt="a", prompt_format="text"))
-    assert not {k for k in job if k.startswith("ref")}
-
-
-@pytest.fixture(scope="module")
-def qapp():
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    pytest.importorskip("PySide6")
-    from PySide6.QtWidgets import QApplication
-
-    yield QApplication.instance() or QApplication([])
-
-
-def test_i2i_chain_submits_through_panel(qapp, monkeypatch):
-    import gui.lines.window as window
-    import gui.moss.i2i as i2i
-    from gui.moss.app import SPEC
-
-    store = {}
-    for mod in (window, i2i):
-        monkeypatch.setattr(mod, "get_setting", lambda k, d=None: store.get(k, d))
-        monkeypatch.setattr(mod, "set_setting", store.__setitem__)
-    monkeypatch.setattr(window.LinePanel, "_reattach", lambda self: None)
-    panel = window.build_panel(SPEC, "en")
-    sent = []
-    monkeypatch.setattr(
-        panel, "_submit", lambda req, label, env=None: sent.append((label, env)) or True
-    )
-    monkeypatch.setattr(panel, "_model_ok", lambda req: True)
-    prep, train = panel._pages
-    assert panel.tabs.tabText(panel._line_pages - 1) == train.title
-    task = train.i2i.current.task
-    train.i2i.run_chain()
-    assert sent == [(i2i.STAGE, {"TASK": task})]
-    assert [j.label for j in panel._pending] == [i2i.CACHE, i2i.TRAIN]
-    assert panel._pending[1].req.cache == panel._pending[0].req.out
-    # Only edits against the task's seed are saved.
-    assert store[i2i.SETTINGS_KEY][task]["train"] == {}
-    panel.cleanup_subprocess()

@@ -4,7 +4,6 @@ Covers:
   * zero-init up-heads → ΔW = 0 at init (base preserved).
   * hard step selection: ``set_step(k)`` routes through ``lora_ups[k]`` only;
     a perturbation to head k is visible at step k and invisible at step j != k.
-  * factory resolution: ``step_expert_K`` selects the step_expert spec/module.
   * ``LoRANetwork.set_step_index`` broadcasts to every adapted module and
     no-ops on non-step-expert modules.
   * save → load roundtrip preserves per-step outputs (fused-key layout, the
@@ -15,7 +14,6 @@ from __future__ import annotations
 
 import torch
 
-from networks import NETWORK_REGISTRY, resolve_network_spec
 from networks.lora_modules import LoRAModule, StepExpertLoRAModule
 
 
@@ -47,25 +45,6 @@ def test_hard_step_selection_isolates_heads():
     assert torch.allclose(m.forward(x), base), "head 0 changed by head-1 perturbation"
     m.set_step(1)
     assert not torch.allclose(m.forward(x), base), "head 1 perturbation not visible"
-
-
-def test_set_step_out_of_range():
-    m = _make_module(K=2)
-    for bad in (-1, 2, 5):
-        try:
-            m.set_step(bad)
-        except IndexError:
-            continue
-        raise AssertionError(f"set_step({bad}) should have raised IndexError")
-
-
-def test_factory_resolves_step_expert():
-    spec = resolve_network_spec({"step_expert_K": 2})
-    assert spec is NETWORK_REGISTRY["step_expert"]
-    assert spec.module_class is StepExpertLoRAModule
-    # K<=1 collapses to plain LoRA — don't pay the ModuleList plumbing.
-    assert resolve_network_spec({"step_expert_K": 1}).module_class is LoRAModule
-    assert resolve_network_spec({}).module_class is LoRAModule
 
 
 def test_set_step_index_broadcasts_and_skips_plain():

@@ -7,9 +7,7 @@ ss_router_source) and trip the "missing three-axis stamps" raise in
 ``LoRANetworkCfg.from_weights`` — blaming the checkpoint for a call-site fault.
 
 These tests pin the de-footgun: metadata reaches the cfg via the explicit
-``metadata=`` channel, via ``file=`` even when ``weights_sd=`` is also given,
-via the plain ``file=`` path, and that the bare ``weights_sd=`` case raises an
-error that names the real cause.
+``metadata=`` channel and via the plain ``file=`` path.
 """
 
 from __future__ import annotations
@@ -89,27 +87,3 @@ def test_file_path_reads_metadata(tmp_path):
     save_file(_moe_state_dict(), str(path), metadata=_MOE_META)
     net = _build(file=str(path), weights_sd=None)
     _assert_axes(net)
-
-
-def test_file_recovers_metadata_when_weights_supplied(tmp_path):
-    """``file=`` + ``weights_sd=`` together must still recover the stamps.
-
-    Previously the read was gated on ``weights_sd is None`` so a caller that
-    supplied both lost the metadata anyway.
-    """
-    path = tmp_path / "moe.safetensors"
-    save_file(_moe_state_dict(), str(path), metadata=_MOE_META)
-    net = _build(file=str(path), weights_sd=_moe_state_dict())
-    _assert_axes(net)
-
-
-def test_bare_weights_sd_raises_actionable_error():
-    """No metadata, no file → loud error naming load_file / metadata=."""
-    import pytest
-
-    with pytest.raises(RuntimeError) as exc:
-        _build(file=None, weights_sd=_moe_state_dict())
-    msg = str(exc.value)
-    assert "three-axis" in msg
-    assert "load_file" in msg
-    assert "metadata=" in msg

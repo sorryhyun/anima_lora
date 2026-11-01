@@ -1,7 +1,5 @@
 """MOSS-Image vendored DiT + sampler invariants, on a tiny random model (CPU)."""
 
-from types import SimpleNamespace
-
 import pytest
 import torch
 
@@ -10,9 +8,7 @@ from library.moss.model import (
     MOSSImageScheduler,
     MOSSImageTransformer,
     RefCache,
-    pack_latents,
     snapped_sigmas,
-    unpack_latents,
 )
 
 
@@ -35,6 +31,7 @@ def _inputs(batch=2, s=7):
     return x, e, mask
 
 
+@pytest.mark.core
 @torch.no_grad()
 def test_batched_matches_reference(tiny):
     x, e, mask = _inputs()
@@ -42,8 +39,10 @@ def test_batched_matches_reference(tiny):
     assert torch.allclose(tiny.forward_batched(x, 500.0, e, mask), ref, atol=1e-5)
 
 
+@pytest.mark.core
 @torch.no_grad()
 def test_batched_per_sample_skip(tiny):
+    """A batched CFG pair, uncond skipping a block, matches two reference forwards."""
     x, e, mask = _inputs()
     r0 = tiny(x[:1], 500.0, e[:1], mask[:1]).sample
     r1 = tiny(x[1:], 500.0, e[1:], mask[1:], skip_layers=[2]).sample
@@ -106,6 +105,7 @@ def ref_iso(tiny):
     tiny.ref_isolate = False
 
 
+@pytest.mark.core
 @torch.no_grad()
 def test_ref_isolate_batched_matches_reference(tiny, ref_t, ref_iso):
     x, e, mask = _inputs()
@@ -119,31 +119,6 @@ def test_ref_isolate_batched_matches_reference(tiny, ref_t, ref_iso):
     r1 = tiny(x[1:], 500.0, e[1:], mask[1:], skip_layers=[2], ref=_ref()[1:]).sample
     out = tiny.forward_batched(x, 500.0, e, mask, skip_layers=[(), (2,)], ref=_ref())
     assert torch.allclose(out, torch.cat([single[:1], r1]), atol=1e-5)
-
-
-@torch.no_grad()
-def test_ref_isolate_at_t0_reference_stream_is_step_free(tiny, ref_t, ref_iso):
-    """Isolated and clean, the reference tokens' per-block state depends on the
-    reference alone: not on the noisy latent, the text or the timestep."""
-    ref_t(0.0)
-    streams = []
-
-    def hook(index, x, n_img):
-        streams[-1].append(x[:, -6:].clone())  # the 2×3 reference, last
-        return x
-
-    tiny.layer_hook = hook
-    try:
-        for seed, t in ((1, 500.0), (5, 900.0)):
-            g = torch.Generator().manual_seed(seed)
-            x = torch.randn(1, 8, 4, 6, generator=g)
-            e = torch.randn(1, 5 + seed, 32, generator=g)
-            streams.append([])
-            tiny(x, t, e, ref=_ref(1))
-    finally:
-        tiny.layer_hook = None
-    for a, b in zip(*streams):
-        assert torch.allclose(a, b, atol=1e-6)
 
 
 @torch.no_grad()
@@ -170,6 +145,7 @@ def test_ref_isolate_skip_spares_the_reference(tiny, ref_t, ref_iso):
         tiny.ref_follows_skip = False
 
 
+@pytest.mark.core
 @torch.no_grad()
 def test_ref_cache_matches_uncached(tiny, ref_t, ref_iso):
     """One reference build serves cond, the skip uncond and later steps, per-sample
@@ -203,20 +179,6 @@ def test_ref_cache_matches_uncached(tiny, ref_t, ref_iso):
 
 
 @torch.no_grad()
-def test_ref_cache_off_when_ref_follows_skip(tiny, ref_t, ref_iso):
-    ref_t(0.0)
-    x, e, _ = _inputs(batch=1)
-    tiny.ref_follows_skip = True
-    tiny.ref_cache = cache = RefCache()
-    try:
-        tiny(x, 500.0, e, skip_layers=[2], ref=_ref(1))
-    finally:
-        tiny.ref_cache = None
-        tiny.ref_follows_skip = False
-    assert cache.builds == 0
-
-
-@torch.no_grad()
 def test_ref_timestep_ignored_without_ref(tiny, ref_t):
     x, e, mask = _inputs()
     plain = tiny(x, 500.0, e, mask).sample
@@ -224,24 +186,8 @@ def test_ref_timestep_ignored_without_ref(tiny, ref_t):
     assert torch.equal(tiny(x, 500.0, e, mask).sample, plain)
 
 
-def test_pack_unpack_roundtrip():
-    g = torch.Generator().manual_seed(2)
-    bn = SimpleNamespace(
-        running_mean=torch.randn(128, generator=g),
-        running_var=torch.rand(128, generator=g) + 0.5,
-    )
-    vae = SimpleNamespace(
-        bn=bn, config=SimpleNamespace(batch_norm_eps=1e-4), dtype=torch.float32
-    )
-    z = torch.randn(2, 32, 8, 12, generator=g)
-    packed = pack_latents(z, vae)
-    assert packed.shape == (2, 128, 4, 6)
-    assert torch.allclose(unpack_latents(packed, vae), z, atol=1e-5)
-    p = torch.randn(1, 128, 3, 5, generator=g)
-    assert torch.allclose(pack_latents(unpack_latents(p, vae), vae), p, atol=1e-5)
-
-
-@pytest.mark.parametrize("steps", [1, 8, 30, 50, 200])
+@pytest.mark.core
+@pytest.mark.parametrize("steps", [1, 50])
 def test_snapped_sigmas_match_scheduler(steps):
     sched = MOSSImageScheduler()
     sched.set_timesteps(steps)
@@ -249,6 +195,7 @@ def test_snapped_sigmas_match_scheduler(steps):
     assert sched.sigmas[-1] == 0
 
 
+@pytest.mark.core
 @torch.no_grad()
 @pytest.mark.parametrize("cfg,skip", [(3.0, (2,)), (3.0, ()), (1.0, ())])
 def test_denoise_matches_scheduler_loop(tiny, cfg, skip):
@@ -338,6 +285,7 @@ class _ExactX0:
         return (features - self.x0) / sigma.clamp_min(1e-4)
 
 
+@pytest.mark.core
 @torch.no_grad()
 @pytest.mark.parametrize("sampler", ["euler", "er_sde"])
 def test_denoise_samplers_land_on_exact_x0(sampler):

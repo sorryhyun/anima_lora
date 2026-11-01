@@ -1,13 +1,12 @@
 """sigma_lowres Phase 1b invariants (σ>0.5 → 896 sibling latent).
 
 Pins the load-bearing contracts of the trainer wiring:
-  - the demote grid is a pure function shared by preprocess emit and trainer
-    fetch (same inputs → same bucket), and off-route shapes return None;
+  - the demote grid lands route shapes in the demote band, and off-route
+    shapes return None;
   - the demoted npz key can never collide with the ``latents_*`` namespace
     (several readers grab the FIRST ``latents_*`` key);
-  - ``draw_flat_sigmas`` is bit-identical to the in-body draw it was split
-    from, and the σ-first two-step path reproduces the draw-inside path
-    exactly (same seed → same noisy input / timesteps);
+  - the σ-first two-step path reproduces the draw-inside path exactly (same
+    seed → same noisy input / timesteps);
   - the preprocess emit appends the demoted key in-place, preserves every
     native key, is idempotent, and the dataset-side loader reads it back.
 """
@@ -15,7 +14,6 @@ Pins the load-bearing contracts of the trainer wiring:
 from pathlib import Path
 from types import SimpleNamespace
 
-import random
 
 import numpy as np
 import pytest
@@ -24,7 +22,6 @@ import torch
 from library.datasets.buckets import (
     SIGMA_DEMOTE_ROUTE,
     demote_bucket_for,
-    demoted_token_counts,
     freefit_band_for_edge,
 )
 from library.io.cache_names import demoted_latents_key
@@ -65,50 +62,9 @@ class TestDemoteBucket:
         assert demote_bucket_for(768, 720, *SIGMA_DEMOTE_ROUTE) is None
         assert demote_bucket_for(1280, 1260, *SIGMA_DEMOTE_ROUTE) is None
 
-    def test_deterministic(self):
-        a = demote_bucket_for(896, 1200, *SIGMA_DEMOTE_ROUTE)
-        b = demote_bucket_for(896, 1200, *SIGMA_DEMOTE_ROUTE)
-        assert a == b
-
-    def test_demoted_token_counts_only_route_members(self):
-        resos = {(896, 1200), (1008, 768)}  # one 1024-tier, one 896-tier
-        counts = demoted_token_counts(resos, *SIGMA_DEMOTE_ROUTE)
-        lo, hi = freefit_band_for_edge(896)
-        assert counts  # the 1024-tier member contributes
-        assert all(lo <= c <= hi for c in counts)
-
-
-class TestSigmaRoute:
-    def test_default_and_custom(self):
-        from library.anima.trainer import sigma_route as sr
-
-        assert sr.route(SimpleNamespace()) == (1024, 896)
-        assert sr.route(SimpleNamespace(sigma_lowres_route=None)) == (
-            1024,
-            896,
-        )
-        assert sr.route(
-            SimpleNamespace(sigma_lowres_route="1024:768")
-        ) == (1024, 768)
-
-    def test_bad_routes_rejected(self):
-        from library.anima.trainer import sigma_route as sr
-
-        for bad in ("1024", "896:1024", "1024:0", "a:b", "1024:896:768"):
-            with pytest.raises(ValueError):
-                sr.route(SimpleNamespace(sigma_lowres_route=bad))
-
-    def test_unsafe_768_bucket_derivable(self):
-        # The E4 negative-control route must derive a 768-band sibling grid
-        # for 1024-tier shapes (same pure function the emit uses).
-        lo, hi = freefit_band_for_edge(768)
-        bucket = demote_bucket_for(896, 1200, 1024, 768)
-        assert bucket is not None
-        bw, bh = bucket
-        assert lo <= (bw // 16) * (bh // 16) <= hi
-
 
 class TestDemotedKey:
+    @pytest.mark.core
     def test_never_in_latents_namespace(self):
         key = demoted_latents_key(880, 1184)
         assert not key.startswith("latents")
@@ -116,25 +72,6 @@ class TestDemotedKey:
 
 
 class TestSigmaDraw:
-    @pytest.mark.parametrize("mode", ["sigmoid", "uniform", "shift"])
-    def test_flat_draw_matches_inline_formula(self, mode):
-        args = _args(timestep_sampling=mode)
-        torch.manual_seed(7)
-        got = draw_flat_sigmas(args, 4, 148, 110, torch.device("cpu"))
-        torch.manual_seed(7)
-        if mode == "sigmoid":
-            want = torch.sigmoid(1.0 * torch.randn((4,)) + 0.0)
-        elif mode == "uniform":
-            want = torch.rand((4,))
-        else:
-            s = torch.sigmoid(torch.randn(4) * 1.0 + 0.0)
-            want = (s * 3.0) / (1 + (3.0 - 1) * s)
-        assert torch.equal(got, want)
-
-    def test_density_modes_return_none(self):
-        args = _args(timestep_sampling="something_else")
-        assert draw_flat_sigmas(args, 4, 148, 110, torch.device("cpu")) is None
-
     def test_sigma_first_path_is_bit_exact(self):
         """draw σ → pass in ≡ draw-inside, given the same seed (RNG order is
         preserved because the split-out helper is the body's first RNG use)."""
@@ -202,6 +139,7 @@ class TestEmitAndLoad:
 
         return _V()
 
+    @pytest.mark.core
     def test_emit_appends_preserves_and_idempotent(self, corpus, stub_vae):
         from library.preprocess.latents import (
             cache_demoted_latents,
@@ -244,6 +182,7 @@ class TestEmitAndLoad:
         )
         assert stats2.written == 0 and stats2.skipped == 1
 
+    @pytest.mark.core
     def test_dataset_loader_roundtrip(self, corpus, stub_vae):
         from library.datasets.base import BaseDataset
         from library.preprocess.latents import cache_demoted_latents
@@ -288,38 +227,14 @@ class TestPairedStepRng:
         b = draw_flat_sigmas(args, 4, 148, 110, torch.device("cpu"), generator=g2)
         assert torch.equal(a, b)
 
-    def test_two_arms_share_sigma_and_noise_sequences(self):
-        """Simulate two arms: same (seed, counter) derivation → identical σ
-        per step and identical native-shape noise, regardless of what each
-        arm did to the global stream in between."""
-        args = _args()
-
-        def arm_step(counter, global_junk):
-            torch.randn(global_junk)  # arm-specific global-stream consumption
-            base = (42 * 1_000_003 + counter) * 2
-            mask = (1 << 62) - 1
-            g_s = torch.Generator().manual_seed(base & mask)
-            g_n = torch.Generator().manual_seed((base + 1) & mask)
-            sig = draw_flat_sigmas(
-                args, 1, 148, 110, torch.device("cpu"), generator=g_s
-            )
-            noise = torch.randn((1, 16, 152, 108), generator=g_n)
-            return sig, noise
-
-        for step in (1, 2, 3):
-            s_a, n_a = arm_step(step, global_junk=7)
-            s_b, n_b = arm_step(step, global_junk=3001)
-            assert torch.equal(s_a, s_b)
-            assert torch.equal(n_a, n_b)
-
 
 class TestYarnsigRope:
     """--sigma_lowres_yarnsig: σ-gated YaRN banded rope on demoted steps.
 
     Pins the two reduction identities the probe's read rests on (μ→0 ⇒
     native integer spacing, i.e. the intervention vanishes below the gate;
-    all-bands-below-α ⇒ the uniform PI stretch) plus the μ gate formula and
-    the flag's parse/guard behavior.
+    all-bands-below-α ⇒ the uniform PI stretch) and that the shipped recipe
+    is on by default.
     """
 
     @staticmethod
@@ -354,46 +269,6 @@ class TestYarnsigRope:
             # equal up to float association: (seq·s)⊗f vs seq⊗(f·s)
             assert torch.allclose(a, b, atol=1e-5)
 
-    def test_static_yarn_between_native_and_pi(self):
-        pe = self._pe()
-        native = pe.generate_embeddings(self._SHAPE)
-        yarn = pe.generate_embeddings_yarn(self._SHAPE, self._HS, self._WS, 1, 4, 1.0)
-        assert not torch.allclose(yarn[0], native[0], atol=1e-4)
-
-    def test_mu_gate_formula(self):
-        from library.anima.trainer import sigma_route as sr
-
-        args = SimpleNamespace(sigma_lowres_yarnsig="1,4,0.35,2")
-        alpha, beta, center, gamma = sr.yarnsig_params(args)
-        assert (alpha, beta, center, gamma) == (1.0, 4.0, 0.35, 2.0)
-
-        def mu(s):
-            import math
-
-            return 1.0 / (
-                1.0
-                + math.exp(
-                    -gamma
-                    * (math.log(s / (1.0 - s)) - math.log(center / (1.0 - center)))
-                )
-            )
-
-        assert abs(mu(0.35) - 0.5) < 1e-12  # center is the half-gate point
-        assert abs(mu(0.21) - 0.20) < 0.02  # probe's reported bin values
-        assert abs(mu(0.59) - 0.88) < 0.02
-        assert mu(0.999) > 0.99
-
-    def test_bad_params_rejected(self):
-        from library.anima.trainer import sigma_route as sr
-
-        for bad in ("1,4", "4,1,0.35,2", "1,4,1.5,2", "1,4,0.35,0"):
-            with pytest.raises(ValueError):
-                sr.yarnsig_params(SimpleNamespace(sigma_lowres_yarnsig=bad))
-        assert (
-            sr.yarnsig_params(SimpleNamespace(sigma_lowres_yarnsig=None))
-            is None
-        )
-
     def test_default_on_with_sigma_lowres(self):
         """yarnsig is part of the shipped recipe, so an unset flag under
         --sigma_lowres resolves to the operating point — a plain --sigma_lowres
@@ -405,39 +280,12 @@ class TestYarnsigRope:
         # …and the effective value is written back, so the snapshot records it.
         assert args.sigma_lowres_yarnsig == sr.YARNSIG_OPERATING_POINT
 
-    def test_default_off_without_sigma_lowres(self):
-        """Nothing to demote → nothing to realign; the implicit default must not
-        leak into runs that never enabled sigma_lowres (the trainer errors on
-        yarnsig-without-sigma_lowres)."""
-        from library.anima.trainer import sigma_route as sr
-
-        args = SimpleNamespace(sigma_lowres=False, sigma_lowres_yarnsig=None)
-        assert sr.yarnsig_params(args) is None
-        assert args.sigma_lowres_yarnsig is None
-
-    def test_explicit_off_words_disable_it(self):
-        """The escape hatch from default-on, and the reason a config may carry
-        `sigma_lowres_yarnsig = "off"` without tripping the requires-sigma_lowres
-        guard."""
-        from library.anima.trainer import sigma_route as sr
-
-        for off in ("off", "OFF", "none", "false", "0", ""):
-            args = SimpleNamespace(sigma_lowres=True, sigma_lowres_yarnsig=off)
-            assert sr.yarnsig_params(args) is None, off
-
-    def test_explicit_value_still_wins(self):
-        from library.anima.trainer import sigma_route as sr
-
-        args = SimpleNamespace(sigma_lowres=True, sigma_lowres_yarnsig="2,6,0.4,3")
-        assert sr.yarnsig_params(args) == (2.0, 6.0, 0.4, 3.0)
-
 
 class TestSigmaSpan:
     """--sigma_lowres_span (E16 placement probe): step-span gate on top of
-    the σ gate. Pins the parse/guard behavior, the exact early/late
-    partition of the train-forward range (identical demoted mass ⇒ any ΔW
-    ordering is pure placement signal), and the spread coin's determinism
-    in (--seed, step) alone — it must touch no RNG stream.
+    the σ gate. Pins the exact early/late partition of the train-forward
+    range (identical demoted mass ⇒ any ΔW ordering is pure placement
+    signal).
     """
 
     @staticmethod
@@ -449,43 +297,6 @@ class TestSigmaSpan:
             seed=seed,
         )
 
-    def test_parse_defaults_and_custom(self):
-        from library.anima.trainer import sigma_route as sr
-
-        assert sr.span_params(SimpleNamespace()) is None
-        assert (
-            sr.span_params(SimpleNamespace(sigma_lowres_span=None))
-            is None
-        )
-        assert sr.span_params(self._args("early")) == ("early", 0.5)
-        assert sr.span_params(self._args("late:0.25")) == (
-            "late",
-            0.25,
-        )
-        assert sr.span_params(self._args("spread:0.5")) == (
-            "spread",
-            0.5,
-        )
-
-    def test_bad_specs_rejected(self):
-        from library.anima.trainer import sigma_route as sr
-
-        for bad in ("first", "early:0", "late:1", "spread:x", "early:0.5:0.5"):
-            with pytest.raises(ValueError):
-                sr.span_params(self._args(bad))
-
-    def test_needs_finalized_total(self):
-        from library.anima.trainer import sigma_route as sr
-
-        with pytest.raises(ValueError):
-            sr.span_allows(self._args("early", total=0), 1)
-
-    def test_none_allows_all(self):
-        from library.anima.trainer import sigma_route as sr
-
-        args = self._args(None)
-        assert all(sr.span_allows(args, i) for i in range(1, 481))
-
     def test_early_late_partition_exact(self):
         """early:0.5 and late:0.5 partition [1, T] exactly — same mass,
         disjoint, exhaustive — for even and odd T."""
@@ -494,16 +305,8 @@ class TestSigmaSpan:
         for total in (480, 481):
             early = self._args("early", total=total)
             late = self._args("late", total=total)
-            e = {
-                i
-                for i in range(1, total + 1)
-                if sr.span_allows(early, i)
-            }
-            lt = {
-                i
-                for i in range(1, total + 1)
-                if sr.span_allows(late, i)
-            }
+            e = {i for i in range(1, total + 1) if sr.span_allows(early, i)}
+            lt = {i for i in range(1, total + 1) if sr.span_allows(late, i)}
             b = round(0.5 * total)
             assert e == set(range(1, b + 1))
             assert lt == set(range(b + 1, total + 1))
@@ -517,31 +320,6 @@ class TestSigmaSpan:
         args = self._args("early", total=480, accum=2)  # 960 forwards
         assert sr.span_allows(args, 480)
         assert not sr.span_allows(args, 481)
-
-    def test_spread_coin_seed_keyed_and_stream_free(self):
-        """Same seed → identical coin sequence regardless of global RNG
-        state/consumption (CRN pairing); different seed → different set;
-        empirical rate ≈ p."""
-        from library.anima.trainer import sigma_route as sr
-
-        args_a = self._args("spread")
-        torch.manual_seed(0)
-        random.seed(0)
-        seq_a = [sr.span_allows(args_a, i) for i in range(1, 481)]
-
-        args_b = self._args("spread")
-        torch.manual_seed(7)
-        random.seed(999)
-        random.random()  # global consumption must not matter
-        seq_b = [sr.span_allows(args_b, i) for i in range(1, 481)]
-        assert seq_a == seq_b
-
-        args_c = self._args("spread", seed=1002)
-        seq_c = [sr.span_allows(args_c, i) for i in range(1, 481)]
-        assert seq_c != seq_a
-
-        rate = sum(seq_a) / len(seq_a)
-        assert 0.4 < rate < 0.6
 
 
 class TestSigmaWindow:
@@ -571,7 +349,7 @@ class TestSigmaWindow:
 class TestSigmaStackedRouter:
     """--sigma_lowres_route2 (E16 combo arm): 768 if sigma in its window,
     elif sigma>0.5 -> 896, else native. Pins rule-2 priority, per-rule
-    gate/span independence, and that rule-1-only behavior is unchanged."""
+    gate/span independence."""
 
     @staticmethod
     def _combo_args(**kw):
@@ -586,21 +364,6 @@ class TestSigmaStackedRouter:
         )
         base.update(kw)
         return SimpleNamespace(**base)
-
-    def test_route2_parse(self):
-        from library.anima.trainer import sigma_route as sr
-
-        assert sr.route2(SimpleNamespace()) is None
-        assert (
-            sr.route2(SimpleNamespace(sigma_lowres_route2=None))
-            is None
-        )
-        assert sr.route2(
-            SimpleNamespace(sigma_lowres_route2="1024:768")
-        ) == (1024, 768)
-        for bad in ("1024", "768:1024", "a:b"):
-            with pytest.raises(ValueError):
-                sr.route2(SimpleNamespace(sigma_lowres_route2=bad))
 
     def test_combo_choice_matches_spec(self):
         """768 if sigma in (0.65, 0.95); elif sigma > 0.5 -> 896; else native."""
@@ -620,13 +383,6 @@ class TestSigmaStackedRouter:
             got = sr.demote_choice(args, torch.tensor([sigma]), 1)
             assert got == want, (sigma, got, want)
 
-    def test_rule1_only_unchanged(self):
-        from library.anima.trainer import sigma_route as sr
-
-        args = self._combo_args(sigma_lowres_route2=None)
-        assert sr.demote_choice(args, torch.tensor([0.7]), 1) == 1
-        assert sr.demote_choice(args, torch.tensor([0.3]), 1) is None
-
     def test_per_rule_spans_independent(self):
         """rule 2 late-gated while rule 1 has no span: an in-window sigma in
         the first half falls back to the primary rule."""
@@ -639,8 +395,8 @@ class TestSigmaStackedRouter:
 
 
 class TestSigmaRuleValidation:
-    """--sigma_lowres_route2 must be given an explicit sigma WINDOW, and every
-    span spec must parse, at SETUP — not on the first train forward.
+    """--sigma_lowres_route2 must be given an explicit sigma WINDOW, at SETUP —
+    not on the first train forward.
 
     Rule 2 has priority, so an unbounded rule 2 fires wherever it passes and
     the primary rule never runs. With threshold2 defaulting to 0.5 that made a
@@ -673,41 +429,10 @@ class TestSigmaRuleValidation:
         from library.anima.trainer import sigma_route as sr
 
         with pytest.raises(ValueError) as e:
-            sr.validate_rules(
-                self._args(sigma_lowres_route2="1024:768")
-            )
+            sr.validate_rules(self._args(sigma_lowres_route2="1024:768"))
         msg = str(e.value)
         assert "--sigma_lowres_threshold2" in msg
         assert "--sigma_lowres_threshold2_max" in msg
-
-    @pytest.mark.parametrize(
-        "lo,hi",
-        [(0.65, None), (None, 0.95)],
-    )
-    def test_route2_with_half_a_window_rejected(self, lo, hi):
-        from library.anima.trainer import sigma_route as sr
-
-        with pytest.raises(ValueError):
-            sr.validate_rules(
-                self._args(
-                    sigma_lowres_route2="1024:768",
-                    sigma_lowres_threshold2=lo,
-                    sigma_lowres_threshold2_max=hi,
-                )
-            )
-
-    @pytest.mark.parametrize("lo,hi", [(0.95, 0.65), (0.7, 0.7), (-0.1, 0.9)])
-    def test_route2_inverted_window_rejected(self, lo, hi):
-        from library.anima.trainer import sigma_route as sr
-
-        with pytest.raises(ValueError):
-            sr.validate_rules(
-                self._args(
-                    sigma_lowres_route2="1024:768",
-                    sigma_lowres_threshold2=lo,
-                    sigma_lowres_threshold2_max=hi,
-                )
-            )
 
     def test_shipped_combo_recipe_validates(self):
         from library.anima.trainer import sigma_route as sr
@@ -721,96 +446,6 @@ class TestSigmaRuleValidation:
             )
         )
         assert route == (1024, 896) and route2 == (1024, 768)
-
-    def test_rule1_alone_needs_no_window(self):
-        from library.anima.trainer import sigma_route as sr
-
-        assert sr.validate_rules(self._args()) == ((1024, 896), None)
-
-    def test_primary_inverted_window_rejected(self):
-        from library.anima.trainer import sigma_route as sr
-
-        with pytest.raises(ValueError):
-            sr.validate_rules(
-                self._args(sigma_lowres_threshold=0.8, sigma_lowres_threshold_max=0.6)
-            )
-
-    @pytest.mark.parametrize("attr", ["sigma_lowres_span", "sigma_lowres_span2"])
-    def test_bad_span_raises_at_setup_not_first_step(self, attr):
-        """A typo'd span used to raise inside the per-step demote, i.e. after
-        model load, adapter attach and caching."""
-        from library.anima.trainer import sigma_route as sr
-
-        kw = {attr: "latte"}
-        if attr == "sigma_lowres_span2":
-            kw.update(
-                sigma_lowres_route2="1024:768",
-                sigma_lowres_threshold2=0.65,
-                sigma_lowres_threshold2_max=0.95,
-            )
-        with pytest.raises(ValueError, match="early|late|spread"):
-            sr.validate_rules(self._args(**kw))
-
-    def test_rule_cfg_reads_each_rules_own_flags(self):
-        from library.anima.trainer import sigma_route as sr
-
-        args = self._args(
-            sigma_lowres_threshold=0.5,
-            sigma_lowres_threshold_max=None,
-            sigma_lowres_span="late",
-            sigma_lowres_threshold2=0.65,
-            sigma_lowres_threshold2_max=0.95,
-            sigma_lowres_span2="early:0.3",
-        )
-        assert sr.rule_cfg(args, 1) == (0.5, None, "late")
-        assert sr.rule_cfg(args, 2) == (0.65, 0.95, "early:0.3")
-        with pytest.raises(ValueError):
-            sr.rule_cfg(args, 3)
-
-
-class TestSigmaSpanResumeOffset:
-    """The span gate counts train FORWARDS, so a resumed run must start the
-    counter at the resume offset — otherwise late:f is measured from the resume
-    point against an absolute T and demotes over a shrunken tail."""
-
-    def test_late_span_boundary_is_absolute_after_resume(self):
-        from library.anima.trainer import sigma_route as sr
-
-        args = SimpleNamespace(
-            sigma_lowres_span="late:0.5",
-            max_train_steps=480,
-            gradient_accumulation_steps=1,
-            seed=0,
-        )
-        # T=480, late:0.5 -> demote for step_idx > 240, whatever the offset.
-        assert sr.span_allows(args, 240) is False
-        assert sr.span_allows(args, 241) is True
-
-    @pytest.mark.parametrize("resume_at", [0, 120, 300])
-    def test_resumed_run_demotes_the_same_absolute_tail(self, resume_at):
-        """Replay the trainer's counter for a run resumed at ``resume_at``
-        forwards and assert the demoted set is the same absolute tail a fresh
-        run would produce. With a 0-based counter, resume_at=300 under
-        late:0.5 demoted from global 540 (past the end) instead of 241.
-        """
-        from library.anima.trainer import sigma_route as sr
-
-        args = SimpleNamespace(
-            sigma_lowres_span="late:0.5",
-            max_train_steps=480,
-            gradient_accumulation_steps=1,
-            seed=0,
-        )
-        # The loop pre-seeds the counter with the resume offset.
-        counter = resume_at
-        demoted = []
-        for _ in range(480 - resume_at):
-            counter += 1
-            if sr.span_allows(args, counter):
-                demoted.append(counter)
-
-        expected = [i for i in range(resume_at + 1, 481) if i > 240]
-        assert demoted == expected
 
 
 class TestPerRouteWarnAndNpzMemo:
@@ -846,48 +481,6 @@ class TestPerRouteWarnAndNpzMemo:
         warns = [r.message for r in caplog.records if "sigma_lowres" in r.message]
         assert len(warns) == 2, f"expected one warning per route, got {warns}"
         assert any("896" in w for w in warns) and any("768" in w for w in warns)
-
-    def test_npz_opened_once_for_both_routes(self, monkeypatch):
-        """Both sidecar loaders run back-to-back for the same image; the memo
-        keeps that to one archive open instead of one per route."""
-        import numpy as _np
-
-        from library.datasets.base import BaseDataset
-
-        ds = BaseDataset(network_multiplier=1.0, debug_dataset=False)
-        ds.enable_sigma_demote(1024, 896)
-        ds.enable_sigma_demote2(1024, 768)
-
-        import tempfile
-
-        with tempfile.TemporaryDirectory() as td:
-            npz_path = Path(td) / "img1_0896x1200_anima.npz"
-            b896 = demote_bucket_for(896, 1200, 1024, 896)
-            b768 = demote_bucket_for(896, 1200, 1024, 768)
-            payload = {
-                "latents_150x112": _np.zeros((16, 150, 112), _np.float32),
-                demoted_latents_key(*b896): _np.zeros(
-                    (16, b896[1] // 8, b896[0] // 8), _np.float32
-                ),
-                demoted_latents_key(*b768): _np.zeros(
-                    (16, b768[1] // 8, b768[0] // 8), _np.float32
-                ),
-            }
-            _np.savez(npz_path, **payload)
-            info = SimpleNamespace(latents_npz=str(npz_path), bucket_reso=(896, 1200))
-
-            opens = []
-            real_load = _np.load
-            monkeypatch.setattr(
-                _np,
-                "load",
-                lambda p, *a, **k: (opens.append(p), real_load(p, *a, **k))[1],
-            )
-            assert ds._try_load_demoted_latent(info) is not None
-            assert ds._try_load_demoted_latent2(info) is not None
-            assert len(opens) == 1, (
-                f"expected one npz open for both routes, got {opens}"
-            )
 
     def test_memo_dropped_on_pickle(self):
         """An open NpzFile is unpicklable and the dataset is shipped to

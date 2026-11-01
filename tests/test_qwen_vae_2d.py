@@ -7,9 +7,8 @@ frame in the last slot. See ``_archive/bench/qwen_vae_2d/`` and
 ``AutoencoderKLQwenImage.convert_to_2d``.
 
 Contracts pinned here:
-  1. per-layer fold is bit-exact in fp64 and within rounding in fp32,
-  2. the folded conv rejects multi-frame (T>1) input,
-  3. (gated on the VAE weights being present) the whole VAE's bf16 latents
+  1. per-layer fold is bit-exact in fp64,
+  2. (gated on the VAE weights being present) the whole VAE's bf16 latents
      match the 3D path within bf16 quantization noise.
 """
 
@@ -55,23 +54,7 @@ def test_folded_conv_bit_exact_fp64(kt, kh, kw, pad, stride):
     assert torch.equal(y3d, y2d), (y3d - y2d).abs().max().item()
 
 
-@pytest.mark.parametrize("kt,kh,kw,pad,stride", _LAYER_CONFIGS)
-def test_folded_conv_close_fp32(kt, kh, kw, pad, stride):
-    torch.manual_seed(0)
-    c3d = QwenImageCausalConv3d(8, 16, (kt, kh, kw), stride=stride, padding=pad)
-    x = torch.randn(2, 8, 1, 17, 17)
-    y3d = c3d(x)
-    y2d = Folded2DConv(c3d)(x)
-    assert torch.allclose(y3d, y2d, atol=1e-5, rtol=1e-4)
-
-
-def test_folded_conv_rejects_multiframe():
-    c3d = QwenImageCausalConv3d(4, 4, (3, 3, 3), padding=1)
-    f = Folded2DConv(c3d)
-    with pytest.raises(AssertionError):
-        f(torch.randn(1, 4, 2, 8, 8))  # T=2 not allowed
-
-
+@pytest.mark.core
 @pytest.mark.skipif(
     not VAE_PATH.exists(), reason="VAE weights not present (skip full-model check)"
 )

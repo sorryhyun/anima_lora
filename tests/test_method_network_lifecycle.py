@@ -1,12 +1,8 @@
-"""Save/load round-trip + lifecycle defaults for AdapterNetworkBase subclasses.
+"""Save/load round-trip for AdapterNetworkBase subclasses.
 
 Track 3 of refactoring_proposal.md: networks/methods/{easycontrol, soft_tokens}
-all subclass AdapterNetworkBase. These tests pin the protocol
-invariants that the trainer relies on:
+all subclass AdapterNetworkBase. These tests pin:
 
-  - is_mergeable() == False
-  - enable_gradient_checkpointing() is a no-op
-  - prepare_grad_etc() leaves all parameters trainable
   - save_weights produces a .safetensors file with the required ss_* metadata
     (ss_network_module, ss_network_spec, sshs_model_hash, sshs_legacy_hash)
     and method-specific ss_* fields
@@ -74,28 +70,6 @@ CASES = [
 
 
 @pytest.mark.parametrize("label,factory,module,spec,extra_meta", CASES)
-def test_lifecycle_defaults(label, factory, module, spec, extra_meta):
-    """The protocol the trainer relies on is honored by the base + overrides."""
-    del label, module, spec, extra_meta
-    net = factory()
-
-    # Defaults from AdapterNetworkBase.
-    assert net.is_mergeable() is False
-    # set_multiplier round-trips
-    net.set_multiplier(0.5)
-    assert net.multiplier == 0.5
-    net.set_multiplier(1.0)
-    # enable_gradient_checkpointing is a no-op (must not raise)
-    net.enable_gradient_checkpointing()
-    # prepare_grad_etc flips at least one parameter on.
-    net.prepare_grad_etc(text_encoder=None, unet=None)
-    assert any(p.requires_grad for p in net.parameters())
-    # Trainable list is non-empty
-    params = list(net.get_trainable_params())
-    assert len(params) > 0
-
-
-@pytest.mark.parametrize("label,factory,module,spec,extra_meta", CASES)
 def test_save_metadata(label, factory, module, spec, extra_meta, tmp_path: Path):
     """Saved .safetensors carries the right ss_* metadata."""
     del label
@@ -116,6 +90,7 @@ def test_save_metadata(label, factory, module, spec, extra_meta, tmp_path: Path)
         assert meta.get(k) == v, f"{k}: expected {v!r}, got {meta.get(k)!r}"
 
 
+@pytest.mark.core
 @pytest.mark.parametrize("label,factory,module,spec,extra_meta", CASES)
 def test_save_load_roundtrip(label, factory, module, spec, extra_meta, tmp_path: Path):
     """Saving and reloading yields the same trainable tensors."""

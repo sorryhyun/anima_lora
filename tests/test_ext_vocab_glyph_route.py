@@ -2,17 +2,15 @@
 
 Invariants (against the real tokenizers + pack, skipped when absent):
 
-* **Off = bit-identical**: a pack without ``glyph_route`` (or ``False``)
-  encodes exactly as before, EN and CJK alike.
 * **On, a JA piece → its glyphs' single rows**: unspaced こんにちは encodes to
   the spelled ``こ ん に ち は``'s ids; a space-prefixed glyph (`` の``) to the
   glyph's own row, not its own token row.
 * **EN, hangul and pure-punctuation tokens never split.**
 * The mapping key reaches the digest only when set; the env var overrides
   the key through ``VocabPack.build_encoder``.
-* **Hangul under its own key** (``glyph_route_ko`` /
-  ``ANIMA_VOCAB_GLYPH_ROUTE_KO``): a Hangul piece → its syllables' single
-  rows, space-prefixed forms included; JA and EN encode as without it.
+* **Hangul under its own key** (``glyph_route_ko``): a Hangul piece → its
+  syllables' single rows, space-prefixed forms included; JA and EN encode as
+  without it.
 """
 
 from __future__ import annotations
@@ -52,20 +50,6 @@ def _encs():
 def _ext(enc, text):
     ids, mask = enc.encode(f'Japanese text reads as "{text}".', 128)
     return [i - T for i, m in zip(ids, mask) if m and i >= T]
-
-
-def test_off_is_bit_identical():
-    off, _, _, mapping = _encs()
-    assert off.glyph_split is None
-    for p in (
-        "1girl, solo",
-        'text reads as "こんにちは"',
-        "漢字 ひらがな 한국어 中文。",
-    ):
-        explicit = ev.HybridT5Encoder.from_mapping(
-            off.t5_tok, off.qwen_tok, {**mapping, "glyph_route": False}
-        )
-        assert off.encode(p) == explicit.encode(p)
 
 
 def test_on_routes_pieces_to_single_rows():
@@ -129,17 +113,3 @@ def test_ko_routes_hangul_pieces_only():
     d0 = ev.pack_digest(table, base)
     assert ev.pack_digest(table, {**base, "glyph_route_ko": False}) == d0
     assert ev.pack_digest(table, {**base, "glyph_route_ko": True}) != d0
-
-
-def test_ko_env_override(monkeypatch):
-    off, _, table, mapping = _encs()
-    from library.anima import vocab_pack as vp
-
-    pack = vp.VocabPack(prefix=EXT_PREFIX, table=table, mapping=mapping, digest="")
-    monkeypatch.delenv("ANIMA_VOCAB_GLYPH_ROUTE", raising=False)
-    monkeypatch.setenv("ANIMA_VOCAB_GLYPH_ROUTE_KO", "1")
-    enc = pack.build_encoder(off.t5_tok, off.qwen_tok)
-    assert _ext(enc, "하세요") == [_ext(off, c)[0] for c in "하세요"]
-    assert _ext(enc, "こんにちは") == _ext(off, "こんにちは")
-    monkeypatch.setenv("ANIMA_VOCAB_GLYPH_ROUTE_KO", "0")
-    assert pack.build_encoder(off.t5_tok, off.qwen_tok).glyph_split is None

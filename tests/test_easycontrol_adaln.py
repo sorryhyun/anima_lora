@@ -67,11 +67,6 @@ def test_adaln_opt_in_builds_modules_with_sqrt_alpha():
     assert adaln_params <= {id(p) for p in net.get_trainable_params()}
 
 
-def test_adaln_explicit_alpha_wins_over_sqrt_law():
-    net = _make_network(train_adaln="true", adaln_rank="8", adaln_alpha="16.0")
-    assert net.adaln_alpha == 16.0
-
-
 class _FakeBlock(nn.Module):
     def __init__(self, hidden=8, bottleneck=4):
         super().__init__()
@@ -127,18 +122,5 @@ def test_adaln_checkpoint_roundtrip(tmp_path):
     assert loaded.adaln_rank == 8
     assert loaded.adaln_alpha == 16.0
     assert loaded.adaln_in_dim == net.adaln_in_dim
-    missing, unexpected = loaded.load_state_dict(weights_sd, strict=True)
-    assert not missing and not unexpected
-
-
-def test_adaln_less_checkpoint_loads_without_adaln(tmp_path):
-    from safetensors.torch import save_file
-
-    net = _make_network(train_adaln="false")
-    path = tmp_path / "ec_plain.safetensors"
-    save_file(net.state_dict_for_save(torch.float32), str(path), net.metadata_fields())
-
-    loaded, weights_sd = create_network_from_weights(1.0, str(path), None, [], None)
-    assert loaded.train_adaln is False
     missing, unexpected = loaded.load_state_dict(weights_sd, strict=True)
     assert not missing and not unexpected

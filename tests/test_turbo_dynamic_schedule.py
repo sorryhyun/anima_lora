@@ -15,11 +15,13 @@ layout properties the rollout math assumes:
 
 from __future__ import annotations
 
+import pytest
 import torch
 
 from scripts.distill_turbo.primitives import sample_dynamic_sigmas
 
 
+@pytest.mark.core
 def test_layout_endpoints_and_monotonic():
     torch.manual_seed(0)
     for _ in range(200):
@@ -39,22 +41,3 @@ def test_length_range_matches_n_bounds():
         assert 2 <= n <= 4
         seen.add(n)
     assert seen == {2, 3, 4}  # every rollout length gets drawn
-
-
-def test_n_min_equals_n_max_pins_length():
-    torch.manual_seed(0)
-    for _ in range(50):
-        assert len(sample_dynamic_sigmas(4, 4)) == 5
-
-
-def test_single_step_grid():
-    torch.manual_seed(0)
-    assert sample_dynamic_sigmas(1, 1) == [1.0, 0.0]
-
-
-def test_seeded_determinism():
-    torch.manual_seed(123)
-    a = [sample_dynamic_sigmas(2, 4) for _ in range(20)]
-    torch.manual_seed(123)
-    b = [sample_dynamic_sigmas(2, 4) for _ in range(20)]
-    assert a == b

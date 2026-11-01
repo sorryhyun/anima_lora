@@ -101,6 +101,7 @@ def _net() -> Net:
     return Net()
 
 
+@pytest.mark.core
 @pytest.mark.parametrize("swap", [3, 6])
 @pytest.mark.parametrize("backward", [True, False])
 def test_h2d_only_matches_resident_and_classic(swap, backward):

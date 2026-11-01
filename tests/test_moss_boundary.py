@@ -10,6 +10,8 @@ from __future__ import annotations
 import subprocess
 import sys
 
+import pytest
+
 from tests._boundary import ROOT, imports_of, python_files
 
 MOSS = ROOT / "library" / "moss"
@@ -44,6 +46,7 @@ _SHARED = (
 )
 
 
+@pytest.mark.core
 def test_anima_side_never_imports_moss():
     offenders = []
     for path in python_files():

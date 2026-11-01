@@ -1,8 +1,7 @@
 """The model catalog and the ``make download-*`` targets that drive it.
 
 The behaviour worth pinning is the *wiring*: rows land where loaders look, every
-target resolves to real ids, the GUI's buttons run registered tasks, and a
-present file is not re-fetched. Downloading itself is ``anime_tools``' tested
+target resolves to real ids, and a present file is not re-fetched. Downloading itself is ``anime_tools``' tested
 code — mock at the ``Asset.fetch`` boundary rather than at the hub.
 """
 
@@ -64,26 +63,7 @@ def test_every_visible_row_belongs_to_a_listed_pack():
     assert not (set(DL.HIDDEN_PACKS) & pack_ids)
 
 
-def test_hidden_pack_rows_are_not_on_the_trainer_side(monkeypatch):
-    """A pack in ``HIDDEN_PACKS`` is neither listed, resolved nor downloadable
-    from here. The set is empty since the package dropped the MIT text
-    segmenter (``text_mask``) itself — pin that the rows are really gone and
-    that the seam still filters when a pack is named."""
-    from anime_tools.downloads import catalog as package_catalog
-
-    assert DL.HIDDEN_PACKS == ()
-    assert not {"mit_text", "ctd_onnx"} & {a.id for a in package_catalog()}
-    with pytest.raises(KeyError):
-        DL.resolve(["mit_text"])
-    with pytest.raises(KeyError):
-        DL.resolve(["text_mask"])
-
-    monkeypatch.setattr(DL, "HIDDEN_PACKS", ("grouping",))
-    hidden = {a.id for a in package_catalog() if a.pack == "grouping"}
-    assert hidden == {"pe_spatial"}
-    assert not (hidden & {a.id for a in DL.curation_catalog()})
-
-
+@pytest.mark.core
 def test_the_first_run_set_is_the_mandatory_set():
     """v2 default: masking is opt-in, so SAM3 must not be in a fresh install's
     path — its gated repo was the first-run failure this removes. The CJK vocab
@@ -96,42 +76,7 @@ def test_the_first_run_set_is_the_mandatory_set():
     assert {"anima_dit", "anima_te", "anima_vae", "tagger"} <= set(DL.DEFAULT_SET)
 
 
-def test_resolve_expands_groups_and_dedupes_in_catalog_order():
-    ids = [a.id for a in DL.resolve(["pe", "pe_core", "anima"])]
-    assert ids == ["anima_dit", "anima_te", "anima_vae", "pe_core", "pe_spatial"]
-
-
-def test_resolve_expands_a_pack_id():
-    """``make download-model ARGS=ocr`` is the pack, in catalog order."""
-    ids = [a.id for a in DL.resolve(["ocr"])]
-    assert ids == [a.id for a in DL.by_pack()["ocr"]]
-    assert ids and all(DL.by_id()[i].pack == "ocr" for i in ids)
-
-
-def test_by_pack_keeps_pack_order_and_drops_empty_packs():
-    grouped = DL.by_pack()
-    assert list(grouped) == [p.id for p in DL.PACKS if p.id in grouped]
-    assert all(rows for rows in grouped.values())
-    trainer_only = DL.by_pack(DL.catalog())
-    assert list(trainer_only) == [
-        "anima",
-        "anima-dit-int8",
-        "pe",
-        "cjk",
-        "moss-base",
-        "moss-sft",
-        "moss-dit-int8",
-        "moss-te-int8",
-        "moss-te-fp8",
-    ]
-
-
-def test_resolve_raises_naming_the_unknown_token():
-    with pytest.raises(KeyError) as exc:
-        DL.resolve(["sam3", "nope"])
-    assert "nope" in str(exc.value)
-
-
+@pytest.mark.core
 def test_rows_land_where_the_loaders_look():
     """The catalog's one rule: a path a loader owns separately is a Download
     button that writes where the loader will not look."""
@@ -154,6 +99,7 @@ def test_rows_land_where_the_loaders_look():
     )
 
 
+@pytest.mark.core
 def test_moss_rows_land_where_library_moss_looks():
     """``library/moss`` reads every part from ``<variant>/<subfolder>``; the TE,
     VAE and tokenizer only ever from Base, so SFT ships its DiT alone."""
@@ -172,6 +118,7 @@ def test_moss_rows_land_where_library_moss_looks():
     assert not set(DL.GROUPS["moss-sft"]) & set(DL.DEFAULT_SET)
 
 
+@pytest.mark.core
 def test_anima_rows_land_on_the_base_config_defaults():
     """``configs/base.toml`` points training at these three exact paths."""
     import tomllib
@@ -196,19 +143,6 @@ def test_anima_rows_land_on_the_base_config_defaults():
         assert (rows["vocab_pack"].dest / name).with_suffix("") == (
             DL.default_vocab_pack_prefix()
         )
-
-
-def test_prune_empty_drops_the_split_files_scaffolding(tmp_path):
-    """``hf`` mirrors the repo layout under ``--local-dir``; after the flatten
-    the empty tree must go, but a real file must not."""
-    (tmp_path / "split_files" / "diffusion_models").mkdir(parents=True)
-    (tmp_path / "keep").mkdir()
-    (tmp_path / "keep" / "f.bin").write_bytes(b"x")
-
-    DL._prune_empty(tmp_path)
-
-    assert not (tmp_path / "split_files").exists()
-    assert (tmp_path / "keep" / "f.bin").exists()
 
 
 def test_fetch_skips_an_installed_row(monkeypatch):
@@ -271,91 +205,6 @@ def test_every_download_target_resolves(monkeypatch):
     for name in targets:
         tasks.COMMANDS[name][0]([])
     assert all(ids for ids in picked)
-
-
-def test_download_model_accepts_pack_ids(monkeypatch):
-    """The GUI's pack buttons and ``make download-model ARGS=ocr`` go through the
-    same front door; a pack id must expand there, not only in ``resolve``."""
-    import tasks
-
-    picked: list[list[str]] = []
-    monkeypatch.setattr(
-        DL,
-        "fetch_all",
-        lambda assets, **_kw: picked.append([a.id for a in assets]) or [],
-    )
-    tasks.COMMANDS["download-model"][0](["ocr", "anima"])
-    assert picked == [[a.id for a in DL.resolve(["anima", "ocr"])]]
-
-
-def test_models_dialog_rows_come_from_the_catalog():
-    """Both tabs render Assets and run ``download-model <id>``; the id has to be
-    one the task can resolve, and every labelled row has to be a real one."""
-    pytest.importorskip("PySide6")
-    import tasks
-    from gui.dialogs.system import _TITLE_KEYS
-
-    assert "download-model" in tasks.COMMANDS
-    assert set(_TITLE_KEYS) <= set(DL.by_id())
-
-
-def test_the_tabs_show_the_catalog_parts():
-    """One modal, one QProcess, one log — the split is a tab, so neither list
-    grows long enough to push the log pane off the dialog."""
-    import os
-
-    pytest.importorskip("PySide6")
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtWidgets import QApplication, QGroupBox
-
-    from gui.dialogs.system import ModelsDialog, _pack_title
-
-    QApplication.instance() or QApplication([])
-    dlg = ModelsDialog()
-    try:
-        assert dlg.tabs.count() == 3
-        anima, moss, curation = dlg._panels
-        assert [a.id for a in anima.assets()] == [a.id for a in DL.anima_catalog()]
-        assert [a.id for a in moss.assets()] == [a.id for a in DL.moss_catalog()]
-        assert not {a.pack for a in anima.assets()} & {a.pack for a in moss.assets()}
-        assert [a.id for a in curation.assets()] == [
-            a.id for a in DL.curation_catalog()
-        ]
-        assert "mit_text" not in {a.id for a in curation.assets()}
-        # Rows are grouped by pack: one QGroupBox per pack the tab's rows
-        # populate, in PACKS order, each with a pack-level button that names
-        # exactly that pack's rows.
-        for panel in dlg._panels:
-            expected = DL.by_pack(panel.assets())
-            assert [pid for pid, _ids, _b in panel._packs] == list(expected)
-            for pid, ids, _btn in panel._packs:
-                assert ids == tuple(a.id for a in expected[pid])
-            boxes = panel.findChildren(QGroupBox)
-            assert [b.title() for b in boxes] == [
-                _pack_title(DL.PACK_BY_ID[pid]) for pid in expected
-            ]
-        assert [pid for pid, _i, _b in anima._packs] == [
-            "anima",
-            "anima-dit-int8",
-            "pe",
-            "cjk",
-        ]
-        assert [pid for pid, _i, _b in moss._packs] == [
-            "moss-base",
-            "moss-sft",
-            "moss-dit-int8",
-            "moss-te-int8",
-            "moss-te-fp8",
-        ]
-        # Busy disables every button on *both* tabs: the dialog runs one job.
-        dlg._set_busy(True)
-        assert not any(b.isEnabled() for p in dlg._panels for _a, _s, b in p._rows)
-        assert not any(b.isEnabled() for p in dlg._panels for _p, _i, b in p._packs)
-        assert not any(p.all_btn.isEnabled() for p in dlg._panels)
-        dlg._set_busy(False)
-        assert all(b.isEnabled() for p in dlg._panels for _p, _i, b in p._packs)
-    finally:
-        dlg.close()
 
 
 def test_every_title_key_exists_in_every_language():

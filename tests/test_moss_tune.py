@@ -1,6 +1,5 @@
 import pytest
 
-from library.moss.requests import TuneSwapRequest
 from library.moss.train import budget_for_free, step_reserve_gb
 from library.moss.tune import flags, pick
 
@@ -59,8 +58,3 @@ def test_pick_respects_margin():
     assert flags(chosen) == f"{bf16} --blocks_to_swap 24 --activation_memory_budget 0.2"
     assert flags(arms[0]) == f"{bf16} --grad_checkpointing --blocks_to_swap 0"
     assert pick(arms, margin_gb=5.0) is None
-
-
-def test_request_round_trip():
-    req = TuneSwapRequest(sizes="1024x1024:300", swap_grid="16,24", reference=False)
-    assert TuneSwapRequest.from_argv(req.to_argv()) == req

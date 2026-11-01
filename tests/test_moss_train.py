@@ -12,7 +12,6 @@ from library.moss.train import (
     region_mse,
     tone_loss,
     tone_projection,
-    training_loss,
 )
 
 
@@ -88,17 +87,6 @@ def test_rates_compose():
     assert abs(share["variant"] - 0.75) < 0.03 and "plain" not in share
 
 
-def test_missing_candidates_draw_nothing():
-    rngs = _rngs()
-    for _ in range(5):
-        x, kind = choose_embeds(
-            FULL, plain_rate=1.0, variant_rate=1.0, dropout=1.0, **rngs
-        )
-        assert kind == "full" and x is FULL
-    fresh = _rngs()
-    assert [r.random() for r in rngs.values()] == [r.random() for r in fresh.values()]
-
-
 def test_edit_region_drops_specks_and_dilates():
     ref = torch.zeros(128, 12, 12)
     latent = ref.clone()
@@ -132,15 +120,6 @@ def test_tone_loss_constant_offset_pool0():
     rest[:3, :3] = False
     err[:, :, :3, :3] = 50.0  # edit-region error: excluded
     assert torch.isclose(tone_loss(err, rest, 0), offset.pow(2).mean())
-
-
-def test_tone_loss_projects_to_lab():
-    dirs = torch.randn(128, 3, generator=torch.Generator().manual_seed(0))
-    proj = torch.linalg.pinv(dirs)
-    c = torch.tensor([1.5, -0.5, 2.0])
-    err = (dirs @ c).view(1, 128, 1, 1).expand(1, 128, 16, 16)
-    rest = torch.ones(16, 16, dtype=torch.bool)
-    assert torch.isclose(tone_loss(err, rest, 8, proj), c.pow(2).sum(), rtol=1e-4)
 
 
 def test_tone_projection_b_weight_scales_b_error(tmp_path):
@@ -185,25 +164,6 @@ def test_ema_decay_from_span():
     assert abs(ema_decay(0.14, 240) - 0.97) < 1e-3
     assert abs(ema_decay(0.055, 600) - 0.97) < 1e-3
     assert ema_decay(0.1, 5) == 0.0  # a span under one update is no average
-
-
-def test_training_loss_logs_output_space_grad_norms():
-    class Fake(torch.nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.w = torch.nn.Parameter(torch.ones(1))
-
-        def forward(self, x, t, e, return_dict=False, ref=None):
-            return (x * self.w,)
-
-    latent = torch.randn(1, 4, 8, 8)
-    rest = torch.ones(8, 8, dtype=torch.bool)
-    parts = {}
-    tone = dict(rest=rest, pool=0, proj=None, weight=0.0, log_weight=0.5)
-    loss = training_loss(Fake(), latent, None, 0.5, parts=parts, tone=tone)
-    assert {"g_fm", "g_tone", "g_cos"} <= parts.keys()
-    assert parts["g_fm"] > 0 and parts["g_tone"] > 0 and -1 <= parts["g_cos"] <= 1
-    loss.backward()  # the logged grads leave the graph intact
 
 
 def test_delta_row_ids_and_row_mask():

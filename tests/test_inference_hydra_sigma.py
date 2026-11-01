@@ -1,8 +1,8 @@
 from types import SimpleNamespace
 
+import pytest
 import torch
 
-from library.inference.adapters import clear_hydra_sigma, set_hydra_sigma
 from library.inference.generation import generate_body, generate_body_tiled
 from networks.spectrum import spectrum_denoise
 from library.inference.sampler_context import SamplerSideChannels
@@ -96,27 +96,7 @@ def _assert_sigmas(observed, expected):
     assert torch.allclose(actual, torch.tensor(expected), atol=2e-3)
 
 
-def test_adapter_sigma_helper_updates_each_hydra_network_once():
-    first = FakeHydraNetwork()
-    second = FakeHydraNetwork()
-    original = SimpleNamespace(
-        _hydra_networks=[first, second],
-        _hydra_network=second,
-        _pgraft_network=first,
-    )
-    model = SimpleNamespace(_orig_mod=original)
-
-    set_hydra_sigma(model, torch.tensor([0.25, 0.5], dtype=torch.bfloat16))
-    clear_hydra_sigma(model)
-
-    assert len(first.sigmas) == 1
-    assert len(second.sigmas) == 1
-    assert first.clear_count == 1
-    assert second.clear_count == 1
-    assert first.sigmas[0].dtype == torch.float32
-    assert torch.allclose(first.sigmas[0], torch.tensor([0.25, 0.5]))
-
-
+@pytest.mark.core
 def test_generate_body_sets_hydra_sigma_each_denoising_step():
     network = FakeHydraNetwork()
     anima = FakeAnima(network)

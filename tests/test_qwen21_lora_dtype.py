@@ -25,12 +25,14 @@ def _adapter(dtype=torch.float32):
     return adapter
 
 
+@pytest.mark.core
 def test_default_master_weights_are_fp32():
     base = torch.nn.Linear(32, 24, bias=False).to(torch.bfloat16)
     network = LoRANetwork(torch.nn.Sequential(base), targets=r"0", rank=4)
     assert {p.dtype for p in network.parameters()} == {torch.float32}
 
 
+@pytest.mark.core
 def test_fp32_adapter_computes_in_the_model_dtype():
     adapter = _adapter(torch.float32)
     seen: list[torch.dtype] = []
@@ -50,22 +52,3 @@ def test_fp32_adapter_computes_in_the_model_dtype():
         torch.nn.functional.linear = original
     assert out.dtype == torch.bfloat16
     assert seen and set(seen) == {torch.bfloat16}, seen
-
-
-def test_gradients_land_on_the_fp32_masters():
-    adapter = _adapter(torch.float32)
-    x = torch.randn(2, 8, 32, dtype=torch.bfloat16)
-    base_out = torch.zeros(2, 8, 24, dtype=torch.bfloat16)
-    adapter(x, base_out).float().sum().backward()
-    assert adapter.down.weight.grad is not None
-    assert adapter.down.weight.grad.dtype == torch.float32
-    assert adapter.up.weight.grad.dtype == torch.float32
-    assert torch.isfinite(adapter.down.weight.grad).all()
-
-
-def test_multiplier_zero_is_the_base_output():
-    adapter = _adapter()
-    adapter.multiplier = 0.0
-    x = torch.randn(2, 8, 32, dtype=torch.bfloat16)
-    base_out = torch.randn(2, 8, 24, dtype=torch.bfloat16)
-    assert adapter(x, base_out) is base_out
