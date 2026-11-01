@@ -6,8 +6,10 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from i2i_tasks.swap_text.align import diff_regions, grow_regions, refine_ecc
-from i2i_tasks.swap_text.prep import colour_match
+from i2i_tasks.swap_text.align import refine_ecc
+from i2i_tasks.swap_text.build import colour_match
+from i2i_tasks.swap_text.common import worker_pool
+from i2i_tasks.swap_text.regions import diff_regions, grow_regions
 
 SIZE = (900, 640)
 
@@ -77,7 +79,9 @@ def test_grown_label_takes_a_stray_dot_and_fills_its_box():
 
 def _texture(shape: tuple[int, int]) -> np.ndarray:
     noise = np.random.default_rng(0).integers(0, 256, shape, np.uint8)
-    return cv2.normalize(cv2.GaussianBlur(noise, (0, 0), 4), None, 0, 255, cv2.NORM_MINMAX)
+    return cv2.normalize(
+        cv2.GaussianBlur(noise, (0, 0), 4), None, 0, 255, cv2.NORM_MINMAX
+    )
 
 
 def test_refine_ecc_lands_on_the_fit_of_a_larger_twin():
@@ -109,3 +113,14 @@ def test_grown_label_stays_off_the_uncovered_strip():
     labels[80:90, 80:90] = 1
     out = grow_regions(labels, np.zeros(labels.shape, np.float32))
     assert (out[50:60, 70:90] == 255).all()
+
+
+def _shrink(_) -> int:
+    page = np.zeros((2000, 2000, 3), np.uint8)
+    return cv2.resize(page, (500, 500), interpolation=cv2.INTER_AREA).shape[0]
+
+
+def test_worker_pool_forks_from_a_parent_that_ran_cv2():
+    _shrink(0)
+    with worker_pool(2) as pool:
+        assert pool.map_async(_shrink, range(4)).get(timeout=30) == [500] * 4
