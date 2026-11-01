@@ -3,9 +3,7 @@
 PySide6 (Qt6) desktop GUI. Root `CLAUDE.md` owns the training/config/daemon contracts this
 GUI drives. Most of the surface is `tabs/config_tab.py` and the `tabs/preprocess/` package.
 The GUI does not curate — captions, tagging, masks, grouping and exclusion are the
-`anime_tools` web panel's, embedded in the anime_tools tab. For recipe-style changes
-(new training field / variant / language, job submission, a new job-submitting tab,
-action-button colors) **load the `gui-changes` skill**.
+`anime_tools` web panel's, embedded in the anime_tools tab.
 
 ## What it is
 
@@ -216,8 +214,7 @@ must not appear.
   drifts silently.
 - **i18n key parity is tested.** `tests/test_gui_i18n_parity.py` fails when ko/ja/cn lacks
   an English key, carries an extra one, or changes a `{field}`. Add every string to all
-  four (and the matching `_fields.json` / `.html` for help text); the `translator` agent
-  propagates English → ko/ja/cn.
+  four (and the matching `_fields.json` / `.html` for help text).
 - **The daemon outlives the GUI.** Closing the window does not stop training.
 - **Process kill must walk the tree.** A directly-spawned `QProcess`'s real work runs in a
   grandchild, so `QProcess.kill()` leaks it. Spawn a Python child with

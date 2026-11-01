@@ -18,7 +18,7 @@ never loads on another.
 |---|---|---|---|
 | **MOSS-Image** | **primary** — most active work | `library/moss/`, `scripts/moss/`, `configs/moss/`, `gui/moss/` | `library/moss/CLAUDE.md`, `docs/moss/README.md` |
 | **Anima** | experimental — research bed (CJK vocab lines, distillation, inference stacks) | `train.py`, `inference.py`, `library/anima/`, `networks/`, `configs/{base,presets}.toml` + `configs/methods/` | [Anima line](#anima-line-experimental) below |
-| **Qwen-Image-2.1** | side line | `library/qwen21/`, `scripts/qwen21/`, `gui/qwen21/` | `library/qwen21/CLAUDE.md` + the `qwen21` skill |
+| **Qwen-Image-2.1** | side line | `library/qwen21/`, `scripts/qwen21/`, `gui/qwen21/` | `library/qwen21/CLAUDE.md` |
 
 The repo, package (`anima_lora`), daemon and env vars (`ANIMA_HOME`, …) keep the Anima
 name. **Check which line a file belongs to before applying an invariant** — Anima's
@@ -35,8 +35,7 @@ make download-models                  # Anima first-run set (DiT, Qwen3-0.6B TE,
 
 Run Python as `.venv/bin/python` (or `uv run --no-sync`); a bare `uv run` re-resolves and
 can fail on the torch index split. Weights are rows in the model catalog
-(`library/downloads.py`; `make download-list`) — **load the `model-catalog` skill**
-before adding or moving a weight or changing a loader's default path.
+(`library/downloads.py`; `make download-list`).
 
 ## Running work
 
@@ -47,8 +46,7 @@ before adding or moving a weight or changing a loader's default path.
   GPU process started from a Claude Code background Bash is SIGKILLed by the harness
   sandbox after ~1 min, no trace. `make daemon-run ARGS="[--stall-timeout S] <script.py>
   [flags]"` (daemon-run's own flags go *before* the script path); `make daemon-wait`
-  blocks until terminal; `make run-status` follows a run's `progress.jsonl`. **Load the
-  `daemon` skill** before launching or monitoring a GPU job.
+  blocks until terminal; `make run-status` follows a run's `progress.jsonl`.
 - **Lint only the files you touched**: `ruff check --fix <files>` (a repo-wide F401
   autofix strips the re-exports `library/train_util.py` and `anima_lora/__init__.py`
   exist for). Run `ruff format <files>` only right before a commit — mid-task it reflows
@@ -143,9 +141,8 @@ masking and grouping live in the sibling repo **https://github.com/sorryhyun/ani
 (checkout `../anime_tools`). Dependency direction is **trainer → `anime_tools`, never the
 reverse** (`tests/test_curation_boundary.py`). It is a **git dependency pinned by release
 tag** (`pyproject.toml`) — an edit in `../anime_tools` is invisible to `make` targets and
-daemon jobs until a tag is cut and the pin moves. **Load the `anime-tools` skill** before
-importing the package, editing `scripts/tasks/` (wrappers build a request, never spell a
-flag), adding or changing a stage, or bumping the pin.
+daemon jobs until a tag is cut and the pin moves. Wrappers in `scripts/tasks/` build a
+request, never spell a flag.
 
 The trainer GUI does not curate: its anime_tools tab embeds the package's web panel,
 which curates in `workspace/` and exports captions / masks / the revised master (never
@@ -162,8 +159,7 @@ tag captions feed MOSS, mapped onto its layout-JSON prompt at cache time.
 
 `make caption-autotag` / `caption-position` are dry-run by default (`ARGS="--apply"`
 writes); `make caption-full` writes by default (`ARGS="--dry_run"` plans). After any of
-them, re-cache the TE (`make preprocess-te` for Anima, the MOSS `cache` job). **Load the
-`captions` skill** before parsing/editing captions or running these.
+them, re-cache the TE (`make preprocess-te` for Anima, the MOSS `cache` job).
 
 ### i2i staging
 
@@ -205,8 +201,7 @@ routing axes: `lora-routing` skill).
   Ships on `int8 = "stream"` + `stream = "fp32"`, which refuse `dmad`.
   Output is a normal LoRA — infer with `--infer_steps 4 --cfg 1.0` (`make test-turbo`).
   `docs/anima/methods/turbo.md`.
-- `make soup TARGET=<artist>` — uncond-init soup, plain LoRA only; **load the `soup`
-  skill** first.
+- `make soup TARGET=<artist>` — uncond-init soup, plain LoRA only.
 - Inference: `make test` (interactive) / `make gen` (daemon batch: grids, seed sweeps).
   `SPECTRUM=1` / `MOD=1` / `NOLORA=1` compose into every `test-*` target.
 - `--int8 fwd|full|stream` (off by default; `inference.py --int8`, `INT8=1` on `test-*`) runs the
@@ -221,8 +216,7 @@ routing axes: `lora-routing` skill).
 - `make merge ADAPTER_DIR=… [MULTIPLIER=0.8]` bakes a LoRA / T-LoRA into the DiT;
   refuses Hydra-moe / postfix unless `--allow-partial`.
 - `--sigma_lowres` (σ-demoted training, opt-in): the research line is archived but the
-  feature is live; needs `make preprocess-demote` siblings. **Load the `sigma-lowres`
-  skill** before enabling it.
+  feature is live; needs `make preprocess-demote` siblings.
 
 ### Invariants
 
@@ -284,8 +278,7 @@ Training-free inference stacks (Spectrum, SMC-CFG, CNS, mod-guidance, DAVE, …)
   live work can sit on its own branch** — run `git branch -a` and check before editing a
   `project/<line>/`.
 - Finished lines: `project/finished/` (code search skips most of it); retired lines and
-  benches: the gitignored `_archive/`. Ask the **`archive-explorer`** agent about either
-  instead of grepping. Proposals: `docs/{moss,anima}/proposal/`.
+  benches: the gitignored `_archive/`. Proposals: `docs/{moss,anima}/proposal/`.
 - Docs: one folder per line (`docs/moss/`, `docs/anima/`); docs shared across lines
   (installation, guidebooks, CNS) sit at `docs/` — index `docs/README.md`.
 - `CONTRIBUTING.md`: numerics/efficiency changes (Tier 1.5) and new methods (Tier 2) need

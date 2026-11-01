@@ -1,7 +1,7 @@
 # CLAUDE.md — `project/qwen21_lora/`
 
 **This line is not Anima.** Its code lives in `library/qwen21/` — **read
-`library/qwen21/CLAUDE.md` first** and load the `qwen21` skill: the root `CLAUDE.md` invariants (5D latents, max-padded
+`library/qwen21/CLAUDE.md` first**: the root `CLAUDE.md` invariants (5D latents, max-padded
 text, free-fit bucketing, block-compile first) are wrong here.
 
 This directory is the research home: `src/` holds the one-off scripts (`backward_smoke`,

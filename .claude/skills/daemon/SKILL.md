@@ -36,10 +36,8 @@ behind a live train run instead of OOM-colliding, and survive the terminal.
 
 ## Waiting on a job (agent sessions)
 
-A foreground Bash call caps at 10 min. Wait on a job with **Bash `run_in_background:
-true`** running `make daemon-wait JOB=<id>`: it re-invokes the agent once, when the job
-is terminal (the default — send step / ETA updates only when the user asks for them). In
-an interactive local session a background command has no time limit (Claude Code docs,
+Wait on a job with **Bash `run_in_background: true`** running `make daemon-wait JOB=<id>`.
+Send step / ETA updates only when the user asks for them. In an interactive local session a background command has no time limit (Claude Code docs,
 "Time limit for background commands"). `daemon-wait` is CPU-only, so the harness's
 GPU-process kill should not reach it (not yet observed on a wait past ~1 min). Linux reaps background shells under critical
 memory pressure once the session has idled 30 min (`CLAUDE_CODE_DISABLE_BG_SHELL_PRESSURE_REAP=1`

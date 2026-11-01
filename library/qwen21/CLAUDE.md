@@ -18,9 +18,6 @@ adapters and scan counts shared with `library/moss/`), and nothing else: the res
 | `cache.py` / `train.py` / `generate.py` | `run_cache` / `run_train` / `run_generate(req)` — sidecars in `scripts/qwen21/` |
 | `scan.py` | **torch-free** source/cache folder counts for the GUI (stale text caches) |
 
-Running, the GUI, adding a flag, model-dir resolution and gotchas: **load the `qwen21`
-skill**.
-
 The research line — smokes, benches, reports, measured numbers — is
 `project/qwen21_lora/`.
 

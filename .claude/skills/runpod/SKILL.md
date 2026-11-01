@@ -50,7 +50,7 @@ SSH="ssh -p <port> -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 rsync -a --mkpath -e "$SSH" <local>/ root@<ip>:/app/<same path>/
 ```
 
-(Shell variables do not carry across Bash calls; set `SSH` in each command.)
+(Set `SSH` in each Bash command.)
 
 - `--mkpath` is required for a path under `/app` that does not exist yet: rsync
   creates only the last directory level and otherwise fails with `mkdir "…" failed:

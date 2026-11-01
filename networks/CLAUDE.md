@@ -33,13 +33,9 @@ The LoRA-family routing cfg is three orthogonal axes — `use_moe_style` /
 `lora_anima/config.py::LoRANetworkCfg.from_kwargs` and dispatched by
 `__init__.py::resolve_network_spec` to a `NETWORK_REGISTRY` entry.
 
-**Load the `lora-routing` skill before adding/changing a variant or touching routing
-code** — it holds the axis values and their constraints, the full variant matrix,
-per-variant module details (LoRA/T-LoRA/Hydra), the metadata stamps
-(`ss_use_moe_style` / `ss_route_per_layer` / `ss_router_source`, and which unstamped
-checkpoints don't load), and the `GlobalRouter` mechanics (zero-init gates, `set_fei`
-reference-write into every module's `_routing_weights` buffer, and the router-collapse
-failure mode).
+The `lora-routing` skill also holds the metadata stamps (`ss_use_moe_style` /
+`ss_route_per_layer` / `ss_router_source`, and which unstamped checkpoints don't load) and
+the router-collapse failure mode.
 
 ## Attn fuse spec (qkv/kv fuse↔split)
 
