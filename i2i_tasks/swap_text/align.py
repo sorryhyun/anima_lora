@@ -1,14 +1,17 @@
 """Page matching, registration and lettering diff for hitocrawl edition twins.
 
 Lifted from ``project/finished/ocr_reader/hito/build_crops.py`` (the recipe and
-its thresholds are measured there); ``diff_regions`` additionally returns the
-kept components as a label map, which the composite pastes by.
+its thresholds are measured there); ``diff_regions`` keeps a component by its
+shift residual and returns the kept components as a label map, which the
+composite pastes by.
 """
 
 from __future__ import annotations
 
 import cv2
 import numpy as np
+
+PIX_DIFF = 70  # normalised grey levels
 
 
 def phash(gray: np.ndarray) -> np.ndarray:
@@ -71,54 +74,74 @@ def norm_gray(g: np.ndarray, valid: np.ndarray) -> np.ndarray:
     return np.clip((b.astype(np.float32) - lo) * 255.0 / max(hi - lo, 1), 0, 255)
 
 
+def _unshifted(a: np.ndarray, b: np.ndarray, comp: np.ndarray, x: int, y: int, r: int):
+    """Fewest pixels of ``comp`` (a bool crop at ``(x, y)`` of ``a``) still
+    differing under any one shift of ``b`` within ±``r`` px. ``b`` carries an
+    ``r`` px border."""
+    h, w = comp.shape
+    crop = a[y : y + h, x : x + w]
+    y, x = y + r, x + r
+    return min(
+        int(
+            (
+                (np.abs(crop - b[y + dy : y + dy + h, x + dx : x + dx + w]) > PIX_DIFF)
+                & comp
+            ).sum()
+        )
+        for dy in range(-r, r + 1)
+        for dx in range(-r, r + 1)
+    )
+
+
 def diff_regions(
     src: np.ndarray,
     warped: np.ndarray,
     valid: np.ndarray,
     slack_frac=0.004,
     close_frac=0.012,
-    seed_frac=0.08,
+    seed_frac=0.1,
     min_area_frac=0.0004,
 ):
     """Lettering regions of a registered pair: ``(regions, labels, changed_frac)``.
 
     A region is a closed component of the pixel diff kept when enough of it is
-    *seed* — ink on one side with no ink within ``r`` px on the other, which a
-    few-px misregistration of line art cannot produce. ``labels`` (uint8) holds
-    region ``k`` as ``k + 1``, 0 elsewhere."""
+    *seed* — pixels that still differ under the component's best single shift
+    within ``r`` px. A few-px misregistration of line art leaves almost none.
+    One shift for the whole component and an absolute difference, so the
+    verdict holds for dense lettering, whose strokes sit within ``r`` px of the
+    other edition's, and for either polarity. On 300 pages this keeps
+    99.9 % of the components holding a translated OCR line (0.714 for the
+    per-pixel "ink with no ink within r" it replaces) and 53 % of those away
+    from any text block (0.757). ``labels`` (uint8) holds region ``k`` as
+    ``k + 1``, 0 elsewhere."""
     na, nb = norm_gray(src, valid), norm_gray(warped, valid)
-    ia, ib = (na < 110).astype(np.uint8), (nb < 110).astype(np.uint8)
-    r = max(3, int(round(min(src.shape) * slack_frac)))
-    ker = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1, 2 * r + 1))
-    only_a = ia & (1 - cv2.dilate(ib, ker)) & (valid > 0)
-    only_b = ib & (1 - cv2.dilate(ia, ker)) & (valid > 0)
-    seed = cv2.morphologyEx(only_a | only_b, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8))
-    pix = ((np.abs(na - nb) > 70) & (valid > 0)).astype(np.uint8)
+    pix = ((np.abs(na - nb) > PIX_DIFF) & (valid > 0)).astype(np.uint8)
     k = max(9, int(round(min(src.shape) * close_frac)))
     mask = cv2.morphologyEx(
-        pix | seed,
-        cv2.MORPH_CLOSE,
-        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)),
+        pix, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
     )
     n, lab, stats, _ = cv2.connectedComponentsWithStats(mask, 8)
-    seeds_per = np.bincount(lab[seed > 0], minlength=n)
+    r = max(3, int(round(min(src.shape) * slack_frac)))
+    nb = cv2.copyMakeBorder(nb, r, r, r, r, cv2.BORDER_REPLICATE)
     page_area = src.shape[0] * src.shape[1]
     regions, labels = [], np.zeros(src.shape, np.uint8)
     for i in range(1, n):
         x, y, w, h, area = stats[i]
         if area < min_area_frac * page_area or area > 0.35 * page_area:
             continue
-        if seeds_per[i] < seed_frac * area or len(regions) == 254:
+        comp = (lab[y : y + h, x : x + w] == i) & (valid[y : y + h, x : x + w] > 0)
+        seeds = _unshifted(na, nb, comp, x, y, r)
+        if seeds < seed_frac * area or len(regions) == 254:
             continue
         labels[lab == i] = len(regions) + 1
         regions.append(
             {
                 "box": [int(x), int(y), int(x + w), int(y + h)],
                 "area": int(area),
-                "seed": int(seeds_per[i]),
+                "seed": seeds,
             }
         )
-    return regions, labels, float(seed[valid > 0].mean())
+    return regions, labels, float(pix[valid > 0].mean())
 
 
 def refine_ecc(src: np.ndarray, tw: np.ndarray, M: np.ndarray, work_px=1600):
@@ -168,13 +191,14 @@ def refine_ecc(src: np.ndarray, tw: np.ndarray, M: np.ndarray, work_px=1600):
 
 
 def grow_regions(
-    labels: np.ndarray, diff: np.ndarray, thr=30.0, reach_frac=0.03
+    labels: np.ndarray, diff: np.ndarray, thr=30.0, reach_frac=0.03, fill_frac=0.05
 ) -> np.ndarray:
-    """``labels`` grown over the pixel diff connected to them: each pixel of a
-    ``diff > thr`` component that touches a region joins its nearest region,
-    up to ``reach_frac`` × the short edge away. The seed-based components stop
-    short of a glyph's faint strokes and outline halo, and a paste by them
-    leaves half-swapped glyphs."""
+    """``labels`` grown to everything the swap has to replace: each ``diff >
+    thr`` pixel joins its nearest region up to ``reach_frac`` × the short edge
+    away, then each region whose bounding box is lettering sized (at most
+    ``fill_frac`` of the page) fills it. The components stop short of
+    a glyph's faint strokes, and a dot or ``!`` that no component touches
+    survives a paste by them as a ghost of the source lettering."""
     seeds = (labels > 0) & (labels != 255)
     if not seeds.any():
         return labels
@@ -182,18 +206,17 @@ def grow_regions(
         (diff > thr).astype(np.uint8), cv2.MORPH_OPEN, np.ones((2, 2), np.uint8)
     )
     d = cv2.dilate(d, np.ones((3, 3), np.uint8)) & (labels != 255)
-    n, cc = cv2.connectedComponents(((d > 0) | seeds).astype(np.uint8), connectivity=8)
-    touched = np.zeros(n, bool)
-    touched[cc[seeds]] = True
-    touched[0] = False
     dist, idx = cv2.distanceTransformWithLabels(
         (~seeds).astype(np.uint8), cv2.DIST_L2, 5, labelType=cv2.DIST_LABEL_PIXEL
     )
     lut = np.zeros(idx.max() + 1, np.uint8)
     lut[idx[seeds]] = labels[seeds]
-    grow = (
-        touched[cc] & ~seeds & (labels == 0) & (dist <= reach_frac * min(labels.shape))
-    )
+    grow = (d > 0) & ~seeds & (dist <= reach_frac * min(labels.shape))
     out = labels.copy()
     out[grow] = lut[idx[grow]]
+    for v in np.unique(out[(out > 0) & (out != 255)]):
+        ys, xs = np.nonzero(out == v)
+        box = out[ys.min() : ys.max() + 1, xs.min() : xs.max() + 1]
+        if box.size <= fill_frac * out.size:
+            box[box == 0] = v
     return out

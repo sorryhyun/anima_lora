@@ -13,8 +13,8 @@ the caption lists the text read off that target. Six stages, each idempotent:
    registration by ECC, diff out the lettering regions, warp
    the twin into the JA frame, colour-match it there (``colour_match``) and
    fill the strip it does not cover from the JA page, then grow each region
-   over the pixel diff connected to it (``grow_regions``). Regions whose grown
-   labels touch form a *group*, the unit a swap pastes. Each page
+   over the pixel diff around it and fill its box (``grow_regions``). Regions
+   whose grown labels touch form a *group*, the unit a swap pastes. Each page
    records ``resid`` (mean |src − tgt| outside the lettering) and
    ``uncovered``; each group its ``seam`` (the same just outside its paste
    mask) and ``leftover`` (strong diff connected to the paste mask but outside
@@ -386,14 +386,15 @@ def _build_work(work: Path, lang: str, a) -> str:
         tgt[uncovered] = src[uncovered]
         diff = _absdiff(src, tgt)
         labels = grow_regions(labels, diff)
-        keep = labels == 0
         groups = _group_metrics(
             region_groups(labels, regions), regions, labels, diff, a.dilate_frac
         )
         page["uncovered"] = round(float(uncovered.mean()), 4)
         tw_h, tw_w = tw_g[j].shape
         page["aspect"] = round((tw_w / tw_h) / (W / H) - 1, 4)
-        page["resid"] = round(float(diff[keep].mean()), 2)
+        # outside the components, before growth: grown labels take in most of
+        # a rescan's diff
+        page["resid"] = round(float(diff[keep].mean()), 2) if keep.any() else 255.0
         stem = src_files[i].stem
         _imwrite(out / f"{stem}.src.webp", src, WEBP)
         _imwrite(out / f"{stem}.tgt.webp", tgt, WEBP)
@@ -428,6 +429,8 @@ def stage_build(a) -> None:
             works = works[: a.limit]
         jobs += [(w, lang, a) for w in works]
     print(f"build: {len(jobs)} work × language jobs, {a.workers} workers", flush=True)
+    if a.force:  # measured per group of the regions being rebuilt
+        (a.root / "pool_metrics.json").unlink(missing_ok=True)
     with Pool(a.workers, initializer=_single_thread) as pool:
         for k, msg in enumerate(pool.imap_unordered(build_work, jobs), 1):
             print(f"[{k}/{len(jobs)}] {msg}", flush=True)
@@ -778,12 +781,15 @@ def stage_pool(a) -> None:
         lines = [[t.strip(), b] for t, b in reads[p["key"]]]
         lines = [ln for ln in lines if ln[0]]
         owner = assign_lines(lines, p["regions"], a.pad_frac)
-        misread = [
-            k is not None and bool(JA_SCRIPT.search(t))
-            for (t, _), k in zip(lines, owner)
-        ]
+        ja = [bool(JA_SCRIPT.search(t)) for t, _ in lines]
+        misread = [k is not None and j for k, j in zip(owner, ja)]
         misread_lines += sum(misread)
-        bad = {k for k, m in zip(owner, misread) if m}
+        # unpadded: the padded box also reaches JA lettering the twin left alone
+        bad = {
+            k
+            for k, j in zip(assign_lines(lines, p["regions"], 0.0), ja)
+            if j and k is not None
+        }
         # A twin text block no kept line covers: pasted, it is lettering the
         # caption does not name.
         blocks = [["", b] for b in dets[p["key"]]["tgt"]]
