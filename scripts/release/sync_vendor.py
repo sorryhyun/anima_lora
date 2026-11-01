@@ -30,7 +30,7 @@ Four targets:
 * ``custom_nodes/comfyui-anima-trainer/_vendor/`` — the stdlib daemon *client*
   the trainer node submits jobs through. Lets the node be installed outside
   the anima_lora repo and still talk to a running daemon over localhost HTTP.
-  ``anima_daemon/config.py`` + ``client.py`` are copied verbatim; ``proc.py``
+  ``anima_daemon/config.py``, ``record.py`` + ``client.py`` are copied verbatim; ``proc.py``
   is trimmed to ``read_pidfile`` only so the vendored client stays pure-stdlib
   (the live ``proc.py`` imports psutil for spawn/kill, which the node never
   needs — it errors if the daemon isn't already up rather than auto-starting).
@@ -285,6 +285,7 @@ def build_hydralora_vendor() -> None:
 # read_pidfile so the vendored client stays pure-stdlib.
 TRAINER_VERBATIM: list[tuple[str, str]] = [
     ("anima_daemon/config.py", "anima_daemon/config.py"),
+    ("anima_daemon/record.py", "anima_daemon/record.py"),
     ("anima_daemon/client.py", "anima_daemon/client.py"),
 ]
 

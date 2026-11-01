@@ -21,7 +21,7 @@ import time
 import psutil
 import pytest
 
-from anima_daemon import config, gpu, jobs, proc
+from anima_daemon import config, gpu, gpu_guard, jobs, proc, record, watchdog
 
 # Bound at import time so tests that monkeypatch the client module's attribute
 # can still build a real (dead) client without recursing into their own patch.
@@ -76,7 +76,7 @@ def _seed_job(state: str, age_days: float, job_id: str) -> jobs.Job:
     ts = time.time() - age_days * 86400.0
     job = jobs.Job(id=job_id, method="lora", preset="default", state=state)
     job.submitted_at = ts
-    job.ended_at = ts if state in jobs.TERMINAL_STATES else None
+    job.ended_at = ts if state in record.TERMINAL_STATES else None
     job.persist()
     (job.dir / "stdout.log").write_text("x" * 1024, encoding="utf-8")
     return job
@@ -85,13 +85,13 @@ def _seed_job(state: str, age_days: float, job_id: str) -> jobs.Job:
 def test_prune_jobs_age_state_and_floor(tmp_path, monkeypatch):
     """Old + terminal prunes; young, active, and floor-protected survive."""
     monkeypatch.setattr(config, "JOBS_DIR", tmp_path / "jobs")
-    _seed_job(jobs.STATE_DONE, 60, "old-done")
-    _seed_job(jobs.STATE_ERROR, 45, "old-error")
-    _seed_job(jobs.STATE_STOPPED, 40, "old-stopped")
-    _seed_job(jobs.STATE_DONE, 1, "young-done")
+    _seed_job(record.STATE_DONE, 60, "old-done")
+    _seed_job(record.STATE_ERROR, 45, "old-error")
+    _seed_job(record.STATE_STOPPED, 40, "old-stopped")
+    _seed_job(record.STATE_DONE, 1, "young-done")
     # Never a candidate however old: it holds the queue slot / is mid-flight.
-    _seed_job(jobs.STATE_RUNNING, 90, "old-running")
-    _seed_job(jobs.STATE_QUEUED, 90, "old-queued")
+    _seed_job(record.STATE_RUNNING, 90, "old-running")
+    _seed_job(record.STATE_QUEUED, 90, "old-queued")
 
     summary = jobs.prune_jobs(max_age_days=30, keep_recent=0, dry_run=True)
     assert set(summary["pruned"]) == {"old-done", "old-error", "old-stopped"}
@@ -121,7 +121,7 @@ def test_prune_jobs_age_state_and_floor(tmp_path, monkeypatch):
 def test_prune_jobs_disabled_and_unreadable(tmp_path, monkeypatch):
     """0 days disables; an unparseable record is left alone, never guessed at."""
     monkeypatch.setattr(config, "JOBS_DIR", tmp_path / "jobs")
-    _seed_job(jobs.STATE_DONE, 99, "ancient")
+    _seed_job(record.STATE_DONE, 99, "ancient")
     assert jobs.prune_jobs(max_age_days=0, keep_recent=0)["pruned"] == []
     assert set(jobs.load_all()) == {"ancient"}
 
@@ -494,7 +494,7 @@ def test_reconcile_orphan_requeue_adopt(tmp_path, monkeypatch):
         id="dead",
         method="lora",
         preset="default",
-        state=jobs.STATE_RUNNING,
+        state=record.STATE_RUNNING,
         pid=2_147_483_000,
         create_time=1.0,
     )
@@ -502,7 +502,7 @@ def test_reconcile_orphan_requeue_adopt(tmp_path, monkeypatch):
     dead.persist()
 
     # a `queued` job that never started
-    pend = jobs.Job(id="pend", method="lora", preset="default", state=jobs.STATE_QUEUED)
+    pend = jobs.Job(id="pend", method="lora", preset="default", state=record.STATE_QUEUED)
     pend.persist()
 
     # a `running` job that's actually alive (use this test process as the pid)
@@ -511,7 +511,7 @@ def test_reconcile_orphan_requeue_adopt(tmp_path, monkeypatch):
         id="live",
         method="lora",
         preset="default",
-        state=jobs.STATE_RUNNING,
+        state=record.STATE_RUNNING,
         pid=me,
         create_time=proc.create_time(me),
     )
@@ -520,7 +520,7 @@ def test_reconcile_orphan_requeue_adopt(tmp_path, monkeypatch):
     mgr = JobManager()
     mgr._reconcile()  # sweep without starting the worker
 
-    assert mgr.get("dead").state == jobs.STATE_ERROR
+    assert mgr.get("dead").state == record.STATE_ERROR
     assert mgr.get("dead").status_detail == "orphaned"
     assert mgr._queue.get_nowait()[-1] == "pend"  # re-enqueued (prio, seq, id)
     assert "live" in mgr._adopt  # re-attached for monitoring
@@ -805,6 +805,141 @@ def test_log_stream_closes_on_terminal_job(real_cmd_daemon):
     assert any('"eof"' in p for p in payloads)
 
 
+def test_log_stream_outlives_a_pause(daemon):
+    """A frozen job isn't over: the stream stays open across the freeze and only
+    ends with the job, so an attached `make daemon-run` doesn't exit 1 mid-run."""
+    cl, _ = daemon
+    jid = cl.submit(method="lora", overrides={"duration": 3.0})["job_id"]
+    assert _wait_until(lambda: cl.get(jid)["state"] == "running", timeout=15)
+
+    payloads: list[str] = []
+    done = threading.Event()
+
+    def drain():
+        try:
+            payloads.extend(cl.stream_logs(jid))
+        finally:
+            done.set()
+
+    threading.Thread(target=drain, daemon=True).start()
+    assert cl.pause_job(jid)["state"] == "paused"
+    assert not done.wait(timeout=1.5), "log stream closed on a frozen job"
+
+    cl.resume_job(jid)
+    assert done.wait(timeout=20), "log stream never closed after the job ended"
+    assert json.loads(payloads[-1]) == {"ev": "eof", "state": "done"}
+
+
+def _run_past_cancelled_job(mgr):
+    """Submit a job the test cancels mid-launch, then a sentinel behind it. The
+    queue is serial, so the sentinel finishing proves the worker moved on."""
+    cancelled = mgr.submit(
+        method="cancel",
+        preset="default",
+        methods_subdir=None,
+        overrides={"duration": 30.0},
+        start=True,
+    )
+    sentinel = mgr.submit(
+        method="lora",
+        preset="default",
+        methods_subdir=None,
+        overrides={"duration": 0.2},
+        start=True,
+    )
+    assert _wait_until(lambda: mgr.get(sentinel.id).state == "done", timeout=15)
+    return mgr.get(cancelled.id)
+
+
+def test_stop_during_gpu_guard_never_launches(tmp_path, monkeypatch):
+    _isolate_state(tmp_path, monkeypatch)
+    monkeypatch.setattr(JobManager, "_build_cmd", _fake_build_cmd)
+
+    def stop_in_guard(self, job):
+        if job.method == "cancel":
+            self.stop(job.id)
+
+    monkeypatch.setattr(JobManager, "_gpu_guard", stop_in_guard)
+    mgr = JobManager()
+    mgr.start()
+    try:
+        job = _run_past_cancelled_job(mgr)
+        assert job.state == "stopped"
+        assert job.pid is None and job.started_at is None
+    finally:
+        mgr.shutdown(kill_jobs=False)
+
+
+def test_stop_during_spawn_kills_the_child(tmp_path, monkeypatch):
+    _isolate_state(tmp_path, monkeypatch)
+
+    def stop_while_building(self, job):
+        if job.method == "cancel":
+            self.stop(job.id)
+        return _fake_build_cmd(self, job)
+
+    spawned = []
+    real_spawn = proc.spawn_detached
+
+    def spy_spawn(*args, **kwargs):
+        popen = real_spawn(*args, **kwargs)
+        spawned.append(popen)
+        return popen
+
+    monkeypatch.setattr(JobManager, "_build_cmd", stop_while_building)
+    monkeypatch.setattr(proc, "spawn_detached", spy_spawn)
+    mgr = JobManager()
+    mgr.start()
+    try:
+        job = _run_past_cancelled_job(mgr)
+        assert job.state == "stopped"
+        assert job.pid is None and job.started_at is None
+        assert spawned[0].poll() is not None
+    finally:
+        mgr.shutdown(kill_jobs=False)
+
+
+def test_tools_manifest_operations_are_routed(daemon):
+    """Every manifest entry reaches a handler. A bogus job id answers `no such
+    job` and an empty submit a 400; only an unrouted path says `not found`."""
+    import urllib.error
+
+    from anima_daemon.tools import TOOLS
+
+    cl, _ = daemon
+    for tool in TOOLS:
+        if tool["name"] == "shutdown":
+            continue
+        path = tool["path"].replace("{id}", "no-such-job")
+        body = {} if tool["method"] == "POST" else None
+        try:
+            cl._request(tool["method"], path, body)
+        except urllib.error.HTTPError as e:
+            assert json.loads(e.read()).get("error") != "not found", tool["name"]
+
+
+def test_mcp_bridge_does_not_load_the_job_manager():
+    code = (
+        "import sys, anima_daemon.mcp; "
+        "sys.exit('anima_daemon.manager' in sys.modules)"
+    )
+    assert subprocess.run([sys.executable, "-c", code], check=False).returncode == 0
+
+
+def test_record_readers_skip_a_non_dict_record(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "JOBS_DIR", tmp_path / "jobs")
+    _seed_job(record.STATE_DONE, 99, "ancient")
+    bad = config.JOBS_DIR / "list"
+    bad.mkdir()
+    (bad / record.RECORD_NAME).write_text("[1]", encoding="utf-8")
+
+    assert record.read_record(bad) is None
+    assert [r["id"] for r in record.iter_records()] == ["ancient"]
+    assert set(jobs.load_all()) == {"ancient"}
+    assert jobs.prune_jobs(max_age_days=30, keep_recent=0)["pruned"] == ["ancient"]
+    assert bad.is_dir()
+
+
 def test_client_wait_timeout_is_not_an_outcome(real_cmd_daemon):
     """A wait that times out raises rather than returning a running record —
     "still running" must never read as a verdict."""
@@ -846,9 +981,9 @@ def test_submit_command_stall_timeout_is_recorded_and_honored(real_cmd_daemon):
     job = mgr.get(jid)
     job.started_at = time.time() - 10_000
     os.utime(job.stdout_path, (time.time() - 10_000,) * 2)
-    assert JobManager._stall_reason(job) is None
+    assert watchdog.StallWatchdog().check(job) is None
     job.stall_timeout = 5
-    assert JobManager._stall_reason(job) is not None  # explicit budget → watched
+    assert watchdog.StallWatchdog().check(job) is not None  # explicit budget → watched
 
     import urllib.error
 
@@ -871,8 +1006,6 @@ def test_stall_watchdog_spares_a_quiet_but_computing_tree(tmp_path, monkeypatch)
     """Frozen output alone isn't a wedge: an embed/eval loop between prints is
     quiet *and* burning CPU. The watchdog only fires once the tree goes idle too
     — with a hard ceiling so a busy-spinning deadlock still can't park the queue."""
-    from anima_daemon import manager as mgr_mod
-
     monkeypatch.setattr(config, "CMD_STALL_TIMEOUT", 120, raising=False)
     stdout = tmp_path / "stdout.log"
     stdout.write_text("caching...\n")
@@ -887,33 +1020,33 @@ def test_stall_watchdog_spares_a_quiet_but_computing_tree(tmp_path, monkeypatch)
         stdout_path=str(stdout),
         pid=4242,
     )
-    # Drive both clocks by hand: _stall_reason reads time.time() more than once
+    # Drive both clocks by hand: check() reads time.time() more than once
     # per call, so the fixture has to be a value, not a sequence.
     clock = [old + 200]
     cpu = [100.0]
-    monkeypatch.setattr(mgr_mod.time, "time", lambda: clock[0])
-    monkeypatch.setattr(mgr_mod.proc, "tree_cpu_seconds", lambda pid: cpu[0])
+    monkeypatch.setattr(watchdog.time, "time", lambda: clock[0])
+    monkeypatch.setattr(watchdog.proc, "tree_cpu_seconds", lambda pid: cpu[0])
 
     # 5 CPU-seconds burned over a 10s gap → computing → spared.
-    mgr_mod._CPU_SAMPLES.clear()
-    assert JobManager._stall_reason(job) is None  # first sample → optimistic
+    dog = watchdog.StallWatchdog()
+    assert dog.check(job) is None  # first sample → optimistic
     clock[0] += 10
     cpu[0] += 5.0
-    assert JobManager._stall_reason(job) is None  # measured busy → spared
+    assert dog.check(job) is None  # measured busy → spared
 
     # Same silence, but the tree burned nothing → the watchdog fires as before.
-    mgr_mod._CPU_SAMPLES.clear()
+    dog = watchdog.StallWatchdog()
     clock[0] = old + 200
-    assert JobManager._stall_reason(job) is None  # first look, no rate yet
+    assert dog.check(job) is None  # first look, no rate yet
     clock[0] += 10  # no CPU advance
-    reason = JobManager._stall_reason(job)
+    reason = dog.check(job)
     assert reason is not None and "no output for" in reason
 
     # Busy but silent past the hard ceiling (8× budget) → killed regardless, and
     # the error says why so the fix (raise/disable stall_timeout) is obvious.
-    mgr_mod._CPU_SAMPLES.clear()
+    dog = watchdog.StallWatchdog()
     clock[0] = old + 120 * 9
-    reason = JobManager._stall_reason(job)
+    reason = dog.check(job)
     assert reason is not None and "still burning CPU" in reason
 
 
@@ -1086,7 +1219,7 @@ def test_mcp_get_progress(daemon):
 
     assert _wait_until(done, timeout=15)
 
-    # registered in the catalog (rides in from server.TOOLS)
+    # registered in the catalog (rides in from tools.TOOLS)
     tools = srv.handle({"jsonrpc": "2.0", "id": 9, "method": "tools/list"})
     assert "get_progress" in {t["name"] for t in tools["result"]["tools"]}
 
@@ -1208,22 +1341,24 @@ def test_gpu_guard_skips_recycled_pid(tmp_path, monkeypatch):
     killed: list[int] = []
     monkeypatch.setattr(proc, "kill_tree", lambda pid, **kw: killed.append(pid))
 
-    mgr = JobManager.__new__(JobManager)  # no worker thread
-    mgr._lock = threading.RLock()
-    mgr._evict_resident_inference = lambda: None
+    monkeypatch.setattr(gpu_guard, "evict_resident_inference", lambda: None)
     launching = jobs.Job(id="new", method="lora", preset="default")
+
+    def guard(known):
+        return gpu_guard.wait_for_free_gpu(
+            launching, jobs=lambda: known, on_wait=print, retries=1, delay=0
+        )
 
     # Stale record: right pid, wrong create_time → the pid was recycled.
     stale = jobs.Job(
         id="stale",
         method="lora",
         preset="default",
-        state=jobs.STATE_DONE,
+        state=record.STATE_DONE,
         pid=me,
         create_time=1.0,
     )
-    mgr._jobs = {"stale": stale}
-    mgr._gpu_guard(launching, retries=1, delay=0)
+    guard([stale])
     assert killed == []  # dwm.exe lives
 
     # Genuinely ours: pid *and* create_time match → reap it.
@@ -1231,12 +1366,11 @@ def test_gpu_guard_skips_recycled_pid(tmp_path, monkeypatch):
         id="leaked",
         method="lora",
         preset="default",
-        state=jobs.STATE_DONE,
+        state=record.STATE_DONE,
         pid=me,
         create_time=proc.create_time(me),
     )
-    mgr._jobs = {"leaked": leaked}
-    mgr._gpu_guard(launching, retries=1, delay=0)
+    guard([leaked])
     assert killed == [me]
 
 

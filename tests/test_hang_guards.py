@@ -76,7 +76,7 @@ def _fake_job(stdout_path, started_at, kind="train"):
 @pytest.mark.core
 def test_stall_watchdog_fires_with_diagnostic(tmp_path, monkeypatch):
     from anima_daemon import config
-    from anima_daemon.manager import JobManager
+    from anima_daemon.watchdog import StallWatchdog
 
     stdout = tmp_path / "stdout.log"
     stdout.write_text("loading PE-Core...\rfetching sorryhyun/pe-core (one-time).\n")
@@ -84,13 +84,13 @@ def test_stall_watchdog_fires_with_diagnostic(tmp_path, monkeypatch):
 
     # Fresh output → alive.
     job = _fake_job(str(stdout), time.time())
-    assert JobManager._stall_reason(job) is None
+    assert StallWatchdog().check(job) is None
 
     # Backdate output + start beyond the timeout → stalled, naming last line.
     old = time.time() - 1000
     os.utime(stdout, (old, old))
     job.started_at = old
-    reason = JobManager._stall_reason(job)
+    reason = StallWatchdog().check(job)
     assert reason is not None
     assert "no output for" in reason
     assert "fetching sorryhyun/pe-core" in reason  # the "where it wedged" hint
@@ -100,7 +100,7 @@ def test_stall_watchdog_budget_is_per_kind(tmp_path, monkeypatch):
     """With training unwatched by default, the same long silence is a stall for
     a command (preprocess) job but healthy for a train job."""
     from anima_daemon import config
-    from anima_daemon.manager import JobManager
+    from anima_daemon.watchdog import StallWatchdog
 
     monkeypatch.setattr(config, "CMD_STALL_TIMEOUT", 120, raising=False)
     monkeypatch.setattr(config, "JOB_STALL_TIMEOUT", 0, raising=False)
@@ -112,8 +112,8 @@ def test_stall_watchdog_budget_is_per_kind(tmp_path, monkeypatch):
 
     cmd_job = _fake_job(str(stdout), old, kind="command")
     train_job = _fake_job(str(stdout), old, kind="train")
-    assert JobManager._stall_reason(cmd_job) is not None  # past 120s → stalled
-    assert JobManager._stall_reason(train_job) is None  # unwatched → alive
+    assert StallWatchdog().check(cmd_job) is not None  # past 120s → stalled
+    assert StallWatchdog().check(train_job) is None  # unwatched → alive
 
 
 if __name__ == "__main__":

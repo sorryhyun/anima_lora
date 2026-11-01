@@ -25,6 +25,7 @@ from typing import Optional
 from . import client as _client
 from . import config
 from . import jobs as _jobs
+from .record import STATE_DONE
 
 VERBS = ("submit", "wait", "status", "prune")
 
@@ -90,7 +91,7 @@ def _exit_code_for(record: dict) -> int:
     rc = record.get("returncode")
     if isinstance(rc, int):
         return 128 + (-rc) if rc < 0 else rc
-    return 0 if record.get("state") == "done" else 1
+    return 0 if record.get("state") == STATE_DONE else 1
 
 
 def cmd_submit(args: argparse.Namespace) -> int:

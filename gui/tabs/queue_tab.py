@@ -23,6 +23,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from anima_daemon.record import (
+    RUNNABLE_STATES,
+    STATE_ERROR,
+    STATE_QUEUED,
+    STATE_RUNNING,
+    STATE_STOPPED,
+    UNFINISHED_STATES,
+)
 from gui import LazyTabMixin
 from gui.jobs import daemon as gui_daemon
 from gui.i18n import t
@@ -30,7 +38,6 @@ from gui.jobs.progress import TQDM_RE, make_progress_bar
 from gui.theme import tok
 from gui.widgets import action_button, apply_variant
 
-_LIVE_STATES = {"queued", "running"}
 _MAX_LOG_BYTES = 2 * 1024 * 1024
 _ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 _TQDM_BAR_RE = re.compile(r"\d+%\|")
@@ -234,10 +241,10 @@ class QueueTab(LazyTabMixin, QWidget):
         desired = selected
         if not self._user_pinned:
             live = next(
-                (j.get("id") for j in self._jobs if j.get("state") == "running"),
+                (j.get("id") for j in self._jobs if j.get("state") == STATE_RUNNING),
                 None,
             ) or next(
-                (j.get("id") for j in self._jobs if j.get("state") == "queued"),
+                (j.get("id") for j in self._jobs if j.get("state") == STATE_QUEUED),
                 None,
             )
             if live is not None:
@@ -250,11 +257,11 @@ class QueueTab(LazyTabMixin, QWidget):
             item = QListWidgetItem(_job_label(job))
             item.setData(Qt.UserRole, job.get("id"))
             state = job.get("state")
-            if state == "running":
+            if state == STATE_RUNNING:
                 item.setForeground(Qt.GlobalColor.green)
-            elif state == "queued":
+            elif state == STATE_QUEUED:
                 item.setForeground(Qt.GlobalColor.cyan)
-            elif state in {"error", "stopped"}:
+            elif state in {STATE_ERROR, STATE_STOPPED}:
                 item.setForeground(Qt.GlobalColor.red)
             self.job_list.addItem(item)
             if desired and job.get("id") == desired:
@@ -271,7 +278,7 @@ class QueueTab(LazyTabMixin, QWidget):
             self._last_log_text = None
         self.job_list.blockSignals(False)
 
-        live = sum(1 for job in self._jobs if job.get("state") in _LIVE_STATES)
+        live = sum(1 for job in self._jobs if job.get("state") in UNFINISHED_STATES)
         status_key = "queue_status_paused" if self._paused else "queue_status"
         self.status_label.setText(t(status_key, total=len(self._jobs), live=live))
         self._update_queue_button()
@@ -331,7 +338,7 @@ class QueueTab(LazyTabMixin, QWidget):
             and not self.detail.textCursor().hasSelection()
         ):
             self.detail.setPlainText(detail_text)
-        self.stop_btn.setEnabled(job.get("state") in _LIVE_STATES)
+        self.stop_btn.setEnabled(job.get("state") in UNFINISHED_STATES)
         self.copy_btn.setEnabled(True)
 
         raw_log = _read_log(job.get("stdout_path"))
@@ -355,7 +362,7 @@ class QueueTab(LazyTabMixin, QWidget):
             return
         if self._progress_from_tqdm(raw_log):
             return
-        if job.get("state") in _LIVE_STATES:
+        if job.get("state") in RUNNABLE_STATES:
             self.progress.setRange(0, 0)
             self.progress.setFormat(t("starting"))
             self.progress.setVisible(True)

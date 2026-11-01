@@ -13,14 +13,19 @@ The daemon client is pure ``urllib`` and ``config`` is pure ``pathlib``, so no
 
 from __future__ import annotations
 
-import json
 import os
 import re
 from typing import Optional
 
 from anima_daemon import client as _client
 from anima_daemon import config as _cfg
-from anima_daemon.jobs import STATE_DONE, STATE_ERROR, STATE_STOPPED, TERMINAL_STATES
+from anima_daemon.record import (
+    STATE_DONE,
+    STATE_ERROR,
+    STATE_STOPPED,
+    TERMINAL_STATES,
+    read_record,
+)
 
 
 class DaemonUnavailable(RuntimeError):
@@ -203,13 +208,8 @@ def read_job_state(job_id: str) -> Optional[str]:
     always a complete, current record. Returns ``None`` if the file isn't there
     yet (job dir not created) or is mid-rewrite.
     """
-    try:
-        data = json.loads(
-            (_cfg.job_dir(job_id) / "job.json").read_text(encoding="utf-8")
-        )
-    except (OSError, ValueError):
-        return None
-    return data.get("state")
+    data = _read_job_record(job_id)
+    return data.get("state") if data else None
 
 
 def read_job_kind(job_id: str) -> str:
@@ -220,13 +220,8 @@ def read_job_kind(job_id: str) -> str:
     to jobs of its own kind. Defaults to 'train' for a missing/legacy record so
     pre-existing checkpoints still re-attach to the training tab.
     """
-    try:
-        data = json.loads(
-            (_cfg.job_dir(job_id) / "job.json").read_text(encoding="utf-8")
-        )
-    except (OSError, ValueError):
-        return "train"
-    return data.get("kind") or "train"
+    data = _read_job_record(job_id)
+    return (data.get("kind") if data else None) or "train"
 
 
 def read_job_label(job_id: str) -> Optional[str]:
@@ -246,12 +241,7 @@ def read_job_argv(job_id: str) -> list[str]:
 
 
 def _read_job_record(job_id: str) -> Optional[dict]:
-    try:
-        return json.loads(
-            (_cfg.job_dir(job_id) / "job.json").read_text(encoding="utf-8")
-        )
-    except (OSError, ValueError):
-        return None
+    return read_record(_cfg.job_dir(job_id))
 
 
 def read_job_started_at(job_id: str) -> Optional[float]:

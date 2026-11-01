@@ -30,6 +30,7 @@ import json
 import sys
 from pathlib import Path
 
+from anima_daemon.record import STATE_RUNNING, read_record
 from library.env import resolve_under_home
 from library.runtime.progress import _pid_alive, read_status
 
@@ -94,11 +95,10 @@ def _streamless_running_job(jobs_dir: Path | None, scan: int = 50) -> dict | Non
         return None
     # Job ids start with their submit time, so name order is submit order.
     for d in sorted(jobs_dir.iterdir(), reverse=True)[:scan]:
-        try:
-            rec = json.loads((d / "job.json").read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        rec = read_record(d)
+        if rec is None or rec.get("state") != STATE_RUNNING:
             continue
-        if rec.get("state") != "running" or _pid_alive(rec.get("pid")) is False:
+        if _pid_alive(rec.get("pid")) is False:
             continue
         return None if (d / _DAEMON_NAME).is_file() else rec
     return None

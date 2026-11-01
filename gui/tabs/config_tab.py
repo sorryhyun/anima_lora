@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from anima_daemon.record import RUNNABLE_STATES, STATE_RUNNING
 from gui import (
     CONFIGS_DIR,
     ROOT,
@@ -1131,13 +1132,13 @@ class ConfigTab(DaemonJobMixin, DirtyTrackingMixin, QWidget):
             jid = job.get("id")
             if not jid or jid == finished_id:
                 continue
-            if job.get("state") not in ("running", "queued"):
+            if job.get("state") not in RUNNABLE_STATES:
                 continue
             if (job.get("kind") or "train") != "train":
                 continue
             # Running beats queued; within a tier earliest submit wins (FIFO).
             rank = (
-                0 if job.get("state") == "running" else 1,
+                0 if job.get("state") == STATE_RUNNING else 1,
                 float(job.get("submitted_at") or 0.0),
             )
             if successor is None or rank < successor[0]:

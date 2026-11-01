@@ -20,6 +20,8 @@ import sys
 import time
 from pathlib import Path
 
+from anima_daemon.record import STATE_DONE, UNFINISHED_STATES
+
 ROOT = Path(__file__).resolve().parents[2]
 
 # Shared so the shipped and experimental inference modules agree on what counts
@@ -602,7 +604,7 @@ def _exit_code_for(cl, job_id: str, *, settle: float = 10.0) -> int:
     ``&&`` chains see a normal nonzero."""
     deadline = time.time() + settle
     job = _safe_job(cl, job_id)
-    while job and job.get("state") in ("queued", "running") and time.time() < deadline:
+    while job and job.get("state") in UNFINISHED_STATES and time.time() < deadline:
         time.sleep(0.3)
         job = _safe_job(cl, job_id)
     if job is None:
@@ -610,7 +612,7 @@ def _exit_code_for(cl, job_id: str, *, settle: float = 10.0) -> int:
     rc = job.get("returncode")
     if isinstance(rc, int):
         return 128 + (-rc) if rc < 0 else rc
-    return 0 if job.get("state") == "done" else 1
+    return 0 if job.get("state") == STATE_DONE else 1
 
 
 def _attach_and_wait(cl, job_id: str) -> int:
@@ -664,7 +666,7 @@ def _attach_and_wait(cl, job_id: str) -> int:
             if job is None:
                 cl = DaemonClient()  # port may have moved on restart
                 job = _safe_job(cl, job_id)
-            if job is None or job.get("state") not in ("queued", "running"):
+            if job is None or job.get("state") not in UNFINISHED_STATES:
                 break
             time.sleep(0.5)
             cl = DaemonClient()

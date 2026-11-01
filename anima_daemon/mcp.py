@@ -2,7 +2,7 @@
 
 Exposes the daemon's HTTP surface as MCP tools, resolving the daemon via the
 pidfile (``config.discover_pidfile``). Setup and the deviations from
-``server.TOOLS``: ``anima_daemon/README.md`` "MCP bridge".
+``tools.TOOLS``: ``anima_daemon/README.md`` "MCP bridge".
 
 Transport: newline-delimited JSON-RPC 2.0 over stdio. Nothing but protocol
 messages may touch stdout; diagnostics go to stderr.
@@ -26,7 +26,8 @@ from typing import Any, Callable, Optional
 
 from . import config, tail
 from .client import DaemonClient, ensure_daemon
-from .server import TOOLS
+from .record import read_record
+from .tools import TOOLS
 
 PROTOCOL_VERSION = "2025-06-18"
 SERVER_INFO = {"name": "anima-daemon", "version": "1.0"}
@@ -226,12 +227,7 @@ class MCPServer:
             except urllib.error.HTTPError as e:
                 if e.code != 404:
                     raise
-        try:
-            return json.loads(
-                (config.job_dir(job_id) / "job.json").read_text(encoding="utf-8")
-            )
-        except (OSError, ValueError):
-            return None
+        return read_record(config.job_dir(job_id))
 
     def _tail_log(self, args: dict) -> dict:
         job_id = str(args.get("id") or "")

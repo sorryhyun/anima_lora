@@ -16,18 +16,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import config
-
-# queued → running → {done | error | stopped}; running ↔ paused (tree-freeze).
-STATE_QUEUED = "queued"
-STATE_RUNNING = "running"
-STATE_PAUSED = "paused"
-STATE_DONE = "done"
-STATE_ERROR = "error"
-STATE_STOPPED = "stopped"
-TERMINAL_STATES = frozenset({STATE_DONE, STATE_ERROR, STATE_STOPPED})
-# The job holds its VRAM slot and blocks the queue in both states — the worker
-# stays parked in the monitor loop for it, running or frozen.
-ACTIVE_STATES = frozenset({STATE_RUNNING, STATE_PAUSED})
+from .record import RECORD_NAME, STATE_QUEUED, TERMINAL_STATES, read_record
 
 
 def new_job_id() -> str:
@@ -130,9 +119,9 @@ class Job:
     def persist(self) -> None:
         d = self.dir
         d.mkdir(parents=True, exist_ok=True)
-        tmp = d / "job.json.tmp"
+        tmp = d / f"{RECORD_NAME}.tmp"
         tmp.write_text(json.dumps(asdict(self), indent=2), encoding="utf-8")
-        tmp.replace(d / "job.json")  # atomic on POSIX + Windows
+        tmp.replace(d / RECORD_NAME)  # atomic on POSIX + Windows
 
     @classmethod
     def from_dict(cls, data: dict) -> "Job":
@@ -150,12 +139,12 @@ def load_all() -> dict[str, Job]:
     if not config.JOBS_DIR.exists():
         return out
     for d in sorted(config.JOBS_DIR.iterdir()):
-        f = d / "job.json"
-        if not f.is_file():
+        data = read_record(d)
+        if data is None:
             continue
         try:
-            out[d.name] = Job.from_dict(json.loads(f.read_text(encoding="utf-8")))
-        except (OSError, ValueError, TypeError):
+            out[d.name] = Job.from_dict(data)
+        except TypeError:
             continue
     return out
 
@@ -210,15 +199,12 @@ def prune_jobs(
     cutoff = now - days * 86400.0
     candidates: list[tuple[float, Path]] = []  # (age-key timestamp, dir)
     for d in sorted(config.JOBS_DIR.iterdir()):
-        f = d / "job.json"
+        f = d / RECORD_NAME
         if not f.is_file():
             continue
         summary["scanned"] += 1
-        try:
-            data = json.loads(f.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if data.get("state") not in TERMINAL_STATES:
+        data = read_record(d)
+        if data is None or data.get("state") not in TERMINAL_STATES:
             continue
         ts = data.get("ended_at") or data.get("submitted_at")
         if not isinstance(ts, (int, float)):

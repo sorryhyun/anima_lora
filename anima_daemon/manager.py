@@ -15,7 +15,6 @@ import json
 import logging
 import os
 import queue
-import re
 import shutil
 import threading
 import time
@@ -23,8 +22,9 @@ from typing import Optional
 
 import toml
 
-from . import config, gpu, proc, tail
-from .jobs import (
+from . import config, gpu_guard, launch, proc, tail
+from .jobs import Job, load_all, new_job_id, prune_jobs
+from .record import (
     ACTIVE_STATES,
     STATE_DONE,
     STATE_ERROR,
@@ -33,11 +33,8 @@ from .jobs import (
     STATE_RUNNING,
     STATE_STOPPED,
     TERMINAL_STATES,
-    Job,
-    load_all,
-    new_job_id,
-    prune_jobs,
 )
+from .watchdog import StallWatchdog
 
 logger = logging.getLogger("anima.daemon")
 
@@ -45,17 +42,6 @@ _POLL_INTERVAL = 1.0  # seconds between liveness checks
 _SENTINEL = "__stop__"
 # Release-pause request file in the job dir (library/runtime/pause.py reads it).
 PAUSE_REQUEST_NAME = "pause.request"
-
-# Stall watchdog CPU-activity cross-check (see _stall_reason /
-# _tree_cpu_advancing): past the output-freeze budget, only kill a job whose
-# process tree has also gone CPU-idle (a quiet-but-computing embed/eval loop
-# survives) — up to `budget × _STALL_CPU_GRACE`, after which it's killed
-# regardless so a busy-spinning deadlock can't park the queue forever.
-# job_id → (wall, cpu_seconds, verdict).
-_CPU_SAMPLES: dict[str, tuple[float, float, bool]] = {}
-_CPU_SAMPLE_MIN_GAP = 5.0  # seconds between samples (a short gap measures noise)
-_CPU_BUSY_FRAC = 0.05  # ≥5% of one core, averaged over the gap → "computing"
-_STALL_CPU_GRACE = 8.0  # hard ceiling multiplier on the configured budget
 
 # Signal -> user-actionable hint for a process that died without a run_end
 # event. POSIX Popen.poll() reports a signal death as a negative number;
@@ -96,6 +82,7 @@ class JobManager:
         self._seq = itertools.count()
         self._popens: dict[str, object] = {}  # job_id -> Popen (spawned only)
         self._adopt: list[str] = []  # running orphans to monitor before the queue
+        self._watchdog = StallWatchdog()
         self._subscribers: set["queue.Queue[dict]"] = set()
         self._stopping = False
         self._kill_on_shutdown = False
@@ -435,7 +422,7 @@ class JobManager:
     def _park_released(self, job: Job, ev: dict) -> None:
         """The trainer exited on a release-pause: keep the job as ``paused``
         with no process. Not terminal — ``resume_job`` relaunches it."""
-        _CPU_SAMPLES.pop(job.id, None)
+        self._watchdog.forget(job.id)
         with self._lock:
             job.state = STATE_PAUSED
             job.released = True
@@ -531,15 +518,18 @@ class JobManager:
             return
         # Hold while the queue is paused; re-validate after waking (cancelled
         # while held, or daemon shutting down).
-        if not self._await_run_gate(job):
+        if not self._await_run_gate(job) or not self._launchable(job):
             return
-        with self._lock:
-            if job.state != STATE_QUEUED or job.stop_requested:
-                return
         # Auto-chained train steps skip the guard (see Job.from_chain).
         if not job.from_chain:
             self._gpu_guard(job)
+            if not self._launchable(job):  # cancelled while the guard waited
+                return
         self._launch_and_monitor(job)
+
+    def _launchable(self, job: Job) -> bool:
+        with self._lock:
+            return job.state == STATE_QUEUED and not job.stop_requested
 
     def _fail_safely(self, job_id: str, error: str) -> None:
         """Finalize a job ERROR without propagating, even if finalize raises."""
@@ -599,14 +589,22 @@ class JobManager:
             self._finalize(job, STATE_ERROR, error=f"launch failed: {exc}")
             return
         with self._lock:
-            job.state = STATE_RUNNING
-            job.started_at = time.time()
-            job.pid = popen.pid
-            job.create_time = proc.create_time(popen.pid)
-            # pause_job refuses accelerate-launched (multi-GPU) runs.
-            job.accelerate_launched = "accelerate.commands.accelerate_cli" in cmd
-            job.persist()
-            self._popens[job.id] = popen
+            # stop() finalizes a queued job on the spot; it may have run while
+            # this one was spawning, and that verdict stands.
+            cancelled = job.state != STATE_QUEUED
+            if not cancelled:
+                job.state = STATE_RUNNING
+                job.started_at = time.time()
+                job.pid = popen.pid
+                job.create_time = proc.create_time(popen.pid)
+                # pause_job refuses accelerate-launched (multi-GPU) runs.
+                job.accelerate_launched = "accelerate.commands.accelerate_cli" in cmd
+                job.persist()
+                self._popens[job.id] = popen
+        if cancelled:
+            proc.kill_tree(popen.pid)
+            self._reap(popen)
+            return
         self._broadcast({"ev": "started", "job_id": job.id, "pid": job.pid})
         self._monitor(job, popen=popen)
 
@@ -625,7 +623,7 @@ class JobManager:
                 # polling liveness.
                 time.sleep(_POLL_INTERVAL)
                 continue
-            stalled = self._stall_reason(job)
+            stalled = self._watchdog.check(job)
             if stalled is not None:
                 logger.warning("job %s killed by stall watchdog: %s", job.id, stalled)
                 self._kill_job_tree(job)
@@ -634,109 +632,24 @@ class JobManager:
                 self._finalize(job, STATE_ERROR, error=stalled)
                 break
             time.sleep(_POLL_INTERVAL)
-        # Reap our own child to avoid a zombie.
         if popen is not None:
-            try:
-                popen.wait(timeout=5)
-            except Exception:  # noqa: BLE001
-                pass
+            self._reap(popen)
         self._popens.pop(job.id, None)
         self._finalize_from_exit(job, popen)
+
+    @staticmethod
+    def _reap(popen) -> None:
+        """Wait on our own child so it doesn't linger as a zombie."""
+        try:
+            popen.wait(timeout=5)
+        except Exception:  # noqa: BLE001
+            pass
 
     @staticmethod
     def _proc_running(job: Job, popen) -> bool:
         if popen is not None:
             return popen.poll() is None
         return proc.is_alive(job.pid, job.create_time)
-
-    @staticmethod
-    def _stall_reason(job: Job) -> Optional[str]:
-        """If the job has produced no output (stdout.log or progress.jsonl
-        mtime) for longer than its stall budget, return an actionable error
-        naming where it wedged; otherwise ``None``. Per-kind budgets are in
-        config.py; a tree still burning CPU is spared up to
-        ``_STALL_CPU_GRACE`` × the budget."""
-        timeout = (
-            job.stall_timeout
-            if getattr(job, "stall_timeout", None) is not None
-            else (
-                config.CMD_STALL_TIMEOUT
-                if job.kind == "command"
-                else config.JOB_STALL_TIMEOUT
-            )
-        )
-        if not timeout or timeout <= 0 or job.started_at is None:
-            return None
-        last = job.started_at
-        for path in (job.stdout_path, job.progress_path):
-            if not path:
-                continue
-            try:
-                last = max(last, os.path.getmtime(path))
-            except OSError:
-                continue
-        idle = time.time() - last
-        if idle < timeout:
-            _CPU_SAMPLES.pop(job.id, None)  # output flowing again → forget samples
-            return None
-        busy = JobManager._tree_cpu_advancing(job)
-        if busy and idle < timeout * _STALL_CPU_GRACE:
-            return None
-        where = JobManager._last_output_line(job)
-        detail = f" last output: {where!r}" if where else " (no output captured)"
-        if busy:
-            detail += (
-                f" (process tree still burning CPU, but silent past "
-                f"{_STALL_CPU_GRACE:g}× the budget — raise or disable it with "
-                "stall_timeout on submit if this run is healthy)"
-            )
-        return (
-            f"stalled: no output for {int(idle)}s (limit {int(timeout)}s); daemon "
-            f"killed the job so the queue can advance.{detail}"
-        )
-
-    @staticmethod
-    def _tree_cpu_advancing(job: Job) -> bool:
-        """True iff the job's process tree has burned CPU since the last
-        sample. Needs two samples ``_CPU_SAMPLE_MIN_GAP`` apart for a
-        meaningful rate; the first look (or one inside the gap) reuses the
-        previous verdict, starting optimistic. Unreadable CPU times (pid gone)
-        return False, falling back to output-mtime-only behavior."""
-        cpu = proc.tree_cpu_seconds(getattr(job, "pid", None))
-        if cpu is None:
-            return False
-        now = time.time()
-        prev = _CPU_SAMPLES.get(job.id)
-        if prev is None:
-            _CPU_SAMPLES[job.id] = (now, cpu, True)
-            return True
-        gap = now - prev[0]
-        if gap < _CPU_SAMPLE_MIN_GAP:
-            return prev[2]
-        verdict = (cpu - prev[1]) / gap >= _CPU_BUSY_FRAC
-        _CPU_SAMPLES[job.id] = (now, cpu, verdict)
-        return verdict
-
-    @staticmethod
-    def _last_output_line(job: Job, *, max_bytes: int = 8192) -> Optional[str]:
-        """Best-effort last non-empty stdout line (carriage-return aware, so a
-        tqdm bar's latest redraw wins), for the stall error."""
-        path = job.stdout_path
-        if not path:
-            return None
-        try:
-            with open(path, "rb") as f:
-                f.seek(0, os.SEEK_END)
-                size = f.tell()
-                f.seek(max(0, size - max_bytes))
-                blob = f.read()
-        except OSError:
-            return None
-        parts = [
-            p.strip() for p in re.split(r"[\r\n]", blob.decode("utf-8", "replace"))
-        ]
-        parts = [p for p in parts if p]
-        return parts[-1] if parts else None
 
     def _finalize_from_exit(self, job: Job, popen) -> None:
         if job.state in TERMINAL_STATES:
@@ -779,7 +692,7 @@ class JobManager:
         error: Optional[str] = None,
         detail: Optional[str] = None,
     ) -> None:
-        _CPU_SAMPLES.pop(job.id, None)  # drop the watchdog's CPU-rate samples
+        self._watchdog.forget(job.id)
         with self._lock:
             job.state = state
             job.ended_at = time.time()
@@ -846,72 +759,14 @@ class JobManager:
                 "metrics": envelope.get("metrics"),
             }
 
-    def _gpu_guard(
-        self,
-        job: Job,
-        *,
-        retries: int = config.GPU_GUARD_RETRIES,
-        delay: float = config.GPU_GUARD_DELAY,
-        busy_frac: float = config.GPU_GUARD_BUSY_FRAC,
-    ) -> None:
-        """Before launching, make sure the GPU is actually free.
-
-        Busy/free is decided from **total VRAM in use**, not the process list
-        (on Windows WDDM desktop apps show up as compute processes). Process
-        enumeration is used only to reap VRAM leaked by our *own* dead jobs,
-        matched by **(pid, create_time)** — a bare pid match could kill a
-        stranger that reused the pid (issue #83). If memory can't be probed,
-        assume free. Tunable via ANIMA_DAEMON_GPU_{BUSY_FRAC,RETRIES,DELAY}.
-        """
-        # Ask a resident inference server to free VRAM before we launch — it
-        # stays alive and reloads on its next request. Best-effort.
-        self._evict_resident_inference()
-
-        for attempt in range(retries):
-            # Reap only holders matching a known job on (pid, create_time).
-            holders = gpu.gpu_pids() or set()
+    def _gpu_guard(self, job: Job) -> None:
+        free = gpu_guard.wait_for_free_gpu(
+            job, jobs=self.list_jobs, on_wait=self._broadcast
+        )
+        if not free:
             with self._lock:
-                known = {
-                    j.pid: j
-                    for j in self._jobs.values()
-                    if j.pid in holders and proc.is_alive(j.pid, j.create_time)
-                }
-            reaped = False
-            for pid, owner in known.items():
-                if owner.id == job.id:
-                    continue
-                logger.warning(
-                    "gpu_guard: reaping leaked VRAM from job %s (pid %s)", owner.id, pid
-                )
-                proc.kill_tree(pid)
-                reaped = True
-            if reaped:
-                time.sleep(0.5)  # let the killed procs release VRAM
-
-            mem = gpu.gpu_mem()
-            if mem is None:  # can't tell → don't deadlock the queue
-                return
-            used, total = mem
-            if total <= 0 or used / total < busy_frac:
-                return  # GPU effectively free → go
-            logger.warning(
-                "gpu_guard: GPU busy — %d/%d MiB used (attempt %d/%d)",
-                used,
-                total,
-                attempt + 1,
-                retries,
-            )
-            self._broadcast(
-                {
-                    "ev": "gpu_wait",
-                    "job_id": job.id,
-                    "used_mib": used,
-                    "total_mib": total,
-                }
-            )
-            time.sleep(delay)
-        # Give up waiting and launch anyway; never kill what we didn't start.
-        job.status_detail = "launched despite busy GPU"
+                if job.state == STATE_QUEUED:
+                    job.status_detail = "launched despite busy GPU"
 
     def _kill_job_tree(self, job: Job) -> None:
         if job.pid is None:
@@ -922,108 +777,8 @@ class JobManager:
             proc.resume_tree(job.pid)
         proc.kill_tree(job.pid)
 
-    def _evict_resident_inference(self) -> None:
-        """Ask a resident inference server (if any) to free VRAM before launch.
-
-        Discovery mirrors scripts/inference_server.py's pidfiles (inline, no
-        import). Every failure is swallowed; the server's idle-TTL frees the
-        card eventually anyway.
-        """
-        import json
-        import urllib.request
-        from pathlib import Path
-
-        candidates = []
-        override = os.environ.get("ANIMA_INFERENCE_PIDFILE")
-        if override:
-            candidates.append(Path(override))
-        candidates += [
-            config.ROOT / "output" / "inference" / "server.json",
-            Path.home() / ".anima" / "inference.json",
-        ]
-        for pf in candidates:
-            try:
-                port = json.loads(pf.read_text()).get("port")
-            except (OSError, ValueError):
-                continue
-            if not port:
-                continue
-            try:
-                urllib.request.urlopen(
-                    urllib.request.Request(
-                        f"http://127.0.0.1:{port}/unload", method="POST"
-                    ),
-                    timeout=5,
-                ).read()
-                logger.info("gpu_guard: inference server (port %s) unloaded", port)
-                time.sleep(1.0)  # let VRAM release before we measure
-            except Exception:  # noqa: BLE001 — best-effort
-                pass
-            return
-
     def _build_cmd(self, job: Job) -> tuple[list[str], dict]:
-        from .client import venv_python
-
-        env = os.environ.copy()
-        env.setdefault("PYTHONUNBUFFERED", "1")
-        # Force UTF-8 stdio in the job tree so a non-ASCII char (em-dash, etc.)
-        # never crashes a child on a non-UTF-8 console locale (e.g. Korean
-        # Windows cp949 → UnicodeEncodeError). Inherited by grandchildren.
-        env.setdefault("PYTHONUTF8", "1")
-        env.setdefault("PYTHONIOENCODING", "utf-8")
-        # tqdm redraws at 0.1s cadence drown stdout.log's real lines; the GUI
-        # tracker parses only the latest line and training has progress.jsonl.
-        env.setdefault("TQDM_MININTERVAL", "10")
-
-        # daemon-env ← captured_env ← extra_env: update, not setdefault, so the
-        # caller's value wins; a command job's extra_env is applied after.
-        env.update(job.captured_env or {})
-
-        # Result envelope lift: bench/_common.write_result reads these to drop
-        # a `result_path.json` pointer.
-        env["ANIMA_DAEMON_JOB_ID"] = job.id
-        env["ANIMA_DAEMON_JOB_DIR"] = str(job.dir)
-
-        # Windowless interpreter (see client.venv_python). No --progress_jsonl:
-        # command jobs finalize on exit code.
-        if job.kind == "command":
-            env.update(job.extra_env or {})
-            return [venv_python(windowless=True), *job.argv], env
-
-        # Lazy: the task runner's imports load only when a train job launches.
-        from scripts.tasks._common import build_launch_cmd, build_method_args
-
-        overrides = dict(job.overrides or {})
-        extra = list(job.extra or [])
-        # Dict overrides → --key value (unless already in extra). train.py bools
-        # are `store_true`: a False override is dropped, so a caller can't force
-        # a flag the config chain turns on back off here.
-        for key, val in overrides.items():
-            flag = f"--{key}"
-            if flag in extra:
-                continue
-            if isinstance(val, bool):
-                if val:
-                    extra.append(flag)
-            elif key == "target_res" and isinstance(val, (list, tuple)):
-                extra += [flag, *[str(v) for v in val]]
-            else:
-                extra += [flag, str(val)]
-        # Point the progress stream at the job dir.
-        if "--progress_jsonl" not in extra:
-            extra += ["--progress_jsonl", job.progress_path or ""]
-        if job.config_file:
-            args = ["--config_file", job.config_file, *extra]
-        else:
-            args = build_method_args(
-                job.method,
-                preset=job.preset,
-                methods_subdir=job.methods_subdir,
-                extra=extra,
-            )
-        # Windowless interpreter (see client.venv_python).
-        cmd = build_launch_cmd(*args, python_exe=venv_python(windowless=True))
-        return cmd, env
+        return launch.build_cmd(job)
 
     def _reconcile(self) -> None:
         # Prune BEFORE load_all: a pruned job in the in-memory table would be

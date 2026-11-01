@@ -436,7 +436,7 @@ pidfile, so it survives port drift and restarts.
 claude mcp add anima-daemon -- <repo>/.venv/bin/python <repo>/anima_daemon/mcp.py
 ```
 
-The tool catalog **is** the `GET /tools` manifest (`server.TOOLS`, registered
+The tool catalog **is** the `GET /tools` manifest (`tools.TOOLS`, registered
 verbatim), with three deviations:
 
 - `tail_logs` (SSE) is replaced by **`tail_log`** `{id, lines=80}` — last N lines

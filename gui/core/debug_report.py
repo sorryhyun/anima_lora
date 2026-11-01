@@ -23,6 +23,7 @@ from datetime import datetime
 from pathlib import Path
 
 from anima_daemon import config as _cfg
+from anima_daemon.record import read_record
 
 _DAEMON_LOG_LINES = 2000  # read window for daemon.log before filtering to today
 _JOB_STDOUT_LINES = 200  # per-job stdout tail (only for non-done jobs)
@@ -116,7 +117,7 @@ def _recent_jobs() -> list[Path]:
 
 
 def _job_block(job_dir: Path) -> list[str]:
-    rec = _read_json(job_dir / "job.json") or {}
+    rec = read_record(job_dir) or {}
     state = rec.get("state", "?")
     summary = (
         f"### job {job_dir.name}  [{state}]  kind={rec.get('kind', '?')}  "

@@ -18,12 +18,9 @@ from pathlib import Path
 from typing import Iterator, Optional
 
 from . import config, proc
+from .record import RUNNABLE_STATES, STATE_PAUSED, TERMINAL_STATES, read_record
 
 logger = logging.getLogger("anima.daemon")
-
-# Mirrors jobs.TERMINAL_STATES, restated so this module stays importable on its
-# own (the ComfyUI node vendors it).
-TERMINAL_STATES = frozenset({"done", "error", "stopped"})
 
 
 def venv_python(*, windowless: bool = False) -> str:
@@ -119,7 +116,7 @@ def _await_down(client: "DaemonClient", timeout: float) -> None:
 def _has_live_jobs(client: "DaemonClient") -> bool:
     try:
         return any(
-            (job.get("state") or "") in {"queued", "running"}
+            (job.get("state") or "") in RUNNABLE_STATES
             for job in client.list_jobs()
         )
     except Exception:
@@ -261,13 +258,7 @@ class DaemonClient:
             rec = None
         if isinstance(rec, dict) and rec.get("id"):
             return rec
-        try:
-            disk = json.loads(
-                (config.job_dir(job_id) / "job.json").read_text(encoding="utf-8")
-            )
-        except (OSError, ValueError):
-            return None
-        return disk if isinstance(disk, dict) else None
+        return read_record(config.job_dir(job_id))
 
     def wait(
         self,
@@ -343,7 +334,7 @@ class DaemonClient:
                 released = [
                     j
                     for j in (self.list_jobs() or [])
-                    if j.get("state") == "paused" and j.get("released")
+                    if j.get("state") == STATE_PAUSED and j.get("released")
                 ]
                 if released:
                     job_id = released[-1]["id"]

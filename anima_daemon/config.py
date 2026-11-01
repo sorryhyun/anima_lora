@@ -53,7 +53,7 @@ def point_current_job(job_id: str) -> None:
 DEFAULT_PORT = int(os.environ.get("ANIMA_DAEMON_PORT", "8765"))
 HOST = "127.0.0.1"
 
-# Pre-launch GPU guard (manager._gpu_guard): busy_frac = used/total above which
+# Pre-launch GPU guard (gpu_guard.py): busy_frac = used/total above which
 # the card is treated as busy; retries/delay = how long to wait before launching
 # anyway. Loose by default so a partially-loaded desktop/ComfyUI doesn't stall
 # every launch; VRAM leaked by our own dead jobs is reaped separately.
@@ -61,7 +61,7 @@ GPU_GUARD_BUSY_FRAC = float(os.environ.get("ANIMA_DAEMON_GPU_BUSY_FRAC", "0.85")
 GPU_GUARD_RETRIES = int(os.environ.get("ANIMA_DAEMON_GPU_RETRIES", "1"))
 GPU_GUARD_DELAY = float(os.environ.get("ANIMA_DAEMON_GPU_DELAY", "2.0"))
 
-# Stall watchdog (manager._stall_reason): kills a *running* job whose output has
+# Stall watchdog (watchdog.py): kills a *running* job whose output has
 # frozen for this many seconds. Command jobs are watched by default; training is
 # not (0 = off) because its first-step torch.compile trace can be silent for
 # minutes. A per-job `stall_timeout` on submit overrides both.

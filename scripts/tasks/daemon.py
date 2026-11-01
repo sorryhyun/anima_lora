@@ -34,6 +34,16 @@ from pathlib import Path
 from anima_daemon import client as _client
 from anima_daemon import config as _cfg
 from anima_daemon import proc as _proc
+from anima_daemon.record import (
+    ACTIVE_STATES,
+    ALL_STATES,
+    STATE_DONE,
+    STATE_ERROR,
+    STATE_RUNNING,
+    STATE_STOPPED,
+    UNFINISHED_STATES,
+    iter_records,
+)
 
 
 def _truthy(value: str | None) -> bool:
@@ -76,13 +86,7 @@ def cmd_daemon(extra):
 # `--limit N` sets it; a trailing `N of M jobs` line reports truncation.
 _STATUS_DEFAULT_LIMIT = 15
 
-# Shorthand state groups for `--running` / `--failed` / `--done`.
-_STATUS_ACTIVE_STATES = frozenset({"running", "paused"})
-_STATUS_FAILED_STATES = frozenset({"error", "stopped"})
-# Every legal job state; an unknown `--state` value exits 2.
-_STATUS_ALL_STATES = frozenset(
-    {"queued", "running", "paused", "done", "error", "stopped"}
-)
+_STATUS_FAILED_STATES = frozenset({STATE_ERROR, STATE_STOPPED})
 
 
 def _parse_status_flags(extra):
@@ -107,18 +111,18 @@ def _parse_status_flags(extra):
         if a == "--all":
             opts["all"] = True
         elif a in ("--running", "--active"):
-            opts["states"] = set(_STATUS_ACTIVE_STATES)
+            opts["states"] = set(ACTIVE_STATES)
         elif a == "--failed":
             opts["states"] = set(_STATUS_FAILED_STATES)
         elif a == "--done":
-            opts["states"] = {"done"}
+            opts["states"] = {STATE_DONE}
         elif a == "--state" and i + 1 < len(extra):
             i += 1
             asked = {s.strip() for s in extra[i].split(",") if s.strip()}
-            bad = asked - _STATUS_ALL_STATES
+            bad = asked - ALL_STATES
             if bad:
                 opts["bad_states"] = sorted(bad)
-            opts["states"] = asked & _STATUS_ALL_STATES
+            opts["states"] = asked & ALL_STATES
         elif a == "--limit" and i + 1 < len(extra):
             i += 1
             try:
@@ -156,34 +160,13 @@ def _job_target(job: dict) -> str | None:
     return overrides.get("output_name") or job.get("method")
 
 
-def _jobs_from_disk() -> list[dict]:
-    """Every persisted ``jobs/<id>/job.json``, for a daemon that is down.
-
-    The daemon writes the record on each state change, so the history outlives
-    it and a post-mortem after ``daemon-terminate`` still has something to read.
-    """
-    out = []
-    try:
-        dirs = sorted(_cfg.JOBS_DIR.iterdir())
-    except OSError:
-        return out
-    for d in dirs:
-        try:
-            rec = json.loads((d / "job.json").read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if isinstance(rec, dict) and rec.get("id"):
-            out.append(rec)
-    return out
-
-
 def _job_line(job: dict) -> str:
     """One job as one line: when · id · state · rc · target · error."""
     ts = job.get("started_at") or job.get("submitted_at") or 0
     when = time.strftime("%m-%d %H:%M", time.localtime(ts)) if ts else "  -  "
     rc = job.get("returncode")
     end = job.get("ended_at") or (
-        time.time() if job.get("state") == "running" else None
+        time.time() if job.get("state") == STATE_RUNNING else None
     )
     started = job.get("started_at")
     dur = f"{(end - started) / 60:5.1f}m" if started and end else "     -"
@@ -220,9 +203,7 @@ def cmd_daemon_status(extra):
         f" · active {health.get('active_job') or '-'}"
         f"{' · queue PAUSED' if health.get('paused') else ''}{stale}"
     )
-    jobs = [
-        j for j in cl.list_jobs() if j.get("state") in ("running", "paused", "queued")
-    ]
+    jobs = [j for j in cl.list_jobs() if j.get("state") in UNFINISHED_STATES]
     jobs.sort(key=lambda j: j.get("submitted_at") or 0)
     for job in jobs:
         print(_job_line(job))
@@ -247,13 +228,13 @@ def cmd_daemon_jobs(extra):
     if opts["bad_states"]:
         print(
             f"unknown job state(s): {', '.join(opts['bad_states'])}\n"
-            f"  valid: {', '.join(sorted(_STATUS_ALL_STATES))}",
+            f"  valid: {', '.join(sorted(ALL_STATES))}",
             file=sys.stderr,
         )
         sys.exit(2)
     cl = _client.DaemonClient()
     up = cl.health() is not None
-    jobs = cl.list_jobs() if up else _jobs_from_disk()
+    jobs = cl.list_jobs() if up else list(iter_records())
     jobs.sort(key=lambda j: j.get("submitted_at") or 0)  # oldest first: tail = newest
     total = len(jobs)
     if opts["states"] is not None:
@@ -293,7 +274,7 @@ def cmd_daemon_log(extra):
     job_id = _job_arg(extra)
     cl = _client.DaemonClient()
     if not job_id:
-        jobs = cl.list_jobs() if cl.health() is not None else _jobs_from_disk()
+        jobs = cl.list_jobs() if cl.health() is not None else list(iter_records())
         jobs.sort(key=lambda j: j.get("submitted_at") or 0)
         if not jobs:
             print("no jobs on record.", file=sys.stderr)
