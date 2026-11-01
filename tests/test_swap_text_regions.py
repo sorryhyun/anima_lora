@@ -3,6 +3,7 @@ misregistration dropped."""
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import cv2
@@ -11,7 +12,7 @@ import numpy as np
 from i2i_tasks.swap_text.align import refine_ecc
 from i2i_tasks.swap_text.build import colour_match
 from i2i_tasks.swap_text.common import worker_pool
-from i2i_tasks.swap_text.ocr import keep_line
+from i2i_tasks.swap_text.ocr import keep_line, kept_lines, raw_row
 from i2i_tasks.swap_text.regions import diff_regions, grow_regions
 
 SIZE = (900, 640)
@@ -138,3 +139,19 @@ def test_small_hangul_line_clears_the_latin_glyph_floor():
     assert not keep_line(line("아앙", 0.42, 0.80, 14.0))
     assert not keep_line(line("ざわっ", 0.74, 0.72, 15.9))
     assert keep_line(line("I DUNNO", 0.35, 0.80, 12.2))
+
+
+def test_stored_read_keeps_the_filtered_lines_and_their_scores():
+    def line(text, det, score, glyph):
+        return SimpleNamespace(
+            text=text, box=(1, 2, 3, 4), det=det, score=score, glyph_px=glyph
+        )
+
+    rows = [
+        raw_row(line("만화에서 이런 걸", 0.90, 0.99, 14.7)),
+        raw_row(line("만화에서 이런 걸", 0.90, 0.99, 11.9)),
+    ]
+    assert rows[1] == ["만화에서 이런 걸", [1, 2, 3, 4], 0.90, 0.99, 11.9]
+    assert kept_lines(json.loads(json.dumps(rows))) == [
+        ["만화에서 이런 걸", [1, 2, 3, 4]]
+    ]

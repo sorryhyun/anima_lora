@@ -101,10 +101,11 @@ def ok_pages(a) -> list[dict]:
             if a.works and anchor not in a.works:
                 continue
             for p in read_json(pj):
-                if p["status"] == "ok":
+                key = f"{lang}/{anchor}/{p['page']}"
+                if p["status"] == "ok" and (not a.pages or key in a.pages):
                     out.append(
                         {
-                            "key": f"{lang}/{anchor}/{p['page']}",
+                            "key": key,
                             "lang": lang,
                             "anchor": anchor,
                             "page": p["page"],

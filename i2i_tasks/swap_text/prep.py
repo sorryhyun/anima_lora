@@ -27,6 +27,7 @@ holdout can split by work (the same work appears in both languages).
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -59,6 +60,12 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--root", default="post_image_dataset/i2i/swap_text")
     ap.add_argument("--langs", nargs="+", default=["en", "ko"], choices=list(LANG_TAG))
     ap.add_argument("--works", nargs="*", help="anchor ids; default every work")
+    ap.add_argument(
+        "--pages",
+        type=Path,
+        help="JSON list of <lang>/<anchor>/<page> keys: every stage handles only these "
+        "(a work built this way is marked built with these pages alone)",
+    )
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--seed", type=int, default=0)
@@ -180,6 +187,7 @@ def parse_args() -> argparse.Namespace:
     a = ap.parse_args()
     a.root = resolve_under_home(a.root)
     a.works = set(a.works or [])
+    a.pages = set(json.loads(a.pages.read_text())) if a.pages else set()
     return a
 
 

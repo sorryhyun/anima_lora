@@ -1,10 +1,14 @@
 """**ocr** and **det** (GPU): the two reads of the built pages within
 ``--max_resid`` / ``--max_uncovered``.
 
-**ocr** reads every twin ``.tgt.webp`` through the anime_tools reader, with the
-MOSS caption helper's floors (``library.moss.colorize.readable``), a Latin line
-at reader score ``LATIN_MIN_SCORE`` whatever its det, and the Latin glyph floor
-on a Hangul line, into ``<root>/ocr.json``.
+**ocr** reads every twin ``.tgt.webp`` through the anime_tools reader into
+``<root>/ocr.json``, every line the engine answers as ``[text, box, det, score,
+glyph_px]``, unfiltered, so a line floor changes without a GPU. ``kept_lines``
+applies the floors when the reads are used: the MOSS caption helper's
+(``library.moss.colorize.readable``), a Latin line at reader score
+``LATIN_MIN_SCORE`` whatever its det, and the Latin glyph floor on a Hangul
+line. After a floor change remove ``<root>/pool_metrics.json``: its masks hold
+the kept lines' boxes.
 
 **det** runs AnimeText text blocks on both sides of the same pages
 (``.src.webp`` and ``.tgt.webp``) into ``<root>/det.json``: the text mask the
@@ -18,6 +22,7 @@ import json
 import re
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import cv2
 
@@ -65,8 +70,28 @@ def keep_line(ln) -> bool:
     )
 
 
+def raw_row(ln) -> list:
+    """One engine line as stored in ``ocr.json``."""
+    return [
+        ln.text,
+        list(ln.box),
+        float(ln.det),
+        float(ln.score),
+        float(ln.glyph_px),
+    ]
+
+
+def kept_lines(rows: list) -> list:
+    """The ``[text, box]`` of the stored rows ``keep_line`` keeps."""
+    lines = (
+        SimpleNamespace(text=text, box=box, det=det, score=score, glyph_px=glyph_px)
+        for text, box, det, score, glyph_px in rows
+    )
+    return [[ln.text, ln.box] for ln in lines if keep_line(ln)]
+
+
 def read_into(a, path: Path, todo: list, paths: list[Path], label: str) -> dict:
-    """Read ``paths`` into the ``{key: [[text, box], ...]}`` cache at ``path``;
+    """Read ``paths`` into the ``{key: [raw_row, ...]}`` cache at ``path``;
     ``todo`` holds each path's key. Returns the whole cache.
 
     ``--ocr_procs`` > 1 splits the unread pages over that many processes, each
@@ -115,7 +140,7 @@ def _read_shard(job) -> dict:
     reads, t0 = {}, time.time()
     lines_iter = engine.read_iter([p for _, p in keep])
     for k, ((key, _), lines) in enumerate(zip(keep, lines_iter), 1):
-        reads[key] = [[ln.text, list(ln.box)] for ln in lines if keep_line(ln)]
+        reads[key] = [raw_row(ln) for ln in lines]
         if k % 200 == 0 or k == len(keep):
             write_text(out, json.dumps(reads, ensure_ascii=False))
         # the daemon kills a job silent for 120 s; a shard does ~1 page/s

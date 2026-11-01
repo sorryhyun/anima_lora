@@ -182,6 +182,12 @@ def _build_work(work: Path, lang: str, a) -> str:
     if not src_files or not tw_files:
         return f"{lang}/{work.name}: no readable ja/{lang} pages"
     pairs = align_pages([phash(g) for g in src_g], [phash(g) for g in tw_g])
+    if a.pages:
+        pairs = [
+            pair
+            for pair in pairs
+            if f"{lang}/{work.name}/{src_files[pair[0]].stem}" in a.pages
+        ]
     regs = [register(src_g[i], tw_g[j]) for i, j, _ in pairs]
     scales = [
         float(np.hypot(M[0, 0], M[1, 0]))
@@ -236,6 +242,9 @@ def stage_build(a) -> None:
         works = [w for w in works if (w / "ja").is_dir()]
         if a.works:
             works = [w for w in works if w.name in a.works]
+        if a.pages:
+            anchors = {k.split("/")[1] for k in a.pages if k.startswith(f"{lang}/")}
+            works = [w for w in works if w.name in anchors]
         if a.limit:
             works = works[: a.limit]
         jobs += [(w, lang, a) for w in works]

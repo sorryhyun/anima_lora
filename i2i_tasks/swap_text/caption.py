@@ -21,7 +21,7 @@ from i2i_tasks.swap_text.common import (
     write_stats,
     write_text,
 )
-from i2i_tasks.swap_text.ocr import read_into
+from i2i_tasks.swap_text.ocr import kept_lines, read_into
 
 LANG_TAG = {"en": "english text", "ko": "korean text"}
 
@@ -76,6 +76,7 @@ def stage_caption(a) -> None:
             [staging / r["lang"] / f"{r['stem']}.tgt.webp" for r in plan],
             "caption ocr",
         )
+        reads = {k: kept_lines(v) for k, v in reads.items()}
     rows, n_ja, n_empty = [], 0, 0
     for r in plan:
         base = staging / r["lang"]

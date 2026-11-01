@@ -37,6 +37,7 @@ from i2i_tasks.swap_text.common import (
     write_text,
 )
 from i2i_tasks.swap_text.metrics import colour_gate, page_metrics
+from i2i_tasks.swap_text.ocr import kept_lines
 
 PAGE_DROPS = ("unread", "undetected", "resid", "uncovered", "uncaptioned", "bg_resid")
 
@@ -214,7 +215,7 @@ def _write_tree(pool_dir, rows: list[dict], pages: list[dict]) -> None:
 
 
 def stage_pool(a) -> None:
-    reads = read_json(a.root / "ocr.json")
+    reads = {k: kept_lines(v) for k, v in read_json(a.root / "ocr.json").items()}
     dets = read_json(a.root / "det.json")
     tally = _Tally()
     pages = _measurable(a, reads, dets, tally)
