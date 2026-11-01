@@ -170,51 +170,49 @@ def _pages(side: Path) -> list[Path]:
     return sorted(side.glob("*.webp"))
 
 
-def _linear_match(tgt: np.ndarray, src: np.ndarray, keep: np.ndarray) -> np.ndarray:
-    """``tgt`` with a per-channel gain / bias fit to ``src`` over ``keep``."""
-    ys, xs = np.nonzero(keep)
-    pick = np.random.default_rng(0).choice(len(xs), min(len(xs), 200_000), False)
-    ys, xs = ys[pick], xs[pick]
-    out = np.empty(tgt.shape, np.float32)
-    for c in range(3):
-        g, b = np.polyfit(tgt[ys, xs, c].astype(np.float32), src[ys, xs, c], 1)
-        if not 0.7 <= g <= 1.4:
-            g, b = 1.0, float(src[ys, xs, c].mean() - tgt[ys, xs, c].mean())
-        out[..., c] = tgt[..., c] * g + b
-    return np.clip(out + 0.5, 0, 255).astype(np.uint8)
+def _quantiles(v: np.ndarray, q: np.ndarray) -> np.ndarray:
+    """``q`` quantiles of the uint8 values ``v``, read off their histogram."""
+    cdf = np.cumsum(np.bincount(v, minlength=256))
+    return np.searchsorted(cdf, q * (len(v) - 1), side="right").astype(np.float64)
 
 
-def _lut_match(tgt: np.ndarray, src: np.ndarray, keep: np.ndarray) -> np.ndarray:
-    """``tgt`` through a per-channel quantile-matching LUT onto ``src`` over
-    ``keep`` — a tone curve, for editions scanned at other levels / gamma."""
-    q = np.linspace(0, 100, 257)
-    out = np.empty_like(tgt)
-    for c in range(3):
-        qa = np.percentile(tgt[..., c][keep], q) + np.arange(257) * 1e-6
-        qb = np.percentile(src[..., c][keep], q)
-        lut = np.interp(np.arange(256), np.maximum.accumulate(qa), qb)
-        out[..., c] = np.clip(lut + 0.5, 0, 255).astype(np.uint8)[tgt[..., c]]
-    return out
-
-
-def colour_match(tgt: np.ndarray, src: np.ndarray, keep: np.ndarray):
-    """``(name, tgt')``: whichever of the twin as-is, a linear fit and a LUT
-    leaves the lowest residual on ``keep``. Most pages need none — on 60 probe
-    pages the linear fit alone raised the median residual 2.8 → 3.4 — while
-    another scan's tone curve needs the LUT."""
+def colour_match(tgt: np.ndarray, src: np.ndarray, keep: np.ndarray, step=3):
+    """``(name, tgt')``: whichever of the twin as-is, a per-channel gain / bias
+    (``linear``) and a per-channel quantile match (``lut``, another scan's tone
+    curve) leaves the lowest residual on ``keep``. Most pages need none — on 60
+    probe pages the linear fit alone raised the median residual 2.8 → 3.4.
+    Fit and scored on every ``step``-th pixel; both fits are 256-entry tables."""
     if keep.sum() < 1000:
         return "id", tgt
-    cands = [
-        ("id", tgt),
-        ("linear", _linear_match(tgt, src, keep)),
-        ("lut", _lut_match(tgt, src, keep)),
-    ]
-    return min(cands, key=lambda c: _absdiff(src, c[1])[keep].mean())
+    t, s, k = tgt[::step, ::step], src[::step, ::step], keep[::step, ::step]
+    tk, sk = t[k], s[k]
+    x = np.arange(256, dtype=np.float32)
+    q = np.linspace(0, 1, 257)
+    linear, lut = [], []
+    for c in range(3):
+        tc, sc = tk[:, c], sk[:, c]
+        g, b = np.polyfit(tc.astype(np.float32), sc.astype(np.float32), 1)
+        if not 0.7 <= g <= 1.4:
+            g, b = 1.0, float(sc.mean(dtype=np.float32) - tc.mean(dtype=np.float32))
+        linear.append(g * x + b)
+        qa = _quantiles(tc, q) + np.arange(257) * 1e-6
+        lut.append(np.interp(x, np.maximum.accumulate(qa), _quantiles(sc, q)))
+    cands = {
+        "id": None,
+        "linear": np.clip(np.stack(linear, -1)[:, None] + 0.5, 0, 255).astype(np.uint8),
+        "lut": np.clip(np.stack(lut, -1)[:, None] + 0.5, 0, 255).astype(np.uint8),
+    }
+    scores = {
+        name: cv2.absdiff(s, t if table is None else cv2.LUT(t, table))[k].mean()
+        for name, table in cands.items()
+    }
+    name = min(scores, key=scores.get)
+    return name, tgt if cands[name] is None else cv2.LUT(tgt, cands[name])
 
 
 def _absdiff(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     """Per-pixel mean |a - b| over the channels."""
-    return np.abs(a.astype(np.int16) - b.astype(np.int16)).mean(-1)
+    return cv2.absdiff(a, b).mean(-1, dtype=np.float32)
 
 
 def paste_mask(labels: np.ndarray, chosen, dilate_frac: float) -> np.ndarray:
@@ -298,6 +296,10 @@ def _resize(img: np.ndarray, size: tuple[int, int]) -> np.ndarray:
     return cv2.resize(img, size, interpolation=cv2.INTER_AREA)
 
 
+def _gray(img: np.ndarray) -> np.ndarray:
+    return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+
 def _chroma(img: np.ndarray, keep: np.ndarray) -> float:
     return float(cv2.cvtColor(img, cv2.COLOR_BGR2HSV)[..., 1][keep].mean())
 
@@ -359,23 +361,18 @@ def _build_work(work: Path, lang: str, a) -> str:
         size = target_size(W, H, a.resolution)
         M = refine_ecc(src_g[i], tw_g[j], M, work_px=max(size))
         interp = cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR
-
-        def warp(img):
-            return _resize(cv2.warpAffine(img, M, (W, H), flags=interp), size)
-
         valid = cv2.warpAffine(np.full(tw_g[j].shape, 255, np.uint8), M, (W, H))
         valid = cv2.erode(valid, np.ones((15, 15), np.uint8))
         valid = cv2.resize(valid, size, interpolation=cv2.INTER_NEAREST)
-        regions, labels, changed = diff_regions(
-            _resize(src_g[i], size), warp(tw_g[j]), valid
-        )
+        src = _resize(cv2.imread(str(src_files[i]), cv2.IMREAD_COLOR), size)
+        tw = cv2.imread(str(tw_files[j]), cv2.IMREAD_COLOR)
+        tgt = _resize(cv2.warpAffine(tw, M, (W, H), flags=interp), size)
+        regions, labels, changed = diff_regions(_gray(src), _gray(tgt), valid)
         page["changed_frac"] = round(changed, 4)
         if not regions:
             pages.append({**page, "status": "no_regions"})
             continue
 
-        src = _resize(cv2.imread(str(src_files[i]), cv2.IMREAD_COLOR), size)
-        tgt = warp(cv2.imread(str(tw_files[j]), cv2.IMREAD_COLOR))
         labels[valid == 0] = INVALID
         keep = labels == 0
         if abs(_chroma(src, keep) - _chroma(tgt, keep)) > a.max_chroma_gap:

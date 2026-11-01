@@ -12,6 +12,9 @@ import cv2
 import numpy as np
 
 PIX_DIFF = 70  # normalised grey levels
+ORB_FEATURES = (1500, 5000)
+SURE_INLIERS = 200
+MAX_MISFIT = 20.0  # grey levels: lettering alone stays well under it
 
 
 def phash(gray: np.ndarray) -> np.ndarray:
@@ -47,12 +50,8 @@ def align_pages(a: list[np.ndarray], b: list[np.ndarray], gap=16.0, thr=14):
     return out[::-1]
 
 
-def register(src: np.ndarray, tw: np.ndarray, work_px=1200):
-    """2×3 affine mapping twin → src coordinates, and its RANSAC inlier count."""
-    sa, sb = work_px / max(src.shape), work_px / max(tw.shape)
-    a = cv2.resize(src, None, fx=sa, fy=sa, interpolation=cv2.INTER_AREA)
-    b = cv2.resize(tw, None, fx=sb, fy=sb, interpolation=cv2.INTER_AREA)
-    orb = cv2.ORB_create(5000)
+def _orb_fit(a: np.ndarray, b: np.ndarray, sa: float, sb: float, features: int):
+    orb = cv2.ORB_create(features)
     ka, da = orb.detectAndCompute(a, None)
     kb, db = orb.detectAndCompute(b, None)
     if da is None or db is None:
@@ -66,6 +65,34 @@ def register(src: np.ndarray, tw: np.ndarray, work_px=1200):
         pb, pa, method=cv2.RANSAC, ransacReprojThreshold=3.0
     )
     return M, int(inl.sum()) if inl is not None else 0
+
+
+def _misfit(a: np.ndarray, b: np.ndarray, M: np.ndarray, sa: float, sb: float) -> float:
+    """Mean |a - b| where the ``M``-warped ``b`` covers ``a``."""
+    Mab = M * sa
+    Mab[:, :2] /= sb
+    size = a.shape[::-1]
+    warped = cv2.warpAffine(b, Mab, size)
+    covered = cv2.warpAffine(np.full(b.shape, 255, np.uint8), Mab, size) == 255
+    return float(cv2.absdiff(a, warped)[covered].mean()) if covered.any() else 255.0
+
+
+def register(src: np.ndarray, tw: np.ndarray, work_px=1200):
+    """2×3 affine mapping twin → src coordinates, and its RANSAC inlier count.
+
+    The brute-force match is quadratic in the features: 5000 of them took 308 ms
+    of a 1.1 s page for ~2000 inliers. 1500 matches in 61 ms and lands within
+    0.03 px after ECC, but loses pages with little shared art and can settle on a
+    repeated pattern, so a fit under ``SURE_INLIERS`` or past ``MAX_MISFIT`` retries
+    at 5000."""
+    sa, sb = work_px / max(src.shape), work_px / max(tw.shape)
+    a = cv2.resize(src, None, fx=sa, fy=sa, interpolation=cv2.INTER_AREA)
+    b = cv2.resize(tw, None, fx=sb, fy=sb, interpolation=cv2.INTER_AREA)
+    for features in ORB_FEATURES:
+        M, inl = _orb_fit(a, b, sa, sb, features)
+        if inl >= SURE_INLIERS and _misfit(a, b, M, sa, sb) <= MAX_MISFIT:
+            break
+    return M, inl
 
 
 def norm_gray(g: np.ndarray, valid: np.ndarray) -> np.ndarray:
@@ -158,15 +185,21 @@ def refine_ecc(src: np.ndarray, tw: np.ndarray, M: np.ndarray, work_px=1600):
     when the correlation moves < 1e-3; at 1e-6 some works oscillated to the
     iteration cap (~40 ms each) for < 0.03 px of change."""
     s = min(1.0, work_px / max(src.shape))
-    size = src.shape[::-1]
-    a = src
-    b = cv2.warpAffine(tw, M, size, flags=cv2.INTER_LINEAR)
-    mask = cv2.warpAffine(np.full(tw.shape, 255, np.uint8), M, size)
-    mask = cv2.erode(mask, np.ones((15, 15), np.uint8))
+    k = min(1.0, s * float(np.hypot(M[0, 0], M[1, 0])))
+    a, small = src, tw
     if s < 1:
-        a = cv2.resize(a, None, fx=s, fy=s, interpolation=cv2.INTER_AREA)
-        b = cv2.resize(b, None, fx=s, fy=s, interpolation=cv2.INTER_AREA)
-        mask = cv2.resize(mask, a.shape[::-1], interpolation=cv2.INTER_NEAREST)
+        a = cv2.resize(src, None, fx=s, fy=s, interpolation=cv2.INTER_AREA)
+    if k < 1:
+        small = cv2.resize(tw, None, fx=k, fy=k, interpolation=cv2.INTER_AREA)
+    # M between the two working rasters, cv2.resize's pixel-centre offsets included
+    from_small = np.array([[1 / k, 0, 0.5 / k - 0.5], [0, 1 / k, 0.5 / k - 0.5]])
+    to_work = np.array([[s, 0, 0.5 * s - 0.5], [0, s, 0.5 * s - 0.5]])
+    Mw = to_work @ np.vstack([M, [0, 0, 1]]) @ np.vstack([from_small, [0, 0, 1]])
+    size = a.shape[::-1]
+    b = cv2.warpAffine(small, Mw, size, flags=cv2.INTER_LINEAR)
+    mask = cv2.warpAffine(np.full(small.shape, 255, np.uint8), Mw, size)
+    e = max(3, round(15 * s) | 1)
+    mask = cv2.erode(mask, np.ones((e, e), np.uint8))
     R = np.eye(2, 3, dtype=np.float32)
     try:
         _, R = cv2.findTransformECC(
