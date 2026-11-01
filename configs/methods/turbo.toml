@@ -45,6 +45,7 @@ grad_step = "random"
 
 [cdm]
 weight = 1.0
+grad_ckpt = true
 
 [optim]
 student_lr = 5e-5

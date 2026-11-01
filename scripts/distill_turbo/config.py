@@ -530,6 +530,13 @@ def build_argparser() -> argparse.ArgumentParser:
 
     # CDM off-trajectory loss (L_CDM; off by default).
     parser.add_argument(
+        "--cdm_grad_ckpt",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Checkpoint the grad-bearing CDM student forward. Default: TOML "
+        "(cdm.grad_ckpt, default on).",
+    )
+    parser.add_argument(
         "--cdm_weight",
         type=float,
         default=-1.0,
@@ -841,6 +848,7 @@ class TurboConfig:
     # point (t' ~ U(0,1)) with the same real-vs-fake delta as the DM branch.
     # 0 = the whole path off (byte-identical loop).
     cdm_weight: float
+    cdm_grad_ckpt: bool  # checkpoint ONLY the grad-bearing CDM student forward
 
     # Base objective selector
     base_loss: str
@@ -1038,6 +1046,11 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     # weight=0 keeps the whole L_CDM path off → byte-identical loop (no extra
     # forwards, no extra RNG draws).
     cdm_weight = float(_pick(args.cdm_weight, cfg, "cdm.weight", 0.0))
+    cdm_grad_ckpt = bool(
+        _flatten(cfg, "cdm.grad_ckpt", True)
+        if args.cdm_grad_ckpt is None
+        else args.cdm_grad_ckpt
+    )
 
     # weight_gen=0 keeps the whole GAN/disc path off → byte-identical DP-DMD.
     # feature_block_idx sentinel is -2 (not -1) because -1 means middle block.
@@ -1706,6 +1719,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         dmd_grad_step=dmd_grad_step,
         dynamic_schedule=dynamic_schedule,
         cdm_weight=cdm_weight,
+        cdm_grad_ckpt=cdm_grad_ckpt,
         base_loss=base_loss,
         gan_loss_weight_gen=gan_loss_weight_gen,
         gan_feature_block_idx=gan_feature_block_idx,

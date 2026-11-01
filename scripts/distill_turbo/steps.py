@@ -288,8 +288,8 @@ def cdm_off_trajectory_loss(
     forward's checkpointed recompute happens at backward under the then-current
     view, so this must stay the last view flip of the step.
 
-    VRAM: the CDM student forward is unsloth-checkpointed (same lever as
-    gan.grad_ckpt) and BACKWARDED IN-BRANCH, so its graph is freed before the GAN
+    VRAM: the CDM student forward is unsloth-checkpointed under ``cdm.grad_ckpt``
+    and BACKWARDED IN-BRANCH, so its graph is freed before the GAN
     forward builds. The ckpt'd forward recomputes under the then-current view,
     so the view is restored to 'student' first — backward-while-view-live, the
     same contract the GAN forward honors.
@@ -304,7 +304,10 @@ def cdm_off_trajectory_loss(
     x_off = (
         cdm_extrapolate(x_g_cdm, v_g_cdm, s_g_cdm, t_off).to(ctx.dtype).requires_grad_()
     )
-    with selective_block_grad_ckpt(ctx.model):
+    cdm_ckpt = (
+        selective_block_grad_ckpt(ctx.model) if cfg.cdm_grad_ckpt else nullcontext()
+    )
+    with cdm_ckpt:
         v_off = ctx.forward(
             "student", x_off, t_off, crossattn_emb, no_grad=False
         ).squeeze(2)
