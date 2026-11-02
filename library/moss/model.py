@@ -219,6 +219,8 @@ class _Block(nn.Module):
         )
         self.proj["ffn_up_gate"] = nn.Linear(dim, 2 * ffn_dim, bias=False)
         self.proj["ffn_down"] = nn.Linear(ffn_dim, dim, bias=False)
+        # On an int8 base, one linear holding the q, k and v rows (dit_int8.base).
+        self.qkv = None
         # (k, v) export adapters, set by LoRANetwork.apply_to with ref_rank. A tuple,
         # so they stay outside the block's modules (the swapper moves every .weight).
         self.ref_bank = None
@@ -266,6 +268,13 @@ class _Block(nn.Module):
         k = self.k_norm(bank_k(y, raw_k).unflatten(-1, (self.heads, -1))).flatten(2)
         return k, bank_v(y, raw_v)
 
+    def _qkv(self, y):
+        """``proj.q`` / ``k`` / ``v`` on ``y``, adapters included."""
+        if self.qkv is None:
+            return self.proj["q"](y), self.proj["k"](y), self.proj["v"](y)
+        rows = self.qkv(y).chunk(3, -1)
+        return tuple(self.proj[name](y, row) for name, row in zip("qkv", rows))
+
     def main_rows(
         self,
         x,
@@ -284,9 +293,9 @@ class _Block(nn.Module):
         y = _affine(self.norm1(x), scale_a, shift_a, ref_start)
         dtype = self.proj["q"].weight.dtype
         y = y.to(dtype)
-        q = self.q_norm(self.proj["q"](y).unflatten(-1, (self.heads, -1))).flatten(2)
-        k = self.k_norm(self.proj["k"](y).unflatten(-1, (self.heads, -1))).flatten(2)
-        v = self.proj["v"](y)
+        q, k, v = self._qkv(y)
+        q = self.q_norm(q.unflatten(-1, (self.heads, -1))).flatten(2)
+        k = self.k_norm(k.unflatten(-1, (self.heads, -1))).flatten(2)
         attn = _attention(
             q, k, v, rope, self.heads, key_mask, ref_start, ref_isolate, ref_kv
         )
@@ -313,8 +322,11 @@ class _Block(nn.Module):
         shift_a, scale_a, gate_a, shift_f, scale_f, gate_f = modulation.unbind(1)
         dtype = self.proj["q"].weight.dtype
         y = _affine(self.norm1(x), scale_a, shift_a, None).to(dtype)
-        raw_k, v = base("k", y), base("v", y)
-        q = self.q_norm(heads(base("q", y))).flatten(2)
+        if self.qkv is None:
+            q, raw_k, v = base("q", y), base("k", y), base("v", y)
+        else:
+            q, raw_k, v = self.qkv(y).chunk(3, -1)
+        q = self.q_norm(heads(q)).flatten(2)
         k = self.k_norm(heads(raw_k)).flatten(2)
         attn = _attention(q, k, v, rope, self.heads)
         x = x + _gated(base("o", attn), gate_a, None)

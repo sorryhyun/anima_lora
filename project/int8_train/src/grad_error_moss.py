@@ -48,7 +48,12 @@ from library.moss.train import NUM_TRAIN_TIMESTEPS, checkpoint_blocks  # noqa: E
 # sibling modules; the script dir is on sys.path
 from grad_error import _SplitArm, sq  # noqa: E402
 from int8_linear import linear_full, linear_fwd, quantize  # noqa: E402
-from library.moss.dit_int8.base import check_base, load_copies, moss_targets  # noqa: E402
+from library.moss.dit_int8.base import (  # noqa: E402
+    QKVPart,
+    check_base,
+    load_copies,
+    moss_targets,
+)
 
 # after the fp32 phase. ``bf16_f32s``: every parameter but the block linears' weights in
 # fp32, so the residual stream, modulation and gates are fp32 around bf16 GEMMs.
@@ -66,6 +71,7 @@ MODES = (
     "gptq_w8a16",
     "full_f32s",
     "gptq_f32s",
+    "gptq_fused_f32s",
 )
 DEFAULT_MODES = "bf16,bf16_rep,fwd,full,w8a16,w16a8"
 GROUP_BLOCKS = 7
@@ -101,13 +107,45 @@ class Int8Arm(nn.Linear):
         return linear_full(x, wq, s, *quantize(w.t().contiguous()))
 
 
+class FusedArm(nn.Module):
+    """The trainer's ``block.qkv``, its copies built per call as ``Int8Arm``'s."""
+
+    def __init__(self, block):
+        super().__init__()
+        self.parts = tuple(block.proj[p] for p in "qkv")  # a tuple: not submodules
+
+    def forward(self, x):
+        w = torch.cat([m.weight for m in self.parts])
+        wq, s = zip(*(m.copy for m in self.parts))
+        wq, s = (torch.cat(t).to(w.device) for t in (wq, s))
+        return linear_full(x.float(), wq, s, *quantize(w.t().contiguous()))
+
+
 def set_mode(mods: list[nn.Linear], mode: str) -> None:
     for m in mods:
         if mode.startswith("bf16"):
             m.__class__ = nn.Linear
         else:
             m.__class__ = Int8Arm
-            m.arm = mode.removesuffix("_f32s")
+            m.arm = mode.removesuffix("_f32s").removesuffix("_fused")
+
+
+@contextlib.contextmanager
+def fused(tr, mode):
+    """The ``_fused`` arms: ``block.qkv`` over the three linears."""
+    if "_fused" not in mode:
+        yield
+        return
+    for block in tr.layers:
+        block.qkv = FusedArm(block)
+        for p in "qkv":
+            block.proj[p].__class__ = QKVPart
+    try:
+        yield
+    finally:
+        for block in tr.layers:
+            del block.qkv
+            block.qkv = None
 
 
 def cast_fp32_except(tr, linears) -> dict:
@@ -151,7 +189,8 @@ def arm(tr, mods, mode):
     if mode.endswith("_f32s"):
         dtypes = cast_fp32_except(tr, mods)
         try:
-            yield
+            with fused(tr, mode):
+                yield
         finally:
             restore_dtypes(tr, dtypes)
     elif mode == "bf16_noreduce":

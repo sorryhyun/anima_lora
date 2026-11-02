@@ -2,7 +2,9 @@
 
 The 252 block linears (`layers.N.proj.{q,k,v,o,ffn_up_gate,ffn_down}`) of the frozen DiT run
 as ConvRot int8 GEMMs instead of bf16. Attention, norms, modulation, the residual stream
-and the LoRA's own GEMMs stay in float.
+and the LoRA's own GEMMs stay in float. Each block's `q`, `k` and `v` run as one GEMM with their
+rows concatenated, `block.qkv`, which saves about 24 ms of a training step
+([report](../../../project/int8_train/reports/qkv_fuse.md)).
 
 **Status (2026-10-31): the default training plan. One LoRA has completed on the GPTQ base
 (ama mitsuki, 848 steps, 14.6 min, 1.08 s/step, 10.95 GB).**

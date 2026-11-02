@@ -7,6 +7,12 @@ reads bf16, and before ``apply_to``, whose patched forward captures
 ``module.__class__.forward``, and ``compile_blocks``. ``generate`` converts after the
 network's ``__init__`` too (LoKr reads the bf16 weight's shape) and before ``apply_to``;
 with no LoRA, right after the DiT loads.
+
+Each block's ``proj.q`` / ``k`` / ``v`` become one GEMM, ``block.qkv``, with their rows
+concatenated. They read the same ``y``, so the kernel rotates and quantizes it once. The
+forward is bit-identical to three calls. ``wq_t`` shares one scale per column of the
+weight, and dY one per token, across the three. The three linears stay as
+:class:`QKVPart`, which the adapters patch.
 """
 
 from __future__ import annotations
@@ -16,6 +22,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 import torch
+import torch.nn as nn
 from safetensors import safe_open
 
 from library.env import resolve_under_home
@@ -30,7 +37,8 @@ from library.int8.stream import WqtStream
 from library.moss.requests import GenerateRequest, TrainRequest
 
 ROUND_TO_NEAREST = "rtn"  # the requests' int8_file, and int8_base_id on a LoRA
-BLOCK_LINEARS = ("q", "k", "v", "o", "ffn_up_gate", "ffn_down")
+QKV = ("q", "k", "v")
+REST = ("o", "ffn_up_gate", "ffn_down")
 _TARGET = re.compile(TrainRequest.TARGETS)
 _BF16_PLAN = "--config configs/moss/lora_bf16.toml is the bf16 plan"
 
@@ -61,27 +69,63 @@ def check_base(meta: dict, by_name: dict) -> None:
         raise SystemExit(f"int8 base: the file was made from {meta.get('source')}")
 
 
+def _empty_weight(mod) -> None:
+    mod.register_buffer(
+        "weight",
+        torch.empty(0, dtype=torch.bfloat16, device=torch.device("cuda")),
+        persistent=False,
+    )
+
+
 def convert_moss_(mod, mode: str, forward_copy=None) -> None:
     """``convert_`` on the card. Modes that drop the weight keep an empty bf16
     ``weight`` buffer: the block forward reads ``proj["q"].weight.dtype``."""
-    device = torch.device("cuda")
-    mod.to(device)
+    mod.to(torch.device("cuda"))
     convert_(mod, mode, forward_copy)
     if mode != "fwd":
-        mod.register_buffer(
-            "weight",
-            torch.empty(0, dtype=torch.bfloat16, device=device),
-            persistent=False,
-        )
+        _empty_weight(mod)
 
 
-def stream_targets(by_name: dict, n_blocks: int) -> WqtStream:
+class QKVPart(nn.Linear):
+    """``proj.q`` / ``k`` / ``v`` once ``block.qkv`` runs their rows: ``out`` is this
+    linear's share of that output, for the adapters to add to."""
+
+    def forward(self, x: torch.Tensor, out: torch.Tensor) -> torch.Tensor:
+        return out
+
+
+def fuse_qkv_(block, mode: str, copies: dict, name: str) -> None:
+    """Build ``block.qkv`` in mode ``mode`` from the three linears of block ``name``,
+    with their forward copies from ``copies`` when it has them."""
+    parts = [block.proj[p] for p in QKV]
+    forward_copy = None
+    if copies:
+        wq, s = zip(*(copies[f"{name}.proj.{p}"] for p in QKV))
+        forward_copy = torch.cat(wq), torch.cat(s)
+    weight = torch.cat([part.weight.detach() for part in parts])
+    fused = nn.Linear(weight.shape[1], weight.shape[0], bias=False, device="meta")
+    fused.weight = nn.Parameter(weight, requires_grad=False)
+    convert_moss_(fused, mode, forward_copy)
+    for part in parts:
+        del part.weight
+        _empty_weight(part)
+        part.__class__ = QKVPart
+    block.qkv = fused
+
+
+def convert_blocks_(transformer, mode: str, copies: dict) -> None:
+    """Every block's linears: ``block.qkv`` and the other three."""
+    for i, block in enumerate(transformer.layers):
+        fuse_qkv_(block, mode, copies, f"layers.{i}")
+        for p in REST:
+            convert_moss_(block.proj[p], mode, copies.get(f"layers.{i}.proj.{p}"))
+
+
+def stream_targets(transformer) -> WqtStream:
     """``wq_t`` to the host, block by block, in the block's forward order."""
-    blocks = [
-        [by_name[f"layers.{b}.proj.{p}"] for p in BLOCK_LINEARS]
-        for b in range(n_blocks)
-    ]
-    return stream_compacted_(blocks)
+    return stream_compacted_(
+        [[b.qkv, *(b.proj[p] for p in REST)] for b in transformer.layers]
+    )
 
 
 def check_plan(req: TrainRequest) -> None:
@@ -139,12 +183,8 @@ def convert_for_training(transformer, req: TrainRequest) -> TrainBase:
     targets = moss_targets(transformer)
     if copies:
         check_base(meta, dict(targets))
-    mode = "full" if req.int8 == "stream" else req.int8
-    for name, mod in targets:
-        convert_moss_(mod, mode, copies.get(name))
-    stream = None
-    if req.int8 == "stream":
-        stream = stream_targets(dict(targets), len(transformer.layers))
+    convert_blocks_(transformer, "full" if req.int8 == "stream" else req.int8, copies)
+    stream = stream_targets(transformer) if req.int8 == "stream" else None
     torch.cuda.empty_cache()
     print(
         f"int8 {req.int8}: converted {len(targets)} linears, forward copies "
@@ -184,8 +224,7 @@ def generate_base(req: GenerateRequest) -> Callable[[torch.nn.Module], None]:
         targets = moss_targets(transformer)
         if copies:
             check_base(meta, dict(targets))
-        for name, mod in targets:
-            convert_moss_(mod, "infer", copies.get(name))
+        convert_blocks_(transformer, "infer", copies)
         torch.cuda.empty_cache()
         print(
             f"int8 infer: converted {len(targets)} linears, base {base_id[:16]}",

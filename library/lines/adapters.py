@@ -582,7 +582,10 @@ def _state_from_file(state: dict, algo: str) -> dict:
 def _patched_forward(module: nn.Linear, adapter: nn.Module):
     base = module.__class__.forward
 
-    def forward(x: torch.Tensor) -> torch.Tensor:
-        return adapter.patched(module, base, x)
+    def forward(x: torch.Tensor, *known) -> torch.Tensor:
+        """``known``: extra inputs of the base forward (MOSS's ``QKVPart``)."""
+        if not known:
+            return adapter.patched(module, base, x)
+        return adapter.patched(module, lambda m, t: base(m, t, *known), x)
 
     return forward

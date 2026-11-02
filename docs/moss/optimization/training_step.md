@@ -38,7 +38,7 @@ direction, and int32 accumulation is not throttled the way fp32 accumulation is 
   the same kernel on `wq_t`. Inputs are not saved for the base; only LoRA saves its own.
 - **`__class__` swap in place** (`convert_`), so LoRA modules holding the original object
   keep working. A converted linear keeps an empty bf16 `weight` buffer, because the block
-  forward reads its dtype.
+  forward reads its dtype. `proj.q/k/v` keep theirs as `QKVPart`; `block.qkv` runs their GEMM.
 - **Cast outside the op.** `x.to(bf16)` sits in `forward`, where Inductor fuses it into the
   producer. Inside the op it ran as its own copy kernel, about 3.5 ms per step.
 

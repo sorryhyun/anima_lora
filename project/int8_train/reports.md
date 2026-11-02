@@ -57,6 +57,7 @@ inputs.
 | FA2 forward tile on sm_120 | fails the 1.15x gate: 128×32 is 1.060x self and 1.117x cross at FA2's error, CUDNN 1.072x with a slower backward; no build ([report](reports/fa2_tile_sm120.md)) |
 | fp16-accumulate backward | passes with QKᵀ fp32-accumulated: 1.340x the Triton backward, 1.02–1.10x error; fp16acc QKᵀ alone is 2.1x ([report](reports/attn_bwd_fp16acc.md)) |
 | fp16acc in FA2's backward | ported: real MOSS step 1071–1082 → 1022 ms, real Anima step 426.5 → 404.7 ms, error 0.74–0.97x FA2, MOSS LoRA gradient 1.000–1.005x; default on sm_120 after `make fa2-sm120` ([report](reports/fa2_fp16acc.md)) |
+| one int8 linear for MOSS q / k / v | built: forward 1.30x and bit-identical, dX 1.31x, about 24 ms of a step; dX on real gradients not measured ([report](reports/qkv_fuse.md)) |
 
 Criterion, as it stands now:
 

@@ -1,5 +1,6 @@
 """The int8 base's linears, ``wq_t`` stream, card EMA and memory plan."""
 
+import copy
 import dataclasses
 
 import pytest
@@ -9,13 +10,16 @@ import torch.nn.functional as F
 from torch.utils.flop_counter import flop_registry
 
 from library import downloads
-from library.moss.dit_int8.base import check_plan, forward_file
+from library.lines.adapters import LoRAAdapter, _patched_forward
+from library.moss.dit_int8.base import QKVPart, check_plan, forward_file, fuse_qkv_
 from library.int8.linear import (
     Int8TrainLinear,
     convert_,
     int8_mm,
+    quantize,
     stream_wqt_,
 )
+from library.moss.model import _Block
 from library.moss.requests import TrainRequest
 from library.moss.train import ema_step, ema_step_card
 from library.moss.training.memory import set_activation_memory_budget
@@ -25,6 +29,7 @@ from library.runtime.blockswap import place
 needs_cuda = pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
 
 M, K, N, R = 256, 1024, 768, 16
+TOY_DIM = 512
 DEV = "cuda"
 
 
@@ -350,6 +355,79 @@ def test_batched_muon_skips_param_without_grad():
     kwargs = dict(lr=5e-5, weight_decay=0.01, adjust_lr_fn="match_rms_adamw")
     BatchedMuon([a, b], **kwargs).step()
     assert not torch.equal(a, a0) and torch.equal(b, b0)
+
+
+def fuse_block():
+    torch.manual_seed(0)
+    block = _Block(TOY_DIM, 2 * TOY_DIM, 4).to(DEV, torch.bfloat16)
+    return block.requires_grad_(False)
+
+
+def fuse_input():
+    return torch.randn(2, 64, TOY_DIM, device=DEV, dtype=torch.bfloat16)
+
+
+@pytest.mark.core
+@needs_cuda
+@pytest.mark.parametrize("mode", ["infer", "fwd", "full"])
+def test_fused_qkv_rows_are_the_three_linears(mode):
+    block = fuse_block()
+    parts = [block.proj[p] for p in "qkv"]
+    three = copy.deepcopy(parts)
+    for lin in three:
+        convert_(lin, "infer")
+    y = fuse_input()
+    fuse_qkv_(block, mode, {}, "layers.0")
+    for got, lin in zip(block._qkv(y), three):
+        assert torch.equal(got, int8_mm(y.float(), lin.wq, lin.s))
+    assert isinstance(block.qkv, Int8TrainLinear)
+    assert block.qkv.out_features == 3 * TOY_DIM
+    assert all(isinstance(m, QKVPart) and not m.weight.numel() for m in parts)
+    assert block.proj["q"].weight.dtype == torch.bfloat16
+
+
+@needs_cuda
+def test_fused_qkv_concatenates_the_forward_copies():
+    block = fuse_block()
+    copies = {
+        f"layers.0.proj.{p}": quantize(block.proj[p].weight.detach()) for p in "qkv"
+    }
+    fuse_qkv_(block, "infer", copies, "layers.0")
+    for got, p in zip(block.qkv.wq.chunk(3), "qkv"):
+        assert torch.equal(got, copies[f"layers.0.proj.{p}"][0])
+
+
+@pytest.mark.core
+@needs_cuda
+@pytest.mark.parametrize("mode", ["fwd", "full"])
+def test_fused_qkv_keeps_adapters_and_their_gradient(mode):
+    """On a bit-identical forward an adapter's output and ``up`` gradient are exact;
+    the input gradient changes by the fused ``wq_t``'s rounding."""
+
+    def run(block):
+        torch.manual_seed(1)
+        adapters = [LoRAAdapter(TOY_DIM, TOY_DIM, 4, 4.0, torch.float32) for _ in "qkv"]
+        for p, adapter in zip("qkv", adapters):
+            nn.init.normal_(adapter.to(DEV).up.weight, std=1e-3)
+            block.proj[p].forward = _patched_forward(block.proj[p], adapter)
+        y = fuse_input().requires_grad_(True)
+        rows = block._qkv(y)
+        sum(row.float().pow(2).sum() for row in rows).backward()
+        return torch.cat(rows, -1), y.grad, [a.up.weight.grad for a in adapters]
+
+    block = fuse_block()
+    plain = fuse_block()
+    for p in "qkv":
+        convert_(plain.proj[p], mode)
+    fuse_qkv_(block, mode, {}, "layers.0")
+    torch.manual_seed(2)
+    rows_a, dx_a, up_a = run(plain)
+    torch.manual_seed(2)
+    rows_b, dx_b, up_b = run(block)
+    assert torch.equal(rows_a, rows_b)
+    assert rel(dx_b, dx_a) < 0.1
+    for a, b in zip(up_a, up_b):
+        assert a.abs().sum() > 0 and rel(b, a) < 1e-6
 
 
 def test_generate_refuses_swap_and_stamps_the_fingerprint():

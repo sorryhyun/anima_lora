@@ -1,8 +1,7 @@
 # Step headroom around the attention kernels
 
-Status: idea, 2026-11-02. Nothing below is built. Candidates 1, 2 and 4 are measured. The FA2 tile choice and the
-i2i config facts were read from the code; every gain is an estimate. Applies to MOSS-Image
-and Anima unless a section says otherwise.
+Status: all four candidates are closed, 2026-11-02. 2 and 3 are built, 1 and 4 failed their gates. The FA2 tile choice and
+the i2i config facts were read from the code. Applies to MOSS-Image and Anima unless a section says otherwise.
 
 The block GEMMs, the numerics and t2i VRAM look exhausted (see
 [Not worth pursuing](#not-worth-pursuing)). What is left sits in the attention kernels and
@@ -27,7 +26,7 @@ FA2's forward, so it runs once per block.
 |---|---|---|---|---|
 | 1 | FA2 forward tile for sm_120 | both | training 0.7%, MOSS generation about 1.6% | none, failed the 1.15x gate |
 | 2 | fp16-accumulate attention backward | both | 4.6–5.5% on a real MOSS step, 5.1% on Anima | error under FA2's, gradient unchanged |
-| 3 | one int8 linear for MOSS `proj.q/k/v` | MOSS | about 2% | dX as on Anima |
+| 3 | one int8 linear for MOSS `proj.q/k/v` | MOSS | about 2%, measured, built | forward bit-identical, real-gradient dX not measured |
 | 4 | reference branch under `no_grad` | MOSS i2i | 20% of an eager pass, measured | failed the gradient check |
 
 ## 1. FA2 forward tile for sm_120
@@ -90,6 +89,12 @@ against the Triton baseline at the [reports.md](../../../project/int8_train/repo
 The Triton backward is 0.70x FA2, so a pass gains nothing until a CUDA port exists.
 
 ## 3. One int8 linear for MOSS `proj.q/k/v`
+
+Built 2026-11-02: the kernel runs 1.30x on the forward and 1.31x on dX, about 24 ms over 42 blocks, and a real step
+gains about 20 ms at the same peak. The forward is bit-identical. dX error on real gradients was not measured.
+[Report](../../../project/int8_train/reports/qkv_fuse.md).
+
+What follows is the proposal as written.
 
 MOSS keeps three linears that read the same `y` (`_Block` in `library/moss/model.py`). Anima
 already fuses them into `qkv_proj`. One linear means one quantization of `y`, and one read of
