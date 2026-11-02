@@ -14,7 +14,7 @@ Wheel from a clean sdist + `sm120`, `fp16acc`: job `20261102-141315-5aa7a6`. Rel
 
 ## Selection
 
-The wheel holds sm_120 kernels and head dims 64 and 128, and sits in a private repo, so it cannot be the
+The wheel holds sm_120 kernels and head dims 64 and 128, so it cannot be the
 `pyproject.toml` pin. `make fa2-sm120` unpacks it under `models/fa2_sm120/<tag>`, and
 `library/runtime/fa2.py` puts that folder first on `sys.path` before `flash_attn` is imported, when the
 folder exists, the card reports compute capability 12, torch is 2.14 and Python 3.13. Anywhere else the
@@ -83,8 +83,13 @@ Edge cases, all finite and under stock's error: B up to 4, Lq and Lk multiples o
 ## Range
 
 fp16 inputs overflow past 65504. The capture peaks at |V| 95, and Σ|V| per row at 2697, which bounds |dP|
-24x under the limit. MOSS was not bounded this way; the real run stayed finite for 40 steps. An
-overflow gives a NaN gradient, not a quiet error.
+24x under the limit. An overflow gives a NaN gradient, not a quiet error.
+
+MOSS, 24 real steps on `channel_(caststation)_layout`, 91 sampled calls
+([script](../src/moss_fp16_range.py), [`moss_fp16_range.json`](../assets/moss_fp16_range.json)): |V| peaks
+at 304, Q and K at 77. The bound Σ|V| per row is 9075, 7.2x under the limit, and values rebuilt in fp32
+sit further under it: |dP| 1812 (36x), dQ per tile 1069 (61x), dK per tile 1606 (41x). dV stays under
+16384 by construction. These are final tile sums, not the partial sums inside the MMA.
 
 ## Not done
 

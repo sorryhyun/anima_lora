@@ -355,8 +355,7 @@ COMMANDS = {
     ),
     "fa2-sm120": (
         downloads.cmd_fa2_sm120,
-        "Unpack the sm_120 FlashAttention build for repo jobs (private release, "
-        "needs gh)",
+        "Unpack the sm_120 FlashAttention build for repo jobs",
     ),
     "download-sam3": (downloads.cmd_download_sam3, "Download SAM3 model"),
     "download-pe": (

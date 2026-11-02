@@ -111,6 +111,11 @@ uv run --no-project python scripts/update.py --seed-manifest --version "$VERSION
 say "running uv sync (this resolves torch + flash-attn; may take a while)"
 uv sync
 
+# RTX 50-series only: the FlashAttention build for repo jobs. Best-effort; the
+# pinned wheel runs without it.
+uv run --no-sync python tasks.py fa2-sm120 \
+  || say "sm_120 FlashAttention build skipped; the pinned wheel runs (retry: make fa2-sm120)"
+
 cat <<EOF
 
 $(printf '\033[1;32m✓ installed to %s/\033[0m' "$DIR")
