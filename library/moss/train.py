@@ -123,6 +123,7 @@ def train(
         from library.moss.dit_int8 import base as dit_int8
 
         dit_int8.check_plan(req)
+    setup.check_ref_adapters(req)
     torch.manual_seed(req.seed)
     # Its own RNG: a rich log record draws from the global one (rich's Style link ids).
     shuffle_rng = random.Random(req.seed)
@@ -203,6 +204,7 @@ def train(
         svd_slice_count=req.svd_slice_count,
         svd_drop_loud=req.svd_drop_loud,
         rank_pattern=setup.rank_pattern(req, alpha),
+        ref_rank=req.ref_rank if req.ref_adapters == "kv" else 0,
     )
     int8_base = None
     if req.int8 != "off":
@@ -242,8 +244,20 @@ def train(
             return n if empty is None else min(n, len(empty))
 
         seq_range = (min(s.n_img + s.n_ref + shortest(s) for s in samples), joint)
-        print(f"compile: token axis marked {seq_range[0]}-{seq_range[1]}", flush=True)
-        compile_blocks(transformer.layers, seq_range)
+        ref_range = None
+        if req.ref_adapters != "off":
+            refs = [s.n_ref for s in samples]
+            ref_range = (min(refs), max(refs))
+            seq_range = (
+                min(s.n_img + shortest(s) for s in samples),
+                max(s.n_img + s.n_text for s in samples),
+            )
+        print(
+            f"compile: token axis marked {seq_range[0]}-{seq_range[1]}"
+            + (f", reference {ref_range[0]}-{ref_range[1]}" if ref_range else ""),
+            flush=True,
+        )
+        compile_blocks(transformer.layers, seq_range, ref_range)
     else:
         seq_range = None
 

@@ -214,6 +214,20 @@ def rank_pattern(req: TrainRequest, alpha: float) -> dict | None:
     return {"shared_block_modulation": (req.mod_rank, mod_alpha)}
 
 
+def check_ref_adapters(req: TrainRequest) -> None:
+    """``ref_adapters = kv`` splits the reference rows off every block, which holds
+    only for a stream that depends on the page alone; its adapters are LoRA pairs."""
+    if req.ref_adapters == "off":
+        return
+    if not req.ref_isolate or req.ref_timestep < 0:
+        raise SystemExit(
+            "ref_adapters needs ref_isolate and ref_timestep >= 0: otherwise the "
+            "reference stream depends on the noisy latent and cannot run apart"
+        )
+    if req.algo != "lora":
+        raise SystemExit(f"ref_adapters is lora only, not {req.algo}")
+
+
 def adapter_detail(req: TrainRequest, network) -> str:
     """The adapter's init in the start-of-run log line."""
     detail = {
@@ -234,6 +248,8 @@ def adapter_detail(req: TrainRequest, network) -> str:
     }[req.algo]
     for pat, (r, a) in network.rank_pattern.items():
         detail += f"; {pat} rank {r} alpha {a:g}"
+    if network.ref_rank:
+        detail += f"; reference k/v export adapters rank {network.ref_rank}"
     return detail
 
 
@@ -345,6 +361,8 @@ def run_metadata(
         meta["ref_timestep"] = req.ref_timestep
         if req.ref_isolate:
             meta["ref_isolate"] = "1"
+        if req.ref_adapters != "off":
+            meta.update(ref_adapters=req.ref_adapters, ref_rank=req.ref_rank)
     if has_repa:
         meta.update(repa_weight=req.repa_weight, repa_layer=req.repa_layer)
     if has_regions:

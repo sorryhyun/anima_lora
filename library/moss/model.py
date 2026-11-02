@@ -214,6 +214,9 @@ class _Block(nn.Module):
         )
         self.proj["ffn_up_gate"] = nn.Linear(dim, 2 * ffn_dim, bias=False)
         self.proj["ffn_down"] = nn.Linear(ffn_dim, dim, bias=False)
+        # (k, v) export adapters, set by LoRANetwork.apply_to with ref_rank. A tuple,
+        # so they stay outside the block's modules (the swapper moves every .weight).
+        self.ref_bank = None
 
     def forward(
         self,
@@ -229,7 +232,49 @@ class _Block(nn.Module):
         """``ref_start``: where the reference tokens (the sequence tail) begin, if any. ``modulation``
         is ``(B,6,D)``, or ``(B,6,2,D)`` with the second set modulating the
         reference tokens. ``ref_isolate``, ``ref_kv``: see ``_attention``. ``kv_out``
-        also returns this block's keys (before RoPE) and values."""
+        also returns this block's keys (before RoPE) and values. With ``ref_bank`` the
+        reference rows leave for ``ref_rows`` (``kv_out`` then is reference-only)."""
+        if self.ref_bank is None or not (kv_out or ref_start is not None):
+            return self.main_rows(
+                x, rope, modulation, key_mask, ref_start, ref_isolate, ref_kv, kv_out
+            )
+        s = 0 if kv_out else ref_start
+        with torch.no_grad():
+            ref, y, raw_k, raw_v = self.ref_rows(
+                x[:, s:], rope[:, s:], modulation if kv_out else modulation[:, :, 1]
+            )
+        if kv_out:
+            return (ref, *self._ref_export(y, raw_k, raw_v))
+        main = self.main_rows(
+            x[:, :s],
+            rope[:, :s],
+            modulation[:, :, 0],
+            None if key_mask is None else key_mask[:, :s],
+            ref_export=(y, raw_k, raw_v, rope[:, s:]),
+        )
+        return torch.cat((main, ref), 1)
+
+    def _ref_export(self, y, raw_k, raw_v):
+        """The keys and values the image rows read, ``ref_bank``'s deltas on. In the
+        main graph while training: eager, k_norm's fp32 residuals ran a card out."""
+        bank_k, bank_v = self.ref_bank
+        k = self.k_norm(bank_k(y, raw_k).unflatten(-1, (self.heads, -1))).flatten(2)
+        return k, bank_v(y, raw_v)
+
+    def main_rows(
+        self,
+        x,
+        rope,
+        modulation,
+        key_mask=None,
+        ref_start=None,
+        ref_isolate=False,
+        ref_kv=None,
+        kv_out=False,
+        ref_export=None,
+    ):
+        if ref_export is not None:
+            ref_kv = (*self._ref_export(*ref_export[:3]), ref_export[3])
         shift_a, scale_a, gate_a, shift_f, scale_f, gate_f = modulation.unbind(1)
         y = _affine(self.norm1(x), scale_a, shift_a, ref_start)
         dtype = self.proj["q"].weight.dtype
@@ -245,6 +290,33 @@ class _Block(nn.Module):
         hidden, gate = self.proj["ffn_up_gate"](y.to(dtype)).chunk(2, -1)
         x = x + _gated(self.proj["ffn_down"](_situ(hidden, gate)), gate_f, ref_start)
         return (x, k, v) if kv_out else x
+
+    def ref_rows(self, x, rope, modulation):
+        """Isolated reference rows on the Base weights, past every patched adapter:
+        ``(x, y, k, v)``, ``y`` the input of ``proj.k`` / ``proj.v`` and ``k`` / ``v``
+        their outputs, which ``forward`` turns into the rows the image reads. Its own
+        graph (``compile_blocks``): in one graph with the image rows a reference length
+        ``n - ref_start`` raises Inductor's CantSplit."""
+
+        def base(name, y):
+            linear = self.proj[name]
+            return type(linear).forward(linear, y)
+
+        def heads(t):
+            return t.unflatten(-1, (self.heads, -1))
+
+        shift_a, scale_a, gate_a, shift_f, scale_f, gate_f = modulation.unbind(1)
+        dtype = self.proj["q"].weight.dtype
+        y = _affine(self.norm1(x), scale_a, shift_a, None).to(dtype)
+        raw_k, v = base("k", y), base("v", y)
+        q = self.q_norm(heads(base("q", y))).flatten(2)
+        k = self.k_norm(heads(raw_k)).flatten(2)
+        attn = _attention(q, k, v, rope, self.heads)
+        x = x + _gated(base("o", attn), gate_a, None)
+        hidden = _affine(self.norm2(x), scale_f, shift_f, None).to(dtype)
+        hidden, gate = base("ffn_up_gate", hidden).chunk(2, -1)
+        x = x + _gated(base("ffn_down", _situ(hidden, gate)), gate_f, None)
+        return x, y, raw_k, v
 
 
 class RefCache:
@@ -401,8 +473,9 @@ class MOSSImageTransformer(ModelMixin, ConfigMixin):
 
     # ------------------------------------------------------------------ pieces
 
-    def time_conditioning(self, timestep, batch):
-        """``timestep`` is ``1000·σ`` (scalar or ``(B,)``) → ``mod (B,6,D)``, ``head (B,2,D)``."""
+    def time_conditioning(self, timestep, batch, base=False):
+        """``timestep`` is ``1000·σ`` (scalar or ``(B,)``) → ``mod (B,6,D)``, ``head (B,2,D)``.
+        ``base``: ``mod`` past the adapter patched on ``shared_block_modulation``."""
         times = torch.as_tensor(
             timestep, device=self.time_embedding[0].weight.device, dtype=torch.float32
         ).reshape(-1)
@@ -417,9 +490,9 @@ class MOSSImageTransformer(ModelMixin, ConfigMixin):
         time = self.time_embedding(
             embedding.to(self.time_embedding[0].weight.dtype)
         ).float()
-        mod = self.shared_block_modulation(
-            time.to(self.shared_block_modulation.weight.dtype)
-        )
+        linear = self.shared_block_modulation
+        time_mod = time.to(linear.weight.dtype)
+        mod = type(linear).forward(linear, time_mod) if base else linear(time_mod)
         head = self.video_head_modulation(
             time.to(self.video_head_modulation.weight.dtype)
         )
@@ -434,7 +507,9 @@ class MOSSImageTransformer(ModelMixin, ConfigMixin):
         n_ref = ref_hw[0] * ref_hw[1]
         if self.ref_timestep is None:
             return mod, n_ref
-        ref_mod, _ = self.time_conditioning(self.ref_timestep, mod.shape[0])
+        ref_mod, _ = self.time_conditioning(
+            self.ref_timestep, mod.shape[0], base=self.layers[0].ref_bank is not None
+        )
         return torch.stack((mod, ref_mod.to(mod.dtype)), 2), n_ref
 
     def embed_sample(self, latent, context, ref=None):
