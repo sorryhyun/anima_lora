@@ -142,6 +142,40 @@ def test_avoid_blocks_incompatible_draws():
 
 
 @shipped_only
+def test_exclusive_axes_reach_avoid_lists():
+    """Two clusters on different groups of a spec axis must avoid each other.
+
+    The statistical avoid never sees rare pairs (`v` + `interlocked fingers`
+    predicts 0.3 co-occurrences), so the spec's ``exclusive:`` axes are the
+    only thing keeping both-hands / penis-location / facing contradictions
+    out of a prompt — and they reach the prompt only through ``avoid:``, on
+    the anchor or a companion of *either* cluster.
+    """
+    axes = SPEC.get("exclusive") or {}
+    if not axes:
+        pytest.skip("spec has no exclusive: axes")
+    conflicts: dict[str, set[str]] = {}
+    for groups in axes.values():
+        groups = [[g] if isinstance(g, str) else list(g) for g in groups]
+        for i, group in enumerate(groups):
+            others = {t for j, g in enumerate(groups) if j != i for t in g}
+            for tag in group:
+                conflicts.setdefault(tag, set()).update(others - set(group))
+    entries = [e for es in SHIPPED.groups.values() for e in es]
+    broken = []
+    for a in entries:
+        hits = set().union(*(conflicts.get(t, set()) for t in a.tags))
+        if not hits:
+            continue
+        for b in entries:
+            if b is a or not hits & set(b.tags):
+                continue
+            if not (a.avoid & set(b.tags) or b.avoid & set(a.tags)):
+                broken.append((a.tags, b.tags))
+    assert not broken, broken[:5]
+
+
+@shipped_only
 def test_pinned_prompt_tags_are_not_redrawn():
     """A tag the template already states is not repeated by a draw."""
     pinned = list(dict.fromkeys(SPEC["pinned"] + SPEC["context"]))

@@ -78,6 +78,7 @@ from library.moss.training.data import (  # noqa: F401  (this module is their im
     delta_row_ids,
     empty_prompt_embeds,
     load_neg,
+    bank_masks,
     row_mask,
     sample_captions,
     sample_sigma,
@@ -123,6 +124,7 @@ def train(
         from library.moss.dit_int8 import base as dit_int8
 
         dit_int8.check_plan(req)
+    setup.check_ref_adapters(req)
     torch.manual_seed(req.seed)
     # Its own RNG: a rich log record draws from the global one (rich's Style link ids).
     shuffle_rng = random.Random(req.seed)
@@ -203,6 +205,8 @@ def train(
         svd_slice_count=req.svd_slice_count,
         svd_drop_loud=req.svd_drop_loud,
         rank_pattern=setup.rank_pattern(req, alpha),
+        ref_rank=req.ref_rank if req.ref_adapters != "off" else 0,
+        ref_adapters=req.ref_adapters,
     )
     int8_base = None
     if req.int8 != "off":
@@ -242,18 +246,36 @@ def train(
             return n if empty is None else min(n, len(empty))
 
         seq_range = (min(s.n_img + s.n_ref + shortest(s) for s in samples), joint)
-        print(f"compile: token axis marked {seq_range[0]}-{seq_range[1]}", flush=True)
-        compile_blocks(transformer.layers, seq_range)
+        ref_range = None
+        if req.ref_adapters == "kv":
+            refs = [s.n_ref for s in samples]
+            ref_range = (min(refs), max(refs))
+            seq_range = (
+                min(s.n_img + shortest(s) for s in samples),
+                max(s.n_img + s.n_text for s in samples),
+            )
+        print(
+            f"compile: token axis marked {seq_range[0]}-{seq_range[1]}"
+            + (f", reference {ref_range[0]}-{ref_range[1]}" if ref_range else ""),
+            flush=True,
+        )
+        compile_blocks(transformer.layers, seq_range, ref_range)
     else:
         seq_range = None
 
-    def set_rows(n_text: int, rows: list[int], s: Sample) -> None:
-        """The step's row mask on the network; its token axis marked like the
+    ref_rows = req.ref_adapters == "all"
+
+    def set_rows(n_text: int, rows: list[int] | None, s: Sample) -> None:
+        """The step's row masks on the network; their token axis marked like the
         block inputs' (``compile_blocks``), or it would specialise against them."""
-        mask = row_mask(s.n_img, n_text, rows, s.n_ref, device)
-        if seq_range is not None and seq_range[0] <= mask.shape[1] <= seq_range[1]:
-            torch._dynamo.mark_dynamic(mask, 1, min=seq_range[0], max=seq_range[1])
-        network.set_row_mask(mask)
+        if ref_rows:
+            masks = bank_masks(s.n_img, n_text, rows, s.n_ref, device)
+        else:
+            masks = (row_mask(s.n_img, n_text, rows, s.n_ref, device),)
+        if seq_range is not None and seq_range[0] <= masks[0].shape[1] <= seq_range[1]:
+            for mask in masks:
+                torch._dynamo.mark_dynamic(mask, 1, min=seq_range[0], max=seq_range[1])
+        network.set_row_mask(*masks)
 
     if req.grad_checkpointing:
         checkpoint_blocks(transformer.layers)
@@ -393,6 +415,8 @@ def train(
                     ref = ref.unsqueeze(0).to(device, torch.float32)
                 if rows_of:
                     set_rows(embeds.shape[1], text_rows or [], s)
+                elif ref_rows:
+                    set_rows(embeds.shape[1], None, s)
                 sigma = sample_sigma(
                     gen, req.sigma_mu, req.sigma_s, req.sigma_cutoff, req.sigma_uniform
                 )
@@ -454,6 +478,8 @@ def train(
                             delta_row_ids(req.delta_rows, neg.shape[1], []),
                             s,
                         )
+                    elif ref_rows:
+                        set_rows(neg.shape[1], None, s)
                     pres = preserve_loss(
                         transformer,
                         network,

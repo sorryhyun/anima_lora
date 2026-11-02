@@ -374,7 +374,7 @@ class LoRANetwork(nn.Module):
             raise ValueError(f"no nn.Linear matched {targets!r}")
         self._applied = False
 
-    def _add(self, name, module, rank, alpha, dtype, channel_stats, channel_mean):
+    def _build(self, name, module, rank, alpha, dtype, channel_stats, channel_mean):
         algo, down_init = self.algo, self.down_init
         if algo == "lokr":
             adapter = LoKrAdapter(module, rank, alpha, self.factor, dtype)
@@ -399,7 +399,10 @@ class LoRANetwork(nn.Module):
                         self.svd_drop_loud,
                     ),
                 )
-        self.adapters[name.replace(".", "_")] = adapter
+        return adapter
+
+    def _add(self, name, module, *args):
+        self.adapters[name.replace(".", "_")] = self._build(name, module, *args)
         self._targets.append((name, module))
 
     @classmethod
@@ -492,6 +495,11 @@ class LoRANetwork(nn.Module):
         )
 
     @classmethod
+    def _meta_kwargs(cls, meta: dict) -> dict:
+        """A line's own constructor arguments from a file's metadata."""
+        return {}
+
+    @classmethod
     def from_file(cls, model: nn.Module, path, dtype=None) -> tuple[LoRANetwork, dict]:
         """Rebuild the network a trainer checkpoint describes, and load it.
         Algo, rank, alpha and targets come from the file's metadata (no ``algo``
@@ -519,6 +527,7 @@ class LoRANetwork(nn.Module):
             algo=meta.get("algo", "lora"),
             factor=int(meta.get("factor", -1)),
             rank_pattern=json.loads(meta.get("rank_pattern", "{}")),
+            **cls._meta_kwargs(meta),
         )
         network.load_state_dict(_state_from_file(state, network.algo))
         return network, meta

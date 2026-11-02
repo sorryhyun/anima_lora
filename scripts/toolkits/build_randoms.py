@@ -16,7 +16,11 @@ from data already in the repo:
 
 ``avoid:`` is the same statistic read the other way: two frequent tags that
 *never* co-occur when independence predicts they should are incompatible, so
-comfy_batch won't draw them into one prompt.
+comfy_batch won't draw them into one prompt. That statistic only reaches
+frequent pairs (independence has to predict >= 3 co-occurrences), so the
+spec's ``exclusive:`` axes add the physical constraints by hand — both hands,
+where the penis is, facing — and every cluster carrying a member, as anchor
+or companion, avoids the other groups of that axis.
 
 Everything corpus-specific (the slot→group mapping, curated act/block/allow
 lists, context slice, crawl-pool path) lives in ``workflows/randoms_build.yaml``
@@ -55,7 +59,8 @@ HEADER = """\
 # An entry is a *cluster*: a tag plus the companions it practically always
 # ships with, so a draw can't emit an act with its mandatory parts missing.
 # comfy_batch drops tags already drawn by an earlier placeholder, and skips an
-# entry whose `avoid:` names something already in the prompt.
+# entry whose `avoid:` names something already in the prompt. `avoid:` is the
+# corpus statistic plus the spec's `exclusive:` axes ({n_axes} axes: {axes}).
 #
 # `weight:` is taste, measured: how much likelier the anchor is in the
 # hand-picked image_dataset than in the raw crawl it was picked from (same
@@ -155,6 +160,50 @@ def selection_weights(
         weights[t] = round(min(hi, max(lo, lift)), 2)
     print(f"selection weights: {len(weights)} tags vs {len(ret)} crawl captions")
     return weights
+
+
+def exclusive_conflicts(axes: dict) -> dict[str, set[str]]:
+    """``tag -> tags it can't share a prompt with``, from the spec's axes.
+
+    An axis is a list of groups (a group may be written as one bare string);
+    members of different groups on the same axis conflict, members of the
+    same group do not. A tag may sit on several axes.
+    """
+    conflicts: dict[str, set[str]] = collections.defaultdict(set)
+    for axis, groups in axes.items():
+        groups = [[g] if isinstance(g, str) else list(g) for g in groups]
+        for i, group in enumerate(groups):
+            others = {t for j, g in enumerate(groups) if j != i for t in g}
+            for tag in group:
+                conflicts[tag] |= others - set(group)
+    return conflicts
+
+
+def report_axes_vs_corpus(conflicts: dict, ctx: list, count, n_ctx: int) -> None:
+    """Print the axis pairs the corpus disagrees with, so a wrong group shows.
+
+    A conflict that co-occurs about as often as independence predicts is
+    not a physical constraint — it is a group that should be merged or a
+    tag that should leave the axis.
+    """
+    rows = []
+    seen = set()
+    for a, others in conflicts.items():
+        for b in others:
+            if (b, a) in seen or not count[a] or not count[b]:
+                continue
+            seen.add((a, b))
+            k = sum(1 for c in ctx if a in c and b in c)
+            expected = count[a] * count[b] / n_ctx
+            if k >= 2 and k / expected >= 0.5:
+                rows.append((k, round(expected, 1), a, b))
+    if not rows:
+        return
+    print(
+        f"note: {len(rows)} exclusive pairs the corpus contradicts (together/expected):"
+    )
+    for k, e, a, b in sorted(rows, reverse=True):
+        print(f"  {k:3}/{e:5}  {a!r} + {b!r}")
 
 
 def build(args, spec: dict) -> dict:
@@ -266,8 +315,12 @@ def build(args, spec: dict) -> dict:
         return sorted(set(out), key=lambda t: -count[t])[: args.max_avoid]
 
     taste = selection_weights(ctx, context, args)
+    conflicts = exclusive_conflicts(spec.get("exclusive", {}))
+    report_axes_vs_corpus(conflicts, ctx, count, n_ctx)
 
-    pool = {}
+    # Clusters first, so a curated conflict can be scoped to tags some entry
+    # actually carries — an `avoid:` naming a tag no draw can produce is noise.
+    pool: dict[str, list[dict]] = {}
     for slot, slot_anchors in anchors.items():
         entries, seen = [], set()
         for anchor in slot_anchors:
@@ -278,24 +331,37 @@ def build(args, spec: dict) -> dict:
             if key in seen:
                 continue
             seen.add(key)
-            entry = {"tags": tags}
+            entries.append({"tags": tags, "anchor": anchor})
+        pool[slot] = entries
+    in_pool = {t for entries in pool.values() for e in entries for t in e["tags"]}
+
+    for slot, entries in pool.items():
+        for entry in entries:
+            anchor = entry.pop("anchor")
+            tags = entry["tags"]
+            inner = [t for t in tags if conflicts.get(t, set()) & set(tags)]
+            if inner:
+                print(f"WARNING: cluster {tags} conflicts with itself on {inner}")
+            curated = set().union(*(conflicts.get(t, set()) for t in tags))
+            curated = (curated & in_pool) - set(tags)
             avoid = avoid_for(slot, anchor)
+            avoid += sorted(curated - set(avoid), key=lambda t: -count[t])
             if avoid:
                 entry["avoid"] = avoid
             if taste[anchor] != 1.0:
                 entry["weight"] = taste[anchor]
-            entries.append(entry)
-        pool[slot] = entries
     return {"pool": pool, "n_ctx": n_ctx}
 
 
-def render(pool: dict, n_ctx: int, default_slots: list, args) -> str:
+def render(pool: dict, n_ctx: int, default_slots: list, axes: dict, args) -> str:
     """Emit YAML by hand, so the header comments survive."""
     out = [
         HEADER.format(
             n_ctx=n_ctx,
             theta=args.theta,
             max_companions=args.max_companions,
+            n_axes=len(axes),
+            axes=", ".join(axes),
             wlo=args.weight_clip[0],
             whi=args.weight_clip[1],
         )
@@ -350,7 +416,13 @@ def main():
         args.retrieved = spec.get("retrieved", "")
 
     built = build(args, spec)
-    text = render(built["pool"], built["n_ctx"], spec["default_slots"], args)
+    text = render(
+        built["pool"],
+        built["n_ctx"],
+        spec["default_slots"],
+        spec.get("exclusive", {}),
+        args,
+    )
     sizes = ", ".join(f"{s}={len(e)}" for s, e in built["pool"].items())
     print(f"context captions: {built['n_ctx']} | {sizes}")
     if args.dry_run:

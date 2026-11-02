@@ -453,13 +453,21 @@ def attn_fwd(
 #
 # - ``dp`` (dO·Vᵀ, reduction over D): ``fp16`` (fp32 accumulate), ``fp16acc``, or
 #   ``int8`` (dO and V per token, Hadamard-rotated, copies from :func:`quant_tok`).
-# - ``dv`` (Pᵀ·dO) and ``dqk`` (dSᵀ·Q, dS·K), reduction over tokens: ``fp16``
-#   (``dv`` also ``fp16acc``), or ``int8``. The left operand (P or dS, in registers) is
-#   rounded per row of the tile; the right one is a transposed int8 copy from
-#   :func:`quant_t`, tokens contiguous, one scale per 64 tokens and channel. A loop
-#   tile therefore spans at most one scale block.
+# - ``dv`` (Pᵀ·dO) and ``dqk`` (dSᵀ·Q, dS·K), reduction over tokens: ``fp16``,
+#   ``fp16acc``, ``fp16acc_row`` or ``int8``. ``fp16acc_row`` scales the left operand
+#   to unit max per tile row first: P and dS sit near 1e-4, at fp16's subnormal edge
+#   (6e-5), and their products below it. For ``int8`` the left operand (P or dS, in
+#   registers) is rounded per row of the tile; the right one is a transposed int8 copy
+#   from :func:`quant_t`, tokens contiguous, one scale per 64 tokens and channel. A
+#   loop tile therefore spans at most one scale block.
+#   ``dv`` also has ``fp16acc_gain``: P times a fixed 256, no reduction. In block 0 P is
+#   near-uniform and P·dO underflows; P ≤ 1 and |dO| ≤ 1 keep a 64-query tile under
+#   16384.
+# - ``s`` (QKᵀ recompute, no int8 forward): ``bf16`` or ``fp16`` (fp32 accumulate), or
+#   ``fp16acc``.
 
-BWD_MODES = {"fp16": 0, "fp16acc": 1, "int8": 2}
+BWD_MODES = {"fp16": 0, "fp16acc": 1, "int8": 2, "fp16acc_row": 3, "fp16acc_gain": 4}
+S_MODES = {"bf16": 0, "fp16acc": 1, "fp16": 2}
 
 
 @triton.jit
@@ -554,11 +562,18 @@ _BWD_CONFIGS = [
     for s in (2, 3)
     if not (bo == 128 and w == 4)
 ]
+if os.environ.get("INT8_ATTN_BWD_L"):  # FA2's tile: 64 terms per accumulator
+    _BWD_CONFIGS = [
+        c
+        for c in _BWD_CONFIGS
+        if c.kwargs["BLOCK_O"] == 64
+        and c.kwargs["BLOCK_L"] == int(os.environ["INT8_ATTN_BWD_L"])
+    ]
 if os.environ.get("INT8_ATTN_FIXED"):
     _BWD_CONFIGS = [
         triton.Config({"BLOCK_O": 64, "BLOCK_L": 32}, num_warps=4, num_stages=2)
     ]
-_BWD_KEY = ["LQ", "LK", "QK_INT8", "DP_MODE", "DV_MODE", "DQK_MODE"]
+_BWD_KEY = ["LQ", "LK", "QK_INT8", "S_MODE", "DP_MODE", "DV_MODE", "DQK_MODE"]
 
 
 @triton.jit
@@ -567,6 +582,14 @@ def _round_rows(x):
     s = tl.maximum(tl.max(tl.abs(x), 1), 1e-30) / 127.0
     x = x / s[:, None]
     return (x + tl.where(x >= 0, 0.5, -0.5)).to(tl.int8), s
+
+
+@triton.jit
+def _dot_f16acc_row(a, b):
+    """``a·b`` accumulated in fp16, ``a`` scaled to unit max per row."""
+    s = tl.maximum(tl.max(tl.abs(a), 1), 1e-30)
+    x = tl.dot((a / s[:, None]).to(tl.float16), b.to(tl.float16), out_dtype=tl.float16)
+    return x.to(tl.float32) * s[:, None]
 
 
 @triton.autotune(configs=_BWD_CONFIGS, key=_BWD_KEY)
@@ -617,6 +640,7 @@ def _bwd_dkdv_kernel(
     sm_scale,
     D: tl.constexpr,
     QK_INT8: tl.constexpr,
+    S_MODE: tl.constexpr,
     DP_MODE: tl.constexpr,
     DV_MODE: tl.constexpr,
     DQK_MODE: tl.constexpr,
@@ -677,6 +701,15 @@ def _bwd_dkdv_kernel(
             s_t = tl.dot(kr, qr_t, out_dtype=tl.int32).to(tl.float32) * (
                 ksn[:, None] * (qsm * qk_scale)[None, :]
             )
+        elif S_MODE == 1:
+            s_t = (
+                tl.dot(
+                    kr.to(tl.float16), tl.trans(qf).to(tl.float16), out_dtype=tl.float16
+                ).to(tl.float32)
+                * qk_scale
+            )
+        elif S_MODE == 2:
+            s_t = tl.dot(kr.to(tl.float16), tl.trans(qf).to(tl.float16)) * qk_scale
         else:
             s_t = tl.dot(kr, tl.trans(qf)) * qk_scale
         lse_m = tl.load(LSE + bh * LQ + offs_m, mask=mmask, other=0.0)
@@ -704,6 +737,12 @@ def _bwd_dkdv_kernel(
             dv += tl.dot(pq, do_q, out_dtype=tl.int32).to(tl.float32) * (
                 ps[:, None] * tl.load(DOTS + sblk)[None, :]
             )
+        elif DV_MODE == 3:
+            dv += _dot_f16acc_row(p_t, doh)
+        elif DV_MODE == 4:
+            dv += tl.dot((p_t * 256.0).to(tl.float16), doh, out_dtype=tl.float16).to(
+                tl.float32
+            ) * (1.0 / 256.0)
         else:
             if DV_MODE == 1:
                 dv += tl.dot(p_t.to(tl.float16), doh, out_dtype=tl.float16).to(
@@ -718,6 +757,12 @@ def _bwd_dkdv_kernel(
             dk += tl.dot(dsq, q_q, out_dtype=tl.int32).to(tl.float32) * (
                 dss[:, None] * tl.load(QTS + sblk)[None, :]
             )
+        elif DQK_MODE == 3:
+            dk += _dot_f16acc_row(ds_t, qf)
+        elif DQK_MODE == 1:
+            dk += tl.dot(
+                ds_t.to(tl.float16), qf.to(tl.float16), out_dtype=tl.float16
+            ).to(tl.float32)
         else:
             dk = tl.dot(ds_t.to(tl.float16), qf.to(tl.float16), dk)
 
@@ -772,6 +817,7 @@ def _bwd_dq_kernel(
     sm_scale,
     D: tl.constexpr,
     QK_INT8: tl.constexpr,
+    S_MODE: tl.constexpr,
     DP_MODE: tl.constexpr,
     DV_MODE: tl.constexpr,
     DQK_MODE: tl.constexpr,
@@ -826,6 +872,15 @@ def _bwd_dq_kernel(
             s = tl.dot(qr, kr_t, out_dtype=tl.int32).to(tl.float32) * (
                 qsm[:, None] * ksn[None, :]
             )
+        elif S_MODE == 1:
+            s = (
+                tl.dot(
+                    qr.to(tl.float16), tl.trans(kf).to(tl.float16), out_dtype=tl.float16
+                ).to(tl.float32)
+                * qk_scale
+            )
+        elif S_MODE == 2:
+            s = tl.dot(qr.to(tl.float16), tl.trans(kf).to(tl.float16)) * qk_scale
         else:
             s = tl.dot(qr, tl.trans(kf)) * qk_scale
         p = tl.where(nmask[None, :], tl.math.exp2(s - lse_m[:, None]), 0.0)
@@ -853,6 +908,12 @@ def _bwd_dq_kernel(
             dq += tl.dot(dsq, k_q, out_dtype=tl.int32).to(tl.float32) * (
                 dss[:, None]
                 * tl.load(KTS + (bh * nkb + start_n // KBLK) * D + offs_d)[None, :]
+            )
+        elif DQK_MODE == 3:
+            dq += _dot_f16acc_row(ds, kf)
+        elif DQK_MODE == 1:
+            dq += tl.dot(ds.to(tl.float16), kf.to(tl.float16), out_dtype=tl.float16).to(
+                tl.float32
             )
         else:
             dq = tl.dot(ds.to(tl.float16), kf.to(tl.float16), dq)
@@ -892,6 +953,7 @@ def attn_bwd(
     dv: str = "int8",
     dqk: str = "int8",
     sm_scale: float | None = None,
+    s: str = "bf16",
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """``(dq, dk, dv)`` bf16 in ``[B, L, H, D]``. ``saved`` from :func:`attn_fwd_train`
     recomputes P with int8 QKᵀ; ``None`` recomputes it in bf16 (pair with the bf16
@@ -933,6 +995,7 @@ def attn_bwd(
     modes = dict(
         D=D,
         QK_INT8=qk_int8,
+        S_MODE=S_MODES[s],
         DP_MODE=BWD_MODES[dp],
         DV_MODE=BWD_MODES[dv],
         DQK_MODE=BWD_MODES[dqk],

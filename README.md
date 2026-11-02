@@ -37,6 +37,12 @@ Diagrams for every method: [`docs/anima/structure_images/`](docs/anima/structure
 
 **Anima (bf16): 13.4 GB peak VRAM · 1.1 s/step** on an RTX 5060 Ti (rank 32, 1 MP). Per-block `torch.compile` with a dynamic sequence axis (one graph per token-count tier), fused QKV/KV, an activation memory budget instead of gradient checkpointing, and a compile-clean hot path. Details: [for_compile.md](docs/anima/optimizations/for_compile.md).
 
+**Anima's fp32 stream.** The residual stream, modulation, q / k norms, RoPE, embedder and head run in fp32, and the block GEMMs and FlashAttention branch off it in int8 or bf16. Details: [fp32_stream.md](docs/anima/optimizations/fp32_stream.md).
+
+<p align="center">
+  <a href="docs/anima/structure_images/fp32_stream.png"><img src="docs/anima/structure_images/fp32_stream.png" alt="Anima fp32 stream tensor flow: the residual stream stays in fp32 while block GEMMs and FlashAttention branch off in int8 or bf16 and return through the gate product" width="900"></a>
+</p>
+
 ### On by default
 
 | Feature | Doc |
@@ -120,6 +126,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 uv sync                                                    # CUDA (default, every platform)
 uv sync --no-group cuda-windows --group rocm-windows       # Windows AMD only
 uv sync --no-default-groups --group torch-213              # older torch (or torch-212)
+uv sync --no-default-groups --group fa2-sm120              # RTX 50-series only: patched FlashAttention in the venv
 
 hf auth login             # or sign in from the GUI
 make download-models      # DiT, TE, VAE, PE-Spatial, CJK vocab pack, tagger, tag DB → models/

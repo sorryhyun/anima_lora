@@ -33,6 +33,10 @@ make download-model ARGS=moss-base    # MOSS DiT + Qwen3.5-9B TE + FLUX.2 VAE + 
 make download-models                  # Anima first-run set (DiT, Qwen3-0.6B TE, VAE, PE, CJK vocab pack, tagger)
 ```
 
+On an RTX 50-series card, `make fa2-sm120` unpacks the FlashAttention build
+with the fp16-accumulate backward, about 5% of a step; repo jobs pick it up through `library/runtime/fa2.py`.
+`uv sync --no-default-groups --group fa2-sm120` installs the same wheel into the venv instead (ComfyUI included).
+
 Run Python as `.venv/bin/python` (or `uv run --no-sync`); a bare `uv run` re-resolves and
 can fail on the torch index split. Weights are rows in the model catalog
 (`library/downloads.py`; `make download-list`).

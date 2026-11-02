@@ -589,6 +589,20 @@ class TrainRequest(Request):
         "attend to them. Stamped in the LoRA metadata",
         advanced=True,
     )
+    ref_adapters: str = _f(
+        "off",
+        "off: one bank on image, text and reference rows. kv: the reference stream runs "
+        "on Base at Base modulation, with no backward, and the image and text rows read "
+        "it through export adapters on proj.k / proj.v (ref_rank). Needs ref_isolate and "
+        "ref_timestep >= 0. all: the reference rows run a full bank of their own "
+        "(ref_rank) at Base modulation, in the graph, with the same needs. Stamped in "
+        "the LoRA metadata",
+        choices=("off", "kv", "all"),
+        advanced=True,
+    )
+    ref_rank: int = _f(
+        32, "rank of the reference adapters at ref_adapters = kv / all", advanced=True
+    )
     region_weight: float = _f(
         1.0,
         "i2i: per-token loss multiplier on the edit region (the latent tokens "

@@ -227,7 +227,7 @@ def stream_fp32_(tr) -> None:
             p.data = p.data.float()
 
 
-def compile_blocks(blocks, seq_range=None) -> None:
+def compile_blocks(blocks, seq_range=None, ref_range=None) -> None:
     """``torch.compile`` on each block's ``forward`` (instance attribute, so swap
     hooks stay outside the graph). One graph for every joint length; must run
     after ``LoRANetwork.apply_to`` / ``load_for_inference``.
@@ -240,7 +240,11 @@ def compile_blocks(blocks, seq_range=None) -> None:
     runs unmarked (one warning per length for the whole stack). The
     compile cache moves to a per-range directory (persistent entries do not key
     on the mark's bounds). Under grad, an ``x`` without grad (block 0: the
-    embedders are frozen) is made a grad leaf so every block shares one graph."""
+    embedders are frozen) is made a grad leaf so every block shares one graph.
+
+    A block with ``ref_bank`` keeps a Python ``forward`` and compiles ``main_rows`` and
+    ``ref_rows`` apart. ``seq_range`` is then the image + text range and ``ref_range``
+    the reference's (``main_rows``' ``ref_export`` marked to it)."""
     from library.runtime.dynamo import (
         compile_signature,
         isolate_compile_cache,
@@ -273,19 +277,26 @@ def compile_blocks(blocks, seq_range=None) -> None:
                 n_token_families=None, seq_range=(lo, hi), dynamic_seq=True
             )
             + ";line=moss;static;flops=fa2,int8;int8_in=fp32"
+            + (f";ref={ref_range[0]}-{ref_range[1]}" if ref_range else "")
         )
         # A Python int is a constant under dynamic=False: ref_start would specialise
         # per sample and contradict the strict mark.
         pin_compiler_flag("dynamic_sources", "L['ref_start']")
     dynamic = seq_range is None
     warned = set()
+
+    def compiled(method, marks, kv_marks=None):
+        return _marked(torch.compile(method, dynamic=dynamic), marks, warned, kv_marks)
+
     for block in blocks:
-        block.forward = _marked(
-            torch.compile(block.forward, dynamic=dynamic), seq_range, warned
-        )
+        if block.ref_bank is None:
+            block.forward = compiled(block.forward, seq_range)
+        else:
+            block.main_rows = compiled(block.main_rows, seq_range, ref_range)
+            block.ref_rows = compiled(block.ref_rows, ref_range)
 
 
-def _marked(compiled, seq_range, warned):
+def _marked(compiled, seq_range, warned, kv_marks=None):
     lo, hi = seq_range or (0, 0)
 
     def forward(x, rope, *args, **kwargs):
@@ -296,6 +307,11 @@ def _marked(compiled, seq_range, warned):
             if lo <= n <= hi:
                 torch._dynamo.mark_dynamic(x, 1, min=lo, max=hi)
                 torch._dynamo.mark_dynamic(rope, 1, min=lo, max=hi)
+                if kv_marks is not None and kwargs.get("ref_export") is not None:
+                    for t in kwargs["ref_export"]:
+                        torch._dynamo.mark_dynamic(
+                            t, 1, min=kv_marks[0], max=kv_marks[1]
+                        )
             elif n not in warned:
                 warned.add(n)
                 print(
