@@ -2,7 +2,7 @@
 
 **Verdict: built, and it is how the int8 base runs now.** The kernel goes 1.30x on the forward and
 1.31x on dX, about 24 ms over 42 blocks, or 2% of a step. The forward is bit-identical to three
-calls. dX on real gradients was not measured.
+calls, and the LoRA gradient keeps its distance from fp32 (0.986–1.006x).
 
 Candidate 3 of [step_headroom.md](../../../docs/moss/proposal/step_headroom.md). Script:
 [`src/qkv_fuse_bench.py`](../src/qkv_fuse_bench.py), job `20261102-214504-9d1678`.
@@ -49,10 +49,24 @@ Short runs on the new path, all finished with finite loss: i2i `train_v3_en50_ko
 (`ref_rows`, swap 38 and 40, 4 steps), `generate.py --int8 on` with a LoRA (768², 4 steps). Tests:
 `test_moss_int8.py`.
 
+## Real gradient
+
+`grad_error_moss.py --modes bf16,gptq_f32s,gptq_fused_f32s`, job `20261102-220025-71c746`, 6 images × 3 σ,
+the LoRA gradient's distance from fp32 over the between-image noise, median over the 252 linears. Raw
+numbers: [`moss_grad_error_qkv.json`](../assets/moss_grad_error_qkv.json).
+
+| σ | bf16 | three | one | one / three |
+|---|---|---|---|---|
+| 0.1 | 0.694 | 0.651 | 0.655 | 1.006x |
+| 0.5 | 0.909 | 2.046 | 2.018 | 0.986x |
+| 0.9 | 0.717 | 0.913 | 0.915 | 1.002x |
+
+Sharing the scales moves nothing a reader could see. Per linear, the ratio's median is 0.99–1.007x and its
+worst 1.036x; per image 0.966–1.018x. Prediction and loss match to every digit printed, as the forward is identical. The arm has no
+same-arm repeat, so the ±1% here is not separated from FA2's own run-to-run spread.
+
+The 2.0 at σ 0.5 sits in both int8 arms. It is the int8 base's, not this change's.
+
 ## Not measured
 
-- **dX on real gradients.** `wq_t` shares one scale per weight column across q, k and v, and dY one per
-  token. Rotation groups align, since 3072 and 9216 are both multiples of 256. If |dV| and |dQ|, |dK| sit far
-  apart, the smaller side loses bits. The `grad_error_moss.py` arm was stopped by decision before it
-  finished, and Anima's "free" verdict for the same shape is not a MOSS measurement.
 - **i2i step time**, and a complete LoRA on this path.

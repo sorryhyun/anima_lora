@@ -26,7 +26,7 @@ FA2's forward, so it runs once per block.
 |---|---|---|---|---|
 | 1 | FA2 forward tile for sm_120 | both | training 0.7%, MOSS generation about 1.6% | none, failed the 1.15x gate |
 | 2 | fp16-accumulate attention backward | both | 4.6–5.5% on a real MOSS step, 5.1% on Anima | error under FA2's, gradient unchanged |
-| 3 | one int8 linear for MOSS `proj.q/k/v` | MOSS | about 2%, measured, built | forward bit-identical, real-gradient dX not measured |
+| 3 | one int8 linear for MOSS `proj.q/k/v` | MOSS | about 2%, measured, built | forward bit-identical, LoRA gradient 0.986–1.006x |
 | 4 | reference branch under `no_grad` | MOSS i2i | 20% of an eager pass, measured | failed the gradient check |
 
 ## 1. FA2 forward tile for sm_120
@@ -91,7 +91,7 @@ The Triton backward is 0.70x FA2, so a pass gains nothing until a CUDA port exis
 ## 3. One int8 linear for MOSS `proj.q/k/v`
 
 Built 2026-11-02: the kernel runs 1.30x on the forward and 1.31x on dX, about 24 ms over 42 blocks, and a real step
-gains about 20 ms at the same peak. The forward is bit-identical. dX error on real gradients was not measured.
+gains about 20 ms at the same peak. The forward is bit-identical, and the LoRA gradient's distance from fp32 moves 0.986–1.006x.
 [Report](../../../project/int8_train/reports/qkv_fuse.md).
 
 What follows is the proposal as written.
