@@ -353,6 +353,11 @@ COMMANDS = {
         "Download an alternate Anima base DiT (aesthetic / turbo / preview / "
         "2.9B); ARGS=<name>, no args lists them",
     ),
+    "fa2-sm120": (
+        downloads.cmd_fa2_sm120,
+        "Unpack the sm_120 FlashAttention build for repo jobs (private release, "
+        "needs gh)",
+    ),
     "download-sam3": (downloads.cmd_download_sam3, "Download SAM3 model"),
     "download-pe": (
         downloads.cmd_download_pe,

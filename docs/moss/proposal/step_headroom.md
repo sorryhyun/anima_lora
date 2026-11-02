@@ -1,6 +1,6 @@
 # Step headroom around the attention kernels
 
-Status: idea, 2026-11-02. Nothing below is built. Candidates 1 and 4 are measured. The FA2 tile choice and the
+Status: idea, 2026-11-02. Nothing below is built. Candidates 1, 2 and 4 are measured. The FA2 tile choice and the
 i2i config facts were read from the code; every gain is an estimate. Applies to MOSS-Image
 and Anima unless a section says otherwise.
 
@@ -26,7 +26,7 @@ FA2's forward, so it runs once per block.
 | | candidate | line | estimated gain | numerics |
 |---|---|---|---|---|
 | 1 | FA2 forward tile for sm_120 | both | training 0.7%, MOSS generation about 1.6% | none, failed the 1.15x gate |
-| 2 | fp16-accumulate attention backward | both | at most 8–9%, likely 4–6% | open on dQ, dK |
+| 2 | fp16-accumulate attention backward | both | 4.6–5.5% on a real MOSS step, 5.1% on Anima | error under FA2's, gradient unchanged |
 | 3 | one int8 linear for MOSS `proj.q/k/v` | MOSS | about 2% | dX as on Anima |
 | 4 | reference branch under `no_grad` | MOSS i2i | 20% of an eager pass, measured | failed the gradient check |
 
@@ -50,6 +50,16 @@ forward with a slower backward. The wheel already holds both tiles, so this took
 [Finding](../findings/fa2_tile_sm120.md).
 
 ## 2. fp16-accumulate attention backward
+
+Measured 2026-11-02: passes the gate with QKᵀ left in bf16, 1.340x the Triton backward and 1.304x
+forward + backward at 1.02–1.10x its error. dQ and dK cost at most 1%, fp16acc QKᵀ alone is 2.1x,
+and dV needs a fixed P × 256 for block 0. [Report](../../../project/int8_train/reports/attn_bwd_fp16acc.md).
+
+Ported to FA2's backward the same day: a real MOSS step goes from 1071–1082 to 1022 ms at the same
+peak and a real Anima step from 426.5 to 404.7 ms, with error at 0.74–0.97x FA2's and MOSS's LoRA
+gradient unchanged. Repo jobs on sm_120 run it after `make fa2-sm120`. [Report](../../../project/int8_train/reports/fa2_fp16acc.md).
+
+What follows is the proposal as written.
 
 fp16-accumulate QKᵀ and PV already pass the gradient gate at 1.03–1.40x FA2's error and 1.31x
 its forward time ([attn_fwd_grad.md](../../../project/int8_train/reports/attn_fwd_grad.md)).

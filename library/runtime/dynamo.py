@@ -29,8 +29,11 @@ def set_activation_memory_budget(budget: float) -> None:
     import torch._functorch.config as functorch_config
     from torch.utils.flop_counter import flop_registry, register_flop_formula
 
+    from library.runtime.fa2 import use_sm120_build
+
     functorch_config.activation_memory_budget = budget
     functorch_config.is_non_builtin_to_include = True
+    use_sm120_build()
     try:
         import flash_attn.flash_attn_interface  # noqa: F401
     except ImportError:
