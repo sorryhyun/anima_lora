@@ -67,6 +67,28 @@ same-arm repeat, so the ±1% here is not separated from FA2's own run-to-run spr
 
 The 2.0 at σ 0.5 sits in both int8 arms. It is the int8 base's, not this change's.
 
+## ComfyUI
+
+ComfyUI's `MOSSImage` fuses on its own when a file has `proj.qkv` keys. The GPTQ file keeps `q` / `k` / `v`, so
+it ran three GEMMs. `~/ComfyUI-MOSS-Toolkit/loader.py::fuse_int8_qkv` concatenates an INT8 file's rows at load,
+with no second file. [`src/comfy_qkv_check.py`](../src/comfy_qkv_check.py), one forward at 4096 + 300 tokens:
+
+- Output bit-identical to the split model; on the fp32 stream the distance prints 0.000000.
+- Forward 273.6–276.3 → 265.5–270.0 ms, three alternating runs, about 7 ms or 2.4%.
+- Patches 168 keys against 252, all of the LoRA's q / k / v on `proj.qkv`'s rows.
+
+A LoRA moves the output 7.9% between split and fused. That is not the fusion
+([`src/comfy_qkv_lora_check.py`](../src/comfy_qkv_lora_check.py)). ComfyUI applies a LoRA to an INT8 weight by
+requantizing the whole tensor (`set_weight`, `scale="recalculate"`), which on ConvRot means fresh row scales and
+stochastic rounding seeded by the key, so the fused key draws other noise. The split model alone, reseeded, moves
+10.9%. Against the bf16 model with the same LoRA, split sits at 8.33% and fused at 8.60%; without a LoRA both sit
+at 5.58%, one input and one σ.
+
+The same requantization drops the GPTQ forward copy, so any LoRA on the INT8 DiT in ComfyUI runs on stochastically
+rounded weights. That predates this change.
+
+The Reference node on a fused GPTQ model was not run.
+
 ## Not measured
 
 - **i2i step time**, and a complete LoRA on this path.
