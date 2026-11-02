@@ -594,12 +594,14 @@ class TrainRequest(Request):
         "off: one bank on image, text and reference rows. kv: the reference stream runs "
         "on Base at Base modulation, with no backward, and the image and text rows read "
         "it through export adapters on proj.k / proj.v (ref_rank). Needs ref_isolate and "
-        "ref_timestep >= 0. Stamped in the LoRA metadata",
-        choices=("off", "kv"),
+        "ref_timestep >= 0. all: the reference rows run a full bank of their own "
+        "(ref_rank) at Base modulation, in the graph, with the same needs. Stamped in "
+        "the LoRA metadata",
+        choices=("off", "kv", "all"),
         advanced=True,
     )
     ref_rank: int = _f(
-        32, "rank of the export adapters at ref_adapters = kv", advanced=True
+        32, "rank of the reference adapters at ref_adapters = kv / all", advanced=True
     )
     region_weight: float = _f(
         1.0,

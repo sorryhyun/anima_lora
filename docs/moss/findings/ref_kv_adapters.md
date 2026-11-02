@@ -67,7 +67,8 @@ For scale, `v3_int8_e2` (1,000 pairs, 2,000 steps) reads 6.1 / 8.4 / 2.8 / 2.8.
 ## What it does not settle
 
 Whether A closes the gap with more steps: the rest loss is flat over steps 401–600, but this is
-one 600-step run at 200 pairs. Plan B (a full bank of the reference's own) is not built.
+one 600-step run at 200 pairs. Plan B (a full bank of the reference's own) is in
+[ref_bank_adapters.md](ref_bank_adapters.md).
 
 The numbers compare arms at this size; neither arm's |ΔL| reaches the 2,000-step control.
 

@@ -215,8 +215,9 @@ def rank_pattern(req: TrainRequest, alpha: float) -> dict | None:
 
 
 def check_ref_adapters(req: TrainRequest) -> None:
-    """``ref_adapters = kv`` splits the reference rows off every block, which holds
-    only for a stream that depends on the page alone; its adapters are LoRA pairs."""
+    """``ref_adapters`` needs a reference stream that depends on the page alone: ``kv``
+    splits it off every block, ``all`` caches its own bank's run at generation. Its
+    adapters are LoRA pairs."""
     if req.ref_adapters == "off":
         return
     if not req.ref_isolate or req.ref_timestep < 0:
@@ -249,7 +250,8 @@ def adapter_detail(req: TrainRequest, network) -> str:
     for pat, (r, a) in network.rank_pattern.items():
         detail += f"; {pat} rank {r} alpha {a:g}"
     if network.ref_rank:
-        detail += f"; reference k/v export adapters rank {network.ref_rank}"
+        what = {"kv": "k/v export adapters", "all": "bank"}[network.ref_adapters]
+        detail += f"; reference {what} rank {network.ref_rank}"
     return detail
 
 

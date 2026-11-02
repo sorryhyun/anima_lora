@@ -115,6 +115,16 @@ def row_mask(n_img: int, n_text: int, rows: list[int], n_ref: int = 0, device=No
     return mask
 
 
+def bank_masks(n_img: int, n_text: int, rows, n_ref: int, device=None):
+    """``(main, ref)`` row masks for ``ref_adapters = all``: the main bank on image and
+    text rows (``rows``: only those text rows), the reference bank on the rest."""
+    ref = torch.zeros(1, n_img + n_text + n_ref, 1, dtype=torch.bfloat16, device=device)
+    ref[0, n_img + n_text :, 0] = 1
+    if rows is None:
+        return 1 - ref, ref
+    return row_mask(n_img, n_text, rows, n_ref, device), ref
+
+
 NEG_SUFFIX = ".moss_te_neg.safetensors"
 
 

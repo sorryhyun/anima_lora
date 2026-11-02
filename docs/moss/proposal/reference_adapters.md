@@ -1,16 +1,18 @@
 # Reference-side adapters for MOSS i2i
 
-Status: proposal, 2026-11-02. Plan A was built and tried; it lost on copy
-([ref_kv_adapters.md](../findings/ref_kv_adapters.md)). What is left to try is plan B, not built.
-The measurements below are an inference probe on the swap_text v3 LoRA and that A/B. Applies to
+Status: closed, 2026-11-02. Both plans were built and tried; neither beat the shared bank at
+200 pairs and 600 steps ([ref_kv_adapters.md](../findings/ref_kv_adapters.md),
+[ref_bank_adapters.md](../findings/ref_bank_adapters.md)). The default stays `ref_adapters = off`.
+The measurements below are an inference probe on the swap_text v3 LoRA and those A/Bs. Applies to
 isolated references at a fixed `ref_timestep` (swap_text, sanitize, colorize v3).
 
 **A**, tried: the reference stream ran on Base under `no_grad`, and the image rows read it through
 trained key / value adapters, as a text encoder is read through cross-attention. 29% off the
-step, copy worse on all four pages, letters tie. **B**, proposed: the reference rows keep a full
-adapter bank of their own, separate from the image rows', and the stream stays in the graph. It
-spends the compute where the probe says the copy lives. A reference stream with no adapter at
-all is dead; the probe is in [What the probe showed](#what-the-probe-showed).
+step, copy worse on all four pages, letters tie. **B**, tried: the reference rows keep a full
+adapter bank of their own, separate from the image rows', and the stream stays in the graph.
+Copy ties, one Korean line improves, untranslated glyphs drop out on two seeds of three on one
+page, and the step costs 16–25% more. A reference stream with no adapter at all is dead; the
+probe is in [What the probe showed](#what-the-probe-showed).
 
 ## What the probe showed
 
@@ -67,78 +69,24 @@ flat over the last 200 steps, and more steps are untested. The code stays in the
 length marks, since in one graph a reference length `n - ref_start` raises Inductor's
 `CantSplit`. Details in [ref_kv_adapters.md](../findings/ref_kv_adapters.md).
 
-## Plan B
+## Plan B, tried
 
-Today one rank-32 bank does both jobs with the same weights: on the image rows it draws
-the edit, on the reference rows it turns the page into something the image rows can copy
-from. B gives the reference rows their own bank: Base + `q k v o ffn` at `ref_rank`, in the graph.
-The image rows read that bank's `k` / `v`, and image and text rows keep today's bank.
+`ref_adapters = all`, `ref_rank`: Base + `q k v o ffn` at `ref_rank` on the reference rows, in the
+graph, Base modulation at t = 0. Image and text rows keep today's bank. On 200 pairs and 600
+steps against the shared bank:
 
-- **Parameters:** a full second bank on the reference path.
-- **Step cost:** as today. A's split is not needed: the rows stay in one forward, under a mask.
-- **Generation:** `RefCache` built once with the reference bank on.
-- **Cross-step cache of the reference:** no.
+| | shared bank | B |
+|---|---|---|
+| s/step | 2.55 | 3.18; 2.95 on the control's memory plan, which ran out of VRAM at step 296 |
+| outside-text \|ΔL\| | 6.7 / 9.4 / 3.3 / 3.3 | 6.5 / 9.1 / 3.4 / 3.0 |
+| rest loss, steps 501–600 | 0.020 | 0.017 |
+| seeds of 3 losing untranslated glyphs, `589883_0004_ko` | 1 (two glyphs) | 2 (a whole heading on one) |
 
-B's prior is v3 or better. The probe and A show the reference's own adapters matter; neither
-shows that sharing one bank hurts, so B is a bet on capacity, not a measured gap.
-
-### Implementation
-
-- `TrainRequest.ref_adapters` gains `all` beside `off` (today, one shared bank) and `kv` (plan A),
-  at `ref_rank`. Requires `ref_isolate` and `ref_timestep >= 0`; stamped in the LoRA, with
-  `ref_rank`.
-- A second adapter per target in `LoRANetwork`, with the complementary row mask: the
-  main bank's delta on image and text rows, the reference bank's on reference rows.
-  `set_row_mask` already confines a delta per row (`library/lines/adapters.py`); the mask
-  builder `row_mask()` in `library/moss/training/data.py` keeps text rows only and needs
-  the three-way form (image + text / reference), ANDed with `delta_rows` when both are set.
-  Two `LoRANetwork`s on one linear do not stack: `_patched_forward` captures
-  `nn.Linear.forward` as the base, so the second patch replaces the first. One network,
-  two banks.
-- Saved as two files, `<name>.safetensors` and `<name>.ref.safetensors`, or two key
-  prefixes in one; the loader applies the reference bank only where the reference is built.
-  Two files are easier for the ComfyUI node.
-
-## Test
-
-swap_text on `en50_ko150`, `train_v3_en50_ko150.toml` with `ref_adapters = all`, 600 steps, about
-25 minutes. Control: the shared-bank arm of the A result (renders `refab_default_e3_ema`). Quality
-first, then training time if the two read the same: outside-text |ΔL|, the Japanese left
-untranslated, per glyph on the Korean lines.
-
-If it holds, the en200_ko800 v3 int8 2-epoch recipe (92 minutes) against
-`v3_int8_e2_ema_bf16_fp32s`. Then sanitize full data (2,216 steps, 2.4 hours) against
-`moss_i2i_sanitize_idt_w0003_late_lr5e5_e8`: five held-out pages, seeds 42 / 43 / 44, since
-sanitize has no bbox and its copy is the whole page.
-
-## Generation and ComfyUI
-
-A file stamped `ref_adapters` renders wrong on a loader that ignores the stamp: the main bank
-on the reference rows, the reference bank nowhere. `generate.py` reads plan A's stamp; the
-ComfyUI node reads neither.
-
-- **`generate.py`:** the reference bank goes on around `RefCache.lookup`; the main bank stays
-  off there.
-  `set_multiplier` is a lifted float under `dynamic=True`, so this may cost no recompile.
-- **ComfyUI-MOSS-Toolkit:** `lora_compat.load` patches weights through ComfyUI's patcher,
-  which has no notion of rows. B needs the reference bank patched during `build` and
-  unpatched after, with the main bank the other way round — two patch sets on the same
-  weights, in sequence. The node has to read the stamp and refuse an older flow. The native
-  `preprocess_refs` path has the same case.
-- **An older node on a stamped LoRA** applies the main bank to the reference with no
-  warning. The node ships the stamp check before any such LoRA does.
-
-## Tests
-
-Plan A's are in `tests/test_moss_ref_adapters.py`. For B:
-
-- The reference rows' output equals a forward with the reference bank alone applied; the image
-  rows' equals one with the main bank alone.
-- The stamp round-trips through `ref_settings` and `load_for_inference`; both files load.
-- `generate.py`'s `RefCache` path matches the uncached forward.
-
-`CONTRIBUTING.md` needs a bench and an invariant test for a method change:
-`project/int8_train/src/ref_adapters_eval.py` is the bench; the first item above is the test.
+The step did not stay as today: both adapters run on every row, zero-masked on the rows they do
+not own. The bank adds about 1.2 GB on the card in training and 0.2 GiB in generation. The code
+stays in the tree, one file with `ref_layers_N_proj_*` keys. `generate.py` reads the stamp; the
+ComfyUI node reads neither plan's. Details in
+[ref_bank_adapters.md](../findings/ref_bank_adapters.md).
 
 ## Not in scope
 

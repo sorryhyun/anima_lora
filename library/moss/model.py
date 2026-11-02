@@ -29,6 +29,9 @@ Changes from the reference, all additive:
   Isolated at a fixed ``ref_timestep``, the reference stream depends on the
   reference alone; ``ref_cache`` (a ``RefCache``, set by ``generate.denoise``)
   runs it once and later forwards read its per-block keys and values.
+  ``ref_scope`` (``LoRANetwork.reference`` at ``ref_adapters = all``): the reference rows
+  have an adapter bank of their own and Base modulation. A forward with a reference then
+  goes through ``ref_cache`` or under ``set_row_mask(main, ref)``.
 - Attention: unmasked CUDA bf16 / fp16 calls run FA2 (``flash_attn_func``) on
   ``(B, L, H, D)``; masked (``forward_batched``), CPU and fp32 calls keep the
   reference's SDPA. Same math, a different kernel: FA2 issues no ``% 8``
@@ -38,6 +41,8 @@ Changes from the reference, all additive:
 """
 
 from __future__ import annotations
+
+from contextlib import nullcontext
 
 import torch
 from diffusers import FlowMatchEulerDiscreteScheduler
@@ -460,6 +465,7 @@ class MOSSImageTransformer(ModelMixin, ConfigMixin):
         self.ref_isolate = False
         self.ref_follows_skip = False
         self.ref_cache = None
+        self.ref_scope = None
 
     def load_training_state_dict(self, state_dict, *, prefix=""):
         """Load a consolidated raw/EMA model mapping, strictly; no silent key drops."""
@@ -507,9 +513,8 @@ class MOSSImageTransformer(ModelMixin, ConfigMixin):
         n_ref = ref_hw[0] * ref_hw[1]
         if self.ref_timestep is None:
             return mod, n_ref
-        ref_mod, _ = self.time_conditioning(
-            self.ref_timestep, mod.shape[0], base=self.layers[0].ref_bank is not None
-        )
+        base = self.ref_scope is not None or self.layers[0].ref_bank is not None
+        ref_mod, _ = self.time_conditioning(self.ref_timestep, mod.shape[0], base=base)
         return torch.stack((mod, ref_mod.to(mod.dtype)), 2), n_ref
 
     def embed_sample(self, latent, context, ref=None):
@@ -563,9 +568,10 @@ class MOSSImageTransformer(ModelMixin, ConfigMixin):
         if ref_runs and self.ref_cache is not None and self.ref_timestep is not None:
             s = ref_start
             ref_rope = rope[:, s:]
-            cached = self.ref_cache.lookup(
-                self.layers, x[:, s:], ref_rope, mod[:, :, 1]
-            )
+            with (self.ref_scope or nullcontext)():
+                cached = self.ref_cache.lookup(
+                    self.layers, x[:, s:], ref_rope, mod[:, :, 1]
+                )
             x, rope, mod = x[:, :s], rope[:, :s], mod[:, :, 0]
             key_mask = None if key_mask is None else key_mask[:, :s]
             ref_start, iso, ref_runs = None, False, False
