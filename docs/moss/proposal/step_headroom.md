@@ -1,6 +1,6 @@
 # Step headroom around the attention kernels
 
-Status: idea, 2026-11-02. Nothing below is built, and only candidate 4 is measured. The FA2 tile choice and the
+Status: idea, 2026-11-02. Nothing below is built. Candidates 1 and 4 are measured. The FA2 tile choice and the
 i2i config facts were read from the code; every gain is an estimate. Applies to MOSS-Image
 and Anima unless a section says otherwise.
 
@@ -25,7 +25,7 @@ FA2's forward, so it runs once per block.
 
 | | candidate | line | estimated gain | numerics |
 |---|---|---|---|---|
-| 1 | FA2 forward tile for sm_120 | both | training 1.5–2.6%, MOSS generation 5–7% | none expected |
+| 1 | FA2 forward tile for sm_120 | both | training 0.7%, MOSS generation about 1.6% | none, failed the 1.15x gate |
 | 2 | fp16-accumulate attention backward | both | at most 8–9%, likely 4–6% | open on dQ, dK |
 | 3 | one int8 linear for MOSS `proj.q/k/v` | MOSS | about 2% | dX as on Anima |
 | 4 | reference branch under `no_grad` | MOSS i2i | 20% of an eager pass, measured | failed the gradient check |
@@ -44,22 +44,10 @@ so 128×64 runs one CTA per SM. Forward throughput points the same way (about 86
 Anima and 98 on MOSS, against an assumed 176 TFLOPS peak for bf16 with fp32 accumulation).
 Whether 128×32 is faster on Blackwell is the open question.
 
-Assuming a forward at 1.2–1.4 ms: Anima saves 7–11 ms per step and MOSS 16–26 ms. Generation
-is forward only, so attention is about 30% of a MOSS generation forward, and the gain is
-5–7%.
-
-Check, after the current job:
-
-1. `sdpa_kernel(SDPBackend.CUDNN_ATTENTION)` on the same shape against 1.63 / 3.93 ms, one
-   minute and no build. This only shows whether a faster forward exists on this card.
-2. Change the branch to `is_sm8x || cc_major == 12`, build the hdim128 bf16 non-causal
-   kernel, and time `flash_attn_func`. Keep it if the forward gains at least 1.15x at FA2's
-   current distance from fp32 on the [attention capture](../../../project/int8_train/reports/attn_fwd.md).
-
-The installed FA2 is the 2.8.3 wheel and users need prebuilt wheels, so a local build does
-not ship. A gain has to reach an upstream release, as with
-[comfy-kitchen#289](https://github.com/Comfy-Org/comfy-kitchen/issues/289), or a wheel this
-repo publishes.
+Closed: 128×32 runs 1.060x on self-attention and 1.117x on cross-attention at FA2's error, under
+the 1.15x gate, which is 3.1 ms of Anima's 430 ms step. CUDNN attention reaches 1.072x on the
+forward with a slower backward. The wheel already holds both tiles, so this took no build.
+[Finding](../findings/fa2_tile_sm120.md).
 
 ## 2. fp16-accumulate attention backward
 
@@ -83,8 +71,8 @@ Risks:
 - |dO| is about 1e-7, under fp16's normal range. The kernel needs the bench's per
   (batch, head) scaling, which adds a reduction.
 - Forward QKᵀ gained about a third of what PV gained from fp16 accumulation, unexplained.
-  One guess is that the tile limits these kernels, so re-read the fp16 numbers after
-  candidate 1.
+  One guess was that the tile limits these kernels; 128×32 moved the FA2 forward by only 6%,
+  so it explains little of this.
 
 Check: add `out_dtype=tl.float16` to the dQ and dK dots and the backward's S, use the bf16
 forward, and run `attn_bwd_bench.py` on the 24 captured calls, about two minutes. Judge it

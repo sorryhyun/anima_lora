@@ -54,6 +54,7 @@ inputs.
 | int8 QKᵀ forward | on the output O: 1.44x FA2 at 1.5–1.8x its error for self-attention; cross-attention fails (repeated pad key, sink key). On gradients through a 16-bit backward: dQ, dK, dV at 2.5–3.4x, fails ([report](reports/attn_fwd.md), titled *Phase 5a*) |
 | int8 backward | fails on accuracy: on the int8 forward every backward is 2.5–3.4x FA2's error, int8 dV 5–8x ([report](reports/attn_bwd.md), titled *Phase 5b*) |
 | forward arms on gradients | int8 QKᵀ out: Q or K rounding alone ~2x, both ~3x, Q smoothing no help. fp16-accumulate QKᵀ and PV: 1.03–1.40x error ([report](reports/attn_fwd_grad.md), titled *Phase 5a′*) |
+| FA2 forward tile on sm_120 | fails the 1.15x gate: 128×32 is 1.060x self and 1.117x cross at FA2's error, CUDNN 1.072x with a slower backward; no build ([report](reports/fa2_tile_sm120.md)) |
 
 Criterion, as it stands now:
 

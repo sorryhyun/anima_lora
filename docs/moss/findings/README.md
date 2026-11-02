@@ -7,6 +7,7 @@ and raw numbers live in the matching `bench/moss_*/` or `_archive/bench/moss_*/`
 | Doc | What it covers |
 |---|---|
 | [attention_sink_chat_template.md](attention_sink_chat_template.md) | The 10 chat-template tokens are MOSS's attention sink: an OFF-gate plus a per-head bias written into every image token. Trained LoRAs barely move it. |
+| [fa2_tile_sm120.md](fa2_tile_sm120.md) | FA2 runs its A100 / H100 forward tile on sm_120. 128×32 is free of error and worth 0.7% of a step; a private wheel carries it. |
 | [vision_tower_reference.md](vision_tower_reference.md) | An image put through Qwen3.5's own vision tower conditions MOSS zero-shot: content and coarse layout come back, pixel alignment does not, and the DiT reads the image-token rows. |
 | [sigma_staircase.md](sigma_staircase.md) | One forward's `x0_pred` resolves at Anima's σ knee (recognisable 0.74), but layout is set by σ 0.87–0.80 and shift 5 puts that at steps 22–28 of 50. Base and SFT resolve alike. |
 | [lr_clip_sweep.md](lr_clip_sweep.md) | LR × grad clip × grad accum on one character set: the shipped 5e-5 / clip 1 beats clip 7, no-clip 2e-5 and no-clip at `grad_accum` 2 (1e-4 distorts; 5e-5 ties clip 7). The loss curve can't tell them apart. |
