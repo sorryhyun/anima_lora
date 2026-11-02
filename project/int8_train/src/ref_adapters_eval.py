@@ -30,13 +30,15 @@ PAGES = ("1483610_0007_en", "3124789_0042_en", "589883_0004_ko", "737486_0019_ko
 PAD, ZOOM = 24, 2
 
 
-def render(lora: str, name: str) -> None:
+def render(
+    lora: str, name: str, pages: tuple[str, ...] = PAGES, seed: int | None = None
+) -> None:
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
     from library.moss.generate import run_generate
     from library.moss.requests import GenerateRequest
 
-    for page in PAGES:
+    for page in pages:
         control = json.load(open(CONTROL / page / "manifest.json"))["images"][0]
         argv = [
             "--prompt",
@@ -50,7 +52,7 @@ def render(lora: str, name: str) -> None:
             "--height",
             str(control["height"]),
             "--seed",
-            str(control["seed"]),
+            str(control["seed"] if seed is None else seed),
             "--out_dir",
             str(RESULTS / name / page),
             "--ref_image",
@@ -145,12 +147,15 @@ def main() -> None:
     r = sub.add_parser("render")
     r.add_argument("--lora", required=True)
     r.add_argument("--name", required=True)
+    r.add_argument("--page", choices=PAGES, help="one page instead of all four")
+    r.add_argument("--seed", type=int, help="instead of the control's seed")
     s = sub.add_parser("score")
     s.add_argument("--out", required=True)
     s.add_argument("runs", nargs="+", help="label=<results dir, under RESULTS>")
     args = ap.parse_args()
     if args.cmd == "render":
-        render(args.lora, args.name)
+        pages = (args.page,) if args.page else PAGES
+        render(args.lora, args.name, pages, args.seed)
     else:
         runs = dict(x.split("=", 1) for x in args.runs)
         score({k: RESULTS / v for k, v in runs.items()}, Path(args.out))

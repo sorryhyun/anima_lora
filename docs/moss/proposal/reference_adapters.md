@@ -63,8 +63,9 @@ it attends with. On 200 pairs and 600 steps against the shared bank:
 | outside-text \|ΔL\| | 6.7 / 9.4 / 3.3 / 3.3 | 7.3 / 10.1 / 4.0 / 3.9 |
 | rest loss, steps 401–600 | 0.020 | 0.051 |
 
-Lettering left untranslated comes back thin and line art lighter; letters tie. The rest loss is
-flat over the last 200 steps, and more steps are untested. The code stays in the tree:
+Lettering left untranslated comes back thin and line art lighter; letters tie. At the shared
+bank's training time, 848 steps, |ΔL| reads 7.0 / 9.8 / 3.8 / 3.5 and the balloon stays thin; A keeps
+every untranslated glyph on three seeds, and Korean gets slightly worse. The code stays in the tree:
 `_Block.forward` splits in Python, and `ref_rows` and `main_rows` compile apart with their own
 length marks, since in one graph a reference length `n - ref_start` raises Inductor's
 `CantSplit`. Details in [ref_kv_adapters.md](../findings/ref_kv_adapters.md).

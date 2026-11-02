@@ -40,7 +40,9 @@ Training loss, A / default:
 | 501–600 | 0.163 / 0.148 | 0.052 / 0.020 |
 
 The copied tokens' loss reaches 0.05 about 200 steps later under A, then sits at 2.5× the
-default's. The last two windows are flat.
+default's. The last two windows read flat only because σ moves: the last 100 steps average 0.70
+against 0.77. Controlled for σ, the rest loss over 401–600 falls ×0.86 per 100 steps under A
+and ×0.82 under default.
 
 Mean |ΔL| against the source outside the text boxes, 0–255:
 
@@ -64,13 +66,38 @@ For scale, `v3_int8_e2` (1,000 pairs, 2,000 steps) reads 6.1 / 8.4 / 2.8 / 2.8.
   trained alongside the stream's, so trained alone they learn part of what the stream adapters
   did, and not all of it in 600 steps.
 
-## What it does not settle
+## At the same training time
 
-Whether A closes the gap with more steps: the rest loss is flat over steps 401–600, but this is
-one 600-step run at 200 pairs. Plan B (a full bank of the reference's own) is in
-[ref_bank_adapters.md](ref_bank_adapters.md).
+Run: `..._refkv_rw2_mod16_ema5e5_int8_s848`, 848 steps at 1.80 s/step, 25.4 min, the default's
+time; same config with `epochs = 5`, `max_steps = 848`. Warmup and the EMA span scale with the
+run (42 and 85 updates). Renders `refab_kv_s848_ema`, seeds 1 and 2 of `589883_0004_ko` in
+`refab_kv_s848_ema_s{1,2}`; sheets `refab_s848_compare/`.
 
-The numbers compare arms at this size; neither arm's |ΔL| reaches the 2,000-step control.
+| | default, 600 steps | A, 600 | A, 848 |
+|---|---|---|---|
+| outside-text \|ΔL\| | 6.7 / 9.4 / 3.3 / 3.3 | 7.3 / 10.1 / 4.0 / 3.9 | 7.0 / 9.8 / 3.8 / 3.5 |
+| pixels off by more than 32, % | 3.8 / 7.3 / 1.3 / 2.2 | 4.8 / 8.5 / 1.9 / 3.1 | 4.3 / 8.0 / 1.7 / 2.7 |
+
+Loss over the last 100 steps, A 848 against default 600, controlled for σ: rest ×1.94 (1.83–2.06),
+edit region ×1.04 (0.95–1.13). At equal minutes up to 18, rest is ×1.81 and edit region ×1.02.
+
+- **Copy.** Still behind on all four pages, by about half the gap. Over three seeds on
+  `589883_0004_ko`, |ΔL| reads 3.76–3.78 against 3.25–3.34, and the untranslated balloon stays
+  thin: dark pixels 1,960–2,017 against 2,197–2,287, source 2,541.
+- **Untranslated glyphs.** A keeps every glyph on three seeds, with `加` of `追加` muddled on s2.
+  Default loses `銭` and breaks `湯` on s0. A's strokes are fuzzier on `銭湯` and `楽`.
+- **Balloon outlines.** One seed: A 848 keeps the `Uwah` outline and the lower-right edge of the
+  `SAKURA-CHAN` balloon, both of which default loses. Those sit inside the text boxes, so |ΔL|
+  does not read them.
+- **Letters.** English exact on both. On `589883_0004_ko` over three seeds, A reads `이먼` on all
+  three, `뭔뭔가요` on s1 and `분있어요` / `분인어요`; default reads `분인나요` / `분이며요` and gets
+  `이건` right on s2. On `737486_0019_ko`, seed 0, `싼다` → `씬다` and `가득해` → `가늑해` on both,
+  and A breaks `질 속이` onto two lines.
+
+The default keeps the shared bank at equal time. A's gain over 248 more steps is real and
+smaller than the gap. Closing the rest loss at this slope would take about 550–800 steps more.
+
+The numbers compare arms at this size; no arm's |ΔL| reaches the 2,000-step control. Plan B (a full bank of the reference's own) is in [ref_bank_adapters.md](ref_bank_adapters.md).
 
 ## Implementation
 
