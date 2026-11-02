@@ -123,7 +123,8 @@ index-strategy = "unsafe-best-match"
 # `cuda-windows` on Windows). torch-214 carries no Windows deps, so it does not
 # conflict with rocm-windows and the ROCm command above needs no extra flag.
 # The opt-in stacks carry every platform: `uv sync --no-default-groups --group
-# torch-213` (or torch-212).
+# torch-213` (or torch-212). `fa2-sm120` is the 2.14 stack with the sm_120
+# FlashAttention wheel in the venv: `uv sync --no-default-groups --group fa2-sm120`.
 default-groups = ["dev", "torch-214", "cuda-windows"]
 conflicts = [
     [
@@ -131,11 +132,13 @@ conflicts = [
         { group = "rocm-windows" },
         { group = "torch-213" },
         { group = "torch-212" },
+        { group = "fa2-sm120" },
     ],
     [
         { group = "torch-214" },
         { group = "torch-213" },
         { group = "torch-212" },
+        { group = "fa2-sm120" },
     ],
 ]
 prerelease = "allow"
@@ -185,6 +188,7 @@ anime-tools = { git = "https://github.com/sorryhyun/anime_tools", tag = "v0.9.3"
 torch = [
     { index = "pytorch-cu132", marker = "sys_platform != 'darwin' and sys_platform != 'win32'" },
     { index = "pytorch-cu132", group = "cuda-windows" },
+    { index = "pytorch-cu132", group = "fa2-sm120" },
     { index = "pytorch-cu132", group = "torch-213" },
     { index = "pytorch-cu132", group = "torch-212" },
     { index = "amd-rocm-101", group = "rocm-windows" },
@@ -192,6 +196,7 @@ torch = [
 torchvision = [
     { index = "pytorch-cu132", marker = "sys_platform != 'darwin' and sys_platform != 'win32'" },
     { index = "pytorch-cu132", group = "cuda-windows" },
+    { index = "pytorch-cu132", group = "fa2-sm120" },
     { index = "pytorch-cu132", group = "torch-213" },
     { index = "pytorch-cu132", group = "torch-212" },
     { index = "amd-rocm-101", group = "rocm-windows" },
@@ -261,7 +266,8 @@ build-backend = "setuptools.build_meta"
 dev = []
 # Torch stacks (see [tool.uv] for how they compose). The default 2.14 stack is
 # split: `torch-214` holds the Linux pins, `cuda-windows` the Windows ones.
-# Every flash-attn row is a cu132 mjun0812 prebuild matched to its torch minor.
+# Every flash-attn row is a cu132 mjun0812 prebuild matched to its torch minor,
+# except fa2-sm120's.
 torch-214 = [
     "torch>=2.14.0,<2.15 ; sys_platform != 'win32'",
     "torchvision>=0.29.0,<0.30 ; sys_platform != 'win32'",
@@ -292,6 +298,22 @@ torch-212 = [
     "torchvision==0.27.0+cu132 ; sys_platform == 'win32'",
     "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.25/flash_attn-2.8.3+cu132torch2.12-cp313-cp313-win_amd64.whl ; sys_platform == 'win32'",
     "triton-windows>=3.7.0,<3.8.0 ; sys_platform == 'win32'",
+]
+# RTX 50-series opt-in: torch-214 + cuda-windows with our FlashAttention wheel in
+# the venv (sorryhyun/flash-attention-fp16, TAG in library/runtime/fa2.py). It holds
+# sm_120 kernels and head dims 64 and 128 alone, so unlike the `make fa2-sm120`
+# folder it also reaches ComfyUI and Qwen's flash_attention_2 text encoder.
+# aarch64 has no such wheel and keeps the stock row.
+fa2-sm120 = [
+    "torch>=2.14.0,<2.15 ; sys_platform != 'win32'",
+    "torchvision>=0.29.0,<0.30 ; sys_platform != 'win32'",
+    "flash-attn @ https://github.com/sorryhyun/flash-attention-fp16/releases/download/v2.8.3-sm120-hdim64-128-fp16acc-cu132-torch2.14/flash_attn-2.8.3+sm120.hdim64128.fp16acc.cu132torch2.14-cp313-cp313-linux_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.10.1/flash_attn-2.8.3+cu132torch2.14-cp313-cp313-linux_aarch64.whl ; sys_platform == 'linux' and platform_machine == 'aarch64'",
+    "causal-conv1d @ https://github.com/sorryhyun/anima_lora/releases/download/deps-causal-conv1d-1.7.0/causal_conv1d-1.7.0+cu132torch2.14-cp313-cp313-linux_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "torch==2.14.1+cu132 ; sys_platform == 'win32'",
+    "torchvision==0.29.1+cu132 ; sys_platform == 'win32'",
+    "flash-attn @ https://github.com/sorryhyun/flash-attention-fp16/releases/download/v2.8.3-sm120-hdim64-128-fp16acc-cu132-torch2.14/flash_attn-2.8.3+sm120.hdim64128.fp16acc.cu132torch2.14-cp313-cp313-win_amd64.whl ; sys_platform == 'win32'",
+    "triton-windows>=3.8.0,<3.9.0 ; sys_platform == 'win32'",
 ]
 # Windows accelerator backends. `cuda-windows` is in default-groups (see
 # [tool.uv]) so it composes into every plain `uv sync`; every dep is

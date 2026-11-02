@@ -2,9 +2,10 @@
 
 The build (sorryhyun/flash-attention-fp16) holds the 128×32 forward tile and the
 fp16-accumulate backward, and kernels for sm_120 alone, so it cannot be the
-``pyproject.toml`` pin. ``make fa2-sm120`` unpacks it under ``models/fa2_sm120/<tag>``;
-without that folder, on any other card, or when it fails to load, the pinned wheel loads
-as before. ComfyUI shares the venv and never sees this path. Call
+default pin. ``make fa2-sm120`` unpacks it under ``models/fa2_sm120/<tag>``; without that
+folder, on any other card, or when it fails to load, the pinned wheel loads as before.
+ComfyUI shares the venv and never sees this path. The opt-in ``fa2-sm120`` dependency
+group installs the same wheels into the venv instead, pinned to ``TAG``. Call
 :func:`use_sm120_build` before the first ``import flash_attn``.
 """
 

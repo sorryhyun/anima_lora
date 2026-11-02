@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from library.runtime import fa2
 from library.runtime.backend import resolve_attention_mode
 from scripts import update
 
@@ -194,6 +195,13 @@ ALL_PLATFORMS = {"linux_x86_64", "linux_aarch64", "win_amd64"}
             "2.12",
             "3.7.",
         ),
+        (
+            ("--no-default-groups", "--group", "fa2-sm120"),
+            "2.14.1+cu132",
+            "0.29.1+cu132",
+            "2.14",
+            "3.8.",
+        ),
     ],
 )
 def test_torch_stacks_pair_flash_attn_and_triton(
@@ -225,6 +233,30 @@ def test_torch_stacks_pair_flash_attn_and_triton(
         for line in tritons
     ), tritons
     assert any(line.startswith(f"triton-windows=={triton}") for line in lines)
+
+
+def test_fa2_sm120_group_installs_the_selector_build():
+    """The group's wheels are the release library/runtime/fa2.py fetches; aarch64
+    has no such build and keeps the stock wheel. The default stack stays stock."""
+    release = f"/{fa2.REPO}/releases/download/{fa2.TAG}/"
+    rows = [
+        line
+        for line in _export("--no-default-groups", "--group", "fa2-sm120")
+        if line.startswith("flash-attn")
+    ]
+    assert sorted(release in line for line in rows) == [False, True, True], rows
+    assert all(("linux_aarch64" in line) != (release in line) for line in rows), rows
+    assert not any(fa2.REPO in line for line in _export()), "default stack is stock"
+
+
+def test_update_keeps_the_fa2_sm120_stack(monkeypatch, tmp_path):
+    monkeypatch.setattr(update, "ROOT", tmp_path)
+    monkeypatch.setattr(update.sys, "platform", "linux")
+    monkeypatch.setenv("ANIMA_TORCH", "2.14-sm120")
+    opt_in = ["uv", "sync", "--no-default-groups", "--group", "fa2-sm120"]
+    assert update._uv_sync_command() == (opt_in, None)
+    monkeypatch.delenv("ANIMA_TORCH")
+    assert update._uv_sync_command() == (opt_in, None)
 
 
 def test_rocm_group_resolves_pytorch_214_rocm101():

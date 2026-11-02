@@ -126,15 +126,20 @@ def _selected_windows_backend() -> str:
     return "cuda"
 
 
-# Opt-in CUDA torch stacks (pyproject `torch-213` / `torch-212` groups); the
-# default 2.14 stack needs no flags.
-TORCH_STACKS = {"2.12": "torch-212", "2.13": "torch-213", "2.14": None}
+# Opt-in CUDA torch stacks (pyproject `torch-213` / `torch-212` / `fa2-sm120`
+# groups); the default 2.14 stack needs no flags.
+TORCH_STACKS = {
+    "2.12": "torch-212",
+    "2.13": "torch-213",
+    "2.14": None,
+    "2.14-sm120": "fa2-sm120",
+}
 
 
 def _selected_torch_group() -> str | None:
     """Return the opt-in torch group to sync, or None for the default stack.
 
-    ``ANIMA_TORCH=2.13`` picks one (and is saved to ``.anima_torch`` so later
+    ``ANIMA_TORCH=2.13`` or ``2.14-sm120`` picks one (and is saved to ``.anima_torch`` so later
     updates keep it); otherwise the saved marker is reused.
     """
     marker = ROOT / ".anima_torch"
