@@ -42,7 +42,7 @@ FA2 2.8.3 sdist, `is_sm8x` extended with `|| cc_major == 12` in `run_mha_fwd_hdi
 for torch 2.14's headers, sm_120 only, head dim 128 only (`HEADDIM_SWITCH` raises on any other).
 13 objects in about 4 minutes at `MAX_JOBS=6`; 73 at `MAX_JOBS=10` is about 50 GB of `cicc`.
 Source and `.so` in `new/anima_output/int8_train/fa2_build/`; wheel in the private repo
-[sorryhyun/flash-attention-sm120](https://github.com/sorryhyun/flash-attention-sm120); not installed in the venv.
+[sorryhyun/flash-attention-fp16](https://github.com/sorryhyun/flash-attention-fp16); not installed in the venv.
 
 MOSS has one self-attention per block at q `[1, 4600, 24, 128]`, timed on random bf16, so no error
 figure. Jobs `20261102-131059-3bf34f` (wheel), `20261102-131121-47a965` (build):

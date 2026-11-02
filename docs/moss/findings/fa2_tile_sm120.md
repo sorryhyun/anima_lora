@@ -33,7 +33,7 @@ land on 128×64. MOSS's padded batches go to SDPA and never reach this kernel.
 ## Build
 
 Wheel in the private repo
-[sorryhyun/flash-attention-sm120](https://github.com/sorryhyun/flash-attention-sm120), release
+[sorryhyun/flash-attention-fp16](https://github.com/sorryhyun/flash-attention-fp16), release
 `v2.8.3-sm120-hdim128-cu132-torch2.14`: sm_120 only, head dim 128 only, any other head dim raises.
 Linux x86_64, CPython 3.13, torch 2.14. It is not in `pyproject.toml` or this venv.
 

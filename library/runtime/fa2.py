@@ -1,6 +1,6 @@
 """Puts the sm_120 FlashAttention build ahead of the pinned wheel in repo jobs.
 
-The build (private repo sorryhyun/flash-attention-sm120) holds the 128×32 forward tile
+The build (private repo sorryhyun/flash-attention-fp16) holds the 128×32 forward tile
 and the fp16-accumulate backward, and kernels for sm_120 alone, so it cannot be the
 ``pyproject.toml`` pin. ``make fa2-sm120`` unpacks it under ``models/fa2_sm120/<tag>``;
 without that folder, and on any other card, the pinned wheel loads as before. ComfyUI
@@ -19,7 +19,7 @@ from library.env import resolve_under_home
 logger = logging.getLogger(__name__)
 
 TAG = "v2.8.3-sm120-hdim64-128-fp16acc-cu132-torch2.14"
-REPO = "sorryhyun/flash-attention-sm120"
+REPO = "sorryhyun/flash-attention-fp16"
 _TORCH_MINOR = "2.14"
 _PYTHON = (3, 13)
 _active: bool | None = None

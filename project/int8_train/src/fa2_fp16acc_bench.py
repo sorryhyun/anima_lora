@@ -1,6 +1,6 @@
 """FA2's backward with fp16 accumulation against its stock backward, in one process.
 
-``--fa2_dir`` holds a build with ``patches/fp16acc.patch`` of flash-attention-sm120.
+``--fa2_dir`` holds a build with ``patches/fp16acc.patch`` of flash-attention-fp16.
 ``FLASH_ATTN_FP16ACC=0`` takes the stock bf16 backward. Same capture and error measure
 as ``attn_bwd_fp16acc_bench.py``, here on self- and cross-attention, against FA2. Speed
 on the capture's first self and cross calls and on MOSS's self shape (random input).

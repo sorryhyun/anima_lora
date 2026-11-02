@@ -1,7 +1,8 @@
 # What makes the MOSS training step fast
 
 The default plan runs 1.05 s/step at a 12.88 GB peak on a 16 GB card, against 1.59 s/step at
-12.92 GB for the bf16 plan (`hews_layout`, rank 32, every run on the code as it stands).
+12.92 GB for the bf16 plan (`hews_layout`, rank 32, every run on the code as it stands). The sm_120
+FlashAttention build takes the default plan to 1.02 s/step: [fa2_sm120.md](fa2_sm120.md).
 Numerics stay close to bf16's or better: [int8.md](int8.md#accuracy).
 
 A LoRA freezes the base: nothing computes the base weights' gradient, so the base only has to
@@ -15,6 +16,7 @@ answer two products per linear, and the backward visits the blocks in a known or
 | [`Muon` batched by shape](#muon-batched-by-shape) | 154 → 15 ms per step | `training/muon.py` |
 | [EMA shadow on the card](#ema-shadow-on-the-card) | 0.065 s/step for 0.27 GB | `training/ema.py` |
 | [Block swap over the int8 copies](#block-swap-over-the-int8-copies) | 2.1 GB off the peak, about 0.01 s/step | `library/int8/linear.py` |
+| [FA2 build for sm_120](fa2_sm120.md) | 1071–1082 → 1022 ms per step | `library/runtime/fa2.py` |
 
 Each row is its own before/after on the plan of its day, so the effects do not add up.
 Paths are under `library/moss/`.
@@ -114,7 +116,8 @@ The block swapper moves every `.weight` under a block. `wq`, and `wq_t` in `full
 Kernels take 1054 of the 1059 ms step, so Python and launches no longer matter. Attention is
 387 ms and the int8 GEMMs 316 ms ([split](../../../project/int8_train/reports/moss_step_split_int8.md)).
 A further gain has to come from a kernel. No Triton int8 attention arm has passed the accuracy gate
-([reports](../../../project/int8_train/reports.md)).
+([reports](../../../project/int8_train/reports.md)); fp16 accumulation in FA2's backward has
+([fa2_sm120.md](fa2_sm120.md)).
 
 ## Carrying these elsewhere
 

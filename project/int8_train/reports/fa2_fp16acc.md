@@ -92,4 +92,6 @@ overflow gives a NaN gradient, not a quiet error.
   ms, 1% of a step, and it changes generation's output. Skipped.
 - **The remaining prep.** `abs` + `amax` and `to(half)` are about 0.12 ms on self. Cross-attention
   lands at parity with them; a kernel of their own would gain about 2% of its time.
-- **A/B.** No LoRA was trained to completion on this path.
+- **A/B.** One LoRA pair trained to completion: `caststation_fp16acc` and `caststation_fa2stock`, 240
+  steps, 1.067 against 1.119 s/step, same 13.21 GB peak. Their renders were not scored, and there is no
+  stock-against-stock floor.
