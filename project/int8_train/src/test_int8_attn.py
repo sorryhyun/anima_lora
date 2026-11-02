@@ -77,6 +77,9 @@ BWD_ARMS = [
     (True, "fp16acc", "int8", "int8"),
     (True, "int8", "int8", "int8"),
     (True, "fp16acc", "fp16acc", "fp16"),
+    (False, "fp16acc", "fp16acc", "fp16acc"),
+    (False, "fp16acc", "fp16acc_row", "fp16acc_row"),
+    (False, "fp16acc", "fp16acc_gain", "fp16acc"),
 ]
 
 
