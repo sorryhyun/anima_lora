@@ -6,7 +6,7 @@ on MOSS's self shape, 0.98x on cross-attention, with dQ, dK, dV at 0.74–0.97x 
 from fp32. MOSS's LoRA gradient keeps its distance from fp32 (1.000–1.005x).
 
 The CUDA port of [attn_bwd_fp16acc.md](attn_bwd_fp16acc.md). Patch: `patches/fp16acc.patch` of
-`~/anima/flash-attention-sm120`, on top of `sm120.patch`. Script:
+`~/anima/flash-attention-fp16`, on top of `sm120.patch`. Script:
 [`src/fa2_fp16acc_bench.py`](../src/fa2_fp16acc_bench.py). Raw numbers:
 [`fa2_fp16acc.json`](../assets/fa2_fp16acc.json), `moss_grad_error_fa2_{stock,fp16acc}.json`.
 Wheel from a clean sdist + `sm120`, `fp16acc`: job `20261102-141315-5aa7a6`. Released with `hdim64.patch` as
