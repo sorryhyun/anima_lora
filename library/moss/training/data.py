@@ -92,6 +92,20 @@ def sample_captions(te_path: Path) -> dict[str, str]:
 TEMPLATE_PREFIX, TEMPLATE_SUFFIX = 3, 7  # chat-template rows around the caption
 
 
+def cache_token_split(samples: list[Sample]) -> str:
+    """The ``token_split`` the cache's TE files stamp. A file whose caption has no
+    Hangul stamps nothing, so one stamped file settles it."""
+    from safetensors import safe_open
+
+    for s in samples:
+        if s.te_path is None:
+            continue
+        with safe_open(str(s.te_path), "pt") as f:
+            if mode := (f.metadata() or {}).get("token_split"):
+                return mode
+    return "off"
+
+
 def delta_row_ids(delta_rows: str, n_text: int, trigger_rows: list[int]) -> list[int]:
     """The text rows (0-based in the context) ``delta_rows`` keeps."""
     if delta_rows == "text":

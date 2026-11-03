@@ -24,6 +24,7 @@ import torch
 
 from library.moss.model import MOSSImageTransformer
 from library.moss.requests import variant_dir
+from library.moss.token_split import with_token_split
 from library.runtime.device import clean_memory as empty_cache
 from library.runtime.device import free_vram_gb
 
@@ -178,10 +179,11 @@ def encode_prompts(
     max_length=MAX_SEQUENCE_LENGTH,
     log=print,
     precision="bf16",
+    token_split="off",
 ):
     """Load the TE, encode each distinct text once, free it → ``{text: (S,4096) cpu}``."""
     texts = list(dict.fromkeys(texts))
-    tok = load_tokenizer(model_dir)
+    tok = with_token_split(load_tokenizer(model_dir), token_split)
     longest = max(prompt_ids(tok, t, max_length).input_ids.shape[1] for t in texts)
     tok, te = load_text_encoder(
         model_dir, device, longest, log=log, tok=tok, precision=precision

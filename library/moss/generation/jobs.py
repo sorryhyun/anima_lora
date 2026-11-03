@@ -10,6 +10,7 @@ from pathlib import Path
 
 from library.env import resolve_under_home
 from library.moss.requests import GenerateRequest
+from library.moss.token_split import resolve_token_split
 
 
 def parse_skip(value) -> tuple[int, ...]:
@@ -135,6 +136,8 @@ def fingerprint(req: GenerateRequest, job: dict) -> dict:
     }
     # Stamped only off bf16, so bf16 latents without the field still match.
     te = {} if req.text_encoder == "bf16" else {"text_encoder": req.text_encoder}
+    if (token_split := resolve_token_split(req)) != "off":
+        te["token_split"] = token_split
     return dict(
         {k: v for k, v in job.items() if k != "skip"},
         **te,

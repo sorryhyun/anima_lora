@@ -112,6 +112,7 @@ from library.moss.scan import (
     caption_sha,
     latent_files,
 )
+from library.moss.token_split import effective_split, with_token_split
 
 ENCODER_ID = (
     "Qwen3.5-9B last_hidden_state, chat template add_generation_prompt+enable_thinking"
@@ -129,6 +130,7 @@ def _te_current(
     max_tokens: int,
     plain: str = "",
     encoder: str = ENCODER_ID,
+    token_split: str = "off",
 ) -> bool:
     if not path.exists():
         return False
@@ -141,6 +143,7 @@ def _te_current(
         meta.get("caption_sha256") == caption_sha(caption)
         and meta.get("max_text_tokens") == str(max_tokens)
         and meta.get("encoder", ENCODER_ID) == encoder
+        and meta.get("token_split", "off") == effective_split(token_split, caption)
         and meta.get("plain_caption_sha256", "")
         == (caption_sha(plain) if plain else "")
     )
@@ -158,6 +161,7 @@ def cache_text(
     overwrite,
     caption_format="text",
     precision="bf16",
+    token_split="off",
 ) -> dict:
     from library.moss.loader import (
         empty_cache,
@@ -173,14 +177,19 @@ def cache_text(
         for p in pairs
         if overwrite
         or not _te_current(
-            out_dir / f"{p.stem}{TE_SUFFIX}", p.caption, max_tokens, p.plain, encoder
+            out_dir / f"{p.stem}{TE_SUFFIX}",
+            p.caption,
+            max_tokens,
+            p.plain,
+            encoder,
+            token_split,
         )
     ]
     if not todo:
         print("text: all cached", flush=True)
         return {"encoded": 0}
     t0 = time.time()
-    tok = load_tokenizer(model_dir)
+    tok = with_token_split(load_tokenizer(model_dir), token_split)
     longest = max(
         prompt_ids(tok, text, max_tokens).input_ids.shape[1]
         for p in todo
@@ -213,6 +222,8 @@ def cache_text(
             "encoder": encoder,
             "source": str(p.image),
         }
+        if (split := effective_split(token_split, p.caption)) != "off":
+            meta["token_split"] = split
         plain_note = ""
         if p.plain:
             plain = encode_prompt(tok, te, p.plain, device, max_tokens).to(
@@ -439,6 +450,7 @@ def run_cache(req) -> Path:
             req.overwrite,
             req.caption_format,
             req.text_encoder,
+            req.token_split,
         )
     if not req.skip_latents:
         report["latents"] = cache_latents(

@@ -222,13 +222,14 @@ card: 135 min at 2.71 s/step against 145 min at 4.34 s/step for `fp32s`'s 2,000.
 pairs (99 works) hold 30,180 Hangul syllables, 852 distinct, 138 seen once. The syllables
 the runs keep missing are not rare: `건` 76, `인` 70, `분` 184, `싼` 21 (`씬` 2). After a
 space the Qwen3.5 tokenizer splits `싼` and `씬` into two byte tokens, and it writes
-`인가요` as a single token. `건` → `전` is a single-syllable token drawn as a near glyph.
-Re-splitting only the tokens fixes `분인가요` (0 → 6 of 6) and `싼다`, while 4 epochs at
-`grad_accum` 2 move nothing: [ko_token_split.md](../findings/ko_token_split.md).
+`인가요` and ` 이건` as single tokens. Re-splitting only the tokens fixes `분인가요`, while
+4 epochs at `grad_accum` 2 move nothing: [ko_token_split.md](../findings/ko_token_split.md).
+`token_split = "syllable"` on the cache and on `generate` applies the split; the LoRA stamps
+it and `generate` follows the stamp. On an unsplit LoRA it moves line breaks. Trained on the
+split at 200 pairs, Korean wrong syllables go from 8 to 2, with a new `처음` -> `처즘`.
 
 Next: a larger held-out `ko` set scored by OCR, the errors split by token kind
-(byte-split / multi-syllable / single-syllable), with the token-id split tested at
-inference first; drop misread lines from the captions
+(byte-split / multi-syllable / single-syllable); the split at full size; drop misread lines from the captions
 (Hangul-for-Hangul misreads such as `벌거` / `씻겨` pass the JA-script check).
 
 **ComfyUI.** Toolkit 0.7.0 or later: the sanitize wiring, with the layout-JSON prompt as

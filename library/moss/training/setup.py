@@ -14,6 +14,7 @@ from library.moss.training.data import (
     TEMPLATE_PREFIX,
     TEMPLATE_SUFFIX,
     Sample,
+    cache_token_split,
     delta_row_ids,
     load_neg,
     sample_captions,
@@ -144,6 +145,8 @@ def delta_rows(
         return rows_of
     if req.delta_rows == "trigger" and not req.trigger:
         raise SystemExit("delta_rows=trigger needs --trigger")
+    if req.delta_rows == "trigger" and cache_token_split(samples) != "off":
+        raise SystemExit("delta_rows=trigger finds rows on the default tokenization")
     if req.mod_rank:
         raise SystemExit("delta_rows applies to token rows; drop mod_rank")
     tok = None
@@ -333,6 +336,7 @@ def run_metadata(
     has_repa: bool,
     has_regions: bool,
     region_end: float,
+    token_split: str = "off",
 ) -> dict:
     """The run's LoRA metadata."""
     meta = {
@@ -353,6 +357,8 @@ def run_metadata(
     meta["optimizer"] = optimizer
     if req.stream != "bf16":
         meta["stream"] = req.stream
+    if token_split != "off":
+        meta["token_split"] = token_split
     if req.delta_rows != "all":
         meta["delta_rows"] = req.delta_rows
     if req.trigger:

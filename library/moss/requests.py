@@ -43,6 +43,8 @@ DEFAULT_SHIFT = 5.0
 # Qwen3.5-9B weights for the text pass (``library/moss/loader.py::TE_PRECISIONS``).
 DEFAULT_TEXT_ENCODER = "int8"
 TEXT_ENCODERS = ("int8", "fp8", "bf16")
+# library/moss/token_split.py
+TOKEN_SPLITS = ("off", "syllable")
 _TE_HELP = (
     "int8 (default; INT8 W8A8 decoder linears, ~9.2 GB, fetched on first use), fp8 "
     "(float8_e4m3fn weight-only, ~9.2 GB, fetched on first use) or bf16 (the reference "
@@ -131,6 +133,13 @@ class CacheRequest(Request):
         DEFAULT_TEXT_ENCODER,
         f"Qwen3.5-9B weights for the text pass: {_TE_HELP}. Switching re-encodes the TE cache",
         choices=TEXT_ENCODERS,
+        advanced=True,
+    )
+    token_split: str = _f(
+        "off",
+        "syllable: every Hangul syllable its own token form (library/moss/token_split.py). "
+        "Switching re-encodes the captions holding Hangul; the LoRA stamps it",
+        choices=TOKEN_SPLITS,
         advanced=True,
     )
     model_dir: str = _f("", _MODEL_DIR_HELP, advanced=True)
@@ -400,6 +409,13 @@ class GenerateRequest(Request):
         DEFAULT_TEXT_ENCODER,
         f"Qwen3.5-9B weights for the prompts: {_TE_HELP}",
         choices=TEXT_ENCODERS,
+        advanced=True,
+    )
+    token_split: str = _f(
+        "auto",
+        "auto: what the LoRA stamps, else off. off / syllable force it "
+        "(library/moss/token_split.py); ref_vision needs off",
+        choices=("auto", *TOKEN_SPLITS),
         advanced=True,
     )
     model_dir: str = _f("", _MODEL_DIR_HELP, advanced=True)

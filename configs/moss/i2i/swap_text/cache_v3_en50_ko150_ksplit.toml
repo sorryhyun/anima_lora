@@ -1,0 +1,12 @@
+# en50_ko150 with Hangul split into syllable tokens. The folder holds symlinks into
+# i2i_swap_text_v3_en200_ko800 except the ko TE files, which this job writes: a TE file
+# reached through a symlink would be overwritten in the source cache.
+#
+#   make daemon-run ARGS="--stall-timeout 600 scripts/moss/cache.py --config configs/moss/i2i/swap_text/cache_v3_en50_ko150_ksplit.toml"
+
+pairs = "post_image_dataset/i2i/swap_text_v3/staging/pairs_en50_ko150.jsonl"
+out = "post_image_dataset/moss/i2i_swap_text_v3_en50_ko150_ksplit"
+resolution = 1024
+ref_scale = 1
+caption_format = "layout_json"
+token_split = "syllable"

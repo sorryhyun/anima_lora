@@ -334,6 +334,7 @@ def train(
         has_repa=repa is not None,
         has_regions=bool(regions),
         region_end=region_end,
+        token_split=setup.cache_token_split(samples),
     )
     if int8_base is not None:
         meta.update(int8_base.metadata())

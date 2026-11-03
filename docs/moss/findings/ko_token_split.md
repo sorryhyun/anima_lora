@@ -18,7 +18,7 @@ Tokenized line by line over the 1,709 `ko` pairs of `pairs_en400_ko1709.jsonl` (
 |---|---|---|
 | one syllable | about 59 % | `인`, `가`, `싸` |
 | two or more syllables | about 41 % | `니까`, `가요`, `인가요` |
-| split into byte fragments | about 1 % | ` 싼` -> ` \xec\x8b` + `\xbc` |
+| split into byte fragments | about 2 % | ` 싼` -> ` \xec\x8b` + `\xbc` |
 
 The multi-syllable tokens are 2,026 distinct, and 1,683 of them appear 11 times or fewer. A
 split depends on context: `싼` and `씬` are single tokens at the start of a line and after `…`,
@@ -31,7 +31,9 @@ The TE is frozen and gives each token its own vector, so the DiT has no way to r
 | `인가요` | 3 |
 | `가요` | 53 |
 | `나요` | 43 |
-| byte-split ` 싼` | 0 |
+| byte-split ` 싼` | 39 (18 of them in ` 싼다`) |
+| ` 이건` | 16 |
+| ` 분` | 2 |
 
 ## Probe
 
@@ -66,14 +68,61 @@ The ZWSP draws as a space (`분인 가요`), so it is a probe, not a fix. Droppi
 than the gap between the two LoRAs. Region loss over the last quarter is 0.134 against 0.138 and
 flat from epoch 3. The double exposure leaves a rare token rare: `인가요` is still 3 pairs of 2,109.
 
+## Trained on the split
+
+`train_v3_en50_ko150_ksplit.toml` against `train_v3_en50_ko150.toml`: same 200 pairs, 600 steps, seed
+and recipe, 26.5 min at 2.6 s/step, 13.04 GB peak. EMA final, `589883_0004_ko` on seeds 0, 1, 2 and the
+other three pages on seed 0, as the control has them. Sheets `ksplit_e3_compare/`.
+
+| | control | trained on the split |
+|---|---|---|
+| Korean wrong syllables, `벌거` left out | 8 | 2 |
+| `분인가요` | 0 of 3: `분인나요` ×2, `분이마요` | 3 of 3 |
+| `이건` | 1 of 3: `이런`, `이전` | 3 of 3 |
+| `싼다` (seed 0) | `씬다` | right |
+| `가득해` (seed 0) | `가늑해` | right |
+| `처음` | 3 of 3 | 1 of 3: `처즘` ×2 |
+| English | exact | exact |
+
+The split adds an error the control does not make: `음` -> `즘`. ` 처음` is a token seen 4 times in these
+150 pages, and `음` as a syllable 28, so the more frequent form is the one that fails here. `뭔` reads
+ambiguously on both arms and is not counted. `저기… / 이건 뭔가요?` breaks the same on both arms, so at
+this size the rebreak does not come from the split. `Uwah…` keeps its balloon outline on the split and
+loses it on the control, one seed.
+
 ## Not tested
 
 - **Two lines, nine renders.** The other Korean lines were not re-split.
-- **Splitting token ids without a character** in the tokenizer, at cache and inference. That is
-  the candidate fix, and it would avoid the ZWSP's space.
-- **Whether every syllable should be its own token.** `가요` above is still a two-syllable token,
-  so splitting only rare tokens may be enough. Full syllable splitting may also cost the TE context.
-- **`e2` on `싸…싼다`.** It already gets `싼다` right as captioned, from a byte split it never saw
-  in training, so a rare token does not always fail.
-- `건` -> `전` ([i2i.md](../methods/i2i.md)) is a single-syllable token drawn as a near glyph, which
-  this finding does not explain.
+- **Training on the split at full size.** Only the 200-pair arm below is measured.
+- **Whether every syllable should be its own token.** Splitting only rare tokens may be enough.
+- **`e2` on `싸…싼다`.** It already gets `싼다` right as captioned: the byte split appears 39 times in
+  training, more often than the one-token `싼` (23), so `싼다` is not a rare-token case.
+- `건` -> `전` ([i2i.md](../methods/i2i.md)) sits in the two-syllable token ` 이건` (16 times), not a
+  single-syllable token.
+- **Rarity alone.** English draws rare tokens exactly on the same pages: ` MOVE` 7 times in training,
+  `URA` 2, ` MMM` 0. The DiT can read a rare token, so the claim above that it has no way to is too
+  strong; what differs for Hangul is not measured.
+
+## Token ids split at inference
+
+`token_split = "syllable"` (`library/moss/token_split.py`): every Hangul syllable tokenized alone, a
+space before one as its own token. 843 of the pool's 1,079 distinct syllables have their own token,
+98.8 % of occurrences; the rest stay byte fragments. The two eval prompts gain 9 % and 4 % tokens.
+
+`..._e2`, not trained on the split, seeds 0, 1, 2. Renders `tokprobe_{split,placebo}_e2_s*`.
+
+| arm | `분인가요` | wrong syllables, 7 lines, `벌거` left out |
+|---|---|---|
+| as captioned | 0 of 3 | 5 |
+| placebo: ZWSP after `인가요`, token kept | 0 of 3 | |
+| ids split | 3 of 3 | 0 |
+
+All five wrong syllables are in that one word. The split also moves layout: `저기… 이건 뭔가요?` breaks
+as `저기… / 이건 뭔가요?` in smaller type on 3 of 3 seeds, against the target's `저기… 이건 / 뭔가요?`, and
+`어머?` rebreaks on seed 0. The en50_ko150 control breaks that line the same way (see "Trained on the split").
+
+Colorize, `moss_colorize_3k_textref1_iso_muon_ema`, the two Korean eval targets as input: `comic`
+draws all 7 lines from the reference. With the right text as layout items, ` 이건` becomes `어건` on 1
+of 3 seeds, and the split gives 3 of 3 with no layout change. `벌거` in the prompt does not override
+the reference's `씻겨`, and it stays black where `comic` turns it magenta. Renders
+`output/moss_i2i_eval/colorize/results/ko_tokprobe/`.
