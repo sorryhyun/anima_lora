@@ -1,26 +1,31 @@
 # MOSS-Image findings
 
-Measurements of MOSS-Image (`library/moss/`) that are not a shipped feature. Each doc
+Measurements of MOSS-Image (`library/moss/`) that are not a shipped feature's own doc. Each doc
 separates what was measured (with its run) from untested hypotheses. Run logs, probe code
 and raw numbers live in the matching `bench/moss_*/` or `_archive/bench/moss_*/` folder.
+
+## Prompt and text encoder
 
 | Doc | What it covers |
 |---|---|
 | [attention_sink_chat_template.md](attention_sink_chat_template.md) | The 10 chat-template tokens are MOSS's attention sink: an OFF-gate plus a per-head bias written into every image token. Trained LoRAs barely move it. |
-| [assistant_tail.md](assistant_tail.md) | Appending an assistant-turn start after `<think>\n` (`\n</think>\n\nOK`, best `Sure,`) sharpens hands and backgrounds without a LoRA (user's review, 10 pairs); a tail on the cond alone gives the same render, a content-free tail of four `\n` rows gives a different picture at shipped quality. Qwen3.5-9B Base as the TE renders no better. A caststation LoRA trained and rendered with `prompt_tail = sure` beats its control by the user's review, and keeps most of the gain rendered without the tail. |
-| [fa2_tile_sm120.md](fa2_tile_sm120.md) | FA2 runs its A100 / H100 forward tile on sm_120. 128×32 is free of error and worth 0.7% of a step; a private wheel carries it. |
-| [vision_tower_reference.md](vision_tower_reference.md) | An image put through Qwen3.5's own vision tower conditions MOSS zero-shot: content and coarse layout come back, pixel alignment does not, and the DiT reads the image-token rows. |
-| [sigma_staircase.md](sigma_staircase.md) | One forward's `x0_pred` resolves at Anima's σ knee (recognisable 0.74), but layout is set by σ 0.87–0.80 and shift 5 puts that at steps 22–28 of 50. Base and SFT resolve alike. |
-| [lr_clip_sweep.md](lr_clip_sweep.md) | LR × grad clip × grad accum on one character set: the shipped 5e-5 / clip 1 beats clip 7, no-clip 2e-5 and no-clip at `grad_accum` 2 (1e-4 distorts; 5e-5 ties clip 7). The loss curve can't tell them apart. |
-| [muon_lora.md](muon_lora.md) | Muon at AdamW's lr 5e-5 moves the LoRA by the same norm over ~3× the rank directions; with it `dc_isolate` becomes a bias channel (output DC shift 2.57 vs 1.24 without), so the default is Muon without `dc_isolate`. |
-| [muon_channel_init.md](muon_channel_init.md) | Under Muon, channel scaling α 0.5 leaves the loud channel at 6.9× the mean channel's leverage (Muon's `down` step keeps per-channel proportions); 0.75 flattens it to 1.6×. The `weight_svd` basis feeds 4–6× more input DC; kaiming cuts the output DC shift 1.24 → 0.43. New default: α 0.75, kaiming. |
-| [dcfree_svd_init.md](dcfree_svd_init.md) | A `weight_svd` init with x̄ projected out ends below kaiming's output DC shift (0.32 vs 0.43); also dropping ch 42, the one loud input channel (`svd_drop_loud 1`), zeroes its share and kept the no-LoRA composition best, with worse hands. Default stays kaiming. |
-| [muon_no_channel_scaling.md](muon_no_channel_scaling.md) | Muon + kaiming with channel scaling off is the α 0.75 run to three decimals (loss, ‖ΔW‖, stable rank; ch 42 share 7.3 vs 6.8 %, DC shift 0.49 vs 0.43) and keeps the no-LoRA composition more often. New default: α 0; no calibration file read. |
-| [ema_lr1e4.md](ema_lr1e4.md) | An adapter EMA at 0.97 (one epoch on 30 images) keeps lr 1e-4 on the prompt where the same run's raw weights drift (solid backgrounds, added outfit items); at 5e-5 it changes details, not strength. New default: `ema_decay` 0.97 (t2i), since `ema_window` 0.1 (t2i and i2i). |
-| [ref_kv_adapters.md](ref_kv_adapters.md) | Plan A of the reference adapters on swap_text (200 pairs, 600 steps): the reference stream on Base with k / v export adapters takes 29 % off the step, and the copy gets worse on all four pages. Letters tie. At the default's training time (848 steps), half the copy gap remains. |
-| [ref_bank_adapters.md](ref_bank_adapters.md) | Plan B of the reference adapters on swap_text (200 pairs, 600 steps): a full bank of the reference's own ties on copy, fixes one Korean line, drops untranslated glyphs on two seeds of three on one page, and costs 16–25 % on the step and about 1.2 GB on the card. |
-| [ko_token_split.md](ko_token_split.md) | swap_text's Korean wrong syllables follow Qwen tokenization: the same letters with only the token split changed go from 0 to 6 of 6 (`분인가요`) and 1 to 3 of 3 (`싼다`), while 4 epochs at `grad_accum` 2 move nothing. Two lines tested. |
-| [mod_rank_i2i.md](mod_rank_i2i.md) | `mod_rank` 16 on an i2i task (uncensor, 660 updates): the copied tokens' loss drops 5–17 %, preservation outside the edit (text most of all) is visibly better, the edit itself ties. The modulation's FFN-shift chunk moves 12.9 %. On sanitize (quarter data, 276 steps) the FM loss drops up to 13 %, mostly on the copied region, the edit ties, and the renders come out warmer (Δb +0.29 → +0.87 on 15 of 15). |
-| [bbox_grounding.md](bbox_grounding.md) | A layout item's bbox cuts the in-box loss 14 % at σ 0.9 (a position word: a quarter of that). Masking the coordinate tokens in the two-block text refiner alone removes the effect: the refiner builds a σ-independent location code that the DiT reads over blocks ~14–35. LoRAs never touch the refiner. The sanitize LoRA (no boxes) does its high-σ edit in blocks 26–35, where the box is read. |
-| [spectrum_schedule.md](spectrum_schedule.md) | Spectrum's full-step schedule re-checked against the staircase: the shipped growing window beats log-SNR, step-even and layout-dense schedules at NFE 19 and an NFE-16 one. An open-loop skip-cost score ranks them backwards. |
-| [bf16_residual_stream.md](bf16_residual_stream.md) | An fp32 stream around the same bf16 GEMMs cuts the prediction error 2.4–3.5x and moves renders 4–12/255 on average for +1.5% inference time. Neither arm wins consistently on the usual A/B. (The user's review of the renders holds that the fp32 stream won consistently on text and fingers.) Training with it: loss lower by the forward error only, hands lean better in one unblinded run, swap_text ties on seed 0. |
+| [assistant_tail.md](assistant_tail.md) | An assistant-turn tail after `<think>\n` (best `\n</think>\n\nSure,`) sharpens hands and backgrounds without a LoRA; the image reads `</think>`, a caption-dependent key. A LoRA trained and rendered on the tail beats its control and keeps most of the gain without it. Basis of the `prompt_tail = sure` default. |
+| [bbox_grounding.md](bbox_grounding.md) | A layout item's bbox cuts the in-box loss 14 % at σ 0.9: the two-block text refiner builds a σ-independent location code that the DiT reads over blocks ~14–35. The sanitize LoRA does its high-σ edit in blocks 26–35. |
+| [ko_token_split.md](ko_token_split.md) | swap_text's Korean wrong syllables follow Qwen tokenization: the same letters split differently come out right, more epochs move nothing. Basis of `token_split = syllable`. |
+| [vision_tower_reference.md](vision_tower_reference.md) | An image put through Qwen3.5's own vision tower conditions MOSS zero-shot: content and coarse layout come back, pixel alignment does not. |
+
+## Sampling and numerics
+
+| Doc | What it covers |
+|---|---|
+| [sigma_staircase.md](sigma_staircase.md) | One forward's `x0_pred` resolves at Anima's σ knee, but layout is set by σ 0.87–0.80, steps 22–28 of 50. Spectrum's shipped growing window beats log-SNR, step-even and NFE-16 schedules against it; an open-loop skip-cost score ranks them backwards. |
+| [bf16_residual_stream.md](bf16_residual_stream.md) | An fp32 stream around the same bf16 GEMMs cuts the prediction error 2.4–3.5x for +1.5 % time; renders move 4–12/255 and read better on text and fingers. Training with it, and swap_text. |
+| [fa2_tile_sm120.md](fa2_tile_sm120.md) | FA2 runs its A100 / H100 forward tile on sm_120. 128×32 is free of error and worth 0.7 % of a step. |
+
+## Training recipe
+
+| Doc | What it covers |
+|---|---|
+| [t2i_lora_recipe.md](t2i_lora_recipe.md) | How the t2i defaults were set on caststation: 5e-5 / clip 1 over looser clips; Muon spreads the same step over ~3× the rank directions; `weight_svd` feeds the loud channel ch 42 and the input DC, kaiming does not, and with kaiming channel scaling does nothing; an adapter EMA keeps lr 1e-4 on the prompt. |
+| [mod_rank_i2i.md](mod_rank_i2i.md) | `mod_rank` 16 on i2i: the copied tokens' loss drops, preservation outside the edit is visibly better, the edit ties; on sanitize it renders warmer with the tone term. The reference-only part of the modulation delta is shared across i2i tasks. |
+| [reference_adapters.md](reference_adapters.md) | Separate adapters for the reference rows on swap_text: k / v exports alone are 29 % faster and lose the copy; a full bank of its own ties on copy, costs 1.2 GB and drops untranslated glyphs. The shared bank stays. |

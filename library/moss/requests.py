@@ -494,7 +494,7 @@ class TrainRequest(Request):
         "top-r right singular vectors / sqrt 3, Anima's SVD-Down). Kaiming is the "
         "default: the SVD basis feeds 4-6x more input DC into the adapter, and under "
         "muon the output DC shift is 0.43 with kaiming vs 1.24 "
-        "(docs/moss/findings/muon_channel_init.md). weight_svd_nodc: the SVD basis "
+        "(docs/moss/findings/t2i_lora_recipe.md). weight_svd_nodc: the SVD basis "
         "of W with the calibrated input DC direction (channel_mean) projected out, "
         "so down · x̄ = 0 at init (_archive/proposals/lora_dcfree_svd_init.md)",
         choices=("kaiming", "weight_svd", "weight_svd_nodc"),
@@ -808,7 +808,7 @@ class TrainRequest(Request):
         "updates: decay 1 - 1/(ema_window x updates), so 0.1 is 0.958 at 240 "
         "updates and 0.983 at 600. Starts at the end of warmup (fp32 shadow, ~0.3 GB at r32; "
         "ema_card places it). Saves write the EMA; the final raw weights go to "
-        "<output dir>/<name>/<name>_raw. 0 = off (docs/moss/findings/ema_lr1e4.md)",
+        "<output dir>/<name>/<name>_raw. 0 = off (docs/moss/findings/t2i_lora_recipe.md)",
         advanced=True,
     )
     ema_extra: str = _f(

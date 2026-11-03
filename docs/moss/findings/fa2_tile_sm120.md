@@ -32,16 +32,10 @@ land on 128×64. MOSS's padded batches go to SDPA and never reach this kernel.
 
 ## Build
 
-Wheel from
-[sorryhyun/flash-attention-fp16](https://github.com/sorryhyun/flash-attention-fp16), tag
-`v2.8.3-sm120-hdim128-cu132-torch2.14` (release since deleted; the current wheel is in
-[fa2_sm120.md](../optimization/fa2_sm120.md)): sm_120 only, head dim 128 only, any other head dim raises.
-Linux x86_64, CPython 3.13, torch 2.14. It is not in `pyproject.toml` or this venv.
-
-ComfyUI shares the venv, and its `comfy/ldm/modules/attention.py` also has an FA2 path, which raises
-on the wheel if a model reaches it at another head dim. `attention_dispatch.py` and
-`library/moss/model.py` turn an ImportError into SDPA silently, so a torch bump past the wheel's
-minor slows both lines without an error.
+The tile ships in the patched sm_120 build together with the fp16-accumulate backward:
+[fa2_sm120.md](../optimization/fa2_sm120.md) has the install, head-dim limits and the ComfyUI caveat.
+`attention_dispatch.py` and `library/moss/model.py` turn an ImportError into SDPA silently, so a
+torch bump past the wheel's minor slows both lines without an error.
 
 ## Untested
 

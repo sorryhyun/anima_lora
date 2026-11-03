@@ -65,12 +65,12 @@ are not separated.
 ## Under Muon
 
 Muon steps the input axis like SGD, so α 0.5 left the loud channel's update at 6.9× the mean
-channel's output leverage (1.6× at α 0.75): `docs/moss/findings/muon_channel_init.md`. That
+channel's output leverage (1.6× at α 0.75): `docs/moss/findings/t2i_lora_recipe.md`. That
 leverage was `weight_svd`'s: with a kaiming init, α 0 and α 0.75 give the same loss to three
 decimals, the same ‖ΔW‖ and stable rank, and ch 42 at 7.3 % vs 6.8 % of the FFN input share, so
 the recipe runs with no scaling and reads no calibration file:
-`docs/moss/findings/muon_no_channel_scaling.md`. `dc_isolate` under Muon is a bias channel (token-mean output
-shift 2.57 with it, 1.24 without): `docs/moss/findings/muon_lora.md`.
+`docs/moss/findings/t2i_lora_recipe.md`. `dc_isolate` under Muon is a bias channel (token-mean output
+shift 2.57 with it, 1.24 without): `docs/moss/findings/t2i_lora_recipe.md`.
 
 ## Default history
 

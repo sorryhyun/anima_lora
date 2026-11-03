@@ -58,8 +58,8 @@ stream, out of 255:
 - The stretched near-white background of Base p0 seed 2 (LoRA ×1.0) shows faint grey
   blotches in bf16 that the fp32 stream does not have. Corner mean is 254.68 against
   254.98.
-- Across the 24 cells, neither arm wins consistently. Both are clean images.
-- Note (user review of the renders, 2026-11-03): the user holds that the fp32 stream won consistently on text and fingers. The per-cell numbers above are unchanged.
+- Read as whole images, neither arm wins across the 24 cells; both are clean. Read on text and
+  fingers, the user's review (2026-11-03) has the fp32 stream winning consistently.
 
 Grids: `output/tests/ab_ama_mitsuki_muon_ema_50st{,_fp32s}/`.
 
@@ -73,11 +73,10 @@ about 1.2 GB at 4.5k tokens (not run).
 - bf16 rounding in the stream is not small next to the model's own output. It moves a
   render by 4–12/255 on average and sometimes changes the composition. A bf16 sample is
   one draw of that rounding noise. On Anima, an int8 base moved samples 4/255.
-- Closer to fp32 is not shown to be better. If pretraining ran a bf16 stream, the
-  network learned with that rounding. The renders show detail changes, not a quality
-  shift, apart from the one background case.
-- At +1.5% inference time it is cheap to keep as an option. Making it the default
-  needs a blind preference pass over more prompts.
+- If pretraining ran a bf16 stream, the network learned with that rounding, so closer to
+  fp32 need not read better as a whole image; on text and fingers it does.
+- At +1.5% inference time it became the default in training and generation
+  ([`methods/fp32_stream.md`](../methods/fp32_stream.md)); no blind pass was run.
 
 ## Training with an fp32 stream
 

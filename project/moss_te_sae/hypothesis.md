@@ -28,7 +28,7 @@ difference alone cannot be pinned on the framing.
 - **A trained LoRA does not use one.** `caststation_ema097_lr1e4` keeps cos 0.74 / 0.83
   (σ 0.3 / 0.7) with an empty prompt; artist and character tokens each carry 2.2 % of
   its gradient × input, the top tokens are commas and JSON delimiters ([text_read_path](reports/text_read_path.md) §4). The trigger is written as text on a name plate in all three
-  optimizer arms (`docs/moss/findings/muon_lora.md`).
+  optimizer arms (`docs/moss/findings/t2i_lora_recipe.md`).
 - **The style is not routed through the template rows.** Keeping a LoRA's delta off the
   10 template rows leaves the style in place and changes content details on 4 of 8 seeds
   (`docs/moss/findings/attention_sink_chat_template.md`, "Trained LoRAs barely move it").
@@ -36,7 +36,7 @@ difference alone cannot be pinned on the framing.
 - **The massive channels carry no per-token content.** ch 42 at the `ffn_up_gate` input:
   |x̄| / mean|x| = 1.00 on blocks 12–41, max/mean 1.3–2 late, adaLN shift −4.3. Cutting it
   (`svd_drop_loud 1`) moved DC and composition, not style uptake
-  (`docs/moss/findings/dcfree_svd_init.md`).
+  (`docs/moss/findings/t2i_lora_recipe.md`).
 - **The template moves caption rows off the Base distribution.** The Base-trained SAE
   reconstructs raw text better than the same text inside the template: FVU 0.21 vs 0.25
   (layer 31), 0.24 vs 0.41 (layer 15) on the NL prompts ([sae_fit](reports/sae_fit.md)).

@@ -65,9 +65,8 @@ became the default re-encodes on the next `cache` run unless that run passes
   alpha = rank), `--optimizer muon`, `--lr 5e-5`, `--down_init kaiming`,
   no channel scaling, `--ema_window 0.1` (an EMA over 10 % of the updates, t2i and i2i;
   the saved file is the EMA, the raw weights land in `<name>/<name>_raw`, `--ema_extra` adds
-  more spans, `--ema_card` keeps them on the card; `docs/moss/findings/ema_lr1e4.md`). Why
-  kaiming and no channel scaling under Muon: `docs/moss/findings/muon_channel_init.md`,
-  `muon_no_channel_scaling.md`. Removed options and the lr / alpha history:
+  more spans, `--ema_card` keeps them on the card). Why
+  these defaults: `docs/moss/findings/t2i_lora_recipe.md`. Removed options and the lr / alpha history:
   `docs/moss/channel_scaling.md`.
 - **Time**: 30 images × 20 epochs (600 steps) took about 18–21 min on a 5070 Ti at the
   bf16 plan's then 1.9 s/step (1.66 now; the int8 plan runs 1.05). The
@@ -95,9 +94,8 @@ became the default re-encodes on the next `cache` run unless that run passes
 
 - **`--down_init`**: `kaiming` (default), `weight_svd` or `weight_svd_nodc`. `weight_svd`
   starts `down` on the base weight's top-r right singular vectors, a basis that under Muon
-  feeds 4–6× more input DC into the adapter: `docs/moss/findings/muon_channel_init.md`.
-  `weight_svd_nodc` projects the calibrated input DC direction out of that basis:
-  `docs/moss/findings/dcfree_svd_init.md`.
+  feeds 4–6× more input DC into the adapter; `weight_svd_nodc` projects the calibrated
+  input DC direction out of that basis (`docs/moss/findings/t2i_lora_recipe.md` §3).
   `--svd_slice k` (needs `--down_init weight_svd`) seeds from singular vectors
   `[k·r, (k+1)·r)` and `--svd_slice_count N` interleaves `{k, k+N, …}`, as in Anima's
   `svd_slice` (`docs/anima/methods/svd-down-lora.md`), so LoRAs on different slices start in

@@ -17,19 +17,19 @@ algo = "lora"                  # lora | lokr | loha
 rank = 32
 # alpha = 128.0                # unset: 128 for lora, = rank for lokr / loha
 # factor = -1                  # lokr only
-down_init = "kaiming"          # lora only: kaiming | weight_svd | weight_svd_nodc (docs/moss/findings/muon_channel_init.md)
+down_init = "kaiming"          # lora only: kaiming | weight_svd | weight_svd_nodc (docs/moss/findings/t2i_lora_recipe.md)
 # mod_rank = 16                # opt-in: also adapt shared_block_modulation (timestep shift/scale/gate, shared by all 42 blocks); lora only
 # mod_alpha = 90.5             # unset: alpha · sqrt(mod_rank / rank)
 # svd_slice = 0                # weight_svd only: window [k·r, (k+1)·r) of W0's basis
 # svd_slice_count = 0          # > 0: interleaved slices {k, k+N, …}
-optimizer = "muon"             # muon | adamw (lokr / loha always adamw); docs/moss/findings/muon_lora.md
+optimizer = "muon"             # muon | adamw (lokr / loha always adamw); docs/moss/findings/t2i_lora_recipe.md
 lr = 5e-5
 warmup_ratio = 0.05
 grad_accum = 1                 # samples per optimizer update; warmup counts updates
 caption_dropout = 0.0
 plain_caption_rate = 0.2       # layout_json cache: share of steps on the plain Anima caption
 caption_variant_rate = 0.0     # cache with embeds_v{k} (colorize probe): x (1 - plain_caption_rate) of steps
-ema_window = 0.1               # adapter EMA over 10 % of the updates (0.958 at 240); saves write it, raw goes to <name>/<name>_raw; docs/moss/findings/ema_lr1e4.md
+ema_window = 0.1               # adapter EMA over 10 % of the updates (0.958 at 240); saves write it, raw goes to <name>/<name>_raw; docs/moss/findings/t2i_lora_recipe.md
 lora_dtype = "bf16"            # bf16 | fp16 | fp32
 
 # Memory / speed (16 GB card): int8 base, every block resident. docs/moss/optimization/int8.md.

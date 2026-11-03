@@ -41,7 +41,7 @@ Massive activations (MAs) are selected per sample, layer and stream: the top-k c
 - **Effect on LoRAs.** At the FFN input, ch 42 is 11–26× the median channel on blocks
   11–41, with a peak-to-mean of 2.7, so a LoRA sees it as a bias line
   (`docs/moss/channel_scaling.md`). The `weight_svd` basis leans on it
-  (`findings/muon_channel_init.md`, `findings/dcfree_svd_init.md`).
+  (`findings/t2i_lora_recipe.md` §3).
 - **int8.** After the 256-column Hadamard, ch 42 is ~1.6× its group, so it does not
   hurt the int8 base (`project/int8_train/reports/moss_scoping.md`).
 
@@ -71,7 +71,7 @@ prompt-dependent part, and the second part is what the paper's results depend on
    column also reads a subject mask, not only a constant. Splitting the column's
    contribution into a DC part (`ΔW x̄`, already measured) and a part that varies per
    token would show which one the LoRA uses. `svd_drop_loud 1` (ch 42 dropped from the
-   init) gave worse hands (`findings/dcfree_svd_init.md`); this would be one reading of
+   init) gave worse hands (`findings/t2i_lora_recipe.md`); this would be one reading of
    that.
 3. **Transport as an i2i baseline.** MOSS is single-stream, so the paper's "encoder
    stream" maps to the text rows of the same sequence. Image-conditioned transport would

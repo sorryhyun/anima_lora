@@ -27,7 +27,7 @@ Qwen-Image-2.1 has no docs folder; its reference is `library/qwen21/CLAUDE.md`.
 | [moss/optimization/fa2_sm120.md](moss/optimization/fa2_sm120.md) | FlashAttention build for sm_120 — 128×32 forward tile, fp16-accumulate backward, selection, numbers (both lines) |
 | [moss/optimization/training_step.md](moss/optimization/training_step.md) | What makes the training step fast — int8 ConvRot both ways, `wq_t` streaming, FA2 in the budget's knapsack, batched Muon, EMA on the card |
 | [moss/methods/fp32_stream.md](moss/methods/fp32_stream.md) | fp32 residual stream — fp32 around the block GEMMs: why, cost, what it changes |
-| [moss/findings/README.md](moss/findings/README.md) | Findings — the chat template as attention sink, the vision tower as zero-shot reference |
+| [moss/findings/README.md](moss/findings/README.md) | Findings — prompt and TE (template sink, assistant tail, bbox grounding, Korean token split), sampling and numerics, how the LoRA recipe was set |
 | [moss/proposal/](moss/proposal/) | Active MOSS design docs |
 
 ## Shared

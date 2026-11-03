@@ -76,7 +76,7 @@ early / mid / late step thirds:
   four sink rows 0.02–0.03 in every arm; `</think>` 0.29 / 0.23 (`ok`), 0.23 / 0.19
   (`sure`); the answer rows 0.27–0.49. `pad4`'s one read row (the first extra `\n`) is
   prompt-constant, 0.02 / 0.02. Every shipped row the image reads heavily is constant
-  (`text_read_path.md` §1), so `ok` / `sure` add a caption-dependent key at sink-adjacent
+  (`project/moss_te_sae/reports/text_read_path.md` §1), so `ok` / `sure` add a caption-dependent key at sink-adjacent
   mass, and `pad4` adds another constant one.
 - **Caption queries read the tail too**: 2–3 % of their mass (`</think>` 0.012–0.017;
   `Sure` 0.0015 and `,` 0.003, against `OK` 0.002).
@@ -140,7 +140,10 @@ Each tail cache row is the shipped row bit-for-bit in 57 of 60 sequences. In 3
 0.43 relative, which fits the GDN layers' 64-token chunks changing numerics with the total
 length (not checked further).
 
-## Next
+`prompt_tail = sure` became the cache and t2i generate default on 2026-11-03 on the strength of this run; the i2i
+configs pin `off`.
+
+## Not tested
 
 - A key cut on `</think>` and on the answer rows (`template_causal.py`'s cut arms).
-- More training seeds and a blind pick before `prompt_tail = sure` becomes the cache default.
+- More training seeds and a blind pick.
