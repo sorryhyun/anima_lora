@@ -79,10 +79,13 @@ from library.moss.training.data import (  # noqa: F401  (this module is their im
     empty_prompt_embeds,
     load_neg,
     bank_masks,
+    register_rows,
+    register_slot,
     row_mask,
     sample_captions,
     sample_sigma,
     samples_from_cache,
+    splice_registers,
 )
 from library.moss.training.ema import ema_decay, ema_step, ema_step_card  # noqa: F401
 from library.moss.training.losses import (  # noqa: F401
@@ -177,6 +180,9 @@ def train(
     kinds = {"plain": 0, "variant": 0, "empty": 0, "preserve": 0}
 
     rows_of = setup.delta_rows(req, samples, get)
+    slots = setup.register_slots(req, samples)
+    n_reg = req.trigger_registers
+    joint += n_reg
     negs = setup.load_negs(req, samples)
 
     transformer = load_transformer(req.model_dir, req.model)
@@ -207,7 +213,11 @@ def train(
         rank_pattern=setup.rank_pattern(req, alpha),
         ref_rank=req.ref_rank if req.ref_adapters != "off" else 0,
         ref_adapters=req.ref_adapters,
+        trigger_registers=n_reg,
     )
+    if n_reg:
+        with torch.no_grad():
+            network.registers.copy_(setup.register_init(samples, get).expand(n_reg, -1))
     int8_base = None
     if req.int8 != "off":
         int8_base = dit_int8.convert_for_training(transformer, req)
@@ -252,7 +262,7 @@ def train(
             ref_range = (min(refs), max(refs))
             seq_range = (
                 min(s.n_img + shortest(s) for s in samples),
-                max(s.n_img + s.n_text for s in samples),
+                max(s.n_img + s.n_text for s in samples) + n_reg,
             )
         print(
             f"compile: token axis marked {seq_range[0]}-{seq_range[1]}"
@@ -282,8 +292,14 @@ def train(
     empty_cache()
     print(f"free VRAM before training: {free_vram_gb():.2f} GB", flush=True)
 
-    params = list(network.parameters())
-    optimizer, optimizer_name = setup.make_optimizer(req, params)
+    params = list(network.parameters())  # EMA and saves; registers last
+    adapter_params = [p for p in params if p is not network.registers]
+    optimizer, optimizer_name = setup.make_optimizer(req, adapter_params)
+    reg_opt = (
+        torch.optim.AdamW([network.registers], lr=req.register_lr, weight_decay=0.0)
+        if n_reg
+        else None
+    )
     total = req.epochs * len(samples)
     if req.max_steps:
         total = min(total, req.max_steps) if req.epochs else req.max_steps
@@ -294,6 +310,13 @@ def train(
     warmup = max(1, int(updates * req.warmup_ratio))
     lr_sched = torch.optim.lr_scheduler.LambdaLR(
         optimizer, lambda update: min(1.0, (update + 1) / warmup)
+    )
+    reg_sched = (
+        torch.optim.lr_scheduler.LambdaLR(
+            reg_opt, lambda update: min(1.0, (update + 1) / warmup)
+        )
+        if reg_opt
+        else None
     )
     epochs = math.ceil(total / len(samples))
     print(
@@ -407,11 +430,18 @@ def train(
                     embeds, neg = neg  # the sidecar's own encode of the full caption
                     kinds["preserve"] += 1
                 text_rows = rows_of.get((s.stem, kind))
+                at = slots.get((s.stem, kind))
                 kind = "variant" if kind.startswith("v") else kind
                 if kind in kinds:
                     kinds[kind] += 1
                 latent = latent.unsqueeze(0).to(device, torch.float32)
                 embeds = embeds.unsqueeze(0).to(device)
+                if at is not None:
+                    if rows_of:
+                        text_rows = register_rows(
+                            req.delta_rows, embeds.shape[1], text_rows or [], at, n_reg
+                        )
+                    embeds = splice_registers(embeds, network.registers, at)
                 if ref is not None:
                     ref = ref.unsqueeze(0).to(device, torch.float32)
                 if rows_of:
@@ -496,11 +526,15 @@ def train(
                 updated = step % accum == 0 or step == total
                 if updated:
                     grad_norm = torch.nn.utils.clip_grad_norm_(
-                        params, req.max_grad_norm
+                        adapter_params, req.max_grad_norm
                     ).item()
                     optimizer.step()
                     lr_sched.step()
                     optimizer.zero_grad(set_to_none=True)
+                    if reg_opt is not None:
+                        reg_opt.step()
+                        reg_sched.step()
+                        reg_opt.zero_grad(set_to_none=True)
                     n_updates += 1
                     if shadows and n_updates >= warmup:
                         update_ema(shadows, staging, params, decays)

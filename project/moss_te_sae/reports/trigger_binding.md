@@ -73,3 +73,34 @@ By eye, against no LoRA:
 Main loss, mean of the first / last 40 steps: baseline 0.254 / 0.277, arm A 0.255 / 0.283,
 arm B 0.255 / 0.283; no run moves it. Arm B's preservation MSE (before ×10) rose
 3.8e-4 → 1.5e-3 over training, the size a ~3 % trigger-free Δ gives.
+
+## 5. Trigger registers (2026-11-03)
+
+`TrainRequest.trigger_registers`: K learned context rows inserted after the trigger's
+last row, only in captions that hold it, initialised as the template's prompt-constant
+`user` row (a sink, text_read_path.md §1); under `delta_rows = trigger` the adapter
+delta covers them too. Question: does a trigger-owned register carry the palette arm A
+loses? Three runs on the current defaults (int8 base, fp32 stream), 240 steps each,
+`configs/{full_int8,rows_trigger_int8,rows_trigger_reg4}.toml`; renders `lora_ab.py
+--variants base --stream fp32`, `output/tests/ab_caststation_{full_int8,
+rows_trigger_int8,rows_trigger_reg4}_50st_fp32s/` (no LoRA = reg4's x0.0).
+
+- **The register vectors barely move.** K = 4, AdamW 2e-3: drift 2.3 % of the init norm,
+  the four rows' drifts at cos 0.96–0.99, so one direction.
+- **reg4 ≈ arm A on Miku and Neru, further on NL.** Four of six images match arm A in
+  layout and colour. NL s1: flatter face, heavier bangs, harder fills. NL s2: arm A keeps
+  no LoRA's white blouse; reg4 a dark uniform, flat fills, a bag.
+- **Neither carries the baseline's palette.** The baseline (no row mask) renders paler,
+  greyer teal, paler yellow, thinner lines, a grey ground on Neru s1, white blouses on NL.
+  Arm A and reg4 keep no LoRA's saturated hair. What they add (black outfits, flat cel
+  fills, heavy-lidded eyes) is also in the training set, which mixes black hoodies,
+  skirts and tights with a pale palette on white grounds.
+- `src/palette_stats.py` (CIELAB means, the arm's shift projected on the baseline's) is
+  not a usable read here: the shifts are 1–9 ΔE and a dark uniform moves L* more than the
+  palette does (reg4 NL s2 "recovers" 4.1×).
+
+So the extra trigger-owned rows reach the content and drawing traits through the
+attention path, more than arm A on 2 of 6 images, and the palette still needs the image
+rows. With the vectors near their init, the LoRA acting on four more sink-like rows is
+the likelier carrier than the learned values; a K sweep or an attention-mass read on the
+register rows would separate the two.

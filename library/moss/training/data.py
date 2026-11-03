@@ -119,6 +119,27 @@ def delta_row_ids(delta_rows: str, n_text: int, trigger_rows: list[int]) -> list
     raise ValueError(f"delta_rows={delta_rows!r} has no row set")
 
 
+def register_slot(trigger_rows: list[int]) -> int | None:
+    """The context row ``trigger_registers`` go in at: after the trigger's last."""
+    return trigger_rows[-1] + 1 if trigger_rows else None
+
+
+def splice_registers(embeds: torch.Tensor, registers: torch.Tensor, at: int):
+    """``embeds (1, S, D)`` with ``registers (K, D)`` inserted at row ``at``."""
+    reg = registers.to(embeds.device, embeds.dtype).unsqueeze(0)
+    return torch.cat([embeds[:, :at], reg, embeds[:, at:]], 1)
+
+
+def register_rows(
+    delta_rows: str, n_text: int, rows: list[int], at: int, k: int
+) -> list[int]:
+    """``rows`` (from ``delta_row_ids`` on the ``n_text``-row context) on the
+    context with ``k`` registers at ``at``; the registers count as trigger rows."""
+    if delta_rows == "trigger":
+        return rows + list(range(at, at + k))
+    return delta_row_ids(delta_rows, n_text + k, [])
+
+
 def row_mask(n_img: int, n_text: int, rows: list[int], n_ref: int = 0, device=None):
     """``(1, n_img + n_text + n_ref, 1)`` bf16 mask keeping the text ``rows``."""
     mask = torch.zeros(

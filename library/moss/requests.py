@@ -579,6 +579,17 @@ class TrainRequest(Request):
         "(caststation)'); needed by delta_rows=trigger and stamped with it",
         advanced=True,
     )
+    trigger_registers: int = _f(
+        0,
+        "learned text rows inserted after the trigger's last token row, only in "
+        "captions that hold --trigger (an empty or trigger-free prompt gets none). "
+        "Initialised as copies of the template's prompt-constant 'user' row, "
+        "trained with AdamW at register_lr, saved in the LoRA as 'registers' and "
+        "stamped as trigger_registers. Under delta_rows=trigger the adapter delta "
+        "also covers these rows. 0 = off",
+        advanced=True,
+    )
+    register_lr: float = _f(2e-3, "AdamW lr of trigger_registers", advanced=True)
     preserve_weight: float = _f(
         0.0,
         "weight of the trigger-preservation term: on the same noisy latent and "

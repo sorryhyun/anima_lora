@@ -65,8 +65,26 @@ class LoRANetwork(_LoRANetwork):
     BLOCKS = "layers"
     DEFAULT_TARGETS = DEFAULT_TARGETS
 
-    def __init__(self, model, *args, ref_rank: int = 0, ref_adapters="kv", **kwargs):
+    def __init__(
+        self,
+        model,
+        *args,
+        ref_rank: int = 0,
+        ref_adapters="kv",
+        trigger_registers: int = 0,
+        **kwargs,
+    ):
         super().__init__(model, *args, **kwargs)
+        self.registers = None
+        if trigger_registers:
+            # TrainRequest.trigger_registers: context rows, spliced in by the caller.
+            self.registers = torch.nn.Parameter(
+                torch.zeros(
+                    trigger_registers,
+                    model.text_embedder.proj.in_features,
+                    dtype=kwargs.get("dtype", torch.float32),
+                )
+            )
         self.ref_rank = ref_rank
         self.ref_adapters = ref_adapters if ref_rank else "off"
         # A tuple: as an attribute the DiT would register as this network's submodule.
@@ -112,6 +130,7 @@ class LoRANetwork(_LoRANetwork):
         return {
             "ref_rank": int(meta.get("ref_rank", 0)),
             "ref_adapters": meta.get("ref_adapters", "kv"),
+            "trigger_registers": int(meta.get("trigger_registers", 0)),
         }
 
     def apply_to(self) -> int:

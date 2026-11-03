@@ -46,7 +46,12 @@ from library.moss.loader import (
     trigger_rows,
 )
 from library.moss.model import snapped_sigmas
-from library.moss.train import delta_row_ids
+from library.moss.train import (
+    delta_row_ids,
+    register_rows,
+    register_slot,
+    splice_registers,
+)
 
 PROMPTS = [
     # Tag bag in the training captions' own format, characters it saw.
@@ -185,10 +190,12 @@ def main() -> None:
 
     lora = resolve_under_home(args.lora)
     delta_rows, trigger = lora_rows(lora)
+    tok = None
     if delta_rows != "all":
         args.compile = False
-        tok = load_tokenizer(default_moss_dir())
         print(f"delta_rows={delta_rows} trigger={trigger!r}: eager", flush=True)
+    if delta_rows != "all" or trigger:
+        tok = load_tokenizer(default_moss_dir())
     embeds, uncond, uncond_mask = uncond_embeds(device, prompts, args.te_precision)
     sigmas = snapped_sigmas(args.steps)
     tag = settings_tag(
@@ -235,15 +242,21 @@ def main() -> None:
         for job in todo:
             _, pi, seed, (sampler, m) = job
             net.set_multiplier(m)
+            cond = embeds[prompts[pi]]
+            n = cond.shape[0]
+            hits = trigger_rows(tok, prompts[pi], trigger) if tok and trigger else []
+            rows = delta_row_ids(delta_rows, n, hits) if delta_rows != "all" else []
+            at = register_slot(hits)
+            if net.registers is not None and m and at is not None:
+                # The registers ride with the trigger; x0 is Base without them.
+                rows = register_rows(delta_rows, n, rows, at, len(net.registers))
+                cond = splice_registers(cond.unsqueeze(0), net.registers, at)[0]
+                print(f"  p{pi}: {len(net.registers)} registers at row {at}", flush=True)
             if delta_rows != "all":
-                n = embeds[prompts[pi]].shape[0]
-                hits = (
-                    trigger_rows(tok, prompts[pi], trigger)
-                    if delta_rows == "trigger"
-                    else []
+                cond_rows.update(n=cond.shape[0], rows=rows)
+                print(
+                    f"  p{pi}: {len(rows)} of {cond.shape[0]} text rows", flush=True
                 )
-                cond_rows.update(n=n, rows=delta_row_ids(delta_rows, n, hits))
-                print(f"  p{pi}: {len(cond_rows['rows'])} of {n} text rows", flush=True)
             cns = (
                 MossCNS.from_spec(args.cns_gamma, variant, args.cfg)
                 if sampler == "cns"
@@ -251,7 +264,7 @@ def main() -> None:
             )
             z = render(
                 tr,
-                embeds[prompts[pi]],
+                cond,
                 uncond,
                 uncond_mask,
                 sigmas,

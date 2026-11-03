@@ -17,6 +17,7 @@ from library.moss.training.data import (
     cache_token_split,
     delta_row_ids,
     load_neg,
+    register_slot,
     sample_captions,
 )
 from library.moss.training.ema import ema_decay
@@ -184,6 +185,47 @@ def delta_rows(
     else:
         print(f"delta rows: {req.delta_rows}", flush=True)
     return rows_of
+
+
+def register_slots(
+    req: TrainRequest, samples: list[Sample]
+) -> dict[tuple[str, str], int]:
+    """``trigger_registers``: per sample and caption kind, the context row the
+    registers go in at (``register_slot``); kinds without the trigger are absent."""
+    slots: dict[tuple[str, str], int] = {}
+    if not req.trigger_registers:
+        return slots
+    if not req.trigger:
+        raise SystemExit("trigger_registers go after --trigger's rows; set --trigger")
+    if cache_token_split(samples) != "off":
+        raise SystemExit("trigger_registers finds rows on the default tokenization")
+    from library.moss.loader import load_tokenizer, trigger_rows
+
+    tok = load_tokenizer(req.model_dir)
+    for s in samples:
+        if s.te_path is None:
+            raise SystemExit(f"{s.stem}: trigger_registers needs the cache's TE files")
+        for kind, caption in sample_captions(s.te_path).items():
+            at = register_slot(trigger_rows(tok, caption, req.trigger))
+            if at is not None:
+                slots[s.stem, kind] = at
+    full = sum(1 for (_, kind) in slots if kind == "full")
+    print(
+        f"trigger registers: {req.trigger_registers} rows after {req.trigger!r} "
+        f"in {full}/{len(samples)} full captions, {len(slots)} captions in all",
+        flush=True,
+    )
+    if not full:
+        raise SystemExit("the trigger is in none of the full captions")
+    return slots
+
+
+def register_init(samples: list[Sample], get: Callable) -> torch.Tensor:
+    """The template's 'user' row (context row 1): the causal TE gives it the same
+    state in every prompt, and image queries park ~7.6 % of their text mass on it
+    (project/moss_te_sae/reports/text_read_path.md)."""
+    _, full, _, _ = get(samples[0])
+    return full[1].float()
 
 
 def load_negs(
@@ -363,6 +405,8 @@ def run_metadata(
         meta["delta_rows"] = req.delta_rows
     if req.trigger:
         meta["trigger"] = req.trigger
+    if req.trigger_registers:
+        meta.update(trigger_registers=req.trigger_registers, register_lr=req.register_lr)
     if req.preserve_weight:
         meta["preserve_weight"] = req.preserve_weight
     if n_refs:

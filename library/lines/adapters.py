@@ -481,6 +481,11 @@ class LoRANetwork(nn.Module):
 
         state = {}
         for key, value in self.state_dict().items():
+            if not key.startswith("adapters."):
+                # A line's own parameter (MOSS ``registers``); _state_from_file
+                # passes it back unchanged.
+                state[key] = value
+                continue
             name, rest = key.removeprefix("adapters.").split(".", 1)
             stem = FILE_PREFIX + name
             if self.algo == "lora" and rest == "down.weight":

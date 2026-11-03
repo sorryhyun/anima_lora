@@ -1,0 +1,12 @@
+# rows_trigger_int8.toml + 4 trigger registers: learned context rows after the
+# trigger, only in captions that hold it, initialised as the template's 'user' row.
+# Question: does a trigger-owned register carry the palette the row mask loses
+# (reports/trigger_binding.md claim 1)?
+cache = "post_image_dataset/moss/channel_(caststation)_layout"
+output = "output/ckpt_moss/caststation_rows_trigger_reg4.safetensors"
+lr = 1e-4
+ema_window = 0.139
+delta_rows = "trigger"
+trigger = "@channel (caststation)"
+trigger_registers = 4
+register_lr = 2e-3

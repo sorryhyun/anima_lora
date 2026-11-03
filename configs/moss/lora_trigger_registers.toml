@@ -1,0 +1,24 @@
+# MOSS-Image LoRA with trigger registers: the adapter delta confined to the trigger's
+# rows, plus K learned context rows inserted after the trigger in every caption that
+# holds it. Without the trigger in the prompt the LoRA is Base exactly.
+#
+#   make daemon-run ARGS="--stall-timeout 900 scripts/moss/train.py --config configs/moss/lora_trigger_registers.toml --cache post_image_dataset/moss/<set> --trigger '<trigger as written in the captions>' --output output/ckpt_moss/<name>.safetensors"
+#
+# Keys left out keep configs/moss/lora.toml's values (the field defaults: int8 base,
+# fp32 stream, Muon). Measured on caststation, 240 steps: carries outfit and drawing
+# traits, not the palette (project/moss_te_sae/reports/trigger_binding.md §5).
+#
+# Rendering: only bench/moss_ab/lora_ab.py applies the row mask and the registers
+# (it reads delta_rows / trigger / trigger_registers from the LoRA). generate.py and the
+# ComfyUI nodes apply neither.
+
+cache = "post_image_dataset/moss"
+output = "output/ckpt_moss/moss_lora_registers.safetensors"
+trigger = ""                   # required: the trigger string, e.g. "@channel (caststation)"
+
+delta_rows = "trigger"         # all | text | caption | trigger
+trigger_registers = 4          # rows after the trigger, initialised as the template's 'user' row
+register_lr = 2e-3             # AdamW on the registers; the adapters keep Muon at lr
+
+lr = 1e-4
+ema_window = 0.139             # decay 0.97 at 240 updates

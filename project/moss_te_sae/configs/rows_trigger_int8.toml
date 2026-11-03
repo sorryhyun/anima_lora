@@ -1,0 +1,8 @@
+# Arm A (rows_trigger.toml) on the current defaults: int8 base, fp32 stream.
+# The control for rows_trigger_reg4.toml.
+cache = "post_image_dataset/moss/channel_(caststation)_layout"
+output = "output/ckpt_moss/caststation_rows_trigger_int8.safetensors"
+lr = 1e-4
+ema_window = 0.139
+delta_rows = "trigger"
+trigger = "@channel (caststation)"
