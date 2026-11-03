@@ -226,7 +226,12 @@ def is_character_colour(tag: str, is_color_tag) -> bool:
     """A colour tag a character box carries: hair, eyes and clothing, not skin or
     the blanked crop's background."""
     words = tag.strip().lower().split()
-    return bool(words) and is_color_tag(tag) and words[-1] not in CHARACTER_COLOUR_SKIP
+    return (
+        bool(words)
+        and is_color_tag(tag)
+        and words[-1] not in CHARACTER_COLOUR_SKIP
+        and not any(w.endswith("skinned") for w in words)
+    )
 
 
 def keep_draw(atoms: list, dropout: float, rng: random.Random) -> list:

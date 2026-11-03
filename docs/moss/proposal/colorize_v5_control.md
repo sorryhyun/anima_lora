@@ -1,7 +1,8 @@
 # MOSS colorize v5: control captions in place of the OCR caption
 
-Status: proposal, 2026-11-03. The small arm that decides it is in flight (below); nothing
-here is measured yet. Code: `ColorizeCacheRequest.captions = "control"`
+Status: accepted, 2026-11-03. The user reviewed the arm's renders
+(`output/moss_i2i_eval/colorize/results/control_1k/`) and settled v5 on this recipe; the
+v5 run is next. Code: `ColorizeCacheRequest.captions = "control"`
 (`library/moss/colorize.py`), tests `tests/test_moss_colorize_control.py`.
 
 ## Why
@@ -39,8 +40,9 @@ four draws evenly otherwise (`caption_variant_rate 0.75`). No OCR text anywhere.
   reads, for inspection.
 - **Character boxes**: the position stage's SAM3 subject detector (`girl` soft prompt) on the
   colour target, mask-blanked crop, Anima Tagger kept tags that are colours (stored
-  unfiltered in `characters.json`), minus skin, background, sky, border at caption time
-  (`is_character_colour`).
+  unfiltered in `characters.json`), minus skin (`dark-skinned …` too), background, sky,
+  border at caption time (`is_character_colour`). The arm's cache predates the
+  `-skinned` rule, so `dark-skinned female` sits in some of its manga draws.
 - Items are layout JSON in MOSS's `abs_centralized` `yxyx` on the target canvas:
   `{"label":"character","caption":"pink hair, white shirt","bbox":[…]}`,
   `{"label":"text","bbox":[…]}`.
@@ -54,6 +56,7 @@ Since no Hangul reaches the TE, `token_split` does not apply to this cache.
 | cache | `configs/moss/i2i/colorize/cache_control_1k.toml`: 500 illustrations + 500 manga pages, holdout 8 + 4 works, seed 0 → `post_image_dataset/moss/i2i_colorize_control_1k` (job `20261103-170540-020fa4`) |
 | train | `configs/moss/i2i/colorize/train_control_1k.toml`: 1250 steps (the 1-hour arm `moss_colorize_1k_textref1_iso`'s length), Muon 5e-5, rank 32, `ref_isolate`, int8 stream + fp32, swap 36 / budget 0.1 (job `20261103-170540-389002`) |
 | control | v4 with `comic`, same seed and pages; v4's cache is gone, so its holdout cannot be reused |
+| renders | `output/moss_i2i_eval/colorize/results/control_1k/`: `{v4,arm}_holdout*`, `{v4,arm}_wild2_comic_s1` (v4: `v4_wild2_s1`), `arm_wild2_boxes_s1` (comic + text boxes, `prompts.json`), `arm_eval` (`colorize_eval.py`, draw 0 / bare) |
 
 Confounds: 1250 steps against v4's 10000, and the int8 base against v4's bf16. Colour will be
 weaker at this length (the 1k arm was); the arm decides lettering, not colour.
@@ -63,12 +66,17 @@ pages), with `comic` + text boxes and with `comic` alone, the arm keeps every ba
 with no new dropped or swapped glyph. Informative, not gating: holdout chroma error, and whether
 a `character` item's colour lands on that character (holdout draw 0 against the target).
 
-## v5 if the gate passes
+## v5
 
-- Cache: v4's scale (1667 illustrations + 1667 manga, `variants 4`). Korean share is no longer a
-  token question; take the random draw unless the arm shows Korean pages losing lettering.
-- Train: v4's schedule (3 epochs, 10000 steps, Muon 5e-5, EMA window 0.1) on the int8 base.
-  v4 took 11.2 h at 4.03 s/step on bf16 swap 32; the arm's s/step sets the v5 estimate.
+- Cache: v4's scale (1667 illustrations + 1667 manga, `variants 4`, seed 0). The arm's pages
+  are a prefix of that draw (same shuffle, `rest[:n]`) and its holdout is the same 12, so an
+  `out` of `post_image_dataset/moss/i2i_colorize_control_1k` reuses the arm's latents, refs,
+  OCR reads and SAM3 tags. Delete its `manga__*.moss_te.safetensors` first so the `-skinned`
+  rule reaches those draws (TE only; `characters.json` holds the unfiltered tags).
+- Train: v4's schedule (3 epochs, 10000 steps, Muon 5e-5, EMA window 0.1) on the int8 base,
+  `blocks_to_swap 8`, budget 0.1 (the arm's fit report: 10.9 GB peak at swap 36 with 3.15 GB
+  free). The arm ran 2.4–2.5 s/step at swap 36: ~6.7–7 h, against v4's 11.2 h.
+- Text rows: up to 905 on a manga page (37 lines × ~23 tokens per box item), median 326.
 - Eval: `bench/moss_i2i_eval/colorize_eval.py` (arms `lora_ocr` = draw 0, `lora_page` = bare)
   plus `wild/` and `wild2/`, against v4.
 - Stamp the caption mode in the LoRA (`colorize_captions = control`) so the caption helper can
