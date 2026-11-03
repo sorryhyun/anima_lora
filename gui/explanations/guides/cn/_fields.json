@@ -52,6 +52,8 @@
   "unsloth_offload_checkpointing": "将梯度检查点卸载到CPU RAM。以速度换取额外的显存节省。需要gradient_checkpointing=true。",
   "activation_memory_budget": "torch.compile 激活内存预算（0-1）：分区器在开始重算之前可保留用于反向传播的激活比例。越低越省显存、重算越多。0.99 ≈ 不重算；0.85 ≈ 相同步时下的旧峰值。当 gradient_checkpointing=true 时自动跳过（不兼容/冗余）。",
   "blocks_to_swap": "GPU与CPU间交换的DiT块数量。0：全部在GPU。越高CPU卸载越多，适合低显存。",
+  "int8": "将冻结 DiT 的大型 linear 以 int8 GEMM 运行（仅限 LoRA / T-LoRA / HydraLoRA）。off：bf16。fwd：仅前向 int8，反向 bf16。full：前向与反向均为 int8，丢弃 bf16 权重。stream：同 full，但反向用的副本放在主机内存，步时约多 4%，显存比 full 少约 1.4 GB——推荐。GPTQ 文件（约 2.4 GB）首次使用时自动下载。这样训练的 LoRA 也可在 bf16 底模上加载。",
+  "stream": "块 GEMM 周围残差流的精度。fp32（默认）：stream、modulation、norm、RoPE 与 head 用 fp32——画质有可见提升。bf16：稍快、更省显存。",
   "torch_compile": "为前向传播启用torch.compile。初始编译后训练速度加快。以原生形状编译每个DiT块 — 每个令牌数桶系列一张计算图，无静态填充。",
   "cache_llm_adapter_outputs": "将LLM适配器层输出缓存到磁盘。避免每轮重新计算文本编码器投影。",
   "masked_loss": "仅在未被遮罩的区域（如排除文字气泡）应用损失。需要post_image_dataset/masks/（或旧版masks/merged/）中的遮罩文件 — 运行`make mask`生成。",

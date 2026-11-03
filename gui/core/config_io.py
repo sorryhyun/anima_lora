@@ -272,6 +272,8 @@ _GROUPS = {
         "sample_decode_inline",
     },
     "Performance": {
+        "int8",
+        "stream",
         "attn_mode",
         "gradient_checkpointing",
         "unsloth_offload_checkpointing",
@@ -328,6 +330,7 @@ _BASIC = {
     "artists_shard",
     "gradient_checkpointing",
     "blocks_to_swap",
+    "int8",
     "path_scope",
     "output_name",
     "path_pattern",

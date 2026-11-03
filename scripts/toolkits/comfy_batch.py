@@ -229,7 +229,7 @@ def apply_prompt(workflow: dict, prompt: str) -> None:
     artist/chara/random markers) — negatives never do.
     """
     for node in workflow.values():
-        if node.get("class_type") != "CLIPTextEncode":
+        if node.get("class_type") not in ["CLIPTextEncode", "MOSSCaptionHelper"]:
             continue
         text = node.get("inputs", {}).get("text")
         if isinstance(text, str) and (

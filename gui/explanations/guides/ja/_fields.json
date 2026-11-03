@@ -52,6 +52,8 @@
   "unsloth_offload_checkpointing": "勾配チェックポイントを CPU RAM にオフロードします。速度を犠牲にしてさらに VRAM を削減します。gradient_checkpointing=true が必要です。",
   "activation_memory_budget": "torch.compile のアクティベーションメモリ予算（0-1）: パーティショナーが再計算を始める前に backward 用に保持できるアクティベーションの割合。低いほど VRAM 削減・再計算増加。0.99 ≈ 再計算なし、0.85 ≈ 同等ステップ時間での旧ピーク。gradient_checkpointing=true のとき自動スキップ（非互換・冗長）。",
   "blocks_to_swap": "GPU と CPU の間でスワップする DiT ブロック数。0: すべて GPU 上。高い値ほど低 VRAM のための CPU オフロードが増えます。",
+  "int8": "凍結した DiT の大きな linear を int8 GEMM で実行します (LoRA / T-LoRA / HydraLoRA のみ)。off: bf16。fwd: 順伝播のみ int8、逆伝播は bf16。full: 順伝播・逆伝播とも int8、bf16 重みは破棄。stream: full と同じですが逆伝播用のコピーをホスト RAM に置き、ステップ時間 ~4% 増で VRAM が full より約 1.4 GB 少なくなります — 推奨。GPTQ ファイル (約 2.4 GB) は初回使用時に自動で取得します。こうして学習した LoRA は bf16 ベースでも読み込めます。",
+  "stream": "ブロック GEMM 周りの residual stream の精度。fp32 (既定): stream・modulation・norm・RoPE・head を fp32 で — 目に見える品質向上。bf16: 少し速く軽くなります。",
   "torch_compile": "フォワードパスに torch.compile を有効化します。初期コンパイル後は学習が高速化されます。各 DiT ブロックをネイティブ形状でコンパイルします — トークン数バケットファミリーごとに 1 グラフ、静的パディングなし。",
   "cache_llm_adapter_outputs": "LLM アダプターレイヤーの出力をディスクにキャッシュします。エポックごとにテキストエンコーダープロジェクションを再計算するのを避けます。",
   "masked_loss": "マスクされていない領域 (例: テキストバブルを除く) にのみロスを適用します。post_image_dataset/masks/ (またはレガシー masks/merged/) にマスクファイルが必要です — `make mask` で生成してください。",

@@ -26,6 +26,12 @@ from gui.widgets.target_res import _TargetResWidget
 
 # flash4 is not supported yet (flash-attention-sm120 disabled)
 _ATTN_MODES = ["flex", "flash"]
+# Fixed-choice string fields → combo items (library/anima/int8.py, library/anima/stream.py).
+_CHOICES = {
+    "attn_mode": _ATTN_MODES,
+    "int8": ["off", "fwd", "full", "stream"],
+    "stream": ["fp32", "bf16"],
+}
 
 
 def _widget(v: Any, key: str = "") -> QWidget:
@@ -44,9 +50,9 @@ def _widget(v: Any, key: str = "") -> QWidget:
         except (TypeError, ValueError):
             w.setCurrentText(str(v))
         return _no_wheel(w)
-    if key == "attn_mode":
+    if key in _CHOICES:
         w = QComboBox()
-        w.addItems(_ATTN_MODES)
+        w.addItems(_CHOICES[key])
         idx = w.findText(str(v))
         if idx >= 0:
             w.setCurrentIndex(idx)
