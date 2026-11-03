@@ -60,7 +60,8 @@ class Capture:
         self.q_body = n_img + (seg == 1).nonzero()[:, 0].cuda()
         self.tmpl = n_img + (seg != 1).nonzero()[:, 0].cuda()
         key_seg = torch.cat([torch.zeros(n_img, dtype=torch.long), seg.long() + 1])
-        self.onehot = torch.nn.functional.one_hot(key_seg, 4).float().cuda()
+        self.n_seg = int(seg.max()) + 2  # image + the text segments
+        self.onehot = torch.nn.functional.one_hot(key_seg, self.n_seg).float().cuda()
         self.block = 0
         self.records = []  # per (step, block): dict of tensors
         self.step = 0
@@ -96,17 +97,17 @@ class Capture:
             rec[f"{name}_mass"] = (p @ self.onehot).mean(1).cpu()  # (H, 4)
             total = torch.einsum("hql,lhd->hqd", p, v).norm(dim=-1)
             contrib = []
-            for s in range(4):
+            for s in range(self.n_seg):
                 m = self.onehot[:, s].bool()
                 o = torch.einsum("hql,lhd->hqd", p[..., m], v[m]).norm(dim=-1)
                 contrib.append((o / total).mean(1))
-            rec[f"{name}_contrib"] = torch.stack(contrib, -1).cpu()  # (H, 4)
+            rec[f"{name}_contrib"] = torch.stack(contrib, -1).cpu()  # (H, n_seg)
             rec[f"{name}_tmpl_tok"] = p[..., self.tmpl].mean(1).cpu()  # (H, T)
             del p
         self.records.append(rec)
 
 
-def summarise(records, n_steps, tmpl_labels, n_tokens):
+def summarise(records, n_steps, tmpl_labels, n_tokens, segs=SEGS):
     """Mean over heads / blocks per step-third, plus per-block and per-token views."""
     out = {"segment_tokens": n_tokens}
     thirds = {
@@ -120,13 +121,13 @@ def summarise(records, n_steps, tmpl_labels, n_tokens):
             table = {}
             for name, rng in thirds.items():
                 rs = [r[key] for r in records if r["step"] in rng]
-                t = torch.stack(rs)  # (N, H, 4)
+                t = torch.stack(rs)  # (N, H, n_seg)
                 table[name] = {
                     s: {
                         "mean": float(t[..., i].mean()),
                         "max_head_block": float(t[..., i].mean(0).max()),
                     }
-                    for i, s in enumerate(SEGS)
+                    for i, s in enumerate(segs)
                 }
             out[key] = table
             by_block = torch.stack(
@@ -134,7 +135,7 @@ def summarise(records, n_steps, tmpl_labels, n_tokens):
                     torch.stack([r[key] for r in records if r["block"] == b]).mean(0)
                     for b in range(42)
                 ]
-            )  # (42, H, 4)
+            )  # (42, H, n_seg)
             out[f"{key}_by_block"] = by_block.mean(1).tolist()
             out[f"{key}_by_block_maxhead"] = by_block.max(1).values.tolist()
         tok = torch.stack([r[f"{q}_tmpl_tok"] for r in records]).mean((0, 1))
