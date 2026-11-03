@@ -114,16 +114,16 @@ def test_generate_follows_the_lora_stamp(tmp_path):
         == "off"
     )
     assert resolve_prompt_tail(GenerateRequest(prompt_tail="sure")) == "sure"
+    assert resolve_prompt_tail(GenerateRequest()) == "sure"
+    assert resolve_prompt_tail(GenerateRequest(ref_vision=True)) == "off"
     with pytest.raises(SystemExit):
         resolve_prompt_tail(GenerateRequest(prompt_tail="sure", ref_vision=True))
 
 
 def test_fingerprint_and_prompt_cache_key_by_tail(tmp_path, monkeypatch):
     job = dict(skip=(22,), prompt="p")
-    assert "prompt_tail" not in fingerprint(GenerateRequest(), job)
-    assert (
-        fingerprint(GenerateRequest(prompt_tail="sure"), job)["prompt_tail"] == "sure"
-    )
+    assert "prompt_tail" not in fingerprint(GenerateRequest(prompt_tail="off"), job)
+    assert fingerprint(GenerateRequest(), job)["prompt_tail"] == "sure"
 
     calls = []
 

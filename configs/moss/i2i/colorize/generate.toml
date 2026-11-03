@@ -13,3 +13,6 @@ text_encoder = "int8"
 steps = 30
 spectrum = true
 out_dir = "output/tests/moss_i2i_colorize"
+
+# i2i stays on the pipeline prompt (the t2i default is sure; library/moss/prompt_tail.py).
+prompt_tail = "off"

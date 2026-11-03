@@ -35,10 +35,10 @@ sets) with:
 
     make daemon-run ARGS="--stall-timeout 1800 project/int8_train/src/dit_gptq_moss.py"
 
-Generate (the GUI's `(int8)` items in the `model` dropdown set the same flags):
+Generation runs on it by default (`int8 on`, `stream fp32`, t2i and i2i; the GUI's
+`(int8)` items in the `model` dropdown). `--int8 off --stream bf16` is the bf16 DiT:
 
-    make daemon-run ARGS="scripts/moss/generate.py --int8 on --lora <path> --stream fp32 \
-        --out_dir output/tests/int8"
+    make daemon-run ARGS="scripts/moss/generate.py --lora <path> --out_dir output/tests/int8"
 
 - `--int8_file rtn`: round-to-nearest (RTN) weights, quantized at load. Empty is the
   catalog's file on Base, RTN on SFT.
@@ -47,7 +47,7 @@ Generate (the GUI's `(int8)` items in the `model` dropdown set the same flags):
 - Training takes `--blocks_to_swap`: `wq` (and `wq_t` in `full`) sit in `HeldCopy` children,
   whose `.weight` the offloader moves. A swapped block is about 0.11 GB against bf16's 0.21
   GB. Generation has no swap run behind it and refuses `--blocks_to_swap`.
-- The i2i configs stay on bf16 (`int8 = "off"`, swap 38); one swap_text run has finished on
+- The i2i train configs stay on bf16 (`int8 = "off"`, swap 38); one swap_text run has finished on
   the int8 base ([i2i.md](../methods/i2i.md)). A six-step fit on sanitize's largest sample
   (4150 image tokens, full-size reference) OOMs at swap 0 / budget 0.3 and peaks at 12.33 GB
   at swap 20 / budget 0.1, the GUI's i2i `(int8)` items.

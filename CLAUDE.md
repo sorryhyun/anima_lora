@@ -103,9 +103,13 @@ Invariants that bite:
   σ grid, timestep input `1000·σ`. Read the pipeline before changing one; `model.py`'s
   unbatched forward stays op-for-op with it.
 - **The default TE is INT8** (`moss_te_int8`; `fp8` / `bf16` selectable). TE caches stamp
-  `encoder` and `caption_format` (`layout_json` by default, via
-  `anime_tools.captions.layout_json`) and re-encode when either changes — **cache, train
-  and generate with the same `text_encoder` and caption/prompt format.**
+  `encoder`, `caption_format` (`layout_json` by default, via
+  `anime_tools.captions.layout_json`) and `prompt_tail` (`sure` by default: `\n</think>\n\nSure,`
+  after the template; the i2i configs pin `off`) and re-encode when one changes — **cache,
+  train and generate with the same `text_encoder`, caption/prompt format and tail** (generate's
+  `prompt_tail auto` follows the LoRA's stamp).
+- **Generation defaults to the int8 DiT** (`int8 on`, `stream fp32`, t2i and i2i), 11–15 s
+  per 1024² render against 22 s on bf16; it refuses LoHa and block swap.
 - **Training defaults to an int8 DiT base** (`int8 = stream`, GPTQ file `moss_dit_int8`,
   fp32 stream, swap 0, budget 0.3, EMA on the card; `library/moss/dit_int8/`). It refuses
   LoHa. `configs/moss/lora_bf16.toml` is the bf16 plan; the i2i `train.toml`s stay on bf16, and

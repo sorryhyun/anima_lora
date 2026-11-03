@@ -4,8 +4,9 @@
 modulation, gates, norms, embedders and head. The GEMMs themselves, FA2 and the LoRA stay as
 they were. On the int8 base it is what brings prediction error below bf16.
 
-**Status:** on by default in training (`TrainRequest.stream`), off by default in generation
-(`GenerateRequest.stream`). `configs/moss/lora_bf16.toml` and the i2i configs run bf16.
+**Status:** on by default in training (`TrainRequest.stream`) and generation
+(`GenerateRequest.stream`, with `int8 on`). `configs/moss/lora_bf16.toml` and the i2i train
+configs run bf16.
 It reads better on text rendering and finger placement. Measurements and renders:
 [`findings/bf16_residual_stream.md`](../findings/bf16_residual_stream.md).
 

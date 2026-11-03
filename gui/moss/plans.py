@@ -35,14 +35,14 @@ def train_plans(seed: dict | None = None) -> dict[str, dict]:
 
 
 def generate_plans(seed: dict | None = None) -> dict[str, dict]:
-    """int8: docs/moss/optimization/int8.md's plan, which runs no block swap. bf16:
-    the request defaults, under the task's ``seed`` on i2i."""
+    """int8: the request defaults (docs/moss/optimization/int8.md's plan, no block
+    swap). bf16: the bf16 DiT and stream, under the task's ``seed`` on i2i."""
     seed = seed or {}
     defaults = GenerateRequest()
-    keys = ("int8", "stream", "blocks_to_swap")
+    bf16 = {"int8": "off", "stream": "bf16", "blocks_to_swap": 0}
     return {
-        "int8": {"int8": "on", "stream": "fp32", "blocks_to_swap": 0},
-        "bf16": {k: seed.get(k, getattr(defaults, k)) for k in keys},
+        "int8": {k: getattr(defaults, k) for k in bf16},
+        "bf16": {k: seed.get(k, v) for k, v in bf16.items()},
     }
 
 

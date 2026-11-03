@@ -49,10 +49,10 @@ UI: dict[str, str] = {
     "i2i_need_prompt": "ref_vision이 꺼져 있으면 테스트에 프롬프트가 필요합니다: "
     "페이지의 캡션.",
     "test_ref": "참조 이미지",
-    "model_help_test": "생성에 쓸 DiT(base / sft)와 돌리는 방식. bf16(기본값): 1024²에서 "
-    "10.7 GiB. int8: 블록 가중치를 int8로, 나머지는 fp32 stream으로 돌립니다. 1024²에서 "
-    "7.8 GiB이고, Base 파일은 처음 쓸 때 받으며 sft는 반올림 양자화를 씁니다. loha와 블록 "
-    "스왑은 쓸 수 없습니다. 둘 사이를 바꾸면 int8, stream, blocks_to_swap이 함께 바뀌며, "
+    "model_help_test": "생성에 쓸 DiT(base / sft)와 돌리는 방식. int8(기본값): 블록 "
+    "가중치를 int8로, 나머지는 fp32 stream으로 돌립니다. 1024²에서 7.8 GiB이고, Base 파일은 "
+    "처음 쓸 때 받으며 sft는 반올림 양자화를 씁니다. loha와 블록 스왑은 쓸 수 없습니다. "
+    "bf16: 1024²에서 10.7 GiB. 둘 사이를 바꾸면 int8, stream, blocks_to_swap이 함께 바뀌며, "
     "이 값들은 고급에서 계속 조정할 수 있습니다.",
     "model_help_i2i": "학습할 DiT(base / sft)와 돌리는 방식. bf16(여기서 기본값): 이 "
     "태스크에서 측정된 설정. int8: swap 20, budget 0.1. sanitize의 가장 큰 샘플이 6스텝 "

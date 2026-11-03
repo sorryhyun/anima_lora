@@ -145,10 +145,11 @@ class CacheRequest(Request):
         advanced=True,
     )
     prompt_tail: str = _f(
-        "off",
-        "assistant-turn tail after the template's <think>: sure closes the think "
-        "block and starts the answer 'Sure,' (library/moss/prompt_tail.py). Switching "
-        "re-encodes the TE cache; the LoRA stamps it",
+        "sure",
+        "assistant-turn tail after the template's <think>: sure (default) closes the "
+        "think block and starts the answer 'Sure,'; off = the pipeline's prompt (the "
+        "i2i configs pin it). library/moss/prompt_tail.py. Switching re-encodes the "
+        "TE cache; the LoRA stamps it",
         choices=PROMPT_TAILS,
         advanced=True,
     )
@@ -342,10 +343,11 @@ class GenerateRequest(Request):
         advanced=True,
     )
     int8: str = _f(
-        "off",
-        "on runs the frozen DiT's 252 block linears as int8 GEMMs, forward copy only, "
-        "the bf16 weight dropped: 6.3 against 10.7 GiB at 1024². Needs "
-        "--blocks_to_swap 0 and refuses loha. docs/moss/optimization/int8.md",
+        "on",
+        "on (default) runs the frozen DiT's 252 block linears as int8 GEMMs, forward "
+        "copy only, the bf16 weight dropped: 6.3 against 10.7 GiB at 1024², 11-15 "
+        "against 22 s. Needs --blocks_to_swap 0 and refuses loha; off = the bf16 DiT. "
+        "docs/moss/optimization/int8.md",
         choices=("off", "on"),
         advanced=True,
     )
@@ -357,8 +359,8 @@ class GenerateRequest(Request):
         advanced=True,
     )
     stream: str = _f(
-        "bf16",
-        "residual stream precision: fp32 runs the stream, modulation, norms, "
+        "fp32",
+        "residual stream precision: fp32 (default) runs the stream, modulation, norms, "
         "embedders and head in fp32 around the bf16 block GEMMs (+1.5%% time, "
         "+0.6 GB; renders move a few /255 in detail, text and fingers come out better)",
         choices=("bf16", "fp32"),
@@ -430,8 +432,8 @@ class GenerateRequest(Request):
     )
     prompt_tail: str = _f(
         "auto",
-        "auto: what the LoRA stamps, else off. off / sure force it, on cond and "
-        "uncond (library/moss/prompt_tail.py); ref_vision needs off",
+        "auto: what the LoRA stamps (unstamped: off); no LoRA: sure; ref_vision: "
+        "off. off / sure force it, on cond and uncond (library/moss/prompt_tail.py)",
         choices=("auto", *PROMPT_TAILS),
         advanced=True,
     )

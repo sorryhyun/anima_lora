@@ -151,6 +151,13 @@ on `plain_caption_rate` (default 0.2) of the steps. **Train and prompt in the sa
 **MOSS Caption Helper** node, `task = layout` ([MOSS Toolkit](https://github.com/sorryhyun/ComfyUI-MOSS-Toolkit),
 needs `anime_tools`) does the same conversion.
 
+**Prompt tail** (`prompt_tail`, default `sure`): the cache and generate append
+`\n</think>\n\nSure,` after the chat template, closing the empty think block and starting
+an answer. On caststation a LoRA trained and rendered with it beat its control by eye, and
+kept most of the gain rendered without it (`findings/assistant_tail.md`). The TE cache and
+the LoRA stamp it; generate's `auto` follows the LoRA (unstamped: `off`) and renders `sure`
+without one. The i2i configs pin `off`. ComfyUI does not add it.
+
 ## Sampling
 
 Trade-offs and the timing table: guidebook §5.
@@ -166,7 +173,11 @@ Trade-offs and the timing table: guidebook §5.
   Spectrum, for a few seconds of compile per job. Fine detail drifts from the eager image;
   composition does not.
 - **DAVE** (`--dave auto`, off): more same-prompt variety across seeds; `docs/moss/inference/dave.md`.
-- **`--stream fp32`** (`bf16` default in generation, `fp32` in training): fp32 around the
+- **`--int8 on`** (default; `off` runs the bf16 DiT): the DiT's block linears as int8 GEMMs
+  from the GPTQ file, 11–15 s against 22 s per 1024² render (ER-SDE 50 + Spectrum) and 7.8
+  against 10.7 GiB on the fp32 stream. Refuses LoHa and `--blocks_to_swap`.
+  `docs/moss/optimization/int8.md`.
+- **`--stream fp32`** (default in generation and training): fp32 around the
   bf16 block GEMMs. Prediction error against an fp32 forward drops 2.4–3.5×, for +1.5% time
   and +0.6 GB. A LoRA loads under either, whatever it trained with.
   `docs/moss/methods/fp32_stream.md`.

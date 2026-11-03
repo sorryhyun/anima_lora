@@ -37,6 +37,12 @@ def _setup_forms(train, test) -> None:
 
 
 def _test_runs(req: GenerateRequest) -> list[GenerateRequest]:
+    """The LoRA render and the base render, both on the LoRA's prompt tail."""
+    from library.env import resolve_under_home
+    from library.moss.prompt_tail import resolve_prompt_tail
+
+    if req.prompt_tail == "auto" and resolve_under_home(req.lora or ".x").is_file():
+        req = dataclasses.replace(req, prompt_tail=resolve_prompt_tail(req))
     out = Path(req.out_dir)
     return [
         dataclasses.replace(req, out_dir=str(out / "lora")),

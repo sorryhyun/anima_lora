@@ -438,8 +438,8 @@ def test_generate_refuses_swap_and_stamps_the_fingerprint():
     with pytest.raises(SystemExit, match="blocks_to_swap"):
         generate_base(GenerateRequest(int8="on", blocks_to_swap=10))
 
-    bf16 = GenerateRequest(prompt="x", prompt_format="text")
+    bf16 = GenerateRequest(prompt="x", prompt_format="text", int8="off")
     job = build_jobs(bf16)[0]
     assert "int8" not in fingerprint(bf16, job)
-    on = GenerateRequest(prompt="x", prompt_format="text", int8="on")
+    on = GenerateRequest(prompt="x", prompt_format="text")
     assert fingerprint(on, job)["int8"] == "on"

@@ -269,7 +269,8 @@ def sample_sigma(
 
 def empty_prompt_embeds(req: TrainRequest, prompt_tail: str = "off") -> torch.Tensor:
     """``(S, 4096)`` bf16 embedding of ``""`` (10 chat-template tokens, plus the
-    ``prompt_tail`` rows; that one is written beside the shipped file)."""
+    ``prompt_tail`` rows; that one is encoded on the default TE and written beside
+    the shipped file)."""
     from safetensors.torch import load_file, save_file
 
     path = resolve_under_home(EMPTY_PROMPT_PATH)
@@ -279,7 +280,11 @@ def empty_prompt_embeds(req: TrainRequest, prompt_tail: str = "off") -> torch.Te
         from library.moss.loader import encode_prompts
 
         print(f"encoding the empty prompt -> {path}", flush=True)
-        embeds = encode_prompts(req.model_dir, [""], prompt_tail=prompt_tail)[""]
+        from library.moss.requests import DEFAULT_TEXT_ENCODER
+
+        embeds = encode_prompts(
+            req.model_dir, [""], precision=DEFAULT_TEXT_ENCODER, prompt_tail=prompt_tail
+        )[""]
         embeds = embeds.to(torch.bfloat16)
         path.parent.mkdir(parents=True, exist_ok=True)
         save_file({"embeds": embeds.contiguous()}, str(path))

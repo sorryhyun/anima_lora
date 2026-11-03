@@ -6,9 +6,10 @@ without a LoRA it sharpens hands and backgrounds (``docs/moss/findings/assistant
 The TE is causal, so the caption rows keep their states; the template's last ``\\n``
 merges with the tail's first into one ``\\n\\n`` token, and ``sure`` adds 4 rows.
 
-The mode is stamped in TE caches (``prompt_tail``, when not ``off``) and in the LoRA;
-``GenerateRequest.prompt_tail`` ``auto`` follows the LoRA. The tail goes on cond and
-uncond alike.
+``sure`` is the cache default; the i2i configs pin ``off``. The mode is stamped in TE
+caches (``prompt_tail``, when not ``off``) and in the LoRA; ``GenerateRequest.prompt_tail``
+``auto`` follows the LoRA (unstamped: ``off``), and without a LoRA renders ``sure``. The
+tail goes on cond and uncond alike.
 """
 
 from __future__ import annotations
@@ -50,14 +51,15 @@ def with_prompt_tail(tok, mode: str):
 
 
 def resolve_prompt_tail(req) -> str:
-    """``GenerateRequest.prompt_tail`` with ``auto`` read off the LoRA."""
+    """``GenerateRequest.prompt_tail`` with ``auto`` read off the LoRA; without one,
+    ``sure`` (``off`` under ``ref_vision``)."""
     from safetensors import safe_open
 
     from library.env import resolve_under_home
 
     mode = req.prompt_tail
     if mode == "auto":
-        mode = "off"
+        mode = "off" if req.ref_vision else "sure"
         if req.lora:
             with safe_open(str(resolve_under_home(req.lora)), "pt") as f:
                 mode = (f.metadata() or {}).get("prompt_tail", "off")

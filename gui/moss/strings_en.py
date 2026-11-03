@@ -45,10 +45,10 @@ UI: dict[str, str] = {
     "i2i_need_prompt": "With ref_vision off, the test needs a prompt: the page's "
     "caption.",
     "test_ref": "reference",
-    "model_help_test": "The DiT to render with (base / sft) and how it runs. bf16 "
-    "(default): 10.7 GiB at 1024². int8: its block weights run as int8 on an fp32 stream, "
-    "7.8 GiB at 1024²; the Base file downloads on first use, sft rounds to nearest. It "
-    "refuses loha and block swap. Changing between them sets int8, stream and "
+    "model_help_test": "The DiT to render with (base / sft) and how it runs. int8 "
+    "(default): its block weights run as int8 on an fp32 stream, 7.8 GiB at 1024²; the "
+    "Base file downloads on first use, sft rounds to nearest. It refuses loha and block "
+    "swap. bf16: 10.7 GiB at 1024². Changing between them sets int8, stream and "
     "blocks_to_swap, which stay editable under Advanced.",
     "model_help_i2i": "The DiT to train (base / sft) and how it runs. bf16 (default "
     "here): this task's measured settings. int8: swap 20 at budget 0.1, which fit "

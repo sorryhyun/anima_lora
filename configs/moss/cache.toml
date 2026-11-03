@@ -10,6 +10,7 @@ src = "post_image_dataset/resized"   # images + .txt captions, subfolders includ
 out = "post_image_dataset/moss"      # flat cache folder (two files per image)
 resolution = 1024              # pixel-area cap as a square edge; sides multiples of 16, never upscaled
 caption_format = "layout_json" # layout_json | text
+prompt_tail = "sure"           # sure | off: "\n</think>\n\nSure," after the template (docs/moss/findings/assistant_tail.md); the LoRA stamps it
 overwrite = false              # re-encode even when the cache is current
 skip_text = false              # skip the TE pass
 skip_latents = false           # skip the VAE pass

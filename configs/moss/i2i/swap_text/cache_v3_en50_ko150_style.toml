@@ -11,3 +11,6 @@ ref_scale = 1
 caption_format = "layout_json"
 token_split = "syllable"
 skip_latents = true
+
+# i2i stays on the pipeline prompt (the t2i default is sure; library/moss/prompt_tail.py).
+prompt_tail = "off"

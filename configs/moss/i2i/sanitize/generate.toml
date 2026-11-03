@@ -9,3 +9,6 @@ prompt = "no sfx, no dialogue, no watermark"
 prompt_format = "text"
 ref_scale = 1
 out_dir = "output/tests/moss_i2i_sanitize"
+
+# i2i stays on the pipeline prompt (the t2i default is sure; library/moss/prompt_tail.py).
+prompt_tail = "off"

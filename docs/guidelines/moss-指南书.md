@@ -150,7 +150,7 @@ make download-model ARGS=moss-sft
 
 该方案在 1024² 样本上约为 1.1 s/step，峰值 13 GB，并且还会锁定 4.4 GiB 系统内存。它比 bf16 方案更快也更准确：bf16 方案在相同峰值下为 1.6 s/step，预测误差在测试的所有 σ 上也更高（σ = 0.5 时 1.93% 对 1.62%，[精度](../moss/optimization/int8.md#accuracy)）。budget 每提高 0.1，峰值约增加 1 GB，每步快 0.01–0.02 s。显存低于 16 GB 的显卡请用 0.1（1.07 s/step，10.78 GB）；0.4 在 16 GB 上也可能显存不足。0.05 时峰值降到 9.98 GB，但需要重新计算 attention，速度降为 1.16 s/step。目前只用它完整训练过一个 LoRA（[详情](../moss/optimization/int8.md)）。
 
-**bf16 方案。** int8 基座拒绝 LoHa，i2i 任务配置默认使用 bf16。在训练页的 `model` 下拉框中选择 `(bf16)` 项（选 `(int8)` 项恢复默认），或使用 `--config configs/moss/lora_bf16.toml`。两者都会设置 `int8 off`、`stream bf16`、`ema_card` 关闭、`blocks_to_swap 36`（放在 CPU 上、用时再传入的 DiT 块数）、`activation_memory_budget 0.5`。测试框的 `model` 下拉框有相同的项：`(int8)` 用 int8 基座和 fp32 stream 生成（1024² 下 7.8 GiB，bf16 为 10.7 GiB）。i2i 训练页也有这些项，那里的 `(int8)` 使用 swap 20、budget 0.1：sanitize 最大的样本在 6 步内峰值为 12.3 GB，并且已有一次 swap_text 在 int8 基座上完整训练完成（`docs/moss/methods/i2i.md`）。
+**bf16 方案。** int8 基座拒绝 LoHa，i2i 任务配置默认使用 bf16。在训练页的 `model` 下拉框中选择 `(bf16)` 项（选 `(int8)` 项恢复默认），或使用 `--config configs/moss/lora_bf16.toml`。两者都会设置 `int8 off`、`stream bf16`、`ema_card` 关闭、`blocks_to_swap 36`（放在 CPU 上、用时再传入的 DiT 块数）、`activation_memory_budget 0.5`。测试框的 `model` 下拉框有相同的项：默认的 `(int8)` 用 int8 基座和 fp32 stream 生成（1024² 下 7.8 GiB、11–15 秒，`(bf16)` 为 10.7 GiB、22 秒）。i2i 训练页也有这些项，那里的 `(int8)` 使用 swap 20、budget 0.1：sanitize 最大的样本在 6 步内峰值为 12.3 GB，并且已有一次 swap_text 在 int8 基座上完整训练完成（`docs/moss/methods/i2i.md`）。
 
 | 方案 | 字段 | s/step | 剩余显存 |
 |---|---|---|---|
