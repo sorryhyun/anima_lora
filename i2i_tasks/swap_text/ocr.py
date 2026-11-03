@@ -19,7 +19,6 @@ pool's colour gates measure around, independent of the build's diff regions
 from __future__ import annotations
 
 import json
-import re
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -27,15 +26,12 @@ from types import SimpleNamespace
 import cv2
 
 from i2i_tasks.swap_text.common import (
-    JA_SCRIPT,
     ok_pages,
     read_cache,
     read_json,
     write_text,
 )
-
-LATIN_MIN_SCORE = 0.8
-HANGUL = re.compile(r"[\uac00-\ud7a3]")
+from library.moss.colorize import keep_line
 
 
 def _gated_pages(a) -> list[dict]:
@@ -44,30 +40,6 @@ def _gated_pages(a) -> list[dict]:
         for p in ok_pages(a)
         if p["resid"] <= a.max_resid and p["uncovered"] <= a.max_uncovered
     ]
-
-
-def keep_line(ln) -> bool:
-    """A line ``readable`` keeps, a Latin line read at ``LATIN_MIN_SCORE``
-    whatever its det — the detector scores scanlation lettering 0.3–0.6 and the
-    reader 0.8–0.9 on reads that are right — or a Hangul line ``readable``
-    lost to its glyph floor alone: small balloon lettering sits at 12–16 px and
-    reads at 0.96–1.00."""
-    from anime_tools.ocr.reread import LINE_MIN_DET
-    from anime_tools.ocr.sfx import is_latin
-
-    from library.moss.colorize import LATIN_MIN_GLYPH, LOW_DET_SCORE, readable
-
-    if readable(ln):
-        return True
-    if ln.glyph_px < LATIN_MIN_GLYPH:
-        return False
-    if is_latin(ln.text):
-        return ln.score >= LATIN_MIN_SCORE
-    return (
-        bool(HANGUL.search(ln.text))
-        and not JA_SCRIPT.search(ln.text)
-        and (ln.det >= LINE_MIN_DET or ln.score >= LOW_DET_SCORE)
-    )
 
 
 def raw_row(ln) -> list:

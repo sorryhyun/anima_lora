@@ -192,7 +192,21 @@ class ColorizeCacheRequest(Request):
         "for an even split",
     )
     tag_dropout: float = _f(
-        0.8, "share of the colour caption's tags an odd-k sparse caption drops"
+        0.8,
+        "share of the colour caption's tags an odd-k sparse caption drops; "
+        "captions control: share of the pool every draw drops",
+    )
+    captions: str = _f(
+        "ocr",
+        "ocr: the OCR layout over the full / sparse / bare colour caption (v4). "
+        "control: an illustration draws from its colour + series tags (bare: empty); "
+        "a manga page is always comic plus a box-only text item per OCR line swap_text's "
+        "keep_line keeps, "
+        "and draws from a box per character with its hair / eye / clothing colours (SAM3 + "
+        "Anima Tagger on the colour target; bare: no characters). embeds and every "
+        "embeds_v{k} are draws dropping tag_dropout of the pool, embeds_plain the "
+        "bare caption for plain_caption_rate. Needs vision off",
+        choices=("ocr", "control"),
     )
     vision: bool = _f(
         False,

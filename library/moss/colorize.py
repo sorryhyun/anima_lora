@@ -23,6 +23,16 @@ cache ``train.py`` reads unchanged:
                       at training); with ``vision`` off there is no empty-prompt
                       row
 
+``captions = "control"`` replaces the three: ``embeds`` and each ``embeds_v{k}`` are
+draws keeping ``1 - tag_dropout`` of a pool, and ``embeds_plain`` is the bare
+caption. No OCR. An illustration's pool is its colour + series tags; its bare
+caption is empty. A manga page always carries ``comic`` and a box-only ``text`` item
+per OCR line of the condition that ``keep_line`` keeps, swap_text's caption floor
+(``text_boxes.json``, the reads kept); its pool is each
+character's hair / eye / clothing colours (SAM3 + Anima Tagger on the target, a
+``character`` item with its box; ``characters.json``), and its bare caption is
+``comic`` and the text lines alone.
+
 The OCR reads the condition, never the target. Its floors are looser than the
 stage's (``LINE_MIN_DET`` 0.6, glyph 16): the detector scores horizontal English
 balloons 0.3–0.55 while the reader reads them right, so a box down to the
@@ -45,6 +55,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 import sys
 import time
 from pathlib import Path
@@ -62,6 +73,11 @@ from library.moss.scan import REF_SUFFIX, TE_SUFFIX
 # ocr_caption to build the same prompt at inference: change both together.
 LOW_DET_SCORE = 0.9  # reader score a box under LINE_MIN_DET needs
 LATIN_MIN_GLYPH = 12.0
+LATIN_MIN_SCORE = 0.8  # keep_line: a Latin line's reader score, whatever its det
+HANGUL = re.compile(r"[\uac00-\ud7a3]")
+JA_SCRIPT = re.compile(
+    r"[\u3040-\u30ff\u31f0-\u31ff\u3400-\u4dbf\u4e00-\u9fff\uff66-\uff9f]"
+)
 
 
 def find_pairs(staging: Path, resized: Path) -> list[tuple[str, Path, Path]]:
@@ -108,6 +124,28 @@ def readable(ln) -> bool:
     return bool(ln.text) and sure and ln.glyph_px >= floor
 
 
+def keep_line(ln) -> bool:
+    """A line ``readable`` keeps, a Latin line read at ``LATIN_MIN_SCORE``
+    whatever its det — the detector scores scanlation lettering 0.3–0.6 and the
+    reader 0.8–0.9 on reads that are right — or a Hangul line ``readable``
+    lost to its glyph floor alone: small balloon lettering sits at 12–16 px and
+    reads at 0.96–1.00. swap_text's caption floor (``i2i_tasks/swap_text/ocr.py``)."""
+    from anime_tools.ocr.reread import LINE_MIN_DET
+    from anime_tools.ocr.sfx import is_latin
+
+    if readable(ln):
+        return True
+    if ln.glyph_px < LATIN_MIN_GLYPH:
+        return False
+    if is_latin(ln.text):
+        return ln.score >= LATIN_MIN_SCORE
+    return (
+        bool(HANGUL.search(ln.text))
+        and not JA_SCRIPT.search(ln.text)
+        and (ln.det >= LINE_MIN_DET or ln.score >= LOW_DET_SCORE)
+    )
+
+
 def load_reread_engine(device: str):
     """The detector with the SFX reader re-reading its boxes."""
     from anime_tools.ocr import load_ocr
@@ -125,13 +163,13 @@ def load_reread_engine(device: str):
     )
 
 
-def read_pages(conditions: list[Path], device: str) -> list[list]:
-    """Per condition, the readable lines as ``[text, [x0, y0, x1, y1]]`` in reading
-    order, in the condition's pixels."""
+def read_pages(conditions: list[Path], device: str, keep=readable) -> list[list]:
+    """Per condition, the lines ``keep`` keeps as ``[text, [x0, y0, x1, y1]]`` in
+    reading order, in the condition's pixels."""
     engine = load_reread_engine(device)
     out, t0 = [], time.time()
     for i, lines in enumerate(engine.read_iter(conditions), 1):
-        out.append([[ln.text, list(ln.box)] for ln in lines if readable(ln)])
+        out.append([[ln.text, list(ln.box)] for ln in lines if keep(ln)])
         if i % 50 == 0 or i == len(conditions):
             print(f"  ocr {i}/{len(conditions)}, {time.time() - t0:.0f}s", flush=True)
     del engine
@@ -181,6 +219,114 @@ def sparse_captions(colour, n, dropout, comic_page, is_comic_tag) -> list[str]:
     ]
 
 
+CHARACTER_COLOUR_SKIP = frozenset({"skin", "background", "sky", "border", "theme"})
+
+
+def is_character_colour(tag: str, is_color_tag) -> bool:
+    """A colour tag a character box carries: hair, eyes and clothing, not skin or
+    the blanked crop's background."""
+    words = tag.strip().lower().split()
+    return bool(words) and is_color_tag(tag) and words[-1] not in CHARACTER_COLOUR_SKIP
+
+
+def keep_draw(atoms: list, dropout: float, rng: random.Random) -> list:
+    """Each atom kept with probability ``1 - dropout``; one at least when there are
+    any (the bare caption is the empty draw)."""
+    kept = [a for a in atoms if rng.random() >= dropout]
+    if atoms and not kept:
+        kept = [rng.choice(atoms)]
+    return kept
+
+
+def illustration_draws(pool: list[str], n, dropout, rng, kb) -> list[str]:
+    """``n`` layout captions over a draw of the colour + series tags each."""
+    from anime_tools.captions.layout_json import layout_json
+
+    if not pool:
+        return [""] * n
+    return [layout_json(", ".join(keep_draw(pool, dropout, rng)), kb) for _ in range(n)]
+
+
+def manga_layout(characters: list, text_boxes: list, size) -> str:
+    """``comic``, a ``character`` item with its box per character (its colours),
+    then a box-only ``text`` item per text line."""
+    from anime_tools.captions.layout_json import centered_box
+
+    items = [
+        {
+            "label": "character",
+            "caption": ", ".join(tags),
+            "bbox": centered_box(b, size),
+        }
+        for b, tags in characters
+        if tags
+    ]
+    items += [{"label": "text", "bbox": centered_box(b, size)} for b in text_boxes]
+    layout: dict = {"summary": {"caption": "comic"}}
+    if items:
+        layout.update(
+            items=items, bbox_coord_space="abs_centralized", bbox_format="yxyx"
+        )
+    return json.dumps(layout, ensure_ascii=False, separators=(",", ":"))
+
+
+def manga_draws(characters: list, text_boxes: list, size, n, dropout, rng) -> list[str]:
+    """``n`` layout captions: ``comic`` and every text line always, each
+    character's colours a draw dropping ``dropout`` of them (one kept at least;
+    the bare caption is :func:`manga_layout` with no characters)."""
+    atoms = [(i, t) for i, (_, tags) in enumerate(characters) for t in tags]
+    out = []
+    for _ in range(n):
+        kept = keep_draw(atoms, dropout, rng)
+        chars = [
+            (b, [t for c, t in kept if c == i]) for i, (b, _) in enumerate(characters)
+        ]
+        out.append(manga_layout(chars, text_boxes, size))
+    return out
+
+
+def detect_characters(targets: list[Path], device: str) -> list[list]:
+    """Per colour target, ``[[x0, y0, x1, y1], [colour tags]]`` for each character
+    with a colour tag, in the target's pixels, top to bottom: the position stage's
+    SAM3 subject detector, its mask-blanked crop, the Anima Tagger's kept tags that
+    are colours (unfiltered: ``is_character_colour`` applies at caption time)."""
+    from anime_tools.stages._models import load_tagger, release_models
+    from anime_tools.stages.detector import build_detect_fn
+    from anime_tools.stages.instance_detection import crop_instance
+    from anime_tools.stages.position_captions import detect_subjects
+    from anime_tools.stages.requests import PositionRequest
+
+    cc = _color_caption()
+    preq = PositionRequest(device=device)
+    options = preq.options()
+    detect_fn, _, sam_model, sam_processor = build_detect_fn(
+        preq.detection, device=device
+    )
+    tagger, _, _ = load_tagger(preq)
+    out, t0 = [], time.time()
+    for i, path in enumerate(targets, 1):
+        image = moss_cache.load_rgb(path)
+        chars = []
+        for d in sorted(
+            detect_subjects(image, detect_fn, options, None),
+            key=lambda d: (d.box[1], d.box[0]),
+        ):
+            crop = crop_instance(image, d, pad=options.pad, blank=options.blank_crops)
+            kept = tagger.predict(crop).get("kept") or {}
+            tags = [t for t in kept if cc.is_color_tag(t)]
+            if tags:
+                chars.append([[float(v) for v in d.box], tags])
+        out.append(chars)
+        if i % 50 == 0 or i == len(targets):
+            print(
+                f"  characters {i}/{len(targets)}, {time.time() - t0:.0f}s", flush=True
+            )
+    del sam_model, sam_processor, tagger, detect_fn
+    release_models()
+    empty_cache()
+    return out
+
+
 def _color_caption():
     """``i2i_tasks/colorization/color_caption.py`` (not an installed package)."""
     sys.path.insert(0, str(resolve_under_home("i2i_tasks/colorization")))
@@ -197,6 +343,9 @@ def run_colorize_cache(req) -> Path:
         raise SystemExit(
             "--variants must be at least 3: embeds_v1 is partial, embeds_v2 bare"
         )
+    control = req.captions == "control"
+    if control and req.vision:
+        raise SystemExit("--captions control encodes the caption alone: --no-vision")
     out = resolve_under_home(req.out)
     (out / "holdout").mkdir(parents=True, exist_ok=True)
     device = torch.device("cuda")
@@ -302,24 +451,83 @@ def run_colorize_cache(req) -> Path:
         del vae
         empty_cache()
 
-    ocr_path = out / "ocr.json"
-    reads = json.loads(ocr_path.read_text()) if ocr_path.exists() else {}
-    missing = [j for j in jobs if j[0] not in reads]
-    if missing:
-        for j, lines in zip(missing, read_pages([j[1] for j in missing], "cuda")):
-            reads[j[0]] = lines
-        ocr_path.write_text(json.dumps(reads, ensure_ascii=False, indent=1))
-    print(
-        f"{sum(bool(reads[j[0]]) for j in jobs)} of {len(jobs)} pages carry OCR lines",
-        flush=True,
-    )
-
     cc = _color_caption()
     copyright_tags = cc.load_copyright_tags()
     kb = moss_cache.tag_knowledge_base()
-    # stem: (colour caption, OCR caption, sparse OCR captions)
+    # stem: (colour caption, caption, variant captions, bare caption or None)
     captions = {}
-    for stem, cond, target, _, (w, h) in jobs:
+    if control:
+        manga_jobs = [j for j in jobs if j[0].startswith("manga__")]
+        chars_path, text_path = out / "characters.json", out / "text_boxes.json"
+        found = json.loads(chars_path.read_text()) if chars_path.exists() else {}
+        blocks = json.loads(text_path.read_text()) if text_path.exists() else {}
+        if missing := [j for j in manga_jobs if j[0] not in blocks]:
+            reads = read_pages([j[1] for j in missing], "cuda", keep=keep_line)
+            for j, lines in zip(missing, reads):
+                blocks[j[0]] = lines
+            text_path.write_text(json.dumps(blocks, ensure_ascii=False, indent=1))
+        if missing := [j for j in manga_jobs if j[0] not in found]:
+            for j, chars in zip(
+                missing, detect_characters([j[2] for j in missing], "cuda")
+            ):
+                found[j[0]] = chars
+            chars_path.write_text(json.dumps(found, ensure_ascii=False, indent=1))
+        for stem, cond, target, _, (w, h) in jobs:
+            rng = random.Random(f"{req.seed}:{stem}")
+            if stem.startswith("manga__"):
+                with Image.open(target) as im:
+                    tw, th = im.size
+                with Image.open(cond) as im:
+                    cw, ch = im.size
+                chars = [
+                    (
+                        [b[0] * w / tw, b[1] * h / th, b[2] * w / tw, b[3] * h / th],
+                        [x for x in t if is_character_colour(x, cc.is_color_tag)],
+                    )
+                    for b, t in found[stem]
+                ]
+                texts = [
+                    [b[0] * w / cw, b[1] * h / ch, b[2] * w / cw, b[3] * h / ch]
+                    for _, b in blocks[stem]
+                ]
+                pool = "; ".join(", ".join(t) for _, t in chars) + (
+                    f" + {len(texts)} text lines"
+                )
+                draws = manga_draws(
+                    chars, texts, (w, h), req.variants, req.tag_dropout, rng
+                )
+                bare = manga_layout([], texts, (w, h))
+            else:
+                pool = cc.filter_to_colors_and_protected(
+                    target.with_suffix(".txt").read_text(encoding="utf-8").strip(),
+                    copyright_tags,
+                    keep_copyright=True,
+                    keep_comic=False,
+                )
+                tags = [t.strip() for t in pool.split(",") if t.strip()]
+                draws = illustration_draws(tags, req.variants, req.tag_dropout, rng, kb)
+                bare = ""
+            captions[stem] = (pool, draws[0], draws[1:], bare)
+        print(
+            f"of {len(manga_jobs)} manga pages, {sum(bool(found[j[0]]) for j in manga_jobs)}"
+            f" carry a character colour, {sum(bool(blocks[j[0]]) for j in manga_jobs)}"
+            " a text line",
+            flush=True,
+        )
+    else:
+        ocr_path = out / "ocr.json"
+        reads = json.loads(ocr_path.read_text()) if ocr_path.exists() else {}
+        missing = [j for j in jobs if j[0] not in reads]
+        if missing:
+            for j, lines in zip(missing, read_pages([j[1] for j in missing], "cuda")):
+                reads[j[0]] = lines
+            ocr_path.write_text(json.dumps(reads, ensure_ascii=False, indent=1))
+        print(
+            f"{sum(bool(reads[j[0]]) for j in jobs)} of {len(jobs)} pages carry OCR "
+            "lines",
+            flush=True,
+        )
+    for stem, cond, target, _, (w, h) in [] if control else jobs:
         colour = cc.filter_to_colors_and_protected(
             target.with_suffix(".txt").read_text(encoding="utf-8").strip(),
             copyright_tags,
@@ -344,6 +552,7 @@ def run_colorize_cache(req) -> Path:
             colour,
             ocr_caption(colour, lines, (w, h), kb),
             [ocr_caption(s, lines, (w, h), kb) for s in sparse],
+            None,
         )
 
     todo = [j for j in jobs if not te_path(j[0], j[3]).exists()]
@@ -362,8 +571,9 @@ def run_colorize_cache(req) -> Path:
         )
         t0 = time.time()
         for i, (stem, cond, target, held, (w, h)) in enumerate(todo, 1):
-            colour, ocr, sparse = captions[stem]
-            texts = [ocr, *([""] if req.vision else []), *sparse]
+            colour, ocr, sparse, bare = captions[stem]
+            has_plain = req.vision or bare is not None
+            texts = [ocr, *([bare or ""] if has_plain else []), *sparse]
             if req.vision:
                 page = moss_cache.fit(moss_cache.load_rgb(cond), w, h)
                 encoded = encode_variants(tok, te, page, texts, w * h, device)
@@ -371,7 +581,7 @@ def run_colorize_cache(req) -> Path:
                 # No shared page rows: each variant is stored whole (prefix 0).
                 encoded = [(*encode(tok, te, None, t, 0, device), 0) for t in texts]
             (embeds, n_img, prefix), *rest = encoded
-            plain = rest.pop(0)[0].to("cpu", torch.bfloat16) if req.vision else None
+            plain = rest.pop(0)[0].to("cpu", torch.bfloat16) if has_plain else None
             var, var_meta = moss_cache.variant_entries(
                 [
                     (t, e.to("cpu", torch.bfloat16))
@@ -382,7 +592,7 @@ def run_colorize_cache(req) -> Path:
             save_file(
                 {
                     "embeds": embeds.to("cpu", torch.bfloat16).contiguous(),
-                    **({"embeds_plain": plain.contiguous()} if req.vision else {}),
+                    **({"embeds_plain": plain.contiguous()} if has_plain else {}),
                     **var,
                 },
                 str(te_path(stem, held)),
@@ -390,7 +600,9 @@ def run_colorize_cache(req) -> Path:
                     "caption": ocr,
                     "colour_caption": colour,
                     "n_text": str(embeds.shape[0]),
-                    **({"n_text_plain": str(plain.shape[0])} if req.vision else {}),
+                    **({"n_text_plain": str(plain.shape[0])} if has_plain else {}),
+                    **({"caption_plain": bare} if bare is not None else {}),
+                    "captions": req.captions,
                     "n_image_tokens": str(n_img),
                     "condition": str(cond),
                     "source": str(target),
@@ -422,6 +634,11 @@ def run_colorize_cache(req) -> Path:
             "caption": captions[stem][1],
             "caption_v1": captions[stem][2][0],
             "caption_v2": captions[stem][2][1],
+            **(
+                {"caption_plain": captions[stem][3]}
+                if captions[stem][3] is not None
+                else {}
+            ),
             "width": w,
             "height": h,
             "te": str(te_path(stem, True)),
