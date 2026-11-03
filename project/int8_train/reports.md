@@ -58,6 +58,7 @@ inputs.
 | fp16-accumulate backward | passes with QKᵀ fp32-accumulated: 1.340x the Triton backward, 1.02–1.10x error; fp16acc QKᵀ alone is 2.1x ([report](reports/attn_bwd_fp16acc.md)) |
 | fp16acc in FA2's backward | ported: real MOSS step 1071–1082 → 1022 ms, real Anima step 426.5 → 404.7 ms, error 0.74–0.97x FA2, MOSS LoRA gradient 1.000–1.005x; default on sm_120 after `make fa2-sm120` ([report](reports/fa2_fp16acc.md)) |
 | fp16acc attention forward on MOSS, Triton | parked, no gate decided it: estimated 1.2–1.5% of a step for PV and 2.5–3% with QKᵀ and S on FA2; prediction error flat on PV and 1–7% higher with S, possibly sample spread; LoRA gradient cannot separate the arms on six images ([report](reports/moss_fwd16_triton.md)) |
+| Nunchaku `nunchaku-fp16` attention, source read | the forward of `tri_all` (QKᵀ + PV fp16acc, fp32 softmax, 128×32 tile), forward only, no key mask, packed layout: not a drop-in; our own `fa2_fwd_fp16acc.patch` stays the way to try it ([report](reports/nunchaku.md)) |
 | one int8 linear for MOSS q / k / v | built: forward 1.30x and bit-identical, dX 1.31x, about 24 ms of a step; LoRA gradient 0.986–1.006x ([report](reports/qkv_fuse.md)) |
 
 Criterion, as it stands now:
