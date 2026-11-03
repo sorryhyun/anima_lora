@@ -37,6 +37,7 @@ _SHARED = (
     "library.runtime.blockswap",
     "library.runtime.device",
     "library.runtime.dynamo",
+    "library.runtime.fa2",
     "library.inference.sampling",
     "library.inference.corrections.cns_core",
     "library.runtime.progress",
