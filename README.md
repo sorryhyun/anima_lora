@@ -1,6 +1,6 @@
 # anima_lora
 
-> **New: [MOSS-Image LoRA](docs/moss/README.md).** Train LoRAs for OpenMOSS's 5B [MOSS-Image](https://huggingface.co/OpenMOSS-Team/MOSS-Image-Base) on a 16 GB card at 1.1 s/step, with Spectrum sampling (2.6×) — `make gui-moss`. A separate line from Anima.
+> **New: [MOSS-Image LoRA](docs/moss/README.md).** Train LoRAs for OpenMOSS's 5B [MOSS-Image](https://huggingface.co/OpenMOSS-Team/MOSS-Image-Base) on a 16 GB card at 1.1 s/step, with Spectrum sampling (2.6×) — `make gui`, Model set to MOSS-Image. A separate line from Anima.
 
 🛠️ Install: [English](docs/installation/README.md) · [한국어](docs/installation/설치.md) · [日本語](docs/installation/インストール.md) · [中文](docs/installation/安装.md)
 

@@ -38,7 +38,7 @@ list in `tests/test_moss_boundary.py`.
 | `scan.py` | **torch-free** cache layout + GUI counts; its stale check (`source_sha256` vs `.txt`) can disagree with `cache.py`'s (`_te_current`) |
 
 Sidecars `scripts/moss/{cache,colorize_cache,generate,quantize_te_fp8,train,tune_swap}.py` are thin argparse
-over the requests, submitted through the daemon; `make gui-moss` submits the same jobs (its
+over the requests, submitted through the daemon; `make gui` (Model: MOSS-Image) submits the same jobs (its
 i2i tabs: `gui/moss/i2i.py`). User doc: `docs/moss/README.md`. Weights: catalog packs
 `moss-base` / `moss-sft` under `models/moss_image/MOSS-Image-{Base,SFT}`; SFT ships its DiT
 alone, TE / VAE / tokenizer always load from Base. Research line (finished):

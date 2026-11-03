@@ -15,7 +15,7 @@ Step-by-step GUI walkthrough, field tables and troubleshooting:
 ```bash
 make download-model ARGS=moss-base   # DiT + text encoder + VAE + tokenizer, ~27 GB
 make download-model ARGS=moss-sft    # optional: the SFT DiT alone, ~10 GB (reuses Base's TE/VAE)
-make gui-moss                        # Preprocess → Train → Test, each a daemon job
+make gui                             # Model → MOSS-Image: Preprocess → Train → Test, each a daemon job
 ```
 
 Weights land in `models/moss_image/MOSS-Image-{Base,SFT}/` (elsewhere:

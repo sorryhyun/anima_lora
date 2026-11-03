@@ -77,8 +77,8 @@ Qwen3.5-9B text encoder and the frozen FLUX.2 VAE. Code map, module roles and th
 
 Running it:
 
-- `make gui-moss` (or the Anima / MOSS-Image mode switch in `make gui`) submits cache /
-  train / test as daemon jobs. From the CLI the same jobs are
+- `make gui` with the Model switch on MOSS-Image (`make gui-moss` opens the same panel in its own
+  window) submits cache / train / test as daemon jobs. From the CLI the same jobs are
   `make daemon-run ARGS="--stall-timeout 900 scripts/moss/{cache,train,generate,tune_swap}.py …"`.
 - **Every flag and default is defined once** in `library/moss/requests.py` (torch-free
   request dataclasses). `--config <file.toml>` takes a flat TOML of field names; order is
