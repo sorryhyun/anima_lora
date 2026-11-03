@@ -10,6 +10,7 @@ from pathlib import Path
 
 from library.env import resolve_under_home
 from library.moss.requests import GenerateRequest
+from library.moss.prompt_tail import resolve_prompt_tail
 from library.moss.token_split import resolve_token_split
 
 
@@ -138,6 +139,8 @@ def fingerprint(req: GenerateRequest, job: dict) -> dict:
     te = {} if req.text_encoder == "bf16" else {"text_encoder": req.text_encoder}
     if (token_split := resolve_token_split(req)) != "off":
         te["token_split"] = token_split
+    if (prompt_tail := resolve_prompt_tail(req)) != "off":
+        te["prompt_tail"] = prompt_tail
     return dict(
         {k: v for k, v in job.items() if k != "skip"},
         **te,

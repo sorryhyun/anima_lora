@@ -53,6 +53,7 @@ from library.moss.loader import (
     stream_fp32_,
 )
 from library.moss.model import decode, snapped_sigmas
+from library.moss.prompt_tail import resolve_prompt_tail
 from library.moss.token_split import resolve_token_split
 from library.moss.requests import (
     DEFAULT_CFG,
@@ -283,6 +284,7 @@ def _denoise_pending(req, model_dir, out_dir, pending, device) -> None:
         out_dir / "_te_cache",
         req.text_encoder,
         resolve_token_split(req),
+        resolve_prompt_tail(req),
     )
     seen = [j for j in jobs if j.get("ref_vision")]
     seen = vision_embeds(model_dir, seen, out_dir / "_te_cache", req.text_encoder)

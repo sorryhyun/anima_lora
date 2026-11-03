@@ -379,6 +379,7 @@ def run_metadata(
     has_regions: bool,
     region_end: float,
     token_split: str = "off",
+    prompt_tail: str = "off",
 ) -> dict:
     """The run's LoRA metadata."""
     meta = {
@@ -401,12 +402,16 @@ def run_metadata(
         meta["stream"] = req.stream
     if token_split != "off":
         meta["token_split"] = token_split
+    if prompt_tail != "off":
+        meta["prompt_tail"] = prompt_tail
     if req.delta_rows != "all":
         meta["delta_rows"] = req.delta_rows
     if req.trigger:
         meta["trigger"] = req.trigger
     if req.trigger_registers:
-        meta.update(trigger_registers=req.trigger_registers, register_lr=req.register_lr)
+        meta.update(
+            trigger_registers=req.trigger_registers, register_lr=req.register_lr
+        )
     if req.preserve_weight:
         meta["preserve_weight"] = req.preserve_weight
     if n_refs:

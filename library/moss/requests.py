@@ -45,6 +45,8 @@ DEFAULT_TEXT_ENCODER = "int8"
 TEXT_ENCODERS = ("int8", "fp8", "bf16")
 # library/moss/token_split.py
 TOKEN_SPLITS = ("off", "syllable")
+# library/moss/prompt_tail.py
+PROMPT_TAILS = ("off", "sure")
 _TE_HELP = (
     "int8 (default; INT8 W8A8 decoder linears, ~9.2 GB, fetched on first use), fp8 "
     "(float8_e4m3fn weight-only, ~9.2 GB, fetched on first use) or bf16 (the reference "
@@ -140,6 +142,14 @@ class CacheRequest(Request):
         "syllable: every Hangul syllable its own token form (library/moss/token_split.py). "
         "Switching re-encodes the captions holding Hangul; the LoRA stamps it",
         choices=TOKEN_SPLITS,
+        advanced=True,
+    )
+    prompt_tail: str = _f(
+        "off",
+        "assistant-turn tail after the template's <think>: sure closes the think "
+        "block and starts the answer 'Sure,' (library/moss/prompt_tail.py). Switching "
+        "re-encodes the TE cache; the LoRA stamps it",
+        choices=PROMPT_TAILS,
         advanced=True,
     )
     model_dir: str = _f("", _MODEL_DIR_HELP, advanced=True)
@@ -416,6 +426,13 @@ class GenerateRequest(Request):
         "auto: what the LoRA stamps, else off. off / syllable force it "
         "(library/moss/token_split.py); ref_vision needs off",
         choices=("auto", *TOKEN_SPLITS),
+        advanced=True,
+    )
+    prompt_tail: str = _f(
+        "auto",
+        "auto: what the LoRA stamps, else off. off / sure force it, on cond and "
+        "uncond (library/moss/prompt_tail.py); ref_vision needs off",
+        choices=("auto", *PROMPT_TAILS),
         advanced=True,
     )
     model_dir: str = _f("", _MODEL_DIR_HELP, advanced=True)

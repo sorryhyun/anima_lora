@@ -106,6 +106,24 @@ def cache_token_split(samples: list[Sample]) -> str:
     return "off"
 
 
+def cache_prompt_tail(samples: list[Sample]) -> str:
+    """The ``prompt_tail`` the cache's TE files stamp (``off`` unstamped); a cache
+    mixing tails is refused."""
+    from safetensors import safe_open
+
+    tails = set()
+    for s in samples:
+        if s.te_path is None:
+            continue
+        with safe_open(str(s.te_path), "pt") as f:
+            tails.add((f.metadata() or {}).get("prompt_tail", "off"))
+    if len(tails) > 1:
+        raise SystemExit(
+            f"TE cache mixes prompt tails {sorted(tails)}; re-cache with one prompt_tail"
+        )
+    return tails.pop() if tails else "off"
+
+
 def delta_row_ids(delta_rows: str, n_text: int, trigger_rows: list[int]) -> list[int]:
     """The text rows (0-based in the context) ``delta_rows`` keeps."""
     if delta_rows == "text":
@@ -249,16 +267,20 @@ def sample_sigma(
     return j / total
 
 
-def empty_prompt_embeds(req: TrainRequest) -> torch.Tensor:
-    """``(S, 4096)`` bf16 embedding of ``""`` (10 chat-template tokens)."""
+def empty_prompt_embeds(req: TrainRequest, prompt_tail: str = "off") -> torch.Tensor:
+    """``(S, 4096)`` bf16 embedding of ``""`` (10 chat-template tokens, plus the
+    ``prompt_tail`` rows; that one is written beside the shipped file)."""
     from safetensors.torch import load_file, save_file
 
     path = resolve_under_home(EMPTY_PROMPT_PATH)
+    if prompt_tail != "off":
+        path = path.with_name(f"{path.stem}_{prompt_tail}{path.suffix}")
     if not path.exists():
         from library.moss.loader import encode_prompts
 
         print(f"encoding the empty prompt -> {path}", flush=True)
-        embeds = encode_prompts(req.model_dir, [""])[""].to(torch.bfloat16)
+        embeds = encode_prompts(req.model_dir, [""], prompt_tail=prompt_tail)[""]
+        embeds = embeds.to(torch.bfloat16)
         path.parent.mkdir(parents=True, exist_ok=True)
         save_file({"embeds": embeds.contiguous()}, str(path))
     return load_file(str(path))["embeds"]

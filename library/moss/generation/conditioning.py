@@ -16,7 +16,12 @@ from library.moss.loader import (
 
 
 def cached_embeds(
-    model_dir, texts, cache_dir: Path, precision="bf16", token_split="off"
+    model_dir,
+    texts,
+    cache_dir: Path,
+    precision="bf16",
+    token_split="off",
+    prompt_tail="off",
 ) -> dict[str, torch.Tensor]:
     """TE outputs keyed by text (and TE precision), read from / written to
     ``cache_dir`` so a rerun of the same prompts skips the text encoder."""
@@ -28,6 +33,8 @@ def cached_embeds(
             key = f"{precision}\0{key}"
         if token_split != "off":
             key = f"{token_split}\0{key}"
+        if prompt_tail != "off":
+            key = f"tail={prompt_tail}\0{key}"
         digest = hashlib.sha1(key.encode()).hexdigest()[:16]
         return cache_dir / f"{digest}.safetensors"
 
@@ -40,7 +47,11 @@ def cached_embeds(
     if missing:
         cache_dir.mkdir(parents=True, exist_ok=True)
         for text, emb in encode_prompts(
-            model_dir, missing, precision=precision, token_split=token_split
+            model_dir,
+            missing,
+            precision=precision,
+            token_split=token_split,
+            prompt_tail=prompt_tail,
         ).items():
             save_file({"embeds": emb.contiguous()}, path(text))
             out[text] = emb

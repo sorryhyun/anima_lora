@@ -112,6 +112,7 @@ from library.moss.scan import (
     caption_sha,
     latent_files,
 )
+from library.moss.prompt_tail import with_prompt_tail
 from library.moss.token_split import effective_split, with_token_split
 
 ENCODER_ID = (
@@ -131,6 +132,7 @@ def _te_current(
     plain: str = "",
     encoder: str = ENCODER_ID,
     token_split: str = "off",
+    prompt_tail: str = "off",
 ) -> bool:
     if not path.exists():
         return False
@@ -144,6 +146,7 @@ def _te_current(
         and meta.get("max_text_tokens") == str(max_tokens)
         and meta.get("encoder", ENCODER_ID) == encoder
         and meta.get("token_split", "off") == effective_split(token_split, caption)
+        and meta.get("prompt_tail", "off") == prompt_tail
         and meta.get("plain_caption_sha256", "")
         == (caption_sha(plain) if plain else "")
     )
@@ -162,6 +165,7 @@ def cache_text(
     caption_format="text",
     precision="bf16",
     token_split="off",
+    prompt_tail="off",
 ) -> dict:
     from library.moss.loader import (
         empty_cache,
@@ -183,13 +187,16 @@ def cache_text(
             p.plain,
             encoder,
             token_split,
+            prompt_tail,
         )
     ]
     if not todo:
         print("text: all cached", flush=True)
         return {"encoded": 0}
     t0 = time.time()
-    tok = with_token_split(load_tokenizer(model_dir), token_split)
+    tok = with_token_split(
+        with_prompt_tail(load_tokenizer(model_dir), prompt_tail), token_split
+    )
     longest = max(
         prompt_ids(tok, text, max_tokens).input_ids.shape[1]
         for p in todo
@@ -224,6 +231,8 @@ def cache_text(
         }
         if (split := effective_split(token_split, p.caption)) != "off":
             meta["token_split"] = split
+        if prompt_tail != "off":
+            meta["prompt_tail"] = prompt_tail
         plain_note = ""
         if p.plain:
             plain = encode_prompt(tok, te, p.plain, device, max_tokens).to(
@@ -451,6 +460,7 @@ def run_cache(req) -> Path:
             req.caption_format,
             req.text_encoder,
             req.token_split,
+            req.prompt_tail,
         )
     if not req.skip_latents:
         report["latents"] = cache_latents(

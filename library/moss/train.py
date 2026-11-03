@@ -79,6 +79,7 @@ from library.moss.training.data import (  # noqa: F401  (this module is their im
     empty_prompt_embeds,
     load_neg,
     bank_masks,
+    cache_prompt_tail,
     register_rows,
     register_slot,
     row_mask,
@@ -114,7 +115,9 @@ def run_train(req: TrainRequest) -> Path:
     samples = samples_from_cache(cache_dir)
     if not samples:
         raise SystemExit(f"no cached pairs under {cache_dir}")
-    empty = empty_prompt_embeds(req) if req.caption_dropout > 0 else None
+    empty = None
+    if req.caption_dropout > 0:
+        empty = empty_prompt_embeds(req, cache_prompt_tail(samples))
     return train(req, samples, empty)
 
 
@@ -128,6 +131,12 @@ def train(
 
         dit_int8.check_plan(req)
     setup.check_ref_adapters(req)
+    prompt_tail = cache_prompt_tail(samples)
+    if prompt_tail != "off" and (req.delta_rows != "all" or req.preserve_weight):
+        raise SystemExit(
+            "delta_rows / preserve_weight count rows of the shipped template; "
+            f"the cache stamps prompt_tail={prompt_tail}"
+        )
     torch.manual_seed(req.seed)
     # Its own RNG: a rich log record draws from the global one (rich's Style link ids).
     shuffle_rng = random.Random(req.seed)
@@ -358,6 +367,7 @@ def train(
         has_regions=bool(regions),
         region_end=region_end,
         token_split=setup.cache_token_split(samples),
+        prompt_tail=prompt_tail,
     )
     if int8_base is not None:
         meta.update(int8_base.metadata())

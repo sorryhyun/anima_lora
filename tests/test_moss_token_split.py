@@ -170,14 +170,11 @@ def test_fingerprint_tracks_the_split_and_leaves_old_latents_alone():
 def test_prompt_cache_keys_by_split(tmp_path, monkeypatch):
     calls = []
 
-    def encode(_m, texts, precision, token_split):
+    def encode(_m, texts, precision, token_split, **_kw):
         calls.append(token_split)
         return {t: torch.zeros(1, 2) for t in texts}
 
-    monkeypatch.setattr(
-        "library.moss.generation.conditioning.encode_prompts",
-        lambda m, t, precision, token_split: encode(m, t, precision, token_split),
-    )
+    monkeypatch.setattr("library.moss.generation.conditioning.encode_prompts", encode)
     cached_embeds(None, ["분인가요"], tmp_path, "int8")
     cached_embeds(None, ["분인가요"], tmp_path, "int8", "syllable")
     cached_embeds(None, ["분인가요"], tmp_path, "int8", "syllable")

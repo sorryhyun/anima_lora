@@ -108,10 +108,39 @@ directions (participation ratio 72 vs 113); `project/moss_te_sae/src/te_stats.py
   through the text refiner and the joint blocks. Untested: cutting the image's keys to
   `</think>`, or to the answer rows, per arm.
 
+## A LoRA trained with the tail
+
+`prompt_tail = sure` on `CacheRequest` / `GenerateRequest` (`library/moss/prompt_tail.py`),
+stamped in the TE cache and the LoRA; generate's `auto` follows the LoRA. Measured
+2026-11-03 on caststation (30 images), INT8 TE for cache and render, `configs/moss/lora.toml`
+with lr 1e-4 and `ema_window` 0.139 (8 epochs, 240 steps, seed 0). The two arms differ only
+in the TE cache: `channel_(caststation)_layout` (shipped) against `_layout_sure`. Renders:
+ER-SDE 50 + Spectrum, CFG 3, bf16 DiT and stream, 1024², the three `lora_ab.py` prompts × 2
+seeds; `output/tests/te8_tail/`.
+
+| arm | LoRA | render tail |
+|---|---|---|
+| control | `caststation_te8_int8` | off |
+| `sure` | `caststation_te8_sure` | sure (`auto`) |
+| `sure` LoRA, no tail | `caststation_te8_sure` | off |
+
+- **By the user's review, `sure` renders significantly better than the control**: more
+  detailed clothes and hands (Neru's vest and ring), livelier expressions, at the same
+  style strength. One `sure` render (Neru, seed 4) has a blank margin along the top and left.
+- **Most of the gain survives without the tail at render time**: the `sure` LoRA rendered
+  without the tail sits close to the `sure` arm and away from the control, so the
+  difference comes mostly from training on the tail cache.
+- Training loss is the same in both arms (final epoch 0.2839 / 0.2840).
+
+One training seed per arm and 6 renders per arm. The control LoRA with a tail at render
+time was not rendered.
+
+Each tail cache row is the shipped row bit-for-bit in 57 of 60 sequences. In 3
+(`12248671` full, `8293513` / `8508115` plain) the rows from position 64 on differ by up to
+0.43 relative, which fits the GDN layers' 64-token chunks changing numerics with the total
+length (not checked further).
+
 ## Next
 
 - A key cut on `</think>` and on the answer rows (`template_causal.py`'s cut arms).
-- More seeds and a blind pick before any default change.
-- A shipped tail changes the TE input, so TE caches would need to stamp it like
-  `caption_format`; a LoRA trained on shipped caches and rendered with a tail is
-  untested.
+- More training seeds and a blind pick before `prompt_tail = sure` becomes the cache default.
