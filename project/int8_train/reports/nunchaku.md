@@ -6,8 +6,9 @@ attention accumulation, up to 1.2× faster than FlashAttention-2 on 30-, 40-, 50
 precision loss", with no bench setup.
 
 **Verdict:** `set_attention_impl("nunchaku-fp16")` is the forward of our parked `tri_all` arm
-([moss_fwd16_triton.md](moss_fwd16_triton.md)), forward only, and not a drop-in for us. The path to try
-it stays our own unbuilt patch, [`src/fa2_fwd_fp16acc.patch`](../src/fa2_fwd_fp16acc.patch).
+([moss_fwd16_triton.md](moss_fwd16_triton.md)), forward only, and not a drop-in for us. Our own patch,
+`patches/fwd_fp16acc.patch` in `flash-attention-fp16`, is now built and measured:
+[fa2_fwd_fp16acc.md](fa2_fwd_fp16acc.md).
 
 | | Nunchaku `nunchaku-fp16` | ours |
 |---|---|---|

@@ -137,8 +137,5 @@ here add up to 0.22 ms per linear and stay out of fp16's range. `comfy_kitchen.i
 ## Not done
 
 - **Any gate on these arms.** A paired per-image prediction test, the 30-image gradient, a compiled step.
-- **The FA2 port.** [`src/fa2_fwd_fp16acc.patch`](../src/fa2_fwd_fp16acc.patch), on top of the
-  three patches in `flash-attention-fp16`: `FLASH_ATTN_FP16ACC_FWD=pv|all`, off when unset. Its two
-  fp16acc translation units compile; the wheel was stopped before it finished and has never run. Another wheel build would
-  be a cheap moment to try PV on a real step.
+- ~~The FA2 port.~~ Built and run on 2026-11-03: [fa2_fwd_fp16acc.md](fa2_fwd_fp16acc.md).
 - Anima on the same swap, cross-attention, i2i, a compiled step, any LoRA or render.
