@@ -99,30 +99,6 @@ def cmd_download_model(extra):
     _fetch(*names, extra=extra)
 
 
-def cmd_fa2_sm120(extra):
-    import tempfile
-    import urllib.request
-    import zipfile
-
-    from library.runtime.fa2 import build_dir, skip_reason, wheel_url
-
-    reason = skip_reason()
-    if reason is not None:
-        print(f"[fa2-sm120] skipped: {reason}")
-        return
-    root = build_dir()
-    if (root / "flash_attn").is_dir() and not _force(extra):
-        print(f"[fa2-sm120] already at {root}")
-        return
-    with tempfile.TemporaryDirectory() as tmp:
-        wheel = Path(tmp) / "fa2_sm120.whl"
-        urllib.request.urlretrieve(wheel_url(), wheel)
-        shutil.rmtree(root, ignore_errors=True)
-        with zipfile.ZipFile(wheel) as z:
-            z.extractall(root)
-    print(f"[fa2-sm120] {wheel_url()} -> {root}")
-
-
 def cmd_download_sam3(extra):
     _fetch("sam3", extra=extra)
 

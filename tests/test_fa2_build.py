@@ -33,7 +33,6 @@ def test_windows_goes_first(unpacked, monkeypatch):
     monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setattr(platform, "machine", lambda: "AMD64")
     assert fa2.use_sm120_build()
-    assert fa2.wheel_url().endswith("cp313-win_amd64.whl")
 
 
 def test_failed_load_keeps_the_pin(unpacked):

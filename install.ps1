@@ -243,18 +243,6 @@ if ($Backend -eq 'rocm') {
   if ($LASTEXITCODE -ne 0) { Die 'ROCm PyTorch smoke test failed' }
 }
 
-# RTX 50-series only: the FlashAttention build for repo jobs. Best-effort; the
-# pinned wheel runs without it.
-if ($Backend -ne 'rocm') {
-  Say 'fetching the sm_120 FlashAttention build, if this card needs it'
-  try {
-    uv run --no-sync python tasks.py fa2-sm120
-    if ($LASTEXITCODE -ne 0) { throw "fa2-sm120 exited $LASTEXITCODE" }
-  } catch {
-    Say 'sm_120 FlashAttention build skipped; the pinned wheel runs (retry: python tasks.py fa2-sm120)'
-  }
-}
-
 # 6. shortcuts (best-effort — never abort the install over this) -------------
 # Always lands an 'Anima LoRA GUI.lnk' in the install dir (policy-proof), and a
 # desktop copy when login/OneDrive policy allows it.

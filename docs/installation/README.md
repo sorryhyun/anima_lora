@@ -64,6 +64,22 @@ Updating never touches `image_dataset/`, `post_image_dataset/`, `output/`, or `m
 
 ---
 
+## 5. RTX 50-series: Patched FlashAttention (Optional)
+
+On an RTX 50-series card, our FlashAttention build ([sorryhyun/flash-attention-fp16](https://github.com/sorryhyun/flash-attention-fp16)) makes a MOSS-Image or Anima training step about 5% faster. Generation gains little. Wheels exist for Windows and Linux x86_64. Run this in the install folder:
+
+```bash
+uv sync --no-default-groups --group fa2-sm120
+```
+
+- A plain `uv sync` or `python tasks.py update` puts the stock wheel back. To keep the build across updates, run the update once with `ANIMA_TORCH=2.14-sm120` set (PowerShell: `$env:ANIMA_TORCH='2.14-sm120'; python tasks.py update`).
+- It holds sm_120 kernels only: on any other card, stay on the stock wheel.
+- ComfyUI running on the same venv gets the build too.
+
+Details: [fa2_sm120.md](../moss/optimization/fa2_sm120.md).
+
+---
+
 ## Appendix A. Manual Install (uv · git)
 
 Only needed if you want to set things up yourself instead of the one-liner in [§2](#2-installation).

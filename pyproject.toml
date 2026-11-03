@@ -301,8 +301,8 @@ torch-212 = [
 ]
 # RTX 50-series opt-in: torch-214 + cuda-windows with our FlashAttention wheel in
 # the venv (sorryhyun/flash-attention-fp16, TAG in library/runtime/fa2.py). It holds
-# sm_120 kernels and head dims 64 and 128 alone, so unlike the `make fa2-sm120`
-# folder it also reaches ComfyUI and Qwen's flash_attention_2 text encoder.
+# sm_120 kernels and head dims 64 and 128 alone, and it also reaches ComfyUI and
+# Qwen's flash_attention_2 text encoder.
 # aarch64 has no such wheel and keeps the stock row.
 fa2-sm120 = [
     "torch>=2.14.0,<2.15 ; sys_platform != 'win32'",
