@@ -98,7 +98,7 @@ v* fit backpropagates through the upper TE layers, and ROME's locality (attribut
 written by a mid-layer MLP at the subject's last token) is untested on Qwen3.5's GDN /
 full-attention hybrid, so causal tracing picks the layer first.
 
-**D. Make the TE *know* the character (the ambitious one).** LM-loss fine-tuning of the
+**D. Make the TE *know* the character.** LM-loss fine-tuning of the
 TE on wiki text plus appearance QA, so that Neru becomes a Miku-like entity inside Qwen.
 The DiT representation follows only if the DiT reads appearance out of entity knowledge.
 It might instead have memorised name-token identity from MOSS pretraining. A character

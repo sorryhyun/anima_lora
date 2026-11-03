@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render the swap_text eval pages with the LoRA delta off on the reference stream.
 
-Probe for ``docs/moss/proposal/reference_adapters.md``: does the LoRA's change to the
+Probe for ``_archive/proposals/reference_adapters.md``: does the LoRA's change to the
 reference rows (the "text mark") show in a render? The LoRA trained with adapters on
 the reference rows; here ``RefCache`` builds the reference keys and values with every
 adapter at multiplier 0, so the image and text rows (LoRA on) read Base reference

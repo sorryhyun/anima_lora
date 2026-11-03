@@ -1,6 +1,6 @@
 """fp16-accumulate attention backward against the Triton 16-bit baseline.
 
-Candidate 2 of docs/moss/proposal/step_headroom.md. Same capture, error measure and
+Candidate 2 of _archive/proposals/step_headroom.md. Same capture, error measure and
 timing as ``attn_bwd_bench.py``; the gate is the one in reports.md, in multiples of
 ``tri_fp16``: dQ, dK, dV each at most 2x its error (median per σ) and at least 1.3x
 its speed. FA2 is reported for reference only.

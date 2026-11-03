@@ -93,7 +93,7 @@ loses it on the control, one seed.
 ## Not tested
 
 - **Two lines, nine renders.** The other Korean lines were not re-split.
-- **Training on the split at full size.** Only the 200-pair arm below is measured.
+- **Training on the split at full size.** Only the 200-pair arm above is measured.
 - **Whether every syllable should be its own token.** Splitting only rare tokens may be enough.
 - **`e2` on `싸…싼다`.** It already gets `싼다` right as captioned: the byte split appears 39 times in
   training, more often than the one-token `싼` (23), so `싼다` is not a rare-token case.

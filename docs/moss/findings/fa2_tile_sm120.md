@@ -3,7 +3,7 @@
 Measured 2026-11-02 on an RTX 5070 Ti, for MOSS-Image and Anima. Numbers, setup and job ids:
 [`project/int8_train/reports/fa2_tile_sm120.md`](../../../project/int8_train/reports/fa2_tile_sm120.md)
 (script `project/int8_train/src/fa2_tile_bench.py`). Started as candidate 1 of
-[step_headroom.md](../proposal/step_headroom.md).
+`_archive/proposals/step_headroom.md`.
 
 ## Setting
 

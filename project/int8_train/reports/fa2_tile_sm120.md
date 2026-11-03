@@ -3,7 +3,7 @@
 **Verdict: fails the 1.15x gate.** FA2's sm86 / 89 tile, 128×32, runs 1.060x on
 self-attention and 1.117x on cross-attention at FA2's error, which is about 0.7% of an Anima
 step. CUDNN attention, the other forward on this card, reaches 1.072x and its backward is
-slower. Candidate 1 of [step_headroom.md](../../../docs/moss/proposal/step_headroom.md) is closed. It costs no
+slower. Candidate 1 of `_archive/proposals/step_headroom.md` is closed. It costs no
 accuracy, so a local build is free to take; a patched build below reproduces the speed.
 
 Script: [`src/fa2_tile_bench.py`](../src/fa2_tile_bench.py), shim

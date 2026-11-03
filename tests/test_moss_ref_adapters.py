@@ -1,4 +1,4 @@
-"""ref_adapters = kv (docs/moss/proposal/reference_adapters.md plan A): the reference
+"""ref_adapters = kv (_archive/proposals/reference_adapters.md plan A): the reference
 rows stay on Base, only the export deltas leave them."""
 
 import pytest

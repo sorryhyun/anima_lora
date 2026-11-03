@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The reference_adapters A/B on the four swap_text eval pages
-(``docs/moss/proposal/reference_adapters.md``).
+(``_archive/proposals/reference_adapters.md``).
 
 ``render``: one LoRA, same prompt, size, seed and sampler as the control renders (GPU,
 through the daemon):

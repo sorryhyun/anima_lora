@@ -27,7 +27,7 @@ so LoRAs trained on different slices own disjoint input subspaces.
 ``"weight_svd_nodc"`` takes the basis of ``W(I − uuᵀ)`` instead, with
 ``u = x̄ / ‖x̄‖`` the calibrated input DC direction (``channel_mean``), so every row
 starts orthogonal to the token mean and ``down · x̄ = 0`` at init; nothing holds it
-there during training (``docs/moss/proposal/lora_dcfree_svd_init.md``).
+there during training (``_archive/proposals/lora_dcfree_svd_init.md``).
 ``svd_drop_loud=k`` also projects out the ``k`` input channels with the largest
 calibrated ``mean|x|`` (``channel_stats``; on MOSS ch 42 into ``ffn_up_gate``), so
 their ``down`` columns start at zero.

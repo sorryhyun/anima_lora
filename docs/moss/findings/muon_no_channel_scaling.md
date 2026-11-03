@@ -61,10 +61,9 @@ artifacts; all still write the trigger as text on Miku's name plate.
 
 ## Reading
 
-Channel scaling was built for AdamW, where every element steps the same distance and the
-loud channel's column gains `|x[c]|` of output leverage per step. Under Muon the step on
-`down` is `(GGᵀ)^(-1/2) G`, and the measured update on ch 42 stays at the init's share
-whether or not it is rescaled: with a kaiming init there is no loud column to begin with,
+Channel scaling was built for AdamW's per-element step ([muon_channel_init.md](muon_channel_init.md)
+has Muon's). Under Muon the measured update on ch 42 stays at the init's share whether or not it is
+rescaled: with a kaiming init there is no loud column to begin with,
 and the orthogonalised update does not create one. The only thing α did under Muon was
 compensate for `weight_svd`'s ch 42 column, which kaiming removes at the source. Dropping
 it also drops the trainer's dependence on `channel_stats.safetensors`, a calibration taken

@@ -5,7 +5,7 @@ Default targets are the six bias-free linears of every block,
 ``ffn_up_gate`` gets one adapter over its full 2·ffn_dim output, so the hidden
 and the gate halves share the rank.
 
-``ref_rank`` (``TrainRequest.ref_adapters = kv``, ``docs/moss/proposal/reference_adapters.md``
+``ref_rank`` (``TrainRequest.ref_adapters = kv``, ``_archive/proposals/reference_adapters.md``
 plan A) adds one export adapter per ``proj.k`` / ``proj.v``, saved as
 ``ref_layers_N_proj_{k,v}``. They are not patched onto the linears: ``apply_to`` hands
 them to the block as ``ref_bank``, the reference rows run on Base (``_Block.ref_rows``)

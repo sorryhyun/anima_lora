@@ -5,7 +5,7 @@ swap_text) can still drift the whole image's tone: Muon sanitize runs brightened
 untouched page by up to +2 L and cooled it by up to −1 b, though every training pair is
 tone-neutral. The flow-matching MSE treats that offset as one more small residual. The tone
 term adds an explicit penalty on it. Off by default. Code: `tone_loss` in
-`library/moss/train.py`.
+`library/moss/training/losses.py` (`edit_region` is there too).
 
 ## Use
 

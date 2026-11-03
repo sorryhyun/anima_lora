@@ -1,7 +1,7 @@
 # A reference bank of its own: copy ties, untranslated glyphs drop out, 16–25 % slower
 
 Measured 2026-11-02 on swap_text, MOSS-Image Base. Plan B of
-[reference_adapters.md](../proposal/reference_adapters.md) (`ref_adapters = all`) against the
+`_archive/proposals/reference_adapters.md` (`ref_adapters = all`) against the
 shared bank. Run: `output/ckpt_moss_i2i/moss_i2i_swap_text_v3_en50_ko150_refall_rw2_mod16_ema5e5_int8_e3`;
 renders `output/moss_i2i_eval/swap_text/results/refab_all_e3_ema`, seeds 1 and 2 of
 `589883_0004_ko` in `refab_{default,all}_e3_ema_s{1,2}`; sheets `refab_all_e3_compare/`.

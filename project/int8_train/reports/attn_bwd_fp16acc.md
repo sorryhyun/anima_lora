@@ -6,7 +6,7 @@ PV on the forward, run 1.340x the Triton baseline's backward and 1.304x its forw
 that does not hold: it alone puts dK and dV at 2.06–2.18x. On Triton's two-kernel layout this is
 only 1.01x FA2. The port to FA2's CUDA backward is [fa2_fp16acc.md](fa2_fp16acc.md).
 
-Candidate 2 of [step_headroom.md](../../../docs/moss/proposal/step_headroom.md). Script:
+Candidate 2 of `_archive/proposals/step_headroom.md`. Script:
 [`src/attn_bwd_fp16acc_bench.py`](../src/attn_bwd_fp16acc_bench.py), kernels in
 [`src/int8_attn.py`](../src/int8_attn.py). Raw numbers:
 [`attn_bwd_fp16acc.json`](../assets/attn_bwd_fp16acc.json) (job `20261102-133015-5cab14`; two earlier

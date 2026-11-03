@@ -1,7 +1,7 @@
 # Reference stream under `no_grad` on MOSS i2i (2026-11-02)
 
 **Verdict: stops at the gradient check.** Candidate 4 of
-[step_headroom.md](../../../docs/moss/proposal/step_headroom.md). Cutting the reference stream
+`_archive/proposals/step_headroom.md`. Cutting the reference stream
 turns the mean LoRA gradient by cos 0.66 at init (norm 0.74x) and 0.65 at epoch 1. Keeping only
 `ref_mod` and the per-block K / V does not save the mod adapter.
 

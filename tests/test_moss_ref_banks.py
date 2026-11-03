@@ -1,4 +1,4 @@
-"""ref_adapters = all (docs/moss/proposal/reference_adapters.md plan B): the reference
+"""ref_adapters = all (_archive/proposals/reference_adapters.md plan B): the reference
 rows run a bank of their own, image and text rows the main one."""
 
 import pytest

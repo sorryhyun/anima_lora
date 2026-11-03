@@ -6,8 +6,9 @@ and the LoRA's own GEMMs stay in float. Each block's `q`, `k` and `v` run as one
 rows concatenated, `block.qkv`, which saves about 24 ms of a training step
 ([report](../../../project/int8_train/reports/qkv_fuse.md)).
 
-**Status (2026-10-31): the default training plan. One LoRA has completed on the GPTQ base
-(ama mitsuki, 848 steps, 14.6 min, 1.08 s/step, 10.95 GB).**
+**Status (2026-10-31): the default training plan. A t2i LoRA has completed on the GPTQ base
+(ama mitsuki, 848 steps, 14.6 min, 1.08 s/step, 10.95 GB), and a swap_text i2i LoRA
+(3,000 steps, [i2i.md](../methods/i2i.md)).**
 Generation on the file takes 6.3 GiB against 10.7 GiB at 1024². In training, `--int8 full`
 gains speed and saves no VRAM; `--int8 stream` also saves about 4 GB ([VRAM](#vram)).
 
@@ -77,44 +78,26 @@ The plan today, `hews_layout`, `stream`, `--ema_card`, one run per row:
 | 0.4 | OOM at step 3 | 14.39 GB allocated |
 
 Two changes took the step from 1.30 s: `BatchedMuon` and saving FA2's output instead of
-recomputing it ([training_step.md](training_step.md)). Every figure below, budget sweeps
-included, predates them.
+recomputing it ([training_step.md](training_step.md)).
 
-Earlier measurements, `channel_(caststation)_layout` unless noted:
+The training figures below predate them, and the choices under [VRAM](#vram) rest on them. Full tables:
+[`moss_scoping.md`](../../../project/int8_train/reports/moss_scoping.md) and
+[`moss_wqt_stream.md`](../../../project/int8_train/reports/moss_wqt_stream.md).
 
-| plan | s/step | peak |
-|---|---|---|
-| bf16, swap 36, budget 0.5 (`lora_bf16.toml`) | 1.83–1.91 | 13.46 GB |
-| bf16, swap 0, checkpointing | 2.26–2.34 | 11.96 GB |
-| int8 RTN, swap 0, checkpointing | 1.44–1.49 | 11.96 GB |
-| int8 GPTQ, fp32 stream, swap 0, checkpointing (`hews_layout`, 12 steps) | 1.47 | 13.52 GB |
-
-RTN is 1.57x bf16 on the same plan and 1.28x the bf16 default. That run was stopped after
-70 of 240 steps.
-
-GPTQ, fp32 stream, swap 0, `hews_layout`, 30 steps, median of steps 11–30, one run per arm:
-
-| arm | s/step | peak |
-|---|---|---|
-| `full`, checkpointing | 1.42 | 13.58 GB |
-| `full`, budget 0.05 | 1.33 | 13.95 GB |
-| `full`, budget 0.1 | OOM | – |
-| `stream`, checkpointing | 1.45 | 9.36 GB |
-| `stream`, budget 0.1 | 1.37 | 10.73 GB |
-| `stream`, budget 0.2 | 1.35 | 11.77 GB |
-| `stream`, budget 0.3 | 1.33 | 12.80 GB |
-| `stream`, budget 0.4 | 1.35 | 13.83 GB |
-| `stream`, budget 0.5 | OOM | – |
-| `stream`, budget 0.2, `--ema_card` (60 steps, two runs) | 1.30 | 12.04 GB |
-
-The same paired runs with the CPU shadow read 1.37 s/step at 11.77 GB.
-
-Block swap, before the changes above: swap 0 at budget 0.2 ran 1.30 s/step at 11.99 GB,
-swap 20 at 0.2 ran 1.32 at 9.88 GB, swap 20 at 0.5 ran 1.31 at 14.41 GB.
-
-Step losses at swap 20 stay within 3e-4 of swap 0 at either budget, the size of the gap
-between two swap-0 runs. In eager, loss and dX match the resident stack bit for bit
-(`test_swapped_dx_is_resident_dx`).
+- **int8 against bf16** (`channel_(caststation)_layout`, swap 0, checkpointing): bf16 2.26–2.34
+  s/step, int8 RTN 1.44–1.49, 11.96 GB on both. RTN is 1.57x bf16 on the same plan and 1.28x
+  the bf16 default of the day (swap 36, budget 0.5: 1.83–1.91 s/step, 13.46 GB). That run was
+  stopped after 70 of 240 steps.
+- **`full` against `stream`** (GPTQ, fp32 stream, swap 0, `hews_layout`, 30 steps, median of
+  steps 11–30, one run per arm). `full`: 1.42 s/step at 13.58 GB with checkpointing, 1.33 at
+  13.95 GB at budget 0.05, OOM at 0.1. `stream`: 1.45 at 9.36 GB with checkpointing, 1.33–1.37
+  at 10.73–13.83 GB over budgets 0.1–0.4, OOM at 0.5.
+- **`--ema_card`** (`stream`, budget 0.2, 60 steps, two paired runs): 1.30 s/step at 12.04 GB
+  against the CPU shadow's 1.37 at 11.77 GB.
+- **Block swap**: swap 0 at budget 0.2 ran 1.30 s/step at 11.99 GB, swap 20 at 0.2 ran 1.32 at
+  9.88 GB, swap 20 at 0.5 ran 1.31 at 14.41 GB. Step losses at swap 20 stay within 3e-4 of swap
+  0 at either budget, the size of the gap between two swap-0 runs. In eager, loss and dX match
+  the resident stack (`test_swapped_dx_is_resident_dx`).
 
 Generation, one render per arm (ER-SDE 50 steps + Spectrum, CFG 3, seed 7, compiled, all
 blocks resident):
@@ -140,7 +123,7 @@ reference on an fp32 stream fits resident on int8; on bf16 it OOMs and needs
 Generation drops about 4.4 GiB because mode `infer` keeps only the forward copy `wq`
 (4.43 GiB against ~8.9 GiB of bf16 weights). Mode `full` also holds `wq_t` for the
 backward, and two int8 copies are the bytes of one bf16 weight, so its peak matches bf16's
-on the same plan (11.96 GB in both swap-0 rows). The fp32 stream adds about 1.5 GB on top.
+on the same plan (11.96 GB on both at swap 0). The fp32 stream adds about 1.5 GB on top.
 Mode `fwd` is worse: it keeps `wq` and the bf16 weight.
 
 Mode `stream` is `full` with `wq_t` in pinned host memory (4.4 GiB): at equal plans the peak
@@ -238,8 +221,8 @@ Numbers: [`moss_act_scale.md`](../../../project/int8_train/reports/moss_act_scal
 
 Upstream: [comfy-kitchen#289](https://github.com/Comfy-Org/comfy-kitchen/issues/289), with a fix
 on [`sorryhyun/comfy-kitchen`](https://github.com/sorryhyun/comfy-kitchen/tree/int8-activation-fp32-division).
-It divides in fp32, so a bf16 input gives the fp32 input's output bit for bit, the same
-prediction error, and bf16's speed. Once a release carries it, `Int8TrainLinear.forward` can go
+It divides in fp32, so a bf16 input gives the fp32 input's output, the same prediction error,
+and bf16's speed. Once a release carries it, `Int8TrainLinear.forward` can go
 back to bf16 and drop the 0.05 s/step.
 
 ## Single-token gradient outliers

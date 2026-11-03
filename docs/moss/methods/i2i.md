@@ -59,26 +59,23 @@ The reference is full size (`ref_scale = 1`). Copies of `fixed_caption` live in 
 the ComfyUI MOSS Toolkit (`FIXED_CAPTIONS["sanitize"]`); change all three together.
 
 **Train.** `ref_timestep = 0`, `ref_isolate = true`, other fields at the `TrainRequest`
-defaults. The first run (`moss_i2i_sanitize`) used 49 pairs from 17 artist folders, rank 32,
-12 epochs = 588 steps, 37 min on 16 GB (12.6 GB peak reserved, swap 28).
+defaults. `configs/moss/i2i/sanitize/{cache,train}.toml` carry the v3 recipe (2026-10-28): 277
+pairs (39 of them clean → clean, `post_image_dataset/moss/i2i_sanitize_idt`), Muon lr 5e-5, 8
+epochs = 2,216 steps, `ema_window 0.1`, with the tone term late in training (`tone_weight 0.003`,
+`tone_start 0.5`), since earlier Muon runs edited better but brightened and cooled the whole image.
 
-**Result.** On four test images from outside the staging tree (not checked against the
-training pairs), the first run removes title text, handwritten annotations and their arrows,
-unbubbled dialogue, a large stamped "reproduction prohibited" watermark and corner signature
-watermarks. It repaints the background, clothing and legs underneath, and leaves glyph-like
-art in place (a halo's red symbols). Small doodle hearts next to annotations go with the
-text. Line work, faces and colour come through unchanged: outside the text regions, the
-output is ~31 dB PSNR against the input. The same page with the layout JSON of
-`no sfx, no text` (not the training caption) came out nearly identical; use the fixed
-caption anyway, since it is what the LoRA saw.
+**Result.** On the five held-out pages v3 averages ΔL −0.03 / Δb −0.23 against the input outside
+the edit: `docs/moss/methods/tone_loss.md`.
 
-**v3 (2026-10-28).** Later Muon runs edited better but brightened and cooled the whole
-image. v3 adds the tone term late in training: `tone_weight 0.003`, `tone_start 0.5`, on
-277 pairs (39 of them clean → clean, `post_image_dataset/moss/i2i_sanitize_idt`), Muon
-lr 5e-5, 8 epochs = 2,216 steps, `ema_window 0.1`. On the five held-out pages it averages
-ΔL −0.03 / Δb −0.23 against the input outside the edit. Method and numbers:
-`docs/moss/methods/tone_loss.md`. `configs/moss/i2i/sanitize/{cache,train}.toml` carry this
-recipe.
+The first run (`moss_i2i_sanitize`: 49 pairs from 17 artist folders, rank 32, 12 epochs = 588
+steps, 37 min on 16 GB, 12.6 GB peak reserved, swap 28), on four test images from outside the
+staging tree (not checked against the training pairs), removes title text, handwritten
+annotations and their arrows, unbubbled dialogue, a large stamped "reproduction prohibited"
+watermark and corner signature watermarks. It repaints what was underneath and leaves
+glyph-like art in place (a halo's red symbols); small doodle hearts next to annotations go with
+the text. Outside the text regions the output is ~31 dB PSNR against the input. The same page
+with the layout JSON of `no sfx, no text` (not the training caption) came out nearly identical;
+use the fixed caption anyway, since it is what the LoRA saw.
 
 **ComfyUI.** [ComfyUI-MOSS-Toolkit](https://github.com/sorryhyun/ComfyUI-MOSS-Toolkit) 0.7.0
 or later (0.6.x: Reference `task custom`, `ref_scale 1`), `example_workflows/moss-i2i-sanitize.json`:
@@ -129,94 +126,51 @@ is stored and `plain_caption_rate` has no effect. The reference is full size
 `--prompt` and `--width` / `--height` set to the page size, so the bboxes land where they
 were measured.
 
-**Runs.** From the second run on, each review is seed 0 on the four held-out pages.
-
-**First run (`moss_i2i_swap_text_muon_lr1e4`).** `pairs_100.jsonl`: 100 pairs, one page per
-work (en 60 / ko 40, full 54 / partial 46). Rank 32, Muon at lr 1e-4, `dc_isolate` off,
-6 epochs = 600 steps, `blocks_to_swap = 28`, ~4 s/step (40 min), 12.2 GB peak on 16 GB,
-joint sequences up to 8.7k tokens. The global loss does not track the lettering: a median
-3 % of latent tokens differ between target and reference (p90 7 %), so once the copy is
-learned the loss falls toward 0 (0.25 in epoch 1, 0.03–0.04 from epoch 3) and what remains
-is the text regions.
-
-Final checkpoint, seed 0, on three held-out pages from works outside the 100 (a fourth,
-`ko` partial, was generated but not reviewed):
-
-- English (full and partial): every line lands in its bbox, legible, broken to the balloon
-  shape, in the page's lettering style; the Japanese underneath is gone and the balloon
-  art kept. Misses: one wrong glyph (`MOVE` → `MOWE`); a short exclamation drawn with its
-  own outline lost the outline along with the Japanese; `♡` marks absent from the OCR
-  caption are not drawn.
-- Korean (full, 3 lines): one exact; one with a syllable dropped and others swapped
-  (`처음 오시는 분인가요?` → `처음 시는 문이니요?`); one drew the caption's OCR misread
-  (`벌거` for `씻겨`), in a typeset font and colour unlike the page's hand lettering.
-  40 Korean pages leave most Hangul syllables seen once or never.
-- Outside the text, 22–25 dB PSNR against the target. The difference is the screentone's
-  dot phase (the VAE round trip), not drift.
-
-**Second run (`moss_i2i_swap_text_1300_ema5e5`).** `pairs_en300_ko1000.jsonl`: 1,300
-pairs drawn at random (seed 0) from the staging tree, the four review works held out.
-Muon at lr 5e-5, EMA (`ema_window 0.1`), plain MSE, 2 epochs = 2,600 steps, 173 min at
-13.7 GB peak; cache 7 GB, 11 min. Between the two, `600_r2x05` (600 pairs, lr 1e-4,
-`region_weight 2`, `rest_weight 0.5`, 3,600 steps) wrote ~5 wrong Korean syllables on the
-same lines; its edit-region loss stalled at 0.15–0.18 from step 400 while the rest kept
-falling. `region05` (`region_weight 0.5`, 100 pairs) was not reviewed.
-Renders: `output/tests/moss_i2i_swap_text_region/`. Against the first run:
-
-- English (4 lines): all exact in e1, EMA and raw. EMA and raw keep the outline of the
-  short exclamation (`Uwah…`).
-- Korean (6 lines, the misread line aside): 3–4 wrong syllables against ~7, all one-syllable
-  swaps (no drops or reordering). All three checkpoints write `이건` → `이전` and
-  `싼다` → `씬다`. The misread line is still drawn as captioned, in magenta type.
-- e1 / EMA / raw differ by one syllable at most; raw letters heavier and slanted. The EMA
-  final is the default.
-
-**Full pairs only (`moss_i2i_swap_text_1300_full_ema5e5`).** The same 1,300 stems
-restaged with `partial_ratio = 0` (`pairs_en300_ko1000_full.jsonl`), same recipe, 2,600
-steps at 13.7 GB peak. Against `1300_ema5e5`:
-
-- English: EMA exact on all 4 lines. e1 draws `Uwah…`'s outline faint; raw writes
-  `YOU'RE TE BEST`.
-- Korean (5 lines, the misread line aside): wrong syllables 1300 EMA 3, full e1 2, full EMA
-  2, full raw 3 plus a doubled syllable (`뭔뭔가요`). `싼다` → `씬다` stays in every
-  checkpoint of both runs. The errors move: full EMA gets `분인가요` right (1300: `분인나요`)
-  and writes `이건` as `이컨` (1300: `이전`), so one seed on five lines cannot separate the
-  two. The misread line is still drawn as captioned, in magenta.
-
-**Gradient accumulation (`moss_i2i_swap_text_en200_ko800_rw2_mod16_ga4_lr1e4`).**
-`en200_ko800_rw2_mod16_ema5e5` (`pairs_en200_ko800.jsonl`, `region_weight 2`,
-`mod_rank 16`, Muon 5e-5, batch 1) retrained with `grad_accum 4` and lr 1e-4 (√batch),
-the rest of the request identical: 2,000 samples = 500 updates, 134 min. Same seed, so
-both runs draw the same samples at the same σ (per-sample region loss correlates 0.95
-between them); the logged loss is per sample at any `grad_accum`.
-
-- Loss. The copy is learned ~2× later in samples (rest loss at reference level by ~500
-  against ~200) and faster per update. The edit region never drops below the reference:
-  +0.003 to +0.010 through epoch 2, both flat at 0.15–0.16. Epoch means 0.126 / 0.034
-  against 0.088 / 0.031.
-- EMA: English exact on all 4 lines in both. Korean wrong syllables 3 against 2: `분인나요`
-  (reference `분이가요`), `이건` → `이큰` (reference exact), `싼다` → `씬다` in both. Line
-  breaks follow the balloon a little better, letters heavier, `Uwah…`'s outline nearly gone.
-
-No gain. The errors that move between checkpoints (`이건` → `이전` / `이컨` / `이큰`,
-`분인가요`) did not shrink with a 4× averaged gradient, and `싼다` → `씬다` held.
-
-**Third epoch on the int8 base (`moss_i2i_swap_text_en200_ko800_rw2_mod16_ema5e5_int8_e3`).**
-The `fp32s` request (`pairs_en200_ko800.jsonl`, `region_weight 2`, `mod_rank 16`, Muon 5e-5,
-fp32 stream) on the GPTQ int8 base, 3 epochs = 3,000 steps, swap 38, budget 0.1, EMA on the
-card: 135 min at 2.71 s/step against 145 min at 4.34 s/step for `fp32s`'s 2,000. Renders:
+**Runs.** Each review is seed 0 on the four held-out pages (first run: three of them, `ko`
+partial unreviewed). English counts 4 lines from `1300_ema5e5` on. Korean counts leave out the
+line the OCR misread (`벌거` for `씻겨`), which the 1300 runs still draw as captioned, in magenta:
+6 lines for `1300_ema5e5`, 5 for `1300_full_ema5e5`. Names drop the `moss_i2i_swap_text_` prefix,
+`…` is `en200_ko800_rw2_mod16`, and every row from `1300_ema5e5` on is Muon at the lr shown with
+`ema_window 0.1`, EMA final. Renders: `output/tests/moss_i2i_swap_text_region/`,
 `output/moss_i2i_eval/swap_text/results/`.
 
-- The extra epoch made it slightly better: region loss 0.153 at steps 1,500–2,000, then
-  0.144–0.145 over the third epoch; rest loss 0.012, then 0.006–0.007.
-- The base did not change training: both runs draw the same σ, and over steps 1,000–2,000
-  their per-sample region loss correlates 0.989 with a mean difference of −0.0001.
-- EMA, fp32 stream: `싼다` is written, as in `fp32s`; Korean wrong syllables 3 against
-  `fp32s`'s 3: `분인머요`, `이건` → `이긴`, `아타고씨` → `아타고싸`. With no second-epoch
-  checkpoint, the epoch's effect on the letters is not separated.
-- English is exact on the bf16 base apart from `BEST…` losing a dot, and `Uwah…` keeps its
-  outline. Generating on the int8 base gives the same Korean and draws `YOU'RE THE` run
-  together.
+| run | pairs | recipe | steps | time, peak | English | Korean wrong syllables |
+|---|---|---|---|---|---|---|
+| `muon_lr1e4` | `pairs_100.jsonl`: 100 (en 60 / ko 40) | Muon lr 1e-4, swap 28 | 600 | 40 min at ~4 s/step, 12.2 GB | one wrong glyph (`MOVE` → `MOWE`) | ~7, with a drop |
+| `600_r2x05` | 600 | lr 1e-4, `region_weight 2`, `rest_weight 0.5` | 3,600 | | | ~5 |
+| `1300_ema5e5` | `pairs_en300_ko1000.jsonl`: 1,300 at random (seed 0), review works held out | lr 5e-5, plain MSE | 2,600 | 173 min, 13.7 GB; cache 7 GB, 11 min | exact | 3–4, one-syllable swaps |
+| `1300_full_ema5e5` | the same stems, `partial_ratio = 0` (`pairs_en300_ko1000_full.jsonl`) | as above | 2,600 | 13.7 GB | exact | 2 (1300: 3 on these lines) |
+| `…_ema5e5` | `pairs_en200_ko800.jsonl` | lr 5e-5, `region_weight 2`, `mod_rank 16`, batch 1 | 2,000 | | exact | 2 |
+| `…_ga4_lr1e4` | as above | `grad_accum 4`, lr 1e-4 (√batch) | 2,000 samples = 500 updates | 134 min | exact | 3 |
+| `…_ema5e5_fp32s` | as above | `…_ema5e5` + fp32 stream | 2,000 | 145 min at 4.34 s/step | 1 wrong line (drops `THE`) | 3 |
+| `…_ema5e5_int8_e3` | as above | `fp32s` on the GPTQ int8 base, swap 38, budget 0.1, EMA on the card | 3,000 | 135 min at 2.71 s/step | exact on the bf16 base apart from `BEST…` losing a dot | 3 |
+
+- **The global loss does not track the lettering.** A median 3 % of latent tokens differ between
+  target and reference (p90 7 %), so once the copy is learned the loss falls toward 0 (0.25 in
+  epoch 1, 0.03–0.04 from epoch 3 of the first run) and what remains is the text regions.
+  `600_r2x05`'s edit-region loss stalled at 0.15–0.18 from step 400 while the rest kept falling.
+- **Checkpoints.** e1 / EMA / raw differ by one syllable at most; raw letters heavier and slanted.
+  The EMA final is the default.
+- **Errors move between checkpoints.** `이건` comes out `이전`, `이컨`, `이큰`, `이긴`; `분인가요`
+  comes out `분인나요`, `분이가요`, `분인머요`, and `1300_full_ema5e5` gets it right. `싼다` → `씬다`
+  stays in every checkpoint of the 1300 runs and in `…_ga4_lr1e4` and its reference. One seed on
+  five lines cannot separate the two 1300 runs.
+- **`grad_accum 4` is no gain.** Same seed, so both runs draw the same samples at the same σ
+  (per-sample region loss correlates 0.95; the logged loss is per sample at any `grad_accum`).
+  The copy is learned ~2× later in samples (rest loss at reference level by ~500 against ~200)
+  and faster per update; the edit region never drops below the reference, +0.003 to +0.010
+  through epoch 2, both flat at 0.15–0.16. Epoch means 0.126 / 0.034 against 0.088 / 0.031. The
+  moving errors did not shrink with a 4× averaged gradient.
+- **The int8 base does not change training; the third epoch helps slightly.** Both runs draw the
+  same σ, and over steps 1,000–2,000 their per-sample region loss correlates 0.989 with a mean
+  difference of −0.0001. Region loss goes from 0.153 at steps 1,500–2,000 to 0.144–0.145 over the
+  third epoch, rest loss from 0.012 to 0.006–0.007. `싼다` is written, as in `fp32s`; the three
+  wrong syllables are `분인머요`, `이건` → `이긴`, `아타고씨` → `아타고싸`. With no second-epoch
+  checkpoint, the epoch's effect on the letters is not separated. Generating on the int8 base
+  gives the same Korean and draws `YOU'RE THE` run together.
+- **Misses outside the syllables.** `♡` marks absent from the OCR caption are not drawn. `Uwah…`'s
+  outline is lost or faint on some checkpoints. Outside the text, 22–25 dB PSNR against the target
+  in the first run; the difference is the screentone's dot phase (the VAE round trip), not drift.
 
 **Syllable coverage and tokenisation.** In `pairs_en300_ko1000_full.jsonl` the 959 `ko`
 pairs (99 works) hold 30,180 Hangul syllables, 852 distinct, 138 seen once. The syllables

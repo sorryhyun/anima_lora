@@ -1,4 +1,4 @@
-# Plan A arm of the reference_adapters A/B (docs/moss/proposal/reference_adapters.md):
+# Plan A arm of the reference_adapters A/B (_archive/proposals/reference_adapters.md):
 # train_v3_en50_ko150.toml with ref_adapters = kv at rank 32.
 #
 #   make daemon-run ARGS="--stall-timeout 900 scripts/moss/train.py --config configs/moss/i2i/swap_text/train_v3_en50_ko150_refkv.toml"

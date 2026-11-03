@@ -64,7 +64,7 @@ thread through its own CUDA stream.
   the cost of the wait. Block 41 is the one cold block per step.
 
 The peak drops 4.2 GB (13.58 → 9.36 GB, checkpointing), for 4.4 GiB of pinned host memory.
-dX is bit-identical to `full` in `test_stream_dx_is_full_dx_and_prefetches`. PCIe is not the
+dX is identical to `full` in `test_stream_dx_is_full_dx_and_prefetches`. PCIe is not the
 limit: during a 790 ms backward the GPU idled about 4 ms while 170 ms of copies ran beside it.
 
 ## Custom ops in the partitioner's knapsack
@@ -102,7 +102,7 @@ matrix shapes at rank 32, so `BatchedMuon` stacks them and runs one Newton-Schul
 
 `ema_step_card` lerps the shadow on the card instead of copying the adapter to the host each
 update. 0.065 s/step (4.8%) for 0.27 GB, in paired runs. The lerp matches the CPU shadow's to
-1e-6 in the unit test. The bf16 plan turns it off for lack of room.
+1e-6 in the unit test.
 
 ## Block swap over the int8 copies
 
@@ -122,8 +122,8 @@ A further gain has to come from a kernel. No Triton int8 attention arm has passe
 ## Carrying these elsewhere
 
 - **Any frozen-base adapter training:** the int8 op, the backward copy on the host and the
-  in-place class swap. A swapper that moves only `module.weight` needs the `HeldCopy` layout,
-  and Anima's offloader is why `project/int8_train`'s Anima runs refuse swap. The kernel loses
+  in-place class swap. A swapper that moves only `module.weight` needs the `HeldCopy` layout
+  (Anima's training swap runs on it too: `docs/anima/optimizations/int8.md`; `inference.py` has no swap). The kernel loses
   on short sequences: at M = 512 int8 is slower than bf16, so Anima keeps cross-attn `kv_proj`
   in bf16.
 - **Anything compiled with custom ops under an activation budget:** check that the ops are in

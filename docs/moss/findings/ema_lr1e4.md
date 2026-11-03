@@ -15,7 +15,7 @@ be this 0.97). The i2i point measured so far is 0.97 at 600 updates (span 0.055;
 
 `channel_(caststation)_layout` (30 images), 8 epochs = 240 updates, batch 1, seed 0, rank
 32 / alpha 128, Muon, kaiming, clip 1, warmup 5 %, constant lr after warmup. The EMA
-(`--ema_decay`, `library/moss/train.py::ema_step`) starts at the end of warmup, lerps an
+(`--ema_decay`, `library/moss/training/ema.py::ema_step`) starts at the end of warmup, lerps an
 fp32 CPU shadow once per update, and is what the main file holds; the run's raw weights go
 to `<name>/<name>_raw`, so each run gives both arms on the same trajectory. 0.97 averages
 ~33 updates, about one epoch here.

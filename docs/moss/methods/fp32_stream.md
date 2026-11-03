@@ -39,14 +39,9 @@ it, and a LoRA loads under either stream. The ComfyUI MOSS Toolkit loader has th
 
 ## Accuracy
 
-Prediction error per σ, t2i and i2i: [int8.md](../optimization/int8.md#accuracy).
-
-- Around bf16 GEMMs the stream cuts the error 2.4–3.5x, and the loss matches fp32 to the
-  fourth decimal.
-- Around int8 GPTQ it lands below bf16 at every σ tested, in t2i and in i2i.
-- LoRA gradients improve only in the late blocks: blocks 28–41 move 1.5–3x closer to fp32 around
-  bf16 GEMMs. Blocks 0–27 barely move, since they still pass back through every later block's
-  dX GEMMs and the FA2 backward.
+Prediction error per σ, t2i and i2i: [int8.md](../optimization/int8.md#accuracy). Around bf16
+GEMMs the stream cuts the error 2.4–3.5x, and around int8 GPTQ it lands below bf16 at every σ
+tested. LoRA gradients improve only in blocks 28–41.
 
 ## Cost
 
@@ -70,21 +65,13 @@ resident.
 ## What it changes
 
 - **A trained LoRA, more than a render.** With the same request and seed, changing the training
-  stream moves a render about 3x more than changing the inference stream (14.6 against 4.3/255
-  on Base). Matching the two shows no extra effect.
+  stream moves a render about 3x more than changing the inference stream. Matching the two
+  shows no extra effect.
 - **Renders, in detail.** On Base accessories, eyes and small marks change and the composition
   holds; on SFT the composition can change. Read as whole images, neither stream wins across the
   24 cells of the findings. Read on text and fingers, fp32 wins (no blind count yet).
 - **Loss, slightly.** 0.0002–0.0004 lower from step 1 on, before any update, so this is the
   forward's own error and not better learning.
 
-Two leads, neither a result: an fp32-trained LoRA drew hands better in 4 of 8 cropped cells,
-worse in 1 (one run per arm, not blind), and on `swap_text` it tied bf16 within checkpoint noise.
-If pretraining ran a bf16 stream, the network learned with that rounding, so fp32 is not a
-target in itself.
-
-## Trying it on another model
-
-On any residual network run in bf16 without autocast: cast everything but the block GEMMs, then
-score `‖v − v_fp32‖` against a true fp32 forward with TF32 off. If the error drops by about this
-much, the stream was the main source. Attention and the dX GEMMs are what it leaves behind.
+The hands and `swap_text` leads, with their caveats, are in the
+[finding](../findings/bf16_residual_stream.md).

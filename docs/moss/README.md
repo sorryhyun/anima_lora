@@ -67,8 +67,8 @@ became the default re-encodes on the next `cache` run unless that run passes
   the saved file is the EMA, the raw weights land in `<name>/<name>_raw`, `--ema_extra` adds
   more spans, `--ema_card` keeps them on the card; `docs/moss/findings/ema_lr1e4.md`). Why
   kaiming and no channel scaling under Muon: `docs/moss/findings/muon_channel_init.md`,
-  `muon_no_channel_scaling.md`. Channel scaling and `dc_isolate` were removed; mechanism and
-  the lr / alpha history: `docs/moss/channel_scaling.md`.
+  `muon_no_channel_scaling.md`. Removed options and the lr / alpha history:
+  `docs/moss/channel_scaling.md`.
 - **Time**: 30 images × 20 epochs (600 steps) took about 18–21 min on a 5070 Ti at the
   bf16 plan's then 1.9 s/step (1.66 now; the int8 plan runs 1.05). The
   LoRA moves line work and palette toward the set; character identity holds, including
@@ -84,13 +84,9 @@ became the default re-encodes on the next `cache` run unless that run passes
   i2i configs, since the int8 base refuses LoHa and the i2i task configs ship on bf16 (one
   swap_text run has finished on the int8 base: `docs/moss/methods/i2i.md`).
   `--blocks_to_swap 36`, `--activation_memory_budget 0.5`, `--swap_h2d_only`: 1.66 s/step at
-  1024² with 0.85 GB free on the largest caststation sample. Up to swap 36 the swap count
-  trades VRAM, not step time. The i2i configs run swap 38 / budget 0.175. Budget, swap and
-  i2i measurements and the plan table: guidebook §4.2. `--swap_h2d_only` drops the device-to-host half of
-  every swap for up to 8.8 GB of RAM: same numerics and VRAM, tied with the classic swap up
-  to 38, 8% faster at 40 (4.69 vs 5.09 s/step on gen 4 x16); `--no-swap_h2d_only` turns it
-  off. `--grad_checkpointing --blocks_to_swap 0` fits without swap, slower. The best swap
-  count depends on the PCIe link and GPU; `tune_swap.py` times each count on the cache's
+  1024². The i2i configs run swap 38 / budget 0.175. Budget, swap and i2i measurements and
+  the plan table: guidebook §4.2. `--swap_h2d_only` is 8% faster than the classic swap at 40
+  (4.69 vs 5.09 s/step on gen 4 x16). `tune_swap.py` times each swap count on the cache's
   largest sample on this plan (about 4 min) and prints the flags to train with.
 
   ```bash
@@ -98,9 +94,8 @@ became the default re-encodes on the next `cache` run unless that run passes
   ```
 
 - **`--down_init`**: `kaiming` (default), `weight_svd` or `weight_svd_nodc`. `weight_svd`
-  starts `down` on the base weight's top-r right singular vectors. Under Muon that basis
-  feeds 4–6× more input DC into the adapter (output DC shift 1.24 vs 0.43 with kaiming,
-  images about a seed change apart): `docs/moss/findings/muon_channel_init.md`.
+  starts `down` on the base weight's top-r right singular vectors, a basis that under Muon
+  feeds 4–6× more input DC into the adapter: `docs/moss/findings/muon_channel_init.md`.
   `weight_svd_nodc` projects the calibrated input DC direction out of that basis:
   `docs/moss/findings/dcfree_svd_init.md`.
   `--svd_slice k` (needs `--down_init weight_svd`) seeds from singular vectors
@@ -117,13 +112,10 @@ became the default re-encodes on the next `cache` run unless that run passes
   the one timestep → shift / scale / gate Linear all 42 blocks share, at its own rank
   (`--mod_alpha`, default `alpha · √(mod_rank / rank)`, Anima's adaln √r law). The block
   adapters' init and the training noise stay those of the same run without it. Stamped as
-  `rank_pattern` in the file. On caststation (240 updates) and ama_mitsuki (848) at r16 the
-  loss matched the run without it; the modulation moved < 1.2 % (shift only), and on
-  ama_mitsuki its shift flips sign between low and high σ. Images differ mostly on prompts
-  far from the set. On i2i (uncensor) it kept the area outside the edit visibly better, text
-  most of all, with the edit a tie: `docs/moss/findings/mod_rank_i2i.md`. ComfyUI's LoRA
-  loader patches it like the block adapters (`lora_unet_shared_block_modulation`; checked
-  against the `moss-image` node's HF loader).
+  `rank_pattern` in the file. In t2i the loss matched the run without it. On i2i (uncensor)
+  it kept the area outside the edit visibly better, text most of all, with the edit a tie:
+  `docs/moss/findings/mod_rank_i2i.md`. ComfyUI's LoRA loader patches it like the block
+  adapters (`lora_unet_shared_block_modulation`).
 - **Checkpoints**: `--save_every_epochs N` also saves `<name>/<name>_eN.safetensors`
   beside the final file (the last epoch is the final file). A `.json` run report
   (per-step loss) lands beside the LoRA.
@@ -206,15 +198,13 @@ REPA, parked, `_archive/moss_lora/repa.md`); `--ref_timestep` / `--ref_isolate` 
 
 ## More
 
-- The i2i tone term: `docs/moss/methods/tone_loss.md`.
-- Findings (attention sink, vision-tower reference, σ staircase, Spectrum schedule):
-  `docs/moss/findings/`.
-- Massive channels (1356, 42) as a semantic carrier, from arXiv 2605.13974 (reading note,
-  unmeasured): `docs/moss/proposal/massive_activation_semantics.md`.
-- The Anima-negatives sweep is archived (`_archive/proposals/moss_anima_negatives_revisit.md`).
-- Run logs: `project/finished/moss_lora/` (`README.md`, sub-line logs, technical-report notes);
-  settled logs (sampler, channel scaling, DAVE, seed soup) in `project/finished/moss_lora/done/`;
-  parked lines (caption dropout, REPA) in `_archive/moss_lora/`. LoRA / sampler A/B grids:
-  `bench/moss_ab/`; colorize and tone evals: `bench/moss_i2i_eval/`.
 - Architecture walkthrough (TE pass, latent boundary, blocks, loss, sampler):
   `docs/moss/structure.md`. Code map: `library/moss/CLAUDE.md`.
+- The i2i tone term: `docs/moss/methods/tone_loss.md`.
+- Speed: `docs/moss/optimization/`.
+- Measurements and verdicts: `docs/moss/findings/README.md`. Unbuilt or closed designs:
+  `docs/moss/proposal/`.
+- Run logs: `project/finished/moss_lora/README.md`; settled logs in
+  `project/finished/moss_lora/done/`; parked lines (caption dropout, REPA) in
+  `_archive/moss_lora/`. LoRA / sampler A/B grids: `bench/moss_ab/`; colorize and tone evals:
+  `bench/moss_i2i_eval/`.

@@ -2,7 +2,7 @@
 
 Measured 2026-10-25 on MOSS-Image Base. Follows [muon_channel_init.md](muon_channel_init.md),
 whose kaiming arm is the shipped default; tests
-[proposal/lora_dcfree_svd_init.md](../proposal/lora_dcfree_svd_init.md). Runs:
+`_archive/proposals/lora_dcfree_svd_init.md`. Runs:
 `output/ckpt_moss/caststation_lay08p02_at_muon_nodc_cs075{,_kaiming,_svdnodc,_svdnodc_loud1}`;
 side-by-side columns: `output/tests/ab_caststation_muon_alpha/cols_nodc/` (none / svd α 0.5 /
 svd α 0.75 / kaiming / svd-nodc / svd-nodc-loud1). Weight stats:

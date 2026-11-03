@@ -7,12 +7,8 @@ Measured 2026-10-18 on MOSS-Image Base. Probe, runs and per-block tables:
 
 MOSS is a single-stream DiT: the sequence is `[image (H·W) | text (S)]` through all 42
 blocks, and the text is never padded. Each prompt is wrapped in the Qwen chat template
-before the text encoder (`library/moss/loader.py::prompt_ids`):
-
-```
-<|im_start|> user \n  {caption}  <|im_end|> \n <|im_start|> assistant \n <think> \n
-└── prefix, 3 ──────┘             └── suffix, 7 ─────────────────────────────────────┘
-```
+before the text encoder, 3 prefix and 7 suffix tokens
+([layout](../structure.md#21-qwen35-9b-one-prompt-per-forward)).
 
 The uncond prompt is `''`, so the uncond text segment is these 10 tokens alone. Qwen is
 causal, so the 3 prefix tokens have the same TE states for every prompt; the 7 suffix
@@ -98,7 +94,7 @@ difference lora ↔ masked 5.6–24.9, against 32.5–55.4 for base ↔ lora.
 
 The 10 template tokens do two jobs: the OFF-gate Anima's pads were (a head with nothing to
 read parks mass there), and a learned, mostly prompt-independent per-head bias channel into
-every image token. The model already ships fixed registers.
+every image token.
 
 ## Hypotheses (not tested)
 

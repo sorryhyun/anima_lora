@@ -1,13 +1,13 @@
 # k / v adapters alone on the reference: 29 % off the step, the copy gets worse
 
 Measured 2026-11-02 on swap_text, MOSS-Image Base. Plan A of
-[reference_adapters.md](../proposal/reference_adapters.md) (`ref_adapters = kv`) against the
+`_archive/proposals/reference_adapters.md` (`ref_adapters = kv`) against the
 shared bank. Runs: `output/ckpt_moss_i2i/moss_i2i_swap_text_v3_en50_ko150{,_refkv}_rw2_mod16_ema5e5_int8_e3`;
 renders `output/moss_i2i_eval/swap_text/results/refab_{default,kv}_e3_ema`; sheets
 `refab_e3_compare/` beside them; script `project/int8_train/src/ref_adapters_eval.py`.
 
-**Verdict: the default keeps the shared bank.** Copy decides, and A loses it on all four
-pages. Letters tie, so the 29 % never comes into it.
+**Verdict: the default keeps the shared bank.** A loses the copy on all four pages, and letters
+tie.
 
 ## Setting
 

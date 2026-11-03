@@ -15,7 +15,7 @@ Each block's `x = x + gate·proj(...)` rounds to an 8-bit mantissa, twice per bl
 handled precision. The code comments ("fp32 weights + autocast") suggest bf16
 activations there as well, since linear outputs are bf16 under autocast.
 
-The fp32-stream arm (`bench/moss_ab/_render.py::stream_fp32_`) casts every parameter
+The fp32-stream arm (`library/moss/loader.py::stream_fp32_`, called by `bench/moss_ab/_render.py`) casts every parameter
 except the 252 block linears' weights to fp32. The stream, modulation, gates, norms,
 embedders and head then run in fp32. The block GEMMs stay bf16, and so do FA2 and any
 LoRA adapter, which computes in its base output's dtype.
@@ -59,6 +59,7 @@ stream, out of 255:
   blotches in bf16 that the fp32 stream does not have. Corner mean is 254.68 against
   254.98.
 - Across the 24 cells, neither arm wins consistently. Both are clean images.
+- Note (user review of the renders, 2026-11-03): the user holds that the fp32 stream won consistently on text and fingers. The per-cell numbers above are unchanged.
 
 Grids: `output/tests/ab_ama_mitsuki_muon_ema_50st{,_fp32s}/`.
 

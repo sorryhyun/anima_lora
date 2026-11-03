@@ -4,7 +4,7 @@
 1.31x on dX, about 24 ms over 42 blocks, or 2% of a step. The forward is bit-identical to three
 calls, and the LoRA gradient keeps its distance from fp32 (0.986–1.006x).
 
-Candidate 3 of [step_headroom.md](../../../docs/moss/proposal/step_headroom.md). Script:
+Candidate 3 of `_archive/proposals/step_headroom.md`. Script:
 [`src/qkv_fuse_bench.py`](../src/qkv_fuse_bench.py), job `20261102-214504-9d1678`.
 
 ## Kernel

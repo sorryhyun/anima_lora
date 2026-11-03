@@ -1,6 +1,6 @@
 """swap_text's LoRA gradient with the isolated reference stream attached, under
 ``no_grad``, and with only its per-block keys and values kept in the graph
-(docs/moss/proposal/step_headroom.md, candidate 4).
+(_archive/proposals/step_headroom.md, candidate 4).
 
 Every arm runs one split block: the reference rows through the block with
 ``kv_out``, then the main rows with ``ref_kv``. Arms:

@@ -350,7 +350,7 @@ class GenerateRequest(Request):
         "bf16",
         "residual stream precision: fp32 runs the stream, modulation, norms, "
         "embedders and head in fp32 around the bf16 block GEMMs (+1.5%% time, "
-        "+0.6 GB; renders move a few /255 in detail, neither consistently better)",
+        "+0.6 GB; renders move a few /255 in detail, text and fingers come out better)",
         choices=("bf16", "fp32"),
         advanced=True,
     )
@@ -477,7 +477,7 @@ class TrainRequest(Request):
         "muon the output DC shift is 0.43 with kaiming vs 1.24 "
         "(docs/moss/findings/muon_channel_init.md). weight_svd_nodc: the SVD basis "
         "of W with the calibrated input DC direction (channel_mean) projected out, "
-        "so down · x̄ = 0 at init (docs/moss/proposal/lora_dcfree_svd_init.md)",
+        "so down · x̄ = 0 at init (_archive/proposals/lora_dcfree_svd_init.md)",
         choices=("kaiming", "weight_svd", "weight_svd_nodc"),
     )
     svd_slice: int = _f(
@@ -503,7 +503,7 @@ class TrainRequest(Request):
         "with the largest calibrated mean|x| (channel_stats) out of the SVD basis, "
         "so their down columns start at zero. On MOSS k=1 is ch 42 into "
         "ffn_up_gate, a quarter of the nodc init's channel leverage there "
-        "(docs/moss/proposal/lora_dcfree_svd_init.md). Stamped as svd_drop_loud",
+        "(_archive/proposals/lora_dcfree_svd_init.md). Stamped as svd_drop_loud",
         advanced=True,
     )
     channel_stats: str = _f(

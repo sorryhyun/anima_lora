@@ -1,8 +1,9 @@
 # `mod_rank` 16 on i2i: better preservation outside the edit, edit strength unchanged
 
-Measured 2026-10-28 on the uncensor i2i task, MOSS-Image Base. Follows the t2i check in
-`docs/moss/README.md` (`--mod_rank`: loss unchanged at r16 on caststation and ama_mitsuki).
-Runs: `output/ckpt_moss_i2i/moss_i2i_uncensor_combined_muon_lr5e5_rw10to1{,_mod16}`;
+Measured 2026-10-28 on the uncensor i2i task, MOSS-Image Base. Follows the t2i check at r16: on
+caststation (240 updates) and ama_mitsuki (848) the loss matched the run without it, the
+modulation moved < 1.2 % (shift only), on ama_mitsuki its shift flips sign between low and high
+σ, and images differ mostly on prompts far from the set. Runs: `output/ckpt_moss_i2i/moss_i2i_uncensor_combined_muon_lr5e5_rw10to1{,_mod16}`;
 renders: `output/tests/moss_i2i_uncensor/ab_mod16/{rw10to1,rw10to1_mod16}`, sheet
 `compare_input_base_mod16.jpg` beside them.
 
