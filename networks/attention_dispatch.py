@@ -2,10 +2,6 @@ from dataclasses import dataclass
 import torch
 from typing import Optional, Union
 
-from library.runtime.fa2 import use_sm120_build
-
-use_sm120_build()
-
 try:
     import flash_attn
     from flash_attn.flash_attn_interface import _flash_attn_forward

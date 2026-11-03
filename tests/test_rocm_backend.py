@@ -235,8 +235,8 @@ def test_torch_stacks_pair_flash_attn_and_triton(
     assert any(line.startswith(f"triton-windows=={triton}") for line in lines)
 
 
-def test_fa2_sm120_group_installs_the_selector_build():
-    """The group's wheels are the release library/runtime/fa2.py fetches; aarch64
+def test_fa2_sm120_group_installs_the_release_build():
+    """The group's wheels are the release library/runtime/fa2.py names; aarch64
     has no such build and keeps the stock wheel. The default stack stays stock."""
     release = f"/{fa2.REPO}/releases/download/{fa2.TAG}/"
     rows = [

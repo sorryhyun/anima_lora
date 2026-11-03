@@ -53,9 +53,6 @@ from torch import nn
 from torch.nn import functional as F
 
 from library.moss.requests import DEFAULT_SHIFT
-from library.runtime.fa2 import use_sm120_build
-
-use_sm120_build()
 
 try:
     from flash_attn import flash_attn_func

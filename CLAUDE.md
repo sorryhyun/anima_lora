@@ -35,7 +35,7 @@ make download-models                  # Anima first-run set (DiT, Qwen3-0.6B TE,
 
 On an RTX 50-series card, `uv sync --no-default-groups --group fa2-sm120` puts the
 FlashAttention build with the fp16-accumulate backward in the venv (ComfyUI included), about 5% of a
-training step. `library/runtime/fa2.py` still loads an old `models/fa2_sm120/<tag>` unpack ahead of it.
+training step.
 
 Run Python as `.venv/bin/python` (or `uv run --no-sync`); a bare `uv run` re-resolves and
 can fail on the torch index split. Weights are rows in the model catalog
