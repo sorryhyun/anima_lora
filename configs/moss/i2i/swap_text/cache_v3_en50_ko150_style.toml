@@ -1,0 +1,13 @@
+# en50_ko150 on syllable tokens with a lettering word per line: `caption` is `text`,
+# `hand-lettered text` or `sound effect` (staging/style_en50_ko150/). The folder holds
+# symlinks to the ksplit latents and refs; every TE file is written here.
+#
+#   make daemon-run ARGS="--stall-timeout 600 scripts/moss/cache.py --config configs/moss/i2i/swap_text/cache_v3_en50_ko150_style.toml"
+
+pairs = "post_image_dataset/i2i/swap_text_v3/staging/pairs_en50_ko150_style.jsonl"
+out = "post_image_dataset/moss/i2i_swap_text_v3_en50_ko150_style"
+resolution = 1024
+ref_scale = 1
+caption_format = "layout_json"
+token_split = "syllable"
+skip_latents = true
