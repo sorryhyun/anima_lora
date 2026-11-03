@@ -11,7 +11,8 @@ Hangul tokenizes as it does by default.
 
 The mode is stamped in TE caches (``token_split``, only when it changed the tokens) and
 in the LoRA; ``GenerateRequest.token_split`` ``auto`` follows the LoRA.
-``docs/moss/findings/ko_token_split.md``.
+``docs/moss/findings/ko_token_split.md``. ComfyUI copy: the MOSS Toolkit's
+``token_split.py`` (Caption Helper ``task swap_text``); change both together.
 """
 
 from __future__ import annotations
