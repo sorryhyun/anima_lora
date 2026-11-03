@@ -1,0 +1,346 @@
+diff --git a/csrc/flash_attn/flash_api.cpp b/csrc/flash_attn/flash_api.cpp
+index 6b5ec3b..7ae9386 100644
+--- a/csrc/flash_attn/flash_api.cpp
++++ b/csrc/flash_attn/flash_api.cpp
+@@ -450,6 +450,18 @@ mha_fwd(at::Tensor &q,         // batch_size x seqlen_q x num_heads x round_mult
+         p = torch::empty({ 0 }, opts);
+     }
+ 
++    const int fwd_mode = fp16acc_fwd_mode();
++    const bool fp16acc_fwd = fwd_mode > 0 && q_dtype == torch::kBFloat16 && head_size == 128
++        && p_dropout == 0.f && !is_causal && window_size_left < 0 && window_size_right < 0
++        && softcap == 0.f && !alibi_slopes_.has_value() && num_heads_k == num_heads
++        && !return_softmax && !seqlenq_ngroups_swapped;
++    at::Tensor q_in = q, k_in = k, v_in = v;
++    if (fp16acc_fwd) {
++        q_in = q.to(at::kHalf);
++        k_in = k.to(at::kHalf);
++        v_in = v.to(at::kHalf);
++    }
++
+     Flash_fwd_params params;
+     set_params_fprop(params,
+                      batch_size,
+@@ -457,7 +469,7 @@ mha_fwd(at::Tensor &q,         // batch_size x seqlen_q x num_heads x round_mult
+                      seqlen_q_rounded, seqlen_k_rounded,
+                      num_heads, num_heads_k,
+                      head_size, head_size_rounded,
+-                     q, k, v, out,
++                     q_in, k_in, v_in, out,
+                      /*cu_seqlens_q_d=*/nullptr,
+                      /*cu_seqlens_k_d=*/nullptr,
+                      /*seqused_k=*/nullptr,
+@@ -497,7 +509,11 @@ mha_fwd(at::Tensor &q,         // batch_size x seqlen_q x num_heads x round_mult
+ 
+     if (seqlen_k > 0) {
+         auto stream = at::cuda::getCurrentCUDAStream().stream();
+-        run_mha_fwd(params, stream);
++        if (fp16acc_fwd) {
++            run_mha_fwd_fp16acc(params, stream, fwd_mode == 2);
++        } else {
++            run_mha_fwd(params, stream);
++        }
+     } else {
+         // If seqlen_k == 0, then we have an empty tensor. We need to set the output to 0.
+         out.zero_();
+@@ -756,6 +772,15 @@ mha_varlen_fwd(at::Tensor &q,  // total_q x num_heads x head_size, total_q := \s
+ }
+ 
+ void run_mha_bwd_fp16acc(Flash_bwd_params &params, cudaStream_t stream);
++void run_mha_fwd_fp16acc(Flash_fwd_params &params, cudaStream_t stream, bool fp16acc_s);
++
++// FLASH_ATTN_FP16ACC_FWD: unset = the bf16 forward, "pv" = PV in fp16 accumulation,
++// "all" = PV and S, with the backward's S too.
++static int fp16acc_fwd_mode() {
++    const char *env = std::getenv("FLASH_ATTN_FP16ACC_FWD");
++    if (env == nullptr || env[0] == '\0' || env[0] == '0') { return 0; }
++    return env[0] == 'p' ? 1 : 2;
++}
+ 
+ void run_mha_bwd(Flash_bwd_params &params, cudaStream_t stream) {
+     FP16_SWITCH(!params.is_bf16, [&] {
+@@ -951,6 +976,7 @@ mha_bwd(const at::Tensor &dout,  // batch_size x seqlen_q x num_heads, x multipl
+                      /*unpadded_lse*/false);
+     params.dq_accum_split_stride = !deterministic ? 0 : dq_accum.stride(0);
+     params.do_scale_ptr = fp16acc ? do_scale.data_ptr<float>() : nullptr;
++    params.fp16acc_s = fp16acc && fp16acc_fwd_mode() == 2;
+     params.do_in_ptr = fp16acc ? dout_bf16.data_ptr() : nullptr;
+ 
+     auto launch = fp16acc ? &run_mha_bwd_fp16acc : &run_mha_bwd;
+diff --git a/csrc/flash_attn/src/flash.h b/csrc/flash_attn/src/flash.h
+index 0121208..c590b94 100644
+--- a/csrc/flash_attn/src/flash.h
++++ b/csrc/flash_attn/src/flash.h
+@@ -154,6 +154,7 @@ struct Flash_bwd_params : public Flash_fwd_params {
+ 
+     // fp16acc: dO was divided by this, one value per (batch, head)
+     const float *__restrict__ do_scale_ptr;
++    bool fp16acc_s;
+ 
+     // To accumulate dQ
+     void *__restrict__ dq_accum_ptr;
+diff --git a/csrc/flash_attn/src/flash_bwd_hdim128_fp16acc_sm80.cu b/csrc/flash_attn/src/flash_bwd_hdim128_fp16acc_sm80.cu
+index e174cdd..d361083 100644
+--- a/csrc/flash_attn/src/flash_bwd_hdim128_fp16acc_sm80.cu
++++ b/csrc/flash_attn/src/flash_bwd_hdim128_fp16acc_sm80.cu
+@@ -14,9 +14,17 @@ void run_mha_bwd_fp16acc(Flash_bwd_params &params, cudaStream_t stream) {
+       C10_CUDA_CHECK(status_);
+     }
+     if (max_smem_per_block >= 144 * 1024) {
+-        run_flash_bwd_fp16acc<Flash_bwd_fp16acc_kernel_traits<128, 64, 128, 8, 2, 4, 2, false, false>>(params, stream);
++        if (params.fp16acc_s) {
++            run_flash_bwd_fp16acc<Flash_bwd_fp16acc_kernel_traits<128, 64, 128, 8, 2, 4, 2, false, false, true>>(params, stream);
++        } else {
++            run_flash_bwd_fp16acc<Flash_bwd_fp16acc_kernel_traits<128, 64, 128, 8, 2, 4, 2, false, false>>(params, stream);
++        }
+     } else {
+-        run_flash_bwd_fp16acc<Flash_bwd_fp16acc_kernel_traits<128, 64, 64, 8, 4, 2, 2, true, false>>(params, stream);
++        if (params.fp16acc_s) {
++            run_flash_bwd_fp16acc<Flash_bwd_fp16acc_kernel_traits<128, 64, 64, 8, 4, 2, 2, true, false, true>>(params, stream);
++        } else {
++            run_flash_bwd_fp16acc<Flash_bwd_fp16acc_kernel_traits<128, 64, 64, 8, 4, 2, 2, true, false>>(params, stream);
++        }
+     }
+ }
+ 
+diff --git a/csrc/flash_attn/src/flash_bwd_kernel.h b/csrc/flash_attn/src/flash_bwd_kernel.h
+index 508b0de..256d500 100644
+--- a/csrc/flash_attn/src/flash_bwd_kernel.h
++++ b/csrc/flash_attn/src/flash_bwd_kernel.h
+@@ -478,8 +478,16 @@ inline __device__ void compute_dq_dk_dv_1colblock(const Params &params, const in
+         //     cute::copy(smem_tiled_copy_KV, tSsK(_, _, k), tSrK_copy_view(_, _, k));
+         // }
+         // if (cute::thread0()) { print(tSrK); }
+-        FLASH_NAMESPACE::gemm(acc_s, tSrQ, tSrK, tSsQ, tSsK, tiled_mma_sdp,
+-                    smem_tiled_copy_QdO, smem_tiled_copy_KV, smem_thr_copy_QdO, smem_thr_copy_KV);
++        if constexpr (Kernel_traits::Fp16AccS) {
++            Tensor acc_s16 = partition_fragment_C(tiled_mma_sdp_acc, Shape<Int<kBlockM>, Int<kBlockN>>{});
++            clear(acc_s16);
++            FLASH_NAMESPACE::gemm(acc_s16, tSrQ, tSrK, tSsQ, tSsK, tiled_mma_sdp_acc,
++                        smem_tiled_copy_QdO, smem_tiled_copy_KV, smem_thr_copy_QdO, smem_thr_copy_KV);
++            FLASH_NAMESPACE::add_fp16_accum(acc_s, acc_s16);
++        } else {
++            FLASH_NAMESPACE::gemm(acc_s, tSrQ, tSrK, tSsQ, tSsK, tiled_mma_sdp,
++                        smem_tiled_copy_QdO, smem_tiled_copy_KV, smem_thr_copy_QdO, smem_thr_copy_KV);
++        }
+ 
+         if constexpr (Is_softcap) {
+             FLASH_NAMESPACE::apply_softcap(acc_s, params.softcap);
+diff --git a/csrc/flash_attn/src/flash_fwd_hdim128_fp16acc_sm80.cu b/csrc/flash_attn/src/flash_fwd_hdim128_fp16acc_sm80.cu
+new file mode 100644
+index 0000000..3416c9a
+--- /dev/null
++++ b/csrc/flash_attn/src/flash_fwd_hdim128_fp16acc_sm80.cu
+@@ -0,0 +1,15 @@
++// fp16-accumulate forward: head dim 128, fp16 inputs, no dropout, causal, window, alibi or softcap.
++#include "namespace_config.h"
++#include "flash_fwd_launch_template.h"
++
++namespace FLASH_NAMESPACE {
++
++void run_mha_fwd_fp16acc(Flash_fwd_params &params, cudaStream_t stream, bool fp16acc_s) {
++    if (fp16acc_s) {
++        run_flash_fwd_fp16acc<Flash_fwd_fp16acc_kernel_traits<128, 128, 32, 4, true>>(params, stream);
++    } else {
++        run_flash_fwd_fp16acc<Flash_fwd_fp16acc_kernel_traits<128, 128, 32, 4, false>>(params, stream);
++    }
++}
++
++} // namespace FLASH_NAMESPACE
+diff --git a/csrc/flash_attn/src/flash_fwd_kernel.h b/csrc/flash_attn/src/flash_fwd_kernel.h
+index d492c87..a0ed5d6 100644
+--- a/csrc/flash_attn/src/flash_fwd_kernel.h
++++ b/csrc/flash_attn/src/flash_fwd_kernel.h
+@@ -178,6 +178,7 @@ inline __device__ void compute_attn_1rowblock(const Params &params, const int bi
+ 
+     typename Kernel_traits::TiledMma tiled_mma;
+     auto thr_mma = tiled_mma.get_thread_slice(tidx);
++    typename Kernel_traits::TiledMmaAcc tiled_mma_acc;
+     Tensor tSrQ  = thr_mma.partition_fragment_A(sQ);                           // (MMA,MMA_M,MMA_K)
+     Tensor tSrK  = thr_mma.partition_fragment_B(sK);                           // (MMA,MMA_N,MMA_K)
+     Tensor tOrVt  = thr_mma.partition_fragment_B(sVtNoSwizzle);                // (MMA, MMA_K,MMA_N)
+@@ -316,10 +317,20 @@ inline __device__ void compute_attn_1rowblock(const Params &params, const int bi
+         }
+         cute::cp_async_fence();
+ 
+-        FLASH_NAMESPACE::gemm</*A_in_regs=*/Kernel_traits::Is_Q_in_regs>(
+-            acc_s, tSrQ, tSrK, tSsQ, tSsK, tiled_mma, smem_tiled_copy_Q, smem_tiled_copy_K,
+-            smem_thr_copy_Q, smem_thr_copy_K
+-        );
++        if constexpr (Kernel_traits::Fp16AccS) {
++            Tensor acc_s16 = partition_fragment_C(tiled_mma_acc, Shape<Int<kBlockM>, Int<kBlockN>>{});
++            clear(acc_s16);
++            FLASH_NAMESPACE::gemm</*A_in_regs=*/Kernel_traits::Is_Q_in_regs>(
++                acc_s16, tSrQ, tSrK, tSsQ, tSsK, tiled_mma_acc, smem_tiled_copy_Q, smem_tiled_copy_K,
++                smem_thr_copy_Q, smem_thr_copy_K
++            );
++            FLASH_NAMESPACE::add_fp16_accum(acc_s, acc_s16);
++        } else {
++            FLASH_NAMESPACE::gemm</*A_in_regs=*/Kernel_traits::Is_Q_in_regs>(
++                acc_s, tSrQ, tSrK, tSsQ, tSsK, tiled_mma, smem_tiled_copy_Q, smem_tiled_copy_K,
++                smem_thr_copy_Q, smem_thr_copy_K
++            );
++        }
+         // if (cute::thread0()) { print(acc_s); }
+         if constexpr (Is_softcap){
+             FLASH_NAMESPACE::apply_softcap(acc_s, params.softcap);
+@@ -364,7 +375,14 @@ inline __device__ void compute_attn_1rowblock(const Params &params, const int bi
+         // if using m16n8k16 or (4, MMA_M, MMA_N) if using m16n8k8.
+         Tensor tOrP = make_tensor(rP.data(), FLASH_NAMESPACE::convert_layout_acc_Aregs<typename Kernel_traits::TiledMma>(rP.layout()));
+         // if (cute::thread0()) { print(tOrP); }
+-        FLASH_NAMESPACE::gemm_rs(acc_o, tOrP, tOrVt, tOsVt, tiled_mma, smem_tiled_copy_V, smem_thr_copy_V);
++        if constexpr (Kernel_traits::Fp16AccPV) {
++            Tensor acc_o16 = partition_fragment_C(tiled_mma_acc, Shape<Int<kBlockM>, Int<kHeadDim>>{});
++            clear(acc_o16);
++            FLASH_NAMESPACE::gemm_rs(acc_o16, tOrP, tOrVt, tOsVt, tiled_mma_acc, smem_tiled_copy_V, smem_thr_copy_V);
++            FLASH_NAMESPACE::add_fp16_accum(acc_o, acc_o16);
++        } else {
++            FLASH_NAMESPACE::gemm_rs(acc_o, tOrP, tOrVt, tOsVt, tiled_mma, smem_tiled_copy_V, smem_thr_copy_V);
++        }
+         // if (cute::thread0()) { print(scores); }
+ 
+         // This check is at the end of the loop since we always have at least 1 iteration
+@@ -383,10 +401,20 @@ inline __device__ void compute_attn_1rowblock(const Params &params, const int bi
+         FLASH_NAMESPACE::copy</*Is_even_MN=*/true, Is_even_K>(gmem_tiled_copy_QKV, tVgV(_, _, _, n_block), tVsV, tKVcKV, tKVpKV);
+         cute::cp_async_fence();
+ 
+-        FLASH_NAMESPACE::gemm</*A_in_regs=*/Kernel_traits::Is_Q_in_regs>(
+-            acc_s, tSrQ, tSrK, tSsQ, tSsK, tiled_mma, smem_tiled_copy_Q, smem_tiled_copy_K,
+-            smem_thr_copy_Q, smem_thr_copy_K
+-        );
++        if constexpr (Kernel_traits::Fp16AccS) {
++            Tensor acc_s16 = partition_fragment_C(tiled_mma_acc, Shape<Int<kBlockM>, Int<kBlockN>>{});
++            clear(acc_s16);
++            FLASH_NAMESPACE::gemm</*A_in_regs=*/Kernel_traits::Is_Q_in_regs>(
++                acc_s16, tSrQ, tSrK, tSsQ, tSsK, tiled_mma_acc, smem_tiled_copy_Q, smem_tiled_copy_K,
++                smem_thr_copy_Q, smem_thr_copy_K
++            );
++            FLASH_NAMESPACE::add_fp16_accum(acc_s, acc_s16);
++        } else {
++            FLASH_NAMESPACE::gemm</*A_in_regs=*/Kernel_traits::Is_Q_in_regs>(
++                acc_s, tSrQ, tSrK, tSsQ, tSsK, tiled_mma, smem_tiled_copy_Q, smem_tiled_copy_K,
++                smem_thr_copy_Q, smem_thr_copy_K
++            );
++        }
+         if constexpr (Is_softcap){
+             FLASH_NAMESPACE::apply_softcap(acc_s, params.softcap);
+         }
+@@ -425,7 +453,14 @@ inline __device__ void compute_attn_1rowblock(const Params &params, const int bi
+         // Reshape rP from (MMA=4, MMA_M, MMA_N) to ((4, 2), MMA_M, MMA_N / 2)
+         // if using m16n8k16 or (4, MMA_M, MMA_N) if using m16n8k8.
+         Tensor tOrP = make_tensor(rP.data(), FLASH_NAMESPACE::convert_layout_acc_Aregs<typename Kernel_traits::TiledMma>(rP.layout()));
+-        FLASH_NAMESPACE::gemm_rs(acc_o, tOrP, tOrVt, tOsVt, tiled_mma, smem_tiled_copy_V, smem_thr_copy_V);
++        if constexpr (Kernel_traits::Fp16AccPV) {
++            Tensor acc_o16 = partition_fragment_C(tiled_mma_acc, Shape<Int<kBlockM>, Int<kHeadDim>>{});
++            clear(acc_o16);
++            FLASH_NAMESPACE::gemm_rs(acc_o16, tOrP, tOrVt, tOsVt, tiled_mma_acc, smem_tiled_copy_V, smem_thr_copy_V);
++            FLASH_NAMESPACE::add_fp16_accum(acc_o, acc_o16);
++        } else {
++            FLASH_NAMESPACE::gemm_rs(acc_o, tOrP, tOrVt, tOsVt, tiled_mma, smem_tiled_copy_V, smem_thr_copy_V);
++        }
+     }
+ 
+     // Epilogue
+@@ -433,7 +468,8 @@ inline __device__ void compute_attn_1rowblock(const Params &params, const int bi
+     Tensor lse = softmax.template normalize_softmax_lse<Is_dropout>(acc_o, params.scale_softmax, params.rp_dropout);
+ 
+     // Convert acc_o from fp32 to fp16/bf16
+-    Tensor rO = FLASH_NAMESPACE::convert_type<Element>(acc_o);
++    using ElementOut = std::conditional_t<Kernel_traits::Fp16AccPV, cutlass::bfloat16_t, Element>;
++    Tensor rO = FLASH_NAMESPACE::convert_type_bits<ElementOut, Element>(acc_o);
+     Tensor sO = make_tensor(sQ.data(), typename Kernel_traits::SmemLayoutO{});    // (SMEM_M,SMEM_N)
+     // Partition sO to match the accumulator partitioning
+     auto smem_tiled_copy_O = make_tiled_copy_C(typename Kernel_traits::SmemCopyAtomO{}, tiled_mma);
+diff --git a/csrc/flash_attn/src/flash_fwd_launch_template.h b/csrc/flash_attn/src/flash_fwd_launch_template.h
+index 01a222e..857d260 100644
+--- a/csrc/flash_attn/src/flash_fwd_launch_template.h
++++ b/csrc/flash_attn/src/flash_fwd_launch_template.h
+@@ -169,6 +169,23 @@ void run_mha_fwd_splitkv_dispatch(Flash_fwd_params &params, cudaStream_t stream)
+     run_flash_splitkv_fwd<Flash_fwd_kernel_traits<Headdim, kBlockM, kBlockN, 4, false, false, T>, Is_causal>(params, stream);
+ }
+ 
++template<typename Kernel_traits>
++void run_flash_fwd_fp16acc(Flash_fwd_params &params, cudaStream_t stream) {
++    constexpr size_t smem_size = Kernel_traits::kSmemSize;
++    const int num_m_block = (params.seqlen_q + Kernel_traits::kBlockM - 1) / Kernel_traits::kBlockM;
++    dim3 grid(num_m_block, params.b, params.h);
++    const bool is_even_MN = params.seqlen_k % Kernel_traits::kBlockN == 0 && params.seqlen_q % Kernel_traits::kBlockM == 0;
++    BOOL_SWITCH(is_even_MN, IsEvenMNConst, [&] {
++        auto kernel = &flash_fwd_kernel<Kernel_traits, false, false, false, false, IsEvenMNConst, true, false, false>;
++        if (smem_size >= 48 * 1024) {
++            C10_CUDA_CHECK(cudaFuncSetAttribute(
++                kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
++        }
++        kernel<<<grid, Kernel_traits::kNThreads, smem_size, stream>>>(params);
++        C10_CUDA_KERNEL_LAUNCH_CHECK();
++    });
++}
++
+ template<typename T, bool Is_causal>
+ void run_mha_fwd_hdim32(Flash_fwd_params &params, cudaStream_t stream) {
+     constexpr static int Headdim = 32;
+diff --git a/csrc/flash_attn/src/kernel_traits.h b/csrc/flash_attn/src/kernel_traits.h
+index a4527f7..572f6ea 100644
+--- a/csrc/flash_attn/src/kernel_traits.h
++++ b/csrc/flash_attn/src/kernel_traits.h
+@@ -76,6 +76,10 @@ struct Flash_fwd_kernel_traits : public Base {
+         Layout<Shape<Int<kNWarps>,_1,_1>>,  // 4x1x1 or 8x1x1 thread group
+         Tile<Int<16 * kNWarps>, _16, _16>>;
+ 
++    static constexpr bool Fp16AccPV = false;
++    static constexpr bool Fp16AccS = false;
++    using TiledMmaAcc = TiledMma;
++
+     using SmemLayoutAtomQ = decltype(
+         composition(Swizzle<kSwizzle, 3, 3>{},
+                     // This has to be kBlockKSmem, using kHeadDim gives wrong results for d=128
+@@ -208,6 +212,7 @@ struct Flash_bwd_kernel_traits : public Base {
+         Tile<Int<16 * AtomLayoutMdQ>, Int<16 * kNWarps / AtomLayoutMdQ>, _16>>;
+ 
+     static constexpr bool Fp16Acc = false;
++    static constexpr bool Fp16AccS = false;
+     using TiledMmaSdPAcc = TiledMmaSdP;
+     using TiledMmadKVAcc = TiledMmadKV;
+     using TiledMmadQAcc = TiledMmadQ;
+@@ -352,12 +357,13 @@ struct Flash_bwd_kernel_traits : public Base {
+ // accumulation: fp16 accumulation of QK^T alone puts dK and dV at about 2x the error.
+ template<int kHeadDim_, int kBlockM_, int kBlockN_, int kNWarps_,
+          int AtomLayoutMSdP_, int AtomLayoutNdKV, int AtomLayoutMdQ,
+-         bool Is_V_in_regs_, bool No_double_buffer_>
++         bool Is_V_in_regs_, bool No_double_buffer_, bool Fp16AccS_ = false>
+ struct Flash_bwd_fp16acc_kernel_traits
+     : public Flash_bwd_kernel_traits<kHeadDim_, kBlockM_, kBlockN_, kNWarps_, AtomLayoutMSdP_,
+                                      AtomLayoutNdKV, AtomLayoutMdQ, Is_V_in_regs_,
+                                      No_double_buffer_, cutlass::half_t> {
+     static constexpr bool Fp16Acc = true;
++    static constexpr bool Fp16AccS = Fp16AccS_;
+     using MmaAcc = MMA_Atom<SM80_16x8x16_F16F16F16F16_TN>;
+     using TiledMmaSdPAcc = TiledMMA<
+         MmaAcc,
+@@ -373,3 +379,14 @@ struct Flash_bwd_fp16acc_kernel_traits
+         Tile<Int<16 * AtomLayoutMdQ>, Int<16 * kNWarps_ / AtomLayoutMdQ>, _16>>;
+ };
+ 
++// The fp16 forward kernel with PV, and S when Fp16AccS_, accumulated in fp16 inside a tile.
++template<int kHeadDim_, int kBlockM_, int kBlockN_, int kNWarps_, bool Fp16AccS_>
++struct Flash_fwd_fp16acc_kernel_traits
++    : public Flash_fwd_kernel_traits<kHeadDim_, kBlockM_, kBlockN_, kNWarps_, false, false, cutlass::half_t> {
++    static constexpr bool Fp16AccPV = true;
++    static constexpr bool Fp16AccS = Fp16AccS_;
++    using TiledMmaAcc = TiledMMA<
++        MMA_Atom<SM80_16x8x16_F16F16F16F16_TN>,
++        Layout<Shape<Int<kNWarps_>, _1, _1>>,
++        Tile<Int<16 * kNWarps_>, _16, _16>>;
++};
+diff --git a/setup.py b/setup.py
+index d82f144..326e6ec 100644
+--- a/setup.py
++++ b/setup.py
+@@ -245,6 +245,7 @@ if not SKIP_CUDA_BUILD and not IS_ROCM:
+                 "csrc/flash_attn/src/flash_bwd_hdim128_fp16_causal_sm80.cu",
+                 "csrc/flash_attn/src/flash_bwd_hdim128_bf16_causal_sm80.cu",
+                 "csrc/flash_attn/src/flash_bwd_hdim128_fp16acc_sm80.cu",
++                "csrc/flash_attn/src/flash_fwd_hdim128_fp16acc_sm80.cu",
+                 "csrc/flash_attn/src/flash_fwd_split_hdim64_fp16_sm80.cu",
+                 "csrc/flash_attn/src/flash_fwd_split_hdim64_bf16_sm80.cu",
+                 "csrc/flash_attn/src/flash_fwd_split_hdim128_fp16_sm80.cu",

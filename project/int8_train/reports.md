@@ -57,6 +57,7 @@ inputs.
 | FA2 forward tile on sm_120 | fails the 1.15x gate: 128×32 is 1.060x self and 1.117x cross at FA2's error, CUDNN 1.072x with a slower backward; no build ([report](reports/fa2_tile_sm120.md)) |
 | fp16-accumulate backward | passes with QKᵀ fp32-accumulated: 1.340x the Triton backward, 1.02–1.10x error; fp16acc QKᵀ alone is 2.1x ([report](reports/attn_bwd_fp16acc.md)) |
 | fp16acc in FA2's backward | ported: real MOSS step 1071–1082 → 1022 ms, real Anima step 426.5 → 404.7 ms, error 0.74–0.97x FA2, MOSS LoRA gradient 1.000–1.005x; default on sm_120 after `make fa2-sm120` ([report](reports/fa2_fp16acc.md)) |
+| fp16acc attention forward on MOSS, Triton | parked, no gate decided it: estimated 1.2–1.5% of a step for PV and 2.5–3% with QKᵀ and S on FA2; prediction error flat on PV and 1–7% higher with S, possibly sample spread; LoRA gradient cannot separate the arms on six images ([report](reports/moss_fwd16_triton.md)) |
 | one int8 linear for MOSS q / k / v | built: forward 1.30x and bit-identical, dX 1.31x, about 24 ms of a step; LoRA gradient 0.986–1.006x ([report](reports/qkv_fuse.md)) |
 
 Criterion, as it stands now:
@@ -111,5 +112,6 @@ offloader moves `.weight` only ([report](reports/moss_scoping.md)).
 | offline GPTQ base, t2i + i2i | held-out excess prediction error −28–35% (t2i), −31–32% (i2i); blocks 35–41 at σ 0.5 from 2.59x to 1.20x bf16; with an fp32 stream, below today's bf16 prediction error at every σ tested. No LoRA trained on it, no A/B ([report](reports/moss_gptq.md)) |
 | SmoothQuant fold `o` → `v` (`src/dit_fold_vo_moss.py`) | no gain, no file: `o`'s mean W8A8 error +8–87% across α; crest stays near 4.6 after ConvRot ([report](reports/moss_fold_vo.md)) |
 | activation clipping, kernel input dtype (`src/clip_probe_moss.py`) | clipping loses at every ratio (0.9: +15–20%); an fp32 kernel input cuts held-out prediction error 5–10% for 0.05 s/step, now the forward's input ([report](reports/moss_act_scale.md)) |
+| fp32 `dY` into the dX kernel; bf16 split-K off | closed: both inside the plan's repeat spread (medians 1.00x, max 1.04 against the repeat's 1.13) at every depth and σ; the early-block gradient error is not the backward's rounding ([report](reports/moss_bwd_dy32_noreduce.md)) |
 | `wq_t` streaming (`--int8 stream`) | same gradients, peak 13.58 → 9.36 GB with checkpointing, step cost ≤ 0.03 s; budgets 0.05–0.4 all 1.33–1.37 s/step, so raising the budget buys no speed; the same-seed gradient norm moves up to 5x in bf16 too; the EMA shadow on the card (`--ema_card`) saves 4.8% for 0.27 GB ([report](reports/moss_wqt_stream.md)) |
 | int8 generation (`src/infer_int8_moss.py`) | 1024² 50 steps at 11–15 s, 6.3 GiB (bf16: 21.6 s, 10.7 GiB); a full-size i2i reference on an fp32 stream fits resident at 11.2 GiB ([report](reports/moss_gptq.md#inference)) |

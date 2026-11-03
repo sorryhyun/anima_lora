@@ -94,7 +94,8 @@ sit further under it: |dP| 1812 (36x), dQ per tile 1069 (61x), dK per tile 1606 
 ## Not done
 
 - **Forward PV.** Triton's 0.25 ms would need Q, K, V in fp16 on the forward too, a net of about 0.17
-  ms, 1% of a step, and it changes generation's output. Skipped.
+  ms, 1% of a step, and it changes generation's output. Skipped. On MOSS, with QKᵀ and S:
+  [moss_fwd16_triton.md](moss_fwd16_triton.md).
 - **The remaining prep.** `abs` + `amax` and `to(half)` are about 0.12 ms on self. Cross-attention
   lands at parity with them; a kernel of their own would gain about 2% of its time.
 - **A/B.** One LoRA pair trained to completion: `caststation_fp16acc` and `caststation_fa2stock`, 240
