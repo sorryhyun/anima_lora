@@ -526,6 +526,12 @@ def main() -> None:
     ap.add_argument("--method", default=method_default)
     ap.add_argument("--preset", default="default")
     ap.add_argument("--dry_run", action="store_true")
+    ap.add_argument(
+        "--resume",
+        action="store_true",
+        help="skip a fine-tune whose checkpoint already exists (picks up a "
+        "stopped run); the reused file is not checked against the current config",
+    )
     args, ft_extra = ap.parse_known_args()
     # Each phase names its own checkpoint; a passthrough --output_name lands
     # after the per-seed one, so every ingredient overwrites one file and
@@ -674,6 +680,9 @@ def main() -> None:
         ingredients.append(ckpt_dir / f"{iname}.safetensors")
         lr_extra = ["--learning_rate", f"{lrs[i]:g}"] if lrs else []
         lr_note = f" (lr {lrs[i]:g})" if lrs else ""
+        if args.resume and ingredients[-1].exists():
+            print(f"[soup] phase 2: REUSED existing {iname} (--resume)")
+            continue
         print(f"[soup] phase 2: fine-tune seed {seed}{lr_note} -> {iname}")
         _train(
             build_method_args(
