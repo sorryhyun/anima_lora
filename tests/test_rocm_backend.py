@@ -226,7 +226,16 @@ def test_torch_stacks_pair_flash_attn_and_triton(
         f"torchvision=={vision_pin}" in line for line in vision_lines
     )
     wheels = _flash_wheels(lines)
-    assert set(wheels) == ALL_PLATFORMS and set(wheels.values()) == {minor}, wheels
+    assert set(wheels) == ALL_PLATFORMS, wheels
+    # A stable-ABI wheel ("2.12plus") loads on every torch from that minor up.
+    assert all(
+        v == minor
+        or (
+            v.endswith("plus")
+            and tuple(map(int, v[:-4].split("."))) <= tuple(map(int, minor.split(".")))
+        )
+        for v in wheels.values()
+    ), wheels
     tritons = [line for line in lines if line.startswith("triton==")]
     assert tritons and all(
         line.startswith(f"triton=={triton}") and "+" not in line.split(" ; ")[0]
