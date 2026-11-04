@@ -25,7 +25,7 @@ OCR captions). The MOSS task list is `library.moss.requests.I2I_CACHE`; the GUI'
 
 | Task (`TASK=`) | Folder | Staging builds |
 |---|---|---|
-| `colorize` | `colorization/` | mangafied B&W page per colour image (`mangafy`, `wb`); colour-only captions (`color_caption.py`) |
+| `colorize` | `colorization/` | mangafied B&W page per colour image (`mangafy`, `wb`); colour-only captions (`anime_tools.captions.color_tags`) |
 | `inpaint` | `inpainting/` | masked condition per image |
 | `region` | `region/` | SAM3 masks → paint-to-character condition + positioned captions |
 | `near_twins`, `sanitize` | `tools/near_twins/` (`stage = "near_twins"`) | in-artist near-twin pair tree |

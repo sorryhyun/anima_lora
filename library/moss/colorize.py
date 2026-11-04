@@ -55,8 +55,6 @@ from __future__ import annotations
 
 import json
 import random
-import re
-import sys
 import time
 from pathlib import Path
 
@@ -64,20 +62,16 @@ import torch
 from PIL import Image
 from safetensors.torch import save_file
 
+from anime_tools.ocr.floors import keep_line, load_reread_engine, readable
+
 from library.env import resolve_under_home
 from library.moss import cache as moss_cache
 from library.moss.loader import empty_cache, load_tokenizer
 from library.moss.scan import REF_SUFFIX, TE_SUFFIX
 
-# ComfyUI-MOSS-Toolkit's MOSSCaptionHelper copies these floors, readable, dedupe and
-# ocr_caption to build the same prompt at inference: change both together.
-LOW_DET_SCORE = 0.9  # reader score a box under LINE_MIN_DET needs
-LATIN_MIN_GLYPH = 12.0
-LATIN_MIN_SCORE = 0.8  # keep_line: a Latin line's reader score, whatever its det
-HANGUL = re.compile(r"[\uac00-\ud7a3]")
-JA_SCRIPT = re.compile(
-    r"[\u3040-\u30ff\u31f0-\u31ff\u3400-\u4dbf\u4e00-\u9fff\uff66-\uff9f]"
-)
+# The OCR floors and the colour tags live in anime_tools (ComfyUI-MOSS-Toolkit's
+# MOSSCaptionHelper reads the same ones); the caption index holds the series tags.
+CAPTION_INDEX = "post_image_dataset/captions/caption_index.json"
 
 
 def find_pairs(staging: Path, resized: Path) -> list[tuple[str, Path, Path]]:
@@ -112,55 +106,6 @@ def split_manga(pairs, n, n_holdout, rng):
     rest = [p for a in anchors[n_holdout:] for p in works[a]]
     rng.shuffle(rest)
     return rest[:n], holdout
-
-
-def readable(ln) -> bool:
-    from anime_tools.captions.ocr_sidecar import DEFAULT_MIN_GLYPH
-    from anime_tools.ocr.reread import LINE_MIN_DET
-
-    latin = all(ch.isascii() for ch in ln.text if ch.isalpha())
-    floor = LATIN_MIN_GLYPH if latin else DEFAULT_MIN_GLYPH
-    sure = ln.det >= LINE_MIN_DET or ln.score >= LOW_DET_SCORE
-    return bool(ln.text) and sure and ln.glyph_px >= floor
-
-
-def keep_line(ln) -> bool:
-    """A line ``readable`` keeps, a Latin line read at ``LATIN_MIN_SCORE``
-    whatever its det — the detector scores scanlation lettering 0.3–0.6 and the
-    reader 0.8–0.9 on reads that are right — or a Hangul line ``readable``
-    lost to its glyph floor alone: small balloon lettering sits at 12–16 px and
-    reads at 0.96–1.00. swap_text's caption floor (``i2i_tasks/swap_text/ocr.py``)."""
-    from anime_tools.ocr.reread import LINE_MIN_DET
-    from anime_tools.ocr.sfx import is_latin
-
-    if readable(ln):
-        return True
-    if ln.glyph_px < LATIN_MIN_GLYPH:
-        return False
-    if is_latin(ln.text):
-        return ln.score >= LATIN_MIN_SCORE
-    return (
-        bool(HANGUL.search(ln.text))
-        and not JA_SCRIPT.search(ln.text)
-        and (ln.det >= LINE_MIN_DET or ln.score >= LOW_DET_SCORE)
-    )
-
-
-def load_reread_engine(device: str):
-    """The detector with the SFX reader re-reading its boxes."""
-    from anime_tools.ocr import load_ocr
-    from anime_tools.ocr.animetext import DEFAULT_CONF
-    from anime_tools.ocr.reread import RereadEngine
-    from anime_tools.ocr.sfx import SfxReader
-
-    reader = SfxReader.load(device=device)
-    return RereadEngine(
-        engine=load_ocr(device=device),
-        read_boxes=reader.read_boxes_scored,
-        resized_dir=Path("/"),
-        skip_en=False,
-        min_det=DEFAULT_CONF,
-    )
 
 
 def read_pages(conditions: list[Path], device: str, keep=readable) -> list[list]:
@@ -217,21 +162,6 @@ def sparse_captions(colour, n, dropout, comic_page, is_comic_tag) -> list[str]:
         partial[k // 2 + 1] if k % 2 == 0 else random.choice(comic) if comic else ""
         for k in range(n)
     ]
-
-
-CHARACTER_COLOUR_SKIP = frozenset({"skin", "background", "sky", "border", "theme"})
-
-
-def is_character_colour(tag: str, is_color_tag) -> bool:
-    """A colour tag a character box carries: hair, eyes and clothing, not skin or
-    the blanked crop's background."""
-    words = tag.strip().lower().split()
-    return (
-        bool(words)
-        and is_color_tag(tag)
-        and words[-1] not in CHARACTER_COLOUR_SKIP
-        and not any(w.endswith("skinned") for w in words)
-    )
 
 
 def keep_draw(atoms: list, dropout: float, rng: random.Random) -> list:
@@ -333,11 +263,9 @@ def detect_characters(targets: list[Path], device: str) -> list[list]:
 
 
 def _color_caption():
-    """``i2i_tasks/colorization/color_caption.py`` (not an installed package)."""
-    sys.path.insert(0, str(resolve_under_home("i2i_tasks/colorization")))
-    import color_caption
+    from anime_tools.captions import color_tags
 
-    return color_caption
+    return color_tags
 
 
 def run_colorize_cache(req) -> Path:
@@ -457,7 +385,7 @@ def run_colorize_cache(req) -> Path:
         empty_cache()
 
     cc = _color_caption()
-    copyright_tags = cc.load_copyright_tags()
+    copyright_tags = cc.load_copyright_tags(resolve_under_home(CAPTION_INDEX))
     kb = moss_cache.tag_knowledge_base()
     # stem: (colour caption, caption, variant captions, bare caption or None)
     captions = {}
@@ -487,7 +415,7 @@ def run_colorize_cache(req) -> Path:
                 chars = [
                     (
                         [b[0] * w / tw, b[1] * h / th, b[2] * w / tw, b[3] * h / th],
-                        [x for x in t if is_character_colour(x, cc.is_color_tag)],
+                        [x for x in t if cc.is_character_colour(x)],
                     )
                     for b, t in found[stem]
                 ]

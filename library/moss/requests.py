@@ -165,8 +165,9 @@ class ColorizeCacheRequest(Request):
     SCRIPT: ClassVar[str] = "scripts/moss/colorize_cache.py"
 
     out: str = _f(
-        "post_image_dataset/moss/i2i_colorize",
-        "cache folder (flat; held-out pairs in <out>/holdout/ with holdout.json)",
+        "post_image_dataset/moss/i2i_colorize_control_1k",
+        "cache folder (flat; held-out pairs in <out>/holdout/ with holdout.json); "
+        "the default is the v5 cache",
     )
     n: int = _f(1667, "illustration pairs to train on (staging page + resized target)")
     manga: int = _f(1667, "manga_color pages to add (0 = illustrations only)")
@@ -185,11 +186,12 @@ class ColorizeCacheRequest(Request):
         "multiples of 16 (generate with the same value); v2 used 2",
     )
     variants: int = _f(
-        3,
-        "sparse captions + 1: embeds_v1 … embeds_v{variants-1} hold the OCR layout "
-        "over the colour caption, odd k with tag_dropout of its tags dropped, even "
-        "k with all of them (a comic page keeps one comic tag); at least 3, odd "
-        "for an even split",
+        4,
+        "captions control: draws per page (embeds + embeds_v1 … embeds_v{variants-1}). "
+        "captions ocr: sparse captions + 1, embeds_v1 … embeds_v{variants-1} hold the "
+        "OCR layout over the colour caption, odd k with tag_dropout of its tags "
+        "dropped, even k with all of them (a comic page keeps one comic tag); odd "
+        "for an even split. At least 3",
     )
     tag_dropout: float = _f(
         0.8,
@@ -197,9 +199,9 @@ class ColorizeCacheRequest(Request):
         "captions control: share of the pool every draw drops",
     )
     captions: str = _f(
-        "ocr",
+        "control",
         "ocr: the OCR layout over the full / sparse / bare colour caption (v4). "
-        "control: an illustration draws from its colour + series tags (bare: empty); "
+        "control (v5): an illustration draws from its colour + series tags (bare: empty); "
         "a manga page is always comic plus a box-only text item per OCR line swap_text's "
         "keep_line keeps, "
         "and draws from a box per character with its hair / eye / clothing colours (SAM3 + "
@@ -246,7 +248,7 @@ class ColorizeCacheRequest(Request):
     text_encoder: str = _f(
         "int8",
         f"Qwen3.5-9B weights for every encode, with the vision tower in bf16: {_TE_HELP}. "
-        "v3 is int8 (v2 moss_colorize_3k_ocr was fp8); generate with the same",
+        "v3 to v5 are int8 (v2 moss_colorize_3k_ocr was fp8); generate with the same",
         choices=TEXT_ENCODERS,
         advanced=True,
     )
@@ -317,13 +319,13 @@ class GenerateRequest(Request):
     ref_scale: int = _f(
         1,
         "with ref_image: the reference latent's sides are the output's divided by "
-        "this, multiples of 16. Match the cache the LoRA trained on (sanitize 1, "
-        "colorize 2)",
+        "this, multiples of 16. Match the cache the LoRA trained on (sanitize and "
+        "colorize 1; colorize v2 used 2)",
     )
     ref_vision: bool = _f(
         False,
         "with ref_image: the reference also enters the TE through its vision tower, "
-        "ahead of the prompt, as a colorize cache encodes the page. An empty prompt "
+        "ahead of the prompt, as the colorize v2 cache encoded the page. An empty prompt "
         "is then the page alone",
     )
     prompts_file: str = _f("", "one prompt per line; overrides prompt", advanced=True)

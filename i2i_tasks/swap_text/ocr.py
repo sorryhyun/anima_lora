@@ -5,7 +5,7 @@
 ``<root>/ocr.json``, every line the engine answers as ``[text, box, det, score,
 glyph_px]``, unfiltered, so a line floor changes without a GPU. ``kept_lines``
 applies the floors when the reads are used: the MOSS caption helper's
-(``library.moss.colorize.readable``), a Latin line at reader score
+(``anime_tools.ocr.floors.readable``), a Latin line at reader score
 ``LATIN_MIN_SCORE`` whatever its det, and the Latin glyph floor on a Hangul
 line. After a floor change remove ``<root>/pool_metrics.json``: its masks hold
 the kept lines' boxes.
@@ -31,7 +31,7 @@ from i2i_tasks.swap_text.common import (
     read_json,
     write_text,
 )
-from library.moss.colorize import keep_line
+from anime_tools.ocr.floors import keep_line
 
 
 def _gated_pages(a) -> list[dict]:
@@ -106,7 +106,7 @@ def _read_shard(job) -> dict:
     """Read ``keep`` (``[(key, path)]``), checkpointing to ``out`` every 200
     pages and reporting every 50."""
     a, out, keep, label = job
-    from library.moss.colorize import load_reread_engine
+    from anime_tools.ocr.floors import load_reread_engine
 
     engine = load_reread_engine(a.device)
     reads, t0 = {}, time.time()

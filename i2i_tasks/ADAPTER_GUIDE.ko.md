@@ -33,7 +33,7 @@ colorize의 방식 — 재사용할 수 있는 아이디어입니다: **실제 �
 
 | # | 항목 | colorize 버전 | 역할 |
 |---|---------|-------------------|--------------|
-| 1 | `i2i_tasks/<task>/` 프로젝트 | `colorization/` (`mangafy*.py`, `color_caption.py`, `prep.py`) | 레퍼런스 이미지를 만들고 캐시 (선택적으로 짧은 텍스트 캐시도) |
+| 1 | `i2i_tasks/<task>/` 프로젝트 | `colorization/` (`mangafy*.py`, `prep.py`) | 레퍼런스 이미지를 만들고 캐시 (선택적으로 짧은 텍스트 캐시도) |
 | 2 | `i2i_tasks/configs/<task>.toml` + `configs/easycontrol/<task>.toml` | `i2i_tasks/configs/colorize.toml` + `configs/easycontrol/colorize.toml` | 태스크 파일(`name` 슬러그, 선택적 `stage`, `[staging]`)과 EasyControl 디스크립터(`[preprocess]` / `[training]` 테이블, `[[datasets]]` 블루프린트, 선택적 `[variant]`) |
 | 3 | `scripts/tasks/training.py`의 `_I2I_STAGES` | `"colorize": {"stage": _colorize_stage, "preprocess": _colorize_preprocess}` | `make i2i-stage`에서 `TASK=<task>`가, `easycontrol-preprocess` / `easycontrol`에서 `EASYADAPTER=<task>`가 작동하게 함 |
 | 4 | `cmd_test_easycontrol`의 `_ADAPTERS` (`scripts/tasks/inference.py`) | `"colorize"` 행 | `make test-easycontrol`용 체크포인트 접두사, 출력 폴더, 레퍼런스 폴백 폴더, 빈 프롬프트 기본값 |
@@ -68,7 +68,7 @@ Screener = Callable[[np.ndarray, int], np.ndarray]  # (img_rgb, seed) → cond_r
 
 ### 2b. (선택) 짧은 텍스트 캐시
 
-colorize는 레퍼런스만 바꾸는 게 아니라 **캡션을 색상 단어로만 축소**하기도 합니다(`color_caption.py::filter_to_colors`). 이유를 이해할 가치가 있습니다: 레퍼런스(선화 + 스크린톤)가 이미 *형태와 레이아웃에 관한 모든 것*을 인코딩하므로, 텍스트가 여전히 말해야 할 것은 흑백이 표현할 수 없는 단 하나 — **색**뿐입니다. 캡션을 색상 단어로 축소하면 남은 단어가 모두 모델이 레퍼런스에서 얻을 수 없는 정보가 되어, 긴 캡션 속에 묻힌 색상 단어로 약하게 스티어링하는 대신 강한 `prompt → color` 연결이 생깁니다.
+colorize는 레퍼런스만 바꾸는 게 아니라 **캡션을 색상 단어로만 축소**하기도 합니다(`anime_tools.captions.color_tags.filter_to_colors`). 이유를 이해할 가치가 있습니다: 레퍼런스(선화 + 스크린톤)가 이미 *형태와 레이아웃에 관한 모든 것*을 인코딩하므로, 텍스트가 여전히 말해야 할 것은 흑백이 표현할 수 없는 단 하나 — **색**뿐입니다. 캡션을 색상 단어로 축소하면 남은 단어가 모두 모델이 레퍼런스에서 얻을 수 없는 정보가 되어, 긴 캡션 속에 묻힌 색상 단어로 약하게 스티어링하는 대신 강한 `prompt → color` 연결이 생깁니다.
 
 자신의 태스크에 같은 질문을 해보세요: **레퍼런스가 이미 결정하는 것은 무엇이고, 텍스트가 결정해야 할 것은 무엇인가?** `pose → image` 레퍼런스는 포즈는 고정하지만 의상이나 배경은 고정하지 않습니다 — 아마 *전체* 캡션을 유지할 것입니다. `depth → image` 레퍼런스는 레이아웃은 고정하지만 정체성이나 색상은 고정하지 않습니다. colorize의 "캡션을 여전히 모호한 것으로 축소한다"는 방식은 고려할 *패턴*이지 규칙이 아닙니다 — 많은 어댑터가 캡션을 그대로 두고 텍스트 캐시를 완전히 건너뜁니다(데이터셋에서 `text_cache_dir`를 생략하기만 하면 됩니다 — §4 참조).
 

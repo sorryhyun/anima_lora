@@ -23,7 +23,7 @@ is `library.moss.requests.I2I_CACHE`.
 
 | Task | Reference | Text encoder input | Status |
 |---|---|---|---|
-| `colorize` | B&W page, full size, isolated | the colour caption's layout JSON plus one text item per OCR line (no vision tower) | v4 recipe in the configs (`moss_colorize_3k_textref1_iso_muon_ema`, on the Hub as `colorize/moss_colorize_3k_v4`). v2 (`moss_colorize_3k_ocr`: half size, joint, vision tower) needs `ref_scale = 2`, `vision = true`: `project/finished/moss_lora/README.md` |
+| `colorize` | B&W page, full size, isolated | control captions, no OCR text (no vision tower). Manga page: `comic`, optionally a box-only `text` item per lettered line and `character` items (box + hair / eye / clothing colours). Illustration: its colour + series tags | v5 recipe in the configs (`moss_colorize_v5`, int8 base; on the Hub as `colorize/moss_colorize_v5` with the workflow `colorize/moss-i2i-colorize-v5.json`): [colorize_v5_control.md](../proposal/colorize_v5_control.md). v4 (`colorize/moss_colorize_3k_v4`: OCR text items in the caption) is `captions = "ocr"`, `variants = 3`; v2 (`moss_colorize_3k_ocr`: half size, joint, vision tower) adds `ref_scale = 2`, `vision = true`: `project/finished/moss_lora/README.md` |
 | `sanitize` | texted image, full size, isolated | one fixed caption for every pair: `no sfx, no dialogue, no watermark` | v3 on the Hub (`sanitize/moss_i2i_sanitize_v3`): the tone term, `docs/moss/methods/tone_loss.md` |
 | `swap_text` | JA manga page, full size, isolated | layout JSON, one text item per line to letter (translated text + bbox) | 1,300-pair run (`moss_i2i_swap_text_1300_ema5e5`): English clean on the held-out pages, Korean down to one-syllable swaps |
 
@@ -192,6 +192,6 @@ passes layout JSON through unchanged).
 ## More
 
 - Probes and design notes: `project/finished/moss_lora/done/i2i.md`. Colorize runs: `project/finished/moss_lora/`
-  (`plan.md`, `colorize_ocr.md`).
+  (`plan.md`, `colorize_ocr.md`); v5 and its eval: [colorize_v5_control.md](../proposal/colorize_v5_control.md).
 - Ref forward: `library/moss/model.py` (`ref=`, `_ref_only`). The ComfyUI copy is
   `reference.py` in the toolkit.

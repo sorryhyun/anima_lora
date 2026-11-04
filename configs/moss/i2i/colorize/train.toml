@@ -1,29 +1,26 @@
-# MOSS i2i training for the colorize task — TrainRequest fields; the v4 recipe
-# (moss_colorize_3k_textref1_iso_muon_ema: muon, kaiming, ema_window 0.1 are the
-# TrainRequest defaults; project/finished/moss_lora/README.md).
+# MOSS i2i training for the colorize task — TrainRequest fields; the v5 recipe
+# (docs/moss/proposal/colorize_v5_control.md): v4's schedule (3 epochs, 10000 steps,
+# Muon 5e-5; kaiming and ema_window 0.1 are the TrainRequest defaults) on the int8 base.
 #
 #   make daemon-run ARGS="--stall-timeout 900 scripts/moss/train.py --config configs/moss/i2i/colorize/train.toml"
+#
+# moss_colorize_v5 ran 374 min at 2.2 s/step on this plan, peak 13.8 GB.
 
-cache = "post_image_dataset/moss/i2i_colorize"
-output = "output/ckpt_moss_i2i/moss_i2i_colorize.safetensors"
+cache = "post_image_dataset/moss/i2i_colorize_control_1k"
+output = "output/ckpt_moss_i2i/moss_colorize_v5.safetensors"
 epochs = 3
 max_steps = 10000
 lr = 5e-5
+optimizer = "muon"
 save_every_epochs = 1
-plain_caption_rate = 0.0       # a vision-off cache has no embeds_plain
-caption_variant_rate = 0.3     # of the rest, sparse / bare colour tags under the OCR layout; else the full one
+plain_caption_rate = 0.2       # embeds_plain: the bare caption (empty / comic)
+caption_variant_rate = 0.75    # of the rest: the four draws equally (embeds + v1..v3)
 ref_timestep = 0.0             # the reference is clean
 ref_isolate = true             # ref queries see only ref keys
-# OCR layouts run to ~2.2k text rows: start on the worst case.
 fit_report = true
-# i2i samples carry reference tokens: the bf16 t2i plan (swap 36, budget 0.5) OOMs.
-# Swap 38 makes room for budget 0.175, which runs ~9% faster than swap 28 / 0.15 at
-# ~8.3k joint tokens (sanitize, 2026-10-26); the H2D-only swap keeps 38 off the
-# PCIe knee (classic and H2D tie up to 38, H2D is 8% faster at 40).
-# i2i stays on the measured bf16 plan; one swap_text run finished on int8 (docs/moss/methods/i2i.md).
-int8 = "off"
-stream = "bf16"
-ema_card = false
-blocks_to_swap = 38
-activation_memory_budget = 0.175
+int8 = "stream"
+stream = "fp32"
+ema_card = true
+blocks_to_swap = 34
+activation_memory_budget = 0.15
 swap_h2d_only = true

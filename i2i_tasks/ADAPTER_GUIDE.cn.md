@@ -33,7 +33,7 @@ colorize 的做法——你可以复用的思路：**真实的黑白漫画没有
 
 | # | 内容 | colorize 版本 | 作用 |
 |---|---------|-------------------|--------------|
-| 1 | `i2i_tasks/<task>/` 项目 | `colorization/`（`mangafy*.py`、`color_caption.py`、`prep.py`） | 构建并缓存参考图像（以及可选的较短文本缓存） |
+| 1 | `i2i_tasks/<task>/` 项目 | `colorization/`（`mangafy*.py`、`prep.py`） | 构建并缓存参考图像（以及可选的较短文本缓存） |
 | 2 | `i2i_tasks/configs/<task>.toml` + `configs/easycontrol/<task>.toml` | `i2i_tasks/configs/colorize.toml` + `configs/easycontrol/colorize.toml` | 任务文件（`name` 标识符、可选的 `stage`、`[staging]`）和 EasyControl 描述符（`[preprocess]` / `[training]` 表、`[[datasets]]` 蓝图、可选的 `[variant]`） |
 | 3 | `scripts/tasks/training.py` 中的 `_I2I_STAGES` | `"colorize": {"stage": _colorize_stage, "preprocess": _colorize_preprocess}` | 让 `TASK=<task>` 在 `make i2i-stage` 中、`EASYADAPTER=<task>` 在 `easycontrol-preprocess` / `easycontrol` 中正常工作 |
 | 4 | `cmd_test_easycontrol` 中的 `_ADAPTERS`（`scripts/tasks/inference.py`） | `"colorize"` 那一行 | `make test-easycontrol` 用的检查点前缀、输出文件夹、参考图回退文件夹、空提示默认值 |
@@ -68,7 +68,7 @@ Screener = Callable[[np.ndarray, int], np.ndarray]  # (img_rgb, seed) → cond_r
 
 ### 2b.（可选）较短的文本缓存
 
-colorize 不仅改变参考——还**将标注精简为颜色词**（`color_caption.py::filter_to_colors`）。这背后的道理值得理解：参考（线稿 + 网点）已经编码了*关于形状和布局的所有信息*，所以文本还需要说的只是黑白图无法表达的那一件事——**颜色**。将标注精简为颜色词，使每个剩余的词都是模型无法从参考中获取的信息，从而形成强有力的 `prompt → color` 关联，而不是靠埋在长标注中的几个颜色词进行微弱引导。
+colorize 不仅改变参考——还**将标注精简为颜色词**（`anime_tools.captions.color_tags.filter_to_colors`）。这背后的道理值得理解：参考（线稿 + 网点）已经编码了*关于形状和布局的所有信息*，所以文本还需要说的只是黑白图无法表达的那一件事——**颜色**。将标注精简为颜色词，使每个剩余的词都是模型无法从参考中获取的信息，从而形成强有力的 `prompt → color` 关联，而不是靠埋在长标注中的几个颜色词进行微弱引导。
 
 对你的任务问同样的问题：**参考已经确定了什么，还有什么留给文本来决定？** `pose → image` 参考固定了姿态但没有固定服装或场景——你可能会保留*完整*标注。`depth → image` 参考固定了布局但没有固定身份或颜色。colorize 的"将标注精简为仍然模糊的内容"是一种可以考虑的*模式*，不是规则——很多适配器保留原始标注并完全跳过文本缓存（只需在数据集中省略 `text_cache_dir`——见 §4）。
 

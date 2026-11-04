@@ -2,8 +2,9 @@
 """Run a colorize LoRA as one daemon job: cache → train → eval of the final LoRA.
 
 Each stage is a subprocess; the run stops at the first that fails.
-``scripts/moss/colorize_cache.py`` builds ``post_image_dataset/moss/<name>``; the
-training recipe is ``moss_colorize_3k_ocr``'s (``configs/moss/i2i/colorize/train.toml``).
+``scripts/moss/colorize_cache.py`` builds ``post_image_dataset/moss/<name>`` with OCR
+captions (v2 to v4; the configs ship v5's control captions); the training recipe is
+``moss_colorize_3k_ocr``'s.
 OCR captions run up to ~2.2k text rows, so training starts on the worst case
 (``--fit_report``) with expandable segments. ``--no-vision`` / ``--ref_scale`` /
 ``--ref_isolate`` / ``--holdout_json`` / ``--train_json`` reach the cache and trainer; ``--ocr_from``
@@ -56,6 +57,8 @@ def main() -> None:
             shutil.copy2(resolve_under_home(args.ocr_from) / "ocr.json", dst)
     cache_req = ColorizeCacheRequest(
         out=cache,
+        captions="ocr",
+        variants=3,
         n=args.n,
         manga=args.manga,
         ref_scale=args.ref_scale,

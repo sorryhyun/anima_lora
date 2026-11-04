@@ -43,7 +43,7 @@ the dataset in a descriptor, and register the task name.**
 
 | # | Thing | colorize version | what it's for |
 |---|-------|------------------|---------------|
-| 1 | `i2i_tasks/<task>/` | `colorization/` (`mangafy*.py`, `wb.py`, `color_caption.py`, `prep.py`) | builds and caches the reference (and optionally a task-specific text cache) |
+| 1 | `i2i_tasks/<task>/` | `colorization/` (`mangafy*.py`, `wb.py`, `prep.py`) | builds and caches the reference (and optionally a task-specific text cache) |
 | 2 | `i2i_tasks/configs/<task>.toml` + `configs/easycontrol/<task>.toml` | `i2i_tasks/configs/colorize.toml` + `configs/easycontrol/colorize.toml` | the task file (`name` slug, optional `stage`, `[staging]`) and the EasyControl descriptor (`[preprocess]` / `[training]` tables, `[[datasets]]` blueprint, optional `[variant]`) |
 | 3 | `_I2I_STAGES` in `scripts/tasks/training.py` | `"colorize": {"stage": _colorize_stage, "preprocess": _colorize_preprocess}` | makes `TASK=<task>` work for `make i2i-stage` and `EASYADAPTER=<task>` for `easycontrol-preprocess` / `easycontrol` |
 | 4 | `_ADAPTERS` in `cmd_test_easycontrol` (`scripts/tasks/inference.py`) | the `"colorize"` row | checkpoint prefix, output folder, reference fallback folder, empty-prompt default for `make test-easycontrol` |
@@ -87,7 +87,7 @@ the build step and cache those directly.
 
 ### 2b. (Optional) a task-specific text cache
 
-colorize trims captions to color tags (`color_caption.py`): the reference already
+colorize trims captions to color tags (`anime_tools.captions.color_tags`): the reference already
 fixes shape and layout, so text only needs to carry what B&W cannot — hue — and
 every remaining word is something the model cannot get from the reference.
 

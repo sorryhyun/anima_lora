@@ -22,8 +22,9 @@ UI: dict[str, str] = {
     "configs/moss/i2i/<task>/에서 시작하며, 바꾼 값만 저장됩니다.",
     "i2i_task_colorize": "colorize: 흑백 만화 페이지 → 컬러. 스테이징은 컬러 코퍼스를 "
     "만화풍으로 변환합니다. 페이지는 원본 크기의 참조 이미지가 되고, 캡션에는 "
-    "OCR로 읽은 대사가 들어갑니다(비전 타워는 사용하지 않음). "
-    '테스트 프롬프트는 "comic"을 쓰세요.',
+    "OCR 텍스트 없이 제어용 항목만 들어갑니다(비전 타워는 사용하지 않음). "
+    '만화 페이지는 프롬프트 "comic"으로 테스트하세요(박스만 있는 text 항목과 '
+    "캐릭터별 색 항목은 선택). 일러스트는 컬러 + 시리즈 태그로 테스트합니다.",
     "i2i_task_sanitize": "sanitize: 글자와 말풍선을 지웁니다. 스테이징은 같은 작가의 "
     "거의 같은 이미지 쌍(글자 있음 / 없음)을 찾습니다. 글자가 있는 페이지가 원본 크기의 "
     "참조 이미지가 됩니다. 테스트 프롬프트는 페이지의 캡션에서 글자 관련 태그를 뺀 "
@@ -166,13 +167,24 @@ FIELDS: dict[str, tuple[str, str]] = {
     ),
     "variants": (
         "캡션 변형 수",
-        "희소 캡션 수 + 1: embeds_v1 … embeds_v{variants-1}은 OCR 레이아웃이 붙은 컬러 "
-        "캡션이며, 홀수 k는 태그의 tag_dropout 비율을, 짝수 k는 전부를 뺍니다(만화 "
-        "페이지는 만화 태그 하나를 남김). 최소 3, 홀수면 두 종류가 반반",
+        "captions control: 페이지당 추첨 수(embeds + embeds_v1 … embeds_v{variants-1}). "
+        "captions ocr: 희소 캡션 수 + 1, embeds_v1 … embeds_v{variants-1}은 OCR "
+        "레이아웃이 붙은 컬러 캡션이며, 홀수 k는 태그의 tag_dropout 비율을, 짝수 k는 "
+        "전부를 뺍니다(만화 페이지는 만화 태그 하나를 남김). 홀수면 두 종류가 반반. 최소 3",
     ),
     "tag_dropout": (
         "태그 드롭아웃 비율",
-        "홀수 k 희소 캡션이 컬러 캡션에서 빼는 태그 비율",
+        "captions ocr: 홀수 k 희소 캡션이 컬러 캡션에서 빼는 태그 비율. "
+        "captions control: 각 추첨이 풀에서 빼는 비율",
+    ),
+    "captions": (
+        "캡션 방식",
+        "control(v5): 일러스트는 컬러 + 시리즈 태그에서 추첨합니다(bare: 빈 프롬프트). "
+        "만화 페이지는 항상 comic과, swap_text의 keep_line이 남기는 OCR 줄마다 박스만 "
+        "있는 text 항목을 담고, 캐릭터별 박스와 그 머리 / 눈 / 옷 색에서 추첨합니다(컬러 "
+        "타깃에 SAM3 + Anima Tagger; bare: 캐릭터 없음). embeds와 각 embeds_v{k}는 풀의 "
+        "tag_dropout을 뺀 추첨, embeds_plain은 plain_caption_rate용 bare 캡션. vision "
+        "끔 필요. ocr: 전체 / 희소 / bare 컬러 캡션 위의 OCR 레이아웃(v4)",
     ),
     "vision": (
         "비전 타워로 페이지 인코딩",
@@ -242,12 +254,12 @@ FIELDS_GENERATE: dict[str, tuple[str, str]] = {
     "ref_scale": (
         "참조 이미지 축소",
         "ref_image 지정 시: 참조 잠재변수의 변 = 출력 변 ÷ 이 값, 16의 배수. LoRA를 "
-        "학습한 캐시와 같아야 합니다(sanitize 1, colorize 2)",
+        "학습한 캐시와 같아야 합니다(sanitize와 colorize 1, colorize v2는 2)",
     ),
     "ref_vision": (
         "참조 이미지를 비전 타워로",
         "ref_image 지정 시: 참조 이미지가 비전 타워를 거쳐 프롬프트 앞에 텍스트 인코더로도 "
-        "들어갑니다(colorize 캐시가 페이지를 인코딩하는 방식과 동일). 이때 프롬프트를 "
+        "들어갑니다(colorize v2 캐시가 페이지를 인코딩한 방식과 동일). 이때 프롬프트를 "
         "비우면 페이지만 입력합니다",
     ),
 }

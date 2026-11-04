@@ -19,7 +19,7 @@ from library.moss.requests import (
 @pytest.mark.parametrize("task", sorted(I2I_CACHE))
 def test_task_recipes_load(task):
     """A task's cache, train and generate recipes agree on the cache folder and
-    the reference scale, and run the bf16 swap plan."""
+    the reference scale, and run a swap plan (bf16, or the int8 base: colorize v5)."""
     cache = I2I_CACHE[task].load_config(i2i_config(task, "cache"))
     train = TrainRequest.load_config(i2i_config(task, "train"))
     gen = GenerateRequest.load_config(i2i_config(task, "generate"))
@@ -28,8 +28,7 @@ def test_task_recipes_load(task):
     # The test reference matches what the cache encoded.
     ref_scale = cache.get("ref_scale", I2I_CACHE[task]().ref_scale)
     assert gen.get("ref_scale", GenerateRequest().ref_scale) == ref_scale
-    # int8 refuses the swap these run.
-    assert train["int8"] == "off" and train["blocks_to_swap"] > 0
+    assert train["int8"] in ("off", "stream") and train["blocks_to_swap"] > 0
 
 
 def test_ref_jobs_follow_each_reference(tmp_path):

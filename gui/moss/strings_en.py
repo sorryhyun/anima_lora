@@ -21,8 +21,10 @@ UI: dict[str, str] = {
     "fits the LoRA, Test renders new references with it. Each form starts from "
     "configs/moss/i2i/<task>/; only your changes are saved.",
     "i2i_task_colorize": "colorize: B&W manga page → colour. Staging mangafies the "
-    "colour corpus; the page is a full-size reference and the caption carries its "
-    'OCR\'d lines (no vision tower). Test with the prompt "comic".',
+    "colour corpus; the page is a full-size reference and the caption holds control "
+    "items only, no OCR text (no vision tower). Test a manga page with the prompt "
+    '"comic" (box-only text items and per-character colour items are optional), an '
+    "illustration with its colour + series tags.",
     "i2i_task_sanitize": "sanitize: removes text and speech bubbles. Staging mines "
     "in-artist near-twin pairs (texted / clean); the texted page is a full-size "
     "reference. Test with the page's caption minus its text tags.",

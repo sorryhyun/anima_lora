@@ -19,8 +19,9 @@ UI: dict[str, str] = {
     "「训练」拟合 LoRA，「测试」用它处理新的参考图。各表单从 "
     "configs/moss/i2i/<任务>/ 开始，只保存你的修改。",
     "i2i_task_colorize": "colorize：黑白漫画页 → 彩色。准备配对时把彩色语料漫画化；"
-    "漫画页作为全尺寸参考图，标注中带有 OCR 识别出的文字行"
-    '（不经过视觉塔）。测试时提示词用 "comic"。',
+    "漫画页作为全尺寸参考图，标注只含控制项、不含 OCR 文字"
+    '（不经过视觉塔）。漫画页测试时提示词用 "comic"（只有框的 text 项和每个角色的'
+    "颜色项可选）；插画用其颜色 + 作品标签。",
     "i2i_task_sanitize": "sanitize：去除文字和对话框。准备配对时挖掘同一画师的"
     "近似图对（有字 / 无字）；有字的页面作为全尺寸参考图。"
     "测试时提示词用该页的标注，去掉文字相关标签。",
@@ -145,11 +146,25 @@ FIELDS: dict[str, tuple[str, str]] = {
     ),
     "variants": (
         "标注变体数",
-        "稀疏标注数 + 1：embeds_v1 … embeds_v{variants-1} 为带 OCR 布局的颜色标注，"
-        "奇数 k 去掉 tag_dropout 比例的标签，偶数 k 全部去掉（漫画页保留一个漫画标签）；"
-        "至少 3，取奇数则两种各半",
+        "captions control：每页的抽取数（embeds + embeds_v1 … embeds_v{variants-1}）。"
+        "captions ocr：稀疏标注数 + 1，embeds_v1 … embeds_v{variants-1} 为带 OCR 布局的"
+        "颜色标注，奇数 k 去掉 tag_dropout 比例的标签，偶数 k 全部去掉（漫画页保留一个"
+        "漫画标签）；取奇数则两种各半。至少 3",
     ),
-    "tag_dropout": ("标签丢弃比例", "奇数 k 稀疏标注去掉的颜色标注标签比例"),
+    "tag_dropout": (
+        "标签丢弃比例",
+        "captions ocr：奇数 k 稀疏标注去掉的颜色标注标签比例；"
+        "captions control：每次抽取从池中去掉的比例",
+    ),
+    "captions": (
+        "标注方式",
+        "control（v5）：插画从其颜色 + 作品标签中抽取（bare：空提示词）；漫画页始终带 "
+        "comic，以及 swap_text 的 keep_line 保留的每行 OCR 对应一个只有框的 text 项，并从"
+        "每个角色的框及其发色 / 瞳色 / 服装颜色中抽取（在彩色目标上用 SAM3 + Anima "
+        "Tagger；bare：无角色）。embeds 和各 embeds_v{k} 是去掉池中 tag_dropout 比例的"
+        "抽取，embeds_plain 是 plain_caption_rate 用的 bare 标注。需关闭 vision。ocr：在"
+        "完整 / 稀疏 / bare 颜色标注上叠加 OCR 布局（v4）",
+    ),
     "vision": (
         "视觉塔编码页面",
         "页面经视觉塔进入文本编码器，排在每条标注之前；关闭 = 只编码标注，不写 embeds_plain",
@@ -203,11 +218,11 @@ FIELDS_GENERATE: dict[str, tuple[str, str]] = {
     "ref_scale": (
         "参考图缩放",
         "设置 ref_image 时：参考潜变量的边长 = 输出边长除以此值，取 16 的倍数。"
-        "须与 LoRA 训练所用的缓存一致（sanitize 为 1，colorize 为 2）",
+        "须与 LoRA 训练所用的缓存一致（sanitize 和 colorize 为 1，colorize v2 为 2）",
     ),
     "ref_vision": (
         "参考图进视觉塔",
         "设置 ref_image 时：参考图同时经视觉塔进入文本编码器，位于提示词之前，"
-        "与 colorize 缓存的编码方式一致。此时提示词留空即只输入该页",
+        "与 colorize v2 缓存的编码方式一致。此时提示词留空即只输入该页",
     ),
 }

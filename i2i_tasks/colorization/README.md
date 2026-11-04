@@ -31,7 +31,7 @@ The condition already carries composition, pose and layout; what B&W cannot
 carry is **hue** (and which series the page is from). The text cache therefore
 keeps only color tags — hair/eye/skin color, `<color> <garment>`, background
 color — preceded by the copyright/series tag (`--text_keep_copyright`, on) and
-comic/panel-format tags (`--text_keep_comic`, on). See `color_caption.py`;
+comic/panel-format tags (`--text_keep_comic`, on). See `anime_tools.captions.color_tags`;
 copyright tags are recognized against `groups.copyright` in
 `post_image_dataset/captions/caption_index.json`, minus `original`.
 
@@ -64,7 +64,6 @@ no hair/eye/costume color, so it guesses); a **color prompt**
 | `mangafy.py` | color RGB → B&W manga (XDoG lineart + banded dot/line/cross screentone), per-stem jitter |
 | `mangafy_gpu.py` | torch/CUDA twin of `mangafy.py`; same seeded structure (`--engine gpu`, the default) |
 | `wb.py` | target white-balance + mean-saturation statistic |
-| `color_caption.py` | reduce a full Anima caption to the protected prefix + color tags |
 | `prep.py` | mangafy → encode cond latents → WB target latents → color-only text |
 | `pool_from_tags.py` | carve a tag slice out of a raw crawl pool into a symlink tree (see *Appending a tag slice*) |
 

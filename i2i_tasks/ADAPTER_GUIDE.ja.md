@@ -33,7 +33,7 @@ colorize のやり方 — 再利用できるアイデアです: **実際の白�
 
 | # | もの | colorize バージョン | 役割 |
 |---|---------|-------------------|--------------|
-| 1 | `i2i_tasks/<task>/` プロジェクト | `colorization/` (`mangafy*.py`, `color_caption.py`, `prep.py`) | 参照画像を作ってキャッシュする (任意で短いテキストキャッシュも) |
+| 1 | `i2i_tasks/<task>/` プロジェクト | `colorization/` (`mangafy*.py`, `prep.py`) | 参照画像を作ってキャッシュする (任意で短いテキストキャッシュも) |
 | 2 | `i2i_tasks/configs/<task>.toml` + `configs/easycontrol/<task>.toml` | `i2i_tasks/configs/colorize.toml` + `configs/easycontrol/colorize.toml` | タスクファイル (`name` スラッグ、任意の `stage`、`[staging]`) と EasyControl ディスクリプター (`[preprocess]` / `[training]` テーブル、`[[datasets]]` 設計図、任意の `[variant]`) |
 | 3 | `scripts/tasks/training.py` の `_I2I_STAGES` | `"colorize": {"stage": _colorize_stage, "preprocess": _colorize_preprocess}` | `make i2i-stage` で `TASK=<task>` を、`easycontrol-preprocess` / `easycontrol` で `EASYADAPTER=<task>` を動くようにする |
 | 4 | `cmd_test_easycontrol` の `_ADAPTERS` (`scripts/tasks/inference.py`) | `"colorize"` の行 | `make test-easycontrol` 用のチェックポイント接頭辞、出力フォルダ、参照のフォールバックフォルダ、空プロンプトのデフォルト |
@@ -68,7 +68,7 @@ Screener = Callable[[np.ndarray, int], np.ndarray]  # (img_rgb, seed) → cond_r
 
 ### 2b. (任意) 短いテキストキャッシュ
 
-colorize は参照を変えるだけでなく、**キャプションを色の単語だけに絞り込み**もします (`color_caption.py::filter_to_colors`)。その理由は理解する価値があります: 参照 (線画 + スクリーントーン) がすでに *形とレイアウトのすべて* をエンコードしているので、テキストがまだ言うべきことは白黒では表せない一つのもの — **色** — だけです。キャプションを色の単語に絞ると、残ったすべての単語がモデルが参照から得られない情報になり、長いキャプションに埋もれた色の単語による弱いステアリングの代わりに、強い `prompt → color` の結びつきが生まれます。
+colorize は参照を変えるだけでなく、**キャプションを色の単語だけに絞り込み**もします (`anime_tools.captions.color_tags.filter_to_colors`)。その理由は理解する価値があります: 参照 (線画 + スクリーントーン) がすでに *形とレイアウトのすべて* をエンコードしているので、テキストがまだ言うべきことは白黒では表せない一つのもの — **色** — だけです。キャプションを色の単語に絞ると、残ったすべての単語がモデルが参照から得られない情報になり、長いキャプションに埋もれた色の単語による弱いステアリングの代わりに、強い `prompt → color` の結びつきが生まれます。
 
 自分のタスクについて同じ問いを立ててください: **参照がすでに決めることは何で、テキストが決めるべき曖昧なことは何か?** `pose → image` 参照はポーズを固定しますが、服装や設定は固定しません — おそらく *完全な* キャプションを保持するでしょう。`depth → image` 参照はレイアウトを固定しますが、アイデンティティや色は固定しません。colorize の「まだ曖昧なことへキャプションを絞り込む」やり方は考慮すべき *パターン* であってルールではありません — 多くのアダプターはキャプションをそのままにしてテキストキャッシュを完全にスキップします (データセットから `text_cache_dir` を省くだけです — §4)。
 

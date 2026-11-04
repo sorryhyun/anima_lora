@@ -1,7 +1,7 @@
 # MOSS i2i test for the colorize task — GenerateRequest fields.
 #
 #   make daemon-run ARGS="scripts/moss/generate.py --config configs/moss/i2i/colorize/generate.toml \
-#       --lora output/ckpt_moss_i2i/moss_i2i_colorize.safetensors --ref_image <page or folder>"
+#       --lora output/ckpt_moss_i2i/moss_colorize_v5.safetensors --ref_image <page or folder>"
 #
 # The page is a full-size VAE reference, as the cache encoded it; the TE sees the
 # prompt only (ref_vision off). ref_isolate comes from the LoRA's metadata.

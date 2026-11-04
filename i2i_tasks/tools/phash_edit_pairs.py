@@ -518,7 +518,7 @@ def build_colorize_pairs(
     """
     if n <= 0:
         return []
-    from i2i_tasks.colorization.color_caption import filter_to_colors
+    from anime_tools.captions.color_tags import filter_to_colors
 
     mono = set(MONO_TAGS)
     # already B&W: nothing to colorize, and mangafying it is close to a no-op.

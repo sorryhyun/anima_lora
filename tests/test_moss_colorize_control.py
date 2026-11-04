@@ -8,18 +8,6 @@ import random
 from library.moss import colorize as C
 
 
-def _is_color():
-    return C._color_caption().is_color_tag
-
-
-def test_character_colour_keeps_hair_eyes_and_clothes():
-    is_color = _is_color()
-    keep = ["pink hair", "blue eyes", "red pupils", "blue skirt", "light blue dress"]
-    drop = ["white background", "dark skin", "dark-skinned female", "blue sky", "blush"]
-    assert all(C.is_character_colour(t, is_color) for t in keep)
-    assert not any(C.is_character_colour(t, is_color) for t in drop)
-
-
 def test_keep_draw_never_empty_on_a_pool():
     rng = random.Random(0)
     atoms = list(range(3))

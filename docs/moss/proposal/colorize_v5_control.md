@@ -1,9 +1,11 @@
 # MOSS colorize v5: control captions in place of the OCR caption
 
-Status: accepted, 2026-11-03. The user reviewed the arm's renders
-(`output/moss_i2i_eval/colorize/results/control_1k/`) and settled v5 on this recipe; the
-v5 run is next. Code: `ColorizeCacheRequest.captions = "control"`
-(`library/moss/colorize.py`), tests `tests/test_moss_colorize_control.py`.
+Status: shipped, 2026-11-05. The arm (accepted 2026-11-03, renders in
+`output/moss_i2i_eval/colorize/results/control_1k/`) settled the recipe; v5 trained on it
+and is the default in `configs/moss/i2i/colorize/{cache,train,generate}.toml` and
+`ColorizeCacheRequest` (`captions = "control"`, `variants = 4`). Code:
+`library/moss/colorize.py`, tests `tests/test_moss_colorize_control.py`. Results:
+[§ Results](#results).
 
 ## Why
 
@@ -53,8 +55,8 @@ Since no Hangul reaches the TE, `token_split` does not apply to this cache.
 
 | | |
 |---|---|
-| cache | `configs/moss/i2i/colorize/cache_control_1k.toml`: 500 illustrations + 500 manga pages, holdout 8 + 4 works, seed 0 → `post_image_dataset/moss/i2i_colorize_control_1k` (job `20261103-170540-020fa4`) |
-| train | `configs/moss/i2i/colorize/train_control_1k.toml`: 1250 steps (the 1-hour arm `moss_colorize_1k_textref1_iso`'s length), Muon 5e-5, rank 32, `ref_isolate`, int8 stream + fp32, swap 36 / budget 0.1 (job `20261103-170540-389002`) |
+| cache | today's `configs/moss/i2i/colorize/cache.toml` at `n = 500`, `manga = 500` (the arm's own config was dropped after v5): 500 illustrations + 500 manga pages, holdout 8 + 4 works, seed 0 → `post_image_dataset/moss/i2i_colorize_control_1k` (job `20261103-170540-020fa4`) |
+| train | 1250 steps (the 1-hour arm `moss_colorize_1k_textref1_iso`'s length), Muon 5e-5, rank 32, `ref_isolate`, int8 stream + fp32, swap 36 / budget 0.1 (job `20261103-170540-389002`) |
 | control | v4 with `comic`, same seed and pages; v4's cache is gone, so its holdout cannot be reused |
 | renders | `output/moss_i2i_eval/colorize/results/control_1k/`: `{v4,arm}_holdout*`, `{v4,arm}_wild2_comic_s1` (v4: `v4_wild2_s1`), `arm_wild2_boxes_s1` (comic + text boxes, `prompts.json`), `arm_eval` (`colorize_eval.py`, draw 0 / bare) |
 
@@ -73,14 +75,37 @@ a `character` item's colour lands on that character (holdout draw 0 against the 
   `out` of `post_image_dataset/moss/i2i_colorize_control_1k` reuses the arm's latents, refs,
   OCR reads and SAM3 tags. Delete its `manga__*.moss_te.safetensors` first so the `-skinned`
   rule reaches those draws (TE only; `characters.json` holds the unfiltered tags).
-- Train: v4's schedule (3 epochs, 10000 steps, Muon 5e-5, EMA window 0.1) on the int8 base,
-  `blocks_to_swap 8`, budget 0.1 (the arm's fit report: 10.9 GB peak at swap 36 with 3.15 GB
-  free). The arm ran 2.4–2.5 s/step at swap 36: ~6.7–7 h, against v4's 11.2 h.
+- Train: v4's schedule (3 epochs, 10000 steps, Muon 5e-5, EMA window 0.1) on the int8 base.
+  Planned at `blocks_to_swap 8`, budget 0.1 (the arm's fit report: 10.9 GB peak at swap 36
+  with 3.15 GB free); ran at swap 34, budget 0.15. The arm ran 2.4–2.5 s/step at swap 36;
+  v5 ran 2.2 s/step, 374 min, peak 13.8 GB, against v4's 11.2 h.
 - Text rows: up to 905 on a manga page (37 lines × ~23 tokens per box item), median 326.
 - Eval: `bench/moss_i2i_eval/colorize_eval.py` (arms `lora_ocr` = draw 0, `lora_page` = bare)
   plus `wild/` and `wild2/`, against v4.
 - Stamp the caption mode in the LoRA (`colorize_captions = control`) so the caption helper can
   pick the format from the file, as `ref_isolate` / `prompt_tail` are read today.
+
+## Results
+
+`moss_colorize_v5` (`output/ckpt_moss_i2i/moss_colorize_v5.safetensors`), renders and sheets in
+`output/moss_i2i_eval/colorize/results/v5/`. v4 has no score on this holdout: its cache is
+gone.
+
+| holdout (`colorize_eval.py`) | chroma_err (all) | chroma_err (manga) | luma_r |
+|---|---|---|---|
+| v5 | 11.4 | 9.5 | 0.994 |
+| the 1k arm | 14.6 | 16.2 | |
+
+- **Lettering.** Korean holdout page `manga__821938_ko_0013`, prompt `comic`, seed 1: v5 has
+  1 wrong syllable (정말 → 청말, which v4 and the arm share); v4 has 3 (싸버렸 → 싸비렸,
+  정 → 청, 깊숙히 → 깊슥히), the arm 5–6.
+- **Target colours.** v5 matches the target where v4 does not on `ko_0013` (blonde target; v4
+  pink) and `2550520_ja` (grey stockings).
+- **Character items** (draw 0) put their colours on the character: `en_0001` blue bikini,
+  `3140189` silver hair.
+- **Real B&W pages** (`wild2/`, 10 Korean pages): with `comic` alone v5 adds little colour,
+  less than v4. Random `character` colour items per character on SAM3 boxes add colour, with
+  some bleed between overlapping boxes (`v5_wild2_randcolour_s1`, `random_colours.json`).
 
 ## Shipping
 
@@ -94,7 +119,7 @@ ComfyUI-MOSS-Toolkit's `moss_layout.py` ("change both together"). The Toolkit's 
 1. Move `readable`, `keep_line` and their constants (`LOW_DET_SCORE`, `LATIN_MIN_GLYPH`,
    `LATIN_MIN_SCORE`) into anime_tools (`anime_tools.ocr`), with the tests in
    `tests/test_swap_text_regions.py`.
-2. Move the colour-tag filter (`i2i_tasks/colorization/color_caption.py`:
+2. Move the colour-tag filter (the trainer's `i2i_tasks.colorization.color_caption`:
    `is_color_tag`, `filter_to_colors_and_protected`, `is_character_colour`) into
    `anime_tools.captions`, so the Toolkit can build the illustration caption the same way.
 3. Cut a tag, move the trainer's pin, import from there in the trainer and in swap_text.
@@ -111,8 +136,10 @@ ComfyUI-MOSS-Toolkit's `moss_layout.py` ("change both together"). The Toolkit's 
 
 ### Hub and this repo
 
-- `colorize/moss_colorize_v5.safetensors` on `sorryhyun/MOSS-I2I-LORAs`, the workflow pointed
-  at it, a showcase.
-- `configs/moss/i2i/colorize/{cache,train,generate}.toml` to the control recipe (generate's
-  prompt stays `comic`; text boxes need the OCR at generate time, a `generate.py` option);
-  `docs/moss/methods/i2i.md` colorize row; the GUI's colorize task text (`gui/moss/i2i.py`).
+- **Done** (2026-11-05): `colorize/moss_colorize_v5.safetensors` on `sorryhyun/MOSS-I2I-LORAs`
+  with the workflow `colorize/moss-i2i-colorize-v5.json`.
+- **Done** (2026-11-05): `configs/moss/i2i/colorize/{cache,train,generate}.toml` on the control
+  recipe (generate's prompt stays `comic`), `ColorizeCacheRequest` defaults,
+  `docs/moss/methods/i2i.md` colorize row, the GUI's colorize task text (`gui/moss/strings_*.py`).
+- Open: text boxes at generate time need the OCR there (a `generate.py` option); the
+  `colorize_captions` stamp.

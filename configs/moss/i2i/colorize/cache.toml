@@ -3,13 +3,16 @@
 #   make i2i-stage TASK=colorize                   # mangafy the colour corpus into staging/
 #   make i2i-preprocess TASK=colorize MODEL=moss   # this file → scripts/moss/colorize_cache.py
 #
-# The v4 recipe (moss_colorize_3k_textref1_iso_muon_ema, project/finished/moss_lora/README.md).
-# Each staged B&W page is the condition, VAE-encoded at full size as {stem}.moss_ref;
-# its colour original under post_image_dataset/resized is the target. The TE sees the
-# caption only (vision = false); the OCR'd page lines ride it as layout text items
-# (library/moss/colorize.py).
+# The v5 recipe (control captions, docs/moss/proposal/colorize_v5_control.md). Each staged
+# B&W page is the condition, VAE-encoded at full size as {stem}.moss_ref; its colour
+# original under post_image_dataset/resized is the target. The TE sees the caption only
+# (vision = false), with no OCR text: illustrations draw from their colour + series tags
+# (bare: empty); manga pages always carry comic + a box-only text item per OCR line and
+# draw per-character hair / eye / clothing colour boxes (bare: none). Each draw drops
+# tag_dropout of the pool (library/moss/colorize.py). The dir name is the 1k arm's, whose
+# pages are a prefix of this draw.
 
-out = "post_image_dataset/moss/i2i_colorize"
+out = "post_image_dataset/moss/i2i_colorize_control_1k"
 n = 1667                # illustration pairs
 manga = 1667            # manga_color pages (0 when manga_dir holds none)
 holdout = 8
@@ -17,6 +20,7 @@ manga_holdout = 4
 resolution = 1024
 ref_scale = 1
 vision = false
-variants = 3            # v1: tag_dropout of the colour tags, v2: all (OCR on both)
+captions = "control"
+variants = 4            # embeds + embeds_v1..v3: four draws
 tag_dropout = 0.8
 text_encoder = "int8"

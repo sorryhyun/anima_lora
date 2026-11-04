@@ -500,7 +500,7 @@ def stage_text(
     same tag-dropout as the color tags. ``keep_comic`` adds comic/panel-format
     tags after it, protected from dropout via ``caption_protect_fn``.
     """
-    from color_caption import (
+    from anime_tools.captions.color_tags import (
         filter_to_colors,
         filter_to_colors_and_protected,
         is_comic_tag,
@@ -508,6 +508,7 @@ def stage_text(
     )
 
     from library.anima import weights as anima_utils
+    from library.env import resolve_under_home
     from library.anima.strategy import AnimaTextEncodingStrategy, AnimaTokenizeStrategy
     from library.preprocess import cache_text_embeddings
 
@@ -553,7 +554,9 @@ def stage_text(
         copyright_tags = (
             load_copyright_tags(caption_index)
             if caption_index
-            else load_copyright_tags()
+            else load_copyright_tags(
+                resolve_under_home("post_image_dataset/captions/caption_index.json")
+            )
         )
         if not copyright_tags:
             print(
