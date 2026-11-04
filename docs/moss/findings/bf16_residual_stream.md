@@ -1,8 +1,8 @@
 # The bf16 residual stream is most of MOSS's bf16 error
 
 The method as shipped: [`methods/fp32_stream.md`](../methods/fp32_stream.md). Measured 2026-10-30 on MOSS-Image Base and SFT. The measurements come from the int8 line:
-[`project/int8_train/reports/moss_grad_error.md`](../../../project/int8_train/reports/moss_grad_error.md)
-(script `project/int8_train/src/grad_error_moss.py`). The renders come from
+[`project/finished/int8_train/reports/moss_grad_error.md`](../../../project/finished/int8_train/reports/moss_grad_error.md)
+(script `project/finished/int8_train/src/grad_error_moss.py`). The renders come from
 `bench/moss_ab/lora_ab.py --stream fp32`.
 
 ## Setting

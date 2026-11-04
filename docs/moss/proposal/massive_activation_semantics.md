@@ -43,7 +43,7 @@ Massive activations (MAs) are selected per sample, layer and stream: the top-k c
   (`docs/moss/channel_scaling.md`). The `weight_svd` basis leans on it
   (`findings/t2i_lora_recipe.md` §3).
 - **int8.** After the 256-column Hadamard, ch 42 is ~1.6× its group, so it does not
-  hurt the int8 base (`project/int8_train/reports/moss_scoping.md`).
+  hurt the int8 base (`project/finished/int8_train/reports/moss_scoping.md`).
 
 ## How the two fit
 

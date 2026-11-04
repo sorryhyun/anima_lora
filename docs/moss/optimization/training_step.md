@@ -114,9 +114,9 @@ The block swapper moves every `.weight` under a block. `wq`, and `wq_t` in `full
 ## What is left
 
 Kernels take 1054 of the 1059 ms step, so Python and launches no longer matter. Attention is
-387 ms and the int8 GEMMs 316 ms ([split](../../../project/int8_train/reports/moss_step_split_int8.md)).
+387 ms and the int8 GEMMs 316 ms ([split](../../../project/finished/int8_train/reports/moss_step_split_int8.md)).
 A further gain has to come from a kernel. No Triton int8 attention arm has passed the accuracy gate
-([reports](../../../project/int8_train/reports.md)); fp16 accumulation in FA2's backward has
+([reports](../../../project/finished/int8_train/reports.md)); fp16 accumulation in FA2's backward has
 ([fa2_sm120.md](fa2_sm120.md)).
 
 ## Carrying these elsewhere
