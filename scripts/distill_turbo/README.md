@@ -73,4 +73,25 @@ Two caveats on the mechanism:
   variance. Neither reading makes the stray content wanted.
 
 Limits: one training run per arm, one prompt, four seeds, 100 steps from a 4-step init. Whether
-MFD changes the end state (rather than the first 100 steps) needs runs of 500+ steps.
+MFD changes the end state (rather than the first 100 steps) needs runs of 500+ steps; the first
+one is below.
+
+### 500 steps, dtau 0.03, no CDM
+
+`anima_turbo_mfd2_500_dt003_nocdm`: the 100-step arm's settings, 500 iterations, 10.7 s/step,
+checkpoints at 250 and 500 (only 500 rendered). Same render as above.
+
+| steps | `dm` | `rel_gap` | `cos` | `grad` |
+|---|---|---|---|---|
+| 5–100 | 0.199 | 0.188 | 0.980 | 0.228 |
+| 205–300 | 0.182 | 0.173 | 0.983 | 0.205 |
+| 405–500 | 0.165 | 0.158 | 0.985 | 0.182 |
+
+- The floating cans and towers of the 100-step arm are gone; the sky is mostly sky again and the
+  compositions sit near the init's, with more pose spread.
+- Stray content remains: demon tails on seeds 42, 44 and 45 (some attached, some floating), a dark
+  bird-like silhouette (44) and dark blobs (43, 45), a grey pillar or tower in the background (43,
+  45), and a smeared raised hand on 42.
+- No CDM-on 500-step twin, so how much of the sky CDM would keep is not known.
+
+Decision (the user's, 2026-11-04): keep training MFD, with longer runs.
