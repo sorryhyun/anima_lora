@@ -550,6 +550,33 @@ def build_argparser() -> argparse.ArgumentParser:
         "per iteration. Default: TOML (cdm.weight, default 0).",
     )
 
+    # Mean Flow Distillation in the DM slot (arXiv:2606.11155; off by default).
+    parser.add_argument(
+        "--mfd_dtau",
+        type=float,
+        default=None,
+        help="Euler step size of the MFD mean-flow integral that replaces the DM "
+        "branch's point delta: teacher and fake are integrated from σ_a to σ_b "
+        "and x_θ follows the endpoint gap. 0 = plain DMD. Cost: K = "
+        "ceil((σ_a − σ_b)/dtau) ≤ mfd_max_steps teacher-CFG + fake no-grad "
+        "forwards per student step instead of 1. Default: TOML (mfd.dtau, 0).",
+    )
+    parser.add_argument(
+        "--mfd_max_steps",
+        type=int,
+        default=None,
+        help="Cap on K per mean-flow integral. Default: TOML (mfd.max_steps, 4).",
+    )
+    parser.add_argument(
+        "--mfd_interval",
+        type=str,
+        default=None,
+        choices=("to_zero", "uniform"),
+        help="MFD interval end: to_zero = σ_b 0 (integrated x0 match; K=1 is "
+        "exactly DMD), uniform = σ_b ~ U(0, σ_a). Default: TOML (mfd.interval, "
+        "to_zero).",
+    )
+
     # DMAD Phase −1 premise probe (measure-only; off by default).
     parser.add_argument(
         "--dmad_probe",
@@ -848,6 +875,11 @@ class TurboConfig:
     cdm_weight: float
     cdm_grad_ckpt: bool  # checkpoint ONLY the grad-bearing CDM student forward
 
+    # Mean Flow Distillation (arXiv:2606.11155) in the DM slot; dtau 0 = plain DMD.
+    mfd_dtau: float
+    mfd_max_steps: int
+    mfd_interval: str  # "to_zero" | "uniform"
+
     # Base objective selector
     base_loss: str
 
@@ -1048,6 +1080,10 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         if args.cdm_grad_ckpt is None
         else args.cdm_grad_ckpt
     )
+
+    mfd_dtau = float(_pick(args.mfd_dtau, cfg, "mfd.dtau", 0.0))
+    mfd_max_steps = int(_pick(args.mfd_max_steps, cfg, "mfd.max_steps", 4))
+    mfd_interval = str(_pick(args.mfd_interval, cfg, "mfd.interval", "to_zero"))
 
     # weight_gen=0 keeps the whole GAN/disc path off.
     # feature_block_idx sentinel is -2 (not -1) because -1 means middle block.
@@ -1464,6 +1500,21 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
             f"feature_block_idx={dmad_feature_block_idx} (-1 = middle). "
             "fake_lr / fake_steps_per_student_step / fake_warmup_steps are unused."
         )
+    if mfd_dtau < 0.0:
+        raise ValueError(f"mfd.dtau={mfd_dtau}: must be >= 0")
+    if mfd_interval not in ("to_zero", "uniform"):
+        raise ValueError(f"mfd.interval={mfd_interval!r}: to_zero | uniform")
+    if mfd_dtau > 0.0:
+        if dmad:
+            logger.warning(
+                "mfd.dtau > 0 under dmad: the disc signal fills the DM slot, so "
+                "MFD does not run."
+            )
+        else:
+            logger.info(
+                f"MFD ON in the DM slot: dtau={mfd_dtau}, max_steps={mfd_max_steps}, "
+                f"interval={mfd_interval}; L_CDM keeps the point delta."
+            )
     if cdm_weight < 0.0:
         raise ValueError(f"cdm.weight={cdm_weight}: must be >= 0")
     if cdm_weight > 0.0:
@@ -1716,6 +1767,9 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         dynamic_schedule=dynamic_schedule,
         cdm_weight=cdm_weight,
         cdm_grad_ckpt=cdm_grad_ckpt,
+        mfd_dtau=mfd_dtau,
+        mfd_max_steps=mfd_max_steps,
+        mfd_interval=mfd_interval,
         base_loss=base_loss,
         gan_loss_weight_gen=gan_loss_weight_gen,
         gan_feature_block_idx=gan_feature_block_idx,
@@ -1819,6 +1873,8 @@ _TB_KEYS = (
     "gan_loss_weight_gen",
     "softrank_weight",
     "cdm_weight",
+    "mfd_dtau",
+    "mfd_interval",
     "f_div",
     "k_anchor",
     "teacher_anchor_steps",

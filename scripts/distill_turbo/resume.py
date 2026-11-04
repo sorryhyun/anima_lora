@@ -80,6 +80,9 @@ _WARN_FIELDS = (
     "teacher_cfg",
     "dynamic_schedule",
     "cdm_weight",
+    "mfd_dtau",
+    "mfd_max_steps",
+    "mfd_interval",
     "stream",
 )
 

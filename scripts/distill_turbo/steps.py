@@ -226,6 +226,110 @@ def dmd_surrogate(
     )
 
 
+def mfd_steps(span_max: float, dtau: float, max_steps: int) -> int:
+    """Euler step count for one mean-flow integral: ceil(span / dtau), in [1, max_steps]."""
+    k = max(1, int(-(-span_max // dtau)))
+    return min(k, max(1, max_steps))
+
+
+def _mean_velocity(v_fn, x_a, sa, sb, K, on_sigma=None) -> torch.Tensor:
+    """Average Euler velocity of ``v_fn`` from σ=sa to σ=sb (per-sample, K uniform steps).
+
+    ``(x_a − x_b) / (sa − sb)`` without the division: the uniform-step Euler
+    displacement is ``(sa − sb)·mean_k v_k``, so the mean velocity is accumulated
+    directly. At K=1 it is ``v_fn(x_a, sa)`` bit-for-bit.
+    """
+    B = x_a.shape[0]
+    sa_f, sb_f = sa.float(), sb.float()
+    h = ((sa_f - sb_f) / K).view(B, 1, 1, 1)
+    x = x_a
+    u = None
+    for k in range(K):
+        sig = (sa_f + (sb_f - sa_f) * (k / K)).to(sa.dtype) if k else sa
+        if on_sigma is not None:
+            on_sigma(sig)
+        v = v_fn(x, sig).float()
+        u = v if u is None else u + v
+        if k + 1 < K:
+            x = (x.float() - h * v).to(x_a.dtype)
+    return u if K == 1 else u / K
+
+
+def mfd_surrogate(
+    ctx: RunContext,
+    cfg,
+    x_pred: torch.Tensor,
+    crossattn_emb: torch.Tensor,
+    c_null: torch.Tensor,
+    B: int,
+) -> DmdResult:
+    """Mean Flow Distillation signal on x_θ (arXiv:2606.11155), in the DMD slot.
+
+    Renoise x_θ to σ_a, integrate the CFG'd teacher and the fake from σ_a to σ_b
+    (K Euler steps, K = ceil((σ_a − σ_b)/dtau) ≤ max_steps), and push x_θ along
+    the endpoint gap ``x_b_real − x_b_fake = −(σ_a − σ_b)·(U_real − U_fake)``.
+    The ODE Jacobian is treated as identity (their §B.6), so the signal enters
+    through the same ``(grad · x_θ)`` trick as DMD. ``interval="to_zero"`` with
+    K=1 reproduces :func:`dmd_surrogate` exactly (same RNG draws, same values).
+
+    Fields reuse the DMD names for metrics/GAN: ``tau_dm`` = σ_a (the GAN gen
+    renoise level), ``tau_dm_e`` = σ_a − σ_b, ``v_*_cond_dm`` = U_real / U_fake.
+    """
+    sa = sample_t_routed(
+        B,
+        turbo=ctx.turbo,
+        fake_tau_banks=cfg.fake_tau_banks,
+        fake_tau_boundary=cfg.fake_tau_boundary,
+        distribution="uniform",
+        sigmoid_scale=cfg.sigmoid_scale,
+        device=ctx.device,
+        dtype=ctx.dtype,
+    )
+    eps_dm = torch.randn_like(x_pred)
+    if cfg.mfd_interval == "uniform":
+        sb = sa * torch.rand_like(sa)
+    else:
+        sb = torch.zeros_like(sa)
+    x_a = renoise(x_pred.detach(), sa, eps_dm)
+    K = mfd_steps(float((sa - sb).max()), cfg.mfd_dtau, cfg.mfd_max_steps)
+
+    def _v_real(x, sig):
+        return ctx.teacher_cfg_velocity(x, sig, crossattn_emb, c_null)
+
+    def _v_fake(x, sig):
+        return ctx.forward("fake", x, sig, crossattn_emb, no_grad=True).squeeze(2)
+
+    on_sigma = None
+    if cfg.fake_tau_banks > 1:  # B=1 under banks; re-arm the owner bank per step
+
+        def on_sigma(sig):
+            ctx.turbo.set_fake_bank(0 if float(sig) < cfg.fake_tau_boundary else 1)
+
+    u_real = _mean_velocity(_v_real, x_a, sa, sb, K)
+    u_fake = _mean_velocity(_v_fake, x_a, sa, sb, K, on_sigma=on_sigma)
+    delta = u_real - u_fake
+
+    span_e = (sa - sb).view(B, 1, 1, 1).float()
+    grad = span_e * delta.float()
+    if cfg.dm_x0_norm:
+        denom = (
+            (span_e * u_real.float())
+            .abs()
+            .mean(dim=(1, 2, 3), keepdim=True)
+            .clamp_min(cfg.norm_floor)
+        )
+        grad = grad / denom
+    return DmdResult(
+        grad_signal=grad.detach(),
+        delta_dm=delta,
+        tau_dm=sa,
+        tau_dm_e=span_e,
+        v_real_cond_dm=u_real,
+        v_fake_cond_dm=u_fake,
+        eps_dm=eps_dm,
+    )
+
+
 def dmad_signal(
     ctx: RunContext,
     cfg,
