@@ -307,7 +307,7 @@ torch-212 = [
 fa2-sm120 = [
     "torch>=2.14.0,<2.15 ; sys_platform != 'win32'",
     "torchvision>=0.29.0,<0.30 ; sys_platform != 'win32'",
-    "flash-attn @ https://github.com/sorryhyun/flash-attention-fp16/releases/download/v2.8.3-sm120-hdim64-128-fp16acc-fwdpv-cu132-torch2.14/flash_attn-2.8.3+sm120.hdim64128.fp16acc.fwdpv.cu132torch2.14-cp313-cp313-linux_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "flash-attn @ https://github.com/sorryhyun/flash-attention-fp16/releases/download/v2.8.3-sm120-hdim64-128-fp16acc-fwdpv-precast-cu132-torch2.12plus/flash_attn-2.8.3+sm120.hdim64128.fp16acc.fwdpv.precast.cu132.torch2.12plus-cp310-abi3-linux_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.10.1/flash_attn-2.8.3+cu132torch2.14-cp313-cp313-linux_aarch64.whl ; sys_platform == 'linux' and platform_machine == 'aarch64'",
     "causal-conv1d @ https://github.com/sorryhyun/anima_lora/releases/download/deps-causal-conv1d-1.7.0/causal_conv1d-1.7.0+cu132torch2.14-cp313-cp313-linux_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "torch==2.14.1+cu132 ; sys_platform == 'win32'",
