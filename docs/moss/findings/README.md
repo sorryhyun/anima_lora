@@ -21,6 +21,7 @@ and raw numbers live in the matching `bench/moss_*/` or `_archive/bench/moss_*/`
 | [sigma_staircase.md](sigma_staircase.md) | One forward's `x0_pred` resolves at Anima's σ knee, but layout is set by σ 0.87–0.80, steps 22–28 of 50. Spectrum's shipped growing window beats log-SNR, step-even and NFE-16 schedules against it; an open-loop skip-cost score ranks them backwards. |
 | [bf16_residual_stream.md](bf16_residual_stream.md) | An fp32 stream around the same bf16 GEMMs cuts the prediction error 2.4–3.5x for +1.5 % time; renders move 4–12/255 and read better on text and fingers. Training with it, and swap_text. |
 | [fa2_tile_sm120.md](fa2_tile_sm120.md) | FA2 runs its A100 / H100 forward tile on sm_120. 128×32 is free of error and worth 0.7 % of a step. |
+| [sm120_bf16_hmma.md](sm120_bf16_hmma.md) | No bf16-input, fp16-accumulate HMMA on sm_120: PTX has no form for it, and the SASS bit nvdisasm reads as `.BF16` faults as an illegal encoding at any offset. FA2's fp16-accumulate path keeps its bf16 → fp16 casts. |
 
 ## Training recipe
 
