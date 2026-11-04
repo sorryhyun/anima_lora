@@ -2,7 +2,7 @@
 
 Measured 2026-11-02 on swap_text, MOSS-Image Base. Plans A and B of
 `_archive/proposals/reference_adapters.md` against the default, where one adapter bank serves the
-image, text and reference rows. Script `project/int8_train/src/ref_adapters_eval.py`.
+image, text and reference rows. Script `project/finished/int8_train/src/ref_adapters_eval.py`.
 
 **Verdict: the default keeps the shared bank.** A (`ref_adapters = kv`) is 29 % faster and loses
 the copy on all four pages, by half the gap still at equal training time. B (`ref_adapters = all`)

@@ -1,0 +1,7 @@
+# Code search (ripgrep: Grep / Glob / Explore) skips this finished line's record
+# material; the archive-explorer agent searches it. See ../README.md.
+# src/ stays visible: docs/{anima,moss}/optimizations run dit_gptq*.py, and
+# bench/anima_stream reads src/ab_prompts.txt.
+/*.md
+/reports/
+/assets/

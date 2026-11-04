@@ -45,7 +45,7 @@ encoder-side CJK line `cjk_aware_anima` and its DiT-side successor
 `cjk_aware_anima_dit`, both 2026-09-24; the wake line
 `cjk_renderable_anima`, 2026-09-30; its production line `cjk_anima_scale`,
 2026-10-09; the PaddleOCR-VL reader v4 line `ocr_reader`, 2026-10-15; the MOSS-Image
-line `moss_lora`, 2026-10-28).
+line `moss_lora`, 2026-10-28; the int8 training base `int8_train`, 2026-11-04).
 
 Active projects:
 
@@ -62,11 +62,6 @@ Active projects:
   dialogue (songys Chatbot_data), built and trained through reseed's
   `reseed/` package. Home: `README.md`. Its live work is on the `cjk-ko`
   branch.
-
-- [`int8_train/`](int8_train/) — opened 2026-10-30: the frozen DiT's large
-  linears as ConvRot int8 GEMMs in the forward and the backward dX during Anima
-  LoRA training, all code in the project's `src/` (trainer patched from its own
-  entry point). Home: `README.md`, completed work `reports.md`, current task `tasks.md`.
 
 - [`qwen21_lora/`](qwen21_lora/) — the Qwen-Image-2.1 LoRA line (not Anima;
   `library/qwen21/CLAUDE.md`).

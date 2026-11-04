@@ -14,13 +14,14 @@ Each subdir is a digest home page (`README.md`): final verdicts with evidence
 pointers, shipped artifacts, and any small open remainder. It does not
 duplicate code or bench tables — canonical sources stay where they live.
 
-**Search.** Each CJK line and `moss_lora/` carry a `.ignore` that hides its record material
+**Search.** Each CJK line, `moss_lora/` and `int8_train/` carry a `.ignore` that hides its record material
 (docs, reports, dead probes; `cjk_renderable_anima/`, `cjk_anima_scale/` and `ocr_reader/` whole) from ripgrep, so
 Grep / Glob / Explore stay on live code; the `archive-explorer` agent searches
 it (`rg --no-ignore-dot`). What stays visible is what code outside
 `finished/` reads or runs: `sr/`, `mod_guidance/`, `cjk_aware_anima/{assets,
 probes}/` (the reseed line's eval prompts, `bench/grad_init`'s `blind_pairs.py`) and
-`moss_lora/src/` (named in `library/moss` docstrings; its logs are hidden). Live code (`library/`, `scripts/`,
+`moss_lora/src/` (named in `library/moss` docstrings; its logs are hidden) and `int8_train/src/`
+(the GPTQ builders the int8 docs run, `bench/anima_stream`'s prompts). Live code (`library/`, `scripts/`,
 `tests/`, `configs/`) reads nothing under `project/`; a line's own tests sit in
 its `tests/`. A new outside reference
 into a hidden path means narrowing that line's `.ignore`.
@@ -113,3 +114,14 @@ Finished lines:
   `_archive/moss_lora/`. Its A/B grids and i2i evals moved to `bench/moss_ab/` and
   `bench/moss_i2i_eval/`; the rest of `src/` is runnable by path. Open remainder: compile
   P4 / P5, `ref_scale` in the LoRA metadata. Digest: [`moss_lora/README.md`](moss_lora/README.md).
+- [`int8_train/`](int8_train/) — int8 GEMMs for the frozen base in LoRA training, Anima
+  and MOSS (opened 2026-10-30, moved here 2026-11-04). Shipped: the int8 linears
+  (`library/int8/`, ConvRot through comfy_kitchen, forward and dX), Anima `--int8` and
+  MOSS's default `int8 = stream` base, the GPTQ base files (`anima_dit_int8`,
+  `moss_dit_int8`), the fp32 stream on both lines, and the FA2 fp16-accumulate backward and
+  PV forward for sm_120 (`sorryhyun/flash-attention-fp16`). Ceiling: int8 attention in
+  Triton fails the gradient gate on both forward and backward; the error sits in the int8
+  forward, not dX. Open remainder: a bf16 forward with an int8 attention backward
+  ([`tasks.md`](int8_train/tasks.md), not run). Code runnable by path
+  (`src/`). Digest: [`int8_train/README.md`](int8_train/README.md), verdicts
+  [`int8_train/reports.md`](int8_train/reports.md).

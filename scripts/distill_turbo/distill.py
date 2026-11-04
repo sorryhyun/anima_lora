@@ -53,6 +53,7 @@ from .steps import (
     cdm_off_trajectory_loss,
     dmad_signal,
     dmd_surrogate,
+    mfd_surrogate,
     fake_update,
     gan_generator_term,
     teacher_anchor,
@@ -350,6 +351,8 @@ def run_loop(ctx: RunContext, cfg):
             # Under DMAD the disc's normalized input gradient fills the same slot.
             if dmad is not None:
                 dmd = dmad_signal(ctx, cfg, x_pred, crossattn_emb, B)
+            elif cfg.mfd_dtau > 0.0:
+                dmd = mfd_surrogate(ctx, cfg, x_pred, crossattn_emb, c_null, B)
             else:
                 dmd = dmd_surrogate(ctx, cfg, x_pred, crossattn_emb, c_null, B)
             grad_signal = dmd.grad_signal
@@ -594,6 +597,15 @@ def run_loop(ctx: RunContext, cfg):
                     "ss_turbo_gan_delay_steps": str(cfg.gan_delay_steps),
                     "ss_turbo_gan_warmup_steps": str(cfg.gan_warmup_steps),
                     "ss_turbo_cdm_weight": str(cfg.cdm_weight),
+                    **(
+                        {
+                            "ss_turbo_mfd_dtau": str(cfg.mfd_dtau),
+                            "ss_turbo_mfd_max_steps": str(cfg.mfd_max_steps),
+                            "ss_turbo_mfd_interval": cfg.mfd_interval,
+                        }
+                        if cfg.mfd_dtau > 0.0
+                        else {}
+                    ),
                     "ss_turbo_f_div": cfg.f_div,
                     "ss_turbo_dmad": "1" if cfg.dmad else "0",
                 }

@@ -97,3 +97,4 @@ project/finished/ocr_reader/eval_data/
 
 # project asset JSONs (probe inputs and result dumps) stay local
 project/**/assets/*.json
+project/**/assets/*.csv

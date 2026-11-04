@@ -43,7 +43,7 @@ read; `make turbo` ships both. Without it the loader rebuilds them from the int8
 the true weight, which moves `wq_t` 1.6%. Generation needs neither. A static LoRA merge on a rebuilt
 base is refused.
 
-The GPTQ file is made by `project/int8_train/src/dit_gptq.py` and published as
+The GPTQ file is made by `project/finished/int8_train/src/dit_gptq.py` and published as
 [sorryhyun/anima-base-v1.0-int8](https://huggingface.co/sorryhyun/anima-base-v1.0-int8). A
 fingerprint refuses a file made from another checkpoint, so the 40-block Anima-2.9B needs its own
 file or round to nearest.
@@ -64,7 +64,7 @@ file or round to nearest.
 ## `stream` and the budget
 
 `ama mitsuki`, one run per arm, 2026-10-31, 5070 Ti
-([anima_wqt_stream.md](../../../project/int8_train/reports/anima_wqt_stream.md)):
+([anima_wqt_stream.md](../../../project/finished/int8_train/reports/anima_wqt_stream.md)):
 
 | arm | samples | median | peak |
 |---|---|---|---|
@@ -124,7 +124,7 @@ linear by 1 LSB against the card.
 
 ## Measurements
 
-All from `project/int8_train/reports/`, 2026-10-30, on a 5070 Ti.
+All from `project/finished/int8_train/reports/`, 2026-10-30, on a 5070 Ti.
 
 | | bf16 | int8 `full` |
 |---|---|---|
@@ -140,6 +140,6 @@ around its activation division on a bf16 input ([comfy-kitchen#289](https://gith
 so `Int8TrainLinear.forward` passes fp32. On Anima that cuts prediction error 6–8%. An fp32 stream
 ([`--stream fp32`](fp32_stream.md)) cuts the int8 base's error a further 21–36% in that report; the
 gradient effect is mixed
-([anima_fp32_stream.md](../../../project/int8_train/reports/anima_fp32_stream.md)). The same
+([anima_fp32_stream.md](../../../project/finished/int8_train/reports/anima_fp32_stream.md)). The same
 848-step run with the fp32 input, 2026-10-31, took 424 ms/step including the first compile and
 ended at `avr_loss` 0.0739.

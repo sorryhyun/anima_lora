@@ -73,4 +73,4 @@ activation division ([comfy-kitchen#289](https://github.com/Comfy-Org/comfy-kitc
 RoPE moved the INT8 stream by less than 0.01 at every σ. Forward time was 155, 193 and 228 ms in
 the same order, one run each with the model load included, so read it as a rough cost.
 
-The attribution and the gradient: [`anima_stream_attrib.md`](../../../project/int8_train/reports/anima_stream_attrib.md).
+The attribution and the gradient: [`anima_stream_attrib.md`](../../../project/finished/int8_train/reports/anima_stream_attrib.md).

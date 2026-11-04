@@ -4,7 +4,7 @@ The 252 block linears (`layers.N.proj.{q,k,v,o,ffn_up_gate,ffn_down}`) of the fr
 as ConvRot int8 GEMMs instead of bf16. Attention, norms, modulation, the residual stream
 and the LoRA's own GEMMs stay in float. Each block's `q`, `k` and `v` run as one GEMM with their
 rows concatenated, `block.qkv`, which saves about 24 ms of a training step
-([report](../../../project/int8_train/reports/qkv_fuse.md)).
+([report](../../../project/finished/int8_train/reports/qkv_fuse.md)).
 
 **Status (2026-10-31): the default training plan. A t2i LoRA has completed on the GPTQ base
 (ama mitsuki, 848 steps, 14.6 min, 1.08 s/step, 10.95 GB), and a swap_text i2i LoRA
@@ -14,7 +14,7 @@ gains speed and saves no VRAM; `--int8 stream` also saves about 4 GB ([VRAM](#vr
 
 Training is `TrainRequest.int8`, generation `GenerateRequest.int8`, code in
 `library/moss/dit_int8/` and, shared with Anima, `library/int8/`. The GPTQ build stays in
-`project/int8_train/src/`. The GPTQ file is the catalog row `moss_dit_int8`
+`project/finished/int8_train/src/`. The GPTQ file is the catalog row `moss_dit_int8`
 ([`sorryhyun/MOSS-Image-Base-int8`](https://huggingface.co/sorryhyun/MOSS-Image-Base-int8)).
 Base only; SFT has no file and trains on round-to-nearest weights.
 
@@ -33,7 +33,7 @@ ARGS=moss-dit-int8`. A fingerprint ties it to the DiT it was made from, and both
 points refuse any other. Rebuild it (64.6 min, peak 14.1 GB; 233 images across t2i and i2i
 sets) with:
 
-    make daemon-run ARGS="--stall-timeout 1800 project/int8_train/src/dit_gptq_moss.py"
+    make daemon-run ARGS="--stall-timeout 1800 project/finished/int8_train/src/dit_gptq_moss.py"
 
 Generation runs on it by default (`int8 on`, `stream fp32`, t2i and i2i; the GUI's
 `(int8)` items in the `model` dropdown). `--int8 off --stream bf16` is the bf16 DiT:
@@ -81,8 +81,8 @@ Two changes took the step from 1.30 s: `BatchedMuon` and saving FA2's output ins
 recomputing it ([training_step.md](training_step.md)).
 
 The training figures below predate them, and the choices under [VRAM](#vram) rest on them. Full tables:
-[`moss_scoping.md`](../../../project/int8_train/reports/moss_scoping.md) and
-[`moss_wqt_stream.md`](../../../project/int8_train/reports/moss_wqt_stream.md).
+[`moss_scoping.md`](../../../project/finished/int8_train/reports/moss_scoping.md) and
+[`moss_wqt_stream.md`](../../../project/finished/int8_train/reports/moss_wqt_stream.md).
 
 - **int8 against bf16** (`channel_(caststation)_layout`, swap 0, checkpointing): bf16 2.26–2.34
   s/step, int8 RTN 1.44–1.49, 11.96 GB on both. RTN is 1.57x bf16 on the same plan and 1.28x
@@ -217,7 +217,7 @@ LoRA gradient on the fp32 stream, as in the table above, σ = 0.5, 30 images:
 The cost is 1.05 → 1.10 s/step (`ama_mitsuki_layout`, budget 0.3, median of steps 11–40, one
 run per arm), peak unchanged at 12.98 GB. The same weights through ComfyUI, the MOSS Toolkit and
 the int8 TE still reach the kernel in bf16; those paths were not scored. i2i was not scored.
-Numbers: [`moss_act_scale.md`](../../../project/int8_train/reports/moss_act_scale.md).
+Numbers: [`moss_act_scale.md`](../../../project/finished/int8_train/reports/moss_act_scale.md).
 
 Upstream: [comfy-kitchen#289](https://github.com/Comfy-Org/comfy-kitchen/issues/289), with a fix
 on [`sorryhyun/comfy-kitchen`](https://github.com/sorryhyun/comfy-kitchen/tree/int8-activation-fp32-division).
@@ -246,18 +246,18 @@ the outliers are not an int8 effect and are not reproducible run to run.
 
 ## Records
 
-- [`moss_step_split_int8.md`](../../../project/int8_train/reports/moss_step_split_int8.md):
+- [`moss_step_split_int8.md`](../../../project/finished/int8_train/reports/moss_step_split_int8.md):
   phase and kernel split of the step, `BatchedMuon`, FA2 in the budget's knapsack.
-- [`moss_act_scale.md`](../../../project/int8_train/reports/moss_act_scale.md): activation
-  clipping, the kernel's input dtype. [`moss_fold_vo.md`](../../../project/int8_train/reports/moss_fold_vo.md):
+- [`moss_act_scale.md`](../../../project/finished/int8_train/reports/moss_act_scale.md): activation
+  clipping, the kernel's input dtype. [`moss_fold_vo.md`](../../../project/finished/int8_train/reports/moss_fold_vo.md):
   SmoothQuant fold from `o` into `v`, no gain.
-- [`moss_gptq.md`](../../../project/int8_train/reports/moss_gptq.md): GPTQ base, held-out
+- [`moss_gptq.md`](../../../project/finished/int8_train/reports/moss_gptq.md): GPTQ base, held-out
   error, outliers, trainer smoke test, generation, with job ids.
-- [`moss_wqt_stream.md`](../../../project/int8_train/reports/moss_wqt_stream.md): `wq_t`
+- [`moss_wqt_stream.md`](../../../project/finished/int8_train/reports/moss_wqt_stream.md): `wq_t`
   streaming, budget sweep, same-seed gradient norms.
-- [`moss_grad_error.md`](../../../project/int8_train/reports/moss_grad_error.md): RTN
+- [`moss_grad_error.md`](../../../project/finished/int8_train/reports/moss_grad_error.md): RTN
   gradient gate, bf16 precision arms.
-- [`moss_scoping.md`](../../../project/int8_train/reports/moss_scoping.md): GEMM bench, step
+- [`moss_scoping.md`](../../../project/finished/int8_train/reports/moss_scoping.md): GEMM bench, step
   split, swap and budget plans, RTN step time.
-- [`project/int8_train/README.md`](../../../project/int8_train/README.md): design of the
+- [`project/finished/int8_train/README.md`](../../../project/finished/int8_train/README.md): design of the
   int8 linears, shared with Anima.

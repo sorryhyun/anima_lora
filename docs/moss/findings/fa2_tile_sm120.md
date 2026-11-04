@@ -1,8 +1,8 @@
 # FA2's forward takes the wrong tile on sm_120, and fixing it is worth 0.7%
 
 Measured 2026-11-02 on an RTX 5070 Ti, for MOSS-Image and Anima. Numbers, setup and job ids:
-[`project/int8_train/reports/fa2_tile_sm120.md`](../../../project/int8_train/reports/fa2_tile_sm120.md)
-(script `project/int8_train/src/fa2_tile_bench.py`). Started as candidate 1 of
+[`project/finished/int8_train/reports/fa2_tile_sm120.md`](../../../project/finished/int8_train/reports/fa2_tile_sm120.md)
+(script `project/finished/int8_train/src/fa2_tile_bench.py`). Started as candidate 1 of
 `_archive/proposals/step_headroom.md`.
 
 ## Setting
