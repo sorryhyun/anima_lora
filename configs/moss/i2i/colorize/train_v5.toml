@@ -1,0 +1,20 @@
+# v5 (control captions): v4's schedule (3 epochs, 10000 steps, Muon 5e-5, EMA window 0.1)
+# on the int8 base. The 1k arm peaked at 10.9 GB at swap 36 with 3.15 GB free.
+cache = "post_image_dataset/moss/i2i_colorize_control_1k"
+output = "output/ckpt_moss_i2i/moss_colorize_v5.safetensors"
+epochs = 3
+max_steps = 10000
+lr = 5e-5
+optimizer = "muon"
+save_every_epochs = 1
+plain_caption_rate = 0.2       # embeds_plain: the bare caption (empty / comic)
+caption_variant_rate = 0.75    # of the rest: the four draws equally (embeds + v1..v3)
+ref_timestep = 0.0
+ref_isolate = true
+fit_report = true
+int8 = "stream"
+stream = "fp32"
+ema_card = true
+blocks_to_swap = 8
+activation_memory_budget = 0.1
+swap_h2d_only = true
