@@ -31,7 +31,7 @@ from library.datasets import LossRecorder
 from library.runtime.device import clean_memory_on_device
 from library.training.checkpoints import CheckpointSaver
 from library.training.contexts import TrainCtx, ValCtx
-from library.training.grad_clip import GradClipper, MicroAccumulator
+from library.training.grad_clip import GradClipper, GradSigmaLog, MicroAccumulator
 from library.training.method_adapter import StepCtx
 from library.training.metrics import MetricContext, collect_metrics
 from library.runtime.pause import PauseWatcher, TrainingPaused
@@ -109,6 +109,10 @@ class LoopState:
     grad_caps: list = field(default_factory=list)
     clipper: Optional[GradClipper] = None
     micro_acc: Optional[MicroAccumulator] = None
+    # σ of the micro-batches since the last update (σ-band clip on the update).
+    update_sigmas: list = field(default_factory=list)
+    # ``--grad_sigma_log``: per-clip-unit norm / cap beside σ, loss, image key.
+    sigma_log: Optional[GradSigmaLog] = None
 
 
 def build_loop_state(
@@ -320,7 +324,18 @@ def build_loop_state(
         global_step=global_step,
         pause_watcher=PauseWatcher.from_env(),
         **_build_clipper(args, accelerator),
+        sigma_log=_build_sigma_log(args, accelerator),
     )
+
+
+def _build_sigma_log(args, accelerator: Accelerator) -> Optional[GradSigmaLog]:
+    if not getattr(args, "grad_sigma_log", False) or not accelerator.is_main_process:
+        return None
+    from pathlib import Path
+
+    path = Path(args.output_dir) / f"{args.output_name}.grad_sigma.jsonl"
+    logger.info(f"grad / sigma log: {path}")
+    return GradSigmaLog(path)
 
 
 def _build_clipper(args, accelerator: Accelerator) -> dict:
@@ -336,6 +351,7 @@ def _build_clipper(args, accelerator: Accelerator) -> dict:
         max_norm=args.max_grad_norm,
         k=float(getattr(args, "clip_k", 2.0)),
         window=int(getattr(args, "clip_window", 50)),
+        sigma_edges=_parse_sigma_bands(getattr(args, "clip_sigma_bands", None)),
     )
     accum = max(1, int(args.gradient_accumulation_steps or 1))
     micro_acc = None
@@ -350,10 +366,19 @@ def _build_clipper(args, accelerator: Accelerator) -> dict:
     logger.info(
         f"grad clip: {mode}"
         + (f" k={clipper.k:g} window={clipper.window}" if mode == "median" else "")
+        + (f" σ bands {clipper.sigma_edges}" if clipper.sigma_edges else "")
         + f", warmup cap {args.max_grad_norm:g}"
         + (f", per micro-batch (accum {accum})" if micro_acc else "")
     )
     return {"clipper": clipper, "micro_acc": micro_acc}
+
+
+def _parse_sigma_bands(spec) -> Optional[list[float]]:
+    if spec is None or spec == "":
+        return None
+    if isinstance(spec, (list, tuple)):
+        return [float(x) for x in spec]
+    return [float(x) for x in str(spec).split(",") if x.strip()]
 
 
 def _setup_adapter_ema(args, accelerator, network, saver, resume_step: int) -> None:
@@ -437,6 +462,8 @@ def run_training_loop(trainer, state: LoopState) -> None:
         state.optimizer_train_fn()
 
     _audit_liveness(trainer, state, where="run end")
+    if state.sigma_log is not None:
+        state.sigma_log.flush()
 
     state.metadata["ss_training_finished_at"] = str(time.time())
 
@@ -511,6 +538,8 @@ def _maybe_release_pause(state: LoopState, epoch: int) -> None:
         f"{state.global_step} (epoch {epoch + 1})"
     )
     state.optimizer_eval_fn()
+    if state.sigma_log is not None:
+        state.sigma_log.flush()
     state_dir = state.saver.save_release_pause(state.network, state.global_step, epoch)
     if state.accelerator.is_main_process:
         watcher.acknowledge(state_dir, global_step=state.global_step, epoch=epoch)
@@ -550,6 +579,17 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
         loss = trainer.process_batch(state.train_ctx, batch, is_train=True)
         if state.profile_started:
             torch.cuda.nvtx.range_pop()
+        sigma = getattr(trainer.step, "last_train_sigmas", None)
+        if state.clipper is not None and state.clipper.sigma_edges:
+            if sigma is None:
+                raise RuntimeError("clip_sigma_bands: the trainer exposes no σ")
+            state.update_sigmas.append(sigma)
+        if state.sigma_log is not None:
+            state.sigma_log.add_micro(
+                sigma,
+                loss.detach().float(),
+                list(batch.get("image_keys") or []),
+            )
 
         if state.profile_started:
             torch.cuda.nvtx.range_push("backward")
@@ -580,11 +620,14 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
             norm, cap = state.micro_acc.absorb(
                 list(accelerator.unwrap_model(network).get_trainable_params()),
                 last=accelerator.sync_gradients,
+                sigma=state.update_sigmas.pop() if state.update_sigmas else None,
             )
             if state.is_tracking and norm is not None:
                 state.grad_norms.append(norm)
                 if cap is not None:
                     state.grad_caps.append(cap)
+            if state.sigma_log is not None and norm is not None:
+                state.sigma_log.add_norm(state.global_step + 1, norm, cap)
 
         if accelerator.sync_gradients:
             net_unwrapped = accelerator.unwrap_model(network)
@@ -609,7 +652,14 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
             elif state.clipper is not None:
                 if params:
                     accelerator.unscale_gradients()
-                    norm, cap = state.clipper.clip_([p.grad for p in params])
+                    sig = (
+                        torch.cat([s.reshape(-1) for s in state.update_sigmas])
+                        if state.update_sigmas
+                        else None
+                    )
+                    norm, cap = state.clipper.clip_([p.grad for p in params], sigma=sig)
+                    if state.sigma_log is not None:
+                        state.sigma_log.add_norm(state.global_step + 1, norm, cap)
                     if state.is_tracking:
                         state.grad_norms.append(norm)
                         if cap is not None:
@@ -617,12 +667,16 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
             else:
                 if args.max_grad_norm != 0.0:
                     norm = accelerator.clip_grad_norm_(params, args.max_grad_norm)
-                elif state.is_tracking and params:
+                elif (state.is_tracking or state.sigma_log is not None) and params:
                     norm = torch.nn.utils.get_total_norm([p.grad for p in params])
                 else:
                     norm = None
                 if state.is_tracking and norm is not None:
                     state.grad_norms.append(norm.detach().float())
+                if state.sigma_log is not None and norm is not None:
+                    cap = args.max_grad_norm if args.max_grad_norm != 0.0 else None
+                    state.sigma_log.add_norm(state.global_step + 1, norm, cap)
+            state.update_sigmas.clear()
 
         if state.profile_started:
             torch.cuda.nvtx.range_push("optimizer")

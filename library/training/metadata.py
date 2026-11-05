@@ -97,6 +97,7 @@ def build_training_metadata(
         "ss_clip_mode": getattr(args, "clip_mode", "fixed"),
         "ss_clip_k": getattr(args, "clip_k", 2.0),
         "ss_clip_per_micro": bool(getattr(args, "clip_per_micro", False)),
+        "ss_clip_sigma_bands": getattr(args, "clip_sigma_bands", None) or "",
         "ss_caption_dropout_rate": args.caption_dropout_rate,
         "ss_caption_dropout_every_n_epochs": args.caption_dropout_every_n_epochs,
         "ss_caption_tag_dropout_rate": args.caption_tag_dropout_rate,

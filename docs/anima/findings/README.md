@@ -52,6 +52,7 @@ The leftmost column is the outcome — what the evidence settled:
 | Verdict | Doc | Result |
 |---------|-----|--------|
 | LANDED | [agsm_reward_premise_holds.md](agsm_reward_premise_holds.md) | Relative FM-ranking survives where absolute FM-MSE doesn't; bounded AGSM trained on the soft-tokens path and helped prompt-following + quality. |
+| A/B RESULT + LANDED | [lora_gradient_noise_recipe.md](lora_gradient_noise_recipe.md) | LoRA grad norms are heavy-tailed and U-shaped in σ: the edges (σ < 0.2, ≥ 0.8) hold 13–15 % of draws and 59–80 % of clips; no image dominates. A median clip per micro-batch + GA2 + 5e-5 constant + EMA 0.1 beat the old default blind (41–16, cluster p 0.0078) and ships; a per-σ-band clip on top won a ||dW||-matched blind A/B at the margin (39–21, p 0.047). EMA does nothing under cosine decay. Endpoint ΔW cosine between arms is noise (twin 0.146). |
 | A/B RESULT | [channel_stats_content_independence.md](channel_stats_content_independence.md) | `per_channel_scaling` calibration is content-agnostic (weights/architecture-driven) — generalizes across datasets, no per-dataset recompute. |
 
 ## Reusable traps

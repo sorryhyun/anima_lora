@@ -1,6 +1,7 @@
+import pytest
 import torch
 
-from library.training.grad_clip import GradClipper, MicroAccumulator
+from library.training.grad_clip import GradClipper, GradSigmaLog, MicroAccumulator
 
 
 def _grads(norm: float, seed: int, shapes=((8, 4), (16,))):
@@ -124,3 +125,75 @@ def test_per_micro_with_real_backward():
     loss.backward()
     for p, r in zip(params, ref):
         assert torch.allclose(p.grad, r.grad, atol=1e-6)
+
+
+def test_sigma_log_pairs_micros_with_their_norm(tmp_path):
+    import json
+
+    log = GradSigmaLog(tmp_path / "run.grad_sigma.jsonl", flush_every=2)
+    log.add_micro(torch.tensor([0.3]), torch.tensor(0.1), ["a"])
+    log.add_norm(1, torch.tensor(2.0), torch.tensor(3.0))
+    log.add_micro(torch.tensor([0.9]), torch.tensor(0.2), ["b"])
+    log.add_micro(torch.tensor([0.5]), torch.tensor(0.4), ["c"])
+    log.add_norm(2, torch.tensor(5.0), None)
+    rows = [
+        json.loads(x)
+        for x in (tmp_path / "run.grad_sigma.jsonl").read_text().splitlines()
+    ]
+    assert [r["step"] for r in rows] == [1, 2]
+    assert rows[0]["sigma"] == [0.30000001192092896] and rows[0]["keys"] == ["a"]
+    assert rows[0]["cap"] == 3.0 and rows[1]["cap"] is None
+    assert rows[1]["keys"] == ["b", "c"] and len(rows[1]["loss"]) == 2
+
+
+def test_sigma_bands_cap_each_draw_against_its_band():
+    # U-shaped norms: mid σ ~1, edge σ ~4. A global median clip would cut every
+    # edge draw; per band, typical edge draws pass and an edge spike is capped
+    # at k x the edge median.
+    clip = GradClipper(mode="median", max_norm=1.0, k=2.0, sigma_edges=[0.2, 0.8])
+    gen = torch.Generator().manual_seed(0)
+    for i in range(40):
+        edge = i % 4 == 0
+        n = (4.0 if edge else 1.0) * (1.0 + 0.1 * torch.rand(1, generator=gen).item())
+        sigma = torch.tensor([0.9 if edge else 0.5])
+        grads = _grads(n, i)
+        _, cap = clip.clip_(grads, sigma=sigma)
+        if i >= 20:  # both bands past band_warmup
+            assert torch.nn.utils.get_total_norm(grads).item() == pytest.approx(
+                n, rel=1e-5
+            )
+            assert cap.item() > (6.0 if edge else 1.5)
+    spike = _grads(40.0, 999)
+    edge_med = clip._bands[2].nanmedian().item()
+    _, cap = clip.clip_(spike, sigma=torch.tensor([0.95]))
+    assert cap.item() == pytest.approx(2.0 * edge_med, rel=1e-5)
+    assert torch.nn.utils.get_total_norm(spike).item() == pytest.approx(
+        2.0 * edge_med, rel=1e-4
+    )
+
+
+def test_sigma_band_falls_back_to_global_cap_until_filled():
+    clip = GradClipper(mode="median", max_norm=1.0, k=2.0, sigma_edges=[0.5])
+    for i in range(12):
+        clip.clip_(_grads(1.0, i), sigma=torch.tensor([0.3]))
+    # high band empty: global cap 2 x median(1.0)
+    _, cap = clip.clip_(_grads(5.0, 50), sigma=torch.tensor([0.7]))
+    assert cap.item() == pytest.approx(2.0, rel=1e-5)
+    assert int(clip._band_n[1]) == 1
+
+
+def test_sigma_bands_off_matches_plain_median():
+    a = GradClipper(mode="median", max_norm=1.0, k=2.0)
+    b = GradClipper(mode="median", max_norm=1.0, k=2.0, sigma_edges=[0.3])
+    for i in range(30):
+        ga, gb = _grads(1.0 + i % 7, i), _grads(1.0 + i % 7, i)
+        a.clip_(ga)
+        b.clip_(gb)  # no σ given: global path
+        assert all(torch.equal(x, y) for x, y in zip(ga, gb))
+
+
+def test_sigma_bands_need_median_mode():
+    with pytest.raises(ValueError):
+        GradClipper(mode="fixed", sigma_edges=[0.5])
+    with pytest.raises(ValueError):
+        GradClipper(mode="median", sigma_edges=[1.2])

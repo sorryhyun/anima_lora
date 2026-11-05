@@ -65,6 +65,8 @@ class AnimaStep:
         self._padding_mask_cache = {}
         self._paired_step_counter = 0
         self._hydra_warmup_step = 0
+        # Per-sample σ of the last train forward (``--grad_sigma_log``).
+        self.last_train_sigmas = None
         # Functional loss: forward hooks on cross_attn.output_proj at
         # ``_func_blocks`` fill ``_func_captures``.
         self._func_loss = None
@@ -216,6 +218,11 @@ class AnimaStep:
                 getattr(args, "gradient_accumulation_steps", 1) or 1
             ),
         )
+        if is_train:
+            sig = sampler_out.sigmas
+            self.last_train_sigmas = (
+                sig.detach().reshape(sig.shape[0], -1)[:, 0].float()
+            )
         return sampler_out.noisy_input, sampler_out.timesteps, sampler_out.sigmas
 
     def _prepare_conditioning(

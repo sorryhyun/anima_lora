@@ -114,6 +114,22 @@ def add_optimizer_arguments(parser: argparse.ArgumentParser):
         "over micro-batch norms. Single process without fp16 loss scaling; "
         "otherwise the accumulated update is clipped",
     )
+    parser.add_argument(
+        "--clip_sigma_bands",
+        type=str,
+        default=None,
+        help="clip_mode median: comma-separated inner sigma band edges, e.g. "
+        "'0.2,0.4,0.6,0.8'. Each band keeps its own clip_window of norms and a "
+        "unit is capped against its band (the global cap until the band holds 5); "
+        "a unit holding several micro-batches uses their mean sigma",
+    )
+    parser.add_argument(
+        "--grad_sigma_log",
+        action="store_true",
+        help="write <output_dir>/<output_name>.grad_sigma.jsonl: per clipped unit "
+        "(micro-batch under clip_per_micro, else update) the pre-clip norm, cap, "
+        "and the sigma, loss and image key of its micro-batches",
+    )
 
     parser.add_argument(
         "--optimizer_args",

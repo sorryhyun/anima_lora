@@ -1,6 +1,6 @@
 # Anima LoRA: effective batch, lr, EMA and grad clip as one noise budget
 
-Status: PHASE 1 DONE 2026-11-05. Median and per-micro clip are implemented
+Status: PHASE 1 DONE 2026-11-05; Phase 2 σ log done (tail at the σ edges). Median and per-micro clip are implemented
 (`library/training/grad_clip.py`). In a blind A/B, the proposed recipe beat
 the default, cluster sign-flip p 0.0078 (Phase 1), and is the shipped
 `configs/methods/lora.toml` since. Phase 2 (σ-side) is owed. Preliminary runs (below) are ama mitsuki
@@ -177,6 +177,50 @@ all σ may read normal σ-to-σ variation as spikes. Next, one of:
 What decides between them is first logging σ beside each micro-batch norm (no
 GPU run beyond a normal training run): if the clipped tail concentrates in a σ
 band, the per-timestep clip; if the tail spreads across σ, the shift.
+
+**σ log (2026-11-05):** recipe B with `--grad_sigma_log`, seed 42, on three
+artists: caststation, ama mitsuki and sweetonedollar (31 images). The first
+10 micro-batches (warmup cap 1.0, all clipped) are left out. The norm is
+U-shaped in σ: the median is 0.9–1.4 at σ 0.2–0.6, 1.6–2.7 below 0.2 and
+2.5–3.9 at 0.8–0.9 (Spearman +0.23 to +0.41). The edges (σ < 0.2 or ≥ 0.8)
+hold 13–15 % of the draws and 59–80 % of the clipped micro-batches; σ 0.2–0.6
+clips 0–6 %. The clip rate does not fall over the run. No image dominates:
+at most 3–4 clips per image over 8 epochs. Replaying the median clip on the
+logged norms with one window per σ band (edges 0.2 / 0.4 / 0.6 / 0.8 / 0.9)
+clips 59 micro-batches against 143 for the global window, pooled over the
+three runs. So the tail is mostly σ, and the per-timestep clip is next. A per-band clip
+would stop damping the edge σ that B now damps, so whether that damping
+helped B's win is the A/B question: B against B with the per-band clip.
+`bench/anima_abclip/sigma_tail.py`, results
+`bench/anima_abclip/results/20261105-1857-sigma_tail/`.
+
+**Per-band clip (implemented 2026-11-05):** `--clip_sigma_bands 0.2,0.4,0.6,0.8`
+with `clip_mode median`. Each band keeps its own `clip_window` ring buffer on the card,
+and a unit is capped at `clip_k ×` its band's median once the band holds 5 norms,
+until then at the global cap. A unit that holds several micro-batches uses their
+mean σ. The bands are stamped as `ss_clip_sigma_bands`. Smoke run (caststation s42, same σ draws as the
+log run): 8 clips against 15. Five of the 8 came while a band was still on the global
+cap, and three were spikes within their band (7.4–10.5 against band caps 5.0–6.5).
+The median cap per band runs 3.0–3.3 at mid σ and 5.0–6.5 at the edges.
+
+**Phase 2 A/B (running 2026-11-05):** `global` (recipe B; the s29 B LoRAs for
+caststation) against `band` (B with `--clip_sigma_bands 0.2,0.4,0.6,0.8`), on
+caststation and sweetonedollar, seeds 42–45, the same four prompts at render
+seeds 3 and 4 (s29 used 1 and 2), 32 blind pairs per artist (`s30_SIGBAND_*`).
+In s29, B moved 2.3–2.5× as far as A, so part of its win could be strength.
+Here, before rendering, each band LoRA's `lora_up` is rescaled so its median
+`||dW||` equals the global LoRA's at the same (artist, seed)
+(`<name>_dwm.safetensors`, factor in `ss_dw_match_factor`), and the pairs
+compare direction, not step length. The gate is the same as Phase 1's.
+`bench/anima_abclip/run_ab.py --exp sigband`.
+
+**Result (2026-11-05):** before matching, band moved within ±7 % of global (factors
+0.94–1.03). Band won 39 of 60 decided pairs (4 ties), binomial one-sided p 0.014. It
+won on both artists: caststation 20–10, sweetonedollar 19–11. It won 6 of the 8
+(artist, seed) clusters, lost one (cast s45, 3–5) and tied one (sweet s42, 4–4).
+Cluster sign-flip p 0.047. The gate passes at the margin, and cast s44 (8–0) carries
+much of it. Band wins the bikini prompt on both artists (6–1, 7–1) and loses only
+sweet hug (2–4). `bench/anima_abclip/report_sigband.md`.
 
 **GA4 waits.** Under per-micro clip, a spike already carries at most
 `cap / accum` of an update, so GA4's extra dilution buys little. On typical
