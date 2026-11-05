@@ -4,8 +4,8 @@
 > `constant_with_warmup`, GA2, median clip k 2 per micro-batch, adapter EMA 0.1)
 > beat the old default in a blind A/B and is the shipped
 > `configs/methods/lora.toml`. A per-σ-band clip on top of B won a second,
-> ||dW||-matched blind A/B at the margin (cluster p 0.047). It is implemented
-> (`--clip_sigma_bands`) but not yet the default. Plan and per-phase detail:
+> ||dW||-matched blind A/B at the margin (cluster p 0.047) and is in the shipped
+> config since (`clip_sigma_bands = "0.2,0.4,0.6,0.8"`). Plan and per-phase detail:
 > [`../proposal/lora_batch_clip_ema.md`](../proposal/lora_batch_clip_ema.md).
 
 ## What the gradient looks like
@@ -99,8 +99,12 @@ matching), so s30 compares direction only. It wins most clearly on the bikini pr
 
 ## Open
 
-- Whether to make the σ-band clip the default (the gate passed at p 0.047; a third
-  artist would firm it up).
+- The σ-band clip ships on a marginal gate (p 0.047, two artists); a third artist
+  would firm it up.
+- sweetonedollar under B (s42–s44, no band clip) draws malformed and oversized hands at
+  x1.0. They shrink at x0.8 / x0.6, so they scale with the adapter, as do the style and
+  the uniform. Lower lr with more epochs would land near the same displacement; what
+  separates hands from style (σ-gated LoRA, render aspect, the data) is untested.
 - Training shift 3, to match inference: at shift 1, σ > 0.9 gets 0.6–1.4 % of draws,
   while inference spends ~25 % of its steps there. Untested.
 - The GUI variant (`configs/gui-methods/lora.toml`: alpha 32, 4 epochs) kept 2e-5 and

@@ -176,7 +176,7 @@ Start with the `tlora` variant (T-LoRA; see [§8](#8-adapter-variant-selection-g
 |---|---|---|
 | `network_dim` | `32` | LoRA rank. Higher = more expressive, more parameters |
 | `network_alpha` | `32` (gui-methods) / `128` (methods) | LoRA scale |
-| `learning_rate` | `5e-5` (methods) / `2e-5` (gui-methods) | Learning rate. The methods file pairs it with a constant schedule, gradient accumulation 2 and the median clip (`clip_mode`, `clip_per_micro`). Hydra can go lower |
+| `learning_rate` | `5e-5` (methods) / `2e-5` (gui-methods) | Learning rate. The methods file pairs it with a constant schedule, gradient accumulation 2 and the median clip, kept per σ band (`clip_mode`, `clip_per_micro`, `clip_sigma_bands`). Hydra can go lower |
 | `max_train_epochs` | `4` (gui-methods) / `8` (methods) | Smaller dataset → more epochs |
 | `save_every_n_epochs` | `2` (gui-methods) / `8` (methods) | Cumulative adapter-weight save interval |
 | `checkpointing_epochs` | `2` (gui-methods) / `8` (methods) | Resume-state save interval (single file, overwritten) |

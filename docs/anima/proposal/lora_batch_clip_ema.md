@@ -3,7 +3,7 @@
 Status: PHASE 1 DONE 2026-11-05; Phase 2 σ log done (tail at the σ edges). Median and per-micro clip are implemented
 (`library/training/grad_clip.py`). In a blind A/B, the proposed recipe beat
 the default, cluster sign-flip p 0.0078 (Phase 1), and is the shipped
-`configs/methods/lora.toml` since. Phase 2 (σ-side) is owed. Preliminary runs (below) are ama mitsuki
+`configs/methods/lora.toml` since. Phase 2: the per-σ-band clip won its blind A/B (p 0.047) and ships in the same file. Preliminary runs (below) are ama mitsuki
 only. The training loop logs `grad/norm`, `grad/norm_sq`, `grad/norm_max`,
 `grad/clip_frac`, `grad/clip_cap` (median / per-micro clip) and, with gradient
 accumulation, `grad/micro_norm_sq` (`library/training/loop.py`).
@@ -220,7 +220,8 @@ won on both artists: caststation 20–10, sweetonedollar 19–11. It won 6 of th
 (artist, seed) clusters, lost one (cast s45, 3–5) and tied one (sweet s42, 4–4).
 Cluster sign-flip p 0.047. The gate passes at the margin, and cast s44 (8–0) carries
 much of it. Band wins the bikini prompt on both artists (6–1, 7–1) and loses only
-sweet hug (2–4). `bench/anima_abclip/report_sigband.md`.
+sweet hug (2–4). `bench/anima_abclip/report_sigband.md`. Shipped in
+`configs/methods/lora.toml` (`clip_sigma_bands = "0.2,0.4,0.6,0.8"`).
 
 **GA4 waits.** Under per-micro clip, a spike already carries at most
 `cap / accum` of an update, so GA4's extra dilution buys little. On typical
