@@ -1,7 +1,19 @@
+
 network_dim = 32
-network_alpha = 32
-learning_rate = 2e-5
-max_train_epochs = 4
+network_alpha = 128
+# The configs/methods/lora.toml recipe: 5e-5 constant after the 5 % warmup,
+# effective batch 2, a clip at 2x the median of the last 50 micro-batch norms kept
+# per σ band, adapter EMA over 10 % of the updates. Won blind A/Bs against the
+# 2e-5 cosine bs1 clip-1.0 recipe (docs/anima/findings/lora_gradient_noise_recipe.md).
+learning_rate = 5e-5
+lr_scheduler = "constant_with_warmup"
+gradient_accumulation_steps = 2
+clip_mode = "median"
+clip_k = 2.0
+clip_per_micro = true
+clip_sigma_bands = "0.2,0.4,0.6,0.8"
+ema_window = 0.1
+max_train_epochs = 8
 save_every_n_epochs = 2
 checkpointing_epochs = 2
 use_shuffled_caption_variants = true
