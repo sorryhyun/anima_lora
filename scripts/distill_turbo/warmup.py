@@ -28,7 +28,7 @@ import torch.nn as nn
 from tqdm import tqdm
 
 from .metrics import TauBinCriticLoss
-from .primitives import renoise, sample_t, sample_t_routed
+from .primitives import renoise, sample_t
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +50,6 @@ def run_fake_warmup(
     cond_dtype: torch.dtype,
     log_interval: int,
     writer,
-    fake_tau_banks: int = 1,
-    fake_tau_boundary: float = 0.5,
 ) -> Iterator:
     """Run the critic head-start; returns the (possibly advanced) data_iter.
 
@@ -92,14 +90,8 @@ def run_fake_warmup(
             ).squeeze(2)
             x_pred_d = (x_t.squeeze(2) - t_e * v_student).detach()
 
-        # τ-split critic: the draw routes to the owner bank so both banks enter
-        # the main loop calibrated on their own band (banks=1 → identical
-        # sample_t call).
-        tau_fake = sample_t_routed(
+        tau_fake = sample_t(
             B,
-            turbo=turbo,
-            fake_tau_banks=fake_tau_banks,
-            fake_tau_boundary=fake_tau_boundary,
             distribution=t_distribution,
             sigmoid_scale=sigmoid_scale,
             device=device,

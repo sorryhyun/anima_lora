@@ -53,8 +53,7 @@ file or round to nearest.
 - `inference.py` has no block swap on any base, so generation stays resident.
 - Training takes `LoRANetwork` only, and only method `lora` has been measured. `EasyControl` and
   the soup loop train on bf16 or are refused.
-- `make turbo` ships `int8 = "stream"` and has run 30-step smokes only, no full student. It refuses
-  `dmad` and `dmad_probe`, and its teacher runs on the int8 base. 2026-11-01, warm start, budget
+- `make turbo` ships `int8 = "stream"` and has run 30-step smokes only, no full student. Its teacher runs on the int8 base. 2026-11-01, warm start, budget
   0.99: 6.28 s/step and 11.87 GB peak on the bf16 stream, 6.7–7.0 s/step and 12.39 GB on fp32. The
   bf16 base read 9.65 s/step on the same plan, 2026-08-29.
 - `--base_weights` with forward copies is refused: they were calibrated on the unmerged weights.

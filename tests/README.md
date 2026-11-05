@@ -91,7 +91,7 @@ the `skipped` count.
 |---|---|
 | Resume continues exactly; extended runs land on the new curve; topology changes refused; a crash mid-save keeps the bundle | `test_turbo_resume.py` (core marks) |
 | Warm start reproduces the extracted delta | `test_turbo_warmstart.py` (core marks) |
-| Shipped objective terms and schedule: L_CDM, dynamic grid, token head layout, adaln, the int8 hook before LoRA patching | `test_turbo_cdm.py`, `test_turbo_dynamic_schedule.py`, `test_turbo_gan_disc.py`, `test_turbo_adaln.py`, `test_turbo_dual_pool.py` (core marks) |
+| Shipped objective terms and schedule: L_CDM, dynamic grid, token head layout, adaln, the int8 hook before LoRA patching | `test_turbo_cdm.py`, `test_turbo_dynamic_schedule.py`, `test_turbo_gan_disc.py`, `test_turbo_adaln.py`, `test_turbo_mfd.py` (core marks) |
 | A soup is the exact ΔW average and never drops a module | `test_soup.py::TestSoupStateDicts` (core marks) |
 | Demoted latents stay outside `latents_*`; emit keeps native keys, is idempotent, loads back | `test_sigma_lowres.py` (core marks) |
 | Front door cannot drift from the parser; inference writes what the daemon lifts | `test_generation_request.py::test_core_defaults_match_parser`, `test_gen_manifest.py::test_daemon_writes_manifest_and_pointer` |

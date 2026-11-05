@@ -14,8 +14,7 @@ the gap between the CFG'd teacher's and the fake's endpoints after integrating b
 needed. It is a DMD-family method (the auxiliary flow model is our fake), not a consistency one.
 
 - Code: `steps.mfd_surrogate`, `steps._mean_velocity`; dispatched in `distill.py` when
-  `mfd_dtau > 0`. L_CDM keeps the point delta. Under `dmad` the disc fills the slot and MFD does
-  not run.
+  `mfd_dtau > 0`. L_CDM keeps the point delta.
 - Knobs (`[mfd]` / CLI): `dtau` (0 = off), `max_steps` (cap on K, default 4), `interval`
   (`to_zero`: σ_b 0; `uniform`: σ_b ~ U(0, σ_a)). K = ceil(max span / dtau), shared by the batch.
 - `to_zero` with K = 1 is `dmd_surrogate` bit for bit (`tests/test_turbo_mfd.py`), so DP-DMD is

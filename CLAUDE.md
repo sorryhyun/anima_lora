@@ -207,7 +207,7 @@ routing axes: `lora-routing` skill).
   for multi-GPU (forces inline).
 - `make turbo` — DP-DMD distiller: bespoke loop under `scripts/distill_turbo/`, so
   `train.py` infra (compile cache, `--deterministic`, `print-config`) does not reach it.
-  Ships on `int8 = "stream"` + `stream = "fp32"`, which refuse `dmad`.
+  Ships on `int8 = "stream"` + `stream = "fp32"`.
   Output is a normal LoRA — infer with `--infer_steps 4 --cfg 1.0` (`make test-turbo`).
   `docs/anima/methods/turbo.md`.
 - `make soup TARGET=<artist>` — uncond-init soup, plain LoRA only.

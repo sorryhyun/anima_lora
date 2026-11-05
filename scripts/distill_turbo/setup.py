@@ -53,7 +53,7 @@ from library.runtime.progress import ProgressSink
 from networks.methods.turbo_dmd import TurboDMDNetwork, warm_start_plain_lora
 
 from .config import TurboConfig, snapshot_toml_text, tb_config_text
-from .metrics import DmadMetrics, TauBinCriticLoss, TurboMetrics
+from .metrics import TauBinCriticLoss, TurboMetrics
 from .primitives import PadCache, make_collate, make_scheduler
 from .resume import (
     apply_resume_state,
@@ -91,9 +91,7 @@ def _cached_token_counts(data_dir: str) -> set:
 class RunContext:
     """Everything ``distill.run_loop`` reads or mutates, built by ``build_run``.
 
-    A handful of fields are mutated across the loop: ``data_iter`` (re-``iter``'d
-    at epoch boundaries) and ``fdistill_bins`` (the f-distill EMA histogram,
-    reassigned per f-distill firing and read by the resume-bundle save).
+    ``data_iter`` is mutated across the loop (re-``iter``'d at epoch boundaries).
     """
 
     model: Anima
@@ -102,13 +100,12 @@ class RunContext:
     dtype: torch.dtype  # sampler state: latents, noise, σ
     cond_dtype: torch.dtype  # text embeddings
 
-    # Optimizers / schedulers (disc pair is None when the GAN is off; fake
-    # pair is None under DMAD, which builds no critic).
+    # Optimizers / schedulers (disc pair is None when the GAN is off).
     student_opt: torch.optim.Optimizer
-    fake_opt: torch.optim.Optimizer | None
+    fake_opt: torch.optim.Optimizer
     disc_opt: torch.optim.Optimizer | None
     student_sched: object
-    fake_sched: object | None
+    fake_sched: object
     disc_sched: object | None
 
     # Data.
@@ -123,24 +120,17 @@ class RunContext:
     student_sigmas: list[float]
     teacher_anchor_sigmas: list[float]
     t_k_anchor: float
-    use_anchor: bool
-    dyn_n_min: int
 
     # Conditioning / aux-loss state.
     uncond_base: torch.Tensor
-    softrank_on: bool
-    softrank_pool: object | None
-    softrank_min_pool: int
     cdm_on: bool
-    fdistill_on: bool
-    fdistill_bins: torch.Tensor | None  # mutated per f-distill firing
 
     # Logging / progress.
     writer: object | None
     progress_sink: ProgressSink | None
     console_steps: bool
     metrics: TurboMetrics
-    tau_profiles: list[TauBinCriticLoss]
+    tau_profile: TauBinCriticLoss
 
     # Diversity validation (None when validate_every_n_steps <= 0 / empty set).
     val_cond: torch.Tensor | None
@@ -148,13 +138,6 @@ class RunContext:
     val_clean: torch.Tensor | None
 
     start_step: int
-
-    # DMAD Phase −1 premise probe (None when dmad_probe is off).
-    dmad_probe: object | None = None
-
-    # DMAD Phase 0 disc + its metrics (None when dmad is off).
-    dmad: object | None = None
-    dmad_metrics: object | None = None
     int8_base_id: str = ""
 
 
@@ -232,12 +215,8 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         fake_alpha=cfg.fake_alpha,
         use_custom_down_autograd=cfg.use_custom_down_autograd,
         channel_scaling_alpha=cfg.channel_scaling_alpha,
-        student_step_expert_K=cfg.step_expert_K,
-        dual_pool=cfg.dual_pool,
-        div_pool_rank=cfg.div_pool_rank,
         student_down_init=cfg.student_down_init,
         fake_down_init=cfg.fake_down_init,
-        fake_tau_banks=cfg.fake_tau_banks,
         train_adaln=cfg.train_adaln,
         fake_adaln=cfg.fake_adaln,
         adaln_rank=cfg.adaln_rank,
@@ -245,15 +224,12 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         gan_feature_indices=gan_indices,
         gan_disc_hidden=cfg.gan_disc_hidden if cfg.gan_disc_hidden > 0 else None,
         gan_disc_head=cfg.gan_disc_head,
-        build_fake=not cfg.dmad,
         before_apply=convert_base,
     )
     turbo.freeze_dit()
     state_dtype = latent_dtype(model, dtype)
-    for pool in turbo.student_pools:
-        pool.to(device=device, dtype=dtype)
-    for bank in turbo.fake_banks:
-        bank.to(device=device, dtype=dtype)
+    turbo.student.to(device=device, dtype=dtype)
+    turbo.fake.to(device=device, dtype=dtype)
 
     # Crash-resume supersedes warm start entirely (seeding then overwriting would
     # waste an SVD). Resolved here so a bad --resume fails fast; applied later
@@ -286,31 +262,11 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         if cfg.student_init_weights:
             warm_start_plain_lora(turbo.student, cfg.student_init_weights, "student")
         if cfg.fake_init_weights:
-            # Both τ-banks seed from the same file (matched-critic-at-init).
-            for bi, bank in enumerate(turbo.fake_banks):
-                label = "fake" if len(turbo.fake_banks) == 1 else f"fake[bank{bi}]"
-                warm_start_plain_lora(bank, cfg.fake_init_weights, label)
+            warm_start_plain_lora(turbo.fake, cfg.fake_init_weights, "fake")
     # Disc stays fp32 (LayerNorm/Linear) for GAN-loss stability — its forward
     # casts the bf16 teacher features to float.
     if turbo.disc is not None:
         turbo.disc.to(device=device)
-    # DMAD Phase −1 probe: its disc stack is a LoRA on the DiT, so it must exist
-    # before compile like the other stacks. Off → nothing built, no RNG drawn.
-    dmad_probe = None
-    if cfg.dmad_probe:
-        from .dmad_probe import DmadProbe
-
-        dmad_probe = DmadProbe(
-            cfg, turbo=turbo, model=model, device=device, dtype=dtype
-        )
-    # DMAD Phase 0 disc: a LoRA on the DiT too, so built before compile. Off →
-    # nothing built, no RNG drawn.
-    dmad = None
-    if cfg.dmad:
-        from .dmad import DmadDisc
-
-        dmad = DmadDisc(cfg, turbo=turbo, model=model, device=device, dtype=dtype)
-
     # COMPILE LAST: apply_to above monkey-patches Linears, so compile must trace
     # the adapter forward, not the bare DiT (harness ordering invariant).
     # dynamic_seq collapses per-token-count graphs to one symbolic-seq graph,
@@ -411,9 +367,7 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
     logger.info(f"trainable: student={n_student:,}  fake={n_fake:,}")
 
     student_opt = torch.optim.AdamW(
-        # Under dual_pool this is two param groups (pool B at student_lr, pool A at
-        # div_pool_lr); single-pool collapses to one group == the flat build.
-        turbo.student_param_groups(cfg.student_lr, cfg.div_pool_lr),
+        turbo.student_params(),
         lr=cfg.student_lr,
         weight_decay=cfg.weight_decay,
         fused=torch.cuda.is_available(),
@@ -424,19 +378,17 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
     # the ``0.02·total`` LR warmup overlaps the head-start (fake enters the main
     # loop already at full LR) and the cosine still lands at loop end. Student
     # schedule is independent: ``0.02·iterations``, no head-start offset.
-    fake_opt = fake_sched = None
-    if not cfg.dmad:
-        fake_opt = torch.optim.AdamW(
-            turbo.fake_params(),
-            lr=cfg.fake_lr,
-            weight_decay=cfg.weight_decay,
-            fused=torch.cuda.is_available(),
-        )
-        fake_sched = make_scheduler(
-            fake_opt,
-            cfg.iterations * cfg.fake_steps_per_student_step + cfg.fake_warmup_steps,
-            cfg.fake_lr,
-        )
+    fake_opt = torch.optim.AdamW(
+        turbo.fake_params(),
+        lr=cfg.fake_lr,
+        weight_decay=cfg.weight_decay,
+        fused=torch.cuda.is_available(),
+    )
+    fake_sched = make_scheduler(
+        fake_opt,
+        cfg.iterations * cfg.fake_steps_per_student_step + cfg.fake_warmup_steps,
+        cfg.fake_lr,
+    )
 
     # Disc steps once per fake inner step (FastGen ties it to the fake_score
     # cadence). No head-start, so its scheduler is sized over the main loop only.
@@ -457,15 +409,8 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         n_disc = sum(p.numel() for p in turbo.disc_params())
         logger.info(f"trainable: disc={n_disc:,}")
 
-    # f-distill: per-τ EMA histogram buffer for ratio normalization.
-    # Training-only scaffolding (never saved — save_student filters to LoRA keys).
-    fdistill_on = gan_on and cfg.f_div != "rkl"
-    fdistill_bins = None
-    if fdistill_on and cfg.f_ratio_normalization:
-        fdistill_bins = torch.ones(cfg.f_bin_num, device=device)
-
     # Apply resume now that every mutable object exists (nets on-device + compiled,
-    # optimizers/schedulers built, f-distill buffer allocated). start_step = student
+    # optimizers/schedulers built). start_step = student
     # steps already completed; 0 on a fresh run.
     start_step = 0
     if resume_state is not None:
@@ -479,7 +424,6 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
             student_sched=student_sched,
             fake_sched=fake_sched,
             disc_sched=disc_sched,
-            fdistill_bins=fdistill_bins,
         )
         if start_step >= cfg.iterations:
             raise SystemExit(
@@ -494,26 +438,13 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         # full AdamW moment sets and is the largest transient in the process.
         resume_state = None
 
-    # Soft-rank caption auxiliary (_archive/proposals/turbo_caption_ranking.md): ranks
-    # the matched caption against k shuffled-caption negatives at the DP-DMD
-    # step-0 anchor. weight=0 → fully off. Negatives come
-    # from a cross-step pool (CaptionNegativePool) so the term fires even at
-    # batch_size=1; must fill to `softrank_min_pool` before firing.
-    from .softrank import CaptionNegativePool
-
-    softrank_on = cfg.softrank_weight > 0.0
-    softrank_pool = CaptionNegativePool(cfg.softrank_pool_size) if softrank_on else None
     # L_CDM off-trajectory loss. weight=0 → fully off (no extra forwards/RNG draws).
     cdm_on = cfg.cdm_weight > 0.0
-    softrank_min_pool = max(
-        cfg.softrank_k, round(cfg.softrank_warmup_ratio * cfg.softrank_pool_size)
-    )
 
     dataset = CachedDataset(
         cfg.data_dir,
         batch_size=cfg.batch_size,
         sample_ratio=cfg.sample_ratio,
-        mask_dir=cfg.mask_dir if cfg.use_masked_loss else None,
         need_pooled=False,  # DP-DMD conditions on crossattn only
     )
     # Held-out conditioning for the DAVE diversity probe — captured from the FULL
@@ -574,8 +505,6 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
     writer, run_log = create_tb_writer(
         cfg.log_dir, tb_config_text(cfg), enabled=not cfg.no_log, logger=logger
     )
-    if dmad_probe is not None:
-        dmad_probe.bind_log_dir(run_log if run_log is not None else cfg.output_dir)
     if run_log is not None:
         write_config_snapshot(
             run_log / f"{cfg.output_name}.snapshot.toml",
@@ -688,14 +617,12 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
 
     # Fake head-start skipped on resume: the restored critic is already
     # calibrated against the restored student.
-    # Under DMAD the disc head-start replaces this one; it runs once the
-    # RunContext exists (end of this function).
     data_iter = iter(dataloader)
     if start_step > 0:
         logger.info(
             "resume: skipping the fake head-start (critic restored, already warm)."
         )
-    elif not cfg.dmad:
+    else:
         data_iter = run_fake_warmup(
             warmup_steps=cfg.fake_warmup_steps,
             turbo=turbo,
@@ -712,26 +639,20 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
             cond_dtype=dtype,
             log_interval=cfg.log_interval,
             writer=writer,
-            fake_tau_banks=cfg.fake_tau_banks,
-            fake_tau_boundary=cfg.fake_tau_boundary,
         )
 
-    # base_loss='dpdmd' runs the first-step teacher anchor (diversity); 'dmd' is
-    # plain DMD2 with no anchor (student_steps may be 1).
-    use_anchor = cfg.base_loss == "dpdmd"
     # CDM dynamic schedule (arXiv:2605.06376): the student rollout grid is
     # re-sampled per iteration instead of reusing the fixed inference grid.
-    # dpdmd needs N >= 2 (step 0 is the anchor, DMD wants >= 1 refinement step).
-    # The diversity validation + inference stay on the static student_sigmas.
-    dyn_n_min = 2 if use_anchor else 1
+    # N >= 2 (step 0 is the anchor, DMD wants >= 1 refinement step). The
+    # diversity validation + inference stay on the static student_sigmas.
     if cfg.dynamic_schedule:
         logger.info(
             f"dynamic schedule ON (CDM): per-iteration rollout grid, "
-            f"N ~ U{{{dyn_n_min}..{cfg.student_steps}}}, continuous anchors "
+            f"N ~ U{{2..{cfg.student_steps}}}, continuous anchors "
             f"(t_1=1 pinned); validation/inference keep the static grid."
         )
     logger.info(
-        f"{'resuming' if start_step else 'starting'} turbo training ({cfg.base_loss}): "
+        f"{'resuming' if start_step else 'starting'} turbo training: "
         f"steps {start_step} → {cfg.iterations}"
     )
 
@@ -742,20 +663,6 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
     except Exception:  # stderr detached (pythonw) → no live line either way
         console_steps = True
     metrics = TurboMetrics(device)
-    # Per-τ-bin critic-loss profile; one per fake bank when the τ-split is on.
-    if cfg.dmad:
-        tau_profiles = []
-    elif cfg.fake_tau_banks > 1:
-        tau_profiles = [
-            TauBinCriticLoss(
-                device,
-                prefix=f"train/fake_loss_bank{b}_tau",
-                aggregate_key=f"train/fake_loss_bank{b}",
-            )
-            for b in range(cfg.fake_tau_banks)
-        ]
-    else:
-        tau_profiles = [TauBinCriticLoss(device)]
 
     ctx = RunContext(
         model=model,
@@ -776,31 +683,17 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         student_sigmas=student_sigmas,
         teacher_anchor_sigmas=teacher_anchor_sigmas,
         t_k_anchor=t_k_anchor,
-        use_anchor=use_anchor,
-        dyn_n_min=dyn_n_min,
         uncond_base=uncond_base,
-        softrank_on=softrank_on,
-        softrank_pool=softrank_pool,
-        softrank_min_pool=softrank_min_pool,
         cdm_on=cdm_on,
-        fdistill_on=fdistill_on,
-        fdistill_bins=fdistill_bins,
         writer=writer,
         progress_sink=progress_sink,
         int8_base_id=int8_base_id,
         console_steps=console_steps,
         metrics=metrics,
-        tau_profiles=tau_profiles,
+        tau_profile=TauBinCriticLoss(device),
         val_cond=val_cond,
         val_latent_shape=val_latent_shape,
         val_clean=val_clean,
         start_step=start_step,
-        dmad_probe=dmad_probe,
-        dmad=dmad,
-        dmad_metrics=DmadMetrics(device) if dmad is not None else None,
     )
-    if dmad is not None:
-        from .dmad import run_disc_warmup
-
-        ctx.data_iter = run_disc_warmup(ctx, cfg)
     return ctx

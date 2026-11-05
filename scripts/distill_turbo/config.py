@@ -20,21 +20,6 @@ from library.config.resolved import (
 from library.config.resolved import pick as _pick
 
 
-def _default_mask_dir() -> str:
-    """Shared ``mask_dir`` default (configs/preprocess.toml → base → preset).
-
-    The bespoke DP-DMD loop bypasses ``train.py``'s merge chain, so it reads the
-    same key itself.
-    """
-    try:
-        from library.config.io import load_path_overrides
-
-        value = load_path_overrides().get("mask_dir")
-    except Exception:  # noqa: BLE001 — config is optional; fall back to the default
-        value = None
-    return str(value) if value else "post_image_dataset/masks"
-
-
 logger = logging.getLogger(__name__)
 
 
@@ -93,25 +78,6 @@ def build_argparser() -> argparse.ArgumentParser:
     parser.add_argument("--student_rank", type=int, default=-1)
     parser.add_argument("--fake_rank", type=int, default=-1)
     parser.add_argument(
-        "--fake_tau_banks",
-        type=int,
-        default=-1,
-        help="τ-split critic (turbo_tau_split_critic Phase 1): 2 = two fake "
-        "LoRAs, one owning each τ band; both updates and DMD queries route by "
-        "the drawn τ vs --fake_tau_boundary. Total critic compute is unchanged "
-        "(the existing updates are partitioned, not added). Requires "
-        "batch_size=1. Default: TOML (network.fake_tau_banks, default 1 = "
-        "byte-identical single-critic loop).",
-    )
-    parser.add_argument(
-        "--fake_tau_boundary",
-        type=float,
-        default=-1.0,
-        help="Raw-τ split point for --fake_tau_banks 2: bank 0 owns [0, b), "
-        "bank 1 owns [b, 1]. Uniform t_distribution → even update split at "
-        "0.5. Default: TOML (network.fake_tau_boundary, default 0.5).",
-    )
-    parser.add_argument(
         "--use_custom_down_autograd",
         action="store_true",
         default=None,
@@ -131,27 +97,6 @@ def build_argparser() -> argparse.ArgumentParser:
         help="Per-input-channel rebalance absorbed into lora_down (student + "
         "fake). 0.0 = off, 0.5 = sqrt-balance. Default: read from TOML "
         "(top-level scalar), else 0.0 (off).",
-    )
-    parser.add_argument(
-        "--use_masked_loss",
-        action="store_true",
-        default=None,
-        help="Apply the per-image foreground mask to the student DMD2 gradient "
-        "(masked-out latents get zero student push). Fake/critic loss is "
-        "unaffected. Default: read from TOML (top-level scalar), else off.",
-    )
-    parser.add_argument(
-        "--no_use_masked_loss",
-        dest="use_masked_loss",
-        action="store_false",
-    )
-    parser.add_argument(
-        "--mask_dir",
-        type=str,
-        default=None,
-        help="Mask root for --use_masked_loss (default: TOML mask_dir, else "
-        "`mask_dir` from configs/preprocess.toml). Mirrors data_dir's subdir "
-        "layout.",
     )
     parser.add_argument("--student_lr", type=float, default=-1.0)
     parser.add_argument("--fake_lr", type=float, default=-1.0)
@@ -187,62 +132,6 @@ def build_argparser() -> argparse.ArgumentParser:
         help="Sampler step count baked into the student",
     )
     parser.add_argument(
-        "--per_step_expert",
-        dest="per_step_expert",
-        action="store_const",
-        const=True,
-        default=None,
-        help="Split the student into per-step up-heads (head k serves denoise "
-        "step k) off a shared down-proj, so the diversity (step 0) and DMD "
-        "(steps 1..N) gradients stop fighting over one set of up-weights. "
-        "K = student_steps. Output is NOT a plain LoRA (kept-live only; merge "
-        "refuses it). Default: TOML (network.per_step_expert, default false).",
-    )
-    parser.add_argument(
-        "--no_per_step_expert",
-        dest="per_step_expert",
-        action="store_false",
-    )
-    parser.add_argument(
-        "--dual_pool",
-        dest="dual_pool",
-        action="store_const",
-        const=True,
-        default=None,
-        help="Split the student into TWO always-on plain-LoRA pools on the same "
-        "frozen DiT: pool A (div_pool_rank, zero-init) receives ONLY the step-0 "
-        "diversity gradient, pool B (student_rank, warm-started) ONLY the "
-        "DMD/GAN/CDM refinement gradients. Both active every forward, so the "
-        "merged ΔW_A+ΔW_B saves as a plain stock LoRA (exact concat, no SVD). "
-        "Finishes the parameter-level div/DMD separation detach_after_first only "
-        "does at the graph level. Requires dpdmd + detach_after_first; mutually "
-        "exclusive with per_step_expert. Default: TOML "
-        "(network.dual_pool, default false).",
-    )
-    parser.add_argument(
-        "--no_dual_pool",
-        dest="dual_pool",
-        action="store_false",
-    )
-    parser.add_argument(
-        "--div_pool_rank",
-        type=int,
-        default=-1,
-        help="Rank of the diversity pool A under dual_pool (zero-init up, kaiming "
-        "down; plain LoRA only — no adaln, no channel scaling). The merged "
-        "checkpoint has rank student_rank + div_pool_rank. Default: TOML "
-        "(network.div_pool_rank, default 16).",
-    )
-    parser.add_argument(
-        "--div_pool_lr",
-        type=float,
-        default=-1.0,
-        help="AdamW LR for pool A (dual_pool). 0 = inherit student_lr. The "
-        "diversity signal is one MSE at div_weight, so A may want a hotter LR "
-        "than B — start matched (0), tune later. Default: TOML "
-        "(network.div_pool_lr, default 0.0).",
-    )
-    parser.add_argument(
         "--dm_x0_norm",
         dest="dm_x0_norm",
         action="store_const",
@@ -261,20 +150,6 @@ def build_argparser() -> argparse.ArgumentParser:
         default=-1.0,
         help="clamp_min for the x0-norm denominator (latent scale); only active "
         "with --dm_x0_norm.",
-    )
-    parser.add_argument(
-        "--dmd_grad_step",
-        type=str,
-        default=None,
-        choices=("all", "last", "random"),
-        help="Which rollout step(s) carry gradient in plain DMD2 (base_loss='dmd'); "
-        "the rest are backward-simulated under no_grad (DMD2's train/inference "
-        "input-match, Yin et al. 2024). 'all' = full-rollout BPTT (holds N forward "
-        "graphs). 'last' = only the final, cleanest-σ step (memory-flat, but the "
-        "noisy steps are never directly supervised). 'random' = canonical DMD2 "
-        "multistep: sample g~U{0..N-1}, grad ONLY step g, supervise its one-step "
-        "x0-prediction — memory-flat AND spreads supervision over every grid point. "
-        "Default: TOML (dmd.grad_step, default 'all').",
     )
     parser.add_argument("--blocks_to_swap", type=int, default=0)
     parser.add_argument("--attn_mode", type=str, default="flash")
@@ -407,16 +282,6 @@ def build_argparser() -> argparse.ArgumentParser:
         "(matches inference). Default: TOML (sampling.flow_shift, default 3.0).",
     )
 
-    parser.add_argument(
-        "--base_loss",
-        type=str,
-        default=None,
-        choices=("dpdmd", "dmd"),
-        help="Objective: 'dpdmd' (first-step teacher anchor, default) or 'dmd' "
-        "(plain DMD2 — no anchor, allows student_steps=1). Default: TOML "
-        "(base_loss, default 'dpdmd').",
-    )
-
     # DMD2 teacher-feature GAN (off by default).
     parser.add_argument(
         "--gan_loss_weight_gen",
@@ -477,56 +342,6 @@ def build_argparser() -> argparse.ArgumentParser:
         "Default: TOML (gan.warmup_steps, default 0).",
     )
 
-    # Soft-rank caption-discrimination auxiliary (off by default).
-    parser.add_argument(
-        "--softrank_weight",
-        type=float,
-        default=-1.0,
-        help="λ on the step-0 soft-rank caption loss (pushes the matched caption "
-        "to explain the diversity anchor better than k mismatched ones). 0 "
-        "disables the whole path (byte-identical DP-DMD). First live value: 0.05. "
-        "Default: TOML (softrank.weight, default 0).",
-    )
-    parser.add_argument(
-        "--softrank_k",
-        type=int,
-        default=-1,
-        help="Number of shuffled-caption negatives per firing (k extra no_grad "
-        "student forwards). Must be >= 2. Default: TOML (softrank.k, default 2).",
-    )
-    parser.add_argument(
-        "--softrank_every_n",
-        type=int,
-        default=-1,
-        help="Fire the soft-rank term every N student steps (amortizes the k "
-        "extra forwards). Default: TOML (softrank.every_n, default 4).",
-    )
-    parser.add_argument(
-        "--softrank_softness",
-        type=float,
-        default=-1.0,
-        help="Temperature τ of the soft-rank relaxation (smaller = closer to the "
-        "hard integer rank). Default: TOML (softrank.softness, default 0.1).",
-    )
-    parser.add_argument(
-        "--softrank_pool_size",
-        type=int,
-        default=-1,
-        help="Capacity of the cross-step caption pool the negatives are drawn from "
-        "(lets the term fire at batch_size=1). Must be >= k. Each caption is ~1 MiB "
-        "(bf16 [512,1024]), so the pool costs pool_size MiB of VRAM. Default: TOML "
-        "(softrank.pool_size, default 64).",
-    )
-    parser.add_argument(
-        "--softrank_warmup_ratio",
-        type=float,
-        default=-1.0,
-        help="Fraction of the caption pool that must fill before the term fires "
-        "(so negatives are drawn from a representative shuffle, not the last few "
-        "captions). 1.0 = wait for a full pool; 0 = fire as soon as k are cached. "
-        "Default: TOML (softrank.warmup_ratio, default 1.0).",
-    )
-
     # CDM off-trajectory loss (L_CDM; off by default).
     parser.add_argument(
         "--cdm_grad_ckpt",
@@ -577,181 +392,6 @@ def build_argparser() -> argparse.ArgumentParser:
         "to_zero).",
     )
 
-    # DMAD Phase −1 premise probe (measure-only; off by default).
-    parser.add_argument(
-        "--dmad_probe",
-        action="store_const",
-        const=True,
-        default=None,
-        help="Train a side discriminator (own LoRA stack + head T, balanced BCE on "
-        "teacher vs student samples) and log how its generator gradient aligns "
-        "with the DM signal. Never applied to the student; training numerics are "
-        "unchanged. docs/anima/proposal/turbo_dmad.md Phase −1. Default: TOML "
-        "(dmad_probe.enabled, default false).",
-    )
-    parser.add_argument(
-        "--dmad_probe_lr",
-        type=float,
-        default=None,
-        help="Probe disc LR (LoRA stack + head, constant). Default: TOML "
-        "(dmad_probe.lr, default 5e-5).",
-    )
-    parser.add_argument(
-        "--dmad_probe_grad_clip",
-        type=float,
-        default=None,
-        help="Probe disc grad-norm clip; 0 disables. Default: TOML "
-        "(dmad_probe.grad_clip, default the run's optim.grad_clip).",
-    )
-    parser.add_argument(
-        "--dmad_probe_r1_weight",
-        type=float,
-        default=None,
-        help="Approximate-R1 (APT) weight on the probe disc's teacher branch: "
-        "MSE between its logits at x and x + r1_alpha·δ; 0 disables. Default: "
-        "TOML (dmad_probe.r1_weight, default 0).",
-    )
-    parser.add_argument(
-        "--dmad_probe_cold_start",
-        action="store_const",
-        const=True,
-        default=None,
-        help="Start the probe disc stack from zero-init LoRA instead of "
-        "fake_init_weights. Default: TOML (dmad_probe.warm_start, default true).",
-    )
-    parser.add_argument(
-        "--dmad_probe_disc_steps",
-        type=int,
-        default=None,
-        help="Probe disc updates per step, each at a fresh (τ, ε) on the same "
-        "teacher/student pair. Default: TOML (dmad_probe.disc_steps, default 1).",
-    )
-    parser.add_argument(
-        "--dmad_probe_window",
-        type=int,
-        default=None,
-        help="Probe disc batch: each update accumulates over the newest this-many "
-        "teacher/student pairs (a replay window, one fresh (τ, ε) per pair). "
-        "Default: TOML (dmad_probe.window, default 1).",
-    )
-    parser.add_argument(
-        "--dmad_probe_scalar_logit",
-        action="store_const",
-        const=True,
-        default=None,
-        help="Average the token head's logits into one logit per sample before "
-        "the BCE (Prop. 1's sample-level log-ratio) instead of a BCE per token. "
-        "Default: TOML (dmad_probe.scalar_logit, default false).",
-    )
-    parser.add_argument(
-        "--dmad_probe_stop_on_collapse",
-        type=int,
-        default=None,
-        help="Stop the run once the probe disc's |margin| < 1e-2 for this many "
-        "consecutive steps; 0 = never. Default: TOML "
-        "(dmad_probe.stop_on_collapse, default 0).",
-    )
-
-    # DMAD Phase 0: a discriminator replaces the DM term and the critic (off by
-    # default; docs/anima/proposal/turbo_dmad.md § Phase 0).
-    parser.add_argument(
-        "--dmad",
-        action="store_const",
-        const=True,
-        default=None,
-        help="Replace the DM term and the fake critic with DMAD: a balanced-BCE "
-        "disc (cold LoRA stack on the teacher + head T: teacher samples vs "
-        "student, head R: real latents vs student), whose input gradient, "
-        "RMS-normalized per sample, is the student's grad_signal (and L_CDM's "
-        "when cdm.weight > 0). Needs gan.weight_gen = 0. Default: TOML "
-        "(dmad.enabled, default false).",
-    )
-    parser.add_argument(
-        "--dmad_lambda_t",
-        type=float,
-        default=None,
-        help="Head T weight in the student signal; 0 drops head T and its disc "
-        "branch. Default: TOML (dmad.lambda_t, default 150).",
-    )
-    parser.add_argument(
-        "--dmad_lambda_r",
-        type=float,
-        default=None,
-        help="Head R weight in the student signal; 0 drops head R and its "
-        "real-data branch. Default: TOML (dmad.lambda_r, default 150).",
-    )
-    parser.add_argument(
-        "--dmad_signal_rms",
-        type=float,
-        default=None,
-        help="Per-sample RMS the disc gradient is normalized to before it is used "
-        "as grad_signal; 0 = off (raw lambda-weighted gradient, as the paper). "
-        "Default: TOML (dmad.signal_rms, default 0.18).",
-    )
-    parser.add_argument(
-        "--dmad_lr",
-        type=float,
-        default=None,
-        help="Disc LR (LoRA stack + heads, constant). Default: TOML (dmad.lr, "
-        "default 4e-5).",
-    )
-    parser.add_argument(
-        "--dmad_grad_clip",
-        type=float,
-        default=None,
-        help="Disc grad-norm clip; 0 = unclipped. Default: TOML (dmad.grad_clip, "
-        "default 0).",
-    )
-    parser.add_argument(
-        "--dmad_window",
-        type=int,
-        default=None,
-        help="Replay pairs per disc update (newest first, a fresh (τ, ε) each). "
-        "Default: TOML (dmad.window, default 4).",
-    )
-    parser.add_argument(
-        "--dmad_disc_warmup_steps",
-        type=int,
-        default=None,
-        help="Disc-only updates before the main loop (student untouched). "
-        "Default: TOML (dmad.disc_warmup_steps, default 0).",
-    )
-    parser.add_argument(
-        "--dmad_gap_routing",
-        action="store_const",
-        const=True,
-        default=None,
-        help="Gap routing (official DMAD): head T's weight per critic-σ decile "
-        "band is sigmoid((median − gap_b)/gap_tau) / E_w, with gap_b the "
-        "bias-corrected EMA (0.99) of h_R(real) − h_R(teacher). Engages once 5 "
-        "bands have >= 10 updates; weight 1 before that. Default: TOML "
-        "(dmad.gap_routing, default false).",
-    )
-    parser.add_argument(
-        "--dmad_gap_tau",
-        type=float,
-        default=None,
-        help="Gap-routing temperature. Default: TOML (dmad.gap_tau, default 2.0).",
-    )
-    parser.add_argument(
-        "--dmad_feature_block_idx",
-        type=int,
-        default=None,
-        help="Block whose tokens the heads read; -1 = middle block. Default: "
-        "TOML (dmad.feature_block_idx, default -1).",
-    )
-
-    # f-distill reweighting (needs the GAN disc).
-    parser.add_argument(
-        "--f_div",
-        type=str,
-        default=None,
-        choices=("rkl", "kl", "js", "sf", "neyman", "sh", "jf"),
-        help="f-divergence whose weight h=f'(r) reweights the DMD signal "
-        "(r=exp(disc_logits) from idea 1). 'rkl' ≡ uniform h ≡ plain DMD2 (no-op). "
-        "Any other value REQUIRES gan_loss_weight_gen > 0. Default: TOML "
-        "(f_distill.f_div, default 'rkl').",
-    )
     return parser
 
 
@@ -785,39 +425,21 @@ class TurboConfig:
     fake_rank: int
     student_alpha: float
     fake_alpha: float
-    # τ-split critic: 1 = single fake; 2 = dual banks split at fake_tau_boundary
-    # (bank 0 owns [0, b)). Requires batch_size=1.
-    fake_tau_banks: int
-    fake_tau_boundary: float
     attn_mode: str
     use_custom_down_autograd: bool
     # Per-input-channel rebalance on each lora_down. A no-op at init that merges
     # out at save, so it only conditions gradients.
     channel_scaling_alpha: float
-    # Per-step expert (dual-B-head student): step_expert_K = student_steps, head
-    # k serves denoise step k. Off → single-head student.
-    per_step_expert: bool
-    step_expert_K: int
-    # Dual-pool gradient routing (_archive/proposals/turbo_dual_pool_grad_routing.md):
-    # two always-on plain-LoRA pools — pool A (div_pool_rank) sees only the
-    # step-0 diversity gradient, pool B (student_rank) only the DMD/GAN/CDM
-    # refinement gradients. Merged ΔW_A+ΔW_B saves as one plain LoRA. Requires
-    # dpdmd + detach_after_first; mutually exclusive with per_step_expert. Off →
-    # single-pool student.
-    dual_pool: bool
-    div_pool_rank: int
-    div_pool_lr: float  # 0 = inherit student_lr
     # SVD-Down init for the plain-LoRA student (down_init="weight_svd"): seed
-    # lora_down from W0's top-r right singular vectors, scale-matched. Mutually
-    # exclusive with per_step_expert (guarded in TurboDMDNetwork).
+    # lora_down from W0's top-r right singular vectors, scale-matched.
     student_down_init: str
-    # Same lever on the fake/critic (always a plain single-head LoRA).
+    # Same lever on the fake/critic.
     fake_down_init: str
     # Warm start: initialize the stack's ΔW from a plain LoRA checkpoint
     # (e.g. an official-release delta extracted by
     # scripts/toolkits/extract_delta_lora.py), SVD-truncated to the stack's rank.
-    # Empty = default init. Incompatible with per_step_expert /
-    # down_init="weight_svd" (those parameterize or seed what this overwrites).
+    # Empty = default init. Incompatible with down_init="weight_svd" (it seeds
+    # what this overwrites).
     student_init_weights: str
     fake_init_weights: str
     # Target the AdaLN modulation up-projections (adaln_up_{branch}) on both the
@@ -845,10 +467,6 @@ class TurboConfig:
     partitioner_recompute_views: bool
     partitioner_aggressive_recomputation: bool
 
-    # Masked loss
-    use_masked_loss: bool
-    mask_dir: str
-
     # DP-DMD knobs
     k_anchor: int
     teacher_anchor_steps: int
@@ -861,7 +479,6 @@ class TurboConfig:
     teacher_cfg: float
     dm_x0_norm: bool
     norm_floor: float
-    dmd_grad_step: str  # "all" | "last" | "random"
     # CDM dynamic continuous schedule (arXiv:2605.06376): re-sample the student
     # rollout grid every iteration (N ~ U{..student_steps}, continuous anchors)
     # instead of training only on the fixed inference grid. Validation/inference
@@ -880,10 +497,7 @@ class TurboConfig:
     mfd_max_steps: int
     mfd_interval: str  # "to_zero" | "uniform"
 
-    # Base objective selector
-    base_loss: str
-
-    # DMD2 teacher-feature GAN + f-distill reweighting
+    # DMD2 teacher-feature GAN
     gan_loss_weight_gen: float
     gan_feature_block_idx: int  # -1 → middle block (resolved in distill.py)
     gan_disc_lr: float
@@ -895,21 +509,6 @@ class TurboConfig:
     gan_r1_alpha: float
     gan_use_same_t_noise: bool
     gan_grad_ckpt: bool  # checkpoint ONLY the grad-bearing GAN gen forward
-    f_div: str
-    f_ratio_lower: float
-    f_ratio_upper: float
-    f_ratio_ema_rate: float
-    f_bin_num: int
-    f_ratio_normalization: bool
-
-    # Soft-rank caption-discrimination auxiliary
-    softrank_weight: float
-    softrank_k: int
-    softrank_every_n: int
-    softrank_softness: float
-    softrank_pool_size: int
-    softrank_warmup_ratio: float
-
     # Optimizer + scheduler
     student_lr: float
     fake_lr: float
@@ -937,37 +536,37 @@ class TurboConfig:
     dit_nonquant_path: str | None = None
     stream: str = "bf16"  # bf16 | fp32
 
-    # DMAD Phase −1 premise probe (scripts/distill_turbo/dmad_probe.py)
-    dmad_probe: bool = False
-    dmad_probe_lr: float = 5e-5
-    dmad_probe_grad_clip: float = 1.0  # 0 → unclipped
-    dmad_probe_disc_steps: int = 1  # disc updates per step on one pair
-    dmad_probe_window: int = 1  # pairs accumulated per disc update
-    dmad_probe_scalar_logit: bool = False  # mean token logits before the BCE
-    dmad_probe_r1_weight: float = 0.0
-    dmad_probe_r1_alpha: float = 0.1
-    dmad_probe_warm_start: bool = True  # stack from fake_init_weights
-    dmad_probe_stop_on_collapse: int = 0  # consecutive flat-margin steps; 0 → off
-    dmad_probe_feature_block_idx: int = -1  # -1 → middle block
-    dmad_probe_head: str = "token"  # "pooled" | "token"
-    dmad_probe_ceiling: bool = True  # second independent DM draw per probe
 
-    # DMAD Phase 0 (scripts/distill_turbo/dmad.py): disc replaces DM + critic
-    dmad: bool = False
-    dmad_lambda_t: float = 150.0  # 0 → no head T / teacher branch
-    dmad_lambda_r: float = 150.0  # 0 → no head R / real branch
-    dmad_signal_rms: float = 0.18  # per-sample RMS of the student signal; 0 = raw
-    dmad_lr: float = 4e-5
-    dmad_grad_clip: float = 0.0  # 0 → unclipped
-    dmad_window: int = 4  # replay pairs per disc update
-    dmad_disc_warmup_steps: int = 0
-    dmad_gap_routing: bool = False  # head T weight per σ band from the h_R gap
-    dmad_gap_tau: float = 2.0
-    dmad_feature_block_idx: int = -1  # -1 → middle block
+# Keys of removed features (2026-11-05) → the only value the loop still runs. A
+# TOML that asks for anything else is refused instead of silently running the
+# DP-DMD / MFD recipe without it.
+_REMOVED_KEYS = {
+    "base_loss": "dpdmd",
+    "dmd.grad_step": "random",
+    "network.per_step_expert": False,
+    "network.dual_pool": False,
+    "network.fake_tau_banks": 1,
+    "use_masked_loss": False,
+    "softrank.weight": 0.0,
+    "f_distill.f_div": "rkl",
+    "dmad.enabled": False,
+    "dmad_probe.enabled": False,
+}
+
+
+def _refuse_removed_keys(cfg: dict) -> None:
+    for key, allowed in _REMOVED_KEYS.items():
+        value = _flatten(cfg, key, allowed)
+        if value != allowed:
+            raise ValueError(
+                f"{key} = {value!r}: this feature was removed from the turbo loop "
+                f"(only {allowed!r} runs). Drop the key."
+            )
 
 
 def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     """Apply CLI/TOML/default precedence and run sanity checks."""
+    _refuse_removed_keys(cfg)
 
     # Paths
     dit_path = _pick(
@@ -1002,32 +601,6 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     fake_rank = int(_pick(args.fake_rank, cfg, "network.fake_rank", 48))
     student_alpha = float(_flatten(cfg, "network.student_alpha", student_rank))
     fake_alpha = float(_flatten(cfg, "network.fake_alpha", fake_rank))
-    fake_tau_banks = int(_pick(args.fake_tau_banks, cfg, "network.fake_tau_banks", 1))
-    fake_tau_boundary = float(
-        _pick(args.fake_tau_boundary, cfg, "network.fake_tau_boundary", 0.5)
-    )
-    if fake_tau_banks not in (1, 2):
-        raise ValueError(
-            f"network.fake_tau_banks={fake_tau_banks}: expected 1 (single critic) "
-            "or 2 (τ-split)."
-        )
-    if not (0.0 < fake_tau_boundary <= 1.0):
-        raise ValueError(
-            f"network.fake_tau_boundary={fake_tau_boundary}: must be in (0, 1]."
-        )
-    if fake_tau_banks == 2 and batch_size != 1:
-        # τ is per-sample; B=1 makes the routing decision a scalar. B>1 would
-        # need a split-batch double forward (not implemented).
-        raise ValueError(
-            f"network.fake_tau_banks=2 requires batch_size=1 (got {batch_size}): "
-            "the bank routing is by the batch's scalar τ."
-        )
-    if fake_tau_banks == 2:
-        logger.info(
-            f"τ-split critic ON: 2 fake banks, boundary={fake_tau_boundary} "
-            "(bank 0 = low τ). Updates AND DMD queries route by drawn τ; total "
-            "critic compute unchanged."
-        )
     student_down_init = str(_flatten(cfg, "network.student_down_init", "kaiming"))
     if student_down_init not in ("kaiming", "weight_svd"):
         raise ValueError(
@@ -1053,13 +626,6 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         _pick(args.channel_scaling_alpha, cfg, "channel_scaling_alpha", 0.0)
     )
 
-    # Masked loss
-    if args.use_masked_loss is None:
-        use_masked_loss = bool(_flatten(cfg, "use_masked_loss", False))
-    else:
-        use_masked_loss = bool(args.use_masked_loss)
-    mask_dir = _pick(args.mask_dir, cfg, "mask_dir", _default_mask_dir())
-
     # DMD core
     student_steps = int(_pick(args.student_steps, cfg, "dmd.student_steps", 4))
     teacher_cfg = float(_flatten(cfg, "dmd.teacher_cfg", 4.0))
@@ -1067,11 +633,8 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     # policies, not additive; (b) ≈ "drop the τ-weight, magnitude-normalize."
     dm_x0_norm = bool(_pick(args.dm_x0_norm, cfg, "dmd.dm_x0_norm", False))
     norm_floor = float(_pick(args.norm_floor, cfg, "dmd.norm_floor", 0.05))
-    dmd_grad_step = str(_pick(args.dmd_grad_step, cfg, "dmd.grad_step", "all"))
     # Default off so existing turbo snapshots reproduce.
     dynamic_schedule = bool(_flatten(cfg, "dmd.dynamic_schedule", False))
-
-    base_loss = _pick(args.base_loss, cfg, "base_loss", "dpdmd")
 
     # weight=0 keeps the whole L_CDM path off (no extra forwards or RNG draws).
     cdm_weight = float(_pick(args.cdm_weight, cfg, "cdm.weight", 0.0))
@@ -1108,51 +671,6 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     # backprop into x_pred → student, so recompute reclaims that peak VRAM.
     # Default on — numerically equivalent (frozen teacher, no dropout).
     gan_grad_ckpt = bool(_flatten(cfg, "gan.grad_ckpt", True))
-    f_div = _pick(args.f_div, cfg, "f_distill.f_div", "rkl")
-    f_ratio_lower = float(_flatten(cfg, "f_distill.ratio_lower", 0.1))
-    f_ratio_upper = float(_flatten(cfg, "f_distill.ratio_upper", 20.0))
-    f_ratio_ema_rate = float(_flatten(cfg, "f_distill.ratio_ema_rate", 0.0))
-    f_bin_num = int(_flatten(cfg, "f_distill.bin_num", 10))
-    f_ratio_normalization = bool(_flatten(cfg, "f_distill.ratio_normalization", True))
-
-    # weight=0 keeps the whole soft-rank path off (no extra forwards, RNG draws
-    # or negatives loaded).
-    softrank_weight = float(_pick(args.softrank_weight, cfg, "softrank.weight", 0.0))
-    softrank_k = int(_pick(args.softrank_k, cfg, "softrank.k", 2))
-    softrank_every_n = int(_pick(args.softrank_every_n, cfg, "softrank.every_n", 4))
-    softrank_softness = float(
-        _pick(args.softrank_softness, cfg, "softrank.softness", 0.1)
-    )
-    softrank_pool_size = int(
-        _pick(args.softrank_pool_size, cfg, "softrank.pool_size", 64)
-    )
-    softrank_warmup_ratio = float(
-        _pick(args.softrank_warmup_ratio, cfg, "softrank.warmup_ratio", 1.0)
-    )
-
-    # step_expert_K = student_steps so head k ↔ denoise step k by construction.
-    # K==1 collapses to a plain LoRA, so the network factory ignores it there.
-    if args.per_step_expert is None:
-        per_step_expert = bool(_flatten(cfg, "network.per_step_expert", False))
-    else:
-        per_step_expert = bool(args.per_step_expert)
-    step_expert_K = student_steps if per_step_expert else 0
-
-    if args.dual_pool is None:
-        dual_pool = bool(_flatten(cfg, "network.dual_pool", False))
-    else:
-        dual_pool = bool(args.dual_pool)
-    div_pool_rank = int(_pick(args.div_pool_rank, cfg, "network.div_pool_rank", 16))
-    div_pool_lr = float(_pick(args.div_pool_lr, cfg, "network.div_pool_lr", 0.0))
-    if dual_pool and div_pool_rank < 1:
-        raise ValueError(
-            f"network.div_pool_rank={div_pool_rank}: must be >= 1 under dual_pool."
-        )
-    if dual_pool and div_pool_lr < 0.0:
-        raise ValueError(
-            f"network.div_pool_lr={div_pool_lr}: must be >= 0 (0 = inherit student_lr)."
-        )
-
     student_init_weights = str(_flatten(cfg, "network.student_init_weights", ""))
     fake_init_weights = str(_flatten(cfg, "network.fake_init_weights", ""))
     train_adaln = bool(_flatten(cfg, "network.train_adaln", False))
@@ -1163,19 +681,15 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     adaln_alpha = float(_flatten(cfg, "network.adaln_alpha", 0.0))
     if adaln_alpha > 0 and not train_adaln:
         raise SystemExit("network.adaln_alpha > 0 requires network.train_adaln = true")
-    for name, path, conflicts in (
-        (
-            "student",
-            student_init_weights,
-            per_step_expert or student_down_init != "kaiming",
-        ),
-        ("fake", fake_init_weights, fake_down_init != "kaiming"),
+    for name, path, down_init in (
+        ("student", student_init_weights, student_down_init),
+        ("fake", fake_init_weights, fake_down_init),
     ):
-        if path and conflicts:
+        if path and down_init != "kaiming":
             raise ValueError(
                 f"network.{name}_init_weights is incompatible with "
-                f"per_step_expert / {name}_down_init='weight_svd' — the warm "
-                "start overwrites what those parameterize or seed."
+                f"{name}_down_init='weight_svd' — the warm start overwrites what "
+                "it seeds."
             )
         if path and not os.path.exists(path):
             raise ValueError(f"network.{name}_init_weights: {path!r} not found.")
@@ -1213,319 +727,35 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     t_distribution = _flatten(cfg, "sampling.t_distribution", "uniform")
     sigmoid_scale = float(_flatten(cfg, "sampling.sigmoid_scale", 1.0))
 
-    if base_loss not in ("dpdmd", "dmd"):
-        raise ValueError(f"base_loss={base_loss!r}: expected 'dpdmd' or 'dmd'")
-    use_anchor = base_loss == "dpdmd"
-
-    if use_anchor and student_steps < 2:
+    if student_steps < 2:
         raise ValueError(
             f"DP-DMD requires dmd.student_steps >= 2 (got {student_steps}): step 1 "
             "is diversity-supervised + detached, so at least one further step must "
-            "carry the DMD loss. (Use base_loss='dmd' for a 1-step student.)"
+            "carry the DMD loss."
         )
-    if not use_anchor and student_steps < 1:
-        raise ValueError(
-            f"base_loss='dmd' requires dmd.student_steps >= 1 (got {student_steps})."
-        )
-    if use_anchor and not (1 <= k_anchor < teacher_anchor_steps):
+    if not (1 <= k_anchor < teacher_anchor_steps):
         raise ValueError(
             f"dpdmd.k_anchor={k_anchor} must satisfy 1 <= k_anchor < "
             f"teacher_anchor_steps={teacher_anchor_steps}."
         )
     if div_weight < 0.0:
         raise ValueError(f"dpdmd.div_weight={div_weight}: must be >= 0")
-    if dmd_grad_step not in ("all", "last", "random"):
-        raise ValueError(
-            f"dmd.grad_step={dmd_grad_step!r}: expected 'all', 'last', or 'random'"
-        )
-    if (
-        not use_anchor
-        and student_steps > 1
-        and not bool(args.grad_ckpt)
-        and dmd_grad_step == "all"
-    ):
-        logger.warning(
-            "base_loss='dmd' with student_steps=%d, grad_ckpt OFF, "
-            "dmd.grad_step='all': plain DMD2 has no first-step anchor to detach, "
-            "so the student backward holds the FULL %d-step rollout graph (≈%dx the "
-            "activation memory of dpdmd@%d). Use student_steps=1 (the replacement "
-            "arm), dmd.grad_step='random'/'last' (memory-flat), or --grad_ckpt.",
-            student_steps,
-            student_steps,
-            student_steps,
-            student_steps,
-        )
-    if dmd_grad_step == "last" and per_step_expert:
-        logger.warning(
-            "dmd.grad_step='last' with per_step_expert=True: only the final step's "
-            "head receives gradient, so heads 0..N-2 never train. Use "
-            "dmd.grad_step='random' (each iteration trains the sampled step's head) "
-            "or 'all'."
-        )
-    if dmd_grad_step == "last":
-        logger.info(
-            "dmd.grad_step='last': rollout steps 0..N-2 run no_grad; only the final "
-            "step backprops to x_pred (memory-flat at any student_steps)."
-        )
-    elif dmd_grad_step == "random" and use_anchor:
-        logger.info(
-            "dmd.grad_step='random' under base_loss='dpdmd': step 0 keeps the "
-            "diversity anchor (detached); each iteration then samples a refinement "
-            "step g~U{1..N-1}, backward-simulates the 1..g-1 prefix under no_grad, "
-            "and grads only step g's one-step x0-prediction (memory-flat; supervises "
-            "every refinement grid point + trains every head under per_step_expert, "
-            "vs 'last' which only ever grads the clean tail)."
-        )
-    elif dmd_grad_step == "random":
-        logger.info(
-            "dmd.grad_step='random': canonical DMD2 multistep — each iteration "
-            "samples g~U{0..N-1}, backward-simulates to g under no_grad, and grads "
-            "only step g's one-step x0-prediction (memory-flat; supervises every "
-            "grid point, not just the clean tail)."
-        )
     if gan_loss_weight_gen < 0.0:
         raise ValueError(f"gan.weight_gen={gan_loss_weight_gen}: must be >= 0")
-    if softrank_weight < 0.0:
-        raise ValueError(f"softrank.weight={softrank_weight}: must be >= 0")
-    if softrank_weight > 0.0:
-        if base_loss != "dpdmd":
-            # The term sites on the DP-DMD step-0 diversity anchor (v_target); plain
-            # DMD2 has no anchor, so there's nothing to rank against.
-            raise ValueError(
-                f"softrank.weight > 0 requires base_loss='dpdmd' (got {base_loss!r}) "
-                "— the soft-rank term rides the step-0 diversity anchor."
-            )
-        if softrank_k < 2:
-            # softrank needs >= 2 candidates for a non-degenerate rank.
-            raise ValueError(f"softrank.k={softrank_k}: must be >= 2")
-        if softrank_every_n < 1:
-            raise ValueError(f"softrank.every_n={softrank_every_n}: must be >= 1")
-        if softrank_pool_size < softrank_k:
-            # The pool must hold at least k captions or it never reaches `ready`.
-            raise ValueError(
-                f"softrank.pool_size={softrank_pool_size}: must be >= "
-                f"softrank.k={softrank_k}."
-            )
-        if not (0.0 <= softrank_warmup_ratio <= 1.0):
-            raise ValueError(
-                f"softrank.warmup_ratio={softrank_warmup_ratio}: must be in [0, 1]."
-            )
-        if int(args.blocks_to_swap) > 0:
-            # Block swap desyncs on the k extra student forwards; turbo keeps the
-            # DiT resident by default. Fail at config time.
-            raise ValueError(
-                "softrank.weight > 0 requires blocks_to_swap=0 — the extra "
-                "caption-negative forwards are unaudited under block swap."
-            )
-        logger.info(
-            "soft-rank caption auxiliary ON (turbo_caption_ranking.md Phase 1): "
-            f"weight={softrank_weight}, k={softrank_k}, every_n={softrank_every_n}, "
-            f"softness={softrank_softness}, pool_size={softrank_pool_size} "
-            f"(~{softrank_pool_size} MiB), warmup_ratio={softrank_warmup_ratio}."
-        )
-    dmad_probe = bool(_pick(args.dmad_probe, cfg, "dmad_probe.enabled", False))
-    dmad_probe_lr = float(_pick(args.dmad_probe_lr, cfg, "dmad_probe.lr", 5e-5))
-    dmad_probe_grad_clip = float(
-        _pick(args.dmad_probe_grad_clip, cfg, "dmad_probe.grad_clip", grad_clip)
-    )
-    dmad_probe_disc_steps = int(
-        _pick(args.dmad_probe_disc_steps, cfg, "dmad_probe.disc_steps", 1)
-    )
-    dmad_probe_window = int(_pick(args.dmad_probe_window, cfg, "dmad_probe.window", 1))
-    dmad_probe_scalar_logit = bool(
-        _pick(args.dmad_probe_scalar_logit, cfg, "dmad_probe.scalar_logit", False)
-    )
-    dmad_probe_r1_weight = float(
-        _pick(args.dmad_probe_r1_weight, cfg, "dmad_probe.r1_weight", 0.0)
-    )
-    dmad_probe_r1_alpha = float(_flatten(cfg, "dmad_probe.r1_alpha", 0.1))
-    dmad_probe_warm_start = (
-        False
-        if args.dmad_probe_cold_start
-        else bool(_flatten(cfg, "dmad_probe.warm_start", True))
-    )
-    dmad_probe_stop_on_collapse = int(
-        _pick(args.dmad_probe_stop_on_collapse, cfg, "dmad_probe.stop_on_collapse", 0)
-    )
-    dmad_probe_feature_block_idx = int(
-        _flatten(cfg, "dmad_probe.feature_block_idx", -1)
-    )
-    dmad_probe_head = str(_flatten(cfg, "dmad_probe.head", "token"))
-    dmad_probe_ceiling = bool(_flatten(cfg, "dmad_probe.ceiling", True))
-    if dmad_probe:
-        if base_loss != "dpdmd":
-            raise ValueError(
-                "dmad_probe needs base_loss='dpdmd': its teacher samples finish "
-                "the step-0 anchor rollout."
-            )
-        if int(args.blocks_to_swap) > 0:
-            raise ValueError(
-                "dmad_probe requires blocks_to_swap=0 — the probe's extra "
-                "forwards are unaudited under block swap."
-            )
-        if dmad_probe_r1_weight < 0.0:
-            raise ValueError(
-                f"dmad_probe.r1_weight={dmad_probe_r1_weight}: must be >= 0"
-            )
-        if dmad_probe_disc_steps < 1:
-            raise ValueError(
-                f"dmad_probe.disc_steps={dmad_probe_disc_steps}: must be >= 1"
-            )
-        if dmad_probe_window < 1:
-            raise ValueError(f"dmad_probe.window={dmad_probe_window}: must be >= 1")
-        if dmad_probe_head not in ("pooled", "token"):
-            raise ValueError(
-                f"dmad_probe.head={dmad_probe_head!r}: expected 'pooled' or 'token'"
-            )
-        logger.info(
-            "DMAD Phase −1 probe ON (measure-only): "
-            f"lr={dmad_probe_lr}, grad_clip={dmad_probe_grad_clip}, "
-            f"disc_steps={dmad_probe_disc_steps}, window={dmad_probe_window}, "
-            f"scalar_logit={dmad_probe_scalar_logit}, "
-            f"r1_weight={dmad_probe_r1_weight} (alpha {dmad_probe_r1_alpha}), "
-            f"warm_start={dmad_probe_warm_start}, "
-            f"stop_on_collapse={dmad_probe_stop_on_collapse}, "
-            f"feature_block_idx={dmad_probe_feature_block_idx} "
-            f"(-1 = middle), head={dmad_probe_head}, ceiling={dmad_probe_ceiling}."
-        )
-    dmad = bool(_pick(args.dmad, cfg, "dmad.enabled", False))
     int8 = str(_pick(args.int8, cfg, "int8", "off"))
-    if int8 != "off" and (dmad or dmad_probe):
-        raise ValueError(
-            "int8 does not run dmad / dmad_probe: their stacks are built after "
-            "the conversion dropped the base weights."
-        )
     stream = str(_pick(args.stream, cfg, "stream", "bf16"))
-    if stream == "fp32" and (dmad or dmad_probe):
-        raise ValueError(
-            "stream fp32 does not run dmad / dmad_probe: their loops have not been "
-            "moved to the fp32 sampler state."
-        )
-    dmad_lambda_t = float(_pick(args.dmad_lambda_t, cfg, "dmad.lambda_t", 150.0))
-    dmad_lambda_r = float(_pick(args.dmad_lambda_r, cfg, "dmad.lambda_r", 150.0))
-    dmad_signal_rms = float(_pick(args.dmad_signal_rms, cfg, "dmad.signal_rms", 0.18))
-    dmad_lr = float(_pick(args.dmad_lr, cfg, "dmad.lr", 4e-5))
-    dmad_grad_clip = float(_pick(args.dmad_grad_clip, cfg, "dmad.grad_clip", 0.0))
-    dmad_window = int(_pick(args.dmad_window, cfg, "dmad.window", 4))
-    dmad_disc_warmup_steps = int(
-        _pick(args.dmad_disc_warmup_steps, cfg, "dmad.disc_warmup_steps", 0)
-    )
-    dmad_gap_routing = bool(
-        _pick(args.dmad_gap_routing, cfg, "dmad.gap_routing", False)
-    )
-    dmad_gap_tau = float(_pick(args.dmad_gap_tau, cfg, "dmad.gap_tau", 2.0))
-    # -1 is a real value here (middle block), so only None means "unset".
-    dmad_feature_block_idx = int(
-        _pick(
-            args.dmad_feature_block_idx,
-            cfg,
-            "dmad.feature_block_idx",
-            -1,
-            sentinels=(None,),
-        )
-    )
-    if dmad:
-        if base_loss != "dpdmd":
-            raise ValueError(
-                "dmad needs base_loss='dpdmd': its teacher samples finish the "
-                "step-0 anchor rollout."
-            )
-        if f_div != "rkl":
-            raise ValueError(
-                f"dmad refuses f_distill (f_div={f_div!r}): it reweights the DM "
-                "score difference, which dmad removes."
-            )
-        if gan_loss_weight_gen > 0.0:
-            raise ValueError(
-                "dmad requires gan.weight_gen = 0 (head R replaces the [gan] "
-                "real-vs-student disc in this phase)."
-            )
-        if dmad_probe:
-            raise ValueError("dmad and dmad_probe are exclusive: turn one off.")
-        if fake_tau_banks > 1:
-            raise ValueError(
-                f"dmad requires network.fake_tau_banks = 1 (got {fake_tau_banks}): "
-                "no fake critic is built."
-            )
-        if int(args.blocks_to_swap) > 0:
-            raise ValueError(
-                "dmad requires blocks_to_swap=0 — the disc forwards are unaudited "
-                "under block swap."
-            )
-        if bool(args.grad_ckpt):
-            # Same view × deferred-ckpt-recompute class as --grad_ckpt + GAN:
-            # the student-signal disc forward flips the view to teacher before
-            # the student backward recomputes the checkpointed rollout.
-            raise ValueError(
-                "--grad_ckpt with dmad: the rollout's checkpointed student "
-                "forwards would recompute under the disc's teacher view. Turn "
-                "one off."
-            )
-        if resume:
-            raise ValueError(
-                "dmad refuses --resume: the disc is not in the resume bundle in "
-                "this phase."
-            )
-        if dmad_lambda_t < 0.0 or dmad_lambda_r < 0.0:
-            raise ValueError(
-                f"dmad.lambda_t={dmad_lambda_t} / dmad.lambda_r={dmad_lambda_r}: "
-                "must be >= 0"
-            )
-        if dmad_lambda_t == 0.0 and dmad_lambda_r == 0.0:
-            raise ValueError("dmad: lambda_t and lambda_r are both 0 — no head.")
-        if dmad_signal_rms < 0.0:
-            raise ValueError(f"dmad.signal_rms={dmad_signal_rms}: must be >= 0")
-        if dmad_grad_clip < 0.0:
-            raise ValueError(f"dmad.grad_clip={dmad_grad_clip}: must be >= 0")
-        if dmad_window < 1:
-            raise ValueError(f"dmad.window={dmad_window}: must be >= 1")
-        if dmad_disc_warmup_steps < 0:
-            raise ValueError(
-                f"dmad.disc_warmup_steps={dmad_disc_warmup_steps}: must be >= 0"
-            )
-        if dmad_gap_routing and (dmad_lambda_t == 0.0 or dmad_lambda_r == 0.0):
-            raise ValueError(
-                "dmad.gap_routing needs both heads: the gap is h_R(real) − "
-                "h_R(teacher) and it weights head T."
-            )
-        if dmad_gap_tau <= 0.0:
-            raise ValueError(f"dmad.gap_tau={dmad_gap_tau}: must be > 0")
-        logger.info(
-            "DMAD ON (Phase 0): disc replaces the DM term and the fake critic — "
-            f"lambda_t={dmad_lambda_t}, lambda_r={dmad_lambda_r}, "
-            f"signal_rms={dmad_signal_rms}, lr={dmad_lr}, "
-            f"grad_clip={dmad_grad_clip}, window={dmad_window}, "
-            f"disc_warmup_steps={dmad_disc_warmup_steps}, "
-            f"gap_routing={dmad_gap_routing} (tau {dmad_gap_tau}), "
-            f"feature_block_idx={dmad_feature_block_idx} (-1 = middle). "
-            "fake_lr / fake_steps_per_student_step / fake_warmup_steps are unused."
-        )
     if mfd_dtau < 0.0:
         raise ValueError(f"mfd.dtau={mfd_dtau}: must be >= 0")
     if mfd_interval not in ("to_zero", "uniform"):
         raise ValueError(f"mfd.interval={mfd_interval!r}: to_zero | uniform")
     if mfd_dtau > 0.0:
-        if dmad:
-            logger.warning(
-                "mfd.dtau > 0 under dmad: the disc signal fills the DM slot, so "
-                "MFD does not run."
-            )
-        else:
-            logger.info(
-                f"MFD ON in the DM slot: dtau={mfd_dtau}, max_steps={mfd_max_steps}, "
-                f"interval={mfd_interval}; L_CDM keeps the point delta."
-            )
+        logger.info(
+            f"MFD ON in the DM slot: dtau={mfd_dtau}, max_steps={mfd_max_steps}, "
+            f"interval={mfd_interval}; L_CDM keeps the point delta."
+        )
     if cdm_weight < 0.0:
         raise ValueError(f"cdm.weight={cdm_weight}: must be >= 0")
     if cdm_weight > 0.0:
-        if per_step_expert:
-            # Heads are keyed to fixed grid steps; the off-trajectory forward
-            # runs at an arbitrary continuous t' no head owns.
-            raise ValueError(
-                "cdm.weight > 0 is incompatible with per_step_expert (the "
-                "off-trajectory forward runs at t' ~ U(0,1), which no per-step "
-                "head owns)."
-            )
         if bool(args.grad_ckpt):
             # Same view × deferred-ckpt-recompute class as --grad_ckpt + GAN:
             # the CDM branch flips the view (student → teacher → fake) after the
@@ -1564,26 +794,6 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
             f"gan.delay_steps={gan_delay_steps} / gan.warmup_steps="
             f"{gan_warmup_steps}: must be >= 0"
         )
-    _F_DIVS = ("rkl", "kl", "js", "sf", "neyman", "sh", "jf")
-    if f_div not in _F_DIVS:
-        raise ValueError(f"f_distill.f_div={f_div!r}: expected one of {_F_DIVS}")
-    if f_div != "rkl" and gan_loss_weight_gen <= 0.0:
-        # r = exp(disc_logits) only exists once the GAN disc is built.
-        raise ValueError(
-            f"f_distill.f_div={f_div!r} requires gan.weight_gen > 0 — the "
-            "f-divergence weight reads the GAN discriminator's logits."
-        )
-    if not (0.0 < f_ratio_lower < f_ratio_upper):
-        raise ValueError(
-            f"f_distill: require 0 < ratio_lower ({f_ratio_lower}) < "
-            f"ratio_upper ({f_ratio_upper})"
-        )
-    if not (0.0 <= f_ratio_ema_rate < 1.0):
-        raise ValueError(
-            f"f_distill.ratio_ema_rate={f_ratio_ema_rate}: must be in [0, 1)"
-        )
-    if f_bin_num < 1:
-        raise ValueError(f"f_distill.bin_num={f_bin_num}: must be >= 1")
     if gan_loss_weight_gen > 0.0:
         logger.info(
             f"GAN (DMD2 teacher-feature disc, FastGen idea 1) ON: "
@@ -1593,68 +803,18 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
             f"use_same_t_noise={gan_use_same_t_noise}, "
             f"delay_steps={gan_delay_steps}, warmup_steps={gan_warmup_steps}."
         )
-        if f_div != "rkl":
-            logger.info(
-                f"f-distill (FastGen idea 2) ON: f_div={f_div!r}, ratio∈"
-                f"[{f_ratio_lower}, {f_ratio_upper}], ema_rate={f_ratio_ema_rate}, "
-                f"bin_num={f_bin_num}, normalization={f_ratio_normalization}."
-            )
     if flow_shift <= 0.0:
         raise ValueError(f"sampling.flow_shift={flow_shift}: must be > 0")
-    if use_anchor and not detach_after_first:
+    if not detach_after_first:
         logger.warning(
             "detach_after_first=False: the mode-seeking DMD gradient can override "
             "the diversity mapping (their Fig 5). A/B only — keep True for "
             "production."
         )
-    if dual_pool:
-        # The routing window IS the split backward: pool A takes the step-0
-        # diversity backward alone, pool B the combined refinement backward.
-        # Without the split there is nothing to route.
-        if not use_anchor:
-            raise ValueError(
-                "network.dual_pool=true requires base_loss='dpdmd' (use_anchor): "
-                "plain DMD has no step-0 diversity gradient to route to pool A."
-            )
-        if not detach_after_first:
-            raise ValueError(
-                "network.dual_pool=true requires dpdmd.detach_after_first=true: "
-                "the routing window is the split backward — with the two losses "
-                "fused into one backward there is no seam to gate the pools on."
-            )
-        if per_step_expert:
-            # Both restructure the student; the per_step_expert heads also break
-            # the plain-LoRA bake this design exists to preserve.
-            raise ValueError(
-                "network.dual_pool=true is mutually exclusive with per_step_expert "
-                "(both restructure the student; dual_pool is the plain-LoRA-mergeable "
-                "formulation of the same div/DMD split)."
-            )
-        logger.info(
-            f"dual-pool gradient routing ON: pool A rank={div_pool_rank} "
-            f"(zero-init, step-0 diversity grad only), pool B rank={student_rank} "
-            f"(warm-started, DMD/GAN/CDM grad only); merged rank="
-            f"{student_rank + div_pool_rank}, saves as one plain LoRA. "
-            f"div_pool_lr={div_pool_lr or student_lr}."
-        )
     if t_distribution not in ("uniform", "sigmoid"):
         raise ValueError(
             f"sampling.t_distribution={t_distribution!r}: expected 'uniform' or 'sigmoid'"
         )
-    if dynamic_schedule:
-        if per_step_expert:
-            # Step-expert heads are keyed to fixed grid positions; a per-iteration
-            # random grid makes head identity meaningless.
-            raise ValueError(
-                "dmd.dynamic_schedule=true is incompatible with per_step_expert "
-                "(heads are keyed to fixed grid steps)."
-            )
-        if use_anchor and student_steps < 2:
-            raise ValueError(
-                "dmd.dynamic_schedule=true with base_loss='dpdmd' needs "
-                f"student_steps >= 2 (got {student_steps}): step 0 is the anchor "
-                "and DMD needs at least one refinement step."
-            )
     if fake_rank < student_rank:
         logger.warning(
             f"fake_rank={fake_rank} < student_rank={student_rank}: DM regularizer "
@@ -1684,34 +844,13 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
             else "(a) τ-damping [default]"
         )
     )
-    if use_anchor:
-        logger.info(
-            "DP-DMD: first-step diversity anchor "
-            f"k_anchor={k_anchor}/{teacher_anchor_steps} teacher steps, "
-            f"div_weight={div_weight}, detach_after_first={detach_after_first}, "
-            f"student N={student_steps} @ flow_shift={flow_shift}, "
-            f"teacher_cfg={teacher_cfg}."
-        )
-    else:
-        logger.info(
-            f"plain DMD2 (no diversity anchor): student N={student_steps} @ "
-            f"flow_shift={flow_shift}, teacher_cfg={teacher_cfg}."
-        )
-    if per_step_expert:
-        if not detach_after_first:
-            logger.warning(
-                "per_step_expert=True with detach_after_first=False: the step-0 "
-                "and DMD graphs stay entangled, so the diversity gradient reaches "
-                "the DMD heads (and vice versa) through the shared rollout — the "
-                "head split no longer cleanly separates the two objectives. Keep "
-                "detach_after_first=True with per_step_expert."
-            )
-        logger.info(
-            f"per-step-expert student ON: K={step_expert_K} up-heads / Linear "
-            f"(head k ↔ denoise step k) off a shared down-proj. Output is "
-            "kept-live only (not a plain LoRA; merge refuses it)."
-        )
-
+    logger.info(
+        "DP-DMD: first-step diversity anchor "
+        f"k_anchor={k_anchor}/{teacher_anchor_steps} teacher steps, "
+        f"div_weight={div_weight}, detach_after_first={detach_after_first}, "
+        f"student N={student_steps} @ flow_shift={flow_shift}, "
+        f"teacher_cfg={teacher_cfg}."
+    )
     return TurboConfig(
         dit_path=dit_path,
         data_dir=data_dir,
@@ -1734,16 +873,9 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         fake_rank=fake_rank,
         student_alpha=student_alpha,
         fake_alpha=fake_alpha,
-        fake_tau_banks=fake_tau_banks,
-        fake_tau_boundary=fake_tau_boundary,
         attn_mode=attn_mode,
         use_custom_down_autograd=use_custom_down_autograd,
         channel_scaling_alpha=channel_scaling_alpha,
-        per_step_expert=per_step_expert,
-        step_expert_K=step_expert_K,
-        dual_pool=dual_pool,
-        div_pool_rank=div_pool_rank,
-        div_pool_lr=div_pool_lr,
         student_down_init=student_down_init,
         fake_down_init=fake_down_init,
         student_init_weights=student_init_weights,
@@ -1752,8 +884,6 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         fake_adaln=fake_adaln,
         adaln_rank=adaln_rank,
         adaln_alpha=adaln_alpha,
-        use_masked_loss=use_masked_loss,
-        mask_dir=mask_dir,
         k_anchor=k_anchor,
         teacher_anchor_steps=teacher_anchor_steps,
         div_weight=div_weight,
@@ -1763,14 +893,12 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         teacher_cfg=teacher_cfg,
         dm_x0_norm=dm_x0_norm,
         norm_floor=norm_floor,
-        dmd_grad_step=dmd_grad_step,
         dynamic_schedule=dynamic_schedule,
         cdm_weight=cdm_weight,
         cdm_grad_ckpt=cdm_grad_ckpt,
         mfd_dtau=mfd_dtau,
         mfd_max_steps=mfd_max_steps,
         mfd_interval=mfd_interval,
-        base_loss=base_loss,
         gan_loss_weight_gen=gan_loss_weight_gen,
         gan_feature_block_idx=gan_feature_block_idx,
         gan_disc_lr=gan_disc_lr,
@@ -1782,18 +910,6 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         gan_r1_alpha=gan_r1_alpha,
         gan_use_same_t_noise=gan_use_same_t_noise,
         gan_grad_ckpt=gan_grad_ckpt,
-        f_div=f_div,
-        f_ratio_lower=f_ratio_lower,
-        f_ratio_upper=f_ratio_upper,
-        f_ratio_ema_rate=f_ratio_ema_rate,
-        f_bin_num=f_bin_num,
-        f_ratio_normalization=f_ratio_normalization,
-        softrank_weight=softrank_weight,
-        softrank_k=softrank_k,
-        softrank_every_n=softrank_every_n,
-        softrank_softness=softrank_softness,
-        softrank_pool_size=softrank_pool_size,
-        softrank_warmup_ratio=softrank_warmup_ratio,
         student_lr=student_lr,
         fake_lr=fake_lr,
         fake_steps_per_student_step=fake_steps_per_student_step,
@@ -1827,30 +943,6 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         partitioner_aggressive_recomputation=bool(
             _flatten(cfg, "partitioner_aggressive_recomputation", False)
         ),
-        dmad_probe=dmad_probe,
-        dmad_probe_lr=dmad_probe_lr,
-        dmad_probe_grad_clip=dmad_probe_grad_clip,
-        dmad_probe_disc_steps=dmad_probe_disc_steps,
-        dmad_probe_window=dmad_probe_window,
-        dmad_probe_scalar_logit=dmad_probe_scalar_logit,
-        dmad_probe_r1_weight=dmad_probe_r1_weight,
-        dmad_probe_r1_alpha=dmad_probe_r1_alpha,
-        dmad_probe_warm_start=dmad_probe_warm_start,
-        dmad_probe_stop_on_collapse=dmad_probe_stop_on_collapse,
-        dmad_probe_feature_block_idx=dmad_probe_feature_block_idx,
-        dmad_probe_head=dmad_probe_head,
-        dmad_probe_ceiling=dmad_probe_ceiling,
-        dmad=dmad,
-        dmad_lambda_t=dmad_lambda_t,
-        dmad_lambda_r=dmad_lambda_r,
-        dmad_signal_rms=dmad_signal_rms,
-        dmad_lr=dmad_lr,
-        dmad_grad_clip=dmad_grad_clip,
-        dmad_window=dmad_window,
-        dmad_disc_warmup_steps=dmad_disc_warmup_steps,
-        dmad_gap_routing=dmad_gap_routing,
-        dmad_gap_tau=dmad_gap_tau,
-        dmad_feature_block_idx=dmad_feature_block_idx,
     )
 
 
@@ -1869,13 +961,10 @@ def snapshot_toml_text(c: TurboConfig, *, source_config: str | None = None) -> s
 
 # TensorBoard config summary: a hand-picked subset of the resolved fields.
 _TB_KEYS = (
-    "base_loss",
     "gan_loss_weight_gen",
-    "softrank_weight",
     "cdm_weight",
     "mfd_dtau",
     "mfd_interval",
-    "f_div",
     "k_anchor",
     "teacher_anchor_steps",
     "div_weight",
@@ -1893,7 +982,6 @@ _TB_KEYS = (
     "iterations",
     "batch_size",
     "t_distribution",
-    "use_masked_loss",
     "data_dir",
     "dit_path",
 )

@@ -7,9 +7,9 @@ the properties that make a resume a *continuation* rather than a fresh run with
 warm weights:
 
   * every mutable object round-trips bit-exact (weights, optimizer moments,
-    scheduler position, f-distill EMA, step counter);
+    scheduler position, step counter);
   * the restored LR is the schedule's value AT the resumed step, not its peak;
-  * a topology change (rank, disc width, objective) is REFUSED, not silently
+  * a topology change (rank, disc width) is REFUSED, not silently
     loaded into a mismatched stack.
 
 No GPU, no DiT: the resume path only ever touches state_dicts, so toy modules
@@ -45,11 +45,9 @@ class _Cfg:
     # strict (shape / topology)
     student_rank: int = 96
     fake_rank: int = 96
-    step_expert_K: int = 0
     gan_disc_hidden: int = 0
     gan_feature_block_idx: int = -1
     channel_scaling_alpha: float = 0.0
-    base_loss: str = "dpdmd"
     # warn (objective / schedule)
     iterations: int = 8000
     student_lr: float = 5e-5
@@ -60,7 +58,6 @@ class _Cfg:
     student_steps: int = 4
     div_weight: float = 0.05
     gan_loss_weight_gen: float = 0.03
-    f_div: str = "rkl"
     fake_steps_per_student_step: int = 4
     teacher_cfg: float = 4.0
 
@@ -111,7 +108,7 @@ def _spin(turbo, opts, scheds, steps: int):
                 sch.step()
 
 
-def _save(tmp_path, cfg, step, turbo, opts, scheds, bins=None):
+def _save(tmp_path, cfg, step, turbo, opts, scheds):
     path = resume_path_for(str(tmp_path), cfg.output_name)
     save_resume_state(
         path,
@@ -124,12 +121,11 @@ def _save(tmp_path, cfg, step, turbo, opts, scheds, bins=None):
         student_sched=scheds[0],
         fake_sched=scheds[1],
         disc_sched=scheds[2],
-        fdistill_bins=bins,
     )
     return path
 
 
-def _apply(state, cfg, turbo, opts, scheds, bins=None):
+def _apply(state, cfg, turbo, opts, scheds):
     return apply_resume_state(
         state,
         cfg=cfg,
@@ -140,7 +136,6 @@ def _apply(state, cfg, turbo, opts, scheds, bins=None):
         student_sched=scheds[0],
         fake_sched=scheds[1],
         disc_sched=scheds[2],
-        fdistill_bins=bins,
     )
 
 
@@ -152,8 +147,7 @@ def test_resume_round_trips_every_mutable_object(tmp_path):
     opts, scheds = (s_opt, f_opt, d_opt), (s_sch, f_sch, d_sch)
 
     _spin(turbo, opts, scheds, steps=3155)  # where T2 actually died
-    bins = torch.rand(10)
-    path = _save(tmp_path, cfg, 3155, turbo, opts, scheds, bins)
+    path = _save(tmp_path, cfg, 3155, turbo, opts, scheds)
 
     want_w = {k: v.clone() for k, v in turbo.student.state_dict().items()}
     want_disc = {k: v.clone() for k, v in turbo.disc.state_dict().items()}
@@ -165,8 +159,7 @@ def test_resume_round_trips_every_mutable_object(tmp_path):
     # Fresh stack, as a relaunched process would build it.
     fresh, *rest = _build(cfg)
     f_opts, f_scheds = tuple(rest[:3]), tuple(rest[3:])
-    fresh_bins = torch.ones(10)
-    step = _apply(load_resume_state(path), cfg, fresh, f_opts, f_scheds, fresh_bins)
+    step = _apply(load_resume_state(path), cfg, fresh, f_opts, f_scheds)
 
     assert step == 3155
     for k, v in fresh.student.state_dict().items():
@@ -176,7 +169,6 @@ def test_resume_round_trips_every_mutable_object(tmp_path):
     # Optimizer moments — the part a warm-start restart silently zeroes.
     got_exp_avg = f_opts[0].state[next(iter(f_opts[0].state))]["exp_avg"]
     torch.testing.assert_close(got_exp_avg, want_exp_avg)
-    torch.testing.assert_close(fresh_bins, bins)
     assert f_scheds[0].get_last_lr()[0] == pytest.approx(want_lr)
 
 
@@ -232,7 +224,7 @@ def test_extending_iterations_resumes_onto_new_curve(tmp_path):
 
 @pytest.mark.core
 def test_topology_change_is_refused(tmp_path):
-    """A rank/objective/disc-width change must raise, never load into a mismatch."""
+    """A rank/disc-width change must raise, never load into a mismatch."""
     cfg = _Cfg(output_dir=str(tmp_path))
     turbo, *rest = _build(cfg)
     opts, scheds = tuple(rest[:3]), tuple(rest[3:])
@@ -243,7 +235,6 @@ def test_topology_change_is_refused(tmp_path):
     for field, bad in (
         ("student_rank", 64),
         ("fake_rank", 32),
-        ("base_loss", "dmd"),
         ("gan_disc_hidden", 512),
     ):
         drifted = _Cfg(output_dir=str(tmp_path), **{field: bad})
@@ -331,7 +322,6 @@ def test_partial_write_does_not_destroy_previous_bundle(tmp_path):
                 student_sched=scheds[0],
                 fake_sched=scheds[1],
                 disc_sched=scheds[2],
-                fdistill_bins=None,
             )
         finally:
             torch.save = real_save

@@ -39,17 +39,9 @@ FORMAT_VERSION = 1
 _STRICT_FIELDS = (
     "student_rank",
     "fake_rank",
-    "fake_tau_banks",
-    "step_expert_K",
-    # Pool-A presence + rank are topology: they change the student param list the
-    # shared optimizer state is keyed by (apply_resume_state also refuses a
-    # presence mismatch outright, but this catches a rank change too).
-    "dual_pool",
-    "div_pool_rank",
     "gan_disc_hidden",
     "gan_feature_block_idx",
     "channel_scaling_alpha",
-    "base_loss",
 )
 
 # Fields that change the objective or the schedule but not the shapes. Resuming
@@ -58,7 +50,6 @@ _STRICT_FIELDS = (
 # the schedulers restore their step counter onto the NEW curve (see
 # ``_restore_scheduler``). We warn so the change is never silent.
 _WARN_FIELDS = (
-    "fake_tau_boundary",
     "iterations",
     "student_lr",
     "fake_lr",
@@ -75,7 +66,6 @@ _WARN_FIELDS = (
     # legitimate (e.g. adding a ramp after a collapsed cold start), never silent.
     "gan_delay_steps",
     "gan_warmup_steps",
-    "f_div",
     "fake_steps_per_student_step",
     "teacher_cfg",
     "dynamic_schedule",
@@ -113,7 +103,6 @@ def save_resume_state(
     student_sched,
     fake_sched,
     disc_sched,
-    fdistill_bins: torch.Tensor | None,
 ) -> None:
     """Atomically write the full mutable loop state after ``step`` completed steps."""
     path = Path(path)
@@ -125,23 +114,7 @@ def save_resume_state(
         "output_name": cfg.output_name,
         "fingerprint": _fingerprint(cfg),
         "student": turbo.student.state_dict(),
-        # Dual-pool diversity pool A (None on the single-pool loop; getattr keeps
-        # pre-dual-pool stand-ins loadable). Its params share the ONE student
-        # optimizer, so the bundle must round-trip it or the optimizer state
-        # misaligns — apply_resume_state refuses a presence mismatch, like fake_hi.
-        "student_div": (
-            turbo.student_div.state_dict()
-            if getattr(turbo, "student_div", None) is not None
-            else None
-        ),
         "fake": turbo.fake.state_dict(),
-        # τ-split critic second bank (None on the shipped single-critic loop;
-        # getattr keeps pre-bank TurboDMDNetwork stand-ins loadable).
-        "fake_hi": (
-            turbo.fake_hi.state_dict()
-            if getattr(turbo, "fake_hi", None) is not None
-            else None
-        ),
         "disc": turbo.disc.state_dict() if turbo.disc is not None else None,
         "student_opt": student_opt.state_dict(),
         "fake_opt": fake_opt.state_dict(),
@@ -149,9 +122,6 @@ def save_resume_state(
         "student_sched": student_sched.state_dict(),
         "fake_sched": fake_sched.state_dict(),
         "disc_sched": disc_sched.state_dict() if disc_sched is not None else None,
-        "fdistill_bins": fdistill_bins.detach().cpu()
-        if fdistill_bins is not None
-        else None,
         "rng": {
             "torch": torch.get_rng_state(),
             "cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else [],
@@ -282,7 +252,6 @@ def apply_resume_state(
     student_sched,
     fake_sched,
     disc_sched,
-    fdistill_bins: torch.Tensor | None,
 ) -> int:
     """Restore every mutable piece of the loop in-place. Returns the start step.
 
@@ -291,44 +260,15 @@ def apply_resume_state(
     """
     _check_fingerprint(state, cfg)
 
+    # Bundles from the removed dual-pool student / τ-split critic carry a
+    # second stack whose optimizer state cannot align with this one.
+    for key, what in (("student_div", "dual-pool"), ("fake_hi", "τ-split critic")):
+        if state.get(key) is not None:
+            raise ResumeMismatchError(
+                f"resume bundle was written by a {what} run (removed); start fresh."
+            )
     turbo.student.load_state_dict(state["student"])
-    # Dual-pool pool A: both pools share ONE student optimizer whose state is keyed
-    # by the combined param list, so a presence mismatch would half-load it silently.
-    # Refused in both directions.
-    student_div = getattr(turbo, "student_div", None)
-    if student_div is not None:
-        if state.get("student_div") is None:
-            raise ResumeMismatchError(
-                "config sets dual_pool=true but the resume bundle carries no "
-                "diversity pool A (it was written by a single-pool run). Start "
-                "fresh, or resume with dual_pool=false."
-            )
-        student_div.load_state_dict(state["student_div"])
-    elif state.get("student_div") is not None:
-        raise ResumeMismatchError(
-            "resume bundle carries a diversity pool A but dual_pool=false — the "
-            "shared student optimizer state cannot align. Resume with dual_pool=true."
-        )
     turbo.fake.load_state_dict(state["fake"])
-    # τ-split critic bank count must match EXACTLY — unlike the disc (whose
-    # optimizer is separate, so an extra disc state can be dropped with a
-    # warning), both fake banks share ONE optimizer whose state is keyed by the
-    # combined param list; a bank-count mismatch would half-load it silently.
-    fake_hi = getattr(turbo, "fake_hi", None)
-    if fake_hi is not None:
-        if state.get("fake_hi") is None:
-            raise ResumeMismatchError(
-                "config sets fake_tau_banks=2 but the resume bundle carries no "
-                "second fake bank (it was written by a single-critic run). "
-                "Start fresh, or resume with fake_tau_banks=1."
-            )
-        fake_hi.load_state_dict(state["fake_hi"])
-    elif state.get("fake_hi") is not None:
-        raise ResumeMismatchError(
-            "resume bundle carries a second fake bank but fake_tau_banks=1 — "
-            "the shared fake optimizer state cannot align. Resume with "
-            "fake_tau_banks=2."
-        )
     if turbo.disc is not None:
         if state.get("disc") is None:
             raise ResumeMismatchError(
@@ -349,12 +289,6 @@ def apply_resume_state(
         disc_opt.load_state_dict(state["disc_opt"])
     if disc_sched is not None and state.get("disc_sched") is not None:
         _restore_scheduler(disc_sched, state["disc_sched"])
-
-    # f-distill's per-τ EMA ratio histogram: a live running statistic, so it has
-    # to come back or the first post-resume steps normalize against ones().
-    saved_bins = state.get("fdistill_bins")
-    if fdistill_bins is not None and saved_bins is not None:
-        fdistill_bins.copy_(saved_bins.to(fdistill_bins.device))
 
     rng = state.get("rng") or {}
     try:

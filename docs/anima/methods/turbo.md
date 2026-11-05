@@ -21,7 +21,7 @@ Structural walkthrough: `docs/anima/structure/turbo.md`.
 
 ```bash
 make turbo                                       # configs/methods/turbo.toml defaults
-make turbo ARGS="--int8 off --stream bf16"       # bf16 base, needed for dmad
+make turbo ARGS="--int8 off --stream bf16"       # bf16 base
 make turbo ARGS="--student_rank 128 --iterations 5000"
 make turbo ARGS="--single_prompt_idx 0"          # single-prompt overfit
 make turbo PRESET=low_vram                        # grad ckpt + offload + sample_ratio
@@ -71,18 +71,13 @@ Per training step:
    `div_loss = ‖v_first − v_target‖²`. Under `detach_after_first` (load-bearing)
    the diversity term is backwarded immediately and the step-0 graph is severed —
    the DMD reverse-KL from later steps must not flow back into the diversity
-   mapping (their Fig 5: preference rises while diversity falls without it). Steps
-   2..N then carry the DMD-refine grad, routed by `grad_step` (also honored under
-   the anchor — `[dmd].grad_step`): `all` rolls 2..N with grad (BPTT, holds the
-   N-graph) onto the true endpoint `x_θ`; `last` (default) backward-simulates
-   2..N−1 under no_grad and grads only the cleanest-σ final step onto `x_θ`
-   (memory-flat, but the noisy refinement steps train only indirectly — and under
-   `per_step_expert` only head N−1 trains); `random` samples one refinement step
-   `g~U{1..N−1}`, backward-simulates the `1..g−1` prefix under no_grad from the
-   post-anchor latent, and grads only step `g`'s one-step x0-prediction
-   `x_g − σ_g·v_g` (memory-flat; supervises every refinement grid point + trains
-   every head, at the cost of spreading the mode-seeking DMD grad across all
-   refinement σ rather than concentrating it on the tail).
+   mapping (their Fig 5: preference rises while diversity falls without it). One
+   refinement step then carries the DMD grad: the loop samples `g~U{1..N−1}`,
+   backward-simulates the `1..g−1` prefix under no_grad from the post-anchor
+   latent, and grads only step `g`'s one-step x0-prediction `x_g − σ_g·v_g`
+   (memory-flat; supervises every refinement grid point, at the cost of spreading
+   the mode-seeking DMD grad across all refinement σ rather than concentrating it
+   on the tail).
 3. DMD on `x_θ` (no-grad teacher + no-grad fake, τ_DM ∈ [0,1]). The real score
    is CFG-guided (`v_u + α·(v_c − v_u)`) — not cond-only — since the DMD real
    score is the only place guidance enters (matches the reference
@@ -142,10 +137,9 @@ plain-LoRA cold-start tangent.
 the warm-start distribution, so a matched critic starts calibrated instead of
 chasing it from zero.
 
-Constraints. Warm start needs plain single-head Linear LoRA modules, so it is
-mutually exclusive with `per_step_expert` and
-`*_down_init = "weight_svd"` (config validation rejects the combination — set
-`student_down_init = "kaiming"` when enabling). It runs after `.to(device)` (SVD
+Constraints. Warm start is mutually exclusive with `*_down_init = "weight_svd"`
+(config validation rejects the combination — set `student_down_init = "kaiming"`
+when enabling). It runs after `.to(device)` (SVD
 on-device) and before `compile_dit_blocks` traces the forwards. A MoE /
 step-expert checkpoint is refused outright.
 
@@ -162,17 +156,14 @@ Sectioned, bespoke. Every key has a matching CLI override flag (see
 |---|---|---|---|
 | top | `output_name` | `anima_turbo_v3_longer` | output stem under `output/ckpt/` |
 | top | `iterations` | `10000` | |
-| top | `use_masked_loss` | `false` | student-only mask on the DMD grad; fake/critic stays full-frame. Needs masks (`make mask`) |
 | top | `dit_path` / `dit_nonquant_path` | int8 GPTQ file / bf16 DiT | forward copies and bf16 weights (`docs/anima/optimizations/int8.md` § Forward copies) |
 | top | `int8` / `stream` | `stream` / `fp32` | teacher, student and fake forwards on the int8 base and the fp32 residual stream (`docs/anima/optimizations/int8.md`, `fp32_stream.md`). The output is a normal LoRA either way. Code defaults are `off` / `bf16` |
 | `[network]` | `student_rank` / `fake_rank` | `64` / `64` (alpha `180` / `180`) | `fake_rank ≥ student_rank` (fake is a score tracker, capacity ceiling on DM strength); the warm start SVD-truncates the r96 delta to this rank |
 | `[network]` | `train_adaln` / `adaln_rank` / `adaln_alpha` | `true` / `16` / `90` | adaln LoRA on student + fake (`docs/anima/methods/adaln.md` §Turbo) |
 | `[network]` | `student_init_weights` / `fake_init_weights` | `…/anima_turbo_v1.1_delta_r96_asvd_adaln.safetensors` | both stacks seeded from the extracted official delta |
-| `[network]` | `fake_tau_banks` / `fake_tau_boundary` | `1` / `0.5` | τ-split critic. `1` = single fake. `2` = dual fake banks, bank 0 owning `τ < boundary`; updates AND DMD queries route by drawn τ (matched compute by construction). Requires `batch_size=1`; memory +1 fake LoRA (params/grads/Adam). Showed no gain over `1` (`docs/anima/findings/turbo_tau_critic_interference_lr_artifact.md`) |
 | `[dmd]` | `student_steps` (N) | `4` | Euler steps the student rolls; inference matches (`--infer_steps 4`) |
 | `[dmd]` | `teacher_cfg` (α) | `4` | CFG scale baked into the teacher anchor + DMD real score (Anima prod CFG=4) |
-| `[dmd]` | `grad_step` | `random` | which refinement step(s) carry the DMD grad: `all` (BPTT) / `last` (tail-only, memory-flat) / `random` (one-step x0-pred at `g~U{1..N−1}`, memory-flat, trains every head). Honored under both `base_loss`. |
-| `[dmd]` | `dynamic_schedule` | `true` | CDM-style continuous schedule (arXiv:2605.06376 §3.2): per-iteration random rollout grid — length `N~U{2..student_steps}` (dpdmd; `{1..}` plain dmd), interior anchors continuous-uniform, `t₁=1` pinned so the DP anchor composes unchanged. Trains v_θ over continuous t instead of the 4 fixed inference points. `false` = bit-identical legacy fixed-grid loop; validation renders + inference always stay on the static `flow_shift` grid. Incompatible with `per_step_expert` (heads keyed to fixed grid steps). |
+| `[dmd]` | `dynamic_schedule` | `true` | CDM-style continuous schedule (arXiv:2605.06376 §3.2): per-iteration random rollout grid — length `N~U{2..student_steps}`, interior anchors continuous-uniform, `t₁=1` pinned so the DP anchor composes unchanged. Trains v_θ over continuous t instead of the 4 fixed inference points. `false` = bit-identical legacy fixed-grid loop; validation renders + inference always stay on the static `flow_shift` grid. |
 | `[dmd]` | `dm_x0_norm` | `true` | per-sample x0-space magnitude normalization of the DM grad |
 | `[dmd]` | `norm_floor` | `0.05` | clamp_min for the `dm_x0_norm` denominator (latent scale) |
 | `[dpdmd]` | `k_anchor` (K) | `6` | teacher steps rolled to the diversity anchor |
@@ -215,38 +206,6 @@ distillation hasn't reached a true N-step map yet — train longer or raise
 `student_steps`. Always keep `--cfg 1.0` regardless of step count (CFG is baked;
 don't double-guide).
 
-## Per-step expert (`per_step_expert`, default off)
-
-One rank-`student_rank` LoRA normally absorbs two conflicting gradients: the
-diversity loss on step 0 (`div_loss = MSE(v_first, v_target)`, then a detach)
-and the DMD reverse-KL on steps 1..N. The detach already severs the two
-backward graphs, so `per_step_expert=true` splits the student into one shared
-`lora_down` plus K = `student_steps` up-heads (`StepExpertLoRAModule`),
-selecting head `k` for denoise step `k` by the step counter — no router (the step
-index is known at call time, unlike HydraLoRA's FEI/σ-routed case). Head 0 then sees only the
-diversity gradient, head k only step-k's DMD gradient; only the shared down-proj is
-trained by both. Per-step inference compute is unchanged (one head active per step).
-
-Turn it on in `[network]` (`per_step_expert = true`) or `--per_step_expert`.
-
-### What it costs — the plain-LoRA property is gone
-
-The single-head student is a normal LoRA (merges via `make merge`, loads through any
-stock LoRA path). A per-step-expert student is not:
-
-- `make merge` refuses it — K per-step heads can't fold into one static DiT
-  weight (it would need K baked copies). It's caught by the `.lora_ups.` non-bakeable
-  marker, same as Hydra moe.
-- Kept-live only. Inference rebuilds a router-free `StepExpertLoRAModule` network
-  on the (fused-qkv) DiT and selects the head per step — CLI via
-  `set_step_index(i)` in the denoise loop (the loader keys off the
-  `ss_turbo_per_step_expert` metadata stamp), ComfyUI via the dedicated
-  `AnimaTurboPerStepExpertLoader` node (stock LoRA / `AnimaAdapterLoader` raise,
-  since they can't drive step-indexed head selection).
-- `make test-turbo` pins `--infer_steps` to the trained head count K (read from
-  metadata); head k binds to step k, so `infer_steps` must equal K. Overshoot repeats
-  the last (quality) head; undershoot skips it. Keep `--cfg 1.0`.
-
 ## Reading the metrics
 
 Trigger fake interventions on `dm_rel_gap` ↑ / `dm_cos` ↓, *not* on `fake_loss`
@@ -279,11 +238,11 @@ Three surfaces, cheapest first:
 - `make export-logs RUN=output/logs/<run> SUMMARY=1` — max step + last value
   per TB tag, when you want every scalar rather than the loop's headline set.
 
-## GAN + f-distill (FastGen levers)
+## GAN (FastGen lever)
 
-DP-DMD is structurally DMD2 without the GAN. Two levers port the adversarial
-machinery from NVlabs FastGen (`_archive/proposals/turbo_gan.md`); the GAN is on
-by default at the FastGen `weight_gen = 0.03`, f-distill is off:
+DP-DMD is structurally DMD2 without the GAN. The adversarial term is ported from
+NVlabs FastGen (`_archive/proposals/turbo_gan.md`) and is on by default at the
+FastGen `weight_gen = 0.03`. The MFD paper uses no GAN.
 
 - Teacher-feature GAN (`[gan] weight_gen > 0`, FastGen idea 1). A tiny
   discriminator (`networks/methods/turbo_dmd.py::TeacherFeatureDiscriminator`,
@@ -308,37 +267,11 @@ by default at the FastGen `weight_gen = 0.03`, f-distill is off:
   (per-token logit std), plus the cross-seed `ac_sim` diversity validation
   (`validate_every_n_steps` defaults to 1000, so it never fires in a 500-step
   run); `train/gan_weight_gen_eff` traces the ramp.
-- f-distill reweighting (`[f_distill] f_div != "rkl"`, FastGen idea 2). Scales
-  the DMD signal per-sample by `h = f'(r)`, `r = exp(disc logits)` (free from the
-  GAN head). Requires `weight_gen > 0`. `"rkl"` ≡ uniform h ≡ plain DMD2 (no-op).
-  Targets mode collapse.
-
 Cost. There is no early exit after the tapped block, so the GAN adds +1 grad-bearing teacher forward in the student step (the generator
 term must flow grad through the teacher into `x_pred`) and +2 no_grad teacher
-forwards per disc step. `--grad_ckpt` is a valid VRAM lever here, with one loop invariant: `set_view`/`set_student_step` are global state read at forward time and checkpoint recompute defers to `.backward()`, so every checkpointed forward must be backwarded while its own view/head is still live (the loop enforces this in `steps.py`; nothing in the metrics catches a violation — the recompute silently runs under the wrong view). `weight_gen=0`
+forwards per disc step. `--grad_ckpt` is a valid VRAM lever here, with one loop invariant: `set_view` is global state read at forward time and checkpoint recompute defers to `.backward()`, so every checkpointed forward must be backwarded while its own view is still live (the loop enforces this in `steps.py`; nothing in the metrics catches a violation — the recompute silently runs under the wrong view). `weight_gen=0`
 keeps the entire path off → byte-identical DP-DMD (no disc, no hooks, no extra
 forwards).
-
-## Soft-rank caption auxiliary (`[softrank]`, default off)
-
-The 4-step student follows prompts worse than the teacher
-(`bench/turbo/results/20260611-2020-phase0-turboN1250/`). `[softrank]` adds a
-differentiable ranking term: every `every_n` steps the student also
-denoises the same noise under `k` caption-negatives (no-grad), and a pairwise-sigmoid
-soft-rank loss (`scripts/distill_turbo/softrank.py`) pushes the matched caption to
-rank first. It joins the split-backward diversity pass, so `weight=0` is
-byte-identical DP-DMD.
-
-| Key (`[softrank]` / CLI) | Default | Meaning |
-|---|---|---|
-| `weight` / `--softrank_weight` | 0 (off) | Loss weight |
-| `k` / `--softrank_k` | 2 | Caption negatives per step (≥2; each is one extra student forward) |
-| `every_n` / `--softrank_every_n` | 4 | Apply on every n-th step |
-| `softness` / `--softrank_softness` | 0.1 | Sigmoid temperature (→0 = hard rank) |
-| `pool_size` / `--softrank_pool_size` | 2 | Negative-caption pool |
-
-Regression probe: `bench/turbo/caption_ranking_probe.py --adapter <ckpt>`. Tests:
-`tests/test_turbo_softrank.py`. Design: `_archive/proposals/turbo_caption_ranking.md`.
 
 ## Loop gotchas no metric catches
 
@@ -372,8 +305,7 @@ Regression probe: `bench/turbo/caption_ranking_probe.py --adapter <ckpt>`. Tests
   `rewind_block_swap()`, which undoes the last forward's moves on the same device
   slots, and a backward first seeks to where it starts: the end of those moves, or
   the tap of the GAN's early-stopped forward, which moves only the blocks it runs
-  (`library/runtime/offloading.py::ModelOffloader`, `rewindable`). Soft-rank, `dmad`
-  and `dmad_probe` need `blocks_to_swap=0`, still unaudited on it. The default
+  (`library/runtime/offloading.py::ModelOffloader`, `rewindable`). The default
   config keeps swap off: it costs about 1.5x step time for 1 GB of peak. No full
   student has trained on it.
 

@@ -2,7 +2,7 @@
 
 Re-exports the shared per-step primitives from ``library/training`` and
 ``library/datasets`` under the names the turbo loop imports, plus turbo-only
-helpers (τ-bank routing, CDM grid/extrapolation, GAN ramp, scheduler).
+helpers (CDM grid/extrapolation, GAN ramp, scheduler).
 """
 
 from __future__ import annotations
@@ -17,7 +17,6 @@ from library.training.schedulers import make_warmup_cosine_scheduler
 __all__ = [
     "renoise",
     "sample_t",
-    "sample_t_routed",
     "gan_effective_weight",
     "make_scheduler",
     "PadCache",
@@ -25,45 +24,6 @@ __all__ = [
     "sample_dynamic_sigmas",
     "cdm_extrapolate",
 ]
-
-
-def sample_t_routed(
-    B: int,
-    *,
-    turbo,
-    fake_tau_banks: int,
-    fake_tau_boundary: float,
-    distribution: str,
-    sigmoid_scale: float,
-    device,
-    dtype,
-) -> torch.Tensor:
-    """Draw τ for a fake update/query and arm the owner fake bank (τ-split critic).
-
-    ``fake_tau_banks <= 1`` → a plain on-device :func:`sample_t` (same RNG stream
-    as without banks, no extra work). With 2 banks the draw
-    happens on CPU (B=1, enforced at config resolve) so the routing comparison
-    costs no GPU sync; the owner bank is selected via ``turbo.set_fake_bank``
-    (bank 0 owns τ < boundary) and τ is then moved to ``device``. Callers must
-    invoke this BEFORE the fake forward the τ conditions.
-    """
-    if fake_tau_banks <= 1:
-        return sample_t(
-            B,
-            distribution=distribution,
-            sigmoid_scale=sigmoid_scale,
-            device=device,
-            dtype=dtype,
-        )
-    tau_cpu = sample_t(
-        B,
-        distribution=distribution,
-        sigmoid_scale=sigmoid_scale,
-        device="cpu",
-        dtype=torch.float32,
-    )
-    turbo.set_fake_bank(0 if float(tau_cpu) < fake_tau_boundary else 1)
-    return tau_cpu.to(device=device, dtype=dtype)
 
 
 def sample_dynamic_sigmas(n_min: int, n_max: int) -> list[float]:

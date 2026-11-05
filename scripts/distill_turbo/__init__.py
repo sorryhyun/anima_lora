@@ -24,8 +24,6 @@ Module map:
   log flush.
 * :mod:`scripts.distill_turbo.resume`     — crash-resume state.
 * :mod:`scripts.distill_turbo.diversity`  — same-prompt diversity validation.
-* :mod:`scripts.distill_turbo.softrank`   — soft-rank caption-discrimination
-  auxiliary.
 
 Output: ``<output_dir>/<output_name>.safetensors`` — a plain LoRA; infer with
 ``--infer_steps`` matched to ``student_steps`` and ``--cfg 1.0``

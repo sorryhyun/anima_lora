@@ -335,29 +335,11 @@ two to stack.
 
 ---
 
-## 8. Masked loss (student-only)
-
-With `use_masked_loss=true` the per-image foreground mask multiplies the student
-DMD gradient so distribution-matching focuses on the subject:
-
-```python
-loss_dmd = (grad_signal * x_theta * mask).mean()   # background latents → zero student push
-```
-
-The fake/critic regression is left full-frame (it still needs to model the whole
-distribution), and the mean-variance reg (§5.4) stays full-frame too (it's a global
-clamp). Normalization stays `/numel` (no renorm by mask area, matching
-`apply_masked_loss`), so a masked run sees a lower effective gradient by design.
-
----
-
-## 9. What's frozen at inference, and why it ships as a plain LoRA
+## 8. What's frozen at inference, and why it ships as a plain LoRA
 
 `TurboDMDNetwork.save_student` serializes only the student in the standard
 plain-LoRA layout (`save_variant="standard"`); the fake is training scaffolding and
-never shipped. (The off-by-default `per_step_expert` variant — a shared-down student
-with one up-head per rollout step — saves a bespoke step-expert layout instead: not
-a plain LoRA, kept live at inference, refused by merge.) The default student is an
+never shipped. The student is an
 ordinary rank-$r$ LoRA with CFG=4 baked in — load
 it through the normal inference path and run `--infer_steps <student_steps> --cfg 1.0`
 (currently 4). No turbo code runs at inference.
@@ -384,7 +366,7 @@ Consequences of the plain-LoRA bake (the load-bearing constraint):
 
 ---
 
-## 10. Minimal mental model
+## 9. Minimal mental model
 
 1. Two LoRAs on one frozen DiT. Student = generator $G_\theta$ (an N-step Euler
    rollout); fake = score tracker. View-toggle by enabling/disabling each per forward.

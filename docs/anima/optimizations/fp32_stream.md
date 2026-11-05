@@ -13,8 +13,7 @@ make lora ARGS="--stream bf16"
 
 `GenerationRequest(stream=...)` is the same switch. EasyControl stays on bf16, with a warning in
 generation and training; its `.snapshot.toml` still reads `fp32`, the configured value. Turbo ships
-`stream = "fp32"` in `configs/methods/turbo.toml`, teacher included, and refuses it with `dmad` and
-`dmad_probe`. In ComfyUI, `Anima Adapter Loader` has a `stream` input and `Anima fp32 Stream` patches a
+`stream = "fp32"` in `configs/methods/turbo.toml`, teacher included. In ComfyUI, `Anima Adapter Loader` has a `stream` input and `Anima fp32 Stream` patches a
 MODEL with no adapter. `Anima INT8 Loader` loads an INT8 file.
 
 **The same seed gives a different image from `bf16`.** The noise is the same, since an fp32 draw

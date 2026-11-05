@@ -7,15 +7,12 @@ output_dir = "output/ckpt"
 iterations = 10000
 batch_size = 1
 seed = 42
-use_masked_loss = false  # v2: masks are opt-in (`make mask` + this key)
 
 channel_scaling_alpha = 0.0
 compile_dynamic_seq = true
 activation_memory_budget = 0.99
 int8 = "stream"
 stream = "fp32"
-
-base_loss = "dpdmd"
 
 [network]
 student_rank = 64
@@ -27,10 +24,6 @@ attn_mode = "flash"
 train_adaln = true
 adaln_rank = 16
 adaln_alpha = 90
-fake_tau_banks = 1
-fake_tau_boundary = 0.5
-
-per_step_expert = false
 
 student_init_weights = "models/extracted/anima_turbo_v1.1_delta_r96_asvd_adaln.safetensors"
 fake_init_weights = "models/extracted/anima_turbo_v1.1_delta_r96_asvd_adaln.safetensors"
@@ -41,7 +34,6 @@ teacher_cfg = 4
 dynamic_schedule = true
 dm_x0_norm = true
 norm_floor = 0.05
-grad_step = "random"
 
 [cdm]
 weight = 1.0
@@ -78,38 +70,6 @@ r1_weight = 0.0
 r1_alpha = 0.1
 use_same_t_noise = true
 grad_ckpt = true
-
-[f_distill]
-f_div = "rkl"
-ratio_lower = 0.1
-ratio_upper = 20.0
-ratio_ema_rate = 0.0
-bin_num = 10
-ratio_normalization = true
-
-# DMAD (docs/anima/proposal/turbo_dmad.md § Phase 0, off by default): a disc replaces
-# the DM term and the fake critic (and L_CDM's signal). Needs gan.weight_gen = 0,
-# int8 = "off" and stream = "bf16".
-# [dmad]
-# enabled = true
-# lambda_t = 150.0
-# lambda_r = 150.0
-# signal_rms = 0.18  # 0 = raw disc gradient (lambda sets its size)
-# lr = 4e-5
-# grad_clip = 0
-# window = 4
-# disc_warmup_steps = 0
-# gap_routing = false  # head T weight per σ decile from the h_R real − teacher gap
-# gap_tau = 2.0
-# feature_block_idx = -1
-
-[softrank]
-weight = 0.0
-k = 2
-every_n = 4
-softness = 0.1
-pool_size = 2
-warmup_ratio = 1.0
 
 [io]
 save_every = 1000

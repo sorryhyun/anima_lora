@@ -56,8 +56,6 @@ class FlushedMetrics:
     gan_disc: float
     gan_margin: float
     gan_spread: float
-    softrank: float
-    softrank_active: float
     cdm: float
 
 
@@ -87,22 +85,18 @@ class TurboMetrics:
         *,
         fake_loss_mean_t: torch.Tensor,
         grad_signal: torch.Tensor,
-        delta_dm: torch.Tensor | None,
+        delta_dm: torch.Tensor,
         x_pred: torch.Tensor,
         v_student: torch.Tensor,
         tau_dm_e: torch.Tensor,
-        v_real_cond_dm: torch.Tensor | None,
-        v_fake_cond_dm: torch.Tensor | None,
+        v_real_cond_dm: torch.Tensor,
+        v_fake_cond_dm: torch.Tensor,
     ) -> None:
-        """``delta_dm`` / ``v_*_cond_dm`` are None under DMAD (no score
-        difference): the DM-tracking scalars then stay at 0."""
         eps_r = 1e-8
         self._acc.add("fake", fake_loss_mean_t.float())
         self._acc.add("grad", grad_signal.float().pow(2).mean().sqrt())
         self._acc.add("xpred", x_pred.detach().float().std())
         self._acc.add("v_student", v_student.detach().float().pow(2).mean().sqrt())
-        if delta_dm is None:
-            return
         self._acc.add("dm", delta_dm.float().pow(2).mean().sqrt())
         vr = v_real_cond_dm.float()
         vf = v_fake_cond_dm.float()
@@ -139,17 +133,6 @@ class TurboMetrics:
         self._acc.add("gan_spread", gan_spread_t.detach().float())
 
     @torch.no_grad()
-    def add_softrank(self, softrank_loss: torch.Tensor, *, active: bool) -> None:
-        """Accumulate the soft-rank caption loss (pre-weight) + its run indicator.
-
-        Amortized (``softrank.every_n``), so the flushed ``softrank`` mean is
-        diluted by skipped steps; consumers normalize by ``softrank_active`` to
-        recover the per-firing soft rank (0 = matched caption wins every pair).
-        """
-        self._acc.add("softrank", softrank_loss.detach().float())
-        self._acc.add("softrank_active", 1.0 if active else 0.0)
-
-    @torch.no_grad()
     def add_cdm(self, grad_cdm: torch.Tensor) -> None:
         """Accumulate the L_CDM gradient-signal rms (pre-weight).
 
@@ -168,55 +151,6 @@ class TurboMetrics:
         self._acc.reset()
 
 
-class DmadMetrics:
-    """DMAD scalars (``dmad.py``): GPU-side sums + host-side per-key counts.
-
-    A key is only touched when its head / branch exists (``*_r`` needs head R,
-    ``gap_r`` and ``cos_tr`` need both heads), so each is meaned over the steps
-    that produced it and a missing key is simply not written.
-
-    * ``bce_{t,r}`` / ``margin_{t,r}`` / ``rank_acc_{t,r}`` — the newest pair,
-      scored before the disc trains on it (rank acc = h_target > h_student).
-    * ``gap_r`` — h_R(real) − h_R(teacher sample), the gap-reweighting signal.
-    * ``gap_ready`` / ``gap_w`` — gap-routing bands with >= 10 updates, and
-      head T's routed weight ``w_b / E_w`` at the student query (routing on).
-    * ``loss`` / ``grad_norm`` — window-mean disc loss, pre-clip grad norm.
-    * ``g_{t,r}_rms`` / ``cos_tr`` — each head's raw student-signal gradient
-      before the RMS normalization, and their cosine.
-    """
-
-    def __init__(self, device: torch.device):
-        self._acc = ScalarAccumulator(device)
-        self._n: dict[str, int] = {}
-
-    @torch.no_grad()
-    def add(self, stats: dict[str, torch.Tensor]) -> None:
-        for k, v in stats.items():
-            self._acc.add(k, v.detach().float())
-            self._n[k] = self._n.get(k, 0) + 1
-
-    def flush(self) -> dict[str, float]:
-        """One CUDA sync; per-key means, then reset."""
-        sums = self._acc.flush() if self._n else {}
-        out = {k: sums[k] / n for k, n in self._n.items()}
-        self._acc.reset()
-        self._n.clear()
-        return out
-
-    @staticmethod
-    def write(writer, m: dict[str, float], step: int, *, prefix: str = "dmad/") -> None:
-        if writer is None:
-            return
-        for k, v in m.items():
-            writer.add_scalar(f"{prefix}{k}", v, step)
-
-    @staticmethod
-    def line(m: dict[str, float]) -> str:
-        """Short ``key=value`` summary for console / tqdm."""
-        keys = ("rank_acc_t", "rank_acc_r", "margin_t", "margin_r", "loss", "grad_norm")
-        return " ".join(f"{k}={m[k]:.3f}" for k in keys if k in m)
-
-
 class TauBinCriticLoss:
     """Per-τ-bin fake/critic loss profile.
 
@@ -227,8 +161,7 @@ class TauBinCriticLoss:
 
     NOT a gate signal: the raw per-τ profile is structurally nonuniform (the FM
     target ``ε − x0`` is intrinsically harder at some τ regardless of critic
-    capacity) — it is a baseline for checking whether a τ-split flattens the
-    *excess*.
+    capacity).
 
     The loop's fake loss is a batch-mean scalar, so at B>1 it is attributed to
     every sample's τ bin (exact at the shipped ``batch_size=1``).
@@ -240,13 +173,9 @@ class TauBinCriticLoss:
         *,
         nbins: int = TAU_PROFILE_BINS,
         prefix: str = "train/fake_loss_tau",
-        aggregate_key: str | None = None,
     ):
         self.nbins = nbins
         self.prefix = prefix
-        # Optional extra scalar: the count-weighted mean over ALL bins under
-        # this key (per-bank overall fake loss when banks are split).
-        self.aggregate_key = aggregate_key
         self._sum = torch.zeros(nbins, device=device)
         self._cnt = torch.zeros(nbins, device=device)
 
@@ -278,8 +207,6 @@ class TauBinCriticLoss:
         for i, (s, n) in enumerate(zip(sums, cnts)):
             if n > 0:
                 writer.add_scalar(f"{self.prefix}{i}", s / n, step)
-        if self.aggregate_key is not None and sum(cnts) > 0:
-            writer.add_scalar(self.aggregate_key, sum(sums) / sum(cnts), step)
 
 
 def write_scalars(writer, m: FlushedMetrics, step: int) -> None:
@@ -297,13 +224,7 @@ def write_scalars(writer, m: FlushedMetrics, step: int) -> None:
     writer.add_scalar("train/gan_disc_loss", m.gan_disc, step)
     writer.add_scalar("train/gan_disc_margin", m.gan_margin, step)
     writer.add_scalar("train/gan_logit_spread", m.gan_spread, step)
-    writer.add_scalar("train/softrank_active", m.softrank_active, step)
     writer.add_scalar("train/cdm_grad_rms", m.cdm, step)
-    if m.softrank_active > 0:
-        # Normalize the interval mean to active steps so the curve reads as the
-        # per-firing matched-caption soft rank (→ 0 as discrimination recovers),
-        # regardless of the every_n amortization.
-        writer.add_scalar("train/softrank_loss", m.softrank / m.softrank_active, step)
 
 
 def tqdm_rate(bar: tqdm) -> float | None:
@@ -354,8 +275,6 @@ def tqdm_postfix(m: FlushedMetrics) -> dict:
         postfix["gen"] = f"{m.gan_gen:.3f}"
         postfix["dsc"] = f"{m.gan_disc:.3f}"
         postfix["mgn"] = f"{m.gan_margin:.3f}"
-    if m.softrank_active > 0:
-        postfix["srank"] = f"{m.softrank / m.softrank_active:.3f}"
     if m.cdm != 0:
         postfix["cdm"] = f"{m.cdm:.2e}"
     return postfix

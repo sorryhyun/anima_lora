@@ -3,7 +3,7 @@
 Each function is one ``# --- … ---`` block of the training loop, reading the
 built objects off the :class:`~scripts.distill_turbo.setup.RunContext`
 and the resolved config. The loop keeps the algorithmic spine — the student
-rollout (whose graph the non-split diversity/soft-rank terms ride) and the final
+rollout (whose graph the non-split diversity term rides) and the final
 assemble/backward/optimizer step — inline; these are the surrounding loss terms
 and the fake/critic update.
 
@@ -25,7 +25,7 @@ import torch.nn as nn
 from library.anima.models import Anima
 from networks.methods.turbo_dmd import gan_loss_discriminator, gan_loss_generator
 
-from .primitives import cdm_extrapolate, renoise, sample_t, sample_t_routed
+from .primitives import cdm_extrapolate, renoise, sample_t
 from .setup import RunContext
 
 
@@ -69,62 +69,6 @@ def selective_block_grad_ckpt(model: Anima):
             b.unsloth_offload_checkpointing = u
 
 
-# --- f-distill reweighting (port of FastGen f_distill.py:20 + _get_f_div_weighting_h)
-# h = f'(r) where the density ratio r = exp(disc_logits) comes free from the GAN
-# head. "rkl" ≡ uniform h ≡ plain DMD2 (the off-by-default no-op).
-_F_DIV_WEIGHTING = {
-    "rkl": lambda r: torch.ones_like(r),
-    "kl": lambda r: r,
-    "js": lambda r: 1.0 - 1.0 / (1.0 + r),
-    "sf": lambda r: 1.0 / (1.0 + r),
-    "neyman": lambda r: 1.0 / torch.clamp(r, min=1e-8),
-    "sh": lambda r: r**0.5,  # squared Hellinger
-    "jf": lambda r: 1.0 + r,  # Jeffreys
-}
-
-
-def f_div_weighting_h(
-    fake_logits: torch.Tensor,
-    t: torch.Tensor,
-    *,
-    f_div: str,
-    ratio_lower: float,
-    ratio_upper: float,
-    ema_rate: float,
-    bins: torch.Tensor | None,
-    bin_num: int,
-) -> tuple[torch.Tensor, torch.Tensor | None]:
-    """Per-sample f-divergence reweight ``h(t, r)`` for the DMD signal.
-
-    Port of ``FdistillModel._get_f_div_weighting_h`` (f_distill.py:59). ``r =
-    exp(mean disc logits)`` clamped to ``[ratio_lower, ratio_upper]`` after a ±10
-    logit clamp; an optional per-τ EMA histogram (``bins``) normalizes ``r`` so
-    ``h`` isn't dominated by the batch's τ-distribution; ``h`` is renormalized to
-    unit batch-mean. Everything is fp32 and detached — ``h`` only *scales* the
-    already-detached DMD signal. Returns ``(h [B], updated_bins)``; ``bins`` is
-    ``None`` when normalization is off.
-    """
-    logits = fake_logits.float()
-    clamped = torch.clamp(logits.mean(dim=1), min=-10.0, max=10.0)
-    ratio = torch.exp(clamped).detach()
-    ratio = torch.clamp(ratio, ratio_lower, ratio_upper)
-    if bins is not None:
-        # τ is on [0, 1] (renoise level); bin directly over that range.
-        tt = t.float().clamp(0.0, 1.0)
-        bin_width = 1.0 / bin_num
-        idx = (tt / bin_width).floor().long().clamp(0, bin_num - 1)
-        cnt = torch.bincount(idx, minlength=bin_num).float()
-        ratio_sum = torch.bincount(idx, weights=ratio, minlength=bin_num).float()
-        valid = cnt > 0
-        new_vals = ratio_sum / (cnt + 1e-6)
-        bins = bins.clone()
-        bins[valid] = bins[valid] * ema_rate + (1.0 - ema_rate) * new_vals[valid]
-        ratio = ratio / (bins[idx] + 1e-6)
-    h = _F_DIV_WEIGHTING[f_div](ratio)
-    h = h / (h.mean() + 1e-6)
-    return h.detach(), bins
-
-
 def teacher_anchor(
     ctx: RunContext,
     cfg,
@@ -151,18 +95,14 @@ def teacher_anchor(
 
 @dataclass
 class DmdResult:
-    """Outputs of the DMD-on-x_θ surrogate (all fp32 / detached as noted).
+    """Outputs of the DMD-on-x_θ surrogate (all fp32 / detached as noted)."""
 
-    Under DMAD (:func:`dmad_signal`) there is no score difference:
-    ``delta_dm`` / ``v_real_cond_dm`` / ``v_fake_cond_dm`` are None.
-    """
-
-    grad_signal: torch.Tensor  # detached DMD signal (pre f-distill reweight)
-    delta_dm: torch.Tensor | None  # v_real − v_fake (metrics)
+    grad_signal: torch.Tensor  # detached DMD signal
+    delta_dm: torch.Tensor  # v_real − v_fake (metrics)
     tau_dm: torch.Tensor  # DMD query τ (reused by the GAN gen renoise)
     tau_dm_e: torch.Tensor  # τ broadcast to (B,1,1,1)
-    v_real_cond_dm: torch.Tensor | None
-    v_fake_cond_dm: torch.Tensor | None
+    v_real_cond_dm: torch.Tensor
+    v_fake_cond_dm: torch.Tensor
     eps_dm: torch.Tensor  # DMD renoise ε (reused by the GAN gen renoise)
 
 
@@ -179,17 +119,10 @@ def dmd_surrogate(
     The real score MUST be CFG-GUIDED (v_u + α·(v_c − v_u)), not cond-only:
     without guidance v_real≈v_fake (both unguided cond preds collapse,
     dm_cos≈0.9999) and the quality gradient is noise. Fake stays cond-only.
-
-    τ-split critic: the DMD query also routes to the owner bank (else a
-    specialist bank would never see it). Query τ is uniform by design
-    (independent of t_distribution); banks=1 resolves to the identical
-    torch.rand call/RNG stream.
+    Query τ is uniform by design (independent of t_distribution).
     """
-    tau_dm = sample_t_routed(
+    tau_dm = sample_t(
         B,
-        turbo=ctx.turbo,
-        fake_tau_banks=cfg.fake_tau_banks,
-        fake_tau_boundary=cfg.fake_tau_boundary,
         distribution="uniform",
         sigmoid_scale=cfg.sigmoid_scale,
         device=ctx.device,
@@ -232,7 +165,7 @@ def mfd_steps(span_max: float, dtau: float, max_steps: int) -> int:
     return min(k, max(1, max_steps))
 
 
-def _mean_velocity(v_fn, x_a, sa, sb, K, on_sigma=None) -> torch.Tensor:
+def _mean_velocity(v_fn, x_a, sa, sb, K) -> torch.Tensor:
     """Average Euler velocity of ``v_fn`` from σ=sa to σ=sb (per-sample, K uniform steps).
 
     ``(x_a − x_b) / (sa − sb)`` without the division: the uniform-step Euler
@@ -246,8 +179,6 @@ def _mean_velocity(v_fn, x_a, sa, sb, K, on_sigma=None) -> torch.Tensor:
     u = None
     for k in range(K):
         sig = (sa_f + (sb_f - sa_f) * (k / K)).to(sa.dtype) if k else sa
-        if on_sigma is not None:
-            on_sigma(sig)
         v = v_fn(x, sig).float()
         u = v if u is None else u + v
         if k + 1 < K:
@@ -275,11 +206,8 @@ def mfd_surrogate(
     Fields reuse the DMD names for metrics/GAN: ``tau_dm`` = σ_a (the GAN gen
     renoise level), ``tau_dm_e`` = σ_a − σ_b, ``v_*_cond_dm`` = U_real / U_fake.
     """
-    sa = sample_t_routed(
+    sa = sample_t(
         B,
-        turbo=ctx.turbo,
-        fake_tau_banks=cfg.fake_tau_banks,
-        fake_tau_boundary=cfg.fake_tau_boundary,
         distribution="uniform",
         sigmoid_scale=cfg.sigmoid_scale,
         device=ctx.device,
@@ -299,14 +227,8 @@ def mfd_surrogate(
     def _v_fake(x, sig):
         return ctx.forward("fake", x, sig, crossattn_emb, no_grad=True).squeeze(2)
 
-    on_sigma = None
-    if cfg.fake_tau_banks > 1:  # B=1 under banks; re-arm the owner bank per step
-
-        def on_sigma(sig):
-            ctx.turbo.set_fake_bank(0 if float(sig) < cfg.fake_tau_boundary else 1)
-
     u_real = _mean_velocity(_v_real, x_a, sa, sb, K)
-    u_fake = _mean_velocity(_v_fake, x_a, sa, sb, K, on_sigma=on_sigma)
+    u_fake = _mean_velocity(_v_fake, x_a, sa, sb, K)
     delta = u_real - u_fake
 
     span_e = (sa - sb).view(B, 1, 1, 1).float()
@@ -330,43 +252,6 @@ def mfd_surrogate(
     )
 
 
-def dmad_signal(
-    ctx: RunContext,
-    cfg,
-    x_pred: torch.Tensor,
-    crossattn_emb: torch.Tensor,
-    B: int,
-) -> DmdResult:
-    """DMAD's student signal in the DM slot (docs/anima/proposal/turbo_dmad.md § Phase 0).
-
-    Draws (τ, ε) as the DM query does (uniform τ; the critic's bank routing
-    does not exist here), then ``ctx.dmad.student_signal`` returns
-    ``∂(−λ_T h_T − λ_R h_R)/∂x_pred``, RMS-normalized per sample, as
-    ``grad_signal``. Records the raw-gradient stats into ``ctx.dmad_metrics``.
-    """
-    tau_dm = sample_t(
-        B,
-        distribution="uniform",
-        sigmoid_scale=cfg.sigmoid_scale,
-        device=ctx.device,
-        dtype=ctx.dtype,
-    )
-    eps_dm = torch.randn_like(x_pred)
-    grad_signal, stats = ctx.dmad.student_signal(
-        ctx, x_pred, tau_dm, eps_dm, crossattn_emb
-    )
-    ctx.dmad_metrics.add(stats)
-    return DmdResult(
-        grad_signal=grad_signal,
-        delta_dm=None,
-        tau_dm=tau_dm,
-        tau_dm_e=tau_dm.view(B, 1, 1, 1).float(),
-        v_real_cond_dm=None,
-        v_fake_cond_dm=None,
-        eps_dm=eps_dm,
-    )
-
-
 def cdm_off_trajectory_loss(
     ctx: RunContext,
     cfg,
@@ -374,7 +259,6 @@ def cdm_off_trajectory_loss(
     crossattn_emb: torch.Tensor,
     c_null: torch.Tensor,
     latents: torch.Tensor,
-    mask: torch.Tensor | None,
     B: int,
 ) -> None:
     """L_CDM off-trajectory loss.
@@ -383,8 +267,7 @@ def cdm_off_trajectory_loss(
     random stride to x_off at t' ~ U(0,1) (velocity-driven; detached, so this is
     a fresh leaf — one grad forward, no second BPTT chain). The student's local
     clean estimate there, x0_off = x_off − t'·v_off, gets the same signal as the
-    DM branch: the real-vs-fake DMD surrogate, or under ``[dmad]`` the disc's
-    input gradient (``DmadDisc.student_signal``). Supervises the truncation-drift region
+    DM branch: the real-vs-fake DMD surrogate. Supervises the truncation-drift region
     few-step Euler traverses off-manifold, which on-trajectory rollouts never
     visit.
 
@@ -417,45 +300,34 @@ def cdm_off_trajectory_loss(
         ).squeeze(2)
     # Local clean estimate at t' (their Eq. 1, in our v-param).
     x0_off = x_off.float() - t_off.view(B, 1, 1, 1).float() * v_off.float()
-    tau_cdm = sample_t_routed(
+    tau_cdm = sample_t(
         B,
-        turbo=ctx.turbo,
-        fake_tau_banks=cfg.fake_tau_banks,
-        fake_tau_boundary=cfg.fake_tau_boundary,
         distribution="uniform",
         sigmoid_scale=cfg.sigmoid_scale,
         device=ctx.device,
         dtype=ctx.dtype,
     )
     eps_cdm = torch.randn_like(latents)
-    if ctx.dmad is not None:
-        grad_cdm, _ = ctx.dmad.student_signal(
-            ctx, x0_off, tau_cdm, eps_cdm, crossattn_emb
+    x_renoised_cdm = renoise(x0_off.detach().to(ctx.dtype), tau_cdm, eps_cdm)
+    v_real_cdm = ctx.teacher_cfg_velocity(
+        x_renoised_cdm, tau_cdm, crossattn_emb, c_null
+    )
+    v_fake_cdm = ctx.forward(
+        "fake", x_renoised_cdm, tau_cdm, crossattn_emb, no_grad=True
+    ).squeeze(2)
+    delta_cdm = v_real_cdm - v_fake_cdm
+    tau_cdm_e = tau_cdm.view(B, 1, 1, 1).float()
+    grad_cdm = tau_cdm_e * delta_cdm.float()
+    if cfg.dm_x0_norm:
+        denom_cdm = (
+            (tau_cdm_e * v_real_cdm.float())
+            .abs()
+            .mean(dim=(1, 2, 3), keepdim=True)
+            .clamp_min(cfg.norm_floor)
         )
-    else:
-        x_renoised_cdm = renoise(x0_off.detach().to(ctx.dtype), tau_cdm, eps_cdm)
-        v_real_cdm = ctx.teacher_cfg_velocity(
-            x_renoised_cdm, tau_cdm, crossattn_emb, c_null
-        )
-        v_fake_cdm = ctx.forward(
-            "fake", x_renoised_cdm, tau_cdm, crossattn_emb, no_grad=True
-        ).squeeze(2)
-        delta_cdm = v_real_cdm - v_fake_cdm
-        tau_cdm_e = tau_cdm.view(B, 1, 1, 1).float()
-        grad_cdm = tau_cdm_e * delta_cdm.float()
-        if cfg.dm_x0_norm:
-            denom_cdm = (
-                (tau_cdm_e * v_real_cdm.float())
-                .abs()
-                .mean(dim=(1, 2, 3), keepdim=True)
-                .clamp_min(cfg.norm_floor)
-            )
-            grad_cdm = grad_cdm / denom_cdm
-        grad_cdm = grad_cdm.detach()
-    if mask is not None:
-        cdm_loss = (grad_cdm * x0_off * mask).mean()
-    else:
-        cdm_loss = (grad_cdm * x0_off).mean()
+        grad_cdm = grad_cdm / denom_cdm
+    grad_cdm = grad_cdm.detach()
+    cdm_loss = (grad_cdm * x0_off).mean()
     # Backward NOW, with the student view restored: the ckpt'd forward
     # above recomputes here and must see the view it was recorded
     # under (the delta forwards flipped it to teacher/fake). Frees the
@@ -473,12 +345,9 @@ def gan_generator_term(
     tau_dm: torch.Tensor,
     eps_dm: torch.Tensor,
     crossattn_emb: torch.Tensor,
-    grad_signal: torch.Tensor,
-    fdistill_bins: torch.Tensor | None,
-    B: int,
     gan_weight: float,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
-    """GAN generator term + f-distill reweighting.
+) -> torch.Tensor:
+    """GAN generator term.
 
     The disc scores the frozen TEACHER's block features of the student's renoised
     x_pred. Grad must flow into x_pred → student, so this renoise keeps x_pred
@@ -486,15 +355,14 @@ def gan_generator_term(
     disc itself is frozen here. return_features_early stops after the deepest
     tapped block (half-depth grad forward — full-stack OOM'd).
 
-    No-op when the GAN is off, or (unless f-distill needs the logits) while
-    ``gan_weight`` is still 0 inside the delay window — skips the grad-bearing
-    half-depth teacher forward entirely (no RNG draws here, so the skip leaves
-    the step's random stream unchanged), returning a zero loss and
-    ``grad_signal``/``fdistill_bins`` unchanged.
+    No-op when the GAN is off, or while ``gan_weight`` is still 0 inside the
+    delay window — skips the grad-bearing half-depth teacher forward entirely
+    (no RNG draws here, so the skip leaves the step's random stream unchanged),
+    returning a zero loss.
     """
     turbo = ctx.turbo
-    if turbo.disc is None or (gan_weight == 0.0 and not ctx.fdistill_on):
-        return torch.zeros((), device=ctx.device), grad_signal, fdistill_bins
+    if turbo.disc is None or gan_weight == 0.0:
+        return torch.zeros((), device=ctx.device)
 
     turbo.set_disc_requires_grad(False)
     x_renoised_gan = renoise(x_pred, tau_dm, eps_dm)  # grad-bearing
@@ -517,22 +385,7 @@ def gan_generator_term(
     fake_logits_gen = turbo.disc(
         turbo.features_in_order(feats_gen)
     )  # (B, taps), grad→x_pred
-    gan_gen_loss = gan_loss_generator(fake_logits_gen)
-
-    # f-distill: scale the (detached) DMD signal by h(τ, r), r=exp(logits).
-    if ctx.fdistill_on:
-        h, fdistill_bins = f_div_weighting_h(
-            fake_logits_gen,
-            tau_dm,
-            f_div=cfg.f_div,
-            ratio_lower=cfg.f_ratio_lower,
-            ratio_upper=cfg.f_ratio_upper,
-            ema_rate=cfg.f_ratio_ema_rate,
-            bins=fdistill_bins,
-            bin_num=cfg.f_bin_num,
-        )
-        grad_signal = grad_signal * h.view(B, 1, 1, 1)
-    return gan_gen_loss, grad_signal, fdistill_bins
+    return gan_loss_generator(fake_logits_gen)
 
 
 def fake_update(
@@ -563,13 +416,8 @@ def fake_update(
     gan_margin_sum = torch.zeros((), device=device)
     gan_spread_sum = torch.zeros((), device=device)
     for _ in range(cfg.fake_steps_per_student_step):
-        # τ-split critic: the drawn τ picks which bank trains this update
-        # (banks=1 resolves to the identical sample_t call/RNG stream).
-        tau_fake = sample_t_routed(
+        tau_fake = sample_t(
             B,
-            turbo=turbo,
-            fake_tau_banks=cfg.fake_tau_banks,
-            fake_tau_boundary=cfg.fake_tau_boundary,
             distribution=cfg.t_distribution,
             sigmoid_scale=cfg.sigmoid_scale,
             device=device,
@@ -589,7 +437,7 @@ def fake_update(
         ctx.fake_opt.zero_grad(set_to_none=True)
         ctx.fake_sched.step()
         fake_loss_sum = fake_loss_sum + fake_loss.detach()
-        ctx.tau_profiles[turbo.fake_bank].add(fake_loss, tau_fake)
+        ctx.tau_profile.add(fake_loss, tau_fake)
 
         # Discriminator update, co-located with the fake/critic update
         # (FastGen cadence). The disc scores frozen-TEACHER block features of
