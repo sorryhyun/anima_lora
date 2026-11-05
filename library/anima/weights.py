@@ -652,13 +652,59 @@ def load_t5_tokenizer(t5_tokenizer_path: Optional[str] = None):
     )
 
 
+_FUSED_QKV_RE = re.compile(r"(blocks\.\d+\.self_attn)\.qkv_proj(\.weight)$")
+_FUSED_KV_RE = re.compile(r"(blocks\.\d+\.cross_attn)\.kv_proj(\.weight)$")
+_FUSED_ADALN_DOWN_RE = re.compile(r"(blocks\.\d+)\.adaln_fused_down\.1(\.weight)$")
+_ADALN_UP_RUNTIME_RE = re.compile(
+    r"(blocks\.\d+)\.adaln_up_(self_attn|cross_attn|mlp)\.(weight|bias)$"
+)
+# Built at init or loaded from their own file (MOD=1), never in a DiT checkpoint:
+# load_anima_model expects them missing.
+_NOT_IN_CHECKPOINT_RE = re.compile(
+    r"^(pooled_text_proj|pooled_text_sigma_film)\."
+    r"|\.(seq|dim_spatial_range|dim_temporal_range|inv_freq)$"
+)
+
+
+def unfuse_dit_state_dict(sd: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    """The inverse of ``_dit_concat_hook`` + ``_dit_rename_hook``: a runtime
+    ``dit.state_dict()`` back to the checkpoint layout (q/k/v, k/v,
+    ``adaln_modulation_{branch}.1`` / ``.2``), no ``net.`` prefix, without the
+    init-time buffers and the pooled-text heads."""
+
+    def split(key: str, t: torch.Tensor, n: int) -> tuple[torch.Tensor, ...]:
+        if t.shape[0] % n:
+            raise ValueError(f"{key}: {t.shape[0]} rows do not split into {n}")
+        return t.chunk(n, dim=0)
+
+    out = {}
+    for k, v in sd.items():
+        if _NOT_IN_CHECKPOINT_RE.search(k):
+            continue
+        if m := _FUSED_QKV_RE.match(k):
+            for proj, part in zip(_SELF_ATTN_QKV_ORDER, split(k, v, 3)):
+                out[f"{m.group(1)}.{proj}{m.group(2)}"] = part
+        elif m := _FUSED_KV_RE.match(k):
+            for proj, part in zip(_CROSS_ATTN_KV_ORDER, split(k, v, 2)):
+                out[f"{m.group(1)}.{proj}{m.group(2)}"] = part
+        elif m := _FUSED_ADALN_DOWN_RE.match(k):
+            for branch, part in zip(_ADALN_BRANCH_ORDER, split(k, v, 3)):
+                out[f"{m.group(1)}.adaln_modulation_{branch}.1{m.group(2)}"] = part
+        elif m := _ADALN_UP_RUNTIME_RE.match(k):
+            out[f"{m.group(1)}.adaln_modulation_{m.group(2)}.2.{m.group(3)}"] = v
+        else:
+            out[k] = v
+    return out
+
+
 def save_anima_model(
     save_path: str,
     dit_state_dict: Dict[str, torch.Tensor],
     metadata: Dict[str, any],
     dtype: Optional[torch.dtype] = None,
 ):
-    """Save Anima DiT model with 'net.' prefix for ComfyUI compatibility.
+    """Save the DiT in the checkpoint layout (unfused, ``net.`` prefix) that
+    ComfyUI and ``load_anima_model`` read.
 
     Args:
         save_path: Output path (.safetensors)
@@ -667,7 +713,7 @@ def save_anima_model(
         dtype: Optional dtype to cast to before saving
     """
     prefixed_sd = {}
-    for k, v in dit_state_dict.items():
+    for k, v in unfuse_dit_state_dict(dit_state_dict).items():
         if dtype is not None:
             v = (
                 v.detach().clone().to("cpu").to(dtype)

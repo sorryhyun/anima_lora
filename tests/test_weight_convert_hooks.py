@@ -75,3 +75,26 @@ def test_dit_concat_and_rename_hooks(tmp_path):
             adapter.get_tensor("blocks.0.adaln_up_self_attn.weight"), _const(9)
         )
         assert torch.equal(adapter.get_tensor("blocks.0.mlp.fc1.weight"), _const(10))
+
+
+def test_save_writes_checkpoint_layout(tmp_path):
+    """save_anima_model unfuses what the load hooks fused: load → save → reload
+    returns the source checkpoint's keys and tensors."""
+    from safetensors.torch import load_file
+
+    from library.anima.weights import save_anima_model
+
+    path = tmp_path / "dit.safetensors"
+    save_file(_SOURCE, str(path))
+    with MemoryEfficientSafeOpen(str(path)) as f:
+        adapter = TensorWeightAdapter(_DIT_HOOKS, f)
+        runtime = {k: adapter.get_tensor(k) for k in adapter.keys()}
+    runtime["pos_embedder.seq"] = torch.arange(4.0)
+    runtime["pooled_text_proj.0.weight"] = _const(11)
+
+    out = tmp_path / "saved.safetensors"
+    save_anima_model(str(out), runtime, {})
+    saved = load_file(str(out))
+    assert set(saved) == set(_SOURCE)
+    for k, v in _SOURCE.items():
+        assert torch.equal(saved[k], v), k
