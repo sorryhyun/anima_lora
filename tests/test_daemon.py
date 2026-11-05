@@ -1592,3 +1592,32 @@ def test_stop_released_job_is_terminal(release_daemon):
     cl.stop(jid)
     assert cl.get(jid)["state"] == "stopped"
     assert "release" in (cl.get(jid)["status_detail"] or "")
+
+
+@pytest.mark.parametrize("kill_jobs", [True, False])
+def test_shutdown_queue_on_disk(tmp_path, monkeypatch, kill_jobs):
+    """Terminate (``kill_jobs``) finalizes queued jobs ``stopped`` on disk, so the
+    next boot's reconcile does not re-enqueue them; a graceful restart keeps them
+    ``queued`` for the next daemon."""
+    _isolate_state(tmp_path, monkeypatch)
+    monkeypatch.setattr(JobManager, "_build_cmd", _fake_build_cmd)
+    mgr = JobManager()
+    mgr.start()
+    running = mgr.submit(
+        method="lora",
+        preset="default",
+        methods_subdir=None,
+        overrides={"duration": 30},
+        start=True,
+    )
+    queued = [
+        mgr.submit(method="lora", preset="default", methods_subdir=None, start=True)
+        for _ in range(2)
+    ]
+    assert _wait_until(lambda: mgr.get(running.id).state == "running", timeout=10)
+    mgr.shutdown(kill_jobs=kill_jobs)
+    on_disk = jobs.load_all()
+    want = "stopped" if kill_jobs else "queued"
+    assert all(on_disk[j.id].state == want for j in queued)
+    if not kill_jobs:
+        mgr.stop(running.id)

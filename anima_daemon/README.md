@@ -264,7 +264,9 @@ is behind a long run, or, with `worker_alive` false, has died.
 
 ### `POST /shutdown`
 
-`{"kill_jobs": true}` → stop the daemon, optionally killing the running job.
+`{"kill_jobs": true}` → stop the daemon, kill the running job and finalize every queued
+job `stopped` on disk. `{"kill_jobs": false}` leaves both for the next boot to re-adopt
+and re-enqueue.
 
 ## Python client (`anima_daemon.client`)
 
