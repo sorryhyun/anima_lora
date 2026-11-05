@@ -7,6 +7,8 @@ learning_rate = 5e-5
 # norms, applied per micro-batch: spikes are bounded to their share without leaving
 # the set. Beat the 2e-5 cosine bs1 clip-1.0 recipe in a blind A/B over 4 seeds x 2
 # artists, 41-16, cluster p 0.0078 (docs/anima/findings/lora_gradient_noise_recipe.md).
+# That A/B ran under the T-LoRA mask; rerun without it at matched ||dW|| (s33), A led
+# 52-42 (cluster p 0.17), so the win is not the update direction.
 # The median is kept per σ band: edge-σ norms run ~2x mid-σ ones, so one window reads
 # normal edge draws as spikes. Beat the single window blind at matched ||dW||, 39-21,
 # cluster p 0.047 (docs/anima/findings/lora_gradient_noise_recipe.md).

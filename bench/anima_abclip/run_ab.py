@@ -8,6 +8,13 @@ Experiments (``--exp``, docs/anima/findings/lora_gradient_noise_recipe.md):
   caststation and ama mitsuki.
 - ``nomask`` (s31): T-LoRA as published (mask in training and at inference) against
   the same recipe without the mask, sweetonedollar, seeds 42-44.
+- ``sigshift`` (s32, proposal item 1): the shipped recipe (no mask) against the
+  same with ``timestep_sampling = "shift"``, ``discrete_flow_shift = 2``, on
+  caststation and sweetonedollar, seeds 42-44; ``mad`` prints the cross-seed
+  spread per arm.
+- ``abclip2`` (s33, proposal §0): s29 rerun with ``use_timestep_mask`` off in
+  both arms and B on one clip window, ama mitsuki / sweetonedollar / caststation,
+  B rescaled to A's median ``||dW||``.
 - ``sigband`` (s30, Phase 2): ``global`` (recipe B, the shipped
   ``configs/methods/lora.toml``; reuses the s29 B LoRAs) against ``band`` (B with
   ``--clip_sigma_bands 0.2,0.4,0.6,0.8``), on caststation and sweetonedollar, at
@@ -141,6 +148,50 @@ EXPS = {
         match_dw=True,
         seeds=(42, 43, 44),
     ),
+    "sigshift": Exp(
+        artists=("cast", "sweet"),
+        arms=("shift1", "shift2"),
+        stems={
+            "shift1": "nomask_{art}_s{seed}",
+            "shift2": "sigshift_{art}_s{seed}",
+        },
+        train_args={
+            "shift1": "--network_args use_timestep_mask=false",
+            "shift2": "--network_args use_timestep_mask=false "
+            "--timestep_sampling shift --discrete_flow_shift 2",
+        },
+        describe="shift1 = the shipped lora.toml (B + σ-band clip, no mask; σ ~ "
+        "logit-normal(0, 1)); shift2 = the same with timestep_sampling shift, "
+        "discrete_flow_shift 2 (σ >= 0.8 draws 7.4 % -> 24 %); shift2 rescaled to "
+        "shift1's median ||dW||",
+        render_seeds=(7, 8),
+        set_prefix="s32_SIGSHIFT",
+        renders="output/tests/sigshift",
+        shuffle_seed=32,
+        report="bench/anima_abclip/report_sigshift.md",
+        match_dw=True,
+        seeds=(42, 43, 44),
+    ),
+    "abclip2": Exp(
+        artists=("ama", "sweet", "cast"),
+        arms=("A", "B"),
+        stems={"A": "abclip2_{art}_A_s{seed}", "B": "abclip2_{art}_B_s{seed}"},
+        train_args={
+            "A": "--network_args use_timestep_mask=false --learning_rate 2e-5 "
+            "--lr_scheduler cosine --gradient_accumulation_steps 1 --clip_mode fixed "
+            "--max_grad_norm 1.0 --clip_sigma_bands ''",
+            "B": "--network_args use_timestep_mask=false --clip_sigma_bands ''",
+        },
+        describe="s29 without the T-LoRA mask: A = old default (2e-5 cosine, bs1, fixed "
+        "clip 1.0), B = 5e-5 constant GA2, median clip k2 per micro, one window (no σ "
+        "bands); both use_timestep_mask off, EMA 0.1; B rescaled to A's median ||dW||",
+        render_seeds=(9, 10),
+        set_prefix="s33_ABCLIP2",
+        renders="output/tests/abclip2",
+        shuffle_seed=33,
+        report="bench/anima_abclip/report_abclip2.md",
+        match_dw=True,
+    ),
 }
 
 
@@ -234,7 +285,9 @@ def cmd_render(e: Exp, args) -> None:
             if not f.exists():
                 print(f"missing {f}, skipped", flush=True)
                 continue
-            rab.INFER = INFER + (e.render_args or {}).get(arm, [])
+            rab.INFER = (
+                INFER + ["--compile_blocks"] + (e.render_args or {}).get(arm, [])
+            )
             render(f.stem, f, resolve_under_home(e.renders) / f.stem)
             disp[f.stem] = round(dw_norm(f), 5)
             raw = lora(e, art, arm, seed)
@@ -441,6 +494,27 @@ def cmd_answer(e: Exp, args) -> None:
         print(f"{out}: {len(key)} pairs x {list(e.arms)}")
 
 
+def cmd_mad(e: Exp, args) -> None:
+    """Cross-training-seed spread per arm: mean absolute pixel difference (0-255)
+    between every two training seeds' renders of the same prompt and render seed."""
+    import numpy as np
+
+    renders = resolve_under_home(e.renders)
+    out = {}
+    for art, arm in itertools.product(e.artists, e.arms):
+        by = {s: _by_seed(renders / rendered(e, art, arm, s).stem) for s in e.seeds}
+        vals = []
+        for p, rs in itertools.product(range(len(BODIES)), e.render_seeds):
+            k = render_seed(p, rs)
+            for a, b in itertools.combinations(e.seeds, 2):
+                if k in by[a] and k in by[b]:
+                    ia = np.asarray(Image.open(by[a][k]).convert("RGB"), np.float32)
+                    ib = np.asarray(Image.open(by[b][k]).convert("RGB"), np.float32)
+                    vals.append(float(np.abs(ia - ib).mean()))
+        out[f"{art}/{arm}"] = round(sum(vals) / len(vals), 2) if vals else None
+    print(json.dumps(out, indent=1))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -457,6 +531,7 @@ def main() -> None:
     sc = sub.add_parser("score")
     sc.add_argument("--no_pull", action="store_true")
     sub.add_parser("answer")
+    sub.add_parser("mad")
     args = ap.parse_args()
     e = EXPS[args.exp]
     {
@@ -466,6 +541,7 @@ def main() -> None:
         "make": cmd_make,
         "score": cmd_score,
         "answer": cmd_answer,
+        "mad": cmd_mad,
     }[args.cmd](e, args)
 
 

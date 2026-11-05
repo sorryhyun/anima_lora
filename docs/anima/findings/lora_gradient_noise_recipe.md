@@ -7,7 +7,10 @@
 > ||dW||-matched blind A/B at the margin (cluster p 0.047) and is in the shipped
 > config since (`clip_sigma_bands = "0.2,0.4,0.6,0.8"`). The T-LoRA rank mask is
 > commented out there since a third A/B (s31) found the published T-LoRA no better
-> than plain LoRA. Open questions (training σ shift, the mask):
+> than plain LoRA. s33 reran the s29 recipe A/B without the mask and at matched
+> ||dW||: **A 52–42, cluster p 0.17**, so at equal step length B's direction is no
+> better, and s29's win came from the mask mismatch or from B's 2.2–2.5× larger
+> ||dW||. Open questions (B at its own ||dW|| without the mask, training σ shift, the mask):
 > [`../proposal/lora_batch_clip_ema.md`](../proposal/lora_batch_clip_ema.md).
 
 ## What the gradient looks like
@@ -71,7 +74,9 @@ draws as spikes. The first 10 micro-batches sit at the warmup cap
 ## The A/Bs
 
 s29 and s30 trained with the T-LoRA mask on (`min_rank` 1) and rendered at full
-rank. s29 and s30 use seeds 42–45 per arm, 4 prompts (classroom, hug, maid, bikini) × 2
+rank, so every arm trained one model and rendered another. That is likely the largest
+confound in both. s33 reran s29 without the mask
+([proposal §0](../proposal/lora_batch_clip_ema.md)) and B lost its lead. s29 and s30 use seeds 42–45 per arm, 4 prompts (classroom, hug, maid, bikini) × 2
 render seeds, 32 pairs per artist, at the `make test` recipe. The decision test is a
 sign flip over the 8 (artist, seed) clusters, because training noise acts per LoRA.
 `bench/anima_abclip/run_ab.py`.
@@ -79,6 +84,7 @@ sign flip over the 8 (artist, seed) clusters, because training noise acts per Lo
 | | arms | result | caveat |
 |---|---|---|---|
 | s29 (Phase 1) | old default (2e-5 cosine, bs1, clip 1.0) vs B | **B 41–16**, 7 ties; cluster p 0.0078; caststation 22–8, ama mitsuki 19–8 | B moved 2.3–2.5× as far (median ||dW||), so part of the win can be strength |
+| s33 (s29 rerun) | A vs B (one clip window), both `use_timestep_mask` off; B rescaled to A's median ||dW|| (×0.40–0.46); ama mitsuki, sweetonedollar, caststation; render seeds 9 / 10 | **A 52–42**, 2 ties; cluster p 0.17 (A side), 0.88 (B side); ama mitsuki 17–13, sweetonedollar 19–13, caststation 16–16 (A–B) | the seeds split 6 A, 4 B, 2 even, and single seeds swing 6–2 either way, so the training seed moves the result more than the recipe does; B was not tested at its own ||dW|| |
 | s30 (Phase 2) | B vs B + `--clip_sigma_bands 0.2,0.4,0.6,0.8`, band rescaled to B's median ||dW|| | **band 39–21**, 4 ties; cluster p 0.047; caststation 20–10, sweetonedollar 19–11 | marginal; cast s44 (8–0) carries much of it, and band lost cast s45 (3–5) |
 | s31 | band (T-LoRA mask in training) rendered with the mask (`--lora_timestep_mask`) vs the same recipe without the mask, full rank; nomask rescaled to band's ||dW|| (x0.95–0.97) | **tie, band 11–13**; sweetonedollar s42 4–4, s43 1–7, s44 6–2 | three training seeds; a pair's two arms share composition and differ in detail |
 
