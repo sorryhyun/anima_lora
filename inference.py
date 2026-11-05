@@ -160,19 +160,6 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
     dit_weight_dtype = torch.bfloat16
     device = gen_settings.device
 
-    # 1. Prepare VAE
-    logger.info("Loading VAE for batch generation...")
-    vae_for_batch = qwen_image_autoencoder_kl.load_vae(
-        args.vae,
-        device="cpu",
-        disable_mmap=True,
-        spatial_chunk_size=args.vae_chunk_size,
-        disable_cache=args.vae_disable_cache,
-        vae_2d=args.vae_2d,
-    )
-    vae_for_batch.to(device, dtype=torch.bfloat16)
-    vae_for_batch.eval()
-
     all_prompt_args_list = [apply_overrides(args, pd) for pd in prompts_data]
     for prompt_args in all_prompt_args_list:
         check_inputs(prompt_args)
@@ -254,6 +241,7 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
         f"Generating latents: {len(all_prompt_args_list)} prompts in {len(groups)} group(s) (batch_size={infer_batch_size})"
     )
 
+    to_decode = []  # (prompt index, latent): decoded after every denoise
     with torch.no_grad():
         for (_prompt_text, _img_size), indices in groups:
             batch_size = len(indices)
@@ -317,12 +305,7 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
                         )
 
                     if args.output_type != "latent":
-                        current_args = all_prompt_args_list[idx]
-                        if current_args.output_type == "latent_images":
-                            current_args.output_type = "images"
-                        save_output(current_args, vae_for_batch, single_latent, device)
-
-                logger.info(f"Saved {batch_size} image(s) to disk")
+                        to_decode.append((idx, single_latent))
 
             except Exception as e:
                 logger.error(
@@ -331,9 +314,30 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
                 )
                 continue
 
-    # Free models
-    logger.info("Releasing models from memory...")
-    del anima, vae_for_batch
+    del anima
+    gc.collect()
+    clean_memory_on_device(device)
+    if not to_decode:
+        return
+
+    logger.info(f"Loading VAE to decode {len(to_decode)} latent(s)...")
+    vae_for_batch = qwen_image_autoencoder_kl.load_vae(
+        args.vae,
+        device="cpu",
+        disable_mmap=True,
+        spatial_chunk_size=args.vae_chunk_size,
+        disable_cache=args.vae_disable_cache,
+        vae_2d=args.vae_2d,
+    )
+    vae_for_batch.to(device, dtype=torch.bfloat16)
+    vae_for_batch.eval()
+    with torch.no_grad():
+        for idx, single_latent in to_decode:
+            current_args = all_prompt_args_list[idx]
+            if current_args.output_type == "latent_images":
+                current_args.output_type = "images"
+            save_output(current_args, vae_for_batch, single_latent, device)
+    del vae_for_batch
     clean_memory_on_device(device)
 
 
