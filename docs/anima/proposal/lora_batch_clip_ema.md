@@ -1,8 +1,8 @@
 # Anima LoRA: effective batch, lr, EMA and grad clip as one noise budget
 
-Status: RUNNING 2026-11-05. Median and per-micro clip are implemented
-(`library/training/grad_clip.py`); a blind A/B of the default recipe against
-the proposed one is training (Phase 1). Preliminary runs (below) are ama mitsuki
+Status: PHASE 1 DONE 2026-11-05. Median and per-micro clip are implemented
+(`library/training/grad_clip.py`). In a blind A/B, the proposed recipe beat
+the default, cluster sign-flip p 0.0078 (Phase 1). Phase 2 (σ-side) is owed. Preliminary runs (below) are ama mitsuki
 only. The training loop logs `grad/norm`, `grad/norm_sq`, `grad/norm_max`,
 `grad/clip_frac`, `grad/clip_cap` (median / per-micro clip) and, with gradient
 accumulation, `grad/micro_norm_sq` (`library/training/loop.py`).
@@ -110,7 +110,7 @@ estimators.
 
 ## Plan
 
-### Phase 1: blind A/B, default against the proposed recipe (running)
+### Phase 1: blind A/B, default against the proposed recipe (done)
 
 The question is whether to change the default, so the arms are the shipped
 recipe and the whole proposed one, not a factorial over its parts. A win does
@@ -144,6 +144,16 @@ not say which change carried it.
   `||dW||` per LoRA into `bench/anima_abclip/results/`), `make --push` (builds
   and pushes the sets), `score` (pulls verdicts, writes
   `bench/anima_abclip/report.md`).
+
+**Result (2026-11-05):** B won 41 of 57 decided pairs (7 ties), binomial
+one-sided p 0.0006. It won 7 of 8 (artist, seed) clusters with one tie (ama
+s43, 3–3), cluster sign-flip p 0.0078. It won on both artists: caststation
+22–8, ama mitsuki 19–8. A won only two prompts, both narrowly: caststation hug
+(4–3) and ama maid (4–3). B moved 2.3–2.5× as far as A (median `||dW||`
+0.060–0.064 against 0.025–0.026 on caststation, 0.101–0.114 against
+0.047–0.049 on ama mitsuki, within ±5 % across seeds), so part of the win can be
+style strength rather than cleanliness. The gate passes.
+`bench/anima_abclip/report.md`.
 
 First B run (caststation s42, 120 updates, 240 micro-batches): 13 % of
 micro-batches clipped at k 2, median cap 3.06, the largest norm 10.8. The tail is
