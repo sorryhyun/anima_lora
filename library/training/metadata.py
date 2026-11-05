@@ -94,6 +94,9 @@ def build_training_metadata(
         "ss_optimizer": optimizer_name
         + (f"({optimizer_args})" if len(optimizer_args) > 0 else ""),
         "ss_max_grad_norm": args.max_grad_norm,
+        "ss_clip_mode": getattr(args, "clip_mode", "fixed"),
+        "ss_clip_k": getattr(args, "clip_k", 2.0),
+        "ss_clip_per_micro": bool(getattr(args, "clip_per_micro", False)),
         "ss_caption_dropout_rate": args.caption_dropout_rate,
         "ss_caption_dropout_every_n_epochs": args.caption_dropout_every_n_epochs,
         "ss_caption_tag_dropout_rate": args.caption_tag_dropout_rate,

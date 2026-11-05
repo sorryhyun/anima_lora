@@ -86,6 +86,33 @@ def add_optimizer_arguments(parser: argparse.ArgumentParser):
         type=float,
         help="Max gradient norm, 0 for no clipping",
     )
+    parser.add_argument(
+        "--clip_mode",
+        choices=["fixed", "median"],
+        default="fixed",
+        help="fixed: cap max_grad_norm. median: cap clip_k x the median pre-clip "
+        "norm of the last clip_window updates (max_grad_norm until 10 are "
+        "recorded), so typical updates pass and spikes are scaled down",
+    )
+    parser.add_argument(
+        "--clip_k",
+        type=float,
+        default=2.0,
+        help="clip_mode median: cap = clip_k x the recent median norm",
+    )
+    parser.add_argument(
+        "--clip_window",
+        type=int,
+        default=50,
+        help="clip_mode median: number of recent norms the median is taken over",
+    )
+    parser.add_argument(
+        "--clip_per_micro",
+        action="store_true",
+        help="with gradient accumulation, clip each micro-batch's gradient before "
+        "it joins the sum (fp32 buffer of the adapter grads); the median then runs "
+        "over micro-batch norms. Single process only",
+    )
 
     parser.add_argument(
         "--optimizer_args",

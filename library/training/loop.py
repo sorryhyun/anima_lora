@@ -31,6 +31,7 @@ from library.datasets import LossRecorder
 from library.runtime.device import clean_memory_on_device
 from library.training.checkpoints import CheckpointSaver
 from library.training.contexts import TrainCtx, ValCtx
+from library.training.grad_clip import GradClipper, MicroAccumulator
 from library.training.method_adapter import StepCtx
 from library.training.metrics import MetricContext, collect_metrics
 from library.runtime.pause import PauseWatcher, TrainingPaused
@@ -103,6 +104,11 @@ class LoopState:
     grad_norms: list = field(default_factory=list)
     micro_norms: list = field(default_factory=list)
     micro_step: int = 0
+    # Caps of the median / per-micro clip, parallel to grad_norms (empty under
+    # the fixed clip, whose cap is max_grad_norm).
+    grad_caps: list = field(default_factory=list)
+    clipper: Optional[GradClipper] = None
+    micro_acc: Optional[MicroAccumulator] = None
 
 
 def build_loop_state(
@@ -313,7 +319,39 @@ def build_loop_state(
         on_step_start_for_network=on_step_start_for_network,
         global_step=global_step,
         pause_watcher=PauseWatcher.from_env(),
+        **_build_clipper(args, accelerator),
     )
+
+
+def _build_clipper(args, accelerator: Accelerator) -> dict:
+    """``clip_mode = "median"`` or ``clip_per_micro`` replace the fixed
+    ``accelerator.clip_grad_norm_`` with :class:`GradClipper`; per-micro only
+    takes effect under gradient accumulation."""
+    mode = getattr(args, "clip_mode", "fixed") or "fixed"
+    per_micro = bool(getattr(args, "clip_per_micro", False))
+    if mode == "fixed" and not per_micro:
+        return {}
+    clipper = GradClipper(
+        mode=mode,
+        max_norm=args.max_grad_norm,
+        k=float(getattr(args, "clip_k", 2.0)),
+        window=int(getattr(args, "clip_window", 50)),
+    )
+    accum = max(1, int(args.gradient_accumulation_steps or 1))
+    micro_acc = None
+    if per_micro and accum > 1:
+        if accelerator.num_processes > 1:
+            raise ValueError("clip_per_micro runs on one process only")
+        if accelerator.scaler is not None:
+            raise ValueError("clip_per_micro does not run under fp16 loss scaling")
+        micro_acc = MicroAccumulator(clipper, accum)
+    logger.info(
+        f"grad clip: {mode}"
+        + (f" k={clipper.k:g} window={clipper.window}" if mode == "median" else "")
+        + f", warmup cap {args.max_grad_norm:g}"
+        + (f", per micro-batch (accum {accum})" if micro_acc else "")
+    )
+    return {"clipper": clipper, "micro_acc": micro_acc}
 
 
 def _setup_adapter_ema(args, accelerator, network, saver, resume_step: int) -> None:
@@ -536,6 +574,16 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
                 )
         state.micro_step += 1
 
+        if state.micro_acc is not None:
+            norm, cap = state.micro_acc.absorb(
+                list(accelerator.unwrap_model(network).get_trainable_params()),
+                last=accelerator.sync_gradients,
+            )
+            if state.is_tracking and norm is not None:
+                state.grad_norms.append(norm)
+                if cap is not None:
+                    state.grad_caps.append(cap)
+
         if accelerator.sync_gradients:
             net_unwrapped = accelerator.unwrap_model(network)
             # Snapshot Hydra up-weight grad norms before zero_grad wipes them
@@ -554,14 +602,25 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
                 for p in accelerator.unwrap_model(network).get_trainable_params()
                 if p.grad is not None
             ]
-            if args.max_grad_norm != 0.0:
-                norm = accelerator.clip_grad_norm_(params, args.max_grad_norm)
-            elif state.is_tracking and params:
-                norm = torch.nn.utils.get_total_norm([p.grad for p in params])
+            if state.micro_acc is not None:
+                pass  # clipped and logged per micro-batch above
+            elif state.clipper is not None:
+                if params:
+                    accelerator.unscale_gradients()
+                    norm, cap = state.clipper.clip_([p.grad for p in params])
+                    if state.is_tracking:
+                        state.grad_norms.append(norm)
+                        if cap is not None:
+                            state.grad_caps.append(cap)
             else:
-                norm = None
-            if state.is_tracking and norm is not None:
-                state.grad_norms.append(norm.detach().float())
+                if args.max_grad_norm != 0.0:
+                    norm = accelerator.clip_grad_norm_(params, args.max_grad_norm)
+                elif state.is_tracking and params:
+                    norm = torch.nn.utils.get_total_norm([p.grad for p in params])
+                else:
+                    norm = None
+                if state.is_tracking and norm is not None:
+                    state.grad_norms.append(norm.detach().float())
 
         if state.profile_started:
             torch.cuda.nvtx.range_push("optimizer")
@@ -723,7 +782,9 @@ def _grad_norm_logs(state: LoopState) -> dict:
     mean, mean square, max, and the fraction ``max_grad_norm`` clipped. With
     gradient accumulation, ``grad/micro_norm_sq`` is one micro-batch's own
     ``||g||^2``: against ``grad/norm_sq`` (the mean of ``accum`` of them) it
-    separates signal ``||G||^2`` from per-sample noise ``tr(Sigma)``."""
+    separates signal ``||G||^2`` from per-sample noise ``tr(Sigma)``. Under
+    ``clip_per_micro`` the norms are the micro-batches' own (``accum`` per update)
+    and ``grad/clip_cap`` is the mean cap."""
     if not state.grad_norms:
         return {}
     norms = torch.stack(state.grad_norms).cpu()
@@ -733,7 +794,16 @@ def _grad_norm_logs(state: LoopState) -> dict:
         "grad/norm_sq": norms.square().mean().item(),
         "grad/norm_max": norms.max().item(),
     }
-    if state.args.max_grad_norm != 0.0:
+    if state.clipper is not None:
+        # Median / per-micro clip: a norm without a cap (warmup with
+        # max_grad_norm 0) counts as unclipped, so only the tail is compared.
+        if state.grad_caps:
+            caps = torch.stack(state.grad_caps).cpu()
+            state.grad_caps.clear()
+            tail = norms[-len(caps) :]
+            out["grad/clip_cap"] = caps.mean().item()
+            out["grad/clip_frac"] = (tail > caps).float().sum().item() / len(norms)
+    elif state.args.max_grad_norm != 0.0:
         out["grad/clip_frac"] = (norms > state.args.max_grad_norm).float().mean().item()
     if state.micro_norms:
         micro = torch.stack(state.micro_norms).cpu()

@@ -1,6 +1,7 @@
 # Anima LoRA: effective batch, lr, EMA and grad clip as one noise budget
 
-Status: PROPOSED 2026-11-05. Preliminary runs (below) on ama mitsuki only; no
+Status: PROPOSED 2026-11-05; median and per-micro clip implemented
+(`library/training/grad_clip.py`), blind A/B running (Plan). Preliminary runs (below) on ama mitsuki only; no
 arm run under `--deterministic` yet. Instrumentation landed: the training loop
 logs `grad/norm`, `grad/norm_sq`, `grad/norm_max`, `grad/clip_frac` and, with
 gradient accumulation, `grad/micro_norm_sq` (`library/training/loop.py`).
@@ -124,6 +125,22 @@ optimizer updates, it already follows the EMA scaling rule across batch sizes
 (Busbridge et al. 2023, decay `ρ → ρ^κ` for batch `κ×`).
 
 Every phase is hour-scale and gets an explicit go before it runs.
+
+**Run instead (2026-11-05): blind A/B over training seeds.** A single
+`--deterministic` draw cannot rule out a lucky seed, so the comparison is the
+shipped default against the proposed recipe, each trained on seeds 42–45 for
+two artists (channel (caststation), 30 images; ama mitsuki, 106), 16 LoRAs:
+
+- A: `configs/methods/lora.toml` (2e-5 cosine, bs1, clip fixed 1.0, EMA 0.1)
+- B: same, with 5e-5 `constant_with_warmup`, GA2, `clip_mode median`, `clip_k 2`,
+  `clip_per_micro`
+
+Each LoRA renders 4 prompts × 2 render seeds; pairs share artist, training seed,
+prompt and render seed, graded blind in `anima-blind-pairs`
+(`s29_ABCLIP_{cast,ama}`, 32 pairs each). Training noise acts per LoRA, so the
+decision test is a sign flip over the 8 (artist, seed) clusters (one-sided p
+floor 1/256), beside the binomial over the 64 pairs (B ≥ 43/64 is p 0.004).
+`bench/anima_abclip/run_ab.py {render,make,score}`.
 
 ## Out of scope
 
