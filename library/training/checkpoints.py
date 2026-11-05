@@ -261,6 +261,9 @@ class CheckpointSaver:
         # Set by the load_state pre-hook when resuming. Read by train() to
         # decide initial_step.
         self.steps_from_state: Optional[int] = None
+        # library.training.ema.AdapterEMA, set by build_loop_state when
+        # ema_window / ema_extra is on.
+        self.ema = None
 
     def register_hooks(self, network: Any) -> None:
         """Install accelerator save/load pre-hooks that persist epoch/step
@@ -340,8 +343,17 @@ class CheckpointSaver:
                 f"({ckpt_step} >= {args.max_train_steps}), starting fresh"
             )
 
-    def save(self, ckpt_name: str, network: Any, steps: int, epoch_no: int) -> None:
-        """Write a network checkpoint with up-to-date training metadata."""
+    def save(
+        self,
+        ckpt_name: str,
+        network: Any,
+        steps: int,
+        epoch_no: int,
+        ema_index: Optional[int] = -1,
+    ) -> None:
+        """Write a network checkpoint with up-to-date training metadata. With an
+        adapter EMA that has started, writes EMA shadow ``ema_index`` instead of
+        the live weights: -1 is the main span, None the live weights."""
         args = self.args
         accelerator = self.accelerator
         unwrapped_nw = accelerator.unwrap_model(network)
@@ -361,7 +373,18 @@ class CheckpointSaver:
         sai_metadata = self.get_sai_model_spec_fn(args)
         metadata_to_save.update(sai_metadata)
 
-        unwrapped_nw.save_weights(ckpt_file, self.save_dtype, metadata_to_save)
+        ema = self.ema
+        if ema is not None and ema_index == -1:
+            ema_index = ema.main
+        if ema is not None and ema_index is not None and ema.shadows[ema_index]:
+            with ema.swapped_in(ema_index):
+                unwrapped_nw.save_weights(
+                    ckpt_file,
+                    self.save_dtype,
+                    {**metadata_to_save, **ema.metadata(ema_index)},
+                )
+        else:
+            unwrapped_nw.save_weights(ckpt_file, self.save_dtype, metadata_to_save)
 
         if self.progress_sink is not None:
             self.progress_sink.ckpt(global_step=steps, path=ckpt_file)
@@ -420,7 +443,7 @@ class CheckpointSaver:
             return
         if accelerator.is_main_process:
             ckpt_name = get_checkpoint_ckpt_name(args, "." + args.save_model_as)
-            self.save(ckpt_name, network, global_step, epoch_no)
+            self.save(ckpt_name, network, global_step, epoch_no, ema_index=None)
         save_checkpoint_state(args, accelerator)
 
     def save_release_pause(self, network: Any, global_step: int, epoch: int) -> str:
@@ -433,7 +456,7 @@ class CheckpointSaver:
         accelerator = self.accelerator
         if accelerator.is_main_process:
             ckpt_name = get_checkpoint_ckpt_name(args, "." + args.save_model_as)
-            self.save(ckpt_name, network, global_step, epoch + 1)
+            self.save(ckpt_name, network, global_step, epoch + 1, ema_index=None)
         save_checkpoint_state(args, accelerator)
         accelerator.wait_for_everyone()
         return get_checkpoint_state_dir(args)
@@ -477,6 +500,21 @@ class CheckpointSaver:
         if not self.accelerator.is_main_process:
             return
         args = self.args
-        ckpt_name = get_last_ckpt_name(args, "." + args.save_model_as)
+        ext = "." + args.save_model_as
+        ckpt_name = get_last_ckpt_name(args, ext)
         self.save(ckpt_name, network, global_step, num_train_epochs)
+        ema = self.ema
+        if ema is not None and ema.started:
+            model_name = default_if_none(args.output_name, DEFAULT_LAST_OUTPUT_NAME)
+
+            def side(tag: str) -> str:
+                return os.path.join(model_name, f"{model_name}-{tag}{ext}")
+
+            if ema.main is not None and getattr(args, "ema_save_raw", False):
+                self.save(side("raw"), network, global_step, num_train_epochs, None)
+            for k, span in enumerate(ema.spans):
+                if k != ema.main:
+                    self.save(
+                        side(f"ema{span:g}"), network, global_step, num_train_epochs, k
+                    )
         logger.info("model saved.")

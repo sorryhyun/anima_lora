@@ -307,44 +307,35 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
     )
 
     parser.add_argument(
-        "--ema",
-        action="store_true",
-        help="Enable Exponential Moving Average. Requires --ema_decay to be set.",
-    )
-    parser.add_argument(
-        "--ema_decay",
+        "--ema_window",
         type=float,
-        default=0.9999,
-        help="EMA decay rate. Typical values: 0.999, 0.9999. (default: 0.9999)",
+        default=0.1,
+        help="EMA of the adapter weights, its span as a fraction of the run's optimizer "
+        "updates: decay 1 - 1/(ema_window x updates), so 0.1 is 0.988 at 848 updates. "
+        "Starts at the end of lr warmup (fp32 shadow). Step / epoch / final saves write "
+        "the EMA in place of the live weights (ema_save_raw keeps those too). 0 = off "
+        "(bench/anima_ema/render_ab.py)",
     )
     parser.add_argument(
-        "--ema_device",
-        type=str,
-        default="gpu",
-        choices=["gpu", "cpu"],
-        help="Device for EMA shadow parameters. 'cpu' saves GPU VRAM but slower update. (default: gpu)",
-    )
-    parser.add_argument(
-        "--ema_use_num_updates",
+        "--ema_save_raw",
         action="store_true",
-        help="Use warmup schedule for EMA decay: min(decay, (1+num_updates)/(10+num_updates))",
+        help="with ema_window, also write the final live weights to "
+        "<output_dir>/<output_name>/<output_name>-raw",
     )
     parser.add_argument(
-        "--ema_use_feedback",
-        action="store_true",
-        help="Feed back EMA decay to training parameters (experimental)",
-    )
-    parser.add_argument(
-        "--ema_param_multiplier",
-        type=float,
-        default=1.0,
-        help="Multiply parameters each EMA update step (default: 1.0, no effect)",
-    )
-    parser.add_argument(
-        "--ema_resume_path",
+        "--ema_extra",
         type=str,
-        default=None,
-        help="Path to EMA model safetensors file to resume EMA state from a previous run",
+        default="",
+        help="more EMA spans tracked beside ema_window, comma-separated fractions "
+        "(e.g. 0.05,0.3); each final EMA goes to "
+        "<output_dir>/<output_name>/<output_name>-ema<span>",
+    )
+    parser.add_argument(
+        "--ema_card",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="keep the EMA shadows on the card instead of copying the adapter to "
+        "pinned host buffers every update (--no-ema_card)",
     )
 
     # Variance-reduced flow-matching loss (AsymFlow §5.2, arXiv:2605.12964;

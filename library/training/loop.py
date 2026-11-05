@@ -203,6 +203,7 @@ def build_loop_state(
     # whole epochs and ``initial_step`` is the residual batch count inside the
     # resumed epoch, consumed by skip_first_batches in _run_epoch_steps.
     global_step = resume_step
+    _setup_adapter_ema(args, accelerator, network, saver, resume_step)
     if epoch_to_start > 0:
         logger.info(f"resuming at epoch {epoch_to_start + 1}, step {global_step}")
     if initial_step > 0:
@@ -310,6 +311,40 @@ def build_loop_state(
     )
 
 
+def _setup_adapter_ema(args, accelerator, network, saver, resume_step: int) -> None:
+    """Attach an :class:`AdapterEMA` to ``saver`` when ``ema_window`` /
+    ``ema_extra`` is on. It starts at the end of lr warmup, in optimizer steps."""
+    window = float(getattr(args, "ema_window", 0.0) or 0.0)
+    extra = getattr(args, "ema_extra", "") or ""
+    if not window and not extra.strip():
+        return
+    from library.training.ema import AdapterEMA
+
+    updates = args.max_train_steps
+    warmup = args.lr_warmup_steps or 0
+    if isinstance(warmup, float):
+        warmup = int(warmup * updates)
+    params = [
+        p for p in accelerator.unwrap_model(network).parameters() if p.requires_grad
+    ]
+    ema = AdapterEMA(
+        params,
+        window,
+        extra,
+        updates=updates,
+        start=max(1, warmup),
+        on_card=bool(getattr(args, "ema_card", True)),
+    )
+    if resume_step:
+        ema.n_updates = resume_step
+        logger.warning(
+            f"adapter EMA re-seeds on resume (shadows are not in the state dir), "
+            f"at update {max(resume_step + 1, ema.start)}"
+        )
+    saver.ema = ema
+    logger.info(ema.describe())
+
+
 def run_training_loop(trainer, state: LoopState) -> None:
     """Run the full for-epoch training loop and the post-loop end-of-training
     metadata write. Mutates ``state.global_step``, profiler bookkeeping, and
@@ -391,6 +426,8 @@ def _run_epoch_steps(trainer, state: LoopState, epoch: int) -> None:
         if accelerator.sync_gradients:
             state.progress_bar.update(1)
             state.global_step += 1
+            if state.saver.ema is not None:
+                state.saver.ema.step()
             if state.global_step == LIVENESS_EARLY_CHECK_STEP:
                 _audit_liveness(
                     trainer, state, where=f"step {state.global_step} early check"
