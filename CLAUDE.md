@@ -49,8 +49,16 @@ can fail on the torch index split. Weights are rows in the model catalog
 - **Agent-launched GPU work goes through the daemon** (auto-starts on first submit): a
   GPU process started from a Claude Code background Bash is SIGKILLed by the harness
   sandbox after ~1 min, no trace. `make daemon-run ARGS="[--stall-timeout S] <script.py>
-  [flags]"` (daemon-run's own flags go *before* the script path); `make daemon-wait`
-  blocks until terminal; `make run-status` follows a run's `progress.jsonl`.
+  [flags]"` (daemon-run's own flags go *before* the script path); `make run-status`
+  follows a run's `progress.jsonl`. Wait on a queued job with `make daemon-wait
+  JOB=<id>`, never by parsing `daemon-status` (it lists unfinished jobs only; `rc=-` =
+  not finished). Everything else: `daemon` skill.
+- **Use torch.compile wherever it can pay.** Any job that runs the DiT over more than a
+  handful of images (training, batch renders, bench render loops, `make gen`, A/B sweeps)
+  compiles the blocks (`torch_compile` in training, `--compile_blocks` /
+  `--compile_dynamic_seq` on `inference.py`, the line's own switch on MOSS / Qwen). Check
+  it before queuing; a new bench or render script starts with it on. A single
+  interactive render is the only exception.
 - **Lint only the files you touched**: `ruff check --fix <files>` (a repo-wide F401
   autofix strips the re-exports `library/train_util.py` and `anima_lora/__init__.py`
   exist for). Run `ruff format <files>` only right before a commit — mid-task it reflows
