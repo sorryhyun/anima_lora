@@ -73,9 +73,9 @@ def run_arms(run: Path) -> dict[str, Path]:
     stem, side = run.stem, run.parent / run.stem
     raw = side / f"{stem}-raw{run.suffix}"
     arms = {"raw": raw} if raw.exists() else {}
+    arms["ema_main"] = run
     for f in sorted(side.glob(f"{stem}-ema*{run.suffix}")):
         arms[f"ema{f.stem.rsplit('-ema', 1)[1]}"] = f
-    arms["ema_main"] = run
     return arms
 
 
@@ -125,6 +125,10 @@ def seed_of(p: int, s: int) -> int:
 
 def render(arm: str, lora: Path, out: Path) -> dict[int, Path]:
     out.mkdir(parents=True, exist_ok=True)
+    done = _by_seed(out)
+    if len(done) == len(PROMPTS) * len(SEEDS):
+        print(f"[{arm}] reusing {out}", flush=True)
+        return done
     lines = [f"{pr} --d {seed_of(i, s)}" for i, pr in enumerate(PROMPTS) for s in SEEDS]
     prompt_file = out / "prompts.txt"
     prompt_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -140,9 +144,14 @@ def render(arm: str, lora: Path, out: Path) -> dict[int, Path]:
     ]
     print(f"[{arm}] {lora}", flush=True)
     subprocess.run(cmd, check=True, cwd=resolve_under_home("."))
+    return _by_seed(out)
+
+
+def _by_seed(out: Path) -> dict[int, Path]:
+    """inference.py names a render ``<time>_<seed>_.png``."""
     by_seed = {}
     for f in out.glob("*.png"):
-        m = re.search(r"_(\d+)$", f.stem)
+        m = re.search(r"_(\d+)_?$", f.stem)
         if m:
             by_seed[int(m.group(1))] = f
     return by_seed
@@ -168,7 +177,15 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--run", required=True, help="main EMA file of the run")
     ap.add_argument("--ref", action="append", default=[], help="name=path, repeatable")
+    ap.add_argument(
+        "--skip",
+        default="",
+        help="comma-separated arms not to render (weight_delta still reads them)",
+    )
     ap.add_argument("--label", default="")
+    ap.add_argument(
+        "--run_dir", default=None, help="existing results dir: reuse its finished arms"
+    )
     args = ap.parse_args()
 
     run = resolve_under_home(args.run)
@@ -180,11 +197,14 @@ def main() -> None:
     if missing:
         raise SystemExit(f"missing arms: {missing}")
 
-    run_dir = make_run_dir("anima_ema", label=args.label or run.stem)
-    renders = {
-        arm: render(arm, f, run_dir / "renders" / arm) for arm, f in arms.items()
-    }
-    names = list(arms)
+    run_dir = (
+        resolve_under_home(args.run_dir)
+        if args.run_dir
+        else make_run_dir("anima_ema", label=args.label or run.stem)
+    )
+    skip = {a.strip() for a in args.skip.split(",") if a.strip()}
+    names = [a for a in arms if a not in skip]
+    renders = {a: render(a, arms[a], run_dir / "renders" / a) for a in names}
     grids = []
     for i, prompt in enumerate(PROMPTS):
         cells = [[renders[a][seed_of(i, s)] for a in names] for s in SEEDS]

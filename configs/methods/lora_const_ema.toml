@@ -1,0 +1,51 @@
+network_alpha = 128
+network_dim = 32
+
+learning_rate = 5e-5
+# Constant lr after the base.toml warmup (5 %) + adapter EMA 0.1: under the cosine
+# schedule the last ~0.1 of updates barely move and the EMA lands on the raw weights
+# (||dW|| 0.997x, cos 1.000 on ama mitsuki); at constant 5e-5 it is 0.91x / cos 0.974
+# and drops raw's stray bubbles and props (bench/anima_ema/render_ab.py, 2026-11-05).
+lr_scheduler = "constant_with_warmup"
+ema_window = 0.1
+max_train_epochs = 8
+save_every_n_epochs = 8
+checkpointing_epochs = 8
+
+use_shuffled_caption_variants = true
+cache_llm_adapter_outputs = true
+caption_dropout_rate = 0.1
+
+output_name = "anima_lora_const_ema"
+# lora_down init: "kaiming" | "weight_svd" (W0's top-r right singular vectors,
+# the default) | "grad_svd" (sketch THIS run's task gradient before the adapter
+# exists — costs one frozen-DiT backward pass per image, blocks_to_swap must be
+# 0) | "basis_file" (read a precomputed gradient basis; needs
+# network_args grad_basis_file=<path>). The gradient modes are seeded from where
+# the task pushes rather than where W is big; output is an ordinary LoRA either
+# way. docs/anima/methods/svd-down-lora.md, networks/grad_basis.py.
+down_init = "weight_svd"
+# weight_svd window: slice k seeds lora_down from W0's right singular vectors
+# [k*r, (k+1)*r) instead of the top-r. Slices are mutually orthogonal, so
+# adapters trained with different slices own disjoint input subspaces — give
+# each artist its own k (0, 1, 2, …) when the LoRAs are meant to be merged.
+# 0 = top-r (the shipped default). Cap: (k+1)*r must fit every targeted
+# layer — the 256-row adaln .1 Linears allow k <= 7 at r=32 (8 artists).
+# Stamped as ss_svd_slice in the adapter. adaln_up_* modules ignore the slice
+# and always take the top-r (their σ-only input lives in W0's top ~2 directions).
+svd_slice = 0
+# > 0: interleaved slices — slice k takes vectors {k, k+N, k+2N, …} so every
+# artist owns one of the top-N directions. Set it to the shard count (8 for
+# k = 0..7); needs N*r <= min(W.shape). 0 = contiguous windows.
+svd_slice_count = 0
+path_pattern = "*"
+
+use_timestep_mask = true
+min_rank = 1
+alpha_rank_scale = 1.0
+
+use_repa       = true
+repa_mode      = "relational"
+repa_weight    = 0.05
+repa_layer     = 8
+repa_encoder   = "pe_spatial"
