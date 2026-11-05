@@ -2,7 +2,8 @@
 
 Status: PHASE 1 DONE 2026-11-05. Median and per-micro clip are implemented
 (`library/training/grad_clip.py`). In a blind A/B, the proposed recipe beat
-the default, cluster sign-flip p 0.0078 (Phase 1). Phase 2 (σ-side) is owed. Preliminary runs (below) are ama mitsuki
+the default, cluster sign-flip p 0.0078 (Phase 1), and is the shipped
+`configs/methods/lora.toml` since. Phase 2 (σ-side) is owed. Preliminary runs (below) are ama mitsuki
 only. The training loop logs `grad/norm`, `grad/norm_sq`, `grad/norm_max`,
 `grad/clip_frac`, `grad/clip_cap` (median / per-micro clip) and, with gradient
 accumulation, `grad/micro_norm_sq` (`library/training/loop.py`).
@@ -98,7 +99,8 @@ estimators.
    micro-batch's own gradient before it joins an fp32 sum of the adapter's
    gradients (~100 MB at rank 32), so a spike carries at most `1/accum` of an
    update. The median then runs over micro-batch norms (in full-update units),
-   and `grad/norm` logs them. One process only, not under fp16 loss scaling.
+   and `grad/norm` logs them. Under several processes or fp16 loss scaling it
+   falls back to clipping the accumulated update, with a warning.
 3. `--clip_mode fixed` without `--clip_per_micro` keeps the old
    `accelerator.clip_grad_norm_` call. Stamped as `ss_clip_mode`, `ss_clip_k`,
    `ss_clip_per_micro`.
@@ -152,7 +154,9 @@ s43, 3–3), cluster sign-flip p 0.0078. It won on both artists: caststation
 (4–3) and ama maid (4–3). B moved 2.3–2.5× as far as A (median `||dW||`
 0.060–0.064 against 0.025–0.026 on caststation, 0.101–0.114 against
 0.047–0.049 on ama mitsuki, within ±5 % across seeds), so part of the win can be
-style strength rather than cleanliness. The gate passes.
+style strength rather than cleanliness. The gate passes: B is the default in
+`configs/methods/lora.toml` (the GUI's `configs/gui-methods/lora.toml`, alpha
+32 over 4 epochs, was not tested and keeps 2e-5).
 `bench/anima_abclip/report.md`.
 
 First B run (caststation s42, 120 updates, 240 micro-batches): 13 % of

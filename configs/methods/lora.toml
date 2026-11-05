@@ -1,7 +1,17 @@
 network_alpha = 128
 network_dim = 32
 
-learning_rate = 2e-5
+learning_rate = 5e-5
+# Effective batch 2, constant lr after the base.toml warmup (5 %), adapter EMA 0.1
+# (the --ema_window default), and a clip at 2x the median of the last 50 micro-batch
+# norms, applied per micro-batch: spikes are bounded to their share without leaving
+# the set. Beat the 2e-5 cosine bs1 clip-1.0 recipe in a blind A/B over 4 seeds x 2
+# artists, 41-16, cluster p 0.0078 (docs/anima/proposal/lora_batch_clip_ema.md).
+lr_scheduler = "constant_with_warmup"
+gradient_accumulation_steps = 2
+clip_mode = "median"
+clip_k = 2.0
+clip_per_micro = true
 max_train_epochs = 8
 save_every_n_epochs = 8
 checkpointing_epochs = 8

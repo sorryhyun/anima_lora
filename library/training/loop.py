@@ -340,11 +340,13 @@ def _build_clipper(args, accelerator: Accelerator) -> dict:
     accum = max(1, int(args.gradient_accumulation_steps or 1))
     micro_acc = None
     if per_micro and accum > 1:
-        if accelerator.num_processes > 1:
-            raise ValueError("clip_per_micro runs on one process only")
-        if accelerator.scaler is not None:
-            raise ValueError("clip_per_micro does not run under fp16 loss scaling")
-        micro_acc = MicroAccumulator(clipper, accum)
+        if accelerator.num_processes > 1 or accelerator.scaler is not None:
+            logger.warning(
+                "clip_per_micro needs one process without fp16 loss scaling; "
+                "clipping the accumulated update instead"
+            )
+        else:
+            micro_acc = MicroAccumulator(clipper, accum)
     logger.info(
         f"grad clip: {mode}"
         + (f" k={clipper.k:g} window={clipper.window}" if mode == "median" else "")

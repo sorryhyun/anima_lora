@@ -111,7 +111,8 @@ def add_optimizer_arguments(parser: argparse.ArgumentParser):
         action="store_true",
         help="with gradient accumulation, clip each micro-batch's gradient before "
         "it joins the sum (fp32 buffer of the adapter grads); the median then runs "
-        "over micro-batch norms. Single process only",
+        "over micro-batch norms. Single process without fp16 loss scaling; "
+        "otherwise the accumulated update is clipped",
     )
 
     parser.add_argument(
