@@ -13,7 +13,7 @@ Reads ``output/ckpt/<name>.grad_sigma.jsonl`` (one row per micro-batch under
   hits the per-band one keeps;
 - the image keys clipped most often.
 
-Decision (docs/anima/proposal/lora_batch_clip_ema.md, Phase 2): tail
+Decision (docs/anima/findings/lora_gradient_noise_recipe.md): tail
 concentrated in a band → per-timestep clip; tail spread over σ → training shift.
 
     .venv/bin/python bench/anima_abclip/sigma_tail.py sigmalog_cast_s42 sigmalog_ama_s42 ...

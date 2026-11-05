@@ -38,9 +38,11 @@ longer load.
 
 ### T-LoRA (timestep-dependent rank masking)
 
-Early (high-noise) steps use full rank; later steps use reduced rank.
-Composes with every variant in the family. Training-time only — inference
-runs full rank.
+High-noise steps train few ranks; low-noise steps train all of them.
+Composes with every variant in the family. Off in `configs/methods/lora.toml`
+(on in the `tlora` GUI variant). Inference runs full rank unless
+`inference.py --lora_timestep_mask` applies the same mask per step, as the T-LoRA
+paper does.
 
 ```toml
 use_timestep_mask = true

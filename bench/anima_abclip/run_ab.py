@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Blind A/B of two LoRA recipes over several training seeds and artists.
 
-Experiments (``--exp``, docs/anima/proposal/lora_batch_clip_ema.md):
+Experiments (``--exp``, docs/anima/findings/lora_gradient_noise_recipe.md):
 
 - ``abclip`` (s29, Phase 1): ``A`` the old default (2e-5 cosine, bs1, clip 1.0)
   against ``B`` (5e-5 constant, GA2, median clip k 2 per micro-batch), on
   caststation and ama mitsuki.
+- ``nomask`` (s31): T-LoRA as published (mask in training and at inference) against
+  the same recipe without the mask, sweetonedollar, seeds 42-44.
 - ``sigband`` (s30, Phase 2): ``global`` (recipe B, the shipped
   ``configs/methods/lora.toml``; reuses the s29 B LoRAs) against ``band`` (B with
   ``--clip_sigma_bands 0.2,0.4,0.6,0.8``), on caststation and sweetonedollar, at
@@ -49,7 +51,7 @@ from safetensors import safe_open
 from safetensors.torch import load_file, save_file
 
 from bench._common import make_run_dir, write_result
-from bench.anima_ema.render_ab import _by_seed, render
+from bench.anima_ema.render_ab import INFER, _by_seed, render
 from library.env import resolve_under_home
 
 TAGS = {
@@ -83,6 +85,8 @@ class Exp:
     shuffle_seed: int
     report: str
     match_dw: bool = False  # rescale the treatment to the control's ||dW||
+    seeds: tuple[int, ...] = tuple(SEEDS)
+    render_args: dict | None = None  # arm -> extra inference.py flags
 
 
 EXPS = {
@@ -114,6 +118,28 @@ EXPS = {
         shuffle_seed=30,
         report="bench/anima_abclip/report_sigband.md",
         match_dw=True,
+    ),
+    "nomask": Exp(
+        artists=("sweet",),
+        arms=("band", "nomask"),
+        stems={
+            "band": "sigband_{art}_band_s{seed}",
+            "nomask": "nomask_{art}_s{seed}",
+        },
+        train_args={"band": "", "nomask": "--network_args use_timestep_mask=false"},
+        describe="band = T-LoRA as published: the shipped lora.toml (B + σ-band clip, "
+        "use_timestep_mask, min_rank 1) rendered with the same mask per step "
+        "(--lora_timestep_mask); nomask = the same recipe with use_timestep_mask off, full "
+        "rank in training and inference (static merge); nomask rescaled to band's median "
+        "||dW||",
+        render_args={"band": ["--lora_timestep_mask"]},
+        render_seeds=(5, 6),
+        set_prefix="s31_NOMASK",
+        renders="output/tests/nomask",
+        shuffle_seed=31,
+        report="bench/anima_abclip/report_nomask.md",
+        match_dw=True,
+        seeds=(42, 43, 44),
     ),
 }
 
@@ -151,7 +177,7 @@ def dw_norm(path: Path) -> float:
 
 
 def cmd_train(e: Exp, args) -> None:
-    for art, seed, arm in itertools.product(e.artists, SEEDS, e.arms):
+    for art, seed, arm in itertools.product(e.artists, e.seeds, e.arms):
         f = lora(e, art, arm, seed)
         if f.exists():
             continue
@@ -171,7 +197,7 @@ def cmd_match(e: Exp) -> dict:
     ``||dW||`` equals the control's at the same (artist, seed)."""
     factors = {}
     ctl, trt = e.arms
-    for art, seed in itertools.product(e.artists, SEEDS):
+    for art, seed in itertools.product(e.artists, e.seeds):
         src, ref = lora(e, art, trt, seed), lora(e, art, ctl, seed)
         if not (src.exists() and ref.exists()):
             print(f"match: missing {src.name} or {ref.name}, skipped", flush=True)
@@ -203,11 +229,12 @@ def cmd_render(e: Exp, args) -> None:
     for art in e.artists:
         rab.PROMPTS = [b.format(a=TAGS[art][0]) for b in BODIES]
         rab.SEEDS = list(e.render_seeds)
-        for arm, seed in itertools.product(e.arms, SEEDS):
+        for arm, seed in itertools.product(e.arms, e.seeds):
             f = rendered(e, art, arm, seed)
             if not f.exists():
                 print(f"missing {f}, skipped", flush=True)
                 continue
+            rab.INFER = INFER + (e.render_args or {}).get(arm, [])
             render(f.stem, f, resolve_under_home(e.renders) / f.stem)
             disp[f.stem] = round(dw_norm(f), 5)
             raw = lora(e, art, arm, seed)
@@ -219,9 +246,10 @@ def cmd_render(e: Exp, args) -> None:
         args={
             "exp": args.exp,
             "artists": list(e.artists),
-            "seeds": SEEDS,
+            "seeds": e.seeds,
             "bodies": BODIES,
             "render_seeds": list(e.render_seeds),
+            "render_args": e.render_args or {},
         },
         metrics={"dw_median": disp, "dw_match_factor": factors},
     )
@@ -255,7 +283,7 @@ def cmd_make(e: Exp, args) -> None:
         name = set_name(e, art)
         cells = [
             (seed, p, s)
-            for seed in SEEDS
+            for seed in e.seeds
             for p in range(len(BODIES))
             for s in e.render_seeds
         ]
@@ -312,7 +340,7 @@ def cmd_make(e: Exp, args) -> None:
                 "commit",
                 "-m",
                 f"blind sets {', '.join(set_name(e, a) for a in e.artists)}: "
-                f"{len(SEEDS) * len(BODIES) * len(e.render_seeds)} pairs each "
+                f"{len(e.seeds) * len(BODIES) * len(e.render_seeds)} pairs each "
                 f"({e.arms[0]} vs {e.arms[1]})",
             ],
             cwd=GIT,

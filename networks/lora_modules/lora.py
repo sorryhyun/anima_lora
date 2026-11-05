@@ -234,10 +234,14 @@ class LoRAModule(BaseLoRAModule):
         return self.lora_up(lx)  # Conv2d
 
     def _eval_delta(self, x, org_forwarded):
-        # Full-rank inference path: no T-LoRA mask, plain module calls (params
-        # already in the model dtype), so no work-dtype cast dance.
+        # Full-rank inference path: plain module calls (params already in the
+        # model dtype), so no work-dtype cast dance. The T-LoRA mask applies only
+        # under inference.py --lora_timestep_mask (``_eval_mask``).
         x_lora = self._rebalance(x)
-        lx = self.lora_up(self.lora_down(x_lora))
+        lx = self.lora_down(x_lora)
+        if self._eval_mask:
+            lx = lx * self._timestep_mask.to(lx.dtype)
+        lx = self.lora_up(lx)
         return lx * self.multiplier * self.scale
 
     def get_weight(self, multiplier=None):

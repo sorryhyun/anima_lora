@@ -143,6 +143,11 @@ python inference.py … --lora_weight turbo.safetensors --infer_steps 4 --guidan
 ```bash
 --pgraft --lora_cutoff_step 37   # LoRA active steps 0–36, disabled 37+
 ```
+Or by σ, so both ends can be cut (implies `--pgraft`; standard loop, not int8):
+```bash
+--lora_sigma_range 0 0.8     # LoRA off at σ >= 0.8 (12 of 28 steps at shift 3)
+--lora_sigma_range 0.4 2     # LoRA off at σ < 0.4 (5 of 28 steps)
+```
 
 ---
 

@@ -37,6 +37,27 @@ from library.inference.traj_stats import TrajStatsRecorder
 logger = logging.getLogger(__name__)
 
 
+def _lora_gate(
+    net, was_on: bool, i: int, t: torch.Tensor, cutoff, sigma_range, n: int, mask: bool
+):
+    """Per-step P-GRAFT update for step ``i`` at σ ``t``: off from
+    ``lora_cutoff_step`` on and, with ``lora_sigma_range`` (lo, hi), off outside
+    lo <= σ < hi; with ``mask`` (``--lora_timestep_mask``), the training-time T-LoRA
+    rank mask for this σ. Returns the new on/off state."""
+    sigma = float(t)
+    on = (cutoff is None or i < cutoff) and (
+        sigma_range is None or sigma_range[0] <= sigma < sigma_range[1]
+    )
+    if on != was_on:
+        net.set_enabled(on)
+        logger.info(
+            f"P-GRAFT: LoRA {'on' if on else 'off'} at step {i}/{n} (σ {sigma:.3f})"
+        )
+    if mask and on:
+        net.set_timestep_mask(t.reshape(1), max_timestep=1.0)
+    return on
+
+
 def _build_cns_recolorer(args):
     """Build a CNS noise recolorer from ``--cns`` (path or "auto"), or None.
 
@@ -353,6 +374,9 @@ def generate_body_tiled(
 
     pgraft_network = getattr(anima, "_pgraft_network", None)
     lora_cutoff_step = getattr(args, "lora_cutoff_step", None)
+    lora_sigma_range = getattr(args, "lora_sigma_range", None)
+    lora_mask = bool(getattr(args, "lora_timestep_mask", False))
+    lora_on = True
 
     # xattn_boost: cond-forward-only cross-attn gain at σ ≥ band, per tile
     _boost_raw = float(getattr(args, "xattn_boost", 1.0) or 1.0)
@@ -364,14 +388,17 @@ def generate_body_tiled(
     try:
         with tqdm(total=len(timesteps), desc="Denoising steps (tiled)") as pbar:
             for i, t in enumerate(timesteps):
-                # P-GRAFT: disable LoRA at cutoff step
-                if (
-                    pgraft_network is not None
-                    and lora_cutoff_step is not None
-                    and i == lora_cutoff_step
-                ):
-                    pgraft_network.set_enabled(False)
-                    logger.info(f"P-GRAFT: Disabled LoRA at step {i}/{len(timesteps)}")
+                if pgraft_network is not None:
+                    lora_on = _lora_gate(
+                        pgraft_network,
+                        lora_on,
+                        i,
+                        t,
+                        lora_cutoff_step,
+                        lora_sigma_range,
+                        len(timesteps),
+                        lora_mask,
+                    )
 
                 t_expand = t.expand(latents.shape[0])
                 set_hydra_sigma(anima, t_expand)
@@ -495,8 +522,10 @@ def generate_body_tiled(
         clear_hydra_sigma(anima)
         clear_hydra_fei(anima)
         # P-GRAFT: restore LoRA for next generation
-        if pgraft_network is not None and lora_cutoff_step is not None:
+        if pgraft_network is not None and not lora_on:
             pgraft_network.set_enabled(True)
+        if pgraft_network is not None and lora_mask:
+            pgraft_network.clear_timestep_mask()
 
     if traj_stats is not None:
         traj_stats.flush()
@@ -708,6 +737,15 @@ def generate_body(
 
     pgraft_network = getattr(anima, "_pgraft_network", None)
     lora_cutoff_step = getattr(args, "lora_cutoff_step", None)
+    lora_sigma_range = getattr(args, "lora_sigma_range", None)
+    lora_mask = bool(getattr(args, "lora_timestep_mask", False))
+    if (lora_sigma_range is not None or lora_mask) and (
+        getattr(args, "spd", False) or getattr(args, "spectrum", False)
+    ):
+        raise ValueError(
+            "--lora_sigma_range / --lora_timestep_mask run on the standard loop, "
+            "not --spd / --spectrum"
+        )
 
     # passive per-step trajectory recorder; threaded through the side channels
     # so the spectrum runner records too, flushed once before return
@@ -854,18 +892,20 @@ def generate_body(
         _freeze_env = os.environ.get("ANIMA_FREEZE_GUIDANCE_SIGMA")
         freeze_guidance_sigma = float(_freeze_env) if _freeze_env else None
         _frozen_guidance_dir = None  # unit delta, captured once below the cutoff
+        lora_on = True
         try:
             with tqdm(total=len(timesteps), desc=f"Denoising steps ({bs}x)") as pbar:
                 for i, t in enumerate(timesteps):
-                    # P-GRAFT: disable LoRA at cutoff step (reference model takes over)
-                    if (
-                        pgraft_network is not None
-                        and lora_cutoff_step is not None
-                        and i == lora_cutoff_step
-                    ):
-                        pgraft_network.set_enabled(False)
-                        logger.info(
-                            f"P-GRAFT: Disabled LoRA at step {i}/{len(timesteps)}"
+                    if pgraft_network is not None:
+                        lora_on = _lora_gate(
+                            pgraft_network,
+                            lora_on,
+                            i,
+                            t,
+                            lora_cutoff_step,
+                            lora_sigma_range,
+                            len(timesteps),
+                            lora_mask,
                         )
 
                     t_expand = t.expand(latents.shape[0])
@@ -1020,8 +1060,10 @@ def generate_body(
             clear_hydra_sigma(anima)
             clear_hydra_fei(anima)
             # P-GRAFT: restore LoRA for next generation
-            if pgraft_network is not None and lora_cutoff_step is not None:
+            if pgraft_network is not None and not lora_on:
                 pgraft_network.set_enabled(True)
+            if pgraft_network is not None and lora_mask:
+                pgraft_network.clear_timestep_mask()
 
     # single flush point for every branch (runners record but never flush);
     # idempotent, so flushing early is harmless

@@ -58,7 +58,7 @@ file or round to nearest.
   bf16 base read 9.65 s/step on the same plan, 2026-08-29.
 - `--base_weights` with forward copies is refused: they were calibrated on the unmerged weights.
   `--int8_file rtn` quantizes the merged weights instead.
-- `--lora_cutoff_step` is refused in generation.
+- `--lora_cutoff_step` and `--lora_sigma_range` are refused in generation.
 
 ## `stream` and the budget
 

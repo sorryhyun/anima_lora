@@ -85,6 +85,7 @@ class BaseLoRAModule(torch.nn.Module):
             persistent=False,
         )
         self.enabled = True
+        self._eval_mask = False  # eval forward applies _timestep_mask
 
     def _register_channel_scale(
         self,

@@ -211,6 +211,10 @@ def convert_for_inference(model: nn.Module, args) -> None:
     another base is visible."""
     if getattr(args, "lora_cutoff_step", None) is not None:
         raise SystemExit("int8 base: --lora_cutoff_step is not supported")
+    if getattr(args, "lora_sigma_range", None) is not None:
+        raise SystemExit("int8 base: --lora_sigma_range is not supported")
+    if getattr(args, "lora_timestep_mask", False):
+        raise SystemExit("int8 base: --lora_timestep_mask is not supported")
     base_id = _convert(model, "infer", getattr(args, "int8_file", None), args.dit)
     for path in args.lora_weight or []:
         with safe_open(path, framework="pt") as f:

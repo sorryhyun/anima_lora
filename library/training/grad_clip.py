@@ -6,7 +6,7 @@ With σ bands, the median clip keeps one window per band of the unit's σ, so a
 draw is capped against draws at a similar noise level (the grad norm is
 U-shaped in σ). Every quantity stays on the card (ring buffers, band lookup,
 median, clip coefficient), so a clip adds no host sync.
-docs/anima/proposal/lora_batch_clip_ema.md.
+docs/anima/findings/lora_gradient_noise_recipe.md.
 """
 
 from __future__ import annotations
@@ -175,7 +175,7 @@ class GradSigmaLog:
     norm and cap with the σ, loss and image key of the micro-batches it holds
     (one under ``clip_per_micro``, ``accum`` otherwise). Rows stay on the card
     until :meth:`flush`, which runs every ``flush_every`` rows and at run end.
-    docs/anima/proposal/lora_batch_clip_ema.md, Phase 2."""
+    docs/anima/findings/lora_gradient_noise_recipe.md."""
 
     def __init__(self, path, flush_every: int = 256):
         self.path = path

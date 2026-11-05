@@ -325,6 +325,35 @@ def build_parser() -> argparse.ArgumentParser:
         "LoRA is active for steps 0..cutoff_step-1, disabled for cutoff_step..end.",
     )
     parser.add_argument(
+        "--lora_sigma_range",
+        type=float,
+        nargs=2,
+        default=None,
+        metavar=("LO", "HI"),
+        help="Run the LoRA only at steps whose σ lies in [LO, HI); the other steps run "
+        "the bare base (e.g. 0 0.8 drops it at σ >= 0.8). Loads the LoRA as P-GRAFT "
+        "hooks (implies --pgraft); standard loop only, not the int8 base.",
+    )
+    parser.add_argument(
+        "--lora_timestep_mask",
+        action="store_true",
+        help="Apply the T-LoRA rank mask at inference as in training (use_timestep_mask): "
+        "rank min_rank + (1 - σ)^alpha x (r - min_rank) per step, where training with the "
+        "mask leaves inference at full rank. Implies --pgraft; standard loop only.",
+    )
+    parser.add_argument(
+        "--lora_mask_min_rank",
+        type=int,
+        default=1,
+        help="--lora_timestep_mask: min_rank the LoRA was trained with",
+    )
+    parser.add_argument(
+        "--lora_mask_alpha",
+        type=float,
+        default=1.0,
+        help="--lora_timestep_mask: alpha_rank_scale the LoRA was trained with",
+    )
+    parser.add_argument(
         "--int8",
         action="store_true",
         help="Generate on the int8 base: the DiT's large linears as int8 GEMMs, LoRAs "

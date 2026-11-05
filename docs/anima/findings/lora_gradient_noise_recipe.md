@@ -5,7 +5,9 @@
 > beat the old default in a blind A/B and is the shipped
 > `configs/methods/lora.toml`. A per-σ-band clip on top of B won a second,
 > ||dW||-matched blind A/B at the margin (cluster p 0.047) and is in the shipped
-> config since (`clip_sigma_bands = "0.2,0.4,0.6,0.8"`). Plan and per-phase detail:
+> config since (`clip_sigma_bands = "0.2,0.4,0.6,0.8"`). The T-LoRA rank mask is
+> commented out there since a third A/B (s31) found the published T-LoRA no better
+> than plain LoRA. Open questions (training σ shift, the mask):
 > [`../proposal/lora_batch_clip_ema.md`](../proposal/lora_batch_clip_ema.md).
 
 ## What the gradient looks like
@@ -68,7 +70,8 @@ draws as spikes. The first 10 micro-batches sit at the warmup cap
 
 ## The A/Bs
 
-Both blind A/Bs use seeds 42–45 per arm, 4 prompts (classroom, hug, maid, bikini) × 2
+s29 and s30 trained with the T-LoRA mask on (`min_rank` 1) and rendered at full
+rank. s29 and s30 use seeds 42–45 per arm, 4 prompts (classroom, hug, maid, bikini) × 2
 render seeds, 32 pairs per artist, at the `make test` recipe. The decision test is a
 sign flip over the 8 (artist, seed) clusters, because training noise acts per LoRA.
 `bench/anima_abclip/run_ab.py`.
@@ -77,10 +80,64 @@ sign flip over the 8 (artist, seed) clusters, because training noise acts per Lo
 |---|---|---|---|
 | s29 (Phase 1) | old default (2e-5 cosine, bs1, clip 1.0) vs B | **B 41–16**, 7 ties; cluster p 0.0078; caststation 22–8, ama mitsuki 19–8 | B moved 2.3–2.5× as far (median ||dW||), so part of the win can be strength |
 | s30 (Phase 2) | B vs B + `--clip_sigma_bands 0.2,0.4,0.6,0.8`, band rescaled to B's median ||dW|| | **band 39–21**, 4 ties; cluster p 0.047; caststation 20–10, sweetonedollar 19–11 | marginal; cast s44 (8–0) carries much of it, and band lost cast s45 (3–5) |
+| s31 | band (T-LoRA mask in training) rendered with the mask (`--lora_timestep_mask`) vs the same recipe without the mask, full rank; nomask rescaled to band's ||dW|| (x0.95–0.97) | **tie, band 11–13**; sweetonedollar s42 4–4, s43 1–7, s44 6–2 | three training seeds; a pair's two arms share composition and differ in detail |
 
 The per-band clip changes little in magnitude (band moved within ±7 % of B before
 matching), so s30 compares direction only. It wins most clearly on the bikini prompt
 (6–1 and 7–1) and loses only sweetonedollar hug (2–4).
+
+## Where the LoRA acts at inference (σ gate)
+
+`inference.py --lora_sigma_range LO HI` turns the LoRA off outside `[LO, HI)` (P-GRAFT
+hooks). sweetonedollar under B, s42–s44, the four A/B prompts at render seed 3, `make
+test` recipe (28 steps, shift 3). Mean absolute pixel difference, 0–255
+(`bench/anima_abclip/sigma_gate.py`, `results/20261105-2110-sigma_gate_sweet/`):
+
+| | vs LoRA on everywhere (hooks) | vs bare base |
+|---|---:|---:|
+| static merge x1.0 (noise floor of the hook path) | 1.6–2.0 | — |
+| off at σ < 0.4 (5 of 28 steps) | 2.4–2.6 | — |
+| x0.8 / x0.6 | 10.5–16.5 / 18.5–26.5 | — |
+| off at σ >= 0.8 (12 of 28 steps) | 48–58 | **8.5–8.9** |
+| LoRA on everywhere | — | 50–59 |
+| T-LoRA mask per step (`--lora_timestep_mask`) | 21–27 | 45–57 |
+
+Off at σ >= 0.8, the render is the base's: same composition, palette and lighting, with
+small changes (eye colour, a ribbon). Off at σ < 0.4 changes nothing past the noise
+floor. Between training seeds the renders differ by 40.9 with the LoRA on and 7.4 with
+it off at σ >= 0.8, so the seed-to-seed variation is all in that band. At shift 1 the
+band gets 7.4 % of draws, about 18 micro-batches over sweetonedollar's 8 epochs. The
+T-LoRA mask is training-only: there these draws train 1–8 of the 32 ranks (`min_rank` 1,
+linear), while inference runs all 32 at every σ, so the high-σ effect includes ranks
+trained only on lower σ. The x0.6 / x0.8 sweep moves the same composition. One artist, whose tag the base already renders in a painterly look;
+caststation is unchecked.
+
+Masking at inference as in training (σ >= 0.8 runs 1–8 of 32 ranks) does not fall back
+to the base: the render stays as far from it, with the composition kept and the details
+redrawn. Training seeds differ by 39.3 under the mask against 40.9 without it.
+
+## Implementation
+
+- `library/training/grad_clip.py`. `--clip_mode median`: the cap is `clip_k ×` the
+  median of the last `clip_window` pre-clip norms, excluding the one being clipped,
+  and `max_grad_norm` until 10 are recorded. Ring buffer, median and coefficient stay
+  on the card; the window is not checkpointed, so a resumed run warms up again.
+- `--clip_per_micro` clips each micro-batch before it joins an fp32 sum of the
+  adapter grads (~100 MB at rank 32), so the median runs over micro-batch norms.
+  Under several processes or fp16 loss scaling it clips the accumulated update
+  instead, with a warning. `--clip_mode fixed` without it keeps
+  `accelerator.clip_grad_norm_`.
+- `--clip_sigma_bands` keeps one ring buffer per band and uses the global cap until
+  the band holds 5 norms; a unit of several micro-batches takes their mean σ.
+- Stamped: `ss_clip_mode`, `ss_clip_k`, `ss_clip_per_micro`, `ss_clip_sigma_bands`.
+  `--grad_sigma_log` writes `<output_name>.grad_sigma.jsonl` (per clipped unit: norm,
+  cap, σ, loss, image key; `bench/anima_abclip/sigma_tail.py` reads it).
+- Logged: `grad/norm`, `grad/norm_sq`, `grad/norm_max`, `grad/clip_frac`,
+  `grad/clip_cap`, and `grad/micro_norm_sq` under accumulation.
+- `tests/test_grad_clip.py`: typical norms pass the median clip, a spike lands at
+  `clip_k ×` the median with its direction kept, fixed matches
+  `torch.nn.utils.clip_grad_norm_` bit for bit, per-micro at accum 1 matches the
+  global clip, and the per-micro sum of a real backward matches plain accumulation.
 
 ## Traps
 
@@ -105,7 +162,7 @@ matching), so s30 compares direction only. It wins most clearly on the bikini pr
   x1.0. They shrink at x0.8 / x0.6, so they scale with the adapter, as do the style and
   the uniform. Lower lr with more epochs would land near the same displacement; what
   separates hands from style (σ-gated LoRA, render aspect, the data) is untested.
-- Training shift 3, to match inference: at shift 1, σ > 0.9 gets 0.6–1.4 % of draws,
-  while inference spends ~25 % of its steps there. Untested.
-- The GUI variant (`configs/gui-methods/lora.toml`: alpha 32, 4 epochs) kept 2e-5 and
-  was not tested.
+- Training σ shift and the T-LoRA mask: the proposal.
+- The GUI's LoRA variant (`configs/gui-methods/lora.toml`) carries the same recipe
+  since 2026-11-05 (alpha 128, 8 epochs, band clip, EMA 0.1, no mask); T-LoRA and
+  Hydra GUI variants keep their own lr and fixed clip.

@@ -98,7 +98,7 @@ After `apply_to()`, LoRA parameters are the only trainable tensors.
 
 ### 3.4 What the default config actually trains
 
-The live `configs/methods/lora.toml` stacks plain LoRA with T-LoRA (`use_timestep_mask = true` — see `timestep-mask.md`), the weight-SVD down init above, and the REPA auxiliary alignment loss. The MoE variants are opt-in via the three-axis surface (`use_moe_style` / `route_per_layer` / `router_source` — see `networks/CLAUDE.md`). The old boolean toggles (`use_hydra`, `use_fei_router`) were removed and now raise if passed.
+The live `configs/methods/lora.toml` stacks plain LoRA with the weight-SVD down init above and the REPA auxiliary alignment loss; T-LoRA (`use_timestep_mask`, see `timestep-mask.md`) is commented out there since 2026-11-05. The MoE variants are opt-in via the three-axis surface (`use_moe_style` / `route_per_layer` / `router_source` — see `networks/CLAUDE.md`). The old boolean toggles (`use_hydra`, `use_fei_router`) were removed and now raise if passed.
 
 ---
 

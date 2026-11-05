@@ -7,7 +7,7 @@ Timestep-dependent rank masking for LoRA training. Effective rank varies with th
 ## Quick start
 
 ```bash
-make lora                                    # configs/methods/lora.toml already sets use_timestep_mask = true
+make lora ARGS="--network_args use_timestep_mask=true"   # off in configs/methods/lora.toml
 make lora-gui GUI_PRESETS=tlora              # configs/gui-methods/tlora.toml (rank 32, weight_svd down-init)
 ```
 
@@ -15,10 +15,21 @@ make lora-gui GUI_PRESETS=tlora              # configs/gui-methods/tlora.toml (r
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `use_timestep_mask` | false (`lora.toml`: true) | Enable timestep rank masking |
+| `use_timestep_mask` | false (also in `lora.toml` since 2026-11-05; `tlora` GUI variant: true) | Enable timestep rank masking |
 | `min_rank` | 1 | Minimum active rank (floor at the pure-noise end, σ=1) |
 | `alpha_rank_scale` | 1.0 | Power-law exponent (1.0 = linear, >1 = steeper, <1 = flatter) |
 | `network_dim` | — | Maximum rank (R_max), set by the method config |
+
+## Inference
+
+The mask is not stamped in the LoRA, and inference runs every rank at every σ: the
+static merge cannot vary with σ, and the hook forward skips the mask in eval. The
+T-LoRA paper (§3.1, arXiv 2507.05964) and its code apply the mask at inference too.
+`inference.py --lora_timestep_mask [--lora_mask_min_rank 1 --lora_mask_alpha 1.0]`
+does that on the P-GRAFT hooks (standard loop, not int8). On sweetonedollar, masked
+training + masked inference tied unmasked training + full-rank inference 11–13 in a
+blind A/B (s31); masked training + full-rank inference against either is owed
+(`docs/anima/proposal/lora_batch_clip_ema.md`).
 
 ## Compatibility
 

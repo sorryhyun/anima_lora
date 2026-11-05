@@ -6,7 +6,7 @@ learning_rate = 5e-5
 # (the --ema_window default), and a clip at 2x the median of the last 50 micro-batch
 # norms, applied per micro-batch: spikes are bounded to their share without leaving
 # the set. Beat the 2e-5 cosine bs1 clip-1.0 recipe in a blind A/B over 4 seeds x 2
-# artists, 41-16, cluster p 0.0078 (docs/anima/proposal/lora_batch_clip_ema.md).
+# artists, 41-16, cluster p 0.0078 (docs/anima/findings/lora_gradient_noise_recipe.md).
 # The median is kept per σ band: edge-σ norms run ~2x mid-σ ones, so one window reads
 # normal edge draws as spikes. Beat the single window blind at matched ||dW||, 39-21,
 # cluster p 0.047 (docs/anima/findings/lora_gradient_noise_recipe.md).
@@ -48,9 +48,14 @@ svd_slice = 0
 svd_slice_count = 0
 path_pattern = "*"
 
-use_timestep_mask = true
-min_rank = 1
-alpha_rank_scale = 1.0
+# T-LoRA rank mask, off by default since 2026-11-05: it masks in training only, while
+# inference runs every rank at every σ, so the shipped file trained one model and
+# rendered another. Masked training + masked inference (--lora_timestep_mask, the
+# published method) tied this file without the mask, 11-13 (s31, sweetonedollar,
+# docs/anima/findings/lora_gradient_noise_recipe.md).
+# use_timestep_mask = true
+# min_rank = 1
+# alpha_rank_scale = 1.0
 
 use_repa       = true
 repa_mode      = "relational"

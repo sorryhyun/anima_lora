@@ -133,6 +133,17 @@ def attach_adapters(
                 )
             network.to(device, dtype=torch.bfloat16)
             network.eval()
+            if getattr(args, "lora_timestep_mask", False):
+                import dataclasses
+
+                network.cfg = dataclasses.replace(
+                    network.cfg,
+                    use_timestep_mask=True,
+                    min_rank=args.lora_mask_min_rank,
+                    alpha_rank_scale=args.lora_mask_alpha,
+                )
+                for lora in network.unet_loras:
+                    lora._eval_mask = True
             model._pgraft_network = network
             logger.info(
                 f"P-GRAFT: LoRA attached with cutoff_step={getattr(args, 'lora_cutoff_step', None)}"
@@ -292,7 +303,12 @@ def load_dit_model(
     # P-GRAFT: load without LoRA merge, attach dynamic hooks instead
     int8 = getattr(args, "int8", False)
     pgraft_mode = (
-        (getattr(args, "pgraft", False) or int8)
+        (
+            getattr(args, "pgraft", False)
+            or getattr(args, "lora_sigma_range", None) is not None
+            or getattr(args, "lora_timestep_mask", False)
+            or int8
+        )
         and args.lora_weight is not None
         and len(args.lora_weight) > 0
     )
