@@ -19,7 +19,7 @@ import logging
 import os
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
 import torch
@@ -98,6 +98,11 @@ class LoopState:
     profile_started: bool = False
     # Release-pause request poller (daemon jobs only; None outside the daemon).
     pause_watcher: Optional[PauseWatcher] = None
+    # Pre-clip total grad norms (GPU scalars) since the last tracker write, and
+    # with gradient accumulation the first micro-batch's own norm per update.
+    grad_norms: list = field(default_factory=list)
+    micro_norms: list = field(default_factory=list)
+    micro_step: int = 0
 
 
 def build_loop_state(
@@ -517,6 +522,20 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
         # gradient-cached contrastive negatives under active block swapping.
         trainer.run_after_backward(state.train_ctx)
 
+        accum = max(1, int(args.gradient_accumulation_steps or 1))
+        if state.is_tracking and accum > 1 and state.micro_step % accum == 0:
+            grads = [
+                p.grad
+                for p in accelerator.unwrap_model(network).get_trainable_params()
+                if p.grad is not None
+            ]
+            if grads:
+                # accelerator.backward divides the loss by `accum`
+                state.micro_norms.append(
+                    torch.nn.utils.get_total_norm(grads).detach().float() * accum
+                )
+        state.micro_step += 1
+
         if accelerator.sync_gradients:
             net_unwrapped = accelerator.unwrap_model(network)
             # Snapshot Hydra up-weight grad norms before zero_grad wipes them
@@ -530,11 +549,19 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
             )
             if _will_log_after and hasattr(net_unwrapped, "capture_up_grad_stats"):
                 net_unwrapped.capture_up_grad_stats()
+            params = [
+                p
+                for p in accelerator.unwrap_model(network).get_trainable_params()
+                if p.grad is not None
+            ]
             if args.max_grad_norm != 0.0:
-                params_to_clip = accelerator.unwrap_model(
-                    network
-                ).get_trainable_params()
-                accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
+                norm = accelerator.clip_grad_norm_(params, args.max_grad_norm)
+            elif state.is_tracking and params:
+                norm = torch.nn.utils.get_total_norm([p.grad for p in params])
+            else:
+                norm = None
+            if state.is_tracking and norm is not None:
+                state.grad_norms.append(norm.detach().float())
 
         if state.profile_started:
             torch.cuda.nvtx.range_push("optimizer")
@@ -687,7 +714,32 @@ def _log_step(
                 MetricContext(args=args, network=_unwrapped_net),
             )
         )
+        logs.update(_grad_norm_logs(state))
         trainer.step_logging(state.accelerator, logs, state.global_step, epoch + 1)
+
+
+def _grad_norm_logs(state: LoopState) -> dict:
+    """Pre-clip total grad norm over the optimizer updates since the last write:
+    mean, mean square, max, and the fraction ``max_grad_norm`` clipped. With
+    gradient accumulation, ``grad/micro_norm_sq`` is one micro-batch's own
+    ``||g||^2``: against ``grad/norm_sq`` (the mean of ``accum`` of them) it
+    separates signal ``||G||^2`` from per-sample noise ``tr(Sigma)``."""
+    if not state.grad_norms:
+        return {}
+    norms = torch.stack(state.grad_norms).cpu()
+    state.grad_norms.clear()
+    out = {
+        "grad/norm": norms.mean().item(),
+        "grad/norm_sq": norms.square().mean().item(),
+        "grad/norm_max": norms.max().item(),
+    }
+    if state.args.max_grad_norm != 0.0:
+        out["grad/clip_frac"] = (norms > state.args.max_grad_norm).float().mean().item()
+    if state.micro_norms:
+        micro = torch.stack(state.micro_norms).cpu()
+        state.micro_norms.clear()
+        out["grad/micro_norm_sq"] = micro.square().mean().item()
+    return out
 
 
 def _maybe_run_step_validation(trainer, state: LoopState, epoch: int) -> None:
