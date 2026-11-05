@@ -1,4 +1,4 @@
-# moss_te_sae — what the MOSS TE and DiT do with names, caption rows and strings
+# moss_te_sae — what the MOSS TE and DiT do with names, caption rows, strings and references
 
 Direct probes of the post-trained Qwen3.5-9B text encoder and of the DiT's attention,
 plus Qwen-Scope's Base SAEs. Two questions run through it:
@@ -15,7 +15,7 @@ plus Qwen-Scope's Base SAEs. Two questions run through it:
   `/media/sorryhyun/data/qwen35_base/Qwen3.5-9B-Base`.
 - Scripts in `src/` run as daemon jobs:
   `make daemon-run ARGS="--stall-timeout 900 project/moss_te_sae/src/<script>.py …"`.
-  `template_attn_cmp.py` is CPU only.
+  `template_attn_cmp.py` and `i2i_common.py` are CPU only.
 - Results: newer runs in `output/tests/<name>/`, earlier ones under
   `/media/sorryhyun/new/qwen35_sae/<name>/<stamp>/`. Each report names its folders.
 - `configs/` holds the trigger-binding training arms (`rows_trigger.toml`,
@@ -43,6 +43,7 @@ Each report opens with its claims and the evidence follows per claim.
 | [string_read](reports/string_read.md) | a quoted string is read locally by the lettering's queries through fixed heads (b21 h20, blocks 19–21); its rows carry the words, the rest of the caption the balloon and script; the swap_text LoRA binds each box to its own string the same way, and the four t2i heads alone are not needed |
 | [trigger_binding](reports/trigger_binding.md) | a delta confined to the trigger rows binds by construction and carries outfit / eyes / composition but not the palette, and once writes the trigger as a logo; the preservation term (×10) shrinks the delta everywhere instead of binding it (it outweighs the learnable part of the main loss) |
 | [sae_fit](reports/sae_fit.md) | Base SAEs fit the instruct caption rows at FVU 0.25–0.46; ~1/3 of what the DiT reads is in the error term; the DiT's projection amplifies tag-content features and suppresses structural ones |
+| [i2i_copy_head](reports/i2i_copy_head.md) | the i2i LoRAs share a late-block component (swap_text / sanitize / uncensor, not colorize or t2i); every one builds b39 h19 into an own-cell reference copy head Base lacks, gated spatially from step 0; cutting it degrades the copy without breaking it; swap_text retunes Base's t2i string heads; a negative logit bias on colorize's copy heads adds colour at luma r −0.002 |
 
 ## Open
 
@@ -53,8 +54,12 @@ Each report opens with its claims and the evidence follows per claim.
 - Which blocks carry the caption read: a per-block `no_caption_keys` cut
   (text_read_path cut all blocks at once; single heads in blocks 8 / 19 / 35 / 37 are the
   candidates).
-- Whether the swap_text LoRA built its string read or reuses Base's: score a LoRA-off
-  forward on the same trajectory (string_read).
+- Whether the swap_text LoRA built its string read or reuses Base's: the weights say it
+  retunes Base's string heads (i2i_copy_head §1); a LoRA-off forward on the same
+  trajectory would confirm it (string_read).
+- Copy-head bias (i2i_copy_head): colorize holdout with targets at bias 0 / −2 / −4,
+  then the bias with `character` colour items; region bias against tone drift for
+  swap_text / sanitize.
 - Approach B on `malfoid`: a larger lr and more steps before any verdict on the init
   (name_rows §5). A series centroid without the prototype as a warm start for
   grammar-sharing series only.
