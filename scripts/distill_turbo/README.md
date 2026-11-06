@@ -3,6 +3,7 @@
 The `make turbo` distiller (DP-DMD student, bespoke loop). User doc and knobs:
 `docs/anima/methods/turbo.md`; structure: `docs/anima/structure/turbo.md`. Notes in this folder:
 `plan.md` (v4 plan, DMAD phases), `difference.md` (our DMAD vs the official code), `idea.md`,
+`vatdm.md` (VA-TDM, arXiv:2611.06796, vs the loop and MFD),
 `report_gaps.md` (dataset / CFG 1 / CFG 4 / student moment gaps).
 
 ## Mean Flow Distillation in the DM slot (2026-11-04, branch `mfd_test`)
