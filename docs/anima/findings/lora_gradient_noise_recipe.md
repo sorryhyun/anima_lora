@@ -10,7 +10,10 @@
 > than plain LoRA. s33 reran the s29 recipe A/B without the mask and at matched
 > ||dW||: **A 52–42, cluster p 0.17**, so at equal step length B's direction is no
 > better, and s29's win came from the mask mismatch or from B's 2.2–2.5× larger
-> ||dW||. Open questions (B at its own ||dW|| without the mask, training σ shift, the mask):
+> ||dW||. s34 (no mask): rank 16 / alpha 64 against the shipped rank 32 at matched
+> ||dW||, r16 28–20, cluster p 0.25, so rank stays at 32. The σ profile below
+> holds without the mask too.
+> Open questions (B at its own ||dW|| without the mask, training σ shift, the mask):
 > [`../proposal/lora_batch_clip_ema.md`](../proposal/lora_batch_clip_ema.md).
 
 ## What the gradient looks like
@@ -45,7 +48,16 @@ The norm is U-shaped in σ (Spearman +0.23 to +0.41). The edges (σ < 0.2 or ≥
 hold 13–15 % of the draws and 59–80 % of the clipped micro-batches. The clip rate
 does not fall over the run. No image dominates: at most 3–4 clips per image over 8
 epochs, spread across the set. A median taken over all σ reads normal edge-σ
-draws as spikes. The first 10 micro-batches sit at the warmup cap
+draws as spikes.
+
+These runs trained with the T-LoRA mask on. Rerun without it (`sigmalog2_{cast,sweet}_s42`,
+same seed and so the same σ draws, one clip window), the U shape is unchanged: σ ≥ 0.8
+runs 3.0× / 2.9× the 0.4–0.6 median (2.5–3.1× masked), and 0.6–0.8 rises a little
+(sweetonedollar 1.41 → 1.57), since the mask trained only 1–8 ranks there. Rank 16
+(s34, six runs) has the same shape at lower absolute norms (σ ≥ 0.8 at 2.6–3.4× mid).
+Under any of the three clips (fixed 1.0, global median, band median) σ ≥ 0.8 takes
+7 %, 11–12 % and 13–15 % of the summed post-clip norm, simulated on the maskless logs,
+so A → B shifts the σ weighting more than B → band does. The first 10 micro-batches sit at the warmup cap
 (`max_grad_norm` 1.0) and are all clipped; leave them out of any clip-rate count.
 
 ## What it means for the recipe
@@ -86,6 +98,7 @@ sign flip over the 8 (artist, seed) clusters, because training noise acts per Lo
 | s29 (Phase 1) | old default (2e-5 cosine, bs1, clip 1.0) vs B | **B 41–16**, 7 ties; cluster p 0.0078; caststation 22–8, ama mitsuki 19–8 | B moved 2.3–2.5× as far (median ||dW||), so part of the win can be strength |
 | s33 (s29 rerun) | A vs B (one clip window), both `use_timestep_mask` off; B rescaled to A's median ||dW|| (×0.40–0.46); ama mitsuki, sweetonedollar, caststation; render seeds 9 / 10 | **A 52–42**, 2 ties; cluster p 0.17 (A side), 0.88 (B side); ama mitsuki 17–13, sweetonedollar 19–13, caststation 16–16 (A–B) | the seeds split 6 A, 4 B, 2 even, and single seeds swing 6–2 either way, so the training seed moves the result more than the recipe does; B was not tested at its own ||dW|| |
 | s30 (Phase 2) | B vs B + `--clip_sigma_bands 0.2,0.4,0.6,0.8`, band rescaled to B's median ||dW|| | **band 39–21**, 4 ties; cluster p 0.047; caststation 20–10, sweetonedollar 19–11 | marginal; cast s44 (8–0) carries much of it, and band lost cast s45 (3–5) |
+| s34 (rank) | shipped recipe, no mask, rank 32 / alpha 128 (the s31 / s32 `nomask` LoRAs) vs rank 16 / alpha 64; r16 moved 0.72× as far and was rescaled up (×1.25–1.43); caststation, sweetonedollar, seeds 42–44, render seeds 11 / 12 | **r16 28–20**, no ties; cluster p 0.25; 14–10 for each artist | two of six clusters (cast s44, sweet s42, 7–1 each) carry it, the rest are 4–4 or 5–3 to r32; cross-seed MAD r32 → r16: cast 46.2 → 45.2, sweetonedollar 41.6 → 50.9, so lower rank does not make training seeds agree |
 | s31 | band (T-LoRA mask in training) rendered with the mask (`--lora_timestep_mask`) vs the same recipe without the mask, full rank; nomask rescaled to band's ||dW|| (x0.95–0.97) | **tie, band 11–13**; sweetonedollar s42 4–4, s43 1–7, s44 6–2 | three training seeds; a pair's two arms share composition and differ in detail |
 
 The per-band clip changes little in magnitude (band moved within ±7 % of B before
@@ -169,6 +182,8 @@ redrawn. Training seeds differ by 39.3 under the mask against 40.9 without it.
   the uniform. Lower lr with more epochs would land near the same displacement; what
   separates hands from style (σ-gated LoRA, render aspect, the data) is untested.
 - Training σ shift and the T-LoRA mask: the proposal.
+- Rank 16 leans ahead (s34, 28–20) on six clusters; more seeds or a third artist
+  would decide it. Rank 16 halves the file.
 - The GUI's LoRA variant (`configs/gui-methods/lora.toml`) carries the same recipe
   since 2026-11-05 (alpha 128, 8 epochs, band clip, EMA 0.1, no mask); T-LoRA and
   Hydra GUI variants keep their own lr and fixed clip.

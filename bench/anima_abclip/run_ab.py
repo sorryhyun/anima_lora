@@ -21,6 +21,9 @@ Experiments (``--exp``, docs/anima/findings/lora_gradient_noise_recipe.md):
   new render seeds. The band LoRA is rescaled to the global LoRA's median
   ``||dW||`` of the same (artist, seed) before rendering (``match``), so the
   pairs compare the direction and not the step length.
+- ``rank`` (s34): the shipped recipe at rank 32 / alpha 128 (the s31 / s32
+  ``nomask`` LoRAs) against rank 16 / alpha 64, caststation and sweetonedollar,
+  seeds 42-44, r16 rescaled to r32's median ``||dW||``; ``mad`` first.
 
 ``train``: queues the missing LoRAs on the daemon. ``render``: (``match`` first
 when the experiment asks for it) every LoRA renders the prompts x render seeds
@@ -191,6 +194,26 @@ EXPS = {
         shuffle_seed=33,
         report="bench/anima_abclip/report_abclip2.md",
         match_dw=True,
+    ),
+    "rank": Exp(
+        artists=("cast", "sweet"),
+        arms=("r32", "r16"),
+        stems={"r32": "nomask_{art}_s{seed}", "r16": "rank16_{art}_s{seed}"},
+        train_args={
+            "r32": "--network_args use_timestep_mask=false",
+            "r16": "--network_args use_timestep_mask=false --network_dim 16 "
+            "--network_alpha 64 --grad_sigma_log",
+        },
+        describe="r32 = the shipped lora.toml (rank 32 / alpha 128, B + σ-band clip, no "
+        "mask; the s31 / s32 LoRAs); r16 = the same at rank 16 / alpha 64 (alpha / rank "
+        "4 in both); r16 rescaled to r32's median ||dW||",
+        render_seeds=(11, 12),
+        set_prefix="s34_RANK",
+        renders="output/tests/rank",
+        shuffle_seed=34,
+        report="bench/anima_abclip/report_rank.md",
+        match_dw=True,
+        seeds=(42, 43, 44),
     ),
 }
 
