@@ -100,6 +100,23 @@ renders (sweetonedollar, painterly at base) loses from the extra high-σ fit, an
 caststation gains. Whether the base knows caststation is unchecked, and two artists
 cannot separate this reading from artist noise. The shipped default stays at shift 1.
 
+s39 (2026-11-06, `run_ab.py --exp sigshift_norepa`,
+[`report_sigshift_norepa.md`](../../../bench/anima_abclip/report_sigshift_norepa.md)):
+s32 with `use_repa=false` in both arms, seeds 42–44, shift2 rescaled to shift1 (×0.97–1.04),
+render seeds 21 / 22. **shift1 28–20**, no ties; pair p 0.19, cluster p 0.16 (shift1 side).
+
+| | shift1 wins | shift2 wins | cross-seed MAD shift1 → shift2 |
+|---|---:|---:|---:|
+| caststation | 12 | 12 (s42 3–5, s43 5–3, s44 4–4) | 43.7 → 45.9 |
+| sweetonedollar | 16 | 8 (every seed to shift1) | 47.0 → 50.5 |
+
+Without REPA, caststation's lead for shift2 (14–8 on every seed in s32) is gone, and
+sweetonedollar still goes to shift1. So caststation's gain needed REPA, and the reading
+"a tag the base knows loses from more high-σ draws, an unknown one gains" loses its one
+supporting case. The maid prompt went 9–3 to shift1. Shift 1 stays. Without REPA, the σ
+profile of the grad norm is unchanged (σ 0.8–0.9 median 2.2–4.8 against 0.9–1.3 at 0.4–0.6,
+the edges hold 50–71 % of the clipped micro-batches; `sigma_tail.py norepa128_*`).
+
 ## 2. The T-LoRA mask
 
 `use_timestep_mask` (on in `configs/methods/lora.toml` until 2026-11-05, `min_rank` 1)
@@ -137,10 +154,9 @@ at alpha 512 / lr 1.25e-5, the recipe without relational REPA beat the same reci
 it, 32–16 on caststation + sweetonedollar (pair p 0.015, cluster p 0.078). The default
 turned REPA off on that result. Owed:
 
-- **REPA on vs off at alpha 128 / lr 5e-5**, the shipped step. The control already
-  exists (the s31 / s32 `nomask_{cast,sweet}_s{42,43,44}` LoRAs, REPA on); six no-REPA
-  trainings (~2.5 min each) and two blind sets. If REPA wins there, the result is
-  recipe-dependent and the default needs another look.
+- ~~REPA on vs off at alpha 128 / lr 5e-5~~: s40 (2026-11-06) tied, repa 23–22 (findings
+  § s40). REPA stays off. Since it cost only the a512 arm, s35's tie is open again:
+  **a512 against a128, both without REPA**, needs only renders (`norepa512_*`, `norepa128_*`).
 - **A long run**: sincos (354 images, ~1416 updates), where s36 ran both arms with REPA on.
 - **Whether REPA masked s34–s36**: rank and alpha re-run without REPA, if the shipped-recipe
   check confirms the direction.

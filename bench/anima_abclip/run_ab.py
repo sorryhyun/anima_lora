@@ -32,6 +32,15 @@ Experiments (``--exp``, docs/anima/findings/lora_gradient_noise_recipe.md):
 - ``norepa`` (s37): the s35 a512 LoRAs (relational REPA on) against the same
   recipe with ``use_repa=false``, caststation, seeds 42-44, matched ``||dW||``.
 - ``norepa_sweet`` (s38): s37 on sweetonedollar.
+- ``sigshift_norepa`` (s39): s32 with ``use_repa=false`` in both arms. The shift1
+  LoRAs (``norepa128_*``) are also the no-REPA arm at the shipped alpha 128 / lr 5e-5
+  for the REPA on/off check against the s31 / s32 ``nomask_*`` LoRAs.
+- ``repa128`` (s40): that check, s37 / s38 at alpha 128 / lr 5e-5; no training,
+  both arms exist.
+- ``alpha_norepa`` (s42): s35 without REPA in either arm; no training, both arms
+  exist (``norepa128_*``, ``norepa512_*``).
+- ``rank_ama`` (s41): s34 on ama mitsuki, REPA off, at alpha 512 / lr 1.25e-5 for
+  rank 32 and alpha 362 (∝ √r) for rank 16; seeds 42-43, four render seeds.
 
 ``train``: queues the missing LoRAs on the daemon. ``render``: (``match`` first
 when the experiment asks for it) every LoRA renders the prompts x render seeds
@@ -305,6 +314,94 @@ EXPS = {
         report="bench/anima_abclip/report_norepa_sweet.md",
         match_dw=True,
         seeds=(42, 43, 44),
+    ),
+    "sigshift_norepa": Exp(
+        artists=("cast", "sweet"),
+        arms=("shift1", "shift2"),
+        stems={
+            "shift1": "norepa128_{art}_s{seed}",
+            "shift2": "norepa_sigshift_{art}_s{seed}",
+        },
+        train_args={
+            "shift1": "--network_args use_timestep_mask=false use_repa=false "
+            "--grad_sigma_log",
+            "shift2": "--network_args use_timestep_mask=false use_repa=false "
+            "--timestep_sampling shift --discrete_flow_shift 2 --grad_sigma_log",
+        },
+        describe="s32 without REPA: shift1 = the shipped lora.toml (alpha 128, lr 5e-5, "
+        "B + σ-band clip, no mask, REPA off; σ ~ logit-normal(0, 1)); shift2 = the same "
+        "with timestep_sampling shift, discrete_flow_shift 2; shift2 rescaled to "
+        "shift1's median ||dW||",
+        render_seeds=(21, 22),
+        set_prefix="s39_SIGSHIFT_NOREPA",
+        renders="output/tests/sigshift_norepa",
+        shuffle_seed=39,
+        report="bench/anima_abclip/report_sigshift_norepa.md",
+        match_dw=True,
+        seeds=(42, 43, 44),
+    ),
+    "repa128": Exp(
+        artists=("cast", "sweet"),
+        arms=("repa", "norepa"),
+        stems={"repa": "nomask_{art}_s{seed}", "norepa": "norepa128_{art}_s{seed}"},
+        train_args={
+            "repa": "--network_args use_timestep_mask=false use_repa=true",
+            "norepa": "--network_args use_timestep_mask=false use_repa=false "
+            "--grad_sigma_log",
+        },
+        describe="s37 / s38 at the shipped step: repa = the s31 / s32 nomask LoRAs (alpha "
+        "128, lr 5e-5, relational REPA 0.05 at layer 8); norepa = the s39 shift1 LoRAs "
+        "(the same with use_repa off); norepa rescaled to repa's median ||dW||",
+        render_seeds=(23, 24),
+        set_prefix="s40_REPA128",
+        renders="output/tests/repa128",
+        shuffle_seed=40,
+        report="bench/anima_abclip/report_repa128.md",
+        match_dw=True,
+        seeds=(42, 43, 44),
+    ),
+    "alpha_norepa": Exp(
+        artists=("cast", "sweet"),
+        arms=("a128", "a512"),
+        stems={"a128": "norepa128_{art}_s{seed}", "a512": "norepa512_{art}_s{seed}"},
+        train_args={
+            "a128": "--network_args use_timestep_mask=false use_repa=false "
+            "--grad_sigma_log",
+            "a512": "--network_args use_timestep_mask=false use_repa=false "
+            "--network_alpha 512 --learning_rate 1.25e-5",
+        },
+        describe="s35 without REPA: a128 = the shipped lora.toml (alpha 128, lr 5e-5, REPA "
+        "off; the s39 shift1 LoRAs); a512 = alpha 512, lr 1.25e-5, REPA off (the s37 / s38 "
+        "norepa LoRAs); a512 rescaled to a128's median ||dW||",
+        render_seeds=(29, 30),
+        set_prefix="s42_ALPHA_NOREPA",
+        renders="output/tests/alpha_norepa",
+        shuffle_seed=42,
+        report="bench/anima_abclip/report_alpha_norepa.md",
+        match_dw=True,
+        seeds=(42, 43, 44),
+    ),
+    "rank_ama": Exp(
+        artists=("ama",),
+        arms=("r32", "r16"),
+        stems={"r32": "r32a512_ama_s{seed}", "r16": "r16a362_ama_s{seed}"},
+        train_args={
+            "r32": "--network_args use_timestep_mask=false use_repa=false "
+            "--network_alpha 512 --learning_rate 1.25e-5",
+            "r16": "--network_args use_timestep_mask=false use_repa=false "
+            "--network_dim 16 --network_alpha 362 --learning_rate 1.25e-5",
+        },
+        describe="s34 on ama mitsuki without REPA, on the paper's scaling (arXiv "
+        "2606.12883): r32 = rank 32 / alpha 512 / lr 1.25e-5 (the s35 a512 arm); r16 = "
+        "rank 16 / alpha 362 (alpha ∝ √r) at the same lr; REPA off in both; r16 "
+        "rescaled to r32's median ||dW||",
+        render_seeds=(25, 26, 27, 28),
+        set_prefix="s41_RANK_AMA",
+        renders="output/tests/rank_ama",
+        shuffle_seed=41,
+        report="bench/anima_abclip/report_rank_ama.md",
+        match_dw=True,
+        seeds=(42, 43),
     ),
 }
 

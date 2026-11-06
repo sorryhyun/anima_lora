@@ -10,7 +10,9 @@
 > ~1416 updates) and tied again, a128 18–13 (pair p 0.86 for a512). The shipped rank,
 > alpha and lr stay. Every arm here trained with relational REPA on; REPA off later beat
 > REPA on at alpha 512 ([`lora_repa_off_wins_blind.md`](lora_repa_off_wins_blind.md)),
-> so whether REPA masked these splits is open.
+> so both splits were rerun without REPA: rank on ama mitsuki (s41, alpha ∝ √r) tied,
+> r32 17–15, and alpha (s42) tied, a128 23–22. REPA did not mask them. **Line closed**:
+> rank 32 / alpha 128 / lr 5e-5 stay.
 
 ## The question
 
@@ -78,6 +80,24 @@ match would use alpha `128 · √(16/32) ≈ 90.5`. The adaln modules also diffe
 scale between the arms (alpha / rank 4 at r16, 5.66 at r32, from the √r rule), which
 leaves r16 at 0.968× of r32 under the scaled `dw_norm`. Rank 16 halves the file.
 
+## s41: rank 16 against rank 32 without REPA, alpha ∝ √r (ama mitsuki)
+
+r32 at alpha 512 / lr 1.25e-5 (the s35 a512 step), r16 at alpha 362 (`512 · √(16/32)`, the
+paper's rule) at the same lr, REPA off in both. ama mitsuki (106 images, 424 updates), seeds
+42 / 43, render seeds 25–28, 32 pairs (`run_ab.py --exp rank_ama`,
+[`report_rank_ama.md`](../../../bench/anima_abclip/report_rank_ama.md)).
+
+- **||dW||: the √r alpha matches the step in training**: r16 moved 0.95× / 1.09× of r32
+  before matching (s34, alpha / rank fixed: 0.72×).
+- **Blind: r32 17–15, pair p 0.70 for r16.** s42 8–8, s43 9–7 to r32. By prompt r32–r16:
+  p0 3–5, p1 3–5, p2 4–4, p3 (bikini) 7–1.
+- Cross-seed MAD r32 → r16: 41.2 → 49.7, as sweetonedollar in s34: lower rank does not make
+  training seeds agree.
+
+Two training seeds put the cluster test's floor at 0.25, so this is a pair-level read. With
+s34 (r16 28–20, REPA on, alpha / rank 4) rank is null on three artists, with and without
+REPA. Rank stays at 32.
+
 ## s35: alpha 512 / lr 1.25e-5 against alpha 128 / lr 5e-5
 
 Same α·η, so the same first-order step and a quarter of the per-step drift. Render
@@ -113,6 +133,27 @@ render seeds 15–18 (four prompts × four seeds × two seeds = 32 pairs). Repor
 - fm loss: a512 0.002–0.003 above a128 at matched steps throughout, on both seeds. The
   REPA term differs by 0.00007 after weighting, so this is the fm fit itself.
 - The drift split (`drift_share.py`) was not run on the s36 LoRAs.
+
+## s42: s35 without REPA
+
+s40 found REPA cost the render at alpha 512 and nothing at alpha 128, so s35's tie had a
+handicap on one arm. s42 reran it with REPA off in both: a128 = `norepa128_*` (the s39
+shift1 LoRAs), a512 = `norepa512_*` (the s37 / s38 norepa LoRAs), caststation and
+sweetonedollar, seeds 42–44, a512 rescaled to a128 (×1.00–1.08), render seeds 29 / 30
+(`run_ab.py --exp alpha_norepa`, [`report_alpha_norepa.md`](../../../bench/anima_abclip/report_alpha_norepa.md)).
+
+| artist | s42 | s43 | s44 | total |
+|---|---|---|---|---|
+| cast, a128–a512 | 2–6 | 4–3 | 5–2 | 11–11 |
+| sweet, a128–a512 | 2–6 | 6–2 | 4–3 | 12–11 |
+
+**a128 23–22**, 3 blank; pair p 0.62, cluster p 0.64. Training seed 42 goes 6–2 to a512 on
+both artists and s43 / s44 lean a128, so the seed moves the result more than alpha does.
+By prompt a128–a512: p0 6–4, p1 8–4, p2 5–7, p3 4–7. Cross-seed MAD a128 → a512: cast
+51.9 → 49.4, sweetonedollar 46.7 → 43.2.
+
+Together with s37 / s38 and s40: a128 with REPA ≈ a128 without ≈ a512 without, and a512
+with REPA loses to all of them. The bilinear drift a512 removes does not reach the render.
 
 ## How large the drift is
 

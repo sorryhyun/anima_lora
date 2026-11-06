@@ -5,7 +5,10 @@
 > (weight 0.05, layer 8, PE-Spatial) on two artists, **32–16** (pair p 0.015; sign-flip
 > over six (artist, seed) clusters p 0.078, 5 of 6 to no-REPA). The fm loss is the same
 > in both arms. `use_repa` is off in the LoRA-family configs since 2026-11-06.
-> **Owed:** the same A/B at the shipped alpha 128 / lr 5e-5, and on a long run
+> At the shipped alpha 128 / lr 5e-5 the same A/B **tied, repa 23–22** (s40, below), so
+> REPA costs the render at alpha 512 / lr 1.25e-5 and nothing measurable at alpha 128.
+> It stays off: it gains nothing at either step and needs the PE caches.
+> **Owed:** a long run
 > ([`../proposal/lora_batch_clip_ema.md`](../proposal/lora_batch_clip_ema.md) §3).
 
 ## Why it was run
@@ -66,6 +69,32 @@ By prompt (cast + sweet):
 | p3 bikini, beach | 5 | 7 |
 
 p2 carries most of it; p0 split by artist (cast 1–5, sweet 4–2).
+
+## s40: the same A/B at alpha 128 / lr 5e-5
+
+repa = the s31 / s32 `nomask_{cast,sweet}_s{42,43,44}` LoRAs; norepa = the s39 shift1
+LoRAs `norepa128_*` (the same flags plus `use_repa=false`), rescaled to repa's median
+||dW|| (×0.95–1.06). Render seeds 23 / 24, sets `s40_REPA128_{cast,sweet}`
+(`run_ab.py --exp repa128`, [`report_repa128.md`](../../../bench/anima_abclip/report_repa128.md)).
+
+| artist | seed | repa | norepa |
+|---|---|---:|---:|
+| cast | s42 | 5 | 2 |
+| cast | s43 | 4 | 4 |
+| cast | s44 | 3 | 4 |
+| sweet | s42 | 4 | 4 |
+| sweet | s43 | 4 | 3 |
+| sweet | s44 | 3 | 5 |
+| **total** | | **23** | **22** |
+
+3 pairs left blank. Pair p 0.62, cluster p 0.69 (norepa side). By prompt repa–norepa: p0 4–7,
+p1 6–4, p2 5–7, p3 8–4; the maid prompt that carried s37 / s38 (1–11) is close to even
+here. Cross-seed MAD repa → norepa: cast 48.5 → 47.1, sweetonedollar 41.8 → 44.5.
+
+So REPA's cost depends on the step: at alpha 512 / lr 1.25e-5 it lost 16–32, at alpha 128
+/ lr 5e-5 it ties. s35 (alpha 512 against alpha 128, tied 22–25) ran both arms with REPA
+on, so its a512 arm carried a handicap the a128 arm did not; a512 against a128 without
+REPA is open (both arms exist: `norepa512_*`, `norepa128_*`).
 
 ## Loss
 
