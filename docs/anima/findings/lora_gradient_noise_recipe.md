@@ -12,7 +12,8 @@
 > better, and s29's win came from the mask mismatch or from B's 2.2–2.5× larger
 > ||dW||. s34 (no mask): rank 16 / alpha 64 against the shipped rank 32 at matched
 > ||dW||, r16 28–20, cluster p 0.25, so rank stays at 32. The σ profile below
-> holds without the mask too.
+> holds without the mask too. Rank, alpha against lr, and the bilinear drift (s34–s36):
+> [`lora_alpha_lr_drift.md`](lora_alpha_lr_drift.md).
 > Open questions (B at its own ||dW|| without the mask, training σ shift, the mask):
 > [`../proposal/lora_batch_clip_ema.md`](../proposal/lora_batch_clip_ema.md).
 

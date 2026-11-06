@@ -24,6 +24,11 @@ Experiments (``--exp``, docs/anima/findings/lora_gradient_noise_recipe.md):
 - ``rank`` (s34): the shipped recipe at rank 32 / alpha 128 (the s31 / s32
   ``nomask`` LoRAs) against rank 16 / alpha 64, caststation and sweetonedollar,
   seeds 42-44, r16 rescaled to r32's median ``||dW||``; ``mad`` first.
+- ``alpha`` (s35): the shipped recipe (alpha 128, lr 5e-5) against alpha 512,
+  lr 1.25e-5 (same alpha x lr, a quarter of the bilinear drift; arXiv
+  2606.12883), caststation and sweetonedollar, seeds 42-44, matched ``||dW||``.
+- ``alpha_sincos`` (s36): the same pair on sincos (354 images, ~1416 updates),
+  seeds 42-43, four render seeds.
 
 ``train``: queues the missing LoRAs on the daemon. ``render``: (``match`` first
 when the experiment asks for it) every LoRA renders the prompts x render seeds
@@ -68,6 +73,7 @@ TAGS = {
     "cast": ("@channel (caststation)", "channel_(caststation)/*"),
     "ama": ("@ama mitsuki", "ama_mitsuki/*"),
     "sweet": ("@sweetonedollar", "sweetonedollar/*"),
+    "sincos": ("@sincos", "sincos/*"),
 }
 BODIES = [
     "safe, 1girl, solo, {a}, blonde hair, school uniform, classroom, sitting at desk, smile, looking at viewer",
@@ -215,6 +221,47 @@ EXPS = {
         match_dw=True,
         seeds=(42, 43, 44),
     ),
+    "alpha": Exp(
+        artists=("cast", "sweet"),
+        arms=("a128", "a512"),
+        stems={"a128": "nomask_{art}_s{seed}", "a512": "alpha512_{art}_s{seed}"},
+        train_args={
+            "a128": "--network_args use_timestep_mask=false",
+            "a512": "--network_args use_timestep_mask=false --network_alpha 512 "
+            "--learning_rate 1.25e-5",
+        },
+        describe="a128 = the shipped lora.toml (rank 32 / alpha 128, lr 5e-5, B + σ-band "
+        "clip, no mask; the s31 / s32 LoRAs); a512 = alpha 512, lr 1.25e-5 (same "
+        "alpha x lr, so the same first-order step and 1/4 of the bilinear drift, "
+        "arXiv 2606.12883); a512 rescaled to a128's median ||dW||",
+        render_seeds=(13, 14),
+        set_prefix="s35_ALPHA",
+        renders="output/tests/alpha",
+        shuffle_seed=35,
+        report="bench/anima_abclip/report_alpha.md",
+        match_dw=True,
+        seeds=(42, 43, 44),
+    ),
+    "alpha_sincos": Exp(
+        artists=("sincos",),
+        arms=("a128", "a512"),
+        stems={"a128": "a128_{art}_s{seed}", "a512": "alpha512_{art}_s{seed}"},
+        train_args={
+            "a128": "--network_args use_timestep_mask=false",
+            "a512": "--network_args use_timestep_mask=false --network_alpha 512 "
+            "--learning_rate 1.25e-5",
+        },
+        describe="s35 on a 354-image set (~1416 updates against ~120): a128 = the shipped "
+        "lora.toml (rank 32 / alpha 128, lr 5e-5); a512 = alpha 512, lr 1.25e-5; a512 "
+        "rescaled to a128's median ||dW||",
+        render_seeds=(15, 16, 17, 18),
+        set_prefix="s36_ALPHASINCOS",
+        renders="output/tests/alpha_sincos",
+        shuffle_seed=36,
+        report="bench/anima_abclip/report_alpha_sincos.md",
+        match_dw=True,
+        seeds=(42, 43),
+    ),
 }
 
 
@@ -235,18 +282,19 @@ def render_seed(p: int, s: int) -> int:
 
 
 def dw_norm(path: Path) -> float:
-    """Median over modules of ``||up @ down||`` (alpha / rank shared by every arm)."""
+    """Median over modules of ``||(alpha / rank) · up @ down||``.
+
+    Envelopes before s35 recorded ``||up @ down||`` without the scale; every arm
+    there ran alpha / rank 4, so their ratios and match factors are unchanged."""
     sd = load_file(str(path))
-    norms = [
-        (
-            up.float().flatten(1)
-            @ sd[k.replace(".lora_up.", ".lora_down.")].float().flatten(1)
-        )
-        .norm()
-        .item()
-        for k, up in sd.items()
-        if k.endswith(".lora_up.weight")
-    ]
+    norms = []
+    for k, up in sd.items():
+        if not k.endswith(".lora_up.weight"):
+            continue
+        down = sd[k.replace(".lora_up.", ".lora_down.")].float().flatten(1)
+        alpha = sd.get(k.replace(".lora_up.weight", ".alpha"))
+        scale = float(alpha) / down.shape[0] if alpha is not None else 1.0
+        norms.append((scale * up.float().flatten(1) @ down).norm().item())
     return float(torch.tensor(norms).median())
 
 

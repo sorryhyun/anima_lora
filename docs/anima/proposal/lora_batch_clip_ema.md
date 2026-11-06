@@ -1,7 +1,9 @@
 # Anima LoRA: what is left after the clip / EMA recipe
 
 Status: OWED (2026-11-06). §0 ran (s33): B lost its lead once the mask was off
-and ||dW|| matched. Its follow-up (B at its own ||dW||) and §1–§2 stay open. The settled work is in
+and ||dW|| matched. Its follow-up (B at its own ||dW||) and §1–§2 stay open. Rank and
+alpha against lr ran since (s34–s35, both null at matched ||dW||; s36 on a larger set
+open): [`../findings/lora_alpha_lr_drift.md`](../findings/lora_alpha_lr_drift.md). The settled work is in
 [`../findings/lora_gradient_noise_recipe.md`](../findings/lora_gradient_noise_recipe.md):
 the grad-norm and noise-scale measurements, the median and per-σ-band clip and how
 they are implemented, the three blind A/Bs (s29 recipe B, s30 band clip, s31 T-LoRA
