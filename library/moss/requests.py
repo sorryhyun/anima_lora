@@ -751,7 +751,7 @@ class TrainRequest(Request):
     )
     repa_weight: float = _f(
         0.0,
-        "relational REPA (Anima's DoG-Gram term, docs/anima/methods/repa.md): weight of "
+        "relational REPA (Anima's DoG-Gram term): weight of "
         "the Gram MSE between block repa_layer's image tokens and the image's "
         "PE-Spatial patch tokens. 0 = off",
         advanced=True,

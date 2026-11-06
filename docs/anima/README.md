@@ -13,7 +13,6 @@ Shipped training methods, losses and model assets.
 | [methods/timestep_mask.md](methods/timestep_mask.md) | T-LoRA — timestep-dependent rank masking (full rank at noise, rank 1 at clean) |
 | [methods/turbo.md](methods/turbo.md) | Turbo (DP-DMD) — diversity-preserved few-step distillation of the CFG=4 teacher into an N-step LoRA student (`make turbo`; published 4-step student on HF) |
 | [methods/adaln.md](methods/adaln.md) | AdaLN LoRA — adapting the per-block AdaLN modulation MLPs, and shipping them ComfyUI-compatible |
-| [methods/repa.md](methods/repa.md) | REPA — auxiliary loss aligning a mid-block DiT feature to cached PE-Spatial patch tokens |
 | [methods/anima-2.9b.md](methods/anima-2.9b.md) | Anima-2.9B — the 40-block community depth expansion; loading, depth-specific LoRAs, regeneration recipes |
 | [methods/cjk_vocab_pack.md](methods/cjk_vocab_pack.md) | CJK vocab pack — extra T5-side embedding rows for JA / KO / ZH prompts (text-encoder asset, not a LoRA) |
 

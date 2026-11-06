@@ -1,6 +1,6 @@
 """REPA v2 — patchwise / relational alignment against a vision encoder.
 
-Two loss forms selectable per run (see ``docs/anima/methods/repa.md``):
+Two loss forms selectable per run (see ``_archive/repa/repa.md``):
 
 - **Arm A — absolute patchwise**: project DiT block tokens → encoder dim with
   a small MLP head, cosine per token in fp32, mean.
@@ -31,7 +31,7 @@ Config rides the LoRA network kwargs (``use_repa`` / ``repa_mode`` /
 the factory. The scalar loss returns under ``aux["repa"]``, weighted by
 ``LossComposer`` stage 2 (``losses._repa_loss``).
 
-Operating-point levers (``docs/anima/methods/repa.md`` §"Annealing plan";
+Operating-point levers (``_archive/repa/repa.md`` §"Annealing plan";
 both default-off):
 
 - ``repa_anneal_steps`` — hard cutoff (HASTE, arXiv:2505.16792: alignment

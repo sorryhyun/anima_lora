@@ -1,7 +1,7 @@
 """REPA alignment math: grid match, token pooling, Gram loss, DoG band-pass.
 
 Shared by the Anima trainer (``library/training/repa.py``) and the MOSS trainer
-(``library/moss/repa.py``); method docs in ``docs/anima/methods/repa.md``.
+(``library/moss/repa.py``); method docs in ``_archive/repa/repa.md``.
 """
 
 from __future__ import annotations

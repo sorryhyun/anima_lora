@@ -1,4 +1,4 @@
-"""REPA v2 adapter + wiring tests (docs/anima/methods/repa.md).
+"""REPA v2 adapter + wiring tests (_archive/repa/repa.md).
 
 Covers the load-bearing invariants:
   - native_flatten layout-agnosticism: the captured (B,1,seq,1,D) and eager

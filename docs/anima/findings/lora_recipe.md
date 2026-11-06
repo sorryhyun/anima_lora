@@ -148,7 +148,7 @@ REPA. Shift 1 stays.
 ## REPA
 
 Relational REPA (weight 0.05, layer 8, PE-Spatial) had shipped on sample-grid reads and
-CMMD, A/B'd only against the absolute form ([`../methods/repa.md`](../methods/repa.md)).
+CMMD, A/B'd only against the absolute form (`_archive/repa/repa.md`).
 
 - **Its cost depends on the step.** At alpha 512 / lr 1.25e-5 it lost 16–32 (s37 + s38;
   5 of 6 clusters, p2 maid 1–11). At alpha 128 / lr 5e-5 it tied 23–22 (s40; p2 5–7).
