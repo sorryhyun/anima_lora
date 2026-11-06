@@ -65,8 +65,8 @@ Sections `[default]`, `[low_vram]` (also Windows 8GB), `[graft]`, `[half]`, `[qu
 ## `methods/` — one flat file per family
 
 Read by `train.py` (`lora`, `soft_tokens`), each holding rank + routing knobs +
-opinionated LR/epochs/output_name. The default `lora.toml` stacks plain LoRA
-(weight-SVD `down_init`) + REPA, T-LoRA commented out; Hydra routing is opt-in via the three-axis
+opinionated LR/epochs/output_name. The default `lora.toml` is plain LoRA
+(weight-SVD `down_init`), with REPA off since 2026-11-06 and T-LoRA commented out; Hydra routing is opt-in via the three-axis
 surface (`lora-routing` skill).
 
 `turbo.toml` uses a bespoke sectioned schema read only by `scripts/distill_turbo/`;

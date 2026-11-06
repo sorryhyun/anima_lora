@@ -6,9 +6,11 @@
 > 28–20, cluster p 0.25); alpha 512 / lr 1.25e-5 against alpha 128 / lr 5e-5 tied
 > (s35, 25–22, cluster p 0.62). The same alpha × lr gives the same ||dW|| (within 4 %).
 > alpha 512 cuts the bilinear drift share of ΔW from 16 % to 6 % (median over
-> modules) and the render does not change. The shipped rank, alpha and lr stay.
-> **Open:** s36 repeats s35 on sincos (354 images, ~1416 updates against ~120),
-> where the drift share should be several times larger.
+> modules) and the render does not change. s36 repeated s35 on sincos (354 images,
+> ~1416 updates) and tied again, a128 18–13 (pair p 0.86 for a512). The shipped rank,
+> alpha and lr stay. Every arm here trained with relational REPA on; REPA off later beat
+> REPA on at alpha 512 ([`lora_repa_off_wins_blind.md`](lora_repa_off_wins_blind.md)),
+> so whether REPA masked these splits is open.
 
 ## The question
 
@@ -98,6 +100,20 @@ seeds 13 / 14. Report: [`report_alpha.md`](../../../bench/anima_abclip/report_al
 
 - Cross-seed MAD: caststation 48.4 → 50.4, sweetonedollar 40.9 → 37.9 (a128 → a512).
 
+## s36: the same pair on sincos
+
+354 images, 8 epochs, ~1416 updates (about 12× caststation), training seeds 42–43,
+render seeds 15–18 (four prompts × four seeds × two seeds = 32 pairs). Report:
+[`report_alpha_sincos.md`](../../../bench/anima_abclip/report_alpha_sincos.md).
+
+- **||dW||: a512 lands at 0.97× of a128** (match factors 1.033 / 1.029), the same ratio
+  as on 30 images. Twelve times the updates did not separate the step lengths.
+- **Blind: a128 18–13, 1 tie, pair p 0.86 for a512, cluster p 1.0.** s42 8–8, s43 10–5.
+  By prompt, p0 (classroom) went 6–1 to a128 and the other three 4–4.
+- fm loss: a512 0.002–0.003 above a128 at matched steps throughout, on both seeds. The
+  REPA term differs by 0.00007 after weighting, so this is the fm fit itself.
+- The drift split (`drift_share.py`) was not run on the s36 LoRAs.
+
 ## How large the drift is
 
 `bench/anima_abclip/drift_share.py` rebuilds `A0 = V_r^T / √3` from the base DiT with the
@@ -120,7 +136,7 @@ seed-twin floor).
 
 The share grows with lr × updates (`B·A0` ∝ η·n, `B·D` ∝ η²·n²), so a longer run should
 show more of it. sincos (354 images) runs ~1416 updates at the shipped 8 epochs, about
-12× caststation; s36 tests it.
+12× caststation; s36 ran there and tied, with the split itself not measured.
 
 ## Cross-seed agreement and the blind winner
 
@@ -151,6 +167,6 @@ starting at B = 0, and every trainable parameter inside the alpha scale:
 
 - `bench/anima_abclip/run_ab.py` — `--exp rank` (s34), `alpha` (s35), `alpha_sincos` (s36).
 - `bench/anima_abclip/drift_share.py` — the drift split above.
-- `bench/anima_abclip/report_rank.md`, `report_alpha.md` — blind tallies.
+- `bench/anima_abclip/report_rank.md`, `report_alpha.md`, `report_alpha_sincos.md` — blind tallies.
 - σ profile without the mask (s34 runs, `sigmalog2_{cast,sweet}_s42`):
   [`lora_gradient_noise_recipe.md`](lora_gradient_noise_recipe.md).

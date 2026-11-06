@@ -2,8 +2,10 @@
 
 Status: OWED (2026-11-06). §0 ran (s33): B lost its lead once the mask was off
 and ||dW|| matched. Its follow-up (B at its own ||dW||) and §1–§2 stay open. Rank and
-alpha against lr ran since (s34–s35, both null at matched ||dW||; s36 on a larger set
-open): [`../findings/lora_alpha_lr_drift.md`](../findings/lora_alpha_lr_drift.md). The settled work is in
+alpha against lr ran since (s34–s36, all null at matched ||dW||):
+[`../findings/lora_alpha_lr_drift.md`](../findings/lora_alpha_lr_drift.md). REPA off beat
+REPA on at alpha 512 (s37–s38, 32–16) and the default dropped it; §3 holds the checks
+it still owes. The settled work is in
 [`../findings/lora_gradient_noise_recipe.md`](../findings/lora_gradient_noise_recipe.md):
 the grad-norm and noise-scale measurements, the median and per-σ-band clip and how
 they are implemented, the three blind A/Bs (s29 recipe B, s30 band clip, s31 T-LoRA
@@ -126,3 +128,20 @@ Owed:
   caststation LoRAs were deleted, so this now means training both arms.
 - If the mask returns, stamp `use_timestep_mask` / `min_rank` / `alpha_rank_scale` in
   the LoRA so inference can apply it without flags. They are not stamped now.
+
+## 3. REPA at the shipped recipe
+
+s37 / s38 (2026-11-06,
+[`../findings/lora_repa_off_wins_blind.md`](../findings/lora_repa_off_wins_blind.md)):
+at alpha 512 / lr 1.25e-5, the recipe without relational REPA beat the same recipe with
+it, 32–16 on caststation + sweetonedollar (pair p 0.015, cluster p 0.078). The default
+turned REPA off on that result. Owed:
+
+- **REPA on vs off at alpha 128 / lr 5e-5**, the shipped step. The control already
+  exists (the s31 / s32 `nomask_{cast,sweet}_s{42,43,44}` LoRAs, REPA on); six no-REPA
+  trainings (~2.5 min each) and two blind sets. If REPA wins there, the result is
+  recipe-dependent and the default needs another look.
+- **A long run**: sincos (354 images, ~1416 updates), where s36 ran both arms with REPA on.
+- **Whether REPA masked s34–s36**: rank and alpha re-run without REPA, if the shipped-recipe
+  check confirms the direction.
+- T-LoRA, Hydra and soup inherited the default untested; EasyControl keeps REPA.

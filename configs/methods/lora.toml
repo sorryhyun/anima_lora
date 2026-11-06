@@ -59,7 +59,11 @@ path_pattern = "*"
 # min_rank = 1
 # alpha_rank_scale = 1.0
 
-use_repa       = true
+# REPA off by default since 2026-11-06: at alpha 512 / lr 1.25e-5 the same recipe
+# without it won blind on two artists, 32-16 (s37 + s38, pair p 0.015;
+# docs/anima/findings/lora_repa_off_wins_blind.md). Not yet tested at this file's
+# alpha 128 / lr 5e-5. The knobs below apply when it is turned back on.
+use_repa       = false
 repa_mode      = "relational"
 repa_weight    = 0.05
 repa_layer     = 8

@@ -9,12 +9,15 @@ the same variant; REPA adds no inference-time parameters.
 
 ## Shipped configuration
 
-All defaults live in `configs/methods/lora.toml` (`configs/base.toml` keeps
-`use_repa = false`):
+The knobs live in `configs/methods/lora.toml`. **REPA is off there since 2026-11-06**:
+at alpha 512 / lr 1.25e-5 the LoRA recipe without it won blind on two artists, 32–16
+([`../findings/lora_repa_off_wins_blind.md`](../findings/lora_repa_off_wins_blind.md)).
+EasyControl task configs and `configs/soup/soup.toml` still turn it on. The values
+below apply with `use_repa = true`:
 
 | Knob | Default | Meaning |
 |---|---|---|
-| `use_repa` | `true` | master on/off |
+| `use_repa` | `false` | master on/off |
 | `repa_mode` | `"relational"` | Gram / relational-KD form (no head) |
 | `repa_weight` | `0.05` | REPA settles at ~4% of total loss at plateau |
 | `repa_layer` | `8` | DiT block tapped (of 28) |
@@ -49,8 +52,8 @@ training-only and stripped at save.
 # ({stem}_anima_pe_spatial.safetensors — disjoint from the PE-Core caches CMMD reads)
 make preprocess-pe-spatial
 
-# REPA is on by default in configs/methods/lora.toml — just train:
-make lora
+# REPA is off in configs/methods/lora.toml — turn it on per run:
+make lora ARGS="--network_args use_repa=true"
 ```
 
 Missing sidecars don't crash: a batch without `repa_pe_features` skips the term
@@ -102,6 +105,10 @@ features load but the block hook never fires, the adapter warns once.
 - v1 (global pooling, weight 0.5) improved anatomy but broke anime style — the
   vision encoder's photo prior leaked through. The relational form cancels that
   global direction.
+- Relational REPA on plain LoRA lost blind to the same recipe without it, 32–16 on
+  caststation + sweetonedollar at alpha 512 / lr 1.25e-5 (s37 / s38), with the fm loss
+  unchanged; the LoRA default dropped it
+  ([`../findings/lora_repa_off_wins_blind.md`](../findings/lora_repa_off_wins_blind.md)).
 - FM val loss does not track REPA's effect on Anima; changes are read on sample
   grids, with CMMD against the run's own PE-Core features as the drift check.
 - Relational REPA on the DP-DMD (turbo) student was net-negative (drift
