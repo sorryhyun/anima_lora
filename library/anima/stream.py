@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from library.anima.models import Anima, RMSNorm
+from library.anima.models import Anima, LLMAdapterRMSNorm, RMSNorm
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +71,63 @@ def stream_fp32_(dit: Anima, rope: bool = True) -> None:
 
     dit.forward_mini_train_dit = under_autocast
     dit.stream = "fp32"
+
+
+class Fp32Embedding(nn.Embedding):
+    """Returns fp32 rows (a bf16 row casts exactly), so the vocab pack's F32 rows and a
+    trained delta land on the output unrounded."""
+
+    def forward(self, ids: torch.Tensor) -> torch.Tensor:
+        return super().forward(ids).float()
+
+
+class Fp32AdapterRMSNorm(LLMAdapterRMSNorm):
+    """``LLMAdapterRMSNorm`` without the cast back to the weight's dtype."""
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x.float()
+        var = x.pow(2).mean(-1, keepdim=True)
+        return self.weight.float() * (x * torch.rsqrt(var + self.variance_epsilon))
+
+
+class Fp32LayerNorm(nn.LayerNorm):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        w = None if self.weight is None else self.weight.float()
+        b = None if self.bias is None else self.bias.float()
+        return F.layer_norm(x.float(), self.normalized_shape, w, b, self.eps)
+
+
+def adapter_fp32_(dit: Anima) -> None:
+    """``llm_adapter`` computed in fp32 on its kept bf16 weights: the embed output, the
+    norms, the linears and the attention (SDPA: the FA2 path takes bf16 only). Its output
+    reaches the blocks in fp32 and rounds at the cross-attn ``kv_proj`` under autocast.
+    Opt-in; no caller turns it on yet."""
+    adapter = dit.llm_adapter
+    if getattr(adapter, "fp32", False):
+        return
+    for m in adapter.modules():
+        if type(m) is nn.Linear:
+            m.__class__ = Fp32Linear
+        elif type(m) is nn.Embedding:
+            m.__class__ = Fp32Embedding
+        elif type(m) is LLMAdapterRMSNorm:
+            m.__class__ = Fp32AdapterRMSNorm
+        elif type(m) is nn.LayerNorm:
+            m.__class__ = Fp32LayerNorm
+
+    forward = adapter.forward
+
+    def outside_autocast(*args, **kwargs):
+        def up(v):
+            return v.float() if torch.is_tensor(v) and v.is_floating_point() else v
+
+        with torch.autocast("cuda", enabled=False):
+            return forward(
+                *(up(v) for v in args), **{k: up(v) for k, v in kwargs.items()}
+            )
+
+    adapter.forward = outside_autocast
+    adapter.fp32 = True
 
 
 def latent_dtype(dit: nn.Module, narrow: torch.dtype = torch.bfloat16) -> torch.dtype:
