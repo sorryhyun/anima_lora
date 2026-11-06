@@ -29,6 +29,9 @@ Experiments (``--exp``, docs/anima/findings/lora_gradient_noise_recipe.md):
   2606.12883), caststation and sweetonedollar, seeds 42-44, matched ``||dW||``.
 - ``alpha_sincos`` (s36): the same pair on sincos (354 images, ~1416 updates),
   seeds 42-43, four render seeds.
+- ``norepa`` (s37): the s35 a512 LoRAs (relational REPA on) against the same
+  recipe with ``use_repa=false``, caststation, seeds 42-44, matched ``||dW||``.
+- ``norepa_sweet`` (s38): s37 on sweetonedollar.
 
 ``train``: queues the missing LoRAs on the daemon. ``render``: (``match`` first
 when the experiment asks for it) every LoRA renders the prompts x render seeds
@@ -261,6 +264,47 @@ EXPS = {
         report="bench/anima_abclip/report_alpha_sincos.md",
         match_dw=True,
         seeds=(42, 43),
+    ),
+    "norepa": Exp(
+        artists=("cast",),
+        arms=("repa", "norepa"),
+        stems={"repa": "alpha512_{art}_s{seed}", "norepa": "norepa512_{art}_s{seed}"},
+        train_args={
+            "repa": "--network_args use_timestep_mask=false --network_alpha 512 "
+            "--learning_rate 1.25e-5",
+            "norepa": "--network_args use_timestep_mask=false use_repa=false "
+            "--network_alpha 512 --learning_rate 1.25e-5",
+        },
+        describe="repa = the s35 a512 LoRAs (alpha 512, lr 1.25e-5, relational REPA "
+        "weight 0.05 at layer 8); norepa = the same with use_repa off; norepa rescaled "
+        "to repa's median ||dW||",
+        render_seeds=(19, 20),
+        set_prefix="s37_NOREPA",
+        renders="output/tests/norepa",
+        shuffle_seed=37,
+        report="bench/anima_abclip/report_norepa.md",
+        match_dw=True,
+        seeds=(42, 43, 44),
+    ),
+    "norepa_sweet": Exp(
+        artists=("sweet",),
+        arms=("repa", "norepa"),
+        stems={"repa": "alpha512_{art}_s{seed}", "norepa": "norepa512_{art}_s{seed}"},
+        train_args={
+            "repa": "--network_args use_timestep_mask=false --network_alpha 512 "
+            "--learning_rate 1.25e-5",
+            "norepa": "--network_args use_timestep_mask=false use_repa=false "
+            "--network_alpha 512 --learning_rate 1.25e-5",
+        },
+        describe="s37 on sweetonedollar: repa = the s35 a512 LoRAs, norepa = the same "
+        "with use_repa off; norepa rescaled to repa's median ||dW||",
+        render_seeds=(19, 20),
+        set_prefix="s38_NOREPA",
+        renders="output/tests/norepa",
+        shuffle_seed=38,
+        report="bench/anima_abclip/report_norepa_sweet.md",
+        match_dw=True,
+        seeds=(42, 43, 44),
     ),
 }
 
