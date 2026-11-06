@@ -4,7 +4,7 @@ network_alpha = 128
 # The configs/methods/lora.toml recipe: 5e-5 constant after the 5 % warmup,
 # effective batch 2, a clip at 2x the median of the last 50 micro-batch norms kept
 # per σ band, adapter EMA over 10 % of the updates. Won blind A/Bs against the
-# 2e-5 cosine bs1 clip-1.0 recipe (docs/anima/findings/lora_gradient_noise_recipe.md).
+# 2e-5 cosine bs1 clip-1.0 recipe (docs/anima/findings/lora_recipe.md).
 learning_rate = 5e-5
 lr_scheduler = "constant_with_warmup"
 gradient_accumulation_steps = 2
@@ -22,7 +22,7 @@ caption_dropout_rate = 0.1
 output_name = "anima"
 blocks_to_swap = 0
 use_cmmd = false
-use_repa = false  # off since 2026-11-06, docs/anima/findings/lora_repa_off_wins_blind.md
+use_repa = false  # off since 2026-11-06, docs/anima/findings/lora_recipe.md
 repa_mode = "relational"
 repa_weight = 0.05
 repa_layer = 8

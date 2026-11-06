@@ -1,3 +1,5 @@
+# Rank 32 / alpha 128 / lr 5e-5: rank 16 and alpha 512 / lr 1.25e-5 tied blind at matched
+# ||dW||, with REPA and without (s34-s36, s41-s42; docs/anima/findings/lora_recipe.md).
 network_alpha = 128
 network_dim = 32
 
@@ -6,12 +8,12 @@ learning_rate = 5e-5
 # (the --ema_window default), and a clip at 2x the median of the last 50 micro-batch
 # norms, applied per micro-batch: spikes are bounded to their share without leaving
 # the set. Beat the 2e-5 cosine bs1 clip-1.0 recipe in a blind A/B over 4 seeds x 2
-# artists, 41-16, cluster p 0.0078 (docs/anima/findings/lora_gradient_noise_recipe.md).
-# That A/B ran under the T-LoRA mask; rerun without it at matched ||dW|| (s33), A led
-# 52-42 (cluster p 0.17), so the win is not the update direction.
+# artists, 41-16, cluster p 0.0078 (s29). That A/B ran under the T-LoRA mask; rerun
+# without it at matched ||dW|| (s33), A led 52-42 (cluster p 0.17), so the win is not
+# the update direction.
 # The median is kept per σ band: edge-σ norms run ~2x mid-σ ones, so one window reads
 # normal edge draws as spikes. Beat the single window blind at matched ||dW||, 39-21,
-# cluster p 0.047 (docs/anima/findings/lora_gradient_noise_recipe.md).
+# cluster p 0.047 (s30). The σ profile holds without REPA (s39).
 lr_scheduler = "constant_with_warmup"
 gradient_accumulation_steps = 2
 clip_mode = "median"
@@ -53,16 +55,15 @@ path_pattern = "*"
 # T-LoRA rank mask, off by default since 2026-11-05: it masks in training only, while
 # inference runs every rank at every σ, so the shipped file trained one model and
 # rendered another. Masked training + masked inference (--lora_timestep_mask, the
-# published method) tied this file without the mask, 11-13 (s31, sweetonedollar,
-# docs/anima/findings/lora_gradient_noise_recipe.md).
+# published method) tied this file without the mask, 11-13 (s31, sweetonedollar).
 # use_timestep_mask = true
 # min_rank = 1
 # alpha_rank_scale = 1.0
 
 # REPA off by default since 2026-11-06: at alpha 512 / lr 1.25e-5 the same recipe
-# without it won blind on two artists, 32-16 (s37 + s38, pair p 0.015;
-# docs/anima/findings/lora_repa_off_wins_blind.md). Not yet tested at this file's
-# alpha 128 / lr 5e-5. The knobs below apply when it is turned back on.
+# without it won blind on two artists, 32-16 (s37 + s38, pair p 0.015); at this file's
+# alpha 128 / lr 5e-5 on and off tied, 23-22 (s40). The knobs below apply when it is
+# turned back on.
 use_repa       = false
 repa_mode      = "relational"
 repa_weight    = 0.05

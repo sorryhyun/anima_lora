@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Blind A/B of two LoRA recipes over several training seeds and artists.
 
-Experiments (``--exp``, docs/anima/findings/lora_gradient_noise_recipe.md):
+Experiments (``--exp``, docs/anima/findings/lora_recipe.md):
 
 - ``abclip`` (s29, Phase 1): ``A`` the old default (2e-5 cosine, bs1, clip 1.0)
   against ``B`` (5e-5 constant, GA2, median clip k 2 per micro-batch), on

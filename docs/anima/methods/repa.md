@@ -10,8 +10,9 @@ the same variant; REPA adds no inference-time parameters.
 ## Shipped configuration
 
 The knobs live in `configs/methods/lora.toml`. **REPA is off there since 2026-11-06**:
-at alpha 512 / lr 1.25e-5 the LoRA recipe without it won blind on two artists, 32–16
-([`../findings/lora_repa_off_wins_blind.md`](../findings/lora_repa_off_wins_blind.md)).
+at alpha 512 / lr 1.25e-5 the LoRA recipe without it won blind on two artists, 32–16, and
+at the shipped alpha 128 / lr 5e-5 on and off tied, 23–22
+([`../findings/lora_recipe.md`](../findings/lora_recipe.md) § REPA).
 It is off in `configs/soup/soup.toml` too; EasyControl task configs still turn it on. The values
 below apply with `use_repa = true`:
 
@@ -107,8 +108,8 @@ features load but the block hook never fires, the adapter warns once.
   global direction.
 - Relational REPA on plain LoRA lost blind to the same recipe without it, 32–16 on
   caststation + sweetonedollar at alpha 512 / lr 1.25e-5 (s37 / s38), with the fm loss
-  unchanged; the LoRA default dropped it
-  ([`../findings/lora_repa_off_wins_blind.md`](../findings/lora_repa_off_wins_blind.md)).
+  unchanged, and tied it at alpha 128 / lr 5e-5 (s40, 23–22); the LoRA default dropped it
+  ([`../findings/lora_recipe.md`](../findings/lora_recipe.md) § REPA).
 - FM val loss does not track REPA's effect on Anima; changes are read on sample
   grids, with CMMD against the run's own PE-Core features as the drift check.
 - Relational REPA on the DP-DMD (turbo) student was net-negative (drift

@@ -44,7 +44,7 @@ use_timestep_mask = true
 min_rank = 1
 alpha_rank_scale = 1.0
 
-use_repa       = false  # off since 2026-11-06, docs/anima/findings/lora_repa_off_wins_blind.md
+use_repa       = false  # off since 2026-11-06, docs/anima/findings/lora_recipe.md
 repa_mode      = "relational"
 repa_weight    = 0.05
 repa_layer     = 8

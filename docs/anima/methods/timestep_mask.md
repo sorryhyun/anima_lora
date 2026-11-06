@@ -28,8 +28,8 @@ T-LoRA paper (§3.1, arXiv 2507.05964) and its code apply the mask at inference 
 `inference.py --lora_timestep_mask [--lora_mask_min_rank 1 --lora_mask_alpha 1.0]`
 does that on the P-GRAFT hooks (standard loop, not int8). On sweetonedollar, masked
 training + masked inference tied unmasked training + full-rank inference 11–13 in a
-blind A/B (s31); masked training + full-rank inference against either is owed
-(`docs/anima/proposal/lora_batch_clip_ema.md`).
+blind A/B (s31); masked training + full-rank inference, what `lora.toml` shipped until
+2026-11-05, was not tested against either (`docs/anima/findings/lora_recipe.md` § T-LoRA mask).
 
 ## Compatibility
 
