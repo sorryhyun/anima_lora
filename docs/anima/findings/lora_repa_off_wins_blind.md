@@ -88,12 +88,11 @@ screen it.
 
 `use_repa = false` in `configs/methods/lora.toml`, `configs/methods/lora_const_ema.toml`
 and `configs/gui-methods/{lora,tlora,hydralora}.toml`, and in the local (gitignored)
-`configs/gui-methods/custom/{lora,soup}.toml`. The REPA knobs stay in place for a run
+`configs/gui-methods/custom/{lora,soup}.toml`, and in `configs/soup/soup.toml`. The REPA knobs stay in place for a run
 that turns it back on. Unchanged:
 
 - EasyControl task configs (`configs/easycontrol/*.toml`): relational REPA is the
   documented default for cond ≠ target tasks, a different regime, not tested here.
-- `configs/soup/soup.toml` (`make soup`): still on.
 - `configs/base.toml` already had `use_repa = false`.
 
 ## Limits
@@ -102,4 +101,4 @@ that turns it back on. Unchanged:
   but REPA on vs off was not run there.
 - 30-image sets, ~120 updates. Not tested on a long run (sincos, ~1416 updates).
 - One grader.
-- T-LoRA, Hydra and soup inherit the change untested.
+- T-LoRA, Hydra and soup ingredients inherit the change untested.

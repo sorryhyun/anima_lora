@@ -12,7 +12,7 @@ cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
 path_pattern = "*"
 
-use_repa     = true
+use_repa     = false  # off since 2026-11-06, docs/anima/findings/lora_repa_off_wins_blind.md
 repa_mode    = "relational"
 repa_weight  = 0.05
 repa_layer   = 8

@@ -12,7 +12,7 @@ the same variant; REPA adds no inference-time parameters.
 The knobs live in `configs/methods/lora.toml`. **REPA is off there since 2026-11-06**:
 at alpha 512 / lr 1.25e-5 the LoRA recipe without it won blind on two artists, 32–16
 ([`../findings/lora_repa_off_wins_blind.md`](../findings/lora_repa_off_wins_blind.md)).
-EasyControl task configs and `configs/soup/soup.toml` still turn it on. The values
+It is off in `configs/soup/soup.toml` too; EasyControl task configs still turn it on. The values
 below apply with `use_repa = true`:
 
 | Knob | Default | Meaning |
