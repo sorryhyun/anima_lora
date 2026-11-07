@@ -1,13 +1,13 @@
 ---
 name: qwen21
-description: Qwen-Image-2.1 LoRA line (NOT Anima) — running cache/train through the daemon, `make gui-qwen`, the CacheRequest/TrainRequest flag surface and how to add a field, model-dir resolution, cache layout, swap sizing, and the gotchas (flat stem-keyed cache, --no-x flag spelling, stall budget, GUI-side chain, Test A/B generation). Load before running, changing, or debugging anything under library/qwen21/, scripts/qwen21/, gui/qwen21/ or project/qwen21_lora/.
+description: Qwen-Image-2.1 LoRA line (NOT Anima) — running cache/train through the daemon, `make gui-qwen`, the CacheRequest/TrainRequest flag surface and how to add a field, model-dir resolution, cache layout, swap sizing, and the gotchas (flat stem-keyed cache, --no-x flag spelling, stall budget, GUI-side chain, Test A/B generation). Load before running, changing, or debugging anything under library/qwen21/, scripts/qwen21/, gui/qwen21/ or project/finished/qwen21_lora/.
 ---
 
 # Qwen-Image-2.1 LoRA (`library/qwen21/`)
 
 **Not Anima.** Read `library/qwen21/CLAUDE.md` first — the root invariants (5D latents,
 max-padded text, free-fit bucketing) are wrong here. Research state
-and measured numbers: `project/qwen21_lora/README.md` + `report.md`.
+and measured numbers: `project/finished/qwen21_lora/README.md` + `report.md`.
 
 ## Layout
 
@@ -18,7 +18,7 @@ and measured numbers: `project/qwen21_lora/README.md` + `report.md`.
 | `library/qwen21/scan.py` | torch-free folder/cache counts (GUI) |
 | `scripts/qwen21/{cache,train,generate}.py` | sidecar CLIs: `Request.from_argv()` → `run_*` |
 | `gui/qwen21/` | `make gui-qwen` window (en/cn): the `LineSpec` + strings over the shared `gui/lines/window.py` (also used by `make gui-moss`) |
-| `project/qwen21_lora/src/` | one-off research scripts (`backward_smoke`, `smoke_t2i`, `bench_accel`) |
+| `project/finished/qwen21_lora/src/` | one-off research scripts (`backward_smoke`, `smoke_t2i`, `bench_accel`) |
 
 `tests/test_qwen21_boundary.py` enforces the island: nothing Anima-side imports
 `library.qwen21`; it imports only `library.env` / `library.runtime.{offloading,blockswap,device,dynamo}`;
@@ -40,14 +40,14 @@ prompt at every `--multipliers` scale (default `1.0,0.0`) from one loaded model 
 same seed, so the pair differs by the adapter only. `set_multiplier(0)` short-circuits
 every adapter, so no second model copy is loaded. The default prompt is `BOCCHI_PROMPT` —
 natural language, a character the base model already knows. `--prompts_file` (one per
-line, e.g. `project/qwen21_lora/eval_prompts.txt`) overrides it. Without
+line, e.g. `project/finished/qwen21_lora/eval_prompts.txt`) overrides it. Without
 `--width/--height` it renders square at `--resolution`, which is off-distribution for a
 portrait dataset. The GUI fills an empty `lora` with the Train tab's `output`, writes
 each run to `out_dir/<timestamp>/`, and shows the pair from its `manifest.json`.
 
 Defaults: `--src post_image_dataset/resized` (walks subfolders; captions = the revised
 `{stem}.txt`, `.variants.txt` ignored), cache and LoRA under `output/qwen21/`. The
-research cache is `project/qwen21_lora/cache` — pass `--out` / `--cache` explicitly.
+research cache is `project/finished/qwen21_lora/cache` — pass `--out` / `--cache` explicitly.
 Relative paths resolve under the repo home, not the CWD.
 
 **Model dir** (diffusers layout: `transformer/ text_encoder/ vae/ scheduler/`):
@@ -103,7 +103,7 @@ choices made.
   so fewer swaps doesn't make it faster (see `library/qwen21/CLAUDE.md`). The reserve
   the sizer leaves for activations follows the cache: a checkpointed step holds
   **0.3 GB + 0.6 MB × (largest image + text token count)** (measured 2026-09-24, affine
-  to 6746 tokens, text and image tokens cost the same — `project/qwen21_lora/report.md`
+  to 6746 tokens, text and image tokens cost the same — `project/finished/qwen21_lora/report.md`
   § Activation cost per token), plus one block of allocator slack
   (`library.runtime.blockswap.activation_reserve_for_tokens`). That is 3.3 GB at 4096+346 tokens, where
   the old constant 3.5 left 0.5 GB spare and 2.0 OOMed at step 1; ~1.5 GB for 512² data.

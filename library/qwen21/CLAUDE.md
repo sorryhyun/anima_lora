@@ -19,7 +19,7 @@ adapters and scan counts shared with `library/moss/`), and nothing else: the res
 | `scan.py` | **torch-free** source/cache folder counts for the GUI (stale text caches) |
 
 The research line — smokes, benches, reports, measured numbers — is
-`project/qwen21_lora/`.
+`project/finished/qwen21_lora/`.
 
 ## What does NOT carry over
 

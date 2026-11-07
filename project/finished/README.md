@@ -14,14 +14,15 @@ Each subdir is a digest home page (`README.md`): final verdicts with evidence
 pointers, shipped artifacts, and any small open remainder. It does not
 duplicate code or bench tables — canonical sources stay where they live.
 
-**Search.** Each CJK line, `moss_lora/` and `int8_train/` carry a `.ignore` that hides its record material
+**Search.** Each CJK line, `moss_lora/`, `int8_train/` and `qwen21_lora/` carry a `.ignore` that hides its record material
 (docs, reports, dead probes; `cjk_renderable_anima/`, `cjk_anima_scale/` and `ocr_reader/` whole) from ripgrep, so
 Grep / Glob / Explore stay on live code; the `archive-explorer` agent searches
 it (`rg --no-ignore-dot`). What stays visible is what code outside
 `finished/` reads or runs: `sr/`, `mod_guidance/`, `cjk_aware_anima/{assets,
 probes}/` (the reseed line's eval prompts, `bench/grad_init`'s `blind_pairs.py`) and
 `moss_lora/src/` (named in `library/moss` docstrings; its logs are hidden) and `int8_train/src/`
-(the GPTQ builders the int8 docs run, `bench/anima_stream`'s prompts). Live code (`library/`, `scripts/`,
+(the GPTQ builders the int8 docs run, `bench/anima_stream`'s prompts), and `qwen21_lora/src/` +
+`eval_prompts.txt` (named in `library/runtime/blockswap.py` and the `qwen21` skill). Live code (`library/`, `scripts/`,
 `tests/`, `configs/`) reads nothing under `project/`; a line's own tests sit in
 its `tests/`. A new outside reference
 into a hidden path means narrowing that line's `.ignore`.
@@ -125,3 +126,14 @@ Finished lines:
   ([`tasks.md`](int8_train/tasks.md), not run). Code runnable by path
   (`src/`). Digest: [`int8_train/README.md`](int8_train/README.md), verdicts
   [`int8_train/reports.md`](int8_train/reports.md).
+- [`qwen21_lora/`](qwen21_lora/) — the Qwen-Image-2.1 LoRA line (not Anima;
+  `library/qwen21/CLAUDE.md`), opened 2026-09-21, moved here 2026-11-07. Shipped: the port
+  on a 16 GB card (phase-split loader, block swap on stock diffusers / transformers block
+  lists, now shared as `library.runtime.blockswap`), LoRA / LoKr / LoHa held outside the
+  swapped blocks with fp32 masters, the cache / train / A/B generate sidecars
+  (`scripts/qwen21/`), block compile under checkpointing (−11 % at 1024²), the
+  token-sized activation reserve and `make gui-qwen`. Envelope: 1024² is compute-bound at
+  ~3.7 s/step, swap count is a VRAM lever only. Open remainder (not run): trigger
+  isolation, a natural-language eval set, and whether danbooru tag bags suit the NL
+  encoder ([`qwen21_lora/report.md`](qwen21_lora/report.md) § Open). Code runnable by path
+  (`src/`). Digest: [`qwen21_lora/README.md`](qwen21_lora/README.md).

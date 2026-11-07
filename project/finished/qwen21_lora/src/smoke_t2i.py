@@ -4,7 +4,7 @@ Runs the split strategy from ``loader.py`` — stream the text encoder for the
 encode pass, drop it, then denoise with the transformer resident — and prints
 peak VRAM per phase for the training script to budget against.
 
-    .venv/bin/python project/qwen21_lora/src/smoke_t2i.py \
+    .venv/bin/python project/finished/qwen21_lora/src/smoke_t2i.py \
         --prompt "..." --resolution 1024 --steps 20
 """
 
@@ -77,7 +77,7 @@ def main() -> None:
         help="denoise this many times; with --compile the first pass pays the "
         "compile and the rest are the steady-state number",
     )
-    ap.add_argument("--out", default="project/qwen21_lora/out/smoke.png")
+    ap.add_argument("--out", default="project/finished/qwen21_lora/out/smoke.png")
     args = ap.parse_args()
 
     torch.cuda.init()

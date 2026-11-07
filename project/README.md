@@ -45,7 +45,8 @@ encoder-side CJK line `cjk_aware_anima` and its DiT-side successor
 `cjk_aware_anima_dit`, both 2026-09-24; the wake line
 `cjk_renderable_anima`, 2026-09-30; its production line `cjk_anima_scale`,
 2026-10-09; the PaddleOCR-VL reader v4 line `ocr_reader`, 2026-10-15; the MOSS-Image
-line `moss_lora`, 2026-10-28; the int8 training base `int8_train`, 2026-11-04).
+line `moss_lora`, 2026-10-28; the int8 training base `int8_train`, 2026-11-04; the
+Qwen-Image-2.1 LoRA line `qwen21_lora`, 2026-11-07).
 
 Active projects:
 
@@ -66,6 +67,3 @@ Active projects:
 - [`lora_blocks/`](lora_blocks/) — opened 2026-11-07 out of `moss_te_sae`: MOSS i2i
   edits assembled from a reused copy block, a parameter-free gate on the reference edges
   and per-content draw blocks. Home: `README.md`, `proposal.md`.
-
-- [`qwen21_lora/`](qwen21_lora/) — the Qwen-Image-2.1 LoRA line (not Anima;
-  `library/qwen21/CLAUDE.md`).

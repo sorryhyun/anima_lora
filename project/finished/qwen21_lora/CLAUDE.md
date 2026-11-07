@@ -1,4 +1,4 @@
-# CLAUDE.md — `project/qwen21_lora/`
+# CLAUDE.md — `project/finished/qwen21_lora/`
 
 **This line is not Anima.** Its code lives in `library/qwen21/` — **read
 `library/qwen21/CLAUDE.md` first**: the root `CLAUDE.md` invariants (5D latents, max-padded

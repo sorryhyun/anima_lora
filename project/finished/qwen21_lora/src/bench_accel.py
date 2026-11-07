@@ -10,7 +10,7 @@ the card while the arms reconfigure it in place. Compiled arms run last — the
 attention backend is read inside the traced region, so switching it after a
 compile forces a recompile.
 
-    make daemon-run ARGS="project/qwen21_lora/src/bench_accel.py --steps 20"
+    make daemon-run ARGS="project/finished/qwen21_lora/src/bench_accel.py --steps 20"
 """
 
 from __future__ import annotations
@@ -101,7 +101,7 @@ def main() -> None:
         default=0,
         help="profile this many steps of each swept backend and print the top CUDA ops",
     )
-    ap.add_argument("--out", default="project/qwen21_lora/out/bench_accel.json")
+    ap.add_argument("--out", default="project/finished/qwen21_lora/out/bench_accel.json")
     args = ap.parse_args()
 
     device = torch.device("cuda")

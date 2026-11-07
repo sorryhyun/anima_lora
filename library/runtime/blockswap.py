@@ -63,7 +63,7 @@ def resident_size_gb(model: nn.Module, blocks: nn.ModuleList) -> float:
 
 
 # Checkpointed LoRA backward, measured 2026-09-24 over 1370–6746 joint tokens
-# (`project/qwen21_lora/src/activation_sweep.py`): max_memory_reserved over idle
+# (`project/finished/qwen21_lora/src/activation_sweep.py`): max_memory_reserved over idle
 # fits 0.20 GB + 0.588 MB/token with 0.03 GB residual, a text token costing the
 # same as an image token and no T² term. Rounded up here.
 _ACTIVATION_BASE_GB = 0.3

@@ -18,7 +18,7 @@ dependencies = [
     "accelerate>=1.13.0",
     "transformers>=5.10.1",
     # Pinned to a git commit in [tool.uv.sources]: the QwenImage21 classes
-    # (project/qwen21_lora/) exist only on main, not in any release.
+    # (project/finished/qwen21_lora/) exist only on main, not in any release.
     "diffusers>=0.41.0.dev0",
     "einops>=0.7.0",
     # Optimizers

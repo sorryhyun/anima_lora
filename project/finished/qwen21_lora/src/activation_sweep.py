@@ -10,7 +10,7 @@ activation = max_memory_allocated during the step - memory_allocated at idle
 (weights + LoRA + Adam states). The first step of the sweep warms the allocator
 and the optimizer states and is thrown away.
 
-    make daemon-run ARGS="--stall-timeout 900 project/qwen21_lora/src/activation_sweep.py"
+    make daemon-run ARGS="--stall-timeout 900 project/finished/qwen21_lora/src/activation_sweep.py"
 """
 
 from __future__ import annotations
@@ -83,7 +83,7 @@ def main() -> None:
     ap.add_argument("--rank", type=int, default=16)
     ap.add_argument("--targets", default=DEFAULT_TARGETS)
     ap.add_argument("--no_grad_checkpointing", action="store_true")
-    ap.add_argument("--out", default="project/qwen21_lora/out/activation_sweep.json")
+    ap.add_argument("--out", default="project/finished/qwen21_lora/out/activation_sweep.json")
     args = ap.parse_args()
 
     torch.cuda.init()

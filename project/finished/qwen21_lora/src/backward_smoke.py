@@ -17,7 +17,7 @@ Three things are being checked at once:
 3. Peak VRAM and s/step at the training sequence length, which is what decides
    the resolution the line can afford.
 
-    make daemon-run ARGS="project/qwen21_lora/src/backward_smoke.py \
+    make daemon-run ARGS="project/finished/qwen21_lora/src/backward_smoke.py \
         --resolution 512 --compile"
 """
 
@@ -168,7 +168,7 @@ def main() -> None:
         help="comma list of res:text_len run for one step each after --steps, e.g. "
         "1024:200,896:346,512:346 — a recompile shows up as a slow step",
     )
-    ap.add_argument("--out", default="project/qwen21_lora/out/backward_smoke.json")
+    ap.add_argument("--out", default="project/finished/qwen21_lora/out/backward_smoke.json")
     args = ap.parse_args()
 
     torch.cuda.init()

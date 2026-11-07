@@ -21,7 +21,7 @@ _QWEN21_HOMES = (
     "library/qwen21/",
     "scripts/qwen21/",
     "gui/qwen21/",
-    "project/qwen21_lora/",
+    "project/finished/qwen21_lora/",
     "tests/",
 )
 # What library.qwen21 may import from the rest of library.

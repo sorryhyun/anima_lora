@@ -1,0 +1,6 @@
+# Code search (ripgrep: Grep / Glob / Explore) skips this finished line's record
+# material; the archive-explorer agent searches it. src/ and eval_prompts.txt stay
+# visible: library/runtime/blockswap.py and the qwen21 skill point at them.
+/README.md
+/report.md
+/out/
