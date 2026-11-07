@@ -12,6 +12,7 @@ these and fine-tuned briefly, instead of one curated pair set and one long run p
   (the copy is a protocol, not a head; the edge gate), [`../moss_te_sae/reports/i2i_copy_head.md`](../moss_te_sae/reports/i2i_copy_head.md).
 - [opinion.md](opinion.md) — a reading of the idea against the literature; the checkpoint read.
 - [reports/copy_vs_step.md](reports/copy_vs_step.md) — the copy head forms at steps ~175–225 of any pair set, after the pixels already copy; training past it buys breadth.
-- Probes: `project/moss_te_sae/src/{copy_head_ext,copy_transplant,ref_edge_mask}.py`.
+- [reports/p0_gate.md](reports/p0_gate.md) — P0: the gate fixes both shipped LoRAs' "where" failures with no training; `diag1` inside AnimeText boxes removes the watermark sanitize v3 keeps, `boost` outside the layout boxes stops swap_text rewriting unasked regions; `hard` invents content.
+- Probes: `project/moss_te_sae/src/{copy_head_ext,copy_transplant,ref_edge_mask,ref_gate}.py`.
 
-State: proposal; the checkpoint read is done (copy_vs_step.md). P0 (gate on our own LoRAs, inference only) is next.
+State: P0 done (p0_gate.md); whether `boost1` keeps `boost2`'s correction, and an own-cell boost, are the open reads.
