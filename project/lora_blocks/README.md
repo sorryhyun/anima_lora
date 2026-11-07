@@ -21,4 +21,6 @@ these and fine-tuned briefly, instead of one curated pair set and one long run p
 - [reports/p1_c_fill.md](reports/p1_c_fill.md) — P1: C (400 steps, clean illustrations, text-layout holes under `ref_gate cut`) removes the sanitize eval pages' stamps and watermark under `cut` with no sanitize pair; the copy head forms by step 200.
 - Probes: `project/moss_te_sae/src/{copy_head_ext,copy_transplant,ref_edge_mask,ref_gate,copy_vs_step}.py`; data `src/build_c_data.py`.
 
-State: P0 and P1 done; C (`output/ckpt_moss_i2i/c_fill_s400`) + `cut` is a zero-shot sanitize. Next: P2's fine-tune from C, or the Hangul block on C (plan.md).
+- [reports/p2_sanitize_ft.md](reports/p2_sanitize_ft.md) — P2: 300 steps of sanitize from C remove text on the hard manga pages as v3 does, from kaiming they leave blocks; neither holds the tone (EMA off: ΔL swings 2–4 between saves in both arms); `cut` on a fine-tune invents on large masks.
+
+State: P0, P1 and P2's first pass done; C (`output/ckpt_moss_i2i/c_fill_s400`) + `cut` is a zero-shot sanitize, and C as init gives v3-like removal at 300 steps but not v3's tone. Next: C-ft longer for the tone, or the Hangul block on C (plan.md).

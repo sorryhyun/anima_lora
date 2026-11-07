@@ -515,6 +515,13 @@ class TrainRequest(Request):
         "so down · x̄ = 0 at init (_archive/proposals/lora_dcfree_svd_init.md)",
         choices=("kaiming", "weight_svd", "weight_svd_nodc"),
     )
+    init_lora: str = _f(
+        "",
+        "a LoRA file (one of this trainer's saves) the adapters start from instead of "
+        "down_init; its algo, rank, alpha and targets must match the run's. The file's "
+        "name is stamped in the LoRA metadata",
+        advanced=True,
+    )
     svd_slice: int = _f(
         0,
         "lora + down_init weight_svd[_nodc] only: seed down from the base weight's right singular "

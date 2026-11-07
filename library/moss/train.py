@@ -238,6 +238,7 @@ def train(
     if n_reg:
         with torch.no_grad():
             network.registers.copy_(setup.register_init(samples, get).expand(n_reg, -1))
+    setup.load_init_lora(req, network)
     int8_base = None
     if req.int8 != "off":
         int8_base = dit_int8.convert_for_training(transformer, req)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from pathlib import Path
 from typing import Callable
 
 import torch
@@ -274,8 +275,45 @@ def check_ref_adapters(req: TrainRequest) -> None:
         raise SystemExit(f"ref_adapters is lora only, not {req.algo}")
 
 
+def load_init_lora(req: TrainRequest, network) -> None:
+    """Load ``init_lora`` into the freshly built ``network``, in place of its init. The
+    file has to describe the same network: algo, rank, alpha, targets, and the same
+    state keys (a reference bank or registers on one side only refuse)."""
+    if not req.init_lora:
+        return
+    from safetensors import safe_open
+
+    from library.lines.adapters import _state_from_file
+
+    path = resolve_under_home(req.init_lora)
+    with safe_open(str(path), framework="pt") as handle:
+        meta = handle.metadata() or {}
+        state = {key: handle.get_tensor(key) for key in handle.keys()}
+    run = network.metadata()
+    meta.setdefault("algo", "lora")
+    bad = {
+        k: (meta.get(k), run[k])
+        for k in ("algo", "rank", "alpha", "targets")
+        if meta.get(k) != run[k]
+    }
+    if bad:
+        raise SystemExit(f"init_lora {path}: file / run differ on {bad}")
+    state = _state_from_file(state, network.algo)
+    own = network.state_dict()
+    if set(state) != set(own):
+        raise SystemExit(
+            f"init_lora {path}: keys differ (file only {sorted(set(state) - set(own))[:4]}, "
+            f"run only {sorted(set(own) - set(state))[:4]})"
+        )
+    with torch.no_grad():
+        for key, value in state.items():
+            own[key].copy_(value.to(own[key].dtype))
+
+
 def adapter_detail(req: TrainRequest, network) -> str:
     """The adapter's init in the start-of-run log line."""
+    if req.init_lora:
+        return f"from {req.init_lora}"
     detail = {
         "lora": f"{req.down_init} down"
         + (
@@ -414,6 +452,8 @@ def run_metadata(
         )
     if req.preserve_weight:
         meta["preserve_weight"] = req.preserve_weight
+    if req.init_lora:
+        meta["init_lora"] = Path(req.init_lora).name
     if n_refs:
         meta["ref_timestep"] = req.ref_timestep
         if req.ref_isolate:

@@ -399,10 +399,13 @@ def reads(image, ref, cells, ctrl=None):
     return {k: (round(v, 3) if v is not None else None) for k, v in e.items()}
 
 
+SHEET_WIDTH = 768  # tile width in the sheets; --sheet_width
+
+
 def sheet(path, ref, cells, grid, size):
     """``grid``: rows of image paths (None = blank)."""
     W, H = size
-    tw = 384
+    tw = min(SHEET_WIDTH, W)
     th = int(H * tw / W)
     R = Image.open(ref).convert("RGB").resize((W, H))
     draw = ImageDraw.Draw(R)
@@ -410,11 +413,12 @@ def sheet(path, ref, cells, grid, size):
         draw.rectangle((x * 16, y * 16, x * 16 + 15, y * 16 + 15), outline=(0, 255, 0))
     cols = 1 + max(len(r) for r in grid)
     out = Image.new("RGB", (tw * cols, th * len(grid)), "white")
+    R = R.resize((tw, th), Image.LANCZOS)
     for y, row in enumerate(grid):
-        out.paste(R.resize((tw, th)), (0, y * th))
+        out.paste(R, (0, y * th))
         for x, p in enumerate(row):
             if p:
-                out.paste(Image.open(p).convert("RGB").resize((tw, th)), ((x + 1) * tw, y * th))  # fmt: skip
+                out.paste(Image.open(p).convert("RGB").resize((tw, th), Image.LANCZOS), ((x + 1) * tw, y * th))  # fmt: skip
     out.save(path)
 
 
@@ -508,7 +512,7 @@ def run_task(part, out, arms, seeds, pages=None, kernel="fast", lora=None):
         base = ["--config", "configs/moss/i2i/colorize/generate.toml", "--lora", f"{COLORIZE_LORA}.safetensors"]  # fmt: skip
     elif part == "sanitize":
         inputs = sanitize_inputs(pages or SANITIZE_PAGES)
-        base = ["--config", "configs/moss/i2i/sanitize/generate.toml", "--lora", f"{SAN}.safetensors"]  # fmt: skip
+        base = ["--config", "configs/moss/i2i/sanitize/generate.toml", "--lora", f"{lora or SAN}.safetensors"]  # fmt: skip
     else:
         inputs = swap_inputs(pages or SWAP_PAGES)
         base = ["--config", "configs/moss/i2i/swap_text/generate.toml", "--lora", f"{SWP}.safetensors"]  # fmt: skip
@@ -598,6 +602,7 @@ def run_edit(out, arms, kernel="fast"):
 
 
 def main():
+    global SHEET_WIDTH
     ap = argparse.ArgumentParser()
     ap.add_argument("--part", choices=list(PARTS), required=True)
     ap.add_argument("--arms", default=None)
@@ -605,8 +610,12 @@ def main():
     ap.add_argument("--kernel", choices=["fast", "dense"], default="fast")
     ap.add_argument("--pages", default=None, help="comma list of input stems")
     ap.add_argument("--out", type=Path, default=None)
-    ap.add_argument("--lora", default=None, help="fill: the C checkpoint, no suffix")
+    ap.add_argument(
+        "--sheet_width", type=int, default=SHEET_WIDTH, help="sheet tile width, px"
+    )
+    ap.add_argument("--lora", default=None, help="fill / sanitize: the LoRA, no suffix")
     args = ap.parse_args()
+    SHEET_WIDTH = args.sheet_width
     arms = (args.arms or PARTS[args.part]["arms"]).split(",")
     seeds = [int(s) for s in (args.seeds or PARTS[args.part]["seeds"]).split(",")]
     out = args.out or resolve_under_home(
