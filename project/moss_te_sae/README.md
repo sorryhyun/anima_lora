@@ -44,6 +44,7 @@ Each report opens with its claims and the evidence follows per claim.
 | [trigger_binding](reports/trigger_binding.md) | a delta confined to the trigger rows binds by construction and carries outfit / eyes / composition but not the palette, and once writes the trigger as a logo; the preservation term (×10) shrinks the delta everywhere instead of binding it (it outweighs the learnable part of the main loss) |
 | [sae_fit](reports/sae_fit.md) | Base SAEs fit the instruct caption rows at FVU 0.25–0.46; ~1/3 of what the DiT reads is in the error term; the DiT's projection amplifies tag-content features and suppresses structural ones |
 | [i2i_copy_head](reports/i2i_copy_head.md) | the i2i LoRAs share a late-block component (swap_text / sanitize / uncensor, not colorize or t2i); every one builds b39 h19 into an own-cell reference copy head Base lacks, gated spatially from step 0; cutting it degrades the copy without breaking it; swap_text retunes Base's t2i string heads; a negative logit bias on colorize's copy heads adds colour at luma r −0.002 |
+| [copy_protocol](reports/copy_protocol.md) | an outside edit LoRA (chinoll/Moss-Image-Edit) builds the same b39 h19 copy head and leans on it harder; no slice of a LoRA (head, q / k, top copy heads, late blocks, reference stream alone) carries the copy; a bias on the main-query → reference-key edges gates it in every head at once, and the hard cut also stops the box reading the reference |
 
 ## Open
 

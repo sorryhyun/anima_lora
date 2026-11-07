@@ -63,5 +63,9 @@ Active projects:
   `reseed/` package. Home: `README.md`. Its live work is on the `cjk-ko`
   branch.
 
+- [`lora_blocks/`](lora_blocks/) — opened 2026-11-07 out of `moss_te_sae`: MOSS i2i
+  edits assembled from a reused copy block, a parameter-free gate on the reference edges
+  and per-content draw blocks. Home: `README.md`, `proposal.md`.
+
 - [`qwen21_lora/`](qwen21_lora/) — the Qwen-Image-2.1 LoRA line (not Anima;
   `library/qwen21/CLAUDE.md`).
