@@ -32,10 +32,11 @@ the strokes; steps 2 and 3 are the ones that can change them. A non-DiT bypass f
 alone: composite the source's text pixels back into the OCR boxes after decode (the text
 should not change), at the cost of coloured lettering.
 
-**2. P1: train C (micro arm ~11 min train + read).** Needs the trainer side of the gate
-(`ref_gate` in `library/moss/train.py`, ported from `RefGate`) and a data stage for clean
-images with text-shaped holes. Gates as in [proposal.md](proposal.md) P1. C is the base L
-trains on.
+**2. P1: train C. Done** ([reports/p1_c_fill.md](reports/p1_c_fill.md)). 400 steps
+(16 min) on clean illustrations with random text-layout holes under `ref_gate cut`. C + `cut`
+on AnimeText boxes removes the sanitize eval pages' stamps and watermark on every seed with
+no sanitize pair; the copy head forms by step 200. Outside the hole it darkens one page
+(no tone term). `cut` replaces `diag` as the training and removal gate.
 
 **3. A Hangul block: one LoRA part that writes Korean well, reused by every task.** L as
 proposed is swap_text's drawing; the more useful form is a block for Korean lettering on
@@ -60,7 +61,9 @@ pages with text, and t2i would all stack or init from.
   syllables; stacked on colorize v5 on the to_colorize4 pages, strokes no softer than step
   1's best arm. Run length is the user's call before it is queued.
 
-**4. P2: sanitize assembled**, if C passes P1. As in proposal.md.
+**4. P2: sanitize assembled.** The zero-shot half is in the P1 report. Left: a short
+fine-tune from C on 50 sanitize pairs (and on all 277) against the same from kaiming, for
+the tone and the marks the mask misses.
 
 ## Parked
 

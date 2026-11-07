@@ -671,6 +671,24 @@ class TrainRequest(Request):
     ref_rank: int = _f(
         32, "rank of the reference adapters at ref_adapters = kv / all", advanced=True
     )
+    ref_gate: str = _f(
+        "off",
+        "a random hole per step, gate_rate of the steps: cut = the image queries in the "
+        "hole lose the reference keys in the hole and fill from the rest. The hole is a text layout from gate_holes plus random "
+        "boxes (library/moss/training/holes.py). Needs a reference. Stamped in the LoRA "
+        "metadata",
+        choices=("off", "cut"),
+        advanced=True,
+    )
+    gate_holes: str = _f(
+        "",
+        "JSON list of text layouts, each a list of [x0, y0, x1, y1] boxes as fractions "
+        "of the page; empty = random boxes only",
+        advanced=True,
+    )
+    gate_rate: float = _f(
+        1.0, "fraction of the steps that get a hole at ref_gate cut", advanced=True
+    )
     region_weight: float = _f(
         1.0,
         "i2i: per-token loss multiplier on the edit region (the latent tokens "

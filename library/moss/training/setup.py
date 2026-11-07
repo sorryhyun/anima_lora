@@ -420,6 +420,8 @@ def run_metadata(
             meta["ref_isolate"] = "1"
         if req.ref_adapters != "off":
             meta.update(ref_adapters=req.ref_adapters, ref_rank=req.ref_rank)
+        if req.ref_gate != "off":
+            meta.update(ref_gate=req.ref_gate, gate_rate=req.gate_rate)
     if has_repa:
         meta.update(repa_weight=req.repa_weight, repa_layer=req.repa_layer)
     if has_regions:

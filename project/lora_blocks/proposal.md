@@ -1,8 +1,8 @@
 # LoRA blocks: precise MOSS i2i edits assembled from trained parts
 
-Status: proposal (2026-11-07). P0 is done ([reports/p0_gate.md](reports/p0_gate.md)); the
-gate exists only as the probe `project/moss_te_sae/src/ref_gate.py`, and no block is
-trained. What is measured lives in [findings/](findings/): [copy.md](findings/copy.md),
+Status: proposal (2026-11-07). P0 and P1 are done ([reports/p0_gate.md](reports/p0_gate.md),
+[reports/p1_c_fill.md](reports/p1_c_fill.md)); `cut` is in the model and the trainer
+(`ref_gate`), the other modes only in the probe `project/moss_te_sae/src/ref_gate.py`. What is measured lives in [findings/](findings/): [copy.md](findings/copy.md),
 [gate.md](findings/gate.md). Older evidence:
 [`docs/moss/findings/bbox_grounding.md`](../../docs/moss/findings/bbox_grounding.md),
 [`mod_rank_i2i.md`](../../docs/moss/findings/mod_rank_i2i.md). Supersedes steps 1 and 3 of
@@ -47,8 +47,12 @@ not the other tasks'.
 
 A per-query logit bias on the reference keys, in every block and head, both CFG branches:
 
-- `diag<k>`: −∞ on the own-cell edge and its ±k neighbourhood for queries in the mask; the
-  box still reads the rest of the reference. The removal mode.
+- `cut`: −∞ on the reference keys inside the mask for queries in the mask; they read the
+  rest of the reference. The removal and fill mode, and the gate C trains under
+  (`TrainRequest.ref_gate`, `model._attention`'s `ref_gate`).
+- `diag<k>`: −∞ on the own-cell edge and its ±k neighbourhood for queries in the mask.
+  Removes what fits in its window on a LoRA trained without a gate (P0); not a training
+  gate (a hole query reads the true content k + 1 cells away).
 - `boost<v>`: +v on every reference key for queries outside the mask. The lettering mode
   (`boost1` for swap_text).
 - `soft<v>`: −v on every reference key for queries in the mask.
@@ -61,7 +65,7 @@ masks (`anime_tools.masking`), a hand mask, and later the detect block D.
 ### C — copy / fill
 
 One LoRA trained on clean images only. Pair = (image, same image); a random hole in the
-target-side gate (`diag`), shaped like real text masks taken from other pages' AnimeText
+target-side gate (`cut`), shaped like real text masks taken from other pages' AnimeText
 output, plus boxes and SAM3 blobs. Loss on all tokens. Outside the hole the block learns
 the copy protocol; inside it learns to fill from the surroundings and the reference's
 non-local context. No pairs to mine; any clean set works (`image_dataset/`, ~3k images).
@@ -95,7 +99,7 @@ Tasks as assemblies:
 
 | task | blocks |
 |---|---|
-| sanitize | C + G(`diag`, mask from D or AnimeText) |
+| sanitize | C + G(`cut`, mask from D or AnimeText) |
 | uncensor | C + G(mask of bars / mosaic) + an anatomy drawing block |
 | swap_text | C + G(`boost` outside the layout boxes) + L |
 | colorize | C(luma) + K, G open everywhere |
@@ -127,14 +131,7 @@ user's call.
 
 **P0 — gate on our own LoRAs.** Done: [reports/p0_gate.md](reports/p0_gate.md).
 
-**P1 — train C (one micro arm, then one full).** Clean images, random text-shaped holes,
-`diag` gate in training. The copy part is read: 300 steps of sanitize's own pairs on the
-int8 plan build the copy head (`probe_sanitize_copy_s300`, saves every 25 steps,
-[reports/copy_vs_step.md](reports/copy_vs_step.md)). Not yet run: clean images, holes, a
-gate in training (the trainer has no `ref_gate`), so the hole and the gate are what this
-arm tests. Pass: luma L1 outside the hole at
-or below sanitize v3's on held-out pages; the fill reads as background. Read: the copy head
-forms (b39 h19 own-cell mass), and when.
+**P1 — train C.** Done: [reports/p1_c_fill.md](reports/p1_c_fill.md).
 
 **P2 — sanitize assembled.** C + G(AnimeText) zero-shot on the five eval pages; then
 concat-rank init + fine-tune on the 277 pairs, and on 50 of them. Pass: v3's removal and
@@ -153,18 +150,20 @@ composition 2 needs the fine-tune or whether 1 / 3 are required.
 
 ## Code it needs
 
-- `library/moss/model.py`: the reference gate on the main rows' attention, ported from
-  `RefGate` in `project/moss_te_sae/src/ref_gate.py`. The probe's kernels: `boost` / `soft`
-  as two FA2 calls merged by LSE with the per-query bias; `diag` as flex attention with the
+- `library/moss/model.py`: `cut` is in (`ref_gate = (rows, keep)`, the hole rows attended
+  again over a gathered key set). Still in the probe only (`RefGate`): `boost` / `soft` as
+  two FA2 calls merged by LSE with the per-query bias; `diag` as flex attention with the
   cut in a score_mod, compiled at static shapes outside the block graph (the blocks'
   `dynamic=True` compile cannot lower flex on torch 2.14).
-- `library/moss/requests.py` / `train.py`: `ref_gate` (`off | diag | boost | soft`, `k`,
-  bias) and `gate_source` (`region` = the existing target − reference diff, `boxes` = the
-  layout items, `masks` = files beside the cache); `init_loras` (files + coefficients,
+- `library/moss/requests.py` / `train.py`: `ref_gate` (`off | cut`) with random holes
+  (`gate_holes`, `gate_rate`; `training/holes.py`) is in. Still to come: a `gate_source`
+  (`region` = the existing target − reference diff, `boxes` = the layout items, `masks` =
+  files beside the cache) for task pairs; `init_loras` (files + coefficients,
   concat rank) and `frozen_loras` (hooked at a fixed multiplier); spatial row masks per
   sample on `LoRANetwork` (generalising `delta_rows`).
-- A C-block data stage: clean images → identity pairs + hole masks (AnimeText masks from
-  other pages, boxes, SAM3), as an i2i staging task under `i2i_tasks/`.
+- A C-block data stage: `src/build_c_data.py` (identity symlinks over colorize v5's
+  illustration targets, OCR layouts of its manga pages) for P1; an i2i staging task under
+  `i2i_tasks/` once C needs other images or SAM3 blobs.
 - `generate.py` and the ComfyUI Reference node: a mask input for G.
 - Probes: `project/moss_te_sae/src/{copy_head,copy_head_ext,copy_transplant,ref_edge_mask,ref_gate,copy_vs_step}.py`.
 

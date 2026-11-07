@@ -69,6 +69,7 @@ from library.moss.loader import (
 from library.moss.lora import LoRANetwork, load_channel_stats
 from library.moss.requests import LORA_ALPHA, TrainRequest
 from library.moss.training import setup
+from library.moss.training.holes import HoleSampler
 from library.moss.training.data import (  # noqa: F401  (this module is their import path)
     EMPTY_PROMPT_PATH,
     NEG_SUFFIX,
@@ -170,6 +171,16 @@ def train(
     get = setup.preload(samples, use_plain)
     regions, region_end = setup.edit_regions(req, samples, get)
     rests, tone_proj, tone_proj_b = setup.tone_setup(req, samples, get, device)
+    holes = None
+    if req.ref_gate != "off":
+        if not any(s.n_ref for s in samples):
+            raise SystemExit("ref_gate needs a cache with reference latents")
+        holes = HoleSampler(req.gate_holes, req.seed)
+        print(
+            f"ref_gate {req.ref_gate}: {len(holes.layouts)} text layouts, "
+            f"a hole on {req.gate_rate:.0%} of the steps",
+            flush=True,
+        )
     use_variants = req.caption_variant_rate > 0
     n_variant_samples = sum(1 for s in samples if s.n_variants) if use_variants else 0
     if n_variant_samples:
@@ -461,6 +472,13 @@ def train(
                 sigma = sample_sigma(
                     gen, req.sigma_mu, req.sigma_s, req.sigma_cutoff, req.sigma_uniform
                 )
+                transformer.ref_gate = (
+                    holes.gate(latent.shape[-2:], ref.shape[-2:], device)
+                    if holes is not None
+                    and ref is not None
+                    and holes.rng.random() < req.gate_rate
+                    else None
+                )
                 if repa is not None:
                     target, grid = repa_targets.get(s.stem, (None, None))
                     repa.prime(
@@ -635,6 +653,13 @@ def train(
                 sink.ckpt(global_step=step, path=str(saved))
                 print(f"  saved {saved}", flush=True)
 
+        transformer.ref_gate = None
+        if holes is not None and holes.cover:
+            print(
+                f"ref_gate: {len(holes.cover)} holes, cover mean "
+                f"{sum(holes.cover) / len(holes.cover):.3f}",
+                flush=True,
+            )
         final = save(shadow=main_shadow)
         sink.ckpt(global_step=step, path=str(final))
         if any(shadows):

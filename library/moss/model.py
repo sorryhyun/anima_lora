@@ -32,6 +32,9 @@ Changes from the reference, all additive:
   ``ref_scope`` (``LoRANetwork.reference`` at ``ref_adapters = all``): the reference rows
   have an adapter bank of their own and Base modulation. A forward with a reference then
   goes through ``ref_cache`` or under ``set_row_mask(main, ref)``.
+  ``ref_gate`` (``(rows, keep)``, None by default): the image queries ``rows`` read
+  only the reference keys ``keep``; ``TrainRequest.ref_gate`` sets it per step
+  (``project/lora_blocks``).
 - Attention: unmasked CUDA bf16 / fp16 calls run FA2 (``flash_attn_func``) on
   ``(B, L, H, D)``; masked (``forward_batched``), CPU and fp32 calls keep the
   reference's SDPA. Same math, a different kernel: FA2 issues no ``% 8``
@@ -115,12 +118,15 @@ def _attention(
     ref_start=None,
     ref_isolate=False,
     ref_kv=None,
+    ref_gate=None,
 ):
     """``key_mask``: bool ``(B, L)``, True = attend. None = the reference path.
     ``ref_isolate``: the reference queries (``ref_start`` on) attend only to the
     reference keys. ``ref_kv = (k, v, rope)``: cached reference keys (before RoPE)
-    and values appended to the key set. Unmasked CUDA half-precision calls run FA2,
-    the rest SDPA (the ref-only call is unmasked: its keys are all reference tokens)."""
+    and values appended to the key set. ``ref_gate = (rows, keep)``: the image
+    queries ``rows`` read only the reference keys ``keep`` (``_gate_rows``). Unmasked
+    CUDA half-precision calls run FA2, the rest SDPA (the ref-only call is unmasked:
+    its keys are all reference tokens)."""
     shape = (*q.shape[:2], heads, q.shape[-1] // heads)
     q = rotate(q.reshape(shape), rope).to(v.dtype)
     k = rotate(k.reshape(shape), rope).to(v.dtype)
@@ -143,11 +149,28 @@ def _attention(
 
     if not ref_isolate or ref_start is None:
         out = attend(q, k, v, mask)
+        if ref_gate is not None and (ref_kv is not None or ref_start is not None):
+            s = ref_start if ref_kv is None else k.shape[1] - ref_k.shape[1]
+            out = _gate_rows(out, q, k, v, mask, s, ref_gate, attend)
     else:
         s = ref_start
         main = attend(q[:, :s], k, v, mask)
+        if ref_gate is not None:
+            main = _gate_rows(main, q[:, :s], k, v, mask, s, ref_gate, attend)
         out = torch.cat((main, attend(q[:, s:], k[:, s:], v[:, s:])), 1)
     return out.flatten(2)
+
+
+def _gate_rows(out, q, k, v, mask, s, ref_gate, attend):
+    """``out`` with the query rows ``rows`` attended again over the keys before ``s``
+    (image and text) and the reference keys ``keep`` alone. Gathers instead of a
+    bias, so the call stays on FA2 with gradients."""
+    rows, keep = ref_gate
+    k = torch.cat((k[:, :s], k[:, s:].index_select(1, keep)), 1)
+    v = torch.cat((v[:, :s], v[:, s:].index_select(1, keep)), 1)
+    if mask is not None:
+        mask = torch.cat((mask[..., :s], mask[..., s:].index_select(-1, keep)), -1)
+    return out.index_copy(1, rows, attend(q.index_select(1, rows), k, v, mask))
 
 
 class _TextBlock(nn.Module):
@@ -232,6 +255,7 @@ class _Block(nn.Module):
         ref_isolate=False,
         ref_kv=None,
         kv_out=False,
+        ref_gate=None,
     ):
         """``ref_start``: where the reference tokens (the sequence tail) begin, if any. ``modulation``
         is ``(B,6,D)``, or ``(B,6,2,D)`` with the second set modulating the
@@ -240,7 +264,15 @@ class _Block(nn.Module):
         reference rows leave for ``ref_rows`` (``kv_out`` then is reference-only)."""
         if self.ref_bank is None or not (kv_out or ref_start is not None):
             return self.main_rows(
-                x, rope, modulation, key_mask, ref_start, ref_isolate, ref_kv, kv_out
+                x,
+                rope,
+                modulation,
+                key_mask,
+                ref_start,
+                ref_isolate,
+                ref_kv,
+                kv_out,
+                ref_gate=ref_gate,
             )
         s = 0 if kv_out else ref_start
         with torch.no_grad():
@@ -255,6 +287,7 @@ class _Block(nn.Module):
             modulation[:, :, 0],
             None if key_mask is None else key_mask[:, :s],
             ref_export=(y, raw_k, raw_v, rope[:, s:]),
+            ref_gate=ref_gate,
         )
         return torch.cat((main, ref), 1)
 
@@ -283,6 +316,7 @@ class _Block(nn.Module):
         ref_kv=None,
         kv_out=False,
         ref_export=None,
+        ref_gate=None,
     ):
         if ref_export is not None:
             ref_kv = (*self._ref_export(*ref_export[:3]), ref_export[3])
@@ -293,8 +327,11 @@ class _Block(nn.Module):
         q, k, v = self._qkv(y)
         q = self.q_norm(q.unflatten(-1, (self.heads, -1))).flatten(2)
         k = self.k_norm(k.unflatten(-1, (self.heads, -1))).flatten(2)
+        # By keyword and only when set: probes that patch ``_attention`` keep the
+        # nine-argument call.
+        gate = {} if ref_gate is None else {"ref_gate": ref_gate}
         attn = _attention(
-            q, k, v, rope, self.heads, key_mask, ref_start, ref_isolate, ref_kv
+            q, k, v, rope, self.heads, key_mask, ref_start, ref_isolate, ref_kv, **gate
         )
         x = x + _gated(self.proj["o"](attn), gate_a, ref_start)
         y = _affine(self.norm2(x), scale_f, shift_f, ref_start)
@@ -475,6 +512,9 @@ class MOSSImageTransformer(ModelMixin, ConfigMixin):
         self.ref_follows_skip = False
         self.ref_cache = None
         self.ref_scope = None
+        # (rows, keep) index tensors for every block's main-row attention (``_attention``),
+        # set per forward by the caller; None = the stock path.
+        self.ref_gate = None
 
     def load_training_state_dict(self, state_dict, *, prefix=""):
         """Load a consolidated raw/EMA model mapping, strictly; no silent key drops."""
@@ -585,13 +625,15 @@ class MOSSImageTransformer(ModelMixin, ConfigMixin):
             key_mask = None if key_mask is None else key_mask[:, :s]
             ref_start, iso, ref_runs = None, False, False
 
+        gate = {} if self.ref_gate is None else {"ref_gate": self.ref_gate}
+
         def kv(index, rows=None):
             if cached is None:
-                return {}
+                return gate
             k, v = cached[index]
             if rows is None:
-                return {"ref_kv": (k, v, ref_rope)}
-            return {"ref_kv": (k[rows], v[rows], ref_rope[rows])}
+                return {"ref_kv": (k, v, ref_rope), **gate}
+            return {"ref_kv": (k[rows], v[rows], ref_rope[rows]), **gate}
 
         hook = self.layer_hook
         for index, layer in enumerate(self.layers):

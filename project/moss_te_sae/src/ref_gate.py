@@ -10,7 +10,10 @@ in a cell mask:
   query's own cell, so the masked queries still read the rest of the reference;
 - ``soft<v>``: −v on every reference key;
 - ``boost<v>``: +v for the queries *outside* the mask, nothing inside;
-- ``inboost<v>``: +v for the queries *inside* the mask, nothing outside.
+- ``inboost<v>``: +v for the queries *inside* the mask, nothing outside;
+- ``cut``: the queries in the mask lose the reference keys in the mask and read the
+  rest (``model._attention``'s ``ref_gate``, the gate ``TrainRequest.ref_gate`` trains
+  the lora_blocks C block under). Needs the reference grid = the image grid.
 
 ``ctrl`` is the stock path. Kernels (``--kernel``, see ``RefGate``): ``fast`` (FA2 halves
 merged by LSE; flex attention for ``diag``) or ``dense`` (SDPA with a dense mask, every
@@ -30,6 +33,9 @@ Parts (``--part``):
   ``text`` item per OCR line ``keep_line`` keeps, as the cache builds it); the mask
   is those boxes padded 4 px. ``inboost`` asks whether a stronger copy inside the
   boxes keeps the source's strokes instead of redrawing them.
+- ``fill``: the lora_blocks C block (``--lora``, default ``c_fill_s400``) on the
+  sanitize pages and masks, on the empty prompt it trained on, ``ctrl`` (no gate)
+  against ``cut``.
 
 Reads per render, against the reference: outside the mask (one cell ring left out)
 signed ΔL and Δb in Lab, luma L1, and luma L1 against the same seed's ``ctrl``;
@@ -77,7 +83,11 @@ PARTS = {
     "sanitize": dict(arms="ctrl,hard,diag1", seeds="0,1,2"),
     "swap_text": dict(arms="ctrl,diag1,boost2", seeds="0,1,2"),
     "colorize": dict(arms="ctrl,inboost1,inboost2", seeds="0,1,2"),
+    "fill": dict(arms="ctrl,cut", seeds="0,1,2"),
 }
+FILL_LORA = "output/ckpt_moss_i2i/c_fill_s400"
+# A prompts-file line stands for the empty prompt (empty lines are dropped).
+EMPTY = "<empty>"
 COLORIZE_DIR = "../comfy/input/to_colorize4"
 COLORIZE_PAGES = ["03", "05", "09", "14"]
 COLORIZE_LORA = "output/ckpt_moss_i2i/moss_colorize_v5"
@@ -102,6 +112,10 @@ def gate_matrix(cells: torch.Tensor, arm: str, n_ref: int) -> torch.Tensor:
         bias[~q] = float(arm[5:])
     elif arm.startswith("inboost"):
         bias[q] = float(arm[7:])
+    elif arm == "cut":
+        if n_ref != q.numel():
+            raise ValueError("cut needs the reference grid = the image grid")
+        bias[q[:, None] & q[None, :]] = float("-inf")
     elif arm.startswith("diag"):
         k = int(arm[4:])
         qy, qx = torch.meshgrid(
@@ -207,6 +221,8 @@ class RefGate:
             return self._enter_dense()
         if self.arm == "ctrl":
             return self
+        if self.arm == "cut":
+            return self._enter_cut()
         orig, cells = self.orig, self.cells
         n_img = cells.numel()
         diag = self.arm.startswith("diag")
@@ -289,6 +305,26 @@ class RefGate:
         mm._attention = attention
         return self
 
+    def _enter_cut(self):
+        orig, flat = self.orig, self.cells.flatten()
+        gate = (flat.nonzero().flatten().cuda(), (~flat).nonzero().flatten().cuda())
+
+        def attention(q, k, v, rope, heads, key_mask=None, ref_start=None,
+                      ref_isolate=False, ref_kv=None):  # fmt: skip
+            n_ref = None
+            if ref_kv is not None:
+                n_ref = ref_kv[0].shape[1]
+            elif ref_start is not None:
+                n_ref = q.shape[1] - ref_start
+            if n_ref is None:
+                return orig(q, k, v, rope, heads, key_mask, ref_start, ref_isolate, ref_kv)  # fmt: skip
+            if n_ref != flat.numel():
+                raise ValueError(f"cut needs the reference grid = the image grid ({n_ref} != {flat.numel()})")  # fmt: skip
+            return orig(q, k, v, rope, heads, key_mask, ref_start, ref_isolate, ref_kv, ref_gate=gate)  # fmt: skip
+
+        mm._attention = attention
+        return self
+
     def __exit__(self, *exc):
         mm._attention = self.orig
 
@@ -302,9 +338,15 @@ class SharedTE:
 
     def __enter__(self):
         orig, d = self.orig, self.cache_dir
-        gen.cached_embeds = lambda model_dir, texts, _c, *a, **kw: orig(
-            model_dir, texts, d, *a, **kw
-        )
+
+        def cached(model_dir, texts, _c, *a, **kw):
+            real = ["" if t == EMPTY else t for t in texts]
+            out = orig(model_dir, real, d, *a, **kw)
+            if EMPTY in texts:
+                out[EMPTY] = out[""]
+            return out
+
+        gen.cached_embeds = cached
         return self
 
     def __exit__(self, *exc):
@@ -457,8 +499,11 @@ def colorize_inputs(pages=COLORIZE_PAGES):
     return out
 
 
-def run_task(part, out, arms, seeds, pages=None, kernel="fast"):
-    if part == "colorize":
+def run_task(part, out, arms, seeds, pages=None, kernel="fast", lora=None):
+    if part == "fill":
+        inputs = [dict(i, prompt=EMPTY) for i in sanitize_inputs(pages or SANITIZE_PAGES[:3])]  # fmt: skip
+        base = ["--config", "configs/moss/i2i/sanitize/generate.toml", "--lora", f"{lora or FILL_LORA}.safetensors"]  # fmt: skip
+    elif part == "colorize":
         inputs = colorize_inputs(pages or COLORIZE_PAGES)
         base = ["--config", "configs/moss/i2i/colorize/generate.toml", "--lora", f"{COLORIZE_LORA}.safetensors"]  # fmt: skip
     elif part == "sanitize":
@@ -560,6 +605,7 @@ def main():
     ap.add_argument("--kernel", choices=["fast", "dense"], default="fast")
     ap.add_argument("--pages", default=None, help="comma list of input stems")
     ap.add_argument("--out", type=Path, default=None)
+    ap.add_argument("--lora", default=None, help="fill: the C checkpoint, no suffix")
     args = ap.parse_args()
     arms = (args.arms or PARTS[args.part]["arms"]).split(",")
     seeds = [int(s) for s in (args.seeds or PARTS[args.part]["seeds"]).split(",")]
@@ -577,6 +623,7 @@ def main():
             seeds,
             args.pages and args.pages.split(","),
             args.kernel,
+            args.lora,
         )
     log(f"wrote {out}")
 

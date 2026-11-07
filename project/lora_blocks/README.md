@@ -18,6 +18,7 @@ these and fine-tuned briefly, instead of one curated pair set and one long run p
 - [reports/copy_vs_step.md](reports/copy_vs_step.md) — the copy head forms at steps ~175–225 of any pair set, after the pixels already copy; training past it buys breadth.
 - [reports/p0_gate.md](reports/p0_gate.md) — P0: the gate fixes both shipped LoRAs' "where" failures with no training; `diag1` inside AnimeText boxes removes the watermark sanitize v3 keeps, `boost` outside the layout boxes stops swap_text rewriting unasked regions; `hard` invents content.
 - [reports/colorize_inboost.md](reports/colorize_inboost.md) — a copy boost inside colorize v5's text boxes makes strokes heavier and leaves every deformed glyph as it was; the gate cannot fix lettering.
-- Probes: `project/moss_te_sae/src/{copy_head_ext,copy_transplant,ref_edge_mask,ref_gate}.py`.
+- [reports/p1_c_fill.md](reports/p1_c_fill.md) — P1: C (400 steps, clean illustrations, text-layout holes under `ref_gate cut`) removes the sanitize eval pages' stamps and watermark under `cut` with no sanitize pair; the copy head forms by step 200.
+- Probes: `project/moss_te_sae/src/{copy_head_ext,copy_transplant,ref_edge_mask,ref_gate,copy_vs_step}.py`; data `src/build_c_data.py`.
 
-State: P0 done (p0_gate.md); `boost1` is the swap_text default. plan.md step 1 closed negative (colorize_inboost.md); the strokes need a drawing fix (steps 2–3).
+State: P0 and P1 done; C (`output/ckpt_moss_i2i/c_fill_s400`) + `cut` is a zero-shot sanitize. Next: P2's fine-tune from C, or the Hangul block on C (plan.md).

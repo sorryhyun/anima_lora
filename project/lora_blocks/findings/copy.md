@@ -1,6 +1,7 @@
 # The copy: what it is, when it forms, what a copy block can save
 
 Sources: [reports/copy_vs_step.md](../reports/copy_vs_step.md),
+[reports/p1_c_fill.md](../reports/p1_c_fill.md),
 [`../moss_te_sae/reports/copy_protocol.md`](../../moss_te_sae/reports/copy_protocol.md),
 [`../moss_te_sae/reports/i2i_copy_head.md`](../../moss_te_sae/reports/i2i_copy_head.md).
 
@@ -23,6 +24,9 @@ Sources: [reports/copy_vs_step.md](../reports/copy_vs_step.md),
 - **After the head forms, training adds breadth.** Heads over 0.1 go 44 → 80 between steps
   300 and 2216 while h19 gains 0.2 and L1 6.3 → 5.8.
 - **The copy needs no identity pairs.** It is learned from the unedited part of any pair.
+- **Identity pairs with holes build it faster.** C (clean illustrations, text-layout holes
+  under `cut`) has h19 at 0.63 by step 200 against 0.42 on sanitize's pairs, and 67 copy
+  heads at step 400, more than sanitize v3 at 1108.
 
 ## What follows for the line
 
@@ -31,7 +35,8 @@ Sources: [reports/copy_vs_step.md](../reports/copy_vs_step.md),
   phase change, every gradient going to the edit) and what the pairs have to teach (nothing
   about copying). Its win should be measured in pairs, not steps.
 - Any 300-step run on any pair set already gives a plain copy. C is worth a file of its own
-  only if training with the hole and the `diag` gate turns it into a fill block.
+  because training with holes under `cut` turns it into a fill block: C + `cut` on detector
+  boxes removes marks with no task pairs (P1).
 
 ## Conjectures (not measured)
 

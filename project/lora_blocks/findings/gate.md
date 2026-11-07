@@ -2,6 +2,7 @@
 
 Sources: [reports/p0_gate.md](../reports/p0_gate.md),
 [reports/colorize_inboost.md](../reports/colorize_inboost.md),
+[reports/p1_c_fill.md](../reports/p1_c_fill.md),
 [`../moss_te_sae/reports/copy_protocol.md`](../../moss_te_sae/reports/copy_protocol.md)
 (the edge bias on the Edit LoRA).
 
@@ -28,6 +29,11 @@ Sources: [reports/p0_gate.md](../reports/p0_gate.md),
   the source's at +2) and leaves the glyphs no closer to the source: the same misshapen
   syllables, the same stray dot in `생`, on every seed. A glyph the LoRA draws wrong is
   drawn wrong at any copy strength.
+- **`cut` is the removal gate for a block trained under it.** The queries in the mask lose
+  the reference keys in the mask and read the rest, so the region fills from its
+  surroundings; with no window, it has no size rule. C trained under it and run under it on
+  AnimeText boxes removes the sanitize pages' stamps and watermark on every seed (P1).
+  Untested on LoRAs trained without it.
 - **`hard` invents content.** A region that cannot read the reference at all is filled with
   a new object (a grey wedge, a headband, a grid patch). It is not a removal mode.
 - **`diag` has a size rule.** It removes what fits in its ±k window and re-reads anything

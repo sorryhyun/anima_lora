@@ -313,6 +313,10 @@ def _marked(compiled, seq_range, warned, kv_marks=None):
             if lo <= n <= hi:
                 torch._dynamo.mark_dynamic(x, 1, min=lo, max=hi)
                 torch._dynamo.mark_dynamic(rope, 1, min=lo, max=hi)
+                # The gate's index counts change every step; static, each would
+                # recompile the block.
+                for t in kwargs.get("ref_gate") or ():
+                    torch._dynamo.mark_dynamic(t, 0, min=2, max=hi)
                 if kv_marks is not None and kwargs.get("ref_export") is not None:
                     for t in kwargs["ref_export"]:
                         torch._dynamo.mark_dynamic(
