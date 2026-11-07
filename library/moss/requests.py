@@ -577,6 +577,12 @@ class TrainRequest(Request):
         0,
         "also save every N epochs into <output dir>/<name>/<name>_eN (0 = final only)",
     )
+    save_every_steps: int = _f(
+        0,
+        "also save every N steps into <output dir>/<name>/<name>_sN (0 = off); the "
+        "live weights until the EMA starts, the EMA after",
+        advanced=True,
+    )
     caption_dropout: float = _f(
         0.0,
         "probability of training a step on the empty-prompt embedding (CFG's "

@@ -10,6 +10,8 @@ these and fine-tuned briefly, instead of one curated pair set and one long run p
   it needs.
 - Evidence: [`../moss_te_sae/reports/copy_protocol.md`](../moss_te_sae/reports/copy_protocol.md)
   (the copy is a protocol, not a head; the edge gate), [`../moss_te_sae/reports/i2i_copy_head.md`](../moss_te_sae/reports/i2i_copy_head.md).
+- [opinion.md](opinion.md) — a reading of the idea against the literature; the checkpoint read.
+- [reports/copy_vs_step.md](reports/copy_vs_step.md) — the copy head forms at steps ~175–225 of any pair set, after the pixels already copy; training past it buys breadth.
 - Probes: `project/moss_te_sae/src/{copy_head_ext,copy_transplant,ref_edge_mask}.py`.
 
-State: proposal; P0 (gate on our own LoRAs, inference only) is next.
+State: proposal; the checkpoint read is done (copy_vs_step.md). P0 (gate on our own LoRAs, inference only) is next.

@@ -580,6 +580,14 @@ def train(
                     else per_step
                 )
                 eta = int(eta_rate * (total - step))
+                if (
+                    req.save_every_steps
+                    and step % req.save_every_steps == 0
+                    and step < total
+                ):
+                    saved = save(f"s{step}", main_shadow)
+                    sink.ckpt(global_step=step, path=str(saved))
+                    print(f"  saved {saved}", flush=True)
                 if step % PROGRESS_EVERY == 0 or step == total:
                     print(
                         f"  progress {step}/{total} epoch {epoch + 1}/{epochs} "
