@@ -136,8 +136,9 @@ the source copied, not better letters.
 - **`boost1` has the lowest L1 outside the boxes on every page** (5.57 / 7.97 / 2.28 / 2.40
   against ctrl's 5.71 / 8.05 / 2.68 / 2.64 at best), with Δb within ±0.1 and ΔL between
   ctrl's and zero. It moves the page 1.1-2.6 L1 against ctrl, against 1.9-3.9 for `boost2`.
-  Whether it keeps all of `boost2`'s correction of the unasked regions is the user's read;
-  in the Korean zoom sheets its balloons and letters match ctrl and `boost2`.
+  It keeps nearly all of `boost2`'s correction of the unasked regions (user: about 95 %
+  of it, all pages), and in the Korean zoom sheets its balloons and letters match ctrl
+  and `boost2`. `boost1` is the default: most of the fix at a fraction of the drift.
 - **`diag1` breaks the balloons** (user; the Korean zoom sheets show it): stray strokes at
   the box edge, a lost balloon border, an added tail. The mask runs 16 px past the bbox, so
   border cells fall inside it and, cut from their own cell, are redrawn. Outside the boxes
@@ -168,7 +169,6 @@ key, not only the own cell, which fits the tone shift and the slightly higher L1
 
 ## Not tested
 
-- Whether `boost1` keeps all of `boost2`'s correction of the unasked regions (user read pending).
 - An own-cell boost (+v on the own cell ± k only, outside the mask): the copy without the
   neighbours, which may keep the correction without the tone shift. Runs on the flex path.
 - `boost` on sanitize, and a cut + boost combination.

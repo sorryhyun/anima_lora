@@ -6,13 +6,18 @@ the copy holds: a bias on the main-query → reference-key edges, set from a mas
 parameters) and **draw** (a trained block per kind of content). Tasks are assembled from
 these and fine-tuned briefly, instead of one curated pair set and one long run per task.
 
-- [proposal.md](proposal.md) — the blocks, composition, phases P0–P5 and their gates, the code
+- [proposal.md](proposal.md) — the blocks, composition, phases P1–P5 and their gates, the code
   it needs.
 - Evidence: [`../moss_te_sae/reports/copy_protocol.md`](../moss_te_sae/reports/copy_protocol.md)
   (the copy is a protocol, not a head; the edge gate), [`../moss_te_sae/reports/i2i_copy_head.md`](../moss_te_sae/reports/i2i_copy_head.md).
-- [opinion.md](opinion.md) — a reading of the idea against the literature; the checkpoint read.
+- [plan.md](plan.md) — the order of work: Korean strokes first (per-glyph read, colorize copy in the text boxes, C, L).
+- [opinion.md](opinion.md) — a reading of the idea against the literature; open design points.
+- [findings/](findings/) — conclusions and conjectures above the reports:
+  [copy.md](findings/copy.md) (a copy block saves pairs and the 200–300-step phase change, not steps of a long run),
+  [gate.md](findings/gate.md) (G fixes "where" on shipped LoRAs; `diag` inside for removal, `boost` outside for lettering, `hard` invents).
 - [reports/copy_vs_step.md](reports/copy_vs_step.md) — the copy head forms at steps ~175–225 of any pair set, after the pixels already copy; training past it buys breadth.
 - [reports/p0_gate.md](reports/p0_gate.md) — P0: the gate fixes both shipped LoRAs' "where" failures with no training; `diag1` inside AnimeText boxes removes the watermark sanitize v3 keeps, `boost` outside the layout boxes stops swap_text rewriting unasked regions; `hard` invents content.
+- [reports/colorize_inboost.md](reports/colorize_inboost.md) — a copy boost inside colorize v5's text boxes makes strokes heavier and leaves every deformed glyph as it was; the gate cannot fix lettering.
 - Probes: `project/moss_te_sae/src/{copy_head_ext,copy_transplant,ref_edge_mask,ref_gate}.py`.
 
-State: P0 done (p0_gate.md); whether `boost1` keeps `boost2`'s correction, and an own-cell boost, are the open reads.
+State: P0 done (p0_gate.md); `boost1` is the swap_text default. plan.md step 1 closed negative (colorize_inboost.md); the strokes need a drawing fix (steps 2–3).

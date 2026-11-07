@@ -9,7 +9,8 @@ in a cell mask:
 - ``diag<k>``: −∞ only on the reference keys within ``k`` cells (Chebyshev) of the
   query's own cell, so the masked queries still read the rest of the reference;
 - ``soft<v>``: −v on every reference key;
-- ``boost<v>``: +v for the queries *outside* the mask, nothing inside.
+- ``boost<v>``: +v for the queries *outside* the mask, nothing inside;
+- ``inboost<v>``: +v for the queries *inside* the mask, nothing outside.
 
 ``ctrl`` is the stock path. Kernels (``--kernel``, see ``RefGate``): ``fast`` (FA2 halves
 merged by LSE; flex attention for ``diag``) or ``dense`` (SDPA with a dense mask, every
@@ -24,6 +25,11 @@ Parts (``--part``):
   (conf 0.05, 1024 canvas, boxes padded 8 px, any overlap marks a cell).
 - ``swap_text``: swap_text ksplit e2 on the four eval pages, seeds 0-2, mask from
   the prompt's layout boxes (``copy_head.text_mask``).
+- ``colorize``: colorize v5 on Korean pages of ComfyUI's ``input/to_colorize4``,
+  seeds 0-2. The prompt is v5's bare control caption (``comic`` and a box-only
+  ``text`` item per OCR line ``keep_line`` keeps, as the cache builds it); the mask
+  is those boxes padded 4 px. ``inboost`` asks whether a stronger copy inside the
+  boxes keeps the source's strokes instead of redrawing them.
 
 Reads per render, against the reference: outside the mask (one cell ring left out)
 signed ΔL and Δb in Lab, luma L1, and luma L1 against the same seed's ``ctrl``;
@@ -70,7 +76,11 @@ PARTS = {
     "edit": dict(arms="diag0,diag1,diag2", seeds="0"),
     "sanitize": dict(arms="ctrl,hard,diag1", seeds="0,1,2"),
     "swap_text": dict(arms="ctrl,diag1,boost2", seeds="0,1,2"),
+    "colorize": dict(arms="ctrl,inboost1,inboost2", seeds="0,1,2"),
 }
+COLORIZE_DIR = "../comfy/input/to_colorize4"
+COLORIZE_PAGES = ["03", "05", "09", "14"]
+COLORIZE_LORA = "output/ckpt_moss_i2i/moss_colorize_v5"
 
 
 def gate_matrix(cells: torch.Tensor, arm: str, n_ref: int) -> torch.Tensor:
@@ -90,6 +100,8 @@ def gate_matrix(cells: torch.Tensor, arm: str, n_ref: int) -> torch.Tensor:
         bias[q] = -float(arm[4:])
     elif arm.startswith("boost"):
         bias[~q] = float(arm[5:])
+    elif arm.startswith("inboost"):
+        bias[q] = float(arm[7:])
     elif arm.startswith("diag"):
         k = int(arm[4:])
         qy, qx = torch.meshgrid(
@@ -111,7 +123,8 @@ def gate_matrix(cells: torch.Tensor, arm: str, n_ref: int) -> torch.Tensor:
 
 def query_bias(cells: torch.Tensor, arm: str) -> torch.Tensor:
     """``(n_img,)`` bias on every reference key per image query, for the arms
-    whose bias is constant over the reference (``hard`` / ``soft`` / ``boost``)."""
+    whose bias is constant over the reference (``hard`` / ``soft`` / ``boost`` /
+    ``inboost``)."""
     q = cells.flatten()
     b = torch.zeros(q.numel())
     if arm == "hard":
@@ -120,6 +133,8 @@ def query_bias(cells: torch.Tensor, arm: str) -> torch.Tensor:
         b[q] = -float(arm[4:])
     elif arm.startswith("boost"):
         b[~q] = float(arm[5:])
+    elif arm.startswith("inboost"):
+        b[q] = float(arm[7:])
     else:
         raise ValueError(arm)
     return b
@@ -312,6 +327,11 @@ def luma(im: Image.Image) -> np.ndarray:
     return np.asarray(im.convert("L"), np.float32)
 
 
+def grad(y: np.ndarray) -> np.ndarray:
+    """Sobel gradient magnitude of a luma plane."""
+    return np.hypot(cv2.Sobel(y, cv2.CV_32F, 1, 0), cv2.Sobel(y, cv2.CV_32F, 0, 1))
+
+
 def reads(image, ref, cells, ctrl=None):
     im = Image.open(image)
     W, H = im.size
@@ -322,11 +342,13 @@ def reads(image, ref, cells, ctrl=None):
     outside = ~np.kron(ring, np.ones((16, 16), bool))
     li, lr = lab(im), lab(R)
     d = li - lr
+    gi, gr = grad(luma(im)), grad(luma(R))
     e = dict(
         dL_out=float(d[..., 0][outside].mean()),
         db_out=float(d[..., 2][outside].mean()),
         l1_out=float(np.abs(luma(im) - luma(R))[outside].mean()),
         l1_in=float(np.abs(luma(im) - luma(R))[inside].mean()) if c.any() else None,
+        grad_in=float(gi[inside].mean() / gr[inside].mean()) if c.any() else None,
     )
     if ctrl is not None:
         e["l1_out_vs_ctrl"] = float(
@@ -351,6 +373,29 @@ def sheet(path, ref, cells, grid, size):
         for x, p in enumerate(row):
             if p:
                 out.paste(Image.open(p).convert("RGB").resize((tw, th)), ((x + 1) * tw, y * th))  # fmt: skip
+    out.save(path)
+
+
+def zoom(path, ref, boxes, row_images, size, n=6, scale=2):
+    """The ``n`` largest ``boxes`` (output pixels, padded 8 px) at ``scale``x:
+    rows = boxes, columns = ref then ``row_images``."""
+    W, H = size
+    R = Image.open(ref).convert("RGB").resize((W, H), Image.LANCZOS)
+    ims = [R] + [Image.open(p).convert("RGB") for p in row_images]
+    big = sorted(boxes, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]), reverse=True)[:n]
+    crops = []
+    for x0, y0, x1, y1 in big:
+        b = (max(0, int(x0) - 8), max(0, int(y0) - 8), min(W, int(x1) + 8), min(H, int(y1) + 8))  # fmt: skip
+        crops.append([im.crop(b).resize(((b[2] - b[0]) * scale, (b[3] - b[1]) * scale), Image.LANCZOS) for im in ims])  # fmt: skip
+    if not crops:
+        return
+    cw = max(r[0].width for r in crops)
+    out = Image.new("RGB", (cw * len(ims), sum(r[0].height for r in crops)), "white")
+    y = 0
+    for r in crops:
+        for x, c in enumerate(r):
+            out.paste(c, (x * cw, y))
+        y += r[0].height
     out.save(path)
 
 
@@ -391,8 +436,32 @@ def swap_inputs(pages=SWAP_PAGES):
     return out
 
 
+def colorize_inputs(pages=COLORIZE_PAGES):
+    from library.moss.colorize import keep_line, manga_layout, read_pages
+
+    refs = [str(resolve_under_home(f"{COLORIZE_DIR}/{p}.webp")) for p in pages]
+    lines = read_pages([Path(r) for r in refs], "cuda", keep=keep_line)
+    out = []
+    for stem, ref, ls in zip(pages, refs, lines):
+        w, h = Image.open(ref).size
+        W, H = output_size(ref)
+        boxes = [
+            [b[0] * W / w, b[1] * H / h, b[2] * W / w, b[3] * H / h] for _, b in ls
+        ]
+        mask = np.zeros((H, W), bool)
+        for x0, y0, x1, y1 in boxes:
+            mask[max(0, int(y0) - 4) : min(H, int(y1) + 5), max(0, int(x0) - 4) : min(W, int(x1) + 5)] = True  # fmt: skip
+        log(f"colorize {stem}: {len(ls)} lines: {' / '.join(t for t, _ in ls)}")
+        prompt = manga_layout([], boxes, (W, H))
+        out.append(dict(key=stem, ref=ref, prompt=prompt, boxes=boxes, lines=[t for t, _ in ls], cells=cells_from_mask(mask)))  # fmt: skip
+    return out
+
+
 def run_task(part, out, arms, seeds, pages=None, kernel="fast"):
-    if part == "sanitize":
+    if part == "colorize":
+        inputs = colorize_inputs(pages or COLORIZE_PAGES)
+        base = ["--config", "configs/moss/i2i/colorize/generate.toml", "--lora", f"{COLORIZE_LORA}.safetensors"]  # fmt: skip
+    elif part == "sanitize":
         inputs = sanitize_inputs(pages or SANITIZE_PAGES)
         base = ["--config", "configs/moss/i2i/sanitize/generate.toml", "--lora", f"{SAN}.safetensors"]  # fmt: skip
     else:
@@ -434,6 +503,8 @@ def run_task(part, out, arms, seeds, pages=None, kernel="fast"):
             summary[inp["key"]] = dict(
                 ref=inp["ref"],
                 boxes=inp.get("boxes"),
+                lines=inp.get("lines"),
+                prompt=inp["prompt"],
                 cells=int(inp["cells"].sum()),
                 arms={**prev, **{f"{a}_s{s}": e for (a, s), e in rows.items()}},
             )
@@ -444,6 +515,9 @@ def run_task(part, out, arms, seeds, pages=None, kernel="fast"):
                 out / f"sheet_{inp['key']}.png", inp["ref"], inp["cells"], grid, (W, H)
             )
             log(f"{part} {inp['key']}: sheet rows seeds {seeds}, columns ref, {', '.join(arms)}")  # fmt: skip
+            if part == "colorize":
+                for s, row in zip(seeds, grid):
+                    zoom(out / f"zoom_{inp['key']}_s{s}.png", inp["ref"], inp["boxes"], row, (W, H))  # fmt: skip
 
 
 def run_edit(out, arms, kernel="fast"):
