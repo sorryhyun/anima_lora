@@ -116,6 +116,13 @@ def parse_args():
         "`channel_scaling_alpha > 0` in the method config.",
     )
     p.add_argument(
+        "--dump_channel_mean",
+        default=None,
+        help="Write the signed per-input-channel token mean x̄ (same keys as "
+        "--dump_channel_stats). Read by down_init=weight_svd_nodc from "
+        "`networks/calibration/channel_mean.safetensors`.",
+    )
+    p.add_argument(
         "--print_top_n_modules",
         type=int,
         default=20,
@@ -138,7 +145,9 @@ _FUSED_TO_SPLIT_SUFFIXES = (
 )
 
 
-def dump_channel_stats_safetensors(stats, out_path, prefix="lora_unet_"):
+def dump_channel_stats_safetensors(
+    stats, out_path, prefix="lora_unet_", field="sum_abs", what="mean|x|"
+):
     """Save full per-input-channel mean_abs vectors keyed by LoRA module name.
 
     Each entry in `stats` is keyed by a dot-separated module path (e.g.
@@ -155,7 +164,7 @@ def dump_channel_stats_safetensors(stats, out_path, prefix="lora_unet_"):
     for module_path, stat in stats.items():
         if stat.get("count", 0) == 0:
             continue
-        mean_abs = (stat["sum_abs"] / stat["count"]).float().contiguous()
+        mean_abs = (stat[field] / stat["count"]).float().contiguous()
         lora_name = prefix + module_path.replace(".", "_")
         tensors[lora_name] = mean_abs
         for fused_suffix, split_suffixes in _FUSED_TO_SPLIT_SUFFIXES:
@@ -169,7 +178,7 @@ def dump_channel_stats_safetensors(stats, out_path, prefix="lora_unet_"):
         os.makedirs(out_dir, exist_ok=True)
     save_file(tensors, out_path)
     logger.info(
-        f"wrote per-channel mean|x| stats for {len(tensors)} keys to {out_path} "
+        f"wrote per-channel {what} stats for {len(tensors)} keys to {out_path} "
         f"(fused qkv/kv mirrored to per-component q/k/v)"
     )
 
@@ -233,7 +242,11 @@ def install_channel_hooks(model: torch.nn.Module):
                 return
             x = inputs[0]
             with torch.no_grad():
-                xf = x.detach().to(torch.float32).abs()
+                xs = x.detach().to(torch.float32)
+                stat_ref["sum"] += (
+                    xs.reshape(-1, xs.shape[-1]).sum(dim=0).double().cpu()
+                )
+                xf = xs.abs()
                 xf_flat = xf.reshape(-1, xf.shape[-1])  # [N, C]
                 stat_ref["sum_abs"] += xf_flat.sum(dim=0).double().cpu()
                 cur_max = xf_flat.max(dim=0).values.double().cpu()
@@ -251,6 +264,7 @@ def install_channel_hooks(model: torch.nn.Module):
         in_dim = module.in_features
         stats[clean_path] = {
             "sum_abs": torch.zeros(in_dim, dtype=torch.float64),
+            "sum": torch.zeros(in_dim, dtype=torch.float64),
             "max_abs": torch.zeros(in_dim, dtype=torch.float64),
             "count": 0,
             "in_dim": in_dim,
@@ -471,6 +485,10 @@ def main():
 
     if args.dump_channel_stats:
         dump_channel_stats_safetensors(stats, args.dump_channel_stats)
+    if args.dump_channel_mean:
+        dump_channel_stats_safetensors(
+            stats, args.dump_channel_mean, field="sum", what="signed mean x̄"
+        )
 
 
 if __name__ == "__main__":

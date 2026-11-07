@@ -41,6 +41,9 @@ Experiments (``--exp``, docs/anima/findings/lora_recipe.md):
   exist (``norepa128_*``, ``norepa512_*``).
 - ``rank_ama`` (s41): s34 on ama mitsuki, REPA off, at alpha 512 / lr 1.25e-5 for
   rank 32 and alpha 362 (∝ √r) for rank 16; seeds 42-43, four render seeds.
+- ``nodc`` (s43): the shipped recipe against ``down_init=weight_svd_nodc`` +
+  ``channel_scaling_floor=0.01``, caststation and sweetonedollar, seeds 42-44,
+  matched ``||dW||``.
 
 ``train``: queues the missing LoRAs on the daemon. ``render``: (``match`` first
 when the experiment asks for it) every LoRA renders the prompts x render seeds
@@ -402,6 +405,27 @@ EXPS = {
         report="bench/anima_abclip/report_rank_ama.md",
         match_dw=True,
         seeds=(42, 43),
+    ),
+    "nodc": Exp(
+        artists=("cast", "sweet"),
+        arms=("svd", "nodc"),
+        stems={"svd": "s43svd_{art}_s{seed}", "nodc": "s43nodc_{art}_s{seed}"},
+        train_args={
+            "svd": "",
+            "nodc": "--network_args down_init=weight_svd_nodc "
+            "channel_scaling_floor=0.01",
+        },
+        describe="svd = the shipped lora.toml (weight_svd, channel scaling α 0.5); "
+        "nodc = lora_down seeded from W(I − ûûᵀ), û the calibrated input mean, plus "
+        "the channel-scaling floor 0.01 (render-neutral by construction: it only "
+        "moves near-dead channels); nodc rescaled to svd's median ||dW||",
+        render_seeds=(31, 32),
+        set_prefix="s43_NODC",
+        renders="output/tests/nodc",
+        shuffle_seed=43,
+        report="bench/anima_abclip/report_nodc.md",
+        match_dw=True,
+        seeds=(42, 43, 44),
     ),
 }
 

@@ -60,6 +60,7 @@ cheaper side, and the shipped side when neither is.
 | s40 | `repa128` | a128 REPA on vs off | 23–22, 3 blank | 0.69 | cast 12–10, sweet 11–12 |
 | s41 | `rank_ama` | r32 / a512 vs r16 / a362 (alpha ∝ √r), REPA off, ama mitsuki | 17–15 | — (2 seeds) | bikini 7–1 r32 |
 | s42 | `alpha_norepa` | s35, REPA off in both | 23–22, 3 blank | 0.64 | seed 42 6–2 to a512 on both artists |
+| s43 | `nodc` | `weight_svd` vs `weight_svd_nodc` + `channel_scaling_floor` 0.01, matched | 25–23 | 0.73 | by prompt, both artists: classroom / hug 19–5 svd, maid / beach 6–18 nodc |
 
 Every arm through s36 trained with relational REPA on. s29 and s30 trained with the T-LoRA
 mask on and rendered at full rank, so each arm was trained as one model and rendered as

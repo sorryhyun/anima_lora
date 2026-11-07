@@ -82,6 +82,7 @@ class LoRAModule(BaseLoRAModule):
         grad_basis=None,
         svd_slice=0,
         svd_slice_count=0,
+        svd_drop=None,
     ):
         """if alpha == 0 or None, alpha is rank (no scaling).
 
@@ -99,7 +100,10 @@ class LoRAModule(BaseLoRAModule):
         orthonormal basis) — a per-artist address for merging. 0 = top-r.
         ``svd_slice_count=N`` (> 0) interleaves instead: slice k takes vectors
         ``{k, k+N, k+2N, …}``, so every slice gets one of the top-N directions.
-        See docs/anima/methods/svd-down-lora.md.
+        ``"weight_svd_nodc"`` takes the same basis from ``W(I − ûûᵀ)``, ``û`` the
+        calibrated input DC direction ``svd_drop`` (signed token mean x̄), so
+        every ``lora_down`` row starts ⊥ x̄; ``svd_drop=None`` falls back to
+        ``weight_svd``. See docs/anima/methods/svd-down-lora.md.
         """
         super().__init__(
             lora_name,
@@ -133,14 +137,15 @@ class LoRAModule(BaseLoRAModule):
         torch.nn.init.kaiming_uniform_(self.lora_down.weight, a=math.sqrt(5))
         torch.nn.init.zeros_(self.lora_up.weight)
 
-        if down_init == "weight_svd":
-            self._init_down_weight_svd(org_module, svd_slice, svd_slice_count)
+        if down_init in ("weight_svd", "weight_svd_nodc"):
+            drop = svd_drop if down_init == "weight_svd_nodc" else None
+            self._init_down_weight_svd(org_module, svd_slice, svd_slice_count, drop)
         elif down_init in ("grad_svd", "basis_file"):
             self._init_down_grad_basis(grad_basis, down_init)
         elif down_init != "kaiming":
             raise ValueError(
                 f"down_init={down_init!r}: expected 'kaiming', 'weight_svd', "
-                f"'grad_svd' or 'basis_file'."
+                f"'weight_svd_nodc', 'grad_svd' or 'basis_file'."
             )
 
         self._register_channel_scale(self.lora_down.weight.data, channel_scale)
@@ -153,7 +158,11 @@ class LoRAModule(BaseLoRAModule):
         self._fused = False
 
     def _init_down_weight_svd(
-        self, org_module: torch.nn.Module, svd_slice: int = 0, svd_slice_count: int = 0
+        self,
+        org_module: torch.nn.Module,
+        svd_slice: int = 0,
+        svd_slice_count: int = 0,
+        drop: torch.Tensor | None = None,
     ) -> None:
         """SVD-Down: seed ``lora_down`` with W0's top-r right singular vectors.
 
@@ -169,6 +178,11 @@ class LoRAModule(BaseLoRAModule):
         confounded with "larger effective step". Linear only — Conv2d keeps the
         Kaiming init already written above. The basis comes from
         ``_top_right_singular_vectors`` (exact, Gram-routed).
+
+        ``drop`` (``(in,)``, the signed input mean x̄): the basis is taken from
+        ``W(I − ûûᵀ)`` instead, so every row starts ⊥ x̄ and the initial
+        ``lora_down · x̄ = 0`` (the ``weight_svd_nodc`` init). The spectrum loses
+        that one vector.
         """
         if not isinstance(self.lora_down, torch.nn.Linear):
             logger.warning(
@@ -183,12 +197,17 @@ class LoRAModule(BaseLoRAModule):
         else:
             idx = int(svd_slice) * rank + torch.arange(rank)
         offset, end = int(idx[0]), int(idx[-1]) + 1
-        if end > min(W.shape):
+        spectrum = min(W.shape) - (0 if drop is None else 1)
+        if end > spectrum:
             raise ValueError(
                 f"svd_slice={svd_slice}: window [{offset}, {end}) exceeds "
-                f"the {min(W.shape)}-vector spectrum of {self.lora_name} "
+                f"the {spectrum}-vector spectrum of {self.lora_name} "
                 f"({tuple(W.shape)}); lower the slice or the rank."
             )
+        if drop is not None:
+            u = drop.to(W.device, torch.float32).flatten()
+            u = u / u.norm().clamp_min(1e-12)
+            W = W - torch.outer(W @ u, u)
         # Exact basis: slice 0 is the actual top-r and every slice pair is
         # exactly orthogonal (a randomized sketch would break both).
         V = _top_right_singular_vectors(W, end)

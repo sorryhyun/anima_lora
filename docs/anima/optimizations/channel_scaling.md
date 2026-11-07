@@ -48,7 +48,7 @@ The forward is bit-equivalent at init (`(x · s⁻¹) @ (down · s)ᵀ == x @ do
 
 What it does **not** touch: the `lora_up` gradient. `∂L/∂up = Σ_t g_t h_tᵀ` depends only on the adapter latent `h = down·x`, which the reparameterization leaves bit-identical, so the up-side effect GraLoRA describes (the outlier channel's column of the full-fine-tune gradient entering every element of `up` through `down[:, c]`, then smeared over all input columns by `Δup·down`) is untouched. On MOSS-Image this up-side term is large and has its own fix (`dc_isolate`, on by default): `docs/moss/channel_scaling.md`.
 
-Dead-channel caveat (standard SmoothQuant wart): channels with near-zero `mean|x|` get a gradient boost of up to `1/s ≈ 325` (main `mlp.layer2`) / 648 (cond stream). Bounded by the `clamp_min(1e-6)` and their leverage still scales as `mean|x|^(1-α)`, so it is not a hazard — just don't be surprised by large `inv_scale` entries on post-GELU inputs.
+Dead-channel caveat (standard SmoothQuant wart): channels with near-zero `mean|x|` get a gradient boost of up to `1/s ≈ 325` (main `mlp.layer2`) / 648 (cond stream). Adam's step does not depend on the gradient's size, so those `lora_down` columns random-walk at `lr/s` in raw coordinates. Their output is ≤ 1e-4 of the LoRA's, but on the 676-update soup shards they held 33–43 % of the saved ‖ΔW‖² (5 % on a 256-step single-artist run), which skews every tool that reads ‖ΔW‖ (`dw_cos.py` energy shares, `merge_loras.py --normalize global`, `match_dw`). `channel_scaling_floor = τ` (network arg, 0 = off) clamps `mean|x|` at `τ · median` before the power; τ = 0.01 bounds a dead channel's boost at 10× a median channel's and takes the dead-column share to 0.000.
 
 ## Liveness: which variants this actually affects
 

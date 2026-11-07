@@ -77,6 +77,7 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
         self._channel_scale_hits: int = 0
         self._grad_basis_misses: List[str] = []
         self._grad_basis_hits: int = 0
+        self._channel_mean_misses: List[str] = []
         self._sigma_router_hits: int = 0
         self._hydra_router_hits: int = 0
         self._hydra_router_misses: int = 0
@@ -422,12 +423,22 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
                 # kwarg never reaches Hydra/StepExpert.
                 if cfg.down_init != "kaiming" and effective_module_class is LoRAModule:
                     extra_kwargs["down_init"] = cfg.down_init
-                    # adaln_up_* stays on the shared top-r (see cfg.svd_slice).
-                    if cfg.down_init == "weight_svd" and "adaln_up_" not in lora_name:
+                    svd_init = cfg.down_init in ("weight_svd", "weight_svd_nodc")
+                    # adaln_up_* stays on the shared top-r (see cfg.svd_slice),
+                    # and keeps its DC: its σ-only input is ~all mean (cos ≥ 0.99),
+                    # so projecting x̄ out would leave it nothing to read.
+                    if svd_init and "adaln_up_" in lora_name:
+                        extra_kwargs["down_init"] = "weight_svd"
+                    elif svd_init:
                         if cfg.svd_slice:
                             extra_kwargs["svd_slice"] = int(cfg.svd_slice)
                         if cfg.svd_slice_count:
                             extra_kwargs["svd_slice_count"] = int(cfg.svd_slice_count)
+                        if cfg.down_init == "weight_svd_nodc":
+                            _mu = cfg.channel_mean_dict.get(lora_name)
+                            if _mu is None:
+                                self._channel_mean_misses.append(lora_name)
+                            extra_kwargs["svd_drop"] = _mu
                     # Gradient-SVD modes carry a per-layer basis; DiT-only (the
                     # sketch never ran on the TE) and a missing key means that
                     # module keeps Kaiming, counted for the summary below.
@@ -520,6 +531,13 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
                     f"--per_artist --dump_channel_stats networks/calibration/channel_stats.safetensors` "
                     f"if this is unexpected."
                 )
+
+        if self._channel_mean_misses:
+            logger.warning(
+                f"weight_svd_nodc: {len(self._channel_mean_misses)} modules have no "
+                f"input mean and keep the plain weight_svd basis "
+                f"(first: {self._channel_mean_misses[:3]})."
+            )
 
         if cfg.grad_basis_dict is not None:
             logger.info(
@@ -1451,7 +1469,7 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
         # slice share an input subspace, different slices are orthogonal.
         if getattr(self.cfg, "down_init", "kaiming") != "kaiming":
             metadata["ss_down_init"] = str(self.cfg.down_init)
-            if self.cfg.down_init == "weight_svd":
+            if self.cfg.down_init in ("weight_svd", "weight_svd_nodc"):
                 metadata["ss_svd_slice"] = str(int(getattr(self.cfg, "svd_slice", 0)))
                 if getattr(self.cfg, "svd_slice_count", 0):
                     metadata["ss_svd_slice_count"] = str(int(self.cfg.svd_slice_count))

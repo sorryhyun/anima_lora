@@ -242,6 +242,10 @@ class LoRANetworkCfg:
     # down_init="grad_svd"/"basis_file", built by networks/grad_basis.py.
     grad_basis_dict: Optional[Dict[str, torch.Tensor]] = None
 
+    # Signed input token mean x̄, {lora_name: (in,)} — required by
+    # down_init="weight_svd_nodc" (networks/calibration/channel_mean.safetensors).
+    channel_mean_dict: Optional[Dict[str, torch.Tensor]] = None
+
     # σ-conditional router parameters (router_source="sigma"). Layer scope
     # shared with Hydra/FEI via router_targets above.
     sigma_feature_dim: int = 16
@@ -281,6 +285,7 @@ class LoRANetworkCfg:
         module_class: Type,
         channel_scales_dict: Optional[Dict[str, torch.Tensor]] = None,
         grad_basis_dict: Optional[Dict[str, torch.Tensor]] = None,
+        channel_mean_dict: Optional[Dict[str, torch.Tensor]] = None,
     ) -> "LoRANetworkCfg":
         """Build cfg from train.py's stringified ``net_kwargs`` dict."""
         if network_dim is None:
@@ -335,10 +340,21 @@ class LoRANetworkCfg:
         router_lr_scale = float(router_lr_scale) if router_lr_scale is not None else 1.0
 
         down_init = str(kwargs.get("down_init", "kaiming"))
-        if down_init not in ("kaiming", "weight_svd", "grad_svd", "basis_file"):
+        if down_init not in (
+            "kaiming",
+            "weight_svd",
+            "weight_svd_nodc",
+            "grad_svd",
+            "basis_file",
+        ):
             raise ValueError(
                 f"down_init={down_init!r}: expected 'kaiming', 'weight_svd', "
-                f"'grad_svd' or 'basis_file'."
+                f"'weight_svd_nodc', 'grad_svd' or 'basis_file'."
+            )
+        if down_init == "weight_svd_nodc" and not channel_mean_dict:
+            raise ValueError(
+                "down_init='weight_svd_nodc' needs the input-mean calibration "
+                "(networks/calibration/channel_mean.safetensors)."
             )
         if down_init in ("grad_svd", "basis_file") and not grad_basis_dict:
             raise ValueError(
@@ -351,20 +367,20 @@ class LoRANetworkCfg:
         svd_slice = int(kwargs.get("svd_slice", 0) or 0)
         if svd_slice < 0:
             raise ValueError(f"svd_slice={svd_slice}: must be a non-negative integer.")
-        if svd_slice and down_init != "weight_svd":
+        if svd_slice and down_init not in ("weight_svd", "weight_svd_nodc"):
             raise ValueError(
                 f"svd_slice={svd_slice} only applies to down_init='weight_svd' "
-                f"(got {down_init!r})."
+                f"or 'weight_svd_nodc' (got {down_init!r})."
             )
         svd_slice_count = int(kwargs.get("svd_slice_count", 0) or 0)
         if svd_slice_count < 0:
             raise ValueError(
                 f"svd_slice_count={svd_slice_count}: must be a non-negative integer."
             )
-        if svd_slice_count and down_init != "weight_svd":
+        if svd_slice_count and down_init not in ("weight_svd", "weight_svd_nodc"):
             raise ValueError(
                 f"svd_slice_count={svd_slice_count} only applies to "
-                f"down_init='weight_svd' (got {down_init!r})."
+                f"down_init='weight_svd' or 'weight_svd_nodc' (got {down_init!r})."
             )
         if svd_slice_count and svd_slice >= svd_slice_count:
             raise ValueError(
@@ -559,6 +575,7 @@ class LoRANetworkCfg:
             step_expert_K=step_expert_K,
             channel_scales_dict=channel_scales_dict,
             grad_basis_dict=grad_basis_dict,
+            channel_mean_dict=channel_mean_dict,
             verbose=verbose,
         )
 

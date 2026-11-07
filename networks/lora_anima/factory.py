@@ -31,6 +31,11 @@ logger = logging.getLogger(__name__)
 _CHANNEL_STATS_PATH = (
     Path(__file__).resolve().parent.parent / "calibration" / "channel_stats.safetensors"
 )
+# Signed per-channel token mean x̄ from the same calibration pass, read by
+# down_init="weight_svd_nodc" (--dump_channel_mean).
+_CHANNEL_MEAN_PATH = (
+    Path(__file__).resolve().parent.parent / "calibration" / "channel_mean.safetensors"
+)
 
 
 def _load_channel_scales(
@@ -45,6 +50,13 @@ def _load_channel_scales(
     channel_scaling_alpha = float(raw_alpha) if raw_alpha is not None else 0.0
     if channel_scaling_alpha == 0.0:
         return None
+    # Floor on mean|x| as a fraction of the module's median: near-dead channels
+    # (post-GELU mlp.layer2 inputs at < 1 % of the median) otherwise get a 1/s
+    # of hundreds, and Adam's gradient-blind step random-walks their lora_down
+    # columns that far in raw coordinates — inert in the output, but a third of
+    # a trained LoRA's ||dW||^2. 0 = no floor.
+    raw_floor = kwargs.get("channel_scaling_floor", 0.0)
+    channel_scaling_floor = float(raw_floor) if raw_floor is not None else 0.0
 
     if not _CHANNEL_STATS_PATH.is_file():
         raise FileNotFoundError(
@@ -58,12 +70,38 @@ def _load_channel_scales(
     raw_stats = _load_channel_stats_file(str(_CHANNEL_STATS_PATH))
     out: Dict[str, torch.Tensor] = {}
     for _lora_name, _mean_abs in raw_stats.items():
-        _s = _mean_abs.float().clamp_min(1e-6).pow(channel_scaling_alpha)
+        _m = _mean_abs.float().clamp_min(1e-6)
+        if channel_scaling_floor > 0.0:
+            _m = _m.clamp_min(channel_scaling_floor * _m.median())
+        _s = _m.pow(channel_scaling_alpha)
         _s = _s / _s.mean().clamp_min(1e-12)
         out[_lora_name] = _s
     logger.info(
         f"channel_scaling: alpha={channel_scaling_alpha}, "
+        f"floor={channel_scaling_floor}, "
         f"stats={_CHANNEL_STATS_PATH.name} ({len(out)} calibrated modules)"
+    )
+    return out
+
+
+def _load_channel_mean(
+    kwargs: Dict[str, object],
+) -> Optional[Dict[str, torch.Tensor]]:
+    """Signed input token mean x̄ per module, gated on ``down_init="weight_svd_nodc"``."""
+    if str(kwargs.get("down_init", "kaiming") or "kaiming") != "weight_svd_nodc":
+        return None
+    if not _CHANNEL_MEAN_PATH.is_file():
+        raise FileNotFoundError(
+            f"down_init='weight_svd_nodc' needs {_CHANNEL_MEAN_PATH}. Generate with:\n"
+            f"  python scripts/calibration/analyze_lora_input_channels.py "
+            f"--per_artist --dump_channel_mean {_CHANNEL_MEAN_PATH}"
+        )
+    from safetensors.torch import load_file
+
+    out = {k: v.float() for k, v in load_file(str(_CHANNEL_MEAN_PATH)).items()}
+    logger.info(
+        f"weight_svd_nodc: input means from {_CHANNEL_MEAN_PATH.name} "
+        f"({len(out)} modules)"
     )
     return out
 
@@ -128,6 +166,7 @@ def create_network(
 
     channel_scales_dict = _load_channel_scales(kwargs)
     grad_basis_dict = _load_grad_basis(kwargs, unet)
+    channel_mean_dict = _load_channel_mean(kwargs)
 
     cfg = LoRANetworkCfg.from_kwargs(
         kwargs,
@@ -137,6 +176,7 @@ def create_network(
         module_class=spec.module_class,
         channel_scales_dict=channel_scales_dict,
         grad_basis_dict=grad_basis_dict,
+        channel_mean_dict=channel_mean_dict,
     )
 
     if cfg.router_lr_scale != 1.0:
