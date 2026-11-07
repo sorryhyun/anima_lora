@@ -1,0 +1,13 @@
+# Plan step 3, v2 data: the Hangul block's synthetic pairs (project/lora_blocks/src/build_hangul_v2.py),
+# cached as swap_text ksplit's: layout JSON, Hangul split into syllable tokens, pipeline prompt.
+# After the cache, src/link_hangul_twins.py --out post_image_dataset/moss/hangul_block_v2 links 150 ko edition-twin pairs of the ksplit cache in.
+#
+#   make daemon-run ARGS="--stall-timeout 900 scripts/moss/cache.py --config project/lora_blocks/configs/hangul_v2_cache.toml"
+
+pairs = "post_image_dataset/i2i/hangul_block_v2/pairs.jsonl"
+out = "post_image_dataset/moss/hangul_block_v2"
+resolution = 1024
+ref_scale = 1
+caption_format = "layout_json"
+token_split = "syllable"
+prompt_tail = "off"

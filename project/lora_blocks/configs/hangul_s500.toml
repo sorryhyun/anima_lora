@@ -1,0 +1,24 @@
+# Plan step 3: the Hangul block, 500 steps from C (c_fill_s400). 600 synthetic Korean
+# lettering pairs + 150 ko edition twins (hangul_cache.toml), the sanitize_ft_c recipe
+# (muon, lr 5e-5, rank 32, int8 plan, EMA off) with swap_text's region_weight 2, no gate
+# (training has cut only; boost outside the boxes is inference-side). A save every 100.
+#
+#   make daemon-run ARGS="--queue --stall-timeout 900 scripts/moss/train.py --config project/lora_blocks/configs/hangul_s500.toml"
+
+cache = "post_image_dataset/moss/hangul_block"
+output = "output/ckpt_moss_i2i/hangul_s500.safetensors"
+init_lora = "output/ckpt_moss_i2i/c_fill_s400.safetensors"
+max_steps = 500
+save_every_steps = 100
+ema_window = 0.0
+ref_timestep = 0.0
+ref_isolate = true
+region_weight = 2.0
+optimizer = "muon"
+lr = 5e-5
+tone_weight = 0.0
+int8 = "stream"
+stream = "fp32"
+blocks_to_swap = 36
+activation_memory_budget = 0.15
+swap_h2d_only = true

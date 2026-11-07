@@ -38,7 +38,7 @@ on AnimeText boxes removes the sanitize eval pages' stamps and watermark on ever
 no sanitize pair; the copy head forms by step 200. Outside the hole it darkens one page
 (no tone term). `cut` replaces `diag` as the training and removal gate.
 
-**3. A Hangul block: one LoRA part that writes Korean well, reused by every task.** L as
+**3. A Hangul block: one LoRA part that writes Korean well, reused by every task. v1 data negative** ([reports/hangul_s500.md](reports/hangul_s500.md)), **v2 data works** ([reports/hangul_v2_s500.md](reports/hangul_v2_s500.md)): right syllables, bold clean strokes, uncaptioned text kept; e2 is already crisp on the eval pages, so the soft-page read (step 0) is still owed. L as
 proposed is swap_text's drawing; the more useful form is a block for Korean lettering on
 its own, which swap_text, colorize (where a glyph has to be redrawn), uncensor / sanitize
 pages with text, and t2i would all stack or init from.
