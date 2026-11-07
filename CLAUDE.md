@@ -50,8 +50,9 @@ can fail on the torch index split. Weights are rows in the model catalog
   GPU process started from a Claude Code background Bash is SIGKILLed by the harness
   sandbox after ~1 min, no trace. `make daemon-run ARGS="[--stall-timeout S] <script.py>
   [flags]"` (daemon-run's own flags go *before* the script path); `make run-status`
-  follows a run's `progress.jsonl`. Wait on a queued job with `make daemon-wait
-  JOB=<id>`, never by parsing `daemon-status` (it lists unfinished jobs only; `rc=-` =
+  follows a run's `progress.jsonl`. Submit with `--queue`, then wait with `make
+  daemon-wait JOB=<id>` in a background Bash (`run_in_background`) — not a Monitor
+  loop, and never by parsing `daemon-status` (it lists unfinished jobs only; `rc=-` =
   not finished). Everything else: `daemon` skill.
 - **Use torch.compile wherever it can pay.** Any job that runs the DiT over more than a
   handful of images (training, batch renders, bench render loops, `make gen`, A/B sweeps)

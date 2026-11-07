@@ -13,12 +13,24 @@ Claude Code background Bash gets killed by the harness sandbox layer after ~1 mi
 SIGKILL — no OS/OOM trace, no traceback; observed 2026-07-25). Daemon jobs also queue
 behind a live train run instead of OOM-colliding, and survive the terminal.
 
+**Agent loop: submit detached, wait in the background.**
+
+1. Submit with `--queue` (`make daemon-run ARGS="--queue [--stall-timeout S] <script.py> …"`,
+   `make lora ARGS="--queue …"`). It prints the job id and returns. Without it the submit
+   attaches and blocks a foreground Bash until the job ends.
+2. Wait with one Bash `run_in_background: true` running `make daemon-wait JOB=<id>`. It
+   notifies once when the job exits; read the result then (`make daemon-log JOB=<id>`,
+   `make run-status`). Jobs queued back to back need only a wait on the last one whose
+   result you act on.
+
+Details and limits: § Waiting on a job.
+
 ## Targets
 
-`make daemon | daemon-run ARGS="<script.py> …" | daemon-wait [JOB=<id>] | daemon-attach [JOB=<id>] | daemon-status [JOB=<id>] | daemon-jobs | daemon-log [JOB=<id>] | daemon-pause [JOB=<id>] | daemon-resume [JOB=<id>] | daemon-kill | daemon-terminate | daemon-prune`
+`make daemon | daemon-run ARGS="<script.py> …" | daemon-wait [JOB=<id>] | daemon-attach [JOB=<id>] | daemon-status [JOB=<id>] | daemon-jobs | daemon-log [JOB=<id>] | daemon-pause [JOB=<id>] | daemon-resume [JOB=<id>] | daemon-kill [JOB=<id>] | daemon-terminate | daemon-prune`
 
 - **`make daemon-run ARGS="<script.py> [flags]"`** attaches by default and exits with the
-  job's code; `--queue` detaches, `--inline` bypasses the daemon; `--stall-timeout S`,
+  job's code (for a user at a terminal; agents pass `--queue`); `--queue` detaches, `--inline` bypasses the daemon; `--stall-timeout S`,
   `0` = off. daemon-run's own `--label`/`--stall-timeout` go **before** the script path:
   after it every token reaches the child (bench scripts take `--label` themselves), and
   `--` passes everything after it verbatim.
@@ -36,19 +48,17 @@ behind a live train run instead of OOM-colliding, and survive the terminal.
 
 ## Waiting on a job (agent sessions)
 
-Wait on a job with **Bash `run_in_background: true`** running `make daemon-wait JOB=<id>`.
-Send step / ETA updates only when the user asks for them. In an interactive local session a background command has no time limit (Claude Code docs,
-"Time limit for background commands"). `daemon-wait` is CPU-only, so the harness's
-GPU-process kill should not reach it (not yet observed on a wait past ~1 min). Linux reaps background shells under critical
-memory pressure once the session has idled 30 min (`CLAUDE_CODE_DISABLE_BG_SHELL_PRESSURE_REAP=1`
-turns it off) — a waiter can vanish during a RAM-heavy run; `daemon-jobs` still has the
-answer.
+The background `daemon-wait` of the agent loop above. Send step / ETA updates only when
+the user asks for them.
 
-Not **Monitor**: its deadline is hard-capped at 30 min (a larger `timeout_ms` is clamped
-silently; Claude Code 2.1.296) and it kills the command at expiry. Use it only for
-per-line events mid-run, re-armed each expiry; `ARGS="--timeout 1740"` makes
-`daemon-wait` exit 124 first with a JSON snapshot (state, last progress event, its
-staleness).
+- A background command has no time limit in an interactive local session, and
+  `daemon-wait` is CPU-only, so the GPU-process kill does not apply to it.
+- Linux reaps background shells under critical memory pressure once the session has
+  idled 30 min (`CLAUDE_CODE_DISABLE_BG_SHELL_PRESSURE_REAP=1` turns it off): a waiter
+  can vanish during a RAM-heavy run. `daemon-jobs` still has the answer.
+- Not **Monitor**: its deadline is capped at 30 min and it kills the command at expiry.
+  `ARGS="--timeout S"` makes `daemon-wait` exit 124 at S seconds with a JSON snapshot
+  (state, last progress event, its staleness).
 
 ## Job environment
 
