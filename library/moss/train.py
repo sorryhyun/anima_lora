@@ -490,8 +490,13 @@ def train(
                 parts, state = {}, {}
                 tone = None
                 if s.stem in rests:
+                    rest = rests[s.stem].to(device)
+                    if transformer.ref_gate is not None:
+                        # The hole is filled, not copied: keep it out of the tone term.
+                        rest = rest.clone()
+                        rest.view(-1)[transformer.ref_gate[0]] = False
                     tone = dict(
-                        rest=rests[s.stem].to(device),
+                        rest=rest,
                         pool=req.tone_pool,
                         proj=tone_proj_b
                         if step >= total * req.tone_b_start
