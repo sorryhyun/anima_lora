@@ -16,6 +16,7 @@ from library.int8.linear import (
     Int8TrainLinear,
     convert_,
     int8_mm,
+    kernel_divides_fp32,
     quantize,
     stream_wqt_,
 )
@@ -61,14 +62,16 @@ def test_bf16_config_is_the_swap_plan():
 
 @needs_cuda
 @pytest.mark.parametrize("mode", ["infer", "full"])
-def test_forward_hands_the_kernel_fp32(mode):
+def test_forward_gives_the_fp32_input(mode):
+    """comfy-kitchen#289: a stock kernel rounds a bf16 input around its division, so the
+    forward casts; a fixed one (ck-fp32div) takes the bf16 input with the same bits."""
     lin = linear()
     convert_(lin, mode)
     x = torch.randn(M, K, device=DEV, dtype=torch.bfloat16)
     y = lin(x)
     assert y.dtype == torch.bfloat16
     assert torch.equal(y, int8_mm(x.float(), lin.wq, lin.s))
-    assert not torch.equal(y, int8_mm(x, lin.wq, lin.s))
+    assert torch.equal(y, int8_mm(x, lin.wq, lin.s)) == kernel_divides_fp32()
 
 
 @pytest.mark.core

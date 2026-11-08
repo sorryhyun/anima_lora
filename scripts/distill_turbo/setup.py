@@ -30,6 +30,7 @@ from library.anima.uncond import (
 )
 from library.datasets.cache import CachedDataset
 from library.inference.sampling import get_timesteps_sigmas
+from library.int8.linear import int8_input_tag
 from library.runtime.dynamo import (
     compile_signature,
     isolate_compile_cache,
@@ -336,7 +337,7 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
             + (
                 ""
                 if cfg.int8 == "off"
-                else f";int8={cfg.int8};int8_in=fp32;flops=fa2,int8"
+                else f";int8={cfg.int8};int8_in={int8_input_tag()};flops=fa2,int8"
             )
             + ("" if cfg.stream == "bf16" else f";stream={cfg.stream}")
         )

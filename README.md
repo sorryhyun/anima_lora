@@ -136,6 +136,10 @@ make download-list        # installed vs missing; SAM3 and OCR are opt-in
 - ROCm users repeat the same `--group` flags on every later manual `uv sync`. To keep an opt-in torch across updates, run `ANIMA_TORCH=2.13 make update` once.
 - The manual CUDA path does not install the CUDA 13.2 toolkit that `torch.compile` / Triton needs: see [installation guide, Appendix B](docs/installation/README.md#appendix-b-manual-cuda-install).
 - Install with `uv sync` against the committed `uv.lock`, not `pip install`: pip ignores uv's index strategy and the prebuilt flash-attn wheels.
+- Optional, Linux x86_64: `comfy-kitchen` with the INT8 activation fix ([comfy-kitchen#289](https://github.com/Comfy-Org/comfy-kitchen/issues/289)). The int8 DiT linears then skip their fp32 input copy at the same output, and the int8 backward and the MOSS int8 text encoder divide in fp32. The trainer detects the kernel at runtime; the stock one keeps working. Needs libstdc++ from GCC 13+ (Ubuntu 24.04+). Every `uv sync` / `make update` puts the stock wheel back, so repeat it after one:
+  ```bash
+  uv pip install --no-deps "https://github.com/sorryhyun/anima_lora/releases/download/deps-comfy-kitchen-0.2.41-fp32div/comfy_kitchen-0.2.41%2Bfp32div-cp312-abi3-linux_x86_64.whl"
+  ```
 
 ## License
 

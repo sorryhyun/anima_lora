@@ -251,6 +251,7 @@ def compile_blocks(blocks, seq_range=None, ref_range=None) -> None:
     A block with ``ref_bank`` keeps a Python ``forward`` and compiles ``main_rows`` and
     ``ref_rows`` apart. ``seq_range`` is then the image + text range and ``ref_range``
     the reference's (``main_rows``' ``ref_export`` marked to it)."""
+    from library.int8.linear import int8_input_tag
     from library.runtime.dynamo import (
         compile_signature,
         isolate_compile_cache,
@@ -282,7 +283,7 @@ def compile_blocks(blocks, seq_range=None, ref_range=None) -> None:
             compile_signature(
                 n_token_families=None, seq_range=(lo, hi), dynamic_seq=True
             )
-            + ";line=moss;static;flops=fa2,int8;int8_in=fp32"
+            + f";line=moss;static;flops=fa2,int8;int8_in={int8_input_tag()}"
             + (f";ref={ref_range[0]}-{ref_range[1]}" if ref_range else "")
         )
         # A Python int is a constant under dynamic=False: ref_start would specialise

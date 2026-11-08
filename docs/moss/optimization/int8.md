@@ -222,8 +222,13 @@ Numbers: [`moss_act_scale.md`](../../../project/finished/int8_train/reports/moss
 Upstream: [comfy-kitchen#289](https://github.com/Comfy-Org/comfy-kitchen/issues/289), with a fix
 on [`sorryhyun/comfy-kitchen`](https://github.com/sorryhyun/comfy-kitchen/tree/int8-activation-fp32-division).
 It divides in fp32, so a bf16 input gives the fp32 input's output, the same prediction error,
-and bf16's speed. Once a release carries it, `Int8TrainLinear.forward` can go
-back to bf16 and drop the 0.05 s/step.
+and bf16's speed. A Linux x86_64 build of v0.2.41 with it is on the
+[`deps-comfy-kitchen-0.2.41-fp32div`](https://github.com/sorryhyun/anima_lora/releases/tag/deps-comfy-kitchen-0.2.41-fp32div)
+release (install line: [README](../../../README.md#manual-from-a-clone)).
+`library.int8.linear.kernel_divides_fp32()` probes the kernel once on the card; on a fixed one
+`Int8TrainLinear.forward` passes its input through (inputs that arrive in fp32 stay fp32, so
+the forward output is unchanged), the compile signature reads `int8_in=native`, and the
+backward's bf16 `dY` and the int8 TE's bf16 input are divided in fp32 too.
 
 ## Single-token gradient outliers
 

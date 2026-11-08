@@ -274,6 +274,7 @@ def create_and_apply_network(
     # after apply_to + load_weights so dynamo traces the adapter's
     # monkey-patched forwards, not the bare DiT (see harness.py).
     if args.torch_compile:
+        from library.int8.linear import int8_input_tag
         from library.runtime.harness import compile_blocks_for_training
 
         n_token_families, seq_range, seq_bands = token_budget
@@ -302,7 +303,9 @@ def create_and_apply_network(
             seq_bands=seq_bands,
             dynamic_seq=bool(getattr(args, "compile_dynamic_seq", False)),
             signature_suffix=(
-                "" if int8 == "off" else f";int8={int8};int8_in=fp32;flops=fa2,int8"
+                ""
+                if int8 == "off"
+                else f";int8={int8};int8_in={int8_input_tag()};flops=fa2,int8"
             )
             + ("" if stream == "bf16" else f";stream={stream}"),
             activation_memory_budget=float(

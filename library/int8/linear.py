@@ -44,11 +44,50 @@ def quantize(w: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     return q.to(torch.int8), scale[:, None].contiguous()
 
 
+_fp32_division: bool | None = None
+
+
+def kernel_divides_fp32() -> bool:
+    """Whether ``comfy_kitchen.int8_linear`` divides a bf16 activation in fp32, so that a
+    bf16 input gives the bits of the same input cast to fp32 (comfy-kitchen#289: stock
+    0.2.41 rounds the value, scale and quotient to bf16; the ``ck-fp32div`` group's wheel
+    does not). Probed once on the card; False without one."""
+    global _fp32_division
+    if _fp32_division is None:
+        _fp32_division = False
+        if torch.cuda.is_available():
+            g = torch.Generator(device="cuda").manual_seed(0)
+            x = torch.randn(64, 1024, device="cuda", generator=g).bfloat16()
+            wq = torch.randint(
+                -127, 128, (256, 1024), device="cuda", generator=g, dtype=torch.int8
+            )
+            s = torch.ones(256, 1, device="cuda")
+
+            def run(a):
+                return comfy_kitchen.int8_linear(
+                    a,
+                    wq,
+                    s,
+                    out_dtype=torch.bfloat16,
+                    convrot=True,
+                    convrot_groupsize=GROUP,
+                )
+
+            _fp32_division = torch.equal(run(x), run(x.float()))
+    return _fp32_division
+
+
+def int8_input_tag() -> str:
+    """The compile-signature value for the int8 linears' input: ``fp32`` while the
+    forward casts for a stock kernel, ``native`` when it passes its input through."""
+    return "native" if kernel_divides_fp32() else "fp32"
+
+
 @torch.library.custom_op("int8_train::mm", mutates_args=())
 def int8_mm(x: torch.Tensor, wq: torch.Tensor, s: torch.Tensor) -> torch.Tensor:
-    """``x (…, K) @ dequant(wq)ᵀ`` → bf16 ``(…, N)``. The kernel rounds around its
-    activation division to ``x``'s dtype: the forward passes fp32, the backward its bf16
-    ``dY``."""
+    """``x (…, K) @ dequant(wq)ᵀ`` → bf16 ``(…, N)``. A stock kernel rounds around its
+    activation division to ``x``'s dtype (:func:`kernel_divides_fp32`): the forward then
+    passes fp32, and the backward's bf16 ``dY`` takes that rounding."""
     y = comfy_kitchen.int8_linear(
         x.reshape(-1, x.shape[-1]),
         wq,
@@ -259,9 +298,12 @@ class Int8TrainLinear(nn.Linear):
         return self
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # cast outside the opaque op, where inductor fuses it into the producer (inside
-        # it ran as its own copy kernel, ~3.5 ms per step: status.md)
-        x = x.float()
+        # a stock kernel rounds a bf16 input around its division: cast outside the
+        # opaque op, where inductor fuses it into the producer (inside it ran as its own
+        # copy kernel, ~3.5 ms per step: status.md). Never cast down: adaLN-fed inputs
+        # arrive in fp32.
+        if not _fp32_division:
+            x = x.float()
         if self.int8_mode == "infer":
             return int8_mm(x, self.wq, self.s)
         if self.int8_mode == "full":
@@ -297,6 +339,7 @@ def convert_(module: nn.Linear, mode: str, forward_copy=None) -> None:
     """``forward_copy``: a calibrated ``(wq, s)`` in place of round to nearest."""
     if mode not in MODES:
         raise ValueError(f"int8 mode {mode!r}, expected one of {MODES}")
+    kernel_divides_fp32()
     if module.bias is not None:
         raise ValueError("int8 base linears are bias-free")
     w = module.weight.detach()
