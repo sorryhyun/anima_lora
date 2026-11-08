@@ -54,3 +54,37 @@ def test_ref_jobs_follow_each_reference(tmp_path):
     assert not any(j["ref_vision"] for j in alone)
     with pytest.raises(SystemExit, match="no prompts"):
         build_jobs(GenerateRequest(prompt=""))
+
+
+def test_ref_prompts_and_seeds_render_an_eval_set_in_one_job(tmp_path):
+    """A glob of ``<page>.src.webp`` takes each page's caption from ``<page>.txt``
+    at the page's native size, once per seed."""
+    from library.moss.generate import build_jobs
+
+    for page, size in (("p1", (848, 1232)), ("p2", (1360, 768))):
+        Image.new("RGB", size).save(tmp_path / f"{page}.src.webp")
+        Image.new("RGB", size).save(tmp_path / f"{page}.tgt.webp")
+        (tmp_path / f"{page}.txt").write_text(f"caption {page}\n")
+    req = GenerateRequest(
+        ref_image=str(tmp_path / "*.src.webp"),
+        ref_prompts=True,
+        seeds="0,2",
+        width=1536,
+        height=1536,
+        prompt="ignored",
+        prompt_format="text",
+    )
+    jobs = build_jobs(req)
+    assert [
+        (j["key"], j["seed"], j["width"], j["height"], j["prompt"]) for j in jobs
+    ] == [
+        ("000_p1.src", 0, 848, 1232, "caption p1"),
+        ("000_p1.src", 2, 848, 1232, "caption p1"),
+        ("000_p2.src", 0, 1360, 768, "caption p2"),
+        ("000_p2.src", 2, 1360, 768, "caption p2"),
+    ]
+    (tmp_path / "p2.txt").unlink()
+    with pytest.raises(SystemExit, match="no p2.txt"):
+        build_jobs(req)
+    with pytest.raises(SystemExit, match="needs ref_image"):
+        build_jobs(GenerateRequest(ref_prompts=True))

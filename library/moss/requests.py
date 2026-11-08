@@ -312,9 +312,22 @@ class GenerateRequest(Request):
     out_dir: str = _f("output/tests", "images + manifest.json land here")
     ref_image: str = _f(
         "",
-        "i2i reference: an image, or a folder of images (one job per image and "
+        "i2i reference: an image, a folder of images or a glob (one job per image and "
         "prompt). The output keeps its aspect, area capped at width x height; the "
         "LoRA's stamped ref_timestep / ref_isolate apply",
+    )
+    ref_prompts: bool = _f(
+        False,
+        "with ref_image: each reference takes its prompt from the .txt beside it, "
+        "named after the image up to its first dot (<page>.src.webp -> <page>.txt); "
+        "prompt and prompts_file are ignored",
+        advanced=True,
+    )
+    seeds: str = _f(
+        "",
+        "comma-separated seeds: every job renders once per seed (replaces seed and "
+        "its +1 per prompt)",
+        advanced=True,
     )
     ref_scale: int = _f(
         1,

@@ -37,8 +37,11 @@ make daemon-run ARGS="scripts/moss/generate.py --config configs/moss/i2i/<task>/
     --lora output/ckpt_moss_i2i/moss_i2i_<task>.safetensors --ref_image <page or folder>"
 ```
 
-`--ref_image` takes one image or a folder (one job per image and prompt). The output keeps
-the reference's aspect ratio, with the area capped at `width × height`. The GUI's **i2i Preprocess**
+`--ref_image` takes one image, a folder or a quoted glob (one job per image and prompt). The output keeps
+the reference's aspect ratio, with the area capped at `width × height`. For an eval set in one
+job, `--ref_prompts` gives each reference the `.txt` beside it (`<page>.src.webp` →
+`<page>.txt`) and `--seeds 0,1,2` renders every page once per seed
+(`project/lora_blocks/src/hangul_eval.sh`). The GUI's **i2i Preprocess**
 (stage, preprocess) and **i2i Train** (train, test) tabs (`make gui`, Model set to MOSS-Image) run the same four steps. Staging is shared with
 EasyControl: `i2i_tasks/README.md`.
 

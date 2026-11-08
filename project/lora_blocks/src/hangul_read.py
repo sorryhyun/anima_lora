@@ -8,6 +8,8 @@ sheets per page and seed (rows = the edition, then each arm; columns = the text 
 An arm is a results folder name under output/moss_i2i_eval/swap_text/results without the
 seed suffix (seed 0 = no suffix, seed n = ``_s<n>``). ``--ko10`` reads the ten held-out
 pages of ``inputs_ko10/`` (seed 0, folders ``ko10_<arm>``) instead of the two eval pages.
+Renders are found per page (``<arm>[_s<n>]/<page>/``) or flat (``<arm>/*_<page>.src_*_s<n>.png``,
+``hangul_eval.sh``'s one-job layout).
 """
 
 import json
@@ -61,6 +63,8 @@ def grad_in(img, bxs) -> float:
 def render(arm: str, seed: int, page: str) -> Path | None:
     sfx = "" if seed == 0 else f"_s{seed}"
     hits = sorted((RES / f"{PRE}{arm}{sfx}" / page).glob("*.png"))
+    # hangul_eval.sh's one-job layout: every page and seed in the arm's folder.
+    hits = hits or sorted((RES / f"{PRE}{arm}").glob(f"*_{page}.src_*_s{seed}.png"))
     return hits[0] if hits else None
 
 

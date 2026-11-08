@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import glob
 import json
 import math
 import re
@@ -21,6 +22,23 @@ def parse_skip(value) -> tuple[int, ...]:
 
 
 def build_jobs(req: GenerateRequest) -> list[dict]:
+    jobs = _build_jobs(req)
+    if not req.seeds.strip():
+        return jobs
+    seeds = [int(s) for s in req.seeds.split(",") if s.strip()]
+    return [dict(j, seed=s) for j in jobs for s in seeds]
+
+
+def _converter(req: GenerateRequest):
+    if req.prompt_format == "text":
+        return lambda p: p
+    from library.moss.caching.sources import caption_converter
+
+    convert = caption_converter(req.prompt_format)
+    return lambda p: convert(p) if p else ""
+
+
+def _build_jobs(req: GenerateRequest) -> list[dict]:
     base = dict(
         negative=req.negative_prompt,
         width=req.width,
@@ -52,7 +70,11 @@ def build_jobs(req: GenerateRequest) -> list[dict]:
                 )
             )
         return jobs
-    if req.prompts_file:
+    if req.ref_prompts:
+        if not req.ref_image:
+            raise SystemExit("ref_prompts needs ref_image")
+        prompts = [""]  # each reference sets its own in _with_refs
+    elif req.prompts_file:
         source = resolve_under_home(req.prompts_file)
         prompts = [
             ln.strip()
@@ -65,11 +87,8 @@ def build_jobs(req: GenerateRequest) -> list[dict]:
         if not req.ref_image:
             raise SystemExit(f"no prompts in {source}")
         prompts = [""]  # the reference alone
-    if req.prompt_format != "text":
-        from library.moss.caching.sources import caption_converter
-
-        convert = caption_converter(req.prompt_format)
-        prompts = [convert(p) if p else "" for p in prompts]
+    convert = _converter(req)
+    prompts = [convert(p) for p in prompts]
     jobs = [
         dict(
             base,
@@ -85,9 +104,19 @@ def build_jobs(req: GenerateRequest) -> list[dict]:
 
 
 def ref_images(spec: str) -> list[Path]:
-    """``ref_image``: one image, or every image directly in a folder."""
+    """``ref_image``: one image, every image directly in a folder, or a glob
+    (relative to the repo home)."""
     from library.moss.scan import IMAGE_EXTS
 
+    if any(c in spec for c in "*?["):
+        found = sorted(
+            Path(p)
+            for p in glob.glob(str(resolve_under_home(spec)))
+            if Path(p).suffix.lower() in IMAGE_EXTS
+        )
+        if not found:
+            raise SystemExit(f"no images match {spec}")
+        return found
     path = resolve_under_home(spec)
     if path.is_dir():
         found = sorted(p for p in path.iterdir() if p.suffix.lower() in IMAGE_EXTS)
@@ -109,11 +138,18 @@ def _with_refs(req: GenerateRequest, jobs: list[dict]) -> list[dict]:
     if req.example:
         raise SystemExit("ref_image does not combine with example")
     resolution = round(math.sqrt(req.width * req.height))
+    convert = _converter(req)
     out = []
     for ref in ref_images(req.ref_image):
         with Image.open(ref) as im:
             width, height = target_size(*im.size, resolution)
         tag = re.sub(r"[^\w.-]+", "_", ref.stem)[:48]
+        if req.ref_prompts:
+            caption = ref.with_name(ref.name.split(".")[0] + ".txt")
+            if not caption.is_file():
+                raise SystemExit(f"ref_prompts: no {caption.name} beside {ref.name}")
+            text = caption.read_text(encoding="utf-8").strip()
+            jobs = [dict(jobs[0], prompt=convert(text))]
         for j in jobs:
             out.append(
                 dict(

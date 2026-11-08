@@ -132,6 +132,8 @@ def ref_latents(model_dir, jobs: list[dict], device) -> dict[str, torch.Tensor]:
     vae = load_vae(model_dir, device=device)
     out = {}
     for j in jobs:
+        if j["key"] in out:  # the same page under another seed
+            continue
         w, h = j["width"], j["height"]
         rw, rh = ref_size(w, h, j["ref_scale"])
         image = fit(fit(load_rgb(Path(j["ref"])), w, h), rw, rh)
