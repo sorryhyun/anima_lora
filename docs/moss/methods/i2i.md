@@ -105,11 +105,21 @@ dark ↔ light flip of the inks themselves; outlined lettering keeps its ink). A
 blocks on both sides plus the OCR lines mask the text. A group pastes **text-only**
 (`--paste text`, the default since 2026-11-08): its diff region cut down to that mask, so
 the art stays the JA page's even when the edition is another scan, checked by
-`seam_text` / `leftover_text`. When the box cuts through art and seams, it falls back to
+`seam_text` (`--max_seam_text` 8: the tone step on the paper pixels around the mask; the
+ring's line art is left out, since a box border a few px off on another scan is not a
+tear, and with it counted resid-8 pages lost their dialogue at 8–11) and `leftover_text`.
+When the box cuts through art and seams, it falls back to
 the whole region, where the twin must also match outside the text (`--max_nontext`: no
-darker fill or screentone, censor bar or mosaic one edition lacks, translator's end card).
+darker fill or screentone, censor bar or mosaic one edition lacks, translator's end card)
+and carry at most `--max_free` (3,000) non-text pixels: on a twin from another scan the
+diff region spreads over redrawn balloons and boxes whose median |ΔLab| passes `nontext`,
+and the fallback pasted the other edition's art (429 groups, up to 24 % of a page, before
+the cap on 2026-11-08). A kana / CJK line inside a region marks it misread only when its box
+changed between the editions (`--retained_ja`, shift-tolerant change ≥ 0.05); an unchanged
+one is JA lettering the twin kept beside the translation (`はっ`, `えへへ`) and no longer
+drops the Korean line next to it.
 With text-only pastes the page gates open to `max_resid = 12`, `max_uncovered = 0.05`
-(config): ko 1,781 → 2,274 pages, 9,336 → 11,314 pasted groups, 96 % of them text-only
+(config): ko 1,781 → 2,302 pages, 9,336 → 11,695 pasted groups, 99 % of them text-only
 (`post_image_dataset/i2i/swap_text_relax`, ko only, not cached yet). `assemble` samples
 `--sample` pool pages (0: all) into `staging/`.
 Each target is the JA page with clean text groups pasted from the twin: `full` pairs paste

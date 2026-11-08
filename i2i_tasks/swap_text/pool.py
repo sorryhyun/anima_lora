@@ -1,20 +1,27 @@
 """**pool** (CPU): drops pages past ``--max_resid`` (another scan, not
 a relettering) or ``--max_uncovered``, and assigns each twin OCR line to the
 region its centre falls in. A line holding kana or CJK ideographs
-(``JA_SCRIPT``) inside a region is a misread of the translated lettering.
-A group is *clean* when a non-misread line landed in it, none misread, every
-twin text block (``det``) landing in it is covered by a kept line (pasted,
-an unread block is lettering the caption does not name), and it pastes
-cleanly one of two ways (``page_metrics``, cached in
+(``JA_SCRIPT``) inside a region is a misread of the translated lettering
+when its box changed between the editions (``line_changes`` ≥
+``--retained_ja``); unchanged, it is JA lettering the twin kept in place
+(a ``はっ`` beside the translated dialogue) — never captioned, but it does
+not drop its group. A group is *clean* when a non-JA line landed in it, no
+misread did, every twin text block (``det``) landing in it is covered by a
+kept line (pasted, an unread block is lettering the caption does not name),
+and it pastes cleanly one of two ways (``page_metrics``, cached in
 ``<root>/pool_metrics.json``). **text** (``--paste text``, tried first): its
 diff region cut down to the text boxes — both sides' blocks and the twin's OCR
-lines — with ``seam_text`` ≤ ``--max_seam`` and ``leftover_text`` ≤
-``--max_leftover``; the art stays the JA page's, so a twin from another scan
-does not bring its tone along. **region**: the whole diff region, with the
-build's ``seam`` / ``leftover`` under the same limits and the twin matching
+lines — with ``seam_text`` (the tone step on the paper around the box) ≤
+``--max_seam_text`` and ``leftover_text`` ≤ ``--max_leftover``; the art
+stays the JA page's, so a twin from another scan does not bring its tone
+along. **region**: the whole diff region, with the build's ``seam`` ≤
+``--max_seam`` and ``leftover`` ≤ ``--max_leftover`` and the twin matching
 outside the text boxes (``nontext`` ≤ ``--max_nontext`` — a darker balloon fill
 or screentone, a censor bar or mosaic one edition lacks, a translator's end
-card). Either way the lettering keeps its
+card). As the fallback of ``--paste text`` it also carries at most
+``--max_free`` non-text pixels: on a twin from another scan the diff region
+spreads over the art, whose redrawn balloons and boxes pass the ``nontext``
+median. Either way the lettering keeps its
 colour (``ink_shift`` ≤ ``--max_ink_shift``, no light ↔ dark flip against
 the background of ≥ ``--flip_contrast`` on both sides with the inks themselves
 that far apart in lightness — outlined lettering flips against its modal
@@ -43,7 +50,7 @@ from i2i_tasks.swap_text.common import (
     write_stats,
     write_text,
 )
-from i2i_tasks.swap_text.metrics import colour_gate, page_metrics
+from i2i_tasks.swap_text.metrics import METRICS_VERSION, colour_gate, page_metrics
 from i2i_tasks.swap_text.ocr import kept_lines
 
 PAGE_DROPS = ("unread", "undetected", "resid", "uncovered", "uncaptioned", "bg_resid")
@@ -53,9 +60,11 @@ PAGE_DROPS = ("unread", "undetected", "resid", "uncovered", "uncaptioned", "bg_r
 class _Tally:
     pages: dict[str, int] = field(default_factory=lambda: dict.fromkeys(PAGE_DROPS, 0))
     misread_lines: int = 0
+    retained_ja_lines: int = 0
     unread_groups: int = 0
     colour_gates: dict[str, int] = field(default_factory=dict)
     seam_groups: int = 0
+    free_groups: int = 0
     paste_modes: dict[str, int] = field(default_factory=dict)
 
 
@@ -103,7 +112,7 @@ def _measure(a, pages: list[dict], reads: dict, dets: dict) -> dict:
     """``page_metrics`` of ``pages``, through ``<root>/pool_metrics.json``."""
     mpath = a.root / "pool_metrics.json"
     metrics = read_cache(mpath)
-    todo = [p for p in pages if p["key"] not in metrics]
+    todo = [p for p in pages if metrics.get(p["key"], {}).get("v") != METRICS_VERSION]
     print(f"pool: {len(todo)} pages to measure ({len(metrics)} cached)", flush=True)
     jobs = [
         (
@@ -114,6 +123,7 @@ def _measure(a, pages: list[dict], reads: dict, dets: dict) -> dict:
             text_boxes_of(dets[p["key"]], reads[p["key"]]),
             a.dilate_frac,
             a.det_pad,
+            reads[p["key"]],
         )
         for p in todo
     ]
@@ -148,7 +158,8 @@ def _paste_mode(gi, g, metrics, has_line, bad, unread, a, tally: _Tally) -> str 
     """How a group is pasted, None when it is not clean. With ``--paste text``
     the text-only mask (``regions.text_paste_mask``) is tried first, on its
     own ``seam_text`` / ``leftover_text``; the diff-region mask is the
-    fallback, on the build's ``seam`` / ``leftover`` and ``nontext``."""
+    fallback, on the build's ``seam`` / ``leftover`` and ``nontext``, and only
+    with at most ``max_free`` non-text pixels under it."""
     regions = set(g["regions"])
     if gi not in has_line or bad & regions:
         return None
@@ -162,10 +173,13 @@ def _paste_mode(gi, g, metrics, has_line, bad, unread, a, tally: _Tally) -> str 
     if (
         a.paste == "text"
         and metrics.get("text_px", 0) >= 50
-        and metrics.get("seam_text", float("inf")) <= a.max_seam
+        and metrics.get("seam_text", float("inf")) <= a.max_seam_text
         and metrics.get("leftover_text", float("inf")) <= a.max_leftover
     ):
         return "text"
+    if a.paste == "text" and metrics.get("free", 0) > a.max_free:
+        tally.free_groups += 1
+        return None
     if g["seam"] > a.max_seam or g["leftover"] > a.max_leftover:
         tally.seam_groups += 1
         return None
@@ -181,17 +195,22 @@ def _pool_row(p, read, det, pm, a, tally: _Tally) -> dict | None:
     if pm["bg_resid"] > a.max_bg_resid:
         tally.pages["bg_resid"] += 1
         return None
-    lines = [[t.strip(), b] for t, b in read]
-    lines = [ln for ln in lines if ln[0]]
+    raw = [[t.strip(), b] for t, b in read]
+    kept = [i for i, ln in enumerate(raw) if ln[0]]
+    lines = [raw[i] for i in kept]
+    changed = [pm["lines"][i] >= a.retained_ja for i in kept]
     owner = assign_lines(lines, p["regions"], a.pad_frac)
     ja = [bool(JA_SCRIPT.search(t)) for t, _ in lines]
+    # JA script in a region: a misread of the twin's new lettering when its box
+    # changed, else lettering the twin kept — out of the caption either way
     misread = [k is not None and j for k, j in zip(owner, ja)]
-    tally.misread_lines += sum(misread)
+    tally.misread_lines += sum(m and c for m, c in zip(misread, changed))
+    tally.retained_ja_lines += sum(m and not c for m, c in zip(misread, changed))
     # unpadded: the padded box also reaches JA lettering the twin left alone
     bad = {
         k
-        for k, j in zip(assign_lines(lines, p["regions"], 0.0), ja)
-        if j and k is not None
+        for k, j, c in zip(assign_lines(lines, p["regions"], 0.0), ja, changed)
+        if j and c and k is not None
     }
     tgt_blocks = det["tgt"]
     text_boxes = text_boxes_of(det, read)
@@ -273,9 +292,11 @@ def stage_pool(a) -> None:
         "works": len({r["work"] for r in rows}),
         **{f"dropped_{k}": v for k, v in tally.pages.items()},
         "misread_lines": tally.misread_lines,
+        "retained_ja_lines": tally.retained_ja_lines,
         "groups_dropped_unread_block": tally.unread_groups,
         "groups_dropped_by_colour_gate": tally.colour_gates,
         "groups_dropped_seam_leftover": tally.seam_groups,
+        "groups_dropped_region_free": tally.free_groups,
         "groups_by_paste": tally.paste_modes,
         "clean_group_frac": round(
             sum(g["clean"] for r in rows for g in r["groups"]) / max(n_groups, 1), 3

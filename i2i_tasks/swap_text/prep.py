@@ -123,6 +123,13 @@ def parse_args() -> argparse.Namespace:
         help="group seam above which a partial pair never pastes it",
     )
     g.add_argument(
+        "--max_seam_text",
+        type=float,
+        default=8.0,
+        help="text-only paste: mean |src − twin| on the paper pixels of the ring "
+        "around its mask above which the group falls back to the whole region",
+    )
+    g.add_argument(
         "--max_leftover",
         type=float,
         default=0.01,
@@ -165,6 +172,21 @@ def parse_args() -> argparse.Namespace:
         help="text: paste a group's diff region cut down to the text boxes (both "
         "sides' blocks and the OCR lines) when that passes seam / leftover, else "
         "the whole region; region: always the whole region",
+    )
+    g.add_argument(
+        "--max_free",
+        type=int,
+        default=3000,
+        help="non-text pixels the whole-region fallback of --paste text may carry "
+        "(the twin's art) above which the group is never pasted",
+    )
+    g.add_argument(
+        "--retained_ja",
+        type=float,
+        default=0.05,
+        help="share of a kana / CJK line's box changed between the editions (under "
+        "its best shift) below which it is JA lettering the twin kept, not a "
+        "misread, and does not drop its group",
     )
     g.add_argument(
         "--pad_frac",

@@ -144,3 +144,70 @@ def test_stored_read_keeps_the_filtered_lines_and_their_scores():
     assert kept_lines(json.loads(json.dumps(rows))) == [
         ["만화에서 이런 걸", [1, 2, 3, 4]]
     ]
+
+
+def test_line_changes_tells_kept_lettering_from_new():
+    from i2i_tasks.swap_text.metrics import line_changes
+
+    a = _lettered("WAIT FOR ME HERO|THE KING IS HERE", 20, 245)
+    b = _lettered("WAIT FOR ME HERO|LOOK AT THE SKY", 20, 245)
+    b = np.roll(b, (2, 1), axis=(0, 1))  # a registration slip, under the slack
+    valid = np.ones(a.shape, np.uint8)
+    kept, new = line_changes(a, b, valid, [[112, 310, 420, 345], [112, 345, 420, 380]])
+    assert kept < 0.05 < new
+
+
+def test_text_fallback_to_region_is_capped_by_free_pixels():
+    from i2i_tasks.swap_text.pool import _Tally, _paste_mode
+
+    a = SimpleNamespace(
+        paste="text",
+        max_seam=8.0,
+        max_seam_text=6.0,
+        max_leftover=0.01,
+        max_free=3000,
+        max_nontext=8.0,
+        max_ink_shift=30.0,
+        flip_contrast=40.0,
+    )
+    g = {"regions": [0], "seam": 5.0, "leftover": 0.0}
+    base = {"text_px": 500, "seam_text": 12.0, "leftover_text": 0.0, "nontext": 2.0}
+    tally = _Tally()
+    assert (
+        _paste_mode(0, g, {**base, "free": 2000}, {0}, set(), set(), a, tally)
+        == "region"
+    )
+    assert (
+        _paste_mode(0, g, {**base, "free": 40000}, {0}, set(), set(), a, tally) is None
+    )
+    assert tally.free_groups == 1
+    a.paste = "region"
+    assert (
+        _paste_mode(0, g, {**base, "free": 40000}, {0}, set(), set(), a, tally)
+        == "region"
+    )
+
+
+def test_text_seam_ignores_the_line_art_beside_the_box():
+    from i2i_tasks.swap_text.metrics import page_metrics
+
+    paper, ink = 240, 20
+    src = np.full((300, 300, 3), paper, np.uint8)
+    cv2.rectangle(src, (100, 100), (200, 200), ink, 2)  # a text box border
+    cv2.putText(src, "JA", (120, 160), cv2.FONT_HERSHEY_SIMPLEX, 1.0, ink, 2)
+    tgt = np.full((300, 300, 3), paper, np.uint8)
+    cv2.rectangle(tgt, (103, 103), (203, 203), ink, 2)  # the twin's border, 3 px off
+    cv2.putText(tgt, "KO", (120, 160), cv2.FONT_HERSHEY_SIMPLEX, 1.0, ink, 2)
+    labels = np.zeros((300, 300), np.uint8)
+    labels[110:170, 110:190] = 1
+    d = __import__("pathlib").Path(__import__("tempfile").mkdtemp())
+    for name, img in (("src", src), ("tgt", tgt)):
+        cv2.imwrite(str(d / f"p.{name}.webp"), img, [cv2.IMWRITE_WEBP_QUALITY, 101])
+    cv2.imwrite(str(d / "p.lab.png"), labels)
+    boxes = [[112, 130, 185, 165]]
+    _, m = page_metrics(
+        ("k", d, "p", [{"regions": [0]}], boxes, 0.003, 4, [["KO", boxes[0]]])
+    )
+    g = m["groups"][0]
+    assert g["text_px"] > 50 and g["seam_text"] < 1.0  # the border is not paper
+    assert m["lines"][0] > 0.05

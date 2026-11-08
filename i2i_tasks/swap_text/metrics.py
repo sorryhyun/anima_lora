@@ -6,7 +6,19 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from i2i_tasks.swap_text.regions import INVALID, box_mask, paste_mask, text_paste_mask
+from i2i_tasks.swap_text.regions import (
+    INVALID,
+    _unshifted,
+    box_mask,
+    norm_gray,
+    paste_mask,
+    text_paste_mask,
+)
+
+# bump when a row's fields change meaning: ``pool`` re-measures cached rows of
+# another version. 2: per-line ``lines``, ``seam_text`` on paper pixels only
+METRICS_VERSION = 2
+INK_L = 150  # Lab L below which a pixel is ink, not paper, on either side
 
 
 def _lab(img: np.ndarray) -> np.ndarray:
@@ -61,16 +73,18 @@ def _group_row(labels, regions, text, diff, ls, lt, dilate_frac, pad) -> dict:
 
 
 def _text_row(
-    labels, regions, text, absd, ink_flip, dilate_frac, band=6, near_frac=0.03
+    labels, regions, text, absd, ink_flip, paper, dilate_frac, band=6, near_frac=0.03
 ) -> dict:
     """The group pasted as ``text_paste_mask``: ``text_px`` (its area),
-    ``seam_text`` (mean |Δ| on a ``band`` px ring outside it, other groups'
-    regions and other text excluded — the art next to the box, which the twin
-    of another scan would tear) and ``leftover_text`` (ink a text-only paste
-    leaves half-swapped within ``near_frac`` × the short edge: ``ink_flip``
-    pixels, ink on one side and paper on the other, outside the mask and other
-    groups' regions, over the mask area). ``group_metrics``' measures on the
-    build diff, for the cut-down mask."""
+    ``seam_text`` (mean |Δ| on the ``paper`` pixels of a ``band`` px ring
+    outside it, other groups' regions and other text excluded — the step in
+    tone the paste edge leaves; the ring's line art is left out, since a box
+    border a few px off on a twin from another scan is not a tear) and
+    ``leftover_text`` (ink a text-only paste leaves half-swapped within
+    ``near_frac`` × the short edge: ``ink_flip`` pixels, ink on one side and
+    paper on the other, outside the mask and other groups' regions, over the
+    mask area). ``group_metrics``' measures on the build diff, for the
+    cut-down mask."""
     m = text_paste_mask(labels, regions, dilate_frac, text) > 0
     if m.sum() < 50:
         return {"text_px": int(m.sum())}
@@ -82,12 +96,36 @@ def _text_row(
     near_ker = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r_near + 1,) * 2)
     mu = m.astype(np.uint8)
     ring = (cv2.dilate(mu, ker) > 0) & ~m & ~text & ~others & (labels != INVALID)
+    ring &= paper
     near = (cv2.dilate(mu, near_ker) > 0) & ~m & ~others & ink_flip
     return {
         "text_px": int(m.sum()),
         "seam_text": round(float(absd[ring].mean()), 2) if ring.any() else 0.0,
         "leftover_text": round(float(near.sum()) / int(m.sum()), 4),
     }
+
+
+def line_changes(
+    src: np.ndarray, tgt: np.ndarray, valid: np.ndarray, boxes, slack_frac=0.004
+) -> list[float]:
+    """Per box, the share of its pixels still differing by ``PIX_DIFF`` under
+    the box's best single shift within ±r px (``diff_regions``' seed test, on
+    the whole box): ~0 for lettering both editions carry in place, 0.2–0.4
+    where the twin's lettering is new."""
+    na, nb = norm_gray(src, valid), norm_gray(tgt, valid)
+    r = max(3, int(round(min(src.shape) * slack_frac)))
+    nbp = cv2.copyMakeBorder(nb, r, r, r, r, cv2.BORDER_REPLICATE)
+    out = []
+    for x0, y0, x1, y1 in boxes:
+        x0, y0 = max(0, int(round(x0))), max(0, int(round(y0)))
+        h, w = int(round(y1)) - y0, int(round(x1)) - x0
+        crop = na[y0 : y0 + h, x0 : x0 + w]
+        if crop.size == 0:
+            out.append(0.0)
+            continue
+        comp = np.ones(crop.shape, bool)
+        out.append(round(_unshifted(na, nbp, comp, x0, y0, r) / crop.size, 3))
+    return out
 
 
 def page_metrics(job) -> tuple[str, dict]:
@@ -98,9 +136,10 @@ def page_metrics(job) -> tuple[str, dict]:
     of the ink the swap replaces against the ink it brings
     (``ink_shift``: their a/b distance; ``pol_src`` / ``pol_tgt``: their
     lightness against the region's background), and the same group pasted
-    text-only (``_text_row``). Page-wide: ``bg_resid``, the mean |ΔLab|
-    outside every text block."""
-    key, d, page, groups, boxes, dilate_frac, det_pad = job
+    text-only (``_text_row``). Per twin OCR line (``lines``, in ``read``
+    order): ``line_changes`` of its box. Page-wide: ``bg_resid``, the mean
+    |ΔLab| outside every text block."""
+    key, d, page, groups, boxes, dilate_frac, det_pad, read = job
     src = cv2.imread(str(d / f"{page}.src.webp"), cv2.IMREAD_COLOR)
     tgt = cv2.imread(str(d / f"{page}.tgt.webp"), cv2.IMREAD_COLOR)
     labels = cv2.imread(str(d / f"{page}.lab.png"), cv2.IMREAD_UNCHANGED)
@@ -109,6 +148,7 @@ def page_metrics(job) -> tuple[str, dict]:
     diff = np.linalg.norm(ls - lt, axis=-1)
     absd = cv2.absdiff(src, tgt).mean(-1, dtype=np.float32)
     gs, gt = ls[..., 0], lt[..., 0]
+    paper = (gs > INK_L) & (gt > INK_L)
     ink_flip = ((gs < 110) & (gt > 170)) | ((gt < 110) & (gs > 170))
     ink_flip = (
         cv2.morphologyEx(
@@ -119,13 +159,22 @@ def page_metrics(job) -> tuple[str, dict]:
     bg = (labels != INVALID) & ~text
     pad = 2 * max(2, round(min(labels.shape) * dilate_frac)) + 2
     return key, {
+        "v": METRICS_VERSION,
         "bg_resid": round(float(diff[bg].mean()), 2) if bg.any() else 0.0,
+        "lines": line_changes(
+            cv2.cvtColor(src, cv2.COLOR_BGR2GRAY),
+            cv2.cvtColor(tgt, cv2.COLOR_BGR2GRAY),
+            (labels != INVALID).astype(np.uint8),
+            [b for _, b in read],
+        ),
         "groups": [
             {
                 **_group_row(
                     labels, g["regions"], text, diff, ls, lt, dilate_frac, pad
                 ),
-                **_text_row(labels, g["regions"], text, absd, ink_flip, dilate_frac),
+                **_text_row(
+                    labels, g["regions"], text, absd, ink_flip, paper, dilate_frac
+                ),
             }
             for g in groups
         ],
