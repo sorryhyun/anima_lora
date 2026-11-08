@@ -26,6 +26,9 @@ at `/media/sorryhyun/new/dataset/hito_ocr/` (licence unclear — never ship
 from them). Code runs by path from here (`ocr/`, `gate/`, `hito/`); the state
 table below is the record as of close.
 
+Proposed 2026-11-08, parked: keep line breaks through the labels, the reader and the
+swap_text captions — [`docs/proposal/ocr_line_breaks.md`](../../../docs/proposal/ocr_line_breaks.md).
+
 ## Why
 
 The shipped reader (`anime_tools.ocr.sfx`, Hub

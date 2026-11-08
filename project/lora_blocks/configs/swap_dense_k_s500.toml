@@ -1,0 +1,26 @@
+# swap_text smoke on the re-crawled Korean (2026-11-08): the 1,509 new-work pairs with text cover
+# >= 10 % or >= 50 syllables per page (staging/pairs_new_dense1509.jsonl, a symlink farm into
+# i2i_swap_text_relax_ko_ksplit), 500 steps, from the default init (kaiming arm). The pair: swap_dense_{k,c}_s500.
+# e2's recipe (muon 5e-5, rank 32, mod_rank 16, region_weight 2, int8 plan, EMA on the card); C
+# has no modulation adapter, so in the C arm it starts from its own init. Eval: hangul_eval.sh ko10.
+#
+#   make daemon-run ARGS="--queue --stall-timeout 900 scripts/moss/train.py --config project/lora_blocks/configs/swap_dense_k_s500.toml"
+
+cache = "post_image_dataset/moss/i2i_swap_text_relax_ko_dense1509"
+output = "output/ckpt_moss_i2i/swap_dense_k_s500.safetensors"
+
+max_steps = 500
+save_every_steps = 250
+ref_timestep = 0.0
+ref_isolate = true
+mod_rank = 16
+region_weight = 2.0
+optimizer = "muon"
+lr = 5e-5
+int8 = "stream"
+stream = "fp32"
+ema_card = true
+blocks_to_swap = 36
+activation_memory_budget = 0.05
+swap_h2d_only = true
+fit_report = true

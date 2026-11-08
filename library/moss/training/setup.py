@@ -275,10 +275,15 @@ def check_ref_adapters(req: TrainRequest) -> None:
         raise SystemExit(f"ref_adapters is lora only, not {req.algo}")
 
 
+_MOD_PREFIX = "adapters.shared_block_modulation."
+
+
 def load_init_lora(req: TrainRequest, network) -> None:
     """Load ``init_lora`` into the freshly built ``network``, in place of its init. The
     file has to describe the same network: algo, rank, alpha, targets, and the same
-    state keys (a reference bank or registers on one side only refuse)."""
+    state keys (a reference bank or registers on one side only refuse). A run with
+    ``mod_rank`` may start from a file without the modulation adapter: that adapter keeps
+    its own init."""
     if not req.init_lora:
         return
     from safetensors import safe_open
@@ -300,10 +305,19 @@ def load_init_lora(req: TrainRequest, network) -> None:
         raise SystemExit(f"init_lora {path}: file / run differ on {bad}")
     state = _state_from_file(state, network.algo)
     own = network.state_dict()
-    if set(state) != set(own):
+    file_only = set(state) - set(own)
+    run_only = set(own) - set(state)
+    fresh = {k for k in run_only if k.startswith(_MOD_PREFIX)}
+    if file_only or run_only - fresh:
         raise SystemExit(
-            f"init_lora {path}: keys differ (file only {sorted(set(state) - set(own))[:4]}, "
-            f"run only {sorted(set(own) - set(state))[:4]})"
+            f"init_lora {path}: keys differ (file only {sorted(file_only)[:4]}, "
+            f"run only {sorted(run_only - fresh)[:4]})"
+        )
+    if fresh:
+        print(
+            f"init_lora: {path.name} has no modulation adapter; mod_rank's adapter keeps "
+            "its own init",
+            flush=True,
         )
     with torch.no_grad():
         for key, value in state.items():

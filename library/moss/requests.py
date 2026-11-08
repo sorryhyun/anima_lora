@@ -894,7 +894,10 @@ class TrainRequest(Request):
         0,
         "DiT blocks to swap to CPU (-1 = size from free VRAM). On the int8 plan this "
         "trades VRAM, not speed: swap 20 at budget 0.1 peaks at 8.67 GB against "
-        "10.78 GB at about the same s/step. The bf16 plan runs 36, the room budget 0.5 needs at rank 32 on "
+        "10.78 GB at about the same s/step, up to 36; from 38 the int8 blocks (0.106 GB) "
+        "compute faster than their copies arrive and the swap becomes the bottleneck (swap_text "
+        "i2i, 10.4k-token sample: 500-step ETA ~37 min at 41 against ~22 at 38), so "
+        "lower activation_memory_budget first. The bf16 plan runs 36, the room budget 0.5 needs at rank 32 on "
         "16 GB; swap 28-38 run at the same speed, past ~40 the PCIe time stops hiding "
         "(--swap_h2d_only narrows that: 8%% faster at 40). scripts/moss/tune_swap.py "
         "measures this machine's bf16 pair",
