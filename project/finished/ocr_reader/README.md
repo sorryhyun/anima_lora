@@ -1,4 +1,4 @@
-# ocr_reader — PaddleOCR-VL reader v4 (JA + KO + ZH)
+# ocr_reader — PaddleOCR-VL reader v5 (JA + KO + ZH, line breaks)
 
 Opened 2026-10-10 on branch `ocr-reader`, out of
 [`finished/cjk_aware_anima_dit`](../cjk_aware_anima_dit/README.md)
@@ -26,8 +26,16 @@ at `/media/sorryhyun/new/dataset/hito_ocr/` (licence unclear — never ship
 from them). Code runs by path from here (`ocr/`, `gate/`, `hito/`); the state
 table below is the record as of close.
 
-Proposed 2026-11-08, parked: keep line breaks through the labels, the reader and the
-swap_text captions — [`docs/proposal/ocr_line_breaks.md`](../../../docs/proposal/ocr_line_breaks.md).
+**v5 (2026-11-09) = `vl16_p2b_kozh_nl`**, replacing v4 as Hub `v5/` (`fb08a10b`), pinned by
+`anime_tools` v0.9.5 — v4's command with two changes
+([`docs/proposal/ocr_line_breaks.md`](../../../docs/proposal/ocr_line_breaks.md)): the targets keep
+the labels' line breaks as `\n` (`TARGET_NORM` 5), and the Manga109 crops are rebuilt so the 12 %
+pad stops at the page edge (`pilot.deskew_crop(trim=True)`; the old cut replicated border
+lines into ~13 % of the COO SFX crops; old tree kept as `derived/crops_replicate/`). Paired
+against v4 rescored on the rebuilt crops: sincos SFX strict 337 → 350, ♡-blind 386 → 414 (z +3.0);
+sincos speech, COO SFX / speech flat; K3 KO 26 → 22 (z −1.4, misreads), ZH 30 → 30. KO
+breaks all 5 annotated multi-line K3 crops at the right line count, ZH 1 / 5. Reports:
+`reports/ocr_eval_*_nl_ep2*.md` (v5), `reports/ocr_eval_*_ep2_clip*.md` (v4 on the rebuilt crops).
 
 ## Why
 
