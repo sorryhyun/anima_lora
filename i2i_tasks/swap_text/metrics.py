@@ -6,7 +6,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from i2i_tasks.swap_text.regions import INVALID, paste_mask
+from i2i_tasks.swap_text.regions import INVALID, box_mask, paste_mask, text_paste_mask
 
 
 def _lab(img: np.ndarray) -> np.ndarray:
@@ -27,15 +27,6 @@ def _ink(lab: np.ndarray, bg: np.ndarray, sel: np.ndarray):
         return None
     a, b, L = (float(np.median(lab[..., c][sel])) for c in (1, 2, 0))
     return a, b, L - float(bg[0])
-
-
-def _text_mask(shape, boxes, det_pad: int) -> np.ndarray:
-    text = np.zeros(shape, bool)
-    for x0, y0, x1, y1 in boxes:
-        text[
-            max(0, y0 - det_pad) : y1 + det_pad, max(0, x0 - det_pad) : x1 + det_pad
-        ] = True
-    return text
 
 
 def _group_row(labels, regions, text, diff, ls, lt, dilate_frac, pad) -> dict:
@@ -64,7 +55,39 @@ def _group_row(labels, regions, text, diff, ls, lt, dilate_frac, pad) -> dict:
                 float(np.hypot(ink_s[0] - ink_t[0], ink_s[1] - ink_t[1])), 2
             )
             row["pol_src"], row["pol_tgt"] = round(ink_s[2], 1), round(ink_t[2], 1)
+            row["ink_l_src"] = round(ink_s[2] + float(bs[0]), 1)
+            row["ink_l_tgt"] = round(ink_t[2] + float(bt[0]), 1)
     return row
+
+
+def _text_row(
+    labels, regions, text, absd, ink_flip, dilate_frac, band=6, near_frac=0.03
+) -> dict:
+    """The group pasted as ``text_paste_mask``: ``text_px`` (its area),
+    ``seam_text`` (mean |Δ| on a ``band`` px ring outside it, other groups'
+    regions and other text excluded — the art next to the box, which the twin
+    of another scan would tear) and ``leftover_text`` (ink a text-only paste
+    leaves half-swapped within ``near_frac`` × the short edge: ``ink_flip``
+    pixels, ink on one side and paper on the other, outside the mask and other
+    groups' regions, over the mask area). ``group_metrics``' measures on the
+    build diff, for the cut-down mask."""
+    m = text_paste_mask(labels, regions, dilate_frac, text) > 0
+    if m.sum() < 50:
+        return {"text_px": int(m.sum())}
+    others = (
+        (labels > 0) & (labels != INVALID) & ~np.isin(labels, [k + 1 for k in regions])
+    )
+    ker = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * band + 1,) * 2)
+    r_near = max(4, round(near_frac * min(labels.shape)))
+    near_ker = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r_near + 1,) * 2)
+    mu = m.astype(np.uint8)
+    ring = (cv2.dilate(mu, ker) > 0) & ~m & ~text & ~others & (labels != INVALID)
+    near = (cv2.dilate(mu, near_ker) > 0) & ~m & ~others & ink_flip
+    return {
+        "text_px": int(m.sum()),
+        "seam_text": round(float(absd[ring].mean()), 2) if ring.any() else 0.0,
+        "leftover_text": round(float(near.sum()) / int(m.sum()), 4),
+    }
 
 
 def page_metrics(job) -> tuple[str, dict]:
@@ -74,33 +97,57 @@ def page_metrics(job) -> tuple[str, dict]:
     detector missed does not count unless it fills the region), and the colour
     of the ink the swap replaces against the ink it brings
     (``ink_shift``: their a/b distance; ``pol_src`` / ``pol_tgt``: their
-    lightness against the region's background). Page-wide: ``bg_resid``, the
-    mean |ΔLab| outside every text block."""
+    lightness against the region's background), and the same group pasted
+    text-only (``_text_row``). Page-wide: ``bg_resid``, the mean |ΔLab|
+    outside every text block."""
     key, d, page, groups, boxes, dilate_frac, det_pad = job
     src = cv2.imread(str(d / f"{page}.src.webp"), cv2.IMREAD_COLOR)
     tgt = cv2.imread(str(d / f"{page}.tgt.webp"), cv2.IMREAD_COLOR)
     labels = cv2.imread(str(d / f"{page}.lab.png"), cv2.IMREAD_UNCHANGED)
-    text = _text_mask(labels.shape, boxes, det_pad)
+    text = box_mask(labels.shape, boxes, det_pad)
     ls, lt = _lab(src), _lab(tgt)
     diff = np.linalg.norm(ls - lt, axis=-1)
+    absd = cv2.absdiff(src, tgt).mean(-1, dtype=np.float32)
+    gs, gt = ls[..., 0], lt[..., 0]
+    ink_flip = ((gs < 110) & (gt > 170)) | ((gt < 110) & (gs > 170))
+    ink_flip = (
+        cv2.morphologyEx(
+            ink_flip.astype(np.uint8), cv2.MORPH_OPEN, np.ones((2, 2), np.uint8)
+        )
+        > 0
+    )
     bg = (labels != INVALID) & ~text
     pad = 2 * max(2, round(min(labels.shape) * dilate_frac)) + 2
     return key, {
         "bg_resid": round(float(diff[bg].mean()), 2) if bg.any() else 0.0,
         "groups": [
-            _group_row(labels, g["regions"], text, diff, ls, lt, dilate_frac, pad)
+            {
+                **_group_row(
+                    labels, g["regions"], text, diff, ls, lt, dilate_frac, pad
+                ),
+                **_text_row(labels, g["regions"], text, absd, ink_flip, dilate_frac),
+            }
             for g in groups
         ],
     }
 
 
-def colour_gate(m: dict, a) -> str | None:
-    """The gate a group's ``page_metrics`` row fails, else None."""
-    if m.get("nontext", 0) > a.max_nontext:
+def colour_gate(m: dict, a, nontext: bool = True) -> str | None:
+    """The gate a group's ``page_metrics`` row fails, else None. A text-only
+    paste brings no art from the twin, so it skips ``nontext``."""
+    if nontext and m.get("nontext", 0) > a.max_nontext:
         return "nontext"
     if m.get("ink_shift", 0) > a.max_ink_shift:
         return "ink_shift"
     ps, pt = m.get("pol_src", 0), m.get("pol_tgt", 0)
-    if ps * pt < 0 and min(abs(ps), abs(pt)) >= a.flip_contrast:
+    # outlined lettering flips the sign against the region's modal background
+    # (the outline on one side, the art behind on the other) with the same ink:
+    # a flip also needs the inks themselves that far apart in lightness
+    ink_gap = abs(m["ink_l_src"] - m["ink_l_tgt"]) if "ink_l_src" in m else float("inf")
+    if (
+        ps * pt < 0
+        and min(abs(ps), abs(pt)) >= a.flip_contrast
+        and ink_gap >= a.flip_contrast
+    ):
         return "ink_flip"
     return None

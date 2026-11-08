@@ -57,7 +57,7 @@ def parse_args() -> argparse.Namespace:
     )
     ap.add_argument("--stages", nargs="+", default=list(STAGES), choices=list(STAGES))
     ap.add_argument("--hito", type=Path, default=Path.home() / "hitocrawl/retrieved")
-    ap.add_argument("--root", default="post_image_dataset/i2i/swap_text")
+    ap.add_argument("--root", default="post_image_dataset/i2i/swap_text_v3")
     ap.add_argument("--langs", nargs="+", default=["en", "ko"], choices=list(LANG_TAG))
     ap.add_argument("--works", nargs="*", help="anchor ids; default every work")
     ap.add_argument(
@@ -147,7 +147,7 @@ def parse_args() -> argparse.Namespace:
     g.add_argument(
         "--max_ink_shift",
         type=float,
-        default=15.0,
+        default=30.0,
         help="group a/b distance between the replaced and the pasted ink above "
         "which it is never pasted",
     )
@@ -157,6 +157,14 @@ def parse_args() -> argparse.Namespace:
         default=40.0,
         help="ink lightness vs background on both sides at which a sign flip "
         "(dark ↔ light lettering) keeps a group from being pasted",
+    )
+    g.add_argument(
+        "--paste",
+        default="text",
+        choices=("text", "region"),
+        help="text: paste a group's diff region cut down to the text boxes (both "
+        "sides' blocks and the OCR lines) when that passes seam / leftover, else "
+        "the whole region; region: always the whole region",
     )
     g.add_argument(
         "--pad_frac",

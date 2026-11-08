@@ -13,5 +13,10 @@ langs = ["en", "ko"]
 # share of pairs that swap only some captioned regions; the rest stay JA. 0: every
 # pair pastes all its clean groups (unclean groups still stay JA, unnamed)
 partial_ratio = 0.0
-# pool pages staged (0: the whole pool, post_image_dataset/i2i/swap_text/pool/)
+# pool pages staged (0: the whole pool, post_image_dataset/i2i/swap_text_v3/pool/)
 sample = 0
+# page gates (ocr, det and pool read the same): an edition from another scan
+# (resid 8–12) or a slightly cropped one (uncovered ≤ 5 %) still letters cleanly,
+# since groups paste text-only (--paste text). 2026-11-08: ko pages 1,781 → 2,274
+max_resid = 12.0
+max_uncovered = 0.05

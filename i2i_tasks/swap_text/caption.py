@@ -66,7 +66,9 @@ def stage_caption(a) -> None:
     plan = read_jsonl(staging / "plan.jsonl")
 
     def key(r):
-        return f"{r['key']}:{','.join(map(str, r['chosen']))}"
+        text = r.get("chosen_text") or []
+        tail = f":t{','.join(map(str, text))}" if text else ""
+        return f"{r['key']}:{','.join(map(str, r['chosen']))}{tail}"
 
     if a.caption_ocr:
         reads = read_into(

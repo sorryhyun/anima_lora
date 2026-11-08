@@ -4,18 +4,25 @@ region its centre falls in. A line holding kana or CJK ideographs
 (``JA_SCRIPT``) inside a region is a misread of the translated lettering.
 A group is *clean* when a non-misread line landed in it, none misread, every
 twin text block (``det``) landing in it is covered by a kept line (pasted,
-an unread block is lettering the caption does not name), its
-``seam`` ≤ ``--max_seam`` and ``leftover`` ≤ ``--max_leftover``, and the
-twin keeps the page's look inside its paste mask (``page_metrics``,
-cached in ``<root>/pool_metrics.json``): outside the union of both sides'
-text blocks and the twin's OCR lines the twin matches (``nontext`` ≤
-``--max_nontext`` — a darker balloon fill or screentone, a censor bar or
-mosaic one edition lacks, a translator's end card), and the lettering keeps its
+an unread block is lettering the caption does not name), and it pastes
+cleanly one of two ways (``page_metrics``, cached in
+``<root>/pool_metrics.json``). **text** (``--paste text``, tried first): its
+diff region cut down to the text boxes — both sides' blocks and the twin's OCR
+lines — with ``seam_text`` ≤ ``--max_seam`` and ``leftover_text`` ≤
+``--max_leftover``; the art stays the JA page's, so a twin from another scan
+does not bring its tone along. **region**: the whole diff region, with the
+build's ``seam`` / ``leftover`` under the same limits and the twin matching
+outside the text boxes (``nontext`` ≤ ``--max_nontext`` — a darker balloon fill
+or screentone, a censor bar or mosaic one edition lacks, a translator's end
+card). Either way the lettering keeps its
 colour (``ink_shift`` ≤ ``--max_ink_shift``, no light ↔ dark flip against
-the background of ≥ ``--flip_contrast`` on both sides). A page with no
+the background of ≥ ``--flip_contrast`` on both sides with the inks themselves
+that far apart in lightness — outlined lettering flips against its modal
+background with the same ink). A page with no
 clean group drops. Writes ``<root>/pool/<lang>/{stem}`` (``.src.webp`` /
 ``.tgt.webp`` symlinks to the built pair, the twin uncomposited),
-``pool.jsonl`` (clean groups, their lines, the metrics) and ``stats.json``;
+``pool.jsonl`` (clean groups and how each pastes, their lines, the text boxes,
+the metrics) and ``stats.json``;
 reruns rewrite the tree.
 """
 
@@ -48,6 +55,13 @@ class _Tally:
     misread_lines: int = 0
     unread_groups: int = 0
     colour_gates: dict[str, int] = field(default_factory=dict)
+    seam_groups: int = 0
+    paste_modes: dict[str, int] = field(default_factory=dict)
+
+
+def text_boxes_of(det: dict, read: list) -> list:
+    """The text mask's boxes: both sides' blocks and the twin's kept OCR lines."""
+    return det["src"] + det["tgt"] + [[round(v) for v in b] for _, b in read]
 
 
 def assign_lines(lines: list, regions: list[dict], pad_frac: float) -> list[int | None]:
@@ -97,9 +111,7 @@ def _measure(a, pages: list[dict], reads: dict, dets: dict) -> dict:
             p["dir"],
             p["page"],
             p["groups"],
-            dets[p["key"]]["src"]
-            + dets[p["key"]]["tgt"]
-            + [[round(v) for v in b] for _, b in reads[p["key"]]],
+            text_boxes_of(dets[p["key"]], reads[p["key"]]),
             a.dilate_frac,
             a.det_pad,
         )
@@ -132,26 +144,39 @@ def _unread_regions(lines: list, tgt_blocks: list, regions: list, pad_frac) -> s
     }
 
 
-def _is_clean(gi, g, metrics, has_line, bad, unread, a, tally: _Tally) -> bool:
+def _paste_mode(gi, g, metrics, has_line, bad, unread, a, tally: _Tally) -> str | None:
+    """How a group is pasted, None when it is not clean. With ``--paste text``
+    the text-only mask (``regions.text_paste_mask``) is tried first, on its
+    own ``seam_text`` / ``leftover_text``; the diff-region mask is the
+    fallback, on the build's ``seam`` / ``leftover`` and ``nontext``."""
     regions = set(g["regions"])
-    if (
-        gi not in has_line
-        or bad & regions
-        or g["seam"] > a.max_seam
-        or g["leftover"] > a.max_leftover
-    ):
-        return False
+    if gi not in has_line or bad & regions:
+        return None
     if unread & regions:
         tally.unread_groups += 1
-        return False
+        return None
+    why = colour_gate(metrics, a, nontext=False)
+    if why:
+        tally.colour_gates[why] = tally.colour_gates.get(why, 0) + 1
+        return None
+    if (
+        a.paste == "text"
+        and metrics.get("text_px", 0) >= 50
+        and metrics.get("seam_text", float("inf")) <= a.max_seam
+        and metrics.get("leftover_text", float("inf")) <= a.max_leftover
+    ):
+        return "text"
+    if g["seam"] > a.max_seam or g["leftover"] > a.max_leftover:
+        tally.seam_groups += 1
+        return None
     why = colour_gate(metrics, a)
     if why:
         tally.colour_gates[why] = tally.colour_gates.get(why, 0) + 1
-        return False
-    return True
+        return None
+    return "region"
 
 
-def _pool_row(p, read, tgt_blocks, pm, a, tally: _Tally) -> dict | None:
+def _pool_row(p, read, det, pm, a, tally: _Tally) -> dict | None:
     """The ``pool.jsonl`` row of one measured page, None past the gates."""
     if pm["bg_resid"] > a.max_bg_resid:
         tally.pages["bg_resid"] += 1
@@ -168,14 +193,23 @@ def _pool_row(p, read, tgt_blocks, pm, a, tally: _Tally) -> dict | None:
         for k, j in zip(assign_lines(lines, p["regions"], 0.0), ja)
         if j and k is not None
     }
+    tgt_blocks = det["tgt"]
+    text_boxes = text_boxes_of(det, read)
     unread = _unread_regions(lines, tgt_blocks, p["regions"], a.pad_frac)
     group_of = {k: gi for gi, g in enumerate(p["groups"]) for k in g["regions"]}
     has_line = {group_of[k] for k, m in zip(owner, misread) if k is not None and not m}
-    clean = [
-        gi
+    modes = {
+        gi: mode
         for gi, g in enumerate(p["groups"])
-        if _is_clean(gi, g, pm["groups"][gi], has_line, bad, unread, a, tally)
-    ]
+        if (
+            mode := _paste_mode(
+                gi, g, pm["groups"][gi], has_line, bad, unread, a, tally
+            )
+        )
+    }
+    for mode in modes.values():
+        tally.paste_modes[mode] = tally.paste_modes.get(mode, 0) + 1
+    clean = set(modes)
     if not clean:
         tally.pages["uncaptioned"] += 1
         return None
@@ -186,9 +220,10 @@ def _pool_row(p, read, tgt_blocks, pm, a, tally: _Tally) -> dict | None:
         "lang": p["lang"],
         "size": p["size"],
         "groups": [
-            {**g, **pm["groups"][gi], "clean": gi in clean}
+            {**g, **pm["groups"][gi], "clean": gi in clean, "paste": modes.get(gi)}
             for gi, g in enumerate(p["groups"])
         ],
+        "text_boxes": text_boxes,
         "bg_resid": pm["bg_resid"],
         "lines": [
             [*ln, group_of[k]]
@@ -225,7 +260,7 @@ def stage_pool(a) -> None:
         for p in pages
         if (
             r := _pool_row(
-                p, reads[p["key"]], dets[p["key"]]["tgt"], metrics[p["key"]], a, tally
+                p, reads[p["key"]], dets[p["key"]], metrics[p["key"]], a, tally
             )
         )
     ]
@@ -240,6 +275,8 @@ def stage_pool(a) -> None:
         "misread_lines": tally.misread_lines,
         "groups_dropped_unread_block": tally.unread_groups,
         "groups_dropped_by_colour_gate": tally.colour_gates,
+        "groups_dropped_seam_leftover": tally.seam_groups,
+        "groups_by_paste": tally.paste_modes,
         "clean_group_frac": round(
             sum(g["clean"] for r in rows for g in r["groups"]) / max(n_groups, 1), 3
         ),

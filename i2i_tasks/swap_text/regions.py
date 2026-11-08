@@ -136,6 +136,25 @@ def paste_mask(labels: np.ndarray, chosen, dilate_frac: float) -> np.ndarray:
     return mask
 
 
+def box_mask(shape, boxes, pad: int) -> np.ndarray:
+    """Bool mask of ``boxes`` (``x0, y0, x1, y1``) grown by ``pad`` px."""
+    out = np.zeros(shape, bool)
+    for x0, y0, x1, y1 in boxes:
+        out[
+            max(0, int(y0) - pad) : int(y1) + pad, max(0, int(x0) - pad) : int(x1) + pad
+        ] = True
+    return out
+
+
+def text_paste_mask(
+    labels: np.ndarray, chosen, dilate_frac: float, text: np.ndarray
+) -> np.ndarray:
+    """``paste_mask`` cut down to the text boxes ``text`` (both sides' blocks
+    and the twin's OCR lines): the lettering without the art a twin from
+    another scan brings along with it (uint8 0/1)."""
+    return paste_mask(labels, chosen, dilate_frac) & text.astype(np.uint8)
+
+
 def region_groups(labels: np.ndarray, regions, near_frac=0.025) -> list[list[int]]:
     """Region indices grouped by grown labels within ``near_frac`` × the short
     edge of each other: one balloon's column split by a glyph gap stays one

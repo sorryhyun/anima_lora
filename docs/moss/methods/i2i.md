@@ -100,11 +100,18 @@ prompt names.
 `i2i_tasks/configs/swap_text.toml`) registers hitocrawl edition twins (the JA page and
 its `en` / `ko` edition) into a pool, `pool/<lang>/{stem}.{src,tgt}.webp` (symlinks to
 the built pair) with `pool.jsonl`. A group of lettering is clean when it was read, would
-paste without tearing, and the twin keeps the page's look around it. AnimeText blocks on
-both sides plus the OCR lines mask the text, and outside that mask the twin must match
-(`--max_nontext`: no darker fill or screentone, censor bar or mosaic one edition lacks,
-translator's end card), while the lettering keeps its colour (`--max_ink_shift`, no
-dark ↔ light flip). `assemble` samples `--sample` pool pages (0: all) into `staging/`.
+paste without tearing, and the lettering keeps its colour (`--max_ink_shift`, no
+dark ↔ light flip of the inks themselves; outlined lettering keeps its ink). AnimeText
+blocks on both sides plus the OCR lines mask the text. A group pastes **text-only**
+(`--paste text`, the default since 2026-11-08): its diff region cut down to that mask, so
+the art stays the JA page's even when the edition is another scan, checked by
+`seam_text` / `leftover_text`. When the box cuts through art and seams, it falls back to
+the whole region, where the twin must also match outside the text (`--max_nontext`: no
+darker fill or screentone, censor bar or mosaic one edition lacks, translator's end card).
+With text-only pastes the page gates open to `max_resid = 12`, `max_uncovered = 0.05`
+(config): ko 1,781 → 2,274 pages, 9,336 → 11,314 pasted groups, 96 % of them text-only
+(`post_image_dataset/i2i/swap_text_relax`, ko only, not cached yet). `assemble` samples
+`--sample` pool pages (0: all) into `staging/`.
 Each target is the JA page with clean text groups pasted from the twin: `full` pairs paste
 every clean group, `partial` pairs (`partial_ratio`) a proper subset. The config sets
 `partial_ratio = 0` (2026-10-28): the unclean groups (44 %) already stay Japanese and

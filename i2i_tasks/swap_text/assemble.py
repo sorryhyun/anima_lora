@@ -28,17 +28,20 @@ from i2i_tasks.swap_text.common import (
     write_jsonl,
     write_stats,
 )
-from i2i_tasks.swap_text.regions import paste_mask
+from i2i_tasks.swap_text.regions import box_mask, paste_mask, text_paste_mask
 
 
 def compose_job(job) -> None:
     """Write one pair's composite target and source symlink."""
-    d, page, base, stem, chosen, dilate, feather = job
+    d, page, base, stem, chosen, chosen_text, text_boxes, det_pad, dilate, feather = job
     base.mkdir(parents=True, exist_ok=True)
     src = cv2.imread(str(d / f"{page}.src.webp"), cv2.IMREAD_COLOR)
     tgt = cv2.imread(str(d / f"{page}.tgt.webp"), cv2.IMREAD_COLOR)
     labels = cv2.imread(str(d / f"{page}.lab.png"), cv2.IMREAD_UNCHANGED)
     mask = paste_mask(labels, chosen, dilate)
+    if chosen_text:
+        text = box_mask(labels.shape, text_boxes, det_pad)
+        mask |= text_paste_mask(labels, chosen_text, dilate, text)
     alpha = mask.astype(np.float32)
     if feather:
         alpha = cv2.GaussianBlur(alpha, (0, 0), feather) * mask
@@ -52,8 +55,9 @@ def compose_job(job) -> None:
 
 
 def _plan(pool_rows: list[dict], a) -> tuple[list[tuple], int]:
-    """``(plans, n_eligible)``: per pool row ``(row, chosen regions, kept lines,
-    swapped groups, clean groups)``, and how many rows could go partial."""
+    """``(plans, n_eligible)``: per pool row ``(row, chosen regions, chosen
+    regions pasted text-only, kept lines, swapped groups, clean groups)``, and
+    how many rows could go partial."""
     clean_of = [
         [gi for gi, g in enumerate(r["groups"]) if g["clean"]] for r in pool_rows
     ]
@@ -65,9 +69,13 @@ def _plan(pool_rows: list[dict], a) -> tuple[list[tuple], int]:
         groups = clean
         if len(clean) >= 2 and rng.random() < p_partial:
             groups = sorted(rng.sample(clean, rng.randint(1, len(clean) - 1)))
-        chosen = sorted(k for gi in groups for k in r["groups"][gi]["regions"])
+        text = [gi for gi in groups if r["groups"][gi].get("paste") == "text"]
+        chosen = sorted(
+            k for gi in groups if gi not in text for k in r["groups"][gi]["regions"]
+        )
+        chosen_text = sorted(k for gi in text for k in r["groups"][gi]["regions"])
         keep = [[t, b] for t, b, gi in r["lines"] if gi in groups]
-        plans.append((r, chosen, keep, len(groups), len(clean)))
+        plans.append((r, chosen, chosen_text, keep, len(groups), len(clean)))
     return plans, n_eligible
 
 
@@ -83,10 +91,13 @@ def _compose(plans: list[tuple], a) -> None:
             staging / r["lang"],
             r["stem"],
             chosen,
+            chosen_text,
+            r.get("text_boxes", []),
+            a.det_pad,
             a.dilate_frac,
             a.feather,
         )
-        for r, chosen, *_ in plans
+        for r, chosen, chosen_text, *_ in plans
     ]
     t0 = time.time()
     with worker_pool(a.workers) as pool:
@@ -118,10 +129,11 @@ def stage_assemble(a) -> None:
             "groups": len(r["groups"]),
             "clean_groups": n_clean,
             "swapped_groups": n_swapped,
-            "chosen": chosen,
+            "chosen": sorted(chosen + chosen_text),
+            "chosen_text": chosen_text,
             "lines": keep,
         }
-        for r, chosen, keep, n_swapped, n_clean in plans
+        for r, chosen, chosen_text, keep, n_swapped, n_clean in plans
     ]
     staging = a.root / "staging"
     write_jsonl(staging / "plan.jsonl", rows)

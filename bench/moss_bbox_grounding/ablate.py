@@ -111,7 +111,9 @@ def boot(values, n=2000, seed=0):
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--cache_dir", default="post_image_dataset/moss/i2i_swap_text")
+    ap.add_argument(
+        "--cache_dir", default="post_image_dataset/moss/i2i_swap_text_v3_all"
+    )
     ap.add_argument("--n", type=int, default=0, help="samples (0 = all one-item)")
     ap.add_argument("--sigma", type=float, default=0.9)
     ap.add_argument("--seed", type=int, default=0)

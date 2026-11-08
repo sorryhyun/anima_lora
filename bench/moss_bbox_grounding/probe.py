@@ -283,7 +283,9 @@ def plot(path, follow, hd, blocks_follow):
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--cache_dir", default="post_image_dataset/moss/i2i_swap_text")
+    ap.add_argument(
+        "--cache_dir", default="post_image_dataset/moss/i2i_swap_text_v3_all"
+    )
     ap.add_argument("--n", type=int, default=40, help="samples (0 = all one-item)")
     ap.add_argument("--sigmas", default="0.9,0.6,0.3")
     ap.add_argument("--seed", type=int, default=0)
