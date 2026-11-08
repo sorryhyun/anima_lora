@@ -25,8 +25,9 @@ Folds, in order:
    their length — ``だから――――`` is a prolongation, like ``ーー``.
 4. **Dot runs** — ``[.・…‥]{2,}`` and a lone ``‥`` → one ``…``.
 
-The **training target** (:func:`training_target`, ``TARGET_NORM = 4``) is the
-same fold with the heart written as ``♥``: in the VL-1.6 tokenizer ``♥`` is
+The **training target** (:func:`training_target`, ``TARGET_NORM = 5``) keeps
+the label's line breaks as ``\\n`` (one token, id 23; norm 4 collapsed them to a
+space, so v4 answers one line) and writes the heart as ``♥``: in the VL-1.6 tokenizer ``♥`` is
 one token and ``♡`` is three bytes, and ``TARGET_NORM = 3`` (``♡`` in the
 target) deleted the decoder's only cheap heart — raw ``♥`` in sincos
 predictions went 144 → 0 and the gate 350 → 319 (plan_vl_respace R5). The
@@ -77,10 +78,19 @@ def normalize_target(s: str) -> str:
     return " ".join(fold_glyphs(s).split())
 
 
+def collapse_keep_lines(s: str) -> str:
+    """Whitespace runs inside a line → one ASCII space; line breaks kept, a run
+    of them (blank lines) one ``\\n``. U+3000 is a space here (NFKC)."""
+    lines = (" ".join(line.split()) for line in s.replace("\r", "\n").split("\n"))
+    return "\n".join(line for line in lines if line)
+
+
 def training_target(s: str) -> str:
-    """:func:`normalize_target` with the heart as :data:`TRAIN_HEART` — the
-    training target only; ``exact_key`` / ``space_key`` stay ``♡``-spelled."""
-    return normalize_target(s).translate(_TRAIN_HEART_FOLD)
+    """The training target (``TARGET_NORM = 5``): :func:`fold_glyphs`, line
+    breaks kept as ``\\n`` (:func:`collapse_keep_lines`), the heart as
+    :data:`TRAIN_HEART`. ``exact_key`` / ``space_key`` stay ``♡``-spelled and
+    whitespace-blind, so a read with or without breaks scores the same."""
+    return collapse_keep_lines(fold_glyphs(s)).translate(_TRAIN_HEART_FOLD)
 
 
 def exact_key(s: str) -> str:

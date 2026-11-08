@@ -17,7 +17,57 @@ from pathlib import Path
 OCR_MODEL = "kha-white/manga-ocr-base"
 
 
-def deskew_crop(img, poly: list[float], pad_frac: float, min_side: int):
+def _on_page_window(rot, cx: float, cy: float, cw: int, ch: int, iw: int, ih: int):
+    """``(top, bottom, left, right)`` of the largest window of a ``cw`` × ``ch``
+    ``getRectSubPix`` crop of the ``rot``-warped page whose every pixel samples
+    the page itself — not ``warpAffine``'s replicated border, not
+    ``getRectSubPix``'s. The valid set is convex (a rectangle ∩ an affine image
+    of one), so a window whose four edges are valid is valid inside, and
+    peeling the worst edge one line at a time ends at such a window."""
+    import cv2
+    import numpy as np
+
+    u = np.arange(cw, dtype=np.float64) + cx - (cw - 1) * 0.5
+    v = np.arange(ch, dtype=np.float64) + cy - (ch - 1) * 0.5
+    xr, yr = np.meshgrid(u, v)
+    inv = cv2.invertAffineTransform(rot)
+    xo = inv[0, 0] * xr + inv[0, 1] * yr + inv[0, 2]
+    yo = inv[1, 0] * xr + inv[1, 1] * yr + inv[1, 2]
+    ok = (
+        (xr >= 0)
+        & (xr <= iw - 1)
+        & (yr >= 0)
+        & (yr <= ih - 1)
+        & (xo >= 0)
+        & (xo <= iw - 1)
+        & (yo >= 0)
+        & (yo <= ih - 1)
+    )
+    t, b, left, r = 0, ch, 0, cw
+    while t < b and left < r:
+        bad = {
+            "t": 1 - ok[t, left:r].mean(),
+            "b": 1 - ok[b - 1, left:r].mean(),
+            "l": 1 - ok[t:b, left].mean(),
+            "r": 1 - ok[t:b, r - 1].mean(),
+        }
+        edge = max(bad, key=bad.get)
+        if bad[edge] == 0:
+            return t, b, left, r
+        if edge == "t":
+            t += 1
+        elif edge == "b":
+            b -= 1
+        elif edge == "l":
+            left += 1
+        else:
+            r -= 1
+    return None
+
+
+def deskew_crop(
+    img, poly: list[float], pad_frac: float, min_side: int, *, trim: bool = True
+):
     """Rotate a polygon upright and return the tight crop.
 
     Two rules that matter for manga-ocr:
@@ -30,6 +80,12 @@ def deskew_crop(img, poly: list[float], pad_frac: float, min_side: int):
     * **Padding.** The polygons hug the glyphs, and the recogniser was trained
       on crops with a margin; a zero-pad crop clips strokes on the outer
       characters.
+    * **The margin stops at the page** (``trim``, 2026-11-08). Where the padded
+      box runs past the page edge, the lines that would sample outside it are
+      cut off, as the shipped reader's ``pad_box`` clips its box to the image.
+      ``trim=False`` is the old cut: those lines came back as ``BORDER_REPLICATE``
+      streaks (13 % of COO SFX crops; a full-height SFX got 180 px of them).
+      A crop that never leaves the page is byte-identical either way.
     """
     import cv2
     import numpy as np
@@ -61,6 +117,12 @@ def deskew_crop(img, poly: list[float], pad_frac: float, min_side: int):
     crop = cv2.getRectSubPix(rotated, (int(round(w)), int(round(h))), (cx, cy))
     if crop is None or crop.size == 0:
         return None, None
+    if trim:
+        win = _on_page_window(rot, cx, cy, crop.shape[1], crop.shape[0], iw, ih)
+        if win is None:
+            return None, None
+        t, b, left, r = win
+        crop = crop[t:b, left:r].copy()
     ch, cw = crop.shape[:2]
     if min(ch, cw) < min_side:
         return None, None

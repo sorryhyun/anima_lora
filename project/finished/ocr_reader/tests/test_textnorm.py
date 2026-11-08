@@ -66,7 +66,23 @@ def test_training_target_spells_the_single_token_heart():
         assert "♡" not in m.training_target(raw)
         assert m.training_target(raw) == m.normalize_target(raw).replace("♡", "♥")
         assert "♥" not in m.exact_key(raw)
-    assert m.training_target("あ゛っ　……\n──") == m.normalize_target("あ゛っ　……\n──")
+    raw = "あ゛っ　……\n──"
+    assert m.training_target(raw) == "あ゙っ …\n――"
+    assert m.exact_key(m.training_target(raw)) == m.exact_key(raw)
+
+
+@pytest.mark.parametrize(
+    "raw, target",
+    [
+        ("나중에\n여자 친구가\n좋아할걸?", "나중에\n여자 친구가\n좋아할걸?"),
+        ("あ　麻美さん\nそれ", "あ 麻美さん\nそれ"),
+        ("  一行目 \n\n\n  二行目  ", "一行目\n二行目"),
+        ("a\r\nb\rc", "a\nb\nc"),
+        ("\n", ""),
+    ],
+)
+def test_training_target_keeps_line_breaks(raw, target):
+    assert _mod().training_target(raw) == target
 
 
 def test_dash_glyphs_are_the_ones_the_corpus_uses():

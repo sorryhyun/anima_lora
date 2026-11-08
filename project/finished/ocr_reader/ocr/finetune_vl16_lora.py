@@ -333,6 +333,11 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--skip_stock_val", action="store_true")
     ap.add_argument("--smoke", action="store_true")
+    ap.add_argument(
+        "--largest_first",
+        action="store_true",
+        help="run the largest-area batches first (a peak-VRAM probe with --steps)",
+    )
     a = ap.parse_args()
     if a.tower_rank and a.train_tower:
         ap.error("--tower_rank and --train_tower both train the tower; pick one")
@@ -526,9 +531,12 @@ def main():
     step, micro, t0, seen = 0, 0, time.time(), 0
     best = (-1.0, None)
     for ep in range(1, a.epochs + 1):
+        batches = cd.area_batches(tr.area, a.bs, rng)
+        if a.largest_first:
+            batches.sort(key=lambda b: -float(tr.area[b].max()))
         dl = DataLoader(
             tr,
-            batch_sampler=cd.area_batches(tr.area, a.bs, rng),
+            batch_sampler=batches,
             num_workers=a.workers,
             collate_fn=collate,
             persistent_workers=False,
