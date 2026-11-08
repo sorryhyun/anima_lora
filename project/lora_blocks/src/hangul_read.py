@@ -3,10 +3,11 @@
 over the same on the Korean edition page; 1.0 = edges as strong as the edition's), and zoom
 sheets per page and seed (rows = the edition, then each arm; columns = the text boxes at 2x).
 
-    .venv/bin/python project/lora_blocks/src/hangul_read.py OUT_DIR arm1 arm2 ...
+    .venv/bin/python project/lora_blocks/src/hangul_read.py OUT_DIR [--ko10] arm1 arm2 ...
 
 An arm is a results folder name under output/moss_i2i_eval/swap_text/results without the
-seed suffix (seed 0 = no suffix, seed n = ``_s<n>``).
+seed suffix (seed 0 = no suffix, seed n = ``_s<n>``). ``--ko10`` reads the ten held-out
+pages of ``inputs_ko10/`` (seed 0, folders ``ko10_<arm>``) instead of the two eval pages.
 """
 
 import json
@@ -21,6 +22,8 @@ from library.env import resolve_under_home
 IN = resolve_under_home("output/moss_i2i_eval/swap_text/inputs")
 RES = resolve_under_home("output/moss_i2i_eval/swap_text/results")
 PAGES = ("589883_0004_ko", "737486_0019_ko")
+SEEDS = (0, 1, 2)
+PRE = ""
 PAD = 4
 
 
@@ -57,19 +60,27 @@ def grad_in(img, bxs) -> float:
 
 def render(arm: str, seed: int, page: str) -> Path | None:
     sfx = "" if seed == 0 else f"_s{seed}"
-    hits = sorted((RES / f"{arm}{sfx}" / page).glob("*.png"))
+    hits = sorted((RES / f"{PRE}{arm}{sfx}" / page).glob("*.png"))
     return hits[0] if hits else None
 
 
 def main():
+    global IN, PAGES, SEEDS, PRE
     out = Path(sys.argv[1])
     arms = sys.argv[2:]
+    if arms and arms[0] == "--ko10":
+        arms = arms[1:]
+        IN = resolve_under_home("output/moss_i2i_eval/swap_text/inputs_ko10")
+        PAGES = tuple(
+            sorted(p.name[: -len(".src.webp")] for p in IN.glob("*.src.webp"))
+        )
+        SEEDS, PRE = (0,), "ko10_"
     out.mkdir(parents=True, exist_ok=True)
     table = {}
     for page in PAGES:
         src = Image.open(IN / f"{page}.src.webp")
         tgt = Image.open(IN / f"{page}.tgt.webp").convert("RGB")
-        for seed in (0, 1, 2):
+        for seed in SEEDS:
             rows = []
             for arm in arms:
                 p = render(arm, seed, page)
