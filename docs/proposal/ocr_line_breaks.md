@@ -1,6 +1,9 @@
 # OCR reader: keep line breaks
 
-Status: proposal (2026-11-08), parked behind the swap_text main run.
+Status: reader and captions done (2026-11-09). Reader v5 (Hub `v5/`, anime_tools 0.9.5) returns
+`\n`; anime_tools 0.9.6 writes a break inside a caption's quoted text line as the two characters
+`\n` and `layout_json` turns it into a newline in the text item. Open: re-reading the swap_text
+pool (its `ocr.json` reads predate v5), the gate below, and re-caching TE for exports with OCR clauses.
 
 Goal: the manga reader (PaddleOCR-VL v4, `anime_tools.ocr.sfx`) returns a text block's line
 breaks, and the swap_text captions carry them into each layout-JSON item as `\n`. Then the DiT
