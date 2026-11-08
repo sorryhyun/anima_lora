@@ -19,8 +19,8 @@ frozen-core distill) work on montages, not loss.
 
 Method reference: Chen et al., *Unlocking Latent Potential for Pixel Generation*,
 arXiv:2605.12013. Proposal + module-swap table: `_archive/proposals/l2p_pixel_anima.md`
-(the Phase-0 bench code, staged plan, and reference-code delta backlog are no longer
-in-tree).
+(staged plan, reference-code delta backlog and both probe versions: the gitignored
+`_archive/l2p/`).
 
 ## What L2P is (the part we tested)
 
@@ -39,7 +39,7 @@ blocks were all confirmed identical to the reference — those are not the gap
 
 ## What the probe does
 
-The Phase-0 probe (since removed from the tree) was the cheapest falsifier: freeze the
+The Phase-0 probe (`_archive/l2p/probe.py`) is the cheapest falsifier: freeze the
 entire DiT, swap `x_embedder` → fresh RGB patch-embed and `final_layer`/`unpatchify` →
 fresh decoder, overfit ≤64 images at 1024²/bs=1 with the exact Anima FM objective,
 Euler-sample montages. Phase-0 gate: loss must drop >30% to <0.85 and montages
@@ -104,9 +104,37 @@ a sampling-time fix (e.g. consistency-style or multi-step training that isn't
 single-step teacher-forced). Neither is cheap; both are speculative. Shelved
 pending a reason to pay for one of them.
 
+## Rerun, 2026-11-06: the bf16-param bug and the 2608.16887 recipe
+
+The May probe held every trainable parameter (shells, LoRA) in bf16 under a plain AdamW at
+lr 5e-5. Updates under half an ulp round away: in a CPU replay of the input embed (same
+shape, init and lr, 2,000 steps) 59 % of its weights never moved, and the mean |ΔW| was
+5.5e-3 against 7.0e-2 in fp32. The rerun probe (`_archive/l2p/probe.py`) keeps trainables in
+`--param_dtype fp32` (default) and computes in bf16 under autocast. It also adds `--pred x`
+(head emits x̂0, converted to v̂ = (x_t − x̂0)/max(σ, 0.05)) and `--noise_scale γ`, the
+two changes Jiang et al., *An Empirical Study of Training Pixel-Space Text-to-Image
+Diffusion Models* (arXiv:2608.16887) make on top of L2P. That paper full-tunes the DiT
+(global batch 128, lr 5e-5, ~50k iterations, self-generated + real 1:1) and has no
+frozen-core arm, and it released no code.
+
+Same 64 real images at 1024², bs 1, anima-base, bf16 stream:
+
+| Arm | Config | Loss | Montage | Verdict |
+|---|---|---|---|---|
+| A | shells only, token decoder, v-pred, γ 1, shift 1, fp32 params | ma50 1.06 at step 900, flat per σ (~1.04 in every band) at 2,000 — the May bf16 curve within noise (1.055 at 1,000) | step 2,000: light grey per-pixel noise with sparse dark specks, no content | WEAK, 0.71× the predict-noise floor |
+| B | `--lora_blocks 2 --dip_skip`, x-pred, γ 2, shift 3, fp32 params | 1.57 → ma50 ~0.16 (0.12× the x̂0 = 0 floor) | step 1,000: saturated monochrome blobs, no content | LOSS PASS, GEN FAIL; killed at 1,200 |
+
+The bf16 bug was real but did not cause the verdict: freeing the input embed leaves the
+shells-only curve where it was, and x-pred with γ 2 does not make the DiP path generate.
+Self-generated training data (the one 2608.16887 lever not tried) is untested; the paper
+shows it speeds convergence under a full tune, not that it helps a frozen core.
+Results: `_archive/l2p/results/20261106-*`.
+
 ## Reproduce
 
-The Phase-0 probe is no longer in-tree. Three configs were run in order — shells-only
+The probe sits in `_archive/l2p/probe.py` (written as `bench.l2p.probe`; move it back
+under `bench/l2p/` to run it through the daemon; `--param_dtype bf16` reproduces the May
+runs). Three configs were run in order — shells-only
 (→ WEAK), `--lora_blocks 2` (→ plateau held), and `--lora_blocks 2 --dip_skip
 --flow_shift 3` (→ loss pass, gen fail) — each judged on the `sample_*.png` montages,
 NOT the loss. Open question never
