@@ -485,6 +485,17 @@ def run_cache(req) -> Path:
             req.vae_dtype,
             req.overwrite,
         )
+    if getattr(req, "distill_teacher", False):
+        from library.moss.distill import cache_teachers
+        from library.moss.requests import DistillCacheRequest
+
+        report["teachers"] = cache_teachers(
+            DistillCacheRequest(
+                cache=str(out_dir),
+                text_encoder=req.text_encoder,
+                model_dir=req.model_dir,
+            )
+        )
     report["summary"] = summarize(out_dir)
     (out_dir / "cache_report.json").write_text(json.dumps(report, indent=2))
     print(json.dumps(report["summary"], indent=2), flush=True)

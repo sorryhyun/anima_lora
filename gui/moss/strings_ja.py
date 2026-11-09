@@ -66,6 +66,12 @@ UI: dict[str, str] = {
     "使えません。bf16: 36 ブロックのスワップで同じピークのまま約 1.6 s/step で、loha を"
     "使えます。切り替えると int8、stream、ema_card、blocks_to_swap、swap_h2d_only、"
     "activation_memory_budget がまとめて変わり、これらは詳細で引き続き調整できます。",
+    "recipe": "レシピ",
+    "recipe_lora": "LoRA",
+    "recipe_trigger_registers": "トリガーレジスタ",
+    "recipe_selfdistill": "自己蒸留",
+    "recipe_help": "configs/moss/ の学習 config を読み込みます: その値と、他のレシピが設定するキーはデフォルト値に。cache、output、model、trigger と int8 / bf16 プランはそのままです。LoRA: 標準レシピ(lora.toml)。トリガーレジスタ: 差分をトリガーの行だけに置き、その後に学習行を加えます。trigger を設定してください。自己蒸留: flow loss に加え、σ ≥ 0.9 で学習画像をテキストエンコーダに入れた LoRA の EMA 0.97 コピーの velocity に合わせます。16 epoch、lr 1e-4。teacher 埋め込み(画像 + キャプションを TE に通す、30 枚で約 1 分)は前処理で distill_teacher をオンにすると作られ、そうでなければ Train が欠けた・古いものを先に作ります。一般的なプロンプトや複数キャラのプロンプトで標準 LoRA より安定し、画風はやや弱くなります。docs/moss/experimental/self_distill.md。",
+    "distill_teacher": "自己蒸留: teacher 埋め込みを先にキャッシュします(画像 + キャプションをテキストエンコーダに通す。変わったファイルだけ再エンコード)。",
 }
 
 FIELDS: dict[str, tuple[str, str]] = {
@@ -93,6 +99,10 @@ FIELDS: dict[str, tuple[str, str]] = {
     "overwrite": ("上書き", "キャッシュが最新でも再エンコードする"),
     "skip_text": ("テキストをスキップ", "テキストエンコーダの処理をスキップ"),
     "skip_latents": ("潜在変数をスキップ", "VAE エンコードをスキップ"),
+    "distill_teacher": (
+        "自己蒸留 teacher キャッシュ",
+        "自己蒸留(Recipe → 自己蒸留)の学習が読む teacher 埋め込みも作ります: 各画像 + キャプションを TE の vision tower に通し {stem}.moss_vis.safetensors に保存。変わったファイルだけ再エンコードし、TE 読み込み後 30 枚で約 1 分。オフでも自己蒸留の Train が欠けた・古い teacher を先に作ります",
+    ),
     "model_dir": (
         "モデルフォルダ",
         "MOSS-Image-Base/ と MOSS-Image-SFT/ を含むフォルダ"

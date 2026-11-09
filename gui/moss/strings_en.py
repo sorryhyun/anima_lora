@@ -65,4 +65,10 @@ UI: dict[str, str] = {
     "and it runs loha. Changing between them sets int8, stream, ema_card, "
     "blocks_to_swap, swap_h2d_only and activation_memory_budget, which stay editable "
     "under Advanced.",
+    "recipe": "Recipe",
+    "recipe_lora": "LoRA",
+    "recipe_trigger_registers": "Trigger registers",
+    "recipe_selfdistill": "Self-distill",
+    "recipe_help": "Loads a training config from configs/moss/: its values, and the default for every key another recipe sets. cache, output, model, trigger and the int8 / bf16 plan stay. LoRA: the plain recipe (lora.toml). Trigger registers: the delta only on the trigger's rows plus learned rows after it; set trigger. Self-distill: the flow loss plus, at σ ≥ 0.9, the velocity of an EMA 0.97 copy of the LoRA with the training image in the text encoder; 16 epochs, lr 1e-4. Its teacher embeds (image + caption through the TE, about a minute per 30 images) come from Preprocess with distill_teacher ticked; otherwise Train builds the missing or outdated ones first. Steadier on general and multi-character prompts than plain LoRA, a little less style. docs/moss/experimental/self_distill.md.",
+    "distill_teacher": "Self-distillation: caching the teacher embeds first (image + caption through the text encoder; only changed files re-encode).",
 }

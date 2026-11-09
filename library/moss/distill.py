@@ -22,8 +22,7 @@ from pathlib import Path
 
 import torch
 
-VIS_SUFFIX = ".moss_vis.safetensors"
-TE_SUFFIX = ".moss_te.safetensors"
+from library.moss.scan import TE_SUFFIX, VIS_SUFFIX
 
 
 def teacher_path(te_path: Path) -> Path:

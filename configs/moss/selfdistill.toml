@@ -1,0 +1,26 @@
+# MOSS-Image LoRA by self-distillation, the add90 ema97 recipe: the flow loss on every
+# step, plus on steps with sigma >= 0.9 a teacher term, the velocity of an EMA 0.97 copy
+# of the LoRA with the training image in the TE ahead of the caption.
+#
+#   make daemon-run ARGS="--stall-timeout 900 scripts/moss/cache.py --src <folder> --out post_image_dataset/moss/<set> --distill_teacher"
+#   make daemon-run ARGS="--stall-timeout 900 scripts/moss/train.py --config configs/moss/selfdistill.toml --cache post_image_dataset/moss/<set> --output output/ckpt_moss/<name>.safetensors"
+#
+# --distill_teacher adds the teacher embeds to the cache ({stem}.moss_vis.safetensors beside
+# each TE file; only changed files re-encode). On an existing cache,
+# scripts/moss/distill_cache.py --cache <cache> writes them alone; the GUI's Train runs it
+# when a teacher file is missing or older than its TE file. Keys left out keep
+# configs/moss/lora.toml's values (the field defaults: int8 base, fp32 stream, Muon).
+# Refuses delta_rows, trigger_registers and ref_adapters all.
+# User doc: docs/moss/experimental/self_distill.md.
+
+cache = "post_image_dataset/moss"
+output = "output/ckpt_moss/moss_lora_selfdistill.safetensors"
+
+epochs = 16                    # caststation, 30 images: 480 steps; judged there, not at 240
+lr = 1e-4
+ema_window = 0.139             # the saved adapter EMA, as the caststation runs
+
+distill = "ema"                # teacher: EMA shadow of the LoRA, image + caption in the TE
+distill_ema_decay = 0.97       # ~33 updates behind the student
+distill_sigma_min = 0.9        # teacher term only at sigma >= 0.9 (~21 % of steps)
+distill_add = 1.0              # keep the flow loss, add the teacher MSE at the same gradient norm

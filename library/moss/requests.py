@@ -122,6 +122,14 @@ class CacheRequest(Request):
     overwrite: bool = _f(False, "re-encode even when the cache is current")
     skip_text: bool = _f(False, "skip the text-encoder pass")
     skip_latents: bool = _f(False, "skip the VAE pass")
+    distill_teacher: bool = _f(
+        False,
+        "also write the self-distillation teacher embeds TrainRequest.distill reads "
+        "(each image + its captions through the TE's vision tower, "
+        "{stem}.moss_vis.safetensors; scripts/moss/distill_cache.py with this "
+        "text_encoder). Only changed files re-encode; ~1 min per 30 images after the "
+        "TE loads",
+    )
     save_crops: bool = _f(
         False, "also write the exact pixels each latent was encoded from", advanced=True
     )

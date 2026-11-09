@@ -12,17 +12,20 @@ import dataclasses
 import json
 from pathlib import Path
 
-from gui.lines.window import LineSpec, run
-from gui.moss.plans import generate_plans, model_items, train_plans
+from library.env import resolve_under_home
+
+from gui.lines.window import LineJob, LineSpec, run, tr
+from gui.moss.plans import generate_plans, model_items, recipe_knob, train_plans
 from gui.moss.strings import FIELDS, FIELDS_GENERATE, UI
 from library.moss.requests import (
     CacheRequest,
+    DistillCacheRequest,
     GenerateRequest,
     TrainRequest,
     resolve_model_dir,
     variant_dir,
 )
-from library.moss.scan import cache_counts, scan
+from library.moss.scan import cache_counts, header_metadata, scan, stale_teachers
 
 
 def _extra_pages(panel) -> list:
@@ -33,12 +36,40 @@ def _extra_pages(panel) -> list:
 
 def _setup_forms(train, test) -> None:
     model_items(train, train_plans(), "model_help")
+    recipe_knob(train)
     model_items(test, generate_plans(), "model_help_test")
+
+
+def _cache_encoder(cache: str) -> str:
+    """The TE weights a cache was encoded with (its ``encoder`` stamp), int8 when
+    no TE file is there yet."""
+    folder = resolve_under_home(cache)
+    te = next(folder.glob("*.moss_te.safetensors"), None) if folder.is_dir() else None
+    if te is None:
+        return "int8"
+    stamp = header_metadata(te).get("encoder", "")
+    return next((p for p in ("int8", "fp8") if stamp.endswith(f"{p} weights")), "bf16")
+
+
+def _before_train(req: TrainRequest, cache_req: CacheRequest | None) -> list[LineJob]:
+    """With distill on, the teacher embeds first when any is missing or older than
+    its TE file, unless the chain's preprocessing writes them (distill_teacher)."""
+    if req.distill == "off" or (cache_req is not None and cache_req.distill_teacher):
+        return []
+    if cache_req is None and not stale_teachers(resolve_under_home(req.cache)):
+        return []
+    teacher = DistillCacheRequest(
+        cache=req.cache,
+        text_encoder=(
+            cache_req.text_encoder if cache_req else _cache_encoder(req.cache)
+        ),
+        model_dir=req.model_dir,
+    )
+    return [LineJob(teacher, "moss-cache", note=tr("distill_teacher"))]
 
 
 def _test_runs(req: GenerateRequest) -> list[GenerateRequest]:
     """The LoRA render and the base render, both on the LoRA's prompt tail."""
-    from library.env import resolve_under_home
     from library.moss.prompt_tail import resolve_prompt_tail
 
     if req.prompt_tail == "auto" and resolve_under_home(req.lora or ".x").is_file():
@@ -85,6 +116,7 @@ SPEC = LineSpec(
     fields_test=FIELDS_GENERATE,
     extra_pages=_extra_pages,
     setup_forms=_setup_forms,
+    before_train=_before_train,
 )
 
 

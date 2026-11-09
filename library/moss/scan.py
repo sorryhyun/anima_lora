@@ -22,6 +22,8 @@ from library.lines.scan import cache_counts as _cache_counts
 
 IMAGE_EXTS = (".webp", ".png", ".jpg", ".jpeg")
 TE_SUFFIX = ".moss_te.safetensors"
+# Self-distillation teacher embeds per stem (library/moss/distill.py).
+VIS_SUFFIX = ".moss_vis.safetensors"
 LATENT_SUFFIX = ".moss_latent.safetensors"
 # Optional clean reference latent per stem (i2i), key ``latent``.
 REF_SUFFIX = ".moss_ref.safetensors"
@@ -157,6 +159,22 @@ def scan(src: Path | None, out: Path | None) -> CacheScan:
                     stale += 1
             latents += stem in latent_stems
     return CacheScan(len(images), len(pairs), text, latents, stale, dupes)
+
+
+def stale_teachers(cache: Path) -> int:
+    """Samples (latent + TE file) whose teacher file is missing or older than their
+    TE file. A TE file is rewritten when its caption, encoder or tail changes, so
+    this tracks the teacher's stamp without reading it."""
+    if not cache.is_dir():
+        return 0
+    n = 0
+    for stem in {stem for stem, *_ in latent_files(cache)}:
+        te, vis = cache / f"{stem}{TE_SUFFIX}", cache / f"{stem}{VIS_SUFFIX}"
+        if te.is_file() and (
+            not vis.is_file() or vis.stat().st_mtime < te.stat().st_mtime
+        ):
+            n += 1
+    return n
 
 
 def cache_counts(cache: Path) -> CacheCounts:

@@ -41,7 +41,11 @@ must not appear.
   its table per language into `gui/moss/strings_{en,ko,ja,cn}.py`). The same
   MOSS panel also runs inside `make gui` (MOSS mode, below). `LineSpec.setup_forms` adjusts
   the Train and Test forms before saved values load (MOSS's `model` items are variant ×
-  int8 / bf16 plan, `gui/moss/plans.py`, also on the i2i forms). `LineSpec.extra_pages` adds
+  int8 / bf16 plan, `gui/moss/plans.py`, also on the i2i forms; the t2i Train form's Recipe
+  row, `RequestForm.add_row`, loads `configs/moss/{lora,lora_trigger_registers,selfdistill}.toml`
+  and follows each recipe's marker fields). `LineSpec.before_train` returns jobs queued ahead
+  of every Train (MOSS: the teacher cache when `distill` is on and a teacher file is
+  missing or older than its TE file, or in a chain whose Preprocess has `distill_teacher` off). `LineSpec.extra_pages` adds
   `LinePage` tabs after Train that submit through `LinePanel.submit([LineJob…])`, sharing
   the log, Stop and chain queue (unlike `add_tab`, which hides them); MOSS's are the two
   i2i tabs (`gui/moss/i2i.py`: i2i Preprocess = stage → preprocess, i2i Train = train →

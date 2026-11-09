@@ -105,7 +105,7 @@ fields; the `[half]` / `[quarter]` presets are CLI shorthand for the same key.
 
 ## `moss/` — not the merge chain
 
-`configs/moss/lora.toml` / `lora_bf16.toml` / `lora_trigger_registers.toml` / `cache.toml` and `i2i/<task>/` are flat tables of
+`configs/moss/lora.toml` / `lora_bf16.toml` / `lora_trigger_registers.toml` / `selfdistill.toml` / `cache.toml` and `i2i/<task>/` are flat tables of
 `library.moss.requests` field names, read by `scripts/moss/*.py --config` (`Request.load_config` in
 `library/lines/requests.py`): field default → TOML → CLI. None of the chain above applies.
 

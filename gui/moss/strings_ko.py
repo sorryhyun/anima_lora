@@ -67,6 +67,12 @@ UI: dict[str, str] = {
     "블록 36개 스왑으로 같은 피크에서 약 1.6 s/step이며 loha를 쓸 수 있습니다. 둘 사이를 "
     "바꾸면 int8, stream, ema_card, blocks_to_swap, swap_h2d_only, "
     "activation_memory_budget이 함께 바뀌며, 이 값들은 고급에서 계속 조정할 수 있습니다.",
+    "recipe": "레시피",
+    "recipe_lora": "LoRA",
+    "recipe_trigger_registers": "트리거 레지스터",
+    "recipe_selfdistill": "자기 증류",
+    "recipe_help": "configs/moss/의 학습 config를 불러옵니다: 그 값과, 다른 레시피가 정하는 키는 기본값으로. cache, output, model, trigger와 int8 / bf16 플랜은 그대로 둡니다. LoRA: 기본 레시피(lora.toml). 트리거 레지스터: 트리거 행에만 델타를 두고 그 뒤에 학습 행을 더합니다. trigger를 지정하세요. 자기 증류: flow loss에 더해 σ ≥ 0.9에서 학습 이미지를 텍스트 인코더에 넣은 LoRA의 EMA 0.97 사본의 velocity를 따릅니다. 16 epoch, lr 1e-4. teacher 임베딩(이미지 + 캡션을 TE에 통과, 30장에 1분 정도)은 전처리에서 distill_teacher를 켜면 만들어지고, 아니면 Train이 없거나 낡은 것을 먼저 만듭니다. 일반 프롬프트와 여러 캐릭터 프롬프트에서 기본 LoRA보다 안정적이고, 화풍은 조금 약합니다. docs/moss/experimental/self_distill.md.",
+    "distill_teacher": "자기 증류: teacher 임베딩을 먼저 캐시합니다 (이미지 + 캡션을 텍스트 인코더에 통과; 바뀐 파일만 다시 인코딩).",
 }
 
 FIELDS: dict[str, tuple[str, str]] = {
@@ -94,6 +100,10 @@ FIELDS: dict[str, tuple[str, str]] = {
     "overwrite": ("덮어쓰기", "캐시가 최신이어도 다시 인코딩"),
     "skip_text": ("텍스트 건너뛰기", "텍스트 인코더 단계를 건너뜀"),
     "skip_latents": ("잠재변수 건너뛰기", "VAE 인코딩을 건너뜀"),
+    "distill_teacher": (
+        "자기 증류 teacher 캐시",
+        "자기 증류(Recipe → 자기 증류) 학습이 읽는 teacher 임베딩도 만듭니다: 각 이미지 + 캡션을 TE의 vision tower에 통과시켜 {stem}.moss_vis.safetensors로 저장. 바뀐 파일만 다시 인코딩하고, TE 로드 후 30장에 1분 정도. 꺼 두어도 자기 증류 Train이 없거나 낡은 teacher를 먼저 만듭니다",
+    ),
     "model_dir": (
         "모델 폴더",
         "MOSS-Image-Base/와 MOSS-Image-SFT/가 있는 폴더"

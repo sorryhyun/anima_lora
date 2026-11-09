@@ -56,6 +56,12 @@ UI: dict[str, str] = {
     "sft 使用就近舍入。不能用 loha。bf16：交换 36 个块，相同峰值下约 1.6 s/step，可以用 "
     "loha。切换时会同时改动 int8、stream、ema_card、blocks_to_swap、swap_h2d_only 和 "
     "activation_memory_budget，这些值仍可在高级中调整。",
+    "recipe": "配方",
+    "recipe_lora": "LoRA",
+    "recipe_trigger_registers": "触发词寄存器",
+    "recipe_selfdistill": "自蒸馏",
+    "recipe_help": "从 configs/moss/ 读取训练配置：写入其值，其他配方设置的键恢复默认值。cache、output、model、trigger 以及 int8 / bf16 方案保持不变。LoRA：基本配方（lora.toml）。触发词寄存器：差量只作用于触发词所在行，并在其后加入可学习行；需设置 trigger。自蒸馏：flow loss 之外，在 σ ≥ 0.9 时对齐 LoRA 的 EMA 0.97 副本在文本编码器中加入训练图像后的 velocity；16 epoch，lr 1e-4。teacher 嵌入（图像 + 描述经过 TE，30 张约 1 分钟）可在预处理中勾选 distill_teacher 生成，否则 Train 会先生成缺失或过期的部分。在通用提示词和多角色提示词上比基本 LoRA 更稳定，画风略弱。docs/moss/experimental/self_distill.md。",
+    "distill_teacher": "自蒸馏：先缓存 teacher 嵌入（图像 + 描述经过文本编码器；只重新编码有变化的文件）。",
 }
 
 FIELDS: dict[str, tuple[str, str]] = {
@@ -80,6 +86,10 @@ FIELDS: dict[str, tuple[str, str]] = {
     "overwrite": ("覆盖", "即使缓存是最新的也重新编码"),
     "skip_text": ("跳过文本", "跳过文本编码器"),
     "skip_latents": ("跳过潜变量", "跳过 VAE 编码"),
+    "distill_teacher": (
+        "自蒸馏 teacher 缓存",
+        "同时生成自蒸馏（配方 → 自蒸馏）训练读取的 teacher 嵌入：每张图像 + 描述经过 TE 的 vision tower，存为 {stem}.moss_vis.safetensors。只重新编码有变化的文件，TE 加载后 30 张约 1 分钟。不勾选时，自蒸馏的 Train 也会先生成缺失或过期的 teacher",
+    ),
     "model_dir": (
         "模型文件夹",
         "包含 MOSS-Image-Base/ 和 MOSS-Image-SFT/ 的文件夹"

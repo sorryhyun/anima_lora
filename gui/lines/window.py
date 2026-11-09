@@ -110,6 +110,9 @@ class LineSpec:
     extra_pages: Callable[[Any], list] | None = None
     # Called with the Train and Test ``RequestForm``s, before saved values load.
     setup_forms: Callable[[Any, Any], None] | None = None
+    # (train request, the chain's cache request or None) → the ``LineJob``s that run
+    # before training (a cache it needs).
+    before_train: Callable[[Any, Any], list] | None = None
 
     @property
     def labels(self) -> tuple[str, str, str]:
@@ -177,6 +180,7 @@ class RequestForm(QWidget):
         self.cls = cls
         self.widgets: dict[str, QWidget] = {}
         self._help: dict[str, str] = {}
+        self._help_cb = help_cb
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         basic = self._basic = QFormLayout()
@@ -203,6 +207,16 @@ class RequestForm(QWidget):
             self.widgets[f.name] = widget
         layout.addLayout(basic)
         layout.addWidget(advanced_box)
+
+    def add_row(self, label: str, widget: QWidget, help_text: str) -> None:
+        """A row above the fields for a widget that is not a request field."""
+        widget.setToolTip(help_text)
+        name = make_field_label(
+            label,
+            tooltip=help_text,
+            on_click=lambda: self._help_cb(label, help_text),
+        )
+        self._basic.insertRow(0, name, widget)
 
     def set_help(self, field: str, help_text: str) -> None:
         """Replace basic field ``field``'s tooltip and click-through help."""
@@ -735,6 +749,8 @@ class LinePanel(DaemonJobMixin, QWidget):
     def submit(self, jobs: list[LineJob]) -> bool:
         """Submit ``jobs[0]``; the rest follow one by one while each succeeds."""
         first, *rest = jobs
+        if first.note:
+            self.log.appendPlainText(first.note)
         if not self._submit(first.req, first.label, first.env):
             return False
         self._pending = rest
@@ -775,7 +791,16 @@ class LinePanel(DaemonJobMixin, QWidget):
         if req is None or not self._model_ok(req):
             return
         self._persist()
-        self._submit(req, self.label_train)
+        self.submit(self._train_jobs(req))
+
+    def _train_jobs(self, req, note: str = "", cache_req=None) -> list[LineJob]:
+        """The train job, after the jobs ``LineSpec.before_train`` puts first
+        (which carry their own notes); ``note`` is the train job's otherwise."""
+        hook = self.spec.before_train
+        before = hook(req, cache_req) if hook else []
+        if before:
+            note = tr("before_train_done")
+        return [*before, LineJob(req, self.label_train, note=note)]
 
     def _run_chain(self) -> None:
         cache_req = self.cache_form.request()
@@ -797,7 +822,7 @@ class LinePanel(DaemonJobMixin, QWidget):
         self.submit(
             [
                 LineJob(cache_req, self.label_cache),
-                LineJob(train_req, self.label_train, note=tr("chain_next")),
+                *self._train_jobs(train_req, tr("chain_next"), cache_req),
             ]
         )
 

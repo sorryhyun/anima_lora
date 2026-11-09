@@ -23,6 +23,7 @@ Qwen-Image-2.1 has no docs folder; its reference is `library/qwen21/CLAUDE.md`.
 | [moss/channel_scaling.md](moss/channel_scaling.md) | Channel scaling + `dc_isolate` on MOSS (removed), and how the lr / alpha defaults got here |
 | [moss/inference/dave.md](moss/inference/dave.md) | DAVE on MOSS — same-prompt seed variety (`--dave auto`), ComfyUI node |
 | [moss/methods/tone_loss.md](moss/methods/tone_loss.md) | i2i tone term — keeps the input's brightness and colour outside the edit (`--tone_weight`), sanitize v3 |
+| [moss/experimental/self_distill.md](moss/experimental/self_distill.md) | Self-distilled LoRA (experimental) — flow loss plus an EMA teacher with the image in the TE at σ ≥ 0.9; steadier on general and multi-character prompts |
 | [moss/optimization/int8.md](moss/optimization/int8.md) | int8 base — GPTQ file, speed, VRAM, accuracy |
 | [moss/optimization/fa2_sm120.md](moss/optimization/fa2_sm120.md) | FlashAttention build for sm_120 — 128×32 forward tile, fp16-accumulate backward, selection, numbers (both lines) |
 | [moss/optimization/training_step.md](moss/optimization/training_step.md) | What makes the training step fast — int8 ConvRot both ways, `wq_t` streaming, FA2 in the budget's knapsack, batched Muon, EMA on the card |

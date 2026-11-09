@@ -6,6 +6,8 @@ teacher term on steps with σ ≥ 0.9, from an EMA 0.97 copy of the LoRA
 (`--distill ema --distill_ema_decay 0.97 --distill_sigma_min 0.9 --distill_add 1`). At 480 steps
 its style is a little lighter than SFT's, it is far steadier on general prompts, and it keeps
 Base's composition on an unseen prompt where SFT drifts ([verdict](#verdict-2026-11-09)).
+Shipped as `configs/moss/selfdistill.toml` and the GUI's Recipe dropdown; user doc
+[`docs/moss/experimental/self_distill.md`](../experimental/self_distill.md).
 
 Source: D-OPSD, arXiv 2605.05204 (Jiang et al., HKUST / Alibaba Z-Image team). Implemented here:
 the paper's **off-policy** arm (§ 3.3, Fig. 6a, arm 3), not its on-policy method.
