@@ -16,6 +16,9 @@ each module's docstring holds its stage's rules and outputs:
    into ``<root>/staging/``.
 6. **caption** (``caption.py``) — write ``{stem}.txt`` and ``pairs.jsonl``.
 
+``audit.py`` (outside the stages) proofreads the captions against crops of their
+lettering and folds the fixes and drops back into ``ocr.json``.
+
 Stems are ``{anchor}_{page}_{lang}``; ``pairs.jsonl`` rows carry ``work`` so a
 holdout can split by work (the same work appears in both languages).
 
