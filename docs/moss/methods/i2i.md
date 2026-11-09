@@ -117,10 +117,12 @@ darker fill or screentone, censor bar or mosaic one edition lacks, translator's 
 and carry at most `--max_free` (3,000) non-text pixels: on a twin from another scan the
 diff region spreads over redrawn balloons and boxes whose median |ΔLab| passes `nontext`,
 and the fallback pasted the other edition's art (429 groups, up to 24 % of a page, before
-the cap on 2026-11-08). A kana / CJK line inside a region marks it misread only when its box
-changed between the editions (`--retained_ja`, shift-tolerant change ≥ 0.05); an unchanged
-one is JA lettering the twin kept beside the translation (`はっ`, `えへへ`) and no longer
-drops the Korean line next to it.
+the cap on 2026-11-08). A Japanese line (`ja_line`: kana / CJK alone, or at least two of
+them outnumbering the Hangul — a Korean line keeping a `成人向け` or a `凸` is Korean, since
+2026-11-09) inside a region marks it misread only when its box changed between the
+editions (`--retained_ja`, shift-tolerant change ≥ 0.05); an unchanged one is JA lettering
+the twin kept beside the translation (`はっ`, `えへへ`), out of the caption but not dropping
+the Korean line next to it.
 With text-only pastes the page gates open to `max_resid = 12`, `max_uncovered = 0.05`
 (config): ko 1,781 → 2,302 pages, 9,336 → 11,695 pasted groups, 99 % of them text-only
 (`post_image_dataset/i2i/swap_text_relax`, ko only, not cached yet). `assemble` samples

@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 
 from i2i_tasks.swap_text.common import (
-    JA_SCRIPT,
+    ja_line,
     read_json,
     read_jsonl,
     write_jsonl,
@@ -85,7 +85,7 @@ def stage_caption(a) -> None:
         read = reads[key(r)] if a.caption_ocr else r["lines"]
         lines = [[t.replace('"', "”").strip(), b] for t, b in read]
         lines = [ln for ln in lines if ln[0]]
-        keep = [ln for ln in lines if not JA_SCRIPT.search(ln[0])]
+        keep = [ln for ln in lines if not ja_line(ln[0])]
         n_ja += len(lines) - len(keep)
         if not keep:
             n_empty += 1

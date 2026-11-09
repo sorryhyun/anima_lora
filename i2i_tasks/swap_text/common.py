@@ -19,6 +19,22 @@ import numpy as np
 JA_SCRIPT = re.compile(
     r"[\u3040-\u30ff\u31f0-\u31ff\u3400-\u4dbf\u4e00-\u9fff\uff66-\uff9f]"
 )
+_HANGUL_LATIN = re.compile(r"[\uac00-\ud7a3\u3131-\u318eA-Za-z]")
+
+
+def ja_line(text: str) -> bool:
+    """A line that is Japanese lettering: kana / ideographs with no Hangul or Latin
+    beside them (``な!!``), or at least two of them outnumbering the Hangul (a
+    colophon with an e-mail address). A Korean line keeping a 成人向け, a 凸 or a
+    ``(土)`` is not one."""
+    ja = len(JA_SCRIPT.findall(text))
+    if not ja:
+        return False
+    other = _HANGUL_LATIN.findall(text)
+    hangul = sum(c < "A" or c > "z" for c in other)
+    return not other or (ja >= 2 and ja > hangul)
+
+
 WEBP = [cv2.IMWRITE_WEBP_QUALITY, 95]
 # The staged target is lossless: outside its paste mask it is the decoded source
 # exactly, so target − reference is zero wherever the edit is not.

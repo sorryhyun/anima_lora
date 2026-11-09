@@ -1,7 +1,8 @@
 """**pool** (CPU): drops pages past ``--max_resid`` (another scan, not
 a relettering) or ``--max_uncovered``, and assigns each twin OCR line to the
-region its centre falls in. A line holding kana or CJK ideographs
-(``JA_SCRIPT``) inside a region is a misread of the translated lettering
+region its centre falls in. A Japanese line (``ja_line``: more kana / CJK
+ideographs than Hangul and Latin letters — a Korean line keeping a 成人向け
+or a 凸 is not one) inside a region is a misread of the translated lettering
 when its box changed between the editions (``line_changes`` ≥
 ``--retained_ja``); unchanged, it is JA lettering the twin kept in place
 (a ``はっ`` beside the translated dialogue) — never captioned, but it does
@@ -41,7 +42,7 @@ import time
 from dataclasses import dataclass, field
 
 from i2i_tasks.swap_text.common import (
-    JA_SCRIPT,
+    ja_line,
     ok_pages,
     read_cache,
     read_json,
@@ -200,7 +201,7 @@ def _pool_row(p, read, det, pm, a, tally: _Tally) -> dict | None:
     lines = [raw[i] for i in kept]
     changed = [pm["lines"][i] >= a.retained_ja for i in kept]
     owner = assign_lines(lines, p["regions"], a.pad_frac)
-    ja = [bool(JA_SCRIPT.search(t)) for t, _ in lines]
+    ja = [ja_line(t) for t, _ in lines]
     # JA script in a region: a misread of the twin's new lettering when its box
     # changed, else lettering the twin kept — out of the caption either way
     misread = [k is not None and j for k, j in zip(owner, ja)]
