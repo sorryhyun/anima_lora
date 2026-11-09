@@ -3,10 +3,9 @@
 ("regenerate what is under the paint, coherently with everything around it").
 
 Cond = a solid-color paint blob composited over the real image (or a white
-canvas, ``--cond_background white`` — the v1/v2 era); target = the original
-image (full scene, full caption). Image mode is the character-inpaint framing:
-the blob occludes a region, so the model learns "fill the paint, keep the
-surrounding scene" — no LaMa-style background recovery is ever needed, because
+canvas, ``--cond_background white``); target = the original image (full scene,
+full caption). Image mode is the character-inpaint framing: the blob occludes a
+region, so the model learns "fill the paint, keep the surrounding scene";
 neither training nor inference sees the pixels behind the paint.
 
 Three data **slices** share one paint semantics (paint = region to regenerate;
@@ -16,13 +15,13 @@ everything outside is context):
   own SAM3 mask, augmented exact→rough (levels 0-3) so hand-painted blobs work
   at inference, **plus level 4 "slack"**: the paint is a much larger box /
   ellipse that contains the character off-center, and the real background is
-  the target under the slack part — this is what teaches the model that the
-  paint is an *allowed region*, not a silhouette to fill edge-to-edge, and how
-  to continue/harmonize the background inside the paint (the v3 adapter,
-  trained on tight supersets only, filled every paint with character; bench
-  ``area_ratio ≈ iou``). Level 5 "face" paints only the head (SAM3 ``head`` — face + hair, what a
-  user actually paints over; the bare ``face`` concept is inconsistent about
-  the fringe), the body stays visible — the inpaint-subset "concentrate" case.
+  the target under the slack part. Slack teaches that the paint is an
+  *allowed region*, not a silhouette to fill edge-to-edge, and how to
+  continue the background inside it (trained on tight supersets only, the
+  adapter filled every paint with character). Level 5 "face" paints only the
+  head (SAM3 ``head``: face + hair, what a user actually paints over; the bare
+  ``face`` concept is inconsistent about the fringe), the body stays visible:
+  the inpaint-subset "concentrate" case.
 * **pair** (``count == ['1boy','1girl']``) — *one-figure paint*: the girl's
   instance mask (SAM3 ``girl`` minus ``boy``) is painted, the boy stays
   visible as real context, so the generated girl must match a visible
@@ -54,7 +53,7 @@ that a select-only re-run would resurrect without cond latents):
 2. **Sam** (GPU) — SAM3 concept segmentation via
    ``anime_tools.masking.cli.generate_masks`` (low threshold: 0.7 misses ~45%
    of solo images on nude/close-up/stylized art; 0.4 recovers them with no
-   measured over-inclusion, probed 2026-08-23): ``{base}/masks`` = girl
+   measured over-inclusion): ``{base}/masks`` = girl
    (pairs: girl minus boy), ``{base}/masks_boy`` = boy/man/male and
    ``{base}/masks_person`` = person (pairs only; the partner is boy ∪
    (person − girl) — SAM3's male prompts alone miss most anime partners),
@@ -64,7 +63,7 @@ that a select-only re-run would resurrect without cond latents):
 3. **Cond** — gate each raw mask on coverage / fragmentation / hole-iness
    (a dirty mask drops the image: its staging symlink is unlinked so it
    leaves the dataset), draw one augment level per image (seeded
-   ``crc32(stem)`` so re-runs are bit-identical) and paint the condition
+   ``crc32(stem)`` so re-runs draw the same level) and paint the condition
    image into ``{base}/cond_images``. Per-image records (slice, level,
    boxes, position word, coverages) + drop reasons land in
    ``{base}/report.json``.
@@ -559,8 +558,7 @@ def _augment_mask(
 
     0 exact, 1 smoothed, 2 blob, 3 wobble — every one keeps the pose readable:
     the paint cue carries position AND rough silhouette, so bridging the gap
-    between spread legs into one fat blob over-simplifies the cond (user
-    feedback 2026-08-23). Blur sigmas stay small enough that only sub-limb
+    between spread legs into one fat blob over-simplifies the cond. Blur sigmas stay small enough that only sub-limb
     concavities close. 4 slack — see :func:`_slack_region`. (Level 5 "face" is
     the smooth level applied to the face mask by the caller.) Returns ``None``
     only for a slack draw with no room to grow.
@@ -594,7 +592,7 @@ def _augment_mask(
             # the silhouette shifted toward ONE random side — room on one side
             # only, so the girl sits off-centre and the paint stays ≤ ~1.6×
             # her area (an all-round fat halo took 0.3-coverage girls to 0.7
-            # paints — user feedback 2026-08-25).
+            # paints).
             out = _one_sided_slack(mask, m, rng, edge, max_ratio=slack_max_ratio)
             if out is None or out.mean() > max(max_slack_coverage, 0.85):
                 return None  # no room — caller falls back to a tight level
@@ -778,7 +776,7 @@ def stage_cond(
         face = None
         if level == 5:
             # "head" (face + hair) — what a user paints over; SAM3's "face"
-            # concept is inconsistent about the fringe (2026-08-25 sheets).
+            # concept is inconsistent about the fringe.
             face = _load_mask(base / "masks_head" / rel.parent / mask_name, (iw, ih))
             if face is None:
                 face = _load_mask(
@@ -946,8 +944,7 @@ def stage_encode(
 
     ``overwrite`` re-encodes every cond — REQUIRED after a repaint: the cache is
     keyed ``{stem}_{WxH}`` and a same-stem latent from an earlier paint recipe
-    is silently kept otherwise (2026-08-25: v4 solo latents survived the v5
-    repaint until this flag existed).
+    is silently kept otherwise.
 
     ``vae_2d`` default ON — the same fold the target latents in
     post_image_dataset/lora/ were cached with, so cond and target stay

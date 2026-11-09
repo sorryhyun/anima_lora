@@ -9,9 +9,8 @@ name = "phash_edit"
 # The miner writes the dataset blueprint into configs/easycontrol/phash_edit.toml.
 
 [staging]
-# The RAW crawl pool. NOT selected/ — that tree is the deduplicated curation and
-# has almost no variant pairs left (72 at tag-delta <= 16 out of 4.5M). Needs
-# gelcrawl's .hash_cache.json in each root (`make post` writes it).
+# The raw crawl pool, not selected/ (deduplicated, almost no variant pairs left).
+# Needs gelcrawl's .hash_cache.json in each root (`make post` writes it).
 image_dirs = ["{CAPTION_CORPUS_DIR}/retrieved"]
 
 phash_max = 40              # 256-bit Hamming; random pairs sit at 128, spot-checked aligned through 36
@@ -29,12 +28,9 @@ ar_max_log2 = 0.0           # off: same artist = same canvas, so AR divergence i
 # --- synthetic arms, sized as a share of the FINAL directed set --------------
 # Both ride the same pool: the target latent is one the edit arm already
 # encoded, so an arm record costs at most one extra *cond* encode.
-# NOTE on the identity arm: these ARE the empty-instruction no-op pairs the
-# twin_edit arm failed on ("aligned cond + short prompt -> exact copy", which
-# swallowed small edits and hardened the inversion copy-lock). Held to 2% here,
-# against ~14% of the edit arm being genuinely terse (delta <= 3, 542 records) so
-# "short prompt" is not by itself a copy signal. If small edits start getting
-# swallowed, this arm is the first suspect — drop identity_frac to 0 and re-mine.
+# Identity arm: empty-instruction no-op pairs. With enough mass they harden into
+# a copy-lock that swallows small edits; if small edits start getting swallowed,
+# set identity_frac = 0 and re-mine.
 identity_frac = 0.02        # no-op records: cond IS the target latent, caption empty
 colorize_frac = 0.20        # cond = mangafied B&W of the target (XDoG + screentone)
 colorize_dropout = 0.8      # tag dropout on the color-tag caption form

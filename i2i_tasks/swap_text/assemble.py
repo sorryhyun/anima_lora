@@ -1,13 +1,15 @@
 """**assemble** (CPU): samples ``--sample`` pool pages (0: all) and builds
-each target: the JA page with groups pasted from the twin — lettering the
-reader cannot read, that a paste would tear or recolour, stays JA:
+each target: the JA page with clean groups pasted from the twin (the other
+groups stay JA):
 
 * **full** — every clean group pasted.
 * **partial** (``--partial_ratio`` of the pairs) — a random proper subset
   of the clean groups.
 
 Writes ``<root>/staging/<lang>/{stem}`` (``.tgt.webp``, ``.src.webp``
-symlink), ``plan.jsonl`` and ``stats.json``; reruns rewrite the tree.
+symlink), ``plan.jsonl`` and ``stats.json``; a rerun first deletes the files
+under ``staging/<lang>/`` and ``pairs.jsonl`` and re-pastes, so the target images get new mtimes
+(MOSS latent caches invalidate on image mtime).
 """
 
 from __future__ import annotations

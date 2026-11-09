@@ -59,9 +59,8 @@ def diff_regions(
     One shift for the whole component and an absolute difference, so the
     verdict holds for dense lettering, whose strokes sit within ``r`` px of the
     other edition's, and for either polarity. On 300 pages this keeps
-    99.9 % of the components holding a translated OCR line (0.714 for the
-    per-pixel "ink with no ink within r" it replaces) and 53 % of those away
-    from any text block (0.757). ``labels`` (uint8) holds region ``k`` as
+    99.9 % of the components holding a translated OCR line and 53 % of those
+    away from any text block. ``labels`` (uint8) holds region ``k`` as
     ``k + 1``, 0 elsewhere."""
     na, nb = norm_gray(src, valid), norm_gray(warped, valid)
     pix = ((np.abs(na - nb) > PIX_DIFF) & (valid > 0)).astype(np.uint8)

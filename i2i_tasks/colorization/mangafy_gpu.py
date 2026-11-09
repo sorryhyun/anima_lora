@@ -6,7 +6,7 @@ supersampled per-band screen fields and the two XDoG blurs) in torch.
 It reuses :func:`mangafy.resolve_params` and :func:`mangafy._band_plan`
 **verbatim**, fed the same NumPy ``default_rng(seed)``. So the *structure* of every
 page — band count, which pattern (dot/line/cross) lands on which value band, each
-band's angle/period, the XDoG knobs, the luma weights — is bit-identical to the CPU
+band's angle/period, the XDoG knobs, the luma weights — is identical to the CPU
 path; only the sub-pixel rendering (Gaussian kernel, bilinear up / area down, float
 trig) differs, the same way two image libraries differ. Output is the same
 3-channel grayscale RGB uint8 the colorization cond expects.
@@ -211,7 +211,7 @@ def mangafy_array_gpu(
         gray, sigma=p["sigma"], k=p["k"], sharp=p["sharp"], eps=p["eps"], phi=p["phi"]
     )
     # Shadow-detail lift runs on the native-res luminance via the shared cv2 helper
-    # (cheap host-side op, not supersampled), so it's bit-identical to the CPU backend.
+    # (cheap host-side op, not supersampled), so it matches the CPU backend exactly.
     tone_gray = gray
     if p["detail_amount"] > 0:
         enhanced = _enhance_shadow_detail(

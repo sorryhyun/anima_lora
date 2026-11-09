@@ -2,6 +2,7 @@
 #
 #   make i2i-stage TASK=swap_text                  # hitocrawl twins → pairs.jsonl
 #   make i2i-preprocess TASK=swap_text MODEL=moss  # this file → scripts/moss/cache.py
+# The cache folder i2i_swap_text_v3_en200_ko800 was deleted on 2026-11-09; this config stays as the recipe.
 #
 # Each row caches its target (the JA page with the captioned regions pasted from the
 # translated edition) as the latent and the JA page as {stem}.moss_ref. The staged

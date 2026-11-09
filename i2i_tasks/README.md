@@ -17,8 +17,9 @@ i2i_tasks/<task>/  ──make i2i-stage TASK=<task>──▶  post_image_dataset
 ```
 
 `pairs.jsonl` is the model-agnostic pair list (`{stem, target, cond, caption}` per
-line, paths relative to it); near_twins / sanitize write it, and
-`library.moss.cache.manifest_pairs` reads it. Colorize's MOSS cache reads the staging
+line, paths relative to it); near_twins, watermark, `tools/textless_pairs.py`,
+`tools/mosaic_pairs.py` and swap_text's caption stage write it, and
+`library/moss/caching/sources.py::manifest_pairs` reads it. Colorize's MOSS cache reads the staging
 tree directly (`scripts/moss/colorize_cache.py`, `library/moss/colorize.py`: vision TE +
 OCR captions). The MOSS task list is `library.moss.requests.I2I_CACHE`; the GUI's two i2i tabs
 (`gui/moss/i2i.py`) run stage → cache → train → test for each.

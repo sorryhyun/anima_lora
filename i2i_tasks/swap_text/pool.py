@@ -1,36 +1,40 @@
-"""**pool** (CPU): drops pages past ``--max_resid`` (another scan, not
-a relettering) or ``--max_uncovered``, and assigns each twin OCR line to the
-region its centre falls in. A Japanese line (``ja_line``: more kana / CJK
-ideographs than Hangul and Latin letters — a Korean line keeping a 成人向け
-or a 凸 is not one) inside a region is a misread of the translated lettering
-when its box changed between the editions (``line_changes`` ≥
-``--retained_ja``); unchanged, it is JA lettering the twin kept in place
-(a ``はっ`` beside the translated dialogue) — never captioned, but it does
-not drop its group. A group is *clean* when a non-JA line landed in it, no
-misread did, every twin text block (``det``) landing in it is covered by a
-kept line (pasted, an unread block is lettering the caption does not name),
-and it pastes cleanly one of two ways (``page_metrics``, cached in
-``<root>/pool_metrics.json``). **text** (``--paste text``, tried first): its
-diff region cut down to the text boxes — both sides' blocks and the twin's OCR
-lines — with ``seam_text`` (the tone step on the paper around the box) ≤
-``--max_seam_text`` and ``leftover_text`` ≤ ``--max_leftover``; the art
-stays the JA page's, so a twin from another scan does not bring its tone
-along. **region**: the whole diff region, with the build's ``seam`` ≤
-``--max_seam`` and ``leftover`` ≤ ``--max_leftover`` and the twin matching
-outside the text boxes (``nontext`` ≤ ``--max_nontext`` — a darker balloon fill
-or screentone, a censor bar or mosaic one edition lacks, a translator's end
-card). As the fallback of ``--paste text`` it also carries at most
-``--max_free`` non-text pixels: on a twin from another scan the diff region
-spreads over the art, whose redrawn balloons and boxes pass the ``nontext``
-median. Either way the lettering keeps its
-colour (``ink_shift`` ≤ ``--max_ink_shift``, no light ↔ dark flip against
-the background of ≥ ``--flip_contrast`` on both sides with the inks themselves
-that far apart in lightness — outlined lettering flips against its modal
-background with the same ink). A page with no
-clean group drops. Writes ``<root>/pool/<lang>/{stem}`` (``.src.webp`` /
-``.tgt.webp`` symlinks to the built pair, the twin uncomposited),
-``pool.jsonl`` (clean groups and how each pastes, their lines, the text boxes,
-the metrics) and ``stats.json``;
+"""**pool** (CPU): gates the built pages and their groups into ``<root>/pool/``.
+
+Pages past ``--max_resid`` (another scan, not a relettering) or
+``--max_uncovered`` drop. Each twin OCR line is assigned to the region its
+centre falls in. A Japanese line (``ja_line``) inside a region is a misread of
+the translated lettering when its box changed between the editions
+(``line_changes`` ≥ ``--retained_ja``); unchanged, it is JA lettering the twin
+kept in place (a ``はっ`` beside the translated dialogue), never captioned but
+not dropping its group.
+
+A group is *clean* when a non-JA line landed in it, no misread did, every twin
+text block (``det``) landing in it is covered by a kept line (pasted, an unread
+block is lettering the caption does not name), and it pastes cleanly one of two
+ways (``page_metrics``, cached in ``<root>/pool_metrics.json``):
+
+* **text** (``--paste text``, tried first): its diff region cut down to the
+  text boxes (both sides' blocks and the twin's OCR lines), with ``seam_text``
+  (the tone step on the paper around the box) ≤ ``--max_seam_text`` and
+  ``leftover_text`` ≤ ``--max_leftover``. The art stays the JA page's, so a
+  twin from another scan does not bring its tone along.
+* **region**: the whole diff region, with the build's ``seam`` ≤
+  ``--max_seam``, ``leftover`` ≤ ``--max_leftover`` and the twin matching
+  outside the text boxes (``nontext`` ≤ ``--max_nontext``: a darker balloon
+  fill or screentone, a censor bar or mosaic one edition lacks, a translator's
+  end card). As the fallback of ``--paste text`` it also carries at most
+  ``--max_free`` non-text pixels: on a twin from another scan the diff region
+  spreads over the art, whose redrawn balloons and boxes pass the ``nontext``
+  median.
+
+Either way the lettering keeps its colour: ``ink_shift`` ≤
+``--max_ink_shift``, and no light ↔ dark flip against the background of ≥
+``--flip_contrast`` on both sides with the inks themselves that far apart in
+lightness (``colour_gate``). A page with no clean group drops.
+
+Writes ``<root>/pool/<lang>/{stem}`` (``.src.webp`` / ``.tgt.webp`` symlinks to
+the built pair, the twin uncomposited), ``pool.jsonl`` (clean groups and how
+each pastes, their lines, the text boxes, the metrics) and ``stats.json``;
 reruns rewrite the tree.
 """
 

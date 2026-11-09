@@ -3,6 +3,7 @@
 # The cache folder holds symlinks into i2i_swap_text_v3_all.
 #
 #   make daemon-run ARGS="--stall-timeout 900 scripts/moss/train.py --config configs/moss/i2i/swap_text/train_v3_en400_ko1709.toml"
+# The cache folder i2i_swap_text_v3_en400_ko1709 was deleted on 2026-11-09; this config stays as the recipe.
 
 cache = "post_image_dataset/moss/i2i_swap_text_v3_en400_ko1709"
 output = "output/ckpt_moss_i2i/moss_i2i_swap_text_v3_en400_ko1709_rw2_mod16_ema5e5_int8_e2.safetensors"

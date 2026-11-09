@@ -117,23 +117,30 @@ darker fill or screentone, censor bar or mosaic one edition lacks, translator's 
 and carry at most `--max_free` (3,000) non-text pixels: on a twin from another scan the
 diff region spreads over redrawn balloons and boxes whose median |ΔLab| passes `nontext`,
 and the fallback pasted the other edition's art (429 groups, up to 24 % of a page, before
-the cap on 2026-11-08). A Japanese line (`ja_line`: kana / CJK alone, or at least two of
+the cap on 2026-11-08). A Japanese line (`ja_line`, by script majority: kana / CJK alone, or at least two of
 them outnumbering the Hangul — a Korean line keeping a `成人向け` or a `凸` is Korean, since
 2026-11-09) inside a region marks it misread only when its box changed between the
 editions (`--retained_ja`, shift-tolerant change ≥ 0.05); an unchanged one is JA lettering
 the twin kept beside the translation (`はっ`, `えへへ`), out of the caption but not dropping
 the Korean line next to it.
 With text-only pastes the page gates open to `max_resid = 12`, `max_uncovered = 0.05`
-(config): ko 1,781 → 2,302 pages, 9,336 → 11,695 pasted groups, 99 % of them text-only
-(`post_image_dataset/i2i/swap_text_relax`, ko only, not cached yet). `assemble` samples
-`--sample` pool pages (0: all) into `staging/`.
+(config): on 2026-11-08 ko 1,781 → 2,302 pages, 9,336 → 11,695 pasted groups, 99 % of them
+text-only. That tree is `post_image_dataset/i2i/swap_text_relax` (ko only; `work/` is a symlink
+to `swap_text_v3/work/`; `prep.py`'s default `--root` is still `swap_text_v3`). Its `ocr.json`
+was re-read with the v5 reader (line breaks kept as `\n` in the caption's text items),
+proofread by `audit.py` and restaged on 2026-11-09: 5,660 pages from 175 works, 29,087 pasted
+groups (28,899 text-only). `assemble` samples `--sample` pool pages (0: all) into `staging/`; it
+wipes and re-pastes it, so a restage gives the targets new mtimes (MOSS latent caches invalidate
+on image mtime) and `pairs.jsonl` is rewritten, while the `pairs_*.jsonl` subsets are derived from
+it by hand afterwards. The cache for the dense Korean pages plus v3's en400 is
+`configs/moss/i2i/swap_text/cache_v6.toml` (`i2i_swap_text_v6`, syllable split).
 Each target is the JA page with clean text groups pasted from the twin: `full` pairs paste
 every clean group, `partial` pairs (`partial_ratio`) a proper subset. The config sets
 `partial_ratio = 0` (2026-10-28): the unclean groups (44 %) already stay Japanese and
 uncaptioned in a full pair. The caption is layout JSON with one text item per pasted line,
 `abs_centralized` `yxyx` pixels of the staged page, read off the twin (`--caption_ocr` reads
-the staged target instead). The current tree: 7,744 pairs from 254 works (en 5,990,
-ko 1,754; all full), with 2,374 lines the OCR misread. The runs below up to `1300_ema5e5`
+the staged target instead). The `swap_text_v3` tree (built 2026-11-01): 8,282 pairs from 241 works (en 6,501,
+ko 1,781; all full), with 2,761 lines the OCR misread. The runs below up to `1300_ema5e5`
 trained on the earlier tree, 3,887 of whose pairs were partial.
 
 **Cache.** `caption_format = "layout_json"` passes a caption that already is layout JSON

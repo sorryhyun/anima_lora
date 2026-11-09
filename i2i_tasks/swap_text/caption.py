@@ -1,7 +1,7 @@
 """**caption**: captions each target with the twin read's lines in its
 pasted groups (CPU), or with ``--caption_ocr`` (GPU) with a second read of
 the staged target itself (``<root>/ocr_staged.json``, keyed by page and
-pasted regions); either way only lines holding no kana or CJK ideograph, so
+pasted regions); either way only lines that are not Japanese (``ja_line``), so
 JA lettering — left by the translator or by a partial swap — is never named
 and stays the source; a target with no such line drops. The caption is layout JSON:
 ``{"summary": {"caption": "comic, english text"}, "items": [one text item

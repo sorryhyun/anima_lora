@@ -6,8 +6,8 @@ hash, and captions each pair with the **tag delta** between its members — so t
 prompt is an edit instruction ("given this image, apply these changes") rather
 than a description.
 
-Why phash (measured 2026-08-20)
-------------------------------
+Why phash
+---------
 The curated pool (``post_image_dataset/``, 3,007 images) yields only **72**
 pairs at tag-Δ≤16 — curation stripped the variant uploads. The raw crawl pool
 (``$CAPTION_CORPUS_DIR/retrieved``, 16k images) has them, and ``gelcrawl``
@@ -49,10 +49,10 @@ Instruction format (``--instruction_format``)
 ``prefix`` (default, subject_edit-compatible) ``glasses, smile, -hat``
 ``word``                                     ``add glasses, add smile, remove hat``
 
-Both are flat comma bags, so the TE caching pass can shuffle them safely. The
-literal ``Add: a, b. Remove: c.`` phrasing is **not** offered: the period is the
-position-clause delimiter, and ``parse_caption`` glues it into a single tag
-(``'smile. Remove: hat'``) — see ``anime_tools.captions.position_clauses``.
+Both are flat comma bags, so the TE caching pass can shuffle them safely. No
+format puts a period in the instruction (``Add: a. Remove: c.``): the period is
+the position-clause delimiter, and ``parse_caption`` glues ``smile. Remove: hat``
+into one tag (``anime_tools.captions.position_clauses``).
 """
 
 from __future__ import annotations
@@ -155,11 +155,8 @@ def apply_staging_config(args: argparse.Namespace, argv: list[str]) -> None:
 
 
 def _default_image_dirs() -> str:
-    """``$CAPTION_CORPUS_DIR/retrieved`` — the RAW crawl pool.
-
-    Deliberately not ``selected/``: that tree is the deduplicated curation and
-    has essentially no variant pairs left (72 at tag-Δ≤16 out of 4.5M).
-    """
+    """``$CAPTION_CORPUS_DIR/retrieved``, the raw crawl pool (``selected/`` is the
+    deduplicated curation, with almost no variant pairs left)."""
     root = os.environ.get("CAPTION_CORPUS_DIR")
     base = Path(root) if root else Path.home() / "gelcrawl"
     return str(base / "retrieved")
@@ -449,9 +446,8 @@ def build_identity_pairs(
 
     The condition stream and the denoising target are literally the same cached
     latent, so the sample teaches "empty instruction → reproduce the cond".
-    Deliberately a *small* share: the twin_edit arm showed that empty-instruction
-    identity pairs, given enough mass, harden into a copy-lock that swallows
-    small edits (see the note in i2i_tasks/configs/phash_edit.toml).
+    Kept to a small share (``identity_frac``): with enough mass, identity pairs
+    harden into a copy-lock that swallows small edits.
     """
     if n <= 0:
         return []
@@ -576,13 +572,10 @@ def build_colorize_pairs(
 def export_pool(pairs: list[dict], base: Path) -> int:
     """``pool/<artist>/<id>.<ext>`` — one symlink per **distinct** participating image.
 
-    Deliberately NOT the ``_tags``/``_no_tags`` pair tree the other descriptors
-    stage. A member joins several pairs and both directions of each, so staging
-    per pair would resize and VAE-encode the same image up to ~3× (measured:
-    7,424 members over 2,722 distinct images). A VAE latent depends only on the
-    image, so the pool is encoded **once** and the preprocess step materializes
-    every pair view — image, target latent, cond latent — as symlinks over it.
-    The pair-specific artifact is only the delta caption, which is text.
+    A member joins several pairs and both directions of each (7,424 members over
+    2,722 distinct images), so the pool is resized and VAE-encoded **once** and the
+    preprocess step materializes every pair view (image, target latent, cond
+    latent) as symlinks over it; only the delta caption is pair-specific.
 
     No ``.txt`` is written here: the pool images are never denoising targets
     (``path_pattern = '*_no_tags.*'``), and the TE pass is filtered to the same

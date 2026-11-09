@@ -16,17 +16,15 @@ pair_max_hole_frac = 0.25   # girl-minus-boy carves real holes where they overla
 max_raggedness = 20.0
 min_partner_visible = 0.5   # pairs: ≥50% of the boy must stay outside the paint
 min_face_frac = 0.004       # face level needs a face ≥0.4% of the image (else → slack)
-# v3: paint over the REAL image (character-inpaint framing — fill the paint
-# with the character, reproduce the scene). Mid-gray 128 follows the inpaint
-# adapter's convention (~0 in [-1,1]); black collides with legitimately-dark
-# art now that the background is real. (v1/v2 white-canvas era used black.)
+# Paint over the real image (fill the paint with the character, reproduce the
+# scene). Mid-gray 128 is ~0 in [-1, 1], the inpaint adapter's convention;
+# black collides with legitimately dark art.
 cond_background = "image"
 paint_color = [128, 128, 128]
-# Augment levels: exact / smooth / blob / wobble / slack / face. v4 (tight
-# supersets only, [0.25 0.35 0.30 0.10]) filled every paint edge-to-edge with
-# character (bench area_ratio ≈ iou); "slack" (oversized, off-center paint with
-# the real background as target under the rest) is the harmonize lever,
-# "face" the concentrate lever.
+# Augment levels: exact / smooth / blob / wobble / slack / face. Trained on the
+# tight levels alone the adapter fills every paint edge-to-edge with character;
+# "slack" (oversized, off-center paint with the real background as target under
+# the rest) teaches it to harmonize, "face" to concentrate.
 aug_weights = [0.15, 0.20, 0.15, 0.10, 0.25, 0.15]
 slack_grow = [1.5, 3.0]     # slack paint area target, × the character bbox (grows toward free sides)
 max_slack_coverage = 0.7    # slack paint may cover ≤70% of the image; no room → a tight level

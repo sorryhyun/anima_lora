@@ -5,6 +5,7 @@
 # symlinks with copies.
 #
 #   make daemon-run ARGS="--stall-timeout 900 scripts/moss/cache.py --config configs/moss/i2i/swap_text/cache_v3_en400_ko1709_ksplit.toml"
+# The cache folder i2i_swap_text_v3_en400_ko1709_ksplit was deleted on 2026-11-09; this config stays as the recipe.
 
 pairs = "post_image_dataset/i2i/swap_text_v3/staging/pairs_en400_ko1709.jsonl"
 out = "post_image_dataset/moss/i2i_swap_text_v3_en400_ko1709_ksplit"

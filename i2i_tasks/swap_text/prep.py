@@ -14,7 +14,8 @@ each module's docstring holds its stage's rules and outputs:
 4. **pool** (``pool.py``, CPU) — gate pages and groups into ``<root>/pool/``.
 5. **assemble** (``assemble.py``, CPU) — sample the pool and paste the targets
    into ``<root>/staging/``.
-6. **caption** (``caption.py``) — write ``{stem}.txt`` and ``pairs.jsonl``.
+6. **caption** (``caption.py``, CPU; GPU with ``--caption_ocr``) — write
+   ``{stem}.txt`` and ``pairs.jsonl``.
 
 ``audit.py`` (outside the stages) proofreads the captions against crops of their
 lettering and folds the fixes and drops back into ``ocr.json``.
@@ -187,7 +188,7 @@ def parse_args() -> argparse.Namespace:
         "--retained_ja",
         type=float,
         default=0.05,
-        help="share of a kana / CJK line's box changed between the editions (under "
+        help="share of a Japanese line's (ja_line) box changed between the editions (under "
         "its best shift) below which it is JA lettering the twin kept, not a "
         "misread, and does not drop its group",
     )

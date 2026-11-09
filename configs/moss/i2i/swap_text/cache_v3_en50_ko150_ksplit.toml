@@ -3,6 +3,7 @@
 # reached through a symlink would be overwritten in the source cache.
 #
 #   make daemon-run ARGS="--stall-timeout 600 scripts/moss/cache.py --config configs/moss/i2i/swap_text/cache_v3_en50_ko150_ksplit.toml"
+# The cache folder i2i_swap_text_v3_en50_ko150_ksplit was deleted on 2026-11-09; this config stays as the recipe.
 
 pairs = "post_image_dataset/i2i/swap_text_v3/staging/pairs_en50_ko150.jsonl"
 out = "post_image_dataset/moss/i2i_swap_text_v3_en50_ko150_ksplit"

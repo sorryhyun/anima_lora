@@ -88,7 +88,7 @@ def _save_png_atomic(arr: np.ndarray, out: Path) -> None:
 
 # ── Worker process state ──────────────────────────────────────────────────────
 # The mask math is pure numpy/cv2, so it scales ~linearly with cores; the seeded
-# per-stem hole keeps every worker bit-identical to the serial path.
+# per-stem hole gives every worker the serial path's output.
 _WORKER: dict = {}
 
 
@@ -247,7 +247,7 @@ def stage_text(
     = the config default (``configs/base.toml`` ``vocab_pack``), ``""`` = off. With
     a pack the CJK spans of a caption route onto the pack rows, the rows are hooked
     onto the LLM adapter for the crossattn cache, and every cache is stamped with
-    the pack id; EN-only captions are bit-exact either way.
+    the pack id; EN-only captions encode the same either way.
 
     ``adapter_outputs=False`` writes the pre-adapter layout (Qwen
     ``prompt_embeds`` + T5 ids) instead of ``crossattn_emb`` — for runs that

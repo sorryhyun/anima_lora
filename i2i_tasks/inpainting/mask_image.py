@@ -40,7 +40,7 @@ def _draw_strokes(mask: np.ndarray, rng: np.random.Generator) -> None:
         # Thick: a substantial fraction of the short edge (≈7–14%), so the dab
         # has real area even with few/short segments.
         thickness = int(rng.integers(max(14, short // 14), max(28, short // 7)))
-        n_verts = int(rng.integers(1, 4))  # short: 1–3 segments, not 4–11
+        n_verts = int(rng.integers(1, 4))  # 1–3 short segments
         x = int(rng.integers(0, w))
         y = int(rng.integers(0, h))
         cv2.circle(mask, (x, y), thickness // 2, 255, -1)  # round cap at the start

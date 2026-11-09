@@ -3,6 +3,7 @@
 # Cache: cache_v3_en50_ko150_ksplit.toml.
 #
 #   make daemon-run ARGS="--stall-timeout 900 scripts/moss/train.py --config configs/moss/i2i/swap_text/train_v3_en50_ko150_ksplit.toml"
+# The cache folder i2i_swap_text_v3_en50_ko150_ksplit was deleted on 2026-11-09; this config stays as the recipe.
 
 cache = "post_image_dataset/moss/i2i_swap_text_v3_en50_ko150_ksplit"
 output = "output/ckpt_moss_i2i/moss_i2i_swap_text_v3_en50_ko150_ksplit_rw2_mod16_ema5e5_int8_e3.safetensors"

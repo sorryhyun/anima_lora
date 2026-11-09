@@ -5,6 +5,7 @@
 # normally.
 #
 #   make daemon-run ARGS="--stall-timeout 1800 scripts/moss/cache.py --config configs/moss/i2i/swap_text/cache_relax_ko_ksplit.toml"
+# The cache folder i2i_swap_text_relax_ko_ksplit was deleted on 2026-11-09; this config stays as the recipe.
 
 pairs = "post_image_dataset/i2i/swap_text_relax/staging/pairs_all.jsonl"
 out = "post_image_dataset/moss/i2i_swap_text_relax_ko_ksplit"
