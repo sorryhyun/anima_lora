@@ -102,8 +102,8 @@ steps), the three `lora_ab.py` caststation prompts, seeds 1–6, sheets in
 | `distill_base` | teacher (Base) | 240 | 0.2910 |
 | `distill_base_lr2e4` | teacher (Base), lr 2e-4 | 240 | 0.2950 |
 | `hybrid95` | teacher at σ ≥ 0.95, FM below | 19 | 0.2811 |
-| `hybrid90` | teacher at σ ≥ 0.9, FM below | 50 | |
-| `ramp85_95` | teacher share 0 at σ 0.85 → 1 at 0.95 | 85 (Σ share 49.5) | |
+| `hybrid90` | teacher at σ ≥ 0.9, FM below | 50 | 0.2836 |
+| `ramp85_95` | teacher share 0 at σ 0.85 → 1 at 0.95 | 85 (Σ share 49.5) | 0.2831 |
 
 - Pure distillation's loss sits at 0.005–0.008 throughout. Muon normalises each matrix's update,
   so the loss scale does not set the step size; the LoRA's ΔW came out at ~90 % of SFT's.
