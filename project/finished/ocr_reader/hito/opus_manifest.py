@@ -82,7 +82,9 @@ def main():
         out.append(
             {
                 "split": "train",
-                # load_split only draws sfx / speech — an unknown kind is dropped silently.
+                # sfx by design for every pseudo manifest: kind reaches neither the prompt nor
+                # the loss, only load_split's speech draw (speech_ratio × the sfx count), where a
+                # speech-tagged extra would be subsampled with grey speech. An unknown kind is dropped.
                 "kind": "sfx",
                 "id": cid,
                 "book": book,

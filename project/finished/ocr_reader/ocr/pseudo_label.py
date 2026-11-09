@@ -801,7 +801,9 @@ def cmd_manifest(a: argparse.Namespace) -> None:
     out = pd.DataFrame(
         {
             "split": "train",
-            # load_split only draws sfx / speech — an unknown kind is dropped silently.
+            # sfx by design for every pseudo manifest: kind reaches neither the prompt nor
+            # the loss, only load_split's speech draw (speech_ratio × the sfx count), where a
+            # speech-tagged extra would be subsampled with grey speech. An unknown kind is dropped.
             "kind": "sfx",
             "id": [f"{i}_{k}" for i, k in zip(kept.image_id, kept.k)],
             "book": [f"{prefix}{i}" for i in kept.image_id],
