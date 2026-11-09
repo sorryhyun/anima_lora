@@ -59,18 +59,22 @@ def load_te(tok, device, model_dir="", precision="bf16", fp8_path=None):
     return te
 
 
-def te_inputs(tok, image, text, max_pixels, device):
-    """The TE's model inputs for ``text`` after ``image`` (``None``: text only)."""
+def te_inputs(tok, image, text, max_pixels, device, tail=""):
+    """The TE's model inputs for ``text`` after ``image`` (``None``: text only),
+    ``tail`` appended after the generation prompt (``prompt_tail.TAILS``)."""
     content = text
     if image is not None:
         content = [{"type": "image"}] + (
             [{"type": "text", "text": text}] if text else []
         )
-    formatted = tok.apply_chat_template(
-        [{"role": "user", "content": content}],
-        tokenize=False,
-        add_generation_prompt=True,
-        enable_thinking=True,
+    formatted = (
+        tok.apply_chat_template(
+            [{"role": "user", "content": content}],
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=True,
+        )
+        + tail
     )
     if image is None:
         return tok(formatted, return_tensors="pt").to(device)
@@ -80,12 +84,14 @@ def te_inputs(tok, image, text, max_pixels, device):
 
 
 @torch.no_grad()
-def encode(tok, te, image, text, max_pixels, device, drop_rows=False, prefix=False):
+def encode(
+    tok, te, image, text, max_pixels, device, drop_rows=False, prefix=False, tail=""
+):
     """``(last_hidden_state (S, 4096), image token count)``; ``image=None`` is the
     pipeline's text-only encode. ``drop_rows`` removes the image-token rows.
     ``prefix`` appends the row count through ``<|vision_end|>``: the rows every
     text after the same page shares."""
-    inputs = te_inputs(tok, image, text, max_pixels, device)
+    inputs = te_inputs(tok, image, text, max_pixels, device, tail)
     if image is None:
         return te(**inputs, use_cache=False, return_dict=True).last_hidden_state[0], 0
     hidden = te(**inputs, use_cache=False, return_dict=True).last_hidden_state[0]
@@ -100,7 +106,7 @@ def encode(tok, te, image, text, max_pixels, device, drop_rows=False, prefix=Fal
 
 
 @torch.no_grad()
-def encode_variants(tok, te, image, texts, max_pixels, device):
+def encode_variants(tok, te, image, texts, max_pixels, device, tail=""):
     """``encode(..., prefix=True)`` of each of ``texts`` after the same ``image``, the
     page run once: the rows through ``<|vision_end|>`` are prefilled into a cache
     (attention KV + GDN conv/recurrent state) and each text continues from a copy
@@ -108,7 +114,7 @@ def encode_variants(tok, te, image, texts, max_pixels, device):
     ``[(last_hidden_state, image token count, prefix)]``, one per text."""
     import copy
 
-    inputs = [te_inputs(tok, image, t, max_pixels, device) for t in texts]
+    inputs = [te_inputs(tok, image, t, max_pixels, device, tail) for t in texts]
     first = inputs[0]
     is_image = first["mm_token_type_ids"][0] == 1
     end = int(is_image.nonzero().max()) + 1

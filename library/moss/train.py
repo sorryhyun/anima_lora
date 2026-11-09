@@ -111,6 +111,22 @@ from library.runtime.progress import ProgressSink, command_job_path, run_scope
 PROGRESS_EVERY = 2  # steps per "  progress i/n" line (the GUI bar reads them)
 
 
+def _teacher_fn(transformer, weights, embeds, mix, attached):
+    """``training_loss``'s ``teacher``: the regression target at ``(noisy, timestep)``
+    from the image-conditioned ``embeds`` under ``weights``, mixed with the flow
+    target at ``mix``."""
+
+    def teach(noisy, timestep, flow, ref=None):
+        with torch.no_grad(), weights:
+            out = transformer(noisy, timestep, embeds, return_dict=False, ref=ref)[0]
+        if attached is not None:
+            attached.prepare(free_cache=False)
+        out = out.float()
+        return out if not mix else mix * flow + (1.0 - mix) * out
+
+    return teach
+
+
 def run_train(req: TrainRequest) -> Path:
     cache_dir = resolve_under_home(req.cache)
     samples = samples_from_cache(cache_dir)
@@ -204,6 +220,25 @@ def train(
     n_reg = req.trigger_registers
     joint += n_reg
     negs = setup.load_negs(req, samples)
+    teachers = None
+    if req.distill != "off":
+        from library.moss.distill import Teachers
+
+        if rows_of or n_reg or req.ref_adapters == "all":
+            raise SystemExit(
+                "distill: the teacher's sequence has the image rows ahead of the "
+                "caption, so per-row adapter masks (delta_rows, trigger_registers, "
+                "ref_adapters all) do not line up with it"
+            )
+        teachers = Teachers(samples)
+        joint_t = max(s.n_img + s.n_ref + teachers.longest(s.stem) for s in samples)
+        print(
+            f"distill {req.distill}: teacher text "
+            f"{min(teachers.shortest(s.stem) for s in samples)}-"
+            f"{max(teachers.longest(s.stem) for s in samples)} rows, joint up to "
+            f"{joint_t}, mix {req.distill_mix}",
+            flush=True,
+        )
 
     transformer = load_transformer(req.model_dir, req.model)
     transformer.requires_grad_(False)
@@ -277,6 +312,8 @@ def train(
             return n if empty is None else min(n, len(empty))
 
         seq_range = (min(s.n_img + s.n_ref + shortest(s) for s in samples), joint)
+        if teachers is not None:
+            seq_range = (seq_range[0], max(joint, joint_t))
         ref_range = None
         if req.ref_adapters == "kv":
             refs = [s.n_ref for s in samples]
@@ -321,6 +358,13 @@ def train(
         if n_reg
         else None
     )
+    teacher_w = None
+    if teachers is not None:
+        from library.moss.distill import TeacherWeights
+
+        teacher_w = TeacherWeights(
+            req.distill, network, adapter_params, req.distill_ema_decay
+        )
     total = req.epochs * len(samples)
     if req.max_steps:
         total = min(total, req.max_steps) if req.epochs else req.max_steps
@@ -447,6 +491,15 @@ def train(
                     worst_case=step == 0 and req.fit_report,
                     **rates,
                 )
+                teach = None
+                if teachers is not None:
+                    teach = _teacher_fn(
+                        transformer,
+                        teacher_w,
+                        teachers.get(s.stem, kind).unsqueeze(0).to(device),
+                        req.distill_mix,
+                        attached,
+                    )
                 neg = negs.get(s.stem, {}).get(kind)
                 if neg is not None:
                     embeds, neg = neg  # the sidecar's own encode of the full caption
@@ -522,10 +575,18 @@ def train(
                         parts=parts,
                         tone=tone,
                         state=state,
+                        teacher=teach,
                     )
                 else:
                     loss = training_loss(
-                        transformer, latent, embeds, sigma, ref=ref, state=state
+                        transformer,
+                        latent,
+                        embeds,
+                        sigma,
+                        ref=ref,
+                        state=state,
+                        parts=parts,
+                        teacher=teach,
                     )
                 align = repa.loss() if repa is not None else None
                 if align is not None:
@@ -570,6 +631,8 @@ def train(
                         reg_sched.step()
                         reg_opt.zero_grad(set_to_none=True)
                     n_updates += 1
+                    if teacher_w is not None:
+                        teacher_w.update()
                     if shadows and n_updates >= warmup:
                         update_ema(shadows, staging, params, decays)
                 value = loss.item()

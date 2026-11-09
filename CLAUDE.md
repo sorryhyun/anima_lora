@@ -290,6 +290,17 @@ Training-free inference stacks (Spectrum, SMC-CFG, CNS, mod-guidance, DAVE, …)
 | **Soft Tokens** — per-layer × per-t soft text tokens | shipped config uses `softrank` (code default `infonce`). `configs/methods/soft_tokens.toml` |
 | **DirectEdit** — inversion + edit-conditioning swap | collapses if ψ_src is off-manifold; check with `exp-test-directedit-dry`. `docs/anima/experimental/directedit_editing_v3.md` |
 
+## Papers and gates
+
+- **Read a paper from its PDF, never through WebFetch** or the `web-fetch` agent: `curl` the PDF
+  (arXiv: `https://arxiv.org/pdf/<id>`) into the scratchpad and read it with `pdftotext -layout`.
+  Tables, equations and appendices carry the answer; a fetched summary drops them. A follow-up
+  question about a paper means reading the PDF again yourself.
+- **A gate passes when its evidence does.** If every metric and the renders favour the arm, it
+  passed, however small the gap. Don't add a criterion when reading the result, and don't set a
+  threshold on a quantity that is small by construction (a one-step x̂₀ gap at low σ, where x_t
+  already holds the image).
+
 ## Projects, docs, history
 
 - Active research lines: `project/<line>/` (`project/README.md` lists them). **A line's

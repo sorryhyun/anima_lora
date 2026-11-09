@@ -261,6 +261,36 @@ class ColorizeCacheRequest(Request):
 
 
 @dataclass
+class DistillCacheRequest(Request):
+    """Teacher embeds for ``TrainRequest.distill``: each training image through the
+    TE's vision tower ahead of every caption the student draws
+    (``{stem}.moss_vis.safetensors`` beside the TE file; ``library/moss/distill.py``)."""
+
+    SCRIPT: ClassVar[str] = "scripts/moss/distill_cache.py"
+
+    cache: str = _f("", "the training cache folder (flat, as cache.py wrote it)")
+    tail: str = _f(
+        "off",
+        "assistant-turn tail on the teacher's prompt (library/moss/prompt_tail.py); "
+        "independent of the student cache's",
+        choices=PROMPT_TAILS,
+    )
+    overwrite: bool = _f(False, "re-encode every teacher file")
+    text_encoder: str = _f(
+        "int8",
+        f"Qwen3.5-9B weights, vision tower bf16: {_TE_HELP}. Match the student cache",
+        choices=TEXT_ENCODERS,
+        advanced=True,
+    )
+    te_file: str = _f(
+        "",
+        "quantized TE file instead of the catalog's (fp8 / int8 only)",
+        advanced=True,
+    )
+    model_dir: str = _f("", _MODEL_DIR_HELP, advanced=True)
+
+
+@dataclass
 class GenerateRequest(Request):
     """Render prompts with MOSS-Image (Base or SFT), optionally with a LoRA."""
 
@@ -662,6 +692,26 @@ class TrainRequest(Request):
         "encoder; the main term then trains on those). Pulls the delta onto "
         "whatever distinguishes the two captions, i.e. the trigger rows. Costs "
         "one no-grad and one grad forward per step. 0 = off",
+        advanced=True,
+    )
+    distill: str = _f(
+        "off",
+        "self-distillation target (docs/moss/proposal/self_distill_lora.md): the "
+        "student regresses on the DiT's velocity at the same noisy latent with the "
+        "target image in the TE ahead of the caption (the cache's "
+        "{stem}.moss_vis.safetensors, scripts/moss/distill_cache.py) instead of "
+        "noise - latent. base: the teacher is Base (multiplier 0); ema: an EMA "
+        "shadow of the LoRA at distill_ema_decay. One extra no-grad forward per step",
+        choices=("off", "base", "ema"),
+        advanced=True,
+    )
+    distill_ema_decay: float = _f(
+        0.9999, "per-update decay of the distill ema teacher", advanced=True
+    )
+    distill_mix: float = _f(
+        0.0,
+        "with distill: weight of the flow target in the regression target, "
+        "mix·(noise - latent) + (1 - mix)·teacher; 0 = pure distillation",
         advanced=True,
     )
     ref_timestep: float = _f(

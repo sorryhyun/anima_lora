@@ -118,6 +118,7 @@ def training_loss(
     parts: dict | None = None,
     tone: dict | None = None,
     state: dict | None = None,
+    teacher=None,
 ):
     """``latent (1,128,h,w)`` fp32, ``embeds (1,S,4096)`` at true length,
     ``ref (1,128,h',w')`` an optional clean reference latent (never noised),
@@ -125,7 +126,9 @@ def training_loss(
     the plain MSE. ``tone``: ``rest`` mask, ``pool``, ``proj``, ``weight`` for
     :func:`tone_loss` on ``x̂₀ − x₀ = σ·(target − pred)``, added at ``weight``
     and logged in ``parts`` as ``tone``. ``state`` receives ``noisy`` and
-    ``timestep`` (:func:`preserve_loss` runs on the same ones)."""
+    ``timestep`` (:func:`preserve_loss` runs on the same ones). ``teacher(noisy,
+    timestep, flow, ref)`` replaces the flow target (self-distillation,
+    ``library/moss/distill.py``); the flow MSE is then logged in ``parts`` as ``fm``."""
     noise = torch.randn(
         latent.shape, generator=gen, device=latent.device, dtype=latent.dtype
     )
@@ -134,7 +137,12 @@ def training_loss(
     timestep = torch.tensor([NUM_TRAIN_TIMESTEPS * sigma], device=latent.device)
     if state is not None:
         state.update(noisy=noisy, timestep=timestep)
+    flow = target
+    if teacher is not None:
+        target = teacher(noisy, timestep, flow, ref)
     pred = transformer(noisy, timestep, embeds, return_dict=False, ref=ref)[0]
+    if teacher is not None and parts is not None:
+        parts["fm"] = F.mse_loss(pred.detach().float(), flow.float()).item()
     if region is not None:
         loss = region_mse(pred, target, region, region_weight, rest_weight, parts)
     else:

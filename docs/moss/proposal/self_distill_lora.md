@@ -1,6 +1,6 @@
 # MOSS t2i LoRA by self-distillation: the target image as the teacher's TE context
 
-Status: proposal, 2026-11-09. Nothing run yet.
+Status: implemented 2026-11-09 (`--distill`, `scripts/moss/distill_cache.py`); first arm on channel (caststation) running.
 
 Source: D-OPSD, arXiv 2605.05204 (Jiang et al., HKUST / Alibaba Z-Image team). This proposal
 takes the paper's **off-policy** arm (§ 3.3, Fig. 6a, arm 3), not the on-policy method.
@@ -129,13 +129,32 @@ Fig. 7: when the teacher cannot draw the concept, training fails. Two checks on 
      - it opens at mid and high σ, where the caption alone leaves content open.
    - The σ band where the gap is clearly positive is where the teacher adds information. If the gap
      is positive at low σ too, the teacher also helps with detail.
-   - If no band shows a gap, the teacher carries nothing the student lacks; stop.
    - The x̂₀ variance across ε draws at fixed (image, σ) sizes the variance argument directly.
      This is the Stable Target Field quantity (Xu et al., ICLR 2023).
    - Cost: forwards only, 106 images × 8 σ × 3 conditionings × a few ε, a few minutes compiled.
      Decode only a subset for PSNR (the VAE decode wants the DiT off the card).
 
-Stop here if the renders do not reproduce her or the gap is flat.
+Pass: the teacher helps if `c_t` lowers the FM loss against `c_s` on most images, or renders the
+concept better. The size of the one-step gap is not the criterion: it is small by construction
+(x_t pins most of the image below σ 0.8).
+
+**Run on channel (caststation), 2026-11-09** (`bench/moss_self_distill/xhat_probe.py`,
+`results/20261109-1638-caststation/`, 30 images, int8 Base, fp32 stream):
+
+| σ | 0.1 | 0.25 | 0.4 | 0.6 | 0.8 | 0.95 |
+|---|---|---|---|---|---|---|
+| FM loss, `cap` | 0.4735 | 0.2661 | 0.1957 | 0.1747 | 0.2323 | 0.4576 |
+| FM loss, `img_cap` (tail off) | 0.4726 | 0.2653 | 0.1952 | 0.1739 | 0.2306 | 0.4402 |
+| images with `img_cap` lower | 100 % | 100 % | 100 % | 90 % | 97 % | 100 % |
+| ‖v_img_cap − v_cap‖² | 0.0041 | 0.0026 | 0.0018 | 0.0018 | 0.0029 | 0.0187 |
+
+- `img_cap` is lower at every σ on nearly every image; the gap is largest at σ 0.95.
+- x̂₀ spread across ε is the same for both (0.0382 vs 0.0377 at σ 0.8): no variance argument here.
+- Image alone (`img`) is worse than `cap` below σ 0.95; the `sure` tail on the teacher adds nothing.
+- Renders (CFG 3, 50 steps): `img_cap` brings back the composition, outfits, props and the
+  side doodles, and draws far cleaner figures than `cap`. Line weight and the pale flat palette
+  stay closer to Base's.
+- The gate passes on both counts.
 
 ## Experiment
 
