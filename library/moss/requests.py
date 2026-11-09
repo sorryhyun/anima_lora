@@ -705,6 +705,19 @@ class TrainRequest(Request):
         choices=("off", "base", "ema"),
         advanced=True,
     )
+    distill_sigma_min: float = _f(
+        0.0,
+        "with distill: the teacher target only on steps with sigma >= this, the "
+        "flow target below (no teacher forward there). 0 = every step",
+        advanced=True,
+    )
+    distill_sigma_ramp: float = _f(
+        0.0,
+        "with distill_sigma_min: the teacher's share rises linearly from 0 at "
+        "distill_sigma_min - ramp to full at distill_sigma_min, the flow target "
+        "taking the rest. 0 = a hard switch",
+        advanced=True,
+    )
     distill_ema_decay: float = _f(
         0.9999, "per-update decay of the distill ema teacher", advanced=True
     )

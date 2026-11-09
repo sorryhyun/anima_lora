@@ -1,9 +1,10 @@
 # MOSS t2i LoRA by self-distillation: the target image as the teacher's TE context
 
-Status: implemented 2026-11-09 (`--distill`, `scripts/moss/distill_cache.py`); first arm on channel (caststation) running.
+Status: implemented 2026-11-09 (`--distill`, `scripts/moss/distill_cache.py`). First runs on
+channel (caststation).
 
-Source: D-OPSD, arXiv 2605.05204 (Jiang et al., HKUST / Alibaba Z-Image team). This proposal
-takes the paper's **off-policy** arm (§ 3.3, Fig. 6a, arm 3), not the on-policy method.
+Source: D-OPSD, arXiv 2605.05204 (Jiang et al., HKUST / Alibaba Z-Image team). Implemented here:
+the paper's **off-policy** arm (§ 3.3, Fig. 6a, arm 3), not its on-policy method.
 
 ## Idea
 
@@ -12,134 +13,65 @@ Here the target is the same model's prediction on the same noisy latent, conditi
 caption **plus the target image through the TE's vision tower**:
 
 ```
-x_t   = (1 − σ)·x₀ + σ·ε                       (as now, same σ draw)
+x_t   = (1 − σ)·x₀ + σ·ε                       (as SFT, same σ draw)
 u_s   = v_θ (x_t, t, c_s)       c_s = TE(caption)                    grad
 u_t   = v_θ̄ (x_t, t, c_t)       c_t = TE(target image, caption)      no grad
 loss  = ‖u_s − sg(u_t)‖²
 ```
 
-- **Student:** the LoRA being trained, θ, on the cached caption embeds, as today.
-- **Teacher:** the same DiT and the same LoRA with EMA weights θ̄, no grad. It differs from the
-  student in its conditioning: the TE has seen the target image.
-- **What it trains:** the student learns to produce from text alone what the image-conditioned
-  model produces. The concept moves from the TE context into the LoRA. The target image is
-  never a regression target.
+- **Student:** the LoRA being trained, θ, on the cached caption embeds, as in SFT.
+- **Teacher:** the same DiT, either at Base (LoRA multiplier 0) or with an EMA shadow θ̄ of the
+  LoRA. It differs from the student only in its conditioning: the TE has seen the target image.
+- The student learns to produce from text alone what the image-conditioned model produces.
 
-The paper's premise is that a DiT on an LLM/VLM encoder reproduces an image's concept zero-shot
-when the image enters the encoder. On MOSS this is measured
-([vision_tower_reference.md](../findings/vision_tower_reference.md)): image + caption through
-Qwen3.5-9B's own vision tower brings characters, outfits, hair colours and layout back, with no
-training. The paper had to graft Qwen3-4B weights into Qwen3-VL-4B to get a usable teacher
-(App. D, Fig. 9). It names Qwen3.5-style native multimodal encoders as the case where that
-problem goes away, which is MOSS's TE.
+On MOSS, image + caption through Qwen3.5-9B's own vision tower brings characters, outfits, hair
+colours and layout back zero-shot ([vision_tower_reference.md](../findings/vision_tower_reference.md)).
+The paper had to graft Qwen3-4B into Qwen3-VL-4B to get such a teacher (App. D, Fig. 9) and names
+native multimodal encoders like Qwen3.5 as the case where that goes away.
 
-## Why off-policy, and what the paper says about it
-
-D-OPSD proper rolls the student out from noise along the inference schedule and distils on the
-visited states (Eq. 6, Algorithm 1). On a 4–8 step distilled model the rollout reuses the
-student's own forwards. MOSS samples 50 steps with CFG 3, so a rollout costs roughly 7–11× an SFT
-step. This proposal keeps the SFT states (noised real images) and changes only the target.
-
-Fig. 6a (Z-Image-Turbo LoRA) compares four arms. Below is read off the curves; the paper gives
-no numbers.
-
-| arm | DINO similarity to targets | Quality score |
-|---|---|---|
-| SFT on target images | slowest | drops sharply mid-run |
-| SFT on teacher samples | dips, then rises | about flat |
-| **off-policy distillation (this proposal)** | rises steadily, second | about flat |
-| on-policy distillation (D-OPSD) | fastest, highest | highest |
-
-The paper's reading: self-distillation stops SFT's quality loss; on-policy adds convergence speed.
-
-**Caveat for MOSS.** The SFT collapse in the paper is a step-distilled model losing its few-step
-dynamics. App. B says multi-step models tolerate the train-test mismatch, and MOSS Base LoRAs
-trained by SFT keep their quality (ama mitsuki, `docs/moss/optimization/int8.md`). So the quality
-argument may not carry over. What could still help:
-
-- **Lower-variance target.** The teacher's velocity is a posterior mean given the image; `ε − x₀`
-  is one sample.
-- **Target on the base model's manifold.** Dataset artifacts (scan noise, JPEG, one artist's line
-  weight) reach the LoRA only as far as the teacher reproduces them.
-
-## Teacher weights
-
-The paper's EMA decay is 0.9999 over 1K updates. Over 848 updates (the ama mitsuki run) that
-shadow moves 1 − 0.9999⁸⁴⁸ ≈ 8 % of the way to the student, so the teacher is mostly the base
-model plus the image context. The paper reports that a frozen base teacher is "stable and
-effective", that 0.9999 is best, and that the student copy itself collapses.
-
-The shipped `ema_window 0.1` (decay 0.988 at 848) is far faster than 0.9999 and is not the teacher.
-The teacher needs its own shadow, independent of the saved EMA.
-
-Arms (below): frozen base (`multiplier 0`, as `preserve_loss` already does) and EMA 0.9999.
+**Paper context.** D-OPSD proper rolls the student out from noise and distils on the visited
+states (Eq. 6, Algorithm 1); on MOSS (50 steps, CFG 3) a rollout costs ~7–11× an SFT step. In
+Fig. 6a (Z-Image-Turbo LoRA, curves only) SFT on target images loses quality mid-run, off-policy
+distillation holds quality and is second on DINO similarity, on-policy is best on both. That SFT
+collapse is a step-distilled model losing its few-step dynamics (App. B); MOSS Base LoRAs trained
+by SFT keep their quality. The paper's EMA teacher decays at 0.9999 and it reports a frozen base
+teacher as "stable and effective".
 
 ## Implementation
 
-1. **Teacher cache:** `{stem}.moss_vis.safetensors` beside each TE file.
-   - Writes `vision_te.encode(target image, caption)` for each caption the student trains on:
-     `embeds`, and `embeds_plain` for `plain_caption_rate`.
-   - Image at ~1 MP, about 1,000 vision rows. The finding's `img_lo` at ~130 rows drew looser.
-   - Uses the same TE weights as the student cache (int8 decoder, vision tower bf16:
-     `vision_te.load_te(precision="int8")`).
-   - `prompt_tail off` on the teacher, the setting the vision finding measured; generate with
-     `ref_vision` forces it off too. The student keeps its cache's tail.
-   - Stamps encoder, caption format, max pixels and image digest.
-   - ~0.4 s per encode, so a 106-image set takes about a minute after loading.
-2. **Train loop** (`library/moss/train.py`, `training_loss`): a `distill` request field
-   (`off | base | ema`) plus `distill_ema_decay`.
-   - `training_loss` already writes `noisy` / `timestep` to `state`.
-   - Before the student forward, run the teacher under `torch.no_grad()` on the same `noisy`
-     with the teacher embeds:
-     - `base`: `network.set_multiplier(0)`.
-     - `ema`: `_foreach_copy_` the teacher shadow into the adapter params, then copy them back.
-       That needs one LoRA-sized scratch buffer.
-   - The target becomes the teacher output in place of `noise − latent`. Nothing else in the loss
-     changes.
-   - Student and teacher both use the cond branch only, as SFT does. CFG stays an inference-time
-     matter.
-3. **Compile range:** the teacher's token axis is longer by the vision rows. `seq_range`
-   (`train.py:279`) must span `n_img + n_text_teacher`, or the teacher forward recompiles.
-4. **Memory:** the teacher forward holds no activations past its output. The peak stays the
-   student's fwd/bwd (10.95 GB on the int8 plan) plus the longer no-grad forward's transient.
-   Check once with `activation_memory_budget 0.3`.
+- **Teacher cache** (`library/moss/distill.py`, `scripts/moss/distill_cache.py`,
+  `DistillCacheRequest`): `{stem}.moss_vis.safetensors` beside each TE file, one `embeds_<kind>`
+  per caption the student can draw (`full`, `plain`, `v{k}`, `empty` = the image alone). The page
+  is prefilled once and every caption continues from it (`vision_te.encode_variants`). Image at
+  the latent's size (~1,000 vision rows at 1 MP). Same TE weights as the student cache (int8
+  decoder, vision tower bf16). `--tail` sets the teacher's prompt tail (default `off`),
+  independent of the student cache's. Stamped with captions, source digest, encoder and tail;
+  re-encodes only what changed. 30 images take about a minute after loading.
+- **Train loop** (`library/moss/train.py`, `training_loss(teacher=…)`):
+  - `--distill off|base|ema`. `base`: multiplier 0 during the teacher forward. `ema`: a shadow of
+    the adapter params at `--distill_ema_decay` (default 0.9999), swapped in through one scratch
+    copy (`TeacherWeights`), independent of the saved `ema_window` EMA.
+  - The teacher forward runs first, no grad, on the same `x_t` / timestep, cond branch only.
+  - `--distill_mix λ`: target `λ·(ε − x₀) + (1 − λ)·u_t`; on the shared `x_t` this equals
+    `λ·FM + (1 − λ)·distill` up to a constant.
+  - `--distill_sigma_min s`: teacher only on steps with σ ≥ s, the flow target below (no teacher
+    forward there). `--distill_sigma_ramp r`: the teacher's share rises linearly from 0 at
+    `s − r` to 1 at `s`.
+  - The flow MSE is logged as `fm` on teacher steps. The run JSON counts `distill_steps`.
+  - The compile range spans the teacher's longer token axis (caststation: 4192–5613).
+  - Refused with `delta_rows`, `trigger_registers` and `ref_adapters all`: their row masks are
+    built for the student's sequence, and the teacher's has the image rows ahead of the caption.
+- **Gate probe** `bench/moss_self_distill/xhat_probe.py`: one-step flow loss and x̂₀ by σ under
+  `cap` / `img_cap` / `img_cap_sure` / `img`, Base, no LoRA, plus full renders per conditioning.
+- Tests: `tests/test_moss_distill.py` (teacher weight swap, target replacement).
 
-Cost per step: the SFT step (1.08 s on ama mitsuki) plus one no-grad forward about 25 % longer.
-Estimate ~1.5 s/step, about 21 min for 848 steps.
+Cost (caststation, int8 Base, fp32 stream, 30 images ~4,100 image tokens): 1.45 s/step with a
+teacher forward every step against 1.10 s for SFT; peak 13.20 GB against 13.19 GB. A σ-gated run
+pays the teacher forward only on its teacher steps (hybrid95: 1.08 s/step).
 
-## Gate before training (minutes, no LoRA)
+## Probe on channel (caststation), 2026-11-09
 
-Fig. 7: when the teacher cannot draw the concept, training fails. Two checks on the training set:
-
-1. **Renders.** A few ama mitsuki captions, Base, CFG 3, 50 steps, three conditionings:
-   caption only, image + caption, and image + a held-out prompt. Does image + caption draw her
-   (face, hair, eyes, outfit) where caption only does not?
-2. **One-step x̂₀ by σ.** This is the measurement the λ(σ) schedule comes from.
-   - On the cached training latents, noise each latent at a fixed σ grid (e.g. 0.05, 0.1, 0.2,
-     0.35, 0.5, 0.7, 0.85, 0.95), several ε draws per (image, σ).
-   - Take the one-step estimate `x̂₀ = x_t − σ·v` under three conditionings: caption only (`c_s`),
-     image + caption (`c_t`), and image only. Base model, no LoRA, cond branch.
-   - Score x̂₀ against x₀:
-     - latent MSE;
-     - decoded PSNR (full and 64 px luma, as in the vision finding);
-     - the velocity residual `‖v − (ε − x₀)‖`.
-   - Plot each against σ, with the paired gap `c_t − c_s` per image.
-   - Expected shape:
-     - the gap is near 0 at low σ, where x_t pins the image;
-     - it opens at mid and high σ, where the caption alone leaves content open.
-   - The σ band where the gap is clearly positive is where the teacher adds information. If the gap
-     is positive at low σ too, the teacher also helps with detail.
-   - The x̂₀ variance across ε draws at fixed (image, σ) sizes the variance argument directly.
-     This is the Stable Target Field quantity (Xu et al., ICLR 2023).
-   - Cost: forwards only, 106 images × 8 σ × 3 conditionings × a few ε, a few minutes compiled.
-     Decode only a subset for PSNR (the VAE decode wants the DiT off the card).
-
-Pass: the teacher helps if `c_t` lowers the FM loss against `c_s` on most images, or renders the
-concept better. The size of the one-step gap is not the criterion: it is small by construction
-(x_t pins most of the image below σ 0.8).
-
-**Run on channel (caststation), 2026-11-09** (`bench/moss_self_distill/xhat_probe.py`,
-`results/20261109-1638-caststation/`, 30 images, int8 Base, fp32 stream):
+`bench/moss_self_distill/results/20261109-1638-caststation/`, 30 images, int8 Base, fp32 stream:
 
 | σ | 0.1 | 0.25 | 0.4 | 0.6 | 0.8 | 0.95 |
 |---|---|---|---|---|---|---|
@@ -148,34 +80,65 @@ concept better. The size of the one-step gap is not the criterion: it is small b
 | images with `img_cap` lower | 100 % | 100 % | 100 % | 90 % | 97 % | 100 % |
 | ‖v_img_cap − v_cap‖² | 0.0041 | 0.0026 | 0.0018 | 0.0018 | 0.0029 | 0.0187 |
 
-- `img_cap` is lower at every σ on nearly every image; the gap is largest at σ 0.95.
-- x̂₀ spread across ε is the same for both (0.0382 vs 0.0377 at σ 0.8): no variance argument here.
+- `img_cap` is lower at every σ on nearly every image; the gap is ~10× larger at σ 0.95 than below
+  0.8. x_t pins most of the image below 0.8, so the one-step gap there is small by construction.
+- x̂₀ spread across ε is the same for both (0.0382 vs 0.0377 at σ 0.8).
 - Image alone (`img`) is worse than `cap` below σ 0.95; the `sure` tail on the teacher adds nothing.
-- Renders (CFG 3, 50 steps): `img_cap` brings back the composition, outfits, props and the
-  side doodles, and draws far cleaner figures than `cap`. Line weight and the pale flat palette
-  stay closer to Base's.
-- The gate passes on both counts.
+- Renders (CFG 3, 50 steps): `img_cap` brings back the composition, outfits, props and side
+  doodles, and draws far cleaner figures than `cap`. Line weight and the pale flat palette stay
+  closer to Base's.
 
-## Experiment
+## Runs on channel (caststation)
 
-ama mitsuki (`post_image_dataset/moss/ama_mitsuki_layout`, 106 images), the shipped
-`configs/moss/lora.toml` (int8 stream, Muon, lr 5e-5, rank 32, 848 steps), same seed for every arm:
+`channel_(caststation)_layout_sure` cache, `configs/moss/lora.toml` with lr 1e-4 unless noted,
+`ema_window 0.139`, 240 steps, seed 0. The σ sequence is the same in every run, so a σ-gated arm
+differs from SFT on its teacher steps only. Renders: `scripts/moss/generate.py` (int8, CFG 3, 50
+steps), the three `lora_ab.py` caststation prompts, seeds 1–6, sheets in
+`output/tests/caststation_distill_ab/`.
 
-| arm | target |
-|---|---|
-| SFT | `ε − x₀` (control; the existing 848-step run if its config matches) |
-| distill-base | frozen base + image context |
-| distill-ema | EMA 0.9999 + image context |
+| LoRA (`output/ckpt_moss/caststation_*`) | target | teacher steps | FM loss, last 60 steps |
+|---|---|---|---|
+| `fwdpv` (2026-11-03) | FM | 0 | 0.2827 |
+| `distill_base` | teacher (Base) | 240 | 0.2910 |
+| `distill_base_lr2e4` | teacher (Base), lr 2e-4 | 240 | 0.2950 |
+| `hybrid95` | teacher at σ ≥ 0.95, FM below | 19 | 0.2811 |
+| `hybrid90` | teacher at σ ≥ 0.9, FM below | 50 | |
+| `ramp85_95` | teacher share 0 at σ 0.85 → 1 at 0.95 | 85 (Σ share 49.5) | |
 
-Each arm takes ~20 min on the daemon, about an hour for all three.
+- Pure distillation's loss sits at 0.005–0.008 throughout. Muon normalises each matrix's update,
+  so the loss scale does not set the step size; the LoRA's ΔW came out at ~90 % of SFT's.
+- hybrid95 shows some promise by eye against SFT.
 
-Read with `bench/moss_ab/lora_ab.py --arms er_sde:1.0` and `ab_cols.py`, judged by eye; the
-loss never separated arms in [t2i_lora_recipe.md](../findings/t2i_lora_recipe.md), and here
-the arms do not even share a target. Look at:
+## Open questions
 
-- likeness on training captions;
-- held-out prompts (new scenes, outfits, poses) for overfit;
-- dataset artifacts and style leakage on prompts without her.
+- **What the distill target carries.** `u_t − u_s` is the direction the image adds beyond the
+  caption. Measure it per σ band and per content: composition, identity, palette, line work.
+  Decompose the trained LoRA's effect the same way: renders with the LoRA under `cap` vs Base under
+  `img_cap`, and the hybrid arms against SFT on held-out prompts. FM regresses on one noisy sample
+  of the image; the teacher target is a model-side posterior mean. Where these differ is what FM
+  cannot deliver, which is why the gain may be orthogonal to it.
+- **Transfer.** Does the hybrid's gain hold on other artists (a line-art-heavy one, a painterly
+  one), on a character set (ama mitsuki, where the concept is identity, the content the vision
+  tower conveys best), and on i2i tasks? For glyph tasks the tower is 32 px per token and
+  colorize on vision alone reached luma r 0.42 (`project/finished/moss_lora/done/i2i.md`), so
+  there the teacher would carry layout, not strokes.
+- **Other contexts for the teacher.** The teacher's embeds need not be image + the same caption:
+  - a sparse student caption (trigger only, tags dropped) against image + full caption: the
+    privileged-information form, the LoRA learns to fill in what the caption leaves out;
+  - an instruction or style description placed before the image, which shapes the rows the DiT
+    reads (the TE is causal);
+  - the image at a different resolution (`img_lo` ~130 rows drew looser), or a crop;
+  - an amplified difference, `u_s_base + γ·(u_t − u_s_base)` with γ > 1, so the image direction
+    is not drowned when mixed with FM.
+- **Where the teacher steps go.** σ ≥ 0.95 is 8 % of steps under the shipped σ sampling. A
+  separate high-σ teacher term per step (a second student forward/backward) or a shifted σ draw
+  on teacher steps would give it more updates.
+- **EMA teacher.** At 240 updates a 0.9999 shadow moves 2.4 % toward the student, so it is Base.
+  A faster shadow (0.99) makes the teacher the LoRA plus the image: FM teaches the style, the
+  image context the composition.
+- **On-policy at high σ.** Rolling the student out only over the first steps (σ 1 → 0.85, about 5
+  of 50) and distilling there costs a few no-grad forwards and puts the teacher on the student's
+  own composition errors, the regime where the paper's on-policy arm gained most.
 
 ## Related work
 
@@ -200,21 +163,3 @@ Cited from memory, not read for this proposal. Read the PDFs before relying on a
 - **Contrast: step distillation.** Reflow (Liu et al. 2022) and DMD / DMD2 (Yin et al.).
   Matching the teacher's instantaneous velocity on rollouts does not make a few-step model; the
   Anima turbo is DMD.
-
-## Open
-
-- **λ mix with the FM loss.** On the shared `x_t`, `λ‖u_s − (ε − x₀)‖² + (1 − λ)‖u_s − u_t‖²`
-  equals `‖u_s − (λ(ε − x₀) + (1 − λ)u_t)‖²` plus a constant: one regression onto an interpolated
-  target, at no extra cost. λ can follow σ: data target at low σ, where the teacher is not
-  pixel-aligned and x_t already holds the detail; teacher at high σ, where `ε − x₀` is noisiest.
-  The paper does not mix (§ 4 lists extra training constraints as future work). In an on-policy
-  version the FM term needs its own noised-real states, so it costs a second student
-  forward/backward and brings back the off-policy states. Add it only if pure distill loses likeness.
-- **Fidelity ceiling.** The teacher is not pixel-aligned (luma PSNR in the finding), so fine
-  detail (accessories, eye shape) may cap at the teacher's level. x_t carries the real image at
-  low σ, where the teacher should follow it.
-- **On-policy.** A rollout variant (short no-grad schedule, distil on one or two visited states)
-  is the next step only if off-policy shows a signal.
-- **Not for text or glyph tasks.** The vision tower is 32 px per token. Colorize on vision alone
-  reached luma r 0.42 (`project/finished/moss_lora/done/i2i.md`), so swap_text and OCR-style
-  targets are out of scope.

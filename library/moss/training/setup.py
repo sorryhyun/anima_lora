@@ -467,7 +467,12 @@ def run_metadata(
     if req.preserve_weight:
         meta["preserve_weight"] = req.preserve_weight
     if req.distill != "off":
-        meta.update(distill=req.distill, distill_mix=req.distill_mix)
+        meta.update(
+            distill=req.distill,
+            distill_mix=req.distill_mix,
+            distill_sigma_min=req.distill_sigma_min,
+            distill_sigma_ramp=req.distill_sigma_ramp,
+        )
         if req.distill == "ema":
             meta["distill_ema_decay"] = req.distill_ema_decay
     if req.init_lora:

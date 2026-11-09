@@ -213,7 +213,7 @@ def train(
         drop_rng=random.Random(req.seed + 2),
         variant_rng=random.Random(req.seed + 3),
     )
-    kinds = {"plain": 0, "variant": 0, "empty": 0, "preserve": 0}
+    kinds = {"plain": 0, "variant": 0, "empty": 0, "preserve": 0, "distill": 0}
 
     rows_of = setup.delta_rows(req, samples, get)
     slots = setup.register_slots(req, samples)
@@ -236,7 +236,12 @@ def train(
             f"distill {req.distill}: teacher text "
             f"{min(teachers.shortest(s.stem) for s in samples)}-"
             f"{max(teachers.longest(s.stem) for s in samples)} rows, joint up to "
-            f"{joint_t}, mix {req.distill_mix}",
+            f"{joint_t}, mix {req.distill_mix}, from sigma {req.distill_sigma_min}"
+            + (
+                f" (linear from {req.distill_sigma_min - req.distill_sigma_ramp:g})"
+                if req.distill_sigma_ramp
+                else ""
+            ),
             flush=True,
         )
 
@@ -491,15 +496,7 @@ def train(
                     worst_case=step == 0 and req.fit_report,
                     **rates,
                 )
-                teach = None
-                if teachers is not None:
-                    teach = _teacher_fn(
-                        transformer,
-                        teacher_w,
-                        teachers.get(s.stem, kind).unsqueeze(0).to(device),
-                        req.distill_mix,
-                        attached,
-                    )
+                teacher_kind = kind
                 neg = negs.get(s.stem, {}).get(kind)
                 if neg is not None:
                     embeds, neg = neg  # the sidecar's own encode of the full caption
@@ -526,6 +523,24 @@ def train(
                 sigma = sample_sigma(
                     gen, req.sigma_mu, req.sigma_s, req.sigma_cutoff, req.sigma_uniform
                 )
+                teach = None
+                ramp_lo = req.distill_sigma_min - req.distill_sigma_ramp
+                if teachers is not None and (
+                    sigma > ramp_lo if req.distill_sigma_ramp else sigma >= ramp_lo
+                ):
+                    weight = (
+                        min(1.0, (sigma - ramp_lo) / req.distill_sigma_ramp)
+                        if req.distill_sigma_ramp
+                        else 1.0
+                    )
+                    teach = _teacher_fn(
+                        transformer,
+                        teacher_w,
+                        teachers.get(s.stem, teacher_kind).unsqueeze(0).to(device),
+                        1.0 - weight * (1.0 - req.distill_mix),
+                        attached,
+                    )
+                    kinds["distill"] += 1
                 transformer.ref_gate = (
                     holes.gate(latent.shape[-2:], ref.shape[-2:], device)
                     if holes is not None
@@ -748,6 +763,7 @@ def train(
             "variant_steps": kinds["variant"],
             "dropout_steps": kinds["empty"],
             "preserve_steps": kinds["preserve"],
+            "distill_steps": kinds["distill"],
             "minutes": seconds / 60,
             "s_per_step": seconds / max(1, step - 1),
             "peak_allocated_gb": torch.cuda.max_memory_allocated() / 1024**3,
