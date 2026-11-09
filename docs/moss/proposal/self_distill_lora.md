@@ -1,7 +1,11 @@
 # MOSS t2i LoRA by self-distillation: the target image as the teacher's TE context
 
-Status: implemented 2026-11-09 (`--distill`, `scripts/moss/distill_cache.py`). First runs on
-channel (caststation).
+Status: implemented 2026-11-09 (`--distill`, `scripts/moss/distill_cache.py`). On channel
+(caststation) the recipe that works is **add90 ema97**: the flow loss on every step, plus the
+teacher term on steps with σ ≥ 0.9, from an EMA 0.97 copy of the LoRA
+(`--distill ema --distill_ema_decay 0.97 --distill_sigma_min 0.9 --distill_add 1`). At 480 steps
+its style is a little lighter than SFT's, it is far steadier on general prompts, and it keeps
+Base's composition on an unseen prompt where SFT drifts ([verdict](#verdict-2026-11-09)).
 
 Source: D-OPSD, arXiv 2605.05204 (Jiang et al., HKUST / Alibaba Z-Image team). Implemented here:
 the paper's **off-policy** arm (§ 3.3, Fig. 6a, arm 3), not its on-policy method.
@@ -54,6 +58,15 @@ teacher as "stable and effective".
   - The teacher forward runs first, no grad, on the same `x_t` / timestep, cond branch only.
   - `--distill_mix λ`: target `λ·(ε − x₀) + (1 − λ)·u_t`; on the shared `x_t` this equals
     `λ·FM + (1 − λ)·distill` up to a constant.
+  - `--distill_add w`: on teacher steps keep the flow MSE and add the teacher MSE (one student
+    forward, two targets), scaled each step by `w·sqrt(FM / teacher)` so at `w = 1` both terms'
+    gradients on the prediction have the same norm (unscaled, the teacher MSE is ~1/40 of FM and
+    its gradient ~15 %). Equivalent to `distill_mix` with a per-step λ; Muon normalises the
+    update, so what matters is the mix, not the sum's scale. Logged as `t`.
+  - `--distill_extra_sigma s` / `--distill_extra_weight w`: a second term every step, the teacher
+    target at a σ drawn uniformly from [s, 1] on the same sample, balanced as above (one more
+    no-grad and one grad forward, 2.5 s/step). Its σ and noise come from their own RNG streams, so
+    the main term draws what a run without it draws. Logged as `x`, `x_fm`, `x_sigma`, `x_scale`.
   - `--distill_sigma_min s`: teacher only on steps with σ ≥ s, the flow target below (no teacher
     forward there). `--distill_sigma_ramp r`: the teacher's share rises linearly from 0 at
     `s − r` to 1 at `s`.
@@ -63,7 +76,8 @@ teacher as "stable and effective".
     built for the student's sequence, and the teacher's has the image rows ahead of the caption.
 - **Gate probe** `bench/moss_self_distill/xhat_probe.py`: one-step flow loss and x̂₀ by σ under
   `cap` / `img_cap` / `img_cap_sure` / `img`, Base, no LoRA, plus full renders per conditioning.
-- Tests: `tests/test_moss_distill.py` (teacher weight swap, target replacement).
+- Tests: `tests/test_moss_distill.py` (teacher weight swap, target replacement, `distill_add`
+  balance, the extra term's σ draw and balance).
 
 Cost (caststation, int8 Base, fp32 stream, 30 images ~4,100 image tokens): 1.45 s/step with a
 teacher forward every step against 1.10 s for SFT; peak 13.20 GB against 13.19 GB. A σ-gated run
@@ -105,9 +119,49 @@ steps), the three `lora_ab.py` caststation prompts, seeds 1–6, sheets in
 | `hybrid90` | teacher at σ ≥ 0.9, FM below | 50 | 0.2836 |
 | `ramp85_95` | teacher share 0 at σ 0.85 → 1 at 0.95 | 85 (Σ share 49.5) | 0.2831 |
 
+| `h90x90_w1` | hybrid90 + extra teacher term σ ∈ [0.9, 1] every step, w 1 | 50 + 240 | 0.2859 |
+| `h90x90_w05` | the same, w 0.5 | 50 + 240 | 0.2850 |
+| `sftx90_w1` | FM every step + extra teacher term σ ∈ [0.9, 1], w 1 | 240 | 0.2861 |
+| `add90_ema97` | FM every step + teacher term (`distill_add 1`) at σ ≥ 0.9, EMA 0.97 teacher | 50 | 0.2853 |
+
 - Pure distillation's loss sits at 0.005–0.008 throughout. Muon normalises each matrix's update,
   so the loss scale does not set the step size; the LoRA's ΔW came out at ~90 % of SFT's.
-- hybrid95 shows some promise by eye against SFT.
+- hybrid90 beats SFT by eye (sheet `sheet_hybrid90.png`): cleaner figures and hands, same palette.
+- More Base teacher (the extra-term arms, 240 teacher terms) buys still cleaner figures but pulls
+  the style to Base: saturated cyan and yellow, glossy hair, outfits drifting from the prompt
+  (s3 bow and legwear, s6 summer uniform). w 0.5 sits between. Where the main term's 50 high-σ
+  steps go (teacher or FM) makes no visible difference (`sheet_sftx90.png`).
+- add90 ema97 keeps the palette flattest of all arms (the teacher carries the LoRA's style), with
+  two odd cells at 240 steps (s4 grey-shadowed face, s6 winter uniform; `sheet_add90.png`).
+- On the Space Blue Archive prompt (`bench/moss_ab/space/004`, held out, 12 characters) hybrid90
+  keeps Base's layout almost exactly with caststation's palette; SFT rearranges the figures;
+  add90 sits between (`space004/sheet.png`).
+
+### 480 steps (16 epochs), 2026-11-09
+
+Same recipe, `--epochs 16`. Renders in `output/tests/caststation_distill_ab/e16/`.
+
+| LoRA (`caststation_e16_*`) | teacher steps | FM loss, last 120 steps | s/step |
+|---|---|---|---|
+| `sft` | 0 | 0.2472 | 1.07 |
+| `hybrid90` | 101 | 0.2488 | 1.13 |
+| `add90ema97` | 101 | 0.2509 | 1.15 |
+
+- caststation prompts (`sheet.png`): all three carry the style further; SFT's style is the
+  strongest, add90's a little lighter. SFT smears the phone hand (s5) and adds a stray flower
+  crown (s6); hybrid90 breaks the bench and pose (s3) and puts a branch across the face (s6).
+  add90 has no broken cell, and the two general prompts (s3, s6) come out clean.
+- Space 004 (`sheet_space004.png`): SFT moves further from Base's composition than at 240 steps;
+  hybrid90 and add90 both keep Base's layout.
+
+### Verdict, 2026-11-09
+
+**add90 ema97 is the working recipe.** Against SFT it gives up a little style strength and is
+much steadier on general prompts (s3, s6) and on held-out multi-character prompts, where the
+high-σ teacher term holds Base's composition. The EMA teacher is what avoids the Base teacher's
+style pull: a 0.97 copy of the LoRA (~33 updates behind) with the image in context teaches
+composition while the flow term and the teacher both carry the style. One seed per prompt on
+one artist; transfer to other sets is the open question below.
 
 ## Open questions
 
@@ -133,12 +187,16 @@ steps), the three `lora_ab.py` caststation prompts, seeds 1–6, sheets in
 - **Where the teacher steps go.** σ ≥ 0.95 is 8 % of steps under the shipped σ sampling. A
   separate high-σ teacher term per step (a second student forward/backward) or a shifted σ draw
   on teacher steps would give it more updates.
-- **EMA teacher.** At 240 updates a 0.9999 shadow moves 2.4 % toward the student, so it is Base.
-  A faster shadow (0.99) makes the teacher the LoRA plus the image: FM teaches the style, the
-  image context the composition.
-- **On-policy at high σ.** Rolling the student out only over the first steps (σ 1 → 0.85, about 5
-  of 50) and distilling there costs a few no-grad forwards and puts the teacher on the student's
-  own composition errors, the regime where the paper's on-policy arm gained most.
+- **EMA decay.** 0.97 works; the paper's 0.9999 is Base at our step counts (2.4 % toward the
+  student after 240 updates). 0.99 and hybrid90 with an EMA teacher (no flow term on teacher
+  steps) are untried, so the share of the gain from the teacher and from keeping FM is not split.
+- **On-policy at high σ.** Rolling the student out only over the first steps and distilling there
+  puts the teacher on the student's own composition errors, the regime where the paper's on-policy
+  arm gained most. Under shift 5, σ ≥ 0.85 is ~23 of 50 sampler steps (σ ≥ 0.9 ~18), so a full
+  CFG rollout to there is ~40 no-grad forwards; a coarse 10-step Euler rollout is the cheap form.
+  The probe above measured the teacher–student gap on noised real images, where `x_t` already
+  holds the target below σ 0.8; on rollout states it may be larger at mid σ. A forward-only probe
+  of the gap on rollout states decides whether to build it.
 
 ## Related work
 

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import time
 from pathlib import Path
 
@@ -196,3 +197,31 @@ class TeacherWeights:
             with torch.no_grad():
                 torch._foreach_copy_(self.params, self.scratch)
         return False
+
+
+class ExtraTerm:
+    """``TrainRequest.distill_extra_sigma``: the per-step second term's σ, drawn
+    uniformly from the training grid on ``[lo, 1]``, and its noise, each from its own
+    stream seeded from ``seed``, so the main term draws what it would without it."""
+
+    def __init__(self, lo: float, seed: int, device, total: int = 1000):
+        if not 0.0 < lo <= 1.0:
+            raise SystemExit(f"distill_extra_sigma must be in (0, 1], got {lo}")
+        self.first = max(1, math.ceil(lo * total - 1e-9))
+        self.total = total
+        self.rng = torch.Generator().manual_seed(seed + 7919)
+        self.noise = torch.Generator(device=device).manual_seed(seed + 7920)
+
+    def sigma(self) -> float:
+        j = int(torch.randint(self.first, self.total + 1, (), generator=self.rng))
+        return j / self.total
+
+    @staticmethod
+    def balance(main: torch.Tensor, extra: torch.Tensor) -> float:
+        """``sqrt(main / extra)``: an MSE's gradient on the prediction has norm
+        ∝ sqrt(loss), so this scale gives the extra term the main term's."""
+        return (
+            (main.detach().float() / extra.detach().float().clamp(min=1e-12))
+            .sqrt()
+            .item()
+        )

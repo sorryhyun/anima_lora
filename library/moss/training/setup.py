@@ -473,6 +473,13 @@ def run_metadata(
             distill_sigma_min=req.distill_sigma_min,
             distill_sigma_ramp=req.distill_sigma_ramp,
         )
+        if req.distill_add:
+            meta["distill_add"] = req.distill_add
+        if req.distill_extra_sigma:
+            meta.update(
+                distill_extra_sigma=req.distill_extra_sigma,
+                distill_extra_weight=req.distill_extra_weight,
+            )
         if req.distill == "ema":
             meta["distill_ema_decay"] = req.distill_ema_decay
     if req.init_lora:

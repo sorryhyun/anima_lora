@@ -213,7 +213,14 @@ def train(
         drop_rng=random.Random(req.seed + 2),
         variant_rng=random.Random(req.seed + 3),
     )
-    kinds = {"plain": 0, "variant": 0, "empty": 0, "preserve": 0, "distill": 0}
+    kinds = {
+        "plain": 0,
+        "variant": 0,
+        "empty": 0,
+        "preserve": 0,
+        "distill": 0,
+        "distill_extra": 0,
+    }
 
     rows_of = setup.delta_rows(req, samples, get)
     slots = setup.register_slots(req, samples)
@@ -230,6 +237,10 @@ def train(
                 "caption, so per-row adapter masks (delta_rows, trigger_registers, "
                 "ref_adapters all) do not line up with it"
             )
+        if req.distill_extra_sigma and req.repa_weight:
+            raise SystemExit(
+                "distill_extra_sigma: its second forward would overwrite REPA's capture"
+            )
         teachers = Teachers(samples)
         joint_t = max(s.n_img + s.n_ref + teachers.longest(s.stem) for s in samples)
         print(
@@ -244,6 +255,12 @@ def train(
             ),
             flush=True,
         )
+        if req.distill_extra_sigma:
+            print(
+                f"distill extra term: sigma in [{req.distill_extra_sigma:g}, 1], "
+                f"weight {req.distill_extra_weight:g} (gradient-norm balanced)",
+                flush=True,
+            )
 
     transformer = load_transformer(req.model_dir, req.model)
     transformer.requires_grad_(False)
@@ -370,6 +387,11 @@ def train(
         teacher_w = TeacherWeights(
             req.distill, network, adapter_params, req.distill_ema_decay
         )
+    extra = None
+    if teachers is not None and req.distill_extra_sigma:
+        from library.moss.distill import ExtraTerm
+
+        extra = ExtraTerm(req.distill_extra_sigma, req.seed, device)
     total = req.epochs * len(samples)
     if req.max_steps:
         total = min(total, req.max_steps) if req.epochs else req.max_steps
@@ -523,7 +545,7 @@ def train(
                 sigma = sample_sigma(
                     gen, req.sigma_mu, req.sigma_s, req.sigma_cutoff, req.sigma_uniform
                 )
-                teach = None
+                teach, teach_add = None, 0.0
                 ramp_lo = req.distill_sigma_min - req.distill_sigma_ramp
                 if teachers is not None and (
                     sigma > ramp_lo if req.distill_sigma_ramp else sigma >= ramp_lo
@@ -537,9 +559,12 @@ def train(
                         transformer,
                         teacher_w,
                         teachers.get(s.stem, teacher_kind).unsqueeze(0).to(device),
-                        1.0 - weight * (1.0 - req.distill_mix),
+                        0.0
+                        if req.distill_add
+                        else 1.0 - weight * (1.0 - req.distill_mix),
                         attached,
                     )
+                    teach_add = req.distill_add * weight
                     kinds["distill"] += 1
                 transformer.ref_gate = (
                     holes.gate(latent.shape[-2:], ref.shape[-2:], device)
@@ -591,6 +616,7 @@ def train(
                         tone=tone,
                         state=state,
                         teacher=teach,
+                        teacher_add=teach_add,
                     )
                 else:
                     loss = training_loss(
@@ -602,6 +628,7 @@ def train(
                         state=state,
                         parts=parts,
                         teacher=teach,
+                        teacher_add=teach_add,
                     )
                 align = repa.loss() if repa is not None else None
                 if align is not None:
@@ -632,6 +659,34 @@ def train(
                     )
                     (req.preserve_weight * pres / accum).backward()
                     parts["pres"] = pres.item()
+                if extra is not None:
+                    xsigma = extra.sigma()
+                    xparts = {}
+                    xloss = training_loss(
+                        transformer,
+                        latent,
+                        embeds,
+                        xsigma,
+                        gen=extra.noise,
+                        ref=ref,
+                        parts=xparts,
+                        teacher=_teacher_fn(
+                            transformer,
+                            teacher_w,
+                            teachers.get(s.stem, teacher_kind).unsqueeze(0).to(device),
+                            req.distill_mix,
+                            attached,
+                        ),
+                    )
+                    scale = req.distill_extra_weight * extra.balance(loss, xloss)
+                    (scale * xloss / accum).backward()
+                    kinds["distill_extra"] += 1
+                    parts.update(
+                        x=xloss.item(),
+                        x_fm=xparts["fm"],
+                        x_sigma=xsigma,
+                        x_scale=scale,
+                    )
                 step += 1
                 updated = step % accum == 0 or step == total
                 if updated:
@@ -764,6 +819,7 @@ def train(
             "dropout_steps": kinds["empty"],
             "preserve_steps": kinds["preserve"],
             "distill_steps": kinds["distill"],
+            "distill_extra_steps": kinds["distill_extra"],
             "minutes": seconds / 60,
             "s_per_step": seconds / max(1, step - 1),
             "peak_allocated_gb": torch.cuda.max_memory_allocated() / 1024**3,

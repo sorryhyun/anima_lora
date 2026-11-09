@@ -119,6 +119,7 @@ def training_loss(
     tone: dict | None = None,
     state: dict | None = None,
     teacher=None,
+    teacher_add: float = 0.0,
 ):
     """``latent (1,128,h,w)`` fp32, ``embeds (1,S,4096)`` at true length,
     ``ref (1,128,h',w')`` an optional clean reference latent (never noised),
@@ -128,7 +129,10 @@ def training_loss(
     and logged in ``parts`` as ``tone``. ``state`` receives ``noisy`` and
     ``timestep`` (:func:`preserve_loss` runs on the same ones). ``teacher(noisy,
     timestep, flow, ref)`` replaces the flow target (self-distillation,
-    ``library/moss/distill.py``); the flow MSE is then logged in ``parts`` as ``fm``."""
+    ``library/moss/distill.py``); the flow MSE is then logged in ``parts`` as ``fm``.
+    ``teacher_add`` > 0 keeps the flow target and adds the teacher MSE at that weight
+    times ``sqrt(flow MSE / teacher MSE)``, so at 1 both gradients on the prediction
+    have the same norm; logged in ``parts`` as ``t``."""
     noise = torch.randn(
         latent.shape, generator=gen, device=latent.device, dtype=latent.dtype
     )
@@ -143,10 +147,20 @@ def training_loss(
     pred = transformer(noisy, timestep, embeds, return_dict=False, ref=ref)[0]
     if teacher is not None and parts is not None:
         parts["fm"] = F.mse_loss(pred.detach().float(), flow.float()).item()
-    if region is not None:
-        loss = region_mse(pred, target, region, region_weight, rest_weight, parts)
+
+    def mse(t):
+        if region is not None:
+            return region_mse(pred, t, region, region_weight, rest_weight, parts)
+        return F.mse_loss(pred.float(), t.float())
+
+    if teacher is not None and teacher_add:
+        loss, term = mse(flow), mse(target)
+        scale = (loss.detach() / term.detach().clamp(min=1e-12)).sqrt()
+        if parts is not None:
+            parts["t"] = term.item()
+        loss = loss + teacher_add * scale * term
     else:
-        loss = F.mse_loss(pred.float(), target.float())
+        loss = mse(target)
     if tone is None:
         return loss
     term = tone_loss(

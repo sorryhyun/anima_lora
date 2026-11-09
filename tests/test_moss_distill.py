@@ -71,3 +71,52 @@ def test_teacher_output_is_the_target():
     assert "fm" in parts
     loss.backward()
     assert dit.w.grad is not None
+
+
+def test_extra_term_draws_on_grid_inside_band():
+    from library.moss.distill import ExtraTerm
+
+    x = ExtraTerm(0.9, 0, "cpu")
+    draws = [x.sigma() for _ in range(500)]
+    assert min(draws) >= 0.9 and max(draws) <= 1.0
+    assert min(draws) == 0.9 and max(draws) == 1.0
+    assert all(abs(d * 1000 - round(d * 1000)) < 1e-9 for d in draws)
+
+
+def test_extra_term_balance_matches_gradient_norms():
+    from library.moss.distill import ExtraTerm
+
+    pred = torch.zeros(1, 4, 3, 3, requires_grad=True)
+    a, b = torch.randn(1, 4, 3, 3), 0.1 * torch.randn(1, 4, 3, 3)
+    main, extra = F.mse_loss(pred, a), F.mse_loss(pred, b)
+    (ga,) = torch.autograd.grad(main, pred)
+    (gb,) = torch.autograd.grad(ExtraTerm.balance(main, extra) * extra, pred)
+    assert torch.allclose(ga.norm(), gb.norm(), rtol=1e-5)
+
+
+def test_teacher_add_keeps_flow_and_balances():
+    net = _Net()
+    dit = _DiT(net)
+    latent = torch.randn(1, 4, 2, 2)
+    gen = torch.Generator().manual_seed(0)
+
+    def teach(noisy, timestep, flow, ref=None):
+        return torch.ones_like(noisy)
+
+    state, parts = {}, {}
+    loss = training_loss(
+        dit,
+        latent,
+        torch.zeros(1, 5, 8),
+        0.5,
+        gen=gen,
+        state=state,
+        parts=parts,
+        teacher=teach,
+        teacher_add=1.0,
+    )
+    pred = dit.w.detach() * state["noisy"]
+    flow = (state["noisy"] - 0.5 * latent) / 0.5 - latent  # noise - latent
+    fm, t = F.mse_loss(pred, flow), F.mse_loss(pred, torch.ones_like(pred))
+    assert torch.allclose(loss, fm + (fm / t).sqrt() * t)
+    assert abs(parts["t"] - t.item()) < 1e-6 and abs(parts["fm"] - fm.item()) < 1e-6

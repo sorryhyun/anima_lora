@@ -727,6 +727,29 @@ class TrainRequest(Request):
         "mix·(noise - latent) + (1 - mix)·teacher; 0 = pure distillation",
         advanced=True,
     )
+    distill_add: float = _f(
+        0.0,
+        "with distill: on teacher steps keep the flow target and add the teacher "
+        "MSE at this weight (1 = the same gradient norm on the prediction as the "
+        "flow term; scaled by sqrt(flow MSE / teacher MSE) each step) instead of "
+        "replacing it; distill_mix is then unused. 0 = replace",
+        advanced=True,
+    )
+    distill_extra_sigma: float = _f(
+        0.0,
+        "with distill: a second term every step, the teacher target at a sigma "
+        "drawn uniformly from [this, 1] on the same image and caption (one more "
+        "no-grad and one grad forward). Its own RNG streams, so the main term's "
+        "sigma and noise match a run without it. 0 = off",
+        advanced=True,
+    )
+    distill_extra_weight: float = _f(
+        1.0,
+        "with distill_extra_sigma: the extra term's weight relative to the main "
+        "term's; 1 = its gradient on the prediction has the main term's norm "
+        "(scaled by sqrt(main loss / extra loss) each step)",
+        advanced=True,
+    )
     ref_timestep: float = _f(
         0.0,
         "timestep (1000·σ) whose block modulation the reference tokens get (a "
