@@ -96,3 +96,41 @@ checkpoints at 250 and 500 (only 500 rendered). Same render as above.
 - No CDM-on 500-step twin, so how much of the sky CDM would keep is not known.
 
 Decision (the user's, 2026-11-04): keep training MFD, with longer runs.
+
+## Anchor-free MFD with DM on step 0 collapses (2026-11-10)
+
+`dm_first_step = true` with `div_weight = 0` (the MFD paper's anchor-free loop) collapses the
+student within 250 steps. Step 0's x_pred becomes one flat colour, the same for every seed and
+prompt; the 4-step render is a flat noise texture with no figure. Cause not yet isolated.
+
+Common settings: teacher merged14 (int8 GPTQ base, fp32 stream), student and fake LoRA r64 / α180
+from `weight_svd` (no warm start), adaln r16, `fake_transition` on, 4-step student with
+`dynamic_schedule` (N ~ U{2..4}, so g = 0 on ~36% of student updates), MFD dtau 0.1 / max 4 /
+`to_zero`, GAN and CDM off, lr 5e-5 for both, fake 4:1, grad clip 1.0, batch 1.
+
+| Run (`output/ckpt/`) | fake warmup | `val/div_xpred_ac_sim` @250 | `val/div_ac_sim` @250 | `val/fm_mse` @250 |
+|---|---|---|---|---|
+| `anima_turbo_m14_dpdmd_svd_500_tafake` (reference: anchor on, DP-DMD) | 200 | 0.940 | 0.678 | 0.357 |
+| `anima_turbo_m14_mfd_noanchor_nogan_nocdm_500_tafake` | 200 | 0.9994 | 0.077 | 0.371 |
+| `anima_turbo_m14_mfd_noanchor_nogan_nocdm_fwu0_500_tafake` (stopped at 250) | 0 | 0.9996 | 0.155 | 0.452 |
+
+The reference also differs in CDM 1.0 and GAN 0.03; the two MFD runs differ only in fake warmup.
+
+- **Detect it with the validation probe, not the training scalars.** `rel_gap`, `cos`, `dm` and
+  the grad norms of the collapsed runs sit in the reference run's range, because ε dominates
+  every velocity. `div_xpred_ac_sim` near 1 (step-0 output identical across seeds) and
+  `div_ac_sim` near 0 (final outputs uncorrelated noise) are the signature.
+- **Renders** (4 steps, cfg 1; plus 1 step to see step 0): the ANIMA-sign and nozomi prompts both
+  give a flat purple-grey (warmup 200) or grey (warmup 0) field at 1 step, and a uniform noise
+  texture at 4 steps, at 250 and 500. The reference draws the figure even at 1 step.
+- **Ruled out:** the g = 0 code path (`steps.student_rollout`: same `x_g − σ_g·v_g` form, sign
+  and normalisation as g ≥ 1); `fake_transition` (a scalar σ embedding, so the fake still models
+  the marginal, not the paper's App. C.4 conditional-velocity failure, whose point-mass collapse
+  looks the same); fake LR warmup (second run). LoRA itself is not the problem: the paper's SANA
+  run is LoRA r64 on student and fake (App. A.3.2).
+- **Differences from the paper still open:** fake : student 10:1 there vs 4:1 here, grad clip
+  0.5, logit-normal (s, t) with an adaptive ODE (max step 0.02) vs uniform σ_a, `to_zero` and
+  K ≤ 4, and a 1-step student there vs one LoRA shared by 2–4 steps here.
+- **Next split:** `dm_first_step = false` with `div_weight = 0` (step 0 frozen at init, no
+  anchor) tells DM-on-step-0 from the anchor-free loop as a whole; TTUR 10:1 is the fake-tracking
+  check.

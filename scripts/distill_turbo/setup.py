@@ -50,7 +50,7 @@ from library.training.distill_runtime import (
     resolve_device_dtype,
     write_config_snapshot,
 )
-from library.runtime.progress import ProgressSink
+from library.runtime.progress import ProgressSink, command_job_path
 from networks.methods.turbo_dmd import TurboDMDNetwork, warm_start_plain_lora
 
 from .config import TurboConfig, snapshot_toml_text, tb_config_text
@@ -479,10 +479,12 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
             logger=logger,
         )
 
-    # train.py's ProgressSink, same path convention. Disabled under --no_log.
+    # Under the daemon (a command job) the stream goes to the job dir, where
+    # `make run-status RUN=<job id>` and the daemon's /progress read it; inline,
+    # logs/<output_name>.progress.jsonl. Disabled under --no_log.
     progress_sink = None
     if not cfg.no_log:
-        sink_path = ProgressSink.resolve_path(cfg)
+        sink_path = command_job_path(ProgressSink.resolve_path(cfg))
         if sink_path is not None:
             progress_sink = ProgressSink(
                 sink_path, run=cfg.output_name, method="turbo", preset=None

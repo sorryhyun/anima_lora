@@ -170,7 +170,8 @@ Sectioned, bespoke. Every key has a matching CLI override flag (see
 | `[dpdmd]` | `teacher_anchor_steps` | `12` | teacher σ-grid the K is counted against |
 | `[dpdmd]` | `div_weight` (λ) | `0.1` | weight on the first-step diversity MSE; `0` skips the teacher anchor (its `2·k_anchor` teacher forwards per step) and the diversity term |
 | `[dpdmd]` | `detach_after_first` | `true` | **load-bearing** stop-grad after step 1 |
-| `[dpdmd]` | `dm_first_step` | `false` | draw the grad step from `U{0..N−1}`, so step 0 also takes the DM / MFD signal (`x_pred = ε − v_first`); when g = 0 the diversity term rides the same backward. With `div_weight = 0` this is the anchor-free loop of the MFD paper. Unrun |
+| `[dpdmd]` | `dm_first_step` | `false` | draw the grad step from `U{0..N−1}`, so step 0 also takes the DM / MFD signal (`x_pred = ε − v_first`); when g = 0 the diversity term rides the same backward. With `div_weight = 0` this is the anchor-free loop of the MFD paper, which collapsed within 250 steps (`scripts/distill_turbo/README.md`) |
+| `[dpdmd]` | `rollout_grad` | `false` | keep the graph from step 0 into step 1, so the DM / MFD signal on the final x_θ reaches step 0 through step 1; the diversity term rides the same backward. 2-step static grid only (`student_steps = 2`, `dynamic_schedule` and `dm_first_step` off); two grad-bearing student forwards. `docs/anima/proposal/superturbo.md` |
 | `[optim]` | `student_lr` / `fake_lr` | `5e-5` / `5e-5` | stable on the warm start but near the edge — expect an excursion around ~1k and keepers from 2k+. A cold start is unstable with the student above 1e-5. `fm_mse` is anti-correlated with quality; rank by rendered 4-step samples |
 | `[optim]` | `fake_steps_per_student_step` | `4` | keep the fake ahead of the moving x_θ |
 | `[optim]` | `fake_warmup_steps` | `200` | fake (critic) head-start before the main loop — kills the early grad_signal_rms spike (~step 50); `0` = off |
@@ -229,10 +230,11 @@ Three surfaces, cheapest first:
 
 - `make run-status` — `step N/total`, it/s, ETA, last losses, last checkpoint,
   and whether the run is `RUNNING` / `OK` / `ERROR` / `DEAD` (no `run_end` and the
-  pid is gone). Defaults to the newest run; `RUN=<output_name>` picks one,
-  `ARGS="--list"` reports all, `ARGS="--json"` for a machine-readable digest. It
-  reads `output/logs/<output_name>.progress.jsonl` — the same structured stream
-  the GUI and daemon tail (`--no_log` disables it).
+  pid is gone). Defaults to the newest run; `RUN=<output_name|job id>` picks one,
+  `ARGS="--list"` reports all, `ARGS="--json"` for a machine-readable digest. The
+  stream is `output/daemon/jobs/<id>/progress.jsonl` for a daemon job (`make turbo
+  --queue`, `make daemon-run`) and `output/logs/<output_name>.progress.jsonl` for an
+  inline run (`--no_log` disables it).
 - The console — the tqdm postfix on a TTY; redirected or daemon-headless, the
   same numbers come out as a greppable `step N/total … it/s … ETA` line at
   `log_interval` cadence (`grep '^.*step ' run.log`).
