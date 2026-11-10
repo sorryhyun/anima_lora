@@ -1,8 +1,13 @@
 # MOSS i2i: the reference as a panel of one layout canvas (`ref_pos = canvas`)
 
-Status: proposal, 2026-11-10. Nothing below is built or run. Context: the character_ref
-`ref_pos` A/B (`aligned` against `offset`, `docs/moss/methods/i2i.md`), and the copy block
-C of `project/lora_blocks/`.
+Status: proposal, 2026-11-10, probed the same day (`bench/moss_ref_canvas/`). Base does hold a
+character across two panels, and reads a reference panel that is noised with the image and
+attends both ways. It does not read the isolated reference of the i2i recipe, on canvas or
+`offset` coordinates, and the panel boxes change nothing. What runs from here is the copy
+block at `ref_pos offset` ([below](#what-runs-now-the-copy-block-beside-the-image)); the
+canvas coordinates and the caption wrap are not built. Context: the character_ref `ref_pos`
+A/B (`aligned` against `offset`, `docs/moss/methods/i2i.md`), and the copy block C of
+`project/lora_blocks/`.
 
 ## Where the reference sits today
 
@@ -29,7 +34,7 @@ The reference latent rides the image's sequence at RoPE coordinates `(r, f, h, w
   (`project/lora_blocks/reports/copy_vs_step.md`). A task whose content sits elsewhere in the
   reference (character_ref) gets the prior against it.
 
-## Proposal
+## Proposal (as first written)
 
 Make the reference a panel of the canvas Base already knows how to describe:
 
@@ -58,47 +63,83 @@ Why it may pay:
 Token count does not change: the reference tokens are in the sequence already; only their
 coordinates and the caption change.
 
-## First experiment: C under canvas
+## Measured (2026-11-10)
 
-Retrain the copy block C, the init every i2i fine-tune now starts from, under canvas. Not
-from C's weights: C learned the copy on `aligned` coordinates. If the copy forms under
-canvas, every task built on C can move with it.
+`bench/moss_ref_canvas/` (README: conditions, both tables, the run folders). Base, int8 DiT, no
+LoRA.
 
-Recipe: `c_fill_bw10_mod16_s800` as it is (`project/lora_blocks/configs/`): cache
-`post_image_dataset/moss/c_fill_illu_bw10`, 800 steps, rank 32, `mod_rank 16`, lr 5e-5,
-`ref_gate cut` at `gate_rate 0.9`, `ref_isolate`, `ref_timestep 0`, swap 36 / budget 0.12
-(~33 min). `cut` indexes reference tokens, not coordinates, so it carries over.
+**Renders** (`panels.toml`, a 1728×1216 canvas, 4 prompts × seeds 0–2, no prompt naming hair,
+eyes or outfit): with two `panel` boxes, or one sentence naming two panels, all 6 renders
+keep hair, outfit and style across the panels. A right panel captioned `reference image of the
+character` repeats the left scene, pose included. `character sheet` tags give sheets whose
+views change outfit on 2 of 3 seeds.
 
-| arm | coordinates | caption | new cache |
+**Teacher-forced** (`probe.py`: 24 character_ref pairs with a same-grid reference, 24 artists;
+flow-matching MSE over the image panel, the pair's reference minus another artist's):
+
+| reference | σ 0.9 | σ 0.6 | σ 0.3 |
 |---|---|---|---|
-| bw10 (exists) | `aligned` | as cached | — |
-| canvas-1 | `canvas` | as cached | no |
-| canvas-2 | `canvas` | + panel boxes | TE only |
+| `joint`: r = 0 beside, noised at the step's σ, attention open | −0.0153 | −0.0112 | −0.0136 |
+| `open`: clean at `ref_timestep 0`, attention open | −0.0031 | −0.0034 | −0.0014 |
+| `iso`: clean, `ref_isolate`, canvas coordinates | −0.0012 | −0.0013 | −0.0017 |
+| `offset`: clean, `ref_isolate`, r = 1 | −0.0009 | −0.0011 | −0.0015 |
+| isolated at the step's σ (`joint` + `ref_isolate`) | −0.0016 | −0.0019 | −0.0025 |
+| isolated at σ 0.3, `ref_timestep 300` | −0.0036 | −0.0019 | −0.0025 |
 
-canvas-1 against bw10 measures the cost of giving up the same-cell prior on a copy task;
-canvas-2 against canvas-1 what the layout boxes buy back.
+For scale, another pair's caption costs +0.0078 at σ 0.9 and nothing below.
 
-Reads: `project/moss_te_sae/src/ref_gate.py --part fill` (the five sanitize pages, seeds
-0–2, `ctrl` / `cut`), the numbers of `reports/c_fill_mod16_bw10.md` (L1 outside the mask,
-ΔL / Δb), and the copy-head step from `copy_vs_step.py`. Then character_ref from canvas-2's C
-against the `offset` run.
+- **The premise holds for a joint panel.** The matching reference is worth twice the right
+  caption at σ 0.9, at every σ (the 95 % CIs exclude 0).
+- **Isolation removes 82–90 % of it**, at a matched σ too; a clean reference with the attention
+  open keeps as little. Base's read across panels needs reference rows that share the image's
+  noise and read the image and the text. `RefCache` needs the opposite (rows that depend on
+  no step), and no configuration it can hold reads more than a quarter of `joint`; the best is
+  the reference at σ 0.3 with `ref_timestep 300`.
+- **Canvas and `offset` coordinates read alike under isolation**, and the panel-box caption
+  moves no condition by more than 0.001. Neither arm of the experiment first planned here
+  (C retrained on canvas coordinates, with and without the boxes) starts from more than the
+  `offset` run did.
+- Every reference condition raises the loss over no reference (`joint` +0.005 to +0.026, the
+  clean ones more). Not explained.
 
-## Code it needs
+**The current C on the character_ref eval inputs** (`output/moss_i2i_eval/character_ref/results/
+{c_init,c_init_off}`, seeds 0–2): as trained (`aligned`) it returns the reference on every
+seed and ignores the prompt. The same file read at `offset`, untrained there, follows the
+prompt and loses the picture (washed, grey figures), with the reference's scene and palette
+in it: a park reference gives its hedge, paving and sky at the reference's heights, a red-eyed
+one red eyes on one of two seeds. `off_e1`, 1,000 steps of character_ref from kaiming, renders
+clean and carries nothing. The read C learned survives the move; the placement does not.
 
-- `_RoPE.forward`: `canvas` mode (r = 0, panel beside, re-centred); the per-sample and
-  batched paths; `ref_pos` stamped and read as today.
-- Cache: a caption wrap that adds the two panel items from the target and reference sizes
-  (`CacheRequest` field, stamped in the TE file like `prompt_tail`), and the same wrap in
-  generate.
-- ComfyUI MOSS Toolkit: `reference.py::ref_rope` and the prompt helper follow the stamp,
-  only once an arm ships.
+## Two routes
+
+1. **Ride the prior.** The reference noised to the step's σ, its rows at the step's
+   timestep, attention open, canvas coordinates. No `RefCache`: twice the tokens on every
+   forward. It may need no training; the check is a render with the right panel held to the
+   noised reference at every step and the left one generated. Not run.
+2. **Keep `RefCache`.** The reference stays isolated at a fixed timestep and a LoRA learns
+   the read. Canvas coordinates add nothing here, so `offset` stands in for them.
+
+## What runs now: the copy block beside the image
+
+C retrained at `ref_pos offset`, then character_ref from it (route 2).
+
+- `project/lora_blocks/configs/c_fill_bw10_mod16_off_s800.toml`: the recipe of
+  `c_fill_bw10_mod16_s800` (cache `post_image_dataset/moss/c_fill_illu_bw10`, 800 steps, rank
+  32, `mod_rank 16`, lr 5e-5, `ref_gate cut` at `gate_rate 0.9`, `ref_isolate`,
+  `ref_timestep 0`, swap 36 / budget 0.12, ~33 min) with `ref_pos = "offset"`.
+- Read 1: the same character_ref eval renders as `c_init_off`. `offset` moves w and leaves h,
+  so an identity copy can be learned as "same row, one image width across", a position copy
+  again; the renders show it (the reference returned, prompt ignored). If so, the next C
+  takes a target that is a crop, shift or flip of its reference, which no position matches.
+- Read 2: character_ref from that C (`ref_pos offset`, `mod_rank 16`, the `e1` recipe, 1,000
+  steps, ~28 min) against `off_e1` on the two held-out OCs.
 
 ## Open
 
-- **σ mismatch.** Base's multi-panel images had every panel at one noise level; the
-  reference here is clean at `ref_timestep 0`. Feeding the reference at the image's σ
-  (repaint-style) is the alternative, at more code.
-- **Which side.** The reference on the right is arbitrary; reading order may matter for a
-  model trained on comics.
+- Route 1's render check, and its cost in use (no `RefCache`).
+- The reference at σ 0.3 with `ref_timestep 300` in place of the clean one at 0: the larger
+  read and the smaller loss rise at init, untested in training.
+- A panel caption for the reference: `reference image of the character` asks for the scene
+  again; the reference's own caption is the candidate.
 - **Out-of-range coordinates.** At 1024² a two-panel canvas spans w ±64 tokens, inside what
   Base sees at 2048²; a wide target with a wide reference goes past it.

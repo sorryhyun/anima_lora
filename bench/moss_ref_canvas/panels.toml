@@ -1,0 +1,12 @@
+# Base, no LoRA: does one character hold across two panels of a wide canvas? GenerateRequest
+# fields. The canvas is two 864x1216 panels, the grid probe.py's most common pairs make.
+# No prompt names hair, eyes or outfit: a match across the panels comes from the panels.
+#
+#   make daemon-run ARGS="--stall-timeout 900 scripts/moss/generate.py --config bench/moss_ref_canvas/panels.toml"
+
+prompts_file = "bench/moss_ref_canvas/panels_prompts.txt"
+prompt_format = "text"
+width = 1728
+height = 1216
+seeds = "0,1,2"
+out_dir = "output/tests/moss_ref_canvas_panels"
