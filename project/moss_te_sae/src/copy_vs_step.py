@@ -99,7 +99,18 @@ def read_attn(probe):
     acc = (cond["acc"] / cond["count"][:, :, None, None].clamp(min=1)).float()
     ci = STATS.index("copy")
     copy0 = acc[0, :, :, ci]
+    late = acc[3, :, :, ci]
     return dict(
+        copy_s0_by_block=[round(float(x), 3) for x in copy0.sum(1)],
+        copy_late_by_block=[round(float(x), 3) for x in late.sum(1)],
+        ref_s0_by_block=[
+            round(float(x), 3) for x in acc[0, :, :, STATS.index("ref")].sum(1)
+        ],
+        top_copy_late=[
+            (int(i) // acc.shape[2], int(i) % acc.shape[2], round(float(v), 3))
+            for v, i in zip(*late.flatten().topk(5))
+        ],
+        n_copy_heads_late=int((late > 0.1).sum()),
         h19_copy_s0=round(float(acc[0, 39, 19, ci]), 4),
         h19_copy_late=round(float(acc[3, 39, 19, ci]), 4),
         h19_ref_s0=round(float(acc[0, 39, 19, STATS.index("ref")]), 4),

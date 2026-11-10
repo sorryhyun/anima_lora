@@ -1,0 +1,30 @@
+# c_fill_bw10_mod16_off_kv_lr2e4_s1600 run to 4,800 steps, a checkpoint every 800. At s1600 the offset copy had formed
+# (composition copied, a few-cell shift left) and σ≥0.7 loss was still falling; lr stays 2e-4 after warmup, EMA 0.1 (~480 updates).
+#
+#   make daemon-run ARGS="--queue --stall-timeout 900 scripts/moss/train.py --config project/lora_blocks/configs/c_fill_bw10_mod16_off_kv_lr2e4_s4800.toml"
+
+cache = "post_image_dataset/moss/c_fill_illu_bw10"
+output = "output/ckpt_moss_i2i/c_fill_bw10_mod16_off_kv_lr2e4_s4800.safetensors"
+max_steps = 4800
+lr = 2e-4
+save_every_steps = 800
+ema_window = 0.1
+caption_dropout = 1.0
+ref_timestep = 0.0
+ref_isolate = true
+ref_pos = "offset"
+ref_adapters = "kv"
+ref_gate = "cut"
+gate_holes = "post_image_dataset/moss/c_fill_illu_bw10/hole_layouts.json"
+gate_rate = 0.9
+tone_weight = 0.0
+mod_rank = 16
+int8 = "stream"
+stream = "fp32"
+# swap 36 / budget 0.12 (the shared-bank plan) ran out of VRAM on the first backward (13.85 GB
+# allocated): kv saves each block's reference y / raw k / raw v for the export adapters, and
+# ref_gate cut gathers the k / v again. The 11-02 kv runs: swap 38 / budget 0.1, peak 12.3 GB, 1.8 s/step.
+blocks_to_swap = 34
+activation_memory_budget = 0.05
+swap_h2d_only = true
+fit_report = true
