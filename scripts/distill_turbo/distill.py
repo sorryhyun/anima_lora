@@ -48,6 +48,7 @@ from .resume import resume_path_for, save_resume_state
 from .setup import RunContext, build_run
 from .steps import (
     cdm_off_trajectory_loss,
+    clip_or_norm,
     dmd_surrogate,
     mfd_surrogate,
     fake_update,
@@ -239,18 +240,20 @@ def run_loop(ctx: RunContext, cfg):
             if cfg.grad_ckpt:
                 turbo.set_view("student")
             loss_student.backward()
-            if cfg.grad_clip > 0:
-                torch.nn.utils.clip_grad_norm_(
-                    turbo.student_params(), max_norm=cfg.grad_clip
-                )
+            gn_student = clip_or_norm(turbo.student_params(), cfg.grad_clip)
             student_opt.step()
             student_opt.zero_grad(set_to_none=True)
             student_sched.step()
 
             # --- fake (critic) + discriminator update against x_pred.detach() ---
-            fake_loss_mean_t, gan_disc_mean_t, gan_margin_t, gan_spread_t = fake_update(
-                ctx, cfg, x_pred, latents, crossattn_emb, B
-            )
+            (
+                fake_loss_mean_t,
+                gan_disc_mean_t,
+                gan_margin_t,
+                gan_spread_t,
+                gn_fake,
+                gn_disc,
+            ) = fake_update(ctx, cfg, x_pred, latents, crossattn_emb, B)
 
             # --- logging accumulators (all GPU-side; flushed below every log_interval
             # in one stacked .tolist() so per-step CUDA syncs go to zero) ---
@@ -265,6 +268,9 @@ def run_loop(ctx: RunContext, cfg):
                 v_fake_cond_dm=v_fake_cond_dm,
             )
             metrics.add_div(div_loss_t)
+            metrics.add_grad_norms(
+                gn_student, gn_fake, gn_disc if turbo.disc is not None else None
+            )
             if turbo.disc is not None:
                 metrics.add_gan(
                     gan_gen_loss, gan_disc_mean_t, gan_margin_t, gan_spread_t

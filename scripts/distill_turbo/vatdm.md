@@ -3,8 +3,9 @@
 Source: Luo, Pang, Hu, *VA-TDM: A Unified View for Improving Few-Step Diffusion Models by
 Velocity Adversarial Distillation* (2026-11-04). Code: <https://github.com/Luo-Yihong/VA-TDM>.
 Read 2026-11-06, main text pp. 1–13; the appendix (derivations, training cost,
-hyperparameters, whether the student is a LoRA) and the code are unread. Nothing here has been
-run. The current loop is described in `docs/anima/methods/turbo.md`, MFD in `README.md`.
+hyperparameters, whether the student is a LoRA) and the code are unread. Idea 1 has one run
+(below); the rest has not been run. The current loop is described in
+`docs/anima/methods/turbo.md`, MFD in `README.md`.
 
 ## The paper
 
@@ -128,6 +129,24 @@ Arm: feed σ_g of the grad step into the fake, as a zero-init embedding added on
 path, in both `fake_update` and the DM/MFD query. The fake is discarded at save, so the student
 output stays a plain LoRA. How the fake's timestep path can take the extra input has not been
 checked. Run it on top of the current MFD recipe, same seed and init, against an MFD-only twin.
+
+**Result, 2026-11-10: no harm, no verdict at 500 steps.** Implemented as `network.fake_transition`
+(`FakeTransitionEmbed` in `networks/methods/turbo_dmd.py`: σ of the source transition → a
+zero-init delta on the fake's t-embedding, fake view only). Run on DP-DMD rather than MFD:
+`anima_turbo_m14_dpdmd_svd_500_tafake` against `anima_turbo_m14_dpdmd_svd_500` (merged14 int8
+teacher, 500 steps, same seed and init; the one config difference is `fake_transition = true`).
+
+- Losses: identical within noise over the whole run. Paired per-step difference at steps
+  350–500: fake −0.002 ± 0.003, dm +0.002 ± 0.003, rel_gap +0.001 ± 0.002, cos 0.978 in both.
+  The fake loss did not drop.
+- Renders (4 steps, cfg 1, anima-sign prompt seeds 1–4 and the nozomi/monster prompt seeds 42–45,
+  against the teacher at 28 steps, cfg 4): tafake is sharper and closer to the teacher in
+  detail, hair colour and sign layout. The split and duplicated signs it draws are also in the
+  teacher. The plain run drifts to brown hair and one centred sign. One tafake-only trait: two
+  cans in hand on the monster prompt (3 of 4 at step 500, present at 250 too; the teacher
+  draws one). Contrast is a little above the teacher's.
+- Both runs are still moving between steps 250 and 500 (both oversaturated at 250), so 500
+  steps does not settle the comparison. The next test is a 1,000-step tafake run.
 
 ### 2. Teacher-regularised fake and corrected critic
 

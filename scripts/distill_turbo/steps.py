@@ -390,6 +390,12 @@ def gan_generator_term(
     return gan_loss_generator(turbo.disc(feats))
 
 
+def clip_or_norm(params, grad_clip: float) -> torch.Tensor:
+    """Clip to ``grad_clip`` (off at ≤ 0) and return the pre-clip total norm."""
+    max_norm = grad_clip if grad_clip > 0 else float("inf")
+    return torch.nn.utils.clip_grad_norm_(params, max_norm=max_norm)
+
+
 def fake_update(
     ctx: RunContext,
     cfg,
@@ -397,14 +403,17 @@ def fake_update(
     latents: torch.Tensor,
     crossattn_emb: torch.Tensor,
     B: int,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> tuple[
+    torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor
+]:
     """Fake (critic) and disc updates against ``x_pred.detach()``.
 
     ``fake_steps_per_student_step`` inner updates, each on fresh (τ, ε); with the
     GAN on, the disc steps once per inner update (FastGen cadence). Returns the
     detached means of fake loss, disc loss, disc margin (mean real − mean fake
     logit: the hinge losses sit at ≈0.69 / 1.39 even while the disc is winning) and
-    per-logit spread (std of the fake logits; 0 for a single-logit head).
+    per-logit spread (std of the fake logits; 0 for a single-logit head), then the
+    mean pre-clip gradient norms of the fake and the disc.
     """
     turbo = ctx.turbo
     device, dtype = ctx.device, ctx.dtype
@@ -413,6 +422,8 @@ def fake_update(
     gan_disc_sum = torch.zeros((), device=device)
     gan_margin_sum = torch.zeros((), device=device)
     gan_spread_sum = torch.zeros((), device=device)
+    gn_fake_sum = torch.zeros((), device=device)
+    gn_disc_sum = torch.zeros((), device=device)
 
     def _sample_tau():
         return sample_t(
@@ -431,8 +442,7 @@ def fake_update(
         target_v_fake = eps_fake - x_pred_d
         fake_loss = nn.functional.mse_loss(v_fake.float(), target_v_fake.float())
         fake_loss.backward()
-        if cfg.grad_clip > 0:
-            torch.nn.utils.clip_grad_norm_(turbo.fake_params(), max_norm=cfg.grad_clip)
+        gn_fake_sum = gn_fake_sum + clip_or_norm(turbo.fake_params(), cfg.grad_clip)
         ctx.fake_opt.step()
         ctx.fake_opt.zero_grad(set_to_none=True)
         ctx.fake_sched.step()
@@ -480,8 +490,7 @@ def fake_update(
             )
 
         loss_disc.backward()
-        if cfg.grad_clip > 0:
-            torch.nn.utils.clip_grad_norm_(turbo.disc_params(), max_norm=cfg.grad_clip)
+        gn_disc_sum = gn_disc_sum + clip_or_norm(turbo.disc_params(), cfg.grad_clip)
         ctx.disc_opt.step()
         ctx.disc_opt.zero_grad(set_to_none=True)
         ctx.disc_sched.step()
@@ -493,4 +502,6 @@ def fake_update(
         gan_disc_sum / n_inner,
         gan_margin_sum / n_inner,
         gan_spread_sum / n_inner,
+        gn_fake_sum / n_inner,
+        gn_disc_sum / n_inner,
     )

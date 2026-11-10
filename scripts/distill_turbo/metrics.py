@@ -25,6 +25,12 @@ DP-DMD diversity loss:
 * ``div`` — the first-step diversity MSE ‖v_first − v_target‖² (pre-weight).
   Falling = the student's step-1 velocity is converging on the teacher's
   K-step anchor (the diverse landing point).
+
+Parameter gradients:
+
+* ``gn_student`` / ``gn_fake`` / ``gn_disc`` — total L2 norm of each optimizer's
+  parameter gradient *before* ``grad_clip`` (what ``clip_grad_norm_`` returns).
+  Above ``grad_clip`` = that step was clipped.
 """
 
 from __future__ import annotations
@@ -57,6 +63,9 @@ class FlushedMetrics:
     gan_margin: float
     gan_spread: float
     cdm: float
+    gn_student: float
+    gn_fake: float
+    gn_disc: float
 
 
 # The accumulator key set: adding a logged scalar is one field on FlushedMetrics
@@ -106,6 +115,19 @@ class TurboMetrics:
             "mag_ratio", vf.pow(2).mean().sqrt() / (vr.pow(2).mean().sqrt() + eps_r)
         )
         self._acc.add("cos", (vf * vr).sum() / (vf.norm() * vr.norm() + eps_r))
+
+    @torch.no_grad()
+    def add_grad_norms(
+        self,
+        student: torch.Tensor,
+        fake: torch.Tensor,
+        disc: torch.Tensor | None = None,
+    ) -> None:
+        """Accumulate the pre-clip parameter-gradient norms."""
+        self._acc.add("gn_student", student.detach().float())
+        self._acc.add("gn_fake", fake.detach().float())
+        if disc is not None:
+            self._acc.add("gn_disc", disc.detach().float())
 
     @torch.no_grad()
     def add_div(self, div_loss_t: torch.Tensor) -> None:
@@ -225,6 +247,10 @@ def write_scalars(writer, m: FlushedMetrics, step: int) -> None:
     writer.add_scalar("train/gan_disc_margin", m.gan_margin, step)
     writer.add_scalar("train/gan_logit_spread", m.gan_spread, step)
     writer.add_scalar("train/cdm_grad_rms", m.cdm, step)
+    writer.add_scalar("train/grad_norm_student", m.gn_student, step)
+    writer.add_scalar("train/grad_norm_fake", m.gn_fake, step)
+    if m.gn_disc != 0:
+        writer.add_scalar("train/grad_norm_disc", m.gn_disc, step)
 
 
 def tqdm_rate(bar: tqdm) -> float | None:
@@ -268,6 +294,7 @@ def tqdm_postfix(m: FlushedMetrics) -> dict:
         "cos": f"{m.cos:.3f}",
         "xp": f"{m.xpred:.3f}",
         "fake": f"{m.fake:.2e}",
+        "gn": f"{m.gn_student:.2e}",
     }
     if m.div > 0:
         postfix["div"] = f"{m.div:.3f}"
