@@ -114,7 +114,8 @@ blocks resident):
 | i2i 〃 | int8 GPTQ, fp32 stream | 27.7 s | 11.2 GiB |
 
 RTN and GPTQ run the same kernels, so their 3.7 s gap is run-to-run noise: read int8
-generation as 11–15 s. The i2i speed gain is small and was not profiled. A full-size
+generation as 11–15 s. i2i gains about as much as t2i in use; its rows here are one early
+render each and understate it. A full-size
 reference on an fp32 stream fits resident on int8; on bf16 it OOMs and needs
 `blocks_to_swap 10`.
 
