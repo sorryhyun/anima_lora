@@ -204,7 +204,14 @@ def build_argparser() -> argparse.ArgumentParser:
         "--div_weight",
         type=float,
         default=-1.0,
-        help="λ on the first-step diversity loss.",
+        help="λ on the first-step diversity loss; 0 skips the teacher anchor.",
+    )
+    parser.add_argument(
+        "--dm_first_step",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Draw the grad step from every rollout step, so step 0 also gets the "
+        "DM / MFD signal (off: refinement steps only).",
     )
     parser.add_argument(
         "--detach_after_first",
@@ -368,8 +375,10 @@ class TurboConfig:
     # DP-DMD
     k_anchor: int
     teacher_anchor_steps: int
-    div_weight: float
+    div_weight: float  # 0 = no teacher anchor
     detach_after_first: bool
+    # Grad step g ~ U{0..N−1}: step 0 also takes the DM / MFD signal.
+    dm_first_step: bool
     flow_shift: float
 
     # DMD core
@@ -575,6 +584,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         detach_after_first = bool(_flatten(cfg, "dpdmd.detach_after_first", True))
     else:
         detach_after_first = bool(args.detach_after_first)
+    dm_first_step = bool(_pick(args.dm_first_step, cfg, "dpdmd.dm_first_step", False))
     flow_shift = float(_pick(args.flow_shift, cfg, "sampling.flow_shift", 3.0))
 
     # Optimizer
@@ -600,9 +610,8 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
 
     if student_steps < 2:
         raise ValueError(
-            f"DP-DMD requires dmd.student_steps >= 2 (got {student_steps}): step 1 "
-            "is diversity-supervised + detached, so at least one further step must "
-            "carry the DMD loss."
+            f"dmd.student_steps must be >= 2 (got {student_steps}): the rollout "
+            "grids and the grad-step draw assume a refinement step after step 0."
         )
     if not (1 <= k_anchor < teacher_anchor_steps):
         raise ValueError(
@@ -703,10 +712,20 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
             else "(a) τ-damping [default]"
         )
     )
+    if div_weight == 0.0 and not dm_first_step:
+        logger.warning(
+            "dpdmd.div_weight=0 without dm_first_step: step 0 gets no loss and "
+            "stays at its init."
+        )
     logger.info(
-        "DP-DMD: first-step diversity anchor "
-        f"k_anchor={k_anchor}/{teacher_anchor_steps} teacher steps, "
-        f"div_weight={div_weight}, detach_after_first={detach_after_first}, "
+        (
+            "DP-DMD: first-step diversity anchor "
+            f"k_anchor={k_anchor}/{teacher_anchor_steps} teacher steps, "
+            f"div_weight={div_weight}, detach_after_first={detach_after_first}, "
+            if div_weight > 0.0
+            else "teacher anchor OFF (div_weight=0), "
+        )
+        + f"grad step g ~ U{{{0 if dm_first_step else 1}..N-1}}, "
         f"student N={student_steps} @ flow_shift={flow_shift}, "
         f"teacher_cfg={teacher_cfg}."
     )
@@ -747,6 +766,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         teacher_anchor_steps=teacher_anchor_steps,
         div_weight=div_weight,
         detach_after_first=detach_after_first,
+        dm_first_step=dm_first_step,
         flow_shift=flow_shift,
         student_steps=student_steps,
         teacher_cfg=teacher_cfg,
@@ -828,6 +848,7 @@ _TB_KEYS = (
     "teacher_anchor_steps",
     "div_weight",
     "detach_after_first",
+    "dm_first_step",
     "flow_shift",
     "student_rank",
     "fake_rank",

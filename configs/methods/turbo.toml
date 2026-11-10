@@ -52,6 +52,7 @@ k_anchor = 6
 teacher_anchor_steps = 12
 div_weight = 0.1
 detach_after_first = true
+dm_first_step = false
 
 [sampling]
 t_distribution = "uniform"

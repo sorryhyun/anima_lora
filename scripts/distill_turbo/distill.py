@@ -29,7 +29,6 @@ if default_expandable_segments():
     )
 
 import torch
-import torch.nn as nn
 from tqdm import tqdm
 
 from library.anima.uncond import uncond_for_batch
@@ -53,6 +52,7 @@ from .steps import (
     mfd_surrogate,
     fake_update,
     gan_generator_term,
+    student_rollout,
     teacher_anchor,
 )
 
@@ -90,6 +90,8 @@ def _student_metadata(cfg, ctx: RunContext, step: int) -> dict[str, str]:
         ss_turbo_gan_warmup_steps=str(cfg.gan_warmup_steps),
         ss_turbo_cdm_weight=str(cfg.cdm_weight),
     )
+    if cfg.dm_first_step:
+        md["ss_turbo_dm_first_step"] = "1"
     if cfg.mfd_dtau > 0.0:
         md["ss_turbo_mfd_dtau"] = str(cfg.mfd_dtau)
         md["ss_turbo_mfd_max_steps"] = str(cfg.mfd_max_steps)
@@ -168,8 +170,12 @@ def run_loop(ctx: RunContext, cfg):
                 ctx.uncond_base, crossattn_emb
             )  # anchor + DMD eval
 
-            # --- teacher K-step CFG anchor (no grad) → v_target ---
-            v_target = teacher_anchor(ctx, cfg, eps, crossattn_emb, c_null, B)
+            # --- teacher K-step CFG anchor (no grad) → v_target; div_weight 0 skips it ---
+            v_target = (
+                teacher_anchor(ctx, cfg, eps, crossattn_emb, c_null, B)
+                if cfg.div_weight > 0.0
+                else None
+            )
 
             # --- student rollout → x_pred (= x_θ) ---
             if cfg.dynamic_schedule:
@@ -178,41 +184,21 @@ def run_loop(ctx: RunContext, cfg):
             else:
                 sigmas_it, n_steps_it = student_sigmas, cfg.student_steps
 
-            # Step 0 is the diversity anchor (supervised toward v_target, then
-            # detached under detach_after_first); one refinement step g carries
-            # the DMD grad.
-            x = eps
-            x.requires_grad_()  # grad-ckpt needs a grad-requiring forward input
-            s0, s0_next = sigmas_it[0], sigmas_it[1]
-            t_b = torch.full((B,), s0, device=device, dtype=dtype)
-            v_first = _forward("student", x, t_b, crossattn_emb, no_grad=False)
-            x = x - (s0 - s0_next) * v_first
-            div_loss_t = nn.functional.mse_loss(v_first.float(), v_target)
-
-            if cfg.detach_after_first:
-                # The DMD reverse-KL must not reach the diversity mapping (their
-                # Fig 5): backward the diversity term now and re-leaf.
-                (cfg.div_weight * div_loss_t).backward()
-                x = x.detach().requires_grad_()
-            # One refinement step g ~ U{1..N−1} carries the DMD grad; the prefix
-            # runs under no_grad.
-            g = int(torch.randint(1, n_steps_it, (1,)).item())
-            for i in range(1, g):  # backward simulation (no graph kept)
-                s_i = sigmas_it[i]
-                s_next = sigmas_it[i + 1]
-                t_b = torch.full((B,), s_i, device=device, dtype=dtype)
-                v = _forward("student", x, t_b, crossattn_emb, no_grad=True)
-                x = x - (s_i - s_next) * v
-            x = x.detach().requires_grad_()  # fresh leaf
-            s_g = sigmas_it[g]
-            t_b = torch.full((B,), s_g, device=device, dtype=dtype)
-            v_g = _forward("student", x, t_b, crossattn_emb, no_grad=False)
-            cdm_src = (x, v_g, s_g) if cdm_on else None
-            x_pred = x - s_g * v_g  # one-step x0-prediction at step g
+            # One step g carries the DM grad: a refinement step, g ~ U{1..N−1},
+            # or any step including the anchored step 0 under dm_first_step.
+            g_min = 0 if cfg.dm_first_step else 1
+            g = int(torch.randint(g_min, n_steps_it, (1,)).item())
+            roll = student_rollout(
+                ctx, cfg, eps, v_target, sigmas_it, g, crossattn_emb, B
+            )
+            x_pred = roll.x_pred  # one-step x0-prediction at step g
+            s_g = roll.s_g
+            div_loss_t = roll.div_loss
+            cdm_src = (roll.x_g, roll.v_g, s_g) if cdm_on else None
             # Transition-aware fake: every fake query on this x_pred (DMD/MFD, the
             # fake update) is told it came from step g. CDM sets its own t'.
             turbo.set_fake_source(s_g)
-            v_student = v_first  # step-0 velocity for the runaway-student metric
+            v_student = roll.v_first  # step-0 velocity for the runaway-student metric
 
             # --- DMD (or MFD) on x_θ, against teacher + fake ---
             if cfg.mfd_dtau > 0.0:
@@ -242,12 +228,16 @@ def run_loop(ctx: RunContext, cfg):
             # --- assemble: DMD surrogate on x_θ ---
             # grad_clip runs once on the accumulated .grad (div, CDM, DMD, GAN).
             loss_student = (grad_signal * x_pred.float()).mean()
-            if not cfg.detach_after_first:
+            if roll.div_pending:
                 loss_student = loss_student + cfg.div_weight * div_loss_t
 
             if turbo.disc is not None and gan_w > 0.0:
                 loss_student = loss_student + gan_w * gan_gen_loss
 
+            # Under --grad_ckpt the rollout's student forwards recompute at this
+            # backward, and the DM term left the view on 'fake'.
+            if cfg.grad_ckpt:
+                turbo.set_view("student")
             loss_student.backward()
             if cfg.grad_clip > 0:
                 torch.nn.utils.clip_grad_norm_(

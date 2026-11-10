@@ -1,8 +1,9 @@
 """Per-step DP-DMD loss terms and the fake/critic update, called from ``distill.run_loop``.
 
-The loop keeps the student rollout and the final backward / optimizer step inline;
-these are the loss terms around it. ``cdm_off_trajectory_loss`` backwards its own
-graph, and ``fake_update`` steps the fake and disc optimizers.
+The loop keeps the final backward / optimizer step inline; these are the rollout and
+the loss terms around it. ``student_rollout`` backwards the diversity term when it
+is severed from the grad step, ``cdm_off_trajectory_loss`` backwards its own graph,
+and ``fake_update`` steps the fake and disc optimizers.
 """
 
 from __future__ import annotations
@@ -94,6 +95,78 @@ def teacher_anchor(
         v = ctx.teacher_cfg_velocity(z, t_b, crossattn_emb, c_null)
         z = (z.float() - (s_i - s_next) * v).to(ctx.dtype)
     return ((eps.float() - z.float()) / (1.0 - ctx.t_k_anchor)).detach()
+
+
+@dataclass
+class Rollout:
+    """The student rollout up to its grad step g."""
+
+    x_pred: torch.Tensor  # x_g − σ_g·v_g, attached through step g only
+    x_g: torch.Tensor  # leaf input of step g
+    v_g: torch.Tensor
+    s_g: float
+    v_first: torch.Tensor  # step-0 velocity (metrics)
+    div_loss: torch.Tensor  # pre-weight; 0 with the anchor off
+    div_pending: bool  # the caller adds div_weight·div_loss to its final backward
+
+
+def student_rollout(
+    ctx: RunContext,
+    cfg,
+    eps: torch.Tensor,
+    v_target: torch.Tensor | None,
+    sigmas: list[float],
+    g: int,
+    crossattn_emb: torch.Tensor,
+    B: int,
+) -> Rollout:
+    """Roll the student from ε to grad step ``g`` and take its one-step x0-prediction.
+
+    Step 0 regresses on ``v_target`` (``None``: anchor off, no diversity term). For
+    g ≥ 1 the diversity term is backwarded here under ``detach_after_first``, steps
+    1..g−1 run under no_grad and step g starts from a fresh leaf, so the DM grad
+    never reaches step 0 (DP-DMD Fig 5). For g = 0 (``dm_first_step``) step 0 is the
+    grad step: the DM grad lands on it, and its diversity term shares that graph, so
+    it is left to the caller's backward.
+    """
+    device, dtype = ctx.device, ctx.dtype
+    anchor = v_target is not None
+    s0 = sigmas[0]
+    x = eps
+    x.requires_grad_()  # grad-ckpt needs a grad-requiring forward input
+    t_b = torch.full((B,), s0, device=device, dtype=dtype)
+    v_first = ctx.forward(
+        "student", x, t_b, crossattn_emb, no_grad=not (anchor or g == 0)
+    )
+    if anchor:
+        div_loss = nn.functional.mse_loss(v_first.float(), v_target)
+    else:
+        div_loss = torch.zeros((), device=device)
+    div_pending = anchor and (g == 0 or not cfg.detach_after_first)
+    if anchor and not div_pending:
+        (cfg.div_weight * div_loss).backward()
+
+    if g == 0:
+        x_g, v_g, s_g = x, v_first, s0
+    else:
+        x = (x - (s0 - sigmas[1]) * v_first).detach()
+        for i in range(1, g):  # backward simulation (no graph kept)
+            t_b = torch.full((B,), sigmas[i], device=device, dtype=dtype)
+            v = ctx.forward("student", x, t_b, crossattn_emb, no_grad=True)
+            x = x - (sigmas[i] - sigmas[i + 1]) * v
+        x_g = x.detach().requires_grad_()  # fresh leaf
+        s_g = sigmas[g]
+        t_b = torch.full((B,), s_g, device=device, dtype=dtype)
+        v_g = ctx.forward("student", x_g, t_b, crossattn_emb, no_grad=False)
+    return Rollout(
+        x_pred=x_g - s_g * v_g,
+        x_g=x_g,
+        v_g=v_g,
+        s_g=s_g,
+        v_first=v_first,
+        div_loss=div_loss,
+        div_pending=div_pending,
+    )
 
 
 @dataclass

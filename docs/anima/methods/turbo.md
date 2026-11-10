@@ -168,8 +168,9 @@ Sectioned, bespoke. Every key has a matching CLI override flag (see
 | `[dmd]` | `norm_floor` | `0.05` | clamp_min for the `dm_x0_norm` denominator (latent scale) |
 | `[dpdmd]` | `k_anchor` (K) | `6` | teacher steps rolled to the diversity anchor |
 | `[dpdmd]` | `teacher_anchor_steps` | `12` | teacher σ-grid the K is counted against |
-| `[dpdmd]` | `div_weight` (λ) | `0.1` | weight on the first-step diversity MSE |
+| `[dpdmd]` | `div_weight` (λ) | `0.1` | weight on the first-step diversity MSE; `0` skips the teacher anchor (its `2·k_anchor` teacher forwards per step) and the diversity term |
 | `[dpdmd]` | `detach_after_first` | `true` | **load-bearing** stop-grad after step 1 |
+| `[dpdmd]` | `dm_first_step` | `false` | draw the grad step from `U{0..N−1}`, so step 0 also takes the DM / MFD signal (`x_pred = ε − v_first`); when g = 0 the diversity term rides the same backward. With `div_weight = 0` this is the anchor-free loop of the MFD paper. Unrun |
 | `[optim]` | `student_lr` / `fake_lr` | `5e-5` / `5e-5` | stable on the warm start but near the edge — expect an excursion around ~1k and keepers from 2k+. A cold start is unstable with the student above 1e-5. `fm_mse` is anti-correlated with quality; rank by rendered 4-step samples |
 | `[optim]` | `fake_steps_per_student_step` | `4` | keep the fake ahead of the moving x_θ |
 | `[optim]` | `fake_warmup_steps` | `200` | fake (critic) head-start before the main loop — kills the early grad_signal_rms spike (~step 50); `0` = off |
@@ -180,9 +181,9 @@ Sectioned, bespoke. Every key has a matching CLI override flag (see
 | `[gan]` | `disc_head` | `token` | `pooled` (code default) / `token` — see below |
 | `[gan]` | `delay_steps` / `warmup_steps` | `0` / `0` | generator-side λ ramp: hold at 0 for `delay_steps` (disc still trains), then linear 0 → `weight_gen` over `warmup_steps` |
 
-Validation enforces `student_steps ≥ 2` (step 1 is diversity-supervised + detached,
-so at least one further step must carry the DMD loss) and
-`1 ≤ k_anchor < teacher_anchor_steps`.
+Validation enforces `student_steps ≥ 2` and `1 ≤ k_anchor < teacher_anchor_steps`.
+`div_weight = 0` without `dm_first_step` leaves step 0 with no loss (a warning, not
+a refusal: step 0 then stays at its init).
 
 `k_anchor / teacher_anchor_steps` sets the σ-fraction the diversity anchor lands
 at (`6/12 = 0.5`); the step count sets only how finely the teacher integrates to

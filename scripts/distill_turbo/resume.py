@@ -62,6 +62,7 @@ _WARN_FIELDS = (
     "fake_alpha",
     "student_steps",
     "div_weight",
+    "dm_first_step",
     "gan_loss_weight_gen",
     # Delay/warmup reshape the generator-side λ ramp around the resume step —
     # legitimate (e.g. adding a ramp after a collapsed cold start), never silent.
