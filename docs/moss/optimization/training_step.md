@@ -83,6 +83,11 @@ cost:
 The saved set stays the same size (209 → 200 MB per block at budget 0.2) and now holds FA2's
 `o` and `lse`, so FA2's forward runs once per block.
 
+A new op name needs its own formula (`flash_attn::_flash_attn_forward_f16in` has one), and the op
+should return only what its backward reads: the knapsack prices a node at the sum of its outputs
+(`_size_of`). An FA2 forward that also returned three fp16 copies of Q, K and V looked four times
+its saved bytes, and the partitioner ran it again in every block's backward (+58 ms a MOSS step).
+
 Budget 0.1 is the point where the saved set holds that output. At 0.05 it no longer fits and
 the recompute returns (1.16 s/step). What each 0.1 past that buys, and the default:
 [int8.md](int8.md#vram).
