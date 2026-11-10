@@ -268,6 +268,7 @@ def train(
         stream_fp32_(transformer)
     transformer.ref_timestep = req.ref_timestep if req.ref_timestep >= 0 else None
     transformer.ref_isolate = req.ref_isolate
+    transformer.ref_pos = req.ref_pos
     alpha = req.alpha if req.alpha is not None or req.algo != "lora" else LORA_ALPHA
     network = LoRANetwork(
         transformer,

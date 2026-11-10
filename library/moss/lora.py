@@ -197,11 +197,21 @@ def ref_settings(path) -> tuple[float | None, bool]:
     )
 
 
+def ref_pos_setting(path) -> str:
+    """The reference RoPE placement a LoRA trained with (``ref_pos`` metadata,
+    absent = ``aligned``)."""
+    from safetensors import safe_open
+
+    with safe_open(str(path), framework="pt") as handle:
+        return (handle.metadata() or {}).get("ref_pos", "aligned")
+
+
 def load_for_inference(
     transformer, path, multiplier: float = 1.0, before_apply=None
 ) -> LoRANetwork:
     """``LoRANetwork.for_inference``, plus the reference settings the LoRA trained
-    with (``ref_settings``) set on ``transformer``."""
+    with (``ref_settings``, ``ref_pos_setting``) set on ``transformer``."""
     network = LoRANetwork.for_inference(transformer, path, multiplier, before_apply)
     transformer.ref_timestep, transformer.ref_isolate = ref_settings(path)
+    transformer.ref_pos = ref_pos_setting(path)
     return network

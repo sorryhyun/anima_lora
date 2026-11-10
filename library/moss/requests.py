@@ -793,6 +793,15 @@ class TrainRequest(Request):
         "attend to them. Stamped in the LoRA metadata",
         advanced=True,
     )
+    ref_pos: str = _f(
+        "aligned",
+        "RoPE placement of the reference: aligned = over the image (each reference "
+        "token on the image region it covers; edits of the same picture), offset = "
+        "beside it, one image width to the right (a reference whose content sits "
+        "elsewhere, e.g. character_ref). Stamped in the LoRA metadata",
+        choices=("aligned", "offset"),
+        advanced=True,
+    )
     ref_adapters: str = _f(
         "off",
         "off: one bank on image, text and reference rows. kv: the reference stream runs "

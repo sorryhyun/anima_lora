@@ -432,12 +432,16 @@ class _RoPE(nn.Module):
         # Frequencies are derived constants; retain the key for checkpoint compatibility.
         self.bands = self._default_bands(self.bands.device)
 
-    def forward(self, height, width, text_length, device, ref_hw=None):
+    def forward(
+        self, height, width, text_length, device, ref_hw=None, ref_pos="aligned"
+    ):
         """``(1, H·W + text_length [+ h·w], head_dim)``, fp32. Image tokens first.
 
         ``ref_hw = (h, w)`` adds a reference grid after the text tokens on the
         reserved ``r = 1`` axis, its ``(h, w)`` coordinates stretched onto the
-        image's grid so each reference token sits over the image region it covers."""
+        image's grid so each reference token sits over the image region it covers.
+        ``ref_pos = "offset"`` then moves it ``width`` to the right, beside the image
+        instead of over it (a reference whose content is not where the image's is)."""
         # Diffusers/Accelerate can install tensors directly, bypassing load hooks.
         if self.bands.dtype != torch.float32:
             self.bands = self._default_bands(device)
@@ -471,6 +475,10 @@ class _RoPE(nn.Module):
             ).flatten(0, 1)
             ref[:, 2] -= (height - 1) / 2
             ref[:, 3] -= (width - 1) / 2
+            if ref_pos == "offset":
+                ref[:, 3] += width
+            elif ref_pos != "aligned":
+                raise ValueError(f"ref_pos={ref_pos!r}: aligned or offset")
             parts.append(ref)
         phase = torch.cat(parts, 0).unsqueeze(-1) * self.bands
         return torch.cat((phase.sin(), phase.cos()), -2).flatten(-2).unsqueeze(0)
@@ -516,6 +524,8 @@ class MOSSImageTransformer(ModelMixin, ConfigMixin):
         self.layer_hook = None
         self.ref_timestep = None
         self.ref_isolate = False
+        # RoPE placement of the reference grid (``_RoPE.forward``): over the image or beside it.
+        self.ref_pos = "aligned"
         self.ref_follows_skip = False
         self.ref_cache = None
         self.ref_scope = None
@@ -581,9 +591,9 @@ class MOSSImageTransformer(ModelMixin, ConfigMixin):
         video = self._embed_latent(latent)
         ref_hw = None if ref is None else tuple(ref.shape[-2:])
         # Match the reference activation dtype under fp32 weights + autocast.
-        rope = self.rope(height, width, context.shape[1], latent.device, ref_hw).to(
-            video.dtype
-        )
+        rope = self.rope(
+            height, width, context.shape[1], latent.device, ref_hw, self.ref_pos
+        ).to(video.dtype)
         n_img, n_text = video.shape[1], context.shape[1]
         parts = [video, self.text_embedder(context, rope[:, n_img : n_img + n_text])]
         if ref is not None:
@@ -833,7 +843,7 @@ class MOSSImageTransformer(ModelMixin, ConfigMixin):
             n = int(lengths[b])
             context[b, :n] = encoder_hidden_states[b, mask[b]]
             text_mask[b, :n] = True
-            rope = self.rope(height, width, n, device, ref_hw)
+            rope = self.rope(height, width, n, device, ref_hw, self.ref_pos)
             if n < s_max:
                 # Pad rows sit between the text and the reference.
                 pad = rope.new_zeros(1, s_max - n, rope.shape[-1])

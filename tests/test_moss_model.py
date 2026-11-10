@@ -307,3 +307,29 @@ def test_denoise_samplers_land_on_exact_x0(sampler):
         seed=0,
     )
     assert torch.allclose(z, x0, atol=1e-5)
+
+
+@pytest.mark.core
+@torch.no_grad()
+def test_ref_pos_offset_moves_the_reference_beside_the_image(tiny):
+    """``offset`` shifts only the reference rows' w coordinate, by the image width;
+    the batched path follows ``tiny.ref_pos`` as the per-sample one does."""
+    h, w, s = 4, 6, 7
+    a = tiny.rope(h, w, s, "cpu", (2, 3))
+    b = tiny.rope(h, w, s, "cpu", (2, 3), "offset")
+    n = h * w + s
+    assert torch.equal(a[:, :n], b[:, :n]) and not torch.allclose(a[:, n:], b[:, n:])
+    with pytest.raises(ValueError, match="ref_pos"):
+        tiny.rope(h, w, s, "cpu", (2, 3), "side")
+
+    x, e, mask = _inputs()
+    single = tiny(x, 500.0, e, mask, ref=_ref()).sample
+    tiny.ref_pos = "offset"
+    try:
+        off = tiny(x, 500.0, e, mask, ref=_ref()).sample
+        assert not torch.allclose(off, single)
+        assert torch.allclose(
+            tiny.forward_batched(x, 500.0, e, mask, ref=_ref()), off, atol=1e-5
+        )
+    finally:
+        tiny.ref_pos = "aligned"

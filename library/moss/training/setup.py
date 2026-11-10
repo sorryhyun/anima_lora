@@ -488,6 +488,8 @@ def run_metadata(
         meta["ref_timestep"] = req.ref_timestep
         if req.ref_isolate:
             meta["ref_isolate"] = "1"
+        if req.ref_pos != "aligned":
+            meta["ref_pos"] = req.ref_pos
         if req.ref_adapters != "off":
             meta.update(ref_adapters=req.ref_adapters, ref_rank=req.ref_rank)
         if req.ref_gate != "off":

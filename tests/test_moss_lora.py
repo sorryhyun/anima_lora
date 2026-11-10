@@ -496,6 +496,15 @@ def test_load_for_inference_sets_ref_settings(tmp_path, meta, want):
     fresh.ref_timestep, fresh.ref_isolate = 123.0, True
     load_for_inference(fresh, path)
     assert (fresh.ref_timestep, fresh.ref_isolate) == want
+    assert fresh.ref_pos == "aligned"
+
+
+def test_load_for_inference_sets_ref_pos(tmp_path):
+    path = tmp_path / "ref.safetensors"
+    LoRANetwork(_tiny(), rank=4).save(path, "fp32", ref_timestep=0.0, ref_pos="offset")
+    fresh = _tiny()
+    load_for_inference(fresh, path)
+    assert fresh.ref_pos == "offset"
 
 
 def test_row_mask_confines_delta():
