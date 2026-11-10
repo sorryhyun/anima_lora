@@ -42,6 +42,7 @@ _STRICT_FIELDS = (
     "gan_disc_hidden",
     "gan_feature_block_idx",
     "channel_scaling_alpha",
+    "fake_transition",
 )
 
 # Fields that change the objective or the schedule but not the shapes. Resuming
@@ -108,6 +109,7 @@ def save_resume_state(
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
+    ft = getattr(turbo, "fake_transition", None)
     state: dict[str, Any] = {
         "format": FORMAT_VERSION,
         "step": int(step),
@@ -115,6 +117,7 @@ def save_resume_state(
         "fingerprint": _fingerprint(cfg),
         "student": turbo.student.state_dict(),
         "fake": turbo.fake.state_dict(),
+        "fake_transition": ft.state_dict() if ft is not None else None,
         "disc": turbo.disc.state_dict() if turbo.disc is not None else None,
         "student_opt": student_opt.state_dict(),
         "fake_opt": fake_opt.state_dict(),
@@ -269,6 +272,14 @@ def apply_resume_state(
             )
     turbo.student.load_state_dict(state["student"])
     turbo.fake.load_state_dict(state["fake"])
+    ft = getattr(turbo, "fake_transition", None)
+    if ft is not None:
+        if state.get("fake_transition") is None:
+            raise ResumeMismatchError(
+                "config enables network.fake_transition but the resume bundle has no "
+                "transition-embed state (it was written by a run without it)."
+            )
+        ft.load_state_dict(state["fake_transition"])
     if turbo.disc is not None:
         if state.get("disc") is None:
             raise ResumeMismatchError(

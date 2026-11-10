@@ -99,6 +99,7 @@ def run_fake_warmup(
         )
         eps_fake = torch.randn_like(x_pred_d)
         x_t_fake = renoise(x_pred_d, tau_fake, eps_fake).requires_grad_()
+        turbo.set_fake_source(t)  # x_pred_d is the student's one step at σ = t
         v_fake = forward_fn(
             "fake", x_t_fake, tau_fake, crossattn_emb, no_grad=False
         ).squeeze(2)

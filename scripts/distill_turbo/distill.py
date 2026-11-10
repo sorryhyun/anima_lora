@@ -182,6 +182,9 @@ def run_loop(ctx: RunContext, cfg):
             # captured raw here and detached at use (cdm_extrapolate).
             cdm_src = (x, v_g, s_g) if cdm_on else None
             x_pred = x - s_g * v_g  # one-step x0-prediction at step g
+            # Transition-aware fake: every fake query on this x_pred (DMD/MFD, the
+            # fake update) is told it came from step g. CDM sets its own t'.
+            turbo.set_fake_source(s_g)
             v_student = v_first  # step-0 velocity for the runaway-student metric
 
             # --- DMD (or MFD) on x_θ, against teacher + fake ---

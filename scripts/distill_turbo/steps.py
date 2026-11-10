@@ -312,9 +312,13 @@ def cdm_off_trajectory_loss(
     v_real_cdm = ctx.teacher_cfg_velocity(
         x_renoised_cdm, tau_cdm, crossattn_emb, c_null
     )
+    # Transition-aware fake: x0_off is the student's clean estimate at t', so the
+    # fake is queried as for a step at σ = t'; the loop's σ_g is restored after.
+    ctx.turbo.set_fake_source(t_off)
     v_fake_cdm = ctx.forward(
         "fake", x_renoised_cdm, tau_cdm, crossattn_emb, no_grad=True
     ).squeeze(2)
+    ctx.turbo.set_fake_source(s_g_cdm)
     delta_cdm = v_real_cdm - v_fake_cdm
     tau_cdm_e = tau_cdm.view(B, 1, 1, 1).float()
     grad_cdm = tau_cdm_e * delta_cdm.float()

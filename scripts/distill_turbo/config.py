@@ -460,6 +460,10 @@ class TurboConfig:
     # when adaln_rank is set). Scale-preserving value:
     # student_alpha × adaln_rank / student_rank. Requires train_adaln.
     adaln_alpha: float
+    # Transition-aware fake (VA-TDM, vatdm.md idea 1): the fake also gets σ of the
+    # student step its sample came from (σ_g; t' for the CDM query; the warmup's t),
+    # as a zero-init delta on its t-embedding.
+    fake_transition: bool
     # AOT min-cut partitioner tuning (mirrors train.py's partitioner_* args):
     # change what the default partition is willing to recompute, on top of
     # activation_memory_budget. Ignored under --grad_ckpt (same gate as the
@@ -681,6 +685,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     adaln_alpha = float(_flatten(cfg, "network.adaln_alpha", 0.0))
     if adaln_alpha > 0 and not train_adaln:
         raise SystemExit("network.adaln_alpha > 0 requires network.train_adaln = true")
+    fake_transition = bool(_flatten(cfg, "network.fake_transition", False))
     for name, path, down_init in (
         ("student", student_init_weights, student_down_init),
         ("fake", fake_init_weights, fake_down_init),
@@ -884,6 +889,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         fake_adaln=fake_adaln,
         adaln_rank=adaln_rank,
         adaln_alpha=adaln_alpha,
+        fake_transition=fake_transition,
         k_anchor=k_anchor,
         teacher_anchor_steps=teacher_anchor_steps,
         div_weight=div_weight,

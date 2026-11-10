@@ -225,12 +225,15 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         gan_feature_indices=gan_indices,
         gan_disc_hidden=cfg.gan_disc_hidden if cfg.gan_disc_hidden > 0 else None,
         gan_disc_head=cfg.gan_disc_head,
+        fake_transition=cfg.fake_transition,
         before_apply=convert_base,
     )
     turbo.freeze_dit()
     state_dtype = latent_dtype(model, dtype)
     turbo.student.to(device=device, dtype=dtype)
     turbo.fake.to(device=device, dtype=dtype)
+    if turbo.fake_transition is not None:
+        turbo.fake_transition.to(device=device)  # fp32
 
     # Crash-resume supersedes warm start entirely (seeding then overwriting would
     # waste an SVD). Resolved here so a bad --resume fails fast; applied later

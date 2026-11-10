@@ -35,6 +35,38 @@ logger = logging.getLogger(__name__)
 View = Literal["teacher", "student", "fake"]
 
 
+class FakeTransitionEmbed(nn.Module):
+    """σ of the student transition a fake sample came from → t-embedding delta.
+
+    VA-TDM's transition-aware field (arXiv:2611.06796, ``scripts/distill_turbo/vatdm.md``
+    idea 1). The fake's samples are ``x_pred`` from grad steps at different σ_g, and
+    each step's ``x_pred`` has its own distribution; this tells the fake which one it
+    is scoring. The output is added to the DiT's normalised t-embedding under the
+    fake view only. ``fc2`` is zero-initialised, so the fake starts as the plain one.
+    fp32; the fake is discarded at save.
+    """
+
+    def __init__(self, dim: int, hidden: int = 256, freq_dim: int = 256):
+        super().__init__()
+        self.freq_dim = int(freq_dim)
+        self.fc1 = nn.Linear(self.freq_dim, hidden)
+        self.fc2 = nn.Linear(hidden, dim)
+        nn.init.zeros_(self.fc2.weight)
+        nn.init.zeros_(self.fc2.bias)
+
+    def forward(self, sigma: torch.Tensor) -> torch.Tensor:
+        """``sigma`` (B,) in [0, 1] → (B, dim)."""
+        half = self.freq_dim // 2
+        freqs = torch.exp(
+            -torch.log(torch.tensor(10000.0, device=sigma.device))
+            * torch.arange(half, dtype=torch.float32, device=sigma.device)
+            / half
+        )
+        arg = (1000.0 * sigma.float())[:, None] * freqs[None, :]
+        emb = torch.cat([torch.cos(arg), torch.sin(arg)], dim=-1)
+        return self.fc2(F.silu(self.fc1(emb)))
+
+
 class TeacherFeatureDiscriminator(nn.Module):
     """GAN head over frozen-teacher block features (FastGen idea 1).
 
@@ -328,6 +360,7 @@ class TurboDMDNetwork:
         gan_feature_indices: set[int] | None = None,
         gan_disc_hidden: int | None = None,
         gan_disc_head: Literal["pooled", "token"] = "pooled",
+        fake_transition: bool = False,
         before_apply: Callable[[], None] | None = None,
     ) -> None:
         self.unet = unet
@@ -467,6 +500,21 @@ class TurboDMDNetwork:
         self.fake.set_enabled(False)
         self._view: View = "teacher"
 
+        # Transition-aware fake: a forward hook on the DiT's t_embedding_norm adds
+        # FakeTransitionEmbed(σ_src) under the fake view. The norm runs in the
+        # uncompiled top-level forward, so the hook fires under compile_blocks.
+        # Every fake-view forward needs a source σ (set_fake_source).
+        self.fake_transition: FakeTransitionEmbed | None = None
+        self._fake_src: float | torch.Tensor | None = None
+        if fake_transition:
+            self.fake_transition = FakeTransitionEmbed(unet.model_channels)
+            unet.t_embedding_norm.register_forward_hook(self._t_embedding_hook)
+            logger.info(
+                "TurboDMDNetwork: transition-aware fake "
+                f"({sum(p.numel() for p in self.fake_transition.parameters()):,} params, "
+                "zero-init)"
+            )
+
         # GAN feature tap: off unless gan_feature_indices is given. The disc reads
         # frozen-teacher block activations via the DiT's first-class feature-tap
         # (return_block_features/return_features_early), NOT a forward hook; the
@@ -557,13 +605,39 @@ class TurboDMDNetwork:
     def view(self) -> View:
         return self._view
 
+    def set_fake_source(self, sigma: float | torch.Tensor | None) -> None:
+        """σ of the student transition the fake's next inputs came from (a float, or
+        a (B,) tensor). No-op without ``fake_transition``."""
+        self._fake_src = sigma
+
+    def _t_embedding_hook(self, module, inputs, output):
+        if self._view != "fake":
+            return None
+        src = self._fake_src
+        if src is None:
+            raise RuntimeError(
+                "transition-aware fake: fake-view forward with no source σ "
+                "(call set_fake_source first)"
+            )
+        B = output.shape[0]
+        if isinstance(src, torch.Tensor):
+            sigma = src.detach().to(output.device, torch.float32).reshape(-1).expand(B)
+        else:
+            sigma = torch.full((B,), float(src), device=output.device)
+        with torch.autocast(output.device.type, enabled=False):
+            delta = self.fake_transition(sigma)
+        return output + delta.to(output.dtype).unsqueeze(1)
+
     def student_params(self):
         """Trainable params for the student optimizer."""
         return [p for p in self.student.parameters() if p.requires_grad]
 
     def fake_params(self):
-        """Trainable params for the fake optimizer."""
-        return [p for p in self.fake.parameters() if p.requires_grad]
+        """Trainable params for the fake optimizer (with the transition embed)."""
+        params = [p for p in self.fake.parameters() if p.requires_grad]
+        if self.fake_transition is not None:
+            params += list(self.fake_transition.parameters())
+        return params
 
     def freeze_dit(self) -> None:
         """Set ``requires_grad=False`` on every base DiT param.
