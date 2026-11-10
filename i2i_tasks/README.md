@@ -34,6 +34,7 @@ OCR captions). The MOSS task list is `library.moss.requests.I2I_CACHE`; the GUI'
 | `phash_edit` | `tools/phash_edit_pairs.py` | perceptual-hash aligned edit pairs |
 | `swap_text` | `swap_text/` | hitocrawl JA page → translated-edition lettering, registered + composited; target-side OCR captions, half the pairs swap only some regions (MOSS-only) |
 | `watermark` | `tools/watermark_pairs.py` | faint tiled URL / handle watermarks (lossless) over the sanitize tree's targets, added to that tree as `wm_*` pairs (`name = "sanitize"`; MOSS-only) |
+| `character_ref` | `tools/character_ref_pairs.py` | same-artist pairs from the crawl pool, any rating: a solo reference (one character, one person) and a solo target, or one with an unnamed `1boy` beside her (`add 1boy` in the caption), phash > 60 bits apart; the target caption without its character / copyright / artist / meta tags and without the tags the reference shares; `holdout.jsonl` for held-out characters (MOSS-only) |
 
 A task is a file, `configs/<task>.toml`:
 
@@ -47,7 +48,8 @@ tag_any = ["speech bubble", "english text", "japanese text"]
 
 `stage` names a row of `_I2I_STAGES` in `scripts/tasks/training.py` (a `stage` body and an
 EasyControl `preprocess` body, `None` for MOSS-only kinds): `near_twins`, `colorize`,
-`inpaint`, `region`, `subject`, `subject_edit`, `phash_edit`, `swap_text`, `watermark`. A new task on
+`inpaint`, `region`, `subject`, `subject_edit`, `phash_edit`, `swap_text`, `watermark`,
+`character_ref`. A new task on
 an existing tool is one file, e.g. a local, untracked `configs/uncensor.toml` with
 `stage = "near_twins"` and censor tags runs as `make i2i-stage TASK=uncensor`.
 

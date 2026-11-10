@@ -161,6 +161,11 @@ def _with_refs(req: GenerateRequest, jobs: list[dict]) -> list[dict]:
                     ref_mtime=ref.stat().st_mtime_ns,
                     ref_scale=req.ref_scale,
                     ref_vision=req.ref_vision,
+                    **(
+                        {"ref_aspect": req.ref_aspect}
+                        if req.ref_aspect != "target"
+                        else {}
+                    ),
                 )
             )
     return out

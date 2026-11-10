@@ -1,0 +1,15 @@
+# MOSS i2i test for character_ref — GenerateRequest fields.
+#
+#   make daemon-run ARGS="scripts/moss/generate.py --config configs/moss/i2i/character_ref/generate.toml \
+#       --lora output/ckpt_moss_i2i/moss_i2i_character_ref.safetensors --ref_image <character image> --prompt '<tags>'"
+#
+# The prompt names no character, series or artist; the reference carries them. The cache
+# trained half its pairs at ref_scale 2, so either value is in distribution.
+
+prompt_format = "layout_json"
+ref_scale = 1
+ref_aspect = "native"
+out_dir = "output/tests/moss_i2i_character_ref"
+
+# i2i stays on the pipeline prompt (the t2i default is sure; library/moss/prompt_tail.py).
+prompt_tail = "off"

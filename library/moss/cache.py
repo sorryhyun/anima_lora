@@ -24,7 +24,10 @@ leaves two files per image in one flat folder.
     {stem}.moss_ref.safetensors  (``--pairs`` only)
         latent  (128, h, w) fp32: the pair's condition image, fitted to the
                 target's ``W×H`` and then to 1/``ref_scale`` of its sides
-        metadata: width, height, target, ref_scale, condition, condition_mtime
+                (``ref_scale_alt``: half the pairs at that scale instead;
+                ``ref_aspect native``: the condition's own aspect, not cropped)
+        metadata: width, height, target, ref_scale, ref_aspect, condition,
+                  condition_mtime
 
 ``W×H`` is the pixel size the latent was encoded at. Text is never padded: the
 DiT slices each context to its true length and the image's rope frame coordinate
@@ -63,6 +66,7 @@ pairs with its ``image_dataset/`` original, minus the excluded ones
 
 from __future__ import annotations
 
+import hashlib
 import json
 import statistics
 import time
@@ -79,6 +83,7 @@ from library.moss.caching.images import (  # noqa: F401  (this module is their i
     AREA_TOLERANCE,
     STRIDE,
     fit,
+    fit_ref,
     load_rgb,
     prefetch,
     ref_size,
@@ -339,12 +344,30 @@ def cache_latents(
     }
 
 
+def pair_ref_scale(stem: str, ref_scale: int, ref_scale_alt: int = 0) -> int:
+    """``ref_scale_alt`` for half the stems (by SHA-1 of the stem, so a re-run
+    keeps each pair's choice), else ``ref_scale``."""
+    if not ref_scale_alt:
+        return ref_scale
+    return ref_scale_alt if hashlib.sha1(stem.encode()).digest()[0] & 1 else ref_scale
+
+
 def cache_refs(
-    pairs, refs, out_dir, model_dir, device, resolution, ref_scale, vae_dtype, overwrite
+    pairs,
+    refs,
+    out_dir,
+    model_dir,
+    device,
+    resolution,
+    ref_scale,
+    vae_dtype,
+    overwrite,
+    ref_scale_alt=0,
+    ref_aspect="target",
 ) -> dict:
     """``{stem}.moss_ref`` per pair: the condition fitted to the target's cached
-    size, then to :func:`ref_size`. Current while newer than the condition and
-    stamped with the same target size and ``ref_scale``."""
+    size, then to :func:`ref_size` at :func:`pair_ref_scale`. Current while newer
+    than the condition and stamped with the same target size and scale."""
     from library.moss.loader import empty_cache, load_vae
     from library.moss.model import encode
 
@@ -353,16 +376,19 @@ def cache_refs(
         with Image.open(p.image) as im:
             w, h = target_size(*im.size, resolution)
         cond = refs[p.stem]
+        scale = pair_ref_scale(p.stem, ref_scale, ref_scale_alt)
         path = out_dir / f"{p.stem}{REF_SUFFIX}"
         current = False
         if path.exists() and path.stat().st_mtime >= cond.stat().st_mtime:
             with safe_open(path, "pt") as f:
                 meta = f.metadata() or {}
-            current = meta.get("target") == f"{w}x{h}" and meta.get("ref_scale") == str(
-                ref_scale
+            current = (
+                meta.get("target") == f"{w}x{h}"
+                and meta.get("ref_scale") == str(scale)
+                and meta.get("ref_aspect", "target") == ref_aspect
             )
         if overwrite or not current:
-            plan.append((p.stem, cond, w, h, path))
+            plan.append((p.stem, cond, w, h, path, scale))
     if not plan:
         print("refs: all cached", flush=True)
         return {"encoded": 0}
@@ -371,11 +397,13 @@ def cache_refs(
     t0 = time.time()
 
     def load(job):
-        _, cond, w, h, _ = job
-        return to_pixels(fit(fit(load_rgb(cond), w, h), *ref_size(w, h, ref_scale)))
+        _, cond, w, h, _, scale = job
+        return to_pixels(fit_ref(load_rgb(cond), w, h, scale, ref_aspect))
 
-    for i, ((stem, cond, w, h, path), pixels) in enumerate(prefetch(plan, load), 1):
-        rw, rh = ref_size(w, h, ref_scale)
+    for i, ((stem, cond, w, h, path, scale), pixels) in enumerate(
+        prefetch(plan, load), 1
+    ):
+        rh, rw = pixels.shape[-2:]
         latent = encode(pixels, vae)[0].cpu().contiguous()
         save_file(
             {"latent": latent},
@@ -384,7 +412,8 @@ def cache_refs(
                 "width": str(rw),
                 "height": str(rh),
                 "target": f"{w}x{h}",
-                "ref_scale": str(ref_scale),
+                "ref_scale": str(scale),
+                "ref_aspect": ref_aspect,
                 "condition": str(cond),
                 "condition_mtime": str(cond.stat().st_mtime),
             },
@@ -394,7 +423,12 @@ def cache_refs(
     print(f"refs: {len(plan)} encoded in {seconds:.1f}s", flush=True)
     del vae
     empty_cache()
-    return {"encoded": len(plan), "encode_s": seconds, "ref_scale": ref_scale}
+    return {
+        "encoded": len(plan),
+        "encode_s": seconds,
+        "ref_scale": ref_scale,
+        "ref_scale_alt": ref_scale_alt,
+    }
 
 
 def summarize(out_dir: Path) -> dict:
@@ -484,6 +518,8 @@ def run_cache(req) -> Path:
             req.ref_scale,
             req.vae_dtype,
             req.overwrite,
+            req.ref_scale_alt,
+            req.ref_aspect,
         )
     if getattr(req, "distill_teacher", False):
         from library.moss.distill import cache_teachers

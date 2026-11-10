@@ -98,6 +98,20 @@ class CacheRequest(Request):
         "this, rounded to multiples of 16 (1 = full size)",
         advanced=True,
     )
+    ref_scale_alt: int = _f(
+        0,
+        "with pairs: half the pairs, picked by a hash of the stem, take this "
+        "ref_scale instead (0 = every pair at ref_scale)",
+        advanced=True,
+    )
+    ref_aspect: str = _f(
+        "target",
+        "with pairs: target = the reference is cropped to the target's aspect; "
+        "native = it keeps its own aspect at the target's area / ref_scale^2 "
+        "(generate with the same value)",
+        advanced=True,
+        choices=("target", "native"),
+    )
     resolution: int = _f(
         1024,
         "pixel-area cap as a square edge: 1024 means at most ~1024^2 pixels at "
@@ -372,6 +386,14 @@ class GenerateRequest(Request):
         "with ref_image: the reference latent's sides are the output's divided by "
         "this, multiples of 16. Match the cache the LoRA trained on (sanitize and "
         "colorize 1; colorize v2 used 2)",
+    )
+    ref_aspect: str = _f(
+        "target",
+        "with ref_image: target = the reference is cropped to the output's aspect; "
+        "native = it keeps its own aspect at the output's area / ref_scale^2. Match "
+        "the cache (character_ref: native)",
+        advanced=True,
+        choices=("target", "native"),
     )
     ref_vision: bool = _f(
         False,
@@ -1107,6 +1129,7 @@ I2I_CACHE: dict[str, type[Request]] = {
     "colorize": ColorizeCacheRequest,
     "sanitize": CacheRequest,
     "swap_text": CacheRequest,
+    "character_ref": CacheRequest,
 }
 
 

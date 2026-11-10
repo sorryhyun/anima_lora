@@ -1,0 +1,19 @@
+# MOSS i2i cache for character_ref: same-artist, same-character pairs from the crawl pool,
+# the target's caption without its character / series / artist tags.
+#
+#   make i2i-stage TASK=character_ref
+#   make daemon-run ARGS="--queue --stall-timeout 1800 scripts/moss/cache.py --config configs/moss/i2i/character_ref/cache.toml"
+
+pairs = "post_image_dataset/i2i/character_ref/staging/pairs.jsonl"
+out = "post_image_dataset/moss/i2i_character_ref"
+resolution = 1024
+# Half the pairs (by stem hash) carry a half-size reference.
+ref_scale = 1
+ref_scale_alt = 2
+# The reference keeps its own aspect: 29 % of pairs differ from their target by > 25 %,
+# and a crop to the target's aspect can cut the character off.
+ref_aspect = "native"
+caption_format = "layout_json"
+
+# i2i stays on the pipeline prompt (the t2i default is sure; library/moss/prompt_tail.py).
+prompt_tail = "off"

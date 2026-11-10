@@ -1,0 +1,20 @@
+# MOSS i2i training for character_ref — TrainRequest fields. The int8 swap_text recipe
+# (configs/moss/i2i/swap_text/train_v3_en200_ko800.toml) without its text-region terms.
+#
+#   make daemon-run ARGS="--stall-timeout 900 scripts/moss/train.py --config configs/moss/i2i/character_ref/train.toml"
+
+cache = "post_image_dataset/moss/i2i_character_ref"
+output = "output/ckpt_moss_i2i/moss_i2i_character_ref.safetensors"
+ref_timestep = 0.0
+ref_isolate = true
+optimizer = "muon"
+lr = 5e-5
+epochs = 3
+save_every_epochs = 1
+int8 = "stream"
+stream = "fp32"
+ema_card = true
+blocks_to_swap = 38
+activation_memory_budget = 0.1
+swap_h2d_only = true
+fit_report = true

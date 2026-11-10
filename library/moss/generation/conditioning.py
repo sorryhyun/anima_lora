@@ -126,7 +126,7 @@ def ref_latents(model_dir, jobs: list[dict], device) -> dict[str, torch.Tensor]:
     """Per job key, its reference fitted to the job's size and then to
     ``ref_size`` (as ``cache.cache_refs`` builds ``*.moss_ref``), ``(1,128,h,w)``
     fp32 on the CPU."""
-    from library.moss.caching.images import fit, load_rgb, ref_size, to_pixels
+    from library.moss.caching.images import fit_ref, load_rgb, to_pixels
     from library.moss.model import encode
 
     vae = load_vae(model_dir, device=device)
@@ -135,8 +135,9 @@ def ref_latents(model_dir, jobs: list[dict], device) -> dict[str, torch.Tensor]:
         if j["key"] in out:  # the same page under another seed
             continue
         w, h = j["width"], j["height"]
-        rw, rh = ref_size(w, h, j["ref_scale"])
-        image = fit(fit(load_rgb(Path(j["ref"])), w, h), rw, rh)
+        aspect = j.get("ref_aspect", "target")
+        image = fit_ref(load_rgb(Path(j["ref"])), w, h, j["ref_scale"], aspect)
+        rw, rh = image.size
         out[j["key"]] = encode(to_pixels(image), vae).float().cpu()
         print(f"[ref] {j['key']}: {w}x{h} -> {rw}x{rh}", flush=True)
     del vae

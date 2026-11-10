@@ -57,6 +57,22 @@ def fit(image: Image.Image, width: int, height: int) -> Image.Image:
     return image.crop((left, top, left + width, top + height))
 
 
+def fit_ref(
+    image: Image.Image, width: int, height: int, ref_scale: int, aspect: str = "target"
+) -> Image.Image:
+    """The reference for a ``width × height`` target. ``target``: cropped to the
+    target's aspect, then :func:`ref_size`. ``native``: its own aspect at the
+    target's area / ``ref_scale``², multiples of 16."""
+    if aspect == "target":
+        return fit(fit(image, width, height), *ref_size(width, height, ref_scale))
+    if aspect != "native":
+        raise SystemExit(f"unknown ref_aspect {aspect!r} (target, native)")
+    side = math.sqrt(width * height * image.width / image.height) / ref_scale
+    rw = max(STRIDE, round(side / STRIDE) * STRIDE)
+    rh = max(STRIDE, round(side * image.height / image.width / STRIDE) * STRIDE)
+    return fit(image, rw, rh)
+
+
 def to_pixels(image: Image.Image) -> torch.Tensor:
     """RGB PIL → ``(1, 3, H, W)`` fp32 in ``[-1, 1]``."""
     array = np.asarray(image, dtype=np.float32)

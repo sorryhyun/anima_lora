@@ -1284,6 +1284,21 @@ def _watermark_stage(adapter: str, cfg: dict, base: str, extra) -> None:
     )
 
 
+def _character_ref_stage(adapter: str, cfg: dict, base: str, extra) -> None:
+    """Same-artist, same-character reference pairs from the crawl pool
+    (``i2i_tasks/tools/character_ref_pairs.py``, knobs in ``[staging]``)."""
+    run(
+        [
+            PY,
+            "-m",
+            "i2i_tasks.tools.character_ref_pairs",
+            "--config",
+            str(_i2i_task_path(adapter)),
+            *list(extra or []),
+        ]
+    )
+
+
 # Stage kinds: the bodies an i2i task file's ``stage`` key picks (training is
 # generic via _easy_train_extra); only `stage` (data gen) + `preprocess`
 # (EasyControl VAE/TE caching; None = MOSS-only) differ per kind. Both receive
@@ -1317,6 +1332,8 @@ _I2I_STAGES = {
     "swap_text": {"stage": _swap_text_stage, "preprocess": None},
     # Synthetic faint watermarks added to an existing pair tree (MOSS-only).
     "watermark": {"stage": _watermark_stage, "preprocess": None},
+    # Same-artist character reference pairs, character/series/artist tags stripped (MOSS-only).
+    "character_ref": {"stage": _character_ref_stage, "preprocess": None},
 }
 
 

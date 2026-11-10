@@ -7,6 +7,7 @@ reserved `r = 1` axis, after the image and text rows.
 | Flag | Meaning | Stamped in the LoRA |
 |---|---|---|
 | `ref_scale` | reference side = target side / `ref_scale` (1 = full size, 2 = ¼ area) | checked against the cache |
+| `ref_aspect` | `target`: the reference is cropped to the target's aspect; `native`: it keeps its own, at the target's area / `ref_scale`² (cache and generate; the ComfyUI Reference node crops) | no (cache recipe) |
 | `ref_timestep` | the ref rows are modulated at this timestep in every block (0 = clean) instead of the step's | yes |
 | `ref_isolate` | ref queries attend only to ref keys; image and text still read the ref | yes |
 | `ref_vision` | the page also enters the text encoder through Qwen3.5's vision tower, ahead of the caption | no (cache recipe) |
@@ -25,6 +26,7 @@ is `library.moss.requests.I2I_CACHE`.
 |---|---|---|---|
 | `colorize` | B&W page, full size, isolated | control captions, no OCR text (no vision tower). Manga page: `comic`, optionally a box-only `text` item per lettered line and `character` items (box + hair / eye / clothing colours). Illustration: its colour + series tags | v5 recipe in the configs (`moss_colorize_v5`, int8 base; on the Hub as `colorize/moss_colorize_v5` with the workflow `colorize/moss-i2i-colorize-v5.json`): [colorize_v5_control.md](../proposal/colorize_v5_control.md). v4 (`colorize/moss_colorize_3k_v4`: OCR text items in the caption) is `captions = "ocr"`, `variants = 3`; v2 (`moss_colorize_3k_ocr`: half size, joint, vision tower) adds `ref_scale = 2`, `vision = true`: `project/finished/moss_lora/README.md` |
 | `sanitize` | texted image, full size, isolated | one fixed caption for every pair: `no sfx, no dialogue, no watermark` | v3 on the Hub (`sanitize/moss_i2i_sanitize_v3`): the tone term, `docs/moss/methods/tone_loss.md` |
+| `character_ref` | a solo image of the character by the same artist (the target: solo, or with an unnamed `1boy`, captioned `add 1boy`), own aspect (`ref_aspect native`), full or half size by pair (`ref_scale_alt 2`), isolated | the target's caption without character, series, artist and meta tags, and without the tags the reference's caption shares | 1,000 pairs (308 with `add 1boy`), 88 artists, any rating. First run `moss_i2i_character_ref_e1` (1 epoch = 1,000 steps, int8, swap 36, budget 0.15, 27.6 min, 12.7 GB): on two held-out OCs neither the character nor the style carries over yet; the speech-bubble text follows the prompt (`output/moss_i2i_eval/character_ref/`) |
 | `swap_text` | JA manga page, full size, isolated | layout JSON, one text item per line to letter (translated text + bbox) | 1,300-pair run (`moss_i2i_swap_text_1300_ema5e5`): English clean on the held-out pages, Korean down to one-syllable swaps |
 
 ## Running

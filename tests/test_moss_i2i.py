@@ -28,7 +28,24 @@ def test_task_recipes_load(task):
     # The test reference matches what the cache encoded.
     ref_scale = cache.get("ref_scale", I2I_CACHE[task]().ref_scale)
     assert gen.get("ref_scale", GenerateRequest().ref_scale) == ref_scale
+    assert gen.get("ref_aspect", "target") == cache.get("ref_aspect", "target")
     assert train["int8"] in ("off", "stream") and train["blocks_to_swap"] > 0
+
+
+def test_ref_scale_alt_and_native_aspect():
+    from library.moss.cache import pair_ref_scale
+    from library.moss.caching.images import fit_ref
+
+    stems = [f"artist__{i}" for i in range(400)]
+    assert {pair_ref_scale(s, 1) for s in stems} == {1}
+    half = sum(pair_ref_scale(s, 1, 2) == 2 for s in stems)
+    assert 160 < half < 240
+    assert all(pair_ref_scale(s, 1, 2) == pair_ref_scale(s, 1, 2) for s in stems)
+
+    tall = Image.new("RGB", (800, 1200))
+    assert fit_ref(tall, 1360, 768, 2).size == (672, 384)
+    assert fit_ref(tall, 1360, 768, 1, "native").size == (832, 1248)
+    assert fit_ref(tall, 1360, 768, 2, "native").size == (416, 624)
 
 
 def test_ref_jobs_follow_each_reference(tmp_path):
