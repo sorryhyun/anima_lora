@@ -3,7 +3,7 @@ stage = "character_ref"   # i2i_tasks/tools/character_ref_pairs.py (MOSS-only)
 
 [staging]
 image_dirs = ["{CAPTION_CORPUS_DIR}/retrieved"]
-ratings = ""                  # any rating
+ratings = ""                  # any rating; general,sensitive when CHARACTER_REF_EXCLUDE is unset
 n_pairs = 1000
 max_per_group = 8
 dedupe_phash = 60             # same picture (crop, recolour, text overlay); a pair needs > 60 of 256 bits apart

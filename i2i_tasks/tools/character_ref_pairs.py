@@ -15,7 +15,7 @@ artist, is a name and counts as a character.
 
 Members: a rating tag in ``ratings`` (empty: any), a cached phash (``.hash_cache.json``),
 one character tag and none of ``$CHARACTER_REF_EXCLUDE`` (comma-separated, from
-``.env``; unset stops the run). A group is ``(artist dir, character)``. Its references
+``.env``). With that unset and ``ratings`` empty, ratings are ``general,sensitive``. A group is ``(artist dir, character)``. Its references
 are the solo members (exactly one person: ``1girl`` or ``1boy``); its targets
 are those plus the members where an unnamed ``1boy`` shares the picture
 (``1girl, 1boy``). A target with a person its reference lacks gets ``add 1boy``
@@ -69,16 +69,16 @@ GELBOORU = {1: "artist", 3: "copyright", 4: "character", 5: "meta"}
 TAG_CACHE = ".tag_cache.json"
 
 
+SAFE_RATINGS = {"general", "sensitive"}
+
+
 def exclude_tags() -> frozenset[str]:
-    """``$CHARACTER_REF_EXCLUDE`` as a tag set; unset or empty stops the run."""
-    tags = frozenset(
+    """``$CHARACTER_REF_EXCLUDE`` as a tag set; empty when unset."""
+    return frozenset(
         t.strip()
         for t in os.environ.get("CHARACTER_REF_EXCLUDE", "").split(",")
         if t.strip()
     )
-    if not tags:
-        raise SystemExit("[character_ref] CHARACTER_REF_EXCLUDE is not set (.env)")
-    return tags
 
 
 class TagTypes:
@@ -219,12 +219,12 @@ def pick_cond(
 
 
 def mine(args, types: TagTypes, image_dirs: list[Path]):
-    groups, people = group_members(
-        gather(image_dirs),
-        types,
-        {r for r in args.ratings.split(",") if r},
-        exclude_tags(),
-    )
+    exclude = exclude_tags()
+    ratings = {r for r in args.ratings.split(",") if r}
+    if not exclude and not ratings:
+        ratings = SAFE_RATINGS
+        print("[character_ref] CHARACTER_REF_EXCLUDE unset: ratings general,sensitive")
+    groups, people = group_members(gather(image_dirs), types, ratings, exclude)
     rng = random.Random(args.seed)
 
     def pair(target, group):
@@ -302,8 +302,9 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--max_per_group", type=int, default=2, help="0 = every member")
     p.add_argument(
         "--ratings",
-        default="general,sensitive",
-        help="comma-separated rating tags a member must carry",
+        default="",
+        help="comma-separated rating tags a member must carry (empty: any, or "
+        "general,sensitive when CHARACTER_REF_EXCLUDE is unset)",
     )
     p.add_argument(
         "--dedupe_phash",
