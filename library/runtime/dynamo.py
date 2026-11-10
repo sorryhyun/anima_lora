@@ -35,9 +35,13 @@ def set_activation_memory_budget(budget: float) -> None:
         import flash_attn.flash_attn_interface  # noqa: F401
     except ImportError:
         return
-    op = torch.ops.flash_attn._flash_attn_forward
-    if op not in flop_registry:
-        register_flop_formula(op)(_flash_flops)
+    # _flash_attn_forward_f16in: the sm_120 build's fp16-input forward (library/runtime/fa2.py)
+    for name in ("_flash_attn_forward", "_flash_attn_forward_f16in"):
+        if not hasattr(torch.ops.flash_attn, name):
+            continue
+        op = getattr(torch.ops.flash_attn, name)
+        if op not in flop_registry:
+            register_flop_formula(op)(_flash_flops)
 
 
 def pin_dynamo_limit(name: str, value: int) -> int:

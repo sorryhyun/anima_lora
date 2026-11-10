@@ -16,6 +16,12 @@ except ImportError:
     flash_attn_func = None
     _wrapped_flash_attn_forward = None
     _wrapped_flash_attn_backward = None
+try:
+    # the sm_120 build's fp16-input path (library/runtime/fa2.py): fp16 copies made in the
+    # caller's graph, no 1024-key gate on the PV forward
+    from flash_attn import flash_attn_f16in_func, flash_attn_f16in_takes
+except ImportError:
+    flash_attn_f16in_func = flash_attn_f16in_takes = None
 
 # Flash Attention 4 (flash-attention-sm120) is disabled; see docs/anima/optimizations/fa4.md.
 _flash_attn_4_func_raw = None
@@ -275,9 +281,22 @@ def dispatch_attention(
 
     elif attn_params.attn_mode == "flash":
         if attn_params.cu_seqlens is None:  # all tokens are valid
-            x = flash_attn_func(
-                q, k, v, drop_rate, softmax_scale=scale, deterministic=_deterministic
-            )  # B, L, H, D
+            if (
+                flash_attn_f16in_func is not None
+                and drop_rate == 0.0
+                and not _deterministic
+                and flash_attn_f16in_takes(q, k, v)
+            ):
+                x = flash_attn_f16in_func(q, k, v, softmax_scale=scale)
+            else:
+                x = flash_attn_func(
+                    q,
+                    k,
+                    v,
+                    drop_rate,
+                    softmax_scale=scale,
+                    deterministic=_deterministic,
+                )  # B, L, H, D
             del q, k, v
         else:
             # Reshape to [(bxs), a, d]

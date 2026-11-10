@@ -50,8 +50,8 @@ _fp32_division: bool | None = None
 def kernel_divides_fp32() -> bool:
     """Whether ``comfy_kitchen.int8_linear`` divides a bf16 activation in fp32, so that a
     bf16 input gives the bits of the same input cast to fp32 (comfy-kitchen#289: stock
-    0.2.41 rounds the value, scale and quotient to bf16; the ``ck-fp32div`` group's wheel
-    does not). Probed once on the card; False without one."""
+    0.2.41 rounds the value, scale and quotient to bf16; the ``0.2.41+fp32div`` wheel from
+    the README does not). Probed once on the card; False without one."""
     global _fp32_division
     if _fp32_division is None:
         _fp32_division = False

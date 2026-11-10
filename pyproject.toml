@@ -300,14 +300,14 @@ torch-212 = [
     "triton-windows>=3.7.0,<3.8.0 ; sys_platform == 'win32'",
 ]
 # RTX 50-series opt-in: torch-214 + cuda-windows with our FlashAttention wheel in
-# the venv (sorryhyun/flash-attention-fp16, TAG in library/runtime/fa2.py). It holds
+# the venv (sorryhyun/flash-attention-fp16, TAG / WINDOWS_TAG in library/runtime/fa2.py). It holds
 # sm_120 kernels and head dims 64 and 128 alone, and it also reaches ComfyUI and
 # Qwen's flash_attention_2 text encoder.
 # aarch64 has no such wheel and keeps the stock row.
 fa2-sm120 = [
     "torch>=2.14.0,<2.15 ; sys_platform != 'win32'",
     "torchvision>=0.29.0,<0.30 ; sys_platform != 'win32'",
-    "flash-attn @ https://github.com/sorryhyun/flash-attention-fp16/releases/download/v2.8.3-sm120-hdim64-128-fp16acc-fwdpv-cu132-torch2.12plus/flash_attn-2.8.3+sm120.hdim64128.fp16acc.fwdpv.cu132.torch2.12plus-cp310-abi3-linux_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "flash-attn @ https://github.com/sorryhyun/flash-attention-fp16/releases/download/v2.8.3-sm120-hdim64-128-fp16acc-fwdpv-f16in-cu132-torch2.12plus/flash_attn-2.8.3+sm120.hdim64128.fp16acc.fwdpv.f16in.cu132.torch2.12plus-cp310-abi3-linux_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.10.1/flash_attn-2.8.3+cu132torch2.14-cp313-cp313-linux_aarch64.whl ; sys_platform == 'linux' and platform_machine == 'aarch64'",
     "causal-conv1d @ https://github.com/sorryhyun/anima_lora/releases/download/deps-causal-conv1d-1.7.0/causal_conv1d-1.7.0+cu132torch2.14-cp313-cp313-linux_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "torch==2.14.1+cu132 ; sys_platform == 'win32'",

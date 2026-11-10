@@ -61,6 +61,11 @@ try:
     from flash_attn import flash_attn_func
 except ImportError:
     flash_attn_func = None
+try:
+    # the sm_120 build's fp16-input path: fp16 copies made here, fused into RoPE under compile
+    from flash_attn import flash_attn_f16in_func, flash_attn_f16in_takes
+except ImportError:
+    flash_attn_f16in_func = flash_attn_f16in_takes = None
 
 
 class _RMSNorm(nn.Module):
@@ -144,6 +149,8 @@ def _attention(
 
     def attend(q, k, v, mask=None):
         if mask is None and flash:
+            if flash_attn_f16in_func is not None and flash_attn_f16in_takes(q, k, v):
+                return flash_attn_f16in_func(q, k, v)
             return flash_attn_func(q, k, v)
         return _sdpa(q, k, v, mask)
 
