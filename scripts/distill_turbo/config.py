@@ -214,6 +214,14 @@ def build_argparser() -> argparse.ArgumentParser:
         "DM / MFD signal (off: refinement steps only).",
     )
     parser.add_argument(
+        "--rollout_grad",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Keep the graph from step 0 into the grad step, so the DM / MFD "
+        "signal on the final x_θ reaches step 0 through step 1 (2-step static "
+        "grid only; superturbo.md).",
+    )
+    parser.add_argument(
         "--detach_after_first",
         dest="detach_after_first",
         action="store_const",
@@ -379,6 +387,8 @@ class TurboConfig:
     detach_after_first: bool
     # Grad step g ~ U{0..N−1}: step 0 also takes the DM / MFD signal.
     dm_first_step: bool
+    # No detach between step 0 and the grad step (N = 2, static grid).
+    rollout_grad: bool
     flow_shift: float
 
     # DMD core
@@ -585,6 +595,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     else:
         detach_after_first = bool(args.detach_after_first)
     dm_first_step = bool(_pick(args.dm_first_step, cfg, "dpdmd.dm_first_step", False))
+    rollout_grad = bool(_pick(args.rollout_grad, cfg, "dpdmd.rollout_grad", False))
     flow_shift = float(_pick(args.flow_shift, cfg, "sampling.flow_shift", 3.0))
 
     # Optimizer
@@ -620,6 +631,12 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         )
     if div_weight < 0.0:
         raise ValueError(f"dpdmd.div_weight={div_weight}: must be >= 0")
+    if rollout_grad and (student_steps != 2 or dynamic_schedule or dm_first_step):
+        raise ValueError(
+            "dpdmd.rollout_grad needs dmd.student_steps = 2, dynamic_schedule off "
+            f"and dm_first_step off (got N={student_steps}, dynamic_schedule="
+            f"{dynamic_schedule}, dm_first_step={dm_first_step})."
+        )
     if gan_loss_weight_gen < 0.0:
         raise ValueError(f"gan.weight_gen={gan_loss_weight_gen}: must be >= 0")
     int8 = str(_pick(args.int8, cfg, "int8", "off"))
@@ -726,7 +743,8 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
             else "teacher anchor OFF (div_weight=0), "
         )
         + f"grad step g ~ U{{{0 if dm_first_step else 1}..N-1}}, "
-        f"student N={student_steps} @ flow_shift={flow_shift}, "
+        + ("rollout_grad (step 0 in the DM graph), " if rollout_grad else "")
+        + f"student N={student_steps} @ flow_shift={flow_shift}, "
         f"teacher_cfg={teacher_cfg}."
     )
     return TurboConfig(
@@ -767,6 +785,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         div_weight=div_weight,
         detach_after_first=detach_after_first,
         dm_first_step=dm_first_step,
+        rollout_grad=rollout_grad,
         flow_shift=flow_shift,
         student_steps=student_steps,
         teacher_cfg=teacher_cfg,
@@ -849,6 +868,7 @@ _TB_KEYS = (
     "div_weight",
     "detach_after_first",
     "dm_first_step",
+    "rollout_grad",
     "flow_shift",
     "student_rank",
     "fake_rank",

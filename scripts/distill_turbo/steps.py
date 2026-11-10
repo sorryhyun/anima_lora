@@ -102,7 +102,7 @@ class Rollout:
     """The student rollout up to its grad step g."""
 
     x_pred: torch.Tensor  # x_g − σ_g·v_g, attached through step g only
-    x_g: torch.Tensor  # leaf input of step g
+    x_g: torch.Tensor  # input of step g (fresh leaf unless rollout_grad)
     v_g: torch.Tensor
     s_g: float
     v_first: torch.Tensor  # step-0 velocity (metrics)
@@ -128,33 +128,40 @@ def student_rollout(
     never reaches step 0 (DP-DMD Fig 5). For g = 0 (``dm_first_step``) step 0 is the
     grad step: the DM grad lands on it, and its diversity term shares that graph, so
     it is left to the caller's backward.
+
+    Under ``rollout_grad`` nothing is detached: x_g carries step 0's graph, so the
+    DM grad on x_pred reaches step 0 through the steps after it, and the diversity
+    term rides the caller's backward (superturbo.md).
     """
     device, dtype = ctx.device, ctx.dtype
     anchor = v_target is not None
+    keep = cfg.rollout_grad
     s0 = sigmas[0]
     x = eps
     x.requires_grad_()  # grad-ckpt needs a grad-requiring forward input
     t_b = torch.full((B,), s0, device=device, dtype=dtype)
     v_first = ctx.forward(
-        "student", x, t_b, crossattn_emb, no_grad=not (anchor or g == 0)
+        "student", x, t_b, crossattn_emb, no_grad=not (anchor or g == 0 or keep)
     )
     if anchor:
         div_loss = nn.functional.mse_loss(v_first.float(), v_target)
     else:
         div_loss = torch.zeros((), device=device)
-    div_pending = anchor and (g == 0 or not cfg.detach_after_first)
+    div_pending = anchor and (g == 0 or keep or not cfg.detach_after_first)
     if anchor and not div_pending:
         (cfg.div_weight * div_loss).backward()
 
     if g == 0:
         x_g, v_g, s_g = x, v_first, s0
     else:
-        x = (x - (s0 - sigmas[1]) * v_first).detach()
-        for i in range(1, g):  # backward simulation (no graph kept)
+        x = x - (s0 - sigmas[1]) * v_first
+        if not keep:
+            x = x.detach()
+        for i in range(1, g):  # backward simulation (graph kept under rollout_grad)
             t_b = torch.full((B,), sigmas[i], device=device, dtype=dtype)
-            v = ctx.forward("student", x, t_b, crossattn_emb, no_grad=True)
+            v = ctx.forward("student", x, t_b, crossattn_emb, no_grad=not keep)
             x = x - (sigmas[i] - sigmas[i + 1]) * v
-        x_g = x.detach().requires_grad_()  # fresh leaf
+        x_g = x if keep else x.detach().requires_grad_()  # fresh leaf
         s_g = sigmas[g]
         t_b = torch.full((B,), s_g, device=device, dtype=dtype)
         v_g = ctx.forward("student", x_g, t_b, crossattn_emb, no_grad=False)

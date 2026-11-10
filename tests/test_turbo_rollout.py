@@ -124,7 +124,45 @@ def test_anchor_off(g):
     assert net.w.grad is not None
 
 
+def test_rollout_grad_reaches_step_zero():
+    net, calls = _Student(), []
+    eps, v_target, c = _inputs()
+    sig = [1.0, 0.75, 0.0]
+    roll = student_rollout(
+        _ctx(net, calls), _cfg(rollout_grad=True), eps, v_target, sig, 1, c, 2
+    )
+
+    assert calls == [(1.0, False), (0.75, False)]
+    assert roll.div_pending and net.w.grad is None  # nothing backwarded inside
+    assert roll.x_g.grad_fn is not None  # step 0's graph, not a fresh leaf
+
+    (roll.x_pred.sum() + DIV_W * roll.div_loss).backward()
+    ref = _Student()
+    e = eps.detach()
+    v0 = ref.v(e, 1.0)
+    x1 = e - 0.25 * v0  # grad kept through step 0
+    x_pred = x1 - 0.75 * ref.v(x1, 0.75)
+    (g_ref,) = torch.autograd.grad(
+        x_pred.sum() + DIV_W * nn.functional.mse_loss(v0, v_target), ref.w
+    )
+    assert torch.allclose(net.w.grad, g_ref)
+
+
+@pytest.mark.parametrize(
+    "cli",
+    [
+        ["--student_steps", "4"],
+        ["--student_steps", "2", "--dm_first_step"],
+    ],
+)
+def test_rollout_grad_refuses_other_grids(cli):
+    with pytest.raises(ValueError, match="rollout_grad"):
+        _resolve(["--rollout_grad", *cli])
+
+
 def test_config_default_off_and_overrides():
+    assert _resolve().rollout_grad is False
+    assert _resolve(["--rollout_grad", "--student_steps", "2"]).rollout_grad is True
     assert _resolve().dm_first_step is False
     assert _resolve(cfg={"dpdmd": {"dm_first_step": True}}).dm_first_step is True
     assert _resolve(["--dm_first_step"]).dm_first_step is True
