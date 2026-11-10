@@ -177,9 +177,7 @@ def run_diversity_validation(
             for i in range(student_steps):
                 s_i, s_next = student_sigmas[i], student_sigmas[i + 1]
                 t_b = torch.full((latent_shape[0],), s_i, device=device, dtype=dtype)
-                v = forward_fn("student", x, t_b, crossattn_emb, no_grad=True).squeeze(
-                    2
-                )
+                v = forward_fn("student", x, t_b, crossattn_emb, no_grad=True)
                 x = x - (s_i - s_next) * v
             probe.stop()
             x_preds.append(x.detach())
@@ -208,7 +206,7 @@ def run_diversity_validation(
             s_i = student_sigmas[i]
             x_t = ((1.0 - s_i) * x0.float() + s_i * eps.float()).to(dtype)
             t_b = torch.full((x0.shape[0],), s_i, device=device, dtype=dtype)
-            v = forward_fn("student", x_t, t_b, crossattn_emb, no_grad=True).squeeze(2)
+            v = forward_fn("student", x_t, t_b, crossattn_emb, no_grad=True)
             errs.append(float(F.mse_loss(v.float(), v_target)))
         fm_mse = sum(errs) / len(errs)
 

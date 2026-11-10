@@ -15,16 +15,11 @@ from library.config.io import toml_get as _flatten
 from library.config.resolved import (
     dataclass_snapshot_toml,
     dataclass_tb_text,
-    load_toml,
 )
 from library.config.resolved import pick as _pick
 
 
 logger = logging.getLogger(__name__)
-
-
-def load_turbo_config(path: str) -> dict:
-    return load_toml(path)
 
 
 def build_argparser() -> argparse.ArgumentParser:
@@ -37,16 +32,16 @@ def build_argparser() -> argparse.ArgumentParser:
         default="configs/methods/turbo.toml",
         help="Path to the turbo TOML config (CLI flags override TOML values).",
     )
-    # CLI overrides — every TOML key has a matching flag. Default sentinels
-    # (None / -1.0) mean "use the TOML value".
+    # Sentinel defaults (None / -1) mean "use the TOML value"; the defaults
+    # behind the TOML live in resolve_config, the knob docs in
+    # docs/anima/methods/turbo.md.
     parser.add_argument("--dit_path", type=str, default=None)
     parser.add_argument(
         "--dit_nonquant_path",
         type=str,
         default=None,
-        help="The bf16 DiT an int8 --dit_path was quantized from: the float weights "
-        "wq_t is built from. Sentinel None → TOML (dit_nonquant_path), else they are "
-        "rebuilt from the int8 copies.",
+        help="The bf16 DiT an int8 --dit_path was quantized from (the float "
+        "weights wq_t is built from); unset, they are rebuilt from the int8 copies.",
     )
     parser.add_argument("--data_dir", type=str, default=None)
     parser.add_argument("--output_dir", type=str, default=None)
@@ -58,45 +53,29 @@ def build_argparser() -> argparse.ArgumentParser:
         "--validate_every_n_steps",
         type=int,
         default=-1,
-        help="Run the DAVE same-prompt diversity probe every N optimizer steps "
-        "(0 disables; see scripts/distill_turbo/diversity.py). Logs "
-        "val/div_ac_sim (lower = more diverse), val/div_dc_sim, val/div_gap.",
+        help="DAVE same-prompt diversity probe every N steps (0 off; diversity.py).",
     )
     parser.add_argument(
         "--val_diversity_seeds",
         type=int,
         default=-1,
-        help="Number of seeds the diversity probe rolls per validation (>=2).",
+        help="Seeds the diversity probe rolls (>=2).",
     )
     parser.add_argument(
         "--val_prompt_idx",
         type=int,
         default=-1,
-        help="Held-out dataset index whose cached conditioning the diversity "
-        "probe fixes (-1 = auto: last sample, distinct from --single_prompt_idx).",
+        help="Held-out sample the probe conditions on (-1: the last one, not "
+        "--single_prompt_idx).",
     )
     parser.add_argument("--student_rank", type=int, default=-1)
     parser.add_argument("--fake_rank", type=int, default=-1)
     parser.add_argument(
-        "--use_custom_down_autograd",
-        action="store_true",
-        default=None,
-        help="DEPRECATED no-op (fp32-bottleneck path removed 2026-06-10; "
-        "training GEMMs run in the activation dtype). Accepted so old "
-        "snapshots/commands replay.",
-    )
-    parser.add_argument(
-        "--no_use_custom_down_autograd",
-        dest="use_custom_down_autograd",
-        action="store_false",
-    )
-    parser.add_argument(
         "--channel_scaling_alpha",
         type=float,
         default=-1.0,
-        help="Per-input-channel rebalance absorbed into lora_down (student + "
-        "fake). 0.0 = off, 0.5 = sqrt-balance. Default: read from TOML "
-        "(top-level scalar), else 0.0 (off).",
+        help="Per-input-channel rebalance absorbed into lora_down (student and "
+        "fake); 0 off, 0.5 sqrt-balance.",
     )
     parser.add_argument("--student_lr", type=float, default=-1.0)
     parser.add_argument("--fake_lr", type=float, default=-1.0)
@@ -104,32 +83,21 @@ def build_argparser() -> argparse.ArgumentParser:
         "--fake_steps_per_student_step",
         type=int,
         default=-1,
-        help="Number of fake (DM regularizer) updates per student step. "
-        "Standard DMD2 practice keeps the fake ahead of the moving x_pred "
-        "distribution; >1 gives the fake extra SGD iterations on resampled "
-        "(τ, ε) noise against the same x_pred.detach(). Default: TOML "
-        "(optim.fake_steps_per_student_step, default 1).",
+        help="Fake updates per student step, each on fresh (τ, ε).",
     )
     parser.add_argument(
         "--fake_warmup_steps",
         type=int,
         default=-1,
-        help="Fake-only (critic head-start) updates run BEFORE the main loop. "
-        "The student LR warmup finishes at ~0.02·iterations, so the student "
-        "starts full-strength steps while the zero-init fake/critic LoRA is "
-        "still ≈ the teacher → a large, misaligned delta_dm and an early "
-        "grad_signal_rms spike (~step 50). Pre-training the fake net against the "
-        "student's (init ≈ teacher) x_pred distribution calibrates it first. "
-        "The fake scheduler IS stepped during warmup (the main-loop scheduler "
-        "is sized over iterations + fake_warmup_steps so the 2%% LR warmup "
-        "overlaps the head-start and the fake enters the main loop at full LR). "
-        "Default: TOML (optim.fake_warmup_steps, default 0 = off).",
+        help="Fake-only head-start updates before the main loop. Without it the "
+        "warm-start fake is miscalibrated when the student reaches full LR "
+        "(grad_signal_rms spike near step 50).",
     )
     parser.add_argument(
         "--student_steps",
         type=int,
         default=-1,
-        help="Sampler step count baked into the student",
+        help="Sampler step count baked into the student.",
     )
     parser.add_argument(
         "--dm_x0_norm",
@@ -137,19 +105,14 @@ def build_argparser() -> argparse.ArgumentParser:
         action="store_const",
         const=True,
         default=None,
-        help="DMD per-sample x0-space magnitude normalization (policy 'b'): "
-        "grad_dm = τ·Δ_dm / clamp(τ·mean|v_real|, norm_floor). Because the denom "
-        "≈ τ·mean|v_real|, the τ CANCELS across the bulk → ≈ no-τ, magnitude-"
-        "normalized. This REPLACES the default τ-damping (policy 'a'); it does NOT "
-        "stack with it (that would be policy 'c'). A/B lever — see "
-        "_archive/proposals/dmd2_decoupled_improvements.md §2B.",
+        help="Replace τ-damping with per-sample x0-space normalisation: "
+        "τ·Δ / clamp(τ·mean|v_real|, norm_floor), so τ cancels.",
     )
     parser.add_argument(
         "--norm_floor",
         type=float,
         default=-1.0,
-        help="clamp_min for the x0-norm denominator (latent scale); only active "
-        "with --dm_x0_norm.",
+        help="Floor of the --dm_x0_norm denominator (latent scale).",
     )
     parser.add_argument("--blocks_to_swap", type=int, default=0)
     parser.add_argument("--attn_mode", type=str, default="flash")
@@ -157,73 +120,61 @@ def build_argparser() -> argparse.ArgumentParser:
     parser.add_argument("--no_grad_ckpt", dest="grad_ckpt", action="store_false")
     parser.add_argument(
         "--torch_compile",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
         default=True,
-        help="Compile block._forward. Off by default — multiple forwards per step "
-        "are not yet validated under cudagraphs; turn on once Phase 0 is green.",
+        help="Compile the DiT blocks (on by default).",
     )
     parser.add_argument(
         "--compile_dynamic_seq",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="Mirror the LoRA-training compile_dynamic_seq path: collapse the "
-        "per-token-count block graphs to a single graph by marking only the "
-        "seq-length axis dynamic (mark_dynamic). Sentinel None → TOML "
-        "(compile_dynamic_seq, default true). Only matters when --torch_compile.",
+        help="One block graph with a dynamic sequence axis instead of one per "
+        "token count (as in LoRA training).",
     )
     parser.add_argument(
         "--target_res",
         type=int,
         nargs="+",
         default=None,
-        help="Override the active multi-scale tier edges (e.g. 1024 768 1280) "
-        "used to size the compile_dynamic_seq seq bound + dynamo cache budget. "
-        "Unset (the default) → derived automatically from the token-count "
-        "families present in the cached pool (data_dir).",
+        help="Tier edges that size the dynamic-seq bound and the dynamo budget; "
+        "unset, they come from the token counts in the cached pool.",
     )
     parser.add_argument(
         "--activation_memory_budget",
         type=float,
         default=None,
-        help="torch.compile partitioner saved-activation fraction (<1.0 → "
-        "recompute cheap intermediates in backward, mirrors the LoRA-training "
-        "knob in base.toml). Only applies when --torch_compile is on and "
-        "grad_ckpt is off (the two repartition the same graph and conflict). "
-        "Sentinel None → TOML (activation_memory_budget, default 1.0 = off).",
+        help="Compile partitioner saved-activation fraction (<1 recomputes in "
+        "backward). Ignored under --grad_ckpt.",
     )
     parser.add_argument(
         "--int8",
         choices=("off", "fwd", "full", "stream"),
         default=None,
-        help="Run the frozen DiT's large linears as int8 GEMMs, teacher included "
-        "(docs/anima/optimizations/int8.md). Sentinel None → TOML (int8, default off).",
+        help="Frozen DiT linears as int8 GEMMs, teacher included "
+        "(docs/anima/optimizations/int8.md).",
     )
     parser.add_argument(
         "--int8_file",
         type=str,
         default=None,
-        help="Forward copies from dit_gptq.py. Sentinel None → TOML (int8_file), "
-        "else <dit>_int8_gptq.safetensors beside the DiT, else round to nearest; "
-        "'rtn' forces round to nearest.",
+        help="GPTQ forward copies; unset: <dit>_int8_gptq.safetensors beside the "
+        "DiT, else round to nearest; 'rtn' forces round to nearest.",
     )
     parser.add_argument(
         "--stream",
         choices=("bf16", "fp32"),
         default=None,
         help="Residual stream precision, teacher included "
-        "(docs/anima/optimizations/fp32_stream.md). Sentinel None → TOML (stream, "
-        "default bf16).",
+        "(docs/anima/optimizations/fp32_stream.md).",
     )
     parser.add_argument("--save_every", type=int, default=-1)
     parser.add_argument(
         "--resume",
         type=str,
         default="",
-        help="Resume from a crash-resume bundle (student + fake + disc + all three "
-        "optimizers/schedulers + RNG), restoring the LR schedule mid-flight. "
-        "'auto' → output/ckpt/<output_name>/<output_name>_resume.pt if it exists, "
-        "else start fresh — safe to bake into a restart wrapper. A named path must "
-        "exist. Bundles are written every --save_every.",
+        help="Crash-resume bundle (nets, optimizers, schedulers, RNG). 'auto' "
+        "uses output/ckpt/<name>/<name>_resume.pt if present, else starts fresh; "
+        "a named path must exist. Written every --save_every.",
     )
     parser.add_argument("--log_interval", type=int, default=-1)
     parser.add_argument("--log_dir", type=str, default=None)
@@ -232,32 +183,28 @@ def build_argparser() -> argparse.ArgumentParser:
         "--single_prompt_idx",
         type=int,
         default=None,
-        help="Phase 0 overfit mode — pin the dataloader to a single (latent, text) pair.",
+        help="Overfit mode: pin the dataloader to one (latent, text) pair.",
     )
     parser.add_argument("--sample_ratio", type=float, default=1.0)
 
-    # DP-DMD (arXiv 2602.03139): step 1 supervised toward a teacher K-step anchor
-    # (diversity), detached, then DMD on x_θ over steps 2..N. See docs/anima/methods/turbo.md.
+    # DP-DMD (arXiv:2602.03139).
     parser.add_argument(
         "--k_anchor",
         type=int,
         default=-1,
-        help="DP-DMD: teacher steps rolled to the diversity anchor (their K). "
-        "Default: TOML (dpdmd.k_anchor, default 5).",
+        help="Teacher steps rolled to the diversity anchor (their K).",
     )
     parser.add_argument(
         "--teacher_anchor_steps",
         type=int,
         default=-1,
-        help="DP-DMD: teacher σ-grid the K anchor is counted against. Default: "
-        "TOML (dpdmd.teacher_anchor_steps, default 28).",
+        help="Teacher σ grid the K anchor is counted on.",
     )
     parser.add_argument(
         "--div_weight",
         type=float,
         default=-1.0,
-        help="DP-DMD: λ on the first-step diversity loss. Default: TOML "
-        "(dpdmd.div_weight, default 0.05).",
+        help="λ on the first-step diversity loss.",
     )
     parser.add_argument(
         "--detach_after_first",
@@ -265,9 +212,8 @@ def build_argparser() -> argparse.ArgumentParser:
         action="store_const",
         const=True,
         default=None,
-        help="DP-DMD: stop-grad after the diversity-supervised first step (the "
-        "load-bearing detach; keep True except for A/B). Default: TOML "
-        "(dpdmd.detach_after_first, default true).",
+        help="Stop-grad after the diversity-supervised first step (keep on but "
+        "for A/B).",
     )
     parser.add_argument(
         "--no_detach_after_first",
@@ -278,118 +224,88 @@ def build_argparser() -> argparse.ArgumentParser:
         "--flow_shift",
         type=float,
         default=-1.0,
-        help="DP-DMD: σ-schedule shift for the student/teacher Euler grids "
-        "(matches inference). Default: TOML (sampling.flow_shift, default 3.0).",
+        help="σ shift of the student and teacher Euler grids (as at inference).",
     )
 
-    # DMD2 teacher-feature GAN (off by default).
+    # DMD2 teacher-feature GAN.
     parser.add_argument(
         "--gan_loss_weight_gen",
         type=float,
         default=-1.0,
-        help="λ on the GAN generator term (softplus hinge on teacher-feature "
-        "disc logits), added to the student loss. 0 disables the whole GAN path "
-        "(byte-identical to DP-DMD). FastGen QwenImage uses 0.03. Default: TOML "
-        "(gan.weight_gen, default 0).",
+        help="λ on the GAN generator term; 0 turns the whole GAN path off "
+        "(FastGen QwenImage: 0.03).",
     )
     parser.add_argument(
         "--gan_feature_block_idx",
         type=int,
         default=-2,
-        help="Which DiT block's token output the discriminator taps. -1 = middle "
-        "block (num_blocks//2). Default sentinel -2 → TOML (gan.feature_block_idx, "
-        "default -1).",
+        help="DiT block the disc taps; -1 = middle. (-2 is the 'use TOML' sentinel.)",
     )
-    parser.add_argument(
-        "--gan_disc_lr",
-        type=float,
-        default=-1.0,
-        help="Discriminator AdamW LR. Default: TOML (gan.disc_lr, default 1e-5).",
-    )
+    parser.add_argument("--gan_disc_lr", type=float, default=-1.0)
     parser.add_argument(
         "--gan_r1_weight",
         type=float,
         default=-1.0,
-        help="Weight on the approximate-R1 (APT) disc regularizer: MSE between "
-        "real logits and logits of a slightly-perturbed real input. 0 disables. "
-        "Default: TOML (gan.r1_weight, default 0).",
+        help="Approximate R1 (APT): MSE between real logits and those of a "
+        "perturbed real input; 0 off.",
     )
     parser.add_argument(
         "--gan_disc_head",
         type=str,
         default=None,
         choices=["pooled", "token"],
-        help="Disc head granularity: 'pooled' = one logit per tap (mean-pooled "
-        "tokens, v0); 'token' = LADD-style dense per-token logits (same MLP "
-        "applied per token — identical params, denser real/fake signal). "
-        "Default: TOML (gan.disc_head, default 'pooled').",
+        help="pooled: one logit per tap; token: the same MLP per token (LADD).",
     )
     parser.add_argument(
         "--gan_delay_steps",
         type=int,
         default=-1,
-        help="Hold the generator-side GAN weight at 0 for the first N student "
-        "steps (the disc still trains from step 0). Gives DM+div an escape "
-        "window from a collapsed warm start before dense realism pressure "
-        "lands. Default: TOML (gan.delay_steps, default 0).",
+        help="Generator-side GAN weight held at 0 for N student steps (the disc "
+        "still trains).",
     )
     parser.add_argument(
         "--gan_warmup_steps",
         type=int,
         default=-1,
-        help="After the delay window, ramp the generator-side GAN weight "
-        "linearly 0 → weight_gen over N student steps (0 = instant-on). "
-        "Default: TOML (gan.warmup_steps, default 0).",
+        help="Then ramp it 0 → weight_gen over N steps (0 = instant).",
     )
 
-    # CDM off-trajectory loss (L_CDM; off by default).
+    # CDM off-trajectory loss (arXiv:2605.06376 §3.3).
     parser.add_argument(
         "--cdm_grad_ckpt",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="Checkpoint the grad-bearing CDM student forward. Default: TOML "
-        "(cdm.grad_ckpt, default on).",
+        help="Checkpoint the grad-bearing CDM student forward.",
     )
     parser.add_argument(
         "--cdm_weight",
         type=float,
         default=-1.0,
-        help="λ on the L_CDM off-trajectory loss (CDM §3.3, arXiv:2605.06376): "
-        "Euler-extrapolate the DMD grad step's (x_g, v_g) by a random stride to "
-        "t' ~ U(0,1), run one grad-bearing student forward there, and apply the "
-        "same real-vs-fake DMD surrogate to its local x0 estimate (variant A: "
-        "CFG'd real score, consistent with the fused DM). Supervises the "
-        "truncation-drift region few-step Euler traverses off-manifold. 0 "
-        "disables the whole path (byte-identical loop, no extra forwards/RNG). "
-        "Cost when on: +1 student grad forward, +2 teacher & +1 fake no-grad "
-        "per iteration. Default: TOML (cdm.weight, default 0).",
+        help="λ on L_CDM; 0 turns the path off. Costs +1 student grad forward, "
+        "+2 teacher and +1 fake no-grad forwards per step.",
     )
 
-    # Mean Flow Distillation in the DM slot (arXiv:2606.11155; off by default).
+    # Mean Flow Distillation in the DM slot (arXiv:2606.11155).
     parser.add_argument(
         "--mfd_dtau",
         type=float,
         default=None,
-        help="Euler step size of the MFD mean-flow integral that replaces the DM "
-        "branch's point delta: teacher and fake are integrated from σ_a to σ_b "
-        "and x_θ follows the endpoint gap. 0 = plain DMD. Cost: K = "
-        "ceil((σ_a − σ_b)/dtau) ≤ mfd_max_steps teacher-CFG + fake no-grad "
-        "forwards per student step instead of 1. Default: TOML (mfd.dtau, 0).",
+        help="Euler step of the MFD mean-flow integral; 0 = plain DMD. Costs K = "
+        "ceil((σ_a − σ_b)/dtau) ≤ mfd_max_steps teacher-CFG and fake forwards "
+        "instead of 1.",
     )
     parser.add_argument(
         "--mfd_max_steps",
         type=int,
         default=None,
-        help="Cap on K per mean-flow integral. Default: TOML (mfd.max_steps, 4).",
+        help="Cap on K per mean-flow integral.",
     )
     parser.add_argument(
         "--mfd_interval",
         type=str,
         default=None,
         choices=("to_zero", "uniform"),
-        help="MFD interval end: to_zero = σ_b 0 (integrated x0 match; K=1 is "
-        "exactly DMD), uniform = σ_b ~ U(0, σ_a). Default: TOML (mfd.interval, "
-        "to_zero).",
+        help="to_zero: σ_b = 0 (K=1 is exactly DMD); uniform: σ_b ~ U(0, σ_a).",
     )
 
     return parser
@@ -426,52 +342,30 @@ class TurboConfig:
     student_alpha: float
     fake_alpha: float
     attn_mode: str
-    use_custom_down_autograd: bool
-    # Per-input-channel rebalance on each lora_down. A no-op at init that merges
-    # out at save, so it only conditions gradients.
+    # Per-input-channel rebalance on each lora_down; merges out at save.
     channel_scaling_alpha: float
-    # SVD-Down init for the plain-LoRA student (down_init="weight_svd"): seed
-    # lora_down from W0's top-r right singular vectors, scale-matched.
-    student_down_init: str
-    # Same lever on the fake/critic.
+    student_down_init: str  # kaiming | weight_svd
     fake_down_init: str
-    # Warm start: initialize the stack's ΔW from a plain LoRA checkpoint
-    # (e.g. an official-release delta extracted by
-    # scripts/toolkits/extract_delta_lora.py), SVD-truncated to the stack's rank.
-    # Empty = default init. Incompatible with down_init="weight_svd" (it seeds
-    # what this overwrites).
+    # Plain LoRA file seeding the stack's ΔW (SVD-truncated to its rank); "" = off.
     student_init_weights: str
     fake_init_weights: str
-    # Target the AdaLN modulation up-projections (adaln_up_{branch}) on both the
-    # student and fake. The student's shipped LoRA is saved in the ComfyUI adaln
-    # layout so it loads natively there and in-repo (adaln.md).
+    # adaln_up_{branch} targets; the student ships them in the ComfyUI layout.
     train_adaln: bool
-    # Mirror adaln targets on the fake/critic (default: train_adaln). false =
-    # VRAM lever — drops the critic's 84 adaln modules (~0.8 GB of fp32
-    # params+grads+AdamW states at rank 96) at the cost of a score estimate
-    # blind to the student's adaln subspace (unbenched trade).
+    # false drops the fake's 84 adaln modules (~0.8 GB at rank 96; unbenched).
     fake_adaln: bool
-    # Build the adaln modules at their own rank (0 = share network rank). The
-    # official turbo adaln ΔW is near-lossless well below attn rank (in-dim
-    # 256: r64 keeps 99.5% of the r96 energy) — a lower adaln_rank cuts the
-    # adaln VRAM add roughly in proportion. Requires train_adaln.
+    # Own rank / alpha for the adaln modules (0 = network's). Scale-preserving
+    # alpha: student_alpha × adaln_rank / student_rank.
     adaln_rank: int
-    # Their own alpha too (0 = network alpha, which runs rank/adaln_rank hotter
-    # when adaln_rank is set). Scale-preserving value:
-    # student_alpha × adaln_rank / student_rank. Requires train_adaln.
     adaln_alpha: float
-    # Transition-aware fake (VA-TDM, vatdm.md idea 1): the fake also gets σ of the
-    # student step its sample came from (σ_g; t' for the CDM query; the warmup's t),
-    # as a zero-init delta on its t-embedding.
+    # Transition-aware fake (vatdm.md idea 1): σ of the student step its sample
+    # came from, as a zero-init delta on the fake's t-embedding.
     fake_transition: bool
-    # AOT min-cut partitioner tuning (mirrors train.py's partitioner_* args):
-    # change what the default partition is willing to recompute, on top of
-    # activation_memory_budget. Ignored under --grad_ckpt (same gate as the
-    # budget). aggressive_recomputation is the settled memory lever.
+    # Partitioner recompute tuning (as train.py's partitioner_*); ignored under
+    # grad_ckpt.
     partitioner_recompute_views: bool
     partitioner_aggressive_recomputation: bool
 
-    # DP-DMD knobs
+    # DP-DMD
     k_anchor: int
     teacher_anchor_steps: int
     div_weight: float
@@ -483,36 +377,32 @@ class TurboConfig:
     teacher_cfg: float
     dm_x0_norm: bool
     norm_floor: float
-    # CDM dynamic continuous schedule (arXiv:2605.06376): re-sample the student
-    # rollout grid every iteration (N ~ U{..student_steps}, continuous anchors)
-    # instead of training only on the fixed inference grid. Validation/inference
-    # stay on the static grid; the DP anchor composes unchanged (t₁=1 pinned).
+    # CDM dynamic schedule: a fresh rollout grid per step (t₁ = 1 pinned);
+    # validation and inference stay on the static grid.
     dynamic_schedule: bool
 
-    # CDM off-trajectory loss (L_CDM, arXiv:2605.06376): supervise
-    # the student's local x0 estimate at a velocity-extrapolated off-trajectory
-    # point (t' ~ U(0,1)) with the same real-vs-fake delta as the DM branch.
-    # 0 = the whole path off.
+    # L_CDM; weight 0 = off
     cdm_weight: float
-    cdm_grad_ckpt: bool  # checkpoint ONLY the grad-bearing CDM student forward
+    cdm_grad_ckpt: bool
 
-    # Mean Flow Distillation (arXiv:2606.11155) in the DM slot; dtau 0 = plain DMD.
+    # MFD in the DM slot; dtau 0 = plain DMD
     mfd_dtau: float
     mfd_max_steps: int
-    mfd_interval: str  # "to_zero" | "uniform"
+    mfd_interval: str  # to_zero | uniform
 
-    # DMD2 teacher-feature GAN
+    # DMD2 teacher-feature GAN; weight_gen 0 = off
     gan_loss_weight_gen: float
-    gan_feature_block_idx: int  # -1 → middle block (resolved in distill.py)
+    gan_feature_block_idx: int  # -1 → middle block
     gan_disc_lr: float
     gan_disc_hidden: int  # <= 0 → inner_dim // 2
-    gan_disc_head: str  # "pooled" (per-tap logit) | "token" (LADD-style per-token)
-    gan_delay_steps: int  # generator λ = 0 for the first N steps (disc still trains)
-    gan_warmup_steps: int  # then λ ramps 0 → weight_gen over N steps (0 = instant-on)
+    gan_disc_head: str  # pooled | token
+    gan_delay_steps: int
+    gan_warmup_steps: int
     gan_r1_weight: float
     gan_r1_alpha: float
     gan_use_same_t_noise: bool
-    gan_grad_ckpt: bool  # checkpoint ONLY the grad-bearing GAN gen forward
+    gan_grad_ckpt: bool
+
     # Optimizer + scheduler
     student_lr: float
     fake_lr: float
@@ -529,12 +419,10 @@ class TurboConfig:
     blocks_to_swap: int
     grad_ckpt: bool
     torch_compile: bool
-    compile_dynamic_seq: bool  # single symbolic-seq block graph (mark_dynamic)
-    target_res: list[int] | None  # override tier edges; None → derived from cached pool
-    dynamo_recompile_limit: int  # per-_forward dynamo graph budget
-    activation_memory_budget: (
-        float  # compile partitioner saved-act fraction (<1 → recompute)
-    )
+    compile_dynamic_seq: bool
+    target_res: list[int] | None  # None → from the cached pool
+    dynamo_recompile_limit: int  # per block _forward
+    activation_memory_budget: float
     int8: str = "off"  # off | fwd | full | stream
     int8_file: str | None = None
     dit_nonquant_path: str | None = None
@@ -555,6 +443,7 @@ _REMOVED_KEYS = {
     "f_distill.f_div": "rkl",
     "dmad.enabled": False,
     "dmad_probe.enabled": False,
+    "use_custom_down_autograd": False,
 }
 
 
@@ -584,7 +473,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     output_name = _pick(args.output_name, cfg, "output_name", "anima_turbo")
     log_dir = _pick(args.log_dir, cfg, "io.log_dir", "output/logs/turbo")
     save_every = int(_pick(args.save_every, cfg, "io.save_every", 1000))
-    # CLI-only: a resume is a property of *this launch*, not of the method config.
+    # CLI only: a resume belongs to the launch, not the method config.
     resume = str(getattr(args, "resume", "") or "")
     log_interval = int(_pick(args.log_interval, cfg, "io.log_interval", 2))
     validate_every_n_steps = int(
@@ -606,26 +495,14 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     student_alpha = float(_flatten(cfg, "network.student_alpha", student_rank))
     fake_alpha = float(_flatten(cfg, "network.fake_alpha", fake_rank))
     student_down_init = str(_flatten(cfg, "network.student_down_init", "kaiming"))
-    if student_down_init not in ("kaiming", "weight_svd"):
-        raise ValueError(
-            f"network.student_down_init={student_down_init!r}: "
-            "expected 'kaiming' or 'weight_svd'."
-        )
     fake_down_init = str(_flatten(cfg, "network.fake_down_init", "kaiming"))
-    if fake_down_init not in ("kaiming", "weight_svd"):
-        raise ValueError(
-            f"network.fake_down_init={fake_down_init!r}: "
-            "expected 'kaiming' or 'weight_svd'."
-        )
+    for name, down_init in (("student", student_down_init), ("fake", fake_down_init)):
+        if down_init not in ("kaiming", "weight_svd"):
+            raise ValueError(
+                f"network.{name}_down_init={down_init!r}: "
+                "expected 'kaiming' or 'weight_svd'."
+            )
     attn_mode = _pick(args.attn_mode, cfg, "network.attn_mode", "flash")
-    # use_custom_down_autograd is a top-level TOML scalar; CLI flag wins when set.
-    if args.use_custom_down_autograd is None:
-        use_custom_down_autograd = bool(
-            _flatten(cfg, "use_custom_down_autograd", False)
-        )
-    else:
-        use_custom_down_autograd = bool(args.use_custom_down_autograd)
-    # Defaults off so existing turbo snapshots reproduce.
     channel_scaling_alpha = float(
         _pick(args.channel_scaling_alpha, cfg, "channel_scaling_alpha", 0.0)
     )
@@ -633,14 +510,10 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     # DMD core
     student_steps = int(_pick(args.student_steps, cfg, "dmd.student_steps", 4))
     teacher_cfg = float(_flatten(cfg, "dmd.teacher_cfg", 4.0))
-    # DM-branch gradient policy: (a) τ-damping [default] vs (b) x0-norm. Alternative
-    # policies, not additive; (b) ≈ "drop the τ-weight, magnitude-normalize."
     dm_x0_norm = bool(_pick(args.dm_x0_norm, cfg, "dmd.dm_x0_norm", False))
     norm_floor = float(_pick(args.norm_floor, cfg, "dmd.norm_floor", 0.05))
-    # Default off so existing turbo snapshots reproduce.
     dynamic_schedule = bool(_flatten(cfg, "dmd.dynamic_schedule", False))
 
-    # weight=0 keeps the whole L_CDM path off (no extra forwards or RNG draws).
     cdm_weight = float(_pick(args.cdm_weight, cfg, "cdm.weight", 0.0))
     cdm_grad_ckpt = bool(
         _flatten(cfg, "cdm.grad_ckpt", True)
@@ -652,8 +525,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     mfd_max_steps = int(_pick(args.mfd_max_steps, cfg, "mfd.max_steps", 4))
     mfd_interval = str(_pick(args.mfd_interval, cfg, "mfd.interval", "to_zero"))
 
-    # weight_gen=0 keeps the whole GAN/disc path off.
-    # feature_block_idx sentinel is -2 (not -1) because -1 means middle block.
+    # feature_block_idx's sentinel is -2 because -1 means the middle block.
     gan_loss_weight_gen = float(
         _pick(args.gan_loss_weight_gen, cfg, "gan.weight_gen", 0.0)
     )
@@ -664,16 +536,11 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     gan_disc_lr = float(_pick(args.gan_disc_lr, cfg, "gan.disc_lr", 1e-5))
     gan_disc_hidden = int(_flatten(cfg, "gan.disc_hidden", 0))
     gan_disc_head = str(_pick(args.gan_disc_head, cfg, "gan.disc_head", "pooled"))
-    # Both default 0 → the generator term engages at full weight from step 0.
     gan_delay_steps = int(_pick(args.gan_delay_steps, cfg, "gan.delay_steps", 0))
     gan_warmup_steps = int(_pick(args.gan_warmup_steps, cfg, "gan.warmup_steps", 0))
     gan_r1_weight = float(_pick(args.gan_r1_weight, cfg, "gan.r1_weight", 0.0))
     gan_r1_alpha = float(_flatten(cfg, "gan.r1_alpha", 0.1))
     gan_use_same_t_noise = bool(_flatten(cfg, "gan.use_same_t_noise", True))
-    # Checkpoint only the grad-bearing GAN gen teacher forward (independent of the
-    # global --grad_ckpt): it retains ~half the DiT's activations purely to
-    # backprop into x_pred → student, so recompute reclaims that peak VRAM.
-    # Default on — numerically equivalent (frozen teacher, no dropout).
     gan_grad_ckpt = bool(_flatten(cfg, "gan.grad_ckpt", True))
     student_init_weights = str(_flatten(cfg, "network.student_init_weights", ""))
     fake_init_weights = str(_flatten(cfg, "network.fake_init_weights", ""))
@@ -713,7 +580,6 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     # Optimizer
     student_lr = float(_pick(args.student_lr, cfg, "optim.student_lr", 1e-5))
     fake_lr = float(_pick(args.fake_lr, cfg, "optim.fake_lr", 1e-5))
-    # LR schedule is always warmup → cosine (see primitives.make_scheduler).
     fake_steps_per_student_step = int(
         _pick(
             args.fake_steps_per_student_step,
@@ -760,33 +626,26 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         )
     if cdm_weight < 0.0:
         raise ValueError(f"cdm.weight={cdm_weight}: must be >= 0")
+    # --grad_ckpt checkpoints the rollout's student forwards, which recompute at
+    # the final backward under whatever view is current then. CDM and the GAN
+    # flip the view to teacher / fake before that backward, so the recomputed
+    # blocks drop the student LoRA and the gradient is silently wrong.
+    if bool(args.grad_ckpt):
+        for on, name in (
+            (cdm_weight > 0.0, "cdm.weight > 0"),
+            (gan_loss_weight_gen > 0.0, "gan.weight_gen > 0"),
+        ):
+            if on:
+                raise ValueError(
+                    f"--grad_ckpt with {name}: the rollout's checkpointed student "
+                    "forwards recompute under the teacher/fake view this branch "
+                    "leaves set, dropping the student LoRA from the gradient. "
+                    "Turn one off."
+                )
     if cdm_weight > 0.0:
-        if bool(args.grad_ckpt):
-            # Same view × deferred-ckpt-recompute class as --grad_ckpt + GAN:
-            # the CDM branch flips the view (student → teacher → fake) after the
-            # rollout's checkpointed student forwards, corrupting their recompute.
-            raise ValueError(
-                "--grad_ckpt with cdm.weight > 0: the rollout's checkpointed "
-                "student forwards recompute after the CDM branch flipped the "
-                "view to teacher/fake — the recomputed blocks drop the student "
-                "LoRA and the gradient is silently corrupted "
-                "(project_turbo_view_ckpt_recompute_hazard). Turn one off."
-            )
         logger.info(
-            f"L_CDM off-trajectory loss ON: "
-            f"weight={cdm_weight}, variant A (CFG'd real score), t' ~ U(0,1) "
-            "launched from the DMD grad step; +1 student grad forward, "
-            "+2 teacher & +1 fake no-grad per iteration."
-        )
-    if bool(args.grad_ckpt) and gan_loss_weight_gen > 0.0:
-        # View × deferred-ckpt-recompute hazard: a forward that flips the global
-        # view after the rollout's checkpointed forwards corrupts their recompute.
-        raise ValueError(
-            "--grad_ckpt with gan.weight_gen > 0: the rollout's checkpointed "
-            "student forwards recompute after the GAN gen forward flipped the "
-            "view to 'teacher' — the recomputed blocks drop the student LoRA "
-            "and the DMD gradient is silently corrupted. Known-broken "
-            "combination; turn one of the two off."
+            f"L_CDM ON: weight={cdm_weight}; +1 student grad forward, "
+            "+2 teacher and +1 fake no-grad forwards per step."
         )
     if gan_r1_weight < 0.0:
         raise ValueError(f"gan.r1_weight={gan_r1_weight}: must be >= 0")
@@ -801,7 +660,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         )
     if gan_loss_weight_gen > 0.0:
         logger.info(
-            f"GAN (DMD2 teacher-feature disc, FastGen idea 1) ON: "
+            f"GAN ON: "
             f"weight_gen={gan_loss_weight_gen}, feature_block_idx="
             f"{gan_feature_block_idx} (-1 = middle), disc_head={gan_disc_head}, "
             f"disc_lr={gan_disc_lr}, r1_weight={gan_r1_weight}, "
@@ -822,9 +681,8 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         )
     if fake_rank < student_rank:
         logger.warning(
-            f"fake_rank={fake_rank} < student_rank={student_rank}: DM regularizer "
-            "has less capacity than the student — proposal R1 risk amplified. "
-            "Consider bumping fake_rank to 2 x student_rank."
+            f"fake_rank={fake_rank} < student_rank={student_rank}: the fake has "
+            "less capacity than the student it tracks."
         )
     if norm_floor <= 0.0:
         raise ValueError(f"dmd.norm_floor={norm_floor}: must be > 0 (latent scale)")
@@ -833,13 +691,9 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
             f"optim.fake_steps_per_student_step={fake_steps_per_student_step}: must be ≥ 1"
         )
     if args.single_prompt_idx is not None and batch_size != 1:
-        # single-prompt mode slices the dataset to one sample. With drop_last=True
-        # and batch_size > 1 the dataloader yields zero batches and the loop
-        # silently no-ops.
         raise ValueError(
-            f"--single_prompt_idx requires batch_size=1 (got {batch_size}). "
-            "Single-prompt overfit mode pins the dataset to one sample; a "
-            "batch_size > 1 dataloader with drop_last=True would yield zero batches."
+            f"--single_prompt_idx requires batch_size=1 (got {batch_size}): a "
+            "one-sample dataset with drop_last yields zero batches."
         )
     logger.info(
         "DM gradient policy: "
@@ -879,7 +733,6 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         student_alpha=student_alpha,
         fake_alpha=fake_alpha,
         attn_mode=attn_mode,
-        use_custom_down_autograd=use_custom_down_autograd,
         channel_scaling_alpha=channel_scaling_alpha,
         student_down_init=student_down_init,
         fake_down_init=fake_down_init,

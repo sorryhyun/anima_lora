@@ -37,7 +37,7 @@ def _ctx():
     def forward(view, x, sig, c, no_grad=True):
         assert view == "fake"
         s = sig.float().view(-1, 1, 1, 1)
-        return (torch.sin(x.float()) * (0.5 + s) + 0.2 * c.mean()).unsqueeze(2)
+        return torch.sin(x.float()) * (0.5 + s) + 0.2 * c.mean()
 
     return SimpleNamespace(
         turbo=None,

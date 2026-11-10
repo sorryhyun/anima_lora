@@ -349,7 +349,6 @@ class TurboDMDNetwork:
         fake_rank: int,
         student_alpha: float | None = None,
         fake_alpha: float | None = None,
-        use_custom_down_autograd: bool = False,
         channel_scaling_alpha: float = 0.0,
         student_down_init: str = "kaiming",
         fake_down_init: str = "kaiming",
@@ -414,13 +413,11 @@ class TurboDMDNetwork:
                 "expected 'kaiming' or 'weight_svd'."
             )
 
-        # Plain LoRA on both (LoRANetworkCfg defaults: no MoE/T-LoRA); alpha =
-        # rank by default. use_custom_down_autograd is forwarded for config
-        # compat but a deprecated no-op. adaln_rank > 0 builds the adaln modules at their own (lower) rank via
-        # network_reg_dims: the official turbo's adaln ΔW is near-lossless well
-        # below attn rank, so uniform rank there is wasted VRAM. NB the reg_dims
-        # path keeps the NETWORK alpha, so adaln runs a higher alpha/rank scale
-        # — warm start folds the scale so the init is exact either way.
+        # Plain LoRA on both; alpha = rank by default. adaln_rank > 0 builds the
+        # adaln modules at their own rank via network_reg_dims (the official
+        # turbo's adaln ΔW is near-lossless well below attn rank). reg_dims keeps
+        # the network alpha unless adaln_alpha is set; warm start folds the scale
+        # so the init is exact either way.
         _adaln_reg_dims = (
             f".*adaln_up_.*={self.adaln_rank}" if self.adaln_rank > 0 else None
         )
@@ -445,7 +442,6 @@ class TurboDMDNetwork:
             vae=None,
             text_encoders=[],
             unet=unet,
-            use_custom_down_autograd=use_custom_down_autograd,
             channel_scaling_alpha=self.channel_scaling_alpha,
             **_student_kwargs,
         )
@@ -467,7 +463,6 @@ class TurboDMDNetwork:
             vae=None,
             text_encoders=[],
             unet=unet,
-            use_custom_down_autograd=use_custom_down_autograd,
             channel_scaling_alpha=self.channel_scaling_alpha,
             **_fake_kwargs,
         )

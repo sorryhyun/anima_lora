@@ -4,7 +4,7 @@ Status: **closed 2026-11-01**, Phases 0b, 1 and 2 ran and Phase 2 hit its kill c
 [findings](../findings/turbo_apex_no_quality.md). Phase 0a was not run. Sources: Liu et al., *Self-Adversarial One
 Step Generation via Condition Shifting* (APEX, arXiv:2604.12322); Liu et al., *Intrinsic
 Distribution Matching* (IDM, arXiv:2610.39633), for the regression only. IDM's `L_pop` stays
-out (`scripts/distill_turbo/report_gaps.md`). Dataset: the turbo set, `post_image_dataset/lora`
+out (`../findings/turbo_moment_gaps.md`). Dataset: the turbo set, `post_image_dataset/lora`
 (3,242 TE caches).
 
 ## Motivation
@@ -69,7 +69,7 @@ Decisions behind this form:
 - **Guidance from the frozen base.** The papers do not describe guidance; the public APEX code
   adds `ratio·(v_c − v_u)` to the target (`enhance_target`, 4.0 in its 1-order LoRA config with
   the adapter-disabled base as `v`). We need it: base Anima at CFG 1 renders washed out, and the
-  dataset sits about 60% of the way from CFG 1 to CFG 4 in pixels (`report_gaps.md`). We use
+  dataset sits about 60% of the way from CFG 1 to CFG 4 in pixels (`../findings/turbo_moment_gaps.md`). We use
   `γ = 3`, since 4.0 on top of `ε − x` is CFG 5.
 - **`L_fake` detached, from IDM.** APEX Eq. 12 lets the fake loss flow back into the `c` branch
   through `x_fake`. The detached form is a separate backward with one graph alive.

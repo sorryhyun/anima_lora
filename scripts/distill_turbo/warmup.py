@@ -85,10 +85,8 @@ def run_fake_warmup(
         t_e = t.view(B, 1, 1, 1)
         x_t = (1.0 - t_e) * latents + t_e * eps
         with torch.no_grad():
-            v_student = forward_fn(
-                "student", x_t, t, crossattn_emb, no_grad=True
-            ).squeeze(2)
-            x_pred_d = (x_t.squeeze(2) - t_e * v_student).detach()
+            v_student = forward_fn("student", x_t, t, crossattn_emb, no_grad=True)
+            x_pred_d = (x_t - t_e * v_student).detach()
 
         tau_fake = sample_t(
             B,
@@ -100,9 +98,7 @@ def run_fake_warmup(
         eps_fake = torch.randn_like(x_pred_d)
         x_t_fake = renoise(x_pred_d, tau_fake, eps_fake).requires_grad_()
         turbo.set_fake_source(t)  # x_pred_d is the student's one step at σ = t
-        v_fake = forward_fn(
-            "fake", x_t_fake, tau_fake, crossattn_emb, no_grad=False
-        ).squeeze(2)
+        v_fake = forward_fn("fake", x_t_fake, tau_fake, crossattn_emb, no_grad=False)
         target_v_fake = eps_fake - x_pred_d
         fake_loss = nn.functional.mse_loss(v_fake.float(), target_v_fake.float())
         fake_loss.backward()

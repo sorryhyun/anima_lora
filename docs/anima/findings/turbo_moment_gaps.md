@@ -103,6 +103,6 @@ Cosine from S between "toward D" and "toward T4":
 - Before spending an arm on `L_pop`, read the same spread ratio on a DP-DMD student. If it stays
   well below 1, the std term has a concrete job; if it closes, the case for `L_pop` is back to
   the paper's +0.35 GenEval points.
-- `idea.md` ideas 1 and 2 stay ahead of this.
+- `docs/anima/proposal/turbo_data_space.md` ideas 1 and 2 stay ahead of this.
 - The next run of the script should enable `compile_dynamic_seq`; this one ran eager by
   oversight, which affects speed only.

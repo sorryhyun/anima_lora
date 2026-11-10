@@ -1,8 +1,8 @@
 # Ideas from data-space iteration (arXiv:2610.12102)
 
 Source: Lin, Peng, Wang, Fan, *Few-Step Generation via Data-Space Iteration*
-(ByteDance Seed, 2026-10-08). Read 2026-10-13. Nothing here has been run. The
-current loop is described in `plan.md` and `difference.md`.
+(ByteDance Seed, 2026-10-08). Read 2026-10-13. Nothing here has been run. The current
+loop is described in `docs/anima/methods/turbo.md`.
 
 ## The paper
 
@@ -60,7 +60,7 @@ the same Beta, everything else as shipped. Watch:
 ### 2. Adam β1 = 0 for the student (Table 1c)
 
 `(0.0, 0.95)` beat `(0.9, 0.95)` at every NFE (4 NFE 2.46 vs 2.66). The official
-DMAD H3 recipe also runs its student at β (0, 0.99) (`difference.md`, Student
+DMAD H3 recipe also runs its student at β (0, 0.99) (`_archive/turbo_dmad/difference.md`, Student
 table). That is two independent sources. Ours: student and fake at the AdamW
 default (0.9, 0.999). The disc is already at (0, 0.99).
 
@@ -111,6 +111,6 @@ over tuning a fixed `flow_shift` grid.
 
 Ideas 1 and 2 are each a single flag, and they touch different parts of the
 loop. Run them as two 500-step arms against the p0b DP-DMD 500 renders
-(`plan.md`) on `bench/turbo/real_prompts.txt` at seed 42, and add a
+on `bench/turbo/real_prompts.txt` at seed 42, and add a
 `val/div_*` read for diversity. Try 3 only if 1 or 2 moves the result. Leave 5
 alone unless a non-LoRA turbo is ever on the table.

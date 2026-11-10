@@ -1,17 +1,8 @@
-"""Per-step DP-DMD loss terms and updates called from ``distill.run_loop``.
+"""Per-step DP-DMD loss terms and the fake/critic update, called from ``distill.run_loop``.
 
-Each function is one ``# --- … ---`` block of the training loop, reading the
-built objects off the :class:`~scripts.distill_turbo.setup.RunContext`
-and the resolved config. The loop keeps the algorithmic spine — the student
-rollout (whose graph the non-split diversity term rides) and the final
-assemble/backward/optimizer step — inline; these are the surrounding loss terms
-and the fake/critic update.
-
-Two terms carry documented in-branch side effects:
-
-* ``cdm_off_trajectory_loss`` backwards its own graph (view restored to student
-  first) and records ``metrics.add_cdm`` — it MUST run before the GAN gen forward.
-* ``fake_update`` runs the fake + discriminator optimizer/scheduler steps.
+The loop keeps the student rollout and the final backward / optimizer step inline;
+these are the loss terms around it. ``cdm_off_trajectory_loss`` backwards its own
+graph, and ``fake_update`` steps the fake and disc optimizers.
 """
 
 from __future__ import annotations
@@ -31,31 +22,19 @@ from .setup import RunContext
 
 @contextmanager
 def selective_block_grad_ckpt(model: Anima):
-    """Arm per-block gradient checkpointing for one forward, then restore.
+    """Arm per-block unsloth-offload checkpointing for one forward, then restore.
 
-    ``Block.forward`` self-checkpoints when ``gradient_checkpointing`` is set
-    (gated on ``self.training`` + grad enabled), read eagerly per block so
-    flipping it per call costs no recompile. Snapshots + restores each block's
-    checkpoint flags, so this composes with a global ``--grad_ckpt`` run.
+    Unsloth, not ``torch_checkpoint``: ``checkpoint(compiled_fn, use_reentrant=False)``
+    diverges from the inductor forward graph on recompute (``CheckpointError``); the
+    unsloth path is ``@torch._disable_dynamo`` and runs ``_forward`` eager both times.
+    The flags are read per block call, so flipping them costs no recompile.
 
-    Arms the **unsloth-offload** variant, not standard ``torch_checkpoint``:
-    ``block._forward`` is ``torch.compile``'d, and
-    ``checkpoint(compiled_fn, use_reentrant=False)`` diverges from the inductor
-    forward graph in recompute → ``CheckpointError``. The unsloth path carries
-    ``@torch._disable_dynamo``, so ``_forward`` runs eager in both forward and
-    recompute, and it offloads saved tensors to CPU. The reentrant grad-drop bug
-    (see ``cdm_off_trajectory_loss``) does not apply here: the frozen
-    teacher view has no grad-requiring params inside the region.
-
-    Wraps ONLY the grad-bearing GAN gen teacher forward, reclaiming the peak
-    VRAM the frozen teacher retains there purely to backprop into x_pred →
-    student (numerically exact — no dropout).
+    The recompute runs at backward under the view that is current then, so every
+    caller backwards before the view changes again (``cdm_off_trajectory_loss``) or
+    makes its forward the last view flip of the step (``gan_generator_term``).
     """
     saved = [
-        (
-            b.gradient_checkpointing,
-            b.unsloth_offload_checkpointing,
-        )
+        (b.gradient_checkpointing, b.unsloth_offload_checkpointing)
         for b in model.blocks
     ]
     for b in model.blocks:
@@ -69,6 +48,31 @@ def selective_block_grad_ckpt(model: Anima):
             b.unsloth_offload_checkpointing = u
 
 
+def _uniform_tau(ctx: RunContext, cfg, B: int) -> torch.Tensor:
+    """DM / MFD / CDM query level: uniform by design, independent of t_distribution."""
+    return sample_t(
+        B,
+        distribution="uniform",
+        sigmoid_scale=cfg.sigmoid_scale,
+        device=ctx.device,
+        dtype=ctx.dtype,
+    )
+
+
+def _dm_signal(cfg, scale_e: torch.Tensor, delta: torch.Tensor, v_real: torch.Tensor):
+    """Detached fp32 ``scale·Δ``; under ``dm_x0_norm`` divided by the per-sample
+    mean ``|scale·v_real|`` (floored at ``norm_floor``), which cancels the scale."""
+    grad = scale_e * delta.float()
+    if cfg.dm_x0_norm:
+        grad = grad / (
+            (scale_e * v_real.float())
+            .abs()
+            .mean(dim=(1, 2, 3), keepdim=True)
+            .clamp_min(cfg.norm_floor)
+        )
+    return grad.detach()
+
+
 def teacher_anchor(
     ctx: RunContext,
     cfg,
@@ -77,11 +81,10 @@ def teacher_anchor(
     c_null: torch.Tensor,
     B: int,
 ) -> torch.Tensor:
-    """Teacher K-step CFG anchor (no grad) → ``v_target`` (DP-DMD only).
+    """Teacher K-step CFG anchor (no grad) → ``v_target``.
 
-    Rolls the CFG-guided teacher ``k_anchor`` Euler steps from the shared noise ε
-    and returns the average velocity ε→z_tk over ``[t_k, 1]`` — exactly the target
-    for the student's t=1 first step. Detached.
+    Rolls the CFG'd teacher ``k_anchor`` Euler steps from ε and returns the mean
+    velocity ε→z_tk over ``[t_k, 1]``, the target for the student's t=1 first step.
     """
     z = eps
     for i in range(cfg.k_anchor):
@@ -95,15 +98,15 @@ def teacher_anchor(
 
 @dataclass
 class DmdResult:
-    """Outputs of the DMD-on-x_θ surrogate (all fp32 / detached as noted)."""
+    """Outputs of the DM-slot surrogate (DMD or MFD)."""
 
-    grad_signal: torch.Tensor  # detached DMD signal
+    grad_signal: torch.Tensor  # detached fp32
     delta_dm: torch.Tensor  # v_real − v_fake (metrics)
-    tau_dm: torch.Tensor  # DMD query τ (reused by the GAN gen renoise)
-    tau_dm_e: torch.Tensor  # τ broadcast to (B,1,1,1)
+    tau_dm: torch.Tensor  # query level; the GAN gen renoise reuses it
+    tau_dm_e: torch.Tensor  # signal scale broadcast to (B,1,1,1)
     v_real_cond_dm: torch.Tensor
     v_fake_cond_dm: torch.Tensor
-    eps_dm: torch.Tensor  # DMD renoise ε (reused by the GAN gen renoise)
+    eps_dm: torch.Tensor  # renoise ε; the GAN gen renoise reuses it
 
 
 def dmd_surrogate(
@@ -114,47 +117,25 @@ def dmd_surrogate(
     c_null: torch.Tensor,
     B: int,
 ) -> DmdResult:
-    """DMD on x_θ against the CFG-guided teacher + fake score.
+    """DMD on x_θ: CFG'd teacher against the cond-only fake.
 
-    The real score MUST be CFG-GUIDED (v_u + α·(v_c − v_u)), not cond-only:
-    without guidance v_real≈v_fake (both unguided cond preds collapse,
-    dm_cos≈0.9999) and the quality gradient is noise. Fake stays cond-only.
-    Query τ is uniform by design (independent of t_distribution).
+    The real score must be CFG'd: with cond-only on both sides v_real ≈ v_fake
+    (dm_cos ≈ 0.9999) and the signal is noise.
     """
-    tau_dm = sample_t(
-        B,
-        distribution="uniform",
-        sigmoid_scale=cfg.sigmoid_scale,
-        device=ctx.device,
-        dtype=ctx.dtype,
-    )
+    tau_dm = _uniform_tau(ctx, cfg, B)
     eps_dm = torch.randn_like(x_pred)
     x_renoised_dm = renoise(x_pred.detach(), tau_dm, eps_dm)
-    v_real_cond_dm = ctx.teacher_cfg_velocity(
-        x_renoised_dm, tau_dm, crossattn_emb, c_null
-    )
-    v_fake_cond_dm = ctx.forward(
-        "fake", x_renoised_dm, tau_dm, crossattn_emb, no_grad=True
-    ).squeeze(2)
-    delta_dm = v_real_cond_dm - v_fake_cond_dm
-
+    v_real = ctx.teacher_cfg_velocity(x_renoised_dm, tau_dm, crossattn_emb, c_null)
+    v_fake = ctx.forward("fake", x_renoised_dm, tau_dm, crossattn_emb, no_grad=True)
+    delta_dm = v_real - v_fake
     tau_dm_e = tau_dm.view(B, 1, 1, 1).float()
-    grad_dm = tau_dm_e * delta_dm.float()
-    if cfg.dm_x0_norm:
-        denom = (
-            (tau_dm_e * v_real_cond_dm.float())
-            .abs()
-            .mean(dim=(1, 2, 3), keepdim=True)
-            .clamp_min(cfg.norm_floor)
-        )
-        grad_dm = grad_dm / denom
     return DmdResult(
-        grad_signal=grad_dm.detach(),
+        grad_signal=_dm_signal(cfg, tau_dm_e, delta_dm, v_real),
         delta_dm=delta_dm,
         tau_dm=tau_dm,
         tau_dm_e=tau_dm_e,
-        v_real_cond_dm=v_real_cond_dm,
-        v_fake_cond_dm=v_fake_cond_dm,
+        v_real_cond_dm=v_real,
+        v_fake_cond_dm=v_fake,
         eps_dm=eps_dm,
     )
 
@@ -166,11 +147,10 @@ def mfd_steps(span_max: float, dtau: float, max_steps: int) -> int:
 
 
 def _mean_velocity(v_fn, x_a, sa, sb, K) -> torch.Tensor:
-    """Average Euler velocity of ``v_fn`` from σ=sa to σ=sb (per-sample, K uniform steps).
+    """Mean Euler velocity of ``v_fn`` from σ=sa to σ=sb (per sample, K uniform steps).
 
-    ``(x_a − x_b) / (sa − sb)`` without the division: the uniform-step Euler
-    displacement is ``(sa − sb)·mean_k v_k``, so the mean velocity is accumulated
-    directly. At K=1 it is ``v_fn(x_a, sa)`` bit-for-bit.
+    Accumulates ``mean_k v_k`` instead of dividing the displacement by ``sa − sb``;
+    at K=1 it is ``v_fn(x_a, sa)`` bit for bit.
     """
     B = x_a.shape[0]
     sa_f, sb_f = sa.float(), sb.float()
@@ -194,25 +174,16 @@ def mfd_surrogate(
     c_null: torch.Tensor,
     B: int,
 ) -> DmdResult:
-    """Mean Flow Distillation signal on x_θ (arXiv:2606.11155), in the DMD slot.
+    """Mean Flow Distillation (arXiv:2606.11155) in the DM slot.
 
-    Renoise x_θ to σ_a, integrate the CFG'd teacher and the fake from σ_a to σ_b
-    (K Euler steps, K = ceil((σ_a − σ_b)/dtau) ≤ max_steps), and push x_θ along
-    the endpoint gap ``x_b_real − x_b_fake = −(σ_a − σ_b)·(U_real − U_fake)``.
-    The ODE Jacobian is treated as identity (their §B.6), so the signal enters
-    through the same ``(grad · x_θ)`` trick as DMD. ``interval="to_zero"`` with
-    K=1 reproduces :func:`dmd_surrogate` exactly (same RNG draws, same values).
+    Renoise x_θ to σ_a, integrate the CFG'd teacher and the fake to σ_b in K Euler
+    steps, and push x_θ along the endpoint gap ``−(σ_a − σ_b)·(U_real − U_fake)``.
+    The ODE Jacobian is taken as identity (their §B.6). ``to_zero`` at K=1 equals
+    :func:`dmd_surrogate` (same RNG draws, same values).
 
-    Fields reuse the DMD names for metrics/GAN: ``tau_dm`` = σ_a (the GAN gen
-    renoise level), ``tau_dm_e`` = σ_a − σ_b, ``v_*_cond_dm`` = U_real / U_fake.
+    Field reuse: ``tau_dm`` = σ_a, ``tau_dm_e`` = σ_a − σ_b, ``v_*_cond_dm`` = U.
     """
-    sa = sample_t(
-        B,
-        distribution="uniform",
-        sigmoid_scale=cfg.sigmoid_scale,
-        device=ctx.device,
-        dtype=ctx.dtype,
-    )
+    sa = _uniform_tau(ctx, cfg, B)
     eps_dm = torch.randn_like(x_pred)
     if cfg.mfd_interval == "uniform":
         sb = sa * torch.rand_like(sa)
@@ -225,24 +196,14 @@ def mfd_surrogate(
         return ctx.teacher_cfg_velocity(x, sig, crossattn_emb, c_null)
 
     def _v_fake(x, sig):
-        return ctx.forward("fake", x, sig, crossattn_emb, no_grad=True).squeeze(2)
+        return ctx.forward("fake", x, sig, crossattn_emb, no_grad=True)
 
     u_real = _mean_velocity(_v_real, x_a, sa, sb, K)
     u_fake = _mean_velocity(_v_fake, x_a, sa, sb, K)
     delta = u_real - u_fake
-
     span_e = (sa - sb).view(B, 1, 1, 1).float()
-    grad = span_e * delta.float()
-    if cfg.dm_x0_norm:
-        denom = (
-            (span_e * u_real.float())
-            .abs()
-            .mean(dim=(1, 2, 3), keepdim=True)
-            .clamp_min(cfg.norm_floor)
-        )
-        grad = grad / denom
     return DmdResult(
-        grad_signal=grad.detach(),
+        grad_signal=_dm_signal(cfg, span_e, delta, u_real),
         delta_dm=delta,
         tau_dm=sa,
         tau_dm_e=span_e,
@@ -261,33 +222,21 @@ def cdm_off_trajectory_loss(
     latents: torch.Tensor,
     B: int,
 ) -> None:
-    """L_CDM off-trajectory loss.
+    """L_CDM (arXiv:2605.06376 §3.3), backwarded here.
 
-    From the grad step's on-trajectory (x_g, v_g, σ_g), Euler-extrapolate a large
-    random stride to x_off at t' ~ U(0,1) (velocity-driven; detached, so this is
-    a fresh leaf — one grad forward, no second BPTT chain). The student's local
-    clean estimate there, x0_off = x_off − t'·v_off, gets the same signal as the
-    DM branch: the real-vs-fake DMD surrogate. Supervises the truncation-drift region
-    few-step Euler traverses off-manifold, which on-trajectory rollouts never
-    visit.
+    Euler-extrapolates the grad step's detached (x_g, v_g, σ_g) to t' ~ U(0,1), runs
+    one grad-bearing student forward there, and gives its clean estimate
+    ``x0_off = x_off − t'·v_off`` the DMD signal. Supervises the off-manifold region
+    few-step Euler drifts through, which on-trajectory rollouts never visit.
 
-    ORDER MATTERS: this branch must run BEFORE the GAN gen forward — that
-    forward's checkpointed recompute happens at backward under the then-current
-    view, so this must stay the last view flip of the step.
-
-    VRAM: the CDM student forward is unsloth-checkpointed under ``cdm.grad_ckpt``
-    and BACKWARDED IN-BRANCH, so its graph is freed before the GAN
-    forward builds. The ckpt'd forward recomputes under the then-current view,
-    so the view is restored to 'student' first — backward-while-view-live, the
-    same contract the GAN forward honors.
+    Must run before the GAN gen forward. The student forward is checkpointed under
+    ``cdm.grad_ckpt`` and recomputes at this backward, so the view is set back to
+    'student' first; backwarding here also frees the graph before the GAN forward.
     """
     x_g_cdm, v_g_cdm, s_g_cdm = cdm_src
-    # CPU RNG (seeded by torch.manual_seed, no GPU sync), per-sample.
     t_off = torch.rand(B).to(device=ctx.device, dtype=ctx.dtype)
-    # requires_grad_ is LOAD-BEARING under the unsloth ckpt below:
-    # the reentrant path silently drops the LoRA param grads when
-    # every explicit checkpoint input is detached — the leaf's grad flag
-    # is what forces the autograd node.
+    # The leaf's grad flag is load-bearing: under the unsloth checkpoint, the
+    # reentrant path drops the LoRA param grads when every input is detached.
     x_off = (
         cdm_extrapolate(x_g_cdm, v_g_cdm, s_g_cdm, t_off).to(ctx.dtype).requires_grad_()
     )
@@ -295,51 +244,44 @@ def cdm_off_trajectory_loss(
         selective_block_grad_ckpt(ctx.model) if cfg.cdm_grad_ckpt else nullcontext()
     )
     with cdm_ckpt:
-        v_off = ctx.forward(
-            "student", x_off, t_off, crossattn_emb, no_grad=False
-        ).squeeze(2)
-    # Local clean estimate at t' (their Eq. 1, in our v-param).
+        v_off = ctx.forward("student", x_off, t_off, crossattn_emb, no_grad=False)
     x0_off = x_off.float() - t_off.view(B, 1, 1, 1).float() * v_off.float()
-    tau_cdm = sample_t(
-        B,
-        distribution="uniform",
-        sigmoid_scale=cfg.sigmoid_scale,
-        device=ctx.device,
-        dtype=ctx.dtype,
-    )
+    tau_cdm = _uniform_tau(ctx, cfg, B)
     eps_cdm = torch.randn_like(latents)
     x_renoised_cdm = renoise(x0_off.detach().to(ctx.dtype), tau_cdm, eps_cdm)
     v_real_cdm = ctx.teacher_cfg_velocity(
         x_renoised_cdm, tau_cdm, crossattn_emb, c_null
     )
-    # Transition-aware fake: x0_off is the student's clean estimate at t', so the
-    # fake is queried as for a step at σ = t'; the loop's σ_g is restored after.
+    # Transition-aware fake: x0_off is the student's estimate at t'; σ_g is restored
+    # for the fake update that follows.
     ctx.turbo.set_fake_source(t_off)
     v_fake_cdm = ctx.forward(
         "fake", x_renoised_cdm, tau_cdm, crossattn_emb, no_grad=True
-    ).squeeze(2)
+    )
     ctx.turbo.set_fake_source(s_g_cdm)
-    delta_cdm = v_real_cdm - v_fake_cdm
     tau_cdm_e = tau_cdm.view(B, 1, 1, 1).float()
-    grad_cdm = tau_cdm_e * delta_cdm.float()
-    if cfg.dm_x0_norm:
-        denom_cdm = (
-            (tau_cdm_e * v_real_cdm.float())
-            .abs()
-            .mean(dim=(1, 2, 3), keepdim=True)
-            .clamp_min(cfg.norm_floor)
-        )
-        grad_cdm = grad_cdm / denom_cdm
-    grad_cdm = grad_cdm.detach()
+    grad_cdm = _dm_signal(cfg, tau_cdm_e, v_real_cdm - v_fake_cdm, v_real_cdm)
     cdm_loss = (grad_cdm * x0_off).mean()
-    # Backward NOW, with the student view restored: the ckpt'd forward
-    # above recomputes here and must see the view it was recorded
-    # under (the delta forwards flipped it to teacher/fake). Frees the
-    # CDM graph before the GAN forward; grads accumulate, grad_clip
-    # below clips the full student gradient once.
     ctx.turbo.set_view("student")
     (cfg.cdm_weight * cdm_loss).backward()
     ctx.metrics.add_cdm(grad_cdm)
+
+
+def _teacher_feats(
+    ctx: RunContext, x_t: torch.Tensor, tau: torch.Tensor, crossattn_emb, *, no_grad
+):
+    """Frozen-teacher features at the GAN taps, early exit at the deepest one."""
+    return ctx.turbo.features_in_order(
+        ctx.forward(
+            "teacher",
+            x_t,
+            tau,
+            crossattn_emb,
+            no_grad=no_grad,
+            return_block_features=ctx.turbo.gan_feature_set,
+            return_features_early=True,
+        )
+    )
 
 
 def gan_generator_term(
@@ -351,45 +293,28 @@ def gan_generator_term(
     crossattn_emb: torch.Tensor,
     gan_weight: float,
 ) -> torch.Tensor:
-    """GAN generator term.
+    """GAN generator term on the frozen teacher's features of the renoised x_pred.
 
-    The disc scores the frozen TEACHER's block features of the student's renoised
-    x_pred. Grad must flow into x_pred → student, so this renoise keeps x_pred
-    attached (unlike the DMD path) and the teacher forward is grad-enabled; the
-    disc itself is frozen here. return_features_early stops after the deepest
-    tapped block (half-depth grad forward — full-stack OOM'd).
-
-    No-op when the GAN is off, or while ``gan_weight`` is still 0 inside the
-    delay window — skips the grad-bearing half-depth teacher forward entirely
-    (no RNG draws here, so the skip leaves the step's random stream unchanged),
-    returning a zero loss.
+    The renoise keeps x_pred attached and the teacher forward is grad-enabled, so
+    the grad reaches the student; the disc is frozen here. Early exit keeps it a
+    half-depth forward (full depth OOM'd). Zero loss, no forward and no RNG draw
+    when the GAN is off or ``gan_weight`` is still 0 in the delay window.
     """
     turbo = ctx.turbo
     if turbo.disc is None or gan_weight == 0.0:
         return torch.zeros((), device=ctx.device)
 
     turbo.set_disc_requires_grad(False)
-    x_renoised_gan = renoise(x_pred, tau_dm, eps_dm)  # grad-bearing
-    # Selectively checkpoint just this forward (the only GAN extra that
-    # retains a backward graph); recompute trades ~half-depth compute for
-    # the ~3 GB of retained teacher activations. nullcontext when off.
+    x_renoised_gan = renoise(x_pred, tau_dm, eps_dm)
+    # ~3 GB of retained teacher activations otherwise.
     gan_ckpt = (
         selective_block_grad_ckpt(ctx.model) if cfg.gan_grad_ckpt else nullcontext()
     )
     with gan_ckpt:
-        feats_gen = ctx.forward(
-            "teacher",
-            x_renoised_gan,
-            tau_dm,
-            crossattn_emb,
-            no_grad=False,
-            return_block_features=turbo.gan_feature_set,
-            return_features_early=True,
+        feats = _teacher_feats(
+            ctx, x_renoised_gan, tau_dm, crossattn_emb, no_grad=False
         )
-    fake_logits_gen = turbo.disc(
-        turbo.features_in_order(feats_gen)
-    )  # (B, taps), grad→x_pred
-    return gan_loss_generator(fake_logits_gen)
+    return gan_loss_generator(turbo.disc(feats))
 
 
 def fake_update(
@@ -400,17 +325,13 @@ def fake_update(
     crossattn_emb: torch.Tensor,
     B: int,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Fake (critic) + discriminator update against ``x_pred.detach()``.
+    """Fake (critic) and disc updates against ``x_pred.detach()``.
 
-    ``fake_steps_per_student_step`` inner updates, resampling (τ_fake, ε_fake)
-    each iteration (keeps the fake's target ahead of the moving x_pred dist).
-    When the GAN is on, the discriminator steps once per fake inner step
-    (FastGen cadence). Runs the fake + disc optimizer/scheduler steps in-place;
-    returns (all detached, for logging) mean fake loss, mean disc loss, mean
-    disc margin (mean real − mean fake logit — the "disc winning" signal the
-    hinge means hide, since both sit at equilibrium ≈0.69/1.39 even while
-    per-logit structure does the damage), and mean per-logit spread (std over
-    the fake branch's logits; 0 when the head emits a single logit).
+    ``fake_steps_per_student_step`` inner updates, each on fresh (τ, ε); with the
+    GAN on, the disc steps once per inner update (FastGen cadence). Returns the
+    detached means of fake loss, disc loss, disc margin (mean real − mean fake
+    logit: the hinge losses sit at ≈0.69 / 1.39 even while the disc is winning) and
+    per-logit spread (std of the fake logits; 0 for a single-logit head).
     """
     turbo = ctx.turbo
     device, dtype = ctx.device, ctx.dtype
@@ -419,20 +340,22 @@ def fake_update(
     gan_disc_sum = torch.zeros((), device=device)
     gan_margin_sum = torch.zeros((), device=device)
     gan_spread_sum = torch.zeros((), device=device)
-    for _ in range(cfg.fake_steps_per_student_step):
-        tau_fake = sample_t(
+
+    def _sample_tau():
+        return sample_t(
             B,
             distribution=cfg.t_distribution,
             sigmoid_scale=cfg.sigmoid_scale,
             device=device,
             dtype=dtype,
         )
+
+    for _ in range(cfg.fake_steps_per_student_step):
+        tau_fake = _sample_tau()
         eps_fake = torch.randn_like(x_pred_d)
         x_t_fake = renoise(x_pred_d, tau_fake, eps_fake).requires_grad_()
-        v_fake = ctx.forward(
-            "fake", x_t_fake, tau_fake, crossattn_emb, no_grad=False
-        ).squeeze(2)
-        target_v_fake = eps_fake - x_pred_d  # flow-matching target
+        v_fake = ctx.forward("fake", x_t_fake, tau_fake, crossattn_emb, no_grad=False)
+        target_v_fake = eps_fake - x_pred_d
         fake_loss = nn.functional.mse_loss(v_fake.float(), target_v_fake.float())
         fake_loss.backward()
         if cfg.grad_clip > 0:
@@ -443,82 +366,54 @@ def fake_update(
         fake_loss_sum = fake_loss_sum + fake_loss.detach()
         ctx.tau_profile.add(fake_loss, tau_fake)
 
-        # Discriminator update, co-located with the fake/critic update
-        # (FastGen cadence). The disc scores frozen-TEACHER block features of
-        # renoised fake (x_pred) vs renoised real latents — grad only to the disc
-        # head. gan_use_same_t_noise reuses (τ_fake, ε_fake) for the real branch.
-        if turbo.disc is not None:
-            turbo.set_disc_requires_grad(True)
-            if cfg.gan_use_same_t_noise:
-                tau_d, eps_d = tau_fake, eps_fake
-            else:
-                tau_d = sample_t(
-                    B,
-                    distribution=cfg.t_distribution,
-                    sigmoid_scale=cfg.sigmoid_scale,
-                    device=device,
-                    dtype=dtype,
-                )
-                eps_d = torch.randn_like(x_pred_d)
+        if turbo.disc is None:
+            continue
+        # Disc: renoised x_pred vs renoised real latents through the frozen teacher
+        # (no grad), grad only to the disc head.
+        turbo.set_disc_requires_grad(True)
+        if cfg.gan_use_same_t_noise:
+            tau_d, eps_d = tau_fake, eps_fake
+        else:
+            tau_d = _sample_tau()
+            eps_d = torch.randn_like(x_pred_d)
 
-            # Feature-only teacher forwards (no_grad → grad only to the disc
-            # head). Early-exit at the deepest tap; each call returns its own
-            # feature dict, so the fake/real captures never alias.
-            def _disc_feats(latent_in):
-                return turbo.features_in_order(
-                    ctx.forward(
-                        "teacher",
-                        renoise(latent_in, tau_d, eps_d),
-                        tau_d,
-                        crossattn_emb,
-                        no_grad=True,
-                        return_block_features=turbo.gan_feature_set,
-                        return_features_early=True,
-                    )
-                )
+        def _disc_logits(latent_in, extra_noise=None):
+            x_t = renoise(latent_in, tau_d, eps_d)
+            if extra_noise is not None:
+                x_t = x_t + extra_noise
+            return turbo.disc(
+                _teacher_feats(ctx, x_t, tau_d, crossattn_emb, no_grad=True)
+            )
 
-            fake_logits_d = turbo.disc(_disc_feats(x_pred_d))
-            real_logits_d = turbo.disc(_disc_feats(latents))
-            loss_disc = gan_loss_discriminator(real_logits_d, fake_logits_d)
-            with torch.no_grad():
-                gan_margin_sum = gan_margin_sum + (
-                    real_logits_d.mean() - fake_logits_d.mean()
-                )
-                fl = fake_logits_d.flatten()
-                if fl.numel() > 1:  # host-side shape check, no sync
-                    gan_spread_sum = gan_spread_sum + fl.std()
+        fake_logits_d = _disc_logits(x_pred_d)
+        real_logits_d = _disc_logits(latents)
+        loss_disc = gan_loss_discriminator(real_logits_d, fake_logits_d)
+        with torch.no_grad():
+            gan_margin_sum = gan_margin_sum + (
+                real_logits_d.mean() - fake_logits_d.mean()
+            )
+            fl = fake_logits_d.flatten()
+            if fl.numel() > 1:
+                gan_spread_sum = gan_spread_sum + fl.std()
 
-            # Approximate-R1 (APT): penalize disc logit change under a small
-            # perturbation of the real disc input. Perturb the renoised real
-            # latent directly (the tensor whose features feed the disc).
-            if cfg.gan_r1_weight > 0.0:
-                x_t_real_a = renoise(
-                    latents, tau_d, eps_d
-                ) + cfg.gan_r1_alpha * torch.randn_like(latents)
-                feats_a = ctx.forward(
-                    "teacher",
-                    x_t_real_a,
-                    tau_d,
-                    crossattn_emb,
-                    no_grad=True,
-                    return_block_features=turbo.gan_feature_set,
-                    return_features_early=True,
-                )
-                real_logits_a = turbo.disc(turbo.features_in_order(feats_a))
-                loss_disc = loss_disc + cfg.gan_r1_weight * nn.functional.mse_loss(
-                    real_logits_d, real_logits_a
-                )
+        # Approximate R1 (APT): logit change under a small perturbation of the
+        # renoised real input.
+        if cfg.gan_r1_weight > 0.0:
+            real_logits_a = _disc_logits(
+                latents, cfg.gan_r1_alpha * torch.randn_like(latents)
+            )
+            loss_disc = loss_disc + cfg.gan_r1_weight * nn.functional.mse_loss(
+                real_logits_d, real_logits_a
+            )
 
-            loss_disc.backward()
-            if cfg.grad_clip > 0:
-                torch.nn.utils.clip_grad_norm_(
-                    turbo.disc_params(), max_norm=cfg.grad_clip
-                )
-            ctx.disc_opt.step()
-            ctx.disc_opt.zero_grad(set_to_none=True)
-            ctx.disc_sched.step()
-            turbo.set_disc_requires_grad(False)
-            gan_disc_sum = gan_disc_sum + loss_disc.detach()
+        loss_disc.backward()
+        if cfg.grad_clip > 0:
+            torch.nn.utils.clip_grad_norm_(turbo.disc_params(), max_norm=cfg.grad_clip)
+        ctx.disc_opt.step()
+        ctx.disc_opt.zero_grad(set_to_none=True)
+        ctx.disc_sched.step()
+        turbo.set_disc_requires_grad(False)
+        gan_disc_sum = gan_disc_sum + loss_disc.detach()
     n_inner = cfg.fake_steps_per_student_step
     return (
         fake_loss_sum / n_inner,

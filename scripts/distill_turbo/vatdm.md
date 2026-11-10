@@ -140,7 +140,7 @@ CFG-guided; ours would have to be, since the DM real score is (`dmd_surrogate` d
 
 Match `x_{g+1}` perturbed to τ > σ_{g+1}, not `x_pred`. Structural: the fake models the
 perturbed `x_s` distribution, and the DP-DMD anchor and L_CDM have to be re-placed around it.
-The output is still a normal LoRA on Euler, unlike data-space iteration (`idea.md` §5).
+The output is still a normal LoRA on Euler, unlike data-space iteration (`docs/anima/proposal/turbo_data_space.md` §5).
 
 ### 4. B-form, flow-product mix
 
