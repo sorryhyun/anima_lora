@@ -135,6 +135,50 @@ unchanged). Control: `1111_1740`. On the 96 probe draws it lifts the effective d
 4 (P(σ_a > 0.9) 1.4 % against 10 %). It changes the objective, not only its variance: the
 σ_a > 0.75 mass drops from 25 % to 14 %. Read as `1111_1740`, criterion 1 against its renders.
 
+## Checkpoint averages (2026-11-11): taking the walk out does not beat 250
+
+Exact ΔW averages of saved checkpoints (`merge_loras.py --normalize off --adaln sum`, equal
+weights), rendered as the sweeps above (2 steps, cfg 1, same prompts and seeds). Grids:
+`output/tests/superturbo/avg/cmp_{anima,nozomi}.jpg`.
+
+| Average | ANIMA sign | nozomi |
+|---|---|---|
+| `avg3_1115`: `1111_1115` at 250 / 375 / 500 | letters still broken and doubled, level with its 250 | stray dark shapes, a blue can; below its 250 |
+| `avg2_500`: `1111_1115` and `1111_1740` at 500 | bolder, cleaner strokes; spelling still wrong | two cans on seeds 43, 44 |
+| `avg6_both`: both runs at 250 / 375 / 500 | the calmest row, seed 3 nearly "ANIM.A" | two cans on seeds 43, 44 |
+
+- The averages undo what `1111_1115` drew at 500 (benches, vehicles, brown hair): the scene is
+  trees and sky again. The walk is what degrades the late checkpoints.
+- None of them is above `1111_1115` at 250, which stays the cleanest nozomi row. With the walk
+  removed after the fact, the result is the 250 level.
+- Read by Claude on the 448 px grids, not per glyph at full size.
+
+What this does not test: whether a cleaner gradient during training moves the point the student
+settles at. The fake tracks a student that jitters every step, and every step is a unit-norm
+vote under the clip.
+
+## Next: gradient accumulation (`1111_2056`, queued 2026-11-11)
+
+`optim.grad_accum` (default 1; `steps.ClippedGradMean`, test in `tests/test_turbo_mfd.py`): the
+student optimizer steps once per `grad_accum` loop iterations on the mean of the per-iteration
+clipped gradients. Clipping before the sum keeps a high-σ_a draw at one vote; clipping the sum
+would repeat the 2.23-of-4 loss measured for `dm_draws`. The fake and the disc update every
+iteration. `iterations`, `save_every`, the GAN delay and the logs count loop iterations; the
+student LR schedule and the EMA count student updates.
+
+From the probe's shares, 4 independent (sample, draw) gradients take the mean share from 3 % to
+about 11 % (8: about 20 %); `dm_draws` caps near 13 % because it leaves the between-sample 20 %.
+
+`1111_2056` (config `output/ckpt/1111_2056.config.toml`): `1111_1115` with `grad_accum = 4`,
+1000 iterations = 250 student updates, `fake_steps_per_student_step = 1` (4 fake and disc
+updates per student update, as in the control, each on a different x_θ), GAN delay / ramp
+400 / 400, `save_every = 500`, `ema.window = 0.2` (the control's 50-update span). Smoke: 8
+iterations ran clean, peak 13.21 GB.
+
+Read, fixed here: the final checkpoint (250 student updates, raw and EMA), same prompts and
+seeds, against `1111_1115` at 250 and `avg6_both`. It passes if it beats both. Level with
+`avg6_both` means the 250 level is this objective's 2-step ceiling, and the 2-step line closes.
+
 ## Later, each on its own
 
 - `lr_schedule = "cosine"`: the one setting seen to stop the walk.

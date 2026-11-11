@@ -47,6 +47,7 @@ from .primitives import gan_effective_weight, sample_dynamic_sigmas
 from .resume import resume_path_for, save_resume_state
 from .setup import RunContext, build_run
 from .steps import (
+    ClippedGradMean,
     cdm_off_trajectory_loss,
     clip_or_norm,
     dm_slot,
@@ -97,6 +98,8 @@ def _student_metadata(cfg, ctx: RunContext, step: int) -> dict[str, str]:
         md["ss_turbo_rollout_grad"] = "1"
     if cfg.dm_draws > 1:
         md["ss_turbo_dm_draws"] = str(cfg.dm_draws)
+    if cfg.grad_accum > 1:
+        md["ss_turbo_grad_accum"] = str(cfg.grad_accum)
     if cfg.dm_tau_distribution != "uniform":
         md["ss_turbo_dm_tau"] = f"{cfg.dm_tau_distribution}:{cfg.dm_tau_scale}"
     if cfg.mfd_dtau > 0.0:
@@ -139,6 +142,12 @@ def run_loop(ctx: RunContext, cfg):
     writer = ctx.writer
     progress_sink = ctx.progress_sink
     metrics = ctx.metrics
+
+    grad_mean = (
+        ClippedGradMean(turbo.student_params(), cfg.grad_accum)
+        if cfg.grad_accum > 1
+        else None
+    )
 
     progress = tqdm(
         range(ctx.start_step, cfg.iterations),
@@ -244,11 +253,12 @@ def run_loop(ctx: RunContext, cfg):
                 turbo.set_view("student")
             loss_student.backward()
             gn_student = clip_or_norm(turbo.student_params(), cfg.grad_clip)
-            student_opt.step()
+            if grad_mean is None or grad_mean.add():
+                student_opt.step()
+                student_sched.step()
+                if ctx.ema is not None:
+                    ctx.ema.step()
             student_opt.zero_grad(set_to_none=True)
-            student_sched.step()
-            if ctx.ema is not None:
-                ctx.ema.step()
 
             # --- fake (critic) + discriminator update against x_pred.detach() ---
             (

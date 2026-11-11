@@ -18,7 +18,9 @@ import torch
 
 from scripts.distill_turbo.config import build_argparser, resolve_config
 from scripts.distill_turbo.steps import (
+    ClippedGradMean,
     _mean_velocity,
+    clip_or_norm,
     dm_slot,
     dmd_surrogate,
     mfd_steps,
@@ -175,7 +177,9 @@ def test_dm_draws_config():
 def test_dm_tau_distribution():
     c = _resolve()
     assert c.dm_tau_distribution == "uniform" and c.dm_tau_scale == 1.0
-    c = _resolve(cfg={"dmd": {"dm_tau_distribution": "logit_normal", "dm_tau_scale": 0.8}})
+    c = _resolve(
+        cfg={"dmd": {"dm_tau_distribution": "logit_normal", "dm_tau_scale": 0.8}}
+    )
     assert c.dm_tau_distribution == "logit_normal" and c.dm_tau_scale == 0.8
     with pytest.raises(ValueError, match="dm_tau_distribution"):
         _resolve(["--dm_tau_distribution", "beta"])
@@ -188,3 +192,28 @@ def test_dm_tau_distribution():
     assert 0.0 < float(tau.min()) and float(tau.max()) < 1.0
     assert abs(float(tau.mean()) - 0.5) < 0.02
     assert float((tau > 0.9).float().mean()) < 0.03  # uniform would give 0.10
+
+
+def test_grad_accum_is_mean_of_clipped_grads():
+    assert _resolve().grad_accum == 1
+    assert _resolve(cfg={"optim": {"grad_accum": 4}}).grad_accum == 4
+    with pytest.raises(ValueError, match="grad_accum"):
+        _resolve(["--grad_accum", "0"])
+
+    w = torch.nn.Parameter(torch.zeros(3))
+    unused = torch.nn.Parameter(torch.zeros(2))
+    acc = ClippedGradMean([w, unused], 2)
+    grads = [torch.tensor([30.0, 0.0, 0.0]), torch.tensor([0.0, 0.5, 0.0])]
+    done = []
+    for g in grads:
+        w.grad = g.clone()
+        clip_or_norm([w, unused], 1.0)
+        done.append(acc.add())
+        if not done[-1]:
+            w.grad = None
+    assert done == [False, True]
+    torch.testing.assert_close(
+        w.grad, torch.tensor([0.5, 0.25, 0.0]), atol=1e-5, rtol=0
+    )
+    assert float(unused.grad.abs().sum()) == 0.0
+    assert acc.count == 0 and float(acc.sums[0].abs().sum()) == 0.0

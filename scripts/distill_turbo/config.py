@@ -100,6 +100,15 @@ def build_argparser() -> argparse.ArgumentParser:
         help="Fake updates per student step, each on fresh (τ, ε).",
     )
     parser.add_argument(
+        "--grad_accum",
+        type=int,
+        default=None,
+        help="Loop iterations per student optimizer step. Each iteration's student "
+        "gradient is clipped on its own and their mean is applied; the fake and the "
+        "disc still update every iteration. iterations, save_every, the GAN delay "
+        "and the logs count loop iterations.",
+    )
+    parser.add_argument(
         "--fake_warmup_steps",
         type=int,
         default=-1,
@@ -460,6 +469,7 @@ class TurboConfig:
     fake_lr: float
     fake_steps_per_student_step: int
     fake_warmup_steps: int
+    grad_accum: int
     weight_decay: float
     grad_clip: float
     lr_schedule: str  # cosine | constant
@@ -660,6 +670,9 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     fake_warmup_steps = int(
         _pick(args.fake_warmup_steps, cfg, "optim.fake_warmup_steps", 0)
     )
+    grad_accum = int(_pick(args.grad_accum, cfg, "optim.grad_accum", 1))
+    if grad_accum < 1:
+        raise ValueError(f"optim.grad_accum={grad_accum}: must be >= 1")
     weight_decay = float(_flatten(cfg, "optim.weight_decay", 0.0))
     grad_clip = float(_flatten(cfg, "optim.grad_clip", 1.0))
     lr_schedule = str(_pick(args.lr_schedule, cfg, "optim.lr_schedule", "cosine"))
@@ -871,6 +884,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         fake_lr=fake_lr,
         fake_steps_per_student_step=fake_steps_per_student_step,
         fake_warmup_steps=fake_warmup_steps,
+        grad_accum=grad_accum,
         weight_decay=weight_decay,
         grad_clip=grad_clip,
         lr_schedule=lr_schedule,
@@ -942,6 +956,7 @@ _TB_KEYS = (
     "lr_schedule",
     "ema_window",
     "fake_steps_per_student_step",
+    "grad_accum",
     "iterations",
     "batch_size",
     "t_distribution",

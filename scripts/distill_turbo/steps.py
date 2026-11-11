@@ -437,6 +437,37 @@ def gan_generator_term(
     return gan_loss_generator(turbo.disc(feats))
 
 
+class ClippedGradMean:
+    """Mean of the student gradient over ``n`` loop iterations (``optim.grad_accum``).
+
+    The caller clips each iteration's gradient before :meth:`add`, so every
+    iteration enters at norm ≤ ``grad_clip``. Clipping the sum instead lets a
+    high-σ_a draw (DM grad norm 20–30 against a median near 2,
+    bench/turbo/results/20261111-1312-grad_noise) outweigh the rest of its group.
+    """
+
+    def __init__(self, params, n: int):
+        self.params = list(params)
+        self.n = n
+        self.count = 0
+        self.sums = [torch.zeros_like(p) for p in self.params]
+
+    def add(self) -> bool:
+        """Take the current ``.grad`` into the sum. On the ``n``-th call the mean
+        is written back to ``.grad`` and True is returned."""
+        for s, p in zip(self.sums, self.params):
+            if p.grad is not None:
+                s.add_(p.grad)
+        self.count += 1
+        if self.count < self.n:
+            return False
+        for s, p in zip(self.sums, self.params):
+            p.grad = s / self.n
+            s.zero_()
+        self.count = 0
+        return True
+
+
 def clip_or_norm(params, grad_clip: float) -> torch.Tensor:
     """Clip to ``grad_clip`` (off at ≤ 0) and return the pre-clip total norm."""
     max_norm = grad_clip if grad_clip > 0 else float("inf")

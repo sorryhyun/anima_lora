@@ -356,8 +356,9 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         weight_decay=cfg.weight_decay,
         fused=torch.cuda.is_available(),
     )
+    student_updates = cfg.iterations // cfg.grad_accum
     student_sched = make_scheduler(
-        student_opt, cfg.iterations, cfg.student_lr, cfg.lr_schedule
+        student_opt, student_updates, cfg.student_lr, cfg.lr_schedule
     )
     # The fake schedule also spans the head-start, so its LR warmup overlaps it
     # and the fake enters the main loop at full LR.
@@ -627,10 +628,10 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
             turbo.student_params(),
             cfg.ema_window,
             "",
-            updates=cfg.iterations,
-            start=scheduler_warmup_steps(cfg.iterations),
+            updates=student_updates,
+            start=scheduler_warmup_steps(student_updates),
         )
-        ema.n_updates = start_step
+        ema.n_updates = start_step // cfg.grad_accum
         logger.info(f"student {ema.describe()}")
 
     # Off a TTY, mirror the tqdm metrics as a throttled logger.info at log_interval
