@@ -90,6 +90,7 @@ def _student_metadata(cfg, ctx: RunContext, step: int) -> dict[str, str]:
         ss_turbo_gan_delay_steps=str(cfg.gan_delay_steps),
         ss_turbo_gan_warmup_steps=str(cfg.gan_warmup_steps),
         ss_turbo_cdm_weight=str(cfg.cdm_weight),
+        ss_turbo_lr_schedule=cfg.lr_schedule,
     )
     if cfg.dm_first_step:
         md["ss_turbo_dm_first_step"] = "1"
@@ -246,6 +247,8 @@ def run_loop(ctx: RunContext, cfg):
             student_opt.step()
             student_opt.zero_grad(set_to_none=True)
             student_sched.step()
+            if ctx.ema is not None:
+                ctx.ema.step()
 
             # --- fake (critic) + discriminator update against x_pred.detach() ---
             (
@@ -370,6 +373,17 @@ def run_loop(ctx: RunContext, cfg):
                     logger.info(f"saved checkpoint: {save_path}")
                     if progress_sink is not None:
                         progress_sink.ckpt(global_step=n, path=save_path)
+                ema = ctx.ema
+                if ema is not None and ema.started:
+                    ema_md = {**metadata, **ema.metadata()}
+                    with ema.swapped_in():
+                        for save_path in save_paths:
+                            ema_path = save_path.removesuffix(".safetensors")
+                            ema_path += "_ema.safetensors"
+                            turbo.save_student(
+                                ema_path, dtype=torch.bfloat16, metadata=ema_md
+                            )
+                            logger.info(f"saved EMA checkpoint: {ema_path}")
 
                 # Rolling crash-resume bundle (~10× a student file); none at the end.
                 if not is_final:

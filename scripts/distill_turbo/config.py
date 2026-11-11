@@ -78,6 +78,20 @@ def build_argparser() -> argparse.ArgumentParser:
         "fake); 0 off, 0.5 sqrt-balance.",
     )
     parser.add_argument("--student_lr", type=float, default=-1.0)
+    parser.add_argument(
+        "--lr_schedule",
+        choices=["cosine", "constant"],
+        default=None,
+        help="Shape after the 2%% linear warmup, for student, fake and disc: "
+        "cosine to 0.1·lr (default) or constant.",
+    )
+    parser.add_argument(
+        "--ema_window",
+        type=float,
+        default=-1.0,
+        help="Student EMA span as a fraction of the run (0 = off); saves a "
+        "*_ema.safetensors beside each checkpoint.",
+    )
     parser.add_argument("--fake_lr", type=float, default=-1.0)
     parser.add_argument(
         "--fake_steps_per_student_step",
@@ -429,6 +443,8 @@ class TurboConfig:
     fake_warmup_steps: int
     weight_decay: float
     grad_clip: float
+    lr_schedule: str  # cosine | constant
+    ema_window: float  # student EMA span; 0 = off
 
     # Sampling distribution
     t_distribution: str
@@ -614,6 +630,14 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     )
     weight_decay = float(_flatten(cfg, "optim.weight_decay", 0.0))
     grad_clip = float(_flatten(cfg, "optim.grad_clip", 1.0))
+    lr_schedule = str(_pick(args.lr_schedule, cfg, "optim.lr_schedule", "cosine"))
+    if lr_schedule not in ("cosine", "constant"):
+        raise ValueError(
+            f"optim.lr_schedule={lr_schedule!r}: expected cosine or constant"
+        )
+    ema_window = float(_pick(args.ema_window, cfg, "ema.window", 0.0))
+    if not 0.0 <= ema_window <= 1.0:
+        raise ValueError(f"ema.window={ema_window}: must be in [0, 1]")
 
     # Sampling
     t_distribution = _flatten(cfg, "sampling.t_distribution", "uniform")
@@ -814,6 +838,8 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         fake_warmup_steps=fake_warmup_steps,
         weight_decay=weight_decay,
         grad_clip=grad_clip,
+        lr_schedule=lr_schedule,
+        ema_window=ema_window,
         t_distribution=t_distribution,
         sigmoid_scale=sigmoid_scale,
         blocks_to_swap=int(args.blocks_to_swap),
@@ -878,6 +904,8 @@ _TB_KEYS = (
     "fake_warmup_steps",
     "student_lr",
     "fake_lr",
+    "lr_schedule",
+    "ema_window",
     "fake_steps_per_student_step",
     "iterations",
     "batch_size",

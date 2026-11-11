@@ -51,11 +51,17 @@ from library.training.distill_runtime import (
     write_config_snapshot,
 )
 from library.runtime.progress import ProgressSink, command_job_path
+from library.training.ema import AdapterEMA
 from networks.methods.turbo_dmd import TurboDMDNetwork, warm_start_plain_lora
 
 from .config import TurboConfig, snapshot_toml_text, tb_config_text
 from .metrics import TauBinCriticLoss, TurboMetrics
-from .primitives import PadCache, make_collate, make_scheduler
+from .primitives import (
+    PadCache,
+    make_collate,
+    make_scheduler,
+    scheduler_warmup_steps,
+)
 from .resume import (
     apply_resume_state,
     load_resume_state,
@@ -140,6 +146,7 @@ class RunContext:
 
     start_step: int
     int8_base_id: str = ""
+    ema: AdapterEMA | None = None  # student EMA (ema_window > 0)
 
 
 def build_run(args, cfg: TurboConfig) -> RunContext:
@@ -349,7 +356,9 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         weight_decay=cfg.weight_decay,
         fused=torch.cuda.is_available(),
     )
-    student_sched = make_scheduler(student_opt, cfg.iterations, cfg.student_lr)
+    student_sched = make_scheduler(
+        student_opt, cfg.iterations, cfg.student_lr, cfg.lr_schedule
+    )
     # The fake schedule also spans the head-start, so its LR warmup overlaps it
     # and the fake enters the main loop at full LR.
     fake_opt = torch.optim.AdamW(
@@ -362,6 +371,7 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         fake_opt,
         cfg.iterations * cfg.fake_steps_per_student_step + cfg.fake_warmup_steps,
         cfg.fake_lr,
+        cfg.lr_schedule,
     )
 
     # Disc steps once per fake inner step; no head-start.
@@ -378,6 +388,7 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
             disc_opt,
             cfg.iterations * cfg.fake_steps_per_student_step,
             cfg.gan_disc_lr,
+            cfg.lr_schedule,
         )
         n_disc = sum(p.numel() for p in turbo.disc_params())
         logger.info(f"trainable: disc={n_disc:,}")
@@ -608,6 +619,20 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         f"steps {start_step} → {cfg.iterations}"
     )
 
+    # Student EMA from the end of the LR warmup. Shadows are not in the resume
+    # bundle, so a resumed run re-seeds at its first update.
+    ema = None
+    if cfg.ema_window > 0.0:
+        ema = AdapterEMA(
+            turbo.student_params(),
+            cfg.ema_window,
+            "",
+            updates=cfg.iterations,
+            start=scheduler_warmup_steps(cfg.iterations),
+        )
+        ema.n_updates = start_step
+        logger.info(f"student {ema.describe()}")
+
     # Off a TTY, mirror the tqdm metrics as a throttled logger.info at log_interval
     # cadence (``metrics.console_step_line``).
     try:
@@ -647,5 +672,6 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         val_latent_shape=val_latent_shape,
         val_clean=val_clean,
         start_step=start_step,
+        ema=ema,
     )
     return ctx

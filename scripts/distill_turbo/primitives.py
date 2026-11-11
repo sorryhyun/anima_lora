@@ -19,6 +19,7 @@ __all__ = [
     "sample_t",
     "gan_effective_weight",
     "make_scheduler",
+    "scheduler_warmup_steps",
     "PadCache",
     "make_collate",
     "sample_dynamic_sigmas",
@@ -78,13 +79,26 @@ def gan_effective_weight(cfg, step: int) -> float:
     return cfg.gan_loss_weight_gen
 
 
-def make_scheduler(opt, total_steps: int, lr: float):
-    """Warmup (2% of ``total_steps``, ≥1 step) → cosine annealing to ``0.1·lr``.
+def scheduler_warmup_steps(total_steps: int) -> int:
+    """Linear warmup length of :func:`make_scheduler`: 2% of ``total_steps``, ≥1."""
+    return max(1, int(0.02 * total_steps))
 
-    Cosine is the only shape: a constant schedule never settles (full-magnitude
-    updates to the last step) and rendered worse.
+
+def make_scheduler(opt, total_steps: int, lr: float, shape: str = "cosine"):
+    """Linear warmup (:func:`scheduler_warmup_steps`) → cosine to ``0.1·lr``, or
+    constant at ``lr`` (``shape="constant"``).
+
+    Without a student EMA, constant rendered worse than cosine: updates stay at
+    full magnitude to the last step. Constant is meant for EMA runs, where the
+    EMA does the settling.
     """
-    warmup_steps = max(1, int(0.02 * total_steps))
+    warmup_steps = scheduler_warmup_steps(total_steps)
+    if shape == "constant":
+        from torch.optim.lr_scheduler import ConstantLR, LinearLR, SequentialLR
+
+        warmup = LinearLR(opt, start_factor=1e-6 / lr, total_iters=warmup_steps)
+        const = ConstantLR(opt, factor=1.0, total_iters=0)
+        return SequentialLR(opt, schedulers=[warmup, const], milestones=[warmup_steps])
     return make_warmup_cosine_scheduler(
         opt,
         total_steps,
