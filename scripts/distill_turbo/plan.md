@@ -127,7 +127,7 @@ iid, 1.93 stratified by σ_a (one draw per quarter forces a tail draw into every
 σ_a capped at 0.9, 2.84 with each draw divided by its bin's median norm, 4 with a per-draw
 backward normalised to unit norm.
 
-## Next: logit-normal σ_a (`1111_1916`)
+## Next: logit-normal σ_a (not run; config `output/ckpt/next_logit_normal.config.toml`)
 
 `1111_1740` with `dmd.dm_tau_distribution = "logit_normal"`, `dm_tau_scale = 1.0` (σ_a =
 sigmoid(N(0,1)) on the DM / MFD query; the GAN generator renoise reuses it; CDM, fake update
