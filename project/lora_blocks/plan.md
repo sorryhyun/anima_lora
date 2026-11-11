@@ -9,6 +9,10 @@ read on the sanitize eval (`ref_gate.py --part sanitize --arms ctrl,cut`, five p
 judged on `ctrl`: a fine-tune learns what to remove from its pairs and ships without a mask; `cut` is a side read.
 Queued 2026-11-11: `configs/1111_1630.toml` (shared bank) and `configs/1111_1631.toml` (kv), renders
 in `output/tests/ref_gate/20261111-sanft-1111_163{0,1}`.
+Rendered 2026-11-11, **needs the user's eye** (`sheet_*.png`): a first read finds no clear winner.
+Shared bank removes everything and over-erases (the anger-mark bubble and balloon outlines on
+hard_to_sanitize1, the sweater pattern smudged in usual_case1 s0/s1); kv keeps the page but leaves
+residue (usual_case1 s1/s2) and fills hard_to_sanitize2's red balloons with a red blob.
 The copy line and the tasks built on it follow the winner.
 
 The problem that sets the order is Korean strokes. colorize v5 and swap_text ksplit e2 both

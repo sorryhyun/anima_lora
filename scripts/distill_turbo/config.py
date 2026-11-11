@@ -123,6 +123,13 @@ def build_argparser() -> argparse.ArgumentParser:
         "τ·Δ / clamp(τ·mean|v_real|, norm_floor), so τ cancels.",
     )
     parser.add_argument(
+        "--dm_draws",
+        type=int,
+        default=None,
+        help="(σ_a, ε_dm) draws averaged into the DM signal on the same x_θ; each "
+        "extra draw costs the DM slot's no-grad teacher-CFG and fake forwards again.",
+    )
+    parser.add_argument(
         "--norm_floor",
         type=float,
         default=-1.0,
@@ -410,6 +417,7 @@ class TurboConfig:
     teacher_cfg: float
     dm_x0_norm: bool
     norm_floor: float
+    dm_draws: int
     # CDM dynamic schedule: a fresh rollout grid per step (t₁ = 1 pinned);
     # validation and inference stay on the static grid.
     dynamic_schedule: bool
@@ -547,6 +555,9 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     teacher_cfg = float(_flatten(cfg, "dmd.teacher_cfg", 4.0))
     dm_x0_norm = bool(_pick(args.dm_x0_norm, cfg, "dmd.dm_x0_norm", False))
     norm_floor = float(_pick(args.norm_floor, cfg, "dmd.norm_floor", 0.05))
+    dm_draws = int(_pick(args.dm_draws, cfg, "dmd.dm_draws", 1))
+    if dm_draws < 1:
+        raise ValueError(f"dmd.dm_draws={dm_draws}: must be >= 1")
     dynamic_schedule = bool(_flatten(cfg, "dmd.dynamic_schedule", False))
 
     cdm_weight = float(_pick(args.cdm_weight, cfg, "cdm.weight", 0.0))
@@ -815,6 +826,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         teacher_cfg=teacher_cfg,
         dm_x0_norm=dm_x0_norm,
         norm_floor=norm_floor,
+        dm_draws=dm_draws,
         dynamic_schedule=dynamic_schedule,
         cdm_weight=cdm_weight,
         cdm_grad_ckpt=cdm_grad_ckpt,

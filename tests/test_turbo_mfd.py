@@ -4,6 +4,8 @@
   RNG draws, same signal), so MFD is a strict generalisation of the shipped DM term.
 * K > 1 must be the uniform-step Euler mean velocity ``(x_a − x_b)/(σ_a − σ_b)``.
 * config resolve: off by default, CLI/TOML plumbing, validation.
+* ``dm_slot``: ``dm_draws = 1`` is the surrogate call bit for bit; N draws average
+  the signal of N sequential calls and keep the first draw's other fields.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ import torch
 from scripts.distill_turbo.config import build_argparser, resolve_config
 from scripts.distill_turbo.steps import (
     _mean_velocity,
+    dm_slot,
     dmd_surrogate,
     mfd_steps,
     mfd_surrogate,
@@ -130,3 +133,40 @@ def test_config_default_off_and_overrides():
     assert c.mfd_dtau == 0.05 and c.mfd_max_steps == 6
     with pytest.raises(ValueError, match="mfd.dtau"):
         _resolve(["--mfd_dtau", "-0.1"])
+
+
+@pytest.mark.core
+@pytest.mark.parametrize("dtau", [0.0, 0.25])
+def test_dm_slot_draws(dtau):
+    base = dataclasses.replace(_resolve(), dm_x0_norm=True, mfd_dtau=dtau)
+    fn = mfd_surrogate if dtau > 0.0 else dmd_surrogate
+    ctx = _ctx()
+    x_pred = torch.randn(2, 16, 8, 8)
+    c = torch.randn(2, 4, 32)
+    c_null = torch.randn(2, 4, 32)
+
+    torch.manual_seed(3)
+    want = fn(ctx, base, x_pred, c, c_null, 2)
+    torch.manual_seed(3)
+    got = dm_slot(ctx, base, x_pred, c, c_null, 2)
+    for f in dataclasses.fields(want):
+        assert torch.equal(getattr(got, f.name), getattr(want, f.name)), f.name
+
+    torch.manual_seed(3)
+    draws = [fn(ctx, base, x_pred, c, c_null, 2) for _ in range(4)]
+    torch.manual_seed(3)
+    got = dm_slot(ctx, dataclasses.replace(base, dm_draws=4), x_pred, c, c_null, 2)
+    mean = torch.stack([d.grad_signal for d in draws]).mean(0)
+    torch.testing.assert_close(got.grad_signal, mean)
+    assert not torch.allclose(got.grad_signal, draws[0].grad_signal)
+    assert torch.equal(got.tau_dm, draws[0].tau_dm)
+    assert torch.equal(got.eps_dm, draws[0].eps_dm)
+    assert torch.equal(got.delta_dm, draws[0].delta_dm)
+
+
+def test_dm_draws_config():
+    assert _resolve().dm_draws == 1
+    assert _resolve(cfg={"dmd": {"dm_draws": 4}}).dm_draws == 4
+    assert _resolve(["--dm_draws", "3"], {"dmd": {"dm_draws": 4}}).dm_draws == 3
+    with pytest.raises(ValueError, match="dm_draws"):
+        _resolve(["--dm_draws", "0"])

@@ -9,7 +9,7 @@ and ``fake_update`` steps the fake and disc optimizers.
 from __future__ import annotations
 
 from contextlib import contextmanager, nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import torch
 import torch.nn as nn
@@ -291,6 +291,32 @@ def mfd_surrogate(
         v_fake_cond_dm=u_fake,
         eps_dm=eps_dm,
     )
+
+
+def dm_slot(
+    ctx: RunContext,
+    cfg,
+    x_pred: torch.Tensor,
+    crossattn_emb: torch.Tensor,
+    c_null: torch.Tensor,
+    B: int,
+) -> DmdResult:
+    """The DM-slot surrogate (MFD when ``mfd_dtau > 0``, else DMD) over
+    ``dm_draws`` independent (σ_a, ε_dm) draws on the same ``x_pred``.
+
+    ``grad_signal`` is the mean of the per-draw signals (each keeps its own
+    ``dm_x0_norm`` division); every other field is the first draw's, so the GAN
+    renoise and the metrics see what a single draw gives. At ``dm_draws = 1``
+    this is the surrogate call bit for bit.
+    """
+    fn = mfd_surrogate if cfg.mfd_dtau > 0.0 else dmd_surrogate
+    first = fn(ctx, cfg, x_pred, crossattn_emb, c_null, B)
+    if cfg.dm_draws <= 1:
+        return first
+    acc = first.grad_signal.clone()
+    for _ in range(cfg.dm_draws - 1):
+        acc += fn(ctx, cfg, x_pred, crossattn_emb, c_null, B).grad_signal
+    return replace(first, grad_signal=acc / cfg.dm_draws)
 
 
 def cdm_off_trajectory_loss(

@@ -49,8 +49,7 @@ from .setup import RunContext, build_run
 from .steps import (
     cdm_off_trajectory_loss,
     clip_or_norm,
-    dmd_surrogate,
-    mfd_surrogate,
+    dm_slot,
     fake_update,
     gan_generator_term,
     student_rollout,
@@ -96,6 +95,8 @@ def _student_metadata(cfg, ctx: RunContext, step: int) -> dict[str, str]:
         md["ss_turbo_dm_first_step"] = "1"
     if cfg.rollout_grad:
         md["ss_turbo_rollout_grad"] = "1"
+    if cfg.dm_draws > 1:
+        md["ss_turbo_dm_draws"] = str(cfg.dm_draws)
     if cfg.mfd_dtau > 0.0:
         md["ss_turbo_mfd_dtau"] = str(cfg.mfd_dtau)
         md["ss_turbo_mfd_max_steps"] = str(cfg.mfd_max_steps)
@@ -204,11 +205,8 @@ def run_loop(ctx: RunContext, cfg):
             turbo.set_fake_source(s_g)
             v_student = roll.v_first  # step-0 velocity for the runaway-student metric
 
-            # --- DMD (or MFD) on x_θ, against teacher + fake ---
-            if cfg.mfd_dtau > 0.0:
-                dmd = mfd_surrogate(ctx, cfg, x_pred, crossattn_emb, c_null, B)
-            else:
-                dmd = dmd_surrogate(ctx, cfg, x_pred, crossattn_emb, c_null, B)
+            # --- DMD (or MFD) on x_θ, against teacher + fake; dm_draws averages the signal ---
+            dmd = dm_slot(ctx, cfg, x_pred, crossattn_emb, c_null, B)
             grad_signal = dmd.grad_signal
             delta_dm = dmd.delta_dm
             tau_dm = dmd.tau_dm

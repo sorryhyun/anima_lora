@@ -1,6 +1,7 @@
 # Plan: average the DM signal over several (σ_a, ε_dm) draws
 
-Written 2026-11-11. Nothing here is built. It follows from two measurements on the superturbo
+Written 2026-11-11. `dmd.dm_draws` is built (`steps.dm_slot`, test in `tests/test_turbo_mfd.py`);
+the run is `1111_1740`. It follows from two measurements on the superturbo
 runs (2-step student, `dpdmd.rollout_grad`, proposal `docs/anima/proposal/superturbo.md`), whose
 renders were best at step 250 and worse at 375 and 500, at LR 5e-5 (`1111_1005`) and again at
 2e-5 (`1111_1115`).
@@ -89,7 +90,8 @@ part needs a larger batch.
 
 ## Run
 
-`1111_1115` with `dm_draws = 4`, nothing else changed; `1111_1115` itself is the control.
+`1111_1740`: `1111_1115` with `dm_draws = 4`, nothing else changed (config: its
+`output/ckpt/1111_1740.snapshot.toml`); `1111_1115` itself is the control.
 
 Read, with the criteria fixed here:
 
