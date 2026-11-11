@@ -9,10 +9,16 @@ read on the sanitize eval (`ref_gate.py --part sanitize --arms ctrl,cut`, five p
 judged on `ctrl`: a fine-tune learns what to remove from its pairs and ships without a mask; `cut` is a side read.
 Queued 2026-11-11: `configs/1111_1630.toml` (shared bank) and `configs/1111_1631.toml` (kv), renders
 in `output/tests/ref_gate/20261111-sanft-1111_163{0,1}`.
-Rendered 2026-11-11, **needs the user's eye** (`sheet_*.png`): a first read finds no clear winner.
-Shared bank removes everything and over-erases (the anger-mark bubble and balloon outlines on
-hard_to_sanitize1, the sweater pattern smudged in usual_case1 s0/s1); kv keeps the page but leaves
-residue (usual_case1 s1/s2) and fills hard_to_sanitize2's red balloons with a red blob.
+Read 2026-11-11 by the user (renders side by side in
+`output/tests/ref_gate/sanft_compare_20261111/`): **no winner, the two split the job**. kv picks
+the right targets and keeps the rest of the page, but draws the inside of a target badly (residue
+in usual_case1 s1/s2, a red blob where hard_to_sanitize2's red balloons were). Shared bank draws
+the inside of a target well, but picks targets oddly (the anger-mark bubble and balloon outlines on
+hard_to_sanitize1) and keeps the page a little less (the sweater pattern smudged in usual_case1
+s0/s1). Reading (mine): under kv the reference rows run on Base and the image rows read them
+through k/v exports, so the reference stays exact (selection, preservation) but the hole is
+filled by reading what is there; under the shared bank the adapted reference rows can be
+rewritten, which fills the hole and also blurs what the reference says.
 The copy line and the tasks built on it follow the winner.
 
 The problem that sets the order is Korean strokes. colorize v5 and swap_text ksplit e2 both
