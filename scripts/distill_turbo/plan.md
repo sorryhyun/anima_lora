@@ -72,8 +72,13 @@ A single raw checkpoint against another reads mostly run noise. Every A/B here:
    (`merge_loras.py --normalize off --adaln sum`) is the cross-check.
 3. **One null twin, once.** The control with `seed 43` instead of 42. Its difference to the
    control is the noise floor for every later arm.
-4. **Renders are the gate.** 4 steps, cfg 1, the ANIMA-sign and nozomi prompts with the seeds of
-   `output/tests/superturbo/`, beside the teacher at 28 steps, cfg 4.
+4. **Renders are the gate.** 4 steps, cfg 1, `bench/turbo/judge_hard.txt` (seeds 1–4 each) at
+   768 × 1344 (W × H), beside the teacher (merged14, int8) at 28 steps, cfg 4
+   (`output/tests/turbo4/teacher_m14/`). The ANIMA-sign and nozomi prompts are too easy to
+   separate arms. The three prompts, in the spirit of MOSS's Space set
+   (`bench/moss_ab/space/`): five named Blue Archive students with a position clause each and
+   slapstick props; a two-girl café with Japanese menu text and an English sign; a solo
+   guitarist jumping over a crowd, from below with a dutch angle.
 5. **A distribution number beside the renders.** `bench/turbo/moment_gap.py`: S–T4 nW2² and the
    pooled spread ratio against the merged14 teacher at cfg 4. The script is built for the v1.1
    delta on the base teacher. It has to take the merged14 teacher and an arbitrary student LoRA
