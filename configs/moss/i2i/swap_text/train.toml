@@ -1,20 +1,26 @@
-# MOSS i2i training for the swap_text task (JA page → translated lettering) — TrainRequest fields.
+# swap_text v6: v3's recipe (swap_dense2516_en400_c_e2) on the v6 cache — the relaxed root's
+# audited dense Korean pages (2,508) plus v3's en400 recaptioned from the v5 reader with line
+# breaks (cache.toml, 2,908 pairs). From copy block C bw10 mod16 (c_fill_bw10_mod16_s800),
+# which carries the modulation adapter, so mod_rank 16 starts from it instead of fresh.
+# 2 epochs (5,816 steps, ~4.3 h).
 #
-#   make daemon-run ARGS="--stall-timeout 900 scripts/moss/train.py --config configs/moss/i2i/swap_text/train.toml"
-# The cache folder i2i_swap_text_v3_en200_ko800 was deleted on 2026-11-09; this config stays as the recipe.
+#   make daemon-run ARGS="--queue --stall-timeout 900 scripts/moss/train.py --config configs/moss/i2i/swap_text/train.toml"
 
-cache = "post_image_dataset/moss/i2i_swap_text_v3_en200_ko800"
-output = "output/ckpt_moss_i2i/moss_i2i_swap_text.safetensors"
-ref_timestep = 0.0             # the reference is clean
-ref_isolate = true             # ref queries see only ref keys (colorize v3)
-# i2i samples carry reference tokens: the bf16 t2i plan (swap 36, budget 0.5) OOMs.
-# Swap 38 makes room for budget 0.175, which runs ~9% faster than swap 28 / 0.15 at
-# ~8.3k joint tokens (sanitize, 2026-10-26); the H2D-only swap keeps 38 off the
-# PCIe knee (classic and H2D tie up to 38, H2D is 8% faster at 40).
-# The int8 i2i plan is train_v3_en200_ko800.toml; these stay the measured bf16 plan.
-int8 = "off"
-stream = "bf16"
-ema_card = false
-blocks_to_swap = 38
-activation_memory_budget = 0.175
+cache = "post_image_dataset/moss/i2i_swap_text_v6"
+output = "output/ckpt_moss_i2i/swap_v6_cbw10_e2.safetensors"
+init_lora = "output/ckpt_moss_i2i/c_fill_bw10_mod16_s800.safetensors"
+epochs = 2
+save_every_epochs = 1
+ref_timestep = 0.0
+ref_isolate = true
+mod_rank = 16
+region_weight = 2.0
+optimizer = "muon"
+lr = 5e-5
+int8 = "stream"
+stream = "fp32"
+ema_card = true
+blocks_to_swap = 36
+activation_memory_budget = 0.05
 swap_h2d_only = true
+fit_report = true

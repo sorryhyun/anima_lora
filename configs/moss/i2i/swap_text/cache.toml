@@ -1,20 +1,18 @@
-# MOSS i2i cache for the swap_text task (JA page → translated lettering) — CacheRequest fields.
+# MOSS i2i cache for swap_text v6: the relaxed root's dense Korean pages (pairs_dense2516.jsonl,
+# 2,508 after the 2026-11-09 audit and restage, captions from the v5 reader with line breaks)
+# plus v3's en400 (the en half of pairs_en400_ko1709.jsonl, recaptioned from a v5 re-read,
+# swap_text_v3/recaption_en400.py). pairs_v6.jsonl lists both; the en rows point into
+# ../../swap_text_v3/staging/. A fresh folder: 1,140 of the dense pages pasted differently
+# after the restage, so every latent encodes again.
 #
-#   make i2i-stage TASK=swap_text                  # hitocrawl twins → pairs.jsonl
-#   make i2i-preprocess TASK=swap_text MODEL=moss  # this file → scripts/moss/cache.py
-# The cache folder i2i_swap_text_v3_en200_ko800 was deleted on 2026-11-09; this config stays as the recipe.
-#
-# Each row caches its target (the JA page with the captioned regions pasted from the
-# translated edition) as the latent and the JA page as {stem}.moss_ref. The staged
-# captions are already layout JSON (one text item per target line), which
-# layout_json passes through.
+#   make daemon-run ARGS="--queue --stall-timeout 1800 scripts/moss/cache.py --config configs/moss/i2i/swap_text/cache.toml"
 
-pairs = "post_image_dataset/i2i/swap_text_v3/staging/pairs_en200_ko800.jsonl"
-out = "post_image_dataset/moss/i2i_swap_text_v3_en200_ko800"
+pairs = "post_image_dataset/i2i/swap_text_relax/staging/pairs_v6.jsonl"
+out = "post_image_dataset/moss/i2i_swap_text_v6"
 resolution = 1024
-# Full-size reference: everything but the lettering is copied.
 ref_scale = 1
 caption_format = "layout_json"
+token_split = "syllable"
 
 # i2i stays on the pipeline prompt (the t2i default is sure; library/moss/prompt_tail.py).
 prompt_tail = "off"

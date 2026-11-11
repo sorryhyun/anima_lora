@@ -1,5 +1,5 @@
 # MOSS i2i training for character_ref — TrainRequest fields. The int8 swap_text recipe
-# (configs/moss/i2i/swap_text/train_v3_en200_ko800.toml) without its text-region terms.
+# (_archive/configs/moss_i2i/swap_text/train_v3_en200_ko800.toml) without its text-region terms.
 #
 #   make daemon-run ARGS="--stall-timeout 900 scripts/moss/train.py --config configs/moss/i2i/character_ref/train.toml"
 

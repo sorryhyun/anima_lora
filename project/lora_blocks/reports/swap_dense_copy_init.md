@@ -11,7 +11,7 @@ e2 drew right.**
 
 - **Data:** the relaxed root restaged after the Korean re-crawl (5,627 ko pages, 175 works;
   `post_image_dataset/i2i/swap_text_relax`), cached as `i2i_swap_text_relax_ko_ksplit`
-  (`configs/moss/i2i/swap_text/cache_relax_ko_ksplit.toml`). The arms train on the 65 new works'
+  (`_archive/configs/moss_i2i/swap_text/cache_relax_ko_ksplit.toml`). The arms train on the 65 new works'
   pages with text cover ≥ 10 % or ≥ 50 syllables: 1,509 pairs, 58 works, 187k syllables. `tk`
   (historical narration) is 802 of them. List: `staging/pairs_new_dense1509.jsonl`; cache: the
   symlink farm `i2i_swap_text_relax_ko_dense1509`.

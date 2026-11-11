@@ -135,7 +135,7 @@ groups (28,899 text-only). `assemble` samples `--sample` pool pages (0: all) int
 wipes and re-pastes it, so a restage gives the targets new mtimes (MOSS latent caches invalidate
 on image mtime) and `pairs.jsonl` is rewritten, while the `pairs_*.jsonl` subsets are derived from
 it by hand afterwards. The cache for the dense Korean pages plus v3's en400 is
-`configs/moss/i2i/swap_text/cache_v6.toml` (`i2i_swap_text_v6`, syllable split).
+`configs/moss/i2i/swap_text/cache.toml` (`i2i_swap_text_v6`, syllable split); `train.toml` trains v6 from the bw10 copy block. The v3 configs are in `_archive/configs/moss_i2i/swap_text/`.
 Each target is the JA page with clean text groups pasted from the twin: `full` pairs paste
 every clean group, `partial` pairs (`partial_ratio`) a proper subset. The config sets
 `partial_ratio = 0` (2026-10-28): the unclean groups (44 %) already stay Japanese and
