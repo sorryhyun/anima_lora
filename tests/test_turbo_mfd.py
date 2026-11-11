@@ -170,3 +170,21 @@ def test_dm_draws_config():
     assert _resolve(["--dm_draws", "3"], {"dmd": {"dm_draws": 4}}).dm_draws == 3
     with pytest.raises(ValueError, match="dm_draws"):
         _resolve(["--dm_draws", "0"])
+
+
+def test_dm_tau_distribution():
+    c = _resolve()
+    assert c.dm_tau_distribution == "uniform" and c.dm_tau_scale == 1.0
+    c = _resolve(cfg={"dmd": {"dm_tau_distribution": "logit_normal", "dm_tau_scale": 0.8}})
+    assert c.dm_tau_distribution == "logit_normal" and c.dm_tau_scale == 0.8
+    with pytest.raises(ValueError, match="dm_tau_distribution"):
+        _resolve(["--dm_tau_distribution", "beta"])
+    ctx = _ctx()
+    x_pred = torch.randn(4096, 1, 1, 1)
+    c0 = torch.zeros(4096, 1, 4)
+    ln = dataclasses.replace(c, dm_tau_scale=1.0)
+    torch.manual_seed(0)
+    tau = dmd_surrogate(ctx, ln, x_pred, c0, c0, 4096).tau_dm
+    assert 0.0 < float(tau.min()) and float(tau.max()) < 1.0
+    assert abs(float(tau.mean()) - 0.5) < 0.02
+    assert float((tau > 0.9).float().mean()) < 0.03  # uniform would give 0.10

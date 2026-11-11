@@ -127,6 +127,14 @@ iid, 1.93 stratified by σ_a (one draw per quarter forces a tail draw into every
 σ_a capped at 0.9, 2.84 with each draw divided by its bin's median norm, 4 with a per-draw
 backward normalised to unit norm.
 
+## Next: logit-normal σ_a (`1111_1916`)
+
+`1111_1740` with `dmd.dm_tau_distribution = "logit_normal"`, `dm_tau_scale = 1.0` (σ_a =
+sigmoid(N(0,1)) on the DM / MFD query; the GAN generator renoise reuses it; CDM, fake update
+unchanged). Control: `1111_1740`. On the 96 probe draws it lifts the effective draws to 2.62 of
+4 (P(σ_a > 0.9) 1.4 % against 10 %). It changes the objective, not only its variance: the
+σ_a > 0.75 mass drops from 25 % to 14 %. Read as `1111_1740`, criterion 1 against its renders.
+
 ## Later, each on its own
 
 - `lr_schedule = "cosine"`: the one setting seen to stop the walk.

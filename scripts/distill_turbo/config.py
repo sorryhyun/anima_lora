@@ -130,6 +130,15 @@ def build_argparser() -> argparse.ArgumentParser:
         "extra draw costs the DM slot's no-grad teacher-CFG and fake forwards again.",
     )
     parser.add_argument(
+        "--dm_tau_distribution",
+        type=str,
+        default=None,
+        help="DM / MFD query level σ_a: uniform | logit_normal "
+        "(sigmoid(dm_tau_scale·N(0,1))). The GAN generator renoise reuses it; "
+        "CDM stays uniform.",
+    )
+    parser.add_argument("--dm_tau_scale", type=float, default=None)
+    parser.add_argument(
         "--norm_floor",
         type=float,
         default=-1.0,
@@ -418,6 +427,8 @@ class TurboConfig:
     dm_x0_norm: bool
     norm_floor: float
     dm_draws: int
+    dm_tau_distribution: str  # uniform | logit_normal
+    dm_tau_scale: float
     # CDM dynamic schedule: a fresh rollout grid per step (t₁ = 1 pinned);
     # validation and inference stay on the static grid.
     dynamic_schedule: bool
@@ -558,6 +569,16 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     dm_draws = int(_pick(args.dm_draws, cfg, "dmd.dm_draws", 1))
     if dm_draws < 1:
         raise ValueError(f"dmd.dm_draws={dm_draws}: must be >= 1")
+    dm_tau_distribution = str(
+        _pick(args.dm_tau_distribution, cfg, "dmd.dm_tau_distribution", "uniform")
+    )
+    if dm_tau_distribution not in ("uniform", "logit_normal"):
+        raise ValueError(
+            f"dmd.dm_tau_distribution={dm_tau_distribution!r}: uniform | logit_normal"
+        )
+    dm_tau_scale = float(_pick(args.dm_tau_scale, cfg, "dmd.dm_tau_scale", 1.0))
+    if dm_tau_scale <= 0.0:
+        raise ValueError(f"dmd.dm_tau_scale={dm_tau_scale}: must be > 0")
     dynamic_schedule = bool(_flatten(cfg, "dmd.dynamic_schedule", False))
 
     cdm_weight = float(_pick(args.cdm_weight, cfg, "cdm.weight", 0.0))
@@ -827,6 +848,8 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         dm_x0_norm=dm_x0_norm,
         norm_floor=norm_floor,
         dm_draws=dm_draws,
+        dm_tau_distribution=dm_tau_distribution,
+        dm_tau_scale=dm_tau_scale,
         dynamic_schedule=dynamic_schedule,
         cdm_weight=cdm_weight,
         cdm_grad_ckpt=cdm_grad_ckpt,

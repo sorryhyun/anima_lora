@@ -97,6 +97,8 @@ def _student_metadata(cfg, ctx: RunContext, step: int) -> dict[str, str]:
         md["ss_turbo_rollout_grad"] = "1"
     if cfg.dm_draws > 1:
         md["ss_turbo_dm_draws"] = str(cfg.dm_draws)
+    if cfg.dm_tau_distribution != "uniform":
+        md["ss_turbo_dm_tau"] = f"{cfg.dm_tau_distribution}:{cfg.dm_tau_scale}"
     if cfg.mfd_dtau > 0.0:
         md["ss_turbo_mfd_dtau"] = str(cfg.mfd_dtau)
         md["ss_turbo_mfd_max_steps"] = str(cfg.mfd_max_steps)

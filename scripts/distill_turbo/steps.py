@@ -49,6 +49,20 @@ def selective_block_grad_ckpt(model: Anima):
             b.unsloth_offload_checkpointing = u
 
 
+def _dm_tau(ctx: RunContext, cfg, B: int) -> torch.Tensor:
+    """DM / MFD query level σ_a: uniform, or logit-normal under
+    ``dm_tau_distribution = "logit_normal"`` (sigmoid(dm_tau_scale·N(0,1)))."""
+    if cfg.dm_tau_distribution == "uniform":
+        return _uniform_tau(ctx, cfg, B)
+    return sample_t(
+        B,
+        distribution="sigmoid",
+        sigmoid_scale=cfg.dm_tau_scale,
+        device=ctx.device,
+        dtype=ctx.dtype,
+    )
+
+
 def _uniform_tau(ctx: RunContext, cfg, B: int) -> torch.Tensor:
     """DM / MFD / CDM query level: uniform by design, independent of t_distribution."""
     return sample_t(
@@ -202,7 +216,7 @@ def dmd_surrogate(
     The real score must be CFG'd: with cond-only on both sides v_real ≈ v_fake
     (dm_cos ≈ 0.9999) and the signal is noise.
     """
-    tau_dm = _uniform_tau(ctx, cfg, B)
+    tau_dm = _dm_tau(ctx, cfg, B)
     eps_dm = torch.randn_like(x_pred)
     x_renoised_dm = renoise(x_pred.detach(), tau_dm, eps_dm)
     v_real = ctx.teacher_cfg_velocity(x_renoised_dm, tau_dm, crossattn_emb, c_null)
@@ -263,7 +277,7 @@ def mfd_surrogate(
 
     Field reuse: ``tau_dm`` = σ_a, ``tau_dm_e`` = σ_a − σ_b, ``v_*_cond_dm`` = U.
     """
-    sa = _uniform_tau(ctx, cfg, B)
+    sa = _dm_tau(ctx, cfg, B)
     eps_dm = torch.randn_like(x_pred)
     if cfg.mfd_interval == "uniform":
         sb = sa * torch.rand_like(sa)
