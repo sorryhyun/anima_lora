@@ -16,7 +16,7 @@ the open questions at the end.
 
 | Sub-line | State | Log / code |
 |---|---|---|
-| i2i / colorize (VAE reference on RoPE `r`) | v3 recipe shipped on the Hub as `moss_colorize_3k_v4` (§ below); since 2026-11-05 the configs and the Hub carry v5 (control captions, no OCR text: `docs/moss/proposal/colorize_v5_control.md`) | `done/i2i.md`, `colorize_ocr.md`, `bench/moss_i2i_eval/colorize_*.py` |
+| i2i / colorize (VAE reference on RoPE `r`) | v3 recipe shipped on the Hub as `moss_colorize_3k_v4` (§ below); since 2026-11-05 the configs and the Hub carry v5 (control captions, no OCR text: `docs/moss/findings/colorize_v5_control.md`) | `done/i2i.md`, `colorize_ocr.md`, `bench/moss_i2i_eval/colorize_*.py` |
 | Correction training (arXiv 2610.14136), dual LoRA | joint D + C holds to K 8; CFG 1.5 + K 2 ≈ CFG 3 at 2× forwards (one seed) | `correction.md`, `src/correction*.py` |
 | TE quantization | INT8 W8A8 (SmoothQuant + act-aware GPTQ) is the default TE | `src/te_*.py`; comparison runs + drivers in `_archive/bench/moss_te_fp8/` |
 | Technical-report digest | reference | `report_notes.md` |
@@ -26,7 +26,7 @@ the open questions at the end.
 
 Superseded in the configs on 2026-11-05 by v5, which keeps v3's reference (full size,
 isolated, no vision tower) and replaces the OCR caption with control captions
-(`docs/moss/proposal/colorize_v5_control.md`).
+(`docs/moss/findings/colorize_v5_control.md`).
 
 v1 shared the image's timestep on the ref; v2 (`moss_colorize_3k_ocr`) gives it t = 0 and
 sends the page through the vision tower as well. v3 drops the vision tower and gives the

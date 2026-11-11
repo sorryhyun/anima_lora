@@ -17,7 +17,7 @@ from the full-size isolated reference, not from the caption:
 - With `comic` alone (the shipped generate prompt, `configs/moss/i2i/colorize/generate.toml`),
   v4 draws all 7 lines of the two Korean eval targets from the reference. With the right text
   as layout items, ` 이건` becomes `어건` on 1 of 3 seeds; `벌거` in the prompt does not
-  override the reference's `씻겨` ([ko_token_split.md](../findings/ko_token_split.md)).
+  override the reference's `씻겨` ([ko_token_split.md](ko_token_split.md)).
 - v3 draws "H-HEY," where the OCR read "H-HE".
 
 So the OCR text costs a reader pass at inference, puts Hangul through the TE's token split, and

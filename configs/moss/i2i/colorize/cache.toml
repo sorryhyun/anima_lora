@@ -3,7 +3,7 @@
 #   make i2i-stage TASK=colorize                   # mangafy the colour corpus into staging/
 #   make i2i-preprocess TASK=colorize MODEL=moss   # this file → scripts/moss/colorize_cache.py
 #
-# The v5 recipe (control captions, docs/moss/proposal/colorize_v5_control.md). Each staged
+# The v5 recipe (control captions, docs/moss/findings/colorize_v5_control.md). Each staged
 # B&W page is the condition, VAE-encoded at full size as {stem}.moss_ref; its colour
 # original under post_image_dataset/resized is the target. The TE sees the caption only
 # (vision = false), with no OCR text: illustrations draw from their colour + series tags

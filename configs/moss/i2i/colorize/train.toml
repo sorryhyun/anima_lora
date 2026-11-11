@@ -1,5 +1,5 @@
 # MOSS i2i training for the colorize task — TrainRequest fields; the v5 recipe
-# (docs/moss/proposal/colorize_v5_control.md): v4's schedule (3 epochs, 10000 steps,
+# (docs/moss/findings/colorize_v5_control.md): v4's schedule (3 epochs, 10000 steps,
 # Muon 5e-5; kaiming and ema_window 0.1 are the TrainRequest defaults) on the int8 base.
 #
 #   make daemon-run ARGS="--stall-timeout 900 scripts/moss/train.py --config configs/moss/i2i/colorize/train.toml"
