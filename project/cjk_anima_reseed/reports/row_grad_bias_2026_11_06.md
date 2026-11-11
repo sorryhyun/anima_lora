@@ -84,7 +84,7 @@ Forward only, the scene batch at σ 0.625, on the stream:
 weights (opt-in, no caller). Forward only, the same rows, 2 scene and 2 grid batches × 2 ε
 seeds. The adapter runs in the forward from the Qwen states and T5 ids. The Anima LoRA
 TE cache stores the adapter's bf16 *output* (`crossattn_emb_v*`, BF16 [512, 1024]), so
-`bench/anima_stream` never ran it. % from the whole-fp32 ref: v over the latent | v in the
+`_archive/bench/anima_stream` never ran it. % from the whole-fp32 ref: v over the latent | v in the
 glyph boxes | adapter output on the valid tokens.
 
 | | σ | bf16 | stream | stream + adapter fp32 |

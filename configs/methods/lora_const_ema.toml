@@ -5,7 +5,7 @@ learning_rate = 5e-5
 # Constant lr after the base.toml warmup (5 %) + adapter EMA 0.1: under the cosine
 # schedule the last ~0.1 of updates barely move and the EMA lands on the raw weights
 # (||dW|| 0.997x, cos 1.000 on ama mitsuki); at constant 5e-5 it is 0.91x / cos 0.974
-# and drops raw's stray bubbles and props (bench/anima_ema/render_ab.py, 2026-11-05).
+# and drops raw's stray bubbles and props (_archive/bench/anima_ema/render_ab.py, 2026-11-05).
 lr_scheduler = "constant_with_warmup"
 ema_window = 0.1
 max_train_epochs = 8

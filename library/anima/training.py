@@ -314,7 +314,7 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         "updates: decay 1 - 1/(ema_window x updates), so 0.1 is 0.988 at 848 updates. "
         "Starts at the end of lr warmup (fp32 shadow). Step / epoch / final saves write "
         "the EMA in place of the live weights (ema_save_raw keeps those too). 0 = off "
-        "(bench/anima_ema/render_ab.py)",
+        "(docs/anima/findings/lora_recipe.md)",
     )
     parser.add_argument(
         "--ema_save_raw",

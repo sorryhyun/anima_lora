@@ -15,7 +15,7 @@ backward, `fp16_probe3.json`: 3 images with the scaled arms).
 ## Setup
 
 `anima-base-v1.0`, 28 blocks, eager, flash attention, no LoRA, no vocab pack. Images of
-3500–4608 tokens from `post_image_dataset/lora`, chosen as in `bench/anima_stream`. σ 0.1,
+3500–4608 tokens from `post_image_dataset/lora`, chosen as in `_archive/bench/anima_stream`. σ 0.1,
 0.5 and 0.9, one forward each. The reference is a true fp32 forward (`fp32_reference`).
 
 | arm | stream | block GEMMs |

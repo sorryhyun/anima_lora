@@ -2,7 +2,7 @@
 
 Forward only. ``hira_cold_hp``'s own items, its rows at ``s4050``, the adapter run in the
 forward from the cached Qwen states and T5 ids (the Anima LoRA TE cache holds the adapter's
-bf16 *output*, so ``bench/anima_stream`` never ran it). Per σ, ``‖v − v_ref‖ / ‖v_ref‖``
+bf16 *output*, so ``_archive/bench/anima_stream`` never ran it). Per σ, ``‖v − v_ref‖ / ‖v_ref‖``
 in % over the whole latent and inside the glyph boxes (``loss.box_mask``, grid boxes
 on), and the adapter output's distance from ref on the valid T5 tokens:
 

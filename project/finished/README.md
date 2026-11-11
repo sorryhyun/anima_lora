@@ -21,7 +21,7 @@ it (`rg --no-ignore-dot`). What stays visible is what code outside
 `finished/` reads or runs: `sr/`, `mod_guidance/`, `cjk_aware_anima/{assets,
 probes}/` (the reseed line's eval prompts, `bench/grad_init`'s `blind_pairs.py`) and
 `moss_lora/src/` (named in `library/moss` docstrings; its logs are hidden) and `int8_train/src/`
-(the GPTQ builders the int8 docs run, `bench/anima_stream`'s prompts), and `qwen21_lora/src/` +
+(the GPTQ builders the int8 docs run, `_archive/bench/anima_stream`'s prompts), and `qwen21_lora/src/` +
 `eval_prompts.txt` (named in `library/runtime/blockswap.py` and the `qwen21` skill). Live code (`library/`, `scripts/`,
 `tests/`, `configs/`) reads nothing under `project/`; a line's own tests sit in
 its `tests/`. A new outside reference

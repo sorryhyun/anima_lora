@@ -115,7 +115,7 @@ What this gives the recipe:
 - **EMA needs a constant lr.** Under cosine decay the last ~10 % of updates barely move and
   EMA 0.1 lands on the raw weights (ama mitsuki: ‖dW‖ 0.997×, cos 1.000). At constant 5e-5
   it is 0.91× / cos 0.974 and drops raw's stray artifacts (speech bubbles, a stray "?")
-  (`bench/anima_ema/render_ab.py`).
+  (`_archive/bench/anima_ema/render_ab.py`).
 - **lr sets displacement, and displacement has a ceiling.** GA2 at 1e-4 (1.41× the bs1 EMA's
   ‖dW‖) tangles arms and hands in the hug and maid prompts; GA2 at 5e-5 (0.68×) is clean.
   This is a read of renders, not a blind A/B.
@@ -277,4 +277,4 @@ base at high σ: the render stays as far from it, composition kept, details redr
 - `_archive/bench/anima_abclip/run_ab.py` — every A/B above (`--exp`), `report_<exp>.md` beside it.
 - `_archive/bench/anima_abclip/sigma_tail.py`, `sigma_gate.py`, `drift_share.py` — σ profile, σ gate,
   drift split.
-- `bench/anima_ema/render_ab.py` — EMA renders and the shared render loop.
+- `_archive/bench/anima_ema/render_ab.py` — EMA renders and the shared render loop.

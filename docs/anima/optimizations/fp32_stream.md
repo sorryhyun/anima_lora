@@ -41,7 +41,7 @@ object patch rounds q and k back on entry to FA2.
 ## Accuracy
 
 Prediction error, `‖v − v_fp32‖ / ‖v_fp32‖` in %, mean over six images, no LoRA
-(`bench/anima_stream/comfy_check.py`):
+(`_archive/bench/anima_stream/comfy_check.py`):
 
 | σ | `library` bf16 | `library` fp32 | ComfyUI bf16 | ComfyUI fp32, no RoPE | ComfyUI fp32 | ComfyUI to `library` |
 |---|---|---|---|---|---|---|
@@ -49,7 +49,7 @@ Prediction error, `‖v − v_fp32‖ / ‖v_fp32‖` in %, mean over six images
 | 0.5 | 0.85 | 0.22 | 0.85 | 0.23 | **0.22** | 0.24 |
 | 0.9 | 1.15 | 0.23 | 0.94 | 0.23 | **0.23** | 0.22 |
 
-One 8-step trajectory at 768² and two images (`bench/anima_stream/run_bench.py`, a smoke, one draw
+One 8-step trajectory at 768² and two images (`_archive/bench/anima_stream/run_bench.py`, a smoke, one draw
 per cell; the full run was stopped, so these are not a result):
 
 | | σ 0.5 / 0.9 | final latent, % from fp32 | ms/step | peak GiB |
