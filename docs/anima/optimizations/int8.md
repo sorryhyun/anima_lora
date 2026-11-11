@@ -53,16 +53,16 @@ file or round to nearest.
 - `inference.py` has no block swap on any base, so generation stays resident.
 - Training takes `LoRANetwork` only, and only method `lora` has been measured. `EasyControl` and
   the soup loop train on bf16 or are refused.
-- `make turbo` ships `int8 = "stream"` and has run 30-step smokes only, no full student. Its teacher runs on the int8 base. 2026-11-01, warm start, budget
-  0.99: 6.28 s/step and 11.87 GB peak on the bf16 stream, 6.7–7.0 s/step and 12.39 GB on fp32. The
-  bf16 base read 9.65 s/step on the same plan, 2026-08-29.
+- `make turbo` ships `int8 = "stream"`, teacher included. Warm start, budget 0.99: 6.28 s/step
+  and 11.87 GB peak on the bf16 stream, 6.7–7.0 s/step and 12.39 GB on fp32, against 9.65 s/step
+  on the bf16 base.
 - `--base_weights` with forward copies is refused: they were calibrated on the unmerged weights.
   `--int8_file rtn` quantizes the merged weights instead.
 - `--lora_cutoff_step` and `--lora_sigma_range` are refused in generation.
 
 ## `stream` and the budget
 
-`ama mitsuki`, one run per arm, 2026-10-31, 5070 Ti
+`ama mitsuki`, one run per arm, 5070 Ti
 ([anima_wqt_stream.md](../../../project/finished/int8_train/reports/anima_wqt_stream.md)):
 
 | arm | samples | median | peak |
@@ -79,7 +79,7 @@ Keep budget 0.99 on 16 GB. 1.0 saves 1.75x the activations for no speed, and nee
 Below 16 GB, lower the budget first: it takes more off the peak than block swap does. FA2 and
 the int8 linears are in the partitioner's knapsack (`set_activation_memory_budget`), so these are
 the calls each budget recomputes on purpose. `stream`, one run per arm, median of 23–25 steps over
-the set's first 30, peak over those steps, same day; two runs of one partition differed by 20 ms:
+the set's first 30, peak over those steps; two runs of one partition differed by 20 ms:
 
 | budget | ms/step | peak | FA2 forwards | int8 forwards |
 |---|---|---|---|---|
@@ -89,8 +89,7 @@ the set's first 30, peak over those steps, same day; two runs of one partition d
 | 0.2 | 476–495 | 6.16 GB | 56 | 280 |
 | 0.1 | 511 | 5.32 GB | 56 | 336 |
 
-Budgets from about 0.48 to 0.99 are one partition. The 0.4 and 0.1 rows ran before the FA2 formula
-read the key length; 0.4 does not reach the knapsack, 0.1 does. No full LoRA has run below 0.99.
+Budgets from about 0.48 to 0.99 are one partition. No full LoRA has run below 0.99.
 
 ## Block swap
 
@@ -101,8 +100,7 @@ stack equal the resident stack bit for bit, eager and compiled, on both attach o
 teacher and fake forwards, matches too, CDM's second student forward included
 (`test_turbo_step_on_swap_is_the_resident_step`). Those tests skip without `ANIMA_TEST_GPU=1`.
 
-`ama mitsuki`, 106 steps, budget 0.99, GPTQ forward copies, fp32 stream, one run per arm, 2026-11-01,
-5070 Ti:
+`ama mitsuki`, 106 steps, budget 0.99, GPTQ forward copies, fp32 stream, one run per arm, 5070 Ti:
 
 | arm | median | peak |
 |---|---|---|
@@ -123,26 +121,26 @@ linear by 1 LSB against the card.
 
 ## Measurements
 
-All from `project/finished/int8_train/reports/`, 2026-10-30, on a 5070 Ti.
+`ama mitsuki`, 848 steps, method `lora`, 5070 Ti
+([reports](../../../project/finished/int8_train/reports.md)):
 
-| | bf16 | int8 `full` |
-|---|---|---|
-| `ama mitsuki`, 848 steps, method `lora` | 593 ms/step | 433 ms/step (1.37x) |
-| final `avr_loss` | 0.0737 | 0.0737 |
+| | bf16 | int8 `full`, bf16 kernel input | int8 `full`, fp32 kernel input |
+|---|---|---|---|
+| step | 593 ms | 433 ms (1.37x) | 424 ms, first compile included |
+| final `avr_loss` | 0.0737 | 0.0737 | 0.0739 |
 
-Samples from the two LoRAs, both generated on the bf16 base, were of the same quality. The GPTQ
-base cuts per-prediction error by about 10% and CFG velocity error by 2–7% against round to
-nearest. Swapping the bf16 base for the int8 base moves generated pixels by about 4/255.
+Samples from the two LoRAs, both generated on the bf16 base, were of the same quality. Swapping the
+bf16 base for the int8 base moves generated pixels by about 4/255.
 
-**The accuracy figures predate the fp32 kernel input.** `comfy_kitchen` 0.2.40 rounds to bf16
-around its activation division on a bf16 input ([comfy-kitchen#289](https://github.com/Comfy-Org/comfy-kitchen/issues/289)),
-so `Int8TrainLinear.forward` passes fp32. On Anima that cuts prediction error 6–8%. With the
-fixed build ([MOSS int8 doc](../../moss/optimization/int8.md#comfy_kitchen-rounds-activations-to-the-input-dtype))
-the forward passes its input through instead: `qkv_proj`, cross `q_proj` and `mlp.layer1` get
-fp32 from adaLN either way, the two `output_proj` and `mlp.layer2` get bf16, and the output is
-the same bits. An fp32 stream
-([`--stream fp32`](fp32_stream.md)) cuts the int8 base's error a further 21–36% in that report; the
-gradient effect is mixed
-([anima_fp32_stream.md](../../../project/finished/int8_train/reports/anima_fp32_stream.md)). The same
-848-step run with the fp32 input, 2026-10-31, took 424 ms/step including the first compile and
-ended at `avr_loss` 0.0739.
+Accuracy:
+
+- The GPTQ base cuts per-prediction error by about 10% and CFG velocity error by 2–7% against
+  round to nearest.
+- The fp32 kernel input cuts prediction error 6–8% against a bf16 one. `comfy_kitchen` 0.2.40 rounds to bf16 around
+  its activation division on a bf16 input, so `Int8TrainLinear.forward` passes fp32
+  ([kernel input](../../moss/optimization/int8.md#kernel-input)). On the fixed build it passes its
+  input through instead: `qkv_proj`, cross `q_proj` and `mlp.layer1` get fp32 from adaLN either way,
+  the two `output_proj` and `mlp.layer2` get bf16, and the output is the same bits.
+- An fp32 stream ([`--stream fp32`](fp32_stream.md)) cuts the int8 base's error a further 21–36%;
+  the gradient effect is mixed
+  ([anima_fp32_stream.md](../../../project/finished/int8_train/reports/anima_fp32_stream.md)).

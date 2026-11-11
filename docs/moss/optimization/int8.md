@@ -6,11 +6,9 @@ and the LoRA's own GEMMs stay in float. Each block's `q`, `k` and `v` run as one
 rows concatenated, `block.qkv`, which saves about 24 ms of a training step
 ([report](../../../project/finished/int8_train/reports/qkv_fuse.md)).
 
-**Status (2026-10-31): the default training plan. A t2i LoRA has completed on the GPTQ base
-(ama mitsuki, 848 steps, 14.6 min, 1.08 s/step, 10.95 GB), and a swap_text i2i LoRA
-(3,000 steps, [i2i.md](../methods/i2i.md)).**
-Generation on the file takes 6.3 GiB against 10.7 GiB at 1024². In training, `--int8 full`
-gains speed and saves no VRAM; `--int8 stream` also saves about 4 GB ([VRAM](#vram)).
+It is the default for training (`--int8 stream`) and for generation (`int8 on`). Generation on
+it takes 6.3 GiB against 10.7 GiB at 1024². In training, `--int8 full` gains speed and saves no
+VRAM; `--int8 stream` also saves about 4 GB ([VRAM](#vram)).
 
 Training is `TrainRequest.int8`, generation `GenerateRequest.int8`, code in
 `library/moss/dit_int8/` and, shared with Anima, `library/int8/`. The GPTQ build stays in
@@ -46,17 +44,17 @@ Generation runs on it by default (`int8 on`, `stream fp32`, t2i and i2i; the GUI
   `configs/moss/lora_bf16.toml` is the plan for it.
 - Training takes `--blocks_to_swap`: `wq` (and `wq_t` in `full`) sit in `HeldCopy` children,
   whose `.weight` the offloader moves. A swapped block is about 0.11 GB against bf16's 0.21
-  GB. Generation has no swap run behind it and refuses `--blocks_to_swap`.
-- The i2i train configs stay on bf16 (`int8 = "off"`, swap 38); one swap_text run has finished on
-  the int8 base ([i2i.md](../methods/i2i.md)). A six-step fit on sanitize's largest sample
-  (4150 image tokens, full-size reference) OOMs at swap 0 / budget 0.3 and peaks at 12.33 GB
-  at swap 20 / budget 0.1, the GUI's i2i `(int8)` items.
+  GB. Generation refuses `--blocks_to_swap`.
+- The i2i train configs run `stream` at swap 34–38 and budget 0.05–0.15, except sanitize's,
+  which runs bf16 at swap 38 ([i2i.md](../methods/i2i.md)).
 - A LoRA trained this way carries `int8_base` and `int8_base_id`. A bf16-trained LoRA
-  loads on the int8 base: the sanitize LoRA removed the page's text there.
+  loads on the int8 base.
 
 ## Speed and VRAM
 
-The plan today, `hews_layout`, `stream`, `--ema_card`, one run per row:
+`hews_layout`, `stream`, `--ema_card`, one run per row, stock FlashAttention, bf16 kernel input
+(the [sm_120 build](fa2_sm120.md) takes the default to 1.02 s/step; the
+[fp32 kernel input](#kernel-input) adds about 0.02 s/step on stock `comfy_kitchen`):
 
 | plan | s/step | peak |
 |---|---|---|
@@ -77,28 +75,6 @@ The plan today, `hews_layout`, `stream`, `--ema_card`, one run per row:
 | 0.3 | 1.05 | 12.98 GB |
 | 0.4 | OOM at step 3 | 14.39 GB allocated |
 
-Two changes took the step from 1.30 s: `BatchedMuon` and saving FA2's output instead of
-recomputing it ([training_step.md](training_step.md)).
-
-The training figures below predate them, and the choices under [VRAM](#vram) rest on them. Full tables:
-[`moss_scoping.md`](../../../project/finished/int8_train/reports/moss_scoping.md) and
-[`moss_wqt_stream.md`](../../../project/finished/int8_train/reports/moss_wqt_stream.md).
-
-- **int8 against bf16** (`channel_(caststation)_layout`, swap 0, checkpointing): bf16 2.26–2.34
-  s/step, int8 RTN 1.44–1.49, 11.96 GB on both. RTN is 1.57x bf16 on the same plan and 1.28x
-  the bf16 default of the day (swap 36, budget 0.5: 1.83–1.91 s/step, 13.46 GB). That run was
-  stopped after 70 of 240 steps.
-- **`full` against `stream`** (GPTQ, fp32 stream, swap 0, `hews_layout`, 30 steps, median of
-  steps 11–30, one run per arm). `full`: 1.42 s/step at 13.58 GB with checkpointing, 1.33 at
-  13.95 GB at budget 0.05, OOM at 0.1. `stream`: 1.45 at 9.36 GB with checkpointing, 1.33–1.37
-  at 10.73–13.83 GB over budgets 0.1–0.4, OOM at 0.5.
-- **`--ema_card`** (`stream`, budget 0.2, 60 steps, two paired runs): 1.30 s/step at 12.04 GB
-  against the CPU shadow's 1.37 at 11.77 GB.
-- **Block swap**: swap 0 at budget 0.2 ran 1.30 s/step at 11.99 GB, swap 20 at 0.2 ran 1.32 at
-  9.88 GB, swap 20 at 0.5 ran 1.31 at 14.41 GB. Step losses at swap 20 stay within 3e-4 of swap
-  0 at either budget, the size of the gap between two swap-0 runs. In eager, loss and dX match
-  the resident stack (`test_swapped_dx_is_resident_dx`).
-
 Generation, one render per arm (ER-SDE 50 steps + Spectrum, CFG 3, seed 7, compiled, all
 blocks resident):
 
@@ -114,28 +90,26 @@ blocks resident):
 | i2i 〃 | int8 GPTQ, fp32 stream | 27.7 s | 11.2 GiB |
 
 RTN and GPTQ run the same kernels, so their 3.7 s gap is run-to-run noise: read int8
-generation as 11–15 s. i2i gains about as much as t2i in use; its rows here are one early
-render each and understate it. A full-size
-reference on an fp32 stream fits resident on int8; on bf16 it OOMs and needs
-`blocks_to_swap 10`.
+generation as 11–15 s. In use i2i gains about as much as t2i; its rows here are one render each
+and understate it. A full-size reference on an fp32 stream fits resident on int8; on bf16 it
+OOMs and needs `blocks_to_swap 10`.
 
 ### VRAM
 
 Generation drops about 4.4 GiB because mode `infer` keeps only the forward copy `wq`
 (4.43 GiB against ~8.9 GiB of bf16 weights). Mode `full` also holds `wq_t` for the
 backward, and two int8 copies are the bytes of one bf16 weight, so its peak matches bf16's
-on the same plan (11.96 GB on both at swap 0). The fp32 stream adds about 1.5 GB on top.
-Mode `fwd` is worse: it keeps `wq` and the bf16 weight.
+on the same plan. The fp32 stream adds about 1.5 GB on top. Mode `fwd` is worse: it keeps
+`wq` and the bf16 weight.
 
 Mode `stream` is `full` with `wq_t` in pinned host memory (4.4 GiB): at equal plans the peak
 drops 4.2 GB, for at most 0.03 s/step more
 ([mechanism](training_step.md#backward-copy-on-the-host)).
 
 **The budget needs 0.1 to hold FA2's output; past that each 0.1 costs about 1 GB for
-0.01–0.02 s/step.** The default is 0.3, the fastest budget that ran on 16 GB on both sets
-tried, 2–4% faster than 0.1. Below 16 GB run 0.1. Budget 0.4 is not safe on 16 GB: it ran
-on `hews_layout` before FA2 joined the saved set and OOMs on `ama_mitsuki_layout` now. 0.5 does
-not fit at swap 0 even with `stream`.
+0.01–0.02 s/step.** The default is 0.3, the fastest budget that runs on 16 GB on both sets
+above, 2–4% faster than 0.1. Below 16 GB run 0.1. Budget 0.4 OOMs on `ama_mitsuki_layout`, and
+0.5 does not fit at swap 0 even with `stream`.
 
 `--ema_card` and swap 20 are the other levers:
 [EMA](training_step.md#ema-shadow-on-the-card),
@@ -144,8 +118,9 @@ off, since it leaves only 0.85 GB free on 16 GB.
 
 ## Accuracy
 
-Prediction error, `‖v − v_fp32‖ / ‖v_fp32‖` in %, on images outside calibration. t2i: six
-images, 30 for the marked row. i2i: 12 `i2i_sanitize_idt` pairs, centre-cropped to 48×48
+Prediction error, `‖v − v_fp32‖ / ‖v_fp32‖` in %, on images outside calibration, bf16 kernel
+input (the fp32 input lowers the GPTQ fp32-stream column a further 5–10%, [below](#kernel-input)).
+t2i: six images, 30 for the marked row. i2i: 12 `i2i_sanitize_idt` pairs, centre-cropped to 48×48
 because the full size OOMs in the fp32 reference.
 
 | | σ | bf16 | int8 RTN | int8 GPTQ | RTN, fp32 stream | GPTQ, fp32 stream | bf16, fp32 stream |
@@ -159,7 +134,7 @@ because the full size OOMs in the fp32 reference.
 | i2i | 0.9 | 2.05 | 2.44 | 2.24 | 1.53 | **1.19** | 0.78 |
 
 - GPTQ cuts int8's excess over bf16, in quadrature, by 28–35% (t2i) and 31–32% (i2i).
-- Int8 GPTQ on an fp32 stream sits below today's bf16 at every σ tested. bf16 on an fp32
+- Int8 GPTQ on an fp32 stream sits below plain bf16 at every σ tested. bf16 on an fp32
   stream stays well below it.
 
 LoRA gradient, each image's distance from the fp32 gradient over bf16's, per group of
@@ -181,13 +156,11 @@ Generation: all arms render cleanly. On the i2i page, mean |Δ| from bf16 is 0.7
 (GPTQ) and 0.68/255 (with an fp32 stream). One t2i seed is chaotic (12.4–13.9/255 against
 11.7 between bf16 and its own fp32 stream), so it orders nothing.
 
-The tables above and the speed tables were measured on a bf16 kernel input.
+## Kernel input
 
-## `comfy_kitchen` rounds activations to the input dtype
-
-On a bf16 input, `int8_linear`'s CUDA quantizer (0.2.40, `quant_div_to_float` and
-`quant_div_float_to_float` in `ops/int8_linear.cu`) adds three bf16 roundings. The rotation
-itself runs in fp32.
+On a bf16 input, `comfy_kitchen` 0.2.40's `int8_linear` quantizer (`quant_div_to_float` and
+`quant_div_float_to_float` in `ops/int8_linear.cu`) rounds to bf16 three times around the
+activation division; the rotation itself runs in fp32.
 
 - The rotated value is rounded to bf16 before the division.
 - The scale is rounded to bf16 for the division, while the dequant multiplies by the fp32
@@ -195,8 +168,9 @@ itself runs in fp32.
 - The quotient is rounded to bf16 before `nearbyintf`, so values of 64 and above are on a 0.5
   step when they reach the int8 rounding.
 
-An fp32 input skips all three. `Int8TrainLinear.forward` passes one in training and generation;
-the backward's `dY` stays bf16, and `wq` is unchanged, so `int8_id` and LoRAs are not affected.
+An fp32 input skips all three, so `Int8TrainLinear.forward` passes one in training and
+generation. The backward's `dY` stays bf16, and `wq` is unchanged, so `int8_id` and LoRAs are not
+affected.
 
 Prediction error on the fp32 stream, %, GPTQ, the same held-out images and seeds, 18 of 18
 (image, σ) pairs better on the six-image rows:
@@ -215,21 +189,23 @@ LoRA gradient on the fp32 stream, as in the table above, σ = 0.5, 30 images:
 | bf16 | 1.01 [1.48] | 1.05 [1.57] | 1.07 [1.79] | 0.98 [1.69] | 1.12 [1.38] | 0.92 [1.04] |
 | fp32 | 1.03 [1.37] | 1.04 [1.40] | 1.02 [1.28] | 0.97 [1.23] | 1.07 [1.38] | 0.89 [0.97] |
 
-The cost is 1.05 → 1.10 s/step (`ama_mitsuki_layout`, budget 0.3, median of steps 11–40, one
-run per arm), peak unchanged at 12.98 GB. The same weights through ComfyUI, the MOSS Toolkit and
-the int8 TE still reach the kernel in bf16; those paths were not scored. i2i was not scored.
-Numbers: [`moss_act_scale.md`](../../../project/finished/int8_train/reports/moss_act_scale.md).
+i2i was not scored. Numbers:
+[`moss_act_scale.md`](../../../project/finished/int8_train/reports/moss_act_scale.md).
 
-Upstream: [comfy-kitchen#289](https://github.com/Comfy-Org/comfy-kitchen/issues/289), with a fix
-on [`sorryhyun/comfy-kitchen`](https://github.com/sorryhyun/comfy-kitchen/tree/int8-activation-fp32-division).
-It divides in fp32, so a bf16 input gives the fp32 input's output, the same prediction error,
-and bf16's speed. A Linux x86_64 build of v0.2.41 with it is on the
+**Fixed kernel.** [comfy-kitchen#289](https://github.com/Comfy-Org/comfy-kitchen/issues/289)
+reports this upstream. [`sorryhyun/comfy-kitchen`](https://github.com/sorryhyun/comfy-kitchen/tree/int8-activation-fp32-division)
+divides in fp32, so a bf16 input gives the fp32 input's output. A Linux x86_64 build of v0.2.41
+with it is on the
 [`deps-comfy-kitchen-0.2.41-fp32div`](https://github.com/sorryhyun/anima_lora/releases/tag/deps-comfy-kitchen-0.2.41-fp32div)
-release (install line: [README](../../../README.md#manual-from-a-clone)).
-`library.int8.linear.kernel_divides_fp32()` probes the kernel once on the card; on a fixed one
-`Int8TrainLinear.forward` passes its input through (inputs that arrive in fp32 stay fp32, so
-the forward output is unchanged), the compile signature reads `int8_in=native`, and the
-backward's bf16 `dY` and the int8 TE's bf16 input are divided in fp32 too.
+release (install line: [README](../../../README.md#manual-from-a-clone); `uv sync` reverts it).
+`library.int8.linear.kernel_divides_fp32()` probes the kernel once on the card. On a fixed one
+`Int8TrainLinear.forward` passes its input through (an fp32 input stays fp32, so the forward
+output is unchanged), the compile signature reads `int8_in=native`, and the backward's bf16 `dY`
+and the int8 TE's bf16 input are divided in fp32 too. A MOSS step runs 1.006 s on the fixed kernel
+against 1.026 s with the fp32 cast on stock (`ama_mitsuki_layout`, budget 0.3, one run each),
+peak 12.96 GB on both.
+
+On stock `comfy_kitchen`, ComfyUI, the MOSS Toolkit and the int8 TE feed the kernel bf16.
 
 ## Single-token gradient outliers
 
@@ -260,10 +236,10 @@ the outliers are not an int8 effect and are not reproducible run to run.
 - [`moss_gptq.md`](../../../project/finished/int8_train/reports/moss_gptq.md): GPTQ base, held-out
   error, outliers, trainer smoke test, generation, with job ids.
 - [`moss_wqt_stream.md`](../../../project/finished/int8_train/reports/moss_wqt_stream.md): `wq_t`
-  streaming, budget sweep, same-seed gradient norms.
+  streaming, `full` against `stream`, `--ema_card`, swap and budget sweeps, same-seed gradient norms.
 - [`moss_grad_error.md`](../../../project/finished/int8_train/reports/moss_grad_error.md): RTN
   gradient gate, bf16 precision arms.
 - [`moss_scoping.md`](../../../project/finished/int8_train/reports/moss_scoping.md): GEMM bench, step
-  split, swap and budget plans, RTN step time.
+  split, swap and budget plans, RTN against bf16 step time.
 - [`project/finished/int8_train/README.md`](../../../project/finished/int8_train/README.md): design of the
   int8 linears, shared with Anima.

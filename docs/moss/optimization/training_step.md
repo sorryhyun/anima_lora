@@ -1,7 +1,7 @@
 # What makes the MOSS training step fast
 
 The default plan runs 1.05 s/step at a 12.88 GB peak on a 16 GB card, against 1.59 s/step at
-12.92 GB for the bf16 plan (`hews_layout`, rank 32, every run on the code as it stands). The sm_120
+12.92 GB for the bf16 plan (`hews_layout`, rank 32, stock FlashAttention). The sm_120
 FlashAttention build takes the default plan to 1.02 s/step: [fa2_sm120.md](fa2_sm120.md).
 Numerics stay close to bf16's or better: [int8.md](int8.md#accuracy).
 
@@ -18,7 +18,7 @@ answer two products per linear, and the backward visits the blocks in a known or
 | [Block swap over the int8 copies](#block-swap-over-the-int8-copies) | 2.1 GB off the peak, about 0.01 s/step | `library/int8/linear.py` |
 | [FA2 build for sm_120](fa2_sm120.md) | 1071–1082 → 1022 ms per step | `library/runtime/fa2.py` |
 
-Each row is its own before/after on the plan of its day, so the effects do not add up.
+Each row is measured on its own, so the effects do not add up.
 Paths are under `library/moss/`.
 
 ## int8 ConvRot in both directions
@@ -58,8 +58,9 @@ thread through its own CUDA stream.
 - **`sid` is a tensor.** As a Python int it would be a graph constant, and the 42 blocks would
   need 42 graphs in place of one. It stays on the CPU and is read by the op.
 - **Free the pages it leaves behind.** Moving `wq_t` off is not enough: what stays on the card
-  (`wq`, `s`, `s_t`) sat between the dropped copies and kept their pages pinned. Free VRAM
-  before training read 6.39 GB instead of 8.64 until `stream_targets` moved those off and back.
+  (`wq`, `s`, `s_t`) sits between the dropped copies and keeps their pages pinned.
+  `stream_targets` moves those off and back, which takes free VRAM before training from 6.39 to
+  8.64 GB.
 - **Out of order still works.** A block that was not prefetched is copied in on the spot, at
   the cost of the wait. Block 41 is the one cold block per step.
 
@@ -71,29 +72,29 @@ limit: during a 790 ms backward the GPU idled about 4 ms while 170 ms of copies 
 
 Below budget 1, Inductor's min-cut partitioner decides what the backward saves and what it
 recomputes. It only prices nodes the aggressive cut bans from recompute, by their flops, and an
-op with no flop formula counts as 1. So FA2 and the int8 linears were recomputed at every
-budget, and raising the budget bought nothing. Two changes make them candidates at their real
-cost:
+op with no flop formula counts as 1, so by default FA2 and the int8 linears are recomputed at
+every budget and raising the budget buys nothing. Two settings make them candidates at their
+real cost:
 
 - `functorch_config.is_non_builtin_to_include = True`, in `set_activation_memory_budget`.
 - `register_flop_formula` on `flash_attn::_flash_attn_forward` and the int8 ops, calibrated on
   the kernels: `2·B·H·D·L_q·L_k` for FA2 (2.46 ms), and `0.5·M·N·K` for int8 (0.42 ms against 0.87 ms
   for a bf16 3072² GEMM).
 
-The saved set stays the same size (209 → 200 MB per block at budget 0.2) and now holds FA2's
-`o` and `lse`, so FA2's forward runs once per block.
+The saved set then holds FA2's `o` and `lse` at no extra size (200 MB per block at budget 0.2,
+209 without the formulas), so FA2's forward runs once per block.
 
 A new op name needs its own formula (`flash_attn::_flash_attn_forward_f16in` has one), and the op
-should return only what its backward reads: the knapsack prices a node at the sum of its outputs
-(`_size_of`). An FA2 forward that also returned three fp16 copies of Q, K and V looked four times
-its saved bytes, and the partitioner ran it again in every block's backward (+58 ms a MOSS step).
+returns only what its backward reads: the knapsack prices a node at the sum of its outputs
+(`_size_of`), so an op that also returns a copy of its inputs looks larger than it is and is
+recomputed ([f16in report](../../../project/finished/int8_train/reports/fa2_f16in.md#the-partitioner-trap)).
 
 Budget 0.1 is the point where the saved set holds that output. At 0.05 it no longer fits and
 the recompute returns (1.16 s/step). What each 0.1 past that buys, and the default:
 [int8.md](int8.md#vram).
 
-The compile cache signature carries `flops=fa2,int8`, so graphs partitioned before the formulas
-are not reused.
+The compile cache signature carries `flops=fa2,int8`, so a graph partitioned without the formulas
+is not reused.
 
 ## Muon batched by shape
 
@@ -118,11 +119,12 @@ The block swapper moves every `.weight` under a block. `wq`, and `wq_t` in `full
 
 ## What is left
 
-Kernels take 1054 of the 1059 ms step, so Python and launches no longer matter. Attention is
-387 ms and the int8 GEMMs 316 ms ([split](../../../project/finished/int8_train/reports/moss_step_split_int8.md)).
-A further gain has to come from a kernel. No Triton int8 attention arm has passed the accuracy gate
-([reports](../../../project/finished/int8_train/reports.md)); fp16 accumulation in FA2's backward has
-([fa2_sm120.md](fa2_sm120.md)).
+On stock FlashAttention, kernels take 1054 of the 1059 ms step, so Python and launches do not
+matter. Attention is 387 ms and the int8 GEMMs 316 ms
+([split](../../../project/finished/int8_train/reports/moss_step_split_int8.md)), and a further
+gain has to come from a kernel. The sm_120 build is the attention kernel that passes the accuracy
+gate ([fa2_sm120.md](fa2_sm120.md)); no Triton int8 attention arm does
+([reports](../../../project/finished/int8_train/reports.md)).
 
 ## Carrying these elsewhere
 
