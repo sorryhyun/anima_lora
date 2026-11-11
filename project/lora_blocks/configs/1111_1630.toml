@@ -1,0 +1,22 @@
+# kv vs shared bank (plan.md, First): sanitize fine-tuned 300 steps from the shared-bank copy
+# block c_fill_bw10_mod16_s800, the P2 recipe (_archive/configs/lora_blocks/sanitize_ft_cbw10_s300.toml).
+# Twin: 1111_1631.toml (from the kv copy block 1111_1546).
+#
+#   make daemon-run ARGS="--queue --stall-timeout 900 scripts/moss/train.py --config project/lora_blocks/configs/1111_1630.toml"
+
+cache = "post_image_dataset/moss/i2i_sanitize_idt"
+output = "output/ckpt_moss_i2i/1111_1630.safetensors"
+init_lora = "output/ckpt_moss_i2i/c_fill_bw10_mod16_s800.safetensors"
+max_steps = 300
+save_every_steps = 100
+ema_window = 0.0
+ref_timestep = 0.0
+ref_isolate = true
+tone_weight = 0.003
+tone_start = 0.5
+mod_rank = 16
+int8 = "stream"
+stream = "fp32"
+blocks_to_swap = 36
+activation_memory_budget = 0.12
+swap_h2d_only = true

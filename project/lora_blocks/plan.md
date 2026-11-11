@@ -6,6 +6,8 @@ steps, 32.4 min) and `1111_1546` (its twin with `ref_adapters kv`, 1,050 steps, 
 `configs/1111_1546.toml`). Decided by a 300-step sanitize fine-tune from each, the P2 recipe
 (`_archive/configs/lora_blocks/sanitize_ft_cbw10_s300.toml`; the kv arm adds `ref_adapters = "kv"`),
 read on the sanitize eval (`ref_gate.py --part sanitize --arms ctrl,cut`, five pages, seeds 0–2).
+Queued 2026-11-11: `configs/1111_1630.toml` (shared bank) and `configs/1111_1631.toml` (kv), renders
+in `output/tests/ref_gate/20261111-sanft-1111_163{0,1}`.
 The copy line and the tasks built on it follow the winner.
 
 The problem that sets the order is Korean strokes. colorize v5 and swap_text ksplit e2 both
