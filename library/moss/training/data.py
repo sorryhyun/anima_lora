@@ -82,7 +82,12 @@ def sample_captions(te_path: Path) -> dict[str, str]:
         has_plain = "embeds_plain" in f.keys()
     out = {"full": meta["caption"], "empty": ""}
     if has_plain:
-        out["plain"] = Path(meta["source"]).with_suffix(".txt").read_text().strip()
+        source = Path(meta["source"])
+        txt = source.with_suffix(".txt")
+        if not txt.is_file():
+            # i2i staging: {stem}.tgt.webp with the caption at {stem}.txt
+            txt = source.parent / (te_path.name.split(".moss_te.")[0] + ".txt")
+        out["plain"] = txt.read_text().strip()
     for k, v in meta.items():
         if k.startswith("caption_v"):
             out["v" + k[len("caption_v") :]] = v

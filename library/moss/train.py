@@ -345,6 +345,15 @@ def train(
                 min(s.n_img + shortest(s) for s in samples),
                 max(s.n_img + s.n_text for s in samples) + n_reg,
             )
+            if teachers is not None:
+                # the teacher's main axis: the image and its longer text (no reference)
+                seq_range = (
+                    seq_range[0],
+                    max(
+                        seq_range[1],
+                        max(s.n_img + teachers.longest(s.stem) for s in samples),
+                    ),
+                )
         print(
             f"compile: token axis marked {seq_range[0]}-{seq_range[1]}"
             + (f", reference {ref_range[0]}-{ref_range[1]}" if ref_range else ""),
