@@ -123,7 +123,7 @@ clean and carries nothing. The read C learned survives the move; the placement d
 
 C retrained at `ref_pos offset`, then character_ref from it (route 2).
 
-- `project/lora_blocks/configs/c_fill_bw10_mod16_off_s800.toml`: the recipe of
+- `_archive/configs/lora_blocks/c_fill_bw10_mod16_off_s800.toml`: the recipe of
   `c_fill_bw10_mod16_s800` (cache `post_image_dataset/moss/c_fill_illu_bw10`, 800 steps, rank
   32, `mod_rank 16`, lr 5e-5, `ref_gate cut` at `gate_rate 0.9`, `ref_isolate`,
   `ref_timestep 0`, swap 36 / budget 0.12, ~33 min) with `ref_pos = "offset"`.

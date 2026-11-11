@@ -10,7 +10,7 @@ caption is swap_text's layout JSON with the new strings and their ink boxes; box
 alone keep their OCR item.
 
 Writes ``post_image_dataset/i2i/hangul_block/{img/, pairs.jsonl, syllables.json,
-sheet.png}``. Cache with ``project/lora_blocks/configs/hangul_cache.toml``.
+sheet.png}``. Cache with ``_archive/configs/lora_blocks/hangul_cache.toml``.
 
     .venv/bin/python project/lora_blocks/src/build_hangul_data.py [--pages 600]
 """

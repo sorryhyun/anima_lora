@@ -21,9 +21,9 @@ pages it renders as e2 does.**
   1,435 lines: 1,214 balloon, 221 flat (33 dark, 48 left-aligned); 976 syllables. Ink height
   per line < 20 px: 987, 20–28: 283, 28–40: 66, 40+: 99 (staged-image pixels). 3,656 boxes
   still rejected as neither balloon nor flat.
-- **Cache** `configs/hangul_v3_cache.toml`, plus 400 ko + 200 en twins of e2's ksplit cache
+- **Cache** `_archive/configs/lora_blocks/hangul_v3_cache.toml`, plus 400 ko + 200 en twins of e2's ksplit cache
   (`src/link_hangul_twins.py --lang`): 1,400 samples.
-- **Run** `configs/hangul_v3_ft_e2_s600.toml`: init from ksplit e2 (EMA file), e2's recipe
+- **Run** `_archive/configs/lora_blocks/hangul_v3_ft_e2_s600.toml`: init from ksplit e2 (EMA file), e2's recipe
   (muon 5e-5, rank 32, mod_rank 16, region_weight 2, int8 plan), EMA window 0.1, 600 steps,
   24.7 min, peak 13.1 GB. `output/ckpt_moss_i2i/hangul_v3_ft_e2_s600[/…]`.
 - **Eval** ko10 seed 0 (int8 generate default) and the two eval pages seeds 0–2 (bf16 + swap 10).

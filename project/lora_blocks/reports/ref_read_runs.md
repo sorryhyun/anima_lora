@@ -131,7 +131,7 @@ Other runs that start from a C file and are not covered here: `hangul_s500`, `ha
 | The copy forms between s800 and s4800 and stays narrower than aligned | `…lr2e4_s4800` saves | heads over 0.1 at step 0: 0 (s800), 5–6 (s1600), 21–22 (s2400), 37–41 (s4800) vs aligned C s800 79–80; L1 52.9–61.6 → 9.5–9.9 (aligned s800 5.7–6.2); blocks 0–13 own-cell mass ≤ 0.04 at every save. `reports/offset_kv_copy.md` |
 | The s4800 save copies on two of five fill pages | `…lr2e4_s4800` | out-L1 `ctrl`: usual_case1 7.2–9.5, hts1 7.1–11.7, hts2 13.2–19.8, usual_case2 19.4–26.6 (posterized patches), hts3 24.3–25.9 (slight zoom); aligned C 5.5–12.8 |
 | A 300-step lr 5e-5 fine-tune barely moves this init | sanitize ft from `…lr2e4_s4800`, offset, kv, mod16 | ‖ΔW‖ of offset C ~10× aligned C's (q, blocks 0–13: 49.5 vs 4.2); ft − init relative 0.10 vs 0.63. `reports/offset_kv_copy.md` |
-| kv needs more swap than the shared bank and runs faster | offset, illu_bw10, mod16 | swap 36 / 0.12 OOMs on the first backward under kv (13.85 GB allocated; comment in `configs/c_fill_bw10_mod16_off_kv_lr2e4_s1600.toml`, no JSON). Shared bank 36 / 0.12: 2.46 s/step, 13.22 GB; kv 34 / 0.05: 1.86 s/step, 13.20 GB; kv 38 / 0.08: 1.76 s/step, 13.42 GB. The kv runs swap more blocks and are still 24–29 % faster per step. On cref: offkv_cinit 1.56 s/step (34 / 0.05, mod16) vs off_e1 1.65 (36 / 0.15, shared bank) |
+| kv needs more swap than the shared bank and runs faster | offset, illu_bw10, mod16 | swap 36 / 0.12 OOMs on the first backward under kv (13.85 GB allocated; comment in `_archive/configs/lora_blocks/c_fill_bw10_mod16_off_kv_lr2e4_s1600.toml`, no JSON). Shared bank 36 / 0.12: 2.46 s/step, 13.22 GB; kv 34 / 0.05: 1.86 s/step, 13.20 GB; kv 38 / 0.08: 1.76 s/step, 13.42 GB. The kv runs swap more blocks and are still 24–29 % faster per step. On cref: offkv_cinit 1.56 s/step (34 / 0.05, mod16) vs off_e1 1.65 (36 / 0.15, shared bank) |
 
 On offset at lr 5e-5, the shared-bank run's loss fell at ~650–750 and the kv run's at ~1,100
 (`c_fill_bw10_mod16_off_s800` vs `…off_kv_s1600`). That is one run each. The two runs also differ
@@ -305,7 +305,7 @@ moves e1's loss by 0.24 % from step 300 (off_e1 is lower; 10 % lower over steps 
 | character_ref eval inputs | README first paragraph: akipeko/8351281, koh_(minagi_kou)/dan_7661898 | those are now in `inputs_old/`; every run past e1 renders `oc_akipeko_10808866` and `oc_yamamoto_souichirou_10278837` (`inputs/`) |
 | e1's recipe | `configs/moss/i2i/character_ref/train.toml` now: 3 epochs, swap 38 / 0.10, save per epoch | e1 JSON: 1 epoch, swap 36 / 0.15 (as `docs/moss/methods/i2i.md` says) |
 | `1111_1413` peak | `_archive/configs/moss_ref_read_20261111/character_ref_train_distill.toml` header: kv plan "peak 12.8 GB on this cache" | JSON 13.40 GB (the teacher adds to it; 12.8 is offkv_cinit's) |
-| offset kv lr 5e-5, steps 1401–1600 | `configs/c_fill_bw10_mod16_off_kv_lr2e4_s1600.toml` header: σ < 0.7 0.17, σ ≥ 0.7 0.36; "canvas 0.05 at σ ≥ 0.7" | every step: 0.179 / 0.276 (0.17 / 0.36 are the 20 logged 10th steps). "canvas" there is the aligned C `c_fill_bw10_mod16_s800` (σ ≥ 0.7 mean 0.042 at 601–800), not `ref_pos canvas` |
+| offset kv lr 5e-5, steps 1401–1600 | `_archive/configs/lora_blocks/c_fill_bw10_mod16_off_kv_lr2e4_s1600.toml` header: σ < 0.7 0.17, σ ≥ 0.7 0.36; "canvas 0.05 at σ ≥ 0.7" | every step: 0.179 / 0.276 (0.17 / 0.36 are the 20 logged 10th steps). "canvas" there is the aligned C `c_fill_bw10_mod16_s800` (σ ≥ 0.7 mean 0.042 at 601–800), not `ref_pos canvas` |
 | offset C on the character_ref eval | `docs/moss/proposal/ref_canvas.md`, "Read 1": "the renders show it (the reference returned, prompt ignored)" | no character_ref render of the offset-trained C exists; `results/c_init_off` is the aligned file re-stamped to offset, which follows the prompt |
 | "forms ~10× later" | `reports/offset_kv_copy.md` claim 3, repeated in the memory without configuration | compares offset + kv at lr 2e-4 with a 240-step warmup (s4800 run) against aligned shared bank at lr 5e-5; placement, `ref_adapters`, lr and warmup all differ |
 
@@ -334,14 +334,14 @@ moves e1's loss by 0.24 % from step 300 (off_e1 is lower; 10 % lower over steps 
   0.422 → 0.276), larger at σ < 0.7.
 - s4800 "late σ ≥ 0.7 0.07–0.09 (canvas 0.05)": all-step means per 200 steps from step 3,201 are
   0.098–0.117 (medians 0.06–0.07); aligned C σ ≥ 0.7 is 0.042 (mean, 601–800).
-- `configs/sanitize_ft_off_kv_s300.toml` is `project/lora_blocks/configs/sanitize_ft_off_kv_s300.toml`.
+- `_archive/configs/lora_blocks/sanitize_ft_off_kv_s300.toml` is `_archive/configs/lora_blocks/sanitize_ft_off_kv_s300.toml`.
 - "forms ~10× later" carries no configuration (see the table above).
 - "e1 and off_e1 losses are identical from step 300": they differ by −0.24 % (sem 0.04), off_e1
   lower, shrinking to −0.11 % at 801–1000; by −10 % over steps 1–100. "No char_ref run reads the
   reference yet" is a reading of the renders, which the loss does not contradict.
 - "loss +7.5 % over off_e1": +7.3 % (ratio of means) / +8.5 % (mean of ratios) / +7.7 % (median), steps 300–1000.
 - 1111_1232 "Trap: the s800 / s1600 offset numbers quoted in the config header (L1 53–62, 0 heads)":
-  stale. The header of `configs/1111_1232.toml` now quotes the twin's numbers (32.5 / 37.4).
+  stale. The header of `_archive/configs/lora_blocks/1111_1232.toml` now quotes the twin's numbers (32.5 / 37.4).
 - 1111_1413 "teacher MSE flat at ~0.018 (= Base's zero-shot img-in-TE gap)": the 0.0187 is Base on
   other data at σ 0.95 only; the agreement is in size, not a like-for-like measurement.
 - 1111_1413 "Variance reduction alone did not start the read": the run differs from e1 in two

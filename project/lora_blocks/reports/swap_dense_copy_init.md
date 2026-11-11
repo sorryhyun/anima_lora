@@ -15,8 +15,8 @@ e2 drew right.**
   pages with text cover ≥ 10 % or ≥ 50 syllables: 1,509 pairs, 58 works, 187k syllables. `tk`
   (historical narration) is 802 of them. List: `staging/pairs_new_dense1509.jsonl`; cache: the
   symlink farm `i2i_swap_text_relax_ko_dense1509`.
-- **Runs:** [`configs/swap_dense_k_s500.toml`](../configs/swap_dense_k_s500.toml) (kaiming) and
-  [`configs/swap_dense_c_s500.toml`](../configs/swap_dense_c_s500.toml) (from C v2,
+- **Runs:** [`_archive/configs/lora_blocks/swap_dense_k_s500.toml`](../configs/swap_dense_k_s500.toml) (kaiming) and
+  [`_archive/configs/lora_blocks/swap_dense_c_s500.toml`](../configs/swap_dense_c_s500.toml) (from C v2,
   `c_fill_v2_s800`).
   - Recipe: e2's (muon 5e-5, rank 32, `mod_rank` 16, `region_weight` 2, int8 plan, EMA on the
     card), 500 steps.

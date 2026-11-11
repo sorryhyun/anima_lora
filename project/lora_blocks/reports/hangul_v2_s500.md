@@ -29,7 +29,7 @@ was already crisp, so the pages show the block reaching e2's quality and not pas
   (611): 1,038 lines, 681 distinct syllables. Condition `blank` 285 / `orig` 315.
 - **Rejected boxes**: 3,489 not a closed balloon, 704 sharing a balloon, 666 failed the ink
   measurement, 77 spilled out of the balloon. A single-core build takes ~6 min.
-- **Run**: as v1 (`configs/hangul_v2_cache.toml`, `configs/hangul_v2_s500.toml`), plus the
+- **Run**: as v1 (`_archive/configs/lora_blocks/hangul_v2_cache.toml`, `_archive/configs/lora_blocks/hangul_v2_s500.toml`), plus the
   same 150 ko twins: 750 samples, 19.6 min, peak 13.1 GB.
 
 ## Reads

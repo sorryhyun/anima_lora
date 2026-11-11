@@ -16,7 +16,7 @@ changed at once, so none of this is attributed yet.**
   the B&W half doubles the text-bearing pages.
 - **Tone term** (`library/moss/train.py`): an identity pair has no edit region, so the tone rest
   is the whole page; the step's hole rows are now removed from it.
-- **Run**: [`configs/c_fill_v2_s800.toml`](../configs/c_fill_v2_s800.toml). C's recipe, plus
+- **Run**: [`_archive/configs/lora_blocks/c_fill_v2_s800.toml`](../configs/c_fill_v2_s800.toml). C's recipe, plus
   `tone_weight 0.003` from half-way, `ema_window 0.1`, 800 steps, swap 34, budget 0.15.
   2.36 s/step, 31.5 min, peak 13.28 GB, a hole on 718 steps (cover mean 0.148).
   `output/ckpt_moss_i2i/c_fill_v2_s800[/…]`.

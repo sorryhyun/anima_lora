@@ -11,8 +11,8 @@ on boxed marks and invents content on the large masks.
 
 - **Init** (`TrainRequest.init_lora`, new): the adapters load a saved LoRA in place of their
   init; algo, rank, alpha, targets and state keys must match.
-- **Runs**: [`configs/sanitize_ft_c_s300.toml`](../configs/sanitize_ft_c_s300.toml) (from
-  `c_fill_s400`) and [`configs/sanitize_ft_k_s300.toml`](../configs/sanitize_ft_k_s300.toml)
+- **Runs**: [`_archive/configs/lora_blocks/sanitize_ft_c_s300.toml`](../configs/sanitize_ft_c_s300.toml) (from
+  `c_fill_s400`) and [`_archive/configs/lora_blocks/sanitize_ft_k_s300.toml`](../configs/sanitize_ft_k_s300.toml)
   (kaiming). The sanitize_copy_s300 recipe (277 pairs, muon, lr 5e-5, rank 32, int8 plan, EMA
   off, no gate in training) with v3's tone term (0.003 from step 150). Swap 36, budget 0.15:
   2.19 s/step, peak 12.3 GB. `output/ckpt_moss_i2i/sanitize_ft_{c,k}_s300[/…_sN]`.

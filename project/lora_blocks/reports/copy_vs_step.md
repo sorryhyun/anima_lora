@@ -10,7 +10,7 @@ folder has `summary.json` and `sheet_<task>.png` (columns: ref, then the checkpo
 order). Seed 0, the tasks' shipped generate settings (int8 DiT, uncensor with its cache
 caption and `prompt_tail off`).
 
-Micro arm: `configs/sanitize_copy_s300.toml` — the sanitize v3 recipe (277 pairs, muon,
+Micro arm: `_archive/configs/lora_blocks/sanitize_copy_s300.toml` — the sanitize v3 recipe (277 pairs, muon,
 lr 5e-5, rank 32, `ref_timestep 0`, `ref_isolate`) on the int8 plan, 300 steps, EMA off,
 a save every 25 steps (`save_every_steps`, added to `TrainRequest` for this). 2.27 s/step,
 11.2 min. Checkpoints `output/ckpt_moss_i2i/probe_sanitize_copy_s300[/…_sN].safetensors`.

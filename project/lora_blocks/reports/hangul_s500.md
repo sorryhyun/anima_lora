@@ -19,8 +19,8 @@ strokes on one page and bolds or tints them on the other.**
   with its own lettering (`orig`, 287). The caption is swap_text's layout JSON, with the new
   strings at their ink boxes. That gives 1,531 lines and 750 distinct syllables, plus 150 ko
   edition twins from the ksplit cache (`src/link_hangul_twins.py`): 750 samples.
-- **Cache**: `configs/hangul_cache.toml` (layout JSON, `token_split syllable`, tail off), 4.1 GB.
-- **Run**: `configs/hangul_s500.toml`. Initialised from C (`c_fill_s400`); otherwise the
+- **Cache**: `_archive/configs/lora_blocks/hangul_cache.toml` (layout JSON, `token_split syllable`, tail off), 4.1 GB.
+- **Run**: `_archive/configs/lora_blocks/hangul_s500.toml`. Initialised from C (`c_fill_s400`); otherwise the
   sanitize_ft_c recipe (muon, lr 5e-5, rank 32, int8 plan, EMA off) with `region_weight 2`
   and no gate (training has `cut` only). 500 steps, 2.49 s/step, 20.4 min, peak 13.3 GB.
   `output/ckpt_moss_i2i/hangul_s500[/…_sN].safetensors`.

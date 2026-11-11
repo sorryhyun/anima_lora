@@ -128,7 +128,7 @@ sanitize v3 alone, for scale: L1 out 5.55–5.60 on `usual_case1`.
 
 ## bw10 as the init: P2's sanitize fine-tune rerun
 
-[`configs/sanitize_ft_cbw10_s300.toml`](../configs/sanitize_ft_cbw10_s300.toml): P2's recipe
+[`_archive/configs/lora_blocks/sanitize_ft_cbw10_s300.toml`](../configs/sanitize_ft_cbw10_s300.toml): P2's recipe
 ([p2_sanitize_ft.md](p2_sanitize_ft.md): 277 pairs, 300 steps, EMA off, tone 0.003 from step 150)
 from bw10, with `mod_rank 16` because the init carries the modulation adapter. C-ft had none, so
 the arm differs from C-ft in the init and in the adapter. Eval as P2:

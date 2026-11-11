@@ -14,7 +14,7 @@ syllables the 500-step smoke lost come back. English is exact on 11 of 12 render
   filter: 2,516 pairs, 163 works (`staging/pairs_dense2516.jsonl`). Plus v3's en400: 2,916
   pairs. Cache: the symlink farm `i2i_swap_text_relax_ko_dense2516_en400` (Korean into
   `i2i_swap_text_relax_ko_ksplit`, English into `i2i_swap_text_v3_all`).
-- **Run:** [`configs/swap_dense2516_en400_c_e2.toml`](../configs/swap_dense2516_en400_c_e2.toml):
+- **Run:** [`_archive/configs/lora_blocks/swap_dense2516_en400_c_e2.toml`](../configs/swap_dense2516_en400_c_e2.toml):
   from C v2, e2's recipe (muon 5e-5, rank 32, `mod_rank` 16, `region_weight` 2, int8 plan, EMA
   on the card), 2 epochs = 5,832 steps, swap 36 / budget 0.05. 2.57–2.7 s/step, 259 min, peak
   12.58 GB. Region loss ~0.15 from step 500 on, rest 0.025 → 0.008; six grad-norm spikes over

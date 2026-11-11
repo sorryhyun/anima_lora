@@ -22,7 +22,7 @@ by step 200, earlier than sanitize's own pairs do.
 - **Data** (`project/lora_blocks/src/build_c_data.py`): identity pairs over colorize v5's
   1,667 colour illustration targets, the latent as its own `ref_scale 1` reference
   (symlinks). The empty prompt on every step (`caption_dropout 1`).
-- **Run**: [`configs/c_fill_s400.toml`](../configs/c_fill_s400.toml), the sanitize_copy_s300
+- **Run**: [`_archive/configs/lora_blocks/c_fill_s400.toml`](../configs/c_fill_s400.toml), the sanitize_copy_s300
   recipe (muon, lr 5e-5, rank 32, int8 plan, EMA off), 400 steps, a save every 100. 2.36 s/step,
   16.4 min, peak 10.55 GB. `output/ckpt_moss_i2i/c_fill_s400[/…_sN].safetensors`.
 - **Eval**: `project/moss_te_sae/src/ref_gate.py --part fill`

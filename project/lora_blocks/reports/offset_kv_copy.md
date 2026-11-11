@@ -6,7 +6,7 @@ Date: 2026-11-11. Copy block under `ref_pos offset` + `ref_adapters kv`
 
 ## Runs and reads
 
-- **Sanitize ft from offset C**: [`configs/sanitize_ft_off_kv_s300.toml`](../configs/sanitize_ft_off_kv_s300.toml),
+- **Sanitize ft from offset C**: [`_archive/configs/lora_blocks/sanitize_ft_off_kv_s300.toml`](../configs/sanitize_ft_off_kv_s300.toml),
   P2's recipe (277 pairs, lr 5e-5, EMA off, tone 0.003 from step 150) with offset + kv. 1.7 s/step,
   peak 12.3 GB. `output/ckpt_moss_i2i/sanitize_ft_off_kv_s300`. Its aligned twin is
   `sanitize_ft_cbw10_s300` ([c_fill_mod16_bw10.md](c_fill_mod16_bw10.md)).
@@ -98,7 +98,7 @@ bank is largest at blocks 4–19 (~25) and falls with depth; its kv export adapt
 
 ## Canvas coordinates (2026-11-11)
 
-[`configs/1111_1232.toml`](../configs/1111_1232.toml): the lr 2e-4 s1600 offset + kv run with
+[`_archive/configs/lora_blocks/1111_1232.toml`](../configs/1111_1232.toml): the lr 2e-4 s1600 offset + kv run with
 `ref_pos = "canvas"` (the reference at r = 0 as the right panel, image and reference centred on
 the two-panel canvas) and nothing else changed. Stopped at s800. For a reference of the image's
 size the two placements differ in the r value (0 against 1) and in the image sitting half a width
