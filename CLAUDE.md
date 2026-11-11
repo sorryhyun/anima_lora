@@ -294,12 +294,12 @@ Training-free inference stacks (Spectrum, SMC-CFG, CNS, mod-guidance, DAVE, …)
 
 - **Read a paper from its PDF, never through WebFetch** or the `web-fetch` agent: `curl` the PDF
   (arXiv: `https://arxiv.org/pdf/<id>`) into the scratchpad and read it with `pdftotext -layout`.
-  Tables, equations and appendices carry the answer; a fetched summary drops them. A follow-up
-  question about a paper means reading the PDF again yourself.
+  Tables, equations and appendices carry the answer; a fetched summary drops them. Follow-up
+  questions are answered from the PDF too.
 - **A gate passes when its evidence does.** If every metric and the renders favour the arm, it
-  passed, however small the gap. Don't add a criterion when reading the result, and don't set a
-  threshold on a quantity that is small by construction (a one-step x̂₀ gap at low σ, where x_t
-  already holds the image).
+  passed, however small the gap. Criteria are fixed before the result is read, and no threshold
+  goes on a quantity that is small by construction (a one-step x̂₀ gap at low σ, where x_t already
+  holds the image).
 
 ## Projects, docs, history
 
