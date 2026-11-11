@@ -1,5 +1,13 @@
 # Plan (2026-11-07)
 
+**First (2026-11-11): the copy block's reference stream, `ref_adapters kv` or shared bank (`off`).**
+Two copy blocks on the same data and training time: `c_fill_bw10_mod16_s800` (shared bank, 800
+steps, 32.4 min) and `1111_1546` (its twin with `ref_adapters kv`, 1,050 steps, ~33 min; config
+`configs/1111_1546.toml`). Decided by a 300-step sanitize fine-tune from each, the P2 recipe
+(`_archive/configs/lora_blocks/sanitize_ft_cbw10_s300.toml`; the kv arm adds `ref_adapters = "kv"`),
+read on the sanitize eval (`ref_gate.py --part sanitize --arms ctrl,cut`, five pages, seeds 0–2).
+The copy line and the tasks built on it follow the winner.
+
 The problem that sets the order is Korean strokes. colorize v5 and swap_text ksplit e2 both
 write the right syllables with soft, uneven strokes (user, 2026-11-07), and swap_text
 still gets an occasional syllable wrong. The VAE is ruled out: a round trip of real Korean

@@ -1,0 +1,26 @@
+# Aligned + kv twin of c_fill_bw10_mod16_s800 at matched training time: the control's request with
+# ref_adapters = "kv" (reference rows on Base and Base modulation, no backward; k/v export adapters
+# rank 32; mod16 acts on the image and text rows only). Control 800 x 2.43 s = 32.4 min; kv on this
+# cache needs swap 34 / 0.05 (36 / 0.12 runs out) at ~1.85 s/step, so 1,050 steps. Saves every 262
+# fall at the control's s200 / s400 / s600 / s800 in time; warmup 0.05 x 1,050 = 52 steps ~ the
+# control's 40 in time. fit_report off as the control, so each step draws the control's page and sigma.
+#
+#   make daemon-run ARGS="--queue --stall-timeout 900 scripts/moss/train.py --config project/lora_blocks/configs/1111_1546.toml"
+
+cache = "post_image_dataset/moss/c_fill_illu_bw10"
+output = "output/ckpt_moss_i2i/1111_1546.safetensors"
+max_steps = 1050
+save_every_steps = 262
+caption_dropout = 1.0
+ref_timestep = 0.0
+ref_isolate = true
+ref_adapters = "kv"
+ref_gate = "cut"
+gate_holes = "post_image_dataset/moss/c_fill_illu_bw10/hole_layouts.json"
+gate_rate = 0.9
+mod_rank = 16
+int8 = "stream"
+stream = "fp32"
+blocks_to_swap = 34
+activation_memory_budget = 0.05
+swap_h2d_only = true
