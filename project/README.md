@@ -1,69 +1,10 @@
-# project/ — active promoted lines
+# project/
 
-One subdir per research line that has graduated past "proposal + bench report"
-into an ongoing project with open phases. Each subdir is the line's home page:
+One directory per research line, each with its own `README.md` as the home page.
 
-| File | Contents |
-|---|---|
-| `methods.md` | The implementation — what code exists, where it lives, how to run it |
-| `bench.md` | Digest of measured results — omitted when the line's bench lives in-tree (its own `report.md` serves directly) |
-| `questions.md` | Open questions the line has not answered |
-| `roadmap.md` | Remaining phases, gates, and kill criteria |
-| `outcomes.md` | Shippable/practical artifacts the line produced (optional — appears once something is ship-shaped) |
+- **Active**: a directory here.
+- **Finished** (ran to a conclusion): [`finished/`](finished/), tracked, so its verdicts stay
+  in the repo. Code and make targets it shipped stay where they are.
+- **Retired** (killed, superseded or shelved): the gitignored `_archive/`.
 
-Canonical sources these digest (never duplicated wholesale):
-the line's proposal(s) (frozen designs) and its bench (`report.md` = raw
-verdicts + full tables, `results/` = run envelopes). A promoted line may
-adopt these into its home — `project/<line>/bench/` for the bench and e.g.
-`initial_proposal.md` for the founding proposal (the archived directedit_ec
-and sigma_lowres lines did both); lines that haven't keep them in
-`bench/<line>/` and `docs/anima/proposal/<line>*.md`.
-
-A line leaves the active set one of two ways:
-
-- Finished — it ran to a successful conclusion (goal reached or measured
-  ceiling hit). Its digest home moves to the tracked
-  [`finished/`](finished/) tier so the verdicts stay visible in the repo;
-  any still-operational working tree (code, make targets) stays where it is.
-- Retired — killed, superseded, or shelved. It moves to the gitignored
-  `_archive/` tree (local + preserved in the private mirror).
-
-Retired lines so far:
-
-- `sigma_lowres` — archived 2026-08-19 → `_archive/sigma_lowres/`. The research
-  branches + paper drafts were already mirrored to the private repo
-  (2026-08-15) and deleted from public origin; the shipped `--sigma_lowres`
-  feature stays live (`docs/anima/optimizations/sigma_lowres.md`).
-- `directedit_ec` — archived 2026-08-19 → `_archive/directedit_ec/`. Private
-  mirroring still pending; the state is snapshot in the mirror's `main` and
-  in origin history. EasyEdit ship proposal + paper prep remain the owed
-  write-ups if the line reopens.
-
-Finished lines are listed in [`finished/README.md`](finished/README.md)
-(the ResShift SR sidecar, 2026-08-22; mod guidance, 2026-08-24; the
-encoder-side CJK line `cjk_aware_anima` and its DiT-side successor
-`cjk_aware_anima_dit`, both 2026-09-24; the wake line
-`cjk_renderable_anima`, 2026-09-30; its production line `cjk_anima_scale`,
-2026-10-09; the PaddleOCR-VL reader v4 line `ocr_reader`, 2026-10-15; the MOSS-Image
-line `moss_lora`, 2026-10-28; the int8 training base `int8_train`, 2026-11-04; the
-Qwen-Image-2.1 LoRA line `qwen21_lora`, 2026-11-07).
-
-Active projects:
-
-- [`cjk_anima_reseed/`](cjk_anima_reseed/) — opened 2026-10-02 out of the
-  scale line (now `finished/cjk_anima_scale`): the JA pack's rows re-seeded
-  cold on one tier table, then trained warm on dialogue lines; shipped
-  `seed_1008` = `anima_cjk_vocab_pack_jp_v1`. The home for cold row training
-  (the scale trainer was ported into `reseed/`). Home: `README.md`,
-  `status.md` (state). Its live work is on the `cjk-reseed` branch; the
-  Hangul jamo line it opened moved to `cjk_ko/` (10-14).
-
-- [`cjk_ko/`](cjk_ko/) — opened 2026-10-11 out of the reseed line's
-  `proposal_jamo.md` § 4 (the proposal and its phase 1 now live here): Hangul rows warm from `jamo_j256_ko` on KO
-  dialogue (songys Chatbot_data), built and trained through reseed's
-  `reseed/` package. Home: `README.md`. Its live work is on the `cjk-ko`
-  branch.
-
-- [`lora_blocks/`](lora_blocks/) — opened 2026-11-07 out of `moss_te_sae`: MOSS i2i
-  edits assembled from a reused copy block, a parameter-free gate on the reference edges
-  and per-content draw blocks. Home: `README.md`, `proposal.md`.
+A line's live work can sit on its own branch (`git branch -a`).

@@ -220,8 +220,8 @@ def _check_path(
     Resolved against the repo root first, then — when ``base`` is given — the
     referencing doc's own directory. Self-contained doc trees cite their
     siblings relatively: every ``project/<line>/`` digest says
-    ``bench/report.md`` / ``bench/run_*.py`` meaning *that line's* bench dir
-    (see ``project/README.md``), which is a correct reference that a
+    ``bench/report.md`` / ``bench/run_*.py`` meaning *that line's* bench dir,
+    which is a correct reference that a
     root-only resolver reads as broken because ``bench/`` is also a real
     top-level dir. Root-first ordering keeps repo-rooted refs authoritative.
     ``line_root`` covers the same convention one level down: a report under

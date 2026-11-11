@@ -303,7 +303,7 @@ Training-free inference stacks (Spectrum, SMC-CFG, CNS, mod-guidance, DAVE, …)
 
 ## Projects, docs, history
 
-- Active research lines: `project/<line>/` (`project/README.md` lists them). **A line's
+- Active research lines: each directory under `project/` is one. **A line's
   live work can sit on its own branch** — run `git branch -a` and check before editing a
   `project/<line>/`.
 - Finished lines: `project/finished/` (code search skips most of it); retired lines and
