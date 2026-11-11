@@ -11,7 +11,7 @@ Consumes the method-agnostic typed-tag index
   draw from. Style is held fixed (same artist) so the only axis a contrastive
   loss can win on is content (different character).
 
-This is the *negative* analogue of ``bench/ip_adapter/pair_audit.py`` (which
+This is the *negative* analogue of ``_archive/bench/ip_adapter/pair_audit.py`` (which
 measures distinct **positives**). Where that script walks the
 character→copyright→artist back-off looking for a *same*-identity partner, this
 one fixes the artist and looks for a *different*-character partner — and reports
@@ -176,7 +176,7 @@ def main():
         "\nQuestion: per stem, is there a **same-artist / different-character** "
         "sibling — the option-(c) hard negative `hard_negative()` would draw "
         "(style held fixed, content differs)? This is the *negative* analogue of "
-        "`bench/ip_adapter/pair_audit.py` (which counts distinct positives).\n"
+        "`_archive/bench/ip_adapter/pair_audit.py` (which counts distinct positives).\n"
     )
 
     L.append("\n## Hard-negative reachability\n")

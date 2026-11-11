@@ -133,7 +133,7 @@ for SEED in 1001 1002 1003; do
 done
 
 # Phase 3 — exact ΔW soup, then SVD-truncate back to the ingredient rank
-python bench/uncond_soup/soup_svd.py --rank 16 \
+python _archive/bench/uncond_soup/soup_svd.py --rank 16 \
   --ckpts output/ckpt/<name>_uncondpoolft_s100{1,2,3}.safetensors \
   --out output/ckpt/<name>_soup16.safetensors
 cp output/ckpt/<name>_uncondpoolft_s1001.snapshot.toml \
@@ -179,7 +179,7 @@ The soup phase of PR #70's design, run on the winning recipe: two more
 fine-tunes from the *same* saved `uncondpool` init at seeds 1002/1003
 (everything else identical to B′, so all three ingredients are exactly
 data-order-paired and train on the identical 167 members), then the exact
-ΔW-average soup by rank concatenation (`bench/uncond_soup/soup.py`, rank 48)
+ΔW-average soup by rank concatenation (`_archive/bench/uncond_soup/soup.py`, rank 48)
 and a rank-16 SVD truncation of the same average (`soup_svd.py`, new —
 Eckart–Young best rank-16 per module, computed via QR reduction so the full
 ΔW is never materialized).
@@ -249,12 +249,12 @@ uv run python bench/memorization/generalize.py --adapters <a1> <a2> ... [--with_
 ```
 
 Soups (`soup.py` is PR #70's exact ΔW rank-concat builder; `soup_svd.py` is
-the rank-r SVD truncation on top — both in `bench/uncond_soup/`, currently
+the rank-r SVD truncation on top — both in `_archive/bench/uncond_soup/`, currently
 untracked copies of/next to the `worktree-uncond-soup-bench` branch):
 
 ```
-uv run python bench/uncond_soup/soup.py     --ckpts <i1> <i2> <i3> --out soup48.safetensors
-uv run python bench/uncond_soup/soup_svd.py --ckpts <i1> <i2> <i3> --rank 16 --out soup16.safetensors
+uv run python _archive/bench/uncond_soup/soup.py     --ckpts <i1> <i2> <i3> --out soup48.safetensors
+uv run python _archive/bench/uncond_soup/soup_svd.py --ckpts <i1> <i2> <i3> --rank 16 --out soup16.safetensors
 cp <i1>.snapshot.toml soup{48,16}.snapshot.toml   # probes replay membership from the snapshot
 ```
 

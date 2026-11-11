@@ -1,7 +1,7 @@
 # sm_120 has no bf16-input, fp16-accumulate HMMA
 
 Measured 2026-11-04 on an RTX 5070 Ti (driver 610.43.02, ptxas 13.2). Probe:
-`bench/sm120_hmma/probe.py` (run dirs in `bench/sm120_hmma/results/`, gitignored; the numbers
+`_archive/bench/sm120_hmma/probe.py` (run dirs in `_archive/bench/sm120_hmma/results/`, gitignored; the numbers
 below are the run of 20:46).
 
 ## Setting

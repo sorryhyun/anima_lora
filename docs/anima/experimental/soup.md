@@ -7,7 +7,7 @@ that infers and merges like any other. Soup buys two things over a single
 fine-tune — a generalization (holdout-quality) win, and immunity to the
 training-seed lottery — at the cost of a few extra cheap runs.
 
-Shipped as `make soup PATH_PATTERN="<glob>"` (promoted from the `bench/uncond_soup`
+Shipped as `make soup PATH_PATTERN="<glob>"` (promoted from the `_archive/bench/uncond_soup`
 line). Recipe validated in `bench/memorization/report.md` (the uncond-init
 ladder, 2026-07-04/05). GUI: Experimental tab → Method → soup.
 
@@ -56,7 +56,7 @@ slice is silently lost, so the pipeline refuses that combination. All
 ingredients of one soup must share the same slice (different slices would put
 the ΔWs in orthogonal input subspaces and the rank-r truncation would drop
 ~`(N-1)/N` of the energy); the per-artist address is for merging *different*
-soups later (`bench/merge_basis/README.md`). The derived slug gets a
+soups later (`_archive/bench/merge_basis/README.md`). The derived slug gets a
 `_nouncond[_k<slice>]` suffix (`anima_soup_sincos_nouncond_k3`) so it never
 collides with the uncond-init soup of the same selection; an explicit `NAME` is
 taken verbatim.

@@ -14,7 +14,7 @@ quality reward, so a human-in-ComfyUI A/B is the quality gate.
 | **Anima Register Adapter** | `MODEL`, `adapter_name` (+ `path_override`, `strength`) → `MODEL` | Loads a register adapter and patches the model so a downstream KSampler runs with registers live. |
 
 `adapter_name` is a dropdown of register adapters discovered under `output/ckpt/`,
-`output/temp/`, or `bench/headroom/results/` (filtered by the `ss_num_registers`
+`output/temp/`, or `_archive/bench/headroom/results/` (filtered by the `ss_num_registers`
 header, so unrelated safetensors don't show). `path_override` (STRING) loads one
 from anywhere. `strength` scales the register tokens + QKV ΔW (1.0 = as trained).
 

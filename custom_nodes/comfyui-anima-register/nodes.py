@@ -40,7 +40,7 @@ HERE = Path(__file__).resolve().parent
 # In-tree install: .../anima_lora/custom_nodes/comfyui-anima-register -> repo root.
 REPO_ROOT = HERE.parents[1]
 # Dirs scanned for the dropdown (kept tight so we only stat a handful of headers).
-_SCAN_ROOTS = ("output/ckpt", "output/temp", "bench/headroom/results")
+_SCAN_ROOTS = ("output/ckpt", "output/temp", "_archive/bench/headroom/results")
 _NO_ADAPTERS = "<no register adapters found — use path_override>"
 
 

@@ -39,8 +39,8 @@ cheaper side, and the shipped side when neither is.
   cluster floor at 0.25, three at 0.125.
 - Sets: caststation (30 images, ~120 updates under GA2), sweetonedollar (31, ~124), ama
   mitsuki (106, 424), sincos (354, ~1416).
-- Runner: `bench/anima_abclip/run_ab.py --exp <name> {train,render,make,score,answer,mad}`;
-  per-experiment tallies in `bench/anima_abclip/report_<exp>.md`.
+- Runner: `_archive/bench/anima_abclip/run_ab.py --exp <name> {train,render,make,score,answer,mad}`;
+  per-experiment tallies in `_archive/bench/anima_abclip/report_<exp>.md`.
 
 ## All A/Bs
 
@@ -124,7 +124,7 @@ What this gives the recipe:
 
 `inference.py --lora_sigma_range LO HI` turns the LoRA off outside `[LO, HI)` (P-GRAFT
 hooks). sweetonedollar under B, s42–s44, the four prompts at render seed 3. Mean absolute
-pixel difference, 0–255 (`bench/anima_abclip/sigma_gate.py`):
+pixel difference, 0–255 (`_archive/bench/anima_abclip/sigma_gate.py`):
 
 | | vs LoRA on everywhere (hooks) | vs bare base |
 |---|---:|---:|
@@ -184,7 +184,7 @@ at the shipped value and moved only the split.
 - **At fixed alpha / rank, ‖dW‖ scales as √r under Adam**: r16 at alpha 64 moved 0.72× of
   r32 (s34). With alpha ∝ √r (r16 at alpha 362 against r32 at 512) the steps match in
   training, 0.95× / 1.09× (s41).
-- **The drift is real and does not reach the render.** `bench/anima_abclip/drift_share.py`
+- **The drift is real and does not reach the render.** `_archive/bench/anima_abclip/drift_share.py`
   rebuilds `A0` from the base DiT and splits `ΔW = s·B·A0 + s·B·D`, `D = A − A0`. Median over
   modules:
 
@@ -264,7 +264,7 @@ base at high σ: the render stays as far from it, composition kept, details redr
   holds 5 norms; a unit of several micro-batches takes their mean σ.
 - Stamped: `ss_clip_mode`, `ss_clip_k`, `ss_clip_per_micro`, `ss_clip_sigma_bands`.
   `--grad_sigma_log` writes `<output_name>.grad_sigma.jsonl` (per clipped unit: norm, cap, σ,
-  loss, image key); `bench/anima_abclip/sigma_tail.py` reads it.
+  loss, image key); `_archive/bench/anima_abclip/sigma_tail.py` reads it.
 - Logged: `grad/norm`, `grad/norm_sq`, `grad/norm_max`, `grad/clip_frac`, `grad/clip_cap`,
   and `grad/micro_norm_sq` under accumulation.
 - `tests/test_grad_clip.py`: typical norms pass the median clip, a spike lands at `clip_k ×`
@@ -274,7 +274,7 @@ base at high σ: the render stays as far from it, composition kept, details redr
 
 ## Files
 
-- `bench/anima_abclip/run_ab.py` — every A/B above (`--exp`), `report_<exp>.md` beside it.
-- `bench/anima_abclip/sigma_tail.py`, `sigma_gate.py`, `drift_share.py` — σ profile, σ gate,
+- `_archive/bench/anima_abclip/run_ab.py` — every A/B above (`--exp`), `report_<exp>.md` beside it.
+- `_archive/bench/anima_abclip/sigma_tail.py`, `sigma_gate.py`, `drift_share.py` — σ profile, σ gate,
   drift split.
 - `bench/anima_ema/render_ab.py` — EMA renders and the shared render loop.

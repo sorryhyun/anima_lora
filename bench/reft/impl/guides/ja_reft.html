@@ -1,4 +1,0 @@
-<h2 style='margin:0 0 10px 0; font-size:17px;'>ReFT</h2>
-<p>ブロックレベルの残差ストリーム介入 (Wu et al., NeurIPS 2024)。選択された各 DiT ブロックに一つの <code>ReFTModule</code> が配置され、<code>R^T &middot; (&Delta;W&middot;h + b) &middot; scale</code> をブロックの出力に加算します — 任意の Linear への重みデルタではなく、加算的サイドチャンネルです。どの LoRA バリアントとも組み合わせ可能で、同じ <code>.safetensors</code> に共存します。</p>
-<p><code>reft_layers</code> でブロックを選択します (例: <code>last_8</code>、<code>stride_2</code>、またはコンマ区切りのインデックス)。<code>reft_dim</code> で介入ランクを制御; <code>reft_alpha</code> で <code>alpha / dim</code> を通じて有効スケールを設定します。</p>
-<p><b>tlora_ortho_reft</b> は ReFT と T-LoRA + OrthoLoRA を 1 回の学習実行にバンドルします — LoRA 部分はベイク可能ですが ReFT ブロックフックはベイクできないため、マージされた DiT では ReFT の寄与が失われます (マージツールは警告を表示し <code>--allow-partial</code> を要求します)。</p>

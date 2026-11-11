@@ -1,4 +1,0 @@
-<h2 style='margin:0 0 10px 0; font-size:17px;'>ReFT</h2>
-<p>블록 수준 잔차 스트림 개입 (Wu et al., NeurIPS 2024). 선택된 각 DiT 블록에 하나의 <code>ReFTModule</code>이 <code>R^T &middot; (&Delta;W&middot;h + b) &middot; scale</code>을 블록 출력에 추가합니다 — Linear의 가중치 델타가 아닌 추가 사이드 채널입니다. 모든 LoRA 변형과 함께 사용 가능하며 동일한 <code>.safetensors</code>에 저장됩니다.</p>
-<p><code>reft_layers</code>로 블록 선택 (예: <code>last_8</code>, <code>stride_2</code>, 또는 쉼표 구분 인덱스). <code>reft_dim</code>은 개입 랭크를, <code>reft_alpha</code>는 <code>alpha / dim</code>으로 실효 스케일을 설정합니다.</p>
-<p><b>tlora_ortho_reft</b>는 ReFT를 T-LoRA + OrthoLoRA와 한 번의 학습으로 묶은 변형입니다. LoRA 부분은 베이킹 가능하지만 ReFT 블록 훅은 베이킹할 수 없어 병합된 DiT에서는 ReFT 기여가 사라집니다 (Merge 도구가 경고하고 <code>--allow-partial</code>을 요구합니다).</p>

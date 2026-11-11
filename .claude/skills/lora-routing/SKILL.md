@@ -39,7 +39,7 @@ All live in `networks/lora_modules/`. Stack freely via toggle flags in `configs/
 - **T-LoRA** — Not a separate class. A `_timestep_mask` buffer on `LoRAModule` (registered in `base.py`) is rebound to a shared live-updated mask by `lora_anima/network.py::LoRANetwork.set_timestep_mask`. Effective rank varies with denoising step via a power-law schedule. **Training-only** — inference runs full rank at every t (baking into DiT is bit-equivalent). See `docs/anima/methods/timestep_mask.md`.
 - **HydraLoRA** (`hydra.py`) — MoE-style multi-head routing: shared `lora_down` + per-expert `lora_up_i` heads, layer-local router on the adapted Linear's input (`router_source="input"`) or σ-features / FEI features (`"sigma"` / `"fei"`). With `route_per_layer=False` the per-layer router drops out for a network-level `GlobalRouter` fed σ-features, FEI, or pooled cross-attn text (`router_source="crossattn_emb"`). Requires `cache_llm_adapter_outputs=true`. Produces a `*_moe.safetensors` sibling for router-live inference. See `docs/anima/methods/hydra-lora.md`.
 
-> **ReFT was removed from the live tree on 2026-06-08** and downgraded to a bench probe — module, configs, docs and a re-integration map live in `bench/reft/` (`INTEGRATION.md` + `impl/`).
+> **ReFT was removed from the live tree on 2026-06-08** and downgraded to a bench probe — module, configs, docs and a re-integration map live in `_archive/bench/reft/` (`INTEGRATION.md` + `impl/`).
 
 ## GlobalRouter (network-level routing)
 

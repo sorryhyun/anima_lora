@@ -1,4 +1,0 @@
-<h2 style='margin:0 0 10px 0; font-size:17px;'>ReFT</h2>
-<p>Block-level residual-stream intervention (Wu et al., NeurIPS 2024). One <code>ReFTModule</code> per selected DiT block adds <code>R^T &middot; (&Delta;W&middot;h + b) &middot; scale</code> to the block's output — an additive side-channel, not a weight delta on any Linear. Composes with any LoRA variant and lives in the same <code>.safetensors</code>.</p>
-<p>Pick blocks with <code>reft_layers</code> (e.g. <code>last_8</code>, <code>stride_2</code>, or comma-separated indices). <code>reft_dim</code> controls intervention rank; <code>reft_alpha</code> sets effective scale via <code>alpha / dim</code>.</p>
-<p><b>tlora_ortho_reft</b> bundles ReFT with T-LoRA + OrthoLoRA in one training run — the LoRA half is bakeable, but the ReFT block hooks aren't, so the merged DiT loses ReFT's contribution (the merge tool warns and asks for <code>--allow-partial</code>).</p>

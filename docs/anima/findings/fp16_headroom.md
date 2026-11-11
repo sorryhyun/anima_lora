@@ -7,9 +7,9 @@ bf16 GEMMs. Scaled by 1/8 or 1/16, it runs all-fp16 with no NaN. fp16 accumulati
 bf16 on the RTX 5070 Ti and brings the error back to bf16's. The backward needs a loss
 scale near 2^20. Nothing shipped; no fp16 plan exists.
 
-Scripts: [`bench/anima_fp16/probe.py`](../../../bench/anima_fp16/probe.py) (ranges, errors,
-backward), [`bench/anima_fp16/gemm.py`](../../../bench/anima_fp16/gemm.py) (GEMM time). Raw
-numbers: `bench/anima_fp16/results/20261105-1220/` (`fp16_probe2.json`: 4 images with the
+Scripts: [`_archive/bench/anima_fp16/probe.py`](../../../bench/anima_fp16/probe.py) (ranges, errors,
+backward), [`_archive/bench/anima_fp16/gemm.py`](../../../bench/anima_fp16/gemm.py) (GEMM time). Raw
+numbers: `_archive/bench/anima_fp16/results/20261105-1220/` (`fp16_probe2.json`: 4 images with the
 backward, `fp16_probe3.json`: 3 images with the scaled arms).
 
 ## Setup

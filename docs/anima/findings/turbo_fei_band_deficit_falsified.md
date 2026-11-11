@@ -29,7 +29,7 @@ the validated lever isn't there — the active arm is the inverse one, at ~ident
 strength.
 
 Why Phase 0 looked clean. Probe on `anima_turbo_C` (n=90 = 30 artists × 3 seeds,
-`bench/fera_artist/results/20260528-1902-turbo_C_phase0/`) at the student's 4-step
+`_archive/bench/fera_artist/results/20260528-1902-turbo_C_phase0/`) at the student's 4-step
 rollout stages: direction `student_over_low` everywhere (SNR peaked 2.25 at stage 2 /
 t=0.75, sign 100%), so the `w_high` arm should fire and `w_low` stay inert. All four
 decision thresholds cleared — a textbook GO.

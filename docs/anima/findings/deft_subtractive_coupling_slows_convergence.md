@@ -122,4 +122,4 @@ exactly what `−PPᵀW₀` computes with `P=U_r, R→0`. DEFT still loses (21 v
   already OrthoInit (`use_ortho_init=true`). Subtractive weight decompositions
   have now failed Phase-0 twice on Anima (also HF-residual). For "additional
   stack" promotion, the only live candidate is the unrun ReFT bench
-  (`bench/reft/plan.md`, a different rep-space slot — not a substitute).
+  (`_archive/bench/reft/plan.md`, a different rep-space slot — not a substitute).

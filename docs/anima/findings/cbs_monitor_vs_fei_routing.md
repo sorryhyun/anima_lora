@@ -25,7 +25,7 @@ CBS's monitor is `m(t) = ‖d²x_t/dt²‖` (their Eq. 13/14). Because `dx/dt =
 v_t(x_t)`, this is just the second difference of the realized latent
 sequence the FEI probe already captures at every sampler step — no velocity
 hook, and no auxiliary proxy model (their §4.5 robustness argument is moot when
-you have the real base model). `bench/fera_artist/probe_fei_trajectory.py` now
+you have the real base model). `_archive/bench/fera_artist/probe_fei_trajectory.py` now
 forms a non-uniform central second difference of `x_t`, RMS-normalized per
 element so it averages fairly across native buckets, then equidistributes
 `∫m(t)dt` to derive the paper's time-split knots for N=2 and N=3.
@@ -124,10 +124,10 @@ curvature; there is no reason they would align, and they don't.
 ## Reproduce
 
 ```bash
-uv run python bench/fera_artist/probe_fei_trajectory.py \
+uv run python _archive/bench/fera_artist/probe_fei_trajectory.py \
   --k_per_artist 1 --infer_steps 28 --guidance_scale 4.0 --label cbs_cfg4
 # CFG=1 / div=4 variant to nail the caveats:
-uv run python bench/fera_artist/probe_fei_trajectory.py \
+uv run python _archive/bench/fera_artist/probe_fei_trajectory.py \
   --k_per_artist 1 --infer_steps 28 --guidance_scale 1.0 \
   --fei_sigma_low_div 4 --label cbs_cfg1_div4
 ```
@@ -136,5 +136,5 @@ The probe writes per-step `m_accel` + a `cbs` block (`knots`, `total_monitor`,
 `fei_std_peak_t`, `elow_slopemax_t`) into `teacher_curve.json`, and the
 third plot panel overlays the monitor, cumulative ∫m, and all four boundaries.
 
-Date: 2026-06-05. Run: `bench/fera_artist/results/20260605-1804-cbs_cfg4/`
+Date: 2026-06-05. Run: `_archive/bench/fera_artist/results/20260605-1804-cbs_cfg4/`
 (git bc49aae). Paper: `2606.06477v1.pdf` (CBS).

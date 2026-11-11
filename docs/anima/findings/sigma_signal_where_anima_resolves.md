@@ -1,7 +1,7 @@
 # Where Anima's denoising signal actually lives: a σ ≈ 0.75 → 0.45 → 0 staircase
 
 Two unrelated probes — a σ-sweep `x0_pred` reconstruction probe (since removed) and
-`bench/fera_artist/probe_fei_trajectory.py` (low-frequency energy fraction along the
+`_archive/bench/fera_artist/probe_fei_trajectory.py` (low-frequency energy fraction along the
 live CFG=4 sampler) — agree on the same σ structure for `anima-base-v1.0`:
 
 - σ ≈ 0.75: `x0_pred` is already a recognizable picture (subject, layout,
@@ -49,7 +49,7 @@ mostly a blur.
 
 ## Evidence 2 — FEI(z_t) along the live 28-step CFG=4 trajectory
 
-`bench/fera_artist/probe_fei_trajectory.py` captures the low/high-band
+`_archive/bench/fera_artist/probe_fei_trajectory.py` captures the low/high-band
 energy of `z_t` itself (`compute_fei_2band` at div=4) at every step of a
 real Anima sampler rollout. From `20260528-1523-trajectory` (10 prompts ×
 6 artists, native buckets, 28 steps, flow_shift=3, CFG=4):
@@ -140,11 +140,11 @@ The visual `x0_pred` grid + per-σ latent-MSE probe is no longer in-tree (it ran
 
 ```bash
 # FEI along the live sampler trajectory (10 stems by default)
-uv run python bench/fera_artist/probe_fei_trajectory.py \
+uv run python _archive/bench/fera_artist/probe_fei_trajectory.py \
   --k_per_artist 2 --max_artists 10 --infer_steps 28 --guidance_scale 4.0 \
   --label trajectory
 ```
 
 Date: 2026-05-28. Surviving runs:
-`bench/fera_artist/results/20260528-1523-trajectory/`,
-`bench/fera_artist/results/20260528-1456-smoke/`.
+`_archive/bench/fera_artist/results/20260528-1523-trajectory/`,
+`_archive/bench/fera_artist/results/20260528-1456-smoke/`.
