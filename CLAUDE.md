@@ -121,8 +121,8 @@ Invariants that bite:
   per 1024² render against 22 s on bf16; it refuses LoHa and block swap.
 - **Training defaults to an int8 DiT base** (`int8 = stream`, GPTQ file `moss_dit_int8`,
   fp32 stream, swap 0, budget 0.3, EMA on the card; `library/moss/dit_int8/`). It refuses
-  LoHa. `configs/moss/lora_bf16.toml` is the bf16 plan. The i2i `train.toml`s run int8 except
-  sanitize's (bf16); superseded i2i configs are in `_archive/configs/moss_i2i/`.
+  LoHa. `configs/moss/lora_bf16.toml` is the bf16 plan. i2i trains on int8 `stream` (sanitize's bf16
+  `train.toml` is the old v3 recipe); superseded i2i configs are in `_archive/configs/moss_i2i/`.
   Block swap runs on it and trades VRAM, not speed. Two LoRAs have completed on it: ama mitsuki, 848 steps (`docs/moss/optimization/int8.md`), and swap_text i2i, 3,000 steps (`docs/moss/methods/i2i.md`).
 - Adapters live in `library/moss/lora.py`, held outside the blocks (the block swapper
   moves every `.weight` under a block); `networks/` is bound to Anima module names.

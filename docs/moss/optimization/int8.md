@@ -45,8 +45,7 @@ Generation runs on it by default (`int8 on`, `stream fp32`, t2i and i2i; the GUI
 - Training takes `--blocks_to_swap`: `wq` (and `wq_t` in `full`) sit in `HeldCopy` children,
   whose `.weight` the offloader moves. A swapped block is about 0.11 GB against bf16's 0.21
   GB. Generation refuses `--blocks_to_swap`.
-- The i2i train configs run `stream` at swap 34–38 and budget 0.05–0.15, except sanitize's,
-  which runs bf16 at swap 38 ([i2i.md](../methods/i2i.md)).
+- i2i trains on `stream` (swap 34–38, budget 0.05–0.15); sanitize's bf16 config is the old v3 recipe.
 - A LoRA trained this way carries `int8_base` and `int8_base_id`. A bf16-trained LoRA
   loads on the int8 base.
 
