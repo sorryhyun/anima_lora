@@ -490,7 +490,7 @@ class TurboConfig:
     int8: str = "off"  # off | fwd | full | stream
     int8_file: str | None = None
     dit_nonquant_path: str | None = None
-    stream: str = "bf16"  # bf16 | fp32
+    stream: str = "fp32"  # bf16 | fp32
 
 
 # Keys of removed features (2026-11-05) → the only value the loop still runs. A
@@ -709,7 +709,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     if gan_loss_weight_gen < 0.0:
         raise ValueError(f"gan.weight_gen={gan_loss_weight_gen}: must be >= 0")
     int8 = str(_pick(args.int8, cfg, "int8", "off"))
-    stream = str(_pick(args.stream, cfg, "stream", "bf16"))
+    stream = str(_pick(args.stream, cfg, "stream", "fp32"))
     if mfd_dtau < 0.0:
         raise ValueError(f"mfd.dtau={mfd_dtau}: must be >= 0")
     if mfd_interval not in ("to_zero", "uniform"):

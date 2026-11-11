@@ -157,7 +157,7 @@ Sectioned, bespoke. Every key has a matching CLI override flag (see
 | top | `output_name` | `anima_turbo_v3_longer` | output stem under `output/ckpt/` |
 | top | `iterations` | `10000` | |
 | top | `dit_path` / `dit_nonquant_path` | int8 GPTQ file / bf16 DiT | forward copies and bf16 weights (`docs/anima/optimizations/int8.md` § Forward copies) |
-| top | `int8` / `stream` | `stream` / `fp32` | teacher, student and fake forwards on the int8 base and the fp32 residual stream (`docs/anima/optimizations/int8.md`, `fp32_stream.md`). The output is a normal LoRA either way. Code defaults are `off` / `bf16` |
+| top | `int8` / `stream` | `stream` / `fp32` | teacher, student and fake forwards on the int8 base and the fp32 residual stream (`docs/anima/optimizations/int8.md`, `fp32_stream.md`). The output is a normal LoRA either way. Code defaults are `off` / `fp32` |
 | `[network]` | `student_rank` / `fake_rank` | `64` / `64` (alpha `180` / `180`) | `fake_rank ≥ student_rank` (fake is a score tracker, capacity ceiling on DM strength); the warm start SVD-truncates the r96 delta to this rank |
 | `[network]` | `train_adaln` / `adaln_rank` / `adaln_alpha` | `true` / `16` / `90` | adaln LoRA on student + fake (`docs/anima/methods/adaln.md` §Turbo) |
 | `[network]` | `student_init_weights` / `fake_init_weights` | `…/anima_turbo_v1.1_delta_r96_asvd_adaln.safetensors` | both stacks seeded from the extracted official delta |
