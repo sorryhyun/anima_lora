@@ -67,7 +67,7 @@ became the default re-encodes on the next `cache` run unless that run passes
   the saved file is the EMA, the raw weights land in `<name>/<name>_raw`, `--ema_extra` adds
   more spans, `--ema_card` keeps them on the card). Why
   these defaults: `docs/moss/findings/t2i_lora_recipe.md`. Removed options and the lr / alpha history:
-  `docs/moss/channel_scaling.md`.
+  `project/finished/moss_lora/done/channel_scaling.md`.
 - **Time**: 30 images × 20 epochs (600 steps) took about 18–21 min on a 5070 Ti at the
   bf16 plan's then 1.9 s/step (1.66 now; the int8 plan runs 1.05). The
   LoRA moves line work and palette toward the set; character identity holds, including

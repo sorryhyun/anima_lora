@@ -124,7 +124,7 @@ make download-model ARGS=moss-sft
 | `epochs` | `8` | 計測した学習は 20 |
 | `plain_caption_rate` | `0.2` | `layout_json` キャッシュのみ: layout JSON の代わりに通常の Anima キャプションで学習するステップの割合 |
 
-- **lr、チャンネルスケーリング、DC 分離**: チャンネルスケーリングと `dc_isolate` は削除しました。Muon のデフォルトで kaiming の `down` 初期化なら、どちらも学習後の LoRA を変えないためです。以前のデフォルトと各変更の根拠となった比較: `docs/moss/channel_scaling.md`。
+- **lr、チャンネルスケーリング、DC 分離**: チャンネルスケーリングと `dc_isolate` は削除しました。Muon のデフォルトで kaiming の `down` 初期化なら、どちらも学習後の LoRA を変えないためです。以前のデフォルトと各変更の根拠となった比較: `project/finished/moss_lora/done/channel_scaling.md`。
 - **optimizer**: Muon（MOSS の事前学習に使われたオプティマイザ）は、同じ lr で AdamW と同じ大きさだけ LoRA を動かしつつ、より多くの方向に分散させ、同じシードでより良く見えました。LoRA が FFN の最も大きな入力チャンネルを通じて全体的なシフトに更新を使ってしまうことも、それ自体で防ぎます。`docs/moss/findings/t2i_lora_recipe.md`。
 - **down_init**: `kaiming` はランダム初期化で、`weight_svd` は LoRA の down 行列をベース重みの上位特異ベクトルから始めます。これらのベクトルは入力の定数オフセットを強く読み取り、Muon では `weight_svd` の LoRA が全トークンの出力を `kaiming` の約 3 倍も大きくシフトさせます。画像の差はシードを変えた程度です。`docs/moss/findings/t2i_lora_recipe.md`。
 - **epochs**: 20 エポック中 10 エポック時点の結果はゆるく多様で、20 エポックではより整って均一になる一方、正面・中央の上半身構図へ少し寄りました。`save_every_epochs` を設定すれば 1 回の学習で両方を比べられます。

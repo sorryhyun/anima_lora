@@ -124,7 +124,7 @@ make download-model ARGS=moss-sft
 | 轮数（`epochs`） | `8` | 实测训练用 20 |
 | `plain_caption_rate` | `0.2` | 仅 `layout_json` 缓存：用普通 Anima 标注而非 layout JSON 训练的步数占比 |
 
-- **学习率、通道缩放、DC 隔离**：通道缩放和 `dc_isolate` 已移除，因为在 Muon 默认设置并使用 kaiming `down` 初始化时，两者都不改变训练出的 LoRA。此前的默认值以及每次改动背后的对比见 `docs/moss/channel_scaling.md`。
+- **学习率、通道缩放、DC 隔离**：通道缩放和 `dc_isolate` 已移除，因为在 Muon 默认设置并使用 kaiming `down` 初始化时，两者都不改变训练出的 LoRA。此前的默认值以及每次改动背后的对比见 `project/finished/moss_lora/done/channel_scaling.md`。
 - **optimizer**：Muon（MOSS 预训练所用的优化器）在相同学习率下让 LoRA 的移动幅度与 AdamW 相同，但分散到更多方向上，同一随机种子下看起来更好。它自身也能避免 LoRA 通过 FFN 中最强的输入通道把更新浪费在全局平移上。`docs/moss/findings/t2i_lora_recipe.md`。
 - **down 初始化**：`kaiming` 是随机初始化，`weight_svd` 用基础权重的前几个奇异向量初始化 LoRA 的 down 矩阵。这些向量对输入的恒定偏移读取很强，搭配 Muon 时，`weight_svd` 的 LoRA 让每个 token 的输出平移幅度约为 `kaiming` 的三倍。图像差异约等于换一个种子。`docs/moss/findings/t2i_lora_recipe.md`。
 - **轮数**：20 轮训练中，第 10 轮的结果更松散、更多样；第 20 轮更干净、更统一，但略微偏向正面居中的半身构图。设置 每 N 轮保存（`save_every_epochs`）即可在一次训练中比较两者。

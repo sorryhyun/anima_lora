@@ -4,7 +4,7 @@ Measured 2026-10-24 and 25 on MOSS-Image Base (renders on Base and SFT), judged 
 section changed the default the next one starts from. The result is today's
 `configs/moss/lora.toml`: **Muon, lr 5e-5, clip 1, `down_init` kaiming, adapter EMA
 (`ema_window` 0.1)**. Channel scaling and `dc_isolate`, both in play below, were removed on
-2026-10-25 (`docs/moss/channel_scaling.md`).
+2026-10-25 (`project/finished/moss_lora/done/channel_scaling.md`).
 
 ## Common setting
 

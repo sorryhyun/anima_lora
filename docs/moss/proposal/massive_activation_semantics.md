@@ -40,7 +40,7 @@ Massive activations (MAs) are selected per sample, layer and stream: the top-k c
   (`findings/attention_sink_chat_template.md`).
 - **Effect on LoRAs.** At the FFN input, ch 42 is 11–26× the median channel on blocks
   11–41, with a peak-to-mean of 2.7, so a LoRA sees it as a bias line
-  (`docs/moss/channel_scaling.md`). The `weight_svd` basis leans on it
+  (`project/finished/moss_lora/done/channel_scaling.md`). The `weight_svd` basis leans on it
   (`findings/t2i_lora_recipe.md` §3).
 - **int8.** After the 256-column Hadamard, ch 42 is ~1.6× its group, so it does not
   hurt the int8 base (`project/finished/int8_train/reports/moss_scoping.md`).
@@ -66,7 +66,7 @@ prompt-dependent part, and the second part is what the paper's results depend on
    training and only forward hooks, like `bench/moss_sinks/`. If it works, MOSS gets a
    training-free foreground mask: a candidate region for i2i preservation, or for
    weighting the loss.
-2. **What a LoRA's ch 42 column reads.** `channel_scaling.md` treats ch 42 as a bias
+2. **What a LoRA's ch 42 column reads.** `project/finished/moss_lora/done/channel_scaling.md` treats ch 42 as a bias
    line because of its DC. If its variation is a foreground map, a LoRA weight on that
    column also reads a subject mask, not only a constant. Splitting the column's
    contribution into a DC part (`ΔW x̄`, already measured) and a part that varies per

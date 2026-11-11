@@ -1,7 +1,7 @@
 # Channel scaling on MOSS-Image
 
-Shipped 2026-10-18, on by default. Usage and mechanism: `docs/moss/channel_scaling.md`;
-this file is the log and the open items.
+Shipped 2026-10-18, removed 2026-10-25: under Muon with a kaiming `down` init the trained LoRA is
+the same with or without it. The last commit with the code is `f21bc206`. This file is the log.
 
 **Shipped recipe:** `channel_scaling_alpha` 0.5 + `dc_isolate` on, lr 5e-5, rank 32 /
 alpha 128 (`weight_svd`). α is passed only for `algo = lora`. Revert path

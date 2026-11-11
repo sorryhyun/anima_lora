@@ -124,7 +124,7 @@ make download-model ARGS=moss-sft
 | `epochs` | `8` | 측정한 학습은 20 |
 | `plain_caption_rate` | `0.2` | `layout_json` 캐시 전용: 스텝 중 layout JSON 대신 일반 Anima 캡션으로 학습하는 비율 |
 
-- **lr, 채널 스케일링, DC 격리**: 채널 스케일링과 `dc_isolate`는 제거했습니다. Muon 기본값에 kaiming `down` 초기화를 쓰면 둘 다 학습된 LoRA를 바꾸지 않기 때문입니다. 이전 기본값과 각 변경의 근거가 된 비교: `docs/moss/channel_scaling.md`.
+- **lr, 채널 스케일링, DC 격리**: 채널 스케일링과 `dc_isolate`는 제거했습니다. Muon 기본값에 kaiming `down` 초기화를 쓰면 둘 다 학습된 LoRA를 바꾸지 않기 때문입니다. 이전 기본값과 각 변경의 근거가 된 비교: `project/finished/moss_lora/done/channel_scaling.md`.
 - **optimizer**: Muon(MOSS를 사전학습할 때 쓴 옵티마이저)은 같은 lr에서 AdamW와 LoRA를 같은 크기만큼 움직이되 더 많은 방향에 분산시키며, 같은 시드에서 더 좋아 보였습니다. LoRA가 FFN에서 가장 큰 입력 채널을 통해 전역 이동에 업데이트를 낭비하는 것도 스스로 막아 줍니다. `docs/moss/findings/t2i_lora_recipe.md`.
 - **down_init**: `kaiming` 은 무작위 초기화이고, `weight_svd` 는 LoRA의 down 행렬을 베이스 가중치의 상위 특이 벡터로 시작합니다. 이 벡터들은 입력의 상수 오프셋을 강하게 읽어 들이며, Muon에서는 `weight_svd` LoRA가 모든 토큰의 출력을 `kaiming` LoRA보다 약 3배 더 멀리 이동시킵니다. 이미지 차이는 시드를 바꾼 정도입니다. `docs/moss/findings/t2i_lora_recipe.md`.
 - **epochs**: 20 에폭 중 10 에폭 시점의 결과는 더 느슨하고 다양했고, 20 에폭은 더 깔끔하고 균일했지만 정면·중앙 상반신 구도로 약간 쏠렸습니다. `save_every_epochs` 를 설정하면 한 번의 학습으로 둘을 비교할 수 있습니다.

@@ -81,7 +81,7 @@ backward.
   FFN activation is SiTU, not SwiGLU, so comfy_kitchen's `input_act` fusions fit no
   better than on Anima.
 - **Outliers.** FFN-input channel 42 is 11–26x the median with a peak-to-mean of 2.7
-  (`docs/moss/channel_scaling.md`); spread by the 256-column Hadamard it is ~1.6x within
+  (`project/finished/moss_lora/done/channel_scaling.md`); spread by the 256-column Hadamard it is ~1.6x within
   its group. `ffn_down`'s input is bounded by SiTU's soft cap (±100).
 
 ## Lower swap, lower budget (bf16, measured; int8, predicted)
