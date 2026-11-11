@@ -20,6 +20,15 @@ through k/v exports, so the reference stays exact (selection, preservation) but 
 filled by reading what is there; under the shared bank the adapted reference rows can be
 rewritten, which fills the hole and also blurs what the reference says.
 The copy line and the tasks built on it follow the winner.
+Then 2026-11-12, `configs/1112_0047.toml`: sanitize on v3's full schedule (277 pairs, 8 epochs,
+2,216 steps, 64.5 min at 1.75 s/step) from the kv block, int8, mod16, no tone term. Renders
+(`ref_gate.py --part sanitize --arms ctrl`, seeds 0–2) beside v3 and 1111_1631 in
+`output/tests/ref_gate/san_compare_20261112/`. My read, the user's verdict pending: the inside of a
+target is drawn well (hard_to_sanitize2's red balloons fill clean, no 1631 blob), and the AnimA
+signature and hard_to_sanitize1's watermark go where v3 keeps them; usual_case1's corner watermark
+leaves residue on s1 / s2, and the anger mark on hard_to_sanitize1 goes with its bubble. Tone
+outside the targets, mean over 15 renders: |ΔL| 0.72 / |Δb| 1.18 (v3 0.26 / 0.34, 1631 1.41 / 0.96),
+l1_out 8.69 (v3 8.08).
 
 The problem that sets the order is Korean strokes. colorize v5 and swap_text ksplit e2 both
 write the right syllables with soft, uneven strokes (user, 2026-11-07), and swap_text
