@@ -96,6 +96,38 @@ bank is largest at blocks 4–19 (~25) and falls with depth; its kv export adapt
 - A fine-tune from it needs a learning rate scaled to the init: at lr 5e-5 for 300 steps the
   task gets 10 % of the weights' say.
 
+## Canvas coordinates (2026-11-11)
+
+[`configs/1111_1232.toml`](../configs/1111_1232.toml): the lr 2e-4 s1600 offset + kv run with
+`ref_pos = "canvas"` (the reference at r = 0 as the right panel, image and reference centred on
+the two-panel canvas) and nothing else changed. Stopped at s800. For a reference of the image's
+size the two placements differ in the r value (0 against 1) and in the image sitting half a width
+left of the text tokens; the image-to-reference displacement is +W in both.
+
+At matched steps it is the offset run:
+
+| | canvas | offset twin | aligned C bw10 mod16 |
+|---|---|---|---|
+| loss, steps 300–400 | 0.379 | 0.387 | 0.078 |
+| loss, steps 700–800 | 0.151 | 0.162 | 0.049 |
+| copy-probe luma L1, s600 (in0 / in1) | 40.5 / 46.1 | 38.5 / 48.8 | – |
+| copy-probe luma L1, s800 | 32.7 / 35.8 | 32.5 / 37.4 | 5.7 / 6.2 |
+| top-8 copy mass at step 0, s800 | 0.64 / 0.71 | 0.80 / 0.85 | 5.9 / 7.3 |
+| heads over 0.1 at step 0, s800 | 1 / 2 | 2 / 5 | 80 / 79 |
+
+- The loss breaks at steps 400–500 in both. The late heads are the same (b39 h19, b40 h20,
+  b41 h6, b37 h9); the early own-cell heads do not come back.
+- Fill eval at s800 (`output/tests/ref_gate/20261111-1111_1232_at800`): out-L1 25–45 on `ctrl`
+  (offset s1600 15–40, aligned 5.5–12.8). The character, palette and rough composition carry
+  over and the picture is redrawn; usual_case1 grows a second head behind the first on seeds 1
+  and 2. `cut` clears the small watermark box on usual_case1 and draws a second figure on
+  hard_to_sanitize3 on all three seeds (out-L1 43–52 against `ctrl` 26–36).
+- It agrees with the teacher-forced table of `docs/moss/proposal/ref_canvas.md`: under
+  `ref_isolate` with a clean reference, canvas and offset coordinates read alike.
+- Probe outputs: `output/tests/copy_vs_step/20261111-canvas/{canvas,offset_twin}`. The offset
+  rows of `20261111-offset/offset` at s800 / s1600 (L1 53–62 / 24) are the s4800 run's saves,
+  whose LR warmup is 240 steps against 80 here; they are not the matched comparison.
+
 ## Not tested
 
 - The offset ft at lr 2e-4 (the init's lr), or the offset C trained shorter at lr 2e-4 so that its

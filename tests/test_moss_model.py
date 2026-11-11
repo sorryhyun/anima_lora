@@ -333,3 +333,34 @@ def test_ref_pos_offset_moves_the_reference_beside_the_image(tiny):
         )
     finally:
         tiny.ref_pos = "aligned"
+
+
+@pytest.mark.core
+@torch.no_grad()
+def test_ref_pos_canvas_is_one_wide_picture(tiny):
+    """``canvas`` gives the image and a same-height reference the coordinates of
+    the left and right panels of one ``width + rw`` picture; a smaller reference
+    keeps unit spacing, centred on the canvas's row axis."""
+    h, w, s, rw = 4, 6, 7, 3
+    n = h * w
+    rope = tiny.rope(h, w, s, "cpu", (h, rw), "canvas")
+    wide = tiny.rope(h, w + rw, s, "cpu")
+    panels = wide[0, : h * (w + rw)].view(h, w + rw, -1)
+    assert torch.allclose(rope[0, :n], panels[:, :w].flatten(0, 1), atol=1e-6)
+    assert torch.allclose(rope[0, n + s :], panels[:, w:].flatten(0, 1), atol=1e-6)
+    assert torch.equal(rope[:, n : n + s], wide[:, h * (w + rw) :])
+
+    small = tiny.rope(h, w, s, "cpu", (2, rw), "canvas")
+    assert torch.allclose(small[0, :n], rope[0, :n])
+    rows = rope[0, n + s :].view(h, rw, -1)
+    assert torch.allclose(small[0, n + s :], rows[1:3].flatten(0, 1), atol=1e-6)
+
+    x, e, mask = _inputs()
+    tiny.ref_pos = "canvas"
+    try:
+        out = tiny(x, 500.0, e, mask, ref=_ref()).sample
+        assert torch.allclose(
+            tiny.forward_batched(x, 500.0, e, mask, ref=_ref()), out, atol=1e-5
+        )
+    finally:
+        tiny.ref_pos = "aligned"

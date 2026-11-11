@@ -1,0 +1,33 @@
+# Copy block C (bw10, mod16) at ref_pos canvas + ref_adapters kv: the twin of
+# c_fill_bw10_mod16_off_kv_lr2e4_s1600 with the reference at r = 0 as the right panel of one
+# two-panel picture (docs/moss/proposal/ref_canvas.md) instead of r = 1 one image width across.
+# Every other field is that run's.
+#
+# Stopped at s800 (2026-11-11): it tracks the offset twin step for step. Loss 700-800 0.151
+# (twin 0.162), copy-probe L1 32.7 / 35.8 (twin 32.5 / 37.4), step-0 own-cell heads > 0.1
+# 1-2 (twin 2-5). Report: ../reports/offset_kv_copy.md, "Canvas coordinates".
+#
+#   make daemon-run ARGS="--queue --stall-timeout 900 scripts/moss/train.py --config project/lora_blocks/configs/1111_1232.toml"
+
+cache = "post_image_dataset/moss/c_fill_illu_bw10"
+output = "output/ckpt_moss_i2i/1111_1232.safetensors"
+max_steps = 1600
+lr = 2e-4
+save_every_steps = 200
+ema_window = 0.1
+caption_dropout = 1.0
+ref_timestep = 0.0
+ref_isolate = true
+ref_pos = "canvas"
+ref_adapters = "kv"
+ref_gate = "cut"
+gate_holes = "post_image_dataset/moss/c_fill_illu_bw10/hole_layouts.json"
+gate_rate = 0.9
+tone_weight = 0.0
+mod_rank = 16
+int8 = "stream"
+stream = "fp32"
+blocks_to_swap = 34
+activation_memory_budget = 0.05
+swap_h2d_only = true
+fit_report = true

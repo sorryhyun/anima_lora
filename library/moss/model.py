@@ -441,7 +441,11 @@ class _RoPE(nn.Module):
         reserved ``r = 1`` axis, its ``(h, w)`` coordinates stretched onto the
         image's grid so each reference token sits over the image region it covers.
         ``ref_pos = "offset"`` then moves it ``width`` to the right, beside the image
-        instead of over it (a reference whose content is not where the image's is)."""
+        instead of over it (a reference whose content is not where the image's is).
+        ``ref_pos = "canvas"`` makes the two one picture: the reference at ``r = 0``
+        and unit spacing as the panel right of the image, both centred on the
+        two-panel canvas, so the image's own ``w`` moves left by half the reference
+        width (``docs/moss/proposal/ref_canvas.md``)."""
         # Diffusers/Accelerate can install tensors directly, bypassing load hooks.
         if self.bands.dtype != torch.float32:
             self.bands = self._default_bands(device)
@@ -463,7 +467,20 @@ class _RoPE(nn.Module):
         text = torch.zeros(text_length, 4, device=device, dtype=torch.float32)
         text[:, 1] = torch.arange(text_length, device=device)
         parts = [image, text]
-        if ref_hw is not None:
+        if ref_hw is not None and ref_pos == "canvas":
+            rh, rw = ref_hw
+            h, w = torch.meshgrid(
+                torch.arange(rh, device=device) - (rh - 1) / 2,
+                torch.arange(rw, device=device) + (width + 1 - rw) / 2,
+                indexing="ij",
+            )
+            image[:, 3] -= rw / 2
+            parts.append(
+                torch.stack(
+                    (torch.zeros_like(h), torch.full_like(h, text_length), h, w), -1
+                ).flatten(0, 1)
+            )
+        elif ref_hw is not None:
             rh, rw = ref_hw
             h, w = torch.meshgrid(
                 (torch.arange(rh, device=device) + 0.5) * height / rh - 0.5,
@@ -478,7 +495,7 @@ class _RoPE(nn.Module):
             if ref_pos == "offset":
                 ref[:, 3] += width
             elif ref_pos != "aligned":
-                raise ValueError(f"ref_pos={ref_pos!r}: aligned or offset")
+                raise ValueError(f"ref_pos={ref_pos!r}: aligned, offset or canvas")
             parts.append(ref)
         phase = torch.cat(parts, 0).unsqueeze(-1) * self.bands
         return torch.cat((phase.sin(), phase.cos()), -2).flatten(-2).unsqueeze(0)

@@ -798,8 +798,10 @@ class TrainRequest(Request):
         "RoPE placement of the reference: aligned = over the image (each reference "
         "token on the image region it covers; edits of the same picture), offset = "
         "beside it, one image width to the right (a reference whose content sits "
-        "elsewhere, e.g. character_ref). Stamped in the LoRA metadata",
-        choices=("aligned", "offset"),
+        "elsewhere, e.g. character_ref), canvas = beside it at r = 0, image and "
+        "reference centred as the two panels of one picture. Stamped in the LoRA "
+        "metadata",
+        choices=("aligned", "offset", "canvas"),
         advanced=True,
     )
     ref_adapters: str = _f(
