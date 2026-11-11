@@ -101,6 +101,32 @@ Read, with the criteria fixed here:
 2. |ΔW| at 125 / 250 / 375 / 500 and the cos between consecutive moves, as in the table above.
 3. The probe on its step-375 bundle: mean share against 3 %.
 
+## Result (2026-11-11): fails criterion 1; the walk is unchanged
+
+Ran 500 steps at 9.5 s/step (control 6.5). Grids side by side with the control:
+`output/tests/superturbo/1111_1740/cmp_{anima,nozomi}.jpg` (the control's 375 raw was rendered in
+the same sweep; it had none).
+
+1. Renders. 250 is on par with the control's (one exact "ANIMA" in the EMA row, none in the
+   control's). 375 is worse than its own 250: the ANIMA sign breaks into scattered boards (raw
+   and EMA), nozomi tilts with flying cans and scratch lines in the sky. 500 recovers, and both
+   500 rows beat the control's 500 on ANIMA; nozomi 500 raw keeps the scratch lines, 500 EMA is
+   clean. The style drifts (brown hair, cap, school buildings, harder lines). Fails as written.
+   Better, then worse, then better again is what a walk does, not a slower decline.
+2. |ΔW| 2.80 / 3.92 / 4.70 / 5.35 (control 2.77 / 3.98 / 4.85 / 5.50), cos between moves +0.008,
+   +0.008. Still √t and orthogonal.
+3. Probe (`bench/turbo/results/20261111-1913-grad_noise_1111_1740/`, per-draw as before): mean
+   share 2.9 % against 3.0 %. The averaged signal's rms is 0.65× the control's all run, and the
+   DM-term metrics (`dm`, `cos`, `rel_gap`, first draw) lead the control over steps 300–400 only.
+
+Why 4 draws buy less than 4: the DM norm's σ_a tail. Bin medians 1.24 / 2.03 / 2.36 / 4.93 with
+21.9 and 30.5 above σ_a 0.95 (1111_1115 bundle; 1111_1740's top is 11.1). Norm-weighted the DM
+mean share is 1.6 %, unit-weighted 4.3 %: the large draws are mostly noise. Resampling the 96
+probe draws (independent draw noise assumed), the effective number of draws out of 4 is 2.23
+iid, 1.93 stratified by σ_a (one draw per quarter forces a tail draw into every step), 2.48 with
+σ_a capped at 0.9, 2.84 with each draw divided by its bin's median norm, 4 with a per-draw
+backward normalised to unit norm.
+
 ## Later, each on its own
 
 - `lr_schedule = "cosine"`: the one setting seen to stop the walk.
