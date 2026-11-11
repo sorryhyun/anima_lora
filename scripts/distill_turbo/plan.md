@@ -1,208 +1,109 @@
-# Plan: average the DM signal over several (σ_a, ε_dm) draws
+# Plan: a 4-step recipe from the 2-step measurements
 
-Written 2026-11-11. `dmd.dm_draws` is built (`steps.dm_slot`, test in `tests/test_turbo_mfd.py`);
-the run is `1111_1740`. It follows from two measurements on the superturbo
-runs (2-step student, `dpdmd.rollout_grad`, proposal `docs/anima/proposal/superturbo.md`), whose
-renders were best at step 250 and worse at 375 and 500, at LR 5e-5 (`1111_1005`) and again at
-2e-5 (`1111_1115`).
+Written 2026-11-12. The 2-step line (superturbo, `dpdmd.rollout_grad`) is closed; its plan and
+results are this file at commit `91d476e0`. From here the work is the 4-step student, on the
+merged14 soup teacher (`output/ckpt/anima_merged14.safetensors`, shipped as one LoRA with the
+soup, see the memory note on soup turbo). Nothing in "Arms" below has run.
 
-## What was measured
+## What carries over from the 2-step line
 
-### The student weights random-walk
+Measured on the 2-step runs `1111_1005`, `1111_1115`, `1111_1740`, `1111_2056` (all batch 1):
 
-ΔW = up·down of the saved student checkpoints, Frobenius norm over all 364 modules.
+- **The per-step gradient is mostly noise.** Gradient probe (`bench/turbo/probe_grad_noise.py`,
+  `1111_1115` step 375): of the direction energy of a student step, 77 % is between DM query draws
+  (σ_a, ε_dm) of one sample, 20 % between samples, 3 % is the mean that accumulates.
+- **The weights random-walk.** Under a constant LR, |ΔW| grows as √t and consecutive 125-step
+  moves are orthogonal (cos ≤ 0.02) from the first 125 steps on.
+- **LR scales the walk, not its onset.** 5e-5 → 2e-5 shrank every move by 2.56× and moved
+  nothing else (Adam scales drift and noise together).
+- **Lowering the noise does not raise the level.** `dm_draws 4`, `grad_accum 4` and exact
+  checkpoint averages all landed on the level of `1111_1115` at step 250.
+- **Removing the walk after the fact undoes the late drift.** Exact ΔW averages of the
+  250 / 375 / 500 checkpoints, and the EMA of `1111_2056` (window 0.2), took the late
+  benches / vehicles / brown hair back out. EMA window 0.1 (`1111_1115`) did not.
+- Reading: the objective sets the level; the batch-1 walk only subtracts from it.
 
-| Run | LR, schedule | \|ΔW\| at 125 / 250 / 375 / 500 | cos between consecutive 125-step moves |
-|---|---|---|---|
-| `1111_1115` (GAN) | 2e-5, constant | 2.77 / 3.98 / 4.85 / 5.50 | +0.018, −0.001 |
-| `1111_1005` (GAN) | 5e-5, constant | 6.54 / 9.74 / 12.37 / 14.77 | +0.012, +0.012 |
-| `..._k3_nogan_..._const_ema10` | 5e-5, constant | 6.66 / 9.27 / 11.23 / 12.77 | – |
-| `..._k6_nogan_nocdm_500_tafake` | 5e-5, cosine | 5.71 / 7.74 / 8.21 / 8.26 | – |
+## The 4-step loop is in the same regime (measured 2026-11-12)
 
-- Under a constant LR, |ΔW| follows √t (`1111_1115`: 2.77·√(t/125) = 3.92 / 4.80 / 5.54) and
-  each 125-step move is orthogonal to the next. Nothing pulls the weights back and nothing
-  pushes them one way.
-- Two runs of the same objective from the same init share cos 0.08–0.17 of their ΔW.
-- Lowering the LR 2.5× scaled each move by 2.56× and changed nothing else. Adam scales the
-  drift and the noise by the same factor, so the step at which noise overtakes learning does
-  not move.
-- The walk is there without the GAN. Only the cosine run stops (8.21 → 8.26), and it is the
-  only run whose `div_loss`, `grad_signal_rms` and `dm_cos` improve in the last 150 steps.
-- The EMA of window 0.1 (50 steps) does not remove it (`1111_1115` at 500: 5.12 EMA, 5.50 raw).
+`bench/turbo/dw_overlap.py`, cosine between the ΔW of two runs (weight_svd init, so ΔW starts
+at 0). For two runs of one objective from one init it reads as the share of ΔW energy they
+have in common.
 
-### The gradient noise is the DM query draw
-
-`bench/turbo/probe_grad_noise.py` on `output/ckpt/1111_1115/1111_1115_resume.pt` (step 375):
-16 samples (prompt, rollout ε), 3 draws of (σ_a, ε_dm) each, no optimizer step. Result:
-`bench/turbo/results/20261111-1312-grad_noise/result.json`. Numbers below are in Adam's metric
-(gradient divided by √v̂ from the bundle); the raw gradient gives the same picture.
-
-Direction energy of the per-step student gradient (unit vectors, which is what grad clip 1.0
-leaves of a step):
-
-| Part | Share |
-|---|---|
-| Between (σ_a, ε_dm) draws of one sample | 77 % |
-| Between samples | 20 % |
-| Mean over everything | 3 % |
-
-Squared-norm share by term: DM through the rollout into step 0 56 %, DM on step 1 13 %,
-anchor 7 %, GAN 7 % (the rest is the cross term of the two DM paths).
-
-- The rollout path is the largest term and the noisiest (mean share 2 %, against 7 % for the
-  step-1 path).
-- DM and the anchor agree on average (cos of the mean directions +0.55, step-0 path alone
-  +0.54). The GAN's mean is mildly opposite DM (−0.19).
-- The DM gradient norm grows with σ_a: median 1.24 below 0.25, 2.03, 2.36, and 4.93 above
-  0.75, with 21.9 at σ_a 0.96 and 30.5 at 0.99, nearly all of it through the rollout path.
-  Under the clip, such a step counts as much as any other.
-
-Limits: one checkpoint, 3 draws, and all 16 samples came from the largest token bucket
-(4154–4200 tokens; the batch sampler serves it first). The cos between mean directions rests on
-16 samples.
-
-Reading that joins the two: the mean share of 3 % at frozen weights does not show up as a
-persistent direction in ΔW (≤ 2 % of a 125-step move), so the objective holds a few directions
-near an equilibrium while the draw noise diffuses through the rest. This is an interpretation,
-not a measurement.
-
-## Change
-
-One knob, `dmd.dm_draws` (default 1), also on the CLI.
-
-- `distill.run_loop` calls the DM-slot surrogate (`steps.mfd_surrogate` or `dmd_surrogate`)
-  `dm_draws` times on the same `x_pred` and averages `grad_signal` (each draw keeps its own
-  `dm_x0_norm` division). The surrogate loss is linear in `grad_signal`, so the student
-  backward stays a single one.
-- The first draw makes the same RNG calls as now, and its `tau_dm` / `eps_dm` feed the GAN
-  generator renoise, so `dm_draws = 1` is the current loop bit for bit (test beside
-  `tests/test_turbo_mfd.py`).
-- Metrics (`delta_dm`, `v_real_cond_dm`, `v_fake_cond_dm`, `tau_dm_e`) read the first draw;
-  `grad_signal_rms` reads the averaged signal.
-- `fake_update`, the anchor, `fake_transition` and L_CDM do not change.
-
-Cost: one more draw is K × 3 no-grad forwards (K averages 3.4 at dtau 0.1 / max 4). Estimated
-6.5 → about 10 s/step at 4 draws, to be read off a smoke. No VRAM change expected (no graph).
-
-Expected effect, from the probe's shares: 4 draws cut the draw part to a quarter, which takes
-the mean share from 3 % to about 7 %. Draws alone cap near 13 %; past that the between-sample
-part needs a larger batch.
-
-## Run
-
-`1111_1740`: `1111_1115` with `dm_draws = 4`, nothing else changed (config: its
-`output/ckpt/1111_1740.snapshot.toml`); `1111_1115` itself is the control.
-
-Read, with the criteria fixed here:
-
-1. Renders at 2 steps, cfg 1, the ANIMA-sign and nozomi prompts, seeds as in
-   `output/tests/superturbo/1111_1115/`, checkpoints 250 / 375 / 500 (raw and EMA). It passes
-   if 375 and 500 are no worse than its own 250 and its 250 is no worse than `1111_1115`'s.
-2. |ΔW| at 125 / 250 / 375 / 500 and the cos between consecutive moves, as in the table above.
-3. The probe on its step-375 bundle: mean share against 3 %.
-
-## Result (2026-11-11): fails criterion 1; the walk is unchanged
-
-Ran 500 steps at 9.5 s/step (control 6.5). Grids side by side with the control:
-`output/tests/superturbo/1111_1740/cmp_{anima,nozomi}.jpg` (the control's 375 raw was rendered in
-the same sweep; it had none).
-
-1. Renders. 250 is on par with the control's (one exact "ANIMA" in the EMA row, none in the
-   control's). 375 is worse than its own 250: the ANIMA sign breaks into scattered boards (raw
-   and EMA), nozomi tilts with flying cans and scratch lines in the sky. 500 recovers, and both
-   500 rows beat the control's 500 on ANIMA; nozomi 500 raw keeps the scratch lines, 500 EMA is
-   clean. The style drifts (brown hair, cap, school buildings, harder lines). Fails as written.
-   Better, then worse, then better again is what a walk does, not a slower decline.
-2. |ΔW| 2.80 / 3.92 / 4.70 / 5.35 (control 2.77 / 3.98 / 4.85 / 5.50), cos between moves +0.008,
-   +0.008. Still √t and orthogonal.
-3. Probe (`bench/turbo/results/20261111-1913-grad_noise_1111_1740/`, per-draw as before): mean
-   share 2.9 % against 3.0 %. The averaged signal's rms is 0.65× the control's all run, and the
-   DM-term metrics (`dm`, `cos`, `rel_gap`, first draw) lead the control over steps 300–400 only.
-
-Why 4 draws buy less than 4: the DM norm's σ_a tail. Bin medians 1.24 / 2.03 / 2.36 / 4.93 with
-21.9 and 30.5 above σ_a 0.95 (1111_1115 bundle; 1111_1740's top is 11.1). Norm-weighted the DM
-mean share is 1.6 %, unit-weighted 4.3 %: the large draws are mostly noise. Resampling the 96
-probe draws (independent draw noise assumed), the effective number of draws out of 4 is 2.23
-iid, 1.93 stratified by σ_a (one draw per quarter forces a tail draw into every step), 2.48 with
-σ_a capped at 0.9, 2.84 with each draw divided by its bin's median norm, 4 with a per-draw
-backward normalised to unit norm.
-
-## Next: logit-normal σ_a (not run; config `output/ckpt/next_logit_normal.config.toml`)
-
-`1111_1740` with `dmd.dm_tau_distribution = "logit_normal"`, `dm_tau_scale = 1.0` (σ_a =
-sigmoid(N(0,1)) on the DM / MFD query; the GAN generator renoise reuses it; CDM, fake update
-unchanged). Control: `1111_1740`. On the 96 probe draws it lifts the effective draws to 2.62 of
-4 (P(σ_a > 0.9) 1.4 % against 10 %). It changes the objective, not only its variance: the
-σ_a > 0.75 mass drops from 25 % to 14 %. Read as `1111_1740`, criterion 1 against its renders.
-
-## Checkpoint averages (2026-11-11): taking the walk out does not beat 250
-
-Exact ΔW averages of saved checkpoints (`merge_loras.py --normalize off --adaln sum`, equal
-weights), rendered as the sweeps above (2 steps, cfg 1, same prompts and seeds). Grids:
-`output/tests/superturbo/avg/cmp_{anima,nozomi}.jpg`.
-
-| Average | ANIMA sign | nozomi |
+| Pair | Steps | cos |
 |---|---|---|
-| `avg3_1115`: `1111_1115` at 250 / 375 / 500 | letters still broken and doubled, level with its 250 | stray dark shapes, a blue can; below its 250 |
-| `avg2_500`: `1111_1115` and `1111_1740` at 500 | bolder, cleaner strokes; spelling still wrong | two cans on seeds 43, 44 |
-| `avg6_both`: both runs at 250 / 375 / 500 | the calmest row, seed 3 nearly "ANIM.A" | two cans on seeds 43, 44 |
+| `anima_turbo_m14_dpdmd_svd_500` vs `..._tafake` (4-step; same seed, init, data order; differ in `fake_transition` only, which left the losses identical) | 500 | **0.14** |
+| `1111_1115` vs `1111_1740` (2-step; differ in `dm_draws`) | 125 / 250 / 375 / 500 | 0.19 / 0.17 / 0.16 / 0.17 |
+| any other pair (different LR, or 2-step vs 4-step) | 500 | 0.09–0.11 |
 
-- The averages undo what `1111_1115` drew at 500 (benches, vehicles, brown hair): the scene is
-  trees and sky again. The walk is what degrades the late checkpoints.
-- None of them is above `1111_1115` at 250, which stays the cleanest nozomi row. With the walk
-  removed after the fact, the result is the 250 level.
-- Read by Claude on the 448 px grids, not per glyph at full size.
+- About 85 % of a 4-step student's ΔW is specific to its run, as in the 2-step line.
+- The shared part is not concentrated: per module kind (adaln, self-attn, cross-attn, mlp) the
+  4-step pair's cos is 0.11–0.19; per block group 0.10–0.21, highest in blocks 21–27.
+- Short runs are no more deterministic: the 2-step pair already shares only 0.19 at step 125.
+- Consequence for past reads: the 2026-11-10 `fake_transition` A/B (tafake sharper, plain
+  drifting to brown hair and one centred sign; `vatdm.md`) compared two such draws. Its render
+  differences may be mostly run noise.
 
-What this does not test: whether a cleaner gradient during training moves the point the student
-settles at. The fake tracks a student that jitters every step, and every step is a unit-norm
-vote under the clip.
+No 4-step run has intermediate checkpoints or a resume bundle, so the 4-step |ΔW| trajectory
+and a 4-step gradient probe are not measured (the probe refuses anything but the 2-step
+superturbo config).
 
-## Gradient accumulation (`1111_2056`, 2026-11-11): fails; level with the averages
+## Recipe: fixed by evidence, not A/B'd again
 
-`optim.grad_accum` (default 1; `steps.ClippedGradMean`, test in `tests/test_turbo_mfd.py`): the
-student optimizer steps once per `grad_accum` loop iterations on the mean of the per-iteration
-clipped gradients. Clipping before the sum keeps a high-σ_a draw at one vote; clipping the sum
-would repeat the 2.23-of-4 loss measured for `dm_draws`. The fake and the disc update every
-iteration. `iterations`, `save_every`, the GAN delay and the logs count loop iterations; the
-student LR schedule and the EMA count student updates.
+| Part | Setting | Evidence |
+|---|---|---|
+| Teacher, base | merged14, int8 GPTQ (`anima_merged14_int8_gptq`), fp32 stream (code default since `44d3023f`) | soup turbo note; fp32 stream settled |
+| Diversity anchor | DP-DMD on: `div_weight 0.1`, `k_anchor 6 / 12`, `detach_after_first`, `dm_first_step` off | anchor-free MFD collapsed by step 250 (`README.md`) |
+| Fake | `fake_transition` on, `fake_warmup_steps 200`, 4 fake steps per student step | no harm at 500 steps (`vatdm.md`) |
+| CDM | 1.0 | keeps the sky as sky in the 100-step arms (`README.md`) |
+| GAN | token head, `weight_gen 0.03` | runaway is an NFE-2 failure; flat at NFE 4 (`docs/anima/methods/turbo.md`) |
+| LR | 5e-5 student and fake, constant | LR does not move the walk onset; the shape is not the lever |
+| Walk removal | EMA `window 0.2`, the EMA is what ships | 2-step EMA 0.2 = checkpoint-average level |
 
-From the probe's shares, 4 independent (sample, draw) gradients take the mean share from 3 % to
-about 11 % (8: about 20 %); `dm_draws` caps near 13 % because it leaves the between-sample 20 %.
+Not to be A/B'd again on 4 steps: `dm_draws`, `grad_accum`, LR scale. On the 2-step line all
+three were null against the level.
 
-`1111_2056` (config `output/ckpt/1111_2056.config.toml`): `1111_1115` with `grad_accum = 4`,
-1000 iterations = 250 student updates, `fake_steps_per_student_step = 1` (4 fake and disc
-updates per student update, as in the control, each on a different x_θ), GAN delay / ramp
-400 / 400, `save_every = 500`, `ema.window = 0.2` (the control's 50-update span). Smoke: 8
-iterations ran clean, peak 13.21 GB.
+## A/B protocol
 
-Read, fixed here: the final checkpoint (250 student updates, raw and EMA), same prompts and
-seeds, against `1111_1115` at 250 and `avg6_both`. It passes if it beats both. Level with
-`avg6_both` means the 250 level is this objective's 2-step ceiling, and the 2-step line closes.
+A single raw checkpoint against another reads mostly run noise. Every A/B here:
 
-### Result
+1. **250 iterations**, `save_every 125`, EMA on. About 40 min per arm (estimate: ~7 s per
+   iteration plus fake warmup and compile; read the first run's real time).
+2. **Compare EMAs at 250.** The exact average of the raw 125 and 250 checkpoints
+   (`merge_loras.py --normalize off --adaln sum`) is the cross-check.
+3. **One null twin, once.** The control with `seed 43` instead of 42. Its difference to the
+   control is the noise floor for every later arm.
+4. **Renders are the gate.** 4 steps, cfg 1, the ANIMA-sign and nozomi prompts with the seeds of
+   `output/tests/superturbo/`, beside the teacher at 28 steps, cfg 4.
+5. **A distribution number beside the renders.** `bench/turbo/moment_gap.py`: S–T4 nW2² and the
+   pooled spread ratio against the merged14 teacher at cfg 4. The script is built for the v1.1
+   delta on the base teacher. It has to take the merged14 teacher and an arbitrary student LoRA
+   first. The T4 set is rendered once and reused.
 
-Ran 1000 iterations in 72 min (4.0 s/iteration, peak 13.79 GB). Grids against `1111_1115` at 250
-and `avg6_both`: `output/tests/superturbo/1111_2056/cmp_{anima,nozomi}.jpg`.
+An arm passes if its EMA renders beat the control's on both prompts by more than the control
+and the twin differ, and its S–T4 nW2² sits below the control's by more than |control − twin|.
 
-- Raw final (250 updates): worse than both. Twisted and merged bodies on ANIMA seeds 3 and 4,
-  broken multi-board signs, tilted nozomi.
-- EMA final: the `avg6_both` level. Calm scenes, one near-correct small "ANIMA" (seed 3), the
-  other signs split or misspelt; nozomi with one can per seed and a few stray dark shapes. Not
-  above `1111_1115` at 250 on nozomi.
-- EMA at 125 updates is the same level (bold "ANIMA"-like signs on seeds 1 and 2).
-- |ΔW| 2.78 / 3.84 at 125 / 250 updates (control 2.77 / 3.98), cos between the two moves 0.022
-  (control 0.022 with the same script). ΔW shares cos 0.16 with the control's at 250.
-- Scalars ran inside the control's range (`rel_gap` 0.17–0.19 against 0.19–0.24 over updates
-  50–90, partly the 20-sample rows).
+## Arms, in order
 
-Fails as written. Four gradients per update did not change the walk and did not move the point
-the EMA settles at: with `dm_draws` and the checkpoint averages, three ways of lowering the noise
-all land on the 250 level. By the criterion fixed above, that level is this objective's 2-step
-ceiling. Read by Claude on the 448 px grids, not per glyph at full size.
+0. **Control + null twin** (~80 min). The recipe above, 4-step, `dynamic_schedule` on, DP-DMD
+   point delta. They give the 250 level and the noise floor. A 4-step |ΔW| trajectory comes
+   with them (125 / 250).
+1. **MFD dtau 0.1 / max 4** in the DM slot. MFD's T2I result is a 4-step student (SANA, 3000
+   steps), so 4 steps is the setting it was shown on. On 2 steps it sharpened stray content into
+   objects as K grew; CDM held the sky.
+2. **Static grid** (`dynamic_schedule` off). The dynamic grid adds a draw (N, interior σ) to an
+   already noise-dominated step, and inference runs the static grid.
+3. **Teacher-regularised fake + corrected critic** (VA-TDM idea 2, `vatdm.md`, λ_r 1). Not
+   built. It costs a teacher forward per fake step.
 
-## Later, each on its own
+Each arm changes one thing against arm 0. A passing arm becomes the new control, with no new
+twin unless the step time or the loss terms change.
 
-- `lr_schedule = "cosine"`: the one setting seen to stop the walk.
-- The σ_a ≥ 0.75 tail: a cap or a logit-normal σ_a. The probe does not say how much of the
-  high-noise signal a 2-step student needs.
-- A larger student batch for the between-sample 20 %.
+## Open
+
+- Whether 250 iterations is where the 4-step level is reached. The shipped `anima_turbo_v3_longer`
+  (warm start from the v1.1 delta, base teacher) kept improving to 2k+ and ended at |ΔW| 12.4.
+  Arm 0's 125 / 250 renders and |ΔW| say whether 250 is already flat. If not, the A/B length goes
+  up before arm 1.
+- Seed averaging. With a shared share c ≈ 0.14, an exact ΔW average of k seeds raises it to
+  kc / (1 + (k − 1)c): 0.25 at k = 2, 0.39 at k = 4. On 2 steps `avg2_500` (two runs) did not
+  beat the 250 level, so this is cleanup, not a quality lever.
