@@ -24,15 +24,15 @@ through the blocks once per page and their K/V are cached (`RefCache`; ComfyUI `
 
 Recipes: `configs/moss/i2i/<task>/{cache,train,generate}.toml`, one per task, the latest;
 superseded ones are in `_archive/configs/moss_i2i/`. The task → cache-request map is
-`library.moss.requests.I2I_CACHE`. Staging and data: `i2i_tasks/README.md`. Run histories:
-`project/lora_blocks/reports/`, `project/finished/moss_lora/`.
+`library.moss.requests.I2I_CACHE`. Staging: `i2i_tasks/README.md`. Released LoRAs and their
+workflows: `sorryhyun/MOSS-I2I-LORAs` on the Hub.
 
-| Task | Reference | Text encoder input | Shipped |
-|---|---|---|---|
-| `colorize` | B&W page, full size, isolated | control captions, no OCR text, no vision tower. Manga page: `comic`, optionally a box-only `text` item per lettered line and `character` items (box + hair / eye / clothing colours). Illustration: its colour + series tags | v5 (`colorize/moss_colorize_v5` + `colorize/moss-i2i-colorize-v5.json`): [colorize_v5_control.md](../proposal/colorize_v5_control.md) |
-| `sanitize` | texted image, full size, isolated | one fixed caption for every pair: `no sfx, no dialogue, no watermark` | v3 (`sanitize/moss_i2i_sanitize_v3`), with the tone term: [tone_loss.md](tone_loss.md) |
-| `swap_text` | JA manga page, full size, isolated | layout JSON, one text item per line to letter (translated text + bbox), Hangul split into syllable tokens | v6 recipe (`train.toml`, from the bw10 copy block) |
-| `character_ref` | a solo image of the character by the same artist, own aspect (`ref_aspect native`), full or half size by pair (`ref_scale_alt 2`), isolated | the target's caption without character, series, artist and meta tags, and without the tags the reference's caption shares | none: no run reads the reference yet |
+| Task | Reference | Text encoder input |
+|---|---|---|
+| `colorize` | B&W page, full size, isolated | control captions, no OCR text, no vision tower. Manga page: `comic`, optionally a box-only `text` item per lettered line and `character` items (box + hair / eye / clothing colours). Illustration: its colour + series tags |
+| `sanitize` | texted image, full size, isolated | one fixed caption for every pair: `no sfx, no dialogue, no watermark` |
+| `swap_text` | JA manga page, full size, isolated | layout JSON, one text item per line to letter (translated text + bbox), Hangul split into syllable tokens |
+| `character_ref` | a solo image of the character by the same artist, own aspect (`ref_aspect native`), full or half size by pair (`ref_scale_alt 2`), isolated | the target's caption without character, series, artist and meta tags, and without the tags the reference's caption shares |
 
 ## Running
 
