@@ -157,7 +157,7 @@ What this does not test: whether a cleaner gradient during training moves the po
 settles at. The fake tracks a student that jitters every step, and every step is a unit-norm
 vote under the clip.
 
-## Next: gradient accumulation (`1111_2056`, queued 2026-11-11)
+## Gradient accumulation (`1111_2056`, 2026-11-11): fails; level with the averages
 
 `optim.grad_accum` (default 1; `steps.ClippedGradMean`, test in `tests/test_turbo_mfd.py`): the
 student optimizer steps once per `grad_accum` loop iterations on the mean of the per-iteration
@@ -178,6 +178,27 @@ iterations ran clean, peak 13.21 GB.
 Read, fixed here: the final checkpoint (250 student updates, raw and EMA), same prompts and
 seeds, against `1111_1115` at 250 and `avg6_both`. It passes if it beats both. Level with
 `avg6_both` means the 250 level is this objective's 2-step ceiling, and the 2-step line closes.
+
+### Result
+
+Ran 1000 iterations in 72 min (4.0 s/iteration, peak 13.79 GB). Grids against `1111_1115` at 250
+and `avg6_both`: `output/tests/superturbo/1111_2056/cmp_{anima,nozomi}.jpg`.
+
+- Raw final (250 updates): worse than both. Twisted and merged bodies on ANIMA seeds 3 and 4,
+  broken multi-board signs, tilted nozomi.
+- EMA final: the `avg6_both` level. Calm scenes, one near-correct small "ANIMA" (seed 3), the
+  other signs split or misspelt; nozomi with one can per seed and a few stray dark shapes. Not
+  above `1111_1115` at 250 on nozomi.
+- EMA at 125 updates is the same level (bold "ANIMA"-like signs on seeds 1 and 2).
+- |ΔW| 2.78 / 3.84 at 125 / 250 updates (control 2.77 / 3.98), cos between the two moves 0.022
+  (control 0.022 with the same script). ΔW shares cos 0.16 with the control's at 250.
+- Scalars ran inside the control's range (`rel_gap` 0.17–0.19 against 0.19–0.24 over updates
+  50–90, partly the 20-sample rows).
+
+Fails as written. Four gradients per update did not change the walk and did not move the point
+the EMA settles at: with `dm_draws` and the checkpoint averages, three ways of lowering the noise
+all land on the 250 level. By the criterion fixed above, that level is this objective's 2-step
+ceiling. Read by Claude on the 448 px grids, not per glyph at full size.
 
 ## Later, each on its own
 
