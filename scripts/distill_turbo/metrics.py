@@ -35,6 +35,7 @@ Parameter gradients:
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, fields
 
 import torch
@@ -229,6 +230,69 @@ class TauBinCriticLoss:
         for i, (s, n) in enumerate(zip(sums, cnts)):
             if n > 0:
                 writer.add_scalar(f"{self.prefix}{i}", s / n, step)
+
+
+class StepGradLog:
+    """One JSONL row per loop iteration: pre-clip grad norms beside the draws.
+
+    The interval means of ``gn_*`` cannot be paired with the σ_a or g that
+    produced them, so this keeps each iteration. Rows are GPU-resident until
+    ``flush`` (one sync per log boundary) and appended to ``path``, so a resumed
+    run continues the same file. Fields: ``step``, ``gn_student``, ``gn_fake``,
+    ``gn_disc`` (null with the GAN off), ``sigma_a`` (DM query level of the first
+    draw, batch mean), ``s_g`` (σ at the grad step), ``g``, ``n`` (rollout length).
+    """
+
+    def __init__(self, path, device: torch.device):
+        self.path = path
+        self.device = device
+        self._rows: list[torch.Tensor] = []
+        self._meta: list[tuple[int, float, int, int]] = []
+
+    @torch.no_grad()
+    def add(
+        self,
+        step: int,
+        gn_student: torch.Tensor,
+        gn_fake: torch.Tensor,
+        gn_disc: torch.Tensor | None,
+        sigma_a: torch.Tensor,
+        s_g: float,
+        g: int,
+        n: int,
+    ) -> None:
+        nan = torch.full((), float("nan"), device=self.device)
+        self._rows.append(
+            torch.stack(
+                [
+                    gn_student.detach().float().to(self.device),
+                    gn_fake.detach().float().to(self.device),
+                    nan if gn_disc is None else gn_disc.detach().float().to(self.device),
+                    sigma_a.detach().float().mean().to(self.device),
+                ]
+            )
+        )
+        self._meta.append((step, float(s_g), int(g), int(n)))
+
+    def flush(self) -> None:
+        if not self._rows:
+            return
+        vals = torch.stack(self._rows).tolist()
+        with open(self.path, "a", encoding="utf-8") as f:
+            for (step, s_g, g, n), (gs, gf, gd, sa) in zip(self._meta, vals):
+                row = {
+                    "step": step,
+                    "gn_student": round(gs, 5),
+                    "gn_fake": round(gf, 5),
+                    "gn_disc": None if gd != gd else round(gd, 5),
+                    "sigma_a": round(sa, 5),
+                    "s_g": round(s_g, 5),
+                    "g": g,
+                    "n": n,
+                }
+                f.write(json.dumps(row) + "\n")
+        self._rows.clear()
+        self._meta.clear()
 
 
 def write_scalars(writer, m: FlushedMetrics, step: int) -> None:

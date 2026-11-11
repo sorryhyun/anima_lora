@@ -82,17 +82,60 @@ A single raw checkpoint against another reads mostly run noise. Every A/B here:
 An arm passes if its EMA renders beat the control's on both prompts by more than the control
 and the twin differ, and its S–T4 nW2² sits below the control's by more than |control − twin|.
 
+## Gradient norm: the clip is a normaliser
+
+`grad_clip 1.0` acts on almost every step. Pre-clip student norms (TB `train/grad_norm_student`,
+5-step interval means) on the 2-step runs:
+
+| Run | p5 | median | p95 | intervals above 1.0 |
+|---|---|---|---|---|
+| `1111_1005` | 1.74 | 3.20 | 10.1 | 100 % |
+| `1111_1115` | 2.52 | 4.01 | 8.8 | 100 % |
+| `1111_1740` | 2.42 | 3.74 | 7.4 | 100 % |
+| `1111_2056` | 3.44 | 5.00 | 8.4 | 100 % |
+
+The fake is the same (median 2.2–2.9, every interval above 1.0). The 4-step m14 runs predate
+the norm logging.
+
+- Adam ignores a constant gradient scale, so a higher clip does not make steps larger; LR does.
+  What the clip sets is how steps weigh against each other. At 1.0 every step enters at unit
+  norm; without it a step weighs by its norm.
+- On 2 steps the large norms were the noise. The DM norm grew with σ_a (median 1.24 below 0.25,
+  4.93 above 0.75, 22–30 near 0.96–0.99), nearly all through the rollout path, and norm-weighting
+  took the DM mean share from 4.3 % (unit-weighted) to 1.6 %.
+- 4 steps have no rollout path, so the σ_a profile of the norm may be flat there. Unmeasured.
+
+Two knobs, neither built:
+
+- **Adaptive clip** (`optim.grad_clip_mode = "adaptive"`): threshold = k × a running median of
+  the pre-clip norm (EMA in log space, k ≈ 2), per net. Ordinary steps pass at their own norm,
+  spikes are capped, and the threshold follows the norm's drift over the run (2.5 → 5 in
+  `1111_2056`).
+- **σ_a normalisation** (`dmd.dm_sigma_weight`): the DM loss times 1 / (running median norm of
+  its σ_a bin, 8 bins), so the σ_a-driven part of the norm is removed before the clip. One
+  backward, as now.
+
+Logging (built 2026-11-12): `<run log dir>/grad_steps.jsonl`, one row per iteration with
+`gn_student`, `gn_fake`, `gn_disc`, `sigma_a` (DM query level, first draw), `s_g`, `g`, `n`
+(`metrics.StepGradLog`). Arm 0 gives the 4-step profile from it at no cost.
+
+Decision, fixed here, read on arm 0's rows (both runs pooled): bin `gn_student` by `sigma_a`
+into quarters. If the top quarter's median is within 1.5× the bottom quarter's, the arm is the
+adaptive clip alone. If it is above 1.5×, the arm is adaptive clip plus σ_a normalisation.
+
 ## Arms, in order
 
 0. **Control + null twin** (~80 min). The recipe above, 4-step, `dynamic_schedule` on, DP-DMD
    point delta. They give the 250 level and the noise floor. A 4-step |ΔW| trajectory comes
-   with them (125 / 250).
+   with them (125 / 250), and the per-iteration norm profile (`grad_steps.jsonl`).
 1. **MFD dtau 0.1 / max 4** in the DM slot. MFD's T2I result is a 4-step student (SANA, 3000
    steps), so 4 steps is the setting it was shown on. On 2 steps it sharpened stray content into
    objects as K grew; CDM held the sky.
 2. **Static grid** (`dynamic_schedule` off). The dynamic grid adds a draw (N, interior σ) to an
    already noise-dominated step, and inference runs the static grid.
-3. **Teacher-regularised fake + corrected critic** (VA-TDM idea 2, `vatdm.md`, λ_r 1). Not
+3. **Gradient norm** (section above): adaptive clip, with σ_a normalisation if arm 0's profile
+   calls for it. Built after arm 0.
+4. **Teacher-regularised fake + corrected critic** (VA-TDM idea 2, `vatdm.md`, λ_r 1). Not
    built. It costs a teacher forward per fake step.
 
 Each arm changes one thing against arm 0. A passing arm becomes the new control, with no new

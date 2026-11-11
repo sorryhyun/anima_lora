@@ -240,6 +240,10 @@ Three surfaces, cheapest first:
   `log_interval` cadence (`grep '^.*step ' run.log`).
 - `make export-logs RUN=output/logs/<run> SUMMARY=1` — max step + last value
   per TB tag, when you want every scalar rather than the loop's headline set.
+- `grad_steps.jsonl` in the TB run dir — one row per iteration: pre-clip grad norms
+  (student, fake, disc) beside that iteration's DM query σ_a, grad-step σ, `g` and
+  rollout length `N`. The TB `grad_norm_*` scalars are interval means and cannot be
+  paired with the draw.
 
 ## GAN (FastGen lever)
 

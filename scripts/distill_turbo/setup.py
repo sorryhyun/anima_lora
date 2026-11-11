@@ -55,7 +55,7 @@ from library.training.ema import AdapterEMA
 from networks.methods.turbo_dmd import TurboDMDNetwork, warm_start_plain_lora
 
 from .config import TurboConfig, snapshot_toml_text, tb_config_text
-from .metrics import TauBinCriticLoss, TurboMetrics
+from .metrics import StepGradLog, TauBinCriticLoss, TurboMetrics
 from .primitives import (
     PadCache,
     make_collate,
@@ -147,6 +147,7 @@ class RunContext:
     start_step: int
     int8_base_id: str = ""
     ema: AdapterEMA | None = None  # student EMA (ema_window > 0)
+    grad_log: StepGradLog | None = None  # per-iteration grad norms (<run log>/grad_steps.jsonl)
 
 
 def build_run(args, cfg: TurboConfig) -> RunContext:
@@ -674,5 +675,10 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         val_clean=val_clean,
         start_step=start_step,
         ema=ema,
+        grad_log=(
+            StepGradLog(run_log / "grad_steps.jsonl", device)
+            if run_log is not None
+            else None
+        ),
     )
     return ctx

@@ -290,6 +290,17 @@ def run_loop(ctx: RunContext, cfg):
                 metrics.add_gan(
                     gan_gen_loss, gan_disc_mean_t, gan_margin_t, gan_spread_t
                 )
+            if ctx.grad_log is not None:
+                ctx.grad_log.add(
+                    step + 1,
+                    gn_student,
+                    gn_fake,
+                    gn_disc if turbo.disc is not None else None,
+                    tau_dm,
+                    s_g,
+                    g,
+                    n_steps_it,
+                )
 
             if (step + 1) % cfg.log_interval == 0:
                 m = metrics.flush(cfg.log_interval)
@@ -329,6 +340,8 @@ def run_loop(ctx: RunContext, cfg):
                     )
                 metrics.reset()
                 ctx.tau_profile.write(writer, step + 1)
+                if ctx.grad_log is not None:
+                    ctx.grad_log.flush()
 
             # --- diversity validation (DAVE same-prompt probe) ---
             if (
@@ -412,6 +425,8 @@ def run_loop(ctx: RunContext, cfg):
                     )
                     logger.info(f"saved resume bundle: {rp} (step {n})")
 
+    if ctx.grad_log is not None:
+        ctx.grad_log.flush()  # the tail past the last log boundary
     if cfg.int8 != "off":
         from library.anima.int8 import finish_training
 
