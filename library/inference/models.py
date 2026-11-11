@@ -145,6 +145,7 @@ def attach_adapters(
                 for lora in network.unet_loras:
                     lora._eval_mask = True
             model._pgraft_network = network
+            model._pgraft_networks = [*getattr(model, "_pgraft_networks", []), network]
             logger.info(
                 f"P-GRAFT: LoRA attached with cutoff_step={getattr(args, 'lora_cutoff_step', None)}"
             )
@@ -239,6 +240,67 @@ def attach_adapters(
             model._step_expert_networks = step_nets
 
 
+_ADAPTER_SLOTS = (
+    "_pgraft_network",
+    "_pgraft_networks",
+    "_hydra_network",
+    "_hydra_networks",
+    "_step_expert_networks",
+)
+
+
+def detach_adapters(model: anima_models.Anima) -> None:
+    """Undo :func:`attach_adapters`: restore every forward a kept-live network
+    patched and clear the slots the sampler reads."""
+    model = getattr(model, "_orig_mod", model)
+    networks = []
+    for slot in _ADAPTER_SLOTS:
+        held = model.__dict__.get(slot, model._modules.get(slot))
+        if held is None:
+            continue
+        networks.extend(held if isinstance(held, (list, tuple)) else [held])
+        delattr(model, slot)
+    owned = {id(m): m for net in networks for m in net.modules()}
+    if not owned:
+        return
+    for mod in model.modules():
+        # Stacked LoRAs chain: each one's org_forward is the previous one's forward.
+        while True:
+            fwd = mod.__dict__.get("forward")
+            lora = owned.get(id(getattr(fwd, "__self__", None)))
+            if lora is None:
+                break
+            org = lora.org_forward
+            if (
+                getattr(org, "__self__", None) is mod
+                and getattr(org, "__func__", None) is type(mod).forward
+            ):
+                del mod.forward
+            else:
+                mod.forward = org
+
+
+def swap_adapters(
+    model: anima_models.Anima,
+    args: argparse.Namespace,
+    device: torch.device,
+    lora_weight: list[str],
+) -> None:
+    """Replace the kept-live adapters on a loaded DiT with ``lora_weight``."""
+    detach_adapters(model)
+    args.lora_weight = list(lora_weight)
+    step_expert = any(_is_step_expert_turbo(p) for p in lora_weight)
+    hydra = not step_expert and any(_is_hydra_moe(p) for p in lora_weight)
+    attach_adapters(
+        getattr(model, "_orig_mod", model),
+        args,
+        device,
+        pgraft_mode=not (hydra or step_expert),
+        hydra_mode=hydra,
+        step_expert_mode=step_expert,
+    )
+
+
 def load_dit_model(
     args: argparse.Namespace,
     device: torch.device,
@@ -308,6 +370,7 @@ def load_dit_model(
             or getattr(args, "lora_sigma_range", None) is not None
             or getattr(args, "lora_timestep_mask", False)
             or int8
+            or bool(getattr(args, "lora_sweep", None))
         )
         and args.lora_weight is not None
         and len(args.lora_weight) > 0

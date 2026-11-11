@@ -79,6 +79,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--lora_multiplier", type=float, nargs="*", default=1.0, help="LoRA multiplier"
     )
     parser.add_argument(
+        "--lora_sweep",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Render the prompts once per LoRA file in one process (DiT, text "
+        "encoder and VAE load once), each into <save_path>/<file stem>/. Each "
+        "entry rides on top of --lora_weight as dynamic hooks.",
+    )
+    parser.add_argument(
         "--soft_tokens_weight",
         type=str,
         default=None,

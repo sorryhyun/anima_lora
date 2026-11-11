@@ -22,6 +22,7 @@ _ATTR_TO_MODULE = {
     "save_output": "output",
     "write_gen_manifest": "output",
     "load_dit_model": "models",
+    "swap_adapters": "models",
     "attach_adapters": "models",
     "load_text_encoder": "models",
     "load_shared_models": "models",

@@ -30,6 +30,7 @@ from library.inference import (
     resolve_seed,
     check_inputs,
     load_dit_model,
+    swap_adapters,
     load_text_encoder,
     load_shared_models,
     prepare_text_inputs,
@@ -150,6 +151,16 @@ def preprocess_prompts_for_batch(
 # region Batch / interactive modes
 
 
+def _sweep_plan(args: argparse.Namespace) -> List[tuple]:
+    """``--lora_sweep`` as one (lora_weight list, save dir) per entry; empty when off."""
+    paths = getattr(args, "lora_sweep", None) or []
+    stems = [os.path.splitext(os.path.basename(p))[0] for p in paths]
+    if len(set(stems)) < len(stems):
+        stems = [f"{i:02d}_{s}" for i, s in enumerate(stems)]
+    base = list(args.lora_weight or [])
+    return [([*base, p], os.path.join(args.save_path, s)) for p, s in zip(paths, stems)]
+
+
 def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) -> None:
     """Process multiple prompts with model reuse and batched precomputation."""
     if not prompts_data:
@@ -167,6 +178,17 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
     # 2. Load DiT Model once
     logger.info("Loading DiT model for batch generation...")
     first_prompt_args = all_prompt_args_list[0]
+    sweep = _sweep_plan(args)
+    if sweep:
+        from library.inference.models import _has_te_keys
+
+        first_prompt_args.lora_weight = sweep[0][0]
+        for path in args.lora_sweep:
+            if _has_te_keys(path):
+                logger.warning(
+                    f"--lora_sweep: text-encoder keys in {path} are not applied "
+                    "(the prompts are encoded once for every entry)"
+                )
     if getattr(args, "compile_dynamic_seq", False):
         from library.datasets.buckets import cluster_token_bands
 
@@ -241,9 +263,20 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
         f"Generating latents: {len(all_prompt_args_list)} prompts in {len(groups)} group(s) (batch_size={infer_batch_size})"
     )
 
-    to_decode = []  # (prompt index, latent): decoded after every denoise
+    # One pass over the groups per sweep entry; the DiT keeps its weights and
+    # only the kept-live adapters change.
+    passes = sweep or [(None, args.save_path)]
+    attached = 0
+    to_decode = []  # (prompt index, latent, save dir): decoded after every denoise
     with torch.no_grad():
-        for (_prompt_text, _img_size), indices in groups:
+        for k, ((_prompt_text, _img_size), indices) in (
+            (k, g) for k in range(len(passes)) for g in groups
+        ):
+            lora_weight, save_dir = passes[k]
+            if k != attached:
+                logger.info(f"LoRA sweep {k + 1}/{len(passes)}: {lora_weight[-1]}")
+                swap_adapters(anima, first_prompt_args, device, lora_weight)
+                attached = k
             batch_size = len(indices)
             first_args = all_prompt_args_list[indices[0]]
             first_text_data = all_precomputed_text_data[indices[0]]
@@ -296,6 +329,7 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
                 for j, idx in enumerate(indices):
                     single_latent = latents[j : j + 1]
                     all_prompt_args_list[idx].seed = seeds[j]
+                    all_prompt_args_list[idx].save_path = save_dir
                     if all_prompt_args_list[idx].output_type in [
                         "latent",
                         "latent_images",
@@ -305,7 +339,7 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
                         )
 
                     if args.output_type != "latent":
-                        to_decode.append((idx, single_latent))
+                        to_decode.append((idx, single_latent, save_dir))
 
             except Exception as e:
                 logger.error(
@@ -332,8 +366,9 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
     vae_for_batch.to(device, dtype=torch.bfloat16)
     vae_for_batch.eval()
     with torch.no_grad():
-        for idx, single_latent in to_decode:
+        for idx, single_latent, save_dir in to_decode:
             current_args = all_prompt_args_list[idx]
+            current_args.save_path = save_dir
             if current_args.output_type == "latent_images":
                 current_args.output_type = "images"
             save_output(current_args, vae_for_batch, single_latent, device)
@@ -414,13 +449,21 @@ def process_interactive(args: argparse.Namespace) -> None:
 # region Main
 
 
-def _list_pngs(path) -> set:
-    """The set of ``*.png`` under ``path`` (empty if it doesn't exist yet). Diffed
-    before/after a run so the daemon manifest lists exactly this run's images."""
-    try:
-        return {os.path.join(path, n) for n in os.listdir(path) if n.endswith(".png")}
-    except OSError:
-        return set()
+def _list_pngs(args: argparse.Namespace) -> set:
+    """The ``*.png`` in the run's output dirs (``save_path``, or one per
+    ``--lora_sweep`` entry). Diffed before/after a run so the daemon manifest
+    lists exactly this run's images."""
+    save_path = getattr(args, "save_path", None)
+    dirs = [d for _, d in _sweep_plan(args)] if save_path else []
+    found = set()
+    for path in dirs or [save_path]:
+        try:
+            found |= {
+                os.path.join(path, n) for n in os.listdir(path) if n.endswith(".png")
+            }
+        except (OSError, TypeError):
+            pass
+    return found
 
 
 def main():
@@ -428,7 +471,7 @@ def main():
 
     # Snapshot the output dir to attribute new images to this run in the daemon
     # result manifest.
-    _pngs_before = _list_pngs(getattr(args, "save_path", None))
+    _pngs_before = _list_pngs(args)
 
     # Check if latents are provided
     latents_mode = args.latent_path is not None and len(args.latent_path) > 0
@@ -523,7 +566,12 @@ def main():
             process_batch_prompts(prompts_data, args)
 
         elif args.interactive:
+            if args.lora_sweep:
+                logger.warning("--lora_sweep is ignored in interactive mode")
             process_interactive(args)
+
+        elif args.lora_sweep:
+            process_batch_prompts([{"prompt": args.prompt}], args)
 
         else:
             # Single prompt mode
@@ -549,7 +597,7 @@ def main():
 
     # Record a generation manifest + result pointer when running as a daemon job
     # (no-op inline). Sorted so the manifest is stable.
-    new_images = sorted(_list_pngs(getattr(args, "save_path", None)) - _pngs_before)
+    new_images = sorted(_list_pngs(args) - _pngs_before)
     write_gen_manifest(args, new_images)
 
     logger.info("Done!")
