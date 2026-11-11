@@ -5,7 +5,8 @@ Two copy blocks on the same data and training time: `c_fill_bw10_mod16_s800` (sh
 steps, 32.4 min) and `1111_1546` (its twin with `ref_adapters kv`, 1,050 steps, ~33 min; config
 `configs/1111_1546.toml`). Decided by a 300-step sanitize fine-tune from each, the P2 recipe
 (`_archive/configs/lora_blocks/sanitize_ft_cbw10_s300.toml`; the kv arm adds `ref_adapters = "kv"`),
-read on the sanitize eval (`ref_gate.py --part sanitize --arms ctrl,cut`, five pages, seeds 0–2).
+read on the sanitize eval (`ref_gate.py --part sanitize --arms ctrl,cut`, five pages, seeds 0–2),
+judged on `ctrl`: a fine-tune learns what to remove from its pairs and ships without a mask; `cut` is a side read.
 Queued 2026-11-11: `configs/1111_1630.toml` (shared bank) and `configs/1111_1631.toml` (kv), renders
 in `output/tests/ref_gate/20261111-sanft-1111_163{0,1}`.
 The copy line and the tasks built on it follow the winner.
