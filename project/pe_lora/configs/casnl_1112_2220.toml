@@ -1,0 +1,24 @@
+# caststation tag-vs-prose A/B, arm "nl": caption_format text (no layout JSON), PE-rewritten prose (project/pe_lora/src/rewrite_set.py, system_caption.txt) behind 'An illustration by @channel (caststation). '.
+# Recipe = caststation_e16_sft (plain FM, 30 images x 16 epochs = 480 steps, lr 1e-4) with
+# plain_caption_rate 0; only the cache differs between the two arms.
+cache = "post_image_dataset/moss/caststation_nl_text"
+output = "output/ckpt_moss/casnl_1112_2220.safetensors"
+model = "base"
+epochs = 16
+algo = "lora"
+rank = 32
+down_init = "kaiming"
+optimizer = "muon"
+lr = 1e-4
+warmup_ratio = 0.05
+plain_caption_rate = 0.0
+ema_window = 0.139
+lora_dtype = "bf16"
+int8 = "stream"
+stream = "fp32"
+ema_card = true
+blocks_to_swap = 0
+activation_memory_budget = 0.3
+swap_h2d_only = true
+compile = true
+expandable_segments = true

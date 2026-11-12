@@ -98,7 +98,7 @@ def load_model(pe_dir: Path, log):
 
 
 @torch.no_grad()
-def generate(model, tok, system, prompts, bs, max_new, seed, log):
+def generate(model, tok, system, prompts, bs, max_new, seed, log, thinking=True):
     torch.manual_seed(seed)
     tok.padding_side = "left"
     eos = [tok.convert_tokens_to_ids("<|im_end|>"), tok.eos_token_id]
@@ -107,7 +107,7 @@ def generate(model, tok, system, prompts, bs, max_new, seed, log):
             [{"role": "system", "content": system}, {"role": "user", "content": p}],
             tokenize=False,
             add_generation_prompt=True,
-            enable_thinking=True,
+            enable_thinking=thinking,
         )
         for p in prompts
     ]

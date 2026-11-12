@@ -1,0 +1,24 @@
+# caststation tag-vs-prose A/B, arm "tags": caption_format text (no layout JSON), the raw Anima tag caption verbatim (rating + @artist + position clauses).
+# Recipe = caststation_e16_sft (plain FM, 30 images x 16 epochs = 480 steps, lr 1e-4) with
+# plain_caption_rate 0; only the cache differs between the two arms.
+cache = "post_image_dataset/moss/caststation_tags_text"
+output = "output/ckpt_moss/castag_1112_2220.safetensors"
+model = "base"
+epochs = 16
+algo = "lora"
+rank = 32
+down_init = "kaiming"
+optimizer = "muon"
+lr = 1e-4
+warmup_ratio = 0.05
+plain_caption_rate = 0.0
+ema_window = 0.139
+lora_dtype = "bf16"
+int8 = "stream"
+stream = "fp32"
+ema_card = true
+blocks_to_swap = 0
+activation_memory_budget = 0.3
+swap_h2d_only = true
+compile = true
+expandable_segments = true

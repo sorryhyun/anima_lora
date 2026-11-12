@@ -401,7 +401,11 @@ class GenerateRequest(Request):
         "ahead of the prompt, as the colorize v2 cache encoded the page. An empty prompt "
         "is then the page alone",
     )
-    prompts_file: str = _f("", "one prompt per line; overrides prompt", advanced=True)
+    prompts_file: str = _f(
+        "",
+        "one prompt per line, or a .json list of strings (multi-line prompts); overrides prompt",
+        advanced=True,
+    )
     example: str = _f(
         "",
         "comma-separated Space gallery parameters.json files to replay; each sets "

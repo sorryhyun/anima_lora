@@ -1,0 +1,25 @@
+# caststation tag-vs-prose A/B, arm "head" (hybrid): caption_format text, a head tag line only
+# (rating -> character -> series -> @artist -> count, MOSS USERGUIDE order) + "\n" + the casnl arm's
+# image-grounded PE prose (artist prefix dropped); no general tags.
+# Recipe = castag_1112_2220 / casnl_1112_2220; only the cache differs.
+cache = "post_image_dataset/moss/caststation_head_text"
+output = "output/ckpt_moss/cashead_1112_2310.safetensors"
+model = "base"
+epochs = 16
+algo = "lora"
+rank = 32
+down_init = "kaiming"
+optimizer = "muon"
+lr = 1e-4
+warmup_ratio = 0.05
+plain_caption_rate = 0.0
+ema_window = 0.139
+lora_dtype = "bf16"
+int8 = "stream"
+stream = "fp32"
+ema_card = true
+blocks_to_swap = 0
+activation_memory_budget = 0.3
+swap_h2d_only = true
+compile = true
+expandable_segments = true

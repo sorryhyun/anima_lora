@@ -76,11 +76,11 @@ def _build_jobs(req: GenerateRequest) -> list[dict]:
         prompts = [""]  # each reference sets its own in _with_refs
     elif req.prompts_file:
         source = resolve_under_home(req.prompts_file)
-        prompts = [
-            ln.strip()
-            for ln in source.read_text(encoding="utf-8").splitlines()
-            if ln.strip()
-        ]
+        text = source.read_text(encoding="utf-8")
+        if source.suffix == ".json":  # a list of strings: prompts may span lines
+            prompts = [p.strip() for p in json.loads(text) if p.strip()]
+        else:
+            prompts = [ln.strip() for ln in text.splitlines() if ln.strip()]
     else:
         source, prompts = "prompt", [req.prompt.strip()] if req.prompt.strip() else []
     if not prompts:
