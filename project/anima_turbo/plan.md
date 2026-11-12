@@ -3,7 +3,8 @@
 Written 2026-11-12. The 2-step line (superturbo, `dpdmd.rollout_grad`) is closed; its plan and
 results are this file at commit `91d476e0`. From here the work is the 4-step student, on the
 merged14 soup teacher (`output/ckpt/anima_merged14.safetensors`, shipped as one LoRA with the
-soup, see the memory note on soup turbo). Nothing in "Arms" below has run.
+soup, see the memory note on soup turbo). Arm 0 and the handoff probe have run (`reports/arm0.md`,
+`reports/handoff.md`); the step-0 arms and arms 1–4 have not.
 
 ## What carries over from the 2-step line
 
@@ -82,10 +83,17 @@ A single raw checkpoint against another reads mostly run noise. Every A/B here:
 5. **A distribution number beside the renders.** `bench/turbo/moment_gap.py`: S–T4 nW2² and the
    pooled spread ratio against the merged14 teacher at cfg 4. The script is built for the v1.1
    delta on the base teacher. It has to take the merged14 teacher and an arbitrary student LoRA
-   first. The T4 set is rendered once and reused.
+   first. The T4 set is rendered once and reused. Not run on arm 0. Its features are mean-pooled,
+   so it does not read layout and does not gate the step-0 arms.
+6. **The handoff probe beside the renders** (added 2026-11-12). `bench/turbo/probe_handoff.py`,
+   about 7 min for two students: the `S` row's low-passed cosine to the teacher's image of the same
+   noise, with the `T>S@1` row as the level a teacher-quality step 0 gives. It pairs each image with
+   the teacher's, so it does not pay the seed-to-seed render floor.
 
 An arm passes if its EMA renders beat the control's on both prompts by more than the control
 and the twin differ, and its S–T4 nW2² sits below the control's by more than |control − twin|.
+For the step-0 arms the number is the probe's `S` cosine against the control's (0.54 at EMA 125)
+and the twin's (0.46 at EMA 250), with the renders as the gate.
 
 ## Gradient norm: the clip is a normaliser
 
@@ -128,11 +136,56 @@ Decision, fixed here, read on arm 0's rows (both runs pooled): bin `gn_student` 
 into quarters. If the top quarter's median is within 1.5× the bottom quarter's, the arm is the
 adaptive clip alone. If it is above 1.5×, the arm is adaptive clip plus σ_a normalisation.
 
+## Where the layout is lost (measured 2026-11-12)
+
+Arm 0's renders leave one gap above the seed-to-seed floor: both seeds draw a frontal standing
+figure where the teacher draws the jump from below and the tumbling group. The handoff probe
+(`reports/handoff.md`) swaps teacher and student at a step boundary, on one noise per image:
+
+| The student takes over from | σ range it adds | Loss in low-passed cosine to the teacher's image (twin EMA 250 / control EMA 125) |
+|---|---|---|
+| step 3 | 0.5 → 0 | 0.05 / 0.02 |
+| step 2 | 0.75 → 0.5 | 0.09 / 0.05 |
+| step 1 | 0.9 → 0.75 | 0.16 / 0.13 |
+| step 0 | 1 → 0.9 | 0.24 / 0.27 |
+
+- Step 0 is the largest single loss. With the teacher drawing only σ 1 → 0.9, the student's steps
+  1–3 keep the view from below and the figure's scale.
+- Step 0 is trained by the anchor regression alone, at `div_weight 0.1`, inside a gradient that is
+  clipped together with DM / CDM / GAN. Its `div_loss` fell from about 0.20 to 0.16 in 250
+  iterations and was still falling.
+- Arms 1, 2 and 4 change the DM term, which reaches steps 1–3 only. They cannot move step 0. Step 1
+  is the second loss, so they keep a target, after step 0.
+
 ## Arms, in order
 
-0. **Control + null twin** (~80 min). The recipe above, 4-step, `dynamic_schedule` on, DP-DMD
+0. **Control + null twin** (~80 min, done). The recipe above, 4-step, `dynamic_schedule` on, DP-DMD
    point delta. They give the 250 level and the noise floor. A 4-step |ΔW| trajectory comes
    with them (125 / 250), and the per-iteration norm profile (`grad_steps.jsonl`).
+
+**Step-0 arms**, before arm 1. None is built.
+
+- **S-a. Ceiling of a perfectly fit step 0** (forward only, about 7 min). A new arm in the probe:
+  step 0 is taken with the anchor target itself (`steps.teacher_anchor`, the teacher's mean
+  velocity over its 6-of-12-step anchor), then the student draws steps 1–3. This is what the
+  regression gives at zero loss. Decision, fixed here: if its cosine sits nearer `T>S@1` than `S`
+  on both students and the renders keep the view from below, the target is right and S-b fits it.
+  If not, the anchor is changed first, so that it ends at the student's first boundary
+  (`k_anchor / teacher_anchor_steps`), and S-a is read again.
+- **S-b. The anchor alone** (micro arm; estimate 10 min for 250 iterations, 12 teacher forwards and
+  one student backward each). A switch that runs the loop with the anchor term only, with its own
+  clip: no DM, CDM, GAN or fake. It is a regression on a fixed target, so its loss is a real one.
+  Reads: `div_loss` on held-out noise (whether a rank-64 LoRA has a floor above the target), and
+  the probe with this LoRA drawing step 0 and an arm 0 student drawing steps 1–3 (the probe takes
+  one LoRA for all steps today). The LoRA is shared across σ, so this arm says what step 0 can
+  reach, not what survives beside the DM terms.
+- **S-c. The recipe with the stronger step 0**, against the control and the twin under the protocol
+  above. S-b picks the form: a warm start from the S-b LoRA (`student_init_weights`, which excludes
+  the `weight_svd` down init), or the anchor gradient clipped and weighted by itself inside the
+  joint step.
+
+Arms 1–4 follow on the step-0 result:
+
 1. **MFD dtau 0.1 / max 4** in the DM slot. MFD's T2I result is a 4-step student (SANA, 3000
    steps), so 4 steps is the setting it was shown on. On 2 steps it sharpened stray content into
    objects as K grew; CDM held the sky.
@@ -143,8 +196,9 @@ adaptive clip alone. If it is above 1.5×, the arm is adaptive clip plus σ_a no
 4. **Teacher-regularised fake + corrected critic** (VA-TDM idea 2, `vatdm.md`, λ_r 1). Not
    built. It costs a teacher forward per fake step.
 
-Each arm changes one thing against arm 0. A passing arm becomes the new control, with no new
-twin unless the step time or the loss terms change.
+Each arm changes one thing against its control: arm 0 for the step-0 arms, the step-0 result for
+arms 1–4 if S-c passes. A passing arm becomes the new control, with no new twin unless the step
+time or the loss terms change.
 
 ## Open
 

@@ -13,8 +13,9 @@ The shipped base-teacher turbo (`huggingface.co/sorryhyun/anima-turbo-4step`) is
 ## Layout
 
 - [plan.md](plan.md): the open plan. It covers the fixed 4-step recipe, the A/B protocol (250 it,
-  EMA 0.2, one null twin, renders on `bench/turbo/judge_hard.txt` beside the teacher), the gradient
-  norm section and the arm order. The closed 2-step plan and its results are that file at commit
+  EMA 0.2, one null twin, renders on `bench/turbo/judge_hard.txt` beside the teacher, the handoff
+  probe), the gradient norm section, where the layout is lost and the arm order (step-0 arms
+  first). The closed 2-step plan and its results are that file at commit
   `91d476e0` (then at `scripts/distill_turbo/plan.md`).
 - [configs/](configs/): one TOML per run, named by its run id (`mmdd_hhmm`). Launch with
   `make turbo ARGS="--config project/anima_turbo/configs/<id>.toml --queue"`.
@@ -23,6 +24,10 @@ The shipped base-teacher turbo (`huggingface.co/sorryhyun/anima-turbo-4step`) is
     both random-walk from step 125, and the σ_a norm profile gives arm 3 = adaptive clip alone.
     The control's raw 250 sits inside a divergence burst. The render noise floor is large, and
     composition is the gap both seeds share. GAN-off: GAN is not the walk.
+  - [handoff.md](reports/handoff.md): teacher / student handoff at each step boundary on the arm 0
+    students. Step 0 (σ 1 → 0.9) is the largest single loss of the teacher's layout; with the
+    teacher drawing step 0 the student's steps 1–3 keep the view from below. Render read by Claude,
+    the user's read pending.
   - [mfd.md](reports/mfd.md): MFD in the DM slot (2-step 100 / 500-step arms, 2026-11-04) and the
     anchor-free MFD collapse (4-step m14, 2026-11-10).
 - [vatdm.md](vatdm.md): VA-TDM (arXiv:2611.06796) against the loop and MFD; idea 1 is
@@ -50,7 +55,8 @@ The shipped base-teacher turbo (`huggingface.co/sorryhyun/anima-turbo-4step`) is
 - Loop: `scripts/distill_turbo/` (`make turbo`); method doc `docs/anima/methods/turbo.md`,
   structure `docs/anima/structure/turbo.md`.
 - Benches and probes: `bench/turbo/`, including `dw_overlap.py` (ΔW share between runs),
-  `probe_grad_noise.py` (2-step only), `moment_gap.py` and `judge_hard.txt`.
+  `probe_grad_noise.py` (2-step only), `probe_handoff.py` (teacher / student handoff per step
+  boundary), `moment_gap.py` and `judge_hard.txt`.
 - Teacher: `models/diffusion_models/anima_merged14.safetensors` (baked at 1.0, bf16) with its own GPTQ
   `anima_merged14_int8_gptq.safetensors`. The base GPTQ is refused on the merged DiT.
 - Checkpoints in `output/ckpt/<id>/` (125-step saves, `_ema`, `resume.pt`). TB and
@@ -72,4 +78,6 @@ The shipped base-teacher turbo (`huggingface.co/sorryhyun/anima-turbo-4step`) is
 The 2-step line (superturbo, `dpdmd.rollout_grad`) is closed at the level of `1111_1115` step 250.
 Every noise-lowering route (`dm_draws`, `grad_accum`, checkpoint averages) landed on that level.
 The 4-step line is in the same batch-1 random-walk regime (`reports/arm0.md`). Arm 0 and the
-GAN-off probe are done and read (`reports/arm0.md`). Next: arm 1 (MFD) per `plan.md`.
+GAN-off probe are done and read (`reports/arm0.md`). The handoff probe (`reports/handoff.md`) puts
+the largest loss of the teacher's layout in step 0, which no DM arm reaches. Next: the step-0 arms
+in `plan.md`, starting with S-a (forward only), before arm 1 (MFD).
