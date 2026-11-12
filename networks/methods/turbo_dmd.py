@@ -38,7 +38,7 @@ View = Literal["teacher", "student", "fake"]
 class FakeTransitionEmbed(nn.Module):
     """σ of the student transition a fake sample came from → t-embedding delta.
 
-    VA-TDM's transition-aware field (arXiv:2611.06796, ``scripts/distill_turbo/vatdm.md``
+    VA-TDM's transition-aware field (arXiv:2611.06796, ``project/anima_turbo/vatdm.md``
     idea 1). The fake's samples are ``x_pred`` from grad steps at different σ_g, and
     each step's ``x_pred`` has its own distribution; this tells the fake which one it
     is scoring. The output is added to the DiT's normalised t-embedding under the

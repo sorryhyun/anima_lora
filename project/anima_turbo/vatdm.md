@@ -5,7 +5,7 @@ Velocity Adversarial Distillation* (2026-11-04). Code: <https://github.com/Luo-Y
 Read 2026-11-06, main text pp. 1–13; the appendix (derivations, training cost,
 hyperparameters, whether the student is a LoRA) and the code are unread. Idea 1 has one run
 (below); the rest has not been run. The current loop is described in
-`docs/anima/methods/turbo.md`, MFD in `README.md`.
+`docs/anima/methods/turbo.md`, MFD in `reports/mfd.md`.
 
 ## The paper
 

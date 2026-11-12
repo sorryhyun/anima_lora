@@ -8,7 +8,7 @@ first pair is also split by module kind and by block depth.
 
 For two runs of one objective from one init, the cosine reads as the share of
 ΔW energy the runs have in common; the rest is run-specific (the batch-1 walk,
-``scripts/distill_turbo/plan.md``).
+``project/anima_turbo/plan.md``).
 
     .venv/bin/python bench/turbo/dw_overlap.py a.safetensors b.safetensors [...] [--groups]
 """

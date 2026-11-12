@@ -411,7 +411,7 @@ class TurboConfig:
     # alpha: student_alpha × adaln_rank / student_rank.
     adaln_rank: int
     adaln_alpha: float
-    # Transition-aware fake (vatdm.md idea 1): σ of the student step its sample
+    # Transition-aware fake (project/anima_turbo/vatdm.md idea 1): σ of the student step its sample
     # came from, as a zero-init delta on the fake's t-embedding.
     fake_transition: bool
     # Partitioner recompute tuning (as train.py's partitioner_*); ignored under

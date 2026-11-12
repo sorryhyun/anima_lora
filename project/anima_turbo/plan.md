@@ -52,9 +52,9 @@ superturbo config).
 | Part | Setting | Evidence |
 |---|---|---|
 | Teacher, base | merged14, int8 GPTQ (`anima_merged14_int8_gptq`), fp32 stream (code default since `44d3023f`) | soup turbo note; fp32 stream settled |
-| Diversity anchor | DP-DMD on: `div_weight 0.1`, `k_anchor 6 / 12`, `detach_after_first`, `dm_first_step` off | anchor-free MFD collapsed by step 250 (`README.md`) |
+| Diversity anchor | DP-DMD on: `div_weight 0.1`, `k_anchor 6 / 12`, `detach_after_first`, `dm_first_step` off | anchor-free MFD collapsed by step 250 (`reports/mfd.md`) |
 | Fake | `fake_transition` on, `fake_warmup_steps 200`, 4 fake steps per student step | no harm at 500 steps (`vatdm.md`) |
-| CDM | 1.0 | keeps the sky as sky in the 100-step arms (`README.md`) |
+| CDM | 1.0 | keeps the sky as sky in the 100-step arms (`reports/mfd.md`) |
 | GAN | token head, `weight_gen 0.03` | runaway is an NFE-2 failure; flat at NFE 4 (`docs/anima/methods/turbo.md`) |
 | LR | 5e-5 student and fake, constant | LR does not move the walk onset; the shape is not the lever |
 | Walk removal | EMA `window 0.2`, the EMA is what ships | 2-step EMA 0.2 = checkpoint-average level |

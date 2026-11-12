@@ -1,8 +1,9 @@
 # Superturbo: a 2-step student with the DM gradient through the rollout
 
-Written 2026-11-10. Nothing here has been built or run. The current loop is described in
-`docs/anima/methods/turbo.md`; the anchor-free collapse that led here is in
-`scripts/distill_turbo/README.md`.
+Written 2026-11-10. Built as `dpdmd.rollout_grad` and run 2026-11-11; the 2-step line closed
+2026-11-12 at the level of `1111_1115` step 250 (results: `project/anima_turbo/plan.md` at commit
+`91d476e0`). The current loop is described in `docs/anima/methods/turbo.md`; the anchor-free
+collapse that led here is in `project/anima_turbo/reports/mfd.md`.
 
 A 2-step LoRA is a target of its own, not a by-product of the 4-step one. The loop as it
 stands trains it badly for a structural reason, and the fix is specific to N = 2.

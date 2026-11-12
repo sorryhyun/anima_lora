@@ -285,7 +285,7 @@ Training-free inference stacks (Spectrum, SMC-CFG, CNS, mod-guidance, DAVE, …)
 | Method | Gotcha / pointer |
 |---|---|
 | **CJK vocab pack** — T5-side rows for JA / KO / ZH spans; `vocab_pack` in `configs/base.toml` (on by default) drives training, TE caching and inference | Changing the pack is invisible to the mtime check — `make preprocess-te ARGS=--overwrite`; TE caches carry the pack digest. `docs/anima/methods/cjk_vocab_pack.md`. Active pack work: `project/cjk_anima_reseed/`, `project/cjk_ko/` (live on branches `cjk-reseed` / `cjk-ko`) |
-| **Turbo** — DP-DMD, 4-step student (`huggingface.co/sorryhyun/anima-turbo-4step`) | see Commands; `docs/anima/structure/turbo.md` |
+| **Turbo** — DP-DMD, 4-step student (`huggingface.co/sorryhyun/anima-turbo-4step`) | see Commands; `docs/anima/structure/turbo.md`. Research line: `project/anima_turbo/` |
 | **EasyControl** — extended self-attn image conditioning, per-block cond LoRA + `b_cond` gate | source `easycontrol-dataset/` or the i2i staging tree. `docs/anima/experimental/easycontrol.md` |
 | **Soft Tokens** — per-layer × per-t soft text tokens | shipped config uses `softrank` (code default `infonce`). `configs/methods/soft_tokens.toml` |
 | **DirectEdit** — inversion + edit-conditioning swap | collapses if ψ_src is off-manifold; check with `exp-test-directedit-dry`. `docs/anima/experimental/directedit_editing_v3.md` |
