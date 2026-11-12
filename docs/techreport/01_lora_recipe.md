@@ -1,6 +1,6 @@
 # 1. Anima LoRA 학습 레시피
 
-> **요약.** 작가 한 명당 plain LoRA를 하나씩 학습한다. 이 LoRA들이 다음 단계 soup의 재료가 된다
+> **요약.** 작가 여러 명을 묶은 그룹마다 plain LoRA를 하나씩 학습한다. 이 LoRA들이 다음 단계 soup의 재료가 된다
 > (→ `02_soup_merge.md`). 레시피의 바탕은 세 가지다. 캡션은 이미지를 상세하게 설명할수록 좋다. 종횡비나 토큰
 > 수를 맞추려고 이미지를 자르면 예상보다 많이 잃는다. 그래서 이미지는 원래 종횡비 그대로 학습한다(free-fit).
 > 학습 설정은 블라인드 A/B 14회(s29–s42)로 정했다: batch 1 + GA 2, σ 구간별 median clip, rank 32 / alpha 128 /
@@ -36,10 +36,8 @@ ReLAION의 43%만 남겼더니 OneIG text가 0.524에서 0.118로, OneIG overall
 
 캡션 변형: 캡션마다 태그 순서를 섞은 변형 4개를 만들고(tag dropout 0.1), 학습 때 섞지 않은 원본을 20%, 섞은
 변형을 80% 확률로 뽑는다. 섞을 때 절의 경계는 그대로 두고 절 안의 태그만 섞는다. 이와 별개로 캡션 전체를 비우는
-caption dropout 0.1을 쓴다.
-
-**아직 확인하지 않은 것.** 위치 절을 붙인 캡션과 붙이지 않은 캡션으로 LoRA를 학습해 비교하는 A/B는 아직 하지
-않았다. 위 근거는 base의 이해도와 사전학습 규모의 데이터 실험이다.
+caption dropout 0.1을 쓴다. CFG가 쓰는 unconditional 예측을 같은 모델 안에서 학습하는 표준 방법이고, 0.1–0.2가
+가장 좋았다는 Ho & Salimans(2022, arXiv 2207.12598)의 값을 따른다.
 
 ---
 
@@ -110,12 +108,12 @@ free-fit에서는 이미지마다 크기가 거의 다 다르므로, 같은 크�
 | clip | σ 구간별 median clip, k 2.0, micro-batch마다, 구간 경계 0.2 / 0.4 / 0.6 / 0.8, window 50 | 구간별 clip이 단일 window를 39–21로 이김(s30, p 0.047) |
 | lr / 스케줄 | 5e-5, constant (warmup 5%) | 이전 설정(2e-5 cosine, 고정 clip 1.0)을 41–16으로 이김(s29). 단 ‖dW‖를 맞춘 재실험(s33)에서는 이전 설정이 52–42로 앞섬. 1e-4는 손이 엉킴 |
 | adapter EMA | 0.1 | 일정한 lr에서 raw 가중치에 남는 말풍선 같은 잔여물을 없앤다 |
-| rank / alpha | 32 / 128 | rank 16은 null(s34 28–20, s41 17–15), alpha 512 / lr 1.25e-5도 null(s35 25–22, s36 18–13, s42 23–22) |
+| rank / alpha | 32 / 128 | rank 16은 null(s34 28–20, s41 17–15), alpha 512 / lr 1.25e-5도 null(s35 25–22, s36 18–13, s42 23–22). 근거 논문은 §4.3 |
 | σ 샘플링 | logit-normal(0, 1), shift 1 | shift 2와 무승부(s32 22–23). REPA를 끄면 shift 1이 28–20(s39) |
 | REPA | off | alpha 512에서는 off가 32–16(s37+s38, pair p 0.015). alpha 128에서는 23–22 무승부(s40) |
 | T-LoRA mask | off | 학습과 추론 모두 mask를 건 경우 plain과 11–13(s31) |
 | down init | W₀의 상위 singular vector | Kaiming과 렌더 차이 없음(§4.6) |
-| 기타 | AdamW, 8 epoch, caption dropout 0.1 | 이 A/B 이전에 정한 값 |
+| 기타 | AdamW, 8 epoch, caption dropout 0.1 | AdamW는 Loshchilov & Hutter(arXiv 1711.05101), caption dropout은 CFG 논문의 값(§1) |
 
 **무승부의 뜻.** 이 레시피에서는 대부분의 설정보다 학습 seed가 결과를 더 크게 흔든다. (작가, seed) 묶음 하나만
 봐도 어느 A/B에서든 6–2로 한쪽에 쏠린다. 무승부일 때는 더 단순하거나 효율적인 쪽을 고르고, 차이가 없으면 원래
@@ -170,18 +168,18 @@ tail은 σ가 만든다(caststation / ama mitsuki / sweetonedollar, seed 42).
 
 ### 4.3 rank와 alpha: 손대지 않는다
 
-arXiv 2606.12883은 LoRA 한 step을 task 방향 신호 `s·(BΔA + ΔB·A)`(Θ(αη))와 bilinear drift `s·ΔB·ΔA`(Θ(αη²))로
-나눈다. α·η가 같으면 1차 update는 같고 drift는 η에 비례하므로, lr을 낮추면 drift가 줄어든다. 그래서 "alpha를 높이고 lr을 낮추면 더
-깨끗하다"는 예측이 나온다. 실험은 α·η를 출시값에 고정하고 둘의 배분만 바꿨다.
+LoRA는 update를 `(α/r)·BA`로 스케일한다(Hu et al. 2021, arXiv 2106.09685). rsLoRA(Kalajdzievski 2023, arXiv
+2312.03732)는 α/r을 고정하면 rank에 따라 학습 보폭이 달라진다는 점을 보이고 `α/√r` 스케일을 제안한다. 이
+레시피에서도 같았다. α/r을 고정하면 Adam에서 ‖dW‖가 √r에 비례해서 r16 / alpha 64는 r32의 0.72배만 움직였고(s34),
+alpha를 √r에 비례시키면(r16 / a362 vs r32 / a512) 보폭이 맞았다(0.95배 / 1.09배, s41).
 
-- **α·η가 같으면 ‖dW‖도 같다.** a512는 a128의 0.96–0.99배였다(30장). sincos(약 1416 update)에서는 0.97배였다.
-- **alpha/rank를 고정하면 Adam에서 ‖dW‖는 √r에 비례한다.** r16 / alpha 64는 r32의 0.72배만 움직였다(s34).
-  alpha를 √r에 비례시키면(r16 / a362 vs r32 / a512) 학습 중 보폭이 맞았다(0.95배 / 1.09배, s41).
-- **drift는 실제로 있지만 렌더에는 나타나지 않는다.** 모듈 중앙값 기준 `‖B·D‖ / ‖B·A0‖`는 a128에서 0.15–0.17,
-  a512에서 0.06이었다. 블라인드 다섯 세트(s35, s36, s42; rank는 s34, s41)가 두 arm을 구별하지 못했다.
-- rank는 세 작가에서 REPA 유무와 관계없이 null이었다. rank 16으로 얻는 것은 파일 크기가 절반이 된다는 점뿐이다.
+alpha와 lr의 배분은 arXiv 2606.12883을 따라 정했다. 이 논문은 LoRA 한 step을 task 방향 신호(Θ(αη))와 bilinear
+drift `s·ΔB·ΔA`(Θ(αη²))로 나누므로, α·η를 고정하고 alpha를 높이고 lr을 낮추면 drift가 줄어든다. α·η를 출시값에
+고정하고 배분만 바꾸면 ‖dW‖는 같았고(a512가 a128의 0.96–0.99배), drift 비율 `‖B·D‖ / ‖B·A0‖`(모듈 중앙값)는
+a128의 0.15–0.17에서 a512의 0.06으로 줄었다. 그래도 블라인드 세 세트(s35, s36, s42)는 두 arm을 구별하지 못했다.
+rank 16도 세 작가에서 REPA 유무와 관계없이 null이었다(s34, s41).
 
-결론: rank 32 / alpha 128 / lr 5e-5를 유지한다. rank를 바꿔야 한다면 alpha를 √r 비율로 맞춘다.
+결론: rank 32 / alpha 128 / lr 5e-5를 유지한다. rank를 바꿀 때는 rsLoRA대로 alpha를 √r 비율로 맞춘다.
 
 ### 4.4 σ shift: 1을 유지한다
 
@@ -201,34 +199,26 @@ sweetonedollar는 shift 1 쪽으로 남았다(s39 28–20). shift 1을 유지한
 
 ### 4.5 REPA와 T-LoRA mask: 끈다
 
-- **REPA**(relational, weight 0.05, layer 8, PE-Spatial). 손해 여부가 step 크기에 따라 달랐다. a512 / lr 1.25e-5에서는
-  16–32로 졌고(s37+s38), a128 / lr 5e-5에서는 23–22로 비겼다(s40). 그래서 출시 step에서 REPA를 켜고 학습한 LoRA가
-  손해를 본 것은 측정되지 않는다. **loss로는 REPA를 걸러낼 수 없다.** REPA 항을 빼면 두 arm의 fm loss가 같았고
+- **REPA**(Yu et al. 2024, arXiv 2410.06940; relational 변형, weight 0.05, layer 8, PE-Spatial). 손해 여부가 step
+  크기에 따라 달랐다. a512 / lr 1.25e-5에서는 16–32로 졌고(s37+s38), a128 / lr 5e-5에서는 23–22로 비겼다(s40).
+  얻는 것이 없어서 끈다. **loss로는 REPA를 걸러낼 수 없다.** REPA 항을 빼면 두 arm의 fm loss가 같았고
   (caststation s42: 0.0731 vs 0.0723), grad norm과 ‖dW‖도 거의 그대로였다. REPA는 fm 적합도는 그대로 두고 렌더만
   바꾼다.
-- **T-LoRA mask.** 학습에만 mask를 걸고 추론은 full rank로 하면, 학습한 모델과 렌더하는 모델이 서로 다르다.
+- **T-LoRA mask**(Soboleva et al. 2025, arXiv 2507.05964). 학습에만 mask를 걸고 추론은 full rank로 하면, 학습한 모델과 렌더하는 모델이 서로 다르다.
   논문대로 추론에도 mask를 걸면 plain과 11–13으로 비겼다(s31, sweetonedollar 한 명). 추론 비용만 늘고 얻은 것이
   없어서 끈다.
 
 ### 4.6 down init
 
 down 행렬을 Kaiming 대신 W₀의 상위 r개 right singular vector로 시작한다(`A₀ = V_rᵀ/√3`, `B₀ = 0`). `1/√3`은
-Kaiming의 기대 row-norm에 맞춘 값이라 바뀌는 것은 방향뿐이고, 초기 ΔW는 0이다.
+Kaiming의 기대 row-norm에 맞춘 값이라 바뀌는 것은 방향뿐이고, 초기 ΔW는 0이다. W₀의 주성분으로 adapter를
+시작하는 것은 PiSSA(Meng et al. 2024, arXiv 2404.02948)와 같은 발상이지만, 여기서는 B₀ = 0이라 W₀를 바꾸지 않는다.
 
 첫 step의 gradient 에너지 중 이 init이 담는 비율은 0.21, 작가 자신의 gradient basis는 0.74다. 그런데 256 step(r32 /
 α128, 8 epoch)을 학습하고 나면 어떤 init도 렌더를 바꾸지 못한다. SVD init vs Kaiming 12–9, vs gradient SVD 11–9,
 vs 작가 basis 10–10이고, 모두 seed 쌍 잡음 바닥(15–9) 안이다(블라인드 s22–s25). 렌더 차이가 없는데도 SVD init을
-쓰는 이유는 soup에 있다. 작가마다 서로 다른 singular vector 구간에서 시작시키면 병합할 때 입력 부분공간이 겹치지
+쓰는 이유는 soup에 있다. 그룹마다 서로 다른 singular vector 구간에서 시작시키면 병합할 때 입력 부분공간이 겹치지
 않는다(→ `02_soup_merge.md`).
-
-### 4.7 남은 문제
-
-- 재실험(s33)의 B를 자기 ‖dW‖ 그대로 두고 A와 비교하기(둘 다 mask 없이). B가 이기면 차이를 만든 것은 보폭(lr /
-  스케줄)이다.
-- 긴 런(sincos, 약 1416 update)에서의 REPA. 지금까지 확인한 세트는 모두 30–106장이었다.
-- σ 구간별 clip은 두 작가, p 0.047로 정했다.
-- sweetonedollar는 ×1.0에서 기형적으로 큰 손을 그리고, ×0.8 / ×0.6에서는 손이 줄어든다. 손과 스타일을 무엇이
-  가르는지(σ 구간별 LoRA, 렌더 종횡비, 데이터)는 확인하지 않았다.
 
 ---
 
@@ -239,7 +229,7 @@ vs 작가 basis 10–10이고, 모두 seed 쌍 잡음 바닥(15–9) 안이다(�
 - REPA를 켠 arm과 끈 arm은 fm loss가 같았는데(0.0731 vs 0.0723) 렌더는 블라인드에서 16–32로 갈렸다(§4.5). loss는
   렌더 차이를 보지 못한다.
 - σ별 FM-MSE validation loss는 샘플 품질과 상관관계를 보이지 않았다. 지표가 필요하면 PE-Core 기반 paired CMMD²를
-  쓴다.
+  쓴다(CMMD: Jayasumana et al. 2024, arXiv 2401.09603).
 - CMMD도 순위를 못 매길 때가 있다. down init 실험에서는 모든 arm의 CMMD가 real-vs-real 바닥(0.61) 아래였다.
 - 마지막 평가는 렌더로 한다. 학습 seed 2–3개, 렌더 seed 2개 이상, 28 step, cfg 4, shift 3, 1024²로 렌더해서
   블라인드 쌍으로 비교하고, ‖dW‖를 맞춘다(§4).
@@ -256,4 +246,4 @@ vs 작가 basis 10–10이고, 모두 seed 쌍 잡음 바닥(15–9) 안이다(�
 ### 5.3 학습 규모
 
 update 수는 이미지 수 × epoch / GA다. 30장 × 8 epoch / 2 = 120으로, caststation 수치(약 120)와 같다. 레시피는
-30–354장 범위에서 확인했다. 이보다 훨씬 큰 세트에서 REPA나 rank가 다르게 작동하는지는 아직 불확실하다.
+30–354장 범위에서 확인했다.
