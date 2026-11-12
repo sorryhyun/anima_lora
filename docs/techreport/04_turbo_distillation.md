@@ -8,7 +8,7 @@
 2. 한 iteration은 teacher 앵커(첫 스텝의 다양성 목표) → student 롤아웃 → DM 서로게이트(teacher − fake 점수 차) → CDM·GAN 항 → fake(critic) 업데이트 순서로 돕니다. 세 역할이 frozen DiT 하나를 나눠 씁니다.
 3. 지금 레시피는 merged14 soup을 teacher로 고정하고 DP-DMD 앵커, transition-aware fake, CDM 1.0, token GAN 0.03, 상수 LR 5e-5, EMA 0.2를 씁니다. EMA 체크포인트를 배포하고, 배포할 때는 soup LoRA와 exact concat해서 LoRA 하나로 냅니다.
 4. 가장 쓸모 있는 발견: batch 1에서는 student 가중치가 random walk합니다(|ΔW| ∝ √t, 125스텝 이동끼리 직교, 시드만 바꾼 두 런의 ΔW 공유분은 9–10 %). 노이즈를 줄이는 방법 세 가지(DM draw 여러 번, gradient 누적, 체크포인트 평균)는 모두 같은 수준에 머물렀습니다. 그래서 raw 체크포인트 하나끼리 비교하면 대부분 노이즈를 읽게 됩니다.
-5. 판정은 렌더로 합니다. EMA끼리 비교하고, null twin으로 노이즈 바닥을 재고, teacher 옆에 어려운 judge 프롬프트 렌더를 놓고, 모멘트 갭을 곁들입니다. 학습 스칼라(`fm_mse`, `fake_loss`, DM 스칼라)는 붕괴를 놓치거나 품질과 반대로 움직입니다.
+5. 평가는 렌더로 합니다. EMA끼리 비교하고, null twin으로 노이즈 바닥을 재고, teacher 옆에 어려운 judge 프롬프트 렌더를 놓고, 모멘트 갭을 곁들입니다. 학습 스칼라(`fm_mse`, `fake_loss`, DM 스칼라)는 붕괴를 놓치거나 품질과 반대로 움직입니다.
 
 다른 편과의 관계:
 
@@ -28,8 +28,8 @@ teacher는 28스텝 × (cond + uncond) = 이미지당 DiT forward 56회입니다
 
 DMD(Distribution Matching Distillation)는 궤적 대신 분포를 맞춥니다. student가 만든 샘플을, student 분포를
 따라가는 "fake" 점수 모델과 teacher 점수의 차이로 밀어 줍니다. 이 gradient는 reverse-KL이라 mode-seeking
-성향이 있고, 그대로 두면 시드가 달라도 포즈와 구도가 한 모드로 모입니다. DP-DMD(Wu, Li, Zhang, Ma,
-arXiv:2602.03139)는 일을 나눕니다. 첫 스텝은 teacher의 다양한 궤적에 회귀시켜 모드(포즈, 레이아웃)를
+성향이 있고, 그대로 두면 시드가 달라도 포즈와 구도가 한 mode로 모입니다. DP-DMD(Wu, Li, Zhang, Ma,
+arXiv:2602.03139)는 일을 나눕니다. 첫 스텝은 teacher의 다양한 궤적에 회귀시켜 mode(포즈, 레이아웃)를
 정하게 하고, DMD gradient는 나머지 스텝에만 흐르게 합니다.
 
 ### 1.2 세 역할, DiT 하나
@@ -45,7 +45,7 @@ LoRA 두 개(student, fake)를 같은 frozen DiT에 겁니다. 매 forward마다
 view 전환은 모듈마다 플래그만 뒤집으므로 DiT forward 한 번에 비하면 비용이 없습니다. optimizer는 두 개(LoRA마다
 AdamW 하나)이고 DiT는 학습하지 않습니다.
 
-teacher의 uncond 입력은 영벡터가 아니라 T5("") 임베딩입니다. 영벡터 crossattn은 분포 밖 입력이어서, 그 `v_uncond`가
+teacher의 uncond 입력은 T5("") 임베딩입니다. 영벡터 crossattn은 분포 밖 입력이어서, 그 `v_uncond`가
 (α−1)=3배로 증폭되면 student가 하얗게 포화된 출력으로 밀려납니다.
 
 ### 1.3 한 iteration의 순서
@@ -82,10 +82,10 @@ $\tau\Delta_{dm}$이어야 합니다. DMD2의 grad trick을 씁니다.
 
 - **real score는 반드시 CFG를 적용합니다.** CFG가 들어가는 곳은 여기뿐입니다. 양쪽 다 cond만 쓰면
   `v_real ≈ v_fake`(`dm_cos ≈ 0.9999`)가 되어 신호가 노이즈뿐입니다.
-- **부호가 load-bearing입니다.** 2026-05-27 수정 전에는 부호가 뒤집혀 있었고, 그때 증상은 폭주가 아니라
+- **부호를 맞추는 것이 필수입니다.** 2026-05-27 수정 전에는 부호가 뒤집혀 있었고, 그때 증상은
   "학습이 안 된 few-step blur"였습니다.
 - **x0 정규화.** 켜면 `grad = τΔ / clamp(mean|τ·v_real|, norm_floor)`로 샘플마다 크기를 정규화하고, 이때
-  τ가 대부분 상쇄됩니다. 끄면 τ-damping만 남습니다. 둘은 대안이지 겹쳐 쓰는 것이 아닙니다. 현재 레시피는
+  τ가 대부분 상쇄됩니다. 끄면 τ-damping만 남습니다. 둘 중 하나만 씁니다. 현재 레시피는
   정규화를 켭니다.
 - **DM draw 여러 번.** 같은 `x_pred`에 (σ_a, ε_dm)를 여러 번 뽑아 신호를 평균합니다. loss가 신호에 선형이라
   backward는 한 번입니다. 2스텝에서 효과가 없어서 레시피는 1입니다(§4.3).
@@ -105,7 +105,7 @@ $$
 |---|---|---|
 | 앵커 스텝 K / teacher 앵커 격자 길이 | 6 / 12 | 둘의 비가 앵커가 떨어지는 σ 지점을 정합니다(6/12 = 0.5). 스텝 수는 teacher를 얼마나 촘촘히 적분하는지와 비용만 정합니다 |
 | 다양성 가중 λ | 0.1 | 스텝 0 MSE의 가중치입니다. 0이면 앵커 자체를 건너뜁니다 (teacher forward 2·K회 절약) |
-| 첫 스텝 뒤 detach | on | **load-bearing**입니다. 다양성 항을 즉시 backward하고 스텝 0 그래프를 끊습니다. DMD reverse-KL이 첫 스텝으로 흘러들면 다양성이 다시 줄어듭니다 (논문 Fig 5) |
+| 첫 스텝 뒤 detach | on | **필수**입니다. 다양성 항을 즉시 backward하고 스텝 0 그래프를 끊습니다. DMD reverse-KL이 첫 스텝으로 흘러들면 다양성이 다시 줄어듭니다 (논문 Fig 5) |
 | 스텝 0에도 DM | off | grad 스텝을 `U{0..N−1}`에서 뽑아 스텝 0도 DM 신호를 받게 합니다. λ 0과 함께 쓰면 MFD 논문의 앵커 없는 루프가 되고, 이 조합은 250스텝 안에 붕괴했습니다 (§4.7) |
 | rollout grad | off | 스텝 0에서 스텝 1까지 그래프를 유지합니다. 2스텝 static 격자 전용입니다 (superturbo, §4.10에서 종료) |
 
@@ -117,7 +117,7 @@ refinement σ가 감독을 받습니다.
 
 동적 격자를 켜면 CDM(arXiv:2605.06376 §3.2) 방식으로 매 iteration마다 롤아웃 격자를 새로
 뽑습니다. 길이는 $N \sim U\{2..\text{student steps}\}$, 내부 점은 (0,1) 균등분포에서 뽑아 정렬하고,
-$t_1 = 1$은 고정해서 앵커가 그대로 맞물리게 합니다. 검증 렌더와 추론은
+$t_1 = 1$은 고정해서 앵커가 그대로 맞물리게 합니다. validation 렌더와 추론은
 항상 shift 3의 static 격자를 씁니다. 4스텝 static 격자의 σ는 1 → 0.9 → 0.75 → 0.5 → 0입니다.
 
 ### 1.7 CDM off-trajectory loss
@@ -140,7 +140,7 @@ $$
 - **fake warmup.** 본 루프 전에 fake만 200회 업데이트합니다. student는 건드리지 않습니다.
   student LR warmup이 끝날 때 fake가 아직 teacher와 같은 상태여서 생기는 초반 `grad_signal_rms` 스파이크
   (~50스텝)를 없앱니다. fake는 이미 calibrate되고 full LR인 상태로 본 루프에 들어갑니다.
-- **rank.** fake rank ≥ student rank입니다. fake는 생성기가 아니라 점수 추적기이므로 student가 만드는
+- **rank.** fake rank ≥ student rank입니다. fake는 점수 추적기이므로 student가 만드는
   섭동을 따라갈 용량이 필요합니다.
 - **transition-aware fake** (VA-TDM 아이디어 1). fake 샘플이 어느 student 스텝 σ_g에서 왔는지를 zero-init
   임베딩으로 fake의 t-embedding에 더합니다. fake view에서만 동작하고 저장할 때는 버립니다.
@@ -205,7 +205,7 @@ step 크기나 t 입력이 필요한 것(Shortcut, MeanFlow Δt, T-LoRA 마스�
 **warm start.** 이 줄의 student와 fake는 둘 다 공식 turbo v1.1 릴리스에서 base에 대한 delta를 rank 96으로
 뽑아(adaln 포함) 시작합니다. activation-whitened(ASVD) 추출은 같은 rank의 plain SVD보다 재구성이 좋아서, rank 96
 ASVD가 plain rank 128과 비슷합니다. 공식 turbo는 작동하는 few-step 맵이지만 mode가 붕괴해 있고, DP-DMD 앵커가
-모드를 다시 펼칩니다. warm start된 student는 0스텝부터 이미 few-step 맵이므로 증류는 구성이 아니라 fine-tune에
+mode를 다시 펼칩니다. warm start된 student는 0스텝부터 이미 few-step 맵이므로 증류는 fine-tune에
 가깝습니다.
 
 이 레시피로 쌓인 경험치:
@@ -214,7 +214,7 @@ ASVD가 plain rank 128과 비슷합니다. 공식 turbo는 작동하는 few-step
   체크포인트는 2k 이후입니다. cold start는 student LR이 1e-5를 넘으면 불안정합니다.
 - v3_longer는 2k 이후로도 계속 좋아졌고, 최종 |ΔW|는 12.4입니다. v1.1 delta 자체의 norm은 3.17입니다.
 
-학습 롤아웃과 이 글의 렌더는 Euler입니다. Hub 카드가 적은 `er_sde`는 검증하지 않았습니다.
+학습 롤아웃과 이 글의 렌더는 Euler입니다. Hub 카드가 적은 `er_sde`는 확인하지 않았습니다.
 
 ---
 
@@ -253,7 +253,7 @@ warm start 없이 weight-SVD init을 쓰므로 ΔW가 0에서 시작합니다. �
 
 arm 0 control(`1112_0833`)은 250 iteration, batch 1, seed 42입니다. student와 fake 모두 rank 64 / alpha 180,
 weight-SVD init, adaln rank 16 / alpha 90을 학습합니다. 4스텝, teacher CFG 4, 동적 격자, x0 정규화(floor 0.05),
-DM draw 1, MFD off입니다. 나머지는 §3.2 표와 같고, grad clip 1.0, 검증 시드 8개, 125스텝마다 저장과 검증을 합니다.
+DM draw 1, MFD off입니다. 나머지는 §3.2 표와 같고, grad clip 1.0, validation 시드 8개, 125스텝마다 저장과 validation을 합니다.
 null twin `1112_0834`는 seed 43만 다릅니다.
 
 - **비용(arm 0 실측).** iteration당 5.7–5.8 s이고, 200스텝 fake warmup 뒤 250 iteration에 약 27분이 걸렸습니다.
@@ -313,7 +313,7 @@ null twin `1112_0834`는 seed 43만 다릅니다.
 - **결론: ΔW overlap으로는 arm을 가를 수 없습니다.** 목적함수가 다른 arm도 reseed와 똑같이 읽힙니다.
 - 시드 평균: 공유분이 c ≈ 0.14일 때 k개 시드의 exact ΔW 평균은 공유분을 $kc/(1+(k-1)c)$로 올립니다. k = 2면
   0.25, k = 4면 0.39입니다. 2스텝에서 두 런을 평균한 `avg2_500`은 250 수준을 넘지 못했으므로, 이것은 품질을
-  올리는 레버가 아니라 정리 작업입니다.
+  올리지 못하고 정리 작업에 그칩니다.
 - 이 측정 때문에 과거 해석 하나가 흔들립니다. 2026-11-10의 transition-aware fake A/B(tafake가 더 선명하고, plain은
   갈색 머리와 가운데 간판 하나로 흘렀다)는 이런 두 번의 추첨을 비교한 것이었고, 렌더 차이의 대부분은 런
   노이즈일 수 있습니다.
@@ -345,7 +345,7 @@ null twin `1112_0834`는 seed 43만 다릅니다.
 | 체크포인트 exact 평균 | `avg3_1115`, `avg2_500`, `avg6_both` | 500에서 생긴 벤치, 차량, 갈색 머리를 걷어 냅니다. 그러나 어느 것도 `1111_1115` 250을 넘지 못함 |
 | gradient 누적 4 | `1111_2056`, 1000 it = 250 update, 72분, 4.0 s/it, 피크 13.79 GB | 실패. raw 최종은 둘 다보다 나쁘고(뒤틀린 몸), EMA 최종은 `avg6_both` 수준. \|ΔW\| 2.78 / 3.84, 이동 cos 0.022 |
 
-- 4 draw가 4배 효과를 내지 못하는 이유는 σ_a 꼬리입니다. 큰 draw는 대부분 노이즈이고, norm 가중으로 본 DM 평균
+- 4 draw가 4배 효과를 내지 못하는 이유는 σ_a tail입니다. 큰 draw는 대부분 노이즈이고, norm 가중으로 본 DM 평균
   몫은 1.6 %, 단위 가중으로는 4.3 %입니다. 4 draw 중 유효 draw 수는 2.23(iid 가정)입니다.
 - **해석: 수준은 목적함수가 정하고, batch-1 walk는 거기서 빼기만 합니다.**
 
@@ -366,8 +366,8 @@ arm 0 control의 raw 250은 judge 이미지 12장 모두에서 평평한 노이�
 
 - student grad norm이 242–245스텝에서 5.5 / 14 / 6 / 16이다가 246–249에서 **231 / 244 / 106 / 72**가 되었습니다.
   fake grad norm도 같이 올라(25 → 111 / 69 / 145 / 85), student와 fake가 함께 터졌습니다.
-- 그 구간의 σ_a는 0.03–0.96이므로 σ_a 꼬리 탓이 아닙니다.
-- `x_pred_std`가 0.74에서 1.98로 올랐고, 250 검증에서 `fm_mse`가 0.29 → 0.88, `div_xpred_ac_sim`이 0.948 → 0.999로
+- 그 구간의 σ_a는 0.03–0.96이므로 σ_a tail 탓이 아닙니다.
+- `x_pred_std`가 0.74에서 1.98로 올랐고, 250 validation에서 `fm_mse`가 0.29 → 0.88, `div_xpred_ac_sim`이 0.948 → 0.999로
   바뀌었습니다. §4.7의 붕괴 서명과 같습니다.
 - twin도 153–162스텝에서 같은 종류의 burst(37 / 29 / 58 / **242** / 131)를 겪었지만 회복했습니다.
 - EMA 0.2는 burst를 희석해서, control의 EMA 250은 정상으로 렌더됩니다. 125 + 250 평균에는 burst가 일부 남습니다
@@ -398,7 +398,7 @@ clip 이전 student norm(5스텝 구간 평균)은 2스텝 런 네 개 모두에
 - σ_a < 0.75에서는 평탄하고 맨 위 사분위에서만 오릅니다. 상승폭은 2스텝(4.9 / 1.2)보다 완만한데, rollout 경로가
   없다는 점과 맞습니다.
 - 계획에 미리 정해 둔 규칙(합산 top/bottom ≤ 1.5)에 따라 arm 3은 **adaptive clip 단독**입니다. 다만 런별 비율
-  (1.65, 1.27)이 경계를 사이에 두고 갈리므로 아슬아슬한 판정입니다.
+  (1.65, 1.27)이 경계를 사이에 두고 갈리므로 아슬아슬한 평가입니다.
 
 ### 4.7 앵커 없는 루프는 붕괴한다 (MFD 논문 루프)
 
@@ -442,14 +442,14 @@ fake를 각각 적분한 끝점의 차를 씁니다. σ_b = 0, K = 1이면 DMD�
 - 현재 레시피는 MFD off이고, MFD는 arm 1로 4스텝에서 다시 시험합니다(§6). MFD 논문의 T2I 결과는 4스텝
   SANA, 3000스텝입니다.
 
-### 4.9 transition-aware fake: 해는 없음, 판정은 아직
+### 4.9 transition-aware fake: 해는 없음, 평가는 아직
 
 `m14_dpdmd_svd_500_tafake` 대 `…_500`(시드, init 같음, transition-aware fake만 다름, 500스텝).
 350–500스텝의 쌍별 차이는 fake −0.002 ± 0.003, dm +0.002 ± 0.003이고 cos는 둘 다 0.978입니다. 렌더에서는 tafake가
 더 선명하고 teacher에 가까웠고, plain은 갈색 머리와 가운데 간판 하나로 흘렀습니다.
 §4.1의 측정 이후에는 이 렌더 차이도 런 노이즈일 수 있다고 봅니다. 레시피에는 "해가 없다"는 근거로 남아 있습니다.
 
-### 4.10 닫힌 줄기들
+### 4.10 접은 줄기들
 
 각각 무엇을 했고, 왜 접었고, 어떤 함정이 있었는지 정리합니다.
 
@@ -458,7 +458,7 @@ fake를 각각 적분한 끝점의 차를 씁니다. σ_b = 0, K = 1이면 DMD�
 않으므로 그래프를 이어 스텝 0이 최종 이미지의 gradient를 받게 했습니다. `1111_1005`(LR 5e-5)와 `1111_1115`
 (LR 2e-5) 모두 250이 최고였고, DM draw 여러 번, gradient 누적, 체크포인트 평균도 250 수준을 넘지 못했습니다.
 `1111_1005`에서는 ~350스텝부터 disc가 폭주했습니다(margin 0.9–1.6, `x_pred_std` → 0.43).
-**함정:** "250이 제일 좋다"는 것은 학습량이 아니라 walk의 문제였고, raw 체크포인트 하나를 다른 하나와 비교하면 walk를
+**함정:** "250이 제일 좋다"는 것은 walk의 문제였고, raw 체크포인트 하나를 다른 하나와 비교하면 walk를
 읽게 됩니다. 4스텝 계획은 이 줄의 측정을 그대로 가져갑니다.
 
 **APEX: student, reference, fake를 LoRA 하나로 (2026-11-01, 종료).**
@@ -480,7 +480,7 @@ fake critic을 classifier(head T: teacher 대 student, head R: real 대 student)
 
 **Data-space iteration (실행 안 함).**
 schedule 없이 x̂0를 반복 갱신하는 구조입니다. 이식하면 입력 projection이 하나 늘어서 출력이 plain LoRA가 아니게
-되고, 논문도 class-conditional ImageNet 256만 다룹니다. 남은 싼 아이디어는 DM 쿼리 τ ~ Beta(2.5, 1), student Adam
+되고, 논문도 class-conditional ImageNet 256만 다룹니다. 남은 저비용 아이디어는 DM 쿼리 τ ~ Beta(2.5, 1), student Adam
 β1 = 0, real score의 guidance interval이고 모두 미실행입니다.
 
 **FEI band-deficit 레버 (2026-06-20, 두 번 죽음).**
@@ -493,7 +493,7 @@ blur 결손이 없고, DP-DMD 앵커가 이미 흡수했다고 봅니다.
 **GAN ↔ DM gradient surgery (2026-07-20, 종료).**
 GAN gradient 중 DM과 부호가 어긋나는 성분만 막는 OPD² 방식 게이트를 검토했습니다. agree-energy가 0.489 ± 0.032로
 permutation null 0.488 ± 0.011과 구별되지 않았고, cos(g_gan, grad_signal)은 0.006이었습니다. GAN은 DM과 싸우는 것이
-아니라 직교 방향으로 밀며, 원소당 크기는 DM의 약 6배(꼬리가 두꺼움)입니다.
+아니라 직교 방향으로 밀며, 원소당 크기는 DM의 약 6배(tail이 두꺼움)입니다.
 **함정 두 개:** 원소 부호 일치율 0.5는 직교의 기준선이지 충돌이 아닙니다. 그리고 DM 서로게이트가 평균으로 줄여지므로
 실제 적용되는 DM 힘은 `grad_signal/numel`이고, 원본 텐서끼리 비교하면 GAN을 ~10⁵배 과소평가합니다.
 
@@ -517,7 +517,7 @@ fake를 통한 backward가 필요해서 뒤로 미뤘습니다. 논문 부록과
 
 ---
 
-## 5. 터보 런을 판정하는 법
+## 5. 터보 런을 평가하는 법
 
 ### 5.1 A/B 프로토콜
 
@@ -525,7 +525,7 @@ fake를 통한 backward가 필요해서 뒤로 미뤘습니다. 논문 부록과
 2. **250에서 EMA끼리 비교합니다.** raw 125와 250의 exact 평균은 교차 확인용입니다.
 3. **null twin은 한 번만 만듭니다.** control에서 seed만 42 → 43으로 바꾼 런입니다. control과 twin의 차이가 이후
    모든 arm의 노이즈 바닥이 됩니다.
-4. **판정은 렌더로 합니다.** 4스텝, cfg 1, judge 프롬프트(프롬프트 3개 × 시드 1–4), 768 × 1344로 렌더하고,
+4. **평가는 렌더로 합니다.** 4스텝, cfg 1, judge 프롬프트(프롬프트 3개 × 시드 1–4), 768 × 1344로 렌더하고,
    teacher(merged14 int8, 28스텝, cfg 4)를 옆에 둡니다. 프롬프트는 위치 절이 붙은
    블루 아카이브 학생 다섯 명의 슬랩스틱, 일본어 메뉴와 영어 간판이 있는 두 소녀의 카페, 아래에서 더치 앵글로 본
    관객 위로 점프하는 기타리스트입니다. ANIMA 간판과 nozomi 프롬프트는 너무 쉬워서 arm을 가르지 못합니다.
@@ -543,7 +543,7 @@ arm 0의 S–T4 수치는 아직 없습니다.
 
 ### 5.2 validation probe와 그 서명
 
-검증 때마다 held-out 조건 하나로 8개 시드의 student를 static 격자로 굴립니다.
+validation 때마다 held-out 조건 하나로 8개 시드의 student를 static 격자로 굴립니다.
 
 | 지표 | 정의 | 건강 | 붕괴 서명 |
 |---|---|---|---|
@@ -552,7 +552,7 @@ arm 0의 S–T4 수치는 아직 없습니다.
 | `fm_mse` | held-out 샘플의 student 격자 σ에서 flow-matching MSE | 0.27–0.36 | 앵커 없는 붕괴 0.37–0.45, burst 0.88 |
 | `div_dc_sim` | DC의 시드 간 cos. 높게 유지되어야 함 | — | 떨어지면 조건이 흔들림 |
 
-붕괴 판정은 `div_xpred_ac_sim → 1`과 `div_ac_sim → 0`이 **함께** 나타나는 것으로 합니다. `fm_mse`는 품질 점수가
+붕괴 여부는 `div_xpred_ac_sim → 1`과 `div_ac_sim → 0`이 **함께** 나타나는지로 평가합니다. `fm_mse`는 품질 점수가
 아닙니다. 발산과 정상 여부를 확인하는 숫자이고, Anima에서는 품질을 따라가지 않습니다.
 
 ### 5.3 믿으면 안 되는 학습 스칼라
@@ -594,12 +594,12 @@ teacher, EMA 250, avg2, raw 250, EMA 125를 나란히 놓았습니다.
   헤일로와 색종이가 남고, 군중 실루엣도 그립니다.
 - **teacher의 구도에 도달한 student는 없습니다.** teacher는 아래에서 본 점프와 뒤엉킨 슬랩스틱 무리를 그리지만,
   student는 모든 시드에서 정면 선 자세를 그립니다. teacher는 `CAFE MILLENNIUM`을 쓰고, student는 뭉갭니다.
-- 런 하나뿐이라 아직 노이즈 바닥 위의 판정이 아닙니다. "125가 250보다 낫다"가 레시피 탓인지 시드 탓인지는 twin의
+- 런 하나뿐이라 아직 노이즈 바닥 위의 평가가 아닙니다. "125가 250보다 낫다"가 레시피 탓인지 시드 탓인지는 twin의
   그리드가 정합니다.
 
 ---
 
-## 6. 열린 질문과 다음 arm (미완, 2026-11-12 기준)
+## 6. 남은 질문과 다음 arm (미완, 2026-11-12 기준)
 
 > 이 절은 진행 중입니다. Arm 0은 학습을 마쳤고 control 렌더를 대략 읽었으며, twin 렌더는 대기 중입니다. GAN-off
 > probe `1112_0917`은 실행 중이고 125 체크포인트까지 나왔습니다.
@@ -620,16 +620,16 @@ teacher, EMA 250, avg2, raw 250, EMA 125를 나란히 놓았습니다.
 - adaptive clip: 임계값을 clip 이전 norm의 running median(log 공간 EMA) × k(≈ 2)로 net마다 둡니다.
   보통 스텝은 자기 norm 그대로 통과하고 스파이크만 잘립니다. 임계값은 런 동안의 drift(`1111_2056`에서 2.5 → 5)를 따라갑니다.
 - σ_a별 DM 가중: DM loss를 σ_a bin(8개)의 running median norm으로 나눕니다. arm 0 프로필에서는 필요 없다고
-  판정했습니다.
+  평가했습니다.
 
-**열린 질문:**
+**남은 질문:**
 
 - **250 iteration에서 4스텝 수준에 도달하는가.** base teacher의 v3_longer는 2k 이후에도 좋아졌습니다. arm 0의 125 / 250
   렌더와 |ΔW|로 판단합니다. 평평하지 않으면 arm 1 전에 A/B 길이를 늘립니다. control 렌더에서 EMA 125 > EMA 250으로 보인
   것은 반대 방향 신호이므로 twin을 보고 판단합니다.
 - **앵커 없는 붕괴의 원인.** 다음 분리 실험은 스텝 0 DM off + 다양성 가중 0(스텝 0을 init에 고정, 앵커 없음)과
   TTUR 10:1입니다.
-- **burst의 빈도와 원인.** 250 iteration에 약 한 번이고 σ_a 꼬리와는 무관합니다. adaptive clip이 해결하는지는 arm 3에서
+- **burst의 빈도와 원인.** 250 iteration에 약 한 번이고 σ_a tail과는 무관합니다. adaptive clip이 해결하는지는 arm 3에서
   봅니다.
 - **student가 teacher의 구도를 따라가지 못하는 문제.** 아래에서 본 점프나 슬랩스틱 같은 구도입니다. 앵커 σ 지점(6/12 = 0.5)이나
   다양성 가중 쪽 레버는 이 레시피에서 다시 측정하지 않았습니다.

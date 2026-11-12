@@ -67,7 +67,7 @@ make download-model ARGS=moss-sft
 
 같은 이름의 `.txt` 캡션이 붙은 이미지 폴더이며, 하위 폴더도 포함됩니다. 기본 소스는 Anima의 리사이즈 폴더 `post_image_dataset/resized` (수정된 캡션 포함)라서, Anima용으로 전처리한 데이터셋을 그대로 쓸 수 있습니다. 한 세트만 학습하려면 `src` 를 해당 하위 폴더로 지정합니다.
 
-- **Anima식 태그 캡션으로 학습과 프롬프트 모두 동작합니다.** MOSS 자체는 자연어로 학습되었으며, 긴 캡션이나 캐릭터가 많은 캡션은 아직 검증되지 않았습니다.
+- **Anima식 태그 캡션으로 학습과 프롬프트 모두 동작합니다.** MOSS 자체는 자연어로 학습되었으며, 긴 캡션이나 캐릭터가 많은 캡션은 아직 확인되지 않았습니다.
 - **`layout_json` (기본값)**: Anima 캡션을 MOSS의 layout-JSON 프롬프트로 변환합니다. rating/meta, 캐릭터, 시리즈, 작가는 각자의 키로 들어가고, 나머지 태그는 caption이 되며, 위치 절은 위치 정보가 붙은 subject로, OCR 텍스트 줄은 text 항목이 됩니다. 30장 세트에서 일반 태그와 같은 스타일 강도를 유지하면서, 세트의 속성이 다른 캐릭터에 새는 현상은 더 적었습니다.
 - **학습과 프롬프트는 같은 형식으로**: `caption_format` (Preprocess)과 `prompt_format` (Test)이 일치해야 합니다. 둘 다 `layout_json` 이거나, 일반 캡션이면 둘 다 `text` 입니다. 프롬프트는 어느 쪽이든 Anima 태그 형식으로 입력하며, `layout_json` 이 변환해 줍니다.
 - **트리거는 캡션에 적힌 그대로의 작가 태그입니다.** 예: `@channel (caststation)`. 프롬프트에도 같은 형태로 넣습니다.
@@ -163,7 +163,7 @@ bf16 구성(swap 36, budget 0.5, `swap_h2d_only`, `expandable_segments`, 랭크 
 
 표: 합성 1024² 이미지 + 텍스트 300 토큰(합계 약 4.4k 토큰), LoRA 랭크는 행에 따로 적지 않으면 16, RTX 5070 Ti 기준입니다. 랭크 32 행은 약 4.5k 토큰(이미지 4096 + 텍스트 455)에서 돌렸고 최대 reserved는 약 13.1 GB였습니다. 랭크 16에 budget 0.1은 1.82 s/step, 여유 약 2.0 GB였습니다. 실제 샘플은 최대 약 4.9k 토큰까지 나왔고, 캡션이 길수록 메모리를 더 쓰는데, `swap 24` 는 같은 속도로 그만큼의 여유를 남깁니다.
 
-- swap 8에서 36 사이는 속도가 거의 같고(1.75–1.84 s/step), budget 0.1–0.3도 속도에 거의 영향이 없습니다. swap 40은 PCIe 전송이 연산 뒤에 숨지 못해 느려집니다(2.34 s/step). 그 아래 구간에서 swap 수는 속도가 아니라 VRAM을 정하는 값입니다.
+- swap 8에서 36 사이는 속도가 거의 같고(1.75–1.84 s/step), budget 0.1–0.3도 속도에 거의 영향이 없습니다. swap 40은 PCIe 전송이 연산 뒤에 숨지 못해 느려집니다(2.34 s/step). 그 아래 구간에서 swap 수는 VRAM을 정합니다.
 - 최적 조합은 PCIe 링크와 GPU에 따라 다릅니다. `scripts/moss/tune_swap.py` (CLI, [부록](#부록-cli), 약 4분)가 캐시에서 가장 큰 샘플로 bf16 구성에서 swap 수별 속도를 재고, 학습에 쓸 필드 값을 출력합니다.
 - `blocks_to_swap -1` 은 여유 VRAM에서 swap 수를 정합니다. LoRA 기준으로 보정되어 있어 LoKr/LoHa에는 여유를 적게 잡습니다.
 - `compile` 을 끄려면 `grad_checkpointing` 을 켜야 합니다. compile을 켠 학습은 3.1 대신 2.0 s/step이었고, 시작할 때 약 30초 컴파일합니다.

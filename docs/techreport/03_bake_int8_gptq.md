@@ -3,7 +3,7 @@
 **요약**
 
 - soup LoRA를 multiplier 1.0으로 base DiT에 구워 bf16 teacher DiT를 만듭니다. 13초 걸리는 작업입니다.
-- 터보는 이 teacher를 int8 base(`stream` 모드) 위에서 돌립니다. 블록당 큰 linear 6개(28블록에서 168개)를 ConvRot
+- 터보는 이 teacher를 int8 base(`stream` mode) 위에서 돌립니다. 블록당 큰 linear 6개(28블록에서 168개)를 ConvRot
   int8 GEMM으로 바꾸고, 나머지는 float으로 둡니다.
 - int8 forward copy는 GPTQ로 만듭니다. base용 GPTQ는 soup을 구운 DiT에 맞지 않으므로, teacher에는 **teacher 전용**
   GPTQ(2.37 GiB, 약 17분)를 따로 만듭니다.
@@ -56,9 +56,9 @@ cross `k/v`와 adaLN은 phase 0에서 int8이 오히려 느리게 측정되어 b
 - activation은 토큰마다 int8로 양자화하고(W8A8), 출력은 bf16입니다.
 - base 가중치의 gradient는 계산하지 않습니다. LoRA 학습에 필요한 것은 입력 gradient `dX = dY·W`뿐입니다.
 
-### 모드
+### mode
 
-| 모드 | forward | 입력 gradient `dX` | bf16 base 가중치 | 쓰는 곳 |
+| mode | forward | 입력 gradient `dX` | bf16 base 가중치 | 쓰는 곳 |
 |---|---|---|---|---|
 | `off` | bf16 | bf16 | 유지 | 기본값 |
 | `fwd` | int8 | bf16, 유지된 `W`로 계산 | 유지 | 학습 |
@@ -228,5 +228,5 @@ GPTQ calibration은 28-step, shift 3 추론 schedule에서 σ를 뽑습니다. 4
 
 - LoRA 학습 레시피: [01_lora_recipe.md](01_lora_recipe.md)
 - soup, merged14 LoRA를 만드는 과정: [02_soup_merge.md](02_soup_merge.md)
-- DP-DMD 터보 루프, 레시피, 판정: [04_turbo_distillation.md](04_turbo_distillation.md)
+- DP-DMD 터보 루프, 레시피, 평가: [04_turbo_distillation.md](04_turbo_distillation.md)
 - fp32 stream: [05_practical_tips.md](05_practical_tips.md)

@@ -52,7 +52,7 @@
 
 s1002는 plain LoRA만큼 나쁜데, membership AUC(0.88)로는 드러나지 않았다. soup은 나쁜 시드가 1/3 섞여
 있어도 가장 좋은 재료와 노이즈 바닥 안에서 같았다. soup은 **암기(memorization) 대책이 아니다**. soup의 AUC는
-재료들의 평균이 아니라 최댓값 근처에 있다.
+재료들의 최댓값 근처에 있다.
 
 ### ΔW 대부분은 그 런에만 있다
 
@@ -203,7 +203,7 @@ shift/scale/gate 편향이 된다. 이 입력은 σ ∈ [0, 1]에서 거의 일�
 | 방식 | 정확도 | rank / 크기 |
 |---|---|---|
 | concat_exact | normalize off, adaln 합일 때만 Σ w_i ΔW_i 그대로(bf16 출력은 α/r ≠ 1인 입력에서 ~1e-3 반올림). global normalize / adaln 평균은 delta를 다시 스케일하므로 Σ w_i ΔW_i가 아니다 | Σ r_i. merged14 871 MB(shard soup 하나는 109 MB) |
-| ΔW 평균 + rank-r SVD | 상위 r 방향만. 잃는 양은 위 retained energy 표 | r |
+| ΔW 평균 + rank-r SVD | 상위 r 방향만. 잃는 크기는 위 retained energy 표 | r |
 | 두 DiT의 차이를 SVD | ΔW = tuned − base를 rank r로 자름 | r |
 
 shard처럼 서로 직교하는 입력을 SVD로 자르면 손실이 크다. svd_slice가 다른 재료들을 한 soup에서 rank r로 자르면
@@ -223,7 +223,7 @@ shard처럼 서로 직교하는 입력을 SVD로 자르면 손실이 크다. svd
 | merged14 | 2026-11-07 | 8 shard × 3 seed, 5e-5 constant(01 레시피) | global 0.342427. 현재 teacher |
 
 > TODO(확인 필요): merged13에서 merged14로 바꾼 결정의 렌더 근거. 두 soup을 렌더로 비교한 기록은 찾지 못했다.
-> 01 레시피가 2026-11-06에 닫힌 직후 재료를 새 레시피로 다시 학습한 것으로 보인다.
+> 01 레시피가 2026-11-06에 확정된 직후 재료를 새 레시피로 다시 학습한 것으로 보인다.
 
 ### 재료 레시피: merged13과 merged14
 
@@ -269,7 +269,7 @@ optimizer update는 step 수의 절반이다(shard 1: 676 update).
 shard의 에너지 비중은 6–24 %로 고르지 않고, 대체로 장 수(= step 수)를 따른다. merged12에서 shard 비중만 맞춘
 shardbalanced는 merged12와 거의 같은 렌더였으므로(2.8), merged14에서는 shard 비중을 맞추지 않았다.
 
-### 검증
+### 확인
 
 merged14가 정확히 "0.342427 × 8 shard 합 + adaln 평균"인지 Gram trace로 쟀다 **[측정]**
 (‖X − Y‖² = ‖X‖² + ‖Y‖² − 2⟨X, Y⟩, ⟨UD, U′D′⟩ = tr((UᵀU′)(D′Dᵀ)), ΔW를 직접 만들지 않음, CPU).
@@ -279,7 +279,7 @@ merged14가 정확히 "0.342427 × 8 shard 합 + adaln 평균"인지 Gram trace�
 | 일반 280 | 0.342427 · Σ_k ΔW_k | 1.7e-3 (bf16 반올림) |
 | adaln 84 | (1/8) · Σ_k ΔW_k | 1.4e-8 |
 
-## 2.7 정확성이 왜 중요한가: turbo 배포 규칙
+## 2.7 정확성이 왜 중요한가: turbo 배포 설정
 
 turbo LoRA ΔT는 **merged14가 1.0으로 구워진 DiT** 위에서 증류됐다(→ 03_bake_int8_gptq.md, 04_turbo_distillation.md).
 즉 student가 배운 것은 "W0 + ΔW14 위에 얹는 ΔT"다. ΔT만 base에 올리면 의미가 없고, base에 올리는 배포 파일은
@@ -324,7 +324,7 @@ soup 8개의 크기만 맞춘 shardbalanced는 merged12와 거의 같았다.
 - model soup 논문(Wortsman et al.)은 greedy selection으로 나쁜 재료를 걸렀지만, 이 파이프라인은 게이트 없는 균일
   평균이라 나쁜 LR 재료도 그대로 섞인다. merged13/14는 seed만 다른 재료로 돌아갔다.
 
-### ΔW cos는 겹침의 양을 읽는 도구다
+### ΔW cos는 겹침의 크기를 읽는 도구다
 
 Gram trace로 ΔW의 노름과 쌍별 cos를 CPU에서 잰다. 같은 목적과 같은 init에서 출발한 두 런의 cos는 둘이 공유하는
 ΔW 비율로 읽는다.

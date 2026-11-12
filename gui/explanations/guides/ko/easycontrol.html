@@ -1,6 +1,6 @@
 <h2 style='margin:0 0 10px 0; font-size:17px;'>EasyControl</h2>
 <p>확장된 셀프-어텐션 이미지 컨디셔닝. DiT는 동결됩니다; 학습은 셀프-어텐션 (q/k/v/o) + FFN에 대한 블록별 cond LoRA와, 각 스텝의 셀프-어텐션에 레퍼런스 이미지 토큰이 얼마나 유입될지 제어하는 블록별 스칼라 게이트 <code>b_cond</code> (초기값&nbsp;-10)만 업데이트합니다.</p>
 <div style='background:#33231e; padding:10px 14px; border-left:3px solid #e67e22; margin:12px 0; border-radius:3px;'>
-<p style='margin:0; color:#f0c14b;'><b>&#9888; 1단계 베이스라인 &mdash; 아직 의미 있는 동작을 하지 않습니다.</b> 이것은 컨디션이 타깃 이미지 자체인 <i>ref&nbsp;==&nbsp;target</i> 설정입니다. 실제로 학습할 컨트롤 태스크가 없기 때문에 현재 체크포인트는 유용한 컨디셔닝 효과를 내지 못합니다 &mdash; 이 변형은 배관 / 스캐폴딩 검증 용도로만 사용하고, 실제 사용 가능한 컨트롤 어댑터로 취급하지 <b>마세요</b>. 실제 컨트롤 태스크가 필요하다면 <b>Colorize</b>를 선택하세요.</p>
+<p style='margin:0; color:#f0c14b;'><b>&#9888; 1단계 베이스라인 &mdash; 아직 의미 있는 동작을 하지 않습니다.</b> 이것은 컨디션이 타깃 이미지 자체인 <i>ref&nbsp;==&nbsp;target</i> 설정입니다. 실제로 학습할 컨트롤 태스크가 없기 때문에 현재 체크포인트는 유용한 컨디셔닝 효과를 내지 못합니다 &mdash; 이 변형은 배관 / 스캐폴딩 확인 용도로만 사용하고, 실제 사용 가능한 컨트롤 어댑터로 취급하지 <b>마세요</b>. 실제 컨트롤 태스크가 필요하다면 <b>Colorize</b>를 선택하세요.</p>
 </div>
 <p>소스 데이터는 <code>easycontrol-dataset/</code>에 저장하고, 캐시는 <code>post_image_dataset/i2i/</code>에 생성됩니다. <code>docs/anima/experimental/easycontrol.md</code>를 참조하세요.</p>

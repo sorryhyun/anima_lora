@@ -1,5 +1,5 @@
 <h2 style='margin:0 0 10px 0; font-size:18px;'>전처리</h2>
 <p>이 탭은 학습이 읽는 캐시를 만듭니다:</p>
 <p><b>캐싱</b> &mdash; 이미지를 constant-token 버킷으로 리사이즈하고 (또는 <i>프리핏</i>이 활성화되면 토큰 밴드 안에서 원본 종횡비 크기로 &mdash; 크롭 없이) Qwen3 + T5로 캡션을 토큰화하여 <code>{stem}_anima.npz</code> latent와 <code>{stem}_anima_te.safetensors</code> 사이드카로 저장합니다. <i>셔플 변형 수</i>가 0보다 크면 각 TE 캐시에 N개의 캡션이 들어가며 데이터로더는 학습 스텝마다 하나를 샘플링합니다 (메소드 설정에서 <code>use_shuffled_caption_variants</code>를 켜야 사용됩니다).</p>
-<p><b>큐레이션은 anime_tools에서</b> &mdash; 자동 태깅, 위치 절, SAM3/MIT 마스크는 이 탭이 아니라 anime_tools 패널에서 실행합니다. <code>configs/preprocess.toml</code>에서 켜져 있어도 이 탭은 해당 단계를 실행하지 않습니다. <code>post_image_dataset/masks/</code>의 마스크는 메소드 설정에서 <code>masked_loss = true</code>일 때만 사용됩니다.</p>
+<p><b>큐레이션은 anime_tools에서</b> &mdash; 자동 태깅, 위치 절, SAM3/MIT 마스크는 anime_tools 패널에서 실행합니다. <code>configs/preprocess.toml</code>에서 켜져 있어도 이 탭은 해당 단계를 실행하지 않습니다. <code>post_image_dataset/masks/</code>의 마스크는 메소드 설정에서 <code>masked_loss = true</code>일 때만 사용됩니다.</p>
 <p style='color:#888; font-style:italic; margin-top:12px;'>왼쪽 필드 라벨을 클릭하면 여기에 설명이 표시됩니다.</p>

@@ -25,7 +25,7 @@ STRINGS: dict[str, str] = {
     "preprocess_source_image_dir_tip": (
         "선택한 GUI method의 베이스 원본 이미지 루트입니다 (기본값은 configs/preprocess.toml; "
         "편집 내용은 해당 variant에 저장됩니다). 실행 시 path_scope가 이 위에 "
-        "덧붙여지므로, 여기서 표시되는 것은 최종 스코프 경로가 아닌 스코프 없는 루트입니다. "
+        "덧붙여지므로, 여기에는 스코프를 붙이기 전의 루트가 표시됩니다. "
         "파일 저장 위치를 바꾸지 않고 트리의 일부만 전처리하려면 아래 전처리 경로 필터를 사용하세요."
     ),
     "preprocess_path_pattern": "전처리 경로 필터:",
@@ -79,7 +79,7 @@ STRINGS: dict[str, str] = {
     ),
     "preprocess_caption_trigger_at_front": "트리거를 맨 앞에 고정",
     "preprocess_caption_trigger_at_front_tip": (
-        "트리거 워드를 캡션의 가장 앞에 둡니다. 이 모드에서는 "
+        "트리거 워드를 캡션의 가장 앞에 둡니다. 이 옵션을 켜면 "
         "@no-artist 삽입이 기존 작가 태그 유무와 no-artist 옵션에 따라 "
         "별도로 동작합니다."
     ),
@@ -362,14 +362,14 @@ STRINGS: dict[str, str] = {
     "settings_theme_dark": "다크",
     "settings_theme_light": "라이트",
     "settings_theme_sepia": "세피아",
-    "settings_debug_mode": "디버그 모드",
+    "settings_debug_mode": "디버그 로그",
     "settings_debug_mode_tooltip": (
         "학습 데몬을 DEBUG 레벨로 기록해, 작업이 멈춘 원인을 버그 리포트에 담을 수 "
         "있게 합니다. 데몬이 다음에 시작될 때 적용됩니다(앱을 닫거나 데몬을 종료한 뒤 "
         "다시 여세요)."
     ),
     "settings_debug_report_desc": (
-        "무한 로딩에 걸렸나요? 디버그 모드를 켜고 증상을 재현한 다음 '디버그 리포트 "
+        "무한 로딩에 걸렸나요? 디버그 로그를 켜고 증상을 재현한 다음 '디버그 리포트 "
         "복사'를 눌러 결과를 버그 리포트에 붙여넣어 주세요. 데몬 로그와 최근 작업 "
         "상태가 함께 담깁니다."
     ),
@@ -418,7 +418,7 @@ STRINGS: dict[str, str] = {
     "models_missing": "✗ 없음",
     "model_anima": "Anima — DiT + 텍스트 인코더 + VAE",
     "model_sam3": "SAM3 — 말풍선 마스킹",
-    "model_pe": "PE-Core-L14-336 — 비전 인코더 (CMMD 검증)",
+    "model_pe": "PE-Core-L14-336 — 비전 인코더 (CMMD 평가)",
     "model_anima_dit": "Anima 베이스 DiT — 학습 대상 모델",
     "model_anima_te": "Qwen3-0.6B 텍스트 인코더 — 프롬프트 임베딩",
     "model_anima_vae": "Qwen-Image VAE — 잠재 인코딩 / 디코딩",
@@ -440,7 +440,7 @@ STRINGS: dict[str, str] = {
     "models_pack_anima_dit_int8": "Anima INT8 DiT",
     "models_pack_anima_dit_int8_desc": "Anima 베이스의 DiT에서 블록 linear를 int8 GPTQ로 바꾼 파일 (약 2.4 GB). --int8에서 쓰며 처음 쓸 때 자동으로 받습니다.",
     "models_pack_pe": "PE-Core",
-    "models_pack_pe_desc": "PE-Core-L14-336: CMMD 검증 지표 전용 (use_cmmd, 기본 OFF). REPA 특징 캐시는 PE-Spatial을 씁니다 — '큐레이션' 탭의 '그룹화' 팩.",
+    "models_pack_pe_desc": "PE-Core-L14-336: CMMD 평가 지표 전용 (use_cmmd, 기본 OFF). REPA 특징 캐시는 PE-Spatial을 씁니다 — '큐레이션' 탭의 '그룹화' 팩.",
     "models_pack_cjk": "CJK 어휘 팩",
     "models_pack_cjk_desc": "일본어 / 한국어 / 중국어 캡션·프롬프트 구간용 추가 텍스트 인코더 행. v2부터 기본 활성이며, 영어 텍스트는 어느 쪽이든 비트 단위로 동일합니다.",
     "models_pack_moss_base": "MOSS-Image Base",
@@ -529,7 +529,7 @@ STRINGS: dict[str, str] = {
     "merge_pick_dit": "베이스 DiT .safetensors 선택",
     "merge_pick_out": "병합된 DiT 저장 위치...",
     # LoRA ⊕ LoRA → LoRA 병합 (merge_loras.py)
-    "merge_mode": "모드:",
+    "merge_mode": "방식:",
     "merge_mode_dit": "DiT에 병합",
     "merge_mode_loras": "LoRA 병합",
     "merge_lora_options": "LoRA 병합 옵션",
