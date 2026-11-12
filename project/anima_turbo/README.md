@@ -74,7 +74,7 @@ The shipped base-teacher turbo (`huggingface.co/sorryhyun/anima-turbo-4step`) is
 | `1112_0917` | GAN-off probe (measurement only) | `gan.weight_gen = 0` | done: GAN is not the walk |
 | `1112_1044` | S-b, anchor alone | `dpdmd.anchor_only`, no CDM / GAN / fake warmup | done: step 0 at the teacher's instantaneous level (`reports/step0.md`) |
 | `1112_1110` | S-b2 | `1112_1044` at student LR 2e-4 | done: worse. User's read: 2e-4 steps are too large for the noise, 5e-5 steps too small to get past the instantaneous level in 250 it |
-| `1112_1143` | S-c.1 | `dpdmd.dm_first_step` on (anchor kept) | queued |
+| `1112_1143` | S-c.1 | `dpdmd.dm_first_step` on (anchor kept) | done: probe `S` 0.445 / 0.441 (EMA 250 / 125), at the twin's level; guitarist pose moves to the jump, camera does not; raw 250 broken (`reports/step0.md`). User's read pending |
 
 ## State (2026-11-12)
 

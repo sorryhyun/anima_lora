@@ -115,6 +115,53 @@ Held-out anchor MSE of S-b2's step 0: **0.277** (0.145 / 0.194 / 0.492), against
 - With the batch-1 regression, the per-step target moves with every (prompt, noise) draw; the larger
   step follows the draw. The same reading as the 2-step gradient probe (most of a step is the draw).
 
+## S-c.1: step 0 also takes the DM signal
+
+Run `1112_1143` (`configs/1112_1143.toml`): arm 0's control with `dpdmd.dm_first_step` on, the
+anchor kept as the diversity term. 250 iterations, 24 min (5.75 s/it), peak 13.7 GB. Step 0 drew the
+DM gradient on 98 of 250 iterations (g = 0 / 1 / 2 / 3: 98 / 83 / 53 / 16).
+
+Training: `dm_cos` 0.962 / 0.960 and `dm_rel_gap` 0.249 / 0.260 (steps 0–125 / 125–250), the arm 0
+level; `gan_disc_margin` 0.21 / 0.26 against 0.10–0.17. No divergence burst: pre-clip `gn_student`
+median 3.23, p95 11.2, max 28.5 (step 4), against max 240+ in both arm 0 runs. Validation:
+`div_ac_sim` 0.68 / 0.55 and `div_xpred_ac_sim` 0.97 / 0.92 at 125 / 250, so no collapse signature.
+
+Probe: `bench/turbo/results/20261112-1218-handoff_sc1/` (job `20261112-121134-58d01e`).
+
+| | S-c.1 EMA 250 | S-c.1 EMA 125 | twin EMA 250 | control EMA 125 |
+|---|---|---|---|---|
+| `S` | **0.445** (0.525 / 0.424 / 0.387) | **0.441** (0.507 / 0.450 / 0.367) | 0.455 | 0.537 |
+| `T>S@1` | 0.711 | 0.706 | 0.695 | 0.803 |
+| `A>S@1` | 0.654 | 0.672 | 0.672 | 0.729 |
+| held-out anchor MSE | 0.181 | 0.182 | 0.163 | 0.180 |
+
+Renders (judge_hard, job `20261112-121134-388248`; grids `output/tests/turbo4/cmp/sc1_{ba5,cafe,bocchi}.jpg`,
+rows teacher, control EMA 125, twin EMA 250, S-c.1 EMA 125 / EMA 250 / raw 250). Claude's read on
+downscaled grids:
+
+- **Guitarist: the pose moves, the camera does not.** Both S-c.1 EMAs draw the jump (bent knees,
+  arms up, confetti) on all four seeds, where both arm 0 seeds stand. The figure stays large and
+  centred, seen from the front; the teacher's view from below with the crowd silhouettes in the
+  foreground is not there.
+- **Five-girl prompt:** EMA 250 sprawls the group on grass with figures lying down, looser than arm 0's
+  standing grid but not the teacher's close group from above.
+- **Café:** EMA 125 draws blue aprons near the teacher's and spells `CAFE MILLENNIUM` on seed 2; EMA
+  250 gives the same navy aprons on all four seeds and garbles the sign.
+- **Raw 250 is broken** with no gradient burst: melted figures on the five-girl prompt, clothing
+  dropped on the café (bare torsos on three seeds), extra hands on the guitarist. The EMA does not
+  carry it.
+
+Read, against the criterion fixed in `plan.md` (the probe's `S` against the control's 0.54 and the
+twin's 0.46, renders as the gate):
+
+- **S-c.1 does not pass.** `S` sits at the twin's level on both EMAs, and the anchor MSE did not move:
+  the DM signal on step 0 does not bring step 0 nearer the anchor target or the teacher's image of
+  the same noise.
+- The renders move one thing above arm 0's seed floor, the guitarist's pose, on every seed. It does
+  not show in the probe, which pairs each image with the teacher's on the same noise.
+- Taking the DM gradient on step 0 removes about 40 % of the iterations from steps 1–3 and leaves
+  the raw checkpoint worse at 250.
+
 ## Where this leaves step 0
 
 - The anchor target is the right one (S-a). The trained step 0 does not reach it: alone or in the
