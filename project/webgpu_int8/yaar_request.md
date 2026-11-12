@@ -51,7 +51,7 @@ New files on HF (`sorryhyun/anima-turbo-4step`, under `onnx/`):
 | `int8/dit_int8_dyn.segments.json` | 3,091 | manifest, same schema as today's |
 | `int8/dit_int8_dyn.seg0.onnx` … `seg6.onnx` | ~1.3–1.5 MB each (seg6 0.36 MB) | resolution-free segment graphs |
 | `int8/dit_int8.onnx.data` | 2,372,323,328 | shared sidecar (was 3,913,271,296) |
-| `vae_decoder_dyn_fp16.onnx` | 562,856 | resolution-free VAE decoder; weights stay in `vae_decoder_512_fp16.onnx.data` |
+| `int8/vae_decoder_dyn_fp16.onnx` | 562,856 | resolution-free VAE decoder (fp16; under `int8/` with the rest of the set); weights stay in the root `vae_decoder_512_fp16.onnx.data` |
 
 The DiT is the v4_preview turbo (merged14 + turbo EMA 1112_1512, baked), int8 ConvRot GPTQ on
 the 224 block linears, everything else fp16, residual rescaled ×1/16 as in the `_r16` export.
@@ -67,9 +67,10 @@ What changed in the graphs:
 Changes, all in `user-apps/anima/src/`:
 
 1. `generation/buckets.ts`: every bucket's `dit` becomes `'int8/dit_int8_dyn'` and `vae`
-   `'vae_decoder_dyn_fp16'`. `ditDataFor` returns `'int8/dit_int8.onnx.data'` and `vaeDataFor`
+   `'int8/vae_decoder_dyn_fp16'`. `ditDataFor` returns `'int8/dit_int8.onnx.data'` and `vaeDataFor`
    returns `SHARED_VAE_DATA` for **every** bucket (the square-bucket special case goes: the VAE
-   graph's `location` is `vae_decoder_512_fp16.onnx.data`). `SHARED_DIT_DATA` becomes
+   graph's `location` is `vae_decoder_512_fp16.onnx.data`, at the root of `onnx/`; with request 1's
+   basename keying in `loadModel`, the fetch reads the root file and the key matches the graph). `SHARED_DIT_DATA` becomes
    `'int8/dit_int8.onnx.data'`. A ratio is now just `W`/`H`; any multiple of 16 works, so
    new ratios or larger sizes need no new files.
 2. `generation/session.ts`:
@@ -82,7 +83,7 @@ Changes, all in `user-apps/anima/src/`:
      on the basename: `n.split('/').pop()!.startsWith('dit_')`.
 3. `ml/assets.ts`: in `EXPECTED_BYTES`, add `'int8/dit_int8.onnx.data': 2_372_323_328`.
 4. `ml/downloadWeights.ts`: `BUCKET_GRAPHS` becomes one set — `int8/dit_int8_dyn.segments.json`,
-   the seven `int8/dit_int8_dyn.segN.onnx`, `vae_decoder_dyn_fp16.onnx` — instead of one per
+   the seven `int8/dit_int8_dyn.segN.onnx`, `int8/vae_decoder_dyn_fp16.onnx` — instead of one per
    bucket; the DiT sidecar row points at `int8/dit_int8.onnx.data`.
 5. `app/weights.ts`: the per-bucket `checkItem`s collapse to one DiT and one VAE item.
 6. `ui/App.ts`: `releaseOtherDits(bucketById(v).dit)` on a ratio change now keeps the one
