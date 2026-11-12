@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Does ``a·c`` separate from ``c`` on the DiT? (Turbo APEX Phase 0b)
 
-docs/anima/proposal/turbo_apex.md. On N dataset items, each τ band and each scale ``a``,
+project/anima_turbo/proposal/turbo_apex.md. On N dataset items, each τ band and each scale ``a``,
 with the same (x_t, τ) across branches, on the int8 base + fp32 stream the loop runs on:
 
     v_c   F(x_t, τ, c)     v_u   F(x_t, τ, T5(""))     v_a   F(x_t, τ, a·c)

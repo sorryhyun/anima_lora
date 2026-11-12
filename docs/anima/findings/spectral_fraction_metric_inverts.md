@@ -90,6 +90,6 @@ side-channel only.
 - Probe + raw run: `bench/dave/probe_patch_imprint.py`, `results/20260609-1613-imprint/`.
 - DAVE-specific conclusions (the cap is justified by eyeball + the paper, not by
   this probe): `bench/dave/README.md` Phase 2d / Phase 3.
-- Related "we measured the wrong thing" findings: `turbo_fei_band_deficit_falsified.md`,
+- Related "we measured the wrong thing" findings: `project/anima_turbo/findings/turbo_fei_band_deficit_falsified.md`,
   `mod_guidance_quality_tag_axis.md` §3 (pointwise MSE leaves the text
   direction unconstrained — another normalization/projection blind spot).

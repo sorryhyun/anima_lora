@@ -21,11 +21,28 @@ The shipped base-teacher turbo (`huggingface.co/sorryhyun/anima-turbo-4step`) is
 - [reports/](reports/): one report per run or probe.
   - [arm0.md](reports/arm0.md): arm 0 control and twin. The two runs share only 9–10 % of ΔW,
     both random-walk from step 125, and the σ_a norm profile gives arm 3 = adaptive clip alone.
-    Render read pending.
+    The control's raw 250 sits inside a divergence burst; rough render read of the control.
   - [mfd.md](reports/mfd.md): MFD in the DM slot (2-step 100 / 500-step arms, 2026-11-04) and the
     anchor-free MFD collapse (4-step m14, 2026-11-10).
 - [vatdm.md](vatdm.md): VA-TDM (arXiv:2611.06796) against the loop and MFD; idea 1 is
   `fake_transition`.
+- [proposal/](proposal/): earlier turbo proposals, moved from `docs/anima/proposal/` on 2026-11-12.
+  - [superturbo.md](proposal/superturbo.md): the 2-step `rollout_grad` line (closed 2026-11-12).
+  - [turbo_apex.md](proposal/turbo_apex.md): APEX one-LoRA student (closed 2026-11-01).
+  - [turbo_dmad.md](proposal/turbo_dmad.md): DMAD inside DP-DMD (no gain read, 2026-10-10).
+  - [turbo_data_space.md](proposal/turbo_data_space.md): ideas from data-space iteration (not run).
+- [findings/](findings/): settled turbo findings, moved from `docs/anima/findings/` on 2026-11-12
+  (still indexed in `docs/anima/findings/README.md`).
+  - [turbo_apex_no_quality.md](findings/turbo_apex_no_quality.md): APEX unstable as DMD, blurred as
+    regression.
+  - [turbo_fei_band_deficit_falsified.md](findings/turbo_fei_band_deficit_falsified.md): FEI
+    band-deficit lever, dead twice.
+  - [turbo_gan_dm_grad_orthogonal.md](findings/turbo_gan_dm_grad_orthogonal.md): the GAN gradient is
+    elementwise DM-orthogonal.
+  - [turbo_tau_critic_interference_lr_artifact.md](findings/turbo_tau_critic_interference_lr_artifact.md):
+    the τ-split critic's interference is an LR artifact.
+  - [turbo_moment_gaps.md](findings/turbo_moment_gaps.md): dataset / CFG 1 / CFG 4 / student
+    moment gaps.
 
 ## Code and data
 
@@ -38,8 +55,8 @@ The shipped base-teacher turbo (`huggingface.co/sorryhyun/anima-turbo-4step`) is
 - Checkpoints in `output/ckpt/<id>/` (125-step saves, `_ema`, `resume.pt`). TB and
   `grad_steps.jsonl` in `output/logs/turbo/<stamp>/`. Renders in `output/tests/turbo4/` (2-step:
   `output/tests/superturbo/`).
-- Earlier write-ups: `docs/anima/proposal/{superturbo,turbo_data_space,turbo_apex,turbo_dmad}.md`,
-  `docs/anima/findings/turbo_*.md`.
+- Older material: `_archive/turbo_dmad/` (the removed DMAD path), retired proposals under
+  `_archive/proposals/turbo_*`.
 
 ## Runs
 
@@ -54,4 +71,4 @@ The shipped base-teacher turbo (`huggingface.co/sorryhyun/anima-turbo-4step`) is
 The 2-step line (superturbo, `dpdmd.rollout_grad`) is closed at the level of `1111_1115` step 250.
 Every noise-lowering route (`dm_draws`, `grad_accum`, checkpoint averages) landed on that level.
 The 4-step line is in the same batch-1 random-walk regime (`reports/arm0.md`). Arm 0's training
-is done; its render read is next.
+is done. The control's render read is in; the twin's renders are queued.
