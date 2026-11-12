@@ -1,4 +1,4 @@
-# Arm 0 control (scripts/distill_turbo/plan.md): the 4-step recipe on the merged14 teacher.
+# Arm 0 control (project/anima_turbo/plan.md): the 4-step recipe on the merged14 teacher.
 # anima_turbo_m14_dpdmd_svd_500_tafake with 250 iterations, constant LR + EMA 0.2 (50 updates),
 # save every 125. Its null twin is 1112_0834 (seed 43, nothing else changed).
 dit_path = "models/diffusion_models/anima_merged14_int8_gptq.safetensors"

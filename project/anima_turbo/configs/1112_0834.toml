@@ -1,4 +1,4 @@
-# Arm 0 null twin (scripts/distill_turbo/plan.md): 1112_0833 with seed 43, nothing else changed.
+# Arm 0 null twin (project/anima_turbo/plan.md): 1112_0833 with seed 43, nothing else changed.
 dit_path = "models/diffusion_models/anima_merged14_int8_gptq.safetensors"
 dit_nonquant_path = "models/diffusion_models/anima_merged14.safetensors"
 data_dir = "post_image_dataset/lora"

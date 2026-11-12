@@ -1,4 +1,4 @@
-# GAN-off probe (scripts/distill_turbo/plan.md): 1112_0833 with gan.weight_gen = 0, nothing else changed.
+# GAN-off probe (project/anima_turbo/plan.md): 1112_0833 with gan.weight_gen = 0, nothing else changed.
 # Measurement only (no render read): consecutive-move cos 0-125 vs 125-250 and |ΔW| 125 / 250.
 # GAN causes the walk if cos is clearly above control 0.018 (>= 0.1) and |ΔW|_250 clearly above sqrt(2)·|ΔW|_125.
 dit_path = "models/diffusion_models/anima_merged14_int8_gptq.safetensors"
