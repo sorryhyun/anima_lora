@@ -118,7 +118,7 @@ checkpoint wrapper를 지울 때는 출력과 함께 저장 텐서 크기도 비
 
 ### int8 base
 
-block GEMM을 GPTQ로 양자화한 int8로 돌리면 bf16 593 ms → int8 433 ms(1.37배)
+block GEMM을 GPTQ(Frantar et al. 2022, arXiv 2210.17323)로 양자화한 int8로 돌리면 bf16 593 ms → int8 433 ms(1.37배)
 이고, 최종 loss는 0.0737로 같다(106장, 848 step). backward용 전치 가중치 사본을 host에 두고 필요할 때 올리면, card에
 둘 때보다 peak가 1.4 GB 낮다(12.38 → 10.96 GB). 자세한 내용은 3장에서 다룬다.
 
@@ -143,7 +143,7 @@ LoRA, int8 base, fp32 stream, budget 0.99, 106 step:
 
 ### gradient checkpointing
 
-gradient checkpointing은 step time을 약 18% 늘렸다. 그래서 마지막에 쓴다.
+gradient checkpointing(Chen et al. 2016, arXiv 1604.06174)은 step time을 약 18% 늘렸다. 그래서 마지막에 쓴다.
 
 ### 실측 peak
 
@@ -156,19 +156,19 @@ gradient checkpointing은 step time을 약 18% 늘렸다. 그래서 마지막에
 
 ### optimizer: fused AdamW
 
-AdamW를 fused 커널로 쓴다. bitsandbytes `AdamW8bit`는 파라미터 블록마다
+AdamW(Loshchilov & Hutter 2017, arXiv 1711.05101)를 fused 커널로 쓴다. bitsandbytes `AdamW8bit`는 파라미터 블록마다
 커널을 하나씩 띄워 optimizer 구간에서 GPU 사용률이 88%로 떨어졌다. 한 step 1.17 s 중 308 ms가 optimizer였고, fused
 AdamW로 바꾸자 0.86 s가 됐다(RTX 5060 Ti). 대가는 optimizer state 약 180 MB다(rank 32 LoRA, 약 30M 파라미터).
 
 ### FlashAttention-2의 fp16 누적 backward
 
-FlashAttention-2의 backward를 fp16 누적으로 바꾼 빌드에서, fp16 누적 backward는 step
+FlashAttention-2(Dao 2023, arXiv 2307.08691)의 backward를 fp16 누적으로 바꾼 빌드에서, fp16 누적 backward는 step
 time을 5.1%, fp16 입력은 3.1% 줄인다(RTX 50). peak VRAM은 같다.
 
 ### fp16 GEMM
 
 같은 카드에서 fp32 누적 fp16 GEMM은 bf16과 속도가 같고(약 102 TFLOPS), fp16 누적만 1.6배 빠르다. 그래도 int8
-GEMM(약 330 TFLOPS)보다 느리고, backward에는 loss scaling이 2^20 근처로
+GEMM(약 330 TFLOPS)보다 느리고, backward에는 loss scaling(Micikevicius et al. 2017, arXiv 1710.03740)이 2^20 근처로
 필요하다. 그래서 학습 GEMM은 bf16 또는 int8로 돌린다.
 
 ---
@@ -182,10 +182,10 @@ GEMM(약 330 TFLOPS)보다 느리고, backward에는 loss scaling이 2^20 근처
 
 | 기법 | 내용 |
 |---|---|
-| Spectrum | Chebyshev 다항식으로 feature를 예측해, 캐시된 step에서는 블록을 모두 건너뛴다 |
-| CNS | SDE sampler가 넣는 noise를 아직 해상되지 않은 주파수 대역으로 재분배한다. ER-SDE 같은 SDE sampler에서만 작동하고, euler에서는 효과가 없다 |
-| mod-guidance | 학습한 pooled text projection으로 AdaLN modulation을 조절한다. 전역 톤만 바꾸는 레버다 |
-| DAVE | 같은 프롬프트에서 seed 간 다양성을 회복한다 |
+| Spectrum (Han et al. 2026, arXiv 2603.01623) | Chebyshev 다항식으로 feature를 예측해, 캐시된 step에서는 블록을 모두 건너뛴다 |
+| CNS (Davidson et al. 2026, arXiv 2605.30332) | SDE sampler가 넣는 noise를 아직 해상되지 않은 주파수 대역으로 재분배한다. ER-SDE(Cui et al. 2023, arXiv 2309.06169) 같은 SDE sampler에서만 작동하고, euler에서는 효과가 없다 |
+| mod-guidance (Starodubcev et al. 2026, arXiv 2602.09268) | 학습한 pooled text projection으로 AdaLN modulation을 조절한다. 전역 톤만 바꾸는 레버다 |
+| DAVE (Kwon et al. 2026, arXiv 2606.06813) | 같은 프롬프트에서 seed 간 다양성을 회복한다 |
 
 ### turbo LoRA 추론
 
