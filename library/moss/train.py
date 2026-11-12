@@ -127,11 +127,48 @@ def _teacher_fn(transformer, weights, embeds, mix, attached):
     return teach
 
 
+def _ensure_teachers(req: TrainRequest, cache_dir: Path) -> None:
+    """Build the distill teacher files a cache lacks (missing, or older than their TE
+    file) before the DiT loads, on the TE weights the cache was encoded with.
+    ``cache_teachers`` re-encodes only files whose stamp changed."""
+    from library.moss.scan import (
+        VIS_SUFFIX,
+        cache_text_encoder,
+        header_metadata,
+        stale_teachers,
+    )
+
+    n = stale_teachers(cache_dir)
+    if not n:
+        return
+    from library.moss.distill import cache_teachers
+    from library.moss.requests import DistillCacheRequest
+
+    encoder = cache_text_encoder(cache_dir)
+    # keep the tail of the teacher files already there (DistillCacheRequest default: off)
+    vis = next(cache_dir.glob(f"*{VIS_SUFFIX}"), None)
+    tail = header_metadata(vis).get("prompt_tail", "off") if vis else "off"
+    print(
+        f"distill: {n} teacher files missing or stale; encoding ({encoder} TE, tail {tail})",
+        flush=True,
+    )
+    cache_teachers(
+        DistillCacheRequest(
+            cache=str(cache_dir),
+            text_encoder=encoder,
+            tail=tail,
+            model_dir=req.model_dir,
+        )
+    )
+
+
 def run_train(req: TrainRequest) -> Path:
     cache_dir = resolve_under_home(req.cache)
     samples = samples_from_cache(cache_dir)
     if not samples:
         raise SystemExit(f"no cached pairs under {cache_dir}")
+    if req.distill != "off":
+        _ensure_teachers(req, cache_dir)
     empty = None
     if req.caption_dropout > 0:
         empty = empty_prompt_embeds(req, cache_prompt_tail(samples))

@@ -120,3 +120,40 @@ def test_teacher_add_keeps_flow_and_balances():
     fm, t = F.mse_loss(pred, flow), F.mse_loss(pred, torch.ones_like(pred))
     assert torch.allclose(loss, fm + (fm / t).sqrt() * t)
     assert abs(parts["t"] - t.item()) < 1e-6 and abs(parts["fm"] - fm.item()) < 1e-6
+
+
+def test_train_builds_missing_teachers_on_the_cache_te(tmp_path, monkeypatch):
+    """``run_train``'s pre-check: missing teacher files are encoded before the DiT
+    loads, on the TE weights the cache stamps and the tail of the teachers already
+    there; a cache whose teachers are all current is left alone."""
+    import os
+
+    from safetensors.torch import save_file
+
+    import library.moss.distill as distill
+    from library.moss import train as T
+    from library.moss.requests import TrainRequest
+
+    x = {"x": torch.zeros(1)}
+    for stem in ("a", "b"):
+        save_file(x, str(tmp_path / f"{stem}_32x32.moss_latent.safetensors"))
+        save_file(
+            x,
+            str(tmp_path / f"{stem}.moss_te.safetensors"),
+            metadata={"encoder": "Qwen3.5-9B, fp8 weights"},
+        )
+    vis_a = tmp_path / "a.moss_vis.safetensors"
+    save_file(x, str(vis_a), metadata={"prompt_tail": "sure"})
+    calls = []
+    monkeypatch.setattr(distill, "cache_teachers", lambda r: calls.append(r))
+    req = TrainRequest(cache=str(tmp_path), distill="ema")
+
+    T._ensure_teachers(req, tmp_path)
+    assert [(r.text_encoder, r.tail) for r in calls] == [("fp8", "sure")]
+
+    save_file(x, str(tmp_path / "b.moss_vis.safetensors"))
+    now = os.stat(tmp_path / "b.moss_te.safetensors").st_mtime + 1
+    for v in (vis_a, tmp_path / "b.moss_vis.safetensors"):
+        os.utime(v, (now, now))
+    T._ensure_teachers(req, tmp_path)
+    assert len(calls) == 1

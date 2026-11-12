@@ -177,6 +177,16 @@ def stale_teachers(cache: Path) -> int:
     return n
 
 
+def cache_text_encoder(cache: Path) -> str:
+    """The TE weights a cache was encoded with (its ``encoder`` stamp), int8 when
+    no TE file is there yet."""
+    te = next(cache.glob(f"*{TE_SUFFIX}"), None) if cache.is_dir() else None
+    if te is None:
+        return "int8"
+    stamp = header_metadata(te).get("encoder", "")
+    return next((p for p in ("int8", "fp8") if stamp.endswith(f"{p} weights")), "bf16")
+
+
 def cache_counts(cache: Path) -> CacheCounts:
     return _cache_counts(
         cache, TE_SUFFIX, lambda d: (stem for stem, *_ in latent_files(d))

@@ -25,7 +25,12 @@ from library.moss.requests import (
     resolve_model_dir,
     variant_dir,
 )
-from library.moss.scan import cache_counts, header_metadata, scan, stale_teachers
+from library.moss.scan import (
+    cache_counts,
+    cache_text_encoder,
+    scan,
+    stale_teachers,
+)
 
 
 def _extra_pages(panel) -> list:
@@ -40,17 +45,6 @@ def _setup_forms(train, test) -> None:
     model_items(test, generate_plans(), "model_help_test")
 
 
-def _cache_encoder(cache: str) -> str:
-    """The TE weights a cache was encoded with (its ``encoder`` stamp), int8 when
-    no TE file is there yet."""
-    folder = resolve_under_home(cache)
-    te = next(folder.glob("*.moss_te.safetensors"), None) if folder.is_dir() else None
-    if te is None:
-        return "int8"
-    stamp = header_metadata(te).get("encoder", "")
-    return next((p for p in ("int8", "fp8") if stamp.endswith(f"{p} weights")), "bf16")
-
-
 def _before_train(req: TrainRequest, cache_req: CacheRequest | None) -> list[LineJob]:
     """With distill on, the teacher embeds first when any is missing or older than
     its TE file, unless the chain's preprocessing writes them (distill_teacher)."""
@@ -61,7 +55,9 @@ def _before_train(req: TrainRequest, cache_req: CacheRequest | None) -> list[Lin
     teacher = DistillCacheRequest(
         cache=req.cache,
         text_encoder=(
-            cache_req.text_encoder if cache_req else _cache_encoder(req.cache)
+            cache_req.text_encoder
+            if cache_req
+            else cache_text_encoder(resolve_under_home(req.cache))
         ),
         model_dir=req.model_dir,
     )
