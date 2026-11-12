@@ -98,11 +98,40 @@ EMA 250, avg2, raw 250, EMA 125. Columns are seeds 1–4.
 - **No student reaches the teacher's composition.** The teacher draws the jump from below and the
   tumbling slapstick group. The students draw frontal standing poses on every seed. The teacher
   spells `CAFE MILLENNIUM`; the students garble it.
-- One run, so this is not yet a reading above the noise floor. The twin's grids decide whether
-  "125 beats 250" is the recipe or the seed.
+## Renders, control against twin: the noise floor
 
-## For the GAN-off probe `1112_0917`
+Grids: `output/tests/turbo4/cmp/arm0_{ba5,cafe,bocchi}.jpg`. Rows are teacher, control EMA 125,
+twin EMA 125, control EMA 250, twin EMA 250, twin raw 250.
 
-Its criterion (GAN drives the walk if consecutive-move cos ≥ 0.1 and |ΔW|₂₅₀ clearly above
-√2 · |ΔW|₁₂₅) now has a two-run reference: move cos 0.018 / 0.028, |ΔW|₂₅₀ / (√2 · |ΔW|₁₂₅) 0.996 /
-0.995.
+- **The control's "250 more uniform than 125" is its seed.** The twin's EMA 250 sits at its EMA 125
+  level: the aprons still vary (blue, white, lilac), the sky and halos stay on the five-girl
+  prompt, and the stage keeps its lights. The twin's raw 250 is over-saturated with soft crowd heads
+  and is not collapsed.
+- **The render noise floor is large.** Between the two seeds, palette, apron colour, background
+  density and sign legibility all change about as much as they change between 125 and 250 of one
+  run. The twin's EMA 125 spells `CAFE MILLENNIUM` on seed 1, while the control's EMA 125 does not
+  spell it on any seed. An arm has to beat differences of this size to pass.
+- **Composition is shared by both seeds, so it comes from the objective, not the seed.** Both runs draw
+  frontal standing figures on every seed. Neither draws the teacher's jump from below or the
+  tumbling group. An arm that moves composition shows above this floor; one that moves palette or
+  sharpness does not.
+
+## GAN-off probe `1112_0917`: GAN does not drive the walk
+
+The control with `gan.weight_gen = 0`, seed 42 (config `../configs/1112_0917.toml`). The criterion
+was fixed before the run: GAN drives the walk if consecutive-move cos ≥ 0.1 and |ΔW|₂₅₀ clearly
+exceeds √2 · |ΔW|₁₂₅.
+
+| | control | twin | GAN off |
+|---|---|---|---|
+| \|ΔW\| raw 125 / 250 | 7.34 / 10.33 | 7.49 / 10.54 | 7.38 / 10.27 |
+| \|ΔW\|₂₅₀ / (√2 · \|ΔW\|₁₂₅) | 0.996 | 0.995 | 0.985 |
+| cos(move 0–125, move 125–250) | 0.018 | 0.028 | 0.016 |
+
+- **Verdict: GAN is not the cause.** The walk without GAN is the same walk. GAN stays in the recipe.
+- **The GAN-off run still spikes, but less.** `gn_student` above 20 at steps 14–16 (43 / **133** /
+  38), 37, 39 and 169 (49), with no divergence. The control's burst (244, with `gn_disc` up to 7)
+  was the largest of the three runs. That is one run per arm, so whether GAN enlarges bursts is
+  open.
+- cos(GAN-off EMA 250, control EMA 250) = 0.136, above the 0.10 of the reseed pair. The two runs
+  share seed and data order, which fits the 0.14 of the earlier same-seed pair.
