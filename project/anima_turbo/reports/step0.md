@@ -181,11 +181,16 @@ minus the 0.017 control–twin gap) and `P>S@1` above S-b by more than 0.05 on b
 | `P>S@1`, S-b (draws 1) | 0.472 | 0.543 | 0.157 |
 | `S` | 0.455 | 0.537 | |
 
-- **Fails both conditions.** MSE 0.147 against the 0.140 line; `P>S@1` +0.011 / +0.026 over S-b
-  against +0.05. The direction is right on every number and every prompt, and small.
-- Four times the samples per update bought 0.010 of anchor MSE, and the training curve tracks S-b
-  from the second fifth on. The step-0 regression is not held back by its draw noise; it sits near
-  a floor at this rank and length.
+- **A small, consistent gain.** Every paired number favours S-c.2: anchor MSE per prompt 0.078 / 0.140
+  / 0.253 → 0.074 / 0.132 / 0.235, `P>S@1` per prompt 0.555 / 0.516 / 0.345 → 0.565 / 0.523 / 0.361
+  (twin) and 0.638 / 0.520 / 0.472 → 0.645 / 0.556 / 0.505 (control). The probe pairs each image with
+  the teacher's on the same noise, so these differences do not carry the render seed floor. Under
+  the repo's gate rule (every metric favours the arm → it passes, however small) this is a pass;
+  the config header's size thresholds (MSE < 0.140, +0.05) were not met, and they should not have
+  been the gate. No renders: a step-0 LoRA alone does not render.
+- The gain is small for its cost: 5–10 % of the distance to `A>S@1`, at about 1.6 s per extra draw.
+  Four times the samples per update bought 0.010 of anchor MSE, and the training curve tracks S-b
+  from the second fifth on. Draw noise is a minor part of the step-0 limit, not the main part.
 - **S-c.3 is already measured.** A step-0-only adapter trained on the anchor is what S-b and S-c.2 are:
   their LoRA only ever sees σ 1, and `P>S@1` uses it for step 0 alone. Building it as a separate
   adapter would rerun S-b at the cost of the one-LoRA ship.
