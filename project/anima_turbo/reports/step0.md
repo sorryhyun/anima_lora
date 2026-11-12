@@ -200,11 +200,91 @@ minus the 0.017 control–twin gap) and `P>S@1` above S-b by more than 0.05 on b
   their LoRA only ever sees σ 1, and `P>S@1` uses it for step 0 alone. Building it as a separate
   adapter would rerun S-b at the cost of the one-LoRA ship.
 
+## Length: the 500-iteration students (probe only)
+
+Every arm above ran 250 iterations. The two 4-step students of 2026-11-10
+(`anima_turbo_m14_dpdmd_svd_500` and `..._tafake`: same teacher, same anchor settings, LR 5e-5, the
+joint recipe at `div_weight 0.1`) ran 500. Probe: `bench/turbo/results/20261112-1329-handoff_m14_500/`
+(job `20261112-132721-ab44f2`, `T>S@1` / `A>S@1` / `S` only).
+
+| | held-out anchor MSE (group / café / guitarist) | `S` | `A>S@1` | `T>S@1` | `A>S@1` − `S` |
+|---|---|---|---|---|---|
+| teacher, cond only, no LoRA | 0.171 (0.097 / 0.135 / 0.281) | | | | |
+| arm 0 control EMA 125 | 0.180 (0.081 / 0.128 / 0.330) | 0.537 | 0.729 | 0.803 | 0.19 |
+| arm 0 twin EMA 250 | 0.163 (0.090 / 0.134 / 0.264) | 0.455 | 0.672 | 0.695 | 0.22 |
+| S-c.2 EMA 250 (anchor alone, draws 4) | 0.147 (0.074 / 0.132 / 0.235) | | | | |
+| `m14_dpdmd_svd_500` | **0.118** (0.074 / 0.103 / 0.177) | 0.562 | 0.688 | 0.737 | 0.13 |
+| `m14_dpdmd_svd_500_tafake` | **0.109** (0.073 / 0.098 / 0.156) | 0.492 | 0.637 | 0.697 | 0.15 |
+
+- **500 iterations get past the instantaneous level.** Both students sit at 0.11–0.12, below every
+  250-iteration LoRA (0.147–0.182) and the untrained level (0.171). Twice the length moved the MSE
+  about five times as far as four draws did, inside the joint recipe.
+- **The gap to the anchor ceiling shrinks with it**, from 0.19–0.22 to 0.13–0.15.
+- **Renders move partly** (`_tafake`, guitarist grid, Claude's read on 320 px cells): the student
+  alone has crowd hands in the foreground and a lower angle; the figure still fills the frame.
+- **Confound.** Those runs used the cosine LR (the constant schedule came on 2026-11-11), are raw
+  finals with no EMA, and share one seed. Length and the anneal are not separated.
+- So S-b's "every trained step 0 sits at the teacher's instantaneous velocity" holds at 250
+  iterations only. S-b2 showed that 4× the LR is too large a step for the noise; it did not test
+  more steps at 5e-5, and S-b's training loss was still falling at 250.
+
+## Length against the LR: `1112_1336`, `1112_1410`
+
+`1112_1336` (`configs/1112_1336.toml`): S-b resumed to 1000 iterations on the constant LR, one ε per
+iteration, EMA span kept at 50 updates. Its bundle is from step 125, so its 250 checkpoint is a
+replicate of S-b's. 1.8 s per iteration. `1112_1410` (`configs/1112_1410.toml`): `1112_1336` resumed
+from its step-750 bundle to 1000 with `lr_schedule cosine`, so only the last 250 iterations differ
+(about 1.2e-5 falling to 5e-6 instead of 5e-5).
+
+Training `div_loss` of `1112_1336` per 125 iterations from 125 on: 0.141 / 0.149 / 0.149 / 0.149 /
+0.152 / 0.140 / 0.140. Pre-clip norm 6.8 → 4.9.
+
+Probes: `bench/turbo/results/20261112-1405-handoff_sblong_mse/` (the four EMAs),
+`20261112-1408-handoff_step0lora_sblong1k/`, `20261112-1420-handoff_step0lora_anneal/`,
+`20261112-1425-handoff_step0lora_avg3/`.
+
+| Step-0 LoRA | held-out anchor MSE (group / café / guitarist) | `P>S@1` twin EMA 250 | `P>S@1` control EMA 125 |
+|---|---|---|---|
+| S-b EMA 250 | 0.157 (0.078 / 0.140 / 0.253) | 0.472 | 0.543 |
+| S-c.2 EMA 250 (draws 4) | 0.147 (0.074 / 0.132 / 0.235) | 0.483 | 0.569 |
+| `1112_1336` EMA 250 | 0.165 (0.081 / 0.125 / 0.289) | | |
+| `1112_1336` EMA 500 | 0.143 (0.080 / 0.146 / 0.204) | | |
+| `1112_1336` EMA 750 | 0.155 (0.081 / 0.132 / 0.252) | | |
+| `1112_1336` EMA 1k | 0.140 (0.072 / 0.128 / 0.220) | 0.481 (0.579 / 0.518 / 0.344) | 0.576 (0.671 / 0.590 / 0.466) |
+| exact average of raw 500 / 750 / 1k | 0.156 (0.078 / 0.134 / 0.255) | 0.470 | 0.561 |
+| `1112_1410` raw 1k (annealed tail) | **0.123** (0.081 / 0.109 / 0.178) | | |
+| `1112_1410` EMA 1k (annealed tail) | **0.127** (0.080 / 0.113 / 0.188) | 0.495 (0.550 / 0.562 / 0.374) | 0.587 (0.616 / 0.623 / 0.521) |
+| `A>S@1` (anchor target) | 0 | 0.672 | 0.729 |
+| `S` (the students' own step 0) | 0.163 / 0.180 | 0.455 | 0.537 |
+
+- **Length on the constant LR is not the lever.** The EMA's held-out MSE does not fall at each save
+  (0.165 / 0.143 / 0.155 / 0.140) and the training loss is flat from 125 on. The 250 replicate reads
+  0.165 against S-b's 0.157, so differences of 0.01 between saves are run noise. By the rule fixed
+  in the config header this is not "length".
+- **1000 pairs land in one place however they are spent.** 1000 iterations at one draw (0.140,
+  `P>S@1` 0.481 / 0.576) and 250 iterations at four draws (0.147, 0.483 / 0.569) agree.
+- **The anneal is what the 500-iteration students had.** Lowering the LR over the last 250
+  iterations takes the MSE to 0.123 (raw) / 0.127 (EMA) from the same step-750 state that reaches
+  0.140 at the constant LR. The cosine students sit at 0.109–0.118. On the constant LR the weights
+  stay at a level the LR sets: S-b2 at 2e-4 reads 0.277, 5e-5 reads 0.14–0.16, the annealed runs
+  0.11–0.13.
+- **Averaging does not replace it.** The exact average of the raw 500 / 750 / 1k checkpoints reads
+  0.156, no better than its members. Three points 250 iterations apart are a coarse stand-in for a
+  long EMA.
+- **0.12 does not give the layout.** `P>S@1` of the annealed step 0 is +0.04 / +0.05 over `S` and
+  0.14–0.18 under `A>S@1`. Against the constant-LR 1k it is +0.011 / +0.014 in the mean and mixed
+  per prompt (café and guitarist up, group down). The guitarist grid of the constant-LR 1k
+  (`20261112-1408-.../1112_0833_125_ema_p2.jpg`, Claude's read on 320 px cells) shows `P>S@1` as the
+  same large frontal figure as `S`; the annealed grid was not opened.
+- Not read: the cosine between consecutive 250-step moves of `1112_1336`, which its header listed.
+
 ## Where this leaves step 0
 
-- The anchor target is the right one (S-a). The trained step 0 does not reach it: alone or in the
-  recipe, at either LR, it stays at the teacher's own instantaneous velocity or farther.
-- Neither the competition with the DM terms (S-b) nor the LR (S-b2) is the lever.
-- S-c candidates (`plan.md`): step 0 also takes the DM signal with the anchor kept as the diversity
-  term (`dm_first_step` on), first; lowering the anchor's draw noise (several noises per iteration)
-  second; a step-0-only adapter last, since it breaks the one-LoRA ship.
+- The anchor target is the right one (S-a).
+- The regression's fit is set by the LR at the end of training, not by its length, its draws, the
+  competing terms or an average of checkpoints. An annealed LR reaches a held-out anchor MSE of
+  0.11–0.13; a constant 5e-5 stays at 0.14–0.18.
+- At 0.12 the trained step 0 still draws the students' own layout. The regression has not been
+  taken lower, and nothing here says how low it has to go.
+- The one change that moved composition in the renders is the DM signal on step 0 (S-c.1), at a
+  cost in diversity.

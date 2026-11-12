@@ -1,6 +1,6 @@
 # Arm 0: control `1112_0833` and null twin `1112_0834` (2026-11-12)
 
-The recipe in `../plan.md`, 4-step, 250 iterations, constant LR 5e-5, EMA window 0.2, save every
+The baseline in `../1112_v1.md`, 4-step, 250 iterations, constant LR 5e-5, EMA window 0.2, save every
 125. The twin differs in `seed` only (43 against 42). Configs: `../configs/1112_083{3,4}.toml`.
 Each run took about 27 min at 5.7–5.8 s/iteration after a 200-step fake warmup. Logs:
 `output/logs/turbo/20261112-083405/` (control) and `20261112-090127/` (twin).

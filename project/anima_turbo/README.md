@@ -12,10 +12,15 @@ The shipped base-teacher turbo (`huggingface.co/sorryhyun/anima-turbo-4step`) is
 
 ## Layout
 
-- [plan.md](plan.md): the open plan. It covers the fixed 4-step recipe, the A/B protocol (250 it,
-  EMA 0.2, one null twin, renders on `bench/turbo/judge_hard.txt` beside the teacher, the handoff
-  probe), the gradient norm section, where the layout is lost and the arm order (step-0 arms
-  first). The closed 2-step plan and its results are that file at commit
+- [1112_v1.md](1112_v1.md): the setup for the first 1000-iteration run. It lists the four changes
+  against arm 0's control with the evidence for each, the read fixed for the run, what is kept,
+  what is left out and the placeholders after it.
+- [idea.md](idea.md): candidates for after the v1 run that are not arms yet: the anchor's weight
+  against the DM signal on step 0, high-σ DM queries on step 0, a 2-step handoff probe,
+  low-frequency weighting of the anchor loss, a lower-resolution anchor, DAVE at inference.
+- [plan.md](plan.md): the open plan. It covers the A/B protocol (250 it, EMA 0.2, the null twin,
+  renders on `bench/turbo/judge_hard.txt` beside the teacher, the handoff probe), the v1 run and
+  the arms not yet run. The closed 2-step plan and its results are
   `91d476e0:scripts/distill_turbo/plan.md`.
 - [configs/](configs/): one TOML per run, named by its run id (`mmdd_hhmm`). Launch with
   `make turbo ARGS="--config project/anima_turbo/configs/<id>.toml --queue"`.
@@ -28,6 +33,13 @@ The shipped base-teacher turbo (`huggingface.co/sorryhyun/anima-turbo-4step`) is
     students. Step 0 (σ 1 → 0.9) is the largest single loss of the teacher's layout; with the
     teacher drawing step 0 the student's steps 1–3 keep the view from below. Render read by Claude,
     the user's read pending.
+  - [step0.md](reports/step0.md): the step-0 arms. The anchor target is right (S-a). At 250
+    iterations no trained step 0 gets past the teacher's instantaneous velocity (S-b, S-b2, S-c.1),
+    and four anchor draws buy a small gain (S-c.2). The fit follows the LR at the end of training
+    and not the length (`1112_1336`, `1112_1410`); at a held-out MSE of 0.12 the layout is still
+    the students' own.
+  - [walk.md](reports/walk.md): the measurements taken before arm 0. It holds what the 2-step line
+    measured (the batch-1 random walk), the 4-step ΔW overlap and the 2-step gradient norms.
   - [mfd.md](reports/mfd.md): MFD in the DM slot (2-step 100 / 500-step arms, 2026-11-04) and the
     anchor-free MFD collapse (4-step m14, 2026-11-10).
 - [vatdm.md](vatdm.md): VA-TDM (arXiv:2611.06796) against the loop and MFD; idea 1 is
@@ -69,21 +81,24 @@ The shipped base-teacher turbo (`huggingface.co/sorryhyun/anima-turbo-4step`) is
 
 | Id | Arm | Change against control | State |
 |---|---|---|---|
-| `1112_0833` | 0, control | the recipe in `plan.md`, seed 42 | done, rendered |
+| `1112_0833` | 0, control | the baseline in `1112_v1.md`, seed 42 | done, rendered |
 | `1112_0834` | 0, null twin | seed 43 | done, rendered |
 | `1112_0917` | GAN-off probe (measurement only) | `gan.weight_gen = 0` | done: GAN is not the walk |
 | `1112_1044` | S-b, anchor alone | `dpdmd.anchor_only`, no CDM / GAN / fake warmup | done: step 0 at the teacher's instantaneous level (`reports/step0.md`) |
 | `1112_1110` | S-b2 | `1112_1044` at student LR 2e-4 | done: worse. User's read: 2e-4 steps are too large for the noise, 5e-5 steps too small to get past the instantaneous level in 250 it |
 | `1112_1143` | S-c.1 | `dpdmd.dm_first_step` on (anchor kept) | done: probe `S` 0.445 / 0.441 (EMA 250 / 125), at the twin's level; guitarist pose moves to the jump, camera does not; raw 250 broken (`reports/step0.md`). User's read: improved, less diverse |
 | `1112_1230` | S-c.2 probe | S-b + `dpdmd.anchor_draws 4` | done: small consistent gain, every paired number favours it (anchor MSE 0.157 → 0.147, `P>S@1` +0.01 / +0.03); passes by the repo gate rule, size thresholds in its header not met (`reports/step0.md`) |
+| `1112_1336` | S-b long | S-b resumed (from step 125) to 1000 iterations, EMA span kept at 50 updates | done: held-out anchor MSE 0.165 / 0.143 / 0.155 / 0.140 at 250 / 500 / 750 / 1k, flat; length on the constant LR is not the lever (`reports/step0.md`) |
+| `1112_1410` | S-b long, annealed tail | `1112_1336` from step 750 with `lr_schedule cosine` | done: 0.123 raw / 0.127 EMA; the anneal is what the 500-iteration students had. `P>S@1` 0.495 / 0.587, the layout does not come with it |
 
 ## State (2026-11-12)
 
 The 2-step line (superturbo, `dpdmd.rollout_grad`) is closed at the level of `1111_1115` step 250.
-Every noise-lowering route (`dm_draws`, `grad_accum`, checkpoint averages) landed on that level.
-The 4-step line is in the same batch-1 random-walk regime (`reports/arm0.md`). Arm 0 and the
-GAN-off probe are done and read (`reports/arm0.md`). The handoff probe (`reports/handoff.md`) puts
-the largest loss of the teacher's layout in step 0, which no DM arm reaches. Step-0 arms
-(`reports/step0.md`): the anchor target is right (S-a), but no trained step 0 gets past the teacher's
-instantaneous velocity, alone (S-b) or at a higher LR (S-b2). Next: S-c in `plan.md`, step 0 also
-taking the DM signal (`dm_first_step` on), before arm 1 (MFD).
+The 4-step line is in the same batch-1 random-walk regime (`reports/arm0.md`). The handoff probe
+(`reports/handoff.md`) puts the largest loss of the teacher's layout in step 0, which no DM arm
+reaches. Step-0 work (`reports/step0.md`): the anchor target is right (S-a). The fit of the step-0
+regression follows the LR at the end of training (held-out anchor MSE 0.11–0.13 annealed, 0.14–0.18
+at a constant 5e-5), not the length, the draws or the competing terms. At 0.12 the trained step 0
+still draws the students' own layout. The DM signal on step 0 (S-c.1) is the one change that moved
+composition in the renders, at a cost in diversity. Next: the first 1000-iteration run on the setup
+in `1112_v1.md` (cosine LR, EMA span in summed LR, `dm_first_step` on).

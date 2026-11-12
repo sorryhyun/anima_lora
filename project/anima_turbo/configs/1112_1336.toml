@@ -1,0 +1,108 @@
+# S-b long (1112_1336): S-b 1112_1044 resumed from its bundle to 1000 iterations. The bundle is
+# from step 125 (the final save writes none), so 125-250 is redrawn and this run's 250 is a
+# replicate of S-b's.
+# Launch with --resume output/ckpt/1112_1044/1112_1044_resume.pt. Nothing else changes: the anchor
+# regression alone, one ε per iteration, LR 5e-5 constant. EMA window 0.05 keeps S-b's 50-update
+# span (0.2 of 250); the shadow re-seeds at the resume step. Saves at 250 / 500 / 750 / 1000.
+# Asks whether step 0 is under-trained at 250: the two 500-iteration cosine students sit at a
+# held-out anchor MSE of 0.118 / 0.109 against 0.147-0.182 for every 250-iteration LoRA
+# (bench/turbo/results/20261112-1329-handoff_m14_500).
+# Read, fixed before the run: held-out anchor MSE of the EMA at 500 / 750 / 1000 (probe_handoff
+# --step0_lora) and the cosine between consecutive 250-step moves of the raw checkpoints.
+# Length is the lever if the MSE falls at each save and ends below S-c.2's 0.147; the lowest
+# checkpoint then warm-starts the recipe (student_init_weights). If 1000 is not below 500, the
+# 500-iteration level came from the cosine anneal and anchor draws go into the recipe instead.
+dit_path = "models/diffusion_models/anima_merged14_int8_gptq.safetensors"
+dit_nonquant_path = "models/diffusion_models/anima_merged14.safetensors"
+data_dir = "post_image_dataset/lora"
+output_dir = "output/ckpt"
+output_name = "1112_1336"
+
+iterations = 1000
+batch_size = 1
+seed = 42
+channel_scaling_alpha = 0.0
+compile_dynamic_seq = true
+dynamo_recompile_limit = 64
+activation_memory_budget = 0.99
+int8 = "stream"
+stream = "fp32"
+
+[network]
+student_rank = 64
+student_alpha = 180
+fake_rank = 64
+fake_alpha = 180
+attn_mode = "flash"
+student_down_init = "weight_svd"
+fake_down_init = "weight_svd"
+student_init_weights = ""
+fake_init_weights = ""
+train_adaln = true
+fake_adaln = true
+adaln_rank = 16
+adaln_alpha = 90
+fake_transition = true
+
+[dmd]
+student_steps = 4
+teacher_cfg = 4
+dynamic_schedule = true
+dm_x0_norm = true
+norm_floor = 0.05
+dm_draws = 1
+
+[cdm]
+weight = 0.0
+grad_ckpt = true
+
+[mfd]
+dtau = 0.0
+
+[optim]
+student_lr = 5e-5
+fake_lr = 5e-5
+fake_steps_per_student_step = 4
+fake_warmup_steps = 0
+grad_accum = 1
+weight_decay = 0.0
+grad_clip = 1.0
+lr_schedule = "constant"
+
+[ema]
+window = 0.05
+
+[dpdmd]
+k_anchor = 6
+teacher_anchor_steps = 12
+div_weight = 0.1
+detach_after_first = true
+dm_first_step = false
+rollout_grad = false
+anchor_only = true
+
+[sampling]
+t_distribution = "uniform"
+sigmoid_scale = 1.0
+flow_shift = 3.0
+
+[gan]
+weight_gen = 0.0
+feature_block_idx = -1
+disc_lr = 1e-5
+disc_hidden = 0
+disc_head = "token"
+delay_steps = 0
+warmup_steps = 0
+r1_weight = 0.0
+r1_alpha = 0.1
+use_same_t_noise = true
+grad_ckpt = true
+
+[io]
+save_every = 250
+log_interval = 5
+log_dir = "output/logs/turbo"
+validate_every_n_steps = 250
+val_diversity_seeds = 8
+val_prompt_idx = -1
