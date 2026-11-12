@@ -1,19 +1,17 @@
 # 2. LoRA soup과 merge: 여러 LoRA를 하나로
 
-> 초안 (2026-11-12). 숫자는 모두 인용한 경로에서 왔다. 이 문서를 쓰면서 CPU로 직접 잰 값은
-> **[측정]**으로 표시했다. 측정 스크립트는 저장소에 넣지 않았고, 쓴 명령은 본문에 적었다.
+> 초안 (2026-11-12). 이 문서를 쓰면서 CPU로 직접 잰 값은 **[측정]**으로 표시했다.
 
 **요약**
 
 - soup은 같은 설정으로 시드만 바꾼 LoRA 여러 개를 ΔW 수준에서 평균한 것이다. 한 번 학습한 LoRA의 ΔW는
   대부분 그 런에만 있는 성분이고, 평균하면 그 성분이 줄고 공통 성분이 남는다. 그래서 시드 운에 덜 흔들린다.
-- `merge_loras.py`는 서로 다른 LoRA(작가 shard 등)를 up/down 행렬을 이어 붙여(concat) 하나의 LoRA로 만든다.
+- merge는 서로 다른 LoRA(작가 shard 등)를 up/down 행렬을 이어 붙여(concat) 하나의 LoRA로 만든다.
   SVD로 자르지 않으므로 Σ w_i·ΔW_i가 정확히 보존되고, 대신 rank가 Σ r_i로 커진다.
-- turbo teacher인 `output/ckpt/anima_merged14.safetensors`는 91명 작가를 8개 shard로 나눠 shard마다 3-seed
-  soup(rank 32)을 만들고, 8개를 `merge_loras.py` 기본값(global normalize, adaln average)으로 이어 붙인
-  rank 256 LoRA다.
-- turbo를 배포할 때는 `--normalize off --adaln sum`으로 merged14와 turbo LoRA를 합친다. 기본값을 쓰면
-  ΔW14 + ΔT에서 35–50 % 벗어난다 **[측정]**.
+- turbo teacher인 merged14는 91명 작가를 8개 shard로 나눠 shard마다 3-seed soup(rank 32)을 만들고, 8개를
+  global normalize, adaln 평균으로 이어 붙인 rank 256 LoRA다.
+- turbo를 배포할 때는 normalize 없이, adaln도 더해서 merged14와 turbo LoRA를 합친다. global normalize와 adaln
+  평균으로 합치면 ΔW14 + ΔT에서 35–50 % 벗어난다 **[측정]**.
 
 ---
 
@@ -28,27 +26,24 @@
                       └─ merged14 ⊕ ΔT 를 exact merge → base에 올리는 LoRA 하나   ← 이 문서
 ```
 
-이 단계의 결과물은 아래 파일이다. 표의 값은 파일 메타데이터와 텐서 형상에서 읽었다 **[측정]**
-(`safetensors.safe_open`, CPU).
+이 단계의 결과물인 merged14의 값은 파일 메타데이터와 텐서 형상에서 읽었다 **[측정]**.
 
 | 항목 | 값 |
 |---|---|
-| 파일 | `output/ckpt/anima_merged14.safetensors` (871,765,200 bytes, 2026-11-07 21:19) |
-| `merge_kind` | `concat_exact` |
-| `normalize` / `normalize_global_scale` | `global` / `0.342427` |
-| `adaln_merge` | `average` |
-| `merge_weights` | `1.0` × 8 |
-| `merged_from` | shard 8, 7, 6, 5, 4, 2, 1, 3의 soup (`anima_soup_shard<k>of8_nouncond[_k<k-1>]`) |
-| 모듈 수 | 364 (일반 280, `adaln_modulation` 84) |
-| rank | 일반 모듈 256 (= 8 × 32), adaln 128 (= 8 × 16), 모든 모듈에서 `alpha = rank` |
+| 합친 방식 | concat_exact |
+| normalize / global scale | global / 0.342427 |
+| adaln 합치기 | 평균 |
+| 입력 가중치 | 1.0 × 8 |
+| 재료 | 8 shard soup |
+| 모듈 수 | 364 (일반 280, adaln modulation 84) |
+| rank | 일반 모듈 256 (= 8 × 32), adaln 128 (= 8 × 16), 모든 모듈에서 alpha = rank |
 
 ## 2.2 왜 soup인가
 
 ### 한 번의 학습은 시드 운을 탄다
 
-`bench/memorization/report.md` Act 5(2026-07-05)는 같은 레시피, 같은 init, 같은 데이터(`sincos`, 334장)에서
-학습 시드만 바꾼 세 런을 비교했다. 지표는 실제 미공개 작품과의 CMMD(PE-Core MMD², 낮을수록 좋음)이고,
-real-vs-real 노이즈 바닥은 0.155다.
+같은 레시피, 같은 init, 같은 데이터(334장)에서 학습 시드만 바꾼 세 런을 비교했다(2026-07-05). 지표는 실제
+미공개 작품과의 CMMD(PE-Core MMD², 낮을수록 좋음)이고, real-vs-real 노이즈 바닥은 0.155다.
 
 | 런 | CMMD |
 |---|---|
@@ -56,18 +51,13 @@ real-vs-real 노이즈 바닥은 0.155다.
 | 세 런의 rank-16 SVD soup | **0.469** |
 
 s1002는 plain LoRA만큼 나쁜데, membership AUC(0.88)로는 드러나지 않았다. soup은 나쁜 시드가 1/3 섞여
-있어도 가장 좋은 재료와 노이즈 바닥 안에서 같았다(`docs/anima/experimental/soup.md` § What the bench found).
-같은 문서에 따르면 soup은 **암기(memorization) 대책이 아니다**. soup의 AUC는 재료들의 평균이 아니라
-최댓값 근처에 있다.
+있어도 가장 좋은 재료와 노이즈 바닥 안에서 같았다. soup은 **암기(memorization) 대책이 아니다**. soup의 AUC는
+재료들의 평균이 아니라 최댓값 근처에 있다.
 
 ### ΔW 대부분은 그 런에만 있다
 
-같은 설정을 두 번 돌리면 ΔW 코사인 중앙값이 0.146(bs1, 5e-5)이고, GA2 1e-4에서는 0.115다
-(`docs/anima/findings/lora_recipe.md` § Traps). merged14 재료로 다시 재 보면 더 낮다 **[측정]**:
-
-```bash
-.venv/bin/python -m scripts.soup.dw_cos output/ckpt/merged14/anima_soup_shard1of8_nouncond_s100{1,2,3}.safetensors
-```
+같은 설정을 두 번 돌리면 ΔW 코사인 중앙값이 0.146(bs1, 5e-5)이고, GA2 1e-4에서는 0.115다.
+merged14 재료로 다시 재 보면 더 낮다 **[측정]**:
 
 | 재료 세트 | 레시피 | 에너지 비중 | 쌍별 full-sum cos |
 |---|---|---|---|
@@ -87,21 +77,18 @@ $$
 9.839² + 7.694² ≈ 156.0이고 재료 평균은 406.1이므로 비율은 0.384다. c ≈ 0.085로 계산한 (1 + 2c)/3 ≈ 0.39와
 맞는다 **[측정]**. soup은 rank 32로 잘린 파일이라 정확히 같지는 않다(아래 retained energy 참고).
 
-주의할 점이 하나 있다. 채널 스케일링(기본 on)의 dead channel에서 `lora_down` 컬럼이 무작위로 떠돌아,
-676-update soup shard에서는 저장된 ‖ΔW‖²의 33–43 %가 출력에 거의 기여하지 않는 컬럼에 실린다
-(`docs/anima/optimizations/channel_scaling.md`). merged14 재료는 `channel_scaling_floor` 없이 학습됐다
-(메타데이터 `ss_network_args`). 그래서 위 cos와 에너지 비중은 출력(함수 공간) 기준보다 낮게 또는 다르게
-읽힐 수 있다.
+주의할 점이 하나 있다. 채널 스케일링의 dead channel에서 down 행렬 컬럼이 무작위로 떠돌아, 676-update soup
+shard에서는 저장된 ‖ΔW‖²의 33–43 %가 출력에 거의 기여하지 않는 컬럼에 실린다. merged14 재료는 이를 막는 floor
+없이 학습됐다. 그래서 위 cos와 에너지 비중은 출력(함수 공간) 기준보다 낮게 또는 다르게 읽힐 수 있다.
 
 > TODO(확인 필요): dead-column을 뺀 merged14 재료의 cos / 에너지 비중. 측정 기록을 찾지 못했다.
 
-## 2.3 ΔW 수준에서 섞어야 하는 이유 (`scripts/soup/build.py`)
+## 2.3 ΔW 수준에서 섞어야 하는 이유
 
-A(down)와 B(up)를 따로 평균하면 두 가지가 틀어진다(`scripts/soup/build.py` docstring,
-`docs/anima/experimental/soup.md` § Why ΔW-level).
+A(down)와 B(up)를 따로 평균하면 두 가지가 틀어진다.
 
 1. `avg(B) @ avg(A) ≠ avg(B @ A)`.
-2. `down_init = "weight_svd"`는 특이벡터의 부호가 런마다 달라질 수 있어서, A를 행 단위로 평균하면 행이
+2. down을 W0의 SVD로 초기화하면 특이벡터의 부호가 런마다 달라질 수 있어서, A를 행 단위로 평균하면 행이
    서로 지워질 수 있다.
 
 ΔW는 재료마다 (A, B)를 어떻게 다시 매개화하든 변하지 않는다. 그리고 rank-r ΔW들의 가중 평균은 블록을 이어
@@ -111,100 +98,47 @@ $$
 \Delta W_{soup}=\sum_i w_i\,s_i\,U_iD_i=\big[\,w_1s_1U_1\;\big|\;w_2s_2U_2\;\big|\cdots\big]\begin{bmatrix}D_1\\ D_2\\ \vdots\end{bmatrix},\qquad s_i=\alpha_i/r_i
 $$
 
-`build.py`는 `inv_scale` 키가 있으면 `D_i`에 접어 넣고(`effective_factors`, `LoRAModule.get_weight`와 같은
-계산), 결과의 `alpha`를 rank로 둬서 scale을 1로 만든다.
+결과의 alpha를 rank로 둬서 scale을 1로 만든다. 출력은 두 가지다.
 
-두 가지 출력이 있다.
+| 방식 | 출력 |
+|---|---|
+| 정확한 concat | rank = Σ r_i |
+| truncated soup | 평균 ΔW를 상위 r개 특이방향으로 자름(Eckart–Young). 전체 ΔW는 만들지 않고, 이어 붙인 인자를 QR로 줄여 (R×R) 코어만 SVD한다 |
 
-| 함수 | 출력 | 쓰는 곳 |
-|---|---|---|
-| `soup_state_dicts` | 정확한 concat, rank = Σ r_i | `python -m scripts.soup.build --ckpts … --out …` (`--rank` 없이) |
-| `truncated_soup` | 평균 ΔW를 상위 r개 특이방향으로 자름(Eckart–Young). 전체 ΔW는 만들지 않고, 이어 붙인 인자를 QR로 줄여 (R×R) 코어만 SVD한다 | `make soup` 3단계, `--rank r` |
-
-`truncated_soup`은 모듈마다 r을 재료의 rank로 제한한다. 그래서 adaln(`adaln_rank 16`)은 `--rank 32`에서도
-16으로 남고, shard soup의 adaln rank가 16인 이유가 이것이다. 모듈별로 남은 에너지 비율을 출력하고
-`ss_soup_ingredients` 메타데이터에 적는다. 기록된 값은 다음과 같다 **[측정, 메타데이터]**.
+truncated soup은 모듈마다 r을 재료의 rank로 제한한다. 그래서 adaln(rank 16)은 r = 32에서도 16으로 남고, shard
+soup의 adaln rank가 16인 이유가 이것이다. 모듈별로 남은 에너지 비율은 다음과 같다 **[측정, 메타데이터]**.
 
 | soup | 재료 | rank | retained energy 평균 | 최솟값 |
 |---|---|---|---|---|
-| `sincos` 3-seed (uncond init) | rank 16 | 16 | 99.87 % | 96.8 % (`bench/memorization/report.md` Act 5) |
-| merged13의 8 shard (nouncond, `svd_slice`) | rank 32 × 3 | 32 | 99.70–99.82 % | 90.4–94.2 % |
-| merged14의 8 shard (nouncond, `svd_slice`) | rank 32 × 3 | 32 | 98.59–99.18 % | 92.8–95.7 % |
+| 3-seed (uncond init) | rank 16 | 16 | 99.87 % | 96.8 % |
+| merged13의 8 shard (nouncond, svd_slice) | rank 32 × 3 | 32 | 99.70–99.82 % | 90.4–94.2 % |
+| merged14의 8 shard (nouncond, svd_slice) | rank 32 × 3 | 32 | 98.59–99.18 % | 92.8–95.7 % |
 
 재료끼리 덜 겹칠수록(merged14 cos 0.06–0.09, merged13 0.19–0.23) 평균 ΔW의 실제 rank가 커지고, rank 32로
-자를 때 잃는 에너지도 늘어난다. `docs/anima/experimental/soup.md`의 "~99.9 %" 문구는 uncond-init 재료 기준이다.
+자를 때 잃는 에너지도 늘어난다.
 
-**재료 점검.** soup을 손으로 만들기 전에 `python -m scripts.soup.dw_cos a.safetensors b.safetensors [c …]`
-(CPU, plain LoRA)로 재료별 에너지 비중과 쌍별 cos를 본다. 비중은 대략 고르게 나와야 한다. cos가 낮다는
-사실만으로 재료를 빼지는 않는다(`.claude/skills/soup/SKILL.md` § Ingredient check).
+**재료 점검.** soup을 만들기 전에 재료별 에너지 비중과 쌍별 cos를 본다. 비중은 대략 고르게 나와야 한다. cos가
+낮다는 사실만으로 재료를 빼지는 않는다.
 
-## 2.4 `make soup` 파이프라인
+## 2.4 uncond-init soup
 
-`make soup` → `scripts/tasks/training.py::cmd_soup` → `scripts/soup/pipeline.py`. 데몬 명령 job 하나로 돌고
-(기본은 attach, `ARGS=--queue`는 분리, `--inline`은 데몬 우회), 안에서 `train.py`를 subprocess로 직접 띄운다.
-GUI에서는 Experimental 탭 → soup(`gui/tabs/soup_tab.py`)이다.
+| 단계 | 하는 일 |
+|---|---|
+| 1. uncond inter-train | caption dropout 1.0으로 희석된 pool(기본은 데이터 전체, fine-tune 대상은 항상 포함)을 짧게 학습. seed 1000 고정 |
+| 2. seeded fine-tune | 대상 이미지로 N개(기본 3) 학습. seed는 1001…1000+N, 1단계 체크포인트에서 시작 |
+| 3. soup | rank-r SVD soup |
 
-| 단계 | 하는 일 | 산출물 |
-|---|---|---|
-| 1. uncond inter-train | `caption_dropout_rate 1.0`로 희석된 pool(`--pool_path_pattern`, 기본 `*` = 데이터 전체, fine-tune 대상은 항상 포함)을 짧게 학습. seed 1000 고정. 이름이 (pool, ratio, epochs)로 정해지므로 **이미 있으면 재사용** | `anima_uncond_<sha1(pool)[:8]>_r<ratio>_e<epochs>.safetensors` |
-| 2. seeded fine-tune | `--path_pattern` 이미지로 `--num_soup`개(기본 3) 학습. seed는 1001…1000+N, 1단계 체크포인트에서 `--network_weights`로 시작 | `anima_soup_<slug>_s<seed>.safetensors` |
-| 3. soup | `build_soup_file(…, rank=network_dim)` = rank-r SVD soup. 첫 재료의 `.snapshot.toml`을 옆에 복사 | `anima_soup_<slug>.safetensors` |
+1단계 pool은 대상 작가가 소수가 되도록 넓게 두고, 같은 pool을 쓰는 soup들은 uncond init 하나를 공유한다. 지금
+있는 uncond init은 pool 전체, lr 2e-5, 4 epoch이고, 3,008장에 12,032 step이다.
 
-사용 예(`scripts/tasks/training.py::cmd_soup` docstring):
+svd_slice ≠ 0이면 uncond init을 쓸 수 없다. uncond init에서 시작하면 A가 slice 0 행으로 덮어써져 slice가
+사라지기 때문이다.
 
-```bash
-make soup TARGET=sincos                         # PATH_PATTERN="sincos/*" NAME=sincos 의 축약
-make soup PATH_PATTERN="a/*|b/*" NAME=ab ARGS=--queue
-make soup ARTISTS_SHARD=1_6                     # 정렬한 작가 폴더를 round-robin으로 나눈 shard 하나
-make soup CUSTOM=soup                           # configs/gui-methods/custom/soup.toml 사용
-make soup TARGET=sincos ARGS="--network_dim 32 --max_train_epochs 8"
-```
-
-선택은 작가 폴더가 아니라 fnmatch `path_pattern`이다(`|`로 여러 개). 재료는 `--method soup`로 학습하고,
-설정은 `configs/soup/soup.toml`(plain LoRA 전용)이다. `[soup]` 표는 파이프라인 기본값이고 `train.py` 병합에서는
-빠진다.
-
-### 주요 knob
-
-| env / flag | `configs/soup/soup.toml` 값 | 의미 |
-|---|---|---|
-| `POOL_PATH_PATTERN` / `pool_path_pattern` | `"*"` | 1단계 pool. 대상 작가가 소수가 되도록 넓게 둔다 |
-| `UNCOND_RATIO` / `uncond_ratio` | `1.0` | 1단계 `--sample_ratio` |
-| `UNCOND_EPOCHS` / `uncond_epochs` | `4` | 1단계 epoch |
-| `NUM_SOUP` / `num_soup` | `3` | 재료 수(≥ 2) |
-| `RANK` | 없음 → `network_dim` (32) | 3단계 SVD rank |
-| `LR_POOL` / `LR_INTERVAL` | 없음 | 재료별 LR 다양화(opt-in). 아래 2.7 참고 |
-| `NO_UNCOND=1` / `no_uncond` | `false` | 1단계를 건너뛰고 `down_init`(`weight_svd` [+ `svd_slice`])에서 시작 |
-| `UNCOND_INIT` | 없음 | 미리 만든 uncond 체크포인트를 고정. 1단계 생략 |
-
-현재 저장소에 있는 uncond init은 `output/ckpt/anima_uncond_df58248c_r1_e4.safetensors` 하나다. pool `*`, lr 2e-5,
-4 epoch(`.snapshot.toml`)이고, 3,008장에 12,032 step이다(`_archive/bench/merge_basis/README.md`).
-
-### 지켜야 할 제약
-
-- **plain LoRA만 된다.** Hydra 등 다른 키 형태는 `build.py`가 거부한다.
-- **`svd_slice ≠ 0`이면 `NO_UNCOND=1`이 필수다.** uncond 경로에서는 `--network_weights`가 A를 slice 0 행으로
-  덮어써 slice가 사라지므로 파이프라인이 거부한다(`check_init_mode`). slug에 `_nouncond[_k<slice>]`가 붙는다.
-- **`--output_name`은 ARGS로 넘길 수 없다.** 단계마다 이름을 정하므로 거부한다. 이름은 `NAME`으로 정한다.
-- **`ARGS`는 2단계에만 간다.** 예외는 `--sigma_lowres*`다. 이 플래그는 1단계에도 똑같이 넘어가고 uncond 이름에
-  `_sl<digest>`로 들어간다.
-- **`ARTISTS_SHARD`는 폴더 목록이 바뀌면 다시 섞인다.** `library/datasets/artist_shard.py`는 정렬한 작가 폴더를
-  `artists[k-1::N]`로 나눈다. merged14를 만드는 도중(2026-11-07) `post_image_dataset/resized/san_sincos/`가 생겨
-  폴더가 91개에서 92개가 되자 shard 7이 shard 6의 작가를 끌어왔다. 그래서 shard 7/8은 원래 패턴을
-  `--path_pattern`으로 고정하고 `--name shard7of8_nouncond_k6`과 `--resume`으로 이어 돌렸다(세션 기록
-  a22eb1a9, 2026-11-07). 긴 shard 작업은 패턴을 고정해서 돌리는 편이 안전하다.
-- `--resume`은 이미 있는 재료 파일을 설정 확인 없이 다시 쓴다.
-
-## 2.5 `merge_loras.py`: 서로 다른 LoRA를 하나로
-
-`scripts/toolkits/merge_loras.py`는 N개의 LoRA를 하나의 작은 LoRA 파일로 합친다. DiT 전체에 굽는
-`merge_to_dit.py`(`make merge`)와는 다른 도구다(→ 03_bake_int8_gptq.md). make target은 없다. CLI로 부르거나
-GUI Merge 탭의 LoRA ⊕ LoRA 모드(`gui/tabs/merge_tab.py`)를 쓴다. GUI에는 `--adaln` 선택이 없어 항상 `average`이므로,
-turbo 배포 규칙(`--adaln sum`)은 CLI로만 적용할 수 있다.
+## 2.5 서로 다른 LoRA를 하나로
 
 ### 계산
 
-입력마다 `(α_i/r_i)·w_i`를 up에 접고 down과 up을 이어 붙인다(`main()` pass 1).
+입력마다 `(α_i/r_i)·w_i`를 up에 접고 down과 up을 이어 붙인다.
 
 ```
 down_merged = cat_i(down_i)              # (Σr_i, in)
@@ -212,39 +146,27 @@ up_merged   = cat_i((α_i/r_i)·w_i·up_i)  # (out, Σr_i)
 alpha       = Σr_i                       # scale 1 → multiplier 1.0이 Σ w_i·ΔW_i
 ```
 
-`build.py`의 식과 같다. 다른 점은 다음과 같다.
+soup의 식과 같다. 다른 점은 다음과 같다.
 
-| | `build.py` (soup) | `merge_loras.py` (merge) |
+| | soup | merge |
 |---|---|---|
 | 기본 가중치 | 1/N (평균) | 1.0 (합) |
 | 모듈 집합 | 모든 재료가 같아야 함 | 합집합. 일부 입력에만 있는 모듈은 그 입력의 블록만 들어감 |
-| `inv_scale` | `down`에 접어 넣음 | **읽지 않는다.** `lora_down` / `lora_up` / `alpha` 키만 읽음 |
-| SVD truncation | `--rank`로 선택 | 없음. 항상 concat |
-| 크기 보정 | 없음 | `--normalize` |
-| adaln 처리 | 다른 모듈과 같음 | `--adaln` |
+| SVD truncation | 선택 | 없음. 항상 concat |
+| 크기 보정 | 없음 | normalize |
+| adaln 처리 | 다른 모듈과 같음 | 평균 또는 합 |
 
-`inv_scale`은 일반 LoRA에서는 문제가 되지 않는다. LoRA 계열은 저장할 때 `bake_inv_scale`이 `inv_scale`을
-`lora_down`에 접고 키를 지운다(`docs/anima/optimizations/channel_scaling.md` § save/load). merged14 재료에도
-`inv_scale` 키가 없다(키 1,092개 = 364 모듈 × 3). 다만 `inv_scale`을 그대로 싣는 EasyControl cond LoRA 같은
-파일은 `merge_loras.py`로 합치면 안 된다.
-
-### 옵션
-
-| 옵션 | 값 (기본값 굵게) | 동작 |
+| 설정 | 값 | 동작 |
 |---|---|---|
-| `--weights` | 쉼표 목록, **모두 1.0** | 입력별 세기. up에 곱한다 |
-| `--normalize` | **`global`** | 일반 모듈 전체에 스칼라 하나를 곱해, 합친 ΔW의 전체 노름이 "입력 하나의 평균 노름"이 되게 한다 |
-| | `per_module` | 모듈마다 따로 맞춘다. 층 사이 비율이 바뀐다 |
-| | `off` | 그대로 둔다. 정확한 concat 합 |
-| `--adaln` | **`average`** | `adaln_modulation` 모듈은 가중 평균(`w_i / Σw`)으로 합치고 normalize에서 뺀다 |
-| | `sum` | 다른 모듈과 똑같이 합치고 normalize 대상에 넣는다 |
-| `--dtype` | **`bf16`** / `fp16` / `fp32` | 출력 dtype |
-| `--analyze` | | 파일을 쓰지 않고 입력 사이 간섭(쌍별 cos, 부분공간 overlap)만 보고 (`library/anima/merge_analysis.py`) |
-| `--out` | 기본 `<첫 입력 stem>_merged<N>.safetensors` | `output/ckpt/merged14/anima_soup_shard6of8_nouncond_k5_merged6.safetensors`가 이 기본 이름으로 생긴 파일이다 |
+| normalize | global | 일반 모듈 전체에 스칼라 하나를 곱해, 합친 ΔW의 전체 노름이 "입력 하나의 평균 노름"이 되게 한다 |
+| | per_module | 모듈마다 따로 맞춘다. 층 사이 비율이 바뀐다 |
+| | off | 그대로 둔다. 정확한 concat 합 |
+| adaln | average | adaln modulation 모듈은 가중 평균(`w_i / Σw`)으로 합치고 normalize에서 뺀다 |
+| | sum | 다른 모듈과 똑같이 합치고 normalize 대상에 넣는다 |
 
-### `--normalize global`이 하는 일
+### global normalize가 하는 일
 
-거의 직교하는 ΔW N개를 그냥 더하면 노름이 √N배로 커져 DiT를 과구동한다(docstring). `global`은 모듈 m마다
+거의 직교하는 ΔW N개를 그냥 더하면 노름이 √N배로 커져 DiT를 과구동한다. global normalize는 모듈 m마다
 `target_m` = 입력별 ‖(α_i/r_i)·up_i·down_i‖의 평균(가중치 w는 넣지 않은 값)을 구하고, 다음 스칼라를 일반 모듈
 전체에 곱한다.
 
@@ -255,18 +177,17 @@ $$
 여기서 두 가지가 나온다.
 
 - 입력이 서로 직교하고 노름이 같으면 g = 1/√N이다. 노름이 고르지 않으면 1/√N보다 작다. merged14의 g = 0.342427은
-  1/√8 = 0.354보다 조금 작은데, 8 shard의 cos가 거의 0이고(아래 2.6) 노름이 9.8–19.7로 고르지 않은 것과 맞는다.
+  1/√8 = 0.354보다 조금 작은데, 8 shard의 cos가 거의 0이고(아래 표) 노름이 9.8–19.7로 고르지 않은 것과 맞는다.
   merged14 안에서 shard 하나는 단독 세기의 0.342배로 들어간다. 평균(1/8 = 0.125)보다 2.7배 세다.
-- target에 w가 들어가지 않으므로 `global`에서 `--weights`는 **입력 사이의 비율만** 정한다. 가중치 전체를 몇 배
-  하든 결과 파일은 같다. 절대 세기를 지정하려면 `--normalize off`를 쓴다.
+- target에 w가 들어가지 않으므로 global normalize에서 입력별 가중치는 **입력 사이의 비율만** 정한다. 가중치 전체를
+  몇 배 하든 결과는 같다. 절대 세기를 정하려면 normalize를 끈다.
 
 ### adaln을 평균하는 이유
 
-`adaln_modulation_*_2`의 입력은 σ만으로 정해지는 벡터다. 따라서 adaln ΔW는 모든 이미지에 똑같이 걸리는
-채널별 shift/scale/gate 편향이 된다(docstring). 이 입력은 σ ∈ [0, 1]에서 거의 일정하고(평균과의 cos ≥ 0.99)
-에너지의 73 %가 W0의 첫 번째 우특이벡터에 있다. 그래서 `svd_slice`는 adaln을 자르지 않고, 모든 shard가 같은
-adaln init을 공유한다(`docs/anima/methods/svd-down-lora.md`). 실제로 merged14의 8 shard를 재 보면 일반 모듈은
-서로 직교하지만 adaln은 겹친다 **[측정]**:
+adaln modulation의 입력은 σ만으로 정해지는 벡터다. 따라서 adaln ΔW는 모든 이미지에 똑같이 걸리는 채널별
+shift/scale/gate 편향이 된다. 이 입력은 σ ∈ [0, 1]에서 거의 일정하고(평균과의 cos ≥ 0.99) 에너지의 73 %가 W0의
+첫 번째 우특이벡터에 있다. 그래서 svd_slice는 adaln을 자르지 않고, 모든 shard가 같은 adaln init을 공유한다.
+실제로 merged14의 8 shard를 재 보면 일반 모듈은 서로 직교하지만 adaln은 겹친다 **[측정]**:
 
 | 8 shard soup 쌍 (28쌍) | full-sum cos 최소 / 평균 / 최대 |
 |---|---|
@@ -274,71 +195,64 @@ adaln init을 공유한다(`docs/anima/methods/svd-down-lora.md`). 실제로 mer
 | adaln (84) | 0.115 / 0.126 / 0.138 |
 
 일반 모듈은 shard마다 다른 입력 부분공간에 있어서 더해도 서로 간섭하지 않는다. adaln은 같은 init에서 출발한 전역
-편향 8개라 일부(cos ≈ 0.13)가 겹치고, 그대로 더하면 공통 성분이 shard 수만큼 쌓인다. 기본값이 adaln을 더하지 않고
-평균하는 이유다(docstring, `docs/anima/methods/svd-down-lora.md`).
+편향 8개라 일부(cos ≈ 0.13)가 겹치고, 그대로 더하면 공통 성분이 shard 수만큼 쌓인다. adaln을 더하지 않고 평균하는
+이유다.
 
 ### concat_exact와 SVD식 merge
 
-| 방식 | 도구 | 정확도 | rank / 크기 |
-|---|---|---|---|
-| concat_exact | `merge_loras.py`, `build.py`(`--rank` 없음) | `--normalize off --adaln sum`일 때만 Σ w_i ΔW_i 그대로(bf16 출력은 α/r ≠ 1인 입력에서 ~1e-3 반올림). 기본값 `global` / `average`는 delta를 다시 스케일하므로 Σ w_i ΔW_i가 아니다 | Σ r_i. merged14 871 MB(shard soup 하나는 109 MB) |
-| ΔW 평균 + rank-r SVD | `build.py --rank r`, `make soup` 3단계 | 상위 r 방향만. 잃는 양은 위 retained energy 표 | r |
-| 두 DiT의 차이를 SVD | `scripts/toolkits/extract_delta_lora.py --tuned … --rank 96` | ΔW = tuned − base를 rank r로 자름 | r |
+| 방식 | 정확도 | rank / 크기 |
+|---|---|---|
+| concat_exact | normalize off, adaln 합일 때만 Σ w_i ΔW_i 그대로(bf16 출력은 α/r ≠ 1인 입력에서 ~1e-3 반올림). global normalize / adaln 평균은 delta를 다시 스케일하므로 Σ w_i ΔW_i가 아니다 | Σ r_i. merged14 871 MB(shard soup 하나는 109 MB) |
+| ΔW 평균 + rank-r SVD | 상위 r 방향만. 잃는 양은 위 retained energy 표 | r |
+| 두 DiT의 차이를 SVD | ΔW = tuned − base를 rank r로 자름 | r |
 
-shard처럼 서로 직교하는 입력을 SVD로 자르면 손실이 크다. `svd_slice`가 다른 재료들을 한 soup에서 rank r로 자르면
-에너지의 약 (N−1)/N이 사라진다(`docs/anima/experimental/soup.md` § No-uncond mode). 그래서 shard 안에서는 SVD
-soup을 쓰고, shard끼리는 concat한다.
+shard처럼 서로 직교하는 입력을 SVD로 자르면 손실이 크다. svd_slice가 다른 재료들을 한 soup에서 rank r로 자르면
+에너지의 약 (N−1)/N이 사라진다. 그래서 shard 안에서는 SVD soup을 쓰고, shard끼리는 concat한다.
 
 ## 2.6 merged14를 실제로 만든 방법
 
 ### 계보
 
-| 파일 | 날짜(mtime) | 재료 | 비고 |
+| 파일 | 날짜 | 재료 | 비고 |
 |---|---|---|---|
-| `anima_merged11` | 2026-10-13 | 8 shard soup (`nouncond`, `_k<k-1>`) | global 0.321908, adaln average |
-| `anima_merged12` | 2026-11-02 | 8 shard soup, 재료 LR `lr_pool` 1e-5 / 2e-5 / 5e-5 | global 0.320523. slice 배치가 달랐다(`_k1`–`_k8` 이름) |
-| `anima_merged12_calibrated` | 2026-11-02 | 재료를 에너지로 재가중 | **렌더가 망가짐.** 2.7 참고 |
-| `anima_merged12_shardbalanced` | 2026-11-02 | shard 비중만 조정(`merge_weights` 0.663–1.465) | merged12와 거의 같은 렌더 |
-| `anima_merged13` | 2026-11-04 | 8 shard × 3 seed, 2e-5 cosine | global 0.302609. teacher였으나 지금은 대체됨 |
-| `anima_merged14` | 2026-11-07 | 8 shard × 3 seed, 5e-5 constant(01 레시피) | global 0.342427. 현재 teacher |
+| merged11 | 2026-10-13 | 8 shard soup (nouncond, svd_slice k−1) | global 0.321908, adaln average |
+| merged12 | 2026-11-02 | 8 shard soup, 재료 LR 1e-5 / 2e-5 / 5e-5 | global 0.320523. slice 배치가 달랐다 |
+| merged12_calibrated | 2026-11-02 | 재료를 에너지로 재가중 | **렌더가 망가짐.** 2.8 참고 |
+| merged12_shardbalanced | 2026-11-02 | shard 비중만 조정(가중치 0.663–1.465) | merged12와 거의 같은 렌더 |
+| merged13 | 2026-11-04 | 8 shard × 3 seed, 2e-5 cosine | global 0.302609. teacher였으나 지금은 대체됨 |
+| merged14 | 2026-11-07 | 8 shard × 3 seed, 5e-5 constant(01 레시피) | global 0.342427. 현재 teacher |
 
-날짜, scale, 이름은 각 파일 메타데이터에서 읽었다. merged12의 `lr_pool`과 calibrated/shardbalanced의 렌더 결과는
-메모리 노트 `feedback_settled_verdicts.md`와 세션 기록(890b770c, 2026-11-02)에서 가져왔다.
-
-> TODO(확인 필요): merged13에서 merged14로 바꾼 결정의 렌더 근거. 메모리에는 "merged13 pair is superseded"만 있고,
-> 두 soup을 렌더로 비교한 기록은 찾지 못했다. 01 레시피(`docs/anima/findings/lora_recipe.md`)가 2026-11-06에
-> 닫힌 직후 재료를 새 레시피로 다시 학습한 것으로 보인다.
+> TODO(확인 필요): merged13에서 merged14로 바꾼 결정의 렌더 근거. 두 soup을 렌더로 비교한 기록은 찾지 못했다.
+> 01 레시피가 2026-11-06에 닫힌 직후 재료를 새 레시피로 다시 학습한 것으로 보인다.
 
 ### 재료 레시피: merged13과 merged14
 
-재료 `*_s100{1,2,3}.safetensors`의 메타데이터와 `output/ckpt/merged14/*.snapshot.toml`에서 읽었다 **[측정]**.
-merged14의 설정 파일은 `configs/gui-methods/custom/soup.toml`이다.
+재료의 메타데이터에서 읽었다 **[측정]**.
 
 | 항목 | merged13 | merged14 |
 |---|---|---|
-| LR / scheduler | 2e-5 / `cosine` | 5e-5 / `constant_with_warmup` (warmup 5 %) |
-| batch | 1, GA 1 | 1, `gradient_accumulation_steps 2` |
-| clip | 고정 `max_grad_norm 1.0` (`ss_clip_mode` 없음) | `clip_mode median`, `clip_k 2`, per micro, σ band 0.2/0.4/0.6/0.8 |
-| adapter EMA | 없음 | `ss_ema_window 0.1` |
+| LR / scheduler | 2e-5 / cosine | 5e-5 / constant with warmup (warmup 5 %) |
+| batch | 1, GA 1 | 1, GA 2 |
+| clip | 고정 grad norm 1.0 | median 기준, k = 2, micro-batch마다, σ band 0.2/0.4/0.6/0.8 |
+| adapter EMA | 없음 | window 0.1 |
 | REPA | on | off |
-| `caption_dropout_rate` | 0.05 | 0.1 |
+| caption dropout | 0.05 | 0.1 |
 | rank / alpha | 32 / 128 | 32 / 128 |
-| `adaln_rank`, `train_adaln` | 16, true | 16, true |
-| `down_init` | `weight_svd` + `svd_slice = k-1` | 같음 |
+| adaln | rank 16, 학습 | 같음 |
+| down init | W0 SVD + svd_slice = k−1 | 같음 |
 | epoch | 8 | 8 |
-| init | `no_uncond = true` (1단계 없음) | 같음 |
+| init | uncond init 없음 (1단계 없음) | 같음 |
 | seed | 1001 / 1002 / 1003 | 같음 |
 
-merged14는 "uncond-init soup" 파이프라인으로 만들었지만 **uncond init은 쓰지 않았다**. shard마다 다른 `svd_slice`를
-쓰려면 `no_uncond`가 필요하기 때문이다(2.4).
+merged14는 uncond-init soup 파이프라인으로 만들었지만 **uncond init은 쓰지 않았다**. shard마다 다른 svd_slice를
+쓰려면 uncond init을 빼야 하기 때문이다(2.4).
 
 ### shard 구성
 
-merged14의 `artists_shard`는 2026-10-11 기준 91개 작가 폴더를 8개로 나눴다(shard 1–3은 12명, 4–8은 11명). 폴더가
-92개가 된 지금의 배분은 `configs/gui-methods/custom/soup.toml` 주석에 있다(shard 1–4는 12명, 5–8은 11명). 장 수와 step은 재료 메타데이터, 에너지 비중은 merged14에 들어간 shard soup의
-일반 모듈 ‖ΔW‖² 비율이다 **[측정]**.
+merged14는 2026-10-11 기준 91개 작가 폴더를 8개로 나눴다(shard 1–3은 12명, 4–8은 11명). 장 수와 step은 재료
+메타데이터, 에너지 비중은 merged14에 들어간 shard soup의 일반 모듈 ‖ΔW‖² 비율이다 **[측정]**.
 
-| shard | `svd_slice` | 장 수 | merged14 step | merged13 step | merged14 retained energy (평균 / 최소) | merged14 내 에너지 비중 |
+| shard | svd_slice | 장 수 | merged14 step | merged13 step | merged14 retained energy (평균 / 최소) | merged14 내 에너지 비중 |
 |---|---|---|---|---|---|---|
 | 1 | 0 | 337 | 1,352 | 2,696 | 99.01 / 95.51 % | 6.1 % |
 | 2 | 1 | 428 | 1,712 | 3,424 | 98.83 / 93.31 % | 13.7 % |
@@ -349,39 +263,11 @@ merged14의 `artists_shard`는 2026-10-11 기준 91개 작가 폴더를 8개로 
 | 7 | 6 | 639 | 2,560 | 5,112 | 98.59 / 92.77 % | 24.4 % |
 | 8 | 7 | 261 | 1,048 | 2,088 | 99.18 / 95.66 % | 6.9 % |
 
-합계 3,242장, 재료 런 24개다. 재료 한 런은 파일 시각 기준으로 약 20분(shard 8, 261장)에서 49분(shard 7, 639장)이
-걸렸다. step 수는 메타데이터의 `ss_max_train_steps`이고, GA 2이므로 optimizer update는 그 절반이다(shard 1: 676 update).
+합계 3,242장, 재료 런 24개다. 재료 한 런은 약 20분(shard 8, 261장)에서 49분(shard 7, 639장)이 걸렸다. GA 2이므로
+optimizer update는 step 수의 절반이다(shard 1: 676 update).
 
 shard의 에너지 비중은 6–24 %로 고르지 않고, 대체로 장 수(= step 수)를 따른다. merged12에서 shard 비중만 맞춘
-`_shardbalanced`는 merged12와 거의 같은 렌더였으므로(2.7), merged14에서는 shard 비중을 맞추지 않았다.
-
-### 명령
-
-shard 하나(세션 기록에 남은 형태):
-
-```bash
-CUSTOM=soup ARTISTS_SHARD=7_8 make soup ARGS="--path_pattern= --network_args svd_slice=6 --queue"
-```
-
-- `CUSTOM=soup` → `configs/gui-methods/custom/soup.toml`. 이 파일은 `path_pattern = "ama_mitsuki/*"`를 갖고 있어서
-  `--path_pattern=`(빈 값)으로 지워야 shard 선택이 적용된다.
-- `--network_args svd_slice=k-1` → slug `shard<k>of8_nouncond_k<k-1>`. slice 0은 접미사가 없다.
-- 결과 soup은 `output/ckpt/merged14/`로 옮겼다.
-
-8 shard 합치기는 메타데이터로 다시 만들 수 있다(입력 순서는 `merged_from`, 나머지는 기본값).
-
-```bash
-S=output/ckpt/merged14
-.venv/bin/python scripts/toolkits/merge_loras.py \
-  $S/anima_soup_shard8of8_nouncond_k7.safetensors $S/anima_soup_shard7of8_nouncond_k6.safetensors \
-  $S/anima_soup_shard6of8_nouncond_k5.safetensors $S/anima_soup_shard5of8_nouncond_k4.safetensors \
-  $S/anima_soup_shard4of8_nouncond_k3.safetensors $S/anima_soup_shard2of8_nouncond_k1.safetensors \
-  $S/anima_soup_shard1of8_nouncond.safetensors   $S/anima_soup_shard3of8_nouncond_k2.safetensors \
-  --out output/ckpt/anima_merged14.safetensors      # = --normalize global --adaln average
-```
-
-> TODO(확인 필요): merged14를 만든 실제 명령. 세션 기록에서 찾지 못했다. GUI Merge 탭은 `--adaln`을 넘기지 않으므로
-> (`gui/tabs/merge_tab.py::_start_lora_merge`) GUI로 만들었어도 메타데이터와 같은 결과가 나온다.
+shardbalanced는 merged12와 거의 같은 렌더였으므로(2.8), merged14에서는 shard 비중을 맞추지 않았다.
 
 ### 검증
 
@@ -395,92 +281,72 @@ merged14가 정확히 "0.342427 × 8 shard 합 + adaln 평균"인지 Gram trace�
 
 ## 2.7 정확성이 왜 중요한가: turbo 배포 규칙
 
-turbo LoRA ΔT는 **merged14가 1.0으로 구워진 DiT** 위에서 증류됐다(teacher `models/diffusion_models/anima_merged14.safetensors`
-와 그 전용 GPTQ, → 03_bake_int8_gptq.md, 04_turbo_distillation.md). 즉 student가 배운 것은 "W0 + ΔW14 위에 얹는 ΔT"다.
-ΔT만 base에 올리면 의미가 없고, base에 올리는 배포 파일은 정확히 ΔW14 + ΔT여야 한다(`project/anima_turbo/README.md`).
+turbo LoRA ΔT는 **merged14가 1.0으로 구워진 DiT** 위에서 증류됐다(→ 03_bake_int8_gptq.md, 04_turbo_distillation.md).
+즉 student가 배운 것은 "W0 + ΔW14 위에 얹는 ΔT"다. ΔT만 base에 올리면 의미가 없고, base에 올리는 배포 파일은
+정확히 ΔW14 + ΔT여야 한다.
 
-```bash
-.venv/bin/python scripts/toolkits/merge_loras.py \
-  output/ckpt/anima_merged14.safetensors output/ckpt/<turbo>.safetensors \
-  --normalize off --adaln sum --out output/ckpt/<turbo>_onbase.safetensors
-```
-
-- `--normalize off`: merged14의 up에는 이미 0.342427이 접혀 있고 `alpha = rank`라 scale이 1이다. 그대로 이어 붙이면
+- normalize off: merged14의 up에는 이미 0.342427이 접혀 있고 alpha = rank라 scale이 1이다. 그대로 이어 붙이면
   merged14 부분은 teacher의 정의 그대로 들어간다. merged14 내부의 global scale은 teacher를 정의하는 일부일 뿐이고,
   다시 normalize하면 teacher 자체가 바뀐다.
-- `--adaln sum`: merged14의 adaln(이미 8 shard의 평균)과 ΔT의 adaln은 더해야 한다. `average`는 둘을 반으로 나눈다.
+- adaln 합: merged14의 adaln(이미 8 shard의 평균)과 ΔT의 adaln은 더해야 한다. 평균은 둘을 반으로 나눈다.
 - multiplier는 1.0으로만 쓴다. 이 파일의 multiplier는 ΔW14와 ΔT를 함께 늘리거나 줄인다.
 
-`anima_turbo_m14_dpdmd_svd_500.safetensors`(r64/α180, adaln r16/α90)로 직접 확인했다 **[측정]**. 출력은
-scratchpad에 쓰고, 기대값 ΔW14 + ΔT와의 상대 오차를 위 Gram trace로 쟀다.
+turbo LoRA(r64/α180, adaln r16/α90)로 직접 확인했다 **[측정]**. 기대값 ΔW14 + ΔT와의 상대 오차를 위 Gram
+trace로 쟀다.
 
-| 옵션 | 출력 rank (일반 / adaln) | 일반 모듈 오차 | adaln 오차 |
+| 설정 | 출력 rank (일반 / adaln) | 일반 모듈 오차 | adaln 오차 |
 |---|---|---|---|
-| `--normalize off --adaln sum` (bf16) | 320 / 144 | 8.1e-4 | 1.2e-3 |
-| `--normalize off --adaln sum --dtype fp32` | 320 / 144 | 0 | 0 |
-| 기본값 (`global`, `average`) | 320 / 144 | **0.350** | **0.500** |
+| normalize off, adaln 합 (bf16) | 320 / 144 | 8.1e-4 | 1.2e-3 |
+| normalize off, adaln 합 (fp32) | 320 / 144 | 0 | 0 |
+| global normalize, adaln 평균 | 320 / 144 | **0.350** | **0.500** |
 
-- 기본값에서는 `normalize=global: scale=0.6498`이 merged14와 ΔT 모두에 곱해지고, adaln은 반이 된다. 그 결과
-  teacher 부분까지 0.65배로 약해진다.
+- global normalize에서는 scale 0.6498이 merged14와 ΔT 모두에 곱해지고, adaln은 반이 된다. 그 결과 teacher
+  부분까지 0.65배로 약해진다.
 - bf16 출력의 오차 ~1e-3은 ΔT의 up에 α/r = 2.8125(adaln 5.625)를 곱한 뒤 bf16으로 반올림해서 생긴다. merged14 쪽은
   α/r = 1이라 반올림이 없다. fp32로 쓰면 비트 단위로 정확하지만 파일이 2,144,802,712 bytes로 bf16(1,072,469,152 bytes)의
   두 배다.
 
 > TODO(확인 필요): bf16 반올림(상대 ~1e-3)이 4-step 렌더에 보이는지. 배포는 bf16으로 해 왔고, fp32 배포와 비교한 기록은 없다.
 
-`--analyze`로 보면 merged14와 ΔT는 서로 직교한다(energy ratio 1.006, cos +0.006, 부분공간 overlap 2.2× random) **[측정]**.
+입력 사이 간섭을 재 보면 merged14와 ΔT는 서로 직교한다(energy ratio 1.006, cos +0.006, 부분공간 overlap 2.2× random) **[측정]**.
 
 ## 2.8 정착된 교훈
 
 ### LR이 섞인 재료를 나중에 에너지로 맞추지 않는다
 
-merged12는 shard마다 재료 LR을 1e-5 / 2e-5 / 5e-5로 나눴고(`lr_pool`), 5e-5 재료가 shard soup 에너지의 81–88 %를
-차지했다. 이걸 문제로 보고 재료를 ΔW 크기의 역수로 재가중한 `anima_merged12_calibrated`를 만들었더니
+merged12는 shard마다 재료 LR을 1e-5 / 2e-5 / 5e-5로 나눴고, 5e-5 재료가 shard soup 에너지의 81–88 %를
+차지했다. 이걸 문제로 보고 재료를 ΔW 크기의 역수로 재가중한 merged12_calibrated를 만들었더니
 (1e-5 재료가 원래 가중치의 3–4.6배) 선이 뭉개지고 손과 눈이 번지고 표지판 글자가 녹았다. 재료는 그대로 두고 shard
-soup 8개의 크기만 맞춘 `_shardbalanced`는 merged12와 거의 같았다(`feedback_settled_verdicts.md`, 세션 890b770c).
+soup 8개의 크기만 맞춘 shardbalanced는 merged12와 거의 같았다.
 
 - 에너지 비중은 재료가 무엇을 배웠는지 알려 주지 않는다. 5e-5의 90 % 비중이 그 자체로 결함은 아니었다.
 - 크기는 shard 사이에서만 맞춘다. 맞췄으면 보정됐다고 말하기 전에 렌더한다.
-- `pipeline.py::resolve_lrs` docstring도 같은 이유로 LR 다양화를 좁게 쓰라고 한다. model soup 논문(Wortsman et al.)은
-  greedy selection으로 나쁜 재료를 걸렀지만, 이 파이프라인은 게이트 없는 균일 평균이라 나쁜 LR 재료도 그대로 섞인다.
-  merged13/14는 seed만 다른 재료로 돌아갔다.
+- model soup 논문(Wortsman et al.)은 greedy selection으로 나쁜 재료를 걸렀지만, 이 파이프라인은 게이트 없는 균일
+  평균이라 나쁜 LR 재료도 그대로 섞인다. merged13/14는 seed만 다른 재료로 돌아갔다.
 
 ### ΔW cos는 겹침의 양을 읽는 도구다
 
-`bench/turbo/dw_overlap.py`(그리고 `scripts/soup/dw_cos.py`)는 Gram trace로 ΔW의 노름과 쌍별 cos를 CPU에서 잰다.
-같은 목적과 같은 init에서 출발한 두 런의 cos는 둘이 공유하는 ΔW 비율로 읽는다.
+Gram trace로 ΔW의 노름과 쌍별 cos를 CPU에서 잰다. 같은 목적과 같은 init에서 출발한 두 런의 cos는 둘이 공유하는
+ΔW 비율로 읽는다.
 
-| 비교 | cos | 출처 |
-|---|---|---|
-| 01 레시피 LoRA, 같은 설정 두 번 | 0.146 (중앙값) | `docs/anima/findings/lora_recipe.md` |
-| merged14 shard 재료끼리 | 0.055–0.090 | 2.2 **[측정]** |
-| merged14 shard soup끼리 (일반 모듈) | ≈ 0 | 2.5 **[측정]** |
-| turbo arm 0, seed만 다른 쌍 | 0.087–0.100 | `project/anima_turbo/reports/arm0.md` |
+| 비교 | cos |
+|---|---|
+| 01 레시피 LoRA, 같은 설정 두 번 | 0.146 (중앙값) |
+| merged14 shard 재료끼리 | 0.055–0.090 (2.2) **[측정]** |
+| merged14 shard soup끼리 (일반 모듈) | ≈ 0 (2.5) **[측정]** |
+| turbo arm 0, seed만 다른 쌍 | 0.087–0.100 |
 
 여기서 나오는 결론은 두 가지다.
 
 - 시드 하나로 학습한 결과물의 대부분은 그 런에만 있는 성분이다. soup이 효과가 있는 이유가 이것이고, 같은 이유로
-  "endpoint ΔW cos로 두 설정을 비교"하는 것은 신호가 없다(`lora_recipe.md` § Traps, `arm0.md`).
+  "endpoint ΔW cos로 두 설정을 비교"하는 것은 신호가 없다.
 - 공통 성분이 거의 없는 입력(shard)끼리는 평균하면 각자가 1/N로 약해지고, 더하면 노름이 √N배로 커진다. merged14는
-  `global`로 그 사이(shard당 0.342)를 골랐다.
+  global normalize로 그 사이(shard당 0.342)를 골랐다.
 
 turbo checkpoint를 ΔW로 평균해 random walk를 줄이는 시도도 있었다. 늦게 생긴 drift는 없앴지만 250 step 체크포인트를
-넘지 못했다(`project_soup_turbo.md`) → 04_turbo_distillation.md.
+넘지 못했다(→ 04_turbo_distillation.md).
 
 ### 그 밖에
 
-- soup 재료 점검에서 비중은 고르게 나와야 하지만, cos가 낮다는 이유만으로 재료를 빼지 않는다(`.claude/skills/soup/SKILL.md`).
-- 같은 pool을 쓰는 soup들은 uncond init 하나를 공유한다. 이름에 pool 해시가 들어가므로 pool을 바꾸면 새로 학습한다.
-- merged14 재료는 dead-column 문제(2.2)가 있는 채로 노름을 쟀다. `--normalize global`과 `dw_cos.py` 비중을 해석할 때
-  이 점을 감안한다. `channel_scaling_floor = 0.01`이 dead-column 비중을 0으로 만든다(`channel_scaling.md`).
-
-## 2.9 관련 도구
-
-| 도구 | 용도 | 문서 |
-|---|---|---|
-| `scripts/soup/build.py` | ΔW soup (exact / SVD) | 이 문서 2.3 |
-| `scripts/soup/dw_cos.py` | 재료 에너지 비중, 쌍별 cos | 2.3 |
-| `scripts/toolkits/merge_loras.py` | LoRA ⊕ LoRA → LoRA (concat_exact) | 2.5 |
-| `bench/turbo/dw_overlap.py` | 체크포인트 사이 ΔW 겹침 | 2.8 |
-| `scripts/toolkits/extract_delta_lora.py` | 두 DiT의 차이를 SVD로 LoRA 추출 | 2.5 |
-| `scripts/toolkits/merge_to_dit.py` (`make merge`) | LoRA를 DiT에 bake | → 03_bake_int8_gptq.md |
+- merged14 재료는 dead-column 문제(2.2)가 있는 채로 노름을 쟀다. global normalize와 에너지 비중을 해석할 때 이 점을
+  감안한다. 채널 스케일링 floor 0.01이 dead-column 비중을 0으로 만든다.
