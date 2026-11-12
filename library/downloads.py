@@ -334,7 +334,7 @@ def _moss_rows() -> tuple[Asset, ...]:
             dest=default_moss_dir(),
             used_by=f"{used} · TrainRequest.int8, the default (forward copies)",
             notes="~5 GB. The 252 block linears INT8 ConvRot with offline GPTQ, the "
-            "rest bf16. Base only; a fingerprint refuses any other DiT.",
+            "rest bf16. Base only; a fingerprint of the first and last block linears refuses any other DiT.",
         ),
         Asset(
             id="moss_te_int8",
@@ -430,8 +430,8 @@ def anima_catalog() -> tuple[Asset, ...]:
             dest=models_dir() / kind_dir("dit"),
             used_by="--int8 (forward copies)",
             notes="~2.4 GB. The block linears INT8 ConvRot with offline GPTQ, the "
-            "rest bf16. A fingerprint refuses any other DiT, so the 40-block "
-            "Anima-2.9B needs its own file or round to nearest.",
+            "rest bf16. A fingerprint of the first and last block linears refuses any DiT that differs "
+            "in them, so the 40-block Anima-2.9B needs its own file or round to nearest.",
         ),
         Asset(
             id="pe_core",

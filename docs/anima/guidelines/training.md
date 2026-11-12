@@ -29,7 +29,7 @@ router_source    = "none" | "input" | "sigma" | "fei"
 ```
 
 `configs/methods/lora.toml` leaves the routing keys unset (plain LoRA, `down_init =
-"weight_svd"`, T-LoRA and REPA on). `use_moe_style = "shared_A"` +
+"weight_svd"`, T-LoRA and REPA off). `use_moe_style = "shared_A"` +
 `router_source = "sigma"` is HydraLoRA (`configs/gui-methods/hydralora.toml`);
 `router_source = "fei"` on shared-A is FEI-routed Hydra.
 

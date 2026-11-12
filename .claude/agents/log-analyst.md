@@ -31,7 +31,7 @@ You only get the prompt the caller sent you (usually a run name, an output_name,
 - Validation: `*_cmmd` (**the signal that matters**), `loss/validation/{step,epoch}_average`, `*_fm_mse`.
 - Regularizers: `reg/balance`.
 - Routing (Hydra): `hydra/router_entropy`, `hydra/router_margin`, `hydra/expert_usage/<i>`, `hydra/up_grad/...`, `hydra/router_grad_norm`, `fera/router_*` (the `fera/` prefix is a legacy `GlobalRouter` metrics namespace — not the removed FeRA training method).
-- Liveness: `liveness/<name>` — coverage of the run-end liveness audit; **< 1.0 means some adapter params never moved** (dead capacity / wiring bug).
+- Liveness: `liveness/<name>` — coverage of the run-end liveness audit; **< 1.0 means an auxiliary loss (e.g. REPA) that is on never consumed its input** (`library/training/losses.py::LivenessLedger`; wiring bug).
 
 **Turbo distill loop (DP-DMD):** entirely different tags, all `train/*` and `val/*`:
 - `train/fake_loss`, `train/gan_gen_loss`, `train/gan_disc_loss` (GAN/critic), `train/grad_signal_rms`, `train/delta_dm_rms`, `train/x_pred_std` (collapse/explosion detector), `train/v_student_rms`, `train/dm_rel_gap`, `train/dm_mag_ratio`, `train/dm_cos`, `train/mean_var_kl`, `train/div_loss`, `train/repa_align_loss`, `train/softrank_loss`.

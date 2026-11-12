@@ -199,7 +199,8 @@ make soup TARGET=sincos ARGS="--network_dim 32 --max_train_epochs 8"
 
 `scripts/toolkits/merge_loras.py`는 N개의 LoRA를 하나의 작은 LoRA 파일로 합친다. DiT 전체에 굽는
 `merge_to_dit.py`(`make merge`)와는 다른 도구다(→ 03_bake_int8_gptq.md). make target은 없다. CLI로 부르거나
-GUI Merge 탭의 LoRA ⊕ LoRA 모드(`gui/tabs/merge_tab.py`)를 쓴다.
+GUI Merge 탭의 LoRA ⊕ LoRA 모드(`gui/tabs/merge_tab.py`)를 쓴다. GUI에는 `--adaln` 선택이 없어 항상 `average`이므로,
+turbo 배포 규칙(`--adaln sum`)은 CLI로만 적용할 수 있다.
 
 ### 계산
 
@@ -280,7 +281,7 @@ adaln init을 공유한다(`docs/anima/methods/svd-down-lora.md`). 실제로 mer
 
 | 방식 | 도구 | 정확도 | rank / 크기 |
 |---|---|---|---|
-| concat_exact | `merge_loras.py`, `build.py`(`--rank` 없음) | Σ w_i ΔW_i 그대로 (출력 dtype 반올림만) | Σ r_i. merged14 871 MB(shard soup 하나는 109 MB) |
+| concat_exact | `merge_loras.py`, `build.py`(`--rank` 없음) | `--normalize off --adaln sum`일 때만 Σ w_i ΔW_i 그대로(bf16 출력은 α/r ≠ 1인 입력에서 ~1e-3 반올림). 기본값 `global` / `average`는 delta를 다시 스케일하므로 Σ w_i ΔW_i가 아니다 | Σ r_i. merged14 871 MB(shard soup 하나는 109 MB) |
 | ΔW 평균 + rank-r SVD | `build.py --rank r`, `make soup` 3단계 | 상위 r 방향만. 잃는 양은 위 retained energy 표 | r |
 | 두 DiT의 차이를 SVD | `scripts/toolkits/extract_delta_lora.py --tuned … --rank 96` | ΔW = tuned − base를 rank r로 자름 | r |
 
@@ -333,8 +334,8 @@ merged14는 "uncond-init soup" 파이프라인으로 만들었지만 **uncond in
 
 ### shard 구성
 
-`artists_shard`는 2026-10-11 기준 91개 작가 폴더를 8개로 나눴다(`configs/gui-methods/custom/soup.toml` 주석:
-shard 1–3은 12명, 4–8은 11명). 장 수와 step은 재료 메타데이터, 에너지 비중은 merged14에 들어간 shard soup의
+merged14의 `artists_shard`는 2026-10-11 기준 91개 작가 폴더를 8개로 나눴다(shard 1–3은 12명, 4–8은 11명). 폴더가
+92개가 된 지금의 배분은 `configs/gui-methods/custom/soup.toml` 주석에 있다(shard 1–4는 12명, 5–8은 11명). 장 수와 step은 재료 메타데이터, 에너지 비중은 merged14에 들어간 shard soup의
 일반 모듈 ‖ΔW‖² 비율이다 **[측정]**.
 
 | shard | `svd_slice` | 장 수 | merged14 step | merged13 step | merged14 retained energy (평균 / 최소) | merged14 내 에너지 비중 |
@@ -483,16 +484,3 @@ turbo checkpoint를 ΔW로 평균해 random walk를 줄이는 시도도 있었�
 | `bench/turbo/dw_overlap.py` | 체크포인트 사이 ΔW 겹침 | 2.8 |
 | `scripts/toolkits/extract_delta_lora.py` | 두 DiT의 차이를 SVD로 LoRA 추출 | 2.5 |
 | `scripts/toolkits/merge_to_dit.py` (`make merge`) | LoRA를 DiT에 bake | → 03_bake_int8_gptq.md |
-
-## 부록: 문서와 코드가 어긋나는 곳 (2026-11-12 확인)
-
-| 위치 | 문서 내용 | 실제 |
-|---|---|---|
-| `docs/anima/experimental/soup.md`, `scripts/tasks/training.py::cmd_soup` docstring | `UNCOND_RATIO` 기본 0.5, `UNCOND_EPOCHS` 기본 2 | `configs/soup/soup.toml` `[soup]`가 1.0 / 4를 준다. 0.5 / 2는 `[soup]` 표에 키가 없을 때의 argparse fallback이다 |
-| `docs/anima/experimental/soup.md` § Constraints | soup.toml이 "weight_svd down-init + REPA" | `use_repa = false` (2026-11-06부터) |
-| `docs/anima/experimental/soup.md` § Constraints | "4 epochs at 100 % share was destructive", 0.5 희석 권장 | 출하 기본값은 pool `*`에 ratio 1.0 / 4 epoch이다. pool이 데이터 전체라 대상 비중은 작지만, 문서의 권장값과 표현이 맞지 않는다 |
-| `tasks.py` `soup` 도움말 | "TARGET=<artist> required", "uncond inter-train on the target's artist shard" | `TARGET`은 필수가 아니다(없으면 soup.toml의 `path_pattern`). 1단계 pool은 기본 `*`(데이터 전체)다 |
-| `configs/gui-methods/custom/soup.toml` 주석 | 91개 폴더 기준 shard 작가 목록 | 지금은 92개(`san_sincos` 추가)라 `artists_shard` 배분이 다르다 |
-| `docs/anima/experimental/soup.md` § Why ΔW-level | rank-r truncation retained energy ~99.9 % | uncond-init 재료 기준이다. nouncond + `svd_slice` shard(merged14)는 평균 98.6–99.2 %, 최소 92.8–95.7 % |
-| `gui/tabs/merge_tab.py` | (LoRA ⊕ LoRA 모드) | `--adaln` 선택이 없어 항상 `average`. turbo 배포 규칙(`--adaln sum`)은 CLI로만 된다 |
-| `scripts/toolkits/merge_loras.py` | "The merge is **exact**" | 기본값 `--normalize global` / `--adaln average`에서는 Σ w_i ΔW_i가 아니다. 정확한 것은 `off` / `sum`일 때이고, 그때도 bf16 출력은 α/r ≠ 1인 입력에서 ~1e-3 반올림이 생긴다 |

@@ -124,7 +124,7 @@ timestep 마스크는 학습에서만 쓰이므로 bake해도 결과가 같습�
 - **GPTQ 파일을 `--dit`로 주면 안 됩니다.** `merge_adapter_into_dit`는 `load_anima_model`에 `lora_weights_list`도
   `dit_nonquant_path`도 넘기지 않습니다. 그래서 int8 체크포인트를 넣으면 거부하지 않고, "no dit_nonquant_path"
   경고만 남긴 채 int8에서 복원한 가중치(`dequantize_checkpoint_`) 위에 굽습니다. 복원한 가중치는 원래 가중치와
-  1.1% 다릅니다(`docs/anima/optimizations/int8.md`). 3.8의 문서/코드 불일치 1번을 보세요.
+  1.1% 다릅니다(`docs/anima/optimizations/int8.md`).
 - 기본 `--out`은 어댑터 옆(`output/ckpt/`)입니다. 다음 단계의 "DiT 옆 GPTQ 파일" 규칙과 맞추려면 `--out`으로
   `models/diffusion_models/`를 지정합니다(3.7).
 
@@ -414,7 +414,8 @@ stamp는 `ss_int8_base_id = "rtn"`입니다. GPTQ 대비 손해는 위에서 본
   GPTQ 결과물 자체의 ID이고, 이 base에서 학습한 LoRA에 `ss_int8_base_id`로 찍힙니다.
 - **`base_fingerprint`** (`library/int8/linear.py::base_fingerprint`): 변환 **전** bf16 가중치에서, 변환 대상의 **첫 linear와
   마지막 linear** 두 개의 이름과 bf16 바이트를 sha256한 값입니다. Anima에서는 `blocks.0.self_attn.qkv_proj`와
-  `blocks.27.mlp.layer2`입니다. GPTQ 파일은 자신을 만든 DiT의 fingerprint를 메타데이터에 기록합니다.
+  `blocks.27.mlp.layer2`입니다. GPTQ 파일은 자신을 만든 DiT의 fingerprint를 메타데이터에 기록합니다. 해시하는 것이 이 두 linear뿐이라서, 둘을 건드리지
+  않은 merged DiT에는 base 파일이 통과합니다. 문서와 catalog `notes`의 "다른 checkpoint 거부"는 이 범위 안에서만 맞습니다.
 - **`source_sha256`**: 원본 파일 전체의 sha256입니다. 기록만 하고 로드할 때 검사하지는 않습니다.
 
 ### forward copy를 고르는 순서
@@ -546,22 +547,7 @@ merged14 쌍은 arm config에서만 바꾸고, 공유 config는 건드리지 않
 
 ---
 
-## 3.8 문서와 코드가 어긋나는 곳
-
-1. `docs/anima/optimizations/int8.md`에는 "A static LoRA merge on a rebuilt base is refused"라고 적혀 있습니다. 이것은
-   `load_anima_model`의 `lora_weights_list` 경로(생성 시 정적 merge)에만 해당합니다. `merge_to_dit.py --dit <GPTQ file>`은
-   `network.merge_to`를 쓰기 때문에 거부되지 않고, 경고만 남긴 채 int8에서 복원한 가중치 위에 굽습니다.
-2. 문서(`int8.md`, catalog `notes`)는 "fingerprint가 다른 checkpoint의 파일을 거부한다"고 적었습니다. 실제 fingerprint는
-   첫 linear와 마지막 linear 두 개만 해시합니다. 그래서 두 linear를 건드리지 않은 merged DiT에는 base 파일이 통과합니다(3.5).
-3. CLAUDE.md는 `make merge`가 "Hydra-moe / postfix"를 거부한다고 적었습니다. 코드는 prefix, register tokens,
-   step-expert 터보 head(`.lora_ups.`)도 거부합니다(`_NON_BAKEABLE_MARKERS`).
-4. `int8.md`는 GPTQ 파일이 `dit_gptq.py`로 만들어진다고만 적었습니다. 이 스크립트는 `project/finished/` 아래에 있고
-   `make` 타깃이 없습니다. merged DiT용 파일을 만들 공식 진입점이 없는 셈입니다.
-5. 메모리 노트의 int8 swap 한도(≤ 36)는 MOSS의 값이고 Anima에는 해당하지 않습니다(3.3).
-
----
-
-## 3.9 다른 섹션
+## 3.8 다른 섹션
 
 - LoRA 학습 레시피: [01_lora_recipe.md](01_lora_recipe.md)
 - soup과 `merge_loras.py`, merged14 LoRA를 만드는 과정: [02_soup_merge.md](02_soup_merge.md)

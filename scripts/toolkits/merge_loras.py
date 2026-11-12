@@ -3,7 +3,8 @@
 
 Unlike ``merge_to_dit.py`` (which bakes one adapter into a full ~GB DiT), this
 combines N adapters into one small ``.safetensors`` usable via the normal
-``--lora_weight`` inference path. The merge is **exact** — no SVD/truncation:
+``--lora_weight`` inference path. The concatenation is **exact** — no SVD/truncation — and the merged delta equals
+the sum below only with ``--normalize off --adaln sum`` (the defaults rescale it):
 
     ΔW = Σ_i w_i · (α_i/r_i) · up_i @ down_i
 

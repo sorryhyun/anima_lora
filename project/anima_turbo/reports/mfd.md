@@ -114,7 +114,7 @@ The reference also differs in CDM 1.0 and GAN 0.03; the two MFD runs differ only
 
 - **Detect it with the validation probe, not the training scalars.** `rel_gap`, `cos`, `dm` and
   the grad norms of the collapsed runs sit in the reference run's range, because ε dominates
-  every velocity. `div_xpred_ac_sim` near 1 (step-0 output identical across seeds) and
+  every velocity. `div_xpred_ac_sim` near 1 (the final student latents identical across seeds; the probe reads the latent after the whole N-step rollout) and
   `div_ac_sim` near 0 (final outputs uncorrelated noise) are the signature.
 - **Renders** (4 steps, cfg 1; plus 1 step to see step 0): the ANIMA-sign and nozomi prompts both
   give a flat purple-grey (warmup 200) or grey (warmup 0) field at 1 step, and a uniform noise

@@ -121,9 +121,8 @@ autotag와 position 단계의 on/off 판정은 `_caption_correction_config`(`scr
    (`docs/anima/guidelines/training.md`). 이와 별개로 `caption_dropout_rate = 0.1`은 캡션 전체를 비우는
    dropout이다(`configs/methods/lora.toml`).
 
-> 주의: `docs/guidelines/가이드북.md` §5에는 "캡션을 수정했다면 단순 재실행으로는 반영되지 않으니 캐시 폴더를
-> 지우라"고 되어 있다. 코드(mtime 비교)와 같은 문서 §6.3, `captions` skill은 모두 재실행하면 반영된다고 한다.
-> 이 리포트는 코드를 따른다. 부록 A 참고.
+> 캡션을 고쳤다면 캐시 폴더를 지울 필요 없이 `make preprocess-te`를 다시 실행하면 된다. TE 캐시는 캡션(과 변형
+> sidecar)보다 오래된 것만 다시 인코딩한다(`library/preprocess/text.py::_cache_is_current`, mtime 비교).
 
 ---
 
@@ -159,9 +158,8 @@ Anima가 쓰는 리사이즈 방식은 free-fit 하나다. 이미지마다 **원
   PE, mask를 확인하고 `ARGS="--delete"`로 지운다. TE 캐시는 텍스트만 담으므로 건드리지 않는다.
 - snap 방식 시절의 캐시도 그대로 학습된다. 크롭을 줄이는 이득을 보고 싶을 때만 다시 전처리하면 된다.
 
-> 주의: `docs/guidelines/가이드북.md` §5의 리사이즈 설명("이미지별 고정 토큰 버킷 배정", "0.25MP 미만 제외")은
-> free-fit 이전 기준이다. 0.25MP 하한은 `anime_tools.stages.resize`에서 확인하지 못했다.
-> `> TODO(확인 필요): 현재 리사이즈에 최소 해상도 하한이 있는지, 있다면 값이 얼마인지.`
+> 리사이즈에는 최소 해상도 하한이 없다. 이미지는 원본 비율 그대로 free-fit band에 맞게 줄어들거나 늘어나고,
+> 빠지는 것은 큐레이션 제외 목록(`ResizeRequest.skip`)에 든 이미지뿐이다(`anime_tools.stages.resize`).
 
 ---
 
@@ -182,6 +180,12 @@ configs/base.toml → configs/presets.toml[<preset>] → configs/methods/<method
 | `configs/presets.toml` | 하드웨어(`default`, `low_vram`, `graft`)와 데이터 범위(`half`, `quarter`, `tenth`, `debug`) | `default`는 `blocks_to_swap = 0`, `low_vram`은 grad ckpt + unsloth offload |
 | `configs/methods/lora.toml` | 확정 레시피(§4) | `make lora`가 읽는다 |
 | `configs/gui-methods/<variant>.toml` | GUI 변형별 독립 파일 | `make lora-gui GUI_PRESETS=<variant>` |
+
+GUI 변형 파일은 `methods/lora.toml`을 상속하지 않고 확정 레시피를 따르지도 않는다. `tlora.toml`과 `hydralora.toml`은
+alpha 32, 4 epoch, base의 cosine 스케줄, GA 1, 고정 clip(`clip_mode` 기본 `fixed`)이다. EMA 0.1은 argparse 기본값이라
+적용되지만 cosine에서는 raw와 거의 같아진다(§4.4). `gui-methods/lora.toml`은 `down_init`이 없어 코드 기본값 `kaiming`이
+되므로 `svd_slice`를 쓸 수 없다(렌더 차이는 null, E1). 확정 레시피 그대로 돌리려면 `make lora`를 쓴다. T-LoRA는 확정
+레시피에 들어 있지 않다(mask는 null, s31).
 
 병합 결과는 `make print-config METHOD=lora PRESET=default`로 확인한다. 학습한 런이 실제로 쓴 설정은
 `output/ckpt/<output_name>.snapshot.toml`에 남는다.
@@ -509,21 +513,3 @@ update 수는 이미지 수 × epoch / GA다. 30장 × 8 epoch / 2 = 120으로, 
   (`CLAUDE.md` § Invariants).
 - 다음 단계: 작가별 LoRA 여러 개를 soup나 merge로 묶는다. → `02_soup_merge.md`. `make soup`는 별도 설정
   (`configs/soup/soup.toml`: lr 2e-5, 4 epoch, uncond-init)을 쓰므로 이 문서의 레시피와 다르다. 차이는 02에서 다룬다.
-
----
-
-## 부록 A. 작성 중 발견한 문서와 코드의 불일치
-
-| 위치 | 문서 내용 | 실제 (코드 / config) |
-|---|---|---|
-| `docs/anima/structure/lora.md` §3.4 | `lora.toml`이 "the REPA auxiliary alignment loss"를 쌓는다 | `use_repa = false` (2026-11-06부터) |
-| `docs/anima/guidelines/training.md` § LoRA family | `lora.toml`은 "T-LoRA and REPA on" | 둘 다 off. 같은 문서의 몇 줄 아래 T-LoRA 절은 off라고 적혀 있다 |
-| `docs/guidelines/가이드북.md` §7, §8 | `tlora`로 시작하라고 권장 ("🌟 추천") | 확정 레시피는 plain LoRA다. T-LoRA mask는 null(s31) |
-| `configs/gui-methods/tlora.toml`, `hydralora.toml` | GUI 변형 | 확정 레시피를 따르지 않는다. alpha 32, 4 epoch, base의 cosine 스케줄, GA 1, 고정 clip(`clip_mode` 기본 `fixed`)이다. EMA 0.1은 argparse 기본값이라 적용되지만, cosine에서는 raw와 거의 같아진다(§4.4) |
-| `configs/gui-methods/lora.toml` | GUI `lora` 변형 | `down_init`이 없어서 코드 기본값 `kaiming`이 된다. `methods/lora.toml`은 `weight_svd`다. 렌더 차이는 null(E1)이지만 `svd_slice`를 쓸 수 없다 |
-| `docs/guidelines/가이드북.md` §5 | 캡션을 수정하면 캐시 폴더를 직접 지워야 한다 | TE 캐시는 mtime을 보고 다시 인코딩한다(`library/preprocess/text.py::_cache_is_current`) |
-| `tasks.py` `caption-autotag` / `cmd_caption_autotag` docstring | "caption edits do NOT invalidate the TE caches" | 위와 같다. `make preprocess-te`를 다시 실행하라는 지시 자체는 맞다 |
-| `docs/guidelines/가이드북.md` §5 | 리사이즈가 "고정 토큰 버킷 배정, 0.25MP 미만 제외" | free-fit band다. 0.25MP 하한은 확인하지 못했다 |
-| `.claude/agents/log-analyst.md` | `liveness/<name> < 1.0` = "some adapter params never moved" | 보조 loss가 입력을 소비한 비율이다(`library/training/losses.py::LivenessLedger`). 이 에이전트가 참조하는 memory 파일(`project_cmmd_val_signal`, `project_fm_val_loss_uninformative` 등)도 현재 memory 디렉터리에 없다 |
-| memory `project_lora_alpha_lr.md` | runner 경로 `bench/anima_abclip/run_ab.py` | `_archive/bench/anima_abclip/run_ab.py` (`bench/anima_abclip/`는 없다) |
-| `docs/anima/guidelines/base-config.md` `int8` 행 | "Refuses `blocks_to_swap`" | `CLAUDE.md`는 학습에서 `blocks_to_swap`이 int8 위에서 돈다고 한다. 이 리포트의 범위 밖이다. → `03_bake_int8_gptq.md`에서 확인 |

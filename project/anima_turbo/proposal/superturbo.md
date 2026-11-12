@@ -16,7 +16,7 @@ The static 2-step grid at shift 3 is σ 1 → 0.75 → 0.
   [t_k, 1]). Step 1 takes every DM update and has to make the whole image in one jump from
   σ 0.75.
 - The two steps share no gradient. `steps.student_rollout` detaches `x` after step 0
-  unconditionally (`steps.py:152`), so step 0 never learns where step 1 needs `x₁` to be.
+  unless `rollout_grad` keeps the graph (`if not keep: x = x.detach()` in `student_rollout`), so step 0 never learns where step 1 needs `x₁` to be.
   `detach_after_first = false` only moves the anchor loss into the final backward.
 - `dm_first_step` does not help here. It asks step 0's own one-step x0 for a finished image,
   but step 1 sees that x0 at 25 % under 75 % noise, so only layout survives, and the anchor

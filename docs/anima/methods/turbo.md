@@ -24,7 +24,7 @@ make turbo                                       # configs/methods/turbo.toml de
 make turbo ARGS="--int8 off --stream bf16"       # bf16 base
 make turbo ARGS="--student_rank 128 --iterations 5000"
 make turbo ARGS="--single_prompt_idx 0"          # single-prompt overfit
-make turbo PRESET=low_vram                        # grad ckpt + offload + sample_ratio
+make turbo PRESET=graft                           # a preset's blocks_to_swap / sample_ratio / gradient_checkpointing carry over
 
 make test-turbo                                   # infer latest student LoRA @ 4 steps, cfg=1.0
 ```
@@ -176,6 +176,12 @@ Sectioned, bespoke. Every key has a matching CLI override flag (see
 | `[optim]` | `fake_steps_per_student_step` | `4` | keep the fake ahead of the moving x_θ |
 | `[optim]` | `fake_warmup_steps` | `200` | fake (critic) head-start before the main loop — kills the early grad_signal_rms spike (~step 50); `0` = off |
 | `[optim]` | `grad_clip` | `1.0` | grad-norm cap (both nets) |
+| `[cdm]` | `weight` / `grad_ckpt` | `1.0` / `true` | CDM loss weight (code fallback 0); its branch checkpoints its own forwards |
+| `[optim]` | `lr_schedule` / `grad_accum` | absent: `cosine` / `1` | shape after the 2 % linear warmup (student, fake, disc); iterations per student optimizer step |
+| `[ema]` | `window` | absent: `0.0` | student EMA span as a fraction of the run (0 = off) |
+| `[dmd]` | `dm_draws` | absent: `1` | (σ_a, ε_dm) draws averaged into the DM signal on the same x_θ |
+| `[network]` | `fake_transition` | absent: `false` | transition-aware fake: σ of the student step the sample came from, as a zero-init delta on the fake's t-embedding |
+| `[mfd]` | `dtau` / `max_steps` / `interval` | absent: `0.0` / `4` / `to_zero` | MFD mean-flow integral; `dtau = 0` is plain DMD (`project/anima_turbo/reports/mfd.md`) |
 | `[sampling]` | `t_distribution` | `uniform` | τ sampling for the fake update + warmup (or `sigmoid`) |
 | `[sampling]` | `flow_shift` | `3.0` | σ-schedule shift for the student/teacher Euler grids (matches inference; `k_anchor` σ is shift-coupled, so change both together) |
 | `[gan]` | `weight_gen` | `0.03` (on) | teacher-feature GAN generator term — see below |
@@ -276,7 +282,7 @@ FastGen `weight_gen = 0.03`. The MFD paper uses no GAN.
   run); `train/gan_weight_gen_eff` traces the ramp.
 Cost. There is no early exit after the tapped block, so the GAN adds +1 grad-bearing teacher forward in the student step (the generator
 term must flow grad through the teacher into `x_pred`) and +2 no_grad teacher
-forwards per disc step. `--grad_ckpt` is a valid VRAM lever here, with one loop invariant: `set_view` is global state read at forward time and checkpoint recompute defers to `.backward()`, so every checkpointed forward must be backwarded while its own view is still live (the loop enforces this in `steps.py`; nothing in the metrics catches a violation — the recompute silently runs under the wrong view). `weight_gen=0`
+forwards per disc step. The global `--grad_ckpt` (what `PRESET=low_vram` passes) is refused with `gan.weight_gen > 0` or `cdm.weight > 0`: `set_view` is global state read at forward time and checkpoint recompute defers to `.backward()`, so the rollout's checkpointed student forwards would recompute under the teacher / fake view and silently drop the student LoRA from the gradient (`scripts/distill_turbo/config.py`). The GAN and CDM branches checkpoint their own forwards instead (`gan.grad_ckpt`, `cdm.grad_ckpt`, both `true` in the shipped TOML). `weight_gen=0`
 keeps the entire path off → byte-identical DP-DMD (no disc, no hooks, no extra
 forwards).
 

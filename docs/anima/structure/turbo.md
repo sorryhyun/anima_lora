@@ -123,7 +123,7 @@ paper's high-frequency checkerboard that compounds over training). The student L
 at rank $r_s$ defines a manifold of perturbed scores; the fake needs to be at least
 $r_s$-expressive to track it pointwise. So $r_\text{fake} \ge r_\text{student}$ is a
 capacity floor on the regularizer, not a stability prior — the config validator
-warns when it's violated. (Defaults ship `student_rank = fake_rank = 48`.)
+warns when it's violated. (The code falls back to `student_rank = fake_rank = 48`; `configs/methods/turbo.toml` ships 64.)
 
 ---
 
@@ -281,7 +281,7 @@ x_\tau^\text{fake} = (1-\tau_\text{fake})\,x_\theta^\text{detach} + \tau_\text{f
 \mathcal L_\text{fake} = \big\|\,\text{fake}(x_\tau^\text{fake}, \tau_\text{fake}, c) - (\varepsilon - x_\theta^\text{detach})\,\big\|^2
 $$
 
-Run `fake_steps_per_student_step` (default 1) inner steps against the same
+Run `fake_steps_per_student_step` (code default 1, `configs/methods/turbo.toml` ships 4) inner steps against the same
 $x_\theta^\text{detach}$, resampling $(\tau, \varepsilon)$ each time. Standard DMD2
 practice is to give the fake extra iterations (the reference uses 5): its target
 distribution is moving as the student sharpens, and a lagging critic produces noisy
@@ -319,8 +319,8 @@ $\tau < \texttt{norm\_floor}/\overline{|v^\text{real}|}$ (a thin sliver).
 
 | Policy | What it is |
 |---|---|
-| (a) | $\tau$-damping only — shipped default (`dm_x0_norm=false`) |
-| (b) | DMD magnitude-normalization ($\tau$ roughly cancels) — opt-in via `dm_x0_norm=true` |
+| (a) | $\tau$-damping only — the code default (`dm_x0_norm=false`) |
+| (b) | DMD magnitude-normalization ($\tau$ roughly cancels) — `dm_x0_norm=true`, what `configs/methods/turbo.toml` ships |
 | (c) | both ≈ (b) with $\tau$ re-multiplied in — do not ship believing it composes |
 
 How to think about the choice. (b)'s per-sample normalization gives every sample
@@ -329,8 +329,8 @@ was the clearest win for fine structure (text rendering especially), and it was 
 over-credited as the diversity fix. Under DP-DMD the diversity-collapse story
 moved to the anchor (§1, §5) — first-step supervision now carries pose/composition
 spread — which demoted `dm_x0_norm` to a pure scale-invariance lever on the quality
-term, and the shipped default reverted to plain $\tau$-damping. Reach for (b) when
-fine detail / text degrades late in a run; never combine it with (a) expecting the
+term; the code default is plain $\tau$-damping, while the shipped TOML keeps (b) on for
+fine detail and text. Turn it off (a) to compare; never combine it with (a) expecting the
 two to stack.
 
 ---

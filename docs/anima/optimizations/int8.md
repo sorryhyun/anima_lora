@@ -41,11 +41,12 @@ The GPTQ file is a full DiT: block linears int8, everything else bf16. As `dit_p
 `dit_nonquant_path`, the bf16 DiT, for the float weights `wq_t` and `weight_svd` / `grad_svd` init
 read; `make turbo` ships both. Without it the loader rebuilds them from the int8 copies, 1.1% from
 the true weight, which moves `wq_t` 1.6%. Generation needs neither. A static LoRA merge on a rebuilt
-base is refused.
+base (`lora_weights_list` in `load_anima_model`) is refused; `merge_to_dit.py --dit <GPTQ file>` is not: it
+warns and bakes onto the weights restored from int8.
 
 The GPTQ file is made by `project/finished/int8_train/src/dit_gptq.py` and published as
 [sorryhyun/anima-base-v1.0-int8](https://huggingface.co/sorryhyun/anima-base-v1.0-int8). A
-fingerprint refuses a file made from another checkpoint, so the 40-block Anima-2.9B needs its own
+fingerprint (the first and last block linears only) refuses a file made from a checkpoint that differs in those, so the 40-block Anima-2.9B needs its own
 file or round to nearest.
 
 ## Limits

@@ -1339,8 +1339,8 @@ def cmd_caption_autotag(extra):
     (default) only fills in uncaptioned images; ``merge`` appends novel tags to
     every caption while keeping its position clauses; ``overwrite`` replaces
     the caption outright. Dry-run by default; ``ARGS="--apply"`` writes, and
-    must be followed by ``make preprocess-te`` — caption edits do NOT
-    invalidate the TE caches.
+    must be followed by ``make preprocess-te`` — it re-encodes the captions
+    newer than their TE cache (``_cache_is_current`` compares mtimes).
     """
     from ._common import _resolve_run_mode, run_command
 

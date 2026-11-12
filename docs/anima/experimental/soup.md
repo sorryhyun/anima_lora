@@ -34,7 +34,7 @@ command job; the pipeline drives its own `train.py` phases as direct subprocesse
 
 Env knobs (all optional): `NAME` (output slug), `POOL_PATH_PATTERN` (Phase-1
 uncond pool glob, default `*` = whole dataset — the fine-tune set is always
-unioned in), `UNCOND_RATIO` (0.5), `UNCOND_EPOCHS` (2), `NUM_SOUP` (3 — number
+unioned in), `UNCOND_RATIO` (1.0), `UNCOND_EPOCHS` (4) — the `[soup]` table of `configs/soup/soup.toml`; the argparse fallback 0.5 / 2 applies only when a key is absent there — `NUM_SOUP` (3 — number
 of seeded fine-tunes to soup; seeds are `1001..1000+N`), `LR_POOL` /
 `LR_INTERVAL` (per-ingredient LR diversity, see below), `RANK` (default =
 method `network_dim`), `PRESET`, `NO_UNCOND=1` (skip Phase 1, see below).
@@ -142,7 +142,9 @@ not assumed.
 
 Rank-r truncation is essentially free on shared-init ingredients: at rank
 16, mean retained energy 99.87%, min 96.8% (worst = early-block
-`mlp_layer2`). The ingredients share a `weight_svd`-pinned init subspace, so
+`mlp_layer2`). That is for uncond-init ingredients; nouncond ingredients
+with `svd_slice` (merged14 shards, rank 32) retain 98.6–99.2% on average, min
+92.8–95.7%. The ingredients share a `weight_svd`-pinned init subspace, so
 their ΔWs overlap almost completely and the averaged delta is barely more than
 rank 16 to begin with.
 
@@ -150,7 +152,7 @@ rank 16 to begin with.
 
 - Plain-LoRA checkpoints only. The ingredient runs use `--method soup`
   (`configs/soup/soup.toml`) — a dedicated, stable plain-LoRA stack (`weight_svd`
-  down-init + REPA; T-LoRA is training-only, so its checkpoints are still plain).
+  down-init, REPA off since 2026-11-06; T-LoRA is training-only, so its checkpoints are still plain).
   This is deliberately *not* `configs/methods/lora.toml`, whose Hydra routing
   knobs and drifting `path_pattern` / `output_name` would break the soup: Hydra
   (and any other non-plain-LoRA) key shapes are refused loudly by `build.py`.
@@ -158,14 +160,16 @@ rank 16 to begin with.
 - The pool must dilute the target, not repeat it at full dose. The uncond
   phase exposes the target's own frames (the fine-tune set is unioned into the
   pool), so the pool must be broad enough that the target is a minority
-  share — the default `*` (whole dataset) at `sample_ratio 0.5` makes it
-  tiny. If you narrow `POOL_PATH_PATTERN`, keep it a strict superset of the
+  share — the default `*` (whole dataset) makes it tiny. If you narrow `POOL_PATH_PATTERN`, keep it a strict superset of the
   fine-tune set spanning many other images. Act 2 of the report shows same-frame
   full-dose uncond is destructive; Act 3 shows the diluted pool is both
   necessary and sufficient to avoid it.
 - Keep the uncond dose low. Exposure budget = `uncond_epochs × member-share`.
   2 epochs at ~51% share was neutral on memorization; 4 epochs at 100% share
-  was destructive (just more epochs of the same frames).
+  was destructive (just more epochs of the same frames). The shipped default
+  (`uncond_ratio 1.0`, 4 epochs) is safe because the pool is `*`: the target is
+  a small share of it, so its own exposure stays low; it would not be on a
+  pool narrowed to the target.
 - `sample_ratio 0.5` is not in tracked config. `configs/base.toml` at HEAD
   says 1.0. The pipeline pins `--sample_ratio` for the uncond phase from
   `--uncond_ratio`; for the fine-tunes pass it via `ARGS` if you need the

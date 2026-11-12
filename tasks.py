@@ -72,8 +72,8 @@ COMMANDS = {
     ),
     "soup": (
         training.cmd_soup,
-        "Uncond-init soup (TARGET=<artist> required): uncond inter-train on the "
-        "target's artist shard (reused if it exists) → 3 seeded fine-tunes → ΔW "
+        "Uncond-init soup (TARGET=<artist>, else soup.toml path_pattern): uncond "
+        "inter-train on the pool (default `*`, whole dataset; reused if it exists) → 3 seeded fine-tunes → ΔW "
         "soup SVD-truncated to network_dim (bench/memorization/report.md).",
     ),
     "turbo": (

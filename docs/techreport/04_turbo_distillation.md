@@ -286,7 +286,7 @@ steps=4, er_sde sampler"입니다(Hub `README.md`, 2026-11-12에 읽음).
 
 당시 `dit_path`는 bf16 `anima-base-v1.0`이었습니다. int8 stream이 터보 기본값이 된 것은 그 뒤(`9068feea`)입니다.
 
-**warm start.** 이 줄의 student와 fake는 둘 다 공식 turbo v1.1 릴리스(`anima-turbo-v1.1.safetensors`)에서
+**warm start.** 이 줄의 student와 fake는 둘 다 공식 turbo v1.1 릴리스(`anima-turbo-v1.1.safetensors`; Hub의 `_v3`는 이 저장소의 student라 이름만 비슷하다)에서
 base에 대한 delta를 뽑아 시작합니다. `scripts/toolkits/extract_delta_lora.py --rank 96 --act_scales
 models/extracted/act_scales_base_4step.safetensors --include_adaln`으로 추출합니다. activation-whitened(ASVD)
 추출은 같은 rank의 plain SVD보다 재구성이 좋아서, rank 96 ASVD가 plain rank 128과 비슷합니다. 공식 turbo는
@@ -300,8 +300,9 @@ models/extracted/act_scales_base_4step.safetensors --include_adaln`으로 추출
 - v3_longer는 2k 이후로도 계속 좋아졌고, 최종 |ΔW|는 12.4입니다. v1.1 delta 자체의 norm은 3.17입니다
   (`project/anima_turbo/findings/turbo_apex_no_quality.md`).
 
-> 불일치: Hub 카드는 `er_sde` 샘플러로 재현한다고 적었지만, `make test-turbo`는 `--sampler euler`로 고정하고
-> (`scripts/tasks/inference.py::cmd_test_turbo`) arm 0 렌더도 euler입니다. 학습 롤아웃은 Euler입니다.
+이 저장소의 재현 경로는 Euler입니다. 학습 롤아웃이 Euler이고, `make test-turbo`는 `--sampler euler`로 고정하며
+(`scripts/tasks/inference.py::cmd_test_turbo`) arm 0 렌더도 euler입니다. Hub 카드가 적은 `er_sde`는 이 저장소에서
+검증하지 않았습니다.
 
 ---
 
@@ -760,8 +761,8 @@ loss 항이 바뀌지 않으면 twin을 새로 만들지 않습니다.
 않습니다(`diversity.py` 주석). 배포 TOML의 `validate_every_n_steps 1000`은 500스텝 런에서 한 번도 돌지 않으니 짧은
 arm에서는 125로 내리세요(`docs/anima/methods/turbo.md` §GAN).
 
-> 불일치: `reports/mfd.md`는 `div_xpred_ac_sim` ≈ 1을 "스텝 0 출력이 시드 간 동일"이라고 풀어 쓰지만, 코드는 N스텝
-> 롤아웃이 끝난 최종 latent에서 계산합니다(`diversity.py`, `x_preds.append(x.detach())`는 스텝 루프 뒤에 있음).
+`div_xpred_ac_sim` ≈ 1은 "최종 student latent가 시드 간에 거의 같다"는 뜻입니다. 이 값은 스텝 0 출력이 아니라 N스텝
+롤아웃이 끝난 latent에서 계산합니다(`diversity.py`, `x_preds.append(x.detach())`는 스텝 루프 뒤에 있음).
 
 ### 6.3 믿으면 안 되는 학습 스칼라
 
@@ -844,32 +845,6 @@ arm에서는 125로 내리세요(`docs/anima/methods/turbo.md` §GAN).
   > TODO(확인 필요): 이 문제에 대한 계획된 arm이 plan.md에 없습니다. 독자에게 다음 수를 제시하려면 사용자의 판단이 필요합니다.
 - **2스텝에서 제안만 되고 만들지 않은 것**(연구 노트): rollout-grad 스케일 λ, 4스텝 m14 resume 번들에서 warm start,
   저역 통과한 최종 이미지 앵커, 스텝 0에 σ-routed low-res 적용.
-
----
-
-## 8. 문서와 코드의 불일치 메모
-
-검토하면서 발견한 것들입니다. 이 편에서는 코드와 config를 기준으로 썼습니다.
-
-1. **`dm_x0_norm`의 "배포 기본값".** `docs/anima/structure/turbo.md` §7 표와 §9는 "(a) τ-damping이 배포 기본값
-   (`dm_x0_norm=false`)"이라고 적었습니다. 코드 기본값은 `false`가 맞지만, 배포 TOML과 현재 레시피는 모두 `true`입니다.
-   `docs/anima/methods/turbo.md` 표는 `true`라고 적었습니다.
-2. **`docs/anima/structure/turbo.md`의 기본값.** `fake_steps_per_student_step`를 "(default 1)"로, rank를 "48"로 적었는데
-   코드 기본값과는 맞고 TOML(4, 64)과는 다릅니다. methods 문서는 TOML 값을 "default"로 적었습니다. 두 문서가 서로 다른 층을
-   기본값이라고 부릅니다.
-3. **methods 문서 표에 빠진 키.** `cdm.weight`(TOML 1.0), `ema.window`, `optim.lr_schedule`(TOML에 없어서 cosine 적용),
-   `network.fake_transition`, `dmd.dm_draws`, `optim.grad_accum`, `mfd.*`가 `docs/anima/methods/turbo.md` 설정 표에 없습니다.
-4. **`make turbo PRESET=low_vram`.** methods 문서 Quick start에 있지만, `low_vram` preset은 `--grad_ckpt`를 넘기고
-   (`scripts/tasks/_common.py::bespoke_preset_flags`), `config.py`는 `cdm.weight > 0`이나 `gan.weight_gen > 0`과 함께
-   쓰는 `--grad_ckpt`를 거부합니다. 배포 TOML은 둘 다 켜져 있으므로 이 조합은 시작하자마자 `ValueError`가 납니다. 같은
-   문서 §GAN의 "`--grad_ckpt` is a valid VRAM lever here"도 현재 코드와 맞지 않습니다.
-5. **샘플러.** Hub 카드는 `er_sde`, `make test-turbo`와 arm 0 렌더는 `euler`입니다(§3).
-6. **`div_xpred_ac_sim`의 풀이.** `reports/mfd.md`는 "스텝 0 출력"이라고 하지만 코드는 최종 latent에서 계산합니다(§6.2).
-7. **오래된 경로.** `1112_0833.toml`의 머리 주석이 `scripts/distill_turbo/plan.md`를 가리키지만, 계획은
-   `project/anima_turbo/plan.md`로 옮겨졌습니다. `proposal/superturbo.md`의 `steps.py:152` 줄 번호는 현재 코드와 맞지 않을
-   수 있습니다(현재 detach는 `student_rollout` 안의 `if not keep: x = x.detach()`).
-8. **"v1.1 / v3".** 저장소의 `anima-turbo-v1.1`은 warm start에 쓴 공식 turbo 릴리스이고, Hub의 `_v3`는 이 저장소의
-   student입니다. 이름이 비슷해서 헷갈리기 쉽습니다. `models/extracted/`에는 더 오래된 `anima_turboV10_*` delta도 남아 있습니다.
 
 ---
 

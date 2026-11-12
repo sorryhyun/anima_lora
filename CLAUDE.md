@@ -232,7 +232,7 @@ routing axes: `lora-routing` skill).
   head in fp32 around the block GEMMs; a seed renders differently on each. EasyControl stays on
   bf16, with a warning. `library/anima/stream.py`, `docs/anima/optimizations/fp32_stream.md`.
 - `make merge ADAPTER_DIR=… [MULTIPLIER=0.8]` bakes a LoRA / T-LoRA into the DiT;
-  refuses Hydra-moe / postfix unless `--allow-partial`.
+  refuses Hydra-moe / postfix / prefix / register tokens / step-expert turbo heads unless `--allow-partial`.
 - `--sigma_lowres` (σ-demoted training, opt-in): the research line is archived but the
   feature is live; needs `make preprocess-demote` siblings.
 

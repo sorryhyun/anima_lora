@@ -116,7 +116,8 @@ def cmd_soup(extra):
     ``TARGET`` is shorthand: ``TARGET=x`` ⇒ ``PATH_PATTERN="x/*" NAME=x``.
     Env knobs (all optional): ``NAME``
     (output slug), ``POOL_PATH_PATTERN`` (Phase-1 uncond pool glob, default
-    "*" = whole dataset), ``UNCOND_RATIO`` (0.5), ``UNCOND_EPOCHS`` (2),
+    "*" = whole dataset), ``UNCOND_RATIO`` (1.0), ``UNCOND_EPOCHS`` (4) (soup.toml ``[soup]``; the
+    argparse fallback 0.5 / 2 applies when the key is absent),
     ``NUM_SOUP`` (3 — fine-tunes to soup, seeds 1001..1000+N), ``LR_POOL``
     (per-ingredient LRs, e.g. ``"1e-5,2e-5,4e-5"``, cycled) or
     ``LR_INTERVAL`` (``"1e-5:4e-5"``, geometric over NUM_SOUP points),
