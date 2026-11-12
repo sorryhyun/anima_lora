@@ -66,6 +66,41 @@ this; the medians below match.
   The per-run ratios (1.65, 1.27) straddle the line, so the decision is close. The spikes (p95
   13–19, max ~240) are the steps an adaptive clip caps either way.
 
+## Divergence bursts: the control's raw 250 is caught inside one
+
+The control's raw 250 renders a flat noise texture on all 12 judge images. The file is sound
+(same keys, finite, equal to `output/ckpt/1112_0833.safetensors`). The run diverged in its last
+steps:
+
+- `gn_student` 5.5 / 14 / 6 / 16 at steps 242–245, then **231 / 244 / 106 / 72** at 246–249.
+  `gn_fake` rises with it (25 → 111 / 69 / 145 / 85), so student and fake blow up together.
+- σ_a over those steps is 0.03–0.96, so the burst is not a σ_a tail.
+- `x_pred_std` 0.74 → 1.98 at 250; validation at 250: `fm_mse` 0.29 → 0.88 and `div_xpred_ac_sim`
+  0.948 → 0.999. That is the collapse signature in `mfd.md`.
+- The twin had a burst of the same kind at steps 153–162 (37 / 29 / 58 / **242** / 131) and
+  recovered. Its validation at 250 is normal (`fm_mse` 0.27).
+- EMA 0.2 dilutes the burst: the control's EMA 250 renders. The 125 + 250 average carries part of
+  it (blocky crowd on the guitarist prompt).
+
+So bursts happen about once per 250 iterations at this recipe, and a raw checkpoint can sit
+inside one. The EMA shipping rule holds. The adaptive clip in arm 3 is the knob aimed at bursts,
+and arm 3 should cap the fake as well as the student.
+
+## Renders, control only (rough read, 2026-11-12)
+
+Grids: `output/tests/turbo4/cmp/0833_{ba5,cafe,bocchi}.jpg`. Rows are teacher (28 steps, cfg 4),
+EMA 250, avg2, raw 250, EMA 125. Columns are seeds 1–4.
+
+- **EMA 125 reads best, EMA 250 is more uniform.** At 250 the café gives the same pink aprons and
+  layout on all four seeds, and the five-girl prompt gives one fixed grid of figures on grey
+  paving with the sky gone. EMA 125 still varies the apron colours, keeps the sky, halos and
+  confetti, and draws crowd silhouettes.
+- **No student reaches the teacher's composition.** The teacher draws the jump from below and the
+  tumbling slapstick group. The students draw frontal standing poses on every seed. The teacher
+  spells `CAFE MILLENNIUM`; the students garble it.
+- One run, so this is not yet a reading above the noise floor. The twin's grids decide whether
+  "125 beats 250" is the recipe or the seed.
+
 ## For the GAN-off probe `1112_0917`
 
 Its criterion (GAN drives the walk if consecutive-move cos ≥ 0.1 and |ΔW|₂₅₀ clearly above
