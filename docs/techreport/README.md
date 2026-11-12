@@ -5,7 +5,7 @@ Anima LoRA 학습부터 4스텝 터보 LoRA까지, 실제로 쓰는 파이프라
 
 | # | 문서 | 내용 |
 |---|---|---|
-| 1 | [01_lora_recipe.md](01_lora_recipe.md) | LoRA 학습 레시피: 데이터와 캡션, 버킷, 확인된 설정 |
+| 1 | [01_lora_recipe.md](01_lora_recipe.md) | LoRA 학습 레시피: 상세한 캡션, crop의 손실과 free-fit, batch와 clip, 확인된 설정 |
 | 2 | [02_soup_merge.md](02_soup_merge.md) | LoRA soup과 merge: uncond-init soup, merge, exact concat, merged14 |
 | 3 | [03_bake_int8_gptq.md](03_bake_int8_gptq.md) | DiT에 bake, int8 base, teacher 전용 GPTQ |
 | 4 | [04_turbo_distillation.md](04_turbo_distillation.md) | DP-DMD 터보 증류: 루프, 레시피, 배운 것, 평가 방법 |
