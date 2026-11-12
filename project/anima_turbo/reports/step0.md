@@ -162,6 +162,34 @@ twin's 0.46, renders as the gate):
 - Taking the DM gradient on step 0 removes about 40 % of the iterations from steps 1–3 and leaves
   the raw checkpoint worse at 250.
 
+## S-c.2 probe: the anchor alone with four ε draws per iteration
+
+Run `1112_1230` (`configs/1112_1230.toml`): S-b with `dpdmd.anchor_draws 4` (four fresh ε for the
+same prompt per iteration, a teacher anchor on each, the gradients averaged before the clip), nothing
+else changed. 6.9 s per iteration against S-b's 2.0 (each draw costs about one S-b iteration), 29 min.
+Training `div_loss` by fifths (mean of the four draws): 0.187 / 0.164 / 0.169 / 0.147 / 0.135
+(S-b 0.220 / 0.176 / 0.165 / 0.150 / 0.140). Probe: `bench/turbo/results/20261112-1304-handoff_step0lora_draws4/`
+(job `20261112-123022-70d064`).
+
+Criterion, fixed in the config header before the run: held-out anchor MSE below 0.140 (S-b 0.157
+minus the 0.017 control–twin gap) and `P>S@1` above S-b by more than 0.05 on both students.
+
+| | twin EMA 250 | control EMA 125 | held-out anchor MSE |
+|---|---|---|---|
+| `A>S@1` | 0.672 | 0.729 | |
+| `P>S@1`, S-c.2 (draws 4) | **0.483** (0.565 / 0.523 / 0.361) | **0.569** (0.645 / 0.556 / 0.505) | **0.147** (0.074 / 0.132 / 0.235) |
+| `P>S@1`, S-b (draws 1) | 0.472 | 0.543 | 0.157 |
+| `S` | 0.455 | 0.537 | |
+
+- **Fails both conditions.** MSE 0.147 against the 0.140 line; `P>S@1` +0.011 / +0.026 over S-b
+  against +0.05. The direction is right on every number and every prompt, and small.
+- Four times the samples per update bought 0.010 of anchor MSE, and the training curve tracks S-b
+  from the second fifth on. The step-0 regression is not held back by its draw noise; it sits near
+  a floor at this rank and length.
+- **S-c.3 is already measured.** A step-0-only adapter trained on the anchor is what S-b and S-c.2 are:
+  their LoRA only ever sees σ 1, and `P>S@1` uses it for step 0 alone. Building it as a separate
+  adapter would rerun S-b at the cost of the one-LoRA ship.
+
 ## Where this leaves step 0
 
 - The anchor target is the right one (S-a). The trained step 0 does not reach it: alone or in the
