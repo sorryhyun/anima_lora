@@ -191,6 +191,11 @@ minus the 0.017 control–twin gap) and `P>S@1` above S-b by more than 0.05 on b
 - The gain is small for its cost: 5–10 % of the distance to `A>S@1`, at about 1.6 s per extra draw.
   Four times the samples per update bought 0.010 of anchor MSE, and the training curve tracks S-b
   from the second fifth on. Draw noise is a minor part of the step-0 limit, not the main part.
+- **Not visible in the images.** Probe grid `1112_0833_125_ema_p2.jpg` (guitarist, control EMA 125
+  drawing steps 1–3): `P>S@1` is nearly the same image as `S` on all four seeds (large centred
+  frontal figure; seed 1 bends the knees slightly more), while `T>S@1` and `A>S@1` keep the view from
+  below, the smaller figure and the crowd silhouettes. S-c.1's change was visible (the pose moved);
+  this one moves the numbers only. User's call (2026-11-12): no S-c.1 + draws stacked run.
 - **S-c.3 is already measured.** A step-0-only adapter trained on the anchor is what S-b and S-c.2 are:
   their LoRA only ever sees σ 1, and `P>S@1` uses it for step 0 alone. Building it as a separate
   adapter would rerun S-b at the cost of the one-LoRA ship.
