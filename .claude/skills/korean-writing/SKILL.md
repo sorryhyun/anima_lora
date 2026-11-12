@@ -24,6 +24,7 @@ description: Wording rules for Korean documents written for outside readers — 
 | 조용히, 경고 없이 (silently, without warning의 번역) | 뺍니다 | 강조 부사로만 읽힙니다. 문장에서 빼도 뜻이 그대로입니다 |
 | "A가 아니라 B다" | "B다" | 아무도 A라고 하지 않았는데 A를 부정하는 문장입니다. "A가 아니라" 부분을 뺍니다 |
 | 규칙 (코드의 작동 방식이나 로직을 가리킬 때) | 무엇을 하는지 직접 씁니다: "~이면 ~한다", "~로 계산한다" | 코드가 어떻게 동작하는지를 "규칙"이라고 부르면 어색합니다 |
+| 닫다, 닫힌, 열린 ("문제가 닫혔다", "루프가 닫힌다", "열린 질문") | 여지가 있다 / 없다, 불확실하다 | 이슈 트래커의 open / closed를 옮긴 번역투입니다. "이 방향은 더 볼 여지가 없다", "원인은 아직 불확실하다"처럼 씁니다 |
 
 ## 3. 대부분의 경우 더 나은 단어
 
@@ -34,6 +35,7 @@ description: Wording rules for Korean documents written for outside readers — 
 | load-bearing | 필수 |
 | 싼 (계산이 싸다) | 효율적인 |
 | 검증 | 확인 |
+| 양 (gradient의 양, 변화량 등 크기를 말할 때) | 크기 |
 
 ## 예시
 
@@ -46,5 +48,5 @@ description: Wording rules for Korean documents written for outside readers — 
 
 ## 확인
 
-다 쓴 뒤 문서에서 `꼬리`, `하나`, `조용히`, `경고 없이`, `아니라`, `규칙`, `판정`, `모드`, `load-bearing`,
-`싼`, `검증`을 검색해 남은 것을 고칩니다. 실제로 수를 세는 "하나"만 둡니다.
+다 쓴 뒤 문서에서 `꼬리`, `하나`, `조용히`, `경고 없이`, `아니라`, `규칙`, `닫`, `열린`, `판정`, `모드`,
+`load-bearing`, `싼`, `검증`, `양`을 검색해 남은 것을 고칩니다. 실제로 수를 세는 "하나"만 둡니다.
