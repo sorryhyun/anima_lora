@@ -2,8 +2,8 @@
 
 Opened 2026-11-12. The consumer is yaar's `user-apps/anima` (`../../yaar`), which runs the ONNX
 files from `huggingface.co/sorryhyun/anima-turbo-4step/onnx/` on onnxruntime-web 1.30.0. That build
-uses the native WebGPU EP (`ort.webgpu.bundle.min.mjs`). Step 1 is the text encoder (Qwen3-0.6B).
-The DiT comes later.
+uses the native WebGPU EP (`ort.webgpu.bundle.min.mjs`). Step 1 is the text encoder (Qwen3-0.6B),
+step 2 the DiT and VAE decoder: one resolution-free graph set for every ratio, DiT in int8.
 
 ## Text encoder: `onnx/int8/text_encoder_int8.onnx`
 
@@ -69,9 +69,77 @@ The graph check, on ORT CPU against `src/te_ref_dump.py`'s 32 padded prompts:
 
 ### Not checked yet
 
-The browser run on WebGPU (the user will run it). The Chrome on this box, on Linux with NVIDIA,
-exposed no `shader-f16`, so the session loaded but `GatherBlockQuantized` refused to run. That
-setup cannot run the fp16 graph either.
+The browser run on WebGPU. On Linux with NVIDIA, Dawn withholds `shader-f16` on Vulkan
+(crbug.com/42251215) until Chrome is launched with
+`--enable-features=Vulkan --enable-dawn-features=vulkan_enable_f16_on_nvidia`, the set yaar's own
+launchers pass (`packages/server/src/lib/browser/webgpu-flags.ts`). Without the Dawn toggle the
+session loads but `GatherBlockQuantized` refuses to run, and the fp16 graph cannot run either.
+`--enable-unsafe-webgpu` and `allow_unsafe_apis` do not lift the hold.
+
+## DiT and VAE: one graph set for every resolution
+
+The published DiT is five per-ratio exports (`dit_<bucket>_fp16_r16`, seven segments each, one
+shared 3.9 GB sidecar), and the VAE decoder is five per-ratio graphs too. A ratio was a graph
+only because the export constant-folded the resolution, not because the weights differ.
+
+### What depends on resolution
+
+The four non-square DiT exports are node-for-node identical. Diffing them shows:
+
+- **seg1–6 (the blocks)**: six int64 Reshape targets per segment, holding the token count
+  N = ph·pw (e.g. `[1, 1014, 16, 128]`).
+- **seg0**: also the patchify shapes (ph, pw), the zero padding-mask channel `(1, 1, 1, H, W)`,
+  and the Cosmos RoPE angle tables `(1, ph, pw, 21)` for rows and columns (T-axis angles all
+  zero). The tables equal `fp16(outer(arange, f))` with f = 1 / θ^(arange(0, 42, 2) / 42),
+  θ = 1e4·4^(42/40), bit for bit, in every bucket.
+- **seg6**: the unpatchify shapes.
+
+The VAE: Expand and Reshape targets at s·H, s·W (s = 1, 2, 4, 8) and H·W (mid-block attention),
+and the nearest-2x upsample written as GatherND over index tables ⌊i/2⌋, ⌊j/2⌋.
+
+### Rewrite
+
+- `src/dit_onnx_dynamic.py` fits each differing shape element to a symbol (N, ph, pw, H, W)
+  across the four buckets and rebuilds it in-graph from `Shape(latent)`. It rebuilds the RoPE
+  tables with Range / Mul / Cast, which it checks bit-exact against every bucket, and the
+  zero tensors with ConstantOfShape. Every segment takes `latent`, for its shape only. Seven
+  graphs (~9 MB) over the unchanged HF sidecar: `output/webgpu_int8/onnx_dyn/dit_dyn_fp16_r16.*`.
+- `src/vae_onnx_dynamic.py` does the same for the VAE, fitted on 624x416 / 416x624 (H and W
+  swap, so the fit disambiguates; H·W is caught although equal in both). The index tables are
+  rebuilt from the feature map's own shape. `onnx_dyn/vae_decoder_dyn_fp16.onnx`, 0.54 MB.
+- `src/dit_onnx_int8.py --buckets dyn` rewrites the dynamic set onto the v4_preview turbo DiT
+  (merged14 + turbo EMA 1112_1512 baked, `project/anima_turbo/deploy/deploy.sh bake`) with
+  `dit_int8.anima_turbo_4step_v4_preview.safetensors` from `src/dit_convrot_gptq.py`. 224
+  block linears are converted to MatMulNBits. Sidecar **2,372,323,328 B** (fp16: 3,913,271,296).
+  The weights it replaces are matched by value against v4_preview (min cos 0.987), so the HF fp16
+  export was made from an earlier student. Output: `output/webgpu_int8/onnx_dyn_int8/`.
+
+### Checks
+
+Dynamic against per-bucket graphs, same weights, ORT CPU (`src/dit_onnx_dyn_eval.py`):
+
+| | 624x416 | 384x688 | 512 (separate export) |
+|---|---|---|---|
+| DiT `noise_pred` rel L2 | 1.2e-5 | 1.5e-5 | 1.6e-5 |
+
+The VAE matches all five buckets at max |Δ| 0.00098, one fp16 ulp near 1 (rel 2.1e-4). Neither
+is bit-exact: ORT fuses differently once shapes are symbolic. At grids no bucket has (64x96 and 96x64)
+both run and stay finite at the buckets' output scale.
+
+Against the torch DiT in fp32 (`src/dit_ref_dump.py`: 8 cached images per grid at σ 1 / 0.9 /
+0.75 / 0.5, own captions), relative L2 of `noise_pred`, mean over σ; ORT CUDA EP
+(`src/dit_onnx_eval.py --ep cuda`):
+
+| | 52x78 (bucket) | 64x96 (no bucket) |
+|---|---|---|
+| torch, bf16 autocast | 0.0249 | 0.0248 |
+| dynamic, fp16, v4 weights | 0.0089 | 0.0087 |
+| **dynamic, int8 (shipped)** | **0.0189** | **0.0160** |
+
+Per σ the int8 set sits below bf16 at every step (52x78: 0.0090 / 0.0168 / 0.0248 / 0.0250 against
+0.0114 / 0.0221 / 0.0317 / 0.0344). CUDA's MatMulNBits dequantises the weight to fp16, which is the
+browser's non-DP4A path. The DP4A path (activations rounded per 128-wide block) is not measured
+end to end; per linear, `dit_convrot_gptq.py`'s report has W8A8 at about 7× the W8 error.
 
 ## Files
 
@@ -80,6 +148,10 @@ setup cannot run the fp16 graph either.
 - `src/te_onnx_int8.py`: rewrites the HF `text_encoder_fp16.onnx` with that file. Linears are
   matched by node order (q k v o gate up down per layer) and checked against the safetensors.
 - `src/te_ref_dump.py` and `src/te_onnx_eval.py`: the ORT CPU check.
-- `yaar_request.md`: the change needed in yaar to load the file.
+- `src/dit_convrot_gptq.py`: DiT calibration (daemon). `src/dit_onnx_dynamic.py`,
+  `src/vae_onnx_dynamic.py`, `src/dit_onnx_int8.py`: the graph rewrites above.
+- `src/dit_ref_dump.py` (daemon, `--hw`, `--compute bf16`), `src/dit_onnx_dyn_eval.py`,
+  `src/dit_onnx_eval.py`: the checks.
+- `yaar_request.md`: the changes needed in yaar to load the files (text encoder; DiT and VAE).
 
 Local copies of the outputs are in `output/webgpu_int8/`.

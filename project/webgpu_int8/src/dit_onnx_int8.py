@@ -1,7 +1,8 @@
 """Rewrite the browser DiT (HF ``onnx/dit_*_fp16_r16``) onto new weights, optionally int8.
 
 The source is the published segmented fp16 export: five resolution buckets, seven
-segments each, one shared sidecar. Its weight initializers are mostly anonymous
+segments each, one shared sidecar (or, with ``--buckets dyn``, dit_onnx_dynamic.py's
+one resolution-free set over that sidecar). Its weight initializers are mostly anonymous
 (``val_N``) and some carry the r16 residual rescale (×1/16), so each 2-D fp16
 initializer is identified by value: cosine against every ``--base`` tensor of the same
 shape (or its transpose), and the scale factor read off the projection and snapped to
@@ -102,7 +103,7 @@ def identify(src: Source, base_path: str):
         else:
             by_shape[tuple(w.shape)].append((k, True))
     inits = defaultdict(list)
-    for k, g in enumerate(src.graphs["512"]):
+    for k, g in enumerate(src.graphs[BUCKETS[0]]):
         for t in g.graph.initializer:
             if t.data_type == onnx.TensorProto.FLOAT16 and len(t.dims) == 2:
                 if tuple(t.dims) in by_shape:
@@ -119,7 +120,9 @@ def identify(src: Source, base_path: str):
         Cn = C / C.norm(dim=1, keepdim=True)
         X = torch.stack(
             [
-                torch.from_numpy(src.array("512", k, t).astype(np.float32)).reshape(-1)
+                torch.from_numpy(
+                    src.array(BUCKETS[0], k, t).astype(np.float32)
+                ).reshape(-1)
                 for k, t in items
             ]
         )
@@ -146,6 +149,7 @@ def identify(src: Source, base_path: str):
 
 
 def main():
+    global BUCKETS
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--hf_dir", required=True, help="dir holding the source graphs")
     ap.add_argument("--src_prefix", default="dit_{b}_fp16_r16")
@@ -161,7 +165,13 @@ def main():
         default="int8/",
         help="prefix of graph / sidecar paths in the manifests",
     )
+    ap.add_argument(
+        "--buckets",
+        default=",".join(BUCKETS),
+        help="source buckets, the first identifies weights; 'dyn' for dit_onnx_dynamic.py's set",
+    )
     a = ap.parse_args()
+    BUCKETS = tuple(a.buckets.split(","))
 
     src = Source(a.hf_dir, a.src_prefix, a.sidecar)
     found = identify(src, a.base)
@@ -182,13 +192,13 @@ def main():
     dit = safe_open(a.dit, "pt")
     H = numpy_helper.from_array(hadamard(ROT), "convrot_h256")
 
-    # content of each bucket-512 initializer by name, to map other buckets onto it
+    # content of each first-bucket initializer by name, to map other buckets onto it
     h512 = {}
-    for k, g in enumerate(src.graphs["512"]):
+    for k, g in enumerate(src.graphs[BUCKETS[0]]):
         for t in g.graph.initializer:
             if (k, t.name) in found:
                 h512[
-                    (k, hashlib.sha1(src.array("512", k, t).tobytes()).hexdigest())
+                    (k, hashlib.sha1(src.array(BUCKETS[0], k, t).tobytes()).hexdigest())
                 ] = t.name
 
     new_w_cache = {}
@@ -357,7 +367,7 @@ def main():
         print(f"seg{k}: sidecar [{lo}, {pos}) {(pos - lo) / 2**20:.1f} MiB", flush=True)
     side.close()
     print(
-        f"sidecar {pos / 2**30:.3f} GiB; inlined (bucket 512) {inlined / 2**20:.2f} MiB"
+        f"sidecar {pos / 2**30:.3f} GiB; inlined (first bucket) {inlined / 2**20:.2f} MiB"
     )
     if q:
         print("converted MatMuls per bucket", dict(n_conv))
