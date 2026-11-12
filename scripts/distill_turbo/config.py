@@ -269,6 +269,14 @@ def build_argparser() -> argparse.ArgumentParser:
         "(project/anima_turbo/plan.md, S-b).",
     )
     parser.add_argument(
+        "--anchor_draws",
+        type=int,
+        default=None,
+        help="Noise draws per iteration for the anchor regression (anchor_only "
+        "only): k teacher anchors on k fresh ε for the same prompt, gradient "
+        "averaged before the clip (project/anima_turbo/plan.md, S-c.2).",
+    )
+    parser.add_argument(
         "--detach_after_first",
         dest="detach_after_first",
         action="store_const",
@@ -438,6 +446,8 @@ class TurboConfig:
     rollout_grad: bool
     # Step 0 on the anchor regression alone; the DM / CDM / GAN / fake paths idle.
     anchor_only: bool
+    # ε draws per iteration for the anchor regression (anchor_only only).
+    anchor_draws: int
     flow_shift: float
 
     # DMD core
@@ -665,6 +675,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     dm_first_step = bool(_pick(args.dm_first_step, cfg, "dpdmd.dm_first_step", False))
     rollout_grad = bool(_pick(args.rollout_grad, cfg, "dpdmd.rollout_grad", False))
     anchor_only = bool(_pick(args.anchor_only, cfg, "dpdmd.anchor_only", False))
+    anchor_draws = int(_pick(args.anchor_draws, cfg, "dpdmd.anchor_draws", 1))
     flow_shift = float(_pick(args.flow_shift, cfg, "sampling.flow_shift", 3.0))
 
     # Optimizer
@@ -711,6 +722,12 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         )
     if div_weight < 0.0:
         raise ValueError(f"dpdmd.div_weight={div_weight}: must be >= 0")
+    if anchor_draws < 1:
+        raise ValueError(f"dpdmd.anchor_draws={anchor_draws}: must be >= 1")
+    if anchor_draws > 1 and not anchor_only:
+        raise ValueError(
+            "dpdmd.anchor_draws > 1 is built for dpdmd.anchor_only only (S-c.2)."
+        )
     if anchor_only:
         if div_weight == 0.0 or rollout_grad or dm_first_step:
             raise ValueError(
@@ -879,6 +896,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         dm_first_step=dm_first_step,
         rollout_grad=rollout_grad,
         anchor_only=anchor_only,
+        anchor_draws=anchor_draws,
         flow_shift=flow_shift,
         student_steps=student_steps,
         teacher_cfg=teacher_cfg,
@@ -969,6 +987,7 @@ _TB_KEYS = (
     "dm_first_step",
     "rollout_grad",
     "anchor_only",
+    "anchor_draws",
     "flow_shift",
     "student_rank",
     "fake_rank",

@@ -1,0 +1,103 @@
+# S-c.2 probe (project/anima_turbo/plan.md, step-0 arms): S-b 1112_1044 with dpdmd.anchor_draws 4.
+# Four fresh ε per iteration for the same prompt, a teacher anchor on each, the four step-0
+# regressions' gradients averaged before the clip. Everything else as S-b (seed, data order, LR
+# 5e-5, EMA 0.2, 250 it). Asks whether the step-0 floor (anchor MSE ~0.16, the teacher's
+# instantaneous level) is draw noise or a floor.
+# Pass, fixed before the run: held-out anchor MSE below 0.140 (S-b 0.157 minus the 0.017 control–twin gap) AND the probe's P>S@1
+# above S-b's 0.472 / 0.543 (twin EMA 250 / control EMA 125) by more than 0.05 on both, toward
+# A>S@1 0.672 / 0.729. Pass → stack on S-c.1's recipe; fail → floor, step-0-only adapter next.
+dit_path = "models/diffusion_models/anima_merged14_int8_gptq.safetensors"
+dit_nonquant_path = "models/diffusion_models/anima_merged14.safetensors"
+data_dir = "post_image_dataset/lora"
+output_dir = "output/ckpt"
+output_name = "1112_1230"
+
+iterations = 250
+batch_size = 1
+seed = 42
+channel_scaling_alpha = 0.0
+compile_dynamic_seq = true
+dynamo_recompile_limit = 64
+activation_memory_budget = 0.99
+int8 = "stream"
+stream = "fp32"
+
+[network]
+student_rank = 64
+student_alpha = 180
+fake_rank = 64
+fake_alpha = 180
+attn_mode = "flash"
+student_down_init = "weight_svd"
+fake_down_init = "weight_svd"
+student_init_weights = ""
+fake_init_weights = ""
+train_adaln = true
+fake_adaln = true
+adaln_rank = 16
+adaln_alpha = 90
+fake_transition = true
+
+[dmd]
+student_steps = 4
+teacher_cfg = 4
+dynamic_schedule = true
+dm_x0_norm = true
+norm_floor = 0.05
+dm_draws = 1
+
+[cdm]
+weight = 0.0
+grad_ckpt = true
+
+[mfd]
+dtau = 0.0
+
+[optim]
+student_lr = 5e-5
+fake_lr = 5e-5
+fake_steps_per_student_step = 4
+fake_warmup_steps = 0
+grad_accum = 1
+weight_decay = 0.0
+grad_clip = 1.0
+lr_schedule = "constant"
+
+[ema]
+window = 0.2
+
+[dpdmd]
+k_anchor = 6
+teacher_anchor_steps = 12
+div_weight = 0.1
+detach_after_first = true
+dm_first_step = false
+rollout_grad = false
+anchor_only = true
+anchor_draws = 4
+
+[sampling]
+t_distribution = "uniform"
+sigmoid_scale = 1.0
+flow_shift = 3.0
+
+[gan]
+weight_gen = 0.0
+feature_block_idx = -1
+disc_lr = 1e-5
+disc_hidden = 0
+disc_head = "token"
+delay_steps = 0
+warmup_steps = 0
+r1_weight = 0.0
+r1_alpha = 0.1
+use_same_t_noise = true
+grad_ckpt = true
+
+[io]
+save_every = 125
+log_interval = 5
+log_dir = "output/logs/turbo"
+validate_every_n_steps = 125
+val_diversity_seeds = 8
+val_prompt_idx = -1

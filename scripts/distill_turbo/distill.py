@@ -95,6 +95,8 @@ def _student_metadata(cfg, ctx: RunContext, step: int) -> dict[str, str]:
     )
     if cfg.anchor_only:
         md["ss_turbo_anchor_only"] = "1"
+    if cfg.anchor_draws > 1:
+        md["ss_turbo_anchor_draws"] = str(cfg.anchor_draws)
     if cfg.dm_first_step:
         md["ss_turbo_dm_first_step"] = "1"
     if cfg.rollout_grad:
@@ -198,7 +200,20 @@ def run_loop(ctx: RunContext, cfg):
 
             if cfg.anchor_only:
                 # S-b (project/anima_turbo/plan.md): step 0 on the anchor alone.
-                div_loss_t = anchor_only_loss(ctx, eps, v_target, crossattn_emb, B)
+                # anchor_draws k (S-c.2): k fresh ε for the same prompt, mean grad.
+                k = cfg.anchor_draws
+                div_loss_t = anchor_only_loss(
+                    ctx, eps, v_target, crossattn_emb, B, scale=1.0 / k
+                )
+                for _ in range(k - 1):
+                    eps_k = torch.randn_like(latents)
+                    v_target_k = teacher_anchor(
+                        ctx, cfg, eps_k, crossattn_emb, c_null, B
+                    )
+                    div_loss_t = div_loss_t + anchor_only_loss(
+                        ctx, eps_k, v_target_k, crossattn_emb, B, scale=1.0 / k
+                    )
+                div_loss_t = div_loss_t / k
                 gn_student = clip_or_norm(turbo.student_params(), cfg.grad_clip)
                 if grad_mean is None or grad_mean.add():
                     student_opt.step()
