@@ -178,7 +178,7 @@ Sectioned, bespoke. Every key has a matching CLI override flag (see
 | `[optim]` | `grad_clip` | `1.0` | grad-norm cap (both nets) |
 | `[cdm]` | `weight` / `grad_ckpt` | `1.0` / `true` | CDM loss weight (code fallback 0); its branch checkpoints its own forwards |
 | `[optim]` | `lr_schedule` / `grad_accum` | absent: `cosine` / `1` | shape after the 2 % linear warmup (student, fake, disc); iterations per student optimizer step |
-| `[ema]` | `window` | absent: `0.0` | student EMA span as a fraction of the run (0 = off) |
+| `[ema]` | `window` | absent: `0.0` | student EMA span as a fraction of the run (0 = off). Under `lr_schedule = "constant"` it is a fraction of the updates. Under `cosine` it is a fraction of the summed LR: each update decays the shadow by `decay ** (lr / mean lr)`, so the span covers the same share of the weights' movement as at a constant LR (0.2 reaches back about 45 % of the updates) |
 | `[dmd]` | `dm_draws` | absent: `1` | (σ_a, ε_dm) draws averaged into the DM signal on the same x_θ |
 | `[network]` | `fake_transition` | absent: `false` | transition-aware fake: σ of the student step the sample came from, as a zero-init delta on the fake's t-embedding |
 | `[mfd]` | `dtau` / `max_steps` / `interval` | absent: `0.0` / `4` / `to_zero` | MFD mean-flow integral; `dtau = 0` is plain DMD (`project/anima_turbo/reports/mfd.md`) |

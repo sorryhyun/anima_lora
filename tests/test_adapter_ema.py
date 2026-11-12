@@ -50,3 +50,16 @@ def test_swapped_in_restores_live_weights():
 def test_extras_only_has_no_main():
     ema = AdapterEMA(_params(), 0.0, "0.05,0.3", updates=100, start=1)
     assert ema.main is None and ema.spans == [0.05, 0.3]
+
+
+def test_rate_scales_the_decay():
+    params = _params()
+    ema = AdapterEMA(params, 0.5, "", updates=10, start=1, on_card=True)
+    ema.step()  # seeds at 0
+    with torch.no_grad():
+        for p in params:
+            p.fill_(10.0)
+    ema.step(rate=2.0)  # decay 0.8 ** 2
+    assert torch.allclose(ema.shadows[0][0], torch.full((3,), 3.6))
+    ema.step(rate=0.0)  # an update at zero LR leaves the shadow alone
+    assert torch.allclose(ema.shadows[0][0], torch.full((3,), 3.6))

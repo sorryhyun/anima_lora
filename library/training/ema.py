@@ -99,8 +99,13 @@ class AdapterEMA:
         )
 
     @torch.no_grad()
-    def step(self) -> None:
-        """Call once per optimizer update."""
+    def step(self, rate: float = 1.0) -> None:
+        """Call once per optimizer update.
+
+        ``rate`` is this update's LR over the mean LR of the schedule: the decay
+        becomes ``decay ** rate``, so a span is a fraction of the run's summed LR
+        and not of its update count. 1.0 (a constant LR) is the plain EMA.
+        """
         self.n_updates += 1
         if self.n_updates < self.start:
             return
@@ -112,6 +117,8 @@ class AdapterEMA:
             src = self.staging
         for shadow, decay in zip(self.shadows, self.decays):
             if shadow:
+                if rate != 1.0:
+                    decay = decay**rate
                 torch._foreach_lerp_(shadow, src, 1.0 - decay)
             else:
                 shadow.extend(t.clone() for t in src)

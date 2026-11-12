@@ -60,6 +60,7 @@ from .primitives import (
     PadCache,
     make_collate,
     make_scheduler,
+    schedule_lrs,
     scheduler_warmup_steps,
 )
 from .resume import (
@@ -147,7 +148,12 @@ class RunContext:
     start_step: int
     int8_base_id: str = ""
     ema: AdapterEMA | None = None  # student EMA (ema_window > 0)
-    grad_log: StepGradLog | None = None  # per-iteration grad norms (<run log>/grad_steps.jsonl)
+    # Mean student LR over the EMA's updates; 0 under the constant schedule. The loop
+    # passes lr / ema_lr_mean to AdapterEMA.step, so the span is a share of summed LR.
+    ema_lr_mean: float = 0.0
+    grad_log: StepGradLog | None = (
+        None  # per-iteration grad norms (<run log>/grad_steps.jsonl)
+    )
 
 
 def build_run(args, cfg: TurboConfig) -> RunContext:
@@ -624,6 +630,7 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
     # Student EMA from the end of the LR warmup. Shadows are not in the resume
     # bundle, so a resumed run re-seeds at its first update.
     ema = None
+    ema_lr_mean = 0.0
     if cfg.ema_window > 0.0:
         ema = AdapterEMA(
             turbo.student_params(),
@@ -634,6 +641,14 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         )
         ema.n_updates = start_step // cfg.grad_accum
         logger.info(f"student {ema.describe()}")
+        if cfg.lr_schedule != "constant":
+            lrs = schedule_lrs(student_updates, cfg.student_lr, cfg.lr_schedule)
+            tail = lrs[ema.start :]
+            ema_lr_mean = sum(tail) / max(1, len(tail))
+            logger.info(
+                f"student EMA span in summed LR ({cfg.lr_schedule}): mean lr "
+                f"{ema_lr_mean:.2e}, last update at rate {lrs[-1] / ema_lr_mean:.2f}"
+            )
 
     # Off a TTY, mirror the tqdm metrics as a throttled logger.info at log_interval
     # cadence (``metrics.console_step_line``).
@@ -675,6 +690,7 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         val_clean=val_clean,
         start_step=start_step,
         ema=ema,
+        ema_lr_mean=ema_lr_mean,
         grad_log=(
             StepGradLog(run_log / "grad_steps.jsonl", device)
             if run_log is not None

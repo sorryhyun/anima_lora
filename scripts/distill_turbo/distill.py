@@ -216,10 +216,13 @@ def run_loop(ctx: RunContext, cfg):
                 div_loss_t = div_loss_t / k
                 gn_student = clip_or_norm(turbo.student_params(), cfg.grad_clip)
                 if grad_mean is None or grad_mean.add():
+                    lr_now = student_opt.param_groups[0]["lr"]
                     student_opt.step()
                     student_sched.step()
                     if ctx.ema is not None:
-                        ctx.ema.step()
+                        ctx.ema.step(
+                            lr_now / ctx.ema_lr_mean if ctx.ema_lr_mean else 1.0
+                        )
                 student_opt.zero_grad(set_to_none=True)
                 metrics.add_div(div_loss_t)
                 metrics.add_grad_norms(gn_student, torch.zeros((), device=device))
@@ -287,10 +290,13 @@ def run_loop(ctx: RunContext, cfg):
                 loss_student.backward()
                 gn_student = clip_or_norm(turbo.student_params(), cfg.grad_clip)
                 if grad_mean is None or grad_mean.add():
+                    lr_now = student_opt.param_groups[0]["lr"]
                     student_opt.step()
                     student_sched.step()
                     if ctx.ema is not None:
-                        ctx.ema.step()
+                        ctx.ema.step(
+                            lr_now / ctx.ema_lr_mean if ctx.ema_lr_mean else 1.0
+                        )
                 student_opt.zero_grad(set_to_none=True)
 
                 # --- fake (critic) + discriminator update against x_pred.detach() ---
