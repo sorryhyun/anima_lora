@@ -3,7 +3,7 @@
 Status: **Phase −1 closed without a verdict; Phase 0 DMAD arm trained (750 steps);
 Phase 0b (paper-style raw signal, no disc warmup, λ = 100) and a matched 500-step
 DP-DMD arm trained and rendered: no quality gain read, DMAD moved less**
-(2026-10-10). Branch `turbo_dmad`. Source: Yu et al., *DMAD: Distribution Matching
+(2026-10-10). Branch `turbo_dmad`; the code was removed in `6cca8dfd` and is cited below at its parent (`6cca8dfd^:<path>`). Source: Yu et al., *DMAD: Distribution Matching
 as Adversarial Distillation for Fast Visual Generation*, arXiv:2610.02188
 (ByteDance, 2026-10-01).
 
@@ -80,13 +80,13 @@ closed line.
 
 ## Phase −1 — premise probe (closed, no verdict)
 
-**What it measured.** `--dmad_probe` (`scripts/distill_turbo/dmad_probe.py`) trains a
+**What it measured.** `--dmad_probe` (`6cca8dfd^:scripts/distill_turbo/dmad_probe.py`) trains a
 side disc (head T on a cold or warm LoRA stack over the teacher) beside an unchanged
 DP-DMD run, and every step compares `g_T = ∂(−h_T)/∂x_pred` with that step's DM
 `grad_signal` at the same (τ_dm, ε_dm): cosine and agree-energy, each against a
 permutation null, plus a ceiling `cos(DM, DM')` from a second DM draw. Teacher
 samples finish the step-0 anchor rollout on the 12-step CFG-4 grid, so teacher and
-student share ε. Pre-registered read (`bench/turbo/dmad_probe_read.py`), window =
+student share ε. Pre-registered read (`6cca8dfd^:bench/turbo/dmad_probe_read.py`), window =
 second half of the rows: UNCONVERGED if disc acc < 0.75; KILL if `cos − null` is
 within 3 SEM of 0; PASS if `cos ≥ 0.5 × ceiling` and agree-energy beats its null by
 3 SEM; WEAK otherwise. The reader also reports the window split at |margin| ≤ 1.
@@ -215,7 +215,7 @@ resume bundle in this phase).
 
 ### Code
 
-- **`scripts/distill_turbo/dmad.py`** (new): `DmadDisc` — the stack, head T, head R,
+- **`6cca8dfd^:scripts/distill_turbo/dmad.py`** (new): `DmadDisc` — the stack, head T, head R,
   optimizer, replay window and the update. `DmadProbe` shares its helpers (tap
   resolution, disc view, generator draws, the anchor finish) but keeps its own
   update, so P1–P6 replay with the same RNG order. Update per pair: three backbone
@@ -239,7 +239,7 @@ resume bundle in this phase).
 - **Save metadata**: `ss_turbo_dmad` and the `[dmad]` keys, so an arm can be checked
   from the file as well as the `.snapshot.toml`.
 
-### Tests (`tests/test_turbo_dmad.py`)
+### Tests (`6cca8dfd^:tests/test_turbo_dmad.py`)
 
 - Config: default off, CLI/TOML precedence, each guard.
 - Normalization: per-sample RMS equals `signal_rms`, direction preserved, a zero

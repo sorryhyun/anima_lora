@@ -15,10 +15,10 @@ Wheel from a clean sdist + `sm120`, `fp16acc`: job `20261102-141315-5aa7a6`. Rel
 ## Selection
 
 The wheel holds sm_120 kernels and head dims 64 and 128, so it cannot be the
-`pyproject.toml` pin. `make fa2-sm120` unpacks it under `models/fa2_sm120/<tag>`, and
-`library/runtime/fa2.py` puts that folder first on `sys.path` before `flash_attn` is imported, when the
-folder exists, the card reports compute capability 12, torch is 2.14 and Python 3.13. Anywhere else the
-pinned wheel loads, with a warning if the folder exists. ComfyUI, in the same venv, keeps the pin. Head dim
+`pyproject.toml` pin. At the time a `make` target unpacked it under `models/fa2_sm120/<tag>` and
+`library/runtime/fa2.py` put that folder first on `sys.path` on a compute-capability-12 card. Today
+the opt-in `fa2-sm120` uv group installs it into the venv (`uv sync --no-default-groups --group
+fa2-sm120`, ComfyUI included) and `library/runtime/fa2.py` holds only its release coordinates. Head dim
 64 is there for Anima's `llm_adapter` (1024 / 16); 128 is the only one with the fp16acc backward. Qwen's
 optional `flash_attention_2` text encoder does not go through the selector.
 

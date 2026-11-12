@@ -401,7 +401,7 @@ uv sync --no-default-groups --group fa2-sm120
 ### 기본 루프
 
 ```bash
-make daemon-run ARGS="--queue --stall-timeout 900 bench/foo/run_bench.py --label x"  # 제출, job id 출력
+make daemon-run ARGS="--queue --stall-timeout 900 bench/<name>/run_bench.py --label x"  # 제출, job id 출력
 make daemon-wait JOB=<id>        # 끝날 때까지 대기, job의 exit code로 종료
 make run-status                  # step N/total, it/s, ETA, 최근 loss, 최근 ckpt
 make daemon-log JOB=<id> ARGS="-n 200"

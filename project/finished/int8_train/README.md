@@ -1,6 +1,6 @@
 # int8_train — int8 GEMMs for Anima LoRA training
 
-Opened 2026-10-30, finished 2026-11-04 (moved from `project/int8_train/`). The frozen DiT's large linears run as ConvRot int8 × int8 → int32, in
+Opened 2026-10-30, finished 2026-11-04 (moved from `project/` to `project/finished/`). The frozen DiT's large linears run as ConvRot int8 × int8 → int32, in
 the forward and in the backward input-gradient GEMM, through comfy_kitchen's existing
 kernel. Anima first. The linears are `library/int8/`; Anima's side is `library/anima/int8.py`
 (`--int8`), MOSS's `library/moss/dit_int8/` (`TrainRequest.int8`). `src/int8_linear.py`

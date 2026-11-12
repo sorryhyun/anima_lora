@@ -133,7 +133,7 @@ Results: `_archive/l2p/results/20261106-*`.
 ## Reproduce
 
 The probe sits in `_archive/l2p/probe.py` (written as `bench.l2p.probe`; move it back
-under `bench/l2p/` to run it through the daemon; `--param_dtype bf16` reproduces the May
+under `bench/` as an `l2p` package to run it through the daemon; `--param_dtype bf16` reproduces the May
 runs). Three configs were run in order — shells-only
 (→ WEAK), `--lora_blocks 2` (→ plateau held), and `--lora_blocks 2 --dip_skip
 --flow_shift 3` (→ loss pass, gen fail) — each judged on the `sample_*.png` montages,

@@ -5,7 +5,7 @@ harvestable cross-band (τ) gradient interference at the LR it actually trains
 at. The τ-split line is closed; `fake_tau_banks` ships inert at `1`.
 
 Proposal (archived): `_archive/proposals/turbo_tau_split_critic.md`.
-Probe: `bench/turbo/tau_critic_probe.py`.
+Probe: `6cca8dfd^:bench/turbo/tau_critic_probe.py` (removed with the τ-split critic in `6cca8dfd`).
 
 ## The two reads
 
@@ -61,8 +61,8 @@ justified.
 - `fake_tau_banks` / `fake_tau_boundary` (`configs/methods/turbo.toml
   [network]`) ship at `1` / `0.5`. `banks=1` is byte-identical to the
   pre-change loop (same RNG stream, second stack never constructed).
-  Invariant tests: `tests/test_turbo_tau_critic.py`.
-- The probe itself (`bench/turbo/tau_critic_probe.py`) is reusable for any
+  Invariant tests: `6cca8dfd^:tests/test_turbo_tau_critic.py`.
+- The probe itself (`6cca8dfd^:bench/turbo/tau_critic_probe.py`) is reusable for any
   "does capacity specialization by τ buy anything" question.
 
 ## What was never run

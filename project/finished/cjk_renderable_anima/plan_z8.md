@@ -190,7 +190,7 @@ Disk / RAM on the Z8: 102 000 items → prompt embeds ≈ 107 GB (temp file,
 1. `rsync` the **working tree** (not a clone — `project/finished/cjk_renderable_anima`
    has uncommitted changes and `main` is 5 commits ahead of the public repo),
    excluding `output/ models/ .venv/ .git/ bench/ _archive/ workspace/ docs/
-   image_dataset/ post_image_dataset/ project/finished/ project/qwen21_lora/`.
+   image_dataset/ post_image_dataset/ project/finished/ project/finished/qwen21_lora/`.
    Venv: reuse `~/z8bench/anima_lora/.venv` if the lockfile matches, else
    `~/.local/bin/uv sync --frozen`.
 2. Models: `make download-models` on the Z8 (HF reachable), **the raw pack

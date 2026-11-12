@@ -16,7 +16,7 @@ The shipped base-teacher turbo (`huggingface.co/sorryhyun/anima-turbo-4step`) is
   EMA 0.2, one null twin, renders on `bench/turbo/judge_hard.txt` beside the teacher, the handoff
   probe), the gradient norm section, where the layout is lost and the arm order (step-0 arms
   first). The closed 2-step plan and its results are that file at commit
-  `91d476e0` (then at `scripts/distill_turbo/plan.md`).
+  `91d476e0:scripts/distill_turbo/plan.md`.
 - [configs/](configs/): one TOML per run, named by its run id (`mmdd_hhmm`). Launch with
   `make turbo ARGS="--config project/anima_turbo/configs/<id>.toml --queue"`.
 - [reports/](reports/): one report per run or probe.

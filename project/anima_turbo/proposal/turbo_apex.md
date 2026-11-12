@@ -159,13 +159,13 @@ whichever text and pose prompt set replaces the other 12. Controls are existing 
 | `d_clamp` | `1.0` | 0 = off |
 | `fake_warmup_steps` | `200` | |
 
-- **`scripts/distill_turbo/apex.py`** (new): the three terms.
+- **`apex.py`** (new, in `scripts/distill_turbo/`; never committed to main): the three terms.
 - **`distill.py`:** an `apex` branch in `run_loop`, on the existing rollout, resume and save paths.
 - **`networks/methods/turbo_dmd.py`:** skip the fake stacks; the `teacher` and `student` views are
   unchanged.
 - **`config.py` / `setup.py`:** the section and flags; no fake optimizer. Stamp `ss_turbo_base_loss`.
 - **`metrics.py`:** the rows above.
-- **`tests/test_turbo_apex.py`:** `ℓ_x = t²·ℓ_v` on the targets; `c_fake` keeps zero padding at
+- **`test_turbo_apex.py`:** `ℓ_x = t²·ℓ_v` on the targets; `c_fake` keeps zero padding at
   zero; `γ = 0` gives `ε − x`; off leaves the DP-DMD loop unchanged.
 - **`bench/turbo/`:** the Phase 0b read, per `CONTRIBUTING.md` Tier 2.
 

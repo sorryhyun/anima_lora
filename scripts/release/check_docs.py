@@ -18,6 +18,8 @@ Source of truth, never hard-coded here:
   * file paths   : the working tree itself.
 
 Skipped references:
+  * A path right after a git revision (``git show 91d476e0:scripts/x/plan.md``,
+    ``6cca8dfd^:bench/turbo/probe.py``) cites the file at that revision.
   * Paths are only checked when their first segment is a git-tracked top-level
     entry, so URLs (``claude.ai/code``), repo slugs (``sorryhyun/anima_lora``)
     and runtime/data dirs (``output/…``, ``post_image_dataset/…``) are skipped,
@@ -112,6 +114,8 @@ _IGNORE_FLAGS_MARKER = "check-docs: ignore-flags"
 _MULTI_RE = re.compile(r"[\w.\-]+(?:/[\w.\-]+)+/?")
 _SINGLE_RE = re.compile(r"\b[\w-]+\.(?:%s)\b" % "|".join(_EXTS))
 _INLINE_CODE_RE = re.compile(r"`([^`]+)`")
+# A git revision right before a path token: ``91d476e0:`` / ``6cca8dfd^:``.
+_REV_PREFIX_RE = re.compile(r"\b[0-9a-f]{7,40}\^?:$")
 _FLAG_RE = re.compile(r"--[A-Za-z][A-Za-z0-9_-]+")
 # `make <target>` / `python tasks.py <target>` inside a code span.
 _MAKE_RE = re.compile(r"\b(?:make|tasks\.py)\s+([a-z][a-z0-9-]*)")
@@ -329,6 +333,10 @@ def collect_issues(include_bench: bool = False) -> list[Issue]:
                     # The tail of an absolute or home path (``~/anima_lora/output``)
                     # names another machine's tree, not this checkout.
                     if line[m.start() - 1 : m.start()] in ("/", "~"):
+                        continue
+                    # ``<sha>:<path>`` (``git show 91d476e0:x/plan.md``) names the
+                    # file at that revision, not the working tree.
+                    if _REV_PREFIX_RE.search(line, 0, m.start()):
                         continue
                     tok = _anchor_family_ref(m.group(0), line[m.end() : m.end() + 1])
                     if tok is None:
