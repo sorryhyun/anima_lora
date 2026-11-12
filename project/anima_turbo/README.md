@@ -19,6 +19,9 @@ The shipped base-teacher turbo (`huggingface.co/sorryhyun/anima-turbo-4step`) is
 - [configs/](configs/): one TOML per run, named by its run id (`mmdd_hhmm`). Launch with
   `make turbo ARGS="--config project/anima_turbo/configs/<id>.toml --queue"`.
 - [reports/](reports/): one report per run or probe.
+  - [arm0.md](reports/arm0.md): arm 0 control and twin. The two runs share only 9–10 % of ΔW,
+    both random-walk from step 125, and the σ_a norm profile gives arm 3 = adaptive clip alone.
+    Render read pending.
   - [mfd.md](reports/mfd.md): MFD in the DM slot (2-step 100 / 500-step arms, 2026-11-04) and the
     anchor-free MFD collapse (4-step m14, 2026-11-10).
 - [vatdm.md](vatdm.md): VA-TDM (arXiv:2611.06796) against the loop and MFD; idea 1 is
@@ -42,12 +45,13 @@ The shipped base-teacher turbo (`huggingface.co/sorryhyun/anima-turbo-4step`) is
 
 | Id | Arm | Change against control | State |
 |---|---|---|---|
-| `1112_0833` | 0, control | the recipe in `plan.md`, seed 42 | done |
-| `1112_0834` | 0, null twin | seed 43 | running |
+| `1112_0833` | 0, control | the recipe in `plan.md`, seed 42 | done; renders queued |
+| `1112_0834` | 0, null twin | seed 43 | done; renders queued |
 | `1112_0917` | GAN-off probe (measurement only) | `gan.weight_gen = 0` | queued |
 
 ## State (2026-11-12)
 
 The 2-step line (superturbo, `dpdmd.rollout_grad`) is closed at the level of `1111_1115` step 250.
 Every noise-lowering route (`dm_draws`, `grad_accum`, checkpoint averages) landed on that level.
-The 4-step line is in the same batch-1 random-walk regime. Arm 0 is running.
+The 4-step line is in the same batch-1 random-walk regime (`reports/arm0.md`). Arm 0's training
+is done; its render read is next.
