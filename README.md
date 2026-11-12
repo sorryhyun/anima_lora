@@ -39,10 +39,6 @@ Diagrams for every method: [`docs/anima/structure_images/`](docs/anima/structure
 
 **Anima's fp32 stream.** The residual stream, modulation, q / k norms, RoPE, embedder and head run in fp32, and the block GEMMs and FlashAttention branch off it in int8 or bf16. Details: [fp32_stream.md](docs/anima/optimizations/fp32_stream.md).
 
-<p align="center">
-  <a href="docs/anima/structure_images/fp32_stream.png"><img src="docs/anima/structure_images/fp32_stream.png" alt="Anima fp32 stream tensor flow: the residual stream stays in fp32 while block GEMMs and FlashAttention branch off in int8 or bf16 and return through the gate product" width="900"></a>
-</p>
-
 ### On by default
 
 | Feature | Doc |
