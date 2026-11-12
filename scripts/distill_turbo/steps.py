@@ -111,6 +111,27 @@ def teacher_anchor(
     return ((eps.float() - z.float()) / (1.0 - ctx.t_k_anchor)).detach()
 
 
+def anchor_only_loss(
+    ctx: RunContext,
+    eps: torch.Tensor,
+    v_target: torch.Tensor,
+    crossattn_emb: torch.Tensor,
+    B: int,
+) -> torch.Tensor:
+    """``dpdmd.anchor_only``: the step-0 regression on its own, backwarded here.
+
+    One grad-bearing student forward at σ = 1 and MSE to ``v_target``, unweighted
+    (Adam and the clip make ``div_weight`` a no-op when it is the only term).
+    Returns the detached loss.
+    """
+    x = eps.requires_grad_()  # grad-ckpt needs a grad-requiring forward input
+    t_b = torch.full((B,), ctx.student_sigmas[0], device=ctx.device, dtype=ctx.dtype)
+    v_first = ctx.forward("student", x, t_b, crossattn_emb, no_grad=False)
+    loss = nn.functional.mse_loss(v_first.float(), v_target)
+    loss.backward()
+    return loss.detach()
+
+
 @dataclass
 class Rollout:
     """The student rollout up to its grad step g."""

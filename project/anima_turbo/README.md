@@ -72,6 +72,8 @@ The shipped base-teacher turbo (`huggingface.co/sorryhyun/anima-turbo-4step`) is
 | `1112_0833` | 0, control | the recipe in `plan.md`, seed 42 | done, rendered |
 | `1112_0834` | 0, null twin | seed 43 | done, rendered |
 | `1112_0917` | GAN-off probe (measurement only) | `gan.weight_gen = 0` | done: GAN is not the walk |
+| `1112_1044` | S-b, anchor alone | `dpdmd.anchor_only`, no CDM / GAN / fake warmup | done: step 0 at the teacher's instantaneous level (`reports/step0.md`) |
+| `1112_1110` | S-b2 | `1112_1044` at student LR 2e-4 | done: worse, LR is not the lever |
 
 ## State (2026-11-12)
 
@@ -79,5 +81,7 @@ The 2-step line (superturbo, `dpdmd.rollout_grad`) is closed at the level of `11
 Every noise-lowering route (`dm_draws`, `grad_accum`, checkpoint averages) landed on that level.
 The 4-step line is in the same batch-1 random-walk regime (`reports/arm0.md`). Arm 0 and the
 GAN-off probe are done and read (`reports/arm0.md`). The handoff probe (`reports/handoff.md`) puts
-the largest loss of the teacher's layout in step 0, which no DM arm reaches. Next: the step-0 arms
-in `plan.md`, starting with S-a (forward only), before arm 1 (MFD).
+the largest loss of the teacher's layout in step 0, which no DM arm reaches. Step-0 arms
+(`reports/step0.md`): the anchor target is right (S-a), but no trained step 0 gets past the teacher's
+instantaneous velocity, alone (S-b) or at a higher LR (S-b2). Next: S-c in `plan.md`, step 0 also
+taking the DM signal (`dm_first_step` on), before arm 1 (MFD).

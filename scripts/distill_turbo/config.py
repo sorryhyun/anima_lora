@@ -261,6 +261,14 @@ def build_argparser() -> argparse.ArgumentParser:
         "grid only; superturbo.md).",
     )
     parser.add_argument(
+        "--anchor_only",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Train step 0 on the anchor regression alone (no DM / CDM / GAN / "
+        "fake update, no fake warmup): the step-0 capacity probe "
+        "(project/anima_turbo/plan.md, S-b).",
+    )
+    parser.add_argument(
         "--detach_after_first",
         dest="detach_after_first",
         action="store_const",
@@ -428,6 +436,8 @@ class TurboConfig:
     dm_first_step: bool
     # No detach between step 0 and the grad step (N = 2, static grid).
     rollout_grad: bool
+    # Step 0 on the anchor regression alone; the DM / CDM / GAN / fake paths idle.
+    anchor_only: bool
     flow_shift: float
 
     # DMD core
@@ -654,6 +664,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         detach_after_first = bool(args.detach_after_first)
     dm_first_step = bool(_pick(args.dm_first_step, cfg, "dpdmd.dm_first_step", False))
     rollout_grad = bool(_pick(args.rollout_grad, cfg, "dpdmd.rollout_grad", False))
+    anchor_only = bool(_pick(args.anchor_only, cfg, "dpdmd.anchor_only", False))
     flow_shift = float(_pick(args.flow_shift, cfg, "sampling.flow_shift", 3.0))
 
     # Optimizer
@@ -700,6 +711,18 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         )
     if div_weight < 0.0:
         raise ValueError(f"dpdmd.div_weight={div_weight}: must be >= 0")
+    if anchor_only:
+        if div_weight == 0.0 or rollout_grad or dm_first_step:
+            raise ValueError(
+                "dpdmd.anchor_only needs div_weight > 0 (the anchor is computed only "
+                "then; its value is not used) and rollout_grad / dm_first_step off."
+            )
+        if fake_warmup_steps:
+            logger.info(
+                f"dpdmd.anchor_only: fake_warmup_steps {fake_warmup_steps} → 0 "
+                "(the fake is never queried)."
+            )
+            fake_warmup_steps = 0
     if rollout_grad and (student_steps != 2 or dynamic_schedule or dm_first_step):
         raise ValueError(
             "dpdmd.rollout_grad needs dmd.student_steps = 2, dynamic_schedule off "
@@ -855,6 +878,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         detach_after_first=detach_after_first,
         dm_first_step=dm_first_step,
         rollout_grad=rollout_grad,
+        anchor_only=anchor_only,
         flow_shift=flow_shift,
         student_steps=student_steps,
         teacher_cfg=teacher_cfg,
@@ -944,6 +968,7 @@ _TB_KEYS = (
     "detach_after_first",
     "dm_first_step",
     "rollout_grad",
+    "anchor_only",
     "flow_shift",
     "student_rank",
     "fake_rank",

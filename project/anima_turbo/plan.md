@@ -3,8 +3,8 @@
 Written 2026-11-12. The 2-step line (superturbo, `dpdmd.rollout_grad`) is closed; its plan and
 results are this file at commit `91d476e0`. From here the work is the 4-step student, on the
 merged14 soup teacher (`output/ckpt/anima_merged14.safetensors`, shipped as one LoRA with the
-soup, see the memory note on soup turbo). Arm 0 and the handoff probe have run (`reports/arm0.md`,
-`reports/handoff.md`); the step-0 arms and arms 1–4 have not.
+soup, see the memory note on soup turbo). Arm 0, the handoff probe and step-0 arms S-a / S-b / S-b2 have run (`reports/arm0.md`,
+`reports/handoff.md`, `reports/step0.md`); S-c and arms 1–4 have not.
 
 ## What carries over from the 2-step line
 
@@ -163,26 +163,29 @@ figure where the teacher draws the jump from below and the tumbling group. The h
    point delta. They give the 250 level and the noise floor. A 4-step |ΔW| trajectory comes
    with them (125 / 250), and the per-iteration norm profile (`grad_steps.jsonl`).
 
-**Step-0 arms**, before arm 1. None is built.
+**Step-0 arms**, before arm 1. Results in `reports/step0.md` (2026-11-12).
 
-- **S-a. Ceiling of a perfectly fit step 0** (forward only, about 7 min). A new arm in the probe:
-  step 0 is taken with the anchor target itself (`steps.teacher_anchor`, the teacher's mean
-  velocity over its 6-of-12-step anchor), then the student draws steps 1–3. This is what the
-  regression gives at zero loss. Decision, fixed here: if its cosine sits nearer `T>S@1` than `S`
-  on both students and the renders keep the view from below, the target is right and S-b fits it.
-  If not, the anchor is changed first, so that it ends at the student's first boundary
-  (`k_anchor / teacher_anchor_steps`), and S-a is read again.
-- **S-b. The anchor alone** (micro arm; estimate 10 min for 250 iterations, 12 teacher forwards and
-  one student backward each). A switch that runs the loop with the anchor term only, with its own
-  clip: no DM, CDM, GAN or fake. It is a regression on a fixed target, so its loss is a real one.
-  Reads: `div_loss` on held-out noise (whether a rank-64 LoRA has a floor above the target), and
-  the probe with this LoRA drawing step 0 and an arm 0 student drawing steps 1–3 (the probe takes
-  one LoRA for all steps today). The LoRA is shared across σ, so this arm says what step 0 can
-  reach, not what survives beside the DM terms.
-- **S-c. The recipe with the stronger step 0**, against the control and the twin under the protocol
-  above. S-b picks the form: a warm start from the S-b LoRA (`student_init_weights`, which excludes
-  the `weight_svd` down init), or the anchor gradient clipped and weighted by itself inside the
-  joint step.
+- **S-a. Ceiling of a perfectly fit step 0** — done, passed. Probe arm `A>S@1` takes step 0 with the
+  anchor target itself: low-passed cosine 0.672 / 0.729 (twin EMA 250 / control EMA 125) against
+  `T>S@1` 0.695 / 0.803 and `S` 0.455 / 0.537, and the renders keep the view from below. The target is
+  right, and the chord (mean velocity to σ 0.75 over 1 → 0.9) costs 0.02–0.07; the anchor keeps its
+  end point.
+- **S-b. The anchor alone** (`1112_1044`, `dpdmd.anchor_only`, 250 it, 8.5 min) — done. Held-out
+  anchor MSE 0.157; the arm 0 students 0.163 / 0.180, the base teacher's own cond velocity at σ 1
+  0.171, its CFG'd velocity 0.281. `P>S@1` (S-b drawing step 0) 0.472 / 0.543, the students' own
+  level. Step 0 is not losing to the DM / CDM / GAN terms; every trained step 0 sits at the teacher's
+  instantaneous velocity. A warm start from S-b adds nothing.
+- **S-b2. The anchor alone at LR 2e-4** (`1112_1110`) — done. Training loss higher from the first
+  fifth on, held-out MSE 0.277, `P>S@1` 0.429 / 0.487 (below `S`). The LR is not the lever.
+- **S-c. The recipe with a stronger step 0**, against the control and the twin under the protocol
+  above. Candidates, in order:
+  1. **Step 0 also takes the DM signal** (`dm_first_step` on, anchor kept as the diversity term, the
+     rest as arm 0). The regression alone stops at the teacher's instantaneous velocity; the DM term
+     is what teaches steps 1–3 multi-step content from one forward. Risk: diversity collapse (the MFD
+     run that collapsed had the anchor off). No new code.
+  2. **Lower the anchor's draw noise**: several noises per iteration for the anchor term. S-b2 reads
+     the batch-1 regression as draw-dominated. Costs 12 teacher forwards per extra draw. Not built.
+  3. **A step-0-only adapter** (σ 1 only), last: it breaks the one-LoRA ship.
 
 Arms 1–4 follow on the step-0 result:
 

@@ -48,6 +48,7 @@ from .resume import resume_path_for, save_resume_state
 from .setup import RunContext, build_run
 from .steps import (
     ClippedGradMean,
+    anchor_only_loss,
     cdm_off_trajectory_loss,
     clip_or_norm,
     dm_slot,
@@ -92,6 +93,8 @@ def _student_metadata(cfg, ctx: RunContext, step: int) -> dict[str, str]:
         ss_turbo_cdm_weight=str(cfg.cdm_weight),
         ss_turbo_lr_schedule=cfg.lr_schedule,
     )
+    if cfg.anchor_only:
+        md["ss_turbo_anchor_only"] = "1"
     if cfg.dm_first_step:
         md["ss_turbo_dm_first_step"] = "1"
     if cfg.rollout_grad:
@@ -193,114 +196,129 @@ def run_loop(ctx: RunContext, cfg):
                 else None
             )
 
-            # --- student rollout → x_pred (= x_θ) ---
-            if cfg.dynamic_schedule:
-                sigmas_it = sample_dynamic_sigmas(2, cfg.student_steps)
-                n_steps_it = len(sigmas_it) - 1
+            if cfg.anchor_only:
+                # S-b (project/anima_turbo/plan.md): step 0 on the anchor alone.
+                div_loss_t = anchor_only_loss(ctx, eps, v_target, crossattn_emb, B)
+                gn_student = clip_or_norm(turbo.student_params(), cfg.grad_clip)
+                if grad_mean is None or grad_mean.add():
+                    student_opt.step()
+                    student_sched.step()
+                    if ctx.ema is not None:
+                        ctx.ema.step()
+                student_opt.zero_grad(set_to_none=True)
+                metrics.add_div(div_loss_t)
+                metrics.add_grad_norms(gn_student, torch.zeros((), device=device))
             else:
-                sigmas_it, n_steps_it = student_sigmas, cfg.student_steps
+                # --- student rollout → x_pred (= x_θ) ---
+                if cfg.dynamic_schedule:
+                    sigmas_it = sample_dynamic_sigmas(2, cfg.student_steps)
+                    n_steps_it = len(sigmas_it) - 1
+                else:
+                    sigmas_it, n_steps_it = student_sigmas, cfg.student_steps
 
-            # One step g carries the DM grad: a refinement step, g ~ U{1..N−1},
-            # or any step including the anchored step 0 under dm_first_step.
-            g_min = 0 if cfg.dm_first_step else 1
-            g = int(torch.randint(g_min, n_steps_it, (1,)).item())
-            roll = student_rollout(
-                ctx, cfg, eps, v_target, sigmas_it, g, crossattn_emb, B
-            )
-            x_pred = roll.x_pred  # one-step x0-prediction at step g
-            s_g = roll.s_g
-            div_loss_t = roll.div_loss
-            cdm_src = (roll.x_g, roll.v_g, s_g) if cdm_on else None
-            # Transition-aware fake: every fake query on this x_pred (DMD/MFD, the
-            # fake update) is told it came from step g. CDM sets its own t'.
-            turbo.set_fake_source(s_g)
-            v_student = roll.v_first  # step-0 velocity for the runaway-student metric
+                # One step g carries the DM grad: a refinement step, g ~ U{1..N−1},
+                # or any step including the anchored step 0 under dm_first_step.
+                g_min = 0 if cfg.dm_first_step else 1
+                g = int(torch.randint(g_min, n_steps_it, (1,)).item())
+                roll = student_rollout(
+                    ctx, cfg, eps, v_target, sigmas_it, g, crossattn_emb, B
+                )
+                x_pred = roll.x_pred  # one-step x0-prediction at step g
+                s_g = roll.s_g
+                div_loss_t = roll.div_loss
+                cdm_src = (roll.x_g, roll.v_g, s_g) if cdm_on else None
+                # Transition-aware fake: every fake query on this x_pred (DMD/MFD, the
+                # fake update) is told it came from step g. CDM sets its own t'.
+                turbo.set_fake_source(s_g)
+                v_student = (
+                    roll.v_first
+                )  # step-0 velocity for the runaway-student metric
 
-            # --- DMD (or MFD) on x_θ, against teacher + fake; dm_draws averages the signal ---
-            dmd = dm_slot(ctx, cfg, x_pred, crossattn_emb, c_null, B)
-            grad_signal = dmd.grad_signal
-            delta_dm = dmd.delta_dm
-            tau_dm = dmd.tau_dm
-            tau_dm_e = dmd.tau_dm_e
-            v_real_cond_dm = dmd.v_real_cond_dm
-            v_fake_cond_dm = dmd.v_fake_cond_dm
-            eps_dm = dmd.eps_dm
+                # --- DMD (or MFD) on x_θ, against teacher + fake; dm_draws averages the signal ---
+                dmd = dm_slot(ctx, cfg, x_pred, crossattn_emb, c_null, B)
+                grad_signal = dmd.grad_signal
+                delta_dm = dmd.delta_dm
+                tau_dm = dmd.tau_dm
+                tau_dm_e = dmd.tau_dm_e
+                v_real_cond_dm = dmd.v_real_cond_dm
+                v_fake_cond_dm = dmd.v_fake_cond_dm
+                eps_dm = dmd.eps_dm
 
-            # --- L_CDM (before the GAN gen forward; see cdm_off_trajectory_loss) ---
-            if cdm_src is not None:
-                cdm_off_trajectory_loss(
-                    ctx, cfg, cdm_src, crossattn_emb, c_null, latents, B
+                # --- L_CDM (before the GAN gen forward; see cdm_off_trajectory_loss) ---
+                if cdm_src is not None:
+                    cdm_off_trajectory_loss(
+                        ctx, cfg, cdm_src, crossattn_emb, c_null, latents, B
+                    )
+
+                # --- GAN generator term ---
+                gan_w = gan_effective_weight(cfg, step)
+                gan_gen_loss = gan_generator_term(
+                    ctx, cfg, x_pred, tau_dm, eps_dm, crossattn_emb, gan_w
                 )
 
-            # --- GAN generator term ---
-            gan_w = gan_effective_weight(cfg, step)
-            gan_gen_loss = gan_generator_term(
-                ctx, cfg, x_pred, tau_dm, eps_dm, crossattn_emb, gan_w
-            )
+                # --- assemble: DMD surrogate on x_θ ---
+                # grad_clip runs once on the accumulated .grad (div, CDM, DMD, GAN).
+                loss_student = (grad_signal * x_pred.float()).mean()
+                if roll.div_pending:
+                    loss_student = loss_student + cfg.div_weight * div_loss_t
 
-            # --- assemble: DMD surrogate on x_θ ---
-            # grad_clip runs once on the accumulated .grad (div, CDM, DMD, GAN).
-            loss_student = (grad_signal * x_pred.float()).mean()
-            if roll.div_pending:
-                loss_student = loss_student + cfg.div_weight * div_loss_t
+                if turbo.disc is not None and gan_w > 0.0:
+                    loss_student = loss_student + gan_w * gan_gen_loss
 
-            if turbo.disc is not None and gan_w > 0.0:
-                loss_student = loss_student + gan_w * gan_gen_loss
+                # Under --grad_ckpt the rollout's student forwards recompute at this
+                # backward, and the DM term left the view on 'fake'.
+                if cfg.grad_ckpt:
+                    turbo.set_view("student")
+                loss_student.backward()
+                gn_student = clip_or_norm(turbo.student_params(), cfg.grad_clip)
+                if grad_mean is None or grad_mean.add():
+                    student_opt.step()
+                    student_sched.step()
+                    if ctx.ema is not None:
+                        ctx.ema.step()
+                student_opt.zero_grad(set_to_none=True)
 
-            # Under --grad_ckpt the rollout's student forwards recompute at this
-            # backward, and the DM term left the view on 'fake'.
-            if cfg.grad_ckpt:
-                turbo.set_view("student")
-            loss_student.backward()
-            gn_student = clip_or_norm(turbo.student_params(), cfg.grad_clip)
-            if grad_mean is None or grad_mean.add():
-                student_opt.step()
-                student_sched.step()
-                if ctx.ema is not None:
-                    ctx.ema.step()
-            student_opt.zero_grad(set_to_none=True)
-
-            # --- fake (critic) + discriminator update against x_pred.detach() ---
-            (
-                fake_loss_mean_t,
-                gan_disc_mean_t,
-                gan_margin_t,
-                gan_spread_t,
-                gn_fake,
-                gn_disc,
-            ) = fake_update(ctx, cfg, x_pred, latents, crossattn_emb, B)
-
-            # --- logging accumulators (all GPU-side; flushed below every log_interval
-            # in one stacked .tolist() so per-step CUDA syncs go to zero) ---
-            metrics.accumulate_per_step(
-                fake_loss_mean_t=fake_loss_mean_t,
-                grad_signal=grad_signal,
-                delta_dm=delta_dm,
-                x_pred=x_pred,
-                v_student=v_student,
-                tau_dm_e=tau_dm_e,
-                v_real_cond_dm=v_real_cond_dm,
-                v_fake_cond_dm=v_fake_cond_dm,
-            )
-            metrics.add_div(div_loss_t)
-            metrics.add_grad_norms(
-                gn_student, gn_fake, gn_disc if turbo.disc is not None else None
-            )
-            if turbo.disc is not None:
-                metrics.add_gan(
-                    gan_gen_loss, gan_disc_mean_t, gan_margin_t, gan_spread_t
-                )
-            if ctx.grad_log is not None:
-                ctx.grad_log.add(
-                    step + 1,
-                    gn_student,
+                # --- fake (critic) + discriminator update against x_pred.detach() ---
+                (
+                    fake_loss_mean_t,
+                    gan_disc_mean_t,
+                    gan_margin_t,
+                    gan_spread_t,
                     gn_fake,
-                    gn_disc if turbo.disc is not None else None,
-                    tau_dm,
-                    s_g,
-                    g,
-                    n_steps_it,
+                    gn_disc,
+                ) = fake_update(ctx, cfg, x_pred, latents, crossattn_emb, B)
+
+                # --- logging accumulators (all GPU-side; flushed below every log_interval
+                # in one stacked .tolist() so per-step CUDA syncs go to zero) ---
+                metrics.accumulate_per_step(
+                    fake_loss_mean_t=fake_loss_mean_t,
+                    grad_signal=grad_signal,
+                    delta_dm=delta_dm,
+                    x_pred=x_pred,
+                    v_student=v_student,
+                    tau_dm_e=tau_dm_e,
+                    v_real_cond_dm=v_real_cond_dm,
+                    v_fake_cond_dm=v_fake_cond_dm,
                 )
+                metrics.add_div(div_loss_t)
+                metrics.add_grad_norms(
+                    gn_student, gn_fake, gn_disc if turbo.disc is not None else None
+                )
+                if turbo.disc is not None:
+                    metrics.add_gan(
+                        gan_gen_loss, gan_disc_mean_t, gan_margin_t, gan_spread_t
+                    )
+                if ctx.grad_log is not None:
+                    ctx.grad_log.add(
+                        step + 1,
+                        gn_student,
+                        gn_fake,
+                        gn_disc if turbo.disc is not None else None,
+                        tau_dm,
+                        s_g,
+                        g,
+                        n_steps_it,
+                    )
 
             if (step + 1) % cfg.log_interval == 0:
                 m = metrics.flush(cfg.log_interval)
