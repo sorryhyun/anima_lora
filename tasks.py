@@ -58,6 +58,7 @@ training = _LazyModule("scripts.tasks.training")
 utilities = _LazyModule("scripts.tasks.utilities")
 exp_inference = _LazyModule("scripts.experimental_tasks.inference")
 exp_training = _LazyModule("scripts.experimental_tasks.training")
+exp_turbo_pref = _LazyModule("scripts.experimental_tasks.turbo_pref")
 
 COMMANDS = {
     # ── Training ──────────────────────────────────────────────────────
@@ -458,6 +459,11 @@ COMMANDS = {
         "[experimental] DirectEdit on a random source image. PROMPT='...' supplies the edit "
         "instruction (appended to the Anima Tagger source caption). REF_IMAGE=path overrides the "
         "random pick. Usage: exp-test-directedit [ref_image] [extra...]",
+    ),
+    "exp-turbo-pref": (
+        exp_turbo_pref.cmd_turbo_pref,
+        "[experimental] Pick-round window for preference RL on the turbo student: 16 renders "
+        "a round, pick 0-8; label log in output/turbo_pref/ (project/anima_turbo/proposal/pref_rl.md)",
     ),
     "exp-test-directedit-dry": (
         exp_inference.cmd_test_directedit_dry,

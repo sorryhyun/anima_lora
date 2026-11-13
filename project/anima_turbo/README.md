@@ -53,7 +53,14 @@ The shipped base-teacher turbo (`huggingface.co/sorryhyun/anima-turbo-4step`) is
     seed diversity.
 - [vatdm.md](vatdm.md): VA-TDM (arXiv:2611.06796) against the loop and MFD; idea 1 is
   `fake_transition`.
-- [proposal/](proposal/): earlier turbo proposals, moved from `docs/anima/proposal/` on 2026-11-12.
+- [proposal/](proposal/): turbo proposals; the closed ones moved from `docs/anima/proposal/` on
+  2026-11-12.
+  - [pref_rl.md](proposal/pref_rl.md): preference RL on the student (open, 2026-11-13). The user
+    picks 0–8 of 16 renders a round; the picks and gelcrawl's retrieved / selected split train a
+    preference head, and the student follows its gradient on step 0. Open: the head's feature
+    basis (tagger, PE / DINOv3, DiT head). The round UI is [pref_rl/](pref_rl/) (`make
+    exp-turbo-pref`): a render server keeps the policy loaded as one daemon job, and the window
+    logs train rounds and blind A/B grids to `output/turbo_pref/<session>/picks.jsonl`.
   - [superturbo.md](proposal/superturbo.md): the 2-step `rollout_grad` line (closed 2026-11-12).
   - [turbo_apex.md](proposal/turbo_apex.md): APEX one-LoRA student (closed 2026-11-01).
   - [turbo_dmad.md](proposal/turbo_dmad.md): DMAD inside DP-DMD (no gain read, 2026-10-10).
