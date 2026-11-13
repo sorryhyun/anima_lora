@@ -489,7 +489,14 @@ def cmd_daemon_kill(extra):
     if result.get("error"):
         print(result["error"], file=sys.stderr)
         sys.exit(1)
-    print(f"job {result.get('job_id')} → {result.get('state')} (daemon still up).")
+    jid, state = result.get("job_id"), result.get("state")
+    if state in ("running", "paused"):
+        # the reply carries the state at the kill; the job finalizes as stopped
+        print(f"job {jid}: killed (was {state}); the queue moves on.")
+    elif state == "stopped":
+        print(f"job {jid}: cancelled.")
+    else:
+        print(f"job {jid}: already {state}, nothing to kill.")
 
 
 def cmd_daemon_pause(extra):
