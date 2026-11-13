@@ -1,0 +1,32 @@
+# sincos, Anima-style tag captions: the .txt verbatim (caption_format text, no layout JSON) plus
+# the 3 shuffled-order variants from {stem}.variants.txt (v1-v3: head tags fixed, rest shuffled,
+# tag dropout), drawn uniformly with the caption (caption_variant_rate 0.75), `sure` tail.
+# Recipe = 1111_2235 (control: layout_json + plain tags 0.2) / sincoshead_1113_0008 (head+prose):
+# add90 ema97 self-distill, swap 28 / budget 0.4, 354 images x 8 epochs = 2,832 steps, lr 5e-5.
+cache = "post_image_dataset/moss/sincos_tags_var"
+output = "output/ckpt_moss/sincostag_1113_0717.safetensors"
+model = "base"
+epochs = 8
+algo = "lora"
+rank = 32
+down_init = "kaiming"
+optimizer = "muon"
+lr = 5e-5
+warmup_ratio = 0.05
+plain_caption_rate = 0.0
+caption_variant_rate = 0.75
+ema_window = 0.1
+lora_dtype = "bf16"
+int8 = "stream"
+stream = "fp32"
+ema_card = true
+blocks_to_swap = 28
+activation_memory_budget = 0.4
+swap_h2d_only = true
+compile = true
+expandable_segments = true
+
+distill = "ema"
+distill_sigma_min = 0.9
+distill_ema_decay = 0.97
+distill_add = 1.0

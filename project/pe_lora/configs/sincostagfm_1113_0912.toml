@@ -1,0 +1,27 @@
+# sincos, Anima-style tag captions, FM loss only (no self-distill teacher): the ablation of
+# sincostag_1113_0717 (same cache post_image_dataset/moss/sincos_tags_var, caption variants 0.75,
+# same recipe otherwise: swap 28 / budget 0.4, 354 images x 8 epochs = 2,832 steps, lr 5e-5), distill off.
+cache = "post_image_dataset/moss/sincos_tags_var"
+output = "output/ckpt_moss/sincostagfm_1113_0912.safetensors"
+model = "base"
+epochs = 8
+algo = "lora"
+rank = 32
+down_init = "kaiming"
+optimizer = "muon"
+lr = 5e-5
+warmup_ratio = 0.05
+plain_caption_rate = 0.0
+caption_variant_rate = 0.75
+ema_window = 0.1
+lora_dtype = "bf16"
+int8 = "stream"
+stream = "fp32"
+ema_card = true
+blocks_to_swap = 28
+activation_memory_budget = 0.4
+swap_h2d_only = true
+compile = true
+expandable_segments = true
+
+distill = "off"
