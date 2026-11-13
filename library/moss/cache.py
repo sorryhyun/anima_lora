@@ -138,6 +138,7 @@ def _te_current(
     encoder: str = ENCODER_ID,
     token_split: str = "off",
     prompt_tail: str = "off",
+    variants: tuple[str, ...] = (),
 ) -> bool:
     if not path.exists():
         return False
@@ -154,7 +155,23 @@ def _te_current(
         and meta.get("prompt_tail", "off") == prompt_tail
         and meta.get("plain_caption_sha256", "")
         == (caption_sha(plain) if plain else "")
+        and (
+            not variants
+            or [meta.get(f"caption_v{k}") for k in range(1, len(variants) + 2)]
+            == [*variants, None]
+        )
     )
+
+
+def _shared_prefix(ids: list[list[int]]) -> int:
+    """Leading token ids every sequence shares, short of the shortest one's
+    length so each variant keeps at least one row of its own. The TE is causal,
+    so these rows of the embeddings are the same in every sequence."""
+    n = min(len(x) for x in ids) - 1
+    for i in range(n):
+        if any(x[i] != ids[0][i] for x in ids[1:]):
+            return i
+    return n
 
 
 # ------------------------------------------------------------------ passes
@@ -193,6 +210,7 @@ def cache_text(
             encoder,
             token_split,
             prompt_tail,
+            p.variants,
         )
     ]
     if not todo:
@@ -205,7 +223,7 @@ def cache_text(
     longest = max(
         prompt_ids(tok, text, max_tokens).input_ids.shape[1]
         for p in todo
-        for text in (p.caption, p.plain or p.caption)
+        for text in (p.caption, p.plain or p.caption, *p.variants)
     )
     tok, te = load_text_encoder(
         model_dir, device, longest, tok=tok, precision=precision
@@ -239,6 +257,25 @@ def cache_text(
         if prompt_tail != "off":
             meta["prompt_tail"] = prompt_tail
         plain_note = ""
+        if p.variants:
+            tensors = {k: v for k, v in tensors.items() if not k.startswith("embeds_v")}
+            meta = {
+                k: v
+                for k, v in meta.items()
+                if not (k.startswith("caption_v") or k == "variant_prefix")
+            }
+            ids = [
+                prompt_ids(tok, t, max_tokens).input_ids[0].tolist()
+                for t in (p.caption, *p.variants)
+            ]
+            prefix = _shared_prefix(ids)
+            var = [
+                (t, encode_prompt(tok, te, t, device, max_tokens).to("cpu", torch.bfloat16))
+                for t in p.variants
+            ]
+            new, new_meta = variant_entries(var, prefix)
+            tensors |= new
+            meta |= new_meta
         if p.plain:
             plain = encode_prompt(tok, te, p.plain, device, max_tokens).to(
                 "cpu", torch.bfloat16
@@ -475,7 +512,7 @@ def run_cache(req) -> Path:
             raise SystemExit(f"no pair list at {src} (make i2i-stage TASK=<task>)")
         pairs, refs = manifest_pairs(src, fmt)
     else:
-        pairs = find_pairs(src, fmt)
+        pairs = find_pairs(src, fmt, req.caption_variants)
     if not pairs:
         raise SystemExit(f"no image/caption pairs under {src}")
     if fixed:

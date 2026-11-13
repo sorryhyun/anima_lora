@@ -136,6 +136,14 @@ class CacheRequest(Request):
     overwrite: bool = _f(False, "re-encode even when the cache is current")
     skip_text: bool = _f(False, "skip the text-encoder pass")
     skip_latents: bool = _f(False, "skip the VAE pass")
+    caption_variants: bool = _f(
+        False,
+        "also encode the caption variants of the Anima caption step "
+        "({stem}.variants.txt beside each caption: v1, v2, … = tag orders shuffled "
+        "behind the head tags, with tag dropout) as embeds_v1…, each mapped by "
+        "caption_format; train with caption_variant_rate (uniform over the caption "
+        "and its N variants at N/(N+1))",
+    )
     distill_teacher: bool = _f(
         False,
         "also write the self-distillation teacher embeds TrainRequest.distill reads "

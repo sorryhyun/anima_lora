@@ -21,9 +21,26 @@ class Pair:
     caption: str  # what the TE encodes
     source_sha: str  # of the .txt it came from
     plain: str = ""  # the .txt itself, encoded beside a layout-JSON caption
+    variants: tuple[str, ...] = ()  # encoded as embeds_v1… (caption_variants)
 
 
-def find_pairs(src: Path, caption_format: str = "text") -> list[Pair]:
+def read_variants(caption_txt: Path) -> list[str]:
+    """The ``v1``, ``v2``, … lines of the Anima ``{stem}.variants.txt`` beside a
+    caption (``v0`` is the caption itself), or ``[]`` without one."""
+    path = caption_txt.with_name(caption_txt.name[: -len(".txt")] + ".variants.txt")
+    if not path.is_file():
+        return []
+    out = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        label, sep, text = line.partition("\t")
+        if sep and not line.startswith("#") and label != "v0" and text.strip():
+            out.append(text.strip())
+    return out
+
+
+def find_pairs(
+    src: Path, caption_format: str = "text", variants: bool = False
+) -> list[Pair]:
     """Images with a ``.txt`` caption beside them, subfolders included. Stems that
     collide across subfolders get their relative folder as a prefix.
 
@@ -31,7 +48,8 @@ def find_pairs(src: Path, caption_format: str = "text") -> list[Pair]:
     published beside the caption is used as is, unless the ``.txt`` is newer
     (edited after the export); every other caption is converted here. Either
     way the ``.txt`` rides along as ``plain``, unless it already is layout JSON
-    (which has no plain form)."""
+    (which has no plain form). With ``variants`` each pair carries its
+    ``read_variants`` lines, mapped the same way."""
     originals, skip = original_tree(src)
     images, found = source_pairs(src, originals, skip)
     if originals is not None:
@@ -61,7 +79,14 @@ def find_pairs(src: Path, caption_format: str = "text") -> list[Pair]:
             convert = convert or caption_converter(caption_format)
             caption = convert(raw)
         plain = raw if caption_format == "layout_json" and caption != raw else ""
-        pairs.append(Pair(stem, image, caption, caption_sha(raw), plain))
+        var = ()
+        if variants:
+            convert = convert or caption_converter(caption_format)
+            var = tuple(convert(v) for v in read_variants(path))
+        pairs.append(Pair(stem, image, caption, caption_sha(raw), plain, var))
+    if variants:
+        n = sum(1 for p in pairs if p.variants)
+        print(f"caption variants: {n}/{len(pairs)} captions have them", flush=True)
     if caption_format == "layout_json":
         print(
             f"layout_json: {from_sidecar} from Export's sidecars, "

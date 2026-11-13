@@ -365,3 +365,35 @@ def test_cache_text_keeps_variants_of_an_unchanged_caption(
         assert keys == {"embeds", "embeds_v1"}
         assert (meta["caption_v1"], meta["variant_prefix"]) == ("hair", "4")
         assert torch.equal(read_te(path, "embeds_v1")[4:], tail)
+
+
+def test_caption_variants_read_and_tracked(tmp_path):
+    """``caption_variants``: the Anima ``.variants.txt`` lines after ``v0`` ride on the
+    pair, a TE file is current only with exactly that variant set, and the stored
+    prefix is the shared token run, short of the shortest sequence."""
+    from library.moss.cache import _shared_prefix
+    from library.moss.caching.sources import read_variants
+
+    txt = tmp_path / "a.txt"
+    txt.write_text("x, a, b")
+    (tmp_path / "a.variants.txt").write_text(
+        "# anima caption variants\nv0\tx, a, b\nv1\tx, b, a\nv2\tx, a\n"
+    )
+    assert read_variants(txt) == ["x, b, a", "x, a"]
+    assert read_variants(tmp_path / "none.txt") == []
+
+    path = tmp_path / "a.moss_te.safetensors"
+    meta = {"caption_sha256": caption_sha("c"), "max_text_tokens": "4096"}
+    save_file({"embeds": torch.zeros(2, 4)}, str(path), metadata=meta)
+    assert _te_current(path, "c", 4096)
+    assert not _te_current(path, "c", 4096, variants=("v1",))
+    save_file(
+        {"embeds": torch.zeros(2, 4)},
+        str(path),
+        metadata=meta | {"caption_v1": "v1", "caption_v2": "v2"},
+    )
+    assert not _te_current(path, "c", 4096, variants=("v1",))
+    assert _te_current(path, "c", 4096, variants=("v1", "v2"))
+
+    assert _shared_prefix([[1, 2, 3, 4], [1, 2, 5], [1, 2, 3]]) == 2
+    assert _shared_prefix([[1, 2, 3], [1, 2, 3, 4]]) == 2
