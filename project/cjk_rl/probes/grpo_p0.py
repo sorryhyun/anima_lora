@@ -11,9 +11,11 @@ source images left out), 8 seeds each.
             the EN lines are written into it by hand (``en``), as the ruler's are
     render  (GPU) per string × seed: the EN ref (Euler) and the policy on four
             samplers — Euler, SDE a ∈ {0.3, 0.7} (Flow-GRPO), LCM re-noise
-    cost    (GPU) P0c: one GRPO update, G = 8 SDE rollouts, backward on 2 of 4
-            steps through the rows: wall time and peak VRAM
-    read    readers + the reward terms + P0a pairs / P0b spreads + sheets
+    cost    (GPU) P0c: whole groups (G = 8 SDE rollouts, decode, the batched
+            reward read, an update backwarded on 2 of 4 steps through the rows),
+            the reader resident beside the policy: wall time and peak VRAM
+    read    the batched tuned reader (a group a call, no whole page) + the reward
+            terms (per-box r_seq) + P0a pairs / P0b spreads + sheets
             → ``results/<ts>-grpo_p0/``
     run     render, cost, read
 
@@ -228,6 +230,27 @@ class LCM:
 
 
 _KIND = {"name": "lcm"}
+_RD: dict = {}
+
+
+def readers():
+    """The reward reader (``Readers``: the tuned VL reader alone), loaded once."""
+    if "rd" not in _RD:
+        import torch
+
+        from common.readers import Readers
+
+        torch.cuda.synchronize()
+        before = torch.cuda.memory_allocated()
+        _RD["rd"] = Readers("cuda")
+        _RD["gib"] = (torch.cuda.memory_allocated() - before) / 2**30
+    return _RD["rd"]
+
+
+def to_bgr(img):
+    import numpy as np
+
+    return np.ascontiguousarray(np.array(img.convert("RGB"))[:, :, ::-1])
 
 
 def _sampler_factory(sigmas, seed=None, device=None):
@@ -300,83 +323,110 @@ def render(r, table) -> dict:
 # ---------------------------------------------------------------- cost (GPU)
 
 
-def cost(r, table, G: int = 8, grad_steps=(0, 1)) -> dict:
-    """P0c: G SDE rollouts (a = 0.7) of one prompt, then one update: −A·log π
-    of the steps ``grad_steps`` backwarded through the rows, A a stand-in
-    (the time and memory do not depend on it)."""
+def cost(r, table, G: int = 8, grad_steps=(0, 1), groups: int = 4) -> dict:
+    """P0c: ``groups`` whole groups on pool strings 0.., the reward reader
+    resident: G SDE rollouts (a = 0.7), decode, the batched read, then −A·log π
+    of the steps ``grad_steps`` backwarded through the rows (A a stand-in: the
+    time and memory do not depend on it). Times are medians over the groups
+    after the first (its shape compiles)."""
+    import statistics as st
+
     import torch
 
     from common.models import decode_image, dit_forward, encode_captions
     from library.inference.sampling import get_timesteps_sigmas
 
-    m = load_pool()[0]
+    rd = readers()
+    pool = load_pool()
     dev = r.device
     r.set_arm(table)
-    cache = encode_captions([m["caption"]], dev)
-    W, H = m["shape"]
-    _, sig = get_timesteps_sigmas(4, r.args.flow_shift, dev)
-    sde = SDE(sig, 0.7, 0, dev)
-    s = sde.s
     anima, raw = r.anima, r.delta.raw
     raw.requires_grad_(True)
+    stage: dict = {k: [] for k in ("rollout", "decode", "read", "update", "group")}
+    peaks: dict = {"rollout": 0.0, "read": 0.0, "update": 0.0}
+    lps, gn, nrows = [], 0.0, 0
 
-    def v_of(x, i, grad):
-        ts = torch.full((1,), s[i], device=dev, dtype=torch.float32)
-        with torch.set_grad_enabled(grad), torch.autocast("cuda", dtype=torch.bfloat16):
-            return dit_forward(anima, x, ts, cache, [m["caption"]], dev).float()
+    def lap(key, t0):
+        torch.cuda.synchronize()
+        stage[key].append(time.time() - t0)
+        peaks_key = {"decode": "rollout"}.get(key, key)
+        if peaks_key in peaks:
+            peaks[peaks_key] = max(
+                peaks[peaks_key], torch.cuda.max_memory_allocated() / 2**30
+            )
+        torch.cuda.reset_peak_memory_stats()
+        return time.time()
 
-    torch.cuda.synchronize()
-    torch.cuda.reset_peak_memory_stats()
-    t0 = time.time()
-    traj = []
-    for g in range(G):
-        gen = torch.Generator(device=dev).manual_seed(g)
-        x = torch.randn(1, 16, H // 8, W // 8, generator=gen, device=dev)
-        xs = [x]
-        for i in range(4):
-            v = v_of(x, i, False)
-            x0 = x - s[i] * v
-            x = sde.step(x, x0, i)
-            xs.append(x)
-        traj.append(xs)
-    torch.cuda.synchronize()
-    t_roll = time.time() - t0
-    t0 = time.time()
-    for xs in traj:
-        decode_image(r.vae, xs[-1].unsqueeze(2), dev)
-    torch.cuda.synchronize()
-    t_dec = time.time() - t0
-    peak_roll = torch.cuda.max_memory_allocated() / 2**30
-    adv = torch.linspace(-1, 1, G)
-    raw.grad = None
-    torch.cuda.reset_peak_memory_stats()
-    t0 = time.time()
-    lps = []
-    for g, xs in enumerate(traj):
-        for i in grad_steps:
-            v = v_of(xs[i], i, True)
-            mu = sde.mean(xs[i], v, i)
-            sc = sde.scale(i)
-            lp = (-((xs[i + 1] - mu) ** 2) / (2 * sc**2)).mean()
-            (-(adv[g] * lp) / (G * len(grad_steps))).backward()
-            lps.append(float(lp))
-    torch.cuda.synchronize()
-    t_upd = time.time() - t0
-    gn = float(raw.grad.norm()) if raw.grad is not None else 0.0
+    for gi in range(groups):
+        m = pool[gi]
+        cache = encode_captions([m["caption"]], dev)
+        W, H = m["shape"]
+        _, sig = get_timesteps_sigmas(4, r.args.flow_shift, dev)
+        sde = SDE(sig, 0.7, gi, dev)
+        s = sde.s
+
+        def v_of(x, i, grad):
+            ts = torch.full((1,), s[i], device=dev, dtype=torch.float32)
+            with (
+                torch.set_grad_enabled(grad),
+                torch.autocast("cuda", dtype=torch.bfloat16),
+            ):
+                return dit_forward(anima, x, ts, cache, [m["caption"]], dev).float()
+
+        torch.cuda.synchronize()
+        torch.cuda.reset_peak_memory_stats()
+        g0 = t0 = time.time()
+        traj = []
+        for g in range(G):
+            gen = torch.Generator(device=dev).manual_seed(g)
+            x = torch.randn(1, 16, H // 8, W // 8, generator=gen, device=dev)
+            xs = [x]
+            for i in range(4):
+                v = v_of(x, i, False)
+                x = sde.step(x, x - s[i] * v, i)
+                xs.append(x)
+            traj.append(xs)
+        t0 = lap("rollout", t0)
+        imgs = [decode_image(r.vae, xs[-1].unsqueeze(2), dev) for xs in traj]
+        t0 = lap("decode", t0)
+        reads = rd.read_images([to_bgr(im) for im in imgs], whole=False)
+        rs = [r_seq(m["text"], x) for x in reads]
+        t0 = lap("read", t0)
+        adv = torch.tensor(rs) - sum(rs) / G
+        raw.grad = None
+        for g, xs in enumerate(traj):
+            for i in grad_steps:
+                v = v_of(xs[i], i, True)
+                mu = sde.mean(xs[i], v, i)
+                sc = sde.scale(i)
+                lp = (-((xs[i + 1] - mu) ** 2) / (2 * sc**2)).mean()
+                (-(adv[g] * lp) / (G * len(grad_steps))).backward()
+                lps.append(float(lp))
+        lap("update", t0)
+        stage["group"].append(time.time() - g0)
+        if raw.grad is not None:
+            gn = float(raw.grad.norm())
+            nrows = int((raw.grad.abs().sum(1) > 0).sum())
+        print(
+            f"  cost group {gi} {m['shape']}: "
+            + ", ".join(f"{k} {v[-1]:.2f}" for k, v in stage.items())
+            + f"; r_seq {[round(x, 2) for x in rs]}",
+            flush=True,
+        )
+    med = {k: round(st.median(v[1:] if len(v) > 1 else v), 2) for k, v in stage.items()}
     out = {
         "G": G,
+        "groups": groups,
         "grad_steps": list(grad_steps),
-        "shape": m["shape"],
-        "rollout_s": round(t_roll, 2),
-        "decode_s": round(t_dec, 2),
-        "update_s": round(t_upd, 2),
-        "peak_rollout_gib": round(peak_roll, 2),
-        "peak_update_gib": round(torch.cuda.max_memory_allocated() / 2**30, 2),
+        "shapes": [pool[gi]["shape"] for gi in range(groups)],
+        "median_s": med,
+        "per_group_s": {k: [round(x, 2) for x in v] for k, v in stage.items()},
+        "groups_300_h": round(med["group"] * 300 / 3600, 2),
+        "peak_gib": {k: round(v, 2) for k, v in peaks.items()},
+        "reader_resident_gib": round(_RD["gib"], 2),
         "card_gib": round(torch.cuda.get_device_properties(0).total_memory / 2**30, 2),
         "row_grad_norm": gn,
-        "rows_with_grad": int((raw.grad.abs().sum(1) > 0).sum())
-        if raw.grad is not None
-        else 0,
+        "rows_with_grad": nrows,
         "logp_mean": sum(lps) / len(lps),
     }
     raw.grad = None
@@ -398,43 +448,85 @@ def lcs(a: str, b: str) -> int:
     return prev[-1]
 
 
+BUBBLE_GAP = 0.5  # boxes this share of their short side apart are one bubble
+
+
+def bubbles(boxes: list) -> list:
+    """Box reads grouped into bubbles: two boxes join when their gap on both
+    axes is within ``BUBBLE_GAP`` of the smaller box's short side (union-find)."""
+    n = len(boxes)
+    up = list(range(n))
+
+    def root(i):
+        while up[i] != i:
+            up[i] = up[up[i]]
+            i = up[i]
+        return i
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            a, b = boxes[i]["box"], boxes[j]["box"]
+            m = BUBBLE_GAP * min(
+                min(a[2] - a[0], a[3] - a[1]), min(b[2] - b[0], b[3] - b[1])
+            )
+            gx = max(a[0], b[0]) - min(a[2], b[2])
+            gy = max(a[1], b[1]) - min(a[3], b[3])
+            if gx <= m and gy <= m:
+                up[root(i)] = root(j)
+    out: dict = {}
+    for i in range(n):
+        out.setdefault(root(i), []).append(boxes[i])
+    return list(out.values())
+
+
 def r_seq(text: str, reads: list) -> float:
+    """Proposal § 3.3: LCS(target, read) / max(len target, len read), best over
+    single boxes and each bubble's boxes joined in column order (right to left)
+    or line order (top to bottom). No whole-page read, no page-wide join."""
     from common.text import norm
 
-    from eval.ruler.score import candidates
-
     t = norm(text)
-    cs = candidates(reads, "sfx")
-    return max((lcs(t, c) for c in cs), default=0) / max(1, len(t))
+    boxes = [r for r in reads if not r.get("whole") and r.get("sfx")]
+    cs = [norm(r["sfx"]) for r in boxes]
+    cx = lambda r: (r["box"][0] + r["box"][2]) / 2  # noqa: E731
+    for g in bubbles(boxes):
+        if len(g) > 1:
+            for key in (
+                lambda r: (-cx(r), r["box"][1]),
+                lambda r: (r["box"][1], r["box"][0]),
+            ):
+                cs.append("".join(norm(r["sfx"]) for r in sorted(g, key=key)))
+    return max((lcs(t, c) / max(len(t), len(c)) for c in cs if c), default=0.0)
 
 
 def read_all() -> tuple[dict, float]:
     """``{kind: {(i, seed): rec}}``; reads cached in ``<kind>/reads.json``."""
     import torch
 
-    from common.readers import Readers, load_bgr
+    from common.readers import load_bgr
     from eval.ruler.score import AtSim, flat_white, score_page, score_text
 
     its = load_pool()
-    raw, rd, vram = {}, None, 0.0
+    raw = {}
     for kind in ("en", *SAMPLERS):
-        f = P0 / kind / "reads.json"
+        f = P0 / kind / "reads_batch.json"
         got = json.loads(f.read_text("utf-8")) if f.exists() else {}
-        todo = [(m["i"], s) for m in its for s in SEEDS if f"{m['i']}_{s}" not in got]
+        todo = [m["i"] for m in its if any(f"{m['i']}_{s}" not in got for s in SEEDS)]
         if todo:
-            if rd is None:
-                torch.cuda.reset_peak_memory_stats()
-                rd = Readers("cuda")
-                vram = torch.cuda.memory_allocated() / 2**30
+            rd = readers()
             t0 = time.time()
-            for i, s in todo:
-                got[f"{i}_{s}"] = rd.read_image(
-                    load_bgr(render_file(kind, i, s)), whole=True
-                )
+            for i in todo:
+                bgrs = [load_bgr(render_file(kind, i, s)) for s in SEEDS]
+                for s, rr in zip(SEEDS, rd.read_images(bgrs, whole=False)):
+                    got[f"{i}_{s}"] = rr
             f.write_text(json.dumps(got, ensure_ascii=False, indent=1), "utf-8")
-            print(f"read {kind}: {len(todo)} in {time.time() - t0:.0f} s", flush=True)
+            print(
+                f"read {kind}: {len(todo)} groups in {time.time() - t0:.0f} s",
+                flush=True,
+            )
         raw[kind] = got
-    del rd
+    vram = _RD.get("gib", 0.0)
+    _RD.clear()
     torch.cuda.empty_cache()
     at = AtSim("cuda")
     recs: dict = {}
@@ -612,6 +704,8 @@ def read(info: dict) -> Path:
             "seeds": len(SEEDS),
             "samplers": SAMPLERS,
             "noise": NOISE,
+            "r_seq": "per box / bubble, LCS / max(len)",
+            "reads": "batched tuned reader, no whole page",
         },
         label="grpo_p0",
         metrics={"tally": t, "p0a": a, "p0b": b, "info": info},
@@ -641,6 +735,7 @@ def main():
             info["cost"] = cost(r, table)
         (P0 / "info.json").write_text(json.dumps(info, indent=1))
         del r
+        _RD.clear()
         gc.collect()
         torch.cuda.empty_cache()
     if a.verb in ("read", "run"):
