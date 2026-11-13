@@ -30,9 +30,11 @@ plan is `91d476e0:scripts/distill_turbo/plan.md`.
 
 ## Next: warm start from Hub v3
 
-The control with `network.student_init_weights` and `fake_init_weights` set to
-`models/loras/turbo_hub/anima_turbo_4step_v3.safetensors` (the shipped `turbo.toml` also starts
-both from one file). Same rank 64 / alpha 180 / adaln 16; 250 iterations, about 27 min.
+The control with `network.student_init_weights` set to
+`models/loras/turbo_hub/anima_turbo_4step_v3.safetensors`. Same rank 64 / alpha 180 / adaln 16;
+250 iterations, about 27 min. The fake starts as in the control (`weight_svd`, 200 warmup steps on
+the student's outputs): v3's own fake was not kept, only its student LoRA is on disk. The one fake
+of this line that survives is in `output/ckpt/1112_1512/1112_1512_resume.pt` (v1 at step 750).
 
 Read, fixed before the run. It passes if all four hold:
 

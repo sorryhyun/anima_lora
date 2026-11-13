@@ -112,4 +112,4 @@ step 0 (`reports/handoff.md`), and the layout comes back in proportion to the st
 merged14 untrained (0.063 against 0.146–0.149). Arm 1 (MFD) failed: one image per prompt, mostly
 through steps 1–3 (`reports/mfd.md`).
 
-Next (`plan.md`): the control `turbo_1113_1105` with student and fake warm-started from Hub v3.
+Next (`plan.md`): the control `turbo_1113_1105` with the student warm-started from Hub v3.
