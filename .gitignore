@@ -69,8 +69,8 @@ project/sigma_lowres/paper_bench/
 
 project/sigma_lowres/bench/probe1024_closure
 project/sigma_lowres/bench/probe1280_cache
-# MOSS tone probe raw output (project/finished/moss_lora/src/tone_probe.py); results live in docs/moss/proposal/i2i_tone_loss.md
-project/finished/moss_lora/space/tone_probe*.json
+# MOSS tone probe raw output (project/finished/moss_lora/src/tone_*probe.py); results live in docs/moss/proposal/{i2i_tone_loss,tone_xt_trust}.md
+project/finished/moss_lora/space/tone_*probe*.json
 
 # anime_tools stage reports (report_dir defaults anchor on ANIMA_HOME = this checkout)
 workspace/
