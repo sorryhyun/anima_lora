@@ -20,6 +20,12 @@ Arms per (prompt, seed), one noise per column:
                ``anchor_steps`` Euler steps, ``steps.teacher_anchor``), then the
                student finishes: what the step-0 regression gives at zero loss
   * ``P>S@1``  (``--step0_lora``) that LoRA draws step 0, the student finishes
+  * ``--step0_mix`` arms: step 0 is the student's own velocity ``v_s`` moved toward
+    the anchor target ``v_t`` by part of the residual ``r = v_t − v_s``, then the
+    student finishes. ``a<α>`` → ``M<α>>S@1``: ``v_s + α·r`` (MSE to the target
+    scales by ``(1 − α)²``). ``lp<k>`` → ``L<k>>S@1``: ``v_s + LP_k(r)``, only the
+    k×-pooled band of the residual. ``hp<k>`` → ``H<k>>S@1``: ``v_s + r − LP_k(r)``,
+    everything but that band
 
 ``teacher_steps`` must be a multiple of ``student_steps``, so the student grid is
 a subset of the teacher grid and ``T`` is a plain teacher render.
@@ -111,6 +117,39 @@ def lowpass_cos(a: torch.Tensor, b: torch.Tensor, pool: int) -> float:
     return float(torch.nn.functional.cosine_similarity(lp(a), lp(b), dim=0))
 
 
+def lowband(r: torch.Tensor, k: int) -> torch.Tensor:
+    """The k×-pooled band of a 5D field: area downsample, bilinear back up."""
+    x = r.float().squeeze(2)
+    h, w = x.shape[-2:]
+    lo = torch.nn.functional.interpolate(
+        x, size=(max(1, h // k), max(1, w // k)), mode="area"
+    )
+    lo = torch.nn.functional.interpolate(
+        lo, size=(h, w), mode="bilinear", align_corners=False
+    )
+    return lo.unsqueeze(2)
+
+
+def parse_mixes(spec: str) -> list[tuple[str, object]]:
+    """``a0.5,lp8,hp8`` → [(arm tag, residual → the part applied to step 0)]."""
+    out: list[tuple[str, object]] = []
+    for tok in (t.strip() for t in spec.split(",")):
+        if not tok:
+            continue
+        if tok.startswith("lp"):
+            k = int(tok[2:])
+            out.append((f"L{k}", lambda r, k=k: lowband(r, k)))
+        elif tok.startswith("hp"):
+            k = int(tok[2:])
+            out.append((f"H{k}", lambda r, k=k: r - lowband(r, k)))
+        elif tok.startswith("a"):
+            a = float(tok[1:])
+            out.append((f"M{a:g}", lambda r, a=a: a * r))
+        else:
+            raise SystemExit(f"--step0_mix: {tok!r} is not a<α> | lp<k> | hp<k>")
+    return out
+
+
 def sheet(cells: list[list[Image.Image]], cols: list[str], rows: list[str], w: int):
     """Rows × columns of images scaled to width ``w``, with a header and row tags."""
     h = round(cells[0][0].height * w / cells[0][0].width)
@@ -156,6 +195,12 @@ def main() -> None:
         default="",
         help="a LoRA that draws step 0 for every student (the P>S@1 arm)",
     )
+    p.add_argument(
+        "--step0_mix",
+        default="",
+        help="comma list of a<α> | lp<k> | hp<k>: step 0 = the student's velocity "
+        "plus that part of its residual to the anchor target (needs the A arm)",
+    )
     p.add_argument("--cell_width", type=int, default=320)
     p.add_argument("--vae_chunk_size", type=int, default=64)
     p.add_argument("--compile", action=argparse.BooleanOptionalAction, default=True)
@@ -176,6 +221,9 @@ def main() -> None:
     names = [Path(s).stem for s in students]
     step0 = str(resolve_under_home(opts.step0_lora)) if opts.step0_lora else ""
     anchor_on = opts.anchor_steps > 0
+    mixes = parse_mixes(opts.step0_mix)
+    if mixes and not anchor_on:
+        raise SystemExit("--step0_mix needs the anchor target (anchor_steps > 0)")
 
     extra = ["--int8", "--vae_disable_cache"]
     if opts.compile:
@@ -231,6 +279,8 @@ def main() -> None:
     v_targets: dict[tuple, torch.Tensor] = {}
     p_states: dict[tuple, torch.Tensor] = {}  # P arm: the step-0 LoRA's state at σ_1
     anchor_mse: dict[str, list[float]] = {}
+    anchor_low: dict[str, list[float]] = {}  # low-band share of that error
+    mix_mse: dict[str, dict[str, list[float]]] = {}
 
     def kwargs(pi):
         return dict(
@@ -258,6 +308,10 @@ def main() -> None:
             vt = v_targets[(pi, seed)].to(device)
             anchor_mse.setdefault(who, []).append(
                 float(torch.nn.functional.mse_loss(v, vt))
+            )
+            r = vt - v
+            anchor_low.setdefault(who, []).append(
+                float(lowband(r, opts.lowpass).pow(2).mean() / r.pow(2).mean())
             )
 
     # Teacher pass (adapter off), plus the anchor and the step-0 LoRA's step 0.
@@ -307,7 +361,8 @@ def main() -> None:
             kw = kwargs(pi)
             for seed in seeds:
                 eps = noise(seed)
-                mse_to_anchor(name, first_velocity(anima, eps, **kw), pi, seed)
+                v_s = first_velocity(anima, eps, **kw)
+                mse_to_anchor(name, v_s, pi, seed)
                 x, s_snaps = euler(
                     anima, eps, s_sig, 0, N, student=True, cfg=1.0, keep=st_b, **kw
                 )
@@ -320,6 +375,18 @@ def main() -> None:
                     x0 = p_states[(pi, seed)].to(device)
                     x, _ = euler(anima, x0, s_sig, 1, N, student=True, cfg=1.0, **kw)
                     finals[(name, "P>S@1", pi, seed)] = x.cpu()
+                if mixes:
+                    vt = v_targets[(pi, seed)].to(device)
+                    for tag, part in mixes:
+                        v = v_s + part(vt - v_s)
+                        mix_mse.setdefault(name, {}).setdefault(tag, []).append(
+                            float(torch.nn.functional.mse_loss(v, vt))
+                        )
+                        x0 = (eps.float() - (s_sig[0] - s_sig[1]) * v).to(eps.dtype)
+                        x, _ = euler(
+                            anima, x0, s_sig, 1, N, student=True, cfg=1.0, **kw
+                        )
+                        finals[(name, f"{tag}>S@1", pi, seed)] = x.cpu()
                 for b in ts_b:
                     x0 = t_snaps[(pi, seed)][t_idx[b]].to(device)
                     x, _ = euler(anima, x0, s_sig, b, N, student=True, cfg=1.0, **kw)
@@ -367,6 +434,9 @@ def main() -> None:
     if step0:
         arms.append("P>S@1")
         cols.append(f"P>S@1 (step0 LoRA to σ {sig[1]})")
+    for tag, _ in mixes:
+        arms.append(f"{tag}>S@1")
+        cols.append(f"{tag}>S@1")
     arms += ["S"] + [f"S>T@{b}" for b in st_b]
     cols += ["S (student)"] + [f"S>T@{b} (S to σ {sig[b]})" for b in st_b]
 
@@ -401,8 +471,27 @@ def main() -> None:
             )
             grids.append(str(out))
 
+    # Sameness across seeds: mean pairwise low-passed cosine between the seeds of
+    # one prompt, per arm. The teacher's row is the level a diverse sampler gives.
+    def seed_sim(who, arm):
+        per_prompt = []
+        for pi in range(len(prompts)):
+            lats = [finals[(who, arm, pi, s)] for s in seeds]
+            pairs = [
+                lowpass_cos(lats[i], lats[j], opts.lowpass)
+                for i in range(len(lats))
+                for j in range(i + 1, len(lats))
+            ]
+            per_prompt.append(sum(pairs) / max(1, len(pairs)))
+        return {"mean": sum(per_prompt) / len(per_prompt), "per_prompt": per_prompt}
+
+    seed_sims = {"teacher": {"T": seed_sim(None, "T")}}
+    for name in names:
+        seed_sims[name] = {a: seed_sim(name, a) for a in arms if a != "T"}
+
     n_s = len(seeds)
     metrics = {
+        "seed_similarity": seed_sims,
         "lowpass_cos_to_teacher": {
             name: {
                 a: {
@@ -425,6 +514,14 @@ def main() -> None:
             }
             for who, v in anchor_mse.items()
         },
+        "anchor_err_low_share": {
+            who: {"pool": opts.lowpass, "mean": sum(v) / len(v)}
+            for who, v in anchor_low.items()
+        },
+        "step0_mix_mse": {
+            name: {tag: sum(v) / len(v) for tag, v in per.items()}
+            for name, per in mix_mse.items()
+        },
         "anchor": (
             {"k": opts.anchor_k, "steps": opts.anchor_steps, "t_k": t_k}
             if anchor_on
@@ -441,11 +538,24 @@ def main() -> None:
         for a, m in per.items():
             pp = " ".join(f"{x:.3f}" for x in m["per_prompt"])
             print(f"    {a:8s} mean {m['mean']:.3f}   per prompt {pp}")
+    print("==== sameness across seeds: mean pairwise low-passed cosine ====")
+    for who, per in seed_sims.items():
+        print(f"  {who}")
+        for a, m in per.items():
+            pp = " ".join(f"{x:.3f}" for x in m["per_prompt"])
+            print(f"    {a:8s} mean {m['mean']:.3f}   per prompt {pp}")
     if metrics["anchor_mse"]:
         print("==== held-out anchor MSE (training div_loss) ====")
         for who, m in metrics["anchor_mse"].items():
             pp = " ".join(f"{x:.4f}" for x in m["per_prompt"])
-            print(f"  {who:30s} mean {m['mean']:.4f}   per prompt {pp}")
+            low = metrics["anchor_err_low_share"][who]["mean"]
+            print(
+                f"  {who:30s} mean {m['mean']:.4f}   per prompt {pp}"
+                f"   low-band share (pool {opts.lowpass}) {low:.3f}"
+            )
+        for name, per in metrics["step0_mix_mse"].items():
+            row = "  ".join(f"{tag} {v:.4f}" for tag, v in per.items())
+            print(f"  step-0 mix MSE, {name}: {row}")
     write_result(
         run_dir,
         script=__file__,

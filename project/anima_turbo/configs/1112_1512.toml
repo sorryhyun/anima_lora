@@ -1,0 +1,97 @@
+# v1 (project/anima_turbo/1112_v1.md): first 1000-iteration 4-step run on the merged14 teacher.
+# Arm 0 control 1112_0833 + cosine LR (2 % warmup, 5e-5 -> 5e-6) + EMA 0.2 of the summed LR
+# + dm_first_step on (anchor kept) + saves every 250. EMA ships. Judged against the shipped
+# Hub anima_turbo_4step_v3 (shipped, base teacher, 10k it) on judge_hard seeds 1-4.
+dit_path = "models/diffusion_models/anima_merged14_int8_gptq.safetensors"
+dit_nonquant_path = "models/diffusion_models/anima_merged14.safetensors"
+data_dir = "post_image_dataset/lora"
+output_dir = "output/ckpt"
+output_name = "1112_1512"
+
+iterations = 1000
+batch_size = 1
+seed = 42
+channel_scaling_alpha = 0.0
+compile_dynamic_seq = true
+dynamo_recompile_limit = 64
+activation_memory_budget = 0.99
+int8 = "stream"
+stream = "fp32"
+
+[network]
+student_rank = 64
+student_alpha = 180
+fake_rank = 64
+fake_alpha = 180
+attn_mode = "flash"
+student_down_init = "weight_svd"
+fake_down_init = "weight_svd"
+student_init_weights = ""
+fake_init_weights = ""
+train_adaln = true
+fake_adaln = true
+adaln_rank = 16
+adaln_alpha = 90
+fake_transition = true
+
+[dmd]
+student_steps = 4
+teacher_cfg = 4
+dynamic_schedule = true
+dm_x0_norm = true
+norm_floor = 0.05
+dm_draws = 1
+
+[cdm]
+weight = 1.0
+grad_ckpt = true
+
+[mfd]
+dtau = 0.0
+
+[optim]
+student_lr = 5e-5
+fake_lr = 5e-5
+fake_steps_per_student_step = 4
+fake_warmup_steps = 200
+grad_accum = 1
+weight_decay = 0.0
+grad_clip = 1.0
+lr_schedule = "cosine"
+
+[ema]
+window = 0.2
+
+[dpdmd]
+k_anchor = 6
+teacher_anchor_steps = 12
+div_weight = 0.1
+detach_after_first = true
+dm_first_step = true
+rollout_grad = false
+
+[sampling]
+t_distribution = "uniform"
+sigmoid_scale = 1.0
+flow_shift = 3.0
+
+[gan]
+weight_gen = 0.03
+feature_block_idx = -1
+disc_lr = 1e-5
+disc_hidden = 0
+disc_head = "token"
+delay_steps = 0
+warmup_steps = 0
+r1_weight = 0.0
+r1_alpha = 0.1
+use_same_t_noise = true
+grad_ckpt = true
+
+[io]
+save_every = 250
+log_interval = 5
+log_dir = "output/logs/turbo"
+validate_every_n_steps = 250
+val_diversity_seeds = 8
+val_prompt_idx = -1

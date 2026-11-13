@@ -5,7 +5,8 @@ converts), written as a full DiT checkpoint in ComfyUI's ``int8_tensorwise`` +
 Calibration is broad across artists: up to ``--per_artist`` cached images from every
 artist folder of ``--cache_root`` (token count in range), each noised at one σ drawn
 from the inference schedule (``--steps`` Euler steps, ``--flow_shift``), and run twice,
-with its own caption and with ``--negative_prompt`` (the CFG uncond of every step).
+with its own caption and with ``--negative_prompt`` (the CFG uncond of every step;
+``--no_negative`` keeps the caption pass only, for a cfg 1 model).
 
 Blocks are quantized in order, each quantized block (W8A8, the kernel) feeding the
 next. Per converted linear, three roundings onto the same grid (the weight rotated per
@@ -320,6 +321,11 @@ def main():
     ap.add_argument("--steps", type=int, default=28)
     ap.add_argument("--flow_shift", type=float, default=3.0)
     ap.add_argument("--negative_prompt", default=NEGATIVE)
+    ap.add_argument(
+        "--no_negative",
+        action="store_true",
+        help="calibrate on the caption pass only (a cfg 1 model, e.g. a baked turbo)",
+    )
     ap.add_argument("--method", choices=METHODS[1:], default="gptq")
     ap.add_argument("--block", type=int, default=128)
     ap.add_argument("--damp", type=float, default=0.01)
@@ -337,7 +343,7 @@ def main():
     bundle = build_anima(args, adapter=None, train_mode=False)
     anima, device = bundle.anima, bundle.device
     fingerprint = base_fingerprint(anima)
-    neg = encode_negative(anima, args, device)
+    neg = None if args.no_negative else encode_negative(anima, args, device)
 
     picked = pick_images(
         resolve_under_home(args.cache_root),
@@ -361,7 +367,8 @@ def main():
             pad = torch.zeros(
                 1, 1, *latents.shape[-2:], dtype=torch.bfloat16, device=device
             )
-            for c in (crossattn.unsqueeze(0), neg):
+            conds = [crossattn.unsqueeze(0)] + ([] if neg is None else [neg])
+            for c in conds:
                 a, kw, attn_params = capture(
                     anima, noisy, sigma, c.to(device, torch.bfloat16), pad
                 )
@@ -376,7 +383,7 @@ def main():
         "per_artist": args.per_artist,
         "token_range": [args.min_tokens, args.max_tokens],
         "sigma_schedule": f"{args.steps} steps, shift {args.flow_shift}",
-        "negative_prompt": args.negative_prompt,
+        "negative_prompt": None if args.no_negative else args.negative_prompt,
         "seed": args.seed,
     }
     print(f"[calib] {json.dumps(calib)} {time.perf_counter() - t0:.0f}s", flush=True)

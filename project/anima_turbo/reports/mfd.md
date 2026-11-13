@@ -130,3 +130,64 @@ The reference also differs in CDM 1.0 and GAN 0.03; the two MFD runs differ only
 - **Next split:** `dm_first_step = false` with `div_weight = 0` (step 0 frozen at init, no
   anchor) tells DM-on-step-0 from the anchor-free loop as a whole; TTUR 10:1 is the fake-tracking
   check.
+
+## Arm 1 on the v1 recipe: cleaner, and the seeds of a prompt draw one image (2026-11-13)
+
+`turbo_1113_1104` against the control `turbo_1113_1105` (the v1 recipe at 250 iterations: cosine
+5e-5 → 5e-6, EMA 0.2 of the summed LR, `dm_first_step` on, seed 42). The arm adds `mfd.dtau 0.1`,
+`max_steps 4`, `to_zero`. 30 min at about 7.3 s per iteration against 5.78. With `dm_first_step`
+on, the MFD term also reaches step 0 (about 37 % of the iterations).
+
+Renders: `output/tests/turbo4/cmp/mfd_{bocchi,ba5,cafe}.jpg`, rows teacher, control EMA 250, MFD
+EMA 250, v1 1k EMA, seeds 1–4. **Claude's read on downscaled grids; the user's read is pending.**
+
+- **MFD draws one image per prompt.** Guitarist: the same raised arm, jump and framing on all four
+  seeds. Group: one arrangement of the five on every seed. Café: one layout, blue aprons. The
+  control varies pose, arrangement and apron colour between seeds.
+- **What MFD gains:** cleaner lines, and all five characters on every group seed (the control
+  drops Hina on seeds 1 and 2).
+- **Sign text is worse:** the control spells `CAFE MILLENNIUM` on seed 2, MFD on none.
+- Neither draws the teacher's view from below.
+
+| | control | MFD |
+|---|---|---|
+| `val/div_xpred_ac_sim`, 125 / 250 | 0.948 / 0.909 | 0.999 / 0.949 |
+| `val/div_ac_sim`, 125 / 250 | 0.661 / 0.547 | 0.428 / 0.628 |
+| `val/fm_mse`, 125 / 250 | 0.299 / 0.242 | 0.618 / 0.313 |
+| held-out anchor MSE, EMA 250 | 0.149 | 0.180 |
+| pre-clip `gn_fake` max | 30 | 233 |
+
+MFD shows the collapse signature at 125 (`div_xpred_ac_sim` 0.999, `fm_mse` 0.62) and recovers by
+250. Its step 0 ends farther from the anchor than the teacher's own cond velocity (0.171).
+
+**Verdict: the arm fails.** One seed per arm and no twin of this control, so the size of the gap
+is not known; its direction is the same in the renders and in every number above.
+
+### Which steps carry the sameness
+
+Two cross-handoff runs (`probe_handoff.py --step0_lora`): one student draws step 0, the other
+steps 1–3. Sameness across seeds = mean pairwise low-passed cosine between the four seeds of a
+prompt (new in the probe); the teacher reads 0.328.
+Runs: `bench/turbo/results/20261113-1213-cross_ctrl0_mfd123/` and `20261113-1216-cross_mfd0_ctrl123/`.
+
+| Step 0 drawn by | steps 1–3: control | steps 1–3: MFD |
+|---|---|---|
+| teacher (`T>S@1`) | 0.405 | 0.520 |
+| anchor target (`A>S@1`) | 0.426 | 0.581 |
+| control | 0.496 | 0.681 |
+| MFD | 0.606 | 0.762 |
+
+- **Steps 1–3 carry most of it.** Swapping only steps 1–3 to MFD adds 0.12–0.19 in every row;
+  swapping only step 0 adds 0.08–0.11. With the control's step 0, MFD's steps 1–3 already cover
+  70 % of the way from the control (0.496) to MFD (0.762), and they pull the seeds together even
+  from the teacher's own σ 0.9 state. On the group grids the five figures take the same places in
+  the `T>S@1` column as in `S`.
+- So **MFD on steps ≥ 1 only would keep most of the loss.** The question was the user's
+  (2026-11-13); the criterion was fixed before the runs.
+- The likely mechanism, not measured: MFD's target is the CFG 4 teacher integrated to σ 0 in a few
+  steps from a renoised x̂₀. At a high σ_a that state has lost the student's layout, so the target
+  is the prompt's typical image whatever the student's noise was; and the signal is cleaner
+  (step-to-step sd −35 % at K 3.4, above), so the same 250 iterations go farther that way against
+  an anchor weight that did not change.
+- The control is itself above the teacher (0.496 against 0.328), and still 0.405 with the
+  teacher's step 0: the plain DM term on steps 1–3 does the same thing, less.

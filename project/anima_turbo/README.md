@@ -12,18 +12,19 @@ The shipped base-teacher turbo (`huggingface.co/sorryhyun/anima-turbo-4step`) is
 
 ## Layout
 
-- [1112_v1.md](1112_v1.md): the setup for the first 1000-iteration run. It lists the four changes
-  against arm 0's control with the evidence for each, the read fixed for the run, what is kept,
-  what is left out and the placeholders after it.
-- [idea.md](idea.md): candidates for after the v1 run that are not arms yet: the anchor's weight
-  against the DM signal on step 0, high-σ DM queries on step 0, a 2-step handoff probe,
-  low-frequency weighting of the anchor loss, a lower-resolution anchor, DAVE at inference.
-- [plan.md](plan.md): the open plan. It covers the A/B protocol (250 it, EMA 0.2, the null twin,
-  renders on `bench/turbo/judge_hard.txt` beside the teacher, the handoff probe), the v1 run and
-  the arms not yet run. The closed 2-step plan and its results are
+- [1112_v1.md](1112_v1.md): the setup of the first 1000-iteration run (`1112_1512`, shipped as
+  `v4_preview`): the four changes against arm 0's control with the evidence for each, and what is
+  kept. The 250-iteration control of the current arms is this recipe.
+- [idea.md](idea.md): candidates that are not arms: the anchor's weight against the DM signal on
+  step 0, high-σ DM queries on step 0, a 2-step handoff probe, a lower-resolution anchor, DAVE at
+  inference. Low-frequency weighting of the anchor loss is closed there.
+- [plan.md](plan.md): the open plan: the A/B protocol, the next run (a warm start from Hub v3)
+  and what follows it. The closed 2-step plan and its results are
   `91d476e0:scripts/distill_turbo/plan.md`.
 - [configs/](configs/): one TOML per run, named by its run id (`mmdd_hhmm`). Launch with
   `make turbo ARGS="--config project/anima_turbo/configs/<id>.toml --queue"`.
+- [deploy/](deploy/): `deploy.sh` writes the release forms of a student: one LoRA for base, the
+  baked DiT, and its 4-step / cfg 1 int8 GPTQ.
 - [reports/](reports/): one report per run or probe.
   - [arm0.md](reports/arm0.md): arm 0 control and twin. The two runs share only 9–10 % of ΔW,
     both random-walk from step 125, and the σ_a norm profile gives arm 3 = adaptive clip alone.
@@ -38,10 +39,15 @@ The shipped base-teacher turbo (`huggingface.co/sorryhyun/anima-turbo-4step`) is
     and four anchor draws buy a small gain (S-c.2). The fit follows the LR at the end of training
     and not the length (`1112_1336`, `1112_1410`); at a held-out MSE of 0.12 the layout is still
     the students' own.
+  - [step0_fit.md](reports/step0_fit.md): how good the step-0 fit has to be, and Hub v3 as a
+    fitted step 0. The layout is in the low band of the step-0 residual and comes back in
+    proportion to the fit; Hub v3 (10k it) sits at 0.3 of the reference where the 1k students sit
+    at 0.85, and its step 0 carries over to merged14 untrained (held-out MSE 0.063 against 0.146).
   - [walk.md](reports/walk.md): the measurements taken before arm 0. It holds what the 2-step line
     measured (the batch-1 random walk), the 4-step ΔW overlap and the 2-step gradient norms.
-  - [mfd.md](reports/mfd.md): MFD in the DM slot (2-step 100 / 500-step arms, 2026-11-04) and the
-    anchor-free MFD collapse (4-step m14, 2026-11-10).
+  - [mfd.md](reports/mfd.md): MFD in the DM slot (2-step 100 / 500-step arms, 2026-11-04), the
+    anchor-free MFD collapse (4-step m14, 2026-11-10) and arm 1 on the v1 recipe (2026-11-13):
+    cleaner, and the seeds of a prompt draw one image.
 - [vatdm.md](vatdm.md): VA-TDM (arXiv:2611.06796) against the loop and MFD; idea 1 is
   `fake_transition`.
 - [proposal/](proposal/): earlier turbo proposals, moved from `docs/anima/proposal/` on 2026-11-12.
@@ -90,15 +96,20 @@ The shipped base-teacher turbo (`huggingface.co/sorryhyun/anima-turbo-4step`) is
 | `1112_1230` | S-c.2 probe | S-b + `dpdmd.anchor_draws 4` | done: small consistent gain, every paired number favours it (anchor MSE 0.157 → 0.147, `P>S@1` +0.01 / +0.03); passes by the repo gate rule, size thresholds in its header not met (`reports/step0.md`) |
 | `1112_1336` | S-b long | S-b resumed (from step 125) to 1000 iterations, EMA span kept at 50 updates | done: held-out anchor MSE 0.165 / 0.143 / 0.155 / 0.140 at 250 / 500 / 750 / 1k, flat; length on the constant LR is not the lever (`reports/step0.md`) |
 | `1112_1410` | S-b long, annealed tail | `1112_1336` from step 750 with `lr_schedule cosine` | done: 0.123 raw / 0.127 EMA; the anneal is what the 500-iteration students had. `P>S@1` 0.495 / 0.587, the layout does not come with it |
+| `1112_1512` | v1 (`1112_v1.md`) | 1000 it, cosine, EMA 0.2 of summed LR, `dm_first_step` on, saves every 250 | done; 1k EMA shipped 11-12 as Hub `anima_turbo_4step_v4_preview`. Against Hub v3: the multi-character layout holds one scene; the solo guitarist draws one frontal pose on every seed, raw and EMA |
+| `turbo_1113_1105` | control for the post-v1 arms | the v1 recipe at 250 it (cosine over the 250), saves every 125 | done, rendered; held-out anchor MSE 0.149 |
+| `turbo_1113_1104` | 1, MFD | `turbo_1113_1105` + `mfd.dtau 0.1` / `max_steps 4` / `to_zero` | done: fails on the renders. Cleaner lines and all five characters on every seed, but the four seeds of a prompt draw one image and the sign text is worse (`reports/mfd.md`) |
 
-## State (2026-11-12)
+## State (2026-11-13)
 
-The 2-step line (superturbo, `dpdmd.rollout_grad`) is closed at the level of `1111_1115` step 250.
-The 4-step line is in the same batch-1 random-walk regime (`reports/arm0.md`). The handoff probe
-(`reports/handoff.md`) puts the largest loss of the teacher's layout in step 0, which no DM arm
-reaches. Step-0 work (`reports/step0.md`): the anchor target is right (S-a). The fit of the step-0
-regression follows the LR at the end of training (held-out anchor MSE 0.11–0.13 annealed, 0.14–0.18
-at a constant 5e-5), not the length, the draws or the competing terms. At 0.12 the trained step 0
-still draws the students' own layout. The DM signal on step 0 (S-c.1) is the one change that moved
-composition in the renders, at a cost in diversity. Next: the first 1000-iteration run on the setup
-in `1112_v1.md` (cosine LR, EMA span in summed LR, `dm_first_step` on).
+`v4_preview` (`1112_1512`, 1k EMA on the `1112_v1.md` recipe) is shipped. The 2-step line is closed
+at the level of `1111_1115` step 250.
+
+The open gap is composition: every merged14 student draws one frontal layout per prompt. It sits in
+step 0 (`reports/handoff.md`), and the layout comes back in proportion to the step-0 anchor fit
+(`reports/step0_fit.md`). The 1k students fit at 0.85 of the teacher's cond velocity; Hub v3, after
+10k iterations, at 0.30, with the view from below in its renders, and its step 0 carries over to
+merged14 untrained (0.063 against 0.146–0.149). Arm 1 (MFD) failed: one image per prompt, mostly
+through steps 1–3 (`reports/mfd.md`).
+
+Next (`plan.md`): the control `turbo_1113_1105` with student and fake warm-started from Hub v3.

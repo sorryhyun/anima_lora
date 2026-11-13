@@ -1,8 +1,9 @@
-# Ideas for after the v1 run
+# Ideas outside the arms in `plan.md`
 
-Written 2026-11-12, before the v1 run (`1112_v1.md`) has a result. These are candidates outside
-the arms in `plan.md`. None is built or run. Each says what it asks, what it costs and what would
-make it worth running.
+Written 2026-11-12, trimmed 2026-11-13 after the v1 run and the step-0 fit probes
+(`reports/step0_fit.md`). None is built or run unless it says so. Since the step-0 fit turned out to
+be what carries the layout, and Hub v3 already has it, ideas 1 and 2 only matter if a student has
+`dm_first_step` on.
 
 ## 1. The anchor's weight against the DM signal on step 0
 
@@ -49,22 +50,11 @@ not known.
 - The 2-step students were trained with `rollout_grad`; their step 1 has seen their own step-0
   states, not the teacher's.
 
-## 4. Low-frequency weighting of the anchor loss
+## 4. Low-frequency weighting of the anchor loss — closed
 
-The anchor MSE counts every frequency alike. The layout is in the low band, and much of the rest is
-detail a single forward from pure noise cannot predict. At a held-out MSE of 0.127 the trained step
-0 still draws the students' own layout, so the number that falls in training may be mostly the part
-that does not matter.
-
-- Standing verdict against it: `findings/turbo_fei_band_deficit_falsified.md` closes band-split
-  levers on the DP-DMD loop, dead twice. That lever reweighted the CFG uplift by a band-energy gap;
-  this one would weight the step-0 regression's loss. Different site, same family.
-- A measurement comes before any arm, and it is not a lever: split the held-out anchor error of the
-  existing step-0 LoRAs (S-b, `1112_1336`, `1112_1410`, the cosine students) into a pooled low band
-  and the rest, each against the teacher's cond velocity. If the low band is already fit as well as
-  an annealed LR allows, weighting it buys nothing. If the low-band error is what tracks `P>S@1`
-  across those LoRAs, it also answers how low the fit has to go.
-- Forward only, on the probe's saved targets; a small addition to `probe_handoff.py`.
+Measured 2026-11-13 (`reports/step0_fit.md`). The layout is in the low band of the step-0 residual
+(the 8× band alone gives 85–96 % of the anchor's gain), but that band is already 59–68 % of the
+students' error and is the part training lowers. A pooled loss has little to redirect.
 
 ## 5. A lower-resolution anchor (σ-demoted training applied here)
 
