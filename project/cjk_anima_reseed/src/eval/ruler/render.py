@@ -12,20 +12,24 @@ from pathlib import Path
 from eval.ruler import (
     CFG,
     EN,
+    MODELS,
     RULER,
     SEED_RENDER,
     STEPS,
     VIEW,
     items,
     mode_dir,
+    model_of,
     render_file,
 )
 from eval.ruler.arms import arm_dirs, tables
 
 
 class Renderer:
-    def __init__(self):
+    def __init__(self, model: str = ""):
         import torch
+
+        from reseed import REPO
 
         from common.hooks import ExtDelta
         from common.models import load_generator, load_vae
@@ -35,8 +39,16 @@ class Renderer:
             if hasattr(dyn, k):
                 setattr(dyn, k, 64)
         self.torch = torch
+        steps, cfg, over = STEPS, CFG, {}
+        if model:
+            mv = MODELS[model]
+            steps, cfg = mv["steps"], mv["cfg"]
+            over["dit"] = str(REPO / mv["dit"])
+            if mv.get("lora"):
+                over["lora_weight"] = [str(REPO / mv["lora"])]
+                over["lora_multiplier"] = 1.0
         self.args, self.gen, self.device, self.shared = load_generator(
-            512, STEPS, CFG, RULER / "_tmp"
+            512, steps, cfg, RULER / "_tmp", **over
         )
         self.anima = self.shared["model"]
         self.anima.eval()
@@ -100,23 +112,46 @@ def render(names: list) -> None:
     import time
 
     its = sorted(items(), key=lambda m: (m["shape"], m["i"]))  # one compile per shape
-    _, tabs = tables([a for a in names if a != EN] + ["retrain_kana"])
-    r = Renderer()
-    info = {"check_rk": check(r, tabs["retrain_kana"])}
+    is_en = {a: a.split("#")[0] == EN for a in names}
+    _, tabs = tables([a for a in names if not is_en[a]] + ["retrain_kana"])
+    info: dict = {}
     t0 = time.time()
-    for a in names:
-        todo = [m for m in its if not render_file(a, m["i"]).exists()]
-        r.set_arm(None if a == EN else tabs[a])
-        for n, m in enumerate(todo):
-            pr = m["prompts"][VIEW.mode]
-            cap = pr["en_caption"] if a == EN else pr["caption"]
-            r.render(render_file(a, m["i"]), cap, SEED_RENDER, m["shape"])
-            print(
-                f"  {a}: {n + 1} / {len(todo)} r{m['i']:02d} {m['shape']} "
-                f"({(time.time() - t0) / 60:.1f} min)",
-                flush=True,
-            )
-        info[a] = {"rendered": len(todo)}
+    r = None
+    # one generator per model, in the order the arms name them
+    for model in dict.fromkeys(map(model_of, names)):
+        arms = [a for a in names if model_of(a) == model]
+        if all(render_file(a, m["i"]).exists() for a in arms for m in its):
+            continue
+        if r is not None:
+            import gc
+
+            import torch
+
+            r = None
+            gc.collect()
+            torch.cuda.empty_cache()
+        r = Renderer(model)
+        if not model:
+            info["check_rk"] = check(r, tabs["retrain_kana"])
+        for a in arms:
+            render_arm(r, a, its, None if is_en[a] else tabs[a], is_en[a], info, t0)
     mode_dir().mkdir(parents=True, exist_ok=True)
     (mode_dir() / "render_log.json").write_text(json.dumps(info, indent=1))
     print(f"render: {info} in {(time.time() - t0) / 60:.1f} min", flush=True)
+
+
+def render_arm(r, a, its, table, en, info, t0) -> None:
+    import time
+
+    todo = [m for m in its if not render_file(a, m["i"]).exists()]
+    r.set_arm(table)
+    for n, m in enumerate(todo):
+        pr = m["prompts"][VIEW.mode]
+        cap = pr["en_caption"] if en else pr["caption"]
+        r.render(render_file(a, m["i"]), cap, SEED_RENDER, m["shape"])
+        print(
+            f"  {a}: {n + 1} / {len(todo)} r{m['i']:02d} {m['shape']} "
+            f"({(time.time() - t0) / 60:.1f} min)",
+            flush=True,
+        )
+    info[a] = {"rendered": len(todo)}

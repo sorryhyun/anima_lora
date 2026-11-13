@@ -59,7 +59,7 @@ PACK_ARMS = {
 
 
 def base_arm(a: str) -> str:
-    return a.split("@")[0]
+    return a.split("#")[0].split("@")[0]
 
 
 def rows_pt(path: Path) -> dict:

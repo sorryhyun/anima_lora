@@ -32,6 +32,22 @@ MODES = ("sensitive",)
 EN = "en"  # the EN references: no ext row in the caption, the delta off
 FLOOR = ("en", "retrain_kana", "seed_retrain_0930")  # rendered once (criteria.md)
 STEPS, CFG, SEED_RENDER = 28, 4.0, 0  # the reads of record's sampler
+# ``X#<model>``: arm X rendered on another generator (DiT / LoRA / sampler) —
+# its own dir, read against ``en#<model>``, the same model's EN refs. A bare
+# arm is the reads of record's base at STEPS / CFG. Paths relative to the repo.
+M14 = "models/diffusion_models/anima_merged14.safetensors"
+BASE_DIT = "models/diffusion_models/anima-base-v1.0.safetensors"
+MODELS = {
+    # the base on today's code (the bare arms' renders are older code)
+    "base": {"dit": BASE_DIT, "steps": STEPS, "cfg": CFG},
+    "m14": {"dit": M14, "steps": STEPS, "cfg": CFG},  # the soup teacher
+    "m14v3": {  # merged14 + Hub turbo v3 at 1.0, untrained on m14
+        "dit": M14,
+        "lora": "models/loras/turbo_hub/anima_turbo_4step_v3.safetensors",
+        "steps": 4,
+        "cfg": 1.0,
+    },
+}
 MARK_CHARS = set("～〜~…‥♡♥、。，")
 
 
@@ -68,8 +84,18 @@ def mode_dir() -> Path:
     return RULER / VIEW.mode
 
 
+def model_of(arm: str) -> str:
+    return arm.split("#")[1] if "#" in arm else ""
+
+
+def en_of(arm: str) -> str:
+    """The EN refs an arm reads against: its own model's."""
+    m = model_of(arm)
+    return f"{EN}#{m}" if m else EN
+
+
 def render_file(arm: str, i: int) -> Path:
     # the EN refs keep eval.enref's naming (pi = the ruler index)
-    if arm == EN:
-        return mode_dir() / EN / f"enref_p{i:02d}_s{SEED_RENDER}.png"
+    if arm.split("#")[0] == EN:
+        return mode_dir() / arm / f"enref_p{i:02d}_s{SEED_RENDER}.png"
     return mode_dir() / arm / f"r{i:02d}_s{SEED_RENDER}.png"

@@ -45,9 +45,7 @@ def main():
     p.add_argument(
         "--marks", action="store_true", help="only the strings holding a mark"
     )
-    p.add_argument(
-        "--only", default="", help="render: these ruler indices only (comma list)"
-    )
+    p.add_argument("--only", default="", help="these ruler indices only (comma list)")
     p.add_argument(
         "--rows_pt",
         default="",
@@ -72,7 +70,7 @@ def main():
         return
     VIEW.mode, VIEW.pack, VIEW.marks_only = a.prompts, a.pack, a.marks
     VIEW.only = {int(x) for x in a.only.split(",") if x}
-    assert not (VIEW.only and a.verb in ("read", "run")), "--only is a look: render"
+    # --only on a read: the pairs over that subset (a probe; label it so)
     if VIEW.pack:
         from reseed.config import PACKS
 
@@ -90,19 +88,29 @@ def main():
     plain = {EN, *arm_dirs(), *DERIVED}
     pack = VIEW.pack
     known = plain | ({f"{x}@{pack}" for x in plain - {EN}} if pack else set())
+    from eval.ruler import MODELS
+
+    known |= {f"{x}#{m}" for x in known for m in MODELS}
     assert set(names) <= known, f"unknown arms {set(names) - known}"
     if a.verb in ("render", "run"):
         from eval.ruler.render import render
 
         # on a pack, render only its own arms: the raw pack's are on disk
-        bad = [x for x in names if pack and "@" not in x and x not in PACK_ARMS[pack]]
+        bad = [
+            x
+            for x in names
+            if pack
+            and "@" not in x
+            and x.split("#")[0] not in PACK_ARMS[pack]
+            and x.split("#")[0] != EN
+        ]
         assert not bad, f"--pack {pack} renders X@{pack} or its own arms, not {bad}"
         render(names)
     if a.verb in ("read", "run"):
         from eval.ruler.read import read
 
         # the floor arms always ride along: every read pairs against them
-        rd = [x for x in dict.fromkeys([*FLOOR[1:], *names]) if x != EN]
+        rd = [x for x in dict.fromkeys([*FLOOR[1:], *names]) if x.split("#")[0] != EN]
         read(rd, a.label, __file__)
 
 

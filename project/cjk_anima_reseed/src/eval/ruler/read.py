@@ -8,7 +8,17 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from eval.ruler import BINS, EN, FLOOR, RULER, VIEW, items, mode_dir, render_file
+from eval.ruler import (
+    BINS,
+    EN,
+    FLOOR,
+    RULER,
+    VIEW,
+    en_of,
+    items,
+    mode_dir,
+    render_file,
+)
 from eval.ruler.score import AtSim, flat_white, outside_mask, score_page, score_text
 from eval.ruler.stats import paired, tally
 
@@ -27,7 +37,7 @@ def read_renders(names: list) -> dict:
     its = items()
     rd = None
     raw: dict = {}
-    for a in [EN, *names]:
+    for a in dict.fromkeys([EN, *map(en_of, names), *names]):
         f = mode_dir() / a / "reads.json"
         got = json.loads(f.read_text("utf-8")) if f.exists() else {}
         todo = [m for m in its if str(m["i"]) not in got]
@@ -53,8 +63,8 @@ def read_renders(names: list) -> dict:
         recs[a] = {}
         for m in its:
             i = m["i"]
-            reads, en_reads = raw[a][str(i)], raw[EN][str(i)]
-            f, ref = render_file(a, i), render_file(EN, i)
+            reads, en_reads = raw[a][str(i)], raw[en_of(a)][str(i)]
+            f, ref = render_file(a, i), render_file(en_of(a), i)
             fi, hw = pe.tokens(f)
             fr, _ = pe.tokens(ref)
             boxes = [r["box"] for r in reads + en_reads if not r.get("whole")]

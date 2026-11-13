@@ -18,13 +18,16 @@ def checkpoints():
     return default_checkpoints()
 
 
-def gen_args(size, steps: int, cfg: int | float, save: Path, negative_prompt: str = ""):
-    """``size``: int side or ``(W, H)``; the request wants (height, width)."""
+def gen_args(
+    size, steps: int, cfg: int | float, save: Path, negative_prompt: str = "", **over
+):
+    """``size``: int side or ``(W, H)``; the request wants (height, width).
+    ``over``: request fields set over the defaults (``dit``, ``lora_weight``, …)."""
     from anima_lora.inference import GenerationRequest
 
     W, H = wh(size)
     ck = checkpoints()
-    req = GenerationRequest(
+    kw = dict(
         prompt="",
         negative_prompt=negative_prompt,
         image_size=(H, W),
@@ -37,13 +40,14 @@ def gen_args(size, steps: int, cfg: int | float, save: Path, negative_prompt: st
         attn_mode="flash",
         save_path=str(save),
     )
+    req = GenerationRequest(**{**kw, **over})
     args = req.to_args()
     args.compile_blocks = True
     return args
 
 
 def load_generator(
-    size, steps: int, cfg: int | float, save: Path, negative_prompt: str = ""
+    size, steps: int, cfg: int | float, save: Path, negative_prompt: str = "", **over
 ):
     """``(args, gen settings, device, shared models)`` ready for ``generate``;
     the DiT is ``shared['model']``. The text encoder stays resident on
@@ -55,7 +59,7 @@ def load_generator(
     from library.inference.generation import get_generation_settings
     from library.inference.models import load_dit_model, load_shared_models
 
-    args = gen_args(size, steps, cfg, save, negative_prompt)
+    args = gen_args(size, steps, cfg, save, negative_prompt, **over)
     gen = get_generation_settings(args)
     device = gen.device
     shared = load_shared_models(args)
