@@ -11,6 +11,11 @@ from pathlib import Path
 
 from .shapes import wh
 
+# ``(h // 16) * (w // 16)`` of every shape the caller will render; set before
+# ``load_generator``, the blocks compile with a dynamic seq axis over its bands
+# (``inference.py``'s path) instead of one static graph per shape
+TOKEN_COUNTS: list = []
+
 
 def checkpoints():
     from library.env import default_checkpoints
@@ -43,6 +48,12 @@ def gen_args(
     req = GenerationRequest(**{**kw, **over})
     args = req.to_args()
     args.compile_blocks = True
+    if TOKEN_COUNTS:
+        from library.datasets.buckets import cluster_token_bands
+
+        args.compile_dynamic_seq = True
+        args.compile_seq_range = (min(TOKEN_COUNTS), max(TOKEN_COUNTS))
+        args.compile_token_bands = cluster_token_bands(TOKEN_COUNTS)
     return args
 
 

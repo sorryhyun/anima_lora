@@ -108,8 +108,14 @@ def main():
     if a.verb in ("read", "run"):
         from eval.ruler.read import read
 
-        # the floor arms always ride along: every read pairs against them
-        rd = [x for x in dict.fromkeys([*FLOOR[1:], *names]) if x.split("#")[0] != EN]
+        # the floor arms (base, 28 steps) ride along when a base arm is read;
+        # a read of `X#<model>` arms only pairs them with each other
+        base = any("#" not in x for x in names)
+        rd = [
+            x
+            for x in dict.fromkeys([*(FLOOR[1:] if base else ()), *names])
+            if x.split("#")[0] != EN
+        ]
         read(rd, a.label, __file__)
 
 

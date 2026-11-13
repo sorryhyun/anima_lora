@@ -193,7 +193,7 @@ def build(variants: int, self_frac: float) -> None:
         return any(s[i : i + 5] in r5 for i in range(len(s) - 4))
 
     tmpls, skip = scan()
-    print(f"{len(tmpls)} templates; held out {dict(skip)}", flush=True)
+    print(f"{len(tmpls)} templates; ruler held out {skip['ruler']}", flush=True)
 
     rng = random.Random(SEED)
     pick = Draw(rng)

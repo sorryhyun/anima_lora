@@ -54,6 +54,7 @@ PACK_ARMS = {
         "seed_1008": OUT / "seed_1008",  # pres + sent_kanji_225's 225 (transplant.py)
         "kozh16": OUT
         / "kozh16",  # 8 Hangul + 8 hanzi cold on seed_1008 (probes/kozh_render.py)
+        "rl_p1": OUT / "rl_p1",  # seed_1008 + OCR-GRPO arm R (project/cjk_rl/src/grpo.py)
     }
 }
 

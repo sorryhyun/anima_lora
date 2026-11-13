@@ -117,6 +117,15 @@ and the nearest-2x upsample written as GatherND over index tables ⌊i/2⌋, ⌊
   (`dit_int8_mm32*`). The first upload, `dit_int8_dyn` with fp16 MatMulNBits
   (`onnx_dyn_int8/`, sidecar 2,372,323,328 B), is still on HF.
 
+### v4 (2026-11-13)
+
+The v4 turbo (merged14 + the Hub v3 turbo LoRA, baked with `scripts/toolkits/merge_to_dit.py`)
+goes through the same chain: `src/dit_convrot_gptq.py` on the baked DiT, then
+`src/dit_onnx_int8.py --buckets dyn --fp32_matmul --prefix dit_int8_v4` (454 weights
+identified, 224 MatMulNBits, sidecar 2,475,083,776 B). `src/dit_onnx_regroup.py --nseg 2`
+cuts it into two segments (source 0–2 and 3–6, 1.09 / 1.22 GiB of sidecar):
+`onnx/int8/dit_int8_v4.*` on HF. The request-2 set (`dit_int8_dyn`) is deleted from HF.
+
 ### Checks
 
 Dynamic against per-bucket graphs, same weights, ORT CPU (`src/dit_onnx_dyn_eval.py`):
@@ -190,6 +199,8 @@ The text encoder runs the same shaders in fp16. It has no fold and its weight sc
 - `src/te_ref_dump.py` and `src/te_onnx_eval.py`: the ORT CPU check.
 - `src/dit_convrot_gptq.py`: DiT calibration (daemon). `src/dit_onnx_dynamic.py`,
   `src/vae_onnx_dynamic.py`, `src/dit_onnx_int8.py`: the graph rewrites above.
+- `src/dit_onnx_regroup.py`: concatenates consecutive segments of a set into fewer graphs
+  over the same sidecar bytes (v4: 7 → 2, `int8/dit_int8_v4`, yaar request 4).
 - `src/dit_ref_dump.py` (daemon, `--hw`, `--compute bf16`), `src/dit_onnx_dyn_eval.py`,
   `src/dit_onnx_eval.py`: the checks.
 - `src/dp4a_probe.py`, `src/dp4a_serve.py`, `src/dp4a_probe_web/`: single-op MatMulNBits probe

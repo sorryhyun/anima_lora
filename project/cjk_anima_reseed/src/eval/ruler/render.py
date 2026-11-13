@@ -111,7 +111,10 @@ def check(r: Renderer, table) -> float:
 def render(names: list) -> None:
     import time
 
-    its = sorted(items(), key=lambda m: (m["shape"], m["i"]))  # one compile per shape
+    from common import models
+
+    its = sorted(items(), key=lambda m: (m["shape"], m["i"]))
+    models.TOKEN_COUNTS[:] = [(h // 16) * (w // 16) for w, h in (m["shape"] for m in its)]
     is_en = {a: a.split("#")[0] == EN for a in names}
     _, tabs = tables([a for a in names if not is_en[a]] + ["retrain_kana"])
     info: dict = {}

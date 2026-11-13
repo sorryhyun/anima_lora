@@ -148,3 +148,51 @@ on all 224 linears gives 0.3–0.6% per linear in fp32 (old, fp16: 7% / 17% / 99
 `self_attn.output_proj` / `mlp.layer2` / `cross_attn.output_proj`).
 
 To roll back, point `DIT` and `SHARED_DIT_DATA` back at the request-2 names; those files stay on HF.
+
+# yaar change request 4: the v4 DiT, two segments
+
+The turbo moves to v4: the merged14 soup with the Hub v3 turbo LoRA baked on it, as on HF
+`anima_turbo_4step_v4.safetensors`. The int8 DiT is that checkpoint, rebuilt the request-3 way
+(ConvRot GPTQ on the same grid, fp32 `MatMulNBits` between `Cast`s, the same 224 linears). The set
+is cut into **2 segments instead of 7**: source segments 0–2 and 3–6 concatenated, sidecar bytes
+unchanged. The request-2 files (`int8/dit_int8_dyn.*`, `int8/dit_int8.onnx.data`) were deleted
+from HF on 2026-11-13.
+
+New files on HF (`sorryhyun/anima-turbo-4step`, under `onnx/`):
+
+| Path under `onnx/` | Bytes |
+|---|---|
+| `int8/dit_int8_v4.segments.json` | 920 |
+| `int8/dit_int8_v4.seg0.onnx` | 4,216,096 |
+| `int8/dit_int8_v4.seg1.onnx` | 4,786,732 |
+| `int8/dit_int8_v4.onnx.data` | 2,475,083,776 |
+
+Segment 0 reads sidecar bytes `[0, 1169852416)` (1.09 GiB) and segment 1 reads
+`[1169852416, 2475083776)` (1.22 GiB). Inputs, outputs and manifest schema are as before; the
+segments pass `linear_2`, `silu_1`, `unsqueeze_13`, `unsqueeze_15`, `add_234`, `split_39_split_2`,
+`add_237` between them.
+
+Changes, all in `user-apps/anima/src/`:
+
+1. `generation/buckets.ts`: `DIT = 'int8/dit_int8_v4'` and
+   `SHARED_DIT_DATA = 'int8/dit_int8_v4.onnx.data'`.
+2. `ml/assets.ts`: in `EXPECTED_BYTES`, replace the `'int8/dit_int8_mm32.onnx.data'` row with
+   `'int8/dit_int8_v4.onnx.data': 2_475_083_776` (same size).
+3. `ml/downloadWeights.ts`: `DIT_SEGMENTS = 2`, the `segments.json` row 920 bytes, and the
+   per-segment progress size about 4_500_000.
+4. `ml/sessions.ts`: the "Segmented models" comment says the DiT ships as ~340 MB segments. They
+   are now 1.09 / 1.22 GiB. `InferenceSession.create` holds a segment's bytes while it uploads
+   them, so the load peak per session rises from about 0.37 GiB to 1.22 GiB on top of the GPU
+   copy. That does not matter on desktop. On a phone, keep the request-3 set (`dit_int8_mm32_dyn`,
+   7 segments, still on HF) if the 2-segment load fails there.
+
+`ditSessionOptions` (matches `dit_int8`) and `releaseOtherDits` (basename prefix `dit_`) still
+match the new name.
+
+To roll back, point `DIT` / `SHARED_DIT_DATA` at the request-3 names and set `DIT_SEGMENTS = 7`.
+
+Also deleted from HF on 2026-11-13: the per-ratio fp16 DiT sets (`dit_<bucket>_fp16_r16.*` and
+`dit_512_fp16_r16.onnx.data`), the per-ratio VAE graphs (`vae_decoder_<bucket>_fp16.onnx`) and
+`text_encoder_fp16.onnx` / `.data`. The rollbacks of requests 1–3 that point back at those files no
+longer work. Under `onnx/`, only `text_conditioner_fp16.onnx` / `.data` and
+`vae_decoder_512_fp16.onnx.data` stay; `int8/vae_decoder_dyn_fp16.onnx` reads the latter.

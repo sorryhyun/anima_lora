@@ -25,7 +25,12 @@ from onnx import TensorProto
 
 class Segmented:
     def __init__(
-        self, manifest, graph_dir, sidecar, providers=("CPUExecutionProvider",)
+        self,
+        manifest,
+        graph_dir,
+        sidecar,
+        providers=("CPUExecutionProvider",),
+        opt_level=None,
     ):
         self.man = json.load(open(manifest))
         self.dir = graph_dir
@@ -33,6 +38,8 @@ class Segmented:
         self.sess = []
         so = ort.SessionOptions()
         so.log_severity_level = 3
+        if opt_level is not None:
+            so.graph_optimization_level = opt_level
         for s in self.man["segments"]:
             m = onnx.load(
                 os.path.join(self.dir, os.path.basename(s["graph"])),
