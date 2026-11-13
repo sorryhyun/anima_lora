@@ -36,8 +36,10 @@ on merged14 with no training beats it on every number: sameness 0.326 (teacher 0
 regression from v3. The v1 recipe on the m14 teacher pulls any start toward the control, so the
 1k run from this start is dropped. The best 4-step result on merged14 is now merged14 + Hub v3,
 untrained. `turbo_1113_1309` (`dm_first_step` off) regresses the same way: step 0 still makes the
-seeds alike at v3's anchor MSE, and steps 1–3 lose teacher likeness. What comes next is not
-decided.
+seeds alike at v3's anchor MSE, and steps 1–3 lose teacher likeness. `turbo_1113_1438` (the fake
+seeded from v3 as well, as v3's own run seeded both stacks from one file) regresses the same way:
+sameness 0.483, on `1221`'s side of the read fixed in its config, so the cold fake is not the cause.
+By that read the line closes on merged14 + Hub v3 untrained. What comes next is not decided.
 
 ## After it
 

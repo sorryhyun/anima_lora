@@ -161,12 +161,61 @@ Renders (Claude's read on downscaled grids; the user's read is pending):
 - **Group:** the arrangement varies more than in `1221`, closer to v3's busy layouts.
 - Neither `1221` nor `1309` is better than v3 untrained on any prompt.
 
+## Fake seeded from v3 as well: not the cause (`turbo_1113_1438`)
+
+v3's own run (`output/logs/turbo/20260828-024030`, base teacher) seeded the student and the fake
+from one file, the official v1.1 delta. `1221` and `1309` seeded only the student; their fake
+started as in the control (`weight_svd`, 200 warmup steps). The DM gap shows the difference in the
+first 25 iterations: `train/dm_rel_gap` 0.292 in `1221` against 0.173 in v3's run. So a cold fake
+under an already trained student was the first suspect for the regression.
+
+`turbo_1113_1438` is `1221` with `network.fake_init_weights` = Hub v3 as well (both stacks on
+Kaiming downs, the 200-step fake warmup kept). Config `configs/turbo_1113_1438.toml`, log
+`output/logs/turbo/20261113-143838`. Probes: `bench/turbo/results/20261113-1507-handoff_v3warm_fakev3/`,
+`20261113-1509-cross_fakev3s0_v3123/` (`1438` draws step 0, v3 steps 1–3) and
+`20261113-1512-cross_v3s0_fakev3123/` (the reverse). Grids
+`output/tests/turbo4/cmp/fakev3_{ba5,cafe,bocchi}.jpg`, with rows teacher / Hub v3 on m14 / `1221` /
+`1438`.
+
+Read fixed before the run (config header): sameness `S` nearer v3's 0.326 than `1221`'s 0.465, with
+renders that keep v3's seed variety, means the cold fake caused the regression. Nearer `1221`
+means the teacher or the recipe, and the line closes on merged14 + Hub v3 untrained.
+
+| | v3 untrained | `1221` | `1438` |
+|---|---|---|---|
+| sameness, `S` | 0.326 | 0.465 | **0.483** (0.501 / 0.649 / 0.301) |
+| sameness, own step 0 + v3 steps 1–3 | 0.326 | 0.429 | 0.444 (0.469 / 0.581 / 0.282) |
+| sameness, v3 step 0 + own steps 1–3 | 0.326 | 0.381 | 0.409 (0.386 / 0.535 / 0.307) |
+| sameness, `T>S@1` | 0.280 | 0.309 | 0.307 |
+| cos to teacher, `S` | 0.639 | 0.593 | 0.610 |
+| cos to teacher, `T>S@1` | 0.826 | 0.782 | 0.797 |
+| held-out anchor MSE | 0.063 | 0.070 | 0.070 (0.059 / 0.077 / 0.075) |
+
+- **The cold fake is not the cause.** Sameness `S` is 0.483, on `1221`'s side of the fixed read,
+  and both cross cells sit with `1221`'s as well.
+- **The seed did change the start.** `train/dm_rel_gap` in the first 25 iterations is 0.214
+  (`1221` 0.292, v3's run 0.173), and `train/fake_loss` starts at 0.102 (`1221` 0.136). v3 as a
+  fake starts badly on the warmup loss (0.556 in the first 25 warmup steps against 0.226 for the
+  cold fake) and is level with it by step 25 (0.090 against 0.097).
+- **Teacher likeness is slightly higher than `1221`'s** (`S` cos 0.610 against 0.593, `T>S@1`
+  0.797 against 0.782), still below v3. One run each, no twin.
+
+Renders:
+
+- Claude's read on downscaled grids: the same as `1221` on diversity. The group has one
+  arrangement on all four seeds, and the café has light-blue aprons on every seed where v3 draws a
+  dark one on seed 1. The guitarist keeps v3's pose per seed. `1438` leaves more of the background
+  in frame than `1221` (the buildings behind the group, the windows and counter on café seeds 1
+  and 4).
+- The user's read: `1438` has slightly more sense of space than `1221`, said tentatively.
+
 ## What it means
 
 - **This is not a loss from baking the soup.** merged14 is the teacher itself, and v3 placed on it
   sits closer to that teacher than any student distilled from it (anchor MSE 0.063 against
   0.15 for the m14 students at 250 to 1k iterations; `reports/step0_fit.md`).
-- **The v1 recipe on the m14 teacher has its own attractor**, with or without `dm_first_step`. v3 starts at the teacher's
+- **The v1 recipe on the m14 teacher has its own attractor**, with or without `dm_first_step`, and
+  with the fake cold or seeded from v3. v3 starts at the teacher's
   sameness, so the seed collapse seen in every m14 student is not something 4-step sampling
   forces; the training puts it there. From the `weight_svd` start or from
   v3, 250 iterations move the student toward the same place: less teacher-like low-passed

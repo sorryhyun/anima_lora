@@ -104,6 +104,7 @@ The shipped base-teacher turbo (`huggingface.co/sorryhyun/anima-turbo-4step`) is
 | `turbo_1113_1104` | 1, MFD | `turbo_1113_1105` + `mfd.dtau 0.1` / `max_steps 4` / `to_zero` | done: fails on the renders. Cleaner lines and all five characters on every seed, but the four seeds of a prompt draw one image and the sign text is worse (`reports/mfd.md`) |
 | `turbo_1113_1221` | warm start from Hub v3 | `turbo_1113_1105` with the student seeded from Hub v3 | done: passes the `plan.md` gate against the control, but regresses from v3 untrained on merged14 on every number (sameness 0.326 → 0.465, `S` cos 0.639 → 0.593, anchor MSE 0.063 → 0.070) and in the user's read; the 1k run is dropped (`reports/warm_v3.md`) |
 | `turbo_1113_1309` | warm start, `dm_first_step` off | `turbo_1113_1221` with `dpdmd.dm_first_step = false` | done: not the cause. Anchor MSE stays at v3's 0.063, but step 0 still raises the sameness (cross cell 0.405 against v3 0.326, `1221` 0.429); steps 1–3 regress as before (`T>S@1` cos 0.773) (`reports/warm_v3.md`) |
+| `turbo_1113_1438` | warm start, fake seeded too | `turbo_1113_1221` with `network.fake_init_weights` = Hub v3 | done: not the cause. The DM gap starts lower (`dm_rel_gap` 0.214 against 0.292 in the first 25 it), but sameness is 0.483 (v3 0.326, `1221` 0.465); `S` cos 0.610, anchor MSE 0.070 (`reports/warm_v3.md`) |
 
 ## State (2026-11-13)
 
@@ -119,4 +120,6 @@ through steps 1–3 (`reports/mfd.md`).
 
 The warm start from Hub v3 (`turbo_1113_1221`) regressed from v3 itself: Hub v3 on merged14 with no
 training draws seeds as varied as the teacher's (sameness 0.326 against 0.328) and is the best
-4-step result on merged14; the v1 recipe pulls any start toward the control (`reports/warm_v3.md`).
+4-step result on merged14; the v1 recipe pulls any start toward the control, with `dm_first_step`
+off (`turbo_1113_1309`) and with the fake seeded from v3 (`turbo_1113_1438`) alike
+(`reports/warm_v3.md`).
