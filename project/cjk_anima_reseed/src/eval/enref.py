@@ -89,15 +89,13 @@ def largest_box(reads: list) -> list | None:
 
 
 def glyph_box(m: dict) -> list | None:
-    """The box that read the target (either reader), else the largest box."""
+    """The box that read the target, else the largest box."""
     from common.text import norm
 
     for r in m.get("reads") or []:
         if r.get("whole"):
             continue
-        if norm(r.get("sfx") or "") == norm(m["text"]) or norm(
-            r.get("vl") or ""
-        ) == norm(m["text"]):
+        if norm(r.get("sfx") or "") == norm(m["text"]):
             return r["box"]
     return largest_box(m.get("reads") or [])
 

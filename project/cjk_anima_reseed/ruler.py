@@ -5,8 +5,7 @@
     make daemon-run ARGS="--stall-timeout 900 project/cjk_anima_reseed/ruler.py run --arms kana_up,ball_rk_bubble,stick_nlg_high --label arms"
 
 ``build`` (CPU) draws the string set; ``render`` (GPU) draws what is missing;
-``read`` scores every render — text: official (both readers exact), exact
-(either), contained, ≤ 1 / ≤ 2 edits, CER, dup (a doubled glyph the string
+``read`` scores every render with the tuned VL reader — text: exact, contained, ≤ 1 / ≤ 2 edits, CER, dup (a doubled glyph the string
 lacks, or a read longer than it), a bubble's boxes also joined in column and
 line order; glyphs: ``g_p`` / ``g_r`` / ``g_f1`` and the rest; page:
 ``en_cls`` / ``en_match`` (``AtSim``), EN-ref token cos outside every text

@@ -7,7 +7,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-BOOL = ("official", "exact", "contained", "le1", "le2", "dup")
+BOOL = ("exact", "contained", "le1", "le2", "dup")
 # the page scores (user, 10-06: what is drawn, not only whether the string
 # reads whole) — ``score_page``; a real is ``None`` where it has no meaning
 # (kanji recall on a kana-only string) and is left out of a mean / a pair
@@ -49,14 +49,12 @@ def score_text(text: str, reads: list) -> dict:
     from common.text import lev, norm
 
     t = norm(text)
-    by = {x: candidates(reads, x) for x in ("sfx", "vl")}
-    allc = by["sfx"] + by["vl"]
+    allc = [c for x in READERS for c in candidates(reads, x)]
     best = min(allc, key=lambda c: (lev(c, t), len(c)), default="")
     d = lev(best, t) if best else len(t)
     doubled = lambda s: {s[i] for i in range(len(s) - 1) if s[i] == s[i + 1]}  # noqa: E731
     return {
         "best": best,
-        "official": t in by["sfx"] and t in by["vl"],
         "exact": t in allc,
         "contained": any(t in c for c in allc),
         "le1": len(t) > 2 and d <= 1,
@@ -68,7 +66,7 @@ def score_text(text: str, reads: list) -> dict:
 
 LETTER_RE = re.compile(r"[ぁ-ゟァ-ヺー一-鿿]")  # kana, ー, kanji (NFKC)
 KANJI = re.compile(r"[一-鿿]")
-READERS = ("sfx", "vl")
+READERS = ("sfx",)  # the tuned VL reader; stock VL16 is not read
 ON_SHARE = 0.5  # a box is on the target: this share of its letters are the target's
 
 
@@ -91,7 +89,7 @@ def box_mask(boxes: list, hw: tuple):
 
 def score_page(text: str, reads: list, en_reads: list) -> dict:
     """What the page draws against the string (user, 10-06), every text box
-    read, each reader on its own and the two averaged:
+    read by the tuned VL reader:
 
     - glyphs (kana, ー, kanji; a bag — order and box free): ``g_p`` = the
       string's letters among all letters drawn (low: much text that is not

@@ -1,4 +1,8 @@
-"""Reading renders back: detector + SFX reader + stock VL16, and contact sheets."""
+"""Reading renders back: detector + the tuned VL reader, and contact sheets.
+
+Every read is the tuned PaddleOCR-VL-1.6 reader (``anime_tools.ocr.sfx.SfxReader``,
+trained on SFX and dialogue); stock VL16 is not a reader here. :class:`StockVl16`
+stays for the cjk_ko probes that load it by name."""
 
 from __future__ import annotations
 
@@ -44,8 +48,20 @@ class StockVl16:
             msgs, add_generation_prompt=True, tokenize=False
         )
 
-    def read(self, crops: list) -> list[tuple[str, int]]:
-        """``(text, n_tokens)`` per BGR crop."""
+    def read(self, crops: list, batch: int | None = None) -> list[tuple[str, int]]:
+        """``(text, n_tokens)`` per BGR crop: all in one batch, or ``batch`` at a
+        time in order of area (similar sizes pad less)."""
+        if batch is None or len(crops) <= batch:
+            return self._read(crops)
+        order = sorted(range(len(crops)), key=lambda i: crops[i].size)
+        out: list = [None] * len(crops)
+        for s in range(0, len(order), batch):
+            idx = order[s : s + batch]
+            for i, r in zip(idx, self._read([crops[i] for i in idx])):
+                out[i] = r
+        return out
+
+    def _read(self, crops: list) -> list[tuple[str, int]]:
         from PIL import Image
 
         tok = self.proc.tokenizer
@@ -79,6 +95,17 @@ class StockVl16:
         return out
 
 
+def crop(bgr, box):
+    """``box`` padded by 12 % a side, clipped to the page."""
+    import numpy as np
+
+    H, W = bgr.shape[:2]
+    x0, y0, x1, y1 = box
+    pw, ph = int(0.12 * (x1 - x0)), int(0.12 * (y1 - y0))
+    c = bgr[max(0, y0 - ph) : min(H, y1 + ph), max(0, x0 - pw) : min(W, x1 + pw)]
+    return np.ascontiguousarray(c)
+
+
 class Readers:
     def __init__(self, device: str):
         from anime_tools.ocr.animetext import AnimeTextDetector
@@ -86,41 +113,59 @@ class Readers:
 
         self.det = AnimeTextDetector.load(device=device)
         self.sfx = SfxReader.load(device=device, batch_size=16)
-        self.vl = StockVl16(device)
 
     def read_image(self, bgr, *, whole: bool = True):
-        """Return list of dict(box, sfx, sfx_conf, vl) — one per detector box,
-        plus the whole image as a pseudo-box when ``whole``."""
-        import numpy as np
+        """Return list of dict(box, whole, sfx, sfx_conf) — one per detector
+        box, plus the whole image as a pseudo-box when ``whole``."""
+        return self.read_images([bgr], whole=whole)[0]
 
-        H, W = bgr.shape[:2]
-        boxes = [tuple(int(v) for v in b) for b in self.det.detect(bgr)]
-        crops = []
-        for b in boxes:
-            x0, y0, x1, y1 = b
-            pw, ph = int(0.12 * (x1 - x0)), int(0.12 * (y1 - y0))
-            c = bgr[
-                max(0, y0 - ph) : min(H, y1 + ph), max(0, x0 - pw) : min(W, x1 + pw)
-            ]
-            crops.append(np.ascontiguousarray(c))
-        if whole:
-            boxes.append((0, 0, W, H))
-            crops.append(bgr)
-        if not crops:
-            return []
-        sfx = self.sfx.read_scored(crops)
-        vl = self.vl.read(crops)
-        out = []
-        for b, s, v in zip(boxes, sfx, vl):
-            out.append(
-                {
-                    "box": list(b),
-                    "whole": b == (0, 0, W, H),
-                    "sfx": None if s is None else s[0],
-                    "sfx_conf": None if s is None else float(s[1]),
-                    "vl": v[0],
-                }
-            )
+    def read_images(self, bgrs: list, *, whole: bool = False, times=None):
+        """:meth:`read_image` over many pages, every page's crops read in shared
+        batches (a GRPO group's renders in one pass). Without ``whole`` each page
+        still ends in an unread whole pseudo-box (``sfx`` None), which
+        ``score_page`` takes the page size from. ``times``: a dict the seconds of
+        ``det`` / ``sfx`` are added to (synchronised)."""
+        import time
+
+        import torch
+
+        def lap(key, t0):
+            if times is not None:
+                torch.cuda.synchronize()
+                times[key] = times.get(key, 0.0) + time.time() - t0
+            return time.time()
+
+        t = time.time()
+        pages, crops = [], []
+        for bgr in bgrs:
+            H, W = bgr.shape[:2]
+            boxes = [tuple(int(v) for v in b) for b in self.det.detect(bgr)]
+            crops += [crop(bgr, b) for b in boxes]
+            if whole:
+                crops.append(bgr)
+            pages.append((boxes, (0, 0, W, H)))
+        t = lap("det", t)
+        sfx = self.sfx.read_scored(crops) if crops else []
+        lap("sfx", t)
+        out, k = [], 0
+        for boxes, page in pages:
+            rows = []
+            for b in boxes + ([page] if whole else []):
+                s = sfx[k]
+                k += 1
+                rows.append(
+                    {
+                        "box": list(b),
+                        "whole": b == page,
+                        "sfx": None if s is None else s[0],
+                        "sfx_conf": None if s is None else float(s[1]),
+                    }
+                )
+            if not whole:
+                rows.append(
+                    {"box": list(page), "whole": True, "sfx": None, "sfx_conf": None}
+                )
+            out.append(rows)
         return out
 
 
@@ -130,12 +175,11 @@ def read_scored(rd: Readers, m: dict) -> list:
     reads = rd.read_image(load_bgr(Path(m["file"])), whole=True)
     m["reads"] = reads
     m["cer_sfx"] = min([cer(r["sfx"] or "", m["text"]) for r in reads] or [1.0])
-    m["cer_vl"] = min([cer(r["vl"] or "", m["text"]) for r in reads] or [1.0])
     return reads
 
 
 def hit(reads: list, text: str, reader: str) -> bool:
-    """Any box where ``reader`` (``'sfx'`` / ``'vl'``) reads exactly ``text``."""
+    """Any box where ``reader`` (``'sfx'``) reads exactly ``text``."""
     return any(norm(r[reader] or "") == norm(text) for r in reads)
 
 

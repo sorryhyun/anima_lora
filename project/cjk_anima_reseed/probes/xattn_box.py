@@ -59,7 +59,7 @@ def en_box(m: dict, en_reads: list):
     for r in en_reads:
         if r.get("whole"):
             continue
-        for rd in ("sfx", "vl"):
+        for rd in ("sfx",):
             c = norm(r.get(rd) or "")
             if c:
                 s = 1.0 - lev(c, t) / max(len(c), len(t))

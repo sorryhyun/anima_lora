@@ -402,7 +402,7 @@ def r_seq(text: str, reads: list) -> float:
     from eval.ruler.score import candidates
 
     t = norm(text)
-    cs = candidates(reads, "sfx") + candidates(reads, "vl")
+    cs = candidates(reads, "sfx")
     return max((lcs(t, c) for c in cs), default=0) / max(1, len(t))
 
 
