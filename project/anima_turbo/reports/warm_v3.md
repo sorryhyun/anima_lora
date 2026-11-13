@@ -227,6 +227,25 @@ Renders:
   (`scripts/toolkits/merge_loras.py anima_merged14.safetensors anima_turbo_4step_v3.safetensors
   --normalize off --adaln sum`), with v3's logo and corner text still in it.
 
+## Where the ΔW lives: the down-init subspace (CPU, checkpoints only)
+
+Share of ΔW energy inside the row space of the control's `lora_down` (`weight_svd`, about the
+top-64 right singular vectors of the merged14 W₀), mean over the 280 block Linears; a random
+subspace of that size holds 0.035.
+
+| ΔW | share inside the control's down basis |
+|---|---|
+| v1 1k EMA (`1112_1512`) | 0.965 |
+| Hub v3 | 0.122 |
+| official v1.1 delta (r96) | 0.045 |
+| official v1.1 delta, inside v3's down basis | 0.607 |
+
+A `weight_svd` student never leaves its init input subspace at these LRs and lengths, and the
+working turbo ΔW sits about 88–95 % outside it; Kaiming is no closer. v3 got its basis from the
+v1.1 delta it was warm-started from. `weight_svd` is not worse than Kaiming, but neither is the
+right init for a turbo. A basis-only arm (v3's `lora_down`, `lora_up` = 0) would separate the
+basis from the trained map; it needs code and is not proposed as a run.
+
 ## Dropped
 
 - The 1000-iteration run from the v3 start on the v1 recipe (`plan.md` "Pass" branch). A longer
