@@ -1,6 +1,7 @@
 # Massive activations as a semantic carrier: what arXiv 2605.13974 means for MOSS
 
-Status: reading note, 2026-10-30. Nothing in it has been measured on MOSS yet.
+Status: reading note, 2026-10-30. Question 1 measured 2026-11-13 (§ Question 1 result); the
+rest is unmeasured.
 
 Paper: Turri, Bucciarelli et al., *Few Channels Draw The Whole Picture: Revealing Massive
 Activations in Diffusion Transformers*, [arXiv 2605.13974](https://arxiv.org/abs/2605.13974)
@@ -59,7 +60,7 @@ channels are a near-constant offset across prompts. Both can hold:
 The hypothesis: on MOSS, 1356 and 42 are a fixed DC plus a small, spatially structured,
 prompt-dependent part, and the second part is what the paper's results depend on.
 
-## Open questions for MOSS (unmeasured)
+## Open questions for MOSS
 
 1. **Is there a mask in MOSS's MAs?** Run the paper's K-means on the 18-channel maps per
    block and step, and score it against a BiRefNet mask of the final image. It needs no
@@ -80,3 +81,106 @@ prompt-dependent part, and the second part is what the paper's results depend on
 4. **DAVE already agrees.** DAVE leaves these 18 channels out of its mean edit
    (`docs/moss/inference/dave.md`), and the paper's disruption result says touching them breaks
    generation. Nothing to change there.
+
+## Question 1 result (2026-11-13)
+
+`bench/moss_ma_mask/probe_masks.py`, run `results/20261113-1014-base`: Base, fp32 stream,
+1024², 30 steps, CFG 3, 16 subject-on-background prompts × 2 seeds. Block outputs of the
+cond forward on steps 0 3 7 11 15 19 23 29, K-means on the raw channel maps and on their
+min-max normalised maps, the paper's polarity rule, mIoU against BiRefNet on the final
+image. Channel sets: top12, top2, bottom12, rand12, the 18 of `massive_channels.npz`, and
+all channels but top12 (`rest`). A random mask of the same area scores 0.30–0.32.
+
+**The gate failed.** It was fixed on the paper's protocol (last step): top12 ≥ 0.5 and ≥ 0.1
+above bottom12 and rand12, block picked on seed 0, read on seed 1. Raw: block 0, 0.437 /
+0.352 / 0.242. Normalised: block 7, 0.221 / 0.329 / 0.393. At the last step the top-channel
+maps follow edges and texture, and top12 falls from 0.44 (block 0) to ~0.25 (blocks 24–36).
+
+**The paper's pattern is at block 10 on the middle steps** (read after the gate; step and
+block picked on seed 0, numbers from seed 1):
+
+| K-means on | step | top12 | top2 | fixed18 | bottom12 | rand12 | rest |
+|---|---|---|---|---|---|---|---|
+| raw | 7 | 0.488 | 0.488 | 0.423 | 0.313 | 0.309 | 0.317 |
+| normalised | 11 | 0.525 | 0.462 | 0.454 | 0.348 | 0.323 | 0.311 |
+
+- Raw top12 beats bottom12 on 16 / 16 seed-1 renders and rand12 on 15 / 16. The block-10
+  band holds on steps 3–19 in both readings (`probe.png`).
+- **Two channels are enough.** Raw top2 gives the same mask as raw top12: the distance is
+  set by the loudest channel. `sheet_step7_b10_raw.png` shows a subject silhouette with
+  speckle on most pages, noise for bottom12.
+- The other channels hold a cleaner split at the same place, without a usable polarity:
+  `rest` scores 0.56 with the better polarity at step 7, block 10 (0.36 under the rule),
+  and 0.65 at block 21 over the 29 renders with ≥ 5 % foreground. It often cuts ground from sky rather than subject from
+  scene.
+- In blocks 22–36 the rule picks the background: normalised top12 at block 24, last step,
+  is 0.22 under the rule and 0.51 with the better polarity.
+- top12's DC share of energy is 0.999 at block 0 and 0.95–0.97 past block 28, so the mask
+  is read from the 0.1–5 % left over, as the hypothesis above says.
+- BiRefNet finds ≤ 2 % foreground on three renders (lighthouse, subway) and marks most of
+  one manga page; leaving out the three renders under 5 % moves the block-10 numbers by
+  0.02–0.03.
+
+Not measured: the uncond branch, a smoothed mask, any location inside the block (FFN
+input or activation), a LoRA, and i2i reference rows.
+
+## i2i LoRAs on these channels (2026-11-13, weights only)
+
+`bench/moss_ma_mask/lora_channels.py`, run `results/20261113-1051-lora-channels`. Uncensor
+(with and without `mod_rank` 16), sanitize v3, swap_text v3 and v6, colorize v5, against
+the t2i ama_mitsuki pair; all rank 32, Muon, kaiming `down`, so a column's share of `ΔW`
+starts uniform (18 channels: 0.59 %, ch 1356 + 42: 0.065 %). The modulation is shared by
+all 42 blocks with no per-block term.
+
+**Base drives these channels through the modulation.** Of 3,072 channels, 1356 and 42 are
+the two largest entries of the attention gate (−9.6 / +4.3, rms 0.48), the FFN shift
+(−6.0 / −4.8, rms 0.18) and the FFN gate (+31 / +9, rms 2.7) at t = 0, and the same at
+t = 900. The FFN shift has 64–90 % of its energy on the 18 channels. And **Base closes
+ch 42 to attention at t = 0**: its input multiplier `1 + scale_a` is −0.010 there (second
+smallest of all channels, median 2.28), against −0.17 … −0.30 at t 100–900.
+
+**The i2i modulation adapters reopen it for the reference rows.**
+
+| `1 + scale_a` on ch 42 | t = 0 (reference) | t = 900 (image) |
+|---|---|---|
+| Base | −0.010 | −0.268 |
+| uncensor mod16 | −0.035 | −0.259 |
+| swap_text v3 | −0.034 | −0.229 |
+| swap_text v6 | −0.076 | −0.231 |
+| t2i ama_mitsuki mod16 | −0.009 | −0.267 |
+
+- In `scale_a`, ch 42 is the most-moved channel of 3,072 in all three i2i adapters at t = 0
+  and ch 1356 is in the top 7; the sign flips between t = 0 and t = 900 on both. The t2i
+  adapter leaves both alone there (ranks 17 and 2,628).
+- `scale_f` moves ch 42 most in the t2i adapter too, so that chunk is not i2i-specific.
+- It is the place the adapters act, not always the same move. The copy block
+  `c_fill_bw10_mod16_s800` takes the entry to −0.048, swap_text from C
+  (`swap_dense2516_en400_c_e2`) to −0.026, the int8 uncensor rerun to −0.019,
+  `moss_i2i_character_ref_offkv_cinit` to +0.127 (the other sign); `1111_1546` and
+  `1112_0047` leave it at −0.014 and −0.006. Ch 42 is rank 1–3 of the `scale_a` delta in
+  all of them but the uncensor rerun (rank 7).
+- The adapter's large part is elsewhere: the FFN-shift delta (74–75 % of `‖Δmod‖²`,
+  `findings/mod_rank_i2i.md`) has 1–3 % of its energy on the 18 channels, and changes the
+  shift on ch 1356 and 42 by ≤ 1.1 %.
+
+**The block adapters lean on them mildly on the read side, more on the write side.**
+
+| share of `ΔW` on ch 1356 + 42 (uniform 0.065 %) | t2i | uncensor | sanitize | swap_text | colorize |
+|---|---|---|---|---|---|
+| `ffn_up_gate` columns, all block ranges | 0.05–0.07 | 0.12–0.17 | 0.12–0.15 | 0.12–0.20 | 0.12–0.17 |
+| `k` columns, blocks 36–41 | 0.07 | 0.18–0.19 | 0.20 | 0.16–0.21 | 0.08 |
+| `o` rows (write), by block range | 0.47–0.94 | 0.69–2.27 | 1.20–1.57 | 0.72–1.04 | 0.30–0.93 |
+
+- Weighted by the calibrated input, the 18 channels carry 21–25 % of the i2i adapters'
+  read at the FFN input of blocks 26–35; the input itself has 15 % there and the t2i
+  adapter reads 16 %.
+- The i2i `q` / `k` adapters respond to the input mean 2–5× more than a `ΔW` blind to it
+  (`‖ΔW x̄‖ / ‖ΔW‖‖x̄‖` 0.04–0.10 against 0.018; t2i 0.03 falling to 0.008), but ≤ 0.23 of
+  that response comes through the 18 channels.
+- Every adapter writes to ch 1356 and 42 through `o` at 5–35× the uniform share, t2i
+  included; the two removal tasks most.
+
+Hypothesis (untested): on a clean reference, ch 42's per-token map is hidden from
+attention by Base's `scale_a`, and the modulation adapter's gain on the copied tokens
+(`findings/mod_rank_i2i.md`) comes partly from letting it through. Not measured: what
+ch 42 holds on reference rows, and a render with that one entry of `Δmod` zeroed.
