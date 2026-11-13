@@ -11,8 +11,13 @@ layout times that factor. Other initializers (RoPE tables, norms, shapes) are ke
 
 With ``--gptq`` (dit_convrot_gptq.py's file) each converted linear's MatMul becomes
 ``X -> Reshape -> MatMul H256 -> Reshape -> MatMulNBits`` (bits 8, block from the file,
-zero point 128, ``--acc``), the factor folded into the fp16 scales. Linears reading the
+zero point 128, ``--acc``), the factor folded into the scales. Linears reading the
 same X share one rotation.
+
+``--fp32_matmul`` runs each MatMulNBits in fp32 (``Cast`` in, fp32 scales, ``Cast`` out).
+ORT-web's DP4A path multiplies the activation scale by the weight scale in the op's
+float type before anything else; in fp16 that product (1e-5 to 1e-10 here) is subnormal
+or zero, and the r16-folded linears lose their output.
 
 Output layout (``--out_dir``): per bucket ``<prefix>_<bucket>.segN.onnx`` and
 ``<prefix>_<bucket>.segments.json``, one shared ``<prefix>.onnx.data``. Initializers
@@ -158,6 +163,9 @@ def main():
     ap.add_argument("--dit", required=True, help="checkpoint whose weights are written")
     ap.add_argument("--gptq", default="", help="int8 file; omit for an fp16 rewrite")
     ap.add_argument("--acc", type=int, default=4)
+    ap.add_argument(
+        "--fp32_matmul", action="store_true", help="fp32 MatMulNBits between Casts"
+    )
     ap.add_argument("--out_dir", required=True)
     ap.add_argument("--prefix", default="dit_int8")
     ap.add_argument(
@@ -226,7 +234,7 @@ def main():
                 h = (k, hashlib.sha1(arr.tobytes()).hexdigest())
                 if h in h512:
                     ident[t.name] = found[(k, h512[h])][:3]
-        nodes, extra, drop, rot_cache = [], [], set(), {}
+        nodes, extra, drop, rot_cache, f32_cache = [], [], set(), {}, {}
         for n in gg.node:
             key = None
             if n.op_type == "MatMul" and n.input[1] in ident:
@@ -274,17 +282,32 @@ def main():
             bq = (
                 (qi.astype(np.int16) + 128).astype(np.uint8).reshape(Nd, Kd // blk, blk)
             )
+            mm_in, mm_out = rot_cache[x], list(n.output)
+            if a.fp32_matmul:
+                if x not in f32_cache:
+                    f32_cache[x] = f"{mm_in}_f32"
+                    nodes.append(
+                        helper.make_node(
+                            "Cast",
+                            [mm_in],
+                            [f32_cache[x]],
+                            name=f32_cache[x],
+                            to=onnx.TensorProto.FLOAT,
+                        )
+                    )
+                mm_in, mm_out = f32_cache[x], [f"{key}.y_f32"]
+            sc_dtype = np.float32 if a.fp32_matmul else np.float16
             extra += [
                 numpy_helper.from_array(bq, f"{key}.qweight"),
                 numpy_helper.from_array(
-                    sc.astype(np.float16).reshape(-1), f"{key}.scales"
+                    sc.astype(sc_dtype).reshape(-1), f"{key}.scales"
                 ),
             ]
             nodes.append(
                 helper.make_node(
                     "MatMulNBits",
-                    [rot_cache[x], f"{key}.qweight", f"{key}.scales"],
-                    list(n.output),
+                    [mm_in, f"{key}.qweight", f"{key}.scales"],
+                    mm_out,
                     name=f"{key}.matmulnbits",
                     domain="com.microsoft",
                     K=Kd,
@@ -294,6 +317,16 @@ def main():
                     accuracy_level=a.acc,
                 )
             )
+            if a.fp32_matmul:
+                nodes.append(
+                    helper.make_node(
+                        "Cast",
+                        mm_out,
+                        list(n.output),
+                        name=f"{key}.y_f16",
+                        to=onnx.TensorProto.FLOAT16,
+                    )
+                )
             drop.add(n.input[1])
             n_conv[b] += 1
         used = {i for n in nodes for i in n.input}

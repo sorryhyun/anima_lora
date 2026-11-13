@@ -100,3 +100,51 @@ Linux + NVIDIA, Chrome must run with
 `--enable-features=Vulkan --enable-dawn-features=vulkan_enable_f16_on_nvidia`.
 
 To roll back, point `dit` / `vae` back at the per-bucket names; the fp16 files stay on HF.
+
+# yaar change request 3: int8 DiT with fp32 MatMulNBits (fixes the DP4A path)
+
+The request-2 DiT (`int8/dit_int8_dyn`) gives broken images on every adapter that takes
+onnxruntime-web's DP4A path (`subgroups`, non-Apple); the fp16-dequant path (Apple, no
+subgroups) is fine. The DP4A shader multiplies the activation scale by the weight scale in the
+op's float type first. In fp16 that product is 1e-5 to 1e-10 here, below fp16's smallest
+normal (6.1e-5), and for the r16-folded linears (both `output_proj`s, `mlp.layer2`) it rounds
+to zero: cross-attention's output is lost in all 28 blocks. The new set runs each
+`MatMulNBits` in fp32 between two `Cast`s, with fp32 scales. The int8 weights are the same.
+
+New files on HF (`sorryhyun/anima-turbo-4step`, under `onnx/`). They have new names because the
+graphs and the manifest are cached in IndexedDB by url: old cached graphs over a replaced
+sidecar would read wrong byte ranges.
+
+| Path under `onnx/` | Bytes |
+|---|---|
+| `int8/dit_int8_mm32_dyn.segments.json` | 3,171 |
+| `int8/dit_int8_mm32_dyn.seg0.onnx` … `seg6.onnx` | ~1.3–1.5 MB each (seg6 0.36 MB) |
+| `int8/dit_int8_mm32.onnx.data` | 2,475,083,776 |
+
+Same inputs, outputs and segment schema as request 2. The VAE and the text encoder do not change.
+
+Changes, all in `user-apps/anima/src/`:
+
+1. `generation/buckets.ts`: `DIT = 'int8/dit_int8_mm32_dyn'` and
+   `SHARED_DIT_DATA = 'int8/dit_int8_mm32.onnx.data'`.
+2. `ml/assets.ts`: in `EXPECTED_BYTES`, replace the `'int8/dit_int8.onnx.data'` row with
+   `'int8/dit_int8_mm32.onnx.data': 2_475_083_776`.
+3. `ml/downloadWeights.ts`: in `BUCKET_GRAPHS`, the `segments.json` row is 3,171 bytes. The other
+   rows follow `DEFAULT_BUCKET.dit` and `SHARED_DIT_DATA`.
+4. Comments and labels that say "2.37 GB" (`generation/buckets.ts`, `generation/session.ts`,
+   `generation/diagnostics.ts`, `text/encoder.ts`, `ml/downloadWeights.ts`, `ml/sessions.ts`):
+   the sidecar is now 2.48 GB.
+
+Nothing else changes: `ditSessionOptions` matches on `dit_int8` and `releaseOtherDits` on the
+basename's `dit_` prefix, and both still match the new name.
+
+Left behind on a machine that ran request 2: nine files under
+`storage/apps/anima/weights/int8/` (`dit_int8_dyn.*`, `dit_int8.onnx.data`, 2.37 GB) and the
+old graphs in the `anima-weights` IndexedDB. Nothing reads them after this change.
+
+Not run in a browser yet. Checked on CPU: the new graphs match the old ones on float activations
+(`noise_pred` 0.0068 against torch fp32, old 0.0069), and a replay of the DP4A shader arithmetic
+on all 224 linears gives 0.3–0.6% per linear in fp32 (old, fp16: 7% / 17% / 99% median on
+`self_attn.output_proj` / `mlp.layer2` / `cross_attn.output_proj`).
+
+To roll back, point `DIT` and `SHARED_DIT_DATA` back at the request-2 names; those files stay on HF.

@@ -110,9 +110,12 @@ and the nearest-2x upsample written as GatherND over index tables ⌊i/2⌋, ⌊
 - `src/dit_onnx_int8.py --buckets dyn` rewrites the dynamic set onto the v4_preview turbo DiT
   (merged14 + turbo EMA 1112_1512 baked, `project/anima_turbo/deploy/deploy.sh bake`) with
   `dit_int8.anima_turbo_4step_v4_preview.safetensors` from `src/dit_convrot_gptq.py`. 224
-  block linears are converted to MatMulNBits. Sidecar **2,372,323,328 B** (fp16: 3,913,271,296).
+  block linears are converted to MatMulNBits, each run in fp32 between two Casts
+  (`--fp32_matmul`, see "DP4A and fp16" below). Sidecar **2,475,083,776 B** (fp16: 3,913,271,296).
   The weights it replaces are matched by value against v4_preview (min cos 0.987), so the HF fp16
-  export was made from an earlier student. Output: `output/webgpu_int8/onnx_dyn_int8/`.
+  export was made from an earlier student. Output: `output/webgpu_int8/onnx_dyn_int8_f32/`
+  (`dit_int8_mm32*`). The first upload, `dit_int8_dyn` with fp16 MatMulNBits
+  (`onnx_dyn_int8/`, sidecar 2,372,323,328 B), is still on HF.
 
 ### Checks
 
@@ -138,8 +141,45 @@ Against the torch DiT in fp32 (`src/dit_ref_dump.py`: 8 cached images per grid a
 
 Per σ the int8 set sits below bf16 at every step (52x78: 0.0090 / 0.0168 / 0.0248 / 0.0250 against
 0.0114 / 0.0221 / 0.0317 / 0.0344). CUDA's MatMulNBits dequantises the weight to fp16, which is the
-browser's non-DP4A path. The DP4A path (activations rounded per 128-wide block) is not measured
-end to end; per linear, `dit_convrot_gptq.py`'s report has W8A8 at about 7× the W8 error.
+browser's non-DP4A path. The numbers are from the fp16-MatMulNBits set; on float activations
+the fp32 set gives the same `noise_pred` (0.0068 against 0.0069 on one sample, ORT CPU).
+
+### DP4A and fp16
+
+The DP4A path is not measured in a browser end to end. A user reported the fp16-MatMulNBits
+set as broken on it and fine on the dequant path. ORT 1.30.0's shaders, for an op of float
+type T:
+
+- quantize: `scale_a = T(absmax / 127)` per token per 128-wide K block.
+- matmul, per 32-wide K chunk: `scale = T(scale_a * scale_b)`, then
+  `y += T(f32(int_dot) * f32(scale))`.
+
+`scale_a * scale_b` is 1e-5 to 1e-10 on this DiT. fp16's smallest normal is 6.1e-5 and its
+subnormal step 6e-8, so in fp16 every product is subnormal, and on the linears carrying the
+r16 fold (scales ×1/16) most round to zero. The dequant path computes `a * (q * scale_b)` and
+never forms the product.
+
+`src/dp4a_emu.py` replays that arithmetic on CPU per linear, on inputs tapped from the ONNX
+set running on float activations (one 52x78 sample at σ 1, 128 tokens per linear). Relative
+L2 against the same int8 weights on float activations, median over the 28 blocks (max in
+brackets):
+
+| Linear | r16 fold | W8A8, exact arithmetic | DP4A in fp16 | DP4A in fp32 (shipped) |
+|---|---|---|---|---|
+| self_attn q / k / v | 1 | 0.004–0.005 | 0.004–0.006 (0.007) | 0.004–0.005 (0.006) |
+| cross_attn.q_proj | 1 | 0.005 | 0.005 (0.006) | 0.005 (0.006) |
+| mlp.layer1 | 1 | 0.003 | 0.004 (0.010) | 0.003 (0.004) |
+| self_attn.output_proj | 1/16 | 0.006 | 0.07 (0.81) | 0.006 (0.008) |
+| mlp.layer2 | 1/16 | 0.005 | 0.17 (0.99) | 0.005 (0.007) |
+| cross_attn.output_proj | 1/16 | 0.003 | 0.99 (1.31) | 0.003 (0.006) |
+
+In fp16, `cross_attn.output_proj` has every scale product at zero in all 28 blocks. The replay
+matches a WebGPU run: on the single-op probe (`src/dp4a_probe.py`, NVIDIA, GPTQ scales without
+the fold) it gives 8.11e-3 where the browser gave 8.12e-3. That probe passed because it left
+the fold out.
+
+The text encoder runs the same shaders in fp16. It has no fold and its weight scales are
+3.5e-4 to 7.9e-4; its activations were not replayed.
 
 ## Files
 
@@ -152,6 +192,9 @@ end to end; per linear, `dit_convrot_gptq.py`'s report has W8A8 at about 7× the
   `src/vae_onnx_dynamic.py`, `src/dit_onnx_int8.py`: the graph rewrites above.
 - `src/dit_ref_dump.py` (daemon, `--hw`, `--compute bf16`), `src/dit_onnx_dyn_eval.py`,
   `src/dit_onnx_eval.py`: the checks.
-- `yaar_request.md`: the changes needed in yaar to load the files (text encoder; DiT and VAE).
+- `src/dp4a_probe.py`, `src/dp4a_serve.py`, `src/dp4a_probe_web/`: single-op MatMulNBits probe
+  on the WebGPU EP. `src/dp4a_emu.py`: the CPU replay of the DP4A arithmetic.
+- `yaar_request.md`: the changes needed in yaar to load the files (text encoder; DiT and VAE;
+  the fp32-MatMulNBits DiT).
 
 Local copies of the outputs are in `output/webgpu_int8/`.

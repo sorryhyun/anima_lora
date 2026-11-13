@@ -1,0 +1,51 @@
+<!doctype html><meta charset="utf-8"><title>DP4A probe</title><pre id="log"></pre>
+<script type="module">
+import * as ort from '/ort/ort.webgpu.bundle.min.mjs';
+const logEl = document.getElementById('log');
+const lines = [];
+const log = (s) => { lines.push(s); logEl.textContent += s + '\n'; fetch('/log', {method: 'POST', body: s}); };
+const h2f = (h) => { const s = h >> 15, e = (h >> 10) & 31, m = h & 1023;
+  const v = e === 0 ? m * 2 ** -24 : e === 31 ? (m ? NaN : Infinity) : (1 + m / 1024) * 2 ** (e - 15);
+  return s ? -v : v; };
+const bin = async (p, T) => new T(await (await fetch('/data/' + p)).arrayBuffer());
+const rel = (y, r) => { let n = 0, d = 0; for (let i = 0; i < r.length; i++) { const t = y[i] - r[i]; n += t * t; d += r[i] * r[i]; } return Math.sqrt(n / d); };
+function rows(y, r, M, N) {  // per-row rel L2; returns bad-row stats
+  const bad = []; let worst = 0;
+  for (let i = 0; i < M; i++) { let n = 0, d = 0;
+    for (let j = 0; j < N; j++) { const t = y[i*N+j] - r[i*N+j]; n += t*t; d += r[i*N+j]**2; }
+    const e = Math.sqrt(n / d); worst = Math.max(worst, e); if (!(e < 0.05)) bad.push(i); }
+  return {nbad: bad.length, first: bad.slice(0, 8), last: bad.slice(-4), worst};
+}
+try {
+  let adapter = null;
+  for (let i = 0; i < 10 && !adapter; i++) {
+    await new Promise((r) => setTimeout(r, 1000));
+    adapter = await navigator.gpu?.requestAdapter({powerPreference: 'high-performance'});
+  }
+  if (!adapter) throw new Error('no WebGPU adapter (navigator.gpu ' + (!!navigator.gpu) + ', secure ' + isSecureContext + ')');
+  if (!adapter.features.has('shader-f16')) throw new Error('adapter lacks shader-f16');
+  const info = adapter?.info || {};
+  log(`adapter ${info.vendor} ${info.architecture} ${info.description} | features: ${adapter ? [...adapter.features].filter(f => /f16|subgroup/.test(f)).join(',') : 'NONE'}`);
+  ort.env.wasm.wasmPaths = '/ort/';
+  const cases = await (await fetch('/data/cases.json')).json();
+  const out = [];
+  const sess = {};
+  for (const c of cases) {
+    const A = await bin(c.input + '.bin', Uint16Array);
+    const r8 = await bin(c.tag + '.w8.bin', Float32Array), r88 = await bin(c.tag + '.w8a8.bin', Float32Array);
+    for (const acc of [4, 0]) {
+      const g = `${c.key}.acc${acc}.onnx`;
+      sess[g] ??= await ort.InferenceSession.create('/data/' + g, {executionProviders: ['webgpu'], logSeverityLevel: 1});
+      const res = await sess[g].run({A: new ort.Tensor('float16', A, [1, c.M, c.K])});
+      const raw = res.Y.data; const y = new Float32Array(raw.length);
+      if (raw instanceof Uint16Array) for (let i = 0; i < raw.length; i++) y[i] = h2f(raw[i]); else y.set(raw);
+      let nan = 0; for (const v of y) if (!Number.isFinite(v)) nan++;
+      const row = {key: c.key, M: c.M, mag: c.mag, acc, vs_w8: rel(y, r8), vs_w8a8: rel(y, r88), nonfinite: nan,
+                   ...rows(y, acc === 4 ? r88 : r8, c.M, c.N)};
+      out.push(row);
+      log(`${c.key.padEnd(30)} M=${String(c.M).padEnd(5)} mag=${String(c.mag).padEnd(3)} acc${acc}  vs_w8 ${row.vs_w8.toExponential(2)}  vs_w8a8 ${row.vs_w8a8.toExponential(2)}  badrows ${row.nbad}/${c.M} first ${row.first} last ${row.last}  nonfinite ${nan}`);
+    }
+  }
+  await fetch('/result', {method: 'POST', body: JSON.stringify({adapter: info.description, out})});
+} catch (e) { log('ERROR ' + (e.stack || e)); await fetch('/result', {method: 'POST', body: JSON.stringify({error: String(e)})}); }
+</script>
