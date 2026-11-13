@@ -58,27 +58,6 @@ DROP_TAGS = {
     "patreon username",
     "copyright notice",
 }
-# the `sensitive` prompts (user, 10-05: "explicit 태그만 빼고", sensitive allowed):
-# the rating to sensitive, the sex-act subtree and these out; underwear,
-# swimwear, cleavage and the rest stay
-SEXUAL_PATH = "행동 > 성적행위"
-EXPLICIT = re.compile(
-    r"nipple|areola|penis|pussy|vulva|vagin|clitoris|\banus\b|\banal\b|pubic|"
-    r"testic|\bcum\b|semen|erect|nud|naked|bottomless|topless|breasts? out|"
-    r"censor|mosaic|condom|\bsex\b|orgasm|ahegao|cameltoe|bulge|uterus|"
-    r"cross-section|x-ray|\bloli\b|shota|incest|netorare|ugly bastard|aftersex|lube|"
-    r"dildo|vibrator|maebari|crotch|cupless|used tissue|casting couch|"
-    r"\bass focus\b|upskirt|upshorts|hetero|threesome|bdsm|slave|mind control|"
-    r"penis awe|\bm legs\b|proving gender|cleft of venus|gluteal fold|imminent|"
-    r"stained panties"
-)
-# a source image tagged as a child (or a child in sex) leaves the pool whole:
-# stripping its explicit tags would still prompt that scene (10-05)
-CHILD = re.compile(
-    r"\b(loli|shota|onee-shota|straight shota|kodomo doushi|child|aged down|"
-    r"toddler|randoseru|elementary)\b"
-)
-RATINGS = {"explicit", "nsfw", "questionable", "sensitive", "general", "safe"}
 PUNCT = set("…‥、。，．・！？!?～〜~♡♥❤☆★♪「」『』（）()・ 　.,")
 SOKUON = set("っッー")
 # an interjection is a string whose glyphs are all of these (punct and っ / ー aside)
@@ -175,24 +154,11 @@ def trained_texts() -> set:
     return out
 
 
-def explicit(t: str, kb) -> bool:
-    info = kb.describe(t)
-    if info is not None and (info.category_path or "").startswith(SEXUAL_PATH):
-        return True
-    return bool(EXPLICIT.search(t))
-
-
-def prompt_of(parsed, kb=None) -> str:
+def prompt_of(parsed) -> str:
     """The image's caption with its text clauses out, the other-language text
     tags out, ``speech bubble`` / ``japanese text`` in — the clause is added
-    by the caller. With ``kb`` (the tag taxonomy): the ``sensitive`` prompt —
-    the rating ``sensitive``, every explicit tag out (``explicit``), in the
-    tag bag and the position clauses alike."""
-    from anime_tools.captions.position_clauses import (
-        TEXT_PREFIXES,
-        PositionClause,
-        compose_caption,
-    )
+    by the caller."""
+    from anime_tools.captions.position_clauses import TEXT_PREFIXES, compose_caption
 
     tags = [
         t
@@ -200,13 +166,6 @@ def prompt_of(parsed, kb=None) -> str:
         if t not in DROP_TAGS and not (t.endswith(" text") and t != "japanese text")
     ]
     pos = [cl for cl in parsed.clauses if cl.prefix not in TEXT_PREFIXES]
-    if kb is not None:
-        tags = ["sensitive" if t in RATINGS else t for t in tags if not explicit(t, kb)]
-        pos = [
-            PositionClause(position=cl.position, tags=kept, prefix=cl.prefix)
-            for cl in pos
-            if (kept := tuple(t for t in cl.tags if not explicit(t, kb)))
-        ]
     for t in ("speech bubble", "japanese text"):
         if t not in tags:
             tags.append(t)
@@ -220,6 +179,11 @@ def pool() -> tuple[dict, Counter]:
 
     from reseed.pools import is_ja_text
 
+    from i2i_tasks.tools.character_ref_pairs import exclude_tags
+    from library.env import load_dotenv
+
+    load_dotenv()
+    excluded = exclude_tags()
     text_prefix = TEXT_PREFIXES[0]  # `Japanese text reads as`, not SFX
     assert "SFX" not in text_prefix, TEXT_PREFIXES
     out, freq = {}, Counter()
@@ -238,7 +202,7 @@ def pool() -> tuple[dict, Counter]:
                     freq.update(glyphs(s))
                     if cl.prefix == text_prefix:
                         lines.append(s)
-        if CHILD.search(", ".join(p.flat_tags)):
+        if excluded.intersection(p.flat_tags):
             continue
         if lines and any(k in p.flat_tags for k in BUBBLE_TAGS):
             out[f.stem] = (prompt_of(p), lines, f, p)
@@ -281,9 +245,6 @@ def build() -> dict:
     bootstrap()
     from anime_tools.captions.position_clauses import compose_caption, text_clause
 
-    from anime_tools.captions.correction import find_tag_csv, load_tag_knowledge_base
-
-    kb = load_tag_knowledge_base(find_tag_csv(REPO))
     imgs, freq = pool()
     en_file = RULER / "en.json"
     en = json.loads(en_file.read_text(encoding="utf-8")) if en_file.is_file() else {}
@@ -310,8 +271,8 @@ def build() -> dict:
     }
     # the quota's slots matched to images (augmenting paths — a greedy pass by
     # pool leaves the long bin short), up to PER_IMAGE strings an image: every
-    # image's first copy is offered before any second (116 images after the
-    # child-tagged ones left, short 82 / mid 52 / long 61 — 96 do not fit one
+    # image's first copy is offered before any second (116 images at the 10-05
+    # build, short 82 / mid 52 / long 61 — 96 do not fit one
     # each); a second copy takes a pool only where the image holds two of its
     # strings. A core (はぁっ… = はぁ) stays at one image, so no two slots draw it
     by_img: dict = defaultdict(lambda: defaultdict(list))  # stem → pool → strings
@@ -353,7 +314,7 @@ def build() -> dict:
         assert xs, f"{st} {pk}: every string's core already drawn"
         s = min(xs, key=lambda x: _key(st, x))
         used_str.add(core(s))
-        prompts = {"captioned": imgs[st][0], "sensitive": prompt_of(imgs[st][3], kb)}
+        prompts = {"captioned": imgs[st][0]}
         items.append(
             {
                 "bin": b,

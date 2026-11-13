@@ -13,9 +13,8 @@ the crawl caption's slot order (``meta…, rating, count, names…, @artist,
 general…``): a tag neither source knows, between the last count tag and the
 artist, is a name and counts as a character.
 
-Members: a rating tag in ``ratings`` (empty: any), a cached phash (``.hash_cache.json``),
-one character tag and none of ``$CHARACTER_REF_EXCLUDE`` (comma-separated, from
-``.env``). With that unset and ``ratings`` empty, ratings are ``general,sensitive``. A group is ``(artist dir, character)``. Its references
+Members: a cached phash (``.hash_cache.json``), one character tag and none of
+``$CHARACTER_REF_EXCLUDE`` (comma-separated, from ``.env``). A group is ``(artist dir, character)``. Its references
 are the solo members (exactly one person: ``1girl`` or ``1boy``); its targets
 are those plus the members where an unnamed ``1boy`` shares the picture
 (``1girl, 1boy``). A target with a person its reference lacks gets ``add 1boy``
@@ -67,9 +66,6 @@ ADDABLE = {"1boy"}
 DROP = {"character", "copyright", "artist", "meta"}
 GELBOORU = {1: "artist", 3: "copyright", 4: "character", 5: "meta"}
 TAG_CACHE = ".tag_cache.json"
-
-
-SAFE_RATINGS = {"general", "sensitive"}
 
 
 def exclude_tags() -> frozenset[str]:
@@ -168,15 +164,14 @@ def people_of(m: Member, types: TagTypes) -> frozenset[str]:
 
 
 def group_members(
-    members: list[Member], types: TagTypes, ratings: set[str], exclude: frozenset[str]
+    members: list[Member], types: TagTypes, exclude: frozenset[str]
 ) -> tuple[dict[tuple[str, str], Group], dict[str, frozenset[str]]]:
     """``({(artist, character): Group}, {member key: its count tags})``, keeping
     groups with a reference and a second member."""
     groups: dict[tuple[str, str], Group] = defaultdict(Group)
     people: dict[str, frozenset[str]] = {}
     for m in members:
-        tags = set(m.tags)
-        if (ratings and not ratings & tags) or exclude & tags:
+        if exclude.intersection(m.tags):
             continue
         kinds = types.kinds(m.tags)
         chars = [t for t, k in zip(m.tags, kinds) if k == "character"]
@@ -220,11 +215,7 @@ def pick_cond(
 
 def mine(args, types: TagTypes, image_dirs: list[Path]):
     exclude = exclude_tags()
-    ratings = {r for r in args.ratings.split(",") if r}
-    if not exclude and not ratings:
-        ratings = SAFE_RATINGS
-        print("[character_ref] CHARACTER_REF_EXCLUDE unset: ratings general,sensitive")
-    groups, people = group_members(gather(image_dirs), types, ratings, exclude)
+    groups, people = group_members(gather(image_dirs), types, exclude)
     rng = random.Random(args.seed)
 
     def pair(target, group):
@@ -300,12 +291,6 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--image_dirs", default=_default_image_dirs())
     p.add_argument("--n_pairs", type=int, default=1000, help="0 = the whole pool")
     p.add_argument("--max_per_group", type=int, default=2, help="0 = every member")
-    p.add_argument(
-        "--ratings",
-        default="",
-        help="comma-separated rating tags a member must carry (empty: any, or "
-        "general,sensitive when CHARACTER_REF_EXCLUDE is unset)",
-    )
     p.add_argument(
         "--dedupe_phash",
         type=int,

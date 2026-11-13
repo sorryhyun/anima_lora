@@ -24,11 +24,11 @@ from reseed import OUT
 
 RULER = OUT / "ruler"
 BINS = {"short": (2, 4), "mid": (5, 9), "long": (10, 20)}
-# the prompt sets; renders under RULER / mode. `captioned` (the image's own
-# rating and tags) was the 10-05 first floor / arms read, on a string set
-# that still held the child-tagged images — its renders under RULER/<arm> no
-# longer match ruler.json's indices and are kept as that read's record only
-MODES = ("sensitive",)
+# the prompt sets; renders under RULER / mode. `captioned`: the image's own
+# caption as the tagger wrote it. Renders under RULER/<arm> are the 10-05
+# first read's (an older string set) and RULER/sensitive/ the 10-05..11-13
+# reads' (a rewritten-rating prompt set, retired) — records only
+MODES = ("captioned",)
 EN = "en"  # the EN references: no ext row in the caption, the delta off
 FLOOR = ("en", "retrain_kana", "seed_retrain_0930")  # rendered once (criteria.md)
 STEPS, CFG, SEED_RENDER = 28, 4.0, 0  # the reads of record's sampler

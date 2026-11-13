@@ -180,13 +180,6 @@ def main() -> None:
     ap.add_argument("--paint_color", nargs=3, type=int, default=[128, 128, 128])
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default=None, help="default {base}/contact_sheets")
-    ap.add_argument(
-        "--rating",
-        nargs="+",
-        default=None,
-        help="keep only images whose caption rating is one of these "
-        "(safe / sensitive / nsfw / explicit); default: all",
-    )
     args = ap.parse_args()
 
     base = Path(args.base)
@@ -197,19 +190,8 @@ def main() -> None:
     rng = random.Random(args.seed)
     paint_color = tuple(args.paint_color)
 
-    def _rating(key: str) -> str:
-        cap = base / "staging" / f"{key}.txt"
-        if not cap.is_file():
-            return ""
-        first = cap.read_text(encoding="utf-8").split(",", 1)[0].strip().lower()
-        return first if first in ("safe", "sensitive", "nsfw", "explicit") else ""
-
     records = report["records"]
     drops = report.get("drops", [])
-    if args.rating:
-        allowed = {r.lower() for r in args.rating}
-        records = [r for r in records if _rating(r["image"]) in allowed]
-        drops = []  # dropped images have no staged caption to rate
     groups: dict[str, list[dict]] = defaultdict(list)
     for rec in records:
         groups[f"{rec['slice']}-{rec['level']}"].append(rec)
