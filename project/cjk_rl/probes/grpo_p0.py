@@ -4,7 +4,7 @@
 The policy is the ruler's ``m14v3`` (merged14 + Hub turbo v3, 4 steps, cfg 1) with
 jp_v1's rows (``seed_1008``, punct pack, routed). 16 RL-pool strings (Manga109-s
 dialogue, 2–20 cells, every glyph a pack row, no 5-gram of a ruler string), each
-on its own speech-bubble prompt (the ruler's ``sensitive`` grammar, the ruler's
+on its own speech-bubble prompt (the ruler's ``prompt_of`` grammar, the ruler's
 source images left out), 8 seeds each.
 
     build   (CPU) the 16 (string, prompt) → ``output/cjk_rl/grpo_p0/pool.json``;
@@ -43,6 +43,9 @@ LINE = Path(__file__).resolve().parents[1]  # project/cjk_rl
 sys.path.insert(
     0, str(LINE.parent / "cjk_anima_reseed")
 )  # the reseed package, ruler, readers
+sys.path.insert(0, str(LINE / "src"))
+
+import reward  # noqa: E402
 
 from reseed import REPO, bootstrap  # noqa: E402
 
@@ -109,15 +112,12 @@ def pick_strings(ruler_texts: list) -> dict:
 
 
 def build() -> None:
-    from anime_tools.captions.correction import find_tag_csv, load_tag_knowledge_base
     from anime_tools.captions.position_clauses import compose_caption, text_clause
 
     from eval.ruler.build import pool, prompt_of, shape_of
-    from reseed import REPO
 
     ruler = json.loads((RULER / "ruler.json").read_text("utf-8"))["items"]
     stems = {m["stem"] for m in ruler}
-    kb = load_tag_knowledge_base(find_tag_csv(REPO))
     imgs, _ = pool()
     free = sorted(st for st in imgs if st not in stems)
     print(f"{len(imgs)} bubble images, {len(free)} off the ruler", flush=True)
@@ -134,7 +134,7 @@ def build() -> None:
         for s in xs:
             st = free[k]
             k += 1
-            pr = prompt_of(imgs[st][3], kb)
+            pr = prompt_of(imgs[st][3])
             items.append(
                 {
                     "i": len(items),
@@ -438,65 +438,9 @@ def cost(r, table, G: int = 8, grad_steps=(0, 1), groups: int = 4) -> dict:
 # ---------------------------------------------------------------- read
 
 
-def lcs(a: str, b: str) -> int:
-    prev = [0] * (len(b) + 1)
-    for ca in a:
-        cur = [0]
-        for j, cb in enumerate(b, 1):
-            cur.append(prev[j - 1] + 1 if ca == cb else max(prev[j], cur[j - 1]))
-        prev = cur
-    return prev[-1]
-
-
-BUBBLE_GAP = 0.5  # boxes this share of their short side apart are one bubble
-
-
-def bubbles(boxes: list) -> list:
-    """Box reads grouped into bubbles: two boxes join when their gap on both
-    axes is within ``BUBBLE_GAP`` of the smaller box's short side (union-find)."""
-    n = len(boxes)
-    up = list(range(n))
-
-    def root(i):
-        while up[i] != i:
-            up[i] = up[up[i]]
-            i = up[i]
-        return i
-
-    for i in range(n):
-        for j in range(i + 1, n):
-            a, b = boxes[i]["box"], boxes[j]["box"]
-            m = BUBBLE_GAP * min(
-                min(a[2] - a[0], a[3] - a[1]), min(b[2] - b[0], b[3] - b[1])
-            )
-            gx = max(a[0], b[0]) - min(a[2], b[2])
-            gy = max(a[1], b[1]) - min(a[3], b[3])
-            if gx <= m and gy <= m:
-                up[root(i)] = root(j)
-    out: dict = {}
-    for i in range(n):
-        out.setdefault(root(i), []).append(boxes[i])
-    return list(out.values())
-
-
 def r_seq(text: str, reads: list) -> float:
-    """Proposal § 3.3: LCS(target, read) / max(len target, len read), best over
-    single boxes and each bubble's boxes joined in column order (right to left)
-    or line order (top to bottom). No whole-page read, no page-wide join."""
-    from common.text import norm
-
-    t = norm(text)
-    boxes = [r for r in reads if not r.get("whole") and r.get("sfx")]
-    cs = [norm(r["sfx"]) for r in boxes]
-    cx = lambda r: (r["box"][0] + r["box"][2]) / 2  # noqa: E731
-    for g in bubbles(boxes):
-        if len(g) > 1:
-            for key in (
-                lambda r: (-cx(r), r["box"][1]),
-                lambda r: (r["box"][1], r["box"][0]),
-            ):
-                cs.append("".join(norm(r["sfx"]) for r in sorted(g, key=key)))
-    return max((lcs(t, c) / max(len(t), len(c)) for c in cs if c), default=0.0)
+    """Proposal § 3.3, one target: ``src/reward.py`` (per box / bubble)."""
+    return reward.r_seq([text], reads)
 
 
 def read_all() -> tuple[dict, float]:

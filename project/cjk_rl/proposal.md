@@ -2,7 +2,7 @@
 
 Status: PROPOSAL (2026-11-13). The ruler probe, P0 and the reward reader are done
 ([`reports/`](reports/)); nothing trained. The sampler is the SDE at a = 0.7 (user, 11-13).
-Open before P1: r_seq per box (§ 3.3) and the prompt pool (§ 3.5).
+The prompt pool (§ 3.5) and the multi-target r_seq (§ 3.3, `src/reward.py`) are built.
 
 ## TL;DR
 
@@ -96,7 +96,11 @@ r = r_seq + β · g_p − γ · (1 − m_init) − δ · max(0, fw_over_en)
   every box on the page joined) over the target's length alone. That pays for
   invented dialogue, the failure this run is against, so P1 uses the per-box form.
   P0a's verdict is the same under both (`reports/p0_2026_11_13.md`).
-- `g_p`: the string's glyphs among everything the page letters. This is the
+  An item asks for every string its caption holds, so each target takes its own bubble
+  (the assignment maximising the sum; a target left without one scores 0) and r_seq is
+  the mean over targets (`src/reward.py`; with one target it equals P0's on all 512 P0
+  reads).
+- `g_p`: the asked strings' glyphs (dialogue and SFX) among everything the page letters. This is the
   invented-dialogue penalty, the failure § 1 shows.
 - `m_init`: the 7 × 7 `AtSim` match between this render and the **step-0 policy's**
   render of the same prompt and seed. It anchors the page; the EN ref is the
@@ -124,10 +128,20 @@ Rows outside the quoted span get the scalar advantage, as in R.
   **39** remain when the caption must carry a JA dialogue clause (`eval.ruler.build.pool`;
   123 images in all). The clause is replaced anyway, so P1 also takes the bubble-tagged
   captions without one. The text clause is replaced by `Japanese text reads as "<line>"`, and the
-  other-language text tags are swapped for `japanese text`. Explicit tags are
-  stripped as the ruler's `sensitive` prompts do, so train and read share one prompt
-  grammar.
-- **Group**: one (prompt, string), G seeds. G = 8 to start; P0b can move it.
+  other-language text tags are swapped for `japanese text`.
+- **Built (11-13, `src/pool.py`)**: every caption with a JA text or SFX clause (user,
+  11-13). Only the quoted strings change; the caption is otherwise as written (tags,
+  rating, position clauses, each clause's position and string count). Each string is
+  replaced by one of its length bin, taken as written: dialogue from Manga109-s text or
+  (30 %) another caption's dialogue, SFX from Manga109-s SFX crops or (30 %) another
+  caption's SFX. Held out: the 84 ruler images and strings sharing a ruler 5-gram (the P1
+  read), and captions with a `$CHARACTER_REF_EXCLUDE` tag. 624 templates × 2 variants: 1 050 dialogue items (422
+  with one string, 108 with six or more) and 198 SFX-only.
+- **Group**: one pool item (its caption with every string it asks for), G seeds. G = 8 to start; P0b can move it.
+- **Re-OCR the data pool first.** The text clauses in `post_image_dataset/resized/**/*.txt`
+  (and the TE caches encoded from them) were written by an older OCR module (the caption
+  stage of 10-12, run just after the reader pin moved to VL v4 2-epoch), and the pool, its `self` strings and the ruler take
+  them as written. Re-run the caption OCR on the pool with the current reader before P1.
 
 ## 4. Phases and gates
 

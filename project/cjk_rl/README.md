@@ -14,6 +14,11 @@ in order, at its length, with no invented dialogue around it.
     (passes), cost of one update.
   - [reward_reader_2026_11_13.md](reports/reward_reader_2026_11_13.md) — the reader beside the
     update: int8 / fp8 dropped, group-batched read without the whole page, tuned reader only.
+- `src/pool.py` — P1's prompt pool: the training captions with each quoted OCR string swapped
+  for another OCR string of its length (Manga109-s, or another caption's), nothing else
+  changed; → `output/cjk_rl/pool/pool.json`.
+- `src/reward.py` — the read terms: r_seq over every asked string (one bubble each), g_p over
+  all of them.
 - `probes/` — `grpo_p0.py` (P0), `reader_batch.py` (the reward reader). Both run on the
   reseed line's package, ruler and readers (`../cjk_anima_reseed/{reseed,src}`).
 - `results/` (gitignored) — one directory per probe run; renders under `output/cjk_rl/`.
@@ -21,5 +26,5 @@ in order, at its length, with no invented dialogue around it.
 Every read is the tuned PaddleOCR-VL-1.6 reader (`anime_tools.ocr.sfx.SfxReader`); stock
 VL16 is not a reader.
 
-State (11-13): nothing trained. Open before P1: r_seq per box (proposal § 3.3) and the
-prompt pool (§ 3.5).
+State (11-13): nothing trained. The prompt pool (§ 3.5) and the multi-target r_seq (§ 3.3)
+are built; next is the P1 loop.
