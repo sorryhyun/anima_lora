@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""reader_batch — the GRPO reward reader before P1 (``docs/anima/proposal/cjk_ocr_grpo.md`` § 4.2).
+"""reader_batch — the GRPO reward reader before P1 (``project/cjk_rl/proposal.md``; report ``reports/reward_reader_2026_11_13.md``).
 
 Re-reads P0's 640 renders (EN ref + four samplers, 16 strings × 8 seeds) with
 ``Readers.read_images``: a group's 8 renders read in shared batches, no whole-page
@@ -22,7 +22,7 @@ int8 / fp8 copies of the two PaddleOCR-VL-1.6 readers were dropped before this
 probe: the tower's K (1152, 4304) is not a multiple of ConvRot's 256-column group,
 and at decode M every int8 / fp8 linear measured slower than bf16 (11-13).
 
-    make daemon-run ARGS="--stall-timeout 600 project/cjk_anima_reseed/probes/reader_batch.py"
+    make daemon-run ARGS="--stall-timeout 600 project/cjk_rl/probes/reader_batch.py"
 """
 
 from __future__ import annotations
@@ -32,12 +32,11 @@ import sys
 import time
 from pathlib import Path
 
-HOME = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(HOME))
+LINE = Path(__file__).resolve().parents[1]  # project/cjk_rl
+sys.path.insert(0, str(LINE.parent / "cjk_anima_reseed"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from grpo_p0 import P0, SAMPLERS, SEEDS, load_pool, r_seq, render_file  # noqa: E402
-from reseed import HOME as RHOME  # noqa: E402
 
 KINDS = ("en", *SAMPLERS)
 SERIAL_N = 64
@@ -156,9 +155,7 @@ def main():
     print(f"gate: {gate}", flush=True)
     print(f"whole page dropped (P0 reads): {whole}", flush=True)
 
-    run_dir = make_run_dir(
-        "cjk_anima_reseed", label="reader_batch", root=RHOME / "results"
-    )
+    run_dir = make_run_dir("cjk_rl", label="reader_batch", root=LINE / "results")
     (run_dir / "diffs.json").write_text(
         json.dumps(diffs, ensure_ascii=False, indent=1), "utf-8"
     )

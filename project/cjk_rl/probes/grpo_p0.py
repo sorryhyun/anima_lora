@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""grpo_p0 — OCR-GRPO's forward probes (``docs/anima/proposal/cjk_ocr_grpo.md`` § 4 P0).
+"""grpo_p0 — OCR-GRPO's forward probes (``project/cjk_rl/proposal.md`` § 4 P0; report ``reports/p0_2026_11_13.md``).
 
 The policy is the ruler's ``m14v3`` (merged14 + Hub turbo v3, 4 steps, cfg 1) with
 jp_v1's rows (``seed_1008``, punct pack, routed). 16 RL-pool strings (Manga109-s
@@ -7,7 +7,7 @@ dialogue, 2–20 cells, every glyph a pack row, no 5-gram of a ruler string), ea
 on its own speech-bubble prompt (the ruler's ``sensitive`` grammar, the ruler's
 source images left out), 8 seeds each.
 
-    build   (CPU) the 16 (string, prompt) → ``output/cjk_anima_reseed/grpo_p0/pool.json``;
+    build   (CPU) the 16 (string, prompt) → ``output/cjk_rl/grpo_p0/pool.json``;
             the EN lines are written into it by hand (``en``), as the ruler's are
     render  (GPU) per string × seed: the EN ref (Euler) and the policy on four
             samplers — Euler, SDE a ∈ {0.3, 0.7} (Flow-GRPO), LCM re-noise
@@ -17,7 +17,7 @@ source images left out), 8 seeds each.
             → ``results/<ts>-grpo_p0/``
     run     render, cost, read
 
-    make daemon-run ARGS="--stall-timeout 900 project/cjk_anima_reseed/probes/grpo_p0.py run"
+    make daemon-run ARGS="--stall-timeout 900 project/cjk_rl/probes/grpo_p0.py run"
 
 The SDE (Flow-GRPO, eq. of ``sde_step_with_logprob``): at σ → σ' (dt = σ' − σ < 0),
 std = a·√(σ / (1 − σ)) (σ = 1 takes σ₁ in the denominator), mean = x·(1 + std²·dt / 2σ)
@@ -37,10 +37,12 @@ import sys
 import time
 from pathlib import Path
 
-HOME = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(HOME))
+LINE = Path(__file__).resolve().parents[1]  # project/cjk_rl
+sys.path.insert(
+    0, str(LINE.parent / "cjk_anima_reseed")
+)  # the reseed package, ruler, readers
 
-from reseed import HOME as RHOME, OUT, bootstrap  # noqa: E402
+from reseed import REPO, bootstrap  # noqa: E402
 
 bootstrap()
 
@@ -54,7 +56,7 @@ from eval.ruler import BINS, RULER, VIEW  # noqa: E402
 VIEW.pack = "punct"
 ROWS = "seed_1008"  # jp_v1
 MODEL = "m14v3"
-P0 = OUT / "grpo_p0"
+P0 = REPO / "output" / "cjk_rl" / "grpo_p0"
 SEED = 1113
 PER_BIN = {"short": 5, "mid": 5, "long": 6}
 SEEDS = range(8)
@@ -592,7 +594,7 @@ def read(info: dict) -> Path:
         )
     for kind, c in b.items():
         print(f"  P0b {kind}: {c}", flush=True)
-    run_dir = make_run_dir("cjk_anima_reseed", label="grpo_p0", root=RHOME / "results")
+    run_dir = make_run_dir("cjk_rl", label="grpo_p0", root=LINE / "results")
     sheets(recs, run_dir / "sheets")
     (run_dir / "renders.json").write_text(
         json.dumps(

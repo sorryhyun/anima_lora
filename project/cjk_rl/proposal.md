@@ -1,8 +1,8 @@
 # CJK OCR-GRPO — teach the vocab pack to write the intended sentence
 
-Status: PROPOSAL (2026-11-13). The ruler probe (§ 1) and P0 (§ 4.1) are done; nothing
-trained. The sampler is the SDE at a = 0.7 (user, 11-13). Open before P1: r_seq per box
-(§ 3.3), the prompt pool (§ 3.5) and a lighter reader (§ 4.2).
+Status: PROPOSAL (2026-11-13). The ruler probe, P0 and the reward reader are done
+([`reports/`](reports/)); nothing trained. The sampler is the SDE at a = 0.7 (user, 11-13).
+Open before P1: r_seq per box (§ 3.3) and the prompt pool (§ 3.5).
 
 ## TL;DR
 
@@ -12,45 +12,18 @@ arm). The policy is the 4-step turbo stack **merged14 + Hub turbo v3**
 the caption's string. The target is **sentence fidelity**: the asked string, in
 order, at its length, with no invented dialogue around it. Glyph identity and short
 strings count as learned. Every FM row arm of record left mid / long strings flat
-(`project/cjk_anima_reseed/status.md` § 2, "Not won"). A reward that reads the
+(`../cjk_anima_reseed/status.md` § 2, "Not won"). A reward that reads the
 string is the first signal aimed at that axis rather than at the glyphs.
 
 The 4-step policy is what makes it affordable. A group of 8 renders costs about as
-much as one 28-step render (§ 1). The readers already score every ruler, so the
+much as one 28-step render ([`reports/ruler_turbo_2026_11_13.md`](reports/ruler_turbo_2026_11_13.md)). The readers already score every ruler, so the
 reward has no new model in it.
 
-## 1. Evidence: the probe of 2026-11-13
+## 1. Evidence
 
-Dialogue ruler (`project/cjk_anima_reseed/criteria.md`), 64 of its 96 strings
-(21 / 21 / 22 by bin), seed 0, jp_v1 rows (`seed_1008`, punct pack, routed) on all
-three generators. The ruler gained `X#<model>` arms for this
-(`src/eval/ruler/__init__.py` `MODELS`). Result:
-`project/cjk_anima_reseed/results/20261113-1417-ruler-sensitive-turbo_m14v3_only64/`.
-
-| | cer ↓ | exact | ≤ 2 edits | drawn | g_p | a_p | en_match |
-|---|---|---|---|---|---|---|---|
-| base, 28 st, cfg 4 ¹ | 0.667 | 4 | 8 | 35.5 | 0.23 | 0.29 | 0.57 |
-| merged14, 28 st, cfg 4 | 0.811 | 3 | 4 | 58.1 | 0.12 | 0.07 | 0.64 |
-| merged14 + v3, 4 st, cfg 1 | 0.849 | 1 | 3 | 45.9 | 0.10 | 0.02 | 0.72 |
-
-¹ cached 10-08 renders on older code. The gaps below are far outside that session's
-noise (mean |Δpx| 3.8 / 255).
-
-- **base → m14 loses the string**: cer +0.14 (38 / 7, p 3e-6), drawn +23 (p 1e-6),
-  a_p 0.29 → 0.07. On the sheets m14 letters several small bubbles of fluent
-  invented dialogue. The asked string almost never fills one bubble; the best read
-  is a 1–3 glyph fragment.
-- **m14 → v3 is a fair proxy of its teacher**: cer n.s. (+0.04, p 0.14), 12 fewer
-  invented glyphs (p 3e-4), kana recall −0.12 (p 4e-4). Its page sits closer to its
-  own EN ref (en_match +0.08, p 0.03).
-- So the rows, fitted on the base, lose the string on the soup's text path. RL on
-  the soup policy re-fits them where they are used.
-- exact and ≤ 2 edits are near 0 on every arm. A pass / fail reward gives a zero
-  advantage in nearly every group, so the reward must be dense (§ 3.3).
-
-Rendering took 0.3 s per 768²-area image for the policy against about 6.5 s for a
-28-step render. Reads ran about 1.3 s per render (detector + SFX reader + VL16 + PE
-page tokens).
+- [`reports/ruler_turbo_2026_11_13.md`](reports/ruler_turbo_2026_11_13.md): base → merged14 loses the
+  string (cer +0.14, invented dialogue in small bubbles); the turbo is a fair proxy of its
+  teacher; exact and ≤ 2 edits are near 0, so the reward must be dense.
 
 ## 2. Scope
 
@@ -81,7 +54,7 @@ per-step likelihood. Two ways to get one:
 - **LCM re-noise** (`library.inference.sampling.LCMSampler`): `x_{k+1} = (1−σ')·x̂₀ +
   σ'·ε`, also Gaussian, but off the student's training rollout.
 
-**Chosen (P0a, § 4.1): the SDE at a = 0.7.** The last step (σ 0.5 → 0) is x̂₀, not an
+**Chosen (P0a, [`reports/p0_2026_11_13.md`](reports/p0_2026_11_13.md)): the SDE at a = 0.7.** The last step (σ 0.5 → 0) is x̂₀, not an
 SDE step: at 4 steps its noise (std ≈ 0.49 at a = 0.7) would stay in the image. So
 log π comes from steps 0–2, and an update backwards 2 of them.
 
@@ -90,7 +63,7 @@ log π comes from steps 0–2, and an update backwards 2 of them.
 | arm | parameters | ships as | why |
 |---|---|---|---|
 | **R** | jp_v1's 2 911 rows (`ExtDelta`, warm from `seed_1008`, `free_residual 0`) | a vocab pack | the deliverable the line already has; loads beside any LoRA |
-| **R-credit** | as R; each occurrence's gradient scaled by its own glyph's advantage (§ 3.4) | a vocab pack | per-occurrence credit (`idea.md`, 10-14), never tried |
+| **R-credit** | as R; each occurrence's gradient scaled by its own glyph's advantage (§ 3.4) | a vocab pack | per-occurrence credit (`../cjk_anima_reseed/idea.md`, 10-14), never tried |
 | **A** | R + a small LoRA on llm_adapter (`networks/lora_anima` `train_llm_adapter`) | pack + a LoRA file | fallback if R saturates: lets the ordering machinery itself move (status § 6's quote-scoped sequence adapter is the same idea) |
 
 The DiT and the turbo LoRA stay frozen in every arm.
@@ -122,7 +95,7 @@ r = r_seq + β · g_p − γ · (1 − m_init) − δ · max(0, fw_over_en)
   miss. P0's first version took the ruler's `candidates()` (the whole-page read and
   every box on the page joined) over the target's length alone. That pays for
   invented dialogue, the failure this run is against, so P1 uses the per-box form.
-  P0a's verdict is the same under both (§ 4.1).
+  P0a's verdict is the same under both (`reports/p0_2026_11_13.md`).
 - `g_p`: the string's glyphs among everything the page letters. This is the
   invented-dialogue penalty, the failure § 1 shows.
 - `m_init`: the 7 × 7 `AtSim` match between this render and the **step-0 policy's**
@@ -178,74 +151,7 @@ Criteria are fixed here, before any result. A gate passes when its evidence does
   and peak VRAM on the 16 GB card, readers on or off the card. This sets the run
   length; it is not a gate.
 
-### 4.1 P0 result (2026-11-13)
-
-`project/cjk_anima_reseed/probes/grpo_p0.py`; result
-`project/cjk_anima_reseed/results/20261113-1603-grpo_p0/` (sheets, plus text-box crops in
-`crops/`). 16 RL-pool strings (5 / 5 / 6 by bin), each on its own prompt, 8 seeds. Each
-string has a hand-written EN line and EN refs rendered with Euler.
-
-**P0a.** Each sampler paired against Euler over the 128 renders (mean Δ, up / down, p):
-
-| | r_seq | g_p | en_match | m_init |
-|---|---|---|---|---|
-| SDE a = 0.3 | −0.004 (40 / 48, .46) | −0.008 (.42) | −0.13 (16 / 109, 3e-18) | 0.73 |
-| SDE a = 0.7 | +0.008 (39 / 48, .39) | +0.004 (.47) | −0.38 (2 / 126, 5e-35) | 0.43 |
-| LCM | −0.005 (38 / 53, .14) | −0.005 (1.0) | −0.49 (0 / 128, 6e-39) | 0.30 |
-
-- As written, every sampler fails on en_match.
-- The EN ref is the Euler render at the same seed, so en_match drops with the noise level
-  exactly as m_init does: it measures how far the page moves, not its quality.
-- r_seq, g_p, cer and drawn are flat on all three. With the per-box r_seq (§ 3.3), a = 0.7
-  stays flat (p .23) and LCM is borderline worse (p .045).
-- The user read the sheets and crops as the same quality and chose **a = 0.7** (11-13).
-- A matched check (EN refs rendered with each sampler's own noise) was offered and not run.
-
-**P0b passes.** 16 / 16 groups are non-degenerate on every stochastic sampler (Euler: 15).
-For r_seq the within-group std (0.15) is about the between-string std (0.13–0.16), and
-g_p's is the same. The crops show that a large share of the within-group spread is reader
-error: vertical hand-lettered bubbles get misread (だめかだめっ read as ためかだぬるっ;
-あの子… read as あの平…).
-
-**P0c** (G = 8, 928×640, backward on steps 0 and 1):
-
-- Time per group: rollout 3.9 s, decode 0.6 s, update 11.1 s. Reading 8 renders takes
-  ≈ 10 s, so a group costs ≈ 26 s and 300 groups ≈ 2.2 h.
-- Peak VRAM: 6.0 GiB in the rollout, 10.8 GiB in the update. The readers take 3.6 GiB
-  (mostly PaddleOCR-VL-1.6 in bf16), so update and readers together need 14.4 of the
-  card's 15.5 GiB.
-- Rows with gradient: the 4 glyphs of the test string, as expected. The grad norm is
-  small (1e-6) because log π is a per-dimension mean; P1 sums it.
-
-### 4.2 Reader on the card (before P1)
-
-Swapping the readers on and off each group costs a load each time, so the plan is a
-reward reader light enough to stay resident beside the update.
-
-**int8 / fp8 dropped (11-13, microbench).** Both readers are PaddleOCR-VL-1.6 (0.9 B, 1.8 GB
-each). The tower's K (1152, 4304) is not a multiple of ConvRot's 256-column group, and at
-decode M every quantized linear is slower than bf16 (3072 × 1024 at M = 4: bf16 14 µs,
-dequant 30, ConvRot W8A8 72, fp8 85, `torch._weight_int8pack_mm` 45; only the lm_head is
-faster on ConvRot). GPTQ would fix the error, not the speed.
-
-**Batched read, no whole page (`results/20261113-1657-reader_batch`, `probes/reader_batch.py`,
-`Readers.read_images`).** A group's 8 renders read in shared batches, the whole page left
-out. s a group (det / sfx / vl): one page a call with the whole page 7.3 (0.23 / 2.97 /
-4.02), without it 4.7, batched 2.2 (0.17 / 1.10 / 0.83). Resident 3.5 GiB, peak 4.4. Gate
-(fixed before the run: paired against P0's reads with the whole page stripped, p ≥ 0.05):
-r_seq 0.3939 → 0.3937 (9 / 12, p 0.66), g_p 0.1632 → 0.1635 (50 / 58, p 0.5), **passes**.
-Boxes are identical on all 640 pages; the strings differ on 11 % (SFX) / 15 % (VL) of
-1,693 boxes from batch padding alone. Dropping the whole page lowers r_seq by 0.019
-(0 up / 46 down), a level shift.
-
-**Stock VL16 is out of every read (user, 11-13).** The line's reader is the tuned
-PaddleOCR-VL-1.6 (`SfxReader`, trained on SFX and dialogue); stock VL16 was a second
-reader carried over from the ruler, best-of-two in cer / r_seq, averaged into g_p and
-required for `official`. `Readers` loads the tuned reader alone, `READERS = ("sfx",)`,
-`official` is gone — the reward and the reads of record alike. Expected read ≈ 1.3 s a
-group (det 0.17 + reader 1.1), readers ≈ 1.7 GiB.
-
-**P1 — arm R** (run length from P0c: ≈ 26 s a group, so 300 groups ≈ 2.2 h)
+**P1 — arm R** (run length: P0c's rollout + update ≈ 15.6 s and the batched tuned reader ≈ 1.3 s, so ≈ 17 s a group and 300 groups ≈ 1.4 h)
 
 Read on the 64-string ruler on `m14v3`, paired against `seed_1008#m14v3`. All 64
 strings are held out from the RL pool.
@@ -295,4 +201,4 @@ After P1 passes:
   (`probe_jl`, status § 5), and neighbours' rows turn with a row's own
   (`probe_twin`). The page anchor exists for this; watch en_match per phase.
 - **One seed on the ruler.** The read pairs over strings, as the ruler always has.
-  Power is in strings, not seeds (`criteria.md`).
+  Power is in strings, not seeds (`../cjk_anima_reseed/criteria.md`).
