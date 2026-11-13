@@ -13,8 +13,8 @@ plan is `91d476e0:scripts/distill_turbo/plan.md`.
   0.146–0.149, 0.85 of the teacher's own cond velocity.
 - Hub v3 (base teacher, 10k iterations) sits at 0.30 of its reference and draws the view from
   below. Its step 0 carries over to merged14 with no training: 0.063 against the merged14 target.
-- So the fit comes with length, and 10k iterations on merged14 is about 16 h. The next run asks
-  whether a student can start from v3's step 0 instead.
+- Hub v3 on merged14 untrained also draws seeds as varied as the teacher's (sameness 0.326 against
+  0.328), and 250 iterations of the v1 recipe from that start undo it (`reports/warm_v3.md`).
 
 ## A/B protocol
 
@@ -24,36 +24,20 @@ plan is `91d476e0:scripts/distill_turbo/plan.md`.
    `output/tests/turbo4/cmp/`.
 3. **Probe beside the renders** (`bench/turbo/probe_handoff.py`, about 3 min per student):
    held-out anchor MSE, the `S` cosine, and the sameness across seeds (teacher 0.328, control
-   0.496).
+   0.496). A warm-started arm is also compared with its starting point, untrained.
 4. The control has no twin. The noise floor is still arm 0's (`reports/arm0.md`), from a constant
    LR without `dm_first_step`. A twin (seed 43) is run when a read is close.
 
-## Next: warm start from Hub v3
+## Warm start from Hub v3: done, regressed (`reports/warm_v3.md`)
 
-The control with `network.student_init_weights` set to
-`models/loras/turbo_hub/anima_turbo_4step_v3.safetensors`. Same rank 64 / alpha 180 / adaln 16;
-250 iterations, about 27 min. The fake starts as in the control (`weight_svd`, 200 warmup steps on
-the student's outputs): v3's own fake was not kept, only its student LoRA is on disk. The one fake
-of this line that survives is in `output/ckpt/1112_1512/1112_1512_resume.pt` (v1 at step 750).
-
-Read, fixed before the run. It passes if all four hold:
-
-- the guitarist renders keep the view from below on the seeds where the control draws the frontal
-  figure;
-- the held-out anchor MSE at EMA 250 is below the control's 0.149 (v3 untrained: 0.063);
-- the sameness across seeds is below the control's 0.496;
-- the five-girl prompt is one scene. v3 split multi-character prompts into panels and `v4_preview`
-  does not.
-
-What follows:
-
-- **Pass:** the 1000-iteration run from the same start on the v1 recipe, judged against
-  `v4_preview` and Hub v3. Its EMA is the next release.
-- **The fit is lost by 250** (the MSE climbs back toward 0.15): the same run with `dm_first_step`
-  off, which is how v3 was trained. The DM term on step 0 was there to move composition, and v3's
-  step 0 already has it.
-- **The fit holds but the panel split returns:** read the 125 and 250 saves for its direction
-  before choosing a length.
+`turbo_1113_1221` passed the gate written here, which compared it with the control only. Hub v3
+on merged14 with no training beats it on every number: sameness 0.326 (teacher 0.328) against
+0.465, `S` cos 0.639 against 0.593, anchor MSE 0.063 against 0.070. The user read the renders as a
+regression from v3. The v1 recipe on the m14 teacher pulls any start toward the control, so the
+1k run from this start is dropped. The best 4-step result on merged14 is now merged14 + Hub v3,
+untrained. `turbo_1113_1309` (`dm_first_step` off) regresses the same way: step 0 still makes the
+seeds alike at v3's anchor MSE, and steps 1–3 lose teacher likeness. What comes next is not
+decided.
 
 ## After it
 

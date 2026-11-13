@@ -48,6 +48,9 @@ The shipped base-teacher turbo (`huggingface.co/sorryhyun/anima-turbo-4step`) is
   - [mfd.md](reports/mfd.md): MFD in the DM slot (2-step 100 / 500-step arms, 2026-11-04), the
     anchor-free MFD collapse (4-step m14, 2026-11-10) and arm 1 on the v1 recipe (2026-11-13):
     cleaner, and the seeds of a prompt draw one image.
+  - [warm_v3.md](reports/warm_v3.md): the control warm-started from Hub v3. It passes the gate
+    against the control and regresses from v3 untrained on merged14, which sits at the teacher's
+    seed diversity.
 - [vatdm.md](vatdm.md): VA-TDM (arXiv:2611.06796) against the loop and MFD; idea 1 is
   `fake_transition`.
 - [proposal/](proposal/): earlier turbo proposals, moved from `docs/anima/proposal/` on 2026-11-12.
@@ -99,6 +102,8 @@ The shipped base-teacher turbo (`huggingface.co/sorryhyun/anima-turbo-4step`) is
 | `1112_1512` | v1 (`1112_v1.md`) | 1000 it, cosine, EMA 0.2 of summed LR, `dm_first_step` on, saves every 250 | done; 1k EMA shipped 11-12 as Hub `anima_turbo_4step_v4_preview`. Against Hub v3: the multi-character layout holds one scene; the solo guitarist draws one frontal pose on every seed, raw and EMA |
 | `turbo_1113_1105` | control for the post-v1 arms | the v1 recipe at 250 it (cosine over the 250), saves every 125 | done, rendered; held-out anchor MSE 0.149 |
 | `turbo_1113_1104` | 1, MFD | `turbo_1113_1105` + `mfd.dtau 0.1` / `max_steps 4` / `to_zero` | done: fails on the renders. Cleaner lines and all five characters on every seed, but the four seeds of a prompt draw one image and the sign text is worse (`reports/mfd.md`) |
+| `turbo_1113_1221` | warm start from Hub v3 | `turbo_1113_1105` with the student seeded from Hub v3 | done: passes the `plan.md` gate against the control, but regresses from v3 untrained on merged14 on every number (sameness 0.326 → 0.465, `S` cos 0.639 → 0.593, anchor MSE 0.063 → 0.070) and in the user's read; the 1k run is dropped (`reports/warm_v3.md`) |
+| `turbo_1113_1309` | warm start, `dm_first_step` off | `turbo_1113_1221` with `dpdmd.dm_first_step = false` | done: not the cause. Anchor MSE stays at v3's 0.063, but step 0 still raises the sameness (cross cell 0.405 against v3 0.326, `1221` 0.429); steps 1–3 regress as before (`T>S@1` cos 0.773) (`reports/warm_v3.md`) |
 
 ## State (2026-11-13)
 
@@ -112,4 +117,6 @@ step 0 (`reports/handoff.md`), and the layout comes back in proportion to the st
 merged14 untrained (0.063 against 0.146–0.149). Arm 1 (MFD) failed: one image per prompt, mostly
 through steps 1–3 (`reports/mfd.md`).
 
-Next (`plan.md`): the control `turbo_1113_1105` with the student warm-started from Hub v3.
+The warm start from Hub v3 (`turbo_1113_1221`) regressed from v3 itself: Hub v3 on merged14 with no
+training draws seeds as varied as the teacher's (sameness 0.326 against 0.328) and is the best
+4-step result on merged14; the v1 recipe pulls any start toward the control (`reports/warm_v3.md`).
