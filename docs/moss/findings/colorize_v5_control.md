@@ -36,7 +36,7 @@ four draws evenly otherwise (`caption_variant_rate 0.75`). No OCR text anywhere.
 | manga page | `comic`; a box-only `text` item per OCR line of the B&W page | a `character` item per detected character, box + its hair / eye / clothing colours | `comic` + the text items |
 
 - **Text boxes** are swap_text's caption lines without the text: the OCR engine
-  (`load_reread_engine`: AnimeText blocks, SFX reader re-reading them) on the condition,
+  (`load_reread_engine`: AnimeText blocks, OCR reader re-reading them) on the condition,
   filtered by `keep_line` (moved from `i2i_tasks/swap_text/ocr.py` into
   `library/moss/colorize.py`, so both tasks share it). Cached as `text_boxes.json` with the
   reads, for inspection.

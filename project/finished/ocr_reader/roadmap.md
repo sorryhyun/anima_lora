@@ -39,7 +39,7 @@ No KO/ZH claim can be made until this phase exists.
 - One mixed-language run on P1 data with the P2 parametrization.
 - Gate: K3 KO and ZH both rise above v3, **and** sincos / COO SFX / COO
   speech do not drop by more than 1 SE against v3.
-- Ship through `anime_tools.ocr.sfx` (with the decode guard) as Hub v4.
+- Ship through `anime_tools.ocr.reader` (with the decode guard) as Hub v4.
 
 ## Kill / stop
 

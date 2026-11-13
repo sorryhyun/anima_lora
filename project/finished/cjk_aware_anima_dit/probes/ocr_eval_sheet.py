@@ -4,7 +4,7 @@
 ``eval_sfx.py`` writes one prediction row per label into
 ``output/ocr/eval/sfx_<name>.jsonl``; this joins two such files back to the
 label boxes (``assets/sfx_labels_sincos.tsv``), cuts each crop with the
-reader's own 12 % pad (``anime_tools.ocr.sfx.crop_box``, axis-aligned — the
+reader's own 12 % pad (``anime_tools.ocr.reader.crop_box``, axis-aligned — the
 eval's deskew of an axis-aligned box is the same crop) and lays the rows out
 for an eyeball: the crop, the hand label, reader A's read, reader B's read,
 each with sim and an exact tick, the row tinted **green** where B improved on
@@ -30,7 +30,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, JpegImagePlugin  # noqa: F401  (PDF save needs the JPEG codec registered)
 
-from anime_tools.ocr.sfx import CROP_PAD, crop_box
+from anime_tools.ocr.reader import CROP_PAD, crop_box
 
 REPO = Path(__file__).resolve().parents[4]
 LABELS = REPO / "project/finished/cjk_aware_anima_dit/assets/sfx_labels_sincos.tsv"

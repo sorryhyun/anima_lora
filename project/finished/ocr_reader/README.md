@@ -10,7 +10,7 @@ Opened 2026-10-10 on branch `ocr-reader`, out of
 Shipped: **v4 = `vl16_p2b_kozh_ep2`** — tower r64 LoRA + LM decoder full FT
 (P2b) on Manga109-s COO + speech + gelnote KO/ZH pseudo rows, 2 epochs. It is
 Hub `sorryhyun/paddleocr-vl-1.6-manga-lora` `v4/`, pinned by `anime_tools`
-v0.7.12 (`anime_tools.ocr.sfx`). Against v3 it wins sincos SFX (289 → 346 /
+v0.7.12 (`anime_tools.ocr.reader`). Against v3 it wins sincos SFX (289 → 346 /
 597 strict), COO SFX, and brings KO/ZH back to stock level (v3: KO 1 / 48).
 
 Ceiling: **neither more labels nor more data moved it.** The hitocrawl ja↔ko
@@ -46,7 +46,7 @@ Reports: `reports/ocr_eval_*swaprelax*.md`.
 
 ## Why
 
-The shipped reader (`anime_tools.ocr.sfx`, Hub
+The shipped reader (`anime_tools.ocr.reader`, Hub
 `sorryhyun/paddleocr-vl-1.6-manga-lora` v3 = `vl16_b2_norm4`) is a
 Japanese-only fine-tune. It trains the NaViT tower + projector in full and
 puts an r16 LoRA on the ERNIE LM, using Manga109-s COO plus speech data. Two

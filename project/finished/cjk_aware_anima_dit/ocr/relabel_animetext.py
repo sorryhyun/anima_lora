@@ -219,7 +219,7 @@ def write_sheets(rows: list[dict], out: Path) -> None:
     import cv2
     from PIL import Image, ImageDraw, ImageFont
 
-    from anime_tools.ocr import sfx
+    from anime_tools.ocr import reader as vl_reader
 
     pick = [r for r in rows if r["status"] != "checked"]
     out.mkdir(parents=True, exist_ok=True)
@@ -243,7 +243,7 @@ def write_sheets(rows: list[dict], out: Path) -> None:
                         REPO / "post_image_dataset/resized" / SHARD / f"{r['stem']}.png"
                     )
                 )
-            crop = sfx.crop_box(bgr, json.loads(r["box"]), 0.12)
+            crop = vl_reader.crop_box(bgr, json.loads(r["box"]), 0.12)
             im = Image.fromarray(crop[:, :, ::-1])
             sc = min((TW - 10) / im.width, (TH - 10) / im.height)
             im = im.resize((max(1, int(im.width * sc)), max(1, int(im.height * sc))))

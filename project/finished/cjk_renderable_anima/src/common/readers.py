@@ -82,10 +82,10 @@ class StockVl16:
 class Readers:
     def __init__(self, device: str):
         from anime_tools.ocr.animetext import AnimeTextDetector
-        from anime_tools.ocr.sfx import SfxReader
+        from anime_tools.ocr.reader import OcrReader
 
         self.det = AnimeTextDetector.load(device=device)
-        self.sfx = SfxReader.load(device=device, batch_size=16)
+        self.sfx = OcrReader.load(device=device, batch_size=16)
         self.vl = StockVl16(device)
 
     def read_image(self, bgr, *, whole: bool = True):

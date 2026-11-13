@@ -74,9 +74,9 @@ def _pkg():
         sys.path.insert(0, str(REPO.parent / "anime_tools"))
         for k in [k for k in sys.modules if k.startswith("anime_tools")]:
             del sys.modules[k]
-    from anime_tools.ocr import _text, animetext, reread, sfx
+    from anime_tools.ocr import _text, animetext, reread, reader
 
-    return animetext, reread, sfx, _text
+    return animetext, reread, reader, _text
 
 
 def _load_jsonl(path: Path) -> dict[str, list[dict]]:
@@ -204,7 +204,7 @@ def run_read(opts, pages: list[Path]) -> None:
     print(f"read: {n} boxes on {len(todo)} pages not in the cache", flush=True)
     if not n:
         return
-    reader = sfx.SfxReader.load(device=opts.device, batch_size=opts.bs)
+    reader = sfx.OcrReader.load(device=opts.device, batch_size=opts.bs)
     with (OUT / "reads.jsonl").open("a", encoding="utf-8") as f:
         for p in pages:
             bs = todo.get(p.stem)
@@ -413,7 +413,7 @@ def run_apply(opts, pages: list[Path]) -> None:
         hand=hand,
         rec=rec,
         reread=reread,
-        engine="animetext+sfx_reader",
+        engine="animetext+ocr_reader",
         stats=stats,
     )
     if stats["unread"]:
@@ -433,7 +433,7 @@ def run_apply(opts, pages: list[Path]) -> None:
         hand=hand,
         rec=rec,
         reread=reread,
-        engine="animetext+sfx_reader",
+        engine="animetext+ocr_reader",
         stats=raw_stats,
     )
     m_hyb = metrics(hyb, **kw)

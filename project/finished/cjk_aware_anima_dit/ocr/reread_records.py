@@ -7,7 +7,7 @@ records default is now ``ocr_records_<shard>_animetext.jsonl`` from
 ``animetext_records.py`` (one detector, every box read by the SFX reader).
 Kept as-is so the C10/C11 ``_hybrid_vl`` files stay reproducible.
 
-The third reader — ``anime_tools.ocr.sfx.SfxReader``, the B′ weights (VL-1.6
+The third reader — ``anime_tools.ocr.reader.OcrReader``, the B′ weights (VL-1.6
 LoRA + fine-tuned tower) with the decode guard built in — re-reads the hybrid
 records and reads what the MIT text mask boxed that no detector did.
 
@@ -31,7 +31,7 @@ picks):
   connected components after a closing pass — bbox min side ≥
   ``--comp_min_side``, not already covered by a record, at most ``--comp_max``
   per page by area — become crops too. A read that passes the guard and the
-  line floors becomes a record with ``engine: sfx_reader``.
+  line floors becomes a record with ``engine: ocr_reader``.
 
 ``kind`` comes from the hand labels (``--kind_labels``, B1's file: a record
 whose ``(stem, box)`` is labelled takes ``kind_hand``) and from the v1 text
@@ -69,7 +69,7 @@ FULLPAGE_FRAC = 0.4
 
 
 def _pkg_sfx():
-    """``anime_tools.ocr.sfx`` — from the installed package, else the sibling
+    """``anime_tools.ocr.reader`` — from the installed package, else the sibling
     checkout (dev loop before the pinned rev carries it)."""
     try:
         from anime_tools.ocr import sfx
@@ -163,10 +163,10 @@ def run_read_stage(
     if not todo:
         return
     t0 = time.time()
-    reader = sfx.SfxReader.load(
+    reader = sfx.OcrReader.load(
         device=opts.device,
         base_dir=REPO / "models/paddleocr_vl_1.6",
-        adapter_dir=Path(opts.sfx_reader) if opts.sfx_reader else None,
+        adapter_dir=Path(opts.ocr_reader) if opts.ocr_reader else None,
         batch_size=opts.bs,
     )
     print(f"reader loaded {time.time() - t0:.1f}s", flush=True)
@@ -279,7 +279,7 @@ def apply_page(
                 if it["text"] != r["text"]:
                     r["prev_text"] = r["text"]
                     r["text"] = it["text"]
-                    r["engine"] = r["engine"] + "+sfx_reader"
+                    r["engine"] = r["engine"] + "+ocr_reader"
                     stats["replaced"] += 1
                 r["sfx_guard"] = "ok"
             else:
@@ -311,7 +311,7 @@ def apply_page(
                 "text": text,
                 "score": None,
                 "box": list(it["box"]),
-                "engine": "sfx_reader",
+                "engine": "ocr_reader",
                 "kind": rec.record_kind(text),
                 "kind_src": "rule",
                 "sfx_raw": it.get("raw", ""),
@@ -387,13 +387,13 @@ def run_apply_stage(opts, pages, by_stem, raw_path: Path, out_path: Path, report
         f"- floor pages recovered ({len(recovered)}): {' '.join(recovered) or '—'}",
         f"- floor pages still empty ({len(miss_out)}): {' '.join(miss_out) or '—'}",
         "",
-        "## Mask-component lines (engine=sfx_reader)\n",
+        "## Mask-component lines (engine=ocr_reader)\n",
         "| stem | kind | text | box |",
         "|---|---|---|---|",
     ]
     for stem, recs in new.items():
         for r in recs:
-            if r["engine"] == "sfx_reader":
+            if r["engine"] == "ocr_reader":
                 md.append(f"| {stem} | {r['kind']} | {r['text']} | {r['box']} |")
     md += [
         "",
@@ -435,7 +435,7 @@ def main() -> None:
     ap.add_argument("--raw", type=Path, default=None)
     ap.add_argument("--out", type=Path, default=None)
     ap.add_argument("--report", type=Path, default=None)
-    ap.add_argument("--sfx_reader", default=None, help="adapter dir (default: catalog)")
+    ap.add_argument("--ocr_reader", default=None, help="adapter dir (default: catalog)")
     ap.add_argument(
         "--reread",
         choices=["sfx", "all", "none"],

@@ -23,7 +23,7 @@ in order, at its length, with no invented dialogue around it.
   reseed line's package, ruler and readers (`../cjk_anima_reseed/{reseed,src}`).
 - `results/` (gitignored) — one directory per probe run; renders under `output/cjk_rl/`.
 
-Every read is the tuned PaddleOCR-VL-1.6 reader (`anime_tools.ocr.sfx.SfxReader`); stock
+Every read is the tuned PaddleOCR-VL-1.6 reader (`anime_tools.ocr.reader.OcrReader`); stock
 VL16 is not a reader.
 
 State (11-13): nothing trained. The prompt pool (§ 3.5) and the multi-target r_seq (§ 3.3)

@@ -1,6 +1,6 @@
 """Reading renders back: detector + the tuned VL reader, and contact sheets.
 
-Every read is the tuned PaddleOCR-VL-1.6 reader (``anime_tools.ocr.sfx.SfxReader``,
+Every read is the tuned PaddleOCR-VL-1.6 reader (``anime_tools.ocr.reader.OcrReader``,
 trained on SFX and dialogue); stock VL16 is not a reader here. :class:`StockVl16`
 stays for the cjk_ko probes that load it by name."""
 
@@ -109,10 +109,10 @@ def crop(bgr, box):
 class Readers:
     def __init__(self, device: str):
         from anime_tools.ocr.animetext import AnimeTextDetector
-        from anime_tools.ocr.sfx import SfxReader
+        from anime_tools.ocr.reader import OcrReader
 
         self.det = AnimeTextDetector.load(device=device)
-        self.sfx = SfxReader.load(device=device, batch_size=16)
+        self.sfx = OcrReader.load(device=device, batch_size=16)
 
     def read_image(self, bgr, *, whole: bool = True):
         """Return list of dict(box, whole, sfx, sfx_conf) — one per detector

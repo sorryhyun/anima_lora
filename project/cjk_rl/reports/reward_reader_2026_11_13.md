@@ -22,7 +22,7 @@ Boxes are identical on all 640 pages; the strings differ on 11 % (SFX) / 15 % (V
 (0 up / 46 down), a level shift.
 
 **Stock VL16 is out of every read (user, 11-13).** The line's reader is the tuned
-PaddleOCR-VL-1.6 (`SfxReader`, trained on SFX and dialogue); stock VL16 was a second
+PaddleOCR-VL-1.6 (`OcrReader`, trained on SFX and dialogue); stock VL16 was a second
 reader carried over from the ruler, best-of-two in cer / r_seq, averaged into g_p and
 required for `official`. `Readers` loads the tuned reader alone, `READERS = ("sfx",)`,
 `official` is gone — the reward and the reads of record alike. Expected read ≈ 1.3 s a

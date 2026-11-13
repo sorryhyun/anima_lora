@@ -304,13 +304,13 @@ Manga109-s / COO citations). Weights only, no crops. Re-verified against the
 Hub 2026-09-07 (sha `3b5fe022`): it carries B′'s numbers, i.e.
 `vl16_tower_lr1e-5`. Neither `ep3` nor `col100` was ever pushed.
 
-## O4 — the reader wired in: `anime_tools.ocr.sfx`, floor 23 → 8 (2026-09-06)
+## O4 — the reader wired in: `anime_tools.ocr.reader`, floor 23 → 8 (2026-09-06)
 
 *Sincos figures `/ 71`, PP-box basis.*
 
-The package. `anime_tools.ocr.sfx.SfxReader` (rev 46ebbb5; `peft` became a
+The package. `anime_tools.ocr.reader.OcrReader` (rev 46ebbb5; `peft` became a
 package dependency), B′'s weights from two catalog rows — `vl16_base` and
-`sfx_reader` — fetched on first load. A crop reader only.
+`ocr_reader` — fetched on first load. A crop reader only.
 
 The decode guard is area-tied, not aspect-tied. The first guard capped a
 read at `4 × longer/shorter + 6` characters: it held the SFX gate and silently
@@ -650,7 +650,7 @@ training, in front of the SFX reader.
 | MIT mask components, min side 32 | 92 % |
 | masked-but-no-box floor (133 masked) | 3 (PP DB 38, the full 3-layer stack 8) |
 
-Read-level, boxes → SfxReader → records: floor 8 → 4, best-match to
+Read-level, boxes → OcrReader → records: floor 8 → 4, best-match to
 manga-ocr 0.810 → 0.844, hand-SFX exact 44 → 63–66. Of ~520 boxes
 matching nothing known, 438 yield a valid read, and the sheets show real SFX
 on pages the stack held at zero lines.

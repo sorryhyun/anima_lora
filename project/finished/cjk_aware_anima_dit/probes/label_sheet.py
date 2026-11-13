@@ -4,7 +4,7 @@
 No readers, no scoring — just ``crop → text_hand`` so the label file can be
 eyeballed against the pixels. One tile per row of
 ``assets/sfx_labels_sincos.tsv``, in file order, cut with the reader's own
-12 % pad (``anime_tools.ocr.sfx.crop_box``) so the tile is exactly what a
+12 % pad (``anime_tools.ocr.reader.crop_box``) so the tile is exactly what a
 reader is asked to read.
 
 Tile background carries ``status`` — **green** ``checked`` (user-certified),
@@ -34,7 +34,7 @@ from pathlib import Path
 import cv2
 from PIL import Image, ImageDraw, ImageFont, JpegImagePlugin  # noqa: F401  (PDF save needs the JPEG codec registered)
 
-from anime_tools.ocr.sfx import CROP_PAD, crop_box
+from anime_tools.ocr.reader import CROP_PAD, crop_box
 
 REPO = Path(__file__).resolve().parents[4]
 LINE = Path(__file__).resolve().parents[1]

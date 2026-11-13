@@ -46,7 +46,7 @@ HEART_FOLD = textnorm.HEART_FOLD
 ELLIPSIS_RE = textnorm.ELLIPSIS_RE
 """Every dot run is one ``…`` on both sides of a comparison — the hand labels
 spell a pause three ways (sincos: ``・・・`` 57 rows, ``...`` 23, ``…`` 73) and
-so did the reader until ``anime_tools.ocr.sfx.normalize_read`` folded it
+so did the reader until ``anime_tools.ocr.reader.normalize_read`` folded it
 (8ebaf58, 2026-09-08). Since 2026-09-12 the table lives in :mod:`textnorm`,
 shared with the training target, and also folds the long dash (``─`` / ``—`` →
 ``―``) and a lone ``‥`` — a third, small re-base (``rescore_eval.py``)."""
@@ -190,7 +190,7 @@ class Vl16Reader:
 
 
 class SfxPkgReader:
-    """O4: the shipped reader — ``anime_tools.ocr.sfx.SfxReader`` (B′ weights
+    """O4: the shipped reader — ``anime_tools.ocr.reader.OcrReader`` (B′ weights
     from the catalog rows, decode guard built in). ``--ckpt`` overrides the
     adapter dir; a guarded-out read scores as an empty string."""
 
@@ -200,13 +200,13 @@ class SfxPkgReader:
     def __init__(self, ckpt: str | None, device: str):
         try:
             from anime_tools.ocr import sfx
-        except ImportError:  # dev loop before the pinned rev carries ocr/sfx.py
+        except ImportError:  # dev loop before the pinned rev carries ocr/reader.py
             sys.path.insert(0, str(m109.REPO.parent / "anime_tools"))
             for k in [k for k in sys.modules if k.startswith("anime_tools")]:
                 del sys.modules[k]
             from anime_tools.ocr import sfx
         self.sfx = sfx
-        self.r = sfx.SfxReader.load(
+        self.r = sfx.OcrReader.load(
             device=device,
             base_dir=m109.REPO / "models/paddleocr_vl_1.6",
             adapter_dir=Path(ckpt) if ckpt else None,

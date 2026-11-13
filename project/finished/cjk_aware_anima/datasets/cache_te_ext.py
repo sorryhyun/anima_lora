@@ -115,7 +115,7 @@ DROP_KINDS: frozenset[str] = frozenset({"chrome"})
 B0). ``chrome`` is UI text on a screenshot page — neither speech nor SFX.
 ``sfx`` was in this set 2026-09-05 → 2026-09-06 (the stock readers garbled
 hand-lettered onomatopoeia, ``でくv`` for びくっ); it left once the SFX reader
-(``anime_tools.ocr.sfx``, plan_ocr O4) could read them and arm C11 passed
+(``anime_tools.ocr.reader``, plan_ocr O4) could read them and arm C11 passed
 its gate (spam = C10, blind s15 11–9 flat inside the floor). ``--drop_sfx``
 restores the C10 caption for reproductions. Records without ``kind``
 (pre-hybrid files) are untouched."""

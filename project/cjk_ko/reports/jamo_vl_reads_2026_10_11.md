@@ -2,7 +2,7 @@
 
 User 10-11: the v4 reads of the jamo arms (`jamo_curriculum_2026_10_11.md` § 6)
 laid out so each syllable can be looked at. Source: `results/20261011-1409-jamo-vl-score/`
-(v4 = anime_tools 0.7.10 `SfxReader`, plus stock and the forced read; seed 0
+(v4 = anime_tools 0.7.10 `OcrReader`, plus stock and the forced read; seed 0
 renders, each target alone in a KO bubble). Sheets and table:
 `results/20261011-1424-jamo-vl-sheet/` (`probes/jamo_vl_sheet.py`).
 

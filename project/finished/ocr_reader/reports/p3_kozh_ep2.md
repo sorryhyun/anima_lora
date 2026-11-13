@@ -16,7 +16,7 @@ ANIMA_MANGA109S_ROOT=… make daemon-run ARGS="--stall-timeout 900 \
 ```
 
 Checkpoint: `output/ocr/vl16_p2b_kozh_ep2/ep2/`. Chosen to replace P3 ep1 as Hub `v4/`; the
-anime_tools pin (`SFX_READER_REVISION`) still points at the 1-epoch commit `9fe3d41e`.
+anime_tools pin (`OCR_READER_REVISION`) still points at the 1-epoch commit `9fe3d41e`.
 
 ## Train loss
 

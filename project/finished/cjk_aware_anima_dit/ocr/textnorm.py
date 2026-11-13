@@ -3,7 +3,7 @@
 Until ``TARGET_NORM = 3`` (2026-09-12) the three surfaces disagreed: the trainer
 taught the annotators' spelling verbatim (``・・・`` / ``...`` / ``…`` / ``……``
 were four targets for one pause, ``♥`` competed with ``♡`` 41 : 296), while
-``eval_manga109.exact_key`` and ``anime_tools.ocr.sfx.normalize_read`` folded
+``eval_manga109.exact_key`` and ``anime_tools.ocr.reader.normalize_read`` folded
 every variant away. The model was learning label noise the pipeline discards.
 
 :func:`fold_glyphs` is the single rule. Callers pick the whitespace policy:

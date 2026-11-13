@@ -36,14 +36,14 @@ ENGINE_COLOUR = {
     "ppocr_v6": (0, 200, 0),
     "ppocr_v6+vl16_crop": (255, 140, 0),
     "vl16_spotting": (220, 0, 200),
-    "sfx_reader": (0, 120, 255),  # O4: a MIT-mask component the SFX reader read
+    "ocr_reader": (0, 120, 255),  # O4: a MIT-mask component the SFX reader read
 }
 
 
 def engine_colour(engine: str):
-    """``<engine>+sfx_reader`` (O4 re-read) keeps its base engine's colour."""
+    """``<engine>+ocr_reader`` (O4 re-read) keeps its base engine's colour."""
     return ENGINE_COLOUR.get(engine) or ENGINE_COLOUR.get(
-        engine.removesuffix("+sfx_reader"), (128, 128, 128)
+        engine.removesuffix("+ocr_reader"), (128, 128, 128)
     )
 KIND_COLOUR = {"speech": "black", "sfx": (200, 0, 0), "chrome": (120, 120, 120)}
 

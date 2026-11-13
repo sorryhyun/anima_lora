@@ -138,7 +138,7 @@ RUNS = [
         None,
         "hayai v2.1.5 sidecar (~1/6 the parameters)",
     ),
-    ("sfx_pkg", "sfx_pkg", None, "shipped `anime_tools.ocr.sfx` (B′ + decode guard)"),
+    ("sfx_pkg", "sfx_pkg", None, "shipped `anime_tools.ocr.reader` (B′ + decode guard)"),
 ]
 
 

@@ -3,7 +3,7 @@
 (user 10-11; the reads of ``jamo_phase1`` / ``jamo_curriculum`` were by eye).
 
 Readers: ``stock`` (PaddleOCR-VL 1.6, ``common.readers.StockVl16``) and
-``v4`` (anime_tools 0.7.10's ``SfxReader``: the manga reader, tower LoRA +
+``v4`` (anime_tools 0.7.10's ``OcrReader``: the manga reader, tower LoRA +
 fine-tuned decoder, trained with KO / ZH SFX crops — ``project/finished/ocr_reader``).
 Every image is cut as the ruler cuts it (``ko_reader_cal.crops``: each
 detector box padded 12 %, then the whole image). By default ``v4`` reads
@@ -176,9 +176,9 @@ class Reader:
             self.model, self.proc, self.prompt = r.model, r.proc, r.text
             self._free = lambda cs: [t for t, _n in r.read(cs)]
         else:
-            from anime_tools.ocr.sfx import SfxReader
+            from anime_tools.ocr.reader import OcrReader
 
-            r = SfxReader.load(device=device, batch_size=FREE_BATCH)
+            r = OcrReader.load(device=device, batch_size=FREE_BATCH)
             self.model, self.proc, self.prompt = r.model, r.processor, r.prompt
             self._free = lambda cs: [x[0] if x else "" for x in r.read_scored(cs)]
         self.vision = VisionCache(self.model)

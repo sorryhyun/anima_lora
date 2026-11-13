@@ -8,7 +8,7 @@ SFX line got into the caption** (plan_ocr O4 / arm C11, the default since
 
 * **left** — the resized page, every record boxed by kind (**red** = sfx,
   black = speech, grey = chrome; a **dashed blue** box is a MIT-mask
-  component the reader read that no detector boxed, ``engine=sfx_reader``),
+  component the reader read that no detector boxed, ``engine=ocr_reader``),
   numbered in reading order;
 * **middle** — the SFX crops *as the reader saw them* (``crop_box`` with the
   package's ``CROP_PAD``), each with the guarded read, the raw decode when
@@ -45,7 +45,7 @@ from anime_tools.captions.position_clauses import (
     parse_caption,
     text_clause,
 )
-from anime_tools.ocr.sfx import CROP_PAD, pad_box
+from anime_tools.ocr.reader import CROP_PAD, pad_box
 
 REPO = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(REPO / "project/finished/cjk_aware_anima/datasets"))
@@ -165,7 +165,7 @@ def main() -> None:
     if opts.only == "sfx":
         stems = [s for s in stems if any(is_sfx(r) for r in recs[s])]
     elif opts.only == "mask":
-        stems = [s for s in stems if any(r["engine"] == "sfx_reader" for r in recs[s])]
+        stems = [s for s in stems if any(r["engine"] == "ocr_reader" for r in recs[s])]
     elif opts.only == "rule":
         stems = [
             s
@@ -194,7 +194,7 @@ def main() -> None:
         d = ImageDraw.Draw(im)
         for r in page:
             kind = r.get("kind", "speech")
-            if r["engine"] == "sfx_reader":
+            if r["engine"] == "ocr_reader":
                 dashed_rect(d, r["box"], MASK_COMP, max(3, int(3 / s)))
             else:
                 d.rectangle(
@@ -208,7 +208,7 @@ def main() -> None:
             x0, y0 = r["box"][0] * s, r["box"][1] * s
             col = (
                 MASK_COMP
-                if r["engine"] == "sfx_reader"
+                if r["engine"] == "ocr_reader"
                 else KIND_COLOUR[r.get("kind", "speech")]
             )
             d.rectangle([x0, y0 - 18, x0 + 26, y0], fill=col)
@@ -238,8 +238,8 @@ def main() -> None:
             rows: list[tuple[str, object, object]] = []
             src = (
                 "mask comp"
-                if r["engine"] == "sfx_reader"
-                else r["engine"].removesuffix("+sfx_reader")
+                if r["engine"] == "ocr_reader"
+                else r["engine"].removesuffix("+ocr_reader")
             )
             if i in dup_of:
                 rows.append((f"#{i}  {r['text']}", FB, ("strike", GREY)))
@@ -253,11 +253,11 @@ def main() -> None:
                 rows.append((f"was: {r['prev_text']}", FS, PREV))
             elif r.get("sfx_guard") == "rejected":
                 rows.append(("guard REJECTED, kept old read", FS, PREV))
-            elif r["engine"] == "sfx_reader":
+            elif r["engine"] == "ocr_reader":
                 rows.append(("new line (no detector box)", FT, MASK_COMP))
             rows.append(
                 (
-                    f"{src} → sfx_reader · kind by {r.get('kind_src', '?')}"
+                    f"{src} → ocr_reader · kind by {r.get('kind_src', '?')}"
                     + f" · {x1 - x0}×{y1 - y0}px",
                     FT,
                     GREY,
@@ -269,7 +269,7 @@ def main() -> None:
         cap_path = opts.mirror / f"{stem}.txt"
         rows_r: list[tuple[str, object, object]] = []
         n_sfx = sum(is_sfx(r) for r in page)
-        n_mask = sum(r["engine"] == "sfx_reader" for r in page)
+        n_mask = sum(r["engine"] == "ocr_reader" for r in page)
         rows_r.append(
             (
                 f"{stem}  {W}x{H}  lines={len(page)}  sfx={n_sfx}  mask-comp={n_mask}",

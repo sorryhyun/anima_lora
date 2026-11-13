@@ -72,7 +72,7 @@ real metric.
 | `vl16_tower_ssl_all` | **378** / 617 (61.3 %) | 301 | 2194 / 2558 (85.8 %) | 2260 / 2559 (88.3 %) | 0 / 192 | 87.8 % | B′ from an SSL tower (manifest_all, 12k steps) |
 | `vl16_tower_ssl_all_lr5e5` | **378** / 617 (61.3 %) | 288 | 2188 / 2558 (85.5 %) | 2266 / 2559 (88.6 %) | 1 / 192 | 87.8 % | same tower, LoRA lr 5e-5 |
 | `hayai_v2_1_5` | **351** / 617 (56.9 %) | 316 | — | — | — | — | hayai v2.1.5 sidecar (~1/6 the parameters) |
-| `sfx_pkg` | **374** / 617 (60.6 %) | 311 | — | — | — | — | shipped `anime_tools.ocr.sfx` (B′ + decode guard) |
+| `sfx_pkg` | **374** / 617 (60.6 %) | 311 | — | — | — | — | shipped `anime_tools.ocr.reader` (B′ + decode guard) |
 <!-- /TABLE -->
 
 ## What it says

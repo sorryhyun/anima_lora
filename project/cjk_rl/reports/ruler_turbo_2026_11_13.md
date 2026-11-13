@@ -31,5 +31,5 @@ noise (mean |Δpx| 3.8 / 255).
   advantage in nearly every group, so the reward must be dense (proposal § 3.3).
 
 Rendering took 0.3 s per 768²-area image for the policy against about 6.5 s for a
-28-step render. Reads ran about 1.3 s per render (detector + SFX reader + VL16 + PE
+28-step render. Reads ran about 1.3 s per render (detector + OCR reader + VL16 + PE
 page tokens).

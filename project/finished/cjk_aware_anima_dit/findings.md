@@ -12,7 +12,7 @@ verdicts are in [`../cjk_aware_anima/findings.md`](../cjk_aware_anima/findings.m
 (read-only).
 
 Line status: the OCR half shipped — the AnimeText detector, the B′ SFX reader
-(`sorryhyun/paddleocr-vl-1.6-manga-lora`, wired as `anime_tools.ocr.sfx`, Hub
+(`sorryhyun/paddleocr-vl-1.6-manga-lora`, wired as `anime_tools.ocr.reader`, Hub
 v3), the caption clause rules and the D1 quote-partitioned pack. The DiT-side
 goal was frozen 2026-09-08 and reopened 2026-09-13 as the wake line.
 
@@ -90,7 +90,7 @@ TRBA+2D 81.2 % on the full 10-book test (ours is 6 of those 10 books).
 | B′ × 3 epochs | 87.3 % | 89.2 % | 306 (49.6 %) |
 | B′ from LP-FT (arm B → B′ order) | 84.3 % | 87.6 % | 264 (42.8 %) |
 | B′ from an SSL-adapted tower | 84.6 % | 88.2 % | 307 (49.8 %) |
-| shipped `anime_tools.ocr.sfx` (B′ + decode guard) | — | — | 311 (50.4 %) |
+| shipped `anime_tools.ocr.reader` (B′ + decode guard) | — | — | 311 (50.4 %) |
 | the pipeline's own records (`--reader record`) | — | — | 317 (51.4 %) |
 | outside: hayai-ocr v2.1 | 78.2 % | 88.0 % | 180 (29.2 %) |
 | outside: hayai-ocr v2.1.5 | 60.7 % | 85.5 % | 316 (51.2 %) |
@@ -190,7 +190,7 @@ What the ledger says as a whole:
 - Known miss: Latin text hallucinated as kana (`Zzz...` → `ててて…`) is the
   only Latin that reaches a caption; no text rule separates it.
 
-## Settled — the SFX reader (B′, `anime_tools.ocr.sfx`)
+## Settled — the SFX reader (B′, `anime_tools.ocr.reader`)
 
 - **The tower was the doujin gap**: tower frozen 110 → unfrozen 312 / 617.
   Every row under 130 on sincos has a frozen tower or no fine-tune.
@@ -319,7 +319,7 @@ else the frozen lines left open, cheapest first:
   untouched 499 (a label-noise rate for the basis), then `eval_sfx.py` for
   every arm — `eval_table` cannot see a label fix, so `eval.md` sits on the
   pre-fix basis until then.
-- **R3 — the CJK space rule**, in `anime_tools.ocr.sfx.normalize_read`: drop a
+- **R3 — the CJK space rule**, in `anime_tools.ocr.reader.normalize_read`: drop a
   space whose neighbours are both CJK, keep it next to Latin / Hangul /
   digits. Never in training.
 - **R4.4 — the tree re-run** on v3 + R3 (`probes/ocr_merge_sheet.py

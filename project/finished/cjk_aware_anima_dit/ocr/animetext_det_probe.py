@@ -23,7 +23,7 @@ Precision proxy: YOLO boxes overlapping nothing known, split by whether the
 page has any known text; contact sheets under ``output/tests/ocr_animetext/``
 (green = YOLO, red = PP v3, blue = mask component, magenta = hybrid record).
 
-With reads: YOLO boxes → SfxReader (guard + ≥ 2 chars + has_script) become
+With reads: YOLO boxes → OcrReader (guard + ≥ 2 chars + has_script) become
 records → floor_count, best-match sim to manga-ocr on the 40 A/B pages, and the
 hand-SFX exact / sim through the best-IoU YOLO box.
 """
@@ -212,7 +212,7 @@ def run_read(opts, pages: list[Path]) -> None:
     if not n:
         return
     t0 = time.time()
-    reader = sfx.SfxReader.load(
+    reader = sfx.OcrReader.load(
         device=opts.device,
         base_dir=REPO / "models/paddleocr_vl_1.6",
         batch_size=opts.bs,

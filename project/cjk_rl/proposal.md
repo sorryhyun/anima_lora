@@ -199,7 +199,7 @@ After P1 passes:
 - **S1**: SFX prompts mixed into the RL pool with a style term. A read reward pulls
   stylised lettering toward plain type. Candidate style terms: the reader's
   SFX-vs-text kind score, or a style distance to the step-0 render's text crop. The
-  SFX reader reads ~350 / 597 strict on real sincos SFX, so this reward is the
+  OCR reader reads ~350 / 597 strict on real sincos SFX, so this reward is the
   noisier of the two.
 
 ## 6. Risks

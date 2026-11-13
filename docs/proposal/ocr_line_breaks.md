@@ -5,7 +5,7 @@ Status: reader and captions done (2026-11-09). Reader v5 (Hub `v5/`, anime_tools
 `\n` and `layout_json` turns it into a newline in the text item. Open: re-reading the swap_text
 pool (its `ocr.json` reads predate v5), the gate below, and re-caching TE for exports with OCR clauses.
 
-Goal: the manga reader (PaddleOCR-VL v4, `anime_tools.ocr.sfx`) returns a text block's line
+Goal: the manga reader (PaddleOCR-VL v4, `anime_tools.ocr.reader`) returns a text block's line
 breaks, and the swap_text captions carry them into each layout-JSON item as `\n`. Then the DiT
 is told where a balloon's lines break instead of choosing the breaks itself.
 
@@ -15,7 +15,7 @@ is told where a balloon's lines break instead of choosing the breaks itself.
   (`textnorm.training_target`) collapses every whitespace run, newlines included, to one ASCII
   space. 3.80 % of the COO / Manga109 targets carried a newline or U+3000. v4 was trained to
   answer one line.
-- **Reader output:** `anime_tools/ocr/sfx.py` normalises the decode with `" ".join(text.split())`
+- **Reader output:** `anime_tools/ocr/reader.py` normalises the decode with `" ".join(text.split())`
   ("a column boundary stays a space").
 - **Detector:** AnimeText boxes text blocks (a balloon, a narration box), not lines, so one
   caption item is a whole block.

@@ -90,7 +90,7 @@ pools from another rng state than the builds before.
 
 ## 6. The reader (`probes/jamo_vl.py`, 10-11)
 
-v4 = anime_tools 0.7.10's `SfxReader` (the `ocr-reader` line's manga
+v4 = anime_tools 0.7.10's `OcrReader` (the `ocr-reader` line's manga
 reader). Calibration on font-drawn lone glyphs (4 faces, 64 px, in a bubble;
 `results/20261011-1352-jamo-vl-cal/`), free read:
 
