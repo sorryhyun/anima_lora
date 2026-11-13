@@ -29,13 +29,12 @@ by other tests that legitimately import torch):
     (``_filtered_files`` + ``count_preprocess_caches`` + ``_count_resized``,
     ~26k ``stat`` calls). Scales with dataset size, so a big corpus makes this
     the dominant term.
-  * ``tensorboard._refresh_runs`` ~0.26s — builds one row widget per run under
-    ``output/logs`` (661 of them here) for a panel that starts hidden. Scales
-    with run count.
   * ~0.45s of genuine Qt widget-tree construction (``addWidget``).
 
-  Both scans are eager and could be deferred, but they feed UI the user sees
-  immediately; neither has been moved.
+  Started in MOSS mode (``model_mode`` in ``gui_settings.json``) the MOSS
+  panel is built too, ~0.9s of widgets (2026-11-13); its cache scan runs after
+  show. The TensorBoard run list (one row per run, ~0.33s for 828) is built on
+  the panel's first show.
 """
 
 from __future__ import annotations

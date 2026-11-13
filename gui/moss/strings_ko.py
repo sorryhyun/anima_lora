@@ -100,6 +100,12 @@ FIELDS: dict[str, tuple[str, str]] = {
     "overwrite": ("덮어쓰기", "캐시가 최신이어도 다시 인코딩"),
     "skip_text": ("텍스트 건너뛰기", "텍스트 인코더 단계를 건너뜀"),
     "skip_latents": ("잠재변수 건너뛰기", "VAE 인코딩을 건너뜀"),
+    "caption_variants": (
+        "캡션 변형",
+        "Anima 캡션 단계의 변형({stem}.variants.txt의 v1, v2, …: 머리 태그 뒤 순서를 섞고 "
+        "태그 드롭아웃을 건 캡션)도 embeds_v1…로 인코딩합니다. 각각 캡션 형식대로 변환. "
+        "학습에서 caption_variant_rate로 씁니다",
+    ),
     "distill_teacher": (
         "자기 증류 teacher 캐시",
         "자기 증류(Recipe → 자기 증류) 학습이 읽는 teacher 임베딩도 만듭니다: 각 이미지 + 캡션을 TE의 vision tower에 통과시켜 {stem}.moss_vis.safetensors로 저장. 바뀐 파일만 다시 인코딩하고, TE 로드 후 30장에 1분 정도. 꺼 두어도 자기 증류 Train이 없거나 낡은 teacher를 먼저 만듭니다",

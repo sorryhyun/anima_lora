@@ -312,7 +312,15 @@ class TensorBoardPanel(QGroupBox):
                 pass
         return self._current_run_name is not None and d.name == self._current_run_name
 
+    def showEvent(self, event):  # noqa: N802 — Qt event handler name
+        super().showEvent(event)
+        self._refresh_runs()
+
     def _refresh_runs(self) -> None:
+        # One row widget per run (800+ here): built only while the panel shows,
+        # and on its first show.
+        if not self.isVisible():
+            return
         if self._log_dir is None or not self._log_dir.exists():
             return
 

@@ -99,6 +99,12 @@ FIELDS: dict[str, tuple[str, str]] = {
     "overwrite": ("上書き", "キャッシュが最新でも再エンコードする"),
     "skip_text": ("テキストをスキップ", "テキストエンコーダの処理をスキップ"),
     "skip_latents": ("潜在変数をスキップ", "VAE エンコードをスキップ"),
+    "caption_variants": (
+        "キャプション変形",
+        "Anima キャプション段の変形({stem}.variants.txt の v1, v2, …: 先頭タグの後ろを並べ替え、"
+        "タグドロップアウトをかけたキャプション)も embeds_v1… としてエンコードします。それぞれキャプション形式で変換。"
+        "学習では caption_variant_rate で使います",
+    ),
     "distill_teacher": (
         "自己蒸留 teacher キャッシュ",
         "自己蒸留(Recipe → 自己蒸留)の学習が読む teacher 埋め込みも作ります: 各画像 + キャプションを TE の vision tower に通し {stem}.moss_vis.safetensors に保存。変わったファイルだけ再エンコードし、TE 読み込み後 30 枚で約 1 分。オフでも自己蒸留の Train が欠けた・古い teacher を先に作ります",

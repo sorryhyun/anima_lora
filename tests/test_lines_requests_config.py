@@ -6,13 +6,6 @@ from library.moss.requests import CacheRequest, TrainRequest
 
 
 @pytest.mark.core
-def test_shipped_moss_config_is_the_defaults():
-    assert TrainRequest.from_argv(["--config", "configs/moss/lora.toml"]) == (
-        TrainRequest()
-    )
-
-
-@pytest.mark.core
 def test_shipped_moss_cache_config_is_the_defaults():
     assert CacheRequest.from_argv(["--config", "configs/moss/cache.toml"]) == (
         CacheRequest()

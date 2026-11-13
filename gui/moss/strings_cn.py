@@ -86,6 +86,11 @@ FIELDS: dict[str, tuple[str, str]] = {
     "overwrite": ("覆盖", "即使缓存是最新的也重新编码"),
     "skip_text": ("跳过文本", "跳过文本编码器"),
     "skip_latents": ("跳过潜变量", "跳过 VAE 编码"),
+    "caption_variants": (
+        "描述变体",
+        "同时把 Anima 描述步骤的变体（{stem}.variants.txt 中的 v1、v2、…：头部标签之后打乱顺序并做标签 dropout 的描述）"
+        "编码为 embeds_v1…，各自按描述格式转换。训练时由 caption_variant_rate 使用",
+    ),
     "distill_teacher": (
         "自蒸馏 teacher 缓存",
         "同时生成自蒸馏（配方 → 自蒸馏）训练读取的 teacher 嵌入：每张图像 + 描述经过 TE 的 vision tower，存为 {stem}.moss_vis.safetensors。只重新编码有变化的文件，TE 加载后 30 张约 1 分钟。不勾选时，自蒸馏的 Train 也会先生成缺失或过期的 teacher",

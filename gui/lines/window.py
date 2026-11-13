@@ -560,7 +560,9 @@ class LinePanel(DaemonJobMixin, QWidget):
         self.train_form.watch(self._rescan_timer.start)
         self.test_form.watch(self._rescan_timer.start)
         self._set_busy(False)
-        self._rescan()
+        # The first scan reads every cache folder (~1 s on 30 MOSS sets); it
+        # runs after the window shows.
+        QTimer.singleShot(0, self, self._rescan)
         self._show_test(self._latest_test_dir())
         QTimer.singleShot(0, self._reattach)
         # While idle and shown, pick up a line job that started elsewhere (the

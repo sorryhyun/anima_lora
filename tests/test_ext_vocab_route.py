@@ -54,7 +54,7 @@ def test_segment_runs_honours_the_route():
 
 
 def _tok_and_mapping():
-    if not EXT_PREFIX.with_suffix(".json").exists():
+    if not all(EXT_PREFIX.with_suffix(s).exists() for s in (".json", ".safetensors")):
         pytest.skip("ext_embed assets not present (_archive/bench/cjk_adapter/assets)")
     from anima_lora import default_checkpoints
     from library.anima import strategy as strategy_anima

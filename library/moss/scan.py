@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import struct
 from collections.abc import Iterator
@@ -18,7 +19,6 @@ from pathlib import Path
 
 from library.env import resolve_under_home
 from library.lines.scan import CacheCounts, CacheScan
-from library.lines.scan import cache_counts as _cache_counts
 
 IMAGE_EXTS = (".webp", ".png", ".jpg", ".jpeg")
 TE_SUFFIX = ".moss_te.safetensors"
@@ -76,6 +76,13 @@ def original_tree(src: Path) -> tuple[Path | None, frozenset[Path]]:
     return source / rel, frozenset(source / r for r in rels)
 
 
+def _tree_names(root: Path) -> dict[str, list[str]]:
+    """``{folder: its file names}`` for every folder under ``root``: one
+    ``os.walk`` instead of a ``Path`` and a stat per file (the GUI scans tens of
+    thousands of cache files at launch)."""
+    return {d: files for d, _, files in os.walk(root)}
+
+
 def source_pairs(
     src: Path, originals: Path | None = None, skip: frozenset[Path] = frozenset()
 ) -> tuple[list[Path], list[tuple[str, Path, Path]]]:
@@ -86,17 +93,30 @@ def source_pairs(
     With ``originals`` (a tree mirroring ``src``), a caption under ``src`` with
     no image beside it pairs with the image at the same relative folder and stem
     there, unless that image is in ``skip``."""
+    names = _tree_names(src)
     images = sorted(
-        p for p in src.rglob("*") if p.suffix.lower() in IMAGE_EXTS and p.is_file()
+        Path(d, n)
+        for d, ns in names.items()
+        for n in ns
+        if os.path.splitext(n)[1].lower() in IMAGE_EXTS
     )
     roots = {p: src for p in images}
+
+    def has_caption(folder: Path, stem: str) -> bool:
+        return f"{stem}.txt" in names.get(str(folder), ())
+
     if originals is not None and originals.is_dir():
         have = {p.relative_to(src).with_suffix("") for p in images}
-        for p in sorted(originals.rglob("*")):
-            if p.suffix.lower() not in IMAGE_EXTS or not p.is_file() or p in skip:
+        for p in sorted(
+            Path(d, n)
+            for d, ns in _tree_names(originals).items()
+            for n in ns
+            if os.path.splitext(n)[1].lower() in IMAGE_EXTS
+        ):
+            if p in skip:
                 continue
             rel = p.relative_to(originals).with_suffix("")
-            if rel in have or not (src / rel.parent / f"{p.stem}.txt").exists():
+            if rel in have or not has_caption(src / rel.parent, p.stem):
                 continue
             have.add(rel)
             images.append(p)
@@ -107,9 +127,9 @@ def source_pairs(
     pairs = []
     for p in images:
         rel = p.relative_to(roots[p])
-        caption = src / rel.parent / f"{p.stem}.txt"
-        if not caption.exists():
+        if not has_caption(src / rel.parent, p.stem):
             continue
+        caption = src / rel.parent / f"{p.stem}.txt"
         stem = p.stem
         if counts[stem] > 1:
             stem = "__".join((*rel.parent.parts, p.stem))
@@ -188,6 +208,14 @@ def cache_text_encoder(cache: Path) -> str:
 
 
 def cache_counts(cache: Path) -> CacheCounts:
-    return _cache_counts(
-        cache, TE_SUFFIX, lambda d: (stem for stem, *_ in latent_files(d))
-    )
+    """``library.lines.scan.cache_counts`` over one ``os.scandir`` of ``cache``."""
+    if not cache.is_dir():
+        return CacheCounts(0, 0, 0)
+    names = [e.name for e in os.scandir(cache)]
+    text = {n[: -len(TE_SUFFIX)] for n in names if n.endswith(TE_SUFFIX)}
+    latents = {
+        m["stem"]
+        for n in names
+        if n.endswith(LATENT_SUFFIX) and (m := LATENT_RE.match(n)) is not None
+    }
+    return CacheCounts(len(text), len(latents), len(text & latents))
