@@ -28,7 +28,19 @@ target is drawn well (hard_to_sanitize2's red balloons fill clean, no 1631 blob)
 signature and hard_to_sanitize1's watermark go where v3 keeps them; usual_case1's corner watermark
 leaves residue on s1 / s2, and the anger mark on hard_to_sanitize1 goes with its bubble. Tone
 outside the targets, mean over 15 renders: |ΔL| 0.72 / |Δb| 1.18 (v3 0.26 / 0.34, 1631 1.41 / 0.96),
-l1_out 8.69 (v3 8.08).
+l1_out 8.69 (v3 8.08). The user's verdict (2026-11-14): close to v3, each better at something; no call.
+
+2026-11-14, the same pair on uncensor and swap_text, region_weight 2 throughout:
+`configs/1114_0002.toml` (uncensor, kv block, 20 epochs, 36.7 min), `1114_0003.toml` (its
+shared-bank twin, 45.0 min), `1114_0049.toml` (swap_text v4's recipe from the kv block, 336.6 min:
+the kv arm peaks ~1.6 GB above v4 and ran three OOMs before swap 41 / budget 0.02 / host EMA, 3.47
+s/step against v4's 2.58). Renders: `output/tests/moss_i2i_uncensor/kv_vs_bank/` (four training
+pages, seeds 0–2, beside the int8_e20 LoRA) and
+`output/moss_i2i_eval/swap_text/results/cmp_v4_vs_kv_1114_0049/`. **Uncensor, the user's verdict:
+kv keeps the page better (stray Japanese dialogue left in place far more often), the non-kv LoRAs
+fill the mosaic better; pick by the page.** swap_text: three sheets read (mine), no clear defect
+inside the boxes from kv; the rest unread. kv LoRAs run in ComfyUI from MOSS Toolkit 0.14.0 (the
+Reference node builds the ref K/V on Base with the bank).
 
 The problem that sets the order is Korean strokes. colorize v5 and swap_text ksplit e2 both
 write the right syllables with soft, uneven strokes (user, 2026-11-07), and swap_text
