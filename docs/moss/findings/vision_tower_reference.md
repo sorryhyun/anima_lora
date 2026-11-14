@@ -87,3 +87,24 @@ CFG 3, uncond `''` skipping block 22, seed 1. Captions are layout JSON. Arms:
 
 On colorize, a LoRA trained on these tokens alone reached luma r 0.42; adding a half-size
 VAE reference on `r = 1` reached 0.97 (`project/finished/moss_lora/done/i2i.md`).
+
+## Follow-up: the image rows as a detector for sanitize (measured 2026-11-14)
+
+`bench/moss_i2i_eval/vision_detect_probe.py`, run `output/tests/vision_detect_probe/20261114-1411`:
+189 staged sanitize pairs, INT8 TE, a linear probe on the image rows of the texted page for
+"the clean twin differs in this 32 px cell", 5 folds over artists. Held-out AP / recall of
+faint cells at 1 % false positives:
+
+| features | rows added per page | AP | faint recall |
+|---|---|---|---|
+| image rows, image alone | 1,007 | 0.669 | 0.094 |
+| image rows, sanitize caption before the image | 1,007 | 0.665 | 0.090 |
+| image rows, neutral caption before the image | 1,007 | 0.661 | 0.085 |
+| image rows at a quarter of the pixels | 242 | 0.496 | 0.027 |
+| the cached reference latent, 2×2 cells, read linearly | 0 | 0.708 | 0.229 |
+
+The order of caption and image and the caption's content change nothing a location probe
+reads. The rows are behind a linear read of the latent the DiT already holds, on faint cells in
+all five folds. On the eval pages the probe fires on `usual_case1`'s handle (which v3 leaves)
+among 13–23 % of the page's cells, and not on `hard_to_sanitize3`'s signature. No LoRA was
+trained with `ref_vision` on sanitize.
