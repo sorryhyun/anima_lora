@@ -132,8 +132,12 @@ or character-heavy captions are untested). By default (`caption_format` on the c
 `prompt_format` on generate, both `layout_json`) the Anima caption is mapped onto MOSS's
 layout-JSON prompt (`anime_tools.captions.layout_json`):
 
-- rating / meta, characters, series and artists (with their `@`) get their own `summary`
-  keys; the rating collapses to `sfw` (safe, sensitive) or `nsfw` (nsfw, explicit);
+- meta, characters, series and artists (with their `@`) get their own `summary` keys;
+- the rating tag (safe / general / sensitive / nsfw / questionable / explicit) is dropped
+  before the TE, in every caption format, from the plain caption too and from `sfw` / `nsfw`
+  in a layout-JSON `summary.meta` (training and generate alike). The reference prompts carry
+  no rating, and on caststation (2026-11-14) a LoRA trained without it rendered with or
+  without `sfw` in the prompt alike, as did one trained with it;
 - pixel-describing meta tags (`cropped`, `scan`, …) and the remaining tags become
   `summary.caption`;
 - each position clause becomes a `character` item with its relative position (never a box),

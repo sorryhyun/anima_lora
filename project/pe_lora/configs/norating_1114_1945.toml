@@ -1,0 +1,26 @@
+# caststation, rating tag removed: the leading safe / sensitive / nsfw tag is stripped from all 30
+# captions (src post_image_dataset/moss_src/caststation_norating, images symlinked to the resized
+# tree), so the layout JSON carries no summary.meta sfw/nsfw and the 20 % plain-caption steps carry
+# no rating either. Everything else = caststation_e16_sft (layout_json + sure tail, int8 TE,
+# plain FM, 30 images x 16 epochs = 480 steps, lr 1e-4, plain_caption_rate 0.2); that LoRA is the control.
+cache = "post_image_dataset/moss/caststation_norating_layout_sure"
+output = "output/ckpt_moss/norating_1114_1945.safetensors"
+model = "base"
+epochs = 16
+algo = "lora"
+rank = 32
+down_init = "kaiming"
+optimizer = "muon"
+lr = 1e-4
+warmup_ratio = 0.05
+plain_caption_rate = 0.2
+ema_window = 0.139
+lora_dtype = "bf16"
+int8 = "stream"
+stream = "fp32"
+ema_card = true
+blocks_to_swap = 0
+activation_memory_budget = 0.3
+swap_h2d_only = true
+compile = true
+expandable_segments = true

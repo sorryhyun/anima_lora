@@ -209,6 +209,38 @@ def test_layout_json_passes_layout_captions_through(monkeypatch):
     assert not sources.is_layout_json("{broken, tags")
 
 
+def test_drop_rating():
+    from library.moss.caching.sources import drop_rating
+
+    assert drop_rating("safe, nsfw, 1girl, smile") == "1girl, smile"
+    assert (
+        drop_rating("1girl, explicit, long hair. On the left, smile.")
+        == "1girl, long hair. On the left, smile."
+    )
+    quoted = '1girl. Japanese text reads as "safe, nsfw".'
+    assert drop_rating(quoted) == quoted
+    prose = "A girl sits on a bench; general vibes."
+    assert drop_rating(prose) == prose
+    assert (
+        drop_rating('{"summary":{"meta":["sfw"],"characters":["x"]}}')
+        == '{"summary":{"characters":["x"]}}'
+    )
+    assert (
+        drop_rating('{"summary":{"meta":["nsfw","absurdres"]}}')
+        == '{"summary":{"meta":["absurdres"]}}'
+    )
+
+
+def test_find_pairs_drops_the_rating_from_caption_and_plain(tmp_path):
+    src = tmp_path / "src"
+    src.mkdir()
+    Image.new("RGB", (32, 32)).save(src / "a.png")
+    (src / "a.txt").write_text("sensitive, 1girl, smile", encoding="utf-8")
+    [p] = find_pairs(src, "text")
+    assert p.caption == "1girl, smile"
+    assert p.source_sha == caption_sha("sensitive, 1girl, smile")
+
+
 def test_find_pairs_prefers_a_current_layout_sidecar(tmp_path, monkeypatch):
     import os
 

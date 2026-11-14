@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -73,12 +74,15 @@ def find_pairs(
         if caption_format == "layout_json":
             sidecar = layout_sidecar(path)
             if sidecar.exists() and sidecar.stat().st_mtime >= path.stat().st_mtime:
-                caption = sidecar.read_text(encoding="utf-8").strip()
+                caption = drop_rating(sidecar.read_text(encoding="utf-8").strip())
                 from_sidecar += 1
         if caption is None:
             convert = convert or caption_converter(caption_format)
             caption = convert(raw)
-        plain = raw if caption_format == "layout_json" and caption != raw else ""
+        unrated = drop_rating(raw)
+        plain = (
+            unrated if caption_format == "layout_json" and caption != unrated else ""
+        )
         var = ()
         if variants:
             convert = convert or caption_converter(caption_format)
@@ -113,8 +117,11 @@ def manifest_pairs(
         if stem in refs:
             raise SystemExit(f"{path}: stem {stem!r} appears twice")
         raw = (root / row["caption"]).read_text(encoding="utf-8").strip()
-        caption = convert(raw) if convert else raw
-        plain = raw if caption_format == "layout_json" and caption != raw else ""
+        unrated = drop_rating(raw)
+        caption = convert(raw) if convert else unrated
+        plain = (
+            unrated if caption_format == "layout_json" and caption != unrated else ""
+        )
         pairs.append(Pair(stem, root / row["target"], caption, caption_sha(raw), plain))
         refs[stem] = root / row["cond"]
     return pairs, refs
@@ -138,15 +145,16 @@ def caption_converter(caption_format: str):
     ``layout_json`` passes a caption that already is layout JSON through as
     written (converting it again would nest the whole object in
     ``summary.caption``), and loads the tag CSV only for the first caption that
-    needs converting."""
+    needs converting. Both formats drop the rating (``drop_rating``)."""
     if caption_format == "text":
-        return lambda raw: raw
+        return drop_rating
     if caption_format != "layout_json":
         raise SystemExit(f"unknown caption_format {caption_format!r}")
     kb = None
 
     def convert(raw: str) -> str:
         nonlocal kb
+        raw = drop_rating(raw)
         if is_layout_json(raw):
             return raw
         from anime_tools.captions.layout_json import layout_json
@@ -156,6 +164,55 @@ def caption_converter(caption_format: str):
         return layout_json(raw, kb)
 
     return convert
+
+
+# layout_json's binary rating in ``summary.meta``.
+_LAYOUT_RATINGS = frozenset({"sfw", "nsfw"})
+
+
+def drop_rating(raw: str) -> str:
+    """``raw`` without its rating: MOSS captions carry none (the reference prompts
+    have no rating field; decided 2026-11-14). A tag caption loses the flat tags
+    ``canonical_rating`` recognises (safe / general / sensitive / nsfw /
+    questionable / explicit), position and text clauses untouched; a layout-JSON
+    prompt loses ``sfw`` / ``nsfw`` from ``summary.meta``, and an emptied ``meta``
+    goes. Anything else, prose included, comes back as is."""
+    if is_layout_json(raw):
+        obj = json.loads(raw)
+        summary = obj["summary"]
+        meta = summary.get("meta") if isinstance(summary, dict) else None
+        if not isinstance(meta, list) or not _LAYOUT_RATINGS.intersection(meta):
+            return raw
+        kept = [m for m in meta if m not in _LAYOUT_RATINGS]
+        if kept:
+            summary["meta"] = kept
+        else:
+            del summary["meta"]
+        return json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+
+    from anime_tools.captions.position_clauses import compose_caption, parse_caption
+    from anime_tools.captions.taxonomy import canonical_rating
+
+    parsed = parse_caption(raw)
+    rated = [t for t in dict.fromkeys(parsed.flat_tags) if canonical_rating(t)]
+    if not rated:
+        return raw
+    # Cut the tags out of the flat head only, so a quoted text clause keeps its words.
+    end = 0
+    for tag in parsed.flat_tags:
+        end = raw.index(tag, end) + len(tag)
+    head, tail = raw[:end], raw[end:]
+    alt = "|".join(re.escape(t) for t in rated)
+    lead = re.compile(rf"^(?:{alt})(?:, |$)")
+    while (cut := lead.sub("", head, count=1)) != head:
+        head = cut
+    head = re.sub(rf", (?:{alt})(?=,|$)", "", head)
+    out = (head + tail).lstrip(". ") if not head else head + tail
+    kept = tuple(t for t in parsed.flat_tags if t not in rated)
+    again = parse_caption(out)
+    if again.flat_tags != kept or again.clauses != parsed.clauses:
+        return compose_caption(kept, parsed.clauses)
+    return out
 
 
 def tag_knowledge_base():
