@@ -1,0 +1,1473 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anima Turbo WebGPU</title>
+<style>
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #eef0f3;
+  --border: #d9dde3;
+  --text: #16191d;
+  --muted: #5d6673;
+  --accent: #5b5bd6;
+  --accent-text: #ffffff;
+  --ok: #1f8a4c;
+  --warn: #a86400;
+  --err: #c4323a;
+  --radius: 10px;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1115;
+    --surface: #171a20;
+    --surface-2: #1f232b;
+    --border: #2c323c;
+    --text: #e8eaee;
+    --muted: #949cab;
+    --accent: #8b8cf0;
+    --accent-text: #0f1115;
+    --ok: #4cc27f;
+    --warn: #e0a63a;
+    --err: #f0656c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1115;
+  --surface: #171a20;
+  --surface-2: #1f232b;
+  --border: #2c323c;
+  --text: #e8eaee;
+  --muted: #949cab;
+  --accent: #8b8cf0;
+  --accent-text: #0f1115;
+  --ok: #4cc27f;
+  --warn: #e0a63a;
+  --err: #f0656c;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", "Noto Sans KR", "Noto Sans JP", sans-serif;
+}
+a { color: var(--accent); }
+header {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px;
+  padding: 16px 20px 12px; border-bottom: 1px solid var(--border);
+}
+header h1 { font-size: 18px; margin: 0; letter-spacing: -0.01em; }
+header .sub { color: var(--muted); font-size: 13px; }
+main {
+  display: grid; grid-template-columns: minmax(320px, 400px) 1fr; gap: 16px;
+  padding: 16px 20px 24px; max-width: 1500px; margin: 0 auto;
+}
+@media (max-width: 900px) {
+  main { grid-template-columns: 1fr; padding: 12px 16px 20px; }
+  header { padding: 14px 16px 10px; }
+}
+.panel {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0;
+}
+.col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.row > .grow { flex: 1; min-width: 0; }
+textarea, input[type="number"], input[type="text"], select {
+  width: 100%; background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; font: inherit;
+}
+textarea { resize: vertical; min-height: 120px; line-height: 1.45; }
+textarea:focus, input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+button {
+  font: inherit; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2);
+  color: var(--text); padding: 7px 12px; cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button.primary {
+  background: var(--accent); color: var(--accent-text); border-color: var(--accent);
+  font-weight: 600; padding: 10px 14px; font-size: 15px;
+}
+button.small, a.btn { padding: 4px 9px; font-size: 13px; }
+a.btn {
+  display: inline-block; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2);
+  color: var(--text); text-decoration: none;
+}
+a.btn:hover { border-color: var(--accent); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button { padding: 4px 10px; font-size: 13px; }
+.chips button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.hint { color: var(--muted); font-size: 12.5px; }
+.mono { font-family: var(--mono); font-size: 12.5px; }
+.status-line { min-height: 1.5em; font-size: 13.5px; }
+.status-line.err { color: var(--err); }
+.status-line.ok { color: var(--ok); }
+.bar { height: 8px; background: var(--surface-2); border-radius: 99px; overflow: hidden; border: 1px solid var(--border); }
+.bar > div { height: 100%; width: 0%; background: var(--accent); transition: width 0.2s; }
+.bar.indet > div { width: 30%; animation: indet 1.2s ease-in-out infinite; }
+@keyframes indet { 0% { margin-left: -30%; } 100% { margin-left: 100%; } }
+.gpu { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 13px; }
+.gpu dt { color: var(--muted); }
+.gpu dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.yes { color: var(--ok); } .no { color: var(--err); } .meh { color: var(--warn); }
+.callout {
+  border: 1px solid var(--border); border-left: 3px solid var(--warn); background: var(--surface-2);
+  border-radius: 8px; padding: 8px 10px; font-size: 13px;
+}
+.callout.err { border-left-color: var(--err); }
+.callout code { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+details > summary { cursor: pointer; color: var(--muted); font-size: 13px; user-select: none; }
+details[open] > summary { margin-bottom: 8px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.grid2 label, .field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; }
+.check input { margin-top: 3px; }
+#log {
+  font-family: var(--mono); font-size: 11.5px; white-space: pre-wrap; max-height: 260px; overflow: auto;
+  background: var(--surface-2); border-radius: 8px; padding: 8px; margin: 0; color: var(--muted);
+}
+.viewer {
+  display: flex; align-items: center; justify-content: center; min-height: 420px;
+  background: var(--surface-2); border-radius: 8px; overflow: hidden; position: relative;
+}
+.viewer img { max-width: 100%; max-height: 78vh; display: block; image-rendering: auto; }
+.viewer .empty { color: var(--muted); text-align: center; padding: 24px; max-width: 420px; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 13px; color: var(--muted); }
+.meta .grow { flex: 1; }
+.thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.thumbs button { padding: 0; border-radius: 8px; overflow: hidden; aspect-ratio: 1; background: var(--surface-2); }
+.thumbs button[aria-current="true"] { outline: 2px solid var(--accent); outline-offset: 1px; }
+.thumbs img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.files { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.files td { padding: 2px 0; border-bottom: 1px dashed var(--border); }
+.files td:last-child { text-align: right; font-family: var(--mono); white-space: nowrap; padding-left: 8px; }
+footer { color: var(--muted); font-size: 12px; padding: 0 20px 24px; max-width: 1500px; margin: 0 auto; }
+footer p { margin: 4px 0; }
+footer .disclaimer { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Anima Turbo · 4-step · WebGPU</h1>
+  <span class="sub">Runs entirely in your browser. Weights download once from
+    <a href="https://huggingface.co/sorryhyun/anima-turbo-4step/tree/main/onnx" target="_blank" rel="noopener">sorryhyun/anima-turbo-4step</a>
+    and stay cached on this device.</span>
+</header>
+
+<main>
+  <div class="col">
+    <section class="panel" aria-labelledby="gpu-h">
+      <div class="label" id="gpu-h">This device</div>
+      <dl class="gpu" id="gpu"><dt>WebGPU</dt><dd>checking…</dd></dl>
+      <div id="gpu-callout" hidden></div>
+    </section>
+
+    <section class="panel" aria-labelledby="models-h">
+      <div class="row"><div class="label grow" id="models-h">Model files</div><span class="hint mono" id="models-sum">…</span></div>
+      <div class="bar" id="dl-bar"><div></div></div>
+      <div class="hint" id="dl-text">Checking the cache…</div>
+      <div class="row">
+        <button id="dl-btn" disabled>Download</button>
+        <button id="clear-btn" class="small" disabled>Clear cache</button>
+      </div>
+      <details>
+        <summary>Files</summary>
+        <table class="files" id="files"></table>
+      </details>
+    </section>
+
+    <section class="panel" aria-labelledby="prompt-h">
+      <div class="label" id="prompt-h">Prompt</div>
+      <textarea id="prompt" spellcheck="false"></textarea>
+      <div class="field">
+        <span>Aspect</span>
+        <div class="chips" id="aspects"></div>
+      </div>
+      <div class="field">
+        <span>Size</span>
+        <div class="chips" id="scales"></div>
+      </div>
+      <div class="grid2">
+        <label>Width<input type="number" id="w" step="16" min="256" max="1536"></label>
+        <label>Height<input type="number" id="h" step="16" min="256" max="1536"></label>
+      </div>
+      <div class="hint" id="size-hint"></div>
+      <div class="grid2">
+        <label>Seed
+          <div class="row" style="flex-wrap:nowrap">
+            <input type="number" id="seed" min="0" max="4294967295" class="grow">
+            <button class="small" id="dice" title="Random seed" aria-label="Random seed">🎲</button>
+          </div>
+        </label>
+        <label>Images
+          <input type="number" id="count" min="1" max="16" value="1">
+        </label>
+      </div>
+      <label class="check"><input type="checkbox" id="rand-seed" checked><span>New random seed for every image</span></label>
+      <details>
+        <summary>Advanced</summary>
+        <div class="col" style="gap:10px">
+          <div class="grid2">
+            <label>Steps<input type="number" id="steps" min="1" max="12" value="4"></label>
+            <label>Sampler
+              <select id="sampler">
+                <option value="er_sde">ER-SDE (default)</option>
+                <option value="euler">Euler</option>
+              </select>
+            </label>
+          </div>
+          <label class="check"><input type="checkbox" id="keep"><span>Keep the text encoder and DiT on the GPU together (~3.5 GB of weights). Faster on a new prompt; turn off if loading fails.</span></label>
+          <div class="hint">CFG is fixed at 1 and the flow shift at 3, as the turbo was distilled. Changing steps away from 4 leaves the distilled schedule.</div>
+        </div>
+      </details>
+      <button class="primary" id="gen-btn" disabled>Generate</button>
+      <div class="hint"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> in the prompt also generates.</div>
+      <div class="bar" id="run-bar" hidden><div></div></div>
+      <div class="status-line" id="status"></div>
+      <details>
+        <summary>Log</summary>
+        <pre id="log"></pre>
+      </details>
+    </section>
+  </div>
+
+  <div class="col">
+    <section class="panel">
+      <div class="viewer" id="viewer">
+        <div class="empty" id="empty">
+          The first image needs the model files (≈3.4 GB, once) and compiles GPU shaders for its size.
+          Later images at the same size take a few seconds.
+        </div>
+        <img id="main-img" alt="" hidden>
+      </div>
+      <div class="meta" id="meta" hidden>
+        <span id="meta-text" class="grow"></span>
+        <button class="small" id="reuse-btn">Use prompt &amp; seed</button>
+        <a id="save-link" class="btn" download>Save PNG</a>
+      </div>
+      <div class="thumbs" id="thumbs"></div>
+    </section>
+  </div>
+</main>
+
+<footer>
+  <p>The CircleStone Model is licensed by CircleStone Labs LLC under the
+    <a href="https://huggingface.co/sorryhyun/anima-turbo-4step/blob/main/LICENSE.md" target="_blank" rel="noopener">CircleStone Non-Commercial License</a>.
+    Copyright CircleStone Labs LLC. The weights used here are a modified Derivative of
+    <a href="https://huggingface.co/circlestone-labs/Anima" target="_blank" rel="noopener">Anima</a>
+    (turbo distillation merged, int8 ONNX), distributed by sorryhyun; they are not an official CircleStone Labs product
+    and are not endorsed by CircleStone Labs LLC. Non-commercial use of the model only; generated images may be used commercially.
+    Built on NVIDIA Cosmos.</p>
+  <p class="disclaimer">This page only downloads the model files from Hugging Face and runs them on your own device.
+    Nothing is generated or stored on a server. You are solely responsible for the prompts you enter, the images you generate,
+    and how you use them. Provided as is, without warranty of any kind.</p>
+  <p class="disclaimer">이 페이지는 Hugging Face의 모델 파일을 내려받아 사용자의 기기에서 실행하는 역할만 하며, 서버에서 생성하거나 저장하는 것은 없습니다.
+    입력한 프롬프트와 생성한 이미지, 그 사용에 대한 모든 책임은 사용자에게 있습니다. 어떠한 보증도 없이 있는 그대로 제공됩니다.</p>
+</footer>
+
+<!-- The whole pipeline runs in this module worker: downloads into OPFS, tokenizers,
+     onnxruntime-web sessions, the sampler. The page only draws. -->
+<script type="text/plain" id="worker-src">
+import * as ort from 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/ort.webgpu.bundle.min.mjs';
+
+const REPO = 'sorryhyun/anima-turbo-4step';
+const REV = 'main';
+const RESOLVE = `https://huggingface.co/${REPO}/resolve/${REV}/`;
+const TREE = `https://huggingface.co/api/models/${REPO}/tree/${REV}/onnx?recursive=true`;
+const DIT = 'onnx/int8/dit_int8_v4';
+const SEQ = 512;
+const DIM = 1024;
+const Z = 16;
+const SHIFT = 3.0;
+const MAX_TOKENS = 2400;
+
+ort.env.wasm.numThreads = 1;
+ort.env.logLevel = 'error';
+try { ort.env.webgpu.powerPreference = 'high-performance'; } catch {}
+
+const post = (m, transfer) => self.postMessage(m, transfer || []);
+const log = (msg) => post({ type: 'log', msg });
+const phase = (text, pct = null) => post({ type: 'phase', text, pct });
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const fmtMB = (b) => (b / 1048576).toFixed(0) + ' MB';
+const secs = (ms) => (ms / 1000).toFixed(1) + 's';
+
+class FatalError extends Error {}
+
+// ───────────── OPFS file cache ─────────────
+// One file per downloaded object, named `<path with / → __>@<git oid[:10]>[@<range>]`,
+// so a file replaced on the Hub gets a new name and the old copy is pruned.
+
+let _dir;
+function opfs() {
+  _dir ??= (async () => {
+    try {
+      if (!('createSyncAccessHandle' in FileSystemFileHandle.prototype)) return null;
+      const root = await navigator.storage.getDirectory();
+      return await root.getDirectoryHandle('anima-turbo-4step', { create: true });
+    } catch {
+      return null;
+    }
+  })();
+  return _dir;
+}
+
+async function writeSmall(name, text) {
+  const dir = await opfs();
+  if (!dir) return;
+  const ah = await (await dir.getFileHandle(name, { create: true })).createSyncAccessHandle();
+  try {
+    const bytes = new TextEncoder().encode(text);
+    ah.truncate(0);
+    ah.write(bytes, { at: 0 });
+    ah.flush();
+  } finally {
+    ah.close();
+  }
+}
+
+async function readSmall(name) {
+  const dir = await opfs();
+  if (!dir) return null;
+  try {
+    return await (await (await dir.getFileHandle(name)).getFile()).text();
+  } catch {
+    return null;
+  }
+}
+
+let _tree;
+function tree() {
+  _tree ??= (async () => {
+    try {
+      const r = await fetch(TREE, { cache: 'no-store' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const list = await r.json();
+      await writeSmall('tree.json', JSON.stringify(list)).catch(() => {});
+      return list;
+    } catch (e) {
+      const cached = await readSmall('tree.json');
+      if (cached) {
+        log(`file listing unavailable (${e.message}); using the cached one`);
+        return JSON.parse(cached);
+      }
+      throw new Error(`could not list ${REPO} on the Hub: ${e.message}`);
+    }
+  })();
+  _tree.catch(() => { _tree = undefined; });
+  return _tree;
+}
+
+const flat = (p) => p.replaceAll('/', '__');
+
+let _plan;
+function plan() {
+  _plan ??= (async () => {
+    const list = await tree();
+    const byPath = new Map(list.filter((e) => e.type === 'file').map((e) => [e.path, e]));
+    const one = (path, label) => {
+      const e = byPath.get(path);
+      if (!e) throw new Error(`${path} is not in ${REPO}`);
+      return { path, label: label || path.split('/').pop(), size: e.size, store: `${flat(path)}@${e.oid.slice(0, 10)}` };
+    };
+    const segJson = one(`${DIT}.segments.json`);
+    const manifest = JSON.parse(await (await getBlob(segJson)).text());
+    const sidecar = one('onnx/' + manifest.sidecar);
+    const range = (r, label) => ({
+      path: sidecar.path, label, range: r, size: r[1] - r[0], store: `${sidecar.store}@${r[0]}-${r[1]}`,
+    });
+    const model = (graph, ext) => ({ graph, ext });
+    const P = {
+      qwenTok: one('onnx/webgpu/tokenizer/tokenizer.json', 'Qwen3 tokenizer'),
+      t5Tok: one('onnx/webgpu/t5_tokenizer/tokenizer.json', 'T5 tokenizer'),
+      stats: one('onnx/webgpu/latent_stats.json'),
+      segJson,
+      te: model(one('onnx/int8/text_encoder_int8.onnx'), [
+        ['text_encoder_int8.onnx.data', one('onnx/int8/text_encoder_int8.onnx.data', 'text encoder (int8)')],
+      ]),
+      cond: model(one('onnx/text_conditioner_fp16.onnx'), [
+        ['text_conditioner_fp16.onnx.data', one('onnx/text_conditioner_fp16.onnx.data', 'text conditioner')],
+      ]),
+      vae: model(one('onnx/int8/vae_decoder_dyn_fp16.onnx'), [
+        ['vae_decoder_512_fp16.onnx.data', one('onnx/vae_decoder_512_fp16.onnx.data', 'VAE decoder')],
+      ]),
+      dit: manifest.segments.map((s, i, all) => ({
+        ...model(one('onnx/' + s.graph), s.data.map((d) => [d.name, range(d.range, `DiT int8, part ${i + 1} of ${all.length}`)])),
+        inputs: s.inputs,
+        outputs: s.outputs,
+      })),
+      ditOutputs: manifest.outputs,
+    };
+    const models = [P.te, P.cond, ...P.dit, P.vae];
+    P.all = [P.qwenTok, P.t5Tok, P.stats, P.segJson, ...models.flatMap((m) => [m.graph, ...m.ext.map((x) => x[1])])];
+    return P;
+  })();
+  _plan.catch(() => { _plan = undefined; });
+  return _plan;
+}
+
+const got = new Map(); // store name → bytes on disk
+const inflight = new Map();
+
+async function presentBytes(spec) {
+  const dir = await opfs();
+  if (!dir) return 0;
+  try {
+    return (await (await dir.getFileHandle(spec.store)).getFile()).size;
+  } catch {
+    return 0;
+  }
+}
+
+async function fetchInto(spec, ah, have) {
+  const base = spec.range ? spec.range[0] : 0;
+  const res = await fetch(RESOLVE + spec.path, {
+    headers: { Range: `bytes=${base + have}-${base + spec.size - 1}` },
+    cache: 'no-store',
+  });
+  if (res.status === 200 && base + have !== 0) {
+    if (spec.range) throw new Error('the server ignored the Range header');
+    ah.truncate(0);
+    have = 0;
+  } else if (res.status !== 200 && res.status !== 206) {
+    throw new Error(`HTTP ${res.status} for ${spec.path}`);
+  }
+  const reader = res.body.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (have + value.byteLength > spec.size) throw new Error(`${spec.path}: more bytes than the listing says`);
+    ah.write(value, { at: have });
+    have += value.byteLength;
+    got.set(spec.store, have);
+  }
+  return have;
+}
+
+async function prune(spec) {
+  const dir = await opfs();
+  const keep = spec.store.split('@').slice(0, 2).join('@');
+  const prefix = flat(spec.path) + '@';
+  for await (const name of dir.keys()) {
+    if (name.startsWith(prefix) && !name.startsWith(keep)) {
+      await dir.removeEntry(name).catch(() => {});
+      log(`removed an outdated copy: ${name}`);
+    }
+  }
+}
+
+async function download(spec) {
+  const dir = await opfs();
+  const fh = await dir.getFileHandle(spec.store, { create: true });
+  const ah = await fh.createSyncAccessHandle();
+  try {
+    let have = ah.getSize();
+    if (have > spec.size) { ah.truncate(0); have = 0; }
+    got.set(spec.store, have);
+    for (let attempt = 0; have < spec.size; attempt++) {
+      try {
+        have = await fetchInto(spec, ah, have);
+        if (have < spec.size) throw new Error('connection closed early');
+      } catch (e) {
+        if (attempt >= 5) throw new Error(`download failed: ${spec.label} (${e.message})`);
+        log(`retrying ${spec.label} at ${fmtMB(have)}: ${e.message}`);
+        await sleep(1000 * 2 ** attempt);
+      }
+    }
+    ah.flush();
+  } finally {
+    ah.close();
+  }
+  await prune(spec);
+}
+
+function ensure(spec) {
+  let p = inflight.get(spec.store);
+  if (!p) {
+    p = (async () => {
+      if (!(await opfs())) return;
+      const have = await presentBytes(spec);
+      got.set(spec.store, have);
+      if (have === spec.size) return;
+      await download(spec);
+    })().finally(() => inflight.delete(spec.store));
+    inflight.set(spec.store, p);
+  }
+  return p;
+}
+
+async function ensureAll(specs) {
+  if (!(await opfs())) return;
+  const total = specs.reduce((n, s) => n + s.size, 0);
+  const sum = () => specs.reduce((n, s) => n + (got.get(s.store) || 0), 0);
+  for (const s of specs) if (!got.has(s.store)) got.set(s.store, await presentBytes(s));
+  if (sum() === total) return;
+  let last = { t: performance.now(), b: sum() };
+  let speed = 0;
+  const tick = () => {
+    const now = performance.now();
+    const b = sum();
+    const inst = ((b - last.b) / Math.max(1, now - last.t)) * 1000;
+    speed = speed ? speed * 0.8 + inst * 0.2 : inst;
+    last = { t: now, b };
+    post({ type: 'dl', done: b, total, speed });
+  };
+  const timer = setInterval(tick, 400);
+  try {
+    const queue = specs.slice().sort((a, b) => b.size - a.size);
+    const workers = Array.from({ length: 3 }, async () => {
+      while (queue.length) await ensure(queue.shift());
+    });
+    await Promise.all(workers);
+  } finally {
+    clearInterval(timer);
+    tick();
+  }
+}
+
+/** The bytes of one object: from OPFS (downloading first if needed), else straight off the Hub. */
+async function getBlob(spec) {
+  const dir = await opfs();
+  if (dir) {
+    await ensure(spec);
+    return (await dir.getFileHandle(spec.store)).getFile();
+  }
+  const base = spec.range ? spec.range[0] : 0;
+  const init = spec.range ? { headers: { Range: `bytes=${base}-${base + spec.size - 1}` } } : {};
+  const res = await fetch(RESOLVE + spec.path, init);
+  if (!res.ok) throw new Error(`HTTP ${res.status} for ${spec.path}`);
+  return res.blob();
+}
+
+// ───────────── tokenizers (pure-JS ports of the two HF tokenizer.json files) ─────────────
+
+const QWEN_PAD = 151643;
+const T5_PAD = 0;
+const T5_EOS = 1;
+
+function bytesToUnicode() {
+  const bs = [];
+  for (let i = 33; i <= 126; i++) bs.push(i);
+  for (let i = 161; i <= 172; i++) bs.push(i);
+  for (let i = 174; i <= 255; i++) bs.push(i);
+  const cs = bs.slice();
+  let n = 0;
+  for (let b = 0; b < 256; b++) {
+    if (!bs.includes(b)) { bs.push(b); cs.push(256 + n++); }
+  }
+  const out = new Array(256);
+  for (let i = 0; i < bs.length; i++) out[bs[i]] = String.fromCodePoint(cs[i]);
+  return out;
+}
+
+const QWEN_RE = /'(?:[sS]|[tT]|[rR][eE]|[vV][eE]|[mM]|[lL][lL]|[dD])|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+/gu;
+
+class QwenBPE {
+  constructor(tj) {
+    this.vocab = tj.model.vocab;
+    this.ranks = new Map();
+    this.b2u = bytesToUnicode();
+    this.enc = new TextEncoder();
+    tj.model.merges.forEach((m, i) => {
+      const [a, b] = Array.isArray(m) ? m : m.split(' ');
+      this.ranks.set(a + ' ' + b, i);
+    });
+  }
+  bpe(token) {
+    const parts = Array.from(token);
+    while (parts.length > 1) {
+      let best = Infinity;
+      let bi = -1;
+      for (let i = 0; i < parts.length - 1; i++) {
+        const r = this.ranks.get(parts[i] + ' ' + parts[i + 1]);
+        if (r !== undefined && r < best) { best = r; bi = i; }
+      }
+      if (bi < 0) break;
+      parts.splice(bi, 2, parts[bi] + parts[bi + 1]);
+    }
+    return parts;
+  }
+  encode(text) {
+    const ids = [];
+    for (const m of text.normalize('NFC').matchAll(QWEN_RE)) {
+      let s = '';
+      for (const b of this.enc.encode(m[0])) s += this.b2u[b];
+      const direct = this.vocab[s];
+      if (direct !== undefined) { ids.push(direct); continue; }
+      for (const piece of this.bpe(s)) {
+        const id = this.vocab[piece];
+        if (id === undefined) throw new Error(`qwen tokenizer: no vocab entry for ${JSON.stringify(piece)}`);
+        ids.push(id);
+      }
+    }
+    return ids;
+  }
+}
+
+class T5Unigram {
+  constructor(tj) {
+    this.pieces = new Map();
+    this.unkId = tj.model.unk_id;
+    this.maxLen = 0;
+    let min = Infinity;
+    tj.model.vocab.forEach(([piece, score], i) => {
+      this.pieces.set(piece, { id: i, score });
+      this.maxLen = Math.max(this.maxLen, Array.from(piece).length);
+      if (score < min) min = score;
+    });
+    this.unkScore = min - 10.0;
+  }
+  viterbi(word) {
+    const cp = Array.from(word);
+    const n = cp.length;
+    const best = new Float64Array(n + 1).fill(-Infinity);
+    const back = new Int32Array(n + 1).fill(-1);
+    const backId = new Int32Array(n + 1).fill(-1);
+    best[0] = 0;
+    for (let i = 0; i < n; i++) {
+      if (best[i] === -Infinity) continue;
+      let hasSingle = false;
+      for (let l = 1; l <= Math.min(this.maxLen, n - i); l++) {
+        const p = this.pieces.get(cp.slice(i, i + l).join(''));
+        if (!p) continue;
+        if (l === 1) hasSingle = true;
+        const sc = best[i] + p.score;
+        if (sc > best[i + l]) { best[i + l] = sc; back[i + l] = i; backId[i + l] = p.id; }
+      }
+      if (!hasSingle) {
+        const sc = best[i] + this.unkScore;
+        if (sc > best[i + 1]) { best[i + 1] = sc; back[i + 1] = i; backId[i + 1] = this.unkId; }
+      }
+    }
+    const out = [];
+    for (let i = n; i > 0; i = back[i]) out.push(backId[i]);
+    out.reverse();
+    return out.filter((id, k) => !(id === this.unkId && out[k - 1] === this.unkId));
+  }
+  encode(text) {
+    const ids = [];
+    for (const word of text.normalize('NFKC').split(/\s+/).filter(Boolean)) ids.push(...this.viterbi('▁' + word));
+    ids.push(T5_EOS);
+    return ids;
+  }
+}
+
+function padTo(ids, padId) {
+  const out = new BigInt64Array(SEQ).fill(BigInt(padId));
+  const mask = new BigInt64Array(SEQ);
+  const n = Math.min(ids.length, SEQ);
+  for (let i = 0; i < n; i++) { out[i] = BigInt(ids[i]); mask[i] = 1n; }
+  return { ids: out, mask, length: n };
+}
+
+let _toks;
+function tokenizers() {
+  _toks ??= (async () => {
+    const P = await plan();
+    const [q, t] = await Promise.all([P.qwenTok, P.t5Tok].map(async (s) => JSON.parse(await (await getBlob(s)).text())));
+    return { qwen: new QwenBPE(q), t5: new T5Unigram(t) };
+  })();
+  _toks.catch(() => { _toks = undefined; });
+  return _toks;
+}
+
+function tokenize(toks, prompt) {
+  const q = toks.qwen.encode(prompt);
+  let t = toks.t5.encode(prompt);
+  if (t.length > SEQ) t = [...t.slice(0, SEQ - 1), T5_EOS];
+  return { qwen: padTo(q, QWEN_PAD), t5: padTo(t, T5_PAD), qLen: q.length, tLen: t.length };
+}
+
+// ───────────── tensors ─────────────
+
+function f16ToF32(bits) {
+  const out = new Float32Array(bits.length);
+  for (let i = 0; i < bits.length; i++) {
+    const b = bits[i];
+    const s = b & 0x8000 ? -1 : 1;
+    const e = (b & 0x7c00) >> 10;
+    const m = b & 0x03ff;
+    if (e === 0) out[i] = s * Math.pow(2, -14) * (m / 1024);
+    else if (e === 0x1f) out[i] = m ? NaN : s * Infinity;
+    else out[i] = s * Math.pow(2, e - 15) * (1 + m / 1024);
+  }
+  return out;
+}
+
+/** A float16 output's `.data` is a Float16Array where the browser has one, else Uint16 bits. */
+function asF32(t) {
+  const d = t.data;
+  if (d instanceof Float32Array) return d;
+  if (globalThis.Float16Array && d instanceof globalThis.Float16Array) return Float32Array.from(d);
+  if (d instanceof Uint16Array) return f16ToF32(d);
+  return Float32Array.from(d);
+}
+
+function countNaN(a) {
+  let n = 0;
+  for (let i = 0; i < a.length; i++) if (a[i] !== a[i]) n++;
+  return n;
+}
+
+// ───────────── sampler ─────────────
+
+/** ComfyUI "simple" schedule over ModelSamplingDiscreteFlow (shift 3, multiplier 1):
+ *  steps=4 gives [1, 0.9, 0.75, 0.5, 0]. The DiT takes σ itself as the timestep. */
+function simpleSigmas(steps, shift = SHIFT) {
+  const sigma = (t) => (shift * t) / (1 + (shift - 1) * t);
+  const ss = 1000 / steps;
+  const out = [];
+  for (let x = 0; x < steps; x++) out.push(Math.fround(sigma((1000 - Math.floor(x * ss)) / 1000)));
+  out.push(0);
+  return out;
+}
+
+function makeRng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function randn(out, rng) {
+  for (let i = 0; i < out.length; i += 2) {
+    const u1 = rng() || 1e-9;
+    const u2 = rng();
+    const r = Math.sqrt(-2 * Math.log(u1));
+    out[i] = r * Math.cos(2 * Math.PI * u2);
+    if (i + 1 < out.length) out[i + 1] = r * Math.sin(2 * Math.PI * u2);
+  }
+  return out;
+}
+
+class Euler {
+  constructor(sigmas) { this.sigmas = sigmas; this.i = 0; }
+  step(v, x) {
+    const d = this.sigmas[this.i + 1] - this.sigmas[this.i];
+    this.i++;
+    const out = new Float32Array(x.length);
+    for (let k = 0; k < x.length; k++) out[k] = x[k] + d * v[k];
+    return out;
+  }
+}
+
+const noiseScaler = (x) => x * (Math.exp(Math.pow(x, 0.3)) + 10.0);
+
+/** ER-SDE-Solver-3 (ComfyUI er_sde, CONST / flow path). */
+class ErSDE {
+  constructor(sigmas, seed) {
+    this.sigmas = sigmas;
+    const sig = sigmas.map((s, i) => (i === 0 ? Math.min(s, 1.0 - 1e-4) : s));
+    this.alphas = sig.map((s) => 1.0 - s);
+    this.lambdas = sig.map((s) => s / Math.max(1.0 - s, 1e-8));
+    this.rng = makeRng(seed);
+    this.i = 0;
+    this.old = null;
+    this.oldD = null;
+  }
+  step(v, sample) {
+    const i = this.i;
+    const n = sample.length;
+    const sS = this.sigmas[i];
+    const sT = this.sigmas[i + 1];
+    const den = new Float32Array(n);
+    for (let k = 0; k < n; k++) den[k] = sample[k] - sS * v[k];
+    let x;
+    if (sT === 0) {
+      x = den.slice();
+    } else {
+      const lS = this.lambdas[i];
+      const lT = this.lambdas[i + 1];
+      const aS = this.alphas[i];
+      const aT = this.alphas[i + 1];
+      const r = noiseScaler(lT) / noiseScaler(lS);
+      const c1 = (aT / aS) * r;
+      const c2 = aT * (1.0 - r);
+      x = new Float32Array(n);
+      for (let k = 0; k < n; k++) x[k] = c1 * sample[k] + c2 * den[k];
+      const stage = Math.min(3, i + 1);
+      if (stage >= 2 && this.old) {
+        const dt = lT - lS;
+        const N = 200;
+        const lamStep = -dt / N;
+        let s = 0;
+        let sU = 0;
+        for (let idx = 0; idx < N; idx++) {
+          const lp = lT + idx * lamStep;
+          const sc = noiseScaler(lp);
+          s += 1.0 / sc;
+          sU += (lp - lS) / sc;
+        }
+        s *= lamStep;
+        sU *= lamStep;
+        const dd = new Float32Array(n);
+        const denomD = lS - this.lambdas[i - 1];
+        for (let k = 0; k < n; k++) dd[k] = (den[k] - this.old[k]) / denomD;
+        const c3 = aT * (dt + s * noiseScaler(lT));
+        for (let k = 0; k < n; k++) x[k] += c3 * dd[k];
+        if (stage >= 3 && this.oldD) {
+          const denomU = (lS - this.lambdas[i - 2]) / 2.0;
+          const c4 = aT * ((dt * dt) / 2.0 + sU * noiseScaler(lT));
+          for (let k = 0; k < n; k++) x[k] += (c4 * (dd[k] - this.oldD[k])) / denomU;
+        }
+        this.oldD = dd;
+      }
+      const coeff = Math.sqrt(Math.max(lT * lT - lS * lS * r * r, 0));
+      const noise = randn(new Float32Array(n), this.rng);
+      const cn = aT * coeff;
+      for (let k = 0; k < n; k++) x[k] += cn * noise[k];
+    }
+    this.old = den;
+    this.i++;
+    return x;
+  }
+}
+
+// ───────────── sessions ─────────────
+
+const S = { te: null, cond: null, dit: null, vae: null };
+
+async function create(m, label) {
+  const graph = new Uint8Array(await (await getBlob(m.graph)).arrayBuffer());
+  const externalData = [];
+  for (const [path, spec] of m.ext) externalData.push({ path, data: await getBlob(spec) });
+  const t0 = performance.now();
+  try {
+    const s = await ort.InferenceSession.create(graph, { executionProviders: ['webgpu'], externalData });
+    log(`${label} ready (${secs(performance.now() - t0)})`);
+    return s;
+  } catch (e) {
+    throw new FatalError(`loading ${label} failed: ${e?.message ?? e}`);
+  }
+}
+
+async function release(name) {
+  const s = S[name];
+  S[name] = null;
+  if (!s) return false;
+  if (Array.isArray(s)) for (const seg of s) await seg.session.release().catch(() => {});
+  else await s.release().catch(() => {});
+  return true;
+}
+
+async function getDit() {
+  if (S.dit) return S.dit;
+  const P = await plan();
+  const segs = [];
+  try {
+    for (const [i, m] of P.dit.entries()) {
+      phase(`Loading DiT (part ${i + 1} of ${P.dit.length})…`);
+      segs.push({ session: await create(m, `DiT part ${i + 1}/${P.dit.length}`), inputs: m.inputs });
+    }
+  } catch (e) {
+    for (const s of segs) await s.session.release().catch(() => {});
+    throw e;
+  }
+  S.dit = segs;
+  return segs;
+}
+
+async function runDit(feeds, outputs) {
+  const env = { ...feeds };
+  for (const seg of S.dit) {
+    const out = await seg.session.run(Object.fromEntries(seg.inputs.map((k) => [k, env[k]])));
+    Object.assign(env, out);
+  }
+  return env[outputs[0]];
+}
+
+// ───────────── text → embeds ─────────────
+
+const embCache = new Map();
+const warmed = new Set(); // sizes whose shaders have compiled
+
+async function promptEmbeds(prompt, keep) {
+  const hit = embCache.get(prompt);
+  if (hit) {
+    embCache.delete(prompt);
+    embCache.set(prompt, hit);
+    log('prompt embeds: cache hit');
+    return hit;
+  }
+  const P = await plan();
+  phase('Tokenizing…');
+  const t = tokenize(await tokenizers(), prompt);
+  log(`tokens: qwen ${t.qLen}, t5 ${t.tLen}${t.qLen > SEQ || t.tLen > SEQ ? ` (truncated to ${SEQ})` : ''}`);
+  if (!keep && (await release('dit'))) log('released the DiT to make room for the text encoder');
+
+  phase('Loading text encoder…');
+  S.te ??= await create(P.te, 'text encoder');
+  phase('Encoding prompt…');
+  const enc = await S.te.run({
+    input_ids: new ort.Tensor('int64', t.qwen.ids, [1, SEQ]),
+    attention_mask: new ort.Tensor('int64', t.qwen.mask, [1, SEQ]),
+  });
+  const hidden = asF32(enc.qwen_prompt_embeds ?? enc[S.te.outputNames[0]]);
+  if (!keep) await release('te');
+
+  phase('Loading text conditioner…');
+  S.cond ??= await create(P.cond, 'text conditioner');
+  const c = await S.cond.run({
+    source_hidden_states: new ort.Tensor('float32', hidden, [1, SEQ, DIM]),
+    target_input_ids: new ort.Tensor('int64', t.t5.ids, [1, SEQ]),
+    target_attention_mask: new ort.Tensor('int64', t.t5.mask, [1, SEQ]),
+    source_attention_mask: new ort.Tensor('int64', t.qwen.mask, [1, SEQ]),
+  });
+  const pe = asF32(c.prompt_embeds ?? c[S.cond.outputNames[0]]).slice();
+  if (!keep) await release('cond');
+  const nan = countNaN(pe);
+  if (nan) throw new Error(`the text path produced ${nan} NaN values on this GPU`);
+  embCache.set(prompt, pe);
+  while (embCache.size > 8) embCache.delete(embCache.keys().next().value);
+  return pe;
+}
+
+// ───────────── generate ─────────────
+
+async function generate({ prompt, W, H, seed, steps, sampler, keep }) {
+  if (W % 16 || H % 16) throw new Error('width and height must be multiples of 16');
+  if ((W / 16) * (H / 16) > MAX_TOKENS) throw new Error(`(W/16)·(H/16) must be ≤ ${MAX_TOKENS}`);
+  const P = await plan();
+  phase('Checking model files…');
+  await ensureAll(P.all);
+  const stats = JSON.parse(await (await getBlob(P.stats)).text());
+
+  const t0 = performance.now();
+  const pe = await promptEmbeds(prompt, keep);
+  const tText = performance.now();
+
+  await getDit();
+  if (!S.vae) {
+    phase('Loading VAE decoder…');
+    S.vae = await create(P.vae, 'VAE decoder');
+  }
+  const tLoad = performance.now();
+
+  const lh = H / 8;
+  const lw = W / 8;
+  const n = Z * lh * lw;
+  const sigmas = simpleSigmas(steps);
+  const sched = sampler === 'euler' ? new Euler(sigmas) : new ErSDE(sigmas, seed);
+  let x = randn(new Float32Array(n), makeRng(seed ^ 0x9e3779b9));
+  const peT = new ort.Tensor('float32', pe, [1, SEQ, DIM]);
+  const stepMs = [];
+  for (let i = 0; i < steps; i++) {
+    phase(`Denoising ${i + 1}/${steps}${i === 0 && !warmed.has(`${W}x${H}`) ? ' (first run at this size: compiling shaders)' : ''}`, (i / steps) * 100);
+    const ts = performance.now();
+    let out;
+    try {
+      out = await runDit({
+        latent: new ort.Tensor('float32', x, [1, Z, 1, lh, lw]),
+        timestep: new ort.Tensor('float32', new Float32Array([sigmas[i]]), [1]),
+        encoder_hidden_states: peT,
+      }, P.ditOutputs);
+    } catch (e) {
+      throw new FatalError(`DiT failed at step ${i + 1}: ${e?.message ?? e}`);
+    }
+    const v = asF32(out);
+    const nan = countNaN(v);
+    if (nan) throw new Error(`the DiT produced ${nan} NaN values at step ${i + 1} on this GPU`);
+    x = sched.step(v, x);
+    stepMs.push(performance.now() - ts);
+    log(`step ${i + 1}/${steps} σ=${sigmas[i].toFixed(3)} ${secs(stepMs[i])}`);
+  }
+
+  warmed.add(`${W}x${H}`);
+  phase('Decoding…', 100);
+  const td = performance.now();
+  const plane = lh * lw;
+  const den = new Float32Array(n);
+  for (let c = 0; c < Z; c++) {
+    const m = stats.latents_mean[c];
+    const s = stats.latents_std[c];
+    for (let p = 0; p < plane; p++) den[c * plane + p] = x[c * plane + p] * s + m;
+  }
+  let img;
+  try {
+    const dec = await S.vae.run({ latent: new ort.Tensor('float32', den, [1, Z, lh, lw]) });
+    img = asF32(dec.image ?? dec[S.vae.outputNames[0]]);
+  } catch (e) {
+    throw new FatalError(`VAE decode failed: ${e?.message ?? e}`);
+  }
+  if (countNaN(img)) throw new Error('the VAE produced NaN values on this GPU');
+  const rgba = new Uint8ClampedArray(W * H * 4);
+  const pl = W * H;
+  for (let i = 0; i < pl; i++) {
+    rgba[i * 4] = (img[i] + 1) * 127.5;
+    rgba[i * 4 + 1] = (img[pl + i] + 1) * 127.5;
+    rgba[i * 4 + 2] = (img[2 * pl + i] + 1) * 127.5;
+    rgba[i * 4 + 3] = 255;
+  }
+  const tEnd = performance.now();
+  const timings = {
+    text: tText - t0,
+    load: tLoad - tText,
+    denoise: stepMs.reduce((a, b) => a + b, 0),
+    decode: tEnd - td,
+    total: tEnd - t0,
+  };
+  log(`done: total ${secs(timings.total)} (text ${secs(timings.text)}, load ${secs(timings.load)}, denoise ${secs(timings.denoise)}, decode ${secs(timings.decode)})`);
+  return { value: { rgba: rgba.buffer, W, H, timings }, transfer: [rgba.buffer] };
+}
+
+// ───────────── commands ─────────────
+
+const handlers = {
+  async status() {
+    const dir = await opfs();
+    const P = await plan();
+    const files = [];
+    for (const s of P.all) {
+      const have = await presentBytes(s);
+      got.set(s.store, have);
+      files.push({ label: s.label, size: s.size, have });
+    }
+    return { value: { opfs: !!dir, files } };
+  },
+  async download() {
+    const P = await plan();
+    await ensureAll(P.all);
+    return { value: true };
+  },
+  async generate(args) {
+    return generate(args);
+  },
+  async clear() {
+    if (inflight.size) throw new Error('a download is running');
+    for (const k of Object.keys(S)) await release(k);
+    const root = await navigator.storage.getDirectory();
+    await root.removeEntry('anima-turbo-4step', { recursive: true }).catch(() => {});
+    _dir = undefined;
+    _plan = undefined;
+    _toks = undefined;
+    got.clear();
+    return { value: true };
+  },
+};
+
+self.onmessage = async (e) => {
+  const { id, cmd, args } = e.data;
+  try {
+    const { value, transfer } = await handlers[cmd](args);
+    post({ type: 'reply', id, ok: true, value }, transfer);
+  } catch (err) {
+    post({ type: 'reply', id, ok: false, error: String(err?.message ?? err), fatal: err instanceof FatalError });
+  }
+};
+post({ type: 'ready' });
+</script>
+
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('anima-turbo:' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('anima-turbo:' + k, JSON.stringify(v)); } catch {} },
+};
+
+const DEFAULT_PROMPT =
+  'masterpiece, best quality, score_7, safe, 1girl, silver hair, blue eyes, ' +
+  'fur-trimmed white winter coat, falling snow, forest, looking at viewer, upper body, detailed background';
+
+// ───────────── sizes ─────────────
+const SIZE_STEP = 16, MIN_SIDE = 256, MAX_SIDE = 1536, MAX_TOKENS = 2400;
+const ASPECTS = [[1, 1], [3, 4], [4, 3], [2, 3], [3, 2], [9, 16], [16, 9]];
+const SCALES = [
+  { id: 'S', tokens: 1024, label: 'S ≈512²' },
+  { id: 'M', tokens: 2304, label: 'M ≈768²' },
+];
+const tokensOf = (W, H) => (W / 16) * (H / 16);
+const snap = (v) => Math.round(v / SIZE_STEP) * SIZE_STEP;
+const clampSide = (v) => Math.min(MAX_SIDE, Math.max(MIN_SIDE, v));
+function fitAspect(aw, ah, budget) {
+  for (let t = Math.min(budget, MAX_TOKENS); ; t -= 16) {
+    const px = t * 256;
+    const W = clampSide(snap(Math.sqrt((px * aw) / ah)));
+    const H = clampSide(snap(Math.sqrt((px * ah) / aw)));
+    if (tokensOf(W, H) <= MAX_TOKENS) return { W, H };
+  }
+}
+function sizeError(W, H) {
+  if (!Number.isInteger(W) || !Number.isInteger(H)) return 'width and height must be whole numbers';
+  if (W % SIZE_STEP || H % SIZE_STEP) return `width and height must be multiples of ${SIZE_STEP}`;
+  if (Math.min(W, H) < MIN_SIDE || Math.max(W, H) > MAX_SIDE) return `each side must be ${MIN_SIDE}–${MAX_SIDE}`;
+  if (tokensOf(W, H) > MAX_TOKENS) return `too large: (W/16)·(H/16) = ${tokensOf(W, H)} > ${MAX_TOKENS} (the 768² class)`;
+  return null;
+}
+
+let aspect = store.get('aspect', '1:1');
+let scale = store.get('scale', 'M');
+function renderChips() {
+  $('aspects').replaceChildren(...ASPECTS.map(([a, b]) => {
+    const id = `${a}:${b}`;
+    const btn = document.createElement('button');
+    btn.textContent = id;
+    btn.setAttribute('aria-pressed', String(id === aspect));
+    btn.onclick = () => { aspect = id; store.set('aspect', id); applyPreset(); };
+    return btn;
+  }));
+  $('scales').replaceChildren(...SCALES.map((s) => {
+    const btn = document.createElement('button');
+    btn.textContent = s.label;
+    btn.setAttribute('aria-pressed', String(s.id === scale));
+    btn.onclick = () => { scale = s.id; store.set('scale', s.id); applyPreset(); };
+    return btn;
+  }));
+}
+function applyPreset() {
+  if (aspect && scale) {
+    const [a, b] = aspect.split(':').map(Number);
+    const { W, H } = fitAspect(a, b, SCALES.find((s) => s.id === scale).tokens);
+    $('w').value = W;
+    $('h').value = H;
+  }
+  renderChips();
+  updateSizeHint();
+}
+function updateSizeHint() {
+  const W = Number($('w').value), H = Number($('h').value);
+  const err = sizeError(W, H);
+  $('size-hint').textContent = err ?? `${W}×${H} · ${tokensOf(W, H)} tokens`;
+  $('size-hint').style.color = err ? 'var(--err)' : '';
+  return err;
+}
+for (const id of ['w', 'h']) {
+  $(id).addEventListener('input', () => {
+    aspect = null; scale = null;
+    store.set('aspect', null); store.set('scale', null);
+    renderChips(); updateSizeHint();
+  });
+  $(id).addEventListener('change', () => { $(id).value = snap(Number($(id).value) || MIN_SIDE); updateSizeHint(); });
+}
+
+// ───────────── form state ─────────────
+$('prompt').value = store.get('prompt', DEFAULT_PROMPT);
+$('seed').value = store.get('seed', Math.floor(Math.random() * 2 ** 31));
+$('rand-seed').checked = store.get('randSeed', true);
+$('steps').value = store.get('steps', 4);
+$('sampler').value = store.get('sampler', 'er_sde');
+$('keep').checked = store.get('keep', false);
+$('count').value = store.get('count', 1);
+const savedSize = store.get('size', null);
+if (aspect || scale || !savedSize) applyPreset();
+else { $('w').value = savedSize[0]; $('h').value = savedSize[1]; renderChips(); updateSizeHint(); }
+$('dice').onclick = () => { $('seed').value = Math.floor(Math.random() * 2 ** 31); };
+
+// ───────────── log / status ─────────────
+const logEl = $('log');
+function log(msg) {
+  const t = new Date().toLocaleTimeString();
+  logEl.textContent += `[${t}] ${msg}\n`;
+  if (logEl.textContent.length > 60000) logEl.textContent = logEl.textContent.slice(-40000);
+  logEl.scrollTop = logEl.scrollHeight;
+  console.log('[anima]', msg);
+}
+function setStatus(text, kind = '') {
+  $('status').textContent = text;
+  $('status').className = 'status-line ' + kind;
+}
+function setBar(el, pct) {
+  el.classList.toggle('indet', pct === null);
+  el.firstElementChild.style.width = pct === null ? '' : `${Math.max(0, Math.min(100, pct))}%`;
+}
+const fmtGB = (b) => (b >= 1e9 ? (b / 1073741824).toFixed(2) + ' GB' : (b / 1048576).toFixed(0) + ' MB');
+
+// ───────────── worker ─────────────
+const workerSrc = $('worker-src').textContent;
+let worker = null;
+let nextId = 1;
+const pending = new Map();
+let ready;
+
+function spawn() {
+  if (worker) worker.terminate();
+  for (const [, p] of pending) p.reject(new Error('worker restarted'));
+  pending.clear();
+  const url = URL.createObjectURL(new Blob([workerSrc], { type: 'text/javascript' }));
+  worker = new Worker(url, { type: 'module', name: 'anima-turbo' });
+  ready = new Promise((resolve, reject) => {
+    worker.onerror = (e) => {
+      e.preventDefault?.();
+      const msg = e.message || 'the worker failed to start (could not load onnxruntime-web from the CDN?)';
+      log('worker error: ' + msg);
+      reject(new Error(msg));
+    };
+    worker.onmessage = (e) => {
+      const m = e.data;
+      if (m.type === 'ready') return resolve();
+      if (m.type === 'log') return log(m.msg);
+      if (m.type === 'phase') { setStatus(m.text); setBar($('run-bar'), m.pct); return; }
+      if (m.type === 'dl') return onDownloadProgress(m);
+      if (m.type === 'reply') {
+        const p = pending.get(m.id);
+        if (!p) return;
+        pending.delete(m.id);
+        if (m.ok) p.resolve(m.value);
+        else { const err = new Error(m.error); err.fatal = m.fatal; p.reject(err); }
+      }
+    };
+  });
+  ready.catch(() => {});
+}
+async function call(cmd, args) {
+  await ready;
+  const id = nextId++;
+  return new Promise((resolve, reject) => {
+    pending.set(id, { resolve, reject });
+    worker.postMessage({ id, cmd, args });
+  });
+}
+
+// ───────────── GPU check ─────────────
+const isLinux = /Linux/.test(navigator.userAgent) && !/Android/.test(navigator.userAgent);
+async function checkGpu() {
+  const dl = $('gpu');
+  const row = (k, v, cls = '') => `<dt>${k}</dt><dd class="${cls}">${v}</dd>`;
+  const callout = $('gpu-callout');
+  const flags = '<code>--enable-features=Vulkan --enable-dawn-features=vulkan_enable_f16_on_nvidia</code>';
+  if (!navigator.gpu) {
+    dl.innerHTML = row('WebGPU', 'not available', 'no');
+    callout.className = 'callout err';
+    callout.innerHTML = 'This browser has no WebGPU. Use a recent desktop Chrome or Edge.' +
+      (isLinux ? ` On Linux, launch Chrome with ${flags}.` : '');
+    callout.hidden = false;
+    return false;
+  }
+  const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' }).catch(() => null);
+  if (!adapter) {
+    dl.innerHTML = row('WebGPU', 'no adapter', 'no');
+    callout.className = 'callout err';
+    callout.innerHTML = 'WebGPU is present but no GPU adapter was found (blocklisted driver or disabled hardware acceleration).' +
+      (isLinux ? ` On Linux, launch Chrome with ${flags}.` : '');
+    callout.hidden = false;
+    return false;
+  }
+  const info = adapter.info ?? {};
+  const f16 = adapter.features.has('shader-f16');
+  const sg = adapter.features.has('subgroups');
+  const apple = /apple/i.test(info.vendor ?? '');
+  const gpuName = [info.vendor, info.architecture, info.description].filter(Boolean).join(' · ') || 'unknown';
+  dl.innerHTML =
+    row('GPU', gpuName) +
+    row('shader-f16', f16 ? 'yes' : 'no (required)', f16 ? 'yes' : 'no') +
+    row('int8 path', sg && !apple ? 'DP4A (subgroups)' : 'dequantise to fp16', sg && !apple ? 'yes' : 'meh') +
+    row('Max buffer', fmtGB(adapter.limits.maxBufferSize));
+  if (!f16) {
+    callout.className = 'callout err';
+    callout.innerHTML = 'This GPU adapter does not expose <code>shader-f16</code>, which the int8 ONNX graphs need.' +
+      (isLinux ? ` On Linux with an NVIDIA card, Chrome withholds it on Vulkan until launched with ${flags}.` : ' Update the browser and GPU driver.');
+    callout.hidden = false;
+    return false;
+  }
+  return true;
+}
+
+// ───────────── model files ─────────────
+let cacheInfo = null;
+let downloading = false;
+function renderFiles() {
+  if (!cacheInfo) return;
+  const total = cacheInfo.files.reduce((n, f) => n + f.size, 0);
+  const have = cacheInfo.files.reduce((n, f) => n + Math.min(f.have, f.size), 0);
+  const big = cacheInfo.files.filter((f) => f.size > 1e6);
+  $('files').innerHTML = big.map((f) =>
+    `<tr><td>${f.label}</td><td>${f.have >= f.size ? '✓ ' : f.have ? Math.floor((100 * f.have) / f.size) + '% · ' : ''}${fmtGB(f.size)}</td></tr>`).join('');
+  $('models-sum').textContent = `${fmtGB(have)} / ${fmtGB(total)}`;
+  setBar($('dl-bar'), (100 * have) / total);
+  const complete = have >= total;
+  const started = big.some((f) => f.have > 0);
+  if (!cacheInfo.opfs) {
+    $('dl-text').textContent = 'This browser cannot cache files here (no OPFS, e.g. a private window). Each visit downloads the models again.';
+    $('dl-btn').disabled = true;
+  } else if (downloading) {
+    $('dl-btn').disabled = true;
+  } else {
+    $('dl-text').textContent = complete
+      ? 'All model files are cached on this device.'
+      : started ? 'Partly downloaded. Download resumes where it stopped.' : `Not downloaded yet. ${fmtGB(total)} goes into this browser's private storage.`;
+    $('dl-btn').textContent = started && !complete ? 'Resume download' : 'Download';
+    $('dl-btn').disabled = complete;
+  }
+  $('clear-btn').disabled = downloading || busy || !cacheInfo.opfs || !started;
+}
+async function refreshStatus() {
+  try {
+    cacheInfo = await call('status');
+    renderFiles();
+  } catch (e) {
+    $('dl-text').textContent = 'Could not read the model list: ' + e.message;
+    log('status: ' + e.message);
+  }
+}
+function onDownloadProgress({ done, total, speed }) {
+  setBar($('dl-bar'), (100 * done) / total);
+  $('models-sum').textContent = `${fmtGB(done)} / ${fmtGB(total)}`;
+  const left = total - done;
+  const eta = speed > 1 ? Math.ceil(left / speed) : null;
+  $('dl-text').textContent = left > 0
+    ? `Downloading · ${(speed / 1048576).toFixed(1)} MB/s${eta !== null ? ` · ${eta >= 60 ? Math.floor(eta / 60) + ' min ' : ''}${eta % 60} s left` : ''}`
+    : 'Download complete.';
+}
+async function startDownload() {
+  if (downloading) return;
+  downloading = true;
+  renderFiles();
+  navigator.storage?.persist?.().catch(() => {});
+  try {
+    await call('download');
+    log('all model files cached');
+  } catch (e) {
+    $('dl-text').textContent = 'Download failed: ' + e.message + ' Press Resume to continue.';
+    log('download: ' + e.message);
+  } finally {
+    downloading = false;
+    await refreshStatus();
+  }
+}
+$('dl-btn').onclick = startDownload;
+$('clear-btn').onclick = async () => {
+  try {
+    await call('clear');
+    log('cache cleared');
+  } catch (e) {
+    log('clear: ' + e.message);
+  }
+  await refreshStatus();
+};
+
+// ───────────── gallery ─────────────
+const results = [];
+let current = -1;
+function show(i) {
+  current = i;
+  const r = results[i];
+  $('empty').hidden = true;
+  $('main-img').hidden = false;
+  $('main-img').src = r.url;
+  $('main-img').alt = r.prompt;
+  $('meta').hidden = false;
+  $('meta-text').textContent = `${r.W}×${r.H} · seed ${r.seed} · ${r.steps} steps ${r.sampler} · ${(r.timings.total / 1000).toFixed(1)} s ` +
+    `(denoise ${(r.timings.denoise / 1000).toFixed(1)} s)`;
+  $('save-link').href = r.url;
+  $('save-link').download = `anima-turbo_${r.seed}_${r.W}x${r.H}.png`;
+  for (const [k, el] of [...$('thumbs').children].entries()) el.setAttribute('aria-current', String(results.length - 1 - k === i));
+}
+function addResult(r) {
+  results.push(r);
+  const btn = document.createElement('button');
+  const im = document.createElement('img');
+  im.src = r.url;
+  im.alt = '';
+  btn.append(im);
+  btn.title = `seed ${r.seed}`;
+  const idx = results.length - 1;
+  btn.onclick = () => show(idx);
+  $('thumbs').prepend(btn);
+  show(idx);
+}
+$('reuse-btn').onclick = () => {
+  const r = results[current];
+  if (!r) return;
+  $('prompt').value = r.prompt;
+  $('seed').value = r.seed;
+  $('rand-seed').checked = false;
+  $('w').value = r.W;
+  $('h').value = r.H;
+  aspect = null; scale = null;
+  store.set('aspect', null); store.set('scale', null);
+  renderChips();
+  updateSizeHint();
+};
+
+async function toUrl(rgba, W, H) {
+  const cv = document.createElement('canvas');
+  cv.width = W;
+  cv.height = H;
+  cv.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(rgba), W, H), 0, 0);
+  const blob = await new Promise((res) => cv.toBlob(res, 'image/png'));
+  return URL.createObjectURL(blob);
+}
+
+// ───────────── generate ─────────────
+let busy = false;
+let gpuOk = false;
+function updateGenButton() {
+  $('gen-btn').disabled = busy || !gpuOk;
+  $('gen-btn').textContent = busy ? 'Generating…' : 'Generate';
+}
+async function onGenerate() {
+  if (busy) return;
+  const prompt = $('prompt').value.trim();
+  const W = Number($('w').value), H = Number($('h').value);
+  if (updateSizeHint()) return setStatus(sizeError(W, H), 'err');
+  const steps = Math.max(1, Math.min(12, Number($('steps').value) || 4));
+  const sampler = $('sampler').value;
+  const keep = $('keep').checked;
+  const count = Math.max(1, Math.min(16, Number($('count').value) || 1));
+  store.set('prompt', prompt);
+  store.set('size', [W, H]);
+  store.set('steps', steps);
+  store.set('sampler', sampler);
+  store.set('keep', keep);
+  store.set('count', count);
+  store.set('randSeed', $('rand-seed').checked);
+  busy = true;
+  updateGenButton();
+  renderFiles();
+  $('run-bar').hidden = false;
+  navigator.storage?.persist?.().catch(() => {});
+  let downloadWatch = !cacheInfo || cacheInfo.files.some((f) => f.have < f.size);
+  if (downloadWatch) downloading = true;
+  try {
+    for (let k = 0; k < count; k++) {
+      if ($('rand-seed').checked) $('seed').value = Math.floor(Math.random() * 2 ** 31);
+      const seed = (Number($('seed').value) >>> 0);
+      store.set('seed', seed);
+      log(`— generate ${k + 1}/${count}: ${W}×${H}, seed ${seed}, ${steps} steps ${sampler}`);
+      const r = await call('generate', { prompt, W, H, seed, steps, sampler, keep });
+      if (downloadWatch) { downloadWatch = false; downloading = false; refreshStatus(); }
+      addResult({ ...r, url: await toUrl(r.rgba, r.W, r.H), prompt, seed, steps, sampler });
+      setStatus(`Done in ${(r.timings.total / 1000).toFixed(1)} s${count > 1 ? ` (${k + 1}/${count})` : ''}`, 'ok');
+    }
+  } catch (e) {
+    setStatus(e.message, 'err');
+    log('error: ' + e.message);
+    if (e.fatal) {
+      log('restarting the GPU worker (onnxruntime cannot recover from a failed load in the same instance)');
+      spawn();
+    }
+  } finally {
+    busy = false;
+    if (downloading) { downloading = false; refreshStatus(); }
+    $('run-bar').hidden = true;
+    updateGenButton();
+    renderFiles();
+  }
+}
+$('gen-btn').onclick = onGenerate;
+$('prompt').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); onGenerate(); }
+});
+
+// ───────────── boot ─────────────
+spawn();
+gpuOk = await checkGpu();
+updateGenButton();
+refreshStatus();
+</script>
+</body>
+</html>

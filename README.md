@@ -137,6 +137,10 @@ make download-list        # installed vs missing; SAM3 and OCR are opt-in
   uv pip install --no-deps "https://github.com/sorryhyun/anima_lora/releases/download/deps-comfy-kitchen-0.2.41-fp32div/comfy_kitchen-0.2.41%2Bfp32div-cp312-abi3-linux_x86_64.whl"
   ```
 
+## Try it in the browser
+
+**[anima-turbo-webgpu.vercel.app](https://anima-turbo-webgpu.vercel.app)** runs [Anima Turbo 4-step](https://huggingface.co/sorryhyun/anima-turbo-4step) (v4, int8 ONNX) on your own GPU through WebGPU, with no install. The model files (3.2 GB) download once from Hugging Face and are cached in the browser; on an RTX 5070 Ti a 768² image takes about 3 s. Needs desktop Chrome / Edge or a recent Android Chrome with `shader-f16`. On Linux with an NVIDIA card, launch Chrome with `--enable-features=Vulkan --enable-dawn-features=vulkan_enable_f16_on_nvidia`. Source: [`project/webgpu_int8/demo/`](project/webgpu_int8/demo/index.html).
+
 ## License
 
 Toolkit code: [MIT](LICENSE).

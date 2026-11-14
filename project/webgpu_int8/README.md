@@ -190,6 +190,29 @@ the fold out.
 The text encoder runs the same shaders in fp16. It has no fold and its weight scales are
 3.5e-4 to 7.9e-4; its activations were not replayed.
 
+## Standalone demo: `demo/index.html`
+
+One HTML file that runs the HF `onnx/` set with no yaar: onnxruntime-web 1.30.0 from jsDelivr,
+the whole pipeline in a module worker (tokenizers, the int8 text encoder, the conditioner, the
+two-segment v4 DiT, ER-SDE or Euler, the dyn VAE). The tokenizer, sampler and session order are
+ports of yaar's `user-apps/anima`; the JS tokenizers match HF `tokenizers` id for id, and the σ
+schedule matches ComfyUI `simple` at shift 3.
+
+- Files come from `resolve/main/onnx/` and are cached in OPFS, one file per object, named by
+  its git oid from the Hub tree API, so a replaced file is fetched again and the old copy is
+  removed. The DiT's sidecar is fetched as the byte ranges its `segments.json` names. Downloads
+  resume where they stopped.
+- Without "keep resident" the DiT is released before the text encoder loads, as yaar does. A
+  prompt seen before skips the text path.
+- A failed session create or run restarts the worker, because onnxruntime cannot create a
+  session again after a failed one.
+- Serve it from localhost or HTTPS: `python3 -m http.server 8790 --directory demo`. On Linux
+  with NVIDIA, Chrome needs `--enable-features=Vulkan --enable-dawn-features=vulkan_enable_f16_on_nvidia`.
+  Without these flags the page shows that `shader-f16` is missing.
+- Deployed at https://anima-turbo-webgpu.vercel.app (Vercel project `anima-turbo-webgpu`, linked
+  in `demo/`). `vercel deploy --prod --yes` from `demo/` redeploys; `.vercelignore` uploads only
+  `index.html` and `vercel.json`.
+
 ## Files
 
 - `src/te_convrot_gptq.py`: calibration and the variant sweep. Writes
