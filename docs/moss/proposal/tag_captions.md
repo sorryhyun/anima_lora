@@ -2,7 +2,10 @@
 
 Status: proposal (2026-11-13). The FM-only ablation is read: on sincos the tag LoRA trained
 with plain FM draws clean hands and legs, the one trained with add90 ema97 does not
-([confound](#confound-fm-only-vs-add90-ema97)). Steps 2–4 not started.
+([confound](#confound-fm-only-vs-add90-ema97)). A forward probe on 2026-11-14 puts the cause in
+the length of the add90 ema97 run, not in the tag form or the variants
+([self_distill_lora.md](self_distill_lora.md#evidence-2026-11-14)); step 2 is dropped. Steps
+3–4 not started.
 
 ## The question
 
@@ -149,9 +152,13 @@ Dropping every unowned subject tag from the flat bag would delete 703 tags with 
   not enough. **Supported by the confound read**: the same captions under plain FM are clean.
 - **R3, the caption variants.** The tag arm draws a shuffled, tag-dropped variant on 75 % of
   steps; the layout_json and head arms draw none (`caption_variant_rate` 0 in their metadata).
-  Under plain FM the variants do no harm. Whether the teacher term breaks on the tag form or on
-  the variants is open: the teacher is cached per caption variant, so a dropped tag moves the
-  student's caption and the teacher's together.
+  Under plain FM the variants do no harm. **Not supported (2026-11-14):** on Base the teacher's
+  shift is as much signal on a variant as on the full caption (eff 0.96 against 0.97 at σ 0.95,
+  the same distance from the student), and on layout JSON (0.94).
+- **R4, the run length (2026-11-14).** After 2,832 steps of add90 ema97 the tag LoRA and the
+  layout-JSON LoRA are both above Base's flow loss on their training images at σ ≥ 0.95, the
+  layout-JSON one further; the plain-FM tag LoRA is below. The extra hand is how that shows on
+  tag captions ([self_distill_lora.md](self_distill_lora.md#evidence-2026-11-14)).
 
 ## Confound: FM only vs add90 ema97
 
@@ -202,9 +209,10 @@ Each step is one sincos run (about 45 minutes) or less, and the next one depends
 previous read.
 
 1. **Fill the confound** (done): the teacher term on tag captions.
-2. **Split the variants from the tag form** (R3): the tag arm on add90 ema97 with
-   `caption_variant_rate 0`. Same read as step 1. Clean means the variants were the trigger and
-   tag captions can keep add90 ema97 without them; broken means tag captions train on plain FM.
+2. **Split the variants from the tag form** (R3): dropped. The probe finds no difference in
+   the teacher between the variants, the tag form and layout JSON. Until a bounded teacher
+   passes its read ([self_distill_lora.md](self_distill_lora.md#proposal)), tag captions train
+   on plain FM at this length.
 3. **Repair the caption, keeping the tag form.** Output stays in the position-clause grammar,
    so the parser, the shuffle and the layout-JSON mapping are unchanged.
    - *Collapse repeats.* Keep the most specific tag of a chain. This needs a tag implication
@@ -235,5 +243,5 @@ worth building only if a plain-FM tag LoRA still shows a caption-shaped fault.
 - **Tag order.** Anima's order and the USERGUIDE's (quality → meta → character → series →
   artist → general) differ in where the count tag sits; no arm.
 - **Teaching Base to read tags better** (a broad-data tag LoRA, or a teacher that sees prose
-  while the student sees tags). Base already binds a clean dense tag prompt; the defect found
-  here is in the captions.
+  while the student sees tags). Base already binds a clean dense tag prompt, and a tag student
+  against a layout-JSON teacher measures the same as against its own (eff 0.94 against 0.97).

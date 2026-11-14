@@ -1,8 +1,9 @@
 # Self-distilled LoRA (add90 ema97)
 
 Status: experimental, 2026-11-09. One artist (caststation, 30 images), one seed per prompt.
-Config: `configs/moss/selfdistill.toml`. Research log, every arm and the open questions:
-[`docs/moss/proposal/self_distill_lora.md`](../proposal/self_distill_lora.md).
+Config: `configs/moss/selfdistill.toml`. Every arm and the verdict:
+[`reports/self_distill_arms.md`](../reports/self_distill_arms.md). Long runs and the bounded
+forms proposed for them: [`proposal/self_distill_lora.md`](../proposal/self_distill_lora.md).
 
 A t2i LoRA trained with the plain flow loss plus a teacher term at high noise. The teacher is
 the same DiT with an EMA copy of the LoRA, given the training image through Qwen3.5-9B's vision
@@ -165,7 +166,13 @@ not rank these arms; the renders do.
 
 ## Limits
 
-- Tested on one artist set. Character sets, other styles and i2i are untested.
+- **Judged at 480 steps.** On a 2,832-step run (sincos, 354 images) the LoRA ends further from
+  its training images than Base at σ ≥ 0.95, on tag and layout-JSON captions alike, and the gap
+  to a plain LoRA grows every epoch. On tag captions that run drew extra fingers and limbs
+  where plain FM drew none. The training loss shows neither
+  ([proposal](../proposal/self_distill_lora.md#evidence-2026-11-14)). For a run much past ~100
+  teacher steps (σ ≥ 0.9 is ~21 % of steps), use the plain recipe until a bounded form is in.
+- Tested on one artist set at that length. Character sets, other styles and i2i are untested.
 - Refused with `delta_rows` other than `all`, `trigger_registers` and `ref_adapters all`: their
   row masks are built for the student's sequence, and the teacher's has the image rows ahead of
   the caption. So it does not combine with the trigger-registers recipe.
