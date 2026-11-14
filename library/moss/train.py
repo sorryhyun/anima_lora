@@ -278,6 +278,10 @@ def train(
             raise SystemExit(
                 "distill_extra_sigma: its second forward would overwrite REPA's capture"
             )
+        if req.distill_balance and req.distill_add:
+            raise SystemExit(
+                "distill_balance scales the replace mode; distill_add balances itself"
+            )
         teachers = Teachers(samples)
         joint_t = max(s.n_img + s.n_ref + teachers.longest(s.stem) for s in samples)
         print(
@@ -285,6 +289,7 @@ def train(
             f"{min(teachers.shortest(s.stem) for s in samples)}-"
             f"{max(teachers.longest(s.stem) for s in samples)} rows, joint up to "
             f"{joint_t}, mix {req.distill_mix}, from sigma {req.distill_sigma_min}"
+            + (" (balanced to the flow norm)" if req.distill_balance else "")
             + (
                 f" (linear from {req.distill_sigma_min - req.distill_sigma_ramp:g})"
                 if req.distill_sigma_ramp
@@ -298,6 +303,8 @@ def train(
                 f"weight {req.distill_extra_weight:g} (gradient-norm balanced)",
                 flush=True,
             )
+    elif req.distill_balance:
+        raise SystemExit("distill_balance needs distill base or ema")
 
     transformer = load_transformer(req.model_dir, req.model)
     transformer.requires_grad_(False)
@@ -664,6 +671,7 @@ def train(
                         state=state,
                         teacher=teach,
                         teacher_add=teach_add,
+                        teacher_balance=req.distill_balance,
                     )
                 else:
                     loss = training_loss(
@@ -676,6 +684,7 @@ def train(
                         parts=parts,
                         teacher=teach,
                         teacher_add=teach_add,
+                        teacher_balance=req.distill_balance,
                     )
                 align = repa.loss() if repa is not None else None
                 if align is not None:

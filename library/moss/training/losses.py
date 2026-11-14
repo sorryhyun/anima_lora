@@ -120,6 +120,7 @@ def training_loss(
     state: dict | None = None,
     teacher=None,
     teacher_add: float = 0.0,
+    teacher_balance: bool = False,
 ):
     """``latent (1,128,h,w)`` fp32, ``embeds (1,S,4096)`` at true length,
     ``ref (1,128,h',w')`` an optional clean reference latent (never noised),
@@ -132,7 +133,9 @@ def training_loss(
     ``library/moss/distill.py``); the flow MSE is then logged in ``parts`` as ``fm``.
     ``teacher_add`` > 0 keeps the flow target and adds the teacher MSE at that weight
     times ``sqrt(flow MSE / teacher MSE)``, so at 1 both gradients on the prediction
-    have the same norm; logged in ``parts`` as ``t``."""
+    have the same norm; logged in ``parts`` as ``t``. ``teacher_balance`` (replace
+    only) scales the teacher MSE by ``sqrt(flow MSE / teacher MSE)``, so its gradient
+    on the prediction has the flow term's norm; logged in ``parts`` as ``t``."""
     noise = torch.randn(
         latent.shape, generator=gen, device=latent.device, dtype=latent.dtype
     )
@@ -159,6 +162,13 @@ def training_loss(
         if parts is not None:
             parts["t"] = term.item()
         loss = loss + teacher_add * scale * term
+    elif teacher is not None and teacher_balance:
+        term = mse(target)
+        flow_mse = F.mse_loss(pred.detach().float(), flow.float())
+        scale = (flow_mse / term.detach().clamp(min=1e-12)).sqrt()
+        if parts is not None:
+            parts["t"] = term.item()
+        loss = scale * term
     else:
         loss = mse(target)
     if tone is None:

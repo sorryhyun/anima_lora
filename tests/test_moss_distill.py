@@ -122,6 +122,34 @@ def test_teacher_add_keeps_flow_and_balances():
     assert abs(parts["t"] - t.item()) < 1e-6 and abs(parts["fm"] - fm.item()) < 1e-6
 
 
+def test_teacher_balance_replaces_flow_at_its_gradient_norm():
+    net = _Net()
+    dit = _DiT(net)
+    latent = torch.randn(1, 4, 2, 2)
+    gen = torch.Generator().manual_seed(0)
+
+    def teach(noisy, timestep, flow, ref=None):
+        return torch.ones_like(noisy)
+
+    state, parts = {}, {}
+    loss = training_loss(
+        dit,
+        latent,
+        torch.zeros(1, 5, 8),
+        0.5,
+        gen=gen,
+        state=state,
+        parts=parts,
+        teacher=teach,
+        teacher_balance=True,
+    )
+    pred = dit.w.detach() * state["noisy"]
+    flow = (state["noisy"] - 0.5 * latent) / 0.5 - latent  # noise - latent
+    fm, t = F.mse_loss(pred, flow), F.mse_loss(pred, torch.ones_like(pred))
+    assert torch.allclose(loss, (fm / t).sqrt() * t)
+    assert abs(parts["t"] - t.item()) < 1e-6
+
+
 def test_train_builds_missing_teachers_on_the_cache_te(tmp_path, monkeypatch):
     """``run_train``'s pre-check: missing teacher files are encoded before the DiT
     loads, on the TE weights the cache stamps and the tail of the teachers already

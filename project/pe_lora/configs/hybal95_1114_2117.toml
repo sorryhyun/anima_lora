@@ -1,0 +1,30 @@
+# caststation hybrid95, balanced: hybrid95_1114_2039 with distill_balance, so each teacher step
+# (Base teacher, sigma >= 0.95, replacing FM) has the gradient norm on the prediction of the FM
+# step it replaces (unbalanced it was ~0.2x: teacher MSE ~0.024 against FM ~0.51). Same cache
+# (rating-free), seed and sigma/noise sequence. Controls: norating_1114_1945 (FM), hybrid95_1114_2039.
+cache = "post_image_dataset/moss/caststation_norating_layout_sure"
+output = "output/ckpt_moss/hybal95_1114_2117.safetensors"
+model = "base"
+epochs = 16
+algo = "lora"
+rank = 32
+down_init = "kaiming"
+optimizer = "muon"
+lr = 1e-4
+warmup_ratio = 0.05
+plain_caption_rate = 0.2
+ema_window = 0.139
+lora_dtype = "bf16"
+int8 = "stream"
+stream = "fp32"
+ema_card = true
+blocks_to_swap = 0
+activation_memory_budget = 0.3
+swap_h2d_only = true
+compile = true
+expandable_segments = true
+
+distill = "base"
+distill_sigma_min = 0.95
+distill_add = 0.0
+distill_balance = true

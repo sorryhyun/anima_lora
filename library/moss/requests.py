@@ -777,6 +777,14 @@ class TrainRequest(Request):
         "replacing it; distill_mix is then unused. 0 = replace",
         advanced=True,
     )
+    distill_balance: bool = _f(
+        False,
+        "with distill and distill_add 0 (replace): scale the teacher MSE by "
+        "sqrt(flow MSE / teacher MSE) each step, so a teacher step's gradient on the "
+        "prediction has the norm of the flow step it replaces (unscaled, ~0.2x at "
+        "sigma >= 0.95 on caststation)",
+        advanced=True,
+    )
     distill_extra_sigma: float = _f(
         0.0,
         "with distill: a second term every step, the teacher target at a sigma "

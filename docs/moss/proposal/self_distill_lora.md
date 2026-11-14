@@ -6,7 +6,15 @@ Status: proposal (2026-11-14). The recipe **add90 ema97** shipped 2026-11-09
 are in [`reports/self_distill_arms.md`](../reports/self_distill_arms.md). On a 2,832-step run it
 leaves the LoRA further from its training images than Base at σ ≥ 0.95, which the training loss
 does not show. Proposed: a Base teacher at σ ≥ 0.95 (hybrid95) as the safe form, and the EMA
-teacher under a teacher-step budget. No run of either yet.
+teacher under a teacher-step budget.
+
+**2026-11-14: arm A ran, with `distill_balance` added, and is the default.** Unbalanced replace
+gives a teacher step ~0.2× the gradient of the flow step it replaces; scaled to that norm
+(`distill_balance`), hybrid95 passed read 1 on sincos at 2,832 steps (LoRA − Base at σ 0.95:
+−0.0063 [−0.009, −0.004], σ 0.98: −0.0028 [−0.005, −0.001]) and the user read its renders as a
+little better than FM only and add90 ema97. Numbers and runs:
+[`experimental/self_distill.md`](../experimental/self_distill.md#results). Arm B (EMA under a
+budget) and `loss_fm_t` were not built.
 
 Source: D-OPSD, arXiv 2605.05204, off-policy arm (§ 3.3).
 

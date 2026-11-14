@@ -475,6 +475,8 @@ def run_metadata(
         )
         if req.distill_add:
             meta["distill_add"] = req.distill_add
+        if req.distill_balance:
+            meta["distill_balance"] = True
         if req.distill_extra_sigma:
             meta.update(
                 distill_extra_sigma=req.distill_extra_sigma,

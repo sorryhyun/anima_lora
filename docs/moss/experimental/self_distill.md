@@ -1,20 +1,18 @@
-# Self-distilled LoRA (add90 ema97)
+# Self-distilled LoRA (balanced hybrid95)
 
-Status: experimental, 2026-11-09. One artist (caststation, 30 images), one seed per prompt.
-Config: `configs/moss/selfdistill.toml`. Every arm and the verdict:
-[`reports/self_distill_arms.md`](../reports/self_distill_arms.md). Long runs and the bounded
-forms proposed for them: [`proposal/self_distill_lora.md`](../proposal/self_distill_lora.md).
+Status: experimental. Default since 2026-11-14 (it replaces add90 ema97, the default from
+2026-11-09). Tested on two artist sets: caststation (30 images, 480 steps) and sincos (354
+images, 2,832 steps). Config: `configs/moss/selfdistill.toml`. Earlier arms and their verdict:
+[`reports/self_distill_arms.md`](../reports/self_distill_arms.md); why the EMA teacher was
+dropped: [`proposal/self_distill_lora.md`](../proposal/self_distill_lora.md).
 
-A t2i LoRA trained with the plain flow loss plus a teacher term at high noise. The teacher is
-the same DiT with an EMA copy of the LoRA, given the training image through Qwen3.5-9B's vision
-tower ahead of the caption. With the image in context, MOSS reproduces the composition, outfits
-and layout of the target zero-shot ([vision_tower_reference.md](../findings/vision_tower_reference.md)),
-so its velocity at high σ is a cleaner target for "what goes where" than the one-sample flow
-target `ε − x₀`.
-
-Against a plain LoRA (SFT) on the same data and steps, it gives up a little style strength and is
-much steadier on general prompts and on held-out multi-character prompts, where it keeps Base's
-composition and SFT rearranges the figures.
+A t2i LoRA trained with the plain flow loss, except on steps at the highest noise, where the
+target is a teacher's velocity instead of `ε − x₀`. The teacher is Base, given the training image
+through Qwen3.5-9B's vision tower ahead of the caption. With the image in context, MOSS reproduces
+the composition, outfits and layout of the target zero-shot
+([vision_tower_reference.md](../findings/vision_tower_reference.md)). At σ ≥ 0.95 `x_t` holds
+almost nothing of the image, so the flow target there asks the LoRA to memorise the training
+composition. The teacher's velocity is how the model itself would draw that image.
 
 ## The recipe
 
@@ -27,56 +25,46 @@ flowchart LR
     xt --> S["student v_θ<br/>LoRA, grad"]
     S --> us(["u_s"])
 
-    us --> FM["flow MSE<br/>‖u_s − (ε − x₀)‖²"]
-    xt -.->|"σ ≥ 0.9 only"| T
-    img["TE(image + caption)<br/>cached .moss_vis"] -.-> T["teacher v_θ̄<br/>EMA 0.97 copy, no grad"]
+    us -->|"σ < 0.95"| FM["flow MSE<br/>‖u_s − (ε − x₀)‖²"]
+    xt -.->|"σ ≥ 0.95 only"| T
+    img["TE(image + caption)<br/>cached .moss_vis"] -.-> T["teacher v<br/>Base (LoRA × 0), no grad"]
     T -.-> ut(["u_t"])
     us -.-> D["teacher MSE<br/>‖u_s − u_t‖²"]
     ut -.-> D
 
     FM --> L(("loss"))
-    D -->|"× w = √(FM / teacher)"| L
+    D -->|"× √(flow MSE / teacher MSE)"| L
     L --> step["Muon step on θ"]
-    step --> ema["θ̄ ← 0.97·θ̄ + 0.03·θ"]
-    ema -.-> T
 ```
 
-Solid edges run on every step; dotted ones only on the ~21 % of steps with σ ≥ 0.9. The weight
-`w` puts both terms' gradients on the prediction at the same norm (unscaled, the teacher MSE is
-~1/40 of the flow MSE).
-
-Where the teacher acts, by σ:
-
-| σ | 0.1 | 0.25 | 0.4 | 0.6 | 0.8 | 0.95 |
-|---|---|---|---|---|---|---|
-| ‖v(image + caption) − v(caption)‖², Base | 0.0041 | 0.0026 | 0.0018 | 0.0018 | 0.0029 | **0.0187** |
-| loss | flow | flow | flow | flow | flow | **flow + teacher** |
-
-Below σ 0.8 `x_t` already holds most of the image, so the image in the TE changes the velocity
-little; at σ 0.95 the gap is ~10× larger. That is where the teacher has something to teach
-(probe: `bench/moss_self_distill/results/20261109-1638-caststation/`).
+Solid edges run on every step below σ 0.95; dotted ones on the ~9 % of steps at σ ≥ 0.95,
+which have no flow term. The scale gives a teacher step the gradient norm on the prediction of
+the flow step it replaces. Unscaled, the teacher MSE is ~0.024 against a flow MSE of ~0.51 there,
+so the teacher step pushes about 0.2× as hard, and Muon's momentum (0.95) leaves its direction
+to the flow steps around it.
 
 | Key | Value | What it does |
 |---|---|---|
-| `distill` | `ema` | teacher = an EMA shadow of the LoRA (`base` = the LoRA at multiplier 0) |
-| `distill_ema_decay` | `0.97` | the teacher trails the student by ~33 updates and carries its style |
-| `distill_sigma_min` | `0.9` | the teacher forward and term only on steps with σ ≥ 0.9, ~21 % of steps |
-| `distill_add` | `1.0` | keep the flow loss and add the teacher MSE, balanced to the same gradient norm on the prediction |
-| `epochs` | `16` | 480 steps on 30 images; judge at this length, 240 steps is ambiguous |
+| `distill` | `base` | teacher = Base (the LoRA at multiplier 0), the image + caption in the TE |
+| `distill_sigma_min` | `0.95` | the teacher forward only on steps with σ ≥ 0.95, ~9 % of steps |
+| `distill_add` | `0` | replace the flow target on those steps |
+| `distill_balance` | `true` | scale the teacher MSE by `√(flow MSE / teacher MSE)` each step |
+| `epochs` | `16` | 480 steps on 30 images |
 | `lr` | `1e-4` | Muon, as the caststation runs |
-| `ema_window` | `0.139` | the saved adapter EMA (separate from the teacher's) |
+| `ema_window` | `0.139` | the saved adapter EMA |
 
 Everything else is `configs/moss/lora.toml`'s default: int8 Base, fp32 stream, rank 32, Muon.
 
-Why these and not the other arms (details in the proposal):
+Why these and not the other arms:
 
-- A **Base** teacher (`distill base`) cleans figures but pulls the palette and gloss toward Base
-  the more steps it gets. The EMA teacher holds the LoRA's own style.
-- **Replacing** the flow target on teacher steps (`distill_add 0`) works at σ ≥ 0.9 too
-  (hybrid90), but at 480 steps it broke a pose and put a branch across a face; adding to it did
-  not.
-- The teacher at **every σ** (pure distillation) carries less style: below σ 0.8 `x_t` already
-  holds most of the image, so the teacher–student gap there is small.
+- **σ ≥ 0.95, not 0.9.** Against a trained LoRA the Base teacher adds nothing at σ 0.9 (the
+  share of its shift that lowers the flow loss is ≤ 0); what it adds there is a pull toward
+  Base's palette. At 0.95 it is still signal.
+- **Base, not an EMA copy of the LoRA.** The EMA teacher (add90 ema97) moves with the student:
+  on sincos at 2,832 steps that LoRA ended above Base's flow loss on its own training images at
+  σ ≥ 0.95, with an extra hand on tag prompts. A fixed teacher has no such loop.
+- **Balanced.** Unbalanced replace (`distill_balance false`) changed the fit only at σ 0.98 on
+  caststation; balanced lowers it at every σ (table below).
 
 ## Running it
 
@@ -132,47 +120,64 @@ as any other. Its metadata stamps the `distill*` keys.
 
 ## Cost
 
-caststation, 30 images (~4,100 image tokens), int8 Base, fp32 stream, 16 GB card:
+int8 Base, fp32 stream, 16 GB card:
 
-| | s/step | peak allocated | 480 steps |
+| run | s/step | steps | time |
 |---|---|---|---|
-| SFT | 1.07 | 13.19 GB | 8.5 min |
-| hybrid90 (Base teacher) | 1.13 | 13.20 GB | 9.1 min |
-| add90 ema97 | 1.15 | 13.75 GB | 9.2 min |
+| caststation, plain LoRA | 1.02 | 480 | 8.2 min |
+| caststation, balanced hybrid95 | 1.05 | 480 (45 teacher) | 8.4 min |
+| sincos, plain LoRA (swap 28) | 0.98 | 2,832 | 46.1 min |
+| sincos, balanced hybrid95 (swap 28) | 1.04 | 2,832 (270 teacher) | 49.1 min |
 
-The EMA teacher's shadow and its scratch copy add ~0.55 GB over a Base teacher. Teacher cache:
-about a minute for 30 images after the TE loads. The compile range spans the teacher's longer
-token axis (vision rows ahead of the caption; caststation 4,192–5,613 tokens).
+The teacher forward runs only on teacher steps. Teacher cache: about a minute for 30 images
+after the TE loads, ~10 min for 354. The compile range spans the teacher's longer token axis
+(vision rows ahead of the caption; caststation 4,192–5,613 tokens).
 
-## Results (caststation, 480 steps)
+## Results
 
-Renders: `output/tests/caststation_distill_ab/e16/` (`sheet.png`, `sheet_space004.png`); int8,
-CFG 3, 50 steps, the three caststation prompts × seeds 1–6.
+Fit to the training images, flow loss of the LoRA minus Base's on the same `x_t`
+(`bench/moss_self_distill/teacher_probe.py`, 2 noise draws per image; bootstrap 95 % over
+images). Below 0 = closer to the training images than Base.
 
-| LoRA | style strength | caststation prompts | held-out Space 004 (12 characters) |
+caststation, 30 images, 480 steps, rating-free layout-JSON cache
+(`results/20261114-21{32,38,44}-nr_*`):
+
+| LoRA | σ 0.9 | σ 0.95 | σ 0.98 |
 |---|---|---|---|
-| SFT | strongest | smeared phone hand (s5), stray flower crown (s6) | composition drifts from Base, more than at 240 steps |
-| hybrid90 (replace at σ ≥ 0.9) | not compared | broken bench and pose (s3), branch across a face (s6) | keeps Base's layout |
-| **add90 ema97** | a little lighter | no broken cell; general prompts s3 / s6 clean | keeps Base's layout |
+| plain | −0.0231 | −0.0236 [−0.030, −0.017] | −0.0289 |
+| hybrid95, unbalanced | −0.0238 | −0.0250 [−0.030, −0.021] | −0.0138 |
+| **hybrid95, balanced** | −0.0188 | −0.0146 [−0.018, −0.011] | −0.0113 |
 
-Flow loss over the last 120 steps: SFT 0.2472, hybrid90 0.2488, add90 ema97 0.2509. The loss does
-not rank these arms; the renders do.
+sincos, 24 of 354 images, 2,832 steps, tag captions (`results/20261114-2248-sincos_bal95`;
+the other rows from 20261114-16xx, captions with the rating):
+
+| LoRA | σ 0.9 | σ 0.95 | σ 0.98 |
+|---|---|---|---|
+| plain | −0.0124 | −0.0108 [−0.014, −0.007] | −0.0095 [−0.013, −0.006] |
+| add90 ema97 (previous default) | −0.0056 | **+0.0049** [+0.002, +0.008] | **+0.0054** [+0.001, +0.010] |
+| **hybrid95, balanced** | −0.0110 | −0.0063 [−0.009, −0.004] | −0.0028 [−0.005, −0.001] |
+
+- Balanced hybrid95 fits the training images ~40 % less than plain at σ 0.95 and stays below
+  Base at the length where add90 ema97 passed it.
+- Renders, read by the user: on sincos (Base, plain, add90 ema97, balanced; 6 tag + 6 layout-JSON
+  prompts and Space 004, `output/tests/sincos_distill_ab/bal95_sheets/`) balanced reads a little
+  better than the others. On caststation (`output/tests/caststation_distill_ab/norating/sheet4_*`)
+  the three LoRAs differ cell by cell with no consistent direction and no broken cell.
+- The training loss does not rank these: below σ 0.95 it matches plain (sincos 0.2934 against
+  0.2930; add90 ema97 0.3041).
 
 ## When to use it
 
 - The LoRA should hold up on prompts unlike its training captions, or on scenes with several
-  characters: the high-σ teacher term keeps Base's composition there.
+  characters: the teacher replaces the target that memorises the training compositions.
 - When the strongest style transfer is the goal, plain LoRA still has the edge.
 
 ## Limits
 
-- **Judged at 480 steps.** On a 2,832-step run (sincos, 354 images) the LoRA ends further from
-  its training images than Base at σ ≥ 0.95, on tag and layout-JSON captions alike, and the gap
-  to a plain LoRA grows every epoch. On tag captions that run drew extra fingers and limbs
-  where plain FM drew none. The training loss shows neither
-  ([proposal](../proposal/self_distill_lora.md#evidence-2026-11-14)). For a run much past ~100
-  teacher steps (σ ≥ 0.9 is ~21 % of steps), use the plain recipe until a bounded form is in.
-- Tested on one artist set at that length. Character sets, other styles and i2i are untested.
+- **The teacher still pulls at the end.** On the sincos LoRA the Base teacher's shift is still
+  signal at σ 0.95 (0.59 of it lowers the flow loss) after 2,832 steps, so it has no fixed
+  point there; much longer runs are untested.
+- Two artist sets. Character sets, other styles and i2i are untested.
 - Refused with `delta_rows` other than `all`, `trigger_registers` and `ref_adapters all`: their
   row masks are built for the student's sequence, and the teacher's has the image rows ahead of
   the caption. So it does not combine with the trigger-registers recipe.

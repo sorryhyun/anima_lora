@@ -1,0 +1,31 @@
+# caststation hybrid95: Base teacher (image + caption in the TE) replaces the flow target on steps
+# with sigma >= 0.95, FM below (docs/moss/proposal/self_distill_lora.md, arm A), on the rating-free
+# cache. Control = norating_1114_1945 (same cache, same seed and sigma/noise sequence, FM only);
+# 480-step form of caststation_hybrid95 (2026-11-09, 240 steps). Teacher files are built on the
+# first run (tail off, as the 11-09 arms). Replace mode is unbalanced: the teacher MSE (~0.02) has
+# ~0.2x the gradient of the FM step it replaces (~0.5).
+cache = "post_image_dataset/moss/caststation_norating_layout_sure"
+output = "output/ckpt_moss/hybrid95_1114_2039.safetensors"
+model = "base"
+epochs = 16
+algo = "lora"
+rank = 32
+down_init = "kaiming"
+optimizer = "muon"
+lr = 1e-4
+warmup_ratio = 0.05
+plain_caption_rate = 0.2
+ema_window = 0.139
+lora_dtype = "bf16"
+int8 = "stream"
+stream = "fp32"
+ema_card = true
+blocks_to_swap = 0
+activation_memory_budget = 0.3
+swap_h2d_only = true
+compile = true
+expandable_segments = true
+
+distill = "base"
+distill_sigma_min = 0.95
+distill_add = 0.0
