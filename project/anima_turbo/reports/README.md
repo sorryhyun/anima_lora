@@ -24,6 +24,9 @@ One report per run or probe. Run ids are in [../configs/README.md](../configs/RE
 - [mfd.md](mfd.md): MFD in the DM slot (2-step 100 / 500-step arms, 2026-11-04), the
   anchor-free MFD collapse (4-step m14, 2026-11-10) and arm 1 on the v1 recipe (2026-11-13):
   cleaner, and the seeds of a prompt draw one image.
+- [pref_p1.md](pref_p1.md): the preference head's P0 and P1 on four bases. Each ranks gelcrawl's
+  selected images on held-out artists (AUROC 0.66–0.71); on 25 rounds of picks every head is at
+  chance (0.41–0.55), zero-shot, fitted and refitted. The DiT-head basis is not built.
 - [warm_v3.md](warm_v3.md): the control warm-started from Hub v3. It passes the gate
   against the control and regresses from v3 untrained on merged14, which sits at the teacher's
   seed diversity.

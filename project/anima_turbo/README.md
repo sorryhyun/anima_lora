@@ -67,7 +67,7 @@ make daemon-run ARGS="--stall-timeout 600 project/anima_turbo/pref_rl/features.p
 embedding) and extracts only the rows it does not hold. `head.py gelcrawl` scores each basis on
 held-out artists and saves a head; `head.py picks` reads that head zero-shot, a head fitted on
 the picks alone and the gelcrawl head refitted on the picks, each against the sign-test gate.
-The DiT-head basis is not built.
+The DiT-head basis is not built. First read: [reports/pref_p1.md](reports/pref_p1.md).
 
 ## Code and data
 
@@ -84,7 +84,7 @@ The DiT-head basis is not built.
 - Older material: `_archive/turbo_dmad/` (the removed DMAD path), retired proposals under
   `_archive/proposals/turbo_*`.
 
-## State (2026-11-13)
+## State (2026-11-14)
 
 `v4_preview` (`1112_1512`, 1k EMA on the `1112_v1.md` recipe) is shipped. The 2-step line is closed
 at the level of `1111_1115` step 250.
@@ -101,3 +101,7 @@ training draws seeds as varied as the teacher's (sameness 0.326 against 0.328) a
 4-step result on merged14; the v1 recipe pulls any start toward the control, with `dm_first_step`
 off (`turbo_1113_1309`) and with the fake seeded from v3 (`turbo_1113_1438`) alike
 (`reports/warm_v3.md`).
+
+Preference RL (`proposal/pref_rl.md`) is at its P1 gate, not passed: on 25 rounds of picks no
+head on the four pooled bases ranks picked above unpicked, though each ranks gelcrawl's selection
+(`reports/pref_p1.md`). The DiT-head basis is the one not read.

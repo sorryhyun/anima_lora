@@ -1,0 +1,57 @@
+# Preference head, P0 and P1: taste on gelcrawl, chance on the picks (2026-11-14)
+
+The first two phases of [../proposal/pref_rl.md](../proposal/pref_rl.md) § 4 on four of its five
+bases. The DiT-head basis is not built, so the P1 gate is read without it.
+
+- Bases (`pref_rl/features.py`): DINOv3 CLS at 224², PE-Spatial-B16-512 tokens mean-pooled, the
+  Anima Tagger backbone's logits on the tagger vocabulary (2 341 columns) and its pooled hidden
+  feature.
+- Head (`pref_rl/head.py`): linear on the standardised basis, pairwise logistic loss between a
+  positive and a negative of one group, groups weighted alike, λ from inner group folds.
+- Read: within-group AUROC on held-out groups, and a two-sided sign test over groups against 0.5.
+
+## P0: gelcrawl
+
+88 artists, 15 266 images, 3 242 selected. Five folds of held-out artists.
+
+| Basis | AUROC within artist (mean / median) | Artists above 0.5 |
+|---|---|---|
+| tagger embedding | 0.712 / 0.708 | 84 / 88 |
+| tagger logits | 0.704 / 0.704 | 85 / 88 |
+| PE-Spatial pooled | 0.669 / 0.665 | 83 / 88 |
+| DINOv3 CLS | 0.657 / 0.657 | 81 / 88 |
+
+Every basis ranks the selected images above the rejected ones of an unseen artist, above the
+booru-tag regression of the proposal's § 1 (0.631). P0 is not a gate.
+
+## P1: 25 rounds on the untrained policy
+
+Session `test`: merged14 + Hub v3, 25 train rounds on random pool captions, 400 renders, 158
+picked. Every round has a contrast. Picks per round: 8 in ten rounds (the cap), 7 in six, 2–6 in
+nine.
+
+Mean within-round AUROC on held-out rounds (rounds above / below 0.5, sign p):
+
+| Basis | gelcrawl head, zero-shot | picks alone | gelcrawl head, then picks |
+|---|---|---|---|
+| DINOv3 CLS | 0.497 (9 / 16, 0.23) | 0.522 (14 / 11, 0.69) | 0.463 (8 / 17, 0.11) |
+| PE-Spatial pooled | 0.509 (15 / 9, 0.31) | 0.487 (12 / 13, 1.0) | 0.506 (14 / 9, 0.41) |
+| tagger embedding | 0.453 (9 / 15, 0.31) | 0.460 (9 / 15, 0.31) | 0.412 (6 / 18, 0.023) |
+| tagger logits | 0.458 (10 / 15, 0.42) | 0.546 (15 / 10, 0.42) | 0.457 (9 / 15, 0.31) |
+
+**The gate is not passed**: no read ranks picked above unpicked at p < 0.05. The one read under
+0.05 points the wrong way, one of twelve. "Picks alone" moved by up to 0.02 between two runs that
+drew different pairs and inner folds.
+
+- The gelcrawl heads do not transfer. § 3.3 of the proposal expected it: gelcrawl holds no
+  generation defect, and the 16 renders of one caption share their content.
+- Ten of 25 rounds sit at the cap of 8 picks, so in those rounds the unpicked half may hold renders
+  the user would also have kept.
+- All four bases are one pooled vector an image, without the caption. The DiT head is the basis
+  that is neither.
+
+By the proposal's rule no student is trained on these heads. Open: the DiT-head basis on the same
+25 rounds, then more rounds on a stricter pick, or the line stops.
+
+Numbers: `output/turbo_pref/_gelcrawl/p0.json`, `output/turbo_pref/test/p1.json`; the gelcrawl
+heads are `output/turbo_pref/_gelcrawl/feat/head_<basis>.npz`.
