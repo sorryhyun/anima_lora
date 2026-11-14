@@ -513,7 +513,7 @@ class GenerateRequest(Request):
     cns: str = _f(
         "",
         "er_sde only: CNS recolors the sampler's injected noise "
-        "(docs/cns.md). 'auto' = the shipped γ for the variant at the "
+        "(docs/inference/cns.md). 'auto' = the shipped γ for the variant at the "
         "calibrated cfg nearest the job's (3 / 4 / 5), else an npz path; '' = off. "
         "ComfyUI's er_sde_cns on MOSS is 'auto' at strength 1",
     )

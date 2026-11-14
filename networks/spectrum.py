@@ -5,7 +5,7 @@ for training-free diffusion sampling acceleration via Chebyshev polynomial
 feature forecasting: observe block outputs at a subset of steps (actual
 forwards), fit Chebyshev coefficients via ridge regression, forecast block
 outputs at skipped steps, and run only t_embedder + final_layer + unpatchify
-on cached steps. See docs/anima/inference/spectrum.md.
+on cached steps. See docs/inference/spectrum.md.
 """
 
 import math
@@ -50,7 +50,7 @@ _window_decision_fraction = window_decision_fraction
 # recording the SEA distance trace, derives δ to match the target refresh
 # fraction, and caches it so subsequent generates use the SEA trigger at
 # matched compute. Mirrored to disk (output/spectrum_sea_delta.json) so the
-# calibration survives across CLI processes. See docs/anima/inference/spectrum.md
+# calibration survives across CLI processes. See docs/inference/spectrum.md
 # §"SEA schedule" ("The δ knob").
 _AUTO_DELTA_CACHE: dict = {}
 

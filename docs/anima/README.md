@@ -18,7 +18,7 @@ Shipped training methods, losses and model assets.
 
 ## Inference
 
-Training-free runtime stacks (acceleration, sampler-boundary corrections, representation edits, the resident server) — indexed in [inference/README.md](inference/README.md). CNS, shared with MOSS, is [../cns.md](../cns.md).
+Training-free runtime stacks (acceleration, sampler-boundary corrections, representation edits, the resident server) — indexed in [inference/README.md](inference/README.md). Spectrum, CNS and DAVE, shared with MOSS, are in [../inference/](../inference/README.md).
 
 ## Experimental
 

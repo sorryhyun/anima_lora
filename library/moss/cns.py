@@ -1,4 +1,4 @@
-"""CNS (colored-noise SDE, ``docs/cns.md``) on MOSS-Image's packed latent.
+"""CNS (colored-noise SDE, ``docs/inference/cns.md``) on MOSS-Image's packed latent.
 
 The recolor numerics are Anima's (``library.inference.corrections.cns_core``). MOSS
 adds one thing: the FFT runs on the **un-patchified** grid ``(B, 32, 2h, 2w)``, not

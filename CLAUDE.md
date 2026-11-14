@@ -279,8 +279,8 @@ alone caches empty prompts. TE caches invalidate on caption mtime only.
 ### Methods
 
 Read the deep-dive before working on one (`docs/anima/methods/`, `docs/anima/experimental/`).
-Training-free inference stacks (Spectrum, SMC-CFG, CNS, mod-guidance, DAVE, …):
-`docs/anima/inference/`. Channel scaling (on by default): `docs/anima/optimizations/channel_scaling.md`.
+Training-free inference stacks (SMC-CFG, mod-guidance, …): `docs/anima/inference/`; Spectrum,
+CNS and DAVE, which also run on MOSS: `docs/inference/`. Channel scaling (on by default): `docs/anima/optimizations/channel_scaling.md`.
 
 | Method | Gotcha / pointer |
 |---|---|
@@ -309,7 +309,8 @@ Training-free inference stacks (Spectrum, SMC-CFG, CNS, mod-guidance, DAVE, …)
 - Finished lines: `project/finished/` (code search skips most of it); retired lines and
   benches: the gitignored `_archive/`. Proposals: `docs/{moss,anima}/proposal/`.
 - Docs: one folder per line (`docs/moss/`, `docs/anima/`); docs shared across lines
-  (installation, guidebooks, CNS) sit at `docs/` — index `docs/README.md`.
+  (installation, guidebooks, `inference/` for Spectrum / CNS / DAVE) sit at `docs/` — index
+  `docs/README.md`.
 - `CONTRIBUTING.md`: numerics/efficiency changes (Tier 1.5) and new methods (Tier 2) need
   a bench script + invariant test. Benches share `bench/_common.py` and write a
   `result.json` envelope to `bench/<name>/results/<YYYYMMDD-HHMM>[-label]/`.

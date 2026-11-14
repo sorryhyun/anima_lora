@@ -183,7 +183,7 @@ bf16 구성(swap 36, budget 0.5, `swap_h2d_only`, `expandable_segments`, 랭크 
 | `sampler` | `er_sde` | `er_sde` 또는 `euler` |
 | `width` / `height` | `1024` | 16의 배수 |
 | `negative_prompt` | 비어 있음 | 파이프라인 기본값 |
-| `dave` | 비어 있음 | `auto` = DAVE: 한 프롬프트에서 시드마다 더 다양한 결과(구도, 포즈, 레이아웃), 대신 손이 약간 느슨해짐; `docs/moss/inference/dave.md` |
+| `dave` | 비어 있음 | `auto` = DAVE: 한 프롬프트에서 시드마다 더 다양한 결과(구도, 포즈, 레이아웃), 대신 손이 약간 느슨해짐; `docs/inference/dave.md` |
 | `dave_strength` | `0.3` | DAVE가 제거하는 정도; `dave_tau` (Advanced, `0.10`) = DAVE가 적용되는 초반 스텝의 비율 |
 
 - **er_sde와 euler**: `euler` 는 레퍼런스 파이프라인의 샘플러입니다. `er_sde` 는 비용이 같고 선이 더 선명하며 디테일이 더 촘촘합니다. LoRA를 걸었을 때 손도 더 깔끔하게 나왔습니다. 대신 프롬프트의 일부 디테일(노을빛, 머리색, "sitting on a bench")에서 벗어나고, 세트의 그림체도 조금 잃었습니다. 같은 시드에서도 두 샘플러는 다른 이미지를 내므로, LoRA와 베이스 비교는 한 샘플러 안에서 하세요.

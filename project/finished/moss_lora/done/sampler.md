@@ -4,7 +4,7 @@
 bench knob (`sde=1,cns=1`). `denoise(sampler="er_sde")` runs Anima's `ERSDESampler` on
 MOSS's snapped shift-5 grid, fed `x̂₀ = x_t − σ·v`; `library/moss/cns.py` recolors its
 noise. The shipped γ files (Base and SFT × cfg) and how `MossCNS` picks one:
-`docs/cns.md`.
+`docs/inference/cns.md`.
 
 All runs: Base, 1024², CFG 3, uncond skip 22, 50 steps, compiled, seed 42; results
 `_archive/bench/moss_spectrum/results/20261017-00{48,105}-cmp_compile/`, images

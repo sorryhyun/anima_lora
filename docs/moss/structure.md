@@ -179,7 +179,7 @@ Defaults come from the reference pipeline (`requests.py`: `DEFAULT_STEPS` 50, `D
 - **σ grid** (`model.snapped_sigmas`): a shift-5 warped linspace, each σ snapped to the nearest σ of the 1000-step training grid and duplicates collapsed (so a high step count can return fewer steps). Timestep input is `1000·σ`.
 - **CFG with a skipped uncond.** The uncond branch runs the negative prompt (default `''`, the bare template) with **block 22 skipped**; $\hat v = v_u + 3\,(v_c - v_u)$. Still two forwards per step, batched together via per-sample `skip_layers`.
 - **Sampler.** `er_sde` (default here: the shared ER-SDE-Solver-3, `library.inference.sampling`, fed $\hat x_0 = x_t - \sigma \hat v$) or `euler`, the pipeline's ODE.
-- Training-free extras on the same loop (`generate.py::denoise`): Spectrum (forecast the last block's features on most steps), DAVE (`--dave auto`, [`moss/inference/dave.md`](inference/dave.md)), CNS noise recolouring under ER-SDE.
+- Training-free extras on the same loop (`generate.py::denoise`): Spectrum (forecast the last block's features on most steps), DAVE (`--dave auto`, [`inference/dave.md`](../inference/dave.md#moss-image)), CNS noise recolouring under ER-SDE.
 
 ---
 

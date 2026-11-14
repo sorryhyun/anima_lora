@@ -20,7 +20,6 @@ Qwen-Image-2.1 has no docs folder; its reference is `library/qwen21/CLAUDE.md`.
 | [moss/README.md](moss/README.md) | MOSS-Image LoRA — setup, GUI, CLI, defaults and what to expect |
 | [moss/structure.md](moss/structure.md) | The MOSS-Image model end to end — Qwen3.5 text pass, FLUX.2 latent boundary, single-stream DiT, training step and sampler |
 | [moss/methods/i2i.md](moss/methods/i2i.md) | i2i — tasks, reference flags, status (design + probes: [../project/finished/moss_lora/done/i2i.md](../project/finished/moss_lora/done/i2i.md)) |
-| [moss/inference/dave.md](moss/inference/dave.md) | DAVE on MOSS — same-prompt seed variety (`--dave auto`), ComfyUI node |
 | [moss/methods/tone_loss.md](moss/methods/tone_loss.md) | i2i tone term — keeps the input's brightness and colour outside the edit (`--tone_weight`), sanitize v3 |
 | [moss/experimental/self_distill.md](moss/experimental/self_distill.md) | Self-distilled LoRA (experimental) — flow loss plus an EMA teacher with the image in the TE at σ ≥ 0.9; steadier on general and multi-character prompts |
 | [moss/optimization/int8.md](moss/optimization/int8.md) | int8 base — GPTQ file, speed, VRAM, accuracy |
@@ -40,7 +39,7 @@ Qwen-Image-2.1 has no docs folder; its reference is `library/qwen21/CLAUDE.md`.
 | [installation/rocm.md](installation/rocm.md) | Windows ROCm — the AMD Radeon install path |
 | [guidelines/guidebook.md](guidelines/guidebook.md) | Anima comprehensive guide (English); also [가이드북](guidelines/가이드북.md), [ガイドブック](guidelines/ガイドブック.md), [指南书](guidelines/指南书.md) |
 | [guidelines/moss-guidebook.md](guidelines/moss-guidebook.md) | MOSS-Image GUI guidebook (English); also [가이드북](guidelines/moss-가이드북.md), [ガイドブック](guidelines/moss-ガイドブック.md), [指南书](guidelines/moss-指南书.md) |
-| [cns.md](cns.md) | CNS — colored-noise ER-SDE plug-in; Anima `--cns` and the MOSS γ files |
+| [inference/README.md](inference/README.md) | Sampler methods on both lines, each with a MOSS-Image section — [Spectrum](inference/spectrum.md) (feature forecasting), [CNS](inference/cns.md) (colored-noise ER-SDE, the MOSS γ files), [DAVE](inference/dave.md) (same-prompt seed variety) |
 
 Curation docs — Anima Tagger, position captions, multiview audit, grouping,
 masking — live with their code in the sibling

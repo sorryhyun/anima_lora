@@ -116,7 +116,7 @@ python inference.py … --lora_weight turbo.safetensors --infer_steps 4 --guidan
 ### Go faster (training-free)
 | Goal | Flag | Notes |
 |---|---|---|
-| Skip blocks on cached steps | `--spectrum` | Chebyshev feature forecasting. See [`../inference/spectrum.md`](../inference/spectrum.md). |
+| Skip blocks on cached steps | `--spectrum` | Chebyshev feature forecasting. See [`docs/inference/spectrum.md`](../../inference/spectrum.md). |
 | Compile the DiT | `--compile` / `--compile_blocks` | `torch.compile` speedup; first run pays the trace cost. |
 | Lower-VRAM text encoder | `--text_encoder_cpu` | Keeps the TE on CPU. |
 
@@ -124,7 +124,7 @@ python inference.py … --lora_weight turbo.safetensors --infer_steps 4 --guidan
 | Goal | Flag | Notes |
 |---|---|---|
 | Sliding-mode CFG | `--smc_cfg` | α-adaptive velocity-space correction (λ=5, α=0.2). [`../inference/smc_cfg.md`](../inference/smc_cfg.md) |
-| SDE noise recoloring | `--cns` | `--sampler er_sde` only (no-op on euler/lcm). [`../../cns.md`](../../cns.md) |
+| SDE noise recoloring | `--cns` | `--sampler er_sde` only (no-op on euler/lcm). [`docs/inference/cns.md`](../../inference/cns.md) |
 | Text-conditioned AdaLN steer | `--pooled_text_proj` + `--mod_w` | Modulation guidance (global tone, not content). [`../inference/mod-guidance.md`](../inference/mod-guidance.md) |
 | Weak-tag / relation adherence | `--xattn_boost 2` | Cross-attn gain in the σ ≥ 0.85 plan-writing window, cond pass only. Amplifies *all* caption tags incl. framing. [`../inference/xattn_boost.md`](../inference/xattn_boost.md) |
 

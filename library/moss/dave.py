@@ -1,4 +1,4 @@
-"""DAVE (DC attenuation for diversity, ``docs/anima/inference/dave.md``) on MOSS-Image.
+"""DAVE (DC attenuation for diversity, ``docs/inference/dave.md``) on MOSS-Image.
 
 The edit is Anima's: on each pooled block, during the first τ of the steps,
 ``h ← h − strength·μ`` with ``μ`` the per-channel mean over the image tokens.

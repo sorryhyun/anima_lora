@@ -37,7 +37,7 @@ Massive activations (MAs) are selected per sample, layer and stream: the top-k c
   on Base).
 - **Constant offset.** 1356 is ~1900× the median channel at block 0. Together these
   channels hold ~99 % of the image tokens' mean, the same on every seed and prompt
-  (`docs/moss/inference/dave.md`). On blocks 0–18 the DC term is 0.98–0.99 of their energy
+  (`docs/inference/dave.md`). On blocks 0–18 the DC term is 0.98–0.99 of their energy
   (`findings/chat_template.md`).
 - **Effect on LoRAs.** At the FFN input, ch 42 is 11–26× the median channel on blocks
   11–41, with a peak-to-mean of 2.7, so a LoRA sees it as a bias line
@@ -79,7 +79,7 @@ prompt-dependent part, and the second part is what the paper's results depend on
    be a training-free reference point next to the MOSS i2i LoRAs (`docs/moss/methods/i2i.md`)
    and the vision-tower reference (`findings/vision_tower_reference.md`).
 4. **DAVE already agrees.** DAVE leaves these 18 channels out of its mean edit
-   (`docs/moss/inference/dave.md`), and the paper's disruption result says touching them breaks
+   (`docs/inference/dave.md`), and the paper's disruption result says touching them breaks
    generation. Nothing to change there.
 
 ## Question 1 result (2026-11-13)

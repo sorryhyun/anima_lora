@@ -27,7 +27,7 @@ Spectrum node bundles copies (`moss_cns_gamma*.npz` in its repo root); copy rege
 ones over them before publishing the node.
 
 Consumer + math: `library/inference/corrections/cns.py`. User doc:
-`docs/cns.md`.
+`docs/inference/cns.md`.
 
 ## channel_stats — per-channel LoRA gradient rebalance (SmoothQuant-style)
 

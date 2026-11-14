@@ -1,6 +1,7 @@
 # Spectrum — Inference Acceleration
 
 Training-free diffusion sampling acceleration via Chebyshev polynomial feature forecasting.
+Anima first; the MOSS-Image implementation and its defaults: [MOSS-Image](#moss-image).
 
 Paper: [Adaptive Spectral Feature Forecasting for Diffusion Sampling Acceleration](https://arxiv.org/abs/2603.01623) (Han et al., CVPR 2026, Stanford/ByteDance)
 
@@ -145,3 +146,27 @@ ComfyUI sampling loop (any sampler)
 - Step transitions are detected by sigma value changes.
 - `calculate_denoised(sigma, v_pred, x)` converts the fast-forward velocity output to denoised x, matching the normal model path.
 - Chains with existing wrappers (FlashAttention4, TorchCompile) since those operate at different levels (`transformer_options` and `WrappersMP.APPLY_MODEL` respectively).
+
+## MOSS-Image
+
+On by default in `scripts/moss/generate.py` (`--no-spectrum` runs every step in full): 2.6× at
+50 steps with the default `flex_window 0.5`. Code: `library/moss/spectrum.py`, test
+`tests/test_moss_spectrum.py`.
+
+- **Forecast target**: the image-token hidden state after the last of the 42 blocks, before
+  `final_norm_video`. A forecast step runs only `time_conditioning` and `head`, skipping the
+  blocks and the text refiner.
+- **Same estimator and schedule as Anima**, re-implemented without importing `networks/`:
+  `SpectrumPredictor`'s Chebyshev ridge fit blended with a first-order Taylor step, and the
+  growing window, precomputed from the step count. The weights are solved in float64 and the
+  bf16 history summed into an fp32 accumulator, which avoids the core's +3 GiB fp32 cast of
+  the history at 1024² with CFG. No SEA schedule.
+- **Cond and uncond are separate trajectories**: rows are stacked `[cond…, uncond…]` and each
+  row is forecast from its own history, so the skip-22 uncond stays apart.
+- **Defaults** (`GenerateRequest`): window 2.0, `flex_window` 0.5 (0.25 / 0.5 / 1.0 = 22 / 19 /
+  16 full forwards of 50 steps), warmup 6, full forwards from `steps − 3` on, `w` 0.3, degree
+  3, λ 0.1.
+- DAVE lands on full steps only (forecast steps run no blocks); see [dave.md](dave.md#moss-image).
+- Where the full forwards fall against the steps where MOSS sets its layout:
+  [`../moss/findings/sigma_staircase.md`](../moss/findings/sigma_staircase.md).
+- ComfyUI: **KSampler (Spectrum for MOSS)** in the Spectrum node pack.

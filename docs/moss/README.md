@@ -170,7 +170,7 @@ Trade-offs and the timing table: guidebook §5.
 - **`--compile`** (on; `--no-compile` for eager): about 1.37× on top, with or without
   Spectrum, for a few seconds of compile per job. Fine detail drifts from the eager image;
   composition does not.
-- **DAVE** (`--dave auto`, off): more same-prompt variety across seeds; `docs/moss/inference/dave.md`.
+- **DAVE** (`--dave auto`, off): more same-prompt variety across seeds; `docs/inference/dave.md`.
 - **`--int8 on`** (default; `off` runs the bf16 DiT): the DiT's block linears as int8 GEMMs
   from the GPTQ file, 11–15 s against 22 s per 1024² render (ER-SDE 50 + Spectrum) and 7.8
   against 10.7 GiB on the fp32 stream. Refuses LoHa and `--blocks_to_swap`.
@@ -180,7 +180,7 @@ Trade-offs and the timing table: guidebook §5.
   and +0.6 GB. A LoRA loads under either, whatever it trained with.
   `docs/moss/methods/fp32_stream.md`.
 - **CNS** has no `generate.py` flag. The six MOSS γ files
-  (`networks/calibration/moss_cns_gamma*.npz`, `docs/cns.md`) are used by the
+  (`networks/calibration/moss_cns_gamma*.npz`, `docs/inference/cns.md`) are used by the
   bench and by the ComfyUI Spectrum node's `er_sde_cns`, which picks one by variant and cfg.
 
 ## ComfyUI

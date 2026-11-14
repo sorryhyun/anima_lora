@@ -183,7 +183,7 @@ The sampler defaults come from MOSS's reference pipeline.
 | `sampler` | `er_sde` | `er_sde` or `euler` |
 | `width` / `height` | `1024` | Multiples of 16 |
 | `negative_prompt` | empty | The pipeline default |
-| `dave` | empty | `auto` = DAVE: more variety across seeds for one prompt (framing, pose, layout), with slightly looser hands; `docs/moss/inference/dave.md` |
+| `dave` | empty | `auto` = DAVE: more variety across seeds for one prompt (framing, pose, layout), with slightly looser hands; `docs/inference/dave.md` |
 | `dave_strength` | `0.3` | How much DAVE removes; `dave_tau` (Advanced, `0.10`) = the share of early steps it runs on |
 
 - **er_sde vs euler**: `euler` is the reference pipeline's sampler. `er_sde` costs the same and gives sharper line work and denser detail; with the LoRA, hands came out cleaner. It also drifts from some prompt details (sunset light, hair colour, "sitting on a bench") and gave up a little of the set's look. The two give different images at the same seed, so compare LoRA against base within one sampler.

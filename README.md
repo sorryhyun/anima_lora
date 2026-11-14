@@ -58,7 +58,7 @@ Training-free; each composes with any checkpoint. Overview: [docs/anima/inferenc
 
 | Method | Doc |
 |---|---|
-| Spectrum — feature forecasting, ≈1.75× ([ComfyUI node](https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler)) | [spectrum.md](docs/anima/inference/spectrum.md) |
+| Spectrum — feature forecasting, ≈1.75× ([ComfyUI node](https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler)) | [spectrum.md](docs/inference/spectrum.md) |
 | SMC-CFG — sliding-mode CFG correction | [smc_cfg.md](docs/anima/inference/smc_cfg.md) |
 | Modulation guidance | [mod-guidance.md](docs/anima/inference/mod-guidance.md) |
 | SPD — progressive multi-resolution sampling | [spd.md](docs/anima/inference/spd.md) |

@@ -704,7 +704,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # CNS: Colored Noise Sampling (library/inference/corrections/cns_core.py).
-    # er_sde-only (no-op on euler). See docs/cns.md.
+    # er_sde-only (no-op on euler). See docs/inference/cns.md.
     parser.add_argument(
         "--cns",
         type=str,

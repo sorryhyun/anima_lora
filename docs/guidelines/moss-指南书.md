@@ -183,7 +183,7 @@ bf16 方案（swap 36，budget 0.5，`swap_h2d_only`，`expandable_segments`，�
 | 采样器（`sampler`） | `er_sde` | `er_sde` 或 `euler` |
 | 宽度 / 高度（`width` / `height`） | `1024` | 16 的倍数 |
 | 反向提示词（`negative_prompt`） | 空 | 管线默认值 |
-| `dave` | 空 | `auto` = DAVE：同一提示词在不同种子下变化更多（构图、姿势、布局），代价是手部略松；见 `docs/moss/inference/dave.md` |
+| `dave` | 空 | `auto` = DAVE：同一提示词在不同种子下变化更多（构图、姿势、布局），代价是手部略松；见 `docs/inference/dave.md` |
 | `dave_strength` | `0.3` | DAVE 去除的程度；`dave_tau`（高级，`0.10`）= 其生效的前期步数占比 |
 
 - **er_sde 与 euler**：`euler` 是参考管线的采样器。`er_sde` 耗时相同，线条更锐利、细节更密；加载 LoRA 时手部也更干净。但它会偏离部分提示词细节（夕阳光、发色、"sitting on a bench"），也会损失一点数据集的画风。两者在同一种子下生成不同的图，所以 LoRA 与基础模型的比较要在同一采样器内进行。

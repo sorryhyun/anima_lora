@@ -135,7 +135,7 @@ plugin boundary, so SMC-CFG / mod-guidance composition is unaffected.
 Shipped — library + ComfyUI node. The SEA-distance trigger is wired into
 `spectrum_denoise` (`networks/spectrum.py` + the `networks/spectrum_sea.py`
 helpers) as the opt-in `--spectrum_schedule sea` mode with auto-δ matched-compute
-calibration — see `docs/anima/inference/spectrum.md` §"SEA schedule". The growing
+calibration — see `docs/inference/spectrum.md` §"SEA schedule". The growing
 window remains the default. The node mirror is done too: `SpectrumKSampler`
 in `~/ComfyUI-Spectrum-KSampler` exposes the `schedule='sea'` mode
 (`spectrum.py` + vendored `spectrum_sea.py`). The P2 CMMD A/B ship gate was

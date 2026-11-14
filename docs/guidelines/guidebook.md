@@ -407,7 +407,7 @@ A kohya-ss style option in `configs/base.toml`'s `[[datasets.subsets]]`: how man
 - [`docs/anima/guidelines/difference_between_comfy.md`](../anima/guidelines/difference_between_comfy.md) — anima_lora ↔ ComfyUI core implementation differences
 - [`docs/anima/methods/timestep_mask.md`](../anima/methods/timestep_mask.md) — T-LoRA timestep mask
 - [`docs/anima/methods/svd-down-lora.md`](../anima/methods/svd-down-lora.md) — SVD-Down LoRA (weight-seeded down-projection init)
-- [`docs/anima/inference/spectrum.md`](../anima/inference/spectrum.md) — how Spectrum acceleration works and its options
+- [`docs/inference/spectrum.md`](../inference/spectrum.md) — how Spectrum acceleration works and its options
 - [`docs/anima/inference/mod-guidance.md`](../anima/inference/mod-guidance.md) — modulation guidance
 - [`docs/anima/methods/hydra-lora.md`](../anima/methods/hydra-lora.md) — HydraLoRA multi-head routing
 

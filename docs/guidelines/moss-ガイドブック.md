@@ -183,7 +183,7 @@ bf16 構成（swap 36、budget 0.5、`swap_h2d_only`、`expandable_segments`、�
 | `sampler` | `er_sde` | `er_sde` または `euler` |
 | `width` / `height` | `1024` | 16 の倍数 |
 | `negative_prompt` | 空 | パイプラインのデフォルト |
-| `dave` | 空 | `auto` = DAVE: 同じプロンプトでシードごとのバリエーションが増える（構図、ポーズ、レイアウト）代わりに、手が少し甘くなる。`docs/moss/inference/dave.md` |
+| `dave` | 空 | `auto` = DAVE: 同じプロンプトでシードごとのバリエーションが増える（構図、ポーズ、レイアウト）代わりに、手が少し甘くなる。`docs/inference/dave.md` |
 | `dave_strength` | `0.3` | DAVE が取り除く量。`dave_tau`（Advanced、`0.10`）= DAVE を適用する序盤ステップの割合 |
 
 - **er_sde と euler**: `euler` はリファレンスパイプラインのサンプラーです。`er_sde` は同じコストで線がよりシャープになり、ディテールも密になります。LoRA 適用時は手もきれいに出ました。一方で、プロンプトの一部のディテール（夕焼けの光、髪色、"sitting on a bench"）から外れ、セットの絵柄も少し失われました。同じシードでも 2 つのサンプラーは別の画像を出すので、LoRA とベースの比較は同じサンプラー内で行ってください。
