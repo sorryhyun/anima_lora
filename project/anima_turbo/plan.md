@@ -25,8 +25,9 @@ plan is `91d476e0:scripts/distill_turbo/plan.md`.
 3. **Probe beside the renders** (`bench/turbo/probe_handoff.py`, about 3 min per student):
    held-out anchor MSE, the `S` cosine, and the sameness across seeds (teacher 0.328, control
    0.496). A warm-started arm is also compared with its starting point, untrained.
-4. The control has no twin. The noise floor is still arm 0's (`reports/arm0.md`), from a constant
-   LR without `dm_first_step`. A twin (seed 43) is run when a read is close.
+4. The control's twin is `turbo_1114_1745` (seed 43). On the dynamic grid the two seeds are far
+   apart: sameness 0.496 / 0.675, `S` cos 0.547 / 0.453, `T>S@1` cos 0.779 / 0.745, anchor MSE
+   0.149 / 0.188. Arms on the static grid are read against `turbo_1114_1709`, which has no twin.
 
 ## Warm start from Hub v3: done, regressed (`reports/warm_v3.md`)
 
@@ -43,9 +44,16 @@ By that read the line closes on merged14 + Hub v3 untrained. What comes next is 
 
 ## After it
 
-- **Static grid** (`dmd.dynamic_schedule` off), config only. The dynamic grid draws its interior σ
-  uniformly, so the inference transitions (σ 0.9 → 0.75 → 0.5 → 0) are never trained as such and
-  the last step took the DM gradient on 76 of v1's 1000 iterations. It gives up other step counts.
+- **Static grid** (`dmd.dynamic_schedule` off): done 11-14, adopted on the user's read of the
+  renders (`turbo_1114_1709`, grids `output/tests/turbo4/cmp/static_twin_*.jpg`). Sameness 0.445
+  against 0.496 / 0.675 for the two dynamic seeds, `S` cos 0.567 against 0.547 / 0.453, `T>S@1` cos
+  0.823 against 0.779 / 0.745. Anchor MSE 0.171 sits between the two (0.149 / 0.188), and the café
+  sign text is worse than the control's. One static seed. It gives up other step counts.
+- **Cond-only L_CDM.** Our L_CDM takes the CFG'd teacher; the paper (arXiv:2605.06376 Eq. 9) and
+  its code take the cond-only one, with CFG as a separate on-trajectory loss. On the static arm's
+  step-248 bundle the cond-only signal is 0.58 of the CFG'd one in rms (cos 0.71), and the CFG'd
+  signal at τ̂ > 0.67 is mostly the CFG part (`bench/turbo/probe_cdm_signal.py`, result
+  `20261114-1739-cdm_signal_turbo_1114_1709`). A distinct arm, on the static grid. Not built.
 - **Fake-lag probe** before anything that touches the fake (student : fake 1 : 10, the VA-TDM
   teacher-regularised fake): freeze the student at a resume point, run about 40 more fake steps,
   and read how far the DM signal turns on fixed draws. Not built.

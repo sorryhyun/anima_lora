@@ -53,8 +53,8 @@ def cdm_extrapolate(
     (large, possibly noiseward) stride to ``t' ~ U(0,1)`` instead of the next
     grid point. Inputs are DETACHED and the result is a plain fp32 tensor with
     no graph: the extrapolation is a launch point for one fresh grad-bearing
-    student forward, not a second BPTT chain (a deliberate deviation from the
-    paper; mirrors the DM renoise path).
+    student forward, not a second BPTT chain (as in the paper's code, which
+    rolls the trajectory under no_grad; mirrors the DM renoise path).
     ``t_to`` is per-sample ``(B,)``, broadcast against ``x``'s trailing dims.
     """
     stride = t_to.detach().float().view(-1, *([1] * (x.dim() - 1))) - s_from
