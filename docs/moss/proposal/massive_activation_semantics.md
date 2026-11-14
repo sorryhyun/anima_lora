@@ -38,7 +38,7 @@ Massive activations (MAs) are selected per sample, layer and stream: the top-k c
 - **Constant offset.** 1356 is ~1900× the median channel at block 0. Together these
   channels hold ~99 % of the image tokens' mean, the same on every seed and prompt
   (`docs/moss/inference/dave.md`). On blocks 0–18 the DC term is 0.98–0.99 of their energy
-  (`findings/attention_sink_chat_template.md`).
+  (`findings/chat_template.md`).
 - **Effect on LoRAs.** At the FFN input, ch 42 is 11–26× the median channel on blocks
   11–41, with a peak-to-mean of 2.7, so a LoRA sees it as a bias line
   (`project/finished/moss_lora/done/channel_scaling.md`). The `weight_svd` basis leans on it

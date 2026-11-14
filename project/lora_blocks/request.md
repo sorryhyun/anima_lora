@@ -33,7 +33,7 @@ cached beside the TE file, so the text rows would never run through the blocks.
 1. **Image-dependent text states:** text rows that read the image and carry what they read back
    to the image through their keys.
 2. **Registers and sinks:** the chat-template rows are MOSS's attention sink
-   (`docs/moss/findings/attention_sink_chat_template.md`; arXiv 2607.19139 on template tokens as
+   (`docs/moss/findings/chat_template.md`; arXiv 2607.19139 on template tokens as
    implicit registers).
 3. **Timestep-dependent text keys:** the text rows take the image's σ modulation on every step.
 

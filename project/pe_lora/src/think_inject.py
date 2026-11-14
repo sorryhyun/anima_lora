@@ -2,7 +2,7 @@
 
 The TE is causal, so text after the generation prompt leaves the caption rows' states
 unchanged, and the image reads ``</think>`` as a caption-dependent key
-(``docs/moss/findings/assistant_tail.md``). One catalog INT8 TE serves both roles:
+(``docs/moss/findings/chat_template.md``). One catalog INT8 TE serves both roles:
 
 1. generate — PE mode (``pe_mode_int8_r128d256``) and TE mode (the bare 9B, the control)
    each rewrite every prompt under PE's system prompt, thinking on (card sampling);

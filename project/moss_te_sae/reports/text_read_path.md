@@ -11,7 +11,7 @@ Setup for the attention runs: the 7 A/B eval prompts (`bench/moss_ab/lora_ab.py`
 INT8 TE), Base DiT, Euler 30 steps, CFG 3, no Spectrum, seed 1, 1024², cond branch. A
 prompt is 3 prefix rows (`<|im_start|>user\n`), 39–69 caption rows and 7 suffix rows
 (`<|im_end|>\n<|im_start|>assistant\n<think>\n`). The earlier finding
-`docs/moss/findings/attention_sink_chat_template.md` (2026-10-18) measured the same thing
+`docs/moss/findings/chat_template.md` (2026-10-18) measured the same thing
 on two plain-text prompts × 4 seeds; this reproduces it on layout JSON and adds the
 per-row and causal reads.
 

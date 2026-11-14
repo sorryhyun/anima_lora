@@ -137,4 +137,4 @@ Where the small medians sit by depth was not recorded. LayerNorm's backward divi
 - A backward with any loss scale.
 - Which channel and token carry the 285k, and the per-linear fp16acc error.
 - MOSS: its base stream peaks at 61.4k at 1 MP
-  ([heal_finetune.md](../../moss/findings/heal_finetune.md)), so the same scaling applies.
+  ([heal_finetune.md](../../moss/reports/heal_finetune.md)), so the same scaling applies.

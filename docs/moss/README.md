@@ -152,7 +152,7 @@ needs `anime_tools`) does the same conversion.
 **Prompt tail** (`prompt_tail`, default `sure`): the cache and generate append
 `\n</think>\n\nSure,` after the chat template, closing the empty think block and starting
 an answer. On caststation a LoRA trained and rendered with it beat its control by eye, and
-kept most of the gain rendered without it (`findings/assistant_tail.md`). The TE cache and
+kept most of the gain rendered without it (`findings/chat_template.md`). The TE cache and
 the LoRA stamp it; generate's `auto` follows the LoRA (unstamped: `off`) and renders `sure`
 without one. The i2i configs pin `off`. ComfyUI does not add it.
 
@@ -213,7 +213,8 @@ REPA, parked, `_archive/moss_lora/repa.md`); `--ref_timestep` / `--ref_isolate` 
 - Self-distilled LoRA (experimental, `configs/moss/selfdistill.toml`, the GUI's Recipe
   dropdown): `docs/moss/experimental/self_distill.md`.
 - Speed: `docs/moss/optimization/`.
-- Measurements and verdicts: `docs/moss/findings/README.md`. Unbuilt or closed designs:
+- Measurements and verdicts: `docs/moss/findings/README.md`; closed numerics / kernel
+  checks already applied: `docs/moss/reports/README.md`. Unbuilt or closed designs:
   `docs/moss/proposal/`.
 - Run logs: `project/finished/moss_lora/README.md`; settled logs in
   `project/finished/moss_lora/done/`; parked lines (caption dropout, REPA) in

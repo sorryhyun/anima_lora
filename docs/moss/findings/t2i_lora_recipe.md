@@ -141,7 +141,7 @@ cells off the prompt, and the average removes them.
 run's updates: 0.1 for t2i and i2i (0.958 at 240 updates; 0.14 would be this 0.97). The i2i point:
 0.97 at 600 updates on sanitize `tone_w0002_ema`, where the EMA edited cleaner than the raw weights.
 Section 1's lr was kept at 5e-5; the prompt_tail caststation run in
-[assistant_tail.md](assistant_tail.md) trained at 1e-4 with the EMA.
+[chat_template.md](chat_template.md) §2 trained at 1e-4 with the EMA.
 
 ## Not tested
 

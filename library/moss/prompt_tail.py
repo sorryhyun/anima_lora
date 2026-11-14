@@ -2,7 +2,7 @@
 
 The shipped prompt ends at ``<|im_start|>assistant\\n<think>\\n``. A tail closes the
 empty think block and starts an answer (``sure``: ``\\n</think>\\n\\nSure,``); on Base
-without a LoRA it sharpens hands and backgrounds (``docs/moss/findings/assistant_tail.md``).
+without a LoRA it sharpens hands and backgrounds (``docs/moss/findings/chat_template.md``).
 The TE is causal, so the caption rows keep their states; the template's last ``\\n``
 merges with the tail's first into one ``\\n\\n`` token, and ``sure`` adds 4 rows.
 

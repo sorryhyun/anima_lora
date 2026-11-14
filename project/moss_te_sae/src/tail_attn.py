@@ -3,7 +3,7 @@
 ``template_attn.py``'s read (Base, Euler 30 steps, CFG 3, no Spectrum, seed 1, 1024²,
 layout JSON, INT8 TE, cond branch, a fixed sample of image queries plus every caption
 query) with a fifth key segment: the rows the tail adds. Cond and uncond both carry the
-tail (``docs/moss/findings/assistant_tail.md``). Tails, appended to the formatted prompt
+tail (``docs/moss/findings/chat_template.md``). Tails, appended to the formatted prompt
 text (``ok`` / ``sure`` merge the template's last ``\\n`` into ``\\n\\n``, so that
 suffix row changes token):
 

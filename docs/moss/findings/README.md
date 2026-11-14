@@ -8,8 +8,7 @@ and raw numbers live in the matching `bench/moss_*/` or `_archive/bench/moss_*/`
 
 | Doc | What it covers |
 |---|---|
-| [attention_sink_chat_template.md](attention_sink_chat_template.md) | The 10 chat-template tokens are MOSS's attention sink: an OFF-gate plus a per-head bias written into every image token. Trained LoRAs barely move it. |
-| [assistant_tail.md](assistant_tail.md) | An assistant-turn tail after `<think>\n` (best `\n</think>\n\nSure,`) sharpens hands and backgrounds without a LoRA; the image reads `</think>`, a caption-dependent key. A LoRA trained and rendered on the tail beats its control and keeps most of the gain without it. Basis of the `prompt_tail = sure` default. |
+| [chat_template.md](chat_template.md) | §1: the 10 chat-template tokens are MOSS's attention sink, an OFF-gate plus a per-head bias written into every image token; trained LoRAs barely move it. §2: an assistant-turn tail after `<think>\n` (best `\n</think>\n\nSure,`) sharpens hands and backgrounds without a LoRA; the image reads `</think>`, a caption-dependent key. A LoRA trained and rendered on the tail beats its control and keeps most of the gain without it. Basis of the `prompt_tail = sure` default. |
 | [bbox_grounding.md](bbox_grounding.md) | A layout item's bbox cuts the in-box loss 14 % at σ 0.9: the two-block text refiner builds a σ-independent location code that the DiT reads over blocks ~14–35. The sanitize LoRA does its high-σ edit in blocks 26–35. |
 | [text_stream_page_state.md](text_stream_page_state.md) | The template rows run a per-block trajectory the image needs and no page state it reads; a layout item's rows pick up the page from block 26 and the image reads it back in blocks 26–41, as strongly as it reads the caption's colour items. |
 | [ko_token_split.md](ko_token_split.md) | swap_text's Korean wrong syllables follow Qwen tokenization: the same letters split differently come out right, more epochs move nothing. Basis of `token_split = syllable`. |
@@ -20,10 +19,9 @@ and raw numbers live in the matching `bench/moss_*/` or `_archive/bench/moss_*/`
 | Doc | What it covers |
 |---|---|
 | [sigma_staircase.md](sigma_staircase.md) | One forward's `x0_pred` resolves at Anima's σ knee, but layout is set by σ 0.87–0.80, steps 22–28 of 50. Spectrum's shipped growing window beats log-SNR, step-even and NFE-16 schedules against it; an open-loop skip-cost score ranks them backwards. |
-| [bf16_residual_stream.md](bf16_residual_stream.md) | An fp32 stream around the same bf16 GEMMs cuts the prediction error 2.4–3.5x for +1.5 % time; renders move 4–12/255 and read better on text and fingers. Training with it, and swap_text. |
-| [fa2_tile_sm120.md](fa2_tile_sm120.md) | FA2 runs its A100 / H100 forward tile on sm_120. 128×32 is free of error and worth 0.7 % of a step. |
-| [heal_finetune.md](heal_finetune.md) | KBlueLeaf's MOSS-Image-heal (stream max 3k vs 58k) is fp16-safe, but bf16 error, GPTQ int8 error and a caststation LoRA tie Base; its prior is warmer and knows danbooru artist tags. The shipped int8 ConvRot / fp16 files measured; only our GPTQ file is kept. |
-| [sm120_bf16_hmma.md](sm120_bf16_hmma.md) | No bf16-input, fp16-accumulate HMMA on sm_120: PTX has no form for it, and the SASS bit nvdisasm reads as `.BF16` faults as an illegal encoding at any offset. FA2's fp16-accumulate path keeps its bf16 → fp16 casts. |
+
+Closed numerics, kernel and checkpoint checks (fp32 stream, FA2 tile, bf16 HMMA, the heal
+finetune) are in [`../reports/`](../reports/README.md).
 
 ## Training recipe
 

@@ -45,7 +45,7 @@ Each caption is wrapped in the Qwen chat template and encoded alone (`library/mo
 
 **Never pad.** Qwen3.5's gated-DeltaNet layers misbehave on padded batches, and RoPE puts the image at frame position = text length (§4.2), so padding would also move the image. Batched forwards pad *after* the TE and mask the padded keys instead (§4.3).
 
-The 10 template tokens are MOSS's attention sink: an OFF-gate plus a per-head bias written into every image token. The uncond prompt `''` is these 10 tokens alone. Measured in [`moss/findings/attention_sink_chat_template.md`](findings/attention_sink_chat_template.md).
+The 10 template tokens are MOSS's attention sink: an OFF-gate plus a per-head bias written into every image token. The uncond prompt `''` is these 10 tokens alone. Measured in [`moss/findings/chat_template.md`](findings/chat_template.md).
 
 ### 2.2 TE precision and memory
 

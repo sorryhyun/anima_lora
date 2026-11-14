@@ -149,7 +149,7 @@ seven blocks, median over images [p90], σ = 0.5:
 
 GPTQ fixes the late blocks, where bf16 is accurate and int8's excess is the weight term.
 Blocks 0–27 stay at bf16's level with either: bf16's own gradient is already far from fp32
-there ([bf16_residual_stream.md](../findings/bf16_residual_stream.md)).
+there ([bf16_residual_stream.md](../reports/bf16_residual_stream.md)).
 
 Generation: all arms render cleanly. On the i2i page, mean |Δ| from bf16 is 0.73/255
 (GPTQ) and 0.68/255 (with an fp32 stream). One t2i seed is chaotic (12.4–13.9/255 against

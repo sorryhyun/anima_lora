@@ -8,7 +8,7 @@ they were. On the int8 base it is what brings prediction error below bf16.
 (`GenerateRequest.stream`, with `int8 on`). `configs/moss/lora_bf16.toml` and the i2i train
 configs run bf16.
 It reads better on text rendering and finger placement. Measurements and renders:
-[`findings/bf16_residual_stream.md`](../findings/bf16_residual_stream.md).
+[`reports/bf16_residual_stream.md`](../reports/bf16_residual_stream.md).
 
 ## Why
 
@@ -75,4 +75,4 @@ resident.
   forward's own error and not better learning.
 
 The hands and `swap_text` leads, with their caveats, are in the
-[finding](../findings/bf16_residual_stream.md).
+[finding](../reports/bf16_residual_stream.md).

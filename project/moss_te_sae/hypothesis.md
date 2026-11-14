@@ -31,7 +31,7 @@ difference alone cannot be pinned on the framing.
   optimizer arms (`docs/moss/findings/t2i_lora_recipe.md`).
 - **The style is not routed through the template rows.** Keeping a LoRA's delta off the
   10 template rows leaves the style in place and changes content details on 4 of 8 seeds
-  (`docs/moss/findings/attention_sink_chat_template.md`, "Trained LoRAs barely move it").
+  (`docs/moss/findings/chat_template.md`, "Trained LoRAs barely move it").
   With the empty-prompt result, the style shift lives mostly on the image rows.
 - **The massive channels carry no per-token content.** ch 42 at the `ffn_up_gate` input:
   |x̄| / mean|x| = 1.00 on blocks 12–41, max/mean 1.3–2 late, adaLN shift −4.3. Cutting it
