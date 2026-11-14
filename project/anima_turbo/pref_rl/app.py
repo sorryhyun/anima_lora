@@ -8,7 +8,8 @@ the queued rounds; the window keeps ``PREFETCH`` rounds queued so the next grid 
 the current one is answered.
 
 Picking: click a tile or press its key (rows ``1234`` / ``qwer`` / ``asdf`` / ``zxcv``), at
-most ``max_picks``; zero is a valid answer. Right-click or Space over a tile opens it large.
+most ``max_picks``; zero is a valid answer. Right-click or Space over a tile opens it large
+(a picked render carries a green frame and a check there).
 Enter submits, Ctrl+K skips (logged, left out of every read).
 """
 
@@ -24,7 +25,7 @@ REPO = HERE.parents[2]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(HERE))
 
-from PySide6.QtCore import QSize, Qt, QTimer, Signal  # noqa: E402
+from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt, QTimer, Signal  # noqa: E402
 from PySide6.QtGui import QColor, QKeySequence, QPainter, QPen, QPixmap, QShortcut  # noqa: E402
 from PySide6.QtWidgets import (  # noqa: E402
     QApplication,
@@ -178,63 +179,122 @@ class Tile(QLabel):
         self.update()
 
 
-class ZoomDialog(QDialog):
-    """One render at full size. ←/→ step through the grid, P or click picks, Esc / Space close."""
+class ZoomOverlay(QWidget):
+    """One render over the whole window. ←/→ step through the grid, P or a click on the image
+    picks, Esc / Space / a click beside it closes.
 
-    def __init__(self, win: "PrefWindow", slot: int):
-        super().__init__(win)
+    A child widget, so opening and closing maps no window; the dialog it replaces flashed
+    white on close.
+    """
+
+    def __init__(self, win: "PrefWindow"):
+        super().__init__(win.centralWidget())
         self.win = win
-        self.slot = slot
-        self.setWindowTitle("render")
-        self.label = QLabel(alignment=Qt.AlignmentFlag.AlignCenter)
-        self.status = QLabel(alignment=Qt.AlignmentFlag.AlignCenter)
-        lay = QVBoxLayout(self)
-        lay.addWidget(self.label, 1)
-        lay.addWidget(self.status)
-        screen = self.screen().availableGeometry()
-        self.resize(int(screen.width() * 0.7), int(screen.height() * 0.9))
-        self._show()
+        self.slot = 0
+        self._ir = QRect()
+        self._cache: QPixmap | None = None
+        self._cache_key: tuple | None = None
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.hide()
 
-    def _show(self) -> None:
-        path = self.win.slot_path(self.slot)
-        pix = QPixmap(str(path)) if path else QPixmap()
-        avail = self.size() - QSize(24, 60)
-        if not pix.isNull():
-            pix = pix.scaled(
-                avail,
+    def open(self, slot: int) -> None:
+        self.slot = slot
+        self.setGeometry(self.parentWidget().rect())
+        self.raise_()
+        self.show()
+        self.setFocus()
+
+    def close_view(self) -> None:
+        self.hide()
+        self.win.setFocus()
+
+    def _scaled(self, path: Path, size: QSize) -> QPixmap:
+        dpr = self.devicePixelRatioF()
+        key = (str(path), size.width(), size.height(), dpr)
+        if key != self._cache_key:
+            pix = QPixmap(str(path)).scaled(
+                size * dpr,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,
             )
-        self.label.setPixmap(pix)
-        picked = self.slot in self.win.picks
-        self.status.setText(
-            f"[{KEYS[self.slot]}] {self.slot + 1}/{self.win.n_slots}   "
-            f"{'PICKED' if picked else 'not picked'}   ←/→ move · P pick · Esc close"
+            pix.setDevicePixelRatio(dpr)
+            self._cache, self._cache_key = pix, key
+        return self._cache
+
+    def paintEvent(self, _e):  # noqa: N802
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.fillRect(self.rect(), QColor(0, 0, 0, 235))
+        area = self.rect().adjusted(24, 24, -24, -52)
+        path = self.win.slot_path(self.slot)
+        self._ir = QRect()
+        if path is not None and area.width() > 0 and area.height() > 0:
+            pix = self._scaled(path, area.size())
+            w = round(pix.width() / pix.devicePixelRatio())
+            h = round(pix.height() / pix.devicePixelRatio())
+            self._ir = QRect(
+                area.x() + (area.width() - w) // 2,
+                area.y() + (area.height() - h) // 2,
+                w,
+                h,
+            )
+            p.drawPixmap(self._ir.topLeft(), pix)
+        picked = self.win.is_picked(self.slot)
+        if picked and not self._ir.isNull():
+            green = QColor(gui_theme.ACTION_COLORS["primary"])
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.setPen(QPen(green, 6))
+            p.drawRect(self._ir.adjusted(-3, -3, 3, 3))
+            c = QPoint(self._ir.right() - 40, self._ir.top() + 40)
+            p.setPen(QPen(QColor("white"), 2))
+            p.setBrush(green)
+            p.drawEllipse(c, 24, 24)
+            pen = QPen(QColor("white"), 5)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            p.setPen(pen)
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawPolyline([c + QPoint(-11, 1), c + QPoint(-3, 9), c + QPoint(12, -8)])
+        key = f"[{KEYS[self.slot]}]  " if self.slot < len(KEYS) else ""
+        hint = (
+            "←/→ move · Esc close"
+            if self.win.viewing_past is not None
+            else "←/→ move · P or click pick · Esc close"
         )
+        p.setPen(QColor(255, 255, 255, 220))
+        p.drawText(
+            self.rect().adjusted(0, self.height() - 44, 0, -8),
+            Qt.AlignmentFlag.AlignCenter,
+            f"{key}{self.slot + 1}/{self.win.n_slots}   "
+            f"{'picked' if picked else 'not picked'}   {hint}",
+        )
+        p.end()
 
-    def resizeEvent(self, e):  # noqa: N802
-        super().resizeEvent(e)
-        self._show()
+    def event(self, e):
+        # every key is the overlay's while it is up: the window's pick / submit shortcuts wait
+        if e.type() == QEvent.Type.ShortcutOverride:
+            e.accept()
+            return True
+        return super().event(e)
 
-    def mousePressEvent(self, _e):  # noqa: N802
-        self.win.toggle(self.slot)
-        self._show()
+    def mousePressEvent(self, e):  # noqa: N802
+        if e.button() == Qt.MouseButton.LeftButton and self._ir.contains(e.pos()):
+            self.win.toggle(self.slot)
+            self.update()
+        else:
+            self.close_view()
 
     def keyPressEvent(self, e):  # noqa: N802
         k = e.key()
         if k in (Qt.Key.Key_Escape, Qt.Key.Key_Space):
-            self.accept()
-        elif k == Qt.Key.Key_Right:
-            self.slot = (self.slot + 1) % self.win.n_slots
-            self._show()
-        elif k == Qt.Key.Key_Left:
-            self.slot = (self.slot - 1) % self.win.n_slots
-            self._show()
+            self.close_view()
+        elif k in (Qt.Key.Key_Right, Qt.Key.Key_Left):
+            step = 1 if k == Qt.Key.Key_Right else -1
+            self.slot = (self.slot + step) % self.win.n_slots
+            self.update()
         elif k == Qt.Key.Key_P:
             self.win.toggle(self.slot)
-            self._show()
-        else:
-            super().keyPressEvent(e)
+            self.update()
 
 
 # ── session dialog ───────────────────────────────────────────────────────
@@ -456,6 +516,7 @@ class PrefWindow(QMainWindow):
         split.setStretchFactor(0, 1)
 
         self.setCentralWidget(root)
+        self.zoom_view = ZoomOverlay(self)
 
         for i, key in enumerate(KEYS):
             QShortcut(QKeySequence(key), self, activated=lambda i=i: self._key_slot(i))
@@ -701,9 +762,17 @@ class PrefWindow(QMainWindow):
 
     def _zoom(self, slot: int) -> None:
         if slot < self.n_slots and self.slot_path(slot) is not None:
-            ZoomDialog(self, slot).exec()
-            if self.viewing_past is None:
-                self.toggle_refresh()
+            self.zoom_view.open(slot)
+
+    def is_picked(self, slot: int) -> bool:
+        if self.viewing_past is not None:
+            return slot in self.viewing_past["picks"]
+        return slot in self.picks
+
+    def resizeEvent(self, e):  # noqa: N802
+        super().resizeEvent(e)
+        if self.zoom_view.isVisible():
+            self.zoom_view.setGeometry(self.centralWidget().rect())
 
     def toggle_refresh(self) -> None:
         for t in self.tiles:

@@ -1,7 +1,8 @@
 # Preference RL on the turbo student — train on what the user picks
 
-Status: PROPOSAL (2026-11-13). Nothing built. One CPU probe is in § 1 (tags against the
-gelcrawl selection). Open decision: the feature basis of the preference head (§ 3.2), which
+Status: OPEN (2026-11-13). Built: the round window and the P0 / P1 scripts (`../pref_rl/`); no
+preference head trains the student yet. One CPU probe is in § 1 (tags against the gelcrawl
+selection). Open decision: the feature basis of the preference head (§ 3.2), which
 P0 and P1 measure.
 
 ## TL;DR
