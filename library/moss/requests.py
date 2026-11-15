@@ -135,6 +135,13 @@ class CacheRequest(Request):
         "('' = the empty prompt, which is also CFG's uncond)",
         advanced=True,
     )
+    text_boxes: bool = _f(
+        True,
+        "each OCR'd line of a text clause gets its box from anime_tools' OCR tree "
+        "(post_image_dataset/ocr, mirroring the resized tree), as abs_centralized "
+        "yxyx on the cache canvas: layout_json puts it in the text item's bbox, tags "
+        'after the quote (Japanese text reads as "…" [y0,x0,y1,x1])',
+    )
     overwrite: bool = _f(False, "re-encode even when the cache is current")
     skip_text: bool = _f(False, "skip the text-encoder pass")
     skip_latents: bool = _f(False, "skip the VAE pass")
@@ -1128,6 +1135,12 @@ class CaptionsRequest(Request):
         0,
         "tags a clause may add that the Anima caption never had; 0 = the tagger "
         "only places tags, it never invents one",
+    )
+    mask_dilate: int = _f(
+        16,
+        "grow each subject mask by this many pixels before the crop tagger sees it, "
+        "never into another subject's mask, so an object in hand (a phone, a straw) "
+        "lands in its holder's clause; 0 = the bare person mask",
     )
     implied: bool = _f(
         True,

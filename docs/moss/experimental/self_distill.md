@@ -66,6 +66,13 @@ Why these and not the other arms:
 - **Balanced.** Unbalanced replace (`distill_balance false`) changed the fit only at σ 0.98 on
   caststation; balanced lowers it at every σ (table below).
 
+**When it hurts.** On caststation's improved captions (`mask_dilate 16` + OCR boxes) the
+flow-matching student passed the Base teacher's flow loss at σ 0.95 within 480 steps. Balanced
+hybrid95 then pulled it back toward Base and softened the renders: high-frequency energy ×0.6 on
+22 of 24 paired renders ([`reports/caststation_casbox.md`](../reports/caststation_casbox.md)).
+Before using it on a set, run `bench/moss_self_distill/teacher_probe.py` with `--lora <flow-only
+LoRA>`. If `lora:cap → base:img` has a negative eff at σ 0.95, the teacher has nothing left to give.
+
 ## Running it
 
 ```mermaid

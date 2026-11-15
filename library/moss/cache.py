@@ -270,7 +270,12 @@ def cache_text(
             ]
             prefix = _shared_prefix(ids)
             var = [
-                (t, encode_prompt(tok, te, t, device, max_tokens).to("cpu", torch.bfloat16))
+                (
+                    t,
+                    encode_prompt(tok, te, t, device, max_tokens).to(
+                        "cpu", torch.bfloat16
+                    ),
+                )
                 for t in p.variants
             ]
             new, new_meta = variant_entries(var, prefix)
@@ -512,7 +517,12 @@ def run_cache(req) -> Path:
             raise SystemExit(f"no pair list at {src} (make i2i-stage TASK=<task>)")
         pairs, refs = manifest_pairs(src, fmt)
     else:
-        pairs = find_pairs(src, fmt, req.caption_variants)
+        pairs = find_pairs(
+            src,
+            fmt,
+            req.caption_variants,
+            req.resolution if req.text_boxes else 0,
+        )
     if not pairs:
         raise SystemExit(f"no image/caption pairs under {src}")
     if fixed:

@@ -14,7 +14,8 @@ Three steps into a tree of its own, so the Anima captions stay untouched:
    (``flatten_caption``; text clauses kept), since the position stage only
    rewrites a caption without clauses.
 2. anime_tools' position stage over ``out`` with :data:`POSITION_FORMAT` (SAM3 +
-   the Anima Tagger: the GPU part, so a daemon job).
+   the Anima Tagger: the GPU part, so a daemon job), each subject mask grown by
+   ``mask_dilate`` px so a held object stays in the crop.
 3. ``drop_implied_tags`` on every caption when ``implied``.
 
 ``out/moss_captions.json`` records the request and the anime_tools version.
@@ -117,6 +118,7 @@ def run_captions(req: CaptionsRequest) -> Path:
             report_dir=str(out / REPORT_DIR),
             max_clause_tags=req.max_clause_tags,
             max_novel_tags=req.max_novel_tags,
+            mask_dilate=req.mask_dilate,
             **POSITION_FORMAT,
         )
     )

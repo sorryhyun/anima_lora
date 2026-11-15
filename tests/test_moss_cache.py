@@ -458,3 +458,109 @@ def test_caption_variants_read_and_tracked(tmp_path):
 
     assert _shared_prefix([[1, 2, 3, 4], [1, 2, 5], [1, 2, 3]]) == 2
     assert _shared_prefix([[1, 2, 3], [1, 2, 3, 4]]) == 2
+
+
+def test_box_text_clauses_spells_each_ocr_line_box():
+    from library.moss.caching.sources import box_text_clauses, centered_scaled
+
+    # 200x100 read, 400x200 canvas: centred coords double.
+    assert centered_scaled((110, 40, 130, 60), (200, 100), (400, 200)) == [
+        -20,
+        20,
+        20,
+        60,
+    ]
+    # Clamped to the canvas.
+    assert centered_scaled((-50, 0, 250, 100), (200, 100), (200, 100)) == [
+        -50,
+        -100,
+        50,
+        100,
+    ]
+    boxes = {"こいつ…": (110, 40, 130, 60), "b, c": (0, 0, 10, 10)}
+    raw = (
+        'x, "b, c". On the left, smile. Japanese text reads as "こいつ…", "none", '
+        '"b, c". Japanese SFX reads as "b, c".'
+    )
+    assert box_text_clauses(raw, boxes, (200, 100), (200, 100)) == (
+        'x, "b, c". On the left, smile. Japanese text reads as "こいつ…" '
+        '[-10,10,10,30], "none", "b, c" [-50,-100,-40,-90]. '
+        'Japanese SFX reads as "b, c" [-50,-100,-40,-90].'
+    )
+    boxed = box_text_clauses(raw, boxes, (200, 100), (200, 100))
+    assert box_text_clauses(boxed, boxes, (200, 100), (200, 100)) == boxed
+    assert box_text_clauses("1girl, smile", boxes, (200, 100), (200, 100)) == (
+        "1girl, smile"
+    )
+
+
+def test_find_pairs_boxes_tags_captions_from_the_ocr_tree(tmp_path, monkeypatch):
+    from anime_tools.captions.ocr_sidecar import OcrLine, write_ocr_for
+
+    from library.moss.caching import sources
+
+    monkeypatch.setenv("ANIMA_HOME", str(tmp_path))
+    monkeypatch.setattr(sources, "tag_knowledge_base", lambda: None)
+    monkeypatch.setattr(sources, "order_tags", lambda raw, kb: raw)
+    resized = tmp_path / "post_image_dataset" / "resized" / "set"
+    resized.mkdir(parents=True)
+    Image.new("RGB", (64, 32)).save(resized / "a.png")
+    (resized / "a.txt").write_text(
+        '1girl, smile. Japanese text reads as "hi".\n', encoding="utf-8"
+    )
+    write_ocr_for(
+        tmp_path / "post_image_dataset" / "ocr",
+        resized.relative_to(tmp_path / "post_image_dataset" / "resized") / "a.png",
+        [OcrLine(seq=1, box=(32, 0, 64, 32), score=0.9, text="hi", det=0.9)],
+    )
+    # A moss_captions-style tree: the image is a symlink into the resized tree.
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    (tree / "a.png").symlink_to(resized / "a.png")
+    (tree / "a.txt").write_text(
+        '1girl, smile. Japanese text reads as "hi".\n', encoding="utf-8"
+    )
+    (pair,) = find_pairs(tree, "tags", box_resolution=1024)
+    assert pair.caption == '1girl, smile. Japanese text reads as "hi" [-16,0,16,32].'
+    (plain,) = find_pairs(tree, "tags")
+    assert plain.caption == '1girl, smile. Japanese text reads as "hi".'
+
+
+def test_find_pairs_boxes_layout_json_text_items(tmp_path, monkeypatch):
+    import json
+    from pathlib import Path
+
+    import anime_tools.captions.correction as correction
+    from anime_tools.captions.ocr_sidecar import OcrLine, write_ocr_for
+
+    csv = tmp_path / "tags.csv"
+    csv.write_text("name,category,post_count,description\n", encoding="utf-8")
+    monkeypatch.setattr(correction, "find_tag_csv", lambda root=None, lang=None: csv)
+    monkeypatch.setenv("ANIMA_HOME", str(tmp_path))
+    resized = tmp_path / "post_image_dataset" / "resized" / "set"
+    resized.mkdir(parents=True)
+    Image.new("RGB", (64, 32)).save(resized / "a.png")
+    (resized / "a.txt").write_text(
+        '1girl, smile. Japanese text reads as "hi".\n', encoding="utf-8"
+    )
+    write_ocr_for(
+        tmp_path / "post_image_dataset" / "ocr",
+        Path("set/a.png"),
+        [OcrLine(seq=1, box=(32, 0, 64, 32), score=0.9, text="hi", det=0.9)],
+    )
+    (pair,) = find_pairs(resized, "layout_json", box_resolution=1024)
+    layout = json.loads(pair.caption)
+    assert layout["items"] == [
+        {
+            "label": "text",
+            "caption": "Japanese text",
+            "text": "hi",
+            "bbox": [-16, 0, 16, 32],
+        }
+    ]
+    assert (layout["bbox_coord_space"], layout["bbox_format"]) == (
+        "abs_centralized",
+        "yxyx",
+    )
+    bare = json.loads(find_pairs(resized, "layout_json")[0].caption)
+    assert "bbox" not in bare["items"][0] and "bbox_format" not in bare

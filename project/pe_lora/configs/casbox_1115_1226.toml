@@ -1,0 +1,26 @@
+# casthin_1115_1150 + two caption changes, same recipe and latents (latents copied from
+# casthin_tags_sure): captions from scripts/moss/captions.py with mask_dilate 16 (held objects land in
+# their holder's clause; anime_tools 07d40e7) into post_image_dataset/moss_captions/caststation_dil16,
+# cached caption_format tags with text_boxes on (each OCR line followed by its abs_centralized yxyx box,
+# 24/25 lines on caststation). Control: casthin_1115_1150.
+cache = "post_image_dataset/moss/casbox_tags_sure"
+output = "output/ckpt_moss/casbox_1115_1226.safetensors"
+model = "base"
+epochs = 16
+algo = "lora"
+rank = 32
+down_init = "kaiming"
+optimizer = "muon"
+lr = 1e-4
+warmup_ratio = 0.05
+plain_caption_rate = 0.0
+ema_window = 0.139
+lora_dtype = "bf16"
+int8 = "stream"
+stream = "fp32"
+ema_card = true
+blocks_to_swap = 0
+activation_memory_budget = 0.3
+swap_h2d_only = true
+compile = true
+expandable_segments = true

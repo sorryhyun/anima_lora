@@ -141,10 +141,10 @@ layout-JSON prompt (`anime_tools.captions.layout_json`):
 - pixel-describing meta tags (`cropped`, `scan`, …) and the remaining tags become
   `summary.caption`;
 - each position clause becomes a `character` item with its relative position (never a box),
-  each OCR line a `text` item. Only a `{stem}.layout.txt` from anime_tools' Export
-  (`caption_format layout_json` with `combine_ocr`) gives text items an OCR `bbox` (MOSS's
-  `abs_centralized` / `yxyx`) and the top-level `bbox_coord_space` / `bbox_format` keys; the
-  cache's own conversion of a `.txt` has no boxes.
+  each OCR line a `text` item with its OCR `bbox` (MOSS's `abs_centralized` / `yxyx`, on
+  the cache canvas) and the top-level `bbox_coord_space` / `bbox_format` keys, when
+  anime_tools' OCR tree (`post_image_dataset/ocr`) has the image's sidecar (`text_boxes`, on
+  by default). A `{stem}.layout.txt` from anime_tools' Export is read as published instead.
 
 On caststation this kept the style strength of plain tags and leaked fewer of the set's
 attributes onto other characters. A `layout_json` cache also stores the plain caption, used
@@ -154,7 +154,13 @@ on `plain_caption_rate` (default 0.2) of the steps. **Train and prompt in the sa
 For a LoRA meant to be prompted with tags, `caption_format tags` (and `prompt_format tags` on
 generate) keeps the tag caption and moves its flat tags into the USERGUIDE order: quality,
 score, meta, year, character, series, artist, then the count tag and the general tags;
-position and text clauses stay as written. Leave quality tags (`best quality, highres`) out
+position and text clauses stay as written, except that each OCR'd line of a text clause gets
+its box after the quote (`text_boxes`, on by default): `Japanese text reads as "こいつ…"
+[202,126,280,154]`, the same `abs_centralized` `[y0, x0, y1, x1]` a layout-JSON text item
+carries, on the cache canvas. The boxes come from anime_tools' OCR tree
+(`post_image_dataset/ocr`, mirroring the resized tree, so the image must sit there or be a
+symlink into it); a line with no sidecar entry stays bare. To place text at generation, write
+the box the same way. Leave quality tags (`best quality, highres`) out
 of the training captions: on caststation (2026-11-14) adding them to every caption weakened
 the style (`proposal/tag_captions.md`, "Tag order"). In ComfyUI the
 **MOSS Caption Helper** node, `task = layout` ([MOSS Toolkit](https://github.com/sorryhyun/ComfyUI-MOSS-Toolkit),
@@ -176,7 +182,9 @@ make daemon-run ARGS="--stall-timeout 900 scripts/moss/captions.py --src 'post_i
 make daemon-run ARGS="--stall-timeout 900 scripts/moss/cache.py --src 'post_image_dataset/moss_captions/<set>' --out 'post_image_dataset/moss/<set>' --caption_format tags"
 ```
 
-A held object (a cup, a phone) stays in the bag: the crop tagger sees the subject's mask only.
+The crop tagger sees each subject's mask grown by `mask_dilate` (16 px, never into another
+subject's mask), so a held object (a phone, a straw) lands in its holder's clause; with the bare
+mask (`0`) it stayed in the bag. Needs anime_tools with `--mask_dilate`.
 
 **Prompt tail** (`prompt_tail`, default `sure`): the cache and generate append
 `\n</think>\n\nSure,` after the chat template, closing the empty think block and starting

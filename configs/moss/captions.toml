@@ -9,5 +9,6 @@
 out = ""                # default: post_image_dataset/moss_captions/<src folder name>
 max_clause_tags = 32    # most tags one position clause carries
 max_novel_tags = 0      # tags a clause may add that the Anima caption never had
+mask_dilate = 16        # px the subject mask grows before the crop tagger (held objects); 0 = bare mask
 implied = true          # cut `long hair` beside `very long hair`, `bow` beside a bowtie, …
 overwrite = false       # rebuild an existing out tree (only one this job wrote)

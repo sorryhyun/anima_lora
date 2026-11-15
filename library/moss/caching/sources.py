@@ -39,8 +39,108 @@ def read_variants(caption_txt: Path) -> list[str]:
     return out
 
 
+def ocr_boxes(image: Path) -> tuple[dict, tuple[int, int]] | None:
+    """The OCR boxes of ``image`` keyed by the text clause's line, and the size of
+    the image they were read on, or ``None`` when it has no OCR sidecar.
+
+    anime_tools' OCR tree (``OCR_DIR``) mirrors the resized tree, so ``image`` (a
+    symlink into it is followed, as in a ``moss_captions`` tree) must sit under
+    ``RESIZED_DIR``."""
+    from anime_tools.captions.ocr_sidecar import (
+        ocr_sidecar_path,
+        read_ocr,
+        text_boxes,
+    )
+    from PIL import Image
+
+    from library.datasets.curation_actions import OCR_DIR, RESIZED_DIR
+    from library.env import resolve_under_home
+
+    real = image.resolve()
+    root = resolve_under_home(RESIZED_DIR).resolve()
+    if not real.is_relative_to(root):
+        return None
+    sidecar = ocr_sidecar_path(resolve_under_home(OCR_DIR) / real.relative_to(root))
+    if not sidecar.is_file():
+        return None
+    boxes = text_boxes(read_ocr(sidecar))
+    if not boxes:
+        return None
+    with Image.open(real) as handle:
+        return boxes, handle.size
+
+
+BOXED_FORMATS = ("tags", "layout_json")
+"""The caption formats ``text_boxes`` puts OCR boxes into."""
+
+
+def canvas_box(box, src_size, dst_size) -> tuple[float, float, float, float]:
+    """``(x0, y0, x1, y1)`` pixels of a ``src_size`` image in the pixels of the
+    ``dst_size`` canvas the cache fits it to (cover scale, centre crop)."""
+    (w, h), (tw, th) = src_size, dst_size
+    s = max(tw / w, th / h)
+    x0, y0, x1, y1 = (float(v) for v in box)
+    return (
+        (x0 - w / 2) * s + tw / 2,
+        (y0 - h / 2) * s + th / 2,
+        (x1 - w / 2) * s + tw / 2,
+        (y1 - h / 2) * s + th / 2,
+    )
+
+
+def centered_scaled(box, src_size, dst_size) -> list[int]:
+    """``(x0, y0, x1, y1)`` pixels of a ``src_size`` image → MOSS ``abs_centralized``
+    ``[y0, x0, y1, x1]`` on the ``dst_size`` canvas the cache fits it to (cover
+    scale, centre crop: centred coordinates only scale), clamped to the canvas."""
+    (w, h), (tw, th) = src_size, dst_size
+    s = max(tw / w, th / h)
+    x0, y0, x1, y1 = (float(v) for v in box)
+
+    def at(v: float, side: int, out: int) -> int:
+        return round(min(max((v - side / 2) * s, -out / 2), out / 2))
+
+    return [at(y0, h, th), at(x0, w, tw), at(y1, h, th), at(x1, w, tw)]
+
+
+def box_text_clauses(caption: str, boxes: dict, src_size, dst_size) -> str:
+    """``caption`` with each OCR'd line of its text clauses followed by its box,
+    ``"こいつ…" [138,190,216,218]`` (``centered_scaled``, layout_json's
+    ``abs_centralized`` ``yxyx`` on the cache canvas). A line with no box, or one
+    already followed by a ``[``, stays as written."""
+    from anime_tools.captions.position_clauses import TEXT_PREFIXES, parse_caption
+
+    out, cursor = caption, 0
+    for clause in parse_caption(caption).clauses:
+        if clause.prefix not in TEXT_PREFIXES:
+            continue
+        cursor = out.find(clause.prefix, cursor)
+        if cursor < 0:
+            return out
+        for line in clause.tags:
+            if not (line.startswith('"') and line.endswith('"')):
+                continue
+            at = out.find(line, cursor)
+            if at < 0:
+                break
+            end = at + len(line)
+            box = boxes.get(line[1:-1].strip())
+            if box is not None and not out[end:].lstrip().startswith("["):
+                spelled = (
+                    "["
+                    + ",".join(map(str, centered_scaled(box, src_size, dst_size)))
+                    + "]"
+                )
+                out = f"{out[:end]} {spelled}{out[end:]}"
+                end += len(spelled) + 1
+            cursor = end
+    return out
+
+
 def find_pairs(
-    src: Path, caption_format: str = "text", variants: bool = False
+    src: Path,
+    caption_format: str = "text",
+    variants: bool = False,
+    box_resolution: int = 0,
 ) -> list[Pair]:
     """Images with a ``.txt`` caption beside them, subfolders included. Stems that
     collide across subfolders get their relative folder as a prefix.
@@ -67,7 +167,7 @@ def find_pairs(
             print(f"skip {p.name}: no caption sidecar", flush=True)
     convert = None
     pairs = []
-    from_sidecar = 0
+    from_sidecar = boxed = 0
     for stem, image, path in found:
         raw = path.read_text(encoding="utf-8").strip()
         caption = None
@@ -76,9 +176,17 @@ def find_pairs(
             if sidecar.exists() and sidecar.stat().st_mtime >= path.stat().st_mtime:
                 caption = drop_rating(sidecar.read_text(encoding="utf-8").strip())
                 from_sidecar += 1
+        boxes = None
+        if caption_format in BOXED_FORMATS and box_resolution:
+            if found_boxes := ocr_boxes(image):
+                from library.moss.caching.images import target_size
+
+                text_boxes, size = found_boxes
+                boxes = (text_boxes, size, target_size(*size, box_resolution))
         if caption is None:
             convert = convert or caption_converter(caption_format)
-            caption = convert(raw)
+            caption = convert(raw, boxes) if boxes else convert(raw)
+            boxed += boxes is not None
         unrated = drop_rating(raw)
         plain = (
             unrated if caption_format == "layout_json" and caption != unrated else ""
@@ -86,11 +194,15 @@ def find_pairs(
         var = ()
         if variants:
             convert = convert or caption_converter(caption_format)
-            var = tuple(convert(v) for v in read_variants(path))
+            var = tuple(
+                convert(v, boxes) if boxes else convert(v) for v in read_variants(path)
+            )
         pairs.append(Pair(stem, image, caption, caption_sha(raw), plain, var))
     if variants:
         n = sum(1 for p in pairs if p.variants)
         print(f"caption variants: {n}/{len(pairs)} captions have them", flush=True)
+    if caption_format in BOXED_FORMATS and box_resolution:
+        print(f"text boxes: {boxed}/{len(pairs)} captions have OCR boxes", flush=True)
     if caption_format == "layout_json":
         print(
             f"layout_json: {from_sidecar} from Export's sidecars, "
@@ -146,27 +258,38 @@ def caption_converter(caption_format: str):
     written (converting it again would nest the whole object in
     ``summary.caption``), and loads the tag CSV only for the first caption that
     needs converting. ``tags`` keeps the tag form in the reference tag order
-    (``order_tags``). Every format drops the rating (``drop_rating``)."""
+    (``order_tags``). Every format drops the rating (``drop_rating``).
+
+    ``boxes`` (``(text_boxes, read size, cache canvas)``, from ``ocr_boxes``) puts
+    the OCR boxes on the text lines: after each quote under ``tags``
+    (``box_text_clauses``), as each text item's ``bbox`` under ``layout_json``."""
     if caption_format == "text":
         return drop_rating
     if caption_format not in ("layout_json", "tags"):
         raise SystemExit(f"unknown caption_format {caption_format!r}")
     kb = None
 
-    def convert(raw: str) -> str:
+    def convert(raw: str, boxes=None) -> str:
         nonlocal kb
         raw = drop_rating(raw)
         if is_layout_json(raw):
             return raw
-        if caption_format == "tags":
-            if kb is None:
-                kb = tag_knowledge_base()
-            return order_tags(raw, kb)
-        from anime_tools.captions.layout_json import layout_json
-
         if kb is None:
             kb = tag_knowledge_base()
-        return layout_json(raw, kb)
+        if caption_format == "tags":
+            ordered = order_tags(raw, kb)
+            return box_text_clauses(ordered, *boxes) if boxes else ordered
+        from anime_tools.captions.layout_json import layout_json
+
+        if not boxes:
+            return layout_json(raw, kb)
+        text_boxes, size, canvas = boxes
+        return layout_json(
+            raw,
+            kb,
+            text_boxes={k: canvas_box(b, size, canvas) for k, b in text_boxes.items()},
+            size=canvas,
+        )
 
     return convert
 
