@@ -1105,6 +1105,45 @@ class TrainRequest(Request):
 
 
 @dataclass
+class CaptionsRequest(Request):
+    """MOSS-format captions for one image set (``library/moss/captions.py``).
+
+    The Anima caption keeps a full shared tag bag; the MOSS format moves every tag
+    a subject's crop carries into that subject's position clause, and cuts a tag
+    a more specific one already says. Built from the set's Anima captions into a
+    tree of its own (images symlinked), which ``CacheRequest.src`` then reads, so
+    the Anima captions stay as they are."""
+
+    SCRIPT: ClassVar[str] = "scripts/moss/captions.py"
+    DEFAULT_ROOT: ClassVar[str] = "post_image_dataset/moss_captions"
+
+    src: str = _f(
+        "",
+        "the image set with its Anima captions beside the images, e.g. "
+        "post_image_dataset/resized/<set>",
+    )
+    out: str = _f("", f"output tree (default: {DEFAULT_ROOT}/<src folder name>)")
+    max_clause_tags: int = _f(32, "most tags one position clause carries")
+    max_novel_tags: int = _f(
+        0,
+        "tags a clause may add that the Anima caption never had; 0 = the tagger "
+        "only places tags, it never invents one",
+    )
+    implied: bool = _f(
+        True,
+        "cut a tag a more specific one already says (`long hair` beside `very long "
+        "hair`, `bow` / `neckerchief` beside a bowtie)",
+    )
+    overwrite: bool = _f(False, "rebuild an out tree that already exists")
+
+    def out_dir(self) -> Path:
+        """``out``, else ``DEFAULT_ROOT/<src folder name>``, under the repo home."""
+        if self.out:
+            return resolve_under_home(self.out)
+        return resolve_under_home(self.DEFAULT_ROOT) / Path(self.src).name
+
+
+@dataclass
 class TuneSwapRequest(Request):
     """Find the --blocks_to_swap / --activation_memory_budget pair to train with on
     this machine: one arm per swap count at the largest budget that fits, timed

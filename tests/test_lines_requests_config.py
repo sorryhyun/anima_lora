@@ -2,13 +2,20 @@
 
 import pytest
 
-from library.moss.requests import CacheRequest, TrainRequest
+from library.moss.requests import CacheRequest, CaptionsRequest, TrainRequest
 
 
 @pytest.mark.core
 def test_shipped_moss_cache_config_is_the_defaults():
     assert CacheRequest.from_argv(["--config", "configs/moss/cache.toml"]) == (
         CacheRequest()
+    )
+
+
+def test_shipped_moss_captions_config_is_the_defaults():
+    assert (
+        CaptionsRequest.from_argv(["--config", "configs/moss/captions.toml"])
+        == CaptionsRequest()
     )
 
 

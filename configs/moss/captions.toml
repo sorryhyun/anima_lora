@@ -1,0 +1,13 @@
+# MOSS-format captions — field defaults for scripts/moss/captions.py.
+#
+#   make daemon-run ARGS="--stall-timeout 900 scripts/moss/captions.py --config configs/moss/captions.toml --src post_image_dataset/resized/<set>"
+#
+# Keys are CaptionsRequest field names (library/moss/requests.py, `--help` lists
+# them); CLI flags win over this file. Values below are the shipped defaults.
+# User doc: docs/moss/README.md, "MOSS-format captions".
+
+out = ""                # default: post_image_dataset/moss_captions/<src folder name>
+max_clause_tags = 32    # most tags one position clause carries
+max_novel_tags = 0      # tags a clause may add that the Anima caption never had
+implied = true          # cut `long hair` beside `very long hair`, `bow` beside a bowtie, …
+overwrite = false       # rebuild an existing out tree (only one this job wrote)

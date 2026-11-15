@@ -160,6 +160,24 @@ the style (`proposal/tag_captions.md`, "Tag order"). In ComfyUI the
 **MOSS Caption Helper** node, `task = layout` ([MOSS Toolkit](https://github.com/sorryhyun/ComfyUI-MOSS-Toolkit),
 needs `anime_tools`) does the same conversion.
 
+**MOSS-format captions** (`scripts/moss/captions.py`, `CaptionsRequest`): the Anima caption
+keeps a full shared tag bag beside its position clauses; the MOSS format keeps only the head
+(rating, count, names, series, artist) and the tags no subject owns there, and puts every tag
+a subject's crop carries into that subject's clause, repeated across clauses when several carry
+it. It also cuts a tag a more specific one already says (`long hair` beside `very long hair`,
+`bow` / `neckerchief` beside a bowtie). On caststation (2026-11-15) a LoRA trained on them beat
+its control trained on the Anima captions, same recipe and `caption_format tags`. The job
+(SAM3 + the Anima Tagger, a few minutes for 30 images) writes a tree of its own with the
+images symlinked, `post_image_dataset/moss_captions/<set>` by default, and leaves the Anima
+captions as they are; point the cache's `--src` at it:
+
+```bash
+make daemon-run ARGS="--stall-timeout 900 scripts/moss/captions.py --src 'post_image_dataset/resized/<set>'"
+make daemon-run ARGS="--stall-timeout 900 scripts/moss/cache.py --src 'post_image_dataset/moss_captions/<set>' --out 'post_image_dataset/moss/<set>' --caption_format tags"
+```
+
+A held object (a cup, a phone) stays in the bag: the crop tagger sees the subject's mask only.
+
 **Prompt tail** (`prompt_tail`, default `sure`): the cache and generate append
 `\n</think>\n\nSure,` after the chat template, closing the empty think block and starting
 an answer. On caststation a LoRA trained and rendered with it beat its control by eye, and

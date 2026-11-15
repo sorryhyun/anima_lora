@@ -14,7 +14,7 @@ list in `tests/test_moss_boundary.py`.
 | Module | Role |
 |---|---|
 | `model.py` | vendored `MOSSImageTransformer` / `MOSSImageScheduler` (attribution kept, state-dict names unchanged); per-sample `forward` must stay op-for-op with the pipeline, `forward_batched` masks text. i2i: `ref=` latents on RoPE's `r = 1` axis, `ref_timestep` / `ref_isolate` are transformer attributes; isolated at a fixed `ref_timestep`, `generate.denoise` sets `ref_cache` (`RefCache`) so the reference stream runs once per loop |
-| `requests.py` | **torch-free** `CacheRequest` / `ColorizeCacheRequest` / `GenerateRequest` / `TrainRequest` / `TuneSwapRequest`; every flag and default is defined here once. `I2I_CACHE` maps each i2i task to its cache request; its recipes are `configs/moss/i2i/<task>/{cache,train,generate}.toml` (`i2i_config`) |
+| `requests.py` | **torch-free** `CacheRequest` / `ColorizeCacheRequest` / `CaptionsRequest` / `GenerateRequest` / `TrainRequest` / `TuneSwapRequest`; every flag and default is defined here once. `I2I_CACHE` maps each i2i task to its cache request; its recipes are `configs/moss/i2i/<task>/{cache,train,generate}.toml` (`i2i_config`) |
 | `loader.py` | phase split TE → encode → free → DiT; TE paged by decoder layer (`offload_by_layer`, `te_reserve_gb`) |
 | `fp8.py` | fp8 TE export (`quantize_te`, ComfyUI `comfy_quant` format) and `load_fp8_text_encoder`; `text_encoder=` picks catalog row `moss_te_{precision}`, and TE caches stamp `encoder_id(precision)` so a switch re-encodes |
 | `dit_int8/` | the DiT's 252 block linears as int8 GEMMs, the training default (`TrainRequest.int8`): `library/int8/` holds the custom ops, `Int8TrainLinear` and `WqtStream`, shared with Anima; `base.py` here: targets, GPTQ forward copies (catalog `moss_dit_int8`), `convert_for_training`; `proj.q/k/v` run as one GEMM, `block.qkv`, and stay as `QKVPart` for the adapters. Refuses loha; block swap moves `wq` / `wq_t` as `HeldCopy` children's `.weight`. Generation runs on it by default (`GenerateRequest.int8 = on`, `generate_base`). `docs/moss/optimization/int8.md`, `docs/moss/optimization/training_step.md` |
@@ -27,6 +27,7 @@ list in `tests/test_moss_boundary.py`.
 | `generate.py` | `denoise` and `run_generate(req)`: ER-SDE or Euler, CFG + uncond skip-22, Spectrum, CNS. Benches reuse `denoise`, `cached_embeds`, `build_spectrum`. `ref_image` makes a job i2i: `ref_latents` (fitted as `cache_refs` does) into every forward, and with `ref_vision` the page through the vision tower ahead of the prompt (`vision_embeds`) |
 | `vision_te.py` | the TE call with an image in the user turn (Qwen3.5's own processor settings); `load_te` keeps the vision tower resident, any `text_encoder` precision; `encode_variants` prefills the page once for several captions |
 | `colorize.py` | `run_colorize_cache(req)`: staged B&W page → TE captions (`control`, the v5 default: colour + series tags, or `comic` + box-only text items + per-character colour boxes; `ocr`: OCR layout over full / sparse / bare colour captions; the page through the vision tower with vision on) + `*.moss_ref`, colour target latent; OCR floors shared with the ComfyUI MOSS Toolkit's caption helper |
+| `captions.py` | `run_captions(req)`: MOSS-format captions for one set, into a tree of its own (`post_image_dataset/moss_captions/<set>`, images symlinked): flatten the Anima clauses, anime_tools' position stage with `POSITION_FORMAT` (every clause-carried tag leaves the bag), then `drop_implied_tags`. The cache reads the tree as `src`; the Anima captions are never written |
 | `cns.py` | CNS recolor on the un-patchified 32 ch grid, `GenerateRequest.cns` (`auto` = the shipped γ per variant × CFG, `networks/calibration/moss_cns_gamma*.npz`) |
 | `spectrum.py` | forecasts cond and uncond separately; `MossSpectrum()` defaults are `GenerateRequest`'s |
 | `dave.py` | DAVE on image tokens via `model.layer_hook` (sees only rows that ran the block, so skip-22 is handled); τ is a step count; massive channels (`calibration/massive_channels.npz`) excluded. `auto` = `calibration/dave_alpha.npz`; the ComfyUI node `~/ComfyUI-Anima-DAVE` bundles the same pool + channel list. User doc `docs/inference/dave.md` |
@@ -37,7 +38,7 @@ list in `tests/test_moss_boundary.py`.
 | `tune.py` | `run_tune(req)`: recommends `--blocks_to_swap` / `--activation_memory_budget` on the bf16 plan |
 | `scan.py` | **torch-free** cache layout + GUI counts; its stale check (`source_sha256` vs `.txt`) can disagree with `cache.py`'s (`_te_current`) |
 
-Sidecars `scripts/moss/{cache,colorize_cache,generate,quantize_te_fp8,train,tune_swap}.py` are thin argparse
+Sidecars `scripts/moss/{cache,captions,colorize_cache,generate,quantize_te_fp8,train,tune_swap}.py` are thin argparse
 over the requests, submitted through the daemon; `make gui` (Model: MOSS-Image) submits the same jobs (its
 i2i tabs: `gui/moss/i2i.py`). User doc: `docs/moss/README.md`. Weights: catalog packs
 `moss-base` / `moss-sft` under `models/moss_image/MOSS-Image-{Base,SFT}`; SFT ships its DiT
