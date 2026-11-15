@@ -16,6 +16,10 @@ little better than FM only and add90 ema97. Numbers and runs:
 [`experimental/self_distill.md`](../experimental/self_distill.md#results). Arm B (EMA under a
 budget) and `loss_fm_t` were not built.
 
+**2026-11-15: the default moved to the gated add form** (`distill_add 1`, `distill_gate`, Base
+teacher, σ ≥ 0.95), after the replace form softened caststation's casbox renders. `loss_fm_t` is
+logged with the gate. [`reports/caststation_casbox.md`](../reports/caststation_casbox.md).
+
 Source: D-OPSD, arXiv 2605.05204, off-policy arm (§ 3.3).
 
 ## The objective

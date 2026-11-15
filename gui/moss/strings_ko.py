@@ -71,7 +71,7 @@ UI: dict[str, str] = {
     "recipe_lora": "LoRA",
     "recipe_trigger_registers": "트리거 레지스터",
     "recipe_selfdistill": "자기 증류",
-    "recipe_help": "configs/moss/의 학습 config를 불러옵니다: 그 값과, 다른 레시피가 정하는 키는 기본값으로. cache, output, model, trigger와 int8 / bf16 플랜은 그대로 둡니다. LoRA: 기본 레시피(lora.toml). 트리거 레지스터: 트리거 행에만 델타를 두고 그 뒤에 학습 행을 더합니다. trigger를 지정하세요. 자기 증류: flow loss를 쓰되, σ ≥ 0.95에서는 학습 이미지를 텍스트 인코더에 넣은 Base의 velocity를 flow 스텝의 강도에 맞춰 스케일한 값을 타깃으로 합니다. 16 epoch, lr 1e-4. teacher 임베딩(이미지 + 캡션을 TE에 통과, 30장에 1분 정도)은 전처리에서 distill_teacher를 켜면 만들어지고, 아니면 Train이 없거나 낡은 것을 먼저 만듭니다. 기본 LoRA보다 학습 구도를 덜 외우고, 화풍은 조금 약합니다. docs/moss/experimental/self_distill.md.",
+    "recipe_help": "configs/moss/의 학습 config를 불러옵니다: 그 값과, 다른 레시피가 정하는 키는 기본값으로. cache, output, model, trigger와 int8 / bf16 플랜은 그대로 둡니다. LoRA: 기본 레시피(lora.toml). 트리거 레지스터: 트리거 행에만 델타를 두고 그 뒤에 학습 행을 더합니다. trigger를 지정하세요. 자기 증류: 모든 스텝에 flow loss를 쓰고, σ ≥ 0.95에서는 학습 이미지를 텍스트 인코더에 넣은 Base의 velocity 쪽으로 당기는 항을 flow 항과 같은 강도로 더합니다. 그 teacher가 LoRA보다 타깃에 가까운 샘플에서만 더합니다. 16 epoch, lr 1e-4. teacher 임베딩(이미지 + 캡션을 TE에 통과, 30장에 1분 정도)은 전처리에서 distill_teacher를 켜면 만들어지고, 아니면 Train이 없거나 낡은 것을 먼저 만듭니다. 기본 LoRA보다 학습 구도를 덜 외우고, 화풍은 조금 약합니다. docs/moss/experimental/self_distill.md.",
     "distill_teacher": "자기 증류: teacher 임베딩을 먼저 캐시합니다 (이미지 + 캡션을 텍스트 인코더에 통과; 바뀐 파일만 다시 인코딩).",
 }
 

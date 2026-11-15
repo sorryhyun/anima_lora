@@ -256,6 +256,7 @@ def train(
         "empty": 0,
         "preserve": 0,
         "distill": 0,
+        "distill_open": 0,
         "distill_extra": 0,
     }
 
@@ -282,6 +283,15 @@ def train(
             raise SystemExit(
                 "distill_balance scales the replace mode; distill_add balances itself"
             )
+        if (
+            req.distill_gate
+            and not req.distill_add
+            and (req.distill_mix or req.distill_sigma_ramp)
+        ):
+            raise SystemExit(
+                "distill_gate compares the teacher's own flow loss: in replace mode "
+                "it needs distill_mix 0 and no distill_sigma_ramp"
+            )
         teachers = Teachers(samples)
         joint_t = max(s.n_img + s.n_ref + teachers.longest(s.stem) for s in samples)
         print(
@@ -290,6 +300,7 @@ def train(
             f"{max(teachers.longest(s.stem) for s in samples)} rows, joint up to "
             f"{joint_t}, mix {req.distill_mix}, from sigma {req.distill_sigma_min}"
             + (" (balanced to the flow norm)" if req.distill_balance else "")
+            + (" (gated on the teacher's flow loss)" if req.distill_gate else "")
             + (
                 f" (linear from {req.distill_sigma_min - req.distill_sigma_ramp:g})"
                 if req.distill_sigma_ramp
@@ -303,8 +314,8 @@ def train(
                 f"weight {req.distill_extra_weight:g} (gradient-norm balanced)",
                 flush=True,
             )
-    elif req.distill_balance:
-        raise SystemExit("distill_balance needs distill base or ema")
+    elif req.distill_balance or req.distill_gate:
+        raise SystemExit("distill_balance / distill_gate need distill base or ema")
 
     transformer = load_transformer(req.model_dir, req.model)
     transformer.requires_grad_(False)
@@ -672,6 +683,7 @@ def train(
                         teacher=teach,
                         teacher_add=teach_add,
                         teacher_balance=req.distill_balance,
+                        teacher_gate=req.distill_gate,
                     )
                 else:
                     loss = training_loss(
@@ -685,7 +697,9 @@ def train(
                         teacher=teach,
                         teacher_add=teach_add,
                         teacher_balance=req.distill_balance,
+                        teacher_gate=req.distill_gate,
                     )
+                kinds["distill_open"] += int(parts.get("gate", 0.0))
                 align = repa.loss() if repa is not None else None
                 if align is not None:
                     ((loss + req.repa_weight * align) / accum).backward()
@@ -875,6 +889,7 @@ def train(
             "dropout_steps": kinds["empty"],
             "preserve_steps": kinds["preserve"],
             "distill_steps": kinds["distill"],
+            "distill_open_steps": kinds["distill_open"],
             "distill_extra_steps": kinds["distill_extra"],
             "minutes": seconds / 60,
             "s_per_step": seconds / max(1, step - 1),

@@ -48,7 +48,7 @@ from library.moss.loader import (
     load_vae,
     stream_fp32_,
 )
-from library.moss.model import decode, snapped_sigmas
+from library.moss.model import decode, snapped_sigmas, unpatchify
 from library.moss.requests import GenerateRequest
 from library.moss.training.data import NUM_TRAIN_TIMESTEPS, samples_from_cache
 
@@ -63,6 +63,28 @@ PAIRS = (
     ("tag.cap", "tag.cut"),
     ("lay.cap", "lay.cut"),
 )
+# Upper edges of the radial bands on the 32 ch grid, as fractions of its Nyquist; the
+# first band is DC alone, the last everything above 0.5.
+BAND_EDGES = (0.125, 0.25, 0.5)
+
+
+def band_masks(h: int, w: int, device) -> list[torch.Tensor]:
+    fy = torch.fft.fftfreq(h, device=device)[:, None] * 2
+    fx = torch.fft.fftfreq(w, device=device)[None, :] * 2
+    r = (fy**2 + fx**2).sqrt()
+    masks, lo = [r == 0], 0.0
+    for hi in (*BAND_EDGES, float("inf")):
+        masks.append((r > lo) & (r <= hi))
+        lo = hi
+    return masks
+
+
+def band_mse(x: torch.Tensor, masks) -> list[float]:
+    """``mean(x²)`` of a packed latent split by radial band; the parts sum to it."""
+    f = torch.fft.fft2(unpatchify(x.float()), norm="ortho").abs().pow(2).sum((0, 1))
+    return [(f[m].sum() / x.numel()).item() for m in masks]
+
+
 LEAD = 3  # <|im_start|> user \n, then <|vision_start|>, the image rows, <|vision_end|>
 
 
@@ -112,6 +134,11 @@ def main():
     ap.add_argument("--sigmas", default="0.9,0.95,0.98")
     ap.add_argument("--eps", type=int, default=2)
     ap.add_argument("--renders", type=int, default=4)
+    ap.add_argument(
+        "--bands",
+        action="store_true",
+        help="also split every flow loss and distance by radial frequency band",
+    )
     ap.add_argument("--label", default="")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
@@ -214,19 +241,26 @@ def main():
                         for c, e in conds.items():
                             vs[f"{w}:{c}"] = tr(xt, t, e, return_dict=False)[0].float()
                     keys = list(vs)
-                    rows.append(
-                        dict(
-                            stem=stem,
-                            sigma=sigma,
-                            eps=k,
-                            fm={a: F.mse_loss(vs[a], target).item() for a in keys},
-                            d={
-                                f"{a}|{b}": F.mse_loss(vs[a], vs[b]).item()
-                                for n, a in enumerate(keys)
-                                for b in keys[n + 1 :]
-                            },
-                        )
+                    row = dict(
+                        stem=stem,
+                        sigma=sigma,
+                        eps=k,
+                        fm={a: F.mse_loss(vs[a], target).item() for a in keys},
+                        d={
+                            f"{a}|{b}": F.mse_loss(vs[a], vs[b]).item()
+                            for n, a in enumerate(keys)
+                            for b in keys[n + 1 :]
+                        },
                     )
+                    if args.bands:
+                        masks = band_masks(2 * x0.shape[-2], 2 * x0.shape[-1], device)
+                        row["fm_b"] = {a: band_mse(vs[a] - target, masks) for a in keys}
+                        row["d_b"] = {
+                            f"{a}|{b}": band_mse(vs[a] - vs[b], masks)
+                            for n, a in enumerate(keys)
+                            for b in keys[n + 1 :]
+                        }
+                    rows.append(row)
             print(f"[v] {i + 1}/{len(stems)} {stem}", flush=True)
 
         steps = snapped_sigmas(50, GenerateRequest().shift)

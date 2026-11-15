@@ -795,6 +795,14 @@ class TrainRequest(Request):
         "sigma >= 0.95 on caststation)",
         advanced=True,
     )
+    distill_gate: bool = _f(
+        False,
+        "with distill: on a teacher step keep the teacher target (replace, with "
+        "distill_mix 0 and no ramp) or the added teacher term (distill_add) only "
+        "when the teacher's own flow MSE is below the student's on that sample; a "
+        "plain flow step otherwise",
+        advanced=True,
+    )
     distill_extra_sigma: float = _f(
         0.0,
         "with distill: a second term every step, the teacher target at a sigma "

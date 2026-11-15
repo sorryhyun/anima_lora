@@ -143,6 +143,23 @@ run's updates: 0.1 for t2i and i2i (0.958 at 240 updates; 0.14 would be this 0.9
 Section 1's lr was kept at 5e-5; the prompt_tail caststation run in
 [chat_template.md](chat_template.md) §2 trained at 1e-4 with the EMA.
 
+## 5. lr 2e-4 with the EMA
+
+2026-11-15, on the casbox captions (`docs/moss/reports/caststation_casbox.md`): `casboxlr_1115_1336`
+is `casbox_1115_1226` (Muon, kaiming, `ema_window` 0.139, 480 updates) with lr 2e-4 instead of
+1e-4. Renders: the casbox `anima` / `clause` / `text` sets, EMA weights only;
+`output/tests/caststation_thin/casboxlr_sheets/`.
+
+- **The user read 2e-4 as worse on hands and similar detail** than 1e-4. Prompt, composition,
+  style strength and boxed-text placement held. One cell painted a grey background under
+  `white background`.
+- Per-epoch loss sat 0.004–0.009 above 1e-4 from epoch 3 on (same σ draws), 0.2505 vs 0.2442 at
+  the last epoch.
+- Under Muon the step scales with lr, so 2e-4 is twice 1e-4's step and four times 5e-5's. The EMA
+  keeps it on the prompt but does not stop the damage to hands.
+
+lr 1e-4 + EMA stays the working lr for caststation runs.
+
 ## Not tested
 
 - A second training seed or dataset, for every section.

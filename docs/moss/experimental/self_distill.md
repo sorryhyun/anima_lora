@@ -1,18 +1,22 @@
-# Self-distilled LoRA (balanced hybrid95)
+# Self-distilled LoRA (gated add95)
 
-Status: experimental. Default since 2026-11-14 (it replaces add90 ema97, the default from
-2026-11-09). Tested on two artist sets: caststation (30 images, 480 steps) and sincos (354
-images, 2,832 steps). Config: `configs/moss/selfdistill.toml`. Earlier arms and their verdict:
-[`reports/self_distill_arms.md`](../reports/self_distill_arms.md); why the EMA teacher was
-dropped: [`proposal/self_distill_lora.md`](../proposal/self_distill_lora.md).
+Status: experimental. Default since 2026-11-15: it replaces balanced hybrid95 (2026-11-14), which
+replaced add90 ema97 (2026-11-09). Tested on caststation only (30 images, 480 steps); the
+2,832-step sincos run below is the previous default's. Config: `configs/moss/selfdistill.toml`.
+Earlier arms and their verdict: [`reports/self_distill_arms.md`](../reports/self_distill_arms.md);
+why the EMA teacher was dropped: [`proposal/self_distill_lora.md`](../proposal/self_distill_lora.md);
+the gate and the add form:
+[`reports/caststation_casbox.md`](../reports/caststation_casbox.md#follow-up-2026-11-15-a-gated-teacher-lr-2e-4-a-band-limited-teacher).
 
-A t2i LoRA trained with the plain flow loss, except on steps at the highest noise, where the
-target is a teacher's velocity instead of `ε − x₀`. The teacher is Base, given the training image
-through Qwen3.5-9B's vision tower ahead of the caption. With the image in context, MOSS reproduces
+A t2i LoRA trained with the plain flow loss on every step, plus a second term on steps at the
+highest noise that pulls the prediction toward a teacher's velocity. The teacher is Base, given
+the training image through Qwen3.5-9B's vision tower ahead of the caption. With the image in context, MOSS reproduces
 the composition, outfits and layout of the target zero-shot
 ([vision_tower_reference.md](../findings/vision_tower_reference.md)). At σ ≥ 0.95 `x_t` holds
 almost nothing of the image, so the flow target there asks the LoRA to memorise the training
-composition. The teacher's velocity is how the model itself would draw that image.
+composition. The teacher's velocity is how the model itself would draw that image. The term is
+on only for samples where the teacher is closer to the flow target than the LoRA is, so it never
+pulls a prediction that already beats it.
 
 ## The recipe
 
@@ -25,7 +29,7 @@ flowchart LR
     xt --> S["student v_θ<br/>LoRA, grad"]
     S --> us(["u_s"])
 
-    us -->|"σ < 0.95"| FM["flow MSE<br/>‖u_s − (ε − x₀)‖²"]
+    us -->|"every step"| FM["flow MSE<br/>‖u_s − (ε − x₀)‖²"]
     xt -.->|"σ ≥ 0.95 only"| T
     img["TE(image + caption)<br/>cached .moss_vis"] -.-> T["teacher v<br/>Base (LoRA × 0), no grad"]
     T -.-> ut(["u_t"])
@@ -33,22 +37,22 @@ flowchart LR
     ut -.-> D
 
     FM --> L(("loss"))
-    D -->|"× √(flow MSE / teacher MSE)"| L
+    D -.->|"if ‖u_t − (ε − x₀)‖² < flow MSE:<br/>× √(flow MSE / teacher MSE)"| L
     L --> step["Muon step on θ"]
 ```
 
-Solid edges run on every step below σ 0.95; dotted ones on the ~9 % of steps at σ ≥ 0.95,
-which have no flow term. The scale gives a teacher step the gradient norm on the prediction of
-the flow step it replaces. Unscaled, the teacher MSE is ~0.024 against a flow MSE of ~0.51 there,
-so the teacher step pushes about 0.2× as hard, and Muon's momentum (0.95) leaves its direction
-to the flow steps around it.
+Solid edges run on every step; dotted ones on the ~9 % of steps at σ ≥ 0.95. The scale gives the
+teacher term the flow term's gradient norm on the prediction. Unscaled, the teacher MSE is ~0.03
+against a flow MSE of ~0.52 there, about a quarter of the gradient. The gate compares the two flow
+losses on the same `x_t`; when the teacher's is the higher one, the step is a plain flow step.
 
 | Key | Value | What it does |
 |---|---|---|
 | `distill` | `base` | teacher = Base (the LoRA at multiplier 0), the image + caption in the TE |
 | `distill_sigma_min` | `0.95` | the teacher forward only on steps with σ ≥ 0.95, ~9 % of steps |
-| `distill_add` | `0` | replace the flow target on those steps |
-| `distill_balance` | `true` | scale the teacher MSE by `√(flow MSE / teacher MSE)` each step |
+| `distill_add` | `1` | keep the flow term on those steps and add the teacher MSE, scaled by `√(flow MSE / teacher MSE)` |
+| `distill_gate` | `true` | add it only when the teacher's flow MSE is below the student's on that sample |
+| `distill_balance` | `false` | the replace form's scale; unused with `distill_add` |
 | `epochs` | `16` | 480 steps on 30 images |
 | `lr` | `1e-4` | Muon, as the caststation runs |
 | `ema_window` | `0.139` | the saved adapter EMA |
@@ -63,15 +67,28 @@ Why these and not the other arms:
 - **Base, not an EMA copy of the LoRA.** The EMA teacher (add90 ema97) moves with the student:
   on sincos at 2,832 steps that LoRA ended above Base's flow loss on its own training images at
   σ ≥ 0.95, with an extra hand on tag prompts. A fixed teacher has no such loop.
-- **Balanced.** Unbalanced replace (`distill_balance false`) changed the fit only at σ 0.98 on
-  caststation; balanced lowers it at every σ (table below).
+- **Added, not in place of the flow term.** The replace form (balanced hybrid95, the previous
+  default) drops the flow term on the steps where palette and large shapes are learned. On
+  caststation's casbox captions its gated form kept −0.012 of flow only's −0.027 gain over Base
+  at σ 0.98; the add form keeps −0.018, and its renders sit nearer flow only's (table below).
+- **Gated.** The gate drops the teacher term on samples where the LoRA already beats the
+  teacher. It logs `loss_fm_t` and `loss_gate`, and the run JSON counts `distill_open_steps`. It
+  closes less than the saved weights suggest: the raw weights sit above the teacher for most of
+  a run (37 of 45 teacher steps open on caststation; 38 in replace mode, 42 at lr 2e-4).
 
-**When it hurts.** On caststation's improved captions (`mask_dilate 16` + OCR boxes) the
-flow-matching student passed the Base teacher's flow loss at σ 0.95 within 480 steps. Balanced
-hybrid95 then pulled it back toward Base and softened the renders: high-frequency energy ×0.6 on
-22 of 24 paired renders ([`reports/caststation_casbox.md`](../reports/caststation_casbox.md)).
-Before using it on a set, run `bench/moss_self_distill/teacher_probe.py` with `--lora <flow-only
-LoRA>`. If `lora:cap → base:img` has a negative eff at σ 0.95, the teacher has nothing left to give.
+**What it costs.** Every form of the Base teacher tried on caststation's casbox captions
+(`mask_dilate 16` + OCR boxes) trades some of the artist's style for Base's rendering: more hair
+gloss and saturation, some added detail and depth, outfits drifting from the character's own.
+Flow only was preferred there; ungated balanced hybrid95 softened the renders most
+(high-frequency energy ×0.6 on 22 of 24 paired renders). What the teacher takes sits in the band
+that sets the large shapes, 0–⅛ Nyquist of the latent grid
+([`reports/caststation_casbox.md`](../reports/caststation_casbox.md)). Before using the recipe on
+a set, run `bench/moss_self_distill/teacher_probe.py` with `--lora <flow-only LoRA>`. If
+`lora:cap → base:img` has a negative eff at σ 0.95, the saved flow-only LoRA is already past the
+teacher.
+
+The replace forms still run: `distill_add 0` with `distill_balance true` is balanced hybrid95,
+and `distill_gate` gates it as well (there it refuses `distill_mix` and `distill_sigma_ramp`).
 
 ## Running it
 
@@ -132,6 +149,7 @@ int8 Base, fp32 stream, 16 GB card:
 | run | s/step | steps | time |
 |---|---|---|---|
 | caststation, plain LoRA | 1.02 | 480 | 8.2 min |
+| caststation, gated add95 | 1.03 | 480 (45 teacher, 37 with the term) | 8.2 min |
 | caststation, balanced hybrid95 | 1.05 | 480 (45 teacher) | 8.4 min |
 | sincos, plain LoRA (swap 28) | 0.98 | 2,832 | 46.1 min |
 | sincos, balanced hybrid95 (swap 28) | 1.04 | 2,832 (270 teacher) | 49.1 min |
@@ -146,8 +164,21 @@ Fit to the training images, flow loss of the LoRA minus Base's on the same `x_t`
 (`bench/moss_self_distill/teacher_probe.py`, 2 noise draws per image; bootstrap 95 % over
 images). Below 0 = closer to the training images than Base.
 
-caststation, 30 images, 480 steps, rating-free layout-JSON cache
-(`results/20261114-21{32,38,44}-nr_*`):
+caststation, 30 images, 480 steps, casbox tag captions
+(`results/20261115-{1449-bands_casbox,1443-capgap_casgate,1546-bands_casgateadd}`):
+
+| LoRA | σ 0.9 | σ 0.95 | σ 0.98 |
+|---|---|---|---|
+| plain | −0.0243 | −0.0299 | −0.0272 |
+| hybrid95, balanced, gated | −0.0204 | −0.0216 | −0.0124 |
+| **add95, gated** | −0.0221 | −0.0250 | −0.0176 |
+
+Renders of the three (`output/tests/caststation_thin/casgate_sheets/add_*.png`): the add form's
+are nearer plain's in 16 of 24 pairs by mean pixel distance, and the user read it as the better of
+the two teacher forms. Plain keeps the style best.
+
+The previous default, balanced hybrid95. caststation, 30 images, 480 steps, rating-free
+layout-JSON cache (`results/20261114-21{32,38,44}-nr_*`):
 
 | LoRA | σ 0.9 | σ 0.95 | σ 0.98 |
 |---|---|---|---|
@@ -176,14 +207,17 @@ the other rows from 20261114-16xx, captions with the rating):
 ## When to use it
 
 - The LoRA should hold up on prompts unlike its training captions, or on scenes with several
-  characters: the teacher replaces the target that memorises the training compositions.
+  characters: the teacher term pulls the highest-noise steps away from memorising the training
+  compositions.
 - When the strongest style transfer is the goal, plain LoRA still has the edge.
 
 ## Limits
 
-- **The teacher still pulls at the end.** On the sincos LoRA the Base teacher's shift is still
-  signal at σ 0.95 (0.59 of it lowers the flow loss) after 2,832 steps, so it has no fixed
-  point there; much longer runs are untested.
+- **The teacher still pulls at the end.** On the sincos LoRA (balanced hybrid95) the Base
+  teacher's shift is still signal at σ 0.95 (0.59 of it lowers the flow loss) after 2,832 steps,
+  so it has no fixed point there; much longer runs are untested.
+- **The gated add form has one run behind it**: caststation, 480 steps, one seed. It has not run
+  at sincos's length, where add90 ema97 drifted; its teacher is Base, so it has no EMA loop.
 - Two artist sets. Character sets, other styles and i2i are untested.
 - Refused with `delta_rows` other than `all`, `trigger_registers` and `ref_adapters all`: their
   row masks are built for the student's sequence, and the teacher's has the image rows ahead of

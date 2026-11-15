@@ -150,6 +150,81 @@ def test_teacher_balance_replaces_flow_at_its_gradient_norm():
     assert abs(parts["t"] - t.item()) < 1e-6
 
 
+def test_teacher_gate_keeps_the_teacher_only_when_it_is_closer_to_the_flow():
+    latent = torch.randn(1, 4, 2, 2)
+
+    def run(toward_flow):
+        dit = _DiT(_Net())
+
+        def teach(noisy, timestep, flow, ref=None):
+            pred = dit.w.detach() * noisy
+            return pred + toward_flow * (flow - pred)
+
+        state, parts = {}, {}
+        loss = training_loss(
+            dit,
+            latent,
+            torch.zeros(1, 5, 8),
+            0.5,
+            gen=torch.Generator().manual_seed(0),
+            state=state,
+            parts=parts,
+            teacher=teach,
+            teacher_balance=True,
+            teacher_gate=True,
+        )
+        pred = dit.w.detach() * state["noisy"]
+        flow = (state["noisy"] - 0.5 * latent) / 0.5 - latent
+        return loss, pred, flow, parts
+
+    # Half the way to the flow target: the teacher's flow MSE is a quarter of the
+    # student's, so its (balanced) term is the loss.
+    loss, pred, flow, parts = run(0.5)
+    fm = F.mse_loss(pred, flow)
+    t = F.mse_loss(pred, pred + 0.5 * (flow - pred))
+    assert parts["gate"] == 1.0 and abs(parts["fm_t"] - 0.25 * fm.item()) < 1e-5
+    assert torch.allclose(loss, (fm / t).sqrt() * t)
+    # Away from it: the step is a flow step, with no teacher term logged.
+    loss, pred, flow, parts = run(-0.5)
+    assert parts["gate"] == 0.0 and "t" not in parts
+    assert torch.allclose(loss, F.mse_loss(pred, flow))
+
+
+def test_teacher_gate_drops_the_added_term_when_closed():
+    latent = torch.randn(1, 4, 2, 2)
+
+    def run(toward_flow):
+        dit = _DiT(_Net())
+
+        def teach(noisy, timestep, flow, ref=None):
+            pred = dit.w.detach() * noisy
+            return pred + toward_flow * (flow - pred)
+
+        state, parts = {}, {}
+        loss = training_loss(
+            dit,
+            latent,
+            torch.zeros(1, 5, 8),
+            0.5,
+            gen=torch.Generator().manual_seed(0),
+            state=state,
+            parts=parts,
+            teacher=teach,
+            teacher_add=1.0,
+            teacher_gate=True,
+        )
+        pred = dit.w.detach() * state["noisy"]
+        flow = (state["noisy"] - 0.5 * latent) / 0.5 - latent
+        return loss, F.mse_loss(pred, flow), parts
+
+    loss, fm, parts = run(0.5)
+    assert parts["gate"] == 1.0
+    assert torch.allclose(loss, fm + (fm / parts["t"]).sqrt() * parts["t"])
+    loss, fm, parts = run(-0.5)
+    assert parts["gate"] == 0.0 and "t" not in parts
+    assert torch.allclose(loss, fm)
+
+
 def test_train_builds_missing_teachers_on_the_cache_te(tmp_path, monkeypatch):
     """``run_train``'s pre-check: missing teacher files are encoded before the DiT
     loads, on the TE weights the cache stamps and the tail of the teachers already

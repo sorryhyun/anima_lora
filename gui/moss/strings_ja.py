@@ -70,7 +70,7 @@ UI: dict[str, str] = {
     "recipe_lora": "LoRA",
     "recipe_trigger_registers": "トリガーレジスタ",
     "recipe_selfdistill": "自己蒸留",
-    "recipe_help": "configs/moss/ の学習 config を読み込みます: その値と、他のレシピが設定するキーはデフォルト値に。cache、output、model、trigger と int8 / bf16 プランはそのままです。LoRA: 標準レシピ(lora.toml)。トリガーレジスタ: 差分をトリガーの行だけに置き、その後に学習行を加えます。trigger を設定してください。自己蒸留: flow loss を使い、σ ≥ 0.95 では、学習画像をテキストエンコーダに入れた Base の velocity を flow ステップの強さに合わせてスケールしたものをターゲットにします。16 epoch、lr 1e-4。teacher 埋め込み(画像 + キャプションを TE に通す、30 枚で約 1 分)は前処理で distill_teacher をオンにすると作られ、そうでなければ Train が欠けた・古いものを先に作ります。標準 LoRA より学習時の構図を覚え込みにくく、画風はやや弱くなります。docs/moss/experimental/self_distill.md。",
+    "recipe_help": "configs/moss/ の学習 config を読み込みます: その値と、他のレシピが設定するキーはデフォルト値に。cache、output、model、trigger と int8 / bf16 プランはそのままです。LoRA: 標準レシピ(lora.toml)。トリガーレジスタ: 差分をトリガーの行だけに置き、その後に学習行を加えます。trigger を設定してください。自己蒸留: 全ステップで flow loss を使い、σ ≥ 0.95 では、学習画像をテキストエンコーダに入れた Base の velocity に寄せる項を flow 項と同じ強さで加えます。その teacher が LoRA よりターゲットに近いサンプルでのみ加えます。16 epoch、lr 1e-4。teacher 埋め込み(画像 + キャプションを TE に通す、30 枚で約 1 分)は前処理で distill_teacher をオンにすると作られ、そうでなければ Train が欠けた・古いものを先に作ります。標準 LoRA より学習時の構図を覚え込みにくく、画風はやや弱くなります。docs/moss/experimental/self_distill.md。",
     "distill_teacher": "自己蒸留: teacher 埋め込みを先にキャッシュします(画像 + キャプションをテキストエンコーダに通す。変わったファイルだけ再エンコード)。",
 }
 

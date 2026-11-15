@@ -6,7 +6,7 @@ MOSS-format captions (`casthin_1115_1150`, the control) and one recipe change on
 1. **`mask_dilate 16`**: the position stage's crop tagger sees each subject mask grown by 16 px,
    so an object in hand reaches its holder's clause.
 2. **OCR boxes on text lines** (`text_boxes`): each OCR'd line of a text clause carries its box.
-3. **Self-distillation** (balanced hybrid95, `configs/moss/selfdistill.toml`) over captions 1 + 2.
+3. **Self-distillation** (balanced hybrid95, `configs/moss/selfdistill.toml` at the time) over captions 1 + 2.
 
 Captions 1 + 2 trained on flow matching alone (`casbox_1115_1226`) are the line. Self-distillation
 over them (`casboxsd_1115_1230`) softens the renders. The probe shows why: the flow-matching
@@ -138,11 +138,102 @@ the captions going forward.
 Base-only renders of the same sets, to check that casboxsd sits between Base and casbox in
 sharpness, were not run.
 
+## Follow-up, 2026-11-15: a gated teacher, lr 2e-4, a band-limited teacher
+
+Four more arms on the casbox cache, all against `casbox_1115_1226`. None beat it.
+
+| Run | lr | Teacher steps (σ ≥ 0.95) | Laplacian variance against casbox (24 pairs) |
+|---|---|---|---|
+| `casboxsd_1115_1230` | 1e-4 | balanced hybrid95, 45 of 45 | 0.60, lower in 22 |
+| `casgate_1115_1409` | 1e-4 | `distill_gate`, 38 of 45 open | 0.83, lower in 18 |
+| `casgatelr_1115_1409` | 2e-4 | `distill_gate`, 42 of 45 open | 0.90, lower in 18 |
+| `casgateadd_1115_1532` | 1e-4 | `distill_gate` on `distill_add 1`, 37 of 45 open | 0.84, lower in 19 |
+| `casband_1115_1507` | 1e-4 | teacher in the band 0 < f ≤ ⅛ Nyquist only | 0.96, lower in 16 |
+| `casboxlr_1115_1336` | 2e-4 | none (flow only) | 1.08, lower in 9 |
+
+Sheets: `output/tests/caststation_thin/casgate_sheets/`.
+
+**`distill_gate`** keeps the teacher target on a teacher step only when the teacher's own flow
+MSE is below the student's on that sample (`fm_t < fm_s`), and trains the flow target otherwise.
+A teacher step that passes has a positive inner product with the flow step on the prediction:
+`(v_s − u)·(v_s − v_t) = ½(fm_s − fm_t + ‖v_t − v_s‖²)`.
+
+- **The gate barely closes.** The saved (EMA) flow-only LoRA is below the teacher at σ 0.95, but
+  the raw weights during training are not. On the 45 teacher steps, which share σ and noise
+  across runs, raw student − Base teacher:
+
+| Steps | casbox 1e-4 | casboxlr 2e-4 | casboxsd 1e-4 | casgate 1e-4 | casgatelr 2e-4 |
+|---|---|---|---|---|---|
+| 1–120 | +0.024 | +0.027 | +0.021 | +0.021 | +0.024 |
+| 121–240 | +0.010 | +0.033 | +0.016 | +0.015 | +0.030 |
+| 241–360 | +0.012 | +0.038 | +0.028 | +0.028 | +0.051 |
+| 361–480 | −0.012 | −0.006 | +0.005 | +0.004 | +0.021 |
+| steps above the teacher | 29 | 37 | 39 | 38 | 42 |
+
+- **Replaced steps hold the student at the teacher's level**, which keeps the gate open. Saved
+  weights, same probe as above (`results/20261115-{1355-capgap_casboxlr,1437-capgap_casgatelr,1443-capgap_casgate}`):
+
+| LoRA | LoRA − Base teacher, σ 0.95 | σ 0.98 | LoRA − Base (caption), σ 0.98 |
+|---|---|---|---|
+| casbox | −0.0104 | −0.0071 | −0.027 |
+| casboxlr | −0.0084 | −0.0046 | −0.025 |
+| casgate | −0.0023 | +0.0076 | −0.012 |
+| casgatelr | +0.0034 | +0.0136 | −0.006 |
+
+- **The user's read:** a trade-off. The gated teacher adds some detail and depth and pulls the
+  style toward Base (hair gloss, saturated cyan and pink, Neru's outfit drifting); hands are not
+  reliably better, and flow only is sometimes better on them. On these captions at lr 1e-4,
+  following the style is preferred. The gate read better than the band-limited teacher, so the
+  flag stays.
+- A stricter threshold (`eff > τ` on the same quantities) would open 26 / 19 / 11 of 45 steps at
+  τ 0.5 / 0.75 / 1 on casgate. It moves along the same casbox–casboxsd line; not run.
+
+**Gate on add mode** (`casgateadd`): the flow term stays on every teacher step and the gated
+teacher term is added at its gradient norm. Two reads were fixed before the run and both failed.
+The gate opened on 37 of 45 steps against replace's 38, not the flow-only trajectory's 29. The
+saved LoRA's gain over Base at σ 0.98 came back to −0.018, between replace's −0.012 and flow
+only's −0.027; what is missing sits in the 0–⅛ Nyquist band (LoRA − teacher +0.0054 there,
+−0.0007 on casbox). So the teacher term itself, not only the missing flow step, keeps the raw
+weights above the teacher at high σ. Against replace, add is the better of the two: the fit is
+closer to flow only at both σ (σ 0.95: −0.025 against −0.022), its renders sit nearer casbox's
+(mean pixel distance lower in 16 of 24 pairs), Neru's outfit and the boxed-text compositions follow
+casbox in cells where `casgate` changed them, and the user read it as better than replace. The
+stray shape in one two-girl cell is in both.
+
+**lr 2e-4** does not reopen room for the teacher in the saved weights (table above), and the
+teacher does not repair what it breaks (`findings/t2i_lora_recipe.md` §5).
+
+**Band-limited teacher.** `teacher_probe.py --bands` splits each flow loss by radial band on the
+32 ch latent grid (`results/20261115-1449-bands_casbox`, casbox LoRA):
+
+| σ 0.95 | DC | 0–⅛ | ⅛–¼ | ¼–½ | > ½ Nyquist |
+|---|---|---|---|---|---|
+| Base caption − Base teacher | +0.0003 | +0.0108 | +0.0051 | +0.0025 | +0.0005 |
+| casbox LoRA − Base teacher | −0.0014 | −0.0021 | −0.0030 | −0.0031 | −0.0010 |
+| eff, LoRA → teacher | −0.80 | −0.14 | −0.31 | −0.45 | −0.45 |
+
+| σ 0.98 | DC | 0–⅛ | ⅛–¼ | ¼–½ | > ½ Nyquist |
+|---|---|---|---|---|---|
+| Base caption − Base teacher | +0.0018 | +0.0160 | +0.0016 | +0.0004 | +0.0001 |
+| casbox LoRA − Base teacher | −0.0022 | −0.0007 | −0.0030 | −0.0011 | −0.0001 |
+| eff, LoRA → teacher | −0.71 | −0.04 | −0.75 | −0.76 | −0.46 |
+
+The teacher's headroom sits in 0–⅛ Nyquist (56 % at σ 0.95, 80 % at 0.98), the one band where
+the trained LoRA only ties it; at σ 0.9 the LoRA is below the teacher in every band (eff −0.6 or
+lower). `casband` trained the teacher's velocity in that band and the flow target in the rest of
+the spectrum, the band's term scaled to the flow residual's norm there. It kept sharpness and
+broke composition: stray large shapes and stacked heads in the two-girl cells, outfits off the
+prompt. The user called it a clear failure. A tie in flow loss on the training images did not
+mean the band was free to pull: it is the band that sets the large shapes. The flag was removed.
+
 ## Outcome
 
-- caststation trains on casbox captions with flow matching alone. A well-captioned set gets no
-  balanced hybrid95 by default; on such a set the student passes the Base teacher within 480
+- caststation trains on casbox captions with flow matching alone. The gated teacher, lr 2e-4 and
+  the band-limited teacher did not change that. A well-captioned set gets no
+  self-distillation by default; on such a set the student passes the Base teacher within 480
   steps.
+- The self-distill recipe (`configs/moss/selfdistill.toml`) is now the gated add form, the better
+  of the teacher forms here, in place of balanced hybrid95.
 - `CaptionsRequest.mask_dilate` 16 and `CacheRequest.text_boxes` on are the shipped defaults.
 - Boxed text in a `tags` prompt places text where it asks, so render text the way the cache
   writes it.

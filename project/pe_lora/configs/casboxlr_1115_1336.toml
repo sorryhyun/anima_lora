@@ -1,0 +1,25 @@
+# casbox_1115_1226 at lr 2e-4 (Muon): same captions, cache, latents and recipe, lr doubled.
+# Question: does 2e-4 + EMA (ema_window 0.139) hold the prompt on t2i FM, or does it drift / distort
+# as raw 1e-4 did (docs/moss/findings/t2i_lora_recipe.md §4)? Control: casbox_1115_1226 (lr 1e-4).
+# Result (2026-11-15): user read hands and fine detail as worse than lr 1e-4; t2i_lora_recipe.md §5.
+cache = "post_image_dataset/moss/casbox_tags_sure"
+output = "output/ckpt_moss/casboxlr_1115_1336.safetensors"
+model = "base"
+epochs = 16
+algo = "lora"
+rank = 32
+down_init = "kaiming"
+optimizer = "muon"
+lr = 2e-4
+warmup_ratio = 0.05
+plain_caption_rate = 0.0
+ema_window = 0.139
+lora_dtype = "bf16"
+int8 = "stream"
+stream = "fp32"
+ema_card = true
+blocks_to_swap = 0
+activation_memory_budget = 0.3
+swap_h2d_only = true
+compile = true
+expandable_segments = true

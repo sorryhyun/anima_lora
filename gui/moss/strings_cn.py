@@ -60,7 +60,7 @@ UI: dict[str, str] = {
     "recipe_lora": "LoRA",
     "recipe_trigger_registers": "触发词寄存器",
     "recipe_selfdistill": "自蒸馏",
-    "recipe_help": "从 configs/moss/ 读取训练配置：写入其值，其他配方设置的键恢复默认值。cache、output、model、trigger 以及 int8 / bf16 方案保持不变。LoRA：基本配方（lora.toml）。触发词寄存器：差量只作用于触发词所在行，并在其后加入可学习行；需设置 trigger。自蒸馏：使用 flow loss，但在 σ ≥ 0.95 时，目标改为 Base 在文本编码器中加入训练图像后的 velocity，并按 flow 步的强度缩放；16 epoch，lr 1e-4。teacher 嵌入（图像 + 描述经过 TE，30 张约 1 分钟）可在预处理中勾选 distill_teacher 生成，否则 Train 会先生成缺失或过期的部分。比基本 LoRA 更少记住训练构图，画风略弱。docs/moss/experimental/self_distill.md。",
+    "recipe_help": "从 configs/moss/ 读取训练配置：写入其值，其他配方设置的键恢复默认值。cache、output、model、trigger 以及 int8 / bf16 方案保持不变。LoRA：基本配方（lora.toml）。触发词寄存器：差量只作用于触发词所在行，并在其后加入可学习行；需设置 trigger。自蒸馏：每一步都使用 flow loss；在 σ ≥ 0.95 时再加一项，把预测拉向 Base 在文本编码器中加入训练图像后的 velocity，强度与 flow 项相同，且只在该 teacher 比 LoRA 更接近目标的样本上加入；16 epoch，lr 1e-4。teacher 嵌入（图像 + 描述经过 TE，30 张约 1 分钟）可在预处理中勾选 distill_teacher 生成，否则 Train 会先生成缺失或过期的部分。比基本 LoRA 更少记住训练构图，画风略弱。docs/moss/experimental/self_distill.md。",
     "distill_teacher": "自蒸馏：先缓存 teacher 嵌入（图像 + 描述经过文本编码器；只重新编码有变化的文件）。",
 }
 

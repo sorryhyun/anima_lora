@@ -121,6 +121,7 @@ def training_loss(
     teacher=None,
     teacher_add: float = 0.0,
     teacher_balance: bool = False,
+    teacher_gate: bool = False,
 ):
     """``latent (1,128,h,w)`` fp32, ``embeds (1,S,4096)`` at true length,
     ``ref (1,128,h',w')`` an optional clean reference latent (never noised),
@@ -135,7 +136,12 @@ def training_loss(
     times ``sqrt(flow MSE / teacher MSE)``, so at 1 both gradients on the prediction
     have the same norm; logged in ``parts`` as ``t``. ``teacher_balance`` (replace
     only) scales the teacher MSE by ``sqrt(flow MSE / teacher MSE)``, so its gradient
-    on the prediction has the flow term's norm; logged in ``parts`` as ``t``."""
+    on the prediction has the flow term's norm; logged in ``parts`` as ``t``.
+    ``teacher_gate``: the teacher target (or, with ``teacher_add``, the added
+    term) only when its own flow MSE is below the prediction's on this sample, a
+    plain flow step otherwise (the teacher step then
+    has a positive inner product with the flow step on the prediction); logged in
+    ``parts`` as ``fm_t`` and ``gate`` (1 = teacher)."""
     noise = torch.randn(
         latent.shape, generator=gen, device=latent.device, dtype=latent.dtype
     )
@@ -150,6 +156,13 @@ def training_loss(
     pred = transformer(noisy, timestep, embeds, return_dict=False, ref=ref)[0]
     if teacher is not None and parts is not None:
         parts["fm"] = F.mse_loss(pred.detach().float(), flow.float()).item()
+    if teacher is not None and teacher_gate:
+        fm_t = F.mse_loss(target.float(), flow.float())
+        is_open = bool(fm_t < F.mse_loss(pred.detach().float(), flow.float()))
+        if parts is not None:
+            parts.update(fm_t=fm_t.item(), gate=float(is_open))
+        if not is_open:
+            teacher, target = None, flow
 
     def mse(t):
         if region is not None:
