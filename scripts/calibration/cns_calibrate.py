@@ -304,6 +304,7 @@ def main() -> None:
         cfg=np.float32(args.cfg),
         flow_shift=np.float32(args.flow_shift),
         steps=np.int32(args.steps),
+        stream=np.str_(base_args.stream),
         source_aspects=aspects_arr,
         averaged=np.bool_(args.average_aspects),
     )

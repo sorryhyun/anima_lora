@@ -67,7 +67,7 @@ python inference.py --sampler er_sde --cns auto   ...   # shipped γ, full stren
 | `aspects` | `(A, 2)` | pixel `(H, W)` each γ row was calibrated at |
 | `sigmas` | `(T+1,)` | calibration σ schedule (runtime σ-interpolates onto this) |
 | `radial_centers` | `(F,)` | radial-freq bin centers in [0, 1] |
-| `cfg`, `flow_shift`, `steps`, `source_aspects`, `averaged` | scalar/meta | calibration provenance |
+| `cfg`, `flow_shift`, `steps`, `stream`, `source_aspects`, `averaged` | scalar/meta | calibration provenance |
 
 Cross-aspect variation is cosmetic (β MAD ~0.01, same conclusion as `project_dcw_bucket_prior_cosmetic`), so one averaged `(1, T, F)` γ ships and serves any resolution — the recolorer's nearest-aspect select degrades to index 0. Radial bins are normalized to [0, 1], so a γ calibrated at one grid maps onto any other shape by bin index. Caveat: all calibrated aspects are 4200-token, AR 0.6–1.34; extreme shapes are unmeasured extrapolation.
 
@@ -81,6 +81,10 @@ python scripts/calibration/cns_calibrate.py --cfg 4.0 --extra --lora_weight outp
 ```
 
 Drives the Phase-0 euler capture across the deploy config — `--cfg 4.0` at the top-`--n_aspects` `DCW_ASPECT_BUCKETS` — and bundles per-aspect γ into the shipped npz (with `--average_aspects`, default on). γ is measured from the deterministic euler ODE (Eq. 8); the recoloring then applies on er_sde. Prompts are real captions (richest/most-tags across distinct artists, from preprocessed stems → `image_dataset/*.txt`), not synthetic — they matter: real-vs-synthetic β MAD 0.036, ~3–5× the cross-aspect MAD. GPU-heavy (3 aspects × prompts × seeds at cfg=4); loads the DiT once, precomputes all text, frees the TE before the loop (TE→free→DiT invariant), and compiles by default (the 3 default aspects are all token-count 4200 → one native-flatten graph reused across them). `gamma_probe.py` is the single-config read-only Phase-0 staircase check; `calibrate.py` reuses its helpers.
+
+The shipped file was recalibrated on 2026-11-15 on the fp32 stream, the generation default (cfg 4, 3 aspects × 4 captions × 4 seeds; aggregate σ50 0.506–0.509 per aspect). The stream changes γ: with prompts and seeds paired at 1200×896, γ reads 0.02–0.05 higher on fp32 in the mid and high bands at σ 0.3–0.8 (σ50 +0.01–0.03 there, low bands unchanged), against a seed-set spread of 0.002–0.01. The recolor amplitude it produces moves by 0.5% (median) and 2% (p90) per band, the size of the seed-set spread. Against the 2026-05-31 bf16 file the new one differs by 1.0% / 3.4%.
+
+The prompt sample moves γ more than the stream does. Caption style does not: on four multi-subject images, the thin-bag caption against the full bag moves γ by the seed-set spread (aggregate σ50 0.574 against 0.570). Those four images against the four calibration captions shift aggregate σ50 by +0.06, and 16 captions (same selection rule, one seed) give 0.539 against 0.507 for the shipped four. The 16-caption shift is near-uniform across bands (σ50 +0.024 to +0.032), so the renormalised amplitude moves 0.4% / 2.1% and the shipped file stays on four captions × four seeds.
 
 ## Composition
 
@@ -121,7 +125,7 @@ One implementation divergence worth noting: Alg. 1 renormalizes by a single glob
 ## Limitations / open questions
 
 - er_sde-only. No-op on the euler/ODE default and on `lcm`. The paper validates CNS across higher-order stochastic solvers (Heun, SRK2/SRK2S, Table 2); we only hook ER-SDE. Porting to a Heun-style stochastic path is unimplemented.
-- γ provenance. Shipped γ is calibrated at cfg=4, mod-guidance OFF, across 3 aspects (all 4200-token, AR 0.6–1.34). Extreme aspect ratios and mod-guidance-ON deployment are extrapolation / 2nd-order recalibration territory.
+- γ provenance. Shipped γ is calibrated at cfg=4, fp32 stream, mod-guidance OFF, across 3 aspects (all 4200-token, AR 0.6–1.34). The A/Bs on this page ran on the bf16 file it replaced. Extreme aspect ratios and mod-guidance-ON deployment are extrapolation / 2nd-order recalibration territory.
 - Spectrum compose not yet A/B-confirmed clean — see Composition table.
 - (Optional refinement) Eq. 11's analytic denominator `sqrt(mean_f(1−γ))` is the deterministic equal-in-expectation form of our empirical `std(w_c)`; switching would give bit-stable per-step normalization at the cost of diverging from Alg. 1. Not pursued.
 
@@ -151,4 +155,4 @@ MOSS-Image γ files (aggregate σ50 / low−high spread at 1344×768; the Base c
 | `moss_cns_gamma_sft_cfg4.npz` | SFT, 4 | 1344×768, 768×1344 | 0.575 | +0.534 |
 | `moss_cns_gamma_sft_cfg5.npz` | SFT, 5 | 1344×768, 768×1344 | 0.539 | +0.553 |
 
-The staircase holds in every file, and cross-size σ50 MAD stays at 0.005–0.01. Each step up in cfg lowers σ50 by 0.03–0.05. At the same cfg, SFT sits about 0.02 above Base, with a flatter staircase.
+All six were measured on the bf16 DiT and bf16 stream. The staircase holds in every file, and cross-size σ50 MAD stays at 0.005–0.01. Each step up in cfg lowers σ50 by 0.03–0.05. At the same cfg, SFT sits about 0.02 above Base, with a flatter staircase.
