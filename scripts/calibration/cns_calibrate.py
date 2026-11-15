@@ -149,12 +149,12 @@ def main() -> None:
     p.add_argument("--n_aspects", type=int, default=3, help="Top-N DCW_ASPECT_BUCKETS.")
     p.add_argument("--steps", type=int, default=28)
     p.add_argument("--flow_shift", type=float, default=3.0)
-    p.add_argument("--seeds", type=int, nargs="+", default=[0, 1])
+    p.add_argument("--seeds", type=int, nargs="+", default=[0])
     p.add_argument("--n_bins", type=int, default=32, help="Radial frequency bins (F).")
     p.add_argument(
         "--n_prompts",
         type=int,
-        default=4,
+        default=16,
         help="How many real captions to sample (distinct artists, most tags).",
     )
     p.add_argument(
