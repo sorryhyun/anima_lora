@@ -11,7 +11,7 @@ every weight within 64× its tensor's RMS. TE, VAE and pipeline are Base's, and 
 training run int8 GEMMs with an fp32 stream, and they do not use fp16. GPTQ int8 error is the
 same as Base's, and a caststation LoRA trained on it ties Base's. Its prior is different
 (warmer, more saturated, knows danbooru artist tags), and the LoRA inherits some of that. The
-wiring (`--model heal`) was reverted. Only the GPTQ file is kept.
+wiring (`--model heal`) was reverted. The GPTQ file was deleted on 2026-11-14.
 
 ## Precision probe
 
@@ -59,7 +59,7 @@ precision over casting `transformer/` at load. Both files were deleted after the
 ## GPTQ
 
 `project/finished/int8_train/src/dit_gptq_moss.py --model heal` ran in 63 min on the same
-calibration as Base's file. It wrote `models/moss_image/moss_image_heal_int8_gptq.safetensors`
+calibration as Base's file. It wrote `models/moss_image/moss_image_heal_int8_gptq.safetensors` (deleted 2026-11-14)
 (int8_id `39eb18514775727a`, report beside it). Mean per-linear output error:
 
 | | Base | heal |

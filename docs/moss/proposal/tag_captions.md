@@ -241,7 +241,20 @@ worth building only if a plain-FM tag LoRA still shows a caption-shaped fault.
   covers. It would be an arm against add90 ema97, not an answer to the caption question, and
   MOSS has no implementation.
 - **Tag order.** Anima's order and the USERGUIDE's (quality → meta → character → series →
-  artist → general) differ in where the count tag sits; no arm.
+  artist → general) differ in where the count tag sits. Run 2026-11-14 on caststation
+  (`caption_format tags`; `castag_1114_2315` / `casorder_1114_2315` / `casorderq_1114_2315`, the
+  last with `best quality, highres` on every caption; plain FM, 480 steps): paired loss within
+  ±0.1 % of the control at every σ band, intervals across 0. Renders
+  (`output/tests/caststation_tagorder/sheet_p*.png`, 4 prompts × 2 seeds) keep the same
+  composition for the control and the order arm; the quality prefix moves composition at
+  inference only (the control LoRA under the prefixed prompt draws the same poses as
+  `casorderq`). No arm is better on style or anatomy at sheet size. With the balanced hybrid95
+  distill on the `casorderq` cache (`casqbal_1114_2352`, 45 teacher steps): flow loss above
+  `casorderq` by +0.07 / +0.27 / +0.78 % at σ < 0.6 / 0.6–0.85 / 0.85–0.95; renders under the
+  same prompts (`sheet2_p*.png`) keep the style, move composition more than any FM arm and add
+  unprompted props on two cells (a phone, pantyhose). **Decision (user, 2026-11-15):** tag
+  captions keep the USERGUIDE order (`caption_format tags`) without quality tags; `casorderq`
+  and `casqbal` render with less of the style.
 - **Teaching Base to read tags better** (a broad-data tag LoRA, or a teacher that sees prose
   while the student sees tags). Base already binds a clean dense tag prompt, and a tag student
   against a layout-JSON teacher measures the same as against its own (eff 0.94 against 0.97).

@@ -1,0 +1,25 @@
+# Tag-order A/B on caststation, control: caption_format text = the Anima tag caption as written
+# (rating dropped by drop_rating, count tag before the names). Retrains castag_1112_2220's recipe on
+# today's code and captions (plain FM, 30 images x 16 epochs = 480 steps, lr 1e-4, no variants, sure tail),
+# latents copied from channel_(caststation)_layout_sure. Arms: casorder_1114_2315, casorderq_1114_2315.
+cache = "post_image_dataset/moss/castag_text_sure"
+output = "output/ckpt_moss/castag_1114_2315.safetensors"
+model = "base"
+epochs = 16
+algo = "lora"
+rank = 32
+down_init = "kaiming"
+optimizer = "muon"
+lr = 1e-4
+warmup_ratio = 0.05
+plain_caption_rate = 0.0
+ema_window = 0.139
+lora_dtype = "bf16"
+int8 = "stream"
+stream = "fp32"
+ema_card = true
+blocks_to_swap = 0
+activation_memory_budget = 0.3
+swap_h2d_only = true
+compile = true
+expandable_segments = true

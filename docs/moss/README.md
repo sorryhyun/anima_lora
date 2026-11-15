@@ -149,7 +149,14 @@ layout-JSON prompt (`anime_tools.captions.layout_json`):
 On caststation this kept the style strength of plain tags and leaked fewer of the set's
 attributes onto other characters. A `layout_json` cache also stores the plain caption, used
 on `plain_caption_rate` (default 0.2) of the steps. **Train and prompt in the same form**
-(`text` on both for plain captions); switching re-encodes the TE cache. In ComfyUI the
+(`text` on both for plain captions); switching re-encodes the TE cache.
+
+For a LoRA meant to be prompted with tags, `caption_format tags` (and `prompt_format tags` on
+generate) keeps the tag caption and moves its flat tags into the USERGUIDE order: quality,
+score, meta, year, character, series, artist, then the count tag and the general tags;
+position and text clauses stay as written. Leave quality tags (`best quality, highres`) out
+of the training captions: on caststation (2026-11-14) adding them to every caption weakened
+the style (`proposal/tag_captions.md`, "Tag order"). In ComfyUI the
 **MOSS Caption Helper** node, `task = layout` ([MOSS Toolkit](https://github.com/sorryhyun/ComfyUI-MOSS-Toolkit),
 needs `anime_tools`) does the same conversion.
 

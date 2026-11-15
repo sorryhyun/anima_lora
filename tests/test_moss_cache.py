@@ -231,6 +231,35 @@ def test_drop_rating():
     )
 
 
+def test_order_tags_follows_the_userguide_order():
+    from pathlib import Path
+
+    from anime_tools.captions.correction import TagInfo, TagKnowledgeBase, tag_key
+
+    from library.moss.caching.sources import order_tags
+
+    kinds = {
+        "hatsune miku": "character",
+        "vocaloid": "copyright",
+        "foo": "artist",
+        "highres": "meta",
+        "cropped": "meta",
+    }
+    kb = TagKnowledgeBase(
+        {tag_key(t): TagInfo(t, k, "") for t, k in kinds.items()}, Path("kb.csv")
+    )
+    raw = (
+        "1girl, hatsune miku, vocaloid, @foo, smile, cropped, highres, score 9, "
+        'best quality, 2024. On the left, smile. Japanese text reads as "1girl, x".'
+    )
+    assert order_tags(raw, kb) == (
+        "best quality, score 9, highres, 2024, hatsune miku, vocaloid, @foo, 1girl, "
+        'smile, cropped. On the left, smile. Japanese text reads as "1girl, x".'
+    )
+    done = "best quality, hatsune miku, 1girl, smile"
+    assert order_tags(done, kb) == done
+
+
 def test_find_pairs_drops_the_rating_from_caption_and_plain(tmp_path):
     src = tmp_path / "src"
     src.mkdir()

@@ -80,7 +80,8 @@ FIELDS: dict[str, tuple[str, str]] = {
     "caption_format": (
         "标注格式",
         "文本编码器编码的内容：layout_json = 把 Anima 标注映射为 MOSS 的 layout JSON 提示词"
-        "（需要 danbooru 标签 CSV），text = 原样使用 .txt，fixed = 每张图都编码 fixed_caption。"
+        "（需要 danbooru 标签 CSV），text = 原样使用 .txt，tags = 把 .txt 的标签按官方顺序"
+        "（质量 → 元信息 → 角色 → 作品 → 画师 → 人数 → 一般）重新排列，fixed = 每张图都编码 fixed_caption。"
         "生成时请使用相同格式",
     ),
     "overwrite": ("覆盖", "即使缓存是最新的也重新编码"),
@@ -192,6 +193,7 @@ FIELDS_GENERATE: dict[str, tuple[str, str]] = {
     "prompt_format": (
         "提示词格式",
         "layout_json = 把 Anima 格式的提示词映射为 MOSS 的 layout JSON（与缓存的标注格式一致）；"
+        "tags = 按官方顺序重新排列标签（适用于以 tags 格式缓存训练的 LoRA）；"
         "text = 原样使用，适用于已是 JSON 的提示词或以 text 格式缓存训练的 LoRA",
     ),
     "lora": (

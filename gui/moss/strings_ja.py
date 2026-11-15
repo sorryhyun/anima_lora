@@ -94,6 +94,7 @@ FIELDS: dict[str, tuple[str, str]] = {
         "キャプション形式",
         "テキストエンコーダがエンコードする内容: layout_json = Anima キャプションを MOSS の "
         "layout JSON プロンプトに変換（danbooru タグ CSV が必要）、text = .txt をそのまま、"
+        "tags = .txt のタグを公式の順序（品質 → メタ → キャラクター → 作品 → 絵師 → 人数 → 一般）に並べ替え、"
         "fixed = すべての画像で fixed_caption をエンコード。生成時も同じ形式を使ってください",
     ),
     "overwrite": ("上書き", "キャッシュが最新でも再エンコードする"),
@@ -234,7 +235,8 @@ FIELDS_GENERATE: dict[str, tuple[str, str]] = {
     "prompt_format": (
         "プロンプト形式",
         "layout_json = Anima 形式のプロンプトを MOSS の layout JSON に変換（キャッシュの"
-        "キャプション形式と同じ）。text = 入力どおり。すでに JSON のプロンプトや、text 形式の"
+        "キャプション形式と同じ）。tags = タグを公式の順序に並べ替え（tags 形式のキャッシュで学習した LoRA 向け）。"
+        "text = 入力どおり。すでに JSON のプロンプトや、text 形式の"
         "キャッシュで学習した LoRA 向け",
     ),
     "lora": (

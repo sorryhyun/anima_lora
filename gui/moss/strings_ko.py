@@ -94,7 +94,8 @@ FIELDS: dict[str, tuple[str, str]] = {
     "caption_format": (
         "캡션 형식",
         "텍스트 인코더가 인코딩하는 내용: layout_json = Anima 캡션을 MOSS의 layout JSON "
-        "프롬프트로 변환(danbooru 태그 CSV 필요), text = .txt 그대로, fixed = 모든 이미지에 "
+        "프롬프트로 변환(danbooru 태그 CSV 필요), text = .txt 그대로, tags = .txt의 태그를 "
+        "공식 순서(퀄리티 → 메타 → 캐릭터 → 작품 → 작가 → 인원수 → 일반)로 재정렬, fixed = 모든 이미지에 "
         "fixed_caption을 인코딩. 생성할 때도 같은 형식을 쓰세요",
     ),
     "overwrite": ("덮어쓰기", "캐시가 최신이어도 다시 인코딩"),
@@ -218,8 +219,8 @@ FIELDS_GENERATE: dict[str, tuple[str, str]] = {
     "prompt_format": (
         "프롬프트 형식",
         "layout_json = Anima 형식 프롬프트를 MOSS의 layout JSON으로 변환(캐시의 캡션 "
-        "형식과 동일); text = 입력 그대로, 이미 JSON인 프롬프트나 text 형식 캐시로 학습한 "
-        "LoRA용",
+        "형식과 동일); tags = 태그를 공식 순서로 재정렬(tags 형식 캐시로 학습한 LoRA용); "
+        "text = 입력 그대로, 이미 JSON인 프롬프트나 text 형식 캐시로 학습한 LoRA용",
     ),
     "lora": (
         "LoRA",

@@ -148,8 +148,8 @@ def main() -> None:
     ap.add_argument(
         "--prompt_format",
         default="layout_json",
-        choices=("text", "layout_json"),
-        help="encode PROMPTS as typed or mapped to layout JSON (match the LoRA's cache)",
+        choices=("text", "layout_json", "tags"),
+        help="encode PROMPTS as typed, mapped to layout JSON, or tag-ordered (match the LoRA's cache)",
     )
     ap.add_argument(
         "--te_precision",
@@ -251,12 +251,12 @@ def main() -> None:
                 # The registers ride with the trigger; x0 is Base without them.
                 rows = register_rows(delta_rows, n, rows, at, len(net.registers))
                 cond = splice_registers(cond.unsqueeze(0), net.registers, at)[0]
-                print(f"  p{pi}: {len(net.registers)} registers at row {at}", flush=True)
+                print(
+                    f"  p{pi}: {len(net.registers)} registers at row {at}", flush=True
+                )
             if delta_rows != "all":
                 cond_rows.update(n=cond.shape[0], rows=rows)
-                print(
-                    f"  p{pi}: {len(rows)} of {cond.shape[0]} text rows", flush=True
-                )
+                print(f"  p{pi}: {len(rows)} of {cond.shape[0]} text rows", flush=True)
             cns = (
                 MossCNS.from_spec(args.cns_gamma, variant, args.cfg)
                 if sampler == "cns"

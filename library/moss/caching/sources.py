@@ -145,10 +145,11 @@ def caption_converter(caption_format: str):
     ``layout_json`` passes a caption that already is layout JSON through as
     written (converting it again would nest the whole object in
     ``summary.caption``), and loads the tag CSV only for the first caption that
-    needs converting. Both formats drop the rating (``drop_rating``)."""
+    needs converting. ``tags`` keeps the tag form in the reference tag order
+    (``order_tags``). Every format drops the rating (``drop_rating``)."""
     if caption_format == "text":
         return drop_rating
-    if caption_format != "layout_json":
+    if caption_format not in ("layout_json", "tags"):
         raise SystemExit(f"unknown caption_format {caption_format!r}")
     kb = None
 
@@ -157,6 +158,10 @@ def caption_converter(caption_format: str):
         raw = drop_rating(raw)
         if is_layout_json(raw):
             return raw
+        if caption_format == "tags":
+            if kb is None:
+                kb = tag_knowledge_base()
+            return order_tags(raw, kb)
         from anime_tools.captions.layout_json import layout_json
 
         if kb is None:
@@ -212,6 +217,65 @@ def drop_rating(raw: str) -> str:
     again = parse_caption(out)
     if again.flat_tags != kept or again.clauses != parsed.clauses:
         return compose_caption(kept, parsed.clauses)
+    return out
+
+
+def _flat_head(raw: str, flat_tags) -> tuple[str, str]:
+    """``raw`` split after its last flat tag: the flat head and the clause tail."""
+    end = 0
+    for tag in flat_tags:
+        end = raw.index(tag, end) + len(tag)
+    return raw[:end], raw[end:]
+
+
+# Slot of each ``tag_kind`` in the USERGUIDE tag order: Quality -> Score -> Meta ->
+# Year -> Character -> Series -> Artist -> General, the count tag opening General.
+_ORDER_SLOTS = {
+    "quality": 0,
+    "score": 1,
+    "meta": 2,
+    "year": 3,
+    "safety": 3,
+    "character": 4,
+    "copyright": 5,
+    "artist": 6,
+    "count": 7,
+    "general": 8,
+}
+
+
+def order_tags(raw: str, kb) -> str:
+    """A tag caption's flat head in the USERGUIDE order (Quality, Score, Meta, Year,
+    Character, Series, Artist, then General with the count tag first), each slot in
+    its original order. Danbooru meta tags that describe the picture (``cropped``,
+    ``lowres``, …, layout_json's ``_VISUAL_META``) sort as General, as layout_json
+    puts them in ``summary.caption``. Position and text clauses are kept verbatim."""
+    from anime_tools.captions.correction import tag_kind
+    from anime_tools.captions.layout_json import _VISUAL_META
+    from anime_tools.captions.position_clauses import compose_caption, parse_caption
+    from anime_tools.captions.taxonomy import normalize_tag
+
+    parsed = parse_caption(raw)
+    if not parsed.flat_tags:
+        return raw
+
+    def slot(tag: str) -> int:
+        kind = tag_kind(tag, kb)
+        norm = normalize_tag(tag)
+        if kind == "quality" and norm.startswith("score "):
+            kind = "score"
+        elif kind == "meta" and norm in _VISUAL_META:
+            kind = "general"
+        return _ORDER_SLOTS.get(kind, _ORDER_SLOTS["general"])
+
+    ordered = tuple(sorted(parsed.flat_tags, key=slot))
+    if ordered == parsed.flat_tags:
+        return raw
+    _, tail = _flat_head(raw, parsed.flat_tags)
+    out = ", ".join(ordered) + tail
+    again = parse_caption(out)
+    if again.flat_tags != ordered or again.clauses != parsed.clauses:
+        return compose_caption(ordered, parsed.clauses)
     return out
 
 

@@ -121,11 +121,13 @@ class CacheRequest(Request):
         "layout_json",
         "what the TE encodes: the Anima caption mapped onto MOSS's layout-JSON "
         "prompt (anime_tools.captions.layout_json; needs the danbooru tag CSV), or "
-        "the .txt verbatim, or fixed = fixed_caption for every image (an i2i task "
-        "whose edit the reference carries; generate with that caption). "
-        "layout_json leaks the set's attributes onto other characters less than "
-        "plain tags; generate with the same form",
-        choices=("text", "layout_json", "fixed"),
+        "the .txt verbatim, or tags = the .txt with its flat tags in the USERGUIDE "
+        "order (quality, score, meta, year, character, series, artist, then the "
+        "count tag and general tags; clauses kept), or fixed = fixed_caption for "
+        "every image (an i2i task whose edit the reference carries; generate with "
+        "that caption). layout_json leaks the set's attributes onto other "
+        "characters less than plain tags; generate with the same form",
+        choices=("text", "layout_json", "tags", "fixed"),
     )
     fixed_caption: str = _f(
         "",
@@ -338,9 +340,10 @@ class GenerateRequest(Request):
     prompt_format: str = _f(
         "layout_json",
         "layout_json = an Anima-format prompt mapped onto MOSS's layout JSON, as "
-        "the cache's caption_format does; text = as typed, for a prompt already "
+        "the cache's caption_format does; tags = the tags put in the USERGUIDE "
+        "order, as caption_format tags does; text = as typed, for a prompt already "
         "in JSON or a LoRA cached as text (not applied to example)",
-        choices=("text", "layout_json"),
+        choices=("text", "layout_json", "tags"),
     )
     model: str = _f("base", "which DiT", choices=VARIANTS)
     lora: str = _f(
