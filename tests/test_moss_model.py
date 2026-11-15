@@ -232,6 +232,20 @@ def test_denoise_matches_scheduler_loop(tiny, cfg, skip):
 
 
 @torch.no_grad()
+def test_denoise_runs_the_text_embedder_once_per_prompt(tiny, monkeypatch):
+    x, e, mask = _inputs(batch=1)
+    _, ne, nmask = _inputs(batch=2, s=5)
+    calls = []
+    embed = tiny.text_embedder.forward
+    monkeypatch.setattr(
+        tiny.text_embedder, "forward", lambda *a: calls.append(1) or embed(*a)
+    )
+    denoise(tiny, x, e, mask, ne[1:], nmask[1:], snapped_sigmas(6), uncond_skip=(2,))
+    assert len(calls) == 2
+    assert tiny.text_cache is None
+
+
+@torch.no_grad()
 def test_denoise_spectrum_protocol(tiny):
     """A forecaster that replays the last observed features is called in order."""
     x, e, mask = _inputs(batch=1)

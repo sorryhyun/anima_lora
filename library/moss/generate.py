@@ -52,7 +52,7 @@ from library.moss.loader import (
     pad_embeds,
     stream_fp32_,
 )
-from library.moss.model import decode, snapped_sigmas
+from library.moss.model import RefCache, TextCache, decode, snapped_sigmas
 from library.moss.prompt_tail import resolve_prompt_tail
 from library.moss.token_split import resolve_token_split
 from library.moss.requests import (
@@ -142,6 +142,9 @@ def denoise(
     (``library.moss.cns.MossCNS``) recolors it. ``on_step(i, x̂₀)`` sees each
     step's guided x̂₀ (CNS calibration).
 
+    The text embedder runs once per prompt for the loop (``TextCache``): ``cond`` and
+    ``uncond`` are read as they are at the first step.
+
     ``ref (B,128,h,w)``: clean reference latents in every forward (i2i).
     Under ``ref_isolate`` at a fixed ``ref_timestep`` the reference stream runs
     once for the loop (``RefCache``) and every forward reads its keys and values.
@@ -175,9 +178,8 @@ def denoise(
     if dave is not None:
         dave.begin(len(timesteps))
     if ref is not None:
-        from library.moss.model import RefCache
-
         transformer.ref_cache = RefCache()
+    transformer.text_cache = TextCache()
     try:
         for i, t in enumerate(timesteps):
             if dave is not None:
@@ -210,6 +212,7 @@ def denoise(
         if dave is not None:
             transformer.layer_hook = None
         transformer.ref_cache = None
+        transformer.text_cache = None
     return latents
 
 

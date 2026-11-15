@@ -13,7 +13,7 @@ list in `tests/test_moss_boundary.py`.
 
 | Module | Role |
 |---|---|
-| `model.py` | vendored `MOSSImageTransformer` / `MOSSImageScheduler` (attribution kept, state-dict names unchanged); per-sample `forward` must stay op-for-op with the pipeline, `forward_batched` masks text. i2i: `ref=` latents on RoPE's `r = 1` axis, `ref_timestep` / `ref_isolate` are transformer attributes; isolated at a fixed `ref_timestep`, `generate.denoise` sets `ref_cache` (`RefCache`) so the reference stream runs once per loop |
+| `model.py` | vendored `MOSSImageTransformer` / `MOSSImageScheduler` (attribution kept, state-dict names unchanged); per-sample `forward` must stay op-for-op with the pipeline, `forward_batched` masks text. i2i: `ref=` latents on RoPE's `r = 1` axis, `ref_timestep` / `ref_isolate` are transformer attributes; isolated at a fixed `ref_timestep`, `generate.denoise` sets `ref_cache` (`RefCache`) so the reference stream runs once per loop, and `text_cache` (`TextCache`) so the text embedder runs once per prompt |
 | `requests.py` | **torch-free** `CacheRequest` / `ColorizeCacheRequest` / `CaptionsRequest` / `GenerateRequest` / `TrainRequest` / `TuneSwapRequest`; every flag and default is defined here once. `I2I_CACHE` maps each i2i task to its cache request; its recipes are `configs/moss/i2i/<task>/{cache,train,generate}.toml` (`i2i_config`) |
 | `loader.py` | phase split TE → encode → free → DiT; TE paged by decoder layer (`offload_by_layer`, `te_reserve_gb`) |
 | `fp8.py` | fp8 TE export (`quantize_te`, ComfyUI `comfy_quant` format) and `load_fp8_text_encoder`; `text_encoder=` picks catalog row `moss_te_{precision}`, and TE caches stamp `encoder_id(precision)` so a switch re-encodes |

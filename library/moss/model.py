@@ -35,6 +35,9 @@ Changes from the reference, all additive:
   ``ref_gate`` (``(rows, keep)``, None by default): the image queries ``rows`` read
   only the reference keys ``keep``; ``TrainRequest.ref_gate`` sets it per step
   (``project/lora_blocks``).
+- ``text_cache`` (a ``TextCache``, set by ``generate.denoise``): the text embedder reads
+  the prompt embeds and the text positions alone, so ``forward`` runs it once per prompt
+  for a sampling loop. ``None`` is the reference.
 - Attention: unmasked CUDA bf16 / fp16 calls run FA2 (``flash_attn_func``) on
   ``(B, L, H, D)``; masked (``forward_batched``), CPU and fp32 calls keep the
   reference's SDPA. Same math, a different kernel: FA2 issues no ``% 8``
@@ -406,6 +409,29 @@ class RefCache:
         return self.kv
 
 
+class TextCache:
+    """The text embedder's output per prompt, for one sampling loop: it depends on the
+    prompt embeds and the text positions alone, not on the latent, the timestep or the
+    reference. Keyed on the embeds and mask objects ``forward`` was given and the sample
+    index; the objects are held, so an entry is theirs for the cache's life. An in-place
+    edit of the embeds is not seen."""
+
+    def __init__(self):
+        self.entries = []
+        self.builds = 0
+
+    def lookup(self, key, build):
+        """``key = (embeds, mask, index)``; ``build()`` makes a missing entry."""
+        embeds, mask, index = key
+        for e, m, i, tokens in self.entries:
+            if e is embeds and m is mask and i == index:
+                return tokens
+        tokens = build()
+        self.entries.append((embeds, mask, index, tokens))
+        self.builds += 1
+        return tokens
+
+
 class _RoPE(nn.Module):
     def __init__(self, head_dim, base):
         super().__init__()
@@ -545,6 +571,7 @@ class MOSSImageTransformer(ModelMixin, ConfigMixin):
         self.ref_pos = "aligned"
         self.ref_follows_skip = False
         self.ref_cache = None
+        self.text_cache = None
         self.ref_scope = None
         # (rows, keep) index tensors for every block's main-row attention (``_attention``),
         # set per forward by the caller; None = the stock path.
@@ -600,10 +627,11 @@ class MOSSImageTransformer(ModelMixin, ConfigMixin):
         ref_mod, _ = self.time_conditioning(self.ref_timestep, mod.shape[0], base=base)
         return torch.stack((mod, ref_mod.to(mod.dtype)), 2), n_ref
 
-    def embed_sample(self, latent, context, ref=None):
+    def embed_sample(self, latent, context, ref=None, text_key=None):
         """One sample: ``latent (1,C,H,W)``, ``context (1,S,text_dim)`` at its true
         length, optional clean reference latent ``ref (1,C,h,w)`` → ``x (1, H·W
-        + S [+ h·w], D)``, ``rope`` to match."""
+        + S [+ h·w], D)``, ``rope`` to match. ``text_key``: what names ``context`` in
+        ``text_cache`` (``TextCache.lookup``); the text tokens then come from it."""
         _, _, height, width = latent.shape
         video = self._embed_latent(latent)
         ref_hw = None if ref is None else tuple(ref.shape[-2:])
@@ -612,7 +640,14 @@ class MOSSImageTransformer(ModelMixin, ConfigMixin):
             height, width, context.shape[1], latent.device, ref_hw, self.ref_pos
         ).to(video.dtype)
         n_img, n_text = video.shape[1], context.shape[1]
-        parts = [video, self.text_embedder(context, rope[:, n_img : n_img + n_text])]
+
+        def text():
+            return self.text_embedder(context, rope[:, n_img : n_img + n_text])
+
+        if self.text_cache is None or text_key is None:
+            parts = [video, text()]
+        else:
+            parts = [video, self.text_cache.lookup(text_key, text)]
         if ref is not None:
             parts.append(self._embed_latent(ref))
         return torch.cat(parts, 1), rope
@@ -786,6 +821,7 @@ class MOSSImageTransformer(ModelMixin, ConfigMixin):
                 hidden_states[index : index + 1],
                 context,
                 None if ref is None else ref[index : index + 1],
+                (encoder_hidden_states, encoder_attention_mask, index),
             )
             x = self.run_layers(
                 x,
