@@ -21,7 +21,8 @@ file that differs from upstream is treated as user-modified — so configs
 will prompt, code files will be backed up. Use --yes-overwrite to default
 all conflicts to backup-and-overwrite.
 
-After file merge, runs `uv sync` (skip with --no-sync).
+After file merge, runs `uv sync` (skip with --no-sync). `--sync-only` runs just
+that sync (`make sync`), with the torch stack picked from the hardware on first use.
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ import fnmatch
 import hashlib
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -126,21 +128,80 @@ def _selected_windows_backend() -> str:
     return "cuda"
 
 
-# Opt-in CUDA torch stacks (pyproject `torch-213` / `torch-212` / `fa2-sm120`
-# groups); the default 2.14 stack needs no flags.
+# Opt-in CUDA torch stacks (pyproject `torch-213` / `torch-212` / `fa2-sm120` /
+# `fa2-sm120-fp32div` groups); the default 2.14 stack needs no flags.
 TORCH_STACKS = {
     "2.12": "torch-212",
     "2.13": "torch-213",
     "2.14": None,
     "2.14-sm120": "fa2-sm120",
+    "2.14-sm120-fp32div": "fa2-sm120-fp32div",
 }
 
 
-def _selected_torch_group() -> str | None:
+def _gpu_compute_major() -> int | None:
+    """Highest compute-capability major among the visible NVIDIA cards, or None."""
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=compute_cap", "--format=csv,noheader"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return None
+    majors = []
+    for line in result.stdout.splitlines():
+        try:
+            majors.append(int(line.strip().split(".")[0]))
+        except ValueError:
+            continue
+    return max(majors, default=None)
+
+
+def _libstdcxx_has(symbol_version: bytes) -> bool:
+    """True when the system libstdc++ exports ``symbol_version`` (e.g. GLIBCXX_3.4.31)."""
+    import ctypes.util
+
+    candidates = [
+        Path("/usr/lib/x86_64-linux-gnu/libstdc++.so.6"),
+        Path("/usr/lib64/libstdc++.so.6"),
+        Path("/usr/lib/libstdc++.so.6"),
+    ]
+    found = ctypes.util.find_library("stdc++")
+    if found:
+        candidates.insert(0, Path(found))
+    for path in candidates:
+        try:
+            return symbol_version in path.resolve().read_bytes()
+        except OSError:
+            continue
+    return False
+
+
+def _detect_torch_stack() -> str:
+    """Pick the TORCH_STACKS key for this machine when no choice is saved.
+
+    Linux x86_64 with a compute-capability-12 card (RTX 50-series) gets the sm_120
+    FlashAttention stack, plus the fp32-division comfy-kitchen wheel when the system
+    libstdc++ is new enough for it. Everything else keeps the default stack.
+    """
+    if sys.platform != "linux" or platform.machine() != "x86_64":
+        return "2.14"
+    if _gpu_compute_major() != 12:
+        return "2.14"
+    if _libstdcxx_has(b"GLIBCXX_3.4.31"):
+        return "2.14-sm120-fp32div"
+    return "2.14-sm120"
+
+
+def _selected_torch_group(detect: bool = False) -> str | None:
     """Return the opt-in torch group to sync, or None for the default stack.
 
     ``ANIMA_TORCH=2.13`` or ``2.14-sm120`` picks one (and is saved to ``.anima_torch`` so later
-    updates keep it); otherwise the saved marker is reused.
+    updates keep it); otherwise the saved marker is reused. With ``detect`` and neither
+    set, the stack comes from ``_detect_torch_stack()`` and is saved the same way.
     """
     marker = ROOT / ".anima_torch"
     choice = os.environ.get("ANIMA_TORCH", "").strip()
@@ -151,18 +212,26 @@ def _selected_torch_group() -> str | None:
                 f"(expected one of {', '.join(TORCH_STACKS)})"
             )
             return None
-        try:
-            marker.write_text(choice + "\n", encoding="ascii")
-        except OSError:
-            pass
     elif marker.is_file():
-        choice = marker.read_text(encoding="ascii").strip()
-    return TORCH_STACKS.get(choice)
+        return TORCH_STACKS.get(marker.read_text(encoding="ascii").strip())
+    elif detect:
+        choice = _detect_torch_stack()
+        print(
+            f"  torch stack: {choice} (detected; saved to .anima_torch, "
+            "override with ANIMA_TORCH=…)"
+        )
+    else:
+        return None
+    try:
+        marker.write_text(choice + "\n", encoding="ascii")
+    except OSError:
+        pass
+    return TORCH_STACKS[choice]
 
 
-def _uv_sync_command() -> tuple[list[str], str | None]:
+def _uv_sync_command(detect: bool = False) -> tuple[list[str], str | None]:
     """Return the sync command and the Windows backend it targets (None off-Windows)."""
-    torch_group = _selected_torch_group()
+    torch_group = _selected_torch_group(detect)
     command = ["uv", "sync"]
     # An opt-in stack carries every platform's torch, so it replaces both
     # default groups (torch-214 + cuda-windows), which it conflicts with.
@@ -717,18 +786,9 @@ def _apply(
     print(f"\nmanifest updated: {MANIFEST_FILE.name} → {new_tag}")
 
     if not no_sync:
-        sync_command, backend = _uv_sync_command()
-        print(f"\nrunning {' '.join(sync_command)} …")
-        try:
-            subprocess.run(sync_command, cwd=ROOT, check=True)
-        except FileNotFoundError:
-            print("  uv not found on PATH; skip or run `uv sync` manually")
-        except subprocess.CalledProcessError as e:
-            print(f"  uv sync failed (exit {e.returncode}); rerun manually")
-            return e.returncode
-        else:
-            if backend is not None:
-                _verify_windows_backend(backend)
+        rc = sync()
+        if rc:
+            return rc
 
     # Code on disk changed → the running daemon supervisor is now stale (skip
     # if nothing was written — a no-op update leaves the daemon correct).
@@ -743,6 +803,23 @@ def _apply(
     if changed:
         _restart_daemon_if_idle()
 
+    return 0
+
+
+def sync(detect: bool = True) -> int:
+    """Run `uv sync` with the saved (or detected) torch stack / Windows backend."""
+    sync_command, backend = _uv_sync_command(detect)
+    print(f"\nrunning {' '.join(sync_command)} …")
+    try:
+        subprocess.run(sync_command, cwd=ROOT, check=True)
+    except FileNotFoundError:
+        print("  uv not found on PATH; skip or run `uv sync` manually")
+        return 1
+    except subprocess.CalledProcessError as e:
+        print(f"  uv sync failed (exit {e.returncode}); rerun manually")
+        return e.returncode
+    if backend is not None:
+        _verify_windows_backend(backend)
     return 0
 
 
@@ -773,6 +850,11 @@ def main() -> int:
         help="Skip the trailing `uv sync`",
     )
     ap.add_argument(
+        "--sync-only",
+        action="store_true",
+        help="Only run `uv sync` with the saved or detected torch stack (`make sync`)",
+    )
+    ap.add_argument(
         "-y",
         "--yes",
         action="store_true",
@@ -787,6 +869,8 @@ def main() -> int:
     args = ap.parse_args()
     if args.seed_manifest:
         return seed_manifest(args.version)
+    if args.sync_only:
+        return sync()
     return update(
         version=args.version,
         dry_run=args.dry_run,

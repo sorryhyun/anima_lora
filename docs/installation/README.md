@@ -72,7 +72,7 @@ On an RTX 50-series card, our FlashAttention build ([sorryhyun/flash-attention-f
 uv sync --no-default-groups --group fa2-sm120
 ```
 
-- A plain `uv sync` or `python tasks.py update` puts the stock wheel back. To keep the build across updates, run the update once with `ANIMA_TORCH=2.14-sm120` set (PowerShell: `$env:ANIMA_TORCH='2.14-sm120'; python tasks.py update`).
+- A plain `uv sync` puts the stock wheel back. `python tasks.py sync` (`make sync`) and `python tasks.py update` sync the stack saved in `.anima_torch`. On Linux x86_64 with no saved stack, they detect an RTX 50-series card and pick this build by themselves. On Windows, run the sync once with `ANIMA_TORCH=2.14-sm120` set (PowerShell: `$env:ANIMA_TORCH='2.14-sm120'; python tasks.py sync`); later syncs and updates keep it.
 - It holds sm_120 kernels only: on any other card, stay on the stock wheel.
 - ComfyUI running on the same venv gets the build too.
 

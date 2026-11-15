@@ -123,19 +123,17 @@ uv sync                                                    # CUDA (default, ever
 uv sync --no-group cuda-windows --group rocm-windows       # Windows AMD only
 uv sync --no-default-groups --group torch-213              # older torch (or torch-212)
 uv sync --no-default-groups --group fa2-sm120              # RTX 50-series only: patched FlashAttention in the venv
+make sync                                                  # same, with the torch stack picked from the GPU (below)
 
 hf auth login             # or sign in from the GUI
 make download-models      # DiT, TE, VAE, PE-Spatial, CJK vocab pack, tagger, tag DB → models/
 make download-list        # installed vs missing; SAM3 and OCR are opt-in
 ```
 
-- ROCm users repeat the same `--group` flags on every later manual `uv sync`. To keep an opt-in torch across updates, run `ANIMA_TORCH=2.13 make update` once.
+- A plain `uv sync` installs the default stack. `make sync` and `make update` sync the stack saved in `.anima_torch`; with no file yet they pick it from the hardware (Linux x86_64 with an RTX 50-series card: `fa2-sm120`, or `fa2-sm120-fp32div` when libstdc++ is new enough for the kitchen wheel below) and save it. `ANIMA_TORCH=2.13 make sync` picks one by hand. ROCm users repeat the same `--group` flags on every later manual `uv sync`.
 - The manual CUDA path does not install the CUDA 13.2 toolkit that `torch.compile` / Triton needs: see [installation guide, Appendix B](docs/installation/README.md#appendix-b-manual-cuda-install).
 - Install with `uv sync` against the committed `uv.lock`, not `pip install`: pip ignores uv's index strategy and the prebuilt flash-attn wheels.
-- Optional, Linux x86_64: `comfy-kitchen` with the INT8 activation fix ([comfy-kitchen#289](https://github.com/Comfy-Org/comfy-kitchen/issues/289)). The int8 DiT linears then skip their fp32 input copy at the same output, and the int8 backward and the MOSS int8 text encoder divide in fp32. The trainer detects the kernel at runtime; the stock one keeps working. Needs libstdc++ from GCC 13+ (Ubuntu 24.04+). Every `uv sync` / `make update` puts the stock wheel back, so repeat it after one:
-  ```bash
-  uv pip install --no-deps "https://github.com/sorryhyun/anima_lora/releases/download/deps-comfy-kitchen-0.2.41-fp32div/comfy_kitchen-0.2.41%2Bfp32div-cp312-abi3-linux_x86_64.whl"
-  ```
+- Optional, Linux x86_64: `comfy-kitchen` with the INT8 activation fix ([comfy-kitchen#289](https://github.com/Comfy-Org/comfy-kitchen/issues/289)). The int8 DiT linears then skip their fp32 input copy at the same output, and the int8 backward and the MOSS int8 text encoder divide in fp32. The trainer detects the kernel at runtime; the stock one keeps working. Needs libstdc++ from GCC 13+ (Ubuntu 24.04+). It ships in the `fa2-sm120-fp32div` stack (`uv sync --no-default-groups --group fa2-sm120-fp32div`, or `ANIMA_TORCH=2.14-sm120-fp32div make sync`), which `make sync` picks by itself on an RTX 50-series Linux box that meets the libstdc++ floor.
 
 ## Try it in the browser
 

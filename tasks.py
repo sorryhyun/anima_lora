@@ -438,6 +438,11 @@ COMMANDS = {
         "Update from GitHub release (preserves datasets/output/models, prompts on "
         "config conflicts, runs uv sync). Pass --dry-run / --version v1.0 / --no-sync.",
     ),
+    "sync": (
+        utilities.cmd_sync,
+        "uv sync with the saved torch stack (.anima_torch), detected from the GPU on "
+        "first use (RTX 50 on Linux: fa2-sm120[-fp32div]). ANIMA_TORCH=… overrides.",
+    ),
     "vendor-sync": (
         utilities.cmd_vendor_sync,
         "Refresh custom_nodes/*/_vendor/ from live library/* (run before publishing nodes)",

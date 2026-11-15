@@ -314,3 +314,53 @@ def test_rocm_group_resolves_pytorch_214_rocm101():
     assert not any(
         line.startswith("flash-attn") and "win_amd64" in line for line in lines
     )
+
+
+def _fake_linux_host(monkeypatch, tmp_path, *, major, glibcxx):
+    monkeypatch.setattr(update, "ROOT", tmp_path)
+    monkeypatch.setattr(update.sys, "platform", "linux")
+    monkeypatch.setattr(update.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(update, "_gpu_compute_major", lambda: major)
+    monkeypatch.setattr(update, "_libstdcxx_has", lambda _v: glibcxx)
+    monkeypatch.delenv("ANIMA_TORCH", raising=False)
+
+
+@pytest.mark.parametrize(
+    ("major", "glibcxx", "stack", "group"),
+    [
+        (12, True, "2.14-sm120-fp32div", "fa2-sm120-fp32div"),
+        (12, False, "2.14-sm120", "fa2-sm120"),
+        (8, True, "2.14", None),
+        (None, True, "2.14", None),
+    ],
+)
+def test_sync_detects_the_torch_stack(
+    monkeypatch, tmp_path, major, glibcxx, stack, group
+):
+    _fake_linux_host(monkeypatch, tmp_path, major=major, glibcxx=glibcxx)
+    command, _ = update._uv_sync_command(detect=True)
+    expected = ["uv", "sync"] + (
+        ["--no-default-groups", "--group", group] if group else []
+    )
+    assert command == expected
+    assert (tmp_path / ".anima_torch").read_text(encoding="ascii").strip() == stack
+
+
+def test_sync_detection_never_overrides_a_saved_stack(monkeypatch, tmp_path):
+    _fake_linux_host(monkeypatch, tmp_path, major=12, glibcxx=True)
+    (tmp_path / ".anima_torch").write_text("2.14\n", encoding="ascii")
+    assert update._uv_sync_command(detect=True) == (["uv", "sync"], None)
+    (tmp_path / ".anima_torch").unlink()
+    # update's own path without detect keeps the old no-marker behaviour
+    assert update._uv_sync_command() == (["uv", "sync"], None)
+    assert not (tmp_path / ".anima_torch").exists()
+
+
+def test_fa2_sm120_fp32div_stack_takes_the_kitchen_wheel():
+    rows = _export("--no-default-groups", "--group", "fa2-sm120-fp32div")
+    kitchen = [r for r in rows if r.startswith("comfy-kitchen")]
+    assert any("fp32div" in r and "linux_x86_64" in r for r in kitchen), kitchen
+    assert not any(
+        "fp32div" in r for r in _export("--no-default-groups", "--group", "fa2-sm120")
+    )
+    assert not any("fp32div" in r for r in _export())

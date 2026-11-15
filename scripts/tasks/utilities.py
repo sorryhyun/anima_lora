@@ -101,6 +101,12 @@ def cmd_update(extra):
     run([PY, "scripts/update.py", *extra])
 
 
+def cmd_sync(extra):
+    """``uv sync`` with the torch stack saved in ``.anima_torch``, detected from the
+    hardware on first use (scripts/update.py::_detect_torch_stack)."""
+    run([PY, "scripts/update.py", "--sync-only", *extra])
+
+
 def cmd_vendor_sync(extra):
     """Refresh custom_nodes/*/_vendor/ trees from the live library.* sources.
 

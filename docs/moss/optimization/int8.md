@@ -196,7 +196,7 @@ reports this upstream. [`sorryhyun/comfy-kitchen`](https://github.com/sorryhyun/
 divides in fp32, so a bf16 input gives the fp32 input's output. A Linux x86_64 build of v0.2.41
 with it is on the
 [`deps-comfy-kitchen-0.2.41-fp32div`](https://github.com/sorryhyun/anima_lora/releases/tag/deps-comfy-kitchen-0.2.41-fp32div)
-release (install line: [README](../../../README.md#manual-from-a-clone); `uv sync` reverts it).
+release, installed by the `fa2-sm120-fp32div` stack ([README](../../../README.md#manual-from-a-clone)).
 `library.int8.linear.kernel_divides_fp32()` probes the kernel once on the card. On a fixed one
 `Int8TrainLinear.forward` passes its input through (an fp32 input stays fp32, so the forward
 output is unchanged), the compile signature reads `int8_in=native`, and the backward's bf16 `dY`

@@ -69,6 +69,13 @@ dependencies = [
     "sqlalchemy>=2.1.0b2",
     "aiohttp>=3.13.5",
     "comfy-cli>=1.10.3",
+    # ComfyUI-Manager (../comfy/custom_nodes/ComfyUI-Manager) runs on this venv too;
+    # its requirements.txt rows not already covered above.
+    "gitpython",
+    "pygithub",
+    "matrix-nio",
+    "typer",
+    "chardet",
     # ComfyUI (../comfy) runs on this venv, and `uv sync` prunes anything off the
     # lock, so its requirements.txt rows live here. Pins and floors track the
     # checked-out ComfyUI tag (v0.43.0); move them when it moves. `comfy update`
@@ -124,7 +131,9 @@ index-strategy = "unsafe-best-match"
 # conflict with rocm-windows and the ROCm command above needs no extra flag.
 # The opt-in stacks carry every platform: `uv sync --no-default-groups --group
 # torch-213` (or torch-212). `fa2-sm120` is the 2.14 stack with the sm_120
-# FlashAttention wheel in the venv: `uv sync --no-default-groups --group fa2-sm120`.
+# FlashAttention wheel in the venv: `uv sync --no-default-groups --group fa2-sm120`;
+# `fa2-sm120-fp32div` adds the comfy-kitchen fp32-division wheel on Linux x86_64.
+# `make sync` picks the stack from the hardware (scripts/update.py).
 default-groups = ["dev", "torch-214", "cuda-windows"]
 conflicts = [
     [
@@ -133,12 +142,14 @@ conflicts = [
         { group = "torch-213" },
         { group = "torch-212" },
         { group = "fa2-sm120" },
+        { group = "fa2-sm120-fp32div" },
     ],
     [
         { group = "torch-214" },
         { group = "torch-213" },
         { group = "torch-212" },
         { group = "fa2-sm120" },
+        { group = "fa2-sm120-fp32div" },
     ],
 ]
 prerelease = "allow"
@@ -189,6 +200,7 @@ torch = [
     { index = "pytorch-cu132", marker = "sys_platform != 'darwin' and sys_platform != 'win32'" },
     { index = "pytorch-cu132", group = "cuda-windows" },
     { index = "pytorch-cu132", group = "fa2-sm120" },
+    { index = "pytorch-cu132", group = "fa2-sm120-fp32div" },
     { index = "pytorch-cu132", group = "torch-213" },
     { index = "pytorch-cu132", group = "torch-212" },
     { index = "amd-rocm-101", group = "rocm-windows" },
@@ -197,6 +209,7 @@ torchvision = [
     { index = "pytorch-cu132", marker = "sys_platform != 'darwin' and sys_platform != 'win32'" },
     { index = "pytorch-cu132", group = "cuda-windows" },
     { index = "pytorch-cu132", group = "fa2-sm120" },
+    { index = "pytorch-cu132", group = "fa2-sm120-fp32div" },
     { index = "pytorch-cu132", group = "torch-213" },
     { index = "pytorch-cu132", group = "torch-212" },
     { index = "amd-rocm-101", group = "rocm-windows" },
@@ -314,6 +327,15 @@ fa2-sm120 = [
     "torchvision==0.29.1+cu132 ; sys_platform == 'win32'",
     "flash-attn @ https://github.com/sorryhyun/flash-attention-fp16/releases/download/v2.8.3-sm120-hdim64-128-fp16acc-fwdpv-f16in-cu132-torch2.12plus/flash_attn-2.8.3+sm120.hdim64128.fp16acc.fwdpv.f16in.cu132.torch2.12plus-cp310-abi3-win_amd64.whl ; sys_platform == 'win32'",
     "triton-windows>=3.8.0,<3.9.0 ; sys_platform == 'win32'",
+]
+# fa2-sm120 plus our comfy-kitchen build with the int8 activation division in
+# fp32 (comfy-kitchen#289; library/int8/linear.py probes for it). The wheel needs
+# libstdc++ from GCC 13+ (GLIBCXX_3.4.31, Ubuntu 24.04+), which the FA wheel does
+# not, hence a stack of its own. A URL row has to sit in a conflicting group, or
+# the default resolution takes it too.
+fa2-sm120-fp32div = [
+    { include-group = "fa2-sm120" },
+    "comfy-kitchen @ https://github.com/sorryhyun/anima_lora/releases/download/deps-comfy-kitchen-0.2.41-fp32div/comfy_kitchen-0.2.41%2Bfp32div-cp312-abi3-linux_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'",
 ]
 # Windows accelerator backends. `cuda-windows` is in default-groups (see
 # [tool.uv]) so it composes into every plain `uv sync`; every dep is

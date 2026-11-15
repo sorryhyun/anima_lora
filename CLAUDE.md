@@ -33,9 +33,11 @@ make download-model ARGS=moss-base    # MOSS DiT + Qwen3.5-9B TE + FLUX.2 VAE + 
 make download-models                  # Anima first-run set (DiT, Qwen3-0.6B TE, VAE, PE, CJK vocab pack, tagger)
 ```
 
-On an RTX 50-series card, `uv sync --no-default-groups --group fa2-sm120` puts the
-FlashAttention build with the fp16-accumulate backward in the venv (ComfyUI included), about 5% of a
-training step.
+Sync with `make sync`, not a bare `uv sync`: it runs `uv sync` with the torch stack saved in
+`.anima_torch` (detected from the card on first use; `ANIMA_TORCH=…` overrides). On an RTX
+50-series card that is `fa2-sm120` (the FlashAttention build with the fp16-accumulate backward,
+ComfyUI included, about 5% of a training step), or `fa2-sm120-fp32div`, which adds the
+comfy-kitchen int8 fp32-division wheel. A bare `uv sync` reverts both to the stock wheels.
 
 Run Python as `.venv/bin/python` (or `uv run --no-sync`); a bare `uv run` re-resolves and
 can fail on the torch index split. Weights are rows in the model catalog
