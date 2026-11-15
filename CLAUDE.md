@@ -27,13 +27,13 @@ name. **Check which line a file belongs to before applying an invariant** — An
 ## Setup
 
 ```bash
-uv sync                               # Python 3.13; installs the repo editable
+make sync                             # uv sync with the detected torch stack; Python 3.13, repo editable
 hf auth login
 make download-model ARGS=moss-base    # MOSS DiT + Qwen3.5-9B TE + FLUX.2 VAE + tokenizer (~27 GB)
 make download-models                  # Anima first-run set (DiT, Qwen3-0.6B TE, VAE, PE, CJK vocab pack, tagger)
 ```
 
-Sync with `make sync`, not a bare `uv sync`: it runs `uv sync` with the torch stack saved in
+**Always sync with `make sync`, never a bare `uv sync`** (agents included): it runs `uv sync` with the torch stack saved in
 `.anima_torch` (detected from the card on first use; `ANIMA_TORCH=…` overrides). On an RTX
 50-series card that is `fa2-sm120` (the FlashAttention build with the fp16-accumulate backward,
 ComfyUI included, about 5% of a training step), or `fa2-sm120-fp32div`, which adds the
