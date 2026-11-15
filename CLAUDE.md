@@ -221,7 +221,7 @@ routing axes: `lora-routing` skill).
   Ships on `int8 = "stream"` + `stream = "fp32"`.
   Output is a normal LoRA — infer with `--infer_steps 4 --cfg 1.0` (`make test-turbo`).
   `docs/anima/methods/turbo.md`.
-- `make soup TARGET=<artist>` — uncond-init soup, plain LoRA only.
+- `make soup TARGET=<artist>` — seed soup on the `lora.toml` recipe, Phase 1 (uncond init) off by default (`[soup] no_uncond`), plain LoRA only.
 - Inference: `make test` (interactive) / `make gen` (daemon batch: grids, seed sweeps).
   `SPECTRUM=1` / `MOD=1` / `NOLORA=1` compose into every `test-*` target.
 - `--int8 fwd|full|stream` on training (off by default), and the boolean `inference.py --int8`

@@ -97,6 +97,12 @@ FIELDS: dict[str, tuple[str, str]] = {
         "tags = .txt のタグを公式の順序（品質 → メタ → キャラクター → 作品 → 絵師 → 人数 → 一般）に並べ替え、"
         "fixed = すべての画像で fixed_caption をエンコード。生成時も同じ形式を使ってください",
     ),
+    "text_boxes": (
+        "OCR ボックス",
+        "テキスト節の各行に OCR ボックスを付けます（post_image_dataset/ocr、resized ツリーと同じ構成）。"
+        "キャッシュのキャンバス上の abs_centralized yxyx: layout_json はテキスト項目の bbox、tags は引用符の後"
+        '（"…" [y0,x0,y1,x1]）',
+    ),
     "overwrite": ("上書き", "キャッシュが最新でも再エンコードする"),
     "skip_text": ("テキストをスキップ", "テキストエンコーダの処理をスキップ"),
     "skip_latents": ("潜在変数をスキップ", "VAE エンコードをスキップ"),

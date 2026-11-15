@@ -160,7 +160,7 @@ CMMD, A/B'd only against the absolute form (`_archive/repa/repa.md`).
   the two arms matches (caststation s42: 0.0731 vs 0.0723). Grad norms, the σ profile and
   ‖dW‖ (match factors 0.94–1.06) barely move either. REPA changes the render without
   changing the fm fit.
-- Off in `configs/methods/{lora,lora_const_ema}.toml`, `configs/gui-methods/{lora,tlora,hydralora}.toml`,
+- Off in `configs/methods/lora.toml`, `configs/gui-methods/{lora,tlora,hydralora}.toml`,
   `configs/soup/soup.toml` (and `configs/base.toml` had it off). EasyControl task configs
   keep it: cond ≠ target is a different regime, not tested here.
 

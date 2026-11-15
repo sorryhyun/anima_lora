@@ -1155,6 +1155,16 @@ class CaptionsRequest(Request):
         "cut a tag a more specific one already says (`long hair` beside `very long "
         "hair`, `bow` / `neckerchief` beside a bowtie)",
     )
+    variants: int = _f(
+        4,
+        "caption variants per image ({stem}.variants.txt: v0 = the caption, v1… = "
+        "tags shuffled behind the head, each clause shuffled inside and dropped "
+        "whole at variant_tag_dropout, text clauses kept); the cache encodes them "
+        "with caption_variants on. 0 = none",
+    )
+    variant_tag_dropout: float = _f(
+        0.1, "per-tag dropout behind the head, and per-clause dropout, in v1…"
+    )
     overwrite: bool = _f(False, "rebuild an out tree that already exists")
 
     def out_dir(self) -> Path:

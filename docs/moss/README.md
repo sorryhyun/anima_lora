@@ -186,6 +186,11 @@ The crop tagger sees each subject's mask grown by `mask_dilate` (16 px, never in
 subject's mask), so a held object (a phone, a straw) lands in its holder's clause; with the bare
 mask (`0`) it stayed in the bag. Needs anime_tools with `--mask_dilate`.
 
+The job also writes `{stem}.variants.txt` from each finished caption (`variants` 4: v0 = the
+caption, v1–v3 = head kept, the rest shuffled with tag dropout 0.1, each clause shuffled inside
+and dropped whole at 0.1, text clauses verbatim). The Anima variants describe the full bag, so
+none are copied. To train on them, cache with `--caption_variants` and set `caption_variant_rate`.
+
 **Prompt tail** (`prompt_tail`, default `sure`): the cache and generate append
 `\n</think>\n\nSure,` after the chat template, closing the empty think block and starting
 an answer. On caststation a LoRA trained and rendered with it beat its control by eye, and

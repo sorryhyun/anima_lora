@@ -39,7 +39,7 @@ per-ingredient LR diversity. By default ingredients vary by **seed only**; the s
 uniform average with **no greedy-selection gate**, so a bad LR draw is averaged in, not
 dropped.
 
-`NO_UNCOND=1` / `[soup] no_uncond = true` skips Phase 1 — ingredients init from
+`NO_UNCOND=1` / `[soup] no_uncond = true` (the `soup.toml` default since 2026-11-15, the merged14 recipe; `false` restores Phase 1) skips Phase 1 — ingredients init from
 `down_init` (`weight_svd` [+ top-level `svd_slice`]); **required** for `svd_slice != 0`
 (the uncond `--network_weights` warm-start would overwrite the slice; the pipeline
 refuses). All ingredients of one soup share one slice; the slug gets

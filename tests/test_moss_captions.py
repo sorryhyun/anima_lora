@@ -6,7 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from library.moss.captions import STAMP, build_tree, cut_implied, run_captions
+from library.moss.captions import (
+    STAMP,
+    build_tree,
+    cut_implied,
+    run_captions,
+    write_variants,
+)
 from library.moss.requests import CaptionsRequest
 
 
@@ -63,3 +69,23 @@ def test_refuses_to_remove_a_folder_it_did_not_write(tmp_path):
         run_captions(CaptionsRequest(src=str(src), out=str(out)))
     with pytest.raises(SystemExit, match=STAMP):
         run_captions(CaptionsRequest(src=str(src), out=str(out), overwrite=True))
+
+
+def test_write_variants_keeps_head_and_text_clause(tmp_path):
+    src = _set(tmp_path)
+    out = tmp_path / "out"
+    (out / "sub").mkdir(parents=True)
+    (out / "a.txt").write_text((src / "a.txt").read_text())
+    (out / "a.history.txt").write_text("x\n")
+    assert write_variants(out, 4, 0.1) == 1
+    from anime_tools.captions.variants import read_variants_sidecar
+
+    rows = read_variants_sidecar(out / "a.variants.txt")
+    assert [label for label, _ in rows] == ["v0", "v1", "v2", "v3"]
+    assert rows[0][1] == (src / "a.txt").read_text().strip()
+    for _, text in rows[1:]:
+        assert text.startswith("safe, 2girls, @artist")
+        assert text.endswith('Japanese text reads as "はい".')
+    first = (out / "a.variants.txt").read_text()
+    write_variants(out, 4, 0.1)
+    assert (out / "a.variants.txt").read_text() == first  # seeded per caption

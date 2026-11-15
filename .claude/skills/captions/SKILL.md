@@ -31,14 +31,15 @@ frees it before the TE child.
 | Target | Request (stage id) | Notes |
 |---|---|---|
 | `make caption-autotag` | `AutotagRequest` (`autotag`) | dry-run default; `ARGS="--mode missing\|merge\|overwrite"`; `ARGS="--apply"` then **`make preprocess-te`**. Writes the **revised** caption (`resized/`), master read-only |
-| `make caption-position` | `PositionRequest` (`position`) | SAM3 → tagger → v2 rewrite; dry-run default, GPU — route through the daemon |
+| `make caption-position` | `PositionRequest` (`position`) | SAM3 → tagger → v2 rewrite in the **thin** format (`library/preprocess/position_format.py`: thin bag, bind_males, free groups, mask_dilate 16, cap 32, no novel tags — the MOSS format, Anima since 2026-11-15; `ARGS` overrides a field); dry-run default, GPU — route through the daemon |
 | `make caption-full` | `PositionRequest` → `OcrRequest` (`ocr`) → `ExportRequest` (`export`) | the whole derived-caption chain, one daemon job (re-enters `tasks.py caption-full --inline` inside it, so the stages share a process). **Applies by default** (`--dry_run` to plan) — every step writes the derived tree, which the master's dry-run guard exists to protect. `--skip_position` / `--skip_ocr` re-combine from the sidecars already read; `--ocr_min_det` / `--ocr_min_glyph` are the floors |
 | `make preprocess-captions` | `CorrectRequest` (`correct`) | corrects the revised caption in place (mirrors the master only for an image with none) + `.variants.txt` under `post_image_dataset/resized/`; `--caption_drop_groups` |
 | `make caption-index` | plain CLI `anime_tools.captions.index` | `post_image_dataset/captions/caption_index.json` (`--out` spelled by the trainer) |
 | `make autotag` / `make tagger*` | plain CLIs `anime_tools.tagger.cli.*` | single-image / vocab build / backbone ckpt (`make tagger-build`) |
 
 Stage wiring (`scripts/tasks/preprocess.py`): autotag runs **first** (right after
-resize, `apply=True`), then position clauses, then correction/variants, then TE —
+resize, `apply=True`), then position clauses, then the implied cut (`drop_groups --implied`,
+`caption_implied`, on by default: `long hair` beside `very long hair`), then correction/variants, then TE —
 chain order pinned by `tests/test_preprocess_tasks.py`; the request fields the trainer
 sets are pinned by `tests/test_anime_tools_cli_contract.py`. TE caches **are** mtime-aware
 (`library/preprocess/text.py::_cache_is_current` re-encodes a stem whose cache is older

@@ -84,6 +84,12 @@ FIELDS: dict[str, tuple[str, str]] = {
         "（质量 → 元信息 → 角色 → 作品 → 画师 → 人数 → 一般）重新排列，fixed = 每张图都编码 fixed_caption。"
         "生成时请使用相同格式",
     ),
+    "text_boxes": (
+        "OCR 框",
+        "给文本子句的每一行加上 OCR 框（post_image_dataset/ocr，与 resized 目录结构相同）。"
+        "以缓存画布为准的 abs_centralized yxyx：layout_json 写入文本项的 bbox，tags 写在引号之后"
+        '（"…" [y0,x0,y1,x1]）',
+    ),
     "overwrite": ("覆盖", "即使缓存是最新的也重新编码"),
     "skip_text": ("跳过文本", "跳过文本编码器"),
     "skip_latents": ("跳过潜变量", "跳过 VAE 编码"),

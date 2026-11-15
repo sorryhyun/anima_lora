@@ -98,6 +98,12 @@ FIELDS: dict[str, tuple[str, str]] = {
         "공식 순서(퀄리티 → 메타 → 캐릭터 → 작품 → 작가 → 인원수 → 일반)로 재정렬, fixed = 모든 이미지에 "
         "fixed_caption을 인코딩. 생성할 때도 같은 형식을 쓰세요",
     ),
+    "text_boxes": (
+        "OCR 박스",
+        "텍스트 절의 각 줄에 OCR 박스를 붙입니다(post_image_dataset/ocr, resized 트리와 같은 구조). "
+        "캐시 캔버스 기준 abs_centralized yxyx: layout_json은 텍스트 항목의 bbox, tags는 따옴표 뒤 "
+        '("…" [y0,x0,y1,x1])',
+    ),
     "overwrite": ("덮어쓰기", "캐시가 최신이어도 다시 인코딩"),
     "skip_text": ("텍스트 건너뛰기", "텍스트 인코더 단계를 건너뜀"),
     "skip_latents": ("잠재변수 건너뛰기", "VAE 인코딩을 건너뜀"),

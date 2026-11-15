@@ -114,7 +114,7 @@ four figures), a "maid-like headband" for the beret.
 ### Raising the clause cap does not fix ownership
 
 `anime_tools` position stage on the flattened captions, dry run, 27 images with more than one
-subject (`post_image_dataset/pe_ab/caspos/cap*/report.json`):
+subject (reports deleted 2026-11-15, after the thin-bag captions settled it):
 
 | setting | tags moved to a clause | left in the flat bag | of those, in no clause | tags per image (median) |
 |---|---|---|---|---|

@@ -340,17 +340,27 @@ def test_caption_chain_under_a_daemon_job_runs_in_process_and_releases(
     preprocess.cmd_preprocess_te([])
 
     kinds = [e if isinstance(e, str) else e[0] for e in events]
-    assert kinds == ["autotag", "position", "correct", "release", "child"]
+    assert kinds == [
+        "autotag",
+        "position",
+        "drop_groups",
+        "correct",
+        "release",
+        "child",
+    ]
     from anime_tools.stages.requests import (
         AutotagRequest,
         CorrectRequest,
+        DropGroupRequest,
         PositionRequest,
     )
 
     assert isinstance(events[0][1], AutotagRequest) and events[0][1].apply
     assert isinstance(events[1][1], PositionRequest) and events[1][1].apply
-    assert isinstance(events[2][1], CorrectRequest) and events[2][1].no_correct
-    assert events[4][1][1] == "scripts/preprocess/cache_text_embeddings.py"
+    assert isinstance(events[2][1], DropGroupRequest) and events[2][1].implied
+    assert events[2][1].apply
+    assert isinstance(events[3][1], CorrectRequest) and events[3][1].no_correct
+    assert events[5][1][1] == "scripts/preprocess/cache_text_embeddings.py"
     assert Path(os.environ["ANIMA_HOME"]) == ROOT
 
 

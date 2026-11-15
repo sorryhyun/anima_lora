@@ -54,7 +54,7 @@ _logs/
 .anima_torch
 .anima-update-backups
 node.zip
-_archive/
+_archive
 gui/gui_settings.json
 sincos_decensored/
 # ResShift SR sidecar (finished — lives under project/finished/sr/, whose own

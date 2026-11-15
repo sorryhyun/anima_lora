@@ -160,6 +160,7 @@ def test_preprocess_captions_runs_the_master_stages_when_configured(monkeypatch)
     assert scripts == [
         "anime_tools.stages.cli.autotag_captions",
         "anime_tools.stages.cli.position_captions",
+        "anime_tools.stages.cli.drop_group_captions",
         "anime_tools.stages.cli.correct_captions",
     ]
     # In-pipeline stages write for real — a dry run here would leave the mirror
@@ -195,6 +196,8 @@ def test_master_stages_inherit_an_explicit_path_pattern(monkeypatch):
     assert [_entry(cmd) for cmd in calls] == [
         "anime_tools.stages.cli.autotag_captions",
         "anime_tools.stages.cli.position_captions",
+        # The implied cut (on by default) rewrites `resized/` like the clauses.
+        "anime_tools.stages.cli.drop_group_captions",
         # The mirror rides along whenever position clauses are on — they land in
         # `resized/`, so every other caption has to be mirrored there too.
         "anime_tools.stages.cli.correct_captions",
@@ -230,10 +233,11 @@ def test_preprocess_captions_runs_the_stages_even_with_correction_off(monkeypatc
 
     assert [_entry(cmd) for cmd in calls] == [
         "anime_tools.stages.cli.position_captions",
+        "anime_tools.stages.cli.drop_group_captions",
         "anime_tools.stages.cli.correct_captions",
     ]
     # Nothing to correct and no variants — the mirror runs in passthrough.
-    assert "--no_correct" in calls[1]
+    assert "--no_correct" in calls[2]
 
 
 @pytest.mark.core
@@ -259,6 +263,7 @@ def test_preprocess_te_reads_resized_when_position_clauses_are_on(monkeypatch):
 
     assert [_entry(cmd) for cmd in calls] == [
         "anime_tools.stages.cli.position_captions",
+        "anime_tools.stages.cli.drop_group_captions",
         "anime_tools.stages.cli.correct_captions",
         "scripts/preprocess/cache_text_embeddings.py",
     ]
@@ -299,6 +304,7 @@ def test_preprocess_chain_runs_each_master_stage_once(monkeypatch):
     assert scripts == [
         "anime_tools.stages.cli.autotag_captions",
         "anime_tools.stages.cli.position_captions",
+        "anime_tools.stages.cli.drop_group_captions",
         "anime_tools.stages.cli.correct_captions",
         "scripts/preprocess/cache_text_embeddings.py",
     ]
@@ -602,3 +608,49 @@ def test_caption_full_warns_when_te_would_encode_the_masters(monkeypatch, capsys
     monkeypatch.setattr(preprocess, "_variant_settings", lambda: ("4", "0.1", "0.0"))
     preprocess.cmd_caption_full(["--inline", "--skip_position", "--skip_ocr"])
     assert "MASTERS" not in capsys.readouterr().out
+
+
+def test_position_stages_use_the_thin_format(monkeypatch):
+    """Both position entry points (the in-pipeline stage and `caption-position`
+    / `caption-full`) build the thin clause format; ``ARGS`` still wins."""
+    from scripts.tasks import preprocess
+
+    from library.preprocess.position_format import position_fields
+
+    monkeypatch.setattr(preprocess, "_path", lambda key, default: default)
+    expected = position_fields()
+    for req in (
+        preprocess._position_request({"path_pattern": "*"}),
+        preprocess._caption_position_request([]),
+    ):
+        for key, value in expected.items():
+            assert getattr(req, key) == value, key
+    req = preprocess._caption_position_request(["--mask_dilate", "0"])
+    assert req.mask_dilate == 0
+
+
+def test_implied_cut_runs_before_the_mirror_and_can_be_turned_off(monkeypatch):
+    from scripts.tasks import preprocess
+
+    monkeypatch.setattr(preprocess, "_path", lambda key, default: default)
+    monkeypatch.setattr(preprocess, "_ensure_danbooru_tags", lambda: None)
+    monkeypatch.setattr(preprocess, "_variant_settings", lambda: ("4", "0.1", "0.0"))
+    monkeypatch.delenv("CAPTION_AUTOTAG", raising=False)
+    monkeypatch.delenv("CAPTION_POSITION_CLAUSES", raising=False)
+
+    calls: list[list[str]] = []
+    _patch_run(monkeypatch, lambda cmd, **_k: calls.append(cmd))
+    monkeypatch.delenv("CAPTION_IMPLIED", raising=False)
+    preprocess.cmd_preprocess_captions([])
+    assert [_entry(cmd) for cmd in calls] == [
+        "anime_tools.stages.cli.drop_group_captions",
+        "anime_tools.stages.cli.correct_captions",
+    ]
+    assert "--implied" in calls[0] and "--apply" in calls[0]
+
+    calls.clear()
+    monkeypatch.setenv("CAPTION_IMPLIED", "0")
+    preprocess.cmd_preprocess_captions([])
+    assert [_entry(cmd) for cmd in calls] == [
+        "anime_tools.stages.cli.correct_captions",
+    ]

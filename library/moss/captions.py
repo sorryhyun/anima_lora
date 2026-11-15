@@ -17,6 +17,8 @@ Three steps into a tree of its own, so the Anima captions stay untouched:
    the Anima Tagger: the GPU part, so a daemon job), each subject mask grown by
    ``mask_dilate`` px so a held object stays in the crop.
 3. ``drop_implied_tags`` on every caption when ``implied``.
+4. ``write_variants``: ``{stem}.variants.txt`` from the finished caption when
+   ``variants`` (the Anima variants describe the full bag, so none are copied).
 
 ``out/moss_captions.json`` records the request and the anime_tools version.
 """
@@ -24,6 +26,7 @@ Three steps into a tree of its own, so the Anima captions stay untouched:
 from __future__ import annotations
 
 import json
+import random
 import shutil
 from importlib.metadata import version
 from pathlib import Path
@@ -32,19 +35,12 @@ from library.env import resolve_under_home
 from library.moss.requests import CaptionsRequest
 from library.moss.scan import IMAGE_EXTS
 
+# The position-stage settings that make a caption MOSS-format, shared with
+# Anima's caption stages.
+from library.preprocess.position_format import POSITION_FORMAT
+
 STAMP = "moss_captions.json"
 REPORT_DIR = "_position_report"
-
-# The position-stage settings that make a caption MOSS-format (anime_tools
-# PositionRequest fields): any clause-carried tag leaves the bag, shared tags and
-# a repeated subject's own traits may enter a clause, and only hair / eye color
-# stay one per subject.
-POSITION_FORMAT = {
-    "thin_bag": True,
-    "discriminative_only": False,
-    "multi_view_gate": False,
-    "free_groups": True,
-}
 
 
 def build_tree(src: Path, out: Path) -> int:
@@ -86,6 +82,32 @@ def cut_implied(out: Path) -> int:
     return cut
 
 
+def write_variants(out: Path, num_variants: int, tag_dropout: float) -> int:
+    """``{stem}.variants.txt`` beside every caption under ``out`` (anime_tools'
+    ``generate_caption_variants``, seeded by the caption's relative path).
+    Returns the number of sidecars written."""
+    from anime_tools.captions.variants import (
+        generate_caption_variants,
+        variants_sidecar_path,
+        write_variants_sidecar,
+    )
+
+    n = 0
+    for caption in sorted(out.rglob("*.txt")):
+        if caption.name.endswith((".history.txt", ".variants.txt")):
+            continue
+        random.seed(caption.relative_to(out).as_posix())
+        texts = generate_caption_variants(
+            caption.read_text(encoding="utf-8").strip(), num_variants, tag_dropout
+        )
+        write_variants_sidecar(
+            variants_sidecar_path(caption),
+            [(f"v{i}", text) for i, text in enumerate(texts)],
+        )
+        n += 1
+    return n
+
+
 def run_captions(req: CaptionsRequest) -> Path:
     """Build ``req``'s MOSS caption tree; returns its folder."""
     if not req.src:
@@ -124,6 +146,9 @@ def run_captions(req: CaptionsRequest) -> Path:
     )
     if req.implied:
         print(f"implied: {cut_implied(out)} tags cut", flush=True)
+    if req.variants > 0:
+        n_var = write_variants(out, req.variants, req.variant_tag_dropout)
+        print(f"variants: {n_var} sidecars x {req.variants}", flush=True)
 
     stamp = {
         "src": str(src),

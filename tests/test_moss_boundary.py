@@ -41,6 +41,7 @@ _SHARED = (
     "library.inference.corrections.cns_core",
     "library.runtime.progress",
     "library.vision.repa",
+    "library.preprocess.position_format",
     "library.vision.buckets",
     "library.datasets.curation_actions",
 )

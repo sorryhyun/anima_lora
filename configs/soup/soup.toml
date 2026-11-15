@@ -2,10 +2,18 @@ network_alpha = 128
 network_dim = 32
 down_init = "weight_svd"
 
-learning_rate = 2e-5
-max_train_epochs = 4
-save_every_n_epochs = 4
-checkpointing_epochs = 4
+# Ingredient recipe = configs/methods/lora.toml (docs/anima/findings/lora_recipe.md), the
+# one the merged14 shard soups trained on. train_adaln (rank 16) comes from base.toml.
+learning_rate = 5e-5
+lr_scheduler = "constant_with_warmup"
+gradient_accumulation_steps = 2
+clip_mode = "median"
+clip_k = 2.0
+clip_per_micro = true
+clip_sigma_bands = "0.2,0.4,0.6,0.8"
+max_train_epochs = 8
+save_every_n_epochs = 8
+checkpointing_epochs = 8
 
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
@@ -26,4 +34,5 @@ num_soup = 3
 # no_uncond = true skips Phase 1: ingredients init from down_init (weight_svd
 # [+ top-level svd_slice]) instead of the uncond checkpoint. Required whenever
 # svd_slice != 0 — a --network_weights warm-start would overwrite the slice.
-no_uncond = false
+# On since 2026-11-15 (the merged14 shards ran this way); false restores Phase 1.
+no_uncond = true

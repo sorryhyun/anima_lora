@@ -41,6 +41,10 @@ method `network_dim`), `PRESET`, `NO_UNCOND=1` (skip Phase 1, see below).
 
 ## No-uncond mode — `NO_UNCOND=1` / `[soup] no_uncond = true`
 
+The default in `configs/soup/soup.toml` since 2026-11-15, with the ingredient recipe set to
+`configs/methods/lora.toml`'s (5e-5 constant, GA 2, median clip, 8 epochs): the merged14 shard
+soups trained this way. `no_uncond = false` restores Phase 1.
+
 Skips Phase 1: the ingredients start from the method config's `down_init`
 (`weight_svd`, plus a top-level `svd_slice = k` if set) instead of
 `--network_weights`-loading an uncond checkpoint. The shared-init property the

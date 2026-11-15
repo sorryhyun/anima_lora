@@ -251,6 +251,12 @@ def _caption_correction_config(extra) -> tuple[dict[str, object], list[str]]:
             os.environ.get("CAPTION_POSITION_CLAUSES"),
             _boolish(overrides.get("caption_position_clauses"), False),
         ),
+        # Cut a tag a more specific one already says, over the revised
+        # captions, after the position pass and before the variant sidecars.
+        "implied": _boolish(
+            os.environ.get("CAPTION_IMPLIED"),
+            _boolish(overrides.get("caption_implied"), True),
+        ),
         # Same deal as `position_clauses`, but runs even earlier: it *creates*
         # the captions the rest of the chain reads — see `cmd_preprocess`.
         "autotag": _boolish(
@@ -396,14 +402,31 @@ def _stage_roots() -> dict[str, str]:
 
 def _position_request(config: dict[str, object]):
     """The ``PositionRequest`` the in-pipeline position-clause stage runs as
-    (``apply``, every detection / clause knob at the package default)."""
+    (``apply``, the thin clause format of ``position_format``)."""
     from anime_tools.stages.requests import PositionRequest
+
+    from library.preprocess.position_format import position_fields
 
     return PositionRequest(
         src=_path("source_image_dir", "image_dataset"),
         dst=_path("resized_image_dir", "post_image_dataset/resized"),
         path_pattern=_stage_path_pattern(config),
         apply=True,
+        **position_fields(),
+    )
+
+
+def _implied_request(config: dict[str, object]):
+    """The ``DropGroupRequest`` that cuts a tag a more specific one already says
+    (`long hair` beside `very long hair`, `bow` beside a bowtie) from the
+    revised captions."""
+    from anime_tools.stages.requests import DropGroupRequest
+
+    return DropGroupRequest(
+        **_stage_roots(),
+        path_pattern=_stage_path_pattern(config),
+        apply=True,
+        implied=True,
     )
 
 
@@ -938,15 +961,27 @@ def cmd_preprocess_captions(extra, caption_config: dict[str, object] | None = No
     correct = _caption_correction_enabled(caption_config)
     shuffle, dropout, randomize = _variant_settings()
     n_variants = int(_float_or_zero(shuffle))
-    # Position clauses keep the mirror alive even with correction and variants
-    # both off: they only rewrite resized/, so every OTHER image still needs
-    # its master caption mirrored there or it would encode as empty.
-    if not correct and n_variants <= 0 and not caption_config.get("position_clauses"):
+    # Position clauses and the implied cut keep the mirror alive even with
+    # correction and variants both off: they only rewrite resized/, so every
+    # OTHER image still needs its master caption mirrored there or it would
+    # encode as empty.
+    if (
+        not correct
+        and n_variants <= 0
+        and not caption_config.get("position_clauses")
+        and not caption_config.get("implied")
+    ):
         print("  [preprocess] caption correction disabled")
         return
     # correct_captions loads the Danbooru tag KB unconditionally — fetch it
     # on demand so a GUI preprocess that skipped the download doesn't abort.
     _ensure_danbooru_tags()
+    if caption_config.get("implied"):
+        # Before the correct step, so the variant sidecars it writes carry the
+        # cut too. Text-only and idempotent: an unchanged caption keeps its
+        # mtime, so its TE cache stays current.
+        print("  [preprocess] implied tags: cut from the revised captions")
+        _execute("drop_groups", _implied_request(caption_config))
     from anime_tools.stages.requests import CorrectRequest
 
     # The trainer's own fields: the walk and the variant sidecars (the
@@ -1026,6 +1061,7 @@ def cmd_preprocess_te(extra, caption_config: dict[str, object] | None = None):
         _caption_correction_enabled(caption_config)
         or n_variants > 0
         or bool(caption_config.get("position_clauses"))
+        or bool(caption_config.get("implied"))
     )
     if needs_caption_step:
         pp_args = _preprocess_path_pattern_args(extra)
@@ -1182,14 +1218,15 @@ def _release_stage_models() -> None:
     _MODELS_RESIDENT.clear()
 
 
-def _caption_request(cls, extra, *, prog: str):
+def _caption_request(cls, extra, *, prog: str, **fields):
     """A standalone caption target's request: trainer paths + the env/config
-    subset scope as the base, the user's ``ARGS`` on top (an explicit
-    ``--path_pattern`` there overrides the scope, once)."""
+    subset scope (+ ``fields``) as the base, the user's ``ARGS`` on top (an
+    explicit ``--path_pattern`` there overrides the scope, once)."""
     req = cls(
         src=_path("source_image_dir", "image_dataset"),
         dst=_path("resized_image_dir", "post_image_dataset/resized"),
         path_pattern=_preprocess_path_pattern(),
+        **fields,
     )
     return request_with_args(req, extra, prog=prog)
 
@@ -1203,10 +1240,18 @@ def _caption_autotag_request(extra):
 
 
 def _caption_position_request(extra):
-    """The ``PositionRequest`` for ``make caption-position ARGS=…``."""
+    """The ``PositionRequest`` for ``make caption-position ARGS=…`` — the thin
+    clause format of ``position_format`` as the base, ``ARGS`` on top."""
     from anime_tools.stages.requests import PositionRequest
 
-    return _caption_request(PositionRequest, extra, prog="make caption-position ARGS=")
+    from library.preprocess.position_format import position_fields
+
+    return _caption_request(
+        PositionRequest,
+        extra,
+        prog="make caption-position ARGS=",
+        **position_fields(),
+    )
 
 
 def _ocr_dir() -> str:

@@ -20,6 +20,11 @@ caption_tag_randomize_rate = 0.0
 
 caption_position_clauses = false
 
+# Cut a tag a more specific one already says (`long hair` beside `very long hair`,
+# `bow` beside a bowtie) from the revised captions before the variant sidecars.
+# Env CAPTION_IMPLIED overrides.
+caption_implied = true
+
 # Tag groups stripped from every mirrored caption (GH #95); master untouched.
 # Slugs (artist, character, copyright, meta, clothing, accessory, action, pose,
 # expression, face, hair, body, background, effect, object, animal, color,
