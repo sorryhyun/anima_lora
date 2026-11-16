@@ -31,6 +31,7 @@ plain_caption_rate = 0.2       # layout_json cache: share of steps on the plain 
 caption_variant_rate = 0.0     # cache with embeds_v{k} (colorize probe): x (1 - plain_caption_rate) of steps
 ema_window = 0.1               # adapter EMA over 10 % of the updates (0.958 at 240); saves write it, raw goes to <name>/<name>_raw; docs/moss/findings/t2i_lora_recipe.md
 lora_dtype = "bf16"            # bf16 | fp16 | fp32
+clause_hw = 1.0                # position-clause tokens (On the left, …) at their 3×3 cell on RoPE h / w, training only; no-op on captions without clauses (layout_json). docs/moss/proposal/cdpe_text_grounding.md
 
 # Memory / speed (16 GB card): int8 base, every block resident. docs/moss/optimization/int8.md.
 # The int8 base refuses loha; configs/moss/lora_bf16.toml is the bf16 plan.

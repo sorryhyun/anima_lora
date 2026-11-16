@@ -258,7 +258,9 @@ def clause_offsets(
         flush=True,
     )
     if not full:
-        raise SystemExit("clause_hw: no full caption has a position clause")
+        # clause_hw is on in the shipped recipe: a cache without position clauses
+        # (layout_json captions, tag bags with no clause) trains as before.
+        print("clause_hw: no full caption has a position clause", flush=True)
     return out
 
 
