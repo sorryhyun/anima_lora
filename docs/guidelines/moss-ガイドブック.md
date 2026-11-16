@@ -96,6 +96,8 @@ make download-model ARGS=moss-sft
 | `model` | `base` | 学習に使う DiT |
 | `epochs` | `8` | キャッシュを回る回数（1 ステップに画像 1 枚） |
 | `save_every_epochs` | `0` | N エポックごとに最終ファイルの隣の `<name>/<name>_e10.safetensors` などとして追加保存（最後のエポックは最終ファイルそのもの） |
+| `sample_prompts` | 空 | 学習中にレンダリングするプロンプト。1 行に 1 つ（または `.txt` / `.json` ファイルのパス）、Test のプロンプトと同じ書き方 |
+| `sample_every_epochs` | `0` | N エポックごと、および最後のエポックの後に `sample_prompts` を `<name>/samples/e<N>_<k>.png` へレンダリング。サイズ・ステップ・CFG・シード・`sample_at_first` は Advanced にあります |
 
 ランク、alpha、lr、アダプターの種類は §4 で扱います。**Train** は `cache` を読み込み、**Preprocess, then train** は先に前処理を実行してから `cache` をその `out` に合わせて学習します。
 

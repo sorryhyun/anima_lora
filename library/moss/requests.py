@@ -446,7 +446,7 @@ class GenerateRequest(Request):
     )
     text_box_hw: float = _f(
         0.0,
-        'the cond prompt\'s boxed text lines ("…" [y0,x0,y1,x1]) at their box\'s '
+        "the cond prompt's boxed text lines (\"…\" [y0,x0,y1,x1]) at their box's "
         "centre on RoPE's h / w axes, as TrainRequest.text_box_hw does in training. "
         "0 = off. Per-sample forward only",
         advanced=True,
@@ -699,6 +699,43 @@ class TrainRequest(Request):
         "live weights until the EMA starts, the EMA after",
         advanced=True,
     )
+    sample_prompts: str = _f(
+        "",
+        "prompts rendered during training, one per line, or the path of a .txt "
+        "(one per line) / .json (list of strings) file. Written in the cache's "
+        "caption form (sample_prompt_format). Encoded once at the start; renders "
+        "land in <output dir>/<name>/samples/",
+        multiline=True,
+    )
+    sample_every_epochs: int = _f(
+        0,
+        "render sample_prompts every N epochs and after the last one (0 = off). "
+        "The weights rendered are the ones the epoch save holds (the EMA once it "
+        "has started)",
+    )
+    sample_at_first: bool = _f(
+        False, "also render sample_prompts before the first step", advanced=True
+    )
+    sample_width: int = _f(1024, "sample width, multiple of 16", advanced=True)
+    sample_height: int = _f(1024, "sample height, multiple of 16", advanced=True)
+    sample_steps: int = _f(
+        28,
+        "sample denoising steps (ER-SDE, two forwards a step under CFG)",
+        advanced=True,
+    )
+    sample_cfg: float = _f(
+        DEFAULT_CFG, "sample CFG (uncond skips block 22, as generate)", advanced=True
+    )
+    sample_seed: int = _f(
+        42, "seed of the first sample prompt (+1 per prompt)", advanced=True
+    )
+    sample_prompt_format: str = _f(
+        "auto",
+        "auto = the cache's caption_format; layout_json / tags convert an "
+        "Anima-format prompt as generate's prompt_format does; text = as typed",
+        choices=("auto", "text", "layout_json", "tags"),
+        advanced=True,
+    )
     caption_dropout: float = _f(
         0.0,
         "probability of training a step on the empty-prompt embedding (CFG's "
@@ -867,7 +904,7 @@ class TrainRequest(Request):
     text_box_hw: float = _f(
         0.0,
         "training only: the tokens inside the quotes of each boxed text line "
-        '("…" [y0,x0,y1,x1], text_boxes) take the box\'s centre on RoPE\'s h / w '
+        "(\"…\" [y0,x0,y1,x1], text_boxes) take the box's centre on RoPE's h / w "
         "axes, times this (1 = the box centre in latent cells); every other token "
         "stays at (0, 0). Combines with clause_hw. 0 = off. "
         "docs/moss/proposal/cdpe_text_grounding.md",

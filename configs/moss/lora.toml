@@ -12,6 +12,8 @@ model = "base"                 # base | sft
 epochs = 8
 max_steps = 0                  # 0 = epochs decide
 save_every_epochs = 0          # 0 = final only
+# sample_prompts = "prompts.txt"   # one per line (or inline lines); rendered into <name>/samples/
+# sample_every_epochs = 0          # 0 = off; also after the last epoch
 
 algo = "lora"                  # lora | lokr | loha
 rank = 32

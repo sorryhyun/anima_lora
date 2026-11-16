@@ -49,6 +49,7 @@ never again during the recompute.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import os
@@ -318,6 +319,21 @@ def train(
     elif req.distill_balance or req.distill_gate:
         raise SystemExit("distill_balance / distill_gate need distill base or ema")
 
+    out_path = resolve_under_home(req.output)
+    sampler = None
+    if req.sample_every_epochs or req.sample_at_first:
+        from library.moss.training.sampling import Sampler
+
+        # Runs the TE: before the DiT loads.
+        sampler = Sampler(
+            req,
+            samples,
+            token_split=setup.cache_token_split(samples),
+            prompt_tail=prompt_tail,
+            out_dir=out_path.parent / out_path.stem / "samples",
+            device=device,
+        )
+
     transformer = load_transformer(req.model_dir, req.model)
     transformer.requires_grad_(False)
     if req.stream == "fp32":
@@ -410,6 +426,9 @@ def train(
                         max(s.n_img + teachers.longest(s.stem) for s in samples),
                     ),
                 )
+        if sampler is not None:
+            lo, hi = sampler.seq_range()
+            seq_range = (min(seq_range[0], lo), max(seq_range[1], hi))
         print(
             f"compile: token axis marked {seq_range[0]}-{seq_range[1]}"
             + (f", reference {ref_range[0]}-{ref_range[1]}" if ref_range else ""),
@@ -501,7 +520,6 @@ def train(
             flush=True,
         )
 
-    out_path = resolve_under_home(req.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     meta = setup.run_metadata(
         req,
@@ -521,10 +539,27 @@ def train(
     if int8_base is not None:
         meta.update(int8_base.metadata())
 
+    @contextlib.contextmanager
+    def weights_of(shadow: list | None):
+        """A started EMA ``shadow`` in place of the live weights, swapped in through
+        the staging buffers and back out after."""
+        if not shadow:
+            yield
+            return
+        with torch.no_grad():
+            for buf, s, p in zip(staging, shadow, params):
+                buf.copy_(p)
+                p.copy_(s)
+        try:
+            yield
+        finally:
+            with torch.no_grad():
+                for buf, p in zip(staging, params):
+                    p.copy_(buf)
+
     def save(tag: str | None = None, shadow: list | None = None) -> Path:
         """The final file at ``out_path``; an epoch save under ``<dir>/<stem>/``.
-        A started EMA ``shadow`` is saved in place of the live weights, swapped in
-        through the staging buffers."""
+        A started EMA ``shadow`` is saved in place of the live weights."""
         if tag is None:
             path = out_path
         else:
@@ -535,10 +570,7 @@ def train(
             network.save(path, req.lora_dtype, **meta)
             return path
         k = next(i for i, s in enumerate(shadows) if s is shadow)
-        with torch.no_grad():
-            for buf, s, p in zip(staging, shadow, params):
-                buf.copy_(p)
-                p.copy_(s)
+        with weights_of(shadow):
             network.save(
                 path,
                 req.lora_dtype,
@@ -546,9 +578,12 @@ def train(
                 ema_window=spans[k],
                 ema_decay=round(decays[k], 6),
             )
-            for buf, p in zip(staging, params):
-                p.copy_(buf)
         return path
+
+    def sample(tag: str) -> None:
+        """The prompts at the weights the save of this point holds."""
+        with weights_of(main_shadow):
+            sampler.render(transformer, attached, tag)
 
     sink_path = command_job_path(
         str(out_path.parent.parent / "logs" / f"{out_path.stem}.progress.jsonl")
@@ -563,6 +598,8 @@ def train(
     torch.cuda.reset_peak_memory_stats()
     t_start = time.time()
     with run_scope(sink, final_step=lambda: step):
+        if sampler is not None and req.sample_at_first:
+            sample("e0")
         for epoch in range(epochs):
             order = shuffle_rng.sample(samples, len(samples))
             if epoch == 0 and req.fit_report:
@@ -863,6 +900,8 @@ def train(
                 saved = save(f"e{epoch + 1}", main_shadow)
                 sink.ckpt(global_step=step, path=str(saved))
                 print(f"  saved {saved}", flush=True)
+            if sampler is not None and sampler.due(epoch + 1, epochs):
+                sample(f"e{epoch + 1}")
 
         transformer.ref_gate = None
         transformer.text_hw = None
@@ -903,6 +942,8 @@ def train(
         }
         report = out_path.with_suffix(".json")
         report.write_text(json.dumps(summary, indent=2))
+        if sampler is not None:
+            sampler.close()
         print(f"wrote {final} and {report} — {seconds / 60:.1f} min", flush=True)
     if int8_base is not None:
         int8_base.close()

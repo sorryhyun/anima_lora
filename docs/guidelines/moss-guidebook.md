@@ -96,6 +96,8 @@ Press **Run preprocessing**. The status line counts images, captions and cached 
 | `model` | `base` | Which DiT to train on |
 | `epochs` | `8` | Passes over the cache (one image per step) |
 | `save_every_epochs` | `0` | Also save every N epochs, as `<name>/<name>_e10.safetensors` etc. beside the final file (the last epoch is the final file itself) |
+| `sample_prompts` | empty | Prompts rendered during training, one per line (or a `.txt` / `.json` file path), written like a Test prompt |
+| `sample_every_epochs` | `0` | Render `sample_prompts` every N epochs and after the last one, into `<name>/samples/e<N>_<k>.png`; Advanced holds the size, steps, CFG, seed and `sample_at_first` |
 
 Rank, alpha, lr and the adapter type are in §4. **Train** reads `cache`; **Preprocess, then train** runs Preprocess first and points `cache` at its `out`.
 

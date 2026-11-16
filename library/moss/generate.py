@@ -284,7 +284,9 @@ def _grounding_tokenizer(req: GenerateRequest, model_dir):
     if req.batched:
         raise SystemExit("clause_hw / text_box_hw run on the per-sample forward")
     if resolve_token_split(req) != "off":
-        raise SystemExit("clause_hw / text_box_hw find rows on the default tokenization")
+        raise SystemExit(
+            "clause_hw / text_box_hw find rows on the default tokenization"
+        )
     from library.moss.loader import load_tokenizer
     from library.moss.prompt_tail import with_prompt_tail
 
@@ -348,6 +350,9 @@ def _denoise_pending(req, model_dir, out_dir, pending, device) -> None:
         attached = place(
             transformer, "layers", device, blocks_to_swap=swap, label="[dit]"
         )
+        if attached is not None:
+            # The uncond branch skips block 22: its swap hooks still run.
+            transformer.skip_hook = attached.skip
     if req.compile:
         compile_blocks(transformer.layers)
     dave = _build_dave(req, len(transformer.layers))
@@ -363,9 +368,7 @@ def _denoise_pending(req, model_dir, out_dir, pending, device) -> None:
             from library.moss.training.grounding import text_hw
 
             grid = (j["height"] // 16, j["width"] // 16)
-            cond_hw = text_hw(
-                hw_tok, j["prompt"], grid, req.clause_hw, req.text_box_hw
-            )
+            cond_hw = text_hw(hw_tok, j["prompt"], grid, req.clause_hw, req.text_box_hw)
             if cond_hw is not None:
                 rec["text_hw_rows"] = int(cond_hw.any(1).sum())
         sigmas = snapped_sigmas(j["steps"], j["shift"])

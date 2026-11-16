@@ -216,6 +216,17 @@ class Attached:
         self.blocks = blocks
         self.model = model
         self.handles: list = []
+        self.schedule: dict[int, tuple[int, int]] = {}
+        self.loaded: set[int] = set()
+
+    def skip(self, idx: int) -> None:
+        """What block ``idx``'s hooks do, for a forward that skips the block:
+        its pending load is awaited and its scheduled move still goes out, so the
+        blocks after it find their weights where the schedule put them."""
+        if idx in self.loaded:
+            self.offloader.wait_for_block(idx)
+        if idx in self.schedule:
+            self.offloader._submit_move_blocks(self.blocks, *self.schedule[idx])
 
     def prepare(self, free_cache: bool = True) -> None:
         """The starting layout: resident blocks on the device, the swapped tail
@@ -304,6 +315,7 @@ def attach(
         restore=not supports_backward,
     )
     loaded = {cuda_idx for _cpu, cuda_idx in schedule.values()}
+    attached.schedule, attached.loaded = schedule, loaded
     for idx, block in enumerate(blocks):
         if idx in loaded:
             attached.handles.append(

@@ -577,6 +577,10 @@ class MOSSImageTransformer(ModelMixin, ConfigMixin):
         self.final_linear_video = nn.Linear(dim, latent_channels, bias=False)
         self.video_head_modulation = nn.Linear(dim, 2 * dim)
         self.layer_hook = None
+        # Called with the block's index when a forward skips it (``skip_layers``,
+        # no reference run): block swap's ``Attached.skip``, so the skipped
+        # block's wait / move still happen.
+        self.skip_hook = None
         self.ref_timestep = None
         self.ref_isolate = False
         # RoPE placement of the reference grid (``_RoPE.forward``): over the image or beside it.
@@ -745,6 +749,8 @@ class MOSSImageTransformer(ModelMixin, ConfigMixin):
                             torch.tensor(idle, device=x.device),
                         )
                     if not active:
+                        if not ref_runs and self.skip_hook is not None:
+                            self.skip_hook(index)
                         continue
                     rows = torch.tensor(active, device=x.device)
                     sub = layer(
@@ -763,6 +769,8 @@ class MOSSImageTransformer(ModelMixin, ConfigMixin):
             elif index in skip_layers:
                 if ref_runs:
                     x = self._ref_only(layer, x, rope, mod, ref_start)
+                elif self.skip_hook is not None:
+                    self.skip_hook(index)
                 continue
             x = layer(x, rope, mod, key_mask, ref_start, iso, **kv(index))
             if hook is not None:

@@ -117,6 +117,17 @@ became the default re-encodes on the next `cache` run unless that run passes
 - **Checkpoints**: `--save_every_epochs N` also saves `<name>/<name>_eN.safetensors`
   beside the final file (the last epoch is the final file). A `.json` run report
   (per-step loss) lands beside the LoRA.
+- **Samples** (`--sample_prompts`, `--sample_every_epochs N`): the prompts (one per line,
+  or a `.txt` / `.json` file) are rendered every N epochs and after the last one, into
+  `<name>/samples/e<N>_<k>.png` (`--sample_at_first` adds `e0`, before the first step).
+  They are written in the cache's caption form (`--sample_prompt_format auto`) and encoded
+  once at the start, on the cache's text encoder and prompt tail. A render uses the
+  weights the epoch save holds (the EMA once started): ER-SDE, CFG 3 with the block-22
+  uncond skip, `--sample_steps 28` at `--sample_width` × `--sample_height` (1024²). Under `compile`
+  the marked token range takes in the sample lengths, so the no-grad render graph compiles
+  once. The VAE decodes on the CPU in the
+  background (~15 s per 1024² image) while training goes on. Block swap is fine; not on an
+  i2i cache, with `trigger_registers` or with `delta_rows`.
 - **`--fit_report`** (off): trains the largest sample (longest caption) at step 1 and
   reports its peak against free VRAM, with a `--blocks_to_swap` suggestion.
 - **Caption dropout** (`--caption_dropout`, default 0): keep 0. On caststation 0.05 and 0.1

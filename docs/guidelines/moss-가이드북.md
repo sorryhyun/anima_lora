@@ -96,6 +96,8 @@ make download-model ARGS=moss-sft
 | `model` | `base` | 학습할 DiT |
 | `epochs` | `8` | 캐시를 도는 횟수 (스텝당 이미지 1장) |
 | `save_every_epochs` | `0` | N 에폭마다 최종 파일 옆 `<name>/<name>_e10.safetensors` 형태로 추가 저장 (마지막 에폭은 최종 파일 자체) |
+| `sample_prompts` | 비어 있음 | 학습 중 렌더링할 프롬프트. 한 줄에 하나씩 (또는 `.txt` / `.json` 파일 경로), Test 프롬프트처럼 씁니다 |
+| `sample_every_epochs` | `0` | N 에폭마다, 그리고 마지막 에폭 뒤에 `sample_prompts` 를 `<name>/samples/e<N>_<k>.png` 로 렌더링. 크기·스텝·CFG·시드·`sample_at_first` 는 Advanced 에 있습니다 |
 
 랭크, alpha, lr, 어댑터 종류는 §4에서 다룹니다. **Train** 은 `cache` 를 읽고, **Preprocess, then train** 은 전처리를 먼저 실행한 뒤 `cache` 를 그 `out` 으로 맞춰 학습합니다.
 

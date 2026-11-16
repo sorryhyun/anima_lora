@@ -96,6 +96,8 @@ make download-model ARGS=moss-sft
 | 模型（`model`） | `base` | 在哪个 DiT 上训练 |
 | 轮数（`epochs`） | `8` | 遍历缓存的次数（每步一张图） |
 | 每 N 轮保存（`save_every_epochs`） | `0` | 每 N 轮额外保存到最终文件旁的 `<name>/<name>_e10.safetensors` 等（最后一轮即最终文件本身） |
+| 样图提示词（`sample_prompts`） | 空 | 训练中渲染的提示词，每行一条（或 `.txt` / `.json` 文件路径），写法同 Test 提示词 |
+| 每 N 轮出样图（`sample_every_epochs`） | `0` | 每 N 轮及最后一轮之后把 `sample_prompts` 渲染到 `<name>/samples/e<N>_<k>.png`；尺寸、步数、CFG、种子和 `sample_at_first` 在 Advanced 中 |
 
 秩、alpha、学习率和适配器类型见 §4。**开始训练** 读取 缓存文件夹（`cache`）；**预处理后训练** 先运行预处理，再把 `cache` 指向其输出文件夹并开始训练。
 
