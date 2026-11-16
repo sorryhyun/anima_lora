@@ -31,7 +31,7 @@ fake_init_weights = "models/extracted/anima_turbo_v1.1_delta_r96_asvd_adaln.safe
 [dmd]
 student_steps = 4
 teacher_cfg = 4
-dynamic_schedule = true
+dynamic_schedule = false
 dm_x0_norm = true
 norm_floor = 0.05
 

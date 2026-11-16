@@ -50,7 +50,8 @@ By that read the line closes on merged14 + Hub v3 untrained. What comes next is 
   renders (`turbo_1114_1709`, grids `output/tests/turbo4/cmp/static_twin_*.jpg`). Sameness 0.445
   against 0.496 / 0.675 for the two dynamic seeds, `S` cos 0.567 against 0.547 / 0.453, `T>S@1` cos
   0.823 against 0.779 / 0.745. Anchor MSE 0.171 sits between the two (0.149 / 0.188), and the café
-  sign text is worse than the control's. One static seed. It gives up other step counts.
+  sign text is worse than the control's. One static seed. It gives up other step counts. Shipped in
+  `configs/methods/turbo.toml` on 11-16.
 - **Cond-only L_CDM** (`cdm.teacher = "cond"`): done 11-16, adopted on the user's read. The
   paper's form (arXiv:2605.06376 Eq. 9): the cond-only teacher against the fake in L_CDM, CFG
   through the on-trajectory DM term only. A/B on merged15, static grid, weight 1.0:
