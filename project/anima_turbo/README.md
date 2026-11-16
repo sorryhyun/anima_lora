@@ -106,3 +106,9 @@ off (`turbo_1113_1309`) and with the fake seeded from v3 (`turbo_1113_1438`) ali
 Preference RL (`proposal/pref_rl.md`) is at its P1 gate, not passed: on 25 rounds of picks no
 head on the four pooled bases ranks picked above unpicked, though each ranks gelcrawl's selection
 (`reports/pref_p1.md`). The DiT-head basis is the one not read.
+
+**2026-11-16.** The shipped recipe at 1k on merged15 failed (`reports/m15_1k.md`). The official
+turbo v1.1 delta, which Hub v3's run started from, carries over to merged15 with the best steps 1–3
+of the line, and the target is now a student that keeps them and fits step 0 (`plan.md`). From that
+init the anchor alone (`turbo_1116_1558`, 250 iterations) is the closest one-LoRA student to the
+teacher on the probe, with a softer finish than the joint recipe (`reports/v11_init.md`).

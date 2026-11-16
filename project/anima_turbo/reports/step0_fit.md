@@ -38,7 +38,7 @@ EMA 0.146 (0.59), control EMA 250 0.149 (0.68).
   the frame-filling figure of `S`.
 - **A pooled anchor loss has little to redirect.** The low band is already 59–68 % of the students'
   error, and it is the part training lowered (0.123 → 0.087 / 0.102; the rest stayed at
-  0.047–0.059). `idea.md` 4 is closed by this.
+  0.047–0.059). The low-frequency weighting of the anchor loss is closed by this.
 - **No threshold: the gain is close to proportional to α.** Half of the layout gain needs an MSE of
   about 0.04–0.08, that is 0.3–0.5 of where the 1k students sit.
 

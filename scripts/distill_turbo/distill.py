@@ -356,7 +356,7 @@ def run_loop(ctx: RunContext, cfg):
                         writer.add_scalar(
                             "train/disc_lr", disc_sched.get_last_lr()[0], step + 1
                         )
-                    if turbo.disc is not None:
+                    if turbo.disc is not None and not cfg.anchor_only:
                         # The ramped generator-side λ actually applied this step
                         # (deterministic from step; makes the delay/warmup window
                         # legible next to the margin/spread curves).

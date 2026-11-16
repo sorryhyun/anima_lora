@@ -1,105 +1,97 @@
 # Plan: the 4-step line after `v4_preview`
 
-Rewritten 2026-11-13; teacher merged15 and cond-only L_CDM from 2026-11-16. The recipe is `1112_v1.md`; finished work is in `reports/`. The closed 2-step
-plan is `91d476e0:scripts/distill_turbo/plan.md`.
+Rewritten 2026-11-16. This file holds what is open; finished runs and probes are in `reports/` and
+the run table (`configs/README.md`). The closed 2-step plan is
+`91d476e0:scripts/distill_turbo/plan.md`.
 
 ## Where the line stands
 
-- `v4_preview` (`1112_1512`, 1k EMA) is shipped. Its gap to the teacher is composition: every
-  student trained on merged14 draws one frontal, centred layout per prompt where the teacher varies
-  scale, pose and camera (`output/tests/turbo4/cmp/sc1_bocchi.jpg`, `mfd_bocchi.jpg`).
-- The gap sits in step 0, and the layout comes back in proportion to the step-0 anchor fit
-  (`reports/handoff.md`, `reports/step0_fit.md`). The 1k students sit at a held-out anchor MSE of
-  0.146–0.149, 0.85 of the teacher's own cond velocity.
-- Hub v3 (base teacher, 10k iterations) sits at 0.30 of its reference and draws the view from
-  below. Its step 0 carries over to merged14 with no training: 0.063 against the merged14 target.
-- Hub v3 on merged14 untrained also draws seeds as varied as the teacher's (sameness 0.326 against
-  0.328), and 250 iterations of the v1 recipe from that start undo it (`reports/warm_v3.md`).
+- `v4_preview` (`1112_1512`, 1k EMA on the `1112_v1.md` recipe) is shipped. The recipe in
+  `configs/methods/turbo.toml` has since taken the static grid and the cond-only L_CDM
+  (`reports/grid_cdm.md`).
+- Every student trained with that recipe on merged14 / merged15 draws one layout per prompt: from a
+  cold start, from Hub v3, and at 1000 iterations (`reports/warm_v3.md`, `reports/m15_1k.md`).
+- The best one-LoRA 4-step result is Hub v3 on merged15 with no training (sameness 0.296 against
+  the teacher's 0.315).
+- The official turbo v1.1 delta, the file Hub v3's run started from, has the best steps 1–3 of the
+  line on merged15 with no training, and Hub v3's step 0 in front of them is the closest 4-step
+  result to the teacher (`reports/v11_init.md`).
 
-## 1k on merged15: failed (`reports/m15_1k.md`, 2026-11-16)
+## Target: keep v1.1's steps 1–3, fit step 0
 
-The shipped recipe (static grid, cond-only L_CDM) at 1000 iterations, `turbo_1116_1355`, lands at
-the 250-iteration arm's sameness (0.449 against 0.442; m15 teacher 0.315) with a lower `S` cos
-(0.532 against 0.608), tighter framing and one layout per prompt. Hub v3 on merged15 untrained
-(sameness 0.296, `S` cos 0.635, anchor MSE 0.062) is still the best 4-step result. Two consequences:
+A student that keeps v1.1's steps 1–3 and takes step 0 to Hub v3's fit or below, in one LoRA. The
+recipe is built for that, and every run is read on two numbers beside the renders
+(`reports/v11_init.md` for the reference rows):
 
-- Arms read at 250 iterations need a 1k check before they ship.
-- Every merged14 / merged15 student collapses whatever its start; v3 was trained on the base
-  teacher, and the current recipe never has been. Next candidate (not run): the recipe at 250
-  iterations on base v1.0, sameness against the base teacher.
+- **steps 1–3 kept:** `T>S@1` cos against v1.1's 0.932 (Hub v3 0.805);
+- **step 0 fitted:** held-out anchor MSE from v1.1's 0.138 toward Hub v3's 0.062.
+
+`S` is read against Hub v3's step 0 with v1.1's steps 1–3: sameness 0.318, cos 0.742. With the
+anchor target itself as step 0 the cos is 0.815, which is the room a fitted step 0 has.
+
+Runs start from the v1.1 delta on Kaiming downs. The loop truncates the r96 file to rank 64
+(0.914 of the ΔW energy), so a run's own start is slightly off the probed row.
+
+The first two runs are in `reports/v11_init.md`. The anchor alone (`turbo_1116_1558`, 250
+iterations, 8 min) passed: anchor MSE 0.082, `T>S@1` cos 0.946, `S` 0.350 / 0.766. The shipped
+recipe from the same init (`turbo_1116_1552`) is behind it on every number (0.107, 0.922,
+0.383 / 0.721) and has the crisper finish. `1558` draws the teacher's layouts with a soft finish
+and broken objects, which come with its own step 0: its steps 1–3 finish the teacher's step 0
+cleanly. What is open, in order:
+
+1. **Where the finish is lost and where `1552` gets it.** Cross probes, no training, 3 min each:
+   `1558`'s step 0 with `1552`'s steps 1–3 and with v1.1's, and Hub v3's step 0 with `1558`'s
+   steps 1–3. A clean render with `1552`'s steps 1–3 behind `1558`'s step 0 means the finish is a
+   steps 1–3 matter and the two can be trained apart.
+2. **The anchor alone at length.** `1558`'s anchor loss was still falling at 250 iterations. 1k
+   is about 33 min. Read: anchor MSE toward Hub v3's 0.062, sameness toward the teacher's 0.315,
+   `T>S@1` cos held, and whether a better-fitted step 0 finishes cleanly by itself.
+3. **The anchor target cache**, if the length pays. The target depends only on (prompt, ε) and the
+   frozen teacher, so a cache leaves one student forward and backward per iteration and lets the
+   regression run on a real batch. Not built.
+4. **The DM / CDM / GAN terms on steps 1–3 only, from `1558`** (`dm_first_step` off), if candidate 1
+   puts the finish in steps 1–3: step 0 keeps the anchor and the terms that sharpen never reach
+   it. Read on `T>S@1` cos and the renders.
+5. **A term that holds steps 1–3** (the student's velocity on its own rollout states against the
+   frozen init's) only if a longer anchor run starts to move `T>S@1` cos. Needs code.
+6. **Without training:** Hub v3 on step 0 and v1.1 on steps 1–3 as two LoRAs across two samplers
+   (sameness 0.318, cos 0.742). Not the one-LoRA ship.
 
 ## A/B protocol
 
-1. **250 iterations on the v1 recipe**, compare EMA 250. Control from 11-16: `turbo_1116_0958`
-   (merged15, static grid, cond-only L_CDM; 27 min). Earlier controls are merged14.
+1. **250 iterations**, compare EMA 250. An arm that wins at 250 needs a 1k check before it ships
+   (`reports/m15_1k.md`).
 2. **Renders are the gate.** 4 steps, cfg 1, `bench/turbo/judge_hard.txt` seeds 1–4 at 768 × 1344
-   on the merged15 DiT (int8), beside the teacher (`output/tests/turbo4/teacher_m15/`; merged14 runs:
-   `teacher_m14/`). Grids go to
+   on the merged15 DiT (int8), beside the teacher (`output/tests/turbo4/teacher_m15/`). Grids go to
    `output/tests/turbo4/cmp/`.
-3. **Probe beside the renders** (`bench/turbo/probe_handoff.py`, about 3 min per student):
-   held-out anchor MSE, the `S` cosine, and the sameness across seeds (teacher 0.328, control
-   0.496). A warm-started arm is also compared with its starting point, untrained.
-4. The control's twin is `turbo_1114_1745` (seed 43). On the dynamic grid the two seeds are far
-   apart: sameness 0.496 / 0.675, `S` cos 0.547 / 0.453, `T>S@1` cos 0.779 / 0.745, anchor MSE
-   0.149 / 0.188. Arms on the static grid are read against `turbo_1114_1709`, which has no twin.
-
-## Warm start from Hub v3: done, regressed (`reports/warm_v3.md`)
-
-`turbo_1113_1221` passed the gate written here, which compared it with the control only. Hub v3
-on merged14 with no training beats it on every number: sameness 0.326 (teacher 0.328) against
-0.465, `S` cos 0.639 against 0.593, anchor MSE 0.063 against 0.070. The user read the renders as a
-regression from v3. The v1 recipe on the m14 teacher pulls any start toward the control, so the
-1k run from this start is dropped. The best 4-step result on merged14 is now merged14 + Hub v3,
-untrained. `turbo_1113_1309` (`dm_first_step` off) regresses the same way: step 0 still makes the
-seeds alike at v3's anchor MSE, and steps 1–3 lose teacher likeness. `turbo_1113_1438` (the fake
-seeded from v3 as well, as v3's own run seeded both stacks from one file) regresses the same way:
-sameness 0.483, on `1221`'s side of the read fixed in its config, so the cold fake is not the cause.
-By that read the line closes on merged14 + Hub v3 untrained. What comes next is not decided.
-
-## After it
-
-- **Static grid** (`dmd.dynamic_schedule` off): done 11-14, adopted on the user's read of the
-  renders (`turbo_1114_1709`, grids `output/tests/turbo4/cmp/static_twin_*.jpg`). Sameness 0.445
-  against 0.496 / 0.675 for the two dynamic seeds, `S` cos 0.567 against 0.547 / 0.453, `T>S@1` cos
-  0.823 against 0.779 / 0.745. Anchor MSE 0.171 sits between the two (0.149 / 0.188), and the café
-  sign text is worse than the control's. One static seed. It gives up other step counts. Shipped in
-  `configs/methods/turbo.toml` on 11-16.
-- **Cond-only L_CDM** (`cdm.teacher = "cond"`): done 11-16, adopted on the user's read. The
-  paper's form (arXiv:2605.06376 Eq. 9): the cond-only teacher against the fake in L_CDM, CFG
-  through the on-trajectory DM term only. A/B on merged15, static grid, weight 1.0:
-  `turbo_1116_0958` against the m15 control `turbo_1116_0957` (curves overlap the m14 static run
-  `1114_1709`). The CDM signal runs at 0.71 → 0.53 of the control's (probe: 0.58); every other curve
-  is unchanged. Every probe number favours it on all three prompts: `S` cos 0.547 → 0.608,
-  `T>S@1` cos 0.777 → 0.841, anchor MSE 0.151 → 0.138, sameness 0.451 → 0.442 (m15 teacher 0.315;
-  `bench/turbo/results/20261116-1054-handoff_m15_cdmcond/`). Renders
-  (`output/tests/turbo4/cmp/cdmcond_*.jpg`): the guitarist jumps in a skirt seen from below as the
-  teacher draws her (control: track pants, standing), the group gains camera variety, and the café
-  aprons drift from the teacher's blue. One seed, no twin. Shipped in `configs/methods/turbo.toml`;
-  the code fallback stays `cfg`, so past run configs reproduce.
-- **Fake-lag probe** before anything that touches the fake (student : fake 1 : 10, the VA-TDM
-  teacher-regularised fake): freeze the student at a resume point, run about 40 more fake steps,
-  and read how far the DM signal turns on fixed draws. Not built.
-- **Anchor target cache.** The target depends only on (prompt, ε) and the frozen teacher. Caching
-  it takes about 2 s off a 5.75 s iteration and lets the regression run on a real batch. It is the
-  fallback if the warm start does not hold its fit.
-
-## Dropped
-
-- **MFD in the DM slot** (`turbo_1113_1104`): the seeds of a prompt draw one image, and its steps
-  1–3 carry most of that, so restricting it to steps ≥ 1 does not help (`reports/mfd.md`).
-- **Adaptive clip:** the clip at 1.0 already acts on 98 % of the steps under AdamW, so every update
-  has unit norm; a threshold at twice the median would give a spike twice the weight it has now.
-  Under the cosine the one coupled burst of v1 was at steps 152–162.
-- **Low-frequency weighting of the anchor loss:** the low band is already most of the error
-  (`reports/step0_fit.md`).
-- **A longer run from the `weight_svd` init:** v3 shows where it ends, at 16 h.
+3. **Probe beside the renders** (`bench/turbo/probe_handoff.py --dit
+   models/diffusion_models/anima_merged15.safetensors --ts_handoffs 1 --st_handoffs ,`, about 3 min
+   per student): held-out anchor MSE, `S` and `T>S@1` cos, and the sameness across seeds (m15
+   teacher 0.315).
+4. **A warm-started arm is read against its starting point, untrained**, and the read is fixed in
+   the config header before the run.
+5. One seed per arm so far on the static grid; the dynamic grid's two seeds were far apart
+   (`turbo_1114_1745` in the run table).
 
 ## Open
 
+- **The recipe on the base teacher.** Every student of the DM recipe collapsed on a merged teacher
+  and Hub v3 was trained on base; the split is in `reports/m15_1k.md`. It matters again if
+  candidate 4 brings the DM terms back.
+- **Fake-lag probe**, before anything that touches the fake (student : fake 1 : 10, the VA-TDM
+  teacher-regularised fake): freeze the student at a resume point, run about 40 more fake steps,
+  and read how far the DM signal turns on fixed draws. Not built.
 - **Café colour drift under cond-only L_CDM.** The aprons leave the teacher's blue on three of
   four seeds; a seed-43 twin of `0958` and a weight-matched arm (`cdm.weight` ≈ 1.7, the control's
   signal rms) would tell seed luck, magnitude and direction apart. Not run.
-- **Sameness in steps 1–3.** With the teacher drawing step 0 the control still reads 0.405 against
-  the teacher's 0.328: the plain DM term pulls the seeds together too. No arm aims at it yet.
-- **2 steps.** Reopening it waited on a step 0 that carries the layout on 4 steps
-  (`idea.md` 3). A warm-started student that passes is that step 0.
+- **2 steps.** Reopening it waits on a step 0 that carries the layout on 4 steps (`idea.md` 3). A
+  student that meets the target is that step 0.
+
+## Dropped without a run
+
+- **Adaptive clip:** the clip at 1.0 already acts on 98 % of the steps under AdamW, so every update
+  has unit norm; a threshold at twice the median would give a spike twice the weight it has now.
+  Under the cosine the one coupled burst of v1 was at steps 152–162.
+- **A longer run from the `weight_svd` init:** v3 shows where it ends, at 16 h; a `weight_svd`
+  student also stays inside its init subspace, and the working turbo ΔW sits outside it
+  (`reports/warm_v3.md`).

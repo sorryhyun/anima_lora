@@ -34,3 +34,10 @@ One report per run or probe. Run ids are in [../configs/README.md](../configs/RE
   merged15. Failed: tighter framing and one layout per prompt, sameness at the 250-iteration
   arm's level; Hub v3 on m15 untrained stays ahead on every number. The 250-iteration A/B does not
   predict 1k; the base teacher is the largest untested difference from v3.
+- [grid_cdm.md](grid_cdm.md): the static grid (11-14) and the cond-only L_CDM (11-16), both adopted
+  at 250 iterations on the user's read and shipped in the recipe; one seed each.
+- [v11_init.md](v11_init.md): the official turbo v1.1 delta on merged15 with no training. Its
+  steps 1–3 are the best of the line (`T>S@1` cos 0.932), its step 0 is unfitted, and Hub v3's
+  step 0 in front of them is the closest 4-step result to the teacher. Hub v3's training log.
+  From this init the shipped recipe starts at equilibrium and beats the cold start, and the anchor
+  alone beats both on the probe, with a softer finish.

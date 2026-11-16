@@ -1,7 +1,7 @@
 # Ideas outside the arms in `plan.md`
 
 Written 2026-11-12, trimmed 2026-11-13 after the v1 run and the step-0 fit probes
-(`reports/step0_fit.md`). None is built or run unless it says so. Since the step-0 fit turned out to
+(`reports/step0_fit.md`) and on 2026-11-16 (closed ideas are in the reports). None is built or run unless it says so. Since the step-0 fit turned out to
 be what carries the layout, and Hub v3 already has it, ideas 1 and 2 only matter if a student has
 `dm_first_step` on.
 
@@ -50,13 +50,7 @@ not known.
 - The 2-step students were trained with `rollout_grad`; their step 1 has seen their own step-0
   states, not the teacher's.
 
-## 4. Low-frequency weighting of the anchor loss — closed
-
-Measured 2026-11-13 (`reports/step0_fit.md`). The layout is in the low band of the step-0 residual
-(the 8× band alone gives 85–96 % of the anchor's gain), but that band is already 59–68 % of the
-students' error and is the part training lowers. A pooled loss has little to redirect.
-
-## 5. A lower-resolution anchor (σ-demoted training applied here)
+## 4. A lower-resolution anchor (σ-demoted training applied here)
 
 Looked at on 2026-11-12 on the user's question. It does not carry over as it stands; one narrow
 variant is left.
@@ -84,7 +78,7 @@ variant is left.
   `P>S@1` against S-b's 0.157 and 0.472 / 0.543. About 10 min. Throughput is not the limit now: the
   step-0 fit follows the LR, not the number of pairs (`reports/step0.md`).
 
-## 6. DAVE on the student's step 0 at inference
+## 5. DAVE on the student's step 0 at inference
 
 Parked on the user's call. DC attenuation in blocks 8–18 during step 0 is aimed at the same symptom
 (every seed drawing one composition) and is training-free, so `--dave auto` at strength 0.3 / 0.8 on
