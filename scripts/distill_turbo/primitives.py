@@ -1,41 +1,20 @@
-"""Re-noising, τ samplers, and shared loop-side helpers.
-
-Re-exports the shared per-step primitives from ``library/training`` and
-``library/datasets`` under the names the turbo loop imports, plus turbo-only
-helpers (CDM grid/extrapolation, GAN ramp, scheduler).
-"""
+"""Turbo-only loop helpers: CDM grid and extrapolation, GAN ramp, LR scheduler."""
 
 from __future__ import annotations
 
 import torch
 
-from library.datasets.cache import make_cached_collate as make_collate
-from library.training.forward import PadCache, renoise
-from library.training.forward import sample_sigma as sample_t
 from library.training.schedulers import make_warmup_cosine_scheduler
-
-__all__ = [
-    "renoise",
-    "sample_t",
-    "gan_effective_weight",
-    "make_scheduler",
-    "scheduler_warmup_steps",
-    "PadCache",
-    "make_collate",
-    "sample_dynamic_sigmas",
-    "cdm_extrapolate",
-]
 
 
 def sample_dynamic_sigmas(n_min: int, n_max: int) -> list[float]:
     """One CDM-style dynamic rollout grid (arXiv:2605.06376 §3.2).
 
     Length N ~ U{n_min..n_max}; interior anchors drawn uniform in (0,1) and
-    sorted descending, endpoints pinned to t₁=1 and 0 — the same (N+1)-point
-    1 → 0 layout as the static grid, so ``sigmas[i] - sigmas[i+1]`` stays the
-    Euler dt for step i. t₁=1 is what lets the DP-DMD diversity anchor compose
-    unchanged (v_target only assumes the first forward sits at t=1). CPU RNG
-    (seeded by ``torch.manual_seed``), no GPU sync.
+    sorted descending, endpoints pinned to t₁=1 and 0: the static grid's (N+1)-point
+    1 → 0 layout, so ``sigmas[i] - sigmas[i+1]`` is the Euler dt of step i. The
+    pinned t₁=1 keeps the diversity anchor valid (v_target assumes the first
+    forward sits at t=1). CPU RNG, no GPU sync.
     """
     n = int(torch.randint(n_min, n_max + 1, (1,)).item())
     if n == 1:
@@ -49,13 +28,10 @@ def cdm_extrapolate(
 ) -> torch.Tensor:
     """Velocity-driven Euler extrapolation to an off-trajectory point (CDM Eq. 7).
 
-    ``x(t') = x + (t' − s)·v`` — the rollout's own Euler form, with an arbitrary
-    (large, possibly noiseward) stride to ``t' ~ U(0,1)`` instead of the next
-    grid point. Inputs are DETACHED and the result is a plain fp32 tensor with
-    no graph: the extrapolation is a launch point for one fresh grad-bearing
-    student forward, not a second BPTT chain (as in the paper's code, which
-    rolls the trajectory under no_grad; mirrors the DM renoise path).
-    ``t_to`` is per-sample ``(B,)``, broadcast against ``x``'s trailing dims.
+    ``x(t') = x + (t' − s)·v``: the rollout's Euler form with a stride to
+    ``t' ~ U(0,1)`` (possibly noiseward) instead of the next grid point. Inputs are
+    detached and the result is a graph-free fp32 tensor, the launch point of one
+    grad-bearing student forward. ``t_to`` is per-sample ``(B,)``.
     """
     stride = t_to.detach().float().view(-1, *([1] * (x.dim() - 1))) - s_from
     return x.detach().float() + stride * v.detach().float()
@@ -64,12 +40,10 @@ def cdm_extrapolate(
 def gan_effective_weight(cfg, step: int) -> float:
     """Generator-side GAN weight at ``step``: delay window, then linear ramp.
 
-    0 for ``step < gan_delay_steps`` (the escape window — DM+div re-diversify a
-    collapsed warm start before dense realism pressure lands; an unramped token
-    head froze pose at the init's mode), then a linear 0 → ``gan_loss_weight_gen``
-    ramp over ``gan_warmup_steps`` (instant-on when 0). The disc trains from
-    step 0 regardless — only the student-side λ ramps. Both knobs 0 → constant
-    ``gan_loss_weight_gen``.
+    0 for ``step < gan_delay_steps`` (DM + div re-diversify a collapsed warm start
+    first; an unramped token head froze pose at the init's mode), then a linear
+    0 → ``gan_loss_weight_gen`` ramp over ``gan_warmup_steps`` (instant when 0).
+    The disc trains from step 0 regardless.
     """
     if cfg.gan_loss_weight_gen == 0.0 or step < cfg.gan_delay_steps:
         return 0.0
@@ -100,9 +74,8 @@ def make_scheduler(opt, total_steps: int, lr: float, shape: str = "cosine"):
     """Linear warmup (:func:`scheduler_warmup_steps`) → cosine to ``0.1·lr``, or
     constant at ``lr`` (``shape="constant"``).
 
-    Without a student EMA, constant rendered worse than cosine: updates stay at
-    full magnitude to the last step. Constant is meant for EMA runs, where the
-    EMA does the settling.
+    Without a student EMA, constant rendered worse than cosine; constant is for
+    EMA runs.
     """
     warmup_steps = scheduler_warmup_steps(total_steps)
     if shape == "constant":

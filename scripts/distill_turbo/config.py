@@ -1,535 +1,427 @@
-"""Turbo distillation config: TOML loader + argparser + CLI/TOML resolver.
+"""Turbo distillation config: one field table → argparser, TOML resolver, snapshot.
 
-The resolved knobs are returned as a ``TurboConfig`` frozen dataclass so the
-training loop never reaches back into ``args``/``cfg`` mid-step.
+Each ``TurboConfig`` field is declared once with :func:`knob`: its dotted key in the
+sectioned TOML (``configs/methods/turbo.toml``), its default and its CLI help. Every
+field is a ``--<name>`` flag; precedence is CLI → TOML → default. Knob docs:
+``docs/anima/methods/turbo.md``.
 """
 
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
-from library.config.io import toml_get as _flatten
-from library.config.resolved import (
-    dataclass_snapshot_toml,
-    dataclass_tb_text,
-)
-from library.config.resolved import pick as _pick
-
+from library.config.io import toml_get
+from library.config.resolved import dataclass_snapshot_toml, dataclass_tb_text
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_CONFIG = "configs/methods/turbo.toml"
 
-def build_argparser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Turbo Anima — Decoupled DMD2 distillation"
-    )
-    parser.add_argument(
-        "--config",
-        type=str,
-        default="configs/methods/turbo.toml",
-        help="Path to the turbo TOML config (CLI flags override TOML values).",
-    )
-    # Sentinel defaults (None / -1) mean "use the TOML value"; the defaults
-    # behind the TOML live in resolve_config, the knob docs in
-    # docs/anima/methods/turbo.md.
-    parser.add_argument("--dit_path", type=str, default=None)
-    parser.add_argument(
-        "--dit_nonquant_path",
-        type=str,
-        default=None,
-        help="The bf16 DiT an int8 --dit_path was quantized from (the float "
-        "weights wq_t is built from); unset, they are rebuilt from the int8 copies.",
-    )
-    parser.add_argument("--data_dir", type=str, default=None)
-    parser.add_argument("--output_dir", type=str, default=None)
-    parser.add_argument("--output_name", type=str, default=None)
-    parser.add_argument("--iterations", type=int, default=-1)
-    parser.add_argument("--batch_size", type=int, default=-1)
-    parser.add_argument("--seed", type=int, default=-1)
-    parser.add_argument(
-        "--validate_every_n_steps",
-        type=int,
-        default=-1,
-        help="DAVE same-prompt diversity probe every N steps (0 off; diversity.py).",
-    )
-    parser.add_argument(
-        "--val_diversity_seeds",
-        type=int,
-        default=-1,
-        help="Seeds the diversity probe rolls (>=2).",
-    )
-    parser.add_argument(
-        "--val_prompt_idx",
-        type=int,
-        default=-1,
-        help="Held-out sample the probe conditions on (-1: the last one, not "
-        "--single_prompt_idx).",
-    )
-    parser.add_argument("--student_rank", type=int, default=-1)
-    parser.add_argument("--fake_rank", type=int, default=-1)
-    parser.add_argument(
-        "--channel_scaling_alpha",
-        type=float,
-        default=-1.0,
-        help="Per-input-channel rebalance absorbed into lora_down (student and "
-        "fake); 0 off, 0.5 sqrt-balance.",
-    )
-    parser.add_argument("--student_lr", type=float, default=-1.0)
-    parser.add_argument(
-        "--lr_schedule",
-        choices=["cosine", "constant"],
-        default=None,
-        help="Shape after the 2%% linear warmup, for student, fake and disc: "
-        "cosine to 0.1·lr (default) or constant.",
-    )
-    parser.add_argument(
-        "--ema_window",
-        type=float,
-        default=-1.0,
-        help="Student EMA span as a fraction of the run (0 = off); saves a "
-        "*_ema.safetensors beside each checkpoint.",
-    )
-    parser.add_argument("--fake_lr", type=float, default=-1.0)
-    parser.add_argument(
-        "--fake_steps_per_student_step",
-        type=int,
-        default=-1,
-        help="Fake updates per student step, each on fresh (τ, ε).",
-    )
-    parser.add_argument(
-        "--grad_accum",
-        type=int,
-        default=None,
-        help="Loop iterations per student optimizer step. Each iteration's student "
-        "gradient is clipped on its own and their mean is applied; the fake and the "
-        "disc still update every iteration. iterations, save_every, the GAN delay "
-        "and the logs count loop iterations.",
-    )
-    parser.add_argument(
-        "--fake_warmup_steps",
-        type=int,
-        default=-1,
-        help="Fake-only head-start updates before the main loop. Without it the "
-        "warm-start fake is miscalibrated when the student reaches full LR "
-        "(grad_signal_rms spike near step 50).",
-    )
-    parser.add_argument(
-        "--student_steps",
-        type=int,
-        default=-1,
-        help="Sampler step count baked into the student.",
-    )
-    parser.add_argument(
-        "--dm_x0_norm",
-        dest="dm_x0_norm",
-        action="store_const",
-        const=True,
-        default=None,
-        help="Replace τ-damping with per-sample x0-space normalisation: "
-        "τ·Δ / clamp(τ·mean|v_real|, norm_floor), so τ cancels.",
-    )
-    parser.add_argument(
-        "--dm_draws",
-        type=int,
-        default=None,
-        help="(σ_a, ε_dm) draws averaged into the DM signal on the same x_θ; each "
-        "extra draw costs the DM slot's no-grad teacher-CFG and fake forwards again.",
-    )
-    parser.add_argument(
-        "--dm_tau_distribution",
-        type=str,
-        default=None,
-        help="DM / MFD query level σ_a: uniform | logit_normal "
-        "(sigmoid(dm_tau_scale·N(0,1))). The GAN generator renoise reuses it; "
-        "CDM stays uniform.",
-    )
-    parser.add_argument("--dm_tau_scale", type=float, default=None)
-    parser.add_argument(
-        "--norm_floor",
-        type=float,
-        default=-1.0,
-        help="Floor of the --dm_x0_norm denominator (latent scale).",
-    )
-    parser.add_argument("--blocks_to_swap", type=int, default=0)
-    parser.add_argument("--attn_mode", type=str, default="flash")
-    parser.add_argument("--grad_ckpt", action="store_true")
-    parser.add_argument("--no_grad_ckpt", dest="grad_ckpt", action="store_false")
-    parser.add_argument(
-        "--torch_compile",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Compile the DiT blocks (on by default).",
-    )
-    parser.add_argument(
-        "--compile_dynamic_seq",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="One block graph with a dynamic sequence axis instead of one per "
-        "token count (as in LoRA training).",
-    )
-    parser.add_argument(
-        "--target_res",
-        type=int,
-        nargs="+",
-        default=None,
-        help="Tier edges that size the dynamic-seq bound and the dynamo budget; "
-        "unset, they come from the token counts in the cached pool.",
-    )
-    parser.add_argument(
-        "--activation_memory_budget",
-        type=float,
-        default=None,
-        help="Compile partitioner saved-activation fraction (<1 recomputes in "
-        "backward). Ignored under --grad_ckpt.",
-    )
-    parser.add_argument(
-        "--int8",
-        choices=("off", "fwd", "full", "stream"),
-        default=None,
-        help="Frozen DiT linears as int8 GEMMs, teacher included "
-        "(docs/anima/optimizations/int8.md).",
-    )
-    parser.add_argument(
-        "--int8_file",
-        type=str,
-        default=None,
-        help="GPTQ forward copies; unset: <dit>_int8_gptq.safetensors beside the "
-        "DiT, else round to nearest; 'rtn' forces round to nearest.",
-    )
-    parser.add_argument(
-        "--stream",
-        choices=("bf16", "fp32"),
-        default=None,
-        help="Residual stream precision, teacher included "
-        "(docs/anima/optimizations/fp32_stream.md).",
-    )
-    parser.add_argument("--save_every", type=int, default=-1)
-    parser.add_argument(
-        "--resume",
-        type=str,
-        default="",
-        help="Crash-resume bundle (nets, optimizers, schedulers, RNG). 'auto' "
-        "uses output/ckpt/<name>/<name>_resume.pt if present, else starts fresh; "
-        "a named path must exist. Written every --save_every.",
-    )
-    parser.add_argument("--log_interval", type=int, default=-1)
-    parser.add_argument("--log_dir", type=str, default=None)
-    parser.add_argument("--no_log", action="store_true")
-    parser.add_argument(
-        "--single_prompt_idx",
-        type=int,
-        default=None,
-        help="Overfit mode: pin the dataloader to one (latent, text) pair.",
-    )
-    parser.add_argument("--sample_ratio", type=float, default=1.0)
 
-    # DP-DMD (arXiv:2602.03139).
-    parser.add_argument(
-        "--k_anchor",
-        type=int,
-        default=-1,
-        help="Teacher steps rolled to the diversity anchor (their K).",
+def knob(toml: str | None, default: Any, help: str | None = None, *, choices=None):
+    """A config field read from dotted TOML key ``toml`` (None: CLI only)."""
+    return field(
+        default=default, metadata={"toml": toml, "help": help, "choices": choices}
     )
-    parser.add_argument(
-        "--teacher_anchor_steps",
-        type=int,
-        default=-1,
-        help="Teacher σ grid the K anchor is counted on.",
-    )
-    parser.add_argument(
-        "--div_weight",
-        type=float,
-        default=-1.0,
-        help="λ on the first-step diversity loss; 0 skips the teacher anchor.",
-    )
-    parser.add_argument(
-        "--dm_first_step",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="Draw the grad step from every rollout step, so step 0 also gets the "
-        "DM / MFD signal (off: refinement steps only).",
-    )
-    parser.add_argument(
-        "--rollout_grad",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="Keep the graph from step 0 into the grad step, so the DM / MFD "
-        "signal on the final x_θ reaches step 0 through step 1 (2-step static "
-        "grid only; _archive/proposals/superturbo.md).",
-    )
-    parser.add_argument(
-        "--anchor_only",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="Train step 0 on the anchor regression alone (no DM / CDM / GAN / "
-        "fake update, no fake warmup): the step-0 capacity probe "
-        "(project/anima_turbo/plan.md, S-b).",
-    )
-    parser.add_argument(
-        "--anchor_draws",
-        type=int,
-        default=None,
-        help="Noise draws per iteration for the anchor regression (anchor_only "
-        "only): k teacher anchors on k fresh ε for the same prompt, gradient "
-        "averaged before the clip (project/anima_turbo/plan.md, S-c.2).",
-    )
-    parser.add_argument(
-        "--anchor_cache",
-        type=str,
-        default=None,
-        help="Anchor target cache dir (anchor_only only): the loop trains on the "
-        "cached samples of data_dir and reads v_target and ε from the cache instead "
-        "of rolling the teacher. Built by `python -m scripts.distill_turbo.anchor_cache`.",
-    )
-    parser.add_argument(
-        "--detach_after_first",
-        dest="detach_after_first",
-        action="store_const",
-        const=True,
-        default=None,
-        help="Stop-grad after the diversity-supervised first step (keep on but "
-        "for A/B).",
-    )
-    parser.add_argument(
-        "--no_detach_after_first",
-        dest="detach_after_first",
-        action="store_false",
-    )
-    parser.add_argument(
-        "--flow_shift",
-        type=float,
-        default=-1.0,
-        help="σ shift of the student and teacher Euler grids (as at inference).",
-    )
-
-    # DMD2 teacher-feature GAN.
-    parser.add_argument(
-        "--gan_loss_weight_gen",
-        type=float,
-        default=-1.0,
-        help="λ on the GAN generator term; 0 turns the whole GAN path off "
-        "(FastGen QwenImage: 0.03).",
-    )
-    parser.add_argument(
-        "--gan_feature_block_idx",
-        type=int,
-        default=-2,
-        help="DiT block the disc taps; -1 = middle. (-2 is the 'use TOML' sentinel.)",
-    )
-    parser.add_argument("--gan_disc_lr", type=float, default=-1.0)
-    parser.add_argument(
-        "--gan_r1_weight",
-        type=float,
-        default=-1.0,
-        help="Approximate R1 (APT): MSE between real logits and those of a "
-        "perturbed real input; 0 off.",
-    )
-    parser.add_argument(
-        "--gan_disc_head",
-        type=str,
-        default=None,
-        choices=["pooled", "token"],
-        help="pooled: one logit per tap; token: the same MLP per token (LADD).",
-    )
-    parser.add_argument(
-        "--gan_delay_steps",
-        type=int,
-        default=-1,
-        help="Generator-side GAN weight held at 0 for N student steps (the disc "
-        "still trains).",
-    )
-    parser.add_argument(
-        "--gan_warmup_steps",
-        type=int,
-        default=-1,
-        help="Then ramp it 0 → weight_gen over N steps (0 = instant).",
-    )
-
-    # CDM off-trajectory loss (arXiv:2605.06376 §3.3).
-    parser.add_argument(
-        "--cdm_grad_ckpt",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="Checkpoint the grad-bearing CDM student forward.",
-    )
-    parser.add_argument(
-        "--cdm_weight",
-        type=float,
-        default=-1.0,
-        help="λ on L_CDM; 0 turns the path off. Costs +1 student grad forward, "
-        "+2 teacher and +1 fake no-grad forwards per step.",
-    )
-    parser.add_argument(
-        "--cdm_teacher",
-        choices=("cfg", "cond"),
-        default=None,
-        help="Teacher velocity in L_CDM: 'cfg' (the CFG'd teacher, our default) or "
-        "'cond' (cond-only, as arXiv:2605.06376 Eq. 9; one teacher forward less).",
-    )
-
-    # Mean Flow Distillation in the DM slot (arXiv:2606.11155).
-    parser.add_argument(
-        "--mfd_dtau",
-        type=float,
-        default=None,
-        help="Euler step of the MFD mean-flow integral; 0 = plain DMD. Costs K = "
-        "ceil((σ_a − σ_b)/dtau) ≤ mfd_max_steps teacher-CFG and fake forwards "
-        "instead of 1.",
-    )
-    parser.add_argument(
-        "--mfd_max_steps",
-        type=int,
-        default=None,
-        help="Cap on K per mean-flow integral.",
-    )
-    parser.add_argument(
-        "--mfd_interval",
-        type=str,
-        default=None,
-        choices=("to_zero", "uniform"),
-        help="to_zero: σ_b = 0 (K=1 is exactly DMD); uniform: σ_b ~ U(0, σ_a).",
-    )
-
-    return parser
 
 
 @dataclass(frozen=True)
 class TurboConfig:
     # Paths / IO
-    dit_path: str
-    data_dir: str
-    output_dir: str
-    output_name: str
-    log_dir: str
-    save_every: int
-    resume: str
-    log_interval: int
-    no_log: bool
+    dit_path: str = knob(
+        "dit_path", "models/diffusion_models/anima-base-v1.0.safetensors"
+    )
+    dit_nonquant_path: str | None = knob(
+        "dit_nonquant_path",
+        None,
+        "The bf16 DiT an int8 --dit_path was quantized from (the float weights wq_t "
+        "is built from); unset, they are rebuilt from the int8 copies.",
+    )
+    data_dir: str = knob("data_dir", "post_image_dataset/lora")
+    output_dir: str = knob("output_dir", "output/ckpt")
+    output_name: str = knob("output_name", "anima_turbo")
+    log_dir: str = knob("io.log_dir", "output/logs/turbo")
+    save_every: int = knob("io.save_every", 1000)
+    resume: str = knob(
+        None,
+        "",
+        "Crash-resume bundle (nets, optimizers, schedulers, RNG). 'auto' uses "
+        "output/ckpt/<name>/<name>_resume.pt if present, else starts fresh; a named "
+        "path must exist. Written every --save_every.",
+    )
+    log_interval: int = knob("io.log_interval", 2)
+    no_log: bool = knob(None, False)
 
-    # Diversity validation (DAVE same-prompt probe; 0 = off)
-    validate_every_n_steps: int
-    val_diversity_seeds: int
-    val_prompt_idx: int
+    # Diversity validation (DAVE same-prompt probe)
+    validate_every_n_steps: int = knob(
+        "io.validate_every_n_steps", 0, "Diversity probe every N steps (0 off)."
+    )
+    val_diversity_seeds: int = knob(
+        "io.val_diversity_seeds", 8, "Seeds the diversity probe rolls (>=2)."
+    )
+    val_prompt_idx: int = knob(
+        "io.val_prompt_idx",
+        -1,
+        "Held-out sample the probe conditions on (-1: the last one, not "
+        "--single_prompt_idx).",
+    )
 
     # Run shape
-    iterations: int
-    batch_size: int
-    seed: int
-    sample_ratio: float
-    single_prompt_idx: int | None
+    iterations: int = knob("iterations", 20000)
+    batch_size: int = knob("batch_size", 1)
+    seed: int = knob("seed", 42)
+    sample_ratio: float = knob(None, 1.0)
+    single_prompt_idx: int | None = knob(
+        None, None, "Overfit mode: pin the dataloader to one (latent, text) pair."
+    )
 
     # LoRA stacks
-    student_rank: int
-    fake_rank: int
-    student_alpha: float
-    fake_alpha: float
-    attn_mode: str
-    # Per-input-channel rebalance on each lora_down; merges out at save.
-    channel_scaling_alpha: float
-    student_down_init: str  # kaiming | weight_svd
-    fake_down_init: str
-    # Plain LoRA file seeding the stack's ΔW (SVD-truncated to its rank); "" = off.
-    student_init_weights: str
-    fake_init_weights: str
-    # adaln_up_{branch} targets; the student ships them in the ComfyUI layout.
-    train_adaln: bool
-    # false drops the fake's 84 adaln modules (~0.8 GB at rank 96; unbenched).
-    fake_adaln: bool
-    # Own rank / alpha for the adaln modules (0 = network's). Scale-preserving
-    # alpha: student_alpha × adaln_rank / student_rank.
-    adaln_rank: int
-    adaln_alpha: float
-    # Transition-aware fake (project/anima_turbo/vatdm.md idea 1): σ of the student step its sample
-    # came from, as a zero-init delta on the fake's t-embedding.
-    fake_transition: bool
-    # Partitioner recompute tuning (as train.py's partitioner_*); ignored under
-    # grad_ckpt.
-    partitioner_recompute_views: bool
-    partitioner_aggressive_recomputation: bool
+    student_rank: int = knob("network.student_rank", 48)
+    fake_rank: int = knob("network.fake_rank", 48)
+    student_alpha: float | None = knob(
+        "network.student_alpha", None, "Unset: student_rank."
+    )
+    fake_alpha: float | None = knob("network.fake_alpha", None, "Unset: fake_rank.")
+    attn_mode: str = knob("network.attn_mode", "flash")
+    channel_scaling_alpha: float = knob(
+        "channel_scaling_alpha",
+        0.0,
+        "Per-input-channel rebalance absorbed into lora_down (student and fake); "
+        "0 off, 0.5 sqrt-balance. Merges out at save.",
+    )
+    student_down_init: str = knob(
+        "network.student_down_init", "kaiming", choices=("kaiming", "weight_svd")
+    )
+    fake_down_init: str = knob(
+        "network.fake_down_init", "kaiming", choices=("kaiming", "weight_svd")
+    )
+    student_init_weights: str = knob(
+        "network.student_init_weights",
+        "",
+        "Plain LoRA file seeding the student's ΔW (SVD-truncated to its rank).",
+    )
+    fake_init_weights: str = knob("network.fake_init_weights", "")
+    train_adaln: bool = knob(
+        "network.train_adaln",
+        False,
+        "adaln_up_{branch} targets; the student ships them in the ComfyUI layout.",
+    )
+    fake_adaln: bool | None = knob(
+        "network.fake_adaln",
+        None,
+        "Unset: train_adaln. False drops the fake's 84 adaln modules (~0.8 GB at "
+        "rank 96; unbenched).",
+    )
+    adaln_rank: int = knob(
+        "network.adaln_rank", 0, "Own rank for the adaln modules (0 = network's)."
+    )
+    adaln_alpha: float = knob(
+        "network.adaln_alpha",
+        0.0,
+        "Own alpha for the adaln modules (0 = network's). Scale-preserving: "
+        "student_alpha × adaln_rank / student_rank.",
+    )
+    fake_transition: bool = knob(
+        "network.fake_transition",
+        False,
+        "Transition-aware fake (project/anima_turbo/vatdm.md idea 1): σ of the "
+        "student step a sample came from, as a zero-init t-embedding delta.",
+    )
+    partitioner_recompute_views: bool = knob("partitioner_recompute_views", False)
+    partitioner_aggressive_recomputation: bool = knob(
+        "partitioner_aggressive_recomputation", False
+    )
 
-    # DP-DMD
-    k_anchor: int
-    teacher_anchor_steps: int
-    div_weight: float  # 0 = no teacher anchor
-    detach_after_first: bool
-    # Grad step g ~ U{0..N−1}: step 0 also takes the DM / MFD signal.
-    dm_first_step: bool
-    # No detach between step 0 and the grad step (N = 2, static grid).
-    rollout_grad: bool
-    # Step 0 on the anchor regression alone; the DM / CDM / GAN / fake paths idle.
-    anchor_only: bool
-    # ε draws per iteration for the anchor regression (anchor_only only).
-    anchor_draws: int
-    # Anchor target cache dir ("" = roll the teacher every iteration).
-    anchor_cache: str
-    flow_shift: float
+    # DP-DMD (arXiv:2602.03139)
+    k_anchor: int = knob(
+        "dpdmd.k_anchor", 5, "Teacher steps rolled to the diversity anchor (their K)."
+    )
+    teacher_anchor_steps: int = knob(
+        "dpdmd.teacher_anchor_steps", 28, "Teacher σ grid the K anchor is counted on."
+    )
+    div_weight: float = knob(
+        "dpdmd.div_weight",
+        5e-2,
+        "λ on the first-step diversity loss; 0 skips the teacher anchor.",
+    )
+    detach_after_first: bool = knob(
+        "dpdmd.detach_after_first",
+        True,
+        "Stop-grad after the diversity-supervised first step (off for A/B only).",
+    )
+    dm_first_step: bool = knob(
+        "dpdmd.dm_first_step",
+        False,
+        "Draw the grad step from every rollout step, so step 0 also gets the DM / "
+        "MFD signal (off: refinement steps only).",
+    )
+    rollout_grad: bool = knob(
+        "dpdmd.rollout_grad",
+        False,
+        "Keep the graph from step 0 into the grad step (2-step static grid only; "
+        "_archive/proposals/superturbo.md).",
+    )
+    anchor_only: bool = knob(
+        "dpdmd.anchor_only",
+        False,
+        "Train step 0 on the anchor regression alone (no DM / CDM / GAN / fake "
+        "update, no fake warmup; project/anima_turbo/plan.md, S-b).",
+    )
+    anchor_draws: int = knob(
+        "dpdmd.anchor_draws",
+        1,
+        "Noise draws per iteration for the anchor regression (anchor_only only): "
+        "k teacher anchors on k fresh ε, gradient averaged before the clip.",
+    )
+    anchor_cache: str = knob(
+        "dpdmd.anchor_cache",
+        "",
+        "Anchor target cache dir (anchor_only only): train on the cached samples "
+        "of data_dir, reading v_target and ε from the cache. Built by "
+        "`python -m scripts.distill_turbo.anchor_cache`.",
+    )
+    flow_shift: float = knob(
+        "sampling.flow_shift",
+        3.0,
+        "σ shift of the student and teacher Euler grids (as at inference).",
+    )
 
     # DMD core
-    student_steps: int
-    teacher_cfg: float
-    dm_x0_norm: bool
-    norm_floor: float
-    dm_draws: int
-    dm_tau_distribution: str  # uniform | logit_normal
-    dm_tau_scale: float
-    # CDM dynamic schedule: a fresh rollout grid per step (t₁ = 1 pinned);
-    # validation and inference stay on the static grid.
-    dynamic_schedule: bool
+    student_steps: int = knob(
+        "dmd.student_steps", 4, "Sampler step count baked into the student."
+    )
+    teacher_cfg: float = knob("dmd.teacher_cfg", 4.0)
+    dm_x0_norm: bool = knob(
+        "dmd.dm_x0_norm",
+        False,
+        "Replace τ-damping with per-sample x0-space normalisation: "
+        "τ·Δ / clamp(τ·mean|v_real|, norm_floor), so τ cancels.",
+    )
+    norm_floor: float = knob(
+        "dmd.norm_floor", 0.05, "Floor of the --dm_x0_norm denominator."
+    )
+    dm_draws: int = knob(
+        "dmd.dm_draws",
+        1,
+        "(σ_a, ε_dm) draws averaged into the DM signal on the same x_θ; each extra "
+        "draw costs the DM slot's teacher-CFG and fake forwards again.",
+    )
+    dm_tau_distribution: str = knob(
+        "dmd.dm_tau_distribution",
+        "uniform",
+        "DM / MFD query level σ_a; logit_normal = sigmoid(dm_tau_scale·N(0,1)). "
+        "The GAN generator renoise reuses it; CDM stays uniform.",
+        choices=("uniform", "logit_normal"),
+    )
+    dm_tau_scale: float = knob("dmd.dm_tau_scale", 1.0)
+    dynamic_schedule: bool = knob(
+        "dmd.dynamic_schedule",
+        False,
+        "CDM dynamic schedule: a fresh rollout grid per step (t₁ = 1 pinned); "
+        "validation and inference keep the static grid.",
+    )
 
-    # L_CDM; weight 0 = off
-    cdm_weight: float
-    cdm_grad_ckpt: bool
-    # L_CDM teacher velocity: "cfg" (CFG'd) or "cond" (cond-only, the paper's)
-    cdm_teacher: str
+    # L_CDM (arXiv:2605.06376 §3.3)
+    cdm_weight: float = knob(
+        "cdm.weight",
+        0.0,
+        "λ on L_CDM; 0 off. Costs +1 student grad forward, +2 teacher and +1 fake "
+        "no-grad forwards per step.",
+    )
+    cdm_grad_ckpt: bool = knob(
+        "cdm.grad_ckpt", True, "Checkpoint the grad-bearing CDM student forward."
+    )
+    cdm_teacher: str = knob(
+        "cdm.teacher",
+        "cfg",
+        "Teacher velocity in L_CDM: the CFG'd teacher, or cond-only as in the "
+        "paper's Eq. 9 (one teacher forward less).",
+        choices=("cfg", "cond"),
+    )
 
-    # MFD in the DM slot; dtau 0 = plain DMD
-    mfd_dtau: float
-    mfd_max_steps: int
-    mfd_interval: str  # to_zero | uniform
+    # Mean Flow Distillation in the DM slot (arXiv:2606.11155)
+    mfd_dtau: float = knob(
+        "mfd.dtau",
+        0.0,
+        "Euler step of the MFD mean-flow integral; 0 = plain DMD. Costs K = "
+        "ceil((σ_a − σ_b)/dtau) ≤ mfd_max_steps teacher-CFG and fake forwards.",
+    )
+    mfd_max_steps: int = knob("mfd.max_steps", 4, "Cap on K per mean-flow integral.")
+    mfd_interval: str = knob(
+        "mfd.interval",
+        "to_zero",
+        "to_zero: σ_b = 0 (K=1 is exactly DMD); uniform: σ_b ~ U(0, σ_a).",
+        choices=("to_zero", "uniform"),
+    )
 
-    # DMD2 teacher-feature GAN; weight_gen 0 = off
-    gan_loss_weight_gen: float
-    gan_feature_block_idx: int  # -1 → middle block
-    gan_disc_lr: float
-    gan_disc_hidden: int  # <= 0 → inner_dim // 2
-    gan_disc_head: str  # pooled | token
-    gan_delay_steps: int
-    gan_warmup_steps: int
-    gan_r1_weight: float
-    gan_r1_alpha: float
-    gan_use_same_t_noise: bool
-    gan_grad_ckpt: bool
+    # DMD2 teacher-feature GAN
+    gan_loss_weight_gen: float = knob(
+        "gan.weight_gen",
+        0.0,
+        "λ on the GAN generator term; 0 turns the GAN off (FastGen QwenImage: 0.03).",
+    )
+    gan_feature_block_idx: int = knob(
+        "gan.feature_block_idx", -1, "DiT block the disc taps; -1 = middle."
+    )
+    gan_disc_lr: float = knob("gan.disc_lr", 1e-5)
+    gan_disc_hidden: int = knob("gan.disc_hidden", 0, "<= 0: inner_dim // 2.")
+    gan_disc_head: str = knob(
+        "gan.disc_head",
+        "pooled",
+        "pooled: one logit per tap; token: the same MLP per token (LADD).",
+        choices=("pooled", "token"),
+    )
+    gan_delay_steps: int = knob(
+        "gan.delay_steps",
+        0,
+        "Generator-side GAN weight held at 0 for N steps (the disc still trains).",
+    )
+    gan_warmup_steps: int = knob(
+        "gan.warmup_steps", 0, "Then ramp it 0 → weight_gen over N steps (0 instant)."
+    )
+    gan_r1_weight: float = knob(
+        "gan.r1_weight",
+        0.0,
+        "Approximate R1 (APT): MSE between real logits and those of a perturbed "
+        "real input; 0 off.",
+    )
+    gan_r1_alpha: float = knob("gan.r1_alpha", 0.1)
+    gan_use_same_t_noise: bool = knob("gan.use_same_t_noise", True)
+    gan_grad_ckpt: bool = knob("gan.grad_ckpt", True)
 
     # Optimizer + scheduler
-    student_lr: float
-    fake_lr: float
-    fake_steps_per_student_step: int
-    fake_warmup_steps: int
-    grad_accum: int
-    weight_decay: float
-    grad_clip: float
-    lr_schedule: str  # cosine | constant
-    ema_window: float  # student EMA span; 0 = off
+    student_lr: float = knob("optim.student_lr", 1e-5)
+    fake_lr: float = knob("optim.fake_lr", 1e-5)
+    fake_steps_per_student_step: int = knob(
+        "optim.fake_steps_per_student_step",
+        1,
+        "Fake updates per student step, each on fresh (τ, ε).",
+    )
+    fake_warmup_steps: int = knob(
+        "optim.fake_warmup_steps",
+        0,
+        "Fake-only head-start updates before the main loop. Without it the "
+        "warm-start fake is miscalibrated when the student reaches full LR "
+        "(grad_signal_rms spike near step 50).",
+    )
+    grad_accum: int = knob(
+        "optim.grad_accum",
+        1,
+        "Loop iterations per student optimizer step; each iteration's gradient is "
+        "clipped on its own and their mean applied. The fake and disc update every "
+        "iteration; iterations, save_every, the GAN delay and the logs count "
+        "iterations.",
+    )
+    weight_decay: float = knob("optim.weight_decay", 0.0)
+    grad_clip: float = knob("optim.grad_clip", 1.0)
+    lr_schedule: str = knob(
+        "optim.lr_schedule",
+        "cosine",
+        "Shape after the 2%% linear warmup, for student, fake and disc: cosine to "
+        "0.1·lr, or constant.",
+        choices=("cosine", "constant"),
+    )
+    ema_window: float = knob(
+        "ema.window",
+        0.0,
+        "Student EMA span as a fraction of the run (0 off); saves a "
+        "*_ema.safetensors beside each checkpoint.",
+    )
 
-    # Sampling distribution
-    t_distribution: str
-    sigmoid_scale: float
+    # Fake / disc τ distribution
+    t_distribution: str = knob(
+        "sampling.t_distribution", "uniform", choices=("uniform", "sigmoid")
+    )
+    sigmoid_scale: float = knob("sampling.sigmoid_scale", 1.0)
 
     # Runtime
-    blocks_to_swap: int
-    grad_ckpt: bool
-    torch_compile: bool
-    compile_dynamic_seq: bool
-    target_res: list[int] | None  # None → from the cached pool
-    dynamo_recompile_limit: int  # per block _forward
-    activation_memory_budget: float
-    int8: str = "off"  # off | fwd | full | stream
-    int8_file: str | None = None
-    dit_nonquant_path: str | None = None
-    stream: str = "fp32"  # bf16 | fp32
+    blocks_to_swap: int = knob(None, 0)
+    grad_ckpt: bool = knob(None, False)
+    torch_compile: bool = knob(None, True, "Compile the DiT blocks.")
+    compile_dynamic_seq: bool = knob(
+        "compile_dynamic_seq",
+        True,
+        "One block graph with a dynamic sequence axis instead of one per token count.",
+    )
+    target_res: list[int] | None = knob(
+        "target_res",
+        None,
+        "Tier edges that size the dynamic-seq bound and the dynamo budget; unset, "
+        "they come from the token counts in the cached pool.",
+    )
+    dynamo_recompile_limit: int = knob("dynamo_recompile_limit", 64)
+    activation_memory_budget: float = knob(
+        "activation_memory_budget",
+        1.0,
+        "Compile partitioner saved-activation fraction (<1 recomputes in backward). "
+        "Ignored under --grad_ckpt.",
+    )
+    int8: str = knob(
+        "int8",
+        "off",
+        "Frozen DiT linears as int8 GEMMs, teacher included "
+        "(docs/anima/optimizations/int8.md).",
+        choices=("off", "fwd", "full", "stream"),
+    )
+    int8_file: str | None = knob(
+        "int8_file",
+        None,
+        "GPTQ forward copies; unset: <dit>_int8_gptq.safetensors beside the DiT, "
+        "else round to nearest; 'rtn' forces round to nearest.",
+    )
+    stream: str = knob(
+        "stream",
+        "fp32",
+        "Residual stream precision, teacher included "
+        "(docs/anima/optimizations/fp32_stream.md).",
+        choices=("bf16", "fp32"),
+    )
+
+    @property
+    def gan_on(self) -> bool:
+        return self.gan_loss_weight_gen > 0.0
+
+    @property
+    def cdm_on(self) -> bool:
+        return self.cdm_weight > 0.0
+
+
+_FIELDS = {f.name: f for f in dataclasses.fields(TurboConfig)}
+
+
+def _scalar_type(f: dataclasses.Field) -> type:
+    base = str(f.type).split("|")[0].strip()
+    return {"int": int, "float": float, "bool": bool, "list[int]": int}.get(base, str)
+
+
+def build_argparser() -> argparse.ArgumentParser:
+    """``--config`` plus one flag per field; an absent flag reads None (→ TOML)."""
+    parser = argparse.ArgumentParser(
+        description="Turbo Anima — DP-DMD distillation (CLI flags override the TOML)."
+    )
+    parser.add_argument("--config", type=str, default=DEFAULT_CONFIG)
+    for name, f in _FIELDS.items():
+        kind = _scalar_type(f)
+        kw: dict[str, Any] = {"default": None, "help": f.metadata["help"]}
+        if kind is bool:
+            kw["action"] = argparse.BooleanOptionalAction
+        else:
+            kw["type"] = kind
+            kw["choices"] = f.metadata["choices"]
+            if str(f.type).startswith("list"):
+                kw["nargs"] = "+"
+        parser.add_argument(f"--{name}", **kw)
+    # Older spellings of two negations.
+    for name in ("grad_ckpt", "detach_after_first"):
+        parser.add_argument(
+            f"--no_{name}", dest=name, action="store_false", default=None
+        )
+    return parser
 
 
 # Keys of removed features (2026-11-05) → the only value the loop still runs. A
@@ -550,457 +442,228 @@ _REMOVED_KEYS = {
 }
 
 
-def _refuse_removed_keys(cfg: dict) -> None:
+def _coerce(f: dataclasses.Field, value: Any) -> Any:
+    if value is None:
+        return None
+    if str(f.type).startswith("list"):
+        return [int(v) for v in value]
+    return _scalar_type(f)(value)
+
+
+def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
+    """CLI → TOML → field default, then derived defaults and validation."""
     for key, allowed in _REMOVED_KEYS.items():
-        value = _flatten(cfg, key, allowed)
+        value = toml_get(cfg, key, allowed)
         if value != allowed:
             raise ValueError(
                 f"{key} = {value!r}: this feature was removed from the turbo loop "
                 f"(only {allowed!r} runs). Drop the key."
             )
 
+    values: dict[str, Any] = {}
+    for name, f in _FIELDS.items():
+        cli = getattr(args, name, None)
+        if cli is not None:
+            value = cli
+        elif f.metadata["toml"] is not None:
+            value = toml_get(cfg, f.metadata["toml"], f.default)
+        else:
+            value = f.default
+        values[name] = _coerce(f, value)
 
-def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
-    """Apply CLI/TOML/default precedence and run sanity checks."""
-    _refuse_removed_keys(cfg)
-
-    # Paths
-    dit_path = _pick(
-        args.dit_path,
-        cfg,
-        "dit_path",
-        "models/diffusion_models/anima-base-v1.0.safetensors",
-    )
-    data_dir = _pick(args.data_dir, cfg, "data_dir", "post_image_dataset/lora")
-    output_dir = _pick(args.output_dir, cfg, "output_dir", "output/ckpt")
-    output_name = _pick(args.output_name, cfg, "output_name", "anima_turbo")
-    log_dir = _pick(args.log_dir, cfg, "io.log_dir", "output/logs/turbo")
-    save_every = int(_pick(args.save_every, cfg, "io.save_every", 1000))
-    # CLI only: a resume belongs to the launch, not the method config.
-    resume = str(getattr(args, "resume", "") or "")
-    log_interval = int(_pick(args.log_interval, cfg, "io.log_interval", 2))
-    validate_every_n_steps = int(
-        _pick(args.validate_every_n_steps, cfg, "io.validate_every_n_steps", 0)
-    )
-    val_diversity_seeds = int(
-        _pick(args.val_diversity_seeds, cfg, "io.val_diversity_seeds", 8)
-    )
-    val_prompt_idx = int(_pick(args.val_prompt_idx, cfg, "io.val_prompt_idx", -1))
-
-    # Run shape
-    iterations = int(_pick(args.iterations, cfg, "iterations", 20000))
-    batch_size = int(_pick(args.batch_size, cfg, "batch_size", 1))
-    seed = int(_pick(args.seed, cfg, "seed", 42))
-
-    # LoRA stacks
-    student_rank = int(_pick(args.student_rank, cfg, "network.student_rank", 48))
-    fake_rank = int(_pick(args.fake_rank, cfg, "network.fake_rank", 48))
-    student_alpha = float(_flatten(cfg, "network.student_alpha", student_rank))
-    fake_alpha = float(_flatten(cfg, "network.fake_alpha", fake_rank))
-    student_down_init = str(_flatten(cfg, "network.student_down_init", "kaiming"))
-    fake_down_init = str(_flatten(cfg, "network.fake_down_init", "kaiming"))
-    for name, down_init in (("student", student_down_init), ("fake", fake_down_init)):
-        if down_init not in ("kaiming", "weight_svd"):
-            raise ValueError(
-                f"network.{name}_down_init={down_init!r}: "
-                "expected 'kaiming' or 'weight_svd'."
-            )
-    attn_mode = _pick(args.attn_mode, cfg, "network.attn_mode", "flash")
-    channel_scaling_alpha = float(
-        _pick(args.channel_scaling_alpha, cfg, "channel_scaling_alpha", 0.0)
-    )
-
-    # DMD core
-    student_steps = int(_pick(args.student_steps, cfg, "dmd.student_steps", 4))
-    teacher_cfg = float(_flatten(cfg, "dmd.teacher_cfg", 4.0))
-    dm_x0_norm = bool(_pick(args.dm_x0_norm, cfg, "dmd.dm_x0_norm", False))
-    norm_floor = float(_pick(args.norm_floor, cfg, "dmd.norm_floor", 0.05))
-    dm_draws = int(_pick(args.dm_draws, cfg, "dmd.dm_draws", 1))
-    if dm_draws < 1:
-        raise ValueError(f"dmd.dm_draws={dm_draws}: must be >= 1")
-    dm_tau_distribution = str(
-        _pick(args.dm_tau_distribution, cfg, "dmd.dm_tau_distribution", "uniform")
-    )
-    if dm_tau_distribution not in ("uniform", "logit_normal"):
-        raise ValueError(
-            f"dmd.dm_tau_distribution={dm_tau_distribution!r}: uniform | logit_normal"
-        )
-    dm_tau_scale = float(_pick(args.dm_tau_scale, cfg, "dmd.dm_tau_scale", 1.0))
-    if dm_tau_scale <= 0.0:
-        raise ValueError(f"dmd.dm_tau_scale={dm_tau_scale}: must be > 0")
-    dynamic_schedule = bool(_flatten(cfg, "dmd.dynamic_schedule", False))
-
-    cdm_weight = float(_pick(args.cdm_weight, cfg, "cdm.weight", 0.0))
-    cdm_grad_ckpt = bool(
-        _flatten(cfg, "cdm.grad_ckpt", True)
-        if args.cdm_grad_ckpt is None
-        else args.cdm_grad_ckpt
-    )
-    cdm_teacher = str(
-        _flatten(cfg, "cdm.teacher", "cfg")
-        if args.cdm_teacher is None
-        else args.cdm_teacher
-    )
-    if cdm_teacher not in ("cfg", "cond"):
-        raise ValueError(f"cdm.teacher={cdm_teacher!r}: must be 'cfg' or 'cond'")
-
-    mfd_dtau = float(_pick(args.mfd_dtau, cfg, "mfd.dtau", 0.0))
-    mfd_max_steps = int(_pick(args.mfd_max_steps, cfg, "mfd.max_steps", 4))
-    mfd_interval = str(_pick(args.mfd_interval, cfg, "mfd.interval", "to_zero"))
-
-    # feature_block_idx's sentinel is -2 because -1 means the middle block.
-    gan_loss_weight_gen = float(
-        _pick(args.gan_loss_weight_gen, cfg, "gan.weight_gen", 0.0)
-    )
-    if args.gan_feature_block_idx != -2:
-        gan_feature_block_idx = int(args.gan_feature_block_idx)
-    else:
-        gan_feature_block_idx = int(_flatten(cfg, "gan.feature_block_idx", -1))
-    gan_disc_lr = float(_pick(args.gan_disc_lr, cfg, "gan.disc_lr", 1e-5))
-    gan_disc_hidden = int(_flatten(cfg, "gan.disc_hidden", 0))
-    gan_disc_head = str(_pick(args.gan_disc_head, cfg, "gan.disc_head", "pooled"))
-    gan_delay_steps = int(_pick(args.gan_delay_steps, cfg, "gan.delay_steps", 0))
-    gan_warmup_steps = int(_pick(args.gan_warmup_steps, cfg, "gan.warmup_steps", 0))
-    gan_r1_weight = float(_pick(args.gan_r1_weight, cfg, "gan.r1_weight", 0.0))
-    gan_r1_alpha = float(_flatten(cfg, "gan.r1_alpha", 0.1))
-    gan_use_same_t_noise = bool(_flatten(cfg, "gan.use_same_t_noise", True))
-    gan_grad_ckpt = bool(_flatten(cfg, "gan.grad_ckpt", True))
-    student_init_weights = str(_flatten(cfg, "network.student_init_weights", ""))
-    fake_init_weights = str(_flatten(cfg, "network.fake_init_weights", ""))
-    train_adaln = bool(_flatten(cfg, "network.train_adaln", False))
-    fake_adaln = bool(_flatten(cfg, "network.fake_adaln", train_adaln))
-    adaln_rank = int(_flatten(cfg, "network.adaln_rank", 0))
-    if adaln_rank > 0 and not train_adaln:
-        raise SystemExit("network.adaln_rank > 0 requires network.train_adaln = true")
-    adaln_alpha = float(_flatten(cfg, "network.adaln_alpha", 0.0))
-    if adaln_alpha > 0 and not train_adaln:
-        raise SystemExit("network.adaln_alpha > 0 requires network.train_adaln = true")
-    fake_transition = bool(_flatten(cfg, "network.fake_transition", False))
-    for name, path, down_init in (
-        ("student", student_init_weights, student_down_init),
-        ("fake", fake_init_weights, fake_down_init),
-    ):
-        if path and down_init != "kaiming":
-            raise ValueError(
-                f"network.{name}_init_weights is incompatible with "
-                f"{name}_down_init='weight_svd' — the warm start overwrites what "
-                "it seeds."
-            )
-        if path and not os.path.exists(path):
-            raise ValueError(f"network.{name}_init_weights: {path!r} not found.")
-
-    k_anchor = int(_pick(args.k_anchor, cfg, "dpdmd.k_anchor", 5))
-    teacher_anchor_steps = int(
-        _pick(args.teacher_anchor_steps, cfg, "dpdmd.teacher_anchor_steps", 28)
-    )
-    div_weight = float(_pick(args.div_weight, cfg, "dpdmd.div_weight", 5e-2))
-    if args.detach_after_first is None:
-        detach_after_first = bool(_flatten(cfg, "dpdmd.detach_after_first", True))
-    else:
-        detach_after_first = bool(args.detach_after_first)
-    dm_first_step = bool(_pick(args.dm_first_step, cfg, "dpdmd.dm_first_step", False))
-    rollout_grad = bool(_pick(args.rollout_grad, cfg, "dpdmd.rollout_grad", False))
-    anchor_only = bool(_pick(args.anchor_only, cfg, "dpdmd.anchor_only", False))
-    anchor_draws = int(_pick(args.anchor_draws, cfg, "dpdmd.anchor_draws", 1))
-    anchor_cache = str(_pick(args.anchor_cache, cfg, "dpdmd.anchor_cache", "") or "")
-    flow_shift = float(_pick(args.flow_shift, cfg, "sampling.flow_shift", 3.0))
-
-    # Optimizer
-    student_lr = float(_pick(args.student_lr, cfg, "optim.student_lr", 1e-5))
-    fake_lr = float(_pick(args.fake_lr, cfg, "optim.fake_lr", 1e-5))
-    fake_steps_per_student_step = int(
-        _pick(
-            args.fake_steps_per_student_step,
-            cfg,
-            "optim.fake_steps_per_student_step",
-            1,
-        )
-    )
-    fake_warmup_steps = int(
-        _pick(args.fake_warmup_steps, cfg, "optim.fake_warmup_steps", 0)
-    )
-    grad_accum = int(_pick(args.grad_accum, cfg, "optim.grad_accum", 1))
-    if grad_accum < 1:
-        raise ValueError(f"optim.grad_accum={grad_accum}: must be >= 1")
-    weight_decay = float(_flatten(cfg, "optim.weight_decay", 0.0))
-    grad_clip = float(_flatten(cfg, "optim.grad_clip", 1.0))
-    lr_schedule = str(_pick(args.lr_schedule, cfg, "optim.lr_schedule", "cosine"))
-    if lr_schedule not in ("cosine", "constant"):
-        raise ValueError(
-            f"optim.lr_schedule={lr_schedule!r}: expected cosine or constant"
-        )
-    ema_window = float(_pick(args.ema_window, cfg, "ema.window", 0.0))
-    if not 0.0 <= ema_window <= 1.0:
-        raise ValueError(f"ema.window={ema_window}: must be in [0, 1]")
-
-    # Sampling
-    t_distribution = _flatten(cfg, "sampling.t_distribution", "uniform")
-    sigmoid_scale = float(_flatten(cfg, "sampling.sigmoid_scale", 1.0))
-
-    if student_steps < 2:
-        raise ValueError(
-            f"dmd.student_steps must be >= 2 (got {student_steps}): the rollout "
-            "grids and the grad-step draw assume a refinement step after step 0."
-        )
-    if not (1 <= k_anchor < teacher_anchor_steps):
-        raise ValueError(
-            f"dpdmd.k_anchor={k_anchor} must satisfy 1 <= k_anchor < "
-            f"teacher_anchor_steps={teacher_anchor_steps}."
-        )
-    if div_weight < 0.0:
-        raise ValueError(f"dpdmd.div_weight={div_weight}: must be >= 0")
-    if anchor_draws < 1:
-        raise ValueError(f"dpdmd.anchor_draws={anchor_draws}: must be >= 1")
-    if anchor_draws > 1 and not anchor_only:
-        raise ValueError(
-            "dpdmd.anchor_draws > 1 is built for dpdmd.anchor_only only (S-c.2)."
-        )
-    if anchor_cache and (not anchor_only or anchor_draws > 1):
-        raise ValueError(
-            "dpdmd.anchor_cache is built for dpdmd.anchor_only with anchor_draws 1 "
-            "(the cache's own draws replace them)."
-        )
-    if anchor_only:
-        if div_weight == 0.0 or rollout_grad or dm_first_step:
-            raise ValueError(
-                "dpdmd.anchor_only needs div_weight > 0 (the anchor is computed only "
-                "then; its value is not used) and rollout_grad / dm_first_step off."
-            )
-        if fake_warmup_steps:
-            logger.info(
-                f"dpdmd.anchor_only: fake_warmup_steps {fake_warmup_steps} → 0 "
-                "(the fake is never queried)."
-            )
-            fake_warmup_steps = 0
-    if rollout_grad and (student_steps != 2 or dynamic_schedule or dm_first_step):
-        raise ValueError(
-            "dpdmd.rollout_grad needs dmd.student_steps = 2, dynamic_schedule off "
-            f"and dm_first_step off (got N={student_steps}, dynamic_schedule="
-            f"{dynamic_schedule}, dm_first_step={dm_first_step})."
-        )
-    if gan_loss_weight_gen < 0.0:
-        raise ValueError(f"gan.weight_gen={gan_loss_weight_gen}: must be >= 0")
-    int8 = str(_pick(args.int8, cfg, "int8", "off"))
-    stream = str(_pick(args.stream, cfg, "stream", "fp32"))
-    if mfd_dtau < 0.0:
-        raise ValueError(f"mfd.dtau={mfd_dtau}: must be >= 0")
-    if mfd_interval not in ("to_zero", "uniform"):
-        raise ValueError(f"mfd.interval={mfd_interval!r}: to_zero | uniform")
-    if mfd_dtau > 0.0:
+    if values["student_alpha"] is None:
+        values["student_alpha"] = float(values["student_rank"])
+    if values["fake_alpha"] is None:
+        values["fake_alpha"] = float(values["fake_rank"])
+    if values["fake_adaln"] is None:
+        values["fake_adaln"] = values["train_adaln"]
+    if values["anchor_only"] and values["fake_warmup_steps"]:
         logger.info(
-            f"MFD ON in the DM slot: dtau={mfd_dtau}, max_steps={mfd_max_steps}, "
-            f"interval={mfd_interval}; L_CDM keeps the point delta."
+            f"dpdmd.anchor_only: fake_warmup_steps {values['fake_warmup_steps']} → 0 "
+            "(the fake is never queried)."
         )
-    if cdm_weight < 0.0:
-        raise ValueError(f"cdm.weight={cdm_weight}: must be >= 0")
+        values["fake_warmup_steps"] = 0
+
+    c = TurboConfig(**values)
+    _validate(c)
+    _log_summary(c)
+    return c
+
+
+def _require(ok: bool, msg: str) -> None:
+    if not ok:
+        raise ValueError(msg)
+
+
+def _validate(c: TurboConfig) -> None:
+    for name, f in _FIELDS.items():
+        choices = f.metadata["choices"]
+        value = getattr(c, name)
+        _require(
+            choices is None or value in choices,
+            f"{f.metadata['toml'] or name}={value!r}: expected one of {choices}",
+        )
+
+    for name in ("student", "fake"):
+        path = getattr(c, f"{name}_init_weights")
+        _require(
+            not path or getattr(c, f"{name}_down_init") == "kaiming",
+            f"network.{name}_init_weights is incompatible with {name}_down_init="
+            "'weight_svd': the warm start overwrites what it seeds.",
+        )
+        _require(
+            not path or os.path.exists(path),
+            f"network.{name}_init_weights: {path!r} not found.",
+        )
+    _require(
+        c.adaln_rank >= 0 and c.adaln_alpha >= 0,
+        "network.adaln_rank / adaln_alpha must be >= 0",
+    )
+    _require(
+        c.train_adaln or (c.adaln_rank == 0 and c.adaln_alpha == 0),
+        "network.adaln_rank / adaln_alpha > 0 require network.train_adaln = true",
+    )
+
+    _require(
+        c.student_steps >= 2,
+        f"dmd.student_steps must be >= 2 (got {c.student_steps}): the rollout grids "
+        "and the grad-step draw assume a refinement step after step 0.",
+    )
+    _require(
+        1 <= c.k_anchor < c.teacher_anchor_steps,
+        f"dpdmd.k_anchor={c.k_anchor} must satisfy 1 <= k_anchor < "
+        f"teacher_anchor_steps={c.teacher_anchor_steps}.",
+    )
+    _require(c.div_weight >= 0.0, f"dpdmd.div_weight={c.div_weight}: must be >= 0")
+    _require(c.anchor_draws >= 1, f"dpdmd.anchor_draws={c.anchor_draws}: must be >= 1")
+    _require(
+        c.anchor_draws == 1 or c.anchor_only,
+        "dpdmd.anchor_draws > 1 is built for dpdmd.anchor_only only (S-c.2).",
+    )
+    _require(
+        not c.anchor_cache or (c.anchor_only and c.anchor_draws == 1),
+        "dpdmd.anchor_cache is built for dpdmd.anchor_only with anchor_draws 1 "
+        "(the cache's own draws replace them).",
+    )
+    _require(
+        not c.anchor_only
+        or (c.div_weight > 0.0 and not c.rollout_grad and not c.dm_first_step),
+        "dpdmd.anchor_only needs div_weight > 0 (the anchor is computed only then; "
+        "its value is not used) and rollout_grad / dm_first_step off.",
+    )
+    _require(
+        not c.rollout_grad
+        or (c.student_steps == 2 and not c.dynamic_schedule and not c.dm_first_step),
+        "dpdmd.rollout_grad needs dmd.student_steps = 2, dynamic_schedule off and "
+        f"dm_first_step off (got N={c.student_steps}, dynamic_schedule="
+        f"{c.dynamic_schedule}, dm_first_step={c.dm_first_step}).",
+    )
+    _require(c.flow_shift > 0.0, f"sampling.flow_shift={c.flow_shift}: must be > 0")
+
+    _require(c.dm_draws >= 1, f"dmd.dm_draws={c.dm_draws}: must be >= 1")
+    _require(c.dm_tau_scale > 0.0, f"dmd.dm_tau_scale={c.dm_tau_scale}: must be > 0")
+    _require(
+        c.norm_floor > 0.0, f"dmd.norm_floor={c.norm_floor}: must be > 0 (latent scale)"
+    )
+    _require(c.mfd_dtau >= 0.0, f"mfd.dtau={c.mfd_dtau}: must be >= 0")
+    _require(c.cdm_weight >= 0.0, f"cdm.weight={c.cdm_weight}: must be >= 0")
+    _require(
+        c.gan_loss_weight_gen >= 0.0,
+        f"gan.weight_gen={c.gan_loss_weight_gen}: must be >= 0",
+    )
+    _require(c.gan_r1_weight >= 0.0, f"gan.r1_weight={c.gan_r1_weight}: must be >= 0")
+    _require(
+        c.gan_delay_steps >= 0 and c.gan_warmup_steps >= 0,
+        f"gan.delay_steps={c.gan_delay_steps} / gan.warmup_steps="
+        f"{c.gan_warmup_steps}: must be >= 0",
+    )
     # --grad_ckpt checkpoints the rollout's student forwards, which recompute at
     # the final backward under whatever view is current then. CDM and the GAN
     # flip the view to teacher / fake before that backward, so the recomputed
     # blocks drop the student LoRA and the gradient is silently wrong.
-    if bool(args.grad_ckpt):
-        for on, name in (
-            (cdm_weight > 0.0, "cdm.weight > 0"),
-            (gan_loss_weight_gen > 0.0, "gan.weight_gen > 0"),
-        ):
-            if on:
-                raise ValueError(
-                    f"--grad_ckpt with {name}: the rollout's checkpointed student "
-                    "forwards recompute under the teacher/fake view this branch "
-                    "leaves set, dropping the student LoRA from the gradient. "
-                    "Turn one off."
-                )
-    if cdm_weight > 0.0:
+    for on, name in ((c.cdm_on, "cdm.weight > 0"), (c.gan_on, "gan.weight_gen > 0")):
+        _require(
+            not (c.grad_ckpt and on),
+            f"--grad_ckpt with {name}: the rollout's checkpointed student forwards "
+            "recompute under the teacher/fake view this branch leaves set, dropping "
+            "the student LoRA from the gradient. Turn one off.",
+        )
+
+    _require(c.grad_accum >= 1, f"optim.grad_accum={c.grad_accum}: must be >= 1")
+    _require(
+        c.fake_steps_per_student_step >= 1,
+        f"optim.fake_steps_per_student_step={c.fake_steps_per_student_step}: "
+        "must be >= 1",
+    )
+    _require(
+        0.0 <= c.ema_window <= 1.0, f"ema.window={c.ema_window}: must be in [0, 1]"
+    )
+    _require(
+        c.single_prompt_idx is None or c.batch_size == 1,
+        f"--single_prompt_idx requires batch_size=1 (got {c.batch_size}): a "
+        "one-sample dataset with drop_last yields zero batches.",
+    )
+
+
+def _log_summary(c: TurboConfig) -> None:
+    if c.mfd_dtau > 0.0:
         logger.info(
-            f"L_CDM ON: weight={cdm_weight}, teacher={cdm_teacher}; +1 student grad forward, "
-            "+2 teacher and +1 fake no-grad forwards per step."
+            f"MFD ON in the DM slot: dtau={c.mfd_dtau}, max_steps={c.mfd_max_steps}, "
+            f"interval={c.mfd_interval}; L_CDM keeps the point delta."
         )
-    if gan_r1_weight < 0.0:
-        raise ValueError(f"gan.r1_weight={gan_r1_weight}: must be >= 0")
-    if gan_disc_head not in ("pooled", "token"):
-        raise ValueError(
-            f"gan.disc_head={gan_disc_head!r}: expected 'pooled' or 'token'"
-        )
-    if gan_delay_steps < 0 or gan_warmup_steps < 0:
-        raise ValueError(
-            f"gan.delay_steps={gan_delay_steps} / gan.warmup_steps="
-            f"{gan_warmup_steps}: must be >= 0"
-        )
-    if gan_loss_weight_gen > 0.0:
+    if c.cdm_on:
         logger.info(
-            f"GAN ON: "
-            f"weight_gen={gan_loss_weight_gen}, feature_block_idx="
-            f"{gan_feature_block_idx} (-1 = middle), disc_head={gan_disc_head}, "
-            f"disc_lr={gan_disc_lr}, r1_weight={gan_r1_weight}, "
-            f"use_same_t_noise={gan_use_same_t_noise}, "
-            f"delay_steps={gan_delay_steps}, warmup_steps={gan_warmup_steps}."
+            f"L_CDM ON: weight={c.cdm_weight}, teacher={c.cdm_teacher}; +1 student "
+            "grad forward, +2 teacher and +1 fake no-grad forwards per step."
         )
-    if flow_shift <= 0.0:
-        raise ValueError(f"sampling.flow_shift={flow_shift}: must be > 0")
-    if not detach_after_first:
+    if c.gan_on:
+        logger.info(
+            f"GAN ON: weight_gen={c.gan_loss_weight_gen}, feature_block_idx="
+            f"{c.gan_feature_block_idx} (-1 = middle), disc_head={c.gan_disc_head}, "
+            f"disc_lr={c.gan_disc_lr}, r1_weight={c.gan_r1_weight}, "
+            f"use_same_t_noise={c.gan_use_same_t_noise}, "
+            f"delay_steps={c.gan_delay_steps}, warmup_steps={c.gan_warmup_steps}."
+        )
+    if not c.detach_after_first:
         logger.warning(
             "detach_after_first=False: the mode-seeking DMD gradient can override "
-            "the diversity mapping (their Fig 5). A/B only — keep True for "
-            "production."
+            "the diversity mapping (their Fig 5). A/B only."
         )
-    if t_distribution not in ("uniform", "sigmoid"):
-        raise ValueError(
-            f"sampling.t_distribution={t_distribution!r}: expected 'uniform' or 'sigmoid'"
-        )
-    if fake_rank < student_rank:
+    if c.fake_rank < c.student_rank:
         logger.warning(
-            f"fake_rank={fake_rank} < student_rank={student_rank}: the fake has "
+            f"fake_rank={c.fake_rank} < student_rank={c.student_rank}: the fake has "
             "less capacity than the student it tracks."
         )
-    if norm_floor <= 0.0:
-        raise ValueError(f"dmd.norm_floor={norm_floor}: must be > 0 (latent scale)")
-    if fake_steps_per_student_step < 1:
-        raise ValueError(
-            f"optim.fake_steps_per_student_step={fake_steps_per_student_step}: must be ≥ 1"
-        )
-    if args.single_prompt_idx is not None and batch_size != 1:
-        raise ValueError(
-            f"--single_prompt_idx requires batch_size=1 (got {batch_size}): a "
-            "one-sample dataset with drop_last yields zero batches."
-        )
-    logger.info(
-        "DM gradient policy: "
-        + (
-            f"(b) x0-norm, norm_floor={norm_floor} — τ cancels, ≈ magnitude-normalized"
-            if dm_x0_norm
-            else "(a) τ-damping [default]"
-        )
-    )
-    if div_weight == 0.0 and not dm_first_step:
+    if c.div_weight == 0.0 and not c.dm_first_step:
         logger.warning(
             "dpdmd.div_weight=0 without dm_first_step: step 0 gets no loss and "
             "stays at its init."
         )
     logger.info(
+        "DM gradient policy: "
+        + (
+            f"x0-norm, norm_floor={c.norm_floor} (τ cancels)"
+            if c.dm_x0_norm
+            else "τ-damping"
+        )
+    )
+    logger.info(
         (
-            "DP-DMD: first-step diversity anchor "
-            f"k_anchor={k_anchor}/{teacher_anchor_steps} teacher steps, "
-            f"div_weight={div_weight}, detach_after_first={detach_after_first}, "
-            if div_weight > 0.0
+            f"DP-DMD: first-step diversity anchor k_anchor={c.k_anchor}/"
+            f"{c.teacher_anchor_steps} teacher steps, div_weight={c.div_weight}, "
+            f"detach_after_first={c.detach_after_first}, "
+            if c.div_weight > 0.0
             else "teacher anchor OFF (div_weight=0), "
         )
-        + f"grad step g ~ U{{{0 if dm_first_step else 1}..N-1}}, "
-        + ("rollout_grad (step 0 in the DM graph), " if rollout_grad else "")
-        + f"student N={student_steps} @ flow_shift={flow_shift}, "
-        f"teacher_cfg={teacher_cfg}."
-    )
-    return TurboConfig(
-        dit_path=dit_path,
-        data_dir=data_dir,
-        output_dir=output_dir,
-        output_name=output_name,
-        log_dir=log_dir,
-        resume=resume,
-        save_every=save_every,
-        log_interval=log_interval,
-        no_log=bool(args.no_log),
-        validate_every_n_steps=validate_every_n_steps,
-        val_diversity_seeds=val_diversity_seeds,
-        val_prompt_idx=val_prompt_idx,
-        iterations=iterations,
-        batch_size=batch_size,
-        seed=seed,
-        sample_ratio=float(args.sample_ratio),
-        single_prompt_idx=args.single_prompt_idx,
-        student_rank=student_rank,
-        fake_rank=fake_rank,
-        student_alpha=student_alpha,
-        fake_alpha=fake_alpha,
-        attn_mode=attn_mode,
-        channel_scaling_alpha=channel_scaling_alpha,
-        student_down_init=student_down_init,
-        fake_down_init=fake_down_init,
-        student_init_weights=student_init_weights,
-        fake_init_weights=fake_init_weights,
-        train_adaln=train_adaln,
-        fake_adaln=fake_adaln,
-        adaln_rank=adaln_rank,
-        adaln_alpha=adaln_alpha,
-        fake_transition=fake_transition,
-        k_anchor=k_anchor,
-        teacher_anchor_steps=teacher_anchor_steps,
-        div_weight=div_weight,
-        detach_after_first=detach_after_first,
-        dm_first_step=dm_first_step,
-        rollout_grad=rollout_grad,
-        anchor_only=anchor_only,
-        anchor_draws=anchor_draws,
-        anchor_cache=anchor_cache,
-        flow_shift=flow_shift,
-        student_steps=student_steps,
-        teacher_cfg=teacher_cfg,
-        dm_x0_norm=dm_x0_norm,
-        norm_floor=norm_floor,
-        dm_draws=dm_draws,
-        dm_tau_distribution=dm_tau_distribution,
-        dm_tau_scale=dm_tau_scale,
-        dynamic_schedule=dynamic_schedule,
-        cdm_weight=cdm_weight,
-        cdm_grad_ckpt=cdm_grad_ckpt,
-        cdm_teacher=cdm_teacher,
-        mfd_dtau=mfd_dtau,
-        mfd_max_steps=mfd_max_steps,
-        mfd_interval=mfd_interval,
-        gan_loss_weight_gen=gan_loss_weight_gen,
-        gan_feature_block_idx=gan_feature_block_idx,
-        gan_disc_lr=gan_disc_lr,
-        gan_disc_hidden=gan_disc_hidden,
-        gan_disc_head=gan_disc_head,
-        gan_delay_steps=gan_delay_steps,
-        gan_warmup_steps=gan_warmup_steps,
-        gan_r1_weight=gan_r1_weight,
-        gan_r1_alpha=gan_r1_alpha,
-        gan_use_same_t_noise=gan_use_same_t_noise,
-        gan_grad_ckpt=gan_grad_ckpt,
-        student_lr=student_lr,
-        fake_lr=fake_lr,
-        fake_steps_per_student_step=fake_steps_per_student_step,
-        fake_warmup_steps=fake_warmup_steps,
-        grad_accum=grad_accum,
-        weight_decay=weight_decay,
-        grad_clip=grad_clip,
-        lr_schedule=lr_schedule,
-        ema_window=ema_window,
-        t_distribution=t_distribution,
-        sigmoid_scale=sigmoid_scale,
-        blocks_to_swap=int(args.blocks_to_swap),
-        grad_ckpt=bool(args.grad_ckpt),
-        torch_compile=bool(args.torch_compile),
-        compile_dynamic_seq=bool(
-            _pick(args.compile_dynamic_seq, cfg, "compile_dynamic_seq", True)
-        ),
-        target_res=(
-            [int(e) for e in args.target_res]
-            if args.target_res is not None
-            else (_flatten(cfg, "target_res", None))
-        ),
-        dynamo_recompile_limit=int(_flatten(cfg, "dynamo_recompile_limit", 64)),
-        activation_memory_budget=float(
-            _pick(args.activation_memory_budget, cfg, "activation_memory_budget", 1.0)
-        ),
-        int8=int8,
-        int8_file=_pick(args.int8_file, cfg, "int8_file", None),
-        dit_nonquant_path=_pick(args.dit_nonquant_path, cfg, "dit_nonquant_path", None),
-        stream=stream,
-        partitioner_recompute_views=bool(
-            _flatten(cfg, "partitioner_recompute_views", False)
-        ),
-        partitioner_aggressive_recomputation=bool(
-            _flatten(cfg, "partitioner_aggressive_recomputation", False)
-        ),
+        + f"grad step g ~ U{{{0 if c.dm_first_step else 1}..N-1}}, "
+        + ("rollout_grad (step 0 in the DM graph), " if c.rollout_grad else "")
+        + f"student N={c.student_steps} @ flow_shift={c.flow_shift}, "
+        f"teacher_cfg={c.teacher_cfg}."
     )
 
 
 def snapshot_toml_text(c: TurboConfig, *, source_config: str | None = None) -> str:
-    """Render every resolved field (CLI overrides folded in) as a TOML snapshot.
-
-    The turbo analogue of the ``<output_name>.snapshot.toml`` that ``train.py``
-    writes for the LoRA family.
-    """
+    """Every resolved field as a TOML snapshot (train.py's ``.snapshot.toml``)."""
     return dataclass_snapshot_toml(
         c,
         title="Anima turbo distillation — resolved config snapshot",
@@ -1008,7 +671,6 @@ def snapshot_toml_text(c: TurboConfig, *, source_config: str | None = None) -> s
     )
 
 
-# TensorBoard config summary: a hand-picked subset of the resolved fields.
 _TB_KEYS = (
     "gan_loss_weight_gen",
     "cdm_weight",
@@ -1046,5 +708,5 @@ _TB_KEYS = (
 
 
 def tb_config_text(c: TurboConfig) -> str:
-    """Formatted TensorBoard config summary (``_TB_KEYS``)."""
+    """TensorBoard config summary over ``_TB_KEYS``."""
     return dataclass_tb_text(c, include=_TB_KEYS)

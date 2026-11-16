@@ -1,36 +1,14 @@
-"""GPU-side accumulators + single-sync flush for the turbo training loop.
+"""GPU-side accumulators for the turbo loop, read in one sync per ``log_interval``.
 
-All accumulators live on-device; they're flushed in one stacked ``.tolist()``
-at every ``log_interval`` so per-step CUDA syncs go to zero.
+Scalars (TB names in :func:`write_scalars`; how to read them:
+``docs/anima/methods/turbo.md`` § Reading the metrics):
 
-Health-scalar semantics:
-
-* ``grad``      — overall DMD gradient magnitude into x_pred
-* ``dm``        — DM regularizer strength (v_real − v_fake)
-* ``xpred``     — x_pred dispersion: → 0 means collapse to mean, drifting upward
-  means student is exploding.
-* ``v_student`` — direct student velocity magnitude; runaway student manifests
-  here before x_pred_std catches up (x_pred = x_t − t·v_student).
-
-Fake-tracking ratios (real DMD health signals — ``loss_student`` is a
-sign-random gradient vehicle, not a real loss):
-
-* ``rel_gap``  — rms(τ·Δ_dm) / rms(τ·v_real_dm): fraction of teacher score the DM
-  gap still represents. ↑ = fake lagging → bump fake.
-* ``mag_ratio`` — rms(v_fake_dm) / rms(v_real_dm): ≈1 healthy; collapse/blow-up bad.
-* ``cos``       — cosine(v_fake_dm, v_real_dm): ↓ = fake pointing the wrong way.
-
-DP-DMD diversity loss:
-
-* ``div`` — the first-step diversity MSE ‖v_first − v_target‖² (pre-weight).
-  Falling = the student's step-1 velocity is converging on the teacher's
-  K-step anchor (the diverse landing point).
-
-Parameter gradients:
-
-* ``gn_student`` / ``gn_fake`` / ``gn_disc`` — total L2 norm of each optimizer's
-  parameter gradient *before* ``grad_clip`` (what ``clip_grad_norm_`` returns).
-  Above ``grad_clip`` = that step was clipped.
+* ``grad`` rms of the DM grad signal into x_pred; ``dm`` rms(v_real − v_fake)
+* ``xpred`` std of x_pred; ``v_student`` rms of the step-0 velocity
+* ``rel_gap`` rms(τ·Δ_dm) / rms(τ·v_real_dm); ``mag_ratio`` rms(v_fake_dm) /
+  rms(v_real_dm); ``cos`` cosine(v_fake_dm, v_real_dm)
+* ``div`` first-step diversity MSE (pre-weight)
+* ``gn_*`` pre-clip gradient norm per optimizer (above ``grad_clip`` = clipped)
 """
 
 from __future__ import annotations
@@ -43,8 +21,7 @@ from tqdm import tqdm
 
 from library.training.accumulator import ScalarAccumulator
 
-# τ-binned critic-loss profile: bin count for the
-# per-τ fake-loss telemetry. 8 uniform bins over τ ∈ [0, 1].
+# Uniform τ bins over [0, 1] for the per-τ fake-loss profile.
 TAU_PROFILE_BINS = 8
 
 
@@ -69,18 +46,12 @@ class FlushedMetrics:
     gn_disc: float
 
 
-# The accumulator key set: adding a logged scalar is one field on FlushedMetrics
-# plus its accumulate call and a write_scalars line.
 _FIELDS: tuple[str, ...] = tuple(f.name for f in fields(FlushedMetrics))
 
 
 class TurboMetrics:
-    """GPU-resident accumulators with a single-sync flush.
-
-    Thin wrapper over :class:`library.training.accumulator.ScalarAccumulator`
-    that keeps the typed :class:`FlushedMetrics` public surface (consumed by
-    :func:`write_scalars` / :func:`tqdm_postfix`). Every field is pre-touched so
-    a disabled path (``div`` without DP-DMD, ``gan_*`` without the GAN) still
+    """:class:`ScalarAccumulator` behind a typed :class:`FlushedMetrics`. Every
+    field is pre-touched, so a disabled path (``gan_*`` without the GAN) still
     flushes a complete record.
     """
 
@@ -143,13 +114,8 @@ class TurboMetrics:
         gan_margin_t: torch.Tensor,
         gan_spread_t: torch.Tensor,
     ) -> None:
-        """Accumulate the GAN generator/discriminator losses (pre-weight) plus
-        the disc-update observables: margin = mean(real) − mean(fake) logit
-        (disc discrimination strength — the hinge means sit at equilibrium even
-        while per-logit structure collapses diversity, so read THIS, not the
-        losses) and spread = std over the fake branch's logits (spatial
-        structure of disc pressure under the token head; 0 for a single-logit
-        pooled head)."""
+        """Accumulate the GAN losses (pre-weight) and the disc margin / spread
+        (see :class:`steps.FakeUpdate`)."""
         self._acc.add("gan_gen", gan_gen_loss.detach().float())
         self._acc.add("gan_disc", gan_disc_mean_t.detach().float())
         self._acc.add("gan_margin", gan_margin_t.detach().float())
@@ -157,12 +123,8 @@ class TurboMetrics:
 
     @torch.no_grad()
     def add_cdm(self, grad_cdm: torch.Tensor) -> None:
-        """Accumulate the L_CDM gradient-signal rms (pre-weight).
-
-        The surrogate loss value itself is a sign-random gradient vehicle (like
-        ``loss_student``), so the health scalar is the rms of the detached
-        off-trajectory delta — directly comparable to ``train/grad_signal_rms``.
-        """
+        """Accumulate the rms of the L_CDM grad signal (pre-weight), comparable to
+        ``train/grad_signal_rms``; the surrogate loss value has a random sign."""
         self._acc.add("cdm", grad_cdm.detach().float().pow(2).mean().sqrt())
 
     def flush(self, log_interval: int) -> FlushedMetrics:
@@ -179,12 +141,10 @@ class TauBinCriticLoss:
 
     Buckets each fake-update loss by its drawn ``tau_fake`` into
     ``TAU_PROFILE_BINS`` uniform bins and logs the per-bin interval mean as
-    ``{prefix}{i}``. GPU-resident like :class:`TurboMetrics` (``index_add_`` is
-    async; one extra small sync per log boundary).
+    ``{prefix}{i}``. GPU-resident; one small sync per log boundary.
 
-    NOT a gate signal: the raw per-τ profile is structurally nonuniform (the FM
-    target ``ε − x0`` is intrinsically harder at some τ regardless of critic
-    capacity).
+    Not a gate signal: the FM target ``ε − x0`` is harder at some τ regardless of
+    critic capacity, so the raw profile is nonuniform.
 
     The loop's fake loss is a batch-mean scalar, so at B>1 it is attributed to
     every sample's τ bin (exact at the shipped ``batch_size=1``).
@@ -219,11 +179,8 @@ class TauBinCriticLoss:
         return sums, cnts
 
     def write(self, writer, step: int) -> None:
-        """Flush and push per-bin means to TensorBoard; empty bins are skipped.
-
-        Always flushes (accumulators reset) even when ``writer`` is None, so
-        call it unconditionally at every log boundary.
-        """
+        """Flush and push per-bin means to TensorBoard (empty bins skipped). Resets
+        even when ``writer`` is None, so call it at every log boundary."""
         sums, cnts = self.flush()
         if writer is None:
             return
@@ -267,7 +224,9 @@ class StepGradLog:
                 [
                     gn_student.detach().float().to(self.device),
                     gn_fake.detach().float().to(self.device),
-                    nan if gn_disc is None else gn_disc.detach().float().to(self.device),
+                    nan
+                    if gn_disc is None
+                    else gn_disc.detach().float().to(self.device),
                     sigma_a.detach().float().mean().to(self.device),
                 ]
             )
@@ -318,11 +277,7 @@ def write_scalars(writer, m: FlushedMetrics, step: int) -> None:
 
 
 def tqdm_rate(bar: tqdm) -> float | None:
-    """Steps/sec off a tqdm bar: its EMA rate, or the run average as a fallback.
-
-    ``format_dict['rate']`` is ``None`` until the bar has recorded an EMA
-    interval, so the fallback is steps done / elapsed.
-    """
+    """Steps/sec off a tqdm bar: its EMA rate, else steps done / elapsed."""
     fd = bar.format_dict
     rate = fd.get("rate")
     if rate:
@@ -335,12 +290,8 @@ def tqdm_rate(bar: tqdm) -> float | None:
 def console_step_line(
     m: FlushedMetrics, *, step: int, total: int, rate: float | None
 ) -> str:
-    """Greppable one-line step summary for redirected / headless logs.
-
-    Same numbers as :func:`tqdm_postfix`, but as a plain line: tqdm repaints a
-    single ``\\r`` line on stderr, which leaves a redirected log with no
-    periodic step record between the (500/1000-step) ckpt and val lines.
-    """
+    """Greppable one-line step summary (the :func:`tqdm_postfix` numbers) for
+    redirected / headless logs."""
     pct = f" ({100.0 * step / total:.1f}%)" if total else ""
     stats = " ".join(f"{k}={v}" for k, v in tqdm_postfix(m).items())
     if rate:

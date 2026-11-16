@@ -27,7 +27,6 @@ import json
 import logging
 import os
 import random
-import re
 import time
 from pathlib import Path
 
@@ -42,8 +41,6 @@ logger = logging.getLogger(__name__)
 
 FORMAT = 2
 MANIFEST = "manifest.json"
-# `{stem}_{W:04d}x{H:04d}_anima.npz` → pixel (W, H)
-_LATENT_RES_RE = re.compile(r"_(\d{3,4})x(\d{3,4})_anima\.npz$")
 _base_collate = make_cached_collate()
 
 # Teacher fields the targets depend on; a run differing on any of them refuses the cache.
@@ -201,7 +198,7 @@ class AnchorDataset(torch.utils.data.Dataset):
 
 
 def anchor_collate(batch):
-    """``make_collate()``'s batch plus the stacked ``anchor_eps`` / ``anchor_v``."""
+    """``make_cached_collate()``'s batch plus the stacked ``anchor_eps`` / ``anchor_v``."""
     out = _base_collate(batch)
     out["anchor_eps"] = torch.stack([b["anchor_eps"] for b in batch])
     out["anchor_v"] = torch.stack([b["anchor_v"] for b in batch])
@@ -229,13 +226,9 @@ def _load_teacher(a, device, dtype, token_counts):
     from library.anima import weights as anima_utils
     from library.anima.int8 import convert_for_turbo
     from library.anima.stream import stream_fp32_
-    from library.int8.linear import int8_input_tag
-    from library.runtime.dynamo import (
-        compile_signature,
-        isolate_compile_cache,
-        pin_dynamo_limit,
-    )
-    from library.runtime.harness import compile_dit_blocks
+    from library.runtime.dynamo import pin_dynamo_limit
+
+    from .setup import compile_turbo_dit
 
     logger.info(f"loading teacher DiT: {a.dit_path}")
     model = anima_utils.load_anima_model(
@@ -255,28 +248,15 @@ def _load_teacher(a, device, dtype, token_counts):
     model.prepare_block_swap_before_forward(free_cache=False)
     if a.compile:
         pin_dynamo_limit("recompile_limit", 64)
-        seq_range = (min(token_counts), max(token_counts))
-        isolate_compile_cache(
-            compile_signature(
-                n_token_families=len(token_counts),
-                seq_range=seq_range,
-                dynamic_seq=True,
-                mode="",
-            )
-            + (
-                ""
-                if a.int8 == "off"
-                else f";int8={a.int8};int8_in={int8_input_tag()};flops=fa2,int8"
-            )
-            + ("" if a.stream == "bf16" else f";stream={a.stream}")
-        )
-        compile_dit_blocks(
-            model,
-            mode="",
-            dynamic_seq=True,
-            n_token_families=len(token_counts),
-            seq_range=seq_range,
-        )
+    compile_turbo_dit(
+        model,
+        enabled=a.compile,
+        dynamic_seq=True,
+        n_token_families=len(token_counts),
+        seq_range=(min(token_counts), max(token_counts)),
+        int8=a.int8,
+        stream=a.stream,
+    )
     return model
 
 
@@ -290,8 +270,10 @@ def _build(a) -> None:
     from library.datasets.cache import CachedDataset
     from library.inference.sampling import get_timesteps_sigmas
     from library.runtime.progress import ProgressSink, command_job_path
+    from library.training.forward import PadCache
 
-    from .primitives import PadCache
+    from .setup import latent_token_counts
+    from .steps import anchor_target
 
     cache_dir = Path(resolve_under_home(a.out))
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -361,18 +343,15 @@ def _build(a) -> None:
         return
 
     device, dtype = torch.device("cuda"), torch.bfloat16
-    counts = set()
-    for npz, _ in dataset.samples:
-        m = _LATENT_RES_RE.search(os.path.basename(npz))
-        counts.add((int(m.group(1)) // 16) * (int(m.group(2)) // 16))
-    model = _load_teacher(a, device, dtype, counts)
+    model = _load_teacher(
+        a, device, dtype, latent_token_counts(npz for npz, _ in dataset.samples)
+    )
     state_dtype = latent_dtype(model, dtype)
     uncond = load_uncond_crossattn(
         str(default_uncond_path()), device=device, dtype=dtype
     )
     sigmas = get_timesteps_sigmas(a.teacher_anchor_steps, a.flow_shift, "cpu")[1]
     sigmas = sigmas.tolist()
-    t_k = float(sigmas[a.k_anchor])
     pad_cache = PadCache(dtype)
 
     @torch.no_grad()
@@ -405,14 +384,13 @@ def _build(a) -> None:
             device=device,
             dtype=state_dtype,
         )
-        # steps.teacher_anchor: k CFG'd Euler steps, mean velocity ε → z_tk.
-        z = eps
-        for i in range(a.k_anchor):
-            v_c = velocity(z, sigmas[i], c)
-            v_u = velocity(z, sigmas[i], c_null)
-            v = v_u + a.teacher_cfg * (v_c - v_u)
-            z = (z.float() - (sigmas[i] - sigmas[i + 1]) * v).to(state_dtype)
-        v_target = (eps.float() - z.float()) / (1.0 - t_k)
+
+        def cfg_velocity(z, s):
+            v_c = velocity(z, s, c)
+            v_u = velocity(z, s, c_null)
+            return v_u + a.teacher_cfg * (v_c - v_u)
+
+        v_target = anchor_target(cfg_velocity, eps, sigmas, a.k_anchor)
         out = pair_path(cache_dir, key, k)
         tmp = out.with_suffix(".tmp")
         save_file({"v_target": v_target[0].cpu().contiguous()}, str(tmp))

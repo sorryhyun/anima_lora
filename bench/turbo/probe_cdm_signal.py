@@ -44,11 +44,8 @@ from bench._common import make_run_dir, write_result
 from library.anima.uncond import uncond_for_batch
 from library.config.resolved import load_toml
 from scripts.distill_turbo.config import build_argparser, resolve_config
-from scripts.distill_turbo.primitives import (
-    cdm_extrapolate,
-    renoise,
-    sample_dynamic_sigmas,
-)
+from library.training.forward import renoise
+from scripts.distill_turbo.primitives import cdm_extrapolate, sample_dynamic_sigmas
 from scripts.distill_turbo.setup import build_run
 from scripts.distill_turbo.steps import _uniform_tau
 

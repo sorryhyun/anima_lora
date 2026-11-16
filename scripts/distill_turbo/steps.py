@@ -1,9 +1,9 @@
-"""Per-step DP-DMD loss terms and the fake/critic update, called from ``distill.run_loop``.
+"""Per-step DP-DMD loss terms and the fake/critic update, called from ``distill``.
 
-The loop keeps the final backward / optimizer step inline; these are the rollout and
-the loss terms around it. ``student_rollout`` backwards the diversity term when it
-is severed from the grad step, ``cdm_off_trajectory_loss`` backwards its own graph,
-and ``fake_update`` steps the fake and disc optimizers.
+The loop keeps the student's final backward and optimizer step; these are the rollout
+and the loss terms around it. ``student_rollout`` backwards the diversity term when it
+is severed from the grad step, ``anchor_only_loss`` and ``cdm_off_trajectory_loss``
+backward their own graphs, and ``fake_update`` steps the fake and disc optimizers.
 """
 
 from __future__ import annotations
@@ -17,8 +17,11 @@ import torch.nn as nn
 from library.anima.models import Anima
 from networks.methods.turbo_dmd import gan_loss_discriminator, gan_loss_generator
 
-from .primitives import cdm_extrapolate, renoise, sample_t
-from .setup import RunContext
+from library.training.forward import renoise
+from library.training.forward import sample_sigma as sample_t
+
+from .primitives import cdm_extrapolate
+from .context import RunContext
 
 
 @contextmanager
@@ -88,6 +91,17 @@ def _dm_signal(cfg, scale_e: torch.Tensor, delta: torch.Tensor, v_real: torch.Te
     return grad.detach()
 
 
+def anchor_target(velocity, eps: torch.Tensor, sigmas: list[float], k: int):
+    """Roll ``velocity(z, σ) → fp32 v`` ``k`` Euler steps from ε down ``sigmas`` and
+    return the mean velocity ε → z_k over ``[σ_k, 1]``: the target of the student's
+    σ = 1 first step. The anchor cache builder rolls the same function."""
+    z = eps
+    for i in range(k):
+        v = velocity(z, sigmas[i])
+        z = (z.float() - (sigmas[i] - sigmas[i + 1]) * v).to(eps.dtype)
+    return ((eps.float() - z.float()) / (1.0 - sigmas[k])).detach()
+
+
 def teacher_anchor(
     ctx: RunContext,
     cfg,
@@ -96,19 +110,13 @@ def teacher_anchor(
     c_null: torch.Tensor,
     B: int,
 ) -> torch.Tensor:
-    """Teacher K-step CFG anchor (no grad) → ``v_target``.
+    """Teacher ``k_anchor``-step CFG anchor (no grad) → ``v_target``."""
 
-    Rolls the CFG'd teacher ``k_anchor`` Euler steps from ε and returns the mean
-    velocity ε→z_tk over ``[t_k, 1]``, the target for the student's t=1 first step.
-    """
-    z = eps
-    for i in range(cfg.k_anchor):
-        s_i = ctx.teacher_anchor_sigmas[i]
-        s_next = ctx.teacher_anchor_sigmas[i + 1]
-        t_b = torch.full((B,), s_i, device=ctx.device, dtype=ctx.dtype)
-        v = ctx.teacher_cfg_velocity(z, t_b, crossattn_emb, c_null)
-        z = (z.float() - (s_i - s_next) * v).to(ctx.dtype)
-    return ((eps.float() - z.float()) / (1.0 - ctx.t_k_anchor)).detach()
+    def velocity(z, s):
+        t_b = torch.full((B,), s, device=ctx.device, dtype=ctx.dtype)
+        return ctx.teacher_cfg_velocity(z, t_b, crossattn_emb, c_null)
+
+    return anchor_target(velocity, eps, ctx.teacher_anchor_sigmas, cfg.k_anchor)
 
 
 def anchor_only_loss(
@@ -359,10 +367,9 @@ def dm_slot(
 def cdm_off_trajectory_loss(
     ctx: RunContext,
     cfg,
-    cdm_src: tuple,
+    roll: Rollout,
     crossattn_emb: torch.Tensor,
     c_null: torch.Tensor,
-    latents: torch.Tensor,
     B: int,
 ) -> None:
     """L_CDM (arXiv:2605.06376 §3.3), backwarded here.
@@ -376,12 +383,12 @@ def cdm_off_trajectory_loss(
     ``cdm.grad_ckpt`` and recomputes at this backward, so the view is set back to
     'student' first; backwarding here also frees the graph before the GAN forward.
     """
-    x_g_cdm, v_g_cdm, s_g_cdm = cdm_src
+    s_g = roll.s_g
     t_off = torch.rand(B).to(device=ctx.device, dtype=ctx.dtype)
     # The leaf's grad flag is load-bearing: under the unsloth checkpoint, the
     # reentrant path drops the LoRA param grads when every input is detached.
     x_off = (
-        cdm_extrapolate(x_g_cdm, v_g_cdm, s_g_cdm, t_off).to(ctx.dtype).requires_grad_()
+        cdm_extrapolate(roll.x_g, roll.v_g, s_g, t_off).to(ctx.dtype).requires_grad_()
     )
     cdm_ckpt = (
         selective_block_grad_ckpt(ctx.model) if cfg.cdm_grad_ckpt else nullcontext()
@@ -390,7 +397,7 @@ def cdm_off_trajectory_loss(
         v_off = ctx.forward("student", x_off, t_off, crossattn_emb, no_grad=False)
     x0_off = x_off.float() - t_off.view(B, 1, 1, 1).float() * v_off.float()
     tau_cdm = _uniform_tau(ctx, cfg, B)
-    eps_cdm = torch.randn_like(latents)
+    eps_cdm = torch.randn(x0_off.shape, device=ctx.device, dtype=ctx.dtype)
     x_renoised_cdm = renoise(x0_off.detach().to(ctx.dtype), tau_cdm, eps_cdm)
     if cfg.cdm_teacher == "cond":
         # The paper's L_CDM (Eq. 9): cond-only teacher; CFG reaches the student
@@ -408,7 +415,7 @@ def cdm_off_trajectory_loss(
     v_fake_cdm = ctx.forward(
         "fake", x_renoised_cdm, tau_cdm, crossattn_emb, no_grad=True
     )
-    ctx.turbo.set_fake_source(s_g_cdm)
+    ctx.turbo.set_fake_source(s_g)
     tau_cdm_e = tau_cdm.view(B, 1, 1, 1).float()
     grad_cdm = _dm_signal(cfg, tau_cdm_e, v_real_cdm - v_fake_cdm, v_real_cdm)
     cdm_loss = (grad_cdm * x0_off).mean()
@@ -504,6 +511,101 @@ def clip_or_norm(params, grad_clip: float) -> torch.Tensor:
     return torch.nn.utils.clip_grad_norm_(params, max_norm=max_norm)
 
 
+def fake_regression_step(
+    ctx: RunContext,
+    cfg,
+    x_pred_d: torch.Tensor,
+    crossattn_emb: torch.Tensor,
+    tau: torch.Tensor,
+    eps: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """One fake (critic) update: flow-matching regression on ``x_pred_d`` renoised to
+    ``tau``. Returns the loss and the pre-clip gradient norm."""
+    x_t = renoise(x_pred_d, tau, eps).requires_grad_()
+    v_fake = ctx.forward("fake", x_t, tau, crossattn_emb, no_grad=False)
+    loss = nn.functional.mse_loss(v_fake.float(), (eps - x_pred_d).float())
+    loss.backward()
+    gn = clip_or_norm(ctx.turbo.fake_params(), cfg.grad_clip)
+    ctx.fake_opt.step()
+    ctx.fake_opt.zero_grad(set_to_none=True)
+    ctx.fake_sched.step()
+    return loss, gn
+
+
+def sample_fake_tau(ctx: RunContext, cfg, B: int) -> torch.Tensor:
+    """Fake / disc renoise level, from ``sampling.t_distribution``."""
+    return sample_t(
+        B,
+        distribution=cfg.t_distribution,
+        sigmoid_scale=cfg.sigmoid_scale,
+        device=ctx.device,
+        dtype=ctx.dtype,
+    )
+
+
+@dataclass
+class FakeUpdate:
+    """Means over the ``fake_steps_per_student_step`` inner updates (detached).
+
+    ``gan_margin`` = mean real − mean fake logit (the hinge losses sit at ≈0.69 /
+    1.39 even while the disc is winning); ``gan_spread`` = std of the fake logits
+    (0 for a single-logit head); ``gn_*`` = pre-clip gradient norms.
+    """
+
+    fake_loss: torch.Tensor
+    gan_disc: torch.Tensor
+    gan_margin: torch.Tensor
+    gan_spread: torch.Tensor
+    gn_fake: torch.Tensor
+    gn_disc: torch.Tensor
+
+
+def _disc_update(
+    ctx: RunContext,
+    cfg,
+    x_pred_d: torch.Tensor,
+    latents: torch.Tensor,
+    crossattn_emb: torch.Tensor,
+    tau: torch.Tensor,
+    eps: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Disc step: renoised x_pred vs renoised real latents through the frozen
+    teacher (no grad), grad only to the disc head. Returns (loss, margin, spread,
+    pre-clip grad norm)."""
+    turbo = ctx.turbo
+    turbo.set_disc_requires_grad(True)
+
+    def logits(latent_in, extra_noise=None):
+        x_t = renoise(latent_in, tau, eps)
+        if extra_noise is not None:
+            x_t = x_t + extra_noise
+        return turbo.disc(_teacher_feats(ctx, x_t, tau, crossattn_emb, no_grad=True))
+
+    fake_logits = logits(x_pred_d)
+    real_logits = logits(latents)
+    loss = gan_loss_discriminator(real_logits, fake_logits)
+    with torch.no_grad():
+        margin = real_logits.mean() - fake_logits.mean()
+        fl = fake_logits.flatten()
+        spread = fl.std() if fl.numel() > 1 else torch.zeros((), device=ctx.device)
+
+    # Approximate R1 (APT): logit change under a small perturbation of the
+    # renoised real input.
+    if cfg.gan_r1_weight > 0.0:
+        real_logits_a = logits(latents, cfg.gan_r1_alpha * torch.randn_like(latents))
+        loss = loss + cfg.gan_r1_weight * nn.functional.mse_loss(
+            real_logits, real_logits_a
+        )
+
+    loss.backward()
+    gn = clip_or_norm(turbo.disc_params(), cfg.grad_clip)
+    ctx.disc_opt.step()
+    ctx.disc_opt.zero_grad(set_to_none=True)
+    ctx.disc_sched.step()
+    turbo.set_disc_requires_grad(False)
+    return loss.detach(), margin, spread, gn
+
+
 def fake_update(
     ctx: RunContext,
     cfg,
@@ -511,105 +613,30 @@ def fake_update(
     latents: torch.Tensor,
     crossattn_emb: torch.Tensor,
     B: int,
-) -> tuple[
-    torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor
-]:
+) -> FakeUpdate:
     """Fake (critic) and disc updates against ``x_pred.detach()``.
 
     ``fake_steps_per_student_step`` inner updates, each on fresh (τ, ε); with the
-    GAN on, the disc steps once per inner update (FastGen cadence). Returns the
-    detached means of fake loss, disc loss, disc margin (mean real − mean fake
-    logit: the hinge losses sit at ≈0.69 / 1.39 even while the disc is winning) and
-    per-logit spread (std of the fake logits; 0 for a single-logit head), then the
-    mean pre-clip gradient norms of the fake and the disc.
+    GAN on, the disc steps once per inner update (FastGen cadence).
     """
-    turbo = ctx.turbo
-    device, dtype = ctx.device, ctx.dtype
     x_pred_d = x_pred.detach()
-    fake_loss_sum = torch.zeros((), device=device)
-    gan_disc_sum = torch.zeros((), device=device)
-    gan_margin_sum = torch.zeros((), device=device)
-    gan_spread_sum = torch.zeros((), device=device)
-    gn_fake_sum = torch.zeros((), device=device)
-    gn_disc_sum = torch.zeros((), device=device)
-
-    def _sample_tau():
-        return sample_t(
-            B,
-            distribution=cfg.t_distribution,
-            sigmoid_scale=cfg.sigmoid_scale,
-            device=device,
-            dtype=dtype,
-        )
-
+    zero = torch.zeros((), device=ctx.device)
+    sums = [zero] * 6  # fake loss, disc loss, margin, spread, gn fake, gn disc
     for _ in range(cfg.fake_steps_per_student_step):
-        tau_fake = _sample_tau()
-        eps_fake = torch.randn_like(x_pred_d)
-        x_t_fake = renoise(x_pred_d, tau_fake, eps_fake).requires_grad_()
-        v_fake = ctx.forward("fake", x_t_fake, tau_fake, crossattn_emb, no_grad=False)
-        target_v_fake = eps_fake - x_pred_d
-        fake_loss = nn.functional.mse_loss(v_fake.float(), target_v_fake.float())
-        fake_loss.backward()
-        gn_fake_sum = gn_fake_sum + clip_or_norm(turbo.fake_params(), cfg.grad_clip)
-        ctx.fake_opt.step()
-        ctx.fake_opt.zero_grad(set_to_none=True)
-        ctx.fake_sched.step()
-        fake_loss_sum = fake_loss_sum + fake_loss.detach()
-        ctx.tau_profile.add(fake_loss, tau_fake)
-
-        if turbo.disc is None:
-            continue
-        # Disc: renoised x_pred vs renoised real latents through the frozen teacher
-        # (no grad), grad only to the disc head.
-        turbo.set_disc_requires_grad(True)
-        if cfg.gan_use_same_t_noise:
-            tau_d, eps_d = tau_fake, eps_fake
-        else:
-            tau_d = _sample_tau()
-            eps_d = torch.randn_like(x_pred_d)
-
-        def _disc_logits(latent_in, extra_noise=None):
-            x_t = renoise(latent_in, tau_d, eps_d)
-            if extra_noise is not None:
-                x_t = x_t + extra_noise
-            return turbo.disc(
-                _teacher_feats(ctx, x_t, tau_d, crossattn_emb, no_grad=True)
-            )
-
-        fake_logits_d = _disc_logits(x_pred_d)
-        real_logits_d = _disc_logits(latents)
-        loss_disc = gan_loss_discriminator(real_logits_d, fake_logits_d)
-        with torch.no_grad():
-            gan_margin_sum = gan_margin_sum + (
-                real_logits_d.mean() - fake_logits_d.mean()
-            )
-            fl = fake_logits_d.flatten()
-            if fl.numel() > 1:
-                gan_spread_sum = gan_spread_sum + fl.std()
-
-        # Approximate R1 (APT): logit change under a small perturbation of the
-        # renoised real input.
-        if cfg.gan_r1_weight > 0.0:
-            real_logits_a = _disc_logits(
-                latents, cfg.gan_r1_alpha * torch.randn_like(latents)
-            )
-            loss_disc = loss_disc + cfg.gan_r1_weight * nn.functional.mse_loss(
-                real_logits_d, real_logits_a
-            )
-
-        loss_disc.backward()
-        gn_disc_sum = gn_disc_sum + clip_or_norm(turbo.disc_params(), cfg.grad_clip)
-        ctx.disc_opt.step()
-        ctx.disc_opt.zero_grad(set_to_none=True)
-        ctx.disc_sched.step()
-        turbo.set_disc_requires_grad(False)
-        gan_disc_sum = gan_disc_sum + loss_disc.detach()
-    n_inner = cfg.fake_steps_per_student_step
-    return (
-        fake_loss_sum / n_inner,
-        gan_disc_sum / n_inner,
-        gan_margin_sum / n_inner,
-        gan_spread_sum / n_inner,
-        gn_fake_sum / n_inner,
-        gn_disc_sum / n_inner,
-    )
+        tau = sample_fake_tau(ctx, cfg, B)
+        eps = torch.randn_like(x_pred_d)
+        fake_loss, gn_fake = fake_regression_step(
+            ctx, cfg, x_pred_d, crossattn_emb, tau, eps
+        )
+        ctx.tau_profile.add(fake_loss, tau)
+        disc = (zero,) * 4
+        if ctx.turbo.disc is not None:
+            if not cfg.gan_use_same_t_noise:
+                tau = sample_fake_tau(ctx, cfg, B)
+                eps = torch.randn_like(x_pred_d)
+            disc = _disc_update(ctx, cfg, x_pred_d, latents, crossattn_emb, tau, eps)
+        d_loss, d_margin, d_spread, d_gn = disc
+        step = (fake_loss.detach(), d_loss, d_margin, d_spread, gn_fake, d_gn)
+        sums = [a + b for a, b in zip(sums, step)]
+    n = cfg.fake_steps_per_student_step
+    return FakeUpdate(*(x / n for x in sums))

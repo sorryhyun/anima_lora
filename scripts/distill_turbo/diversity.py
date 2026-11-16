@@ -1,28 +1,14 @@
-"""DAVE-derived same-prompt diversity validation for the turbo distillation loop.
+"""Same-prompt diversity validation: does the student collapse across seeds?
 
-The in-loop ``div`` loss only measures how close the student's first step lands to the
-teacher's K-step anchor — it says nothing about whether the student's own
-same-prompt samples have collapsed across seeds (the canonical DMD failure).
+``div`` measures only how close step 0 lands to the teacher anchor. This rolls the
+student's N-step grid on one held-out conditioning across several seeds (no_grad,
+block forward hooks removed in a ``finally``) and splits every block output with the
+DAVE decomposition (``bench/dave/``): the per-channel spatial mean (DC) is the
+seed-shared conditioning, the residual ``h − μ`` (AC) the seed-specific structure.
 
-This pass measures that directly, using the DAVE decomposition validated in
-``bench/dave/`` (README + ``probe_dc_convergence.py``): per Transformer block,
-the per-channel spatial mean (the **DC**) is the seed-shared conditioning, while
-the residual ``h − μ`` (the **AC**) carries the seed-specific structure. So:
-
-  * **AC sim** (cross-seed cosine of the AC residual) is the headline diversity
-    signal — **lower = more diverse**. It rising over training = mode collapse.
-  * **DC sim** is a reference: it should stay high (~conditioning lock); a drop
-    means the run is destabilising the conditioning, not diversifying.
-
-We fix ONE held-out conditioning and roll the student's N-step Euler grid (the
-same ``forward_fn`` / ``student_sigmas`` the training loop
-uses) across N seeds under ``no_grad``, hooking every block. Layout-robust: the
-DC = mean over all non-(batch,channel) axes, so it reads correctly whether the
-block emits eager 5D ``(B,T,H,W,D)`` or the compiled native-flatten
-``(B,1,seq,1,D)`` (channel D is last in both). The AC residual is pooled to a
-fixed token count so seeds are comparable regardless of resolution.
-
-Read-only: forward hooks only, removed in a ``finally``.
+* AC sim (cross-seed cosine of AC): lower = more diverse; rising = mode collapse.
+* DC sim: a reference that should stay high; a drop means the conditioning is
+  destabilising.
 """
 
 from __future__ import annotations
@@ -169,9 +155,6 @@ def run_diversity_validation(
         for k in range(num_seeds):
             gen = torch.Generator(device=device).manual_seed(seed0 + k)
             x = torch.randn(latent_shape, device=device, dtype=dtype, generator=gen)
-            # Match the training loop's cudagraph hygiene (it marks once per outer
-            # step); a fresh mark per seed keeps compiled/cudagraph forwards from
-            # reusing a stale static output buffer. No-op when compile is off.
             torch.compiler.cudagraph_mark_step_begin()
             probe.start_seed()
             for i in range(student_steps):
@@ -191,9 +174,8 @@ def run_diversity_validation(
     X = torch.cat([_dc_ac(x.float(), ac_tokens)[1] for x in x_preds], 0)
     xpred_ac_sim = _mean_pairwise_cos(X)
 
-    # Flow-matching reconstruction MSE (fidelity half). Rectified flow's velocity
-    # target is constant along the straight path (v* = ε − x0, σ-independent), so
-    # evaluate the student at its OWN grid sigmas. Fixed disjoint seed so the number is comparable across passes.
+    # Flow-matching MSE at the student's own grid σ (v* = ε − x0 at every σ); a
+    # fixed seed disjoint from the probe's keeps it comparable across passes.
     fm_mse = float("nan")
     if clean_latent is not None:
         x0 = clean_latent.to(device, dtype=dtype)

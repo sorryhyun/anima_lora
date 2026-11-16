@@ -182,7 +182,7 @@ def test_dm_tau_distribution():
     )
     assert c.dm_tau_distribution == "logit_normal" and c.dm_tau_scale == 0.8
     with pytest.raises(ValueError, match="dm_tau_distribution"):
-        _resolve(["--dm_tau_distribution", "beta"])
+        _resolve(cfg={"dmd": {"dm_tau_distribution": "beta"}})
     ctx = _ctx()
     x_pred = torch.randn(4096, 1, 1, 1)
     c0 = torch.zeros(4096, 1, 4)

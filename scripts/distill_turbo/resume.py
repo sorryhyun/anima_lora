@@ -6,15 +6,11 @@ reset the LR cosine to its peak, the regime the critic runaway lives in. This
 module checkpoints the critic, discriminator and all three optimizer/scheduler
 pairs as well.
 
-The bundle is a single rolling ``{output_name}_resume.pt`` next to the
-step-tagged students, overwritten each ``save_every`` and written atomically
-(tmp + ``os.replace``, so a crash mid-write leaves the previous bundle intact).
-Only the latest is kept — it's ~10x a student checkpoint's size (two AdamW
-moments in fp32 over both LoRA stacks), and the step-tagged students already
-preserve the trajectory.
+The bundle is a single rolling ``{output_name}_resume.pt`` next to the step-tagged
+students, rewritten atomically each ``save_every``. Only the latest is kept: it is
+~10x a student checkpoint (fp32 AdamW moments over both LoRA stacks).
 
-Not restored: the dataloader's position within its epoch (perturbs sample
-order, not the optimizer/critic/schedule state that actually carries the run).
+Not restored: the dataloader's position within its epoch (sample order only).
 """
 
 from __future__ import annotations
@@ -33,9 +29,7 @@ logger = logging.getLogger(__name__)
 
 FORMAT_VERSION = 1
 
-# Fields whose value determines a tensor SHAPE or the module topology of the
-# stack we are loading into. A mismatch means the bundle's tensors cannot be
-# loaded at all (or would load into a silently different model), so we refuse.
+# Fields that set a tensor shape or the module topology: a mismatch is refused.
 _STRICT_FIELDS = (
     "student_rank",
     "fake_rank",
@@ -45,19 +39,15 @@ _STRICT_FIELDS = (
     "fake_transition",
 )
 
-# Fields that change the objective or the schedule but not the shapes. Resuming
-# across a change here is legitimate (e.g. extending `iterations` past a run
-# whose cosine already annealed, or lowering peak LR after a critic runaway) —
-# the schedulers restore their step counter onto the NEW curve (see
-# ``_restore_scheduler``). We warn so the change is never silent.
+# Fields that change the objective or schedule but not the shapes: a change is
+# allowed with a warning, and the schedulers replay onto the NEW curve
+# (``_restore_scheduler``).
 _WARN_FIELDS = (
     "iterations",
     "student_lr",
     "fake_lr",
     "gan_disc_lr",
-    # Head granularity changes the objective, not the disc's parameters (same
-    # MLP applied pooled vs per-token) — bundles load across a switch.
-    "gan_disc_head",
+    "gan_disc_head",  # same disc parameters pooled or per-token
     "student_alpha",
     "fake_alpha",
     "student_steps",
@@ -65,8 +55,6 @@ _WARN_FIELDS = (
     "dm_first_step",
     "rollout_grad",
     "gan_loss_weight_gen",
-    # Delay/warmup reshape the generator-side λ ramp around the resume step —
-    # legitimate (e.g. adding a ramp after a collapsed cold start), never silent.
     "gan_delay_steps",
     "gan_warmup_steps",
     "fake_steps_per_student_step",
@@ -136,8 +124,6 @@ def save_resume_state(
         },
     }
 
-    # tmp + replace: a crash mid-write must not shred the previous bundle. Same
-    # directory so the rename stays on one filesystem (os.replace is atomic there).
     tmp = path.with_suffix(path.suffix + ".tmp")
     torch.save(state, tmp)
     os.replace(tmp, path)
@@ -145,9 +131,7 @@ def save_resume_state(
 
 def load_resume_state(path: str | Path) -> dict[str, Any]:
     """Read a bundle written by :func:`save_resume_state`."""
-    # weights_only=False: the bundle carries optimizer/scheduler state and RNG
-    # blobs (numpy/random tuples), not just tensors. It is our own file, written
-    # by this module into our own output dir.
+    # weights_only=False: the bundle holds RNG tuples, not just tensors.
     state = torch.load(path, map_location="cpu", weights_only=False)
     fmt = state.get("format")
     if fmt != FORMAT_VERSION:
@@ -166,13 +150,8 @@ class ResumeArg:
 
 
 def resolve_resume_arg(value: str, output_dir: str, output_name: str) -> ResumeArg:
-    """Turn the ``--resume`` string into a concrete bundle path.
-
-    ``auto`` → the run's canonical rolling bundle, or *start fresh* when it does
-    not exist yet. That makes ``--resume auto`` safe to bake into a supervisor /
-    restart wrapper: the first launch trains from scratch, every relaunch after a
-    crash picks the run back up. An explicit path must exist.
-    """
+    """``auto`` → the run's rolling bundle, or start fresh when there is none
+    yet; an explicit path must exist."""
     if value == "auto":
         p = resume_path_for(output_dir, output_name)
         return ResumeArg(path=p if p.exists() else None, explicit=False)
@@ -220,14 +199,12 @@ def _check_fingerprint(state: dict[str, Any], cfg) -> None:
 def _restore_scheduler(sched, saved: dict[str, Any]) -> None:
     """Put a freshly-built scheduler at the bundle's step count on the NEW curve.
 
-    ``load_state_dict`` would drag the OLD curve along (``T_max``/``eta_min``/
-    ``base_lrs``/``SequentialLR`` milestones are all in the state dict) — a
-    resume that changes ``iterations``/``student_lr`` would silently keep
-    training on the bundle's schedule, and *extending* ``iterations`` steps the
-    restored cosine past its old ``T_max``, driving the LR negative. Replaying
-    ``step()`` on the new instance instead lands the counter at the same
-    position on the CURRENT config's curve (the contract ``_WARN_FIELDS``
-    documents).
+    ``load_state_dict`` would restore the OLD curve (``T_max`` / ``eta_min`` /
+    ``base_lrs`` / ``SequentialLR`` milestones live in the state dict): a resume
+    that changes ``iterations`` / ``student_lr`` would keep the bundle's schedule,
+    and extending ``iterations`` steps the cosine past its old ``T_max``, driving
+    the LR negative. Replaying ``step()`` on the new instance lands at the same
+    position on the current config's curve.
     """
     import warnings
 
@@ -259,11 +236,8 @@ def apply_resume_state(
     fake_sched,
     disc_sched,
 ) -> int:
-    """Restore every mutable piece of the loop in-place. Returns the start step.
-
-    The returned step is the number of student steps ALREADY completed, i.e. the
-    index the main loop should resume at.
-    """
+    """Restore the loop state in place; returns the number of completed steps
+    (the index the loop resumes at)."""
     _check_fingerprint(state, cfg)
 
     # Bundles from the removed dual-pool student / τ-split critic carry a
