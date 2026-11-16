@@ -206,8 +206,9 @@ def test_saved_correct_form_builds_the_env_ladders_request(schemas, monkeypatch)
 
     preprocess.cmd_preprocess_captions([])
 
-    ((sid, req),) = built
-    assert sid == "correct"
+    # The implied cut (on by default) runs as drop_groups ahead of correct.
+    assert [sid for sid, _ in built] == ["drop_groups", "correct"]
+    req = built[-1][1]
     assert req.caption_trigger_word == "@t" and req.caption_insert_no_artist
     assert not req.no_correct  # a trigger word needs the correction pass
     assert req.recursive and req.caption_shuffle_variants == 4
