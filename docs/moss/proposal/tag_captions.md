@@ -162,7 +162,7 @@ Dropping every unowned subject tag from the flat bag would delete 703 tags with 
 
 ## Confound: FM only vs add90 ema97
 
-`sincostagfm_1113_0912` (`project/pe_lora/configs/sincostagfm_1113_0912.toml`): the tag arm
+`sincostagfm_1113_0912` (`_archive/configs/pe_lora/sincostagfm_1113_0912.toml`): the tag arm
 with `distill = "off"`, everything else equal. Renders: the 6 tag prompts
 (`tagfmt/tag_fm`), the 6 default prompts (`tag_fm`), Space 004 (`space004/tag_fm`).
 

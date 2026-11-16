@@ -71,7 +71,7 @@ On caststation, 12 of 30 captions have OCR. 24 of their 25 text lines got a box.
 
 Both runs use `casthin_1115_1150`'s recipe: 480 steps, rank 32, Muon, int8 stream, the same
 latents (copied), `caption_format tags`, `prompt_tail sure`. Configs are in
-`project/pe_lora/configs/`.
+`_archive/configs/pe_lora/`.
 
 | Run | Captions | Target | Last-step loss |
 |---|---|---|---|

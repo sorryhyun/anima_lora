@@ -5,7 +5,7 @@ MOSS format keeps only the head (rating, count, names, series, artist) and the
 tags no subject owns in the bag: a tag any subject's crop carries goes into that
 subject's clause, repeated across clauses when several carry it, and a tag a
 more specific one already says is cut. Settled on caststation by A/B
-(``project/pe_lora/configs/casthin_1115_1150.toml`` against ``casorder_1114_2315``).
+(``_archive/configs/pe_lora/casthin_1115_1150.toml`` against ``casorder_1114_2315``).
 
 Three steps into a tree of its own, so the Anima captions stay untouched:
 

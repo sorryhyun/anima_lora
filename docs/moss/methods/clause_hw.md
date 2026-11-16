@@ -25,4 +25,4 @@ Code: `library/moss/training/grounding.py`; the value is stamped in the LoRA met
 | ama mitsuki, `tags` cache, 8 epochs | `amathin` vs its same-config retrain `amathinr` vs `amahw` (clause_hw 1); 8 seeds × 4 general tag prompts + 4 clause prompts | hw judged better on colour, tone, shape and material (a small margin); left / right placement already correct in every arm |
 | caststation casbox, 480 steps | control, retrain, clause_hw 0.25 / 1.0, clause_hw 1 + `text_box_hw` 1 | general renders not different from the retrain; one Miku text-logo effect at 1.0 that did not survive adding text boxes |
 
-The ama read set the default. Renders: `output/tests/ama_clause/`; configs: `project/pe_lora/configs/`.
+The ama read set the default. Renders: `output/tests/ama_clause/`; configs: `_archive/configs/pe_lora/`.
