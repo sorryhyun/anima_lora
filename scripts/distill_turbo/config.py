@@ -280,9 +280,9 @@ def build_argparser() -> argparse.ArgumentParser:
         "--anchor_cache",
         type=str,
         default=None,
-        help="Anchor target cache dir (anchor_only only): the loop reads v_target "
-        "and ε from it instead of rolling the teacher. Built by "
-        "`python -m scripts.distill_turbo.anchor_cache` with the same config.",
+        help="Anchor target cache dir (anchor_only only): the loop trains on the "
+        "cached samples of data_dir and reads v_target and ε from the cache instead "
+        "of rolling the teacher. Built by `python -m scripts.distill_turbo.anchor_cache`.",
     )
     parser.add_argument(
         "--detach_after_first",

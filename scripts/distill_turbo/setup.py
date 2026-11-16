@@ -54,7 +54,7 @@ from library.runtime.progress import ProgressSink, command_job_path
 from library.training.ema import AdapterEMA
 from networks.methods.turbo_dmd import TurboDMDNetwork, warm_start_plain_lora
 
-from .anchor_cache import AnchorDataset, anchor_collate
+from .anchor_cache import AnchorDataset, anchor_collate, keep_stems
 from .config import TurboConfig, snapshot_toml_text, tb_config_text
 from .metrics import StepGradLog, TauBinCriticLoss, TurboMetrics
 from .primitives import (
@@ -438,6 +438,8 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         batch_size=cfg.batch_size,
         sample_ratio=cfg.sample_ratio,
         need_pooled=False,  # DP-DMD conditions on crossattn only
+        # dpdmd.anchor_cache: only the samples the cache holds pairs for.
+        keep_list=keep_stems(cfg.anchor_cache) if cfg.anchor_cache else None,
     )
     # Held-out conditioning for the DAVE diversity probe — captured from the FULL
     # sample list before any single-prompt slice mutates it, chosen distinct from

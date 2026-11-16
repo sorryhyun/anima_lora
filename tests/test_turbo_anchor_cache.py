@@ -1,4 +1,4 @@
-"""dpdmd.anchor_cache: pair keys, ε regeneration, the manifest check and the draw cycle."""
+"""dpdmd.anchor_cache: pair keys, ε regeneration, the manifest checks and the draw cycle."""
 
 from __future__ import annotations
 
@@ -14,11 +14,13 @@ from scripts.distill_turbo.anchor_cache import (
     MANIFEST,
     AnchorDataset,
     anchor_collate,
+    key_stem,
+    keep_stems,
     pair_eps,
     pair_path,
     pair_seed,
     sample_key,
-    signature,
+    teacher_signature,
 )
 
 
@@ -61,13 +63,25 @@ class _Base(torch.utils.data.Dataset):
         }
 
 
-def _write_cache(cache_dir, cfg, samples, draws, shape=(16, 4, 6), skip=()):
+def _write_cache(
+    cache_dir, cfg, samples, draws, shape=(16, 4, 6), skip=(), seed=7, keys=None
+):
     cache_dir.mkdir(parents=True, exist_ok=True)
+    if keys is None:
+        keys = [sample_key(te, cfg.data_dir) for _, te in samples]
     (cache_dir / MANIFEST).write_text(
-        json.dumps({"format": FORMAT, "draws": draws, "signature": signature(cfg)})
+        json.dumps(
+            {
+                "format": FORMAT,
+                "teacher": teacher_signature(cfg),
+                "seed": seed,
+                "data_dir": cfg.data_dir,
+                "draws": draws,
+                "keys": keys,
+            }
+        )
     )
-    for _, te in samples:
-        key = sample_key(te, cfg.data_dir)
+    for key in keys:
         for k in range(draws):
             if (key, k) in skip:
                 continue
@@ -79,6 +93,7 @@ def test_sample_key_keeps_subdir(tmp_path):
     cfg = _cfg(tmp_path)
     te = f"{cfg.data_dir}/artist/123_anima_te.safetensors"
     assert sample_key(te, cfg.data_dir) == "artist__123"
+    assert key_stem("artist__123") == "123"
 
 
 def test_pair_eps_is_reproducible_and_distinct():
@@ -105,9 +120,7 @@ def test_items_carry_the_epoch_draw(tmp_path):
     assert batch["idx"] == [1, 2]
     assert batch["anchor_eps"].shape == batch["anchor_v"].shape == (2, 16, 4, 6)
     key = sample_key(base.samples[1][1], cfg.data_dir)
-    want = pair_eps(
-        (16, 4, 6), pair_seed(42, key, 1), device="cpu", dtype=torch.float32
-    )
+    want = pair_eps((16, 4, 6), pair_seed(7, key, 1), device="cpu", dtype=torch.float32)
     assert torch.equal(batch["anchor_eps"][0], want)
     assert torch.allclose(
         batch["anchor_v"][0], torch.full((16, 4, 6), 1.0) + hash(key) % 7
@@ -138,3 +151,20 @@ def test_stale_shape_is_refused(tmp_path):
     _write_cache(tmp_path / "cache", cfg, base.samples, draws=1)  # (16, 4, 6) pairs
     with pytest.raises(ValueError, match="stale"):
         AnchorDataset(base, str(tmp_path / "cache"), cfg)[0]
+
+
+def test_cache_refuses_other_sample_set(tmp_path):
+    cfg = _cfg(tmp_path)
+    base = _Base(cfg)
+    keys = [sample_key(te, cfg.data_dir) for _, te in base.samples[:2]]
+    _write_cache(tmp_path / "cache", cfg, base.samples, draws=1, keys=keys)
+    assert keep_stems(str(tmp_path / "cache")) == {"0", "1"}
+    with pytest.raises(ValueError, match="not cached"):
+        AnchorDataset(base, str(tmp_path / "cache"), cfg)
+
+
+def test_run_seed_and_data_dir_do_not_bind_the_cache(tmp_path):
+    cfg = _cfg(tmp_path)
+    base = _Base(cfg)
+    _write_cache(tmp_path / "cache", cfg, base.samples, draws=1)
+    AnchorDataset(base, str(tmp_path / "cache"), _cfg(tmp_path, seed=3))

@@ -89,8 +89,8 @@ step, so 14 of 28 is 29 forwards. The 14 of 28 figures are estimates from that c
 The probe and the judge renders after a run add about 3 min. The target depends only on
 (prompt, ε) and the frozen teacher, so a target cache would leave one student forward and backward
 per iteration (`plan.md`, candidate 3): `dpdmd.anchor_cache`, built by
-`python -m scripts.distill_turbo.anchor_cache --config <run>.toml [--draws K]` (smoke-tested; the
-full cache is not built). `turbo_1116_1810` measured 3.4 s per iteration on the 14 of 28 anchor.
+`python -m scripts.distill_turbo.anchor_cache --out <dir> --prompts N --draws K` (the teacher
+flags default to this recipe; the cache in `plan.md`, candidate 3). `turbo_1116_1810` measured 3.4 s per iteration on the 14 of 28 anchor.
 
 ## What is open
 

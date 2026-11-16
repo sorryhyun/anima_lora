@@ -1,29 +1,33 @@
 """Anchor target cache for ``dpdmd.anchor_only``: build it, and read it in the loop.
 
 The anchor target ``v_target`` depends only on (prompt, ε, latent shape) and the frozen
-teacher, so it can be rolled once and reused. A cache holds ``draws`` pairs per sample
-of ``data_dir``; pair ``(sample, k)`` uses an ε regenerated from a seed hashed from
-``(seed, sample key, k)``, so only ``v_target`` is stored.
+teacher, so it is rolled once and reused. A cache holds ``draws`` pairs for each of a
+fixed set of samples of ``data_dir``; pair ``(sample, k)`` uses an ε regenerated from a
+seed hashed from ``(seed, sample key, k)``, so only ``v_target`` is stored.
 
-Build (a daemon job; resumable, skips pairs already on disk)::
+Build (a daemon job; resumable, skips pairs already on disk). The builder loads the
+frozen teacher alone and takes no run config::
 
-    python -m scripts.distill_turbo.anchor_cache --config <run>.toml [--draws K]
+    python -m scripts.distill_turbo.anchor_cache --out <dir> --prompts 64 --draws 2 \
+        [--dit_path … --k_anchor 14 --teacher_anchor_steps 28 --teacher_cfg 4 …]
 
-with ``dpdmd.anchor_cache = "<dir>"`` in the config. The same config then trains on
-the cache: ``AnchorDataset`` adds each sample's pair to the DataLoader item, and
-epoch e reads draw e mod K.
+A run trains on it with ``dpdmd.anchor_cache = "<dir>"``: the loop keeps only the cached
+samples of its ``data_dir``, ``AnchorDataset`` adds each sample's pair to the DataLoader
+item, and epoch e reads draw e mod K.
 
-``manifest.json`` records the teacher, schedule and seed the targets were rolled with;
-a loop whose config differs on any of them refuses the cache.
+``manifest.json`` records the teacher the targets were rolled with, the ε seed and the
+sample keys. A run whose teacher fields differ refuses the cache.
 """
 
 from __future__ import annotations
 
-import dataclasses
+import argparse
 import hashlib
 import json
 import logging
 import os
+import random
+import re
 import time
 from pathlib import Path
 
@@ -36,12 +40,14 @@ from library.io.cache_names import TE_CACHE_SUFFIX
 
 logger = logging.getLogger(__name__)
 
-FORMAT = 1
+FORMAT = 2
 MANIFEST = "manifest.json"
+# `{stem}_{W:04d}x{H:04d}_anima.npz` → pixel (W, H)
+_LATENT_RES_RE = re.compile(r"_(\d{3,4})x(\d{3,4})_anima\.npz$")
 _base_collate = make_cached_collate()
 
-# Config fields the targets depend on. A mismatch on any of them refuses the cache.
-_SIGNATURE_FIELDS = (
+# Teacher fields the targets depend on; a run differing on any of them refuses the cache.
+TEACHER_FIELDS = (
     "dit_path",
     "dit_nonquant_path",
     "int8",
@@ -51,19 +57,21 @@ _SIGNATURE_FIELDS = (
     "flow_shift",
     "k_anchor",
     "teacher_anchor_steps",
-    "seed",
-    "data_dir",
 )
 
 
-def signature(cfg) -> dict:
-    return {f: getattr(cfg, f) for f in _SIGNATURE_FIELDS}
+def teacher_signature(src) -> dict:
+    return {f: getattr(src, f) for f in TEACHER_FIELDS}
 
 
 def sample_key(te_path: str, data_dir: str) -> str:
     """Stable per-sample key: the TE cache path under ``data_dir``, suffix dropped."""
     rel = os.path.relpath(te_path, data_dir).removesuffix(TE_CACHE_SUFFIX)
     return rel.replace(os.sep, "__")
+
+
+def key_stem(key: str) -> str:
+    return key.rsplit("__", 1)[-1]
 
 
 def pair_seed(seed: int, key: str, k: int) -> int:
@@ -83,39 +91,64 @@ def pair_path(cache_dir: Path, key: str, k: int) -> Path:
     return cache_dir / f"{key}.d{k}.safetensors"
 
 
+def read_manifest(cache_dir) -> dict:
+    path = Path(resolve_under_home(cache_dir)) / MANIFEST
+    if not path.exists():
+        raise FileNotFoundError(
+            f"dpdmd.anchor_cache: no {MANIFEST} under {path.parent}; build it with "
+            "`python -m scripts.distill_turbo.anchor_cache --out <dir> …`."
+        )
+    man = json.loads(path.read_text())
+    if man.get("format") != FORMAT:
+        raise ValueError(
+            f"dpdmd.anchor_cache {path.parent}: format {man.get('format')}, "
+            f"this loop reads {FORMAT}."
+        )
+    return man
+
+
+def keep_stems(cache_dir) -> set[str]:
+    """Stems of the cached samples, for ``CachedDataset(keep_list=…)``."""
+    return {key_stem(k) for k in read_manifest(cache_dir)["keys"]}
+
+
 class AnchorDataset(torch.utils.data.Dataset):
     """``CachedDataset`` wrapper whose items also carry the sample's anchor pair.
 
-    Each item gains ``anchor_eps`` (fp32, regenerated from the pair seed) and
-    ``anchor_v`` (the cached ``v_target``) for draw ``epoch % draws``. The loop calls
-    ``next_epoch()`` before it re-iterates the DataLoader; workers are re-created per
-    ``iter()``, so they pick the new draw up.
+    ``base`` holds exactly the cached samples (built with ``keep_stems``). Each item
+    gains ``anchor_eps`` (fp32, regenerated from the pair seed) and ``anchor_v`` (the
+    cached ``v_target``) for draw ``epoch % draws``. The loop calls ``next_epoch()``
+    before it re-iterates the DataLoader; workers are re-created per ``iter()``, so
+    they pick the new draw up.
     """
 
     def __init__(self, base, cache_dir, cfg, *, epoch: int = 0):
         self.base = base
         self.dir = Path(resolve_under_home(cache_dir))
-        man_path = self.dir / MANIFEST
-        if not man_path.exists():
-            raise FileNotFoundError(
-                f"dpdmd.anchor_cache: no {MANIFEST} under {self.dir}; build it with "
-                "`python -m scripts.distill_turbo.anchor_cache --config <this config>`."
-            )
-        man = json.loads(man_path.read_text())
-        want = signature(cfg)
+        man = read_manifest(self.dir)
+        want = teacher_signature(cfg)
         diff = {
-            f: (man["signature"].get(f), want[f])
-            for f in _SIGNATURE_FIELDS
-            if man["signature"].get(f) != want[f]
+            f: (man["teacher"].get(f), want[f])
+            for f in TEACHER_FIELDS
+            if man["teacher"].get(f) != want[f]
         }
-        if man.get("format") != FORMAT or diff:
+        if diff:
             raise ValueError(
-                f"dpdmd.anchor_cache {self.dir} was built for another run "
-                f"(format {man.get('format')}, field: (cache, config) = {diff})."
+                f"dpdmd.anchor_cache {self.dir} was rolled with another teacher "
+                f"(field: (cache, config) = {diff})."
             )
         self.draws = int(man["draws"])
-        self.seed = int(cfg.seed)
+        self.seed = int(man["seed"])
         self.keys = [sample_key(te, cfg.data_dir) for _, te in base.samples]
+        cached = set(man["keys"])
+        if set(self.keys) != cached:
+            extra = sorted(set(self.keys) - cached)
+            absent = sorted(cached - set(self.keys))
+            raise ValueError(
+                f"dpdmd.anchor_cache {self.dir}: the dataset under {cfg.data_dir} "
+                f"does not match the cache's {len(cached)} samples "
+                f"(not cached: {extra[:3]}, not in data_dir: {absent[:3]})."
+            )
         missing = [
             (key, k)
             for key in self.keys
@@ -175,62 +208,185 @@ def anchor_collate(batch):
     return out
 
 
-def _build(args) -> None:
-    from library.anima.uncond import uncond_for_batch
-    from library.config.resolved import load_toml
+# --- builder -------------------------------------------------------------------
+
+
+def _choose_keys(data_dir: str, n: int, seed: int) -> list[str]:
+    from library.io.cache import discover_cached_pairs
+
+    keys = sorted(
+        sample_key(c.te_path, data_dir) for c in discover_cached_pairs(data_dir)
+    )
+    if not keys:
+        raise SystemExit(f"no latent + TE cache pairs under {data_dir}")
+    if n <= 0 or n >= len(keys):
+        return keys
+    return sorted(random.Random(seed).sample(keys, n))
+
+
+def _load_teacher(a, device, dtype, token_counts):
+    """The frozen DiT the loop's teacher view runs: int8 base, fp32 stream, compiled."""
+    from library.anima import weights as anima_utils
+    from library.anima.int8 import convert_for_turbo
+    from library.anima.stream import stream_fp32_
+    from library.int8.linear import int8_input_tag
+    from library.runtime.dynamo import (
+        compile_signature,
+        isolate_compile_cache,
+        pin_dynamo_limit,
+    )
+    from library.runtime.harness import compile_dit_blocks
+
+    logger.info(f"loading teacher DiT: {a.dit_path}")
+    model = anima_utils.load_anima_model(
+        device,
+        a.dit_path,
+        attn_mode=a.attn_mode,
+        loading_device=device,
+        dit_weight_dtype=dtype,
+        dit_nonquant_path=a.dit_nonquant_path,
+    )
+    model.to(device)
+    model.requires_grad_(False)
+    if a.int8 != "off":
+        convert_for_turbo(model, a.int8, a.int8_file, a.dit_path)
+    if a.stream == "fp32":
+        stream_fp32_(model)
+    model.prepare_block_swap_before_forward(free_cache=False)
+    if a.compile:
+        pin_dynamo_limit("recompile_limit", 64)
+        seq_range = (min(token_counts), max(token_counts))
+        isolate_compile_cache(
+            compile_signature(
+                n_token_families=len(token_counts),
+                seq_range=seq_range,
+                dynamic_seq=True,
+                mode="",
+            )
+            + (
+                ""
+                if a.int8 == "off"
+                else f";int8={a.int8};int8_in={int8_input_tag()};flops=fa2,int8"
+            )
+            + ("" if a.stream == "bf16" else f";stream={a.stream}")
+        )
+        compile_dit_blocks(
+            model,
+            mode="",
+            dynamic_seq=True,
+            n_token_families=len(token_counts),
+            seq_range=seq_range,
+        )
+    return model
+
+
+def _build(a) -> None:
+    from library.anima.stream import latent_dtype
+    from library.anima.uncond import (
+        default_uncond_path,
+        load_uncond_crossattn,
+        uncond_for_batch,
+    )
+    from library.datasets.cache import CachedDataset
+    from library.inference.sampling import get_timesteps_sigmas
     from library.runtime.progress import ProgressSink, command_job_path
 
-    from .config import resolve_config
-    from .setup import build_run
-    from .steps import teacher_anchor
+    from .primitives import PadCache
 
-    cfg = resolve_config(args, load_toml(args.config))
-    if not cfg.anchor_cache:
-        raise SystemExit("set dpdmd.anchor_cache (the cache dir) in the config.")
-    cache_dir = Path(resolve_under_home(cfg.anchor_cache))
+    cache_dir = Path(resolve_under_home(a.out))
     cache_dir.mkdir(parents=True, exist_ok=True)
-
     man_path = cache_dir / MANIFEST
-    sig = signature(cfg)
-    if man_path.exists():
-        man = json.loads(man_path.read_text())
-        if man.get("format") != FORMAT or man["signature"] != sig:
-            raise SystemExit(
-                f"{cache_dir} holds a cache for another signature: {man['signature']}"
-            )
-        draws = max(int(man["draws"]), args.draws or 0)
-    else:
-        draws = args.draws or 1
+    teacher = teacher_signature(a)
 
-    # The teacher path of build_run; logs, resume, validation and the snapshot stay
-    # out of the training run's names.
-    bcfg = dataclasses.replace(
-        cfg,
-        output_dir=str(cache_dir),
-        output_name="anchor_cache",
-        no_log=True,
-        resume="",
-        validate_every_n_steps=0,
-        single_prompt_idx=None,
-        fake_warmup_steps=0,
-        anchor_cache="",
+    if man_path.exists():
+        man = read_manifest(cache_dir)
+        if man["teacher"] != teacher:
+            raise SystemExit(
+                f"{cache_dir} was rolled with another teacher: {man['teacher']}"
+            )
+        if man["seed"] != a.seed or man["data_dir"] != a.data_dir:
+            raise SystemExit(
+                f"{cache_dir}: seed / data_dir ({man['seed']}, {man['data_dir']}) "
+                f"against ({a.seed}, {a.data_dir})"
+            )
+        if a.prompts and a.prompts != len(man["keys"]):
+            raise SystemExit(
+                f"{cache_dir} holds {len(man['keys'])} samples; --prompts {a.prompts} "
+                "would need a new cache dir."
+            )
+        keys = man["keys"]
+        draws = max(int(man["draws"]), a.draws or 0)
+    else:
+        keys = _choose_keys(a.data_dir, a.prompts, a.seed)
+        draws = a.draws or 1
+
+    # Manifest first: a partial cache already says what it was built for.
+    man_path.write_text(
+        json.dumps(
+            {
+                "format": FORMAT,
+                "teacher": teacher,
+                "seed": a.seed,
+                "data_dir": a.data_dir,
+                "draws": draws,
+                "keys": keys,
+            },
+            indent=1,
+        )
     )
-    ctx = build_run(args, bcfg)
-    dataset = ctx.dataloader.dataset
-    keys = [sample_key(te, cfg.data_dir) for _, te in dataset.samples]
+
+    dataset = CachedDataset(
+        a.data_dir, keep_list={key_stem(k) for k in keys}, need_pooled=False
+    )
+    index = {sample_key(te, a.data_dir): i for i, (_, te) in enumerate(dataset.samples)}
+    absent = [k for k in keys if k not in index]
+    if absent:
+        raise SystemExit(
+            f"{len(absent)} cached keys not under {a.data_dir}: {absent[:3]}"
+        )
     todo = [
-        (i, k)
+        (key, k)
         for k in range(draws)
-        for i in range(len(keys))
-        if not pair_path(cache_dir, keys[i], k).exists()
+        for key in keys
+        if not pair_path(cache_dir, key, k).exists()
     ]
-    if args.limit:
-        todo = todo[: args.limit]
+    if a.limit:
+        todo = todo[: a.limit]
     logger.info(
         f"anchor cache {cache_dir}: {len(keys)} samples × {draws} draws, "
-        f"{len(todo)} pairs to roll (k {cfg.k_anchor} of {cfg.teacher_anchor_steps}, "
-        f"CFG {cfg.teacher_cfg})"
+        f"{len(todo)} pairs to roll (k {a.k_anchor} of {a.teacher_anchor_steps}, "
+        f"CFG {a.teacher_cfg}, shift {a.flow_shift})"
     )
+    if not todo:
+        return
+
+    device, dtype = torch.device("cuda"), torch.bfloat16
+    counts = set()
+    for npz, _ in dataset.samples:
+        m = _LATENT_RES_RE.search(os.path.basename(npz))
+        counts.add((int(m.group(1)) // 16) * (int(m.group(2)) // 16))
+    model = _load_teacher(a, device, dtype, counts)
+    state_dtype = latent_dtype(model, dtype)
+    uncond = load_uncond_crossattn(
+        str(default_uncond_path()), device=device, dtype=dtype
+    )
+    sigmas = get_timesteps_sigmas(a.teacher_anchor_steps, a.flow_shift, "cpu")[1]
+    sigmas = sigmas.tolist()
+    t_k = float(sigmas[a.k_anchor])
+    pad_cache = PadCache(dtype)
+
+    @torch.no_grad()
+    def velocity(x, s, c):
+        t_b = torch.full((x.shape[0],), s, device=device, dtype=state_dtype)
+        with torch.autocast("cuda", dtype=dtype):
+            out = model.forward_mini_train_dit(
+                x.unsqueeze(2),
+                t_b,
+                c,
+                padding_mask=pad_cache.get(x),
+                skip_pooled_text_proj=True,
+            )
+        return out.squeeze(2).float()
 
     sink = None
     sink_path = command_job_path(None)
@@ -238,34 +394,28 @@ def _build(args) -> None:
         sink = ProgressSink(sink_path, run="anchor_cache", method="turbo", preset=None)
         sink.run_start(total_steps=len(todo), total_epochs=draws, pid=os.getpid())
 
-    # Manifest first: a partial cache already says what it was built for.
-    man_path.write_text(
-        json.dumps(
-            {
-                "format": FORMAT,
-                "draws": draws,
-                "signature": sig,
-                "n_samples": len(keys),
-            },
-            indent=1,
-        )
-    )
     t0 = time.time()
-    for n, (i, k) in enumerate(todo, 1):
-        item = dataset[i]
-        lat = item["latents"]
-        c = item["crossattn_emb"].unsqueeze(0).to(ctx.device, dtype=ctx.cond_dtype)
+    for n, (key, k) in enumerate(todo, 1):
+        item = dataset[index[key]]
+        c = item["crossattn_emb"].unsqueeze(0).to(device, dtype=dtype)
+        c_null = uncond_for_batch(uncond, c)
         eps = pair_eps(
-            (1, *lat.shape),
-            pair_seed(cfg.seed, keys[i], k),
-            device=ctx.device,
-            dtype=ctx.dtype,
+            (1, *item["latents"].shape),
+            pair_seed(a.seed, key, k),
+            device=device,
+            dtype=state_dtype,
         )
-        c_null = uncond_for_batch(ctx.uncond_base, c)
-        v = teacher_anchor(ctx, cfg, eps, c, c_null, 1)[0]
-        out = pair_path(cache_dir, keys[i], k)
+        # steps.teacher_anchor: k CFG'd Euler steps, mean velocity ε → z_tk.
+        z = eps
+        for i in range(a.k_anchor):
+            v_c = velocity(z, sigmas[i], c)
+            v_u = velocity(z, sigmas[i], c_null)
+            v = v_u + a.teacher_cfg * (v_c - v_u)
+            z = (z.float() - (sigmas[i] - sigmas[i + 1]) * v).to(state_dtype)
+        v_target = (eps.float() - z.float()) / (1.0 - t_k)
+        out = pair_path(cache_dir, key, k)
         tmp = out.with_suffix(".tmp")
-        save_file({"v_target": v.float().cpu().contiguous()}, str(tmp))
+        save_file({"v_target": v_target[0].cpu().contiguous()}, str(tmp))
         os.replace(tmp, out)
         if n % 10 == 0 or n == len(todo):
             rate = n / (time.time() - t0)
@@ -279,24 +429,56 @@ def _build(args) -> None:
         sink.run_end(status="ok", final_step=len(todo))
 
 
-def main() -> None:
-    from .config import build_argparser
-
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+def build_argparser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    p.add_argument("--out", required=True, help="cache dir")
+    p.add_argument("--data_dir", default="post_image_dataset/lora")
+    p.add_argument(
+        "--prompts",
+        type=int,
+        default=0,
+        help="samples to cache, drawn from data_dir with --seed (0: all). Fixed "
+        "by the first build of a cache dir.",
     )
-    parser = build_argparser()
-    parser.add_argument(
+    p.add_argument(
         "--draws",
         type=int,
         default=None,
         help="ε draws per sample (default 1, or what the cache already holds). "
         "Raising it on an existing cache adds the new draws.",
     )
-    parser.add_argument(
+    p.add_argument("--seed", type=int, default=42, help="sample choice and ε seeds")
+    p.add_argument(
+        "--dit_path",
+        default="models/diffusion_models/anima_merged15_int8_gptq.safetensors",
+    )
+    p.add_argument(
+        "--dit_nonquant_path",
+        default="models/diffusion_models/anima_merged15.safetensors",
+    )
+    p.add_argument("--int8", default="stream", choices=["off", "fwd", "full", "stream"])
+    p.add_argument("--int8_file", default=None)
+    p.add_argument("--stream", default="fp32", choices=["fp32", "bf16"])
+    p.add_argument("--teacher_cfg", type=float, default=4.0)
+    p.add_argument("--flow_shift", type=float, default=3.0)
+    p.add_argument("--k_anchor", type=int, default=14)
+    p.add_argument("--teacher_anchor_steps", type=int, default=28)
+    p.add_argument("--attn_mode", default="flash")
+    p.add_argument("--no_compile", dest="compile", action="store_false")
+    p.add_argument(
         "--limit", type=int, default=0, help="Roll at most this many pairs (smoke)."
     )
-    _build(parser.parse_args())
+    return p
+
+
+def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+    )
+    a = build_argparser().parse_args()
+    if not 1 <= a.k_anchor < a.teacher_anchor_steps:
+        raise SystemExit("--k_anchor in [1, --teacher_anchor_steps)")
+    _build(a)
 
 
 if __name__ == "__main__":

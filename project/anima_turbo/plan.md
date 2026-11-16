@@ -58,8 +58,8 @@ What is open, in order:
 3. **The anchor target cache.** The target depends only on (prompt, ε) and the frozen teacher, so a
    cache leaves one student forward and backward per pair, and pairs are what the fit follows. A
    cache reuses a fixed set of pairs; the held-out anchor MSE is the check on that. Code in
-   `scripts/distill_turbo/anchor_cache.py` (`dpdmd.anchor_cache`; smoke-tested on 3 samples × 2 draws),
-   no full cache built.
+   `scripts/distill_turbo/anchor_cache.py` (`dpdmd.anchor_cache`). Built: 64 prompts × 2 ε on the
+   14 of 28 target, `post_image_dataset/turbo_anchor_cache/m15_k14of28_p64`; no run on it yet.
 4. **The DM / CDM / GAN terms on steps 1–3 only, from an anchor student** (`dm_first_step` off), if
    candidate 2 puts the finish in steps 1–3. Steps 1–3 that learn to repair a step 0 are steps 1–3
    that redraw it (Hub v3's `T>S@1` cos is 0.805), so this comes after the fit.
