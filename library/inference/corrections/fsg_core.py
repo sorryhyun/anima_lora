@@ -113,8 +113,8 @@ class FSGCalibrator:
         vel_uncond: VelUncond,
     ) -> torch.Tensor:
         """Return ``x̂`` after K forward-backward iterations driven by the
-        supplied velocity callbacks, or ``latents`` unchanged (same object,
-        bit-exact) when this step is not scheduled.
+        supplied velocity callbacks, or ``latents`` unchanged (same object)
+        when this step is not scheduled.
 
         Costs ``3·K`` velocity evaluations per scheduled step (v^c + v^u at σ via
         ``vel_cond_uncond``, then v^u at σ−Δσ via ``vel_uncond``). Deterministic.

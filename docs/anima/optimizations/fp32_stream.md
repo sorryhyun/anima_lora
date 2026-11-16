@@ -6,7 +6,7 @@ bf16 (or int8), and no parameter changes dtype. It is the default for generation
 
 ```bash
 make test                # fp32
-make test STREAM=bf16    # the forward and sampler of before, bit for bit
+make test STREAM=bf16    # the forward and sampler of before
 make lora                # fp32 (`stream` in configs/base.toml)
 make lora ARGS="--stream bf16"
 ```

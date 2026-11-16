@@ -369,7 +369,7 @@ def cache_latents(
     per-batch disk decode + image transform and the npz read-modify-write are
     CPU/IO, so they're farmed to thread pools that overlap the GPU.
     ``io_workers`` sizes those pools (default
-    ``min(8, cpu_count)``). Output is byte-identical to the serial path.
+    ``min(8, cpu_count)``). Output is the same as the serial path's.
 
     ``keep_stems`` (when given) restricts the walk to images whose stem is in
     the set — used by cond≠target tasks to encode only the paired subset.

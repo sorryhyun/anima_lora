@@ -28,7 +28,7 @@ F(x) = x'' ;  iterate x ← F(x), K times ;  then denoise from x̂ = x^(K)
 ```
 
 A constant velocity field is an exact fixed point (`F(x)=x`), which is the
-bit-exact invariant the test pins (`tests/test_fsg_invariant.py`).
+invariant the test pins (`tests/test_fsg_invariant.py`).
 
 ## Where it hooks — the calibration seam
 

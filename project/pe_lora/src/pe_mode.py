@@ -18,7 +18,7 @@ PE mode turns the branches on and swaps in PE's norms, GDN ``conv1d``, and the o
 small tensors. Its ``lm_head`` is PE's own bf16 matrix: the TE file has no lm_head,
 so any PE head costs 2 GB, and the exact one costs no more than inst + LoRA. The
 token embedding stays inst's (``eval.py``: PE's table moves KL by < 0.003). TE mode
-restores every swapped tensor bit for bit.
+restores every swapped tensor.
 """
 
 from __future__ import annotations

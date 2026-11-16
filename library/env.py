@@ -109,7 +109,7 @@ _CKPT_FALLBACK = {
     "text_encoder": "models/text_encoders/qwen_3_06b_base.safetensors",
     # base.toml ships the CJK pack on; with no base.toml to read there is
     # nothing to auto-fetch against, so the literal stays "" = off (stock T5
-    # tokenizer, bit-exact).
+    # tokenizer).
     "vocab_pack": "",
 }
 

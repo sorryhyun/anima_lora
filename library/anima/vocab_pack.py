@@ -11,7 +11,7 @@ embedder API:
    stream of any prompt that carries a routed character through
    :class:`~library.anima.ext_vocab.HybridT5Encoder`. Prompts with no routed
    character take the stock path untouched, so pure-English captions and
-   prompts are bit-identical with or without the pack.
+   prompts are unchanged by the pack.
 2. **Embedding table** — :func:`attach_vocab_pack` hooks ``llm_adapter.embed``
    so ext ids resolve to pack rows. It is a hook pair (clamp pre-hook +
    row-substitution forward hook), not a widened ``nn.Embedding``: the module's state dict stays at
@@ -267,7 +267,7 @@ class VocabPackTokenizeStrategy(AnimaTokenizeStrategy):
     untouched by the pack) and the stock T5 ids; rows whose text carries a
     routed character get their T5 ids / mask replaced by the hybrid encoding
     (eos-terminated, padded to ``t5_max_length`` — the same max-padding the
-    pretrained model expects). Everything else is bit-identical to the parent.
+    pretrained model expects). Everything else is the parent's output, unchanged.
     """
 
     def __init__(self, pack: VocabPack, **kwargs) -> None:

@@ -226,7 +226,7 @@ seeds; `output/tests/te8_tail/`.
 One training seed per arm and 6 renders per arm. The control LoRA with a tail at render
 time was not rendered.
 
-Each tail cache row is the shipped row bit-for-bit in 57 of 60 sequences. In 3
+Each tail cache row equals the shipped row in 57 of 60 sequences. In 3
 (`12248671` full, `8293513` / `8508115` plain) the rows from position 64 on differ by up to
 0.43 relative, which fits the GDN layers' 64-token chunks changing numerics with the total
 length (not checked further).

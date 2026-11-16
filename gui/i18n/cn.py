@@ -390,7 +390,7 @@ STRINGS: dict[str, str] = {
     "models_pack_pe": "PE-Core",
     "models_pack_pe_desc": "PE-Core-L14-336: 仅用于 CMMD 验证指标 (use_cmmd, 默认关闭)。REPA 特征缓存使用 PE-Spatial — 位于「策展」标签页的「分组」包。",
     "models_pack_cjk": "CJK 词表包",
-    "models_pack_cjk_desc": "面向日文 / 韩文 / 中文标注与提示词片段的额外文本编码器行。v2 起默认启用; 英文文本无论启用与否都逐位一致。",
+    "models_pack_cjk_desc": "面向日文 / 韩文 / 中文标注与提示词片段的额外文本编码器行。v2 起默认启用; 英文文本无论启用与否都不变。",
     "models_pack_moss_base": "MOSS-Image Base",
     "models_pack_moss_base_desc": "MOSS-Image-Base（不是 Anima）: 5B DiT、Qwen3.5-9B 文本编码器、FLUX.2 VAE 与分词器 — 约 27 GB。MOSS 线 LoRA 训练的基础模型。",
     "models_pack_moss_sft": "MOSS-Image SFT",

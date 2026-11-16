@@ -16,8 +16,8 @@ stream segment CJK spans identically (token-aligned cross-attention).
 Byte-fragment fallback: Qwen is byte-BPE, so some chars tokenize as UTF-8
 fragments. Those get per-character supplementary rows, initialised from the
 mapped mean of their fragment embeddings. Plain mean is order-invariant, so
-two chars whose UTF-8 bytes are permutations of each other would collide
-bit-identically (527 such pairs, e.g. 鯰/鰯); exactly those colliding rows use a position-weighted mean instead,
+two chars whose UTF-8 bytes are permutations of each other would get
+identical rows (527 such pairs, e.g. 鯰/鰯); exactly those colliding rows use a position-weighted mean instead,
 which breaks the tie while leaving every non-colliding row at the plain mean.
 
 Symbol routing: the stock spiece also has no row for a long
@@ -37,7 +37,7 @@ mirrors the trained blocks row-for-row at an offset. Routed spans *inside a
 quote pair* (``route.quotes``: ``「…」`` / ``『…』`` / ``"…"``) resolve to the
 isotropic block; bare CJK keeps the trained rows; the delimiters themselves
 stay on their usual path (``「」`` → trained row, ``"`` → spiece). A pack
-without ``iso`` encodes bit-identically to before.
+without ``iso`` encodes as before.
 
 Per-glyph routing (``mapping["glyph_route"]``, or ``ANIMA_VOCAB_GLYPH_ROUTE``
 through :class:`~library.anima.vocab_pack.VocabPack`): every JA Qwen token
@@ -46,7 +46,7 @@ rows instead of its own row — a piece (こんにちは) becomes five single id
 a space-prefixed glyph (`` の``) its glyph's row. The Qwen text is untouched.
 A token with a glyph that has no single row keeps its own row. It is the
 cjk_anima_scale line's P2 (``project/finished/cjk_anima_scale/retrain_experiments.md`` § 2).
-Off, the encoder is bit-identical to before. Hangul tokens (회사, `` 하세요``)
+Off, the encoder is unchanged. Hangul tokens (회사, `` 하세요``)
 split the same way only under their own key, ``mapping["glyph_route_ko"]``
 (or ``ANIMA_VOCAB_GLYPH_ROUTE_KO``): a token holding a Hangul syllable becomes
 its syllables' single rows (``project/cjk_ko/proposal_jamo.md`` § 3).
@@ -57,7 +57,7 @@ before routing and encoding, on the T5 side only (the Qwen text is the text
 as typed) — ``！`` → ``!``, ``~`` → ``～``, ``『`` → ``「`` … so variant forms
 share one row (``project/finished/cjk_anima_scale/_archive/plan_retrain.md`` § 2c). Char for
 char, so every offset still indexes the typed text. A pack without it encodes
-bit-identically to before.
+as before.
 
 Dot runs (``mapping["dots"]``, :class:`Dots`): after the fold, a run of
 ``・ ･ . ． ‥ …`` is rewritten by its dot count — one ``・`` → ``.``, 2–3 dots
@@ -641,7 +641,7 @@ def build_ext_table(
     for standard-range chars whose Qwen tokenization is byte-fragments only
     (init = mapped mean of fragment embeddings; chars sharing a fragment-id
     multiset with another char get a position-weighted mean so permuted byte
-    orders cannot land on bit-identical rows).
+    orders cannot land on identical rows).
 
     ``char_init`` — optional per-char vectors *already in T5 space* that
     replace the fragment-mean init for the chars they cover (the v2 asset's
@@ -724,8 +724,8 @@ def build_ext_table(
 class HybridT5Encoder:
     """T5-side encoder: old spiece for covered text, extended rows for CJK.
 
-    Non-CJK spans tokenize exactly as before (bit-identical for pure-English
-    prompts). CJK spans tokenize with the Qwen tokenizer: clean tokens map to
+    Non-CJK spans tokenize as before (pure-English prompts are
+    unchanged). CJK spans tokenize with the Qwen tokenizer: clean tokens map to
     ``T5_TABLE_SIZE + row``; byte-fragment runs are regrouped into characters
     and looked up per-char (unknown chars degrade to the old ``<unk>``).
     """
@@ -1039,7 +1039,7 @@ class HybridT5Encoder:
 
         The span rule: the regex ran once over the whole text *before*
         ``segment_runs``, so the spiece side is tokenised exactly as without
-        the partition (EN stays bit-identical) and only routed runs are cut at
+        the partition (EN is unchanged) and only routed runs are cut at
         the delimiters. Quoted pieces go to the isotropic mirror with no
         minted-word / C-fallback substitutions (those are trained content);
         unquoted pieces take the ordinary path.

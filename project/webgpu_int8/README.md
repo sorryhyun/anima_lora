@@ -91,7 +91,7 @@ The four non-square DiT exports are node-for-node identical. Diffing them shows:
 - **seg0**: also the patchify shapes (ph, pw), the zero padding-mask channel `(1, 1, 1, H, W)`,
   and the Cosmos RoPE angle tables `(1, ph, pw, 21)` for rows and columns (T-axis angles all
   zero). The tables equal `fp16(outer(arange, f))` with f = 1 / θ^(arange(0, 42, 2) / 42),
-  θ = 1e4·4^(42/40), bit for bit, in every bucket.
+  θ = 1e4·4^(42/40), exactly, in every bucket.
 - **seg6**: the unpatchify shapes.
 
 The VAE: Expand and Reshape targets at s·H, s·W (s = 1, 2, 4, 8) and H·W (mid-block attention),
@@ -101,7 +101,7 @@ and the nearest-2x upsample written as GatherND over index tables ⌊i/2⌋, ⌊
 
 - `src/dit_onnx_dynamic.py` fits each differing shape element to a symbol (N, ph, pw, H, W)
   across the four buckets and rebuilds it in-graph from `Shape(latent)`. It rebuilds the RoPE
-  tables with Range / Mul / Cast, which it checks bit-exact against every bucket, and the
+  tables with Range / Mul / Cast, which it checks for exact equality against every bucket, and the
   zero tensors with ConstantOfShape. Every segment takes `latent`, for its shape only. Seven
   graphs (~9 MB) over the unchanged HF sidecar: `output/webgpu_int8/onnx_dyn/dit_dyn_fp16_r16.*`.
 - `src/vae_onnx_dynamic.py` does the same for the VAE, fitted on 624x416 / 416x624 (H and W
@@ -135,7 +135,7 @@ Dynamic against per-bucket graphs, same weights, ORT CPU (`src/dit_onnx_dyn_eval
 | DiT `noise_pred` rel L2 | 1.2e-5 | 1.5e-5 | 1.6e-5 |
 
 The VAE matches all five buckets at max |Δ| 0.00098, one fp16 ulp near 1 (rel 2.1e-4). Neither
-is bit-exact: ORT fuses differently once shapes are symbolic. At grids no bucket has (64x96 and 96x64)
+is exact: ORT fuses differently once shapes are symbolic. At grids no bucket has (64x96 and 96x64)
 both run and stay finite at the buckets' output scale.
 
 Against the torch DiT in fp32 (`src/dit_ref_dump.py`: 8 cached images per grid at σ 1 / 0.9 /

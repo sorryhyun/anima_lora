@@ -127,7 +127,7 @@ Practical consequence. Both paths produce the same image quality on normal promp
 
 ### 2.2 Native-shape bucketing
 
-anima_lora — `compile_blocks()` (`library/anima/models.py`) enables native-shape flattening: the forward flattens `(B, T, H, W, D)` into a fake 5D shape of `(B, 1, seq_len, 1, D)`, restored after the block loop by `_unflatten_native_shape`. The block graph keys on token count alone, and `compile_dynamic_seq` collapses each resolution tier's token band to one graph, with no padding. Eager forwards skip the flatten (bit-exact). Details: [`../structure/anima-optimizations.md`](../structure/anima-optimizations.md) §3.
+anima_lora — `compile_blocks()` (`library/anima/models.py`) enables native-shape flattening: the forward flattens `(B, T, H, W, D)` into a fake 5D shape of `(B, 1, seq_len, 1, D)`, restored after the block loop by `_unflatten_native_shape`. The block graph keys on token count alone, and `compile_dynamic_seq` collapses each resolution tier's token band to one graph, with no padding. Eager forwards skip the flatten; the output is the same. Details: [`../structure/anima-optimizations.md`](../structure/anima-optimizations.md) §3.
 
 comfy — no static-shape mode. Processes variable `(B, T, H, W, D)` directly. Only padding is to patch boundaries via `comfy.ldm.common_dit.pad_to_patch_size()`.
 

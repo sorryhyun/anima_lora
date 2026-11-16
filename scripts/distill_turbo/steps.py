@@ -275,7 +275,7 @@ def _mean_velocity(v_fn, x_a, sa, sb, K) -> torch.Tensor:
     """Mean Euler velocity of ``v_fn`` from σ=sa to σ=sb (per sample, K uniform steps).
 
     Accumulates ``mean_k v_k`` instead of dividing the displacement by ``sa − sb``;
-    at K=1 it is ``v_fn(x_a, sa)`` bit for bit.
+    at K=1 it is ``v_fn(x_a, sa)``.
     """
     B = x_a.shape[0]
     sa_f, sb_f = sa.float(), sb.float()
@@ -352,7 +352,7 @@ def dm_slot(
     ``grad_signal`` is the mean of the per-draw signals (each keeps its own
     ``dm_x0_norm`` division); every other field is the first draw's, so the GAN
     renoise and the metrics see what a single draw gives. At ``dm_draws = 1``
-    this is the surrogate call bit for bit.
+    this is the surrogate call.
     """
     fn = mfd_surrogate if cfg.mfd_dtau > 0.0 else dmd_surrogate
     first = fn(ctx, cfg, x_pred, crossattn_emb, c_null, B)

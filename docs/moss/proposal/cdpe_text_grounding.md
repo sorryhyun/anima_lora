@@ -165,7 +165,7 @@ ruler habit. Neither arm moves the general renders. Sheets: `output/tests/castst
 ## Implementation notes
 
 - **RoPE.** `_RoPE.forward` takes an optional `text_hw (L, 2)`. With it absent, the output is
-  bit-identical, so the per-sample forward stays op-for-op with the pipeline.
+  unchanged, so the per-sample forward stays op-for-op with the pipeline.
   `forward_batched` takes one per sample.
 - **Span → token map.** Find the grounded spans' character ranges in the templated prompt
   and map them to token ids. The `token_split` wrapper raises on offset-mapping calls, so

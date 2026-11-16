@@ -284,7 +284,7 @@ class Folded2DConv(nn.Module):
     last temporal slot, so only the **last** temporal tap of the 3D kernel sees
     data — hence the equivalent is a plain ``nn.Conv2d`` with weight
     ``weight[:, :, -1, :, :]`` run on the squeezed ``(B, C, H, W)`` frame.
-    Bit-exact per-layer (fp64-verified); whole-VAE matches within bf16 noise
+    Matches per layer (fp64-verified); the whole VAE matches within bf16 noise
     at ~2x speed / ~0.65-0.7x memory (see ``_archive/bench/qwen_vae_2d/``).
     Accepts the replaced conv's ``cache_x`` arg (ignored — no-op here).
     ONLY valid for ``T == 1``; asserts on every forward.

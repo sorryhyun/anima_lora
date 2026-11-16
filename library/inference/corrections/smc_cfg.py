@@ -63,7 +63,7 @@ class SMCCFGState:
         # Resolution can change mid-loop (SPD/SPEED spectral expansion at the
         # low→full handoff): the stored previous-step residual then carries a
         # stale spatial shape and can't form the sliding surface. Treat the
-        # handoff as a cold start — drop the stale history. Inert (bit-exact)
+        # handoff as a cold start — drop the stale history. A no-op
         # whenever the shape is unchanged, which is every non-SPD step.
         if self._e_prev is not None and self._e_prev.shape != e.shape:
             self._e_prev = None

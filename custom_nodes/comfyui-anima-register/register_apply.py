@@ -108,7 +108,7 @@ class RegisterComfyAdapter:
         Installs the additive ΔW on each target block's split q/k/v projections
         and (when the checkpoint carries register tokens) the register-aware
         ``_forward``, then puts every touched attribute back — the shared
-        ``diffusion_model`` leaves this context bit-identical to how it entered.
+        ``diffusion_model`` leaves this context as it entered.
         """
         ref = next(dm.parameters())
         reg, deltas = self._materialize(ref.device, ref.dtype)

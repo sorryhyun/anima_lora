@@ -75,7 +75,7 @@ code):
 ## Status
 
 The mechanism is verified headless — with K=0 and a zero QKV delta the
-reimplemented forward is **bit-exact** to comfy's original `MiniTrainDIT._forward`
+reimplemented forward reproduces comfy's original `MiniTrainDIT._forward`
 (the native-flatten reshape + rope handling round-trip losslessly), K>0 strips
 registers and changes the output, and the split q/k/v ΔW patch is live. Still
 smoke-test end-to-end against a live ComfyUI instance (real weights, one sampled

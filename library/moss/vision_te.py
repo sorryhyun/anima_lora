@@ -3,8 +3,8 @@
 The pipeline's encode (chat template, add_generation_prompt, enable_thinking,
 last_hidden_state, one prompt per forward, no padding) with an image item ahead of
 the text, preprocessed with Qwen3.5-9B's own processor settings (patch 16, merge 2,
-mean/std 0.5; MOSS ships no processor config). A text-only call keeps the
-pipeline's string content, byte-identical to its prompts.
+mean/std 0.5; MOSS ships no processor config). A text-only call builds the
+same prompt string as the pipeline.
 """
 
 import torch

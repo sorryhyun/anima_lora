@@ -87,7 +87,7 @@ def sample_layout(
     bubble_frac: float = 0.6,
 ) -> dict:
     """Every random choice of one render for an ``n``-char string, drawn in the
-    pre-W2a order so unbalanced data dirs rebuild bit-identically.
+    pre-W2a order so unbalanced data dirs rebuild identically.
 
     ``mode="jitter"`` (data lever, 2026-09-14) draws the v1 fields and then
     overrides what v1 held constant: glyph position (anywhere on the canvas /
@@ -98,12 +98,12 @@ def sample_layout(
     shared gradient direction that drove the encoder's table to rank 1."""
     # mixed shapes (2026-09-14): glyph / bubble sizes were drawn for a 512
     # canvas; scale them by the short side so a 384² render keeps the same
-    # glyph-to-canvas statistics (a 512 draw is bit-identical: int(x * 1.0)).
+    # glyph-to-canvas statistics (a 512 draw is unchanged: int(x * 1.0)).
     W, H = wh(size)
     sc = min(W, H) / 512
     # the draw is consumed whatever the share, so 1.0 (S0b option (a): every
     # flat item inside the bubble, one flat layout for ``c_flat``) keeps the
-    # rest of the sequence bit-identical to the 0.6 build
+    # rest of the sequence identical to the 0.6 build
     lay = {"bubble": rng.random() < bubble_frac}
     lay["bg"] = rng.choice(
         ["white", "white", (235, 235, 235), (245, 240, 230), (220, 225, 235)]

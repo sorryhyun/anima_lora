@@ -401,7 +401,7 @@ STRINGS: dict[str, str] = {
     "models_pack_pe": "PE-Core",
     "models_pack_pe_desc": "PE-Core-L14-336: CMMD 検証メトリック専用 (use_cmmd、既定で無効)。REPA の特徴キャッシュは PE-Spatial を使います — 「キュレーション」タブの「グルーピング」パック。",
     "models_pack_cjk": "CJK 語彙パック",
-    "models_pack_cjk_desc": "日本語 / 韓国語 / 中国語のキャプション・プロンプト区間向けの追加テキストエンコーダー行。v2 から既定で有効で、英語テキストはどちらでもビット単位で同一です。",
+    "models_pack_cjk_desc": "日本語 / 韓国語 / 中国語のキャプション・プロンプト区間向けの追加テキストエンコーダー行。v2 から既定で有効で、英語テキストはどちらでも変わりません。",
     "models_pack_moss_base": "MOSS-Image Base",
     "models_pack_moss_base_desc": "MOSS-Image-Base（Anima ではありません）: 5B DiT、Qwen3.5-9B テキストエンコーダー、FLUX.2 VAE とトークナイザー — 約 27 GB。MOSS ラインの LoRA 学習のベースです。",
     "models_pack_moss_sft": "MOSS-Image SFT",

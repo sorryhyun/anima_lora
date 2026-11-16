@@ -26,7 +26,7 @@ energy), τ- or phase-localized, sign-disagreeing component against DM?
 
 Measure-only telemetry (`[gan] dm_gate_telemetry`, shipped): inside
 `gan_generator_term`, `g_gan = autograd.grad(gan_gen_loss, x_pred)` — read,
-never accumulated, so training numerics are byte-identical — compared
+never accumulated, so training numerics are unchanged — compared
 elementwise against the applied DM signal, τ-binned (8 uniform bins), with a
 permutation null computed on the same tensors from a dedicated generator.
 

@@ -97,7 +97,7 @@ Phase 2 — ship. `--detail_pass` (+ `--detail_sigma_start`,
 standard `test-*`/`gen` surface like other inference plug-ins. Per
 CONTRIBUTING Tier 2: bench script under `bench/detailer/` sharing
 `bench/_common.py` + an invariant test (composite outside the mask is
-bit-identical to the base render).
+identical to the base render).
 
 ## Risks / open questions
 

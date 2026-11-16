@@ -9,7 +9,7 @@ LoRA on the shipped INT8 TE and asks what the MOSS DiT does with it.
 1. **The PE LoRA runs on the shipped INT8 TE.** Extracted at r128 (down_proj r256) and
    applied as unmerged branches (`src/pe_mode.py`), it gives answer KL 0.187 against the
    PE teacher, where the bare 9B gives 0.85, and 16 / 16 valid JSON outputs. Switching back
-   to TE mode reproduces the TE's encodes bit for bit (max |Δh| 0.0, re-checked
+   to TE mode reproduces the TE's encodes (max |Δh| 0.0, re-checked
    2026-11-07). (2026-10-27)
 2. **PE mode moves the TE output a lot, mostly in directions the DiT reads weakly.** The
    DiT reads Δ = h_pe − h_te through `text_embedder.proj` less strongly than it reads h or

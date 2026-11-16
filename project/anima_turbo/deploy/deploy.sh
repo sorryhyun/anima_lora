@@ -6,7 +6,7 @@
 #   project/anima_turbo/deploy/deploy.sh <turbo_ema.safetensors> <name> [lora|bake|gptq|all]
 #
 #   lora  one LoRA for plain anima-base-v1.0: soup ΔW ++ turbo ΔT, exact concat
-#         -> output/ckpt/release/<name>.safetensors        (DTYPE=fp32 for the bit-exact file)
+#         -> output/ckpt/release/<name>.safetensors        (DTYPE=fp32 for the unrounded file)
 #   bake  base + ΔW + ΔT as a full bf16 DiT, merged on the CPU (BAKE_DEVICE=cuda to change)
 #         -> models/diffusion_models/<name>.safetensors
 #   gptq  ConvRot int8 GPTQ of the baked DiT, calibrated for 4 steps / cfg 1, queued on the daemon

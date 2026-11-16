@@ -178,7 +178,7 @@ def load_values(meta: dict, defaults: dict) -> dict:
 def _coerce(knob: Knob, value):
     """Normalise a raw widget value to the type the TOML/snapshot carries.
     Strings for float knobs are parsed (the tab hands the dropout rate over as
-    the line-edit text so the env export stays byte-exact)."""
+    the line-edit text so the env export carries the text as typed)."""
     kind = knob.kind
     if kind == "bool":
         return bool(value)

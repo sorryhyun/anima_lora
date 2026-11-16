@@ -201,7 +201,7 @@ def _refuse_unfused_attn_lora_keys(
         # clones the full fused down into every per-component key. Running the
         # block-diagonal path on that would inflate rank r→n*r per round trip.
         # Identical downs + equal alphas is the reliable signature (independently-
-        # trained per-component LoRAs never produce bit-identical downs).
+        # trained per-component LoRAs never produce identical downs).
         def _a(a):
             return a.item() if torch.is_tensor(a) else float(a)
 

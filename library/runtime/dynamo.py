@@ -167,7 +167,7 @@ def compile_signature(
     normalized so ``None`` and ``""`` ("inductor default") don't read as a
     signature change. ``seq_bands`` (per-band dynamic-seq) is appended only
     when set, so pre-existing union-range signatures — and their persistent
-    cache dirs — stay byte-identical.
+    cache dirs — stay unchanged.
     """
     sig = (
         f"families={n_token_families};seq_range={seq_range};"

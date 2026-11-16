@@ -419,7 +419,7 @@ def main() -> None:
         help="CJK vocab pack path prefix (configs/base.toml `vocab_pack`; '' = off). "
         "Routes CJK caption spans onto the pack rows, hooks the rows onto the "
         "LLM adapter for crossattn caching, and stamps the pack id into every "
-        "cache written. EN-only captions are bit-exact either way.",
+        "cache written. EN-only captions are unchanged either way.",
     )
     parser.add_argument(
         "--text_batch_size", type=int, default=16, help="text stage encode batch"

@@ -16,7 +16,7 @@ stock 32128 rows, so the pack composes with any checkpoint or DiT LoRA). Leave
 ``vocab_pack`` unset to follow the ``vocab_pack`` key in ``configs/base.toml``
 (``make download-vocab-pack`` fetches the shipped pack; ``""`` = off);
 ``no_vocab_pack=True`` forces the stock tokenizer. Prompts with no routed
-character are bit-identical with or without the pack.
+character are unchanged by the pack.
 
 Run from the repo root after ``make download-models`` and ``make
 download-vocab-pack``:

@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+**Do not use term bit-exact and do not be obsessed.**
+
 Orientation and invariants for this repository. Task-shaped detail lives in skills (`ls
 .claude/skills`) and in the nested `CLAUDE.md` files: `library/moss/`, `library/qwen21/`,
 `configs/`, `networks/`, `gui/`.

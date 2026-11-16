@@ -748,7 +748,7 @@ def setup_training_strategies(args) -> TrainingStrategies:
     """
     # A CJK vocab pack (``vocab_pack`` in the config chain, "" = off) swaps in
     # the pack-routing tokenizer so inline TE caching and sample prompts see the
-    # same T5 ids the preprocess caches were built with. EN stays bit-exact.
+    # same T5 ids the preprocess caches were built with. EN text is unchanged.
     from library.anima.vocab_pack import load_vocab_pack, make_tokenize_strategy
 
     tokenize = make_tokenize_strategy(

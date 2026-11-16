@@ -4,8 +4,8 @@ vae = "models/vae/qwen_image_vae.safetensors"
 # CJK vocab pack (JA / KO / ZH tag rows on the T5 side of the LLM adapter; see
 # docs/anima/methods/cjk_vocab_pack.md). On by default since v2: `make download-models`
 # installs it, and the loader fetches this default itself if it is missing.
-# Path prefix of the .safetensors/.json pair; "" = off (stock tokenizer,
-# bit-exact). EN-only captions and prompts are unaffected either way. Changing
+# Path prefix of the .safetensors/.json pair; "" = off (stock tokenizer).
+# EN-only captions and prompts are unaffected either way. Changing
 # or disabling it changes every TE cache with CJK captions: re-run
 # `make preprocess-te ARGS=--overwrite` afterwards.
 vocab_pack = "models/vocab_packs/anima_cjk_vocab_pack_jp_v1"

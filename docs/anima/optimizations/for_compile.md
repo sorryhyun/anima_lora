@@ -72,7 +72,7 @@ padding_mask.unsqueeze(2).expand(-1, -1, n_heads)
 
 `compile_blocks` is the one call that turns on `torch.compile`. It does two coupled things and raises the dynamo cache-size budget itself:
 
-1. Native-shape flattening (`self._native_flatten = True`). The forward flattens each bucket's patch grid `(B, T, H, W, D)` to a fake-5D `(B, 1, seq_len, 1, D)` shape (`unflatten`-restored after the block loop). This keys the block graph on token count alone instead of guarding `H` and `W` separately (one graph per resolution). No padding, so flash self-attention sees no padded tokens. Bit-exact to the eager 5D path; eager (uncompiled) forwards leave the flag `False` and skip the reshape.
+1. Native-shape flattening (`self._native_flatten = True`). The forward flattens each bucket's patch grid `(B, T, H, W, D)` to a fake-5D `(B, 1, seq_len, 1, D)` shape (`unflatten`-restored after the block loop). This keys the block graph on token count alone instead of guarding `H` and `W` separately (one graph per resolution). No padding, so flash self-attention sees no padded tokens. Same output as the eager 5D path; eager (uncompiled) forwards leave the flag `False` and skip the reshape.
 
 2. Per-block compile. Compiles each block's `_forward` method:
    ```python
@@ -212,7 +212,7 @@ sd-scripts: Zero `_orig_mod_` awareness — loading a checkpoint trained with `t
 ### 5.2 Custom down-projection autograd (removed 2026-06-10)
 
 `custom_autograd.py` and its fp32-bottleneck matmul policy were removed: under
-`accelerator.autocast()` the fp32 matmuls never executed (bit-identical forward in
+`accelerator.autocast()` the fp32 matmuls never executed (identical forward in
 the `lora_fp32_bottleneck` bench). Training forwards now run the rank GEMMs in the
 frozen Linear's output dtype (`org_forwarded.dtype`, `networks/lora_modules/base.py`);
 inference paths keep fp32. Regression tests: `tests/test_lora_dtype_policy.py`,

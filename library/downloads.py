@@ -83,7 +83,7 @@ VOCAB_PACK_DIR = "vocab_packs"
 
 # MOSS-Image (OpenMOSS, Apache-2.0) — not Anima; the ``library/moss/`` line.
 # One diffusers folder per variant under ``models/moss_image/``. SFT is a fine-tune
-# of Base with byte-identical TE / VAE / tokenizer, so the SFT pack is its DiT
+# of Base with identical TE / VAE / tokenizer, so the SFT pack is its DiT
 # alone and ``library/moss/loader.py`` always reads those three from Base.
 MOSS_DIR = "moss_image"
 MOSS_VARIANT_DIRS = {"base": "MOSS-Image-Base", "sft": "MOSS-Image-SFT"}
@@ -169,7 +169,7 @@ TRAINER_PACKS: tuple[Pack, ...] = (
         "cjk",
         "CJK vocab pack",
         "Extra text-encoder rows for Japanese / Korean / Chinese caption and "
-        "prompt spans. On by default since v2; English text is bit-exact "
+        "prompt spans. On by default since v2; English text is unchanged "
         "either way.",
     ),
     Pack(
@@ -457,7 +457,7 @@ def anima_catalog() -> tuple[Asset, ...]:
             'default (`""` turns it off); the loader fetches this row itself '
             "when the default is missing. Changing the pack needs "
             "`make preprocess-te ARGS=--overwrite` for CJK captions; EN-only "
-            "captions are bit-exact either way.",
+            "captions are unchanged either way.",
         ),
     )
 

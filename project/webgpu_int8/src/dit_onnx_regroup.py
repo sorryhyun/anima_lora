@@ -21,7 +21,7 @@ wraps them in fp32 Casts and drops back-to-back Cast pairs at every optimisation
 so a consumer that read a segment's fp16 graph input reads the producer's unrounded fp32
 value once merged (v4_preview int8, 32x48: ``noise_pred`` rel 0.025, the int8 activation
 rounding of ``accuracy_level`` 4 amplifying it). Promoted to fp32, the merged and source
-sets agree bit for bit, and with the ``__s<k>`` suffixes stripped the nodes are the
+sets agree exactly, and with the ``__s<k>`` suffixes stripped the nodes are the
 source's one for one.
 """
 

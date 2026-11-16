@@ -78,7 +78,7 @@ def compute_fei_nband_high_to_low(
 ) -> torch.Tensor:
     """Return ``(B, num_bands)`` simplex energies, ordered ``[high, ..., low]``.
 
-    Bit-identical to FeRA's ``FrequencyEnergyIndicator``: bands are
+    Matches FeRA's ``FrequencyEnergyIndicator``: bands are
     differences of adjacent pyramid levels (high-freq first), followed by
     the coarsest LP as the residual low-band; σ scales double outward
     from ``sigma_low``. Promoted to fp32 internally — squared norms can

@@ -219,8 +219,7 @@ def create_network(
     ):
         logger.info(
             "EasyControl: use_custom_down_autograd is deprecated and ignored "
-            "(fp32-bottleneck path removed; activation-dtype GEMMs are "
-            "bit-identical under the trainer's autocast)"
+            "(fp32-bottleneck path removed)"
         )
 
     # Loads the COND-SPECIFIC calibration (see helper); alpha<=0 disables.
@@ -1062,7 +1061,7 @@ class EasyControlNetwork(AdapterNetworkBase):
 
         # PAI (cond-only downscale): at cond_res_scale<1, downsample the cond
         # latent and rescale its RoPE positions back onto the target grid.
-        # cond_res_scale==1 skips this block → bit-exact to native resolution.
+        # cond_res_scale==1 skips this block → native resolution.
         h_scale = w_scale = 1.0
         if self.cond_res_scale < 1.0:
             p = self._dit.patch_spatial
@@ -1415,7 +1414,7 @@ def _make_adapter_lora_forward(orig_forward, lora, ec_net):
 
 # Target-stream sublayers with the body LoRA spliced in. ``loras`` is the
 # per-block ``(qkv, o, xq, xkv, ffn1, ffn2)`` tuple or None — None runs the
-# frozen module exactly as Block._forward does (bit-exact baseline).
+# frozen module exactly as Block._forward does.
 
 
 def _target_self_qkv(attn, x_flat, rope_cos_sin, loras, s: float):

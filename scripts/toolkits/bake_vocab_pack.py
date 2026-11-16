@@ -108,7 +108,7 @@ def bake(
     ``table`` is the base pack's *stored* ``ext_embed`` (not iso-materialised:
     a regenerated iso block cannot carry a delta, and the stored row count is
     what the json's ``rows`` describes). Rows outside ``delta.ext_ids`` are
-    returned byte-identical; listed rows get ``raw * row_scale * scale`` added
+    returned unchanged; listed rows get ``raw * row_scale * scale`` added
     in float32 and are cast back to the table's dtype.
     """
     ids = delta["ext_ids"]

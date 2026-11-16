@@ -10,7 +10,7 @@ with no LoRA, right after the DiT loads.
 
 Each block's ``proj.q`` / ``k`` / ``v`` become one GEMM, ``block.qkv``, with their rows
 concatenated. They read the same ``y``, so the kernel rotates and quantizes it once. The
-forward is bit-identical to three calls. ``wq_t`` shares one scale per column of the
+forward gives the same result as three calls. ``wq_t`` shares one scale per column of the
 weight, and dY one per token, across the three. The three linears stay as
 :class:`QKVPart`, which the adapters patch.
 """

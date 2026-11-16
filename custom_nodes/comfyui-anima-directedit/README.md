@@ -28,7 +28,7 @@ This node ports that idea to the Anima (DiT, flow-matching) model.
 
 Two passes through the DiT:
 
-1. **Inversion** (clean → noise): step backward through the same Euler ODE the generator runs forward, querying v_θ at each step's input. Record per-step residuals `Δz_i = z_inv[i+1] − z_inv[i]` — these are the "anchor" the paper uses to make reconstruction bit-exact.
+1. **Inversion** (clean → noise): step backward through the same Euler ODE the generator runs forward, querying v_θ at each step's input. Record per-step residuals `Δz_i = z_inv[i+1] − z_inv[i]` — these are the "anchor" the paper uses to reconstruct the source exactly.
 2. **Editing** (noise → clean): standard generation loop, but every model call is queried at `z[i] + Δz[i]` instead of `z[i]`. The cross-attn prompt is the edit target ψ_tar; the residual Δz pins the trajectory to the source.
 
 Result: regions the prompt *doesn't change* stay locked to the source; regions it *does* change get re-rendered under the target prompt.

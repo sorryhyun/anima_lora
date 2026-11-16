@@ -50,7 +50,7 @@ per tier**.
 
 Each forward runs at its real token count; `compile_blocks()` sets `_native_flatten`,
 which flattens each patch grid to a fake-5D `(B, 1, seq_len, 1, D)` shape so the block
-graph keys on **token count alone** — bit-exact to the eager 5D path.
+graph keys on **token count alone**, with the same output as the eager 5D path.
 
 ## Caches are the source of truth
 

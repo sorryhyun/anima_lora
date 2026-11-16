@@ -22,7 +22,7 @@ intervention previously built on redundancy signals, the deferred-foveated
 merge, died because its damage lived in the *process*, not the endpoint
 (`foveated_denoise.md`: the periphery blur was constitutive, P4t).
 This line inverted the order: record per-step / per-token / per-channel
-statistics of x̂₀ = z − σ·v during generation (bit-exact, 1.35 % overhead
+statistics of x̂₀ = z − σ·v during generation (output unchanged, 1.35 % overhead
 at 1024²), build the domain atlas, build a process-intactness gauge, and only
 then audition efficiency interventions against it.
 

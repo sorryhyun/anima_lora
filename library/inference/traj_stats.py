@@ -96,7 +96,7 @@ class TrajStatsRecorder:
     """Accumulates per-step trajectory traces on-GPU and dumps one npz at flush.
 
     Pure observation: :meth:`record` never mutates its inputs and never feeds
-    anything back into the loop — recorder on/off latents are bit-identical
+    anything back into the loop — recorder on/off latents are identical
     (pinned by ``tests/test_traj_stats.py``).
     """
 

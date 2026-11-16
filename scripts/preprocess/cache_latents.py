@@ -77,14 +77,14 @@ def main() -> None:
     )
     # Encode in fp32 instead of bf16. The fp32 save already happens regardless;
     # this also encodes in fp32, removing the (structured but ~17 dB-below-recon)
-    # bf16 accumulation error and making the 2D fold bit-exact. See
+    # bf16 accumulation error and making the 2D fold match the 3D conv. See
     # _archive/bench/qwen_vae_2d/encode_dtype_probe.py — quality-neutral, hygiene only.
     parser.add_argument(
         "--no_half_vae",
         "--fp32_vae",
         dest="no_half_vae",
         action="store_true",
-        help="Encode latents in fp32 (default: bf16). Bit-exact 2D fold; slower.",
+        help="Encode latents in fp32 (default: bf16). The 2D fold matches the 3D conv; slower.",
     )
     parser.add_argument(
         "--path_pattern",

@@ -105,7 +105,7 @@ def load_text_encoder(
 ):
     """``(tokenizer, text_encoder)`` on ``device``, layers that do not fit paged in
     per forward. ``max_tokens`` is the longest prompt the caller will encode (it
-    sizes the activation reserve). TE and tokenizer are byte-identical between
+    sizes the activation reserve). TE and tokenizer are identical between
     Base and SFT; Base's are used. ``precision="int8"`` / ``"fp8"`` loads the
     catalog's quantized file (``library/moss/fp8.py``, fetched on first use)
     instead of the bf16 shards; the tokenizer still comes from Base."""

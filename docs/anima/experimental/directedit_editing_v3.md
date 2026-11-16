@@ -26,7 +26,7 @@ Two passes through the frozen DiT (Yang & Ye, [arXiv:2605.02417v1](https://arxiv
 1. Inversion (clean → noise): step backward through the same Euler
    ODE the generator runs forward, querying `v_θ` at each step's input.
    Record per-step residuals `Δz_i = z_inv[i+1] − z_inv[i]` — these
-   are the "anchor" the paper uses to make reconstruction bit-exact
+   are the "anchor" the paper uses to make reconstruction exact
    instead of trying to rectify the inversion path itself.
 2. Editing (noise → clean): standard generation loop, but every
    model call is queried at `z[i] + Δz[i]` instead of `z[i]`. The

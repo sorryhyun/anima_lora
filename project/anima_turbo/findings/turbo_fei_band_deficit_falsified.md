@@ -125,7 +125,7 @@ no-over-low directly supports that — the DP-DMD anchor + `dm_x0_norm`
   checkpoint only if the loop's diversity mechanism changes materially.
 - The mechanism is sound, just mis-sited and un-needed. The DoG LP/HP split +
   bounded per-sample deficit is correct and reusable, but do not resurrect `ca_band.py`
-  (`enabled=false`; β=0 is bit-identical to off and reclaims the ~14% wall-clock of the
+  (`enabled=false`; β=0 matches off and reclaims the ~14% wall-clock of the
   no-op teacher forward).
 
 ## Pointers

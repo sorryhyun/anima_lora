@@ -76,7 +76,7 @@ $\text{mean}(x^2)$ at `D = 2048` is a long reduction — bf16 can over/underflow
 
 ### 2.3 What is deliberately NOT fp32: the LoRA bottleneck
 
-The LoRA rank GEMMs used to run in fp32 as a third upcast site. That path was removed 2026-06-10 after a bench showed the outputs bit-identical: training forwards now run the rank GEMMs in the model compute dtype — specifically `org_forwarded.dtype`, *not* `x.dtype` (`networks/lora_modules/base.py`; guarded by `tests/test_lora_dtype_policy.py`).
+The LoRA rank GEMMs used to run in fp32 as a third upcast site. That path was removed 2026-06-10 after a bench showed the outputs identical: training forwards now run the rank GEMMs in the model compute dtype — specifically `org_forwarded.dtype`, *not* `x.dtype` (`networks/lora_modules/base.py`; guarded by `tests/test_lora_dtype_policy.py`).
 
 The distinction is load-bearing: under `autocast(bf16)`, AdaLN's LayerNorm hands the LoRA module an fp32 input while the frozen Linear's output is bf16 — keying the delta's dtype off the input would produce a dtype mismatch on the residual add. Inference/merge paths still compute deltas in fp32, where the one-time cost is irrelevant.
 
@@ -125,7 +125,7 @@ x = x.flatten(1, 3)              # (B, seq_len, D)
 x = x.unsqueeze(1).unsqueeze(3)  # (B, 1, seq_len, 1, D)
 ```
 
-This makes the block graph key on token count alone rather than guarding `H` and `W` separately (which would recompile per resolution). It's bit-exact to the eager 5D path because `rearrange("b t h w d -> b (t h w) d")` with `t=1, w=1` produces the same flat order. Eager forwards skip the reshape entirely.
+This makes the block graph key on token count alone rather than guarding `H` and `W` separately (which would recompile per resolution). It gives the same output as the eager 5D path because `rearrange("b t h w d -> b (t h w) d")` with `t=1, w=1` produces the same flat order. Eager forwards skip the reshape entirely.
 
 ### Cross-attention side: full-length KV, always
 
@@ -208,7 +208,7 @@ In the block hot path:
 | -------------------------------- | ---------------------------------------------------- | -------------------------------------------- |
 | QKV + KV fusion                  | 2–3× fewer GEMMs and HBM reads per attention layer   | Three small kernels per sub-layer            |
 | fp32 at statistic reductions     | Norm/loss precision at D=2048                        | Norms drift, σ-weights lose mantissa         |
-| Compute-dtype LoRA GEMMs         | Bandwidth (bit-identical to the removed fp32 path)   | 2× LoRA activation traffic for nothing       |
+| Compute-dtype LoRA GEMMs         | Bandwidth (identical to the removed fp32 path)       | 2× LoRA activation traffic for nothing       |
 | Free-fit + dynamic-seq compile   | One graph per resolution tier, ~zero crop loss       | Recompile storm or pad leakage into attention|
 | `_forward` compile target        | Real fusion past `unsloth_checkpoint`                | Graph break, guards still checked every step |
 | No dict cache under trace        | Stable guards                                        | Cache-miss guard invalidation mid-training   |

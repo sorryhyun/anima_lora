@@ -5,7 +5,7 @@ Two-pass training-free editor for flow-matching DiTs:
 1. **Inversion** (clean -> noise): step backward through the same Euler ODE
    the generator runs forward, querying v_θ at each step's input. Record
    per-step residuals ``ΔZ_i = Z_inv[i+1] − Z_inv[i]`` — these are the
-   "anchor" the paper uses to make reconstruction bit-exact instead of
+   "anchor" the paper uses to reconstruct the source exactly instead of
    trying to rectify the inversion path itself.
 
 2. **Editing** (noise -> clean): standard generation loop, but every model
@@ -257,7 +257,7 @@ def invert(
 
     ``traj_recorder`` (optional): a
     :class:`library.inference.traj_stats.TrajStatsRecorder` observing the
-    inversion trajectory, passive — ``z_inv``/``delta_z`` are bit-identical
+    inversion trajectory, passive — ``z_inv``/``delta_z`` are identical
     with it on or off (pinned by ``tests/test_traj_stats.py``). Sigma is
     passed as the 0-d tensor (never ``float()`` — stream-sync trap).
     """

@@ -122,13 +122,13 @@ Negative modes (`contrastive_negative_mode`):
 
 Negative grouping comes from the shared caption index (`make caption-index` → `post_image_dataset/captions/caption_index.json`), reusing `IdentityPairSampler` (`hard_negative` / `shuffled` / `tag_jaccard`). The index path is not a user knob.
 
-Wiring. Negatives are sourced in `library/datasets/base.py::setup_contrastive_negatives` / `_load_te_for_stem` (surfaced as `neg_crossattn_emb` `(B, k, S, D)` on train steps only — validation FM-MSE stays a clean baseline). The `k` extra forwards + InfoNCE live in `SoftTokensMethodAdapter.extra_forwards` + `SoftTokensNetwork.contrastive_loss`; the warmup-gated weight is composed in `library/training/losses.py::_soft_tokens_contrastive_loss` (active iff `_contrastive_target_weight > 0`). `step_contrastive_warmup` holds `λ_con` at 0 for the first `warmup_ratio` of steps. The objective leaves no learned parameters — a trained checkpoint is bit-identical whether or not contrastive was on, and inference ignores it entirely.
+Wiring. Negatives are sourced in `library/datasets/base.py::setup_contrastive_negatives` / `_load_te_for_stem` (surfaced as `neg_crossattn_emb` `(B, k, S, D)` on train steps only — validation FM-MSE stays a clean baseline). The `k` extra forwards + InfoNCE live in `SoftTokensMethodAdapter.extra_forwards` + `SoftTokensNetwork.contrastive_loss`; the warmup-gated weight is composed in `library/training/losses.py::_soft_tokens_contrastive_loss` (active iff `_contrastive_target_weight > 0`). `step_contrastive_warmup` holds `λ_con` at 0 for the first `warmup_ratio` of steps. The objective leaves no learned parameters — a trained checkpoint has the same parameters whether or not contrastive was on, and inference ignores it entirely.
 
 Config knobs (`network_args`, all off-by-default-safe):
 
 | Knob | Default | Meaning |
 |---|---|---|
-| `contrastive_weight` | `0.0` | λ_con; `0` = bit-identical to plain FM (dataset stops producing negatives → no extra forwards). |
+| `contrastive_weight` | `0.0` | λ_con; `0` = plain FM (dataset stops producing negatives → no extra forwards). |
 | `contrastive_k` | `1` | negatives per step → `(k+1)×` forward cost. |
 | `contrastive_every_n` | `1` | run the negatives only every Nth optimizer step (gated on `global_step // accum` so an accumulation window fires uniformly). Manual knob, not auto-scaled → effective strength ≈ `weight × 1/N`. No extra memory. |
 | `contrastive_negative_mode` | `shuffled` | `shuffled` \| `jaccard` \| `hard`. |
@@ -177,8 +177,8 @@ the negative push refines ψ⁻ without spending generative fidelity on the bank
 at inference. Inference uses ψ⁺ only (injecting ψ⁻ in the uncond branch
 over-suppresses detail). The load side keys off the on-disk tensor rank (4D ⇒
 dual), so `load_weights` slices the ψ⁺ branch when an inference net reads a dual
-file; single-bank checkpoints stay loadable and `dual_bank=false` is bit-identical
-to the single-bank path. The flag accepts the old name `agsm_dual_bank` as a
+file; single-bank checkpoints stay loadable and `dual_bank=false` matches
+the single-bank path. The flag accepts the old name `agsm_dual_bank` as a
 deprecated alias. (Dual-bank is orthogonal to the objective — it works under
 InfoNCE too; the live softrank run shows ψ⁻ training via `tokens_neg_mean_norm`.)
 

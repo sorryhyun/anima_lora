@@ -459,7 +459,7 @@ STRINGS: dict[str, str] = {
     "models_pack_pe": "PE-Core",
     "models_pack_pe_desc": "PE-Core-L14-336: the CMMD validation metric only (use_cmmd, off by default). The REPA feature cache uses PE-Spatial — the Grouping pack on the Curation tab.",
     "models_pack_cjk": "CJK vocab pack",
-    "models_pack_cjk_desc": "Extra text-encoder rows for Japanese / Korean / Chinese caption and prompt spans. On by default since v2; English text is bit-exact either way.",
+    "models_pack_cjk_desc": "Extra text-encoder rows for Japanese / Korean / Chinese caption and prompt spans. On by default since v2; English text is unchanged either way.",
     "models_pack_moss_base": "MOSS-Image Base",
     "models_pack_moss_base_desc": "MOSS-Image-Base (not Anima): the 5B DiT, the Qwen3.5-9B text encoder, the FLUX.2 VAE and tokenizer — ~27 GB. The MOSS line's LoRA substrate.",
     "models_pack_moss_sft": "MOSS-Image SFT",

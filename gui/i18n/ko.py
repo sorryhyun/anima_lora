@@ -442,7 +442,7 @@ STRINGS: dict[str, str] = {
     "models_pack_pe": "PE-Core",
     "models_pack_pe_desc": "PE-Core-L14-336: CMMD 평가 지표 전용 (use_cmmd, 기본 OFF). REPA 특징 캐시는 PE-Spatial을 씁니다 — '큐레이션' 탭의 '그룹화' 팩.",
     "models_pack_cjk": "CJK 어휘 팩",
-    "models_pack_cjk_desc": "일본어 / 한국어 / 중국어 캡션·프롬프트 구간용 추가 텍스트 인코더 행. v2부터 기본 활성이며, 영어 텍스트는 어느 쪽이든 비트 단위로 동일합니다.",
+    "models_pack_cjk_desc": "일본어 / 한국어 / 중국어 캡션·프롬프트 구간용 추가 텍스트 인코더 행. v2부터 기본 활성이며, 영어 텍스트는 어느 쪽이든 그대로입니다.",
     "models_pack_moss_base": "MOSS-Image Base",
     "models_pack_moss_base_desc": "MOSS-Image-Base (Anima 아님): 5B DiT, Qwen3.5-9B 텍스트 인코더, FLUX.2 VAE와 토크나이저 — 약 27 GB. MOSS 라인의 LoRA 학습 기반 모델입니다.",
     "models_pack_moss_sft": "MOSS-Image SFT",

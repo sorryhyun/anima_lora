@@ -37,8 +37,8 @@ touch them):
    step = re-routing) and mass (attention on a tag's key columns). Tag→column
    mapping is exact via qwen3 token-id subsequence match against the padded
    `input_ids`.
-2. `attn_contribution.py` — WHAT. Mirrors `Block._forward` (bit-identical;
-   verified `max|Δlatent| = 0.0`) to log the L2 norm of each gated term added to
+2. `attn_contribution.py` — WHAT. Mirrors `Block._forward` (verified
+   `max|Δlatent| = 0.0`) to log the L2 norm of each gated term added to
    the residual: `gate_self·self_attn`, `gate_cross·cross_attn`, `gate_mlp·mlp`.
    The gates are adaln-modulated by the timestep, so this captures the σ-scheduled
    down-weighting that the WHERE probe is blind to.

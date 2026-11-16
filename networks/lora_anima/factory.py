@@ -160,8 +160,7 @@ def create_network(
     ):
         logger.info(
             "use_custom_down_autograd is deprecated and ignored "
-            "(fp32-bottleneck path removed; compute-dtype GEMMs are "
-            "bit-identical under the trainer's autocast)"
+            "(fp32-bottleneck path removed)"
         )
 
     channel_scales_dict = _load_channel_scales(kwargs)

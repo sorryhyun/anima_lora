@@ -34,7 +34,7 @@ class T5DiffSpan:
 
     ``src_ids[start:src_end]`` ↔ ``tar_ids[start:tar_end]`` is the span that
     differs (either side may be empty for pure add/remove). Everything outside
-    that range is bit-identical between the two trimmed T5 sequences.
+    that range is identical between the two trimmed T5 sequences.
 
     ``src_len`` / ``tar_len`` are the post-padding-trim lengths — the suffix
     region we copy from src runs ``[src_end:src_len]``.

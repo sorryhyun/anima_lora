@@ -23,7 +23,7 @@ steps_per_row = 40
 shares = { grid_44 = 0, grid_29 = 0, grid_16 = 0, lone_44 = 0, lone_28 = 0, lone_16 = 0, bubble1_52 = 2, bubble1_32 = 3, bubbleN_34 = 15, bubbleN_18 = 10, grid_64 = 0, sent_34 = 40, sent_22 = 30 }
 # the 225 sat at their own unscaled stick in b5 (|m| 152 vs stick080's kanji 114, cos 0.98):
 # retrain_kanji_b5_stick080 = b5 with the 225 only at row + (0.8 − 1)·m_225 (|m| 122), the
-# rest bit-identical (user, 10-08; the first B, killed at step 1 425, ran on b5 as trained)
+# rest unchanged (user, 10-08; the first B, killed at step 1 425, ran on b5 as trained)
 rows_from = "retrain_kanji_b5_stick080"
 pack = "punct"
 lines = "m109_b5"

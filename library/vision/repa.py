@@ -85,7 +85,7 @@ def relational_gram_loss(
     removing the shared global component that compresses pairwise cosines.
 
     ``sample_weights`` (``[B]`` or None): per-sample multipliers applied
-    before the batch mean (timestep reweighting); None is bit-exact to the
+    before the batch mean (timestep reweighting); None gives the
     unweighted ``F.mse_loss`` reduction.
     """
     if spatial_norm:

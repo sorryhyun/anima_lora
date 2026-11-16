@@ -260,7 +260,7 @@ class REPAMethodAdapter(MethodAdapter):
 
         Both integrate to 1 under uniform σ, so this reshapes *where* REPA acts
         without changing its expected magnitude. Returns None at g == 0
-        (bit-exact to the unweighted loss)."""
+        (the unweighted loss)."""
         g = self._timestep_weighting
         if g == 0.0:
             return None

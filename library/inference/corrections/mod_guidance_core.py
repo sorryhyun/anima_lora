@@ -16,7 +16,7 @@ Two pieces of math are shared verbatim between the library's mod-guidance
 torch/stdlib only — no ``comfy``, no anima-model imports. Each linear casts its
 input to the weight dtype, so a caller running the (tiny) head in fp32 against
 bf16 activations gets correct results; when dtypes already match the casts are
-no-ops and the result is bit-identical to a plain ``nn.Sequential`` call.
+no-ops and the result equals a plain ``nn.Sequential`` call.
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ def project_pooled(
     σ-FiLM is applied only when both ``film_w`` and ``t_emb`` are provided: the
     hidden between the linears is modulated by ``h * (1 + scale) + shift`` where
     ``(scale, shift) = chunk(Linear(t_emb; film_w, film_b))``. Without them this
-    is the plain σ-flat head — bit-for-bit ``Linear → SiLU → Linear``.
+    is the plain σ-flat head, ``Linear → SiLU → Linear``.
 
     Each linear casts its input to the weight dtype (no-op when matched), so the
     head can run at a different precision than its inputs. ``out_dtype`` casts the

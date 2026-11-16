@@ -78,7 +78,7 @@ question is **compression**: can 2–3 rows carry what 20–40 teacher tokens di
 
 **C. Knowledge LoRA on the TE (the PE carrier, used the other way round).** One TE-mode
 LoRA for N characters, carried by the same switchable-branch mechanism as PE mode (INT8
-TE, branches off = the shipped TE bit for bit). Two losses:
+TE, branches off = the shipped TE). Two losses:
 
 - **Read-out matching (length-invariant).** The DiT consumes text only through joint
   attention. At a few blocks, take image-token queries from teacher runs and match the

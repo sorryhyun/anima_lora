@@ -4,7 +4,7 @@ Prompt and caption in Japanese / Korean / Chinese through a text-encoder
 asset, not a LoRA. The pack is a table of extra T5-side embedding rows
 (`ext_embed [rows, 1024]`, ids ≥ 32128) plus a JSON sidecar with the
 segmentation / row maps. English text is untouched: a prompt or caption with no
-routed character tokenizes bit-identically with or without the pack. On by
+routed character tokenizes the same with or without the pack. On by
 default: `configs/base.toml` ships `vocab_pack` pointing at the
 shipped pack, `make download-models` installs it, and the loader fetches it
 itself if the default is missing. Setting the key to `""` turns the whole path
@@ -42,7 +42,7 @@ make download-models              # first-run set — includes the pack (→ mod
 make download-vocab-pack          # re-fetch just the pack
 # configs/base.toml (the shipped default)
 vocab_pack = "models/vocab_packs/anima_cjk_vocab_pack_jp_v1"
-# off: stock tokenizer, bit-exact
+# off: stock tokenizer
 vocab_pack = ""
 make preprocess-te ARGS=--overwrite   # after any change, only if a caption carries CJK (see below)
 ```

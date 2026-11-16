@@ -1,7 +1,7 @@
 # Paired ΔW cosines ride a ~0.41 chaos floor — flash-attn backward is the one un-seedable RNG, and `--deterministic` removes it
 
 > **STATUS (2026-07-27).** TRAP (measurement methodology) + the fix LANDED the
-> same day: `--deterministic` (train.py) produces bit-identical checkpoints
+> same day: `--deterministic` (train.py) produces identical checkpoints
 > across runs, twin-validated over full compiled 1200-step runs. Data:
 > `_archive/sigma_lowres/bench/report.md` §"Twin controls".
 
@@ -10,7 +10,7 @@
 The sigma_lowres Phase-1b in-vivo A/B compared paired training arms
 (`--seed 42 --paired_step_rng`, CRN: identical init, data order, σ sequence,
 noise) by ΔW cosine (`_archive/sigma_lowres/bench/compare_ckpt_dw.py`, rank-space
-`(UaᵀUb)⊙(DaDbᵀ)`). CRN lockstep was *witnessed* — arms bit-exact at step 2,
+`(UaᵀUb)⊙(DaDbᵀ)`). CRN lockstep was *witnessed* — arms identical at step 2,
 tracking to 3–4 decimals through step 10 — so it was tempting to read the
 endpoint cosines as treatment magnitude: base↔σ>0.5 = 0.320 "big effect",
 base↔σ>0.75 = 0.395 "smaller effect", sigma↔yarnsig = 0.402 "real rope
@@ -48,7 +48,7 @@ control (measures the floor) or determinism (removes it). Orderings across
 pairs sharing the floor remain valid; absolute magnitudes and any pair within
 ~0.05 of the floor do not.
 
-## The fix — `--deterministic`, validated to bit-exactness
+## The fix: `--deterministic`, validated on twin runs
 
 `train.py --deterministic` =
 
@@ -61,8 +61,8 @@ pairs sharing the floor remain valid; absolute magnitudes and any pair within
   braces for the rest.
 
 Validation (`tenth4s_det_a` / `_det_b`, identical commands, full tenth×4ep
-compiled runs): 0/1092 tensors differ, max abs diff exactly 0.0. Not
-"cosine ≈ 1" — bit-identical files modulo metadata.
+compiled runs): 0/1092 tensors differ, max abs diff exactly 0.0. The
+files are identical apart from metadata.
 
 Cost: ~33% throughput on tenth (1.23–1.30 vs 1.95 it/s) — the deterministic
 flash backward trades atomics for extra recompute/semaphores. Same
@@ -81,7 +81,7 @@ three-arm table") resolved the previously-vacuous yarnsig read: rope-vs-plain
 
 But the same run exposed the second half of the trap: determinism buys
 attribution, not magnitude. Chaos is intrinsic to the training dynamics —
-deterministic kernels make identical commands bit-exact, yet a real treatment
+deterministic kernels make identical commands produce identical results, yet a real treatment
 difference is amplified by the same chaotic divergence as noise was, landing
 within 0.02 of the nondeterministic numbers everywhere (0.305 vs 0.320, 0.396
 vs 0.402). Noise and treatment do not add in cosine; both saturate the same

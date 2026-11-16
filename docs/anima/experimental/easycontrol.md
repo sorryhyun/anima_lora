@@ -111,7 +111,7 @@ init makes the extended self-attention match the no-cond baseline at step 0:
 | Zero-init both K_c and V_c           | 0.38       | 0.62    | FAIL        |
 | Zero-init the cond embedder          | 0.38       | 0.62    | FAIL        |
 | `b_cond` = −10 (additive logit)      | 6.4e-5     | 1.0     | EXACT       |
-| `b_cond` = −30                       | 9e-17      | 1.0     | bit-exact   |
+| `b_cond` = −30                       | 9e-17      | 1.0     | exact       |
 | Hard mask (cond logits = −∞)         | 0.0        | 1.0     | exact       |
 
 Naive "zero-init V_c" leaves `α = Z_t / (Z_t + Z_c) ≈ 0.5`, which rescales
@@ -219,7 +219,7 @@ shape (even another tier), so the band self-widens at runtime with a one-line lo
 a single dynamo recompile (`_fit_cond_seq_range`) rather than crashing.
 
 Equivalence. At `cond_res_scale = 1.0` the downscale block is skipped and
-the cond RoPE is the native-position table — bit-exact to the pre-PAI path, so
+the cond RoPE is the native-position table, the same as the pre-PAI path, so
 existing checkpoints are unaffected. The `b_cond` step-0 baseline equivalence is
 undisturbed (PAI only moves cond positions, not the gate). Verified by a
 PAI-equivalence bench (since removed).
@@ -429,7 +429,7 @@ per-step wall time for a full-resolution cond.
 Correctness. The cache stores the exact tensors the two-stream path
 would have produced (same modules, same scale, same RoPE). Setting
 `network.clear_cond_kv_cache()` and re-running falls back to the two-stream
-path bit-exactly.
+path with the same output.
 
 Cache invalidation. `set_cond(new_latent)` clears the cache (stale until
 `precompute_cond_kv` runs again). `set_cond(None)` / `clear_cond` /

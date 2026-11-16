@@ -26,7 +26,7 @@ plus Qwen-Scope's Base SAEs. Two questions run through it:
 
 - The MOSS TE is post-trained **Qwen3.5-9B** (instruct), not Base: every tensor the INT8
   file leaves unquantized (GDN `A_log` / `dt_bias` / `conv1d`, `q_norm` / `k_norm`, final
-  norm, `embed_tokens`) matches `/media/sorryhyun/new/qwen35_pe/inst` bit for bit.
+  norm, `embed_tokens`) matches `/media/sorryhyun/new/qwen35_pe/inst` exactly.
   Qwen-Scope ships only Base SAEs for 9B.
 - `last_hidden_state` = final norm (gain `1 + w`) of layer 31 `resid_post` (rel err 1.7e-3).
 - INT8 vs bf16 TE: 2.1 % mean per-token relative error on cached layout-JSON captions.

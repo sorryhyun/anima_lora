@@ -718,7 +718,7 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
         grid: ``h_scale = H_t / H_c`` so cond patch ``i`` lands at
         ``i * H_t / H_c``. Frequencies are computed analytically, so fractional
         positions are exact. At ``h_scale == w_scale == 1.0`` this reduces
-        bit-exactly to :meth:`generate_embeddings`.
+        to :meth:`generate_embeddings`.
         """
         B, T, H, W, _ = B_T_H_W_C
 
@@ -810,7 +810,7 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
         with ``r_d < alpha·mu`` get the full PI stretch toward the native
         coordinate span (as :meth:`generate_embeddings_scaled`); bands with
         ``r_d > beta·mu`` keep native integer spacing; linear ramp between.
-        At ``mu → 0`` this reduces bit-exactly to native integer-position
+        At ``mu → 0`` this reduces to native integer-position
         embeddings; at ``mu = 1`` it's the static YaRN alignment. Not cached —
         ``mu`` is continuous per training step, so a cache would only accrete.
         """
@@ -1451,7 +1451,7 @@ class Anima(nn.Module):
         )
 
         # σ-FiLM (experimental): σ-conditions the mod head's text push. Off is
-        # bit-exact to the plain head; zero-init is identity. See _archive/bench/mod_guidance.
+        # the plain head; zero-init is identity. See _archive/bench/mod_guidance.
         self.pooled_text_sigma_film = nn.Linear(model_channels, 2 * model_channels)
         self.enable_pooled_text_sigma_film = False
 
@@ -1577,7 +1577,7 @@ class Anima(nn.Module):
 
         (1) Sets ``self._native_flatten = True`` so forward flattens each
         bucket to fake-5D ``(B,1,seq_len,1,D)``, keying the block graph on
-        token count instead of H/W — bit-exact to the eager path. (2) Compiles
+        token count instead of H/W, with the eager path's output. (2) Compiles
         ``_forward`` not ``forward`` — GOTCHA: ``unsloth_checkpoint`` has
         ``@torch._disable_dynamo``, so compiling ``forward`` itself causes a
         graph break and recompile storms.
@@ -1871,7 +1871,7 @@ class Anima(nn.Module):
         ``x_padded``: fake-5D when native-flattened, else plain ``(B,T,H,W,D)``.
         Mod-guidance rides zero-buffers on ``self`` so ``t_emb`` stays branch-free.
 
-        Feature tap (default off -> bit-exact no-op): ``capture_blocks`` stores
+        Feature tap (default off: a no-op): ``capture_blocks`` stores
         listed block outputs into ``feature_sink``; ``stop_after_block`` breaks
         the loop right after (the Turbo GAN gen-forward memory win — see
         ``forward_mini_train_dit``'s ``return_features_early``). Capture sits
@@ -1946,7 +1946,7 @@ class Anima(nn.Module):
             return_block_features: block indices to tap into a dict of raw outputs
             return_features_early: stops right after the deepest tap, skipping
                 final_layer/unpatchify — fast path for a mid-stack-only forward.
-                Default off -> bit-exact no-op.
+                Default off: a no-op.
             token_merger (``networks.foveated.FoveatedTokenMerge``): reduced-seq
                 stack (fovea 1:1, periphery averaged). ``None`` -> no-op.
         """

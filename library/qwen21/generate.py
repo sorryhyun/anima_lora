@@ -2,7 +2,7 @@
 
 The point is the A/B, not the pictures: ``--multipliers 1.0,0.0`` renders each
 prompt twice from one model, because ``LoRANetwork.set_multiplier(0)`` makes
-every adapter short-circuit and the transformer is bit-identical to the base.
+every adapter short-circuit and the transformer is the base model.
 No reload, no second copy on a 16 GB card, and the only difference between the
 pair is the adapter.
 

@@ -238,7 +238,7 @@ FastGen `weight_gen = 0.03`. The MFD paper uses no GAN.
 Cost. There is no early exit after the tapped block, so the GAN adds +1 grad-bearing teacher forward in the student step (the generator
 term must flow grad through the teacher into `x_pred`) and +2 no_grad teacher
 forwards per disc step. The global `--grad_ckpt` (what `PRESET=low_vram` passes) is refused with `gan.weight_gen > 0` or `cdm.weight > 0`: `set_view` is global state read at forward time and checkpoint recompute defers to `.backward()`, so the rollout's checkpointed student forwards would recompute under the teacher / fake view and silently drop the student LoRA from the gradient (`scripts/distill_turbo/config.py`). The GAN and CDM branches checkpoint their own forwards instead (`gan.grad_ckpt`, `cdm.grad_ckpt`, both `true` in the shipped TOML). `weight_gen=0`
-keeps the entire path off → byte-identical DP-DMD (no disc, no hooks, no extra
+keeps the entire path off → plain DP-DMD (no disc, no hooks, no extra
 forwards).
 
 ## Loop gotchas

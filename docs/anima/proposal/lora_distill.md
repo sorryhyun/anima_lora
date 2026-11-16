@@ -92,7 +92,7 @@ find something the closed-form merge missed."
 | ΔW → rank-r plain LoRA (defused standard layout) | `scripts/toolkits/extract_delta_lora.py` | shipped; the writer for a warm-start `θ` from any closed-form ΔW |
 | per-step latent recorder (probe source) | `library/inference/traj_stats.py` (`--traj_stats`) | shipped; stores k=4 codes + `tok` today — needs the raw `x_t` sidecar for probes |
 | typed generation for probe rollouts | `library/inference/request.py::GenerationRequest` | shipped |
-| bit-exact paired runs | `train.py --deterministic` (`attention_dispatch.set_deterministic`) | shipped in train.py; mirror in the new loop |
+| deterministic paired runs | `train.py --deterministic` (`attention_dispatch.set_deterministic`) | shipped in train.py; mirror in the new loop |
 | render-level yardstick | paired PE-cos vs. a reference render set (the turbo / soup benches' in-batch read) + full-res eyeball | shipped in bench land; CMMD at 20-step/CFG-1 n=24 is **not** the read |
 
 ## Constraints this must respect (measured on this model; sigma_lowres research record, unpublished)

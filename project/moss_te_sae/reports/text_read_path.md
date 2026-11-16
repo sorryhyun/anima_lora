@@ -81,7 +81,7 @@ two different prompts' base renders differ by 60–85).
 | arm | own | donor | J | px |
 |---|---|---|---|---|
 | base | 1.00 | 0.00–0.55 | 1 | 0 |
-| `swap_suffix` (7 suffix rows from prompt `(i+3) % 7`; prefix rows are bit-identical across prompts) | 1.00 | **= base on every prompt** | 0.77–1.00 | 0.4–13.5 |
+| `swap_suffix` (7 suffix rows from prompt `(i+3) % 7`; prefix rows are identical across prompts) | 1.00 | **= base on every prompt** | 0.77–1.00 | 0.4–13.5 |
 | `no_caption_keys` (image queries cannot see caption rows, all blocks) | 0.09–0.38 | 0.00–0.22 | 0.08–0.26 | 52–71 |
 | `no_template_keys` (image queries cannot see the 10 template rows) | 0.00–0.15 | 0.00–0.14 | 0.00–0.07 | 64–102 |
 

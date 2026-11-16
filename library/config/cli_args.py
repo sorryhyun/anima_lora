@@ -359,7 +359,7 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         "seq_len alone covers every token bucket (4032/4200/3024/3000/...) — "
         "tighter than blanket dynamic=True. Collapses the N-graph compile cascade "
         "— and its CUDA-context VRAM peak — to one graph. Off by default; bench "
-        "graph-count / mem_get_info peak / step-time / bit-exactness before "
+        "graph-count / mem_get_info peak / step-time / output match before "
         "trusting it on a new config.",
     )
     parser.add_argument(
@@ -624,7 +624,7 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
     parser.add_argument(
         "--deterministic",
         action="store_true",
-        help="Bit-exact reproducibility: deterministic flash-attn backward "
+        help="Reproducible runs: deterministic flash-attn backward "
         "(the dK/dV atomic-add order is the one un-seedable noise source) + "
         "torch.use_deterministic_algorithms(warn_only) + cudnn determinism. "
         "Two runs of the identical command then produce identical "

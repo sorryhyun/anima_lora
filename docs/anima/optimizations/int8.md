@@ -96,7 +96,7 @@ Budgets from about 0.48 to 0.99 are one partition. No full LoRA has run below 0.
 
 `--blocks_to_swap` works in every mode. `wq` and `wq_t` sit in `HeldCopy` children, whose `.weight`
 the offloader moves; `stream` keeps `wq_t` on the host either way. Output and `dX` on a swapped
-stack equal the resident stack bit for bit, eager and compiled, on both attach orders
+stack equal the resident stack, eager and compiled, on both attach orders
 (`test_swapped_step_is_the_resident_step`). Turbo's sequence, a student forward whose graph outlives
 teacher and fake forwards, matches too, CDM's second student forward included
 (`test_turbo_step_on_swap_is_the_resident_step`). Those tests skip without `ANIMA_TEST_GPU=1`.

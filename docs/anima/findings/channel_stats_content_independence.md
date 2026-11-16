@@ -46,7 +46,7 @@ Run: `scripts/calibration/analyze_lora_input_channels.py --dataset_dir <dir>
 | Per-module `dominance_ratio` drift (synth vs real) | median 0.2%, p90 3.3%, max 11.7% |
 | Top-channels set overlap (Jaccard) | median 1.00 |
 | Overall dominance (mean / median / p90) | identical to ~1% |
-| Overall p99 / max dominance | bit-identical (117.31 / 648.68) |
+| Overall p99 / max dominance | identical (117.31 / 648.68) |
 
 By module group (mean dominance, synth/real ratio):
 

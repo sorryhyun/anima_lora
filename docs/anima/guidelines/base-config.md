@@ -110,7 +110,7 @@ disk; training reads only the caches.
 
 | Key | Default | What it controls |
 |---|---|---|
-| `torch_compile` | `true` | Enable `torch.compile` via `compile_blocks()` (bit-exact, lowers memory). It turns on native-shape bucketing and keys the compiled graphs on the token-count families the training images actually populate. On OOM, enable this first, before gradient checkpointing. |
+| `torch_compile` | `true` | Enable `torch.compile` via `compile_blocks()` (same output, lowers memory). It turns on native-shape bucketing and keys the compiled graphs on the token-count families the training images actually populate. On OOM, enable this first, before gradient checkpointing. |
 | `attn_mode` | `flash` | Attention backend for training: `flash` (FA2), `torch` (SDPA), `sageattn`, `flex`. Falls back to `torch` (SDPA) if unavailable. |
 | `save_precision` | `bf16` | Dtype for saved adapter weights. Stored params stay bf16 even though LoRA/Hydra bottleneck matmuls always accumulate in fp32. |
 

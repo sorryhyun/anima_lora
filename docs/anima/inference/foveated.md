@@ -72,7 +72,7 @@ python inference.py ... --fovea_sigma_c 0.75 --fovea_frac 0.25   # faster, knee 
 ## Invariants (pinned by `tests/test_foveated_merge.py`)
 
 - All-fovea mask ≡ identity — the merge plumbing is a pure permutation there,
-  bit-exact against the plain forward.
+  matching the plain forward exactly.
 - Merged periphery velocity is group-shared: every token patch in a merged
   cell carries the identical velocity.
 - Merged rope is the exact mean-position rope (synthetic-angle test).

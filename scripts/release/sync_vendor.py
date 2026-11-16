@@ -362,7 +362,7 @@ SPECTRUM_VERBATIM: list[tuple[str, str]] = [
     ("networks/spectrum_forecast.py", "networks/spectrum_forecast.py"),
     ("networks/spectrum_sea.py", "networks/spectrum_sea.py"),
     # SPD spectral primitives (DCT helpers + spectral_expand geometry). The node
-    # imports these so its SPEED sampler matches the CLI SPD path bit-for-bit.
+    # imports these so its SPEED sampler matches the CLI SPD path.
     ("networks/spd_core.py", "networks/spd_core.py"),
     # CNS recolorer numerics (radial binning + γ-driven recolor). Path resolution
     # stays node-side; the node imports CNSRecolorer + radial_bins from here.

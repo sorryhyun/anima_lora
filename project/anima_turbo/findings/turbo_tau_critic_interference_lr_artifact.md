@@ -59,7 +59,7 @@ justified.
 - P0a telemetry — `TauBinCriticLoss`, τ-binned critic loss, rides every
   turbo run regardless. This was always scoped to survive the verdict.
 - `fake_tau_banks` / `fake_tau_boundary` (`configs/methods/turbo.toml
-  [network]`) ship at `1` / `0.5`. `banks=1` is byte-identical to the
+  [network]`) ship at `1` / `0.5`. `banks=1` is identical to the
   pre-change loop (same RNG stream, second stack never constructed).
   Invariant tests: `6cca8dfd^:tests/test_turbo_tau_critic.py`.
 - The probe itself (`6cca8dfd^:bench/turbo/tau_critic_probe.py`) is reusable for any

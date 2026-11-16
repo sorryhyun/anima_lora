@@ -1443,8 +1443,8 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
 
         # Hard σ-band partition lives in non-persistent buffers; nothing
         # survives the state_dict write, so stamp the scalars the loader
-        # needs to re-register it (only when on, for byte-identical non-band
-        # checkpoints).
+        # needs to re-register it (only when on, so non-band checkpoints
+        # are unchanged).
         if self.cfg.specialize_experts_by_sigma_buckets:
             metadata["ss_specialize_experts_by_sigma_buckets"] = "true"
             metadata["ss_num_sigma_buckets"] = str(int(self.cfg.num_sigma_buckets))

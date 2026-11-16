@@ -80,7 +80,7 @@ class FSGCalibrator(_FSGCalibratorCore):
         pooled_neg: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Return ``x̂`` after K forward-backward iterations, or ``latents``
-        unchanged (same object, bit-exact) when this step is not scheduled.
+        unchanged (same object) when this step is not scheduled.
 
         Costs ``3·K`` extra DiT forwards per scheduled step (v^c + v^u at σ,
         v^u at σ−Δσ). Deterministic — composes with mod-guidance / DAVE / CNS

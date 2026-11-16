@@ -135,8 +135,8 @@ tokenizer and get ext rows.
   symbol-free build produces.
 - `HybridT5Encoder.from_mapping` merges `sym`/`sym_char` into its two
   lookups; `segment_runs(text, route)` and `encoder.routes(text)` use the
-  pack's rule. A pack without `route` routes the legacy CJK ranges — bit
-  identical to before. Pure-EN prompts stay bit-identical (test).
+  pack's rule. A pack without `route` routes the legacy CJK ranges, as
+  before. Pure-EN prompts are unchanged (test).
 - Result on a 1/20 sample of the three tag corpora (10,184 pairs): 0
   residual `<unk>` (was ~1,400 per 10k pairs).
 
@@ -180,13 +180,13 @@ block that is exactly that:
 - `route.quotes` = `[["「","」"],["『","』"],["\"","\""]]`. `Route.quote_spans`
   is one non-greedy, non-nesting regex over the caption (a stray opener
   matches nothing). The span rule runs before `segment_runs`: the spiece
-  side is tokenised exactly as without the partition (EN bit-identical by
+  side is tokenised exactly as without the partition (EN unchanged by
   construction), and only routed runs are cut at the delimiters
   (`HybridT5Encoder.encode_cjk_run`). Quoted content → `T5_TABLE_SIZE +
   start + row`, no minted-word / C-fallback substitutions; bare CJK → the
   trained row as before; delimiters keep their old path (`「」` → trained
   row, `"` → spiece). Both halves must be present (`encoder.quote_routing`);
-  a pack with neither, or only one, encodes bit-identically to before.
+  a pack with neither, or only one, encodes as before.
 - `ext_vocab.pack_digest(table, mapping)` = sha256 over the materialised
   float32 table bytes + the id/route keys (`qwen char sym sym_char word
   word_sub route iso`; `training`/`stats` excluded). Stamped on TE caches

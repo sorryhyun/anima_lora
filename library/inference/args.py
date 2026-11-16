@@ -256,7 +256,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="CJK vocab pack path prefix (the .safetensors/.json pair, no suffix). "
         "Routes JA / KO / ZH prompt spans onto the pack's T5-side rows and hooks "
-        "them onto llm_adapter.embed (EN prompts stay bit-exact). Default: the "
+        "them onto llm_adapter.embed (EN prompts are unchanged). Default: the "
         "`vocab_pack` key in configs/base.toml (or ANIMA_VOCAB_PACK); '' = off.",
     )
     parser.add_argument(
@@ -661,7 +661,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=3,
         help="FSG fixed-point iterations per scheduled step. error ~ρ^K, ρ≈0.93 "
-        "⇒ K=3-4 captures ~all the gain. 0 disables (bit-exact baseline).",
+        "⇒ K=3-4 captures ~all the gain. 0 disables it.",
     )
     parser.add_argument(
         "--fsg_d_sigma",

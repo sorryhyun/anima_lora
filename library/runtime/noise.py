@@ -154,7 +154,7 @@ def get_noisy_model_input_and_timesteps(
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """``sigmas`` (flat ``(bsz,)``, already range-restricted — e.g. a
     :func:`draw_flat_sigmas` result) skips the internal draw; None (default)
-    preserves the original draw-inside behavior bit-exactly."""
+    keeps the original draw-inside behavior."""
     bsz, h, w = latents.shape[0], latents.shape[-2], latents.shape[-1]
     assert bsz > 0, "Batch size not large enough"
     num_timesteps = noise_scheduler.config.num_train_timesteps

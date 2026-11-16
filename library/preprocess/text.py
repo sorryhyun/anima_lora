@@ -441,7 +441,7 @@ def cache_text_embeddings(
                     # prompt_embeds / attn_mask / t5_input_ids are unused
                     # downstream (see library/training/forward/text_conds.py),
                     # so dropping them ~halves the file. The pad length is
-                    # unchanged (512), so crossattn values are bit-identical.
+                    # unchanged (512), so crossattn values are unchanged.
                     save_dict["crossattn_emb"] = crossattn_emb[flat]
                 else:
                     save_dict["prompt_embeds"] = prompt_embeds[flat]

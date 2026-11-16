@@ -34,7 +34,7 @@ identical noise for base and adapted). One well-averaged Δ per item per
 visit, and items are measured on EVERY visit — not only low-σ train draws —
 so per-item counts rise ~3× and per-measurement variance drops ~4× at grid
 {0.5, 0.7} × 2 noises. Extra noise comes from a DEDICATED generator so the
-training RNG stream stays bit-identical to a run without measurement.
+training RNG stream matches a run without measurement.
 Caveat: the grid forwards reuse the train step's per-step adapter
 conditioning — do not combine with σ-conditioned adapter state
 (``use_timestep_mask=true`` or σ/FEI routers); plain-LoRA stacks only.

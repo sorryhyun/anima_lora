@@ -24,7 +24,7 @@ which carries the trainer (`reseed/trainer.py`) and its own data table.
 |---|---|
 | Rows | 2 683 ext rows differ from the raw pack. **1 362 are trained singles**: 174 kana and punctuation + 1 188 kanji and marks (`゙ 々 〇`), trained cold. The rest are the older seed's rows, mostly piece rows that per-glyph routing never reaches. |
 | Source | `seed_retrain_0930` (the rows published as `preview4`), with each family's shared direction scaled × 0.8 (§ The shared direction) |
-| Bake | `scripts/toolkits/bake_vocab_pack.py --glyph_route` on the raw pack with the `fold` map. Every untouched row is byte-identical to the raw pack. |
+| Bake | `scripts/toolkits/bake_vocab_pack.py --glyph_route` on the raw pack with the `fold` map. Every untouched row is the raw pack's row unchanged. |
 | Pack json | `glyph_route: true`, `fold` (§ Addressing) |
 | Coverage | Every Japanese text clause in the training set's captions (615 captions) is fully covered by trained singles. On the dialogue corpus, the top 1 000 glyphs cover 99.06 % of occurrences. |
 | ComfyUI | ComfyUI-Anima_lora-Adapter ≥ 3.13.0 (3.12.0 added routing, 3.13.0 the fold). Older nodes ignore both keys. |
@@ -70,7 +70,7 @@ A JA piece row is the only address of its string, and nothing ever asked the
 adapter to read it from its neighbours. **Per-glyph routing**
 (`HybridT5Encoder`, `library/anima/ext_vocab.py`) sends every JA Qwen token,
 on the T5 side, to its glyphs' single rows. The Qwen text is untouched, and
-EN stays bit-exact. Each single row is then shared by every word it appears
+English text is unchanged. Each single row is then shared by every word it appears
 in, as EN pieces are. On こんにちは (16 renders), routed beat spelled
 (≤ 1 edit 14 vs 11) and the piece row (0).
 

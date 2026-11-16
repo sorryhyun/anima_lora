@@ -4,7 +4,7 @@ Teacher targets come from ``eval.py``'s held-out PE generations, scored by the P
 skeleton (INT8 RTN, cached to ``teacher_targets.pt``). The student is the catalog
 TE (``load_text_encoder(precision="int8")``, GPTQ + SmoothQuant) with
 ``pe_mode.convert`` tensors attached as unmerged LoRA branches. Also checks that
-TE mode after a PE round trip encodes bit-identically to the untouched TE.
+TE mode after a PE round trip encodes identically to the untouched TE.
 """
 
 from __future__ import annotations
