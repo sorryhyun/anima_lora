@@ -30,3 +30,7 @@ One report per run or probe. Run ids are in [../configs/README.md](../configs/RE
 - [warm_v3.md](warm_v3.md): the control warm-started from Hub v3. It passes the gate
   against the control and regresses from v3 untrained on merged14, which sits at the teacher's
   seed diversity.
+- [m15_1k.md](m15_1k.md): the shipped recipe (static grid, cond-only L_CDM) at 1000 iterations on
+  merged15. Failed: tighter framing and one layout per prompt, sameness at the 250-iteration
+  arm's level; Hub v3 on m15 untrained stays ahead on every number. The 250-iteration A/B does not
+  predict 1k; the base teacher is the largest untested difference from v3.

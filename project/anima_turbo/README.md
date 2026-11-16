@@ -17,6 +17,7 @@ The shipped base-teacher turbo (`huggingface.co/sorryhyun/anima-turbo-4step`) is
 - [1112_v1.md](1112_v1.md): the recipe of the first 1000-iteration run (`1112_1512`, shipped as
   `v4_preview`); the 250-iteration control of the later arms is this recipe.
 - [idea.md](idea.md): candidates that are not arms.
+- [question.md](question.md): turbo + SnapRef (character reference) as a pseudo-video model; probes, none run.
 - [vatdm.md](vatdm.md): VA-TDM (arXiv:2611.06796) against the loop and MFD.
 - [reports/](reports/README.md): one report per run or probe.
 - [proposal/](proposal/README.md): turbo proposals, open and closed.

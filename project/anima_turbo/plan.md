@@ -16,6 +16,18 @@ plan is `91d476e0:scripts/distill_turbo/plan.md`.
 - Hub v3 on merged14 untrained also draws seeds as varied as the teacher's (sameness 0.326 against
   0.328), and 250 iterations of the v1 recipe from that start undo it (`reports/warm_v3.md`).
 
+## 1k on merged15: failed (`reports/m15_1k.md`, 2026-11-16)
+
+The shipped recipe (static grid, cond-only L_CDM) at 1000 iterations, `turbo_1116_1355`, lands at
+the 250-iteration arm's sameness (0.449 against 0.442; m15 teacher 0.315) with a lower `S` cos
+(0.532 against 0.608), tighter framing and one layout per prompt. Hub v3 on merged15 untrained
+(sameness 0.296, `S` cos 0.635, anchor MSE 0.062) is still the best 4-step result. Two consequences:
+
+- Arms read at 250 iterations need a 1k check before they ship.
+- Every merged14 / merged15 student collapses whatever its start; v3 was trained on the base
+  teacher, and the current recipe never has been. Next candidate (not run): the recipe at 250
+  iterations on base v1.0, sameness against the base teacher.
+
 ## A/B protocol
 
 1. **250 iterations on the v1 recipe**, compare EMA 250. Control from 11-16: `turbo_1116_0958`
