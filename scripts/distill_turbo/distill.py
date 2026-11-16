@@ -16,6 +16,7 @@ import os
 import time
 from pathlib import Path
 
+from library.runtime.proc import no_window_main
 from library.runtime.allocator import default_expandable_segments
 
 # train.py's allocator default, before the first CUDA allocation: without it long
@@ -64,6 +65,7 @@ logging.basicConfig(
 )
 
 
+@no_window_main
 def main():
     args = build_argparser().parse_args()
     cfg = resolve_config(args, load_toml(args.config))

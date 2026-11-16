@@ -2,9 +2,11 @@
 """Train a Qwen-Image-2.1 LoRA on a precached folder — flags in
 ``library.qwen21.requests.TrainRequest``, work in ``library.qwen21.train``."""
 
+from library.runtime.proc import no_window_main
 from library.qwen21.requests import TrainRequest
 
 
+@no_window_main
 def main() -> None:
     req = TrainRequest.from_argv()
     from library.qwen21.train import run_train

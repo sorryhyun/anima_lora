@@ -2,9 +2,11 @@
 """Build the self-distillation teacher files of a MOSS training cache — flags in
 ``library.moss.requests.DistillCacheRequest``, work in ``library.moss.distill``."""
 
+from library.runtime.proc import no_window_main
 from library.moss.requests import DistillCacheRequest
 
 
+@no_window_main
 def main() -> None:
     req = DistillCacheRequest.from_argv()
     from library.moss.distill import cache_teachers

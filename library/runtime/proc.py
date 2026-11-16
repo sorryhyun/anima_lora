@@ -23,6 +23,7 @@ didn't pick a console-creation flag themselves.
 
 from __future__ import annotations
 
+import functools
 import subprocess
 import sys
 
@@ -85,3 +86,15 @@ def install_no_window_default() -> None:
 
     subprocess.Popen.__init__ = patched_init  # type: ignore[method-assign]
     _INSTALLED = True
+
+
+def no_window_main(fn):
+    """Decorator for an entry point's ``main()``: runs
+    ``install_no_window_default()`` before the body."""
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):  # type: ignore[no-untyped-def]
+        install_no_window_default()
+        return fn(*args, **kwargs)
+
+    return wrapper

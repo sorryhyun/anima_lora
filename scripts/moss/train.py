@@ -4,9 +4,11 @@
 
 import os
 
+from library.runtime.proc import no_window_main
 from library.moss.requests import TrainRequest
 
 
+@no_window_main
 def main() -> None:
     req = TrainRequest.from_argv()
     if req.expandable_segments:

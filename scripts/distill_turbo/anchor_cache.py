@@ -33,6 +33,7 @@ from pathlib import Path
 import torch
 from safetensors.torch import load_file, save_file
 
+from library.runtime.proc import no_window_main
 from library.datasets.cache import make_cached_collate
 from library.env import resolve_under_home
 from library.io.cache_names import TE_CACHE_SUFFIX
@@ -449,6 +450,7 @@ def build_argparser() -> argparse.ArgumentParser:
     return p
 
 
+@no_window_main
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"

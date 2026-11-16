@@ -4,9 +4,11 @@ work in ``library.moss.generate``."""
 
 import os
 
+from library.runtime.proc import no_window_main
 from library.moss.requests import GenerateRequest
 
 
+@no_window_main
 def main() -> None:
     req = GenerateRequest.from_argv()
     if req.blocks_to_swap:
