@@ -224,43 +224,43 @@ def register_slots(
 def clause_offsets(
     req: TrainRequest, samples: list[Sample], prompt_tail: str
 ) -> dict[tuple[str, str], torch.Tensor]:
-    """``clause_hw``: per sample and caption kind, the ``(S, 2)`` RoPE ``(h, w)`` of
-    its tokens (``grounding.clause_text_hw``); captions without a position clause
-    are absent."""
+    """``clause_hw`` / ``text_box_hw``: per sample and caption kind, the ``(S, 2)``
+    RoPE ``(h, w)`` of its tokens (``grounding.text_hw``); captions that move no
+    token are absent."""
     out: dict[tuple[str, str], torch.Tensor] = {}
-    if not req.clause_hw:
+    if not (req.clause_hw or req.text_box_hw):
         return out
     if req.distill != "off" or req.preserve_weight or req.trigger_registers:
         raise SystemExit(
-            "clause_hw sets the rows of one prompt per step: distill off, "
-            "preserve_weight 0, trigger_registers 0"
+            "clause_hw / text_box_hw set the rows of one prompt per step: distill "
+            "off, preserve_weight 0, trigger_registers 0"
         )
     if cache_token_split(samples) != "off":
-        raise SystemExit("clause_hw finds rows on the default tokenization")
+        raise SystemExit("clause_hw / text_box_hw find rows on the default tokenization")
     from library.moss.loader import load_tokenizer
     from library.moss.prompt_tail import with_prompt_tail
-    from library.moss.training.grounding import clause_text_hw
+    from library.moss.training.grounding import text_hw
 
     tok = with_prompt_tail(load_tokenizer(req.model_dir), prompt_tail)
     rows = 0
     for s in samples:
         if s.te_path is None or s.latent_hw is None:
-            raise SystemExit(f"{s.stem}: clause_hw needs the cache's TE files")
+            raise SystemExit(f"{s.stem}: clause_hw / text_box_hw need the cache's TE files")
         for kind, caption in sample_captions(s.te_path).items():
-            hw = clause_text_hw(tok, caption, s.latent_hw, req.clause_hw)
+            hw = text_hw(tok, caption, s.latent_hw, req.clause_hw, req.text_box_hw)
             if hw is not None:
                 out[s.stem, kind] = hw
                 rows += int(hw.any(1).sum()) if kind == "full" else 0
     full = sum(1 for (_, kind) in out if kind == "full")
     print(
-        f"clause_hw {req.clause_hw:g}: position clauses in {full}/{len(samples)} full "
-        f"captions, {rows} rows off (0, 0)",
+        f"clause_hw {req.clause_hw:g}, text_box_hw {req.text_box_hw:g}: {full}/"
+        f"{len(samples)} full captions move tokens, {rows} rows off (0, 0)",
         flush=True,
     )
     if not full:
         # clause_hw is on in the shipped recipe: a cache without position clauses
         # (layout_json captions, tag bags with no clause) trains as before.
-        print("clause_hw: no full caption has a position clause", flush=True)
+        print("clause_hw / text_box_hw: no full caption moves a token", flush=True)
     return out
 
 
@@ -533,6 +533,8 @@ def run_metadata(
         meta["init_lora"] = Path(req.init_lora).name
     if req.clause_hw:
         meta["clause_hw"] = req.clause_hw
+    if req.text_box_hw:
+        meta["text_box_hw"] = req.text_box_hw
     if n_refs:
         meta["ref_timestep"] = req.ref_timestep
         if req.ref_isolate:

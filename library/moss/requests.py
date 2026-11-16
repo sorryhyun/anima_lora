@@ -437,6 +437,20 @@ class GenerateRequest(Request):
         "within bf16 noise",
         advanced=True,
     )
+    clause_hw: float = _f(
+        0.0,
+        "the cond prompt's position-clause tokens at their 3×3 cell's centre on "
+        "RoPE's h / w axes, as TrainRequest.clause_hw does in training; the uncond "
+        "prompt stays at (0, 0). 0 = off. Per-sample forward only",
+        advanced=True,
+    )
+    text_box_hw: float = _f(
+        0.0,
+        'the cond prompt\'s boxed text lines ("…" [y0,x0,y1,x1]) at their box\'s '
+        "centre on RoPE's h / w axes, as TrainRequest.text_box_hw does in training. "
+        "0 = off. Per-sample forward only",
+        advanced=True,
+    )
     shift: float = _f(
         DEFAULT_SHIFT, "scheduler shift (pipeline default)", advanced=True
     )
@@ -848,6 +862,15 @@ class TrainRequest(Request):
         "their 3×3 cell's centre on RoPE's h / w axes, times this (1 = a third of "
         "the grid side per cell); every other token stays at (0, 0). Generation "
         "runs without it. 0 = off. docs/moss/proposal/cdpe_text_grounding.md",
+        advanced=True,
+    )
+    text_box_hw: float = _f(
+        0.0,
+        "training only: the tokens inside the quotes of each boxed text line "
+        '("…" [y0,x0,y1,x1], text_boxes) take the box\'s centre on RoPE\'s h / w '
+        "axes, times this (1 = the box centre in latent cells); every other token "
+        "stays at (0, 0). Combines with clause_hw. 0 = off. "
+        "docs/moss/proposal/cdpe_text_grounding.md",
         advanced=True,
     )
     ref_adapters: str = _f(

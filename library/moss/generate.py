@@ -63,28 +63,30 @@ from library.moss.requests import (
 )
 
 
-def _features(transformer, latents, t, embeds, mask, skip, batched, ref=None):
+def _features(
+    transformer, latents, t, embeds, mask, skip, batched, ref=None, cond_hw=None
+):
     """Image-token features of the cond rows then the uncond rows, ``(R, H·W, D)``.
     ``embeds`` / ``mask`` / ``skip`` are per-branch lists (one entry = no CFG);
-    ``ref`` (clean reference latents) goes to every branch."""
+    ``ref`` (clean reference latents) goes to every branch. ``cond_hw`` (the cond
+    prompt's RoPE ``(h, w)``, ``MOSSImageTransformer.text_hw``) rides the cond
+    branch alone."""
     kw = {} if ref is None else {"ref": ref}
-    if len(embeds) == 1:
-        return [
-            transformer(
-                latents,
-                t,
-                embeds[0],
-                mask[0],
-                skip_layers=skip[0],
-                return_features=True,
-                **kw,
-            )
-        ]
-    if not batched:
-        return [
-            transformer(latents, t, e, m, skip_layers=s, return_features=True, **kw)
-            for e, m, s in zip(embeds, mask, skip)
-        ]
+    if not batched or len(embeds) == 1:
+        out = []
+        try:
+            for i, (e, m, s) in enumerate(zip(embeds, mask, skip)):
+                transformer.text_hw = cond_hw if i == 0 else None
+                out.append(
+                    transformer(
+                        latents, t, e, m, skip_layers=s, return_features=True, **kw
+                    )
+                )
+        finally:
+            transformer.text_hw = None
+        return out
+    if cond_hw is not None:
+        raise ValueError("cond_hw runs on the per-sample forward (batched off)")
     rows = []
     skips = []
     for e, m, s in zip(embeds, mask, skip):
@@ -125,6 +127,7 @@ def denoise(
     on_step=None,
     progress=None,
     ref=None,
+    cond_hw=None,
 ):
     """Integrate ``latents (B,128,h,w)`` over ``sigmas`` (``snapped_sigmas``:
     descending, no terminal 0) with Euler or ER-SDE (``sampler``). Returns fp32
@@ -151,6 +154,9 @@ def denoise(
 
     ``dave`` (``library.moss.dave.MossDAVE``) is installed as the transformer's
     ``layer_hook`` on its active steps (both branches) and removed after.
+
+    ``cond_hw (S, 2)``: the cond prompt's RoPE ``(h, w)`` (``grounding.text_hw``),
+    on the cond branch only.
     """
     device = latents.device
     batch, _, height, width = latents.shape
@@ -186,7 +192,7 @@ def denoise(
                 transformer.layer_hook = dave if dave.is_active(i) else None
             if spectrum is None or spectrum.is_full_step(i):
                 branches = _features(
-                    transformer, latents, t, embeds, masks, skips, batched, ref
+                    transformer, latents, t, embeds, masks, skips, batched, ref, cond_hw
                 )
                 if spectrum is not None:
                     spectrum.observe(i, torch.cat(branches))
@@ -270,6 +276,21 @@ def _build_dave(req: GenerateRequest, num_blocks: int):
     return dave
 
 
+def _grounding_tokenizer(req: GenerateRequest, model_dir):
+    """The tokenizer ``clause_hw`` / ``text_box_hw`` find rows with (the cache's
+    template and prompt tail), or None with both off."""
+    if not (req.clause_hw or req.text_box_hw):
+        return None
+    if req.batched:
+        raise SystemExit("clause_hw / text_box_hw run on the per-sample forward")
+    if resolve_token_split(req) != "off":
+        raise SystemExit("clause_hw / text_box_hw find rows on the default tokenization")
+    from library.moss.loader import load_tokenizer
+    from library.moss.prompt_tail import with_prompt_tail
+
+    return with_prompt_tail(load_tokenizer(model_dir), resolve_prompt_tail(req))
+
+
 def _denoise_pending(req, model_dir, out_dir, pending, device) -> None:
     """TE for the pending jobs only, then the DiT; each latent hits disk as soon
     as its denoise returns, so a killed job loses at most the one in flight."""
@@ -330,12 +351,23 @@ def _denoise_pending(req, model_dir, out_dir, pending, device) -> None:
     if req.compile:
         compile_blocks(transformer.layers)
     dave = _build_dave(req, len(transformer.layers))
+    hw_tok = _grounding_tokenizer(req, model_dir)
     for j, rec in pending:
         cond = seen[j["key"]] if j.get("ref_vision") else embeds[j["prompt"]]
         cond, cond_mask = pad_embeds([cond], device=device)
         uncond = uncond_mask = None
         if j["cfg"] != 1.0:
             uncond, uncond_mask = pad_embeds([embeds[j["negative"]]], device=device)
+        cond_hw = None
+        if hw_tok is not None:
+            from library.moss.training.grounding import text_hw
+
+            grid = (j["height"] // 16, j["width"] // 16)
+            cond_hw = text_hw(
+                hw_tok, j["prompt"], grid, req.clause_hw, req.text_box_hw
+            )
+            if cond_hw is not None:
+                rec["text_hw_rows"] = int(cond_hw.any(1).sum())
         sigmas = snapped_sigmas(j["steps"], j["shift"])
         noise = initial_noise(j["seed"], j["height"], j["width"]).to(device)
         torch.cuda.reset_peak_memory_stats()
@@ -358,6 +390,7 @@ def _denoise_pending(req, model_dir, out_dir, pending, device) -> None:
             cns=_build_cns(req, j["cfg"]),
             dave=dave,
             ref=refs[j["key"]].to(device) if j["key"] in refs else None,
+            cond_hw=cond_hw,
         ).cpu()
         torch.cuda.synchronize()
         seconds = time.time() - t0

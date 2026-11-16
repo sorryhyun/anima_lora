@@ -1,6 +1,6 @@
 # MOSS: grounding prompt tokens in RoPE space (CDPE, after SpaG-DiT)
 
-Status: proposal, 2026-11-16. A training-only form on position clauses is built and ran once
+Status: proposal, 2026-11-16. A training-only form on position clauses (and boxed text lines) is built and ran twice
 ([First run](#first-run-training-only-on-position-clauses-2026-11-16)); the rest is not built. Source: the NeurIPS 2026 poster
 of SpaG-DiT ("Enhancing Spatial Grounding for Diffusion Transformers", Westlake / Alibaba
 Yuvion, poster 153058). No preprint was found, so δ, the multi-token rule, and the
@@ -144,7 +144,23 @@ cells at 1024 px) and 1.0 (`cashw_1116_1110`, about 21 cells). Renders without o
   a retrain. 21 cells is felt only where layout is decided.
 - Invented cm ruler labels on the height-chart prompt (control 8 / 8) and one broken hand looked
   like offset effects until the retrain: it draws the rulers 1 / 8 and the hand whole.
-- Open: other strings and characters, the text clauses moved to their boxes, a longer set.
+- Open: other strings and characters, a longer set.
+
+**Text lines on their boxes too** (`cashwb_1116_1219`, `clause_hw 1` + `text_box_hw 1`). The
+tokens inside each boxed text line's quotes (`"…" [y0,x0,y1,x1]`) take the box centre in latent
+cells, beside the clause offsets: 27 / 30 captions, 4,387 rows off `(0, 0)`, 171 of them text. Same
+recipe, renders without offsets.
+
+| read | control | retrain | clause only | clause + box |
+|---|---|---|---|---|
+| training loss at σ 0.85–0.95, against the control | | +0.0002 | +0.0015 | +0.0005 |
+| training loss at σ ≥ 0.95 | | +0.0007 | +0.0028 | +0.0006 |
+| boxed `初音ミクです` written plain (`prompts_text_more`, 6 seeds) | 1 / 6 | 2 / 6 | 6 / 6 | 1 / 6 |
+| invented cm ruler labels, height chart (2 seeds) | 2 / 2 | 0 / 2 | 0 / 2 | 2 / 2 |
+| general tag and clause prompts (16) | | same | same | same |
+
+Adding the boxes returns every read to the control: the high-σ loss cost, the plain string and the
+ruler habit. Neither arm moves the general renders. Sheets: `output/tests/caststation_thin/cashwb_sheets/`.
 
 ## Implementation notes
 

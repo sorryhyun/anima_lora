@@ -1,9 +1,9 @@
-"""``clause_hw``: position-clause tokens on RoPE's h / w axes (training only)."""
+"""``clause_hw`` / ``text_box_hw``: prompt tokens on RoPE's h / w axes (training only)."""
 
 import torch
 
 from library.moss.model import _RoPE
-from library.moss.training.grounding import clause_cells, clause_spans
+from library.moss.training.grounding import box_spans, clause_cells, clause_spans
 
 
 def test_rope_text_hw_moves_only_text_hw_bands():
@@ -43,4 +43,16 @@ def test_clause_spans_skip_the_bag_and_text_clauses():
     assert [(caption[a:b], oh, ow) for a, b, oh, ow in spans] == [
         ("On the left, red hair, smile", 0.0, -1.0),
         ("On the top right, hat", -1.0, 1.0),
+    ]
+
+
+def test_box_spans_cover_the_quoted_string_at_the_box_centre():
+    caption = (
+        "2girls. On the left, red hair. Japanese text reads as "
+        '"後藤\\n156cm" [-490,-420,-410,-120], "" [0,0,16,16], "あ" [0,0,32,64].'
+    )
+    spans = box_spans(caption)
+    assert [(caption[a:b], h, w) for a, b, h, w in spans] == [
+        ("後藤\\n156cm", -28.125, -16.875),
+        ("あ", 1.0, 2.0),
     ]

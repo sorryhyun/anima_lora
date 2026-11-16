@@ -200,4 +200,6 @@ def fingerprint(req: GenerateRequest, job: dict) -> dict:
         **({"cns": dict(spec=req.cns, strength=req.cns_strength)} if req.cns else {}),
         **({"stream": req.stream} if req.stream != "bf16" else {}),
         **({"int8": req.int8_file or req.int8} if req.int8 != "off" else {}),
+        **({"clause_hw": req.clause_hw} if req.clause_hw else {}),
+        **({"text_box_hw": req.text_box_hw} if req.text_box_hw else {}),
     )

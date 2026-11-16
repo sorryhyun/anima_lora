@@ -1,10 +1,11 @@
-"""``clause_hw``: RoPE ``(h, w)`` for the tokens of a caption's position clauses.
+"""RoPE ``(h, w)`` for the tokens of a caption that name an image position.
 
-A position clause (``On the top right, <tags>``) names a cell of a 3×3 grid. Its
-tokens take that cell's centre on RoPE's ``h`` / ``w`` axes during training
+``clause_hw``: a position clause (``On the top right, <tags>``) names a cell of a
+3×3 grid; its tokens take that cell's centre. ``text_box_hw``: a boxed text line
+(``"こいつ…" [y0,x0,y1,x1]``, ``abs_centralized`` pixels on the cache canvas) puts
+the tokens inside its quotes at the box's centre. Both on RoPE's ``h`` / ``w`` axes
 (``MOSSImageTransformer.text_hw``); every other token stays at ``(0, 0)`` and ``f``
-is untouched. Training only: generation runs without it
-(``docs/moss/proposal/cdpe_text_grounding.md``, after SpaG-DiT's CDPE).
+is untouched (``docs/moss/proposal/cdpe_text_grounding.md``, after SpaG-DiT's CDPE).
 """
 
 from __future__ import annotations
@@ -12,6 +13,11 @@ from __future__ import annotations
 import re
 
 import torch
+
+# A boxed text line: the quoted string, then its box (``box_text_clauses``).
+_BOXED = re.compile(r'"((?:[^"\\]|\\.)*)" \[(-?\d+),(-?\d+),(-?\d+),(-?\d+)\]')
+PATCH = 16
+"""Pixels per latent cell (the VAE's 8× and the 2×2 packing)."""
 
 _ORDINALS = ("second", "third", "fourth", "fifth", "sixth", "seventh", "eighth")
 _FROM_LEFT = re.compile(r"(\w+) from left")
@@ -80,15 +86,38 @@ def clause_spans(caption: str) -> list[tuple[int, int, float, float]]:
     return [(*bounds[i], oh, ow) for i, (oh, ow) in zip(spatial, cells)]
 
 
-def clause_text_hw(
-    tok, caption: str, grid_hw: tuple[int, int], scale: float
+def box_spans(caption: str) -> list[tuple[int, int, float, float]]:
+    """``(start, end, c_h, c_w)``: the character range inside the quotes of each
+    boxed text line and its box centre in latent cells (``abs_centralized`` pixels
+    / ``PATCH``, which is where RoPE's centred image grid puts that pixel)."""
+    out = []
+    for m in _BOXED.finditer(caption):
+        if not m.group(1):
+            continue
+        y0, x0, y1, x1 = (int(v) for v in m.group(2, 3, 4, 5))
+        out.append((m.start(1), m.end(1), (y0 + y1) / 2 / PATCH, (x0 + x1) / 2 / PATCH))
+    return out
+
+
+def text_hw(
+    tok,
+    caption: str,
+    grid_hw: tuple[int, int],
+    clause: float = 0.0,
+    box: float = 0.0,
 ) -> torch.Tensor | None:
-    """``(S, 2)`` fp32 ``(h, w)`` for the prompt's tokens: ``scale`` × the clause's
-    cell centre, a third of the grid side per cell. None without a position clause.
-    ``tok`` is the tokenizer the cache templated with (prompt tail included)."""
+    """``(S, 2)`` fp32 ``(h, w)`` for the prompt's tokens: ``clause`` × each position
+    clause's cell centre (a third of the grid side per cell), ``box`` × each boxed
+    text line's box centre. None when neither moves a token. ``tok`` is the
+    tokenizer the cache templated with (prompt tail included)."""
     from library.moss.loader import prompt_text
 
-    spans = clause_spans(caption)
+    spans = []
+    if clause:
+        step = (clause * grid_hw[0] / 3, clause * grid_hw[1] / 3)
+        spans += [(a, b, oh * step[0], ow * step[1]) for a, b, oh, ow in clause_spans(caption)]
+    if box:
+        spans += [(a, b, box * ch, box * cw) for a, b, ch, cw in box_spans(caption)]
     if not spans:
         return None
     formatted = prompt_text(tok, caption)
@@ -97,10 +126,10 @@ def clause_text_hw(
         raise ValueError("the chat template rewrote the caption")
     offsets = tok(formatted, return_offsets_mapping=True).offset_mapping
     out = torch.zeros(len(offsets), 2)
-    step = (scale * grid_hw[0] / 3, scale * grid_hw[1] / 3)
-    for start, end, oh, ow in spans:
+    for start, end, h, w in spans:
         rows = [
             i for i, (a, b) in enumerate(offsets) if b > base + start and a < base + end
         ]
-        out[rows] = torch.tensor([oh * step[0], ow * step[1]])
+        out[rows] = torch.tensor([h, w])
     return out
+
