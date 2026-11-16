@@ -104,10 +104,12 @@ main loop, calibrating the fake against the student's `x_θ` distribution so the
 critic is ready before the student LR warmup ramps — this kills the early
 `grad_signal_rms` spike (~step 50). The student is untouched during it.
 
-## Warm start from an extracted delta — the standard path
+## Warm start from an extracted delta (optional)
 
-Both LoRA stacks are seeded from a plain LoRA checkpoint rather than cold-started
-(`[network] student_init_weights` / `fake_init_weights`, both shipped on by default):
+The shipped recipe cold-starts from `weight_svd` (v1 and later). Hub v3 instead seeded both LoRA
+stacks from a plain LoRA checkpoint (`[network] student_init_weights` / `fake_init_weights`).
+On merged14 a warm start from Hub v3 regressed from its start under the v1 recipe
+(`project/anima_turbo/reports/warm_v3.md`). The mechanism:
 `warm_start_plain_lora` (`networks/methods/turbo_dmd.py`) reconstructs the file's exact
 ΔW per runtime module (re-fusing defused q/k/v), SVD-truncates it to the stack's rank,
 and writes `lora_down`/`lora_up`. File rank may differ from the network's in either
@@ -154,13 +156,15 @@ Sectioned, bespoke. Every key has a matching CLI override flag (see
 
 | Section | Key | Default | Notes |
 |---|---|---|---|
-| top | `output_name` | `anima_turbo_v3_longer` | output stem under `output/ckpt/` |
-| top | `iterations` | `10000` | |
+| top | `output_name` | `anima_turbo` | output stem under `output/ckpt/` |
+| top | `iterations` | `1000` | the v1 length (`project/anima_turbo/1112_v1.md`); Hub v3 ran 10k from a warm start |
 | top | `dit_path` / `dit_nonquant_path` | int8 GPTQ file / bf16 DiT | forward copies and bf16 weights (`docs/anima/optimizations/int8.md` § Forward copies) |
 | top | `int8` / `stream` | `stream` / `fp32` | teacher, student and fake forwards on the int8 base and the fp32 residual stream (`docs/anima/optimizations/int8.md`, `fp32_stream.md`). The output is a normal LoRA either way. Code defaults are `off` / `fp32` |
 | `[network]` | `student_rank` / `fake_rank` | `64` / `64` (alpha `180` / `180`) | `fake_rank ≥ student_rank` (fake is a score tracker, capacity ceiling on DM strength); the warm start SVD-truncates the r96 delta to this rank |
 | `[network]` | `train_adaln` / `adaln_rank` / `adaln_alpha` | `true` / `16` / `90` | adaln LoRA on student + fake (`docs/anima/methods/adaln.md` §Turbo) |
-| `[network]` | `student_init_weights` / `fake_init_weights` | `…/anima_turbo_v1.1_delta_r96_asvd_adaln.safetensors` | both stacks seeded from the extracted official delta |
+| `[network]` | `student_down_init` / `fake_down_init` | `weight_svd` / `weight_svd` | cold start: LoRA down from the base weight's top singular directions |
+| `[network]` | `student_init_weights` / `fake_init_weights` | `""` (off) | warm start from an extracted delta (below); excludes `weight_svd` |
+| `[network]` | `fake_transition` | `true` | transition-aware fake: σ of the student step the sample came from, as a zero-init delta on the fake's t-embedding |
 | `[dmd]` | `student_steps` (N) | `4` | Euler steps the student rolls; inference matches (`--infer_steps 4`) |
 | `[dmd]` | `teacher_cfg` (α) | `4` | CFG scale baked into the teacher anchor + DMD real score (Anima prod CFG=4) |
 | `[dmd]` | `dynamic_schedule` | `false` | `true` = CDM-style continuous schedule (arXiv:2605.06376 §3.2): per-iteration random rollout grid — length `N~U{2..student_steps}`, interior anchors continuous-uniform, `t₁=1` pinned so the DP anchor composes unchanged; trains v_θ over continuous t instead of the 4 fixed inference points. `false` = the fixed inference grid on every iteration, adopted 11-14 (the static arm beat both dynamic seeds; `project/anima_turbo/plan.md`) at the cost of other step counts. Validation renders + inference always stay on the static `flow_shift` grid. |
@@ -170,18 +174,17 @@ Sectioned, bespoke. Every key has a matching CLI override flag (see
 | `[dpdmd]` | `teacher_anchor_steps` | `12` | teacher σ-grid the K is counted against |
 | `[dpdmd]` | `div_weight` (λ) | `0.1` | weight on the first-step diversity MSE; `0` skips the teacher anchor (its `2·k_anchor` teacher forwards per step) and the diversity term |
 | `[dpdmd]` | `detach_after_first` | `true` | **load-bearing** stop-grad after step 1 |
-| `[dpdmd]` | `dm_first_step` | `false` | draw the grad step from `U{0..N−1}`, so step 0 also takes the DM / MFD signal (`x_pred = ε − v_first`); when g = 0 the diversity term rides the same backward. With `div_weight = 0` this is the anchor-free loop of the MFD paper, which collapsed within 250 steps (`project/anima_turbo/reports/mfd.md`) |
+| `[dpdmd]` | `dm_first_step` | `true` | draw the grad step from `U{0..N−1}`, so step 0 also takes the DM / MFD signal (`x_pred = ε − v_first`); when g = 0 the diversity term rides the same backward. With `div_weight = 0` this is the anchor-free loop of the MFD paper, which collapsed within 250 steps (`project/anima_turbo/reports/mfd.md`) |
 | `[dpdmd]` | `rollout_grad` | `false` | keep the graph from step 0 into step 1, so the DM / MFD signal on the final x_θ reaches step 0 through step 1; the diversity term rides the same backward. 2-step static grid only (`student_steps = 2`, `dynamic_schedule` and `dm_first_step` off); two grad-bearing student forwards. `project/anima_turbo/proposal/superturbo.md` |
-| `[optim]` | `student_lr` / `fake_lr` | `5e-5` / `5e-5` | stable on the warm start but near the edge — expect an excursion around ~1k and keepers from 2k+. A cold start is unstable with the student above 1e-5. `fm_mse` is anti-correlated with quality; rank by rendered 4-step samples |
+| `[optim]` | `student_lr` / `fake_lr` | `5e-5` / `5e-5` | under the cosine (to 0.1×) from the `weight_svd` cold start; 2e-4 rendered worse (`project/anima_turbo/configs/README.md`, `1112_1110`). `fm_mse` is anti-correlated with quality; rank by rendered 4-step samples |
 | `[optim]` | `fake_steps_per_student_step` | `4` | keep the fake ahead of the moving x_θ |
 | `[optim]` | `fake_warmup_steps` | `200` | fake (critic) head-start before the main loop — kills the early grad_signal_rms spike (~step 50); `0` = off |
 | `[optim]` | `grad_clip` | `1.0` | grad-norm cap (both nets) |
 | `[cdm]` | `weight` / `grad_ckpt` / `teacher` | `1.0` / `true` / `"cond"` | CDM loss weight (code fallback 0); its branch checkpoints its own forwards. `teacher`: the velocity L_CDM pulls toward, `cond` (the paper's Eq. 9, adopted 11-16 on the A/B in `project/anima_turbo/plan.md`) or `cfg` (the CFG'd teacher, code fallback) |
-| `[optim]` | `lr_schedule` / `grad_accum` | absent: `cosine` / `1` | shape after the 2 % linear warmup (student, fake, disc); iterations per student optimizer step |
-| `[ema]` | `window` | absent: `0.0` | student EMA span as a fraction of the run (0 = off). Under `lr_schedule = "constant"` it is a fraction of the updates. Under `cosine` it is a fraction of the summed LR: each update decays the shadow by `decay ** (lr / mean lr)`, so the span covers the same share of the weights' movement as at a constant LR (0.2 reaches back about 45 % of the updates) |
-| `[dmd]` | `dm_draws` | absent: `1` | (σ_a, ε_dm) draws averaged into the DM signal on the same x_θ |
-| `[network]` | `fake_transition` | absent: `false` | transition-aware fake: σ of the student step the sample came from, as a zero-init delta on the fake's t-embedding |
-| `[mfd]` | `dtau` / `max_steps` / `interval` | absent: `0.0` / `4` / `to_zero` | MFD mean-flow integral; `dtau = 0` is plain DMD (`project/anima_turbo/reports/mfd.md`) |
+| `[optim]` | `lr_schedule` / `grad_accum` | `cosine` / `1` | shape after the 2 % linear warmup (student, fake, disc); iterations per student optimizer step |
+| `[ema]` | `window` | `0.2` (code fallback `0.0`) | student EMA span as a fraction of the run (0 = off); the EMA is the checkpoint that ships. Under `lr_schedule = "constant"` it is a fraction of the updates. Under `cosine` it is a fraction of the summed LR: each update decays the shadow by `decay ** (lr / mean lr)`, so the span covers the same share of the weights' movement as at a constant LR (0.2 reaches back about 45 % of the updates) |
+| `[dmd]` | `dm_draws` | `1` | (σ_a, ε_dm) draws averaged into the DM signal on the same x_θ |
+| `[mfd]` | `dtau` / `max_steps` / `interval` | `0.0` / `4` / `to_zero` | MFD mean-flow integral; `dtau = 0` is plain DMD (`project/anima_turbo/reports/mfd.md`) |
 | `[sampling]` | `t_distribution` | `uniform` | τ sampling for the fake update + warmup (or `sigmoid`) |
 | `[sampling]` | `flow_shift` | `3.0` | σ-schedule shift for the student/teacher Euler grids (matches inference; `k_anchor` σ is shift-coupled, so change both together) |
 | `[gan]` | `weight_gen` | `0.03` (on) | teacher-feature GAN generator term — see below |

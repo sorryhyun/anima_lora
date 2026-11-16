@@ -1,15 +1,19 @@
-output_name = "anima_turbo_v3_longer"
+# The current 4-step recipe (project/anima_turbo/plan.md): v1 (1112_v1.md: cold weight_svd init,
+# dm_first_step on, cosine LR, EMA 0.2, fake_transition, token GAN head) at 1000 iterations, with
+# the static grid (adopted 11-14) and the cond-only L_CDM (adopted 11-16). The research runs use a
+# local merged soup as the teacher; point dit_path / dit_nonquant_path at yours. The EMA ships.
+output_name = "anima_turbo"
 dit_path = "models/diffusion_models/anima-base-v1.0_int8_gptq.safetensors"
 dit_nonquant_path = "models/diffusion_models/anima-base-v1.0.safetensors"
 data_dir = "post_image_dataset/lora"
 output_dir = "output/ckpt"
 
-iterations = 10000
+iterations = 1000
 batch_size = 1
 seed = 42
-
 channel_scaling_alpha = 0.0
 compile_dynamic_seq = true
+dynamo_recompile_limit = 64
 activation_memory_budget = 0.99
 int8 = "stream"
 stream = "fp32"
@@ -20,13 +24,15 @@ student_alpha = 180
 fake_rank = 64
 fake_alpha = 180
 attn_mode = "flash"
-
+student_down_init = "weight_svd"
+fake_down_init = "weight_svd"
+student_init_weights = ""
+fake_init_weights = ""
 train_adaln = true
+fake_adaln = true
 adaln_rank = 16
 adaln_alpha = 90
-
-student_init_weights = "models/extracted/anima_turbo_v1.1_delta_r96_asvd_adaln.safetensors"
-fake_init_weights = "models/extracted/anima_turbo_v1.1_delta_r96_asvd_adaln.safetensors"
+fake_transition = true
 
 [dmd]
 student_steps = 4
@@ -34,26 +40,36 @@ teacher_cfg = 4
 dynamic_schedule = false
 dm_x0_norm = true
 norm_floor = 0.05
+dm_draws = 1
 
 [cdm]
 weight = 1.0
 grad_ckpt = true
 teacher = "cond"
 
+[mfd]
+dtau = 0.0
+
 [optim]
 student_lr = 5e-5
 fake_lr = 5e-5
 fake_steps_per_student_step = 4
 fake_warmup_steps = 200
+grad_accum = 1
 weight_decay = 0.0
 grad_clip = 1.0
+lr_schedule = "cosine"
+
+[ema]
+window = 0.2
 
 [dpdmd]
 k_anchor = 6
 teacher_anchor_steps = 12
 div_weight = 0.1
 detach_after_first = true
-dm_first_step = false
+dm_first_step = true
+rollout_grad = false
 
 [sampling]
 t_distribution = "uniform"
@@ -74,7 +90,9 @@ use_same_t_noise = true
 grad_ckpt = true
 
 [io]
-save_every = 1000
+save_every = 250
 log_interval = 5
 log_dir = "output/logs/turbo"
-validate_every_n_steps = 1000
+validate_every_n_steps = 250
+val_diversity_seeds = 8
+val_prompt_idx = -1
