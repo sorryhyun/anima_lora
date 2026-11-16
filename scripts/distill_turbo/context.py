@@ -71,6 +71,8 @@ class RunContext:
     # Mean student LR over the EMA's updates (0 under the constant schedule): the
     # loop steps the EMA at rate lr / ema_lr_mean, so its span is a share of summed LR.
     ema_lr_mean: float
+    # time.monotonic() of the last console step line (off a TTY).
+    last_console: float = 0.0
 
     def next_batch(self) -> Batch:
         """The next batch on the device; a new epoch (and anchor draw) at the end."""

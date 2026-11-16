@@ -13,6 +13,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import os
+import time
 from pathlib import Path
 
 from library.runtime.allocator import default_expandable_segments
@@ -54,6 +55,10 @@ from .steps import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Off a TTY: at most one console step line per this many seconds (TensorBoard
+# and the progress stream still get every log_interval).
+CONSOLE_EVERY_S = 30.0
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
@@ -72,11 +77,14 @@ def run_loop(ctx: RunContext, cfg: TurboConfig) -> None:
         if cfg.grad_accum > 1
         else None
     )
+    # Off a TTY the bar's carriage returns run into the logger lines; it keeps
+    # counting (tqdm_rate) but writes nowhere, and the console line stands in.
     progress = tqdm(
         range(ctx.start_step, cfg.iterations),
         desc="turbo",
         initial=ctx.start_step,
         total=cfg.iterations,
+        file=open(os.devnull, "w") if ctx.console_steps else None,
     )
     step = ctx.start_step - 1  # final_step() stays valid if the loop is empty
     with run_scope(ctx.progress_sink, final_step=lambda: step + 1):
@@ -233,9 +241,10 @@ def _flush_logs(ctx: RunContext, cfg, progress, n: int) -> None:
     m = ctx.metrics.flush(cfg.log_interval)
     writer = ctx.writer
     if writer is not None:
-        write_scalars(writer, m, n)
+        write_scalars(writer, m, n, anchor_only=cfg.anchor_only)
         writer.add_scalar("train/student_lr", ctx.student_sched.get_last_lr()[0], n)
-        writer.add_scalar("train/fake_lr", ctx.fake_sched.get_last_lr()[0], n)
+        if not cfg.anchor_only:
+            writer.add_scalar("train/fake_lr", ctx.fake_sched.get_last_lr()[0], n)
         if ctx.disc_sched is not None:
             writer.add_scalar("train/disc_lr", ctx.disc_sched.get_last_lr()[0], n)
         if ctx.turbo.disc is not None and not cfg.anchor_only:
@@ -243,10 +252,20 @@ def _flush_logs(ctx: RunContext, cfg, progress, n: int) -> None:
             writer.add_scalar(
                 "train/gan_weight_gen_eff", gan_effective_weight(cfg, n - 1), n
             )
-    progress.set_postfix(**tqdm_postfix(m))
-    if ctx.console_steps:
+    progress.set_postfix(**tqdm_postfix(m, anchor_only=cfg.anchor_only), refresh=False)
+    now = time.monotonic()
+    if ctx.console_steps and (
+        now - ctx.last_console >= CONSOLE_EVERY_S or n == cfg.iterations
+    ):
+        ctx.last_console = now
         logger.info(
-            console_step_line(m, step=n, total=cfg.iterations, rate=tqdm_rate(progress))
+            console_step_line(
+                m,
+                step=n,
+                total=cfg.iterations,
+                rate=tqdm_rate(progress),
+                anchor_only=cfg.anchor_only,
+            )
         )
     if ctx.progress_sink is not None:
         ctx.progress_sink.log(dataclasses.asdict(m), global_step=n, epoch=0)

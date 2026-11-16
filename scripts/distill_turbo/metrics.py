@@ -254,8 +254,15 @@ class StepGradLog:
         self._meta.clear()
 
 
-def write_scalars(writer, m: FlushedMetrics, step: int) -> None:
-    """Push every available scalar to TensorBoard at the canonical key names."""
+def write_scalars(
+    writer, m: FlushedMetrics, step: int, *, anchor_only: bool = False
+) -> None:
+    """Push every available scalar to TensorBoard at the canonical key names
+    (``anchor_only``: the anchor loss and the student grad norm, nothing else runs)."""
+    writer.add_scalar("train/div_loss", m.div, step)
+    writer.add_scalar("train/grad_norm_student", m.gn_student, step)
+    if anchor_only:
+        return
     writer.add_scalar("train/fake_loss", m.fake, step)
     writer.add_scalar("train/grad_signal_rms", m.grad, step)
     writer.add_scalar("train/delta_dm_rms", m.dm, step)
@@ -264,13 +271,11 @@ def write_scalars(writer, m: FlushedMetrics, step: int) -> None:
     writer.add_scalar("train/dm_rel_gap", m.rel_gap, step)
     writer.add_scalar("train/dm_mag_ratio", m.mag_ratio, step)
     writer.add_scalar("train/dm_cos", m.cos, step)
-    writer.add_scalar("train/div_loss", m.div, step)
     writer.add_scalar("train/gan_gen_loss", m.gan_gen, step)
     writer.add_scalar("train/gan_disc_loss", m.gan_disc, step)
     writer.add_scalar("train/gan_disc_margin", m.gan_margin, step)
     writer.add_scalar("train/gan_logit_spread", m.gan_spread, step)
     writer.add_scalar("train/cdm_grad_rms", m.cdm, step)
-    writer.add_scalar("train/grad_norm_student", m.gn_student, step)
     writer.add_scalar("train/grad_norm_fake", m.gn_fake, step)
     if m.gn_disc != 0:
         writer.add_scalar("train/grad_norm_disc", m.gn_disc, step)
@@ -288,12 +293,19 @@ def tqdm_rate(bar: tqdm) -> float | None:
 
 
 def console_step_line(
-    m: FlushedMetrics, *, step: int, total: int, rate: float | None
+    m: FlushedMetrics,
+    *,
+    step: int,
+    total: int,
+    rate: float | None,
+    anchor_only: bool = False,
 ) -> str:
     """Greppable one-line step summary (the :func:`tqdm_postfix` numbers) for
     redirected / headless logs."""
     pct = f" ({100.0 * step / total:.1f}%)" if total else ""
-    stats = " ".join(f"{k}={v}" for k, v in tqdm_postfix(m).items())
+    stats = " ".join(
+        f"{k}={v}" for k, v in tqdm_postfix(m, anchor_only=anchor_only).items()
+    )
     if rate:
         speed = f"{rate:.2f} it/s | ETA {tqdm.format_interval((total - step) / rate)}"
     else:
@@ -301,8 +313,11 @@ def console_step_line(
     return f"step {step}/{total}{pct} | {stats} | {speed}"
 
 
-def tqdm_postfix(m: FlushedMetrics) -> dict:
-    """tqdm postfix dict — short keys for the live progress line."""
+def tqdm_postfix(m: FlushedMetrics, *, anchor_only: bool = False) -> dict:
+    """tqdm postfix dict — short keys for the live progress line. ``anchor_only``
+    shows the anchor MSE (``div``) and the student grad norm, the only live numbers."""
+    if anchor_only:
+        return {"anchor": f"{m.div:.4f}", "gn": f"{m.gn_student:.2e}"}
     postfix = {
         "g": f"{m.grad:.2e}",
         "relg": f"{m.rel_gap:.3f}",
