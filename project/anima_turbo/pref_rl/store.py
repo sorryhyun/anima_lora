@@ -41,7 +41,7 @@ P1_ROUNDS = 24
 
 @dataclass
 class SessionConfig:
-    dit: str = "models/diffusion_models/anima_merged14.safetensors"
+    dit: str = "models/diffusion_models/anima_merged15.safetensors"
     loras: list[str] = field(
         default_factory=lambda: [
             "models/loras/turbo_hub/anima_turbo_4step_v3.safetensors"

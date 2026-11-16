@@ -4,6 +4,9 @@ One TOML per run, named by its run id (`mmdd_hhmm`, later `turbo_mmdd_hhmm`). La
 `make turbo ARGS="--config project/anima_turbo/configs/<id>.toml --queue"`. Paths in the table are
 relative to `project/anima_turbo/`.
 
+Runs from 2026-11-16 on take the merged15 teacher (`dit_path = "models/diffusion_models/anima_merged15_int8_gptq.safetensors"`,
+`dit_nonquant_path = "models/diffusion_models/anima_merged15.safetensors"`). Every run in the table below trained on merged14.
+
 | Id | Arm | Change against control | State |
 |---|---|---|---|
 | `1112_0833` | 0, control | the baseline in `1112_v1.md`, seed 42 | done, rendered |

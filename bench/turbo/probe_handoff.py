@@ -171,7 +171,7 @@ def sheet(cells: list[list[Image.Image]], cols: list[str], rows: list[str], w: i
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     add_model_args(p)
-    p.set_defaults(dit="models/diffusion_models/anima_merged14.safetensors")
+    p.set_defaults(dit="models/diffusion_models/anima_merged15.safetensors")
     p.add_argument("--students", nargs="+", required=True, help="student LoRA files")
     p.add_argument("--prompts_file", default="bench/turbo/judge_hard.txt")
     p.add_argument("--student_steps", type=int, default=4)
