@@ -4,7 +4,7 @@
 
 ## A2.1 같은 시드 두 런이 갈라지는 이유
 
-`02_soup_merge.md` §1.2의 같은 명령 두 런(1200 step, ΔW 코사인 0.41)에서 시드로 고정되지 않는 차이는 두
+`02_soup_merge.md` §1.1의 같은 명령 두 런(1200 step, ΔW 코사인 0.41)에서 시드로 고정되지 않는 차이는 두
 군데 있습니다.
 
 - **attention backward의 누적 순서.** FlashAttention backward는 dK, dV를 atomic add로 누적하므로 더하는 순서가
