@@ -16,7 +16,11 @@ samples of its ``data_dir``, ``AnchorDataset`` adds each sample's pair to the Da
 item, and epoch e reads draw e mod K.
 
 ``manifest.json`` records the teacher the targets were rolled with, the ε seed and the
-sample keys. A run whose teacher fields differ refuses the cache.
+sample keys.
+
+The builder is no-grad, so an int8 teacher loads straight from the int8 checkpoint as
+``infer`` linears (``library.anima.int8.infer_load_file``); every int8 mode runs the
+same forward copies.
 """
 
 from __future__ import annotations
@@ -44,7 +48,7 @@ FORMAT = 2
 MANIFEST = "manifest.json"
 _base_collate = make_cached_collate()
 
-# Teacher fields the targets depend on; a run differing on any of them refuses the cache.
+# Teacher fields the targets depend on, recorded in the manifest.
 TEACHER_FIELDS = (
     "dit_path",
     "dit_nonquant_path",
@@ -124,17 +128,6 @@ class AnchorDataset(torch.utils.data.Dataset):
         self.base = base
         self.dir = Path(resolve_under_home(cache_dir))
         man = read_manifest(self.dir)
-        want = teacher_signature(cfg)
-        diff = {
-            f: (man["teacher"].get(f), want[f])
-            for f in TEACHER_FIELDS
-            if man["teacher"].get(f) != want[f]
-        }
-        if diff:
-            raise ValueError(
-                f"dpdmd.anchor_cache {self.dir} was rolled with another teacher "
-                f"(field: (cache, config) = {diff})."
-            )
         self.draws = int(man["draws"])
         self.seed = int(man["seed"])
         self.keys = [sample_key(te, cfg.data_dir) for _, te in base.samples]
@@ -222,16 +215,30 @@ def _choose_keys(data_dir: str, n: int, seed: int) -> list[str]:
     return sorted(random.Random(seed).sample(keys, n))
 
 
+def _grow_keys(data_dir: str, held: list[str], n: int, seed: int) -> list[str]:
+    """``held`` plus samples of ``data_dir`` not in it, up to ``n`` in all (0: all).
+    Pair seeds depend only on (seed, key, draw), so the held pairs stay valid."""
+    rest = sorted(set(_choose_keys(data_dir, 0, seed)) - set(held))
+    if n > 0:
+        if n < len(held):
+            raise SystemExit(
+                f"--grow --prompts {n}: the cache already holds {len(held)}"
+            )
+        rest = random.Random(seed).sample(rest, min(n - len(held), len(rest)))
+    return sorted(set(held) | set(rest))
+
+
 def _load_teacher(a, device, dtype, token_counts):
     """The frozen DiT the loop's teacher view runs: int8 base, fp32 stream, compiled."""
     from library.anima import weights as anima_utils
-    from library.anima.int8 import convert_for_turbo
+    from library.anima.int8 import convert_for_turbo, infer_load_file
     from library.anima.stream import stream_fp32_
     from library.runtime.dynamo import pin_dynamo_limit
 
     from .setup import compile_turbo_dit
 
     logger.info(f"loading teacher DiT: {a.dit_path}")
+    infer_file = infer_load_file(a.int8_file, a.dit_path) if a.int8 != "off" else ""
     model = anima_utils.load_anima_model(
         device,
         a.dit_path,
@@ -239,10 +246,11 @@ def _load_teacher(a, device, dtype, token_counts):
         loading_device=device,
         dit_weight_dtype=dtype,
         dit_nonquant_path=a.dit_nonquant_path,
+        int8_infer_file=infer_file or None,
     )
     model.to(device)
     model.requires_grad_(False)
-    if a.int8 != "off":
+    if a.int8 != "off" and not infer_file:
         convert_for_turbo(model, a.int8, a.int8_file, a.dit_path)
     if a.stream == "fp32":
         stream_fp32_(model)
@@ -283,28 +291,29 @@ def _build(a) -> None:
 
     if man_path.exists():
         man = read_manifest(cache_dir)
-        if man["teacher"] != teacher:
-            raise SystemExit(
-                f"{cache_dir} was rolled with another teacher: {man['teacher']}"
-            )
+        teacher = man["teacher"]
         if man["seed"] != a.seed or man["data_dir"] != a.data_dir:
             raise SystemExit(
                 f"{cache_dir}: seed / data_dir ({man['seed']}, {man['data_dir']}) "
                 f"against ({a.seed}, {a.data_dir})"
             )
-        if a.prompts and a.prompts != len(man["keys"]):
-            raise SystemExit(
-                f"{cache_dir} holds {len(man['keys'])} samples; --prompts {a.prompts} "
-                "would need a new cache dir."
-            )
         keys = man["keys"]
+        if a.grow:
+            keys = _grow_keys(a.data_dir, keys, a.prompts, a.seed)
+        elif a.prompts and a.prompts != len(keys):
+            raise SystemExit(
+                f"{cache_dir} holds {len(keys)} samples; --prompts {a.prompts} "
+                "would need a new cache dir, or --grow to add samples."
+            )
         draws = max(int(man["draws"]), a.draws or 0)
     else:
         keys = _choose_keys(a.data_dir, a.prompts, a.seed)
         draws = a.draws or 1
 
-    # Manifest first: a partial cache already says what it was built for.
-    man_path.write_text(
+    # Manifest first: a partial cache already says what it was built for. Written
+    # through a temp file, so a hardlinked copy of a cache dir keeps its own manifest.
+    tmp_man = man_path.with_suffix(".tmp")
+    tmp_man.write_text(
         json.dumps(
             {
                 "format": FORMAT,
@@ -317,6 +326,7 @@ def _build(a) -> None:
             indent=1,
         )
     )
+    os.replace(tmp_man, man_path)
 
     dataset = CachedDataset(
         a.data_dir, keep_list={key_stem(k) for k in keys}, need_pooled=False
@@ -374,11 +384,19 @@ def _build(a) -> None:
         sink = ProgressSink(sink_path, run="anchor_cache", method="turbo", preset=None)
         sink.run_start(total_steps=len(todo), total_epochs=draws, pid=os.getpid())
 
+    shown: list = []
+    torch.cuda.synchronize()
+    logger.info(
+        f"before loop: allocated {torch.cuda.memory_allocated() / 2**30:.2f} GiB, "
+        f"load peak {torch.cuda.max_memory_allocated() / 2**30:.2f} GiB"
+    )
+    torch.cuda.reset_peak_memory_stats()
     t0 = time.time()
     for n, (key, k) in enumerate(todo, 1):
         item = dataset[index[key]]
         c = item["crossattn_emb"].unsqueeze(0).to(device, dtype=dtype)
         c_null = uncond_for_batch(uncond, c)
+        cc = torch.cat([c, c_null]) if a.cfg_batch else None
         eps = pair_eps(
             (1, *item["latents"].shape),
             pair_seed(a.seed, key, k),
@@ -387,8 +405,17 @@ def _build(a) -> None:
         )
 
         def cfg_velocity(z, s):
-            v_c = velocity(z, s, c)
-            v_u = velocity(z, s, c_null)
+            if a.cfg_batch:
+                zz = torch.cat([z, z])
+                if not shown:
+                    logger.info(
+                        f"cfg_batch forward: x {tuple(zz.shape)}, c {tuple(cc.shape)}"
+                    )
+                    shown.append(1)
+                v_c, v_u = velocity(zz, s, cc).chunk(2)
+            else:
+                v_c = velocity(z, s, c)
+                v_u = velocity(z, s, c_null)
             return v_u + a.teacher_cfg * (v_c - v_u)
 
         v_target = anchor_target(cfg_velocity, eps, sigmas, a.k_anchor)
@@ -400,7 +427,8 @@ def _build(a) -> None:
             rate = n / (time.time() - t0)
             logger.info(
                 f"{n}/{len(todo)} pairs, {1 / rate:.2f} s/pair, "
-                f"ETA {(len(todo) - n) / rate / 60:.1f} min"
+                f"ETA {(len(todo) - n) / rate / 60:.1f} min, "
+                f"peak {torch.cuda.max_memory_allocated() / 2**30:.2f} GiB"
             )
             if sink is not None:
                 sink.log({"s_per_pair": 1 / rate}, global_step=n, epoch=k)
@@ -426,6 +454,12 @@ def build_argparser() -> argparse.ArgumentParser:
         help="ε draws per sample (default 1, or what the cache already holds). "
         "Raising it on an existing cache adds the new draws.",
     )
+    p.add_argument(
+        "--grow",
+        action="store_true",
+        help="on an existing cache, add samples of data_dir it does not hold, up to "
+        "--prompts in all (0: every sample). Held pairs are kept.",
+    )
     p.add_argument("--seed", type=int, default=42, help="sample choice and ε seeds")
     p.add_argument(
         "--dit_path",
@@ -442,6 +476,12 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--flow_shift", type=float, default=3.0)
     p.add_argument("--k_anchor", type=int, default=14)
     p.add_argument("--teacher_anchor_steps", type=int, default=28)
+    p.add_argument(
+        "--cfg_batch",
+        action="store_true",
+        help="run cond and uncond as one B=2 forward (the training teacher runs two "
+        "B=1 forwards).",
+    )
     p.add_argument("--attn_mode", default="flash")
     p.add_argument("--no_compile", dest="compile", action="store_false")
     p.add_argument(

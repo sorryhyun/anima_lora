@@ -194,6 +194,7 @@ def load_anima_model(
     attn_softmax_scale: Optional[float] = None,
     vocab_pack=None,
     dit_nonquant_path: Optional[str] = None,
+    int8_infer_file: Optional[str] = None,
 ) -> anima_models.Anima:
     """
     Load Anima model from the specified checkpoint.
@@ -219,14 +220,20 @@ def load_anima_model(
         dit_nonquant_path: The bf16 DiT ``dit_path`` was quantized from, when ``dit_path``
             is an int8 checkpoint. Supplies the float weights; without it they are
             rebuilt from the int8 copies.
+        int8_infer_file: An int8 checkpoint to load in its place for inference only
+            (``library.anima.int8.infer_load_file``): the converted linears take its
+            forward copies as int8 ``infer`` linears and are never held in a float
+            dtype. ``dit_path`` / ``dit_nonquant_path`` are then not read.
     """
     if dit_weight_dtype is None:
         dit_weight_dtype = torch.bfloat16
 
-    dit_path = str(resolve_under_home(dit_path))
+    if int8_infer_file and lora_weights_list:
+        raise ValueError("int8_infer_file: LoRAs attach as hooks, not a static merge")
+    dit_path = str(resolve_under_home(int8_infer_file or dit_path))
     device = torch.device(device)
     loading_device = torch.device(loading_device)
-    int8_checkpoint = is_int8_checkpoint(dit_path)
+    int8_checkpoint = not int8_infer_file and is_int8_checkpoint(dit_path)
     if int8_checkpoint:
         if dit_nonquant_path:
             dit_path, int8_checkpoint = (
@@ -270,6 +277,12 @@ def load_anima_model(
         rename_hook=_dit_rename_hook,
         concat_hook=_dit_concat_hook,
     )
+    skip_int8 = None
+    if int8_infer_file:
+        from library.anima.int8 import skip_target_key
+
+        skip_int8 = skip_target_key
+        logger.info(f"int8 infer load: block linears stay int8 from {dit_path}")
     sd = load_safetensors_with_lora(
         model_files=dit_path,
         lora_weights_list=lora_weights_list,
@@ -278,6 +291,7 @@ def load_anima_model(
         move_to_device=(loading_device == device),
         dit_weight_dtype=dit_weight_dtype,
         weight_transform_hooks=rename_hooks,
+        key_filter=None if skip_int8 is None else (lambda k: not skip_int8(k)),
     )
 
     # A merged checkpoint (vocab_pack.merge_pack_into_dit) carries pack rows for
@@ -304,7 +318,8 @@ def load_anima_model(
         unexpected_missing = [
             k
             for k in missing
-            if not any(
+            if not (skip_int8 is not None and skip_int8(k))
+            and not any(
                 buf_name in k
                 for buf_name in (
                     "seq",
@@ -352,6 +367,11 @@ def load_anima_model(
         model.pooled_text_sigma_film.to_empty(device=loading_device)
         torch.nn.init.zeros_(model.pooled_text_sigma_film.weight)
         torch.nn.init.zeros_(model.pooled_text_sigma_film.bias)
+
+    if int8_infer_file:
+        from library.anima.int8 import install_infer_copies_
+
+        install_infer_copies_(model, dit_path, loading_device)
 
     _attach_vocab_pack_if_set(model, vocab_pack)
     return model

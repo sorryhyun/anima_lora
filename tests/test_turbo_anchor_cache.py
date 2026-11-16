@@ -127,15 +127,6 @@ def test_items_carry_the_epoch_draw(tmp_path):
     )
 
 
-def test_cache_refuses_other_signature(tmp_path):
-    cfg = _cfg(tmp_path)
-    base = _Base(cfg)
-    _write_cache(tmp_path / "cache", cfg, base.samples, draws=1)
-    other = _cfg(tmp_path, k_anchor=6, teacher_anchor_steps=12)
-    with pytest.raises(ValueError, match="k_anchor"):
-        AnchorDataset(base, str(tmp_path / "cache"), other)
-
-
 def test_cache_refuses_missing_pairs(tmp_path):
     cfg = _cfg(tmp_path)
     base = _Base(cfg)

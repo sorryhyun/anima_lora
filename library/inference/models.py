@@ -407,6 +407,11 @@ def load_dit_model(
             "ROCm detected: using PyTorch SDPA instead of CUDA Flash Attention"
         )
 
+    infer_file = ""
+    if int8:
+        from library.anima.int8 import infer_load_file
+
+        infer_file = infer_load_file(getattr(args, "int8_file", None), args.dit)
     model = anima_utils.load_anima_model(
         device,
         args.dit,
@@ -416,6 +421,7 @@ def load_dit_model(
         lora_weights_list=lora_weights_list,
         lora_multipliers=args.lora_multiplier,
         vocab_pack=vocab_pack,
+        int8_infer_file=infer_file or None,
     )
 
     # Modulation guidance: load trained pooled_text_proj weights before .to()

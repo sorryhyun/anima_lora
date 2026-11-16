@@ -185,6 +185,7 @@ def load_safetensors_with_lora(
     dit_weight_dtype: Optional[torch.dtype] = None,
     disable_numpy_memmap: bool = False,
     weight_transform_hooks: Optional[WeightTransformHooks] = None,
+    key_filter=None,
 ) -> dict[str, torch.Tensor]:
     """
     Merge LoRA weights into the state dict of a model.
@@ -197,6 +198,7 @@ def load_safetensors_with_lora(
         move_to_device (bool): Whether to move tensors to the calculation device after loading.
         disable_numpy_memmap (bool): Whether to disable numpy memmap when loading safetensors.
         weight_transform_hooks (Optional[WeightTransformHooks]): Hooks for transforming weights during loading.
+        key_filter: ``key -> bool`` on the (transformed) key; a key it rejects is never read.
     """
 
     if isinstance(model_files, str):
@@ -352,6 +354,7 @@ def load_safetensors_with_lora(
         weight_hook=weight_hook,
         disable_numpy_memmap=disable_numpy_memmap,
         weight_transform_hooks=weight_transform_hooks,
+        key_filter=key_filter,
     )
 
     for lora_weight_keys in list_of_lora_weight_keys:
@@ -371,6 +374,7 @@ def _load_safetensors_with_hook(
     weight_hook: callable = None,
     disable_numpy_memmap: bool = False,
     weight_transform_hooks: Optional[WeightTransformHooks] = None,
+    key_filter=None,
 ) -> dict[str, torch.Tensor]:
     """Load state dict from safetensors files and run an optional per-tensor hook."""
     logger.info(
@@ -391,6 +395,8 @@ def _load_safetensors_with_hook(
                 desc=f"Loading {os.path.basename(model_file)}",
                 leave=False,
             ):
+                if key_filter is not None and not key_filter(key):
+                    continue
                 if weight_hook is None and move_to_device:
                     value = f.get_tensor(
                         key, device=calc_device, dtype=dit_weight_dtype

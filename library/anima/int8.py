@@ -29,7 +29,11 @@ import torch
 import torch.nn as nn
 from safetensors import safe_open
 
-from library.anima.weights import _SELF_ATTN_QKV_ORDER, is_int8_checkpoint
+from library.anima.weights import (
+    _SELF_ATTN_QKV_ORDER,
+    _strip_net_prefix,
+    is_int8_checkpoint,
+)
 from library.env import resolve_under_home
 from library.int8 import linear as _linear
 from library.int8.convrot import rotate
@@ -75,6 +79,73 @@ def dequantize_checkpoint_(sd: dict, path: str) -> None:
         key = f"{name}.weight"
         ref = sd[key]
         sd[key] = rotate(wq.to(ref.device).float() * s.to(ref.device)).to(ref.dtype)
+
+
+def skip_target_key(key: str) -> bool:
+    """A loader key (prefix stripped, q / k / v fused) an int8 load skips: a converted
+    linear's weight or its quant side keys. Its forward copy is read by
+    :func:`install_infer_copies_`."""
+    if key.endswith((".weight_scale", ".comfy_quant")):
+        return True
+    name = key.removesuffix(".weight")
+    return bool(_DIT_BLOCK.match(name)) and name.endswith(CONVERT_SUFFIXES)
+
+
+def install_infer_copies_(dit: nn.Module, path: str, device) -> None:
+    """Mode ``infer`` on a DiT loaded without its converted linears' weights (still
+    meta): each takes its forward copy from the int8 checkpoint ``path``."""
+    copies, _meta = load_int8_file(path)
+    targets = convert_targets(dit)
+    missing = [name for name, _ in targets if name not in copies]
+    if missing:
+        raise ValueError(f"{path} has no forward copy for {missing[0]}")
+    for name, mod in targets:
+        wq, s = copies.pop(name)
+        _linear.attach_infer_(mod, wq.to(device), s.to(device))
+    dit.int8_checkpoint = path
+    dit.int8_infer_file = path
+
+
+def _file_fingerprint(dit_path: str) -> str:
+    """``base_fingerprint`` read off a float DiT file: two weights, no model."""
+    from library.anima.weights import probe_dit_arch
+
+    last = probe_dit_arch(dit_path)["num_blocks"] - 1
+    with safe_open(dit_path, framework="pt", device="cpu") as f:
+        keys = {_strip_net_prefix(k): k for k in f.keys()}
+        qkv = torch.cat(
+            [
+                f.get_tensor(keys[f"blocks.0.self_attn.{p}.weight"])
+                for p in _SELF_ATTN_QKV_ORDER
+            ]
+        )
+        layer2 = f.get_tensor(keys[f"blocks.{last}.mlp.layer2.weight"])
+    return _linear.fingerprint(
+        [("blocks.0.self_attn.qkv_proj", qkv), (f"blocks.{last}.mlp.layer2", layer2)]
+    )
+
+
+def infer_load_file(int8_file: str | None, dit_path: str) -> str:
+    """The int8 checkpoint an inference-only run loads directly (its converted linears
+    never in a float dtype), or "" when there is none: the forward copies must come
+    from a full int8 checkpoint that is the DiT itself or was made from it."""
+    path = forward_file(int8_file, dit_path)
+    if not path or not is_int8_checkpoint(path):
+        return ""
+    dit = str(resolve_under_home(dit_path))
+    if Path(path).resolve() == Path(dit).resolve():
+        return path
+    with safe_open(path, framework="pt") as f:
+        want = (f.metadata() or {}).get("base_fingerprint")
+    try:
+        have = _file_fingerprint(dit)
+    except (KeyError, OSError, RuntimeError) as e:
+        logger.info(f"int8 infer load: no fingerprint from {dit} ({e}); loading bf16")
+        return ""
+    if have != want:
+        logger.warning(f"{path} was not made from {dit}; loading bf16 and converting")
+        return ""
+    return path
 
 
 def convert_targets(dit: nn.Module) -> list[tuple[str, nn.Linear]]:
@@ -148,7 +219,10 @@ def forward_file(int8_file: str | None, dit_path: str) -> str:
 def _convert(dit: nn.Module, mode: str, int8_file: str | None, dit_path: str) -> str:
     """Convert and log; returns the id LoRAs are stamped with."""
     path = forward_file(int8_file, dit_path)
-    names = convert_dit_(dit, "full" if mode == "stream" else mode, path or None)
+    if mode == "infer" and path and getattr(dit, "int8_infer_file", None) == path:
+        names = [name for name, _ in convert_targets(dit)]  # loaded as int8
+    else:
+        names = convert_dit_(dit, "full" if mode == "stream" else mode, path or None)
     if not names:
         raise SystemExit("int8 base: no DiT linear was converted")
     if mode == "stream":

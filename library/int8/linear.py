@@ -196,17 +196,11 @@ def stream_compacted_(blocks: list[list[nn.Linear]]) -> WqtStream:
 
 
 def close_stream() -> None:
-    """Log the stream's counters and unregister its host buffers; no-op without one."""
+    """Unregister the stream's host buffers; no-op without one."""
     global _stream
     if _stream is None:
         return
-    s = _stream
-    print(
-        f"wq_t stream: {s.entered} blocks entered, {s.cold} cold, "
-        f"{s.wait_s:.2f} s waited",
-        flush=True,
-    )
-    s.close()
+    _stream.close()
     _stream = None
 
 
@@ -359,18 +353,31 @@ def convert_(module: nn.Linear, mode: str, forward_copy=None) -> None:
     module.__class__ = Int8TrainLinear
 
 
+def attach_infer_(module: nn.Linear, wq: torch.Tensor, s: torch.Tensor) -> None:
+    """Mode ``infer`` on a linear whose float weight was never loaded (meta): the
+    forward copy ``(wq, s)`` goes in as is."""
+    kernel_divides_fp32()
+    if module.bias is not None:
+        raise ValueError("int8 base linears are bias-free")
+    module.held_wq = HeldCopy(wq)
+    module.register_buffer("s", s, persistent=False)
+    del module.weight
+    module.int8_mode = "infer"
+    module.__class__ = Int8TrainLinear
+
+
 def base_fingerprint(targets: list[tuple[str, nn.Linear]]) -> str:
     """sha256 over the bf16 bytes of the first and last target weights, before any
     conversion: an int8 file applies only to the checkpoint it was made from."""
+    return fingerprint(
+        [(name, mod.weight.detach()) for name, mod in (targets[0], targets[-1])]
+    )
+
+
+def fingerprint(named: list[tuple[str, torch.Tensor]]) -> str:
+    """:func:`base_fingerprint` over ``(name, float weight)`` pairs."""
     h = hashlib.sha256()
-    for name, mod in (targets[0], targets[-1]):
+    for name, w in named:
         h.update(name.encode())
-        h.update(
-            mod.weight.detach()
-            .to(torch.bfloat16)
-            .cpu()
-            .view(torch.int16)
-            .numpy()
-            .tobytes()
-        )
+        h.update(w.to(torch.bfloat16).cpu().view(torch.int16).numpy().tobytes())
     return h.hexdigest()
