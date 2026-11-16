@@ -22,9 +22,8 @@ from gui.widgets.image_view import ImageViewerDialog
 
 
 def newest_images(d: Path, limit: int = 4, *, since: float | None = None) -> list[Path]:
-    """Newest images in ``d`` by mtime. ``since`` (epoch seconds) drops any
-    written before it — the training-sample gallery passes the job's start
-    time so a fresh run never shows the previous run's stale samples."""
+    """Newest images in ``d`` by mtime; ``since`` (epoch seconds) drops older
+    ones, so the sample gallery never shows a previous run's samples."""
     if not d.is_dir():
         return []
     dated: list[tuple[float, Path]] = []
@@ -33,7 +32,7 @@ def newest_images(d: Path, limit: int = 4, *, since: float | None = None) -> lis
             continue
         try:
             mt = p.stat().st_mtime
-        except OSError:  # file vanished mid-scan (e.g. a clobbering re-run)
+        except OSError:  # vanished mid-scan
             continue
         if since is not None and mt < since:
             continue

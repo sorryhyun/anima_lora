@@ -52,9 +52,8 @@ try:
         create_block_mask,
     )
 
-    # Do NOT pre-compile flex_attention: under compile_blocks the outer
-    # torch.compile already traces+fuses _flex_attention; pre-compiling nests
-    # compilation, exhausts dynamo's recompile limit, falls back to slow path.
+    # Not pre-compiled: compile_blocks already traces it, and nesting
+    # compilation exhausts dynamo's recompile limit (slow fallback).
     compiled_flex_attention = _flex_attention
 
 except ImportError:
@@ -355,21 +354,14 @@ def attention_with_lse(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """SDPA that returns ``(out, softmax_lse)``.
 
-    Used by EasyControl's LSE-decomposed extended self-attention to combine
-    target+cond attention legs without materializing the
-    ``[B, H, S_q, S_t+S_c]`` attention matrix that the masked-SDPA path falls
-    into when a per-key bias forces dispatch to the math kernel.
-
-    ``q, k, v`` are BLHD tensors (K_q/K_kv may differ). ``attn_mode`` only
-    supports ``"flash"`` (FA2) — other backends raise ``NotImplementedError``;
-    callers should fall back to the masked path. Returns
+    ``q, k, v`` are BLHD tensors (S_q/S_kv may differ). Only ``"flash"`` (FA2)
+    is supported; other backends raise ``NotImplementedError``. Returns
     ``out [B,S_q,H,D]`` (same dtype as q) and ``lse [B,H,S_q]`` (fp32).
 
-    GOTCHA: FA2's standard ``FlashAttnFunc.backward`` does NOT propagate
-    gradient through the returned ``lse`` (silently dropped). Callers needing
-    correct gradients through ``lse`` must use a custom
-    ``torch.autograd.Function`` calling FA's lower-level ops directly — see
-    ``networks/methods/easycontrol.py:_ExtendedSelfAttnLSEFunc``.
+    GOTCHA: FA2's ``FlashAttnFunc.backward`` silently drops the gradient on the
+    returned ``lse``. Callers needing it must call FA's lower-level ops from a
+    custom ``torch.autograd.Function`` (see
+    ``networks/methods/easycontrol_attention.py:_ExtendedSelfAttnLSEFunc``).
     """
     if attn_mode != "flash" or flash_attn_func is None:
         raise NotImplementedError(

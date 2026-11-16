@@ -258,7 +258,6 @@ def stage_mangafy(
     exclude_stems: frozenset[str] = frozenset(),
 ) -> tuple[int, int]:
     images = walk_images(src, recursive=recursive)
-    # Tag selection: keep only_stems (None = all), then drop exclude_stems.
     if only_stems is not None or exclude_stems:
         pre = len(images)
         images = [
@@ -276,8 +275,6 @@ def stage_mangafy(
     progress = tqdm_progress("Mangafy")
     progress(0, total=len(images))
 
-    # cv2 fans out across processes when there's more than one worker; gpu runs
-    # one serial GPU stream (handled below).
     if engine == "cv2" and workers > 1 and len(images) > 1:
         written = 0
         with ProcessPoolExecutor(
@@ -292,8 +289,7 @@ def stage_mangafy(
                 text_mask_dilate,
             ),
         ) as ex:
-            # small chunks: IPC overhead is negligible vs each image's cv2 work,
-            # and fine-grained chunks load-balance variable image sizes well.
+            # small chunks load-balance variable image sizes; IPC cost is negligible
             for w in ex.map(_worker_process, [str(p) for p in images], chunksize=2):
                 written += w
                 progress(1)
@@ -546,8 +542,6 @@ def stage_text(
         overwrite=False,
     )
 
-    # color tags always kept; copyright/comic optionally ride as a leading prefix.
-    # only comic is protected from dropout — copyright rides the same tag-dropout.
     caption_protect_fn = None
     copyright_tags: frozenset[str] = frozenset()
     if keep_copyright:
@@ -580,9 +574,8 @@ def stage_text(
     else:
         caption_transform = filter_to_colors
 
-    # restrict TE encoding to the staged stems (already tag-filtered by mangafy)
-    # rather than re-encoding the whole caption master; None/empty = encode all.
-    # --limit only applies to the mangafy/encode stages, not this one.
+    # Encode only the staged stems (already tag-filtered by mangafy); None =
+    # encode all. --limit does not apply to this stage.
     keep_stems: set[str] | None = None
     if staging is not None and staging.is_dir():
         keep_stems = {p.stem for p in walk_images(staging, recursive=recursive)}
@@ -800,8 +793,6 @@ def main() -> None:
     staging = Path(args.staging)
     cond_cache_dir = Path(args.cond_cache_dir)
 
-    # net set = only_data_includes - exclude_data_includes (see --help above); a
-    # filtered-out page gets no cond latent, so the loader pairs it out downstream.
     from library.datasets.dreambooth import stems_with_any_tag
 
     only_stems = (

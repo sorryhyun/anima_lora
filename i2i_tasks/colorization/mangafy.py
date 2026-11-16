@@ -26,7 +26,7 @@ _XDOG_PHI = 12.0  # soft-threshold slope
 # the native Nyquist (~2px) or a rotated screen beats into wavy moiré across smooth
 # tone; line/cross need a larger pitch than dots since a 1-bit stripe aliases worse.
 _TONE_PERIOD = 2  # dot screen period - fine manga screentone pitch, moiré-safe
-_HATCH_PERIOD = 1  # line/cross period (resolves cleanly under the ss=4+ supersample)
+_HATCH_PERIOD = 1  # line/cross period
 # Screen is rendered at `ss`x, hard-thresholded, then resolved by an area-average
 # downscale (cv2.INTER_AREA = exact box mean) so fine/rotated screens anti-alias
 # into smooth gray instead of folding into moiré. ss sets the tone-smoothness
@@ -48,11 +48,8 @@ _TONE_KIND_WEIGHTS = (1.0, 0.0, 0.0)  # P(dot, line, cross)
 # own pattern/angle/period. 1 = single tone whole image.
 _TONE_BAND_COUNTS = (1, 2, 3, 4)
 _TONE_BAND_WEIGHTS = (0.10, 0.40, 0.35, 0.15)
-# Shadow-detail lift: a shadow-gated unsharp mask on the tone-fill luminance so dark
-# fabric/hair keeps its fold/weave relief instead of crushing to flat black, without
-# lifting the darkness itself.
-# Gated off above `_DETAIL_GATE_HI` to keep skin/highlights faithful. XDoG still runs
-# on raw luminance. `_DETAIL_AMOUNT = 0` disables.
+# Shadow-detail lift (`_enhance_shadow_detail`): dark fabric/hair keeps its
+# fold/weave relief instead of crushing to flat black.
 _DETAIL_AMOUNT = 1.0  # unsharp strength on shadow local-contrast; 0 -> no lift
 _DETAIL_SIGMA = 3.0  # high-pass blur radius (px @ ~900px short side; scales with image)
 _DETAIL_GATE_LO = 0.15  # luminance <= this -> full lift

@@ -1,19 +1,14 @@
 """Foresight Guidance (FSG) — velocity-source-agnostic core.
 
-Pure compute: the fixed-point calibrator's config + σ-band gate + the K-iteration
-forward-backward loop, plus the CFG++ guidance-weight reweight. **No model / comfy
-/ adapter imports** — this module is the single source of truth shared verbatim
-between the library plugin (``library/inference/corrections/fsg.py``, which binds
-the velocity callbacks to a direct ``anima(x, t, embed)`` call) and the ComfyUI
-Spectrum node (which binds them to ``comfy.samplers.calc_cond_batch`` →
-``v = (x − x0)/σ``). The node copy is vendored by ``scripts/release/sync_vendor.py``.
+Pure compute (no model / comfy / adapter imports), shared by the library plugin
+(``corrections/fsg.py``, direct DiT forward) and the ComfyUI Spectrum node
+(``calc_cond_batch`` → ``v = (x − x0)/σ``), which vendors it via
+``scripts/release/sync_vendor.py``.
 
-FSG reframes CFG as a *fixed-point calibration*: at scheduled timesteps it runs
-``K`` forward(conditional)–backward(unconditional) iterations over a long
-interval ``Δσ`` to pull ``x_t → x̂_t`` onto the path where the conditional and
-unconditional velocities agree, then the denoise step proceeds from ``x̂_t``.
-Training-free, checkpoint-agnostic, deterministic. See ``docs/anima/inference/fsg.md``;
-premise/eyeball probes archived in ``_archive/bench/fsg/``.
+FSG treats CFG as a fixed-point calibration: at scheduled timesteps it runs
+``K`` forward(cond)–backward(uncond) iterations over a long interval ``Δσ`` to
+pull ``x_t → x̂_t`` onto the path where both velocities agree, then the step
+proceeds from ``x̂_t``. See ``docs/anima/inference/fsg.md``.
 
 Paper: "Towards a Golden Classifier-Free Guidance Path via Foresight Fixed
 Point Iterations" (NeurIPS 2025, arXiv 23177). The paper is ε-prediction + DDIM;
@@ -35,9 +30,7 @@ from typing import Callable, Optional, Tuple
 
 import torch
 
-# Velocity callbacks the fixed-point loop drives. The caller supplies these so
-# the loop stays blind to *where* velocities come from (direct DiT forward vs.
-# ComfyUI's calc_cond_batch). They return velocity-space tensors:
+# Caller-supplied velocity callbacks (velocity-space tensors):
 #   vel_cond_uncond(x, σ) -> (v_cond, v_uncond)   — both branches at one σ
 #   vel_uncond(x, σ)      -> v_uncond             — uncond only (re-noise leg)
 VelCondUncond = Callable[[torch.Tensor, float], Tuple[torch.Tensor, torch.Tensor]]
@@ -47,20 +40,15 @@ VelUncond = Callable[[torch.Tensor, float], torch.Tensor]
 def cfgpp_guidance_weight(sigma_i: float, sigma_next: float, lam: float) -> float:
     """CFG++ effective guidance weight for one step (integrator-agnostic).
 
-    CFG++ differs from CFG *only* in guidance-strength scheduling (paper arXiv
-    23177 App A.2, eqs 18-19): both add ``weight·(v^c − v^u)`` to the update, CFG
-    with a constant ``w``, CFG++ with the σ-scheduled ``ξ̃``. The flow-matching
-    form, derived from the denoise-guided / renoise-unconditional step collapsing
-    to the Euler step, is
+    CFG++ differs from CFG only in guidance-strength scheduling (arXiv 23177
+    App A.2, eqs 18-19). The flow-matching form is
 
         w_eff = λ · (1 − σ_next) · σ_i / (σ_i − σ_next)
 
-    Applied as ``noise_pred = v^u + w_eff·(v^c − v^u)`` this is algebraically
-    identical to the Euler "calibrate x̂ = x − λ(1−σ')σ·Δv then step along v^u"
-    form — but as a *pure reweight of the cond/uncond combine* it composes with
-    any integrator (Euler, ER-SDE, LCM): the sampler consumes the reweighted
-    prediction unchanged. At the final step (σ_next → 0) it collapses to
-    ``w_eff = λ``.
+    Applied as ``noise_pred = v^u + w_eff·(v^c − v^u)`` it equals the Euler
+    "calibrate x̂ = x − λ(1−σ')σ·Δv then step along v^u" form, but as a reweight
+    of the combine it composes with any integrator (Euler, ER-SDE, LCM).
+    At σ_next → 0 it collapses to ``w_eff = λ``.
     """
     ds = sigma_i - sigma_next
     if ds <= 0.0:
@@ -72,13 +60,13 @@ def cfgpp_guidance_weight(sigma_i: float, sigma_next: float, lam: float) -> floa
 class FSGCalibrator:
     """Forward-backward fixed-point calibrator config + scheduler + pure loop.
 
-    Subclassed on each side to add a ``calibrate(...)`` that builds the velocity
-    callbacks for its framework and delegates the numerics to ``run_fixed_point``.
+    Each side subclasses it with a ``calibrate(...)`` that builds the velocity
+    callbacks and delegates to ``run_fixed_point``.
 
     Args:
         band: ``(σ_lo, σ_hi)`` — calibrate only when the step's σ falls inside.
-            Default [0.59, 0.75] — the 28-step er_sde band; it shifts down
-            with step count ([0.75, 0.85] at 20-step Euler).
+            Default [0.59, 0.75] is the 28-step er_sde band; it shifts down
+            with step count.
         k: fixed-point iterations per scheduled step (error ~ρ^K, ρ≈0.93 ⇒
             K=3–4 captures ~all the gain). ``k=0`` makes the calibrator inert.
         d_sigma: calibration interval Δσ (the forward-backward stride; *not* the
@@ -112,12 +100,9 @@ class FSGCalibrator:
         vel_cond_uncond: VelCondUncond,
         vel_uncond: VelUncond,
     ) -> torch.Tensor:
-        """Return ``x̂`` after K forward-backward iterations driven by the
-        supplied velocity callbacks, or ``latents`` unchanged (same object)
-        when this step is not scheduled.
-
-        Costs ``3·K`` velocity evaluations per scheduled step (v^c + v^u at σ via
-        ``vel_cond_uncond``, then v^u at σ−Δσ via ``vel_uncond``). Deterministic.
+        """Return ``x̂`` after K forward-backward iterations, or ``latents``
+        unchanged (same object) when this step is not scheduled. Costs ``3·K``
+        velocity evaluations.
         """
         if not self.scheduled(sigma_i):
             return latents

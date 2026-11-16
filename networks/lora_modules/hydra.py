@@ -113,14 +113,10 @@ class HydraLoRAModule(RouterStateMixin, BaseLoRAModule):
         self._register_channel_scale(self.lora_down.weight.data, channel_scale)
 
         self._last_gate = None  # (B, E), cached each forward for balance loss
-        # σ / FEI / routing-weights placeholders: always-a-Tensor invariant +
-        # pointer-stable buffers (see router_state.py) — no None-vs-Tensor
-        # guard needed under torch.compile.
+        # Always-a-Tensor, pointer-stable placeholders (router_state.py).
         self._register_router_io_buffers(num_experts)
-        # σ-band partition: experts split into num_sigma_buckets bands;
-        # out-of-band logits masked to -inf before softmax, soft routing
-        # within each band. Independent of σ-feature router. Incompatible
-        # with use_global_router — no local logits to mask.
+        # σ-band partition: out-of-band logits masked to -inf, soft routing
+        # within each band.
         if specialize_experts_by_sigma_buckets and self.use_global_router:
             raise ValueError(
                 "specialize_experts_by_sigma_buckets is incompatible with "
@@ -175,10 +171,6 @@ class HydraLoRAModule(RouterStateMixin, BaseLoRAModule):
             )
         return torch.softmax(logits, dim=-1)
 
-    # σ / FEI / routing-weights method surface (set_sigma / clear_sigma /
-    # set_fei / clear_fei / set_routing_weights / clear_routing_weights) is
-    # inherited from RouterStateMixin.
-
     def forward(self, x):
         org_forwarded = self.org_forward(x)
 
@@ -195,8 +187,7 @@ class HydraLoRAModule(RouterStateMixin, BaseLoRAModule):
         x_lora = self._rebalance(x.to(comp))
         lx = torch.nn.functional.linear(x_lora, self.lora_down.weight.to(comp))
 
-        # Gate from rank-R signal pre-mask/dropout — those are training-time
-        # perturbations and the gate must behave identically at inference.
+        # Gate before mask/dropout so it matches inference.
         gate = self._compute_gate(lx)  # (B, E)
         if self.training:
             # Plain STORE_ATTR (NOT @compiler.disable): a disabled helper

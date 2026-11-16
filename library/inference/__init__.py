@@ -29,9 +29,8 @@ _ATTR_TO_MODULE = {
     "process_escape": "text",
     "prepare_text_inputs": "text",
     "ensure_text_strategies": "text",
-    # request object (typed front door for generate())
     "GenerationRequest": "request",
-    # argument parser (single source of truth for generate()'s getattr knobs)
+    # single source of truth for generate()'s getattr knobs
     "build_parser": "args",
     "build_default_args": "args",
     "build_mod_schedule": "corrections.mod_guidance",

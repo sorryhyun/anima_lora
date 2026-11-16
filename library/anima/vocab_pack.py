@@ -10,16 +10,14 @@ embedder API:
 1. **Tokenizer** — :class:`VocabPackTokenizeStrategy` re-routes the T5 id
    stream of any prompt that carries a routed character through
    :class:`~library.anima.ext_vocab.HybridT5Encoder`. Prompts with no routed
-   character take the stock path untouched, so pure-English captions and
-   prompts are unchanged by the pack.
+   character take the stock path untouched.
 2. **Embedding table** — :func:`attach_vocab_pack` hooks ``llm_adapter.embed``
    so ext ids resolve to pack rows. It is a hook pair (clamp pre-hook +
-   row-substitution forward hook), not a widened ``nn.Embedding``: the module's state dict stays at
-   the stock 32128 rows, so ``make merge`` / checkpoint saves / ``ss_``
-   metadata are unaffected and the pack composes with any DiT or LoRA.
+   row-substitution forward hook), so the state dict stays at the stock 32128
+   rows and the pack composes with any DiT or LoRA.
 
 The active pack is selected by the ``vocab_pack`` config key (``configs/
-base.toml`` ships the CJK pack enabled since v2; empty = off), ``--vocab_pack``
+base.toml`` ships the CJK pack enabled; empty = off), ``--vocab_pack``
 on ``train.py`` / ``inference.py`` / ``cache_text_embeddings.py``, or
 ``ANIMA_VOCAB_PACK``. When the configured prefix is the shipped default and the
 pair is not on disk, :func:`resolve_pack_prefix` fetches it through the catalog
@@ -47,9 +45,8 @@ from library import downloads as _DL
 
 logger = logging.getLogger(__name__)
 
-#: Public test release of the CJK pack (JA / KO / ZH tag rows + symbol block).
-#: Repo, stem and destination are the catalog's (``library/downloads.py``) so
-#: the ``vocab_pack`` row's Download button and this loader cannot disagree.
+#: Public release of the CJK pack (JA / KO / ZH tag rows + symbol block).
+#: Repo, stem and destination come from the catalog (``library/downloads.py``).
 PACK_REPO = _DL.VOCAB_PACK_REPO
 PACK_STEM = _DL.VOCAB_PACK_STEM
 #: Where ``make download-models`` lands the pack (path prefix, no suffix) — the
@@ -128,14 +125,12 @@ def _is_shipped_default(prefix: Path) -> bool:
 
 
 def _fetch_shipped_pack(prefix: Path, missing: list[str]) -> None:
-    """Install the shipped pack through the catalog row, once, on first use.
+    """Install the shipped pack through the catalog row on first use.
 
-    ``configs/base.toml`` enables the pack by default and ``make update``
-    overwrites base.toml, so a checkout that skipped ``make download-models``
-    would otherwise hit ``FileNotFoundError`` at the first train / inference /
-    node load. Only the *shipped default* is fetched: a custom ``vocab_pack``
-    path still raises. Any failure re-raises the original missing-pack error
-    with the download hint.
+    ``configs/base.toml`` enables the pack and ``make update`` overwrites it, so
+    a checkout that skipped ``make download-models`` would otherwise fail at the
+    first load. Only the shipped default is fetched; a failure re-raises the
+    missing-pack error with the download hint.
     """
     print(
         f"vocab pack {prefix.name}: {', '.join(missing)} not installed — fetching "
@@ -217,10 +212,8 @@ _LOADED: dict[Path, VocabPack] = {}
 def load_vocab_pack(
     path: Union[str, Path, VocabPack, None],
 ) -> Optional[VocabPack]:
-    """Resolve ``path`` to a loaded pack (memoised per process), ``None`` when off.
-
-    The strategy install and the DiT load both need the pack; loading the
-    ~285 MB table once and sharing it keeps the second call free.
+    """Resolve ``path`` to a loaded pack (memoised per process, since the
+    strategy and the DiT load both need the ~285 MB table), ``None`` when off.
     """
     if path is None or isinstance(path, VocabPack):
         return path
@@ -266,8 +259,8 @@ class VocabPackTokenizeStrategy(AnimaTokenizeStrategy):
     ``super().tokenize`` still produces the Qwen3 ids (the text-encoder side is
     untouched by the pack) and the stock T5 ids; rows whose text carries a
     routed character get their T5 ids / mask replaced by the hybrid encoding
-    (eos-terminated, padded to ``t5_max_length`` — the same max-padding the
-    pretrained model expects). Everything else is the parent's output, unchanged.
+    (eos-terminated, max-padded to ``t5_max_length`` as the pretrained model
+    expects).
     """
 
     def __init__(self, pack: VocabPack, **kwargs) -> None:
@@ -340,12 +333,8 @@ def attach_vocab_pack(model_or_adapter, pack: VocabPack) -> None:
     The pre-hook clamps ext ids to ``<unk>`` so the stock table never sees an
     out-of-range index, remembers which positions were ext, and the forward
     hook overwrites those positions with the pack rows. The table stays on CPU
-    in its stored dtype; only the rows a batch actually uses are gathered and
-    moved (a few KB per encode — no resident VRAM cost). Prompts with no ext
-    id pass through with zero overhead beyond the mask test.
-
-    Re-attaching the same pack is a no-op; a different pack replaces the hooks
-    (the previous handles are removed first).
+    in its stored dtype; only the rows a batch uses are gathered and moved.
+    A different pack replaces the hooks.
     """
     embed = _embed_module(model_or_adapter)
     if getattr(embed, _DIGEST_ATTR, None) == pack.digest:
@@ -463,10 +452,9 @@ def check_cache_stamp(
 ) -> None:
     """Warn once per (pack-state, kind) when a TE cache's stamp disagrees.
 
-    TE caches skip on existence only (no content hash), so a cache encoded
-    through one pack — or through none — silently trains against whatever the
-    active pack now is. The stamp turns that into a visible warning; the fix is
-    always ``make preprocess-te ARGS=--overwrite``.
+    TE caches skip on existence only, so a cache encoded through another pack
+    (or none) would silently train against the active one. Fix:
+    ``make preprocess-te ARGS=--overwrite``.
     """
     md = metadata or {}
     cached_sha = str(md.get(CACHE_META_SHA, "") or "")

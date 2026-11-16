@@ -1,19 +1,10 @@
 """MethodsTab — one Method dropdown over a mix of flat-config + distill methods.
 
-Trainable methods come in two editor flavours: the LoRA family edits a *flat*
-``gui-methods/<variant>.toml`` and submits a ``train.py --method`` training job,
-while the distill methods (Turbo) edit a *sectioned*
-``configs/methods/turbo.toml`` and submit a bespoke ``tasks.py`` distill
-command job (no ``train.py`` path).
-
-This wrapper hides that split behind a single Method picker. A ``QStackedWidget``
-holds the two editor kinds; selecting a flat method drives the embedded
-ConfigTab (its own method picker is hidden so the two don't compete), while
-selecting a distill method swaps in its editor.
-
-The same wrapper backs two tabs (see ``gui/app.py``): the **main Config tab**
-(``lora`` / ``tlora`` / ``hydralora`` + the promoted ``turbo`` distiller) and the
-**Experimental tab** (``soft_tokens`` + the ``soup`` pipeline).
+Flat methods (the LoRA family) edit ``gui-methods/<variant>.toml`` and submit a
+``train.py --method`` job through the embedded ConfigTab (whose own method
+picker is hidden); distill methods (Turbo, soup) swap in a sectioned-config
+editor that submits a bespoke command job. Backs both the Config and the
+Experimental tab (``gui/app.py``).
 """
 
 from __future__ import annotations
@@ -35,9 +26,7 @@ from gui.tabs.soup_tab import SoupTrainTab
 class MethodsTab(QWidget):
     """Unified method picker (flat-config + distill editors)."""
 
-    # Distill methods → their bespoke sectioned-config editor class. `soup` is
-    # not a distiller but shares the same shape (a bespoke pipeline submitting a
-    # daemon command job, no train.py path), so it rides the same picker slot.
+    # Bespoke-pipeline editors (soup is not a distiller but has the same shape).
     _DISTILL_EDITORS = {"turbo": TurboTrainTab, "soup": SoupTrainTab}
 
     def __init__(
@@ -59,8 +48,7 @@ class MethodsTab(QWidget):
             tb_panel=tb_panel,
             preprocess_tab=preprocess_tab,
         )
-        # The wrapper owns method selection, so hide ConfigTab's own method picker
-        # (its inline variant picker stays).
+        # The wrapper owns method selection; ConfigTab's variant picker stays.
         self._config._method_label.setVisible(False)
         self._config.method_combo.setVisible(False)
         # Distill tabs are LazyTabMixin — their TOML scan is deferred until picked.
@@ -68,8 +56,8 @@ class MethodsTab(QWidget):
             name: self._DISTILL_EDITORS[name]() for name in distill_methods
         }
 
-        # The Method picker rides inside whichever editor page is active, mounted at
-        # the front of that page's _top_bar; insertWidget reparents it on page switch.
+        # The picker is mounted at the front of the active page's _top_bar;
+        # insertWidget reparents it on page switch.
         self._picker = QWidget()
         picker_row = QHBoxLayout(self._picker)
         picker_row.setContentsMargins(0, 0, 0, 0)

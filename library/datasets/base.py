@@ -736,8 +736,6 @@ class BaseDataset(torch.utils.data.Dataset):
             if info.latents_npz is not None:  # fine tuning dataset: pre-set path
                 continue
             subset = self.image_to_subset[info.image_key]
-            # latent_cache_dir (when set) redirects only the target-latent
-            # cache — TE/PE still resolve via text_cache_dir/cache_dir.
             npz_path = caching_strategy.get_latents_npz_path(
                 info.absolute_path,
                 info.image_size,
@@ -764,11 +762,7 @@ class BaseDataset(torch.utils.data.Dataset):
             return False
         for info in self.image_data.values():
             subset = self.image_to_subset.get(info.image_key)
-            # Same resolution order the reader uses (`new_cache_text_encoder_
-            # outputs` / `load_outputs_npz`): text_cache_dir, when
-            # set, redirects the TE cache and cache_dir holds only latents/PE.
-            # Probing cache_dir alone reports a redirected subset as incomplete
-            # unless cache_dir *also* happens to carry a TE cache.
+            # Same resolution order as the reader: text_cache_dir, else cache_dir.
             npz_path = caching_strategy.get_outputs_npz_path(
                 info.absolute_path,
                 cache_dir=(
@@ -784,11 +778,9 @@ class BaseDataset(torch.utils.data.Dataset):
     def count_repa_pe_sidecars(self) -> Tuple[int, int]:
         """Return ``(present, total)`` REPA PE sidecars for this dataset.
 
-        Read-only probe; ``present`` counts images whose PE safetensors
-        resolves via the same fallback chain as ``_try_load_repa_pe``. Lets
-        the trainer catch a fully-absent/partial PE cache before it silently
-        disables the REPA alignment term. Returns ``(0, 0)`` when PE loading
-        is off.
+        ``present`` uses the same fallback chain as ``_try_load_repa_pe``, so the
+        trainer can catch an absent/partial PE cache before the REPA term
+        silently turns off. ``(0, 0)`` when PE loading is off.
         """
         if not self.load_repa_pe:
             return (0, 0)
@@ -878,9 +870,8 @@ class BaseDataset(torch.utils.data.Dataset):
                     if cache_available:
                         continue
 
-                    # latent_cache_dir holds *corrected* targets (e.g. white-
-                    # balanced colorize); a missing latent here silently falls
-                    # back to encoding the ORIGINAL image. Warn loudly.
+                    # latent_cache_dir holds corrected targets; a missing one
+                    # falls back to encoding the ORIGINAL image.
                     if getattr(subset, "latent_cache_dir", None):
                         logger.warning(
                             f"latent_cache_dir is set but {info.latents_npz} is "
@@ -1241,12 +1232,9 @@ class BaseDataset(torch.utils.data.Dataset):
             cache_dir=str(cond_dir),
             image_dir=subset.image_dir,
         )
-        # Cond loads at the target's bucket by default. Under free-fit the cond
-        # is a distinct paired image that can land at a DIFFERENT free-fit
-        # shape, so the same-bucket path may not exist — fall back to the cond
-        # filed at its own shape (glob by stem) and read reso from the
-        # filename; downstream (EasyControl cond stream, cond_diff_loss)
-        # tolerates cond!=target shapes.
+        # Under free-fit a distinct paired cond image can land at a different
+        # shape than the target, so fall back to the cond at its own shape (glob
+        # by stem, reso from the filename); downstream tolerates cond!=target.
         cond_reso = image_info.bucket_reso
         if not os.path.exists(npz_path):
             suffix = self.latents_caching_strategy.ANIMA_LATENTS_NPZ_SUFFIX
@@ -1299,13 +1287,10 @@ class BaseDataset(torch.utils.data.Dataset):
         cached negative text embeddings (``neg_crossattn_emb``) per example for
         the soft-tokens contrastive objective.
 
-        ``mode`` (see _archive/proposals/soft_tokens_contrastive.md): ``shuffled``
-        (unrelated image), ``jaccard`` (shuffled + tag-overlap weight), ``hard``
-        (same-artist/different-character, falls back to shuffled), ``hard_backoff``
-        (hard, then same-copyright/different-character, then shuffled).
-
-        Candidate pool is restricted to this dataset's registered stems so
-        negatives never leak in from another split."""
+        ``mode`` is one of ``shuffled`` / ``jaccard`` / ``hard`` /
+        ``hard_backoff`` (:meth:`IdentityPairSampler.draw`). Candidates are
+        restricted to this dataset's registered stems so negatives never leak
+        in from another split."""
         if mode not in ("shuffled", "jaccard", "hard", "hard_backoff"):
             raise ValueError(
                 "contrastive_negative_mode must be shuffled/jaccard/hard/"
@@ -1332,9 +1317,8 @@ class BaseDataset(torch.utils.data.Dataset):
                 f"Re-run `make caption-index` if the dataset changed."
             )
 
-        # One-shot hardness diagnostic: tally the negative level each registered
-        # stem would draw under this mode, to read the strict-vs-shuffled mix
-        # before a run. Skipped for shuffled/jaccard (every draw is shuffled).
+        # Log the negative-level mix each registered stem would draw (hard modes
+        # only; shuffled/jaccard always draw shuffled).
         if mode in ("hard", "hard_backoff"):
             from collections import Counter
 
@@ -1542,10 +1526,9 @@ class BaseDataset(torch.utils.data.Dataset):
 
     def _repa_pe_sidecar_candidates(self, info: ImageInfo) -> List[str]:
         """Candidate paths for the ``{stem}_anima_{encoder}.safetensors``
-        sidecar, in resolution order: (1) next to the TE cache — the common
-        case; (2) the subset latent-cache dir, needed when ``text_cache_dir``
-        redirects only the TE cache (colorize) so (1) has no sidecars; (3) next
-        to the image (legacy no-cache_dir layout).
+        sidecar, in resolution order: (1) next to the TE cache; (2) the subset
+        ``cache_dir``, for when ``text_cache_dir`` redirects only the TE cache;
+        (3) next to the image (legacy no-cache_dir layout).
         """
         stem = os.path.splitext(os.path.basename(info.absolute_path))[0]
         name = f"{stem}_anima_{self.repa_pe_encoder}.safetensors"
@@ -1747,10 +1730,9 @@ class BaseDataset(torch.utils.data.Dataset):
 
     @staticmethod
     def _guard_item_load(image_info, what: str, thunk):
-        """Run a per-item disk load, turning a bare loader exception (corrupt
-        npz, missing/mismatched safetensors key) into a clear error naming
-        the offending image and its cache files — without this a bad cache
-        surfaces as an opaque "training froze" under a Windows worker."""
+        """Run a per-item disk load, re-raising a loader exception with the
+        offending image and its cache files named; under a Windows worker a
+        bare one surfaces as an opaque "training froze"."""
         try:
             return thunk()
         except Exception as e:
@@ -1787,10 +1769,8 @@ class BaseDataset(torch.utils.data.Dataset):
         flippeds = []
         text_encoder_outputs_list = []
         custom_attributes = []
-        # Soft-tokens contrastive negatives: per-image (k, S, D) stack of cached
-        # negative text embeddings, or None when no sampler is attached.
+        # Soft-tokens contrastive negatives, per image: (k, S, D) and (k,).
         neg_crossattn_list: List[Optional[torch.Tensor]] = []
-        # Per-image (k,) tag-overlap weights for jaccard mode; None otherwise.
         neg_jaccard_list: List[Optional[torch.Tensor]] = []
         # Registered per-image sidecars (inversion runs, REPA PE…).
         sidecar_values: Dict[str, List[Optional[Any]]] = {
@@ -1980,9 +1960,8 @@ class BaseDataset(torch.utils.data.Dataset):
         example["latents"] = (
             torch.stack(latents_list) if latents_list[0] is not None else None
         )
-        # Cond latent (cond!=target tasks): under free-fit a cond can land at a
-        # different shape than its target, so a batch can be ragged — fine at
-        # batch_size=1, but fails loudly (not a cryptic torch error) above 1.
+        # Free-fit cond latents can be ragged within a batch; fine at
+        # batch_size=1, a clear error above it.
         if cond_latents_list and cond_latents_list[0] is not None:
             shapes = {tuple(c.shape) for c in cond_latents_list}
             if len(shapes) > 1:

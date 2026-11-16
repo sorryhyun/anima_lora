@@ -56,10 +56,8 @@ def _read_text_silent(path: Optional[str]) -> Optional[str]:
 def toml_get(cfg: dict, key_path: str, default: Any = None) -> Any:
     """Look up a dotted ``a.b.c`` path in a nested (TOML) dict.
 
-    Returns ``default`` if any segment is missing. Used by the bespoke-schema
-    distill scripts (``spd.toml`` / ``turbo.toml``, read raw rather than
-    through :func:`load_method_preset`). Unlike :func:`_flatten_toml` this
-    does NOT collapse sections — it walks the exact path.
+    Returns ``default`` if any segment is missing. Unlike :func:`_flatten_toml`
+    it walks the exact path instead of collapsing sections.
     """
     node: Any = cfg
     for part in key_path.split("."):
@@ -82,9 +80,8 @@ def _flatten_toml(
     warn (or raise in strict mode), off-choice values warn, and soft type
     mismatches (TOML ``1`` where a ``float`` is wanted) are coerced.
 
-    ``[general]`` / ``[[datasets]]`` are consumed by the dataset blueprint
-    generator; ``[variant]`` carries GUI registry metadata. Both kinds of
-    section are stripped before the argparse-flat merge.
+    Dataset-blueprint and tooling-metadata sections (``_NON_FLAT_SECTIONS``)
+    are skipped.
     """
     out: dict = {}
     src_text = _read_text_silent(source)
@@ -149,12 +146,10 @@ def _resolve_method_path(
     """Resolve the on-disk path of a method TOML.
 
     A method may live in the flat folder (``configs/<methods_subdir>/
-    <method>.toml``) or in its own consolidated directory
-    (``configs/<method>/<method>.toml`` — method config + inline dataset
-    blueprint in one file). The per-method dir wins
-    when present, but only for the default ``methods`` subdir — ``gui-methods``
-    stays flat. Returns the flat-folder path when no per-method file exists,
-    or ``None`` when ``method`` is falsy.
+    <method>.toml``) or in its own directory (``configs/<method>/<method>.toml``,
+    method config + inline dataset blueprint). The per-method dir wins when
+    present, for the ``methods`` subdir only (``gui-methods`` stays flat).
+    Returns the flat-folder path otherwise, ``None`` when ``method`` is falsy.
     """
     if not method:
         return None
@@ -532,12 +527,9 @@ def load_method_preset(
     merged: dict = {}
     provenance: dict[str, str] = {}
 
-    # preprocess.toml owns two keys the training side also reads. `target_res`
-    # is inert at train time (training is self-describing from the cached
-    # latents) and seeded only so it shows up in the snapshot/provenance for
-    # the record; `mask_dir` is load-bearing — it is the lowest-priority
-    # fallback under a subset's own `mask_dir`. Both are seeded here below
-    # base/preset/method, which still override.
+    # Seed two preprocess.toml keys below base/preset/method. `target_res` is
+    # inert at train time (seeded for the snapshot record); `mask_dir` is the
+    # lowest-priority fallback under a subset's own `mask_dir`.
     preprocess_path = os.path.join(configs_dir, "preprocess.toml")
     if os.path.exists(preprocess_path):
         with open(preprocess_path, "r", encoding="utf-8") as f:
@@ -732,10 +724,8 @@ def read_config_from_file(
 ):
     """Apply the base→preset→method (or single-file) config merge to ``args``.
 
-    CLI overrides are layered on top by re-parsing through ``parser``. By
-    default that re-parse reads the process ``sys.argv`` (the CLI path). Pass an
-    explicit ``argv`` list to drive the override layer programmatically — e.g.
-    from an embedder that builds its argv in code rather than from the shell.
+    CLI overrides are layered on top by re-parsing through ``parser``, from
+    ``sys.argv`` by default or from an explicit ``argv`` list (embedders).
     """
     strict = bool(getattr(args, "config_strict", False))
     print_config = bool(getattr(args, "print_config", False))

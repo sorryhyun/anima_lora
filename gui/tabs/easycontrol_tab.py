@@ -1,32 +1,20 @@
 """EasyControlTab — config editor for the EasyControl adapter family.
 
-Reuses ConfigTab's grouped form + field-explanation panel + Save UI (so the tab
-reads like the LoRA / Methods tabs — config on the left, explanation on the
-right). The tab hosts two *kinds* of variant:
+Extends ConfigTab. Two kinds of variant:
 
-  • Method variants — the ``[variant] family = "easycontrol"`` gui-methods files
-    (e.g. ``easycontrol``). The variant stem *is* the train.py method; the form
-    edits gui-methods/<stem>.toml and training rides ConfigTab's daemon path.
+  • Method variants: ``[variant] family = "easycontrol"`` gui-methods files. The
+    stem *is* the train.py method and training rides ConfigTab's daemon path.
 
-  • Descriptor variants — i2i tasks with an EasyControl descriptor
-    ``configs/easycontrol/<stem>.toml`` (``[preprocess]`` / ``[training]`` tables
-    + blueprint, plus a ``[variant]`` metadata block) beside the task file
-    ``i2i_tasks/configs/<stem>.toml`` (``name``, ``stage``, ``[staging]``). The
-    form renders both files' scalar tables (Save writes them back through tomlkit;
-    blueprint and ``[variant]`` are preserved), and the
-    Preprocess / Train buttons drive the staging → preprocess → descriptor-folded
-    train flow (always training the base
-    ``easycontrol`` method with the descriptor's ``[training]`` table folded in as
-    CLI overrides). ``colorize`` is one such descriptor variant.
+  • Descriptor variants (e.g. ``colorize``): an EasyControl descriptor
+    ``configs/easycontrol/<stem>.toml`` beside the i2i task file
+    ``i2i_tasks/configs/<stem>.toml``. The form renders both files' scalar
+    tables (Save writes back through tomlkit, blueprint and ``[variant]``
+    preserved); Train trains the base ``easycontrol`` method with the
+    descriptor's ``[training]`` table folded in as CLI overrides.
 
-The selected variant implies an ``EASYADAPTER`` value for the preprocess route:
-
-  • EasyControl (ref == target) — EASYADAPTER unset → reads easycontrol-dataset/.
-  • Colorize (B&W manga → color) — EASYADAPTER=colorize → mangafy + cond/text
-    caching (i2i_tasks/colorization/prep.py via the descriptor).
-
-Custom variants don't map onto the easycontrol method selection, so the "+ New"
-button and custom entries are suppressed here.
+The variant sets ``EASYADAPTER`` for preprocess: unset reads
+easycontrol-dataset/ (ref == target); a descriptor stem selects its prep route.
+Custom variants don't map onto this, so "+ New" and custom entries are hidden.
 """
 
 from __future__ import annotations
@@ -69,8 +57,7 @@ def _descriptor_variants() -> list[tuple[int, str, str]]:
     """``(order, stem, label)`` for every descriptor with a GUI ``[variant]`` block.
 
     Scans ``configs/easycontrol/*.toml`` for a ``[variant] family = "easycontrol"``
-    table (the GUI dropdown metadata). near_twins ships no such block — it stays
-    CLI-only — so only colorize surfaces today. Sorted by ``order`` then stem."""
+    table; a descriptor without one stays CLI-only. Sorted by ``order`` then stem."""
     out: list[tuple[int, str, str]] = []
     if not _DESCRIPTOR_DIR.is_dir():
         return out
@@ -97,10 +84,8 @@ class EasyControlTab(ConfigTab):
     }
 
     def __init__(self):
-        # Created BEFORE super().__init__ because ConfigTab.__init__ ends by
-        # calling _try_reattach → _attach_to_job, which disables preprocess_btn.
-        # On a GUI reopen mid-train that reattach fires during super().__init__,
-        # before the post-super setup below would otherwise create the button.
+        # Created before super().__init__: its _try_reattach → _attach_to_job
+        # disables preprocess_btn when the GUI reopens mid-train.
         self.preprocess_btn = QPushButton(t("preprocess"))
 
         super().__init__(methods=["easycontrol"])
@@ -128,8 +113,7 @@ class EasyControlTab(ConfigTab):
             self._top_bar.indexOf(self.train_btn), self.preprocess_btn
         )
 
-        # Slimmer handler than ConfigTab: EasyControl has its own Preprocess
-        # button + bespoke caches, so it skips the cache-existence/auto-chain logic.
+        # Own Preprocess button + bespoke caches, so no cache check / auto-chain.
         self.train_btn.clicked.disconnect()
         self.train_btn.clicked.connect(self._ec_start_train)
 
@@ -177,9 +161,8 @@ class EasyControlTab(ConfigTab):
     _DESC_SKIP_TABLES = frozenset({"general", "datasets", "variant"})
 
     def _reload(self) -> None:
-        # Descriptor variants render scalar knob tables as form groups; method
-        # variants fall through to ConfigTab's normal form build. Refresh the combo
-        # first so the variant row is populated even when we short-circuit early.
+        # Refresh the combo first so the variant row is populated on the
+        # descriptor short-circuit too.
         method = self.method_combo.currentText()
         if not method:
             return
@@ -193,9 +176,8 @@ class EasyControlTab(ConfigTab):
 
     @staticmethod
     def _plain(v):
-        """tomlkit scalars subclass the native types but carry formatting; unwrap
-        to plain Python so _widget/_read see int/float/str/bool/list, not tomlkit
-        items (which would round-trip oddly through the widgets)."""
+        """Unwrap tomlkit scalars (native subclasses carrying formatting) to plain
+        Python so they round-trip through _widget/_read."""
         if isinstance(v, bool):
             return bool(v)
         if isinstance(v, int):
@@ -219,13 +201,10 @@ class EasyControlTab(ConfigTab):
     def _show_descriptor_form(self, variant: str) -> None:
         """Render the descriptor's scalar knob tables as grouped form fields.
 
-        Mirrors ConfigTab._reload's teardown (``_clear_form``, reset explain, clear
-        dirty), then builds one QGroupBox per editable table — the i2i task file's
-        top-level scalars (``name``, ``stage``) and [staging] first, then the
-        EasyControl descriptor's [preprocess]/[training] — reusing ConfigTab's
-        _widget / ClickableLabel / dirty wiring. The parsed tomlkit docs are stashed
-        on self so Save can write changed values back in place — comments and the
-        [[datasets]] blueprint survive untouched."""
+        One QGroupBox per editable table: the i2i task file's top-level scalars
+        and [staging] first, then the descriptor's [preprocess]/[training]. The
+        parsed tomlkit docs are kept so Save writes changed values back in place
+        (comments and the [[datasets]] blueprint untouched)."""
         self._origin = {}
         self._clear_form()
         # (doc, table-or-None, key, widget, original-plain-value) so Save can route
@@ -282,10 +261,8 @@ class EasyControlTab(ConfigTab):
         self, title: str, items: dict, doc: str, table: str | None
     ) -> QGroupBox:
         """One form group for a descriptor table (or the top-level scalars when
-        ``table is None``) of ``self._desc_docs[doc]``. Registers each field in
-        self._desc_widgets and wires its change signal to the dirty flag; clickable
-        labels show field help where the key is a known method knob (mostly
-        [training])."""
+        ``table is None``) of ``self._desc_docs[doc]``, registered in
+        ``self._desc_widgets``."""
         box = QGroupBox(title)
         form = QFormLayout()
         for k, raw in items.items():  # tomlkit preserves file order
@@ -432,11 +409,9 @@ class EasyControlTab(ConfigTab):
         return merged
 
     def _ec_start_train_descriptor(self, variant: str) -> None:
-        """Train a descriptor variant via the same flow as the CLI
-        `make easycontrol EASYADAPTER=<variant>`: train the base easycontrol method
-        with the descriptor's blueprint (--dataset_config sidecar) + [training]
-        table folded in as CLI overrides. Routed through the daemon so it survives
-        the GUI closing, exactly like a method-variant train."""
+        """Train a descriptor variant as `make easycontrol EASYADAPTER=<variant>`
+        does: the base easycontrol method with the descriptor's blueprint
+        (--dataset_config sidecar) + [training] table as CLI overrides."""
         if not confirm_resumable_checkpoint(self, self._descriptor_merged(variant)):
             return
         from scripts.tasks.training import _easy_train_extra
@@ -458,8 +433,7 @@ class EasyControlTab(ConfigTab):
             logging_dir=self._descriptor_merged(variant).get("logging_dir"),
         )
 
-    # Also gray out the EasyControl-only Preprocess button on attach. Overriding
-    # _attach_to_job (not just the launch site) covers re-attach on GUI reopen too.
+    # Overridden here, not at the launch site, so re-attach on reopen is covered.
     def _attach_to_job(
         self, job_id: str, *, replay_log: bool, kind: str = "train"
     ) -> None:
@@ -472,14 +446,10 @@ class EasyControlTab(ConfigTab):
         self.preprocess_btn.setEnabled(enabled)
 
     def _try_reattach(self) -> None:
-        """Re-bind to an easycontrol/colorize daemon training job still running
-        when this tab is constructed (close GUI mid-train → reopen → re-attach).
-
-        Discriminate by method so we don't hijack another tab's job (e.g. a
-        LoRA-tab training run): the daemon's single active job is shared across
-        the ConfigTab subclasses, and this tab only owns its own family's
-        variants. EasyControl preprocess runs as a direct child (not a daemon
-        command job), so there's nothing of ours to re-attach but the train."""
+        """Re-bind to this family's daemon training job still running when the
+        tab is constructed. Filtered by label so another tab's run (the daemon's
+        active job is shared) is not hijacked; EasyControl preprocess is a direct
+        child, so only train jobs apply."""
         try:
             job_id = gui_daemon.active_job_id()
         except Exception:  # noqa: BLE001 — daemon unreachable → nothing to attach

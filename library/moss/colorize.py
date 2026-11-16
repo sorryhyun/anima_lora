@@ -33,11 +33,9 @@ character's hair / eye / clothing colours (SAM3 + Anima Tagger on the target, a
 ``character`` item with its box; ``characters.json``), and its bare caption is
 ``comic`` and the text lines alone.
 
-The OCR reads the condition, never the target. Its floors are looser than the
-stage's (``LINE_MIN_DET`` 0.6, glyph 16): the detector scores horizontal English
-balloons 0.3–0.55 while the reader reads them right, so a box down to the
-detector's 0.25 is kept when the read scores ``LOW_DET_SCORE``, and an all-ASCII
-line's glyph floor is ``LATIN_MIN_GLYPH``. Boxes are MOSS's ``abs_centralized``
+The OCR reads the condition, never the target, on the floors in
+``anime_tools.ocr.floors`` (looser than the OCR stage's: the detector under-scores
+horizontal English balloons it reads right). Boxes are MOSS's ``abs_centralized``
 ``yxyx`` in the canvas's pixels.
 
 Every encode, ``<out>/uncond.safetensors`` included, uses ``text_encoder`` (int8 by

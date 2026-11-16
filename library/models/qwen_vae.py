@@ -284,9 +284,8 @@ class Folded2DConv(nn.Module):
     last temporal slot, so only the **last** temporal tap of the 3D kernel sees
     data — hence the equivalent is a plain ``nn.Conv2d`` with weight
     ``weight[:, :, -1, :, :]`` run on the squeezed ``(B, C, H, W)`` frame.
-    Matches per layer (fp64-verified); the whole VAE matches within bf16 noise
-    at ~2x speed / ~0.65-0.7x memory (see ``_archive/bench/qwen_vae_2d/``).
-    Accepts the replaced conv's ``cache_x`` arg (ignored — no-op here).
+    The whole VAE matches the 3D path within bf16 noise at ~2x speed
+    (``_archive/bench/qwen_vae_2d/``). ``cache_x`` is accepted and ignored.
     ONLY valid for ``T == 1``; asserts on every forward.
     """
 
@@ -844,9 +843,8 @@ class QwenImageDecoder3d(nn.Module):
 
         x = self.mid_block(x, feat_cache, feat_idx)
 
-        # Checkpointing up_blocks is only correct with feat_cache=None — recompute
-        # would otherwise re-mutate the stateful causal-conv cache. See
-        # enable_gradient_checkpointing().
+        # Checkpointing up_blocks is only correct with feat_cache=None: recompute
+        # would re-mutate the stateful causal-conv cache.
         use_ckpt = (
             self.gradient_checkpointing
             and feat_cache is None
@@ -1075,10 +1073,9 @@ class AutoencoderKLQwenImage(
     def convert_to_2d(self) -> int:
         r"""Fold every causal Conv3d into an equivalent 2D conv (image-only).
 
-        After this the VAE handles **only single images** (``T=1``) — multi-frame
-        encode/decode will assert. ~2x faster / ~0.65-0.7x memory vs the 3D path,
-        numerically equivalent within bf16 noise. Returns the number of convs
-        folded.
+        After this the VAE handles **only single images** (``T=1``); multi-frame
+        encode/decode asserts. See :class:`Folded2DConv`. Returns the number of
+        convs folded.
         """
         n = 0
         for parent in self.modules():
@@ -1623,10 +1620,9 @@ def load_vae(
 ) -> AutoencoderKLQwenImage:
     """Load VAE from a given path.
 
-    ``dtype``/``eval`` are shortcuts for the common ``vae.to(dtype); vae.eval()``
-    (both default off). ``vae_2d`` folds the
-    causal Conv3d stack into 2D convs (see :meth:`AutoencoderKLQwenImage.convert_to_2d`)
-    — faster/leaner but **image-only** (single-frame); good for latent caching/decode.
+    ``dtype``/``eval`` are shortcuts for ``vae.to(dtype); vae.eval()`` (both off
+    by default). ``vae_2d`` folds the causal Conv3d stack into 2D convs
+    (:meth:`AutoencoderKLQwenImage.convert_to_2d`): faster, image-only.
     """
     vae_path = str(resolve_under_home(vae_path))
     VAE_CONFIG_JSON = """

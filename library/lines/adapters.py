@@ -430,8 +430,7 @@ class LoRANetwork(nn.Module):
         return len(self._targets)
 
     def set_multiplier(self, multiplier: float) -> None:
-        """Scale every adapter; ``0.0`` is the base model exactly, so an A/B
-        needs neither a reload nor a second model."""
+        """Scale every adapter; ``0.0`` is the base model exactly."""
         for adapter in self.adapters.values():
             adapter.multiplier = float(multiplier)
 

@@ -3,9 +3,6 @@ prep / text caching / caption mirror) over the Qt-free knob table, and owns
 what isn't a knob: the method/variant bar, Save + the Run split buttons, the
 status row, the explanation panel, the log, and the daemon job observer.
 
-Layout mirrors ConfigTab: top action bar, form+explain split, log panel.
-Surfaces the knobs the bare ``make preprocess`` path hardcodes.
-
 Curation (autotag, position clauses, SAM masks) is the ``anime_tools``
 panel's; this tab never runs it — ``knobs.CURATION_GATES_OFF`` rides in every
 env it builds, the Train auto-chain's included.
@@ -170,7 +167,7 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
         # Train button) so it survives the GUI closing and queues behind training.
         self._init_job_observer()
         self._run_buttons: list[QToolButton] = []
-        # Kept alive here because setStyle() does not take ownership.
+        # SplitButtonStyle refs: setStyle() does not take ownership.
         self._split_styles: list[SplitButtonStyle] = []
         self._variant: str | None = None
         self._resize_preview = None  # ResizePreviewDialog, built on first open
@@ -213,8 +210,7 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
 
     def _build_top_bar(self) -> QHBoxLayout:
         top = QHBoxLayout()
-        # Split buttons need a per-widget stylesheet (a global [variant] rule
-        # bypasses SplitButtonStyle and miscentres the label).
+        # Split buttons need a per-widget stylesheet (theme.action_button_qss).
         run_step_style = action_button_qss("info")
 
         self._method_label = QLabel("Method")
@@ -758,9 +754,8 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
         values = self.values()
         values["path_scope"] = scope
         values["caption_tag_dropout_rate"] = float(dropout)
-        # Elision (pop-if-default, with the preprocess.toml-resolved comparison
-        # for the caption-master stages) is the knob table's job; the stage
-        # forms are elided against their seeded defaults by stage_form.
+        # Elision is the knob table's job; the stage forms are elided against
+        # their seeded defaults by stage_form.
         merge_into_meta(meta, values, self._resolved_defaults())
         # Stage tables this tab no longer draws (an older GUI's ``autotag`` /
         # ``masks_sam``) are left as they are.
@@ -804,7 +799,6 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
         """Split Run button: main action runs now, dropdown queues it
         (``run_cb(queue=True)``, submit without attaching)."""
         btn = QToolButton()
-        # SplitButtonStyle must outlive the button (setStyle doesn't take ownership), so stash a ref.
         split_style = SplitButtonStyle()
         self._split_styles.append(split_style)
         btn.setStyle(split_style)

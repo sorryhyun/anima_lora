@@ -1,12 +1,9 @@
 """Shared argparse flag groups for tooling entry points.
 
-``--dir`` / ``--cache_dir`` / ``--recursive`` (dataset IO) and ``--device`` /
-``--dtype`` (compute) for ``preprocess/`` and ``bench/``. These helpers only
-*add arguments* to a parser the caller owns (parsing/dispatch stay in the entry
-point); every knob is opt-out or parameterized.
-
-``--dtype`` strings round-trip through ``library.runtime.device.str_to_dtype``,
-the same mapping ``library.runtime.harness.build_anima`` reads.
+Dataset IO (``--dir`` / ``--cache_dir`` / ``--recursive``) and compute
+(``--device`` / ``--dtype``) flags for ``preprocess/`` and ``bench/``; the
+helpers only add arguments to a caller-owned parser. ``--dtype`` strings go
+through ``library.runtime.device.str_to_dtype``.
 """
 
 from __future__ import annotations
@@ -40,12 +37,9 @@ def add_io_args(
     include_num_workers: bool = False,
     num_workers_default: int = 4,
 ) -> argparse.ArgumentParser:
-    """Inject the dataset-IO flag group shared by the preprocess cache scripts:
-    ``--dir`` (``dir_required`` toggles required vs optional — PE's
-    ``--centroid_only`` mode wants optional), ``--cache_dir``, ``--recursive``
-    (mirrors source subdirs under ``--cache_dir``), and opt-in ``--batch_size``
-    / ``--num_workers``. ``cache_noun`` is spliced into the ``--cache_dir``
-    help (e.g. "latent caches", "PE caches").
+    """Add ``--dir``, ``--cache_dir``, ``--recursive`` and opt-in
+    ``--batch_size`` / ``--num_workers``. ``dir_required=False`` serves PE's
+    ``--centroid_only``; ``cache_noun`` goes into the ``--cache_dir`` help.
     """
     parser.add_argument(
         "--dir",
@@ -102,12 +96,7 @@ def add_device_args(
     dtype_default: str = "bf16",
     dtype_choices: tuple[str, ...] = DTYPE_CHOICES,
 ) -> argparse.ArgumentParser:
-    """Inject the compute flag group: ``--device`` and ``--dtype``.
-
-    --device defaults to ``cuda`` when available, else ``cpu``.
-    --dtype defaults to ``dtype_default`` (``bf16``, the production default);
-    pass a narrower ``dtype_choices`` for scripts that only persist a subset.
-    """
+    """Add ``--device`` (cuda if available, else cpu) and ``--dtype``."""
     if include_device:
         default_device = "cuda" if torch.cuda.is_available() else "cpu"
         parser.add_argument(

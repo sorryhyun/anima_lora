@@ -14,8 +14,9 @@ leaves two files per image in one flat folder.
                 ``P = variant_prefix`` (metadata) are stored: the TE is causal and
                 the variants share ``embeds``' leading rows
         metadata: caption, caption_sha256, caption_format, source_sha256, source,
-                  n_text, max_text_tokens, encoder (+ plain_caption_sha256,
-                  n_text_plain; + caption_v{k}, variant_prefix with variants)
+                  n_text, max_text_tokens, encoder (+ token_split, prompt_tail
+                  when not off; + plain_caption_sha256, n_text_plain; +
+                  caption_v{k}, variant_prefix with variants)
     {stem}_{W}x{H}.moss_latent.safetensors
         latent  (128, H/16, W/16) fp32: packed 2×2 and BN-normalised, exactly what
                 the DiT consumes (``model.encode``, the inverse of the decode)
@@ -34,7 +35,8 @@ DiT slices each context to its true length and the image's rope frame coordinate
 equals that length, so a padded cache would train an offset inference never sees.
 
 Invalidation: a TE file is current while its ``caption_sha256``, truncation
-length, ``encoder`` and (under ``layout_json``) ``plain_caption_sha256`` match, so
+length, ``encoder``, ``token_split``, ``prompt_tail``, (under ``layout_json``)
+``plain_caption_sha256`` and (with variants) its caption variants match, so
 a caption edit re-encodes that caption only. A re-encode keeps the file's caption
 variants while its caption is unchanged; after a caption edit they are stale and
 dropped, with a warning. A latent file is current while it is newer than its
@@ -172,9 +174,6 @@ def _shared_prefix(ids: list[list[int]]) -> int:
         if any(x[i] != ids[0][i] for x in ids[1:]):
             return i
     return n
-
-
-# ------------------------------------------------------------------ passes
 
 
 def cache_text(

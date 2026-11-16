@@ -360,9 +360,7 @@ class CheckpointSaver:
 
         os.makedirs(args.output_dir, exist_ok=True)
         ckpt_file = os.path.join(args.output_dir, ckpt_name)
-        # ckpt_name carries a per-run subdir for trajectory (step/epoch) saves;
-        # final + resumable names are bare and resolve to output_dir directly.
-        _ensure_parent_dir(ckpt_file)
+        _ensure_parent_dir(ckpt_file)  # trajectory names carry the per-run subdir
 
         accelerator.print(f"\nsaving checkpoint: {ckpt_file}")
         self.metadata["ss_training_finished_at"] = str(time.time())

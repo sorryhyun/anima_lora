@@ -3,13 +3,12 @@
 Reimplements the CPU-bound parts of the ``cv2``/``numpy`` mangafier (the
 supersampled per-band screen fields and the two XDoG blurs) in torch.
 
-It reuses :func:`mangafy.resolve_params` and :func:`mangafy._band_plan`
-**verbatim**, fed the same NumPy ``default_rng(seed)``. So the *structure* of every
-page — band count, which pattern (dot/line/cross) lands on which value band, each
-band's angle/period, the XDoG knobs, the luma weights — is identical to the CPU
-path; only the sub-pixel rendering (Gaussian kernel, bilinear up / area down, float
-trig) differs, the same way two image libraries differ. Output is the same
-3-channel grayscale RGB uint8 the colorization cond expects.
+It reuses :func:`mangafy.resolve_params` and :func:`mangafy._band_plan`, fed the
+same NumPy ``default_rng(seed)``, so every page's structure (band count, pattern
+per band, angle/period, XDoG knobs, luma weights) matches the CPU path; only the
+sub-pixel rendering (Gaussian kernel, bilinear up / area down, float trig)
+differs. Output is the same 3-channel grayscale RGB uint8 the colorization cond
+expects.
 
 cv2 parity notes:
   * Gaussian: separable conv with a radius-``round(4σ)`` kernel and ``reflect``
@@ -58,10 +57,7 @@ def _xdog_t(
 
 
 def _uniformize_t(field: torch.Tensor) -> torch.Tensor:
-    """Rank-normalize a screen field to uniform (0, 1) — torch port of
-    :func:`mangafy._uniformize`. Makes ink coverage track luminance for every
-    pattern (``cross`` is mean ~0.70 raw and would over-ink bright skin into black
-    blotches). Monotonic, so the texture is preserved; only coverage is corrected."""
+    """Torch port of :func:`mangafy._uniformize`."""
     flat = field.reshape(-1)
     n = flat.numel()
     order = torch.argsort(flat)
@@ -73,10 +69,7 @@ def _uniformize_t(field: torch.Tensor) -> torch.Tensor:
 def _screen_field_t(
     h: int, w: int, *, period: float, angle: float, kind: str, device, dtype
 ) -> torch.Tensor:
-    """Periodic screen field in [0, 1] — torch port of :func:`mangafy._screen_field`.
-
-    Rank-normalized to a uniform CDF (:func:`_uniformize_t`) so ink coverage equals
-    ``1 - luminance`` for every pattern, matching the NumPy backend."""
+    """Torch port of :func:`mangafy._screen_field`."""
     ys, xs = torch.meshgrid(
         torch.arange(h, device=device, dtype=dtype),
         torch.arange(w, device=device, dtype=dtype),
@@ -185,8 +178,7 @@ def mangafy_array_gpu(
     """GPU twin of :func:`mangafy.mangafy_array` — same args, same output contract.
 
     Color RGB uint8 ``(H, W, 3)`` → mangafied B&W RGB uint8 ``(H, W, 3)``. Falls
-    back to CPU torch if no CUDA device is available (still vectorized, just not on
-    the GPU). Structurally identical to the NumPy backend for a given ``seed``."""
+    back to CPU torch if no CUDA device is available."""
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device = torch.device(device)

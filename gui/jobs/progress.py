@@ -1,16 +1,8 @@
 """Progress-bar drivers for the tabs: tqdm stdout lines and ``progress.jsonl``.
 
-``TqdmProgressTracker`` matches tqdm's textual format and computes s/step from
-the first completed step; ``JsonlProgressReader`` reads the trainer's
-structured event stream.
-
-Use as::
-
-    self.tracker = TqdmProgressTracker(self.progress)
-    ...
-    line = parts[0]
-    if not self.tracker.feed(line):
-        self._log(line + "\\n")
+``TqdmProgressTracker`` parses tqdm lines (``feed`` returns False for a line
+that belongs in the log); ``JsonlProgressReader`` reads the trainer's event
+stream.
 """
 
 from __future__ import annotations
@@ -32,11 +24,7 @@ TQDM_RE = re.compile(
 
 
 def make_progress_bar() -> QProgressBar:
-    """Build a QProgressBar styled to match the rest of the GUI.
-
-    Returns a hidden bar — the tracker shows it on the first parsed update
-    and ``TqdmProgressTracker.reset`` hides it again at run-end.
-    """
+    """A styled, hidden QProgressBar; the tracker shows it on the first update."""
     bar = QProgressBar()
     bar.setRange(0, 100)
     bar.setValue(0)
@@ -54,9 +42,8 @@ def make_progress_bar() -> QProgressBar:
 class TqdmProgressTracker:
     """Parses tqdm output lines and drives a QProgressBar.
 
-    Holds an anchor (timestamp + step) seeded from the *first completed*
-    step of each new bar, so reported s/step doesn't include warm-up
-    overhead (model load, compile, dataset scan).
+    s/step is anchored on the first completed step of each bar, so warm-up
+    (model load, compile) is excluded.
     """
 
     def __init__(self, bar: QProgressBar) -> None:
@@ -75,9 +62,8 @@ class TqdmProgressTracker:
     def mark_starting(self, label: str) -> None:
         """Show the bar in indeterminate "busy" mode (Qt animates range 0-0).
 
-        Used between subprocess launch and the first tqdm line so Windows
-        doesn't flag the GUI as "Not Responding" during the multi-second
-        torch/accelerate import inside the child.
+        Shown until the first tqdm line, so Windows does not flag the GUI as
+        "Not Responding" during the child's multi-second torch import.
         """
         self._bar.setRange(0, 0)  # indeterminate / marquee
         self._bar.setFormat(label)
@@ -85,10 +71,7 @@ class TqdmProgressTracker:
         self._anchor = None
 
     def feed(self, line: str) -> bool:
-        """Try to parse *line* as a tqdm update. Returns True if matched.
-
-        The caller passes non-matching lines to its log widget instead.
-        """
+        """Parse *line* as a tqdm update; True if it matched."""
         m = TQDM_RE.search(line)
         if not m:
             return False
@@ -129,20 +112,10 @@ class TqdmProgressTracker:
 class JsonlProgressReader:
     """Drives a QProgressBar from a training ``progress.jsonl`` event stream.
 
-    The trainer writes structured ``run_start`` / ``step`` / ``val`` /
-    ``run_end`` events (``library/runtime/progress.py``) next to the
-    checkpoint, and this reader tails that file. The caller keeps the tqdm
-    :class:`TqdmProgressTracker` as a fallback and only hands the bar over once
-    ``active`` flips True (first event seen). When the file never appears
-    (progress disabled) the reader stays inert and tqdm drives the bar.
-
-    Usage::
-
-        self._jsonl_reader = JsonlProgressReader(self.progress)
-        self._jsonl_reader.watch(progress_path)   # at launch
-        # on a timer:
-        self._jsonl_reader.poll()
-        # in the stdout handler, suppress tqdm bar updates while active.
+    Events come from ``library/runtime/progress.py``. The caller keeps
+    :class:`TqdmProgressTracker` as the fallback and suppresses tqdm bar updates
+    once ``active`` is True (first event seen); without the file the reader
+    stays inert.
     """
 
     def __init__(self, bar: QProgressBar, *, on_run_start=None) -> None:
@@ -152,9 +125,7 @@ class JsonlProgressReader:
         self._total_steps = 0
         self._active = False
         self._on_run_start = on_run_start
-        # (anchor_ts, anchor_step) seeded from the first step event. Uses the
-        # event's embedded ``ts`` (seconds since run start), not wall-clock —
-        # see ``_rate`` for why that matters on GUI re-attach.
+        # (anchor_ts, anchor_step); see ``_rate``.
         self._anchor: tuple[float, int] | None = None
 
     @property
@@ -235,15 +206,11 @@ class JsonlProgressReader:
             self._bar.setVisible(True)
 
     def _rate(self, cur: int, ts: float | None) -> str:
-        """Compute s/step, anchoring on the event's embedded ``ts``.
+        """s/step from the event's embedded ``ts`` (seconds since run start).
 
-        ``ts`` is seconds-since-run-start written by the trainer. Using it
-        (rather than ``time.monotonic()``) makes the rate re-attach-safe: when
-        the GUI reopens mid-run it re-reads the whole progress.jsonl in one
-        burst, so wall-clock deltas between consecutive events collapse to ~0
-        and s/step would read near zero (the "all steps done instantly" bug).
-        The embedded ``ts`` carries the real step spacing no matter when we
-        read the file. Falls back to wall-clock only if ``ts`` is absent.
+        A GUI reopened mid-run re-reads the whole file in one burst, so
+        wall-clock deltas collapse to ~0; ``ts`` keeps the real spacing.
+        Wall-clock is used only when ``ts`` is absent.
         """
         clock = ts if ts is not None else time.monotonic()
         if self._anchor is None or cur < self._anchor[1]:
@@ -261,11 +228,7 @@ class JsonlProgressReader:
 
 
 def _format_duration(seconds: float) -> str:
-    """Render a duration as ``M:SS`` (under an hour) or ``H:MM:SS``.
-
-    Matches tqdm's own remaining-time style so the ETA reads naturally next
-    to the s/step rate.
-    """
+    """``M:SS`` under an hour, else ``H:MM:SS`` (tqdm's style)."""
     s = max(0, int(round(seconds)))
     if s < 3600:
         return f"{s // 60}:{s % 60:02d}"

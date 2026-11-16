@@ -2,16 +2,14 @@
 
 Two independent pieces a host tab can use à la carte:
 
-* :meth:`_submit_job` — the submit → error-check → job-id-extract dance every
-  launch site repeats. A daemon-down exception and a response carrying no
-  ``job_id`` both warn + run the caller's rollback. Used by all four
-  config-style tabs (ConfigTab's four launch sites, EasyControl, distill,
-  preprocess).
+* :meth:`_submit_job` — submit → error-check → job id. A daemon-down
+  exception and a response without ``job_id`` both warn + run the caller's
+  rollback.
 * the stdout *observer* (:meth:`_init_job_observer`, :meth:`_watch_job`,
   :meth:`_poll_job`, :meth:`_end_job_watch`, :meth:`_stop_job`) — a 400 ms
   ``QTimer`` that tails a job's ``stdout.log``, routes progress lines to the bar
   and the rest to the log, and calls ``_on_job_finished(state)`` once the daemon
-  reports a terminal state. Used by every daemon-observing tab.
+  reports a terminal state.
 
 Host requirements for the observer: a ``self._progress_tracker`` and an
 ``_on_job_finished(state)`` method, which starts with :meth:`_end_job_watch`.
@@ -36,11 +34,8 @@ class DaemonJobMixin:
     _job_id: str | None = None
 
     def _submit_job(self, submit_fn, *, on_fail=None) -> str | None:
-        """Run ``submit_fn`` (a daemon submit_* call) and return its job id.
-
-        Returns ``None`` — after warning the user and invoking ``on_fail`` (the
-        busy-UI rollback) — when the daemon raised or handed back no job id.
-        """
+        """Run ``submit_fn`` (a daemon submit_* call) and return its job id, or
+        ``None`` after a warning and ``on_fail`` (the busy-UI rollback)."""
         try:
             resp = submit_fn()
         except Exception as e:  # noqa: BLE001 — daemon down / submit failed
@@ -71,25 +66,23 @@ class DaemonJobMixin:
         """Point the tailer at ``job_id``'s stdout.log and start the poll timer.
 
         ``replay_log`` reads the log from the top (re-attach after a GUI
-        restart); otherwise pre-existing output is discarded so a fresh launch
-        shows only new lines. The host sets its own busy UI around this call.
+        restart); otherwise existing output is skipped.
         """
         self._job_id = job_id
         self._stdout_buf = ""
         self._stdout_tailer.watch(gui_daemon.stdout_path(job_id))
         if not replay_log:
-            self._stdout_tailer.read_new()  # discard backlog from a fresh launch
+            self._stdout_tailer.read_new()
         self._job_timer.start()
 
     def _emit_log_line(self, line: str) -> None:
-        """Append one stdout line to the log. Default ``appendPlainText`` adds its
-        own newline; override when the host's log sink differs."""
+        """Append one stdout line (no trailing newline) to the log."""
         self.log.appendPlainText(line)
 
     def _route_progress_line(self, line: str) -> bool:
         """True when ``line`` went to the progress bar and stays out of the log.
-        Default: tqdm lines drive the bar (preprocess/mask and the distill
-        scripts emit no progress.jsonl, so tqdm is the only progress signal)."""
+        Default: tqdm lines, the only progress signal preprocess/mask and the
+        distill scripts emit."""
         return self._progress_tracker.feed(line)
 
     def _consume_lines(self, buf: str) -> str:

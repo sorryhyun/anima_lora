@@ -47,19 +47,15 @@ def set_activation_memory_budget(budget: float) -> None:
 def pin_dynamo_limit(name: str, value: int) -> int:
     """Raise a dynamo recompile budget so it holds in EVERY execution context.
 
-    ``torch._dynamo.config.<name>`` is backed by a ``ContextVar`` (``user_override``),
-    so a plain ``config.<name> = value`` assignment only takes effect in the thread
-    /context that ran it. Dynamo compiles the grad-bearing block ``_forward`` in a
-    *different* context (the AOTAutograd / backward compile path), where the override
-    is absent and the read falls back to the config entry's ``default`` (8) — so the
-    budget silently reverts and the loop spills to eager at the first grad forward,
-    despite a correct setup-time raise. Pinning the canonical entry's ``.default``
-    makes the raise context-independent. We set both: the override (same-context
-    reads + log visibility) and the default (compile-/backward-thread reads).
+    ``torch._dynamo.config`` values are ``ContextVar`` overrides, so a plain
+    assignment holds only in the context that ran it. The grad-bearing block
+    ``_forward`` compiles in the AOTAutograd / backward context, which reads the
+    entry's ``default`` (8): the budget silently reverts and the loop spills to
+    eager at the first grad forward. So we set both the override and the
+    canonical entry's ``.default``.
 
-    ``name`` may be an alias (e.g. ``cache_size_limit`` aliases ``recompile_limit``);
-    the canonical entry is followed so the right ``.default`` is pinned. Returns the
-    effective (max of current and requested) value.
+    ``name`` may be an alias (``cache_size_limit`` → ``recompile_limit``).
+    Returns the effective (max of current and requested) value.
     """
     import torch._dynamo as _dynamo
 
@@ -68,9 +64,7 @@ def pin_dynamo_limit(name: str, value: int) -> int:
     setattr(cfg_mod, name, target)  # context-local override (main thread + logs)
     try:
         entry = cfg_mod._config[name]
-        # An alias (e.g. cache_size_limit) stores the canonical name fully
-        # qualified; follow it to the real entry whose ``.default`` is the
-        # cross-context fallback every thread reads.
+        # An alias stores the canonical name fully qualified.
         canon = (entry.alias or name).rsplit(".", 1)[-1]
         cfg_mod._config[canon].default = target  # global fallback (all contexts)
     except Exception as e:  # noqa: BLE001 - defensive against torch internals
@@ -103,21 +97,15 @@ def pin_dynamo_flag(name: str, value: object) -> None:
 def pin_inductor_flag(name: str, value: object) -> None:
     """Set a ``torch._inductor.config`` value so it holds in EVERY execution context.
 
-    Same ContextVar trap as :func:`pin_dynamo_limit`, inductor edition: config
-    ``user_override``s are thread-local, and the grad-enabled step-0 compile
-    (grad-ckpt recompute / AOT backward path) runs its inductor scheduling in a
-    context where a plain assignment's override is absent — the read falls back
-    to the entry's ``.default``. For ``triton.mix_order_reduction`` that default
-    is env-derived True, so the ``compile_blocks`` kill silently reverted and
-    the fusion's hint-derived ``Ge(seq, 4096)`` guard broke strict dynamic-seq
-    marks (ConstraintViolationError at the first training step under gradient
-    checkpointing). Pin both: the
-    override (same-context reads) and the default (compile-/backward-thread
-    reads).
+    Same ContextVar trap as :func:`pin_dynamo_limit`: the grad-enabled step-0
+    compile (grad-ckpt recompute / AOT backward) reads the entry's ``.default``.
+    For ``triton.mix_order_reduction`` that default is True, so the
+    ``compile_blocks`` kill reverted and the fusion's ``Ge(seq, 4096)`` guard
+    broke strict dynamic-seq marks (ConstraintViolationError at the first
+    training step under gradient checkpointing).
 
-    ``name`` is the fully-qualified dotted key, e.g.
-    ``"triton.mix_order_reduction"``. (No alias-following here — none of the
-    pinned inductor keys alias; ``_config[name]`` IS the canonical entry.)
+    ``name`` is the dotted key, e.g. ``"triton.mix_order_reduction"`` (no
+    pinned inductor key is an alias).
     """
     import torch._inductor.config as cfg_mod
 
@@ -162,12 +150,10 @@ def compile_signature(
 ) -> str:
     """Canonical signature string for ``maybe_clear_stale_compile_cache``.
 
-    Every compile entry point must build the marker through this one
-    formatter so equivalent configs serialize identically. ``mode`` is
-    normalized so ``None`` and ``""`` ("inductor default") don't read as a
-    signature change. ``seq_bands`` (per-band dynamic-seq) is appended only
-    when set, so pre-existing union-range signatures — and their persistent
-    cache dirs — stay unchanged.
+    Every compile entry point builds the marker here so equivalent configs
+    serialize identically (``mode`` ``None`` and ``""`` match). ``seq_bands``
+    is appended only when set, so union-range signatures and their cache dirs
+    stay unchanged.
     """
     sig = (
         f"families={n_token_families};seq_range={seq_range};"
@@ -178,23 +164,19 @@ def compile_signature(
     return sig
 
 
-# captured on the first isolate_compile_cache call so later calls in the same
-# process re-derive from the same root instead of nesting per-signature dirs
+# root captured on the first call so later calls don't nest per-signature dirs
 _compile_cache_base: Optional[str] = None
 
 
 def isolate_compile_cache(signature: str) -> str:
     """Route this run's torch.compile caches to a per-signature directory.
 
-    GOTCHA: the persistent compile caches key on the FX graph but NOT on the
-    ``mark_dynamic`` value range, so processes compiled with different
-    seq-range bounds poison each other through the shared default cache dir —
-    e.g. an inference run's narrower stored guard gets replayed into a wider
-    training-run mark and raises ``ConstraintViolationError`` instead of
-    cleanly missing (hint-dependent, so it strikes "sometimes"). Wiping the
-    shared dir doesn't fix it since inference keeps re-depositing; instead
-    this points ``TORCHINDUCTOR_CACHE_DIR`` at a per-signature subdir so
-    every entry inside was compiled under the same seq bounds.
+    The persistent compile caches key on the FX graph but not on the
+    ``mark_dynamic`` range, so runs with different seq bounds poison each other
+    through a shared dir: an inference run's narrower guard replayed into a
+    wider training mark raises ``ConstraintViolationError`` (hint-dependent, so
+    intermittent). A per-signature ``TORCHINDUCTOR_CACHE_DIR`` keeps every entry
+    under one set of bounds.
 
     Must run BEFORE the first ``torch.compile`` trace in the process (torch
     reads the env var lazily per cache access). Build ``signature`` via

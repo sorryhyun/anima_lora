@@ -1,12 +1,10 @@
 """Spectral-Evolution-Aware (SEA) filter — SeaCache's cache-decision metric.
 
-Library home for the SEA filter that `networks/spectrum.py` uses as an
-alternative *when-to-skip* trigger (``schedule="sea"``), replacing Spectrum's
-content-blind growing window. The Chebyshev feature **forecasting** (the reuse
-path) is unchanged — only the decision metric is swapped, which keeps the
-per-step ``noise_pred`` reconstruction (and therefore SMC-CFG / mod-guidance
-composition) intact. See ``docs/inference/spectrum.md`` §"SEA schedule" and
-the validation in ``docs/anima/findings/seacache_sea_decision_metric.md``.
+`networks/spectrum.py` uses it as the *when-to-skip* trigger for
+``schedule="sea"`` in place of Spectrum's content-blind growing window. Only the
+decision metric changes; the Chebyshev forecast and the per-step ``noise_pred``
+reconstruction (which SMC-CFG / mod-guidance compose with) are untouched. See
+``docs/inference/spectrum.md`` §"SEA schedule".
 
 Reconstructs the timestep-dependent filter from SeaCache (Chung et al.,
 "SeaCache: Spectral-Evolution-Aware Cache for Accelerating Diffusion Models",
@@ -96,16 +94,10 @@ def l1rel(a: torch.Tensor, b: torch.Tensor) -> float:
     return float((a - b).abs().sum() / (b.abs().sum() + _EPS))
 
 
-# ---------------------------------------------------------------------------
-# Auto-δ calibration (refresh-ratio matching)
-#
-# The SEA trigger refreshes when the accumulated SEA distance since the last
-# refresh crosses δ. δ is the latency/quality dial (SeaCache Eq. 4/8) and wants
-# per-config calibration. ``solve_delta_for_refresh_ratio`` binary-searches the
-# δ whose accumulate-reset rule, replayed over a recorded distance trace, hits a
-# target fraction of refreshes — making the SEA arm a like-for-like swap at
-# matched compute (docs/inference/spectrum.md §"SEA schedule").
-# ---------------------------------------------------------------------------
+# Auto-δ calibration. The SEA trigger refreshes when the accumulated distance
+# since the last refresh crosses δ (SeaCache Eq. 4/8); δ needs per-config
+# calibration, so it is solved to hit a target refresh fraction over a recorded
+# distance trace.
 
 
 def window_decision_fraction(
@@ -118,18 +110,13 @@ def window_decision_fraction(
 ) -> float:
     """Refresh fraction the growing-window schedule spends in the decision region.
 
-    Replays the exact window rule (the Spectrum loop's ``else`` branch + its
-    curr_ws advance) and returns ``actual_decision_steps / decision_steps``. The
-    SEA auto-δ target defaults to *this* so the SEA arm is a like-for-like swap at
-    matched compute for any step count (a fixed fraction only matches one step
-    count).
+    Replays the window rule (the Spectrum loop's ``else`` branch + its curr_ws
+    advance) and returns ``actual_decision_steps / decision_steps``. The SEA
+    auto-δ target defaults to this, so SEA matches the window's compute at any
+    step count.
 
-    ``forced_steps`` are step indices forced to an actual forward by an external
-    consumer (FSG-scheduled calibration steps). They are treated exactly like
-    warmup/tail — forced actual, excluded from the decision denominator — so the
-    fraction (and therefore the SEA δ target) is matched against the window
-    baseline *over the same adaptive budget*; FSG's fixed forward cost lands
-    identically on both arms. Default empty reproduces the plain window schedule.
+    ``forced_steps`` (e.g. FSG calibration steps) are treated like warmup/tail:
+    always actual and excluded from the decision denominator.
     """
     curr_ws = window_size
     consec = 0
@@ -154,8 +141,7 @@ def window_decision_fraction(
 def count_refreshes(dists: Sequence[float], delta: float) -> int:
     """Number of refreshes the accumulate-until-δ rule fires over ``dists``.
 
-    Monotonically non-increasing in ``delta`` (larger δ → fewer refreshes),
-    which is what makes the binary search below well-posed.
+    Non-increasing in ``delta``, so the binary search below is well-posed.
     """
     accum = 0.0
     n = 0

@@ -10,9 +10,9 @@ Images are zero-padded to the encoder's ``t_max_tokens`` at preprocess time
 so the cache stays a single ``(N, T_MAX_TOKENS, D)`` tensor and the resampler
 doesn't need a padding mask.
 
-**Train / test must use the same encoder + bucket spec** — a resampler
-trained on one encoder's ``T``/``D`` will silently see a shifted KV length
-at inference if the encoder flag diverges.
+**Train and test must use the same encoder + bucket spec**: a resampler
+trained on one encoder's ``T``/``D`` silently sees a shifted KV length
+otherwise.
 """
 
 from __future__ import annotations

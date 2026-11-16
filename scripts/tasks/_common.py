@@ -157,9 +157,8 @@ def latest_output(prefix: str = "", exclude: str | None = None) -> Path:
 
 
 def latest_lora() -> Path:
-    # Exclude pooled_text_proj heads: not LoRAs (resolved separately by MOD=1),
-    # but a blind newest-`.safetensors` pick would grab them after a mod-guidance
-    # distill (`project/finished/mod_guidance/`).
+    # pooled_text_proj heads are not LoRAs (MOD=1 resolves them separately),
+    # but would be the newest file after a mod-guidance distill.
     return latest_output(exclude="pooled_text_proj")
 
 
@@ -220,17 +219,11 @@ def _has_console() -> bool:
 def run(cmd: list[str], **kwargs):
     """Run a subprocess, exit on failure.
 
-    Prepends the venv's Scripts/bin directory to PATH (child env + our own
-    lookup) so venv CLIs (``accelerate``, ``hf``, ...) resolve even when
-    launched via a desktop shortcut that invokes ``pythonw.exe`` directly,
-    bypassing venv activation. On Windows, ``subprocess.run`` uses the
-    parent's PATH to locate the exe (setting ``env["PATH"]`` alone doesn't
-    affect lookup), so we resolve the first arg with ``shutil.which`` against
-    the boosted PATH instead.
-
-    When this process has no console (pythonw.exe), Windows would pop a new
-    console for any console-subsystem child; pass ``CREATE_NO_WINDOW`` to
-    suppress it.
+    Prepends the venv's bin dir to PATH so venv CLIs (``accelerate``, ``hf``)
+    resolve under a desktop shortcut that runs ``pythonw.exe`` without venv
+    activation. Windows looks the exe up on the parent's PATH, not
+    ``env["PATH"]``, so the first arg is resolved with ``shutil.which``. With
+    no console (pythonw.exe), ``CREATE_NO_WINDOW`` stops each child popping one.
     """
     print(f"  > {' '.join(cmd)}")
     env = kwargs.pop("env", None)
@@ -239,10 +232,8 @@ def run(cmd: list[str], **kwargs):
     # Curation stages (anime_tools) anchor bare relative defaults on
     # ANIMA_HOME; pin it to this checkout.
     env.setdefault("ANIMA_HOME", str(ROOT))
-    # Bound `hf` CLI socket timeouts so a stalled download can't hang the serial
-    # daemon queue (a hung-not-failed fetch wedges every job queued behind it,
-    # training included). setdefault means an explicit ANIMA_HF_TIMEOUT/HF_HUB_*
-    # still wins.
+    # Bound `hf` socket timeouts: a hung fetch wedges every job queued behind it
+    # on the serial daemon. An explicit ANIMA_HF_TIMEOUT/HF_HUB_* still wins.
     if cmd and os.path.basename(str(cmd[0])) in ("hf", "hf.exe"):
         from library.runtime.hf_download import ensure_hf_timeouts
 
@@ -284,13 +275,10 @@ def _nsys_wrapper() -> tuple[list[str], Path] | tuple[None, None]:
     launch AND run ``nsys stats`` afterward; ``(None, None)`` when unset.
     Honors NSYS_OUT for the report path (default ``output/nsys/profile.nsys-rep``).
 
-    GOTCHA: must use ``--capture-range-end=stop`` (NOT ``stop-shutdown``) with
-    ``--wait=primary`` — ``stop-shutdown`` SIGTERMs the accelerate launcher the
-    moment ``cuProfilerStop`` fires, before it reaps the train.py worker, which
-    then gets reparented and the default ``--wait=all`` hangs forever. The
-    worker instead calls ``cuProfilerStop`` then voluntarily exits (see
-    ``library/training/loop.py`` ``_profiler_step_end``), letting the launcher
-    exit naturally so ``--wait=primary`` finalizes cleanly.
+    Uses ``--capture-range-end=stop`` with ``--wait=primary``: ``stop-shutdown``
+    SIGTERMs the accelerate launcher before it reaps the train.py worker, which
+    is reparented and hangs ``--wait=all`` forever. The worker exits on its own
+    after ``cuProfilerStop`` (``library/training/loop.py::_profiler_step_end``).
     """
     if not os.environ.get("PROFILE_STEPS"):
         return None, None
@@ -308,9 +296,8 @@ def _nsys_wrapper() -> tuple[list[str], Path] | tuple[None, None]:
         out_path = ROOT / out_path
     out_path.parent.mkdir(parents=True, exist_ok=True)
     print(f"  > nsys report -> {out_path}")
-    # Profile config tuned for kernel + bottleneck analysis. Symbol-resolution
-    # is OFF: otherwise nsys finalize stalls for minutes reaching NVIDIA's
-    # symbol servers while VRAM stays reserved.
+    # Symbol resolution off: nsys finalize otherwise stalls for minutes on
+    # NVIDIA's symbol servers while VRAM stays reserved.
     metrics_set = os.environ.get("NSYS_GPU_METRICS_SET")
     cmd = [
         nsys,
@@ -355,10 +342,8 @@ def _nsys_wrapper() -> tuple[list[str], Path] | tuple[None, None]:
 def _nsys_gpu_metrics_available(nsys: str) -> bool:
     """Probe whether nsys can collect GPU metrics on this host.
 
-    nsys validates ``--gpu-metrics-devices`` at argv-parse time and aborts the
-    whole run if the perf-counter ioctl is restricted to root (default on
-    most distros — ERR_NVGPUCTRPERM). Probing first lets us skip the flag
-    instead of crashing the training task.
+    nsys aborts the whole run on ``--gpu-metrics-devices`` when perf counters
+    are root-only (the default on most distros, ERR_NVGPUCTRPERM).
     """
     try:
         out = subprocess.run(
@@ -377,8 +362,7 @@ def _nsys_gpu_metrics_available(nsys: str) -> bool:
     )
 
 
-# nsys stats reports auto-generated after profiling, tuned for kernel +
-# bottleneck analysis on a per-step NVTX trace.
+# nsys stats reports written after profiling.
 _NSYS_STATS_REPORTS = (
     "cuda_gpu_kern_sum",
     "nvtx_kern_sum",
@@ -392,8 +376,8 @@ _NSYS_STATS_REPORTS = (
 def _nsys_run_stats(rep_path: Path) -> None:
     """Generate textual ``nsys stats`` reports next to the .nsys-rep.
 
-    Writes one ``<stem>_<report>.txt`` per report. Best-effort: a missing
-    .nsys-rep or a stats failure just warns — shouldn't fail the training task.
+    Writes one ``<stem>_<report>.txt`` per report. Best-effort: a failure only
+    warns, since the .nsys-rep is the artifact.
     """
     if not rep_path.exists():
         print(
@@ -418,7 +402,6 @@ def _nsys_run_stats(rep_path: Path) -> None:
         cmd += ["--report", report]
     cmd.append(str(rep_path))
     print(f"  > nsys stats -> {out_prefix.parent}/")
-    # Best-effort: the .nsys-rep is the canonical artifact, so don't sys.exit.
     try:
         subprocess.run(cmd, cwd=ROOT, check=False)
     except OSError as e:
@@ -428,27 +411,17 @@ def _nsys_run_stats(rep_path: Path) -> None:
 def build_launch_cmd(*args: str, python_exe: str | None = None) -> list[str]:
     """Build the ``train.py`` launch command list (no side effects).
 
-    Shared by ``accelerate_launch`` and the training daemon (``anima_daemon/``),
-    which ``Popen``s it detached. The nsys wrapper stays in
-    ``accelerate_launch`` (CLI-only).
+    Shared by ``accelerate_launch`` and the training daemon. Runs ``train.py``
+    directly (single-process ``Accelerator()``); ``ANIMA_ACCELERATE_LAUNCH=1``
+    wraps it in ``accelerate launch`` for multi-GPU.
 
-    Default: invoke ``train.py`` directly (it builds its own single-process
-    ``Accelerator()`` and reads ``mixed_precision`` from the config chain).
-    ``ANIMA_ACCELERATE_LAUNCH=1`` wraps it in ``accelerate launch`` for
-    multi-GPU/distributed runs.
+    ``python_exe``: the detached daemon passes ``pythonw.exe``. A uv-venv
+    python.exe is a trampoline whose re-exec drops ``CREATE_NO_WINDOW``, so it
+    would pop a console that kills the job when closed.
 
-    ``python_exe`` overrides the launching interpreter (default ``PY`` =
-    python.exe). GOTCHA: the detached daemon passes ``pythonw.exe`` here — a
-    uv-venv python.exe is a trampoline that re-execs the real interpreter, and
-    ``CREATE_NO_WINDOW`` doesn't survive that re-exec, so a python.exe worker
-    would pop a console window that kills the job (``STATUS_CONTROL_C_EXIT``)
-    when closed. pythonw.exe never allocates a console, and the daemon
-    redirects stdout/stderr to a file so stdio still works.
-
-    The accelerate path invokes ``python -m accelerate.commands.accelerate_cli
-    launch`` rather than the bare ``accelerate`` console-script, so the
-    launching interpreter propagates to accelerate's workers via
-    ``sys.executable`` (the accelerate.exe shim hardcodes python.exe otherwise).
+    accelerate runs as ``python -m accelerate.commands.accelerate_cli`` so the
+    launching interpreter reaches its workers (the accelerate.exe shim
+    hardcodes python.exe).
     """
     py = python_exe or PY
     if not os.environ.get("ANIMA_ACCELERATE_LAUNCH"):
@@ -475,13 +448,11 @@ def build_launch_cmd(*args: str, python_exe: str | None = None) -> list[str]:
 
 
 def accelerate_launch(*args: str):
-    """Launch training via accelerate with extra CLI args forwarded (blocking).
+    """Launch training with extra CLI args forwarded (blocking).
 
-    Builds the command via ``build_launch_cmd`` then runs it through ``run``.
-    When PROFILE_STEPS is set, wraps the launch with ``nsys profile`` so
-    ``make <method> PROFILE_STEPS=3-5`` produces a navigable Nsight report at
-    ``output/nsys/profile.nsys-rep`` (override with NSYS_OUT), then generates
-    textual summaries via ``nsys stats``.
+    With PROFILE_STEPS set (``make <method> PROFILE_STEPS=3-5``) the launch is
+    wrapped in ``nsys profile`` (report at ``output/nsys/profile.nsys-rep``,
+    NSYS_OUT overrides) and followed by ``nsys stats``.
     """
     cmd = build_launch_cmd(*args)
     nsys_prefix, nsys_out = _nsys_wrapper()
@@ -503,9 +474,8 @@ def build_method_args(
 ) -> list[str]:
     """Assemble the ``["--method", m, "--preset", p, ...]`` train.py arg list.
 
-    Pure — no env reads, no subprocess. Shared by the CLI ``train()`` path and
-    the training daemon. ``artist``/``profile_steps`` add their flags only
-    when the caller didn't already pass them in ``extra``.
+    Pure (no env reads); shared by ``train()`` and the daemon.
+    ``artist``/``profile_steps`` add their flags unless ``extra`` has them.
     """
     extra = list(extra or [])
     args = ["--method", method, "--preset", preset]
@@ -518,16 +488,13 @@ def build_method_args(
     return [*args, *extra]
 
 
-# --- attach-by-default run modes ---------------------------------------------
-# Every GPU-touching CLI target routes through the daemon by default: submit,
-# then stream the job's stdout to this terminal (attach). Three modes,
-# resolved by _resolve_run_mode:
-#   attach (default) — submit + stream + exit with the job's exit code; ctrl-C
-#                      DETACHES (job survives), it never kills the run.
-#   detach           — submit + return (the --queue behaviour, for overnight sweeps).
-#   inline           — run the child directly, no daemon (the debugging path:
-#                      pdb / py-spy / faulthandler / nsys all want a direct
-#                      child). Forced automatically for PROFILE_STEPS / accelerate.
+# --- run modes ----------------------------------------------------------------
+# GPU-touching CLI targets go through the daemon by default. Modes:
+#   attach (default) — submit, stream stdout, exit with the job's code; ctrl-C
+#                      detaches, the job keeps running.
+#   detach           — submit and return (--queue).
+#   inline           — run the child directly, no daemon (pdb / py-spy / nsys).
+#                      Forced for PROFILE_STEPS / accelerate.
 _RUN_MODE_FLAGS = {
     "--inline": "inline",
     "--queue": "detach",
@@ -541,8 +508,8 @@ def _resolve_run_mode(extra: list[str]) -> tuple[str, list[str]]:
 
     Precedence: explicit ``--inline/--queue/--detach/--attach`` flag > the
     ``ANIMA_RUN_MODE`` env var > attach default. When implicit,
-    ``PROFILE_STEPS``/``ANIMA_ACCELERATE_LAUNCH`` force inline so the default
-    attach path never silently drops them.
+    ``PROFILE_STEPS``/``ANIMA_ACCELERATE_LAUNCH`` force inline (the daemon
+    path would drop them).
     """
     extra = list(extra)
     flagged: str | None = None
@@ -618,11 +585,9 @@ def _exit_code_for(cl, job_id: str, *, settle: float = 10.0) -> int:
 def _attach_and_wait(cl, job_id: str) -> int:
     """Stream a submitted job's stdout to this terminal; return its exit code.
 
-    Ctrl-C DETACHES — the job keeps running (same contract as
-    ``make daemon-attach``); prints the re-attach one-liners and returns 0.
-    Tolerates a daemon restart mid-stream: on a dropped stream it re-resolves
-    the pidfile and re-attaches, skipping lines already printed (the on-disk
-    ``stdout.log`` replays from the start).
+    Ctrl-C detaches (the job keeps running) and returns 0. On a dropped stream
+    (daemon restart) it re-resolves the pidfile and re-attaches, skipping lines
+    already printed, since ``stdout.log`` replays from the start.
     """
     from anima_daemon.client import DaemonClient
 
@@ -659,8 +624,7 @@ def _attach_and_wait(cl, job_id: str) -> int:
                 pass
             if got_eof:
                 break
-            # Stream ended without eof: either the job is terminal (stop) or the
-            # daemon restarted. Re-resolve its port and re-check; re-attach only
+            # No eof: the job ended or the daemon restarted. Re-attach only
             # while the job is still live.
             job = _safe_job(cl, job_id)
             if job is None:
@@ -680,12 +644,10 @@ def _attach_and_wait(cl, job_id: str) -> int:
 def queue_command(label: str, argv: list[str]) -> None:
     """Enqueue a bespoke-loop distillation command on the local daemon.
 
-    The bespoke loops (``scripts/distill_turbo``)
-    bypass ``train.py``, so they submit a plain ``kind="command"`` job
-    (detach semantics) instead of riding the train ``--queue`` path. ``argv``
-    is run as ``[venv_python, *argv]`` from the repo root (module form:
-    ``["-m", "scripts.distill_turbo.distill", ...]``). Preset/CLI flags must
-    be baked into ``argv`` here — the command-job path does no config merging.
+    The bespoke loops (``scripts/distill_turbo``) bypass ``train.py``, so they
+    submit a detached ``kind="command"`` job. ``argv`` runs as
+    ``[venv_python, *argv]`` from the repo root; preset/CLI flags must already
+    be in it, since the command-job path does no config merging.
     """
     from anima_daemon import client as _daemon_client
 
@@ -710,20 +672,10 @@ def run_command(
 ) -> None:
     """Run a GPU command job through the daemon, attach-by-default.
 
-    The generic chokepoint for non-train GPU work (bench/``test-*``/``gen``):
-    submit a ``kind="command"`` job and stream its stdout to this terminal,
-    exiting with the job's exit code (ctrl-C detaches, the run survives).
-    Same three modes as ``train`` (``_resolve_run_mode``): ``attach``
-    (default), ``detach`` (``--queue``), ``inline`` (no daemon; debugging path).
-
-    ``argv`` is the child argv **without** the interpreter — the daemon
-    prepends its resolved venv python, and the inline path prepends ``PY``.
-    The daemon exports ``ANIMA_DAEMON_JOB_DIR`` so a script that emits a bench
-    envelope / generation manifest gets result-lifted; inline it's a plain run.
-
-    ``stall_timeout`` overrides the daemon's 120s command-job stall budget for
-    this job (0 disables it) for a loop that legitimately prints nothing for
-    minutes.
+    For non-train GPU work (bench / ``test-*`` / ``gen``); modes as in
+    ``_resolve_run_mode``. ``argv`` excludes the interpreter (the daemon or
+    the inline path prepends one). ``stall_timeout`` overrides the daemon's
+    120 s command-job stall budget (0 disables it).
     """
     if mode == "inline":
         run([PY, *argv])
@@ -748,15 +700,10 @@ def train(
 ):
     """Launch training for a given method + preset (PRESET env overrides default).
 
-    `methods_subdir` selects the folder under `configs/` that holds the method
-    file (default ``"methods"``; pass ``"gui-methods"`` for the clean
-    per-variant files used by the `lora-gui` path).
-
-    ARTIST env var trains an artist-only LoRA — equivalent to
-    `--artist_filter <name>` (filters dataset to `@<name>`-tagged captions and
-    redirects output to `output/ckpt-artist/`).
-
-    Run mode: see ``_resolve_run_mode`` and the attach-by-default block above.
+    `methods_subdir`: folder under `configs/` holding the method file
+    (``"methods"``, or ``"gui-methods"`` for `lora-gui`). ARTIST env var =
+    `--artist_filter <name>` (output to `output/ckpt-artist/`). Run mode: see
+    ``_resolve_run_mode``.
     """
     preset = preset or _preset()
     extra = list(extra or [])
@@ -777,10 +724,8 @@ def train(
         accelerate_launch(*args)
         return
 
-    # Daemon paths (attach/detach). Fold ARTIST/PROFILE_STEPS into extra as
-    # explicit flags: the daemon's own build_method_args doesn't read env
-    # vars, so without folding a queued artist run would silently train the
-    # full dataset.
+    # The daemon's build_method_args reads no env vars: without these flags a
+    # queued artist run would silently train the full dataset.
     if artist and "--artist_filter" not in extra:
         extra += ["--artist_filter", artist]
     if profile_steps and "--profile_steps" not in extra:
@@ -846,10 +791,7 @@ INFERENCE_BASE = [
 
 
 def override_arg(argv: list[str], flag: str, value: str) -> list[str]:
-    """Replace a ``--flag VALUE`` (or ``--flag V1 V2``) pair in argv with a
-    fresh ``--flag value`` pair. Used to retarget ``INFERENCE_BASE`` defaults
-    (e.g. the turbo contract: 4 steps, cfg=1.0) without rewriting the whole list.
-    """
+    """Replace a ``--flag VALUE`` pair in argv (append it if absent)."""
     if flag not in argv:
         return argv + [flag, value]
     i = argv.index(flag)
@@ -880,14 +822,11 @@ def stage_by_id(stage_id: str):
 def execute_stage(stage, req) -> None:
     """Run one curation stage as its request object.
 
-    Under a daemon job the stage's runner is called **in this interpreter**
-    (``Stage.runner()``): one process for a whole chain, and the package's
-    per-process model caches (``load_anima_tagger`` / ``load_sam3``) carry
-    across consecutive stages. The package anchors bare relative defaults on
-    ``ANIMA_HOME``, which ``run()`` exports for a child; pin it the same way
-    here so an in-process run resolves identically. From a plain shell each
-    stage is a ``python -m <stage.module>`` child with ``req.to_argv()``, so
-    the model is released between stages and on exit.
+    Under a daemon job the runner is called in this interpreter, so the
+    package's model caches (tagger, SAM3) carry across a chain of stages;
+    ``ANIMA_HOME`` is pinned as ``run()`` does for a child. From a plain shell
+    each stage is a ``python -m <stage.module>`` child, releasing the model
+    between stages.
     """
     if not in_daemon_job():
         run([PY, "-m", stage.module, *req.to_argv()])
@@ -935,16 +874,12 @@ def request_from_form(
 ):
     """A stage form (``{dest: value}``) as the stage's request.
 
-    Goes through the package's ``anime_tools.gui.stages.build_argv`` — the
-    same path its own web GUI takes: each value coerced by the field's kind,
-    the bound roots / settings / report and mask tails filled from the
-    keyword arguments (never from the form, so a stale saved path cannot win
-    over the trainer's directories), the request's own ``__post_init__``
-    validation run, and the argv spelled back and re-parsed by the stage's
-    generated parser. ``overrides`` are the dests the trainer's chain owns
-    (``recursive``, the variant sidecar knobs, …), applied with
-    ``dataclasses.replace`` so validation runs again. A bad value is a
-    ``SystemExit`` naming the stage, before any model loads.
+    Goes through ``anime_tools.gui.stages.build_argv``, the path the package's
+    web GUI takes. Roots / settings / report and mask roots come from the
+    keyword arguments, never the form, so a stale saved path cannot override
+    the trainer's directories. ``overrides`` (dests the trainer's chain owns)
+    go through ``dataclasses.replace`` so validation runs again. A bad value
+    is a ``SystemExit`` naming the stage, before any model loads.
     """
     import dataclasses
 
@@ -971,10 +906,8 @@ def request_from_form(
 
 def request_with_args(req, extra, *, prog: str | None = None):
     """``req`` with the user's ``ARGS`` applied through the request's own
-    generated parser — so ``make caption-autotag ARGS="--mode merge"`` still
-    reaches every flag the stage has, and an unknown one fails the way the
-    child would have (usage + exit 2). The trainer's own fields are the
-    parser defaults here (``req.to_argv()``), so ``extra`` overrides them.
+    parser: every stage flag is reachable, an unknown one exits 2, and
+    ``extra`` overrides the trainer's fields.
     """
     extra = list(extra or ())
     if not extra:

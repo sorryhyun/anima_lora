@@ -1,8 +1,8 @@
 """Strings shared by the sidecar-line windows (``gui.lines.window``).
 
-Kept out of ``gui.i18n``: their keys never reach the main GUI. A line offers
-the languages its own ``LineSpec.ui`` has (Qwen: en/cn, MOSS: en/ko/ja/cn). Each line adds its own keys (``window_title``,
-``model_missing``, ``scan_stale``, ``scan_dupes``) through ``LineSpec.ui``.
+Kept out of ``gui.i18n``. A line offers the languages its ``LineSpec.ui`` has
+(Qwen: en/cn, MOSS: en/ko/ja/cn) and adds its own keys there (``window_title``,
+``model_missing``, ``scan_stale``, ``scan_dupes``).
 """
 
 from __future__ import annotations

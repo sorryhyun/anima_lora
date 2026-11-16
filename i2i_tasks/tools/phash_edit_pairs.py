@@ -8,17 +8,12 @@ than a description.
 
 Why phash
 ---------
-The curated pool (``post_image_dataset/``, 3,007 images) yields only **72**
-pairs at tag-Δ≤16 — curation stripped the variant uploads. The raw crawl pool
-(``$CAPTION_CORPUS_DIR/retrieved``, 16k images) has them, and ``gelcrawl``
-already caches a 256-bit ``imagehash.phash`` per file:
-
-* random pairs sit at phash 128; tag-Δ≤16 candidates at median 60 — tag
-  similarity predicts image similarity too weakly to gate on.
-* ``phash <= 40`` over all 128.9M pairs → ~2.4k aligned pairs in ~7 s of CPU,
-  still genuine in-place variants when spot-checked through 36.
-* A tag-Δ prefilter would discard ~800 of them, so phash finds pairs and the
-  tag delta only captions them.
+Curation stripped the variant uploads, so the curated pool yields almost no
+pairs; the raw crawl pool (``$CAPTION_CORPUS_DIR/retrieved``) has them, and
+``gelcrawl`` already caches a 256-bit ``imagehash.phash`` per file. Tag
+similarity predicts image similarity too weakly to gate on, so phash finds the
+pairs (``phash <= 40``; random pairs sit at 128) and the tag delta only
+captions them.
 
 Output shape
 ------------
@@ -92,9 +87,7 @@ DEFAULT_CONFIG = "i2i_tasks/configs/phash_edit.toml"
 IMAGE_EXTS = (".png", ".webp", ".jpg", ".jpeg", ".gif")
 HASH_CACHE = ".hash_cache.json"
 
-# Count tags: a pair that flips these is a different *scene*, not an edit — the
-# gate that actually removes junk here (aspect ratio does not: same artist means
-# same canvas, so AR divergence is 0.000 for over half the candidates).
+# Count tags: a pair that flips these is a different scene, not an edit.
 COUNT_TAGS = {f"{n}{g}" for n in "123456" for g in ("girl", "girls", "boy", "boys")} | {
     "multiple girls",
     "multiple boys",
@@ -260,8 +253,8 @@ def phash_pairs(
 ) -> list[tuple[int, int, int]]:
     """All ``(phash_distance, i, j)`` with ``i < j`` and distance ``<= phash_max``.
 
-    Hamming over 256-bit hashes via the ``|a| + |b| - 2·(a·b)`` matmul identity —
-    one BLAS call per chunk, so the full 128.9M-pair sweep is seconds, not hours.
+    Hamming over 256-bit hashes via the ``|a| + |b| - 2·(a·b)`` matmul identity:
+    one BLAS call per chunk, so a full-pool sweep takes seconds.
     """
     n = len(members)
     bits = np.zeros((n, 256), dtype=np.float32)
@@ -422,8 +415,8 @@ def _rng_for(key: str) -> "random.Random":
 def _spread(keys: list[str], n: int) -> list[str]:
     """``n`` keys spread round-robin over their ``<artist>/`` prefix.
 
-    A flat sample would inherit the edit arm's artist skew (one artist owns 322
-    of the 3,712 edit pairs); round-robin keeps the synthetic arms broad.
+    A flat sample would inherit the edit arm's artist skew; round-robin keeps
+    the synthetic arms broad.
     """
     by_artist: dict[str, list[str]] = {}
     for k in sorted(keys):
@@ -498,16 +491,15 @@ def build_colorize_pairs(
     variant:
 
     * ``-monochrome, -greyscale`` — the task marker, expressed in the same delta
-      grammar as the edit arm and in real corpus vocabulary (636/570 occurrences
-      in the crawl pool), so it composes with ordinary edit instructions.
+      grammar as the edit arm and in real corpus vocabulary, so it composes with
+      ordinary edit instructions.
     * the target's **color tags only** (``filter_to_colors``) at
       ``--colorize_dropout`` tag dropout, floored at one surviving tag — the
       steering form. Images with no color tag at all fall back to the marker.
 
-    Copyright / character / comic tags are deliberately absent: they are shared
-    between cond and target, so the delta grammar cancels them by construction
-    and identity comes from the cond stream (unlike the standalone colorize
-    task, whose lineart cond cannot carry series identity).
+    Copyright / character / comic tags are absent: they are shared between cond
+    and target, so the delta grammar cancels them and identity comes from the
+    cond stream.
 
     One direction only — the reverse (decolorize) would need the mangafied view
     resized as a denoising *target*, which the pool layout does not stage.
@@ -572,10 +564,10 @@ def build_colorize_pairs(
 def export_pool(pairs: list[dict], base: Path) -> int:
     """``pool/<artist>/<id>.<ext>`` — one symlink per **distinct** participating image.
 
-    A member joins several pairs and both directions of each (7,424 members over
-    2,722 distinct images), so the pool is resized and VAE-encoded **once** and the
-    preprocess step materializes every pair view (image, target latent, cond
-    latent) as symlinks over it; only the delta caption is pair-specific.
+    A member joins several pairs and both directions of each, so the pool is
+    resized and VAE-encoded **once** and the preprocess step materializes every
+    pair view (image, target latent, cond latent) as symlinks over it; only the
+    delta caption is pair-specific.
 
     No ``.txt`` is written here: the pool images are never denoising targets
     (``path_pattern = '*_no_tags.*'``), and the TE pass is filtered to the same

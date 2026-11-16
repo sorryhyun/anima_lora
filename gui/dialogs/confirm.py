@@ -1,9 +1,8 @@
 """Pre-launch confirmation dialogs + checkpoint/cache discovery.
 
-The Qt-facing half of the train/preprocess launch flow: resume prompts, cache
-reassurance popups, and the on-disk probes (``find_resumable_checkpoint`` /
-``count_preprocess_caches``) that decide whether to show them. Kept apart from
-the Qt-free ``gui.core.config_io`` so that module doesn't pull QMessageBox in.
+Resume prompts, cache reassurance popups, and the on-disk probes
+(``find_resumable_checkpoint`` / ``count_preprocess_caches``) that decide
+whether to show them.
 """
 
 from __future__ import annotations
@@ -19,19 +18,15 @@ from PySide6.QtWidgets import (
 from gui.core.paths import ROOT
 from gui.i18n import t
 
-# Cache discovery lives in the torch-free leaf library/io/cache_names.py, shared with
-# the preprocess pipeline. Re-exported for ``gui/__init__.py``.
+# Re-exported for ``gui/__init__.py``.
 from library.io.cache_names import count_preprocess_caches  # noqa: F401
 
 
 def confirm_resumable_checkpoint(parent: QWidget | None, merged: dict) -> bool:
-    """Prompt the user when a checkpoint is on disk; return whether to launch.
+    """Prompt when a checkpoint is on disk; return whether to launch.
 
-    Returns True if training should proceed (Yes = let train.py auto-resume,
-    No = wipe the state dir + adapter sidecar so train.py starts fresh),
-    False if the user cancelled. Returns True with no prompt when there is
-    nothing to resume from — the call site can wrap every train launch in
-    this helper unconditionally.
+    Yes = train.py auto-resumes, No = wipe the state dir + adapter sidecar so it
+    starts fresh, Cancel = False. True without a prompt when nothing is resumable.
     """
     found = find_resumable_checkpoint(merged)
     if found is None:
@@ -48,8 +43,7 @@ def confirm_resumable_checkpoint(parent: QWidget | None, merged: dict) -> bool:
         return False
     if choice == QMessageBox.Yes:
         return True
-    # No → start fresh: wipe the state dir + sibling adapter so train.py's auto_resume
-    # sees nothing. Bail on failure rather than silently resuming against the user's choice.
+    # No → start fresh. On a failed delete, abort: launching would resume against the user's choice.
     import shutil
 
     sidecar = state_dir.parent / f"{state_dir.name.removesuffix('-state')}.safetensors"
@@ -73,14 +67,9 @@ def confirm_existing_caches(
     require_pe: bool = False,
     pe_encoder: str | None = None,
 ) -> bool:
-    """Reassure the user that existing preprocess caches will be reused, not
-    deleted. Returns True to proceed, False if the user cancelled.
-
-    No-op (returns True without prompting) when the cache directory is empty
-    or missing, so the call site can wrap every preprocess launch in this.
-
-    ``pe_encoder`` selects which PE sidecar variant is counted (defaults to the
-    REPA default ``pe_spatial``) — see :func:`count_preprocess_caches`.
+    """Tell the user existing preprocess caches will be reused, not deleted.
+    True to proceed (also when there are no caches), False if cancelled.
+    ``pe_encoder`` picks the PE sidecar variant counted.
     """
     counts = count_preprocess_caches(cache_dir, pe_encoder=pe_encoder)
     has_any = (
@@ -117,28 +106,18 @@ def confirm_train_using_cache(
     require_pe: bool = False,
     pe_encoder: str | None = None,
 ) -> bool | None:
-    """Train-side cache confirmation: returns True to launch training against
-    the existing cache, False if the user cancelled, or None when no cache was
-    found on disk (caller should auto-chain a preprocess run instead).
+    """Train-side cache confirmation: True to train on the existing cache,
+    False if cancelled, None when no cache exists (caller auto-chains a
+    preprocess run).
 
-    Distinct from ``confirm_existing_caches`` (which reassures during
-    Preprocess) — this gates Train and exposes the empty-cache case as a
-    separate ``None`` so the caller can branch into the auto-preprocess flow.
-
-    ``require_pe`` (set when ``use_repa`` is on) makes the PE feature cache
-    mandatory: a core latent/TE cache that lacks PE sidecars still returns
-    ``None`` so the caller auto-chains a (PE-caching) preprocess pass, rather
-    than launching a REPA run whose alignment target is silently absent. This
-    is the common "preprocessed before enabling REPA" case. ``pe_encoder`` must
-    match the variant's ``repa_encoder`` (defaults to ``pe_spatial``) so the PE
-    sidecars REPA will actually read are the ones we look for — otherwise a
-    fully-cached PE-Spatial run is misread as cache-missing.
+    ``require_pe`` (``use_repa`` on) makes the PE cache mandatory: a core cache
+    without PE sidecars returns None, so REPA never trains without its target.
+    ``pe_encoder`` must match the variant's ``repa_encoder``, or a fully cached
+    run is misread as cache-missing.
     """
     counts = count_preprocess_caches(cache_dir, pe_encoder=pe_encoder)
     has_core = counts["latents"] > 0 or counts["te"] > 0
-    # REPA on + a built core cache but no PE sidecars → treat as cache-missing
-    # so Train rebuilds the PE caches. preprocess is idempotent (it skips the
-    # latents/TE already on disk), so this only adds the missing PE pass.
+    # Preprocess skips latents/TE already on disk, so the chain only adds the PE pass.
     if require_pe and has_core and counts["pe"] == 0:
         return None
     has_any = has_core or (require_pe and counts["pe"] > 0)
@@ -168,18 +147,12 @@ def confirm_train_using_cache(
 
 
 def find_resumable_checkpoint(merged: dict) -> tuple[Path, int] | None:
-    """If the merged config has a writable ``checkpointing_epochs`` and an
-    on-disk checkpoint state directory exists with a usable ``train_state.json``,
-    return ``(state_dir, current_step)``. Returns ``None`` when there is
-    nothing to resume — that's the common case and callers should treat it as
-    "just launch training normally".
+    """``(state_dir, current_step)`` when ``checkpointing_epochs`` is set and
+    ``<output_dir>/<output_name>-checkpoint-state/train_state.json`` is readable
+    (the path ``AnimaCheckpointer.auto_resume`` picks up), else ``None``.
 
-    Mirrors ``library.training.checkpoints.AnimaCheckpointer.auto_resume``: the
-    same ``<output_dir>/<output_name>-checkpoint-state/`` path that ``train.py``
-    would auto-pick up. We deliberately do NOT enforce ``current_step <
-    max_train_steps`` here — that check varies with dataset size and is
-    re-evaluated at launch; the GUI prompt only needs to know "is there
-    something on disk that train.py would consider resumable".
+    ``current_step < max_train_steps`` is not checked: it depends on dataset
+    size and train.py re-evaluates it at launch.
     """
     if not merged.get("checkpointing_epochs"):
         return None

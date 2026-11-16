@@ -1,20 +1,12 @@
 """Tier-0 cross-attn-drive probe: log the CFG guidance-delta per denoising step.
 
-The guidance delta ``v_cond - v_uncond`` is the text-driven component of the
-flow-matching velocity — exactly what conditioning adds on top of the base
-prior. ``||delta|| / ||v_cond||`` as a function of sigma is a cheap, zero-hook
-proxy for *how much the cross-attention pathway drives the update* at each noise
-level (the cross-attn-vs-self/latent question). The cosine between ``v_cond`` and
-``v_uncond`` is the complementary directional read: cos→1 means text only rescales
-the base velocity, cos<1 means text actively rotates it.
+``||v_cond - v_uncond|| / ||v_cond||`` over sigma is a zero-hook proxy for how
+much the text pathway drives the update; the cos(v_cond, v_uncond) says whether
+text only rescales the base velocity (cos→1) or rotates it. Whole-network only;
+per-block resolution needs the cross-attn knockout probe.
 
-This is the cheapest tier of the cross-attn-drive measurement. It is whole-network
-and only captures the guidance-visible effect (the part that differs cond vs
-uncond) — for per-block / per-depth resolution use the cross-attn knockout probe.
-
-Opt-in and zero-cost when off: set ``ANIMA_CFG_DELTA_LOG=<path.json>`` to enable.
-Norms are reduced per-sample (all dims except batch) then mean-pooled, so the
-curve is batch-size invariant.
+Enable with ``ANIMA_CFG_DELTA_LOG=<path.json>``. Norms are per-sample, then
+mean-pooled, so the curve is batch-size invariant.
 """
 
 from __future__ import annotations
@@ -32,14 +24,12 @@ class CfgDeltaProbe:
     Created via :meth:`maybe_create` (returns ``None`` unless the env var is set),
     fed one row per step via :meth:`record`, and flushed once via :meth:`flush`.
 
-    A run may invoke the denoise loop many times in one process (e.g. ``--from_file``
-    runs one loop per distinct prompt). Each loop builds its own probe and flushes;
-    flushes **accumulate** into the JSON as separate generations rather than
-    overwriting. The first flush of a process truncates any stale file (keyed on the
-    process-global ``_gen_counter`` starting at 0), so re-running is clean.
+    Each denoise loop (``--from_file`` runs one per prompt) flushes as a separate
+    generation appended to the JSON; the first flush of a process truncates any
+    stale file.
     """
 
-    # process-global: how many generations have flushed so far this process
+    # generations flushed so far in this process
     _gen_counter = 0
 
     def __init__(self, path: str) -> None:
@@ -53,7 +43,6 @@ class CfgDeltaProbe:
 
     @staticmethod
     def _per_sample_norm(x: torch.Tensor) -> torch.Tensor:
-        # reduce every dim except batch (dim 0) -> one scalar per sample
         return x.float().flatten(1).norm(dim=1)
 
     def record(
@@ -77,8 +66,6 @@ class CfgDeltaProbe:
                 "v_cond_norm": float(vc.mean()),
                 "v_uncond_norm": float(vu.mean()),
                 "delta_norm": float(delta.mean()),
-                # text-drive proxy: fraction of the conditional velocity that the
-                # prompt is responsible for at this sigma.
                 "ratio": float(ratio.mean()),
                 # 1.0 => text only rescales the base velocity; <1 => it rotates it.
                 "cos_cond_uncond": float(cos.mean()),
@@ -90,8 +77,6 @@ class CfgDeltaProbe:
             return
         parent = os.path.dirname(os.path.abspath(self.path))
         os.makedirs(parent, exist_ok=True)
-        # First generation of the process starts fresh (drops any stale file);
-        # later generations append so multi-prompt runs accumulate.
         payload = {"generations": []}
         if CfgDeltaProbe._gen_counter > 0 and os.path.exists(self.path):
             try:

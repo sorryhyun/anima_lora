@@ -31,7 +31,6 @@ import torch
 
 from library.env import resolve_under_home
 
-# ``dave="auto"``: blocks 19–30 (MOSS's own pool, not Anima's mask).
 DEFAULT_MASK_PATH = "library/moss/calibration/dave_alpha.npz"
 DEFAULT_CHANNELS_PATH = "library/moss/calibration/massive_channels.npz"
 _RANGE = re.compile(r"(\d+)-(\d+)")

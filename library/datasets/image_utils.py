@@ -497,9 +497,8 @@ def is_disk_cached_latents_is_expected(
 def glob_images(directory, base="*", recursive: bool = False):
     img_paths = []
     if recursive and base == "*":
-        # Walk subfolders. Stems must remain unique across the whole tree
-        # because cache filenames are stem-keyed and live flat in cache_dir.
-        # _assert_unique_stems below enforces this once at the call site.
+        # Stems must be unique within each folder (cache filenames are
+        # stem-keyed); the caller enforces it with _assert_unique_stems.
         for ext in IMAGE_EXTENSIONS:
             img_paths.extend(
                 glob.glob(
@@ -525,11 +524,9 @@ def glob_images(directory, base="*", recursive: bool = False):
 def _assert_unique_stems(img_paths, source_label: str = "directory") -> None:
     """Raise if two image paths share a stem *within the same subfolder*.
 
-    Cache filenames are stem-keyed and the cache layout mirrors the
-    source-tree subfolder structure, so the collision constraint is local:
-    two ``cover.png`` files in different character folders are fine, but
-    two files with the same stem in the same folder (e.g. ``cover.png`` +
-    ``cover.jpg``) would still overwrite each other's cache.
+    Cache filenames are stem-keyed and the cache layout mirrors the source
+    subfolders, so only a same-folder pair (``cover.png`` + ``cover.jpg``)
+    overwrites each other's cache.
     """
     seen: dict[tuple[str, str], str] = {}
     collisions: dict[tuple[str, str], list[str]] = {}

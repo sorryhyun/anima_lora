@@ -39,27 +39,22 @@ logger = logging.getLogger(__name__)
 # Anima cached crossattn_emb dimension (Qwen3 hidden size, post LLM-adapter).
 DEFAULT_EMBED_DIM = 1024
 
-# Contrastive negative-sourcing modes (_archive/proposals/soft_tokens_contrastive.md):
-# ``shuffled`` = unrelated cached-TE negative; ``jaccard`` = shuffled but logit
-# down-weighted by caption tag-overlap; ``hard`` = same-artist/different-character
-# sibling (falls back to shuffled for orphan artists); ``hard_backoff`` = tiered
-# same-artist → same-copyright → shuffled (copyright tier rescues hard's fallback).
+# Contrastive negative-sourcing modes: ``shuffled`` = unrelated cached-TE
+# negative; ``jaccard`` = shuffled, logit down-weighted by caption tag-overlap;
+# ``hard`` = same-artist/different-character sibling (shuffled for orphan
+# artists); ``hard_backoff`` = same-artist → same-copyright → shuffled.
 CONTRASTIVE_MODES = ("shuffled", "jaccard", "hard", "hard_backoff")
 
 # Contrastive objective, sharing the extra-forward plumbing:
 #   ``infonce``  — SoftREPA InfoNCE over cached-TE negatives (default).
 #   ``softrank`` — differentiable listwise rank of the matched caption among the
-#                  candidates (``L = softtorch.rank(r)[matched] − 1``). Gradient
-#                  flows *through* the ordering yet stays bounded by the SoftSort
-#                  relaxation (unlike InfoNCE's unbounded negative push). Needs k
-#                  live negative forwards only (_archive/proposals/soft_tokens_softrank.md).
+#                  candidates (``L = softtorch.rank(r)[matched] − 1``); bounded,
+#                  unlike InfoNCE's negative push.
 CONTRASTIVE_OBJECTIVES = ("infonce", "softrank")
 
 
-# GPU-resident, pure-torch softtorch.rank methods suitable for the per-step
-# training loop. ``ot`` (Sinkhorn) and ``fast_soft_sort`` (Numba JIT, CPU-only →
-# GPU↔CPU sync every step) are deliberately excluded — fine offline, perf sinks
-# in the loop.
+# GPU-resident softtorch.rank methods only: ``ot`` and ``fast_soft_sort``
+# (CPU Numba, a GPU↔CPU sync every step) are too slow in the training loop.
 SOFTRANK_METHODS = ("neuralsort", "softsort")
 
 
@@ -77,15 +72,12 @@ def _soft_rank(
     enforced in ``SoftTokensNetwork.__init__``). Returns ranks in ``[1, n]``.
 
     ``method`` ∈ ``SOFTRANK_METHODS``:
-      - ``neuralsort`` (default) — NeuralSort relaxation (Grover et al. 2019).
-        Smooth gradient *through ties*; the right pick for the near-miss regime
-        where the matched caption and the best negative are neck-and-neck.
-      - ``softsort`` — SoftSort column projection (Prillo & Eisenschlos, ICML
-        2020). Faster but its gradient goes ~flat at exact ties (softtorch's
-        documented discontinuity-at-non-unique-values).
+      - ``neuralsort`` (default) — NeuralSort (Grover et al. 2019); smooth
+        gradient through ties, the near-miss regime.
+      - ``softsort`` — SoftSort (Prillo & Eisenschlos, ICML 2020); faster, but
+        its gradient goes ~flat at exact ties.
 
-    softtorch is imported lazily so its numba / POT import cost is only paid when
-    the softrank objective actually fires.
+    softtorch is imported lazily (numba / POT import cost).
     """
     import softtorch as st
 
@@ -307,12 +299,9 @@ class SoftTokensNetwork(AdapterNetworkBase):
         self.n_layers = n_layers
         self.n_t_buckets = n_t_buckets
         self.splice_position = splice_position
-        # Stored for AdapterNetworkBase API compatibility (set_multiplier), but
-        # NOT applied to the injected tokens: soft tokens splice in at full
-        # magnitude regardless of multiplier (see _make_block_hook). Unlike
-        # LoRA, there is no `* multiplier` scale on the delta — the tokens enter
-        # cross-attention directly, so `set_multiplier(0)` does NOT disable them.
-        # Gate the whole adapter at the trainer/loader level to turn them off.
+        # Stored for the AdapterNetworkBase API only: tokens splice in at full
+        # magnitude, so `set_multiplier(0)` does NOT disable them. Gate the
+        # adapter at the trainer/loader level instead.
         self.multiplier = multiplier
 
         # Contrastive objective (training-only; extra forwards live in
@@ -341,13 +330,11 @@ class SoftTokensNetwork(AdapterNetworkBase):
         # ``contrastive_objective`` selects the loss math in the adapter
         # (infonce | softrank).
         self.contrastive_objective = str(contrastive_objective)
-        # softrank: SoftSort softness (softtorch's temperature). NOT contrastive_tau
-        # — softtorch's standardize=True puts the candidate axis at unit scale, so
-        # the right softness is ~0.1 (its default).
+        # softrank softness (softtorch's temperature), separate from
+        # contrastive_tau: standardize=True puts candidates at unit scale, so
+        # ~0.1 (its default) fits.
         self._softrank_softness = float(softrank_softness)
-        # SoftSort vs NeuralSort relaxation for softrank. neuralsort (default) has
-        # a smooth gradient through ties (the near-miss regime); softsort goes flat
-        # at exact ties. Both pure-torch / GPU-resident.
+        # softrank relaxation (see _soft_rank).
         self._softrank_method = str(softrank_method)
         # Dual token banks: branch 0 = ψ⁺ (spliced on the anchor + positive value
         # passes + ALL inference), branch 1 = ψ⁻ (negative value passes, training-
@@ -382,7 +369,7 @@ class SoftTokensNetwork(AdapterNetworkBase):
         self._step_layer_tokens: Optional[torch.Tensor] = None  # (n_layers, B, K, D)
         self._step_seqlens: Optional[torch.Tensor] = None  # (B,) int
 
-        # Kept so apply_to() could un-monkey-patch later (unused but cheap).
+        # Kept for a future un-patch; currently unused.
         self._block_refs: list[nn.Module] = []
         self._original_forwards: list = []
 
@@ -846,7 +833,7 @@ class SoftTokensNetwork(AdapterNetworkBase):
             "contrastive_logit_gap": float(gap.item()),
         }
 
-    # ── soft-rank listwise objective (_archive/proposals/soft_tokens_softrank.md) ──
+    # ── soft-rank listwise objective ──
 
     def _candidate_rewards(
         self,
@@ -875,12 +862,11 @@ class SoftTokensNetwork(AdapterNetworkBase):
         v_neg: torch.Tensor,
         v_target: torch.Tensor,
     ) -> torch.Tensor:
-        """Differentiable SoftSort rank of the matched caption, pushed toward best.
+        """Differentiable soft rank of the matched caption, pushed toward best.
 
-        ``L = softtorch.rank(r, softsort)[matched] - 1`` (rank in [1,m], 1=win).
-        Gradient flows through every ``r_j`` — through the soft ordering, no
-        detach on the ranking (``v_target`` is the only constant). Bounded by
-        the SoftSort relaxation; self-annealing (``L -> 0`` as matched wins).
+        ``L = softtorch.rank(r, method)[matched] - 1`` (rank in [1,m], 1=win).
+        Gradient flows through every ``r_j`` via the soft ordering (``v_target``
+        is the only constant); ``L -> 0`` as matched wins.
 
         The grad-cache split rides the same disjoint-partials trick as InfoNCE:
         detach ``v_neg`` here for the anchor's ∂L/∂v+, and ``v_pos`` in the

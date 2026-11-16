@@ -1,15 +1,10 @@
 """Cross-cutting conditioning side-channels for the denoise-loop runners.
 
-Every denoise-loop variant — the standard loop in ``generation.generate_body``
-and the ``--spectrum`` / ``--spd`` runners in ``networks/`` — threads the same
-block of side-channel args: adapter routing (P-GRAFT, soft-tokens), the
-SMC-CFG correction, and the pooled-text override — orthogonal to each
-sampler's own knobs (Spectrum's window/Chebyshev params, SPD's resolution
-stages).
-
-``generate_body`` builds one ``SamplerSideChannels`` and hands it to whichever
-runner is active. A new side-channel is one field here plus the ``from_args``
-build site.
+The standard loop in ``generation.generate_body`` and the ``--spectrum`` /
+``--spd`` runners in ``networks/`` all take the same side-channels (adapter
+routing, SMC-CFG, pooled-text override, …). ``generate_body`` builds one
+``SamplerSideChannels`` and hands it to the active runner; a new side-channel
+is one field here plus the ``from_args`` build site.
 """
 
 from __future__ import annotations
@@ -37,19 +32,16 @@ class SamplerSideChannels:
     soft_tokens_net: Any = None
     soft_tokens_embed_seqlens: Optional[torch.Tensor] = None
     soft_tokens_neg_seqlens: Optional[torch.Tensor] = None
-    # Front-loaded cross-attn residual gain (--xattn_boost): λ for the cond
-    # forward at σ ≥ xattn_boost_band, None = off. Runners must reset the
-    # per-block gain to 1.0 before any uncond forward and on loop exit —
-    # use library.inference.adapters.set_xattn_boost_state, which also
-    # carries the renorm mode ('img' default: per-image mean-norm matching;
-    # 'tok' per-token; 'off' raw gain) and partial exponent ρ.
+    # --xattn_boost: cross-attn residual gain λ on the cond forward at
+    # σ ≥ xattn_boost_band, None = off. Runners must reset the gain to 1.0
+    # before any uncond forward and on loop exit, via
+    # library.inference.adapters.set_xattn_boost_state.
     xattn_boost: Optional[float] = None
     xattn_boost_band: float = 0.85
     xattn_boost_renorm: str = "img"
     xattn_boost_renorm_frac: float = 0.5
-    # Passive trajectory recorder (--traj_stats): runners call
-    # ``traj_stats.record(i, sigma, latents, noise_pred, uncond)`` post-combine
-    # / pre-sampler-step when set. Pure observation; generate_body owns flush.
+    # --traj_stats: runners call ``record(i, sigma, latents, noise_pred, uncond)``
+    # after the CFG combine, before the sampler step; generate_body flushes.
     traj_stats: Any = None
 
     @classmethod
@@ -69,9 +61,7 @@ class SamplerSideChannels:
         soft_tokens_neg_seqlens: Optional[torch.Tensor] = None,
         traj_stats: Any = None,
     ) -> "SamplerSideChannels":
-        """Build from parsed CLI ``args`` plus the runtime objects ``generate_body``
-        already holds.
-        """
+        """Build from parsed CLI ``args`` plus ``generate_body``'s runtime objects."""
         _boost = float(getattr(args, "xattn_boost", 1.0) or 1.0)
         return cls(
             xattn_boost=_boost if _boost != 1.0 else None,

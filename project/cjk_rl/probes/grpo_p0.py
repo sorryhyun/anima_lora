@@ -444,7 +444,7 @@ def r_seq(text: str, reads: list) -> float:
 
 
 def read_all() -> tuple[dict, float]:
-    """``{kind: {(i, seed): rec}}``; reads cached in ``<kind>/reads.json``."""
+    """``{kind: {(i, seed): rec}}``; reads cached in ``<kind>/reads_batch.json``."""
     import torch
 
     from common.readers import load_bgr

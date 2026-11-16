@@ -39,9 +39,8 @@ from library.training.validation import run_validation
 
 logger = logging.getLogger(__name__)
 
-# Liveness early check: late enough that warmups / partial
-# sidecar coverage have had a chance to fire at least once, early enough that
-# a silently-dead feature aborts a strict run in minutes instead of hours.
+# Late enough for warmups / partial sidecar coverage to fire once, early enough
+# that a dead feature aborts a strict run in minutes.
 LIVENESS_EARLY_CHECK_STEP = 25
 
 
@@ -559,11 +558,9 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
 
         trainer.on_step_start(state.train_ctx, batch, is_train=True)
 
-        # Clear last-step gate/σ refs + memoized router-stats caches before the
-        # next forward. Unconditional: cudagraph needs it (lingering refs into
-        # the cudagraph pool block reclamation → demotes to eager), and eager
-        # needs it so per-step memoized stats invalidate instead of freezing at
-        # their first values.
+        # Clear last-step gate/σ refs + memoized router stats. Under cudagraph,
+        # lingering refs into the pool block reclamation (→ eager fallback); in
+        # eager, memoized stats would freeze at their first values.
         net_unwrapped = accelerator.unwrap_model(network)
         if hasattr(net_unwrapped, "clear_step_caches"):
             net_unwrapped.clear_step_caches()
@@ -597,9 +594,7 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
         if state.profile_started:
             torch.cuda.nvtx.range_pop()
 
-        # Post-backward adapter hook (before clip/step) — injects extra grad
-        # contributions that can't share the primary backward, e.g. soft-tokens
-        # gradient-cached contrastive negatives under active block swapping.
+        # Adapter grads that can't share the primary backward (before clip/step).
         trainer.run_after_backward(state.train_ctx)
 
         accum = max(1, int(args.gradient_accumulation_steps or 1))
@@ -631,10 +626,9 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
 
         if accelerator.sync_gradients:
             net_unwrapped = accelerator.unwrap_model(network)
-            # Snapshot Hydra up-weight grad norms before zero_grad wipes them
-            # (metric ``hydra_up_grad`` reads it later). Pre-clip so magnitudes
-            # aren't distorted by the global rescale. Log-cadence only;
-            # global_step increments below so predict the post-increment value.
+            # Snapshot Hydra up-weight grad norms pre-clip, before zero_grad
+            # (``hydra_up_grad``), on log cadence only; global_step increments
+            # after this, hence the +1.
             _log_every = max(1, int(getattr(args, "log_every_n_steps", 1) or 1))
             _will_log_after = state.is_tracking and (
                 ((state.global_step + 1) % _log_every == 0)
@@ -771,10 +765,8 @@ def _log_step(
 ) -> None:
     args = state.args
     log_every = max(1, int(getattr(args, "log_every_n_steps", 1) or 1))
-    # Gate on sync_gradients: with gradient_accumulation_steps > 1 this hook
-    # fires per micro-batch but global_step advances only on sync; without the
-    # gate log_every_n_steps gives the same answer for every micro-batch,
-    # bursting N tracker writes then N silent ones.
+    # Under gradient accumulation this runs per micro-batch while global_step
+    # moves only on sync; ungated, every micro-batch of a log step would write.
     should_log_step = state.accelerator.sync_gradients and (
         (state.global_step % log_every == 0)
         or (state.global_step >= args.max_train_steps)
@@ -785,9 +777,8 @@ def _log_step(
     avr_loss: float = state.loss_recorder.moving_average
     logs = {"avr_loss": avr_loss}
     _unwrapped_net = state.accelerator.unwrap_model(state.network)
-    # Refresh router_H only on log cadence — get_router_entropy does a full
-    # get_router_stats compute (D2H syncs) wasted on the progress-bar postfix;
-    # tqdm shows a harmlessly-stale cached value between log steps.
+    # get_router_entropy costs D2H syncs, so refresh only on log cadence; the
+    # bar shows the cached value in between.
     if getattr(_unwrapped_net, "_use_hydra", False) and should_log_step:
         _router_H = _unwrapped_net.get_router_entropy()
         if _router_H is not None:
@@ -797,10 +788,8 @@ def _log_step(
         logs["router_H"] = f"{_router_H_cached:.3f}"
     state.progress_bar.set_postfix(refresh=False, **{**max_mean_logs, **logs})
 
-    # The progress sink (GUI / daemon tails progress.jsonl) needs `step` events
-    # even with no tracker. When tracking, step_logging below already feeds it;
-    # emit a lightweight event directly only when untracked so the bar advances
-    # without the full generate_step_logs + collect_metrics path.
+    # The progress sink (GUI / daemon tail progress.jsonl) needs `step` events
+    # with no tracker too; when tracking, step_logging below feeds it.
     progress_sink = getattr(trainer, "progress_sink", None)
     if should_log_step and not state.is_tracking and progress_sink is not None:
         progress_sink.log(logs, global_step=state.global_step, epoch=epoch + 1)
@@ -950,7 +939,7 @@ def _audit_liveness(trainer, state: LoopState, *, where: str) -> None:
 
 
 def _run_adapter_epoch_hooks(trainer, state: LoopState) -> None:
-    """Per-method end-of-epoch hooks (IP-Adapter diagnostic dump, …).
+    """Per-method end-of-epoch hooks (e.g. REPA's grad-heatmap dump).
     Main process only — adapters that need cross-rank reduction should do
     that internally."""
     if not (trainer.step.adapters and state.accelerator.is_main_process):

@@ -100,10 +100,8 @@ def _selected_windows_backend() -> str:
         if saved in {"cuda", "rocm"}:
             return saved
 
-    # No marker yet: decide from the hardware, NOT from the venv's torch build —
-    # an older extra-unaware `uv sync` installed ROCm torch on every Windows
-    # machine (GH #92), so trusting `torch.version.hip` would lock NVIDIA users
-    # into that state.
+    # No marker yet: decide from the hardware, not the venv's torch build, which
+    # an older `uv sync` set to ROCm on every Windows machine (GH #92).
     vendor = _detect_windows_gpu_vendor()
     if vendor == "amd":
         return "rocm"
@@ -551,13 +549,10 @@ def _prompt_conflict(rel: str, user_path: Path, new_path: Path) -> str:
 def seed_manifest(version: str | None) -> int:
     """Write .anima_release.json for the current tree without downloading.
 
-    Used by the bootstrap installer (install.sh / install.ps1) right after it
-    extracts a release tarball, so the *first* `make update` has a correct
-    baseline and treats nothing as user-modified. The non-preserved file set
-    hashed here must match exactly what `_apply` records, otherwise a later
-    update would see preserved files as "upstream-removed" and delete them —
-    so this reuses `_is_preserved` / `_sha256_file` rather than reimplementing
-    the walk in shell. Run before `uv sync` so `.venv` doesn't exist yet.
+    Run by the bootstrap installer right after it extracts a release, before
+    `uv sync`, so the first `make update` has a baseline. The hashed file set
+    must match what `_apply` records, or a later update would delete preserved
+    files as "upstream-removed"; hence the shared `_is_preserved` walk.
     """
     if version is None:
         version, _, _ = _resolve_release(None)
@@ -623,18 +618,10 @@ def update(
 def _restart_daemon_if_idle() -> None:
     """Bring the training daemon onto the freshly-updated code.
 
-    The daemon supervisor runs detached and has already imported the OLD
-    ``anima_daemon/*`` into memory; swapping the files on disk doesn't touch
-    it, so a new-code client would otherwise be talking to a stale-code daemon.
-    Restarting fixes that — but training jobs run in their own detached
-    processes (they imported everything at launch), so an *active* run is not
-    disrupted by a supervisor restart and must not be killed:
-
-    - idle → graceful shutdown (``kill_jobs=False``); the next ``ensure_daemon``
-      relaunches it on the new code.
-    - busy → leave it; warn that it stays on old code until the job finishes.
-
-    Best-effort: any daemon hiccup is reported, never fatal to the update.
+    The running supervisor holds the old ``anima_daemon`` code in memory. Idle:
+    graceful shutdown, and the next ``ensure_daemon`` relaunches it on the new
+    code. Busy: left running, with a warning, so the active job is not killed.
+    Best-effort; never fatal to the update.
     """
     try:
         from anima_daemon import client as _client
@@ -790,8 +777,7 @@ def _apply(
         if rc:
             return rc
 
-    # Code on disk changed → the running daemon supervisor is now stale (skip
-    # if nothing was written — a no-op update leaves the daemon correct).
+    # Code on disk changed, so the running daemon supervisor is stale.
     changed = (
         summary["wrote_new"]
         + summary["overwrote_unchanged"]

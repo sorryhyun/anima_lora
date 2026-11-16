@@ -22,11 +22,10 @@ TE_CACHE_SUFFIX = "_anima_te.safetensors"
 def demoted_latents_key(width: int, height: int) -> str:
     """NPZ key of the σ-demote sibling latent (sigma_lowres).
 
-    Lives *inside* the image's native ``{stem}_{WxH}_anima.npz`` — no sibling
-    file. Deliberately NOT prefixed ``latents_``: readers like
-    ``library/io/cache.py::load_cached_latents`` grab the first ``latents_*``
-    key and must never see the demoted entry. ``(width, height)`` is the
-    demoted pixel bucket.
+    Lives inside the image's native ``{stem}_{WxH}_anima.npz``. Not prefixed
+    ``latents_``: ``load_cached_latents`` takes the first ``latents_*`` key and
+    must not pick up the demoted entry. ``(width, height)`` is the demoted
+    pixel bucket.
     """
     return f"demoted_{height // 8}x{width // 8}"
 

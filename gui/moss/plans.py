@@ -32,8 +32,8 @@ RECIPES = (
 _RECIPE_KEEP = {"cache", "output", "model", "model_dir", "trigger"}
 
 
-# Reference tokens: swap 0 at budget 0.3 OOMs on sanitize's largest sample, this peaks
-# at 12.33 GB (six steps, 2026-10-31).
+# The reference tokens make swap 0 at budget 0.3 OOM on sanitize's largest sample;
+# this peaks at 12.33 GB.
 _I2I_INT8 = {"blocks_to_swap": 20, "activation_memory_budget": 0.1}
 
 

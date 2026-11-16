@@ -9,8 +9,7 @@ per-element residual ``z = ref_pred_L - (ε − x_0^L)``.
 
 The residual is consumed by the ``_flow_matching_vr_loss`` handler in
 ``library/training/losses.py``, which blends ``(y + λ·z)²`` in place of
-``y²``. This file is the auxiliary-forward producer, not the loss-registry
-handler. ``crossattn_emb`` is reused verbatim (postfix-appended or not).
+``y²``. ``crossattn_emb`` is reused verbatim (postfix-appended or not).
 """
 
 from __future__ import annotations

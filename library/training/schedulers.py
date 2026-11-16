@@ -9,10 +9,7 @@ from torch.optim import Optimizer
 from library.training.optimizers import is_schedulefree_optimizer
 
 # transformers (~1.3s) and diffusers (~2s) are imported lazily inside
-# get_scheduler_fix so that merely importing this module (and, transitively,
-# library.train_util) doesn't pay for them. Only the actual scheduler-build
-# path needs them, and only the piecewise_constant branch reaches into
-# diffusers.optimization.
+# get_scheduler_fix so importing this module (and library.train_util) stays cheap.
 
 logger = logging.getLogger(__name__)
 
@@ -104,8 +101,7 @@ def get_scheduler_fix(args, optimizer: Optimizer, num_processes: int):
         lr_scheduler = lr_scheduler_class(optimizer, **lr_scheduler_kwargs)
         return wrap_check_needless_num_warmup_steps(lr_scheduler)
 
-    # Gate on the literal value ("piecewise_constant") so the diffusers import
-    # (~2s) is only paid when that scheduler is actually requested.
+    # Only this scheduler needs diffusers.
     if name == "piecewise_constant":
         from diffusers.optimization import (
             SchedulerType as DiffusersSchedulerType,

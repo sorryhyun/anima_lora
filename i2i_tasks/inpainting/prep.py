@@ -70,8 +70,7 @@ def _save_png_atomic(arr: np.ndarray, out: Path) -> None:
     """Write ``arr`` to ``out`` atomically — temp file in the same dir + os.replace.
 
     An interrupted direct save leaves a truncated PNG that the ``out.exists()``
-    skip-check keeps forever (it fails later at VAE decode). On failure the temp
-    is removed."""
+    skip-check keeps forever (it fails later at VAE decode)."""
     out.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=out.parent, suffix=".tmp.png")
     os.close(fd)
@@ -180,10 +179,10 @@ def stage_encode(
     """VAE-encode the masked staging tree into ``cond_cache_dir`` at native size so
     cond latent shape == target latent shape.
 
-    ``vae_2d`` (default ON, matching ``scripts/preprocess/cache_latents.py``) folds
-    the causal Conv3d VAE into 2D convs — ~2x faster and, crucially, the SAME path
-    the *target* latents in post_image_dataset/lora/ were cached with, so cond and
-    target stay numerically consistent. Pass ``--no_vae_2d`` for the stock 3D VAE."""
+    ``vae_2d`` (default on, matching ``scripts/preprocess/cache_latents.py``) folds
+    the causal Conv3d VAE into 2D convs: ~2x faster, and the same path the target
+    latents in post_image_dataset/lora/ were cached with, so cond and target stay
+    numerically consistent."""
     from library.models import qwen_vae
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -235,19 +234,14 @@ def stage_text(
 
     No caption filter. With ``shuffle_variants > 0`` each cache holds v0 (the
     verbatim caption) plus shuffled variants with ``tag_dropout_rate`` of the
-    tags dropped. The
-    ``@artist`` prefix is auto-protected from both shuffle and dropout by
-    ``caption_variants`` (no ``caption_transform``/``protect_fn`` needed here).
+    tags dropped; ``caption_variants`` protects the ``@artist`` prefix.
 
     When ``staging`` is given (the masked cond tree), encoding is scoped to the
     stems present there so the TE cache mirrors the cond cache. ``None`` / absent /
     empty staging = encode every caption.
 
     ``vocab_pack`` follows ``scripts/preprocess/cache_text_embeddings.py``: ``None``
-    = the config default (``configs/base.toml`` ``vocab_pack``), ``""`` = off. With
-    a pack the CJK spans of a caption route onto the pack rows, the rows are hooked
-    onto the LLM adapter for the crossattn cache, and every cache is stamped with
-    the pack id; EN-only captions encode the same either way.
+    = the config default (``configs/base.toml`` ``vocab_pack``), ``""`` = off.
 
     ``adapter_outputs=False`` writes the pre-adapter layout (Qwen
     ``prompt_embeds`` + T5 ids) instead of ``crossattn_emb`` — for runs that
@@ -300,7 +294,6 @@ def stage_text(
         overwrite=False,
     )
 
-    # Scope to the masked staging tree's stems (mirrors the cond cache) when present.
     keep_stems: set[str] | None = None
     if staging is not None and staging.is_dir():
         keep_stems = {p.stem for p in walk_images(staging, recursive=recursive)}

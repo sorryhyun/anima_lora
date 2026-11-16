@@ -7,9 +7,8 @@ installed probe. This module adds the rows only the trainer needs — the Anima
 base weights, PE-Core, the CJK vocab pack — as the same ``Asset`` kind, so
 ``make download-*`` and the GUI read one list.
 
-Destinations coincide because ``anime_tools._env.curation_home()`` falls back to ``ANIMA_HOME``, which
-``scripts/tasks/_common.py`` pins to this checkout. So ``models_dir()`` is
-``<repo>/models`` and a catalog row writes exactly where a loader here looks.
+Both halves land under ``<repo>/models`` because ``ANIMA_HOME`` is pinned to
+this checkout (below, and in ``scripts/tasks/_common.py``).
 
 Rows group into **packs** (:class:`~anime_tools.downloads.Pack`): the
 trainer's ``anima`` / ``pe`` / ``cjk`` plus the package's, minus
@@ -30,12 +29,9 @@ from pathlib import Path
 from library.env import anima_home
 
 # Pin the package's home to the trainer's *before* anything reads a catalog:
-# ``anime_tools._env.curation_home()`` falls back to ``ANIMA_HOME`` and then to
-# the CWD, while ``anima_home()`` falls back to the checkout. Without this an
-# ``import anima_lora`` from another directory would probe the curation rows at
-# ``./models`` while the trainer rows resolve under the repo — the two halves
-# of one catalog disagreeing about where a file is.
-# (an explicit ANIME_TOOLS_HOME still wins — curation_home() checks it first)
+# ``curation_home()`` falls back to ``ANIMA_HOME`` and then to the CWD, so an
+# ``import anima_lora`` from another directory would otherwise probe the
+# curation rows at ``./models``. An explicit ANIME_TOOLS_HOME still wins.
 if not os.environ.get("ANIMA_HOME"):
     os.environ["ANIMA_HOME"] = str(anima_home())
 
@@ -52,11 +48,9 @@ def models_dir() -> Path:
     return anima_home() / "models"
 
 
-# Anima base: DiT + text encoder + VAE, published under one repo's
-# ``split_files/`` tree. Three rows rather than one because the three land in
-# three different directories (``Asset`` flattens into a single ``dest``), which
-# also lets the GUI report them separately — a partial download is the common
-# failure.
+# Anima base: DiT + text encoder + VAE from one repo's ``split_files/`` tree.
+# Three rows because they land in three directories (``Asset`` flattens into a
+# single ``dest``).
 ANIMA_REPO = "circlestone-labs/Anima"
 ANIMA_DIT_FILE = "anima-base-v1.0.safetensors"
 ANIMA_TE_FILE = "qwen_3_06b_base.safetensors"
@@ -489,16 +483,14 @@ def by_pack(rows: tuple[Asset, ...] | None = None) -> dict[str, tuple[Asset, ...
     return out
 
 
-# Legacy ``make download-<target>`` names that are not pack ids, or that mean
-# something narrower than the pack of the same name. Kept because they are in
-# `make help`, the guidebook and its three translations:
+# ``make download-<target>`` names (documented in `make help` and the
+# guidebooks) that are not pack ids, or mean something other than the pack of
+# the same name:
 #
-# * ``pe`` — the make target has always fetched PE-Core *and* PE-Spatial,
-#   while the ``pe`` pack is PE-Core alone (PE-Spatial belongs to ``grouping``).
-# * ``tagger`` — ``make download-tagger`` (and the ``make preprocess``
-#   auto-fetch) means the small checkpoint row only, never the gated backbone;
-#   the ``tagger`` *pack* (checkpoint + backbone + ONNX trace) is reached by
-#   spelling its rows, which is what the GUI's pack button does.
+# * ``pe`` — PE-Core *and* PE-Spatial; the ``pe`` pack is PE-Core alone.
+# * ``tagger`` — the checkpoint row only (also the ``make preprocess``
+#   auto-fetch), never the gated backbone; the GUI's pack button spells the
+#   ``tagger`` pack's rows.
 GROUP_ALIASES: dict[str, tuple[str, ...]] = {
     "anima": ("anima_dit", "anima_te", "anima_vae"),
     "pe": ("pe_core", "pe_spatial"),
@@ -542,8 +534,7 @@ def resolve(names: list[str] | tuple[str, ...]) -> list[Asset]:
     A token is looked up as a legacy alias (:data:`GROUP_ALIASES`) first, then
     as a pack id (:data:`PACKS`), then as a row id — so ``pe`` keeps its
     two-tower make-target meaning and ``ocr`` expands to the pack. Raises
-    ``KeyError`` naming the unknown token, so a typo in a make target fails
-    loudly rather than downloading nothing.
+    ``KeyError`` naming an unknown token.
     """
     assets = by_id()
     packed = by_pack()
@@ -599,8 +590,8 @@ def fetch(asset: Asset, log=print, force: bool = False) -> bool:
 def fetch_all(assets: list[Asset], log=print, force: bool = False) -> list[str]:
     """Fetch every row, continuing past failures. Returns the titles that failed.
 
-    Continue-on-failure matters because one gated repo without granted access
-    (SAM3, the tagger backbone) must not abort the Anima download beside it.
+    One gated repo without granted access (SAM3, the tagger backbone) must not
+    abort the rows beside it.
     """
     failed: list[str] = []
     for asset in assets:

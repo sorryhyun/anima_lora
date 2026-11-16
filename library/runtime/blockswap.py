@@ -7,19 +7,12 @@ The non-Anima lines (``library/qwen21/``, ``library/moss/``) run upstream or
 vendored forwards, so the same two calls are attached as ordinary module hooks
 instead. The swapper itself is unmodified.
 
-Any homogeneous ``nn.ModuleList`` of blocks works. Qwen-Image-2.1, where the
-numbers below were measured:
+Any homogeneous ``nn.ModuleList`` of blocks works.
 
-    QwenImage21Transformer2DModel.transformer_blocks   32 x ~0.44 GB
-    Qwen3VLForConditionalGeneration
-        .model.language_model.layers                   36 x ~0.39 GB
-
-The swap *schedule* is ours rather than the offloader's (:func:`swap_schedule`):
-``ModelOffloader.submit_move_blocks`` streams the whole model across PCIe every
-forward no matter how few blocks are swapped, which at ``blocks_to_swap=4`` on
-this model was 55 % of all CUDA time, more than the GEMMs. Driving
-``_submit_move_blocks`` from an explicit schedule costs ``2 * blocks_to_swap``
-moves per forward.
+The swap schedule is ours (:func:`swap_schedule`): ``ModelOffloader.submit_move_blocks``
+streams the whole model across PCIe every forward however few blocks are
+swapped (55 % of CUDA time at ``blocks_to_swap=4`` on Qwen-Image-2.1). The
+explicit schedule costs ``2 * blocks_to_swap`` moves per forward.
 """
 
 from __future__ import annotations
@@ -62,10 +55,8 @@ def resident_size_gb(model: nn.Module, blocks: nn.ModuleList) -> float:
     )
 
 
-# Checkpointed LoRA backward, measured 2026-09-24 over 1370–6746 joint tokens
-# (`project/finished/qwen21_lora/src/activation_sweep.py`): max_memory_reserved over idle
-# fits 0.20 GB + 0.588 MB/token with 0.03 GB residual, a text token costing the
-# same as an image token and no T² term. Rounded up here.
+# Checkpointed LoRA backward: reserved memory over idle fits 0.20 GB +
+# 0.588 MB/token (text and image tokens alike, no T² term). Rounded up.
 _ACTIVATION_BASE_GB = 0.3
 _ACTIVATION_MB_PER_TOKEN = 0.6
 

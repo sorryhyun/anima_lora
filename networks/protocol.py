@@ -5,16 +5,13 @@ they ``hasattr``-probe and call. Implementations:
 
   * ``networks.lora_anima.network.LoRANetwork`` (the whole LoRA family),
   * the ``networks.methods.base.AdapterNetworkBase`` subclasses —
-    ``EasyControlNetwork``, ``SoftTokensNetwork``, ``RegisterNetwork``.
+    ``EasyControlNetwork``, ``SoftTokensNetwork``.
 
-The ``typing.Protocol``s here are guarded by a contract test
-(``tests/test_adapter_protocol.py``, which covers LoRANetwork, EasyControl and
-SoftTokens). They are a *description*, not an enforced
-base class — the consumers keep duck-typing (``apply_router_conditioning``'s
-``hasattr`` probes are the runtime contract). Both protocols are
-``@runtime_checkable`` and non-data (every member is a method), so
-``issubclass(SomeNetwork, AdapterNetwork)`` works without constructing a
-network (which would need a live DiT).
+The ``typing.Protocol``s here describe the surface; the ``hasattr`` probes
+(``apply_router_conditioning``) remain the runtime contract.
+``tests/test_adapter_protocol.py`` guards them. Both are ``@runtime_checkable``
+and method-only, so ``issubclass(SomeNetwork, AdapterNetwork)`` works without
+building a network (which would need a live DiT).
 
 The core lifecycle is implemented by every adapter network; the per-step
 router setters (``RouterConditionableNetwork``) live only on the LoRA family.

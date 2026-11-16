@@ -1,18 +1,11 @@
-"""Bilingual help text for config fields and LoRA variant descriptions.
+"""Localized help text for config fields and method guides, loaded lazily.
 
-Per-field tooltips live in ``guides/<lang>/_fields.json`` and
-``guides/<lang>/_preprocess_fields.json`` — one JSON file per language,
-loaded lazily on first access. Missing keys fall back to English.
-``guides/<lang>/_stage_fields.json`` is the overlay for the Preprocessing
-tab's ``anime_tools`` stage forms: keyed ``<stage_id>.<dest>`` →
-``{"label", "help", "choices"?}``, read by ``tabs/preprocess/stage_form``
-(``label_for`` / ``help_for``) with the schema's English as the fallback.
-The key scheme is the package's, so the file can seed a package-side
-translation table.
-
-Method/variant guide HTML blocks live under ``guides/<lang>/<name>.html``
-and are also loaded lazily. Shared snippets (``_apply_note``,
-``_not_mergeable``) follow the same convention with an underscore prefix.
+``guides/<lang>/_fields.json`` and ``_preprocess_fields.json`` hold per-field
+tooltips (English fallback). ``_stage_fields.json`` overlays the Preprocessing
+tab's ``anime_tools`` stage forms, keyed ``<stage_id>.<dest>`` →
+``{"label", "help", "choices"?}`` (the package's key scheme). Method guides are
+``guides/<lang>/<name>.html``; shared snippets carry an underscore prefix
+(``_apply_note``, ``_not_mergeable``).
 """
 
 from __future__ import annotations
@@ -27,11 +20,8 @@ from gui.i18n import current_language
 
 _GUIDES_DIR = Path(__file__).parent / "guides"
 
-# Inline markdown used in the field-help strings: `code` spans and **bold**.
-# The method guides are authored as real HTML, so the help panel renders rich
-# text; the per-field JSON strings instead lean on these markers (e.g.
-# "run `make mask`"). Convert them to the same bare <code>/<b> tags the guides
-# use so both surfaces render identically.
+# The field-help JSON uses inline `code` / **bold**; converted to the <code>/<b>
+# tags the HTML guides use.
 _MD_CODE = re.compile(r"`([^`]+)`")
 _MD_BOLD = re.compile(r"\*\*([^*]+)\*\*")
 
@@ -39,9 +29,7 @@ _MD_BOLD = re.compile(r"\*\*([^*]+)\*\*")
 def field_help_html(text: str) -> str:
     """HTML-escape *text*, then render its inline markdown (`code`, **bold**).
 
-    Returns a fragment safe to drop straight into the help panel — escaping
-    happens before marker conversion, so literal ``<``/``&`` in the prose stay
-    literal while the markdown markers become tags."""
+    Escaping comes first, so literal ``<``/``&`` in the prose stay literal."""
     escaped = html.escape(text)
     escaped = _MD_CODE.sub(r"<code>\1</code>", escaped)
     escaped = _MD_BOLD.sub(r"<b>\1</b>", escaped)
@@ -124,8 +112,8 @@ def preprocess_guide() -> str:
     return _guide("preprocess")
 
 
-# Methods that can't be baked into a plain DiT via scripts/toolkits/merge_to_dit.py (router is
-# layer-local / hook-only / not a weight delta) — render the "not mergeable" callout.
+# Not a plain weight delta, so merge_to_dit.py cannot bake them; shown with the
+# "not mergeable" callout.
 _NOT_MERGEABLE = frozenset({"hydralora", "soft_tokens"})
 _KNOWN_METHODS = frozenset(
     {
@@ -155,9 +143,8 @@ def method_guide(method: str) -> str | None:
 def method_overview(method: str) -> str | None:
     """Translated method guide body *without* the Apply / not-mergeable chrome.
 
-    For surfaces that have no Apply button (the distill/methods tab for
-    ``turbo``) and just want the localized overview. Returns None if no guide
-    is registered, so callers can fall back to their own text.
+    For surfaces without an Apply button (e.g. ``turbo``); None if no guide is
+    registered.
     """
     if method not in _KNOWN_METHODS:
         return None

@@ -424,9 +424,8 @@ def build_argparser() -> argparse.ArgumentParser:
     return parser
 
 
-# Keys of removed features (2026-11-05) → the only value the loop still runs. A
-# TOML that asks for anything else is refused instead of silently running the
-# DP-DMD / MFD recipe without it.
+# Keys of removed features → the only value the loop still runs; any other value
+# is refused rather than silently ignored.
 _REMOVED_KEYS = {
     "base_loss": "dpdmd",
     "dmd.grad_step": "random",
@@ -577,10 +576,8 @@ def _validate(c: TurboConfig) -> None:
         f"gan.delay_steps={c.gan_delay_steps} / gan.warmup_steps="
         f"{c.gan_warmup_steps}: must be >= 0",
     )
-    # --grad_ckpt checkpoints the rollout's student forwards, which recompute at
-    # the final backward under whatever view is current then. CDM and the GAN
-    # flip the view to teacher / fake before that backward, so the recomputed
-    # blocks drop the student LoRA and the gradient is silently wrong.
+    # Checkpointed student forwards recompute under the view current at backward;
+    # CDM / GAN leave it on teacher / fake, silently dropping the student LoRA.
     for on, name in ((c.cdm_on, "cdm.weight > 0"), (c.gan_on, "gan.weight_gen > 0")):
         _require(
             not (c.grad_ckpt and on),

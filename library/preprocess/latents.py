@@ -59,12 +59,8 @@ def get_latents_npz_path(
 
 def _latent_cached(npz_path: Path, w: int, h: int, image_path: Path) -> bool:
     """True iff ``npz_path`` already holds the ``(w, h)`` latent of the current
-    ``image_path``.
-
-    A single NPZ can carry several resolutions (one ``latents_{H}x{W}`` key
-    each), so the check is per-resolution, not whole-file existence. A
-    truncated / unreadable NPZ, or one older than the image, counts as
-    not-cached (it'll be re-encoded)."""
+    ``image_path``. A truncated / unreadable NPZ, or one older than the image,
+    counts as not-cached."""
     if not cache_is_current(npz_path, image_path):
         return False
     key = f"latents_{h // 8}x{w // 8}"
@@ -122,9 +118,8 @@ def _decode_batch(
     Returns ``(skipped, failed, kept, img_batch)`` — already-cached paths,
     ``(path, reason)`` for images that wouldn't decode (truncated / corrupt),
     the ``(path, (w, h))`` survivors, and their stacked CPU tensor (``None`` if
-    nothing survived). A bad file is isolated to its own entry rather than
-    raising, so one corrupt staged PNG can't abort the whole run. Runs on a
-    worker thread (pure PIL/numpy/torch-CPU), overlapping the previous GPU encode."""
+    nothing survived). A bad file is reported, not raised, so one corrupt PNG
+    can't abort the run. Runs on a worker thread, overlapping the GPU encode."""
     skipped: list[Path] = []
     failed: list[tuple[Path, str]] = []
     kept: list[tuple[Path, tuple[int, int]]] = []
@@ -267,10 +262,10 @@ def cache_demoted_latents(
     For every resized image in ``native_edge``'s free-fit band: LANCZOS-downscale
     the resized PNG to its demote-tier free-fit bucket (``demote_bucket_for`` —
     the identical grid the trainer derives), VAE-encode, and store the latent as
-    a ``demoted_{H}x{W}`` key INSIDE the image's existing native npz. No sibling
-    files — bucket discovery, reconcile, and the ``{stem}_*_anima.npz`` glob
-    consumers never see the emit. Pixel-space downscale → VAE re-encode is the
-    probe's measured-safe arm (SwD "strategy B"; never latent-space downsample).
+    a ``demoted_{H}x{W}`` key inside the image's existing native npz, so bucket
+    discovery, reconcile and the ``{stem}_*_anima.npz`` globs never see it.
+    Downscaling is in pixel space then re-encoded (SwD "strategy B"), not in
+    latent space.
 
     Requires the native latent cache to exist first (``make preprocess`` /
     ``preprocess-vae``): an image without its native npz is counted in
@@ -367,16 +362,15 @@ def cache_latents(
 
     The VAE forward stays serial on the calling thread (single GPU stream); the
     per-batch disk decode + image transform and the npz read-modify-write are
-    CPU/IO, so they're farmed to thread pools that overlap the GPU.
-    ``io_workers`` sizes those pools (default
-    ``min(8, cpu_count)``). Output is the same as the serial path's.
+    CPU/IO, so they run on thread pools that overlap the GPU. ``io_workers``
+    sizes those pools (default ``min(8, cpu_count)``).
 
     ``keep_stems`` (when given) restricts the walk to images whose stem is in
     the set — used by cond≠target tasks to encode only the paired subset.
     ``image_transform`` (uint8 RGB (H,W,3) → same) is applied to each decoded
-    image before VAE encoding — e.g. colorize's target white-balance. NB the
-    per-resolution skip still keys on the *unmodified* cache name, so changing
-    the transform requires ``overwrite`` (or a fresh ``cache_dir``)."""
+    image before VAE encoding (e.g. colorize's target white-balance). The skip
+    keys on the unmodified cache name, so changing the transform needs
+    ``overwrite`` (or a fresh ``cache_dir``)."""
     image_files = walk_images(data_dir, recursive=recursive, pattern=path_pattern)
     if keep_stems is not None:
         image_files = [p for p in image_files if p.stem in keep_stems]

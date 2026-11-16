@@ -10,18 +10,13 @@ scheduler's own ``time_shift`` at the same mu; a uniform sample would spend most
 of its steps where the sampler never looks. ``shift_terminal`` is a property of
 the discrete schedule and has no training counterpart, so it is not applied.
 
-The joint sequence length varies per sample on both axes — each image keeps its
-native aspect at ~1 MP, and caption length runs 112–346 tokens on this folder —
-so ``mu`` is per-sample, the pipeline deriving it from the image token count.
+The joint sequence length varies per sample (native-aspect images, natural
+caption length), so ``mu`` is per-sample, derived from the image token count as
+the pipeline does.
 
-Block compile is **on** by default (``--compile_seq dynamic`` =
-``torch.compile(dynamic=True)``): −11 % per step at 1024² with 7 swaps under
-checkpointing (2026-09-24), ±0 at 512² with 12 swaps where the step is PCIe-bound
-(12 × 0.41 GB × 2 directions is the whole step time). One graph covers every
-sample size; ``--compile_seq bounded`` instead marks the sequence axis dynamic
-over the cache's [min, max] joint tokens and leaves the hidden dims static —
-same speed, compile paid as 17 s + one recompile rather than 42 s up front. See
-``accel.compile_blocks``. ``--no-compile`` for a quick smoke.
+Block compile is on by default (``torch.compile(dynamic=True)``, one graph for
+every sample size); it pays where the step is compute-bound (−11 % at 1024²) and
+not where it is PCIe-bound. Modes: ``accel.compile_blocks``.
 
     make daemon-run ARGS="scripts/qwen21/train.py --epochs 8"
 """
@@ -144,16 +139,11 @@ def training_step(transformer, item: dict, sigma: torch.Tensor):
 def report_fit(blocks, attached, batch: dict) -> None:
     """After step 1: does it fit, and is the swap count paying for itself?
 
-    Printing this at step 1 rather than at the end of the epoch is the
-    difference between resizing the swap in five seconds and finding out two
-    minutes in.
-
-    Headroom is ``mem_get_info``'s free bytes, not ``total - max_allocated``.
-    Two things live in that gap and both are real: the allocator's reserved-but
-    -unallocated pool (~0.7 GB here), and whatever else has the card — a desktop
-    session holds ~0.5 GB on this box. Sizing the swap against allocated bytes
-    over total capacity overstates the room by more than a block and hands back
-    a recommendation that OOMs.
+    Headroom is ``mem_get_info``'s free bytes, not ``total - max_allocated``:
+    the gap holds the allocator's reserved-but-unallocated pool (~0.7 GB) and
+    other users of the card (a desktop, ~0.5 GB). Sizing against allocated
+    bytes overstates the room by more than a block and recommends a swap that
+    OOMs.
     """
     allocated = torch.cuda.max_memory_allocated() / 1024**3
     reserved = torch.cuda.max_memory_reserved() / 1024**3
@@ -246,9 +236,8 @@ def run_train(req: TrainRequest) -> Path:
 
         transformer.enable_gradient_checkpointing(checkpointing_func)
 
-    # The largest sample is known before the model is placed, and a checkpointed
-    # step's footprint is affine in its joint token count, so the reserve follows
-    # the cache instead of a constant.
+    # A checkpointed step's footprint is affine in its joint token count, so the
+    # reserve follows the cache's largest sample instead of a constant.
     max_joint = image_tokens[-1] + text_lens[-1]
     if req.activation_reserve_gb is None:
         reserve_gb = blockswap.activation_reserve_for_tokens(
@@ -279,8 +268,6 @@ def run_train(req: TrainRequest) -> Path:
     blocks = transformer.transformer_blocks
     placement = block_devices(blocks)
     if req.compile:
-        # The joint sequence moves with both the image and caption size; the
-        # cache bounds it before the first step.
         seq_range = (
             (image_tokens[0] + text_lens[0], max_joint)
             if req.compile_seq == "bounded"
@@ -326,8 +313,7 @@ def run_train(req: TrainRequest) -> Path:
         network.save(path, req.lora_dtype, **metadata)
         return path
 
-    # The largest sample first, so step 1 is the worst case and the fit report
-    # below is a bound rather than a sample of the middle of the band.
+    # Largest sample first, so the step-1 fit report is the worst case.
     order = sorted(
         range(len(items)),
         key=lambda i: items[i]["latents"].shape[0] + items[i]["prompt_embeds"].shape[0],
@@ -364,8 +350,7 @@ def run_train(req: TrainRequest) -> Path:
             peak = torch.cuda.max_memory_allocated() / 1024**3
             if step == 1:
                 report_fit(blocks, attached, batch)
-            # One short line per step for progress readers (the GUI bar); the
-            # full line below stays at every 20th step for the log.
+            # Short line every step for the GUI progress bar; full line every 20th.
             per_step = (time.time() - t_start) / step
             eta = int(per_step * (total_steps - step))
             print(

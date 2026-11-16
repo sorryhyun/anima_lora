@@ -19,9 +19,6 @@ def free_vram_gb(device: int = 0) -> float:
 
 
 def clean_memory_on_device(device: Optional[Union[str, torch.device]]):
-    r"""
-    Clean memory on the specified device, will be called from training scripts.
-    """
     gc.collect()
     if device is None:
         return

@@ -26,7 +26,8 @@ class NetworkSpec:
             and the key into ``NETWORK_REGISTRY``.
         module_class: Concrete ``LoRAModule`` subclass to instantiate per
             target module.
-        save_variant: Key into ``networks.lora_save.SAVE_HANDLERS``.
+        save_variant: Dispatch label for ``networks.lora_save.save_network_weights``
+            (``"hydra_moe"`` writes ``*_moe.safetensors``; anything else the standard layout).
         post_init: Optional hook run after the network is built, receiving
             ``(network, kwargs)`` — for variant-specific attribute attachment.
     """
@@ -107,9 +108,8 @@ NETWORK_REGISTRY: Dict[str, NetworkSpec] = {
         save_variant="hydra_moe",
         post_init=_post_init_hydra,
     ),
-    # Step-expert: shared down-proj + K step-indexed up-heads, hard-selected by
-    # diffusion step (no router). Turbo DP-DMD student only; kept-live at
-    # inference (K heads can't fold into one DiT weight), so save is bespoke.
+    # Turbo DP-DMD student only; K heads can't fold into one DiT weight, so it
+    # stays live at inference and is never merged.
     "step_expert": NetworkSpec(
         name="step_expert",
         module_class=StepExpertLoRAModule,
@@ -133,7 +133,6 @@ def resolve_network_spec(kwargs: Mapping[str, Any]) -> NetworkSpec:
     Precedence (first match wins): step_expert_K > 1 -> step_expert;
     use_moe_style="shared_A" -> hydra; else lora.
     """
-    # Step-expert short-circuits when step_expert_K > 1; K==1 collapses to plain LoRA
     raw_step_K = kwargs.get("step_expert_K")
     if raw_step_K is not None and int(raw_step_K) > 1:
         return NETWORK_REGISTRY["step_expert"]

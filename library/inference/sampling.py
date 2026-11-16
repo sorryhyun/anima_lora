@@ -5,9 +5,8 @@ from typing import Optional, Tuple, Union
 import torch
 from torchvision import transforms
 
-# Single source of truth for the CFG++ reweight — shared with the FSG operator
-# and (vendored) the ComfyUI Spectrum node. Re-exported here for callers that
-# read it off the sampling module (networks/spectrum.py, generation.py, tests).
+# Re-exported for callers that read it off this module (networks/spectrum.py,
+# generation.py, tests).
 from library.inference.corrections.fsg_core import cfgpp_guidance_weight  # noqa: F401
 from diffusers import EulerAncestralDiscreteScheduler
 import diffusers.schedulers.scheduling_euler_ancestral_discrete
@@ -26,23 +25,17 @@ def get_timesteps_sigmas(
         sampling_steps: Number of sampling steps.
         shift: Sigma shift parameter for schedule modification.
         device: Target device for tensors.
-        tail_power: σ-reshape exponent applied to the uniform grid *before* the
-            flow-shift map. ``1.0`` (default) is the canonical schedule.
-            ``>1`` warps the grid toward σ=0, packing more knots into the low-σ
-            resolve tail (σ<0.45) where local discretization error concentrates
-            (``_archive/bench/dynamic_spectrum`` Q1: ~60% of fattening-error mass, only 19%
-            of steps); ``<1`` does the opposite. The endpoints σ∈{0,1} are fixed,
-            so this redistributes steps without changing the integration range.
+        tail_power: σ-reshape exponent on the uniform grid, before the
+            flow-shift map. ``>1`` packs more knots into the low-σ tail
+            (σ<0.45), where local discretization error concentrates; ``<1``
+            does the opposite. Endpoints σ∈{0,1} are fixed.
 
     Returns:
-        Tuple of (timesteps, sigmas) tensors. ``timesteps`` is the DiT's time
-        argument on the σ∈[0,1] scale (== ``sigmas[:-1]``); the model rescales
-        nothing further, so callers feed it directly (no /1000).
+        ``(timesteps, sigmas)``. ``timesteps`` (== ``sigmas[:-1]``) is the DiT's
+        time argument on the σ∈[0,1] scale; feed it directly (no /1000).
     """
     sigmas = torch.linspace(1, 0, sampling_steps + 1)
     if tail_power != 1.0:
-        # u∈[0,1] uniform; u**p with p>1 pulls interior knots toward 0 (the σ tail).
-        # Endpoints (1→1, 0→0) are preserved, so only the spacing is reshaped.
         sigmas = sigmas.clamp_min(0.0) ** tail_power
     sigmas = (shift * sigmas) / (1 + (shift - 1) * sigmas)
     sigmas = sigmas.to(torch.float32)
@@ -77,9 +70,7 @@ class ERSDESampler:
         self.s_noise = s_noise
         self.max_stage = max_stage
         self.num_integration_points = 200.0
-        # Optional CNS recolorer (library.inference.corrections.cns.CNSRecolorer).
-        # When set, the per-step injected noise is frequency-recolored by
-        # sqrt(1-γ) so the fixed stochastic budget lands in unresolved bands.
+        # Optional CNSRecolorer for the per-step injected noise.
         self.cns = cns
 
         # Offset first sigma away from 1.0 to avoid logit(1)=inf
@@ -96,7 +87,6 @@ class ERSDESampler:
             0, self.num_integration_points, dtype=torch.float32, device=device
         )
 
-        # Noise generator
         self._generator = None
         if seed is not None:
             self._generator = torch.Generator(device=device)
@@ -136,7 +126,6 @@ class ERSDESampler:
         sigmas = self.sigmas
         er_lambdas = self.er_lambdas
 
-        # Final step: just return denoised
         if sigmas[step_i + 1] == 0:
             self.old_denoised = denoised
             return denoised
@@ -208,14 +197,9 @@ class LCMSampler:
 
         x_next = (1 - σ_next) * x0_hat + σ_next * ε
 
-    Final step (σ_next == 0) returns x0_hat directly. The caller computes
-    `denoised = latents - σ * v_pred` (x0 estimate) before invoking .step,
-    matching the ERSDESampler interface.
-
-    Targeted at under-converged few-step distillations where deterministic
-    Euler can look dead — the per-step noise re-injection gives the next
-    forward something to refine. Trades seed determinism for texture /
-    detail recovery.
+    The caller passes `denoised = latents - σ * v_pred`, as for ERSDESampler.
+    For under-converged few-step distillations, where deterministic Euler can
+    look dead: the re-injected noise gives the next forward something to refine.
 
     Reference: Luo et al. 2023 (Latent Consistency Models, arXiv:2310.04378);
     ComfyUI's `comfy/k_diffusion/sampling.py::sample_lcm`.

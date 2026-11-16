@@ -300,7 +300,7 @@ _LAYOUT_RATINGS = frozenset({"sfw", "nsfw"})
 
 def drop_rating(raw: str) -> str:
     """``raw`` without its rating: MOSS captions carry none (the reference prompts
-    have no rating field; decided 2026-11-14). A tag caption loses the flat tags
+    have no rating field). A tag caption loses the flat tags
     ``canonical_rating`` recognises (safe / general / sensitive / nsfw /
     questionable / explicit), position and text clauses untouched; a layout-JSON
     prompt loses ``sfw`` / ``nsfw`` from ``summary.meta``, and an emptied ``meta``

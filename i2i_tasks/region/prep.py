@@ -304,8 +304,8 @@ def stage_sam(base: Path, *, face: bool, **kw) -> None:
         tag="pair_girl",
         **kw,
     )
-    # A bare "boy" prompt finds ~2% of anime partners (18/860, 2026-08-25);
-    # the union with "man"/"male" is what actually recovers them.
+    # A bare "boy" prompt finds ~2% of anime partners; the union with
+    # "man"/"male" recovers them.
     _run_sam(
         sel / SLICE_PAIR,
         base / "masks_boy",
@@ -469,9 +469,7 @@ def _slack_region(
     off-center in the paint (a centered halo would just teach "character in
     the middle of the paint"). The edge gets a light wobble so it reads like a
     hand-painted region rather than a rectangle. Returns ``None`` when there
-    is no room to grow meaningfully (< 1.25× bbox): the paint is what a user
-    draws when they mean "somewhere around here", and the model has to place
-    the character inside it AND reproduce the background on the rest."""
+    is no room to grow meaningfully (< 1.25× bbox)."""
     h, w = mask.shape
     x0, y0, x1, y1 = _bbox(mask)
     bw, bh = max(1, x1 - x0), max(1, y1 - y0)
@@ -558,10 +556,11 @@ def _augment_mask(
 
     0 exact, 1 smoothed, 2 blob, 3 wobble — every one keeps the pose readable:
     the paint cue carries position AND rough silhouette, so bridging the gap
-    between spread legs into one fat blob over-simplifies the cond. Blur sigmas stay small enough that only sub-limb
-    concavities close. 4 slack — see :func:`_slack_region`. (Level 5 "face" is
-    the smooth level applied to the face mask by the caller.) Returns ``None``
-    only for a slack draw with no room to grow.
+    between spread legs into one fat blob over-simplifies the cond. Blur sigmas
+    stay small enough that only sub-limb concavities close. 4 slack — see
+    :func:`_slack_region`. (Level 5 "face" is the smooth level applied to the
+    face mask by the caller.) Returns ``None`` only for a slack draw with no
+    room to grow.
 
     The output is always a strict superset of the (slightly dilated) source
     mask: levels 1/3 can locally dip inside the true silhouette, and on a

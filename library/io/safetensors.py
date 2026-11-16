@@ -375,7 +375,6 @@ class TensorWeightAdapter:
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ) -> torch.Tensor:
-        # load tensor by new_key, applying split or concat hooks as needed
         if new_key not in self.new_key_to_original_key_map:
             # direct mapping
             return self.original_f.get_tensor(new_key, device=device, dtype=dtype)

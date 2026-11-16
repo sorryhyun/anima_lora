@@ -1,19 +1,13 @@
 """SoupTrainTab — uncond-init ΔW-soup pipeline launcher (experimental).
 
-Reuses the shared distill config-editor layout (``_DistillConfigTab``): the
-``[soup]`` pipeline knobs *and* the plain-LoRA training stack are edited as the
-sectioned form over ``configs/soup/soup.toml`` (Save writes them back through
-tomlkit, comments preserved), as in the Turbo tab. The one soup-specific
-addition is a small **run-only** box pinned to the
-top of the form carrying the per-run ``--path_pattern`` / ``--name`` / fine-tune
-args — these are *not* persisted to the TOML (like ``output_name``, they vary
-per run), so they live outside ``_fields`` and Save ignores them.
+Edits ``configs/soup/soup.toml`` with the shared distill layout
+(``_DistillConfigTab``), plus a run-only box for the per-run ``--path_pattern`` /
+``--name`` / fine-tune args, which are not persisted (outside ``_fields``).
 
-Unlike Turbo, submission does **not** route through ``tasks.py`` — it
-submits ``python -m scripts.soup.pipeline`` directly as one daemon command job.
-Routing through ``tasks.py`` would re-enter ``run_command`` *inside* the daemon
-and nest-submit a second command job, deadlocking the serial queue; the pipeline
-instead runs its ``train.py`` phases as direct subprocesses within this one job.
+Submits ``python -m scripts.soup.pipeline`` directly as one daemon command job,
+not through ``tasks.py``: that would re-enter ``run_command`` inside the daemon
+and nest-submit a second job, deadlocking the serial queue. The pipeline runs
+its ``train.py`` phases as subprocesses within this one job.
 """
 
 from __future__ import annotations
@@ -36,9 +30,7 @@ class SoupTrainTab(_DistillConfigTab):
     METHOD_LABEL = "Soup"
 
     def _load_and_build(self) -> None:
-        # Build the TOML-backed section form first, then pin the run-only box
-        # (path_pattern / name / fine-tune args — never written to the TOML) to
-        # the very top so it reads before the [soup] knobs and training stack.
+        # Run-only box goes above the TOML-backed form.
         super()._load_and_build()
         self._fl.insertWidget(0, self._build_run_box())
 
@@ -74,18 +66,17 @@ class SoupTrainTab(_DistillConfigTab):
 
     # ------------------------------------------------------------------ launch
     def _start_train(self) -> None:
-        # Override the base's `tasks.py <target>` launch: soup submits the
-        # pipeline module directly (see the module docstring). `_launch` still
-        # flushes any unsaved [soup]/training edits so the pipeline reads them.
+        # Submits the pipeline module directly (module docstring); `_launch`
+        # still flushes unsaved edits so the pipeline reads them.
         argv = self._build_argv()
         if argv is None:
             return
         self._launch(self.TRAIN_TASK, argv)
 
     def _build_argv(self) -> list[str] | None:
-        """The ``python -m scripts.soup.pipeline`` argv from the run-only box.
-        The pool / dose / seeds / rank knobs come from the (just-saved) TOML, so
-        only the per-run selection rides argv. None if path_pattern is blank."""
+        """The ``python -m scripts.soup.pipeline`` argv from the run-only box
+        (everything else comes from the saved TOML). None if path_pattern is
+        blank."""
         pattern = self._path_pattern.text().strip()
         if not pattern:
             QMessageBox.warning(self, t("error"), t("soup_path_pattern_required"))

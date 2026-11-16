@@ -67,12 +67,10 @@ def run_validation(
             args.validation_seed if args.validation_seed is not None else args.seed
         )
 
-        # FM-MSE forwards run FIRST, on the DiT as it sits at the end of the
-        # training step — resident and block-swap-prepared — so they don't pay
-        # CMMD's DiT→CPU→GPU unload/reload, nor forward a DiT left in the
-        # all-blocks-on-GPU state that CMMD's `.to(device)` reload leaves under
-        # block swap. The result's role (aux vs primary) is decided after CMMD,
-        # so the forward sweep happens at most once. Re-seed for determinism.
+        # FM-MSE runs first, on the DiT as the train step left it (resident,
+        # block-swap-prepared); after CMMD's unload/reload the DiT sits
+        # all-blocks-on-GPU under block swap. Its role (aux vs primary) is
+        # decided after CMMD, so the sweep runs at most once.
         fm_result = None
         if use_cmmd and want_fm:
             trainer._switch_rng_state(val_seed)
@@ -101,10 +99,8 @@ def run_validation(
                 logging_fn=logging_fn,
             )
 
-        # CMMD owns the primary signal when it ran; the FM sweep (if done) is
-        # logged as a diagnostic under distinct `loss/validation/fm_*` keys. If
-        # CMMD is off or failed, FM is the primary signal instead — reusing the
-        # sweep already done above, or running it now (the DiT is back on the
+        # CMMD ran: the FM sweep logs as a diagnostic under `loss/validation/fm_*`.
+        # CMMD off or failed: FM is the primary signal (the DiT is back on the
         # GPU via _try_cmmd_validation's finally, or never left it).
         if cmmd_ok:
             if fm_result is not None:
@@ -144,13 +140,9 @@ def run_validation(
                     val_loss_recorder=val_loss_recorder,
                     primary=True,
                 )
-        # Method-adapter baseline deltas (e.g. IP-Adapter no_ip / shuffled_ref).
-        # Runs independently of CMMD/FM above — these are FM-MSE re-forwards on
-        # the same (batch, sigma, noise) with the adapter perturbed, so the
-        # delta isolates the adapter's contribution. Gated by
-        # ``--validation_baselines`` (default on): each baseline is a full extra
-        # val forward per (batch, sigma), so skipping them roughly halves
-        # IP-Adapter validation time.
+        # Method-adapter baseline deltas (FM-MSE re-forwards with the adapter
+        # perturbed). ``--validation_baselines`` (default on) gates them: each
+        # baseline costs a full extra val forward per (batch, sigma).
         if getattr(args, "validation_baselines", True):
             _run_validation_baselines(
                 trainer,
@@ -229,10 +221,8 @@ def _try_cmmd_validation(
 
     if getattr(trainer, "_cmmd_pe_bundle", None) is None:
         trainer._cmmd_pe_bundle = load_pe_encoder(accelerator.device)
-        # Park PE-Core (~600 MB bf16) on CPU between encodes so the DiT
-        # sample step has the full GPU budget. Bundle keeps device=cuda
-        # so encode_pe_from_imageminus1to1 still routes inputs correctly;
-        # we shuttle the underlying model to GPU only for the encode call.
+        # Park PE-Core (~600 MB bf16) on CPU between encodes so sampling has
+        # the full GPU. The bundle keeps device=cuda so inputs still route there.
         trainer._cmmd_pe_bundle.encoder.inner.to("cpu")
     bundle = trainer._cmmd_pe_bundle
 
@@ -258,15 +248,13 @@ def _try_cmmd_validation(
     #   phase 1: DiT resident → sample every item's latents, park on CPU.
     #   phase 2: DiT → CPU, VAE → GPU → decode all latents to pixels (CPU).
     #   phase 3: VAE → CPU, PE → GPU → encode all pixels to features.
-    # One DiT/VAE/PE round-trip per val pass instead of N VAE shuttles.
     latents_cpu: list[torch.Tensor] = []
     pixel_images: list[torch.Tensor] = []
     try:
         try:
             with torch.no_grad(), accelerator.autocast():
                 unwrapped_unet.prepare_block_swap_before_forward()
-                # PHASE 1 — sample latents with the DiT on the GPU; keep the
-                # decode out so the VAE never loads while the DiT is resident.
+                # PHASE 1: sample latents with the DiT on the GPU.
                 for i, item in enumerate(ref_items):
                     sd = _load_safetensors(item.text_encoder_outputs_npz)
                     crossattn_emb = _build_val_crossattn_emb(
@@ -286,9 +274,8 @@ def _try_cmmd_validation(
                         flow_shift=flow_shift,
                         seed=seed_base + i,
                         show_progress=False,
-                        # Keep the DiT's allocator pool warm across items — no
-                        # per-item empty_cache; the boundary cleans (before the
-                        # VAE / PE swaps) are what actually free the GPU.
+                        # Keep the allocator pool warm; the phase boundaries
+                        # free the GPU.
                         clean_cache=False,
                     )
                     latents_cpu.append(latents.detach().to("cpu"))
@@ -317,9 +304,8 @@ def _try_cmmd_validation(
                 # PHASE 3 — VAE off, PE on, encode every decoded pixel batch.
                 bundle.encoder.inner.to(accelerator.device)
                 try:
-                    # Batch PE encoding by bucket: same-shape images go through
-                    # one same_bucket=True forward instead of N. Original order
-                    # is preserved so gen_pooled[i] still pairs with ref_pool[i].
+                    # One same_bucket=True forward per shape; order is kept so
+                    # gen_pooled[i] pairs with ref_pool[i].
                     bucket_groups: dict[tuple[int, int], list[int]] = {}
                     for idx, img in enumerate(pixel_images):
                         key = (int(img.shape[-2]), int(img.shape[-1]))
@@ -361,8 +347,7 @@ def _try_cmmd_validation(
     cmmd_value = cmmd_from_pools(ref_pool, gen_pool)
     val_loss_recorder.add(epoch=epoch, step=global_step, loss=cmmd_value)
 
-    # Always surface the score to the console — the tracker logging below is
-    # gated on `is_tracking`, so without this the CMMD value never shows.
+    # Tracker logging below is gated on `is_tracking`; always print the score.
     logger.info(
         f"CMMD validation @ step {global_step} (epoch {epoch + 1}): "
         f"{cmmd_value:.4f}  (n={len(ref_items)}, lower is better)"
@@ -391,7 +376,7 @@ def _compute_fm_validation(
     """Run the per-sigma FM-MSE forward sweep over ``val.dataloader`` (pinning
     ``args.t_{min,max}`` to each sigma in ``val.sigmas``) and return the raw
     losses for :func:`_log_fm_validation` to record/log once CMMD's outcome is
-    known — so the role decision (primary vs aux) never costs a second sweep.
+    known.
 
     Returns ``{"per_sigma_losses", "ordered_losses"}`` or ``None`` when there's
     nothing to validate. Must run with the DiT resident (the caller schedules
@@ -564,8 +549,7 @@ def _run_validation_baselines(
                 bar.update(1)
 
                 for baseline in pairs:
-                    # Re-seed to the SAME starting point so the baseline forward
-                    # sees identical noise; the only difference is the perturbation.
+                    # Same seed as the primary, so only the perturbation differs.
                     trainer._switch_rng_state(item_seed)
                     baseline.enter()
                     try:
@@ -603,10 +587,10 @@ def _run_validation_baselines(
 def _build_val_crossattn_emb(dit, sd, accelerator):
     """Construct the cross-attention embedding the DiT expects from a
     cached TE sidecar — using the saved post-LLM-adapter ``crossattn_emb``
-    when present, otherwise running ``llm_adapter`` exactly like
-    ``_sample_image_inference`` does. Pads to 512 tokens (the model's
-    fixed context length). Multi-variant caches expose `<key>_v0` (pristine
-    caption) instead of `<key>`; pin to v0 for deterministic validation."""
+    when present, otherwise running ``llm_adapter`` as
+    ``_sample_image_inference`` does. Max-pads to 512 tokens. Multi-variant
+    caches expose `<key>_v0` (pristine caption) instead of `<key>`; validation
+    pins v0."""
     device = accelerator.device
     dtype = dit.dtype
     suffix = "" if "prompt_embeds" in sd or "crossattn_emb" in sd else "_v0"

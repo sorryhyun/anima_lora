@@ -1,13 +1,10 @@
 """Release coordinates of the sm_120 FlashAttention build.
 
-The build (sorryhyun/flash-attention-fp16) holds the 128×32 forward tile, the
-fp16-accumulate backward, the fp16-accumulate PV forward and the
-fp16-input path (``flash_attn_f16in_func``), and kernels for sm_120 alone, so it
-cannot be the default pin. The wheels are built on torch's stable ABI (one
-``cp310-abi3`` wheel per platform for torch 2.12 and later on cu132). The opt-in
-``fa2-sm120`` dependency group installs it into the venv; its Linux x86_64 and
-Windows wheel URLs in ``pyproject.toml`` must come from ``TAG``
-(``tests/test_rocm_backend.py`` checks).
+The build (sorryhyun/flash-attention-fp16: fp16-accumulate backward and PV
+forward, ``flash_attn_f16in_func``) ships sm_120 kernels only, so it is the
+opt-in ``fa2-sm120`` dependency group, not the default pin. Wheels are
+``cp310-abi3`` on torch's stable ABI (torch 2.12+, cu132). The wheel URLs in
+``pyproject.toml`` must come from ``TAG`` (``tests/test_rocm_backend.py`` checks).
 """
 
 TAG = "v2.8.3-sm120-hdim64-128-fp16acc-fwdpv-f16in-cu132-torch2.12plus"

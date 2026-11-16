@@ -19,8 +19,7 @@ from accelerate import Accelerator
 from library.models import sai_spec as sai_model_spec
 from library.log import setup_logging
 
-# Convenience re-export: the canonical home is library.config.io, but
-# convention (and embedders) reach for it on this facade. See examples/.
+# Re-export (canonical home: library.config.io); callers import it from here.
 from library.config.io import load_method_preset, read_config_from_file  # noqa: F401
 
 setup_logging()
@@ -39,9 +38,9 @@ def default(val, d):
 
 
 def load_metadata_from_safetensors(safetensors_file: str) -> dict:
-    """r
-    This method locks the file. see https://github.com/huggingface/safetensors/issues/164
-    If the file isn't .safetensors or doesn't have metadata, return empty dict.
+    """Return the file's metadata, or ``{}`` for a non-.safetensors file or one
+    without metadata. Locks the file while open
+    (https://github.com/huggingface/safetensors/issues/164).
     """
     if os.path.splitext(safetensors_file)[1] != ".safetensors":
         return {}

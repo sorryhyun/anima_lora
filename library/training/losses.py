@@ -11,12 +11,10 @@ stashes aux tensors on `LossContext.aux` for the composer to consume.
 
 Aux-loss gating convention: a stage-2 handler gates on
 ``ctx.network._<name>_weight`` (or a documented network attr), stamped by
-whoever owns the knob (network factory, network itself, or trainer). Handlers
-must NOT read ``ctx.args.*`` for their weight — a knob readable from two
-places is how a feature works from TOML and silently no-ops from
-``--network_args`` (or vice versa). ``build_loss_composer`` and the stage-3
-multiscale blend are the only spots that consult ``args``, to decide
-activation only.
+whoever owns the knob, and never reads its weight from ``ctx.args``: a knob
+readable from two places works from TOML and silently no-ops from
+``--network_args`` (or vice versa). Only ``build_loss_composer`` and the
+stage-3 multiscale blend consult ``args``, to decide activation.
 """
 
 from __future__ import annotations
@@ -130,9 +128,8 @@ def apply_cond_diff_loss(loss: torch.Tensor, ctx: "LossContext") -> torch.Tensor
         cond_latents = cond_latents.squeeze(2)
     if latents.ndim == 5:
         latents = latents.squeeze(2)
-    # Needs pixel-aligned cond/target. Under free-fit a paired cond can land at
-    # a different shape than the target — diff is undefined there, so skip
-    # the reallocation for those samples (copy-through still trains). Warn once.
+    # Under free-fit a paired cond can land at a different shape than the
+    # target; the diff is undefined there, so skip the weighting (warn once).
     if cond_latents.shape[-2:] != latents.shape[-2:]:
         if not getattr(apply_cond_diff_loss, "_warned_shape_mismatch", False):
             logger.warning(
@@ -166,10 +163,9 @@ def get_huber_threshold_if_needed(
 
     b_size = timesteps.shape[0]
     if args.huber_schedule == "exponential":
-        # `timesteps` is σ∈[0,1] (Anima feeds the DiT time arg directly, not
-        # the sd-scripts [0,1000] scale) — do NOT divide alpha by
-        # num_train_timesteps, that pins the threshold flat at huber_scale.
-        # Intended decay: huber_c**σ · huber_scale.
+        # `timesteps` is σ∈[0,1], not the sd-scripts [0,1000] scale: dividing
+        # alpha by num_train_timesteps would pin the threshold at huber_scale.
+        # Decay: huber_c**σ · huber_scale.
         alpha = -math.log(args.huber_c)
         result = torch.exp(-alpha * timesteps) * args.huber_scale
     elif args.huber_schedule == "snr":

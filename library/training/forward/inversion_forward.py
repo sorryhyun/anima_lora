@@ -5,8 +5,7 @@ through the DiT using a randomly-sampled inversion run as ``crossattn_emb``
 and computes an MSE between the main forward's and the inversion forward's
 ``cross_attn.output_proj`` captures at the configured blocks. The returned
 scalar is consumed by the ``_functional_loss`` handler in
-``library/training/losses.py`` — this file is the auxiliary-forward
-producer, not the loss-registry handler.
+``library/training/losses.py``.
 
 The trainer owns the capture state (forward hooks register on
 ``cross_attn.output_proj`` modules and populate ``captures``); this helper

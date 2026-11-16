@@ -479,8 +479,8 @@ class ClippedGradMean:
 
     The caller clips each iteration's gradient before :meth:`add`, so every
     iteration enters at norm ≤ ``grad_clip``. Clipping the sum instead lets a
-    high-σ_a draw (DM grad norm 20–30 against a median near 2,
-    bench/turbo/results/20261111-1312-grad_noise) outweigh the rest of its group.
+    high-σ_a draw (DM grad norm 20–30 against a median near 2) outweigh the rest
+    of its group.
     """
 
     def __init__(self, params, n: int):

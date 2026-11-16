@@ -89,18 +89,14 @@ def save_network_weights(
     metadata: Optional[Dict[str, str]],
     save_variant: str,
 ) -> None:
-    """Run the save pipeline: variant write.
-
-    Mutates ``state_dict`` in place.
+    """Write ``state_dict`` to ``file`` (Hydra → ``*_moe.safetensors``, else the
+    standard ComfyUI layout). Mutates ``state_dict`` in place.
     """
     if metadata is not None and len(metadata) == 0:
         metadata = None
 
-    # Variant dispatch:
-    #   * hydra_moe: shared-A Hydra → *_moe.safetensors
-    #   * standard: defuse qkv → *.safetensors
-    # Auto-fallback: any surviving ``.lora_up_weight`` key implies a Hydra
-    # payload — kept for callers that don't plumb ``save_variant`` through.
+    # A surviving ``.lora_up_weight`` key means a Hydra payload even when the
+    # caller did not pass ``save_variant``.
     is_hydra_variant = save_variant == "hydra_moe" or any(
         k.endswith(".lora_up_weight") for k in state_dict.keys()
     )
@@ -116,7 +112,6 @@ def save_network_weights(
         # a uniform expert average defeats layer-local routing.
         return
 
-    # Standard write path.
     state_dict, metadata = build_standard_state_dict(state_dict, dtype, metadata)
 
     if os.path.splitext(file)[1] == ".safetensors":

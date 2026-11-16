@@ -6,17 +6,15 @@ Changes from v3 (``build_hangul_v3.py``, reports/hangul_v3_ft.md, the cjk_ko lin
 - **Readable targets.** At the font px a line is drawn at, every Hangul syllable must differ
   from each of its vowel neighbours (``CONFUSE``: ㅏ / ㅓ / ㅔ / ㅐ / ㅕ against ㅣ and each
   other, ㅗ / ㅜ / ㅡ, ㅘ / ㅙ — the swaps on ko10) by at least ``PAIR_K``·px² of anti-aliased
-  ink (at 20 px, 10 px of ink). Probe: at 16–20 px, 저 / 지 and 커 / 키 differ by 3–15 px in
-  most v3 faces, 4–5 px in Gangwon Edu All Bold (weight 2 in v3); 69 % of v3's lines sit
-  under 20 px of ink. From 28 px the stroke-gap rule of cjk_ko's ``legible.py`` (median gap
+  ink (at 20 px, 10 px of ink); at 16–20 px most v3 faces fall short on pairs such as
+  저 / 지, and 69 % of v3's lines sit under 20 px of ink. From 28 px the stroke-gap rule of cjk_ko's ``legible.py`` (median gap
   ≥ 1.5 px, p10 ≥ 0.8 px) also applies. A line whose page face fails is drawn in a face that
   passes (refit to the box); with none, the face with the widest margin.
 - **Vowel minimal pairs** (cjk_ko's counterfactual syllables): with p ``P_PAIR`` a lettered
   string has one syllable swapped for a vowel neighbour (KS X 1001), so the caption and not
   the word decides the vowel (정말 → 정밀).
 - **Every Korean twin** (``--pages`` default 2000, the pool is ~1,700): Korean exposure is the
-  bet (the user, 2026-11-08: English and Japanese lettering is clean because pretraining saw
-  far more of it).
+  bet, as English and Japanese lettering is clean where pretraining saw far more of it.
 
 Writes ``post_image_dataset/i2i/hangul_block_v4/{img/, pairs.jsonl, stats.json, sheet.png,
 sheet_small.png}``.
@@ -451,7 +449,7 @@ def main():
     print(f"{len(out_rows)} pairs -> {OUT}")
     print(dict(stats))
 
-    # small lines at 2x: target crop over the source crop, the face and px under each
+    # small lines: target crops at 2x, the face and px under each
     pick = [x for x in small if x[4]][:12] + [x for x in small if not x[4]][:12]
     tiles = []
     for stem, bb, fname, fs, paired in pick:

@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 ROUND_TO_NEAREST = "rtn"  # --int8_file, and ss_int8_base_id on a LoRA
 # per block: self qkv/out, cross q/out, MLP 1/2. Cross kv (M = context length) and
-# adaLN (M = batch) stay bf16; phase 0 measured int8 slower there.
+# adaLN (M = batch) stay bf16: int8 measured slower there.
 CONVERT_SUFFIXES = (
     "self_attn.qkv_proj",
     "self_attn.output_proj",

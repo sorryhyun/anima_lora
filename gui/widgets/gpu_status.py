@@ -1,9 +1,7 @@
 """Slim always-on bar showing live GPU utilisation / VRAM.
 
-Qt-only by design: it shells out to ``nvidia-smi`` via a non-blocking
-``QProcess`` rather than importing torch or pynvml, so it adds nothing to GUI
-startup time (see gui/CLAUDE.md — the GUI must stay torch-free). On a CPU-only
-or non-NVIDIA box ``nvidia-smi`` is absent; the bar then hides itself silently.
+Polls ``nvidia-smi`` through a non-blocking ``QProcess`` so the GUI stays
+torch/pynvml-free. Without ``nvidia-smi`` the bar hides itself.
 """
 
 from __future__ import annotations
@@ -14,17 +12,13 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 from gui.i18n import t
 from gui.theme import tok
 
-# Columns pulled per GPU, in order. Matches the parse in `_on_finished`.
+# Column order matches the parse in `_on_finished`.
 _QUERY = "utilization.gpu,memory.used,memory.total,temperature.gpu"
 _INTERVAL_MS = 2000
 
 
 class GpuStatusBar(QWidget):
-    """A one-line footer polling ``nvidia-smi`` every couple of seconds.
-
-    Each tick spawns a short-lived ``nvidia-smi`` query; the UI thread never
-    blocks on it. If nvidia-smi can't be found or errors, the bar stops polling
-    and removes itself so a CPU-only setup isn't bothered by a dead widget."""
+    """A one-line footer polling ``nvidia-smi`` every 2 s; stops and hides on error."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -46,8 +40,7 @@ class GpuStatusBar(QWidget):
         self._poll()
 
     def _poll(self) -> None:
-        # Skip if the previous probe is still in flight (a stalled nvidia-smi
-        # shouldn't queue up overlapping calls).
+        # A stalled probe must not stack overlapping calls.
         if self._proc.state() != QProcess.NotRunning:
             return
         self._proc.start(

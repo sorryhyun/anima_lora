@@ -1,9 +1,7 @@
 """Structured training-progress sink.
 
-Writes a JSONL event stream next to the checkpoint so any consumer (the GUI
-progress bar, the daemon, an MCP client) can follow a run by tailing one
-file. Append-only,
-line-buffered, main-process only. One event per line:
+A JSONL event stream next to the checkpoint that the GUI, the daemon and MCP
+clients tail. Append-only, line-buffered, main-process only. One event per line:
 
     {"ev": "run_start", "ts": 0.0, "run": ..., "method": ..., "preset": ...,
      "total_steps": ..., "total_epochs": ..., "pid": ...}
@@ -12,18 +10,14 @@ line-buffered, main-process only. One event per line:
     {"ev": "ckpt", "ts": ..., "global_step": ..., "path": ...}
     {"ev": "log",  "ts": ..., "level": "WARNING|ERROR|...", "logger": ...,
      "msg": ...}
-    {"ev": "run_end", "ts": ..., "status": "ok|error|stopped", "final_step": ...,
-     "error": ...}
+    {"ev": "run_end", "ts": ..., "status": "ok|error|stopped|paused",
+     "final_step": ..., "error": ...}
 
-``log`` events mirror WARNING+ records from the root logger (see
-:meth:`ProgressSink.attach_log_mirror`), so the run's warnings/errors are in
-this one structured file.
-
-A reader tails the file: missing file = not started; last line ``run_end`` =
-done. Every write is wrapped so a logging failure can never crash training.
-:func:`read_status` is the read side — it digests a whole stream into one
-status dict (step / rate / ETA / last ckpt / terminal status); ``make
-run-status`` (``scripts/run_status.py``) is its CLI.
+``log`` events mirror WARNING+ root-logger records
+(:meth:`ProgressSink.attach_log_mirror`). Missing file = not started; last line
+``run_end`` = done. Every write is wrapped so a logging failure cannot crash
+training. :func:`read_status` is the read side; ``make run-status``
+(``scripts/run_status.py``) is its CLI.
 """
 
 from __future__ import annotations
@@ -51,12 +45,7 @@ def _jsonable(value: Any) -> Any:
 
 
 def _flatten_logs(logs: dict) -> dict:
-    """Keep only JSON-friendly scalar entries from a ``logs`` dict.
-
-    The training ``logs`` dict carries floats, ints, bools and (occasionally)
-    0-dim tensors. Drop anything that isn't scalar-shaped so the event line
-    stays small and parseable.
-    """
+    """Keep only scalar entries (0-dim tensors unwrapped) from a ``logs`` dict."""
     out: dict[str, Any] = {}
     for key, val in logs.items():
         if isinstance(val, (int, float, bool, str)):
@@ -72,11 +61,7 @@ def _flatten_logs(logs: dict) -> dict:
 
 
 def _find_cmmd(logs: dict) -> Optional[float]:
-    """Pull the CMMD value out of a validation ``logs`` dict.
-
-    CMMD validation logs a ``..._cmmd`` key (see
-    ``library/training/validation.py``); return its scalar value if present.
-    """
+    """The ``..._cmmd`` value from a validation ``logs`` dict, if present."""
     for key, val in logs.items():
         if key.endswith("_cmmd"):
             item = getattr(val, "item", None)
@@ -90,9 +75,8 @@ def _find_cmmd(logs: dict) -> Optional[float]:
 class _SinkLogHandler(logging.Handler):
     """Mirrors log records into a :class:`ProgressSink` as ``log`` events.
 
-    Capped so a record emitted every step can't bloat the stream — after
-    ``max_events`` a final notice is written and the rest are dropped (they
-    still reach the normal console/stdout handlers).
+    Capped at ``max_events`` so a per-step warning can't bloat the stream; the
+    rest still reach the console handlers.
     """
 
     def __init__(self, sink: "ProgressSink", *, max_events: int = 500) -> None:
@@ -143,12 +127,10 @@ class ProgressSink:
     def resolve_path(args) -> Optional[str]:
         """Resolve the JSONL path from args, or ``None`` to disable.
 
-        ``--progress_jsonl`` unset → derive
-        ``<output_dir>/../logs/<output_name>.progress.jsonl`` (default on) — a
-        sibling ``logs/`` dir so the checkpoint dir holds only model artifacts.
-        Explicit empty / ``none`` / ``off`` → disabled. Any other value → that
-        literal path. (The daemon always passes an explicit per-job path, so this
-        derived default only governs inline CLI runs.)
+        ``--progress_jsonl`` unset → ``<output_dir>/../logs/<output_name>.progress.jsonl``
+        (keeps the checkpoint dir to model artifacts); empty / ``none`` /
+        ``off`` → disabled; else that path. The daemon always passes an
+        explicit per-job path.
         """
         explicit = getattr(args, "progress_jsonl", None)
         if explicit is not None:
@@ -160,8 +142,7 @@ class ProgressSink:
         if not output_dir:
             return None
         output_name = getattr(args, "output_name", None) or "run"
-        # Sibling logs/ dir next to the checkpoint dir (parent of output_dir);
-        # fall back to a logs/ subdir if output_dir has no parent component.
+        # output_dir with no parent component: logs/ goes inside it
         parent = os.path.dirname(os.path.normpath(output_dir))
         logs_dir = os.path.join(parent or output_dir, "logs")
         return os.path.join(logs_dir, f"{output_name}.progress.jsonl")
@@ -262,11 +243,7 @@ class ProgressSink:
     def attach_log_mirror(self, *, max_events: int = 500) -> None:
         """Mirror WARNING+ records from the root logger as ``log`` events.
 
-        Call after :meth:`run_start` (no-op while the stream is unopened).
-        The handler sits on the root logger so anything that propagates —
-        ``library.*``, ``networks.*``, third-party warnings routed through
-        ``logging`` — lands in the stream. Detached automatically on
-        :meth:`close`.
+        Call after :meth:`run_start` (no-op before). Detached on :meth:`close`.
         """
         if self._fh is None or self._closed or self._log_handler is not None:
             return
@@ -315,10 +292,7 @@ def _pid_alive(pid: Optional[int]) -> Optional[bool]:
 def read_status(path: str, *, rate_window: int = 20) -> dict:
     """Digest a ``progress.jsonl`` stream into one run-status dict.
 
-    Answers "what step is this run at, and is it still alive?" with a
-    whole-file read of an append-only stream (a few thousand short lines even
-    for a long run). Truncated / partially-written lines are skipped, so it is safe to
-    call against a live run mid-write.
+    Reads the whole file; torn lines are skipped, so it is safe on a live run.
 
     Keys: ``run``/``method``/``preset``/``pid``/``log_dir`` (from ``run_start``),
     ``global_step``/``total_steps``/``pct``, ``elapsed``/``rate``/``eta``
@@ -327,9 +301,9 @@ def read_status(path: str, *, rate_window: int = 20) -> dict:
     ``val`` (last ``val`` event), ``ckpt`` (last ``ckpt`` event), ``warnings``
     (``log`` event count) and ``status``:
 
-    ``running`` · ``ok`` · ``error`` · ``stopped`` (the ``run_end`` statuses) ·
-    ``dead`` (no ``run_end`` and the pid is gone — it was killed / OOMed) ·
-    ``unknown`` (no ``run_end``, liveness unknowable).
+    ``running`` · the ``run_end`` status (``ok`` / ``error`` / ``stopped`` /
+    ``paused``) · ``dead`` (no ``run_end`` and the pid is gone: killed / OOMed)
+    · ``unknown`` (no ``run_end``, liveness unknowable).
     """
     events: list[dict] = []
     with open(path, "r", encoding="utf-8") as fh:
@@ -365,8 +339,7 @@ def read_status(path: str, *, rate_window: int = 20) -> dict:
     total_steps = start.get("total_steps")
     elapsed = events[-1].get("ts")
 
-    # Rate over a trailing window of step events — the run-average would be
-    # skewed by startup (model load, compile) on an otherwise steady run.
+    # Trailing window: the run average is skewed by startup (load, compile).
     rate = None
     window = steps[-rate_window:]
     if len(window) >= 2:
@@ -427,17 +400,12 @@ def run_scope(
 ):
     """Emit the matching ``run_end`` when the wrapped training block exits.
 
-    ``run_start`` must already have fired (the sink is constructed earlier so it
-    can be handed to the checkpoint saver). On block exit this maps the outcome
-    to a status: normal return → ``ok``; ``KeyboardInterrupt`` → ``stopped``;
-    :class:`~library.runtime.pause.TrainingPaused` → ``paused`` (with the
-    ``state_dir`` to resume from); any other exception → ``error`` (re-raised
-    either way). ``final_step`` is
-    read lazily at exit so the event records where training actually stopped;
-    ``extra_fields`` likewise — its dict (e.g. the liveness summary) is merged
-    into the ``run_end`` event, and a failure inside it is swallowed so it can
-    neither crash a clean exit nor mask the real exception.
-    A ``None`` sink makes this a transparent pass-through.
+    ``run_start`` must already have fired. Normal return → ``ok``;
+    ``KeyboardInterrupt`` → ``stopped``; :class:`~library.runtime.pause.TrainingPaused`
+    → ``paused`` (with ``state_dir``); any other exception → ``error``;
+    exceptions are re-raised. ``final_step`` and ``extra_fields`` are read at
+    exit; a failure in ``extra_fields`` is swallowed so it cannot mask the
+    real exception. A ``None`` sink is a pass-through.
     """
 
     def _extra() -> dict:

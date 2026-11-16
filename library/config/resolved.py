@@ -1,15 +1,8 @@
 """CLI/TOML/default resolution helpers shared by the bespoke distill schemas.
 
 The bespoke distillation loops (``scripts/distill_turbo`` / ``project/finished/mod_guidance``)
-read sectioned TOML files raw (not through
-``load_method_preset``) and resolve every knob with a hand-rolled CLI-vs-TOML-vs-
-default precedence rule, then freeze the result into a dataclass. This module
-is that shared pattern.
-
-- :func:`pick` — CLI override (non-sentinel) wins, else dotted TOML key, else default.
-- :func:`load_toml` — read a raw TOML file (sectioned bespoke configs).
-- :func:`dataclass_snapshot_toml` — dump a resolved frozen config as a provenance TOML.
-- :func:`dataclass_tb_text` — render a config summary for ``writer.add_text``.
+read sectioned TOML files raw (not through ``load_method_preset``), resolve each
+knob CLI → TOML → default, and freeze the result into a dataclass.
 """
 
 from __future__ import annotations
@@ -78,11 +71,9 @@ def dataclass_snapshot_toml(
 ) -> str:
     """Render a resolved frozen config as a provenance TOML snapshot.
 
-    Dumps *every* resolved field (CLI overrides folded in) so a run dir becomes a
-    self-contained record of "this run + the config that produced it" — the
-    bespoke-loop analogue of the ``<output_name>.snapshot.toml`` ``train.py``
-    writes for the LoRA family. ``None`` fields are recorded as ``# k = (unset)``
-    comments (tomlkit has no null) rather than dropped.
+    Dumps every resolved field (CLI overrides folded in), the bespoke-loop
+    analogue of ``train.py``'s ``<output_name>.snapshot.toml``. ``None`` fields
+    are written as ``# k = (unset)`` comments (tomlkit has no null).
     """
     import tomlkit
 
@@ -109,7 +100,6 @@ def dataclass_tb_text(
 
     ``include`` selects an explicit ordered subset (turbo's hand-picked summary);
     otherwise every field is emitted in declaration order, minus ``exclude``.
-    Output matches the ``"  \\n".join(f"{k}: {v}" ...)`` the loops produce inline.
     """
     d = dataclasses.asdict(config)
     if include is not None:

@@ -1,16 +1,15 @@
 """Vision-encoder registry (IP-Adapter, the Anima Tagger, the PE feature cache).
 
-Two Meta Perception Encoder variants are registered:
+Meta Perception Encoder variants:
 
 * ``pe`` — PE-Core-L14-336. Global / CLIP-aligned features. Used by IP-Adapter
   and the Anima Tagger's primary encoder.
-* ``pe_spatial`` — PE-Spatial-B16-512 (``pe_spatial_l`` — PE-Spatial-L14-448, d=1024). Spatial-fine-tuned variant from the same
-  paper. Patch=16, native 32×32 grid. No CLIP projection / no LN-post / no
-  pool head — only the patch token sequence is meaningful. Used by the Anima
-  Tagger as the auxiliary encoder for spatial detail / long-tail tags.
+* ``pe_spatial`` — PE-Spatial-B16-512 (``pe_spatial_l`` — PE-Spatial-L14-448,
+  d=1024). Spatial-fine-tuned variant, patch=16, native 32×32 grid. No CLIP
+  projection / LN-post / pool head: only the patch token sequence is
+  meaningful. The Anima Tagger's auxiliary encoder.
 
-Both vendored at ``anime_tools/vision/pe.py`` (re-exported as
-``library.models.pe``) — no perception_models clone or xformers install.
+Vendored at ``anime_tools/vision/pe.py`` (re-exported as ``library.models.pe``).
 
 ``encode(pixel_values)`` returns ``(last_hidden_state[B, T, D],
 pooled[B, D_pool])``. ``T`` includes a CLS token at position 0 for both
@@ -33,8 +32,7 @@ from library.vision.buckets import BucketSpec, get_bucket_spec
 
 logger = logging.getLogger(__name__)
 
-# Repo root for the ``_default_*_model_id`` helpers (vendored checkpoints under
-# ``models/``); two ``parents`` jumps from library/vision/ regardless of cwd.
+# Repo root for the ``_default_*_model_id`` helpers (checkpoints under ``models/``).
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -49,8 +47,7 @@ class _EncoderOutput:
 
 
 def _default_pe_model_id() -> str:
-    # From the catalog, not spelled here: a path a loader owns separately is a
-    # Download button that writes where the loader will not look.
+    # From the catalog, so the GUI's Download button writes where this loads from.
     from library.downloads import default_pe_core_path
 
     return str(default_pe_core_path())
@@ -123,15 +120,9 @@ def _load_pe_variant(
 ) -> _PEEncoder:
     """Build a vendored PE vision tower and load Meta's official ``.pt`` weights.
 
-    ``config_name`` selects the ``PE_CONFIGS`` entry to instantiate;
-    ``repo_id`` / ``filename`` parameterize the HF auto-download fallback.
-    Used by both PE-Core and PE-Spatial registry entries — the only thing
-    that differs between them is the build name and the download tuple.
-
-    ``dtype`` is the compute dtype the model is cast to. Meta ships the ``.pt``
-    in fp32; the default bf16 cast matches the live training/CMMD path, but
-    feature caching passes ``float32`` for a full-precision cache (the cast is
-    done once here, straight from the fp32 checkpoint — no bf16 round-trip).
+    ``config_name`` selects the ``PE_CONFIGS`` entry; ``repo_id`` / ``filename``
+    parameterize the HF auto-download fallback. ``dtype``: the model is cast
+    once, straight from Meta's fp32 ``.pt``.
     """
     from library.models.pe import build_pe_vision
 
@@ -254,7 +245,7 @@ _REGISTRY: dict[str, EncoderInfo] = {
         loader=_load_pe_spatial_encoder,
     ),
     # PE-Spatial-L14-448: the large spatial tower (d=1024, 24 layers), same
-    # 1024-patch grid as B16 — drop-in ``--aux_encoder pe_spatial_l``.
+    # 1024-patch grid as B16.
     "pe_spatial_l": EncoderInfo(
         name="pe_spatial_l",
         bucket_spec=get_bucket_spec("pe_spatial_l"),

@@ -5,22 +5,13 @@
 ``<mask_dir>/<rel>/{stem}_mask.png``, where ``mask_dir`` comes from the merged
 config chain (``configs/preprocess.toml``, default ``post_image_dataset/masks``).
 
-Every stage runs as an ``anime_tools`` **request object**
-(``anime_tools.masking.requests.{SamMaskRequest,MergeMasksRequest}``) through
-``_common.execute_stage``. Under a daemon job (``make daemon-run ARGS="tasks.py
-mask"``) one SAM3 load is shared by every rule pass and the package's
-``_progress`` heartbeat keeps a quiet model load from tripping the daemon's stall
-watchdog.
+Every stage runs as an ``anime_tools`` request object through
+``_common.execute_stage``; under a daemon job (``make daemon-run ARGS="tasks.py
+mask"``) one SAM3 load serves every rule pass.
 
-The rules come from ``configs/sam_mask.yaml``: a flat ``masks`` list
-(``ROLE:KIND:VALUE`` regions) or a ``rules:`` list routed by ``path_pattern``,
-plus the optional ``run_sam`` switch. A pre-0.6.4 ``prompts`` /
-``focus_prompts`` pair still reads (``library.config.sam_masks``). Every knob
-absent from the config falls back to the package's request default. The GUI does
-not mask; that is the ``anime_tools`` panel's.
-
-Each rule becomes one SAM pass into its own temp dir; the merge step's
-pixel-min union composes them (ignore regions unioned).
+Rules come from ``configs/sam_mask.yaml`` (schema documented there); a knob
+absent from it falls back to the request default. Each rule is one SAM pass
+into its own temp dir, and the merge step unions them (pixel-min).
 """
 
 from __future__ import annotations
@@ -44,9 +35,7 @@ SAM_CONFIG = ROOT / "configs" / "sam_mask.yaml"
 def _mask_output_dir() -> Path:
     """Unscoped mask root — ``mask_dir`` from the merged config chain.
 
-    Owned by ``configs/preprocess.toml`` (preserved across ``make update``);
-    a preset/method/GUI snapshot may override it. Kept a function rather than
-    a module constant so a ``CONFIG_FILE`` snapshot is read at call time.
+    A function so a ``CONFIG_FILE`` snapshot is read at call time.
     """
     return ROOT / _path("mask_dir", DEFAULT_MASK_DIR)
 
@@ -54,11 +43,9 @@ def _mask_output_dir() -> Path:
 def _resized_image_dir() -> Path:
     """Scoped resized dir to mask, honoring GUI ``path_scope``.
 
-    Reads ``resized_image_dir`` from the merged config chain (the GUI passes a
-    config snapshot via ``CONFIG_FILE`` whose ``resized_image_dir`` is already
-    scoped to ``post_image_dataset/resized/<path_scope>``). Scoping the input
-    is what stops a scoped run from re-masking every other folder. Without a
-    snapshot (direct ``make mask``) this falls back to the unscoped default.
+    The GUI's ``CONFIG_FILE`` snapshot already scopes ``resized_image_dir`` to
+    ``post_image_dataset/resized/<path_scope>``; a direct ``make mask`` gets
+    the unscoped default.
     """
     return ROOT / _path("resized_image_dir", "post_image_dataset/resized")
 
@@ -66,15 +53,10 @@ def _resized_image_dir() -> Path:
 def _scoped_mask_output_dir(resized_dir: Path) -> Path:
     """Re-apply the ``path_scope`` offset onto the mask output root.
 
-    SAM emits masks with rel paths taken **relative to the scoped resized
-    dir** (``resized/<scope>``), so a scoped run drops the ``<scope>`` prefix.
-    But training resolves masks relative to the **unscoped** cache root
-    (``lora/<scope>/<rel>`` → ``masks/<scope>/<rel>``, see
-    ``CachedDataset._resolve_mask_path``), so masking must land them under
-    ``masks/<scope>`` — not flat in ``masks/`` — or the trainer won't find
-    them. Mirror whatever scope ``resized_dir`` carries over the unscoped
-    ``post_image_dataset/resized`` default. Unscoped (direct ``make mask``)
-    returns the bare output dir.
+    SAM writes rel paths relative to the scoped dir (``resized/<scope>``), but
+    training resolves masks under the unscoped root (``masks/<scope>/<rel>``,
+    ``CachedDataset._resolve_mask_path``), so a scoped run must write under
+    ``masks/<scope>`` or the trainer will not find them.
     """
     mask_root = _mask_output_dir()
     try:
@@ -157,11 +139,8 @@ def _sam_rules(cfg: dict) -> list[dict]:
 def _sam_request(image_dir: Path, out_dir: Path, rule: dict, path_pattern: str | None):
     """The ``SamMaskRequest`` one yaml rule runs as.
 
-    The package takes one glob per run, so a rule that names a
-    ``path_pattern`` runs on that pattern alone (the global scope applies to
-    every rule without one). The SAM3 checkpoint is the request default.
-    Validation fires here, before the SAM3 load: a rule naming no region (or
-    a malformed one) raises.
+    A rule's own ``path_pattern`` replaces the global scope (the package takes
+    one glob per run). Validation fires here, before the SAM3 load.
     """
     from anime_tools.masking.requests import MaskPrompt, SamMaskRequest
 
@@ -225,8 +204,6 @@ def cmd_mask(extra):
         if not requests:
             print("SAM masking is disabled — nothing to do.")
             return
-        # One SAM pass per rule, each into its own dir; the merge below unions
-        # them (pixel-min).
         for req in requests:
             _execute("masks_sam", req)
         mask_output_dir.mkdir(parents=True, exist_ok=True)

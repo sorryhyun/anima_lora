@@ -12,8 +12,7 @@ ledger as extra ``--skip`` (``ResizeRequest.excluded_dir``), which is the one
 place an excluded image could come back, and every later stage walks the
 resized tree — so the image never trains. :func:`restore_rels` reverses it.
 
-A ``post_image_dataset/moved/`` tree is the pre-0.6 mechanism and is inert; it
-can be deleted or restored by hand.
+A ``post_image_dataset/moved/`` tree (pre-0.6) is inert.
 """
 
 from __future__ import annotations
@@ -35,11 +34,9 @@ RESIZED_DIR = "post_image_dataset/resized"
 DEFAULT_MASK_DIR = "post_image_dataset/masks"
 OCR_DIR = "post_image_dataset/ocr"
 EXCLUDED_DIR = "post_image_dataset/_excluded"
-"""The trainer's exclusion tree and ledger. ``post_image_dataset/`` is the
-trainer's workspace (the package's own default is ``workspace/_excluded``,
-which the anime_tools GUI uses; Export mirrors that tree's files under this
-path too, so a curation done there also ends up beside — never inside — the
-resized tree the trainer reads)."""
+"""The trainer's exclusion tree and ledger, beside the resized tree. The
+anime_tools GUI uses ``workspace/_excluded``; its Export mirrors those files
+here too."""
 
 PACKAGE_WORKSPACE_EXCLUDED_DIR = "workspace/_excluded"
 """Where the anime_tools GUI keeps its ledger. Its rels are unioned into the

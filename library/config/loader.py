@@ -56,9 +56,7 @@ def add_config_arguments(parser: argparse.ArgumentParser):
 class BaseSubsetParams:
     image_dir: Optional[str] = None
     num_repeats: int = 1
-    # Kohya-style folder repeats: when true, a `{n}_...` directory component
-    # under image_dir overrides num_repeats with n for the images inside it
-    # (n=0 drops them). Training pool only — validation stays at 1 repeat.
+    # `{n}_...` folders override num_repeats (subsets.folder_repeat_count)
     repeat_by_folder_name: bool = False
     sample_ratio: float = 1.0
     caption_separator: str = (",",)
@@ -82,9 +80,7 @@ class BaseSubsetParams:
     validation_split_num: int = 0
     resize_interpolation: Optional[str] = None
     recursive: bool = False
-    # fnmatch glob on each image's path relative to image_dir; `*` (or empty)
-    # is no-op. Propagated from a top-level `path_pattern` argparse arg
-    # through the BlueprintGenerator fallback chain.
+    # fnmatch glob on each image's path relative to image_dir; `*` = no filter
     path_pattern: str = "*"
 
 
@@ -97,19 +93,9 @@ class DreamBoothSubsetParams(BaseSubsetParams):
     alpha_mask: bool = False
     mask_dir: Optional[str] = None
     cache_dir: Optional[str] = None
-    # Optional parallel cache holding the *condition* latent (stem-matched to
-    # this subset's images). When set, the loader pairs each target latent with
-    # the cond latent from here — used by cond≠target tasks like colorization.
+    # Cache redirects for cond≠target tasks; semantics on DreamBoothSubset.
     cond_cache_dir: Optional[str] = None
-    # Optional redirect for *text-encoder* caches only (latents/PE still come
-    # from cache_dir). When set, the subset's TE caches are read from here
-    # instead of cache_dir — lets a task swap in re-encoded captions (e.g.
-    # color-only captions for colorization) without re-caching the latents.
     text_cache_dir: Optional[str] = None
-    # Optional redirect for the *target VAE latent* cache only (TE/PE still come
-    # from text_cache_dir/cache_dir). When set, target latents are read from
-    # here instead of cache_dir — lets a task swap in re-encoded targets (e.g.
-    # white-balanced colorize targets) without forking the shared TE/PE caches.
     latent_cache_dir: Optional[str] = None
 
 
@@ -389,11 +375,8 @@ class BlueprintGenerator:
         return default_value
 
 
-# Below this raw image count we auto-disable validation_split_num /
-# validation_split: carving off any held-out slice from a small pool
-# materially shrinks the training set (e.g. base.toml's default
-# validation_split_num=16 against 30 images leaves only 14 for training)
-# and the resulting CMMD estimator is too noisy to be useful.
+# Below this raw image count validation is auto-disabled: a held-out slice
+# shrinks a small training set materially and its CMMD estimate is too noisy.
 _MIN_TRAIN_IMAGES_FOR_VALIDATION = 100
 
 
@@ -425,15 +408,13 @@ def disable_masks_in_blueprint(
     """``masked_loss = false``: make every subset maskless *before* the
     datasets are built, and return the mask dirs that were set aside.
 
-    This has to happen at the blueprint, not on the built subsets: the
-    dataset constructor bakes ``image_info.mask_path`` from ``subset.mask_dir``
-    and ``make_buckets`` preloads every mask PNG into
-    ``image_info.preloaded_alpha_mask``, which ``__getitem__`` then uses
-    whatever the subset flags say, so stripping the built subsets still
-    trains masked from a mask tree on disk. ``mask_dir = ""`` (not ``None``)
-    also switches off the subset constructor's legacy ``masks/{merged,sam}``
+    It has to happen at the blueprint: the dataset constructor bakes
+    ``image_info.mask_path`` and ``make_buckets`` preloads every mask PNG,
+    which ``__getitem__`` uses whatever the subset flags say, so stripping the
+    built subsets still trains masked from a mask tree on disk.
+    ``mask_dir = ""`` (not ``None``) also switches off the default mask-dir
     auto-resolution, and ``alpha_mask = False`` keeps a cache-borne alpha
-    channel out of the batch (``_load_sample``).
+    channel out of the batch.
     """
     ignored: set[str] = set()
     for dataset_blueprint in dataset_group_blueprint.datasets:
@@ -511,10 +492,8 @@ def generate_dataset_group_by_blueprint(
             **asdict(dataset_blueprint.params),
             is_training_dataset=False,
         )
-        # When validation_split_num >= subset image count, split_train_val
-        # disables the val slice for that subset (see library/datasets/subsets.py).
-        # If every subset ended up empty, the val dataset has no images — drop
-        # it so make_buckets / CMMD don't run against a zero-image group.
+        # split_train_val can empty every subset's val slice; drop the group
+        # so make_buckets / CMMD never run on zero images.
         if getattr(dataset, "num_train_images", 0) == 0:
             logging.warning(
                 "Validation dataset is empty after applying validation_split_num "

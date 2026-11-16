@@ -1,16 +1,9 @@
-"""Build a copy-pasteable diagnostic bundle for bug reports.
+"""Copy-pasteable diagnostic bundle for bug reports (Settings → "Copy debug report").
 
-Qt-free on purpose (only stdlib + ``anima_daemon.config`` paths) so it stays
-unit-testable and can't drag torch into the GUI. The Settings dialog's "Copy
-debug report" button calls :func:`build_debug_report`; users paste the result
-into an issue / chat.
-
-The bundle is tuned for the one failure that's invisible from the GUI: a job
-that sits ``queued`` forever because the daemon worker wedged or died. That
-state shows only as a spinner with no error in the UI — but the cause is always
-on disk (``daemon.log`` holds a worker traceback; ``job.json`` holds the stuck
-state). So we surface, in order of diagnostic value: the daemon pidfiles, the
-tail of ``daemon.log``, and the most recent jobs' records + stdout tails.
+Qt-free and torch-free. Tuned for the failure the GUI cannot show: a job stuck
+``queued`` because the daemon worker wedged or died, whose cause is on disk. So it
+collects the daemon pidfiles, today's ``daemon.log`` and the newest jobs' records +
+stdout tails.
 """
 
 from __future__ import annotations
@@ -48,10 +41,8 @@ def _tail_lines(path: Path, n: int) -> str:
 def _today_log_lines(path: Path, n: int, today: str) -> str:
     """Today's ``daemon.log`` records (``YYYY-MM-DD`` prefix == ``today``).
 
-    The log accumulates across many daemon restarts, so a raw tail buries the
-    current session under weeks of history. We keep only records stamped today,
-    plus untimestamped continuation lines (e.g. traceback bodies) that follow a
-    today record so a worker crash stays intact.
+    The log spans many daemon restarts; untimestamped continuation lines
+    (traceback bodies) that follow a today record are kept with it.
     """
     tail = _tail_lines(path, n)
     if not tail:

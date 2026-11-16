@@ -16,17 +16,13 @@ via ``getattr``; this dataclass builds that namespace::
     args.device = "cuda"
     latent = generate(args, get_generation_settings(args))
 
-``to_args()`` feeds ``to_argv()`` through ``library.inference.args.build_default_args``
-(the parser ``inference.parse_args`` itself delegates to) so the **parser
-stays the single source of truth for every default** — this dataclass only
-carries the knobs an embedder commonly sets, and the long tail
-(spectrum / ip-adapter / … sub-knobs) rides through ``extra_argv``.
+``to_args()`` runs ``to_argv()`` through ``library.inference.args.build_default_args``,
+so the parser owns every default; this dataclass carries the common knobs and
+the long tail rides through ``extra_argv``.
 
-The request is frozen, and ``generate()`` doesn't write back to the namespace
-``to_args()`` returns, so one ``GenerationRequest`` is safe to reuse across
-calls (build a fresh namespace per call). When ``seed`` is unset, ``generate()``
-resolves a fresh random seed per call without storing it — call
-``resolve_seed(args)`` yourself if you need the concrete seed for saving.
+One request is safe to reuse (build a fresh namespace per call). With ``seed``
+unset, ``generate()`` draws a random seed per call without storing it; call
+``resolve_seed(args)`` yourself if you need it.
 """
 
 from __future__ import annotations
@@ -35,9 +31,8 @@ import argparse
 from dataclasses import dataclass, field
 from typing import Callable, Optional, Sequence, Tuple, Union
 
-# the parser requires --text_encoder and --save_path; inject placeholders
-# when unset so latent-only / non-saving requests still build a valid
-# namespace (a real generation must set them)
+# The parser requires --text_encoder and --save_path; placeholders let
+# latent-only / non-saving requests build a namespace.
 _PLACEHOLDER_TEXT_ENCODER = "__unset_text_encoder__"
 _PLACEHOLDER_SAVE_PATH = "__unset_save_path__"
 
@@ -46,10 +41,9 @@ _PLACEHOLDER_SAVE_PATH = "__unset_save_path__"
 class GenerationRequest:
     """A single text-to-image generation request.
 
-    Fields with concrete defaults mirror ``inference.parse_args`` and are always
-    emitted; ``None``-valued fields are omitted from ``to_argv()`` so the parser's
-    own default wins (no default duplicated in two places — the
-    ``test_generation_request`` drift guard pins the ones that are).
+    Fields with concrete defaults mirror ``inference.parse_args`` (pinned by
+    ``test_generation_request``); ``None`` fields are omitted so the parser's
+    default wins.
     """
 
     prompt: Optional[str] = None
@@ -90,20 +84,13 @@ class GenerationRequest:
     output_type: str = "images"
     no_metadata: bool = False
 
-    # verbatim CLI tokens for the long tail this dataclass doesn't model
-    # (e.g. ["--spectrum", "--smc_cfg"]); overrides the same flag above
+    # verbatim CLI tokens (e.g. ["--spectrum"]); override the same flag above
     extra_argv: Sequence[str] = field(default_factory=tuple)
 
     def to_argv(self) -> list[str]:
-        """Render this request as a CLI token list for ``inference.parse_args``.
-
-        Always-emitted scalar fields carry parser-matching defaults; ``None``
-        fields are skipped (parser default wins); store_true flags emit only when
-        ``True``. ``extra_argv`` is appended last so it can override anything.
-        """
+        """Render as CLI tokens; ``extra_argv`` goes last so it overrides."""
         argv: list[str] = []
 
-        # Required by the parser — placeholder when unset so parse_args succeeds.
         argv += ["--text_encoder", self.text_encoder or _PLACEHOLDER_TEXT_ENCODER]
         argv += ["--save_path", self.save_path or _PLACEHOLDER_SAVE_PATH]
 
@@ -172,12 +159,9 @@ class GenerationRequest:
     ) -> argparse.Namespace:
         """Build a fully-defaulted ``argparse.Namespace`` for ``generate()``.
 
-        Routes ``to_argv()`` through ``library.inference.args.build_default_args``
-        (lazy-imported) — the same parser ``inference.parse_args`` delegates
-        to. Pass an explicit ``parse_args``
-        to inject a different parser. The parser fills
-        every knob this dataclass doesn't model, and validates choices/requireds —
-        so a request with no ``prompt`` raises here, the same as the CLI.
+        Uses ``build_default_args`` unless ``parse_args`` is given. The parser
+        validates choices and requireds, so a request with no ``prompt`` raises
+        here, as on the CLI.
         """
         if parse_args is None:
             from library.inference.args import build_default_args

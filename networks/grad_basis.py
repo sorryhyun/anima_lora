@@ -23,8 +23,7 @@ A basis is **depth-baked**: module names carry the block index, so a 28-block
 basis must not seed a 40-block DiT (see ``docs/anima/methods/anima-2.9b.md``).
 ``load_basis`` refuses the mismatch on the block count read back from the keys.
 
-Measurement and gates: ``bench/grad_init/README.md``,
-``_archive/proposals/grad_basis_init.md`` (closed: E1 render-neutral).
+Measurements: ``bench/grad_init/README.md``.
 """
 
 from __future__ import annotations
@@ -111,10 +110,9 @@ def dit_num_blocks(dit: torch.nn.Module) -> int:
 class GradientSketch:
     """One ``(Ω, S)`` pair per target Linear; forward/backward hooks feed it.
 
-    ``Ω`` is drawn from a CPU generator seeded with ``seed``, so two sketches
-    built with the same seed are additive (their ``S`` live in the same sketch
-    space) — that is what lets ``build_universal_basis.py`` pool per-artist
-    sketches, and what makes a per-run sketch comparable to a shipped one.
+    ``Ω`` is drawn from a CPU generator seeded with ``seed``, so sketches built
+    with the same seed share one sketch space and are additive
+    (``build_universal_basis.py`` pools per-artist sketches this way).
     """
 
     def __init__(
@@ -199,10 +197,9 @@ def top_right_basis(S: torch.Tensor, r: int) -> torch.Tensor:
 def stratified_logit_normal(n: int, gen: torch.Generator) -> torch.Tensor:
     """``n`` σ values covering the logit-normal(0,1) marginal by quantile strata.
 
-    The trainer's default density (``timestep_sampling="sigmoid"``, scale 1,
-    bias 0) drawn stratified rather than i.i.d., so a 32-image artist covers the
-    σ marginal evenly instead of by luck — per-sample gradients are heavy-tailed
-    in σ on this model (``bench/grad_init/README.md`` §gradient noise scale).
+    The trainer's default density (``timestep_sampling="sigmoid"``), stratified
+    so a small dataset covers σ evenly: per-sample gradients are heavy-tailed in
+    σ (``bench/grad_init/README.md`` §gradient noise scale).
     """
     u = (torch.randperm(n, generator=gen).float() + torch.rand(n, generator=gen)) / n
     u = u.clamp(1e-4, 1 - 1e-4)
@@ -236,10 +233,8 @@ def sketch_dataset(
     artifacts training reads, so the sketch sees the run's own data with no
     VAE/TE load. Returns ``({lora_name: S (q, in) cpu fp32}, metadata)``.
 
-    The caller owns the DiT's placement and grad-checkpointing state; this only
-    runs forwards/backwards through it. ``dit`` must be frozen
-    (``requires_grad_(False)``) — δ is taken from activation hooks, never from
-    parameter grads, so no optimizer state is touched either way.
+    The caller owns the DiT's placement and grad-checkpointing state. ``dit``
+    must be frozen (``requires_grad_(False)``); δ comes from activation hooks.
     """
     from library.io.cache import load_cached_latents, load_cached_text_features
 
@@ -441,9 +436,8 @@ def init_down_from_basis(
     """Copy ``V_rᵀ / sqrt(3)`` into ``weight`` (r, in); → columns actually seeded.
 
     ``basis`` is ``(in, r_store)``. When ``r_store < r`` the leading
-    ``r_store`` rows of ``weight`` are seeded and the rest keep whatever init
-    the caller already wrote (Kaiming), so the seeded directions are never
-    diluted by zeros. The ``1/sqrt(3)`` row-norm match is the same as
+    ``r_store`` rows are seeded and the rest keep the caller's Kaiming init.
+    The ``1/sqrt(3)`` row-norm match is the same as
     ``LoRAModule._init_down_weight_svd``.
     """
     r, in_features = weight.shape

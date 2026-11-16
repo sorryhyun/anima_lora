@@ -79,11 +79,10 @@ _YARNSIG_DEFAULT = "1,4,0.35,2"  # train.py's --sigma_lowres_yarnsig const
 
 
 def _resolve_config(argv: list[str]) -> Path:
-    """Pre-scan argv for ``--config <file>`` (needed before argparse, since the
-    parser's defaults are seeded from the config). Returns the resolved path,
-    falling back to ``configs/soup/soup.toml``. The value is resolved relative
-    to the repo root (so ``configs/soup/custom/soup.toml`` works) then as an
-    absolute path; a bare stem falls back to ``configs/soup/custom/<stem>.toml``.
+    """Pre-scan argv for ``--config <file>``: the parser's defaults are seeded from
+    the config, so it is read before argparse. Default ``configs/soup/soup.toml``;
+    otherwise tried under the repo root, as given, then under
+    ``configs/gui-methods/custom/`` (``.toml`` optional).
     """
     val = None
     for i, a in enumerate(argv):
@@ -119,10 +118,8 @@ def _method_for_config(config: Path) -> tuple[str, str | None]:
 
 
 def _soup_toml(path: Path | None = None) -> dict:
-    """The whole soup config toml as a dict (``{}`` if missing). Both the
-    ``[soup]`` pipeline-knob table and the top-level flat scalars (incl. the
-    default ``path_pattern`` fine-tune glob) are seeded from here. ``path``
-    defaults to ``configs/soup/soup.toml`` — a custom ``--config`` overrides it."""
+    """The soup config toml as a dict (``{}`` if missing): the ``[soup]`` knob
+    table and the top-level scalars (incl. the default ``path_pattern``)."""
     import toml
 
     path = path or _DEFAULT_CONFIG
@@ -132,10 +129,8 @@ def _soup_toml(path: Path | None = None) -> dict:
 
 
 def _soup_defaults() -> dict:
-    """The ``[soup]`` table from configs/soup/soup.toml — pipeline knob defaults
-    (pool / dose / seeds / rank). Stripped from the train.py merge (registered as
-    a metadata section), so it lives here purely to seed this argparser. Missing
-    file / table → ``{}`` (argparse hard-coded fallbacks below still apply)."""
+    """The ``[soup]`` table of configs/soup/soup.toml (``{}`` if missing). train.py
+    strips it from its merge, so it only seeds this argparser."""
     return _soup_toml().get("soup", {})
 
 
@@ -229,10 +224,9 @@ def resolve_lrs(num: int, pool: str | None, interval: str | None) -> list[float]
     (LR is a scale knob, so log-spacing is the natural sweep). The two are
     mutually exclusive.
 
-    Hyperparameter-diverse ingredients are the model-soup recipe (Wortsman et
-    al.), but there the pool is protected by *greedy* selection on a held-out
-    metric. This soup is a uniform ΔW average with no such gate, so a bad LR draw
-    is averaged in rather than dropped — keep the spread narrow.
+    Model soups (Wortsman et al.) protect an LR-diverse pool with greedy
+    selection on a held-out metric; this uniform ΔW average has no such gate, so
+    a bad LR draw is averaged in: keep the spread narrow.
     """
     if pool and interval:
         raise SystemExit("--lr_pool and --lr_interval are mutually exclusive.")
@@ -334,13 +328,11 @@ def sigma_argv(cfg: dict, merged: dict | None = None) -> list[str]:
 
 
 def uncond_name(pool: str, ratio: float, epochs: int, sigma: dict | None = None) -> str:
-    """Deterministic uncond checkpoint name — same pool+dose → same artifact.
+    """Deterministic uncond checkpoint name: same pool + dose → same artifact.
 
-    ``sigma`` is the σ-demote routing the uncond run trains under (from
-    :func:`sigma_settings`). It changes what the uncond weights *become*, so a
-    non-empty one is folded in as an ``_sl<digest>`` tag: a sigma_lowres soup
-    then can't silently reuse an init trained without it, nor vice versa. Empty
-    / ``None`` (the default, sigma_lowres off) → the name is unchanged."""
+    A non-empty ``sigma`` (:func:`sigma_settings`) changes what the uncond weights
+    become, so it is folded in as an ``_sl<digest>`` tag; a sigma_lowres soup then
+    cannot reuse an init trained without it, nor vice versa."""
     digest = hashlib.sha1(pool.encode()).hexdigest()[:8]
     ratio_tag = f"{ratio:g}".replace(".", "p")
     name = f"anima_uncond_{digest}_r{ratio_tag}_e{epochs}"
@@ -577,8 +569,7 @@ def main() -> None:
             f"--num_soup must be >= 2 (a soup needs at least 2 ingredients); "
             f"got {args.num_soup}."
         )
-    # Seeds are derived from the count: UNCOND_SEED+1 .. UNCOND_SEED+num_soup
-    # (1001..1000+N), deterministic so re-runs reproduce the same ingredients.
+    # Deterministic seeds, so re-runs reproduce the same ingredients.
     seeds = [UNCOND_SEED + i for i in range(1, args.num_soup + 1)]
     lrs = resolve_lrs(args.num_soup, args.lr_pool, args.lr_interval)
     if lrs and any(a.split("=", 1)[0] == "--learning_rate" for a in ft_extra):
@@ -615,11 +606,10 @@ def main() -> None:
     if not args.no_uncond:
         print(f"[soup] uncond pool pattern {pool!r}")
 
-    # Phase 1 — uncond inter-train (skipped when the init already exists,
-    # bypassed when a checkpoint is pinned via --uncond_init, or dropped
-    # altogether with --no_uncond: the ingredients then share the deterministic
-    # weight_svd[+svd_slice] init from W0 — the same shared-subspace property
-    # the rank-r truncation relies on, minus the uncond ΔW).
+    # Phase 1: uncond inter-train, reused if it exists, or replaced by a pinned
+    # --uncond_init. Under --no_uncond the ingredients share the deterministic
+    # weight_svd[+svd_slice] init from W0, the shared subspace the rank-r
+    # truncation relies on.
     uncond_path: Path | None
     if args.no_uncond:
         uncond_path = None
@@ -672,8 +662,7 @@ def main() -> None:
                 args.dry_run,
             )
 
-    # Phase 2 — captioned fine-tunes from the shared init, one per seed (and,
-    # when --lr_pool/--lr_interval is set, one LR per ingredient).
+    # Phase 2: captioned fine-tunes from the shared init, one per seed (and LR).
     ingredients: list[Path] = []
     for i, seed in enumerate(seeds):
         iname = f"anima_soup_{name}_s{seed}"
@@ -705,7 +694,7 @@ def main() -> None:
             args.dry_run,
         )
 
-    # Phase 3 — ΔW soup, SVD-truncated back to the single-adapter rank.
+    # Phase 3: ΔW soup, SVD-truncated back to the single-adapter rank.
     rank = args.rank if args.rank is not None else int(merged.get("network_dim", 16))
     soup_path = ckpt_dir / f"anima_soup_{name}.safetensors"
     print(f"[soup] phase 3: rank-{rank} SVD soup of {len(ingredients)} -> {soup_path}")

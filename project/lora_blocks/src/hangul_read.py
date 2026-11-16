@@ -63,7 +63,6 @@ def grad_in(img, bxs) -> float:
 def render(arm: str, seed: int, page: str) -> Path | None:
     sfx = "" if seed == 0 else f"_s{seed}"
     hits = sorted((RES / f"{PRE}{arm}{sfx}" / page).glob("*.png"))
-    # hangul_eval.sh's one-job layout: every page and seed in the arm's folder.
     hits = hits or sorted((RES / f"{PRE}{arm}").glob(f"*_{page}.src_*_s{seed}.png"))
     return hits[0] if hits else None
 

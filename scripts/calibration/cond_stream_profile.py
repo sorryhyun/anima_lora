@@ -1,58 +1,33 @@
 #!/usr/bin/env python
-"""Does the LoRA channel-scaling calibration transfer to EasyControl's cond stream?
+"""EasyControl's cond-stream LoRA input profile against the main-stream channel scaling.
 
-Context
--------
-`channel_scaling_alpha > 0` makes the LoRA family absorb a SmoothQuant-style
-per-channel input rebalance into every `lora_down`, using the vendored
-`networks/calibration/channel_stats.safetensors` — per-channel mean|x| of the
-DiT's Linear inputs, collected on the MAIN (target) stream by
-`analyze_lora_input_channels.py`.
+`channel_scaling_alpha > 0` folds a SmoothQuant-style per-channel rebalance into every
+`lora_down`, using `networks/calibration/channel_stats.safetensors`: per-channel
+mean|x| of the DiT Linear inputs on the main (target) stream, from
+`analyze_lora_input_channels.py`. EasyControl's cond LoRA (`_LoRAProj`) targets the same
+Linears on the cond stream and reads its own `cond_channel_stats.safetensors`
+(`networks/methods/easycontrol.py`); this script measures that profile and regenerates
+the file.
 
-EasyControl's cond-LoRA (`_LoRAProj`) targets the *same* DiT Linears
-(self_attn qkv / output_proj, mlp layer1 / layer2) but on the COND stream, which
-reads its own `cond_channel_stats.safetensors` (`networks/methods/easycontrol.py`).
-This script compares the cond-stream input profile with the main-stream one and
-regenerates that file.
+A fresh (untrained) EasyControlNetwork runs in eval with `set_cond(clean_latent)`, and
+a pre-hook on every `_LoRAProj` input accumulates per-channel mean|x|. The cond stream
+is σ-invariant (cond_temb = t_embedder(zeros)) and ΔW = 0 does not change the inputs,
+so one forward per sample measures the base-DiT-on-cond regime the shipped calibration
+uses.
 
-What this does
---------------
-1. Loads the base DiT, attaches a fresh (untrained) EasyControlNetwork, and runs
-   it in eval with `set_cond(clean_latent)` so the patched two-stream block
-   forward fires the cond LoRA. Hooks every `_LoRAProj` input and accumulates
-   per-channel mean|x| — the exact tensor channel scaling would rebalance.
-   (The cond stream is deterministic in σ — cond_temb = t_embedder(zeros) — and
-   ΔW=0 at init doesn't change the *inputs*, so this is the base-DiT-on-cond
-   regime, the same regime the shipped calibration is computed in. One forward
-   per sample suffices.)
+Per cond Linear, against the shipped main-stream stats:
+  - cosine(cond_profile, main_profile)
+  - dom_raw: max/median of cond mean|x|; below ~3 scaling is a near no-op on it
+  - dom_self / dom_xfer: dominance after a cond-derived / the shipped main-derived scale
+  - xfer_eff = (dom_raw - dom_xfer) / (dom_raw - dom_self): the share of the achievable
+    flattening the shipped scale captures (~1.0 = as good as a bespoke calibration,
+    ≤0 = no help or worse)
 
-2. For each cond Linear matched against the shipped main-stream stats, reports:
-     - cosine(cond_profile, main_profile)   — do the channel shapes agree?
-     - dom_raw   = dominance of cond inputs (max/median of mean|x|)
-                   → if low (<~3) the cond stream isn't skewed, scaling is a
-                     near-noop on it regardless of anything else.
-     - dom_self  = dominance after applying a COND-derived scale (ideal floor)
-     - dom_xfer  = dominance after applying the SHIPPED main-derived scale
-                   (what reusing the vendored file actually achieves)
-     - xfer_eff  = (dom_raw - dom_xfer) / (dom_raw - dom_self)
-                   fraction of the achievable flattening that the shipped scale
-                   captures. ~1.0 = transfers as well as a bespoke calibration;
-                   ≤0 = the shipped scale doesn't help (or hurts) the cond stream.
-
-3. Dumps the collected cond profile to a safetensors (same keying + fused-qkv
-   mirroring as the shipped file).
-
-Usage
------
     python scripts/calibration/cond_stream_profile.py --per_artist \
         --dump_cond_stats networks/calibration/cond_channel_stats.safetensors
 
-The profile/decision rule prints to stdout; the safetensors is the only file written.
-
-Decision rule (printed at the end):
-    cond dom_raw low                         → don't bother scaling the cond stream
-    dom_raw high, xfer_eff high, cosine high  → reuse the shipped channel_stats
-    dom_raw high, xfer_eff low                → use the dumped cond_channel_stats
+The comparison and verdict print to stdout; ``--dump_cond_stats`` is the only file
+written (same keys and fused-qkv mirroring as the shipped file).
 """
 
 import argparse
@@ -73,10 +48,8 @@ from library.log import setup_logging
 from library.runtime.harness import build_anima
 from networks.methods import easycontrol
 
-# Reuse the base collector's selection + dump helpers — same stems, same
-# key/fused-mirror convention, so the cond dump is drop-in swappable with the
-# shipped main-stream file. (Latent/TE loading uses the shared library.io.cache
-# helpers directly.)
+# The main-stream collector's stem selection and key / fused-qkv convention, so the
+# cond dump is a drop-in for the shipped file.
 from scripts.calibration.analyze_lora_input_channels import (
     classify_module,
     dump_channel_stats_safetensors,
@@ -224,8 +197,6 @@ def main():
     logger.info(f"loading base DiT from {args.dit}")
     args.device = str(device)
     args.dtype = "bf16"
-    # Base DiT via the shared harness (device/dtype + reset_mod_guidance placement);
-    # the fresh untrained EasyControlNetwork is built and applied separately below.
     anima = build_anima(args, dit_path=args.dit, adapter=None, train_mode=False).anima
 
     net = easycontrol.create_network(
@@ -275,7 +246,7 @@ def main():
                 _ = anima(noisy.unsqueeze(2), t, emb, padding_mask=pad)
             logger.info(f"  done {stem} ({i + 1}/{len(stems)})")
 
-    # ---- compare against the shipped (main-stream) calibration ----
+    # Compare against the shipped main-stream calibration.
     shipped = load_file(args.shipped_stats)
     logger.info(
         f"loaded shipped main-stream stats: {len(shipped)} keys from {args.shipped_stats}"
@@ -360,7 +331,6 @@ def main():
         f"{'':>8s} {_med(all_rows, 'dom_xfer'):>8.2f} {o_eff:>8.2f}"
     )
 
-    # ---- verdict ----
     print("\nVERDICT:")
     if o_dom < 3.0:
         verdict = (

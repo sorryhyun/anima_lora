@@ -226,13 +226,9 @@ def load_safetensors_with_lora(
             normalized = {}
             for k, v in lora_sd.items():
                 normalized[k.replace("__orig_mod_", "_")] = v
-            # Shipped checkpoints carry adaln LoRA keys in the ComfyUI layout
-            # (``adaln_modulation_{br}_2`` — lora_save relays them at write
-            # time), but this hook sees the DiT's *runtime* key names
-            # (``adaln_up_{br}``, post ``_dit_rename_hook``). Without the
-            # rename the adaln rows of every ``train_adaln`` LoRA silently
-            # fall into the "not all LoRA keys are used" warning.
-            # Presence-gated: no-op otherwise.
+            # Shipped files carry ComfyUI adaln names; this hook sees runtime
+            # names. Without the rename every ``train_adaln`` LoRA's adaln rows
+            # silently land in the "not all LoRA keys are used" warning.
             if has_comfy_adaln_keys(normalized):
                 normalized = relayout_adaln_comfy_to_runtime(normalized)
             lora_weights_list[i] = normalized
@@ -241,9 +237,8 @@ def load_safetensors_with_lora(
 
         if lora_multipliers is None:
             lora_multipliers = [1.0] * len(lora_weights_list)
-        # A scalar multiplier (e.g. the `--lora_multiplier` argparse default of
-        # 1.0, which is a bare float under nargs="*") broadcasts to all adapters.
-        # Coerce to a list so the length checks below don't len() a float.
+        # `--lora_multiplier`'s default is a bare float under nargs="*";
+        # broadcast it to every adapter.
         if isinstance(lora_multipliers, (int, float)):
             lora_multipliers = [float(lora_multipliers)] * len(lora_weights_list)
         while len(lora_multipliers) < len(lora_weights_list):

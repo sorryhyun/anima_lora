@@ -7,19 +7,16 @@ hex literals.
 
 Design notes
 ------------
-* **Only the neutral chrome (window/panel/input/text/border) varies by theme.**
-  Saturated *action* buttons are white-on-color and theme-independent; their
-  palette is the single ``ACTION_COLORS`` table, surfaced as global-stylesheet
-  ``[variant="…"]`` rules (see :func:`_action_button_rules`). A call site sets
-  ``variant`` via :func:`gui.widgets.action_button` /
-  :func:`gui.widgets.apply_variant`, never an inline ``setStyleSheet``.
-* **Spacing/padding are tokens too:** :class:`Pad` / :class:`Gap`.
-* Widgets read tokens at *build* time. A theme switch re-applies the palette +
-  global stylesheet live (instant for app-level styling) and the caller rebuilds
-  the window so per-widget ``tok()`` lookups pick up the new values.
+* Only the neutral chrome (window/panel/input/text/border) varies by theme.
+  Saturated *action* buttons are white-on-color and theme-independent: the
+  ``ACTION_COLORS`` table, surfaced as global ``[variant="…"]`` rules. A call
+  site sets ``variant`` via :func:`gui.widgets.action_button` /
+  :func:`gui.widgets.apply_variant`, not an inline ``setStyleSheet``.
+* Spacing/padding are tokens too: :class:`Pad` / :class:`Gap`.
+* Widgets read tokens at *build* time, so a theme switch re-applies the palette +
+  global stylesheet and the caller rebuilds the window for ``tok()`` lookups.
 
-This module may import Qt (it is only ever imported from the Qt side); keep
-``_paths.py`` / ``config_io.py`` Qt-free.
+This module imports Qt; ``gui/core/`` stays Qt-free.
 """
 
 from __future__ import annotations
@@ -45,16 +42,14 @@ from PySide6.QtWidgets import QProxyStyle, QStyle
 
 from gui.core.paths import DEFAULT_THEME, get_setting, set_setting
 
-# Bundled UI font (Pretendard, OFL) — the design system's primary sans. Three
-# static weights live next to this module; see gui/fonts/README.md.
+# Bundled UI font (Pretendard, OFL), three static weights; see gui/fonts/README.md.
 _FONT_DIR = Path(__file__).parent / "fonts"
 _PRETENDARD_FILES = (
     "Pretendard-Regular.ttf",
     "Pretendard-Medium.ttf",
     "Pretendard-Bold.ttf",
 )
-# Resolved once: the loaded family name ("Pretendard") or None if the files are
-# missing / Qt refused them, in which case we fall back to OS fonts only.
+# Loaded family name, or None (files missing / refused by Qt): OS fonts only.
 _bundled_family: str | None = None
 _fonts_loaded = False
 
@@ -208,11 +203,8 @@ _SEPIA = Theme(
     scroll_handle_hover="#a89468",
 )
 
-# Saturated *action* button palette — theme-INDEPENDENT (white-on-color reads on
-# any background, so unlike the neutral chrome these don't vary per theme). Each
-# entry becomes a global-stylesheet `[variant="<key>"]` rule (see
-# _action_button_rules); a call site picks one via
-# gui.widgets.action_button(variant=…) / apply_variant().
+# Saturated action-button palette, theme-independent (white-on-color reads on any
+# background). Each entry becomes a global `[variant="<key>"]` rule.
 ACTION_COLORS: dict[str, str] = {
     "primary": "#27ae60",  # green — the main go/run action (Train, Run)
     "secondary": "#8e44ad",  # purple — an alternate action (Test)
@@ -223,9 +215,8 @@ ACTION_COLORS: dict[str, str] = {
     "busy": "#7f8c8d",  # gray — in-progress / temporarily inert
 }
 
-# Top-bar nav / overlay-toggle buttons — a *muted* toolbar family distinct from
-# the saturated action buttons (each toggle keeps its own colour identity, with
-# a hover shade). (base, hover) per role. Surfaced via nav_button_qss().
+# Top-bar nav / overlay-toggle buttons: a muted family, (base, hover) per role.
+# Surfaced via nav_button_qss().
 NAV_COLORS: dict[str, tuple[str, str]] = {
     "queue": ("#5d6d7e", "#6b7c8c"),  # Queue overlay toggle — idle (slate)
     "queue_on": ("#34495e", "#3d566e"),  # Queue overlay toggle — active (navy)
@@ -247,28 +238,21 @@ def _blend(hex_a: str, hex_b: str, t: float) -> str:
 def action_button_qss(
     variant: str, *, selector: str = "QPushButton, QToolButton"
 ) -> str:
-    """Per-widget stylesheet string for an action *variant* — same colors as the
-    global ``[variant="…"]`` rules, for the rare widget that needs an inline
-    stylesheet instead.
+    """Per-widget stylesheet for an action *variant* (same colors as the global
+    ``[variant="…"]`` rules).
 
-    A ``QToolButton`` with a custom split-button :class:`QProxyStyle` (the Train /
-    Preprocess split buttons) must keep a **per-widget** stylesheet: a global app
-    stylesheet wraps the *app* style and bypasses the widget's ``setStyle()``
-    proxy, snapping the menu label to the full-button centre instead of the
-    action segment. Driving the same :data:`ACTION_COLORS` through a per-widget
-    rule composes with the proxy and keeps the label centred. Also handy for a
-    button that flips between a variant and a non-variant look (the TensorBoard
-    current-run button). Don't add a ``::menu-button`` rule here — that re-breaks
-    the centring (see :class:`gui.widgets.buttons.SplitButtonStyle`)."""
+    The Train / Preprocess split buttons need it: a global app stylesheet bypasses
+    the widget's ``setStyle()`` proxy and snaps the menu label to the full-button
+    centre, while a per-widget rule composes with it. Don't add a
+    ``::menu-button`` rule here; that re-breaks the centring
+    (:class:`gui.widgets.buttons.SplitButtonStyle`)."""
     base = ACTION_COLORS[variant]
     return f"{selector}{{background:{base};color:white;font-weight:bold;padding:4px 16px;}}"
 
 
 def nav_button_qss(role: str) -> str:
-    """Per-widget stylesheet for a top-bar nav/toggle button (see NAV_COLORS).
-
-    These carry idle/active states swapped at runtime via ``setStyleSheet`` (not
-    the global variant rules), so a per-widget string is the right surface."""
+    """Per-widget stylesheet for a top-bar nav/toggle button; idle/active
+    states are swapped at runtime via ``setStyleSheet``."""
     base, hover = NAV_COLORS[role]
     return (
         f"QPushButton {{ background:{base}; color:white; font-weight:bold; "
@@ -278,11 +262,7 @@ def nav_button_qss(role: str) -> str:
 
 
 class Pad:
-    """Padding / contents-margin design tokens (px) — name the magic numbers.
-
-    Use instead of naked ``setContentsMargins(8, 12, 8, 8)``: the values read as
-    intent and a global re-space is a one-line edit. ``NONE`` is the layout-reset
-    every nested layout wants (``setContentsMargins(0, 0, 0, 0)``)."""
+    """Padding / contents-margin design tokens (px)."""
 
     NONE = 0
     XS = 4
@@ -310,8 +290,7 @@ THEME_LABEL_KEYS = {
     "sepia": "settings_theme_sepia",
 }
 
-# The live theme, resolved once per apply_theme() so tok() stays cheap and never
-# re-reads the settings file per widget.
+# The live theme, set by apply_theme() so tok() never re-reads settings.
 _active: Theme = THEMES[DEFAULT_THEME]
 _base_style = None
 _scroll_handle_style = None
@@ -373,10 +352,8 @@ def active_theme() -> Theme:
 
 
 def tok(key: str) -> str:
-    """One color token from the active theme, e.g. ``tok("panel")``.
-
-    Use this at widget build time instead of a hardcoded neutral hex so the
-    widget follows the theme. Raises if the key is unknown (typo guard)."""
+    """One color token from the active theme, e.g. ``tok("panel")``. Raises on
+    an unknown key."""
     return getattr(_active, key)
 
 
@@ -409,12 +386,9 @@ def set_font_size(size: int) -> None:
 def rich_text_pt(px_at_default: float) -> str:
     """A rich-text ``font-size`` (in pt) that scales with the app font knob.
 
-    The explanation-panel QTextDocument default font already tracks the Settings
-    font size, but inline ``font-size:<n>px`` in Qt rich text is *absolute* — Qt
-    honours only ``px``/``pt`` there (``em``/``%`` are silently ignored), so a px
-    literal pins that text regardless of the knob. Convert a design value
-    expressed "in px at the 10pt default" into a pt size scaled by the current
-    app font so headings/body track the knob. 10pt ≈ 13.33px at 96dpi."""
+    Qt rich text honours only ``px``/``pt`` (``em``/``%`` are ignored), so a px
+    literal ignores the font knob. Converts a size given "in px at the 10pt
+    default" into pt scaled by the current app font. 10pt ≈ 13.33px at 96dpi."""
     return f"{px_at_default * current_font_size() / 13.333:.1f}pt"
 
 
@@ -434,10 +408,10 @@ def _build_palette(t: Theme) -> QPalette:
         (QPalette.HighlightedText, QColor(t.accent_text)),
         (QPalette.Link, QColor(t.link)),
         (QPalette.LinkVisited, QColor(t.link_visited)),
-        # Disabled text needs an explicit dim or it inherits full-contrast text.
         (QPalette.PlaceholderText, QColor(t.text_dim)),
     ]:
         p.setColor(role, color)
+    # Disabled text needs an explicit dim or it inherits full-contrast text.
     disabled = QColor(t.text_dim)
     for role in (QPalette.WindowText, QPalette.Text, QPalette.ButtonText):
         p.setColor(QPalette.Disabled, role, disabled)
@@ -451,12 +425,9 @@ _arrow_cache: dict[tuple[str, str], str] = {}
 def _arrow_icon(color: str, direction: str) -> str:
     """Render a small filled-triangle arrow PNG in ``color`` and return its path.
 
-    Qt's stylesheet engine doesn't support the CSS border-triangle trick (it
-    paints a filled box — the 'white tofu'), and the native spin-arrow primitive
-    renders dark-on-dark in the dark theme. So we paint our own theme-coloured
-    arrow with QPainter and feed it to ``image: url(...)``. Cached per
-    (color, direction); files live in a temp dir keyed by colour so a theme
-    switch regenerates them."""
+    Qt stylesheets paint the CSS border-triangle trick as a filled box, and the
+    native spin arrow is dark-on-dark in the dark theme. Cached per
+    (color, direction) in a temp dir."""
     key = (color, direction)
     cached = _arrow_cache.get(key)
     if cached:
@@ -497,19 +468,15 @@ def _arrow_icon(color: str, direction: str) -> str:
 def _action_button_rules() -> str:
     """Global-stylesheet rules for the saturated action-button variants.
 
-    One ``[variant="…"]`` block per :data:`ACTION_COLORS` entry, covering both
-    ``QPushButton`` and ``QToolButton`` (action buttons are a mix of both).
-    Hover/pressed shades are derived from the base color so the table stays the
-    single source — no extra hover tokens to keep in sync. White text reads on
-    every saturated base across all three themes."""
+    One ``[variant="…"]`` block per :data:`ACTION_COLORS` entry, for both
+    ``QPushButton`` and ``QToolButton``; hover/pressed shades derive from the
+    base color."""
     blocks = []
     for variant, base in ACTION_COLORS.items():
         hover = QColor(base).lighter(115).name()
         pressed = QColor(base).darker(112).name()
-        # Disabled: muted toward neutral gray + dim text, so a temporarily-inert
-        # action button (idle Stop, no-selection Delete) reads as off rather than
-        # staying solid-saturated (which looks enabled). Keeps a faint variant
-        # tint so the button's identity survives.
+        # Disabled: blended toward gray with dim text so it reads as off, keeping
+        # a faint variant tint.
         dis_bg = _blend(base, "#4a4a4a", 0.4)
         dis_fg = "#c8c8c8"
         blocks.append(f"""
@@ -530,9 +497,8 @@ def _action_button_rules() -> str:
 
 
 # Main-window model modes (``MainWindow`` sets ``mode`` on the top bar). The bar's
-# fill is theme-independent, like the action palette: black for Anima, purple for
-# MOSS, white labels on both. Plain buttons on the bar (``barButton``) keep the
-# window fill they show elsewhere instead of turning the bar's colour.
+# fill is theme-independent with white labels; ``barButton`` buttons keep the
+# window fill.
 MODES = ("anima", "moss")
 MODE_BAR = {"anima": "#000000", "moss": "#3a1859"}
 
@@ -636,10 +602,9 @@ def _build_stylesheet(
 def _load_bundled_fonts() -> str | None:
     """Register the bundled Pretendard weights with Qt (once per process).
 
-    Returns the family name to put at the head of the UI font stack, or ``None``
-    if no bundled file loaded (then the OS font is used). All
-    three weights register under one Qt family, so a plain ``QFont(family)`` +
-    ``setWeight`` resolves the right instance."""
+    Returns the family name to head the UI font stack, or ``None`` if none
+    loaded. All three weights register under one family, so ``setWeight``
+    picks the instance."""
     global _bundled_family, _fonts_loaded
     if _fonts_loaded:
         return _bundled_family
@@ -660,26 +625,15 @@ def _load_bundled_fonts() -> str | None:
 def _prefer_cleartype_font_engine() -> None:
     """Use Qt's GDI font engine on Windows — but only at integer DPI scaling.
 
-    Qt 6 defaults to the DirectWrite font engine on Windows, which rasterizes
-    small UI text with *grayscale* antialiasing — it reads soft/blurry next to
-    native apps, and the effect is worse on lightly-hinted modern faces like the
-    bundled Pretendard. The GDI engine uses ClearType subpixel rendering (what
-    native Windows controls use), which snaps small text crisp.
+    Qt 6's DirectWrite engine renders small text with grayscale antialiasing,
+    soft next to native apps (worse on Pretendard); GDI's ClearType is crisp but
+    fringed and undersized at fractional scaling (125% / 150%), so GDI is forced
+    only at an integer scale.
 
-    But GDI ClearType is tied to the *physical* pixel grid: at the fractional
-    display scaling most laptops ship (125% / 150%) it renders fringed and can
-    come out undersized, because the GDI engine honors Qt's device-pixel-ratio
-    less cleanly than DirectWrite. So we only force GDI when the display is at an
-    integer scale (100% / 200%, where ClearType lines up) and let DirectWrite
-    handle fractional-scaled screens.
-
-    Reading the real scaling requires the process to be DPI-aware first — an
-    unaware process always reports 96 DPI (100%). We set per-monitor-v2 awareness
-    up front (the same context Qt 6 sets itself, so this only moves the call
-    earlier) and query ``GetDpiForSystem``. The platform option must be set
-    *before* ``QApplication`` is constructed. Skipped if the user already pinned
-    ``QT_QPA_PLATFORM`` (explicit choice, or offscreen in tests), and falls back
-    to DirectWrite on older Windows where the DPI APIs are missing."""
+    An unaware process always reports 96 DPI, so per-monitor-v2 awareness (the
+    context Qt 6 sets anyway) is set before ``GetDpiForSystem``. Must run before
+    ``QApplication`` is constructed. Skipped when ``QT_QPA_PLATFORM`` is already
+    pinned (user choice, offscreen tests)."""
     if sys.platform != "win32" or "QT_QPA_PLATFORM" in os.environ:
         return
     try:
@@ -700,9 +654,8 @@ def _prefer_cleartype_font_engine() -> None:
 def apply_theme(app: QApplication, name: str | None = None) -> Theme:
     """Resolve + apply a theme to the whole app (palette + global stylesheet).
 
-    ``name`` defaults to the persisted theme. Updates the module-global active
-    theme so subsequent ``tok()`` lookups (and rebuilt widgets) use it. Returns
-    the applied Theme. Also sets the app font."""
+    ``name`` defaults to the persisted theme. Sets the active theme for ``tok()``
+    and the app font; returns the applied Theme."""
     global _active, _base_style, _scroll_handle_style
     resolved = name if (name in THEMES) else current_theme_name()
     t = THEMES[resolved]
@@ -725,7 +678,7 @@ def apply_theme(app: QApplication, name: str | None = None) -> Theme:
     font.setStyleHint(QFont.SansSerif)
     app.setFont(font)
 
-    # Same stack handed to the stylesheet (enforces family on native-styled Windows controls); quote each name (Qt CSS needs quotes for multi-word families).
+    # Same stack for the stylesheet (native-styled Windows controls); Qt CSS needs multi-word families quoted.
     family_css = ", ".join(f'"{f}"' for f in families)
 
     if _base_style is None:

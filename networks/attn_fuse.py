@@ -54,10 +54,8 @@ ATTN_FUSE_SPECS: Tuple[AttnFuseSpec, ...] = (
 def match_fused_spec(prefix: str) -> Optional[AttnFuseSpec]:
     """Return the AttnFuseSpec whose ``fused_frag`` ends ``prefix``, else None.
 
-    Save-side dual of :func:`iter_split_groups` — the loader walks split
-    component keys to detect groups that need re-fusing, while the saver
-    walks fused prefixes (e.g. ``…self_attn_qkv_proj``) to detect groups
-    that need splitting.
+    Save-side dual of :func:`iter_split_groups`: the saver walks fused prefixes
+    (e.g. ``…self_attn_qkv_proj``) to find groups to split.
     """
     for spec in ATTN_FUSE_SPECS:
         if prefix.endswith(spec.fused_frag):
@@ -98,8 +96,6 @@ def iter_split_groups(
         for key in list(state_dict.keys()):
             if not key.endswith(first_suffix):
                 continue
-            # Slice the component-projection suffix off so callers can rebuild
-            # any letter's key by appending "{letter}_proj{...}".
             shared_prefix = key[: -len(f"{first_letter}_proj{sentinel_suffix}")]
             seen.append(shared_prefix)
         for shared_prefix in seen:

@@ -27,14 +27,12 @@ def sketch_grad_basis(
     adapter exists, so this runs one frozen-DiT forward/backward per
     (image, σ) over the run's cached latents+TE, takes the top-r right
     singular vectors per target Linear, writes them beside the checkpoint,
-    and hands the path to the factory as ``grad_basis_file`` — the same
-    artifact ``down_init="basis_file"`` reads, so the two modes share one
-    load path. Output is an ordinary LoRA either way (B=0, ΔW=0 at step 0).
+    and hands the path to the factory as ``grad_basis_file`` (the artifact
+    ``down_init="basis_file"`` reads). Output is an ordinary LoRA either way
+    (B=0, ΔW=0 at step 0).
 
-    Refused under block swap: the swapper's residency plan assumes the
-    training loop's forward cadence and desyncs on extra forwards. Build the basis with
-    ``bench/grad_init/build_universal_basis.py`` and pass ``basis_file``
-    instead on a swap preset.
+    Refused under block swap: the swapper's residency plan desyncs on extra
+    forwards.
     """
     net_kwargs = resolve_network_kwargs(args)
     if net_kwargs.get("down_init") != "grad_svd":
@@ -99,9 +97,8 @@ def sketch_grad_basis(
     unet.requires_grad_(False)
     unet.to(accelerator.device, dtype=weight_dtype)
     # Gradient checkpointing is gated on module.training (models.py), and a
-    # 4k-token backward without it does not fit the 16 GB envelope — turn it
-    # on for the sketch regardless of args.gradient_checkpointing, then put
-    # the model back exactly as the trainer expects it.
+    # 4k-token backward without it does not fit 16 GB: force it on for the
+    # sketch, then restore the trainer's state.
     had_ckpt = bool(getattr(unet, "gradient_checkpointing", False))
     unet.train()
     if not had_ckpt:
@@ -232,9 +229,6 @@ def create_and_apply_network(
 
     step.attach_network(args, network, unet)
 
-    # Token-adding adapters (register tokens) do mid-stack token surgery
-    # via block pre-hooks — unaudited against the block-swap offloader,
-    # which desyncs on unexpected per-step forward patterns.
     if (
         int(getattr(network, "extra_seq_tokens", 0) or 0) > 0
         and args.blocks_to_swap is not None
@@ -270,9 +264,8 @@ def create_and_apply_network(
         unet.enable_gradient_checkpointing()
         network.enable_gradient_checkpointing()  # may have no effect
 
-    # Native-shape flattening + per-block torch.compile. COMPILE LAST —
-    # after apply_to + load_weights so dynamo traces the adapter's
-    # monkey-patched forwards, not the bare DiT (see harness.py).
+    # COMPILE LAST: after apply_to + load_weights so dynamo traces the
+    # adapter's patched forwards, not the bare DiT (see harness.py).
     if args.torch_compile:
         from library.int8.linear import int8_input_tag
         from library.runtime.harness import compile_blocks_for_training
@@ -281,11 +274,8 @@ def create_and_apply_network(
         if not getattr(args, "compile_seq_bands", False):
             seq_bands = None
         # Register tokens grow the seq by a constant K, so widen the
-        # dynamic-seq bound's MAX by K or the compiled block's bound is
-        # violated (the min/family-count stay: mid-stack insertion still
-        # runs blocks before the insert at the bare seq). Per-band mode
-        # widens each band's hi; widen_bands raises if K would make
-        # adjacent bands touch (silent merging would un-tighten them).
+        # dynamic-seq MAX (and each band's hi) by K; the min stays because
+        # blocks before the mid-stack insert still run at the bare seq.
         extra_seq = int(getattr(network, "extra_seq_tokens", 0) or 0)
         if extra_seq and seq_range is not None:
             seq_range = (seq_range[0], seq_range[1] + extra_seq)

@@ -249,9 +249,8 @@ class AnimaStep:
             uncond_crossattn_emb=self.state.uncond_crossattn_1,
         )
 
-        # Network-level GlobalRouter routed on pooled text: fire ONCE per step.
-        # apply_router_conditioning ran before text conds were materialized, so
-        # this lives outside that helper. No-op otherwise.
+        # GlobalRouter on pooled text, once per step: apply_router_conditioning
+        # ran before the text conds existed.
         if (
             getattr(network, "use_crossattn_router", False)
             and tc.crossattn_emb is not None
@@ -317,9 +316,8 @@ class AnimaStep:
         forward's autocast/grad scope (extra ``anima(...)`` calls)."""
         args = ctx.args
 
-        # Functional MSE loss against a sampled stochastic inversion run. The
-        # captures dict is populated by forward hooks on cross_attn.output_proj
-        # at ``self._func_blocks``.
+        # Functional MSE loss against a sampled stochastic inversion run
+        # (captures come from the hooks installed in ``attach_network``).
         self._func_loss = None
         if is_train and self._func_blocks and cond.crossattn_emb is not None:
             self._func_loss = compute_inversion_func_loss(
@@ -419,11 +417,10 @@ class AnimaStep:
     def _dispatch_adapter_extras(
         self, ctx: TrainCtx, primary: ForwardArtifacts
     ) -> None:
-        """ALWAYS per step — both text-conditioning paths. Method-adapter
-        extra forwards (soft-tokens, REPA, …). Must dispatch on BOTH paths —
-        gating it inside the cached-crossattn branch only would silently skip
-        every adapter's aux loss on the in-model text path (crossattn_emb=None
-        — EasyControl's default)."""
+        """ALWAYS per step, on both text-conditioning paths. Method-adapter
+        extra forwards (soft-tokens, REPA, …). Gating on cached crossattn would
+        silently skip every adapter's aux loss on the in-model text path
+        (crossattn_emb=None, EasyControl's default)."""
         if not self.adapters:
             return
         step_ctx = self._step_ctx(ctx)
@@ -467,9 +464,6 @@ class AnimaStep:
             ctx, batch, latents, is_train, self.adapters, generator=g_sigma
         )
         if is_train and getattr(ctx.args, "sigma_lowres", False):
-            # Realized patch-token histogram: counts examples at the grid the
-            # step ACTUALLY ran on (post demote swap), for per-arm FLOPs
-            # accounting. Emitted with the run_end progress event.
             tok = (latents.shape[-2] // 2) * (latents.shape[-1] // 2)
             self.token_step_hist[tok] = self.token_step_hist.get(tok, 0) + int(
                 latents.shape[0]
@@ -675,16 +669,13 @@ class AnimaStep:
 
         huber_c = get_huber_threshold_if_needed(args, timesteps, ctx.noise_scheduler)
 
-        # Assemble aux dict for the composer: extra_forwards returns from each
-        # method adapter plus the trainer-owned functional-loss capture.
         loss_aux: dict = dict(self.state.extras_for_step)
         if self._func_loss is not None:
             loss_aux["func_loss"] = self._func_loss
 
-        # Online memorization Δ-gap, consumer half (producer: _attach_aux_losses).
-        # Fold this step's paired Δ into the per-item EMA (measurement steps
-        # only), then apply the CAUSAL weights (from pre-step state) onto
-        # per-sample loss_weights.
+        # Memorization Δ-gap, consumer half (producer: _attach_aux_losses): fold
+        # this step's Δ into the per-item EMA, then apply the CAUSAL weights
+        # (from pre-step state) onto per-sample loss_weights.
         loss_weights = batch["loss_weights"]
         mem_gap = loss_aux.pop("mem_gap", None)
         if mem_gap is not None:

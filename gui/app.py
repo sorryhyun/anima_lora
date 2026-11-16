@@ -231,12 +231,11 @@ class MainWindow(QMainWindow):
             lambda: self._set_mode(self.mode_combo.currentData())
         )
 
-        # Uniform right-click + wrapped tooltips, filtered on each top-level QWindow
-        # (this one and every dialog, picked up as it takes focus) — not app-wide.
-        # An app-wide Python filter wraps every receiver, and wrapping QtWebEngine's
-        # internal delegate item from inside a filter recurses until the stack
-        # overflows (Linux, the anime_tools tab). Undone in closeEvent so a
-        # _reload_ui rebuild doesn't leave a dead window filtering events.
+        # Right-click menu + tooltip wrapping are filtered per top-level QWindow
+        # (this one and each dialog, as it takes focus), not app-wide: an app-wide
+        # filter wraps QtWebEngine's internal delegate and recurses until the stack
+        # overflows (Linux, anime_tools tab). Undone in closeEvent so a _reload_ui
+        # rebuild leaves no dead window filtering events.
         self._filtered_windows = []
         app = QApplication.instance()
         if app is not None:

@@ -7,27 +7,19 @@ frequencies emerge from noise. The latent power spectrum decays as a power law
 (`P_ω ∝ |ω|^{-β}`, β=2.26 on Anima — `bench/spd/`), so HF carries far less
 signal and is cheap to defer.
 
-SPD is inference-only: the bare DiT (or any existing LoRA checkpoint) runs the
-multi-resolution trajectory through the standard inference path.
-
-Architecturally this mirrors ``networks/spectrum.py``: a sampler-level runner
-that *replaces* the denoise loop and self-registers with
-``library.inference.generation`` at import time, so ``library.inference`` keeps
-no hard edge into ``networks/``. Dispatched from ``generate_body`` on
-``--spd``.
+Inference-only. Like ``networks/spectrum.py``, a sampler-level runner that
+replaces the denoise loop and self-registers with ``library.inference.generation``
+at import time, so ``library.inference`` has no hard edge into ``networks/``.
+Dispatched from ``generate_body`` on ``--spd``.
 
 Scope:
   * **Euler only.** Spectral expansion re-spaces the remaining σ schedule
-    mid-loop (Sec 4.3); ``ERSDESampler``/``LCMSampler`` precompute their
-    coefficients from the *full* schedule at construction, so they are
-    incompatible with re-spacing. If a stochastic sampler is requested we fall
-    back to Euler with a one-time warning.
-  * **No SMC-CFG composition.** It operates at the sampler boundary on the
-    (re-spaced) σ and is unvalidated against the mid-loop reshape; passing it
-    with ``--spd`` warns and ignores.
-  * **Composes with LoRA / Hydra / soft-tokens / P-GRAFT** — the per-step
-    adapter setters are mirrored from the standard loop, and the per-Linear
-    LoRA delta is token-count-agnostic so it runs at any stage resolution.
+    mid-loop (Sec 4.3); ``ERSDESampler``/``LCMSampler`` precompute coefficients
+    from the full schedule, so a stochastic sampler request falls back to Euler
+    with a warning.
+  * **No SMC-CFG** (unvalidated against the mid-loop reshape); warns and ignores.
+  * Composes with LoRA / Hydra / soft-tokens / P-GRAFT: the per-Linear LoRA
+    delta is token-count-agnostic, so it runs at any stage resolution.
 """
 
 from __future__ import annotations
@@ -46,10 +38,7 @@ from library.inference.adapters import (
 )
 from library.inference.sampler_context import SamplerSideChannels
 
-# DCT helpers + SPD spectral primitives (2D separable type-II DCT, paper T_Φ +
-# Eq. i–iii + Eq. 5–6) are pure compute and live in the shared core (also
-# vendored verbatim into the ComfyUI SPEED node). Edit the math in spd_core.py,
-# not here.
+# Spectral math lives in spd_core.py (vendored into the ComfyUI SPEED node).
 from networks.spd_core import dct_lowpass_init, spectral_expand
 
 log = logging.getLogger(__name__)
@@ -85,10 +74,8 @@ def spd_denoise(
     re-spaces the remaining σ schedule (Sec 4.3). ``padding_mask`` is rebuilt at
     each stage to match the new token grid.
 
-    ``ctx`` carries the shared conditioning side-channels (see
-    ``library.inference.sampler_context``). SPD honors soft-tokens / P-GRAFT /
-    pooled-text but ignores SMC-CFG (it acts on the re-spaced σ boundary,
-    unvalidated against the mid-loop reshape).
+    ``ctx`` carries the shared conditioning side-channels
+    (``library.inference.sampler_context``); SMC-CFG is ignored.
     """
     pgraft_network = ctx.pgraft_network
     lora_cutoff_step = ctx.lora_cutoff_step
@@ -97,9 +84,8 @@ def spd_denoise(
     soft_tokens_net = ctx.soft_tokens_net
     soft_tokens_embed_seqlens = ctx.soft_tokens_embed_seqlens
     soft_tokens_neg_seqlens = ctx.soft_tokens_neg_seqlens
-    # --xattn_boost: cond-forward-only cross-attn gain at σ ≥ band. The gate
-    # reads the (possibly re-spaced) per-step σ, so the boost window tracks
-    # SPD's mid-loop σ reshaping.
+    # --xattn_boost: cond-forward-only cross-attn gain at σ ≥ band; the gate
+    # reads the re-spaced per-step σ.
     xattn_boost = ctx.xattn_boost
     xattn_boost_band = ctx.xattn_boost_band
     xattn_renorm = ctx.xattn_boost_renorm
@@ -140,8 +126,7 @@ def spd_denoise(
     def velocity(
         x: torch.Tensor, sigma_scalar: float, pad_mask: torch.Tensor
     ) -> torch.Tensor:
-        # timestep == σ in [0,1] for Anima flow-matching (the DiT's time arg is
-        # σ directly — get_timesteps_sigmas / generation.py feed it unscaled).
+        # timestep == σ in [0,1] for Anima flow-matching (fed unscaled).
         t = x.new_full((x.shape[0],), float(sigma_scalar))
         set_hydra_sigma(anima, t)
         compute_and_set_hydra_fei(anima, x)

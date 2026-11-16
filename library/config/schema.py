@@ -114,9 +114,7 @@ def populate_schema(
             continue
         CONFIG_SCHEMA[key.name] = key
 
-    # Back-compat aliases: the four old cache flags
-    # (cache_latents{,_to_disk}, cache_text_encoder_outputs{,_to_disk}) resolve
-    # onto the two semantic knobs.
+    # Back-compat aliases: the four old cache flags resolve onto the two knobs.
     for _canon, _old in (
         ("use_vae_cache", ("cache_latents", "cache_latents_to_disk")),
         (
@@ -176,10 +174,8 @@ def populate_schema(
             ),
         )
 
-    # Retired preprocess input filter (the resize stage lost its pixel floor in
-    # anime_tools 0.7.5 — every source image lands in the tree). Nothing reads
-    # these; they stay registered so a user-owned configs/preprocess.toml that
-    # still carries them loads without an unknown-key warning.
+    # Retired resize pixel floor. Nothing reads these; registered so a user-owned
+    # configs/preprocess.toml that still carries them loads without a warning.
     for _name, _type, _default in (
         ("drop_lowres_images", "bool", True),
         ("min_pixels", "int", 500_000),

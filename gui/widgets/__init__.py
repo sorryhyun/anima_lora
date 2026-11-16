@@ -1,12 +1,8 @@
 """Reusable Qt widgets + the config-form field factory.
 
-Split by concern into sibling modules — ``mixins`` (LazyTabMixin,
-DirtyTrackingMixin), ``fields`` (the ``_widget``/``_read`` factory + label
-helpers), ``buttons`` (action-button variants + SplitButtonStyle),
-``target_res`` (the multi-scale tier row), ``sample_prompts`` (the sample
-prompt editor), ``image_view`` (the zoom/pan image label), ``explain_panel``
-(the help / image-gallery pane) — all re-exported
-here; import from ``gui.widgets``.
+Sibling modules (``mixins``, ``fields``, ``buttons``, ``target_res``,
+``sample_prompts``, ``image_view``, ``explain_panel``) are re-exported here;
+import from ``gui.widgets``.
 """
 
 from __future__ import annotations

@@ -143,12 +143,10 @@ class CachedDataset(torch.utils.data.Dataset):
                 f"survive (keep_list has {len(keep_list)} stems)"
             )
 
-        # --synth_data_dir: rewrite each sample's latent path to the synthetic
-        # NPZ for the same stem (TE paths stay in data_dir); samples without a
-        # synthetic counterpart are dropped. Lookup is stem-keyed (not
-        # basename-keyed) because the lora cache uses WxH pixel dims (e.g.
-        # `0896x1152`) while the synth writer uses HxW latent dims (e.g.
-        # `144x112`) — same logical pair, different basenames.
+        # --synth_data_dir: swap each sample's latent for the synthetic NPZ of the
+        # same stem (TE stays in data_dir); samples without one are dropped.
+        # Keyed by stem, not basename: the lora cache names WxH pixel dims and
+        # the synth writer HxW latent dims.
         n_dropped_no_synth = 0
         if synth_data_dir is not None:
             synth_by_stem: dict[str, str] = {}
@@ -187,11 +185,8 @@ class CachedDataset(torch.utils.data.Dataset):
 
         # Per-bucket deterministic shuffle, then carve last `validation_split`
         # off as val (train/val never overlap, stay bucket-grouped). sample_ratio
-        # applies per-bucket, keeping >=1 sample per non-empty bucket.
-        #
-        # Emit buckets largest-token-count first: DataLoader runs shuffle=False,
-        # so this order == iteration order, and front-loading the biggest
-        # resolution turns a mid-run compile/VRAM spike into a fail-fast at start.
+        # applies per-bucket, keeping >=1 sample per non-empty bucket. Buckets go
+        # largest-token-count first so a compile/VRAM spike fails fast.
         def _tok_count(res: str) -> int:
             a, b = res.split("x")
             return int(a) * int(b)
@@ -264,10 +259,9 @@ class CachedDataset(torch.utils.data.Dataset):
     ) -> BucketBatchSampler:
         """Build a bucket-grouped batch sampler over this dataset.
 
-        Pass to ``DataLoader(batch_sampler=...)`` (not ``batch_size=``). Each
-        batch is one resolution; pins one batch per token-count family to the
-        front (largest first) so all torch.compile graphs warm up early. See
-        ``BucketBatchSampler``.
+        Pass to ``DataLoader(batch_sampler=...)`` (not ``batch_size=``). Pins one
+        batch per token-count family to the front (largest first) so every
+        torch.compile graph warms up early.
         """
         first_by_tok: dict[int, int] = {}
         for i in range(len(self._batches)):

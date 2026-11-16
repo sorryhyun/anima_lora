@@ -149,19 +149,14 @@ class AnimaTextEncodingStrategy(TextEncodingStrategy):
     ) -> None:
         """Zero per-sample text conditioning at the per-sample dropout rate.
 
-        Operates in-place on whichever tensors are passed — caller must own
-        them (e.g. fresh outputs of a `.to(device)` H2D copy that aren't
-        aliased to the dataloader's CPU tensors). Pass only the tensors
-        actually consumed downstream so the unused ones can stay on CPU.
+        In-place: the caller must own the tensors (e.g. fresh outputs of a
+        `.to(device)` H2D copy, not aliased to the dataloader's CPU tensors).
 
-        ``uncond_crossattn_emb`` is the T5("") sidecar (shape ``(1, S, D)``
-        staged by ``make preprocess-te`` — see
-        ``library/preprocess/uncond.py``). When provided, dropped rows of
-        ``crossattn_emb`` are replaced with it so the trained adapter sees
-        the *same* unconditional embedding at CFG-uncond time that
-        ``library/inference/text.py::prepare_text_inputs`` (negative-prompt
-        branch) feeds at inference. When None, falls back to zeros, which
-        puts the LoRA's learned CFG-uncond branch out of distribution.
+        ``uncond_crossattn_emb`` is the T5("") sidecar ``(1, S, D)``
+        (``library/anima/uncond.py``). Dropped rows of ``crossattn_emb`` take
+        it so the LoRA sees the uncond embedding inference feeds; without it
+        they fall back to zeros, which puts the CFG-uncond branch out of
+        distribution.
         """
         device_tensor = next(
             (
@@ -273,9 +268,8 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         try:
             with _safe_open(cache_path, framework="pt") as f:
                 keys = set(f.keys())
-                # Pack stamp: a cache encoded through a different vocab pack
-                # (or none) than the active one still "exists", so say so
-                # once — the ids inside no longer match the tokenizer.
+                # A cache encoded through another vocab pack still "exists";
+                # warn once.
                 from library.anima.vocab_pack import check_cache_stamp, strategy_pack
 
                 check_cache_stamp(
@@ -315,11 +309,9 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         return True
 
     def load_outputs_npz(self, cache_path: str) -> list:
-        # Lazy per-tensor read via safe_open: when the cache holds N preprocessed
-        # variants × cache_llm_adapter_outputs, the file has 5×N tensors but only
-        # one variant is consumed per step. load_file() materializes everything
-        # and starves the dataloader workers; safe_open + get_tensor pulls just
-        # the chosen variant's bytes from the mmap.
+        # Lazy per-tensor read: a multi-variant cache holds 5×N tensors but one
+        # variant is consumed per step, and load_file() starves the dataloader
+        # workers.
         with _safe_open(cache_path, framework="pt") as f:
             keys = set(f.keys())
             has_variants = "num_variants" in keys
@@ -366,14 +358,10 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                 elif num_variants <= 1:
                     suffix = "v0"
                 elif self.use_shuffled_caption_variants_only:
-                    # Exclude the pristine v0 entirely — uniform over the
-                    # shuffled+tag-dropped v1..v{N-1}. (Legacy caches have no
-                    # pristine v0 anyway, so v1.. is still the shuffled set.)
+                    # Exclude the pristine v0: uniform over v1..v{N-1}.
                     suffix = f"v{random.randint(1, num_variants - 1)}"
                 elif not v0_intact:
                     # Legacy cache: every variant is shuffled (no pristine v0).
-                    # Fall back to uniform sampling and warn once so the user
-                    # knows to re-cache for the 20%/80% weighted behavior.
                     global _warned_legacy_variants_cache
                     if not _warned_legacy_variants_cache:
                         logger.warning(
@@ -399,18 +387,14 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                 # Variants on disk but the user opted out — pin to v0 deterministically.
                 sfx = "_v0"
             else:
-                # Single-variant cache. Loaded as-is whether or not the user
-                # asked for shuffles — silent fallback so a bool flip doesn't
-                # require re-preprocessing.
+                # Single-variant cache: loaded as-is even if shuffles were asked
+                # for, so a flag flip doesn't force a re-cache.
                 sfx = ""
 
-            # Serve whatever the cache actually holds, independent of this
-            # run's cache_llm_adapter_outputs flag: a pruned adapter cache
-            # stores only crossattn_emb (no prompt_embeds), so gating the read
-            # on the run flag crashes when preprocess and training disagree.
-            # The downstream consumer (library/training/forward/text_conds.py)
-            # switches on tuple shape, not the flag. The flag governs
-            # writing/encoding, never reading.
+            # Serve whatever the cache holds, not what this run's
+            # cache_llm_adapter_outputs says: gating the read on the flag
+            # crashes when preprocess and training disagree. The consumer
+            # (library/training/forward/text_conds.py) switches on tuple shape.
             crossattn_key = f"crossattn_emb{sfx}"
             crossattn_emb = (
                 f.get_tensor(crossattn_key) if crossattn_key in keys else None
@@ -421,13 +405,10 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                 else None
             )
             if crossattn_emb is not None:
-                # Adapter-output mode: the Qwen prompt_embeds / attn_mask /
-                # t5_input_ids are unused downstream (see
-                # library/training/forward/text_conds.py) — skip the read.
-                # Force them to None even for legacy caches that still carry the
-                # keys, so a batch mixing pruned + legacy files stacks to a
-                # uniform all-None column instead of crashing in
-                # none_or_stack_elements.
+                # Adapter-output mode: the Qwen tensors are unused downstream.
+                # None even when a legacy cache carries them, so a batch mixing
+                # pruned + legacy files stacks to an all-None column instead of
+                # crashing in none_or_stack_elements.
                 prompt_embeds = attn_mask = t5_input_ids = None
             elif f"prompt_embeds{sfx}" in keys:
                 prompt_embeds = f.get_tensor(f"prompt_embeds{sfx}")
@@ -536,8 +517,8 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         text_encoding_strategy: TextEncodingStrategy,
         infos: List,
     ):
-        # Inline caching always writes a single variant. Multi-variant caches
-        # are produced exclusively by `scripts/preprocess/cache_text_embeddings.py`.
+        # Inline caching writes a single variant; multi-variant caches come from
+        # `scripts/preprocess/cache_text_embeddings.py`.
         anima_text_encoding_strategy: AnimaTextEncodingStrategy = text_encoding_strategy
         self._cache_batch_outputs_single(
             tokenize_strategy, models, anima_text_encoding_strategy, infos
@@ -550,7 +531,6 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         text_encoding_strategy: "AnimaTextEncodingStrategy",
         infos: List,
     ):
-        """Original single-variant caching path."""
         captions = [info.caption for info in infos]
         prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask, crossattn_emb = (
             self._encode_to_tensors(
@@ -576,19 +556,16 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                     "caption_dropout_rate": caption_dropout_rate,
                 }
                 if ce_i is not None:
-                    # Adapter-output cache: only crossattn_emb is consumed at
-                    # train time (+ t5_attn_mask for postfix). Prune the unused
-                    # Qwen prompt_embeds / attn_mask / t5_input_ids (~half the
-                    # file). Mirrors library/preprocess/text.py.
+                    # Adapter-output cache: only crossattn_emb (+ t5_attn_mask for
+                    # postfix) is consumed; prune the Qwen tensors. Mirrors
+                    # library/preprocess/text.py.
                     save_dict["crossattn_emb"] = ce_i
                 else:
                     save_dict["prompt_embeds"] = pe_i
                     save_dict["attn_mask"] = am_i
                     save_dict["t5_input_ids"] = t5_i
-                # Stamp the vocab pack the ids were routed through (None when
-                # the stock tokenizer encoded them) so a later run with a
-                # different pack state can warn instead of silently training
-                # on mismatched ids. Mirrors library/preprocess/text.py.
+                # Stamp the vocab pack (see vocab_pack.check_cache_stamp).
+                # Mirrors library/preprocess/text.py.
                 from library.anima.vocab_pack import strategy_pack
 
                 pack = strategy_pack(tokenize_strategy)
@@ -618,10 +595,8 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
 
 
 class AnimaLatentsCachingStrategy(LatentsCachingStrategy):
-    """Latent caching strategy for Anima using WanVAE.
-
-    WanVAE produces 16-channel latents with spatial downscale 8x.
-    Latent shape for images: (B, 16, 1, H/8, W/8)
+    """Latent caching strategy for Anima (Qwen Image VAE, 16 channels, 8x
+    downscale). Cached latents are 4D ``(B, 16, H/8, W/8)``.
     """
 
     ANIMA_LATENTS_NPZ_SUFFIX = "_anima.npz"
@@ -691,9 +666,8 @@ class AnimaLatentsCachingStrategy(LatentsCachingStrategy):
         def encode_by_vae(img_tensor):
             """Encode image tensor to latents.
 
-            img_tensor: (B, C, H, W) in [-1, 1] range (already normalized by IMAGE_TRANSFORMS)
-            Qwen Image VAE accepts inputs in (B, C, H, W) or (B, C, 1, H, W) shape.
-            Returns latents in (B, 16, 1, H/8, W/8) shape on CPU.
+            img_tensor: (B, C, H, W) in [-1, 1] (normalized by IMAGE_TRANSFORMS).
+            Returns 4D latents (B, 16, H/8, W/8) on CPU.
             """
             latents = vae.encode_pixels_to_latents(
                 img_tensor
@@ -726,10 +700,8 @@ class AnimaLatentsCachingStrategy(LatentsCachingStrategy):
 
 @dataclass
 class TrainingStrategies:
-    """Handles for the strategies :func:`setup_training_strategies` installed.
-
-    The same objects the globals hold.
-    """
+    """Handles for the strategies :func:`setup_training_strategies` installed
+    (the same objects the globals hold)."""
 
     tokenize: AnimaTokenizeStrategy
     latents_caching: AnimaLatentsCachingStrategy
@@ -746,9 +718,8 @@ def setup_training_strategies(args) -> TrainingStrategies:
     The text-encoder-OUTPUTS caching strategy is NOT installed here — see
     :func:`setup_text_encoder_outputs_caching_strategy`.
     """
-    # A CJK vocab pack (``vocab_pack`` in the config chain, "" = off) swaps in
-    # the pack-routing tokenizer so inline TE caching and sample prompts see the
-    # same T5 ids the preprocess caches were built with. EN text is unchanged.
+    # A CJK vocab pack swaps in the pack-routing tokenizer so inline TE caching
+    # and sample prompts see the same T5 ids the preprocess caches were built with.
     from library.anima.vocab_pack import load_vocab_pack, make_tokenize_strategy
 
     tokenize = make_tokenize_strategy(

@@ -1,65 +1,46 @@
 """Deferred-foveated merge — training-free inference acceleration.
 
-The foveated line is **ARCHIVED** (the periphery soft blur is constitutive and
-unrecoverable; digest in
-`_archive/bench/foveated/report.md`, retired ship plan in
-`_archive/proposals/foveated_denoise.md`, durable lessons in
-`docs/anima/findings/foveated_denoise.md`, user doc in `docs/anima/inference/foveated.md`).
-The runner stays functional and off by default (`--fovea_sigma_c 0`):
+Archived line (the periphery soft blur is unrecoverable;
+``docs/anima/findings/foveated_denoise.md``, user doc
+``docs/anima/inference/foveated.md``). The runner stays functional and off by
+default (``--fovea_sigma_c 0``):
 
-  * Above σ_c: baseline full-grid sampling — composition/identity decided
-    identically to no-foveation ("deferred" is load-bearing: text drive is
-    front-loaded and low bands lock by σ≈0.75, so foveating inside the
-    authority window makes a *different image*).
-  * During the pre-crossing steps, accumulate two free endogenous signals:
-    **cfgdelta** (per-cell |v_cond − v_uncond|, prompt-aware) and **x0var**
-    (x̂₀ Laplacian energy at the crossing).
-  * At the σ_c crossing, build the **combo** mask: normalized signal sum →
-    threshold → morphological open → close → dilate-1 → re-solve the threshold
-    so the final fraction hits target. Compact, subject-following,
-    per (prompt, seed).
-  * Below σ_c: the DiT block stack runs on a reduced sequence — fovea tokens
-    1:1, each 2×2-token periphery group averaged to one token; merged rope =
-    renormalized elementwise mean of the members' (cos, sin) rows (exact
-    mean-position rope for symmetric groups); broadcast before ``final_layer``.
+  * Above σ_c: plain full-grid sampling. Deferral is load-bearing: low bands
+    lock by σ≈0.75, so foveating earlier makes a *different image*.
+  * Pre-crossing steps accumulate two endogenous signals: **cfgdelta**
+    (per-cell |v_cond − v_uncond|) and **x0var** (x̂₀ Laplacian energy).
+  * At the σ_c crossing, the **combo** mask: normalized signal sum →
+    threshold → open → close → dilate-1, threshold re-solved so the final
+    fraction hits target.
+  * Below σ_c: the block stack runs on a reduced sequence — fovea tokens 1:1,
+    each 2×2-token periphery group averaged to one token; merged rope =
+    renormalized mean of the members' (cos, sin) rows; broadcast back before
+    ``final_layer``.
   * Final readout: periphery read from the merged representation (avg-pool →
-    bicubic up), fovea untouched. **Part of the quality contract** — skipping
-    it leaves never-denoised HF detail in the periphery at decode.
-
-Measured (bench, bare DiT, eager, 1024², 28 steps, CFG 4): fwd ×2.15,
-e2e ×1.37, fovea visually baseline-identical, subject RMSE ties-or-beats a
-static center rect on every prompt tested.
+    bicubic up). Skipping it leaves never-denoised HF detail in the periphery.
 
 Invariants:
-  * **Never rewrite the latent.** It stays full-res end-to-end; merging is
-    what the *compute* sees.
-  * The mask lives on the pooled cell grid — every merge-cell is uniformly
-    fovea or periphery (no group straddles the boundary).
-  * Masks must be compact blobs — scattered fovea cells lose their whole
-    attention neighborhood (+47 % subject error).
+  * **Never rewrite the latent.** It stays full-res end-to-end; only the
+    compute sees the merge.
+  * The mask lives on the pooled cell grid — no merge-cell straddles the
+    fovea boundary.
+  * Masks must be compact blobs — scattered fovea cells lose their attention
+    neighborhood (+47 % subject error).
 
-Architecturally this mirrors ``networks/spd.py``: a sampler-level runner that
-replaces the denoise loop and self-registers with
-``library.inference.generation`` at import time. Dispatched from
-``generate_body`` on ``--fovea_sigma_c > 0``. The merged forward itself runs
-through the model's own ``forward`` via the ``token_merger`` kwarg
-(``library/anima/models.py``) — no duplicated forward path.
+A sampler-level runner like ``networks/spd.py``, dispatched from
+``generate_body`` on ``--fovea_sigma_c > 0``. The merged forward runs through
+the model's own ``forward`` via the ``token_merger`` kwarg
+(``library/anima/models.py``).
 
 Scope:
-  * **Euler only.** The bench calibrated the Euler CFG loop; er_sde noise
-    injection into group-shared periphery states is unvalidated. A stochastic
-    sampler request falls back to Euler with a one-time warning.
-  * **No SMC-CFG / FSG / CFG++ composition** — unvalidated against
-    group-shared periphery velocities; warn-and-ignore (SPD posture).
-    Spectrum composition is measured safe but buys ~5 % at visible periphery
-    cost — mutually exclusive at dispatch, do not re-propose the compose.
-  * **Composes with LoRA / Hydra / soft-tokens / P-GRAFT** — per-step adapter
-    setters mirror the standard loop, and the per-Linear LoRA delta is
-    token-count-agnostic.
-  * ``compile_blocks`` paths are unvalidated: the merged stack introduces one
-    extra token count per mask (outside the tier's ``dynamic_seq`` band), so a
-    compiled model gets a one-time warning — expect a recompile per mask if
-    you proceed.
+  * **Euler only**; a stochastic sampler request falls back to Euler with a
+    warning.
+  * **No SMC-CFG / FSG / CFG++** (unvalidated on group-shared periphery
+    velocities; warn-and-ignore). Spectrum is mutually exclusive at dispatch:
+    it buys ~5 % at visible periphery cost.
+  * Composes with LoRA / Hydra / soft-tokens / P-GRAFT.
+  * ``compile_blocks``: the merged stack adds a token count outside the tier's
+    ``dynamic_seq`` band, so expect a recompile per mask (one-time warning).
 """
 
 from __future__ import annotations
@@ -94,12 +75,10 @@ class FoveatedTokenMerge:
 
     ``mask4`` is the latent-pixel fovea mask ``(1, 1, h_lat, w_lat)``, built on
     the pool grid so every ``merge_edge``×``merge_edge``-token cell is uniformly
-    fovea or periphery. ``merge_edge=2`` is the benched default; the merged-rope
-    exactness argument (renormalized elementwise mean of the members'
-    (cos, sin) rows = exact mean-position rope) holds for any symmetric m×m
-    group — per axis the member angles pair off symmetrically about the cell
-    center, so the mean vector keeps the center angle and renorm restores unit
-    norm. ``merge_edge>2`` is a speed escalation only (unbenched).
+    fovea or periphery. ``merge_edge=2`` is the benched default. For any
+    symmetric m×m group the member angles pair off about the cell center, so
+    the renormalized mean of their (cos, sin) rows is the exact center-position
+    rope. ``merge_edge>2`` is unbenched.
 
     The object satisfies the ``token_merger`` protocol consumed by
     ``Anima.forward_mini_train_dit``: ``merge`` / ``unmerge`` / ``merge_rope``.
@@ -211,9 +190,8 @@ def score_to_cells(
     """Bisect the pre-morphology keep-fraction so the FINAL mask (after open →
     close → dilate-1 margin) lands on the target fraction.
 
-    Morphology is the compactness contract: open drops specks/thin structures
-    (isolated fovea cells lose their attention neighborhood), close fills gaps, the dilate is the 1-cell boundary margin.
-    Returns ``(cells bool (hp, wp), achieved fraction)``.
+    Morphology enforces compactness (isolated fovea cells lose their attention
+    neighborhood). Returns ``(cells bool (hp, wp), achieved fraction)``.
     """
     lo, hi = 0.005, 0.95
     cells = None
@@ -284,7 +262,7 @@ def foveated_denoise(
     ``FoveatedTokenMerge``, continue merged. After the loop: bicubic merged
     readout on the periphery.
 
-    ``fovea_frac`` floor is 0.25; ≤0.15 fails on multi-subject prompts. ``sigma_c=0.75`` is load-bearing — see module note.
+    ``fovea_frac`` floor is 0.25; ≤0.15 fails on multi-subject prompts.
     """
     if mask_source not in MASK_SOURCES:
         raise ValueError(
@@ -329,13 +307,11 @@ def foveated_denoise(
     pgraft_network = ctx.pgraft_network
     lora_cutoff_step = ctx.lora_cutoff_step
     soft_tokens_net = ctx.soft_tokens_net
-    # --traj_stats: passive per-step recorder. Post-combine, pre-Euler-step,
-    # on the full-grid x5 (periphery tokens carry their group-shared values
-    # after the σ_c crossing — exactly the trace the gauge must flag).
+    # --traj_stats: passive recorder, post-combine, pre-Euler-step, on the
+    # full-grid x5.
     traj_stats = getattr(ctx, "traj_stats", None)
-    # --xattn_boost: cond-forward-only cross-attn gain at σ ≥ band. The band
-    # (default σ ≥ 0.85) sits entirely above any sane σ_c crossing, so the
-    # boost acts on full-grid steps and composes trivially with the merge.
+    # --xattn_boost: cond-forward-only cross-attn gain at σ ≥ band (default
+    # 0.85, above any sane σ_c, so it only touches full-grid steps).
     xattn_boost = ctx.xattn_boost
     xattn_boost_band = ctx.xattn_boost_band
     xattn_renorm = ctx.xattn_boost_renorm
@@ -356,8 +332,7 @@ def foveated_denoise(
     hp, wp = h_lat // cell_px, w_lat // cell_px
 
     def velocity(x: torch.Tensor, sigma_scalar: float, merger):
-        # timestep == σ in [0,1] for Anima flow-matching. Setters mirror the
-        # standard loop / networks/spd.py.
+        # timestep == σ in [0,1] for Anima flow-matching.
         t = x.new_full((x.shape[0],), float(sigma_scalar))
         set_hydra_sigma(anima, t)
         compute_and_set_hydra_fei(anima, x)
@@ -473,12 +448,10 @@ def foveated_denoise(
             ).float()
 
             if traj_stats is not None:
-                # sigmas[i] as the 0-d tensor (recorder contract; this loop
-                # already syncs on float(sigmas[i]) but the rule is uniform).
+                # sigmas[i] as the 0-d tensor (recorder contract).
                 traj_stats.record(i, sigmas[i], x5, v, v_u)
 
             if enabled and merger is None:
-                # Accumulate mask signals from the full-res forwards.
                 if v_u is not None:
                     cfg_acc += (v_c.float() - v_u.float()).abs().mean(dim=(0, 1, 2))
                 x0 = (x5.float() - sigma * v).squeeze(2)  # (B, C, H, W)
@@ -497,8 +470,8 @@ def foveated_denoise(
             pbar.update(1)
 
     if merger is not None:
-        # Final readout: periphery read from the merged representation. Part of
-        # the quality contract (bicubic, NOT nearest — nearest reads as mosaic).
+        # Periphery readout from the merged representation; bicubic, since
+        # nearest reads as mosaic.
         x4 = x5.float().squeeze(2)
         low = F.avg_pool2d(x4, cell_px)
         up = F.interpolate(low, size=x4.shape[-2:], mode="bicubic", align_corners=False)

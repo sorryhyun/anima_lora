@@ -212,9 +212,8 @@ class LoRANetworkCfg:
     # increasing, 0.0→1.0; None = uniform linspace.
     sigma_bucket_boundaries: Optional[List[float]] = None
 
-    # Three-axis routing config — the `lora-routing` skill has the full
-    # matrix. use_moe_style: expert layout. route_per_layer:
-    # router location. router_source: gate input signal.
+    # use_moe_style: expert layout. route_per_layer: router location.
+    # router_source: gate input signal.
     use_moe_style: MoEStyle = False
     route_per_layer: bool = False
     router_source: RouterSource = "none"
@@ -227,12 +226,9 @@ class LoRANetworkCfg:
     down_init: str = "kaiming"
 
     # weight_svd window: slice k seeds ``lora_down`` from W0's right singular
-    # vectors [k·r, (k+1)·r) instead of the top-r. Slices of one orthonormal
-    # basis are mutually orthogonal, so adapters trained with different slices
-    # never share an input subspace at merge (a per-artist address). 0 = top-r.
-    # adaln_up_* modules ignore it and always take the top-r: their input is a
-    # σ-only vector that lives in W0's top ~2 directions, so no slice layout can
-    # split it (the shards would all learn a global bias, only one of them live).
+    # vectors [k·r, (k+1)·r), so adapters on different slices never share an
+    # input subspace at merge. 0 = top-r. adaln_up_* modules always take the
+    # top-r: their σ-only input lives in W0's top ~2 directions.
     svd_slice: int = 0
     # > 0: interleaved slices — slice k takes vectors {k, k+N, k+2N, …} so every
     # slice owns one of the top-N directions. 0 = contiguous [k·r, (k+1)·r).
@@ -259,9 +255,7 @@ class LoRANetworkCfg:
     fei_sigma_low_div: float = 4.0
     fei_router_names: Optional[List[str]] = None
 
-    # GlobalRouter parameters (route_per_layer=False). Two-layer MLP feeding
-    # softmax/τ. Final layer is zero-init so step-0 gates are uniform,
-    # guaranteeing ΔW=0 at the first optimizer step.
+    # GlobalRouter parameters (route_per_layer=False; routers.py).
     router_hidden_dim: int = 64
     router_tau: float = 0.7
 

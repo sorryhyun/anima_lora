@@ -28,10 +28,9 @@ the energy-weighted aggregate reflects what the merge actually writes (pairwise
 is not).
 
 **Subspace overlap** complements the signed cosine. Two independent low-rank
-deltas in a huge matrix space have vanishing expected Frobenius cosine
-(measured on independent artist LoRAs), so the cosine reads
-"orthogonal" for essentially every real merge — including ones that visibly
-clash. The precursor to a visible clash is the LoRAs *occupying the same
+deltas in a huge matrix space have vanishing expected Frobenius cosine, so the
+cosine reads "orthogonal" for essentially every real merge, including ones that
+visibly clash. The precursor to a visible clash is the LoRAs *occupying the same
 functional subspace*: both writing into the same output directions (column
 space of ``up``) and/or reading the same input features (row space of
 ``down``), with ⟨ΔW_i, ΔW_j⟩_F ≈ 0 all the while. We measure it as::
@@ -67,21 +66,15 @@ LoadedLoRA = tuple[dict[str, torch.Tensor], dict[str, torch.Tensor], dict[str, f
 _EPS = 1e-12
 
 # ×random severity bands for subspace overlap (observed / chance-level).
-# Chance itself is ≈ rank/dim per module (~0.01 for r=32 in 3072-d), so raw
-# overlap thresholds would not transfer across module shapes — the ×random
-# factor does.
+# Chance is ≈ rank/dim per module, so raw thresholds would not transfer across
+# module shapes.
 OVERLAP_ELEVATED_X = 3.0
 OVERLAP_COLLIDING_X = 8.0
 
 # Above this |global energy-weighted cosine| a high subspace overlap is
-# *explained by the sign* of the interference — the pair reinforces (cos ≫ 0)
-# or cancels (cos ≪ 0) rather than genuinely colliding. Only a same-subspace /
-# orthogonal-direction pair (cos ≈ 0) is a real "collision" the cosine can't
-# see. 0.5 sits well above the near-orthogonal regime independent adapters
-# occupy (≈0–0.15 on artist LoRAs) yet below the blind-spot
-# construction's <0.5, so both regimes classify correctly. (The GUI banner uses
-# a separate, coarser _SAFE_COS=0.15 gate for the same reinforce-vs-collide
-# decision — see gui/tabs/merge_tab.py::_apply_analysis_marker.)
+# explained by the sign (reinforcing / cancelling), not a collision. Independent
+# artist LoRAs sit at ≈0–0.15. The GUI banner uses its own coarser 0.15 gate
+# (gui/tabs/merge_tab.py::_apply_analysis_marker).
 COS_ALIGNED = 0.5
 
 
@@ -133,29 +126,21 @@ class SubspaceOverlap:
     out_xrandom: float  # out / chance-level; ~1 = coincidence, ≫1 = collision
     inp: float  # input (down row-space) overlap ∈ [0, 1] — read overlap
     in_xrandom: float
-    # The pair's global energy-weighted Frobenius cosine, so ``band`` can tell a
-    # sign-explained overlap (reinforcing / cancelling) apart from a genuine
-    # same-subspace / orthogonal-direction collision. Defaults to 0 (⇒ sign
-    # can't rescue a high overlap) for constructions that omit it.
+    # The pair's global energy-weighted Frobenius cosine; ``band`` uses it to
+    # tell a sign-explained overlap from a collision. 0 ⇒ sign can't rescue it.
     cosine: float = 0.0
 
     @property
     def band(self) -> str:
-        """'chance' | 'reinforcing' | 'cancelling' | 'elevated' | 'colliding'.
-
-        Overlap magnitude alone is sign-blind: two LoRAs can share a subspace
-        while reinforcing (cos ≫ 0), cancelling (cos ≪ 0), or genuinely
-        colliding (cos ≈ 0 — the blind spot this metric exists to catch). A
-        strongly-aligned pair is NOT a collision even at 200× random overlap, so
-        the sign of the interference gates the high-overlap tier. Graded on the
-        output side."""
+        """'chance' | 'reinforcing' | 'cancelling' | 'elevated' | 'colliding',
+        graded on the output side; the cosine sign gates the high-overlap tier
+        (see the module docstring)."""
         if self.out_xrandom < OVERLAP_ELEVATED_X:
             return "chance"
         if self.cosine >= COS_ALIGNED:
             return "reinforcing"
         if self.cosine <= -COS_ALIGNED:
             return "cancelling"
-        # Shared subspace, direction ≈ orthogonal: the collision cosine misses.
         return "colliding" if self.out_xrandom >= OVERLAP_COLLIDING_X else "elevated"
 
 
@@ -210,10 +195,8 @@ class InterferenceReport:
 
     @property
     def worst_overlap(self) -> tuple[tuple[int, int], SubspaceOverlap] | None:
-        """The most *concerning* overlap pair, if any. A genuine collision /
-        cancellation outranks a merely-large but sign-explained (reinforcing)
-        overlap — a 200× reinforcing overlap is benign, a 20× cos≈0 one is not;
-        ties break on the raw ×random factor."""
+        """The most *concerning* overlap pair, if any: ranked by band
+        (``_BAND_CONCERN``), ties broken on the ×random factor."""
         if not self.pair_overlap:
             return None
         return max(
@@ -247,8 +230,8 @@ class InterferenceReport:
         if strongest is not None:
             (i, j), c = strongest
             payload["strongest"] = [self.names[i], self.names[j], round(c, 4)]
-        # Worst subspace collision — lets the GUI escalate a near-orthogonal
-        # cosine (the common case) when the pair still shares weight subspaces.
+        # Lets the GUI escalate a near-orthogonal cosine when the pair still
+        # shares weight subspaces.
         worst_ov = self.worst_overlap
         if worst_ov is not None:
             (i, j), ov = worst_ov
@@ -297,7 +280,6 @@ def analyze(
     if weights is None:
         weights = [1.0] * n
 
-    # Pre-scale every module's up factor by (α/r)·w once.
     scaled: list[dict[str, tuple[torch.Tensor, torch.Tensor]]] = []
     for (downs, ups, alphas), w in zip(loaded, weights):
         per: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
@@ -320,14 +302,12 @@ def analyze(
 
     for stem in stems:
         present = [k for k in range(n) if stem in scaled[k]]
-        # Per-module energy bookkeeping for the local interference index.
         m_norm = {}
         for k in present:
             up_k, down_k = scaled[k][stem]
             nrm = _gram_inner(up_k, down_k, up_k, down_k)
             m_norm[k] = nrm
             norm_sq[k] += nrm
-        # Effective-subspace bases, computed once per input at this module.
         bases = {}
         if len(present) >= 2:
             for k in present:
@@ -342,8 +322,7 @@ def analyze(
             m_cross += s
             bo_i, bi_i = bases[i]
             bo_j, bi_j = bases[j]
-            # Zero effective rank (zero --weights entry, all-masked T-LoRA):
-            # no subspace to compare — skip; the wgt would be ~0 anyway.
+            # Zero effective rank (zero --weights entry, all-masked T-LoRA).
             if min(bo_i.shape[1], bo_j.shape[1], bi_i.shape[1], bi_j.shape[1]) == 0:
                 continue
             obs_out, exp_out = _pair_overlap(bo_i, bo_j)
@@ -444,10 +423,8 @@ def format_report(report: InterferenceReport, *, top_modules: int = 8) -> str:
                 f"out {ov.out:.3f} ({ov.out_xrandom:.1f}× random) · "
                 f"in {ov.inp:.3f} ({ov.in_xrandom:.1f}×)  ({ov.band})"
             )
-        # Sign-aware: a module whose shared subspace is sign-explained (its
-        # energy-excess index is strongly positive ⇒ reinforcing) is not a
-        # collision, so exclude it — otherwise every reinforcing merge lists its
-        # highest-energy layers as "colliding".
+        # Exclude modules whose energy-excess index is strongly positive
+        # (reinforcing), else every reinforcing merge lists its top layers.
         colliding = sorted(
             (
                 kv

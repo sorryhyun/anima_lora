@@ -77,7 +77,7 @@ def relational_gram_loss(
     spatial_norm: bool = False,
     sample_weights: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    """Arm-B relational loss: ``MSE(Gram(dit_tok), Gram(pe))`` in fp32.
+    """Relational loss: ``MSE(Gram(dit_tok), Gram(pe))`` in fp32.
 
     Per-token L2-norm within each space, then match the N×N affinity
     structure. ``spatial_norm`` applies iREPA target standardization:
@@ -104,8 +104,7 @@ def _safe_blur(grid: torch.Tensor, sigma: float, gh: int, gw: int) -> torch.Tens
     """``gaussian_blur_2d`` guarded against a kernel wider than the grid.
 
     ``gaussian_blur_2d`` reflect-pads by ``ceil(3σ)``, which needs
-    ``pad ≤ min_dim − 1``. Clamp σ defensively so an aggressive small divisor
-    degrades to the widest valid blur instead of crashing.
+    ``pad ≤ min_dim − 1``; a σ past that is clamped to the widest valid blur.
     """
     from library.runtime.fei import gaussian_blur_2d
 
@@ -144,9 +143,8 @@ def dog_standardize(
     degenerate special case).
 
     ``norm_std``: ``0`` (default) divides by the empirical per-channel
-    spatial std (identical to ``spatial_norm``'s, so an A/B isolates the
-    band-pass); ``> 0`` divides by that fixed constant instead (paper's
-    ``normalization_std`` regime).
+    spatial std (the same as ``spatial_norm``'s); ``> 0`` divides by that
+    fixed constant instead (paper's ``normalization_std`` regime).
     """
     b, n, d = pe.shape
     grid = pe.transpose(1, 2).reshape(b, d, gh, gw)  # row-major (B, d, gh, gw)
@@ -180,9 +178,7 @@ def relational_align_loss(
 
     ``captured`` is a raw block output (either layout), ``pe`` the cached
     encoder features ``(B, T, d_enc)`` with CLS still at index 0 when the spec
-    carries one. This is the probe entry point (``bench/turbo/``); the
-    training adapter composes the same pieces itself (it also needs the
-    pooled tokens for the absolute-arm head / grad-heatmap probe).
+    carries one. The training adapters compose the same pieces themselves.
 
     ``dog`` applies the REPA-DoG band-pass instead of ``spatial_norm``
     (mutually exclusive; ``dog`` wins).

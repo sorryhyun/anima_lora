@@ -244,7 +244,7 @@ STRINGS: dict[str, str] = {
     "sample_prompt_tip_extra": "Additional raw sample arguments, preserved as typed.",
     "finished": "--- Finished (exit code {code}) ---",
     "starting": "Starting… (loading torch / accelerate)",
-    # Daemon-backed training (Phase 2 — training survives GUI close)
+    # Daemon-backed training
     "daemon_submitting": "Submitting job to the training daemon…",
     "daemon_submit_failed": "Could not reach the training daemon: {err}",
     "daemon_queued": "Queued job {job_id} on the training daemon.\n",

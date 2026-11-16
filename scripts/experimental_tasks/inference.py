@@ -28,13 +28,10 @@ _TE_SUFFIX = "_anima_te.safetensors"
 def _te_cache_candidates(ref_image: str | os.PathLike) -> list[Path]:
     """TE cache locations to probe for a resized reference image.
 
-    Preprocessing writes caches under ``post_image_dataset/lora/`` mirroring
-    the per-artist subdir layout of ``post_image_dataset/resized/`` (see
-    ``resolve_cache_path`` with ``image_dir``). So for
-    ``resized/mejikara_scene/10083096.png`` the cache lands at
-    ``lora/mejikara_scene/10083096_anima_te.safetensors`` — not flat under
-    ``lora/``. Probe, in order: the nested mirror, the flat ``lora/`` root,
-    and the legacy sidecar next to the image.
+    Caches under ``post_image_dataset/lora/`` mirror the per-artist subdirs of
+    ``resized/`` (``resolve_cache_path`` with ``image_dir``). Probe, in order:
+    the nested mirror, the flat ``lora/`` root, the legacy sidecar beside the
+    image.
     """
     from library.io.cache import resolve_cache_path  # noqa: PLC0415
 
@@ -70,12 +67,9 @@ def _resolve_ref_image(ref_image: str) -> str:
 
     Accepts a path that already exists as given, or a partial path relative to
     ``post_image_dataset/resized/`` with or without an extension (e.g.
-    ``sushispin/10186995`` → ``.../resized/sushispin/10186995.png``). Returning
-    the full nested path is what lets ``_te_cache_candidates`` /
-    ``resolve_cache_path`` mirror the per-artist subdir into the cache lookup —
-    a bare ``artist/stem`` makes ``relpath`` escape the resized root and fall
-    back to the (wrong) flat ``lora/stem`` candidate. Returns ``ref_image``
-    untouched when nothing matches, so downstream "not found" messaging fires.
+    ``sushispin/10186995`` → ``.../resized/sushispin/10186995.png``). The full
+    path is needed for the cache lookup to mirror the artist subdir. Returns
+    ``ref_image`` untouched when nothing matches.
     """
     if Path(ref_image).is_file():
         return ref_image
@@ -170,8 +164,7 @@ def cmd_test_directedit(extra):
         ensure_tagger_checkpoint,
     )
 
-    # Auto-fetch the published checkpoint (sorryhyun/anima-tagger) when absent —
-    # same path every other tagger entry point takes (autotag.py / autotag_server.py).
+    # Fetches the published checkpoint (sorryhyun/anima-tagger) when absent.
     ckpt_dir = ensure_tagger_checkpoint(ROOT / DEFAULT_TAGGER_DIR)
     print(f"  > tagging source: {ref_image}")
     tagger = AnimaTagger(ckpt_dir=ckpt_dir)
@@ -305,10 +298,8 @@ def cmd_test_directedit_dry(extra):
 def _filter_inference_base_for_edit(args: list[str]) -> list[str]:
     """Drop INFERENCE_BASE flags that ``scripts/edit.py`` doesn't accept.
 
-    INFERENCE_BASE bundles plenty of generation-only flags (--prompt, --seed,
-    --image_size, --infer_steps, --sampler, etc.) that overlap with or
-    conflict with edit.py's own. Keep only the model/path flags we actually
-    want to forward; let edit.py supply its own defaults for the rest.
+    Keeps only the model/path flags; edit.py supplies its own generation
+    defaults.
     """
     keep_flags = {
         "--dit",

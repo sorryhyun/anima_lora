@@ -39,12 +39,9 @@ def build_datasets(args) -> DatasetBundle:
     use_user_config = args.dataset_config is not None
     caption_dropout_enabled = False
 
-    # `mask_dir` rides the config chain (configs/preprocess.toml → preset →
-    # method → --mask_dir) and reaches every subset that doesn't name one
-    # of its own via the BlueprintGenerator's argparse fallback. Gate it on
-    # the directory existing first — the config value names where `make
-    # mask` *would* write, and a maskless checkout must keep falling back
-    # to the legacy auto-resolution instead of flipping alpha_mask on.
+    # `mask_dir` from the config chain names where `make mask` *would* write;
+    # gate it on the directory existing so a maskless checkout falls back to
+    # the legacy auto-resolution instead of flipping alpha_mask on.
     args.mask_dir = resolve_configured_mask_dir(getattr(args, "mask_dir", None))
 
     if args.dataset_class is None:
@@ -105,9 +102,8 @@ def build_datasets(args) -> DatasetBundle:
                     ]
                 }
 
-        # Global --sample_ratio override (`[half]` preset / GUI data-scope
-        # field). 1.0 is inert so any per-subset sample_ratio in a custom
-        # blueprint stays authoritative.
+        # Global --sample_ratio override; 1.0 is inert so a per-subset
+        # sample_ratio in a custom blueprint stays authoritative.
         sample_ratio = getattr(args, "sample_ratio", None)
         if sample_ratio is not None and sample_ratio != 1.0:
             for ds in user_config.get("datasets", []):
@@ -115,10 +111,8 @@ def build_datasets(args) -> DatasetBundle:
                     sub["sample_ratio"] = sample_ratio
             logger.info(f"Applied --sample_ratio={sample_ratio} to all subsets")
 
-        # --artists_shard k_N: restrict training to one round-robin shard of
-        # the artist subdirs, expanded into each subset's path_pattern
-        # before the blueprint is built (so downstream path_pattern-
-        # filtered logic sees the shard).
+        # --artists_shard k_N: one round-robin shard of the artist subdirs,
+        # expanded into each subset's path_pattern before the blueprint.
         artists_shard = getattr(args, "artists_shard", None)
         if artists_shard:
             if getattr(args, "path_pattern", None):
@@ -143,11 +137,9 @@ def build_datasets(args) -> DatasetBundle:
                 )
 
         blueprint = blueprint_generator.generate(user_config, args)
-        # `masked_loss` is the one masking switch: a mask tree left on disk
-        # (config `mask_dir`, or the legacy `masks/{merged,sam}`
-        # auto-resolution) must not re-enable masking. The gate sits before
-        # the datasets are built because construction bakes mask paths and
-        # preloads the PNGs (see `disable_masks_in_blueprint`).
+        # `masked_loss` is the one masking switch: a mask tree on disk must
+        # not re-enable masking. Gated before the datasets are built because
+        # construction bakes mask paths and preloads the PNGs.
         if not getattr(args, "masked_loss", False):
             ignored_mask_dirs = config_util.disable_masks_in_blueprint(
                 blueprint.dataset_group
@@ -163,9 +155,8 @@ def build_datasets(args) -> DatasetBundle:
         train_dataset_group, val_dataset_group = (
             config_util.generate_dataset_group_by_blueprint(
                 blueprint.dataset_group,
-                # Free-fit: the bucket set is the union of on-disk resized
-                # sizes, so every cached latent exact-matches its own
-                # (W, H). target_res is preprocess-only and inert here.
+                # Free-fit: buckets are the on-disk resized sizes;
+                # target_res is preprocess-only and inert here.
                 target_res=getattr(args, "target_res", None),
             )
         )
@@ -181,7 +172,6 @@ def build_datasets(args) -> DatasetBundle:
         else:
             logger.info("caption dropout DISABLED (rate=0.0 on all subsets)")
     else:
-        # use arbitrary dataset class
         train_dataset_group = load_arbitrary_dataset(args)
         val_dataset_group = None  # validation is not supported for arbitrary datasets
 
@@ -215,8 +205,8 @@ def configure_dataset_features(
     per-feature batch loading (inversion runs, REPA PE features, soft-token
     negatives). May flip ``args`` (cache_llm_adapter_outputs,
     gradient_checkpointing)."""
-    # use_text_cache → cache_text_encoder_outputs{,_to_disk} is expanded in
-    # verify_training_args (runs first); just read the derived flag here.
+    # use_text_cache is expanded to cache_text_encoder_outputs in
+    # verify_training_args (runs first).
     if args.cache_text_encoder_outputs:
         assert train_dataset_group.is_text_encoder_output_cacheable(
             cache_supports_dropout=True
@@ -224,11 +214,9 @@ def configure_dataset_features(
             "when caching Text Encoder output, token_warmup_step or caption_tag_dropout_rate cannot be used"
         )
         if getattr(args, "cache_llm_adapter_outputs", False):
-            # Adapter output caching is only valid when the adapter is frozen
-            # (no LoRA on adapter). The flag is store_true, so a method TOML
-            # that sets it (easycontrol.toml) can't be switched off from a
-            # descriptor — auto-disable instead; the TE cache-completeness
-            # probe then requires the prompt_embeds layout.
+            # Adapter output caching is only valid when the adapter is frozen.
+            # The flag is store_true, so a method TOML that sets it can't be
+            # switched off from a descriptor: auto-disable instead.
             if args.network_args is not None and any(
                 "train_llm_adapter" in a and "true" in a.lower()
                 for a in args.network_args
@@ -239,8 +227,6 @@ def configure_dataset_features(
                 )
                 args.cache_llm_adapter_outputs = False
     elif getattr(args, "cache_llm_adapter_outputs", False):
-        # Adapter-output caching writes into the TE cache; with text
-        # caching off it is a no-op, so auto-disable instead of crashing.
         logger.warning(
             "cache_llm_adapter_outputs=true has no effect without text-encoder "
             "caching (use_text_cache=false / live text encoding); disabling it."
@@ -269,17 +255,15 @@ def configure_dataset_features(
                 dataset.inversion_dir = inversion_dir
                 dataset.inversion_num_runs = num_runs
 
-    # REPA: load cached PE-Spatial patch tokens into batches when
-    # use_repa is set (rides the resolved network kwargs).
+    # REPA: load cached PE-Spatial patch tokens into batches.
     net_kwargs = resolve_network_kwargs(args)
     if net_kwargs.get("use_repa", "").lower() in ("true", "1", "yes"):
         repa_encoder = net_kwargs.get("repa_encoder") or "pe_spatial"
         for dataset in train_dataset_group.datasets:
             dataset.load_repa_pe = True
             dataset.repa_pe_encoder = repa_encoder
-        # A missing PE cache makes the REPA alignment term a silent no-op
-        # (the loss skips any batch without repa_pe_features), so probe
-        # coverage now: fail fast on a fully-absent cache, warn on partial.
+        # A missing PE cache makes the REPA term a silent no-op (the loss
+        # skips batches without repa_pe_features): fail on none, warn on partial.
         present, total = train_dataset_group.count_repa_pe_sidecars()
         if total > 0 and present == 0:
             raise RuntimeError(
@@ -302,9 +286,7 @@ def configure_dataset_features(
             f"batches carry repa_pe_features ({present}/{total} cached)."
         )
 
-    # Soft-tokens contrastive negatives (configs/methods/soft_tokens.toml).
-    # Preview the resolved kwargs to decide whether the dataset should
-    # surface cached negative text embeddings. Off unless contrastive_weight > 0.
+    # Soft-tokens contrastive negatives, on when contrastive_weight > 0.
     if str(getattr(args, "network_module", "") or "") == (
         "networks.methods.soft_tokens"
     ):
@@ -312,8 +294,6 @@ def configure_dataset_features(
         if con_weight > 0.0:
             con_k = int(net_kwargs.get("contrastive_k", 1) or 1)
             con_mode = str(net_kwargs.get("contrastive_negative_mode", "shuffled"))
-            # The negative grouping always comes from the shared caption
-            # index `make caption-index` writes — not a user knob.
             con_index = "post_image_dataset/captions/caption_index.json"
             if not os.path.exists(con_index):
                 raise FileNotFoundError(
@@ -325,9 +305,7 @@ def configure_dataset_features(
                     "cache_llm_adapter_outputs=true (negatives are cached "
                     "crossattn_emb swapped off disk)."
                 )
-            # Negatives only feed the training-step contrastive forward; the
-            # validation FM-MSE stays a clean baseline, so val datasets are
-            # left untouched.
+            # Train only: validation FM-MSE stays a clean baseline.
             for dataset in train_dataset_group.datasets:
                 dataset.setup_contrastive_negatives(
                     con_index, k=con_k, mode=con_mode, is_validation=False
@@ -369,11 +347,10 @@ def derive_token_budget(args, train_group, val_group):
 
 def sample_prompt_token_counts(args) -> set:
     """Token counts the sample prompts will request; empty when sampling
-    is off. Sample generation runs through the same compiled blocks as
-    training, so an out-of-bucket resolution would crash mid-training
-    (ConstraintViolationError) unless folded into the compile budget up
-    front. Resolutions added to the file mid-run are NOT covered — skipped
-    with a warning at sample time instead.
+    is off. Samples run through the same compiled blocks as training, so an
+    out-of-bucket resolution would raise ConstraintViolationError unless folded
+    into the budget up front. Resolutions added mid-run are skipped with a
+    warning at sample time.
     """
     from library.datasets.buckets import token_counts_for_sample_prompts
 
@@ -418,8 +395,6 @@ def cache_text_encoder_outputs(
             group.new_cache_text_encoder_outputs([None], accelerator)
 
     sample_prompts_te_outputs = None
-    # In memory only to encode sample prompts; None when no sample
-    # prompts are configured.
     if text_encoders[0] is not None and args.sample_prompts is not None:
         logger.info(
             f"cache Text Encoder outputs for sample prompts: {args.sample_prompts}"

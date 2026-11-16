@@ -1,24 +1,16 @@
 """Trajectory-resolved latent statistics — the passive per-step recorder.
 
-Proposal: ``_archive/proposals/traj_latent_stats.md``. Observes the denoising
-trajectory (per-step, per-token, per-channel statistics of the x̂₀ estimate)
-without changing a single bit of the generation. Everything is computed on
-``.float()`` copies of the loop tensors, out-of-place, and dumped to one
-``.npz`` sidecar per generation at flush.
+Records per-step, per-token, per-channel statistics of the x̂₀ estimate
+without affecting the generation: everything is computed on ``.float()``
+copies, out-of-place, and dumped to one ``.npz`` per generation at flush.
+Built in ``generate_body`` (``None`` when off), fed after the CFG combine and
+before the sampler step.
 
-Hooked the same way the other sampler plug-ins are: built from ``args`` in
-``generate_body`` (``None`` when off — zero allocations, hook sites are a
-``if recorder is not None`` short-circuit), fed once per step *after* the CFG
-combine and *before* the sampler step via :meth:`record`, flushed once per
-generation.
+"Token" = one DiT patch = a 2×2 latent cell (16 px). x̂₀ is normalized per
+channel with the Qwen Image VAE's ``latents_mean`` / ``latents_std`` so a code
+bin means the same in every channel.
 
-"Token" = one DiT patch = a 2×2 latent-pixel cell (16 px at the VAE's 8×
-downsample), so every map is directly comparable to attention/token-count
-reasoning. x̂₀ is normalized per channel with the Qwen Image VAE's shipped
-``latents_mean`` / ``latents_std`` so "a bit" means the same thing in every
-channel.
-
-Traces per step (see the proposal's table):
+Traces per step:
 
 * ``tok``      — token-level normalized x̂₀ itself (f16) — the raw map for
   token-wise RMSE(σ) (codes are too coarse at k=4)
@@ -41,10 +33,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-# Per-channel statistics of the Qwen Image VAE latent space (z_dim = 16).
-# Mirror of the shipped defaults in
-# library/models/qwen_vae.py::AutoencoderKLQwenImage.__init__ — pinned equal by
-# tests/test_traj_stats.py so they cannot drift.
+# Qwen Image VAE latent stats (z_dim = 16); mirror of
+# AutoencoderKLQwenImage.__init__, pinned by tests/test_traj_stats.py.
 QWEN_LATENTS_MEAN = [
     -0.7571,
     -0.7089,
@@ -82,26 +72,22 @@ QWEN_LATENTS_STD = [
     1.9160,
 ]
 
-# Quantization support: normalized x̂₀ is ~unit-scale per channel; codes are
-# uniform bins over [-_QUANT_RANGE, +_QUANT_RANGE] (clamped).
+# Codes are uniform bins over [-_QUANT_RANGE, +_QUANT_RANGE] (clamped).
 _QUANT_RANGE = 4.0
 
 _LAPLACIAN_3X3 = [[0.0, 1.0, 0.0], [1.0, -4.0, 1.0], [0.0, 1.0, 0.0]]
 
-# DiT patch = 2×2 latent pixels (16 px) — the token aggregation cell.
 _TOKEN_CELL = 2
 
 
 class TrajStatsRecorder:
     """Accumulates per-step trajectory traces on-GPU and dumps one npz at flush.
 
-    Pure observation: :meth:`record` never mutates its inputs and never feeds
-    anything back into the loop — recorder on/off latents are identical
-    (pinned by ``tests/test_traj_stats.py``).
+    :meth:`record` never mutates its inputs or feeds back into the loop
+    (``tests/test_traj_stats.py`` compares recorder on/off latents).
     """
 
-    # process-global: generations flushed so far (filename collision guard for
-    # multi-prompt runs, mirroring CfgDeltaProbe._gen_counter)
+    # generations flushed in this process (filename collision guard)
     _gen_counter = 0
 
     def __init__(
@@ -162,8 +148,7 @@ class TrajStatsRecorder:
     def _to_spatial_4d(x: torch.Tensor) -> torch.Tensor:
         """Squeeze the 5D in-loop layout ``(B, C, 1, H, W)`` to 4D.
 
-        Dim 2 explicitly — never a bare ``squeeze()`` (see the CLAUDE.md dim-2
-        invariant; a bare squeeze corrupts B=1 batches).
+        Dim 2 explicitly: a bare ``squeeze()`` corrupts B=1 batches.
         """
         if x.dim() == 5:
             assert x.shape[2] == 1, f"expected T=1 at dim 2, got {tuple(x.shape)}"
@@ -182,11 +167,9 @@ class TrajStatsRecorder:
     ) -> None:
         """Observe one denoising step. Called post-CFG-combine, pre-sampler-step.
 
-        ``sigma`` may be a python float or a 0-d tensor. Hook sites MUST pass
-        the ``sigmas[i]`` tensor, not ``float(sigmas[i])`` — the float() read
-        is a stream sync that breaks the loop's CPU run-ahead (measured ~28 ms
-        per step at 1024²; the whole record() is ~0.4 ms). Conversion for the
-        header is deferred to :meth:`flush`.
+        Hook sites must pass the ``sigmas[i]`` tensor, not ``float(sigmas[i])``:
+        the float() read is a stream sync that breaks the loop's CPU run-ahead
+        (~28 ms per step at 1024²). Conversion is deferred to :meth:`flush`.
         """
         if torch.is_tensor(sigma):
             sigma_f = sigma.detach()  # 0-d tensor: arithmetic without a sync
@@ -231,9 +214,8 @@ class TrajStatsRecorder:
                 device=codes.device,
             )
 
-        # hf: 3×3 Laplacian energy of normalized x̂₀, channel-mean, token-pooled
-        # (kernel cached per device — a per-step torch.tensor() would pay a
-        # synchronous H2D copy every step)
+        # hf: 3×3 Laplacian energy, channel-mean, token-pooled. Kernel cached per
+        # device: a per-step torch.tensor() is a synchronous H2D copy.
         if self._lap_k is None or self._lap_k.device != xn.device:
             self._lap_k = torch.tensor(_LAPLACIAN_3X3, device=xn.device).view(
                 1, 1, 3, 3
@@ -243,8 +225,8 @@ class TrajStatsRecorder:
             lap.pow(2).reshape(b, c, h, w).mean(dim=1, keepdim=True), _TOKEN_CELL
         ).squeeze(1)  # (B, Ht, Wt)
 
-        # guide: per-token norm of the effective (post-combine) guidance delta.
-        # Under plain CFG this is g·‖v_cond − v_uncond‖ — same map, fixed scale.
+        # guide: per-token norm of the post-combine guidance delta
+        # (g·‖v_cond − v_uncond‖ under plain CFG).
         if uncond_noise_pred is not None:
             gdelta = self._to_spatial_4d(noise_pred.float() - uncond_noise_pred.float())
             guide = F.avg_pool2d(gdelta.norm(dim=1, keepdim=True), _TOKEN_CELL).squeeze(
@@ -293,8 +275,7 @@ class TrajStatsRecorder:
 
         header = dict(self.meta)
         header.update({"k": self.k, "seed": seed, "num_steps": len(self._steps)})
-        # uncompressed: zlib on the ~4 MB payload costs >100 ms inside the
-        # generation wall time.
+        # uncompressed: zlib on ~4 MB costs >100 ms of generation wall time
         np.savez(
             path,
             tok=stack("tok"),  # (S, B, C, Ht, Wt) f16 — token-level x̂₀

@@ -1,15 +1,13 @@
 """Generate an eval set with and without the LoRA, same seed per prompt.
 
-The point is the A/B, not the pictures: ``--multipliers 1.0,0.0`` renders each
-prompt twice from one model, because ``LoRANetwork.set_multiplier(0)`` makes
-every adapter short-circuit and the transformer is the base model.
-No reload, no second copy on a 16 GB card, and the only difference between the
-pair is the adapter.
+``--multipliers 1.0,0.0`` renders each prompt twice from one loaded model:
+``LoRANetwork.set_multiplier(0)`` short-circuits every adapter, so there is no
+reload or second copy on a 16 GB card.
 
-Three phases, as ``smoke_t2i.py``: encode every prompt with the text encoder
-block-swapped on, drop its 17.5 GB, denoise with the transformer, then take the
-transformer off the card and decode. Latents are held between phases because
-the VAE wants several GB to itself at 1024.
+Three phases: encode every prompt with the text encoder block-swapped on, drop
+it, denoise with the transformer, then take the transformer off the card and
+decode. Latents are held between phases because the VAE wants several GB to
+itself at 1024.
 
     make daemon-run ARGS="scripts/qwen21/generate.py \
         --lora output/qwen21/qwen21_lora.safetensors"
@@ -150,8 +148,7 @@ def run_generate(req: GenerateRequest) -> Path:
             t0 = time.time()
             latents = pipe(
                 output_type="latent",
-                # Same seed per prompt across multipliers: the pair differs by
-                # the adapter and nothing else.
+                # same seed per prompt across multipliers
                 generator=torch.Generator("cuda").manual_seed(req.seed + index),
                 **call,
             ).images

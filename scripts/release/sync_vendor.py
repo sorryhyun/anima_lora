@@ -1,52 +1,38 @@
 """Sync inference subsets of anima_lora into custom-node ``_vendor/`` trees.
 
-Each ComfyUI node tries to import the live ``library.*`` first, falling back
-to a bundled vendor copy when the host install isn't sitting inside the
-anima_lora repo.
+Each ComfyUI node imports the live ``library.*`` first and falls back to its bundled
+vendor copy when the host install is not inside the anima_lora repo. The vendor tree
+mirrors the live namespace (``library.*`` / ``networks.*``), so the copied files'
+internal imports work unchanged.
 
 Four targets:
 
-* ``custom_nodes/comfyui-anima-directedit/_vendor/`` — directedit primitives,
-  trimmed sampling helper, the trimmed ``CONSTANT_TOKEN_BUCKETS`` constant,
-  and a tiny ``library.anima.models`` stub so the lazy ``Anima`` annotation
-  resolves. The node consumes ``source_tag`` / ``target_tag`` STRINGs
-  directly (no tagger / vision / edit dispatcher vendored).
-* ``ComfyUI-Anima_lora-Adapter/_vendor/`` — the pure-compute router kernels
-  imported by ``adapter.py`` + ``fera.py`` (FEI 2-band / n-band, σ sinusoidal
-  features, σ-band partition mask). The node is a standalone published repo (a
-  sibling checkout, default ``../../ComfyUI-Anima_lora-Adapter``; override with
-  ``ANIMA_ADAPTER_NODE_REPO``); sync_vendor writes the vendor tree *into that repo*.
-  ``library/inference/router_compute.py`` is the single import surface; it pulls
-  ``library/runtime/fei.py`` and ``networks/lora_modules/router_state.py``
-  transitively, so we vendor all three verbatim. Trained router weights are
-  bit-sensitive to these kernels, so any drift between the live tree and
-  vendored copy produces silently corrupted gates at inference. Also vendors
-  ``library/anima/ext_vocab.py`` — the CJK vocab-pack runtime (tokenizer
-  segmentation + ``HybridT5Encoder``) the ``AnimaVocabPackLoader`` node uses;
-  the trained ext rows are keyed to its exact segmentation, so drift here
-  silently mis-routes prompts to wrong rows. Skipped (with a
-  warning) when the standalone repo isn't checked out beside anima_lora.
-* ``custom_nodes/comfyui-anima-trainer/_vendor/`` — the stdlib daemon *client*
-  the trainer node submits jobs through. Lets the node be installed outside
-  the anima_lora repo and still talk to a running daemon over localhost HTTP.
-  ``anima_daemon/config.py``, ``record.py`` + ``client.py`` are copied verbatim; ``proc.py``
-  is trimmed to ``read_pidfile`` only so the vendored client stays pure-stdlib
-  (the live ``proc.py`` imports psutil for spawn/kill, which the node never
-  needs — it errors if the daemon isn't already up rather than auto-starting).
-* ``ComfyUI-Spectrum-KSampler/_vendor/`` — the pure-compute ``*_core`` kernels
-  (FSG / SMC / CNS / SPD numerics) shared verbatim between the library's
-  sampler-boundary plugins and the node's ComfyUI seam wrappers. Also a standalone
-  published repo (default a sibling of anima_lora's parent; override
-  ``ANIMA_SPECTRUM_NODE_REPO``), written the same way. Each core is torch/numpy only — no ``comfy`` and no
-  anima-model imports. Skipped (with a warning) when the repo isn't checked out
-  beside anima_lora.
+* ``custom_nodes/comfyui-anima-directedit/_vendor/``: the DirectEdit primitives, a
+  trimmed sampling helper, the trimmed ``EDGE_TOKEN_BANDS`` constant and a stub
+  ``library.anima.models`` so the lazy ``Anima`` annotation resolves.
+* ``ComfyUI-Anima_lora-Adapter/_vendor/``: the router kernels behind
+  ``library/inference/router_compute.py`` (plus ``library/runtime/fei.py`` and
+  ``networks/lora_modules/router_state.py``, which it imports) and
+  ``library/anima/ext_vocab.py``, the CJK vocab-pack runtime the
+  ``AnimaVocabPackLoader`` node uses. Trained router gates and ext rows are keyed to
+  these exact kernels and segmentation, so drift silently corrupts gates or
+  mis-routes prompts at inference.
+* ``custom_nodes/comfyui-anima-trainer/_vendor/``: the stdlib daemon client the
+  trainer node submits jobs through. ``config.py``, ``record.py`` and ``client.py``
+  are copied verbatim; ``proc.py`` is trimmed to ``read_pidfile`` so the client
+  stays free of psutil (the node never auto-starts the daemon).
+* ``ComfyUI-Spectrum-KSampler/_vendor/``: the pure-compute ``*_core`` kernels (FSG /
+  SMC / CNS / SPD numerics) shared between the library's sampler plugins and the
+  node's ComfyUI wrappers; torch / numpy only.
+
+The Adapter and Spectrum nodes are standalone repos checked out beside anima_lora's
+parent (override with ``ANIMA_ADAPTER_NODE_REPO`` / ``ANIMA_SPECTRUM_NODE_REPO``);
+the vendor tree is written into that repo, and the target is skipped with a warning
+when it is not checked out.
 
 Run before bumping a node version / publishing:
 
     python scripts/release/sync_vendor.py
-
-The vendor tree mirrors the live namespace (``library.*`` / ``networks.*``)
-so the copied files' internal imports keep working unchanged.
 """
 
 from __future__ import annotations
@@ -236,8 +222,7 @@ def build_directedit_vendor() -> None:
     _write_trimmed(DIRECTEDIT_VENDOR, _resolve_directedit_trimmed())
 
 
-# Hydralora vendor tree (see module docstring; router weights are bit-sensitive
-# to these kernels).
+# Hydralora vendor tree (see module docstring: trained gates depend on these kernels).
 HYDRALORA_VERBATIM: list[tuple[str, str]] = [
     ("library/inference/router_compute.py", "library/inference/router_compute.py"),
     ("library/runtime/fei.py", "library/runtime/fei.py"),
@@ -342,9 +327,8 @@ SPECTRUM_VERBATIM: list[tuple[str, str]] = [
         "library/inference/corrections/fsg_core.py",
         "library/inference/corrections/fsg_core.py",
     ),
-    # SMC-CFG is already pure compute (torch-only); the library module IS the
-    # shared core — no separate ``_core`` split. The node imports SMCCFGState
-    # from here and keeps only its denoised↔v-space seam wrapper.
+    # SMC-CFG is already torch-only, so the library module is the shared core;
+    # the node keeps only its denoised↔v-space seam wrapper.
     (
         "library/inference/corrections/smc_cfg.py",
         "library/inference/corrections/smc_cfg.py",
@@ -355,10 +339,8 @@ SPECTRUM_VERBATIM: list[tuple[str, str]] = [
         "library/inference/corrections/mod_guidance_core.py",
         "library/inference/corrections/mod_guidance_core.py",
     ),
-    # Spectrum Chebyshev forecasters (ChebyshevForecaster + SpectrumPredictor) +
-    # the SEA cache-decision metric / auto-δ calibration (pure torch). The node
-    # keeps only its ComfyUI seam (disk δ-cache, model_function_wrapper state
-    # machine).
+    # Spectrum Chebyshev forecasters + the SEA cache-decision metric / auto-δ
+    # calibration; the node keeps only its ComfyUI seam (disk δ-cache, wrapper).
     ("networks/spectrum_forecast.py", "networks/spectrum_forecast.py"),
     ("networks/spectrum_sea.py", "networks/spectrum_sea.py"),
     # SPD spectral primitives (DCT helpers + spectral_expand geometry). The node

@@ -6,8 +6,7 @@ Changes from v1 (``build_hangul_data.py``, reports/hangul_s500.md):
   (luma >= 200) reached from the white pixels around the edition's text box, with its
   holes filled, is 1.2x the box to 6 % of the page. The balloon is filled with its own
   ground colour (the median of its light pixels), which removes the lettering, Japanese or
-  Korean. Text on artwork and open balloons are
-  left alone.
+  Korean. Text on artwork and open balloons are left alone.
 - **Base page**: half the pages are the Japanese raw (``.src``), half the Korean edition
   (``.tgt``) of a swap_text v3 twin, aligned pixel for pixel, so the edition's boxes
   locate the same balloons on both.

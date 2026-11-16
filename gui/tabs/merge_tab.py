@@ -1,7 +1,4 @@
-"""MergeTab — bake a LoRA adapter into the base DiT.
-
-Layout: top directory combo, left file list, right details panel (file stats
-+ bakeability scan + merge options + log).
+"""MergeTab — bake a LoRA into the base DiT, merge LoRAs, or extract a ΔW LoRA.
 
 Runs ``scripts/toolkits/merge_to_dit.py`` (and the merge/extract toolkits) via
 a ``StreamingProcess`` and streams stdout/stderr into the log pane.
@@ -212,14 +209,11 @@ class MergeTab(LazyTabMixin, QWidget):
         self.stats_label.setStyleSheet(f"color:{tok('text_dim')};")
         rlay.addWidget(self.stats_label)
 
-        # Mode picker: bake one adapter into the DiT, or fuse N LoRAs into one LoRA.
-        # Dropdown (not checkboxes) — the two modes are mutually exclusive and
-        # drive quite different option panels below.
         mode_row = QHBoxLayout()
         mode_row.addWidget(QLabel(t("merge_mode")))
         self.mode_combo = QComboBox()
-        # Index 0 = Into DiT (default), 1 = Merge LoRAs, 2 = Extract LoRA.
-        # _lora_mode()/_extract_mode() key off this index.
+        # Index 0 = Into DiT (default), 1 = Merge LoRAs, 2 = Extract LoRA;
+        # _lora_mode()/_extract_mode() key off it.
         self.mode_combo.addItem(t("merge_mode_dit"))
         self.mode_combo.addItem(t("merge_mode_loras"))
         self.mode_combo.addItem(t("merge_mode_extract"))
@@ -304,8 +298,7 @@ class MergeTab(LazyTabMixin, QWidget):
         rlay.addWidget(lora_box)
 
         # ΔW extraction: two full DiT checkpoints → a plain LoRA
-        # (scripts/toolkits/extract_delta_lora.py). Inputs are full checkpoints,
-        # not adapters, so this mode ignores the left file list entirely.
+        # (scripts/toolkits/extract_delta_lora.py); ignores the file list.
         extract_box = QGroupBox(t("merge_extract_options"))
         extract_lay = QFormLayout(extract_box)
 
@@ -382,9 +375,8 @@ class MergeTab(LazyTabMixin, QWidget):
         bar.addStretch()
         rlay.addLayout(bar)
 
-        # Styled pass/warning banner for the interference analysis — populated
-        # from the ANALYZE_RESULT marker that merge_loras.py --analyze emits.
-        # The full report still streams into the log below; this is the verdict.
+        # Interference verdict banner, from merge_loras.py --analyze's
+        # ANALYZE_RESULT marker (the full report goes to the log).
         self.analysis_label = QLabel()
         self.analysis_label.setWordWrap(True)
         self.analysis_label.setVisible(False)
@@ -473,9 +465,7 @@ class MergeTab(LazyTabMixin, QWidget):
         self.stats_label.setText(f"{_format_size(st.st_size)} · {mtime}")
 
         if self._extract_mode():
-            # Clicking a checkpoint in the list picks it as the tuned input
-            # (the file picker stays available for dirs not in the combo). Skip
-            # the adapter scan — these are full DiT checkpoints, not adapters.
+            # A clicked checkpoint becomes the tuned input; no adapter scan.
             self.extract_tuned_edit.setText(str(p))
             self._update_extract_enabled()
             return
@@ -776,17 +766,13 @@ class MergeTab(LazyTabMixin, QWidget):
         if is_stderr:
             self._log(text)
 
-    # Banner severity grades on the strongest pairwise |cos| (operator alignment),
-    # NOT the verdict word or the N-inflated energy ratio. Near-orthogonal LoRAs
-    # (the common case for distinct artists, ~0.06) are safe to merge — and
-    # normalize=global tames summed magnitude regardless. These bands are heuristic.
+    # Severity grades on the strongest pairwise |cos|, not the N-inflated energy
+    # ratio. Distinct artists sit near orthogonal (~0.06). Heuristic bands.
     _SAFE_COS = 0.15
     _STRONG_COS = 0.35
-    # A near-zero cosine can still hide a subspace collision (both LoRAs writing
-    # the same weight subspaces in different directions) — escalate the "safe"
-    # banner when the worst pair's output-overlap ×random factor is colliding.
-    # Mirrors merge_analysis.OVERLAP_COLLIDING_X (not imported: that module pulls
-    # torch, which the GUI must not).
+    # A near-zero cosine can hide a subspace collision, so "safe" escalates when
+    # the worst pair's output-overlap ×random factor reaches this. Mirrors
+    # merge_analysis.OVERLAP_COLLIDING_X (not imported: that module pulls torch).
     _OVERLAP_WARN_X = 8.0
 
     def _apply_analysis_marker(self, payload: str):
@@ -816,9 +802,7 @@ class MergeTab(LazyTabMixin, QWidget):
             ov_out = ov_x = 0.0
 
         if mag < self._SAFE_COS and ov_x >= self._OVERLAP_WARN_X:
-            # Directions near-orthogonal but the pair still writes into the
-            # same weight subspaces — the cosine-based "safe" would be false
-            # comfort, so surface the collision as a caution.
+            # Near-orthogonal but writing the same subspaces: caution.
             text = t(
                 "merge_analysis_overlap",
                 a=ov_a,
@@ -857,12 +841,9 @@ class MergeTab(LazyTabMixin, QWidget):
                 shared=shared,
                 modules=modules,
             )
-            # Reinforcement is benign — the default normalize=global rescales the
-            # aligned sum back to single-LoRA magnitude, so there is no overdrive
-            # (it only signals near-duplicate ingredients ⇒ caution, never a red
-            # alert; common for soup-of-soups off a shared init). Only genuine
-            # cancellation, where the deltas erase each other, goes red when
-            # strong. Mirrors the sign-aware CLI band in library.anima.merge_analysis.
+            # Reinforcement is at most a caution (normalize=global rescales the
+            # aligned sum); only strong cancellation goes red. Mirrors the
+            # sign-aware band in library.anima.merge_analysis.
             if reinforcing:
                 sev, bg = "warn", tok("warn_bg")
             else:

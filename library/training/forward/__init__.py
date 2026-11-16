@@ -1,6 +1,4 @@
-# Per-step forward-pass helpers for the training loop.
-# Each module is a small, self-contained piece the inner loop (loop.py / train.py)
-# composes per step. Re-exported so `from library.training.forward import X` works.
+# Per-step forward-pass helpers the inner loop (loop.py / train.py) composes.
 
 from library.training.forward.forward_kwargs import (
     ForwardConditioning,

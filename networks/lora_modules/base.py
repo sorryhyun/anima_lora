@@ -20,8 +20,8 @@ def _absorb_channel_scale(
 
     Mutates ``weight`` so ``W[:, c] *= s_norm[c]``; returns
     ``inv_scale = 1 / s_norm`` (caller applies ``x * inv_scale`` at forward).
-    Output is unchanged — rebalances per-column gradient magnitude. See
-    ``_archive/bench/channel_stats/channel_dominance_analysis.md``.
+    Output is unchanged; rebalances per-column gradient magnitude. See
+    ``docs/anima/optimizations/channel_scaling.md``.
     """
     assert channel_scale.ndim == 1, (
         f"channel_scale must be 1D, got shape {tuple(channel_scale.shape)}"

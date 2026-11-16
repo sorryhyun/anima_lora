@@ -35,19 +35,13 @@ class _ExtendedSelfAttnLSEFunc(torch.autograd.Function):
         β = exp(lse_c+b - joint_lse)        joint_lse = logaddexp(lse_t, lse_c + b)
         joint_out = α · out_t + β · out_c
 
-    Forward correctness (vs. masked SDPA) is identity, modulo fp32 ulp.
+    FA2's stock ``FlashAttnFunc.backward`` silently discards the upstream
+    gradient on ``softmax_lse``, so two ``flash_attn_func`` calls + a Python
+    combine drop the gradient through α/β into ``q``/``k_t``/``k_c`` (small at
+    the b_cond=-10 init, grows as b_cond rises).
 
-    Backward correctness is more subtle. FA2's stock ``FlashAttnFunc.backward``
-    only consumes ``dout`` and silently discards the upstream gradient on
-    ``softmax_lse``. A plain "two FA + Python combine via flash_attn_func"
-    therefore drops the *path-2* gradient that flows from the loss back through
-    α/β into ``q``/``k_t``/``k_c`` (the contribution scales as α·β·(out_c−out_t)
-    in dout-space; negligible at init when β≈4.5e-5 from b_cond=-10, but grows
-    as b_cond rises during training).
-
-    To recover the joint-softmax gradient exactly, this Function bypasses the
-    stock autograd and calls ``_wrapped_flash_attn_forward / _backward``
-    directly. The trick: feeding ``softmax_lse = joint_lse`` (target) and
+    This Function calls ``_wrapped_flash_attn_forward / _backward`` directly
+    instead. Feeding ``softmax_lse = joint_lse`` (target) and
     ``softmax_lse = joint_lse - b`` (cond) into the per-tile FA backward causes
     FA to compute joint-softmax probabilities ``exp(L_t·s)/Z`` and
     ``exp(L_c·s + b)/Z`` respectively, so per-tile contributions sum to the
@@ -231,7 +225,7 @@ _LSE_FALLBACK_WARNED = False
 
 
 def _warn_lse_fallback_once(reason: str) -> None:
-    """One-shot warning when we can't use the LSE-decomposed path."""
+    """One-shot warning when the LSE-decomposed path is unavailable."""
     global _LSE_FALLBACK_WARNED
     if _LSE_FALLBACK_WARNED:
         return
@@ -297,8 +291,7 @@ def _extended_target_attention(
         B, S_t = out.shape[0], out.shape[1]
         return out.reshape(B, S_t, -1)
 
-    # Fallback: masked extended SDPA. Materializes the full attention matrix
-    # in the math kernel — only used when FA is unavailable.
+    # Fallback: masked SDPA, materializes the full attention matrix.
     if attn_params.attn_mode == "flash":
         _warn_lse_fallback_once("flash-attn import failed at module load")
     else:

@@ -30,16 +30,14 @@ UNCOND_TE_FILENAME = "_anima_uncond_te.safetensors"
 # anima/ domain layer never imports up into inference/.
 DEFAULT_SEQ_LEN = 512
 
-# The uncond sidecar is a pure function of the base Qwen3 encoder + base-DiT LLM
-# adapter + 512-pad, so it ships as a package asset (~1 MB) under ``assets/``,
-# resolved via ``__file__``. Staging/regeneration (e.g. after a base-model swap)
-# overwrites this same file in place.
+# The sidecar is a pure function of the base Qwen3 encoder + base-DiT LLM adapter
+# + 512-pad, so it ships as a package asset (~1 MB). Regeneration (e.g. after a
+# base-model swap) overwrites this file in place.
 DEFAULT_UNCOND_DIR = Path(__file__).resolve().parent / "assets"
 
 
 def default_uncond_path() -> Path:
-    """Canonical sidecar path — the shipped, model-scoped package asset.
-    Override via CLI flag where a call site exposes one."""
+    """The shipped sidecar asset; call sites may expose a CLI override."""
     return DEFAULT_UNCOND_DIR / UNCOND_TE_FILENAME
 
 
@@ -54,10 +52,6 @@ def encode_uncond_with_models(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Encode ``T5("")`` using already-loaded models. Returns
     ``(crossattn_emb (seq_len, 1024), pooled (1024,))`` as bf16 CPU tensors.
-
-    Use this from preprocess / training entry points where the text encoder
-    and LLM adapter are already on device — avoids the second model-load cost
-    of :func:`encode_uncond_crossattn`.
     """
     with torch.no_grad():
         tokens_and_masks = tokenize_strategy.tokenize([""])
@@ -142,9 +136,8 @@ def encode_uncond_crossattn(
 
 
 def load_uncond_crossattn(path: str, device, dtype) -> torch.Tensor:
-    """Load the ``T5("")`` sidecar staged by ``make preprocess-te`` and return a
-    ``(1, seq, 1024)`` tensor on ``device`` in ``dtype``. Used as the student's
-    unconditional cross-attention input.
+    """Load the ``T5("")`` sidecar staged by ``make preprocess-te`` as a
+    ``(1, seq, 1024)`` tensor on ``device`` in ``dtype``.
     """
     if not os.path.exists(path):
         raise FileNotFoundError(

@@ -54,9 +54,6 @@ DEFAULT_PROMPTS = [
 ]
 
 
-# --------------------------------------------------------------------------- #
-# Per-step capture via a wrapped Euler step.
-# --------------------------------------------------------------------------- #
 class _StepCapture:
     """Monkeypatch `inference_utils.step` to record x0_pred per ODE step.
 
@@ -87,9 +84,6 @@ class _StepCapture:
         inference_utils.step = self._orig
 
 
-# --------------------------------------------------------------------------- #
-# γ computation.
-# --------------------------------------------------------------------------- #
 def _radial_bins(h: int, w: int, n_bins: int) -> tuple[np.ndarray, np.ndarray]:
     """Radial-frequency bin index per FFT cell + bin centers in [0, 1]."""
     fy = np.fft.fftfreq(h)[:, None]

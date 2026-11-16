@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import numpy as np
 
-# Rec.709 luma weights (matches vision-side convention elsewhere in the repo).
+# Rec.709 luma weights.
 _LUMA = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
 
 #: Below this mean HSV saturation a target is effectively monochrome/sepia-core

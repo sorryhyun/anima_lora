@@ -24,21 +24,11 @@ def write_gen_manifest(
 ) -> Optional[str]:
     """Under a daemon spawn, record a generation manifest + result pointer.
 
-    The daemon exports ``ANIMA_DAEMON_JOB_DIR`` into every job's env. When set,
-    we write a manifest (``gen_manifest.json``) into the job dir and drop
-    ``result_path.json`` → ``{"path": <abs manifest>}`` so the monitor lifts
-    ``result_path`` + ``result_summary`` (``{label, metrics}``) onto the job
-    record, as for bench results.
-
-    Absent the env var (a plain inline ``python inference.py``) this is a
-    no-op. Best-effort: a bad
-    job dir must never fail a completed generation. Returns the manifest path (or
-    None when inline / on failure).
-
-    The manifest carries ``label`` + ``metrics`` (the two keys the daemon lifts)
-    plus the full image list; ``label`` defaults to the adapter stem so
-    ``daemon-wait`` / ``python -m anima_daemon status <id>`` shows what was
-    rendered.
+    With ``ANIMA_DAEMON_JOB_DIR`` set, writes ``gen_manifest.json`` and
+    ``result_path.json`` into the job dir; the daemon lifts the manifest's
+    ``label`` (default: the adapter stem) and ``metrics`` onto the job record.
+    No-op inline. Best-effort: a bad job dir must not fail a finished
+    generation. Returns the manifest path, or None.
     """
     import json
 
@@ -47,7 +37,7 @@ def write_gen_manifest(
         return None
     if label is None:
         lw = getattr(args, "lora_weight", None)
-        # lora_weight may be a list (stacked adapters) or a str; take the first.
+        # stacked adapters: label by the first
         if isinstance(lw, (list, tuple)):
             lw = lw[0] if lw else None
         label = os.path.splitext(os.path.basename(str(lw)))[0] if lw else "base"
@@ -165,8 +155,7 @@ def save_latent(
 def pixels_to_pil(sample: torch.Tensor) -> Image.Image:
     """Convert a ``[-1, 1]`` CHW pixel tensor (VAE output) to a PIL image.
 
-    The single source of truth for the ``[-1,1] → [0,255] → HWC → PIL`` step,
-    shared by ``save_images`` (file write) and ``decode_to_pil`` (in-memory).
+    Shared by ``save_images`` and ``decode_to_pil``.
     """
     x = torch.clamp(sample, -1.0, 1.0)
     x = ((x + 1.0) * 127.5).to(torch.uint8).cpu().numpy()
@@ -179,11 +168,7 @@ def decode_to_pil(
     latent: torch.Tensor,
     device: torch.device,
 ) -> Image.Image:
-    """Decode a clean latent straight to a ``PIL.Image`` — the in-memory exit.
-
-    Composes ``decode_latent`` (VAE decode → ``[-1,1]`` CHW tensor) with
-    ``pixels_to_pil``, with no temp PNG round-trip through ``save_output``.
-    """
+    """Decode a clean latent to a ``PIL.Image`` in memory (no PNG round-trip)."""
     return pixels_to_pil(decode_latent(vae, latent, device))
 
 

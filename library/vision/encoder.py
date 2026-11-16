@@ -56,15 +56,12 @@ def load_pe_encoder(
     model_id: str | None = None,
     dtype: torch.dtype = torch.bfloat16,
 ) -> VisionEncoderBundle:
-    """Load PE-Core (or another registered encoder) for live use.
+    """Load PE-Core (or another registered encoder) for live use, in eval mode
+    with ``requires_grad_(False)`` (set by the loaders).
 
-    The encoder is placed in eval mode with ``requires_grad_(False)`` (the
-    underlying loaders already do this; we just bundle the metadata).
-
-    ``dtype`` is the model compute dtype (cast once from the fp32 checkpoint)
-    *and* ``bundle.dtype``, which ``encode_pe_from_imageminus1to1`` casts inputs
-    to — so the two always agree. Default bf16 for the live training/CMMD path;
-    feature caching passes ``float32`` for a full-precision cache.
+    ``dtype`` is both the model compute dtype (cast once from the fp32
+    checkpoint) and ``bundle.dtype``, which ``encode_pe_from_imageminus1to1``
+    casts inputs to. Feature caching passes ``float32``.
     """
     info = get_encoder_info(name)
     resolved_id = model_id or info.default_model_id()
@@ -82,14 +79,8 @@ def pe_resize_for_image(
     image_minus1to1: torch.Tensor,
     spec: BucketSpec,
 ) -> torch.Tensor:
-    """Resize a [B, 3, H, W] tensor (already in [-1, 1]) to a per-sample bucket
-    so each image is presented at an aspect close to its source.
-
-    Returns a list of single-sample tensors stacked into a batch only when all
-    samples land in the same bucket; otherwise returns a list of tensors that
-    callers must pass to the encoder one-at-a-time. PE-Core supports dynamic
-    resolution, so we don't need a single shared bucket for the whole batch.
-    """
+    """Not implemented: always raises. Bucket resize + encode is
+    :func:`encode_pe_from_imageminus1to1`."""
     raise NotImplementedError(
         "Use encode_pe_from_imageminus1to1 for the full preprocess+encode path; "
         "this helper exists for callers that want to inspect bucket selection."
@@ -109,13 +100,10 @@ def encode_pe_from_imageminus1to1(
 ) -> list[torch.Tensor]:
     """Encode a batch of [-1, 1] images via the PE encoder.
 
-    PE-Core supports dynamic resolution so each image is resized to its own
-    aspect-bucket and run through the encoder one at a time. Returns a list
-    of ``[T_i, D]`` tensors (one per sample), since T differs across buckets.
-
-    When ``same_bucket=True`` the caller asserts all samples share an aspect
-    and we run a single forward — useful for batched training where the
-    dataloader's bucketing already enforces per-batch homogeneity.
+    PE-Core takes dynamic resolution, so each image is resized to its own
+    aspect bucket and encoded alone. Returns one ``[T_i, D]`` tensor per sample
+    (T differs across buckets). ``same_bucket=True``: the caller guarantees one
+    shared aspect, and the batch runs as a single forward.
     """
     spec = bundle.bucket_spec
     encoder = bundle.encoder

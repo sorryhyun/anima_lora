@@ -343,9 +343,7 @@ class AnimaTrainer:
             args.blocks_to_swap is not None and args.blocks_to_swap > 0
         )
 
-        # Build + install the strategy singletons. Must run before
-        # build_datasets — dataset init reads them. TE-OUTPUTS caching
-        # strategy is installed separately below, after the feature checks.
+        # Before build_datasets: dataset init reads the strategies.
         strategies = strategy_anima.setup_training_strategies(args)
         tokenize_strategy = strategies.tokenize
         text_encoding_strategy = strategies.text_encoding
@@ -389,10 +387,9 @@ class AnimaTrainer:
         # so the cache-completeness probe below can decide if Qwen3 needs loading.
         strategy_anima.setup_text_encoder_outputs_caching_strategy(args)
 
-        # When caching is enabled the caches MUST already be complete on disk
-        # (the trainer does not encode on the fly); skip loading the encoders
-        # entirely when nothing else needs them. `cache_latents = false` is a
-        # separate, explicit live-encoding mode, not a fallback.
+        # With caching on, the caches MUST already be complete on disk (the
+        # trainer does not encode on the fly); the encoders load only when
+        # something else needs them.
         sampling_enabled = bool(
             args.sample_prompts
             and (
@@ -473,7 +470,6 @@ class AnimaTrainer:
 
             accelerator.wait_for_everyone()
 
-        # The encoding strategy was installed with the others up top.
         self.sample_prompts_te_outputs = data.cache_text_encoder_outputs(
             args, accelerator, text_encoders, [train_dataset_group, val_dataset_group]
         )
@@ -482,10 +478,9 @@ class AnimaTrainer:
             args, weight_dtype, accelerator, swapping=self.is_swapping_blocks
         )
 
-        # Variance-reduced FM loss: the "frozen reference" is the trainable
-        # DiT itself with ``network.set_multiplier(0)`` during the no-grad
-        # forward (works since base weights are frozen and LoRA-family
-        # adapters are additive). Saves ~5 GB VRAM vs a second DiT copy.
+        # Variance-reduced FM loss: the frozen reference is the trainable DiT
+        # with ``network.set_multiplier(0)`` (adapters are additive), which
+        # saves ~5 GB VRAM against a second DiT copy.
         if float(getattr(args, "vr_loss_weight", 0.0) or 0.0) > 0.0:
             logger.info(
                 f"VR loss enabled (vr_loss_weight={args.vr_loss_weight}); "
@@ -495,9 +490,8 @@ class AnimaTrainer:
             args, swapping=self.is_swapping_blocks
         )
 
-        # Stage the T5("") sidecar once if caption dropout is on — dropped
-        # rows then get the same crossattn embedding Anima feeds at
-        # CFG-uncond inference instead of all-zeros (which is out-of-dist).
+        # Caption dropout: dropped rows take the T5("") sidecar, not zeros
+        # (see AnimaTextEncodingStrategy.apply_caption_dropout_inplace).
         self.step.state.caption_dropout_enabled = ds.caption_dropout_enabled
         if ds.caption_dropout_enabled:
             from library.preprocess.uncond import ensure_uncond_crossattn
@@ -536,8 +530,7 @@ class AnimaTrainer:
             return
         network = net.network
 
-        # Resolve and run on_network_built for each method adapter (EasyControl,
-        # …); validates its runtime contract and sets up state before
+        # Method adapters (EasyControl, …) validate and set up state before
         # optimizer/accelerator wiring.
         self.step.adapters = resolve_adapters(args, network)
         if self.step.adapters:
@@ -709,8 +702,7 @@ class AnimaTrainer:
         # accelerate syncs on the last batch of the dataloader, so an epoch is
         # ceil(batches / ga) steps; full epochs are skipped by ``epoch_to_start``
         # and only the residual inside the resumed epoch is turned into a batch
-        # count for ``skip_first_batches``. (Dividing a ga-multiplied count by
-        # steps-per-epoch here used to over-skip by ga², see GH #103.)
+        # count for ``skip_first_batches``.
         resume_step = initial_step
         epoch_to_start = 0
         if initial_step > 0:
@@ -738,8 +730,7 @@ class AnimaTrainer:
         del train_dataset_group, ds
 
         # sigma_lowres step-span gate: seed the train-forward counter with the
-        # resume offset (already in forward units) so it covers every resume
-        # path, not just re-deriving from args inside the loop.
+        # resume offset, in forward units.
         self.step.sigma.span_step = resume_step * args.gradient_accumulation_steps
 
         loop_state = build_loop_state(

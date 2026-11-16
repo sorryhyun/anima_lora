@@ -175,10 +175,8 @@ def _register_routing_weights_buffer(module: torch.nn.Module, num_experts: int) 
 def _set_routing_weights(module: torch.nn.Module, weights: torch.Tensor) -> None:
     """Replace `_routing_weights` with the live router output.
 
-    Direct slot assignment (NOT .copy_()) and no .detach() — the buffer must
-    carry the router's grad_fn so ∂L/∂α flows back to GlobalRouter: α_t
-    enters y_t as a live multiplier, so plain L_denoise backprop trains the
-    router.
+    Slot assignment, no ``.copy_()`` / ``.detach()``: the buffer must carry the
+    router's grad_fn so L_denoise backprop trains GlobalRouter.
     """
     buf = module._routing_weights
     w = weights.to(dtype=buf.dtype, device=buf.device)
@@ -242,11 +240,9 @@ class RouterStateMixin:
         """Register the σ / FEI / routing-weights placeholder buffers.
 
         Reads ``self.sigma_feature_dim`` / ``self.fei_feature_dim`` /
-        ``self.use_global_router`` (all assigned before this call). The routing
-        buffer is registered only under the global router — its presence is
-        exactly what the ``set_routing_weights`` guard above keys on. σ-band
-        partition stays in the module class (its registration is interleaved
-        with validation).
+        ``self.use_global_router`` (assign them first). The routing buffer exists
+        only under the global router, which is what the ``set_routing_weights``
+        guard keys on.
         """
         _register_sigma_feature_cache(self, self.sigma_feature_dim)
         _register_fei_feature_cache(self, self.fei_feature_dim)

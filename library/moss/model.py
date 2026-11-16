@@ -540,7 +540,7 @@ class _RoPE(nn.Module):
 
 
 class MOSSImageTransformer(ModelMixin, ConfigMixin):
-    """MOSS-Image DiT with training-compatible state-dict names and SDPA attention.
+    """MOSS-Image DiT under the published state-dict names.
 
     The sequence is ``[image (H·W) | text (S)]`` through every block; only the
     image tokens reach the head.
@@ -605,8 +605,6 @@ class MOSSImageTransformer(ModelMixin, ConfigMixin):
                 key[len(prefix) :]: value for key, value in state_dict.items()
             }
         return self.load_state_dict(state_dict, strict=True)
-
-    # ------------------------------------------------------------------ pieces
 
     def time_conditioning(self, timestep, batch, base=False):
         """``timestep`` is ``1000·σ`` (scalar or ``(B,)``) → ``mod (B,6,D)``, ``head (B,2,D)``.
@@ -797,8 +795,6 @@ class MOSSImageTransformer(ModelMixin, ConfigMixin):
         x = x * (1 + head_mod[:, 1, None]) + head_mod[:, 0, None]
         x = self.final_linear_video(x.to(self.final_linear_video.weight.dtype))
         return x.transpose(1, 2).reshape(x.shape[0], -1, height, width)
-
-    # ---------------------------------------------------------------- forwards
 
     def _check_inputs(self, hidden_states, encoder_hidden_states, mask):
         if (

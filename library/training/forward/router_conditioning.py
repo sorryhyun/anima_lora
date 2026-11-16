@@ -4,8 +4,8 @@ Drives the timestep / σ / FEI routers that live on the LoRA-family
 networks. Most calls are no-ops unless the active network exposes the
 corresponding ``set_*`` / ``step_*`` method.
 
-Same hookpoint order is preserved so cudagraph capture sees a stable
-sequence: timestep_mask → sigma → fei → balance.
+Hook order is fixed so cudagraph capture sees a stable sequence:
+timestep_mask → sigma → fei → balance.
 """
 
 from __future__ import annotations
@@ -28,14 +28,12 @@ def apply_router_conditioning(
     """Run all per-step router conditioning. Returns the next warmup_step value."""
     if hasattr(network, "set_timestep_mask"):
         network.set_timestep_mask(timesteps, max_timestep=1.0)
-    # σ-conditional HydraLoRA router (timestep-hydra.md). No-op
-    # unless use_sigma_router is on and the variant is hydra.
+    # σ-conditional HydraLoRA router (timestep-hydra.md); no-op unless
+    # use_sigma_router is on and the variant is hydra.
     if hasattr(network, "set_sigma"):
         network.set_sigma(timesteps)
-    # FEI router input — set_fei() drives both the per-Linear FEI router
-    # and the network-level GlobalRouter. FEI is a function of the actual input the model
-    # sees this step (``noisy_model_input``), not a leak from the target.
-    # No-op when the active network has no FEI router.
+    # set_fei() drives the per-Linear FEI router and the GlobalRouter. FEI is
+    # computed from the noisy input the model sees, so the target cannot leak.
     if getattr(network, "use_fei_router", False):
         from library.runtime.fei import compute_fei_2band, fei_sigma_low
 
@@ -51,9 +49,7 @@ def apply_router_conditioning(
     if is_train and hasattr(network, "step_balance_loss_warmup"):
         network.step_balance_loss_warmup(warmup_step, max_train_steps)
         incremented = True
-    # Soft-tokens contrastive warmup: parallel branch (mutually exclusive with
-    # the LoRA-family network above — different network class) but kept as a
-    # separate ``if`` so the order of checks doesn't matter.
+    # Soft-tokens contrastive warmup (a different network class from the one above).
     if is_train and hasattr(network, "step_contrastive_warmup"):
         # ``warmup_step`` is the micro-batch counter; soft_tokens converts it to
         # the optimizer-step clock with ``accum`` for its cadence gate.

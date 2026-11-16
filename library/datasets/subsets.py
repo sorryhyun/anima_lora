@@ -41,13 +41,11 @@ def resolve_configured_mask_dir(mask_dir: Optional[str]) -> Optional[str]:
     """Gate a *config-level* ``mask_dir`` (``configs/preprocess.toml`` →
     preset → method → ``--mask_dir``) on the directory existing.
 
-    The config default names where ``make mask`` *would* write, which is not
-    the same as masks being present. Handing a nonexistent root to every
-    subset would flip ``alpha_mask`` on for maskless checkouts and suppress
-    the legacy ``masks/{merged,sam}`` auto-resolution, so drop it here and
-    let ``_resolve_default_mask_dir`` run. A subset that names its own
-    ``mask_dir`` in the dataset blueprint bypasses this and keeps the loud
-    "resolved 0 masks" warning from the dataset build.
+    The config default names where ``make mask`` *would* write. Passing a
+    nonexistent root to every subset would flip ``alpha_mask`` on for maskless
+    checkouts and suppress ``_resolve_default_mask_dir``, so it is dropped here.
+    A subset's own blueprint ``mask_dir`` bypasses this and keeps the
+    "resolved 0 masks" warning.
     """
     if not mask_dir:
         return None
@@ -92,22 +90,16 @@ def split_train_val(
     validation_seed: int | None,
     validation_split_num: int = 0,
 ) -> Tuple[List[str], List[Optional[Tuple[int, int]]]]:
-    """
-    Split the dataset into train and validation.
+    """Split the dataset into train and validation.
 
-    Shuffle the dataset based on ``validation_seed`` (or current RNG when
-    None), then carve off a validation slice. When ``validation_split_num > 0``
-    the count-based split wins over the fractional ``validation_split``;
-    otherwise the original fraction-based split is used. For example, with
-    ``validation_split=0.2`` on 100 paths: [0:80] = 80 training, [80:] = 20
-    validation.
+    Shuffle by ``validation_seed`` (or the current RNG when None), then carve
+    off a validation slice: ``validation_split_num > 0`` wins over the
+    fractional ``validation_split``.
 
-    Guardrail: when ``validation_split_num >= len(paths)`` (or
-    ``validation_split >= 1.0``) the requested val slice would consume the
-    entire training pool — surface that as a warning and disable validation
-    for this subset (training gets all paths, val gets none). The val-side
-    caller's empty return is dropped by ``load_dreambooth_dir``'s "no images
-    found" branch, so the trainer simply runs without a val pass.
+    When the val slice would consume the whole subset
+    (``validation_split_num >= len(paths)`` or ``validation_split >= 1.0``),
+    warn and disable validation for this subset: training gets all paths, val
+    gets none.
     """
     dataset = list(zip(paths, sizes))
     if validation_seed is not None:
@@ -213,7 +205,6 @@ class AugHelper:
     def color_aug(self, image: np.ndarray):
         hue_shift_limit = 8
 
-        # remove dependency to albumentations
         if random.random() <= 0.33:
             if random.random() > 0.5:
                 hsv_img = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
@@ -408,10 +399,9 @@ class DreamBoothSubset(BaseSubset):
         # re-encoded captions. None → TE caches come from cache_dir.
         self.text_cache_dir = text_cache_dir
         # Optional redirect for the *target VAE latent* cache only (TE/PE stay
-        # in text_cache_dir/cache_dir). A prep step populates it with re-encoded
-        # targets (e.g. white-balanced colorize targets); any latent still
-        # missing at train time is encoded from the ORIGINAL image into this dir
-        # (with a warning — see new_cache_latents). None → latents from cache_dir.
+        # in text_cache_dir/cache_dir), populated by a prep step with re-encoded
+        # targets. A latent still missing at train time is encoded from the
+        # ORIGINAL image into this dir, with a warning. None → cache_dir.
         self.latent_cache_dir = latent_cache_dir
 
     def __eq__(self, other) -> bool:

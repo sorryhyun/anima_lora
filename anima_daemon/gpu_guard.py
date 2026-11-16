@@ -62,7 +62,7 @@ def wait_for_free_gpu(
             return True
         used, total = mem
         if total <= 0 or used / total < busy_frac:
-            return True  # GPU effectively free → go
+            return True
         logger.warning(
             "gpu_guard: GPU busy — %d/%d MiB used (attempt %d/%d)",
             used,

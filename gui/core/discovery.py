@@ -15,17 +15,10 @@ from gui.core.paths import ROOT
 
 
 def _imgs(d: Path) -> list[Path]:
-    """Return every image file under ``d`` (recursively).
+    """Every image file under ``d``, recursively.
 
-    ``anime_tools._walk.glob_images_pathlib`` is the shared walker, so the
-    browser sees exactly the files the curation stages and the trainer do —
-    including the optional-plugin formats (avif / jxl) that a bare extension
-    set here would miss.
-
-    Walks subfolders so users who organize ``image_dataset/`` by character /
-    series see the full pool in the browser. Cache filenames are stem-keyed
-    and flat, so stems must stay unique across the tree — the trainer enforces
-    this via ``_assert_unique_stems``; here we just sort and return.
+    Uses the anime_tools walker so the browser sees the same files (avif / jxl
+    included) as the curation stages and the trainer.
     """
     if not d.exists():
         return []

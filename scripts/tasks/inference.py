@@ -192,8 +192,7 @@ def cmd_gen(extra):
     ``make gen ARGS="--lora_weight output/ckpt/foo.safetensors --from_file prompts.txt"``.
     """
     mode, extra = _resolve_run_mode(extra)
-    # _base_test_args() leads with the python exe (INFERENCE_BASE[0]); run_command
-    # prepends the interpreter itself (venv python for the daemon), so drop it.
+    # run_command prepends its own interpreter; drop INFERENCE_BASE[0].
     argv = [*_base_test_args()[1:], *extra]
     run_command("gen", argv, mode=mode)
 
@@ -290,11 +289,9 @@ def cmd_test_easycontrol(extra):
             "ref_dir": ROOT / "post_image_dataset" / "resized",
             "empty_prompt": False,
         },
-        # phash_edit: ref is the source image and the prompt is an EDIT
-        # INSTRUCTION in the delta grammar ("glasses, -hat"), not a description
-        # -- shared tags cancel out of a delta, so identity rides the cond
-        # stream. Never force an empty prompt: empty is the identity/no-op arm's
-        # caption and returns a copy of the ref.
+        # phash_edit: the prompt is an edit instruction in the delta grammar
+        # ("glasses, -hat"). An empty prompt is the identity arm's caption and
+        # returns a copy of the ref.
         "phash_edit": {
             "weight": "anima_easycontrol_phash_edit",
             "out": "phash_edit",

@@ -16,10 +16,8 @@ import math
 
 import torch
 
-# The type-II DCT basis is constant for a given (n, device, dtype), and both the
-# SPD sampler and the fine-tune target construction only ever see a handful of
-# bucket sizes — so each matrix is built once and reused read-only. Callers must
-# NOT mutate the returned tensor (dct2/idct2 only matmul against it).
+# One DCT basis per (n, device, dtype); only a handful of bucket sizes occur.
+# Shared read-only: callers must not mutate the returned tensor.
 _DCT_CACHE: dict[tuple[int, torch.device, torch.dtype], torch.Tensor] = {}
 
 

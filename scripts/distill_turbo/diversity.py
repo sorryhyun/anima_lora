@@ -27,10 +27,8 @@ class DiversityMetrics:
     xpred_ac_sim: (
         float  # same decomposition on the final x_pred latent; LOWER = more diverse
     )
-    fm_mse: float  # flow-matching reconstruction MSE on the held-out sample; the
-    # fidelity half of the fidelity↔diversity tradeoff view. CAVEAT: FM val loss
-    # has NOT tracked sample quality on Anima (CMMD replaced it as the quality
-    # signal) — read it as a divergence/sanity number, not a quality score.
+    fm_mse: float  # flow-matching MSE on the held-out sample; a divergence check,
+    # not a quality score (FM val loss has not tracked sample quality on Anima).
 
 
 def _mean_pairwise_cos(X: torch.Tensor) -> float:

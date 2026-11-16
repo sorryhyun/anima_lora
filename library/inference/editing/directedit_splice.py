@@ -6,18 +6,10 @@ common suffix). Then build the edit conditioning by keeping ψ_src's slot
 embeddings everywhere outside that range and transplanting ψ_tar's slot
 embeddings only inside it.
 
-Why this is OK to do on a cross-attention adapter:
-  * T5 IDs map 1-to-1 to crossattn_emb slot indices — the LLM Adapter has 512
-    target query slots fed by T5 input IDs.
-  * The training-time invariant zeroes out crossattn_emb slots where
-    ``t5_attn_mask == 0`` (see ``AnimaTextEncodingStrategy``), so the trailing
-    padding region is well-defined as "zero" regardless of ψ.
-  * Cross-attention drift outside the diff span: an open empirical question
-    (the LLM Adapter cross-attends Qwen3's hidden states, which DO differ
-    between ψ_src and ψ_tar everywhere).
-
-Probe coverage: ``_archive/text_enc_probes/edit_slot_alignment.py`` reports
-10/10 clean contiguous spans across replace/remove/add.
+This works because T5 IDs map 1-to-1 to crossattn_emb slots (the LLM Adapter
+has 512 target query slots fed by T5 input IDs), and slots where
+``t5_attn_mask == 0`` are zeroed (``AnimaTextEncodingStrategy``), so the padding
+tail is zero regardless of ψ.
 """
 
 from __future__ import annotations
@@ -75,9 +67,7 @@ def find_t5_diff_span(
     """Longest common prefix + longest common suffix on padding-trimmed IDs.
 
     Returns the diff endpoints and the trimmed lengths so callers can locate
-    the suffix region without retrimming. Mirrors
-    ``_archive/text_enc_probes/edit_slot_alignment.py::find_diff_span`` plus the trim
-    step the probe does separately, so the regression set carries over.
+    the suffix region without retrimming.
     """
     src_len = _trim_pad_tail(src_ids, pad_id)
     tar_len = _trim_pad_tail(tar_ids, pad_id)
@@ -116,9 +106,7 @@ def splice_crossattn_emb(
       * ``crossattn_emb_src`` / ``crossattn_emb_tar``: ``(1, L, D)``.
       * ``t5_ids_src``       / ``t5_ids_tar``:        ``(1, L)``.
 
-    Single-batch only — DirectEdit's invert/edit loops run B=1.
-
-    Returns ``(spliced, span)`` so callers can log which token range moved.
+    B=1 only (DirectEdit's loops run B=1). Returns ``(spliced, span)``.
     """
     if crossattn_emb_src.shape != crossattn_emb_tar.shape:
         raise ValueError(
@@ -138,10 +126,7 @@ def splice_crossattn_emb(
     tar_ids = t5_ids_tar[0].tolist()
     span = find_t5_diff_span(src_ids, tar_ids, pad_id)
 
-    # Defensive: T5 IDs in the suffix region must match between src and tar.
-    # Re-tokenisation in the splice contract guarantees this (it's how we
-    # picked the suffix in find_t5_diff_span). If it ever fires, something
-    # upstream tokenised the two captions inconsistently.
+    # Fires only if upstream tokenised the two captions inconsistently.
     suf_a = src_ids[span.src_end : span.src_len]
     suf_b = tar_ids[span.tar_end : span.tar_len]
     if suf_a != suf_b:
@@ -167,6 +152,5 @@ def splice_crossattn_emb(
             0, span.src_end : span.src_len
         ]
         cursor += suffix_len
-    # Slots [cursor:L] stay zero — matches the AnimaTextEncodingStrategy
-    # "zero padding tail" invariant the DiT trained against.
+    # Slots [cursor:L] stay zero: the padding tail the DiT trained against.
     return out, span

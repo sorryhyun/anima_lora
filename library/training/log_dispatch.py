@@ -2,10 +2,8 @@
 
 Sends a ``logs`` dict to every configured Accelerate tracker (tensorboard /
 wandb / others) plus the :class:`~library.runtime.progress.ProgressSink`.
-This is the *output* end of the metrics pipeline — the values are produced via
-the :mod:`library.training.metrics` collector protocol, assembled into a dict,
-then handed here. Distinct from :mod:`library.log`, which configures Python's
-stdlib console logging.
+Values come from the :mod:`library.training.metrics` collector protocol.
+Console logging is :mod:`library.log`.
 
 ``AnimaTrainer`` keeps thin ``step_logging`` / ``epoch_logging`` /
 ``val_logging`` wrappers that call :func:`dispatch_logs` with the trainer's
@@ -34,8 +32,7 @@ def generate_step_logs(
 ) -> dict:
     """Assemble the per-step ``logs`` dict (loss, norms, per-group LRs).
 
-    The *input* end of the metrics pipeline — the dict built here is handed to
-    :func:`dispatch_logs`. ``vr_state`` is the trainer's ``RuntimeState.vr``
+    The dict is handed to :func:`dispatch_logs`. ``vr_state`` is the trainer's ``RuntimeState.vr``
     dict (λ tracking for the variance-reduced FM loss); pass ``None`` when VR
     is off.
     """

@@ -9,26 +9,23 @@ The adapter's target vocab is the old t5-v1_1-xxl spiece (32128 rows, no CJK).
 Instead of training a new SentencePiece, we borrow the CJK subset of Qwen3's
 own tokenizer — every borrowed piece is an existing Qwen token, so its
 extended-row init is an exact anchor-mapped embedding (``W @ qwen_embed[id]``,
-where ``W`` is a ridge least-squares fit Qwen-embed → T5-embed on tokens whose
+where ``W`` is a :func:`fit_anchor_map` fit Qwen-embed → T5-embed on tokens whose
 surface form exists in both vocabs), and the Qwen source stream and T5 query
 stream segment CJK spans identically (token-aligned cross-attention).
 
 Byte-fragment fallback: Qwen is byte-BPE, so some chars tokenize as UTF-8
 fragments. Those get per-character supplementary rows, initialised from the
 mapped mean of their fragment embeddings. Plain mean is order-invariant, so
-two chars whose UTF-8 bytes are permutations of each other would get
-identical rows (527 such pairs, e.g. 鯰/鰯); exactly those colliding rows use a position-weighted mean instead,
-which breaks the tie while leaving every non-colliding row at the plain mean.
+two chars whose UTF-8 bytes are permutations of each other (527 pairs, e.g.
+鯰/鰯) would get identical rows; exactly those use a position-weighted mean.
 
-Symbol routing: the stock spiece also has no row for a long
-tail of non-CJK symbols (``^`` ``<`` ``~`` ``·`` ``×`` ``☆``, emoji …) that
-danbooru tags and zh names use — T5 folds ``^^^`` into a single ``<unk>``, so
-``^^^`` / ``☆`` / ``\\`` were the same token. Those chars are routed to the
-Qwen side exactly like CJK, with their rows appended *after* the CJK blocks
-(``mapping["sym"]`` / ``mapping["sym_char"]``) so every pre-existing row id,
-distill cache and trained pack stays valid. The routing rule ships **inside
-the pack json** (``mapping["route"]``); a pack without it routes the CJK
-ranges only.
+Symbol routing: the stock spiece also has no row for a long tail of non-CJK
+symbols (``^`` ``<`` ``~`` ``·`` ``×`` ``☆``, emoji …) that danbooru tags and
+zh names use; T5 maps them all to ``<unk>``. Those chars route to the Qwen side
+like CJK, with their rows appended *after* the CJK blocks (``mapping["sym"]`` /
+``mapping["sym_char"]``) so existing row ids stay valid. The routing rule
+ships **inside the pack json** (``mapping["route"]``); a pack without it routes
+the CJK ranges only.
 
 Quote partition: a pack may carry a second,
 **content-free isotropic block** (``mapping["iso"]``: i.i.d. Gaussian rows
@@ -36,28 +33,23 @@ regenerated from ``(seed, n_rows, dim, norm)`` — :func:`iso_block`) that
 mirrors the trained blocks row-for-row at an offset. Routed spans *inside a
 quote pair* (``route.quotes``: ``「…」`` / ``『…』`` / ``"…"``) resolve to the
 isotropic block; bare CJK keeps the trained rows; the delimiters themselves
-stay on their usual path (``「」`` → trained row, ``"`` → spiece). A pack
-without ``iso`` encodes as before.
+stay on their usual path (``「」`` → trained row, ``"`` → spiece).
 
 Per-glyph routing (``mapping["glyph_route"]``, or ``ANIMA_VOCAB_GLYPH_ROUTE``
 through :class:`~library.anima.vocab_pack.VocabPack`): every JA Qwen token
 (one holding a kana or kanji) resolves on the T5 side to its glyphs' single
 rows instead of its own row — a piece (こんにちは) becomes five single ids,
 a space-prefixed glyph (`` の``) its glyph's row. The Qwen text is untouched.
-A token with a glyph that has no single row keeps its own row. It is the
-cjk_anima_scale line's P2 (``project/finished/cjk_anima_scale/retrain_experiments.md`` § 2).
-Off, the encoder is unchanged. Hangul tokens (회사, `` 하세요``)
-split the same way only under their own key, ``mapping["glyph_route_ko"]``
-(or ``ANIMA_VOCAB_GLYPH_ROUTE_KO``): a token holding a Hangul syllable becomes
-its syllables' single rows (``project/cjk_ko/proposal_jamo.md`` § 3).
-Either key works without the other; a pack with neither encodes as before.
+A token with a glyph that has no single row keeps its own row. Hangul tokens
+(회사, `` 하세요``) split the same way only under their own key,
+``mapping["glyph_route_ko"]`` (or ``ANIMA_VOCAB_GLYPH_ROUTE_KO``): a token
+holding a Hangul syllable becomes its syllables' single rows. Either key works
+without the other.
 
 Encode fold (``mapping["fold"]``: one char → one char): applied to the text
 before routing and encoding, on the T5 side only (the Qwen text is the text
-as typed) — ``！`` → ``!``, ``~`` → ``～``, ``『`` → ``「`` … so variant forms
-share one row (``project/finished/cjk_anima_scale/_archive/plan_retrain.md`` § 2c). Char for
-char, so every offset still indexes the typed text. A pack without it encodes
-as before.
+as typed): ``！`` → ``!``, ``~`` → ``～``, ``『`` → ``「`` … so variant forms
+share one row. Char for char, so every offset still indexes the typed text.
 
 Dot runs (``mapping["dots"]``, :class:`Dots`): after the fold, a run of
 ``・ ･ . ． ‥ …`` is rewritten by its dot count — one ``・`` → ``.``, 2–3 dots
@@ -67,7 +59,9 @@ Dot runs (``mapping["dots"]``, :class:`Dots`): after the fold, a run of
 ``...`` (T5 reads both alike), so an EN prompt never routes for it. Not char
 for char: ``encode_aligned`` maps the offsets back onto the typed text.
 
-Pure-CPU module — no model load; consumers pass embedding tensors in.
+Pure-CPU module: no model load; consumers pass embedding tensors in.
+
+Each of the keys above is optional; a pack without one encodes as before.
 """
 
 from __future__ import annotations
@@ -284,12 +278,11 @@ def iso_block(
 ) -> torch.Tensor:
     """``(n_rows, dim)`` float32 rows, i.i.d. Gaussian directions at ``norm``.
 
-    Byte-reproducible across machines: NumPy's legacy ``RandomState`` stream
-    (its bit-stability is a NumPy compatibility guarantee — NEP 19, unlike
-    ``Generator``/torch RNGs), drawn in float64 row-major so chunking never
-    changes the values, each row normalised in float64 and cast once. No
-    BLAS, no threads, no device — the pack json only needs
-    ``(seed, n_rows, dim, norm)`` to get the identical table back.
+    Reproducible across machines, so the pack json only needs
+    ``(seed, n_rows, dim, norm)``: NumPy's legacy ``RandomState`` stream (stable
+    under NEP 19, unlike ``Generator`` / torch RNGs), drawn in float64
+    row-major so chunking never changes the values, normalised in float64 and
+    cast once, with no BLAS, threads or device.
     """
     import numpy as np
 
@@ -374,7 +367,7 @@ def materialize_iso(table: torch.Tensor, mapping: dict) -> torch.Tensor:
 
 def materialize(table: torch.Tensor, mapping: dict) -> torch.Tensor:
     """Every regenerated block (``iso``). A pack carrying a line block
-    (``mapping["line"]``) is refused: line mode was removed 2026-09-28."""
+    (``mapping["line"]``, a removed mode) is refused."""
     if mapping.get("line"):
         raise ValueError(
             "vocab pack carries a line block (mapping['line']) — line mode was "
@@ -562,17 +555,15 @@ def fit_anchor_map(
 ) -> tuple[torch.Tensor, float]:
     """Anchor map W (d_qwen × d_t5) with a held-out cosine sanity.
 
-    ``method="ridge"`` — plain ridge least squares (the v1 asset). Ridge
-    shrinks toward the directions the anchors share, so the mapped ext keys
-    collapse onto a thin subspace (PR 236 of 1024, 16 % of random row pairs
-    above cos 0.5; ``project/finished/cjk_aware_anima/probes/map_probe.py``).
+    ``method="ridge"``: plain ridge least squares. Ridge shrinks toward the
+    directions the anchors share, so the mapped ext keys collapse onto a thin
+    subspace.
 
-    ``method="procrustes-mix"`` — ridge plus ``mix`` × the scaled orthogonal
-    Procrustes rotation fitted on the same anchors (centered fit, applied as
-    a plain linear map like the ridge term). The rotation carries the
-    Qwen spectrum through untouched, so the mix keeps the ext keys spread
-    (PR 373, 1 % collisions) for a small held-out cost (cos 0.75 → 0.70).
-    ``mix=0.6`` is the probe's measured point; the v2 asset default.
+    ``method="procrustes-mix"``: ridge plus ``mix`` × the scaled orthogonal
+    Procrustes rotation fitted on the same anchors (centered fit, applied as a
+    plain linear map). The rotation carries the Qwen spectrum through, so the
+    ext keys stay spread for a small held-out cost (cos 0.75 → 0.70 at the
+    measured ``mix=0.6``).
 
     Returns (W, mean held-out cosine of ``qwen_embed @ W`` vs the true T5 row).
     """
@@ -643,12 +634,10 @@ def build_ext_table(
     multiset with another char get a position-weighted mean so permuted byte
     orders cannot land on identical rows).
 
-    ``char_init`` — optional per-char vectors *already in T5 space* that
-    replace the fragment-mean init for the chars they cover (the v2 asset's
-    contextual init: the fragment mean is near-degenerate because the lead
-    byte is shared by thousands of chars — 60 % of random char-row pairs
-    above cos 0.5, ``probes/char_probe.py``). Chars not covered keep the
-    fragment mean. The id mapping is identical either way.
+    ``char_init``: optional per-char vectors *already in T5 space* that
+    replace the fragment-mean init for the chars they cover (the fragment mean
+    is near-degenerate because the lead byte is shared by thousands of chars).
+    The id mapping is identical either way.
 
     ``symbols`` (the string :func:`symbol_route_chars` returns) + ``sym_clean``
     (``collect_clean_qwen_tokens(qwen_tok, chars=symbols)``) append the symbol
@@ -906,12 +895,9 @@ class HybridT5Encoder:
         base vocab would spell out char-by-char; everything between matches
         goes through the ordinary Qwen path unchanged.
 
-        Eojeol boundary guard: a hangul surface may only
-        match where an eojeol starts — BOS, or after a non-hangul char
-        (space/punct/other script). Particles attach at the *end* of an
-        eojeol, so a boundary-anchored prefix match still fires on 레이무가;
-        what the guard kills is a surface waking up mid-word (…아레이무…).
-        The guard is hangul-only (JA has no spaces to anchor on).
+        Eojeol boundary guard (hangul only; JA has no spaces to anchor on): a
+        hangul surface may only match where an eojeol starts, so a prefix match
+        still fires on 레이무가 but not mid-word (…아레이무…).
         """
         surfaces: set[str] = set(self.word_map or ()) | set(self.word_sub or ())
         if not surfaces:
@@ -961,15 +947,11 @@ class HybridT5Encoder:
     def encode_aligned(
         self, text: str, max_length: int = 512
     ) -> tuple[list[int], list[int], list[tuple[int, int]]]:
-        """``encode`` plus per-token ``(start, end)`` char offsets into ``text``.
-
-        The offsets are what makes span-level supervision possible: a caption
-        composed tag-by-tag (``build_pairs.py``) knows which EN tag each JA tag
-        came from, and these offsets turn that into token index sets on both
-        sides. Offsets cover the real tokens only — the trailing EOS gets a
-        zero-width span at ``len(text)`` and padding gets none. Under
-        ``dots`` the offsets still index the typed ``text`` (a rewritten
-        run's tokens span the whole run).
+        """``encode`` plus per-token ``(start, end)`` char offsets into ``text``
+        (for span-level supervision). Offsets cover the real tokens only: the
+        trailing EOS gets a zero-width span at ``len(text)`` and padding gets
+        none. Under ``dots`` the offsets still index the typed ``text`` (a
+        rewritten run's tokens span the whole run).
         """
         typed_len = len(text)
         text, src = self.normalized(text)

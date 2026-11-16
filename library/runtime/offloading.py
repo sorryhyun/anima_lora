@@ -77,11 +77,10 @@ class HostMasters:
     master is built the first time it is needed: from its CPU weights (a host
     memcpy) or, for a block that starts resident, from the device (one D2H).
 
-    The buffers are ordinary allocations registered with ``cudaHostRegister``,
-    exact-size: the caching host allocator behind ``pin_memory()`` rounds each
-    request up to a power of two (a 0.21 GB MOSS block takes 0.25 GB). Once a
-    registration fails, that buffer and every later one fall back (see
-    :meth:`_alloc`).
+    Buffers are exact-size allocations registered with ``cudaHostRegister``:
+    ``pin_memory()``'s caching allocator rounds up to a power of two (a 0.21 GB
+    MOSS block takes 0.25 GB). After a registration fails, later buffers fall
+    back (:meth:`_alloc`).
     """
 
     _ALIGN = 256
@@ -340,13 +339,12 @@ class ModelOffloader(Offloader):
     The sliding window is tied to exactly one forward + one backward per step.
     A second full DiT forward in the same step with ``blocks_to_swap > 0``
     starts ``_run_blocks`` at a CPU-parked block 0 and dies with
-    ``aten.mm cuda:0 vs cpu`` (under compile it surfaces as a fake-tensor device
-    error, not as an offloader fault). Extra-forward objectives must either
-    split into a ``no_grad`` value pass + a deferred grad-cache replay
-    (soft-tokens' ``after_backward``) or bracket the extra forward with
-    ``prepare_block_swap_before_forward(free_cache=False)``, which leaves the
-    tail resident. The extra-forward sites in ``train.py`` (VR-loss, inversion
-    func-loss, IP-Adapter) were never audited for this.
+    ``aten.mm cuda:0 vs cpu`` (a fake-tensor device error under compile).
+    Extra-forward objectives must either split into a ``no_grad`` value pass +
+    a deferred grad-cache replay (soft-tokens' ``after_backward``) or bracket
+    the extra forward with ``prepare_block_swap_before_forward(free_cache=False)``.
+    The extra-forward sites in ``train.py`` (VR-loss, inversion func-loss,
+    IP-Adapter) are unaudited for this.
 
     A forward whose graph is still live pins each weight's device slot in its
     saved tensors. A backward finds its weights there because it replays the
@@ -455,9 +453,8 @@ class ModelOffloader(Offloader):
         blocks: Union[list[nn.Module], nn.ModuleList],
         free_cache: bool = True,
     ):
-        # free_cache=False skips the trailing empty_cache so callers re-entering
-        # another forward this step don't release allocator blocks the next
-        # forward immediately re-grows (~1 GB swing).
+        # free_cache=False skips empty_cache for a caller re-entering another
+        # forward this step (avoids a ~1 GB release/re-grow swing).
         if self.blocks_to_swap is None or self.blocks_to_swap == 0:
             return
 
@@ -520,16 +517,7 @@ def to_device(x: Any, device: torch.device) -> Any:
 
 
 def to_cpu(x: Any) -> Any:
-    """
-    Recursively moves torch.Tensor objects (and containers thereof) to CPU.
-
-    Args:
-        x: A torch.Tensor, or a (possibly nested) list, tuple, or dict containing tensors.
-
-    Returns:
-        The same structure as x, with all torch.Tensor objects moved to CPU.
-        Non-tensor objects are returned unchanged.
-    """
+    """Recursively move tensors in nested list / tuple / dict to CPU."""
     if isinstance(x, torch.Tensor):
         return x.cpu()
     elif isinstance(x, list):
@@ -543,17 +531,7 @@ def to_cpu(x: Any) -> Any:
 
 
 def create_cpu_offloading_wrapper(func: Callable, device: torch.device) -> Callable:
-    """
-    Create a wrapper function that offloads inputs to CPU before calling the original function
-    and moves outputs back to the specified device.
-
-    Args:
-        func: The original function to wrap.
-        device: The device to move outputs back to.
-
-    Returns:
-        A wrapped function that offloads inputs to CPU and moves outputs back to the specified device.
-    """
+    """Wrap ``func`` to run on ``device`` inputs and return CPU outputs."""
 
     def wrapper(orig_func: Callable) -> Callable:
         def custom_forward(*inputs):

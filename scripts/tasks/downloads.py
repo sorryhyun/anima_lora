@@ -6,13 +6,10 @@ for the curation ones; this module only maps ``make download-<target>`` onto
 ids. Adding a weight means adding an ``Asset`` there, not a command here; the
 GUI's Models panels read the same two catalogs.
 
-Idempotency contract (see GH #21): every target skips when its destination
-files already exist. Several rows move files out of ``hf``'s ``--local-dir``
-layout after download, where the hub would no longer find them and would re-pull
-the whole repo. Pass ``--force`` (e.g.
-``make download-anima ARGS=--force``) to re-fetch regardless.
-``download-models`` continues past a failed component and reports the failures
-at the end.
+Every target skips when its destination files exist (GH #21): several rows
+move files out of ``hf``'s ``--local-dir`` layout, where the hub would re-pull
+the whole repo. ``ARGS=--force`` re-fetches. ``download-models`` continues past
+a failed component and reports the failures at the end.
 
 Rows group into **packs** (``DL.PACKS`` — Anima base / PE-Core / CJK vocab pack
 on the trainer side, tagger / tags / masking / OCR / grouping from the package);
@@ -167,17 +164,11 @@ def cmd_download_anima(extra):
     _fetch("anima", extra=extra)
 
 
-# Alternate base DiTs, as name -> (repo_id, path within the repo).
-#
-# The official circlestone-labs variants are the same 28-block DiT as
-# anima-base-v1.0 and differ only in weights and in the state-dict prefix
-# ("model.diffusion_model." vs base's "net."), which the loader strips either
-# way (library/anima/weights.py::_DIT_PREFIXES).
-#
-# Anima-2.9B is a community depth-expansion of the same architecture: 40 blocks
-# instead of 28, same width, same Qwen3-0.6B text encoder and Qwen-Image VAE.
-# The loader counts depth off the checkpoint (``probe_dit_arch``), so it needs
-# no flag. Its LoRAs are NOT interchangeable with 28-block ones.
+# Alternate base DiTs, as name -> (repo_id, path within the repo). The
+# circlestone-labs variants differ from anima-base-v1.0 only in weights and
+# state-dict prefix (stripped by library/anima/weights.py::_DIT_PREFIXES).
+# Anima-2.9B is a 40-block depth expansion; the loader reads depth from the
+# checkpoint, and its LoRAs do not load on the 28-block base.
 ANIMA_VARIANTS = {
     "anima-aesthetic-v1.0": (
         "circlestone-labs/Anima",

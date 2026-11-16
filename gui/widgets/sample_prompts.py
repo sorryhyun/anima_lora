@@ -32,7 +32,7 @@ from gui.widgets._qt_utils import _no_wheel
 
 
 class _SamplePromptRow(QFrame):
-    """One editable sample prompt while preserving train.py's one-line syntax."""
+    """One sample prompt, read back in train.py's one-line syntax."""
 
     changed = Signal()
 
@@ -258,9 +258,8 @@ class _SamplePromptsWidget(QWidget):
 
     def __init__(self, prompts, fill: bool = False) -> None:
         super().__init__()
-        # ``fill`` = expand to fill the host (used inside the editor dialog,
-        # which is resizable). When false the widget self-clamps to a fixed
-        # height and offers an expand/collapse toggle for inline embedding.
+        # ``fill``: grow with the host (the dialog). Otherwise a fixed height
+        # with an expand/collapse toggle.
         self._fill = fill
         self._expanded = False
         self._rows: list[_SamplePromptRow] = []
@@ -478,11 +477,8 @@ class SamplePromptsDialog(QDialog):
 
 
 class _SamplePromptsLauncher(QWidget):
-    """Compact field stand-in: a button + summary that opens the editor popup.
-
-    Replaces the tall inline editor in the config form. Holds the current
-    prompt list and round-trips it through :class:`SamplePromptsDialog`.
-    """
+    """Compact form field: a button + summary that edits the prompt list in
+    :class:`SamplePromptsDialog`."""
 
     changed = Signal()
 

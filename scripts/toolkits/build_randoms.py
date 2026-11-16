@@ -134,9 +134,7 @@ def selection_weights(
     per-tag taste.
 
     Weights are clipped to [lo, hi]: the two pools were captioned at different
-    times, so an extreme ratio is as likely to be tagging drift as taste (no
-    real preference is 22x). Clipping keeps the bias while capping what any
-    one confounded tag can do.
+    times, so an extreme ratio is as likely to be tagging drift as taste.
 
     A missing crawl dir (volume not mounted) degrades to neutral weights.
     """

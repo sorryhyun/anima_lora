@@ -66,11 +66,11 @@ def count_pending_pe(
 ) -> tuple[int, int]:
     """Return ``(pending, total)`` PE sidecars **without loading the encoder**.
 
-    ``pending`` is the number of images whose ``{stem}_anima_{encoder}``
-    sidecar isn't on disk; ``total`` is every enumerated image. Mirrors the
-    pre-skip in :func:`cache_pe_features` (pure existence), so the entry point
-    can skip the (slow) vision-encoder load when ``pending == 0``. With
-    ``overwrite`` every enumerated image counts as pending."""
+    ``pending`` counts images whose ``{stem}_anima_{encoder}`` sidecar is
+    missing or older than the image; ``total`` is every enumerated image. Mirrors
+    the pre-skip in :func:`cache_pe_features`, so the entry point can skip the
+    (slow) vision-encoder load when ``pending == 0``. With ``overwrite`` every
+    enumerated image counts as pending."""
     image_files = walk_images(data_dir, recursive=recursive)
     if overwrite:
         return len(image_files), len(image_files)
@@ -86,9 +86,7 @@ class _PEImageGroup(Dataset):
 
     Each ``__getitem__`` returns ``(str_path, str_out_path, [3, H, W] tensor in
     [-1, 1])`` so the main thread can write safetensors in batch order without
-    holding the PIL.Image object across the worker boundary. Paths are passed
-    as strings (lighter to pickle than ``Path``; ``save_file`` takes a string
-    anyway).
+    holding the PIL.Image object across the worker boundary.
     """
 
     def __init__(self, paths: list[Path], out_paths: list[Path]):
@@ -129,7 +127,7 @@ def cache_pe_features(
     pre-skips already-cached entries, and writes ``image_features`` per image.
     The encoder is supplied loaded (``load_pe_encoder``) so model setup stays in
     the caller. Returns counts; pass ``progress`` for a per-image bar. With
-    ``overwrite`` the existence skip is bypassed and every image is re-encoded.
+    ``overwrite`` the cache skip is bypassed and every image is re-encoded.
     """
     image_files = walk_images(data_dir, recursive=recursive)
     stats = PreprocessStats(seen=len(image_files))
@@ -161,10 +159,9 @@ def cache_pe_features(
 
     from library.vision.buckets import pick_bucket
 
-    # Flatten every shape-group into ONE dataset + homogeneous-shape batch plan so the
-    # worker pool spawns once (Windows spawn() re-imports torch+library per worker,
-    # so a DataLoader per (W,H) group pays that per group). ``batch_sampler`` keeps
-    # each batch within one shape group, preserving one-bucket-per-forward.
+    # One dataset + a shape-homogeneous batch plan, so the worker pool spawns once
+    # (Windows spawn() re-imports torch per worker; a DataLoader per (W,H) group
+    # would pay that per group).
     all_paths: list[Path] = []
     all_out_paths: list[Path] = []
     batches: list[list[int]] = []
@@ -190,9 +187,8 @@ def cache_pe_features(
         persistent_workers=(num_workers > 0),
     )
     for batch_paths, batch_out_paths, img_batch in loader:
-        # Batch is shape-homogeneous → one patch grid. Derive it from the tensor shape
-        # (IMAGE_TRANSFORMS doesn't resize) and stamp grid_h/grid_w so consumers (REPA v2)
-        # can unflatten tokens without re-deriving the aspect bucket.
+        # Stamp the batch's patch grid so consumers (REPA) can unflatten tokens
+        # without re-deriving the bucket (IMAGE_TRANSFORMS doesn't resize).
         _h, _w = img_batch.shape[-2:]
         _gh, _gw = pick_bucket(_h, _w, bundle.bucket_spec)
         metadata = {**base_metadata, "grid_h": str(_gh), "grid_w": str(_gw)}

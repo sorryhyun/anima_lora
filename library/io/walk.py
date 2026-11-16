@@ -13,12 +13,10 @@ def safe_walk(
 ) -> Iterator[tuple[str, list[str], list[str]]]:
     """``os.walk`` that follows symlinks but never revisits a directory.
 
-    Dataset roots here are symlinks to (sometimes cross-linked) artist dirs,
-    so callers need ``followlinks=True`` to descend at all — but plain
-    ``os.walk`` has no cycle detection, so a back-link loops forever (the
-    classic "preprocess/training just hangs" failure). This tracks each
-    directory's real path and prunes already-visited children from
-    ``dirnames`` in place, breaking cycles and de-duping diamond joins.
+    Dataset roots are symlinks to (sometimes cross-linked) artist dirs, so
+    callers need ``followlinks=True``, and plain ``os.walk`` loops forever on a
+    back-link. Tracks each directory's real path and prunes visited children
+    from ``dirnames`` in place, which also de-dupes diamond joins.
     """
     seen: set[str] = {os.path.realpath(top)}
     for dirpath, dirnames, filenames in os.walk(top, followlinks=followlinks):

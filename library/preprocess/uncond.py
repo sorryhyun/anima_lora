@@ -126,10 +126,8 @@ def ensure_uncond_crossattn(
     """Return the ``T5("")`` crossattn sidecar as a ``(1, S, 1024)`` tensor.
 
     Idempotent: pass the previously-loaded tensor as ``existing`` and it's
-    returned untouched. The sidecar normally ships as a bundled package asset
-    (``library/anima/assets/_anima_uncond_te.safetensors``), so this just loads
-    it; the on-demand staging below is a fallback that only fires if that asset
-    is somehow missing (e.g. deleted, or a swapped base model). Caller owns where
+    returned untouched. The sidecar ships as a bundled package asset, so this
+    normally just loads it; staging fires only when the asset is missing. Caller owns where
     it stores the result (e.g. ``TrainState.uncond_crossattn_1``).
     """
     if existing is not None:

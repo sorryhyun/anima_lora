@@ -13,16 +13,13 @@ masks) run from the ``anime_tools`` panel, and the GUI pins their chain gates
 off (:data:`CURATION_GATES_OFF`) so a ``preprocess.toml`` that turns one on
 never starts a tagger / SAM3 pass from a cache build.
 
-The pure functions below implement the tab's default resolution, env /
-override serialisation and ``[variant]`` elision from the table, so adding a
-knob is one row + the widget, and each knob's default source (hardcoded /
-``preprocess.toml`` / ``gui_settings.json``) is declared on its row.
+The pure functions below derive default resolution, env / override export and
+``[variant]`` elision from the table, so a new knob is one row + its widget.
 
 The contract is pinned byte-for-byte by
-``tests/test_gui_preprocess_characterization.py`` (fixture under
-``tests/fixtures/``). The quirks it records — e.g. a knob that *loads* from
-``preprocess.toml`` but is *elided* against the hardcoded default — are
-reproduced on purpose; collapsing the policies is a separate decision.
+``tests/test_gui_preprocess_characterization.py``. Its quirks (e.g. a knob that
+*loads* from ``preprocess.toml`` but is *elided* against the hardcoded default)
+are reproduced on purpose.
 
 Like ``gui/core/config_io.py`` this module must stay importable without PySide6
 and without torch (``tests/test_gui_launch_speed.py``).
@@ -69,9 +66,8 @@ DefaultFrom = Literal["const", "preprocess_toml", "gui_settings"]
 # How the knob reaches the variant's ``[variant]`` meta on save:
 #   if_changed        — written only when it differs from the *hardcoded* default
 #   if_changed_resolved — written only when it differs from the *resolved*
-#                       default (preprocess.toml-backed knobs; a checkbox left at
-#                       the hardcoded default would otherwise not stick, because
-#                       the tab always exports the env var and env beats the TOML)
+#                       default (preprocess.toml-backed knobs, so a value equal
+#                       to the hardcoded default still sticks over the TOML's)
 #   if_truthy         — written when non-empty (path_scope)
 Persist = Literal["if_changed", "if_changed_resolved", "if_truthy"]
 
@@ -148,10 +144,8 @@ SNAPSHOT_KNOBS: tuple[Knob, ...] = tuple(k for k in KNOBS if k.snapshot)
 def resolve_default(knob: Knob, pp_cfg: dict, settings: dict):
     """The effective default for one knob under its ``default_from`` policy.
 
-    A ``preprocess.toml``-backed knob resolves *through* the user-owned TOML:
-    load-bearing for the caption-master stages, whose env var the tab always
-    exports (env beats the TOML in ``tasks.py``), so the widget must start
-    from the TOML's answer or a `true` set there would be silently overridden."""
+    A ``preprocess.toml``-backed knob resolves *through* the user-owned TOML,
+    so the widget starts from the TOML's answer."""
     if knob.default_from == "const":
         return knob.default
     if knob.default_from == "preprocess_toml":
@@ -164,8 +158,8 @@ def resolve_default(knob: Knob, pp_cfg: dict, settings: dict):
 
 
 def resolved_defaults(pp_cfg: dict, settings: dict) -> dict:
-    """``{key: effective default}`` for every knob — the one dict the other
-    helpers take, so the tab reads its default sources exactly once."""
+    """``{key: effective default}`` for every knob (the dict the other
+    helpers take)."""
     return {k.key: resolve_default(k, pp_cfg, settings) for k in KNOBS}
 
 

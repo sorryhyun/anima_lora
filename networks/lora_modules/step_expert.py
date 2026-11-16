@@ -1,9 +1,7 @@
 # Step-expert LoRA: shared down-projection + K up-heads selected by the
-# diffusion step index (no learned router). Used by the turbo DP-DMD student
-# when ``per_step_expert`` is on (e.g. head A serves step 0, head B step 1).
-# Selection is a plain Python int, not a buffer/tensor —
-# torch.compile guards on it and specializes one graph per step value (K
-# graphs) instead of forcing an ``.item()`` graph break.
+# diffusion step index (no learned router); the turbo DP-DMD student's
+# ``per_step_expert`` mode. The selector is a plain Python int so torch.compile
+# specializes one graph per step (K graphs) instead of an ``.item()`` graph break.
 
 import logging
 import math
@@ -83,9 +81,6 @@ class StepExpertLoRAModule(BaseLoRAModule):
                 f"step index {k} out of range for {self.K} heads ({self.lora_name})"
             )
         self._step = int(k)
-
-    # Forward is the BaseLoRAModule scaffold; this class supplies only the
-    # shared-down / step-selected-up GEMMs and the eval delta.
 
     def _down(self, x_lora, work):
         return torch.nn.functional.linear(x_lora, self.lora_down.weight.to(work))

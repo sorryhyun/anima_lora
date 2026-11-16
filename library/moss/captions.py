@@ -4,10 +4,9 @@ The Anima caption keeps a full shared tag bag beside its position clauses. The
 MOSS format keeps only the head (rating, count, names, series, artist) and the
 tags no subject owns in the bag: a tag any subject's crop carries goes into that
 subject's clause, repeated across clauses when several carry it, and a tag a
-more specific one already says is cut. Settled on caststation by A/B
-(``_archive/configs/pe_lora/casthin_1115_1150.toml`` against ``casorder_1114_2315``).
+more specific one already says is cut.
 
-Three steps into a tree of its own, so the Anima captions stay untouched:
+Built in a tree of its own, so the Anima captions stay untouched:
 
 1. ``build_tree``: every captioned image of ``src`` symlinked into ``out`` beside
    its caption with the position clauses merged back into the bag

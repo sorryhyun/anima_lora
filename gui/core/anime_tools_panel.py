@@ -1,15 +1,12 @@
 """Launching the ``anime_tools`` curation panel against this checkout.
 
 The panel (``python -m anime_tools.gui``) curates in its own ``workspace/`` and
-publishes only the decisions — captions, masks, the revised master — with
-Export's ``sidecars_only``; the trainer resizes from ``image_dataset/`` itself.
-This module seeds the panel's settings file for that and starts (or finds) the
-server; the GUI's anime_tools tab renders it. It is not a daemon job: there is no
-GPU work, and the server runs with ``--exit-with-window``, so it stops a few
-seconds after the last page showing it (the tab, or a browser) is gone.
+exports only captions, masks and the revised master (``sidecars_only``); the
+trainer resizes from ``image_dataset/`` itself. This module seeds the panel's
+settings and starts (or finds) the server. Not a daemon job: no GPU work, and
+``--exit-with-window`` stops it a few seconds after its last page is gone.
 
-Qt-free so it stays headless-testable; ``anime_tools`` imports are lazy, to keep
-them off the GUI's launch path.
+Qt-free; ``anime_tools`` imports are lazy to keep them off the launch path.
 """
 
 from __future__ import annotations

@@ -144,9 +144,8 @@ def _anchor(ctx: RunContext, cfg, batch: Batch, c_null: torch.Tensor):
 
 
 def anchor_only_iteration(ctx: RunContext, cfg, batch: Batch, grad_mean) -> None:
-    """``dpdmd.anchor_only`` (project/anima_turbo/plan.md, S-b): step 0 on the anchor
-    regression alone; ``anchor_draws`` k (S-c.2) adds k − 1 fresh-ε anchors for the
-    same prompt and averages the gradient."""
+    """``dpdmd.anchor_only``: step 0 on the anchor regression alone; ``anchor_draws``
+    k adds k − 1 fresh-ε anchors for the same prompt and averages the gradient."""
     c, B = batch.crossattn_emb, batch.latents.shape[0]
     c_null = uncond_for_batch(ctx.uncond_base, c)
     eps, v_target = _anchor(ctx, cfg, batch, c_null)

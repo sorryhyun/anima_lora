@@ -1,8 +1,7 @@
 """Models / Update dialogs — wrappers around `python tasks.py download-* / update`.
 
-Both dialogs share the same shape: a row of action buttons, a status area, and
-a streaming log fed by ``QProcess`` (same pattern as MergeTab). Only one job
-runs at a time per dialog — buttons disable while busy and re-enable on finish.
+Both are action buttons over a streaming log fed by ``StreamingProcess``; one
+job runs at a time per dialog.
 """
 
 from __future__ import annotations
@@ -41,13 +40,9 @@ from gui.jobs.process import StreamingProcess
 from gui.theme import tok
 from gui.widgets import apply_variant
 
-# Rows come from the catalog, never from a table here: ``library/downloads.py``
-# (Anima weights) and ``anime_tools.downloads`` (curation weights) each carry an
-# Asset's repo, files, destination and an offline installed-probe. A path list
-# duplicated here reports the wrong install state as soon as a row moves.
-#
-# Only the rows that already had translations keep an i18n key; anything newer
-# shows the catalog's own English title.
+# Rows come from the catalog (``library/downloads.py``, ``anime_tools.downloads``),
+# which owns each asset's paths and installed-probe; a path list here would drift.
+# Rows without an i18n key show the catalog's English title.
 _TITLE_KEYS: dict[str, str] = {
     "anima_dit": "model_anima_dit",
     "anima_te": "model_anima_te",
@@ -60,9 +55,8 @@ _TITLE_KEYS: dict[str, str] = {
     "tagger_backbone": "model_tagger",
 }
 
-# Rows render grouped by pack (``DL.PACKS``); every visible pack has a title key
-# here and a ``<key>_desc`` sibling, in all four languages (pinned by test). A
-# pack the package adds later falls back to its catalog title until translated.
+# Each pack has a title key and a ``<key>_desc`` sibling in all four languages
+# (pinned by test); an unlisted pack falls back to its catalog title.
 _PACK_KEYS: dict[str, str] = {
     "anima": "models_pack_anima",
     "anima-dit-int8": "models_pack_anima_dit_int8",
@@ -182,15 +176,10 @@ class _StreamingDialog(QDialog):
 
 
 class _HFLoginThread(QThread):
-    """Validate + persist a HuggingFace token off the UI thread.
+    """Validate + persist a HuggingFace token off the UI thread, as
+    ``hf auth login`` would, so later ``hf download`` runs are authenticated.
 
-    Mirrors ``hf auth login`` non-interactively: ``huggingface_hub.login()``
-    checks the token via ``whoami`` and writes it to the HF token cache, so
-    every subsequent ``hf download`` invocation (which the model downloads
-    shell out to) is authenticated without the user opening a terminal.
-
-    Emits ``done`` with a dict: ``ok`` (bool), ``name`` (username on success),
-    ``error`` (str, populated only on failure).
+    Emits ``done`` with ``ok`` / ``name`` / ``error``.
     """
 
     done = Signal(dict)
@@ -214,14 +203,9 @@ class _HFLoginThread(QThread):
 
 
 class _CatalogPanel(QWidget):
-    """One tab: a "fetch everything" button over one catalog half's rows,
-    grouped by pack.
-
-    Each pack (``DL.PACKS``) is a ``QGroupBox`` — title, a dim description,
-    a "Download pack" button that fetches its rows together, then the rows.
-    Rows scroll inside the tab, so a growing catalog never pushes the log pane
-    off the dialog. Downloads run on the
-    owning dialog's single QProcess — one job at a time across both tabs.
+    """One tab: a "fetch everything" button over one catalog part's rows,
+    one ``QGroupBox`` per pack. Rows scroll inside the tab so the log stays
+    visible; downloads run on the dialog's single process.
     """
 
     def __init__(self, dialog: "ModelsDialog", intro_key: str, rows_fn, all_fn):
@@ -229,11 +213,8 @@ class _CatalogPanel(QWidget):
         self._dialog = dialog
         self._assets_fn = rows_fn
         self._all_fn = all_fn
-        # (asset, status_label, button) — refreshed together after any run,
-        # because one target installs several rows.
+        # Refreshed together after any run: one target installs several rows.
         self._rows: list[tuple[object, QLabel, QPushButton]] = []
-        # (pack_id, row ids, button) — one per rendered pack; the label flips
-        # between Download / Re-download with the rows' install state.
         self._packs: list[tuple[str, tuple[str, ...], QPushButton]] = []
 
         outer = QVBoxLayout(self)
@@ -280,9 +261,8 @@ class _CatalogPanel(QWidget):
         desc.setStyleSheet(f"color:{tok('text_dim')};")
         head.addWidget(desc, 1)
 
-        # The button spells the pack's row ids rather than the pack id: the
-        # ``tagger`` pack shares its name with the legacy ``make download-tagger``
-        # alias (checkpoint only), and ``DL.resolve`` lets the alias win.
+        # Row ids, not the pack id: ``tagger`` is also the legacy checkpoint-only
+        # download alias, and ``DL.resolve`` lets the alias win.
         ids = tuple(a.id for a in rows)
         btn = QPushButton()
         btn.clicked.connect(
@@ -323,8 +303,7 @@ class _CatalogPanel(QWidget):
         return row
 
     def refresh(self) -> None:
-        """Re-probe every row. Offline (a path stat or a hub-cache lookup), so
-        this is cheap enough to run after every job."""
+        """Re-probe every row (offline, cheap enough after every job)."""
         for asset, status, btn in self._rows:
             installed = asset.installed
             status.setText(t("models_installed") if installed else t("models_missing"))
@@ -357,16 +336,13 @@ class _CatalogPanel(QWidget):
 
 
 def _anima_all(_assets) -> tuple[str, list[str] | None]:
-    """The Anima tab's top button is the first-run set, not "every row": it
-    deliberately also pulls the two curation rows a default preprocess needs
-    (tagger checkpoint, tag KB) while SAM3 and OCR stay opt-in on the Curation
-    tab. The set includes the CJK vocab pack, which base.toml enables."""
+    """The Anima first-run set: it also pulls the tagger checkpoint and tag KB
+    a default preprocess needs, and the CJK vocab pack base.toml enables."""
     return t("models_download_all"), ["download-models"]
 
 
 def _missing_all(assets) -> tuple[str, list[str] | None]:
-    """The curation tab's: only what is missing. The full catalog is several GB
-    and most of it is opt-in per stage."""
+    """Only what is missing; most of the curation catalog is opt-in per stage."""
     missing = [a.id for a in assets if not a.installed]
     if not missing:
         return t("models_all_installed"), None
@@ -385,18 +361,12 @@ def _moss_all(assets) -> tuple[str, list[str] | None]:
 
 
 class ModelsDialog(_StreamingDialog):
-    """Model downloads: a HuggingFace token field, three catalog tabs, one log.
-
-    The tabs are the catalog's parts — ``library/downloads.py``'s Anima rows
-    (packs anima / pe / cjk) and MOSS rows, and ``anime_tools.downloads``'
-    curation rows minus the trainer's ``HIDDEN_PACKS`` (empty today). It opens on
-    the top bar's model mode. Splitting them inside one modal keeps each list
-    short and keeps the token field, the log and the single QProcess shared,
-    which separate dialogs could not do.
+    """Model downloads: a HuggingFace token field, three catalog tabs (Anima,
+    MOSS, curation) sharing one log and one process. Opens on the top bar's
+    model mode.
     """
 
-    # Emitted after any successful (exit_code 0) download run so live tabs can
-    # pick up freshly-installed assets without an app restart.
+    # Emitted after a successful download so live tabs pick up new assets.
     models_changed = Signal()
 
     def __init__(self, parent=None):
@@ -433,8 +403,7 @@ class ModelsDialog(_StreamingDialog):
     # -- auth --------------------------------------------------------------
 
     def _build_auth(self, layout: QVBoxLayout) -> None:
-        # Token persisted via huggingface_hub (same cache `hf auth login`
-        # writes); the gated SAM3 and tagger-backbone repos need it.
+        # The gated SAM3 and tagger-backbone repos need a token.
         auth_row = QHBoxLayout()
         self.token_edit = QLineEdit()
         self.token_edit.setEchoMode(QLineEdit.Password)
@@ -509,8 +478,7 @@ class ModelsDialog(_StreamingDialog):
             panel.set_busy(busy)
 
     def _after_finished(self, exit_code: int) -> None:
-        # Both tabs: `download-models` spans them, and the Anima tab's button
-        # installs curation rows.
+        # All tabs: the Anima first-run set installs curation rows too.
         for panel in self._panels:
             panel.refresh()
 
@@ -541,7 +509,7 @@ GITHUB_ISSUES_URL = f"{GITHUB_REPO_URL}/issues"
 RELEASE_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 MANIFEST_FILE = ROOT / ".anima_release.json"
 
-# Release-tag cache (gui_settings.json) so the on-launch badge check doesn't hit GitHub every start.
+# Release-tag cache (gui_settings.json) for the on-launch badge check.
 UPDATE_CACHE_TTL_SECONDS = 6 * 3600
 _UPDATE_CACHE_KEY = "update_check"
 
@@ -579,9 +547,8 @@ def _save_cached_latest_tag(tag: str) -> None:
 class _UpdateCheckThread(QThread):
     """Fetch the latest release tag + body from GitHub on a worker thread.
 
-    Emits ``finished_check`` with a dict: keys ``ok`` (bool), ``tag``,
-    ``body``, ``html_url``, ``error`` (str, populated only on failure).
-    The HTTP call is plain urllib so we don't pull in a new dependency.
+    Emits ``finished_check`` with ``ok`` / ``tag`` / ``body`` / ``html_url`` /
+    ``error``.
     """
 
     finished_check = Signal(dict)
@@ -614,22 +581,16 @@ class _UpdateCheckThread(QThread):
 
 
 class UpdateDialog(_StreamingDialog):
-    """Run ``python tasks.py update`` with a confirmation + dry-run option.
+    """Run ``python tasks.py update`` behind a confirmation, with a dry run.
 
-    The update script in ``scripts/update.py`` preserves dataset/output/models
-    and prompts on config conflicts, but it still rewrites the working tree —
-    we surface that warning before kicking off.
-
-    On open, fires a background GitHub API call to compare the locally
-    pinned tag (from ``.anima_release.json``) against the latest release
-    and renders the release body as markdown so users can see what's new
-    before pulling.
+    The update rewrites the working tree (dataset/output/models kept), so the
+    dialog warns first. On open it compares ``.anima_release.json``'s tag with
+    the latest GitHub release and shows its notes.
     """
 
     def __init__(self, parent=None):
         self._check_thread: _UpdateCheckThread | None = None
         self._latest_url: str = ""
-        # Which run is in flight, so _after_finished can pick the right post-run feedback.
         self._last_run_kind: str | None = None  # "real" | "dry" | None
         super().__init__(t("update_title"), parent)
         self._kick_check()
@@ -695,8 +656,7 @@ class UpdateDialog(_StreamingDialog):
         self.dry_btn.clicked.connect(self._start_dry_run)
         row.addWidget(self.dry_btn)
 
-        # Two run buttons make the conflict policy explicit instead of an
-        # invisible interactive prompt that the GUI can't service.
+        # The conflict policy is a button for the same reason.
         self.run_keep_btn = QPushButton(t("update_run_keep"))
         apply_variant(self.run_keep_btn, "info")
         self.run_keep_btn.clicked.connect(
@@ -783,7 +743,6 @@ class UpdateDialog(_StreamingDialog):
             self._run(["update", conflict_flag])
 
     def _after_finished(self, exit_code: int) -> None:
-        # Promote post-run state into the persistent UI instead of burying it in the streaming log.
         kind = self._last_run_kind
         self._last_run_kind = None
         if exit_code != 0:
@@ -825,9 +784,6 @@ class UpdateDialog(_StreamingDialog):
         super().closeEvent(ev)
 
 
-# Public helpers for app.py.
-
-
 def open_models_dialog(parent=None, on_models_changed=None):
     dlg = ModelsDialog(parent)
     if on_models_changed is not None:
@@ -840,16 +796,12 @@ def open_update_dialog(parent=None):
 
 
 def check_for_update_async(parent, on_available) -> QThread | None:
-    """Fire a non-blocking update check used by the top-bar update badge.
+    """Non-blocking update check for the top-bar badge.
 
-    Skips entirely when ``.anima_release.json`` is missing (no baseline tag
-    to compare against).
-
-    Uses the 6h ``gui_settings.json`` cache to avoid a network round-trip
-    on every launch. ``on_available(latest_tag)`` is invoked only when a
-    newer tag is detected; the caller is responsible for keeping the
-    returned ``QThread`` alive (parent it on a widget) so Qt doesn't tear
-    it down mid-fetch.
+    Skipped without ``.anima_release.json``; uses the 6 h cache before the
+    network. ``on_available(latest_tag)`` fires only for a different tag. The
+    caller must keep the returned ``QThread`` alive (parent it on a widget) or
+    Qt tears it down mid-fetch.
     """
     local = _load_local_version()
     if local is None:

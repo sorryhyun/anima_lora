@@ -1,9 +1,7 @@
 """Config discovery, load/save, merge, and lint for the GUI.
 
-Qt-free: this module reads/writes TOML and resolves the base → preset →
-variant merge chain that drives the Config tab, plus the dataset-blueprint
-linter. Kept free of any PySide6 import so it stays unit-testable headless and
-so the cheap config queries don't pull the widget stack in.
+Qt-free: reads/writes TOML, resolves the base → preset → variant merge chain
+that drives the Config tab, and lints the dataset blueprint.
 """
 
 from __future__ import annotations
@@ -31,21 +29,14 @@ from gui.core.validation import (
     _variant_validation_split_num,
 )
 
-# Built-in variant families are discovered from each gui-methods/*.toml file's ``[variant]`` table
-# (``family`` / ``label`` / optional ``order``); adding/renaming a variant is a one-file change.
-# Display order within a family is ``[variant].order`` (ascending; ties broken by file stem); family
-# ordering in the method combo stays curated via ``_METHOD_ORDER`` (a family omitted from it is hidden
-# without renaming its file). Customs under ``configs/gui-methods/custom/`` need no ``[variant]`` block
-# and are surfaced under every family.
+# Built-in variants are discovered from each gui-methods/*.toml ``[variant]`` table
+# (``family`` / ``label`` / optional ``order``). Family order in the combo is
+# ``_METHOD_ORDER`` (a family left out is hidden). Customs under
+# ``configs/gui-methods/custom/`` need no ``[variant]`` block and show under every family.
 
 
 def _read_variant_metadata(path) -> dict:
-    """Return the ``[variant]`` table from a gui-methods TOML, or ``{}``.
-
-    Failures (missing file, parse error, missing table) yield an empty dict
-    so callers can treat "no metadata" uniformly — built-in validation is
-    handled by ``tests/test_gui_variants.py``, not here.
-    """
+    """The ``[variant]`` table of a gui-methods TOML, or ``{}`` on any failure."""
     if not path.is_file():
         return {}
     try:
@@ -57,12 +48,8 @@ def _read_variant_metadata(path) -> dict:
 
 
 def _builtin_variants_by_family() -> dict[str, list[tuple[int, str, str]]]:
-    """Map family → list of (order, stem, label) tuples for built-in variants.
-
-    Built-in = directly under ``configs/gui-methods/`` (not the ``custom/``
-    subdir). Files without a ``[variant].family`` are dropped silently
-    (malformed or intentionally hidden).
-    """
+    """family → sorted (order, stem, label) for files directly under
+    ``configs/gui-methods/``; files without ``[variant].family`` are skipped."""
     by_family: dict[str, list[tuple[int, str, str]]] = {}
     if not GUI_METHODS_DIR.is_dir():
         return by_family
@@ -81,33 +68,21 @@ def _builtin_variants_by_family() -> dict[str, list[tuple[int, str, str]]]:
 
 
 def variant_metadata(variant: str) -> dict:
-    """Return the ``[variant]`` metadata for a built-in or ``custom/<name>``
-    variant. Empty dict when the file has no ``[variant]`` block (custom
-    variants may legitimately omit it)."""
+    """The ``[variant]`` metadata of a built-in or ``custom/<name>`` variant
+    (``{}`` when absent, as customs may omit it)."""
     return _read_variant_metadata(variant_path(variant))
 
 
 def list_methods() -> list[str]:
-    """Method families to show in the combo, in curated order (lora first).
-
-    The curated order lives in ``_METHOD_ORDER`` (a family omitted from it stays
-    hidden), and a family is only listed when it has built-in variant files on
-    disk, so a name in ``_METHOD_ORDER`` without any
-    ``configs/gui-methods/*.toml`` doesn't show an empty variant combo.
-    """
+    """Families in ``_METHOD_ORDER`` that have built-in variant files on disk
+    (so no family shows an empty variant combo)."""
     available = set(_builtin_variants_by_family())
     return [m for m in _METHOD_ORDER if m in available]
 
 
 def list_gui_variants(method: str) -> list[str]:
-    """gui-methods/*.toml files for the method family + all user customs.
-
-    Built-in variants are filtered to those whose ``[variant].family`` matches
-    ``method``, sorted by ``[variant].order`` then by file stem. Custom
-    variants in ``configs/gui-methods/custom/*.toml`` are surfaced for every
-    family — users name them freely and we don't try to bind a file to a
-    specific family.
-    """
+    """The family's built-in variants (by ``[variant].order``, then stem),
+    then every ``custom/*.toml``."""
     by_family = _builtin_variants_by_family()
     ordered = [stem for _, stem, _ in by_family.get(method, [])]
     if CUSTOM_VARIANTS_DIR.exists():
@@ -148,8 +123,7 @@ def _load_all_presets() -> dict:
 
 
 def list_presets() -> list[str]:
-    """All preset names — delegated to the library so the GUI and the trainer
-    agree on the discovery rule (presets.toml sections + custom/*.toml stems)."""
+    """All preset names, from the library so the GUI and trainer agree."""
     from library.config.io import list_presets as _lib_list_presets
 
     return _lib_list_presets()
@@ -159,13 +133,9 @@ def list_hardware_presets() -> list[tuple[str, dict]]:
     """``(name, meta)`` for the presets the Hardware dropdown offers.
 
     A presets.toml section opts in with a ``[<name>.gui]`` sub-table carrying
-    ``group = "hardware"`` (plus optional ``label`` / ``description`` /
-    ``order``); the sub-table is display metadata only — the trainer-side merge
-    strips it (see ``_METADATA_CONFIG_SECTIONS`` in ``library/config/io.py``).
-    Data-scope presets ([half] etc.) stay CLI-only: the GUI exposes
-    ``sample_ratio`` / ``artists_shard`` as plain form fields instead.
-    Sorted by ``order`` then name; falls back to ``[("default", {})]`` so the
-    dropdown never comes up empty."""
+    ``group = "hardware"`` (optional ``label`` / ``description`` / ``order``);
+    the trainer's merge strips it (``_METADATA_CONFIG_SECTIONS`` in
+    ``library/config/io.py``). Sorted by ``order`` then name; never empty."""
     out: list[tuple[str, dict]] = []
     if PRESETS_FILE.exists():
         try:
@@ -213,9 +183,7 @@ _GROUPS = {
         "sigma_bucket_boundaries",
         "use_repa",
         "repa_target_dog",
-        # σ-demoted training: the master boolean plus the stacked-router keys it
-        # gates, pinned next to use_repa. Every key here is inert while
-        # sigma_lowres is off.
+        # σ-demoted training; every key below is inert while sigma_lowres is off.
         "sigma_lowres",
         "sigma_lowres_route",
         "sigma_lowres_threshold",
@@ -301,9 +269,8 @@ _GROUPS = {
     },
 }
 _K2G = {k: g for g, ks in _GROUPS.items() for k in ks}
-# Preprocess-time knobs (target_res) are owned by the Preprocess tab, so they are hidden from the
-# config form. ``drop_lowres_images`` / ``min_pixels`` are retired keys (resize has no pixel floor
-# since anime_tools 0.7.5), tolerated on load: a user-owned preprocess.toml may still carry them.
+# target_res is owned by the Preprocess tab. ``drop_lowres_images`` / ``min_pixels`` are retired
+# but a user-owned preprocess.toml may still carry them; skipping them keeps them off the form.
 _SKIP = {
     "base_config",
     "dataset_config",
@@ -315,14 +282,11 @@ _SKIP = {
     "min_pixels",
 }
 
-# Virtual keys appear in the form like normal fields but don't round-trip as flat TOML keys — they're
-# derived from / written into structured sections (e.g. ``use_valid`` toggles a `[[datasets]]` override).
-# ConfigTab's save loop skips these; per-key apply helpers handle the structured write.
+# Virtual keys are form fields that live in the ``[[datasets]]`` override, not as flat TOML keys;
+# Save skips them and the ``gui.core.validation`` helpers write them.
 _VIRTUAL_KEYS = {"use_valid", "validation_split_num", "repeat_by_folder_name"}
 
-# Fields shown under "Basic"; everything else falls under the collapsible "Advanced" section.
-# Picked to cover the knobs a first-time user realistically wants without the long tail of
-# regularizer / router / adapter-internal params; concrete path overrides stay in Advanced.
+# Fields shown under "Basic"; everything else goes in the collapsible "Advanced" section.
 _BASIC = {
     "learning_rate",
     "max_train_epochs",
@@ -361,12 +325,10 @@ def _load(p) -> dict:
 
 
 def _load_base() -> dict:
-    """``base.toml`` overlaid on ``configs/preprocess.toml`` (the split-out
-    preprocess-only knobs: source_image_dir / target_res / …).
+    """``base.toml`` overlaid on ``configs/preprocess.toml``.
 
-    Mirrors ``load_path_overrides``' preprocess→base layering so the GUI form
-    baseline matches what preprocess/training actually read: a legacy key still
-    in base.toml wins; otherwise preprocess.toml supplies it. Use this anywhere
+    Same layering as ``load_path_overrides``, so the form baseline matches what
+    preprocess/training read: a key still in base.toml wins. Use this anywhere
     the GUI needs base.toml as a flat-key baseline."""
     merged = _load(CONFIGS_DIR / "preprocess.toml")
     merged.update(_load(CONFIGS_DIR / "base.toml"))
@@ -380,9 +342,8 @@ def _abs_under_root(rel) -> Path:
 
 
 def default_lora_cache_dir() -> Path:
-    """Absolute VAE/TE/PE cache dir — ``lora_cache_dir`` from base.toml, the
-    single source the trainer reads, with the legacy fallback. Centralized here
-    so the Preprocess/Config/EasyControl tabs don't each hardcode it."""
+    """Absolute VAE/TE/PE cache dir: ``lora_cache_dir`` from base.toml, as the
+    trainer reads it."""
     return _abs_under_root(
         _load_base().get("lora_cache_dir") or "post_image_dataset/lora"
     )
@@ -402,9 +363,8 @@ def dataset_cache_root() -> Path:
 
 
 def default_mask_dir() -> Path:
-    """Absolute mask dir — ``mask_dir`` from configs/preprocess.toml (or a
-    base.toml override), the same key ``make mask`` and training read. Falls
-    back to ``masks/`` under the cache root when the key is absent."""
+    """Absolute ``mask_dir`` (the key ``make mask`` and training read), else
+    ``masks/`` under the cache root."""
     configured = _load_base().get("mask_dir")
     if configured:
         return _abs_under_root(configured)
@@ -426,15 +386,9 @@ def _dataset_lint_sources(variant: str):
 
 
 def lint_variant_configs(variant: str) -> list:
-    """Scan the dataset-blueprint sections of ``base.toml`` and the variant
-    file for keys the trainer's validator will reject (e.g. a stale
-    ``resolution`` in ``[[datasets]]``). Returns a list of
-    ``library.config.dataset_keys.DatasetKeyIssue``.
-
-    Torch-free: imports only the static allow-list module, so it's safe to run
-    on every Config-tab reload without dragging the training stack into the GUI
-    process.
-    """
+    """``DatasetKeyIssue``s for keys in the dataset-blueprint sections of
+    ``base.toml`` and the variant file that the trainer's validator will reject
+    (e.g. a stale ``resolution`` in ``[[datasets]]``). Torch-free."""
     from library.config.dataset_keys import lint_dataset_sections
 
     issues: list = []
@@ -451,16 +405,12 @@ def lint_variant_configs(variant: str) -> list:
 
 
 def remove_unknown_dataset_keys(variant: str) -> list[str]:
-    """Surgically delete the lines flagged by :func:`lint_variant_configs` from
-    their source files, returning a list of ``"key (label)"`` descriptions of
-    what was removed.
+    """Delete the lines :func:`lint_variant_configs` flags; returns
+    ``"key (label)"`` for each removal.
 
-    Comment- and formatting-preserving on purpose: ``base.toml`` is heavily
-    commented and the flat ``_save`` round-trips through ``toml.dumps`` (which
-    drops all comments), so we edit the raw text line-by-line instead. Each
-    flagged line carries its own line number from the linter; we delete in
-    descending order so earlier deletions don't shift later targets, and we
-    re-verify the line still starts with ``<key> =`` before cutting it.
+    Edits raw text because ``_save`` (``toml.dumps``) drops comments and
+    base.toml is heavily commented. Deletes bottom-up so line numbers stay
+    valid, and re-checks each line starts with ``<key> =``.
     """
     from library.config.dataset_keys import lint_dataset_sections
 
@@ -503,23 +453,18 @@ def _origin_from_tag(tag: str) -> str:
         return "preset"
     if tag.endswith("base.toml") or tag.endswith("preprocess.toml"):
         return "base"
-    # The method/variant file (configs/<methods_subdir>/<name>.toml or a
-    # self-contained per-method dir).
     return "method"
 
 
 def _merged_via_library(
     method: str, preset: str, methods_subdir: str
 ) -> tuple[dict, dict[str, str]]:
-    """Shared base→preset→method merge, delegated to the trainer's own loader.
+    """``(merged, origin)`` from the trainer's own base→preset→method merge
+    (:func:`library.config.io.load_method_preset`).
 
-    Returns ``(merged, origin)``. The base/preset/method spine — file
-    resolution, merge order (method wins over preset), custom-preset handling —
-    comes from :func:`library.config.io.load_method_preset` so the GUI never
-    re-derives what `train.py` runs. We seed
-    the form baseline with ``_load_base()`` first because the preprocess-only
-    scalars (e.g. ``source_image_dir``) live in preprocess.toml, which the
-    library layer intentionally doesn't fold into the training merge.
+    Seeded with ``_load_base()`` because the preprocess-only scalars (e.g.
+    ``source_image_dir``) live in preprocess.toml, which the training merge
+    does not fold in.
     """
     from library.config.io import load_method_preset
 
@@ -530,8 +475,7 @@ def _merged_via_library(
             method, preset, methods_subdir=methods_subdir, return_provenance=True
         )
     except (FileNotFoundError, KeyError, ValueError):
-        # Missing method/preset file — degrade to the base baseline rather than
-        # crashing the form.
+        # Missing method/preset file: fall back to the base baseline.
         return merged, origin
     for k, v in lib_merged.items():
         merged[k] = v
@@ -545,15 +489,14 @@ def merged_method_preset(method: str, preset: str) -> tuple[dict, dict[str, str]
 
 
 def merged_gui_variant_preset(variant: str, preset: str) -> tuple[dict, dict[str, str]]:
-    """Merge base + preset + gui-methods/<variant>.toml. The GUI uses this
-    instead of `merged_method_preset` so edits/training target the clean
-    per-variant file, not the toggle-block methods/ tree."""
+    """Merge base + preset + gui-methods/<variant>.toml, plus the GUI's
+    virtual keys and ``path_scope``."""
     base = _load_base()
     meth = _load(GUI_METHODS_DIR / f"{variant}.toml")
     merged, origin = _merged_via_library(variant, preset, methods_subdir="gui-methods")
 
-    # GUI-only path scope is stored under [variant] so CLI config loading strips it as metadata;
-    # the Config tab surfaces it as a normal field and expands it into concrete paths at submit time.
+    # path_scope lives under [variant] so CLI loading strips it as metadata; it is
+    # expanded into concrete paths at submit.
     meta = meth.get("variant")
     if isinstance(meta, dict) and isinstance(meta.get("path_scope"), str):
         merged["path_scope"] = meta["path_scope"]
@@ -562,8 +505,6 @@ def merged_gui_variant_preset(variant: str, preset: str) -> tuple[dict, dict[str
         merged["path_scope"] = ""
         origin["path_scope"] = "base"
 
-    # Inject the `use_valid` virtual key derived from the [[datasets]] block (the variant may
-    # shallow-override base.toml's validation_split_num); surfaced as a single form checkbox.
     variant_override = _variant_validation_override(meth)
     if variant_override is not None:
         merged["use_valid"] = variant_override
@@ -572,7 +513,6 @@ def merged_gui_variant_preset(variant: str, preset: str) -> tuple[dict, dict[str
         merged["use_valid"] = _base_validation_enabled(base)
         origin["use_valid"] = "base"
 
-    # Inject `validation_split_num` (integer) from the same [[datasets]] block; falls back to base.toml.
     variant_vsn = _variant_validation_split_num(meth)
     if variant_vsn is not None:
         merged["validation_split_num"] = variant_vsn
@@ -581,8 +521,7 @@ def merged_gui_variant_preset(variant: str, preset: str) -> tuple[dict, dict[str
         merged["validation_split_num"] = _base_validation_split_num(base)
         origin["validation_split_num"] = "base"
 
-    # Inject `repeat_by_folder_name` (Kohya-style {n}_folder repeats): a dataset-blueprint key, not a
-    # flat TOML key, so the form surfaces it as a virtual checkbox written into the [[datasets]] override.
+    # repeat_by_folder_name: Kohya-style {n}_folder repeats.
     variant_rbf = _variant_folder_repeats_override(meth)
     if variant_rbf is not None:
         merged["repeat_by_folder_name"] = variant_rbf
@@ -591,9 +530,8 @@ def merged_gui_variant_preset(variant: str, preset: str) -> tuple[dict, dict[str
         merged["repeat_by_folder_name"] = _base_folder_repeats(base)
         origin["repeat_by_folder_name"] = "base"
 
-    # Surface the sample-image knobs as first-class fields even when no TOML in the chain set them
-    # (their argparse defaults would otherwise keep them out of `merged`); a variant that does set
-    # them keeps its "method" origin. Cadence uses 0 as the "disabled" sentinel (train.py: non-positive → None).
+    # Show the sample-image knobs even when no TOML in the chain sets them. Cadence 0 = disabled
+    # (train.py maps non-positive to None).
     for _k, _default in (
         ("sample_prompts", []),
         ("sample_every_n_epochs", 0),

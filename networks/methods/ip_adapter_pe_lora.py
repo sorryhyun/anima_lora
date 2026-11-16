@@ -3,8 +3,7 @@
 Wraps every nn.Linear inside PE-Core's resblocks (attn.out_proj,
 mlp.c_fc, mlp.c_proj) plus the qkv path (raw ``in_proj_weight`` Parameter on
 ``_SelfAttention``) with a low-rank delta. The base PE weights stay frozen;
-only the LoRA params train; the FM gradient flows back from the DiT through
-the LoRA-adapted PE-Core (no cache split, no implicit-alignment loss).
+the FM gradient flows back from the DiT through the LoRA-adapted PE-Core.
 """
 
 from __future__ import annotations
@@ -165,8 +164,7 @@ def _patch_pe_qkv(
             q, k, v, attn_mask=None, dropout_p=0.0, is_causal=False, scale=attn.scale
         )
         out = rearrange(out, "b h s d -> b s (h d)")
-        # attn.out_proj may itself be wrapped (LoRA on attn_out) — call it as a
-        # module so its (possibly patched) forward runs.
+        # Call as a module so a LoRA-wrapped out_proj forward runs.
         return attn.out_proj(out)
 
     attn.forward = patched_forward

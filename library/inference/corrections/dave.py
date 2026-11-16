@@ -1,29 +1,21 @@
 """DAVE — DC Attenuation for diVersity Enhancement (training-free, ICML'26).
 
-Recovers same-prompt sample diversity by attenuating the **DC component** of each
-target Transformer block's output — the spatial average ``μ^ℓ`` that the probe
-found to be near-perfectly cross-seed-shared (it carries the conditioning /
-global layout) while the **AC residual** ``h − μ`` holds the seed-specific
-structure. The per-block edit::
+Recovers same-prompt diversity by attenuating the DC component (spatial mean
+``μ^ℓ``) of each target block's output, which is shared across seeds, while the
+AC residual ``h − μ`` carries the seed-specific structure::
 
-    ĥ^ℓ = α_ℓ · μ^ℓ + (h^ℓ − μ^ℓ) = h^ℓ − (1 − α_ℓ) · μ^ℓ      (α_ℓ ≤ 1)
+    ĥ^ℓ = h^ℓ − (1 − α_ℓ) · μ^ℓ,   1 − α_ℓ = strength · w(ℓ)
 
-lets the diverse AC breathe without rewriting it. ``(1 − α_ℓ)`` is the per-block
-attenuation factor, ``strength · w(ℓ)`` where ``w(ℓ)`` is the offline-derived
-"Power Ratio" gate (``bench/dave/derive_alpha_mask.py``) that self-zeros block 0
-and the AC-shared early-mid blocks. ``strength`` (``--dave_strength``) is the live
-knob; the edit is additionally σ-gated to ``[--dave_sigma_lo, --dave_sigma_hi]``.
+``w(ℓ)`` is the offline "Power Ratio" gate (``bench/dave/derive_alpha_mask.py``);
+the edit is σ-gated to ``[--dave_sigma_lo, --dave_sigma_hi]``. See
+``docs/inference/dave.md``.
 
-Design (per ``bench/dave/README.md``): a **post-`forward` hook** on each block
-(forward_hook-not-override invariant) + a per-step model buffer (``_dave_cur_sigma``,
-restamped each forward from the timestep), the Spectrum/mod-guidance pattern — *not*
-a sampler-boundary correction like CNS. Branchless (``α=1 → atten=0 → exact
-no-op``), so it survives ``compile_blocks()`` (the hook fires eager around each
-block's compiled ``_forward``; the DC mean over dims (1,2,3) is correct for both the
-eager 5D ``(B,T,H,W,D)`` and the native-flattened fake-5D ``(B,1,seq,1,D)`` layout).
+A post-``forward`` hook per block plus a per-step buffer (``_dave_cur_sigma``),
+branchless so it survives ``compile_blocks()``: the hook fires eager around the
+compiled ``_forward``, and the mean over dims (1,2,3) is right for both the
+eager 5D ``(B,T,H,W,D)`` and the flattened ``(B,1,seq,1,D)`` layout.
 
-Standard denoise loop only (no Spectrum/SPD compose). The edit applies to both the cond and uncond CFG forwards (a uniform
-representation edit; the hook does not distinguish the two passes).
+Standard denoise loop only (no Spectrum/SPD). Applies to both CFG passes.
 
 Reference: "Breaking the Lock-in: Diversifying Text-to-Image Generation via
 Representation Modulation", ICML 2026 — https://github.com/daheekwon/DAVE
@@ -43,8 +35,7 @@ from library.env import resolve_under_home
 
 logger = logging.getLogger(__name__)
 
-# Shipped mask (relative to repo home). ``--dave auto`` resolves here;
-# an explicit path overrides. Produced by bench/dave/derive_alpha_mask.py.
+# ``--dave auto`` resolves here, relative to repo home.
 DEFAULT_MASK_PATH = "networks/calibration/dave_alpha.npz"
 
 
@@ -81,10 +72,8 @@ def _load_weight(path: str, num_blocks: int) -> np.ndarray:
 def _make_hook(anima, bidx: int):
     """Post-`forward` hook for block ``bidx``: ``out ← out − gate·atten·μ``.
 
-    Branchless. ``atten`` (the per-block ``1−α``) is 0 for self-zeroed blocks, so
-    those hooks are exact no-ops; ``gate`` is 0 outside the σ window. The DC mean
-    over dims (1,2,3) is the per-channel spatial average for both the eager 5D and
-    native-flattened fake-5D block layouts.
+    ``atten`` (``1−α``) is 0 for self-zeroed blocks; ``gate`` is 0 outside the
+    σ window.
     """
 
     def hook(_module, _inputs, output: torch.Tensor) -> torch.Tensor:
@@ -105,8 +94,8 @@ def setup_dave(
 ) -> DAVEHooks:
     """Arm DAVE on ``anima``: load the mask, set the runtime buffers, hook blocks.
 
-    Returns a :class:`DAVEHooks` handle the caller must ``.remove()`` after the
-    generation (the model is shared across seeds — hooks would otherwise stack).
+    The caller must ``.remove()`` the returned hooks after the generation, or
+    they stack on the shared model across seeds.
     """
     num_blocks = len(anima.blocks)
     weight = _load_weight(args.dave, num_blocks).copy()
@@ -114,11 +103,9 @@ def setup_dave(
     sigma_lo = float(getattr(args, "dave_sigma_lo", 0.0))
     sigma_hi = float(getattr(args, "dave_sigma_hi", 1.0))
 
-    # Temporal cutoff τ (the DAVE paper's lever): attenuate only the first τ
-    # fraction of denoising steps. We reconstruct the *live* σ schedule and pick
-    # the σ boundary between the last active and first inactive step, so the
-    # window tracks --infer_steps/--flow_shift instead of a hand-guessed σ. This
-    # overrides the σ window (the more specific intent wins).
+    # τ: attenuate only the first τ fraction of steps. The σ boundary comes from
+    # the live schedule so it tracks --infer_steps/--flow_shift; overrides the
+    # σ window.
     tau = float(getattr(args, "dave_tau", 0.0))
     if tau > 0.0:
         from library.inference.sampling import get_timesteps_sigmas
@@ -130,8 +117,7 @@ def setup_dave(
             torch.device("cpu"),
             tail_power=float(getattr(args, "sigma_tail_power", 1.0)),
         )
-        # k = number of leading steps to keep active (steps 0..k-1); σ decreases
-        # monotonically, so the active window is σ ≥ boundary.
+        # Steps 0..k-1 active; σ decreases, so the window is σ ≥ boundary.
         k = max(1, min(n_steps, round(tau * n_steps)))
         if k >= n_steps:
             sigma_lo = 0.0  # τ covers the whole schedule → all σ
@@ -142,8 +128,8 @@ def setup_dave(
             f"DAVE τ={tau}: first {k}/{n_steps} steps active → σ∈[{sigma_lo:.3f}, 1.0]"
         )
 
-    # Block-range cap: spare blocks outside [lo, hi] (e.g. the final content
-    # blocks whose DC IS the image). hi=-1 means the last block.
+    # Spare blocks outside [lo, hi] (e.g. the final blocks whose DC is the
+    # image). hi=-1 means the last block.
     blk_lo = int(getattr(args, "dave_block_lo", 0))
     blk_hi = int(getattr(args, "dave_block_hi", -1))
     if blk_hi < 0:

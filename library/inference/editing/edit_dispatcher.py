@@ -1,19 +1,14 @@
 """DirectEdit intent dispatcher — turn (ψ_src, edit_instruction) → (ψ_tar, intent).
 
-Three intents, with APPEND as the safe default:
-  * REMOVE  — explicit ``-X`` syntax, or ``no X`` when X matches an existing tag.
-              Strip the tag from the caption.
-  * REPLACE — Qwen3 last-non-padding-token cosine geometry says the edit phrase
-              is "near" exactly one source tag (top-1 above ``replace_threshold``
-              AND gap-to-top-2 above ``replace_gap``). String-substitute that tag.
-  * APPEND  — everything else. Append ``", " + edit_instruction`` to the caption.
+Three intents, APPEND by default:
+  * REMOVE  — ``-X``, or ``no X`` when X is an existing tag. Strip the tag.
+  * REPLACE — the edit phrase's Qwen3 last-token embedding is near exactly one
+              source tag (top-1 ≥ ``replace_threshold`` and gap-to-top-2 ≥
+              ``replace_gap``). Substitute that tag.
+  * APPEND  — everything else.
 
-The threshold/gap gate is the load-bearing piece: probe
-``_archive/text_enc_probes/edit_nearest_tag.py`` shows that legitimate REPLACE
-cases (e.g. "large breasts" into a caption with "medium breasts") have both
-top-1 ≳ 0.95 AND gaps ≳ 0.07, while ambiguous or no-conflict cases (huge+large
-both present, "medium hair" near "grey hair") have gaps < 0.01. Failing the
-gate falls through to APPEND.
+The gap gate carries the decision: real REPLACE cases have gaps ≳ 0.07, while
+ambiguous ones ("medium hair" near "grey hair") sit below 0.01.
 """
 
 from __future__ import annotations
@@ -27,10 +22,8 @@ import torch.nn.functional as F
 
 Intent = Literal["append", "remove", "replace", "noop"]
 
-# Type alias for the encoder shim the dispatcher consumes. Takes a list of N
-# short phrases (the edit + each comma-split src tag) and returns an (N, D)
-# tensor of last-non-padding-token Qwen3 embeddings. The dtype must be float
-# (cosine is computed in fp32) and any device is fine.
+# N phrases (the edit + each src tag) -> (N, D) float tensor of
+# last-non-padding-token Qwen3 embeddings, any device.
 EncodeLastPooledFn = Callable[[list[str]], torch.Tensor]
 
 
@@ -43,9 +36,7 @@ class EditPlan:
     detected_conflict_tag: Optional[str] = None
     detection_top1_sim: Optional[float] = None
     detection_gap: Optional[float] = None
-    # The literal phrase the dispatcher matched against ψ_src (i.e. after we
-    # stripped any "-" / "no " prefix). Useful when the REMOVE syntax was used
-    # but the tag wasn't present.
+    # The phrase matched against ψ_src, after stripping any "-" / "no " prefix.
     parsed_edit_phrase: str = ""
 
     def log_line(self) -> str:
@@ -65,7 +56,7 @@ class EditPlan:
 
 
 def _split_tags(caption: str) -> list[str]:
-    """Comma-split, strip, drop empties. Matches probe behaviour."""
+    """Comma-split, strip, drop empties."""
     return [t.strip() for t in caption.split(",") if t.strip()]
 
 
@@ -97,7 +88,6 @@ def _parse_remove_syntax(edit_instruction: str) -> tuple[str, Optional[str]]:
         phrase = s.lstrip("-").strip()
         if phrase:
             return phrase, "explicit"
-    # Case-insensitive "no X" — only if there's a phrase after it.
     lower = s.lower()
     if lower.startswith("no ") and len(s) > 3:
         phrase = s[3:].strip()
@@ -114,12 +104,9 @@ def encode_last_pooled_via_anima_strategy(
     encoding_strategy,
     device: torch.device,
 ) -> torch.Tensor:
-    """Anima-flavoured ``EncodeLastPooledFn``: tokenize + encode via the
-    Anima strategy trio and return (N, D) last-non-padding-token vectors.
-
-    Mirrors ``_archive/text_enc_probes/edit_nearest_tag.py::encode_phrases`` exactly — the
-    probe is the regression set for the dispatcher thresholds, so the encoding
-    path must match.
+    """``EncodeLastPooledFn`` via the Anima strategy trio: (N, D)
+    last-non-padding-token vectors. The dispatcher thresholds were tuned on
+    this encoding path.
     """
     tokens = tokenize_strategy.tokenize(phrases)
     prompt_embeds, attn_mask, _t5_ids, _t5_mask = encoding_strategy.encode_tokens(
@@ -142,16 +129,8 @@ def derive_target_caption(
 ) -> EditPlan:
     """Decide ψ_tar from (ψ_src, edit phrase) without a tag-families YAML.
 
-    Default is APPEND (the edit phrase is appended). REPLACE only fires when
-    Qwen3 geometry is confidently pointing at a single tag.
-
-    The encoder shim is caller-supplied so the ComfyUI node (which goes through
-    comfy's stock ``CLIP`` socket, not the AnimaTokenizeStrategy) and the
-    standalone CLI (Anima strategy trio) can share this code path. For the
-    Anima case, see ``encode_last_pooled_via_anima_strategy``.
-
-    Thresholds tuned against ``_archive/text_enc_probes/edit_nearest_tag.py``
-    (22 cases).
+    The encoder shim is caller-supplied so the ComfyUI node (comfy's ``CLIP``
+    socket) and the CLI (``encode_last_pooled_via_anima_strategy``) share this.
     """
     src_tags = _split_tags(src_caption)
     phrase, removal_kind = _parse_remove_syntax(edit_instruction)
@@ -167,23 +146,19 @@ def derive_target_caption(
                 parsed_edit_phrase=phrase,
             )
         if removal_kind == "explicit":
-            # `-X` always means remove; if X isn't in ψ_src this is a no-op.
+            # `-X` with X absent from ψ_src: nothing to remove.
             return EditPlan(
                 tar_caption=src_caption,
                 intent="remove",
                 detected_conflict_tag=None,
                 parsed_edit_phrase=phrase,
             )
-        # Soft `no X`: tag absent → user really did want to add the literal
-        # phrase "no X" (it's a valid danbooru tag). Fall through to the
-        # detection branch with the *original* edit string.
+        # `no X` with X absent: "no X" is itself a danbooru tag, so treat the
+        # original string as the edit.
         phrase = edit_instruction.strip()
 
-    # Edit phrase already literally present in ψ_src → NOOP. Skips the encoder
-    # forward, prevents the "REPLACE its-own-tag" no-op outcome, and most
-    # importantly stops the dispatcher from picking a *different* but
-    # cosine-near tag (e.g. user re-types "smile" when caption already has it
-    # AND has "grin" nearby — APPEND/REPLACE would corrupt; NOOP keeps it clean).
+    # Phrase already present → NOOP; otherwise a cosine-near neighbour ("grin"
+    # beside "smile") could get replaced.
     existing_idx = _find_tag_case_insensitive(src_tags, phrase)
     if existing_idx is not None:
         return EditPlan(
@@ -193,7 +168,6 @@ def derive_target_caption(
             parsed_edit_phrase=phrase,
         )
 
-    # No tags to compare against → trivially APPEND.
     if not src_tags:
         return EditPlan(
             tar_caption=phrase if not src_caption else f"{src_caption}, {phrase}",
@@ -212,7 +186,6 @@ def derive_target_caption(
     top1_tag = src_tags[int(sorted_idx[0])]
 
     if top1_sim >= replace_threshold and gap >= replace_gap:
-        # Confident REPLACE — string-substitute the top-1 tag.
         new_tags = list(src_tags)
         new_tags[int(sorted_idx[0])] = phrase
         return EditPlan(
@@ -224,7 +197,7 @@ def derive_target_caption(
             parsed_edit_phrase=phrase,
         )
 
-    # Otherwise: APPEND. Carry the diagnostics so callers can audit near-misses.
+    # APPEND, keeping the diagnostics for near-miss audits.
     return EditPlan(
         tar_caption=f"{src_caption}, {phrase}",
         intent="append",

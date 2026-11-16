@@ -1,9 +1,7 @@
 """HuggingFace Accelerate setup and FP16/BF16 plumbing.
 
-Wraps the ``Accelerator`` construction so training scripts can stay out of the
-logging-backend plumbing. Also hosts the state-resume helper (local dir or HF
-repo) and the dtype resolver that maps ``--mixed_precision`` and
-``--save_precision`` flags to torch dtypes.
+``Accelerator`` construction with the logging backend, state resume (local dir
+or HF repo), and the ``--mixed_precision`` / ``--save_precision`` dtype map.
 """
 
 from __future__ import annotations
@@ -88,10 +86,9 @@ def resolve_run_log_dir(args: argparse.Namespace) -> Optional[str]:
     """Return the timestamped run-specific log directory for this invocation.
 
     Builds ``{args.logging_dir}/{log_prefix}{YYYYMMDD-HHMM}`` once and caches it
-    on ``args._resolved_run_log_dir`` so the config-snapshot writer (which runs
-    before ``prepare_accelerator``) and the accelerator setup land in the same
-    dir even when they're a minute apart on the wall clock. Returns ``None``
-    when ``--logging_dir`` is unset.
+    on ``args`` so the config-snapshot writer (which runs before
+    ``prepare_accelerator``) lands in the same dir across a minute boundary.
+    ``None`` when ``--logging_dir`` is unset.
     """
     if args.logging_dir is None:
         return None

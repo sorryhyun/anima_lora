@@ -1,12 +1,10 @@
 """Default-dataset preprocessing: resize → VAE latents → text-embedding caches.
 
-The curation stages in this chain — resize, autotag, position clauses, the
-caption correction/mirror — are ``anime_tools`` **request objects**
-(``ResizeRequest`` / ``AutotagRequest`` / ``PositionRequest`` /
-``CorrectRequest``); the trainer never spells a flag. Each runs through
-``_common.execute_stage``. A user's ``ARGS`` reach a stage through the request's
-own generated parser (``request_with_args``). The VAE / TE / PE caches stay
-trainer-side scripts.
+The curation stages (resize, autotag, position clauses, caption correction)
+are ``anime_tools`` request objects run through ``_common.execute_stage``; the
+trainer never spells a flag, and a user's ``ARGS`` go through the request's
+own parser (``request_with_args``). The VAE / TE / PE caches are trainer-side
+scripts.
 """
 
 from __future__ import annotations
@@ -244,9 +242,8 @@ def _caption_correction_config(extra) -> tuple[dict[str, object], list[str]]:
             if env_drop_groups is not None
             else _drop_groups_override(overrides.get("caption_drop_groups"))
         ).strip(),
-        # Not a `correct_captions.py` flag — gates a separate stage that runs
-        # BEFORE the caption/TE steps (see `cmd_preprocess`). Writes the
-        # DERIVED caption (`resized/`), not the master.
+        # Gates a separate stage that runs before the caption/TE steps and
+        # writes the derived caption (`resized/`), not the master.
         "position_clauses": _boolish(
             os.environ.get("CAPTION_POSITION_CLAUSES"),
             _boolish(overrides.get("caption_position_clauses"), False),
@@ -257,8 +254,8 @@ def _caption_correction_config(extra) -> tuple[dict[str, object], list[str]]:
             os.environ.get("CAPTION_IMPLIED"),
             _boolish(overrides.get("caption_implied"), True),
         ),
-        # Same deal as `position_clauses`, but runs even earlier: it *creates*
-        # the captions the rest of the chain reads — see `cmd_preprocess`.
+        # A separate stage, right after resize: it creates the captions the
+        # rest of the chain reads.
         "autotag": _boolish(
             os.environ.get("CAPTION_AUTOTAG"),
             _boolish(overrides.get("caption_autotag"), False),
@@ -267,15 +264,13 @@ def _caption_correction_config(extra) -> tuple[dict[str, object], list[str]]:
         "autotag_min_confidence": _floatish(
             overrides.get("caption_autotag_min_confidence"), default=0.0
         ),
-        # The caption-MASTER stages are driven from this dict alone (the
-        # caller's `extra` never reaches them), so the subset scope must ride
-        # along or a --path_pattern-scoped preprocess would rewrite captions
-        # across the WHOLE master (destructive with autotag merge/overwrite).
+        # The caption-master stages see only this dict, not `extra`: without
+        # the scope here a --path_pattern run would rewrite the whole master
+        # (destructive with autotag merge/overwrite).
         "path_pattern": _resolved_path_pattern(extra),
     }
-    # The GUI's `correct` stage form (``PREPROCESS_STAGES_JSON``) builds the
-    # request in `cmd_preprocess_captions`; the knobs the chain reasons about
-    # are mirrored here so the run-or-skip logic below sees one dict.
+    # Mirror the GUI `correct` form's knobs so the run-or-skip logic sees one
+    # dict (the request itself is built in `cmd_preprocess_captions`).
     correct_form = gui_stage_values().get("correct")
     if isinstance(correct_form, dict):
         config["correct_form"] = correct_form
@@ -376,9 +371,7 @@ def _caption_correction_config(extra) -> tuple[dict[str, object], list[str]]:
 
 def _autotag_request(config: dict[str, object]):
     """The ``AutotagRequest`` the in-pipeline autotag stage runs as. Always
-    ``apply`` — the user already opted in via the checkbox / env; a dry run
-    here would produce a report nobody reads while TE encodes the un-tagged
-    captions."""
+    ``apply``: a dry run here would leave TE encoding the un-tagged captions."""
     mode = str(config.get("autotag_mode") or "missing")
     min_confidence = float(config.get("autotag_min_confidence") or 0.0)
     from anime_tools.stages.requests import AutotagRequest
@@ -433,10 +426,8 @@ def _implied_request(config: dict[str, object]):
 def _caption_correction_enabled(config: dict[str, object]) -> bool:
     """Run the caption-rewrite pass when ANY caption-rewriting knob is set.
 
-    ``correct_captions.py`` is the only path that injects the trigger word /
-    ``@no-artist``, so a trigger word or insert-no-artist with order
-    correction *off* still has to run it — otherwise the GUI's trigger-word
-    field is silently ignored at TE-cache time.
+    It is the only path that injects the trigger word / ``@no-artist``, so
+    those knobs need it even with order correction off.
     """
     return bool(
         config.get("correct_order")
@@ -611,10 +602,8 @@ def _curation_decisions_path() -> Path:
 def _curation_skips(src: str, decisions_path: Path | None = None) -> tuple[str, ...]:
     """The images curation leaves out of preprocessing, as ``ResizeRequest.skip``
     entries (paths relative to ``src``): the GUI's decision file (``skip`` /
-    ``move``) plus whatever the anime_tools GUI excluded in its own workspace
-    ledger. The trainer's own exclusion ledger is not listed here — the stage
-    reads it itself through ``excluded_dir``. Empty when neither exists, so a
-    plain CLI preprocess is unchanged."""
+    ``move``) plus the anime_tools workspace exclusions. The trainer's own
+    exclusion ledger is read by the stage through ``excluded_dir``."""
     from library.datasets.curation_actions import (
         load_curation_decisions,
         workspace_excluded_rels,
@@ -636,9 +625,7 @@ def _repa_pe_encoder() -> str | None:
     """The REPA vision encoder to cache, or ``None`` when REPA is off.
 
     Reads ``use_repa`` / ``repa_encoder`` from the merged config chain, so a
-    ``use_repa=true`` run auto-caches its PE sidecars in the preprocess pass
-    instead of bouncing off train.py's "PE features absent" error. Plain
-    ``make preprocess`` sees no ``use_repa`` and returns ``None``.
+    ``use_repa=true`` run caches its PE sidecars in the preprocess pass.
     """
     from ._common import _path_overrides
 
@@ -661,14 +648,11 @@ _REPA_ENCODER_DOWNLOAD_TARGET = {
 
 
 def _require_repa_encoder_model(encoder: str) -> None:
-    """Fail fast (clear error, nonzero exit) if the REPA vision checkpoint is
-    absent — never silently auto-download it from inside the daemon.
+    """Exit if the REPA vision checkpoint is absent; never auto-download it here.
 
-    A missing checkpoint would otherwise fall into a no-timeout
-    ``hf_hub_download``; in the daemon's detached child that shows no progress,
-    and because the queue is serial, a stalled/gated download wedges every job
-    queued behind it (training included). Bail with an actionable message
-    instead — run the named target manually for the one-time download."""
+    A missing checkpoint would fall into a no-timeout ``hf_hub_download`` in
+    the daemon's detached child, and a stalled download wedges every job
+    queued behind it on the serial queue."""
     import sys
     from pathlib import Path
 
@@ -720,8 +704,8 @@ def _pop_resize_only_args(extra) -> list[str]:
 
 def _pop_retired_lowres_args(extra) -> list[str]:
     """``ARGS`` minus the retired low-res filter flags (``--min_pixels N``,
-    ``--drop_lowres``, ``--no_drop_lowres``). The resize stage has no pixel
-    floor since anime_tools 0.7.5 — every source image lands in the tree."""
+    ``--drop_lowres``, ``--no_drop_lowres``): the resize stage has no pixel
+    floor."""
     cleaned = _drop_option_with_value(list(extra), {"--min_pixels"})
     cleaned = [a for a in cleaned if a not in ("--no_drop_lowres", "--drop_lowres")]
     if len(cleaned) != len(extra):
@@ -763,11 +747,9 @@ def cmd_preprocess_resize(extra, *, chained: bool = False):
     )
     _execute("resize", req)
     if req.overwrite and not chained:
-        # A re-crop (crop anchor / margins / freefit_max_ratio) rewrites the PNG
-        # at the SAME bucket, and the downstream skips are keyed on the bucket
-        # (latents: `latents_{H}x{W}` present) / on sidecar existence (PE), not
-        # on the pixels — so they would keep caches of the old crop.
-        # `preprocess-reconcile` doesn't catch it either: nothing moved bucket.
+        # A re-crop rewrites the PNG at the same bucket, and the latent / PE
+        # skips key on bucket / sidecar existence, not pixels, so they would
+        # keep the old crop. `preprocess-reconcile` misses it too.
         print(
             "  [preprocess] --overwrite re-wrote resized images: re-run "
             "`make preprocess-vae ARGS=--overwrite` (and preprocess-pe, if you "
@@ -961,10 +943,9 @@ def cmd_preprocess_captions(extra, caption_config: dict[str, object] | None = No
     correct = _caption_correction_enabled(caption_config)
     shuffle, dropout, randomize = _variant_settings()
     n_variants = int(_float_or_zero(shuffle))
-    # Position clauses and the implied cut keep the mirror alive even with
-    # correction and variants both off: they only rewrite resized/, so every
-    # OTHER image still needs its master caption mirrored there or it would
-    # encode as empty.
+    # Position clauses and the implied cut need the mirror even with correction
+    # and variants off: they only rewrite resized/, so every other image needs
+    # its master caption mirrored there or it encodes as empty.
     if (
         not correct
         and n_variants <= 0
@@ -973,28 +954,21 @@ def cmd_preprocess_captions(extra, caption_config: dict[str, object] | None = No
     ):
         print("  [preprocess] caption correction disabled")
         return
-    # correct_captions loads the Danbooru tag KB unconditionally — fetch it
-    # on demand so a GUI preprocess that skipped the download doesn't abort.
     _ensure_danbooru_tags()
     if caption_config.get("implied"):
-        # Before the correct step, so the variant sidecars it writes carry the
-        # cut too. Text-only and idempotent: an unchanged caption keeps its
-        # mtime, so its TE cache stays current.
+        # Before the correct step, so its variant sidecars carry the cut. An
+        # unchanged caption keeps its mtime, so its TE cache stays current.
         print("  [preprocess] implied tags: cut from the revised captions")
         _execute("drop_groups", _implied_request(caption_config))
     from anime_tools.stages.requests import CorrectRequest
 
-    # The trainer's own fields: the walk and the variant sidecars (the
-    # TextCachingSection's knobs), plus the tokenizers identity-randomize needs.
     trainer_fields: dict[str, object] = {"recursive": True}
     if n_variants > 0:
         trainer_fields["caption_shuffle_variants"] = n_variants
         trainer_fields["caption_tag_dropout_rate"] = _float_or_zero(dropout)
         trainer_fields["caption_tag_randomize_rate"] = _float_or_zero(randomize)
-        # Identity-randomize needs the tokenizers to build the erasure pool.
-        # The curation-side stage loads tokenizers from *directories* only
-        # (it must not know the safetensors→bundled-config mapping), so
-        # resolve them here on the trainer side.
+        # Identity-randomize needs the tokenizers. The curation stage loads them
+        # from directories only, so the trainer resolves them here.
         if _float_or_zero(randomize) > 0.0 and n_variants >= 2:
             from library.anima.weights import qwen3_tokenizer_dir, t5_tokenizer_dir
 
@@ -1003,17 +977,14 @@ def cmd_preprocess_captions(extra, caption_config: dict[str, object] | None = No
     path_pattern = _resolved_path_pattern(extra)
     form = caption_config.get("correct_form")
     if isinstance(form, dict):
-        # The GUI's form supplies the stage's long tail (tag_csv, …); the
-        # five rewrite knobs are set from the config dict, which the form was
-        # folded into (so an explicit CLI flag still wins), and the trainer's
-        # own fields on top.
+        # The form supplies the long tail (tag_csv, …); the rewrite knobs come
+        # from the config dict, so an explicit CLI flag still wins.
         req = request_from_form(
             "correct",
             form,
             roots=_stage_roots(),
             settings={"path_pattern": path_pattern},
-            # Always ``apply``, like autotag: a dry run would cache the
-            # un-corrected text.
+            # A dry run would cache the un-corrected text.
             apply=True,
             no_correct=not correct,
             caption_insert_no_artist=bool(caption_config.get("insert_no_artist")),
@@ -1044,19 +1015,15 @@ def cmd_preprocess_te(extra, caption_config: dict[str, object] | None = None):
     if caption_config is None:
         caption_config, extra = _caption_correction_config(extra)
     extra = _pop_retired_lowres_args(extra)
-    # Caption rewrites before anything reads the captions. `cmd_preprocess_captions`
-    # runs them too, but the no-correction + no-variants path below skips that
-    # step entirely and encodes the source captions directly.
+    # Caption rewrites first: the no-caption-step path below never reaches
+    # `cmd_preprocess_captions`, which also runs them.
     _run_caption_autotag_stage(caption_config)
     _run_caption_position_stage(caption_config)
     shuffle, dropout, randomize = _variant_settings()
     n_variants = int(_float_or_zero(shuffle))
-    # The caption step writes the variant sidecars whenever correction is on OR
-    # variants are requested; TE then reads resized/ and encodes the
-    # sidecars verbatim. Only pure no-correction + no-variants reads the
-    # source captions directly. Position clauses force it too: they're written
-    # into resized/ and never into the master, so encoding the master directly
-    # would silently train the pre-clause caption.
+    # With the caption step, TE reads resized/. Without it TE reads the
+    # masters, so anything that writes only into resized/ (position clauses,
+    # implied cut) must force the step or it is silently not trained.
     needs_caption_step = (
         _caption_correction_enabled(caption_config)
         or n_variants > 0
@@ -1094,8 +1061,7 @@ def cmd_preprocess_te(extra, caption_config: dict[str, object] | None = None):
             _QWEN3_TOKENIZER,
             "--dit",
             "models/diffusion_models/anima-base-v1.0.safetensors",
-            # Fallback only — ignored when a {stem}.variants.txt sidecar is
-            # present; drives in-process generation otherwise.
+            # Ignored where a {stem}.variants.txt sidecar exists.
             "--caption_shuffle_variants",
             shuffle,
             "--caption_tag_dropout_rate",
@@ -1193,10 +1159,8 @@ def _stage(stage_id: str):
 
 def _execute(stage_id: str, req) -> None:
     """Run one curation stage: in-process under a daemon job, else a child.
-    A GPU stage run in-process leaves its model cached in this interpreter
-    (that is the point — autotag → position share one tagger), so the chain
-    releases it before handing the GPU to a trainer-side child
-    (``_release_stage_models``)."""
+    An in-process GPU stage leaves its model cached (autotag → position share
+    one tagger); ``_release_stage_models`` frees it before a trainer child."""
     execute_stage(_stage(stage_id), req)
     if stage_id in _GPU_STAGES and in_daemon_job():
         _MODELS_RESIDENT.add(stage_id)
@@ -1262,11 +1226,9 @@ def _ocr_dir() -> str:
 def _caption_ocr_request(*, path_pattern: str, apply: bool, device: str | None):
     """The ``OcrRequest`` the ``caption-full`` chain reads text with.
 
-    Reads the resized tree and writes ``{stem}.ocr.txt`` under ``ocr_dir``;
-    no caption is read or written, so this step alone invalidates no TE cache.
-    Every detector/reader knob stays at the package default — the two floors
-    that decide what reaches a caption live on the combine step, not here, so
-    the sidecar keeps every line for a person to look at.
+    Writes ``{stem}.ocr.txt`` under ``ocr_dir`` and touches no caption. Knobs
+    stay at the package default; the floors that decide what reaches a
+    caption are applied by the combine step, so the sidecar keeps every line.
     """
     from anime_tools.stages.requests import OcrRequest
 
@@ -1284,26 +1246,20 @@ def _caption_combine_request(
 ):
     """The ``ExportRequest`` that attaches the OCR clause to the trainer's captions.
 
-    ``with_ocr_clause`` — the one place an OCR sidecar meets a caption — is
-    reachable only through the export stage's ``--combine_ocr``, which is
-    written as a workspace→trainer publish. The trainer *is* its own workspace
-    here (the caption stages write ``post_image_dataset/resized`` directly), so
-    the export runs **in place**: ``out`` is the resized tree's parent, and
-    every row but ``caption``/``variants`` compares identical and is skipped.
+    The OCR clause is reachable only through the export stage's
+    ``--combine_ocr``, a workspace→trainer publish. Here it runs in place:
+    ``out`` is the resized tree's parent, so every row but ``caption`` /
+    ``variants`` compares identical and is skipped.
 
-    ``src`` is the resized tree too, not ``image_dataset/``: since anime_tools
-    0.7.5 the image row publishes each image's *original* under ``src`` (and
-    the mask row is refitted to it), which in place would drop full-size
-    originals into the resized tree and rewrite the masks at their geometry.
-    Pointed at the resized tree, the "original" is the resized PNG itself and
-    both rows compare identical.
+    ``src`` is the resized tree too: the image row publishes each image's
+    original under ``src`` (and refits masks to it), so ``image_dataset/``
+    would drop full-size originals into the resized tree.
 
-    ``master`` and ``excluded_dir`` keep the package's workspace defaults —
-    absent trees contribute no rows, so nothing is ever written back over the
-    hand-written masters under ``image_dataset/``.
+    ``master`` / ``excluded_dir`` keep the package's workspace defaults, which
+    are absent here, so nothing is written over ``image_dataset/``.
 
-    The combine is idempotent: a text clause the caption already carries is
-    replaced, and a re-run whose sidecar lost its lines *removes* the clause.
+    Idempotent: an existing text clause is replaced, and one whose sidecar
+    lost its lines is removed.
     """
     from anime_tools.captions.ocr_sidecar import DEFAULT_MIN_DET, DEFAULT_MIN_GLYPH
     from anime_tools.stages.requests import ExportRequest
@@ -1314,8 +1270,7 @@ def _caption_combine_request(
         dst=str(resized),
         masks=_path("mask_dir", "post_image_dataset/masks"),
         index=CAPTION_INDEX_PATH,
-        # `out/resized/<rel>` is where a caption row lands — the tree it was
-        # read from, which is what makes this an in-place combine.
+        # A caption row lands at `out/resized/<rel>`: the tree it was read from.
         out=str(resized.parent),
         combine_ocr=True,
         ocr_dir=_ocr_dir(),
@@ -1325,13 +1280,10 @@ def _caption_combine_request(
     )
 
 
-# Caption-rewrite stages (autotag -> image_dataset/*.txt, position clauses ->
-# resized/*.txt) must run before anything reads/mirrors a caption; every entry
-# point that needs them calls the stage. This key on the shared caption-config
-# dict records that a stage already ran in this chain — `cmd_preprocess`
-# threads ONE dict through so later calls no-op, while a standalone target
-# gets its own dict and runs it. Both passes are idempotent but not free
-# (each pays a tagger/SAM3 load over the whole tree), hence the guard.
+# Caption-rewrite stages (autotag, position clauses) must run before anything
+# reads a caption, so every entry point calls them. This key on the shared
+# caption-config dict records a stage already ran: `cmd_preprocess` threads one
+# dict through so later calls no-op (each pass pays a tagger/SAM3 load).
 _STAGE_RAN_KEY = "_master_stages_ran"
 
 
@@ -1348,9 +1300,8 @@ def _stage_already_ran(config: dict[str, object], stage: str) -> bool:
 
 
 def _stage_path_pattern(config: dict[str, object]) -> str:
-    """Subset scope stashed by :func:`_caption_correction_config`. A
-    hand-rolled dict without one falls back to the env/config pattern exactly
-    as the standalone targets do."""
+    """Subset scope stashed by :func:`_caption_correction_config`, else the
+    env/config pattern."""
     pattern = config.get("path_pattern")
     return str(pattern) if pattern else _preprocess_path_pattern()
 
@@ -1420,12 +1371,10 @@ def cmd_caption_position(extra):
 def _warn_if_te_would_read_the_master() -> None:
     """Warn when ``make preprocess-te`` would encode ``image_dataset/`` instead.
 
-    Everything ``caption-full`` writes lives in the **derived** tree, and
-    ``cmd_preprocess_te`` only reads that tree when something forces the caption
-    step: correction, shuffle variants, or the ``caption_position_clauses``
-    config flag. With all three off it encodes the masters directly and
-    ``--match_images_from`` hides the difference, silently discarding the run.
-    The chain keys on the flag, not on the clauses on disk.
+    ``caption-full`` writes the derived tree, which ``cmd_preprocess_te`` reads
+    only when something forces the caption step (correction, variants, the
+    ``caption_position_clauses`` flag). Otherwise it encodes the masters and
+    the run is silently discarded. The chain keys on the flag, not on disk.
     """
     config, _ = _caption_correction_config([])
     n_variants = int(_float_or_zero(_variant_settings()[0]))
@@ -1444,16 +1393,15 @@ def _warn_if_te_would_read_the_master() -> None:
 def _caption_full_args(extra):
     """``make caption-full ARGS=…`` — the chain's own small flag set.
 
-    Not ``request_with_args``: three stages run here, so an unqualified package
-    flag would be ambiguous. Per-stage tuning goes through ``make
-    caption-position`` / the OCR stage's own ``-m`` invocation.
+    Not ``request_with_args``: three stages run here, so a package flag would
+    be ambiguous. Per-stage tuning: ``make caption-position`` / the OCR
+    stage's own ``-m`` invocation.
     """
     import argparse
 
     ap = argparse.ArgumentParser(prog="make caption-full ARGS=", add_help=False)
     ap.add_argument("--dry_run", action="store_true", help="plan only (default: write)")
-    # Accepted and ignored: the other caption targets need it, and typing it
-    # here should not be an error.
+    # Accepted and ignored (the other caption targets need it).
     ap.add_argument("--apply", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--path_pattern", default=_preprocess_path_pattern())
     ap.add_argument("--skip_position", action="store_true")
@@ -1501,11 +1449,9 @@ def cmd_caption_full(extra):
 
     mode, extra = _resolve_run_mode(extra)
     if mode != "inline":
-        # One daemon job for the whole chain: re-enter this target inside it
-        # (`in_daemon_job()` then routes every stage in-process, so the tagger
-        # SAM3 load is paid once) instead of submitting three jobs to a serial
-        # queue. The stall watchdog is off — the VL reader's first-use fetch
-        # (~2.8 GB) and a quiet model load both print nothing for minutes.
+        # One daemon job re-enters this target, so every stage runs in-process
+        # and the tagger / SAM3 load is paid once. Stall watchdog off: the VL
+        # reader's first-use fetch (~2.8 GB) prints nothing for minutes.
         run_command(
             "caption-full",
             ["tasks.py", "caption-full", "--inline", *extra],
@@ -1555,9 +1501,8 @@ def cmd_caption_full(extra):
         print("  [caption-full] dry run — nothing written (--dry_run).")
 
 
-# `cmd_preprocess` auto-fetches this (~0.7 MB) vocab on demand: the caption index
-# it gates is a hard requirement for soft-tokens contrastive training (train.py
-# raises FileNotFoundError without it). Fetch is best-effort.
+# Fetched on demand by `cmd_preprocess` (best-effort): soft-tokens contrastive
+# training needs the caption index it gates.
 _CAPTION_INDEX_VOCAB = "models/captioners/anima-tagger-pixai/vocab.json"
 
 
@@ -1572,16 +1517,14 @@ def cmd_preprocess(extra):
     """
     caption_config, extra = _caption_correction_config(extra)
     extra = _pop_retired_lowres_args(extra)
-    # PE features are NOT cached here by default (CMMD chains `preprocess-pe`
-    # explicitly). Exception: `use_repa=true` chains them at the end.
-    # Checked before any GPU work (see `_require_repa_encoder_model`).
+    # PE features are cached here only for `use_repa=true` (at the end); the
+    # checkpoint is checked before any GPU work.
     encoder = _repa_pe_encoder()
     if encoder is not None:
         _require_repa_encoder_model(encoder)
     cmd_preprocess_resize(extra, chained=True)
     _run_caption_autotag_stage(caption_config)
-    # VAE/TE steps read on-disk shapes — strip the resize-only --target_res so
-    # their argparse never sees an undefined arg.
+    # VAE/TE steps read on-disk shapes and do not accept the resize-only flags.
     downstream = _pop_resize_only_args(extra)
     _release_stage_models()
     cmd_preprocess_vae(downstream)
@@ -1598,8 +1541,7 @@ def cmd_preprocess(extra):
         except (SystemExit, OSError) as e:
             print(f"  [preprocess] tagger vocab auto-download failed: {e}")
     if os.path.exists(vocab):
-        # Caption index intentionally stays on source captions — its consumers
-        # care about tag presence/relations, not corrected order.
+        # Built from source captions: consumers need tag presence, not order.
         cmd_caption_index([])
     else:
         print(
@@ -1609,8 +1551,7 @@ def cmd_preprocess(extra):
             f"(soft-tokens contrastive training needs it)."
         )
 
-    # REPA arm: chain the PE sidecars REPA aligns against (train.py errors
-    # without them). `encoder` was resolved (and its checkpoint required) above.
+    # train.py errors without the REPA PE sidecars.
     if encoder is not None:
         print(f"  [preprocess] use_repa=true → caching REPA PE features ({encoder})")
         if encoder == "pe_spatial":
@@ -1704,8 +1645,7 @@ def cmd_preprocess_config(extra):
     for sub in subsets:
         image_dir = sub["image_dir"]
         cache_dir = sub.get("cache_dir") or image_dir
-        # bucket-resize originals -> image_dir; cache_latents.py keys caches by
-        # on-disk size, so the resized size must match what the trainer expects.
+        # cache_latents.py keys caches by on-disk size.
         _execute(
             "resize",
             _resize_request(
@@ -1732,7 +1672,7 @@ def cmd_preprocess_config(extra):
                 "--recursive",
             ]
         )
-        # text embeddings — captions read from --src
+        # Captions are read from --src.
         run(
             [
                 PY,

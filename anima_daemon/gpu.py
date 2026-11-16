@@ -21,8 +21,7 @@ def no_window_kwargs() -> dict:
     """``subprocess`` kwargs that suppress the Windows console-window flash.
 
     Inlined rather than imported from ``library.runtime.proc``: the daemon
-    package must not import ``library`` / ``networks`` / ``torch``. Returns
-    ``{"creationflags": CREATE_NO_WINDOW}`` on Windows, ``{}`` elsewhere.
+    package must not import ``library`` / ``networks`` / ``torch``.
     """
     if sys.platform == "win32":
         return {"creationflags": subprocess.CREATE_NO_WINDOW}

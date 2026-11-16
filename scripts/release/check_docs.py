@@ -124,12 +124,10 @@ Issue = namedtuple("Issue", "level path line kind token message")
 
 
 def _git(*args: str) -> str:
-    # ``core.quotepath=false`` keeps non-ASCII paths (translated guidebooks)
-    # as raw UTF-8, not C-style escapes — else they're unopenable + skipped.
-    # Decoding is pinned to UTF-8 for the same reason: `text=True` alone uses the
-    # locale encoding, so on a non-UTF-8 Windows box (cp949, cp932 …) those very
-    # paths raise UnicodeDecodeError inside the reader thread — which surfaces
-    # only as a `None` stdout here, i.e. an AttributeError far from the cause.
+    # ``core.quotepath=false`` keeps non-ASCII paths (translated guidebooks) as raw
+    # UTF-8 rather than C escapes, which would be unopenable. Decoding is pinned to
+    # UTF-8: on a cp949 / cp932 Windows locale `text=True` alone raises
+    # UnicodeDecodeError in the reader thread, which surfaces only as stdout None.
     return subprocess.run(
         ["git", "-C", str(REPO_ROOT), "-c", "core.quotepath=false", *args],
         capture_output=True,
@@ -145,8 +143,8 @@ def _tracked(*pathspec: str) -> list[Path]:
 
 
 def doc_files(include_scratch: bool = False) -> list[Path]:
-    # _archive/ always skipped; bench/ + docs/<line>/proposal/ are forward-looking
-    # scratchpads (reference to-be-built paths) — opt in with --include-scratch.
+    # _archive/ is always skipped; bench/ and docs/<line>/proposal/ cite paths not
+    # built yet, so they are opt-in (--include-bench).
     exclude = [":!:_archive/*"]
     if not include_scratch:
         exclude += [":!:bench/*", ":!:docs/*/proposal/*"]
@@ -202,10 +200,8 @@ def known_make_targets() -> set[str]:
 def _is_ignored(rel: str) -> bool:
     """True when git ignores ``rel`` (repo-relative), tracked files excluded.
 
-    Pattern-based, so it answers for paths that don't exist — which is exactly
-    the case that matters: a doc citing a user-local artifact
-    (``configs/gui-methods/custom/x.toml``) must not read as drift just because
-    this checkout never generated it.
+    Pattern-based, so it answers for paths that do not exist: a doc citing a
+    user-local artifact (``configs/gui-methods/custom/x.toml``) is not drift.
     """
     return (
         subprocess.run(
@@ -221,16 +217,10 @@ def _check_path(
 ) -> str | None:
     """Return the token if it's a broken path reference, else None.
 
-    Resolved against the repo root first, then — when ``base`` is given — the
-    referencing doc's own directory. Self-contained doc trees cite their
-    siblings relatively: every ``project/<line>/`` digest says
-    ``bench/report.md`` / ``bench/run_*.py`` meaning *that line's* bench dir,
-    which is a correct reference that a
-    root-only resolver reads as broken because ``bench/`` is also a real
-    top-level dir. Root-first ordering keeps repo-rooted refs authoritative.
-    ``line_root`` covers the same convention one level down: a report under
-    ``project/<line>/reports/`` citing ``configs/x.toml`` means
-    ``project/<line>/configs/x.toml`` (see ``_line_root``).
+    Resolved against the repo root first, then the referencing doc's directory
+    (``base``), then its ``project/<line>/`` root (``line_root``): project docs
+    cite their own ``bench/`` or ``configs/`` relatively, and those names are also
+    top-level dirs. Root first keeps repo-rooted refs authoritative.
     """
     tok = tok.strip().rstrip(".")
     if not tok or tok.startswith(("http", "..", "/", "~", "mailto")):
@@ -279,14 +269,10 @@ def _line_root(doc: Path) -> Path | None:
 def _anchor_family_ref(tok: str, next_char: str) -> str | None:
     """The path token to verify, or ``None`` when there is nothing to verify.
 
-    A glob prefix (``results/20260607-*``) or a brace expansion
-    (``results/20260816-16{18,34}-2c-*``) is a *family* reference, not a literal
-    path claim — and :data:`_MULTI_RE` truncates it at the ``*`` / ``{``, so the
-    partial stem would read as a broken path. Anchor on the parent directory
-    instead: the family ref still verifies its root, while the stem is left
-    alone. A family with no parent (``foo*``) has nothing to anchor on and is
-    skipped. (The make-target check does the same for
-    ``make preprocess-{resize,vae,…}``.)
+    :data:`_MULTI_RE` truncates a glob or brace family (``results/20260607-*``,
+    ``results/x-16{18,34}-*``) at the ``*`` / ``{``, so the partial stem would read
+    as a broken path. The parent directory is verified instead; a family with no
+    parent (``foo*``) is skipped.
     """
     if next_char not in ("*", "{"):
         return tok

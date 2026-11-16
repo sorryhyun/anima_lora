@@ -70,7 +70,6 @@ def load_dit(args, weight_dtype, accelerator, *, swapping: bool) -> nn.Module:
         )
 
     if attn_mode == "flash4":
-        # Flash Attention 4 (flash-attention-sm120) is not supported yet.
         raise RuntimeError(
             "attn_mode='flash4' is not supported yet -- the flash-attention-sm120 "
             "kernel is disabled in this build. Use 'flash', 'torch', 'flex', "

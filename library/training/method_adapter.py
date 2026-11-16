@@ -52,11 +52,7 @@ class ValidationBaseline:
     Same noise + same batch + same sigma → the delta isolates the adapter's
     contribution. Logged as ``<prefix>_baseline_<name>`` (avg) and
     ``<prefix>_baseline_<name>_delta`` (baseline − primary; positive ⇒ the
-    method is helping).
-
-    Used by IP-Adapter where reference == target leaks information into the
-    primary FM loss; the "no_ip" baseline reveals whether the IP path is
-    actually contributing or just shortcutting via the copy path."""
+    method is helping)."""
 
     name: str
     enter: Callable[[], None]
@@ -102,12 +98,10 @@ class MethodAdapter:
 
     name: str = "base"
 
-    # sigma_lowres (σ>threshold → demote-tier latent swap) compatibility.
-    # Default False: an adapter that runs its own forwards / cond streams at a
-    # fixed grid (EasyControl, soft-tokens) needs its own operating-point
-    # probe before demotion is allowed under it. Set True
-    # only for adapters that are grid-agnostic by construction (REPA: pools
-    # the primary forward's tokens to the encoder grid adaptively).
+    # sigma_lowres (σ>threshold → demote-tier latent swap) compatibility. An
+    # adapter that runs its own forwards / cond streams at a fixed grid
+    # (EasyControl, soft-tokens) stays False; True only for grid-agnostic ones
+    # (REPA pools the primary tokens to the encoder grid adaptively).
     sigma_demote_safe: bool = False
 
     def on_network_built(self, ctx: SetupCtx) -> None:
@@ -123,8 +117,7 @@ class MethodAdapter:
         """Push per-step state onto the network before the DiT forward.
 
         ``latents`` is the 4D ``[B, C, H, W]`` VAE latent (post-shift-scale,
-        post-squeeze). Adapters that don't need latents (e.g. IP-Adapter,
-        which works off ``batch['images']``) can ignore the argument."""
+        post-squeeze)."""
 
     def extra_forwards(self, ctx: StepCtx, primary: ForwardArtifacts) -> Optional[dict]:
         """Run additional DiT forwards and return aux loss tensors.
@@ -148,12 +141,9 @@ class MethodAdapter:
 
     def validation_baselines(self) -> list[ValidationBaseline]:
         """Return baselines to evaluate alongside the primary validation
-        forward. For each baseline, the trainer re-runs ``process_batch`` on
-        the same (batch, sigma) with the adapter perturbed (e.g. IP-Adapter
-        zeroing its image conditioning) and logs the delta. Used when the
-        primary FM loss is dominated by paths the method shortcircuits and
-        therefore doesn't reflect the adapter's actual contribution. Default
-        empty — adapters opt in."""
+        forward (see :class:`ValidationBaseline`). For when the primary FM
+        loss can be met through a path the method shortcuts, so it does not
+        show the adapter's contribution. Default empty."""
         return []
 
     def on_epoch_end(self, ctx: StepCtx) -> None:
@@ -179,16 +169,12 @@ def resolve_adapters(args, network) -> list[MethodAdapter]:
         from networks.methods.easycontrol import EasyControlMethodAdapter
 
         adapters.append(EasyControlMethodAdapter())
-    # Soft-tokens contrastive: opt-in via a positive contrastive weight on the
-    # built network (the objective leaves no learned params, so it's detected
-    # off the network's target weight rather than an args flag).
+    # Soft-tokens contrastive and REPA are detected off weights the factory
+    # stamps on the network (their config rides the network kwargs, not args).
     if float(getattr(network, "_contrastive_target_weight", 0.0) or 0.0) > 0.0:
         from networks.methods.soft_tokens import SoftTokensMethodAdapter
 
         adapters.append(SoftTokensMethodAdapter())
-    # REPA v2 auxiliary alignment: opt-in via a positive weight stamped on the
-    # network by the factory (use_repa=true). Detected off the network (the
-    # config rides the network kwargs, not args).
     if float(getattr(network, "_repa_weight", 0.0) or 0.0) > 0.0:
         from library.training.repa import REPAMethodAdapter
 

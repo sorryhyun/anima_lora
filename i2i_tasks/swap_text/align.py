@@ -77,11 +77,10 @@ def _misfit(a: np.ndarray, b: np.ndarray, M: np.ndarray, sa: float, sb: float) -
 def register(src: np.ndarray, tw: np.ndarray, work_px=1200):
     """2×3 affine mapping twin → src coordinates, and its RANSAC inlier count.
 
-    The brute-force match is quadratic in the features: 5000 of them took 308 ms
-    of a 1.1 s page for ~2000 inliers. 1500 matches in 61 ms and lands within
-    0.03 px after ECC, but loses pages with little shared art and can settle on a
-    repeated pattern, so a fit under ``SURE_INLIERS`` or past ``MAX_MISFIT`` retries
-    at 5000."""
+    The brute-force match is quadratic in the features, so 1500 goes first
+    (~5x faster than 5000). It loses pages with little shared art and can settle
+    on a repeated pattern, so a fit under ``SURE_INLIERS`` or past ``MAX_MISFIT``
+    retries at 5000."""
     sa, sb = work_px / max(src.shape), work_px / max(tw.shape)
     a = cv2.resize(src, None, fx=sa, fy=sa, interpolation=cv2.INTER_AREA)
     b = cv2.resize(tw, None, fx=sb, fy=sb, interpolation=cv2.INTER_AREA)
@@ -95,16 +94,14 @@ def register(src: np.ndarray, tw: np.ndarray, work_px=1200):
 def refine_ecc(src: np.ndarray, tw: np.ndarray, M: np.ndarray, work_px=1600):
     """``M`` refined by ECC: a full affine fit of the ``M``-warped twin to
     ``src`` at ``work_px``, composed onto ``M``. ORB's partial affine leaves a
-    ~1 px misfit that lights every line in the diff; on 60 pages across the
-    residual range ECC took the p90 residual from 10.0 to 6.5. Returns ``M``
-    unchanged when ECC fails or wanders past 2 % of the page. A page already
-    under ``work_px`` is fit at its own size.
+    ~1 px misfit that lights every line in the diff. Returns ``M`` unchanged
+    when ECC fails or wanders past 2 % of the page. A page already under
+    ``work_px`` is fit at its own size.
 
     The fit is masked to where the warped twin covers the page: unmasked, a
-    twin that leaves an uncovered strip drags the fit toward its black border
-    (one such work: residual 6.6 before ECC, 8.5 after, 5.1 masked). ECC stops
-    when the correlation moves < 1e-3; at 1e-6 some works oscillated to the
-    iteration cap (~40 ms each) for < 0.03 px of change."""
+    twin that leaves an uncovered strip drags the fit toward its black border.
+    ECC stops when the correlation moves < 1e-3; tighter, some works oscillate
+    to the iteration cap for no measurable gain."""
     s = min(1.0, work_px / max(src.shape))
     k = min(1.0, s * float(np.hypot(M[0, 0], M[1, 0])))
     a, small = src, tw

@@ -1,9 +1,7 @@
 """Argparse argument adders for the Anima training CLI.
 
-Each ``add_*_arguments`` call plugs a related group of flags into the training
-parser. The groups split the flag surface into coherent chunks so individual
-entry points (training, preprocessing, distillation, ...) can opt into only
-what they need.
+Each ``add_*_arguments`` call adds one group of flags, so an entry point
+(training, preprocessing, distillation, ...) opts into only the groups it needs.
 """
 
 from __future__ import annotations
@@ -1182,11 +1180,9 @@ def enable_high_vram(args: argparse.Namespace):
 def verify_training_args(args: argparse.Namespace):
     enable_high_vram(args)
 
-    # Expand the two semantic cache knobs (`use_vae_cache` / `use_text_cache`)
-    # into the internal flags the dataset / strategy / metadata code reads. Disk
-    # caching is the only supported mode, so the `_to_disk` siblings always track
-    # their base flag. The old keys resolve as schema aliases
-    # (library/config/schema.py).
+    # Expand `use_vae_cache` / `use_text_cache` into the internal flags the
+    # dataset / strategy / metadata code reads. Disk caching is the only mode,
+    # so the `_to_disk` siblings track their base flag.
     args.cache_latents = args.cache_latents_to_disk = bool(args.use_vae_cache)
     args.cache_text_encoder_outputs = args.cache_text_encoder_outputs_to_disk = bool(
         args.use_text_cache

@@ -3,11 +3,9 @@
 
 A LaMa-style synthetic hole generator: a few thick random brush strokes
 (random-walk polylines with random width + round joins) plus 1–2 axis-aligned
-rectangles, covering a target fraction of the frame. The hole is painted with
-flat **mid-gray** (the SD-inpaint convention — ``128`` in ``[0, 255]`` maps to
-``0`` in the VAE's ``[-1, 1]`` input space), which VAE-encodes to a flat latent
-region the per-block ``b_cond`` gate + cond LoRA learn to read as "regenerate
-here."
+rectangles, covering a target fraction of the frame. The hole is painted
+flat mid-gray (``GRAY``), which VAE-encodes to a flat latent region the
+per-block ``b_cond`` gate + cond LoRA learn to read as "regenerate here."
 
 Public API:
     generate_mask(h, w, seed, ...) -> np.ndarray[bool]   # True = hole
@@ -40,7 +38,7 @@ def _draw_strokes(mask: np.ndarray, rng: np.random.Generator) -> None:
         # Thick: a substantial fraction of the short edge (≈7–14%), so the dab
         # has real area even with few/short segments.
         thickness = int(rng.integers(max(14, short // 14), max(28, short // 7)))
-        n_verts = int(rng.integers(1, 4))  # 1–3 short segments
+        n_verts = int(rng.integers(1, 4))
         x = int(rng.integers(0, w))
         y = int(rng.integers(0, h))
         cv2.circle(mask, (x, y), thickness // 2, 255, -1)  # round cap at the start

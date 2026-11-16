@@ -18,10 +18,8 @@ from library.io.cache import TE_CACHE_SUFFIX, resolve_cache_path
 from library.preprocess._dataset import PreprocessStats, walk_images
 from library.preprocess._progress import ProgressFn
 
-# generate_caption_variants + build_erasure_token_pool live in the torch-free
-# anime_tools.captions.variants (shared with the caption-correction step, which
-# writes the variant sidecars before the encoder loads, and the GUI); re-exported
-# for callers importing them off this module / the package façade.
+# Torch-free (shared with the caption step and the GUI); re-exported for callers
+# importing them off this module / the package façade.
 from anime_tools.captions.variants import (  # noqa: F401
     build_erasure_token_pool,
     generate_caption_variants,
@@ -96,9 +94,8 @@ def _cache_has_randomized(cache_path: Path) -> bool:
     """True iff an existing TE cache already carries the identity-randomized
     ``r``-family (``num_randomized`` marker). Reads only the safetensors header.
 
-    Lets a re-run with ``--caption_tag_randomize_rate`` *upgrade in place* a cache
-    written before randomization existed, instead of being skipped by the
-    existence check (the writer otherwise never reopens a present cache)."""
+    Lets a re-run with ``--caption_tag_randomize_rate`` upgrade a cache that
+    lacks the family in place instead of skipping it as current."""
     from safetensors import safe_open
 
     try:
@@ -116,9 +113,8 @@ def _cache_is_current(image_path: Path, cache_path: Path) -> bool:
         cache_mtime = cache_path.stat().st_mtime
     except OSError:
         return False
-    # The cache must be newer than BOTH the caption and (if present) the variant
-    # sidecar — the sidecar is the encoded source of truth, so an edit/regen to it
-    # has to invalidate the cache just like a caption edit does.
+    # The cache must be newer than the caption and (if present) the variant
+    # sidecar, which is what actually gets encoded.
     newest = 0.0
     for src in (image_path.with_suffix(".txt"), variants_sidecar_path(image_path)):
         if src.exists():
@@ -281,9 +277,7 @@ def cache_text_embeddings(
     entries: list[tuple[Path, str]] = []
     for p in candidates:
         caption_path = p.with_suffix(".txt")
-        # Missing/empty caption → encode "" (not drop): dreambooth loads uncaptioned
-        # images with an empty caption and the cache-completeness probe expects a TE
-        # cache for each, so dropping here would leave the cache incomplete.
+        # Missing caption → encode "" (see docstring).
         if caption_path.exists():
             caption = caption_path.read_text(encoding="utf-8").strip().split("\n")[0]
         else:
@@ -298,21 +292,19 @@ def cache_text_embeddings(
     n_variants = caption_shuffle_variants
     tag_dropout_rate = float(caption_tag_dropout_rate)
     tag_randomize_rate = float(caption_tag_randomize_rate)
-    # The identity-randomized r-family rides alongside v0..v{N-1} (sharing the
-    # pristine v0 as anchor), so one cache serves both the baseline-shuffle and
-    # the lexinvariant arm — the consumer picks the family via
-    # use_randomized_caption_variants. Needs >=2 variants (r1..r{N-1}).
+    # The identity-randomized r-family rides alongside v0..v{N-1} (sharing v0 as
+    # anchor); the consumer picks a family via use_randomized_caption_variants.
+    # Needs >=2 variants (r1..r{N-1}).
     want_randomized = tag_randomize_rate > 0.0 and n_variants >= 2
     n_rand = (n_variants - 1) if want_randomized else 0
-    # Dual-single erasure pool, built once: words that are exactly one token in
-    # *both* Qwen3 and T5, minus this dataset's real tags (so a filler is never a
-    # genuine tag). Built from the loaded strategy's two tokenizers.
     # Vocab-pack stamp (None with the stock tokenizer): lets a later run with a
     # different pack state warn instead of silently training on stale ids.
     from library.anima.vocab_pack import strategy_pack
 
     _pack = strategy_pack(tokenize_strategy)
     pack_metadata = _pack.cache_metadata() if _pack is not None else None
+    # Erasure pool: words that are one token in both Qwen3 and T5, minus this
+    # dataset's real tags (so a filler is never a genuine tag).
     erasure_pool = None
     if want_randomized:
         real_tags = {
@@ -341,12 +333,11 @@ def cache_text_embeddings(
     def _rows_for(img_path: Path, caption: str) -> list[tuple[str, str]]:
         """Ordered ``(label, text)`` variants to encode for one image.
 
-        The ``{stem}.variants.txt`` sidecar — written upstream by the caption
-        step — is the **source of truth**: when present we encode exactly its
-        lines so the visible text matches what trains. Without a sidecar we fall
-        back to in-process generation (the colorize ``caption_transform`` path,
-        and any flow that skipped the caption step). A lone ``("", caption)`` row
-        is the legacy single-caption (flat-key) layout.
+        The ``{stem}.variants.txt`` sidecar written by the caption step is the
+        source of truth: when present its lines are encoded as-is, so the visible
+        text matches what trains. Without one, variants are generated here (the
+        colorize ``caption_transform`` path, or a flow that skipped the caption
+        step). A lone ``("", caption)`` row is the single-caption (flat-key) layout.
         """
         if caption_transform is None:
             sidecar = variants_sidecar_path(img_path)
@@ -407,10 +398,8 @@ def cache_text_embeddings(
         if not to_encode:
             continue
 
-        # Build each image's variant rows, then flatten the whole batch into one
-        # encode call. Row counts may differ per image (a sidecar vs the
-        # fallback, mixed within a batch), so we track a running flat offset
-        # instead of a uniform block stride.
+        # One encode call for the whole batch; row counts differ per image, so
+        # a running flat offset maps rows back.
         per_image_rows = [
             _rows_for(img_path, caption) for img_path, caption, _ in to_encode
         ]
@@ -430,18 +419,16 @@ def cache_text_embeddings(
         for (img_path, _, cache_path), rows in zip(to_encode, per_image_rows):
             labels = [label for label, _ in rows]
             if labels == [""]:
-                # Legacy single-caption layout: flat (unsuffixed) keys.
+                # Single-caption layout: flat (unsuffixed) keys.
                 save_dict = {
                     "t5_attn_mask": t5_attn_mask[flat],
                     "caption_dropout_rate": caption_dropout_rate,
                 }
                 if crossattn_emb is not None:
-                    # Adapter-output cache: only crossattn_emb is consumed at
-                    # train time (+ t5_attn_mask for postfix). The Qwen
-                    # prompt_embeds / attn_mask / t5_input_ids are unused
-                    # downstream (see library/training/forward/text_conds.py),
-                    # so dropping them ~halves the file. The pad length is
-                    # unchanged (512), so crossattn values are unchanged.
+                    # Adapter-output cache: training reads only crossattn_emb
+                    # (+ t5_attn_mask for postfix; text_conds.py), so the Qwen
+                    # keys are dropped (~half the file). crossattn_emb stays
+                    # max-padded (512).
                     save_dict["crossattn_emb"] = crossattn_emb[flat]
                 else:
                     save_dict["prompt_embeds"] = prompt_embeds[flat]
@@ -464,8 +451,7 @@ def cache_text_embeddings(
                     k = flat + off
                     save_dict[f"t5_attn_mask_{label}"] = t5_attn_mask[k]
                     if crossattn_emb is not None:
-                        # Adapter-output cache: prune the unused Qwen keys (see
-                        # the single-caption branch above).
+                        # Qwen keys dropped (see the single-caption branch).
                         save_dict[f"crossattn_emb_{label}"] = crossattn_emb[k]
                     else:
                         save_dict[f"prompt_embeds_{label}"] = prompt_embeds[k]

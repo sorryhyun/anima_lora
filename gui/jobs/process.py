@@ -1,17 +1,11 @@
 """Process-tree control helpers for the GUI.
 
-QProcess.kill() only signals the immediate child. The GUI's directly-spawned
-processes are wrappers (``python tasks.py <task>``, the toolkit scripts) whose
-real work — holding VRAM — runs in a grandchild, which killing the wrapper
-alone leaves orphaned. Two helpers:
-
-* ``setup_kill_safe`` — on Unix, starts the child in a fresh session so the
-  whole launcher subtree shares one process group.
-* ``kill_process_tree`` — walks descendants via psutil, SIGTERMs them, then
-  SIGKILLs anything still alive after a short grace period.
-
-``StreamingProcess`` wraps both around a ``QProcess`` that runs a Python script
-from the repo root and hands its output to the host as decoded text.
+QProcess.kill() only signals the immediate child, but the GUI's children are
+wrappers (``python tasks.py <task>``) whose real, VRAM-holding work runs in a
+grandchild that killing the wrapper leaves orphaned. ``setup_kill_safe`` starts
+the child in its own session; ``kill_process_tree`` terminates every
+descendant. ``StreamingProcess`` wraps both around a ``QProcess`` and streams
+its output as decoded text.
 """
 
 from __future__ import annotations
@@ -30,15 +24,9 @@ from gui.core.paths import ROOT
 def setup_kill_safe(proc: QProcess) -> None:
     """Configure ``proc`` so its child can be killed as a tree.
 
-    On Unix, the child is started as a session leader (``setsid()``) which
-    makes it the head of a new process group; psutil does the actual walk.
-    On Windows this
-    is a no-op; psutil's tree walk works there without extra setup.
-
-    Also sets ``PYTHONUNBUFFERED=1`` on the child process environment so the
-    GUI sees output (especially tqdm progress) in real-time instead of in
-    block-buffered chunks. Pipes from QProcess aren't TTYs, and Python's
-    default stdio is block-buffered when redirected to pipes.
+    On Unix the child becomes a session leader (no-op on Windows). Also sets
+    ``PYTHONUNBUFFERED=1``: QProcess pipes are not TTYs, so Python would
+    block-buffer output and tqdm progress would arrive in chunks.
     """
     env = make_subprocess_env()
     proc.setProcessEnvironment(env)
@@ -50,11 +38,7 @@ def setup_kill_safe(proc: QProcess) -> None:
 
 
 def make_subprocess_env(**extras: str) -> QProcessEnvironment:
-    """Build a QProcessEnvironment from the system env + ``PYTHONUNBUFFERED=1``.
-
-    Pass keyword args to add tab-specific vars (e.g. ``METHOD``,
-    ``METHODS_SUBDIR``) without forgetting the unbuffered flag.
-    """
+    """The system env + ``PYTHONUNBUFFERED=1`` + ``extras``."""
     env = QProcessEnvironment.systemEnvironment()
     env.insert("PYTHONUNBUFFERED", "1")
     for k, v in extras.items():
@@ -63,12 +47,8 @@ def make_subprocess_env(**extras: str) -> QProcessEnvironment:
 
 
 def kill_process_tree(proc: QProcess, *, grace_seconds: float = 3.0) -> None:
-    """Terminate ``proc`` and every descendant.
-
-    Sends SIGTERM (terminate on Windows) to the whole tree, waits up to
-    ``grace_seconds`` for clean shutdown, then SIGKILLs the survivors. Safe
-    to call when the process is already gone.
-    """
+    """Terminate ``proc`` and every descendant; SIGKILL survivors after
+    ``grace_seconds``. Safe when the process is already gone."""
     if proc.state() == QProcess.NotRunning:
         return
 

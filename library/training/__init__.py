@@ -1,16 +1,11 @@
-# Training utilities for Anima LoRA training.
-#
-# This is a *curated* facade: it re-exports the public, stable surface of the
-# training package, grouped by concern below. Two things are deliberately NOT
-# re-exported here and must be imported by their submodule path:
-#   - The argparse / CLI surface, which lives in `library.config.cli_args`
-#     (it is config, not training).
-#   - Loop-internal machinery only `train.py`/`loop.py` compose:
+# Curated facade over the training package's public surface. Import these by
+# submodule path instead:
+#   - the argparse / CLI surface: `library.config.cli_args`
+#   - loop-internal machinery only `train.py`/`loop.py` compose:
 #       library.training.loop          (build_loop_state, run_training_loop)
 #       library.training.validation    (run_validation)
 #       library.training.log_dispatch  (dispatch_logs)
 #       library.training.forward       (per-step forward helpers)
-# Everything below is part of the supported import-from-the-package surface.
 
 from library.training.contexts import (
     AcceleratedBundle,
@@ -38,9 +33,8 @@ from library.training.samplers import (
     SAMPLER_REGISTRY,
 )
 
-# The default rectified-flow training step as plain kwargs — the bench-friendly
-# entry point. Home is library.runtime.noise; re-exported here so
-# training-adjacent callers find it next to the sampler surface.
+# The default rectified-flow training step as plain kwargs (bench entry point);
+# lives in library.runtime.noise.
 from library.runtime.noise import fm_training_batch
 
 from library.training.losses import (

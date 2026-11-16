@@ -13,12 +13,11 @@ from gui.theme import tok
 
 @functools.cache
 def _target_res_tiers() -> tuple[tuple[int, ...], dict[int, int]]:
-    """``(allowed tiers, {edge: max token count})`` sourced from
-    ``library.datasets.buckets``. Lazy + cached so importing ``widgets`` stays cheap; the
-    bucket module is torch-free so this never drags the training stack in.
+    """``(allowed tiers, {dangerous edge: max token count})`` from the
+    torch-free ``library.datasets.buckets``, imported lazily.
 
-    A tier is "dangerous" (extra compiled block graph + VRAM) when its per-image
-    token count exceeds the canonical 1024 tier.
+    A tier is "dangerous" (extra compiled block graph + VRAM) when its token
+    count exceeds the 1024 tier's.
     """
     from library.datasets.buckets import ALLOWED_TARGET_RES, EDGE_TOKEN_BANDS
 
@@ -32,12 +31,8 @@ def _target_res_tiers() -> tuple[tuple[int, ...], dict[int, int]]:
 class _TargetResWidget(QWidget):
     """Horizontal row of tier checkboxes for the multi-scale ``target_res`` knob.
 
-    Reads/writes a list of edge ints (e.g. ``[1024, 1536]``). Never returns an
-    empty list — unchecking everything falls back to ``[1024]`` (the single
-    ~1MP tier) so preprocess/train always have a valid tier.
-
-    The 1280/1536 tiers are visually flagged as "dangerous" (high token count
-    + extra compile graph / VRAM) via colour + an i18n tooltip.
+    Reads/writes a list of edge ints (e.g. ``[1024, 1536]``); unchecking
+    everything reads as ``[1024]``, so there is always a valid tier.
     """
 
     changed = Signal()

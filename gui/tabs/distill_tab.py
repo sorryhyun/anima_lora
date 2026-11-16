@@ -1,19 +1,12 @@
 """Turbo distillation config tab.
 
 Turbo trains through a bespoke distill loop (``make turbo`` →
-``scripts/distill_turbo/``), NOT ``train.py``, and reads a *sectioned* TOML
-(``configs/methods/turbo.toml``) — nested ``[network]`` / ``[schedule]`` /
-``[optim]`` / … tables — instead of the flat method+preset config the ConfigTab
-edits. It also has no dataset of its own: it reuses the ordinary LoRA cache
-under ``post_image_dataset/lora``.
+``scripts/distill_turbo/``), not ``train.py``, and reads a *sectioned* TOML
+(``configs/methods/turbo.toml``) instead of the flat method+preset chain. It
+reuses the LoRA cache under ``post_image_dataset/lora``.
 
-The tab is a structured config editor in the method tabs' layout: a
-per-section form on top, a log on the bottom, and daemon-backed Preprocess /
-Train / Stop in the top bar.
-
-Editing uses ``tomlkit`` so the configs' extensive inline comments survive a
-Save round-trip (a plain ``toml.dumps`` would strip them); those comments
-double as the form's field tooltips.
+Editing uses ``tomlkit`` so the configs' inline comments survive a Save
+(``toml.dumps`` strips them); those comments double as field tooltips.
 """
 
 from __future__ import annotations
@@ -60,8 +53,8 @@ class _DistillConfigTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidge
 
     Subclasses set the config file, the ``tasks.py`` train target, and a label.
     The form is rebuilt from the TOML on first show; Save writes edits back
-    through ``tomlkit`` (comments preserved); Train/Preprocess submit the make
-    target to the local daemon and observe it via the per-job ``stdout.log``.
+    through ``tomlkit``; Train submits the ``tasks.py`` target to the daemon and
+    observes the per-job ``stdout.log``.
     """
 
     CONFIG_PATH: str = ""  # repo-relative, e.g. "configs/methods/turbo.toml"
@@ -121,9 +114,7 @@ class _DistillConfigTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidge
         sc.setWidget(self._form)
         hsplit.addWidget(sc)
 
-        # Right-side explanation panel — mirrors the ConfigTab method tabs.
-        # Defaults to the config's file-header block (a method overview); a
-        # field label click swaps in that field's full doc comment.
+        # Shows the config's header block by default, a field's comment on click.
         self._explain = ExplainPanel(min_width=300)
         hsplit.addWidget(self._explain)
         hsplit.setStretchFactor(0, 3)
@@ -286,9 +277,6 @@ class _DistillConfigTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidge
     def _show_explain(self, field: str, help_text: str) -> None:
         self._explain.show_field_help(field, help_text)
 
-    # Dirty tracking (_connect_dirty_signal / _mark_dirty / _clear_dirty /
-    # _update_save_button) is inherited from DirtyTrackingMixin.
-
     def _save(self, *, silent: bool = False) -> bool:
         if self._doc is None:
             return False
@@ -374,9 +362,8 @@ class _DistillConfigTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidge
         self._stop_job()
 
     def cleanup_subprocess(self):
-        """App-shutdown hook. Stops observing but leaves the daemon job alive —
-        it runs detached so training survives the GUI closing (re-attached on
-        next launch)."""
+        """App-shutdown hook. Stops observing; the daemon job keeps running
+        and is re-attached on next launch."""
         self._job_timer.stop()
 
     def _set_busy(self):
@@ -400,7 +387,7 @@ class _DistillConfigTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidge
 
 
 class TurboTrainTab(_DistillConfigTab):
-    # Turbo few-step LoRA student via DP-DMD through the bespoke loop `make turbo` (NOT train.py). See docs/anima/methods/turbo.md.
+    # Few-step DP-DMD LoRA student; docs/anima/methods/turbo.md.
     CONFIG_PATH = "configs/methods/turbo.toml"
     TRAIN_TASK = "turbo"
     METHOD_LABEL = "Turbo"

@@ -294,7 +294,6 @@ class DaemonClient:
             interval = min(interval * 1.6, max(0.25, poll))
 
     def stop(self, job_id: Optional[str] = None) -> dict:
-        # No job_id → resolve the active job from /health.
         if job_id is None:
             health = self.health() or {}
             job_id = health.get("active_job")

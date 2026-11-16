@@ -51,16 +51,13 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-# scripts/ is not an installed package — put the repo root on sys.path so
-# `import anima_lora` / `library` resolve when run as `python scripts/...`.
 ROOT = Path(__file__).resolve().parents[1]
 
 logger = logging.getLogger("anima.inference_server")
 
 # --------------------------------------------------------------------------- #
-# Discovery — mirrors anima_daemon/config.py so any client (CLI / agent /
-# MCP / a vendored node) finds {port} without hardcoding it. Kept inline so this
-# file stays self-contained and importable without dragging in torch.
+# Discovery: mirrors anima_daemon/config.py so any client finds the port.
+# Inline so importing this file does not pull in torch.
 # --------------------------------------------------------------------------- #
 HOST = "127.0.0.1"
 DEFAULT_PORT = int(os.environ.get("ANIMA_INFERENCE_PORT", "8766"))
@@ -123,8 +120,8 @@ def _clear_pidfiles() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Engine — the resident model holder. All torch/anima imports are deferred into
-# `_ensure_loaded` so importing this module (and `discover_*`) stays cheap.
+# Engine: the resident model holder. torch/anima imports are deferred so
+# importing this module stays cheap.
 # --------------------------------------------------------------------------- #
 class InferenceEngine:
     def __init__(self) -> None:
@@ -377,7 +374,6 @@ _README = (
 class _Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
-    # quiet — route our own logging through the module logger instead of stderr
     def log_message(self, *args) -> None:
         pass
 

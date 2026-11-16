@@ -1,14 +1,11 @@
 """The MOSS window's i2i tabs: stage → preprocess on one, train → test on the
 other, for one i2i task.
 
-Tasks are the ``library.moss.requests.I2I_CACHE`` rows whose
-``configs/moss/i2i/<task>/cache.toml`` exists; both tabs show the selected task
-under a header holding the task picker and the tab's buttons. Each form starts
-from the task's
-``cache.toml`` / ``train.toml`` / ``generate.toml``, and only what differs from
-that seed is saved (``moss_gui_i2i`` in ``gui_settings.json``). Stage is
-``tasks.py i2i-stage`` with ``TASK`` in the job's env, a daemon command job like
-the rest. Test renders with the LoRA only and shows each reference beside its
+Tasks are the ``I2I_CACHE`` rows whose ``configs/moss/i2i/<task>/cache.toml``
+exists. Each form is seeded from the task's ``cache.toml`` / ``train.toml`` /
+``generate.toml`` and only the deltas are saved (``moss_gui_i2i`` in
+``gui_settings.json``). Stage is ``tasks.py i2i-stage`` with ``TASK`` in the
+job's env. Test renders with the LoRA only and shows each reference beside its
 output.
 """
 

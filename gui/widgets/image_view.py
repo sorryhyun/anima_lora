@@ -10,11 +10,9 @@ from PySide6.QtWidgets import QApplication, QDialog, QLabel, QVBoxLayout, QWidge
 class ScaledImageLabel(QLabel):
     """Aspect-preserving image view with Ctrl+wheel magnify.
 
-    At zoom 1.0 the pixmap is fit to the widget (centered, KeepAspectRatio).
-    Ctrl+scroll up/down zooms in/out **centered on the cursor**; once zoomed in,
-    drag with the left button to pan. Rendering is done in ``paintEvent`` (rather
-    than ``setPixmap``) so the zoomed image can overflow + be panned with the
-    view clipping to the widget rect. Zoom resets whenever the source changes.
+    Zoom 1.0 fits the widget; Ctrl+scroll zooms around the cursor and a left
+    drag pans. Drawn in ``paintEvent`` (not ``setPixmap``) so a zoomed image can
+    overflow and be clipped. Zoom resets when the source changes.
     """
 
     MIN_ZOOM = 1.0
@@ -154,12 +152,8 @@ class ScaledImageLabel(QLabel):
 
 
 class ImageViewerDialog(QDialog):
-    """Magnified view of a single gallery image (the 🔍 link in the sample /
-    test-output galleries).
-
-    Opens at the image's native size clamped to ~90% of the screen, rescales
-    live with the dialog via ScaledImageLabel; Esc closes (QDialog default).
-    Non-modal — open it with show().
+    """Magnified view of one gallery image, at native size clamped to ~90% of
+    the screen. Non-modal; open with show().
     """
 
     def __init__(self, path, parent: QWidget | None = None):

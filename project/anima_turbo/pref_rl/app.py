@@ -183,8 +183,7 @@ class ZoomOverlay(QWidget):
     """One render over the whole window. ←/→ step through the grid, P or a click on the image
     picks, Esc / Space / a click beside it closes.
 
-    A child widget, so opening and closing maps no window; the dialog it replaces flashed
-    white on close.
+    A child widget rather than a dialog, which flashed white on close.
     """
 
     def __init__(self, win: "PrefWindow"):

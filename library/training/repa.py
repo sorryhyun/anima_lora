@@ -1,30 +1,27 @@
 """REPA v2 — patchwise / relational alignment against a vision encoder.
 
-Two loss forms selectable per run (see ``_archive/repa/repa.md``):
+Two loss forms (``repa_mode``; design: ``_archive/repa/repa.md``):
 
-- **Arm A — absolute patchwise**: project DiT block tokens → encoder dim with
-  a small MLP head, cosine per token in fp32, mean.
-- **Arm B — relational (Gram)**: L2-normalize tokens on each side, ``G =
-  F̂F̂ᵀ``, ``loss = MSE(G_dit, G_pe)``. No head needed — similarities live
-  within each space, so dims never need to match (relational KD).
+- **absolute** (patchwise): project DiT block tokens → encoder dim with a
+  small MLP head, cosine per token in fp32, mean.
+- **relational** (Gram): L2-normalize tokens on each side, ``G = F̂F̂ᵀ``,
+  ``loss = MSE(G_dit, G_pe)``. No head: similarities live within each space,
+  so dims need not match.
 
-Both arms align a noisy-input mid-block feature to the *clean*-image encoder
-target, captured from the **primary** forward (no second DiT forward → no
-block-swap offloader desync).
+Both align a noisy-input mid-block feature to the *clean*-image encoder
+target, captured from the primary forward (a second DiT forward would desync
+the block-swap offloader).
 
-Two non-obvious mechanics:
-
-1. **Grid match.** The encoder token grid ``(gh, gw)`` varies per aspect
-   bucket and is ambiguous from token count alone (the bucket table is
-   aspect-symmetric), so it's disambiguated by the latent's orientation
-   (portrait vs landscape). The DiT side is adaptive-avg-pooled down to that
+1. **Grid match.** The encoder token grid ``(gh, gw)`` is ambiguous from token
+   count alone (the bucket table is aspect-symmetric), so the latent's
+   orientation disambiguates it. The DiT side is adaptive-avg-pooled to that
    grid so both sides are ``N = gh*gw`` tokens in the same row-major order.
 
 2. **native_flatten layout.** Under ``compile_blocks()`` the captured block
-   output is fake-5D ``(B, 1, seq, 1, D)``, not eager ``(B, 1, H, W, D)`` — the
+   output is fake-5D ``(B, 1, seq, 1, D)``, not eager ``(B, 1, H, W, D)``. The
    hook still fires (it sits on ``block.__call__``, outside the compiled
    ``block._forward``) and both layouts reshape to the same row-major
-   ``(B, N_dit, D)`` from the latent's patch grid.
+   ``(B, N_dit, D)``.
 
 Config rides the LoRA network kwargs (``use_repa`` / ``repa_mode`` /
 ``repa_weight`` / ``repa_layer`` / ``repa_encoder``), stashed on the network by
@@ -41,12 +38,10 @@ both default-off):
   target tokens before per-token L2-norm + Gram, cancelling the shared global
   component that compresses pairwise cosines. Relational mode only.
 
-Diagnostic (``repa_grad_heatmap = N`` = probe every N train micro-steps, 0 =
-off): MaskAlign (arXiv:2606.08788) shows full-token alignment concentrates
-gradient norm at stable spatial positions — the probe takes
-``autograd.grad`` of the alignment scalar w.r.t. pooled DiT tokens, resizes
-the per-token grad-norm map to a 32×32 grid, and accumulates top-10%
-membership counts across steps into
+Diagnostic (``repa_grad_heatmap = N``: probe every N train micro-steps, 0 =
+off): full-token alignment can concentrate gradient norm at fixed spatial
+positions (MaskAlign, arXiv:2606.08788). The probe accumulates top-10%
+grad-norm positions on a 32×32 grid into
 ``<output_name>_repa_grad_heatmap.npz`` / ``repa/heatmap_conc``.
 """
 
@@ -85,7 +80,7 @@ _HEATMAP_TOPK_FRAC = 0.10
 class REPAHead(nn.Module):
     """3-layer MLP projecting DiT hidden dim → vision-encoder feature dim
     (``h_phi`` from the REPA paper). Last layer init near-zero so step-0
-    cosine is unbiased. Only used by Arm A (absolute); Arm B has no head.
+    cosine is unbiased. Absolute mode only.
     """
 
     def __init__(self, dit_dim: int, hidden_dim: int, encoder_dim: int) -> None:
@@ -128,8 +123,6 @@ class REPAMethodAdapter(MethodAdapter):
         self._spec = None
         self._anneal_steps = 0.0
         self._spatial_norm = False
-        # REPA-DoG target band-pass: when on, replaces the spatial_norm block in
-        # the relational loss (off ⇒ inert).
         self._dog = False
         self._dog_sigma1_div = 16.0
         self._dog_sigma2_div = 0.0
@@ -181,8 +174,7 @@ class REPAMethodAdapter(MethodAdapter):
             )
             self._dog = False
 
-        # Timestep reweighting: tilt the alignment term across σ (0 = uniform).
-        # See _timestep_weights for the parameterization.
+        # See _timestep_weights.
         self._timestep_weighting = float(
             getattr(net, "_repa_timestep_weighting", 0.0) or 0.0
         )
@@ -337,9 +329,7 @@ class REPAMethodAdapter(MethodAdapter):
         if not primary.is_train or self._pe_features is None or self._latent_hw is None:
             return None
         if self._captured is None:
-            # PE features loaded + train step, but the block hook never fired —
-            # REPA would be silently inert. Warn once so a mis-wired hook is
-            # visible.
+            # The hook never fired, so REPA would be silently inert: warn once.
             if not getattr(self, "_warned_no_capture", False):
                 logger.warning(
                     "REPA: block %d hook did not fire on a train step — alignment "
@@ -418,8 +408,7 @@ class REPAMethodAdapter(MethodAdapter):
         buckets with a fixed top-k per sample.
         """
         if not (loss.requires_grad and dit_tok.requires_grad):
-            # No grad path (e.g. captured feature detached) — diagnostic only,
-            # never fail the step over it.
+            # Diagnostic only: skip rather than fail the step.
             if not getattr(self, "_warned_heatmap_no_grad", False):
                 logger.warning(
                     "REPA: grad-heatmap probe skipped — alignment loss has no "
@@ -445,9 +434,8 @@ class REPAMethodAdapter(MethodAdapter):
             self._heat_counts += hits.sum(dim=0).double().cpu()
             self._heat_samples += b
             freq = self._heat_counts / self._heat_samples
-            # Recurrence of the most-hit position vs the uniform expectation
-            # (every position lands in the top-10% a fraction topk_frac of the
-            # time under no concentration). MaskAlign's pathology is ~21×.
+            # Most-hit position's frequency over the uniform expectation
+            # (topk_frac). MaskAlign's pathology is ~21×.
             self._metrics["repa/heatmap_conc"] = float(freq.max() / _HEATMAP_TOPK_FRAC)
 
     def on_epoch_end(self, ctx: StepCtx) -> None:

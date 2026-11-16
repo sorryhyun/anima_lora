@@ -1,10 +1,9 @@
 """Shared DiT + adapter run harness.
 
-Loads the DiT, attaches an optional adapter, and applies ``torch.compile`` in
-the one order that's required: ``torch.compile`` traces the adapter's
-monkey-patched forward, so ``compile_blocks`` MUST run after
-``network.apply_to`` + ``load_weights`` — otherwise it silently compiles the
-wrong (unpatched) forward. Shared by ``bench`` / ``scripts`` / ``preprocess``.
+Loads the DiT, attaches an optional adapter, and compiles, in the required
+order: ``torch.compile`` traces the adapter's monkey-patched forward, so
+``compile_blocks`` must run after ``network.apply_to`` + ``load_weights`` or it
+silently compiles the unpatched forward.
 
 Usage::
 
@@ -13,10 +12,7 @@ Usage::
     bundle = build_anima(args, dit_path=..., adapter=..., train_mode=False)
     anima, network = bundle.anima, bundle.network
 
-Reads its knobs off an argparse ``Namespace`` (``device`` / ``dtype`` /
-``attn_mode`` / ``gradient_checkpointing`` / ``compile`` / ``compile_mode``);
-see ``library.runtime.argparse_groups.add_device_args``. Callers without a
-parser can pass a plain ``argparse.Namespace(**kwargs)``.
+Knobs come off an ``argparse.Namespace`` (``library.runtime.argparse_groups``).
 """
 
 from __future__ import annotations
@@ -40,13 +36,9 @@ log = logging.getLogger("library.runtime.harness")
 
 @dataclass
 class AnimaBundle:
-    """Container for a built Anima model + optional adapter.
+    """``build_anima``'s result; ``network`` is ``None`` without an adapter."""
 
-    Returned by ``build_anima``. ``network`` is ``None`` when no adapter
-    was requested.
-    """
-
-    anima: object  # library.anima Anima — typed as object to avoid heavy import
+    anima: object  # library.anima Anima (object: avoids the heavy import)
     network: Optional[object]  # networks.lora_anima.network.LoRANetwork or None
     device: torch.device
     dtype: torch.dtype
@@ -63,28 +55,20 @@ def build_anima(
 ) -> AnimaBundle:
     """Load the DiT (+ optional adapter) in the required order.
 
-    Sequence: load DiT → freeze + ``reset_mod_guidance`` → (if ``adapter``)
-    ``create_network_from_weights`` → ``apply_to`` → ``load_weights`` →
-    freeze/unfreeze per ``train_mode`` → gradient checkpointing → train()/
-    eval() → **``compile_blocks`` last** (compile-after-apply, see module
-    docstring).
+    load DiT → freeze + ``reset_mod_guidance`` → adapter ``apply_to`` →
+    ``load_weights`` → requires_grad per ``train_mode`` → gradient checkpointing
+    → train()/eval() → ``compile_blocks`` last.
 
     Arguments:
         args: reads ``device``, ``dtype``, ``attn_mode``,
             ``gradient_checkpointing``, ``compile``, ``compile_mode``.
         dit_path: defaults to ``args.dit`` if the caller's argparse exposed one.
-        adapter: optional adapter safetensors path, applied with
-            ``multiplier`` as the apply-time scale.
-        train_mode: puts anima + network in train mode; required before any
-            ``backward()`` call (LoRA training-path forward, T-LoRA mask, and
-            gradient checkpointing are all gated on ``self.training``).
-        network_requires_grad: under ``train_mode=True``, freeze/unfreeze
-            adapter params.
-        multiplier: adapter forward-time scale; ``set_multiplier(0.0)``
-            later recovers the base-model output.
-
-    Returns:
-        ``AnimaBundle(anima, network, device, dtype)``.
+        adapter: optional adapter safetensors path.
+        train_mode: required before any ``backward()``: the LoRA training
+            forward, T-LoRA mask and gradient checkpointing gate on
+            ``self.training``.
+        network_requires_grad: under ``train_mode``, whether adapter params train.
+        multiplier: adapter scale; ``set_multiplier(0.0)`` recovers the base.
     """
     # keep this module cheap to import on CPU-only runs that never load a DiT
     from library.anima import weights as anima_utils
@@ -143,7 +127,7 @@ def build_anima(
             network.requires_grad_(True)
         else:
             network.requires_grad_(False)
-        anima.requires_grad_(False)  # always — DiT stays frozen in the harness
+        anima.requires_grad_(False)
 
         trainable = [p for p in network.parameters() if p.requires_grad]
         n_train = sum(p.numel() for p in trainable)
@@ -172,8 +156,7 @@ def build_anima(
         if network is not None:
             network.eval()
 
-    # COMPILE LAST. Adapter monkey-patches must be installed first or
-    # torch.compile traces the wrong forward.
+    # Compile last (module docstring).
     if getattr(args, "compile", False):
         mode = getattr(args, "compile_mode", None)
         log.info(
@@ -189,13 +172,9 @@ def build_anima(
 class InferenceBundle:
     """Everything a probe needs to drive (and hook) a real ``generate()`` call.
 
-    Where :class:`AnimaBundle` stops at *DiT + adapter*, this carries the full
-    inference set — text encoder, VAE, resolved ``GenerationSettings`` — plus
-    ``shared_models`` primed with ``model`` / ``text_encoder`` / ``conds_cache``.
-    Because the DiT is pre-loaded into ``shared_models["model"]``, ``generate()``
-    reuses *this* instance — so a forward-hook installed on ``bundle.model``
-    before generating stays live during sampling. ``vae`` is ``None`` when built
-    with ``with_vae=False`` or no ``--vae`` path.
+    The DiT sits in ``shared_models["model"]``, so ``generate()`` reuses this
+    instance and a forward hook on ``bundle.model`` stays live during sampling.
+    ``vae`` is ``None`` with ``with_vae=False`` or no ``--vae`` path.
     """
 
     model: object  # the loaded DiT (also stashed in shared_models["model"])
@@ -207,11 +186,7 @@ class InferenceBundle:
     device: torch.device
 
     def generate(self, args: Optional[argparse.Namespace] = None):
-        """Run ``library.inference.generate`` reusing this bundle's loaded models.
-
-        Defaults to the namespace the bundle was built from; pass a per-call
-        ``args`` to override. Returns the latent tensor ``generate()`` produces.
-        """
+        """``library.inference.generate`` on the loaded models; returns the latent."""
         from library.inference import generate as _generate
 
         return _generate(args or self.args, self.gen_settings, self.shared_models)
@@ -225,25 +200,15 @@ def build_inference_bundle(
 ) -> InferenceBundle:
     """Assemble the text-encoder + DiT (+ optional VAE) set for a generation.
 
-    The inference-side counterpart to :func:`build_anima` — bundles the
-    sequence ``inference.main()`` open-codes (load text encoder, load DiT,
-    stash it in ``shared_models["model"]`` so ``generate()`` reuses the
-    instance, load the VAE) for bench/probe callers.
+    The sequence ``inference.main()`` open-codes, for bench/probe callers.
 
     Args:
-        args: a fully-defaulted namespace (``inference.parse_args`` /
-            ``GenerationRequest.to_args()`` / ``build_default_args``). Reads
-            ``vae`` / ``text_encoder`` / ``dit`` / adapter + sampler knobs.
-        device: optional explicit device, written back to ``args.device`` so
-            every downstream loader agrees. ``None`` resolves cuda-else-cpu.
-        with_vae: load the VAE (needed only to decode latents → pixels). A
-            latent-space probe can pass ``False`` to skip the load.
-
-    Returns:
-        :class:`InferenceBundle` — pass ``.shared_models`` to ``generate()`` or
-        call ``.generate()``.
+        args: a fully-defaulted namespace (``GenerationRequest.to_args()`` /
+            ``build_default_args``).
+        device: written back to ``args.device`` so every loader agrees.
+            ``None`` resolves cuda-else-cpu.
+        with_vae: ``False`` skips the VAE for latent-space probes.
     """
-    # keep this module import-cheap on CPU-only runs
     from library.inference import (
         get_generation_settings,
         load_dit_model,
@@ -251,8 +216,6 @@ def build_inference_bundle(
     )
 
     if device is not None:
-        # Pin it on the namespace so get_generation_settings + load_dit_model all
-        # resolve to the same device (mirrors inference.main()).
         args.device = str(device) if not isinstance(device, str) else device
 
     gen_settings = get_generation_settings(args)
@@ -262,8 +225,7 @@ def build_inference_bundle(
     shared_models["conds_cache"] = {}
 
     anima = load_dit_model(args, resolved_device, torch.bfloat16)
-    # Stash so generate() reuses *this* instance — the only seam for hooking the
-    # DiT before the sampler loop runs.
+    # generate() reuses this instance: the seam for hooking the DiT.
     shared_models["model"] = anima
 
     vae = None
@@ -307,15 +269,13 @@ def place_dit_for_training(
 ) -> None:
     """Move a (frozen-base) DiT onto ``device`` for a training run.
 
-    With block swap on, swapped blocks stay on CPU and ride the
-    forward+backward swap hooks while everything else moves to ``device``;
-    without it the whole model moves. Call before ``compile_dit_blocks`` /
-    ``train()``.
+    With block swap, swapped blocks stay on CPU and ride the forward+backward
+    swap hooks. Call before ``compile_dit_blocks`` / ``train()``.
     """
     if blocks_to_swap > 0:
         anima.enable_block_swap(blocks_to_swap, device)
         anima.move_to_device_except_swap_blocks(device)
-        anima.switch_block_swap_for_training()  # forward+backward block movement
+        anima.switch_block_swap_for_training()
     else:
         anima.to(device)
 
@@ -333,16 +293,10 @@ def compile_dit_blocks(
 ) -> None:
     """``torch.compile`` each ``Block._forward`` for a distillation/training run.
 
-    Native-shape flattening traces one block graph per distinct token count;
-    pre-raises the dynamo cache to ``cache_size_limit`` so each shape traces
-    instead of falling back to eager mid-warmup. No-op when ``enabled`` is
-    False.
-
-    ``dynamic_seq`` collapses the per-token-count graphs to one graph by
-    marking only the seq-length axis dynamic; ``seq_range`` bounds that
-    symbolic axis and ``n_token_families`` sizes the dynamo cache budget.
-
-    COMPILE LAST — after the adapter's ``apply_to`` (see module docstring).
+    Native-shape flattening traces one graph per token count, so the dynamo
+    cache is raised to ``cache_size_limit`` first, else shapes fall back to
+    eager mid-warmup. ``dynamic_seq`` marks only the seq axis dynamic (one
+    graph), bounded by ``seq_range``. Run after the adapter's ``apply_to``.
     """
     if not enabled:
         return
@@ -364,16 +318,12 @@ def _apply_activation_memory_budget(
 ) -> None:
     """Cap the AOT min-cut partitioner's saved-for-backward set.
 
-    ``budget < 1.0`` makes the partitioner recompute cheap intermediates
-    instead of saving them (0.85 was measured to fix a first-step OOM at
-    16GB/4200 tokens without grad-ckpt, at negligible step-time cost).
-
-    Must be set BEFORE the block compile — partitioning happens at
-    first-forward compile, and this is a plain module attr (no ContextVar
-    revert, unlike dynamo's recompile_limit). GOTCHA: skipped under gradient
-    checkpointing — repartitioning the joint graph lets checkpoint's recompute
-    pass select a different graph than forward, raising ``CheckpointError``
-    (torch #166926).
+    ``budget < 1.0`` recomputes cheap intermediates instead of saving them
+    (0.85 fixed a first-step OOM at 16 GB / 4200 tokens without grad-ckpt).
+    Set before the block compile (partitioning happens at first-forward
+    compile). Skipped under gradient checkpointing: repartitioning lets the
+    recompute pass pick a different graph than forward, raising
+    ``CheckpointError`` (torch #166926).
     """
     if budget < 1.0 and not grad_ckpt:
         set_activation_memory_budget(budget)
@@ -398,15 +348,11 @@ def _apply_partitioner_tuning(
 ) -> None:
     """Tune the AOT min-cut partitioner's default save/recompute heuristics.
 
-    Unlike ``activation_memory_budget`` (a cap applied on top of the default
-    partition), these flags change what the default partition is willing to
-    recompute at all: ``recompute_views`` stops saving view ops,
-    ``aggressive_recomputation`` drops the ban list on recomputing whole op
-    classes when the min-cut is cheap. See
-    docs/anima/findings/custom_autograd_removal_partitioner_oom.md.
-
-    Skipped under gradient checkpointing for the same reason as the budget
-    (see :func:`_apply_activation_memory_budget`).
+    These change what the default partition will recompute at all:
+    ``recompute_views`` stops saving view ops, ``aggressive_recomputation``
+    drops the recompute ban list when the min-cut is cheap
+    (docs/anima/findings/custom_autograd_removal_partitioner_oom.md). Skipped
+    under gradient checkpointing, as for the budget.
     """
     if not (recompute_views or aggressive_recomputation):
         return
@@ -437,12 +383,10 @@ def _apply_cudagraph_skip_dynamic(
 ) -> None:
     """Opt-in: skip CUDAGraph capture for dynamic-shape graphs (env toggle).
 
-    Under ``mode='reduce-overhead'`` inductor records a fresh CUDAGraph per
-    distinct input size; free-fit's native-shape bucketing populates many
-    distinct seq lengths per tier, so each pins its own static I/O buffers
-    and fights the partitioner's OOM budget. ``ANIMA_CUDAGRAPH_SKIP_DYNAMIC=1``
-    keeps CUDAGraphs only for fully-static graphs. No-op unless cudagraphs are
-    actually active (reduce-overhead / max-autotune).
+    Under ``reduce-overhead`` inductor records a CUDAGraph per input size, and
+    free-fit bucketing yields many seq lengths, each pinning its own static
+    buffers. ``ANIMA_CUDAGRAPH_SKIP_DYNAMIC=1`` keeps CUDAGraphs for static
+    graphs only.
     """
     if os.environ.get("ANIMA_CUDAGRAPH_SKIP_DYNAMIC", "0") not in ("1", "true", "True"):
         return
@@ -480,18 +424,12 @@ def compile_blocks_for_training(
 ) -> None:
     """The LoRA-training (``train.py``) compile sequence, post ``apply_to``.
 
-    Native-shape flattening + per-block torch.compile. COMPILE LAST — run only
-    after ``network.apply_to`` + ``load_weights``. ``signature_suffix`` keeps a
-    base the signature cannot see (int8) in its own compile cache.
+    Run after ``network.apply_to`` + ``load_weights``. ``signature_suffix``
+    keeps a base the signature cannot see (int8) in its own compile cache.
 
-    Sequence: partitioner budget/tuning (skipped under grad-ckpt) →
-    per-signature compile cache isolation → ``unet.compile_blocks(...)`` with
-    the caller-derived token budget (``library.anima.trainer.data.derive_token_budget``) →
-    ``network.compile_cond_stream(...)`` when the adapter exposes it. GOTCHA:
     EasyControl's patched ``Block.forward`` routes its cond path through
-    ``_two_stream_inner``, bypassing the just-compiled ``block._forward`` —
-    so the cond stream (incl. cond LoRA projections) needs this separate
-    compile call or it silently stays eager.
+    ``_two_stream_inner``, bypassing the compiled ``block._forward``, so
+    ``compile_cond_stream`` must run too or the cond stream stays eager.
     """
     _apply_activation_memory_budget(
         activation_memory_budget, grad_ckpt=grad_ckpt, logger=logger
@@ -522,9 +460,7 @@ def compile_blocks_for_training(
         seq_range=seq_range,
         seq_bands=seq_bands,
     )
-    # NB: compile_cond_stream (EasyControl) stays on the union range —
-    # the cond stream runs at the same seq as the target stream, but its
-    # compile surface is separate.
+    # The cond stream stays on the union range (no seq_bands).
     if hasattr(network, "compile_cond_stream"):
         network.compile_cond_stream(
             backend,
@@ -564,18 +500,10 @@ def compile_dit_blocks_for_pool(
     """Partitioner budget → per-signature cache isolation → block compile, for a
     self-describing distillation pool.
 
-    The compile-setup sequence ``distill_turbo`` / ``distill_mod`` share. The
-    caller derives ``token_counts`` (the distinct ``(W//patch)*(H//patch)``
-    counts its cached pool populates); this owns everything after: derive
-    ``n_shapes`` and, under ``dynamic_seq``, the symbolic-seq
-    ``n_token_families`` / ``seq_range`` → partitioner budget (skipped under
-    ``grad_ckpt``, see :func:`_apply_activation_memory_budget`) →
-    :func:`isolate_compile_cache` → ``compile_dit_blocks`` with the dynamo
-    cache sized to ``2*n_shapes + 8`` (override via ``cache_size_limit``).
-
-    Returns the derived :class:`PoolCompileResult` even when ``enabled`` is
-    False, so callers can still log it. Run AFTER the network ``apply_to``
-    (compile-after-apply invariant).
+    Shared by ``distill_turbo`` / ``distill_mod``. ``token_counts`` are the
+    distinct ``(W//patch)*(H//patch)`` counts of the cached pool. The dynamo
+    cache defaults to ``2*n_shapes + 8``. Returns the result even when
+    ``enabled`` is False, for logging. Run after the network's ``apply_to``.
     """
     counts = {int(c) for c in token_counts}
     n_shapes = max(1, len(counts))
@@ -605,7 +533,6 @@ def compile_dit_blocks_for_pool(
             mode=mode,
         )
     )
-    # compile-after-apply invariant
     compile_dit_blocks(
         anima,
         enabled=True,
@@ -624,10 +551,8 @@ def compile_dit_blocks_for_pool(
 def enable_training_grad_ckpt(anima: object, *, enabled: bool) -> None:
     """Toggle unsloth CPU-offload gradient checkpointing for a training run.
 
-    Recomputes block activations in backward, offloading saved tensors to CPU
-    between forward/backward. The model must stay in ``train()`` mode —
-    ``Block.forward`` gates checkpointing on ``self.training``. Logs and no-ops
-    when ``enabled`` is False.
+    The model must stay in ``train()`` mode: ``Block.forward`` gates
+    checkpointing on ``self.training``.
     """
     if enabled:
         anima.enable_gradient_checkpointing(unsloth_offload=True)

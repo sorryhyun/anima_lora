@@ -208,10 +208,9 @@ def _restore_scheduler(sched, saved: dict[str, Any]) -> None:
     """
     import warnings
 
-    # The optimizer's load_state_dict (which runs before this) overwrote each
-    # param group's "lr" with the bundle's saved value, and the cosine's
-    # recursive step() reads it — reset to the fresh scheduler's own position
-    # so the replay walks the new curve from its true start.
+    # The optimizer's load_state_dict already set each group's "lr" to the
+    # bundle's value, and the cosine's recursive step() reads it: reset it to the
+    # fresh scheduler's position so the replay walks the new curve from its start.
     for group, lr in zip(sched.optimizer.param_groups, sched.get_last_lr()):
         group["lr"] = lr
 

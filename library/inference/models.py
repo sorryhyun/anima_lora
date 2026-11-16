@@ -16,11 +16,10 @@ logger = logging.getLogger(__name__)
 def _is_hydra_moe(path: str) -> bool:
     """Cheap check: peek at the safetensors header for a per-expert ups key.
 
-    HydraLoRA moe files carry per-expert ``.lora_ups.N.weight`` keys, which
-    means router-live: skip static merge. Regular LoRA files have none. The
-    removed ChimeraHydra layout (``.lora_ups_c.`` / ``.lora_ups_f.``) is matched
-    too so it reaches ``create_network_from_weights``' refusal instead of a
-    silent partial merge. Uses ``safe_open`` so only the header is read.
+    Per-expert ``.lora_ups.N.weight`` keys mean router-live: skip the static
+    merge. The removed ChimeraHydra layout (``.lora_ups_c.`` / ``.lora_ups_f.``)
+    is matched too so it reaches ``create_network_from_weights``' refusal
+    instead of a silent partial merge.
     """
     from safetensors import safe_open
 
@@ -37,10 +36,8 @@ def _is_hydra_moe(path: str) -> bool:
 def _has_te_keys(path: str) -> bool:
     """Cheap header peek: does this safetensors LoRA carry any ``lora_te_*`` keys?
 
-    Lets ``load_text_encoder`` skip a redundant ``load_file`` + empty-dict merge
-    when the LoRA is DiT-only (the common case — turbo, plain LoRA, postfix, …).
-    Returns False on any read error so the caller falls back to the no-LoRA TE
-    load path (a truly broken file would have already tripped the DiT loader).
+    Lets ``load_text_encoder`` skip the load for DiT-only LoRAs. False on a
+    read error (a broken file has already tripped the DiT loader).
     """
     from safetensors import safe_open
 
@@ -54,10 +51,9 @@ def _has_te_keys(path: str) -> bool:
 def _is_step_expert_turbo(path: str) -> bool:
     """Peek at safetensors metadata for ``ss_turbo_per_step_expert``.
 
-    Per-step-expert turbo files carry ``.lora_ups.{k}.weight`` keys (so
-    ``_is_hydra_moe`` ALSO returns True), but they are not Hydra — head
-    selection is by denoise-step counter, not a router. This metadata stamp is
-    the authoritative discriminator and must be checked before ``hydra_mode``.
+    These files also match ``_is_hydra_moe`` (same ``.lora_ups.{k}.weight``
+    keys) but select heads by denoise step, not a router, so this stamp must be
+    checked before ``hydra_mode``.
     """
     from safetensors import safe_open
 
@@ -84,27 +80,18 @@ def attach_adapters(
 ) -> None:
     """Attach LoRA-family adapters that ride as dynamic forward hooks.
 
-    Covers the two routes that can't go through ``load_anima_model``'s static
-    merge: **P-GRAFT** (toggleable mid-denoising) and **HydraLoRA moe**
-    (router-live, runs per-sample). Both rehydrate a network, ``apply_to`` the
-    already-loaded ``model`` in place, and stash it on ``model`` for the sampler
-    toggle sites to find. No-op when neither mode is set. Mutates ``model``;
-    returns nothing. The static-merge path and ``torch.compile`` stay in
-    :func:`load_dit_model` — this does only the dynamic-hook attach.
-
-    ``pgraft_mode`` / ``hydra_mode`` are passed in (not recomputed) because the
-    caller already derives them to decide whether to skip the static merge.
+    For the routes that can't take ``load_anima_model``'s static merge:
+    P-GRAFT (toggleable mid-denoising), HydraLoRA moe (router-live) and
+    per-step-expert turbo. Each network is ``apply_to``'d onto ``model`` in
+    place and stashed on it for the sampler sites to find.
     """
-    # P-GRAFT: attach LoRA as dynamic hooks (toggleable mid-denoising), so it
-    # skips the static merge and keeps the network live.
     if pgraft_mode and not hydra_mode:
         from safetensors import safe_open
         from networks import lora_anima
 
         logger.info("P-GRAFT: Loading LoRA as dynamic hooks (not static merge)")
         for lora_weight_path in args.lora_weight:
-            # Metadata carries the three-axis stamps — load_file() drops
-            # __metadata__, so read it separately.
+            # load_file() drops __metadata__ (the routing stamps)
             with safe_open(lora_weight_path, framework="pt") as f:
                 lora_metadata = dict(f.metadata() or {})
             lora_sd = load_file(lora_weight_path)
@@ -150,10 +137,6 @@ def attach_adapters(
                 f"P-GRAFT: LoRA attached with cutoff_step={getattr(args, 'lora_cutoff_step', None)}"
             )
 
-    # HydraLoRA moe: rehydrate the trained router-live network and attach it
-    # as dynamic forward hooks, identical shape to the P-GRAFT path above.
-    # The router runs per-sample on each adapted module, so the net stays in
-    # eval mode with requires_grad_(False).
     if hydra_mode:
         from networks import lora_anima
 
@@ -161,8 +144,7 @@ def attach_adapters(
         from safetensors import safe_open
 
         for lora_weight_path in args.lora_weight:
-            # Read the three-axis routing stamps from on-disk __metadata__ —
-            # load_file() drops it.
+            # load_file() drops __metadata__ (the routing stamps)
             with safe_open(lora_weight_path, framework="pt") as f:
                 lora_metadata = dict(f.metadata() or {})
             lora_sd = load_file(lora_weight_path)
@@ -199,9 +181,7 @@ def attach_adapters(
             hydra_networks.append(network)
             model._hydra_networks = hydra_networks
             model._hydra_network = network
-            # Reuse the P-GRAFT cutoff slot so existing toggle sites
-            # (inference_pipeline loops + spectrum_denoise) honor
-            # --lora_cutoff_step without further plumbing.
+            # The P-GRAFT slot makes the toggle sites honor --lora_cutoff_step.
             model._pgraft_network = network
             logger.info(
                 f"HydraLoRA: router-live attached "
@@ -209,10 +189,8 @@ def attach_adapters(
                 f"cutoff_step={getattr(args, 'lora_cutoff_step', None)})"
             )
 
-    # Per-step-expert turbo: kept-live (K up-heads can't merge), head selected
-    # by the denoise step counter in the sampler loop. Like Hydra it can't ride
-    # the static merge; unlike Hydra there is no router — generation.py calls
-    # network.set_step_index(i) once per step.
+    # Per-step-expert turbo: K up-heads can't merge; generation.py selects the
+    # head once per step.
     if step_expert_mode:
         from safetensors import safe_open
         from networks.methods.turbo_dmd import load_step_expert_student
@@ -233,8 +211,7 @@ def attach_adapters(
             )
             network.to(device, dtype=torch.bfloat16)
             network.eval().requires_grad_(False)
-            # Dedicated slot so generation.py finds it for set_step_index, kept
-            # separate from the Hydra/P-GRAFT slots (no router, no cutoff reuse).
+            # own slot: no router, no cutoff reuse
             step_nets = list(getattr(model, "_step_expert_networks", []))
             step_nets.append(network)
             model._step_expert_networks = step_nets
@@ -308,30 +285,20 @@ def load_dit_model(
 ) -> anima_models.Anima:
     """Load DiT model with optional LoRA merge, P-GRAFT hooks, and torch.compile.
 
-    Namespace-driven adapter over the explicit-argument primitive
-    ``library.anima.weights.load_anima_model``: it pulls ``dit``/``attn_mode``/
-    ``lora_weight``/etc. off ``args``, then hands the dynamic-hook adapter attach
-    to :func:`attach_adapters` and applies ``torch.compile``. Reach for
-    ``load_anima_model`` directly when you want just the weights and no Namespace.
+    Namespace wrapper over ``library.anima.weights.load_anima_model`` (use that
+    directly for just the weights).
     """
 
     loading_device = device
 
-    # HydraLoRA moe: router-live inference can't go through static merge.
-    # Detect early so we can skip the baked-down path and take the dynamic hook
-    # route regardless of whether --pgraft is set. ``_is_hydra_moe`` matches
-    # the ``lora_ups.{i}.weight`` key pattern.
-    # Per-step-expert turbo is detected FIRST: its files also match
-    # ``_is_hydra_moe`` (shared ``.lora_ups.{k}.weight`` key shape) but are
-    # router-free and head-selected by step counter, so the metadata stamp wins.
     # CJK vocab pack: --no_vocab_pack > --vocab_pack > base.toml `vocab_pack`.
-    # Resolved once here (memoised) and hooked onto llm_adapter.embed below;
-    # the prompt side is routed by the tokenize strategy prepare_text_inputs
-    # installs from the same selection.
+    # The prompt side follows the same selection via prepare_text_inputs.
     from library.anima.vocab_pack import resolve_active_pack
 
     vocab_pack = resolve_active_pack(args)
 
+    # Hydra and step-expert files skip the static merge. Step-expert is checked
+    # first: its files also match _is_hydra_moe.
     step_expert_mode = False
     if args.lora_weight is not None and len(args.lora_weight) > 0:
         se_flags = [_is_step_expert_turbo(p) for p in args.lora_weight]
@@ -362,7 +329,7 @@ def load_dit_model(
                 )
             hydra_mode = True
 
-    # P-GRAFT: load without LoRA merge, attach dynamic hooks instead
+    # These modes keep the LoRA as live hooks instead of a static merge.
     int8 = getattr(args, "int8", False)
     pgraft_mode = (
         (
@@ -376,8 +343,6 @@ def load_dit_model(
         and len(args.lora_weight) > 0
     )
 
-    # load LoRA weights (skip static merge for P-GRAFT, HydraLoRA moe,
-    # and per-step-expert turbo — all ride dynamic hooks)
     if (
         not pgraft_mode
         and not hydra_mode
@@ -424,8 +389,8 @@ def load_dit_model(
         int8_infer_file=infer_file or None,
     )
 
-    # Modulation guidance: load trained pooled_text_proj weights before .to()
-    # (pooled_text_proj params are meta tensors when not in the pretrained checkpoint)
+    # Before .to(): pooled_text_proj params are meta tensors when absent from
+    # the checkpoint.
     pooled_text_proj_path = getattr(args, "pooled_text_proj", None)
     if pooled_text_proj_path is not None:
         anima_utils.load_pooled_text_proj(model, pooled_text_proj_path, "cpu")
@@ -455,8 +420,6 @@ def load_dit_model(
 
             stream_fp32_(model)
 
-    # Dynamic-hook adapters (P-GRAFT toggle / HydraLoRA router-live) that can't
-    # ride the static merge above.
     attach_adapters(
         model,
         args,
@@ -470,11 +433,10 @@ def load_dit_model(
         logger.info("Compiling DiT model with torch.compile...")
         model = torch.compile(model)
     elif getattr(args, "compile_dynamic_seq", False):
-        # compile_seq_range / compile_token_bands are set by the batch path from
-        # every prompt's size; unset falls back to compile_blocks' 1024-tier band.
-        # A cached graph carries the seq-range guard of the run that built it
-        # (e.g. 4050 <= s); a later run with a wider band reuses it and hits
-        # ConstraintViolationError → eager fallback. Compile fresh instead.
+        # compile_seq_range / compile_token_bands come from the batch path;
+        # unset falls back to compile_blocks' 1024-tier band. A cached graph
+        # carries its builder's seq-range guard, and a wider band reusing it hits
+        # ConstraintViolationError → eager fallback, so compile fresh.
         import torch._functorch.config as functorch_config
         from library.runtime.dynamo import pin_inductor_flag
 
@@ -511,16 +473,11 @@ def load_text_encoder(
 ) -> torch.nn.Module:
     """Load the Qwen3 text encoder (optionally folding in TE-side LoRA).
 
-    Only three fields matter here: the encoder path and the LoRA weight/multiplier
-    list. Pass them as keywords for a self-documenting call::
+    Reads the encoder path and LoRA weight/multiplier as keywords or from
+    ``args`` (keywords win)::
 
         load_text_encoder(text_encoder=TEXT_ENCODER, device=device)
-
-    The legacy ``args`` namespace is still accepted as a fallback (the CLI and
-    ``prepare_text_inputs`` pass one); explicit keywords win over it when both are
-    given.
     """
-    # Explicit keyword wins; otherwise fall back to the namespace; otherwise default.
     te_path = (
         text_encoder
         if text_encoder is not None
@@ -548,7 +505,7 @@ def load_text_encoder(
                 "model_" + k[len("lora_te_") :]: v
                 for k, v in lora_sd.items()
                 if k.startswith("lora_te_")
-            }  # only keep Text Encoder lora weights, remove prefix "lora_te_" and add "model_" prefix
+            }  # lora_te_* → model_*
             lora_weights_list.append(lora_sd)
 
     lora_multipliers = lm

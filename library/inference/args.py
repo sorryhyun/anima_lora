@@ -1,17 +1,11 @@
-"""Anima inference argument parser — the single source of truth for every
+"""Anima inference argument parser: the single source of truth for every
 generation knob ``generate()`` reads off an ``argparse.Namespace``.
 
-The CLI (``inference.parse_args``) and programmatic callers
-(``GenerationRequest.to_args()``, ``bench/`` probes, embedders) share this
-parser, so a fully-defaulted namespace needs no import of the entry-point
-module.
+Shared by the CLI (``inference.parse_args``) and programmatic callers
+(``GenerationRequest.to_args()``, ``bench/`` probes, embedders)::
 
     from library.inference.args import build_default_args
     args = build_default_args(["--prompt", "a fox", "--text_encoder", te, "--save_path", out])
-
-``build_parser()`` exposes the raw ``ArgumentParser`` for callers that want to
-add flags or inspect defaults; ``build_default_args(argv)`` parses + runs the
-post-parse validation/normalization the CLI relied on.
 """
 
 from __future__ import annotations
@@ -20,11 +14,8 @@ import argparse
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the Anima inference ``ArgumentParser`` (no parsing).
-
-    Exposed separately from :func:`build_default_args` so a caller can append
-    its own flags before parsing.
-    """
+    """Build the inference ``ArgumentParser`` (no parsing), for callers that
+    append their own flags."""
     parser = argparse.ArgumentParser(description="HunyuanImage inference script")
 
     parser.add_argument("--dit", type=str, default=None, help="DiT directory or path")
@@ -42,10 +33,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Disable internal VAE caching mechanism to reduce memory usage. Encoding / decoding will also be faster, but this differs from official behavior."
         + "",
     )
-    # Fold the causal Conv3d stack into 2D convs for decode (image-only, T=1):
-    # ~2x faster decode at ~0.65-0.7x peak memory, numerically equivalent within
-    # bf16 noise. Mirrors the preprocess caching path (cache_latents.py); default
-    # on. Flag names match that script (--qwen_image_vae_2d / --no_vae_2d).
+    # 2D fold of the causal Conv3d stack (T=1): ~2x faster decode at ~0.7x peak
+    # memory, equal within bf16 noise. Flag names match cache_latents.py.
     parser.add_argument(
         "--vae_2d",
         "--qwen_image_vae_2d",
@@ -484,7 +473,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # SPD (arXiv:2605.18736): forces Euler, mutually exclusive with --spectrum.
-    # See networks/spd.py + docs/anima/inference/spd.md (bench: _archive/spd/bench/).
+    # docs/anima/inference/spd.md
     parser.add_argument(
         "--spd",
         action="store_true",
@@ -508,9 +497,8 @@ def build_parser() -> argparse.ArgumentParser:
         "len = len(stages)-1. Default: 0.7 per handoff (single-late knee).",
     )
 
-    # Deferred-foveated merge (archived line — _archive/bench/foveated/):
-    # training-free, forces Euler, mutually exclusive with --spectrum / --spd.
-    # See networks/foveated.py + docs/anima/inference/foveated.md.
+    # Deferred-foveated merge: forces Euler, mutually exclusive with --spectrum /
+    # --spd. docs/anima/inference/foveated.md
     parser.add_argument(
         "--fovea_sigma_c",
         type=float,
@@ -538,15 +526,10 @@ def build_parser() -> argparse.ArgumentParser:
         "static center rect.",
     )
 
-    # Front-loaded cross-attn boost: scale the cross-attn residual of every
-    # block by λ on the CONDITIONAL forward only, gated to σ ≥ band — the
-    # window where cross-attn text drive exists at all
-    # (docs/anima/findings/crossattn_self_attn_dominance.md). Amplifies ALL caption
-    # tags (framing priors ride along). Composes with --spectrum (real forwards
-    # boosted, forecast steps extrapolate from boosted features) and with
-    # --smc_cfg / --cfgpp / --mod_guidance (they touch the combine or the
-    # modulation pathway, not the cond forward). Under CFG 1.0 (turbo) the
-    # single forward is boosted. See docs/anima/inference/xattn_boost.md.
+    # Cross-attn boost: scale every block's cross-attn residual by λ on the
+    # cond forward only, at σ ≥ band (where text drive exists at all).
+    # Amplifies every caption tag. Composes with --spectrum / --smc_cfg /
+    # --cfgpp / --mod_guidance. docs/anima/inference/xattn_boost.md
     parser.add_argument(
         "--xattn_boost",
         type=float,
@@ -582,9 +565,8 @@ def build_parser() -> argparse.ArgumentParser:
         "0.0 = raw boost. Default 0.5 (Phase-1'' sweet spot at λ=2).",
     )
 
-    # SMC-CFG (library/inference/corrections/smc_cfg.py). Composes with
-    # --spectrum / --mod_guidance (operates strictly on the velocity-space CFG
-    # combine). See docs/anima/inference/smc_cfg.md.
+    # SMC-CFG: acts on the CFG combine only, so composes with --spectrum /
+    # --mod_guidance. docs/anima/inference/smc_cfg.md
     parser.add_argument(
         "--smc_cfg",
         action="store_true",
@@ -607,10 +589,8 @@ def build_parser() -> argparse.ArgumentParser:
         "so the α path is the only mode now. α=0.2 is the production default.",
     )
 
-    # Trajectory-resolved latent statistics (library/inference/traj_stats.py):
-    # passive recorder, one .npz sidecar per generation. Composes with
-    # --spectrum (recorded post-combine in the spectrum loop too) and the tiled
-    # path (post-blend).
+    # Passive trajectory recorder (library/inference/traj_stats.py); also
+    # records in the spectrum loop and the tiled path (post-blend).
     parser.add_argument(
         "--traj_stats",
         action="store_true",
@@ -630,11 +610,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Bits per channel for the --traj_stats quantization codes (1-8).",
     )
 
-    # FSG: Foresight Guidance (library/inference/corrections/fsg_core.py);
-    # ~3·K extra forwards per scheduled step. Composes with --mod_guidance / --dave / --cns / --smc_cfg (FSG's
-    # calibration uses plain γ-combine; the outer step keeps the configured CFG
-    # variant). Ignored under --spectrum / --spd (they replace the loop). See
-    # docs/anima/inference/fsg.md.
+    # FSG: ~3·K extra forwards per scheduled step. Composes with --mod_guidance /
+    # --dave / --cns / --smc_cfg; ignored under --spectrum / --spd (they replace
+    # the loop). docs/anima/inference/fsg.md
     parser.add_argument(
         "--fsg",
         action="store_true",
@@ -677,13 +655,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="FSG calibration guidance γ. Default None -- reuse --guidance_scale "
         "(the paper's plain γ-combine).",
     )
-    # CFG++ substrate (paper App A.2 / Algorithm 1 lines 9-12). FSG is *defined*
-    # on a CFG++ base. Implemented as a σ-scheduled guidance REWEIGHT (CFG++
-    # differs from CFG solely in strength scheduling) so it composes with er_sde
-    # and Euler alike -- see sampling.cfgpp_guidance_weight. Composes with
-    # --spectrum (threaded as a side-channel; the reweight is applied in the
-    # spectrum combine). Refused under --smc_cfg (alternative combine) and --spd
-    # (mid-loop σ re-spacing; not wired there).
+    # CFG++ (FSG paper App A.2) as a σ-scheduled guidance reweight
+    # (fsg_core.cfgpp_guidance_weight), so it works with er_sde, Euler and
+    # --spectrum. Refused under --smc_cfg (alternative combine) and --spd (not
+    # wired).
     parser.add_argument(
         "--cfgpp",
         action="store_true",
@@ -703,8 +678,7 @@ def build_parser() -> argparse.ArgumentParser:
         "with --cfgpp.",
     )
 
-    # CNS: Colored Noise Sampling (library/inference/corrections/cns_core.py).
-    # er_sde-only (no-op on euler). See docs/inference/cns.md.
+    # CNS: er_sde only (no-op on euler). docs/inference/cns.md
     parser.add_argument(
         "--cns",
         type=str,
@@ -721,8 +695,7 @@ def build_parser() -> argparse.ArgumentParser:
         "CNS, 0.0 = pass-through. Safety knob for over-injection off-manifold.",
     )
 
-    # DAVE (library/inference/corrections/dave.py): standard denoise loop only
-    # (no Spectrum/SPD compose).
+    # DAVE: standard denoise loop only (no Spectrum/SPD).
     parser.add_argument(
         "--dave",
         type=str,
@@ -834,9 +807,8 @@ def build_parser() -> argparse.ArgumentParser:
 def build_default_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse ``argv`` (``None`` reads ``sys.argv``) into a fully-defaulted namespace.
 
-    Builds the parser via :func:`build_parser`, parses, then applies the
-    post-parse validation/normalization (mutually-exclusive mode checks,
-    ``sdpa`` -> ``torch`` alias, tiled-diffusion geometry guards) the CLI relied on.
+    Also applies the post-parse checks (mutually-exclusive modes, ``sdpa`` →
+    ``torch`` alias, tiled-diffusion geometry).
     """
     parser = build_parser()
     args = parser.parse_args(argv)

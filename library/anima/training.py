@@ -30,7 +30,7 @@ import logging  # noqa: E402
 logger = logging.getLogger(__name__)
 
 
-# Caption shuffle grammar lives in anime_tools.captions.shuffle (curation side). Re-exported here so trainer callers keep their import path.
+# Re-exported from anime_tools.captions.shuffle for trainer callers.
 from anime_tools.captions.shuffle import (  # noqa: E402,F401
     NO_ARTIST_SENTINEL,
     anima_smart_shuffle_caption,
@@ -43,7 +43,7 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
     """Add Anima-specific training arguments to the parser."""
     parser.add_argument(
         "--vocab_pack",
-        "--ext_pack",  # pre-v2 research spelling (run_unmask_r2.py); same dest
+        "--ext_pack",  # legacy alias
         dest="vocab_pack",
         type=str,
         default=None,
@@ -338,8 +338,7 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         "pinned host buffers every update (--no-ema_card)",
     )
 
-    # Variance-reduced flow-matching loss (AsymFlow §5.2, arXiv:2605.12964;
-    # _archive/bench/fm_vr_headroom/proposal.md). Gated off by default.
+    # Variance-reduced flow-matching loss (AsymFlow §5.2, arXiv:2605.12964).
     parser.add_argument(
         "--vr_loss_weight",
         type=float,
@@ -373,10 +372,8 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         "λ_ema ← (1−β)·λ_ema + β·λ_batch. Default 0.01 over typically B=4.",
     )
 
-    # Memorization-aware training — per-sample low-σ Δ-gap reweight
-    # (_archive/proposals/memorization_lowsigma_reweight.md). Gated off by default.
-    # LoRA-family train.py only; hard-requires blocks_to_swap=0 (the
-    # measurement is a second per-step DiT forward, unaudited vs the offloader).
+    # Memorization-aware training: per-sample low-σ Δ-gap reweight. LoRA-family
+    # train.py only; requires blocks_to_swap=0 (see models.build_mem_tracker).
     parser.add_argument(
         "--mem_reweight_mode",
         type=str,
@@ -499,9 +496,8 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         "outputs for functional MSE loss.",
     )
 
-    # Liveness audit is always on: a configured-ON aux loss that never consumes
-    # its aux input ERROR-logs with a greppable `LIVENESS:` prefix at step 25 and
-    # run end. This flag escalates that to a hard abort.
+    # The liveness audit is always on (ERROR log with a `LIVENESS:` prefix);
+    # this flag escalates it to a hard abort.
     parser.add_argument(
         "--liveness_strict",
         action="store_true",
@@ -530,10 +526,8 @@ def min_snr_weighting(sigmas: torch.Tensor, gamma: float) -> torch.Tensor:
     Rectified flow regresses ``ε - x`` (a velocity), so the v-pred form is the
     right analog: with ``SNR(σ) = ((1-σ)/σ)²`` the weight peaks where ``SNR = γ``
     (σ ≈ 0.31 at γ=5) and rolls off toward both ends. The high-σ roll-off is the
-    point — ``bench/grad_init/README.md`` §gradient noise scale measured σ>0.5
-    samples carrying 4–10× the noise energy of low-σ ones for comparable signal
-    (``B_simple`` 111/81 vs 8/15 per band), so they buy less per step than a
-    uniform weighting spends on them.
+    point: σ>0.5 samples carry 4–10× the gradient noise of low-σ ones for
+    comparable signal (``bench/grad_init/README.md``).
     """
     snr = ((1.0 - sigmas) / sigmas.clamp_min(1e-4)) ** 2
     return snr.clamp_max(gamma) / (snr + 1.0)
@@ -573,12 +567,9 @@ def min_snr_normalizer(
 def compute_loss_weighting_for_anima(
     weighting_scheme: str, sigmas: torch.Tensor, args=None
 ) -> torch.Tensor:
-    """Compute loss weighting for Anima training.
-
-    Same schemes as SD3 plus ``min_snr`` (Anima-specific: the v-pred Min-SNR-γ
-    form, mean-1 normalized over the run's σ density). ``args`` supplies
-    ``min_snr_gamma`` and the density knobs; it is optional so callers that only
-    use the σ-only schemes keep the two-argument form.
+    """Loss weighting for Anima training: the SD3 schemes plus ``min_snr`` (the
+    v-pred Min-SNR-γ form, mean-1 normalized over the run's σ density). ``args``
+    supplies ``min_snr_gamma`` and the density knobs; only ``min_snr`` needs it.
     """
     if weighting_scheme == "sigma_sqrt":
         weighting = (sigmas**-2.0).float()
@@ -701,10 +692,8 @@ def _get_ema_filename(ckpt_file):
 
 
 def _save_ema_model(ema, dit, ckpt_file, sai_metadata, save_dtype):
-    """Save EMA model as standard format with ema_ prefix.
-
-    Builds the EMA state dict directly from shadow params without mutating model
-    parameters in place — keeps stepwise save side-effect-free on the live model.
+    """Save EMA model as standard format with ema_ prefix, built from the shadow
+    params without mutating the live model.
     """
     if ema.shadow_params is None:
         logger.warning("EMA shadow_params is None (worker process?), skipping EMA save")
@@ -884,16 +873,12 @@ def sample_images(
     prompt_replacement=None,
     network=None,
 ):
-    """Generate sample images during training.
+    """Generate sample images during training from the live model.
 
-    This is a simplified sampler for Anima - it generates images using the current model state.
-
-    Mirrors the validation phase's model handling (see
-    ``library/training/validation.py::run_validation``): the adapter ``network``
-    is put in ``eval()`` for the duration (so dropout / rank-dropout match how
-    samples would be generated at inference) and restored to ``train()``
-    afterward, reusing the live in-GPU model rather than reloading anything. The
-    optimizer eval/train swap is handled by the caller in ``loop.py``.
+    Like ``run_validation``, the adapter ``network`` is in ``eval()`` for the
+    duration (so dropout / rank-dropout don't perturb the previews) and back in
+    ``train()`` afterward. The optimizer eval/train swap is the caller's
+    (``loop.py``).
     """
     if steps == 0:
         if not args.sample_at_first:
@@ -916,8 +901,6 @@ def sample_images(
     dit = accelerator.unwrap_model(dit)
     if text_encoder is not None:
         text_encoder = accelerator.unwrap_model(text_encoder)
-    # Adapter to eval for the duration — same as the validation phase, so
-    # dropout / rank-dropout don't perturb the previews. Restored in finally.
     net = accelerator.unwrap_model(network) if network is not None else None
     if net is not None:
         net.eval()
@@ -957,8 +940,7 @@ def sample_images(
                     prompt_replacement,
                 )
     finally:
-        # Restore RNG + model state even if a prompt errors, so training
-        # resumes exactly where it left off (mirrors run_validation's finally).
+        # Restore RNG + model state even if a prompt errors.
         torch.set_rng_state(rng_state)
         if cuda_rng_state is not None:
             torch.cuda.set_rng_state(cuda_rng_state)
@@ -970,12 +952,8 @@ def sample_images(
         # sample<->train boundary makes VRAM fluctuate; holding the allocator's
         # blocks keeps peak at max(training, sampling).
 
-    # Decode this round's latents now for per-epoch visibility; block-swap runs
-    # defer to end-of-training decode_pending_samples (see _should_decode_inline).
-    # Main process only.
     if accelerator.is_main_process and _should_decode_inline(args):
-        # Evict the DiT to CPU before the VAE decode so the two are never
-        # co-resident, then restore block-swap placement. Mirrors train.py teardown.
+        # The DiT and the VAE decode are never co-resident.
         dit.to("cpu")
         clean_memory_on_device(accelerator.device)
         try:
@@ -989,12 +967,9 @@ def _should_decode_inline(args) -> bool:
     """Whether to decode sample latents to PNG right after each sampling event
     (per-epoch visibility) vs. deferring the whole batch to end of training.
 
-    Explicit ``--sample_decode_inline`` wins; otherwise auto — inline when the
-    run isn't block-swapping (``blocks_to_swap == 0``), deferred when it is. The
-    inline path parks the DiT on CPU before the VAE decode (so the two are never
-    co-resident), so it's OOM-safe either way; the block-swap default still
-    defers because on a tight card the repeated full-DiT CPU↔GPU transfer per
-    sample event isn't worth paying when the end-of-training decode is free."""
+    Explicit ``--sample_decode_inline`` wins; otherwise inline unless the run
+    block-swaps, where the full-DiT CPU↔GPU round trip per sample event costs
+    more than the free end-of-training decode."""
     explicit = getattr(args, "sample_decode_inline", None)
     if isinstance(explicit, str):
         s = explicit.strip().lower()
@@ -1038,11 +1013,8 @@ def _sample_image_inference(
     scale = prompt_dict.get("scale", 7.5)
     seed = prompt_dict.get("seed")
     if seed is None:
-        # No explicit `--d` on this prompt: pin to a stable per-prompt seed so
-        # the same prompt renders from identical noise at every epoch — that's
-        # what makes the per-epoch gallery comparable for spotting overfitting.
-        # Offset by the prompt's index so different prompts still get distinct
-        # noise. Falls back to 0 if the run somehow has no seed.
+        # No `--d`: a stable per-prompt seed (run seed + prompt index), so the
+        # per-epoch gallery renders each prompt from the same noise.
         base_seed = getattr(args, "seed", None)
         seed = (base_seed if base_seed is not None else 0) + int(
             prompt_dict.get("enum", 0)
@@ -1062,17 +1034,11 @@ def _sample_image_inference(
 
     width, height = snap_sample_size(width, height)
 
-    # Train-time sampling runs through the same compiled blocks as training. The
-    # compile token budget already covers the prompts present at startup
-    # (library.anima.trainer.data.sample_prompt_token_counts), but prompts are re-read from disk
-    # at every sample event — a resolution added mid-run can fall outside the
-    # dynamic-seq mark_dynamic range and would crash the run with a
-    # ConstraintViolationError (#42). Skip it instead.
+    # Prompts are re-read at every sample event; a resolution added mid-run can
+    # fall outside the compiled dynamic-seq bands and raise
+    # ConstraintViolationError, so skip it (budget: data.sample_prompt_token_counts).
+    # Under --compile_seq_bands an inter-band gap has no graph either.
     seq_len = (width // 16) * (height // 16)
-    # Band-aware: under --compile_seq_bands the graphs are per-band, so a
-    # seq_len in an inter-band gap has no tight graph even though the union
-    # range "covers" it. _dynamic_seq_bands is [union range] in classic mode,
-    # so the membership check is a plain range check there.
     from library.datasets.buckets import band_for_seq
 
     seq_range = getattr(dit, "_dynamic_seq_range", None)
@@ -1174,8 +1140,7 @@ def _sample_image_inference(
             else:
                 neg_crossattn_emb = neg_pe
 
-    # Deliberately no empty_cache: freed tensors stay in the caching allocator and
-    # are reused, keeping VRAM flat instead of the shrink-then-regrow churn empty_cache causes.
+    # No empty_cache: reusing the allocator's blocks keeps VRAM flat.
     latents = do_sample(
         height,
         width,
@@ -1212,12 +1177,10 @@ def _sample_image_inference(
 def decode_pending_samples(accelerator: Accelerator, args, vae) -> None:
     """Decode the sample latents stashed during training into PNGs.
 
-    Called once from train.py after the training loop tears down (optimizer /
-    gradient / block-swap buffers freed → max GPU headroom). Loads the VAE to
-    GPU a single time, decodes every ``output_dir/sample/latents/*.pt`` into a
-    PNG in ``output_dir/sample/``, then parks the VAE back. Each latent file is
-    removed after a successful decode; a failed one is left on disk so it can be
-    recovered. No-op when sampling was disabled or the VAE isn't available.
+    Runs after each sampling event when :func:`_should_decode_inline`, and once
+    after the training loop tears down. Decodes every
+    ``output_dir/sample/latents/*.pt`` into ``output_dir/sample/`` under one VAE
+    residency; a latent file is removed only after a successful decode.
     """
     if vae is None:
         return
@@ -1298,20 +1261,13 @@ def sample_image_latents(
     ``(1, 16, 1, H//8, W//8)`` (on ``accelerator.device``, ``latent_dtype(dit, dit.dtype)``)
     WITHOUT decoding to pixels.
 
-    Splitting the VAE decode out of the sample step lets callers park the
-    DiT off-GPU before bringing the VAE on-device — CMMD val keeps the DiT
-    and the VAE from sharing the GPU (peak = one model, not both). Pair with
+    Splitting the decode out lets callers park the DiT off-GPU before the VAE
+    comes on (CMMD val: peak = one model). Pair with
     :func:`decode_latents_to_image`.
 
-    ``crossattn_emb`` is the prepared cross-attention embedding (already
-    LLM-adapter'd and padded to the model's expected length); CMMD val
-    builds it from cached TE outputs so we don't re-run the text encoder.
-
+    ``crossattn_emb`` is already LLM-adapter'd and max-padded.
     ``clean_cache=False`` skips the gc / ``empty_cache`` bracketing so a
-    caller that samples many items back-to-back (CMMD val) keeps the CUDA
-    allocator pool warm — the per-item denoise scratch is freed by refcount
-    and reused by the next item, instead of being handed back to the driver
-    and re-allocated each time (which also makes VRAM visibly sawtooth).
+    back-to-back caller keeps the allocator pool warm.
     """
     height = max(64, height - height % 16)
     width = max(64, width - width % 16)
@@ -1347,9 +1303,8 @@ def decode_latents_to_image(vae, latents: torch.Tensor, device) -> torch.Tensor:
     """Decode sampled 5D latents to a ``[3, H, W]`` pixel tensor in
     ``[-1, 1]``.
 
-    The VAE is assumed to already be on ``device`` — callers own the VAE's
-    on/off-GPU lifecycle so a whole batch can be decoded under one VAE
-    residency (CMMD val decodes every sample with the DiT parked on CPU).
+    The VAE must already be on ``device``; callers own its residency so a
+    whole batch decodes under one.
     """
     decoded = vae.decode_to_pixels(latents.to(device, dtype=vae.dtype))
     image = decoded.float()[0]
@@ -1376,12 +1331,8 @@ def sample_image_to_tensor(
 ) -> torch.Tensor:
     """Sample one image and return the decoded pixel tensor in ``[-1, 1]``.
 
-    Sibling of :func:`_sample_image_inference` that skips disk I/O and the
-    PIL conversion. Returned tensor is ``[3, H, W]`` float (on
-    ``accelerator.device``), suitable for direct PE-Core encoding. This is the
-    sample-then-decode convenience wrapper (VAE shuttled on/off GPU around the
-    single decode); the two-model-residency-aware CMMD path drives
-    :func:`sample_image_latents` + :func:`decode_latents_to_image` directly.
+    ``[3, H, W]`` float on ``accelerator.device``, no disk I/O; the VAE is
+    shuttled on/off GPU around the single decode.
     """
     latents = sample_image_latents(
         accelerator=accelerator,

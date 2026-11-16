@@ -34,10 +34,9 @@ def save_safetensors_with_hashes(
 ) -> None:
     """Write ``state_dict`` to ``file`` as safetensors (or .pt fallback).
 
-    For ``.safetensors`` paths, stamps ``sshs_model_hash`` / ``sshs_legacy_hash``
-    into the metadata via ``precalculate_safetensors_hashes``. The hash precalc
-    only sees ``ss_``-prefixed keys, so callers can add non-prefixed keys after
-    without invalidating the hash.
+    ``.safetensors`` paths get ``sshs_model_hash`` / ``sshs_legacy_hash`` stamped.
+    The hash only sees ``ss_``-prefixed keys, so non-prefixed keys added later
+    do not invalidate it.
     """
     if os.path.splitext(file)[1] == ".safetensors":
         from safetensors.torch import save_file

@@ -4,10 +4,9 @@ Two levers, both independent of the block swapper in ``library/runtime/blockswap
 
 **Attention backend.** With ``use_kv_cache=True`` (the pipeline default) step 0
 prefills and every later step decodes, so a per-processor backend covers
-``steps - 1`` of the loop. There is little left to win there: SDPA already
-dispatches the maskless decode attention to FlashAttention-2
-(``pytorch_flash::flash_fwd_kernel``), so an explicit ``flash`` measures ±0. The
-masked prefill segments are the attention left on a slow path.
+``steps - 1`` of the loop. SDPA already sends the maskless decode attention to
+FlashAttention-2, so an explicit ``flash`` gains nothing; the masked prefill
+segments are what stays on a slow path.
 
 **Block compilation.** The decode shape is compiled by default
 (``segments is None``). The prefill branch runs a Python loop over per-segment

@@ -140,12 +140,10 @@ class _LoRAProj(nn.Module):
         self.scale = alpha / r if r > 0 else 1.0
         self.lora_down = nn.Linear(in_dim, r, bias=False)
         self.lora_up = nn.Linear(r, out_dim, bias=False)
-        # Kaiming uniform on down, zeros on up so the delta is exactly zero at step 0.
+        # Zero up: the delta is zero at step 0.
         nn.init.kaiming_uniform_(self.lora_down.weight, a=math.sqrt(5))
         nn.init.zeros_(self.lora_up.weight)
-        # SmoothQuant-style per-channel scaling: absorb s into lora_down, store
-        # inv_scale=1/s_norm; forward applies x*inv_scale (output-preserving,
-        # rebalances per-column grad). See scripts/calibration/cond_stream_profile.py.
+        # Per-channel scaling, as lora_modules.base._absorb_channel_scale.
         self._has_channel_scale = False
         if channel_scale is not None:
             inv_scale = _absorb_channel_scale(self.lora_down.weight.data, channel_scale)
@@ -200,8 +198,7 @@ def create_network(
     adaln_rank = int(kwargs.get("adaln_rank", DEFAULT_ADALN_RANK) or DEFAULT_ADALN_RANK)
     adaln_alpha = float(kwargs.get("adaln_alpha", 0.0) or 0.0)  # <=0 → √r law
 
-    # Body LoRA (opt-in) — the reading path the adapter-only
-    # form leaves frozen. train_llm_adapter needs the adapter live
+    # Body LoRA (opt-in). train_llm_adapter needs the adapter live
     # (cache_llm_adapter_outputs=false + a prompt_embeds TE cache).
     train_target = _as_bool(kwargs.get("train_target"))
     target_rank = int(
@@ -578,11 +575,9 @@ class EasyControlNetwork(AdapterNetworkBase):
             self.cond_lora_ffn2 = None
 
         # Target-stream adaln LoRA (opt-in): per-block, per-branch delta on the
-        # AdaLN-LoRA up-projections. Applied ONLY on the two-stream / cached-KV
-        # target paths — the no-cond fallback runs original Block.forward, so
-        # the delta is cond-gated by construction ("no reference = exact
-        # baseline DiT" survives). Zero-init up keeps step-0 equivalence.
-        # Rationale + sizing: docs/anima/methods/adaln.md.
+        # AdaLN-LoRA up-projections, applied only on the cond-active paths (the
+        # no-cond fallback runs the original Block.forward, so no reference =
+        # baseline DiT). Zero-init up. docs/anima/methods/adaln.md.
         self.train_adaln = bool(train_adaln)
         self.adaln_rank = int(adaln_rank)
         self.adaln_in_dim = int(adaln_in_dim)
@@ -623,8 +618,7 @@ class EasyControlNetwork(AdapterNetworkBase):
             self.adaln_lora_cross_attn = None
             self.adaln_lora_mlp = None
 
-        # Body LoRA (opt-in): the ext row → pixel path that
-        # the adapter-only form leaves with zero trainable weights.
+        # Body LoRA (opt-in), trainable weights on the ext row → pixel path:
         # (1) target-stream deltas on self-attn qkv/out, cross-attn q/kv and
         #     mlp ffn1/ffn2 — applied only on the cond-active paths (the
         #     no-cond fallback runs the original Block.forward), so they are
@@ -898,13 +892,10 @@ class EasyControlNetwork(AdapterNetworkBase):
     ):
         """torch.compile each block's two-stream cond forward.
 
-        GOTCHA: ``compile_blocks()`` only reaches the DiT's own ``block._forward``;
-        the cond-on training path routes through ``_two_stream_inner`` instead
-        (see ``_make_patched_block_forward``), so without this call the entire
-        cond stream runs eager and ``torch_compile`` is a no-op for EasyControl.
-        Mirrors compile_blocks (``backend=inductor``, ``dynamic=False``, same
-        ``mode``); flash attention may graph-break, which is fine. Call AFTER
-        apply_to (compile-after-apply invariant).
+        Required for a compiled cond stream (see the module GOTCHA). Mirrors
+        compile_blocks (``backend=inductor``, ``dynamic=False``, same ``mode``);
+        flash attention may graph-break. Call AFTER apply_to
+        (compile-after-apply invariant).
 
         ``dynamic_seq`` collapses the per-(target × cond) token-count graph
         cascade to one graph — BOTH seq axes vary here, so the patched forward
@@ -1786,10 +1777,8 @@ def _make_patched_block_forward(
 
         return x_B_T_H_W_D, cond_x_B_S_D
 
-    # Expose the inner on the block so compile_cond_stream() can swap a compiled
-    # version in — compile_blocks() never reaches it (see module docstring
-    # GOTCHA). patched_forward reads the attribute per call so the swap takes
-    # effect at once.
+    # Exposed so compile_cond_stream() can swap in a compiled version;
+    # patched_forward reads the attribute per call.
     block._easycontrol_two_stream_inner = _two_stream_inner
 
     def patched_forward(

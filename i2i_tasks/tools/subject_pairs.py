@@ -50,11 +50,9 @@ DEFAULT_CONFIG = "i2i_tasks/configs/subject.toml"
 
 
 def _blueprint_text() -> str:
-    # `{name}` placeholders interpolate from the i2i task file's `name`
-    # at train time (see _resolve_blueprint_path). cache_dir points at the
-    # SHARED corpus cache on purpose — both pair members are ordinary corpus
-    # images, so target latents + TE/PE variants are reused, not re-encoded
-    # (it is outside post_image_dataset/i2i/ so slug rerouting skips it).
+    # `{name}` placeholders interpolate from the i2i task file's `name` at
+    # train time (see _resolve_blueprint_path). cache_dir is the shared corpus
+    # cache; it sits outside post_image_dataset/i2i/, so slug rerouting skips it.
     return f"""{_BLUEPRINT_SENTINEL}
 # Cross-image subject pairs wired as an EasyControl control task. staging/ holds
 # symlinks to the resized corpus for every mined TARGET; pairs.json (sibling of

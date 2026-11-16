@@ -1,34 +1,20 @@
 """``KnobSection``s drawn from ``anime_tools`` stage schemas.
 
-The package already turns each stage's request dataclass into a JSON form
-schema (``anime_tools.gui.stages.schema`` — kind / default / choices / help /
-group / advanced / gate / bound roots) and a form payload back into the
-request's argv with the request's own validation (``build_argv``). This
-module is the trainer-side half of that seam:
+The package turns each stage's request dataclass into a JSON form schema
+(``anime_tools.gui.stages.schema``) and a form payload back into argv with the
+request's own validation (``build_argv``). This module is the trainer side:
 
-- **Qt-free** (top of the file): :func:`load_stage_schemas`,
-  :func:`visible_fields`, :func:`argv_for`, the field → :class:`Knob` adapter
-  (:func:`knob_for`), the ``preprocess.toml`` seeding
-  (:func:`seeded_defaults`), the ``[variant.stages.*]`` persistence helpers
-  (:func:`persistable_values` / :func:`merge_stages_into_meta` /
-  :func:`load_stage_values`) and the i18n hooks (:func:`label_for` /
-  :func:`help_for` / :func:`choice_label_for`) reading the overlay in
-  ``gui/explanations/guides/<lang>/_stage_fields.json`` keyed
-  ``<stage_id>.<dest>``, falling back to the schema's English.
+- **Qt-free** (top): schema loading, field visibility, the field → :class:`Knob`
+  adapter, ``preprocess.toml`` seeding, ``[variant.stages.*]`` persistence and
+  the i18n hooks (overlay ``gui/explanations/guides/<lang>/_stage_fields.json``
+  keyed ``<stage_id>.<dest>``, English from the schema as fallback).
 - **Qt** (bottom, guarded): :class:`StageFormSection`, a ``KnobSection`` that
-  renders one schema — bool → checkbox, int/float → spin (free text when the
-  default is ``None``), str → line edit, enum → combo, list → csv line edit,
-  path → line edit + ``…`` chooser (dir vs file by ``path_kind``), ``gate`` →
-  ``enabled_by``, ``advanced`` fields inside a fold — plus the trainer-native
-  rows a section carries beside the stage's own (the dataset roots): those
-  are ``knobs.py`` rows, kept in ``knob_widgets`` and
-  read back by :meth:`StageFormSection.knob_values`.
+  renders one schema, plus trainer-native ``knobs.py`` rows beside it
+  (``knob_widgets`` / :meth:`StageFormSection.knob_values`).
 
-The trainer owns a few dests per stage that its chain fills at run time
-(:data:`TRAINER_FIELDS`: ``recursive``, the variant sidecar knobs, the
-tokenizer dirs, a replay report); they are hidden like the bound roots.
-Everything the form shows travels to ``tasks.py`` as ``{dest: value}`` under
-:data:`STAGE_VALUES_ENV`, where ``scripts/tasks/_common.request_from_form``
+Dests the trainer's chain fills at run time (:data:`TRAINER_FIELDS`) are hidden
+like the bound roots. The form travels to ``tasks.py`` as ``{dest: value}``
+under :data:`STAGE_VALUES_ENV`, where ``scripts/tasks/_common.request_from_form``
 fills the roots and builds the request through ``build_argv``.
 """
 
@@ -66,17 +52,15 @@ STAGE_VALUES_ENV = "PREPROCESS_STAGES_JSON"
 ``{stage_id: {dest: value}}``. Read by
 ``scripts/tasks/_common.gui_stage_values``."""
 
-# ``--apply`` is the run bar's Dry-run / Apply choice, not a form row: the
-# package's ``build_argv`` sets it from its ``apply`` keyword regardless of
-# what the form sent, so a checkbox for it would be dead weight.
+# ``--apply`` comes from ``build_argv``'s ``apply`` keyword (the run bar),
+# whatever the form sends, so it gets no row.
 _RUN_BAR_FIELDS: frozenset[str] = frozenset({"apply"})
 
 # ``path`` fields that are globs, not files — no ``…`` chooser.
 _NO_BROWSE: frozenset[str] = frozenset({"path_pattern"})
 
-# Kinds edited as csv text and sent as a list. ``masks`` is the SAM stage's
-# ``ROLE:KIND:VALUE`` region list (anime_tools 0.7.4); the package's web GUI
-# draws a row editor for it, this form keeps the csv line.
+# Kinds edited as csv text and sent as a list (``masks``: the SAM stage's
+# ``ROLE:KIND:VALUE`` region list).
 _LIST_KINDS: frozenset[str] = frozenset({"list", "masks"})
 
 TRAINER_FIELDS: dict[str, frozenset[str]] = {
@@ -658,8 +642,7 @@ else:
             return line("" if default is None else str(default))
 
         def _with_browse(self, edit: QWidget, fd: dict) -> QWidget:
-            """The editor plus a ``…`` chooser (dir vs file per ``path_kind``).
-            A neutral ``QPushButton`` — not an action button, no inline color."""
+            """The editor plus a ``…`` chooser (dir vs file per ``path_kind``)."""
             wrap = QWidget()
             row = QHBoxLayout(wrap)
             row.setContentsMargins(0, 0, 0, 0)

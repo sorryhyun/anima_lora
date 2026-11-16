@@ -5,8 +5,7 @@ from the shared bag into that subject's clause (repeated subjects may repeat a
 tag), only hair / eye color stay one per subject, and a man the caption counts
 gets a clause of his own unless it is a POV picture. Each subject mask grows by
 ``mask_dilate`` px before the crop tagger sees it, so an object in hand lands in
-its holder's clause. Settled on MOSS (caststation A/B, 2026-11-15) and adopted for
-Anima the same day (ama mitsuki A/B, ``post_image_dataset/capab``).
+its holder's clause. Shared by the MOSS and Anima caches.
 """
 
 from __future__ import annotations

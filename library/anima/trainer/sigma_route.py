@@ -23,8 +23,7 @@ _YARNSIG_OFF = frozenset({"", "0", "off", "no", "none", "false"})
 def route(args):
     """Parsed ``--sigma_lowres_route`` as ``(native_edge, demote_edge)``.
 
-    Defaults to the measured-safe 1024:896 (``SIGMA_DEMOTE_ROUTE``);
-    validates the shape once per call site.
+    Defaults to the measured-safe 1024:896 (``SIGMA_DEMOTE_ROUTE``).
     """
     raw = str(getattr(args, "sigma_lowres_route", None) or "1024:896")
     try:
@@ -40,11 +39,10 @@ def route(args):
 
 def yarnsig_params(args):
     """Parsed ``--sigma_lowres_yarnsig`` as ``(alpha, beta, center, gamma)``,
-    or None when off. Validates once; cached on the args namespace.
-    **Default-on with ``--sigma_lowres``** (docs/anima/optimizations/sigma_lowres.md):
-    an unset flag resolves to the operating point, not off. Opt out with
-    ``--sigma_lowres_yarnsig off``. Written back onto ``args`` so the
-    snapshot records what actually ran.
+    or None when off; cached on the args namespace. **Default-on with
+    ``--sigma_lowres``** (docs/anima/optimizations/sigma_lowres.md): an unset
+    flag resolves to the operating point, written back onto ``args`` so the
+    snapshot records what ran. Opt out with ``--sigma_lowres_yarnsig off``.
     """
     raw = getattr(args, "sigma_lowres_yarnsig", None)
     if raw is None and getattr(args, "sigma_lowres", False):
@@ -79,10 +77,9 @@ def _rule_suffix(rule):
 def rule_cfg(args, rule):
     """``(threshold, threshold_max, span_spec)`` for one rule.
 
-    Written as LITERAL ``getattr(args, "…")`` calls, one branch per rule,
-    not a computed ``f"sigma_lowres_threshold{sfx}"`` — the H2 drift guard
-    (``tests/config_closure.py``) AST-scans for literal names only, so a
-    computed name would be invisible to it.
+    Written as literal ``getattr(args, "…")`` calls, one branch per rule:
+    the drift guard (``tests/config_closure.py``) AST-scans for literal
+    names only.
     """
     if rule == 1:
         return (
@@ -193,11 +190,9 @@ def span_allows(args, step_idx, rule=1):
 
 
 def validate_rules(args):
-    """Validate the whole sigma_lowres surface UP FRONT, at setup — not on
-    the first train forward (after model load/adapter attach/caching).
-    Rejects ``--sigma_lowres_route2`` without both σ bounds: rule 2 has
-    PRIORITY, so an unbounded gate would shadow the primary rule across
-    the whole σ>0.5 half-line. Also validates span specs up front.
+    """Validate the whole sigma_lowres surface at setup, not on the first
+    train forward. Rejects ``--sigma_lowres_route2`` without both σ bounds:
+    rule 2 has priority, so an unbounded gate would shadow the primary rule.
     """
     r1 = route(args)
     r2 = route2(args)
@@ -236,7 +231,6 @@ def validate_rules(args):
             f"--sigma_lowres_threshold "
             f"({getattr(args, 'sigma_lowres_threshold', 0.5)})"
         )
-    # Parse both spans and yarnsig here so a typo raises at setup.
     span_params(args, 1)
     span_params(args, 2)
     yarnsig_params(args)
@@ -340,10 +334,8 @@ class SigmaDemoter:
         self._dead_rule_warned: set[int] = set()
 
     def _warn_dead_rule(self, args, rule):
-        """Warn once per rule when its gate passed but the sibling latent for
-        that route is absent from the batch — the rule is configured but dead
-        (would otherwise silently fall through and train as a plain
-        single-route arm).
+        """Warn once per rule when its gate passed but the batch has no
+        sibling latent for that route (the rule would silently fall through).
         """
         if rule in self._dead_rule_warned:
             return
@@ -415,13 +407,10 @@ class SigmaDemoter:
             return latents, None
         self._seen += 1
         total = self._seen
-        # Priority router: rule 2 (deep route, own gate/span) > rule 1 >
-        # native. A rule whose sibling latent is missing falls through to
-        # the next (partial-emit degrade, mirroring the single-rule path).
+        # Priority router: rule 2 > rule 1 > native. A rule whose sibling
+        # latent is missing falls through to the next.
         choice = demote_choice(args, sigmas_flat, step_idx)
         if choice == 2 and demoted2 is None:
-            # Un-emitted deep route: falls through to rule 1 and looks
-            # healthy, so warn explicitly.
             self._warn_dead_rule(args, 2)
             choice = (
                 1

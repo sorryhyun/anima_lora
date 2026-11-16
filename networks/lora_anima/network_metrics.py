@@ -1,10 +1,6 @@
-# Metrics / diagnostics mixin for LoRANetwork.
-#
-# Pure read-side machinery — balance loss, router stats, up-weight grad-norm
-# diagnostics, and the log-step ``metrics`` aggregator.
-# These methods only read instance state (``self.cfg``, ``self.unet_loras``,
-# the router handles, the per-step caches) that network.py owns. Mixed into
-# ``LoRANetwork``.
+# Read-side metrics mixin for LoRANetwork: balance loss, router stats,
+# up-weight grad-norm diagnostics and the log-step ``metrics`` aggregator.
+# Reads only state that network.py owns.
 
 import math
 from typing import Dict, List, Optional, Union
@@ -18,11 +14,10 @@ class _NetworkMetricsMixin:
     def step_balance_loss_warmup(self, global_step: int, max_train_steps: int) -> None:
         """Activate the MoE load-balance penalty once training crosses warmup.
 
-        Step function: ``_balance_loss_weight`` holds at 0 during the first
-        ``_balance_loss_warmup_ratio`` of steps, then flips to
-        ``_balance_loss_target_weight`` — letting the router specialize before
-        the penalty kicks in, then preventing single-expert collapse after.
-        No-op unless both attrs are attached (hydra post_init) and ratio > 0.
+        ``_balance_loss_weight`` holds at 0 for the first
+        ``_balance_loss_warmup_ratio`` of steps so the router can specialize,
+        then flips to ``_balance_loss_target_weight``. No-op unless hydra
+        post_init attached both attrs and ratio > 0.
         """
         target = float(getattr(self, "_balance_loss_target_weight", 0.0) or 0.0)
         ratio = float(getattr(self, "_balance_loss_warmup_ratio", 0.0) or 0.0)
@@ -110,10 +105,8 @@ class _NetworkMetricsMixin:
         return out
 
     def get_router_entropy(self) -> Optional[float]:
-        """Mean per-sample normalized entropy of hydra router gates, averaged
-        across modules. None when no hydra module cached a gate this step. Thin
-        wrapper over :meth:`get_router_stats` for the progress-bar postfix;
-        prefer ``get_router_stats`` for logging.
+        """Mean normalized router entropy across hydra modules (progress-bar
+        postfix), or None when no gate was cached this step.
         """
         stats = self.get_router_stats()
         return stats.get("entropy_mean") if stats else None
@@ -128,17 +121,15 @@ class _NetworkMetricsMixin:
         set and ``num_sigma_buckets > 1`` — per-σ-bucket usage + bucket counts.
         Empty dict when no hydra module cached a gate this step.
 
-        Vectorized: gates with matching E are stacked into one ``(M, B, E)``
-        tensor reduced in a single pass per metric (~10 launches regardless of
-        module count vs ~500 for the per-module loop — see
+        Gates with matching E are stacked into one ``(M, B, E)`` tensor so each
+        metric is one pass (~10 launches vs ~500 per-module;
         ``docs/anima/optimizations/hydra_analysis.md``). Memoized on
         ``_router_stats_cache``, invalidated by ``clear_step_caches``.
         """
         if self._router_stats_cache is not None:
             return self._router_stats_cache
 
-        # Collect gates with matching E; mismatched-E modules are skipped
-        # (aggregating different-length usage vectors isn't meaningful).
+        # Modules with a different E are skipped.
         gates: List[torch.Tensor] = []
         E_ref: Optional[int] = None
         for lora in self.unet_loras + self.text_encoder_loras:
@@ -236,9 +227,9 @@ class _NetworkMetricsMixin:
         fires where T-LoRA clamps rank to ``min_rank``, so rank columns
         ``[min_rank, R)`` of its ``lora_up`` accumulate near-zero grad (dead
         capacity). Splits the L2 norm at the ``min_rank`` boundary, also emits
-        per-σ-band sums and the per-Linear router grad. Sum-of-squares are stashed on-device (the D2H
-        is deferred to ``get_up_grad_stats``); must run between
-        ``accelerator.backward(loss)`` and ``optimizer.zero_grad``.
+        per-σ-band sums and the per-Linear router grad. Stashed on-device (D2H in
+        ``get_up_grad_stats``); must run between ``accelerator.backward(loss)``
+        and ``optimizer.zero_grad``.
         """
         if not getattr(self, "_use_hydra", False):
             self._last_up_grad_stats = {}
@@ -247,8 +238,7 @@ class _NetworkMetricsMixin:
         use_tlora = bool(self.cfg.use_timestep_mask)
         min_rank = int(self.cfg.min_rank) if use_tlora else 0
         max_rank = int(self.cfg.lora_dim)
-        # Clamp min_rank to [0, R]: min_rank > lora_dim would empty the "above"
-        # slice and silently no-op the diagnostic.
+        # min_rank > lora_dim would empty the "above" slice.
         min_rank = max(0, min(min_rank, max_rank))
         has_tlora_split = use_tlora and 0 < min_rank < max_rank
 
@@ -256,8 +246,7 @@ class _NetworkMetricsMixin:
         # stalls the post-backward boundary by 100s of ms on log steps).
         up_grads: List[torch.Tensor] = []  # each (E, out_i, R)
         expert_band_ref: Optional[torch.Tensor] = None
-        # Per-layer router-weight grad sum-of-squares.
-        # Skipped under the network-level GlobalRouter — no per-Linear router then.
+        # Per-Linear router grad; absent under the GlobalRouter.
         router_grad_sq: Optional[torch.Tensor] = None
 
         for lora in self.unet_loras + self.text_encoder_loras:
@@ -294,8 +283,7 @@ class _NetworkMetricsMixin:
                 below_per_exp = sq_up[:, :, :min_rank].sum(dim=(1, 2))
                 above_per_exp = sq_up[:, :, min_rank:].sum(dim=(1, 2))
 
-        # Stash on-device only — D2H deferred to get_up_grad_stats so non-log
-        # steps avoid the cudaStreamSynchronize that .cpu().tolist() forces.
+        # On-device only, so non-log steps skip the .cpu() sync.
         out: Dict[str, object] = {
             "min_rank": [float(min_rank)],
             "num_buckets": [float(self.cfg.num_sigma_buckets)],
@@ -308,9 +296,7 @@ class _NetworkMetricsMixin:
         if router_grad_sq is not None:
             out["router_grad_sq"] = router_grad_sq.reshape(1)
 
-        # Per-band aggregation: scatter per-expert sum-of-squares along
-        # _expert_band. Only meaningful when σ-bucket partition is active
-        # (otherwise band assignment is undefined).
+        # Per-band sums; band assignment exists only under σ-bucket partition.
         if (
             expert_band_ref is not None
             and bool(self.cfg.specialize_experts_by_sigma_buckets)
@@ -335,9 +321,8 @@ class _NetworkMetricsMixin:
     def get_up_grad_stats(self) -> Dict[str, List[float]]:
         """Materialize the on-device stash from ``capture_up_grad_stats``.
 
-        D2H is deferred to here so non-log steps don't pay the sync — the
-        capture must run between backward and zero_grad (when ``.grad`` is
-        live), but the metric only consumes the result on log steps.
+        The capture runs every step while ``.grad`` is live; the sync is paid
+        only here, on log steps.
         """
         raw = self._last_up_grad_stats
         if not raw:
@@ -353,10 +338,8 @@ class _NetworkMetricsMixin:
     def metrics(self, ctx: MetricContext) -> dict[str, float]:
         """Emit log-step keys owned by the LoRA network.
 
-        Covers hydra balance loss, router stats, and hydra up-weight grad-norm
-        diagnostics. Each block returns nothing if its driver is off
-        (``_use_hydra == False``, etc.) so the cost on inactive paths is one
-        attr check.
+        Hydra balance loss, router stats and up-weight grad norms; each block
+        is skipped when its driver is off.
         """
         out: dict[str, float] = {}
 
@@ -419,9 +402,8 @@ class _NetworkMetricsMixin:
             if up.get("router_grad_sq"):
                 out["hydra/router_grad_norm"] = float(up["router_grad_sq"][0]) ** 0.5
 
-        # GlobalRouter stats (network-level routing). Mirrors the per-Linear
-        # hydra keys under the ``fera/`` namespace (kept for TB continuity). ``_last_gates`` is
-        # None outside a step that fired the router.
+        # GlobalRouter stats under the ``fera/`` namespace (TensorBoard
+        # continuity). ``_last_gates`` is None until the router fires.
         if (
             self.global_router is not None
             and self.global_router._last_gates is not None

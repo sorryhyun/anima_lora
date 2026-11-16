@@ -4,11 +4,9 @@ from typing import NamedTuple, Tuple
 
 # The free-fit tier / band / solver geometry is owned by ``anime_tools.buckets``
 # and re-exported here, so the package's resize stage and ``make
-# preprocess-resize`` land an image on the same ``(W, H)`` by construction. Trainer-only helpers — token-family
-# budgets for compile, per-band clustering, σ-demote siblings, the frozen DCW
-# aspect set, ``BucketManager`` — stay below. Torch-free and numpy-free on the
-# import path (numpy is imported lazily inside BucketManager) so the GUI can
-# read the tier table on the UI thread.
+# preprocess-resize`` land an image on the same ``(W, H)``. Trainer-only helpers
+# stay below. Torch-free and numpy-free on the import path (numpy is imported
+# lazily inside BucketManager) so the GUI can read the tier table on the UI thread.
 from anime_tools.buckets import (  # noqa: F401 — re-exports
     ALLOWED_TARGET_RES,
     DEFAULT_FREEFIT_MAX_RATIO,
@@ -22,11 +20,7 @@ from anime_tools.buckets import (  # noqa: F401 — re-exports
     freefit_bucket,
 )
 
-# ``EDGE_TOKEN_BANDS`` — per-tier token-count bands, the free-fit search range
-# for each tier edge (token count = (W//16)*(H//16), capped at 256/axis by
-# rope). ``--target_res`` selects active tiers; ``choose_edge`` picks the one
-# that resizes an image least; ``freefit_bucket`` lands the native-aspect
-# (W, H) inside the band. Design: _archive/proposals/free_aspect_token_band_resize.md.
+# Token count = (W//16)*(H//16), capped at 256/axis by rope.
 
 _band = band_for_tier
 
@@ -83,12 +77,10 @@ def token_counts_for_sample_prompts(prompts) -> set:
 def cluster_token_bands(counts, rel_gap: float = 0.10) -> "list[tuple[int, int]]":
     """Cluster a token-count set into per-tier ``(lo, hi)`` bands.
 
-    Data-driven: sort the *actual*
-    counts and split wherever the relative gap to the previous count exceeds
-    ``rel_gap``. Handles every count source uniformly — tier buckets, sample
-    prompts, σ-demote siblings — with no ``EDGE_TOKEN_BANDS`` special-casing:
-    a sample prompt landing between tiers becomes its own singleton band, a
-    single-tier pool degenerates to one band.
+    Sort the actual counts and split wherever the relative gap to the previous
+    count exceeds ``rel_gap``, so tier buckets, sample prompts and σ-demote
+    siblings are handled alike (a sample prompt between tiers becomes its own
+    singleton band).
     """
     ordered = sorted({int(c) for c in counts})
     if not ordered:
@@ -135,9 +127,8 @@ def widen_bands(bands, extra: int) -> "list[tuple[int, int]]":
     return [(lo, hi + extra) for lo, hi in bands]
 
 
-# The single measured-safe σ-demote route (1024→896). Other candidate routes
-# (896→768, 1280→1024) failed/differ per their own gradient probe — do not add
-# routes without one (_archive/sigma_lowres/bench/run_sigma_probe.py).
+# The only σ-demote route that passed its gradient probe; add a route only after
+# probing it (_archive/sigma_lowres/bench/run_sigma_probe.py).
 SIGMA_DEMOTE_ROUTE: Tuple[int, int] = (1024, 896)
 
 

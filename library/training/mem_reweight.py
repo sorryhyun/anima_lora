@@ -1,66 +1,48 @@
 """Online per-sample memorization Δ-gap tracker + low-σ loss reweight.
 
-Implements ``_archive/proposals/memorization_lowsigma_reweight.md`` (Arm A): track,
-per dataset item, an EMA of the calibrated loss gap the weight-side MIA probe
-scores offline (``bench/memorization/loss_gap.py``), estimated online during
-training, and smoothly downweight flagged items' FM loss in the low-σ band.
+Tracks, per dataset item, an EMA of the loss gap the offline MIA probe scores
+(``bench/memorization/loss_gap.py``) and smoothly downweights flagged items' FM
+loss in the low-σ band. Design: ``_archive/proposals/memorization_lowsigma_reweight.md``.
 
 THE STATISTIC. On measurement steps, one extra no-grad forward through the
-same trainable DiT with the adapter zeroed (``network.set_multiplier(0)`` —
-the VR control-variate trick, see ``library/training/forward/vr_forward.py``)
-on the *identical* ``(x_t, ε, σ)`` the train step drew. Per item::
+same DiT with the adapter zeroed (``network.set_multiplier(0)``, as in
+``library/training/forward/vr_forward.py``) on the *identical* ``(x_t, ε, σ)``
+the train step drew. Per item::
 
     Δ = log(mse_base + δ) − log(mse_adapted + δ)
-      = R_adapted − R_base            with R = −log(mse + δ)
 
-— exactly the per-probe ``delta`` of ``loss_gap.py``. Pairing on the same
-``(x_t, ε, σ)`` cancels image easiness (the SOLACE flatness confound); a large
-Δ means the adapter specifically learned *this* sample. Positive Δ ⇒ adapter
-more confident than base on this member draw.
+the per-probe ``delta`` of ``loss_gap.py``. Pairing on the same ``(x_t, ε, σ)``
+cancels image easiness (the SOLACE flatness confound); positive Δ means the
+adapter learned *this* sample beyond the base. Both MSEs are raw full-latent
+fp32 means (no masked_loss, no weighting_scheme) to match the offline statistic.
 
-Both MSEs are raw full-latent fp32 means (no masked_loss, no weighting_scheme)
-to stay commensurable with the offline probe's statistic.
-
-MEASUREMENT is restricted to draws with σ ≤ ``sigma_max`` (the band the MIA
-signal lives in, banked: σ ≤ 0.7) and to every K-th train batch
-(``measure_every``). K must stay small — at bs=1, K=1 gives only ~2–4
-measurements per item across a few-hundred-step run, which is why the EMA uses
+MEASUREMENT runs on draws with σ ≤ ``sigma_max`` and every K-th train batch
+(``measure_every``). Items get only a few measurements per run, so the EMA uses
 Adam-style bias correction.
 
-MULTI-DRAW mode (``mem_extra_sigmas`` non-empty): instead of the single train-draw pair, every measurement step scores
-each batch item at a fixed σ grid × antithetic ±ε pairs (mirroring
-``loss_gap.py::confidence``: MSE averaged across all draws *before* the log,
-identical noise for base and adapted). One well-averaged Δ per item per
-visit, and items are measured on EVERY visit — not only low-σ train draws —
-so per-item counts rise ~3× and per-measurement variance drops ~4× at grid
-{0.5, 0.7} × 2 noises. Extra noise comes from a DEDICATED generator so the
-training RNG stream matches a run without measurement.
-Caveat: the grid forwards reuse the train step's per-step adapter
-conditioning — do not combine with σ-conditioned adapter state
-(``use_timestep_mask=true`` or σ/FEI routers); plain-LoRA stacks only.
-Cost: ``2 × len(grid) × n_noise`` no-grad forwards per measurement step.
+MULTI-DRAW mode (``mem_extra_sigmas`` non-empty) scores every batch item on
+every measurement step at a fixed σ grid × antithetic ±ε pairs (MSE averaged
+across draws before the log, as ``loss_gap.py::confidence``), at a cost of
+``2 × len(grid) × n_noise`` no-grad forwards. Its noise comes from a dedicated
+generator so the training RNG stream matches an unmeasured run. The grid
+forwards reuse the train step's adapter conditioning, so do not combine with
+σ-conditioned adapter state (``use_timestep_mask=true`` or σ/FEI routers).
 
 INTERVENTION (mode="reweight") multiplies the per-sample ``loss_weights`` by
 
     w = floor + (1 − floor) · sigmoid((z_thr − z_i) / temp)
 
-for items whose bias-corrected Δ-EMA z-scores (across all items with ≥ 1
-measurement) exceed the threshold — only on σ ≤ sigma_max draws, only after
-``warmup_updates`` total measurements. High-σ draws are untouched: the item
-keeps teaching composition/style, it stops being pixel-copied. mode="measure"
-runs the tracker without touching the loss.
+for items whose bias-corrected Δ-EMA z-score exceeds the threshold, only on
+σ ≤ sigma_max draws and after ``warmup_updates`` measurements. High-σ draws are
+untouched, so the item still teaches composition/style. mode="measure" runs the
+tracker without touching the loss. A step's weight uses state from before that
+step's measurement (no same-step feedback).
 
-The weight for a step is computed from tracker state *before* that step's
-measurement is folded in (strictly causal — no same-step feedback loop).
+STATE is keyed by the dataset ``image_key`` and persisted as
+``<output_dir>/<output_name>_memgap.json`` every few updates and at exit.
 
-STATE is a plain dict keyed by the dataset ``image_key`` (absolute path),
-persisted as ``<output_dir>/<output_name>_memgap.json`` every few updates and
-at process exit, for post-hoc inspection and correlation against the offline
-probe's ``per_item.csv``.
-
-HARD REQUIREMENT: ``blocks_to_swap == 0``. The measurement forward is a second
-DiT forward per step, and the block-swap offloader desyncs on extra forwards;
-train.py raises at setup.
+Requires ``blocks_to_swap == 0``: the block-swap offloader desyncs on the extra
+forward; train.py raises at setup.
 """
 
 from __future__ import annotations
@@ -224,9 +206,8 @@ class MemGapTracker:
             float(s) for s in (getattr(args, "mem_extra_sigmas", None) or [])
         ]
         self.extra_noise = max(1, int(getattr(args, "mem_extra_noise", 2)))
-        # Dedicated noise stream for multi-draw measurement — must NOT touch
-        # the global RNG or the training noise sequence diverges from an
-        # unmeasured run.
+        # Dedicated noise stream: drawing from the global RNG would make the
+        # training noise diverge from an unmeasured run.
         self._noise_seed = int(getattr(args, "seed", None) or 0) + 0x6D656D
         self._noise_gen: torch.Generator | None = None
 

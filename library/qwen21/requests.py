@@ -1,4 +1,4 @@
-"""Typed requests for the two Qwen-Image-2.1 jobs — caching and LoRA training.
+"""Typed requests for the Qwen-Image-2.1 jobs: caching, LoRA training, generation.
 
 Torch-free on purpose: the GUI builds its forms from these dataclasses and must
 not pull torch in at launch. Each field carries its CLI help in ``metadata``, so

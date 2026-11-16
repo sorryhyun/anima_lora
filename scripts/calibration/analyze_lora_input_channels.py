@@ -131,11 +131,9 @@ def parse_args():
     return p.parse_args()
 
 
-# Mirror of `_FUSED_SPLIT` in `networks/lora_save.py`: the runtime fuses qkv/kv
-# into one Linear, but saved checkpoints (and any consumer that uses the
-# split-naming convention) expect separate q/k/v keys. The hooked input is
-# identical for every component (same x feeds q, k, v of a fused projection),
-# so we emit the same per-channel vector under each split key as well.
+# Mirror of `_FUSED_SPLIT` in `networks/lora_save.py`: the runtime fuses qkv / kv
+# into one Linear, but saved checkpoints use split q / k / v keys. The same x feeds
+# every component, so the fused vector is also written under each split key.
 _FUSED_TO_SPLIT_SUFFIXES = (
     (
         "self_attn_qkv_proj",
@@ -150,15 +148,10 @@ def dump_channel_stats_safetensors(
 ):
     """Save full per-input-channel mean_abs vectors keyed by LoRA module name.
 
-    Each entry in `stats` is keyed by a dot-separated module path (e.g.
-    `blocks.0.self_attn.qkv_proj`); we prepend `prefix` and replace dots with
-    underscores to match the `lora_name` format used by `networks/lora_anima/network.py`.
-
-    For fused attention projections (`self_attn.qkv_proj`, `cross_attn.kv_proj`)
-    we additionally emit per-component (`q_proj`/`k_proj`/`v_proj`) entries that
-    share the fused vector — Q, K, V see the same input, so the channel stats
-    are identical, and this lets the file work with both fused-runtime LoRAs and
-    consumers that key off the split saved-checkpoint names.
+    Dotted module paths (`blocks.0.self_attn.qkv_proj`) become `prefix` + the path
+    with dots as underscores, the `lora_name` format of
+    `networks/lora_anima/network.py`; fused projections are mirrored under their
+    split keys (`_FUSED_TO_SPLIT_SUFFIXES`).
     """
     tensors = {}
     for module_path, stat in stats.items():
@@ -184,9 +177,7 @@ def dump_channel_stats_safetensors(
 
 
 def find_sample_stems(dataset_dir, n, seed, per_artist=False, per_artist_n=1):
-    # discover_cached_pairs walks recursively (the dataset is nested by artist
-    # subdir) and pairs each TE sidecar with its latent NPZ; we only add
-    # the flip-variant skip the calibration wants (flip latents live in *_flip*.npz).
+    # Flip latents (*_flip*.npz) are left out of the calibration.
     pairs = [
         c
         for c in discover_cached_pairs(dataset_dir)
@@ -199,8 +190,8 @@ def find_sample_stems(dataset_dir, n, seed, per_artist=False, per_artist_n=1):
 
     rng = np.random.default_rng(seed)
     if per_artist:
-        # Group by immediate subdir of dataset_dir (artist bucket); pick one
-        # stem per bucket so the calibration averages over the full roster.
+        # Group by immediate subdir of dataset_dir (artist bucket) and pick
+        # per_artist_n stems from each, so the calibration covers the full roster.
         dataset_root = os.path.abspath(dataset_dir)
         by_artist = defaultdict(list)
         for s in stems:
@@ -385,10 +376,9 @@ def main():
     sigmas = [float(s.strip()) for s in args.sigmas.split(",") if s.strip()]
     logger.info(f"sigmas: {sigmas}")
 
-    # build_anima encodes the load→apply→(compile) ordering and the device/dtype
-    # + reset_mod_guidance placement. We collect
-    # input stats in eval (for_inference=True): T-LoRA's mask is training-only, so
-    # the inference full-rank forward is the regime channel scaling is consumed in.
+    # Stats are collected in eval (train_mode=False): T-LoRA's mask is
+    # training-only, so the full-rank inference forward is the regime channel
+    # scaling is consumed in.
     args.device = str(device)
     args.dtype = "bf16"
     if args.lora_weight:

@@ -25,10 +25,7 @@ logger = logging.getLogger(__name__)
 #   alpha_fused = n * r                                      # -> LoRAModule scale = 1
 # The per-component alpha is folded into up_fused so the block-diagonal structure
 # reproduces each per-component delta exactly.
-#
-# Component lists / fragment naming live in ``attn_fuse.ATTN_FUSE_SPECS`` (shared
-# with ``lora_save.py``); the scanners below iterate over it via
-# ``iter_split_groups``.
+# Component lists live in ``attn_fuse.ATTN_FUSE_SPECS`` (shared with ``lora_save.py``).
 
 
 def _stack_lora_ups(state_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
@@ -73,8 +70,6 @@ def _refuse_split_hydra_keys(
         routers_w: List[Optional[torch.Tensor]] = []
         routers_b: List[Optional[torch.Tensor]] = []
         inv_scales: List[Optional[torch.Tensor]] = []
-        # Collect any sigma_mlp.* keys per component — they were cloned
-        # across q/k/v at save, so picking the first component is correct.
         sigma_mlp_groups: List[Dict[str, torch.Tensor]] = []
         complete = True
         for suf in suffixes:

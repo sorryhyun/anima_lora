@@ -15,10 +15,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
-import torch  # noqa: F401  (kept for API parity / discriminate_signal device handling)
+import torch  # noqa: F401
 from PIL import Image
 
-# Run from the repo root; `library` is installed editable (`uv sync`).
+# Run from the repo root; `library` is installed editable (`make sync`).
 from library.vision.encoder import encode_pe_from_imageminus1to1  # noqa: F401  (kept for API parity)
 
 # Re-exported so ``outputs`` / ``__main__`` import these from ``.engine``.

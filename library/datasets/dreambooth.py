@@ -26,14 +26,11 @@ from library.datasets.subsets import (
 logger = logging.getLogger(__name__)
 
 
-# Colorization (and other cond≠target tasks) pair a synthetic *condition* latent
-# with each target. Staging (i2i_tasks/colorization/prep.py) selects
-# targets via the descriptor's `[staging].only_data_includes` /
-# `exclude_data_includes` tag filters (net set = only − exclude), backed by the
-# tag scan below (tags come from the caption master in image_dataset/; the
-# colorize targets under post_image_dataset/resized/ have no .txt sidecar). At
-# train time the loader does not re-scan tags — it keeps the targets that have a
-# cached cond latent (the cond_cache_dir branch below).
+# Tag scan behind i2i staging's `[staging].only_data_includes` /
+# `exclude_data_includes` filters (i2i_tasks/colorization/prep.py). Tags come
+# from the caption master in image_dataset/, since the colorize targets under
+# post_image_dataset/resized/ have no .txt sidecar. Training does not re-scan;
+# it keeps the targets that have a cached cond latent.
 _tag_stems_cache: dict = {}
 
 
@@ -246,11 +243,8 @@ class DreamBoothDataset(BaseDataset):
                         validation_split_num=self.validation_split_num,
                     )
 
-            # sample_ratio shrinks only the training pool. The validation pool
-            # is pinned by validation_split_num / validation_split — applying
-            # sample_ratio there would silently reduce the user-requested val
-            # count (e.g. PRESET=half + validation_split_num=16 → 8 items);
-            # val size controls CMMD estimator variance.
+            # sample_ratio shrinks only the training pool; the val count stays
+            # as requested (it sets CMMD estimator variance).
             if (
                 subset.sample_ratio < 1.0
                 and len(img_paths) > 0
@@ -273,13 +267,10 @@ class DreamBoothDataset(BaseDataset):
                 f"found directory {subset.image_dir} contains {len(img_paths)} image files"
             )
 
-            # cond≠target task (cond_cache_dir set): keep only the targets that
-            # actually have a cached condition latent — BEFORE reading captions.
-            # Staging synthesizes a cond + text cache for only a subset of the
-            # shared `resized` corpus while image_dir enumerates all of it;
-            # filtering first keeps the TE-cache check below from warning
-            # "neither caption file nor class tokens" for every unpaired target. A target with no
-            # cond latent would also crash at load time (_load_cond_latent raises).
+            # cond≠target task: keep only targets with a cached condition latent,
+            # before reading captions. Staging covers a subset of the shared
+            # `resized` corpus, so unpaired targets would each warn about a
+            # missing caption and then crash in _load_cond_latent.
             if getattr(subset, "cond_cache_dir", None):
                 from library.io.cache import discover_latents_by_stem
 
@@ -312,16 +303,10 @@ class DreamBoothDataset(BaseDataset):
                     if caption is None or caption == ""
                 ]
             else:
-                # Subset may redirect TE caches to a separate `cache_dir` (e.g.
-                # captions live in image_dataset/ but resized images live in
-                # post_image_dataset/resized/ with caches in
-                # post_image_dataset/lora/). When a TE cache exists for the
-                # image's relative path, missing .txt sidecars are expected,
-                # not an error — training reads the cached prompt embeddings.
-                # Key by (rel_subdir, stem) to support nested cache layouts
-                # where two images can share a stem in different subdirs.
-                # text_cache_dir (when set) holds the TE caches instead of
-                # cache_dir, so scan there to suppress missing-.txt warnings.
+                # An image with a TE cache (in text_cache_dir, else cache_dir)
+                # needs no .txt sidecar: training reads the cached embeddings, so
+                # its missing caption is not warned about. Keyed by
+                # (rel_subdir, stem): nested layouts can repeat a stem.
                 cache_dir = getattr(subset, "text_cache_dir", None) or getattr(
                     subset, "cache_dir", None
                 )
@@ -456,10 +441,8 @@ class DreamBoothDataset(BaseDataset):
                 )
                 continue
 
-            # Kohya-style folder repeats: a `{n}_...` directory component
-            # under image_dir overrides num_repeats with n for the images
-            # inside it; `0_...` drops them from the training pool. Training
-            # only — the validation pool stays at 1 repeat (num_repeats above).
+            # Folder repeats (folder_repeat_count); `0_...` drops the images.
+            # Training only: the validation pool stays at 1 repeat.
             repeats = [num_repeats] * len(img_paths)
             if self.is_training_dataset and getattr(
                 subset, "repeat_by_folder_name", False
@@ -520,9 +503,8 @@ class DreamBoothDataset(BaseDataset):
                 )
                 if getattr(subset, "mask_dir", None):
                     stem = os.path.splitext(os.path.basename(img_path))[0]
-                    # Prefer the nested path that mirrors subset.image_dir →
-                    # mask_dir; fall back to the flat layout so legacy
-                    # masks/merged/ etc. caches keep working.
+                    # Nested path mirroring image_dir first, then the flat
+                    # layout (legacy masks/merged/).
                     candidates: list[str] = []
                     image_dir = getattr(subset, "image_dir", None)
                     if image_dir:

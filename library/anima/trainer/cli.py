@@ -61,7 +61,7 @@ def setup_parser() -> argparse.ArgumentParser:
 NETWORK_KWARG_ALLOWLIST: tuple[str, ...] = _all_network_kwargs()
 
 # Top-level training args that flow through ``net_kwargs`` though they aren't
-# network kwargs. Kept explicit; growth here should be reviewed.
+# network kwargs.
 _EXTRA_FORWARDED_TOP_LEVEL_ARGS: tuple[str, ...] = (
     # Postfix contrastive resets its intra-step reference set on step
     # boundary, so it needs the grad-accum window.
@@ -84,8 +84,6 @@ def resolve_network_kwargs(args) -> dict[str, str]:
         key, value = net_arg.split("=", 1)
         net_kwargs[key] = value
 
-    # Forward known network-arg keys from top-level config (TOML), plus a
-    # small tail of top-level training args network modules still want.
     for key in NETWORK_KWARG_ALLOWLIST + _EXTRA_FORWARDED_TOP_LEVEL_ARGS:
         if (
             key not in net_kwargs

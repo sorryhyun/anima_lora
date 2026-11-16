@@ -160,11 +160,8 @@ def _unread_regions(lines: list, tgt_blocks: list, regions: list, pad_frac) -> s
 
 
 def _paste_mode(gi, g, metrics, has_line, bad, unread, a, tally: _Tally) -> str | None:
-    """How a group is pasted, None when it is not clean. With ``--paste text``
-    the text-only mask (``regions.text_paste_mask``) is tried first, on its
-    own ``seam_text`` / ``leftover_text``; the diff-region mask is the
-    fallback, on the build's ``seam`` / ``leftover`` and ``nontext``, and only
-    with at most ``max_free`` non-text pixels under it."""
+    """How a group is pasted (``text`` or ``region``, gated as the module
+    docstring lays out), None when it is not clean."""
     regions = set(g["regions"])
     if gi not in has_line or bad & regions:
         return None

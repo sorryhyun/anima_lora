@@ -880,12 +880,9 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
     def set_fei(self, fei: torch.Tensor) -> None:
         """Stash per-sample FEI ``[B, fei_dim]`` on every FEI-aware module.
 
-        Parallel to ``set_sigma`` — one call per step, same shared-buffer
-        aliasing recovery. ``fei`` is
-        ``(B, fei_feature_dim)``, computed by
-        ``library.runtime.fei.compute_fei_2band``. When a ``GlobalRouter`` is
-        wired (``route_per_layer=False``), it fires here too and broadcasts
-        gates via ``set_routing_weights`` in the same call.
+        Same shared-buffer aliasing recovery as ``set_sigma``; ``fei`` comes
+        from ``library.runtime.fei.compute_fei_2band``. A wired ``GlobalRouter``
+        (``route_per_layer=False``) fires here and broadcasts its gates.
         """
         fei = fei.detach()
         # Fast-path: nothing to do with no per-Linear FEI consumer and no
@@ -1433,9 +1430,8 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
             metadata = {}
         if metadata:
             metadata["ss_network_spec"] = spec.name
-            # Adapters are depth-specific: module names carry the block index, so
-            # a 40-block (Anima-2.9B) adapter merged onto the 28-block base drops
-            # its tail blocks with only a "not all LoRA keys are used" warning.
+            # Adapters are depth-specific (module names carry the block index);
+            # a 40-block adapter on the 28-block base silently drops its tail.
             # Stamp the depth so the mismatch is machine-detectable.
             num_blocks = getattr(self, "_trained_num_blocks", 0)
             if num_blocks:

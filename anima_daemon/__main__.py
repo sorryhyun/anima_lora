@@ -57,7 +57,6 @@ def main() -> int:
 
     port = int(sys.argv[1]) if len(sys.argv) > 1 else config.DEFAULT_PORT
 
-    # Refuse to start a second daemon over a live one.
     existing = proc.daemon_alive(config.PIDFILE)
     if existing is not None:
         log.error(
@@ -70,9 +69,8 @@ def main() -> int:
     manager = JobManager()
     manager.start()
 
-    # Boot-time source fingerprint for the pidfile + /health (see
-    # config.source_fingerprint). Computed once: /health must echo the BOOT
-    # value — re-hashing on-disk files would never report stale code.
+    # Hashed once at boot: /health must echo the boot value, or a stale
+    # daemon would never be detected (config.source_fingerprint).
     fingerprint = config.source_fingerprint()
 
     try:

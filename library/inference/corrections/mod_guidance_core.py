@@ -1,22 +1,13 @@
-"""Pure-compute core for modulation guidance — single source of truth.
+"""Pure-compute core for modulation guidance, shared by the library
+(``corrections/mod_guidance.py``, ``Anima._pooled_text_delta``) and the ComfyUI
+node (``ComfyUI-Spectrum-KSampler/mod_guidance.py``).
 
-Two pieces of math are shared verbatim between the library's mod-guidance
-(``library/inference/corrections/mod_guidance.py`` + the model method
-``library/anima/models.py::Anima._pooled_text_delta``) and the ComfyUI node
-(``ComfyUI-Spectrum-KSampler/mod_guidance.py``):
+* ``project_pooled``: the pooled-text → modulation-delta head (the op of
+  ``_pooled_text_delta``).
+* ``build_block_schedule``: the per-block ``w(ℓ)`` profile, mirrored by
+  ``build_mod_schedule`` and the node's ``ModGuidanceState._build_schedule``.
 
-* ``project_pooled`` — the pooled-text → modulation-delta projection: a 2-layer
-  MLP (Linear → SiLU → Linear), optionally σ-FiLM-modulated between the two
-  linears (``h * (1 + scale) + shift``, where ``(scale, shift)`` is a linear of
-  the normed time embedding). This is the exact op of ``_pooled_text_delta``.
-* ``build_block_schedule`` — the per-block ``w(ℓ)`` profile from the
-  start/end/taper knobs. Mirrored by the library's ``build_mod_schedule`` and
-  the node's ``ModGuidanceState._build_schedule``.
-
-torch/stdlib only — no ``comfy``, no anima-model imports. Each linear casts its
-input to the weight dtype, so a caller running the (tiny) head in fp32 against
-bf16 activations gets correct results; when dtypes already match the casts are
-no-ops and the result equals a plain ``nn.Sequential`` call.
+torch/stdlib only; no ``comfy`` or anima-model imports.
 """
 
 from __future__ import annotations
@@ -48,10 +39,9 @@ def project_pooled(
     ``(scale, shift) = chunk(Linear(t_emb; film_w, film_b))``. Without them this
     is the plain σ-flat head, ``Linear → SiLU → Linear``.
 
-    Each linear casts its input to the weight dtype (no-op when matched), so the
-    head can run at a different precision than its inputs. ``out_dtype`` casts the
-    final result (e.g. back to the block compute dtype); ``None`` leaves it in
-    ``w_out``'s dtype.
+    Each linear casts its input to the weight dtype, so the head can run in fp32
+    against bf16 activations. ``out_dtype`` casts the result; ``None`` leaves it
+    in ``w_out``'s dtype.
     """
     h = F.linear(pooled.to(w_in.dtype), w_in, b_in)
     if t_emb is not None and film_w is not None:

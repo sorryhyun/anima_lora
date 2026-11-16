@@ -21,12 +21,7 @@ from gui.widgets.target_res import _TargetResWidget
 
 
 class LazyTabMixin:
-    """Defer a tab's first expensive scan until the tab is actually opened.
-
-    Several tabs walk dataset/checkpoint directories (and the Merge tab reads
-    safetensors keys). Mixing this in keeps construction cheap: the heavy
-    work runs on the first ``showEvent`` — i.e. when the user selects the tab —
-    and exactly once thereafter. Subclasses override ``_lazy_init``.
+    """Run a tab's first expensive scan (``_lazy_init``) once, on first show.
 
     Mix in BEFORE ``QWidget`` so ``super().showEvent`` resolves to Qt's.
     """
@@ -44,21 +39,15 @@ class LazyTabMixin:
 
 
 class LazyTabHolder(QWidget):
-    """Defer a tab's entire *construction* until it is first opened.
+    """Build a tab (via ``factory``) on its first ``showEvent``.
 
-    :class:`LazyTabMixin` only defers a tab's first directory scan — the
-    widget tree itself is still built up front, and with the app-wide QSS
-    every widget creation pays a style-resolution tax. For tabs that are not
-    visible at launch even that is wasted time, so this holder sits in the
-    ``QTabWidget`` as an empty page and builds the real tab (via ``factory``)
-    on the first ``showEvent``. The inner tab's own ``LazyTabMixin`` scan then
-    fires naturally as it becomes visible.
+    With the app-wide QSS every widget creation pays a style-resolution cost,
+    so tabs hidden at launch are not built until opened.
 
-    ``inner`` is ``None`` until built — callers reaching into the tab from
-    outside (e.g. the Models dialog refreshing the Images tab's tag KB) must
-    treat a not-yet-built tab as "nothing to update": it will construct from
-    fresh on-disk state when opened. ``cleanup_subprocess`` forwards to the
-    inner tab so ``MainWindow.closeEvent``'s teardown loop keeps working.
+    ``inner`` is ``None`` until built; outside callers treat that as "nothing
+    to update" (the tab builds from on-disk state when opened).
+    ``cleanup_subprocess`` forwards to the inner tab for ``MainWindow``'s
+    teardown.
     """
 
     def __init__(self, factory):
@@ -84,10 +73,6 @@ class LazyTabHolder(QWidget):
 class DirtyTrackingMixin:
     """Save-button dirty-state tracking shared by the config-style tabs.
 
-    A tab is *dirty* when its form has edits not yet written back to the config
-    file on disk. Used by ConfigTab (+ its EasyControl subclass), the distill
-    editors, and PreprocessingTab.
-
     Host requirements:
       * ``self._dirty: bool`` initialised in ``__init__``;
       * a Save button exposed as ``self._save_btn`` (override
@@ -97,9 +82,7 @@ class DirtyTrackingMixin:
       * optionally ``self._loading_variant`` — when truthy ``_mark_dirty`` is a
         no-op so a bulk reload doesn't trip the flag.
 
-    Override :meth:`_update_save_button` when the button's text/tooltip differ
-    from the default (PreprocessingTab does — its label is the localized
-    "Save settings").
+    Override :meth:`_update_save_button` for a different text/tooltip.
 
     Mix in BEFORE ``QWidget`` (and any other event-handling mixin).
     """
@@ -113,9 +96,7 @@ class DirtyTrackingMixin:
         """Wire a form widget's change signal to :meth:`_mark_dirty`.
 
         Connect AFTER the widget's value has been seeded, so the initial
-        setValue/addItems calls don't trip the flag. The branch set is a
-        superset of what any single tab needs — widget types a given tab never
-        builds simply never match.
+        setValue/addItems calls don't trip the flag.
         """
         if isinstance(
             w, (_TargetResWidget, _SamplePromptsWidget, _SamplePromptsLauncher)
@@ -144,8 +125,6 @@ class DirtyTrackingMixin:
         self._dirty = False
         self._update_save_button()
 
-    # The dirty look is the centralized "warning" action variant (orange),
-    # flipped on/off via apply_variant — no per-tab style strings.
     _save_btn_dirty_variant: str = "warning"
 
     def _update_save_button(self) -> None:

@@ -223,7 +223,7 @@ def load_randoms(path: str | None) -> RandomPool:
 
 
 def apply_prompt(workflow: dict, prompt: str) -> None:
-    """Overwrite the positive ``CLIPTextEncode`` text in-place.
+    """Overwrite the positive ``CLIPTextEncode`` / ``MOSSCaptionHelper`` text in place.
 
     The positive node is the one carrying a placeholder (``__prompt__`` or the
     artist/chara/random markers) — negatives never do.

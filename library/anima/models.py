@@ -100,21 +100,18 @@ def unsloth_checkpoint(function, *args):
 def _make_dynamic_seq_forward(compiled_inner, bands):
     """Wrap a compiled ``Block._forward`` in an eager ``mark_dynamic`` prologue.
 
-    ``bands`` is a sorted list of ``(lo, hi)`` token-count ranges. The classic
-    union-range mode is a single band; per-band mode (``--compile_seq_bands``)
-    passes one tight band per tier so dynamo accumulates one specialization
-    per band instead of a single graph spanning the inter-tier dead zone
-    (_archive/proposals/perband_dynamic_seq.md). A seq outside every band (should
-    be prevented upstream by the OOR sample guard) is left unmarked — it
-    specializes statically on that exact count rather than widening a band.
+    ``bands`` is a sorted list of ``(lo, hi)`` token-count ranges: one union
+    band, or one tight band per tier under ``--compile_seq_bands`` so dynamo
+    keeps one specialization per band instead of a graph spanning the
+    inter-tier dead zone. A seq outside every band is left unmarked and
+    specializes statically on that exact count.
 
     GOTCHA: marks MUST be applied inside the checkpointed callable, not a
     one-shot prologue — under grad checkpointing, backward's
     ``detach_variable`` recompute detaches ``x`` into a fresh tensor that LOSES
     the mark, while ``rope_cos_sin`` keeps it, and that asymmetry raises
-    ``ConstraintViolationError``. Re-marking here keeps fwd/bwd in agreement
-    (mirrors the EasyControl fix in networks/methods/easycontrol.py). ``x`` is
-    fake-5D ``(B,1,seq,1,D)``: seq is dim 2, each RoPE table rides dim 0.
+    ``ConstraintViolationError`` (same fix in networks/methods/easycontrol.py).
+    ``x`` is fake-5D ``(B,1,seq,1,D)``: seq is dim 2, each RoPE table rides dim 0.
 
     GOTCHA (GH #107): under SDPA (``attn_mode="torch"`` — forced on ROCm) the
     marks are soft (``maybe_mark_dynamic``, no range). Inductor's
@@ -1549,9 +1546,6 @@ class Anima(nn.Module):
 
     def enable_gradient_checkpointing(self, unsloth_offload: bool = False):
         if not self.training:
-            # Block.forward gates checkpointing on self.training, so enabling it
-            # in eval mode (e.g. via the inference loader) is silently inert —
-            # still OOMs with no signal. Warn once.
             logger.warning(
                 "enable_gradient_checkpointing() called but module is in eval mode "
                 "— checkpointing is inert until you call .train() (Block.forward "
@@ -1582,19 +1576,15 @@ class Anima(nn.Module):
         ``@torch._disable_dynamo``, so compiling ``forward`` itself causes a
         graph break and recompile storms.
 
-        Also raises the dynamo recompile-limit budget (``2*n+8``); a caller
-        needing more (e.g. multi-resolution SPD distill) may raise it further
-        beforehand — must not clobber that down.
+        Also raises the dynamo recompile-limit budget (``2*n+8``), never
+        lowering a higher limit a caller set beforehand.
 
         ``mode`` maps to torch.compile's inductor preset. ``dynamic_seq``
         collapses the N-graph cascade to one by marking only the seq-length
-        axis dynamic. ``seq_range`` bounds it; ``None`` derives from the 1024
-        table. Off by default. ``seq_bands`` (a sorted list of ``(lo, hi)``,
-        e.g. ``train.py``'s ``cluster_token_bands`` output) switches to
-        per-band dispatch: one tight mark range — one specialization — per
-        band, instead of one union range spanning the inter-tier gaps
-        (_archive/proposals/perband_dynamic_seq.md). The mix_order_reduction pin
-        then becomes conditional: only when some band straddles 4096.
+        axis dynamic; ``seq_range`` bounds it (``None``: the 1024 table).
+        ``seq_bands`` (sorted ``(lo, hi)``, from ``cluster_token_bands``)
+        switches to one tight mark range per band (see
+        :func:`_make_dynamic_seq_forward`).
         """
         self._native_flatten = True
 
@@ -1602,8 +1592,8 @@ class Anima(nn.Module):
         from library.datasets.buckets import token_count_families
         from library.runtime.dynamo import pin_dynamo_limit
 
-        # Defaults to the canonical 1024 tier (2: 4032/4200); callers pass the
-        # count derived from the buckets actually populated (library.anima.trainer.data.derive_token_budget).
+        # Defaults to the 1024 tier (2: 4032/4200); the trainer passes the count
+        # from the populated buckets (data.derive_token_budget).
         if n_token_families is not None:
             n = n_token_families
         else:
@@ -1631,9 +1621,8 @@ class Anima(nn.Module):
             # default-on) records a guard_or_true(Ge(seq, 4096)) that contradicts
             # any dynamic-seq mark range straddling 4096 -> ConstraintViolationError.
             # MUST pin via pin_inductor_flag, not plain assignment (see
-            # library/runtime/dynamo.py). Per-band mode pins only when some band
-            # actually straddles 4096 (a tight band entirely on one side of it
-            # can't contradict the guard); union mode pins unconditionally.
+            # library/runtime/dynamo.py). Per-band mode pins only when a band
+            # straddles 4096.
             straddles_4096 = (
                 any(lo < 4096 <= hi for lo, hi in self._dynamic_seq_bands)
                 if seq_bands
@@ -1748,8 +1737,8 @@ class Anima(nn.Module):
         x_B_T_H_W_D = self.x_embedder(x_B_C_T_H_W)
 
         # sigma_lowres yarnsig: a demoted train step sets this 5-tuple
-        # (h_scale, w_scale, alpha, beta, mu) for its forward (train.py clears in
-        # a finally); rope is built outside the compiled block graph, so blocks
+        # (h_scale, w_scale, alpha, beta, mu) for its forward (AnimaStep clears it
+        # in a finally); rope is built outside the compiled block graph, so blocks
         # just see different cos/sin at the same token count.
         yarn = getattr(self, "_sigma_lowres_yarn", None)
         if yarn is not None:
@@ -1881,9 +1870,6 @@ class Anima(nn.Module):
         # False, blocks 1+ True) — a mismatch would fragment guards if traced
         # per-block.
         x = x_padded.requires_grad_()
-
-        # dynamic-seq marks are applied INSIDE each compiled block._forward (via
-        # _make_dynamic_seq_forward), not here — see that function for why.
 
         for block_idx, block in enumerate(self.blocks):
             if self.blocks_to_swap:

@@ -5,17 +5,12 @@ low-pass on a 4D `[B, C, H, W]` latent. Used as the routing key for
 HydraLoRA-FEI (see ``networks/lora_modules/hydra.py`` and
 ``docs/anima/methods/hydra-lora.md``).
 
-**2 bands**, not the FeRA paper's 3: on flow-matching latents the mid band
-carried <8% of the energy at every σ_mid tried
-(``_archive/bench/fera/probe_fei.py``).
+2 bands, not the FeRA paper's 3: on flow-matching latents the mid band
+carried <8% of the energy. ``σ_low = min(H_lat, W_lat) / fei_sigma_low_div``
+keeps the bands bucket-invariant; the 4.0 default maximised std(e_low) on
+training latents.
 
-Bucket-invariant scaling: ``σ_low = min(H_lat, W_lat) / fei_sigma_low_div``.
-Default **4.0** maximised population std(e_low) on real training latents
-(``_archive/bench/fera/probe_fei_dataset.py``); 8.0 remains a Pareto choice
-(mean |Δ FEI| < 0.02 between mirror buckets).
-
-Both training (`train.py`) and inference (`library/inference/generation.py`)
-call ``compute_fei_2band`` once per step on the current `z_t`, then
+Training and inference call ``compute_fei_2band`` once per step on `z_t` and
 push it into every HydraLoRA module via
 ``library/inference/adapters.py::set_hydra_fei``.
 """
@@ -28,8 +23,6 @@ import torch
 import torch.nn.functional as F
 
 
-# Module-level cache so a long training run doesn't
-# re-emit `arange + exp` once per call. Keyed on (sigma, device, dtype).
 _GAUSS_CACHE: dict[tuple[float, torch.device, torch.dtype], torch.Tensor] = {}
 
 
@@ -75,14 +68,9 @@ def compute_fei_2band(z: torch.Tensor, sigma_low: float) -> torch.Tensor:
         e_k    = ||b_k||²  (sum over C, H, W)
         e      = e_k / Σ e
 
-    `z` is ``[B, C, H, W]`` (call ``.squeeze(2)`` on a `(B, C, T, H, W)`
-    Anima latent first). Result is float32 on the input's device — caller
-    casts when stuffing into a router buffer.
-
-    We promote `z` to fp32 internally to avoid silent precision loss on
-    bf16 latents (the squared norm + division can underflow at small
-    `e_low`). The convolution itself runs in fp32; for the typical
-    `H_lat·W_lat ≈ 4096` patch grid this is negligible vs the DiT forward.
+    `z` is ``[B, C, H, W]`` (``.squeeze(2)`` a `(B, C, T, H, W)` Anima latent
+    first). Computed in fp32 (the squared norm + division underflows at small
+    `e_low` on bf16); the result is float32, the caller casts.
     """
     z = z.float()
     lp = gaussian_blur_2d(z, sigma_low)
@@ -95,7 +83,6 @@ def compute_fei_2band(z: torch.Tensor, sigma_low: float) -> torch.Tensor:
 def fei_sigma_low(h_lat: int, w_lat: int, fei_sigma_low_div: float) -> float:
     """``σ_low = min(H_lat, W_lat) / fei_sigma_low_div``.
 
-    Bucket-adaptive — keeps the band semantic across aspect ratios with
-    no per-bucket router head. Default ``4.0`` is set on ``LoRANetworkCfg``.
+    Default ``4.0`` is set on ``LoRANetworkCfg``.
     """
     return float(min(h_lat, w_lat)) / float(fei_sigma_low_div)

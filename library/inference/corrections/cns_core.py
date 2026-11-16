@@ -1,19 +1,15 @@
 """CNS — Colored Noise Sampling recolorer numerics core (arXiv 2605.30332).
 
-Pure compute: radial-frequency binning + the γ(f, t)-driven noise recolorer.
-**No anima/comfy imports and no path resolution** — the single source of truth
-shared verbatim between the library plugin (``library/inference/corrections/cns.py``,
-which resolves the γ artifact under the repo home) and the ComfyUI Spectrum node
-(which resolves it under ComfyUI's models dir + auto-downloads). Each side adds
-only a thin ``from_path`` that resolves its artifact location then calls
-:meth:`CNSRecolorer.from_npz`. The node copy is vendored by sync_vendor.py.
+Pure compute, no anima/comfy imports and no path resolution: shared by the
+library plugin (``corrections/cns.py``) and the ComfyUI Spectrum node (vendored
+by sync_vendor.py); each adds a thin ``from_path`` that calls
+:meth:`CNSRecolorer.from_npz`.
 
-Training-free SDE plug-in. Replaces the **white** noise an ER-SDE sampler injects
-each step with **frequency-colored**, RMS-normalized noise that dumps the fixed
-stochastic-energy budget into the radial bands the network has not yet resolved
-at that step (per the precomputed completion matrix γ(f, t)). Zero-sum
-reallocation of a fixed variance budget — RMS renormalization (paper §A) is
-load-bearing.
+Replaces the white noise an ER-SDE sampler injects each step with
+frequency-colored noise that moves the fixed variance budget into the radial
+bands the network has not yet resolved (per the completion matrix γ(f, t)).
+The RMS renormalization (paper §A) is load-bearing: it keeps the reallocation
+zero-sum.
 
 DO NOT EDIT the vendored copy — regenerate it via scripts/release/sync_vendor.py.
 """
@@ -30,10 +26,9 @@ import torch
 def radial_bins(h: int, w: int, n_bins: int) -> tuple[np.ndarray, np.ndarray]:
     """Radial-frequency bin index per FFT cell + bin centers in [0, 1].
 
-    Kept identical to ``scripts/calibration/gamma_probe.py::_radial_bins``. The
-    normalization (r / r.max()) makes the bin *centers*
-    independent of (h, w), so a γ matrix calibrated at one aspect's grid maps
-    cleanly onto another shape's radial map by bin index.
+    Kept identical to ``scripts/calibration/gamma_probe.py::_radial_bins``.
+    ``r / r.max()`` makes bin centers independent of (h, w), so a γ calibrated
+    on one grid maps onto another by bin index.
     """
     fy = np.fft.fftfreq(h)[:, None]
     fx = np.fft.fftfreq(w)[None, :]
@@ -48,19 +43,16 @@ def radial_bins(h: int, w: int, n_bins: int) -> tuple[np.ndarray, np.ndarray]:
 class CNSRecolorer:
     """Recolors per-step SDE white noise from a precomputed γ(f, t) matrix.
 
-    γ is stored per aspect (the spectral content — hence the staircase — shifts
-    with aspect). On first use the recolorer
-    locks onto the calibrated aspect closest in aspect-ratio to the inference
-    latent shape, then for each step σ-interpolates γ (robust to a step-count or
-    flow_shift mismatch vs the calibration schedule) and applies::
+    γ is stored per aspect. On first use the recolorer locks onto the closest
+    calibrated aspect ratio, then per step σ-interpolates γ (robust to a
+    step-count or flow_shift mismatch vs calibration) and applies::
 
         scale(f)  = sqrt(1 - γ(f, σ))          # Eq. 11 numerator
         W         = fft2(white) * scale[bin(f)]
         w_c       = ifft2(W).real
         w_c      /= std(w_c)                    # RMS-normalize → conserve variance
 
-    ``strength`` ∈ [0, 1] blends white↔recolored (then renormalizes) as a safety
-    knob; 1.0 is full CNS, 0.0 is a pass-through (== white noise).
+    ``strength`` ∈ [0, 1] blends white↔recolored, then renormalizes.
     """
 
     def __init__(
@@ -77,9 +69,7 @@ class CNSRecolorer:
         self.F = self.gamma_all.shape[-1]
         self.strength = float(strength)
 
-        # σ at each step (== sigmas[:-1]), decreasing. Sort ascending once so
-        # np.interp (which needs increasing xp, and clamps at the endpoints) can
-        # evaluate γ at an arbitrary inference σ.
+        # np.interp needs increasing xp; sigmas[:-1] is decreasing.
         sig_mid = np.asarray(sigmas, dtype=np.float64)[:-1]
         self._order = np.argsort(sig_mid)
         self._sig_asc = sig_mid[self._order]
@@ -92,13 +82,7 @@ class CNSRecolorer:
 
     @classmethod
     def from_npz(cls, resolved_path: str, strength: float = 1.0) -> "CNSRecolorer":
-        """Construct from an already-resolved ``.npz`` path (no auto/home logic).
-
-        Path *resolution* is the per-framework seam — callers resolve their
-        artifact location (repo home vs ComfyUI models dir) then hand the path
-        here. ``cls`` keeps subclassing working: each side's thin ``from_path``
-        delegates to this and gets an instance of its own subclass.
-        """
+        """Construct from an already-resolved ``.npz`` path."""
         if not Path(resolved_path).exists():
             raise FileNotFoundError(
                 f"CNS calibration not found: {resolved_path}. Generate it with "
@@ -134,10 +118,9 @@ class CNSRecolorer:
     def recolor(self, white: torch.Tensor, sigma_s: float) -> torch.Tensor:
         """Return frequency-recolored noise of the same shape/dtype as ``white``.
 
-        ``white`` is ``(B, C, 1, H, W)`` (Anima's fake-5D latent) or ``(B, C, H,
-        W)`` — FFT runs over the trailing two dims either way; RMS renorm is
-        per-(leading-dims) over the spatial plane so each channel keeps unit
-        variance, exactly like the white noise it replaces.
+        ``white`` is ``(B, C, 1, H, W)`` (Anima 5D) or ``(B, C, H, W)``; FFT and
+        RMS renorm run over the trailing two dims, so each channel keeps unit
+        variance like the white noise it replaces.
         """
         if self.strength <= 0.0:
             return white

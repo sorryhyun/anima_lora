@@ -156,8 +156,7 @@ class TensorBoardPanel(QGroupBox):
 
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
-        # As a bottom-of-form panel the list is capped so it doesn't crowd the
-        # config; on its own dedicated tab (``expand=True``) it fills the page.
+        # Capped as an embedded panel; fills the page as its own tab (expand).
         if not expand:
             self._scroll.setMaximumHeight(140)
         self._scroll.setMinimumHeight(60)
@@ -178,8 +177,7 @@ class TensorBoardPanel(QGroupBox):
 
         btn_bar = QHBoxLayout()
 
-        # Scoped to the single in-progress run — highlighted while training is
-        # active so the user can jump straight to the current run's curves.
+        # Scoped to the in-progress run; highlighted while training is active.
         self._current_btn = QPushButton(t("tb_open_current"))
         self._current_btn.clicked.connect(self._open_current_run)
         btn_bar.addWidget(self._current_btn)
@@ -202,15 +200,14 @@ class TensorBoardPanel(QGroupBox):
 
         outer.addLayout(btn_bar)
 
-        # Shown only while a run is live — reminds the user to hit reload if it hasn't surfaced in TensorBoard yet.
+        # Shown only while a run is live (reload hint).
         self._hint_label = QLabel(t("tb_appear_hint"))
         self._hint_label.setStyleSheet(f"color:{tok('ok')};font-size:11px;padding:2px;")
         self._hint_label.setWordWrap(True)
         self._hint_label.setVisible(False)
         outer.addWidget(self._hint_label)
 
-        # Periodically refresh the list while visible (catches new runs from
-        # daemon-started training that the GUI never directly launched).
+        # Polls for runs the GUI didn't launch (CLI / other daemon jobs).
         self._refresh_timer = QTimer(self)
         self._refresh_timer.setInterval(4000)
         self._refresh_timer.timeout.connect(self._refresh_runs)
@@ -226,10 +223,8 @@ class TensorBoardPanel(QGroupBox):
     def set_current_run(self, run_dir: str) -> None:
         """Mark a run (by full path or name) as the active training run.
 
-        Called when a ``run_start`` progress event carries a ``log_dir`` field.
-        The corresponding row is highlighted green and gains a "(current)"
-        suffix to make it easy to spot in TensorBoard's sidebar. While a run is
-        marked current the view-current-run button lights up.
+        Called when a ``run_start`` progress event carries a ``log_dir`` field;
+        the row is highlighted and the view-current-run button lights up.
         """
         if run_dir:
             self._current_run_path = Path(run_dir)
@@ -245,8 +240,7 @@ class TensorBoardPanel(QGroupBox):
     def clear_current_run(self) -> None:
         """Mark training as no longer active (dims the current-run button).
 
-        Called when the run ends. The row highlight is kept so the just-finished
-        run stays easy to spot, but the button stops advertising a live run.
+        Called when the run ends; the row highlight is kept.
         """
         self._training_active = False
         self._update_current_btn()
@@ -262,8 +256,7 @@ class TensorBoardPanel(QGroupBox):
         self._current_btn.setEnabled(live)
         self._hint_label.setVisible(live)
         if live:
-            # Green primary look so it stands out during training; idle is a
-            # dim "ghost" (no fill) — a non-variant state, so per-widget qss.
+            # Idle is a non-variant "ghost" look, hence per-widget qss.
             self._current_btn.setStyleSheet(action_button_qss("primary"))
             self._current_btn.setToolTip(t("tb_open_current_tip"))
         else:
@@ -275,9 +268,8 @@ class TensorBoardPanel(QGroupBox):
     def _find_run_dirs(self, base: Path, max_depth: int = 3) -> list[Path]:
         """Collect every directory under *base* that actually holds TensorBoard
         event files, descending a few levels so nested layouts surface as
-        individual runs. Turbo writes to ``output/logs/turbo/<run>`` (one level
-        deeper than plain training's ``output/logs/<run>``).
-        A dir that holds events is treated as a leaf run and not descended into.
+        individual runs (Turbo writes ``output/logs/turbo/<run>``). A dir that
+        holds events is a leaf run and not descended into.
         """
         found: list[Path] = []
 
@@ -333,9 +325,7 @@ class TensorBoardPanel(QGroupBox):
         except OSError:
             return
 
-        # Rows are keyed by full path string — nested runs in different
-        # subfolders can share a leaf name (e.g. timestamps), so name alone
-        # isn't unique.
+        # Keyed by full path: nested runs can share a leaf name.
         existing_keys = {str(d) for d in dirs}
 
         for row in list(self._rows):
@@ -360,7 +350,6 @@ class TensorBoardPanel(QGroupBox):
                 row.view_btn.clicked.connect(lambda _, r=row: self._launch(r.run_dir))
                 row.remove_btn.clicked.connect(lambda _, r=row: self._remove_run(r))
                 self._rows.insert(insert_pos, row)
-                # Insert before the stretch (last item) and any existing rows
                 self._inner_lay.insertWidget(insert_pos, row)
                 known_keys.add(str(d))
                 insert_pos += 1

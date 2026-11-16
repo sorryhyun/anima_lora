@@ -41,7 +41,6 @@ def prepare_text_conds(
     uncond_crossattn_emb: Optional[torch.Tensor] = None,
 ) -> PreparedTextConds:
     """Unpack the conds tuple, move to device, and apply caption dropout in-place."""
-    # Unpack
     crossattn_emb: Optional[torch.Tensor] = None
     if len(text_encoder_conds) == 5:
         prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask, crossattn_emb = (
@@ -50,7 +49,6 @@ def prepare_text_conds(
     else:
         prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask = text_encoder_conds
 
-    # H2D move
     if crossattn_emb is None:
         prompt_embeds = prompt_embeds.to(device, dtype=weight_dtype)
         attn_mask = attn_mask.to(device)
@@ -61,9 +59,8 @@ def prepare_text_conds(
         if hasattr(network, "append_postfix"):
             t5_attn_mask = t5_attn_mask.to(device)
 
-    # On-device caption dropout. The freshly-transferred GPU tensors are
-    # not aliased to the dataloader's CPU copies, so we can write in-place
-    # — no clones, no main-thread CPU memcpy on the critical path.
+    # The fresh GPU copies are not aliased to the dataloader's CPU tensors, so
+    # dropout can write in place.
     caption_dropout_rates = (
         batch.get("caption_dropout_rates") if isinstance(batch, dict) else None
     )
@@ -77,9 +74,7 @@ def prepare_text_conds(
                 t5_attn_mask=t5_attn_mask,
             )
         else:
-            # prompt_embeds / attn_mask / t5_input_ids stay on CPU because
-            # they're unused downstream — only zero what the model actually
-            # consumes (and only touch t5_attn_mask if it was moved above).
+            # Only the tensors moved above are consumed; the rest stay on CPU.
             text_encoding_strategy.apply_caption_dropout_inplace(
                 caption_dropout_rates,
                 crossattn_emb=crossattn_emb,

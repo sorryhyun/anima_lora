@@ -1,9 +1,8 @@
 """Precache Qwen3-VL text embeddings and VAE latents for a training folder.
 
 Both encoders are far too large to keep beside the transformer, so training
-never sees them: this runs the same phase split as ``smoke_t2i.py`` (text
-encoder block-swapped onto the card, dropped, then the VAE) and leaves two
-files per image.
+never sees them: the text encoder is block-swapped onto the card, dropped, then
+the VAE runs, leaving two files per image.
 
     {stem}.te.safetensors      prompt_embeds (L, 4096) + prompt_embeds_mask (L,)
     {stem}.latent.safetensors  latents (T, 64), packed, mean/std normalised
@@ -11,16 +10,15 @@ files per image.
 They are written separately so either stage can be re-run alone — a caption
 edit needs the text pass only. Both skip on existence unless ``--overwrite``.
 
-Nothing is cropped and nothing is padded, on either side:
+Nothing is cropped and nothing is padded:
 
-- Each image keeps its **native aspect ratio** and lands at ~``resolution``^2
-  pixels with both edges on a multiple of 32 (``calculate_dimensions``, the
-  pipeline's own). A square crop would throw away most of a 0.44-aspect image.
+- Each image keeps its native aspect ratio at ~``resolution``^2 pixels
+  (:func:`target_size`).
 - Text length stays at its natural value per caption. The model's rope gives the
   image block a frame position equal to the text length, so padding during
   training would teach the adapter an offset that inference never reproduces.
 
-Both leave the joint sequence varying per sample, which is why ``train.py``
+The joint sequence therefore varies per sample, which is why ``train.py``
 compiles the blocks dynamically.
 
     make daemon-run ARGS="scripts/qwen21/cache.py \

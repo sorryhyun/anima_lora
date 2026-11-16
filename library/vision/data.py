@@ -30,9 +30,8 @@ class _VariantMeanDataset(Dataset):
     """Load one TE file, zero-clamp the padded tail across every variant,
     return the variant-mean ``(S, D)`` slice. Parallelizable via DataLoader.
 
-    Only used by the diagnostic probes (``_archive/bench/img2emb/phase0_probes.py``)
-    where the analytic OLS solution requires the per-image mean. Training
-    stages sample one variant per step via ``_ResamplerTrainDataset``.
+    For the diagnostic probes, whose analytic OLS solution needs the per-image
+    mean.
     """
 
     def __init__(self, te_paths: list[str], active_lengths: list[int]):
@@ -82,14 +81,10 @@ def load_targets_mean(
 ) -> torch.Tensor:
     """Materialize the variant-mean targets ``(N, S, D)`` fp32 in RAM.
 
-    Opt-in: only the diagnostic probes call this. The mean is a valid
-    *diagnostic* target (order-invariant summary of the caption distribution)
-    but a poor *training* target — it shrinks the norm under triangle
-    inequality and sits off the T5 manifold. Production training stages use
-    ``_ResamplerTrainDataset`` for per-step per-variant sampling instead.
-
-    Pre-allocated + filled by index via DataLoader workers — peak RAM is the
-    final ~2 GB tensor.
+    Diagnostic probes only: the mean shrinks the norm and sits off the T5
+    manifold, so training samples one variant per step
+    (``_ResamplerTrainDataset``). Pre-allocated and filled by index, so peak
+    RAM is the final ~2 GB tensor.
     """
     ds = _VariantMeanDataset(te_paths, active_lengths)
     loader = DataLoader(
@@ -118,11 +113,7 @@ def load_targets_mean(
 
 
 def _peek_target_shape(te_paths: list[str]) -> tuple[int, int]:
-    """Return ``(S, D)`` of the cross-attn target by reading one TE file.
-
-    Cheap stand-in for ``cache["targets_mean"].shape[1:]`` (the mean is not
-    materialized up-front).
-    """
+    """``(S, D)`` of the cross-attn target, read from one TE file."""
     sd = load_file(te_paths[0])
     variant_keys = sorted(k for k in sd.keys() if k.startswith("crossattn_emb_v"))
     key = variant_keys[0] if variant_keys else "crossattn_emb"

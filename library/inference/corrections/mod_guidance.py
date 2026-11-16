@@ -49,11 +49,8 @@ def _encode_prompt_for_mod(
 def build_mod_schedule(args: argparse.Namespace, num_blocks: int) -> List[float]:
     """Build a per-block w(l) list from CLI args.
 
-    Default flags reproduce the 'step_i8_skip27' ComfyUI preset -- protects
-    tonal-DC blocks 0-7 and the final compensation block, applying full w in
-    between. The end layer is depth-relative (num_blocks-1) so a deeper
-    checkpoint skips its own last block, not block 27.
-    See docs/anima/inference/mod-guidance.md for rationale.
+    Defaults skip the tonal-DC blocks 0-7 and the last block (depth-relative,
+    num_blocks-1). See docs/anima/inference/mod-guidance.md.
     """
     end_layer = getattr(args, "mod_end_layer", None)
     return build_block_schedule(
@@ -85,7 +82,6 @@ def setup_mod_guidance(
     mod_pos = args.mod_pos_prompt
     mod_neg = args.mod_neg_prompt
 
-    # Load text encoder (reuse shared if available, otherwise load temporarily)
     if shared_models and "text_encoder" in shared_models:
         text_encoder = shared_models["text_encoder"]
         text_encoder.to(device)
@@ -103,12 +99,9 @@ def setup_mod_guidance(
     pos_crossattn = _encode_prompt_for_mod(mod_pos, anima, text_encoder, device)
     neg_crossattn = _encode_prompt_for_mod(mod_neg, anima, text_encoder, device)
 
-    # Pool and project through trained pooled_text_proj. Note: unit delta -- the
-    # per-block weight comes from the schedule, not baked in here.
+    # Unit delta: the per-block weight comes from the schedule.
     if getattr(anima, "enable_pooled_text_sigma_film", False):
-        # This head is σ-conditioned, but the single baked delta below is σ-flat
-        # (no timestep available at bake time). It falls back to the σ-flat proj
-        # path (t_embedding=None), so steering ignores the FiLM — warn.
+        # No timestep at bake time, so the delta below is σ-flat.
         logger.warning(
             "pooled_text_proj was trained with σ-FiLM, but inference steering bakes "
             "a single σ-flat delta — the timestep conditioning is ignored. "
@@ -125,9 +118,7 @@ def setup_mod_guidance(
         )
         delta_unit = proj_pos - proj_neg  # (1, model_channels)
 
-    # Copy into the preregistered non-persistent buffers so the forward can
-    # always index them without a None/getattr fallback. Dtype/device follow
-    # the buffer (which moves with the model's .to(...)).
+    # Preregistered buffers: the forward indexes them without a None fallback.
     delta_buf = anima._mod_guidance_delta
     delta_buf.copy_(delta_unit.to(delta_buf.device, dtype=delta_buf.dtype))
 

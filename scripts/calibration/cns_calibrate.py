@@ -209,7 +209,7 @@ def main() -> None:
     if args.compile and not any(f in extra for f in ("--compile_blocks", "--compile")):
         extra = extra + ["--compile_blocks"]
 
-    # ---- load the DiT ONCE (and compile), reused across every trajectory -----
+    # Load (and compile) the DiT once; every trajectory reuses it.
     base_args = _make_args(args, prompts[0], aspects[0], args.seeds[0], extra, device)
     settings = get_generation_settings(base_args)
     print(
@@ -218,7 +218,7 @@ def main() -> None:
     anima = load_dit_model(base_args, device, torch.bfloat16)
     shared = {"model": anima}
 
-    # ---- precompute text per unique prompt, then free the encoder ------------
+    # Encode every prompt, then free the TE before the trajectory loop.
     print("encoding text for all prompts (then freeing the encoder) ...")
     text_encoder = load_text_encoder(base_args, dtype=torch.bfloat16, device=device)
     txt_shared = {"text_encoder": text_encoder, "conds_cache": {}}
@@ -231,7 +231,7 @@ def main() -> None:
     gc.collect()
     clean_memory_on_device(device)
 
-    # ---- per-aspect γ, reusing the compiled model + cached text --------------
+    # Per-aspect γ.
     gammas: list[np.ndarray] = []
     sigmas_ref: np.ndarray | None = None
     centers_ref: np.ndarray | None = None

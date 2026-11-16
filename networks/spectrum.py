@@ -45,13 +45,11 @@ logger = logging.getLogger(__name__)
 # Alias: tests import the spectrum_sea window-fraction helper under this name.
 _window_decision_fraction = window_decision_fraction
 
-# Auto-δ calibration cache for the SEA schedule. Keyed by the schedule geometry;
-# the first generate with --spectrum_delta auto runs the window schedule while
-# recording the SEA distance trace, derives δ to match the target refresh
-# fraction, and caches it so subsequent generates use the SEA trigger at
-# matched compute. Mirrored to disk (output/spectrum_sea_delta.json) so the
-# calibration survives across CLI processes. See docs/inference/spectrum.md
-# §"SEA schedule" ("The δ knob").
+# Auto-δ cache for the SEA schedule, keyed by schedule geometry. The first
+# generate with --spectrum_delta auto runs the window schedule, records the SEA
+# distance trace and derives δ; later generates reuse it. Mirrored to
+# output/spectrum_sea_delta.json so it survives across processes.
+# docs/inference/spectrum.md §"SEA schedule".
 _AUTO_DELTA_CACHE: dict = {}
 
 
@@ -124,11 +122,9 @@ def _combine_guided(
 ):
     """Merge cond/uncond predictions — plain CFG, CFG++ reweight, or SMC-CFG.
 
-    CFG++ (``cfgpp_w_eff`` set) and SMC-CFG (``smc_cfg`` set) are mutually
-    exclusive (generation.py refuses both at once). CFG++ is a pure
-    σ-scheduled reweight of the same combine, so it composes with the
-    spectrum cache — the forecaster stores raw cond/uncond features and only
-    this merge weight differs from plain CFG.
+    CFG++ and SMC-CFG are mutually exclusive (generation.py refuses both).
+    CFG++ only changes the merge weight, so it composes with the spectrum
+    cache (the forecaster stores raw cond/uncond features).
     """
     if cfgpp_w_eff is not None:
         return uncond_pred + cfgpp_w_eff * (cond_pred - uncond_pred)
@@ -182,16 +178,13 @@ def spectrum_denoise(
             forwards computes residual = actual - predicted; cached steps add
             residual * strength.
         schedule: "window" (default, content-blind growing window) or "sea"
-            (accumulate SEA-filtered relative-L1 distance of the input latent,
-            refresh when it crosses delta — only the decision changes, the
-            forecast+reuse path is unaffected; window_size/flex_window unused).
-        delta: SEA threshold. None/<=0 auto-calibrates to refresh_ratio (first
-            generate runs the window schedule while recording the distance
-            trace, derives + caches δ; subsequent generates use SEA directly).
+            (refresh when the accumulated SEA-filtered relative-L1 distance of
+            the input latent crosses delta; window_size/flex_window unused).
+        delta: SEA threshold. None/<=0 auto-calibrates to refresh_ratio (see
+            ``_AUTO_DELTA_CACHE``).
         refresh_ratio: target post-warmup refresh fraction for auto-δ. <=0
-            matches the window schedule's own fraction at this exact geometry
-            (like-for-like at matched compute) — don't hard-code, it varies
-            with step count.
+            matches the window schedule's own fraction at this geometry (it
+            varies with step count).
         sea_beta: natural-image power-law exponent for the SEA filter.
         ctx: shared conditioning side-channels (SMC-CFG/soft-tokens/P-GRAFT/
             pooled-text/FSG, see library.inference.sampler_context). ctx.fsg,
@@ -201,7 +194,6 @@ def spectrum_denoise(
             force_actual/eval_view/pool_velocity/final_readout. Unvalidated
             against SMC-CFG — ignored (with a warning) while foveation is active.
     """
-    # Unpack the shared side-channels into the locals the loop body uses.
     pgraft_network = ctx.pgraft_network
     lora_cutoff_step = ctx.lora_cutoff_step
     pooled_text_pos = ctx.pooled_text_pos
@@ -218,10 +210,8 @@ def spectrum_denoise(
     soft_tokens_neg_seqlens = ctx.soft_tokens_neg_seqlens
     fsg = ctx.fsg
     cfgpp_lambda = ctx.cfgpp_lambda
-    # --xattn_boost: applied to actual cond forwards at σ >= band (reset before
-    # uncond). Forecast steps skip the blocks entirely, so in-band cached
-    # predictions extrapolate from boosted cond features — consistent with the
-    # boost.
+    # --xattn_boost: actual cond forwards at σ >= band (reset before uncond);
+    # forecast steps extrapolate from the boosted cond features.
     xattn_boost = ctx.xattn_boost
     xattn_boost_band = ctx.xattn_boost_band
     xattn_renorm = ctx.xattn_boost_renorm
@@ -233,9 +223,7 @@ def spectrum_denoise(
     do_cfg = guidance_scale != 1.0
     num_steps = len(timesteps)
 
-    # CFG / CFG++ / SMC-CFG combine — the single cond/uncond merge used by both
-    # the actual-forward and cached-prediction branches. cfgpp_lambda and
-    # smc_cfg are mutually exclusive (generation.py refuses both).
+    # The one cond/uncond merge for both actual and cached steps.
     def _combine_cfg(cond_pred, uncond_pred, i):
         w_eff = (
             inference_utils.cfgpp_guidance_weight(
@@ -268,13 +256,10 @@ def spectrum_denoise(
     fwd_count = 0
     stop_at = num_steps - 3 if stop_caching_step < 0 else stop_caching_step
 
-    # SEA schedule (SeaCache decision metric). delta_val is None while the
-    # accumulator is uncalibrated (auto mode, first generate) — the loop then
-    # falls back to the window rule and records the distance trace for δ tuning.
+    # delta_val is None while auto-δ is uncalibrated: the loop runs the window
+    # rule and records the distance trace.
     use_sea = schedule == "sea"
     auto_delta = use_sea and (delta is None or float(delta) <= 0.0)
-    # Default the auto-δ target to the window schedule's own refresh fraction
-    # at this geometry (like-for-like at matched compute).
     if use_sea and float(refresh_ratio) <= 0.0:
         refresh_ratio = _window_decision_fraction(
             num_steps, warmup_steps, stop_at, window_size, flex_window, fsg_steps
@@ -338,12 +323,10 @@ def spectrum_denoise(
                     pgraft_network.set_enabled(False)
                     logger.info(f"P-GRAFT: Disabled LoRA at step {i}/{num_steps}")
 
-                # FSG: pre-step latent calibration toward the golden path, run
-                # *before* the SEA metric so both the accumulator and the
-                # forecaster see the calibrated trajectory. The calibration's own
-                # internal anima() forwards transiently overwrite captured["feat"],
-                # but the real per-step forward below is the last anima() call
-                # before we read it. Forced to an actual forward below.
+                # FSG calibrates the latent *before* the SEA metric so the
+                # accumulator and forecaster see the calibrated trajectory. Its
+                # internal forwards overwrite captured["feat"], but the real
+                # per-step forward below runs last.
                 fsg_forced = fsg is not None and i in fsg_steps
                 if fsg_forced:
                     latents = fsg.calibrate(
@@ -367,24 +350,19 @@ def spectrum_denoise(
                     i, float(sigmas[i])
                 )
 
-                # SEA: accumulate the SEA-filtered relative-L1 distance of the
-                # input latent (shared across cond/uncond). One FFT/iFFT per
-                # step — negligible vs a block forward.
+                # SEA distance of the input latent (shared across cond/uncond).
                 if use_sea:
                     sea_now = sea_filter(latents[:, :, 0], float(sigmas[i]), sea_beta)
                     if sea_prev is not None:
                         d = l1rel(sea_now, sea_prev)
                         sea_accum += d
-                        # FSG steps are forced actual; exclude their distance
-                        # from the auto-δ decision trace (matches the window baseline).
+                        # Forced steps stay out of the auto-δ trace.
                         if warmup_steps <= i < stop_at and not (
                             fsg_forced or fov_forced
                         ):
                             sea_dists.append(d)
                     sea_prev = sea_now
 
-                # Decide: actual forward or cached prediction? FSG-scheduled
-                # steps are forced actual regardless of window/SEA rule.
                 if i < warmup_steps or i >= stop_at or fsg_forced or fov_forced:
                     actual = True
                 elif use_sea and delta_val is not None:
@@ -396,9 +374,8 @@ def spectrum_denoise(
                 set_hydra_sigma(anima, t_exp)
 
                 if actual:
-                    # Foveation eval-view: below σ_c the DiT evaluates on the
-                    # merged-token composite; the latent itself is never
-                    # rewritten (stays on-manifold).
+                    # Below σ_c the DiT sees the merged-token composite; the
+                    # latent itself is never rewritten.
                     model_x = (
                         foveation.eval_view(latents, float(sigmas[i]))
                         if foveation is not None
@@ -472,9 +449,7 @@ def spectrum_denoise(
                         uncond_fc.update(float(i), ufeat)
                         noise_pred = _combine_cfg(noise_pred, uncond_noise_pred, i)
 
-                    # Advance schedule (only post-warmup to avoid inflating
-                    # window). FSG/foveation-forced steps don't advance it —
-                    # they're external forcings, not window-driven refreshes.
+                    # Only post-warmup, window-driven refreshes grow the window.
                     if i >= warmup_steps and not (fsg_forced or fov_forced):
                         curr_ws = round(curr_ws + flex_window, 3)
                     consec_cached = 0
@@ -527,14 +502,10 @@ def spectrum_denoise(
 
                 pbar.update()
 
-        # Foveation final readout: periphery read from the merged
-        # representation once before decode, stripping never-denoised HF that
-        # pooled velocities cannot remove.
+        # Strips never-denoised periphery HF that pooled velocities cannot remove.
         if foveation is not None:
             latents = foveation.final_readout(latents)
 
-        # Auto-δ: derive the δ matching the target refresh fraction from this
-        # generate's window-scheduled trace, and cache it for subsequent generates.
         if auto_delta and delta_val is None and sea_dists:
             new_delta = solve_delta_for_refresh_ratio(sea_dists, refresh_ratio)
             _auto_delta_save(sea_cache_key, new_delta)
@@ -556,8 +527,7 @@ def spectrum_denoise(
             if use_sea and delta_val is not None
             else (", schedule=sea (calibrating)" if use_sea else "")
         )
-        # FSG spends 3·K extra forwards per scheduled step — call it out so
-        # the speedup isn't misread.
+        # FSG spends 3·K extra forwards per scheduled step.
         fsg_label = (
             f", fsg={len(fsg_steps)} steps×K{fsg.k} (+{3 * fsg.k * len(fsg_steps)} fwd)"
             if fsg is not None and fsg_steps
@@ -581,8 +551,7 @@ def spectrum_denoise(
     return latents
 
 
-# Register with library.inference.generation so generate() can dispatch here
-# without a hard import edge from generation.py back into this file.
+# Self-registration keeps generation.py free of an import edge into this file.
 from library.inference.generation import register_spectrum_runner  # noqa: E402
 
 register_spectrum_runner(spectrum_denoise)

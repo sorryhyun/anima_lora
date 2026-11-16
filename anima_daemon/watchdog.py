@@ -55,7 +55,7 @@ class StallWatchdog:
                 continue
         idle = time.time() - last
         if idle < timeout:
-            self.forget(job.id)  # output flowing again → forget samples
+            self.forget(job.id)
             return None
         busy = self._tree_cpu_advancing(job)
         if busy and idle < timeout * _STALL_CPU_GRACE:

@@ -33,7 +33,6 @@ except ImportError:  # dotenv is a soft dependency — env vars still work witho
         return False
 
 
-# Run from the repo root; `library` is installed editable (`uv sync`).
 from anime_tools.grouping.embedder import pe_spatial_embedder
 
 from .engine import (
@@ -340,10 +339,8 @@ def main(argv: list[str] | None = None) -> int:
         print("No images found — check --image-dirs / --artists.", file=sys.stderr)
         return 1
 
-    # Prune to embeddable candidates BEFORE loading the encoder: same-size gate
-    # for region, same-size + tag pivot for tag mode. If nothing survives
-    # (e.g. no size group holds both a tagged and an untagged member), we skip the
-    # GPU load entirely.
+    # Prune to embeddable candidates before loading the encoder, so an empty
+    # gate skips the GPU load.
     gate = (
         f"same-size + '{', '.join(sorted(target_tags))}' tag pivot"
         if args.mode == "tag"

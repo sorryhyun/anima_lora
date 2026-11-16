@@ -6,21 +6,15 @@ The checkpoint is 33 GB in bf16 and its three heavy parts are wildly uneven:
     transformer   7B, 32 SS blocks  14.2 GB
     vae           AutoencoderKLQwenImage21   1.35 GB
 
-No offload path fits: ``enable_model_cpu_offload`` peaks at the largest module
-(17.5 GB, OOM before the first prompt is encoded), ``enable_sequential_cpu_offload``
-streams every submodule every step, and accelerate's ``cpu_offload`` /
-``device_map="auto"`` both OOM at ~14.4 GB allocated whatever ``max_memory``
-says (2026-09-21) — the weights an ``AlignDevicesHook`` pages in stay on the
-device.
+No diffusers/accelerate offload path fits: ``enable_model_cpu_offload`` peaks
+at the 17.5 GB text encoder, sequential offload streams every submodule every
+step, and accelerate's ``cpu_offload`` / ``device_map="auto"`` OOM at ~14.4 GB
+because the weights an ``AlignDevicesHook`` pages in stay on the device. So both
+heavy modules run under the trainer's block swapper (``library.runtime.offloading``,
+attached by ``library.runtime.blockswap``), weights bf16.
 
-So both heavy modules run on the GPU under the trainer's own block swapper
-(``library.runtime.offloading``, attached by ``library.runtime.blockswap``). Weights stay
-bf16, unquantized.
-
-The phase split is the same one ``train.py`` makes for Anima (text encode →
-free → DiT): encode with the text encoder swapping, drop the 17.5 GB of it,
-then give the card to the transformer + VAE. Callers that want embeddings alone
-(latent/TE caching) skip the transformer.
+Phases: encode with the text encoder swapping, drop it, then give the card to
+the transformer + VAE. Embedding-only callers (caching) skip the transformer.
 """
 
 from __future__ import annotations

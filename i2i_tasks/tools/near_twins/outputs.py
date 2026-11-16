@@ -240,8 +240,8 @@ batch_size = 1
 
 
 # Blueprint section headers ([general] / [[datasets]] / [[datasets.subsets]]).
-# These never appear in the head (the head only carries [preprocess]/[training]), so the first one marks where the generated blueprint begins — the
-# fallback boundary when the sentinel comment has been hand-edited away.
+# The head only carries [preprocess] / [training], so the first of these marks
+# where the blueprint begins when the sentinel comment has been edited away.
 _BLUEPRINT_HEADER_RE = re.compile(r"^\s*\[\[?(?:general|datasets)\b")
 
 

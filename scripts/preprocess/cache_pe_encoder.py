@@ -26,8 +26,7 @@ Pass ``--centroid`` to also emit ``anima_pe_centroid_{encoder}.safetensors``
 (dataset-mean of mean-over-patch-tokens pooled features, ``[D]`` fp32) after
 the cache pass. Pass ``--centroid_only`` to skip encoding entirely and just
 pool existing caches under ``--cache_dir``. Consumed by IP-Adapter
-(``ip_centroid_path``) -- targets the participation-ratio-6 manifold collapse
-on this dataset (see ``_archive/bench/ip_adapter/analysis.md``).
+(``ip_centroid_path``) for mean-centering.
 """
 
 import argparse
@@ -81,9 +80,8 @@ def main() -> None:
         include_num_workers=True,
         num_workers_default=4,
     )
-    # PE features are consumed as fp32 everywhere (REPA upcasts the cache at
-    # repa.py, CMMD pools in fp32), so cache at full precision by default.
-    # --dtype drives both the encoder compute dtype and the on-disk save dtype.
+    # Every consumer reads PE features as fp32 (REPA, CMMD). --dtype sets both
+    # the compute and the on-disk dtype.
     add_device_args(
         parser,
         include_device=False,

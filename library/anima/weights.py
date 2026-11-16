@@ -60,10 +60,9 @@ _MODEL_CHANNELS_TO_HEADS = {1280: 20, 2048: 16, 5120: 40}
 def probe_dit_arch(dit_path: str) -> Dict[str, int]:
     """Read DiT depth/width off a checkpoint's safetensors header.
 
-    Only the header is parsed — no tensor data is materialized — so this is
-    cheap enough to run before every model build. Sharded checkpoints are
-    expanded the same way ``load_safetensors_with_lora`` expands them, so a
-    path naming shard 1 of N does not undercount the depth.
+    Only the header is parsed, so this is cheap enough to run before every
+    model build. Sharded checkpoints are expanded as in
+    ``load_safetensors_with_lora``, so shard 1 of N does not undercount depth.
     """
     resolved = str(resolve_under_home(dit_path))
     files = get_split_weight_filenames(resolved) or [resolved]
@@ -253,8 +252,7 @@ def load_anima_model(
         )
 
     # Everything but depth/width is fixed across Anima releases; those two are
-    # read off the checkpoint so depth-expanded derivatives (Anima-2.9B: 40
-    # blocks vs base's 28) build the matching module list.
+    # probed from the checkpoint (see _MODEL_CHANNELS_TO_HEADS).
     dit_config = {
         "max_img_h": 512,
         "max_img_w": 512,

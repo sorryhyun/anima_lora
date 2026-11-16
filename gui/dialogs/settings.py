@@ -33,8 +33,7 @@ LANG_NAMES = {"en": "English", "ko": "한국어", "cn": "简体中文", "ja": "�
 
 
 def _mcp_paths() -> tuple[Path, Path]:
-    """(venv python, MCP bridge script) for THIS checkout — real absolute
-    paths, not the <repo> placeholder the docs use (anima_daemon/README.md)."""
+    """(venv python, MCP bridge script) as absolute paths for this checkout."""
     venv_python = (
         ROOT
         / ".venv"
@@ -127,9 +126,7 @@ class SettingsDialog(QDialog):
         font_row.addStretch()
         prefs_lay.addLayout(font_row)
 
-        # Debug mode: turns on DEBUG-level daemon logging (picked up the next time
-        # the daemon starts) so a bug report can carry the launch/queue decisions.
-        # Pairs with the "Copy debug report" button below.
+        # DEBUG-level daemon logging, picked up the next time the daemon starts.
         self.debug_check = QCheckBox(t("settings_debug_mode"))
         self.debug_check.setToolTip(t("settings_debug_mode_tooltip"))
         self.debug_check.setChecked(bool(get_setting("debug_mode", False)))
@@ -195,9 +192,8 @@ class SettingsDialog(QDialog):
         QTimer.singleShot(1500, lambda: btn.setText(t("settings_mcp_copy")))
 
     def _toggle_debug(self, checked: bool) -> None:
-        """Persist the flag and reflect it into the live process env. A daemon
-        already running keeps its old log level until it restarts (the report
-        still works); a newly-spawned one inherits ANIMA_DEBUG from here."""
+        """Persist the flag and set ANIMA_DEBUG in this process, which a newly
+        spawned daemon inherits; a running one keeps its level until restart."""
         set_setting("debug_mode", bool(checked))
         if checked:
             os.environ["ANIMA_DEBUG"] = "1"
@@ -234,12 +230,8 @@ class SettingsDialog(QDialog):
             self.accept()
 
     def _change_theme(self, idx: int) -> None:
-        """Persist + apply the chosen theme live, then request a window rebuild.
-
-        ``apply_theme`` restyles app-level chrome immediately; the rebuild on
-        close makes per-widget ``tok()`` lookups (log boxes, previews, …) repaint
-        too. Unlike a language change there's no confirm prompt — it's cheap and
-        reversible."""
+        """Persist + apply the theme live, then request a window rebuild so
+        per-widget ``tok()`` lookups repaint too."""
         name = self.theme_combo.itemData(idx)
         gui_theme.set_theme(name)
         app = QApplication.instance()
@@ -248,11 +240,8 @@ class SettingsDialog(QDialog):
         self.reload_requested = True
 
     def _change_font_size(self, size: int) -> None:
-        """Persist + apply the chosen app font size live, then request a rebuild.
-
-        ``apply_theme`` re-reads the size into ``app.setFont``; the rebuild on
-        close lets widgets that cached the old font metrics relayout. Like the
-        theme, it's cheap and reversible, so there's no confirm prompt."""
+        """Persist + apply the font size live, then request a rebuild so widgets
+        that cached the old metrics relayout."""
         gui_theme.set_font_size(size)
         app = QApplication.instance()
         if app is not None:

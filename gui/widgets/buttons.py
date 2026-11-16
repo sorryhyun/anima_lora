@@ -16,12 +16,10 @@ from PySide6.QtWidgets import (
 def apply_variant(w: QWidget, variant: str | None) -> None:
     """(Re)assign an action-button style ``variant`` and repolish so it repaints.
 
-    The saturated action colors live in the global stylesheet as
-    ``[variant="…"]`` rules (see :data:`gui.theme.ACTION_COLORS`). Setting the
-    dynamic property after a widget is realized does **not** restyle it until the
-    style is re-polished — hence the unpolish/polish. Use it for state flips
-    (idle→busy). Pass ``None``/"" to clear back to the neutral default button
-    look.
+    The colors are ``[variant="…"]`` rules in the global stylesheet
+    (:data:`gui.theme.ACTION_COLORS`). A dynamic property set after the widget
+    is realized does not restyle it until re-polished. ``None``/"" clears to the
+    neutral button.
     """
     w.setProperty("variant", variant or "")
     style = w.style()
@@ -39,14 +37,10 @@ def action_button(
 ) -> QPushButton | QToolButton:
     """Build a saturated action button styled by its global-stylesheet *variant*.
 
-    Creates the button, sets its variant / tooltip and connects ``on_click``.
-    The color lives in :data:`gui.theme.ACTION_COLORS`; flip it on a state
-    change via :func:`apply_variant`.
-
     Variants: ``primary`` (green go), ``secondary`` (purple alt), ``info``
-    (blue), ``danger`` (red stop), ``warning`` (orange/dirty), ``busy`` (gray).
-    Pass ``tool_button=True`` for a :class:`QToolButton` (the action buttons that
-    flip busy state are tool buttons); default is a :class:`QPushButton`.
+    (blue), ``danger`` (red stop), ``warning`` (orange/dirty), ``busy`` (gray);
+    flip one later with :func:`apply_variant`. ``tool_button=True`` builds a
+    :class:`QToolButton` instead of a :class:`QPushButton`.
     """
     btn: QPushButton | QToolButton = QToolButton() if tool_button else QPushButton()
     if text:
@@ -62,17 +56,13 @@ def action_button(
 class SplitButtonStyle(QProxyStyle):
     """Widen a ``QToolButton``'s dropdown indicator and paint a divider + tint.
 
-    Styling ``QToolButton::menu-button`` via a stylesheet disables Qt's
-    reservation of the arrow region for layout, which snaps the label to the
-    *full*-button centre. Driving the indicator width from the style metric
-    instead keeps Qt's reservation intact, so the label stays centred in the
-    action (non-arrow) segment — what we actually want for a split button —
-    while still giving a wide, visually distinct dropdown half. The divider +
-    subtle dark tint are painted over the menu sub-control (a stylesheet rule
-    there would re-break the centring).
+    A stylesheet rule on ``QToolButton::menu-button`` drops Qt's layout
+    reservation for the arrow and centres the label on the whole button; the
+    style metric keeps it centred in the action segment. The divider and tint
+    are painted for the same reason.
 
-    Apply with ``button.setStyle(style)`` and keep a reference alive (the widget
-    does not take ownership). Set the style BEFORE the stylesheet.
+    Apply with ``button.setStyle(style)`` before the stylesheet, and keep a
+    reference alive (the widget does not take ownership).
     """
 
     INDICATOR = 22

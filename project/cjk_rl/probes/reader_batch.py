@@ -15,12 +15,8 @@ read. Against P0's reads of record (one page per call, whole page included):
                with and without the whole page (the first 64 euler renders)
     vram       allocated after load, peak while reading
 
-Its run (20261113-1657) read stock VL16 beside the tuned reader; ``Readers`` now
-reads the tuned one alone, so a re-run compares that reader only.
-
-int8 / fp8 copies of the two PaddleOCR-VL-1.6 readers were dropped before this
-probe: the tower's K (1152, 4304) is not a multiple of ConvRot's 256-column group,
-and at decode M every int8 / fp8 linear measured slower than bf16 (11-13).
+``Readers`` loads the tuned reader alone, so a re-run compares that reader only.
+The readers stay bf16 (why int8 / fp8 was dropped: the report).
 
     make daemon-run ARGS="--stall-timeout 600 project/cjk_rl/probes/reader_batch.py"
 """

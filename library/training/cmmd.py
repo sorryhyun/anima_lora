@@ -20,8 +20,7 @@ The Gaussian-kernel MMD² formula matches the reference repo exactly:
     MMD²(X, Y) = E_{x,x'}[k(x, x')] + E_{y,y'}[k(y, y')] - 2 E_{x,y}[k(x, y)]
     k(a, b) = exp(-‖a - b‖² / (2σ²))
 
-with ``σ=10`` and an overall ``×1000`` scale (so values land in a readable
-range — these are the original CMMD paper constants).
+with ``σ=10`` and an overall ``×1000`` scale (the CMMD paper constants).
 """
 
 from __future__ import annotations
@@ -67,16 +66,13 @@ def gram_of(feats: torch.Tensor, *, drop_cls: bool = True) -> torch.Tensor:
     centers over tokens, forms the ``[D, D]`` second moment ``GᵀG / T`` and
     Frobenius-normalizes it, returning a flat ``[D*D]`` unit vector.
 
-    The Gram is token-count-free by construction (``[D, D]`` regardless of T),
-    so gen/ref buckets with different patch grids are directly comparable — the
-    property CMMD's pooled feature lacked. Invariances: token permutation ⇒
-    identical Gram; global feature scale ⇒ identical Gram (Frobenius
-    normalization divides it out).
+    The Gram is ``[D, D]`` regardless of T, so gen/ref buckets with different
+    patch grids are comparable; it is invariant to token order and global scale.
 
-    NB: the paired-Gram eval failed its known-difference gate (content-dominated,
-    style-weak) and was archived; kept only because ``_archive/bench/paired_eval/``
-    imports these helpers. Do not build a val metric on the token-Gram — see
-    ``_archive/proposals/paired_gram_eval.md``.
+    The paired-Gram eval failed its known-difference gate (content-dominated,
+    style-weak); do not build a val metric on it
+    (``_archive/proposals/paired_gram_eval.md``). Kept for
+    ``_archive/bench/paired_eval/``.
     """
     feats = feats.to(torch.float32)
     if drop_cls and feats.shape[0] > 1:

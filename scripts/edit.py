@@ -27,7 +27,7 @@ Notes:
   * Mask blending: ``--mask`` implements the anchor-side half of paper Eq. 12,
     dropping Δz inside the edit region; the background-lock latent blend is not
     implemented. ``--easycontrol_mask`` gray-holes the EC cond over the same
-    region so the inpaint prior clamps outside it (_archive/directedit_ec/bench).
+    region so the inpaint prior clamps outside it.
   * Inversion runs at ``--invert_guidance 1.0`` (no CFG); the edit pass uses
     the user's ``--guidance_scale`` (default 4.0, Anima base-v1.0 standard).
 """
@@ -440,24 +440,10 @@ def _load_cached_embed_variants(
 ) -> list[tuple[str, torch.Tensor]]:
     """Load preprocessed crossattn embeds from a `_anima_te.safetensors` cache.
 
-    Returns a list of `(variant_label, crossattn_emb)` ready to feed
-    DirectEdit. Mirrors `AnimaTextEncoderOutputsCachingStrategy.load_outputs_npz`
-    but emits the variants requested by `selector` (default 'all') instead of
-    stochastically sampling one — this is a sweep, not training.
-
-    Behavior:
-      * Multi-variant caches (`num_variants` key present): yields v_i for every
-        i selected by `selector`.  v0 is the pristine caption; v1..v{N-1} are
-        tag-shuffled re-encodings.
-      * Single-variant caches: yields one pass.  `selector` must be 'all' or
-        '0'.
-      * Pre-baked `crossattn_emb*` (cached when training was preprocessed
-        with `cache_llm_adapter_outputs=True`) is used directly. Otherwise
-        we run `anima._preprocess_text_embeds` ourselves so the cache stays
-        usable regardless of how it was preprocessed.
-
-    Fails loud if the file is missing, shape-mismatched, or `selector` names a
-    missing variant.
+    Returns `(variant_label, crossattn_emb)` for every variant `selector`
+    names, rather than sampling one as training does. A single-variant cache
+    accepts only 'all' or '0'. Pre-baked `crossattn_emb*` is used as is;
+    otherwise the LLM adapter runs here on the cached Qwen3 outputs.
     """
     from safetensors import safe_open
 
@@ -529,11 +515,8 @@ def _fm_error_score(
     """AGSM intrinsic reward (negated) for one conditioning ``emb``.
 
     Returns the mean flow-matching error ``‖v_θ(x_σ, σ, emb) − (noise − x0)‖²``
-    over the FIXED ``(sv, noise)`` grid. Lower = the model finds ``emb`` a
-    better explanation of the source image = more on-manifold. The σ/noise
-    grid is shared across every variant, so differences are attributable to
-    the conditioning alone — this is the regime where the FM signal is
-    informative (relative ranking on one image), unlike absolute FM val loss.
+    over a fixed ``(sv, noise)`` grid shared by every variant, so only the
+    ranking on one image is meaningful. Lower = more on-manifold.
 
     ``z_clean`` is the 5D source latent ``[1, C, 1, H, W]``; ``sv`` is
     ``(n, 1, 1, 1)`` and ``noise`` is ``(n, C, H, W)``.
@@ -541,9 +524,8 @@ def _fm_error_score(
     lat = z_clean.squeeze(2)  # [1, C, H, W]
     n = noise.shape[0]
     lat = lat.expand(n, -1, -1, -1)
-    # Cast σ to the latent dtype (bf16) so the mix stays bf16 — sv arrives fp32
-    # from torch.tensor(); a bf16*fp32 mix would promote the latent to fp32 and
-    # mismatch the DiT's bf16 weights (mirrors fm_loss_step's cast).
+    # sv arrives fp32; a bf16*fp32 mix would promote the latent to fp32 and
+    # mismatch the DiT's bf16 weights.
     sv = sv.to(lat.dtype)
     noisy = ((1.0 - sv) * lat + sv * noise).unsqueeze(2)  # 5D for the DiT
     emb_e = emb.expand(n, -1, -1)
@@ -886,11 +868,8 @@ def main() -> None:
             100.0 * float(m.mean()),
         )
 
-    # Prime the EC cond stream while the VAE is still mounted. Default cond is
-    # the source latent itself (hole-free "copy everything" reference); the
-    # cache then serves every forward — inversion, edit, CFG branches — so the
-    # effective model is identical across both passes and ψ_tar == ψ_src keeps
-    # reconstructing exactly.
+    # Prime the EC cond stream while the VAE is mounted. The cache serves every
+    # forward of both passes, so ψ_tar == ψ_src still reconstructs the source.
     if ec_network is not None:
         if args.easycontrol_image:
             cond_pil = (

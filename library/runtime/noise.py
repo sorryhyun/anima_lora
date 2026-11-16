@@ -102,20 +102,16 @@ def _restrict_sigma_range(args, sigmas: torch.Tensor) -> torch.Tensor:
 def draw_flat_sigmas(
     args, bsz: int, h: int, w: int, device, generator: "torch.Generator | None" = None
 ) -> Optional[torch.Tensor]:
-    """Per-sample flat σ ∈ [0,1], shape ``(bsz,)`` — the draw half of
-    :func:`get_noisy_model_input_and_timesteps`, split out so σ-first callers
-    (sigma_lowres: pick the latent grid from σ, then noise it) share the exact
-    density with the default draw-inside path. ``t_min``/``t_max`` restriction
-    is applied here. Returns ``None`` for the scheduler-grid density modes
-    (``weighting_scheme`` fallback), which need ``latents.ndim`` broadcasting
-    and stay in the main body. ``h``/``w`` are the latent grid (flux_shift's
-    resolution-dependent shift); pass the *native* grid so the σ marginal is
-    identical whether or not a demote later swaps the latent.
+    """Per-sample flat σ ∈ [0,1], shape ``(bsz,)``, ``t_min``/``t_max`` applied.
 
-    ``generator`` (paired-step-RNG mode) decouples the draw from the global
-    torch stream so arms with identical seeds share the exact σ sequence.
+    The draw half of :func:`get_noisy_model_input_and_timesteps`, split out for
+    σ-first callers (sigma_lowres picks the latent grid from σ). ``None`` for
+    the scheduler-grid modes, which stay in the main body. ``h``/``w`` feed
+    flux_shift; pass the native grid so a later demote does not change the σ
+    marginal. ``generator`` (paired-step-RNG mode) keeps the draw off the
+    global torch stream.
     """
-    # logit-space mean shift; >0 skews σ toward high-noise, 0.0 (default) = unbiased
+    # logit-space mean shift; >0 skews σ toward high noise
     sigmoid_bias = getattr(args, "sigmoid_bias", 0.0)
     if args.timestep_sampling == "uniform" or args.timestep_sampling == "sigmoid":
         if args.timestep_sampling == "sigmoid":
@@ -152,9 +148,8 @@ def get_noisy_model_input_and_timesteps(
     dtype,
     sigmas: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """``sigmas`` (flat ``(bsz,)``, already range-restricted — e.g. a
-    :func:`draw_flat_sigmas` result) skips the internal draw; None (default)
-    keeps the original draw-inside behavior."""
+    """``sigmas`` (flat ``(bsz,)``, range-restricted, e.g. from
+    :func:`draw_flat_sigmas`) skips the internal draw."""
     bsz, h, w = latents.shape[0], latents.shape[-2], latents.shape[-1]
     assert bsz > 0, "Batch size not large enough"
     num_timesteps = noise_scheduler.config.num_train_timesteps
@@ -176,8 +171,8 @@ def get_noisy_model_input_and_timesteps(
         )
         sigmas = _restrict_sigma_range(args, sigmas)
 
-    # σ∈[0,1] IS the DiT's time argument — nothing downstream rescales it. Keep the
-    # flat per-sample σ as the returned `timesteps`; broadcast a copy for noising.
+    # σ∈[0,1] is the DiT's time argument (nothing rescales it); broadcast a
+    # copy for noising.
     timesteps = sigmas
 
     sigmas = (
@@ -223,37 +218,29 @@ def fm_training_batch(
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """The default rectified-flow training step, as plain kwargs.
 
-    The exact recipe ``train.py`` runs, without a full ``args`` Namespace or a
-    scheduler — it delegates to ``get_noisy_model_input_and_timesteps``
-    (``tests/test_fm_training_batch.py`` pins the bit-match), with the trainer's
-    argument **defaults** baked in as kwarg defaults.
+    ``train.py``'s recipe without an ``args`` Namespace or scheduler: delegates
+    to ``get_noisy_model_input_and_timesteps`` (``tests/test_fm_training_batch.py``
+    checks they match), with the trainer's defaults as kwarg defaults.
 
     Args:
-        latents: clean latents ``(B, C, H, W)`` (or 5D — ndim is honored).
-        noise: ``torch.randn_like(latents)`` drawn by the caller (kept explicit so
-            the caller owns the RNG stream / seeding).
-        The remaining kwargs mirror the identically-named ``args`` fields; the
-        defaults match ``configs/base.toml`` / the argparse defaults. ``device`` /
-        ``dtype`` default to the latents' device and float32 (the trainer casts the
-        noisy input to the weight dtype — pass ``dtype=weight_dtype`` to match).
+        latents: clean latents ``(B, C, H, W)`` (or 5D; ndim is honored).
+        noise: ``torch.randn_like(latents)`` from the caller, who owns the RNG.
+        The rest mirror the same-named ``args`` fields. ``dtype`` defaults to
+        float32; pass ``dtype=weight_dtype`` to match the trainer's cast.
 
     Returns:
-        ``(noisy_model_input, timesteps, target)`` where
+        ``(noisy_model_input, timesteps, target)``:
 
-        * ``noisy_model_input`` is ``(1-σ)·latents + σ·noise`` cast to ``dtype``,
-          same ndim as ``latents`` (NOT unsqueezed to the DiT's 5D — the caller
-          adds the ``dim=2`` singleton, see the 5D-latent invariant in CLAUDE.md);
-        * ``timesteps`` is the flat per-sample ``σ ∈ [0, 1]`` — this IS the DiT
-          time argument, and ``timesteps.view(-1, 1, 1, 1)`` recovers the broadcast
-          ``sigmas`` for loss weighting (``compute_loss_weighting_for_sd3``);
-        * ``target`` is the rectified-flow target ``noise - latents`` (native dtype,
-          uncast — matches ``train.py``'s ``target = noise - latents``).
+        * ``noisy_model_input`` = ``(1-σ)·latents + σ·noise`` in ``dtype``, same
+          ndim as ``latents`` (the caller adds the DiT's ``dim=2`` singleton);
+        * ``timesteps`` = flat per-sample ``σ ∈ [0, 1]``, the DiT time argument;
+        * ``target`` = ``noise - latents``, uncast.
     """
     if device is None:
         device = latents.device
     if noise_scheduler is None:
-        # Only consulted by the "sigma" (weighting-scheme) branch; built to match
-        # AnimaTrainer.get_noise_scheduler exactly so that path stays bit-faithful.
+        # Only the weighting-scheme branch reads it; matches
+        # AnimaTrainer.get_noise_scheduler.
         noise_scheduler = FlowMatchEulerDiscreteScheduler(
             num_train_timesteps=1000, shift=discrete_flow_shift
         )

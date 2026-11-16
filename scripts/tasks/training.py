@@ -32,12 +32,10 @@ from ._common import (
 )
 
 # i2i tasks are file-driven. ``i2i_tasks/configs/<task>.toml`` is the
-# model-agnostic half: the ``name`` slug (→ ``post_image_dataset/i2i/<name>/``),
-# the ``stage`` kind (a ``_I2I_STAGES`` key, default the task id) and the
-# [staging] knobs. ``configs/easycontrol/<task>.toml`` is the EasyControl half
-# ([preprocess]/[training] knob tables + a [[datasets]] blueprint tail), selected
-# via EASYADAPTER; every such run trains the base ``easycontrol`` method with
-# the descriptor's [training] table folded in as CLI overrides.
+# model-agnostic half: ``name`` slug (→ ``post_image_dataset/i2i/<name>/``),
+# ``stage`` kind (a ``_I2I_STAGES`` key, default the task id), [staging] knobs.
+# ``configs/easycontrol/<task>.toml`` is the EasyControl half ([preprocess] /
+# [training] tables + a [[datasets]] blueprint tail), selected via EASYADAPTER.
 
 _I2I_TASK_DIR = ROOT / "i2i_tasks" / "configs"
 
@@ -138,9 +136,8 @@ def cmd_soup(extra):
         "--preset",
         _preset(),
     ]
-    # CUSTOM=<file> runs an ad-hoc soup config from configs/gui-methods/custom/
-    # (shared scratch dir, kept out of the tracked configs/soup/soup.toml).
-    # The file seeds BOTH the [soup] pipeline knobs and the fine-tune method config.
+    # CUSTOM=<file>: an ad-hoc config from configs/gui-methods/custom/ that seeds
+    # both the [soup] pipeline knobs and the fine-tune method config.
     custom = os.environ.get("CUSTOM")
     if custom:
         stem = Path(custom).stem
@@ -338,13 +335,10 @@ def _resolve_blueprint_path(path: str, name: str) -> str:
 def _easy_train_extra(adapter: str, extra) -> list[str]:
     """Build train.py extra-argv for an ``EASYADAPTER=<adapter>`` descriptor run.
 
-    ``configs/easycontrol/<adapter>.toml`` is a multi-purpose file, but
-    train.py's dataset-config validator rejects any top-level key outside the
-    blueprint. So we extract just the blueprint sections into a clean
-    generated sidecar (``--dataset_config``), then fold the optional
-    ``[training]`` table (``output_name`` defaulting to
-    ``anima_easycontrol_<name>``) into CLI overrides. User ``extra`` argv is
-    appended last so it still wins.
+    train.py's dataset-config validator rejects the descriptor's non-blueprint
+    keys, so the blueprint is written to a generated ``--dataset_config`` and
+    the ``[training]`` table (``output_name`` default
+    ``anima_easycontrol_<name>``) becomes CLI overrides. ``extra`` goes last.
     """
     cfg, name, base = _easy_load(adapter)
     blueprint = {k: cfg[k] for k in ("general", "datasets") if k in cfg}
@@ -354,8 +348,7 @@ def _easy_train_extra(adapter: str, extra) -> list[str]:
             f"`make i2i-stage TASK={adapter}` first."
         )
 
-    # Resolve subset paths against the current `name` slug so a `name` change
-    # reroutes training.
+    # A `name` change reroutes training.
     for ds in blueprint.get("datasets", []):
         for s in ds.get("subsets", []):
             for key in (
@@ -368,8 +361,7 @@ def _easy_train_extra(adapter: str, extra) -> list[str]:
                 if key in s:
                     s[key] = _resolve_blueprint_path(s[key], name)
 
-    # Write the blueprint-only dataset config under the slug base dir. Stable
-    # path so --queue can re-read it later; regenerated each invocation.
+    # Stable path so a --queue'd job can re-read it; regenerated each call.
     base_dir = ROOT / base
     base_dir.mkdir(parents=True, exist_ok=True)
     ds_path = base_dir / "dataset_config.toml"
@@ -381,7 +373,6 @@ def _easy_train_extra(adapter: str, extra) -> list[str]:
         encoding="utf-8",
     )
 
-    # output_name defaults to the name-derived slug; explicit [training].output_name wins.
     training = dict(cfg.get("training") or {})
     training.setdefault("output_name", f"anima_easycontrol_{name}")
 
@@ -439,24 +430,18 @@ def _resize_tree(
 def _near_twins_preprocess(adapter: str, cfg: dict, base: str, extra) -> None:
     """Resize + VAE/TE caching for the mined near-twin pair tree.
 
-    Every knob is read from the ``[preprocess]`` table of
-    ``configs/easycontrol/near_twins.toml``. The staging/resized/cache/cond
-    dirs default to ``post_image_dataset/i2i/<name>/{staging,resized,
-    cache,cond}``; an explicit path key still overrides.
-
-    The mined ``staging/`` tree holds native-resolution images (symlinks to
-    the corpus), so this first resizes them into buckets under ``resized/``
-    (the training ``image_dir``), then VAE/TE-encodes into ``cache/``.
+    Knobs come from the descriptor's ``[preprocess]`` table; dirs default to
+    ``post_image_dataset/i2i/<name>/{staging,resized,cache,cond}``. The mined
+    ``staging/`` tree holds native-resolution symlinks, so it is resized into
+    buckets under ``resized/`` (the training ``image_dir``) before encoding.
     """
     pp = cfg.get("preprocess") or {}
     staging = pp.get("image_dir", f"{base}/staging")
     resized = pp.get("resized_dir", f"{base}/resized")
     cache = pp.get("cache_dir", f"{base}/cache")
     recursive = ["--recursive"] if pp.get("recursive", True) else []
-    # Bucket tiers: descriptor's [preprocess].target_res wins, else base.toml's
-    # target_res; final fallback [1024]. CAVEAT (free-fit): a pair whose
-    # members free-fit to different shapes is cross-shape-paired (or dropped if
-    # truly unpaired) — see _near_twins_build_cond.
+    # Descriptor's target_res, else base.toml's, else [1024]. Free-fit can give
+    # a pair two shapes; see _near_twins_build_cond.
     target_res = pp.get("target_res")
     if target_res is None:
         from ._common import _path_overrides
@@ -489,7 +474,6 @@ def _near_twins_preprocess(adapter: str, cfg: dict, base: str, extra) -> None:
             *recursive,
         ]
     )
-    # Text-encoder outputs (captions copied during resize).
     run(
         [
             PY,
@@ -509,8 +493,7 @@ def _near_twins_preprocess(adapter: str, cfg: dict, base: str, extra) -> None:
             *recursive,
         ]
     )
-    # Optional REPA vision-encoder sidecars, gated on [preprocess] pe_encoder so
-    # plain runs skip the encoder pass. Idempotent (pre-skips cached).
+    # Optional REPA vision-encoder sidecars ([preprocess] pe_encoder).
     pe_encoder = pp.get("pe_encoder")
     if pe_encoder:
         run(
@@ -533,19 +516,13 @@ def _near_twins_preprocess(adapter: str, cfg: dict, base: str, extra) -> None:
 def _near_twins_build_cond(pp: dict, base: str) -> None:
     """Materialize the ``cond/`` latent tree for the near-twins *removal* task.
 
-    Pairing convention: the denoising target is the clean ``_no_tags`` member;
-    its ``_tags`` twin is the EasyControl condition reference. The loader
-    resolves the cond latent by the *target* stem under ``cond_cache_dir``, so
-    for each ``{id}_no_tags_{WxH}_anima.npz`` target we symlink the sibling
-    ``{id}_tags_{W'xH'}_anima.npz`` into
-    ``cond/<artist>/{id}_no_tags_{W'xH'}_anima.npz`` (filed at the *twin's*
-    bucket). Under free-fit a twin may land at a different shape (W'xH' ≠ WxH)
-    and is still paired — cond≠target shapes are supported (cond_diff_loss
-    self-skips on a mismatch). A truly unpaired target is skipped with a
-    warning.
+    The target is the clean ``_no_tags`` member; its ``_tags`` twin is the
+    condition. The loader finds the cond latent by the *target* stem, so each
+    ``{id}_tags_{W'xH'}_anima.npz`` is symlinked as
+    ``cond/<artist>/{id}_no_tags_{W'xH'}_anima.npz``, at the twin's own bucket
+    (free-fit may give it another shape; cond_diff_loss skips a mismatch).
 
-    Pure symlinks over the existing cache; the tree is rebuilt from scratch
-    each run so a dropped pair can't leave a stale link behind.
+    Rebuilt from scratch each run so a dropped pair leaves no stale link.
     """
     cache_dir = ROOT / pp.get("cache_dir", f"{base}/cache")
     cond_dir = ROOT / pp.get("cond_dir", f"{base}/cond")
@@ -564,12 +541,11 @@ def _near_twins_build_cond(pp: dict, base: str) -> None:
         m = pat.match(npz.name)
         if not m:
             continue
-        # Prefer the same-bucket twin (zero-cost, the constant-bucket common case).
+        # Prefer the same-bucket twin.
         twin = npz.with_name(f"{m['id']}_tags_{m['bucket']}_anima.npz")
         twin_bucket = m["bucket"]
         if not twin.is_file():
-            # Free-fit may land the _tags twin at a different shape — fine,
-            # cond≠target is supported. Pair at whatever bucket it has.
+            # Free-fit may land the twin at another shape; pair it anyway.
             cands = sorted(npz.parent.glob(f"{m['id']}_tags_*_anima.npz"))
             if not cands:
                 print(
@@ -582,8 +558,7 @@ def _near_twins_build_cond(pp: dict, base: str) -> None:
             twin = cands[0]
             twin_bucket = twin_pat.search(twin.name)["bucket"]
             crossfit += 1
-        # File under the target stem at the TWIN's actual bucket so the loader's
-        # stem-glob fallback resolves it. Same-bucket case: name is unchanged.
+        # Target stem at the twin's bucket, for the loader's stem-glob fallback.
         link = (
             cond_dir
             / npz.relative_to(cache_dir).parent
@@ -626,11 +601,9 @@ def _near_twins_stage(adapter: str, cfg: dict, base: str, extra) -> None:
 def _colorize_prep_paths(base: str) -> list[str]:
     """Slug-derived prep.py path flags so ``name`` reroutes colorize's trees.
 
-    ``--src`` stays the shared color corpus (``post_image_dataset/resized``);
-    only the synthetic staging tree + cond/text/target caches ride the slug.
-    Injected before the descriptor knob tables so a ``[staging]``/
-    ``[preprocess]`` key (or user ``extra``) still wins via last-flag
-    precedence."""
+    ``--src`` stays the shared color corpus; the staging tree and caches ride
+    the slug. Placed before the descriptor knobs so those (and ``extra``) win
+    by last-flag precedence."""
     return [
         "--staging",
         f"{base}/staging",
@@ -886,10 +859,9 @@ def _subject_edit_preprocess(adapter: str, cfg: dict, base: str, extra) -> None:
 def _phash_edit_preprocess(adapter: str, cfg: dict, base: str, extra) -> None:
     """Resize + VAE/TE caching for the phash-mined edit-pair pool.
 
-    Differs from :func:`_near_twins_preprocess` in what gets *encoded*. There a
-    pair tree is staged per pair, so a member that joins several pairs (and both
-    directions of each) is resized and VAE-encoded once per view. Here the miner
-    stages a deduplicated ``pool/`` instead, and the pair views are symlinks:
+    Unlike :func:`_near_twins_preprocess`, which encodes a member once per
+    pair view, the miner stages a deduplicated ``pool/`` and the pair views
+    are symlinks:
 
       1. purge the derived pair links (so the VAE pass only ever sees the pool)
       2. resize ``pool/`` → ``resized/``            [distinct images]
@@ -899,10 +871,8 @@ def _phash_edit_preprocess(adapter: str, cfg: dict, base: str, extra) -> None:
          the same stem in ``cond/``
       5. TE-encode ``--path_pattern '*_no_tags.*'`` [delta captions only]
 
-    A latent depends only on the image, so step 3 is the whole saving; the only
-    pair-specific artifact is the caption, which step 5 encodes exactly once per
-    directed pair. Step 1 matters on re-runs: a stale link left in ``resized/``
-    would otherwise be handed to the VAE pass as if it were a pool member.
+    Step 1 matters on re-runs: a stale link left in ``resized/`` would be
+    VAE-encoded as a pool member.
     """
     pp = cfg.get("preprocess") or {}
     pool = pp.get("pool_dir", f"{base}/pool")
@@ -1024,15 +994,11 @@ def _phash_edit_colorize_cond(
 ) -> int:
     """Synthesize + encode the cond side of the ``kind="colorize"`` records.
 
-    Those records have no mined partner: the condition is a **mangafied B&W**
-    view (XDoG + screentone, ``i2i_tasks/colorization/prep.py``) of
-    the target itself. Mangafying the already-bucketed ``resized/`` image keeps
-    the cond at the target's exact shape for free.
-
-    Only the selected targets are staged — a symlink tree in ``mono_src/`` — so
-    the extra VAE work is one encode per colorize record, not one per pool
-    member. Must run **before** :func:`_phash_edit_build_links`: after that the
-    pool dir also holds the ``_no_tags`` pair views, which are not sources.
+    The condition is a mangafied B&W view (``i2i_tasks/colorization/prep.py``)
+    of the already-bucketed target, so it keeps the target's shape. Only the
+    selected targets are staged (symlinks in ``mono_src/``). Must run before
+    :func:`_phash_edit_build_links`, which adds ``_no_tags`` views that are
+    not sources.
     """
     pairs = json.loads(manifest.read_text(encoding="utf-8"))["pairs"]
     keys = sorted({p["target"] for p in pairs if p.get("kind") == "colorize"})
@@ -1107,10 +1073,9 @@ def _phash_edit_build_links(
     """Materialize each directed pair as symlinks over the encoded pool.
 
     Per pair: the target's resized image and latent under the ``{pair}_no_tags``
-    stem, its delta caption as a real ``.txt``, and the cond's latent filed under
-    the *target* stem inside ``cond/`` — at the cond's own bucket, which under
-    free-fit need not match the target's (cond≠target shapes are supported;
-    ``cond_diff_loss`` self-skips on a mismatch).
+    stem, its delta caption as a real ``.txt``, and the cond's latent under the
+    *target* stem inside ``cond/`` at the cond's own bucket (as in
+    :func:`_near_twins_build_cond`).
 
     Three record kinds share this layout, differing only in where the cond latent
     comes from and what the caption says:
@@ -1122,9 +1087,8 @@ def _phash_edit_build_links(
                   variant from the record's ``variants`` list.
 
     A record carrying ``variants`` also gets a ``{stem}.variants.txt`` sidecar,
-    which the TE step treats as the source of truth instead of generating its own
-    shuffles — that is how the colorize arm gets its own dropout regime inside a
-    run whose global ``caption_tag_dropout_rate`` is 0.
+    which the TE step uses instead of its own shuffles (the colorize arm's
+    dropout inside a run whose ``caption_tag_dropout_rate`` is 0).
     """
     from anime_tools.captions.variants import (
         variants_sidecar_path,
@@ -1140,8 +1104,7 @@ def _phash_edit_build_links(
         stem = Path(key).name
         return sorted(d.glob(f"{stem}_*_anima.npz"))
 
-    # Image extensions only: resized/ also holds the .txt captions this step
-    # writes, and a bare "{stem}.*" glob would happily return one of those.
+    # Image extensions only: resized/ also holds the .txt captions written here.
     _IMG_EXTS = (".png", ".webp", ".jpg", ".jpeg")
 
     def _image(key: str) -> Path | None:
@@ -1155,8 +1118,7 @@ def _phash_edit_build_links(
     kinds: Counter = Counter()
     for p in pairs:
         kind = p.get("kind", "edit")
-        # colorize's cond is the synthetic mangafied view, encoded into its own
-        # cache under the same key; every other kind reads the shared pool cache.
+        # colorize's cond latent lives in its own cache under the same key.
         cond_root = mono_dir if kind == "colorize" else None
         tgt_img, tgt_npz, cond_npz = (
             _image(p["target"]),
@@ -1211,11 +1173,9 @@ def _phash_edit_stage(adapter: str, cfg: dict, base: str, extra) -> None:
     """Mine aligned instruction-edit pairs out of the raw crawl pool by phash.
 
     Pairs come from ``$CAPTION_CORPUS_DIR/retrieved`` via gelcrawl's cached
-    256-bit ``imagehash.phash`` (Hamming threshold, CPU-only, seconds); each
-    pair's caption is the tag delta between its members, i.e. an edit
-    instruction. Emits the ``_tags``/``_no_tags`` tree so the near_twins
-    preprocess pass applies verbatim. The tool self-reads its ``[staging]``
-    table and rewrites the blueprint tail.
+    ``imagehash.phash`` (Hamming threshold, CPU-only); each caption is the tag
+    delta between the members. The tool self-reads its ``[staging]`` table and
+    rewrites the blueprint tail.
     """
     run(
         [
@@ -1300,11 +1260,10 @@ def _character_ref_stage(adapter: str, cfg: dict, base: str, extra) -> None:
     )
 
 
-# Stage kinds: the bodies an i2i task file's ``stage`` key picks (training is
-# generic via _easy_train_extra); only `stage` (data gen) + `preprocess`
-# (EasyControl VAE/TE caching; None = MOSS-only) differ per kind. Both receive
-# ``(task, cfg, base, extra)``: ``stage`` the task file, ``preprocess`` the
-# EasyControl descriptor.
+# Stage kinds an i2i task file's ``stage`` key picks: `stage` (data gen) and
+# `preprocess` (EasyControl VAE/TE caching; None = MOSS-only). Both take
+# ``(task, cfg, base, extra)``: ``stage`` gets the task file, ``preprocess``
+# the EasyControl descriptor.
 _I2I_STAGES = {
     # In-artist near-twin miner; sanitize and other tag-gap tasks are task files
     # with `stage = "near_twins"` and their own discriminator tags.
@@ -1319,15 +1278,11 @@ _I2I_STAGES = {
         "stage": _subject_edit_stage,
         "preprocess": _subject_edit_preprocess,
     },
-    # Aligned-pair instruction editor: bespoke staging over the census manifest,
-    # then the near_twins preprocess pass verbatim (same _tags/_no_tags shape).
-    # NB the twin_edit tool + descriptor are archived (directedit_ec); this
-    # entry is dead until they are restored.
+    # Aligned-pair instruction editor. Its tool and descriptor are archived
+    # (directedit_ec), so this entry fails until they are restored.
     "twin_edit": {"stage": _twin_edit_stage, "preprocess": _near_twins_preprocess},
-    # phash-mined aligned instruction editor: the twin_edit objective on pairs
-    # found by perceptual hash over the RAW crawl pool instead of by tag delta
-    # over the curated one. Bespoke preprocess: the miner stages a deduplicated
-    # pool and the pair views are symlinks, so each image is encoded ONCE.
+    # Instruction-edit pairs found by perceptual hash over the raw crawl pool;
+    # each image is encoded once (see _phash_edit_preprocess).
     "phash_edit": {"stage": _phash_edit_stage, "preprocess": _phash_edit_preprocess},
     # JA page → translated lettering from hitocrawl edition twins (MOSS-only).
     "swap_text": {"stage": _swap_text_stage, "preprocess": None},

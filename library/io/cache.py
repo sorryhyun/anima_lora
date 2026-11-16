@@ -221,9 +221,8 @@ def load_cached_text_features(
 ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
     """Load ``(crossattn_emb, pooled_text)`` for one sample.
 
-    The pooled tensor is computed at load time via ``crossattn_emb.amax(dim=0)``
-    (cheaper than ``.max(dim=0).values``, which also computes argmax) over the
-    same variant index as the cross-attn so the two can't desync.
+    The pooled tensor is ``crossattn_emb.amax(dim=0)``, computed at load time
+    from the same variant index as the cross-attn.
 
     Returns ``(None, None)`` if no crossattn variant is found.
     """
@@ -294,8 +293,7 @@ def parse_latent_cache_name(path: str | os.PathLike) -> LatentCacheFile | None:
     """Parse a ``{stem}_{W}x{H}_anima.npz`` path into its parts.
 
     Returns ``(path, stem, W_px, H_px)`` or ``None`` if the basename doesn't
-    match the bucketed-latent convention. Bench probes should use this rather
-    than their own filename regex.
+    match the bucketed-latent convention.
     """
     p = Path(path)
     m = _LATENT_PIXEL_RE.match(p.name)
@@ -324,7 +322,6 @@ def discover_latents_by_stem(
     return out
 
 
-# Bucketed sample discovery.
 def discover_bucketed_samples(
     data_dir: Path,
     bucket: str | None,
