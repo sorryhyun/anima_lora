@@ -335,6 +335,7 @@ def _student_metadata(cfg: TurboConfig, ctx: RunContext, step: int) -> dict[str,
     )
     optional = {
         "ss_turbo_anchor_only": "1" if cfg.anchor_only else None,
+        "ss_turbo_teacher_handoff": "1" if cfg.teacher_handoff else None,
         "ss_turbo_anchor_draws": str(cfg.anchor_draws)
         if cfg.anchor_draws > 1
         else None,

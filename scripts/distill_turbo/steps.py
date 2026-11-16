@@ -199,7 +199,9 @@ def student_rollout(
     if g == 0:
         x_g, v_g, s_g = x, v_first, s0
     else:
-        x = x - (s0 - sigmas[1]) * v_first
+        # teacher_handoff: the step the fitted step 0 aims at, not the one it takes.
+        v0 = v_target.to(v_first.dtype) if cfg.teacher_handoff else v_first
+        x = x - (s0 - sigmas[1]) * v0
         if not keep:
             x = x.detach()
         for i in range(1, g):  # backward simulation (graph kept under rollout_grad)

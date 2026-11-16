@@ -12,6 +12,9 @@ in the run table.
   `1730` and `1810` (the 14 of 28 target) follow.
 - [m15_1k.md](m15_1k.md): the shipped recipe at 1k on merged15 failed (tighter framing, one
   layout per prompt); the 250-iteration A/B does not predict 1k.
+- [teacher_handoff.md](teacher_handoff.md): the anchor alone on a 512-prompt cache (`2209`) leaves
+  the finish where the 1k runs left it; the arm after it trains DM on steps 1–3 from the input a
+  fitted step 0 hands them (`2221`): step 0 holds, the finish is mixed at 250.
 - [grid_cdm.md](grid_cdm.md): the static grid and the cond-only L_CDM, both adopted at 250
   iterations on the user's read and shipped in the recipe; one seed each.
 

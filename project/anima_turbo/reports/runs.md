@@ -39,3 +39,5 @@ Probe numbers are on EMA 250 unless a row says otherwise: sameness (lower is mor
 | `turbo_1116_1653` | `1558` at 1k | anchor MSE 0.068; the finish does not come | [v11_init](v11_init.md) |
 | `turbo_1116_1730` | `1558` with `grad_accum 4` | ties `1653` at equal compute | [v11_init](v11_init.md) |
 | `turbo_1116_1810` | anchor on the 28-step schedule (14 of 28) | adopted as the target to scale: sameness 0.291 (teacher 0.315), `S` cos 0.753 | [anchor_only_recipe](../anchor_only_recipe.md), `bench/turbo/results/20261116-{1827,1830,1833}-*` |
+| `turbo_1116_2209` | anchor alone on the 512-prompt cache, `grad_accum 2`, 512 updates | renders tie `2019` (p64); 0.4 s/it | [teacher_handoff](teacher_handoff.md) |
+| `turbo_1116_2221` | DM / CDM / GAN on steps 1–3 from the teacher-forced handoff, from `2209` | layouts and step 0 held (anchor MSE 0.065, val flat); finish mixed: café outfits closer to the teacher, new garbled text boxes, bocchi seed-1 guitar loses its neck; 4.5 s/it | [teacher_handoff](teacher_handoff.md) |

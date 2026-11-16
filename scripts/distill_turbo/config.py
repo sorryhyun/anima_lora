@@ -180,9 +180,16 @@ class TurboConfig:
     anchor_cache: str = knob(
         "dpdmd.anchor_cache",
         "",
-        "Anchor target cache dir (anchor_only only): train on the cached samples "
-        "of data_dir, reading v_target and ε from the cache. Built by "
+        "Anchor target cache dir: train on the cached samples of data_dir, reading "
+        "v_target and ε from the cache. Built by "
         "`python -m scripts.distill_turbo.anchor_cache`.",
+    )
+    teacher_handoff: bool = knob(
+        "dpdmd.teacher_handoff",
+        False,
+        "Roll steps 1..g from the anchor target's step 0, x_1 = ε − (1 − σ_1)·v_target, "
+        "instead of the student's own step 0: the DM steps train on the input a "
+        "fitted step 0 hands them. Needs the anchor; dm_first_step / rollout_grad off.",
     )
     flow_shift: float = knob(
         "sampling.flow_shift",
@@ -539,9 +546,23 @@ def _validate(c: TurboConfig) -> None:
         "dpdmd.anchor_draws > 1 is built for dpdmd.anchor_only only (S-c.2).",
     )
     _require(
-        not c.anchor_cache or (c.anchor_only and c.anchor_draws == 1),
-        "dpdmd.anchor_cache is built for dpdmd.anchor_only with anchor_draws 1 "
-        "(the cache's own draws replace them).",
+        not c.anchor_cache or c.anchor_draws == 1,
+        "dpdmd.anchor_cache takes anchor_draws 1 (the cache's own draws replace them).",
+    )
+    _require(
+        not c.anchor_cache or c.div_weight > 0.0,
+        "dpdmd.anchor_cache needs div_weight > 0 (div_weight 0 skips the anchor).",
+    )
+    _require(
+        not c.teacher_handoff
+        or (
+            c.div_weight > 0.0
+            and not c.anchor_only
+            and not c.dm_first_step
+            and not c.rollout_grad
+        ),
+        "dpdmd.teacher_handoff needs the anchor (div_weight > 0), a DM run "
+        "(anchor_only off) and dm_first_step / rollout_grad off.",
     )
     _require(
         not c.anchor_only
@@ -682,6 +703,7 @@ _TB_KEYS = (
     "anchor_only",
     "anchor_draws",
     "anchor_cache",
+    "teacher_handoff",
     "flow_shift",
     "student_rank",
     "fake_rank",
