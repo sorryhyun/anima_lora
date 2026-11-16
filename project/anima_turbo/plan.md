@@ -27,35 +27,45 @@ recipe is built for that, and every run is read on two numbers beside the render
 - **step 0 fitted:** held-out anchor MSE from v1.1's 0.138 toward Hub v3's 0.062.
 
 `S` is read against Hub v3's step 0 with v1.1's steps 1–3: sameness 0.318, cos 0.742. With the
-anchor target itself as step 0 the cos is 0.815, which is the room a fitted step 0 has.
+anchor target itself as step 0 the cos is 0.82 on the 6 of 12 anchor the runs so far trained on and
+0.967 on the teacher's 28-step schedule (14 of 28), which is the room a fitted step 0 has.
 
 Runs start from the v1.1 delta on Kaiming downs. The loop truncates the r96 file to rank 64
 (0.914 of the ΔW energy), so a run's own start is slightly off the probed row.
 
-The first two runs are in `reports/v11_init.md`. The anchor alone (`turbo_1116_1558`, 250
-iterations, 8 min) passed: anchor MSE 0.082, `T>S@1` cos 0.946, `S` 0.350 / 0.766. The shipped
-recipe from the same init (`turbo_1116_1552`) is behind it on every number (0.107, 0.922,
-0.383 / 0.721) and has the crisper finish. `1558` draws the teacher's layouts with a soft finish
-and broken objects, which come with its own step 0: its steps 1–3 finish the teacher's step 0
-cleanly. What is open, in order:
+The runs are in `reports/v11_init.md`, the recipe in `anchor_only_recipe.md`:
 
-1. **Where the finish is lost and where `1552` gets it.** Cross probes, no training, 3 min each:
+- The anchor alone (`turbo_1116_1558`, 250 iterations) is ahead of the shipped recipe from the same
+  init (`turbo_1116_1552`) on every number, and `1552` has the crisper finish.
+- At 1000 iterations (`turbo_1116_1653`) the anchor MSE goes 0.082 → 0.068 and `S` cos 0.766 → 0.775
+  with `T>S@1` cos held at 0.945; the sameness rises (0.350 → 0.365) and the broken objects stay.
+- `grad_accum 4` at the same compute (`turbo_1116_1730`) ties `1653` on the fit: the fit follows the
+  number of pairs seen.
+- The 6 of 12 anchor is a different, less varied image than the 28-step teacher's. The 28-step
+  chord to σ 0.75 as step 0 reads 0.967 with sameness 0.249 (teacher 0.315).
+
+What is open, in order:
+
+1. **The anchor on the teacher's schedule.** `1558` with `dpdmd.k_anchor 14`,
+   `teacher_anchor_steps 28`: 250 iterations (about 16 min) against `1558`, then 1000 (about
+   60 min). Probe with `--anchor_k 14 --anchor_steps 28`. Read: `S` cos past 0.775, sameness toward
+   the teacher's 0.315 instead of away from it, `T>S@1` cos held, and the finish at the places the
+   6 of 12 runs break.
+2. **Where the finish is lost and where `1552` gets it.** Cross probes, no training, 3 min each:
    `1558`'s step 0 with `1552`'s steps 1–3 and with v1.1's, and Hub v3's step 0 with `1558`'s
    steps 1–3. A clean render with `1552`'s steps 1–3 behind `1558`'s step 0 means the finish is a
-   steps 1–3 matter and the two can be trained apart.
-2. **The anchor alone at length.** `1558`'s anchor loss was still falling at 250 iterations. 1k
-   is about 33 min. Read: anchor MSE toward Hub v3's 0.062, sameness toward the teacher's 0.315,
-   `T>S@1` cos held, and whether a better-fitted step 0 finishes cleanly by itself.
-3. **The anchor target cache**, if the length pays. The target depends only on (prompt, ε) and the
-   frozen teacher, so a cache leaves one student forward and backward per iteration and lets the
-   regression run on a real batch. Not built.
-4. **The DM / CDM / GAN terms on steps 1–3 only, from `1558`** (`dm_first_step` off), if candidate 1
-   puts the finish in steps 1–3: step 0 keeps the anchor and the terms that sharpen never reach
-   it. Read on `T>S@1` cos and the renders.
-5. **A term that holds steps 1–3** (the student's velocity on its own rollout states against the
-   frozen init's) only if a longer anchor run starts to move `T>S@1` cos. Needs code.
-6. **Without training:** Hub v3 on step 0 and v1.1 on steps 1–3 as two LoRAs across two samplers
+   steps 1–3 matter and the two can be trained apart. Not run.
+3. **The anchor target cache.** The target depends only on (prompt, ε) and the frozen teacher, so a
+   cache leaves one student forward and backward per pair, and pairs are what the fit follows. A
+   cache reuses a fixed set of pairs; the held-out anchor MSE is the check on that. Not built.
+4. **The DM / CDM / GAN terms on steps 1–3 only, from an anchor student** (`dm_first_step` off), if
+   candidate 2 puts the finish in steps 1–3. Steps 1–3 that learn to repair a step 0 are steps 1–3
+   that redraw it (Hub v3's `T>S@1` cos is 0.805), so this comes after the fit.
+5. **Without training:** Hub v3 on step 0 and v1.1 on steps 1–3 as two LoRAs across two samplers
    (sameness 0.318, cos 0.742). Not the one-LoRA ship.
+
+A term that holds steps 1–3 is not needed so far: `T>S@1` cos stays at 0.944–0.946 through 1000
+iterations of the anchor.
 
 ## A/B protocol
 

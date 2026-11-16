@@ -16,6 +16,8 @@ The shipped base-teacher turbo (`huggingface.co/sorryhyun/anima-turbo-4step`) is
   results are `91d476e0:scripts/distill_turbo/plan.md`.
 - [1112_v1.md](1112_v1.md): the recipe of the first 1000-iteration run (`1112_1512`, shipped as
   `v4_preview`); the 250-iteration control of the later arms is this recipe.
+- [anchor_only_recipe.md](anchor_only_recipe.md): the step-0 regression from the v1.1 init on the
+  teacher's 28-step anchor, with its cost.
 - [idea.md](idea.md): candidates that are not arms.
 - [question.md](question.md): turbo + SnapRef (character reference) as a pseudo-video model; probes, none run.
 - [vatdm.md](vatdm.md): VA-TDM (arXiv:2611.06796) against the loop and MFD.
@@ -112,3 +114,7 @@ turbo v1.1 delta, which Hub v3's run started from, carries over to merged15 with
 of the line, and the target is now a student that keeps them and fits step 0 (`plan.md`). From that
 init the anchor alone (`turbo_1116_1558`, 250 iterations) is the closest one-LoRA student to the
 teacher on the probe, with a softer finish than the joint recipe (`reports/v11_init.md`).
+Length (`turbo_1116_1653`, 1k) and `grad_accum 4` (`turbo_1116_1730`) both take the anchor MSE to
+0.068 and neither brings the finish. The 12-step anchor these runs regress on is not the 28-step
+teacher's image; the next run takes the anchor on the teacher's schedule
+(`anchor_only_recipe.md`, `plan.md`).

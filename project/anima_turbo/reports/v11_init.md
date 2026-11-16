@@ -141,10 +141,118 @@ untrained / `1552` / `1558`. **Claude's read**, on the downscaled grids and thre
 - In the probe grids (CPU noise) guitarist seed 1 is broken in both trained students (a deformed
   hand at the top of the frame); v1.1 untrained draws a whole figure there.
 
+## The anchor alone at 1k (`turbo_1116_1653`)
+
+`turbo_1116_1558` at 1000 iterations, the cosine over the whole run, saves every 250. 28.5 min
+(job `20261116-165333-1112ba`). Probe `bench/turbo/results/20261116-1724-handoff_m15_anchor1k/`,
+judge renders `output/tests/turbo4/turbo_1116_1653/`, grids
+`output/tests/turbo4/cmp/anchor1k_{ba5,cafe,bocchi}.jpg` (rows teacher / Hub v3 untrained / `1552` /
+`1558` / `1653`). EMA 1k against `1558` EMA 250, group / café / guitarist in brackets:
+
+| | sameness `S` | `S` cos | `T>S@1` cos | `T>S@1` sameness | anchor MSE |
+|---|---|---|---|---|---|
+| teacher m15 | 0.315 (0.324 / 0.354 / 0.267) | | | | |
+| `1558` EMA 250 | **0.350** (0.351 / 0.406 / 0.293) | 0.766 (0.774 / 0.775 / 0.748) | 0.946 | 0.308 | 0.082 (0.060 / 0.070 / 0.115) |
+| `1653` EMA 1k | 0.365 (0.356 / 0.398 / 0.341) | **0.775** (0.771 / 0.789 / 0.765) | 0.945 | 0.312 | **0.068** (0.057 / 0.065 / 0.083) |
+| anchor target as step 0 (`A>S@1`, `1653`'s steps 1–3) | 0.346 (0.309 / 0.375 / 0.355) | 0.818 (0.876 / 0.856 / 0.723) | | | 0 |
+| Hub v3 untrained | 0.296 | 0.635 | 0.805 | 0.260 | 0.062 (0.060 / 0.078 / 0.049) |
+
+Training `div_loss` by 100 iterations: 0.088 / 0.087 / 0.094 / 0.073 / 0.077 / 0.069 / 0.061 / 0.063 /
+0.059 / 0.058. Flat for the first 300, falling as the cosine comes down, flat again over the last 400.
+
+Read, against the conditions fixed in the config header:
+
+- **Length pays: two of three.** The anchor MSE falls on every prompt, most on the guitarist
+  (0.115 → 0.083), and `S` cos rises on the mean (the group is 0.003 lower). Sameness does not
+  follow: 0.350 → 0.365, the guitarist 0.293 → 0.341.
+- **Steps 1–3 hold at length.** `T>S@1` cos 0.945 against the start's 0.932; no leak.
+- **The finish does not come with the fit.** Claude's read, on full-size crops of the places the
+  header names (the user's read is pending):
+  - group, lower half: seeds 1 and 2 still merge their figures (seed 1 a pastry fused into a face);
+    seed 4 is whole in both runs;
+  - guitarist: seed 2 is fixed (a smaller jumping figure with a whole guitar where `1558` drew a
+    shapeless body); seed 1 is newly broken (the neck is cut from the body and a headstock floats
+    beside it); seed 4's guitar body is garbled in both;
+  - café: the aprons turn green on seeds 1 and 2, where `1558` drew the teacher's light blue; the
+    sign is legible on seed 2 in both.
+- **Near its target on the cosine, far from it on the fit.** `S` cos is 0.775 against 0.818 with the
+  anchor target itself as step 0, and the sameness (0.365) sits at the target's (0.346), not at the
+  teacher's (0.315). The anchor MSE 0.138 → 0.068 is about 0.3 of the residual's amplitude
+  (`step0_fit.md`'s mix scale, MSE ∝ (1 − α)²), so a deeper fit than this has not been read.
+
+## The anchor target: the 12-step rollout is the ceiling, not the chord
+
+Forward-only, on `1653` EMA 1k: `probe_handoff.py --anchor_k / --anchor_steps`, the `A>S@1` arm (the
+target itself as step 0, `1653` drawing steps 1–3). Runs
+`bench/turbo/results/20261116-{1728-anchor_target_14of28,1731-anchor_target_7of28,1733-anchor_target_3of12}/`,
+2.5 min each; grids `output/tests/turbo4/cmp/anchor_target_{ba5,bocchi}.jpg` (teacher / 6 of 12 /
+14 of 28 / 7 of 28 / `1653`'s own step 0). The teacher's image is 28 steps at CFG 4.
+
+| anchor (k of steps → t_k) | `A>S@1` cos | `A>S@1` sameness | `1653`'s MSE to it | teacher cond MSE to it |
+|---|---|---|---|---|
+| 6 of 12 → 0.75 (trained on) | 0.818 (0.876 / 0.856 / 0.723) | 0.346 (0.309 / 0.375 / 0.355) | 0.068 | 0.165 |
+| 3 of 12 → 0.9 | 0.810 (0.854 / 0.848 / 0.727) | 0.430 (0.394 / 0.466 / 0.428) | 0.057 | 0.159 |
+| **14 of 28 → 0.75** | **0.967** (0.964 / 0.973 / 0.963) | 0.249 (0.264 / 0.295 / 0.188) | 0.084 | 0.140 |
+| 7 of 28 → 0.9 | 0.945 (0.937 / 0.958 / 0.941) | 0.313 (0.327 / 0.337 / 0.275) | 0.046 | 0.102 |
+| teacher's own path to 0.9 (`T>S@1`) | 0.945 | 0.312 | | |
+| teacher | | 0.315 (0.324 / 0.354 / 0.267) | | |
+
+- **The 12-step rollout is what costs, not the chord.** Both 12-step targets end at 0.81–0.82,
+  whichever boundary they stop at; both 28-step targets are at the teacher's level or above. `7 of 28`
+  is the teacher's own path to σ 0.9 and reproduces `T>S@1` to the third decimal.
+- **The 12-step targets draw seeds more alike** (0.346, 0.430 against the teacher's 0.315), which is
+  where `1653`'s sameness went with its fit. The 28-step chord to σ 0.75 draws them less alike than
+  the teacher (0.249).
+- **The chord to σ 0.75 beats the teacher's own state at σ 0.9** as a step 0 for these steps 1–3
+  (0.967 against 0.945).
+- Claude's read of the two grids: the `14 of 28` column is the teacher's image on all eight tiles,
+  and clean. The `6 of 12` column on the guitarist is a smaller, darker figure with the crowd
+  filling the lower half (seeds 3 and 4), which is the 0.723.
+- `S-a` (`step0.md`) read the chord as costing 0.02–0.07 on the merged14 students. Their steps 1–3
+  kept 0.70–0.80 of the teacher's step 0; with steps 1–3 that keep 0.945, the 12-step target is the
+  larger loss.
+- Cost: the anchor is 2 teacher forwards per Euler step, so `14 of 28` is 29 forwards an iteration
+  against 13, `7 of 28` is 15.
+
+## The anchor alone with `grad_accum 4` (`turbo_1116_1730`)
+
+`1558` with `optim.grad_accum = 4` at 1000 iterations: 250 updates on `1558`'s cosine, each the mean
+of four per-iteration clipped gradients (four prompts, four ε). 28.3 min (job
+`20261116-173048-d94ab2`). Probe `bench/turbo/results/20261116-1804-handoff_m15_anchor_accum4/`,
+renders `output/tests/turbo4/turbo_1116_1730/`, grids
+`output/tests/turbo4/cmp/anchor_accum4_{ba5,cafe,bocchi}.jpg` (teacher / `1558` / `1653` / `1730`).
+
+| | updates × pairs | sameness `S` | `S` cos | `T>S@1` cos | anchor MSE |
+|---|---|---|---|---|---|
+| `1558` EMA | 250 × 1 | **0.350** (0.351 / 0.406 / 0.293) | 0.766 (0.774 / 0.775 / 0.748) | 0.946 | 0.082 (0.060 / 0.070 / 0.115) |
+| `1653` EMA | 1000 × 1 | 0.365 (0.356 / 0.398 / 0.341) | **0.775** (0.771 / 0.789 / 0.765) | 0.945 | 0.068 (0.057 / 0.065 / 0.083) |
+| `1730` EMA | 250 × 4 | 0.373 (0.360 / 0.413 / 0.346) | 0.770 (0.776 / 0.782 / 0.753) | 0.944 | 0.068 (0.055 / 0.065 / 0.084) |
+
+Training `div_loss` by 200 iterations: 0.081 / 0.072 / 0.066 / 0.059 / 0.057.
+
+Read, against the conditions fixed in the config header:
+
+- **Against `1558`, equal updates: the draw noise limits the fit.** Anchor MSE 0.082 → 0.068 and `S`
+  cos up on every prompt, `T>S@1` cos 0.944.
+- **Against `1653`, equal compute: a tie on the fit, slightly behind on the rest.** The anchor MSE is
+  the same to the third decimal (0.0679 against 0.0682); `S` cos is 0.005 lower and the sameness
+  0.008 higher. Four pairs in one update and four updates of one pair land in the same place, so the
+  fit follows the number of pairs seen.
+- **Sameness rises with the fit in both runs** (0.350 → 0.365, 0.373), past the 12-step target's own
+  0.346.
+- **Renders (Claude's read, full-size crops; the user's read is pending):** the group's lower half
+  still merges on seeds 1 and 2 and the guitar body is garbled on guitarist seed 4, as in `1558`
+  and `1653`. Guitarist seed 1 keeps a whole guitar where `1653` cut the neck. The café aprons keep
+  the teacher's blue on seeds 1–3 where `1653` drew green on two.
+
 ## What it means
 
 - **Seeding from the turbo delta is what the merged-teacher runs missed.** The delta carries over to
   merged15, and from it the DM term starts at equilibrium instead of pulling a cold student across.
 - **The layout gain comes from the anchor, and the DM / CDM / GAN terms take some of it back** while
-  giving the crisp finish. Which of them the finish needs, and whether a better-fitted step 0
-  finishes cleanly without them, is open (`../plan.md`).
+  giving the crisp finish.
+- **Length alone does not bring the finish** (`1653`), and the target the anchor regresses on is the
+  12-step teacher, a different and less varied image than the 28-step one the student is judged
+  against. The 28-step chord is the target to train on (`../anchor_only_recipe.md`).
+- **The fit follows the number of pairs seen.** `grad_accum 4` reaches at 250 updates what 1000
+  single-pair updates reach, and neither brings the finish (`turbo_1116_1730`).
