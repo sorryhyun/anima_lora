@@ -459,9 +459,19 @@ class _RoPE(nn.Module):
         self.bands = self._default_bands(self.bands.device)
 
     def forward(
-        self, height, width, text_length, device, ref_hw=None, ref_pos="aligned"
+        self,
+        height,
+        width,
+        text_length,
+        device,
+        ref_hw=None,
+        ref_pos="aligned",
+        text_hw=None,
     ):
         """``(1, H·W + text_length [+ h·w], head_dim)``, fp32. Image tokens first.
+
+        ``text_hw (text_length, 2)``: each text token's ``(h, w)`` in the image's
+        centred cell units, in place of ``(0, 0)``; its ``f`` stays its index.
 
         ``ref_hw = (h, w)`` adds a reference grid after the text tokens on the
         reserved ``r = 1`` axis, its ``(h, w)`` coordinates stretched onto the
@@ -492,6 +502,8 @@ class _RoPE(nn.Module):
         image[:, 3] -= (width - 1) / 2
         text = torch.zeros(text_length, 4, device=device, dtype=torch.float32)
         text[:, 1] = torch.arange(text_length, device=device)
+        if text_hw is not None:
+            text[:, 2:] = text_hw.to(device, torch.float32)
         parts = [image, text]
         if ref_hw is not None and ref_pos == "canvas":
             rh, rw = ref_hw
@@ -572,6 +584,9 @@ class MOSSImageTransformer(ModelMixin, ConfigMixin):
         self.ref_follows_skip = False
         self.ref_cache = None
         self.text_cache = None
+        # (S, 2) per-token (h, w) for the blocks' RoPE (``_RoPE.forward``), set per
+        # forward by the caller; the text refiner keeps (0, 0). Per-sample path only.
+        self.text_hw = None
         self.ref_scope = None
         # (rows, keep) index tensors for every block's main-row attention (``_attention``),
         # set per forward by the caller; None = the stock path.
@@ -650,6 +665,14 @@ class MOSSImageTransformer(ModelMixin, ConfigMixin):
             parts = [video, self.text_cache.lookup(text_key, text)]
         if ref is not None:
             parts.append(self._embed_latent(ref))
+        if self.text_hw is not None:
+            if self.text_hw.shape[0] != n_text:
+                raise ValueError(
+                    f"text_hw has {self.text_hw.shape[0]} rows, the prompt {n_text}"
+                )
+            rope = self.rope(
+                height, width, n_text, latent.device, ref_hw, self.ref_pos, self.text_hw
+            ).to(video.dtype)
         return torch.cat(parts, 1), rope
 
     def _embed_latent(self, latent):
@@ -863,6 +886,8 @@ class MOSSImageTransformer(ModelMixin, ConfigMixin):
         Returns the velocity ``(B, C, H, W)`` (or features ``(B, H·W, D)``).
         """
         depth = len(self.layers)
+        if self.text_hw is not None:
+            raise ValueError("text_hw runs on the per-sample forward")
         mask = self._check_inputs(
             hidden_states, encoder_hidden_states, encoder_attention_mask
         )

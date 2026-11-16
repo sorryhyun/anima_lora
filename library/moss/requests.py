@@ -842,6 +842,14 @@ class TrainRequest(Request):
         choices=("aligned", "offset", "canvas"),
         advanced=True,
     )
+    clause_hw: float = _f(
+        0.0,
+        "training only: the tokens of each position clause (On the left, …) take "
+        "their 3×3 cell's centre on RoPE's h / w axes, times this (1 = a third of "
+        "the grid side per cell); every other token stays at (0, 0). Generation "
+        "runs without it. 0 = off. docs/moss/proposal/cdpe_text_grounding.md",
+        advanced=True,
+    )
     ref_adapters: str = _f(
         "off",
         "off: one bank on image, text and reference rows. kv: the reference stream runs "

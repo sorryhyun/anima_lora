@@ -1,6 +1,7 @@
 # MOSS: grounding prompt tokens in RoPE space (CDPE, after SpaG-DiT)
 
-Status: proposal, 2026-11-16. Nothing is built or probed. Source: the NeurIPS 2026 poster
+Status: proposal, 2026-11-16. A training-only form on position clauses is built and ran once
+([First run](#first-run-training-only-on-position-clauses-2026-11-16)); the rest is not built. Source: the NeurIPS 2026 poster
 of SpaG-DiT ("Enhancing Spatial Grounding for Diffusion Transformers", Westlake / Alibaba
 Yuvion, poster 153058). No preprint was found, so δ, the multi-token rule, and the
 train / inference handling below are inferred from the poster figures.
@@ -118,6 +119,32 @@ inference mismatch. This applies to every prompt that carries image positions:
 **P2, t2i layout control** (only if P1 passes). Use the casbox OCR boxes
 (`casbox_1115_1226`) and layout-JSON object boxes. Generate with offsets from a user-written
 layout and read placement.
+
+## First run: training-only on position clauses (2026-11-16)
+
+The poster's own setting instead of P0 / P1: coarse positions, offsets during training only,
+plain prompts at inference. `TrainRequest.clause_hw` (0 = off) moves the tokens of each position
+clause (`On the top right, …`) to their 3×3 cell's centre, a third of the grid side per cell times
+`clause_hw`, in the blocks' RoPE. The text refiner keeps `(0, 0)`: no adapter reaches it. Text
+clauses are not moved. Code: `library/moss/training/grounding.py`.
+
+Caststation (30 images, the `casbox_1115_1226` recipe, 480 steps, same seed). Arms: the control,
+the control trained again (`casboxr_1116_1149`), `clause_hw` 0.25 (`cashwq_1116_1110`, about 5
+cells at 1024 px) and 1.0 (`cashw_1116_1110`, about 21 cells). Renders without offsets, sheets in
+`output/tests/caststation_thin/cashw_sheets/`.
+
+| read | control | retrain | 5 cells | 21 cells |
+|---|---|---|---|---|
+| training loss at σ 0.85–0.95, against the control | | +0.0002 | −0.0002 | +0.0015 (0.45 %) |
+| training loss below σ 0.85 | | same | same | same |
+| boxed `初音ミクです` written as the plain string (Base: 0 / 6, it draws the official logo) | 2 / 8 | 2 / 8 | 0 / 8 | 8 / 8 |
+| general tag prompts, left / right placement in clause prompts | | same | same | same |
+
+- The loss is paired by step (same samples, σ and noise in every run). 5 cells cannot be told from
+  a retrain. 21 cells is felt only where layout is decided.
+- Invented cm ruler labels on the height-chart prompt (control 8 / 8) and one broken hand looked
+  like offset effects until the retrain: it draws the rulers 1 / 8 and the hand whole.
+- Open: other strings and characters, the text clauses moved to their boxes, a longer set.
 
 ## Implementation notes
 

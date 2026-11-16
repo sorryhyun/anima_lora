@@ -262,6 +262,7 @@ def train(
 
     rows_of = setup.delta_rows(req, samples, get)
     slots = setup.register_slots(req, samples)
+    hw_of = setup.clause_offsets(req, samples, prompt_tail)
     n_reg = req.trigger_registers
     joint += n_reg
     negs = setup.load_negs(req, samples)
@@ -631,6 +632,7 @@ def train(
                     )
                     teach_add = req.distill_add * weight
                     kinds["distill"] += 1
+                transformer.text_hw = hw_of.get((s.stem, teacher_kind))
                 transformer.ref_gate = (
                     holes.gate(latent.shape[-2:], ref.shape[-2:], device)
                     if holes is not None
@@ -863,6 +865,7 @@ def train(
                 print(f"  saved {saved}", flush=True)
 
         transformer.ref_gate = None
+        transformer.text_hw = None
         if holes is not None and holes.cover:
             print(
                 f"ref_gate: {len(holes.cover)} holes, cover mean "
