@@ -277,6 +277,14 @@ def build_argparser() -> argparse.ArgumentParser:
         "averaged before the clip (project/anima_turbo/plan.md, S-c.2).",
     )
     parser.add_argument(
+        "--anchor_cache",
+        type=str,
+        default=None,
+        help="Anchor target cache dir (anchor_only only): the loop reads v_target "
+        "and ε from it instead of rolling the teacher. Built by "
+        "`python -m scripts.distill_turbo.anchor_cache` with the same config.",
+    )
+    parser.add_argument(
         "--detach_after_first",
         dest="detach_after_first",
         action="store_const",
@@ -455,6 +463,8 @@ class TurboConfig:
     anchor_only: bool
     # ε draws per iteration for the anchor regression (anchor_only only).
     anchor_draws: int
+    # Anchor target cache dir ("" = roll the teacher every iteration).
+    anchor_cache: str
     flow_shift: float
 
     # DMD core
@@ -692,6 +702,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     rollout_grad = bool(_pick(args.rollout_grad, cfg, "dpdmd.rollout_grad", False))
     anchor_only = bool(_pick(args.anchor_only, cfg, "dpdmd.anchor_only", False))
     anchor_draws = int(_pick(args.anchor_draws, cfg, "dpdmd.anchor_draws", 1))
+    anchor_cache = str(_pick(args.anchor_cache, cfg, "dpdmd.anchor_cache", "") or "")
     flow_shift = float(_pick(args.flow_shift, cfg, "sampling.flow_shift", 3.0))
 
     # Optimizer
@@ -743,6 +754,11 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
     if anchor_draws > 1 and not anchor_only:
         raise ValueError(
             "dpdmd.anchor_draws > 1 is built for dpdmd.anchor_only only (S-c.2)."
+        )
+    if anchor_cache and (not anchor_only or anchor_draws > 1):
+        raise ValueError(
+            "dpdmd.anchor_cache is built for dpdmd.anchor_only with anchor_draws 1 "
+            "(the cache's own draws replace them)."
         )
     if anchor_only:
         if div_weight == 0.0 or rollout_grad or dm_first_step:
@@ -913,6 +929,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         rollout_grad=rollout_grad,
         anchor_only=anchor_only,
         anchor_draws=anchor_draws,
+        anchor_cache=anchor_cache,
         flow_shift=flow_shift,
         student_steps=student_steps,
         teacher_cfg=teacher_cfg,
@@ -1006,6 +1023,7 @@ _TB_KEYS = (
     "rollout_grad",
     "anchor_only",
     "anchor_draws",
+    "anchor_cache",
     "flow_shift",
     "student_rank",
     "fake_rank",

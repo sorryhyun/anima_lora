@@ -1,7 +1,8 @@
 # Anchor-only recipe: fit step 0 on the teacher's 28-step chord, leave steps 1–3 alone
 
 Written 2026-11-16. The recipe that came out of `reports/v11_init.md`. The form below with the
-28-step anchor has not been trained yet; the runs behind it used the 12-step anchor.
+28-step anchor has one 250-iteration run (`turbo_1116_1810`, `configs/README.md`); the runs
+behind the rest used the 12-step anchor.
 
 ## Motivation
 
@@ -87,7 +88,9 @@ step, so 14 of 28 is 29 forwards. The 14 of 28 figures are estimates from that c
 
 The probe and the judge renders after a run add about 3 min. The target depends only on
 (prompt, ε) and the frozen teacher, so a target cache would leave one student forward and backward
-per iteration (`plan.md`, candidate 3); it is not built.
+per iteration (`plan.md`, candidate 3): `dpdmd.anchor_cache`, built by
+`python -m scripts.distill_turbo.anchor_cache --config <run>.toml [--draws K]` (smoke-tested; the
+full cache is not built). `turbo_1116_1810` measured 3.4 s per iteration on the 14 of 28 anchor.
 
 ## What is open
 

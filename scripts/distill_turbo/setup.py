@@ -54,6 +54,7 @@ from library.runtime.progress import ProgressSink, command_job_path
 from library.training.ema import AdapterEMA
 from networks.methods.turbo_dmd import TurboDMDNetwork, warm_start_plain_lora
 
+from .anchor_cache import AnchorDataset, anchor_collate
 from .config import TurboConfig, snapshot_toml_text, tb_config_text
 from .metrics import StepGradLog, TauBinCriticLoss, TurboMetrics
 from .primitives import (
@@ -151,6 +152,8 @@ class RunContext:
     # Mean student LR over the EMA's updates; 0 under the constant schedule. The loop
     # passes lr / ema_lr_mean to AdapterEMA.step, so the span is a share of summed LR.
     ema_lr_mean: float = 0.0
+    # dpdmd.anchor_cache: (ε, v_target) pairs read in place of the teacher anchor.
+    anchor_cache: AnchorDataset | None = None
     grad_log: StepGradLog | None = (
         None  # per-iteration grad norms (<run log>/grad_steps.jsonl)
     )
@@ -469,12 +472,22 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
 
     # One resolution per batch (free-fit token counts don't stack); the largest
     # bucket goes first for compile warmup.
+    batch_sampler = dataset.make_batch_sampler(shuffle=True, seed=cfg.seed)
+    anchor_cache = None
+    if cfg.anchor_cache:
+        # Items carry the (ε, v_target) pair; a resumed run starts on its epoch's draw.
+        anchor_cache = dataset = AnchorDataset(
+            dataset,
+            cfg.anchor_cache,
+            cfg,
+            epoch=start_step // max(1, len(batch_sampler)),
+        )
     dataloader = torch.utils.data.DataLoader(
         dataset,
-        batch_sampler=dataset.make_batch_sampler(shuffle=True, seed=cfg.seed),
+        batch_sampler=batch_sampler,
         num_workers=2,
         pin_memory=True,
-        collate_fn=make_collate(),
+        collate_fn=anchor_collate if anchor_cache is not None else make_collate(),
     )
 
     Path(cfg.output_dir).mkdir(parents=True, exist_ok=True)
@@ -691,6 +704,7 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         start_step=start_step,
         ema=ema,
         ema_lr_mean=ema_lr_mean,
+        anchor_cache=anchor_cache,
         grad_log=(
             StepGradLog(run_log / "grad_steps.jsonl", device)
             if run_log is not None

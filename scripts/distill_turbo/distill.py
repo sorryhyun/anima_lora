@@ -98,6 +98,10 @@ def _student_metadata(cfg, ctx: RunContext, step: int) -> dict[str, str]:
         md["ss_turbo_anchor_only"] = "1"
     if cfg.anchor_draws > 1:
         md["ss_turbo_anchor_draws"] = str(cfg.anchor_draws)
+    if cfg.anchor_cache:
+        md["ss_turbo_anchor_cache"] = os.path.basename(
+            os.path.normpath(cfg.anchor_cache)
+        )
     if cfg.dm_first_step:
         md["ss_turbo_dm_first_step"] = "1"
     if cfg.rollout_grad:
@@ -171,6 +175,8 @@ def run_loop(ctx: RunContext, cfg):
             try:
                 batch = next(data_iter)
             except StopIteration:
+                if ctx.anchor_cache is not None:
+                    ctx.anchor_cache.next_epoch()  # before iter(): workers copy it
                 data_iter = iter(ctx.dataloader)
                 batch = next(data_iter)
             latents = batch["latents"]
@@ -187,17 +193,22 @@ def run_loop(ctx: RunContext, cfg):
 
             # Student update: roll an N-step Euler grid from pure noise ε, step 0
             # anchored to a teacher K-step target, steps 1..N-1 DMD-refined.
-            eps = torch.randn_like(latents)  # shared start for anchor + student
             c_null = uncond_for_batch(
                 ctx.uncond_base, crossattn_emb
             )  # anchor + DMD eval
 
             # --- teacher K-step CFG anchor (no grad) → v_target; div_weight 0 skips it ---
-            v_target = (
-                teacher_anchor(ctx, cfg, eps, crossattn_emb, c_null, B)
-                if cfg.div_weight > 0.0
-                else None
-            )
+            # Under dpdmd.anchor_cache the pair (ε, v_target) comes from the cache.
+            if ctx.anchor_cache is not None:
+                eps = batch["anchor_eps"].to(device, dtype=dtype, non_blocking=True)
+                v_target = batch["anchor_v"].to(device, non_blocking=True)
+            else:
+                eps = torch.randn_like(latents)  # shared start for anchor + student
+                v_target = (
+                    teacher_anchor(ctx, cfg, eps, crossattn_emb, c_null, B)
+                    if cfg.div_weight > 0.0
+                    else None
+                )
 
             if cfg.anchor_only:
                 # S-b (project/anima_turbo/plan.md): step 0 on the anchor alone.
