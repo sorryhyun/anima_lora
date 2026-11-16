@@ -621,7 +621,7 @@ class TrainRequest(Request):
         "muon the output DC shift is 0.43 with kaiming vs 1.24 "
         "(docs/moss/findings/t2i_lora_recipe.md). weight_svd_nodc: the SVD basis "
         "of W with the calibrated input DC direction (channel_mean) projected out, "
-        "so down · x̄ = 0 at init (_archive/proposals/lora_dcfree_svd_init.md)",
+        "so down · x̄ = 0 at init",
         choices=("kaiming", "weight_svd", "weight_svd_nodc"),
     )
     init_lora: str = _f(
@@ -653,8 +653,8 @@ class TrainRequest(Request):
         "lora + down_init weight_svd[_nodc] only: also project the k input channels "
         "with the largest calibrated mean|x| (channel_stats) out of the SVD basis, "
         "so their down columns start at zero. On MOSS k=1 is ch 42 into "
-        "ffn_up_gate, a quarter of the nodc init's channel leverage there "
-        "(_archive/proposals/lora_dcfree_svd_init.md). Stamped as svd_drop_loud",
+        "ffn_up_gate, a quarter of the nodc init's channel leverage there. "
+        "Stamped as svd_drop_loud",
         advanced=True,
     )
     channel_stats: str = _f(

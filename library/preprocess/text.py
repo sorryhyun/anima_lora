@@ -14,6 +14,8 @@ from pathlib import Path
 
 import torch
 
+from anime_tools.captions.position_clauses import compose_caption, parse_caption
+
 from library.io.cache import TE_CACHE_SUFFIX, resolve_cache_path
 from library.preprocess._dataset import PreprocessStats, walk_images
 from library.preprocess._progress import ProgressFn
@@ -34,10 +36,13 @@ def _strip_no_artist_sentinel_from_caption(caption: str) -> str:
     from library.anima import training as anima_train_utils
 
     sentinel = anima_train_utils.NO_ARTIST_SENTINEL
-    tags = [t.strip() for t in caption.split(",")]
-    if sentinel not in tags:
+    parsed = parse_caption(caption)
+    if sentinel not in parsed.flat_tags:
         return caption
-    return ", ".join(anima_train_utils.strip_no_artist_sentinel(tags))
+    return compose_caption(
+        anima_train_utils.strip_no_artist_sentinel(list(parsed.flat_tags)),
+        parsed.clauses,
+    )
 
 
 def _encode_batch(

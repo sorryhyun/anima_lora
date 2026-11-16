@@ -163,8 +163,7 @@ class TurboConfig:
     rollout_grad: bool = knob(
         "dpdmd.rollout_grad",
         False,
-        "Keep the graph from step 0 into the grad step (2-step static grid only; "
-        "_archive/proposals/superturbo.md).",
+        "Keep the graph from step 0 into the grad step (2-step static grid only).",
     )
     anchor_only: bool = knob(
         "dpdmd.anchor_only",

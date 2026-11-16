@@ -82,6 +82,20 @@ def test_no_x_unmatched_falls_through_to_append():
     assert plan.tar_caption == f"{src}, no shoes"
 
 
+def test_position_clauses_stay_put():
+    """The edit touches the flat bag; position clauses keep their tags and
+    an appended tag lands in the bag, not inside the last clause."""
+    src = "1girl, smile. On the left, akita neru, yellow eyes."
+    enc = _make_encoder({})
+    removed = derive_target_caption(src, "-smile", encode_last_pooled=enc)
+    assert removed.tar_caption == "1girl. On the left, akita neru, yellow eyes."
+    appended = derive_target_caption(src, "hat", encode_last_pooled=enc)
+    assert appended.intent == "append"
+    assert appended.tar_caption == (
+        "1girl, smile, hat. On the left, akita neru, yellow eyes."
+    )
+
+
 # ---------------------------------------------------------------------------
 # dispatcher: REPLACE / APPEND branches
 # ---------------------------------------------------------------------------

@@ -16,6 +16,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Literal, Optional
 
+from anime_tools.captions.position_clauses import compose_caption, parse_caption
+
 import torch
 import torch.nn.functional as F
 
@@ -55,9 +57,19 @@ class EditPlan:
         return f"[dispatcher] intent=APPEND edit={self.parsed_edit_phrase!r}"
 
 
-def _split_tags(caption: str) -> list[str]:
-    """Comma-split, strip, drop empties."""
-    return [t.strip() for t in caption.split(",") if t.strip()]
+def _split_tags(caption: str) -> tuple[list[str], tuple]:
+    """The flat tag bag (stripped, empties dropped) and the position clauses,
+    which the edit leaves in place."""
+    parsed = parse_caption(caption)
+    return [t.strip() for t in parsed.flat_tags if t.strip()], parsed.clauses
+
+
+def _append(src_caption: str, phrase: str, tags: list[str], clauses: tuple) -> str:
+    """Add ``phrase`` to the flat bag; a trailing append would land it inside
+    the last position clause."""
+    if not clauses:
+        return phrase if not src_caption else f"{src_caption}, {phrase}"
+    return compose_caption([*tags, phrase], clauses)
 
 
 def _find_tag_case_insensitive(tags: list[str], needle: str) -> Optional[int]:
@@ -69,8 +81,8 @@ def _find_tag_case_insensitive(tags: list[str], needle: str) -> Optional[int]:
     return None
 
 
-def _join_tags(tags: list[str]) -> str:
-    return ", ".join(tags)
+def _join_tags(tags: list[str], clauses: tuple = ()) -> str:
+    return compose_caption(tags, clauses)
 
 
 def _parse_remove_syntax(edit_instruction: str) -> tuple[str, Optional[str]]:
@@ -132,7 +144,7 @@ def derive_target_caption(
     The encoder shim is caller-supplied so the ComfyUI node (comfy's ``CLIP``
     socket) and the CLI (``encode_last_pooled_via_anima_strategy``) share this.
     """
-    src_tags = _split_tags(src_caption)
+    src_tags, clauses = _split_tags(src_caption)
     phrase, removal_kind = _parse_remove_syntax(edit_instruction)
 
     if removal_kind is not None:
@@ -140,7 +152,7 @@ def derive_target_caption(
         if idx is not None:
             removed = src_tags.pop(idx)
             return EditPlan(
-                tar_caption=_join_tags(src_tags),
+                tar_caption=_join_tags(src_tags, clauses),
                 intent="remove",
                 detected_conflict_tag=removed,
                 parsed_edit_phrase=phrase,
@@ -170,7 +182,7 @@ def derive_target_caption(
 
     if not src_tags:
         return EditPlan(
-            tar_caption=phrase if not src_caption else f"{src_caption}, {phrase}",
+            tar_caption=_append(src_caption, phrase, src_tags, clauses),
             intent="append",
             parsed_edit_phrase=phrase,
         )
@@ -189,7 +201,7 @@ def derive_target_caption(
         new_tags = list(src_tags)
         new_tags[int(sorted_idx[0])] = phrase
         return EditPlan(
-            tar_caption=_join_tags(new_tags),
+            tar_caption=_join_tags(new_tags, clauses),
             intent="replace",
             detected_conflict_tag=top1_tag,
             detection_top1_sim=top1_sim,
@@ -199,7 +211,7 @@ def derive_target_caption(
 
     # APPEND, keeping the diagnostics for near-miss audits.
     return EditPlan(
-        tar_caption=f"{src_caption}, {phrase}",
+        tar_caption=_append(src_caption, phrase, src_tags, clauses),
         intent="append",
         detected_conflict_tag=top1_tag,
         detection_top1_sim=top1_sim,

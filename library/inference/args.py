@@ -584,9 +584,9 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.2,
         help="SMC-CFG adaptive gain α ∈ (0, 1]. k_t := α·|e_t|.mean() per "
-        "step — self-scales across model / CFG / σ / sample. Paper's fixed "
-        "k=0.1 was off by ~14× on Anima (_archive/bench/smc_cfg/analysis_and_proposal.md), "
-        "so the α path is the only mode now. α=0.2 is the production default.",
+        "step, so it scales with model / CFG / σ / sample; the paper's fixed "
+        "k=0.1 was off by ~14× on Anima. Default 0.2 "
+        "(docs/anima/inference/smc_cfg.md).",
     )
 
     # Passive trajectory recorder (library/inference/traj_stats.py); also
@@ -625,14 +625,10 @@ def build_parser() -> argparse.ArgumentParser:
         nargs=2,
         default=[0.59, 0.75],
         metavar=("SIGMA_LO", "SIGMA_HI"),
-        help="σ-band [lo, hi] where FSG calibrates. Default [0.59, 0.75] -- the "
-        "production band from the er_sde/28-step Plan-B calibration "
-        "(_archive/bench/fsg). "
-        "The contracting band moves DOWN with step count: it was [0.75, 0.85] at "
-        "20-step Euler, but at 28 steps σ≈0.84 stops contracting and the sweet "
-        "spot is σ≈0.75 (the operator contracts in mid-σ; σ≈0.94 always diverges, "
-        "ρ>1 -- the paper's noisy-stage prescription is wrong here). Re-probe with "
-        "_archive/bench/fsg if you change infer_steps.",
+        help="σ-band [lo, hi] where FSG calibrates. Default [0.59, 0.75], "
+        "calibrated for er_sde at 28 steps. The contracting band moves down as "
+        "steps grow ([0.75, 0.85] at 20-step Euler; σ≈0.94 always diverges), so "
+        "re-calibrate if you change infer_steps (docs/anima/inference/fsg.md).",
     )
     parser.add_argument(
         "--fsg_k",
@@ -672,8 +668,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=1.5,
         help="CFG++ calibration strength λ. NB this is a FLOW-space coefficient "
         "(guidance enters as λ·(1−σ')·σ·Δv), NOT the paper's DDIM ξ̃-space λ=0.6 — "
-        "the schedules differ. Default 1.5 = λ* from the er_sde/28-step sweep "
-        "(_archive/bench/fsg Plan A): best tracks CFG=4 saturation/contrast/composition "
+        "the schedules differ. Default 1.5, from the er_sde/28-step sweep: it best "
+        "tracks CFG=4 saturation/contrast/composition "
         "(λ<1.5 under-guides → composition wanders; λ≥2 over-saturates). Only used "
         "with --cfgpp.",
     )

@@ -8,6 +8,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from anime_tools.captions.position_clauses import TEXT_PREFIXES, parse_caption
 import imagesize
 import numpy as np
 import torch
@@ -58,10 +59,18 @@ def _caption_has_artist(caption: Optional[str], needle: str) -> bool:
     if not caption:
         return False
     needle_lc = needle.lower()
-    for tag in caption.split(","):
-        if tag.strip().lower() == needle_lc:
-            return True
-    return False
+    return any(tag.lower() == needle_lc for tag in _caption_tags(caption))
+
+
+def _caption_tags(caption: str) -> list[str]:
+    """The flat bag plus every position clause's tags; text clauses hold
+    quoted lines, not tags, and are skipped."""
+    parsed = parse_caption(caption)
+    tags = list(parsed.flat_tags)
+    for clause in parsed.clauses:
+        if clause.prefix not in TEXT_PREFIXES:
+            tags.extend(clause.tags)
+    return tags
 
 
 def enable_high_vram():
@@ -318,7 +327,7 @@ class BaseDataset(torch.utils.data.Dataset):
         frequency_for_dir = self.tag_frequency.get(dir_name, {})
         self.tag_frequency[dir_name] = frequency_for_dir
         for caption in captions:
-            for tag in caption.split(","):
+            for tag in _caption_tags(caption):
                 tag = tag.strip()
                 if tag:
                     tag = tag.lower()

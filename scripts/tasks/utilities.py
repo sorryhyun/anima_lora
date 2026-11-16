@@ -30,7 +30,7 @@ def cmd_comfy_batch(extra):
 
     Workflow via ``W=`` (bare names resolve under ``workflows/``) or positional
     ``ARGS``. For workflows with a ``LoadImage`` node, ``IMAGES=<dir>`` switches
-    on per-image sequential mode (default ``../comfy/input/to_colorize``):
+    on per-image sequential mode (default ``../comfy/input/to_colorize4``):
 
         make comfy-batch W=colorize.json
         make comfy-batch W=colorize.json IMAGES=/path/to/imgs

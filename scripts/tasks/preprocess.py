@@ -1373,16 +1373,23 @@ def _warn_if_te_would_read_the_master() -> None:
 
     ``caption-full`` writes the derived tree, which ``cmd_preprocess_te`` reads
     only when something forces the caption step (correction, variants, the
-    ``caption_position_clauses`` flag). Otherwise it encodes the masters and
-    the run is silently discarded. The chain keys on the flag, not on disk.
+    ``caption_position_clauses`` flag, the implied-tag cut). Otherwise it encodes
+    the masters and the run is silently discarded. The chain keys on the flags,
+    not on disk; same test as ``cmd_preprocess_te``.
     """
     config, _ = _caption_correction_config([])
     n_variants = int(_float_or_zero(_variant_settings()[0]))
-    if _caption_correction_enabled(config) or n_variants or config["position_clauses"]:
+    if (
+        _caption_correction_enabled(config)
+        or n_variants
+        or config["position_clauses"]
+        or config.get("implied")
+    ):
         return
     print(
         "  [caption-full] WARNING: with caption correction off, "
-        "caption_shuffle_variants = 0 and caption_position_clauses unset, "
+        "caption_shuffle_variants = 0, caption_position_clauses unset and "
+        "caption_implied off, "
         "`make preprocess-te` encodes the image_dataset/ MASTERS — not the "
         "captions just written. Set `caption_position_clauses = true` in the "
         "config chain (or CAPTION_POSITION_CLAUSES=1) so TE reads "

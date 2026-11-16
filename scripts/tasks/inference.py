@@ -306,7 +306,7 @@ def cmd_test_easycontrol(extra):
             "out": "region",
             "ref_dir": ROOT
             / "post_image_dataset"
-            / "easycontrol"
+            / "i2i"
             / "region"
             / "cond_images",
             "empty_prompt": False,
