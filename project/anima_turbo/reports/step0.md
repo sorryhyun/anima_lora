@@ -51,7 +51,7 @@ Read, against the decision fixed in `plan.md`:
 
 ## S-b: the anchor regression alone
 
-Run `1112_1044` (`configs/1112_1044.toml`): arm 0's control with `dpdmd.anchor_only` on (one student
+Run `1112_1044` (`_archive/configs/anima_turbo/1112_1044.toml`): arm 0's control with `dpdmd.anchor_only` on (one student
 forward at σ 1 per iteration, MSE to the anchor, its own clip 1.0; no DM, CDM, GAN or fake update),
 250 iterations, EMA 0.2. Read: held-out anchor MSE, and the probe's `P>S@1` arm (this LoRA draws step
 0, an arm 0 student draws steps 1–3).
@@ -94,7 +94,7 @@ Read:
 
 ## S-b2: the anchor alone at LR 2e-4
 
-Run `1112_1110` (`configs/1112_1110.toml`): S-b with student LR 2e-4, same seed and data order.
+Run `1112_1110` (`_archive/configs/anima_turbo/1112_1110.toml`): S-b with student LR 2e-4, same seed and data order.
 Training `div_loss` by fifths: 0.264 / 0.248 / 0.245 / 0.245 / 0.230 (S-b: 0.220 → 0.141); pre-clip
 norm 10.6 / 3.3 / 2.5 / 2.3 / 2.6. Probe: `bench/turbo/results/20261112-1124-handoff_step0lora_lr2e4/`
 (job `20261112-111818-82ee1c`).
@@ -117,7 +117,7 @@ Held-out anchor MSE of S-b2's step 0: **0.277** (0.145 / 0.194 / 0.492), against
 
 ## S-c.1: step 0 also takes the DM signal
 
-Run `1112_1143` (`configs/1112_1143.toml`): arm 0's control with `dpdmd.dm_first_step` on, the
+Run `1112_1143` (`_archive/configs/anima_turbo/1112_1143.toml`): arm 0's control with `dpdmd.dm_first_step` on, the
 anchor kept as the diversity term. 250 iterations, 24 min (5.75 s/it), peak 13.7 GB. Step 0 drew the
 DM gradient on 98 of 250 iterations (g = 0 / 1 / 2 / 3: 98 / 83 / 53 / 16).
 
@@ -164,7 +164,7 @@ twin's 0.46, renders as the gate):
 
 ## S-c.2 probe: the anchor alone with four ε draws per iteration
 
-Run `1112_1230` (`configs/1112_1230.toml`): S-b with `dpdmd.anchor_draws 4` (four fresh ε for the
+Run `1112_1230` (`_archive/configs/anima_turbo/1112_1230.toml`): S-b with `dpdmd.anchor_draws 4` (four fresh ε for the
 same prompt per iteration, a teacher anchor on each, the gradients averaged before the clip), nothing
 else changed. 6.9 s per iteration against S-b's 2.0 (each draw costs about one S-b iteration), 29 min.
 Training `div_loss` by fifths (mean of the four draws): 0.187 / 0.164 / 0.169 / 0.147 / 0.135
@@ -230,9 +230,9 @@ joint recipe at `div_weight 0.1`) ran 500. Probe: `bench/turbo/results/20261112-
 
 ## Length against the LR: `1112_1336`, `1112_1410`
 
-`1112_1336` (`configs/1112_1336.toml`): S-b resumed to 1000 iterations on the constant LR, one ε per
+`1112_1336` (`_archive/configs/anima_turbo/1112_1336.toml`): S-b resumed to 1000 iterations on the constant LR, one ε per
 iteration, EMA span kept at 50 updates. Its bundle is from step 125, so its 250 checkpoint is a
-replicate of S-b's. 1.8 s per iteration. `1112_1410` (`configs/1112_1410.toml`): `1112_1336` resumed
+replicate of S-b's. 1.8 s per iteration. `1112_1410` (`_archive/configs/anima_turbo/1112_1410.toml`): `1112_1336` resumed
 from its step-750 bundle to 1000 with `lr_schedule cosine`, so only the last 250 iterations differ
 (about 1.2e-5 falling to 5e-6 instead of 5e-5).
 

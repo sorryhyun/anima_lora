@@ -176,7 +176,7 @@ Sectioned, bespoke. Every key has a matching CLI override flag (see
 | `[dpdmd]` | `detach_after_first` | `true` | **load-bearing** stop-grad after step 1 |
 | `[dpdmd]` | `dm_first_step` | `true` | draw the grad step from `U{0..N−1}`, so step 0 also takes the DM / MFD signal (`x_pred = ε − v_first`); when g = 0 the diversity term rides the same backward. With `div_weight = 0` this is the anchor-free loop of the MFD paper, which collapsed within 250 steps (`project/anima_turbo/reports/mfd.md`) |
 | `[dpdmd]` | `rollout_grad` | `false` | keep the graph from step 0 into step 1, so the DM / MFD signal on the final x_θ reaches step 0 through step 1; the diversity term rides the same backward. 2-step static grid only (`student_steps = 2`, `dynamic_schedule` and `dm_first_step` off); two grad-bearing student forwards. `project/anima_turbo/proposal/superturbo.md` |
-| `[optim]` | `student_lr` / `fake_lr` | `5e-5` / `5e-5` | under the cosine (to 0.1×) from the `weight_svd` cold start; 2e-4 rendered worse (`project/anima_turbo/configs/README.md`, `1112_1110`). `fm_mse` is anti-correlated with quality; rank by rendered 4-step samples |
+| `[optim]` | `student_lr` / `fake_lr` | `5e-5` / `5e-5` | under the cosine (to 0.1×) from the `weight_svd` cold start; 2e-4 rendered worse (`project/anima_turbo/reports/runs.md`, `1112_1110`). `fm_mse` is anti-correlated with quality; rank by rendered 4-step samples |
 | `[optim]` | `fake_steps_per_student_step` | `4` | keep the fake ahead of the moving x_θ |
 | `[optim]` | `fake_warmup_steps` | `200` | fake (critic) head-start before the main loop — kills the early grad_signal_rms spike (~step 50); `0` = off |
 | `[optim]` | `grad_clip` | `1.0` | grad-norm cap (both nets) |

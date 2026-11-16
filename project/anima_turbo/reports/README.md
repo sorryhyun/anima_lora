@@ -1,6 +1,6 @@
 # Reports
 
-One report per run or probe. Run ids are in [../configs/README.md](../configs/README.md).
+One report per run or probe. Run table: [runs.md](runs.md).
 
 - [arm0.md](arm0.md): arm 0 control and twin. The two runs share only 9–10 % of ΔW,
   both random-walk from step 125, and the σ_a norm profile gives arm 3 = adaptive clip alone.

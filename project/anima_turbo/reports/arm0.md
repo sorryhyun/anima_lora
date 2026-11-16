@@ -1,7 +1,7 @@
 # Arm 0: control `1112_0833` and null twin `1112_0834` (2026-11-12)
 
 The baseline in `../1112_v1.md`, 4-step, 250 iterations, constant LR 5e-5, EMA window 0.2, save every
-125. The twin differs in `seed` only (43 against 42). Configs: `../configs/1112_083{3,4}.toml`.
+125. The twin differs in `seed` only (43 against 42). Configs: `_archive/configs/anima_turbo/1112_083{3,4}.toml`.
 Each run took about 27 min at 5.7–5.8 s/iteration after a 200-step fake warmup. Logs:
 `output/logs/turbo/20261112-083405/` (control) and `20261112-090127/` (twin).
 
@@ -118,7 +118,7 @@ twin EMA 125, control EMA 250, twin EMA 250, twin raw 250.
 
 ## GAN-off probe `1112_0917`: GAN does not drive the walk
 
-The control with `gan.weight_gen = 0`, seed 42 (config `../configs/1112_0917.toml`). The criterion
+The control with `gan.weight_gen = 0`, seed 42 (config `_archive/configs/anima_turbo/1112_0917.toml`). The criterion
 was fixed before the run: GAN drives the walk if consecutive-move cos ≥ 0.1 and |ΔW|₂₅₀ clearly
 exceeds √2 · |ΔW|₁₂₅.
 

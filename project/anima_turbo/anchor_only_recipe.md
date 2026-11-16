@@ -1,7 +1,7 @@
 # Anchor-only recipe: fit step 0 on the teacher's 28-step chord, leave steps 1–3 alone
 
 Written 2026-11-16. The recipe that came out of `reports/v11_init.md`. The form below with the
-28-step anchor has one 250-iteration run (`turbo_1116_1810`, `configs/README.md`); the runs
+28-step anchor has one 250-iteration run (`turbo_1116_1810`, `reports/runs.md`); the runs
 behind the rest used the 12-step anchor.
 
 ## Motivation
@@ -25,7 +25,7 @@ Steps 1–3 receive no loss and move only through the weights they share with st
 
 ## The recipe
 
-`configs/turbo_1116_1558.toml` with the anchor on the teacher's 28-step schedule:
+`_archive/configs/anima_turbo/turbo_1116_1558.toml` with the anchor on the teacher's 28-step schedule:
 
 | Field | Value | Note |
 |---|---|---|

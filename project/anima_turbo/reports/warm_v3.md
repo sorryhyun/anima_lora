@@ -4,7 +4,7 @@
 5e-5 → 5e-6, EMA 0.2 of the summed LR, `dm_first_step` on, seed 42) with the student seeded from
 Hub v3 (`network.student_init_weights = models/loras/turbo_hub/anima_turbo_4step_v3.safetensors`;
 base teacher, 10k it). The fake starts as in the control (`weight_svd`, 200 warmup steps). Config
-`configs/turbo_1113_1221.toml`, job `20261113-122145-1a4adf`.
+`_archive/configs/anima_turbo/turbo_1113_1221.toml`, job `20261113-122145-1a4adf`.
 
 **Verdict: it passes the gate written in `plan.md`, and the run is still a regression.** The gate
 compared the run with the control only. Hub v3 placed on the merged14 DiT with no training at all
@@ -120,7 +120,7 @@ Low-passed cosine to the teacher's image:
 ## `dm_first_step` off from the same start: not the cause (`turbo_1113_1309`)
 
 `turbo_1113_1221` with `dpdmd.dm_first_step = false`: step 0 is trained by the anchor alone, as v3
-was. Config `configs/turbo_1113_1309.toml`, job `20261113-130933-4d08cb`. Probes:
+was. Config `_archive/configs/anima_turbo/turbo_1113_1309.toml`, job `20261113-130933-4d08cb`. Probes:
 `bench/turbo/results/20261113-1339-handoff_v3warm_nodm0/` and
 `20261113-1341-cross_nodm0s0_v3123/` (`1309` draws step 0, v3 draws steps 1–3). Grids
 `output/tests/turbo4/cmp/nodm0_{ba5,cafe,bocchi}.jpg`, with rows teacher / Hub v3 on m14 / `1221` /
@@ -170,7 +170,7 @@ first 25 iterations: `train/dm_rel_gap` 0.292 in `1221` against 0.173 in v3's ru
 under an already trained student was the first suspect for the regression.
 
 `turbo_1113_1438` is `1221` with `network.fake_init_weights` = Hub v3 as well (both stacks on
-Kaiming downs, the 200-step fake warmup kept). Config `configs/turbo_1113_1438.toml`, log
+Kaiming downs, the 200-step fake warmup kept). Config `_archive/configs/anima_turbo/turbo_1113_1438.toml`, log
 `output/logs/turbo/20261113-143838`. Probes: `bench/turbo/results/20261113-1507-handoff_v3warm_fakev3/`,
 `20261113-1509-cross_fakev3s0_v3123/` (`1438` draws step 0, v3 steps 1–3) and
 `20261113-1512-cross_v3s0_fakev3123/` (the reverse). Grids

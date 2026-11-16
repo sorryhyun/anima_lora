@@ -1,7 +1,7 @@
 # Plan: the 4-step line after `v4_preview`
 
 Rewritten 2026-11-16. This file holds what is open; finished runs and probes are in `reports/` and
-the run table (`configs/README.md`). The closed 2-step plan is
+the run table (`reports/runs.md`). The closed 2-step plan is
 `91d476e0:scripts/distill_turbo/plan.md`.
 
 ## Where the line stands

@@ -3,7 +3,7 @@
 Two arms on the v1 recipe at 250 iterations, each adopted on the user's read of the renders and
 shipped in `configs/methods/turbo.toml` on 11-16. The 1000-iteration run of the two together did
 not hold the gains (`m15_1k.md`). Moved here from `plan.md` on 2026-11-16; the run rows are in
-`../configs/README.md`.
+`runs.md`.
 
 ## Static grid (`dmd.dynamic_schedule` off), 11-14
 
