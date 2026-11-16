@@ -30,15 +30,16 @@ def diagnose_cuda_unavailable(torch_module: Any) -> str | None:
 
     Returns an actionable message, or None when there is nothing to say
     (CUDA works, or no NVIDIA GPU is detectable). The wrong-torch-build cases
-    cover a Windows env that resolved the ROCm torch (GH #92); a plain
-    ``uv sync`` restores the CUDA stack.
+    cover a Windows env that resolved the ROCm torch (GH #92); ``python tasks.py
+    sync`` restores the CUDA stack (a bare ``uv sync`` would drop the saved
+    ``.anima_torch`` stack).
     """
     if torch_module.cuda.is_available():
         return None
     if shutil.which("nvidia-smi") is None:
         return None
 
-    resync = "uv sync"
+    resync = "python tasks.py sync"
     if is_rocm(torch_module):
         return (
             "PyTorch is a ROCm build but this machine has an NVIDIA GPU — "

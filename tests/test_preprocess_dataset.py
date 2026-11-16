@@ -435,9 +435,11 @@ def test_reconcile_caches_removes_only_wrong_bucket(tmp_path: Path) -> None:
     (lora / "charA").mkdir(parents=True)
     small_npz = lora / "charA" / "small_0896x1152_anima.npz"
     small_pe = lora / "charA" / "small_anima_pe.safetensors"
+    small_pe_spatial = lora / "charA" / "small_anima_pe_spatial.safetensors"
     small_te = lora / "charA" / "small_anima_te.safetensors"  # must survive
     small_npz.touch()
     small_pe.touch()
+    small_pe_spatial.touch()
     small_te.touch()
     (masks / "charA").mkdir(parents=True)
     small_mask = masks / "charA" / "small_mask.png"
@@ -453,12 +455,13 @@ def test_reconcile_caches_removes_only_wrong_bucket(tmp_path: Path) -> None:
     assert stale.n_images == 1
     assert stale.npz == [small_npz]
     assert stale.png == [resized / "charA" / "small.png"]
-    assert stale.pe == [small_pe]
+    assert stale.pe == [small_pe, small_pe_spatial]
     assert stale.mask == [small_mask]
     assert big_npz not in stale.npz  # consistent image untouched
 
     removed = delete_stale(stale)
-    assert removed == {"npz": 1, "png": 1, "pe": 1, "mask": 1}
+    assert removed == {"npz": 1, "png": 1, "pe": 2, "mask": 1}
     assert not small_npz.exists() and not small_pe.exists() and not small_mask.exists()
+    assert not small_pe_spatial.exists()
     assert small_te.exists()  # TE is text-only — never reconciled
     assert big_npz.exists()

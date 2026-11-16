@@ -154,7 +154,7 @@ def _resolve_fei_sigma_low_div(model: Any) -> Optional[float]:
         cfg = getattr(network, "cfg", None)
         if cfg is None:
             continue
-        return float(getattr(cfg, "fei_sigma_low_div", 8.0))
+        return float(getattr(cfg, "fei_sigma_low_div", 4.0))
     return None
 
 

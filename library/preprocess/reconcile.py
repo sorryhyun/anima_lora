@@ -284,9 +284,10 @@ def find_stale_caches(
         stale.npz.extend(wrong_npz)
         if png_wrong:
             stale.png.append(png)
-        pe = lora_cache_dir / reldir / f"{stem}_anima_pe.safetensors"
-        if pe.exists():
-            stale.pe.append(pe)
+        for suffix in ("_anima_pe", "_anima_pe_spatial"):
+            pe = lora_cache_dir / reldir / f"{stem}{suffix}.safetensors"
+            if pe.exists():
+                stale.pe.append(pe)
         mask = mask_dir / reldir / f"{stem}_mask.png"
         if mask.exists():
             stale.mask.append(mask)
