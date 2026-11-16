@@ -21,6 +21,7 @@ Qwen-Image-2.1 has no docs folder; its reference is `library/qwen21/CLAUDE.md`.
 | [moss/structure.md](moss/structure.md) | The MOSS-Image model end to end — Qwen3.5 text pass, FLUX.2 latent boundary, single-stream DiT, training step and sampler |
 | [moss/methods/i2i.md](moss/methods/i2i.md) | i2i — tasks, reference flags, status (design + probes: [../project/finished/moss_lora/done/i2i.md](../project/finished/moss_lora/done/i2i.md)) |
 | [moss/methods/tone_loss.md](moss/methods/tone_loss.md) | i2i tone term — keeps the input's brightness and colour outside the edit (`--tone_weight`), sanitize v3 |
+| [moss/methods/clause_hw.md](moss/methods/clause_hw.md) | clause_hw — position-clause tokens on RoPE h / w in training, on in the t2i recipe |
 | [moss/experimental/self_distill.md](moss/experimental/self_distill.md) | Self-distilled LoRA (experimental) — flow loss plus an EMA teacher with the image in the TE at σ ≥ 0.9; steadier on general and multi-character prompts |
 | [moss/optimization/int8.md](moss/optimization/int8.md) | int8 base — GPTQ file, speed, VRAM, accuracy |
 | [moss/optimization/fa2_sm120.md](moss/optimization/fa2_sm120.md) | FlashAttention build for sm_120 — 128×32 forward tile, fp16-accumulate backward, selection, numbers (both lines) |

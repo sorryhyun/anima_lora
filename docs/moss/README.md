@@ -252,6 +252,7 @@ REPA, parked, `_archive/moss_lora/repa.md`); `--ref_timestep` / `--ref_isolate` 
 - Architecture walkthrough (TE pass, latent boundary, blocks, loss, sampler):
   `docs/moss/structure.md`. Code map: `library/moss/CLAUDE.md`.
 - The i2i tone term: `docs/moss/methods/tone_loss.md`.
+- Position clauses on RoPE h / w (`clause_hw`, on in `lora.toml`): `docs/moss/methods/clause_hw.md`.
 - Self-distilled LoRA (experimental, `configs/moss/selfdistill.toml`, the GUI's Recipe
   dropdown): `docs/moss/experimental/self_distill.md`.
 - Speed: `docs/moss/optimization/`.
