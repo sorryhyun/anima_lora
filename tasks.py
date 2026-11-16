@@ -468,7 +468,7 @@ COMMANDS = {
     "exp-turbo-pref": (
         exp_turbo_pref.cmd_turbo_pref,
         "[experimental] Pick-round window for preference RL on the turbo student: 16 renders "
-        "a round, pick 0-8; label log in output/turbo_pref/ (project/anima_turbo/proposal/pref_rl.md)",
+        "a round, pick 0-8; label log in output/turbo_pref/ (project/anima_turbo/pref_rl/proposal.md)",
     ),
     "exp-test-directedit-dry": (
         exp_inference.cmd_test_directedit_dry,

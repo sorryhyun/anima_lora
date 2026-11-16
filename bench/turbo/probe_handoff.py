@@ -3,7 +3,7 @@
 
 The 4-step student is role-separated: step 0 is a regression on the teacher's
 anchor, steps 1..3 take the DM / GAN / CDM signal. Arm 0
-(``project/anima_turbo/reports/arm0.md``) reads one gap that both seeds share:
+(``_archive/anima_turbo/reports/arm0.md``) reads one gap that both seeds share:
 the student draws frontal standing figures where the teacher draws the jump from
 below and the tumbling group. This probe hands the trajectory over at a student
 step boundary, in both directions, and renders the result. Forward only.

@@ -1,8 +1,8 @@
 # Preference RL on the turbo student — train on what the user picks
 
-Status: OPEN (2026-11-13). Built: the round window and the P0 / P1 scripts (`../pref_rl/`); no
+Status: OPEN (2026-11-13). Built: the round window and the P0 / P1 scripts (`./`); no
 preference head trains the student yet. P0 and P1 are read on four bases, and the P1 gate is not
-passed (`../reports/pref_p1.md`); the DiT-head basis is not built. One CPU probe is in § 1 (tags
+passed (`p1.md`); the DiT-head basis is not built. One CPU probe is in § 1 (tags
 against the gelcrawl selection). Open decision: the feature basis of the preference head (§ 3.2), which
 P0 and P1 measure.
 

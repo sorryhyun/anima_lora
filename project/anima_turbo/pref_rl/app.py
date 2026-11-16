@@ -1,4 +1,4 @@
-"""Pick-round window for preference RL on the turbo student (proposal/pref_rl.md § 3.5, § 3.6).
+"""Pick-round window for preference RL on the turbo student (pref_rl/proposal.md § 3.5, § 3.6).
 
     make exp-turbo-pref            # or: .venv/bin/python project/anima_turbo/pref_rl/app.py
 

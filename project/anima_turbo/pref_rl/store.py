@@ -1,4 +1,4 @@
-"""Session store for the preference-RL pick rounds (proposal/pref_rl.md § 3.5, § 3.6).
+"""Session store for the preference-RL pick rounds (pref_rl/proposal.md § 3.5, § 3.6).
 
 Qt-free and torch-free: the GUI and the render server both read it.
 

@@ -32,7 +32,7 @@ Steps 1–3 receive no loss and move only through the weights they share with st
 | `network.student_init_weights` | the turbo v1.1 delta, Kaiming downs | r96 file, truncated to rank 64 by the loop |
 | `dpdmd.anchor_only` | on | `dm_first_step` off; `cdm.weight`, `gan.weight_gen`, `fake_warmup_steps` at 0 |
 | `dpdmd.k_anchor` / `teacher_anchor_steps` | **14 / 28** | the runs so far: 6 / 12 |
-| `optim.student_lr`, `lr_schedule` | 5e-5, cosine | the fit follows the anneal (`reports/step0.md`); 2e-4 fits worse |
+| `optim.student_lr`, `lr_schedule` | 5e-5, cosine | the fit follows the anneal (`_archive/anima_turbo/reports/step0.md`); 2e-4 fits worse |
 | `optim.grad_clip` | 1.0 | |
 | `ema.window` | 0.2 | the EMA is what is read |
 | `iterations` | 1000 | 250 leaves the fit shorter (anchor MSE 0.082 against 0.068) |

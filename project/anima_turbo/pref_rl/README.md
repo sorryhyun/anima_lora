@@ -1,6 +1,6 @@
 # Preference rounds (`make exp-turbo-pref`)
 
-The window of [../proposal/pref_rl.md](../proposal/pref_rl.md): the user picks renders, and the picks
+The window of [proposal.md](proposal.md): the user picks renders, and the picks
 are the labels of a preference head.
 
 1. `make exp-turbo-pref`, then **New…** creates a session (`output/turbo_pref/<name>/`). The
@@ -39,5 +39,5 @@ make daemon-run ARGS="--stall-timeout 600 project/anima_turbo/pref_rl/features.p
 embedding) and extracts only the rows it does not hold. `head.py gelcrawl` scores each basis on
 held-out artists and saves a head; `head.py picks` reads that head zero-shot, a head fitted on
 the picks alone and the gelcrawl head refitted on the picks, each against the sign-test gate.
-The DiT-head basis is not built. First read: [../reports/pref_p1.md](../reports/pref_p1.md).
+The DiT-head basis is not built. First read: [p1.md](p1.md).
 

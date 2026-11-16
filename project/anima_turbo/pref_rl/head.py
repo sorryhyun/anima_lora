@@ -1,4 +1,4 @@
-"""Preference-head fits and reads (proposal/pref_rl.md § 4, P0 and P1).
+"""Preference-head fits and reads (pref_rl/proposal.md § 4, P0 and P1).
 
     .venv/bin/python project/anima_turbo/pref_rl/head.py gelcrawl
     .venv/bin/python project/anima_turbo/pref_rl/head.py picks --session <name>

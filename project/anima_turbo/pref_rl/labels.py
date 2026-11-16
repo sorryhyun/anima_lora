@@ -1,4 +1,4 @@
-"""Label sets for the preference head (proposal/pref_rl.md § 3.3). Torch-free.
+"""Label sets for the preference head (pref_rl/proposal.md § 3.3). Torch-free.
 
 - ``gelcrawl``: the selected / retrieved split, grouped by artist.
 - a session name: the renders of its answered train rounds, grouped by round.

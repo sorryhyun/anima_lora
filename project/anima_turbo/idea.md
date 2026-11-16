@@ -31,7 +31,7 @@ restricting step 0's queries to high σ_a keeps the composition gain at a lower 
 - Arm: on iterations where step 0 is the DM step, draw σ_a from the upper range only. Needs a
   switch beside `dmd.dm_tau_distribution`.
 - No measurement supports the guess yet. On arm 0 the pre-clip norm is flat below σ_a 0.75 and
-  higher above it (`reports/arm0.md`), so the high-σ_a queries are also the noisier ones.
+  higher above it (`_archive/anima_turbo/reports/arm0.md`), so the high-σ_a queries are also the noisier ones.
 - Second to idea 1: it needs code and idea 1 does not.
 
 ## 3. Handoff probe on a 2-step student
@@ -76,7 +76,7 @@ variant is left.
 - **Check, if throughput becomes the limit:** the anchor-only loop at a smaller ε (it needs no
   sibling latents), 250 iterations, then the usual probe at 768 × 1344: held-out anchor MSE and
   `P>S@1` against S-b's 0.157 and 0.472 / 0.543. About 10 min. Throughput is not the limit now: the
-  step-0 fit follows the LR, not the number of pairs (`reports/step0.md`).
+  step-0 fit follows the LR, not the number of pairs (`_archive/anima_turbo/reports/step0.md`).
 
 ## 5. DAVE on the student's step 0 at inference
 

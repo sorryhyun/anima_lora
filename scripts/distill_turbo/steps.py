@@ -168,7 +168,7 @@ def student_rollout(
 
     Under ``rollout_grad`` nothing is detached: x_g carries step 0's graph, so the
     DM grad on x_pred reaches step 0 through the steps after it, and the diversity
-    term rides the caller's backward (superturbo.md).
+    term rides the caller's backward (_archive/proposals/superturbo.md).
     """
     device, dtype = ctx.device, ctx.dtype
     anchor = v_target is not None

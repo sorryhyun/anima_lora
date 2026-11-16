@@ -1,7 +1,7 @@
 # Turbo APEX on Anima: unstable as DMD, blurred as regression — CLOSED
 
 Status: CLOSED 2026-11-01. One LoRA as generator, reference and fake
-([proposal](../proposal/turbo_apex.md)) did not reach DP-DMD's 4-step quality in either form we
+([proposal](../../../_archive/proposals/turbo_apex.md)) did not reach DP-DMD's 4-step quality in either form we
 ran. The step is 3–5× cheaper; the student explodes in the proposal's form and loses its
 sharpness in the paper's. Phase 0a (endpoint weighting on DP-DMD) has no APEX code and stays open.
 

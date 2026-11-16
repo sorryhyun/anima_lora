@@ -208,7 +208,7 @@ target itself as step 0, `1653` drawing steps 1–3). Runs
 - Claude's read of the two grids: the `14 of 28` column is the teacher's image on all eight tiles,
   and clean. The `6 of 12` column on the guitarist is a smaller, darker figure with the crowd
   filling the lower half (seeds 3 and 4), which is the 0.723.
-- `S-a` (`step0.md`) read the chord as costing 0.02–0.07 on the merged14 students. Their steps 1–3
+- `S-a` (`_archive/anima_turbo/reports/step0.md`) read the chord as costing 0.02–0.07 on the merged14 students. Their steps 1–3
   kept 0.70–0.80 of the teacher's step 0; with steps 1–3 that keep 0.945, the 12-step target is the
   larger loss.
 - Cost: the anchor is 2 teacher forwards per Euler step, so `14 of 28` is 29 forwards an iteration

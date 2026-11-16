@@ -3,24 +3,24 @@
 One row per run. Configs are in `_archive/configs/anima_turbo/<id>.toml` (gitignored, with the
 long-form run table in its `README.md`); the live one is in [../configs/](../configs/README.md).
 Probe numbers are on EMA 250 unless a row says otherwise: sameness (lower is more varied), `S` cos,
-`T>S@1` cos, anchor MSE.
+`T>S@1` cos, anchor MSE. † = report archived in `_archive/anima_turbo/reports/`.
 
 ## merged14 teacher
 
 | Id | Arm | Result | Report |
 |---|---|---|---|
-| `1112_0833` | 0, control (the `1112_v1.md` baseline), seed 42 | baseline | [arm0](arm0.md) |
-| `1112_0834` | 0, null twin, seed 43 | 9–10 % shared ΔW with the control | [arm0](arm0.md) |
-| `1112_0917` | GAN off | GAN is not the walk | [arm0](arm0.md) |
-| `1112_1044` | S-b, anchor alone | step 0 at the teacher's instantaneous level | [step0](step0.md) |
-| `1112_1110` | S-b at student LR 2e-4 | worse | [step0](step0.md) |
-| `1112_1143` | S-c.1, `dm_first_step` on | at the twin's level; user: improved, less diverse | [step0](step0.md) |
-| `1112_1230` | S-b + `anchor_draws 4` | small consistent gain (anchor MSE 0.157 → 0.147) | [step0](step0.md) |
-| `1112_1336` | S-b to 1k, constant LR | flat; length is not the lever | [step0](step0.md) |
-| `1112_1410` | `1336` with a cosine tail from 750 | anchor MSE 0.123; the layout does not follow | [step0](step0.md) |
+| `1112_0833` | 0, control (the `1112_v1.md` baseline), seed 42 | baseline | arm0† |
+| `1112_0834` | 0, null twin, seed 43 | 9–10 % shared ΔW with the control | arm0† |
+| `1112_0917` | GAN off | GAN is not the walk | arm0† |
+| `1112_1044` | S-b, anchor alone | step 0 at the teacher's instantaneous level | step0† |
+| `1112_1110` | S-b at student LR 2e-4 | worse | step0† |
+| `1112_1143` | S-c.1, `dm_first_step` on | at the twin's level; user: improved, less diverse | step0† |
+| `1112_1230` | S-b + `anchor_draws 4` | small consistent gain (anchor MSE 0.157 → 0.147) | step0† |
+| `1112_1336` | S-b to 1k, constant LR | flat; length is not the lever | step0† |
+| `1112_1410` | `1336` with a cosine tail from 750 | anchor MSE 0.123; the layout does not follow | step0† |
 | `1112_1512` | v1: 1k, cosine, EMA, `dm_first_step` | shipped as Hub `v4_preview`; one frontal pose per prompt | [1112_v1](../1112_v1.md) |
 | `turbo_1113_1105` | v1 recipe at 250 it, control for the later arms | anchor MSE 0.149 | |
-| `turbo_1113_1104` | 1, MFD | failed: the seeds of a prompt draw one image | [mfd](mfd.md) |
+| `turbo_1113_1104` | 1, MFD | failed: the seeds of a prompt draw one image | mfd† |
 | `turbo_1113_1221` | warm start from Hub v3 | regresses from v3 untrained (sameness 0.326 → 0.465) | [warm_v3](warm_v3.md) |
 | `turbo_1113_1309` | warm start, `dm_first_step` off | not the cause | [warm_v3](warm_v3.md) |
 | `turbo_1113_1438` | warm start, fake seeded from v3 too | not the cause | [warm_v3](warm_v3.md) |

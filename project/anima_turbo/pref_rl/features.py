@@ -1,4 +1,4 @@
-"""Feature caches for the preference head (proposal/pref_rl.md § 3.2; P0 and P1).
+"""Feature caches for the preference head (pref_rl/proposal.md § 3.2; P0 and P1).
 
     make daemon-run ARGS="--stall-timeout 600 project/anima_turbo/pref_rl/features.py --set gelcrawl"
     make daemon-run ARGS="--stall-timeout 600 project/anima_turbo/pref_rl/features.py --set <session>"

@@ -18,7 +18,7 @@ merged LoRA is used at multiplier 1.0 only. The shipped base-teacher turbo
   teacher's 28-step schedule (`turbo_1116_1810`, 14 of 28) is adopted as the target to scale
   ([reports/v11_init.md](reports/v11_init.md), [anchor_only_recipe.md](anchor_only_recipe.md)).
   Next run: [plan.md](plan.md).
-- Preference RL is at its P1 gate, not passed ([reports/pref_p1.md](reports/pref_p1.md)).
+- Preference RL is at its P1 gate, not passed ([pref_rl/p1.md](pref_rl/p1.md)).
 
 ## Layout
 
@@ -26,10 +26,10 @@ merged LoRA is used at multiplier 1.0 only. The shipped base-teacher turbo
   [question.md](question.md): turbo + SnapRef, unrun. [vatdm.md](vatdm.md): VA-TDM against the loop.
 - [reports/](reports/README.md): one report per run or probe; [reports/runs.md](reports/runs.md)
   is the run table.
-- [proposal/](proposal/README.md), [findings/](findings/README.md).
+- [findings/](findings/README.md): settled findings. Closed proposals are in `_archive/proposals/` (`turbo_*`, `superturbo.md`).
 - [configs/](configs/README.md): the live run config; finished ones in `_archive/configs/anima_turbo/`.
 - [deploy/](deploy/): `deploy.sh` writes a student's release forms (LoRA for base, baked DiT, int8 GPTQ).
-- [pref_rl/](pref_rl/README.md): the preference-round window (`make exp-turbo-pref`) and head scripts.
+- [pref_rl/](pref_rl/README.md): preference RL — proposal, P1 report, the round window (`make exp-turbo-pref`) and head scripts.
 
 ## Code and data
 

@@ -258,7 +258,7 @@ def build_argparser() -> argparse.ArgumentParser:
         default=None,
         help="Keep the graph from step 0 into the grad step, so the DM / MFD "
         "signal on the final x_θ reaches step 0 through step 1 (2-step static "
-        "grid only; superturbo.md).",
+        "grid only; _archive/proposals/superturbo.md).",
     )
     parser.add_argument(
         "--anchor_only",

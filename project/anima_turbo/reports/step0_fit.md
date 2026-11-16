@@ -1,6 +1,6 @@
 # Step 0: how good the fit has to be, and Hub v3 as a fitted step 0 (2026-11-13)
 
-`step0.md` left one question open: how low the anchor MSE has to go before the layout comes with
+`_archive/anima_turbo/reports/step0.md` left one question open: how low the anchor MSE has to go before the layout comes with
 it. Three forward-only probes on `bench/turbo/probe_handoff.py` answer it. Same prompts
 (`bench/turbo/judge_hard.txt`: group / café / guitarist), seeds 1–4, 768 × 1344, CPU-drawn noise.
 
@@ -60,7 +60,7 @@ Run: `bench/turbo/results/20261113-1206-handoff_hub_v3/` (job `20261113-112028-e
   (`output/tests/turbo4/hub_v3/`): view from below, a small full-body figure, a different pose per
   seed.
 - So the step-0 regression does fit with enough training, on the same anchor (`k_anchor 6`,
-  `div_weight 0.1`) and the same LR. `step0.md`'s "the fit follows the LR, not the length" holds
+  `div_weight 0.1`) and the same LR. `_archive/anima_turbo/reports/step0.md`'s "the fit follows the LR, not the length" holds
   from 250 to 1000 iterations and not at 10k.
 - v3's `S` cosine is low (0.503): it draws the teacher's kind of layout, not the teacher's image
   of that noise. The cosine is not a quality score.

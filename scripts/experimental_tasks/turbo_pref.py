@@ -1,4 +1,4 @@
-"""Preference-RL pick rounds on the turbo student (project/anima_turbo/proposal/pref_rl.md)."""
+"""Preference-RL pick rounds on the turbo student (project/anima_turbo/pref_rl/proposal.md)."""
 
 from __future__ import annotations
 

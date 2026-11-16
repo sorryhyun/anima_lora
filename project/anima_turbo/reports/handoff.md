@@ -1,6 +1,6 @@
 # Handoff probe: which student step loses the teacher's layout (2026-11-12)
 
-Arm 0 (`arm0.md`) left one gap that both seeds share: the students draw a frontal standing figure
+Arm 0 (`_archive/anima_turbo/reports/arm0.md`) left one gap that both seeds share: the students draw a frontal standing figure
 where the teacher draws the jump from below and the tumbling group. The student is role-separated
 (step 0 regresses on the teacher anchor, steps 1–3 take DM / GAN / CDM), so the probe hands the
 trajectory over at a student step boundary, in both directions, to see which step loses the layout.

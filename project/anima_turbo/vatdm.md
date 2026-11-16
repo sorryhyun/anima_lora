@@ -5,7 +5,7 @@ Velocity Adversarial Distillation* (2026-11-04). Code: <https://github.com/Luo-Y
 Read 2026-11-06, main text pp. 1–13; the appendix (derivations, training cost,
 hyperparameters, whether the student is a LoRA) and the code are unread. Idea 1 has one run
 (below); the rest has not been run. The current loop is described in
-`docs/anima/methods/turbo.md`, MFD in `reports/mfd.md`.
+`docs/anima/methods/turbo.md`, MFD in `_archive/anima_turbo/reports/mfd.md`.
 
 ## The paper
 
@@ -159,7 +159,7 @@ CFG-guided; ours would have to be, since the DM real score is (`dmd_surrogate` d
 
 Match `x_{g+1}` perturbed to τ > σ_{g+1}, not `x_pred`. Structural: the fake models the
 perturbed `x_s` distribution, and the DP-DMD anchor and L_CDM have to be re-placed around it.
-The output is still a normal LoRA on Euler, unlike data-space iteration (`proposal/turbo_data_space.md` §5).
+The output is still a normal LoRA on Euler, unlike data-space iteration (`_archive/proposals/turbo_data_space.md` §5).
 
 ### 4. B-form, flow-product mix
 
