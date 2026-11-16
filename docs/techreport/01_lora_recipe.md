@@ -1,14 +1,5 @@
 # 1. Anima LoRA 학습 레시피
 
-> **요약.** 작가 여러 명을 묶은 그룹마다 plain LoRA를 하나씩 학습합니다. 이 LoRA들이 다음 단계 soup의 재료가
-> 됩니다(→ `02_soup_merge.md`). 레시피의 바탕은 세 가지입니다. 캡션은 이미지를 상세하게 설명할수록 좋고, 종횡비나
-> 토큰 수를 맞추려고 이미지를 자르면 예상보다 많이 잃습니다. 그래서 이미지는 원래 종횡비 그대로 학습합니다(free-fit).
-> 학습 설정은 블라인드 A/B 14회(s29–s42)로 정했습니다: batch 1 + GA 2, σ 구간별 median clip, rank 32 / alpha 128 /
-> lr 5e-5 constant, adapter EMA 0.1, shift 1, REPA와 T-LoRA mask는 끕니다. rank, alpha, shift, REPA, down init은
-> 모두 결과 차이가 없었습니다(null). 런은 loss로 평가하지 않고, 블라인드로 렌더를 비교해서 평가합니다.
-
----
-
 ## 1. 캡션은 상세할수록 좋다
 
 태그만 나열한 캡션은 어떤 속성이 어떤 대상에 붙는지 표현하지 못합니다. `3girls, blonde hair, aqua hair, red hair`
@@ -22,16 +13,14 @@
 <태그 묶음>. On the left, akita neru, yellow eyes. On the right, kasane teto.
 ```
 
-학습하기 어렵거나 결함이 있어 보이는 이미지도 같은 방식으로 다룰 수 있습니다. 워터마크, 흐림, 압축 손상이 있는
-이미지는 빼지 않고 캡션에 그 결함을 적습니다. MOSS-Image 기술 보고서(arXiv 2610.23374, App. B.2)에서는 엔트로피,
-밝기, 채도, 워터마크 면적 같은 휴리스틱으로 ReLAION의 43%만 남겼더니 OneIG text가 0.524에서 0.118로, OneIG
-overall이 0.436에서 0.348로 떨어졌습니다. 텍스트가 많은 페이지처럼 한 종류의 콘텐츠가 통째로 빠졌기 때문입니다.
-즉 빼야 하는 데이터는 중복, AI 생성 이미지, 완전히 틀린 캡션 정도입니다.
+학습하기 어렵거나 결함이 있어 보이는 이미지도 같은 방식으로 다룰 수 있습니다. MOSS-Image 팀에 따르면 워터마크,
+흐림, 압축 손상, 다량의 텍스트가 있는 데이터는 제외하지 않고 캡션에 그대로 적는 것이 모델 성능에 도움이 된다고
+합니다([MOSS-Image 기술 보고서, arXiv 2610.23374, App. B.2](https://arxiv.org/abs/2610.23374)). 다만 캡션이
+이미지와 상이한 경우와 완전히 중복된 경우는 제외합니다.
 
-캡션 변형: 캡션마다 태그 순서를 섞은 변형 4개를 만들고(tag dropout 0.1), 학습 때 섞지 않은 원본을 20%, 섞은
-변형을 80% 확률로 뽑습니다. 섞을 때 절의 경계는 그대로 두고 절 안의 태그만 섞습니다. 이와 별개로 캡션 전체를
-비우는 caption dropout 0.1을 씁니다. CFG가 쓰는 unconditional 예측을 같은 모델 안에서 학습하는 표준 방법이고,
-0.1–0.2가 가장 좋았다는 Ho & Salimans(2022, arXiv 2207.12598)의 값을 따랐습니다.
+캡션 변형: robustness를 위해 태그 순서를 섞거나 태그 일부를 드롭아웃(0.1)한 변형을 만들고, 학습 때 무작위로 골라
+씁니다. 이와 별개로 캡션 전체를 비우는 caption dropout 0.1을 씁니다. CFG가 쓰는 unconditional 예측을 같은 모델
+안에서 학습하는 표준 방법이고, 0.1–0.2가 가장 좋았다는 Ho & Salimans(2022, arXiv 2207.12598)의 값을 따랐습니다.
 
 ---
 
@@ -61,107 +50,36 @@ dynamic으로 표시하고 그 범위를 tier의 토큰 band로 묶으면, band 
 종횡비 오차는 patch 하나(16px) 미만이고, 늘어나는 비율은 1.6% 미만입니다. 최소 해상도 하한은 없습니다. 작은
 이미지는 늘리고 큰 이미지는 줄일 뿐 버리지 않습니다.
 
-| tier edge | 토큰 band |
-|---|---|
-| 512 | 1008–1024 |
-| 768 | 2160 |
-| 896 | 3000–3024 |
-| 1024 | 4032–4200 |
-| 1280 | 6300 |
-| 1536 | 8640 |
-
 1024가 아닌 tier는 band를 ±2.5% 넓혀 종횡비를 맞출 여유를 둡니다. 이 레시피는 1024와 896 tier를 씁니다.
+이따금씩 이미지를 축소하여 학습하는 경우가 있는데, 개인 연구 결과 이미지를 줄여서 학습하는 것은 다수의 경우 총
+계산량 대비 학습 효과를 유의미하게 늘리지 않습니다([arXiv 2608.04448](https://arxiv.org/abs/2608.04448)).
 
-### 2.3 batch
-
-free-fit에서는 이미지마다 크기가 거의 다 다르므로, 같은 크기끼리 묶는 batch를 만들 수 없습니다. 그래서 batch 1로
-학습하고 gradient accumulation으로 update 크기를 키웁니다(§4.1). batch를 2 이상으로 키우려면 종횡비를 몇 개
-구간으로 묶어 구간마다 크기를 하나로 맞춰야 합니다.
+이때 제약은 샘플마다 토큰 길이가 달라 배치를 구성하기 어렵다는 것으로, 배치 1로도 최대한 GPU 부하가 가게끔
+세팅하거나 gradient accumulation으로 update 크기를 키웁니다(부록 A1.1).
 
 ---
 
-## 4. 학습 설정과 근거
+## 3. 학습 설정
 
-| 항목 | 값 | 근거 |
-|---|---|---|
-| batch | bs 1, GA 2 | free-fit은 batch 1이 기본(§2.3). micro-batch마다 clip하므로 스파이크 하나가 update에 주는 영향은 cap / 2 이하 |
-| clip | σ 구간별 median clip, k 2.0, micro-batch마다, 구간 경계 0.2 / 0.4 / 0.6 / 0.8, window 50 | 구간별 clip이 단일 window를 39–21로 이김(s30, p 0.047) |
-| lr / 스케줄 | 5e-5, constant (warmup 5%) | 이전 설정(2e-5 cosine, 고정 clip 1.0)을 41–16으로 이김(s29). 단 ‖dW‖를 맞춘 재실험(s33)에서는 이전 설정이 52–42로 앞섬. 1e-4는 손이 엉킴 |
-| adapter EMA | 0.1 | 일정한 lr에서 raw 가중치에 남는 말풍선 같은 잔여물을 없앰 |
-| rank / alpha | 32 / 128 | rank 16은 null(s34 28–20, s41 17–15), alpha 512 / lr 1.25e-5도 null(s35 25–22, s36 18–13, s42 23–22). 근거 논문은 §4.3 |
-| σ 샘플링 | logit-normal(0, 1), shift 1 | shift 2와 무승부(s32 22–23). REPA를 끄면 shift 1이 28–20(s39) |
-| REPA | off | alpha 512에서는 off가 32–16(s37+s38, pair p 0.015). alpha 128에서는 23–22 무승부(s40) |
-| T-LoRA mask | off | 학습과 추론 모두 mask를 건 경우 plain과 11–13(s31) |
-| down init | W₀의 상위 singular vector | Kaiming과 렌더 차이 없음(§4.4) |
-| 기타 | AdamW, 8 epoch, caption dropout 0.1 | AdamW는 Loshchilov & Hutter(arXiv 1711.05101), caption dropout은 CFG 논문의 값(§1) |
+| 항목 | 값 |
+|---|---|
+| batch | bs 1, GA 2 |
+| clip | σ 구간별 median clip, k 2.0, micro-batch마다, 구간 경계 0.2 / 0.4 / 0.6 / 0.8, window 50 |
+| lr / 스케줄 | 5e-5, constant (warmup 5%) |
+| adapter EMA | 0.1 |
+| rank / alpha | 32 / 128 |
+| σ 샘플링 | logit-normal(0, 1), shift 1 |
+| REPA | off |
+| T-LoRA mask | off |
+| down init | W₀의 상위 singular vector |
+| 기타 | AdamW, 8 epoch, caption dropout 0.1 |
 
+**down init.** LoRA의 down 행렬을 Kaiming 대신 W₀의 상위 r개 right singular vector로 시작하고, up은 0으로 둡니다.
+크기는 Kaiming과 같게 맞추므로 바뀌는 것은 방향뿐이고, 초기 ΔW는 0입니다. 학습을 마친 뒤의 렌더는 Kaiming과
+구별되지 않았습니다(부록 A1.4). 그래도 이 init을 쓰는 이유는 soup에 있습니다. 작가 그룹마다 서로 다른 singular
+vector 구간에서 시작시키면 여러 LoRA를 병합할 때 입력 부분공간이 겹치지 않습니다(→ `02_soup_merge.md`).
 
-### 4.1 batch와 clip: gradient tail은 σ 양 끝에 몰린다
+**옵티마이저.** AdamW(Loshchilov & Hutter, arXiv 1711.05101)를 씁니다. 다른 옵티마이저는 AdamW에 비해 유의미한
+효과를 내지 않았습니다.
 
-bs1 / 5e-5, 848 update에서 측정했습니다. epoch별 평균 pre-clip norm은 2.20에서 약 0.95로 떨어졌고(전체
-중앙값 1.01), 스파이크는 12.8까지 갔지만 loss와의 상관은 약했습니다(r = 0.27). 고정 cap 1.0은 중앙값 바로 위에
-있어서 epoch 1에서는 update의 94%를, epoch 5–8에서는 22–29%를 잘랐습니다. 스파이크를 잡는다기보다 update 절반을
-정규화한 셈입니다.
-
-tail은 σ가 만듭니다(caststation / ama mitsuki / sweetonedollar, seed 42).
-
-| σ | 0–0.2 | 0.2–0.4 | 0.4–0.6 | 0.6–0.8 | 0.8–1.0 |
-|---|---:|---:|---:|---:|---:|
-| 샘플 비율 (합산) | 6.7 % | 23.5 % | 34.3 % | 28.0 % | 7.4 % |
-| pre-clip norm 중앙값 | 1.6–2.7 | 0.9–1.4 | 0.9–1.3 | 1.4–2.2 | 2.5–4.9 |
-| 전역 median clip에서 잘린 비율 | 33 % | 2.6 % | 1.1 % | 9.8 % | 62 % |
-
-σ 양 끝(σ < 0.2 또는 ≥ 0.8)은 샘플의 13–16%인데 잘린 micro-batch의 50–80%를 차지합니다. 이미지 하나가 지배하는
-경우는 없었습니다(8 epoch 동안 이미지당 많아야 2–4회 clip). σ 전체에 median 하나를 쓰면 σ 끝의 정상 샘플을
-스파이크로 잘못 보기 때문에, σ 구간마다 window를 따로 둡니다. 이 분포 모양은 T-LoRA mask 유무, rank 16, REPA off
-조건에서도 그대로였습니다.
-
-- **clip은 micro-batch마다 겁니다.** 스파이크를 평소 norm의 `k`배로 줄이되 방향은 유지하므로 그 이미지도
-  학습됩니다. accumulate한 뒤에 자르면 늦는데, norm 10짜리 micro-batch가 norm 1짜리 옆에서 방향을 정해 버리기
-  때문입니다. 자르지 않은 스파이크는 Adam의 1차 모멘트를 약 10 update 동안 끌고, 2차 모멘트를 수백 update 동안
-  부풀립니다.
-- **GA 2로 충분합니다.** GA 4로 가면 update 수가 반으로 줍니다. 30장 세트면 60 update이고, 여기서 EMA 0.1의 span은
-  6입니다.
-- 처음 10개 norm이 쌓일 때까지는 고정 cap 1.0을 씁니다. clip 비율을 셀 때 이 구간은 뺍니다.
-
-### 4.2 lr, 스케줄, EMA
-
-- **EMA에는 일정한 lr이 필요합니다.** cosine 감쇠에서는 마지막 약 10%의 update가 거의 움직이지 않아서 EMA 0.1이
-  raw 가중치와 같아집니다(ama mitsuki: ‖dW‖ 0.997배, cos 1.000). constant 5e-5에서는 0.91배 / cos 0.974이고, raw에
-  남는 말풍선이나 엉뚱한 "?" 같은 잔여물을 없애 줍니다.
-- EMA 감쇠는 `1 - 1/(window × updates)`로, 848 update에서 0.988입니다. EMA는 lr warmup이 끝난 시점부터 fp32 사본으로
-  시작하고, 저장할 때는 live 가중치 대신 EMA를 저장합니다.
-- **lr은 변위를 정하고, 변위에는 상한이 있습니다.** GA2 / 1e-4(bs1 EMA ‖dW‖의 1.41배)에서는 포옹과 메이드
-  프롬프트에서 팔과 손이 엉키고, GA2 / 5e-5(0.68배)는 깨끗합니다. 이 결과는 블라인드 A/B 없이 렌더를 보고
-  읽었습니다.
-- s29의 승리(41–16)는 T-LoRA mask를 켠 상태였고 ‖dW‖도 맞추지 않았습니다. mask를 끄고 ‖dW‖를 맞춘
-  재실험(s33)에서는 이전 설정 A가 52–42로 앞섰습니다(cluster p 0.17). 그러니 B의 이점은 update 방향에 있지
-  않습니다.
-
-### 4.3 rank와 alpha: 손대지 않는다
-
-LoRA는 update를 `(α/r)·BA`로 스케일합니다(Hu et al. 2021, arXiv 2106.09685). rsLoRA(Kalajdzievski 2023, arXiv
-2312.03732)는 α/r을 고정하면 rank에 따라 학습 보폭이 달라진다는 점을 보이고 `α/√r` 스케일을 제안했는데, 이
-레시피에서도 같았습니다. α/r을 고정하면 Adam에서 ‖dW‖가 √r에 비례해서 r16 / alpha 64는 r32의 0.72배만
-움직였고(s34), alpha를 √r에 비례시키면(r16 / a362 vs r32 / a512) 보폭이 맞았습니다(0.95배 / 1.09배, s41).
-
-alpha와 lr의 배분은 arXiv 2606.12883을 따라 정했습니다. 이 논문은 LoRA 한 step을 task 방향 신호(Θ(αη))와
-bilinear drift `s·ΔB·ΔA`(Θ(αη²))로 나누므로, α·η를 고정하고 alpha를 높이고 lr을 낮추면 drift가 줄어듭니다. α·η를
-출시값에 고정하고 배분만 바꾸면 ‖dW‖는 같았고(a512가 a128의 0.96–0.99배), drift 비율 `‖B·D‖ / ‖B·A0‖`(모듈
-중앙값)는 a128의 0.15–0.17에서 a512의 0.06으로 줄었습니다. 그래도 블라인드 세 세트(s35, s36, s42)는 두 arm을
-구별하지 못했습니다. rank 16도 세 작가에서 REPA 유무와 관계없이 null이었습니다(s34, s41).
-
-결론적으로 rank 32 / alpha 128 / lr 5e-5를 유지합니다. rank를 바꿀 때는 rsLoRA대로 alpha를 √r 비율로 맞춥니다.
-
-### 4.4 down init
-
-down 행렬을 Kaiming 대신 W₀의 상위 r개 right singular vector로 시작합니다(`A₀ = V_rᵀ/√3`, `B₀ = 0`). `1/√3`은
-Kaiming의 기대 row-norm에 맞춘 값이라 바뀌는 것은 방향뿐이고, 초기 ΔW는 0입니다. W₀의 주성분으로 adapter를
-시작하는 것은 PiSSA(Meng et al. 2024, arXiv 2404.02948)와 같은 발상이지만, 여기서는 B₀ = 0이라 W₀를 바꾸지
-않습니다.
-
-첫 step의 gradient 에너지 중 이 init이 담는 비율은 0.21, 작가 자신의 gradient basis는 0.74입니다. 그런데 256
-step(r32 / α128, 8 epoch)을 학습하고 나면 어떤 init도 렌더를 바꾸지 못합니다. SVD init vs Kaiming 12–9, vs gradient
-SVD 11–9, vs 작가 basis 10–10이고, 모두 seed 쌍 잡음 바닥(15–9) 안입니다(블라인드 s22–s25). 렌더 차이가 없는데도
-SVD init을 쓰는 이유는 soup에 있습니다. 그룹마다 서로 다른 singular vector 구간에서 시작시키면 병합할 때 입력
-부분공간이 겹치지 않습니다(→ `02_soup_merge.md`).
+나머지 설정을 고른 근거와 측정은 부록(`A1_lora_recipe.md`)에 있습니다.
