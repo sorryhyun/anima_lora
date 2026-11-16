@@ -36,6 +36,29 @@ DiT 블록이 입력에서 보는 것은 토큰 시퀀스의 길이뿐입니다.
 dynamic으로 표시하고 그 범위를 tier의 토큰 band로 묶으면, band 안의 모든 크기를 graph 하나로 처리할 수 있습니다.
 각 forward는 실제 토큰 수로 돌고 padding이 없으며, 고정 크기로 compile한 경로와 비트 단위로 같은 결과를 냅니다.
 
+바뀐 부분만 줄이면 다음과 같습니다. 숫자는 1024 tier의 band입니다.
+
+```diff
+ # 블록 밖: RoPE를 실제 (Hp, Wp) 격자로 만든 뒤 토큰을 한 줄로 펼칩니다
+ rope_cos, rope_sin = build_rope(Hp, Wp)       # 각각 (Hp·Wp, d)
+ x = x.flatten(1, 2)                           # (B, Hp, Wp, D) → (B, Hp·Wp, D)
+
+-# 크기마다 graph가 따로 생깁니다
+-block = torch.compile(block, dynamic=False)
++compiled = torch.compile(block, dynamic=False)
++lo, hi = 4032, 4200                           # band 안의 토큰 수는 graph 하나로 처리합니다
++
++def block(x, rope_cos, rope_sin, *rest):
++    torch._dynamo.mark_dynamic(x, 1, min=lo, max=hi)
++    torch._dynamo.mark_dynamic(rope_cos, 0, min=lo, max=hi)
++    torch._dynamo.mark_dynamic(rope_sin, 0, min=lo, max=hi)
++    return compiled(x, rope_cos, rope_sin, *rest)
+```
+
+`mark_dynamic`은 compile 전에 한 번만 걸지 않고 forward마다 다시 겁니다. gradient checkpointing의 backward
+recompute가 `x`를 새 텐서로 떼어 내면서 표시가 사라지는데, RoPE 쪽에는 표시가 남아 있어 둘이 어긋나면 compile이
+에러를 냅니다.
+
 ### 2.2 크기 정하기
 
 이미지마다 다음 순서로 크기를 정합니다.
