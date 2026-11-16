@@ -354,6 +354,13 @@ def build_argparser() -> argparse.ArgumentParser:
         help="λ on L_CDM; 0 turns the path off. Costs +1 student grad forward, "
         "+2 teacher and +1 fake no-grad forwards per step.",
     )
+    parser.add_argument(
+        "--cdm_teacher",
+        choices=("cfg", "cond"),
+        default=None,
+        help="Teacher velocity in L_CDM: 'cfg' (the CFG'd teacher, our default) or "
+        "'cond' (cond-only, as arXiv:2605.06376 Eq. 9; one teacher forward less).",
+    )
 
     # Mean Flow Distillation in the DM slot (arXiv:2606.11155).
     parser.add_argument(
@@ -465,6 +472,8 @@ class TurboConfig:
     # L_CDM; weight 0 = off
     cdm_weight: float
     cdm_grad_ckpt: bool
+    # L_CDM teacher velocity: "cfg" (CFG'd) or "cond" (cond-only, the paper's)
+    cdm_teacher: str
 
     # MFD in the DM slot; dtau 0 = plain DMD
     mfd_dtau: float
@@ -617,6 +626,13 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         if args.cdm_grad_ckpt is None
         else args.cdm_grad_ckpt
     )
+    cdm_teacher = str(
+        _flatten(cfg, "cdm.teacher", "cfg")
+        if args.cdm_teacher is None
+        else args.cdm_teacher
+    )
+    if cdm_teacher not in ("cfg", "cond"):
+        raise ValueError(f"cdm.teacher={cdm_teacher!r}: must be 'cfg' or 'cond'")
 
     mfd_dtau = float(_pick(args.mfd_dtau, cfg, "mfd.dtau", 0.0))
     mfd_max_steps = int(_pick(args.mfd_max_steps, cfg, "mfd.max_steps", 4))
@@ -779,7 +795,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
                 )
     if cdm_weight > 0.0:
         logger.info(
-            f"L_CDM ON: weight={cdm_weight}; +1 student grad forward, "
+            f"L_CDM ON: weight={cdm_weight}, teacher={cdm_teacher}; +1 student grad forward, "
             "+2 teacher and +1 fake no-grad forwards per step."
         )
     if gan_r1_weight < 0.0:
@@ -908,6 +924,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         dynamic_schedule=dynamic_schedule,
         cdm_weight=cdm_weight,
         cdm_grad_ckpt=cdm_grad_ckpt,
+        cdm_teacher=cdm_teacher,
         mfd_dtau=mfd_dtau,
         mfd_max_steps=mfd_max_steps,
         mfd_interval=mfd_interval,
@@ -978,6 +995,7 @@ def snapshot_toml_text(c: TurboConfig, *, source_config: str | None = None) -> s
 _TB_KEYS = (
     "gan_loss_weight_gen",
     "cdm_weight",
+    "cdm_teacher",
     "mfd_dtau",
     "mfd_interval",
     "k_anchor",

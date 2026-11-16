@@ -91,6 +91,7 @@ def _student_metadata(cfg, ctx: RunContext, step: int) -> dict[str, str]:
         ss_turbo_gan_delay_steps=str(cfg.gan_delay_steps),
         ss_turbo_gan_warmup_steps=str(cfg.gan_warmup_steps),
         ss_turbo_cdm_weight=str(cfg.cdm_weight),
+        ss_turbo_cdm_teacher=cfg.cdm_teacher,
         ss_turbo_lr_schedule=cfg.lr_schedule,
     )
     if cfg.anchor_only:

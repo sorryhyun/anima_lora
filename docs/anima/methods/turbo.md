@@ -176,7 +176,7 @@ Sectioned, bespoke. Every key has a matching CLI override flag (see
 | `[optim]` | `fake_steps_per_student_step` | `4` | keep the fake ahead of the moving x_θ |
 | `[optim]` | `fake_warmup_steps` | `200` | fake (critic) head-start before the main loop — kills the early grad_signal_rms spike (~step 50); `0` = off |
 | `[optim]` | `grad_clip` | `1.0` | grad-norm cap (both nets) |
-| `[cdm]` | `weight` / `grad_ckpt` | `1.0` / `true` | CDM loss weight (code fallback 0); its branch checkpoints its own forwards |
+| `[cdm]` | `weight` / `grad_ckpt` / `teacher` | `1.0` / `true` / `"cond"` | CDM loss weight (code fallback 0); its branch checkpoints its own forwards. `teacher`: the velocity L_CDM pulls toward, `cond` (the paper's Eq. 9, adopted 11-16 on the A/B in `project/anima_turbo/plan.md`) or `cfg` (the CFG'd teacher, code fallback) |
 | `[optim]` | `lr_schedule` / `grad_accum` | absent: `cosine` / `1` | shape after the 2 % linear warmup (student, fake, disc); iterations per student optimizer step |
 | `[ema]` | `window` | absent: `0.0` | student EMA span as a fraction of the run (0 = off). Under `lr_schedule = "constant"` it is a fraction of the updates. Under `cosine` it is a fraction of the summed LR: each update decays the shadow by `decay ** (lr / mean lr)`, so the span covers the same share of the weights' movement as at a constant LR (0.2 reaches back about 45 % of the updates) |
 | `[dmd]` | `dm_draws` | absent: `1` | (σ_a, ε_dm) draws averaged into the DM signal on the same x_θ |

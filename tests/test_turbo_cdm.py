@@ -59,3 +59,10 @@ def test_extrapolate_per_sample_stride_broadcast():
 def test_cdm_refuses_grad_ckpt():
     with pytest.raises(ValueError, match="grad_ckpt"):
         _resolve(["--cdm_weight", "0.1", "--grad_ckpt"])
+
+
+def test_cdm_teacher_defaults_to_cfg_and_takes_cond():
+    assert _resolve(["--cdm_weight", "1.0"]).cdm_teacher == "cfg"
+    assert (
+        _resolve(["--cdm_weight", "1.0", "--cdm_teacher", "cond"]).cdm_teacher == "cond"
+    )

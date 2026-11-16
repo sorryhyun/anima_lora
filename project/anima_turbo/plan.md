@@ -1,6 +1,6 @@
 # Plan: the 4-step line after `v4_preview`
 
-Rewritten 2026-11-13. The recipe is `1112_v1.md`; finished work is in `reports/`. The closed 2-step
+Rewritten 2026-11-13; teacher merged15 and cond-only L_CDM from 2026-11-16. The recipe is `1112_v1.md`; finished work is in `reports/`. The closed 2-step
 plan is `91d476e0:scripts/distill_turbo/plan.md`.
 
 ## Where the line stands
@@ -18,9 +18,11 @@ plan is `91d476e0:scripts/distill_turbo/plan.md`.
 
 ## A/B protocol
 
-1. **250 iterations on the v1 recipe**, compare EMA 250. Control: `turbo_1113_1105` (27 min).
+1. **250 iterations on the v1 recipe**, compare EMA 250. Control from 11-16: `turbo_1116_0958`
+   (merged15, static grid, cond-only L_CDM; 27 min). Earlier controls are merged14.
 2. **Renders are the gate.** 4 steps, cfg 1, `bench/turbo/judge_hard.txt` seeds 1–4 at 768 × 1344
-   on the merged14 DiT, beside the teacher (`output/tests/turbo4/teacher_m14/`). Grids go to
+   on the merged15 DiT (int8), beside the teacher (`output/tests/turbo4/teacher_m15/`; merged14 runs:
+   `teacher_m14/`). Grids go to
    `output/tests/turbo4/cmp/`.
 3. **Probe beside the renders** (`bench/turbo/probe_handoff.py`, about 3 min per student):
    held-out anchor MSE, the `S` cosine, and the sameness across seeds (teacher 0.328, control
@@ -49,11 +51,18 @@ By that read the line closes on merged14 + Hub v3 untrained. What comes next is 
   against 0.496 / 0.675 for the two dynamic seeds, `S` cos 0.567 against 0.547 / 0.453, `T>S@1` cos
   0.823 against 0.779 / 0.745. Anchor MSE 0.171 sits between the two (0.149 / 0.188), and the café
   sign text is worse than the control's. One static seed. It gives up other step counts.
-- **Cond-only L_CDM.** Our L_CDM takes the CFG'd teacher; the paper (arXiv:2605.06376 Eq. 9) and
-  its code take the cond-only one, with CFG as a separate on-trajectory loss. On the static arm's
-  step-248 bundle the cond-only signal is 0.58 of the CFG'd one in rms (cos 0.71), and the CFG'd
-  signal at τ̂ > 0.67 is mostly the CFG part (`bench/turbo/probe_cdm_signal.py`, result
-  `20261114-1739-cdm_signal_turbo_1114_1709`). A distinct arm, on the static grid. Not built.
+- **Cond-only L_CDM** (`cdm.teacher = "cond"`): done 11-16, adopted on the user's read. The
+  paper's form (arXiv:2605.06376 Eq. 9): the cond-only teacher against the fake in L_CDM, CFG
+  through the on-trajectory DM term only. A/B on merged15, static grid, weight 1.0:
+  `turbo_1116_0958` against the m15 control `turbo_1116_0957` (curves overlap the m14 static run
+  `1114_1709`). The CDM signal runs at 0.71 → 0.53 of the control's (probe: 0.58); every other curve
+  is unchanged. Every probe number favours it on all three prompts: `S` cos 0.547 → 0.608,
+  `T>S@1` cos 0.777 → 0.841, anchor MSE 0.151 → 0.138, sameness 0.451 → 0.442 (m15 teacher 0.315;
+  `bench/turbo/results/20261116-1054-handoff_m15_cdmcond/`). Renders
+  (`output/tests/turbo4/cmp/cdmcond_*.jpg`): the guitarist jumps in a skirt seen from below as the
+  teacher draws her (control: track pants, standing), the group gains camera variety, and the café
+  aprons drift from the teacher's blue. One seed, no twin. Shipped in `configs/methods/turbo.toml`;
+  the code fallback stays `cfg`, so past run configs reproduce.
 - **Fake-lag probe** before anything that touches the fake (student : fake 1 : 10, the VA-TDM
   teacher-regularised fake): freeze the student at a resume point, run about 40 more fake steps,
   and read how far the DM signal turns on fixed draws. Not built.
@@ -74,6 +83,9 @@ By that read the line closes on merged14 + Hub v3 untrained. What comes next is 
 
 ## Open
 
+- **Café colour drift under cond-only L_CDM.** The aprons leave the teacher's blue on three of
+  four seeds; a seed-43 twin of `0958` and a weight-matched arm (`cdm.weight` ≈ 1.7, the control's
+  signal rms) would tell seed luck, magnitude and direction apart. Not run.
 - **Sameness in steps 1–3.** With the teacher drawing step 0 the control still reads 0.405 against
   the teacher's 0.328: the plain DM term pulls the seeds together too. No arm aims at it yet.
 - **2 steps.** Reopening it waited on a step 0 that carries the layout on 4 steps

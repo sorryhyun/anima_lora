@@ -38,6 +38,7 @@ norm_floor = 0.05
 [cdm]
 weight = 1.0
 grad_ckpt = true
+teacher = "cond"
 
 [optim]
 student_lr = 5e-5

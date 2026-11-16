@@ -392,9 +392,16 @@ def cdm_off_trajectory_loss(
     tau_cdm = _uniform_tau(ctx, cfg, B)
     eps_cdm = torch.randn_like(latents)
     x_renoised_cdm = renoise(x0_off.detach().to(ctx.dtype), tau_cdm, eps_cdm)
-    v_real_cdm = ctx.teacher_cfg_velocity(
-        x_renoised_cdm, tau_cdm, crossattn_emb, c_null
-    )
+    if cfg.cdm_teacher == "cond":
+        # The paper's L_CDM (Eq. 9): cond-only teacher; CFG reaches the student
+        # through the on-trajectory DM term alone.
+        v_real_cdm = ctx.forward(
+            "teacher", x_renoised_cdm, tau_cdm, crossattn_emb, no_grad=True
+        ).float()
+    else:
+        v_real_cdm = ctx.teacher_cfg_velocity(
+            x_renoised_cdm, tau_cdm, crossattn_emb, c_null
+        )
     # Transition-aware fake: x0_off is the student's estimate at t'; σ_g is restored
     # for the fake update that follows.
     ctx.turbo.set_fake_source(t_off)
