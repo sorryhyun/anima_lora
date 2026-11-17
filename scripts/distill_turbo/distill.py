@@ -45,6 +45,7 @@ from .resume import resume_path_for, save_resume_state
 from .setup import build_run
 from .steps import (
     ClippedGradMean,
+    anchor_fm_loss,
     anchor_only_loss,
     cdm_off_trajectory_loss,
     clip_or_norm,
@@ -149,6 +150,13 @@ def anchor_only_iteration(ctx: RunContext, cfg, batch: Batch, grad_mean) -> None
     c, B = batch.crossattn_emb, batch.latents.shape[0]
     c_null = uncond_for_batch(ctx.uncond_base, c)
     eps, v_target = _anchor(ctx, cfg, batch, c_null)
+    if cfg.fm_weight > 0.0:
+        r = anchor_fm_loss(ctx, cfg, eps, v_target, c, B)
+        gn_student = _student_update(ctx, cfg, grad_mean)
+        ctx.metrics.add_div(r.mse)
+        ctx.metrics.add_fm(r.fm, r.grad_ratio)
+        ctx.metrics.add_grad_norms(gn_student, torch.zeros((), device=ctx.device))
+        return
     k = cfg.anchor_draws
     div_loss = anchor_only_loss(ctx, eps, v_target, c, B, scale=1.0 / k)
     for _ in range(k - 1):
@@ -343,6 +351,9 @@ def _student_metadata(cfg: TurboConfig, ctx: RunContext, step: int) -> dict[str,
             os.path.basename(os.path.normpath(cfg.anchor_cache))
             if cfg.anchor_cache
             else None
+        ),
+        "ss_turbo_fm": (
+            f"{cfg.fm_weight:g}@{cfg.fm_block_idx}" if cfg.fm_weight > 0 else None
         ),
         "ss_turbo_dm_first_step": "1" if cfg.dm_first_step else None,
         "ss_turbo_rollout_grad": "1" if cfg.rollout_grad else None,

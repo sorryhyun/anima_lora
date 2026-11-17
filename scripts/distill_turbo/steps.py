@@ -143,6 +143,93 @@ def anchor_only_loss(
 
 
 @dataclass
+class AnchorFM:
+    """Detached outputs of :func:`anchor_fm_loss` (pre-weight)."""
+
+    mse: torch.Tensor
+    fm: torch.Tensor  # relative feature MSE
+    grad_ratio: torch.Tensor  # rms(fm_weight·∂fm/∂v) / rms(∂mse/∂v)
+
+
+def _rel_feat_mse(f_s: torch.Tensor, f_t: torch.Tensor) -> torch.Tensor:
+    """Per-sample ‖f_s − f_t‖² / ‖f_t − mean(f_t)‖², batch mean: scale-free across
+    taps and resolutions."""
+    B = f_t.shape[0]
+    d = (f_s.float() - f_t.float()).reshape(B, -1).pow(2).mean(1)
+    ref = f_t.float().reshape(B, -1).var(1, unbiased=False).clamp_min(1e-8)
+    return (d / ref).mean()
+
+
+def anchor_fm_loss(
+    ctx: RunContext,
+    cfg,
+    eps: torch.Tensor,
+    v_target: torch.Tensor,
+    crossattn_emb: torch.Tensor,
+    B: int,
+) -> AnchorFM:
+    """``dpdmd.fm_weight``: the anchor MSE plus paired feature matching on the anchor
+    chord's end state, backwarded here.
+
+    The chord ends at σ_k = ``teacher_anchor_sigmas[k_anchor]``. Real: the teacher's
+    own state there, ``x_t = ε − (1 − σ_k)·v_target``. Student: ``x_s = ε − (1 −
+    σ_k)·v_student``. The loss is the relative L2 between the frozen teacher's block
+    features of the two (cond only, tap ``fm_block_idx``, early exit), paired by ε.
+    It weighs the residual by what the teacher reads at σ_k, which steps 1–3 start
+    from.
+
+    The two gradients are taken on ``v_student`` separately (the teacher graph is
+    freed before the student backward) and summed there, so their ratio is logged
+    at no extra cost.
+    """
+    dev, dt = ctx.device, ctx.dtype
+    x = eps.requires_grad_()
+    t0 = torch.full((B,), ctx.student_sigmas[0], device=dev, dtype=dt)
+    v_first = ctx.forward("student", x, t0, crossattn_emb, no_grad=False)
+    v = v_first.float()
+    mse = nn.functional.mse_loss(v, v_target)
+    g_mse = (2.0 / v.numel()) * (v - v_target).detach()
+
+    sig = ctx.teacher_anchor_sigmas[cfg.k_anchor]
+    t_k = torch.full((B,), sig, device=dev, dtype=dt)
+    bidx = cfg.fm_block_idx if cfg.fm_block_idx >= 0 else ctx.model.num_blocks // 2
+    tap = {bidx}
+    e = eps.detach().float()
+    x_t = (e - (1.0 - sig) * v_target).detach()
+    with torch.no_grad():
+        f_t = ctx.forward(
+            "teacher",
+            x_t,
+            t_k,
+            crossattn_emb,
+            no_grad=True,
+            return_block_features=tap,
+            return_features_early=True,
+        )[bidx]
+    v_leaf = v.detach().requires_grad_()
+    x_s = e - (1.0 - sig) * v_leaf
+    # the recompute runs inside autograd.grad below, still in the teacher view
+    with selective_block_grad_ckpt(ctx.model):
+        f_s = ctx.forward(
+            "teacher",
+            x_s,
+            t_k,
+            crossattn_emb,
+            no_grad=False,
+            return_block_features=tap,
+            return_features_early=True,
+        )[bidx]
+    fm = _rel_feat_mse(f_s, f_t)
+    (g_fm,) = torch.autograd.grad(fm, v_leaf)
+    g_fm = cfg.fm_weight * g_fm
+
+    ctx.turbo.set_view("student")  # a checkpointed student recomputes as itself
+    v_first.backward(gradient=(g_mse + g_fm).to(v_first.dtype))
+    ratio = g_fm.pow(2).mean().sqrt() / g_mse.pow(2).mean().sqrt().clamp_min(1e-12)
+    return AnchorFM(mse=mse.detach(), fm=fm.detach(), grad_ratio=ratio.detach())
+
+
+@dataclass
 class Rollout:
     """The student rollout up to its grad step g."""
 

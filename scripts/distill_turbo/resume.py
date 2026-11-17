@@ -65,6 +65,8 @@ _WARN_FIELDS = (
     "mfd_dtau",
     "mfd_max_steps",
     "mfd_interval",
+    "fm_weight",
+    "fm_block_idx",
     "stream",
 )
 

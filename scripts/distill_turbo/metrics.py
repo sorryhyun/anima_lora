@@ -8,6 +8,8 @@ Scalars (TB names in :func:`write_scalars`; how to read them:
 * ``rel_gap`` rms(τ·Δ_dm) / rms(τ·v_real_dm); ``mag_ratio`` rms(v_fake_dm) /
   rms(v_real_dm); ``cos`` cosine(v_fake_dm, v_real_dm)
 * ``div`` first-step diversity MSE (pre-weight)
+* ``fm`` / ``fm_ratio`` anchor feature matching (pre-weight) and the rms of its
+  weighted gradient into v over the anchor MSE's
 * ``gn_*`` pre-clip gradient norm per optimizer (above ``grad_clip`` = clipped)
 """
 
@@ -36,6 +38,8 @@ class FlushedMetrics:
     mag_ratio: float
     cos: float
     div: float
+    fm: float
+    fm_ratio: float
     gan_gen: float
     gan_disc: float
     gan_margin: float
@@ -105,6 +109,12 @@ class TurboMetrics:
     def add_div(self, div_loss_t: torch.Tensor) -> None:
         """Accumulate the DP-DMD first-step diversity loss (pre-weight)."""
         self._acc.add("div", div_loss_t.detach().float())
+
+    @torch.no_grad()
+    def add_fm(self, fm: torch.Tensor, ratio: torch.Tensor) -> None:
+        """Accumulate the anchor feature-matching loss and its gradient ratio."""
+        self._acc.add("fm", fm.detach().float())
+        self._acc.add("fm_ratio", ratio.detach().float())
 
     @torch.no_grad()
     def add_gan(
@@ -261,6 +271,9 @@ def write_scalars(
     (``anchor_only``: the anchor loss and the student grad norm, nothing else runs)."""
     writer.add_scalar("train/div_loss", m.div, step)
     writer.add_scalar("train/grad_norm_student", m.gn_student, step)
+    if m.fm != 0:
+        writer.add_scalar("train/fm_loss", m.fm, step)
+        writer.add_scalar("train/fm_grad_ratio", m.fm_ratio, step)
     if anchor_only:
         return
     writer.add_scalar("train/fake_loss", m.fake, step)
@@ -317,7 +330,11 @@ def tqdm_postfix(m: FlushedMetrics, *, anchor_only: bool = False) -> dict:
     """tqdm postfix dict — short keys for the live progress line. ``anchor_only``
     shows the anchor MSE (``div``) and the student grad norm, the only live numbers."""
     if anchor_only:
-        return {"anchor": f"{m.div:.4f}", "gn": f"{m.gn_student:.2e}"}
+        out = {"anchor": f"{m.div:.4f}", "gn": f"{m.gn_student:.2e}"}
+        if m.fm != 0:
+            out["fm"] = f"{m.fm:.4f}"
+            out["fmr"] = f"{m.fm_ratio:.2f}"
+        return out
     postfix = {
         "g": f"{m.grad:.2e}",
         "relg": f"{m.rel_gap:.3f}",

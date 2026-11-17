@@ -152,6 +152,55 @@ Train anchor MSE by tenth of the run, `0918` / `0823`: 0.089 / 0.088, 0.085 / 0.
 
 Verdict: a tie with `0823`.
 
+## A lower student LR, short: `turbo_1117_1020` / `1021`
+
+`0823` at rank 64 on `m15_k14of28_p1024` (the p512 keys plus 512 more of `pall`, hardlinked; 2048
+pairs, 2048 iterations, `grad_accum 2`), `student_lr` 5e-5 (`1020`) against 2e-5 (`1021`), nothing
+else changed. Configs `../configs/turbo_1117_102{0,1}.toml`, probe
+`bench/turbo/results/20261117-1049-handoff_lr_ab_1020_1021/`, crops
+`output/tests/turbo4/cmp/lr_ab_p{1,2}.jpg` (teacher, `1020` `S`, `1021` `S`).
+
+| final EMA | `1020` 5e-5 | `1021` 2e-5 | read (fixed in the config header) |
+|---|---|---|---|
+| held-out anchor MSE | 0.0741 | 0.0723 | 2e-5 below: by 0.002 |
+| `S` cos | 0.785 | 0.772 | up: down |
+| `T>S@1` cos | 0.944 | 0.938 | held at 0.94 |
+| sameness `S` (teacher 0.314) | 0.285 | 0.260 | not down: down |
+
+Train anchor MSE by tenth (the first half reads each pair once): 5e-5 0.089, 0.083, 0.079, 0.082,
+0.081, 0.073, 0.068, 0.064, 0.066, 0.066; 2e-5 0.086, 0.075, 0.072, 0.072, 0.071, 0.067, 0.065,
+0.062, 0.063, 0.066.
+
+- Renders tie. Guitarist seed 1 grows a giant hand on both and seed 2 breaks on both; seed 4 keeps
+  the guitar's neck at 2e-5 only. Café seed 1 is nearer the teacher at 2e-5, seed 3 has an odd arm
+  there. The group's lower halves break alike; seed 3's layout drifts further at 2e-5.
+- Verdict on the probe: not passed. The held-out MSE is level and `S` cos and sameness fall.
+- **The user's read of the renders (2026-11-17): 2e-5 shows promise.** The LR stays open: 2e-5 on
+  the full cache (`turbo_1117_1054`, `0823` with only the LR changed) is compared with `0823` before
+  it is closed.
+
+## Feature matching: floor and control
+
+`bench/turbo/probe_fm_floor.py` on 16 pairs of `m15_k14of28_p1024`, the v1.1 init as the student,
+tap block 14 (middle), σ_k 0.75 (`bench/turbo/results/20261117-1052-fm_floor/`). Relative feature
+L2, mean:
+
+| arm | value |
+|---|---|
+| `own_det` (no-grad features of x_t twice) | below 1e-5 |
+| `own_path` (training path, grad + block checkpoint, against no-grad) | below 1e-5 |
+| `student` (x_s against x_t; anchor MSE 0.115) | 0.734 |
+| `jitter` (v_target plus white noise of the student residual's rms) | 0.085 |
+
+- No floor: the two forward paths agree.
+- The student's residual moves the teacher's features 8.6 times as far as white noise of the same
+  rms, and the per-pair ranking differs from the MSE's (pair 9: MSE 0.069, feature 1.06; pair 10:
+  0.249, 0.71). White noise is the easy control (patchify and the blocks damp its high band), so this
+  says the term is not a rescaled MSE, not yet that it reads the breaks.
+- At `fm_weight` 1.0 (the 64-iteration smoke) the feature gradient into `v` is 52–270 times the
+  MSE's and the pre-clip norm 7–45 against the anchor's 1.2; 0.01 puts the two near par. 1.30 it/s
+  against the anchor's 2.6, peak 12.7 GB.
+
 ## The 7 of 28 target, probed and parked
 
 `0823` against the anchor on the first 7 of 28 teacher steps (σ 1 → 0.9), no training on it:

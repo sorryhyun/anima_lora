@@ -48,7 +48,13 @@ r16; `docs/anima/methods/adaln.md`, `docs/anima/findings/lora_recipe.md`).
 
 ## What is open, in order
 
-1. **Rank 96 at student LR 2e-5.** `0918` with `optim.student_lr` 5e-5 → 2e-5, nothing else
+1. **Student LR 2e-5 on the full cache** (`turbo_1117_1054`, rank 64, `0823` with only the LR
+   changed, about 43 min, read against `0823`). The short A/B at rank 64 (`turbo_1117_1020` /
+   `1021`, `reports/step0_depth.md`) did not pass on the probe: held-out MSE level, `S` cos and
+   sameness down at 2e-5. **The user's read of its renders (2026-11-17) sees promise in 2e-5**, so
+   the LR is not closed until the full-length run is compared with `0823`. The rank 96 form planned
+   before follows for the record.
+   **Rank 96 at student LR 2e-5.** `0918` with `optim.student_lr` 5e-5 → 2e-5, nothing else
    changed; the cosine then ends at 2e-6. One pass, about 43 min, read against `0918`.
    - The regression's fit is set by the LR at the end of training, not by length, draws or an
      average of checkpoints: a constant 2e-4 reads a held-out anchor MSE of 0.277, a constant 5e-5
@@ -70,7 +76,10 @@ r16; `docs/anima/methods/adaln.md`, `docs/anima/findings/lora_recipe.md`).
      early-exit feature path the GAN generator term already runs), added to the anchor MSE.
    - No discriminator, no fake network, paired by ε, so nothing pulls a seed toward another seed's
      layout. Estimated 1.2–1.5 s an iteration against the anchor's 0.4; not measured.
-   - Needs code: the state and feature path, one weight.
+   - Code: `dpdmd.fm_weight` (weight on the feature term's gradient into `v`, relative L2 per
+     sample, so it is scale-free across taps) and `dpdmd.fm_block_idx` (-1 = middle), anchor_only
+     only; `train/fm_grad_ratio` logs rms of the weighted feature gradient into `v` over the
+     anchor MSE's. `tests/test_turbo_anchor_fm.py`.
 
 3. **A paired GAN on the same path**, if 2 moves the probe and leaves the finish short.
    - The discriminator head on those teacher features: real = `x_t` from the cache, fake = `x_s`.

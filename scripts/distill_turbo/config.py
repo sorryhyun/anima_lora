@@ -184,6 +184,19 @@ class TurboConfig:
         "v_target and ε from the cache. Built by "
         "`python -m scripts.distill_turbo.anchor_cache`.",
     )
+    fm_weight: float = knob(
+        "dpdmd.fm_weight",
+        0.0,
+        "Paired feature matching beside the anchor MSE (anchor_only): relative L2 "
+        "between the frozen teacher's block features of the anchor chord's end state "
+        "x = ε − (1 − σ_k)·v, student v against v_target. Weight on its gradient into "
+        "v; 0 = off (project/anima_turbo/plan.md, arm 2).",
+    )
+    fm_block_idx: int = knob(
+        "dpdmd.fm_block_idx",
+        -1,
+        "DiT block the feature matching taps (early exit after it); -1 = middle.",
+    )
     teacher_handoff: bool = knob(
         "dpdmd.teacher_handoff",
         False,
@@ -550,6 +563,14 @@ def _validate(c: TurboConfig) -> None:
         "dpdmd.anchor_cache takes anchor_draws 1 (the cache's own draws replace them).",
     )
     _require(
+        c.fm_weight >= 0.0 and (c.fm_weight == 0.0 or c.anchor_only),
+        f"dpdmd.fm_weight={c.fm_weight}: must be >= 0, and > 0 needs dpdmd.anchor_only.",
+    )
+    _require(
+        c.fm_weight == 0.0 or c.anchor_draws == 1,
+        "dpdmd.fm_weight > 0 takes anchor_draws 1.",
+    )
+    _require(
         not c.anchor_cache or c.div_weight > 0.0,
         "dpdmd.anchor_cache needs div_weight > 0 (div_weight 0 skips the anchor).",
     )
@@ -703,6 +724,8 @@ _TB_KEYS = (
     "anchor_only",
     "anchor_draws",
     "anchor_cache",
+    "fm_weight",
+    "fm_block_idx",
     "teacher_handoff",
     "flow_shift",
     "student_rank",
