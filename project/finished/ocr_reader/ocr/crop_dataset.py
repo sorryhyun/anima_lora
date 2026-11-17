@@ -113,6 +113,96 @@ def load_split(
     )
 
 
+OCR_TASK, SFX_TASK = "OCR:", "SFX:"
+
+
+def load_sfxp(
+    split: str,
+    *,
+    neg_share: float = 0.2,
+    limit: int | None = None,
+    seed: int = 0,
+) -> pd.DataFrame:
+    """The two-prompt mix (``docs/proposal/ocr_sfx_prefix.md``; crops from
+    ``build_sfx_prefix.py``). Column ``task`` is the prompt, ``metric`` the val group.
+
+    * ``OCR:`` — Manga109 speech + KO / ZH (train) + the speech of the detector's
+      mixed boxes; negatives (target ``""``) = detector boxes holding only SFX.
+    * ``SFX:`` — detector boxes with SFX (mixed boxes: the SFX alone); negatives =
+      detector speech boxes and KO / ZH crops, half each where both exist.
+
+    Negatives are at most ``neg_share`` of each task's rows. ``limit`` caps every
+    ``metric`` group (val / smoke).
+    """
+    d = m109.derived_root()
+    rng = np.random.default_rng(seed)
+    det = pd.read_parquet(d / "manifest_sfxp_det.parquet")
+    det = det[(det.split == split) & det.path.notna()]
+    speech = pd.read_parquet(d / "manifest_sfxp_speech.parquet")
+    speech = speech[speech.split == split]
+    kozh = pd.read_parquet(d / "manifest_sfxp_kozh.parquet")
+    kozh = kozh[kozh.split == split]
+
+    def rows(df, task, metric, kind, text, source):
+        cols = ["book", "page", "id", "orient", "w", "h", "path"]
+        out = df[cols].copy()
+        out["text"] = list(text) if not isinstance(text, str) else text
+        out["task"], out["metric"], out["kind"] = task, metric, kind
+        out["source"] = source if isinstance(source, str) else list(source)
+        return out
+
+    def draw(df, n):
+        n = int(min(len(df), n))
+        return df.iloc[rng.permutation(len(df))[:n]]
+
+    sfx_det = det[det.cat.isin(["pos", "pos_mixed"])]
+    mixed_sp = det[(det.cat == "pos_mixed") & det.speech_text.notna()]
+    ocr_pos = pd.concat(
+        [
+            rows(speech, OCR_TASK, "speech", "speech", speech.text, "m109_speech"),
+            rows(kozh, OCR_TASK, "speech", "speech", kozh.text, kozh.source),
+            rows(
+                mixed_sp,
+                OCR_TASK,
+                "speech",
+                "speech",
+                mixed_sp.speech_text,
+                "det_mixed",
+            ),
+        ]
+    )
+    sfx_pos = rows(
+        sfx_det, SFX_TASK, "sfx", "sfx", sfx_det.sfx_text, "det_" + sfx_det.cat
+    )
+    cap = neg_share / (1 - neg_share)
+    only_sfx = det[det.cat == "pos"]
+    ocr_neg = draw(
+        rows(only_sfx, OCR_TASK, "ocr_neg", "sfx", "", "det_pos"), cap * len(ocr_pos)
+    )
+    n_sfx_neg = cap * len(sfx_pos)
+    det_sp = det[det.cat == "neg_speech"]
+    pools = [p for p in (det_sp, kozh) if len(p)]
+    sfx_neg = []
+    for i, p in enumerate(pools):
+        share = n_sfx_neg / len(pools)
+        src = "det_speech" if p is det_sp else p.source
+        sfx_neg.append(draw(rows(p, SFX_TASK, "sfx_neg", "speech", "", src), share))
+    out = pd.concat([ocr_pos, ocr_neg, sfx_pos, *sfx_neg], ignore_index=True)
+    out["target"] = out.text.map(normalize_target).str.slice(0, MAX_TARGET_CHARS)
+    is_neg = out.metric.str.endswith("_neg")
+    out = out[is_neg | (out.target.str.len() > 0)]
+    if limit:
+        out = pd.concat(
+            [
+                g.sample(min(limit, len(g)), random_state=seed)
+                for _, g in out.groupby("metric")
+            ]
+        )
+    return out.sort_values(
+        ["task", "metric", "source", "book", "page", "id"]
+    ).reset_index(drop=True)
+
+
 class CropDataset(Dataset):
     def __init__(self, df: pd.DataFrame, *, augment: bool, seed: int = 0):
         self.df = df.reset_index(drop=True)

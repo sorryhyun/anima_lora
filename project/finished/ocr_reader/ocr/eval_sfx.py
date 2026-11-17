@@ -82,7 +82,14 @@ def load_labels(
     return df.reset_index(drop=True)
 
 
-def crops_for(df: pd.DataFrame, pad: float):
+def cap_frac(box) -> float:
+    """``pad_frac`` giving the capped margin min(0.12 · long, 0.3 · short, 4 px)."""
+    x0, y0, x1, y1 = box
+    L, S = max(x1 - x0, y1 - y0, 1), max(min(x1 - x0, y1 - y0), 1)
+    return min(0.12 * L, 0.3 * S, 4) / L
+
+
+def crops_for(df: pd.DataFrame, pad: float | str):
     mt = m109.pilot_manga_text()
     frozen = {}
     if pad == FROZEN_PAD and (FROZEN / "index.tsv").is_file():
@@ -99,7 +106,8 @@ def crops_for(df: pd.DataFrame, pad: float):
         page = FROZEN / "pages" / f"{r.stem}.png"
         img = cv2.imread(str(page if page.is_file() else PAGES / f"{r.stem}.png"))
         x0, y0, x1, y1 = r.box
-        crop, orient = mt.deskew_crop(img, [x0, y0, x1, y0, x1, y1, x0, y1], pad, 8)
+        frac = cap_frac(r.box) if pad == "cap4" else pad
+        crop, orient = mt.deskew_crop(img, [x0, y0, x1, y0, x1, y1, x0, y1], frac, 8)
         crops.append(crop)
         orients.append(orient)
     print(
@@ -134,6 +142,9 @@ def main():
         "labels' own text_rec column",
     )
     ap.add_argument("--name")
+    ap.add_argument(
+        "--task", default="OCR:", choices=["OCR:", "SFX:"], help="vl16 prompt"
+    )
     ap.add_argument("--kind", action="append", help="default sfx + speech")
     ap.add_argument("--include_unchecked", action="store_true")
     ap.add_argument(
@@ -142,7 +153,12 @@ def main():
         default=LABELS,
         help="label TSV (default: assets/sfx_labels_sincos_597.tsv)",
     )
-    ap.add_argument("--pad", type=float, default=0.12)
+    ap.add_argument(
+        "--pad",
+        type=lambda v: v if v == "cap4" else float(v),
+        default=0.12,
+        help="pad fraction, or cap4 = min(0.12 · long, 0.3 · short, 4 px)",
+    )
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--bs", type=int, default=32)
     ap.add_argument("--max_new_tokens", type=int, default=ev.MAX_NEW_TOKENS)
@@ -152,6 +168,9 @@ def main():
         if a.ckpt
         else a.reader
     )
+    ev.TASK = a.task
+    if a.task != "OCR:" and not a.name:
+        name += "_" + a.task.rstrip(":").lower()
     df = load_labels(
         a.kind or ["sfx", "speech", "chrome"], a.include_unchecked, a.labels
     )

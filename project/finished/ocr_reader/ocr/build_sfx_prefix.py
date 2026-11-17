@@ -1,0 +1,382 @@
+#!/usr/bin/env python3
+"""Crops for the two-prompt reader (``docs/proposal/ocr_sfx_prefix.md``): ``OCR:`` reads
+speech, ``SFX:`` reads sound effects, each answers ``""`` on the other kind.
+
+    ANIMA_MANGA109S_ROOT=~/manga109s/Manga109s_released_2026_05_21 \\
+        python project/finished/ocr_reader/ocr/build_sfx_prefix.py [--det] [--speech] [--kozh]
+
+Every crop takes the margin ``min(0.12·long, 0.3·short, 4 px)`` around its box, clipped
+to the page. Three parts, each its own manifest under ``derived/``:
+
+* ``--det`` → ``manifest_sfxp_det.parquet``: the AnimeText detector (the OCR stage's,
+  ``denest`` inner) over every train / val page. Each box is labelled against the COO
+  polygons by pixel overlap, ``pf`` = share of the polygon inside the crop, ``cf`` = share
+  of the crop the polygon covers:
+
+  - ``pf ≥ 0.8`` → the SFX is in the target;
+  - ``pf < 0.2`` and ``cf < 0.2`` → a graze, ignored;
+  - anything else (a polygon cut partway, or a fragment of a large one) → box dropped.
+
+  Speech: a ``<text>`` box with ≥ 30 % of its area in the crop marks the crop as holding
+  speech. ``cat`` = ``pos`` (SFX, no speech), ``pos_mixed`` (both), ``neg_speech``
+  (speech, no SFX), ``neg_other`` (neither; not written). ``pos_mixed`` also carries
+  ``speech_text`` when every ``<text>`` box touching it (≥ 20 %) lies ≥ 80 % inside.
+  ``neg_speech`` crops are written for a ``--neg_keep`` share only.
+* ``--speech`` → ``manifest_sfxp_speech.parquet``: the grey manifest's Manga109 speech
+  boxes, re-cut at the new margin, labels as they are.
+* ``--gt test`` → ``manifest_sfxp_gt.parquet``: the grey manifest's rows of those splits (COO
+  and speech) re-cut through ``pilot.deskew_crop`` at the capped margin, for the gate evals
+  (``eval_manga109.py --manifest sfxp_gt``).
+* ``--kozh`` → ``manifest_sfxp_kozh.parquet``: the gelnote KO / ZH and swaprelax_v5 pseudo
+  rows, re-cut from their pages at the new margin, labels as they are, ``kind = speech``.
+
+Several SFX (or speech boxes) in one crop join with ``\\n``, right to left, then top down.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import random
+import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+import cv2
+import numpy as np
+import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import manga109 as m109  # noqa: E402
+
+REPO = Path(__file__).resolve().parents[4]
+GELNOTE = Path("/media/sorryhyun/new/dataset/gelnote_crops")
+SWAPRELAX = Path("/media/sorryhyun/new/dataset/hito_ocr/swap_relax_v5")
+
+INCLUDE, GRAZE, SPEECH_IN = 0.8, 0.2, 0.3
+
+
+def margin_box(x0, y0, x1, y1, W, H) -> tuple[int, int, int, int]:
+    w, h = x1 - x0, y1 - y0
+    p = min(0.12 * max(w, h), 0.3 * min(w, h), 4)
+    return (
+        int(round(max(0, x0 - p))),
+        int(round(max(0, y0 - p))),
+        int(round(min(W, x1 + p))),
+        int(round(min(H, y1 + p))),
+    )
+
+
+def cap_frac(poly) -> float:
+    """``deskew_crop``'s ``pad_frac`` (× the long side of the min-area rect) that gives
+    the capped margin."""
+    pts = np.asarray(poly, dtype=np.float32).reshape(-1, 2)
+    _, (w, h), _ = cv2.minAreaRect(pts)
+    L, S = max(w, h, 1.0), max(min(w, h), 1.0)
+    return min(0.12 * L, 0.3 * S, 4) / L
+
+
+def orient(w, h) -> str:
+    return "vertical" if h > w else "horizontal"
+
+
+def reading_order(items):
+    """(x-centre, y-centre, text) → texts right to left, then top down."""
+    return [t for _, _, t in sorted(items, key=lambda r: (-r[0], r[1]))]
+
+
+def poly_mask(line, shape):
+    a = np.asarray(line.poly, dtype=np.float32).reshape(-1, 2).astype(np.int32)
+    if line.joined:  # two linked point sets: their hull
+        a = cv2.convexHull(a)
+    mk = np.zeros(shape[:2], np.uint8)
+    cv2.fillPoly(mk, [a.reshape(-1, 1, 2)], 1)
+    return mk.astype(bool), a
+
+
+def rect_frac(q, c) -> float:
+    """Share of rect ``q`` (x0, y0, x1, y1) inside rect ``c``."""
+    iw = max(0.0, min(q[2], c[2]) - max(q[0], c[0]))
+    ih = max(0.0, min(q[3], c[3]) - max(q[1], c[1]))
+    return iw * ih / max((q[2] - q[0]) * (q[3] - q[1]), 1e-6)
+
+
+def label_box(c, coo, texts):
+    """The v3-sheet rule for one crop ``c``; returns (cat, sfx_text, speech_text) or None
+    for a dropped box."""
+    cx0, cy0, cx1, cy1 = c
+    ca = max((cx1 - cx0) * (cy1 - cy0), 1)
+    inc = []
+    for line, mk, area, (mx, my) in coo:
+        inside = int(mk[cy0:cy1, cx0:cx1].sum())
+        if not inside:
+            continue
+        pf, cf = inside / area, inside / ca
+        if pf >= INCLUDE:
+            inc.append((mx, my, line.text))
+        elif pf >= GRAZE or cf >= GRAZE:
+            return None
+    sp_hit, sp_inc, sp_partial = False, [], False
+    for t in texts:
+        q = (t.poly[0], t.poly[1], t.poly[2], t.poly[5])
+        f = rect_frac(q, c)
+        if f >= SPEECH_IN:
+            sp_hit = True
+        if f >= INCLUDE:
+            sp_inc.append(((q[0] + q[2]) / 2, (q[1] + q[3]) / 2, t.text))
+        elif f >= GRAZE:
+            sp_partial = True
+    sfx = "\n".join(reading_order(inc)) if inc else None
+    if sfx is not None:
+        if not sp_hit:
+            return "pos", sfx, None
+        speech = None if sp_partial or not sp_inc else "\n".join(reading_order(sp_inc))
+        return "pos_mixed", sfx, speech
+    return ("neg_speech" if sp_hit else "neg_other"), None, None
+
+
+def build_det(a, derived: Path):
+    from anime_tools.ocr.animetext import AnimeTextDetector
+
+    det = AnimeTextDetector.load(device=a.device)
+    split = m109.load_split()
+    rng = random.Random(0)
+    rows, t0, n_pages = [], time.time(), 0
+    pool = ThreadPoolExecutor(8)
+    for sp in a.splits:
+        for book in split[sp]:
+            coo_by, txt_by = {}, {}
+            for line in m109.iter_coo(book):
+                coo_by.setdefault(line.page, []).append(line)
+            for line in m109.iter_text(book):
+                txt_by.setdefault(line.page, []).append(line)
+            pages = sorted(
+                int(p.stem)
+                for p in (m109.manga109s_root() / "images" / book).glob("*.jpg")
+            )
+            if a.limit_pages:
+                pages = pages[: a.limit_pages]
+            out_dir = derived / "crops_sfxp" / "det" / sp
+            out_dir.mkdir(parents=True, exist_ok=True)
+            for s in range(0, len(pages), det.max_batch):
+                chunk = pages[s : s + det.max_batch]
+                imgs = list(
+                    pool.map(lambda p: cv2.imread(str(m109.page_path(book, p))), chunk)
+                )
+                prepared = [det.prepare(im) for im in imgs]
+                raws = det.forward_batch(prepared)
+                writes = []
+                for pg, im, raw, prep in zip(chunk, imgs, raws, prepared):
+                    H, W = im.shape[:2]
+                    coo = []
+                    for line in coo_by.get(pg, []):
+                        mk, pts = poly_mask(line, im.shape)
+                        area = int(mk.sum())
+                        if area:
+                            coo.append((line, mk, area, pts.reshape(-1, 2).mean(0)))
+                    for k, b in enumerate(det._settle(raw, prep, im.shape)):
+                        c = margin_box(*b[:4], W, H)
+                        if c[2] - c[0] < 4 or c[3] - c[1] < 4:
+                            continue
+                        lab = label_box(c, coo, txt_by.get(pg, []))
+                        if lab is None:
+                            cat = "drop"
+                            sfx = speech = None
+                        else:
+                            cat, sfx, speech = lab
+                        keep = cat in ("pos", "pos_mixed") or (
+                            cat == "neg_speech" and rng.random() < a.neg_keep
+                        )
+                        rel = f"crops_sfxp/det/{sp}/{book}_{pg:03d}_{k:02d}.png"
+                        rows.append(
+                            dict(
+                                split=sp,
+                                cat=cat,
+                                book=book,
+                                page=pg,
+                                id=f"{pg:03d}_{k:02d}",
+                                box=list(c),
+                                det=float(b[4]),
+                                sfx_text=sfx,
+                                speech_text=speech,
+                                w=c[2] - c[0],
+                                h=c[3] - c[1],
+                                orient=orient(c[2] - c[0], c[3] - c[1]),
+                                path=rel if keep else None,
+                            )
+                        )
+                        if keep:
+                            writes.append((derived / rel, im[c[1] : c[3], c[0] : c[2]]))
+                list(pool.map(lambda wr: cv2.imwrite(str(wr[0]), wr[1]), writes))
+                n_pages += len(chunk)
+                if n_pages % 400 < len(chunk):
+                    print(
+                        f"[det] {n_pages} pages, {len(rows)} boxes, "
+                        f"{time.time() - t0:.0f} s",
+                        flush=True,
+                    )
+    df = pd.DataFrame(rows)
+    df.to_parquet(derived / "manifest_sfxp_det.parquet", index=False)
+    print(f"[det] {n_pages} pages in {time.time() - t0:.0f} s", flush=True)
+    print(df.groupby(["split", "cat"]).size().to_string(), flush=True)
+    mixed = df[df.cat == "pos_mixed"]
+    print(
+        f"[det] pos_mixed with a speech label: {mixed.speech_text.notna().sum()} / {len(mixed)}"
+    )
+
+
+def build_speech(a, derived: Path):
+    src = pd.read_parquet(derived / "manifest.parquet")
+    src = src[(src.kind == "speech") & (src.split.isin(a.splits))]
+    if "source" in src.columns:
+        src = src[src.source.fillna("grey") == "grey"]
+    rows, cur, img = [], None, None
+    for r in src.sort_values(["book", "page"]).itertuples():
+        if cur != (r.book, r.page):
+            img, cur = cv2.imread(str(m109.page_path(r.book, r.page))), (r.book, r.page)
+        q = json.loads(r.poly)
+        x0, y0, x1, y1 = min(q[0::2]), min(q[1::2]), max(q[0::2]), max(q[1::2])
+        H, W = img.shape[:2]
+        c = margin_box(x0, y0, x1, y1, W, H)
+        rel = f"crops_sfxp/speech/{r.split}/{r.book}_{r.page:03d}_{r.id}.png"
+        (derived / rel).parent.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(derived / rel), img[c[1] : c[3], c[0] : c[2]])
+        rows.append(
+            dict(
+                split=r.split,
+                kind="speech",
+                id=r.id,
+                book=r.book,
+                page=r.page,
+                text=r.text,
+                orient=r.orient,
+                w=c[2] - c[0],
+                h=c[3] - c[1],
+                path=rel,
+                source="sfxp_speech",
+            )
+        )
+    df = pd.DataFrame(rows)
+    df.to_parquet(derived / "manifest_sfxp_speech.parquet", index=False)
+    print(f"[speech] {df.split.value_counts().to_dict()}", flush=True)
+
+
+def build_gt(a, derived: Path):
+    import pilot
+
+    src = pd.read_parquet(derived / "manifest.parquet")
+    if "source" in src.columns:
+        src = src[src.source.fillna("grey") == "grey"]
+    src = src[src.split.isin(a.gt)]
+    rows, cur, img, lost = [], None, None, 0
+    for r in src.sort_values(["book", "page"]).itertuples():
+        if cur != (r.book, r.page):
+            img, cur = cv2.imread(str(m109.page_path(r.book, r.page))), (r.book, r.page)
+        poly = json.loads(r.poly)
+        crop, ori = pilot.deskew_crop(img, poly, cap_frac(poly), 1)
+        if crop is None:
+            lost += 1
+            continue
+        rel = f"crops_sfxp/gt/{r.split}/{r.kind}/{r.book}_{r.page:03d}_{r.id}.png"
+        (derived / rel).parent.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(derived / rel), crop)
+        d = r._asdict()
+        d.pop("Index")
+        d.update(
+            orient=ori, w=crop.shape[1], h=crop.shape[0], path=rel, source="sfxp_gt"
+        )
+        rows.append(d)
+    df = pd.DataFrame(rows)
+    df.to_parquet(derived / "manifest_sfxp_gt.parquet", index=False)
+    print(
+        f"[gt] {df.groupby(['split', 'kind']).size().to_dict()}; lost {lost}",
+        flush=True,
+    )
+
+
+def build_kozh(a, derived: Path):
+    gel = {}
+    for line in open(GELNOTE / "manifest.jsonl", encoding="utf-8"):
+        r = json.loads(line)
+        gel[r["id"]] = r
+    lab = {}
+    for line in open(SWAPRELAX / "labels.jsonl", encoding="utf-8"):
+        r = json.loads(line)
+        lab[r["crop"]] = r
+    jobs = []
+    for name in ("pseudo_gelnote_ko", "pseudo_gelnote_zh", "pseudo_swaprelax_v5"):
+        src = pd.read_parquet(derived / f"manifest_{name}.parquet")
+        for r in src.itertuples():
+            if name.startswith("pseudo_gelnote"):
+                g = gel[r.id]
+                page, box = GELNOTE / g["page_path"], g["box"]
+            else:
+                s = lab["crops/" + os.path.basename(r.path)]
+                page, box = REPO / s["page"], s["box"]
+            jobs.append((name, r, page, box))
+    jobs.sort(key=lambda j: str(j[2]))
+    rows, cur, img, miss = [], None, None, 0
+    out = derived / "crops_sfxp" / "kozh"
+    out.mkdir(parents=True, exist_ok=True)
+    for name, r, page, box in jobs:
+        if cur != page:
+            img, cur = (cv2.imread(str(page)) if page.exists() else None), page
+        if img is None:
+            miss += 1
+            continue
+        H, W = img.shape[:2]
+        c = margin_box(*box, W, H)
+        rel = f"crops_sfxp/kozh/{name.removeprefix('pseudo_')}_{r.id}.png"
+        cv2.imwrite(str(derived / rel), img[c[1] : c[3], c[0] : c[2]])
+        rows.append(
+            dict(
+                split="train",
+                kind="speech",
+                id=r.id,
+                book=r.book,
+                page=r.page,
+                text=r.text,
+                orient=r.orient,
+                w=c[2] - c[0],
+                h=c[3] - c[1],
+                path=rel,
+                source=name.removeprefix("pseudo_"),
+            )
+        )
+    df = pd.DataFrame(rows)
+    df.to_parquet(derived / "manifest_sfxp_kozh.parquet", index=False)
+    print(
+        f"[kozh] {df.source.value_counts().to_dict()}; page missing {miss}", flush=True
+    )
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument("--det", action="store_true")
+    ap.add_argument("--speech", action="store_true")
+    ap.add_argument("--kozh", action="store_true")
+    ap.add_argument("--gt", nargs="+", help="splits to re-cut for the gate evals")
+    ap.add_argument("--splits", nargs="+", default=["train", "val"])
+    ap.add_argument(
+        "--neg_keep", type=float, default=0.15, help="share of neg_speech crops written"
+    )
+    ap.add_argument("--limit_pages", type=int, help="pages per book (smoke)")
+    ap.add_argument("--device", default=None)
+    a = ap.parse_args()
+    derived = m109.derived_root()
+    if a.speech:
+        build_speech(a, derived)
+    if a.kozh:
+        build_kozh(a, derived)
+    if a.gt:
+        build_gt(a, derived)
+    if a.det:
+        build_det(a, derived)
+
+
+if __name__ == "__main__":
+    main()

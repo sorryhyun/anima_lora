@@ -10,6 +10,7 @@
     … --init_adapter output/ocr/vl16_lr1e-4/ep2 --train_tower   # LP-FT stage 2: start from arm B's LoRA
     … --train_tower --init_tower output/ocr/simmim_at/ep5/tower.safetensors   # SSL-adapted tower (ssl_tower_simmim.py)
     … --tower_rank 64 --lm_full --lm_lr 1e-5   # ocr_reader P2b: tower LoRA + LM decoder layers full FT
+    … --sfx_prefix                   # two prompts: OCR: (speech) + SFX: (sound effects), build_sfx_prefix.py crops
 
 Tower + projector frozen; LoRA (``--rank``, α = 2r) on the ERNIE LM's attention
 (q/k/v/o) + MLP (gate/up/down) projections, selected by module path so the
@@ -153,7 +154,9 @@ def save_full(path: Path, params) -> None:
 
 
 class Collate:
-    def __init__(self, proc, prompt: str, min_edge: int):
+    """``prompt`` is one string, or one per dataset row (``--sfx_prefix``)."""
+
+    def __init__(self, proc, prompt: str | list[str], min_edge: int):
         self.proc, self.prompt, self.min_edge = proc, prompt, min_edge
         self.tok = proc.tokenizer
         self.eos = self.tok.eos_token
@@ -166,7 +169,10 @@ class Collate:
     def __call__(self, items):
         imgs, targets, idx = cd.collate_raw(items)
         images = [Image.fromarray(i[:, :, ::-1]) for i in imgs]
-        texts = [self.prompt + t + self.eos for t in targets]
+        prompts = [
+            self.prompt if isinstance(self.prompt, str) else self.prompt[i] for i in idx
+        ]
+        texts = [p + t + self.eos for p, t in zip(prompts, targets)]
         # LEFT padding for training too: every row's target then sits at the end,
         # so the loss can be taken on the last K logits only (``logits_to_keep``)
         # instead of materialising fp32 logits over the 103k vocab for every
@@ -189,7 +195,7 @@ class Collate:
                 labels[r, -L:] = row
             else:  # boundary merge (rare): label from the prompt length instead
                 p = self.proc(
-                    text=[self.prompt],
+                    text=[prompts[r]],
                     images=[images[r]],
                     return_tensors="pt",
                     images_kwargs=self.images_kwargs(),
@@ -227,11 +233,19 @@ def predict(model, proc, prompt, min_edge, ds: cd.CropDataset, bs, workers):
     dl = DataLoader(
         ds, batch_sampler=batches, num_workers=workers, collate_fn=cd.collate_raw
     )
+    if not isinstance(prompt, str):  # one prompt per row: batch within a prompt
+        batches = []
+        for p in sorted(set(prompt)):
+            sel = np.array([i for i, q in enumerate(prompt) if q == p])
+            batches += [sel[b].tolist() for b in cd.area_batches(ds.area[sel], bs, rng)]
+        dl = DataLoader(
+            ds, batch_sampler=batches, num_workers=workers, collate_fn=cd.collate_raw
+        )
     preds = [""] * len(ds)
     for imgs, _, idx in dl:
         images = [Image.fromarray(i[:, :, ::-1]) for i in imgs]
         inputs = proc(
-            text=[prompt] * len(images),
+            text=[prompt if isinstance(prompt, str) else prompt[i] for i in idx],
             images=images,
             padding=True,
             padding_side="left",
@@ -257,7 +271,7 @@ def predict(model, proc, prompt, min_edge, ds: cd.CropDataset, bs, workers):
 
 def val_metrics(scored: pd.DataFrame) -> dict:
     m = {}
-    for k, g in scored.groupby("kind"):
+    for k, g in scored.groupby("metric" if "metric" in scored else "kind"):
         m[f"{k}_exact"] = float(g.exact.mean())
         m[f"{k}_sim"] = float(g.sim.mean())
         m[f"{k}_runaway"] = int(g.runaway.sum())
@@ -324,6 +338,15 @@ def main():
         action="store_true",
         help="drop each grey row the extra manifest re-cuts (swap, not append)",
     )
+    ap.add_argument(
+        "--sfx_prefix",
+        action="store_true",
+        help="two-prompt data (crop_dataset.load_sfxp): OCR: reads speech, SFX: sound "
+        "effects, each answers '' on the other; ignores --speech_ratio / --extra_*",
+    )
+    ap.add_argument(
+        "--neg_share", type=float, default=0.2, help="max negative share per prompt"
+    )
     ap.add_argument("--max_train", type=int, help="rows per kind (subsample)")
     ap.add_argument("--val_limit", type=int)
     ap.add_argument("--val_bs", type=int, default=16)
@@ -360,16 +383,20 @@ def main():
 
     proc = AutoProcessor.from_pretrained(str(BASE))
     min_edge = proc.image_processor.size["shortest_edge"]
-    prompt = proc.apply_chat_template(
-        [
-            {
-                "role": "user",
-                "content": [{"type": "image"}, {"type": "text", "text": "OCR:"}],
-            }
-        ],
-        add_generation_prompt=True,
-        tokenize=False,
-    )
+
+    def chat(task: str) -> str:
+        return proc.apply_chat_template(
+            [
+                {
+                    "role": "user",
+                    "content": [{"type": "image"}, {"type": "text", "text": task}],
+                }
+            ],
+            add_generation_prompt=True,
+            tokenize=False,
+        )
+
+    prompt = chat("OCR:")
     base = AutoModelForImageTextToText.from_pretrained(
         str(BASE), dtype=torch.bfloat16, attn_implementation="sdpa"
     ).to("cuda")
@@ -455,25 +482,44 @@ def main():
     )
     print(f"prompt {prompt!r}", flush=True)
 
-    tr_df = cd.load_split(
-        "train",
-        speech_ratio=a.speech_ratio,
-        limit=a.max_train,
-        seed=a.seed,
-        extra=a.extra_manifest,
-        extra_repeat=a.extra_repeat,
-        extra_replace=a.extra_replace,
-    )
-    va_df = cd.load_split("val", limit=a.val_limit, seed=a.seed)
+    if a.sfx_prefix:
+        tr_df = cd.load_sfxp(
+            "train", neg_share=a.neg_share, limit=a.max_train, seed=a.seed
+        )
+        va_df = cd.load_sfxp(
+            "val", neg_share=a.neg_share, limit=a.val_limit, seed=a.seed
+        )
+    else:
+        tr_df = cd.load_split(
+            "train",
+            speech_ratio=a.speech_ratio,
+            limit=a.max_train,
+            seed=a.seed,
+            extra=a.extra_manifest,
+            extra_repeat=a.extra_repeat,
+            extra_replace=a.extra_replace,
+        )
+        va_df = cd.load_split("val", limit=a.val_limit, seed=a.seed)
     tr = cd.CropDataset(tr_df, augment=not a.no_augment, seed=a.seed)
     va = cd.CropDataset(va_df, augment=False)
+    tr_prompt, va_prompt = prompt, prompt
+    if a.sfx_prefix:
+        chats = {t: chat(t) for t in (cd.OCR_TASK, cd.SFX_TASK)}
+        tr_prompt = [chats[t] for t in tr_df.task]
+        va_prompt = [chats[t] for t in va_df.task]
+        print(f"prompts {chats}", flush=True)
+        print(
+            f"train by task/metric/source "
+            f"{tr_df.groupby(['task', 'metric', 'source']).size().to_dict()}",
+            flush=True,
+        )
     print(
         f"train {len(tr)} ({tr_df.kind.value_counts().to_dict()}; "
         f"source {tr_df.source.value_counts().to_dict()}) val {len(va)} lr {a.lr} bs {a.bs}x{a.grad_accum} r {a.rank} epochs {a.epochs}",
         flush=True,
     )
 
-    collate = Collate(proc, prompt, min_edge)
+    collate = Collate(proc, tr_prompt, min_edge)
     rng = random.Random(a.seed)
     steps_per_epoch = len(tr) // a.bs // a.grad_accum
     total = steps_per_epoch * a.epochs
@@ -505,7 +551,7 @@ def main():
 
     def evaluate(tag, step):
         t0 = time.time()
-        preds = predict(model, proc, prompt, min_edge, va, a.val_bs, a.workers)
+        preds = predict(model, proc, va_prompt, min_edge, va, a.val_bs, a.workers)
         scored = ev.score(va_df, preds)
         m = val_metrics(scored)
         m.update(tag=tag, step=step, wall=round(time.time() - t0, 1))
@@ -604,6 +650,11 @@ def main():
         md.append(
             f"| {r['tag']} | {100 * r['sfx_exact']:.1f} % | {r['sfx_sim']:.3f} | {r['sfx_runaway']} | "
             f"{100 * r['speech_exact']:.1f} % | {r['speech_sim']:.3f} | {r['speech_runaway']} |"
+            + "".join(
+                f" {k} empty {100 * r[k + '_exact']:.1f} % |"
+                for k in ("ocr_neg", "sfx_neg")
+                if k + "_exact" in r
+            )
         )
     md.append(f"\nbest = ep{best[1]} (val SFX exact {100 * best[0]:.1f} %)")
     (out / "summary.md").write_text("\n".join(md) + "\n")

@@ -58,6 +58,8 @@ shared with the training target, and also folds the long dash (``─`` / ``—``
 # ``crop_dataset.MAX_TARGET_CHARS``; greedy stops at EOS, so the headroom is free
 # except on a runaway, which ``is_runaway`` already counts.
 MAX_NEW_TOKENS = 96
+TASK = "OCR:"
+"""The task prompt ``Vl16Reader`` reads with (``--task``; ``SFX:`` for the two-prompt reader)."""
 
 
 def exact_key(s: str) -> str:
@@ -153,7 +155,7 @@ class Vl16Reader:
             msgs = [
                 {
                     "role": "user",
-                    "content": [{"type": "image"}, {"type": "text", "text": "OCR:"}],
+                    "content": [{"type": "image"}, {"type": "text", "text": TASK}],
                 }
             ]
             text = self.proc.apply_chat_template(
@@ -784,6 +786,14 @@ def main():
     ap.add_argument(
         "--name", help="report name (default: reader, or reader-<ckpt stem>)"
     )
+    ap.add_argument(
+        "--task", default="OCR:", choices=["OCR:", "SFX:"], help="vl16 prompt"
+    )
+    ap.add_argument(
+        "--manifest",
+        help="read derived/manifest_<name>.parquet instead (sfxp_gt: the capped-margin "
+        "re-cut, build_sfx_prefix.py --gt)",
+    )
     ap.add_argument("--split", default="test", choices=m109.SPLITS)
     ap.add_argument("--kind", choices=["sfx", "speech"], action="append")
     ap.add_argument("--limit", type=int, help="first N crops per kind (smoke)")
@@ -797,10 +807,17 @@ def main():
         "needs one token per kana on manga-ocr",
     )
     a = ap.parse_args()
+    global TASK
+    TASK = a.task
     name = a.name or (f"{a.reader}-{Path(a.ckpt).stem}" if a.ckpt else a.reader)
+    if a.task != "OCR:" and not a.name:
+        name += "_" + a.task.rstrip(":").lower()
 
     derived = m109.derived_root()
-    df = pd.read_parquet(derived / "manifest.parquet")
+    df = pd.read_parquet(
+        derived
+        / (f"manifest_{a.manifest}.parquet" if a.manifest else "manifest.parquet")
+    )
     df = df[df.split == a.split]
     if a.kind:
         df = df[df.kind.isin(a.kind)]
