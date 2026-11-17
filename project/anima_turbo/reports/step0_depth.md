@@ -1,0 +1,174 @@
+# Step 0: how deep the fit has to go, and what more pairs buy (2026-11-17)
+
+`teacher_handoff.md` left the anchor student (`2209`) with layouts near the teacher's and broken
+objects, and the DM arm on steps 1–3 (`2221`) with a mixed finish. This report holds the probes
+that say where the breaks come from and how far the step-0 fit is from removing them, the run on
+the full-dataset cache (`turbo_1117_0823`) and its rank 96 twin (`turbo_1117_0918`).
+
+Every probe is `bench/turbo/probe_handoff.py --dit models/diffusion_models/anima_merged15.safetensors
+--ts_handoffs 1 --st_handoffs ,` on `judge_hard.txt` (group / café / guitarist), seeds 1–4,
+768 × 1344, CPU-drawn noise, so the grids of different probes pair seed by seed. The anchor is
+14 of 28 unless a section says otherwise.
+
+**The render reads are Claude's. The user's read is the gate.**
+
+## The breaks are step 0's residual: mix probe on `2209` and `2221`
+
+`--step0_mix a0.25,a0.5,a0.75,lp8,hp8` (arms as in `step0_fit.md`): step 0 is the student's own
+velocity moved toward the anchor target by part of its residual, and the student draws steps 1–3.
+Run `bench/turbo/results/20261117-0817-step0_mix_2209_2221/`, 4 min. Crops
+`output/tests/turbo4/cmp/step0mix_2209_{bocchi,ba5}.jpg` (columns `S`, `M0.25`, `M0.5`, `L8`, `H8`,
+`A`).
+
+`2209` EMA 1024, mean of 12:
+
+| step 0 | anchor MSE left | cos to the teacher's image | sameness (teacher 0.314) |
+|---|---|---|---|
+| `S` (the student's own) | 0.078 | 0.760 | 0.296 |
+| `M0.25` | 0.044 | 0.880 | 0.264 |
+| `H8` (the residual without its 8× band) | 0.036 | 0.902 | 0.264 |
+| `L8` (the 8× band only) | 0.030 | 0.950 | 0.251 |
+| `M0.5` | 0.019 | 0.940 | 0.255 |
+| `M0.75` | 0.005 | 0.961 | 0.248 |
+| `A>S@1` (the target itself) | 0 | 0.967 | 0.242 |
+| `T>S@1` (the teacher's own step 0) | – | 0.941 | 0.303 |
+
+- **A quarter of the residual removes most of the guitarist's breaks.** At `M0.25` the giant hand
+  and twisted body of seed 1 and the doubled neck of seed 4 are gone and the figure is the
+  teacher's. At `M0.5` the cosine is at the level of the teacher's own step 0.
+- **The group needs more.** The smeared face in the lower half of seed 1 is still there at `M0.25`
+  and `M0.5`, and clean at `L8` and with the target.
+- **Both bands carry it.** `L8` and `H8` each remove about half of the MSE and each recovers most
+  of the cosine. The low band is 0.46 of `2209`'s error (0.59–0.68 on the merged14 students of
+  `step0_fit.md`), so the regression has already taken more of the low band. `L8` on guitarist
+  seed 4 adds a floating hand.
+- **So the target for a fit is a held-out anchor MSE of 0.02–0.04 on these prompts**, a third to a
+  half of where the anchor students sit. The mix scales the whole residual; training does not have
+  to lower it in that shape.
+- The student's steps 1–3 are not what breaks: with the target or the teacher's step 0 in front
+  of them they finish at 0.94–0.97.
+
+`2221` EMA 250 against `2209`, its start: `S` cos 0.753 (0.760), `T>S@1` cos 0.935 (0.941), anchor
+MSE 0.080 (0.078), sameness 0.287 (0.296). Step 0 and steps 1–3 both moved slightly down. The DM
+terms trained steps 1–3 on the teacher-forced input, where they were already clean, and gave no
+signal on the inputs the student's own step 0 hands them.
+
+### The random draw of `teacher_handoff.md` is closed
+
+That report's next arm drew anchor-only and DM-only iterations at random so the two gradients
+would stop sharing a clip. On `2221` the clip does not bind: the pre-clip student gradient norm is
+0.13 at the median and 0.19 at the 90th percentile of the 50 logged iterations, against the clip at
+1.0. The anchor alone (`2209`) runs at 1.2–1.3, so its share at `div_weight` 0.1 is about 0.12,
+most of `2221`'s norm; the log does not split the terms. Drawn apart, an anchor iteration (norm 1
+after the clip) would outweigh a DM iteration (about 0.1) through AdamW's shared second moment.
+With the layouts held on `2221` the draw was a cost knob by that report's own rule, and the cached
+anchor is 0.4 s of a 4.5 s iteration.
+
+## Repeating pairs does not generalise: `2019` held out
+
+`2019` saw 128 pairs about four times and ends at a train anchor MSE of 0.036. Run
+`bench/turbo/results/20261117-0822-handoff_m15_2019_p64/`.
+
+| student | pairs | train anchor MSE | held-out anchor MSE | `S` cos |
+|---|---|---|---|---|
+| `2019` EMA 500 | 128, about 4 times each | 0.036 | 0.089 (0.072 / 0.089 / 0.107) | 0.733 |
+| `2209` EMA 1024 | 1024, once each | 0.065 | 0.078 | 0.760 |
+
+The fit that comes from seeing a pair again stays on that pair. More distinct pairs is what moves
+the held-out number.
+
+## The full-dataset cache: `turbo_1117_0823`
+
+`2209` on `post_image_dataset/turbo_anchor_cache/m15_k14of28_pall` (3242 prompts × 2 ε = 6484
+pairs), `grad_accum 2`, 6484 iterations: 3242 student updates, one pass (epoch 0 reads draw 0,
+epoch 1 draw 1, so an update averages two prompts). Config `../configs/turbo_1117_0823.toml`,
+2.5–2.9 it/s, 43 min. Probe `bench/turbo/results/20261117-0908-handoff_m15_0823_pall/`; sheets
+`output/tests/turbo4/cmp/pall_{bocchi,ba5,cafe}.jpg` (rows teacher, `2209` `S`, `0823` `S`, `0823`
+`A>S@1`).
+
+Read fixed in the config header, against `2209` EMA 1024:
+
+| | `2209` | `0823` EMA 6484 | read | |
+|---|---|---|---|---|
+| held-out anchor MSE | 0.078 | 0.070 (0.066 / 0.080 / 0.062) | 0.044 or below | not met |
+| `S` cos | 0.760 | 0.801 (0.801 / 0.810 / 0.792) | toward 0.88 | a third of the way |
+| `T>S@1` cos | 0.941 | 0.944 | held at 0.94 | held |
+| sameness `S` (teacher 0.314) | 0.296 | 0.300 | – | |
+| low-band share of the error | 0.46 | 0.43 | – | |
+
+Train anchor MSE by tenth of the run: 0.088, 0.081, 0.077, 0.073, 0.070, 0.068, 0.065, 0.059,
+0.062, 0.058. Every pair is seen once, so the last value is a held-out number on the dataset's own
+captions; the judge prompts read 0.070.
+
+- **Renders.** Guitarist seed 1 is repaired (the teacher's pose, a whole guitar; a microphone
+  floats without its stand). Seed 4's guitar is one piece with a stray strand at the headstock.
+  Seed 2 still breaks (the body sits apart from the neck). The group's lower halves are where
+  `2209` left them: the pastry with a face on seed 1, the tangled halo and hand on seed 2, layouts
+  off the teacher's on seeds 3 and 4. The café keeps the teacher's blue aprons and garbled signs.
+- **With the target as step 0, `0823`'s steps 1–3 draw the teacher's image on all twelve**
+  (`A>S@1` cos 0.966).
+- **The slope is shallow.**
+
+  | cache pairs | student updates | held-out anchor MSE |
+  |---|---|---|
+  | 128 (`2019`) | 500 | 0.089 |
+  | 1024 (`2209`) | 512 | 0.078 |
+  | 6484 (`0823`) | 3242 | 0.070 |
+
+  About 0.01 for each 6–8× in pairs, and the last step also had six times the updates. More data
+  on this recipe does not reach 0.044.
+
+Verdict: not passed on the read fixed before the run. `0823` is the best anchor student so far and
+the start of the next arms. The user's read of the sheets (2026-11-17): clear progress, at least
+over Hub v3 on the v4 merged teacher.
+
+## Rank 96 ties rank 64: `turbo_1117_0918`
+
+`0823` at rank 96 / alpha 220 (alpha / √rank kept at 22.5, the √r law), so the student starts from
+the whole r96 delta instead of its r64 truncation. Same cache, seed and pair order. Config
+`../configs/turbo_1117_0918.toml`, 2.5 it/s, 43 min. Probe
+`bench/turbo/results/20261117-1004-handoff_m15_0918_r96/`; sheets
+`output/tests/turbo4/cmp/r96_{bocchi,ba5,cafe}.jpg` (rows teacher, `0823` `S`, `0918` `S`).
+
+| | `0823` (r64) | `0918` EMA 6484 (r96) | read | |
+|---|---|---|---|---|
+| held-out anchor MSE | 0.070 | 0.069 (0.066 / 0.079 / 0.063) | below 0.070, toward 0.044 | tie |
+| `S` cos | 0.801 | 0.811 (0.831 / 0.812 / 0.788) | above 0.801 | +0.010, on the group |
+| `T>S@1` cos | 0.944 | 0.948 | held at 0.94 | held |
+| sameness `S` (teacher 0.314) | 0.300 | 0.299 | near the teacher's | same |
+| low-band share of the error | 0.43 | 0.43 | – | |
+
+Train anchor MSE by tenth of the run, `0918` / `0823`: 0.089 / 0.088, 0.085 / 0.081, 0.080 / 0.077,
+0.075 / 0.073, 0.073 / 0.070, 0.070 / 0.068, 0.067 / 0.065, 0.061 / 0.059, 0.064 / 0.062,
+0.059 / 0.058.
+
+- **Rank is not what limits the fit.** The held-out anchor MSE is the same to 0.001.
+- **Rank 96 trails by 0.003–0.004 while the LR is high and by 0.001 at the end of the cosine.** The
+  pairs and their order are the same in both runs, so the gap is the student, and it closes as the
+  LR comes down.
+- **Renders: no gain.** Guitarist seed 1 has a large stray hand at the top that `0823` did not draw;
+  seed 2 still breaks and seed 4 is alike. In the group's lower halves the pastry with a face of
+  seed 1 is gone and the girl beside it loses her face; seed 2 has a white blob on the lying girl.
+
+Verdict: a tie with `0823`.
+
+## The 7 of 28 target, probed and parked
+
+`0823` against the anchor on the first 7 of 28 teacher steps (σ 1 → 0.9), no training on it:
+`--anchor_k 7 --anchor_steps 28 --step0_mix a0.25,a0.5,a0.75`, run
+`bench/turbo/results/20261117-0916-step0_mix_0823_on7of28/`.
+
+| step 0 | MSE left to the 7 of 28 target | cos to the teacher's image |
+|---|---|---|
+| `S` | 0.037 (0.028 / 0.043 / 0.039) | 0.801 |
+| `M0.25` | 0.021 | 0.863 |
+| `M0.5` | 0.009 | 0.906 |
+| `M0.75` | 0.002 | 0.933 |
+| `A>S@1` | 0 | 0.944 |
+
+- The shorter target is nearer in MSE and gives less for it: half of its residual reads 0.906
+  where half of the 14 of 28 residual reads 0.940 (on `2209`), and its ceiling is 0.944 against
+  0.967. The low band is 0.70 of the error to it.
+- Parked on the user's call. The 14 of 28 caches stay in use, and the 14 of 28 chord ends at
+  σ 0.75, the first boundary of the 2-step grid, so a step 0 fitted to it is also the 2-step
+  student's step 0 (`../idea.md` 3).

@@ -39,5 +39,8 @@ Probe numbers are on EMA 250 unless a row says otherwise: sameness (lower is mor
 | `turbo_1116_1653` | `1558` at 1k | anchor MSE 0.068; the finish does not come | [v11_init](v11_init.md) |
 | `turbo_1116_1730` | `1558` with `grad_accum 4` | ties `1653` at equal compute | [v11_init](v11_init.md) |
 | `turbo_1116_1810` | anchor on the 28-step schedule (14 of 28) | adopted as the target to scale: sameness 0.291 (teacher 0.315), `S` cos 0.753 | [anchor_only_recipe](../anchor_only_recipe.md), `bench/turbo/results/20261116-{1827,1830,1833}-*` |
+| `turbo_1116_2019` | anchor alone on the 64-prompt cache (128 pairs, about 4 times each) | train anchor MSE 0.036, held-out 0.089: repetition does not generalise | [step0_depth](step0_depth.md) |
 | `turbo_1116_2209` | anchor alone on the 512-prompt cache, `grad_accum 2`, 512 updates | renders tie `2019` (p64); 0.4 s/it | [teacher_handoff](teacher_handoff.md) |
 | `turbo_1116_2221` | DM / CDM / GAN on steps 1–3 from the teacher-forced handoff, from `2209` | layouts and step 0 held (anchor MSE 0.065, val flat); finish mixed: café outfits closer to the teacher, new garbled text boxes, bocchi seed-1 guitar loses its neck; 4.5 s/it | [teacher_handoff](teacher_handoff.md) |
+| `turbo_1117_0823` | `2209` on the full-dataset cache (6484 pairs, one pass, `grad_accum 2`) | best anchor student: anchor MSE 0.070, `S` cos 0.801, `T>S@1` cos 0.944, sameness 0.300; short of the 0.044 read, guitarist seed 2 and the group still break | [step0_depth](step0_depth.md) |
+| `turbo_1117_0918` | `0823` at rank 96 / alpha 220 (√r law) | ties `0823`: anchor MSE 0.069, `S` cos 0.811, `T>S@1` cos 0.948, sameness 0.299; renders no better; trails on the train loss at high LR, level at the end | [step0_depth](step0_depth.md) |

@@ -96,8 +96,10 @@ flags default to this recipe; the cache in `plan.md`, candidate 3). `turbo_1116_
 
 - **The finish.** At anchor MSE 0.068 on the 6 of 12 target the student draws the teacher's layouts
   with broken objects (merged figures, a guitar cut from its neck), and 1000 iterations did not fix
-  what 250 left. The target itself as step 0 finishes cleanly, so the question is how deep the fit
-  has to go, and whether the 28-step target changes it.
+  what 250 left. The target itself as step 0 finishes cleanly. How deep the fit has to go is
+  measured on the 14 of 28 target in `reports/step0_depth.md`: a held-out anchor MSE of 0.02–0.04,
+  against 0.070 for the full-dataset cache run (`turbo_1117_0823`: `m15_k14of28_pall`, 6484
+  iterations, `grad_accum 2`), which is the current form of this recipe.
 - **Reading a run.** `plan.md`, "A/B protocol": the handoff probe (anchor MSE, `S` and `T>S@1` cos,
   sameness) beside the judge renders. A run on the 14 of 28 target is probed with
   `--anchor_k 14 --anchor_steps 28`, or its anchor MSE is measured against the wrong target.

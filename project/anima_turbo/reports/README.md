@@ -15,6 +15,10 @@ in the run table.
 - [teacher_handoff.md](teacher_handoff.md): the anchor alone on a 512-prompt cache (`2209`) leaves
   the finish where the 1k runs left it; the arm after it trains DM on steps 1–3 from the input a
   fitted step 0 hands them (`2221`): step 0 holds, the finish is mixed at 250.
+- [step0_depth.md](step0_depth.md): the breaks are step 0's residual to the anchor target (a
+  quarter to a half of it has to go: held-out anchor MSE 0.02–0.04); repeated pairs do not
+  generalise; the full-dataset cache (`turbo_1117_0823`) reaches 0.070 and `S` cos 0.801, not
+  enough; rank 96 (`turbo_1117_0918`) ties it; the 7 of 28 target is parked.
 - [grid_cdm.md](grid_cdm.md): the static grid and the cond-only L_CDM, both adopted at 250
   iterations on the user's read and shipped in the recipe; one seed each.
 

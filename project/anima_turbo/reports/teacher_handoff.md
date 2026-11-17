@@ -109,15 +109,8 @@ Verdict: the mechanism passes (DM on steps 1–3 from the teacher-forced handoff
 layout alone); the finish is mixed at 250, with as many new breaks as repairs. Not a win over 2209
 yet. Which term brings the text boxes (DM, CDM or the GAN) is not separated.
 
-## Next: step 0 and steps 1–3 drawn at random
+## After this report
 
-Instead of both terms in every iteration, each iteration is anchor-only with probability p (one
-student forward and backward, 0.4 s) or DM-only on steps 1–3 with probability 1 − p.
-
-- **Cost.** p sets how much of the run is spent on the cheap step-0 fit against the expensive DM.
-- **The two gradients stop sharing a clip.** Here the anchor (× 0.1) and the DM gradient are summed
-  and clipped together at 1.0, so a large DM gradient shrinks the anchor's share. Drawn apart, each
-  updates at its own scale; the shared weights are then pulled by the two in turn.
-
-Which one is worth building follows from `2221`: if the layouts hold, mixing in one update is safe
-and the random draw is a cost knob; if they move, the random draw is the next arm.
+The handoff probe of `2221` and the arm this report proposed next (anchor-only and DM-only
+iterations drawn at random) are in `step0_depth.md`: `2221` sits slightly below `2209` on every
+probe number, and the random draw is closed (the clip it was meant to unshare does not bind).
