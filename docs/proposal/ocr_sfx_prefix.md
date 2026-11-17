@@ -158,6 +158,34 @@ No change on COO, as expected: 1,000 steps see about 200 of the removed boxes. T
 (more trailing hearts, more misread glyphs such as びく → ぐく) touch no data the clean changed and
 are read as the spread between two undertrained 1k runs.
 
+### swaprelax_v5 boxes and the second review (2026-11-17)
+
+- **Nested boxes.** swaprelax boxes are AnimeText's, and the swap_text read kept the outer box of
+  a nested pair (the raw boxes are in the relax tree's `det.json`). 983 rows hold a smaller
+  detector box. The v6 confidence does not separate the bad ones (the read of the outer crop is
+  right); the share of the label the inner boxes' v6 reads cover does. `probes/nested_inner_read.py`
+  → `probes/apply_nested_fix.py`: coverage ≥ 0.85 takes the inner box (loose outer box, label
+  kept; the union when the detector split one block), below drops the row (a line of a block, or
+  several blocks merged): 500 re-boxed, 387 dropped.
+- **Unswapped groups.** The staged target is the JA page with the clean KO groups pasted in, so
+  108 rows held JA lettering under a KO label (target equals the JA source inside the box).
+  `probes/unswapped_ja.py` turns them into JA rows: the JA page's AnimeText box, the crop from the
+  JA source, v6's JA read (conf ≥ 0.9, one row per JA box): 91 relabelled, 16 dropped. The JA
+  labels are not audited.
+- Both decisions sit in `swap_relax_v5/{nested_fix,unswapped_ja}.json`, which its `build.py`
+  applies on a rebuild. Two more review exports applied (161 edits, 1 drop).
+- `manifest_sfxp_kozh`: 24,574 rows at `sfxpc_1117_2110` → 24,160; about 1,450 rows removed or
+  changed, all `OCR:` KO / ZH speech (1.4 % of the 1k run's train rows).
+
+Batching defaults in `finetune_vl16_lora.py`: bs 4 × 4 without gradient checkpointing, batches
+cut at 3,072 padded patch tokens, crops capped at 2,048 tokens, no stock val before training.
+97 % of the crops sit at the processor's min_pixels floor (600–700 tokens), so the budget only
+splits the rare large ones (98 % of batches hold 4 crops, 3.5 % padding). 16.7 crops/s at 11.8 GB
+peak on the costliest batches, against 13.7 for bs 2 × 8 and 13.0 for bs 8 × 2 with
+checkpointing; GPU utilisation at bs 2 was 70–80 % at ~220 W, the kernels too small to fill the
+card. Removing the per-step host syncs (loss `.item()`, label length) changed nothing. The 1k on
+this data and recipe is `sfxpc_1117_2300`.
+
 ## Next
 
 - The 2-epoch run on the cleaned data.

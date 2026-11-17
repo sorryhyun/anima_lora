@@ -16,11 +16,12 @@ Tower + projector frozen; LoRA (``--rank``, α = 2r) on the ERNIE LM's attention
 (q/k/v/o) + MLP (gate/up/down) projections, selected by module path so the
 vision tower's same-named projections are untouched. Prompt = the chat
 template's ``User: <image>OCR:\\nAssistant:\\n`` (exactly the eval's), target =
-normalised text + ``</s>``; loss on the target tokens only. Batches are grouped
-by crop area (the A/B's batching rule), or with ``--token_budget N`` cut where the
-padded patch-token cost (largest crop × crops) would pass N, so the few large crops
-train in small batches instead of one 8-crop batch of them; a short batch's loss is
-scaled by crops / ``--bs``. Batches are left-padded (loss on the last K logits); the
+normalised text + ``</s>``; loss on the target tokens only. Batches hold up to
+``--bs`` crops and are cut where the padded patch-token cost (largest crop × crops)
+would pass ``--token_budget`` (3,072 by default), so a large crop trains alone;
+``--token_budget 0`` groups fixed ``--bs`` batches by crop area (the A/B's rule). A
+short batch's loss is scaled by crops / ``--bs``. Defaults: bs 4 × 4, no gradient
+checkpointing (``--grad_ckpt`` turns it on). Batches are left-padded (loss on the last K logits); the
 per-epoch val generation is left-padded, greedy, ``use_cache=True``, no
 repetition guard — the runaway count is reported like the stock row.
 
@@ -47,7 +48,8 @@ beside the adapter is loaded too when present.
 
 Per epoch: val scoring (``eval_manga109`` metrics), ``ep<N>/`` = adapter dir
 (``eval_manga109.py --reader vl16 --ckpt`` merges it onto the base), ``best`` →
-highest val SFX exact. Output ``output/ocr/<run>/``.
+highest val SFX exact. ``--stock_val`` also scores the base model before training
+(off by default). Output ``output/ocr/<run>/``.
 """
 
 from __future__ import annotations
@@ -218,12 +220,14 @@ class Collate:
         return enc, idx
 
 
-def target_loss(model, enc) -> torch.Tensor:
+def target_loss(model, enc, K: int | None = None) -> torch.Tensor:
     """CE on the target suffix only: keep the last K logits (K = longest label
-    run + 1), shift, ignore -100."""
+    run + 1), shift, ignore -100. Pass ``K`` from the CPU labels to skip the
+    device sync of reading it off the GPU."""
     labels = enc.pop("labels")
     enc.pop("n_boundary_fallback", None)
-    K = int((labels != -100).sum(1).max()) + 1
+    if K is None:
+        K = int((labels != -100).sum(1).max()) + 1
     out = model(**enc, logits_to_keep=K)
     logits = out.logits[
         :, :-1
@@ -301,8 +305,12 @@ def main():
         help="stop after this many optimizer steps; the LR decays over them "
         "(a budget-matched arm, e.g. finetune_ovis3_lora.py's --steps)",
     )
-    ap.add_argument("--bs", type=int, default=16)
-    ap.add_argument("--grad_accum", type=int, default=1)
+    # bs 4 x 4 without gradient checkpointing, batches cut at 3,072 padded tokens, crops
+    # capped at 2,048 tokens: 16.7 crops/s at 11.8 GB peak on the costliest batches
+    # (smoke_bs4_1117_2258, --largest_first) against 13.7 for bs 2 x 8 / 1,536 and 13.0
+    # for bs 8 x 2 with checkpointing; bs 8 without checkpointing is out of memory on 16 GB
+    ap.add_argument("--bs", type=int, default=4)
+    ap.add_argument("--grad_accum", type=int, default=4)
     ap.add_argument("--rank", type=int, default=16)
     ap.add_argument(
         "--train_tower",
@@ -366,13 +374,19 @@ def main():
     ap.add_argument("--val_limit", type=int)
     ap.add_argument("--val_bs", type=int, default=16)
     ap.add_argument("--no_augment", action="store_true")
-    ap.add_argument("--no_grad_ckpt", action="store_true")
+    ap.add_argument(
+        "--grad_ckpt",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="gradient checkpointing (off by default; on for bs 8 batches on 16 GB)",
+    )
     ap.add_argument(
         "--max_tokens",
         type=int,
-        default=1280 * 4,
-        help="training crops' patch-token cap (processor max_pixels = N x 196); "
-        "the default is the processor's 1280x28x28. Val keeps the processor default",
+        default=2048,
+        help="training crops' patch-token cap (processor max_pixels = N x 196); 60 sfxp "
+        "crops sit above 2,048, a large-glyph note or SFX read the same lower. Val keeps "
+        "the processor default (1280x28x28)",
     )
     ap.add_argument(
         "--attn",
@@ -384,13 +398,19 @@ def main():
     ap.add_argument(
         "--token_budget",
         type=int,
-        default=0,
+        default=3072,
         help="cap each batch's padded patch tokens (largest crop × crops; "
         "crop_dataset.token_batches); 0 = fixed --bs area batches",
     )
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--skip_stock_val", action="store_true")
+    ap.add_argument(
+        "--stock_val",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="score the base model on val before training (off: the val set and base "
+        "rarely change, and the row costs ~3.5 min of generation)",
+    )
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument(
         "--largest_first",
@@ -502,7 +522,7 @@ def main():
     full_masters = [
         p.detach().float().clone().requires_grad_(True) for _, p in full_params
     ]
-    if not a.no_grad_ckpt:
+    if a.grad_ckpt:
         try:
             base.gradient_checkpointing_enable(
                 gradient_checkpointing_kwargs={"use_reentrant": False}
@@ -643,7 +663,7 @@ def main():
         )
         return m
 
-    if not a.skip_stock_val:
+    if a.stock_val:
         evaluate("stock", 0)
 
     model.train()
@@ -659,18 +679,22 @@ def main():
             num_workers=a.workers,
             collate_fn=collate,
             persistent_workers=False,
+            pin_memory=True,
         )
+        # no host sync inside the step: K is read off the CPU labels, the copy is
+        # non-blocking from pinned memory, and losses stay on the card until logged
         losses = []
         for enc, _ in dl:
-            enc = enc.to("cuda")
+            K = int((enc["labels"] != -100).sum(1).max()) + 1
+            enc = enc.to("cuda", non_blocking=True)
             n = enc["input_ids"].shape[0]
-            raw = target_loss(model, enc)
+            raw = target_loss(model, enc, K)
             # a short (token-budget) batch weighs by its crops, as if part of a --bs batch
             loss = raw * (min(n, a.bs) / a.bs) / a.grad_accum
             loss.backward()
             micro += 1
             seen += n
-            losses.append(raw.item())
+            losses.append(raw.detach())
             if micro % a.grad_accum:
                 continue
             for (_, p), m in zip(full_params, full_masters):
@@ -687,7 +711,7 @@ def main():
             if step % 25 == 0 or step == total:
                 el = time.time() - t0
                 print(
-                    f"ep {ep} step {step}/{total} loss {np.mean(losses[-25 * a.grad_accum :]):.4f} "
+                    f"ep {ep} step {step}/{total} loss {torch.stack(losses[-25 * a.grad_accum :]).mean().item():.4f} "
                     f"lr {sched.get_last_lr()[0]:.2e} {seen / el:.1f} crops/s "
                     f"seq {enc['input_ids'].shape[-1]} vram {torch.cuda.max_memory_allocated() / 2**30:.1f}G",
                     flush=True,
@@ -701,7 +725,7 @@ def main():
         for file, ps, _ in full_groups:
             save_full(ep_dir / file, ps)
         m = evaluate(f"ep{ep}", step)
-        m["train_loss"] = float(np.mean(losses))
+        m["train_loss"] = torch.stack(losses).mean().item()
         if m["sfx_exact"] > best[0]:
             best = (m["sfx_exact"], ep)
             b = out / "best"

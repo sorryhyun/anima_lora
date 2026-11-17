@@ -74,6 +74,7 @@ textarea { width:100%; font:inherit; font-size:17px; padding:6px 8px; border:1px
 .btns { display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; }
 .btns .on.ok { background:var(--ok); color:#fff; } .btns .on.drop { background:var(--drop); color:#fff; }
 .pager { display:flex; gap:8px; align-items:center; justify-content:center; margin:14px 0; }
+header .pager { margin:0; }
 @media (max-width:640px) { .row { grid-template-columns:minmax(0,1fr); } }
 </style></head><body>
 <header>
@@ -86,9 +87,11 @@ textarea { width:100%; font:inherit; font-size:17px; padding:6px 8px; border:1px
     <option value="dis">v6 disagrees, lowest confidence first</option>
     <option value="run">longest run first</option>
     <option value="id">id</option><option value="todo">unreviewed first</option></select></label>
+  <label><input type="checkbox" id="donelast"> reviewed last</label>
   <span class="stats" id="stats"></span>
   <span class="stats">edits save as you type · Enter or \n = line break</span>
   <button id="export">Export TSV</button>
+  <span class="pager" id="pagerTop"></span>
 </header>
 <main><div id="list"></div><div class="pager" id="pager"></div></main>
 <script>
@@ -117,15 +120,26 @@ for (const s of Object.keys(DATA)) srcSel.add(new Option(`${s} (${DATA[s].length
 let page = 0;
 minIn.value = MIN_DEFAULT[srcSel.value];
 sortSel.value = SORT_DEFAULT[srcSel.value];
+// reviewed last: rows with a review state go behind the rest. The order is taken when the
+// page loads or a control changes, then held while paging, so reviewing a page does not
+// shift unreviewed rows past the next one
+const doneLast = $("donelast");
+try { doneLast.checked = localStorage.getItem(KEY + ":donelast") === "1"; } catch (e) {}
+let order = null;
+const resort = () => { order = null; page = 0; render(); };
 srcSel.onchange = () => { minIn.value = MIN_DEFAULT[srcSel.value];
-  sortSel.value = SORT_DEFAULT[srcSel.value]; page = 0; render(); };
-minIn.onchange = sortSel.onchange = () => { page = 0; render(); };
+  sortSel.value = SORT_DEFAULT[srcSel.value]; resort(); };
+minIn.onchange = sortSel.onchange = resort;
+doneLast.onchange = () => {
+  try { localStorage.setItem(KEY + ":donelast", doneLast.checked ? "1" : "0"); } catch (e) {}
+  resort(); };
 
 function esc(s) { return s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 function marked(t, n) {
   return esc(t).replace(/[가-힣]+/g, m => (n > 0 && m.length >= n) ? `<mark>${m}</mark>` : m);
 }
 function rows() {
+  if (order) return order;
   const s = srcSel.value, n = +minIn.value || 0;
   let r = DATA[s].filter(x => x.run >= n);
   const k = sortSel.value;
@@ -137,7 +151,8 @@ function rows() {
   else if (k === "run") r = r.slice().sort((a, b) => b.run - a.run || a.id.localeCompare(b.id));
   else if (k === "id") r = r.slice().sort((a, b) => a.id.localeCompare(b.id));
   else r = r.slice().sort((a, b) => !!store[s + ":" + a.id] - !!store[s + ":" + b.id]);
-  return r;
+  if (doneLast.checked) r = r.filter(x => !store[s + ":" + x.id]).concat(r.filter(x => store[s + ":" + x.id]));
+  return (order = r);
 }
 function stats() {
   const s = srcSel.value; let ok = 0, ed = 0, dr = 0;
@@ -179,11 +194,13 @@ function render() {
     paint();
     list.appendChild(d);
   }
-  const pg = $("pager"); pg.innerHTML = "";
   const btn = (t, p) => { const b = document.createElement("button"); b.textContent = t;
     b.disabled = p < 0 || p >= pages; b.onclick = () => { page = p; render(); scrollTo(0, 0); }; return b; };
-  pg.append(btn("← prev", page - 1), Object.assign(document.createElement("span"),
-    {textContent: `${page + 1} / ${pages}`}), btn("next →", page + 1));
+  for (const id of ["pagerTop", "pager"]) {
+    const pg = $(id); pg.innerHTML = "";
+    pg.append(btn("← prev", page - 1), Object.assign(document.createElement("span"),
+      {textContent: `${page + 1} / ${pages}`}), btn("next →", page + 1));
+  }
   stats();
 }
 $("export").onclick = () => {
