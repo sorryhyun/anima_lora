@@ -19,13 +19,19 @@ Folds, in order:
    (80 train rows; the sincos hand labels write the combining form).
 2. **NFKC** — fullwidth ``！？．～`` → ASCII, ``･`` → ``・``, halfwidth kana
    composed, ``‼`` → ``!!``.
-3. **Symbol table** — hearts ``♥`` / ``❤`` (+ U+FE0F) → ``♡``; wave dash ``〜``
+3. **Hangul jamo** (``TARGET_NORM = 6``) — a lone conjoining jamo after NFKC
+   (``ᄏ`` U+110F, NFKC's image of the typed ``ㅋ``) → the compatibility jamo
+   (``ㅋ`` U+314B), :data:`JAMO_FOLD`. Norm 3–5 taught ``ᄏᄏ`` for ``ㅋㅋ``.
+4. **Symbol table** — hearts ``♥`` / ``❤`` (+ U+FE0F) → ``♡``; wave dash ``〜``
    (U+301C) → ``~``; long dashes ``─`` (U+2500 box drawing) / ``—`` (U+2014) →
    ``―`` (U+2015, the JIS dash; 616 vs 412 vs 1 train rows). Dash *runs* keep
-   their length — ``だから――――`` is a prolongation, like ``ーー``.
-4. **Dot runs** — ``[.・…‥]{2,}`` and a lone ``‥`` → one ``…``.
+   their length — ``だから――――`` is a prolongation, like ``ーー``. Curly
+   double quotes ``“`` / ``”`` → ASCII ``"`` (``TARGET_NORM = 6``, 2026-11-17: one
+   quote, three spellings across the manifests; swaprelax_v5 had 75 ``”`` rows
+   to 3 ``"``).
+5. **Dot runs** — ``[.・…‥]{2,}`` and a lone ``‥`` → one ``…``.
 
-The **training target** (:func:`training_target`, ``TARGET_NORM = 5``) keeps
+The **training target** (:func:`training_target`, ``TARGET_NORM = 6``) keeps
 the label's line breaks as ``\\n`` (one token, id 23; norm 4 collapsed them to a
 space, so v4 answers one line) and writes the heart as ``♥``: in the VL-1.6 tokenizer ``♥`` is
 one token and ``♡`` is three bytes, and ``TARGET_NORM = 3`` (``♡`` in the
@@ -55,15 +61,39 @@ HEART_FOLD = str.maketrans(
         "〜": "~",
         "─": "―",
         "—": "―",
+        "“": '"',
+        "”": '"',
     }
 )
-"""Post-NFKC symbol table. Name kept from ``eval_manga109`` — it grew the wave
-and dash folds but every consumer imported it under this name."""
+"""Post-NFKC symbol table. Name kept from ``eval_manga109`` — it grew the wave,
+dash and quote folds but every consumer imported it under this name."""
+
+
+def _jamo_fold() -> dict[int, int]:
+    out = {}
+    for cp in range(0x1100, 0x1200):
+        name = unicodedata.name(chr(cp), "")
+        for part in ("CHOSEONG ", "JUNGSEONG ", "JONGSEONG "):
+            if part in name:
+                try:
+                    out[cp] = ord(
+                        unicodedata.lookup("HANGUL LETTER " + name.split(part)[1])
+                    )
+                except KeyError:
+                    pass
+    return out
+
+
+JAMO_FOLD = _jamo_fold()
+"""Conjoining jamo (U+1100–11FF) → compatibility jamo (U+3131–318E), by name.
+NFKC sends the typed ``ㅋ`` (U+314B) to the conjoining ``ᄏ`` (U+110F); a jamo
+left standing after NFKC (syllables are composed by then) goes back to the
+typed form."""
 
 
 def fold_glyphs(s: str) -> str:
     """The canonical spelling of ``s`` with whitespace untouched."""
-    s = unicodedata.normalize("NFKC", s.translate(_DAKUTEN_FOLD))
+    s = unicodedata.normalize("NFKC", s.translate(_DAKUTEN_FOLD)).translate(JAMO_FOLD)
     return ELLIPSIS_RE.sub(ELLIPSIS, s.translate(HEART_FOLD))
 
 
@@ -86,7 +116,7 @@ def collapse_keep_lines(s: str) -> str:
 
 
 def training_target(s: str) -> str:
-    """The training target (``TARGET_NORM = 5``): :func:`fold_glyphs`, line
+    """The training target (``TARGET_NORM = 6``): :func:`fold_glyphs`, line
     breaks kept as ``\\n`` (:func:`collapse_keep_lines`), the heart as
     :data:`TRAIN_HEART`. ``exact_key`` / ``space_key`` stay ``♡``-spelled and
     whitespace-blind, so a read with or without breaks scores the same."""

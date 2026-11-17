@@ -40,6 +40,13 @@ def _mod():
         ("わ──っ", "わ――っ"),
         ("だから――――", "だから――――"),
         ("それは—人類", "それは―人類"),
+        # curly double quotes → ASCII (TARGET_NORM 6)
+        ("”ここ”って", '"ここ"って'),
+        ("“그래”", '"그래"'),
+        # lone jamo stay the typed compatibility form; syllables untouched
+        ("ㅋㅋㅋ 큭", "ㅋㅋㅋ 큭"),
+        ("\u110f\u110f\u1112", "ㅋㅋㅎ"),
+        ("ㅠㅠ", "ㅠㅠ"),
         # spacing dakuten → combining, no space (the TARGET_NORM 2 bug)
         ("あ゛っ", "あ゙っ"),
         ("か゛", "が"),
