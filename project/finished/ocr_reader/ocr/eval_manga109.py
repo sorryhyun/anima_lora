@@ -307,6 +307,51 @@ class HayaiReader:
         return out
 
 
+class Hayai27Reader:
+    """hayai v2.7 Supernova — scored on request (discussion #1, 2026-11-16).
+    The card's own entry point ``model.ocr``: ``max_patches="auto"`` (per-crop
+    routing over {128, 192, 256, 384}), ``escalate=False``, greedy, its own
+    processor (``trust_remote_code``), ``batch_size=64`` so the auto planner
+    buckets the list. Crops go in unrotated, as for every hayai row."""
+
+    name = "hayai27"
+    max_tokens = MAX_NEW_TOKENS
+    DEFAULT = (
+        "JustANormalTinkerer/hayai-ocr-v2.7-supernova"
+        "@5289b2cfdfd375dd651611b27ea87d21b5877008"
+    )
+
+    def __init__(self, ckpt: str | None, device: str):
+        import os
+
+        from transformers import AutoModel, AutoProcessor
+
+        repo, _, rev = (ckpt or self.DEFAULT).partition("@")
+        kw = {"revision": rev} if rev else {}
+        self.model = (
+            AutoModel.from_pretrained(repo, trust_remote_code=True, **kw)
+            .to(device)
+            .eval()
+        )
+        self.proc = AutoProcessor.from_pretrained(repo, trust_remote_code=True, **kw)
+        p = os.environ.get("ANIMA_HAYAI_PATCHES", "auto")
+        self.patches = p if p == "auto" else int(p)
+
+    def read(self, crops, orients, bs):
+        from PIL import Image
+
+        images = [Image.fromarray(c[:, :, ::-1]) for c in crops]
+        texts = self.model.ocr(
+            images,
+            self.proc,
+            max_new_tokens=self.max_tokens,
+            max_patches=self.patches,
+            batch_size=64,
+            escalate=False,
+        )
+        return [(t or "").strip() for t in texts]
+
+
 class HunyuanReader:
     """`tencent/HunyuanOCR` — HunyuanOCR-1.5 (1 B: 24 × 1024 LM + a 16-px-patch
     tower; native ``HunYuanVLForConditionalGeneration`` since transformers
@@ -581,6 +626,7 @@ READERS = {
     "vl16": Vl16Reader,
     "sfx": SfxPkgReader,
     "hayai": HayaiReader,
+    "hayai27": Hayai27Reader,
     "hunyuan": HunyuanReader,
     "ovis": OvisReader,
     "ovis3": Ovis3Reader,

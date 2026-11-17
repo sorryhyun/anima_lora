@@ -45,7 +45,7 @@ runs → ``…``, ``〜`` → ``~``, long dashes → ``―``, spacing dakuten �
 with a space) — ``vl16_b2_norm3``; 4 = the same folds with the heart flipped
 to ``♥``, the single token (``♡`` is three bytes; norm3 lost every raw ``♥``
 and 31 sincos rows — plan_vl_respace R5b); 5 = norm 4 with the label's line
-breaks kept as ``\\n`` (``docs/proposal/ocr_line_breaks.md``; v4 trained on 4)."""
+breaks kept as ``\\n`` (v5; v4 trained on 4)."""
 
 
 def normalize_target(s: str) -> str:

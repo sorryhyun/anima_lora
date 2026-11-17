@@ -27,8 +27,7 @@ weights trained on the proofread swap_relax lines from them, the user's call 202
 table below is the record as of close.
 
 **v5 (2026-11-09) = `vl16_p2b_kozh_nl`**, replacing v4 as Hub `v5/` (`fb08a10b`), pinned by
-`anime_tools` v0.9.5 — v4's command with two changes
-([`docs/proposal/ocr_line_breaks.md`](../../../docs/proposal/ocr_line_breaks.md)): the targets keep
+`anime_tools` v0.9.5 — v4's command with two changes: the targets keep
 the labels' line breaks as `\n` (`TARGET_NORM` 5), and the Manga109 crops are rebuilt so the 12 %
 pad stops at the page edge (`pilot.deskew_crop(trim=True)`; the old cut replicated border
 lines into ~13 % of the COO SFX crops; old tree kept as `derived/crops_replicate/`). Paired
