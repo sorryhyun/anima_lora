@@ -162,6 +162,36 @@ recipe, renders without offsets.
 Adding the boxes returns every read to the control: the high-σ loss cost, the plain string and the
 ruler habit. Neither arm moves the general renders. Sheets: `output/tests/caststation_thin/cashwb_sheets/`.
 
+## Controls for the ama read (2026-11-17)
+
+Is the ama gain grounding, or a perturbation of half the prompt? On the ama cache 66 of 106 full
+captions carry clauses and 31 % of all prompt tokens move (casbox: 27 of 30, 50 %).
+
+- **Offsets at inference** on `amahw_1116_1239`, clause prompts: none, true cells
+  (`--clause_hw 1`, `amahw_clause_inf`), mirrored cells (`--clause_hw -1`, `amahw_clause_infmir`).
+  The layout does not follow the cells: with mirrored offsets the close-up stays left and the figure
+  right in 6 / 6 clause renders. Either sign changes a render by about a re-roll. The user's read:
+  no difference worth having. Generation stays without offsets.
+- **Mirrored-cell training arm** `amamir_1117_1257`: `clause_hw = -1.0` (each clause at the cell
+  opposite its own, same distance from `(0, 0)`), otherwise the `amahw` config; 66 / 106 captions,
+  5,301 rows off `(0, 0)`. Rendered without offsets as the other arms (`amamir_anima`,
+  `amamir_clause`). Trained a day after `amahw`, with commits to the MOSS training code between.
+- **Panty-line prompts** (`prompts_pantyline.txt`: `pantylines` + `tight pants`, a tag in none of
+  the 106 training captions): `amahw_pl`, `amamir_pl`. The `amathin` / `amathinr` checkpoints are
+  gone, so this set has no arm without `clause_hw`.
+- **The user's read (2026-11-17): `amahw` beats `amamir`.** The true-cell arm is clearly better
+  than the mirrored one, so the ama gain needs each clause at its own cell: grounding, not
+  perturbation. One mirror arm against one true arm, and no retrain of either.
+- **Inference offsets stay open.** Whether `--clause_hw 1` at generation helps the true-cell LoRA
+  is not settled (the first read found no difference worth having). Generation keeps running
+  without offsets.
+- From reading the code: the epoch sample renders apply the offsets (`training/sampling.py`) while
+  `generate` runs without them; on a `tags` cache a clause caption never trains unshifted; a row of
+  four or more columns is spread over ±⅓ of the width (five columns reach ±0.4).
+
+Renders and sheets: `output/tests/ama_clause/` (`sheets_1117_full/`, 1024 px per render). Config:
+`_archive/configs/pe_lora/amamir_1117_1257.toml`.
+
 ## Implementation notes
 
 - **RoPE.** `_RoPE.forward` takes an optional `text_hw (L, 2)`. With it absent, the output is
