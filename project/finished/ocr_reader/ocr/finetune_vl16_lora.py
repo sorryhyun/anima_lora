@@ -357,6 +357,11 @@ def main():
     ap.add_argument(
         "--neg_share", type=float, default=0.2, help="max negative share per prompt"
     )
+    ap.add_argument(
+        "--sfxp_det",
+        default="sfxp_det_clean",
+        help="det manifest for --sfx_prefix (sfxp_det = before the 11-17 clean)",
+    )
     ap.add_argument("--max_train", type=int, help="rows per kind (subsample)")
     ap.add_argument("--val_limit", type=int)
     ap.add_argument("--val_bs", type=int, default=16)
@@ -520,10 +525,18 @@ def main():
 
     if a.sfx_prefix:
         tr_df = cd.load_sfxp(
-            "train", neg_share=a.neg_share, limit=a.max_train, seed=a.seed
+            "train",
+            neg_share=a.neg_share,
+            limit=a.max_train,
+            seed=a.seed,
+            det_manifest=a.sfxp_det,
         )
         va_df = cd.load_sfxp(
-            "val", neg_share=a.neg_share, limit=a.val_limit, seed=a.seed
+            "val",
+            neg_share=a.neg_share,
+            limit=a.val_limit,
+            seed=a.seed,
+            det_manifest=a.sfxp_det,
         )
     else:
         tr_df = cd.load_split(

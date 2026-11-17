@@ -99,3 +99,7 @@ project/finished/ocr_reader/eval_data/
 # project asset JSONs (probe inputs and result dumps) stay local
 project/**/assets/*.json
 project/**/assets/*.csv
+# ocr_reader assets (label sets, label reviews) stay local
+project/finished/ocr_reader/assets/
+# ocr_reader eval reports, written by the eval scripts on every run
+project/finished/ocr_reader/reports/ocr_eval_*.md

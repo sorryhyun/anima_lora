@@ -27,6 +27,8 @@ to the page. Three parts, each its own manifest under ``derived/``:
 * ``--gt test`` → ``manifest_sfxp_gt.parquet``: the grey manifest's rows of those splits (COO
   and speech) re-cut through ``pilot.deskew_crop`` at the capped margin, for the gate evals
   (``eval_manga109.py --manifest sfxp_gt``).
+* ``--clean`` → ``manifest_sfxp_det_clean.parquet``: ``--det``'s boxes with the doubtful
+  labels unwritten (``build_clean``).
 * ``--kozh`` → ``manifest_sfxp_kozh.parquet``: the gelnote KO / ZH and swaprelax_v5 pseudo
   rows, re-cut from their pages at the new margin, labels as they are, ``kind = speech``.
 
@@ -227,6 +229,90 @@ def build_det(a, derived: Path):
     )
 
 
+KEPT_TYPES = {"same", "loose", "cut", "graze", "merged", "mixed", "dup"}
+
+
+def merged_ok(texts, polys) -> bool:
+    """A box holding 2+ SFX keeps its joined target when the order is not in doubt:
+    the texts repeat (``ザワ``×3), or vertical columns stand side by side (right to
+    left is right). Stacks, horizontal rows and scattered SFX are cut: the build's
+    ``(-x, y)`` order reverses rows and mis-sorts stacks, and scattered ones have none."""
+    strip = "・…~ー〜！!？?"
+    if len({t.strip(strip) for t in texts}) == 1:
+        return True
+    bb = [(p[:, 0].min(), p[:, 1].min(), p[:, 0].max(), p[:, 1].max()) for p in polys]
+
+    def ov(a0, a1, b0, b1):
+        return max(0, min(a1, b1) - max(a0, b0)) / max(1, min(a1 - a0, b1 - b0))
+
+    for i in range(len(bb)):
+        for k in range(i + 1, len(bb)):
+            yo = ov(bb[i][1], bb[i][3], bb[k][1], bb[k][3])
+            xo = ov(bb[i][0], bb[i][2], bb[k][0], bb[k][2])
+            if not (yo > 0.5 and xo < 0.5):
+                return False
+    return np.mean([(b[3] - b[1]) > (b[2] - b[0]) for b in bb]) >= 0.5
+
+
+def build_clean(a, derived: Path):
+    """``--clean`` → ``manifest_sfxp_det_clean.parquet``: the det manifest with the boxes
+    whose labels the 2026-11-17 crop sheets (``probes/sfxp_crop_sheet.py``) put in doubt
+    unwritten (``path`` None, the reason in ``clean``):
+
+    * ``dup_outer`` — an SFX ≥ 80 % inside 2+ kept boxes (nested detector boxes): every
+      box but the smallest goes, its speech row with it;
+    * ``loose`` — one SFX alone in a box much larger than its COO crop (IoU < 0.6):
+      15 % read text the target leaves out (titles, signs, unannotated asides);
+    * ``merged_order`` — 2+ SFX in one box whose joined order is in doubt (``merged_ok``);
+    * ``neg_graze`` — an ``SFX:`` negative with part of a COO polygon inside.
+
+    Fragments and misses (the detector cuts or skips the SFX) stay out, as before.
+    Per-polygon types land in ``sfxp_types_<split>.parquet``.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "probes"))
+    from sfxp_crop_sheet import classify
+
+    full = pd.read_parquet(derived / "manifest_sfxp_det.parquet")
+    full["clean"] = None
+    for sp in a.splits:
+        det, ty = classify(sp)
+        ty.to_parquet(derived / f"sfxp_types_{sp}.parquet", index=False)
+        rows = ty.assign(js=ty.det_rows.map(json.loads))
+        reason: dict[int, str] = {}
+
+        def area(j):
+            b = det.at[j, "box"]
+            return (b[2] - b[0]) * (b[3] - b[1])
+
+        for js in rows[rows.type == "dup"].js:
+            for j in sorted(js, key=area)[1:]:
+                reason[j] = "dup_outer"
+        for t in ("loose", "neg_graze"):
+            for js in rows[rows.type == t].js:
+                reason.setdefault(js[0], t)
+        box_polys: dict[int, list] = {}
+        for r in rows[rows.type.isin(KEPT_TYPES)].itertuples():
+            for j in r.js:
+                box_polys.setdefault(j, []).append(r)
+        for j, ps in box_polys.items():
+            if len(ps) < 2 or j in reason:
+                continue
+            polys = [np.asarray(json.loads(p.poly)).reshape(-1, 2) for p in ps]
+            if not merged_ok([p.coo_text for p in ps], polys):
+                reason[j] = "merged_order"
+        idx = full.index[full.split == sp]
+        for j, why in reason.items():
+            g = idx[j]  # det was reset_index'd from the same split filter, in order
+            full.at[g, "clean"] = why
+            full.at[g, "path"] = None
+        got = pd.Series(list(reason.values())).value_counts().to_dict()
+        print(f"[clean] {sp}: {got}", flush=True)
+    full.to_parquet(derived / "manifest_sfxp_det_clean.parquet", index=False)
+    print(
+        full[full.path.notna()].groupby(["split", "cat"]).size().to_string(), flush=True
+    )
+
+
 def build_speech(a, derived: Path):
     src = pd.read_parquet(derived / "manifest.parquet")
     src = src[(src.kind == "speech") & (src.split.isin(a.splits))]
@@ -359,6 +445,9 @@ def main():
     ap.add_argument("--det", action="store_true")
     ap.add_argument("--speech", action="store_true")
     ap.add_argument("--kozh", action="store_true")
+    ap.add_argument(
+        "--clean", action="store_true", help="det manifest → manifest_sfxp_det_clean"
+    )
     ap.add_argument("--gt", nargs="+", help="splits to re-cut for the gate evals")
     ap.add_argument("--splits", nargs="+", default=["train", "val"])
     ap.add_argument(
@@ -376,6 +465,8 @@ def main():
         build_gt(a, derived)
     if a.det:
         build_det(a, derived)
+    if a.clean:
+        build_clean(a, derived)
 
 
 if __name__ == "__main__":

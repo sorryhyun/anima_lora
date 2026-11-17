@@ -109,9 +109,59 @@ Batching for this run (`finetune_vl16_lora.py`):
 - Open: the reader trains SFX on detector boxes and is scored on COO polygon crops; v6 trained
   on the polygon crops. A contact sheet of the two comes next.
 
+## Detector boxes against COO polygons (2026-11-17)
+
+Every train COO polygon typed against the AnimeText boxes of its page
+(`project/finished/ocr_reader/probes/sfxp_crop_sheet.py`, one contact sheet per type):
+
+| type | polygons | share | |
+|---|---|---|---|
+| same: one box, this SFX alone, crop ≈ COO crop | 16,312 | 42.2 % | kept |
+| missed: no box covers 20 % of it | 9,353 | 24.2 % | out (as before) |
+| merged: 2+ SFX in one box | 7,687 | 19.9 % | order-doubtful boxes cut |
+| fragment: the detector splits or cuts it | 1,741 | 4.5 % | out (as before) |
+| graze / cut / mixed | 895 / 694 / 492 | 5.4 % | kept |
+| dup: inside 2+ kept boxes (nested boxes) | 609 | 1.6 % | outer boxes cut |
+| drop_nb: fits a box dropped for a cut neighbour | 566 | 1.5 % | out (as before) |
+| loose: one SFX in a much larger box | 286 | 0.7 % | cut |
+
+- **missed / fragment** stay out of training: AnimeText will not detect them at inference either.
+  The COO gate still scores them, so part of the COO SFX gap to v6 sits on crops the pipeline
+  never produces.
+- **loose**: v6 reads text beyond the target in 15 % of these crops (titles, signs, asides
+  annotated in neither COO nor `<text>`) against 0.1 % of `same`.
+- **merged**: the build joins right to left, then top down. That is right for vertical columns
+  side by side and wrong for most stacks (135 of 251 with differing texts) and horizontal rows
+  (45 of 46); scattered SFX have no order. v6 reads these boxes in yet another order.
+- 394 `SFX:` negatives held part of an SFX (`neg_graze`).
+
+`build_sfx_prefix.py --clean` writes `manifest_sfxp_det_clean.parquet` (the default of
+`load_sfxp` / `--sfxp_det`): dup outer 532, loose 286, merged with doubtful order 620 (repeats and
+side-by-side vertical columns kept), `neg_graze` 394. Train rows 107,879 → 105,949: `SFX:`
+positives 22,770 → 21,332, negatives 5,692 → 5,332, `OCR:` speech −106.
+
+KO labels (`probes/ko_label_review.py`, applied by `probes/apply_ko_review.py`): gelnote KO
+pseudo labels take the teacher's spacing and line breaks, which the whitespace-blind agreement
+does not check. Hand review fixed spacing and breaks on about 160 rows; 10 duplicate gelnote notes
+(same or nested box) dropped; spaces at line edges removed.
+
+### 1k on the cleaned data (`sfxpc_1117_2110`, the pilot's recipe)
+
+| | pilot `vl16_sfxp_1k`, 4 px | cleaned, 4 px | per crop (cleaned only / pilot only) |
+|---|---|---|---|
+| COO SFX, `SFX:` | 67.3 % | 66.6 % | 188 / 207 (z −1.0) |
+| COO SFX, `OCR:` | 2.7 % | 2.7 % | |
+| COO speech, `OCR:` | 85.0 % | 84.9 % | |
+| doujin SFX, strict / ♡-blind | 97 / 249 | 129 / 210 | strict z +3.3, ♡-blind z −3.3 |
+
+No change on COO, as expected: 1,000 steps see about 200 of the removed boxes. The doujin moves
+(more trailing hearts, more misread glyphs such as びく → ぐく) touch no data the clean changed and
+are read as the spread between two undertrained 1k runs.
+
 ## Next
 
-- Compare the detector-box SFX training crops with the COO polygon crops before training again.
+- The 2-epoch run on the cleaned data.
+- Score the COO gate on the polygons a detector box covers, beside the full set.
 
 ## Downstream
 

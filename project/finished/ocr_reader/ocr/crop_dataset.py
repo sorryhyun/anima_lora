@@ -122,6 +122,7 @@ def load_sfxp(
     neg_share: float = 0.2,
     limit: int | None = None,
     seed: int = 0,
+    det_manifest: str = "sfxp_det_clean",
 ) -> pd.DataFrame:
     """The two-prompt mix (``docs/proposal/ocr_sfx_prefix.md``; crops from
     ``build_sfx_prefix.py``). Column ``task`` is the prompt, ``metric`` the val group.
@@ -136,7 +137,7 @@ def load_sfxp(
     """
     d = m109.derived_root()
     rng = np.random.default_rng(seed)
-    det = pd.read_parquet(d / "manifest_sfxp_det.parquet")
+    det = pd.read_parquet(d / f"manifest_{det_manifest}.parquet")
     det = det[(det.split == split) & det.path.notna()]
     speech = pd.read_parquet(d / "manifest_sfxp_speech.parquet")
     speech = speech[speech.split == split]
