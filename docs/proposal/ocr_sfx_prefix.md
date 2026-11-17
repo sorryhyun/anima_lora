@@ -207,9 +207,36 @@ with the data, so neither is credited. None of these sets holds Korean speech
 (`manifest_sfxp_kozh` is train-only; val and COO speech are Manga109), so the KO label fixes are
 not measured here; that needs a held-out KO set.
 
+### 1k after the KO review and target norm 6 (`sfxpc_1118_0031`)
+
+Same recipe as `2300`, on the data after three more KO review exports (179 edits), three box
+fixes (two loose JA boxes tightened, one two-balloon box split into two rows), the swaprelax crops
+recut on the current staged pages (159 had been cut before the 11-09 restage; two KO labels whose
+group the restage left in Japanese dropped) and `TARGET_NORM = 6` (curly double quotes → `"`, a
+lone conjoining jamo → the typed compatibility jamo, `ᄏ` → `ㅋ`). 17.8 crops/s, peak 14.1 GB.
+
+| | `2300` | `0031` | paired z |
+|---|---|---|---|
+| COO SFX, `SFX:`, 4 px | 66.5 % | 66.6 % | +0.1 (184 / 182) |
+| COO SFX, `OCR:` | 3.5 % | 2.0 % | −4.2 |
+| COO speech, `OCR:` | 85.4 % | 86.8 % | +3.0 |
+| doujin SFX, strict / ♡-blind | 114 / 215 | 173 / 253 | +5.9 / +3.4 |
+| doujin, 86 user-checked | 18 | 23 | +1.5 |
+| val SFX | 76.4 % | 74.8 % | −1.6 |
+| val speech | 87.7 % | 87.8 % | +0.2 |
+| val `OCR:` empty on SFX | 95.4 % | 99.5 % | +4.8 |
+| val `SFX:` empty on speech | 87.6 % | 93.4 % | +4.4 |
+
+Both negatives recover what `2300` lost, and COO SFX read under `OCR:` falls with them: the two
+prompts separate better. Doujin strict moves most, and part of it is the heart (213 predictions
+carry one against 150); strict moved −15 between `2110` and `2300`, so the ♡-blind +38 is the
+firmer number. The data edits, the norm change and the batch order all moved at once, so no single
+one is credited. Rescoring `2300` under norm 6 moves only COO speech (2,184 → 2,196). Korean
+speech is still unmeasured.
+
 ## Next
 
-- The 2-epoch run on the cleaned data.
+- The 2-epoch run on the cleaned data (`sfxpc_1118_*`, queued 11-18).
 - Score the COO gate on the polygons a detector box covers, beside the full set.
 
 ## Downstream
