@@ -179,6 +179,25 @@ def quant_tok(
     return kq, ks
 
 
+def quant_planes(x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """``x [B, L, H, D]`` → two int8 planes ``[B, H, Lp, D]`` and fp32 scales ``[B·H, Lp]``
+    with ``x ≈ scale · (a + b / 254)`` per token: 16-bit fixed point, no rotation. Torch
+    ops, for the two-plane QKᵀ test (``planes2``); its time is not the kernel's."""
+    B, L, H, D = x.shape
+    lp = _pad(L)
+    y = x.float().transpose(1, 2)
+    sc = y.abs().amax(-1).clamp_min(1e-8) / 127.0
+    y = y / sc[..., None]
+    a = torch.round(y)
+    b = torch.round((y - a) * 254.0)
+    out = torch.zeros((2, B, H, lp, D), dtype=torch.int8, device=x.device)
+    out[0, :, :, :L] = a
+    out[1, :, :, :L] = b
+    scales = torch.zeros((B * H, lp), dtype=torch.float32, device=x.device)
+    scales[:, :L] = sc.reshape(B * H, L)
+    return out[0], out[1], scales
+
+
 def quant_vt(v: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """``v [B, L, H, D]`` → int8 ``[B, H, D, Lp]``, per-channel scales ``[B·H, D]``."""
     B, L, H, D = v.shape
@@ -201,6 +220,16 @@ def quant_vt(v: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     return vq, vs
 
 
+@triton.jit
+def _quarters(x, N: tl.constexpr, D: tl.constexpr):
+    """``x [N, D]`` → four ``[N, D/4]``, the dims taken by index mod 4 (0, 2, 1, 3). Done in
+    registers, so splitting an operand costs no second load."""
+    a, b = tl.split(tl.reshape(x, [N, D // 2, 2]))
+    a0, a1 = tl.split(tl.reshape(a, [N, D // 4, 2]))
+    b0, b1 = tl.split(tl.reshape(b, [N, D // 4, 2]))
+    return a0, a1, b0, b1
+
+
 _CONFIGS = [
     triton.Config({"BLOCK_M": bm, "BLOCK_N": bn}, num_warps=w, num_stages=s)
     for bm in (64, 128)
@@ -217,7 +246,19 @@ if os.environ.get("INT8_ATTN_FIXED"):  # tests: one config, no autotune sweep
 
 @triton.autotune(
     configs=_CONFIGS,
-    key=["LQ", "LK", "QK_INT8", "QK_F16ACC", "PV_MODE", "TOKEN", "ROT", "Q_PRE"],
+    key=[
+        "LQ",
+        "LK",
+        "QK_INT8",
+        "QK_F16ACC",
+        "PV_MODE",
+        "TOKEN",
+        "ROT",
+        "Q_PRE",
+        "S_SPLIT",
+        "S_REG",
+        "QK_2P",
+    ],
 )
 @triton.jit
 def _fwd_kernel(
@@ -249,7 +290,10 @@ def _fwd_kernel(
     NKS,
     NQS,
     qk_scale,
+    Q2,
+    K2,
     D: tl.constexpr,
+    QK_2P: tl.constexpr,
     QK_INT8: tl.constexpr,
     QK_F16ACC: tl.constexpr,
     PV_MODE: tl.constexpr,
@@ -257,6 +301,8 @@ def _fwd_kernel(
     TOKEN: tl.constexpr,
     ROT: tl.constexpr,
     Q_PRE: tl.constexpr,
+    S_SPLIT: tl.constexpr,
+    S_REG: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
@@ -292,6 +338,15 @@ def _fwd_kernel(
             q_s = q_s * qk_scale
         q = (qf + tl.where(qf >= 0, 0.5, -0.5)).to(tl.int8)
 
+    if QK_F16ACC and S_REG:
+        q0, q1, q2, q3 = _quarters(q.to(tl.float16), BLOCK_M, D)
+    if QK_2P:
+        qb = tl.load(
+            Q2 + b * sqb + h * sqh + offs_m[:, None] * sql + offs_d[None, :],
+            mask=offs_m[:, None] < LQ,
+            other=0,
+        )
+
     m_i = tl.full([BLOCK_M], float("-inf"), tl.float32)
     l_i = tl.zeros([BLOCK_M], tl.float32)
     lq_i = tl.zeros([BLOCK_M], tl.float32)  # sum of the rounded P (pv int8)
@@ -311,6 +366,52 @@ def _fwd_kernel(
             else:
                 ks = tl.load(KS + bh * NKS + cols // KBLK, mask=kmask, other=0.0)
             s = tl.dot(q, k, out_dtype=tl.int32).to(tl.float32) * (q_s * ks[None, :])
+            if QK_2P:  # q·k ≈ a·a + (a·b + b·a) / 254, each sum exact in int32
+                kb = tl.load(
+                    K2 + b * skb + h * skh + cols[None, :] * skl + offs_d[:, None],
+                    mask=kmask[None, :],
+                    other=0,
+                )
+                s = (
+                    tl.dot(q, k, out_dtype=tl.int32).to(tl.float32)
+                    + (
+                        tl.dot(q, kb, out_dtype=tl.int32)
+                        + tl.dot(qb, k, out_dtype=tl.int32)
+                    ).to(tl.float32)
+                    * (1.0 / 254.0)
+                ) * (q_s * ks[None, :])
+        elif QK_F16ACC and S_REG:
+            kt = tl.load(
+                k_base + cols[:, None] * skl + offs_d[None, :],
+                mask=kmask[:, None],
+                other=0,
+            )
+            k0, k1, k2, k3 = _quarters(kt.to(tl.float16), BLOCK_N, D)
+            s = (
+                tl.dot(q0, tl.trans(k0), out_dtype=tl.float16).to(tl.float32)
+                + tl.dot(q1, tl.trans(k1), out_dtype=tl.float16).to(tl.float32)
+                + tl.dot(q2, tl.trans(k2), out_dtype=tl.float16).to(tl.float32)
+                + tl.dot(q3, tl.trans(k3), out_dtype=tl.float16).to(tl.float32)
+            ) * qk_scale
+        elif QK_F16ACC and S_SPLIT > 1:
+            # one fp16 GEMM per D / S_SPLIT dims, summed in fp32 (chunks reloaded: error only)
+            s = tl.zeros([BLOCK_M, BLOCK_N], tl.float32)
+            for c in tl.static_range(S_SPLIT):
+                od = c * (D // S_SPLIT) + tl.arange(0, D // S_SPLIT)
+                qc = tl.load(
+                    Q + b * sqb + h * sqh + offs_m[:, None] * sql + od[None, :],
+                    mask=offs_m[:, None] < LQ,
+                    other=0.0,
+                )
+                kc = tl.load(
+                    k_base + cols[None, :] * skl + od[:, None],
+                    mask=kmask[None, :],
+                    other=0,
+                )
+                s += tl.dot(
+                    qc.to(tl.float16), kc.to(tl.float16), out_dtype=tl.float16
+                ).to(tl.float32)
+            s = s * qk_scale
         elif QK_F16ACC:
             s = (
                 tl.dot(q.to(tl.float16), k.to(tl.float16), out_dtype=tl.float16).to(
@@ -373,6 +474,9 @@ def attn_fwd(
     rot: bool = False,
     center: str = "mean",
     pre: tuple | None = None,
+    qk_split: int = 1,
+    split_reg: bool = False,
+    planes2: tuple | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """``q [B, Lq, H, D]``, ``k, v [B, Lk, H, D]`` bf16 → ``(o, lse)``. ``pre``:
     ``(qr, qs, kr, ks)`` int8 copies from :func:`quant_tok` (token + rot), see
@@ -386,7 +490,7 @@ def attn_fwd(
     hm = hadamard(D, q.device)
     qq, qs, q_strides = q, q.new_empty(1, dtype=torch.float32), q.stride()[:3]
     if pre is not None:
-        assert qk == "int8" and gran == "token" and rot
+        assert qk == "int8" and gran == "token" and rot == (planes2 is None)
         qq, qs, kk, ks = pre
         q_strides = qq.stride(0), qq.stride(2), qq.stride(1)
         k_strides = kk.stride(0), kk.stride(1), kk.stride(2)
@@ -430,7 +534,9 @@ def attn_fwd(
         ks.shape[-1] if qk == "int8" else 0,
         qs.shape[-1],
         scale,
+        *(planes2 if planes2 is not None else (qq, kk)),
         D=D,
+        QK_2P=planes2 is not None,
         QK_INT8=qk == "int8",
         QK_F16ACC=qk == "fp16acc",
         PV_MODE=PV_MODES[pv],
@@ -438,6 +544,8 @@ def attn_fwd(
         TOKEN=gran == "token",
         ROT=rot,
         Q_PRE=pre is not None,
+        S_SPLIT=qk_split,
+        S_REG=split_reg,
     )
     return o, lse
 
@@ -464,7 +572,10 @@ def attn_fwd(
 #   near-uniform and P·dO underflows; P ≤ 1 and |dO| ≤ 1 keep a 64-query tile under
 #   16384.
 # - ``s`` (QKᵀ recompute, no int8 forward): ``bf16`` or ``fp16`` (fp32 accumulate), or
-#   ``fp16acc``.
+#   ``fp16acc``. ``s_split`` (and the forward's ``qk_split``) hands the fp16 partial sum to
+#   fp32 that many times over the head dim, 1 being once at the end. Those arms reload Q
+#   and K per chunk, so only their error counts. ``split_reg`` is the four-way split with the
+#   chunks cut in registers (dims by index mod 4), whose time counts too.
 
 BWD_MODES = {"fp16": 0, "fp16acc": 1, "int8": 2, "fp16acc_row": 3, "fp16acc_gain": 4}
 S_MODES = {"bf16": 0, "fp16acc": 1, "fp16": 2}
@@ -573,7 +684,18 @@ if os.environ.get("INT8_ATTN_FIXED"):
     _BWD_CONFIGS = [
         triton.Config({"BLOCK_O": 64, "BLOCK_L": 32}, num_warps=4, num_stages=2)
     ]
-_BWD_KEY = ["LQ", "LK", "QK_INT8", "S_MODE", "DP_MODE", "DV_MODE", "DQK_MODE"]
+_BWD_KEY = [
+    "LQ",
+    "LK",
+    "QK_INT8",
+    "S_MODE",
+    "DP_MODE",
+    "DV_MODE",
+    "DQK_MODE",
+    "S_SPLIT",
+    "S_REG",
+    "QK_2P",
+]
 
 
 @triton.jit
@@ -638,13 +760,18 @@ def _bwd_dkdv_kernel(
     LKP,
     qk_scale,
     sm_scale,
+    QR2,
+    KR2,
     D: tl.constexpr,
+    QK_2P: tl.constexpr,
     QK_INT8: tl.constexpr,
     S_MODE: tl.constexpr,
     DP_MODE: tl.constexpr,
     DV_MODE: tl.constexpr,
     DQK_MODE: tl.constexpr,
     KBLK: tl.constexpr,
+    S_SPLIT: tl.constexpr,
+    S_REG: tl.constexpr,
     BLOCK_O: tl.constexpr,
     BLOCK_L: tl.constexpr,
 ):
@@ -660,6 +787,8 @@ def _bwd_dkdv_kernel(
     if QK_INT8:
         kr = tl.load(KR + bh * LKP * D + offs_n[:, None] * D + offs_d[None, :])
         ksn = tl.load(KS + bh * LKP + offs_n)
+        if QK_2P:
+            krb = tl.load(KR2 + bh * LKP * D + offs_n[:, None] * D + offs_d[None, :])
     else:
         kr = tl.load(
             K + b * skb + h * skh + offs_n[:, None] * skl + offs_d[None, :],
@@ -675,6 +804,9 @@ def _bwd_dkdv_kernel(
             mask=nmask[:, None],
             other=0.0,
         ).to(tl.float16)
+
+    if S_MODE == 1 and S_REG:
+        k0, k1, k2, k3 = _quarters(kr.to(tl.float16), BLOCK_O, D)
 
     dv = tl.zeros([BLOCK_O, D], tl.float32)
     dk = tl.zeros([BLOCK_O, D], tl.float32)
@@ -701,6 +833,44 @@ def _bwd_dkdv_kernel(
             s_t = tl.dot(kr, qr_t, out_dtype=tl.int32).to(tl.float32) * (
                 ksn[:, None] * (qsm * qk_scale)[None, :]
             )
+            if QK_2P:
+                qrb_t = tl.load(
+                    QR2 + bh * LQP * D + offs_m[None, :] * D + offs_d[:, None]
+                )
+                s_t = (
+                    tl.dot(kr, qr_t, out_dtype=tl.int32).to(tl.float32)
+                    + (
+                        tl.dot(kr, qrb_t, out_dtype=tl.int32)
+                        + tl.dot(krb, qr_t, out_dtype=tl.int32)
+                    ).to(tl.float32)
+                    * (1.0 / 254.0)
+                ) * (ksn[:, None] * (qsm * qk_scale)[None, :])
+        elif S_MODE == 1 and S_REG:
+            q0, q1, q2, q3 = _quarters(qf.to(tl.float16), BLOCK_L, D)
+            s_t = (
+                tl.dot(k0, tl.trans(q0), out_dtype=tl.float16).to(tl.float32)
+                + tl.dot(k1, tl.trans(q1), out_dtype=tl.float16).to(tl.float32)
+                + tl.dot(k2, tl.trans(q2), out_dtype=tl.float16).to(tl.float32)
+                + tl.dot(k3, tl.trans(q3), out_dtype=tl.float16).to(tl.float32)
+            ) * qk_scale
+        elif S_MODE == 1 and S_SPLIT > 1:
+            s_t = tl.zeros([BLOCK_O, BLOCK_L], tl.float32)
+            for c in tl.static_range(S_SPLIT):
+                od = c * (D // S_SPLIT) + tl.arange(0, D // S_SPLIT)
+                kc = tl.load(
+                    K + b * skb + h * skh + offs_n[:, None] * skl + od[None, :],
+                    mask=nmask[:, None],
+                    other=0.0,
+                )
+                qc = tl.load(
+                    Q + b * sqb + h * sqh + offs_m[None, :] * sql + od[:, None],
+                    mask=mmask[None, :],
+                    other=0.0,
+                )
+                s_t += tl.dot(
+                    kc.to(tl.float16), qc.to(tl.float16), out_dtype=tl.float16
+                ).to(tl.float32)
+            s_t = s_t * qk_scale
         elif S_MODE == 1:
             s_t = (
                 tl.dot(
@@ -815,13 +985,18 @@ def _bwd_dq_kernel(
     LKP,
     qk_scale,
     sm_scale,
+    QR2,
+    KR2,
     D: tl.constexpr,
+    QK_2P: tl.constexpr,
     QK_INT8: tl.constexpr,
     S_MODE: tl.constexpr,
     DP_MODE: tl.constexpr,
     DV_MODE: tl.constexpr,
     DQK_MODE: tl.constexpr,
     KBLK: tl.constexpr,
+    S_SPLIT: tl.constexpr,
+    S_REG: tl.constexpr,
     BLOCK_O: tl.constexpr,
     BLOCK_L: tl.constexpr,
 ):
@@ -837,6 +1012,8 @@ def _bwd_dq_kernel(
     if QK_INT8:
         qr = tl.load(QR + bh * LQP * D + offs_m[:, None] * D + offs_d[None, :])
         qsm = tl.load(QS + bh * LQP + offs_m) * qk_scale
+        if QK_2P:
+            qrb = tl.load(QR2 + bh * LQP * D + offs_m[:, None] * D + offs_d[None, :])
     else:
         qr = tl.load(
             Q + b * sqb + h * sqh + offs_m[:, None] * sql + offs_d[None, :],
@@ -855,6 +1032,9 @@ def _bwd_dq_kernel(
     lse_m = tl.load(LSE + bh * LQ + offs_m, mask=mmask, other=0.0)
     delta_m = tl.load(DELTA + bh * LQ + offs_m, mask=mmask, other=0.0)
 
+    if S_MODE == 1 and S_REG:
+        q0, q1, q2, q3 = _quarters(qr.to(tl.float16), BLOCK_O, D)
+
     dq = tl.zeros([BLOCK_O, D], tl.float32)
     nkb = LKP // KBLK
     for start_n in range(0, LK, BLOCK_L):
@@ -872,6 +1052,44 @@ def _bwd_dq_kernel(
             s = tl.dot(qr, kr_t, out_dtype=tl.int32).to(tl.float32) * (
                 qsm[:, None] * ksn[None, :]
             )
+            if QK_2P:
+                krb_t = tl.load(
+                    KR2 + bh * LKP * D + offs_n[None, :] * D + offs_d[:, None]
+                )
+                s = (
+                    tl.dot(qr, kr_t, out_dtype=tl.int32).to(tl.float32)
+                    + (
+                        tl.dot(qr, krb_t, out_dtype=tl.int32)
+                        + tl.dot(qrb, kr_t, out_dtype=tl.int32)
+                    ).to(tl.float32)
+                    * (1.0 / 254.0)
+                ) * (qsm[:, None] * ksn[None, :])
+        elif S_MODE == 1 and S_REG:
+            k0, k1, k2, k3 = _quarters(kf.to(tl.float16), BLOCK_L, D)
+            s = (
+                tl.dot(q0, tl.trans(k0), out_dtype=tl.float16).to(tl.float32)
+                + tl.dot(q1, tl.trans(k1), out_dtype=tl.float16).to(tl.float32)
+                + tl.dot(q2, tl.trans(k2), out_dtype=tl.float16).to(tl.float32)
+                + tl.dot(q3, tl.trans(k3), out_dtype=tl.float16).to(tl.float32)
+            ) * qk_scale
+        elif S_MODE == 1 and S_SPLIT > 1:
+            s = tl.zeros([BLOCK_O, BLOCK_L], tl.float32)
+            for c in tl.static_range(S_SPLIT):
+                od = c * (D // S_SPLIT) + tl.arange(0, D // S_SPLIT)
+                qc = tl.load(
+                    Q + b * sqb + h * sqh + offs_m[:, None] * sql + od[None, :],
+                    mask=mmask[:, None],
+                    other=0.0,
+                )
+                kc = tl.load(
+                    K + b * skb + h * skh + offs_n[None, :] * skl + od[:, None],
+                    mask=nmask[None, :],
+                    other=0.0,
+                )
+                s += tl.dot(
+                    qc.to(tl.float16), kc.to(tl.float16), out_dtype=tl.float16
+                ).to(tl.float32)
+            s = s * qk_scale
         elif S_MODE == 1:
             s = (
                 tl.dot(
@@ -954,6 +1172,9 @@ def attn_bwd(
     dqk: str = "int8",
     sm_scale: float | None = None,
     s: str = "bf16",
+    s_split: int = 1,
+    split_reg: bool = False,
+    planes2: tuple | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """``(dq, dk, dv)`` bf16 in ``[B, L, H, D]``. ``saved`` from :func:`attn_fwd_train`
     recomputes P with int8 QKᵀ; ``None`` recomputes it in bf16 (pair with the bf16
@@ -962,7 +1183,7 @@ def attn_bwd(
     LK = k.shape[1]
     sm = sm_scale if sm_scale is not None else D**-0.5
     qk_int8 = saved is not None
-    qk_scale = sm * LOG2E / (D if qk_int8 else 1)
+    qk_scale = sm * LOG2E / (D if qk_int8 and planes2 is None else 1)  # rotated copies
     dev = q.device
     lqp, lkp = _pad(LQ), _pad(LK)
 
@@ -1000,8 +1221,12 @@ def attn_bwd(
         DV_MODE=BWD_MODES[dv],
         DQK_MODE=BWD_MODES[dqk],
         KBLK=KBLK,
+        S_SPLIT=s_split,
+        S_REG=split_reg,
+        QK_2P=planes2 is not None,
     )
-    tail = (H, LQ, LK, lqp, lkp, qk_scale, sm)
+    qr2, kr2 = planes2 if planes2 is not None else (nil, nil)
+    tail = (H, LQ, LK, lqp, lkp, qk_scale, sm, qr2, kr2)
 
     def grid_k(meta):
         return (triton.cdiv(LK, meta["BLOCK_O"]), B * H)

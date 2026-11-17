@@ -61,6 +61,7 @@ inputs.
 | Nunchaku `nunchaku-fp16` attention, source read | the forward of `tri_all` (QKᵀ + PV fp16acc, fp32 softmax, 128×32 tile), forward only, no key mask, packed layout: not a drop-in; our own patch is the way to try it ([report](reports/nunchaku.md)) |
 | fp16acc forward in FA2 | ported (`patches/fwd_fp16acc.patch` in flash-attention-fp16): MOSS self forward 1.15x `pv`, 1.35x `all`; 1024² generation −4% / −8% per image, same composition. `pv` error 0.96–1.00x stock; `all` puts dK / dV at 1.5–1.7x through the backward's S. `pv` on by default from 1024 keys, `all` opt-in; no training step measured ([report](reports/fa2_fwd_fp16acc.md)) |
 | fp16 input to FA2 (`f16in`) | shipped: casts move into the traced forward and fuse into RoPE; MOSS step −19 ms (2.0%), Anima step −12 ms (3.1%), MOSS bitwise to the bf16 path; an op returning its fp16 copies was recomputed by the partitioner (+58 ms) ([report](reports/fa2_f16in.md)) |
+| QKᵀ off fp32 accumulation | none kept: the error of fp16 QKᵀ is the accumulator's rounding (dK / dV 1.5–1.7x the shipped build with the logsumexp shared). Key mean removal changes nothing; a four-way split of the head dim gives 1.08–1.10x and is slower than the shipped arm in Triton; two int8 planes give 1.00x and are 14–15% slower ([report](reports/fa2_qk_fp16.md)) |
 | one int8 linear for MOSS q / k / v | built: forward 1.30x and bit-identical, dX 1.31x, about 24 ms of a step; LoRA gradient 0.986–1.006x ([report](reports/qkv_fuse.md)) |
 
 Criterion, as it stands now:
