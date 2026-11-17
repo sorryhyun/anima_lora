@@ -285,9 +285,19 @@ def vl_tokens(
 
 
 def token_batches(
-    tokens: np.ndarray, budget: int, batch_size: int, rng: random.Random
+    tokens: np.ndarray,
+    budget: int,
+    batch_size: int,
+    rng: random.Random,
+    *,
+    padded: bool = False,
 ) -> list[list[int]]:
     """Batches capped by **total packed tokens**, not crop count.
+
+    ``padded=True`` caps the padded cost (largest crop × crops) instead of the sum:
+    the LM input is padded to the batch's longest row, and the jittered order can
+    put one large crop among small ones (sfxp train, budget 6144: sum-capped
+    batches reach 10,560 padded, padded-capped ones stay under the budget).
 
     ``area_batches`` fixes the crop count, so a batch drawn from the large-crop tail
     can cost several times the median and OOM the tower on a spike (measured on
@@ -302,14 +312,16 @@ def token_batches(
     order = np.argsort(key)
     batches: list[list[int]] = []
     cur: list[int] = []
-    run = 0
+    run = top = 0
     for i in order:
         t = int(tokens[i])
-        if cur and (run + t > budget or len(cur) >= batch_size):
+        cost = max(top, t) * (len(cur) + 1) if padded else run + t
+        if cur and (cost > budget or len(cur) >= batch_size):
             batches.append(cur)
-            cur, run = [], 0
+            cur, run, top = [], 0, 0
         cur.append(int(i))
         run += t
+        top = max(top, t)
     if cur:
         batches.append(cur)
     rng.shuffle(batches)

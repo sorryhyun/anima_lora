@@ -1,6 +1,6 @@
 # OCR reader: `OCR:` for speech, `SFX:` for sound effects
 
-Status: data built, 1k-step pilot run (2026-11-17).
+Status: data built, 1k-step pilot and a 2-epoch run stopped after epoch 1 (2026-11-17).
 
 Goal: retrain the manga reader (PaddleOCR-VL, Hub `v6/`, `anime_tools.ocr.reader`) with two task
 prompts. `OCR:` reads speech and answers `""` on a crop holding only SFX. `SFX:` reads the sound
@@ -77,15 +77,41 @@ about 1 / 12 of v6's steps.
   page: the 1k reader gains 2.8 points on COO SFX and 28 ♡-blind lines on doujin. v6, trained on
   the 0.12 pad, is flat on COO; its doujin strict drop (349 → 292) is trailing hearts clipped, as
   ♡-blind rises 413 → 423.
-- The reading gap to v6 is undertraining, not the margin.
+- The pilot's reading gap to v6 looked like undertraining. The 2-epoch run below says SFX is not
+  only that.
+
+## Run `sfxp_1117_1816`: stopped after epoch 1 (6,790 of 13,580 steps)
+
+Batching for this run (`finetune_vl16_lora.py`):
+
+- `--token_budget 1536`: batches cut on padded patch tokens (largest crop × crops,
+  `crop_dataset.token_batches(padded=True)`), not on area.
+- `--max_tokens 2048`: training crops capped at 2,048 patch tokens (max_pixels 401,408); the
+  73 crops above it are large-glyph notes and SFX, read the same at the lower resolution. Val keeps
+  the processor default.
+- bs 2 × 8 without gradient checkpointing: 14.8 crops/s, peak 11.5 GB, against 10.7–11.0 crops/s
+  (peak 7.1 GB) for bs 8 × 2 with checkpointing. bs 8 without checkpointing runs out of memory on a
+  16 GB card at 6k tokens per batch, with SDPA and with flash-attn 2 alike.
+
+| | v6, 0.12 pad | v6, 4 px | 1k, 4 px | ep1, 0.12 pad | ep1, 4 px |
+|---|---|---|---|---|---|
+| COO SFX, `SFX:` | — | — | 67.3 % | 66.1 % | 71.0 % |
+| COO SFX, `OCR:` | 85.3 % | 85.2 % | 2.7 % | 6.3 % | 7.9 % |
+| COO speech, `OCR:` | 88.9 % | 88.4 % | 85.0 % | 85.4 % | 85.8 % |
+| doujin SFX, strict / ♡-blind | 349 / 413 | 292 / 423 | 97 / 249 | 199 / 362 | 183 / 358 |
+
+- Val at ep1: SFX 79.6 %, speech 87.0 %, `OCR:` empty on SFX 99.5 %, `SFX:` empty on speech 96.7 %.
+- v6's own run gained 4.2 (SFX) and 4.0 (speech) val points from ep1 to ep2. The same step would
+  put speech near v6 and leave COO SFX about 10 points short.
+- On the 4 px COO SFX crops, v6 is right and ep1 wrong on 430 (the reverse on 67): 248 misread
+  glyphs (ぱち → ばち, ギシッ → ゴシッ), 107 trailing extras (は → は…), 61 empty answers, 14 cut
+  short.
+- Open: the reader trains SFX on detector boxes and is scored on COO polygon crops; v6 trained
+  on the polygon crops. A contact sheet of the two comes next.
 
 ## Next
 
-- Train longer.
-- Check the crops on a contact sheet where a change to the data calls for it.
-- Batching: the worst padded batch (bs 8) is 39,520 tokens against a p99 of 5,888 (v6's mix:
-  40,704 / 12,006). 73 crops pass 2,048 tokens (gelnote ZH 29, KO 25: half-page notes; detector
-  SFX boxes 19). Check a way to keep them from forming a batch together.
+- Compare the detector-box SFX training crops with the COO polygon crops before training again.
 
 ## Downstream
 

@@ -17,7 +17,10 @@ Tower + projector frozen; LoRA (``--rank``, α = 2r) on the ERNIE LM's attention
 vision tower's same-named projections are untouched. Prompt = the chat
 template's ``User: <image>OCR:\\nAssistant:\\n`` (exactly the eval's), target =
 normalised text + ``</s>``; loss on the target tokens only. Batches are grouped
-by crop area (the A/B's batching rule) and left-padded (loss on the last K logits); the
+by crop area (the A/B's batching rule), or with ``--token_budget N`` cut where the
+padded patch-token cost (largest crop × crops) would pass N, so the few large crops
+train in small batches instead of one 8-crop batch of them; a short batch's loss is
+scaled by crops / ``--bs``. Batches are left-padded (loss on the last K logits); the
 per-epoch val generation is left-padded, greedy, ``use_cache=True``, no
 repetition guard — the runaway count is reported like the stock row.
 
@@ -156,14 +159,21 @@ def save_full(path: Path, params) -> None:
 class Collate:
     """``prompt`` is one string, or one per dataset row (``--sfx_prefix``)."""
 
-    def __init__(self, proc, prompt: str | list[str], min_edge: int):
+    def __init__(
+        self,
+        proc,
+        prompt: str | list[str],
+        min_edge: int,
+        max_pixels: int = 1280 * 28 * 28,
+    ):
         self.proc, self.prompt, self.min_edge = proc, prompt, min_edge
+        self.max_pixels = max_pixels
         self.tok = proc.tokenizer
         self.eos = self.tok.eos_token
 
     def images_kwargs(self):
         return {
-            "size": {"shortest_edge": self.min_edge, "longest_edge": 1280 * 28 * 28}
+            "size": {"shortest_edge": self.min_edge, "longest_edge": self.max_pixels}
         }
 
     def __call__(self, items):
@@ -352,6 +362,27 @@ def main():
     ap.add_argument("--val_bs", type=int, default=16)
     ap.add_argument("--no_augment", action="store_true")
     ap.add_argument("--no_grad_ckpt", action="store_true")
+    ap.add_argument(
+        "--max_tokens",
+        type=int,
+        default=1280 * 4,
+        help="training crops' patch-token cap (processor max_pixels = N x 196); "
+        "the default is the processor's 1280x28x28. Val keeps the processor default",
+    )
+    ap.add_argument(
+        "--attn",
+        default="sdpa",
+        choices=("sdpa", "flash_attention_2"),
+        help="attn_implementation; flash_attention_2 needs a wheel with the tower's "
+        "head dim 72 (stock flash-attn, not the fa2-sm120 hdim 64/128 build)",
+    )
+    ap.add_argument(
+        "--token_budget",
+        type=int,
+        default=0,
+        help="cap each batch's padded patch tokens (largest crop × crops; "
+        "crop_dataset.token_batches); 0 = fixed --bs area batches",
+    )
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--skip_stock_val", action="store_true")
@@ -398,8 +429,13 @@ def main():
 
     prompt = chat("OCR:")
     base = AutoModelForImageTextToText.from_pretrained(
-        str(BASE), dtype=torch.bfloat16, attn_implementation="sdpa"
+        str(BASE), dtype=torch.bfloat16, attn_implementation=a.attn
     ).to("cuda")
+    print(
+        f"attn {base.config._attn_implementation} (vision "
+        f"{base.config.vision_config._attn_implementation})",
+        flush=True,
+    )
     base.config.use_cache = False
     if a.init_tower:  # SSL-adapted tower (ssl_tower_simmim.py) as the starting point
         from safetensors.torch import load_file
@@ -519,9 +555,33 @@ def main():
         flush=True,
     )
 
-    collate = Collate(proc, tr_prompt, min_edge)
+    max_pixels = a.max_tokens * 196  # 14 px patches
+    collate = Collate(proc, tr_prompt, min_edge, max_pixels)
     rng = random.Random(a.seed)
-    steps_per_epoch = len(tr) // a.bs // a.grad_accum
+    tr_tokens = cd.vl_tokens(
+        tr_df.w.to_numpy(), tr_df.h.to_numpy(), min_edge, max_pixels
+    )
+
+    def make_batches(r: random.Random) -> list[list[int]]:
+        if a.token_budget:
+            return cd.token_batches(tr_tokens, a.token_budget, a.bs, r, padded=True)
+        return cd.area_batches(tr.area, a.bs, r)
+
+    def padded_cost(b: list[int]) -> int:
+        return int(tr_tokens[b].max()) * len(b)
+
+    probe = make_batches(random.Random(a.seed))
+    cost = np.array([padded_cost(b) for b in probe])
+    n_rows = np.array([len(b) for b in probe])
+    print(
+        f"batches {len(probe)} (token_budget {a.token_budget or 'off'}, min_pixels {min_edge}, "
+        f"max_tokens {a.max_tokens}): "
+        f"padded tokens max {cost.max()} p99 {int(np.percentile(cost, 99))} "
+        f"median {int(np.median(cost))}; {int((n_rows < a.bs).sum())} short "
+        f"(min {n_rows.min()} crops)",
+        flush=True,
+    )
+    steps_per_epoch = len(probe) // a.grad_accum
     total = steps_per_epoch * a.epochs
     if a.steps:
         a.epochs = -(-a.steps // steps_per_epoch)
@@ -577,9 +637,9 @@ def main():
     step, micro, t0, seen = 0, 0, time.time(), 0
     best = (-1.0, None)
     for ep in range(1, a.epochs + 1):
-        batches = cd.area_batches(tr.area, a.bs, rng)
+        batches = make_batches(rng)
         if a.largest_first:
-            batches.sort(key=lambda b: -float(tr.area[b].max()))
+            batches.sort(key=lambda b: -padded_cost(b))
         dl = DataLoader(
             tr,
             batch_sampler=batches,
@@ -590,11 +650,14 @@ def main():
         losses = []
         for enc, _ in dl:
             enc = enc.to("cuda")
-            loss = target_loss(model, enc) / a.grad_accum
+            n = enc["input_ids"].shape[0]
+            raw = target_loss(model, enc)
+            # a short (token-budget) batch weighs by its crops, as if part of a --bs batch
+            loss = raw * (min(n, a.bs) / a.bs) / a.grad_accum
             loss.backward()
             micro += 1
-            seen += enc["input_ids"].shape[0]
-            losses.append(loss.item() * a.grad_accum)
+            seen += n
+            losses.append(raw.item())
             if micro % a.grad_accum:
                 continue
             for (_, p), m in zip(full_params, full_masters):
