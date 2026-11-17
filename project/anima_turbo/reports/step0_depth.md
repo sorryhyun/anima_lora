@@ -179,7 +179,31 @@ Train anchor MSE by tenth (the first half reads each pair once): 5e-5 0.089, 0.0
   the full cache (`turbo_1117_1054`, `0823` with only the LR changed) is compared with `0823` before
   it is closed.
 
-## Feature matching: floor and control
+## A lower student LR, full length: `turbo_1117_1054`
+
+`0823` at `student_lr` 2e-5 (cosine to 2e-6), nothing else changed: the full cache, one pass, rank 64.
+Config `../configs/turbo_1117_1054.toml`, probe
+`bench/turbo/results/20261117-1204-handoff_m15_1054_lr2e5_pall/`, sheets
+`output/tests/turbo4/cmp/lr2e5_full_p{0,1,2}.jpg` (teacher, `0823` `S`, `1054` `S`, seeds 1–4). 42 min.
+
+| final EMA | `0823` 5e-5 | `1054` 2e-5 | read (fixed in the config header) |
+|---|---|---|---|
+| held-out anchor MSE | 0.0695 | 0.0674 | below 0.070: passed |
+| `S` cos | 0.801 | 0.792 | not below 0.801: below |
+| `T>S@1` cos | 0.944 | 0.937 | held at 0.94: just under |
+| sameness `S` (teacher 0.314) | 0.300 | 0.284 | not down: down by 0.016 |
+| anchor error low share | 0.429 | 0.413 | |
+
+Per prompt the MSE falls on all three (0.066 / 0.080 / 0.062 → 0.064 / 0.078 / 0.060). The short
+A/B's pattern again at full length: 2e-5 fits the anchor a little closer, and the images move further
+from the teacher's and nearer each other.
+
+- Renders (my read; the verdict on them is the user's): close to `0823`. Guitarist seed 1 grows
+  the giant hand the short runs had, which `0823` did not; seed 2's body is no better; seeds 3 and 4
+  tie. The group's lower halves break alike. Café: seed 4 adds a sign with garbled text, the rest
+  tie.
+- Verdict on the probe: not passed. The held-out MSE passes; `S` cos, `T>S@1` and sameness fall.
+
 
 `bench/turbo/probe_fm_floor.py` on 16 pairs of `m15_k14of28_p1024`, the v1.1 init as the student,
 tap block 14 (middle), σ_k 0.75 (`bench/turbo/results/20261117-1052-fm_floor/`). Relative feature
@@ -200,6 +224,34 @@ L2, mean:
 - At `fm_weight` 1.0 (the 64-iteration smoke) the feature gradient into `v` is 52–270 times the
   MSE's and the pre-clip norm 7–45 against the anchor's 1.2; 0.01 puts the two near par. 1.30 it/s
   against the anchor's 2.6, peak 12.7 GB.
+
+## Feature matching at 0.01: `turbo_1117_1105`
+
+`1020` with `dpdmd.fm_weight` 0.01 (tap block 14, σ_k 0.75), nothing else changed. Config
+`../configs/turbo_1117_1105.toml`, probe `bench/turbo/results/20261117-1120-handoff_fm_1105/`, sheets
+`output/tests/turbo4/cmp/fm_1105_p{0,1,2}.jpg` (`1020` `S` on top, `1105` `S` below, seeds 1–4).
+24 min at 1.46 it/s.
+
+| final EMA | `1020` | `1105` fm 0.01 | read (fixed in the config header) |
+|---|---|---|---|
+| held-out anchor MSE | 0.0741 | 0.0739 | not above 0.076: held |
+| `S` cos | 0.785 | 0.786 | up: level |
+| `T>S@1` cos | 0.944 | 0.943 | held at 0.94 |
+| sameness `S` (teacher 0.314) | 0.285 | 0.279 | not down: down by 0.006 |
+| anchor error low share | 0.449 | 0.447 | |
+
+Every gap is under the `1020` / `1021` A/B spread (0.014 on `S` cos, 0.025 on sameness).
+
+- `train/fm_grad_ratio` ran 1.2 over the first tenth and 1.5–1.75 after it: the weighted feature
+  gradient into `v` sat at or above the MSE's for the whole run. The relative feature L2 fell 0.64
+  → 0.55, the diversity term 0.089 → 0.067; grad norm 1.2–1.4 after the first tenth, no non-finite
+  value.
+- Renders near-identical to `1020`. Guitarist seed 1 keeps the giant hand, seed 3 is the same image,
+  seed 4's guitar neck is a little tidier, seed 2 grows an extra arm behind the head. The group:
+  seed 2's lower pink-haired face is cleaner, seed 4's two overlapping heads at bottom right stay.
+- Verdict: not passed. At par with the MSE's gradient the term barely moves the student. Next arm
+  `fm_weight` 0.1 (`turbo_1117_1123`, ratio about 15 by this run's scale, under the smoke's
+  52–270 at 1.0).
 
 ## The 7 of 28 target, probed and parked
 

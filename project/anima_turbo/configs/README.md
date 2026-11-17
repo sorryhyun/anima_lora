@@ -19,3 +19,4 @@ The live run config only. Launch with
 - `turbo_1117_1105.toml`: paired feature matching (`dpdmd.fm_weight` 0.01) on the `1020` short run.
 - `turbo_1117_1054.toml`: `0823` at `student_lr` 2e-5 on the full cache, on the user's read of the
   short A/B's renders.
+- `turbo_1117_1123.toml`: `1105` at `dpdmd.fm_weight` 0.1.

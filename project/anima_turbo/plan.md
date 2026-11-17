@@ -49,10 +49,13 @@ r16; `docs/anima/methods/adaln.md`, `docs/anima/findings/lora_recipe.md`).
 ## What is open, in order
 
 1. **Student LR 2e-5 on the full cache** (`turbo_1117_1054`, rank 64, `0823` with only the LR
-   changed, about 43 min, read against `0823`). The short A/B at rank 64 (`turbo_1117_1020` /
+   changed, 42 min, read against `0823`). The short A/B at rank 64 (`turbo_1117_1020` /
    `1021`, `reports/step0_depth.md`) did not pass on the probe: held-out MSE level, `S` cos and
    sameness down at 2e-5. **The user's read of its renders (2026-11-17) sees promise in 2e-5**, so
-   the LR is not closed until the full-length run is compared with `0823`. The rank 96 form planned
+   the LR is not closed until the full-length run is compared with `0823`. **Ran 2026-11-17: not
+   passed on the probe** (held-out MSE 0.0695 → 0.0674, `S` cos 0.801 → 0.792, `T>S@1` 0.944 →
+   0.937, sameness 0.300 → 0.284), renders close to `0823`; the LR closes or stays open on the
+   user's read of `output/tests/turbo4/cmp/lr2e5_full_p{0,1,2}.jpg`. The rank 96 form planned
    before follows for the record.
    **Rank 96 at student LR 2e-5.** `0918` with `optim.student_lr` 5e-5 → 2e-5, nothing else
    changed; the cosine then ends at 2e-6. One pass, about 43 min, read against `0918`.
@@ -80,6 +83,10 @@ r16; `docs/anima/methods/adaln.md`, `docs/anima/findings/lora_recipe.md`).
      sample, so it is scale-free across taps) and `dpdmd.fm_block_idx` (-1 = middle), anchor_only
      only; `train/fm_grad_ratio` logs rms of the weighted feature gradient into `v` over the
      anchor MSE's. `tests/test_turbo_anchor_fm.py`.
+   - **0.01 (`turbo_1117_1105`): not passed**, level with `1020` on every probe number and in the
+     renders, with the feature gradient at 1.5–1.75x the MSE's. **0.1 (`turbo_1117_1123`)** is run
+     with its probe (`handoff_fm01_1123`), read next session against `1020` by the criteria in its
+     config header.
 
 3. **A paired GAN on the same path**, if 2 moves the probe and leaves the finish short.
    - The discriminator head on those teacher features: real = `x_t` from the cache, fake = `x_s`.
