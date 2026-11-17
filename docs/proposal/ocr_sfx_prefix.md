@@ -183,8 +183,29 @@ cut at 3,072 padded patch tokens, crops capped at 2,048 tokens, no stock val bef
 splits the rare large ones (98 % of batches hold 4 crops, 3.5 % padding). 16.7 crops/s at 11.8 GB
 peak on the costliest batches, against 13.7 for bs 2 × 8 and 13.0 for bs 8 × 2 with
 checkpointing; GPU utilisation at bs 2 was 70–80 % at ~220 W, the kernels too small to fill the
-card. Removing the per-step host syncs (loss `.item()`, label length) changed nothing. The 1k on
-this data and recipe is `sfxpc_1117_2300`.
+card. Removing the per-step host syncs (loss `.item()`, label length) changed nothing.
+
+### 1k on the fixed data, bs 4 × 4 (`sfxpc_1117_2300`)
+
+18.3 crops/s over the run (13.0 for `sfxpc_1117_2110`); peak 14.1 GB, above the smoke test's
+11.8 because long labels make the LM side of a batch dear, which `--largest_first` (vision cost)
+does not reach.
+
+| | pilot | `2110` | `2300` | paired z, 2300 vs 2110 |
+|---|---|---|---|---|
+| COO SFX, `SFX:`, 4 px | 67.3 % | 66.6 % | 66.5 % | −0.1 (192 / 193) |
+| COO SFX, `OCR:` | 2.7 % | 2.7 % | 3.5 % | |
+| COO speech, `OCR:` | 85.0 % | 84.9 % | 85.3 % | +1.1 |
+| doujin SFX, strict / ♡-blind | 97 / 249 | 129 / 210 | 114 / 215 | −1.7 / +0.5 |
+| val SFX | | 73.9 % | 76.4 % | +2.7 |
+| val speech | | 87.5 % | 87.7 % | +0.5 |
+| val `OCR:` empty on SFX | | 97.7 % | 95.4 % | −2.9 |
+| val `SFX:` empty on speech | | 89.9 % | 87.6 % | −2.0 |
+
+COO and doujin do not move. Val SFX gains while both negatives lose, and the batching changed
+with the data, so neither is credited. None of these sets holds Korean speech
+(`manifest_sfxp_kozh` is train-only; val and COO speech are Manga109), so the KO label fixes are
+not measured here; that needs a held-out KO set.
 
 ## Next
 
