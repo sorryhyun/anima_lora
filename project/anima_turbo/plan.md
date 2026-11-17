@@ -84,9 +84,31 @@ r16; `docs/anima/methods/adaln.md`, `docs/anima/findings/lora_recipe.md`).
      only; `train/fm_grad_ratio` logs rms of the weighted feature gradient into `v` over the
      anchor MSE's. `tests/test_turbo_anchor_fm.py`.
    - **0.01 (`turbo_1117_1105`): not passed**, level with `1020` on every probe number and in the
-     renders, with the feature gradient at 1.5–1.75x the MSE's. **0.1 (`turbo_1117_1123`)** is run
-     with its probe (`handoff_fm01_1123`), read next session against `1020` by the criteria in its
-     config header.
+     renders, with the feature gradient at 1.5–1.75x the MSE's. 0.1 (`turbo_1117_1123`) was stopped
+     at step 130 (feature gradient 8–14x the MSE's, anchor 0.077 → 0.086 over steps 50–100).
+     **0.05 (`turbo_1117_1403`): not passed.** S cos 0.776 (1020: 0.785), T>S@1 0.944 (0.944),
+     sameness S 0.296 (0.285), held-out anchor MSE 0.0768 (0.0741, above the 0.002 spread). The
+     feature gradient ran 6–10x the MSE's, but the feature loss did not fall below 0.01's (0.655
+     against 0.640 over steps 100–730, same seed), so the term perturbs the regression without
+     closing the feature gap. Renders: the group lower halves on seeds 3 and 4 hold together a
+     little better than 1020's, while the guitarist seeds 1, 2 and 4 still break, in different
+     places (`bench/turbo/results/20261117-1429-handoff_fm005_1403`). The user reads 1403's
+     composition as better than 1020's and the term as promising, so the line goes on.
+   - Tap depth (`probe_fm_floor`, v1.1 student, 16 pairs; student residual over an equal-norm
+     random one, median): block 3 0.6, 7 1.1, 14 10.3, 20 9.3, **27 28.0** (min 19). Blocks
+     14 and 20 sit at a relative distance of 0.5–0.7, block 27 at 0.010 against a jitter of
+     0.0004: the last block reads the student's residual and ignores a random one, so the next
+     arm taps 27 with `fm_weight` set from a smoke's `fm_grad_ratio`.
+   - A 120-step smoke at tap 27, weight 0.05: `fm_grad_ratio` 0.02, and the feature loss falls
+     with the anchor regression alone (0.0099 → 0.0083), which tap 14 never did; 1.08 it/s
+     against 1.5 (no early exit). **Tap 27 at 15 (`turbo_1117_1442`)**, about 6x at the start,
+     level with 1403's share: **not passed on the probe.** S cos 0.781, T>S@1 0.944, sameness S
+     0.291, held-out anchor MSE 0.0772 (above the spread, like 1403's 0.0768). The ratio held at
+     5–6x, the feature loss sat flat at 0.009 (the smoke's regression alone took it to 0.0083),
+     and the training anchor ran 3.5% over 1403's. Renders against 1403: the guitarist's seeds 2
+     and 4 hold a whole guitar and seed 1 grows 1020's large hand again; the group's seed 3
+     doubles the grey-haired girl and seed 4 merges the lower faces
+     (`bench/turbo/results/20261117-1517-handoff_fmtap27_1442`). The user's read pending.
 
 3. **A paired GAN on the same path**, if 2 moves the probe and leaves the finish short.
    - The discriminator head on those teacher features: real = `x_t` from the cache, fake = `x_s`.
