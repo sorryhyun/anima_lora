@@ -435,6 +435,7 @@ def linebreak_rows(d: Path) -> dict[str, list[dict]]:
 
 
 LINE_DOT_RUN = re.compile(r"[.．・･…‥]+")
+RAW_DOT = re.compile(r"[.．・･]{2,}|[.．・･][…‥\n]|[…‥\n][.．・･]")
 
 
 def round_dots(t: str) -> str:
@@ -475,7 +476,8 @@ def odd_dot_rows(d: Path) -> dict[str, list[dict]]:
         if k in skip or not DOT_FREE.sub("", r.text):
             continue
         odd = odd_dots(r.text)
-        if not odd:
+        # ``…\n…`` alone (dot columns already spelled) is not odd here
+        if not odd or not RAW_DOT.search(r.text):
             continue
         longest = max(len(m) for m in LINE_DOT_RUN.findall(r.text))
         page = m109.page_path(r.book, int(r.page))
