@@ -36,7 +36,7 @@ import textnorm  # noqa: E402
 from augment import Augment  # noqa: E402
 
 MAX_TARGET_CHARS = 96
-TARGET_NORM = 6
+TARGET_NORM = 7
 """Bumped when :func:`normalize_target` changes. 1 = NFKC, whitespace deleted
 (every run before 2026-09-09); 2 = whitespace collapsed to one ASCII space
 (``vl16_b2_norm2``); 3 = ``textnorm.fold_glyphs`` first — hearts → ``♡``, dot
@@ -47,7 +47,10 @@ to ``♥``, the single token (``♡`` is three bytes; norm3 lost every raw ``♥
 and 31 sincos rows — plan_vl_respace R5b); 5 = norm 4 with the label's line
 breaks kept as ``\\n`` (v5; v4 trained on 4); 6 = norm 5 with curly double
 quotes ``“`` / ``”`` → ``"`` and lone conjoining jamo back to the typed
-compatibility jamo (``ᄏᄏ`` → ``ㅋㅋ``; norm 3–5 taught ``ᄏ``) (2026-11-17)."""
+compatibility jamo (``ᄏᄏ`` → ``ㅋㅋ``; norm 3–5 taught ``ᄏ``) (2026-11-17);
+7 = norm 6 without the dot-run fold — ``...`` / ``・・・`` / ``…`` trained as
+labelled, ``…`` kept from NFKC's ``...``, ``‥`` → ``..`` (2026-11-18; scoring keys
+still fold)."""
 
 
 def normalize_target(s: str) -> str:

@@ -16,8 +16,13 @@ marks go inside the callable so a checkpoint recompute re-marks.
 * LM: the sequence axis S is soft-marked (``maybe_mark_dynamic``, no range). The layer
   runs SDPA with a padding mask, and Inductor's ``sdpa_constraint`` guards the
   backward's logsumexp stride on ``S % 8``, which a strict range contradicts (the same
-  call as Anima under ``attn_mode="torch"``). Batch size stays static: one graph per
-  crop count, almost every batch holding ``--bs``.
+  call as Anima under ``attn_mode="torch"``); the trainer pads S to a multiple of 8
+  under ``--compile`` so that guard always holds. The crop count B (1 to ``--bs``
+  under ``--token_budget``, a large crop trains alone) is marked strictly to
+  ``[2, bs]`` on the hidden state, the 4D mask and the rotary cos / sin; B = 1 stays
+  static (dynamo specialises sizes 0 / 1). The prologue also pins the intra-op thread
+  count: the checkpoint recompute runs on the autograd device thread, and its
+  differing ``num_threads`` doubles every LM graph through the GLOBAL_STATE guard.
 
 A token count outside the range runs unmarked and specialises on its exact count, with
 one warning per count. Generation (``predict``) runs eager: wrap it in
@@ -152,16 +157,33 @@ def compile_layers(
 
         return forward
 
+    n_threads = torch.get_num_threads()
+
     def lm(compiled):
         def forward(
             hidden_states, attention_mask=None, position_embeddings=None, **kwargs
         ):
+            # the checkpoint recompute runs on the autograd device thread, whose
+            # intra-op thread count is the process default, not the main thread's;
+            # dynamo's GLOBAL_STATE guard then splits every graph in two
+            if torch.get_num_threads() != n_threads:
+                torch.set_num_threads(n_threads)
+            b = hidden_states.shape[0]
+            mark_b = 2 <= b <= max_images and max_images > 2
+            if mark_b:
+                torch._dynamo.mark_dynamic(hidden_states, 0, min=2, max=max_images)
             torch._dynamo.maybe_mark_dynamic(hidden_states, 1)
             if attention_mask is not None and attention_mask.ndim == 4:
+                if mark_b and attention_mask.shape[0] == b:
+                    torch._dynamo.mark_dynamic(attention_mask, 0, min=2, max=max_images)
                 torch._dynamo.maybe_mark_dynamic(attention_mask, 2)
                 torch._dynamo.maybe_mark_dynamic(attention_mask, 3)
             if position_embeddings is not None:
                 for pe in position_embeddings:
+                    if mark_b and pe.ndim >= 3 and pe.shape[pe.ndim - 3] == b:
+                        torch._dynamo.mark_dynamic(
+                            pe, pe.ndim - 3, min=2, max=max_images
+                        )
                     torch._dynamo.maybe_mark_dynamic(pe, pe.ndim - 2)
             return compiled(
                 hidden_states,

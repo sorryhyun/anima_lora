@@ -167,8 +167,10 @@ class Collate:
         prompt: str | list[str],
         min_edge: int,
         max_pixels: int = 1280 * 28 * 28,
+        pad_to_multiple_of: int | None = None,
     ):
         self.proc, self.prompt, self.min_edge = proc, prompt, min_edge
+        self.pad_to_multiple_of = pad_to_multiple_of
         self.max_pixels = max_pixels
         self.tok = proc.tokenizer
         self.eos = self.tok.eos_token
@@ -194,6 +196,7 @@ class Collate:
             images=images,
             padding=True,
             padding_side="left",
+            pad_to_multiple_of=self.pad_to_multiple_of,
             return_tensors="pt",
             images_kwargs=self.images_kwargs(),
         )
@@ -605,7 +608,8 @@ def main():
         n_t, n_l = compile_layers(base, rng_t, a.bs)
         print(
             f"compiled {n_t} tower layers (T marked {rng_t[0]}-{rng_t[1]}, attention "
-            f"core as ocr_vl16::tower_attn) + {n_l} LM layers (S soft-marked)",
+            f"core as ocr_vl16::tower_attn) + {n_l} LM layers (S soft-marked, S padded "
+            f"to x8, B marked 2-{a.bs})",
             flush=True,
         )
     n_train = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -670,7 +674,14 @@ def main():
     )
 
     max_pixels = a.max_tokens * 196  # 14 px patches
-    collate = Collate(proc, tr_prompt, min_edge, max_pixels)
+    # --compile: S padded to a multiple of 8 so the LM's SDPA stride guard always holds
+    collate = Collate(
+        proc,
+        tr_prompt,
+        min_edge,
+        max_pixels,
+        pad_to_multiple_of=8 if a.compile else None,
+    )
     rng = random.Random(a.seed)
     tr_tokens = cd.vl_tokens(
         tr_df.w.to_numpy(), tr_df.h.to_numpy(), min_edge, max_pixels

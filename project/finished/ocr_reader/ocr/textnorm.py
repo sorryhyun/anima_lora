@@ -29,9 +29,12 @@ Folds, in order:
    double quotes ``“`` / ``”`` → ASCII ``"`` (``TARGET_NORM = 6``, 2026-11-17: one
    quote, three spellings across the manifests; swaprelax_v5 had 75 ``”`` rows
    to 3 ``"``).
-5. **Dot runs** — ``[.・…‥]{2,}`` and a lone ``‥`` → one ``…``.
+5. **Dot runs** — ``[.・…‥]{2,}`` and a lone ``‥`` → one ``…``. Scoring keys
+   only since ``TARGET_NORM = 7`` (2026-11-18): the training target keeps
+   ``...`` / ``・・・`` / ``…`` as labelled (``…`` shielded from NFKC, which
+   spells it ``...``); ``‥`` takes NFKC's ``..``.
 
-The **training target** (:func:`training_target`, ``TARGET_NORM = 6``) keeps
+The **training target** (:func:`training_target`, ``TARGET_NORM = 7``) keeps
 the label's line breaks as ``\\n`` (one token, id 23; norm 4 collapsed them to a
 space, so v4 answers one line) and writes the heart as ``♥``: in the VL-1.6 tokenizer ``♥`` is
 one token and ``♡`` is three bytes, and ``TARGET_NORM = 3`` (``♡`` in the
@@ -91,10 +94,23 @@ left standing after NFKC (syllables are composed by then) goes back to the
 typed form."""
 
 
-def fold_glyphs(s: str) -> str:
-    """The canonical spelling of ``s`` with whitespace untouched."""
+_DOT_KEEP = str.maketrans({"…": ""})
+_DOT_RESTORE = str.maketrans({"": "…"})
+"""``dots=False``: ``…`` rides through NFKC as a private-use code point, since
+NFKC spells it ``...``. ``‥`` is left to NFKC (``..``): 99 Manga109 speech rows
+from 4 books, no hand label."""
+
+
+def fold_glyphs(s: str, *, dots: bool = True) -> str:
+    """The canonical spelling of ``s`` with whitespace untouched. ``dots=False``
+    skips fold 5: ``...``, ``・・・`` and ``…`` stay as written, ``‥`` → ``..``."""
+    if not dots:
+        s = s.translate(_DOT_KEEP)
     s = unicodedata.normalize("NFKC", s.translate(_DAKUTEN_FOLD)).translate(JAMO_FOLD)
-    return ELLIPSIS_RE.sub(ELLIPSIS, s.translate(HEART_FOLD))
+    s = s.translate(HEART_FOLD)
+    if not dots:
+        return s.translate(_DOT_RESTORE)
+    return ELLIPSIS_RE.sub(ELLIPSIS, s)
 
 
 TRAIN_HEART = "♥"
@@ -116,11 +132,13 @@ def collapse_keep_lines(s: str) -> str:
 
 
 def training_target(s: str) -> str:
-    """The training target (``TARGET_NORM = 6``): :func:`fold_glyphs`, line
-    breaks kept as ``\\n`` (:func:`collapse_keep_lines`), the heart as
-    :data:`TRAIN_HEART`. ``exact_key`` / ``space_key`` stay ``♡``-spelled and
-    whitespace-blind, so a read with or without breaks scores the same."""
-    return collapse_keep_lines(fold_glyphs(s)).translate(_TRAIN_HEART_FOLD)
+    """The training target (``TARGET_NORM = 7``): :func:`fold_glyphs` without
+    the dot-run fold (``dots=False``), line breaks kept as ``\\n``
+    (:func:`collapse_keep_lines`), the heart as :data:`TRAIN_HEART`.
+    ``exact_key`` / ``space_key`` stay ``♡``-spelled, whitespace-blind and
+    dot-folded, so a read with or without breaks, and with any dot spelling,
+    scores the same."""
+    return collapse_keep_lines(fold_glyphs(s, dots=False)).translate(_TRAIN_HEART_FOLD)
 
 
 def exact_key(s: str) -> str:

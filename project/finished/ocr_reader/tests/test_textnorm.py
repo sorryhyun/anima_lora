@@ -74,8 +74,26 @@ def test_training_target_spells_the_single_token_heart():
         assert m.training_target(raw) == m.normalize_target(raw).replace("♡", "♥")
         assert "♥" not in m.exact_key(raw)
     raw = "あ゛っ　……\n──"
-    assert m.training_target(raw) == "あ゙っ …\n――"
+    assert m.training_target(raw) == "あ゙っ ……\n――"
     assert m.exact_key(m.training_target(raw)) == m.exact_key(raw)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["わからなかったの......", "あ・・・っ", "…………", "なっ...成島", "え…?"],
+)
+def test_training_target_keeps_dot_spelling(raw):
+    # TARGET_NORM 7: dots trained as labelled (… survives NFKC); keys still fold
+    m = _mod()
+    assert m.training_target(raw) == raw
+    assert m.exact_key(m.training_target(raw)) == m.exact_key(raw)
+
+
+def test_training_target_folds_dot_width():
+    m = _mod()
+    assert m.training_target("あ．．．･･･") == "あ...・・・"
+    assert m.training_target("お‥‥お玉") == "お....お玉"
+    assert m.training_target("はーい‥…") == "はーい..…"
 
 
 @pytest.mark.parametrize(
