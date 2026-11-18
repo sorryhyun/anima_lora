@@ -105,6 +105,12 @@ Facts:
   head, `disc_lr` 5e-5, 200-step delay, 200-step ramp).
 - `1028`'s disc margin: 0.44 → 1.41 → 2.15 → 2.83 → 2.98 → 3.06 over steps 0–200 … 1600–2048;
   disc loss 1.23 → 0.79; GAN share 0.43 from step 400 on; anchor MSE level with `1442` (0.0705).
+- `0953` (no normalisation, GAN share 0.99), steps 1600–2048: disc margin 0.11, disc loss 1.36,
+  training anchor MSE 0.131, FM loss 0.0104. The student closed the margin there with a worse fit.
+- `1028`'s disc is on the student's cosine schedule (`disc_lr` 2.9e-5 → 6.8e-6 over steps
+  800–2048), and the student gradient is clipped every iteration (pre-clip norm about 3 against
+  `grad_clip` 1.0).
+- Running: `turbo_1118_1122`, `1028` with `gan.paired_ratio` 1.0 (queued 2026-11-18 11:21).
 - Claude's read of the student sheets: `1028` keeps `1442`'s layout on every seed; the guitarist's
   guitar is whole on seeds 1–4 (`1442` breaks it on seed 2); the group's seed 3 draws one
   grey-haired girl (`1442`: two) and seed 4 draws the lower faces apart (`1442`: merged).
