@@ -32,6 +32,24 @@ right:  Facts           anchor MSE 0.131 against 0.070.
 Recorded verdicts and the user's reads are part of the record. When restructuring an existing
 report, keep them word for word in Facts; do not reword, soften or re-judge them.
 
+Claude's own read of renders goes in Facts under its own label ("Claude's read"), with whether the
+arm labels were visible when it was made. It is an observation to check, not a verdict: no plan
+entry or later report gives it as the reason an arm passed or a line went on.
+
+Where a probe verdict and the user's read differ, both are written on adjacent lines in Facts
+("Probe: not passed. The user's read: composition better than 1020's, the line goes on."), and
+the report's first line says they differ.
+
+## What a number carries
+
+- The run id and checkpoint (EMA step), the script or log tag it came from, and n: pairs, prompts,
+  seeds.
+- Its conditions when they differ from the report's stated setup (teacher, LR, data).
+- For a comparison, the spread it is read against and that spread's source, or "spread unknown".
+  A gap is called a gain, a loss or a tie only against a spread.
+- Where the output lives. `output/`, `results/`, `_archive/` and paths outside the repo are local:
+  mark them "(local)".
+
 Proposals (`idea.md`, `docs/*/proposal/`) argue by nature; split out only the measured evidence they
 cite.
 
@@ -45,3 +63,7 @@ emphasis for the writer's own stress.
 `README.md` maps, `reports/README.md`, `configs/README.md`, `findings/README.md` and run tables stay
 lists and tables: each entry says what the file or run is, plus a number or a recorded verdict where
 one exists. Readings go in a short note under the table, not in its cells.
+
+A verdict cell uses one of: baseline, passed, not passed, level, adopted on the user's read,
+shipped, stopped at <step>, failed (<what was observed>). A cell that explains ("not the cause",
+"GAN is not the walk") is a reading and goes in the note.

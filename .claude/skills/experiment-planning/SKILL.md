@@ -16,7 +16,8 @@ split: what is set and measured as facts, the reasoning for the arm as interpret
   which line closes. Write the question, and what each answer would lead to, before the run.
 - Name the parent run. The arm changes one variable from it; the header says "nothing else changed"
   and lists the variable's old and new value. Same data, cache, seeds, schedule, rank, init.
-  Example: `project/anima_turbo/configs/turbo_1117_1020.toml` (student LR A/B, control named).
+  Example: `turbo_1117_1020` / `1021` (student LR A/B, control named;
+  `project/anima_turbo/reports/step0_depth.md`).
 - When two things must change together, say so in the header and name what the run cannot
   separate. Bundled arms read as wins that a matched rerun reverses
   (`docs/anima/findings/lora_recipe.md`, s29 → s33).
@@ -41,19 +42,34 @@ The gate says what is read, against what, and who decides.
 - Against what: the reference run and checkpoint (`1442` EMA 2048), rendered with the same script
   and settings.
 - Who decides: the user, on the renders. Numbers are reported as numbers beside the reference.
+- How the renders are read: where the read is the gate, the sheets are composed without arm labels
+  and in a shuffled order per prompt (`project/finished/cjk_aware_anima/probes/blind_pairs.py`;
+  `bench/grad_init/e1_blind.py` is a worked case). A labelled read is recorded as labelled.
+- The prompts and seeds that arms are read on are the line's working set. A ship decision is read
+  on a second set that no arm of the line has been read on; name it in the plan when the line
+  opens.
 
 Propose the gate from what already exists; do not invent one.
 
 - A prior experiment on the same question: carry its read forward (same sheets, same seeds, same
-  probe), and take its bars from its measured spread (the `1020` / `1021` A/B spread of 0.002 on
-  the anchor MSE carried into `1105`–`1442`).
+  probe).
+- A bar comes from a spread, and a spread is the gap between two runs of one config: a seed twin,
+  or a rerun where the run is not deterministic (the control `turbo_1113_1105` and its seed-43
+  twin `turbo_1114_1745`, `project/anima_turbo/reports/grid_cdm.md`). The gap between the two arms
+  of an A/B is an effect and sets no bar.
+- An arm inside the spread is recorded as level. It does not become the parent of the next arm
+  on that number; the parent stays, or the user's read picks.
 - A shipped release: it is the reference to beat or hold (Hub v3 / `v4_preview` for turbo, Hub v6
   for the OCR reader), read on the eval it shipped on.
 - A prior implementation or recipe: its gate and eval come along with it (the reference pipeline's
   sampler settings, the shipped eval set and its sizes).
-- Write each bar with its source ("0.002: the 1020 / 1021 spread"). A bar with no source is not
-  proposed; the read then stays on the renders and numbers beside them.
+- Write each bar with its source ("<number>: the <id> / <id> twin gap"). A bar with no source is not
+  proposed: the header says "spread unknown", and the read stays on the renders and numbers
+  beside them.
 - No threshold on a quantity that is small by construction.
+- A probe column that the user's read has overruled twice on one line (the probe says not passed,
+  the read says go on, or the reverse) stops being a pass / fail bar on that line. It is reported
+  as a number, and the plan's open list takes an item for a probe that follows the read.
 
 ## Preconditions
 
@@ -62,6 +78,9 @@ run, at the smallest scale that answers it.
 
 - Do not re-verify, or list as a precondition, anything that already follows from an observed or
   finished experiment or a training record. Cite the record (run id, report path) and build on it.
+  This holds while the record was measured on what the new run uses: the same teacher or base, LR
+  range, data and recipe family. Where one differs, name the difference in the header; the
+  carry-over is then the precondition, checked at the smallest scale that answers it.
 - The meter discriminates: before a new metric or feature distance is trusted, read it against a
   null at equal norm (an equal-norm random residual, a permutation null, a rounding-noise arm).
   Examples: `probe_fm_floor` in `project/anima_turbo/reports/step0_depth.md`; the permutation null
@@ -75,10 +94,23 @@ run, at the smallest scale that answers it.
   near the optimizer's floor, fix that before the long run (`project/cjk_rl/reports/p1_2026_11_13.md`).
 - New data or caches: their build is checked once when built (counts, keys, draws per item).
 
+## Header shape
+
+Finished configs move to the gitignored `_archive/`, so the shape is kept here:
+
+```
+# <what>: <parent id> with <key> <old> -> <new>, nothing else changed (<recipe in one line>).
+# Question: <one question>. <answer A> -> <what follows>. <answer B> -> <what follows>.
+# Records it rests on:
+#   - <run id or report path>: <number, with its conditions>
+# Read: <checkpoint> against <reference checkpoint>, <probe command>, <sheets: prompts, seeds,
+#   regions>, blind | labelled; the user's read decides.
+# Bars: <number> (<the twin pair it comes from>) | spread unknown
+# Cost: <iterations>, <minutes>.
+```
+
 ## Templates in the records
 
-- `project/anima_turbo/configs/turbo_1117_1442.toml`: parent, one change, the smoke ratio that set
-  the weight, the floor probe it rests on.
 - `project/cjk_anima_reseed/reports/row_grad_bias_2026_11_06.md`: a 20-minute probe with a
   rounding-noise control that replaced two training runs.
 - `project/cjk_ko/reports/micro_2026_10_11.md`: three micro arms from one data build, the shared
