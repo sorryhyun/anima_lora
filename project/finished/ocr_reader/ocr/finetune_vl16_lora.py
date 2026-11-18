@@ -380,6 +380,24 @@ def main():
         help="gradient checkpointing (off by default; on for bs 8 batches on 16 GB)",
     )
     ap.add_argument(
+        "--ckpt_lm_only",
+        action="store_true",
+        help="checkpoint the 18 LM decoder layers only; the tower (~85 %% of the linear "
+        "MACs) keeps its activations. Implies --grad_ckpt",
+    )
+    ap.add_argument(
+        "--compile",
+        action="store_true",
+        help="torch.compile each tower encoder layer and LM decoder layer, dynamic=False "
+        "with the token axis marked per call (vl16_compile.py)",
+    )
+    ap.add_argument(
+        "--mem_log",
+        action="store_true",
+        help="write mem.jsonl: per micro-step peak allocated GB, vision tokens, LM "
+        "padded tokens (B x seq) and K",
+    )
+    ap.add_argument(
         "--max_tokens",
         type=int,
         default=2048,
@@ -393,6 +411,11 @@ def main():
         choices=("sdpa", "flash_attention_2"),
         help="attn_implementation; flash_attention_2 needs a wheel with the tower's "
         "head dim 72 (stock flash-attn, not the fa2-sm120 hdim 64/128 build)",
+    )
+    ap.add_argument(
+        "--fa_path",
+        help="directory holding a stock flash-attn install (uv pip install --target), put "
+        "ahead of the venv's on sys.path; the venv keeps its fa2-sm120 build",
     )
     ap.add_argument(
         "--token_budget",
@@ -425,6 +448,16 @@ def main():
         )
     if a.smoke:
         a.max_train, a.val_limit, a.epochs = a.max_train or 480, 64, 1
+    if a.ckpt_lm_only:
+        a.grad_ckpt = True
+    if a.fa_path:
+        sys.path.insert(0, str(Path(a.fa_path).resolve()))
+        import flash_attn
+
+        print(
+            f"flash_attn {flash_attn.__version__} from {flash_attn.__file__}",
+            flush=True,
+        )
 
     torch.manual_seed(a.seed)
     random.seed(a.seed)
@@ -545,6 +578,36 @@ def main():
             base.enable_input_require_grads()
         except Exception as e:  # custom modeling file without the hook
             print(f"(gradient checkpointing unavailable: {e})", flush=True)
+        if a.ckpt_lm_only:  # GradientCheckpointingLayer reads its own flag per call
+            off = [
+                m
+                for m in base.modules()
+                if type(m).__name__ == "PaddleOCRVisionEncoderLayer"
+            ]
+            for m in off:
+                m.gradient_checkpointing = False
+            on = sum(
+                bool(getattr(m, "gradient_checkpointing", False))
+                for m in base.modules()
+                if type(m).__name__ == "PaddleOCRDecoderLayer"
+            )
+            print(
+                f"checkpointing: LM decoder layers {on} on, tower layers {len(off)} off",
+                flush=True,
+            )
+            assert on and off, "layer class names changed; --ckpt_lm_only did nothing"
+    if a.compile:
+        from vl16_compile import compile_layers
+
+        # packed tower tokens: one floor-size crop (576) up to the budget plus the
+        # augmentation's overshoot (3,164 measured at --token_budget 3072)
+        rng_t = (64, min(4095, int(a.token_budget * 1.3) if a.token_budget else 4095))
+        n_t, n_l = compile_layers(base, rng_t, a.bs)
+        print(
+            f"compiled {n_t} tower layers (T marked {rng_t[0]}-{rng_t[1]}, attention "
+            f"core as ocr_vl16::tower_attn) + {n_l} LM layers (S soft-marked)",
+            flush=True,
+        )
     n_train = sum(p.numel() for p in model.parameters() if p.requires_grad)
     full_desc = ", ".join(
         f"{file} {sum(p.numel() for _, p in ps) / 1e6:.1f}M in {len(ps)} tensors"
@@ -662,7 +725,10 @@ def main():
 
     def evaluate(tag, step):
         t0 = time.time()
-        preds = predict(model, proc, va_prompt, min_edge, va, a.val_bs, a.workers)
+        # generation's shapes (decode steps, val crops up to the processor default)
+        # sit outside the marked ranges: eager
+        with torch.compiler.set_stance("force_eager"):
+            preds = predict(model, proc, va_prompt, min_edge, va, a.val_bs, a.workers)
         scored = ev.score(va_df, preds)
         m = val_metrics(scored)
         m.update(tag=tag, step=step, wall=round(time.time() - t0, 1))
@@ -684,6 +750,21 @@ def main():
     if a.stock_val:
         evaluate("stock", 0)
 
+    # --mem_log resets the allocator's peak per micro-step; the progress line keeps the
+    # run's maximum through peak_all
+    mem_f = (out / "mem.jsonl").open("w", buffering=1) if a.mem_log else None
+    peak_all = 0.0
+
+    def take_peak() -> float:
+        nonlocal peak_all
+        gb = torch.cuda.max_memory_allocated() / 2**30
+        peak_all = max(peak_all, gb)
+        torch.cuda.reset_peak_memory_stats()
+        return gb
+
+    def run_peak() -> float:
+        return max(peak_all, torch.cuda.max_memory_allocated() / 2**30)
+
     model.train()
     step, micro, t0, seen = 0, 0, time.time(), 0
     best = (-1.0, None)
@@ -704,12 +785,23 @@ def main():
         losses = []
         for enc, _ in dl:
             K = int((enc["labels"] != -100).sum(1).max()) + 1
+            if mem_f:
+                rec = {
+                    "micro": micro,
+                    "vis": int(enc["image_grid_thw"].prod(-1).sum()),
+                    "lm": int(enc["input_ids"].numel()),
+                    "B": int(enc["input_ids"].shape[0]),
+                    "K": K,
+                }
             enc = enc.to("cuda", non_blocking=True)
             n = enc["input_ids"].shape[0]
             raw = target_loss(model, enc, K)
             # a short (token-budget) batch weighs by its crops, as if part of a --bs batch
             loss = raw * (min(n, a.bs) / a.bs) / a.grad_accum
             loss.backward()
+            if mem_f:
+                rec["peak"] = round(take_peak(), 3)
+                mem_f.write(json.dumps(rec) + "\n")
             micro += 1
             seen += n
             losses.append(raw.detach())
@@ -722,13 +814,17 @@ def main():
             with torch.no_grad():
                 for (_, p), m in zip(full_params, full_masters):
                     p.copy_(m)
+            if mem_f:
+                mem_f.write(
+                    json.dumps({"step": step, "peak": round(take_peak(), 3)}) + "\n"
+                )
             step += 1
             if step % 25 == 0 or step == total:
                 el = time.time() - t0
                 print(
                     f"ep {ep} step {step}/{total} loss {torch.stack(losses[-25 * a.grad_accum :]).mean().item():.4f} "
-                    f"lr {sched.get_last_lr()[0]:.2e} {seen / el:.1f} crops/s "
-                    f"seq {enc['input_ids'].shape[-1]} vram {torch.cuda.max_memory_allocated() / 2**30:.1f}G",
+                    f"lr {sched.get_last_lr()[0]:.2e} {seen / el:.1f} crops/s t {el:.0f}s "
+                    f"seq {enc['input_ids'].shape[-1]} vram {run_peak():.1f}G",
                     flush=True,
                 )
             if step >= total:
