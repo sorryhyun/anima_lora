@@ -27,6 +27,10 @@ to the page. Three parts, each its own manifest under ``derived/``:
 * ``--lines`` → the same manifest, in place: line breaks from the community line
   annotations (``assets/manga109s_line_annotations.json``, ``build_lines``) on the rows
   they cover, and their other train / val ``<text>`` boxes cut and appended.
+* ``--ellipsis`` → the same manifest, in place (also run at the end of ``--speech`` /
+  ``--lines``): a dot run whose length is a multiple of three becomes that many ``…``
+  thirds (``・・・・・・`` → ``……``; :func:`ellipsis_fold`), as the gelnote / swaprelax labels
+  spell it. Other runs stay: a ``・・・・`` label is four dots printed on the page.
 * ``--gt test`` → ``manifest_sfxp_gt.parquet``: the grey manifest's rows of those splits (COO
   and speech) re-cut through ``pilot.deskew_crop`` at the capped margin, for the gate evals
   (``eval_manga109.py --manifest sfxp_gt``).
@@ -44,6 +48,7 @@ import argparse
 import json
 import os
 import random
+import re
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -362,6 +367,42 @@ v2026 ``<text>``, ``line_lengths`` = characters per line in reading order, count
 the XML text without its ``\\n`` (spaces included)."""
 
 
+DOT_RUN = re.compile(r"\.{3,}|．{3,}|・{3,}|･{3,}")
+
+
+def ellipsis_fold(t: str) -> str:
+    """A run of one dot glyph (``.`` ``．`` ``・`` ``･``) whose length is a multiple of
+    three → length / 3 × ``…``. A run a line break splits (``火薬・・\n・・・・・・？``)
+    stays as written. Idempotent."""
+
+    def sub(m: re.Match) -> str:
+        r, a, b = m[0], m.start(), m.end()
+        split = (a >= 2 and t[a - 1] == "\n" and t[a - 2] == r[0]) or (
+            b + 1 < len(t) and t[b] == "\n" and t[b + 1] == r[0]
+        )
+        return r if split or len(r) % 3 else "…" * (len(r) // 3)
+
+    return DOT_RUN.sub(sub, t)
+
+
+def build_ellipsis(a, derived: Path):
+    """:func:`ellipsis_fold` over ``manifest_sfxp_speech`` in place;
+    ``.pre_ellipsis.parquet`` backup, once."""
+    path = derived / "manifest_sfxp_speech.parquet"
+    df = pd.read_parquet(path)
+    new = df.text.map(ellipsis_fold)
+    n = int((new != df.text).sum())
+    if n:
+        bak = path.with_suffix(".pre_ellipsis.parquet")
+        if not bak.exists():
+            import shutil
+
+            shutil.copy2(path, bak)
+        df["text"] = new
+        df.to_parquet(path, index=False)
+    print(f"[ellipsis] {n} rows folded", flush=True)
+
+
 def line_broken(raw: str, lengths: list[int]) -> str | None:
     """``raw`` cut at the annotated line lengths, each line stripped; ``None`` when
     the lengths do not sum to the text."""
@@ -402,7 +443,11 @@ def build_lines(a, derived: Path):
         if k not in ann:
             continue
         t = line_broken(raw[k].text or "", ann[k]["line_lengths"])
-        if t is None or "".join(t.split()) != "".join(df.text.iat[i].split()):
+        if t is not None:
+            t = ellipsis_fold(t)
+        if t is None or "".join(t.split()) != "".join(
+            ellipsis_fold(df.text.iat[i]).split()
+        ):
             bad += 1
             continue
         if t == df.text.iat[i]:
@@ -422,6 +467,7 @@ def build_lines(a, derived: Path):
         if not t:
             skipped["bad"] += 1
             continue
+        t = ellipsis_fold(t)
         if cur != (book, page):
             img, cur = cv2.imread(str(m109.page_path(book, page))), (book, page)
         x0, y0, x1, y1 = (int(e.get(c)) for c in ("xmin", "ymin", "xmax", "ymax"))
@@ -461,6 +507,7 @@ def build_lines(a, derived: Path):
         f"added {added}; skipped {skipped}; manifest {len(df)} rows",
         flush=True,
     )
+    build_ellipsis(a, derived)
 
 
 def build_gt(a, derived: Path):
@@ -566,6 +613,11 @@ def main():
         "(also run at the end of --speech)",
     )
     ap.add_argument(
+        "--ellipsis",
+        action="store_true",
+        help="dot runs of 3k → k × … in manifest_sfxp_speech (also run after --lines)",
+    )
+    ap.add_argument(
         "--clean", action="store_true", help="det manifest → manifest_sfxp_det_clean"
     )
     ap.add_argument("--gt", nargs="+", help="splits to re-cut for the gate evals")
@@ -581,6 +633,8 @@ def main():
         build_speech(a, derived)
     elif a.lines:
         build_lines(a, derived)
+    elif a.ellipsis:
+        build_ellipsis(a, derived)
     if a.kozh:
         build_kozh(a, derived)
     if a.gt:

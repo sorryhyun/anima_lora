@@ -11,13 +11,17 @@ is skipped and reported.
 Manifests per source: gelnote_ko / gelnote_zh → ``manifest_pseudo_gelnote_{ko,zh}`` +
 ``manifest_sfxp_kozh``;
 swaprelax_v5 → ``manifest_pseudo_swaprelax_v5`` + ``manifest_sfxp_kozh``;
-hito_v4_ja / hito_v4_ko → ``manifest_pseudo_hito_v4``. Each manifest
+hito_v4_ja / hito_v4_ko → ``manifest_pseudo_hito_v4``;
+linebreak_suspicious / dots_suspicious → ``manifest_sfxp_speech`` (``orig`` is a proposal,
+so ``ok`` writes it too; a row matches when its text equals ``orig`` blind to whitespace and
+dot glyphs). Each manifest
 is copied to ``<name>.pre_review.parquet`` once, before its first change.
 """
 
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -26,6 +30,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ocr"))
 import manga109 as m109  # noqa: E402
+from build_sfx_prefix import ellipsis_fold  # noqa: E402
 from textnorm import collapse_keep_lines  # noqa: E402
 
 TARGETS = {
@@ -34,7 +39,17 @@ TARGETS = {
     "gelnote_zh": ["pseudo_gelnote_zh", "sfxp_kozh"],
     "hito_v4_ja": ["pseudo_hito_v4"],
     "hito_v4_ko": ["pseudo_hito_v4"],
+    "linebreak_suspicious": ["sfxp_speech"],
+    "dots_suspicious": ["sfxp_speech"],
 }
+APPLY_OK = {"linebreak_suspicious", "dots_suspicious"}
+"""Sources whose page text is a proposal, not the manifest's text: ``ok`` applies it."""
+
+
+def flat_key(t: str) -> str:
+    """A proposal source's match key: the text without whitespace or dot glyphs (the
+    proposal changes breaks and dot spelling only; a dot-only label keys to "")."""
+    return re.sub(r"[\s.．・･…‥]", "", t)
 
 
 def unescape(s: str) -> str:
@@ -66,24 +81,39 @@ def main():
         path = d / f"manifest_{name}.parquet"
         df = pd.read_parquet(path)
         srcs = [s for s in rv.source.unique() if name in TARGETS[s]]
-        sub = rv[rv.source.isin(srcs) & rv.status.isin(["edit", "drop"])]
-        key = (
-            df.source.astype(str) + ":" + df.id.astype(str)
-            if name == "sfxp_kozh"
-            else df.id.astype(str)
+        act = rv.status.isin(["edit", "drop"]) | (
+            rv.source.isin(APPLY_OK) & (rv.status == "ok")
         )
-        pos = {k: i for i, k in enumerate(key)}
+        sub = rv[rv.source.isin(srcs) & act]
+        if name == "sfxp_kozh":
+            key = df.source.astype(str) + ":" + df.id.astype(str)
+        elif name == "sfxp_speech":  # the review id is <book>_<page:03d>_<text id>
+            key = [
+                f"{b}_{int(p):03d}_{t}" if s == "sfxp_speech" else None
+                for b, p, t, s in zip(df.book, df.page, df.id, df.source)
+            ]
+        else:
+            key = df.id.astype(str)
+        pos = {k: i for i, k in enumerate(key) if k is not None}
         edited, dropped, stale = 0, [], []
         for r in sub.itertuples():
             k = f"{r.source}:{r.id}" if name == "sfxp_kozh" else r.id
             i = pos.get(k)
-            if i is None or df.text.iat[i] != r.orig:
+            proposal = r.source in APPLY_OK
+            cur = None if i is None else df.text.iat[i]
+            if cur is None or (
+                flat_key(cur) != flat_key(r.orig) if proposal else cur != r.orig
+            ):
                 stale.append(r.id)
                 continue
             if r.status == "drop":
                 dropped.append(df.index[i])
-            else:
-                df.iat[i, df.columns.get_loc("text")] = r.new
+                continue
+            new = r.orig if r.status == "ok" else r.new
+            if proposal:
+                new = ellipsis_fold(new)
+            if new != cur:
+                df.iat[i, df.columns.get_loc("text")] = new
                 edited += 1
         df = df.drop(index=dropped)
         print(

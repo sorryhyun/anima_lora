@@ -4,8 +4,9 @@ line annotations (``assets/manga109s_line_annotations.json``, 5,988 ``<text>`` b
 
 The crop is cut as ``build_sfx_prefix.build_speech`` cuts it (the ``<text>`` box at the
 4 px margin). Columns (vertical text) or rows (horizontal) come from the ink projection:
-binarise (Otsu), sum ink across the reading axis, split at empty runs, drop slivers
-(furigana, balloon edges) narrower than ``--sliver`` × the widest column. The label is cut
+binarise (Otsu), drop the ink components touching the crop edge, sum ink across the reading
+axis, split at empty runs, drop slivers (furigana) narrower than ``--sliver`` × the widest
+column. The label is cut
 in proportion to each column's ink length, then the cut is moved off a character that
 may not start a line (small kana, prolonged sound mark, closing punctuation) and onto a
 nearby space.
@@ -35,7 +36,12 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "ocr"))
 import manga109 as m109  # noqa: E402
-from build_sfx_prefix import LINES, line_broken, margin_box  # noqa: E402
+from build_sfx_prefix import (  # noqa: E402
+    LINES,
+    ellipsis_fold,
+    line_broken,
+    margin_box,
+)
 
 NO_START = set(
     "ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶーｰ～~、。，．,.!！?？)）」』】〉》…‥・ﾞﾟ゛゜"
@@ -43,10 +49,20 @@ NO_START = set(
 SPACES = set(" 　")
 
 
-def ink_mask(crop: np.ndarray) -> np.ndarray:
+def ink_mask(crop: np.ndarray, border: bool = True) -> np.ndarray:
+    """Otsu ink; with ``border``, connected components touching the crop edge go
+    (balloon outlines, panel lines, the neighbour's ink inside the 4 px margin) —
+    multi-line count 0.759 → 0.855 at gap 0.03 / sliver 0.45."""
     g = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
     _, b = cv2.threshold(g, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    return b > 0
+    if not border:
+        return b > 0
+    n, lab, st, _ = cv2.connectedComponentsWithStats(b, connectivity=8)
+    H, W = b.shape
+    x, y, w, h = st[:, 0], st[:, 1], st[:, 2], st[:, 3]
+    keep = ~((x == 0) | (y == 0) | (x + w == W) | (y + h == H))
+    keep[0] = False
+    return keep[lab]
 
 
 def runs(on: np.ndarray) -> list[tuple[int, int]]:
@@ -302,6 +318,338 @@ def detcount(a):
         )
 
 
+def _iou(a, b) -> float:
+    ix = max(0, min(a[2], b[2]) - max(a[0], b[0]))
+    iy = max(0, min(a[3], b[3]) - max(a[1], b[1]))
+    u = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - ix * iy
+    return ix * iy / max(1, u)
+
+
+def detdiag(a):
+    """Why the detector gives about one box per ``<text>``: every box it emits at a
+    low score floor with no denesting, page-level (640) and crop-level (the ``<text>``
+    box with ``--ctx`` × its size of context each side, letterboxed at 640), matched
+    to the annotated line boxes (IoU ≥ ``--line_iou``). Writes the boxes per text to
+    ``detdiag.jsonl``; ``detdiag_report`` summarises and draws overlays."""
+    from anime_tools.ocr.animetext import AnimeTextDetector
+
+    det = AnimeTextDetector.load(device="cuda", conf=a.conf_floor, nest="raw")
+    OUT.mkdir(parents=True, exist_ok=True)
+    pages = sorted(gt_set().items())
+    with open(OUT / "detdiag.jsonl", "w", encoding="utf-8") as f:
+        for pi, ((book, page), items) in enumerate(pages):
+            img = cv2.imread(str(m109.page_path(book, page)))
+            H, W = img.shape[:2]
+            page_boxes = det.detect_scored(img)
+            crops, offs = [], []
+            for k, e, t in items:
+                x0, y0, x1, y1 = (
+                    int(e.get(c)) for c in ("xmin", "ymin", "xmax", "ymax")
+                )
+                cx, cy = int(a.ctx * (x1 - x0)), int(a.ctx * (y1 - y0))
+                c = (max(0, x0 - cx), max(0, y0 - cy), min(W, x1 + cx), min(H, y1 + cy))
+                crops.append(img[c[1] : c[3], c[0] : c[2]])
+                offs.append(c[:2])
+            prep = [det.prepare(c) for c in crops]
+            crop_boxes = [
+                det._settle(raw, p, c.shape)
+                for raw, p, c in zip(det.forward_batch(prep), prep, crops)
+            ]
+            for (k, e, t), cb, (ox, oy) in zip(items, crop_boxes, offs):
+                box = [int(e.get(c)) for c in ("xmin", "ymin", "xmax", "ymax")]
+                lines = [
+                    [ln["xmin"], ln["ymin"], ln["xmax"], ln["ymax"]]
+                    for ln in t["lines"]
+                ]
+                near = [
+                    list(b)
+                    for b in page_boxes
+                    if _iou(b, [box[0] - 64, box[1] - 64, box[2] + 64, box[3] + 64]) > 0
+                ]
+                crop_pg = [
+                    [b[0] + ox, b[1] + oy, b[2] + ox, b[3] + oy, b[4]] for b in cb
+                ]
+                f.write(
+                    json.dumps(
+                        dict(
+                            book=book,
+                            page=page,
+                            id=k[2],
+                            box=box,
+                            lines=lines,
+                            page_boxes=near,
+                            crop_boxes=crop_pg,
+                        )
+                    )
+                    + "\n"
+                )
+            if pi % 100 == 0:
+                print(f"page {pi}/{len(pages)}", flush=True)
+    print(f"wrote {OUT / 'detdiag.jsonl'}")
+
+
+def detdiag_report(a):
+    from anime_tools.ocr.animetext import denest
+
+    rows = [json.loads(x) for x in open(OUT / "detdiag.jsonl", encoding="utf-8")]
+
+    def inside(bs, box):
+        return boxes_in(bs, *box, a.pad, a.inside)
+
+    def matched(bs, lines):
+        return sum(any(_iou(b, ln) >= a.line_iou for b in bs) for ln in lines)
+
+    variants = {
+        "page inner@.25": lambda r: denest(
+            [b for b in r["page_boxes"] if b[4] >= 0.25]
+        ),
+        "page raw@.25": lambda r: [b for b in r["page_boxes"] if b[4] >= 0.25],
+        f"page raw@{a.conf_floor}": lambda r: r["page_boxes"],
+        "crop inner@.25": lambda r: denest(
+            [b for b in r["crop_boxes"] if b[4] >= 0.25]
+        ),
+        "crop raw@.25": lambda r: [b for b in r["crop_boxes"] if b[4] >= 0.25],
+        f"crop raw@{a.conf_floor}": lambda r: r["crop_boxes"],
+    }
+    multi = [r for r in rows if len(r["lines"]) > 1]
+    nl = sum(len(r["lines"]) for r in multi)
+    print(f"{len(rows)} texts, {len(multi)} multi-line ({nl} lines)")
+    for name, fn in variants.items():
+        eq = lt = gt = hit = 0
+        for r in multi:
+            bs = inside(fn(r), r["box"])
+            n, g = len(bs), len(r["lines"])
+            eq += n == g
+            lt += n < g
+            gt += n > g
+            hit += matched(bs, r["lines"])
+        print(
+            f"  {name:18s} count right {eq / len(multi):.3f} (fewer {lt}, more {gt}); "
+            f"GT lines with a box at IoU≥{a.line_iou}: {hit / nl:.3f}"
+        )
+    # the score of the best-matching raw box per GT line (page and crop)
+    for src in ("page_boxes", "crop_boxes"):
+        best = []
+        for r in multi:
+            for ln in r["lines"]:
+                s = [b[4] for b in r[src] if _iou(b, ln) >= a.line_iou]
+                best.append(max(s) if s else 0.0)
+        best = np.array(best)
+        qs = " ".join(
+            f"≥{t}:{(best >= t).mean():.3f}" for t in (0.05, 0.1, 0.25, 0.426)
+        )
+        print(f"  {src}: GT lines matched by a box scoring {qs}")
+    # overlays: green = GT lines, red = page raw@.25, blue = crop raw@.25
+    viz = OUT / "detdiag_viz"
+    viz.mkdir(exist_ok=True)
+    rng = np.random.default_rng(0)
+    pick = [multi[i] for i in rng.choice(len(multi), a.show, replace=False)]
+    for r in pick:
+        img = cv2.imread(str(m109.page_path(r["book"], r["page"])))
+        H, W = img.shape[:2]
+        x0, y0, x1, y1 = r["box"]
+        m = int(0.6 * max(x1 - x0, y1 - y0))
+        c = (max(0, x0 - m), max(0, y0 - m), min(W, x1 + m), min(H, y1 + m))
+        panels = []
+        for src, col in (("page_boxes", (0, 0, 255)), ("crop_boxes", (255, 0, 0))):
+            p = img.copy()
+            for ln in r["lines"]:
+                cv2.rectangle(p, ln[:2], ln[2:4], (0, 180, 0), 2)
+            for b in r[src]:
+                if b[4] >= 0.25:
+                    cv2.rectangle(p, (b[0], b[1]), (b[2], b[3]), col, 2)
+                elif b[4] >= a.conf_floor:
+                    cv2.rectangle(p, (b[0], b[1]), (b[2], b[3]), (0, 200, 255), 1)
+            p = p[c[1] : c[3], c[0] : c[2]]
+            s = 480 / max(p.shape[:2])
+            panels.append(cv2.resize(p, None, fx=s, fy=s))
+        h = max(p.shape[0] for p in panels)
+        panels = [
+            cv2.copyMakeBorder(
+                p, 0, h - p.shape[0], 0, 8, cv2.BORDER_CONSTANT, value=(255, 255, 255)
+            )
+            for p in panels
+        ]
+        name = f"{r['book']}_{r['page']:03d}_{r['id']}.png"
+        cv2.imwrite(str(viz / name), np.hstack(panels))
+    print(f"overlays in {viz}")
+
+
+def fast_read(
+    rd, crops, caps, bs: int, prefetch: int, min_pixels: int = 0, budget: int = 27648
+) -> list[str]:
+    """``Vl16Reader.read`` with the processor work for the next batches done on
+    ``prefetch`` threads while the GPU generates, and ``max_new_tokens`` per batch
+    capped by ``caps`` (one per crop) instead of the reader's flat 96 — a batch of
+    short columns no longer runs 96 steps for one runaway. A batch closes at ``bs``
+    crops or ``budget`` tower patches (bs 64 at the stock size OOMed on the largest
+    crops). ``min_pixels`` (0 = the processor's 112,896) is the floor a crop is
+    upscaled to; the prefill is the tower's GEMMs (a 48-crop batch: 637 ms of CUDA,
+    GEMM 285 ms), so the patch count sets the speed."""
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    from PIL import Image
+
+    torch, proc, tok = rd.torch, rd.proc, rd.proc.tokenizer
+    msgs = [
+        {
+            "role": "user",
+            "content": [{"type": "image"}, {"type": "text", "text": "OCR:"}],
+        }
+    ]
+    text = proc.apply_chat_template(msgs, add_generation_prompt=True, tokenize=False)
+    minpx = min_pixels or rd.min_edge
+    maxpx = 1280 * 28 * 28
+
+    def patches(i):
+        h, w = crops[i].shape[:2]
+        return min(max(h * w, minpx), maxpx) / 196
+
+    order = sorted(
+        range(len(crops)), key=lambda i: crops[i].shape[0] * crops[i].shape[1]
+    )
+    batches, cur, tot = [], [], 0.0
+    for i in order:
+        p = patches(i)
+        if cur and (len(cur) >= bs or tot + p > budget):
+            batches.append(cur)
+            cur, tot = [], 0.0
+        cur.append(i)
+        tot += p
+    if cur:
+        batches.append(cur)
+
+    def prep(idx):
+        images = [
+            Image.fromarray(np.ascontiguousarray(crops[i][:, :, ::-1])) for i in idx
+        ]
+        return proc(
+            text=[text] * len(images),
+            images=images,
+            padding=True,
+            padding_side="left",
+            return_tensors="pt",
+            images_kwargs={"size": {"shortest_edge": minpx, "longest_edge": maxpx}},
+        )
+
+    # one prep thread: the fast tokenizer is not safe to call from two threads, and
+    # decoding waits for the end for the same reason
+    ids_out: list = [None] * len(crops)
+    t0 = time.time()
+    with ThreadPoolExecutor(1) as pool:
+        futs = [pool.submit(prep, b) for b in batches[: prefetch + 1]]
+        for bi, idx in enumerate(batches):
+            # BatchFeature.to moves in place: drop the future so the GPU copy goes
+            inputs, futs[bi] = futs[bi].result().to(rd.device), None
+            if bi + prefetch + 1 < len(batches):
+                futs.append(pool.submit(prep, batches[bi + prefetch + 1]))
+            n = inputs["input_ids"].shape[-1]
+            with torch.inference_mode():
+                o = rd.model.generate(
+                    **inputs,
+                    max_new_tokens=max(caps[i] for i in idx),
+                    do_sample=False,
+                    use_cache=True,
+                )
+            for i, row in zip(idx, o[:, n:].tolist()):
+                ids_out[i] = row
+            if bi % 50 == 0:
+                done = sum(len(b) for b in batches[: bi + 1])
+                print(
+                    f"  {done}/{len(crops)} crops, {done / (time.time() - t0):.1f}/s",
+                    flush=True,
+                )
+    drop = {tok.eos_token_id, tok.pad_token_id}
+    out = [tok.decode([t for t in ids if t not in drop]).strip() for ids in ids_out]
+    print(f"read {len(crops)} crops in {time.time() - t0:.0f} s", flush=True)
+    return out
+
+
+def column_crops(crop, raw: str, a) -> list:
+    """The ink-projection segments of ``crop`` cut at the 4 px margin, reading order."""
+    vertical = guess_vertical(crop, raw)
+    segs = segment(ink_mask(crop), vertical, a.gap, a.sliver, a.merge)
+    if len(segs) < 2:
+        return []
+    H, W = crop.shape[:2]
+    out = []
+    for a0, a1, b0, b1 in segs:
+        x0, x1, y0, y1 = (a0, a1, b0, b1) if vertical else (b0, b1, a0, a1)
+        c = margin_box(x0, y0, x1, y1, W, H)
+        out.append(crop[c[1] : c[3], c[0] : c[2]])
+    return out
+
+
+def manifest_rows():
+    """One-line ``sfxp_speech`` rows of ``manifest_sfxp_speech`` the line annotation
+    does not cover: (key, label, None, crop)."""
+    import pandas as pd
+
+    d = m109.derived_root()
+    df = pd.read_parquet(d / "manifest_sfxp_speech.parquet")
+    ann = {
+        (pg["book"], int(pg["page_index"]), t["id"])
+        for pg in json.loads(LINES.read_text(encoding="utf-8")).values()
+        for t in pg["texts"]
+    }
+    df = df[(df.source == "sfxp_speech") & ~df.text.str.contains("\n")]
+    for r in df.itertuples():
+        k = (r.book, int(r.page), str(r.id))
+        if k in ann:
+            continue
+        yield k, r.text, None, cv2.imread(str(d / r.path))
+
+
+def inkread(a):
+    """Ink-projection columns (rows) of each crop, each read alone with a
+    PaddleOCR-VL reader, the reads joined with ``\\n`` → ``<name>.jsonl`` (``pred``;
+    ``out`` = the label with the read's breaks). A crop with one segment is not read
+    (its pred is the label). ``--set eval``: the annotated ``<text>`` crops (score
+    with ``transfer``); ``--set manifest``: the one-line speech rows to break."""
+    import time
+
+    import eval_manga109 as ev
+
+    t0 = time.time()
+    rows, crops, caps = [], [], []
+    src = gt_crops() if a.set == "eval" else manifest_rows()
+    for k, raw, gt, crop in src:
+        cols = column_crops(crop, raw, a)
+        rows.append(
+            dict(
+                book=k[0],
+                page=k[1],
+                id=k[2],
+                raw=raw,
+                gt=gt,
+                n_segs=max(1, len(cols)),
+                first=len(crops),
+            )
+        )
+        crops += cols
+        caps += [min(ev.MAX_NEW_TOKENS, 2 * len(raw) + 8)] * len(cols)
+    print(
+        f"{len(rows)} texts, {len(crops)} segment crops ({time.time() - t0:.0f} s)",
+        flush=True,
+    )
+    reads = fast_read(
+        ev.Vl16Reader(a.ckpt, "cuda"), crops, caps, a.ink_bs, a.prefetch, a.min_pixels
+    )
+    OUT.mkdir(parents=True, exist_ok=True)
+    with open(OUT / f"{a.name}.jsonl", "w", encoding="utf-8") as f:
+        for r in rows:
+            if r["n_segs"] < 2:
+                r["lines"], r["pred"] = [], r["raw"]
+                r["out"] = r["raw"].strip()
+            else:
+                r["lines"] = reads[r["first"] : r["first"] + r["n_segs"]]
+                r["pred"] = "\n".join(x.replace("\n", "") for x in r["lines"])
+                r["out"] = transfer_breaks(r["pred"], r["raw"])
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    print(f"wrote {OUT / (a.name + '.jsonl')}")
+
+
 def detread(a):
     """AnimeText detector over the annotated pages (``nest inner``: a balloon's
     columns), the boxes inside each ``<text>`` box taken as its lines in reading
@@ -419,6 +767,202 @@ def transfer_breaks(pred: str, label: str) -> str:
     return "\n".join(p for p in parts if p)
 
 
+def _gate_norm(s: str) -> str:
+    import re
+    import unicodedata
+
+    s = re.sub(r"\s", "", unicodedata.normalize("NFKC", s))
+    s = re.sub(r"[.．・…‥･]+", ".", s)
+    s = re.sub(r"[~〜～ー\-]{2,}", "~", s)
+    return re.sub(r"([!?！？])\1+", r"\1", s).lower()
+
+
+def read_distance(pred: str, label: str) -> float:
+    """Edit distance between the joined column reads and the label over the label's
+    length, both NFKC, spaceless, with dot / wave / ``!?`` runs folded to one (a read's
+    ``……`` against a label's ``......`` is no miss). The gate: on the annotated set,
+    rows under 0.05 whose line count equals the segment count are 81.6 % of the
+    segmented rows at 0.989 exact."""
+    p, q = _gate_norm(pred), _gate_norm(label)
+    D = np.arange(len(q) + 1)
+    for x in range(1, len(p) + 1):
+        prev, D[0] = D.copy(), x
+        for y in range(1, len(q) + 1):
+            D[y] = min(prev[y] + 1, D[y - 1] + 1, prev[y - 1] + (p[x - 1] != q[y - 1]))
+    return float(D[-1]) / max(1, len(q))
+
+
+GATE = 0.05
+
+
+def _flat_key(t: str) -> str:
+    """``t`` without whitespace or dot glyphs."""
+    import re
+
+    return re.sub(r"[\s.．・･…‥]", "", t)
+
+
+def apply(a):
+    """``inkread --set manifest``'s rows into ``manifest_sfxp_speech``: a segmented row
+    passing the gate (:func:`read_distance` < ``GATE``, lines == segments) takes the
+    broken label; the other segmented rows go to ``linebreak_suspicious.jsonl`` for
+    ``ko_label_review.py``. ``.pre_linebreak.parquet`` backup, once."""
+    import shutil
+
+    import pandas as pd
+
+    rows = [json.loads(x) for x in open(OUT / f"{a.name}.jsonl", encoding="utf-8")]
+    d = m109.derived_root()
+    path = d / "manifest_sfxp_speech.parquet"
+    df = pd.read_parquet(path)
+    pos = {
+        (r.book, int(r.page), str(r.id)): i
+        for i, r in enumerate(df.itertuples())
+        if r.source == "sfxp_speech"
+    }
+    applied, stale, sus = 0, 0, []
+    col = df.columns.get_loc("text")
+    for r in rows:
+        if r["n_segs"] < 2:
+            continue
+        dist = read_distance(r["pred"], r["raw"])
+        ok = dist < GATE and r["out"].count("\n") + 1 == r["n_segs"]
+        if not ok:
+            sus.append(dict(r, dist=round(dist, 3)))
+            continue
+        i = pos.get((r["book"], int(r["page"]), str(r["id"])))
+        # the manifest may hold the label ellipsis-folded (build_sfx_prefix --ellipsis)
+        # or already broken (a rerun): compare without the breaks
+        # (a break placed on a space takes the space, a dot run split by a break is not
+        # folded: compare blind to whitespace and dot spelling)
+        if i is None or _flat_key(df.text.iat[i]) != _flat_key(r["raw"]):
+            stale += 1
+            continue
+        if df.text.iat[i] != ellipsis_fold(r["out"]):
+            df.iat[i, col] = ellipsis_fold(r["out"])
+            applied += 1
+    print(f"applied {applied}, stale {stale}, suspicious {len(sus)}")
+    with open(OUT / "linebreak_suspicious.jsonl", "w", encoding="utf-8") as f:
+        for r in sus:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    if a.dry_run or not applied:
+        return
+    bak = path.with_suffix(".pre_linebreak.parquet")
+    if not bak.exists():
+        shutil.copy2(path, bak)
+    df.to_parquet(path, index=False)
+    n_lf = df.text.str.contains("\n").sum()
+    print(f"wrote {path}: {len(df)} rows, {n_lf} with a line break")
+
+
+DOT_ONLY = set(".．・･…‥")
+
+
+def dot_columns(crop) -> list[int]:
+    """Dots per printed column (row, for a horizontal leader), reading order: the ink
+    components at ≥ 0.3 × the median component area, counted per ink-projection
+    segment. The axis is the one that gives fewer segments — a dot-only crop's shape
+    says nothing (three short columns make a wide box)."""
+    # columns from the interior dots (edge components out, as ink_mask does); then a
+    # dot-sized blob on the edge counts when it sits on one of those columns (a column's
+    # last dot often touches the 4 px margin) — balloon-outline bits in the corners do not
+    raw = ink_mask(crop, border=False)
+    n, lab, st, cen = cv2.connectedComponentsWithStats(
+        raw.astype(np.uint8), connectivity=8
+    )
+    if n < 2:
+        return []
+    H, W = raw.shape
+    x, y, w, h, area = (st[1:, j] for j in range(5))
+    edge = (x == 0) | (y == 0) | (x + w == W) | (y + h == H)
+    if edge.all():
+        return []
+    med = np.median(area[~edge])
+    inner = [i + 1 for i in range(n - 1) if not edge[i] and area[i] >= 0.3 * med]
+    extra = [
+        i + 1
+        for i in range(n - 1)
+        if edge[i]
+        and 0.5 * med <= area[i] <= 2 * med
+        and max(w[i], h[i]) <= 2 * min(w[i], h[i])
+    ]
+    ink = np.isin(lab, inner)
+    best = None
+    for vertical in (True, False):
+        segs = segment(ink, vertical, 0.03, 0.55, 0.0)
+        ax = 0 if vertical else 1
+        cols = [
+            sum(a0 <= cen[i][ax] < a1 for i in inner)
+            + sum(a0 <= cen[i][ax] < a1 for i in extra)
+            for a0, a1, *_ in segs
+        ]
+        cols = [c for c in cols if c]
+        if best is None or len(cols) < len(best):
+            best = cols
+    return best
+
+
+def dots(a):
+    """Dot-only speech labels (``・・・・・・\\n・・・``) re-spelled from the page, as the
+    user's review edits do (11-18): per printed column ``ceil(dots / 3)`` × ``…``, one
+    line per column. A row passes when every column holds ≥ 2 dots, there are ≤ 6
+    columns and the counted dots are within 0.6–1.6× the label's (``…`` = 3, ``‥`` = 2);
+    passing rows are written to ``manifest_sfxp_speech`` (``.pre_dots.parquet`` backup),
+    the rest go to ``dots_suspicious.jsonl`` for ``ko_label_review.py``."""
+    import math
+    import shutil
+
+    import pandas as pd
+
+    d = m109.derived_root()
+    path = d / "manifest_sfxp_speech.parquet"
+    df = pd.read_parquet(path)
+    col = df.columns.get_loc("text")
+    changed, same, sus = 0, 0, []
+    for i, r in enumerate(df.itertuples()):
+        flat = "".join(r.text.split())
+        if not flat or not set(flat) <= DOT_ONLY:
+            continue
+        cols = dot_columns(cv2.imread(str(d / r.path)))
+        new = "\n".join("…" * math.ceil(c / 3) for c in cols)
+        label = sum(3 if c == "…" else 2 if c == "‥" else 1 for c in flat)
+        ok = (
+            cols
+            and min(cols) >= 2
+            and len(cols) <= 6
+            and 0.6 <= sum(cols) / label <= 1.6
+        )
+        if not ok:
+            sus.append(
+                dict(
+                    book=r.book,
+                    page=int(r.page),
+                    id=str(r.id),
+                    raw=r.text,
+                    out=new or r.text,
+                    cols=[int(c) for c in cols],
+                    label_dots=label,
+                )
+            )
+            continue
+        if new == r.text:
+            same += 1
+            continue
+        df.iat[i, col] = new
+        changed += 1
+    print(f"dot-only rows: changed {changed}, already so {same}, suspicious {len(sus)}")
+    with open(OUT / "dots_suspicious.jsonl", "w", encoding="utf-8") as f:
+        for x in sus:
+            f.write(json.dumps(x, ensure_ascii=False) + "\n")
+    if a.dry_run or not changed:
+        return
+    bak = path.with_suffix(".pre_dots.parquet")
+    if not bak.exists():
+        shutil.copy2(path, bak)
+    df.to_parquet(path, index=False)
+    print(f"wrote {path}")
+
+
 def transfer(a):
     rows = [json.loads(x) for x in open(OUT / f"{a.name}.jsonl", encoding="utf-8")]
     t = Counter()
@@ -462,7 +1006,32 @@ def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("mode", choices=["eval", "read", "transfer", "detread", "detcount"])
+    ap.add_argument(
+        "mode",
+        choices=[
+            "eval",
+            "read",
+            "transfer",
+            "detread",
+            "detcount",
+            "inkread",
+            "apply",
+            "dots",
+            "detdiag",
+            "detdiag_report",
+        ],
+    )
+    ap.add_argument("--set", choices=["eval", "manifest"], default="eval")
+    ap.add_argument("--dry_run", action="store_true", help="apply: count only")
+    ap.add_argument(
+        "--prefetch", type=int, default=2, help="inkread: batches prepped ahead"
+    )
+    ap.add_argument(
+        "--min_pixels", type=int, default=25088, help="inkread: crop upscale floor"
+    )
+    ap.add_argument("--conf_floor", type=float, default=0.05)
+    ap.add_argument("--ctx", type=float, default=0.25, help="detdiag: crop context")
+    ap.add_argument("--line_iou", type=float, default=0.5)
     ap.add_argument("--imgsz", type=int, nargs="+", default=[640, 1024, 1280, 0])
     ap.add_argument(
         "--pad", type=int, default=8, help="detread: px around the <text> box"
@@ -476,15 +1045,27 @@ def main():
     ap.add_argument("--name", default="stock")
     ap.add_argument("--ckpt", default=None)
     ap.add_argument("--bs", type=int, default=16)
-    ap.add_argument("--gap", type=float, default=0.0, help="profile ≤ gap·max is empty")
-    ap.add_argument("--sliver", type=float, default=0.45)
+    ap.add_argument("--ink_bs", type=int, default=96, help="inkread: crops per batch")
+    ap.add_argument(
+        "--gap", type=float, default=0.03, help="profile ≤ gap·max is empty"
+    )
+    ap.add_argument("--sliver", type=float, default=0.55)
     ap.add_argument("--snap", type=int, default=2)
-    ap.add_argument("--merge", type=float, default=0.25)
+    ap.add_argument("--merge", type=float, default=0.0)
     ap.add_argument("--oracle_orient", action="store_true")
     ap.add_argument("--show", type=int, default=8)
     a = ap.parse_args()
     modes = dict(
-        eval=evaluate, read=read, transfer=transfer, detread=detread, detcount=detcount
+        eval=evaluate,
+        read=read,
+        transfer=transfer,
+        detread=detread,
+        detcount=detcount,
+        inkread=inkread,
+        apply=apply,
+        dots=dots,
+        detdiag=detdiag,
+        detdiag_report=detdiag_report,
     )
     modes[a.mode](a)
 

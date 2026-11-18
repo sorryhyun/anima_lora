@@ -11,6 +11,12 @@ Every editable row has an ``SFX`` checkbox (exported as the ``sfx`` column;
 them). ``m109_sfx`` / ``m109_speech`` are read-only references: a seeded sample of the
 Manga109 COO onomatopoeia and the speech text (``manifest.parquet``), to compare against.
 
+``linebreak_suspicious`` (``linebreak_auto.py apply``): JA speech rows whose automatic line
+breaks missed the gate; the box holds the proposed breaks, the meta line the per-column
+read and its distance to the label (largest first). ``ok`` takes the proposal.
+``dots_suspicious`` (``linebreak_auto.py dots``): dot-only labels whose re-spelling from the
+page's dot columns missed its checks; same ``ok`` rule.
+
 hito rows also show the twin crop (the other edition's lettering of the same region) with
 its v4 read, and the read's mean token logprob (``prelabel_v4lp.jsonl``); they sort lowest
 logprob first by default.
@@ -37,6 +43,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ocr"))
 import manga109 as m109  # noqa: E402
+from build_sfx_prefix import ellipsis_fold  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[4]
 GELNOTE = Path("/media/sorryhyun/new/dataset/gelnote_crops")
@@ -46,6 +53,10 @@ HANGUL = re.compile(r"[가-힣]")
 RUN = re.compile(r"[가-힣]+")
 KANA = re.compile(r"[\u3040-\u30ff]")
 HANJA = re.compile(r"[\u4e00-\u9fff]")
+DOTS = re.compile(r"[.．・･]{2,}")
+DOT_FREE = re.compile(r"[\s.．・･…‥]")
+MIXED = re.compile(r"[.．・･]…|…[.．・･]")
+SPLIT = re.compile(r"[.．・･…]\n[.．・･…]")
 
 PAGE = r"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
@@ -116,7 +127,8 @@ header .pager { margin:0; }
 <script>
 const DATA = __DATA__;
 const MIN_DEFAULT = __MINRUN__;
-const SORT_DEFAULT = {"gelnote_ko": "nolf", "swaprelax_v5": "sus", "hito_v4_ja": "lp", "hito_v4_ko": "lp"};
+const SORT_DEFAULT = {"gelnote_ko": "nolf", "swaprelax_v5": "sus", "hito_v4_ja": "lp", "hito_v4_ko": "lp",
+                      "linebreak_suspicious": "sus", "dots_suspicious": "sus"};
 const PER = 50;
 const KEY = "ko_label_review_v1";
 let store = {};
@@ -204,6 +216,7 @@ function render() {
         · sus ${x.sus.toFixed(1)}${x.why ? " (" + esc(x.why) + ")" : ""}${x.lp != null ? " · logprob " + x.lp.toFixed(3) : ""}
         ${x.page ? `· <a href="${x.page}" target="_blank">page</a>` : ""} box ${x.box.join(",")}</div>
       <div class="orig">${marked(x.text, +minIn.value || 0)}</div>
+      ${x.note ? `<div class="meta">${esc(x.note)}</div>` : ""}
       ${x.v6 != null ? `<div class="meta">v6 (${x.conf.toFixed(2)}): ${esc(x.v6).replace(/\n/g, " ⏎ ")}${x.edge ? " · edge " + esc(x.edge) : ""}</div>` : ""}
       ${x.twin_img ? `<div class="twin"><img loading="lazy" src="${x.twin_img}"><div class="meta">twin (${esc(x.twin_lang)}) v4: ${esc(x.twin || "—").replace(/\n/g, " ⏎ ")}</div></div>` : ""}
       <textarea rows="${Math.max(2, x.text.split("\n").length + 1)}"></textarea>
@@ -364,6 +377,98 @@ def hito_rows(d: Path) -> dict[str, list[dict]]:
     return out
 
 
+def odd_dots(t: str) -> str:
+    """Why a label's dots look off after :func:`ellipsis_fold`, or ``""``: a run of
+    two or more dot glyphs it left (not a multiple of three), dots next to ``…``, or a
+    run split by a line break."""
+    why = []
+    if DOTS.search(t):
+        why.append("unfolded")
+    if MIXED.search(t):
+        why.append("mixed")
+    if SPLIT.search(t):
+        why.append("split")
+    return "/".join(why)
+
+
+def linebreak_rows(d: Path) -> dict[str, list[dict]]:
+    """``linebreak_auto.py apply``'s rows that missed the gate: the proposed breaks as
+    the label, the column reads as a note, sorted by read distance, the rows with a dot
+    run :func:`ellipsis_fold` left alone (:func:`odd_dots`) first."""
+    path = REPO / "output/ocr/linebreak/linebreak_suspicious.jsonl"
+    if not path.exists():
+        return {}
+    df = pd.read_parquet(d / "manifest_sfxp_speech.parquet")
+    df = df[df.source == "sfxp_speech"]
+    crop = {(r.book, int(r.page), str(r.id)): r.path for r in df.itertuples()}
+    rows = []
+    for line in open(path, encoding="utf-8"):
+        x = json.loads(line)
+        k = (x["book"], int(x["page"]), str(x["id"]))
+        # dot-only labels are linebreak_auto.py dots' (dots_suspicious), not this source's
+        if k not in crop or not DOT_FREE.sub("", x["raw"]):
+            continue
+        text = ellipsis_fold(x["out"])
+        odd = odd_dots(text)
+        page = m109.page_path(x["book"], int(x["page"]))
+        reads = " ⏎ ".join(x["lines"])
+        rows.append(
+            dict(
+                id=f"{x['book']}_{int(x['page']):03d}_{x['id']}",
+                text=text,
+                run=0,
+                sus=x["dist"] + (100.0 if odd else 0.0),
+                why=f"{x['n_segs']} segments" + (f" · dots {odd}" if odd else ""),
+                lf=int("\n" in x["out"]),
+                len=len(x["raw"]),
+                status="",
+                note=f"distance {x['dist']:.2f} · label: {x['raw']} · column reads: {reads}",
+                img=(d / crop[k]).as_uri(),
+                page=page.as_uri() if page.exists() else "",
+                box=[],
+            )
+        )
+    print(f"[review] linebreak_suspicious: {len(rows)} rows", flush=True)
+    return {"linebreak_suspicious": rows}
+
+
+def dots_rows(d: Path) -> dict[str, list[dict]]:
+    """``linebreak_auto.py dots``'s dot-only rows that missed its checks: the proposal
+    (``ceil(dots / 3)`` × ``…`` per printed column) as the label, the counted dots per
+    column and the label's own spelling as a note; largest count mismatch first."""
+    path = REPO / "output/ocr/linebreak/dots_suspicious.jsonl"
+    if not path.exists():
+        return {}
+    df = pd.read_parquet(d / "manifest_sfxp_speech.parquet")
+    crop = {(r.book, int(r.page), str(r.id)): r.path for r in df.itertuples()}
+    rows = []
+    for line in open(path, encoding="utf-8"):
+        x = json.loads(line)
+        k = (x["book"], int(x["page"]), str(x["id"]))
+        if k not in crop:
+            continue
+        page = m109.page_path(x["book"], int(x["page"]))
+        got = sum(x["cols"])
+        rows.append(
+            dict(
+                id=f"{x['book']}_{int(x['page']):03d}_{x['id']}",
+                text=x["out"],
+                run=0,
+                sus=abs(got - x["label_dots"]) / max(1, x["label_dots"]),
+                why=f"dots per column {x['cols']} · label {x['label_dots']}",
+                lf=int("\n" in x["out"]),
+                len=len(x["raw"]),
+                status="",
+                note=f"label: {x['raw']}",
+                img=(d / crop[k]).as_uri(),
+                page=page.as_uri() if page.exists() else "",
+                box=[],
+            )
+        )
+    print(f"[review] dots_suspicious: {len(rows)} rows", flush=True)
+    return {"dots_suspicious": rows}
+
+
 def ref_rows(d: Path, n: int, seed: int = 0) -> dict[str, list[dict]]:
     """Read-only Manga109 references: ``n`` seeded rows each of COO onomatopoeia
     (``kind = sfx``) and speech text from ``manifest.parquet``."""
@@ -474,6 +579,8 @@ def main():
         data[src] = out
         print(f"[review] {src}: {len(out)} rows", flush=True)
     data.update(hito_rows(d))
+    data.update(linebreak_rows(d))
+    data.update(dots_rows(d))
     if a.ref_n:
         data.update(ref_rows(d, a.ref_n))
     a.out.mkdir(parents=True, exist_ok=True)
