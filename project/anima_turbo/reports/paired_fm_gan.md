@@ -1,8 +1,10 @@
 # Paired feature matching and the paired GAN on the σ 0.75 state (2026-11-17 – 11-18)
 
 The anchor student's step 0 with terms on the teacher's features of the anchor end state: feature
-matching (`1123`, `1403`, `1442`), then a paired GAN on top of `1442` (`0953`, `1028`). The floor
-probe and the 0.01 arm (`1105`) are in [step0_depth.md](step0_depth.md).
+matching (`1123`, `1403`, `1442`), then a paired GAN on top of `1442` (`0953`, `1028`), its dose
+arm (`1122`), the gap-scale probe, the 2×2 pooled disc head (`1215`) and FastGen's discriminators
+against the port. The floor probe and the 0.01 arm (`1105`) are in
+[step0_depth.md](step0_depth.md).
 
 ## Setup
 
@@ -113,3 +115,155 @@ probe and the 0.01 arm (`1105`) are in [step0_depth.md](step0_depth.md).
   as student and teacher states staying separable than as prompt memorisation. The generator
   signal then comes from a disc near saturation, where its gradient says less about how far a
   state is from the teacher's.
+
+## Generator dose: `1122` (`paired_ratio` 1.0)
+
+### Facts
+
+- `turbo_1118_1122`: `1028` with `gan.paired_ratio` 0.5 → 1.0, nothing else changed. Config header:
+  1.0 becomes the parent if the anchor fit holds and the renders improve; otherwise 0.5 stays.
+- Training log (`train/*`, means over steps a ≤ s < b; both runs binned the same way):
+
+  | steps | 0–200 | 200–400 | 400–800 | 800–1200 | 1200–1600 | 1600–2048 |
+  |---|---|---|---|---|---|---|
+  | anchor MSE, `1028` / `1122` | 0.0938 / 0.0931 | 0.0890 / 0.0910 | 0.0870 / 0.0889 | 0.0844 / 0.0847 | 0.0736 / 0.0747 | 0.0703 / 0.0732 |
+  | FM loss, `1028` / `1122` | 0.0088 / 0.0089 | 0.0092 / 0.0093 | 0.0090 / 0.0090 | 0.0086 / 0.0086 | 0.0082 / 0.0082 | 0.0080 / 0.0081 |
+  | GAN share, `1028` / `1122` | 0 / 0 | 0.22 / 0.38 | 0.43 / 0.67 | 0.43 / 0.67 | 0.43 / 0.68 | 0.43 / 0.68 |
+  | disc margin, `1028` / `1122` | 0.42 / 0.44 | 1.39 / 1.34 | 2.14 / 1.83 | 2.82 / 2.37 | 2.98 / 2.43 | 3.05 / 2.57 |
+  | disc loss, `1028` / `1122` | 1.23 / 1.22 | 0.98 / 1.01 | 0.89 / 0.96 | 0.80 / 0.88 | 0.78 / 0.87 | 0.79 / 0.86 |
+  | `fm_grad_ratio`, `1028` / `1122` | 6.76 / 5.77 | 5.86 / 6.07 | 6.91 / 7.06 | 6.57 / 7.25 | 6.53 / 6.32 | 6.31 / 6.73 |
+
+- Probe (`probe_handoff --anchor_k 14 --anchor_steps 28`, `judge_hard` 3 prompts × seeds 1–4, EMA
+  2048; `bench/turbo/results/20261118-1157-handoff_pgan_1122`, local), `1028` / `1122`: held-out
+  anchor MSE 0.0739 / 0.0748, `S` cos 0.774 / 0.779, `T>S@1` cos 0.943 / 0.942, sameness `S`
+  0.284 / 0.279. Spread unknown (`1028` has no seed twin).
+- Read, blind: student sheets from `bench/turbo/blind_sheets.py`, two columns shuffled per row, 12
+  rows (`output/blind/turbo/1122_vs_1028`, local). The user's picks, `1010 ---- 0111`: `1028` 6
+  (group seeds 1, 3, 4; guitarist seeds 1, 2, 4), `1122` 2 (group seed 2, guitarist seed 3), no
+  pick on the 4 café rows.
+- The user's read (2026-11-18): it is already visible; the GAN does not try to break things, but
+  the perspective of objects is ambiguous and it is comparatively monotonous.
+- Verdict from the header: the renders did not improve, 0.5 stays the parent.
+- Claude did not read these sheets.
+
+### Interpretation
+
+- Doubling the generator's push lowers the disc margin (3.05 → 2.57) and the user picks against it.
+  One arm, but it goes against reading a lower margin as the goal of the next arm.
+- The dose that helps is at or below 0.5. Past it the term costs depth and variety within an
+  image while local structure stays whole.
+- The token head scores each token of block 27 by itself and the loss does not use the pairing, so
+  the generator is pushed toward what a teacher token typically looks like. Flatter, more uniform
+  rendering is what that pressure would produce; not measured.
+
+## Gap scale and disc logits: `probe_gap_scale`
+
+### Facts
+
+- `bench/turbo/probe_gap_scale.py --config <arm> --resume auto`, 16 cached training pairs, block
+  27 at σ 0.75. The resume bundles hold step 1024, so every number is the online student (and
+  disc) at step 1024 of 2048. Results `bench/turbo/results/20261118-12{08,09,10}-gap_scale_*`
+  (local). Means over the 16 pairs unless marked.
+- `keep_k`: the share of the gap's energy, `‖f_s − f_t‖²`, left after a k×k token mean pool (no
+  spatial correlation: 1/k²). `jitter`: `v_target` plus Gaussian noise of the student residual's
+  rms. `own`: the teacher features about their per-channel spatial mean.
+
+  | | `1442` (no GAN) | `1028` (ratio 0.5) | `1122` (ratio 1.0) |
+  |---|---|---|---|
+  | keep 2×2 / 4×4, student gap | 0.612 / 0.400 | 0.608 / 0.389 | 0.602 / 0.378 |
+  | keep 2×2 / 4×4, jitter | 0.289 / 0.091 | 0.289 / 0.091 | 0.289 / 0.091 |
+  | keep 2×2 / 4×4, own | 0.394 / 0.201 | 0.394 / 0.201 | not run in this form |
+  | relative feature L2, student, k = 1 / 2 / 4 | 0.0092 / 0.0058 / 0.0038 | 0.0093 / 0.0058 / 0.0038 | 0.0097 / 0.0060 / 0.0039 |
+  | student over jitter, median, k = 1 / 2 / 4 | 32 / 68 / 142 | 32 / 65 / 130 | 29 / 60 / 116 |
+
+- Token logits of the step-1024 disc (mean over tokens, then over pairs):
+
+  | | `1028` | `1122` |
+  |---|---|---|
+  | teacher state / student state / jitter state | 1.00 / −2.17 / 1.00 | 0.40 / −2.03 / 0.39 |
+  | std over tokens, teacher / student | 1.34 / 1.17 | 1.23 / 1.13 |
+  | correlation over tokens, teacher against student at the same position | 0.12 | 0.18 |
+  | teacher tokens below 0 / student tokens above 0 | 28% / 3.9% | 45% / 5.4% |
+
+- No twin or second draw of pairs: spread unknown for the gaps between the three arms.
+
+### Interpretation
+
+- The gap is spatially coherent: 2×2 pooling keeps 60% of it and 4×4 keeps 38–40%, twice and four
+  times what an equal-norm random residual keeps, and more than the teacher's own features keep
+  (39%, 20%). A disc on pooled tokens still has a gap to read, and it reads the student-shaped
+  residual more selectively (student over jitter 32 → 68 → 142).
+- The disc keys on the student's residual and not on a perturbation of that size: the jitter
+  state scores as the teacher state does.
+- The logit of a token is nearly unrelated between the teacher and the student state at the same
+  position (0.12, 0.18). A relativistic paired loss would cancel a shared per-position offset, and
+  there is little of one, so that arm is dropped.
+- The token head spends part of its signal on the 40% of the gap below the 2×2 scale. A 2×2 pooled
+  head removes that part and keeps the coherent part; whether the token-scale part is what flattens
+  the rendering is what a pooled-head arm at ratio 1.0 against `1122` would show.
+
+## Pooled disc head: `1215` (`disc_pool` 2)
+
+### Facts
+
+- `gan.disc_pool` k (new knob, paired GAN on the token head): the tokens are folded to the patch
+  grid and mean-pooled k×k before the head's MLP, one logit per cell. Tests in
+  `tests/test_turbo_anchor_fm.py`.
+- Smoke (60 it, no delay or ramp, ratio 1.0, `disc_pool` 2): GAN share 0.67–0.71, disc margin
+  0.00 → 0.2, disc loss 1.40 → 1.29, 0.98 it/s.
+- `turbo_1118_1215`: `1122` with `gan.disc_pool` 1 → 2, nothing else changed (ratio 1.0).
+- Training log (`train/*`, means over steps a ≤ s < b), `1122` / `1215`:
+
+  | steps | 0–200 | 200–400 | 400–800 | 800–1200 | 1200–1600 | 1600–2048 |
+  |---|---|---|---|---|---|---|
+  | anchor MSE | 0.0931 / 0.0931 | 0.0910 / 0.0904 | 0.0889 / 0.0885 | 0.0847 / 0.0860 | 0.0747 / 0.0740 | 0.0732 / 0.0729 |
+  | FM loss | 0.0089 / 0.0088 | 0.0093 / 0.0092 | 0.0090 / 0.0090 | 0.0086 / 0.0087 | 0.0082 / 0.0081 | 0.0081 / 0.0081 |
+  | GAN share | 0 / 0 | 0.38 / 0.38 | 0.67 / 0.67 | 0.67 / 0.67 | 0.68 / 0.68 | 0.68 / 0.68 |
+  | disc margin | 0.44 / 0.42 | 1.34 / 1.37 | 1.83 / 2.03 | 2.37 / 2.54 | 2.43 / 2.62 | 2.57 / 2.77 |
+  | disc loss | 1.22 / 1.23 | 1.01 / 1.00 | 0.96 / 0.93 | 0.88 / 0.86 | 0.87 / 0.85 | 0.86 / 0.84 |
+  | logit std | 0.19 / 0.17 | 0.56 / 0.55 | 0.83 / 0.88 | 1.03 / 1.09 | 1.12 / 1.17 | 1.17 / 1.22 |
+
+- Probe (`probe_handoff --anchor_k 14 --anchor_steps 28`, `judge_hard` 3 prompts × seeds 1–4, EMA
+  2048; `bench/turbo/results/20261118-1250-handoff_pgan_pool2_1215`, local), `1122` / `1215`:
+  held-out anchor MSE 0.0748 / 0.0758, `S` cos 0.779 / 0.771, `T>S@1` cos 0.942 / 0.942, sameness
+  `S` 0.279 / 0.311, low-frequency share of the anchor error 0.447 / 0.444. Spread unknown (`1122`
+  has no seed twin).
+- Read, blind: student sheets `output/blind/turbo/1215_vs_1122` (local), 12 rows, at the probe
+  PNGs' resolution. The user's picks: pending.
+
+### Interpretation
+
+- With a quarter of the logits the pooled disc separates the two states a little more than the
+  token disc does (margin 2.77 against 2.57), in line with `probe_gap_scale`: the 2×2 mean keeps
+  the coherent part of the gap and drops a random residual.
+- The anchor fit and the FM loss sit where `1122` has them, so on the log the pooled head is a
+  change in what the GAN pushes on, not in how hard it pulls the regression.
+- Sameness `S` is the one probe column that moves (0.279 → 0.311); without a spread it is a number
+  to put beside the user's read of variety, not a finding.
+
+## FastGen's discriminators against the port (2026-11-18)
+
+### Facts
+
+- NVlabs FastGen at commit `898e757` (2026-11-10), `fastgen/networks/discriminators.py`,
+  `fastgen/methods/distribution_matching/dmd2.py`, `fastgen/configs/`.
+- Every FastGen head ends in a global pool: logits are `[B, num_taps]`, one per image and tap.
+- Image DiT head (QwenImage, Flux): Conv2d 4×4 stride 2 (D → D/2), GroupNorm, LeakyReLU 0.2, 1×1
+  conv, global average. About 8·D² parameters.
+- Cosmos Predict2.5-2B recipe (28 blocks, width 2048): head `multiscale_down_mlp_large` (branches
+  at scales 1, 2, 4, 8, 16, each 1×1 conv → GroupNorm → LeakyReLU → average pool → 3×3 conv →
+  GroupNorm → LeakyReLU → global average; concatenated into an MLP of width 1024 with dropout
+  0.1), taps 13, 20, 27, `gan_loss_weight_gen` 0.03, `gan_use_same_t_noise`, all learning rates
+  1e-5, batch size 1 per GPU.
+- The port (`_archive/proposals/turbo_gan.md`): a mean-pooled-token MLP as v0 ("only go spatial
+  if v0 underperforms"), then the per-token head; LayerNorm → Linear → LeakyReLU → Linear, about
+  D²/2 parameters, one middle tap. Kept from FastGen: the softplus losses, same τ / ε, 0.03, 1e-5,
+  the approximate R1, frozen-teacher features with early exit.
+- FastGen has no per-token head, and the port has no spatial operation in the head before
+  `gan.disc_pool`.
+
+### Interpretation
+
+- `disc_pool` 2 is close to the scale-2 branch of the Cosmos head without its 3×3 conv and with a
+  logit per cell. If the user's read favours `1215`, the arms with a source are FastGen's own:
+  the taps 13 / 20 / 27 and the multi-scale head, one at a time.

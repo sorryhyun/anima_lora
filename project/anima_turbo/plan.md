@@ -110,7 +110,11 @@ Facts:
 - `1028`'s disc is on the student's cosine schedule (`disc_lr` 2.9e-5 → 6.8e-6 over steps
   800–2048), and the student gradient is clipped every iteration (pre-clip norm about 3 against
   `grad_clip` 1.0).
-- Running: `turbo_1118_1122`, `1028` with `gan.paired_ratio` 1.0 (queued 2026-11-18 11:21).
+- `turbo_1118_1122` (`1028` with `gan.paired_ratio` 1.0): not passed. The user's blind picks on
+  the student sheets: `1028` 6, `1122` 2, no pick on the 4 café rows. The user's read: the GAN does
+  not try to break things, but the perspective of objects is ambiguous and it is comparatively
+  monotonous. Disc margin 2.57 against `1028`'s 3.05; training anchor MSE 0.0732 against 0.0703,
+  held-out 0.0748 against 0.0739, spread unknown. 0.5 stays the parent.
 - Claude's read of the student sheets: `1028` keeps `1442`'s layout on every seed; the guitarist's
   guitar is whole on seeds 1–4 (`1442` breaks it on seed 2); the group's seed 3 draws one
   grey-haired girl (`1442`: two) and seed 4 draws the lower faces apart (`1442`: merged).
@@ -130,8 +134,37 @@ Interpretation:
     unless the generator term moves to the renoised state as well.
   - A slower or regularised disc: `disc_lr` 5e-5 → 1e-5 (the smoke's rate, margin 0.05 at step 80)
     or `gan.r1_weight` > 0 (one extra no-grad teacher forward).
-  - A higher `paired_ratio` (0.5 → 1.0): the generator pushes back harder against the disc; the
-    anchor MSE then shows whether the GAN starts pulling the regression off, as in `0953`.
+  - A higher `paired_ratio` (0.5 → 1.0): run as `1122`, not passed.
+- `1122` lowered the margin and read worse, so a lower margin is not by itself the aim of the next
+  arm; the arms above are read on the renders with the margin as a number beside them.
+
+Disc head (2026-11-18), facts:
+
+- The user's call: disc variants are read at `gan.paired_ratio` 1.0, where the GAN's effect is
+  plain to see, against `1122`; whether to go back to 0.5 is decided after.
+- The user's proposal: pool the tokens 2×2 before the head. The heads in the code are `pooled`
+  (one logit per tap) and `token`; neither folds the tokens back to the grid.
+- `probe_gap_scale` (step-1024 students, 16 pairs, `reports/paired_fm_gan.md`): a 2×2 mean pool
+  keeps 60% of the student / teacher gap at block 27 and 4×4 keeps 38–40% (equal-norm random
+  residual: 29%, 9%; the teacher's own features: 39%, 20%); student over random residual goes
+  32 → 68 → 142.
+
+Disc head, interpretation:
+
+- A 2×2 pooled head has a gap to read and drops the token-scale 40% of it.
+
+Disc head, runs:
+
+- `turbo_1118_1215` (`1122` with `gan.disc_pool` 2): finished. Against `1122`, steps 1600–2048:
+  training anchor MSE 0.0729 / 0.0732, FM loss 0.0081 / 0.0081, disc margin 2.77 / 2.57; probe:
+  held-out anchor MSE 0.0758 / 0.0748, `S` cos 0.771 / 0.779, sameness `S` 0.311 / 0.279; spread
+  unknown. Blind sheets `output/blind/turbo/1215_vs_1122` (local); the user's picks pending.
+- FastGen's heads (commit `898e757`, `reports/paired_fm_gan.md`): none is per token; the image DiT
+  head is a 4×4 stride-2 conv then a global average, and the Cosmos Predict2.5-2B recipe (the
+  backbone family of Anima) uses a multi-scale head (scales 1–16) on taps 13, 20, 27. The port
+  took a pooled-token MLP, then the per-token head, on one tap.
+- Interpretation: if the user's read favours `1215`, the next arms are FastGen's own, one at a
+  time: the taps 13 / 20 / 27, then the multi-scale head.
 
 ### 3. (merged into 2)
 
@@ -203,6 +236,9 @@ Parked:
 
 ## Dropped without a run
 
+- A relativistic paired GAN loss (`D(f_t) − D(f_s)` per token): the token logits of the teacher
+  and the student state at the same position correlate at 0.12 (`1028`) and 0.18 (`1122`), so
+  there is little shared offset for it to cancel (`probe_gap_scale`, `reports/paired_fm_gan.md`).
 - Anchor-only and DM-only iterations drawn at random: the clip it was meant to unshare does not
   bind on `2221` (`reports/step0_depth.md`).
 - Adaptive clip: on v1's recipe the clip at 1.0 already acts on 98 % of the steps under AdamW.

@@ -298,6 +298,12 @@ class TurboConfig:
         "pooled: one logit per tap; token: the same MLP per token (LADD).",
         choices=("pooled", "token"),
     )
+    gan_disc_pool: int = knob(
+        "gan.disc_pool",
+        1,
+        "Paired GAN (anchor_only), token head: mean-pool the tokens k×k on the "
+        "patch grid before the head; 1 = one logit per token.",
+    )
     gan_delay_steps: int = knob(
         "gan.delay_steps",
         0,
@@ -629,6 +635,12 @@ def _validate(c: TurboConfig) -> None:
     )
     _require(c.gan_r1_weight >= 0.0, f"gan.r1_weight={c.gan_r1_weight}: must be >= 0")
     _require(
+        c.gan_disc_pool >= 1
+        and (c.gan_disc_pool == 1 or (c.anchor_only and c.gan_disc_head == "token")),
+        f"gan.disc_pool={c.gan_disc_pool}: must be >= 1, and > 1 is built for the "
+        "paired GAN (dpdmd.anchor_only) on gan.disc_head = token.",
+    )
+    _require(
         c.gan_delay_steps >= 0 and c.gan_warmup_steps >= 0,
         f"gan.delay_steps={c.gan_delay_steps} / gan.warmup_steps="
         f"{c.gan_warmup_steps}: must be >= 0",
@@ -673,7 +685,7 @@ def _log_summary(c: TurboConfig) -> None:
     if c.gan_on:
         logger.info(
             f"GAN ON: weight_gen={c.gan_loss_weight_gen}, feature_block_idx="
-            f"{c.gan_feature_block_idx} (-1 = middle), disc_head={c.gan_disc_head}, "
+            f"{c.gan_feature_block_idx} (-1 = middle), disc_head={c.gan_disc_head}, disc_pool={c.gan_disc_pool}, "
             f"disc_lr={c.gan_disc_lr}, r1_weight={c.gan_r1_weight}, "
             f"use_same_t_noise={c.gan_use_same_t_noise}, "
             f"delay_steps={c.gan_delay_steps}, warmup_steps={c.gan_warmup_steps}."

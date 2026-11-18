@@ -174,6 +174,7 @@ def _build_model(cfg: TurboConfig, device, dtype) -> tuple[Anima, TurboDMDNetwor
         gan_feature_indices=gan_indices,
         gan_disc_hidden=cfg.gan_disc_hidden if cfg.gan_disc_hidden > 0 else None,
         gan_disc_head=cfg.gan_disc_head,
+        gan_disc_pool=cfg.gan_disc_pool,
         fake_transition=cfg.fake_transition,
         before_apply=convert_base,
     )

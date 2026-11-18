@@ -65,6 +65,10 @@ class TeacherFeatureDiscriminator(nn.Module):
     Neither reshapes to a patch grid, so both run unchanged on the eager
     ``(B,T,H,W,D)`` and compiled ``(B,1,L,1,D)`` layouts. fp32. The parameters are
     identical across granularities, so resume bundles load across a head switch.
+
+    ``pool`` k > 1 (token head): the tokens are folded to the ``grid`` (h, w) given
+    to ``forward`` and mean-pooled k×k before the MLP, one logit per cell; rows and
+    columns past a multiple of k are dropped.
     ~inner_dim²/2 params per tap (~2M at D=2048); discarded at save.
     """
 
@@ -75,11 +79,15 @@ class TeacherFeatureDiscriminator(nn.Module):
         num_taps: int,
         hidden_dim: int | None = None,
         granularity: Literal["pooled", "token"] = "pooled",
+        pool: int = 1,
     ) -> None:
         super().__init__()
         if granularity not in ("pooled", "token"):
             raise ValueError(f"unknown disc granularity: {granularity!r}")
+        if pool < 1 or (pool > 1 and granularity != "token"):
+            raise ValueError(f"disc pool={pool} needs pool >= 1 and the token head")
         self.granularity = granularity
+        self.pool = pool
         h = hidden_dim if hidden_dim is not None else inner_dim // 2
         self.heads = nn.ModuleList(
             nn.Sequential(
@@ -91,16 +99,33 @@ class TeacherFeatureDiscriminator(nn.Module):
             for _ in range(num_taps)
         )
 
-    def forward(self, feats: list[torch.Tensor]) -> torch.Tensor:
+    def _pool_tokens(self, f: torch.Tensor, grid: tuple[int, int]) -> torch.Tensor:
+        """(B, ..., D) tokens in row-major order → (B, h//k · w//k, D) cell means."""
+        h, w = grid
+        k, B, D = self.pool, f.shape[0], f.shape[-1]
+        f = f.reshape(B, -1, D)
+        if f.shape[1] < h * w:
+            raise ValueError(f"{f.shape[1]} tokens for a {h}x{w} grid")
+        f = f[:, : h * w].reshape(B, h, w, D)[:, : h // k * k, : w // k * k]
+        return f.reshape(B, h // k, k, w // k, k, D).mean((2, 4)).flatten(1, 2)
+
+    def forward(
+        self, feats: list[torch.Tensor], grid: tuple[int, int] | None = None
+    ) -> torch.Tensor:
         if len(feats) != len(self.heads):
             raise ValueError(
                 f"TeacherFeatureDiscriminator expected {len(self.heads)} feature "
                 f"tensors, got {len(feats)}"
             )
+        if self.pool > 1 and grid is None:
+            raise ValueError(f"disc pool={self.pool} needs the token grid (h, w)")
         logits = []
         for head, f in zip(self.heads, feats):
             if self.granularity == "token":
-                logits.append(head(f.float()).flatten(1))
+                f = f.float()
+                if self.pool > 1:
+                    f = self._pool_tokens(f, grid)
+                logits.append(head(f).flatten(1))
             else:
                 # Pool over every axis between batch (0) and channel (-1).
                 pooled = f.float().mean(dim=tuple(range(1, f.ndim - 1)))  # (B, D)
@@ -328,6 +353,7 @@ class TurboDMDNetwork:
         gan_feature_indices: set[int] | None = None,
         gan_disc_hidden: int | None = None,
         gan_disc_head: Literal["pooled", "token"] = "pooled",
+        gan_disc_pool: int = 1,
         fake_transition: bool = False,
         before_apply: Callable[[], None] | None = None,
     ) -> None:
@@ -421,10 +447,12 @@ class TurboDMDNetwork:
                 num_taps=len(self.gan_feature_indices),
                 hidden_dim=gan_disc_hidden,
                 granularity=gan_disc_head,
+                pool=gan_disc_pool,
             )
             logger.info(
                 f"TurboDMDNetwork: GAN disc attached (taps={self.gan_feature_indices}, "
-                f"head={gan_disc_head}, inner_dim={unet.model_channels}, "
+                f"head={gan_disc_head}, pool={gan_disc_pool}, "
+                f"inner_dim={unet.model_channels}, "
                 f"{sum(p.numel() for p in self.disc.parameters()):,} params)"
             )
 

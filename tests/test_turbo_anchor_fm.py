@@ -93,7 +93,7 @@ def _ctx(net: _Student, calls: list, disc=None):
         forward=fwd,
         student_sigmas=[1.0, 0.9, 0.75, 0.5],
         teacher_anchor_sigmas=[1.0, SIG_K, 0.0],
-        model=SimpleNamespace(blocks=blocks, num_blocks=4),
+        model=SimpleNamespace(blocks=blocks, num_blocks=4, patch_spatial=1),
         turbo=SimpleNamespace(
             set_view=views.append,
             disc=disc,
@@ -246,3 +246,49 @@ def test_paired_ratio_config():
     assert c.gan_paired_ratio == 0.5
     with pytest.raises((ValueError, SystemExit)):
         _resolve(cfg={"dpdmd": {"anchor_only": True}, "gan": {"paired_ratio": 0.5}})
+
+
+def test_disc_pool_head():
+    """``gan.disc_pool`` 2: one logit per 2×2 cell, the head on the cell's mean
+    token, from either feature layout; the paired steps pass the grid through."""
+    torch.manual_seed(0)
+    disc = TeacherFeatureDiscriminator(
+        inner_dim=6, num_taps=1, granularity="token", pool=2
+    )
+    f = torch.randn(2, 5, 4, 6)  # h = 5: the odd last row is dropped
+    want = disc.heads[0](f[:, :4].reshape(2, 2, 2, 2, 2, 6).mean((2, 4))).flatten(1)
+    assert torch.allclose(disc([f], (5, 4)), want, atol=1e-6)
+    flat = f.reshape(2, 1, 20, 1, 6)  # the compiled blocks' flattened layout
+    assert torch.allclose(disc([flat], (5, 4)), want, atol=1e-6)
+    with pytest.raises(ValueError):
+        disc([f])
+    with pytest.raises(ValueError):
+        TeacherFeatureDiscriminator(inner_dim=6, num_taps=1, pool=2)
+
+    eps, v_t, c = torch.randn(2, 4, 4, 4), torch.randn(2, 4, 4, 4), torch.randn(2, 3, 8)
+    cfg = SimpleNamespace(
+        k_anchor=1,
+        fm_weight=FM_W,
+        fm_block_idx=2,
+        gan_paired_ratio=0.0,
+        gan_r1_weight=0.0,
+        gan_r1_alpha=0.1,
+        grad_clip=0.0,
+    )
+    ctx = _ctx(_Student(), [], disc)
+    r = anchor_fm_loss(ctx, cfg, eps.clone(), v_t, c, 2, gan_weight=1.0)
+    assert r.grid == (4, 4)
+    ctx.disc_opt = torch.optim.SGD(disc.parameters(), lr=0.1)
+    ctx.disc_sched = SimpleNamespace(step=lambda: None)
+    d_loss, _, _, _ = paired_disc_update(ctx, cfg, r, c)
+    assert torch.isfinite(d_loss)
+
+
+def test_disc_pool_config():
+    paired = {"dpdmd": {"anchor_only": True, "fm_weight": 1.0}}
+    gan = {"weight_gen": 1.0, "disc_head": "token", "disc_pool": 2}
+    assert _resolve(cfg={**paired, "gan": gan}).gan_disc_pool == 2
+    with pytest.raises((ValueError, SystemExit)):
+        _resolve(cfg={**paired, "gan": {**gan, "disc_head": "pooled"}})
+    with pytest.raises((ValueError, SystemExit)):
+        _resolve(cfg={"gan": gan})

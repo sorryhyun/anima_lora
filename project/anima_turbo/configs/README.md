@@ -23,3 +23,5 @@ The live run config only. Launch with
 - `turbo_1117_1403.toml` / `turbo_1117_1442.toml`: paired feature matching at 0.05 (middle tap) and at 15 on block 27.
 - `turbo_1118_0953.toml`: `1442` + the paired GAN (plan.md arm 3), disc on block 27 of the FM forward, λ 0.5.
 - `turbo_1118_1028.toml`: `0953` with the generator gradient held at 0.5x the FM gradient (`gan.paired_ratio`).
+- `turbo_1118_1122.toml`: `1028` at `gan.paired_ratio` 1.0.
+- `turbo_1118_1215.toml`: `1122` with `gan.disc_pool` 2.

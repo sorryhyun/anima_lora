@@ -155,6 +155,9 @@ class AnchorFM:
     fake_feats: list[torch.Tensor] | None  # disc taps of x_s (detached)
     x_t: torch.Tensor | None  # the real state, for the R1 perturbation
     t_k: torch.Tensor | None
+    grid: tuple[int, int] | None = (
+        None  # token grid (h, w), set under gan.disc_pool > 1
+    )
 
 
 def _rel_feat_mse(f_s: torch.Tensor, f_t: torch.Tensor) -> torch.Tensor:
@@ -241,11 +244,14 @@ def anchor_fm_loss(
     if fm_on:
         fm = _rel_feat_mse(feats_s[bidx], feats_t[bidx])
         loss = loss + cfg.fm_weight * fm
-    real_feats = fake_feats = None
+    real_feats = fake_feats = grid = None
     if gan_on:
+        if turbo.disc.pool > 1:
+            ps = ctx.model.patch_spatial
+            grid = (eps.shape[-2] // ps, eps.shape[-1] // ps)
         turbo.set_disc_requires_grad(False)
         fake_list = turbo.features_in_order(feats_s)
-        gen = gan_loss_generator(turbo.disc(fake_list))
+        gen = gan_loss_generator(turbo.disc(fake_list, grid))
         loss = loss + gan_weight * gen
         real_feats = [f.detach() for f in turbo.features_in_order(feats_t)]
         fake_feats = [f.detach() for f in fake_list]
@@ -297,6 +303,7 @@ def anchor_fm_loss(
         fake_feats=fake_feats,
         x_t=x_t if gan_on else None,
         t_k=t_k if gan_on else None,
+        grid=grid,
     )
 
 
@@ -312,8 +319,8 @@ def paired_disc_update(
     perturbed real state). Returns (loss, margin, spread, pre-clip grad norm)."""
     turbo = ctx.turbo
     turbo.set_disc_requires_grad(True)
-    real_logits = turbo.disc(r.real_feats)
-    fake_logits = turbo.disc(r.fake_feats)
+    real_logits = turbo.disc(r.real_feats, r.grid)
+    fake_logits = turbo.disc(r.fake_feats, r.grid)
     loss = gan_loss_discriminator(real_logits, fake_logits)
     with torch.no_grad():
         margin = real_logits.mean() - fake_logits.mean()
@@ -325,7 +332,7 @@ def paired_disc_update(
             ctx, x_a.to(ctx.dtype), r.t_k, crossattn_emb, no_grad=True
         )
         loss = loss + cfg.gan_r1_weight * nn.functional.mse_loss(
-            real_logits, turbo.disc(feats_a)
+            real_logits, turbo.disc(feats_a, r.grid)
         )
     loss.backward()
     gn = clip_or_norm(turbo.disc_params(), cfg.grad_clip)

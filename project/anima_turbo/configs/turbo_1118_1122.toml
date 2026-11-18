@@ -12,9 +12,10 @@
 #   - The student gradient is clipped every iteration (pre-clip norm about 3 against grad_clip 1.0), so the update
 #     size stays where 1028 has it and the anchor MSE's share of it falls.
 # Read: final EMA against turbo_1118_1028 EMA 2048, probe_handoff --anchor_k 14 --anchor_steps 28 on judge_hard
-# seeds 1-4, student sheets (guitarist seeds 1-4, group seeds 3 and 4, cafe text); the user's read decides.
+# seeds 1-4, student sheets (guitarist seeds 1-4, group seeds 3 and 4, cafe text), blind; the user's read decides.
 # Beside them, per step bin against 1028: training anchor MSE (0.0879 at 400-800, 0.0705 at 1600-2048; 0953 ran
 # 0.170 and 0.131), FM loss, disc margin, gan_grad_share; held-out anchor MSE from the probe.
+# Bars: spread unknown (1028 has no seed twin).
 # Cost: 2048 iterations, about 43 min.
 dit_path = "models/diffusion_models/anima_merged15_int8_gptq.safetensors"
 dit_nonquant_path = "models/diffusion_models/anima_merged15.safetensors"

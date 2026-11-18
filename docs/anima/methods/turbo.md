@@ -144,6 +144,7 @@ the flag wins over the TOML. The shipped defaults:
 | `[sampling]` | `flow_shift` | `3.0` | σ-schedule shift for the student/teacher Euler grids (matches inference; `k_anchor` σ is shift-coupled, so change both together) |
 | `[gan]` | `weight_gen` | `0.03` (on) | teacher-feature GAN generator term — see below |
 | `[gan]` | `disc_head` | `token` | `pooled` (code default) / `token` — see below |
+| `[gan]` | `disc_pool` | `1` | paired GAN (`dpdmd.anchor_only`), token head: mean-pool the tokens k×k on the patch grid before the head, one logit per cell; `1` = one logit per token |
 | `[gan]` | `delay_steps` / `warmup_steps` | `0` / `0` | generator-side λ ramp: hold at 0 for `delay_steps` (disc still trains), then linear 0 → `weight_gen` over `warmup_steps` |
 
 Validation enforces `student_steps ≥ 2` and `1 ≤ k_anchor < teacher_anchor_steps`.

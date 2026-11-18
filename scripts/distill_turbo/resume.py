@@ -48,6 +48,7 @@ _WARN_FIELDS = (
     "fake_lr",
     "gan_disc_lr",
     "gan_disc_head",  # same disc parameters pooled or per-token
+    "gan_disc_pool",
     "student_alpha",
     "fake_alpha",
     "student_steps",

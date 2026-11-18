@@ -21,7 +21,9 @@ in the run table.
   target is parked.
 - [paired_fm_gan.md](paired_fm_gan.md): paired feature matching on the σ 0.75 state (`1123`,
   `1403`, `1442`) and the paired GAN on top of `1442` (`0953`, `1028`); the line uses the GAN on
-  the user's read of `1028`.
+  the user's read of `1028`. `paired_ratio` 1.0 (`1122`) not passed on the user's blind picks.
+  Also the gap-scale probe, the 2×2 pooled disc head (`1215`, read pending) and FastGen's
+  discriminators against the port.
 - [grid_cdm.md](grid_cdm.md): the static grid and the cond-only L_CDM, both adopted at 250
   iterations on the user's read and shipped in the recipe; one seed each.
 

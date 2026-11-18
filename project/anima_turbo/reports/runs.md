@@ -52,6 +52,8 @@ Probe numbers are on EMA 250 unless a row says otherwise: sameness (lower is mor
 | `turbo_1117_1442` | `1403` with the tap at block 27, `fm_weight` 15 | not passed on the probe: anchor MSE 0.0772, `S` cos 0.781, `T>S@1` 0.944, sameness 0.291; the user read its renders as fine | [paired_fm_gan](paired_fm_gan.md) |
 | `turbo_1118_0953` | `1442` + paired GAN at block 27, λ 0.5, `disc_lr` 5e-5 | train anchor MSE 0.131 (`1442`: 0.070), GAN share 0.99; renders not made | [paired_fm_gan](paired_fm_gan.md) |
 | `turbo_1118_1028` | `0953` with `gan.paired_ratio` 0.5 | train anchor MSE 0.0705 (level with `1442`), GAN share 0.43, disc margin 0.44 → 3.06; the user's read: the GAN has a clear effect, usable once the margin is fixed | [paired_fm_gan](paired_fm_gan.md) |
+| `turbo_1118_1122` | `1028` with `gan.paired_ratio` 1.0 | not passed: the user's blind picks `1028` 6, `1122` 2, no pick 4; train anchor MSE 0.0732 (`1028`: 0.0703), GAN share 0.68, disc margin 0.44 → 2.57 | [paired_fm_gan](paired_fm_gan.md) |
+| `turbo_1118_1215` | `1122` with `gan.disc_pool` 2 (2×2 mean-pooled tokens into the head) | train anchor MSE 0.0729 (`1122`: 0.0732), disc margin 0.42 → 2.77, held-out anchor MSE 0.0758 (`1122`: 0.0748), sameness `S` 0.311 (`1122`: 0.279); the user's blind read pending | [paired_fm_gan](paired_fm_gan.md) |
 
 ## Interpretation
 
