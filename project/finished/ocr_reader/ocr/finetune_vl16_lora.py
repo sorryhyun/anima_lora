@@ -521,6 +521,22 @@ def main():
     full_masters = [
         p.detach().float().clone().requires_grad_(True) for _, p in full_params
     ]
+
+    # Accumulate the full-FT grads in fp32 on the masters: each bf16 grad is folded in
+    # and freed as soon as backward has produced it, so the --grad_accum micro-steps
+    # never sum in bf16 (the LoRA adapters are fp32 already: peft autocast_adapter_dtype).
+    def fold_into(master: torch.Tensor):
+        def hook(p: torch.Tensor) -> None:
+            if master.grad is None:
+                master.grad = p.grad.float()
+            else:
+                master.grad.add_(p.grad)
+            p.grad = None
+
+        return hook
+
+    for (_, p), m in zip(full_params, full_masters):
+        p.register_post_accumulate_grad_hook(fold_into(m))
     if a.grad_ckpt:
         try:
             base.gradient_checkpointing_enable(
@@ -568,7 +584,10 @@ def main():
             extra_replace=a.extra_replace,
         )
         va_df = cd.load_split("val", limit=a.val_limit, seed=a.seed)
-    tr = cd.CropDataset(tr_df, augment=not a.no_augment, seed=a.seed)
+    # --sfx_prefix crops carry the 4 px margin: no pad jitter, rotation on an expanded canvas
+    tr = cd.CropDataset(
+        tr_df, augment=not a.no_augment, seed=a.seed, tight=a.sfx_prefix
+    )
     va = cd.CropDataset(va_df, augment=False)
     tr_prompt, va_prompt = prompt, prompt
     if a.sfx_prefix:
@@ -696,9 +715,6 @@ def main():
             losses.append(raw.detach())
             if micro % a.grad_accum:
                 continue
-            for (_, p), m in zip(full_params, full_masters):
-                m.grad = p.grad.float()
-                p.grad = None
             torch.nn.utils.clip_grad_norm_(clip_params, 1.0)
             opt.step()
             sched.step()

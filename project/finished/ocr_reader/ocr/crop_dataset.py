@@ -207,8 +207,12 @@ def load_sfxp(
 
 
 class CropDataset(Dataset):
-    def __init__(self, df: pd.DataFrame, *, augment: bool, seed: int = 0):
+    def __init__(
+        self, df: pd.DataFrame, *, augment: bool, seed: int = 0, tight: bool = False
+    ):
+        """``tight``: the crops carry the 4 px margin (``load_sfxp``), see ``Augment.tight``."""
         self.df = df.reset_index(drop=True)
+        self.tight = tight
         self.derived = m109.derived_root()
         self.paths = [str(self.derived / p) for p in self.df.path]
         self.targets = list(self.df.target)
@@ -225,7 +229,7 @@ class CropDataset(Dataset):
         if self._aug is None:
             info = torch.utils.data.get_worker_info()
             wid = info.id if info else 0
-            self._aug = Augment(seed=self.seed * 1000 + wid)
+            self._aug = Augment(seed=self.seed * 1000 + wid, tight=self.tight)
         return self._aug
 
     def __getitem__(self, i: int):

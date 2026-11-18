@@ -14,7 +14,9 @@ Draws (each an independent Bernoulli, probabilities in :class:`Augment`):
 * **pad jitter** 5–25 % — the crop already carries 12 %; below that we cut
   inward, above it we extend with the crop's border colour (the page context
   is not in the file). Also shifts the glyphs off centre.
-* **rotation** ±8° (border replicate) — COO polygons are hand-drawn and the
+  Off for the 4 px crops (``Augment(tight=True)``, ``--sfx_prefix``): their pad is
+  4 px, so a cut inward clips the glyphs.
+* **rotation** ±8° (border replicate; ``tight``: canvas expanded, border colour) — COO polygons are hand-drawn and the
   ``minAreaRect`` deskew leaves a residual tilt; sincos SFX are often diagonal.
 * **scale jitter** — downscale to 0.5–1.0 and back (area / cubic): sincos min
   side p10 is 33 px, COO's is 25 px; the reader must not depend on stroke width.
@@ -96,12 +98,28 @@ def pad_jitter(img: np.ndarray, rng: random.Random, lo=0.05, hi=0.25, base=0.12)
     return out
 
 
-def rotate(img: np.ndarray, rng: random.Random, deg=8.0):
+def rotate(img: np.ndarray, rng: random.Random, deg=8.0, expand=False):
+    """``expand``: grow the canvas to the rotated crop's bounding box and fill the
+    corners with the border colour, so no glyph leaves the frame (the 4 px crops
+    have no margin to rotate into)."""
     h, w = img.shape[:2]
     a = rng.uniform(-deg, deg)
     rot = cv2.getRotationMatrix2D((w / 2, h / 2), a, 1.0)
+    if not expand:
+        return cv2.warpAffine(
+            img, rot, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE
+        )
+    c, s = abs(rot[0, 0]), abs(rot[0, 1])
+    nw, nh = int(np.ceil(w * c + h * s)), int(np.ceil(w * s + h * c))
+    rot[0, 2] += (nw - w) / 2
+    rot[1, 2] += (nh - h) / 2
     return cv2.warpAffine(
-        img, rot, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE
+        img,
+        rot,
+        (nw, nh),
+        flags=cv2.INTER_CUBIC,
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=_border_color(img),
     )
 
 
@@ -165,6 +183,9 @@ class Augment:
     p_contrast: float = 0.6
     p_invert: float = 0.1
     p_tint: float = 0.35
+    # crops cut at the 4 px margin (build_sfx_prefix.py): no pad jitter (it assumes the
+    # 12 % pad and cuts into the glyphs), rotation on an expanded canvas
+    tight: bool = False
     rng: random.Random = field(init=False)
 
     def __post_init__(self):
@@ -174,10 +195,10 @@ class Augment:
         r = self.rng
         if img.ndim == 2:
             img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-        if r.random() < self.p_pad:
+        if not self.tight and r.random() < self.p_pad:
             img = pad_jitter(img, r)
         if r.random() < self.p_rotate:
-            img = rotate(img, r)
+            img = rotate(img, r, expand=self.tight)
         if r.random() < self.p_tint:
             img = tint(img, r)
         if r.random() < self.p_contrast:
