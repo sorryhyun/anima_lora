@@ -30,7 +30,8 @@ to the page. Three parts, each its own manifest under ``derived/``:
 * ``--ellipsis`` → the same manifest, in place (also run at the end of ``--speech`` /
   ``--lines``): a dot run whose length is a multiple of three becomes that many ``…``
   thirds (``・・・・・・`` → ``……``; :func:`ellipsis_fold`), as the gelnote / swaprelax labels
-  spell it. Other runs stay: a ``・・・・`` label is four dots printed on the page.
+  spell it; a run of four in a label with text becomes one ``…`` (review edits, 11-18).
+  Other runs stay.
 * ``--gt test`` → ``manifest_sfxp_gt.parquet``: the grey manifest's rows of those splits (COO
   and speech) re-cut through ``pilot.deskew_crop`` at the capped margin, for the gate evals
   (``eval_manga109.py --manifest sfxp_gt``).
@@ -372,15 +373,22 @@ DOT_RUN = re.compile(r"\.{3,}|．{3,}|・{3,}|･{3,}")
 
 def ellipsis_fold(t: str) -> str:
     """A run of one dot glyph (``.`` ``．`` ``・`` ``･``) whose length is a multiple of
-    three → length / 3 × ``…``. A run a line break splits (``火薬・・\n・・・・・・？``)
-    stays as written. Idempotent."""
+    three → length / 3 × ``…``; in a label with text, a run of four → one ``…`` (the
+    user's review edits, 11-18: ``そりゃ・・・・`` → ``そりゃ…``; dot-only labels are
+    spelled per printed column by ``linebreak_auto.py dots``). A run a line break splits
+    (``火薬・・\n・・・・・・？``) stays as written. Idempotent."""
+    has_text = bool(re.sub(r"[\s.．・･…‥]", "", t))
 
     def sub(m: re.Match) -> str:
         r, a, b = m[0], m.start(), m.end()
         split = (a >= 2 and t[a - 1] == "\n" and t[a - 2] == r[0]) or (
             b + 1 < len(t) and t[b] == "\n" and t[b + 1] == r[0]
         )
-        return r if split or len(r) % 3 else "…" * (len(r) // 3)
+        if split:
+            return r
+        if len(r) == 4 and has_text:
+            return "…"
+        return r if len(r) % 3 else "…" * (len(r) // 3)
 
     return DOT_RUN.sub(sub, t)
 
