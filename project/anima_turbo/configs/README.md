@@ -25,3 +25,4 @@ The live run config only. Launch with
 - `turbo_1118_1028.toml`: `0953` with the generator gradient held at 0.5x the FM gradient (`gan.paired_ratio`).
 - `turbo_1118_1122.toml`: `1028` at `gan.paired_ratio` 1.0.
 - `turbo_1118_1215.toml`: `1122` with `gan.disc_pool` 2.
+- `turbo_1118_1302.toml`: `1122` with FastGen's conv head on taps 13 / 20 / 27 (`gan.disc_head = "conv"`, `gan.feature_blocks`, `disc_hidden` 256).

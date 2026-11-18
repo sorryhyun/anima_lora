@@ -240,52 +240,60 @@ def anchor_fm_loss(
 
     zero = torch.zeros((), device=dev)
     fm = gen = zero
-    loss = zero
+    # The terms read detached copies of the taps, so each gradient below is the
+    # term's direct one on that tap. Taps nest (block 13 feeds block 27): pulling
+    # the direct gradients back together gives the total on v, each path once.
+    out_feats = sorted(taps)
+    f_s_list = [feats_s[i] for i in out_feats]
+    leaf = {i: feats_s[i].detach().requires_grad_() for i in out_feats}
+    leaf_list = [leaf[i] for i in out_feats]
+
+    def _direct(term):
+        gs = torch.autograd.grad(term, leaf_list, allow_unused=True)
+        return [torch.zeros_like(f) if g is None else g for g, f in zip(gs, leaf_list)]
+
+    def _rms(gs, idx):
+        picked = [gs[out_feats.index(i)].float().flatten() for i in idx]
+        return torch.cat(picked).pow(2).mean().sqrt()
+
+    g_f_fm = g_f_gan = None
     if fm_on:
-        fm = _rel_feat_mse(feats_s[bidx], feats_t[bidx])
-        loss = loss + cfg.fm_weight * fm
+        fm = _rel_feat_mse(leaf[bidx], feats_t[bidx])
+        g_f_fm = _direct(cfg.fm_weight * fm)
     real_feats = fake_feats = grid = None
+    gan_taps: list[int] = []
     if gan_on:
-        if turbo.disc.pool > 1:
+        if turbo.disc.needs_grid:
             ps = ctx.model.patch_spatial
             grid = (eps.shape[-2] // ps, eps.shape[-1] // ps)
         turbo.set_disc_requires_grad(False)
-        fake_list = turbo.features_in_order(feats_s)
-        gen = gan_loss_generator(turbo.disc(fake_list, grid))
-        loss = loss + gan_weight * gen
+        gan_taps = sorted(turbo.gan_feature_set)
+        gen = gan_loss_generator(turbo.disc(turbo.features_in_order(leaf), grid))
+        if gan_weight > 0.0:
+            g_f_gan = _direct(gan_weight * gen)
         real_feats = [f.detach() for f in turbo.features_in_order(feats_t)]
-        fake_feats = [f.detach() for f in fake_list]
+        fake_feats = [f.detach() for f in turbo.features_in_order(feats_s)]
 
     # One pullback through the teacher; the FM / GAN split is read on the features.
-    out_feats = sorted(taps)
-    f_s_list = [feats_s[i] for i in out_feats]
     gan_share = zero
-    if fm_on and gan_on and gan_weight > 0.0:
-        g_f_fm = torch.autograd.grad(cfg.fm_weight * fm, f_s_list, retain_graph=True)
-        g_f_gan = torch.autograd.grad(gan_weight * gen, f_s_list, retain_graph=True)
-
-        def _rms(gs):
-            return torch.cat([g.float().flatten() for g in gs]).pow(2).mean().sqrt()
-
+    if g_f_fm is not None and g_f_gan is not None:
         if cfg.gan_paired_ratio > 0.0:
-            # rms(GAN) = ratio·ramp·rms(FM): a stronger disc turns the term, it
-            # does not grow it. gan_weight / weight_gen is the delay/ramp fraction.
+            # rms(GAN, over its taps) = ratio·ramp·rms(FM, on its tap): a stronger
+            # disc turns the term, it does not grow it. gan_weight / weight_gen is
+            # the delay/ramp fraction.
             ramp = gan_weight / cfg.gan_loss_weight_gen
             s = (
                 cfg.gan_paired_ratio
                 * ramp
-                * _rms(g_f_fm)
-                / _rms(g_f_gan).clamp_min(1e-20)
+                * _rms(g_f_fm, [bidx])
+                / _rms(g_f_gan, gan_taps).clamp_min(1e-20)
             )
             g_f_gan = [g * s.to(g.dtype) for g in g_f_gan]
         g_f = [a + b for a, b in zip(g_f_fm, g_f_gan)]
-        gan_share = _rms(g_f_gan) / _rms(g_f).clamp_min(1e-20)
-    elif fm_on or gan_weight > 0.0:
-        g_f = torch.autograd.grad(loss, f_s_list, allow_unused=True, retain_graph=True)
+        gan_share = _rms(g_f_gan, out_feats) / _rms(g_f, out_feats).clamp_min(1e-20)
     else:
-        g_f = None
+        g_f = g_f_fm if g_f_fm is not None else g_f_gan
     if g_f is not None:
-        g_f = [torch.zeros_like(f) if g is None else g for g, f in zip(g_f, f_s_list)]
         (g_feat,) = torch.autograd.grad(f_s_list, v_leaf, grad_outputs=g_f)
     else:  # GAN in its delay window and FM off: the MSE alone
         g_feat = torch.zeros_like(g_mse)

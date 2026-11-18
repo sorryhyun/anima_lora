@@ -158,13 +158,23 @@ Disc head, runs:
 - `turbo_1118_1215` (`1122` with `gan.disc_pool` 2): finished. Against `1122`, steps 1600–2048:
   training anchor MSE 0.0729 / 0.0732, FM loss 0.0081 / 0.0081, disc margin 2.77 / 2.57; probe:
   held-out anchor MSE 0.0758 / 0.0748, `S` cos 0.771 / 0.779, sameness `S` 0.311 / 0.279; spread
-  unknown. Blind sheets `output/blind/turbo/1215_vs_1122` (local); the user's picks pending.
+  unknown. Blind sheets `output/blind/turbo/1215_vs_1122` (local); the user's picks `1215` 2, `1122` 2 on the
+  4 group rows, no pick on the other 8; the user's read: it does not look meaningful. Level.
 - FastGen's heads (commit `898e757`, `reports/paired_fm_gan.md`): none is per token; the image DiT
   head is a 4×4 stride-2 conv then a global average, and the Cosmos Predict2.5-2B recipe (the
   backbone family of Anima) uses a multi-scale head (scales 1–16) on taps 13, 20, 27. The port
   took a pooled-token MLP, then the per-token head, on one tap.
-- Interpretation: if the user's read favours `1215`, the next arms are FastGen's own, one at a
-  time: the taps 13 / 20 / 27, then the multi-scale head.
+- The user's call after `1215` (2026-11-18): the GAN should be a proper implementation before
+  arms are compared, FastGen's 4×4 stride-2 conv head on taps 13, 20, 27 (not DMD2's).
+- `turbo_1118_1302` (`1122` with `gan.disc_head = "conv"`, `gan.feature_blocks` 13 / 20 / 27,
+  `disc_hidden` 256; head and taps together): finished. Against `1122`, steps 1600–2048: training
+  anchor MSE 0.0697 / 0.0732, FM loss 0.0081 / 0.0081, disc margin 11.15 / 2.57, disc loss
+  0.15 / 0.86; probe: held-out anchor MSE 0.0764 / 0.0748, `S` cos 0.777 / 0.779, sameness `S`
+  0.296 / 0.279; spread unknown. FastGen's width (hidden 1024, 100.7M parameters) does not fit
+  the card. Blind sheets `output/blind/turbo/1302_vs_1122` (local); the user's picks pending.
+- Interpretation: the conv disc saturates under `1122`'s disc settings (`disc_lr` 5e-5, no R1, no
+  renoise). If the renders show little of the GAN, the next arm is on the disc's strength with
+  FastGen's own values as the source (`disc_lr` 1e-5, renoised inputs), not on the head.
 
 ### 3. (merged into 2)
 

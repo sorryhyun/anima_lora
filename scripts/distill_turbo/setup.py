@@ -142,6 +142,13 @@ def _build_model(cfg: TurboConfig, device, dtype) -> tuple[Anima, TurboDMDNetwor
                 f"[0, {model.num_blocks})"
             )
         gan_indices = {bidx}
+        if cfg.gan_feature_blocks:
+            gan_indices = set(cfg.gan_feature_blocks)
+            if max(gan_indices) >= model.num_blocks:
+                raise ValueError(
+                    f"gan.feature_blocks={sorted(gan_indices)}: out of range "
+                    f"[0, {model.num_blocks})"
+                )
 
     int8_base_id = ""
 

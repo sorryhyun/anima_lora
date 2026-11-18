@@ -54,6 +54,15 @@ class FakeTransitionEmbed(nn.Module):
         return self.fc2(F.silu(self.fc1(emb)))
 
 
+def _groups(num_channels: int) -> int:
+    """GroupNorm group count as FastGen picks it: 32 where it divides, else the
+    next divisor below (channels // 4 for 32 channels or fewer)."""
+    g = max(1, num_channels // 4) if num_channels <= 32 else 32
+    while num_channels % g != 0:
+        g -= 1
+    return g
+
+
 class TeacherFeatureDiscriminator(nn.Module):
     """GAN head over frozen-teacher block features (FastGen idea 1).
 
@@ -61,15 +70,19 @@ class TeacherFeatureDiscriminator(nn.Module):
       batch and channel -> ``(B, D)``, then a 2-layer MLP per tap -> ``(B, num_taps)``.
     - ``granularity="token"`` (LADD-style dense head): the same per-tap MLP on
       every token -> ``(B, num_taps·N)``.
+    - ``granularity="conv"``: FastGen's image-DiT head (``Discriminator_ImageDiT``),
+      per tap Conv2d 4×4 stride 2 → GroupNorm → LeakyReLU(0.2) → 1×1 conv on the
+      patch grid, then the mean over the grid -> ``(B, num_taps)``. About
+      16·D·hidden parameters per tap (8·D² at the default hidden = D // 2).
 
-    Neither reshapes to a patch grid, so both run unchanged on the eager
-    ``(B,T,H,W,D)`` and compiled ``(B,1,L,1,D)`` layouts. fp32. The parameters are
-    identical across granularities, so resume bundles load across a head switch.
+    ``pooled`` and ``token`` do not reshape to a patch grid, so both run unchanged
+    on the eager ``(B,T,H,W,D)`` and compiled ``(B,1,L,1,D)`` layouts; their
+    parameters are identical, so resume bundles load across those two. fp32.
+    ~inner_dim²/2 params per tap (~2M at D=2048) for the MLP heads; discarded at save.
 
-    ``pool`` k > 1 (token head): the tokens are folded to the ``grid`` (h, w) given
-    to ``forward`` and mean-pooled k×k before the MLP, one logit per cell; rows and
-    columns past a multiple of k are dropped.
-    ~inner_dim²/2 params per tap (~2M at D=2048); discarded at save.
+    ``conv``, and ``token`` with ``pool`` k > 1, fold the tokens to the ``grid``
+    (h, w) given to ``forward``. ``pool`` mean-pools k×k before the MLP, one logit
+    per cell; rows and columns past a multiple of k are dropped.
     """
 
     def __init__(
@@ -78,35 +91,58 @@ class TeacherFeatureDiscriminator(nn.Module):
         inner_dim: int,
         num_taps: int,
         hidden_dim: int | None = None,
-        granularity: Literal["pooled", "token"] = "pooled",
+        granularity: Literal["pooled", "token", "conv"] = "pooled",
         pool: int = 1,
     ) -> None:
         super().__init__()
-        if granularity not in ("pooled", "token"):
+        if granularity not in ("pooled", "token", "conv"):
             raise ValueError(f"unknown disc granularity: {granularity!r}")
         if pool < 1 or (pool > 1 and granularity != "token"):
             raise ValueError(f"disc pool={pool} needs pool >= 1 and the token head")
         self.granularity = granularity
         self.pool = pool
         h = hidden_dim if hidden_dim is not None else inner_dim // 2
-        self.heads = nn.ModuleList(
-            nn.Sequential(
-                nn.LayerNorm(inner_dim),
-                nn.Linear(inner_dim, h),
-                nn.LeakyReLU(0.2),
-                nn.Linear(h, 1),
+        if granularity == "conv":
+            self.heads = nn.ModuleList(
+                nn.Sequential(
+                    nn.Conv2d(inner_dim, h, kernel_size=4, stride=2, padding=1),
+                    nn.GroupNorm(_groups(h), h),
+                    nn.LeakyReLU(0.2),
+                    nn.Conv2d(h, 1, kernel_size=1),
+                )
+                for _ in range(num_taps)
             )
-            for _ in range(num_taps)
-        )
+        else:
+            self.heads = nn.ModuleList(
+                nn.Sequential(
+                    nn.LayerNorm(inner_dim),
+                    nn.Linear(inner_dim, h),
+                    nn.LeakyReLU(0.2),
+                    nn.Linear(h, 1),
+                )
+                for _ in range(num_taps)
+            )
 
-    def _pool_tokens(self, f: torch.Tensor, grid: tuple[int, int]) -> torch.Tensor:
-        """(B, ..., D) tokens in row-major order → (B, h//k · w//k, D) cell means."""
+    @property
+    def needs_grid(self) -> bool:
+        return self.granularity == "conv" or self.pool > 1
+
+    @staticmethod
+    def _fold(f: torch.Tensor, grid: tuple[int, int]) -> torch.Tensor:
+        """(B, ..., D) tokens in row-major order → (B, h, w, D)."""
         h, w = grid
-        k, B, D = self.pool, f.shape[0], f.shape[-1]
+        B, D = f.shape[0], f.shape[-1]
         f = f.reshape(B, -1, D)
         if f.shape[1] < h * w:
             raise ValueError(f"{f.shape[1]} tokens for a {h}x{w} grid")
-        f = f[:, : h * w].reshape(B, h, w, D)[:, : h // k * k, : w // k * k]
+        return f[:, : h * w].reshape(B, h, w, D)
+
+    def _pool_tokens(self, f: torch.Tensor, grid: tuple[int, int]) -> torch.Tensor:
+        """→ (B, h//k · w//k, D) cell means."""
+        k = self.pool
+        f = self._fold(f, grid)
+        B, h, w, D = f.shape
+        f = f[:, : h // k * k, : w // k * k]
         return f.reshape(B, h // k, k, w // k, k, D).mean((2, 4)).flatten(1, 2)
 
     def forward(
@@ -117,18 +153,24 @@ class TeacherFeatureDiscriminator(nn.Module):
                 f"TeacherFeatureDiscriminator expected {len(self.heads)} feature "
                 f"tensors, got {len(feats)}"
             )
-        if self.pool > 1 and grid is None:
-            raise ValueError(f"disc pool={self.pool} needs the token grid (h, w)")
+        if self.needs_grid and grid is None:
+            raise ValueError(
+                f"disc head={self.granularity} pool={self.pool} needs the token "
+                "grid (h, w)"
+            )
         logits = []
         for head, f in zip(self.heads, feats):
-            if self.granularity == "token":
-                f = f.float()
+            f = f.float()
+            if self.granularity == "conv":
+                x = self._fold(f, grid).permute(0, 3, 1, 2)  # (B, D, h, w)
+                logits.append(head(x).mean((2, 3)))  # (B, 1)
+            elif self.granularity == "token":
                 if self.pool > 1:
                     f = self._pool_tokens(f, grid)
                 logits.append(head(f).flatten(1))
             else:
                 # Pool over every axis between batch (0) and channel (-1).
-                pooled = f.float().mean(dim=tuple(range(1, f.ndim - 1)))  # (B, D)
+                pooled = f.mean(dim=tuple(range(1, f.ndim - 1)))  # (B, D)
                 logits.append(head(pooled))
         return torch.cat(logits, dim=1)  # (B, num_taps) | (B, num_taps·N)
 
@@ -352,7 +394,7 @@ class TurboDMDNetwork:
         adaln_alpha: float = 0.0,
         gan_feature_indices: set[int] | None = None,
         gan_disc_hidden: int | None = None,
-        gan_disc_head: Literal["pooled", "token"] = "pooled",
+        gan_disc_head: Literal["pooled", "token", "conv"] = "pooled",
         gan_disc_pool: int = 1,
         fake_transition: bool = False,
         before_apply: Callable[[], None] | None = None,

@@ -143,7 +143,8 @@ the flag wins over the TOML. The shipped defaults:
 | `[sampling]` | `t_distribution` | `uniform` | τ sampling for the fake update + warmup (or `sigmoid`) |
 | `[sampling]` | `flow_shift` | `3.0` | σ-schedule shift for the student/teacher Euler grids (matches inference; `k_anchor` σ is shift-coupled, so change both together) |
 | `[gan]` | `weight_gen` | `0.03` (on) | teacher-feature GAN generator term — see below |
-| `[gan]` | `disc_head` | `token` | `pooled` (code default) / `token` — see below |
+| `[gan]` | `disc_head` | `token` | `pooled` (code default) / `token` — see below; `conv` (paired GAN, `dpdmd.anchor_only`): FastGen's image-DiT head, per tap a 4×4 stride-2 conv → GroupNorm → LeakyReLU → 1×1 conv on the patch grid, averaged to one logit |
+| `[gan]` | `feature_blocks` | unset | list of DiT blocks the disc taps, one head each (FastGen's Cosmos Predict2.5-2B recipe: `[13, 20, 27]`); unset = the single `feature_block_idx` |
 | `[gan]` | `disc_pool` | `1` | paired GAN (`dpdmd.anchor_only`), token head: mean-pool the tokens k×k on the patch grid before the head, one logit per cell; `1` = one logit per token |
 | `[gan]` | `delay_steps` / `warmup_steps` | `0` / `0` | generator-side λ ramp: hold at 0 for `delay_steps` (disc still trains), then linear 0 → `weight_gen` over `warmup_steps` |
 

@@ -290,13 +290,21 @@ class TurboConfig:
     gan_feature_block_idx: int = knob(
         "gan.feature_block_idx", -1, "DiT block the disc taps; -1 = middle."
     )
+    gan_feature_blocks: list[int] | None = knob(
+        "gan.feature_blocks",
+        None,
+        "DiT blocks the disc taps, one head each (FastGen Cosmos Predict2.5-2B: "
+        "13 20 27); unset, the single gan.feature_block_idx.",
+    )
     gan_disc_lr: float = knob("gan.disc_lr", 1e-5)
     gan_disc_hidden: int = knob("gan.disc_hidden", 0, "<= 0: inner_dim // 2.")
     gan_disc_head: str = knob(
         "gan.disc_head",
         "pooled",
-        "pooled: one logit per tap; token: the same MLP per token (LADD).",
-        choices=("pooled", "token"),
+        "pooled: one logit per tap; token: the same MLP per token (LADD); conv "
+        "(paired GAN): FastGen's image-DiT head, a 4×4 stride-2 conv on the patch "
+        "grid and one logit per tap.",
+        choices=("pooled", "token", "conv"),
     )
     gan_disc_pool: int = knob(
         "gan.disc_pool",
@@ -641,6 +649,20 @@ def _validate(c: TurboConfig) -> None:
         "paired GAN (dpdmd.anchor_only) on gan.disc_head = token.",
     )
     _require(
+        c.gan_disc_head != "conv" or c.anchor_only,
+        "gan.disc_head = conv is built for the paired GAN (dpdmd.anchor_only): the "
+        "DP-DMD loop's disc calls pass no token grid.",
+    )
+    _require(
+        c.gan_feature_blocks is None
+        or (
+            len(c.gan_feature_blocks) > 0
+            and len(set(c.gan_feature_blocks)) == len(c.gan_feature_blocks)
+            and min(c.gan_feature_blocks) >= 0
+        ),
+        f"gan.feature_blocks={c.gan_feature_blocks}: distinct block indices >= 0.",
+    )
+    _require(
         c.gan_delay_steps >= 0 and c.gan_warmup_steps >= 0,
         f"gan.delay_steps={c.gan_delay_steps} / gan.warmup_steps="
         f"{c.gan_warmup_steps}: must be >= 0",
@@ -685,7 +707,8 @@ def _log_summary(c: TurboConfig) -> None:
     if c.gan_on:
         logger.info(
             f"GAN ON: weight_gen={c.gan_loss_weight_gen}, feature_block_idx="
-            f"{c.gan_feature_block_idx} (-1 = middle), disc_head={c.gan_disc_head}, disc_pool={c.gan_disc_pool}, "
+            f"{c.gan_feature_block_idx} (-1 = middle), feature_blocks={c.gan_feature_blocks}, "
+            f"disc_head={c.gan_disc_head}, disc_pool={c.gan_disc_pool}, "
             f"disc_lr={c.gan_disc_lr}, r1_weight={c.gan_r1_weight}, "
             f"use_same_t_noise={c.gan_use_same_t_noise}, "
             f"delay_steps={c.gan_delay_steps}, warmup_steps={c.gan_warmup_steps}."

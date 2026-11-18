@@ -56,8 +56,16 @@ def _teacher_feat(x, sigma: float):
     return torch.tanh(torch.einsum("bchw,cd->bhwd", x, a) * (1.0 + sigma))
 
 
-def _ctx(net: _Student, calls: list, disc=None):
+def _teacher_feats_nested(x, sigma: float):
+    """Two nested taps: tap 2 is computed from tap 1."""
+    f1 = _teacher_feat(x, sigma)
+    torch.manual_seed(2)
+    return {1: f1, 2: torch.tanh(f1 @ torch.randn(6, 6))}
+
+
+def _ctx(net: _Student, calls: list, disc=None, gan_taps=(2,)):
     views = []
+    nested = tuple(gan_taps) != (2,)
 
     def forward(
         view,
@@ -74,7 +82,11 @@ def _ctx(net: _Student, calls: list, disc=None):
         with torch.no_grad() if no_grad else torch.enable_grad():
             if view == "student":
                 return net.v(x)
-            assert return_features_early and return_block_features == {2}
+            assert return_features_early
+            if nested:
+                assert return_block_features == {2} | set(gan_taps)
+                return _teacher_feats_nested(x, float(sig[0]))
+            assert return_block_features == {2}
             return {2: _teacher_feat(x, float(sig[0]))}
 
     def fwd(view, *a, **k):
@@ -97,8 +109,8 @@ def _ctx(net: _Student, calls: list, disc=None):
         turbo=SimpleNamespace(
             set_view=views.append,
             disc=disc,
-            gan_feature_set={2} if disc is not None else None,
-            features_in_order=lambda f: [f[2]],
+            gan_feature_set=set(gan_taps) if disc is not None else None,
+            features_in_order=lambda f: [f[i] for i in sorted(gan_taps)],
             set_disc_requires_grad=lambda flag: disc.requires_grad_(flag),
             disc_params=lambda: list(disc.parameters()),
         ),
@@ -292,3 +304,89 @@ def test_disc_pool_config():
         _resolve(cfg={**paired, "gan": {**gan, "disc_head": "pooled"}})
     with pytest.raises((ValueError, SystemExit)):
         _resolve(cfg={"gan": gan})
+
+
+def test_nested_taps_count_each_path_once():
+    """GAN taps 1 and 2 with tap 2 computed from tap 1, FM on tap 2: the student
+    gradient is that of the summed loss, and ``paired_ratio`` sets the GAN's rms
+    over its taps against the FM's on its tap."""
+    torch.manual_seed(0)
+    eps, v_t, c = torch.randn(2, 4, 4, 4), torch.randn(2, 4, 4, 4), torch.randn(2, 3, 8)
+    cfg = SimpleNamespace(
+        k_anchor=1, fm_weight=FM_W, fm_block_idx=2, gan_paired_ratio=0.0
+    )
+    disc = TeacherFeatureDiscriminator(inner_dim=6, num_taps=2, granularity="token")
+    net = _Student()
+    ctx = _ctx(net, [], disc, gan_taps=(1, 2))
+    anchor_fm_loss(ctx, cfg, eps.clone(), v_t, c, 2, gan_weight=GAN_W)
+
+    ref = _Student()
+    v = ref.v(eps)
+    f_s = _teacher_feats_nested(eps - (1 - SIG_K) * v, SIG_K)
+    f_t = _teacher_feats_nested(eps - (1 - SIG_K) * v_t, SIG_K)
+    disc.requires_grad_(False)
+    loss = (
+        nn.functional.mse_loss(v, v_t)
+        + FM_W * _rel_feat_mse(f_s[2], f_t[2])
+        + GAN_W * nn.functional.softplus(-disc([f_s[1], f_s[2]])).mean()
+    )
+    (g,) = torch.autograd.grad(loss, ref.w)
+    assert torch.allclose(net.w.grad, g, rtol=1e-5)
+
+    cfg.gan_paired_ratio, cfg.gan_loss_weight_gen = 0.5, 1.0
+    r = anchor_fm_loss(
+        _ctx(_Student(), [], disc, gan_taps=(1, 2)),
+        cfg,
+        eps.clone(),
+        v_t,
+        c,
+        2,
+        gan_weight=1.0,
+    )
+    assert 0.0 < float(r.gan_share) < 1.0
+
+
+def test_conv_head():
+    """FastGen's image-DiT head: one logit per tap from the folded grid, either
+    feature layout; the paired steps pass the grid."""
+    torch.manual_seed(0)
+    disc = TeacherFeatureDiscriminator(inner_dim=8, num_taps=2, granularity="conv")
+    f = [torch.randn(2, 5, 6, 8), torch.randn(2, 5, 6, 8)]
+    out = disc(f, (5, 6))
+    assert out.shape == (2, 2)
+    want = disc.heads[1](f[1].permute(0, 3, 1, 2)).mean((2, 3))
+    assert torch.allclose(out[:, 1:], want, atol=1e-6)
+    flat = [x.reshape(2, 1, 30, 1, 8) for x in f]
+    assert torch.allclose(disc(flat, (5, 6)), out, atol=1e-6)
+    with pytest.raises(ValueError):
+        disc(f)
+
+    eps, v_t, c = torch.randn(2, 4, 4, 4), torch.randn(2, 4, 4, 4), torch.randn(2, 3, 8)
+    cfg = SimpleNamespace(
+        k_anchor=1,
+        fm_weight=FM_W,
+        fm_block_idx=2,
+        gan_paired_ratio=0.0,
+        gan_r1_weight=0.0,
+        gan_r1_alpha=0.1,
+        grad_clip=0.0,
+    )
+    disc = TeacherFeatureDiscriminator(inner_dim=6, num_taps=2, granularity="conv")
+    ctx = _ctx(_Student(), [], disc, gan_taps=(1, 2))
+    r = anchor_fm_loss(ctx, cfg, eps.clone(), v_t, c, 2, gan_weight=1.0)
+    assert r.grid == (4, 4)
+    ctx.disc_opt = torch.optim.SGD(disc.parameters(), lr=0.1)
+    ctx.disc_sched = SimpleNamespace(step=lambda: None)
+    d_loss, _, _, _ = paired_disc_update(ctx, cfg, r, c)
+    assert torch.isfinite(d_loss)
+
+
+def test_conv_head_config():
+    paired = {"dpdmd": {"anchor_only": True, "fm_weight": 1.0}}
+    gan = {"weight_gen": 1.0, "disc_head": "conv", "feature_blocks": [13, 20, 27]}
+    c = _resolve(cfg={**paired, "gan": gan})
+    assert c.gan_disc_head == "conv" and list(c.gan_feature_blocks) == [13, 20, 27]
+    with pytest.raises((ValueError, SystemExit)):
+        _resolve(cfg={"gan": gan})
+    with pytest.raises((ValueError, SystemExit)):
+        _resolve(cfg={**paired, "gan": {**gan, "feature_blocks": [13, 13]}})

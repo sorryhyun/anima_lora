@@ -1,0 +1,128 @@
+# Paired GAN, FastGen's head and taps (plan.md item 2): turbo_1118_1122 with gan.disc_head token -> conv,
+# gan.feature_blocks unset (block 27) -> [13, 20, 27] and gan.disc_hidden 0 (D / 2) -> 256; nothing else changed
+# (1442 recipe, gan.paired_ratio 1.0, disc_lr 5e-5, 200-step delay, 200-step ramp, FM on block 27).
+# The head is FastGen's Discriminator_ImageDiT: per tap a 4x4 stride-2 conv -> GroupNorm -> LeakyReLU -> 1x1 conv on
+# the patch grid, averaged to one logit; the taps are FastGen's Cosmos Predict2.5-2B recipe.
+# Head and taps change together (the user's call), so the run cannot say which of the two a difference comes from.
+# Width: FastGen's hidden is D / 2 = 1024 (100.7M parameters on three taps); that disc ran out of memory at the first
+# teacher pullback (14.15 GiB allocated, 15.5 GiB card). 256 gives 25.2M parameters and the same peak as 1215.
+# Question: with the GAN built as FastGen builds it, does the paired GAN read better than the token head at the same
+# ratio? Better than 1122 -> this head is the parent and the ratio (1.0 or 0.5) is read next. Level or worse -> the
+# token head at ratio 0.5 (1028) stays.
+# Records it rests on:
+#   - The user's call (2026-11-18), after 1215 (2x2 pooled tokens) read level with 1122: the GAN should be a proper
+#     implementation before arms are compared, FastGen's conv head on taps 13, 20, 27, not DMD2's.
+#   - FastGen at commit 898e757 against the port, and probe_gap_scale: reports/paired_fm_gan.md.
+#   - The feature-path gradient is now each term's direct gradient on its taps, pulled back together, so nested taps
+#     count each path once (tests/test_turbo_anchor_fm.py). gan.paired_ratio: rms(GAN, over its three taps) =
+#     ratio x rms(FM, on block 27).
+#   - Smoke (60 it, no delay or ramp, this recipe): peak 13.43 GB, 0.97 it/s, gan_grad_share 0.865 (three taps
+#     against FM's one), fm_grad_ratio mean 5.3 (the 2x2 pool smoke: 5.3), disc margin 0.05 -> 1.0,
+#     disc loss 1.53 -> 0.99.
+# Read: final EMA against turbo_1118_1122 EMA 2048, probe_handoff --anchor_k 14 --anchor_steps 28 on judge_hard
+# seeds 1-4, student sheets from bench/turbo/blind_sheets.py (one file per row, two columns), blind; the user's
+# read decides.
+# Beside them, per step bin against 1122: training anchor MSE, FM loss, fm_grad_ratio, disc margin, disc loss;
+# held-out anchor MSE, S cos, T>S@1 cos and sameness S from the probe.
+# Bars: spread unknown (1122 has no seed twin).
+# Cost: 2048 iterations, about 45 min.
+dit_path = "models/diffusion_models/anima_merged15_int8_gptq.safetensors"
+dit_nonquant_path = "models/diffusion_models/anima_merged15.safetensors"
+data_dir = "post_image_dataset/lora"
+output_dir = "output/ckpt"
+output_name = "turbo_1118_1302"
+
+iterations = 2048
+batch_size = 1
+seed = 42
+channel_scaling_alpha = 0.0
+compile_dynamic_seq = true
+dynamo_recompile_limit = 64
+activation_memory_budget = 0.99
+int8 = "stream"
+stream = "fp32"
+
+[network]
+student_rank = 64
+student_alpha = 180
+fake_rank = 64
+fake_alpha = 180
+attn_mode = "flash"
+student_down_init = "kaiming"
+fake_down_init = "kaiming"
+student_init_weights = "models/extracted/anima_turbo_v1.1_delta_r96_asvd_adaln.safetensors"
+fake_init_weights = "models/extracted/anima_turbo_v1.1_delta_r96_asvd_adaln.safetensors"
+train_adaln = true
+fake_adaln = true
+adaln_rank = 16
+adaln_alpha = 90
+fake_transition = true
+
+[dmd]
+student_steps = 4
+teacher_cfg = 4
+dynamic_schedule = false
+dm_x0_norm = true
+norm_floor = 0.05
+dm_draws = 1
+
+[cdm]
+weight = 0.0
+grad_ckpt = true
+teacher = "cond"
+
+[mfd]
+dtau = 0.0
+
+[optim]
+student_lr = 5e-5
+fake_lr = 5e-5
+fake_steps_per_student_step = 4
+fake_warmup_steps = 0
+grad_accum = 2
+weight_decay = 0.0
+grad_clip = 1.0
+lr_schedule = "cosine"
+
+[ema]
+window = 0.2
+
+[dpdmd]
+k_anchor = 14
+teacher_anchor_steps = 28
+div_weight = 0.1
+detach_after_first = true
+dm_first_step = false
+anchor_only = true
+rollout_grad = false
+fm_weight = 15.0
+fm_block_idx = 27
+anchor_cache = "post_image_dataset/turbo_anchor_cache/m15_k14of28_p1024"
+
+[sampling]
+t_distribution = "uniform"
+sigmoid_scale = 1.0
+flow_shift = 3.0
+
+[gan]
+weight_gen = 1.0
+paired_ratio = 1.0
+feature_block_idx = 27
+disc_lr = 5e-5
+disc_hidden = 256
+disc_head = "conv"
+feature_blocks = [13, 20, 27]
+delay_steps = 200
+warmup_steps = 200
+r1_weight = 0.0
+r1_alpha = 0.1
+use_same_t_noise = true
+grad_ckpt = true
+
+[io]
+save_every = 1024
+log_interval = 5
+log_dir = "output/logs/turbo"
+validate_every_n_steps = 1024
+val_diversity_seeds = 8
+val_prompt_idx = -1

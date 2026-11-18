@@ -35,6 +35,7 @@ _STRICT_FIELDS = (
     "fake_rank",
     "gan_disc_hidden",
     "gan_feature_block_idx",
+    "gan_feature_blocks",
     "channel_scaling_alpha",
     "fake_transition",
 )

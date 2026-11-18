@@ -2,8 +2,8 @@
 
 The anchor student's step 0 with terms on the teacher's features of the anchor end state: feature
 matching (`1123`, `1403`, `1442`), then a paired GAN on top of `1442` (`0953`, `1028`), its dose
-arm (`1122`), the gap-scale probe, the 2×2 pooled disc head (`1215`) and FastGen's discriminators
-against the port. The floor probe and the 0.01 arm (`1105`) are in
+arm (`1122`), the gap-scale probe, the 2×2 pooled disc head (`1215`), FastGen's discriminators
+against the port and FastGen's conv head on three taps (`1302`). The floor probe and the 0.01 arm (`1105`) are in
 [step0_depth.md](step0_depth.md).
 
 ## Setup
@@ -229,7 +229,12 @@ against the port. The floor probe and the 0.01 arm (`1105`) are in
   `S` 0.279 / 0.311, low-frequency share of the anchor error 0.447 / 0.444. Spread unknown (`1122`
   has no seed twin).
 - Read, blind: student sheets `output/blind/turbo/1215_vs_1122` (local), 12 rows, at the probe
-  PNGs' resolution. The user's picks: pending.
+  PNGs' resolution (one file per row after the first send). The user's picks, `1010` on the 4
+  group rows: `1215` 2 (seeds 1, 3), `1122` 2 (seeds 2, 4); no pick on the café and guitarist rows.
+- The user's read (2026-11-18): it does not look meaningful. Verdict: level; the token head stays.
+- The user's call after it: the GAN should be a proper implementation before arms are compared
+  (not DMD2's), so the next arm is FastGen's 4×4 stride-2 conv head on taps 13, 20, 27.
+- Claude did not read these sheets.
 
 ### Interpretation
 
@@ -267,3 +272,53 @@ against the port. The floor probe and the 0.01 arm (`1105`) are in
 - `disc_pool` 2 is close to the scale-2 branch of the Cosmos head without its 3×3 conv and with a
   logit per cell. If the user's read favours `1215`, the arms with a source are FastGen's own:
   the taps 13 / 20 / 27 and the multi-scale head, one at a time.
+
+## FastGen's head and taps: `1302` (conv head, taps 13 / 20 / 27)
+
+### Facts
+
+- New in the loop: `gan.disc_head = "conv"` (FastGen's `Discriminator_ImageDiT`: per tap a 4×4
+  stride-2 conv → GroupNorm → LeakyReLU 0.2 → 1×1 conv on the patch grid, averaged to one logit)
+  and `gan.feature_blocks` (a list of taps, one head each). The feature-path gradient is each
+  term's direct gradient on its taps, pulled back through the teacher together, so nested taps
+  count each path once; `gan.paired_ratio` sets rms(GAN, over its taps) against rms(FM, on its
+  tap). Tests in `tests/test_turbo_anchor_fm.py` (12).
+- Width: at FastGen's hidden D / 2 = 1024 the three heads hold 100.7M parameters and the run went
+  out of memory at the first teacher pullback (14.15 GiB allocated on the 15.5 GiB card). The arm
+  runs hidden 256: 25.2M parameters, peak 13.43 GB.
+- Smoke (60 it, no delay or ramp): 0.97 it/s, GAN share 0.865, `fm_grad_ratio` mean 5.3, disc
+  margin 0.05 → 1.0, disc loss 1.53 → 0.99.
+- `turbo_1118_1302`: `1122` with the conv head, taps 13 / 20 / 27 and `disc_hidden` 256; ratio
+  1.0, `disc_lr` 5e-5, delay and ramp as `1122`. Head and taps change together.
+- Training log (`train/*`, means over steps a ≤ s < b), `1122` / `1302`:
+
+  | steps | 0–200 | 200–400 | 400–800 | 800–1200 | 1200–1600 | 1600–2048 |
+  |---|---|---|---|---|---|---|
+  | anchor MSE | 0.0931 / 0.0919 | 0.0910 / 0.0897 | 0.0889 / 0.0846 | 0.0847 / 0.0822 | 0.0747 / 0.0699 | 0.0732 / 0.0697 |
+  | FM loss | 0.0089 / 0.0089 | 0.0093 / 0.0093 | 0.0090 / 0.0090 | 0.0086 / 0.0087 | 0.0082 / 0.0081 | 0.0081 / 0.0081 |
+  | GAN share | 0 / 0 | 0.38 / 0.56 | 0.67 / 0.86 | 0.67 / 0.86 | 0.68 / 0.87 | 0.68 / 0.87 |
+  | `fm_grad_ratio` | 5.77 / 5.85 | 6.07 / 5.88 | 7.06 / 6.18 | 7.25 / 6.05 | 6.32 / 6.23 | 6.73 / 5.98 |
+  | disc margin | 0.44 / 1.68 | 1.34 / 4.35 | 1.83 / 7.03 | 2.37 / 9.22 | 2.43 / 10.45 | 2.57 / 11.15 |
+  | disc loss | 1.22 / 0.94 | 1.01 / 0.60 | 0.96 / 0.35 | 0.88 / 0.24 | 0.87 / 0.17 | 0.86 / 0.15 |
+  | student grad norm | 3.99 / 4.13 | 3.23 / 2.96 | 3.43 / 2.87 | 3.72 / 3.03 | 3.20 / 2.70 | 3.61 / 2.89 |
+
+- For reference, training anchor MSE over steps 1600–2048: `1442` (no GAN) 0.0705, `1028` (token
+  head, ratio 0.5) 0.0703.
+- Probe (`probe_handoff --anchor_k 14 --anchor_steps 28`, `judge_hard` 3 prompts × seeds 1–4, EMA
+  2048; `bench/turbo/results/20261118-1338-handoff_pgan_conv3_1302`, local), `1122` / `1302`:
+  held-out anchor MSE 0.0748 / 0.0764, `S` cos 0.779 / 0.777, `T>S@1` cos 0.942 / 0.943, sameness
+  `S` 0.279 / 0.296, low-frequency share of the anchor error 0.447 / 0.458. Spread unknown.
+- Read, blind: `output/blind/turbo/1302_vs_1122` (local), one file per row, 12 rows. The user's
+  picks: pending.
+
+### Interpretation
+
+- This disc wins outright: margin 11 and disc loss 0.15, against 2.6 and 0.86 for the token head.
+  One averaged logit per tap from a conv over the grid separates the two states far more easily
+  than per-token logits do, and nothing in the recipe holds it back (`disc_lr` 5e-5, no R1, no
+  renoise; FastGen runs this head at 1e-5 with renoised inputs and a weight of 0.03).
+- With the generator gradient normalised, the saturated disc still gives a direction, but the
+  student's side of the log looks more like the no-GAN run than like `1122`: training anchor MSE
+  0.0697 (`1442`: 0.0705), a feature-path gradient into `v` below `1122`'s, and a lower student
+  gradient norm. The GAN's pull on `v` in this arm may be weaker than the token head's at the
+  same feature-space ratio; the renders decide whether it does anything visible.
