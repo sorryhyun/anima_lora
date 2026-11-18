@@ -349,7 +349,18 @@ against the port, FastGen's conv head on three taps (`1302`) and R1 on it (`1353
   `gan.r1_weight` 100 0.92, 1000 0.70. 0.92 it/s with R1 against 0.97.
 - `turbo_1118_1353`: `1302` with `gan.r1_weight` 0 → 100 (`r1_alpha` 0.1), nothing else changed.
   Queued 2026-11-18 13:53 with its `probe_handoff` job behind it
-  (label `handoff_pgan_conv3_r1_1353`). Not read in this session.
+  (label `handoff_pgan_conv3_r1_1353`).
+- Training log, `1302` / `1353`, disc margin by 128-step bin: 0–128 1.07 / 0.90, 512–640
+  6.74 / 4.23, 1024–1152 9.53 / 5.24, 1536–1664 10.56 / 5.54, 1920–2048 11.56 / 5.88; disc loss
+  over 1920–2048 0.10 / 0.40. FM loss and disc grad norm level.
+- Probe (`bench/turbo/results/20261118-1432-handoff_pgan_conv3_r1_1353`, local), `1353` / `1302` /
+  `1122`: held-out anchor MSE 0.0751 / 0.0764 / 0.0748, `S` cos 0.770 / 0.777 / 0.779, `T>S@1` cos
+  0.942 / 0.943 / 0.942, sameness `S` 0.277 / 0.296 / 0.279. Spread unknown.
+- Read, blind (`output/blind/turbo/1353_vs_1122`, local): the user's picks `0111 0100`, `1353` 6
+  (group seeds 1–4, café seeds 3–4), `1122` 2 (café seeds 1–2), no pick on the 4 guitarist rows.
+  The user knows `1122`'s renders on sight, so the read is labelled in effect.
+- `1302`'s read skipped (the user, 2026-11-18): with its disc saturated it is not a proper run of
+  the conv head.
 - Source of 100: FastGen's match of APT's strength at α 0.1 (`weight = λ_apt · σ_apt / α²`), and
   `docs/anima/methods/turbo.md` for the DP-DMD loop's runaway.
 

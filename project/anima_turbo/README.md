@@ -7,7 +7,7 @@ normalise and adaln average, break exactness). The turbo LoRA alone means nothin
 merged LoRA is used at multiplier 1.0 only. The shipped base-teacher turbo
 (`huggingface.co/sorryhyun/anima-turbo-4step`) is `docs/anima/methods/turbo.md`.
 
-## State (2026-11-17)
+## State (2026-11-18)
 
 - Shipped: `v4_preview` (`1112_1512`, the [1112_v1.md](1112_v1.md) recipe on merged14). The
   2-step line is closed.
@@ -18,8 +18,11 @@ merged LoRA is used at multiplier 1.0 only. The shipped base-teacher turbo
   teacher's 28-step schedule (`turbo_1116_1810`, 14 of 28) is adopted as the target to scale
   ([reports/v11_init.md](reports/v11_init.md), [anchor_only_recipe.md](anchor_only_recipe.md)).
 - The full-dataset anchor cache (`turbo_1117_0823`) is the best anchor student; rank 96 ties it
-  ([reports/step0_depth.md](reports/step0_depth.md)). Next: a lower student LR, then paired feature
-  matching / a paired GAN on the σ 0.75 state ([plan.md](plan.md)).
+  ([reports/step0_depth.md](reports/step0_depth.md)). Feature matching at block 27 and a paired GAN
+  on the σ 0.75 state (FastGen's conv head on taps 13 / 20 / 27 with R1, `turbo_1118_1353`) are in
+  the recipe ([reports/paired_fm_gan.md](reports/paired_fm_gan.md)).
+- Step 0 is the second priority since 2026-11-18. First: a 2-step student on the fitted step 0
+  (superturbo) and steps 1–3 ([plan.md](plan.md) items A and B).
 - Preference RL is at its P1 gate, not passed ([pref_rl/p1.md](pref_rl/p1.md)).
 
 Reading: the gap is composition, and the layout is set in step 0. The breaks left in the anchor
@@ -28,7 +31,7 @@ and `0823` falls short of that ([reports/step0_depth.md](reports/step0_depth.md)
 
 ## Layout
 
-- [plan.md](plan.md): the open plan. [idea.md](idea.md): candidates that are not arms.
+- [plan.md](plan.md): the open plan.
   [question.md](question.md): turbo + SnapRef, unrun. [vatdm.md](vatdm.md): VA-TDM against the loop.
 - [reports/](reports/README.md): one report per run or probe; [reports/runs.md](reports/runs.md)
   is the run table.

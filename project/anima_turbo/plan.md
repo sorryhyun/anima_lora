@@ -1,8 +1,12 @@
 # Plan: the 4-step line after `v4_preview`
 
-Rewritten 2026-11-17. This file holds what is open; finished runs and probes are in `reports/` and
-the run table (`reports/runs.md`). The closed 2-step plan is
+Rewritten 2026-11-17, re-ordered 2026-11-18. This file holds what is open; finished runs and probes
+are in `reports/` and the run table (`reports/runs.md`). The 2-step plan closed on 2026-11-12 is
 `91d476e0:scripts/distill_turbo/plan.md`.
+
+Order (the user's call, 2026-11-18): step 0 stops here as the first line of work and becomes the
+second priority. First come the 2-step student (superturbo, item A) and steps 1–3 (item B); the
+user's reasoning is that with step 0 fitted, the rest of the image may come from one step.
 
 ## Where the line stands
 
@@ -26,7 +30,8 @@ Facts:
   `reports/step0_depth.md`).
 - Paired feature matching at block 27 (`turbo_1117_1442`) and the paired GAN on top of it
   (`turbo_1118_1028`) are in `reports/paired_fm_gan.md`. The line uses the paired GAN (the user's
-  call, 2026-11-18); its open problem is the disc margin (item 2).
+  call, 2026-11-18). With FastGen's conv head on taps 13 / 20 / 27 and R1 100 (`turbo_1118_1353`)
+  the disc margin holds near 5.5 and the user picks it over the token head 6 / 2 (item 2).
 
 Interpretation:
 
@@ -36,7 +41,70 @@ Interpretation:
 - Rank is not the limit.
 - DM on steps 1–3 from the teacher-forced handoff trains them where they are already clean.
 
-## Target: keep v1.1's steps 1–3, fit step 0 to a third of its residual
+## A. Superturbo: two steps on a fitted step 0
+
+Facts:
+
+- The 2-step static grid at shift 3 is σ 1 → 0.75 → 0. The 14 of 28 anchor is the teacher's mean
+  velocity over σ [0.75, 1], so on the 2-step grid a step 0 at zero anchor loss lands on the
+  teacher's own σ 0.75 state. On 4 steps the same velocity is applied over σ 1 → 0.9 only.
+- With the anchor target as step 0, v1.1's steps 1–3 draw the teacher's image at cos 0.967
+  (`reports/v11_init.md`); the step-0 students sit at `S` cos 0.80 (`0823`) with held-out anchor
+  MSE 0.070–0.075.
+- On the 4-step students of 2026-11-12 a handoff at σ 0.75 kept 0.86–0.93 of the teacher's
+  layout, against 0.70–0.80 at σ 0.9 (`reports/handoff.md`).
+- The 2-step line closed on 2026-11-12 at `1111_1115` step 250: merged14, cold `weight_svd` init,
+  the 6 of 12 anchor, DM through the rollout (`dpdmd.rollout_grad`,
+  `_archive/proposals/superturbo.md`). None of today's parts were in it: the v1.1 init, the 14 of
+  28 anchor, the cache, the paired GAN.
+- No handoff probe has been run at 2 steps. `probe_handoff.py --student_steps 2` exists.
+- Nothing has trained the jump σ 0.75 → 0. The 4-step students take σ 0.75 → 0.5 there.
+- `dpdmd.teacher_handoff` with `dmd.student_steps 2` starts the DM rollout on the teacher's exact
+  σ 0.75 state (`x_1 = ε − 0.25 · v_target`); the config accepts the pair. On 4 steps (`2221`) it
+  started on the chord's point at σ 0.9.
+
+A1, the probe (forward only, about 3 min a student): `bench/turbo/probe_handoff.py --student_steps 2
+--ts_handoffs 1 --st_handoffs , --anchor_k 14 --anchor_steps 28` on the v1.1 delta untrained,
+`0823` and `1353` EMA 2048 (`1425` when it ends). Arms `S` (2 steps), `T>S@1` (teacher to σ 0.75,
+the student's one jump), `A>S@1` (the anchor target, then the jump). The read and its bars go in
+the job's header before it runs (`experiment-planning` skill); the 4-step `T>S@1` of each student
+(0.94) is the reference.
+
+Interpretation:
+
+- A high `A>S@1` with a low `S` puts the 2-step loss in step 0, which item 2 is fitting already.
+  A low `A>S@1` puts it in the one jump, and the jump is what a 2-step arm trains.
+- The training form that follows is the jump on the teacher-forced handoff: `teacher_handoff` on
+  the 2-step grid from the best step-0 student, a 2-step LoRA of its own. Its terms (DM, CDM, the
+  GAN) and length are set after A1.
+
+## B. Steps 1–3
+
+Facts:
+
+- With the anchor target or the teacher's step 0 in front of them, the step-0 students' steps 1–3
+  finish at 0.94–0.97 (`reports/step0_depth.md`).
+- `2221` (DM, CDM and a GAN on steps 1–3 from the teacher-forced handoff, 250 iterations): step 0
+  and the layouts held; the finish moved both ways (café aprons and the group's lying girl toward
+  the teacher, subtitle boxes of garbled text and a guitar without its neck added); the probe sits
+  slightly under `2209` on every number (`reports/teacher_handoff.md`).
+- Hub v3 untrained keeps the cleanest finish and the only legible café sign of the 4-step rows;
+  v1.1 untrained is hazy and low in contrast (`reports/v11_init.md`).
+- `2221` with `dpdmd.teacher_handoff` off, from the best step-0 student, puts the DM terms on the
+  inputs the student's own step 0 hands them. 250 iterations, about 20 min. Never run.
+
+Interpretation:
+
+- Steps 1–3 have two things to gain: holding up under step 0's residual (the inputs they are
+  handed in use), and the finish (contrast, text) where v1.1's steps are soft.
+- On the teacher-forced handoff the DM terms train them where they are already clean; on the
+  student's own handoff they see the residual.
+- The risk of the own-handoff form is steps 1–3 that redraw the layout; it reads as a fall in
+  `T>S@1` cos.
+- Which term draws `2221`'s text boxes (DM, CDM or the GAN) is not separated, and it clouds the
+  finish read of any arm that turns those terms on.
+
+## Step 0 (second priority): keep v1.1's steps 1–3, fit step 0 to a third of its residual
 
 One LoRA. Every run is read on the handoff probe beside the renders, against its starting point:
 
@@ -56,10 +124,10 @@ state at 0.25 instead of 0.1.
 A rank change takes alpha by the √r law (alpha / √rank at 22.5: 180 @ r64, 220 @ r96, adaln 90 @
 r16; `docs/anima/methods/adaln.md`, `docs/anima/findings/lora_recipe.md`).
 
-Interpretation: a step 0 that meets this target is also the 2-step student's step 0 (`idea.md` 3),
+Interpretation: a step 0 that meets this target is also the 2-step student's step 0 (item A),
 and the depth matters more for 2 steps than for 4.
 
-## What is open, in order
+## Step 0 arms (second priority)
 
 ### 1. Student LR 2e-5 on the full cache
 
@@ -172,35 +240,31 @@ Disc head, runs:
   0.15 / 0.86; probe: held-out anchor MSE 0.0764 / 0.0748, `S` cos 0.777 / 0.779, sameness `S`
   0.296 / 0.279; spread unknown. FastGen's width (hidden 1024, 100.7M parameters) does not fit
   the card. Blind sheets `output/blind/turbo/1302_vs_1122` (local); the user knows `1122`'s renders on
-  sight (the read is labelled in effect) and left the verdict to the next session.
+  sight (the read is labelled in effect). Read skipped (the user, 2026-11-18): with the disc
+  saturated it is not a proper run of the conv head, so it carries no verdict.
 - The user's call (2026-11-18): keep the disc from saturating; renoising to a higher τ is
   rejected (the disc would tell noised states apart, not what it should).
 - `turbo_1118_1353` (`1302` with `gan.r1_weight` 100): queued 13:53, probe job behind it. R1 term
   on `1302`'s step-1024 disc 0.013 at α 0.1; smokes' margin at step 60: 1.01 / 0.92 / 0.70 at
   weight 0 / 100 / 1000.
-- Next session: read `1302` and `1353`. Sheets: `output/blind/turbo/1302_vs_1122`, and
-  `1353_vs_1302` / `1353_vs_1122` (composed after the probe; if missing,
-  `python -m bench.turbo.blind_sheets make --set 1353_vs_1302 --arms <1302 png dir>/turbo_1118_1302_2048_ema <1353 png dir>/turbo_1118_1353_2048_ema`).
-  Numbers to put beside them: `1353`'s disc margin and disc loss per step bin against `1302`.
+  At step 768–896 against `1302`: disc margin 4.80 / 8.64, disc loss 0.51 / 0.31. Finished: margin
+  flat at 5.4–5.9 from step 1280 (1920–2048: 5.88 / 11.56), disc loss 0.40 / 0.10; probe against
+  `1302` / `1122`: held-out anchor MSE 0.0751 / 0.0764 / 0.0748, `S` cos 0.770 / 0.777 / 0.779,
+  `T>S@1` 0.942 / 0.943 / 0.942, sameness `S` 0.277 / 0.296 / 0.279 (teacher 0.314). Sheets
+  `output/blind/turbo/1353_vs_1122`, `1353_vs_1302`. The user's read against `1122` (2026-11-18,
+  labelled in effect): `1353` 6, `1122` 2, no pick 4 (group 4 / 0, café 2 / 2, the guitarist rows not
+  picked). Passed against `1122`: R1 stays in the recipe; `1425` keeps running.
+- `turbo_1118_1425` (`1353` with `student_lr` and `gan.disc_lr` 5e-5 → 2e-5, full cache `pall`, 6484
+  iterations, about 2 h): queued 14:21 behind `1353`'s probe on the user's call, before `1353`'s
+  read; stopped if that read comes out wrong. Read against `1054` (same LR and cache, no GAN). Probe
+  job `handoff_pgan_lr2e5_pall_1425` behind it.
 - Interpretation: the conv disc saturates under `1122`'s disc settings (`disc_lr` 5e-5, no R1).
   If `1353`'s margin still runs away, the next values are R1 1000 or `disc_lr` 1e-5 (FastGen's).
 
-### 3. (merged into 2)
+- Open on the GAN: `gan.paired_ratio` 0.5 with the conv head and R1 (the user's order: 1.0 first,
+  0.5 decided after).
 
-The paired GAN arm is item 2 since 2026-11-18.
-
-### 4. Steps 1–3 on the student's own handoff, if step 0 cannot reach the depth
-
-Facts:
-
-- `2221` with `dpdmd.teacher_handoff` off, from the best anchor student: the DM terms see the
-  inputs the student's step 0 hands them. 250 iterations, about 20 min. Never run in this form.
-
-Interpretation:
-
-- The risk is steps 1–3 that redraw the layout; it reads as a fall in `T>S@1` cos.
-
-### 5. Two passes over the full cache
+### 3. Two passes over the full cache
 
 Facts:
 
@@ -216,8 +280,8 @@ Parked:
 - The 7 of 28 target. Ceiling 0.944 against 0.967 (`reports/step0_depth.md`). The user's call:
   keep 14 of 28.
   - Interpretation: nearer in MSE and worth less per unit of it.
-- DM on step 0 (`idea.md` 1 and 2). It brings the fake network back (4.5 s an iteration). Behind
-  the paired forms above.
+- DM on step 0 (`dm_first_step`, with a higher `div_weight` or σ_a drawn from the upper range only).
+  It brings the fake network back (4.5 s an iteration). Behind the paired forms above.
   - Interpretation: the step-0 problem is the precision of a paired map, and DM carries no
     pairing: it removes a residual by moving to the nearest mode, which is the one layout per
     prompt of S-c.1, `1355` and `1552`.
@@ -242,16 +306,19 @@ Parked:
 ## Open
 
 - The recipe on the base teacher. Every student of the DM recipe collapsed on a merged teacher
-  and Hub v3 was trained on base; the split is in `reports/m15_1k.md`. It matters again if arm 4
+  and Hub v3 was trained on base; the split is in `reports/m15_1k.md`. It matters again if item A or B
   brings the DM terms back.
-- Which term draws the text boxes of `2221` (DM, CDM or the GAN). Not separated.
-  - Interpretation: it clouds the finish read of any arm that turns those terms on.
 - Fake-lag probe, before anything that touches the fake (student : fake 1 : 10, the VA-TDM
   teacher-regularised fake): freeze the student at a resume point, run about 40 more fake steps,
   and read how far the DM signal turns on fixed draws. Not built.
 - Café colour drift under cond-only L_CDM. A seed-43 twin of `0958` and a weight-matched arm
   (`cdm.weight` ≈ 1.7) would tell seed luck, magnitude and direction apart. Not run.
-- 2 steps. Reopening it waits on a step 0 that meets the target above.
+- DAVE on the student's step 0 at inference (`--dave auto`, strength 0.3 / 0.8 on an existing
+  EMA): a render-only check, parked on the user's call. The mask was calibrated on base Anima at
+  CFG 4, and on 4 steps its default window covers step 0.
+- A lower-resolution anchor (a smaller ε for the regression only) would save 8–15 % of an
+  iteration; with the anchor cache the anchor costs 0.4 s an iteration and throughput is not the
+  limit.
 
 ## Dropped without a run
 

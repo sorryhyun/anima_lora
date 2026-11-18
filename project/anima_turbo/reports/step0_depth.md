@@ -329,4 +329,4 @@ At par with the MSE's gradient the term barely moves the student. At 0.1 the rat
 
 - The shorter target is nearer in MSE and gives less for it.
 - The 14 of 28 chord ends at σ 0.75, the first boundary of the 2-step grid, so a step 0 fitted to it
-  is also the 2-step student's step 0 (`../idea.md` 3).
+  is also the 2-step student's step 0 (`../plan.md` item A).

@@ -27,3 +27,4 @@ The live run config only. Launch with
 - `turbo_1118_1215.toml`: `1122` with `gan.disc_pool` 2.
 - `turbo_1118_1302.toml`: `1122` with FastGen's conv head on taps 13 / 20 / 27 (`gan.disc_head = "conv"`, `gan.feature_blocks`, `disc_hidden` 256).
 - `turbo_1118_1353.toml`: `1302` with `gan.r1_weight` 100.
+- `turbo_1118_1425.toml`: `1353` at `student_lr` and `gan.disc_lr` 2e-5 on the full cache (`pall`, 6484 iterations).

@@ -1,6 +1,8 @@
-# 부록 4. DP-DMD 터보 증류의 세부와 측정
+# 부록 4. DP-DMD 공동 루프의 세부와 측정
 
-`04_turbo_distillation.md` 본문의 세부 설정과 측정입니다.
+`04_turbo_distillation.md` §1.2에서 말한 DP-DMD 공동 루프(DM, CDM, fake, GAN을 함께 학습)의 세부 설정과
+측정입니다. 공동 루프는 v4_preview까지의 레시피였고, 그 뒤의 레시피는 본문에 있습니다. A4.6은 본문 §2의 warm start에
+쓴 delta의 출처입니다.
 
 ## A4.1 루프 세부
 
@@ -51,7 +53,7 @@ cos는 둘 다 0.978이었습니다. 렌더는 transition-aware 쪽이 더 선�
 
 ## A4.2 레시피를 정한 실험
 
-본문 §3의 기준 설정(상수 LR 250 iteration, 동적 격자, 첫 스텝 DM off, CFG를 건 CDM)에서 지금 레시피까지 네 가지를
+기준 설정(상수 LR 250 iteration, 동적 격자, 첫 스텝 DM off, CFG를 건 CDM)에서 공동 루프의 최종 레시피까지 네 가지를
 바꿨습니다. 순서대로 cosine LR과 1000 iteration, 첫 스텝 DM, static 격자, cond-only CDM입니다. teacher는 처음 세
 변경까지 soup teacher의 이전 판이었고, cond-only CDM부터 같은 8개 그룹 soup을 위치 절 캡션으로 다시 학습한
 판입니다. 비교에 쓴 probe는 다음과 같습니다.
@@ -112,7 +114,7 @@ teacher의 파란색에서 벗어났습니다. 한 시드, twin 없는 비교입
 
 **측정 설정.** 2스텝 측정은 static 격자(σ 1 → 0.75 → 0)에서 했습니다. 이 격자에서 스텝 0은 앵커만, 스텝 1은 모든
 DM을 받아서 두 스텝이 gradient를 나누지 않으므로, 그래프를 이어 스텝 0도 최종 이미지의 gradient를 받게
-했습니다(rollout grad). 2스텝 기준 런은 LR 2e-5 constant에 GAN을 켠 런입니다. 4스텝의 기준 측정은 본문 §3의 기준 설정
+했습니다(rollout grad). 2스텝 기준 런은 LR 2e-5 constant에 GAN을 켠 런입니다. 4스텝의 기준 측정은 A4.2의 기준 설정
 그대로 250 iteration, seed 42로 돌린 control과, seed만 43으로 바꾼 null twin입니다. 둘 다 125스텝마다 저장하고
 validation 시드 8개로 probe를 돌렸습니다.
 
