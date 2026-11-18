@@ -23,7 +23,10 @@ to the page. Three parts, each its own manifest under ``derived/``:
   ``speech_text`` when every ``<text>`` box touching it (≥ 20 %) lies ≥ 80 % inside.
   ``neg_speech`` crops are written for a ``--neg_keep`` share only.
 * ``--speech`` → ``manifest_sfxp_speech.parquet``: the grey manifest's Manga109 speech
-  boxes, re-cut at the new margin, labels as they are.
+  boxes, re-cut at the new margin, labels as they are; then ``--lines``.
+* ``--lines`` → the same manifest, in place: line breaks from the community line
+  annotations (``assets/manga109s_line_annotations.json``, ``build_lines``) on the rows
+  they cover, and their other train / val ``<text>`` boxes cut and appended.
 * ``--gt test`` → ``manifest_sfxp_gt.parquet``: the grey manifest's rows of those splits (COO
   and speech) re-cut through ``pilot.deskew_crop`` at the capped margin, for the gate evals
   (``eval_manga109.py --manifest sfxp_gt``).
@@ -347,6 +350,117 @@ def build_speech(a, derived: Path):
     df = pd.DataFrame(rows)
     df.to_parquet(derived / "manifest_sfxp_speech.parquet", index=False)
     print(f"[speech] {df.split.value_counts().to_dict()}", flush=True)
+    if LINES.exists():
+        build_lines(a, derived)
+
+
+LINES = (
+    Path(__file__).resolve().parents[1] / "assets" / "manga109s_line_annotations.json"
+)
+"""``bluolightning/manga109s-line-annotations`` (HF, MIT; geometry only): per Manga109-s
+v2026 ``<text>``, ``line_lengths`` = characters per line in reading order, counted on
+the XML text without its ``\\n`` (spaces included)."""
+
+
+def line_broken(raw: str, lengths: list[int]) -> str | None:
+    """``raw`` cut at the annotated line lengths, each line stripped; ``None`` when
+    the lengths do not sum to the text."""
+    flat = raw.replace("\n", "")
+    if sum(lengths) != len(flat):
+        return None
+    out, i = [], 0
+    for n in lengths:
+        out.append(flat[i : i + n].strip())
+        i += n
+    return "\n".join(s for s in out if s)
+
+
+def build_lines(a, derived: Path):
+    """Line breaks from :data:`LINES` into ``manifest_sfxp_speech``: a speech row the
+    annotation covers gets its text re-broken per line; an annotated ``<text>`` of a
+    train / val book the manifest lacks (the grey manifest samples speech per book) is
+    cut at the same margin and appended (``source = m109_lines``). Test books are left
+    alone (``sfxp_gt`` is the gate set). Idempotent; ``.pre_lines.parquet`` backup."""
+    import xml.etree.ElementTree as ET
+
+    ann = {}
+    for pg in json.loads(LINES.read_text(encoding="utf-8")).values():
+        for t in pg["texts"]:
+            ann[(pg["book"], int(pg["page_index"]), t["id"])] = t
+    raw = {}
+    for book in sorted({k[0] for k in ann}):
+        root = ET.parse(m109.manga109s_root() / "annotations" / f"{book}.xml").getroot()
+        for p in root.iter("page"):
+            for e in p.findall("text"):
+                raw[(book, int(p.get("index")), e.get("id"))] = e
+    split_of = m109.split_of(m109.load_split())
+    path = derived / "manifest_sfxp_speech.parquet"
+    df = pd.read_parquet(path)
+    have = {(r.book, int(r.page), str(r.id)): i for i, r in enumerate(df.itertuples())}
+    rebroken = same = bad = 0
+    for k, i in have.items():
+        if k not in ann:
+            continue
+        t = line_broken(raw[k].text or "", ann[k]["line_lengths"])
+        if t is None or "".join(t.split()) != "".join(df.text.iat[i].split()):
+            bad += 1
+            continue
+        if t == df.text.iat[i]:
+            same += 1
+        else:
+            df.iat[i, df.columns.get_loc("text")] = t
+            rebroken += 1
+    new, cur, img, skipped = [], None, None, {"test": 0, "bad": 0}
+    for k in sorted(set(ann) - set(have)):
+        book, page, tid = k
+        sp = split_of[book]
+        if sp == "test" or sp not in a.splits:
+            skipped["test"] += 1
+            continue
+        e = raw[k]
+        t = line_broken(e.text or "", ann[k]["line_lengths"])
+        if not t:
+            skipped["bad"] += 1
+            continue
+        if cur != (book, page):
+            img, cur = cv2.imread(str(m109.page_path(book, page))), (book, page)
+        x0, y0, x1, y1 = (int(e.get(c)) for c in ("xmin", "ymin", "xmax", "ymax"))
+        H, W = img.shape[:2]
+        c = margin_box(x0, y0, x1, y1, W, H)
+        rel = f"crops_sfxp/speech/{sp}/{book}_{page:03d}_{tid}.png"
+        (derived / rel).parent.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(derived / rel), img[c[1] : c[3], c[0] : c[2]])
+        ls = ann[k]["lines"]
+        tall = sum((ln["ymax"] - ln["ymin"]) > (ln["xmax"] - ln["xmin"]) for ln in ls)
+        new.append(
+            dict(
+                split=sp,
+                kind="speech",
+                id=tid,
+                book=book,
+                page=page,
+                text=t,
+                orient="vertical" if 2 * tall >= len(ls) else "horizontal",
+                w=c[2] - c[0],
+                h=c[3] - c[1],
+                path=rel,
+                source="m109_lines",
+            )
+        )
+    if new:
+        df = pd.concat([df, pd.DataFrame(new)], ignore_index=True)
+    bak = path.with_suffix(".pre_lines.parquet")
+    if (rebroken or new) and not bak.exists():
+        import shutil
+
+        shutil.copy2(path, bak)
+    df.to_parquet(path, index=False)
+    added = pd.Series([r["split"] for r in new]).value_counts().to_dict()
+    print(
+        f"[lines] re-broken {rebroken}, already broken {same}, text mismatch {bad}; "
+        f"added {added}; skipped {skipped}; manifest {len(df)} rows",
+        flush=True,
+    )
 
 
 def build_gt(a, derived: Path):
@@ -446,6 +560,12 @@ def main():
     ap.add_argument("--speech", action="store_true")
     ap.add_argument("--kozh", action="store_true")
     ap.add_argument(
+        "--lines",
+        action="store_true",
+        help="line breaks + extra speech rows from assets/manga109s_line_annotations.json "
+        "(also run at the end of --speech)",
+    )
+    ap.add_argument(
         "--clean", action="store_true", help="det manifest → manifest_sfxp_det_clean"
     )
     ap.add_argument("--gt", nargs="+", help="splits to re-cut for the gate evals")
@@ -459,6 +579,8 @@ def main():
     derived = m109.derived_root()
     if a.speech:
         build_speech(a, derived)
+    elif a.lines:
+        build_lines(a, derived)
     if a.kozh:
         build_kozh(a, derived)
     if a.gt:

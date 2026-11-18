@@ -1,8 +1,19 @@
 #!/usr/bin/env python3
 """A local review page for the Korean ``OCR:`` labels of the two-prompt reader
-(``manifest_sfxp_kozh.parquet``: gelnote KO and swaprelax_v5): the crop as trained, the label
-in an editable box, a status per row. Edits stay in the browser (localStorage) and leave as
-a TSV through the page's Export button.
+(``manifest_sfxp_kozh.parquet``: gelnote KO and swaprelax_v5) and the hito v4 self-labels
+(``manifest_pseudo_hito_v4.parquet``, one source per side: ``hito_v4_ja`` / ``hito_v4_ko``):
+the crop as trained, the label in an editable box, a status per row. Edits stay in the
+browser (localStorage) and leave as a TSV through the page's Export button
+(``apply_ko_review.py`` takes it).
+
+Every editable row has an ``SFX`` checkbox (exported as the ``sfx`` column;
+``apply_ko_review.py`` keeps the marks in ``assets/sfx_marks.tsv``, training does not read
+them). ``m109_sfx`` / ``m109_speech`` are read-only references: a seeded sample of the
+Manga109 COO onomatopoeia and the speech text (``manifest.parquet``), to compare against.
+
+hito rows also show the twin crop (the other edition's lettering of the same region) with
+its v4 read, and the read's mean token logprob (``prelabel_v4lp.jsonl``); they sort lowest
+logprob first by default.
 
 Every row is listed; the page filters on the longest spaceless Hangul run (the gelnote
 teacher's dropped spacing passes the whitespace-blind agreement, ``pseudo_label.py``) and
@@ -30,6 +41,8 @@ import manga109 as m109  # noqa: E402
 REPO = Path(__file__).resolve().parents[4]
 GELNOTE = Path("/media/sorryhyun/new/dataset/gelnote_crops")
 SWAPRELAX = Path("/media/sorryhyun/new/dataset/hito_ocr/swap_relax_v5")
+HITO = Path("/media/sorryhyun/new/dataset/hito_ocr/ko")
+HANGUL = re.compile(r"[가-힣]")
 RUN = re.compile(r"[가-힣]+")
 KANA = re.compile(r"[\u3040-\u30ff]")
 HANJA = re.compile(r"[\u4e00-\u9fff]")
@@ -37,7 +50,7 @@ HANJA = re.compile(r"[\u4e00-\u9fff]")
 PAGE = r"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>KO label review</title>
+<title>Label review</title>
 <style>
 :root { --bg:#f6f6f4; --card:#fff; --ink:#1d1d1b; --mute:#77756f; --line:#dddbd5;
         --ok:#2f7d4f; --edit:#2a5db0; --drop:#b0372a; --hl:#ffe08a; }
@@ -65,6 +78,8 @@ main { padding:12px 16px 80px; max-width:1200px; margin:0 auto; }
 .crop { display:flex; align-items:flex-start; justify-content:center; background:#fff; border-radius:4px;
         min-height:60px; }
 .crop img { max-width:100%; max-height:280px; object-fit:contain; }
+.twin { display:flex; gap:8px; align-items:flex-start; margin:2px 0 6px; }
+.twin img { max-width:140px; max-height:120px; object-fit:contain; background:#fff; border-radius:3px; }
 .meta { color:var(--mute); font-size:12px; margin-bottom:4px; word-break:break-all; }
 .meta a { color:var(--mute); }
 .orig { font-size:14px; margin:2px 0 6px; white-space:pre-wrap; }
@@ -72,16 +87,20 @@ main { padding:12px 16px 80px; max-width:1200px; margin:0 auto; }
 textarea { width:100%; font:inherit; font-size:17px; padding:6px 8px; border:1px solid var(--line);
            border-radius:4px; background:var(--card); color:var(--ink); resize:vertical; }
 .btns { display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; }
+.btns label { font-size:13px; display:flex; gap:4px; align-items:center; margin-left:8px; }
+.row.sfx { box-shadow: inset 0 0 0 2px #c77d1a; }
 .btns .on.ok { background:var(--ok); color:#fff; } .btns .on.drop { background:var(--drop); color:#fff; }
 .pager { display:flex; gap:8px; align-items:center; justify-content:center; margin:14px 0; }
 header .pager { margin:0; }
 @media (max-width:640px) { .row { grid-template-columns:minmax(0,1fr); } }
 </style></head><body>
 <header>
-  <h1>KO label review</h1>
+  <h1>Label review</h1>
   <label>source <select id="src"></select></label>
   <label>min run <input id="minrun" type="number" min="0" max="20"></label>
   <label>sort <select id="sort"><option value="sus">suspicion</option>
+    <option value="lp">lowest logprob first (hito)</option>
+    <option value="sfx">SFX-marked only</option>
     <option value="nolf">no line break, longest first</option>
     <option value="edge">edge text (label beyond v6's read)</option>
     <option value="dis">v6 disagrees, lowest confidence first</option>
@@ -97,12 +116,15 @@ header .pager { margin:0; }
 <script>
 const DATA = __DATA__;
 const MIN_DEFAULT = __MINRUN__;
-const SORT_DEFAULT = {"gelnote_ko": "nolf", "swaprelax_v5": "sus"};
+const SORT_DEFAULT = {"gelnote_ko": "nolf", "swaprelax_v5": "sus", "hito_v4_ja": "lp", "hito_v4_ko": "lp"};
 const PER = 50;
 const KEY = "ko_label_review_v1";
 let store = {};
 try { store = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { store = {}; }
-const save = () => { try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) {} };
+let marks = {};
+try { marks = JSON.parse(localStorage.getItem(KEY + ":sfx") || "{}"); } catch (e) { marks = {}; }
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(store));
+  localStorage.setItem(KEY + ":sfx", JSON.stringify(marks)); } catch (e) {} };
 const $ = (id) => document.getElementById(id);
 // edits already applied to the manifests come back as the label itself: keep them as reviewed
 (() => {
@@ -143,7 +165,9 @@ function rows() {
   const s = srcSel.value, n = +minIn.value || 0;
   let r = DATA[s].filter(x => x.run >= n);
   const k = sortSel.value;
-  if (k === "sus") r = r.slice().sort((a, b) => b.sus - a.sus || a.id.localeCompare(b.id));
+  if (k === "sfx") r = r.filter(x => marks[s + ":" + x.id]);
+  else if (k === "lp") r = r.slice().sort((a, b) => (a.lp ?? 0) - (b.lp ?? 0) || a.id.localeCompare(b.id));
+  else if (k === "sus") r = r.slice().sort((a, b) => b.sus - a.sus || a.id.localeCompare(b.id));
   else if (k === "edge") r = r.filter(x => x.edge).sort((a, b) => b.edge.length - a.edge.length);
   else if (k === "dis") r = r.filter(x => x.v6 != null && x.v6.replace(/\s/g, "") !== x.text.replace(/\s/g, ""))
                              .sort((a, b) => a.conf - b.conf);
@@ -155,10 +179,10 @@ function rows() {
   return (order = r);
 }
 function stats() {
-  const s = srcSel.value; let ok = 0, ed = 0, dr = 0;
-  for (const x of DATA[s]) { const v = store[s + ":" + x.id]; if (!v) continue;
+  const s = srcSel.value; let ok = 0, ed = 0, dr = 0, sx = 0;
+  for (const x of DATA[s]) { if (marks[s + ":" + x.id]) sx++; const v = store[s + ":" + x.id]; if (!v) continue;
     if (v.status === "ok") ok++; else if (v.status === "drop") dr++; else ed++; }
-  $("stats").textContent = `${rows().length} listed · ok ${ok} · edited ${ed} · drop ${dr}`;
+  $("stats").textContent = `${rows().length} listed · ok ${ok} · edited ${ed} · drop ${dr} · sfx ${sx}`;
 }
 function render() {
   const s = srcSel.value, r = rows(), pages = Math.max(1, Math.ceil(r.length / PER));
@@ -167,21 +191,32 @@ function render() {
   for (const x of r.slice(page * PER, (page + 1) * PER)) {
     const key = s + ":" + x.id, v = store[key];
     const d = document.createElement("div");
+    if (x.ro) {  // reference row: crop, label, page link only
+      d.className = "row";
+      d.innerHTML = `<div class="crop"><img loading="lazy" src="${x.img}"></div>
+        <div><div class="meta">${esc(x.id)}${x.page ? ` · <a href="${x.page}" target="_blank">page</a>` : ""}
+          box ${x.box.join(",")}</div><div class="orig" style="font-size:17px">${esc(x.text)}</div></div>`;
+      list.appendChild(d); continue;
+    }
     d.className = "row" + (v ? " " + v.status : "");
     d.innerHTML = `<div class="crop"><img loading="lazy" src="${x.img}"></div>
       <div><div class="meta">${esc(x.id)}${x.status ? " · " + x.status : ""} · run ${x.run}
-        · sus ${x.sus.toFixed(1)}${x.why ? " (" + esc(x.why) + ")" : ""} · <a href="${x.page}" target="_blank">page</a>
-        box ${x.box.join(",")}</div>
+        · sus ${x.sus.toFixed(1)}${x.why ? " (" + esc(x.why) + ")" : ""}${x.lp != null ? " · logprob " + x.lp.toFixed(3) : ""}
+        ${x.page ? `· <a href="${x.page}" target="_blank">page</a>` : ""} box ${x.box.join(",")}</div>
       <div class="orig">${marked(x.text, +minIn.value || 0)}</div>
       ${x.v6 != null ? `<div class="meta">v6 (${x.conf.toFixed(2)}): ${esc(x.v6).replace(/\n/g, " ⏎ ")}${x.edge ? " · edge " + esc(x.edge) : ""}</div>` : ""}
+      ${x.twin_img ? `<div class="twin"><img loading="lazy" src="${x.twin_img}"><div class="meta">twin (${esc(x.twin_lang)}) v4: ${esc(x.twin || "—").replace(/\n/g, " ⏎ ")}</div></div>` : ""}
       <textarea rows="${Math.max(2, x.text.split("\n").length + 1)}"></textarea>
       <div class="btns"><button class="okb">✓ ok</button><button class="drb">✗ drop row</button>
-        <button class="rsb">reset</button></div></div>`;
+        <button class="rsb">reset</button><label><input type="checkbox" class="sfxb"> SFX</label></div></div>`;
     const ta = d.querySelector("textarea");
     ta.value = v && v.text != null ? v.text : x.text;
     const okb = d.querySelector(".okb"), drb = d.querySelector(".drb");
+    const sfxb = d.querySelector(".sfxb");
+    sfxb.checked = !!marks[key];
+    sfxb.onchange = () => { if (sfxb.checked) marks[key] = 1; else delete marks[key]; save(); paint(); };
     const paint = () => { const w = store[key];
-      d.className = "row" + (w ? " " + w.status : "");
+      d.className = "row" + (w ? " " + w.status : "") + (marks[key] ? " sfx" : "");
       okb.classList.toggle("on", !!w && w.status === "ok"); okb.classList.toggle("ok", true);
       drb.classList.toggle("on", !!w && w.status === "drop"); drb.classList.toggle("drop", true); stats(); };
     ta.oninput = () => { store[key] = ta.value === x.text ? {status: "ok", text: null}
@@ -204,14 +239,15 @@ function render() {
   stats();
 }
 $("export").onclick = () => {
-  const lines = ["source\tid\tstatus\torig\tnew"];
-  for (const [k, v] of Object.entries(store)) {
+  const lines = ["source\tid\tstatus\torig\tnew\tsfx"];
+  for (const k of new Set([...Object.keys(store), ...Object.keys(marks)])) {
+    const v = store[k] || {status: "", text: null};
     const i = k.indexOf(":"), s = k.slice(0, i), id = k.slice(i + 1);
     const x = (DATA[s] || []).find(y => y.id === id); if (!x) continue;
     const q = t => (t == null ? "" : t).replace(/\\/g, "\\\\").replace(/\t/g, "\\t").replace(/\n/g, "\\n");
     // a typed "\\n" counts as a line break, same as Enter
     const nt = v.status === "edit" ? v.text.replace(/\\n/g, "\n") : "";
-    lines.push([s, id, v.status, q(x.text), q(nt)].join("\t"));
+    lines.push([s, id, v.status, q(x.text), q(nt), marks[k] ? "1" : ""].join("\t"));
   }
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([lines.join("\n") + "\n"], {type: "text/tab-separated-values"}));
@@ -226,14 +262,14 @@ def longest_run(t: str) -> int:
     return max((len(m) for m in RUN.findall(t)), default=0)
 
 
-def suspicion(t: str, w: int, h: int) -> tuple[float, str]:
+def suspicion(t: str, w: int, h: int, lang: str = "ko") -> tuple[float, str]:
     """Heuristic doubt in a label, with the reasons.
 
     * line count: a label of L lines with m glyphs on its longest line (ASCII half) fills
       the crop at a glyph size of w / m (horizontal) or h / m (vertical), giving ~h·m / 1.15w
       or ~w·m / 1.15h lines; the closer layout counts, log2 of its miss when ≥ 1.8× off;
-    * kana +3, hanja +1.5 (JA leaking into a KO label);
-    * a spaceless Hangul run of 7+: +0.5 per syllable past 6.
+    * KO: kana +3, hanja +1.5 (JA leaking into a KO label); JA: Hangul +3;
+    * KO: a spaceless Hangul run of 7+: +0.5 per syllable past 6.
     """
     import math
 
@@ -256,6 +292,11 @@ def suspicion(t: str, w: int, h: int) -> tuple[float, str]:
         why.append(
             f"lines {L} vs ~{est:.0f}" if est >= 1 else f"lines {L} vs ~{est:.1f}"
         )
+    if lang == "ja":
+        if HANGUL.search(t):
+            s += 3
+            why.append("hangul")
+        return round(s, 2), " · ".join(why)
     if KANA.search(t):
         s += 3
         why.append("kana")
@@ -267,6 +308,95 @@ def suspicion(t: str, w: int, h: int) -> tuple[float, str]:
         s += (run - 6) * 0.5
         why.append(f"run {run}")
     return round(s, 2), " · ".join(why)
+
+
+def hito_rows(d: Path) -> dict[str, list[dict]]:
+    """``manifest_pseudo_hito_v4`` as two sources (``hito_v4_ja`` / ``hito_v4_ko``), each
+    row with its twin crop, the twin's v4 read and the read's logprob."""
+    path = d / "manifest_pseudo_hito_v4.parquet"
+    if not path.exists():
+        return {}
+    reads = {}
+    for line in open(HITO / "prelabel_v4lp.jsonl", encoding="utf-8"):
+        x = json.loads(line)
+        reads[(x["id"], x["side"])] = x
+    regions = {}
+    for f in HITO.glob("*/regions.jsonl"):
+        for line in open(f, encoding="utf-8"):
+            x = json.loads(line)
+            regions[x["id"]] = x
+    out = {"hito_v4_ja": [], "hito_v4_ko": []}
+    for r in pd.read_parquet(path).itertuples():
+        rid, side = r.id.rsplit("_", 1)
+        g = regions[rid]
+        # one side only when the other edition has no ink there (1,595 regions)
+        if side == "ja":
+            twin_side, twin_img, cut = g["twin_lang"], g.get("crop_twin"), g["cut_ja"]
+        else:
+            twin_side, twin_img, cut = "ja", g.get("crop_ja"), g["cut_twin"]
+        lp = reads.get((rid, side), {}).get("logprob")
+        sus, why = suspicion(r.text, int(r.w), int(r.h), "ja" if side == "ja" else "ko")
+        viz = HITO / rid.split("_")[0] / "viz" / (Path(g["ja_page"]).stem + ".jpg")
+        out[f"hito_v4_{side}"].append(
+            dict(
+                id=r.id,
+                text=r.text,
+                run=longest_run(r.text),
+                sus=sus,
+                why=why,
+                lf=int("\n" in r.text),
+                len=len(r.text.replace("\n", "").replace(" ", "")),
+                status="",
+                v6=None,
+                conf=0.0,
+                edge="",
+                lp=lp,
+                twin=reads.get((rid, twin_side), {}).get("read"),
+                twin_lang=twin_side,
+                twin_img=(HITO / twin_img).as_uri() if twin_img else "",
+                img=Path(r.path).as_uri(),
+                page=viz.as_uri() if viz.exists() else "",  # viz/ covers ~8 % of pages
+                box=[int(v) for v in cut],
+            )
+        )
+    for s, rows in out.items():
+        print(f"[review] {s}: {len(rows)} rows", flush=True)
+    return out
+
+
+def ref_rows(d: Path, n: int, seed: int = 0) -> dict[str, list[dict]]:
+    """Read-only Manga109 references: ``n`` seeded rows each of COO onomatopoeia
+    (``kind = sfx``) and speech text from ``manifest.parquet``."""
+    df = pd.read_parquet(d / "manifest.parquet")
+    out = {}
+    for kind in ("sfx", "speech"):
+        sub = df[df.kind == kind]
+        sub = sub.sample(min(n, len(sub)), random_state=seed).sort_values(
+            ["book", "page"]
+        )
+        rows = []
+        for r in sub.itertuples():
+            xy = json.loads(r.poly) if isinstance(r.poly, str) else list(r.poly)
+            xs, ys = xy[0::2], xy[1::2]
+            page = m109.page_path(r.book, int(r.page))
+            rows.append(
+                dict(
+                    id=f"{r.book}_{int(r.page):03d}_{r.id}",
+                    text=r.text,
+                    run=0,
+                    sus=0.0,
+                    why="",
+                    lf=int("\n" in r.text),
+                    len=len(r.text),
+                    ro=True,
+                    img=(d / r.path).as_uri(),
+                    page=page.as_uri() if page.exists() else "",
+                    box=[int(min(xs)), int(min(ys)), int(max(xs)), int(max(ys))],
+                )
+            )
+        out[f"m109_{kind}"] = rows
+        print(f"[review] m109_{kind}: {len(rows)} rows (of {len(df[df.kind == kind])})")
+    return out
 
 
 def main():
@@ -281,6 +411,12 @@ def main():
         "--flags",
         type=Path,
         help="ko_label_fix.py's <reads>_flags.parquet: v6 read, confidence, edge text per row",
+    )
+    ap.add_argument(
+        "--ref_n",
+        type=int,
+        default=3000,
+        help="Manga109 reference rows per kind (m109_sfx / m109_speech); 0 = none",
     )
     a = ap.parse_args()
     d = m109.derived_root()
@@ -337,9 +473,12 @@ def main():
             )
         data[src] = out
         print(f"[review] {src}: {len(out)} rows", flush=True)
+    data.update(hito_rows(d))
+    if a.ref_n:
+        data.update(ref_rows(d, a.ref_n))
     a.out.mkdir(parents=True, exist_ok=True)
     html = PAGE.replace("__DATA__", json.dumps(data, ensure_ascii=False)).replace(
-        "__MINRUN__", json.dumps({"gelnote_ko": a.min_run, "swaprelax_v5": a.min_run})
+        "__MINRUN__", json.dumps({s: a.min_run for s in data})
     )
     (a.out / "index.html").write_text(html, encoding="utf-8")
     print(f"[review] → {a.out / 'index.html'}", flush=True)

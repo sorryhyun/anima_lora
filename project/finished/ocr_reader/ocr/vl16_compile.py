@@ -25,8 +25,8 @@ marks go inside the callable so a checkpoint recompute re-marks.
   differing ``num_threads`` doubles every LM graph through the GLOBAL_STATE guard.
 
 A token count outside the range runs unmarked and specialises on its exact count, with
-one warning per count. Generation (``predict``) runs eager: wrap it in
-``torch.compiler.set_stance("force_eager")``.
+one warning per count. A call with grad off (generation, ``predict``) goes straight to
+the layer's eager forward: no marks, no warning, no compiled code.
 """
 
 from __future__ import annotations
@@ -140,8 +140,10 @@ def compile_layers(
         raise ValueError(f"tower_range must lie in (1, 4096), got {tower_range}")
     warned: set[int] = set()
 
-    def tower(compiled):
+    def tower(compiled, eager):
         def forward(hidden_states, cu_seqlens, position_embeddings, **kwargs):
+            if not torch.is_grad_enabled():
+                return eager(hidden_states, cu_seqlens, position_embeddings, **kwargs)
             kwargs.pop("max_seqlen", None)
             t = hidden_states.shape[0]
             if lo <= t <= hi:
@@ -159,10 +161,17 @@ def compile_layers(
 
     n_threads = torch.get_num_threads()
 
-    def lm(compiled):
+    def lm(compiled, eager):
         def forward(
             hidden_states, attention_mask=None, position_embeddings=None, **kwargs
         ):
+            if not torch.is_grad_enabled():
+                return eager(
+                    hidden_states,
+                    attention_mask=attention_mask,
+                    position_embeddings=position_embeddings,
+                    **kwargs,
+                )
             # the checkpoint recompute runs on the autograd device thread, whose
             # intra-op thread count is the process default, not the main thread's;
             # dynamo's GLOBAL_STATE guard then splits every graph in two
@@ -200,9 +209,9 @@ def compile_layers(
         if name == "PaddleOCRVisionAttention":
             m.forward = types.MethodType(_vision_attn_forward, m)
         elif name == "PaddleOCRVisionEncoderLayer":
-            m.forward = tower(torch.compile(m.forward, dynamic=False))
+            m.forward = tower(torch.compile(m.forward, dynamic=False), m.forward)
             n_t += 1
         elif name == "PaddleOCRDecoderLayer":
-            m.forward = lm(torch.compile(m.forward, dynamic=False))
+            m.forward = lm(torch.compile(m.forward, dynamic=False), m.forward)
             n_l += 1
     return n_t, n_l

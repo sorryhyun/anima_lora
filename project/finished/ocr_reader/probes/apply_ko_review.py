@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Apply a ``ko_label_review.py`` export (TSV: source, id, status, orig, new; ``\\n`` /
 ``\\t`` / ``\\\\`` escaped) to the label manifests: ``edit`` replaces the text, ``drop``
-removes the row, ``ok`` changes nothing. Edited text is stored through
+removes the row, ``ok`` (or an empty status: a row with only an SFX mark) changes nothing.
+The optional ``sfx`` column (the page's SFX checkbox) goes to ``assets/sfx_marks.tsv``. Edited text is stored through
 ``textnorm.collapse_keep_lines`` (no spaces at a line's edges, no blank lines). A row whose current text no longer equals ``orig``
 is skipped and reported.
 
@@ -9,7 +10,8 @@ is skipped and reported.
 
 Manifests per source: gelnote_ko / gelnote_zh → ``manifest_pseudo_gelnote_{ko,zh}`` +
 ``manifest_sfxp_kozh``;
-swaprelax_v5 → ``manifest_pseudo_swaprelax_v5`` + ``manifest_sfxp_kozh``. Each manifest
+swaprelax_v5 → ``manifest_pseudo_swaprelax_v5`` + ``manifest_sfxp_kozh``;
+hito_v4_ja / hito_v4_ko → ``manifest_pseudo_hito_v4``. Each manifest
 is copied to ``<name>.pre_review.parquet`` once, before its first change.
 """
 
@@ -30,6 +32,8 @@ TARGETS = {
     "gelnote_ko": ["pseudo_gelnote_ko", "sfxp_kozh"],
     "swaprelax_v5": ["pseudo_swaprelax_v5", "sfxp_kozh"],
     "gelnote_zh": ["pseudo_gelnote_zh", "sfxp_kozh"],
+    "hito_v4_ja": ["pseudo_hito_v4"],
+    "hito_v4_ko": ["pseudo_hito_v4"],
 }
 
 
@@ -62,7 +66,7 @@ def main():
         path = d / f"manifest_{name}.parquet"
         df = pd.read_parquet(path)
         srcs = [s for s in rv.source.unique() if name in TARGETS[s]]
-        sub = rv[rv.source.isin(srcs) & (rv.status != "ok")]
+        sub = rv[rv.source.isin(srcs) & rv.status.isin(["edit", "drop"])]
         key = (
             df.source.astype(str) + ":" + df.id.astype(str)
             if name == "sfxp_kozh"
@@ -91,6 +95,30 @@ def main():
         if not bak.exists():
             shutil.copy2(path, bak)
         df.to_parquet(path, index=False)
+    if "sfx" in rv.columns:
+        write_marks(rv, a.dry_run)
+
+
+def write_marks(rv: pd.DataFrame, dry_run: bool) -> None:
+    """The page's SFX checkboxes → ``assets/sfx_marks.tsv`` (source, id, text). The
+    export carries every mark in the browser, so each exported source's marks are
+    replaced whole; other sources' marks stay. Training does not read the file."""
+    path = Path(__file__).resolve().parents[1] / "assets" / "sfx_marks.tsv"
+    old = (
+        pd.read_csv(path, sep="\t", dtype=str, keep_default_na=False, quoting=3)
+        if path.exists()
+        else pd.DataFrame(columns=["source", "id", "text"])
+    )
+    srcs = set(rv.source)
+    new = rv[rv.sfx == "1"].assign(
+        text=lambda x: x.new.where(x.status == "edit", x.orig).str.replace("\n", "\\n")
+    )[["source", "id", "text"]]
+    out = pd.concat([old[~old.source.isin(srcs)], new], ignore_index=True)
+    print(
+        f"[sfx_marks] {len(new)} marked in {sorted(srcs)}; file {len(old)} → {len(out)} rows"
+    )
+    if not dry_run:
+        out.to_csv(path, sep="\t", index=False, quoting=3)
 
 
 if __name__ == "__main__":

@@ -736,10 +736,8 @@ def main():
 
     def evaluate(tag, step):
         t0 = time.time()
-        # generation's shapes (decode steps, val crops up to the processor default)
-        # sit outside the marked ranges: eager
-        with torch.compiler.set_stance("force_eager"):
-            preds = predict(model, proc, va_prompt, min_edge, va, a.val_bs, a.workers)
+        # predict runs under no_grad: vl16_compile's layers take their eager forward
+        preds = predict(model, proc, va_prompt, min_edge, va, a.val_bs, a.workers)
         scored = ev.score(va_df, preds)
         m = val_metrics(scored)
         m.update(tag=tag, step=step, wall=round(time.time() - t0, 1))

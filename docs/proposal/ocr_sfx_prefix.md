@@ -328,5 +328,5 @@ lines drop only against a line of their own kind.
 - Score the COO gate on the polygons a detector box covers, beside the full set (the COO SFX gap
   to v6).
 - The `OCR:` leak on COO SFX crops.
-- Additional proposals (augmentation, fp32 accumulation, SFX share, warm start, int8 tower, FA2
-  head dim): [`ocr_additionals.md`](ocr_additionals.md).
+- Additional proposals (the norm 7 dot-run runaways and heart loss at `sfxpc_1118_2037`, SFX
+  share, warm start): [`ocr_additionals.md`](ocr_additionals.md).
