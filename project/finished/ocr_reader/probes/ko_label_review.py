@@ -410,7 +410,7 @@ def linebreak_rows(d: Path) -> dict[str, list[dict]]:
         # dot-only labels are linebreak_auto.py dots' (dots_suspicious), not this source's
         if k not in crop or not DOT_FREE.sub("", x["raw"]):
             continue
-        text = ellipsis_fold(x["out"])
+        text = round_dots(ellipsis_fold(x["out"]))
         odd = odd_dots(text)
         page = m109.page_path(x["book"], int(x["page"]))
         reads = " ⏎ ".join(x["lines"])
