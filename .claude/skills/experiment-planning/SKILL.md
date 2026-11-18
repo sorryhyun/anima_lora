@@ -45,6 +45,11 @@ The gate says what is read, against what, and who decides.
 - How the renders are read: where the read is the gate, the sheets are composed without arm labels
   and in a shuffled order per prompt (`project/finished/cjk_aware_anima/probes/blind_pairs.py`;
   `bench/grad_init/e1_blind.py` is a worked case). A labelled read is recorded as labelled.
+- Sheet layout, blind or labelled: the two arms the question compares, as two columns or two rows,
+  one (prompt, seed) per file (`bench/turbo/blind_sheets.py`). A column the question does not read
+  stays off the sheet: when the question is T against S, the sheet holds T and S only, not `S>T`,
+  `A>S` or the other probe columns beside them (a 4 × 3 grid of probe columns leaves the reader
+  guessing which pair to compare). A third arm gets its own pairwise sheet.
 - The prompts and seeds that arms are read on are the line's working set. A ship decision is read
   on a second set that no arm of the line has been read on; name it in the plan when the line
   opens.

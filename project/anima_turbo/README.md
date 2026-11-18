@@ -13,15 +13,16 @@ merged LoRA is used at multiplier 1.0 only. The shipped base-teacher turbo
 - The line restarted on 2026-11-18. Its students were trained on an anchor whose chord ended at
   σ 0.75 while step 0 covered σ 1 → 0.9; the plan, reports, run configs and proposals up to then
   are in `_archive/anima_turbo/` and `_archive/configs/anima_turbo/` (local).
-- Open: whether the official v1.1 delta finishes from the teacher's σ 0.9 state, which decides
-  between fitting step 0 on 7 of 28 alone and training steps 1–3 as well. The 2-step student is
-  parked ([plan.md](plan.md)).
+- The v1.1 delta finishes from the teacher's σ 0.9 state (the user's read, near tie), and
+  `turbo_1118_1818` (step 0 alone on 7 of 28) lost the user's blind reads to it, and v1.1 finishes from the
+  teacher's σ 0.9 state no better than from its own step 0
+  ([reports/step0_k7of28.md](reports/step0_k7of28.md)). Open: what the line distills toward. The 2-step student is parked ([plan.md](plan.md)).
 - Preference RL is at its P1 gate, not passed ([pref_rl/p1.md](pref_rl/p1.md)).
 
 ## Layout
 
 - [plan.md](plan.md): what is carried, the open items, what is measured again.
-- `reports/`: one report per run or probe, added as runs finish.
+- [reports/](reports/README.md): one report per run or probe, added as runs finish.
 - [findings/](findings/README.md): two findings on how to measure (an LR artifact in a gate, a
   permutation null for gradient comparisons).
 - [configs/](configs/README.md): the live run config; finished ones in `_archive/configs/anima_turbo/`.
