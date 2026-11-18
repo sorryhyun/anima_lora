@@ -13,7 +13,8 @@ On cached anchor pairs, at the FM / GAN tap of the σ_k state (frozen teacher fe
 With a disc in the resume bundle, per token: the logits of the teacher state, the
 student state and the jitter state, their correlation over tokens, and the share
 of the logit variance common to the pair (``var(m) / (var(m) + var(d))`` with
-``m`` the pair mean and ``d`` half the pair difference).
+``m`` the pair mean and ``d`` half the pair difference); and ``r1_a<alpha>``, the
+approximate-R1 term of the disc step at that perturbation scale.
 
 Run with the arm's config; ``--resume auto`` loads its online student and disc::
 
@@ -35,6 +36,7 @@ from scripts.distill_turbo.setup import build_run
 from scripts.distill_turbo.steps import _rel_feat_mse
 
 POOLS = (1, 2, 4)
+R1_ALPHAS = (0.05, 0.1, 0.2)
 
 
 def to_grid(f: torch.Tensor, h: int, w: int) -> torch.Tensor:
@@ -118,22 +120,38 @@ def main() -> None:
                 )
                 row[f"rel{k}_{name}"] = float(_rel_feat_mse(pool(gr[arm], k), pt))
         if turbo.disc is not None:
-            lg = {
-                k: turbo.disc(turbo.features_in_order(v)).float().flatten()
-                for k, v in fd.items()
-            }
+            grid = (h, w) if turbo.disc.needs_grid else None
+
+            def logits(feat_dict):
+                return turbo.disc(turbo.features_in_order(feat_dict), grid).float()
+
+            lg = {k: logits(v).flatten() for k, v in fd.items()}
             m, d = (lg["t"] + lg["s"]) / 2, (lg["t"] - lg["s"]) / 2
             row |= {
                 "logit_t": float(lg["t"].mean()),
                 "logit_s": float(lg["s"].mean()),
                 "logit_j": float(lg["j"].mean()),
-                "std_t": float(lg["t"].std()),
-                "std_s": float(lg["s"].std()),
-                "corr_ts": corr(lg["t"], lg["s"]),
-                "common_share": float(m.var() / (m.var() + d.var())),
-                "s_above_0": float((lg["s"] > 0).float().mean()),
-                "t_below_0": float((lg["t"] < 0).float().mean()),
+                "disc_loss": float(
+                    torch.nn.functional.softplus(lg["s"]).mean()
+                    + torch.nn.functional.softplus(-lg["t"]).mean()
+                ),
             }
+            if lg["t"].numel() > 8:  # per-token heads
+                row |= {
+                    "std_t": float(lg["t"].std()),
+                    "std_s": float(lg["s"].std()),
+                    "corr_ts": corr(lg["t"], lg["s"]),
+                    "common_share": float(m.var() / (m.var() + d.var())),
+                    "s_above_0": float((lg["s"] > 0).float().mean()),
+                    "t_below_0": float((lg["t"] < 0).float().mean()),
+                }
+            # The approximate-R1 term of the paired disc step (gan.r1_weight):
+            # squared logit change under x_t + alpha * eta, eta ~ N(0, I).
+            x_t = e - (1 - sig) * vt
+            for alpha in R1_ALPHAS:
+                eta = torch.randn(x_t.shape, generator=g).to(x_t.device)
+                lg_a = logits(feats(x_t + alpha * eta, c, B)).flatten()
+                row[f"r1_a{alpha}"] = float((lg_a - lg["t"]).pow(2).mean())
         rows.append(row)
         print(i, json.dumps({k: round(v, 4) for k, v in row.items()}), flush=True)
 

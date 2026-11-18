@@ -24,7 +24,7 @@ in the run table.
   the user's read of `1028`. `paired_ratio` 1.0 (`1122`) not passed on the user's blind picks.
   Also the gap-scale probe, the 2×2 pooled disc head (`1215`, level), FastGen's
   discriminators against the port, and FastGen's conv head on taps 13 / 20 / 27 (`1302`, read
-  pending).
+  left to the next session) with R1 on it (`1353`, queued).
 - [grid_cdm.md](grid_cdm.md): the static grid and the cond-only L_CDM, both adopted at 250
   iterations on the user's read and shipped in the recipe; one seed each.
 

@@ -54,7 +54,8 @@ Probe numbers are on EMA 250 unless a row says otherwise: sameness (lower is mor
 | `turbo_1118_1028` | `0953` with `gan.paired_ratio` 0.5 | train anchor MSE 0.0705 (level with `1442`), GAN share 0.43, disc margin 0.44 → 3.06; the user's read: the GAN has a clear effect, usable once the margin is fixed | [paired_fm_gan](paired_fm_gan.md) |
 | `turbo_1118_1122` | `1028` with `gan.paired_ratio` 1.0 | not passed: the user's blind picks `1028` 6, `1122` 2, no pick 4; train anchor MSE 0.0732 (`1028`: 0.0703), GAN share 0.68, disc margin 0.44 → 2.57 | [paired_fm_gan](paired_fm_gan.md) |
 | `turbo_1118_1215` | `1122` with `gan.disc_pool` 2 (2×2 mean-pooled tokens into the head) | train anchor MSE 0.0729 (`1122`: 0.0732), disc margin 0.42 → 2.77, held-out anchor MSE 0.0758 (`1122`: 0.0748), sameness `S` 0.311 (`1122`: 0.279); level: the user's blind picks 2 / 2 on the group rows, no pick on the other 8 | [paired_fm_gan](paired_fm_gan.md) |
-| `turbo_1118_1302` | `1122` with FastGen's conv head on taps 13 / 20 / 27 (`disc_hidden` 256) | train anchor MSE 0.0697 (`1122`: 0.0732), disc margin 1.68 → 11.15, disc loss 0.15, held-out anchor MSE 0.0764 (`1122`: 0.0748), sameness `S` 0.296; the user's blind read pending | [paired_fm_gan](paired_fm_gan.md) |
+| `turbo_1118_1302` | `1122` with FastGen's conv head on taps 13 / 20 / 27 (`disc_hidden` 256) | train anchor MSE 0.0697 (`1122`: 0.0732), disc margin 1.68 → 11.15, disc loss 0.15, held-out anchor MSE 0.0764 (`1122`: 0.0748), sameness `S` 0.296; the user's read left to the next session | [paired_fm_gan](paired_fm_gan.md) |
+| `turbo_1118_1353` | `1302` with `gan.r1_weight` 100 | queued 2026-11-18 13:53; not read | [paired_fm_gan](paired_fm_gan.md) |
 
 ## Interpretation
 

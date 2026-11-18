@@ -3,7 +3,7 @@
 The anchor student's step 0 with terms on the teacher's features of the anchor end state: feature
 matching (`1123`, `1403`, `1442`), then a paired GAN on top of `1442` (`0953`, `1028`), its dose
 arm (`1122`), the gap-scale probe, the 2×2 pooled disc head (`1215`), FastGen's discriminators
-against the port and FastGen's conv head on three taps (`1302`). The floor probe and the 0.01 arm (`1105`) are in
+against the port, FastGen's conv head on three taps (`1302`) and R1 on it (`1353`). The floor probe and the 0.01 arm (`1105`) are in
 [step0_depth.md](step0_depth.md).
 
 ## Setup
@@ -308,8 +308,14 @@ against the port and FastGen's conv head on three taps (`1302`). The floor probe
   2048; `bench/turbo/results/20261118-1338-handoff_pgan_conv3_1302`, local), `1122` / `1302`:
   held-out anchor MSE 0.0748 / 0.0764, `S` cos 0.779 / 0.777, `T>S@1` cos 0.942 / 0.943, sameness
   `S` 0.279 / 0.296, low-frequency share of the anchor error 0.447 / 0.458. Spread unknown.
-- Read, blind: `output/blind/turbo/1302_vs_1122` (local), one file per row, 12 rows. The user's
-  picks: pending.
+- Read: `output/blind/turbo/1302_vs_1122` (local), one file per row, 12 rows, composed blind. The
+  user (2026-11-18): knows `1122`'s renders on sight, so how this GAN changed the image reads off
+  the sheets and the read is labelled in effect. No picks or verdict given; the verdict is left to
+  the next session.
+- The user's call (2026-11-18): the blind read is not the issue now; keeping the GAN from
+  saturating is the natural approach. Renoising to a higher τ is rejected: the disc would tell
+  noised states apart instead of what it should tell apart.
+- Claude did not read these sheets.
 
 ### Interpretation
 
@@ -322,3 +328,40 @@ against the port and FastGen's conv head on three taps (`1302`). The floor probe
   0.0697 (`1442`: 0.0705), a feature-path gradient into `v` below `1122`'s, and a lower student
   gradient norm. The GAN's pull on `v` in this arm may be weaker than the token head's at the
   same feature-space ratio; the renders decide whether it does anything visible.
+
+## What the paired disc tells apart, and R1 (`1353`)
+
+### Facts
+
+- Real: the teacher's σ 0.75 state from ε (`x_t = ε − 0.25 · v_target`, the anchor cache). Fake:
+  the student's one-step state from the same ε (`x_s = ε − 0.25 · v_student`). Both go through the
+  frozen teacher at σ 0.75 with the prompt; the heads read the tap features. No dataset image, no
+  renoise, and the disc scores the two states separately.
+- `probe_gap_scale` with the R1 term added (`bench/turbo/results/20261118-13*-r1_size_*`, local;
+  step-1024 discs, 16 training pairs, mean over pairs):
+
+  | | `1302` (conv, 3 taps) | `1122` (token, block 27) |
+  |---|---|---|
+  | logit, teacher / student / jitter state | 0.96 / −6.09 / 0.93 | 0.40 / −2.03 / 0.39 |
+  | R1 term `mean((D(x_t) − D(x_t + αη))²)`, α 0.05 / 0.1 / 0.2 | 0.004 / 0.013 / 0.103 | 0.005 / 0.015 / 0.054 |
+
+- Smokes on `1302`'s recipe (60 it, no delay or ramp), disc margin at step 60: no R1 1.01,
+  `gan.r1_weight` 100 0.92, 1000 0.70. 0.92 it/s with R1 against 0.97.
+- `turbo_1118_1353`: `1302` with `gan.r1_weight` 0 → 100 (`r1_alpha` 0.1), nothing else changed.
+  Queued 2026-11-18 13:53 with its `probe_handoff` job behind it
+  (label `handoff_pgan_conv3_r1_1353`). Not read in this session.
+- Source of 100: FastGen's match of APT's strength at α 0.1 (`weight = λ_apt · σ_apt / α²`), and
+  `docs/anima/methods/turbo.md` for the DP-DMD loop's runaway.
+
+### Interpretation
+
+- Real and fake are deterministic functions of the same ε and the student's residual is
+  systematic, so the two sets do not overlap and a free disc can widen the margin without end;
+  accumulating disc batches or a lower `disc_lr` delays that. R1 bounds the disc's slope around
+  the real state and leaves what is told apart as it is.
+- At the step-1024 disc the R1 term times 100 is 1.3, above the disc loss, so the weight bites on
+  a disc that has already run away; in the first 60 steps it does not (margin 0.92 against 1.01).
+  If the term keeps its ratio to the squared margin (0.013 at 7.05), 100 balances the
+  classification loss near a margin of 3, where the token head sat in `1028` and `1122`. The disc
+  can lower the term at a given margin by aligning its slope with the student's residual, so the
+  margin may end higher; `1353` shows it.

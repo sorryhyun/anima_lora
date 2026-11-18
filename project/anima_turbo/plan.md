@@ -171,10 +171,19 @@ Disc head, runs:
   anchor MSE 0.0697 / 0.0732, FM loss 0.0081 / 0.0081, disc margin 11.15 / 2.57, disc loss
   0.15 / 0.86; probe: held-out anchor MSE 0.0764 / 0.0748, `S` cos 0.777 / 0.779, sameness `S`
   0.296 / 0.279; spread unknown. FastGen's width (hidden 1024, 100.7M parameters) does not fit
-  the card. Blind sheets `output/blind/turbo/1302_vs_1122` (local); the user's picks pending.
-- Interpretation: the conv disc saturates under `1122`'s disc settings (`disc_lr` 5e-5, no R1, no
-  renoise). If the renders show little of the GAN, the next arm is on the disc's strength with
-  FastGen's own values as the source (`disc_lr` 1e-5, renoised inputs), not on the head.
+  the card. Blind sheets `output/blind/turbo/1302_vs_1122` (local); the user knows `1122`'s renders on
+  sight (the read is labelled in effect) and left the verdict to the next session.
+- The user's call (2026-11-18): keep the disc from saturating; renoising to a higher τ is
+  rejected (the disc would tell noised states apart, not what it should).
+- `turbo_1118_1353` (`1302` with `gan.r1_weight` 100): queued 13:53, probe job behind it. R1 term
+  on `1302`'s step-1024 disc 0.013 at α 0.1; smokes' margin at step 60: 1.01 / 0.92 / 0.70 at
+  weight 0 / 100 / 1000.
+- Next session: read `1302` and `1353`. Sheets: `output/blind/turbo/1302_vs_1122`, and
+  `1353_vs_1302` / `1353_vs_1122` (composed after the probe; if missing,
+  `python -m bench.turbo.blind_sheets make --set 1353_vs_1302 --arms <1302 png dir>/turbo_1118_1302_2048_ema <1353 png dir>/turbo_1118_1353_2048_ema`).
+  Numbers to put beside them: `1353`'s disc margin and disc loss per step bin against `1302`.
+- Interpretation: the conv disc saturates under `1122`'s disc settings (`disc_lr` 5e-5, no R1).
+  If `1353`'s margin still runs away, the next values are R1 1000 or `disc_lr` 1e-5 (FastGen's).
 
 ### 3. (merged into 2)
 
