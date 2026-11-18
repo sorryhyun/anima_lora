@@ -159,3 +159,14 @@ def test_run_seed_and_data_dir_do_not_bind_the_cache(tmp_path):
     base = _Base(cfg)
     _write_cache(tmp_path / "cache", cfg, base.samples, draws=1)
     AnchorDataset(base, str(tmp_path / "cache"), _cfg(tmp_path, seed=3))
+
+
+def test_cache_of_another_anchor_depth_is_refused(tmp_path):
+    """A cache rolled to 14 of 28 does not load under a run that states 7 of 28."""
+    cfg = _cfg(tmp_path)
+    base = _Base(cfg)
+    cache = tmp_path / "cache"
+    _write_cache(cache, cfg, base.samples, draws=1)
+    AnchorDataset(base, cache, cfg)  # the same settings load
+    with pytest.raises(ValueError, match="k_anchor 14 / 7"):
+        AnchorDataset(base, cache, _cfg(tmp_path, k_anchor=7))

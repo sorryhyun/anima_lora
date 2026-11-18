@@ -3,8 +3,9 @@
 Usage:
     python -m scripts.distill_turbo.distill [--config configs/methods/turbo.toml] ...
 
-Per iteration: teacher K-step anchor → diversity-supervised first step →
-DMD-refined N-step student rollout → fake/critic update. ``run_loop`` consumes the
+Per iteration: teacher K-step anchor → step 0 regressed on it → student rollout to
+a refinement step with the DMD gradient on its x0-prediction → fake/critic update.
+``dpdmd.anchor_only`` runs the step-0 regression alone. ``run_loop`` consumes the
 ``RunContext`` that :mod:`scripts.distill_turbo.setup` builds.
 """
 
@@ -40,19 +41,14 @@ from .config import TurboConfig, build_argparser, resolve_config
 from .context import Batch, RunContext
 from .diversity import run_diversity_validation
 from .metrics import console_step_line, tqdm_postfix, tqdm_rate, write_scalars
-from .primitives import gan_effective_weight, sample_dynamic_sigmas
 from .resume import resume_path_for, save_resume_state
 from .setup import build_run
 from .steps import (
     ClippedGradMean,
-    anchor_fm_loss,
     anchor_only_loss,
-    cdm_off_trajectory_loss,
     clip_or_norm,
-    dm_slot,
+    dmd_surrogate,
     fake_update,
-    gan_generator_term,
-    paired_disc_update,
     student_rollout,
     teacher_anchor,
 )
@@ -148,89 +144,45 @@ def _anchor(ctx: RunContext, cfg, batch: Batch, c_null: torch.Tensor):
 def anchor_only_iteration(
     ctx: RunContext, cfg, batch: Batch, step: int, grad_mean
 ) -> None:
-    """``dpdmd.anchor_only``: step 0 on the anchor regression alone; ``anchor_draws``
-    k adds k − 1 fresh-ε anchors for the same prompt and averages the gradient.
-    With ``fm_weight`` or the GAN on, the anchor's end state also goes through the
-    teacher (paired feature matching / paired GAN, ``steps.anchor_fm_loss``)."""
+    """``dpdmd.anchor_only``: step 0 on the anchor regression alone."""
     c, B = batch.crossattn_emb, batch.latents.shape[0]
     c_null = uncond_for_batch(ctx.uncond_base, c)
     eps, v_target = _anchor(ctx, cfg, batch, c_null)
-    if cfg.fm_weight > 0.0 or cfg.gan_on:
-        gan_w = gan_effective_weight(cfg, step)
-        r = anchor_fm_loss(ctx, cfg, eps, v_target, c, B, gan_weight=gan_w)
-        gn_student = _student_update(ctx, cfg, grad_mean)
-        ctx.metrics.add_div(r.mse)
-        ctx.metrics.add_fm(r.fm, r.grad_ratio)
-        gn_disc = None
-        if ctx.turbo.disc is not None:
-            d_loss, margin, spread, gn_disc = paired_disc_update(ctx, cfg, r, c)
-            ctx.metrics.add_gan(r.gan_gen, d_loss, margin, spread)
-            ctx.metrics.add_gan_share(r.gan_share)
-        ctx.metrics.add_grad_norms(
-            gn_student, torch.zeros((), device=ctx.device), gn_disc
-        )
-        return
-    k = cfg.anchor_draws
-    div_loss = anchor_only_loss(ctx, eps, v_target, c, B, scale=1.0 / k)
-    for _ in range(k - 1):
-        eps_k = torch.randn_like(batch.latents)
-        v_target_k = teacher_anchor(ctx, cfg, eps_k, c, c_null, B)
-        div_loss = div_loss + anchor_only_loss(ctx, eps_k, v_target_k, c, B, 1.0 / k)
+    div_loss = anchor_only_loss(ctx, eps, v_target, c, B)
     gn_student = _student_update(ctx, cfg, grad_mean)
-    ctx.metrics.add_div(div_loss / k)
+    ctx.metrics.add_div(div_loss)
     ctx.metrics.add_grad_norms(gn_student, torch.zeros((), device=ctx.device))
 
 
 def dpdmd_iteration(ctx: RunContext, cfg, batch: Batch, step: int, grad_mean) -> None:
-    """One DP-DMD iteration: rollout to a grad step g, the DM-slot surrogate on its
-    x_θ (+ L_CDM, + GAN generator term), the student update, then the fake/disc."""
-    turbo = ctx.turbo
-    latents, c = batch.latents, batch.crossattn_emb
-    B = latents.shape[0]
+    """One DP-DMD iteration: the anchored step 0, the rollout to a refinement step
+    g ~ U{1..N−1}, the DMD surrogate on its x_θ, the student update, then the fake."""
+    c = batch.crossattn_emb
+    B = batch.latents.shape[0]
     c_null = uncond_for_batch(ctx.uncond_base, c)
     eps, v_target = _anchor(ctx, cfg, batch, c_null)
 
-    if cfg.dynamic_schedule:
-        sigmas = sample_dynamic_sigmas(2, cfg.student_steps)
-    else:
-        sigmas = ctx.student_sigmas
+    sigmas = ctx.student_sigmas
     n_steps = len(sigmas) - 1
-    # The grad step: a refinement step g ~ U{1..N−1}, or under dm_first_step any
-    # step including the anchored step 0.
-    g = int(torch.randint(0 if cfg.dm_first_step else 1, n_steps, (1,)).item())
+    g = int(torch.randint(1, n_steps, (1,)).item())
     roll = student_rollout(ctx, cfg, eps, v_target, sigmas, g, c, B)
     x_pred = roll.x_pred
-    # Transition-aware fake: every fake query on this x_pred is told it came from
-    # step g; CDM sets its own t'.
-    turbo.set_fake_source(roll.s_g)
 
-    dmd = dm_slot(ctx, cfg, x_pred, c, c_null, B)
-    if cfg.cdm_on:  # before the GAN gen forward (cdm_off_trajectory_loss)
-        cdm_off_trajectory_loss(ctx, cfg, roll, c, c_null, B)
-    gan_w = gan_effective_weight(cfg, step)
-    gan_gen_loss = gan_generator_term(
-        ctx, cfg, x_pred, dmd.tau_dm, dmd.eps_dm, c, gan_w
-    )
-
-    # The DMD surrogate on x_θ; grad_clip runs once on the accumulated .grad
-    # (div, CDM, DMD, GAN).
+    dmd = dmd_surrogate(ctx, cfg, x_pred, c, c_null, B)
+    # The DMD surrogate on x_θ; the anchor term's gradient is already in .grad, and
+    # grad_clip runs once on the sum.
     loss = (dmd.grad_signal * x_pred.float()).mean()
-    if roll.div_pending:
-        loss = loss + cfg.div_weight * roll.div_loss
-    if turbo.disc is not None and gan_w > 0.0:
-        loss = loss + gan_w * gan_gen_loss
     # Under --grad_ckpt the rollout's student forwards recompute at this backward,
     # and the DM term left the view on 'fake'.
     if cfg.grad_ckpt:
-        turbo.set_view("student")
+        ctx.turbo.set_view("student")
     loss.backward()
     gn_student = _student_update(ctx, cfg, grad_mean)
 
-    fake = fake_update(ctx, cfg, x_pred, latents, c, B)
+    fake_loss, gn_fake = fake_update(ctx, cfg, x_pred, c, B)
 
-    gn_disc = fake.gn_disc if turbo.disc is not None else None
     ctx.metrics.accumulate_per_step(
-        fake_loss_mean_t=fake.fake_loss,
+        fake_loss_mean_t=fake_loss,
         grad_signal=dmd.grad_signal,
         delta_dm=dmd.delta_dm,
         x_pred=x_pred,
@@ -240,22 +192,9 @@ def dpdmd_iteration(ctx: RunContext, cfg, batch: Batch, step: int, grad_mean) ->
         v_fake_cond_dm=dmd.v_fake_cond_dm,
     )
     ctx.metrics.add_div(roll.div_loss)
-    ctx.metrics.add_grad_norms(gn_student, fake.gn_fake, gn_disc)
-    if turbo.disc is not None:
-        ctx.metrics.add_gan(
-            gan_gen_loss, fake.gan_disc, fake.gan_margin, fake.gan_spread
-        )
+    ctx.metrics.add_grad_norms(gn_student, gn_fake)
     if ctx.grad_log is not None:
-        ctx.grad_log.add(
-            step + 1,
-            gn_student,
-            fake.gn_fake,
-            gn_disc,
-            dmd.tau_dm,
-            roll.s_g,
-            g,
-            n_steps,
-        )
+        ctx.grad_log.add(step + 1, gn_student, gn_fake, dmd.tau_dm, roll.s_g, g)
 
 
 def _flush_logs(ctx: RunContext, cfg, progress, n: int) -> None:
@@ -267,13 +206,6 @@ def _flush_logs(ctx: RunContext, cfg, progress, n: int) -> None:
         writer.add_scalar("train/student_lr", ctx.student_sched.get_last_lr()[0], n)
         if not cfg.anchor_only:
             writer.add_scalar("train/fake_lr", ctx.fake_sched.get_last_lr()[0], n)
-        if ctx.disc_sched is not None:
-            writer.add_scalar("train/disc_lr", ctx.disc_sched.get_last_lr()[0], n)
-        if ctx.turbo.disc is not None:
-            # The ramped generator-side λ of this step.
-            writer.add_scalar(
-                "train/gan_weight_gen_eff", gan_effective_weight(cfg, n - 1), n
-            )
     progress.set_postfix(**tqdm_postfix(m, anchor_only=cfg.anchor_only), refresh=False)
     now = time.monotonic()
     if ctx.console_steps and (
@@ -341,54 +273,22 @@ def _student_metadata(cfg: TurboConfig, ctx: RunContext, step: int) -> dict[str,
         ss_turbo_student_rank=str(cfg.student_rank),
         ss_turbo_student_alpha=str(cfg.student_alpha),
         ss_turbo_student_steps=str(cfg.student_steps),
-        ss_turbo_dynamic_schedule="1" if cfg.dynamic_schedule else "0",
         ss_turbo_teacher_cfg=str(cfg.teacher_cfg),
         ss_turbo_step=str(step),
-        ss_turbo_k_anchor=str(cfg.k_anchor),
+        ss_turbo_flow_shift=str(cfg.flow_shift),
+        ss_turbo_k_anchor=f"{cfg.k_anchor}/{cfg.teacher_anchor_steps}",
         ss_turbo_div_weight=str(cfg.div_weight),
-        ss_turbo_gan_weight_gen=str(cfg.gan_loss_weight_gen),
-        ss_turbo_gan_disc_head=cfg.gan_disc_head,
-        ss_turbo_gan_disc_pool=str(cfg.gan_disc_pool),
-        ss_turbo_gan_feature_blocks=" ".join(map(str, cfg.gan_feature_blocks or [])),
-        ss_turbo_gan_delay_steps=str(cfg.gan_delay_steps),
-        ss_turbo_gan_warmup_steps=str(cfg.gan_warmup_steps),
-        ss_turbo_cdm_weight=str(cfg.cdm_weight),
-        ss_turbo_cdm_teacher=cfg.cdm_teacher,
         ss_turbo_lr_schedule=cfg.lr_schedule,
     )
     optional = {
         "ss_turbo_anchor_only": "1" if cfg.anchor_only else None,
-        "ss_turbo_teacher_handoff": "1" if cfg.teacher_handoff else None,
-        "ss_turbo_anchor_draws": str(cfg.anchor_draws)
-        if cfg.anchor_draws > 1
-        else None,
         "ss_turbo_anchor_cache": (
             os.path.basename(os.path.normpath(cfg.anchor_cache))
             if cfg.anchor_cache
             else None
         ),
-        "ss_turbo_gan_paired_ratio": (
-            str(cfg.gan_paired_ratio) if cfg.gan_paired_ratio > 0 else None
-        ),
-        "ss_turbo_fm": (
-            f"{cfg.fm_weight:g}@{cfg.fm_block_idx}" if cfg.fm_weight > 0 else None
-        ),
-        "ss_turbo_dm_first_step": "1" if cfg.dm_first_step else None,
-        "ss_turbo_rollout_grad": "1" if cfg.rollout_grad else None,
-        "ss_turbo_dm_draws": str(cfg.dm_draws) if cfg.dm_draws > 1 else None,
         "ss_turbo_grad_accum": str(cfg.grad_accum) if cfg.grad_accum > 1 else None,
-        "ss_turbo_dm_tau": (
-            f"{cfg.dm_tau_distribution}:{cfg.dm_tau_scale}"
-            if cfg.dm_tau_distribution != "uniform"
-            else None
-        ),
     }
-    if cfg.mfd_dtau > 0.0:
-        optional.update(
-            ss_turbo_mfd_dtau=str(cfg.mfd_dtau),
-            ss_turbo_mfd_max_steps=str(cfg.mfd_max_steps),
-            ss_turbo_mfd_interval=cfg.mfd_interval,
-        )
     if cfg.train_adaln:
         optional["ss_turbo_train_adaln"] = "1"
         if cfg.adaln_rank > 0:  # provenance; per-module rank lives in the file
@@ -435,10 +335,8 @@ def _save(ctx: RunContext, cfg: TurboConfig, n: int) -> None:
             turbo=ctx.turbo,
             student_opt=ctx.student_opt,
             fake_opt=ctx.fake_opt,
-            disc_opt=ctx.disc_opt,
             student_sched=ctx.student_sched,
             fake_sched=ctx.fake_sched,
-            disc_sched=ctx.disc_sched,
         )
         logger.info(f"saved resume bundle: {rp} (step {n})")
 

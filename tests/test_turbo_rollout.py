@@ -1,12 +1,10 @@
 """Invariant tests for the turbo student rollout (``steps.student_rollout``).
 
-* g ≥ 1 with the anchor on is the DP-DMD step: the diversity term is backwarded
-  inside, the prefix runs under no_grad, and x_pred's graph covers step g only.
-* g = 0 (``dm_first_step``) makes step 0 the grad step: x_pred = ε − σ₀·v_first and
-  the diversity term is left pending on the shared graph.
-* ``v_target=None`` (``div_weight = 0``) drops the diversity term, and step 0 runs
-  under no_grad unless it is the grad step.
-* config resolve: off by default, CLI/TOML plumbing.
+* With the anchor on, the step-0 term is backwarded inside, the steps before the
+  grad step run under no_grad, and x_pred's graph covers step g only.
+* ``v_target=None`` (``div_weight = 0``) drops the anchor term and step 0 runs
+  under no_grad.
+* The config refuses the keys of the removed rollout variants.
 """
 
 from __future__ import annotations
@@ -31,9 +29,7 @@ def _resolve(cli: list[str] | None = None, cfg: dict | None = None):
 
 
 def _cfg(**over):
-    return dataclasses.replace(
-        _resolve(), div_weight=DIV_W, detach_after_first=True, **over
-    )
+    return dataclasses.replace(_resolve(), div_weight=DIV_W, **over)
 
 
 class _Student(nn.Module):
@@ -68,7 +64,7 @@ def test_refinement_step_is_dpdmd():
     roll = student_rollout(_ctx(net, calls), _cfg(), eps, v_target, SIGMAS, 2, c, 2)
 
     assert calls == [(1.0, False), (0.75, True), (0.5, False)]
-    assert not roll.div_pending and roll.s_g == 0.5
+    assert roll.s_g == 0.5
 
     ref = _Student()
     e = eps.detach()
@@ -83,7 +79,6 @@ def test_refinement_step_is_dpdmd():
         x2 = x1 - 0.25 * ref.v(x1, 0.75)
     x_pred = x2 - 0.5 * ref.v(x2, 0.5)
     assert torch.allclose(roll.x_pred, x_pred)
-    assert torch.allclose(roll.x_g, x2)
 
     # The DM grad reaches the weight through step g only.
     net.w.grad = None
@@ -92,81 +87,34 @@ def test_refinement_step_is_dpdmd():
     assert torch.allclose(net.w.grad, g_dm)
 
 
-def test_first_step_is_the_grad_step():
-    net, calls = _Student(), []
-    eps, v_target, c = _inputs()
-    roll = student_rollout(_ctx(net, calls), _cfg(), eps, v_target, SIGMAS, 0, c, 2)
-
-    assert calls == [(1.0, False)]
-    assert roll.div_pending and net.w.grad is None  # nothing backwarded inside
-    assert roll.s_g == 1.0 and roll.x_g is eps and roll.v_g is roll.v_first
-    assert torch.equal(roll.x_pred, eps - roll.v_first)
-
-    (roll.x_pred.sum() + DIV_W * roll.div_loss).backward()
-    ref = _Student()
-    v0 = ref.v(eps.detach(), 1.0)
-    (g_ref,) = torch.autograd.grad(
-        (eps.detach() - v0).sum() + DIV_W * nn.functional.mse_loss(v0, v_target), ref.w
-    )
-    assert torch.allclose(net.w.grad, g_ref)
-
-
-@pytest.mark.parametrize("g", [0, 1])
-def test_anchor_off(g):
+def test_anchor_off():
     net, calls = _Student(), []
     eps, _, c = _inputs()
-    roll = student_rollout(_ctx(net, calls), _cfg(), eps, None, SIGMAS, g, c, 2)
+    roll = student_rollout(_ctx(net, calls), _cfg(), eps, None, SIGMAS, 1, c, 2)
 
-    assert not roll.div_pending and float(roll.div_loss) == 0.0
+    assert float(roll.div_loss) == 0.0
     assert net.w.grad is None
-    assert calls[0] == (1.0, g != 0)  # step 0 keeps a graph only as the grad step
+    assert calls == [(1.0, True), (0.75, False)]  # step 0 keeps no graph
     roll.x_pred.sum().backward()
     assert net.w.grad is not None
 
 
-def test_rollout_grad_reaches_step_zero():
-    net, calls = _Student(), []
-    eps, v_target, c = _inputs()
-    sig = [1.0, 0.75, 0.0]
-    roll = student_rollout(
-        _ctx(net, calls), _cfg(rollout_grad=True), eps, v_target, sig, 1, c, 2
-    )
-
-    assert calls == [(1.0, False), (0.75, False)]
-    assert roll.div_pending and net.w.grad is None  # nothing backwarded inside
-    assert roll.x_g.grad_fn is not None  # step 0's graph, not a fresh leaf
-
-    (roll.x_pred.sum() + DIV_W * roll.div_loss).backward()
-    ref = _Student()
-    e = eps.detach()
-    v0 = ref.v(e, 1.0)
-    x1 = e - 0.25 * v0  # grad kept through step 0
-    x_pred = x1 - 0.75 * ref.v(x1, 0.75)
-    (g_ref,) = torch.autograd.grad(
-        x_pred.sum() + DIV_W * nn.functional.mse_loss(v0, v_target), ref.w
-    )
-    assert torch.allclose(net.w.grad, g_ref)
-
-
 @pytest.mark.parametrize(
-    "cli",
+    "cfg",
     [
-        ["--student_steps", "4"],
-        ["--student_steps", "2", "--dm_first_step"],
+        {"dpdmd": {"dm_first_step": True}},
+        {"dpdmd": {"rollout_grad": True}},
+        {"dpdmd": {"teacher_handoff": True}},
+        {"dmd": {"dynamic_schedule": True}},
+        {"gan": {"weight_gen": 0.03}},
+        {"cdm": {"weight": 1.0}},
     ],
 )
-def test_rollout_grad_refuses_other_grids(cli):
-    with pytest.raises(ValueError, match="rollout_grad"):
-        _resolve(["--rollout_grad", *cli])
+def test_removed_keys_are_refused(cfg):
+    with pytest.raises(ValueError, match="removed from the turbo loop"):
+        _resolve(cfg=cfg)
 
 
-def test_config_default_off_and_overrides():
-    assert _resolve().rollout_grad is False
-    assert _resolve(["--rollout_grad", "--student_steps", "2"]).rollout_grad is True
-    assert _resolve().dm_first_step is False
-    assert _resolve(cfg={"dpdmd": {"dm_first_step": True}}).dm_first_step is True
-    assert _resolve(["--dm_first_step"]).dm_first_step is True
-    c = _resolve(["--no-dm_first_step"], {"dpdmd": {"dm_first_step": True}})
-    assert c.dm_first_step is False
-    c = _resolve(["--div_weight", "0", "--dm_first_step"])
-    assert c.div_weight == 0.0 and c.dm_first_step is True
+def test_removed_keys_at_their_only_value_load():
+    c = _resolve(cfg={"dpdmd": {"dm_first_step": False}, "gan": {"weight_gen": 0.0}})
+    assert c.k_anchor == 7 and c.teacher_anchor_steps == 28

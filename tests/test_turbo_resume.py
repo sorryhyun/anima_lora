@@ -9,7 +9,7 @@ warm weights:
   * every mutable object round-trips bit-exact (weights, optimizer moments,
     scheduler position, step counter);
   * the restored LR is the schedule's value AT the resumed step, not its peak;
-  * a topology change (rank, disc width) is REFUSED, not silently
+  * a topology change (rank) is REFUSED, not silently
     loaded into a mismatched stack.
 
 No GPU, no DiT: the resume path only ever touches state_dicts, so toy modules
@@ -45,67 +45,49 @@ class _Cfg:
     # strict (shape / topology)
     student_rank: int = 96
     fake_rank: int = 96
-    gan_disc_hidden: int = 0
-    gan_feature_block_idx: int = -1
     channel_scaling_alpha: float = 0.0
     # warn (objective / schedule)
     iterations: int = 8000
     student_lr: float = 5e-5
     fake_lr: float = 5e-5
-    gan_disc_lr: float = 1e-5
     student_alpha: float = 212.0
     fake_alpha: float = 212.0
     student_steps: int = 4
     div_weight: float = 0.05
-    gan_loss_weight_gen: float = 0.03
     fake_steps_per_student_step: int = 4
     teacher_cfg: float = 4.0
 
 
 class _Turbo:
-    """Stand-in for TurboDMDNetwork: resume.py only uses .student/.fake/.disc."""
+    """Stand-in for TurboDMDNetwork: resume.py only uses .student / .fake."""
 
-    def __init__(self, *, width: int = 8, disc: bool = True):
+    def __init__(self, *, width: int = 8):
         torch.manual_seed(0)
         self.student = nn.Linear(width, width)
         self.fake = nn.Linear(width, width)
-        self.disc = nn.Linear(width, 1) if disc else None
 
 
-def _build(cfg: _Cfg, *, width: int = 8, disc: bool = True):
-    """A toy turbo stack + the three optimizer/scheduler pairs the real loop has."""
-    turbo = _Turbo(width=width, disc=disc)
+def _build(cfg: _Cfg, *, width: int = 8):
+    """A toy turbo stack + the two optimizer/scheduler pairs the real loop has."""
+    turbo = _Turbo(width=width)
     s_opt = torch.optim.AdamW(turbo.student.parameters(), lr=cfg.student_lr)
     f_opt = torch.optim.AdamW(turbo.fake.parameters(), lr=cfg.fake_lr)
-    d_opt = (
-        torch.optim.AdamW(turbo.disc.parameters(), lr=cfg.gan_disc_lr)
-        if turbo.disc is not None
-        else None
-    )
     # Cosine over the full run — the thing a naive "restart from the student ckpt"
     # resets to its peak, and the reason the step-1000 critic runaway happened.
     s_sched = torch.optim.lr_scheduler.CosineAnnealingLR(s_opt, T_max=cfg.iterations)
     f_sched = torch.optim.lr_scheduler.CosineAnnealingLR(f_opt, T_max=cfg.iterations)
-    d_sched = (
-        torch.optim.lr_scheduler.CosineAnnealingLR(d_opt, T_max=cfg.iterations)
-        if d_opt is not None
-        else None
-    )
-    return turbo, s_opt, f_opt, d_opt, s_sched, f_sched, d_sched
+    return turbo, s_opt, f_opt, s_sched, f_sched
 
 
 def _spin(turbo, opts, scheds, steps: int):
     """Run `steps` real optimizer steps so moments/schedules are non-trivial."""
     for _ in range(steps):
-        for mod, opt in zip((turbo.student, turbo.fake, turbo.disc), opts):
-            if mod is None or opt is None:
-                continue
+        for mod, opt in zip((turbo.student, turbo.fake), opts):
             opt.zero_grad()
             mod(torch.randn(4, mod.in_features)).sum().backward()
             opt.step()
         for sch in scheds:
-            if sch is not None:
-                sch.step()
+            sch.step()
 
 
 def _save(tmp_path, cfg, step, turbo, opts, scheds):
@@ -117,10 +99,8 @@ def _save(tmp_path, cfg, step, turbo, opts, scheds):
         turbo=turbo,
         student_opt=opts[0],
         fake_opt=opts[1],
-        disc_opt=opts[2],
         student_sched=scheds[0],
         fake_sched=scheds[1],
-        disc_sched=scheds[2],
     )
     return path
 
@@ -132,10 +112,8 @@ def _apply(state, cfg, turbo, opts, scheds):
         turbo=turbo,
         student_opt=opts[0],
         fake_opt=opts[1],
-        disc_opt=opts[2],
         student_sched=scheds[0],
         fake_sched=scheds[1],
-        disc_sched=scheds[2],
     )
 
 
@@ -143,14 +121,14 @@ def _apply(state, cfg, turbo, opts, scheds):
 def test_resume_round_trips_every_mutable_object(tmp_path):
     """Weights, AdamW moments, schedule position and step counter all come back."""
     cfg = _Cfg(output_dir=str(tmp_path))
-    turbo, s_opt, f_opt, d_opt, s_sch, f_sch, d_sch = _build(cfg)
-    opts, scheds = (s_opt, f_opt, d_opt), (s_sch, f_sch, d_sch)
+    turbo, s_opt, f_opt, s_sch, f_sch = _build(cfg)
+    opts, scheds = (s_opt, f_opt), (s_sch, f_sch)
 
     _spin(turbo, opts, scheds, steps=3155)  # where T2 actually died
     path = _save(tmp_path, cfg, 3155, turbo, opts, scheds)
 
     want_w = {k: v.clone() for k, v in turbo.student.state_dict().items()}
-    want_disc = {k: v.clone() for k, v in turbo.disc.state_dict().items()}
+    want_fake = {k: v.clone() for k, v in turbo.fake.state_dict().items()}
     want_exp_avg = copy.deepcopy(
         s_opt.state[next(iter(s_opt.state))]["exp_avg"]
     ).clone()
@@ -158,14 +136,14 @@ def test_resume_round_trips_every_mutable_object(tmp_path):
 
     # Fresh stack, as a relaunched process would build it.
     fresh, *rest = _build(cfg)
-    f_opts, f_scheds = tuple(rest[:3]), tuple(rest[3:])
+    f_opts, f_scheds = tuple(rest[:2]), tuple(rest[2:])
     step = _apply(load_resume_state(path), cfg, fresh, f_opts, f_scheds)
 
     assert step == 3155
     for k, v in fresh.student.state_dict().items():
         torch.testing.assert_close(v, want_w[k])
-    for k, v in fresh.disc.state_dict().items():
-        torch.testing.assert_close(v, want_disc[k])
+    for k, v in fresh.fake.state_dict().items():
+        torch.testing.assert_close(v, want_fake[k])
     # Optimizer moments — the part a warm-start restart silently zeroes.
     got_exp_avg = f_opts[0].state[next(iter(f_opts[0].state))]["exp_avg"]
     torch.testing.assert_close(got_exp_avg, want_exp_avg)
@@ -186,20 +164,20 @@ def test_extending_iterations_resumes_onto_new_curve(tmp_path):
 
     def _real_scheds(cfg, opts):
         return tuple(
-            make_scheduler(opt, cfg.iterations, lr) if opt is not None else None
-            for opt, lr in zip(opts, (cfg.student_lr, cfg.fake_lr, cfg.gan_disc_lr))
+            make_scheduler(opt, cfg.iterations, lr)
+            for opt, lr in zip(opts, (cfg.student_lr, cfg.fake_lr))
         )
 
     cfg = _Cfg(output_dir=str(tmp_path), iterations=4000)
     turbo, *rest = _build(cfg)
-    opts = tuple(rest[:3])
+    opts = tuple(rest[:2])
     scheds = _real_scheds(cfg, opts)
     _spin(turbo, opts, scheds, steps=4000)  # the cosine is fully annealed
     path = _save(tmp_path, cfg, 4000, turbo, opts, scheds)
 
     longer = _Cfg(output_dir=str(tmp_path), iterations=8000)
     fresh, *r = _build(longer)
-    f_opts = tuple(r[:3])
+    f_opts = tuple(r[:2])
     f_scheds = _real_scheds(longer, f_opts)
     _apply(load_resume_state(path), longer, fresh, f_opts, f_scheds)
 
@@ -224,10 +202,10 @@ def test_extending_iterations_resumes_onto_new_curve(tmp_path):
 
 @pytest.mark.core
 def test_topology_change_is_refused(tmp_path):
-    """A rank/disc-width change must raise, never load into a mismatch."""
+    """A rank change must raise, never load into a mismatch."""
     cfg = _Cfg(output_dir=str(tmp_path))
     turbo, *rest = _build(cfg)
-    opts, scheds = tuple(rest[:3]), tuple(rest[3:])
+    opts, scheds = tuple(rest[:2]), tuple(rest[2:])
     _spin(turbo, opts, scheds, steps=5)
     path = _save(tmp_path, cfg, 5, turbo, opts, scheds)
     state = load_resume_state(path)
@@ -235,19 +213,18 @@ def test_topology_change_is_refused(tmp_path):
     for field, bad in (
         ("student_rank", 64),
         ("fake_rank", 32),
-        ("gan_disc_hidden", 512),
     ):
         drifted = _Cfg(output_dir=str(tmp_path), **{field: bad})
         fresh, *r = _build(drifted)
         with pytest.raises(ResumeMismatchError, match="different model topology"):
-            _apply(state, drifted, fresh, tuple(r[:3]), tuple(r[3:]))
+            _apply(state, drifted, fresh, tuple(r[:2]), tuple(r[2:]))
 
 
 def test_schedule_reshape_is_allowed_with_warning(tmp_path, caplog):
     """Shortening `iterations` (the fix for T2's stretched cosine) must still resume."""
     cfg = _Cfg(output_dir=str(tmp_path), iterations=8000)
     turbo, *rest = _build(cfg)
-    opts, scheds = tuple(rest[:3]), tuple(rest[3:])
+    opts, scheds = tuple(rest[:2]), tuple(rest[2:])
     _spin(turbo, opts, scheds, steps=100)
     path = _save(tmp_path, cfg, 100, turbo, opts, scheds)
 
@@ -255,7 +232,7 @@ def test_schedule_reshape_is_allowed_with_warning(tmp_path, caplog):
     fresh, *r = _build(shorter)
     with caplog.at_level("WARNING"):
         step = _apply(
-            load_resume_state(path), shorter, fresh, tuple(r[:3]), tuple(r[3:])
+            load_resume_state(path), shorter, fresh, tuple(r[:2]), tuple(r[2:])
         )
     assert step == 100
     assert any("iterations" in m for m in caplog.messages), (
@@ -263,17 +240,18 @@ def test_schedule_reshape_is_allowed_with_warning(tmp_path, caplog):
     )
 
 
-def test_gan_off_bundle_refused_when_gan_on(tmp_path):
-    """Bundle written with no disc cannot resume a GAN-on run."""
+def test_bundle_of_a_removed_feature_is_refused(tmp_path):
+    """A bundle carrying a disc (the removed GAN) cannot resume this loop."""
     cfg = _Cfg(output_dir=str(tmp_path))
-    turbo, *rest = _build(cfg, disc=False)
-    opts, scheds = tuple(rest[:3]), tuple(rest[3:])
+    turbo, *rest = _build(cfg)
+    opts, scheds = tuple(rest[:2]), tuple(rest[2:])
     _spin(turbo, opts, scheds, steps=5)
-    path = _save(tmp_path, cfg, 5, turbo, opts, scheds)
+    state = load_resume_state(_save(tmp_path, cfg, 5, turbo, opts, scheds))
+    state["disc"] = {"weight": torch.zeros(1)}
 
-    fresh, *r = _build(cfg, disc=True)
-    with pytest.raises(ResumeMismatchError, match="no disc state"):
-        _apply(load_resume_state(path), cfg, fresh, tuple(r[:3]), tuple(r[3:]))
+    fresh, *r = _build(cfg)
+    with pytest.raises(ResumeMismatchError, match="GAN run"):
+        _apply(state, cfg, fresh, tuple(r[:2]), tuple(r[2:]))
 
 
 def test_auto_starts_fresh_when_no_bundle(tmp_path):
@@ -283,7 +261,7 @@ def test_auto_starts_fresh_when_no_bundle(tmp_path):
 
     cfg = _Cfg(output_dir=str(tmp_path))
     turbo, *rest = _build(cfg)
-    _save(tmp_path, cfg, 7, turbo, tuple(rest[:3]), tuple(rest[3:]))
+    _save(tmp_path, cfg, 7, turbo, tuple(rest[:2]), tuple(rest[2:]))
 
     arg = resolve_resume_arg("auto", str(tmp_path), "toy_turbo")
     assert arg.path is not None and arg.path.exists()
@@ -299,7 +277,7 @@ def test_partial_write_does_not_destroy_previous_bundle(tmp_path):
     """
     cfg = _Cfg(output_dir=str(tmp_path))
     turbo, *rest = _build(cfg)
-    opts, scheds = tuple(rest[:3]), tuple(rest[3:])
+    opts, scheds = tuple(rest[:2]), tuple(rest[2:])
     _spin(turbo, opts, scheds, steps=10)
     path = _save(tmp_path, cfg, 10, turbo, opts, scheds)
 
@@ -318,10 +296,8 @@ def test_partial_write_does_not_destroy_previous_bundle(tmp_path):
                 turbo=turbo,
                 student_opt=opts[0],
                 fake_opt=opts[1],
-                disc_opt=opts[2],
                 student_sched=scheds[0],
                 fake_sched=scheds[1],
-                disc_sched=scheds[2],
             )
         finally:
             torch.save = real_save

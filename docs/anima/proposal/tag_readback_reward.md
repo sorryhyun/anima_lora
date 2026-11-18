@@ -28,7 +28,7 @@ scope boundary, not a failure. Results:
   AUROC 0.52–0.56 — EXPECTED. Teacher carries a small mean adherence edge (−1.086
   vs student −1.18…−1.29 logsigmoid) but it is swamped by same-prompt seed jitter.
   The turbo teacher-gap (glyph text lost, pose collapse — see `turbo.md`,
-  `project_turbo_teacher_gap_2026_06_29`, glyph probe in `bench/turbo`) lives in the
+  `project_turbo_teacher_gap_2026_06_29`, glyph probe in `_archive/bench/turbo`, local) lives in the
   text/pose axis, which content-tag read-back cannot see (tagger spatial-floor closed).
   Read-back correctly does not punish turbo's caption-following degradation — the
   property the proposal demanded. This is where the MLLM escalation arm binds if a

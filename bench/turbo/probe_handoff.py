@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """Handoff probe: which student step loses the teacher's layout?
 
-The 4-step student is role-separated: step 0 is a regression on the teacher's
-anchor, steps 1..3 take the DM / GAN / CDM signal. Arm 0
-(``_archive/anima_turbo/reports/arm0.md``) reads one gap that both seeds share:
-the student draws frontal standing figures where the teacher draws the jump from
-below and the tumbling group. This probe hands the trajectory over at a student
-step boundary, in both directions, and renders the result. Forward only.
+The student is role-separated: step 0 is a regression on the teacher's anchor,
+the later steps take the DM signal. This probe hands the trajectory over at a
+student step boundary, in both directions, and renders the result. Forward only.
 
 Arms per (prompt, seed), one noise per column:
 
@@ -18,7 +15,12 @@ Arms per (prompt, seed), one noise per column:
   * ``A>S@1``  step 0 taken with the training's anchor target itself (the CFG'd
                teacher's mean velocity ε → z_tk over ``anchor_k`` of
                ``anchor_steps`` Euler steps, ``steps.teacher_anchor``), then the
-               student finishes: what the step-0 regression gives at zero loss
+               student finishes: what the step-0 regression gives at zero loss.
+               With the anchor ending on the student's σ_1 (7 of 28 on 4 steps at
+               shift 3) it is the same state as ``T>S@1``. A deeper anchor hands
+               the later steps a σ_1 state that holds what the teacher settled by
+               σ_k, so its cos rises with the anchor's depth and does not rank
+               anchors as training targets
   * ``P>S@1``  (``--step0_lora``) that LoRA draws step 0, the student finishes
   * ``--step0_mix`` arms: step 0 is the student's own velocity ``v_s`` moved toward
     the anchor target ``v_t`` by part of the residual ``r = v_t − v_s``, then the
@@ -27,6 +29,8 @@ Arms per (prompt, seed), one noise per column:
     k×-pooled band of the residual. ``hp<k>`` → ``H<k>>S@1``: ``v_s + r − LP_k(r)``,
     everything but that band
 
+``--student_sigmas`` gives the student a grid of its own (``1,0.75,0.5,0.25,0``); a
+handoff boundary then has to sit on the teacher grid. Without it,
 ``teacher_steps`` must be a multiple of ``student_steps``, so the student grid is
 a subset of the teacher grid and ``T`` is a plain teacher render.
 
@@ -38,7 +42,7 @@ the training's ``div_loss``) of every LoRA. Runs on the int8 base and the fp32
 stream, like the judge renders.
 
     make daemon-run ARGS="--queue --stall-timeout 600 bench/turbo/probe_handoff.py \
-        --students output/ckpt/1112_0834/1112_0834_250_ema.safetensors \
+        --students output/ckpt/<run>/<run>_<step>_ema.safetensors \
         [--step0_lora <anchor-only LoRA>]"
 """
 
@@ -175,6 +179,12 @@ def main() -> None:
     p.add_argument("--students", nargs="+", required=True, help="student LoRA files")
     p.add_argument("--prompts_file", default="bench/turbo/judge_hard.txt")
     p.add_argument("--student_steps", type=int, default=4)
+    p.add_argument(
+        "--student_sigmas",
+        default="",
+        help="the student's σ grid as a comma list from 1 to 0 (1,0.75,0.5,0.25,0); "
+        "replaces the --student_steps grid at --flow_shift",
+    )
     p.add_argument("--teacher_steps", type=int, default=28)
     p.add_argument("--teacher_cfg", type=float, default=4.0)
     p.add_argument("--flow_shift", type=float, default=3.0)
@@ -182,12 +192,12 @@ def main() -> None:
     p.add_argument("--st_handoffs", default="1,2", help="S>T boundaries")
     p.add_argument("--lowpass", type=int, default=8, help="latent average-pool factor")
     p.add_argument(
-        "--anchor_k", type=int, default=6, help="dpdmd.k_anchor of the A arm"
+        "--anchor_k", type=int, default=7, help="dpdmd.k_anchor of the A arm"
     )
     p.add_argument(
         "--anchor_steps",
         type=int,
-        default=12,
+        default=28,
         help="dpdmd.teacher_anchor_steps of the A arm (0 turns the arm off)",
     )
     p.add_argument(
@@ -209,12 +219,33 @@ def main() -> None:
 
     start_heartbeat()
     device = torch.device("cuda")
-    N, T = opts.student_steps, opts.teacher_steps
-    if T % N:
-        raise SystemExit("teacher_steps must be a multiple of student_steps")
+    T = opts.teacher_steps
+    t_sig = get_timesteps_sigmas(T, opts.flow_shift, device)[1].to(device)
+    if opts.student_sigmas:
+        vals = [float(v) for v in opts.student_sigmas.split(",")]
+        if vals[0] != 1.0 or vals[-1] != 0.0 or sorted(vals, reverse=True) != vals:
+            raise SystemExit("--student_sigmas: a decreasing list from 1 to 0")
+        s_sig = torch.tensor(vals, dtype=t_sig.dtype, device=device)
+        N = len(vals) - 1
+    else:
+        N = opts.student_steps
+        if T % N:
+            raise SystemExit("teacher_steps must be a multiple of student_steps")
+        s_sig = get_timesteps_sigmas(N, opts.flow_shift, device)[1].to(device)
     ts_b = [int(b) for b in opts.ts_handoffs.split(",") if b.strip()]
     st_b = [int(b) for b in opts.st_handoffs.split(",") if b.strip()]
     assert all(1 <= b < N for b in ts_b + st_b), "handoff in [1, N)"
+    # Student boundary → teacher index, for the boundaries whose σ is on the teacher grid.
+    t_idx = {}
+    for b in range(N + 1):
+        gap = (t_sig - s_sig[b]).abs()
+        if float(gap.min()) < 1e-6:
+            t_idx[b] = int(gap.argmin())
+    off = [b for b in ts_b + st_b if b not in t_idx]
+    if off:
+        raise SystemExit(
+            f"handoff boundaries {off}: their σ is not on the teacher grid"
+        )
 
     prompts, seeds, (H, W) = read_prompts(resolve_under_home(opts.prompts_file))
     students = [str(resolve_under_home(s)) for s in opts.students]
@@ -247,11 +278,6 @@ def main() -> None:
     ).to_args()
     args.device = device
 
-    t_sig = get_timesteps_sigmas(T, opts.flow_shift, device)[1].to(device)
-    s_sig = get_timesteps_sigmas(N, opts.flow_shift, device)[1].to(device)
-    t_idx = {b: b * (T // N) for b in range(N + 1)}  # student boundary → teacher index
-    for b, k in t_idx.items():
-        assert abs(float(t_sig[k]) - float(s_sig[b])) < 1e-6, (b, k)
     if anchor_on:
         if not 1 <= opts.anchor_k < opts.anchor_steps:
             raise SystemExit("anchor_k in [1, anchor_steps)")

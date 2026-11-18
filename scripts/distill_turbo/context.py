@@ -32,20 +32,17 @@ class RunContext:
     dtype: torch.dtype  # sampler state: latents, noise, σ
     cond_dtype: torch.dtype  # text embeddings
 
-    # The disc pair is None with the GAN off.
     student_opt: torch.optim.Optimizer
     fake_opt: torch.optim.Optimizer
-    disc_opt: torch.optim.Optimizer | None
     student_sched: object
     fake_sched: object
-    disc_sched: object | None
 
     dataloader: torch.utils.data.DataLoader
     data_iter: object
     # dpdmd.anchor_cache: the dataset that adds (ε, v_target) to each item.
     anchor_cache: AnchorDataset | None
 
-    # (view, x, t, c, *, no_grad, ...) → velocity; (x, t, c, c_null) → CFG'd teacher.
+    # (view, x, t, c, *, no_grad) → velocity; (x, t, c, c_null) → CFG'd teacher.
     forward: Callable[..., torch.Tensor]
     teacher_cfg_velocity: Callable[..., torch.Tensor]
 

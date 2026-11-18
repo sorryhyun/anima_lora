@@ -17,7 +17,7 @@ split: what is set and measured as facts, the reasoning for the arm as interpret
 - Name the parent run. The arm changes one variable from it; the header says "nothing else changed"
   and lists the variable's old and new value. Same data, cache, seeds, schedule, rank, init.
   Example: `turbo_1117_1020` / `1021` (student LR A/B, control named;
-  `project/anima_turbo/reports/step0_depth.md`).
+  `_archive/anima_turbo/reports/step0_depth.md` (local)).
 - When two things must change together, say so in the header and name what the run cannot
   separate. Bundled arms read as wins that a matched rerun reverses
   (`docs/anima/findings/lora_recipe.md`, s29 → s33).
@@ -28,7 +28,7 @@ split: what is set and measured as facts, the reasoning for the arm as interpret
   that scales the term (learning rates, the disc's LR, delay, the data). A smoke on different
   settings sets nothing: `turbo_1118_0953` took λ from a smoke whose disc trained at 1e-5 and ran
   with 5e-5. Where the scale drifts during training, normalise it each step instead
-  (`gan.paired_ratio`, `turbo_1118_1028`).
+  (`gan.paired_ratio`, since removed from the loop; `turbo_1118_1028`).
 - State the cost (minutes, it/s) in the header. Hour-scale work is proposed to the user once and
   queued on their word.
 
@@ -55,7 +55,7 @@ Propose the gate from what already exists; do not invent one.
   probe).
 - A bar comes from a spread, and a spread is the gap between two runs of one config: a seed twin,
   or a rerun where the run is not deterministic (the control `turbo_1113_1105` and its seed-43
-  twin `turbo_1114_1745`, `project/anima_turbo/reports/grid_cdm.md`). The gap between the two arms
+  twin `turbo_1114_1745`, `_archive/anima_turbo/reports/grid_cdm.md` (local)). The gap between the two arms
   of an A/B is an effect and sets no bar.
 - An arm inside the spread is recorded as level. It does not become the parent of the next arm
   on that number; the parent stays, or the user's read picks.
@@ -83,7 +83,7 @@ run, at the smallest scale that answers it.
   carry-over is then the precondition, checked at the smallest scale that answers it.
 - The meter discriminates: before a new metric or feature distance is trusted, read it against a
   null at equal norm (an equal-norm random residual, a permutation null, a rounding-noise arm).
-  Examples: `probe_fm_floor` in `project/anima_turbo/reports/step0_depth.md`; the permutation null
+  Examples: `probe_fm_floor` in `_archive/anima_turbo/reports/step0_depth.md` (local); the permutation null
   in `project/anima_turbo/findings/turbo_gan_dm_grad_orthogonal.md`.
 - The noise level is known: a spread between seeds or a twin run, if no record gives one. Paired
   ΔW cosines read without a twin control were vacuous

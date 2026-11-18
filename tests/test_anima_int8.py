@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from types import SimpleNamespace
 
 import pytest
@@ -34,7 +34,25 @@ from library.runtime.harness import (
     _apply_activation_memory_budget,
     place_dit_for_training,
 )
-from scripts.distill_turbo.steps import selective_block_grad_ckpt
+
+
+@contextmanager
+def selective_block_grad_ckpt(model: Anima):
+    """Arm per-block unsloth-offload checkpointing for one forward, then restore.
+    The recompute runs at backward, under whatever state the model is in then."""
+    saved = [
+        (b.gradient_checkpointing, b.unsloth_offload_checkpointing)
+        for b in model.blocks
+    ]
+    for b in model.blocks:
+        b.gradient_checkpointing = True
+        b.unsloth_offload_checkpointing = True
+    try:
+        yield
+    finally:
+        for b, (g, u) in zip(model.blocks, saved):
+            b.gradient_checkpointing = g
+            b.unsloth_offload_checkpointing = u
 
 
 def args(**over):

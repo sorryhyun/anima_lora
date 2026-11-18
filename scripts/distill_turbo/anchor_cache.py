@@ -1,4 +1,4 @@
-"""Anchor target cache for ``dpdmd.anchor_only``: build it, and read it in the loop.
+"""Anchor target cache (``dpdmd.anchor_cache``): build it, and read it in the loop.
 
 The anchor target ``v_target`` depends only on (prompt, ε, latent shape) and the frozen
 teacher, so it is rolled once and reused. A cache holds ``draws`` pairs for each of a
@@ -9,7 +9,11 @@ Build (a daemon job; resumable, skips pairs already on disk). The builder loads 
 frozen teacher alone and takes no run config::
 
     python -m scripts.distill_turbo.anchor_cache --out <dir> --prompts 64 --draws 2 \
-        [--dit_path … --k_anchor 14 --teacher_anchor_steps 28 --teacher_cfg 4 …]
+        [--dit_path … --k_anchor 7 --teacher_anchor_steps 28 --teacher_cfg 4 …]
+
+``--k_anchor`` of ``--teacher_anchor_steps`` sets the σ the chord ends on; it has to be
+the first boundary σ_1 of the student grid the run trains (7 of 28 for 4 steps at
+shift 3, 14 of 28 for 2 steps).
 
 A run trains on it with ``dpdmd.anchor_cache = "<dir>"``: the loop keeps only the cached
 samples of its ``data_dir``, ``AnchorDataset`` adds each sample's pair to the DataLoader
@@ -128,6 +132,20 @@ class AnchorDataset(torch.utils.data.Dataset):
         self.base = base
         self.dir = Path(resolve_under_home(cache_dir))
         man = read_manifest(self.dir)
+        # The targets were rolled to the cache's own chord; a run that states another
+        # one would train on it and stamp the wrong depth.
+        rolled = man.get("teacher", {})
+        differs = {
+            f: (rolled[f], getattr(cfg, f))
+            for f in ("k_anchor", "teacher_anchor_steps", "flow_shift", "teacher_cfg")
+            if f in rolled and rolled[f] != getattr(cfg, f)
+        }
+        if differs:
+            raise ValueError(
+                f"dpdmd.anchor_cache {self.dir}: the cache was rolled with other "
+                "teacher settings than this run's (cache, run): "
+                + ", ".join(f"{f} {a} / {b}" for f, (a, b) in differs.items())
+            )
         self.draws = int(man["draws"])
         self.seed = int(man["seed"])
         self.keys = [sample_key(te, cfg.data_dir) for _, te in base.samples]
@@ -474,7 +492,7 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--stream", default="fp32", choices=["fp32", "bf16"])
     p.add_argument("--teacher_cfg", type=float, default=4.0)
     p.add_argument("--flow_shift", type=float, default=3.0)
-    p.add_argument("--k_anchor", type=int, default=14)
+    p.add_argument("--k_anchor", type=int, default=7)
     p.add_argument("--teacher_anchor_steps", type=int, default=28)
     p.add_argument(
         "--cfg_batch",

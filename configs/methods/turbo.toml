@@ -1,7 +1,8 @@
-# The current 4-step recipe (project/anima_turbo/plan.md): v1 (1112_v1.md: cold weight_svd init,
-# dm_first_step on, cosine LR, EMA 0.2, fake_transition, token GAN head) at 1000 iterations, with
-# the static grid (adopted 11-14) and the cond-only L_CDM (adopted 11-16). The research runs use a
-# local merged soup as the teacher; point dit_path / dit_nonquant_path at yours. The EMA ships.
+# The base DP-DMD loop: step 0 regresses on the teacher anchor, steps 1..N-1 take the DMD gradient
+# against a LoRA fake, on the static 4-step grid at shift 3 (sigma 1 -> 0.9 -> 0.75 -> 0.5 -> 0).
+# The anchor is 7 of 28 teacher steps, which ends on sigma 0.9, the student's first boundary.
+# The 4-step recipe on top of this loop is open: project/anima_turbo/plan.md. The research runs use
+# a local merged soup as the teacher; point dit_path / dit_nonquant_path at yours. The EMA ships.
 output_name = "anima_turbo"
 dit_path = "models/diffusion_models/anima-base-v1.0_int8_gptq.safetensors"
 dit_nonquant_path = "models/diffusion_models/anima-base-v1.0.safetensors"
@@ -32,23 +33,12 @@ train_adaln = true
 fake_adaln = true
 adaln_rank = 16
 adaln_alpha = 90
-fake_transition = true
 
 [dmd]
 student_steps = 4
 teacher_cfg = 4
-dynamic_schedule = false
 dm_x0_norm = true
 norm_floor = 0.05
-dm_draws = 1
-
-[cdm]
-weight = 1.0
-grad_ckpt = true
-teacher = "cond"
-
-[mfd]
-dtau = 0.0
 
 [optim]
 student_lr = 5e-5
@@ -64,30 +54,16 @@ lr_schedule = "cosine"
 window = 0.2
 
 [dpdmd]
-k_anchor = 6
-teacher_anchor_steps = 12
+k_anchor = 7
+teacher_anchor_steps = 28
 div_weight = 0.1
-detach_after_first = true
-dm_first_step = true
-rollout_grad = false
+anchor_only = false
+anchor_cache = ""
 
 [sampling]
 t_distribution = "uniform"
 sigmoid_scale = 1.0
 flow_shift = 3.0
-
-[gan]
-weight_gen = 0.03
-feature_block_idx = -1
-disc_lr = 1e-5
-disc_hidden = 0
-disc_head = "token"
-delay_steps = 0
-warmup_steps = 0
-r1_weight = 0.0
-r1_alpha = 0.1
-use_same_t_noise = true
-grad_ckpt = true
 
 [io]
 save_every = 250

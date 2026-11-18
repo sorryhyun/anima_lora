@@ -46,7 +46,7 @@ $$
 - Diversity (first step). $v_\text{target}$ is the teacher's CFG-guided K-step trajectory
   velocity (§5.1). Regressing the student's first-step velocity onto it is a plain MSE that
   inherits the teacher's seed-to-seed spread. It is backwarded and severed before the DMD
-  chain is built (`detach_after_first`, load-bearing: in the paper's Fig 5, preference
+  chain is built (always; in the paper's Fig 5, preference
   rises while diversity falls when the DMD reverse-KL flows back into the first step).
 - Quality (refinement steps). DMD on the student's x0-prediction $x_\theta$, expressed as
   a real − fake score gap and applied through the DMD2 gradient trick (§4).
@@ -178,6 +178,12 @@ Euler integrates $z_{t_k} = \varepsilon - (1-t_k)\,\bar v$, so $\bar v$ is exact
 $t_k$ is read from the teacher grid, not the student grid; a σ mismatch silently
 mis-scales $v_\text{target}$.
 
+$\bar v$ is the teacher's mean velocity over σ $[\sigma_K, 1]$, and the student's step 0
+applies it over $[\sigma_1, 1]$, so $K$ has to end on the student's first boundary
+$\sigma_1$. At 4 steps and shift 3 the grid is σ 1 → 0.9 → 0.75 → 0.5 → 0, so the shipped
+anchor is 7 of 28 teacher steps (σ 0.9). `setup.build_run` logs a warning when
+$\sigma_K \neq \sigma_1$.
+
 ### 5.2 Student first step: diversity-supervised, then detached
 
 Step 0 rolls from $\varepsilon$ at $\sigma = 1$:
@@ -187,8 +193,7 @@ v_\text{first} = G_\theta(\varepsilon, 1, c), \qquad
 \texttt{div\_loss} = \big\|v_\text{first} - v_\text{target}\big\|^2
 $$
 
-Under `detach_after_first` (default true) the diversity term is backwarded at once and
-the graph severed before the grad step builds its own:
+The diversity term is backwarded at once and the graph severed before the grad step builds its own:
 
 ```python
 (div_weight * div_loss).backward()     # student .grad now holds the diversity term
@@ -196,8 +201,7 @@ x_g = x.detach().requires_grad_()      # step g starts from a fresh leaf
 ```
 
 This keeps the mode-seeking DMD gradient out of the first-step mapping (Fig 5), and
-frees step 0's activations before step $g$ runs. With the detach off (A/B only), or when
-$g = 0$ under `dm_first_step`, the diversity term rides the single final backward.
+frees step 0's activations before step $g$ runs.
 
 ### 5.3 DMD on $x_\theta$ with a CFG-guided real score
 
@@ -265,6 +269,6 @@ especially). Diversity is carried by the anchor (§5), not by this choice.
 ## 8. What ships
 
 `TurboDMDNetwork.save_student` writes only the student, in the standard plain-LoRA layout;
-the fake (and the GAN disc) are discarded. The result is an ordinary rank-$r$ LoRA with
+the fake is discarded. The result is an ordinary rank-$r$ LoRA with
 CFG=4 baked in, run at `--infer_steps <student_steps> --cfg 1.0` through the normal LoRA
 path. Step count and composition limits: `docs/anima/methods/turbo.md`.

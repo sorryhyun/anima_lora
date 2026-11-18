@@ -107,12 +107,15 @@ the straightening term has no purchase. The sharp-4-step frontier is back on
 DP-DMD (`anima_turbo_R`) and its teacher-gap levers (`div_weight↑`, f-distill,
 softrank).
 
-## What survives in-tree
+## What survives
 
-- `bench/turbo/probe_consistency_residual.py` — Eq.-11 residual scan of the base
+The two probes are in the gitignored `_archive/bench/turbo/` (local) since 2026-11-18;
+their code is in the git history.
+
+- `probe_consistency_residual.py` — Eq.-11 residual scan of the base
   field (the on-manifold straightness instrument). Result:
   `bench/turbo/results/20260629-1440-scfm-consistency-residual/`.
-- `bench/turbo/probe_teacher_straightness.py` — teacher-transport straightness /
+- `probe_teacher_straightness.py` — teacher-transport straightness /
   non-crossing probe. Result: `bench/turbo/results/20260629-1503-scfm-teacher-straightness/`.
 
 These stay because they are the reusable evidence; re-run only if a future arm

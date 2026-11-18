@@ -126,12 +126,6 @@ class TurboConfig:
         "Own alpha for the adaln modules (0 = network's). Scale-preserving: "
         "student_alpha × adaln_rank / student_rank.",
     )
-    fake_transition: bool = knob(
-        "network.fake_transition",
-        False,
-        "Transition-aware fake (project/anima_turbo/vatdm.md idea 1): σ of the "
-        "student step a sample came from, as a zero-init t-embedding delta.",
-    )
     partitioner_recompute_views: bool = knob("partitioner_recompute_views", False)
     partitioner_aggressive_recomputation: bool = knob(
         "partitioner_aggressive_recomputation", False
@@ -139,7 +133,12 @@ class TurboConfig:
 
     # DP-DMD (arXiv:2602.03139)
     k_anchor: int = knob(
-        "dpdmd.k_anchor", 5, "Teacher steps rolled to the diversity anchor (their K)."
+        "dpdmd.k_anchor",
+        7,
+        "Teacher steps rolled to the anchor (their K). The target is the teacher's "
+        "mean velocity over [σ_K, 1]; step 0 applies it over [σ_1, 1], so K should "
+        "end on the student's σ_1 (4 steps at shift 3: 7 of 28). A mismatch is "
+        "logged as a warning.",
     )
     teacher_anchor_steps: int = knob(
         "dpdmd.teacher_anchor_steps", 28, "Teacher σ grid the K anchor is counted on."
@@ -147,38 +146,13 @@ class TurboConfig:
     div_weight: float = knob(
         "dpdmd.div_weight",
         5e-2,
-        "λ on the first-step diversity loss; 0 skips the teacher anchor.",
-    )
-    detach_after_first: bool = knob(
-        "dpdmd.detach_after_first",
-        True,
-        "Stop-grad after the diversity-supervised first step (off for A/B only).",
-    )
-    dm_first_step: bool = knob(
-        "dpdmd.dm_first_step",
-        False,
-        "Draw the grad step from every rollout step, so step 0 also gets the DM / "
-        "MFD signal (off: refinement steps only).",
-    )
-    rollout_grad: bool = knob(
-        "dpdmd.rollout_grad",
-        False,
-        "Keep the graph from step 0 into the grad step (2-step static grid only).",
+        "λ on the step-0 anchor loss; 0 skips the teacher anchor.",
     )
     anchor_only: bool = knob(
         "dpdmd.anchor_only",
         False,
-        "Train step 0 on the anchor regression alone (no DM / CDM / fake update, "
-        "no fake warmup; project/anima_turbo/plan.md, S-b). With gan.weight_gen > 0 "
-        "the GAN is the paired one: the disc reads the teacher's features of the "
-        "anchor end state, teacher x_t (real) against the student's x_s (fake), "
-        "plan.md arm 3.",
-    )
-    anchor_draws: int = knob(
-        "dpdmd.anchor_draws",
-        1,
-        "Noise draws per iteration for the anchor regression (anchor_only only): "
-        "k teacher anchors on k fresh ε, gradient averaged before the clip.",
+        "Train step 0 on the anchor regression alone: no rollout, no DM, no fake "
+        "update or warmup.",
     )
     anchor_cache: str = knob(
         "dpdmd.anchor_cache",
@@ -186,26 +160,6 @@ class TurboConfig:
         "Anchor target cache dir: train on the cached samples of data_dir, reading "
         "v_target and ε from the cache. Built by "
         "`python -m scripts.distill_turbo.anchor_cache`.",
-    )
-    fm_weight: float = knob(
-        "dpdmd.fm_weight",
-        0.0,
-        "Paired feature matching beside the anchor MSE (anchor_only): relative L2 "
-        "between the frozen teacher's block features of the anchor chord's end state "
-        "x = ε − (1 − σ_k)·v, student v against v_target. Weight on its gradient into "
-        "v; 0 = off (project/anima_turbo/plan.md, arm 2).",
-    )
-    fm_block_idx: int = knob(
-        "dpdmd.fm_block_idx",
-        -1,
-        "DiT block the feature matching taps (early exit after it); -1 = middle.",
-    )
-    teacher_handoff: bool = knob(
-        "dpdmd.teacher_handoff",
-        False,
-        "Roll steps 1..g from the anchor target's step 0, x_1 = ε − (1 − σ_1)·v_target, "
-        "instead of the student's own step 0: the DM steps train on the input a "
-        "fitted step 0 hands them. Needs the anchor; dm_first_step / rollout_grad off.",
     )
     flow_shift: float = knob(
         "sampling.flow_shift",
@@ -227,115 +181,6 @@ class TurboConfig:
     norm_floor: float = knob(
         "dmd.norm_floor", 0.05, "Floor of the --dm_x0_norm denominator."
     )
-    dm_draws: int = knob(
-        "dmd.dm_draws",
-        1,
-        "(σ_a, ε_dm) draws averaged into the DM signal on the same x_θ; each extra "
-        "draw costs the DM slot's teacher-CFG and fake forwards again.",
-    )
-    dm_tau_distribution: str = knob(
-        "dmd.dm_tau_distribution",
-        "uniform",
-        "DM / MFD query level σ_a; logit_normal = sigmoid(dm_tau_scale·N(0,1)). "
-        "The GAN generator renoise reuses it; CDM stays uniform.",
-        choices=("uniform", "logit_normal"),
-    )
-    dm_tau_scale: float = knob("dmd.dm_tau_scale", 1.0)
-    dynamic_schedule: bool = knob(
-        "dmd.dynamic_schedule",
-        False,
-        "CDM dynamic schedule: a fresh rollout grid per step (t₁ = 1 pinned); "
-        "validation and inference keep the static grid.",
-    )
-
-    # L_CDM (arXiv:2605.06376 §3.3)
-    cdm_weight: float = knob(
-        "cdm.weight",
-        0.0,
-        "λ on L_CDM; 0 off. Costs +1 student grad forward, +2 teacher and +1 fake "
-        "no-grad forwards per step.",
-    )
-    cdm_grad_ckpt: bool = knob(
-        "cdm.grad_ckpt", True, "Checkpoint the grad-bearing CDM student forward."
-    )
-    cdm_teacher: str = knob(
-        "cdm.teacher",
-        "cfg",
-        "Teacher velocity in L_CDM: the CFG'd teacher, or cond-only as in the "
-        "paper's Eq. 9 (one teacher forward less).",
-        choices=("cfg", "cond"),
-    )
-
-    # Mean Flow Distillation in the DM slot (arXiv:2606.11155)
-    mfd_dtau: float = knob(
-        "mfd.dtau",
-        0.0,
-        "Euler step of the MFD mean-flow integral; 0 = plain DMD. Costs K = "
-        "ceil((σ_a − σ_b)/dtau) ≤ mfd_max_steps teacher-CFG and fake forwards.",
-    )
-    mfd_max_steps: int = knob("mfd.max_steps", 4, "Cap on K per mean-flow integral.")
-    mfd_interval: str = knob(
-        "mfd.interval",
-        "to_zero",
-        "to_zero: σ_b = 0 (K=1 is exactly DMD); uniform: σ_b ~ U(0, σ_a).",
-        choices=("to_zero", "uniform"),
-    )
-
-    # DMD2 teacher-feature GAN
-    gan_loss_weight_gen: float = knob(
-        "gan.weight_gen",
-        0.0,
-        "λ on the GAN generator term; 0 turns the GAN off (FastGen QwenImage: 0.03).",
-    )
-    gan_feature_block_idx: int = knob(
-        "gan.feature_block_idx", -1, "DiT block the disc taps; -1 = middle."
-    )
-    gan_feature_blocks: list[int] | None = knob(
-        "gan.feature_blocks",
-        None,
-        "DiT blocks the disc taps, one head each (FastGen Cosmos Predict2.5-2B: "
-        "13 20 27); unset, the single gan.feature_block_idx.",
-    )
-    gan_disc_lr: float = knob("gan.disc_lr", 1e-5)
-    gan_disc_hidden: int = knob("gan.disc_hidden", 0, "<= 0: inner_dim // 2.")
-    gan_disc_head: str = knob(
-        "gan.disc_head",
-        "pooled",
-        "pooled: one logit per tap; token: the same MLP per token (LADD); conv "
-        "(paired GAN): FastGen's image-DiT head, a 4×4 stride-2 conv on the patch "
-        "grid and one logit per tap.",
-        choices=("pooled", "token", "conv"),
-    )
-    gan_disc_pool: int = knob(
-        "gan.disc_pool",
-        1,
-        "Paired GAN (anchor_only), token head: mean-pool the tokens k×k on the "
-        "patch grid before the head; 1 = one logit per token.",
-    )
-    gan_delay_steps: int = knob(
-        "gan.delay_steps",
-        0,
-        "Generator-side GAN weight held at 0 for N steps (the disc still trains).",
-    )
-    gan_warmup_steps: int = knob(
-        "gan.warmup_steps", 0, "Then ramp it 0 → weight_gen over N steps (0 instant)."
-    )
-    gan_r1_weight: float = knob(
-        "gan.r1_weight",
-        0.0,
-        "Approximate R1 (APT): MSE between real logits and those of a perturbed "
-        "real input; 0 off.",
-    )
-    gan_r1_alpha: float = knob("gan.r1_alpha", 0.1)
-    gan_paired_ratio: float = knob(
-        "gan.paired_ratio",
-        0.0,
-        "Paired GAN (anchor_only) only: rescale the generator gradient each step to "
-        "this multiple of the FM gradient's rms on the teacher features (times the "
-        "delay/ramp fraction), so weight_gen sets only the ramp; 0 = off (λ·gen as is).",
-    )
-    gan_use_same_t_noise: bool = knob("gan.use_same_t_noise", True)
-    gan_grad_ckpt: bool = knob("gan.grad_ckpt", True)
 
     # Optimizer + scheduler
     student_lr: float = knob("optim.student_lr", 1e-5)
@@ -356,16 +201,15 @@ class TurboConfig:
         "optim.grad_accum",
         1,
         "Loop iterations per student optimizer step; each iteration's gradient is "
-        "clipped on its own and their mean applied. The fake and disc update every "
-        "iteration; iterations, save_every, the GAN delay and the logs count "
-        "iterations.",
+        "clipped on its own and their mean applied. The fake updates every "
+        "iteration; iterations, save_every and the logs count iterations.",
     )
     weight_decay: float = knob("optim.weight_decay", 0.0)
     grad_clip: float = knob("optim.grad_clip", 1.0)
     lr_schedule: str = knob(
         "optim.lr_schedule",
         "cosine",
-        "Shape after the 2%% linear warmup, for student, fake and disc: cosine to "
+        "Shape after the 2%% linear warmup, for student and fake: cosine to "
         "0.1·lr, or constant.",
         choices=("cosine", "constant"),
     )
@@ -376,7 +220,7 @@ class TurboConfig:
         "*_ema.safetensors beside each checkpoint.",
     )
 
-    # Fake / disc τ distribution
+    # Fake τ distribution
     t_distribution: str = knob(
         "sampling.t_distribution", "uniform", choices=("uniform", "sigmoid")
     )
@@ -425,14 +269,6 @@ class TurboConfig:
         choices=("bf16", "fp32"),
     )
 
-    @property
-    def gan_on(self) -> bool:
-        return self.gan_loss_weight_gen > 0.0
-
-    @property
-    def cdm_on(self) -> bool:
-        return self.cdm_weight > 0.0
-
 
 _FIELDS = {f.name: f for f in dataclasses.fields(TurboConfig)}
 
@@ -459,11 +295,10 @@ def build_argparser() -> argparse.ArgumentParser:
             if str(f.type).startswith("list"):
                 kw["nargs"] = "+"
         parser.add_argument(f"--{name}", **kw)
-    # Older spellings of two negations.
-    for name in ("grad_ckpt", "detach_after_first"):
-        parser.add_argument(
-            f"--no_{name}", dest=name, action="store_false", default=None
-        )
+    # Older spelling of the negation.
+    parser.add_argument(
+        "--no_grad_ckpt", dest="grad_ckpt", action="store_false", default=None
+    )
     return parser
 
 
@@ -481,6 +316,19 @@ _REMOVED_KEYS = {
     "dmad.enabled": False,
     "dmad_probe.enabled": False,
     "use_custom_down_autograd": False,
+    "network.fake_transition": False,
+    "dpdmd.detach_after_first": True,
+    "dpdmd.dm_first_step": False,
+    "dpdmd.rollout_grad": False,
+    "dpdmd.anchor_draws": 1,
+    "dpdmd.fm_weight": 0.0,
+    "dpdmd.teacher_handoff": False,
+    "dmd.dm_draws": 1,
+    "dmd.dm_tau_distribution": "uniform",
+    "dmd.dynamic_schedule": False,
+    "cdm.weight": 0.0,
+    "mfd.dtau": 0.0,
+    "gan.weight_gen": 0.0,
 }
 
 
@@ -568,8 +416,8 @@ def _validate(c: TurboConfig) -> None:
 
     _require(
         c.student_steps >= 2,
-        f"dmd.student_steps must be >= 2 (got {c.student_steps}): the rollout grids "
-        "and the grad-step draw assume a refinement step after step 0.",
+        f"dmd.student_steps must be >= 2 (got {c.student_steps}): the grad-step "
+        "draw assumes a refinement step after step 0.",
     )
     _require(
         1 <= c.k_anchor < c.teacher_anchor_steps,
@@ -577,106 +425,20 @@ def _validate(c: TurboConfig) -> None:
         f"teacher_anchor_steps={c.teacher_anchor_steps}.",
     )
     _require(c.div_weight >= 0.0, f"dpdmd.div_weight={c.div_weight}: must be >= 0")
-    _require(c.anchor_draws >= 1, f"dpdmd.anchor_draws={c.anchor_draws}: must be >= 1")
-    _require(
-        c.anchor_draws == 1 or c.anchor_only,
-        "dpdmd.anchor_draws > 1 is built for dpdmd.anchor_only only (S-c.2).",
-    )
-    _require(
-        not c.anchor_cache or c.anchor_draws == 1,
-        "dpdmd.anchor_cache takes anchor_draws 1 (the cache's own draws replace them).",
-    )
-    _require(
-        c.fm_weight >= 0.0 and (c.fm_weight == 0.0 or c.anchor_only),
-        f"dpdmd.fm_weight={c.fm_weight}: must be >= 0, and > 0 needs dpdmd.anchor_only.",
-    )
-    _require(
-        c.fm_weight == 0.0 or c.anchor_draws == 1,
-        "dpdmd.fm_weight > 0 takes anchor_draws 1.",
-    )
     _require(
         not c.anchor_cache or c.div_weight > 0.0,
         "dpdmd.anchor_cache needs div_weight > 0 (div_weight 0 skips the anchor).",
     )
     _require(
-        not c.teacher_handoff
-        or (
-            c.div_weight > 0.0
-            and not c.anchor_only
-            and not c.dm_first_step
-            and not c.rollout_grad
-        ),
-        "dpdmd.teacher_handoff needs the anchor (div_weight > 0), a DM run "
-        "(anchor_only off) and dm_first_step / rollout_grad off.",
-    )
-    _require(
-        not c.anchor_only
-        or (c.div_weight > 0.0 and not c.rollout_grad and not c.dm_first_step),
+        not c.anchor_only or c.div_weight > 0.0,
         "dpdmd.anchor_only needs div_weight > 0 (the anchor is computed only then; "
-        "its value is not used) and rollout_grad / dm_first_step off.",
-    )
-    _require(
-        not c.rollout_grad
-        or (c.student_steps == 2 and not c.dynamic_schedule and not c.dm_first_step),
-        "dpdmd.rollout_grad needs dmd.student_steps = 2, dynamic_schedule off and "
-        f"dm_first_step off (got N={c.student_steps}, dynamic_schedule="
-        f"{c.dynamic_schedule}, dm_first_step={c.dm_first_step}).",
+        "its value is not used).",
     )
     _require(c.flow_shift > 0.0, f"sampling.flow_shift={c.flow_shift}: must be > 0")
 
-    _require(c.dm_draws >= 1, f"dmd.dm_draws={c.dm_draws}: must be >= 1")
-    _require(c.dm_tau_scale > 0.0, f"dmd.dm_tau_scale={c.dm_tau_scale}: must be > 0")
     _require(
         c.norm_floor > 0.0, f"dmd.norm_floor={c.norm_floor}: must be > 0 (latent scale)"
     )
-    _require(c.mfd_dtau >= 0.0, f"mfd.dtau={c.mfd_dtau}: must be >= 0")
-    _require(c.cdm_weight >= 0.0, f"cdm.weight={c.cdm_weight}: must be >= 0")
-    _require(
-        c.gan_loss_weight_gen >= 0.0,
-        f"gan.weight_gen={c.gan_loss_weight_gen}: must be >= 0",
-    )
-    _require(
-        c.gan_paired_ratio >= 0.0
-        and (c.gan_paired_ratio == 0.0 or (c.anchor_only and c.fm_weight > 0.0)),
-        f"gan.paired_ratio={c.gan_paired_ratio}: must be >= 0, and > 0 is measured "
-        "against the FM gradient, so it needs dpdmd.anchor_only and fm_weight > 0.",
-    )
-    _require(c.gan_r1_weight >= 0.0, f"gan.r1_weight={c.gan_r1_weight}: must be >= 0")
-    _require(
-        c.gan_disc_pool >= 1
-        and (c.gan_disc_pool == 1 or (c.anchor_only and c.gan_disc_head == "token")),
-        f"gan.disc_pool={c.gan_disc_pool}: must be >= 1, and > 1 is built for the "
-        "paired GAN (dpdmd.anchor_only) on gan.disc_head = token.",
-    )
-    _require(
-        c.gan_disc_head != "conv" or c.anchor_only,
-        "gan.disc_head = conv is built for the paired GAN (dpdmd.anchor_only): the "
-        "DP-DMD loop's disc calls pass no token grid.",
-    )
-    _require(
-        c.gan_feature_blocks is None
-        or (
-            len(c.gan_feature_blocks) > 0
-            and len(set(c.gan_feature_blocks)) == len(c.gan_feature_blocks)
-            and min(c.gan_feature_blocks) >= 0
-        ),
-        f"gan.feature_blocks={c.gan_feature_blocks}: distinct block indices >= 0.",
-    )
-    _require(
-        c.gan_delay_steps >= 0 and c.gan_warmup_steps >= 0,
-        f"gan.delay_steps={c.gan_delay_steps} / gan.warmup_steps="
-        f"{c.gan_warmup_steps}: must be >= 0",
-    )
-    # Checkpointed student forwards recompute under the view current at backward;
-    # CDM / GAN leave it on teacher / fake, silently dropping the student LoRA.
-    for on, name in ((c.cdm_on, "cdm.weight > 0"), (c.gan_on, "gan.weight_gen > 0")):
-        _require(
-            not (c.grad_ckpt and on),
-            f"--grad_ckpt with {name}: the rollout's checkpointed student forwards "
-            "recompute under the teacher/fake view this branch leaves set, dropping "
-            "the student LoRA from the gradient. Turn one off.",
-        )
-
     _require(c.grad_accum >= 1, f"optim.grad_accum={c.grad_accum}: must be >= 1")
     _require(
         c.fake_steps_per_student_step >= 1,
@@ -694,40 +456,13 @@ def _validate(c: TurboConfig) -> None:
 
 
 def _log_summary(c: TurboConfig) -> None:
-    if c.mfd_dtau > 0.0:
-        logger.info(
-            f"MFD ON in the DM slot: dtau={c.mfd_dtau}, max_steps={c.mfd_max_steps}, "
-            f"interval={c.mfd_interval}; L_CDM keeps the point delta."
-        )
-    if c.cdm_on:
-        logger.info(
-            f"L_CDM ON: weight={c.cdm_weight}, teacher={c.cdm_teacher}; +1 student "
-            "grad forward, +2 teacher and +1 fake no-grad forwards per step."
-        )
-    if c.gan_on:
-        logger.info(
-            f"GAN ON: weight_gen={c.gan_loss_weight_gen}, feature_block_idx="
-            f"{c.gan_feature_block_idx} (-1 = middle), feature_blocks={c.gan_feature_blocks}, "
-            f"disc_head={c.gan_disc_head}, disc_pool={c.gan_disc_pool}, "
-            f"disc_lr={c.gan_disc_lr}, r1_weight={c.gan_r1_weight}, "
-            f"use_same_t_noise={c.gan_use_same_t_noise}, "
-            f"delay_steps={c.gan_delay_steps}, warmup_steps={c.gan_warmup_steps}."
-        )
-    if not c.detach_after_first:
-        logger.warning(
-            "detach_after_first=False: the mode-seeking DMD gradient can override "
-            "the diversity mapping (their Fig 5). A/B only."
-        )
     if c.fake_rank < c.student_rank:
         logger.warning(
             f"fake_rank={c.fake_rank} < student_rank={c.student_rank}: the fake has "
             "less capacity than the student it tracks."
         )
-    if c.div_weight == 0.0 and not c.dm_first_step:
-        logger.warning(
-            "dpdmd.div_weight=0 without dm_first_step: step 0 gets no loss and "
-            "stays at its init."
-        )
+    if c.div_weight == 0.0:
+        logger.warning("dpdmd.div_weight=0: step 0 gets no loss and stays at its init.")
     logger.info(
         "DM gradient policy: "
         + (
@@ -738,14 +473,12 @@ def _log_summary(c: TurboConfig) -> None:
     )
     logger.info(
         (
-            f"DP-DMD: first-step diversity anchor k_anchor={c.k_anchor}/"
+            f"DP-DMD: step-0 anchor k_anchor={c.k_anchor}/"
             f"{c.teacher_anchor_steps} teacher steps, div_weight={c.div_weight}, "
-            f"detach_after_first={c.detach_after_first}, "
             if c.div_weight > 0.0
             else "teacher anchor OFF (div_weight=0), "
         )
-        + f"grad step g ~ U{{{0 if c.dm_first_step else 1}..N-1}}, "
-        + ("rollout_grad (step 0 in the DM graph), " if c.rollout_grad else "")
+        + ("anchor only (no DM), " if c.anchor_only else "grad step g ~ U{1..N-1}, ")
         + f"student N={c.student_steps} @ flow_shift={c.flow_shift}, "
         f"teacher_cfg={c.teacher_cfg}."
     )
@@ -761,24 +494,11 @@ def snapshot_toml_text(c: TurboConfig, *, source_config: str | None = None) -> s
 
 
 _TB_KEYS = (
-    "gan_loss_weight_gen",
-    "gan_paired_ratio",
-    "cdm_weight",
-    "cdm_teacher",
-    "mfd_dtau",
-    "mfd_interval",
     "k_anchor",
     "teacher_anchor_steps",
     "div_weight",
-    "detach_after_first",
-    "dm_first_step",
-    "rollout_grad",
     "anchor_only",
-    "anchor_draws",
     "anchor_cache",
-    "fm_weight",
-    "fm_block_idx",
-    "teacher_handoff",
     "flow_shift",
     "student_rank",
     "fake_rank",

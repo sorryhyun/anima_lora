@@ -4,7 +4,7 @@ The reentrant unsloth checkpoint silently ZEROES grads that reach only
 closed-over params (it broke BYG); a
 grad-requiring tensor *input* resurrects them (the EasyControl precedent). Any
 loop that checkpoints a forward whose only trainable weights are closed-over
-LoRA params (turbo's GAN path via ``selective_block_grad_ckpt``, EasyControl)
+LoRA params (EasyControl; formerly turbo's GAN path)
 relies on this — this test pins the mechanism so a checkpoint refactor can't
 silently turn such a term into a no-op.
 """

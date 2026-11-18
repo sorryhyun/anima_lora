@@ -1,7 +1,7 @@
 """TurboMetrics — ScalarAccumulator-backed flush keeps the typed contract.
 
 Guards the migration off the hand-rolled 12-field stack/reset triplication:
-the field set must stay complete (disabled div/gan paths included) and the
+the field set must stay complete (the grad norms and the anchor loss included) and the
 accumulate→flush arithmetic must match the documented per-step formulas.
 """
 
@@ -59,19 +59,12 @@ def test_accumulate_flush_matches_reference_formulas():
             vf.pow(2).mean().sqrt() / (vr.pow(2).mean().sqrt() + eps_r)
         ).item()
         ref["cos"] += ((vf * vr).sum() / (vf.norm() * vr.norm() + eps_r)).item()
-        # div + gan also exercised this step.
+        # The anchor loss and the grad norms also exercised this step.
         m.add_div(torch.tensor(0.2 * (i + 1)))
         ref["div"] += 0.2 * (i + 1)
-        m.add_gan(
-            torch.tensor(0.3 * (i + 1)),
-            torch.tensor(0.4 * (i + 1)),
-            torch.tensor(0.5 * (i + 1)),
-            torch.tensor(0.6 * (i + 1)),
-        )
-        ref["gan_gen"] += 0.3 * (i + 1)
-        ref["gan_disc"] += 0.4 * (i + 1)
-        ref["gan_margin"] += 0.5 * (i + 1)
-        ref["gan_spread"] += 0.6 * (i + 1)
+        m.add_grad_norms(torch.tensor(0.3 * (i + 1)), torch.tensor(0.4 * (i + 1)))
+        ref["gn_student"] += 0.3 * (i + 1)
+        ref["gn_fake"] += 0.4 * (i + 1)
 
     out = m.flush(log_interval)
     for name, total in ref.items():

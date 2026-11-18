@@ -8,7 +8,7 @@ P0 and P1 measure.
 
 ## TL;DR
 
-Training the merged14 student with DM or FM losses makes Hub v3 worse (`../reports/warm_v3.md`).
+Training the merged14 student with DM or FM losses makes Hub v3 worse (`_archive/anima_turbo/reports/warm_v3.md`, local).
 What is left to optimise is whether the user likes the render, so the signal is the user's
 own choice (user, 11-13):
 
@@ -27,7 +27,7 @@ taste (user, 11-13), which pretrain the head and seed the caption ranking.
 
 - DM / FM training on this student: Hub v3 untrained on merged14 draws seeds as varied as the
   teacher (sameness 0.326 against 0.328); 250 iterations of the v1 recipe raise it to 0.465, and neither `dm_first_step` nor the fake's seed is the cause
-  (`../reports/warm_v3.md`). PSO (arXiv 2410.03190, Fig. 1) reports the same from the other
+  (`_archive/anima_turbo/reports/warm_v3.md`, local). PSO (arXiv 2410.03190, Fig. 1) reports the same from the other
   side: a distilled SDXL tuned with the plain diffusion loss turns blurry.
 - Label budgets in the literature. D3PO (arXiv 2311.13231), a policy gradient on human
   choices with no reward model, labels 1 000 images an epoch for 5 epochs (hands) or 10
@@ -72,7 +72,7 @@ A head maps a render (and, for the DiT basis, its caption) to a score. It has th
 |---|---|---|
 | Tagger (Anima Tagger probabilities or its backbone embedding) | readable (which tags lower the pick rate); shares a space with captions, so it scores a caption with no render; § 1 shows tags hold part of the gelcrawl choice | a tagger is trained to ignore what separates two renders of one caption: both get the same tags. Weak within a round by construction |
 | Embedding (PE-Spatial 32 × 32 grid, already in `AtSim` and the REPA cache; DINOv3 as in `classify.py`) | general perceptual features with a spatial grid; code and caches exist | the gradient path needs the VAE decode and the tower (memory, as in `../../cjk_rl/proposal.md` § 3.7); pixel-space gradients are the easiest to fool |
-| DiT head (frozen merged14 block features of the renoised latent, `TeacherFeatureDiscriminator`'s taps) | stays in latent space, no decode; caption-conditioned; the turbo loop already sends a generator gradient through this module for the GAN | gelcrawl images need VAE latents first (only the selected ones are cached); a discriminator is fooled unless its labels keep up, and human labels arrive slowly |
+| DiT head (frozen merged14 block features of the renoised latent, the taps of the turbo GAN's discriminator, since removed from the loop) | stays in latent space, no decode; caption-conditioned; the removed turbo GAN sent a generator gradient through this module | gelcrawl images need VAE latents first (only the selected ones are cached); a discriminator is fooled unless its labels keep up, and human labels arrive slowly |
 
 Expected split, to be measured rather than argued: tags for caption ranking, an embedding or
 the DiT head for ranking renders and for the gradient. P0 ranks the bases on gelcrawl, P1 on
@@ -103,7 +103,7 @@ student was distilled on; no SDE and no likelihood.
 - Steps trained: step 0 only at first, steps 1–3 left as Hub v3. This is P-GRAFT's
   (arXiv 2510.02692) idea in a 4-step form: assign the final image's reward to an
   intermediate state and tune only the part of the sampler before it. Layout sits in step 0
-  (`../reports/handoff.md`). A second arm opens steps 1–3 if the picks turn out to follow
+  (`_archive/anima_turbo/reports/handoff.md`, local). A second arm opens steps 1–3 if the picks turn out to follow
   finish, not layout.
 - Anchor: the step-0 anchor MSE to Hub v3's own step 0 (the loop's anchor term with v3
   as the target), and sameness across seeds read at every checkpoint.

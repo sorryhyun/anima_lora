@@ -1,56 +1,10 @@
-"""Turbo-only loop helpers: CDM grid and extrapolation, GAN ramp, LR scheduler."""
+"""Turbo-only loop helpers: the LR scheduler."""
 
 from __future__ import annotations
 
 import torch
 
 from library.training.schedulers import make_warmup_cosine_scheduler
-
-
-def sample_dynamic_sigmas(n_min: int, n_max: int) -> list[float]:
-    """One CDM-style dynamic rollout grid (arXiv:2605.06376 §3.2).
-
-    Length N ~ U{n_min..n_max}; interior anchors drawn uniform in (0,1) and
-    sorted descending, endpoints pinned to t₁=1 and 0: the static grid's (N+1)-point
-    1 → 0 layout, so ``sigmas[i] - sigmas[i+1]`` is the Euler dt of step i. The
-    pinned t₁=1 keeps the diversity anchor valid (v_target assumes the first
-    forward sits at t=1). CPU RNG, no GPU sync.
-    """
-    n = int(torch.randint(n_min, n_max + 1, (1,)).item())
-    if n == 1:
-        return [1.0, 0.0]
-    interior = torch.sort(torch.rand(n - 1), descending=True).values.tolist()
-    return [1.0, *interior, 0.0]
-
-
-def cdm_extrapolate(
-    x: torch.Tensor, v: torch.Tensor, s_from: float, t_to: torch.Tensor
-) -> torch.Tensor:
-    """Velocity-driven Euler extrapolation to an off-trajectory point (CDM Eq. 7).
-
-    ``x(t') = x + (t' − s)·v``: the rollout's Euler form with a stride to
-    ``t' ~ U(0,1)`` (possibly noiseward) instead of the next grid point. Inputs are
-    detached and the result is a graph-free fp32 tensor, the launch point of one
-    grad-bearing student forward. ``t_to`` is per-sample ``(B,)``.
-    """
-    stride = t_to.detach().float().view(-1, *([1] * (x.dim() - 1))) - s_from
-    return x.detach().float() + stride * v.detach().float()
-
-
-def gan_effective_weight(cfg, step: int) -> float:
-    """Generator-side GAN weight at ``step``: delay window, then linear ramp.
-
-    0 for ``step < gan_delay_steps`` (DM + div re-diversify a collapsed warm start
-    first; an unramped token head froze pose at the init's mode), then a linear
-    0 → ``gan_loss_weight_gen`` ramp over ``gan_warmup_steps`` (instant when 0).
-    The disc trains from step 0 regardless.
-    """
-    if cfg.gan_loss_weight_gen == 0.0 or step < cfg.gan_delay_steps:
-        return 0.0
-    if cfg.gan_warmup_steps > 0:
-        ramp = min(1.0, (step - cfg.gan_delay_steps + 1) / cfg.gan_warmup_steps)
-        return cfg.gan_loss_weight_gen * ramp
-    return cfg.gan_loss_weight_gen
 
 
 def scheduler_warmup_steps(total_steps: int) -> int:

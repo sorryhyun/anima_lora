@@ -31,6 +31,9 @@ make test-turbo                                   # infer latest student LoRA @ 
 A ready-made 4-step student is published at
 [huggingface.co/sorryhyun/anima-turbo-4step](https://huggingface.co/sorryhyun/anima-turbo-4step);
 point `--lora_weight` (or `make test-turbo`'s `output/ckpt/`) at its `.safetensors`.
+The published student was trained with terms the loop no longer has (the GAN, L_CDM, MFD, the
+transition-aware fake and the dynamic schedule); `make turbo` now runs the base DP-DMD loop only.
+A TOML that sets a removed key to a non-default value is refused (`scripts/distill_turbo/config.py::_REMOVED_KEYS`).
 
 `make turbo` honors `PRESET` (translates `blocks_to_swap` /
 `gradient_checkpointing` / `sample_ratio` from `configs/presets.toml` into CLI
@@ -46,9 +49,8 @@ teacher (both LoRA stacks off), student (student on), fake (fake on).
 
 1. Teacher K-step CFG anchor (no grad): `k_anchor` Euler steps on the
    `teacher_anchor_steps` grid from a shared `ε` give `v_target = (ε − z_tk) / (1 − t_k)`.
-2. Student rollout. Step 0 (from `ε`, σ = 1) regresses on `v_target`; under
-   `detach_after_first` (load-bearing) that term is backwarded at once and the graph
-   severed. The loop draws a grad step `g ~ U{1..N−1}`, runs steps `1..g−1` under
+2. Student rollout. Step 0 (from `ε`, σ = 1) regresses on `v_target`; that term
+   is backwarded at once and the graph severed. The loop draws a grad step `g ~ U{1..N−1}`, runs steps `1..g−1` under
    no_grad, and grads only step `g`'s x0-prediction `x_g − σ_g·v_g`.
 3. DMD on `x_θ`: CFG-guided teacher against the cond-only fake at `τ_DM ~ U[0,1]`,
    applied as `loss = (grad_signal · x_θ).mean()`. `grad_clip` runs once on the
@@ -72,7 +74,7 @@ early `grad_signal_rms` spike (~step 50). The student is untouched during it.
 The shipped recipe cold-starts from `weight_svd`. `[network] student_init_weights` /
 `fake_init_weights` instead seed the stacks from a plain LoRA checkpoint (Hub v3 was
 trained this way; on merged14 a warm start from Hub v3 regressed under the v1 recipe,
-`project/anima_turbo/reports/warm_v3.md`). `warm_start_plain_lora`
+`_archive/anima_turbo/reports/warm_v3.md`, local). `warm_start_plain_lora`
 (`networks/methods/turbo_dmd.py`) reconstructs the file's exact ΔW per runtime module
 (re-fusing defused q/k/v), SVD-truncates it to the stack's rank, and writes
 `lora_down`/`lora_up`. File rank may differ from the network's in either direction.
@@ -106,57 +108,60 @@ MoE / step-expert checkpoint is refused. Rank warm-started checkpoints by render
 ## Config surface (`configs/methods/turbo.toml`)
 
 Sectioned, bespoke. Every key is also a CLI flag named after its `TurboConfig` field
-(`--gan_loss_weight_gen` for `gan.weight_gen`; `scripts/distill_turbo/config.py`), and
+(`--student_steps` for `dmd.student_steps`; `scripts/distill_turbo/config.py`), and
 the flag wins over the TOML. The shipped defaults:
 
 | Section | Key | Default | Notes |
 |---|---|---|---|
 | top | `output_name` | `anima_turbo` | output stem under `output/ckpt/` |
-| top | `iterations` | `1000` | the v1 length (`project/anima_turbo/1112_v1.md`); Hub v3 ran 10k from a warm start |
+| top | `iterations` | `1000` | the v1 length (`_archive/anima_turbo/1112_v1.md`, local); Hub v3 ran 10k from a warm start |
 | top | `dit_path` / `dit_nonquant_path` | int8 GPTQ file / bf16 DiT | forward copies and bf16 weights (`docs/anima/optimizations/int8.md` § Forward copies) |
 | top | `int8` / `stream` | `stream` / `fp32` | teacher, student and fake forwards on the int8 base and the fp32 residual stream (`docs/anima/optimizations/int8.md`, `fp32_stream.md`). The output is a normal LoRA either way. Code defaults are `off` / `fp32` |
 | `[network]` | `student_rank` / `fake_rank` | `64` / `64` (alpha `180` / `180`) | `fake_rank ≥ student_rank` (fake is a score tracker, capacity ceiling on DM strength); the warm start SVD-truncates the r96 delta to this rank |
 | `[network]` | `train_adaln` / `adaln_rank` / `adaln_alpha` | `true` / `16` / `90` | adaln LoRA on student + fake (`docs/anima/methods/adaln.md` §Turbo) |
 | `[network]` | `student_down_init` / `fake_down_init` | `weight_svd` / `weight_svd` | cold start: LoRA down from the base weight's top singular directions |
 | `[network]` | `student_init_weights` / `fake_init_weights` | `""` (off) | warm start from an extracted delta (below); excludes `weight_svd` |
-| `[network]` | `fake_transition` | `true` | transition-aware fake: σ of the student step the sample came from, as a zero-init delta on the fake's t-embedding |
 | `[dmd]` | `student_steps` (N) | `4` | Euler steps the student rolls; inference matches (`--infer_steps 4`) |
 | `[dmd]` | `teacher_cfg` (α) | `4` | CFG scale baked into the teacher anchor + DMD real score (Anima prod CFG=4) |
-| `[dmd]` | `dynamic_schedule` | `false` | `true` = CDM-style continuous schedule (arXiv:2605.06376 §3.2): a random rollout grid per iteration, length `N~U{2..student_steps}`, interior points continuous-uniform, `t₁=1` pinned so the DP anchor composes unchanged. `false` (the static arm beat both dynamic seeds; `project/anima_turbo/plan.md`) trains only the inference grid. Validation renders and inference always use the static `flow_shift` grid. |
 | `[dmd]` | `dm_x0_norm` | `true` | per-sample x0-space magnitude normalization of the DM grad |
 | `[dmd]` | `norm_floor` | `0.05` | clamp_min for the `dm_x0_norm` denominator (latent scale) |
-| `[dpdmd]` | `k_anchor` (K) | `6` | teacher steps rolled to the diversity anchor |
-| `[dpdmd]` | `teacher_anchor_steps` | `12` | teacher σ-grid the K is counted against |
+| `[dpdmd]` | `k_anchor` (K) | `7` | teacher steps rolled to the diversity anchor; must end on the student's σ₁ (below) |
+| `[dpdmd]` | `teacher_anchor_steps` | `28` | teacher σ-grid the K is counted against |
 | `[dpdmd]` | `div_weight` (λ) | `0.1` | weight on the first-step diversity MSE; `0` skips the teacher anchor (its `2·k_anchor` teacher forwards per step) and the diversity term |
-| `[dpdmd]` | `detach_after_first` | `true` | **load-bearing** stop-grad after step 1 |
-| `[dpdmd]` | `dm_first_step` | `true` | draw the grad step from `U{0..N−1}`, so step 0 also takes the DM / MFD signal (`x_pred = ε − v_first`); when g = 0 the diversity term rides the same backward. With `div_weight = 0` this is the anchor-free loop of the MFD paper, which collapsed within 250 steps (`_archive/anima_turbo/reports/mfd.md`) |
-| `[dpdmd]` | `rollout_grad` | `false` | keep the graph from step 0 into step 1, so the DM / MFD signal on the final x_θ reaches step 0 through step 1; the diversity term rides the same backward. 2-step static grid only (`student_steps = 2`, `dynamic_schedule` and `dm_first_step` off); two grad-bearing student forwards. `_archive/proposals/superturbo.md` |
-| `[optim]` | `student_lr` / `fake_lr` | `5e-5` / `5e-5` | under the cosine (to 0.1×) from the `weight_svd` cold start; 2e-4 rendered worse (`project/anima_turbo/reports/runs.md`, `1112_1110`). `fm_mse` is anti-correlated with quality; rank by rendered 4-step samples |
+| `[dpdmd]` | `anchor_only` | `false` | train step 0 on the anchor regression alone: no rollout, no DM, no fake update or warmup |
+| `[dpdmd]` | `anchor_cache` | `""` | directory of cached anchor targets (below); the run then trains on the cached samples only |
+| `[optim]` | `student_lr` / `fake_lr` | `5e-5` / `5e-5` | under the cosine (to 0.1×) from the `weight_svd` cold start; 2e-4 rendered worse (`_archive/anima_turbo/reports/runs.md`, `1112_1110`, local). `fm_mse` is anti-correlated with quality; rank by rendered 4-step samples |
 | `[optim]` | `fake_steps_per_student_step` | `4` | keep the fake ahead of the moving x_θ |
 | `[optim]` | `fake_warmup_steps` | `200` | fake (critic) head-start before the main loop — kills the early grad_signal_rms spike (~step 50); `0` = off |
 | `[optim]` | `grad_clip` | `1.0` | grad-norm cap (both nets) |
-| `[cdm]` | `weight` / `grad_ckpt` / `teacher` | `1.0` / `true` / `"cond"` | CDM loss weight (code fallback 0); its branch checkpoints its own forwards. `teacher`: the velocity L_CDM pulls toward, `cond` (the paper's Eq. 9, adopted 11-16 on the A/B in `project/anima_turbo/plan.md`) or `cfg` (the CFG'd teacher, code fallback) |
-| `[optim]` | `lr_schedule` / `grad_accum` | `cosine` / `1` | shape after the 2 % linear warmup (student, fake, disc); iterations per student optimizer step |
+| `[optim]` | `lr_schedule` / `grad_accum` | `cosine` / `1` | shape after the 2 % linear warmup (student, fake); iterations per student optimizer step |
 | `[ema]` | `window` | `0.2` (code fallback `0.0`) | student EMA span as a fraction of the run (0 = off); the EMA is the checkpoint that ships. Under `lr_schedule = "constant"` it is a fraction of the updates; under `cosine`, of the summed LR (each update decays the shadow by `decay ** (lr / mean lr)`; 0.2 reaches back about 45 % of the updates) |
-| `[dmd]` | `dm_draws` | `1` | (σ_a, ε_dm) draws averaged into the DM signal on the same x_θ |
-| `[mfd]` | `dtau` / `max_steps` / `interval` | `0.0` / `4` / `to_zero` | MFD mean-flow integral; `dtau = 0` is plain DMD (`_archive/anima_turbo/reports/mfd.md`) |
 | `[sampling]` | `t_distribution` | `uniform` | τ sampling for the fake update + warmup (or `sigmoid`) |
-| `[sampling]` | `flow_shift` | `3.0` | σ-schedule shift for the student/teacher Euler grids (matches inference; `k_anchor` σ is shift-coupled, so change both together) |
-| `[gan]` | `weight_gen` | `0.03` (on) | teacher-feature GAN generator term — see below |
-| `[gan]` | `disc_head` | `token` | `pooled` (code default) / `token` — see below; `conv` (paired GAN, `dpdmd.anchor_only`): FastGen's image-DiT head, per tap a 4×4 stride-2 conv → GroupNorm → LeakyReLU → 1×1 conv on the patch grid, averaged to one logit |
-| `[gan]` | `feature_blocks` | unset | list of DiT blocks the disc taps, one head each (FastGen's Cosmos Predict2.5-2B recipe: `[13, 20, 27]`); unset = the single `feature_block_idx` |
-| `[gan]` | `disc_pool` | `1` | paired GAN (`dpdmd.anchor_only`), token head: mean-pool the tokens k×k on the patch grid before the head, one logit per cell; `1` = one logit per token |
-| `[gan]` | `delay_steps` / `warmup_steps` | `0` / `0` | generator-side λ ramp: hold at 0 for `delay_steps` (disc still trains), then linear 0 → `weight_gen` over `warmup_steps` |
+| `[sampling]` | `flow_shift` | `3.0` | σ-schedule shift for the student/teacher Euler grids (matches inference; the `k_anchor` σ is shift-coupled, so change both together) |
 
 Validation enforces `student_steps ≥ 2` and `1 ≤ k_anchor < teacher_anchor_steps`.
-`div_weight = 0` without `dm_first_step` leaves step 0 with no loss (a warning, not
+`div_weight = 0` leaves step 0 with no loss (a warning, not
 a refusal: step 0 then stays at its init).
 
-`k_anchor / teacher_anchor_steps` sets the σ-fraction the diversity anchor lands
-at (`6/12 = 0.5`); the step count sets only how finely the teacher integrates to
-it, and its cost. `div_loss` measures how well the student hits the anchor, not
+`k_anchor / teacher_anchor_steps` sets the σ the diversity anchor lands at; the step
+count sets only how finely the teacher integrates to it, and its cost. The anchor target
+is the teacher's mean velocity over σ [σ_K, 1], and step 0 applies it over [σ_1, 1], so K
+has to end on the student's first boundary σ_1: at 4 steps and shift 3 the grid is σ 1 → 0.9
+→ 0.75 → 0.5 → 0, so 7 of 28 lands on σ 0.9 (the earlier 6 of 12 and 14 of 28 both ended at
+σ 0.75 while step 0 covered only 1 → 0.9). `setup.build_run` logs a warning when σ_K ≠ σ_1. `div_loss` measures how well the student hits the anchor, not
 how diverse the anchor is — pose diversity shows only in sample grids (the
 PE-pooled metric is blind to pose).
+
+### Anchor target cache
+
+The anchor target depends only on the prompt, the noise and the frozen teacher, so it can be
+rolled once. `python -m scripts.distill_turbo.anchor_cache --out <dir> --prompts N --draws K
+[--k_anchor 7 --teacher_anchor_steps 28 …]` (a daemon job, resumable) writes K targets for each of
+N samples of `data_dir`; the noise of a pair is regenerated from a seed hashed from (seed, sample
+key, draw), so only the target is stored, and a cache built at another `k_anchor` with the same
+seed uses the same noise. A run reads it with `dpdmd.anchor_cache = "<dir>"`; the manifest's
+teacher fields (`k_anchor`, `teacher_anchor_steps`, `flow_shift`, `teacher_cfg`, the DiT) have to
+match the run's. With `anchor_only` an iteration is then one student forward and backward.
 
 ## Inference: step count
 
@@ -166,8 +171,8 @@ student behaves like a continuous velocity field (the DMD loss is trained at ran
 τ; only step 0 is grid-anchored), so it can integrate better at more Euler steps
 than it was trained for. At 2 steps a single `0.75→0` Euler jump crosses the entire
 detail-forming band below σ≈0.5
-(`docs/anima/findings/sigma_signal_where_anima_resolves.md`); 4 steps get a function
-evaluation at σ=0.5 and keep the σ=0.75 anchor. If a
+(`docs/anima/findings/sigma_signal_where_anima_resolves.md`); 4 steps get function
+evaluations at σ 0.75 and σ 0.5. If a
 checkpoint looks better at more steps than its trained grid, that's the tell that
 distillation hasn't reached a true N-step map yet — train longer or raise
 `student_steps`. Keep `--cfg 1.0` at any step count (CFG is baked in).
@@ -186,7 +191,6 @@ live TB scalars:
 | `dm_cos` | `cos(v_fake_dm, v_real_dm)` — →1 healthy; ↓ = fake pointing the wrong way (worse than a magnitude miss). |
 | `dm_mag_ratio` | `rms(v_fake)/rms(v_real)` — ≈1 healthy. |
 | `x_pred_std` / `v_student_rms` | collapse → 0 or runaway up = student exploding (`v_student_rms` leads). |
-| `gan_gen_loss` / `gan_disc_loss` | softplus-hinge generator / discriminator losses (pre-weight); 0 when the GAN is off. |
 
 ### Where to read them from
 
@@ -203,61 +207,15 @@ live TB scalars:
 - `make export-logs RUN=output/logs/<run> SUMMARY=1` — max step + last value
   per TB tag, when you want every scalar rather than the loop's headline set.
 - `grad_steps.jsonl` in the TB run dir — one row per iteration: pre-clip grad norms
-  (student, fake, disc) beside that iteration's DM query σ_a, grad-step σ, `g` and
-  rollout length `N`. The TB `grad_norm_*` scalars are interval means and cannot be
+  (student, fake) beside that iteration's DM query σ_a, grad-step σ and `g`. The TB `grad_norm_*` scalars are interval means and cannot be
   paired with the draw.
-
-## GAN term
-
-DP-DMD is structurally DMD2 without the GAN. The adversarial term is ported from
-NVlabs FastGen (`_archive/proposals/turbo_gan.md`) and is on by default at the
-FastGen `weight_gen = 0.03`. The MFD paper uses no GAN.
-
-- Teacher-feature GAN (`[gan] weight_gen > 0`, FastGen idea 1). A tiny
-  discriminator (`networks/methods/turbo_dmd.py::TeacherFeatureDiscriminator`,
-  ~2M params) reads the frozen teacher DiT's mid-block activations — captured
-  with a compile-safe forward hook on `blocks[feature_block_idx]` (default middle).
-  Two head granularities (`disc_head`): `"pooled"` (code default) mean-pools each
-  tap's tokens to one logit per tap; `"token"` (LADD-style) applies the same
-  MLP to every token for dense per-patch logits — identical parameters, so resume
-  bundles load across a switch; a pooled global logit only constrains global
-  statistics and saturates easily, while the dense head penalizes local defects
-  (glyphs, hands, texture). The generator term `softplus(−disc(feat))` is added to
-  the student loss; the disc trains on the fake/critic cadence with its own AdamW
-  (`disc_lr`, betas (0, 0.99)), optional approximate-R1 (`r1_weight`; per-token
-  MSE under `"token"`). The student output stays a plain LoRA (the disc is
-  discarded at save, like the fake). FastGen QwenImage recipe: `weight_gen=0.03`,
-  `use_same_t_noise=true`, middle block, `disc_lr=1e-5`.
-
-  The token head contributes no disc→student gradient early in a warm-started
-  run, so it does not cause a pose freeze; `fake_adaln = true` does. The hinge
-  losses sit at equilibrium (≈0.69/1.39) either way; read
-  `train/gan_disc_margin` (mean real − fake logit) and `train/gan_logit_spread`
-  (per-token logit std), plus the cross-seed `ac_sim` diversity validation
-  (`validate_every_n_steps`; at 1000, as the GUI config ships, it never fires in a
-  500-step run); `train/gan_weight_gen_eff` traces the ramp.
-
-Cost. There is no early exit after the tapped block, so the GAN adds +1 grad-bearing teacher forward in the student step (the generator
-term must flow grad through the teacher into `x_pred`) and +2 no_grad teacher
-forwards per disc step. The global `--grad_ckpt` (what `PRESET=low_vram` passes) is refused with `gan.weight_gen > 0` or `cdm.weight > 0`: `set_view` is global state read at forward time and checkpoint recompute defers to `.backward()`, so the rollout's checkpointed student forwards would recompute under the teacher / fake view and silently drop the student LoRA from the gradient (`scripts/distill_turbo/config.py`). The GAN and CDM branches checkpoint their own forwards instead (`gan.grad_ckpt`, `cdm.grad_ckpt`, both `true` in the shipped TOML). `weight_gen=0`
-keeps the entire path off → plain DP-DMD (no disc, no hooks, no extra
-forwards).
 
 ## Loop gotchas
 
-- **A key in the wrong TOML section silently defaults.** `toml_get(cfg, "dmd.dynamic_schedule", …)`
+- **A key in the wrong TOML section silently defaults.** `toml_get(cfg, "dmd.student_steps", …)`
   ignores a misplaced key with no warning. Verify every arm via the `ss_turbo_*` safetensors metadata or the `.snapshot.toml`, and
   read the snapshot's `# source config:` line — GUI/daemon runs read
   `configs/gui-methods/custom/turbo.toml`, not `configs/methods/turbo.toml`.
-- **NFE=2 GAN runaway.** At `student_steps=2` the token disc can run away (`gan_margin`
-  0.22→6.94, `gan_spread`→0.99) and collapse the student to noise with every DM term healthy;
-  the same config at NFE=4 stays flat. Signature: at NFE=4 the token head has an equilibrium
-  plateau of 0.27–0.30 by step 2–3k, so a rising spread alone is not the tell — runaway = sustained
-  bin-median >0.40 **plus** `gan_disc_margin` >0.5 **plus** `gan_disc_loss` below ~1.1 (healthy
-  1.33–1.36). Damp with `gan_r1_weight ≈ 100` and/or `gan_disc_lr` 1e-5→3e-6; do not cut
-  `fake_steps_per_student_step` (disc cadence is coupled to the fake inner loop).
-- **`gan_logit_spread` and `cdm_grad_rms` are hard-zero under `gan_disc_head="pooled"`** — never
-  baseline a token-head run against a pooled one.
 - **Diversity can plateau with every DM scalar healthy** — pose diversity shows only in grids.
 
 ## Limitations & composition
@@ -273,8 +231,7 @@ forwards).
 - Block swap. The student rolls `N` forwards and the teacher `K` anchor
   forwards per step, with graphs alive across them. Each forward calls
   `rewind_block_swap()`, which undoes the last forward's moves on the same device
-  slots, and a backward first seeks to where it starts: the end of those moves, or
-  the tap of the GAN's early-stopped forward, which moves only the blocks it runs
+  slots, and a backward first seeks to where it starts
   (`library/runtime/offloading.py::ModelOffloader`, `rewindable`). The default
   config keeps swap off: it costs about 1.5x step time for 1 GB of peak. No full
   student has trained on it.

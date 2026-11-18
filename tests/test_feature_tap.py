@@ -1,7 +1,7 @@
 """Feature-tap + early-exit invariants (idea 3.1 of docs/anima/proposal/turbo_gan).
 
 ``forward_mini_train_dit`` gained an opt-in ``return_block_features`` /
-``return_features_early`` path so the Turbo GAN can read a frozen-teacher block
+``return_features_early`` path so the (since removed) Turbo GAN could read a frozen-teacher block
 feature without an external forward hook — and, when only a feature is needed,
 stop after the deepest tapped block so just ``blocks[0..k]`` run (the memory win
 that fixes the GAN gen-forward OOM).

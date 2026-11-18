@@ -1,100 +1,31 @@
 """Per-step DP-DMD loss terms and the fake/critic update, called from ``distill``.
 
 The loop keeps the student's final backward and optimizer step; these are the rollout
-and the loss terms around it. ``student_rollout`` backwards the diversity term when it
-is severed from the grad step, ``anchor_only_loss`` and ``cdm_off_trajectory_loss``
-backward their own graphs, and ``fake_update`` steps the fake and disc optimizers.
+and the loss terms around it. ``student_rollout`` and ``anchor_only_loss`` backward the
+anchor term themselves, and ``fake_update`` steps the fake optimizer.
 """
 
 from __future__ import annotations
 
-from contextlib import contextmanager, nullcontext
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
 
-from library.anima.models import Anima
-from networks.methods.turbo_dmd import gan_loss_discriminator, gan_loss_generator
-
 from library.training.forward import renoise
 from library.training.forward import sample_sigma as sample_t
 
-from .primitives import cdm_extrapolate
 from .context import RunContext
-
-
-@contextmanager
-def selective_block_grad_ckpt(model: Anima):
-    """Arm per-block unsloth-offload checkpointing for one forward, then restore.
-
-    Unsloth, not ``torch_checkpoint``: ``checkpoint(compiled_fn, use_reentrant=False)``
-    diverges from the inductor forward graph on recompute (``CheckpointError``); the
-    unsloth path is ``@torch._disable_dynamo`` and runs ``_forward`` eager both times.
-    The flags are read per block call, so flipping them costs no recompile.
-
-    The recompute runs at backward under the view that is current then, so every
-    caller backwards before the view changes again (``cdm_off_trajectory_loss``) or
-    makes its forward the last view flip of the step (``gan_generator_term``).
-    """
-    saved = [
-        (b.gradient_checkpointing, b.unsloth_offload_checkpointing)
-        for b in model.blocks
-    ]
-    for b in model.blocks:
-        b.gradient_checkpointing = True
-        b.unsloth_offload_checkpointing = True
-    try:
-        yield
-    finally:
-        for b, (g, u) in zip(model.blocks, saved):
-            b.gradient_checkpointing = g
-            b.unsloth_offload_checkpointing = u
-
-
-def _dm_tau(ctx: RunContext, cfg, B: int) -> torch.Tensor:
-    """DM / MFD query level σ_a: uniform, or logit-normal under
-    ``dm_tau_distribution = "logit_normal"`` (sigmoid(dm_tau_scale·N(0,1)))."""
-    if cfg.dm_tau_distribution == "uniform":
-        return _uniform_tau(ctx, cfg, B)
-    return sample_t(
-        B,
-        distribution="sigmoid",
-        sigmoid_scale=cfg.dm_tau_scale,
-        device=ctx.device,
-        dtype=ctx.dtype,
-    )
-
-
-def _uniform_tau(ctx: RunContext, cfg, B: int) -> torch.Tensor:
-    """DM / MFD / CDM query level: uniform by design, independent of t_distribution."""
-    return sample_t(
-        B,
-        distribution="uniform",
-        sigmoid_scale=cfg.sigmoid_scale,
-        device=ctx.device,
-        dtype=ctx.dtype,
-    )
-
-
-def _dm_signal(cfg, scale_e: torch.Tensor, delta: torch.Tensor, v_real: torch.Tensor):
-    """Detached fp32 ``scale·Δ``; under ``dm_x0_norm`` divided by the per-sample
-    mean ``|scale·v_real|`` (floored at ``norm_floor``), which cancels the scale."""
-    grad = scale_e * delta.float()
-    if cfg.dm_x0_norm:
-        grad = grad / (
-            (scale_e * v_real.float())
-            .abs()
-            .mean(dim=(1, 2, 3), keepdim=True)
-            .clamp_min(cfg.norm_floor)
-        )
-    return grad.detach()
 
 
 def anchor_target(velocity, eps: torch.Tensor, sigmas: list[float], k: int):
     """Roll ``velocity(z, σ) → fp32 v`` ``k`` Euler steps from ε down ``sigmas`` and
-    return the mean velocity ε → z_k over ``[σ_k, 1]``: the target of the student's
-    σ = 1 first step. The anchor cache builder rolls the same function."""
+    return the teacher's mean velocity over ``[σ_k, 1]``, ``(ε − z_k) / (1 − σ_k)``.
+
+    The student's step 0 applies this velocity over its own interval ``[σ_1, 1]``, so
+    it lands on the teacher's state ``z_k`` only when ``σ_k`` is the student's ``σ_1``
+    (``config.anchor_gap`` measures the difference). The anchor cache builder rolls
+    the same function."""
     z = eps
     for i in range(k):
         v = velocity(z, sigmas[i])
@@ -125,230 +56,19 @@ def anchor_only_loss(
     v_target: torch.Tensor,
     crossattn_emb: torch.Tensor,
     B: int,
-    scale: float = 1.0,
 ) -> torch.Tensor:
     """``dpdmd.anchor_only``: the step-0 regression on its own, backwarded here.
 
     One grad-bearing student forward at σ = 1 and MSE to ``v_target``, unweighted
     (Adam and the clip make ``div_weight`` a no-op when it is the only term).
-    ``scale`` = 1/k under ``anchor_draws`` k, so the k backwards accumulate the
-    mean gradient. Returns the detached, unscaled loss.
+    Returns the detached loss.
     """
     x = eps.requires_grad_()  # grad-ckpt needs a grad-requiring forward input
     t_b = torch.full((B,), ctx.student_sigmas[0], device=ctx.device, dtype=ctx.dtype)
     v_first = ctx.forward("student", x, t_b, crossattn_emb, no_grad=False)
     loss = nn.functional.mse_loss(v_first.float(), v_target)
-    (loss * scale).backward()
-    return loss.detach()
-
-
-@dataclass
-class AnchorFM:
-    """Detached outputs of :func:`anchor_fm_loss` (pre-weight)."""
-
-    mse: torch.Tensor
-    fm: torch.Tensor  # relative feature MSE (0 with fm_weight 0)
-    grad_ratio: torch.Tensor  # rms of the feature-path gradient into v / rms(∂mse/∂v)
-    gan_gen: torch.Tensor  # generator loss (0 without the paired GAN)
-    gan_share: torch.Tensor  # rms(GAN grad) / rms(FM + GAN grad), on the features
-    real_feats: list[torch.Tensor] | None  # disc taps of x_t (no grad)
-    fake_feats: list[torch.Tensor] | None  # disc taps of x_s (detached)
-    x_t: torch.Tensor | None  # the real state, for the R1 perturbation
-    t_k: torch.Tensor | None
-    grid: tuple[int, int] | None = (
-        None  # token grid (h, w), set under gan.disc_pool > 1
-    )
-
-
-def _rel_feat_mse(f_s: torch.Tensor, f_t: torch.Tensor) -> torch.Tensor:
-    """Per-sample ‖f_s − f_t‖² / ‖f_t − mean(f_t)‖², batch mean: scale-free across
-    taps and resolutions."""
-    B = f_t.shape[0]
-    d = (f_s.float() - f_t.float()).reshape(B, -1).pow(2).mean(1)
-    ref = f_t.float().reshape(B, -1).var(1, unbiased=False).clamp_min(1e-8)
-    return (d / ref).mean()
-
-
-def anchor_fm_loss(
-    ctx: RunContext,
-    cfg,
-    eps: torch.Tensor,
-    v_target: torch.Tensor,
-    crossattn_emb: torch.Tensor,
-    B: int,
-    gan_weight: float = 0.0,
-) -> AnchorFM:
-    """``dpdmd.fm_weight`` / the paired GAN: the anchor MSE plus terms on the
-    teacher's features of the anchor chord's end state, backwarded here.
-
-    The chord ends at σ_k = ``teacher_anchor_sigmas[k_anchor]``. Real: the teacher's
-    own state there, ``x_t = ε − (1 − σ_k)·v_target``. Student: ``x_s = ε − (1 −
-    σ_k)·v_student``. Both go through the frozen teacher at σ_k (cond only, early
-    exit at the deepest tap), paired by ε.
-
-    - FM (``fm_weight`` > 0): relative L2 between the two at ``fm_block_idx``. It
-      weighs the residual by what the teacher reads at σ_k, which steps 1–3 start
-      from.
-    - Paired GAN (``gan`` on, ``gan_weight`` the ramped λ): the generator term
-      ``softplus(−D(f_s))`` on the disc taps of the same forward. The disc is frozen
-      here; :func:`paired_disc_update` trains it on the returned features.
-
-    The feature-path gradient and the MSE's are taken on ``v_student`` separately
-    (the teacher graph is freed before the student backward) and summed there, so
-    their ratio is logged at no extra cost.
-    """
-    dev, dt = ctx.device, ctx.dtype
-    turbo = ctx.turbo
-    x = eps.requires_grad_()
-    t0 = torch.full((B,), ctx.student_sigmas[0], device=dev, dtype=dt)
-    v_first = ctx.forward("student", x, t0, crossattn_emb, no_grad=False)
-    v = v_first.float()
-    mse = nn.functional.mse_loss(v, v_target)
-    g_mse = (2.0 / v.numel()) * (v - v_target).detach()
-
-    fm_on = cfg.fm_weight > 0.0
-    gan_on = turbo.disc is not None
-    sig = ctx.teacher_anchor_sigmas[cfg.k_anchor]
-    t_k = torch.full((B,), sig, device=dev, dtype=dt)
-    bidx = cfg.fm_block_idx if cfg.fm_block_idx >= 0 else ctx.model.num_blocks // 2
-    taps = ({bidx} if fm_on else set()) | (turbo.gan_feature_set or set())
-    e = eps.detach().float()
-    x_t = (e - (1.0 - sig) * v_target).detach()
-    with torch.no_grad():
-        feats_t = ctx.forward(
-            "teacher",
-            x_t,
-            t_k,
-            crossattn_emb,
-            no_grad=True,
-            return_block_features=taps,
-            return_features_early=True,
-        )
-    v_leaf = v.detach().requires_grad_()
-    x_s = e - (1.0 - sig) * v_leaf
-    # the recompute runs inside autograd.grad below, still in the teacher view
-    with selective_block_grad_ckpt(ctx.model):
-        feats_s = ctx.forward(
-            "teacher",
-            x_s,
-            t_k,
-            crossattn_emb,
-            no_grad=False,
-            return_block_features=taps,
-            return_features_early=True,
-        )
-
-    zero = torch.zeros((), device=dev)
-    fm = gen = zero
-    # The terms read detached copies of the taps, so each gradient below is the
-    # term's direct one on that tap. Taps nest (block 13 feeds block 27): pulling
-    # the direct gradients back together gives the total on v, each path once.
-    out_feats = sorted(taps)
-    f_s_list = [feats_s[i] for i in out_feats]
-    leaf = {i: feats_s[i].detach().requires_grad_() for i in out_feats}
-    leaf_list = [leaf[i] for i in out_feats]
-
-    def _direct(term):
-        gs = torch.autograd.grad(term, leaf_list, allow_unused=True)
-        return [torch.zeros_like(f) if g is None else g for g, f in zip(gs, leaf_list)]
-
-    def _rms(gs, idx):
-        picked = [gs[out_feats.index(i)].float().flatten() for i in idx]
-        return torch.cat(picked).pow(2).mean().sqrt()
-
-    g_f_fm = g_f_gan = None
-    if fm_on:
-        fm = _rel_feat_mse(leaf[bidx], feats_t[bidx])
-        g_f_fm = _direct(cfg.fm_weight * fm)
-    real_feats = fake_feats = grid = None
-    gan_taps: list[int] = []
-    if gan_on:
-        if turbo.disc.needs_grid:
-            ps = ctx.model.patch_spatial
-            grid = (eps.shape[-2] // ps, eps.shape[-1] // ps)
-        turbo.set_disc_requires_grad(False)
-        gan_taps = sorted(turbo.gan_feature_set)
-        gen = gan_loss_generator(turbo.disc(turbo.features_in_order(leaf), grid))
-        if gan_weight > 0.0:
-            g_f_gan = _direct(gan_weight * gen)
-        real_feats = [f.detach() for f in turbo.features_in_order(feats_t)]
-        fake_feats = [f.detach() for f in turbo.features_in_order(feats_s)]
-
-    # One pullback through the teacher; the FM / GAN split is read on the features.
-    gan_share = zero
-    if g_f_fm is not None and g_f_gan is not None:
-        if cfg.gan_paired_ratio > 0.0:
-            # rms(GAN, over its taps) = ratio·ramp·rms(FM, on its tap): a stronger
-            # disc turns the term, it does not grow it. gan_weight / weight_gen is
-            # the delay/ramp fraction.
-            ramp = gan_weight / cfg.gan_loss_weight_gen
-            s = (
-                cfg.gan_paired_ratio
-                * ramp
-                * _rms(g_f_fm, [bidx])
-                / _rms(g_f_gan, gan_taps).clamp_min(1e-20)
-            )
-            g_f_gan = [g * s.to(g.dtype) for g in g_f_gan]
-        g_f = [a + b for a, b in zip(g_f_fm, g_f_gan)]
-        gan_share = _rms(g_f_gan, out_feats) / _rms(g_f, out_feats).clamp_min(1e-20)
-    else:
-        g_f = g_f_fm if g_f_fm is not None else g_f_gan
-    if g_f is not None:
-        (g_feat,) = torch.autograd.grad(f_s_list, v_leaf, grad_outputs=g_f)
-    else:  # GAN in its delay window and FM off: the MSE alone
-        g_feat = torch.zeros_like(g_mse)
-
-    turbo.set_view("student")  # a checkpointed student recomputes as itself
-    v_first.backward(gradient=(g_mse + g_feat).to(v_first.dtype))
-    ratio = g_feat.pow(2).mean().sqrt() / g_mse.pow(2).mean().sqrt().clamp_min(1e-12)
-    return AnchorFM(
-        mse=mse.detach(),
-        fm=fm.detach(),
-        grad_ratio=ratio.detach(),
-        gan_gen=gen.detach(),
-        gan_share=gan_share.detach(),
-        real_feats=real_feats,
-        fake_feats=fake_feats,
-        x_t=x_t if gan_on else None,
-        t_k=t_k if gan_on else None,
-        grid=grid,
-    )
-
-
-def paired_disc_update(
-    ctx: RunContext,
-    cfg,
-    r: AnchorFM,
-    crossattn_emb: torch.Tensor,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Paired-GAN disc step on the features :func:`anchor_fm_loss` already took:
-    real = the teacher's state ``x_t`` at σ_k, fake = the student's ``x_s``. No
-    teacher forward unless ``gan.r1_weight`` > 0 (one no-grad forward of the
-    perturbed real state). Returns (loss, margin, spread, pre-clip grad norm)."""
-    turbo = ctx.turbo
-    turbo.set_disc_requires_grad(True)
-    real_logits = turbo.disc(r.real_feats, r.grid)
-    fake_logits = turbo.disc(r.fake_feats, r.grid)
-    loss = gan_loss_discriminator(real_logits, fake_logits)
-    with torch.no_grad():
-        margin = real_logits.mean() - fake_logits.mean()
-        fl = fake_logits.flatten()
-        spread = fl.std() if fl.numel() > 1 else torch.zeros((), device=ctx.device)
-    if cfg.gan_r1_weight > 0.0:
-        x_a = r.x_t + cfg.gan_r1_alpha * torch.randn_like(r.x_t)
-        feats_a = _teacher_feats(
-            ctx, x_a.to(ctx.dtype), r.t_k, crossattn_emb, no_grad=True
-        )
-        loss = loss + cfg.gan_r1_weight * nn.functional.mse_loss(
-            real_logits, turbo.disc(feats_a, r.grid)
-        )
     loss.backward()
-    gn = clip_or_norm(turbo.disc_params(), cfg.grad_clip)
-    ctx.disc_opt.step()
-    ctx.disc_opt.zero_grad(set_to_none=True)
-    ctx.disc_sched.step()
-    turbo.set_disc_requires_grad(False)
-    return loss.detach(), margin, spread, gn
+    return loss.detach()
 
 
 @dataclass
@@ -356,12 +76,9 @@ class Rollout:
     """The student rollout up to its grad step g."""
 
     x_pred: torch.Tensor  # x_g − σ_g·v_g, attached through step g only
-    x_g: torch.Tensor  # input of step g (fresh leaf unless rollout_grad)
-    v_g: torch.Tensor
     s_g: float
     v_first: torch.Tensor  # step-0 velocity (metrics)
     div_loss: torch.Tensor  # pre-weight; 0 with the anchor off
-    div_pending: bool  # the caller adds div_weight·div_loss to its final backward
 
 
 def student_rollout(
@@ -374,75 +91,53 @@ def student_rollout(
     crossattn_emb: torch.Tensor,
     B: int,
 ) -> Rollout:
-    """Roll the student from ε to grad step ``g`` and take its one-step x0-prediction.
+    """Roll the student from ε to grad step ``g`` ≥ 1 and take its one-step
+    x0-prediction.
 
-    Step 0 regresses on ``v_target`` (``None``: anchor off, no diversity term). For
-    g ≥ 1 the diversity term is backwarded here under ``detach_after_first``, steps
-    1..g−1 run under no_grad and step g starts from a fresh leaf, so the DM grad
-    never reaches step 0 (DP-DMD Fig 5). For g = 0 (``dm_first_step``) step 0 is the
-    grad step: the DM grad lands on it, and its diversity term shares that graph, so
-    it is left to the caller's backward.
-
-    Under ``rollout_grad`` nothing is detached: x_g carries step 0's graph, so the
-    DM grad on x_pred reaches step 0 through the steps after it, and the diversity
-    term rides the caller's backward (_archive/proposals/superturbo.md).
+    Step 0 regresses on ``v_target`` (``None``: anchor off) and that term is
+    backwarded here. Steps 1..g−1 run under no_grad and step g starts from a fresh
+    leaf, so the DM gradient never reaches step 0 (DP-DMD Fig 5).
     """
     device, dtype = ctx.device, ctx.dtype
     anchor = v_target is not None
-    keep = cfg.rollout_grad
     s0 = sigmas[0]
     x = eps
     x.requires_grad_()  # grad-ckpt needs a grad-requiring forward input
     t_b = torch.full((B,), s0, device=device, dtype=dtype)
-    v_first = ctx.forward(
-        "student", x, t_b, crossattn_emb, no_grad=not (anchor or g == 0 or keep)
-    )
+    v_first = ctx.forward("student", x, t_b, crossattn_emb, no_grad=not anchor)
     if anchor:
         div_loss = nn.functional.mse_loss(v_first.float(), v_target)
+        (cfg.div_weight * div_loss).backward()
     else:
         div_loss = torch.zeros((), device=device)
-    div_pending = anchor and (g == 0 or keep or not cfg.detach_after_first)
-    if anchor and not div_pending:
-        (cfg.div_weight * div_loss).backward()
 
-    if g == 0:
-        x_g, v_g, s_g = x, v_first, s0
-    else:
-        # teacher_handoff: the step the fitted step 0 aims at, not the one it takes.
-        v0 = v_target.to(v_first.dtype) if cfg.teacher_handoff else v_first
-        x = x - (s0 - sigmas[1]) * v0
-        if not keep:
-            x = x.detach()
-        for i in range(1, g):  # backward simulation (graph kept under rollout_grad)
-            t_b = torch.full((B,), sigmas[i], device=device, dtype=dtype)
-            v = ctx.forward("student", x, t_b, crossattn_emb, no_grad=not keep)
-            x = x - (sigmas[i] - sigmas[i + 1]) * v
-        x_g = x if keep else x.detach().requires_grad_()  # fresh leaf
-        s_g = sigmas[g]
-        t_b = torch.full((B,), s_g, device=device, dtype=dtype)
-        v_g = ctx.forward("student", x_g, t_b, crossattn_emb, no_grad=False)
+    x = (x - (s0 - sigmas[1]) * v_first).detach()
+    for i in range(1, g):  # backward simulation
+        t_b = torch.full((B,), sigmas[i], device=device, dtype=dtype)
+        v = ctx.forward("student", x, t_b, crossattn_emb, no_grad=True)
+        x = x - (sigmas[i] - sigmas[i + 1]) * v
+    x_g = x.detach().requires_grad_()  # fresh leaf
+    s_g = sigmas[g]
+    t_b = torch.full((B,), s_g, device=device, dtype=dtype)
+    v_g = ctx.forward("student", x_g, t_b, crossattn_emb, no_grad=False)
     return Rollout(
         x_pred=x_g - s_g * v_g,
-        x_g=x_g,
-        v_g=v_g,
         s_g=s_g,
         v_first=v_first,
-        div_loss=div_loss,
-        div_pending=div_pending,
+        div_loss=div_loss.detach(),
     )
 
 
 @dataclass
 class DmdResult:
-    """Outputs of the DM-slot surrogate (DMD or MFD)."""
+    """Outputs of the DMD surrogate."""
 
     grad_signal: torch.Tensor  # detached fp32
     delta_dm: torch.Tensor  # v_real − v_fake (metrics)
-    tau_dm: torch.Tensor  # query level; the GAN gen renoise reuses it
-    tau_dm_e: torch.Tensor  # signal scale broadcast to (B,1,1,1)
+    tau_dm: torch.Tensor  # query level
+    tau_dm_e: torch.Tensor  # the same, broadcast to (B,1,1,1)
     v_real_cond_dm: torch.Tensor
     v_fake_cond_dm: torch.Tensor
-    eps_dm: torch.Tensor  # renoise ε; the GAN gen renoise reuses it
 
 
 def dmd_surrogate(
@@ -453,236 +148,43 @@ def dmd_surrogate(
     c_null: torch.Tensor,
     B: int,
 ) -> DmdResult:
-    """DMD on x_θ: CFG'd teacher against the cond-only fake.
+    """DMD on x_θ: CFG'd teacher against the cond-only fake, at a uniform query
+    level τ.
 
     The real score must be CFG'd: with cond-only on both sides v_real ≈ v_fake
-    (dm_cos ≈ 0.9999) and the signal is noise.
+    (dm_cos ≈ 0.9999) and the signal is noise. The signal is ``τ·Δ``; under
+    ``dm_x0_norm`` it is divided by the per-sample mean ``|τ·v_real|`` (floored at
+    ``norm_floor``), which cancels τ.
     """
-    tau_dm = _dm_tau(ctx, cfg, B)
+    tau_dm = sample_t(
+        B,
+        distribution="uniform",
+        sigmoid_scale=cfg.sigmoid_scale,
+        device=ctx.device,
+        dtype=ctx.dtype,
+    )
     eps_dm = torch.randn_like(x_pred)
     x_renoised_dm = renoise(x_pred.detach(), tau_dm, eps_dm)
     v_real = ctx.teacher_cfg_velocity(x_renoised_dm, tau_dm, crossattn_emb, c_null)
     v_fake = ctx.forward("fake", x_renoised_dm, tau_dm, crossattn_emb, no_grad=True)
     delta_dm = v_real - v_fake
     tau_dm_e = tau_dm.view(B, 1, 1, 1).float()
+    grad = tau_dm_e * delta_dm.float()
+    if cfg.dm_x0_norm:
+        grad = grad / (
+            (tau_dm_e * v_real.float())
+            .abs()
+            .mean(dim=(1, 2, 3), keepdim=True)
+            .clamp_min(cfg.norm_floor)
+        )
     return DmdResult(
-        grad_signal=_dm_signal(cfg, tau_dm_e, delta_dm, v_real),
+        grad_signal=grad.detach(),
         delta_dm=delta_dm,
         tau_dm=tau_dm,
         tau_dm_e=tau_dm_e,
         v_real_cond_dm=v_real,
         v_fake_cond_dm=v_fake,
-        eps_dm=eps_dm,
     )
-
-
-def mfd_steps(span_max: float, dtau: float, max_steps: int) -> int:
-    """Euler step count for one mean-flow integral: ceil(span / dtau), in [1, max_steps]."""
-    k = max(1, int(-(-span_max // dtau)))
-    return min(k, max(1, max_steps))
-
-
-def _mean_velocity(v_fn, x_a, sa, sb, K) -> torch.Tensor:
-    """Mean Euler velocity of ``v_fn`` from σ=sa to σ=sb (per sample, K uniform steps).
-
-    Accumulates ``mean_k v_k`` instead of dividing the displacement by ``sa − sb``;
-    at K=1 it is ``v_fn(x_a, sa)``.
-    """
-    B = x_a.shape[0]
-    sa_f, sb_f = sa.float(), sb.float()
-    h = ((sa_f - sb_f) / K).view(B, 1, 1, 1)
-    x = x_a
-    u = None
-    for k in range(K):
-        sig = (sa_f + (sb_f - sa_f) * (k / K)).to(sa.dtype) if k else sa
-        v = v_fn(x, sig).float()
-        u = v if u is None else u + v
-        if k + 1 < K:
-            x = (x.float() - h * v).to(x_a.dtype)
-    return u if K == 1 else u / K
-
-
-def mfd_surrogate(
-    ctx: RunContext,
-    cfg,
-    x_pred: torch.Tensor,
-    crossattn_emb: torch.Tensor,
-    c_null: torch.Tensor,
-    B: int,
-) -> DmdResult:
-    """Mean Flow Distillation (arXiv:2606.11155) in the DM slot.
-
-    Renoise x_θ to σ_a, integrate the CFG'd teacher and the fake to σ_b in K Euler
-    steps, and push x_θ along the endpoint gap ``−(σ_a − σ_b)·(U_real − U_fake)``.
-    The ODE Jacobian is taken as identity (their §B.6). ``to_zero`` at K=1 equals
-    :func:`dmd_surrogate` (same RNG draws, same values).
-
-    Field reuse: ``tau_dm`` = σ_a, ``tau_dm_e`` = σ_a − σ_b, ``v_*_cond_dm`` = U.
-    """
-    sa = _dm_tau(ctx, cfg, B)
-    eps_dm = torch.randn_like(x_pred)
-    if cfg.mfd_interval == "uniform":
-        sb = sa * torch.rand_like(sa)
-    else:
-        sb = torch.zeros_like(sa)
-    x_a = renoise(x_pred.detach(), sa, eps_dm)
-    K = mfd_steps(float((sa - sb).max()), cfg.mfd_dtau, cfg.mfd_max_steps)
-
-    def _v_real(x, sig):
-        return ctx.teacher_cfg_velocity(x, sig, crossattn_emb, c_null)
-
-    def _v_fake(x, sig):
-        return ctx.forward("fake", x, sig, crossattn_emb, no_grad=True)
-
-    u_real = _mean_velocity(_v_real, x_a, sa, sb, K)
-    u_fake = _mean_velocity(_v_fake, x_a, sa, sb, K)
-    delta = u_real - u_fake
-    span_e = (sa - sb).view(B, 1, 1, 1).float()
-    return DmdResult(
-        grad_signal=_dm_signal(cfg, span_e, delta, u_real),
-        delta_dm=delta,
-        tau_dm=sa,
-        tau_dm_e=span_e,
-        v_real_cond_dm=u_real,
-        v_fake_cond_dm=u_fake,
-        eps_dm=eps_dm,
-    )
-
-
-def dm_slot(
-    ctx: RunContext,
-    cfg,
-    x_pred: torch.Tensor,
-    crossattn_emb: torch.Tensor,
-    c_null: torch.Tensor,
-    B: int,
-) -> DmdResult:
-    """The DM-slot surrogate (MFD when ``mfd_dtau > 0``, else DMD) over
-    ``dm_draws`` independent (σ_a, ε_dm) draws on the same ``x_pred``.
-
-    ``grad_signal`` is the mean of the per-draw signals (each keeps its own
-    ``dm_x0_norm`` division); every other field is the first draw's, so the GAN
-    renoise and the metrics see what a single draw gives. At ``dm_draws = 1``
-    this is the surrogate call.
-    """
-    fn = mfd_surrogate if cfg.mfd_dtau > 0.0 else dmd_surrogate
-    first = fn(ctx, cfg, x_pred, crossattn_emb, c_null, B)
-    if cfg.dm_draws <= 1:
-        return first
-    acc = first.grad_signal.clone()
-    for _ in range(cfg.dm_draws - 1):
-        acc += fn(ctx, cfg, x_pred, crossattn_emb, c_null, B).grad_signal
-    return replace(first, grad_signal=acc / cfg.dm_draws)
-
-
-def cdm_off_trajectory_loss(
-    ctx: RunContext,
-    cfg,
-    roll: Rollout,
-    crossattn_emb: torch.Tensor,
-    c_null: torch.Tensor,
-    B: int,
-) -> None:
-    """L_CDM (arXiv:2605.06376 §3.3), backwarded here.
-
-    Euler-extrapolates the grad step's detached (x_g, v_g, σ_g) to t' ~ U(0,1), runs
-    one grad-bearing student forward there, and gives its clean estimate
-    ``x0_off = x_off − t'·v_off`` the DMD signal. Supervises the off-manifold region
-    few-step Euler drifts through, which on-trajectory rollouts never visit.
-
-    Must run before the GAN gen forward. The student forward is checkpointed under
-    ``cdm.grad_ckpt`` and recomputes at this backward, so the view is set back to
-    'student' first; backwarding here also frees the graph before the GAN forward.
-    """
-    s_g = roll.s_g
-    t_off = torch.rand(B).to(device=ctx.device, dtype=ctx.dtype)
-    # The leaf's grad flag is load-bearing: under the unsloth checkpoint, the
-    # reentrant path drops the LoRA param grads when every input is detached.
-    x_off = (
-        cdm_extrapolate(roll.x_g, roll.v_g, s_g, t_off).to(ctx.dtype).requires_grad_()
-    )
-    cdm_ckpt = (
-        selective_block_grad_ckpt(ctx.model) if cfg.cdm_grad_ckpt else nullcontext()
-    )
-    with cdm_ckpt:
-        v_off = ctx.forward("student", x_off, t_off, crossattn_emb, no_grad=False)
-    x0_off = x_off.float() - t_off.view(B, 1, 1, 1).float() * v_off.float()
-    tau_cdm = _uniform_tau(ctx, cfg, B)
-    eps_cdm = torch.randn(x0_off.shape, device=ctx.device, dtype=ctx.dtype)
-    x_renoised_cdm = renoise(x0_off.detach().to(ctx.dtype), tau_cdm, eps_cdm)
-    if cfg.cdm_teacher == "cond":
-        # The paper's L_CDM (Eq. 9): cond-only teacher; CFG reaches the student
-        # through the on-trajectory DM term alone.
-        v_real_cdm = ctx.forward(
-            "teacher", x_renoised_cdm, tau_cdm, crossattn_emb, no_grad=True
-        ).float()
-    else:
-        v_real_cdm = ctx.teacher_cfg_velocity(
-            x_renoised_cdm, tau_cdm, crossattn_emb, c_null
-        )
-    # Transition-aware fake: x0_off is the student's estimate at t'; σ_g is restored
-    # for the fake update that follows.
-    ctx.turbo.set_fake_source(t_off)
-    v_fake_cdm = ctx.forward(
-        "fake", x_renoised_cdm, tau_cdm, crossattn_emb, no_grad=True
-    )
-    ctx.turbo.set_fake_source(s_g)
-    tau_cdm_e = tau_cdm.view(B, 1, 1, 1).float()
-    grad_cdm = _dm_signal(cfg, tau_cdm_e, v_real_cdm - v_fake_cdm, v_real_cdm)
-    cdm_loss = (grad_cdm * x0_off).mean()
-    ctx.turbo.set_view("student")
-    (cfg.cdm_weight * cdm_loss).backward()
-    ctx.metrics.add_cdm(grad_cdm)
-
-
-def _teacher_feats(
-    ctx: RunContext, x_t: torch.Tensor, tau: torch.Tensor, crossattn_emb, *, no_grad
-):
-    """Frozen-teacher features at the GAN taps, early exit at the deepest one."""
-    return ctx.turbo.features_in_order(
-        ctx.forward(
-            "teacher",
-            x_t,
-            tau,
-            crossattn_emb,
-            no_grad=no_grad,
-            return_block_features=ctx.turbo.gan_feature_set,
-            return_features_early=True,
-        )
-    )
-
-
-def gan_generator_term(
-    ctx: RunContext,
-    cfg,
-    x_pred: torch.Tensor,
-    tau_dm: torch.Tensor,
-    eps_dm: torch.Tensor,
-    crossattn_emb: torch.Tensor,
-    gan_weight: float,
-) -> torch.Tensor:
-    """GAN generator term on the frozen teacher's features of the renoised x_pred.
-
-    The renoise keeps x_pred attached and the teacher forward is grad-enabled, so
-    the grad reaches the student; the disc is frozen here. Early exit keeps it a
-    half-depth forward (full depth OOM'd). Zero loss, no forward and no RNG draw
-    when the GAN is off or ``gan_weight`` is still 0 in the delay window.
-    """
-    turbo = ctx.turbo
-    if turbo.disc is None or gan_weight == 0.0:
-        return torch.zeros((), device=ctx.device)
-
-    turbo.set_disc_requires_grad(False)
-    x_renoised_gan = renoise(x_pred, tau_dm, eps_dm)
-    # ~3 GB of retained teacher activations otherwise.
-    gan_ckpt = (
-        selective_block_grad_ckpt(ctx.model) if cfg.gan_grad_ckpt else nullcontext()
-    )
-    with gan_ckpt:
-        feats = _teacher_feats(
-            ctx, x_renoised_gan, tau_dm, crossattn_emb, no_grad=False
-        )
-    return gan_loss_generator(turbo.disc(feats))
 
 
 class ClippedGradMean:
@@ -690,7 +192,7 @@ class ClippedGradMean:
 
     The caller clips each iteration's gradient before :meth:`add`, so every
     iteration enters at norm ≤ ``grad_clip``. Clipping the sum instead lets a
-    high-σ_a draw (DM grad norm 20–30 against a median near 2) outweigh the rest
+    high-τ draw (DM grad norm 20–30 against a median near 2) outweigh the rest
     of its group.
     """
 
@@ -744,7 +246,7 @@ def fake_regression_step(
 
 
 def sample_fake_tau(ctx: RunContext, cfg, B: int) -> torch.Tensor:
-    """Fake / disc renoise level, from ``sampling.t_distribution``."""
+    """Fake renoise level, from ``sampling.t_distribution``."""
     return sample_t(
         B,
         distribution=cfg.t_distribution,
@@ -754,85 +256,18 @@ def sample_fake_tau(ctx: RunContext, cfg, B: int) -> torch.Tensor:
     )
 
 
-@dataclass
-class FakeUpdate:
-    """Means over the ``fake_steps_per_student_step`` inner updates (detached).
-
-    ``gan_margin`` = mean real − mean fake logit (the hinge losses sit at ≈0.69 /
-    1.39 even while the disc is winning); ``gan_spread`` = std of the fake logits
-    (0 for a single-logit head); ``gn_*`` = pre-clip gradient norms.
-    """
-
-    fake_loss: torch.Tensor
-    gan_disc: torch.Tensor
-    gan_margin: torch.Tensor
-    gan_spread: torch.Tensor
-    gn_fake: torch.Tensor
-    gn_disc: torch.Tensor
-
-
-def _disc_update(
-    ctx: RunContext,
-    cfg,
-    x_pred_d: torch.Tensor,
-    latents: torch.Tensor,
-    crossattn_emb: torch.Tensor,
-    tau: torch.Tensor,
-    eps: torch.Tensor,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Disc step: renoised x_pred vs renoised real latents through the frozen
-    teacher (no grad), grad only to the disc head. Returns (loss, margin, spread,
-    pre-clip grad norm)."""
-    turbo = ctx.turbo
-    turbo.set_disc_requires_grad(True)
-
-    def logits(latent_in, extra_noise=None):
-        x_t = renoise(latent_in, tau, eps)
-        if extra_noise is not None:
-            x_t = x_t + extra_noise
-        return turbo.disc(_teacher_feats(ctx, x_t, tau, crossattn_emb, no_grad=True))
-
-    fake_logits = logits(x_pred_d)
-    real_logits = logits(latents)
-    loss = gan_loss_discriminator(real_logits, fake_logits)
-    with torch.no_grad():
-        margin = real_logits.mean() - fake_logits.mean()
-        fl = fake_logits.flatten()
-        spread = fl.std() if fl.numel() > 1 else torch.zeros((), device=ctx.device)
-
-    # Approximate R1 (APT): logit change under a small perturbation of the
-    # renoised real input.
-    if cfg.gan_r1_weight > 0.0:
-        real_logits_a = logits(latents, cfg.gan_r1_alpha * torch.randn_like(latents))
-        loss = loss + cfg.gan_r1_weight * nn.functional.mse_loss(
-            real_logits, real_logits_a
-        )
-
-    loss.backward()
-    gn = clip_or_norm(turbo.disc_params(), cfg.grad_clip)
-    ctx.disc_opt.step()
-    ctx.disc_opt.zero_grad(set_to_none=True)
-    ctx.disc_sched.step()
-    turbo.set_disc_requires_grad(False)
-    return loss.detach(), margin, spread, gn
-
-
 def fake_update(
     ctx: RunContext,
     cfg,
     x_pred: torch.Tensor,
-    latents: torch.Tensor,
     crossattn_emb: torch.Tensor,
     B: int,
-) -> FakeUpdate:
-    """Fake (critic) and disc updates against ``x_pred.detach()``.
-
-    ``fake_steps_per_student_step`` inner updates, each on fresh (τ, ε); with the
-    GAN on, the disc steps once per inner update (FastGen cadence).
-    """
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """``fake_steps_per_student_step`` fake (critic) updates against
+    ``x_pred.detach()``, each on fresh (τ, ε). Returns the mean loss and the mean
+    pre-clip gradient norm."""
     x_pred_d = x_pred.detach()
-    zero = torch.zeros((), device=ctx.device)
-    sums = [zero] * 6  # fake loss, disc loss, margin, spread, gn fake, gn disc
+    loss_sum = gn_sum = torch.zeros((), device=ctx.device)
     for _ in range(cfg.fake_steps_per_student_step):
         tau = sample_fake_tau(ctx, cfg, B)
         eps = torch.randn_like(x_pred_d)
@@ -840,14 +275,7 @@ def fake_update(
             ctx, cfg, x_pred_d, crossattn_emb, tau, eps
         )
         ctx.tau_profile.add(fake_loss, tau)
-        disc = (zero,) * 4
-        if ctx.turbo.disc is not None:
-            if not cfg.gan_use_same_t_noise:
-                tau = sample_fake_tau(ctx, cfg, B)
-                eps = torch.randn_like(x_pred_d)
-            disc = _disc_update(ctx, cfg, x_pred_d, latents, crossattn_emb, tau, eps)
-        d_loss, d_margin, d_spread, d_gn = disc
-        step = (fake_loss.detach(), d_loss, d_margin, d_spread, gn_fake, d_gn)
-        sums = [a + b for a, b in zip(sums, step)]
+        loss_sum = loss_sum + fake_loss.detach()
+        gn_sum = gn_sum + gn_fake
     n = cfg.fake_steps_per_student_step
-    return FakeUpdate(*(x / n for x in sums))
+    return loss_sum / n, gn_sum / n

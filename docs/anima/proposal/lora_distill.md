@@ -164,7 +164,7 @@ touch `train.py`, configs, caches, or the render line.
 - Probe support for the turbo port: the student only ever sees its 4 knots
   at inference, but the artist teacher's effect lives across all 28 — which
   interior knots matter is the same question the DP-DMD dynamic schedule
-  answered for the distiller (`dynamic_schedule`, `docs/anima/methods/turbo.md`).
+  answered for the distiller (the `dynamic_schedule` arm, since removed from the loop; `docs/anima/methods/turbo.md`).
 - Whether `--traj_stats` should grow a raw-`x_t` sidecar or the probe
   rollout should be its own tiny recorder (the sidecar was sized for codes,
   not latents; ~4096 tok × 16 ch × 28 knots × f16 ≈ 3.7 MB per trace — fine).

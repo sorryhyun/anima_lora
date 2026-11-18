@@ -98,7 +98,7 @@ Budgets from about 0.48 to 0.99 are one partition. No full LoRA has run below 0.
 the offloader moves; `stream` keeps `wq_t` on the host either way. Output and `dX` on a swapped
 stack equal the resident stack, eager and compiled, on both attach orders
 (`test_swapped_step_is_the_resident_step`). Turbo's sequence, a student forward whose graph outlives
-teacher and fake forwards, matches too, CDM's second student forward included
+teacher and fake forwards, matches too, CDM's second student forward (since removed from the loop) included
 (`test_turbo_step_on_swap_is_the_resident_step`). Those tests skip without `ANIMA_TEST_GPU=1`.
 
 `ama mitsuki`, 106 steps, budget 0.99, GPTQ forward copies, fp32 stream, one run per arm, 5070 Ti:
@@ -111,7 +111,7 @@ teacher and fake forwards, matches too, CDM's second student forward included
 | `full`, swap 14 | 526 ms | 11.10 GB |
 | `fwd`, swap 14 | 667 ms | 11.92 GB |
 
-Turbo, 30 steps, CDM on, GAN off, fp32 stream: 5.8 s/step and 12.36 GB at swap 0, 8.4 s/step and
+Turbo, 30 steps, CDM on, GAN off (both since removed from the loop), fp32 stream: 5.8 s/step and 12.36 GB at swap 0, 8.4 s/step and
 11.32 GB at swap 14. Every forward there rewinds the swap, so a step moves each swapped block
 several times. With the GAN on, 20 steps at swap 14 read 9.6 s/step and 11.35 GB.
 

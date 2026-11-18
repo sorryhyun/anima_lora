@@ -1862,7 +1862,7 @@ class Anima(nn.Module):
 
         Feature tap (default off: a no-op): ``capture_blocks`` stores
         listed block outputs into ``feature_sink``; ``stop_after_block`` breaks
-        the loop right after (the Turbo GAN gen-forward memory win — see
+        the loop right after (the early-exit memory win the since-removed Turbo GAN used — see
         ``forward_mini_train_dit``'s ``return_features_early``). Capture sits
         outside the compiled ``_forward``, so it's compile-safe.
         """

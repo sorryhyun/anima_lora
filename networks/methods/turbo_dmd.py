@@ -11,8 +11,6 @@ from collections.abc import Callable
 from typing import Literal
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
 from networks.attn_fuse import match_fused_spec
 from networks.lora_anima.factory import create_network
@@ -21,170 +19,6 @@ from networks.lora_anima.network import LoRANetwork
 logger = logging.getLogger(__name__)
 
 View = Literal["teacher", "student", "fake"]
-
-
-class FakeTransitionEmbed(nn.Module):
-    """σ of the student transition a fake sample came from → t-embedding delta.
-
-    VA-TDM's transition-aware field (arXiv:2611.06796, ``project/anima_turbo/vatdm.md``
-    idea 1): the fake's ``x_pred`` samples come from grad steps at different σ_g, each
-    with its own distribution. The output is added to the DiT's normalised t-embedding under the
-    fake view only. ``fc2`` is zero-initialised, so the fake starts as the plain one.
-    fp32; the fake is discarded at save.
-    """
-
-    def __init__(self, dim: int, hidden: int = 256, freq_dim: int = 256):
-        super().__init__()
-        self.freq_dim = int(freq_dim)
-        self.fc1 = nn.Linear(self.freq_dim, hidden)
-        self.fc2 = nn.Linear(hidden, dim)
-        nn.init.zeros_(self.fc2.weight)
-        nn.init.zeros_(self.fc2.bias)
-
-    def forward(self, sigma: torch.Tensor) -> torch.Tensor:
-        """``sigma`` (B,) in [0, 1] → (B, dim)."""
-        half = self.freq_dim // 2
-        freqs = torch.exp(
-            -torch.log(torch.tensor(10000.0, device=sigma.device))
-            * torch.arange(half, dtype=torch.float32, device=sigma.device)
-            / half
-        )
-        arg = (1000.0 * sigma.float())[:, None] * freqs[None, :]
-        emb = torch.cat([torch.cos(arg), torch.sin(arg)], dim=-1)
-        return self.fc2(F.silu(self.fc1(emb)))
-
-
-def _groups(num_channels: int) -> int:
-    """GroupNorm group count as FastGen picks it: 32 where it divides, else the
-    next divisor below (channels // 4 for 32 channels or fewer)."""
-    g = max(1, num_channels // 4) if num_channels <= 32 else 32
-    while num_channels % g != 0:
-        g -= 1
-    return g
-
-
-class TeacherFeatureDiscriminator(nn.Module):
-    """GAN head over frozen-teacher block features (FastGen idea 1).
-
-    - ``granularity="pooled"``: mean-pool each tap over every axis between
-      batch and channel -> ``(B, D)``, then a 2-layer MLP per tap -> ``(B, num_taps)``.
-    - ``granularity="token"`` (LADD-style dense head): the same per-tap MLP on
-      every token -> ``(B, num_taps·N)``.
-    - ``granularity="conv"``: FastGen's image-DiT head (``Discriminator_ImageDiT``),
-      per tap Conv2d 4×4 stride 2 → GroupNorm → LeakyReLU(0.2) → 1×1 conv on the
-      patch grid, then the mean over the grid -> ``(B, num_taps)``. About
-      16·D·hidden parameters per tap (8·D² at the default hidden = D // 2).
-
-    ``pooled`` and ``token`` do not reshape to a patch grid, so both run unchanged
-    on the eager ``(B,T,H,W,D)`` and compiled ``(B,1,L,1,D)`` layouts; their
-    parameters are identical, so resume bundles load across those two. fp32.
-    ~inner_dim²/2 params per tap (~2M at D=2048) for the MLP heads; discarded at save.
-
-    ``conv``, and ``token`` with ``pool`` k > 1, fold the tokens to the ``grid``
-    (h, w) given to ``forward``. ``pool`` mean-pools k×k before the MLP, one logit
-    per cell; rows and columns past a multiple of k are dropped.
-    """
-
-    def __init__(
-        self,
-        *,
-        inner_dim: int,
-        num_taps: int,
-        hidden_dim: int | None = None,
-        granularity: Literal["pooled", "token", "conv"] = "pooled",
-        pool: int = 1,
-    ) -> None:
-        super().__init__()
-        if granularity not in ("pooled", "token", "conv"):
-            raise ValueError(f"unknown disc granularity: {granularity!r}")
-        if pool < 1 or (pool > 1 and granularity != "token"):
-            raise ValueError(f"disc pool={pool} needs pool >= 1 and the token head")
-        self.granularity = granularity
-        self.pool = pool
-        h = hidden_dim if hidden_dim is not None else inner_dim // 2
-        if granularity == "conv":
-            self.heads = nn.ModuleList(
-                nn.Sequential(
-                    nn.Conv2d(inner_dim, h, kernel_size=4, stride=2, padding=1),
-                    nn.GroupNorm(_groups(h), h),
-                    nn.LeakyReLU(0.2),
-                    nn.Conv2d(h, 1, kernel_size=1),
-                )
-                for _ in range(num_taps)
-            )
-        else:
-            self.heads = nn.ModuleList(
-                nn.Sequential(
-                    nn.LayerNorm(inner_dim),
-                    nn.Linear(inner_dim, h),
-                    nn.LeakyReLU(0.2),
-                    nn.Linear(h, 1),
-                )
-                for _ in range(num_taps)
-            )
-
-    @property
-    def needs_grid(self) -> bool:
-        return self.granularity == "conv" or self.pool > 1
-
-    @staticmethod
-    def _fold(f: torch.Tensor, grid: tuple[int, int]) -> torch.Tensor:
-        """(B, ..., D) tokens in row-major order → (B, h, w, D)."""
-        h, w = grid
-        B, D = f.shape[0], f.shape[-1]
-        f = f.reshape(B, -1, D)
-        if f.shape[1] < h * w:
-            raise ValueError(f"{f.shape[1]} tokens for a {h}x{w} grid")
-        return f[:, : h * w].reshape(B, h, w, D)
-
-    def _pool_tokens(self, f: torch.Tensor, grid: tuple[int, int]) -> torch.Tensor:
-        """→ (B, h//k · w//k, D) cell means."""
-        k = self.pool
-        f = self._fold(f, grid)
-        B, h, w, D = f.shape
-        f = f[:, : h // k * k, : w // k * k]
-        return f.reshape(B, h // k, k, w // k, k, D).mean((2, 4)).flatten(1, 2)
-
-    def forward(
-        self, feats: list[torch.Tensor], grid: tuple[int, int] | None = None
-    ) -> torch.Tensor:
-        if len(feats) != len(self.heads):
-            raise ValueError(
-                f"TeacherFeatureDiscriminator expected {len(self.heads)} feature "
-                f"tensors, got {len(feats)}"
-            )
-        if self.needs_grid and grid is None:
-            raise ValueError(
-                f"disc head={self.granularity} pool={self.pool} needs the token "
-                "grid (h, w)"
-            )
-        logits = []
-        for head, f in zip(self.heads, feats):
-            f = f.float()
-            if self.granularity == "conv":
-                x = self._fold(f, grid).permute(0, 3, 1, 2)  # (B, D, h, w)
-                logits.append(head(x).mean((2, 3)))  # (B, 1)
-            elif self.granularity == "token":
-                if self.pool > 1:
-                    f = self._pool_tokens(f, grid)
-                logits.append(head(f).flatten(1))
-            else:
-                # Pool over every axis between batch (0) and channel (-1).
-                pooled = f.mean(dim=tuple(range(1, f.ndim - 1)))  # (B, D)
-                logits.append(head(pooled))
-        return torch.cat(logits, dim=1)  # (B, num_taps) | (B, num_taps·N)
-
-
-def gan_loss_generator(fake_logits: torch.Tensor) -> torch.Tensor:
-    """Softplus hinge — generator wants the disc to score its samples as real."""
-    return F.softplus(-fake_logits).mean()
-
-
-def gan_loss_discriminator(
-    real_logits: torch.Tensor, fake_logits: torch.Tensor
-) -> torch.Tensor:
-    """Softplus hinge — push real logits up, fake logits down (FastGen common_loss)."""
-    return F.softplus(fake_logits).mean() + F.softplus(-real_logits).mean()
 
 
 def load_step_expert_student(
@@ -392,11 +226,6 @@ class TurboDMDNetwork:
         fake_adaln: bool | None = None,
         adaln_rank: int = 0,
         adaln_alpha: float = 0.0,
-        gan_feature_indices: set[int] | None = None,
-        gan_disc_hidden: int | None = None,
-        gan_disc_head: Literal["pooled", "token", "conv"] = "pooled",
-        gan_disc_pool: int = 1,
-        fake_transition: bool = False,
         before_apply: Callable[[], None] | None = None,
     ) -> None:
         self.unet = unet
@@ -462,42 +291,6 @@ class TurboDMDNetwork:
         self.fake.set_enabled(False)
         self._view: View = "teacher"
 
-        # Transition-aware fake: a forward hook on the DiT's t_embedding_norm adds
-        # FakeTransitionEmbed(σ_src) under the fake view. The norm runs in the
-        # uncompiled top-level forward, so the hook fires under compile_blocks.
-        # Every fake-view forward needs a source σ (set_fake_source).
-        self.fake_transition: FakeTransitionEmbed | None = None
-        self._fake_src: float | torch.Tensor | None = None
-        if fake_transition:
-            self.fake_transition = FakeTransitionEmbed(unet.model_channels)
-            unet.t_embedding_norm.register_forward_hook(self._t_embedding_hook)
-            logger.info(
-                "TurboDMDNetwork: transition-aware fake "
-                f"({sum(p.numel() for p in self.fake_transition.parameters()):,} params, "
-                "zero-init)"
-            )
-
-        # GAN: the disc reads frozen-teacher block activations through the DiT's
-        # feature tap (return_block_features / return_features_early); the caller
-        # passes the dict through features_in_order.
-        self.disc: TeacherFeatureDiscriminator | None = None
-        self.gan_feature_indices: list[int] = []
-        if gan_feature_indices:
-            self.gan_feature_indices = sorted(gan_feature_indices)
-            self.disc = TeacherFeatureDiscriminator(
-                inner_dim=unet.model_channels,
-                num_taps=len(self.gan_feature_indices),
-                hidden_dim=gan_disc_hidden,
-                granularity=gan_disc_head,
-                pool=gan_disc_pool,
-            )
-            logger.info(
-                f"TurboDMDNetwork: GAN disc attached (taps={self.gan_feature_indices}, "
-                f"head={gan_disc_head}, pool={gan_disc_pool}, "
-                f"inner_dim={unet.model_channels}, "
-                f"{sum(p.numel() for p in self.disc.parameters()):,} params)"
-            )
-
     def _create_stack(
         self, rank: int, alpha: float | None, down_init: str, adaln: bool
     ) -> LoRANetwork:
@@ -521,37 +314,6 @@ class TurboDMDNetwork:
             channel_scaling_alpha=self.channel_scaling_alpha,
             **kwargs,
         )
-
-    @property
-    def gan_feature_set(self) -> set[int] | None:
-        """Tap indices as a set for ``return_block_features`` (None when GAN off)."""
-        return set(self.gan_feature_indices) if self.gan_feature_indices else None
-
-    def features_in_order(self, feats: dict[int, torch.Tensor]) -> list[torch.Tensor]:
-        """Reorder a model feature-dict to tap-index order for the disc.
-
-        ``feats`` is the dict returned by the teacher feature-tap forward
-        (``return_block_features``); raises if a tap is missing (mis-wired call).
-        """
-        try:
-            return [feats[i] for i in self.gan_feature_indices]
-        except KeyError as e:
-            raise RuntimeError(
-                f"GAN feature tap {e} missing from teacher forward output — "
-                "the forward was not run with return_block_features=gan_feature_set."
-            ) from e
-
-    def disc_params(self):
-        """Trainable params for the discriminator optimizer."""
-        if self.disc is None:
-            return []
-        return [p for p in self.disc.parameters() if p.requires_grad]
-
-    def set_disc_requires_grad(self, flag: bool) -> None:
-        """False during the student step (the GAN gen grad reaches only x_pred),
-        True during the disc update."""
-        if self.disc is not None:
-            self.disc.requires_grad_(flag)
 
     # Per-view (student_on, fake_on).
     _VIEW_FLAGS: dict[str, tuple[bool, bool]] = {
@@ -585,39 +347,13 @@ class TurboDMDNetwork:
     def view(self) -> View:
         return self._view
 
-    def set_fake_source(self, sigma: float | torch.Tensor | None) -> None:
-        """σ of the student transition the fake's next inputs came from (a float, or
-        a (B,) tensor). No-op without ``fake_transition``."""
-        self._fake_src = sigma
-
-    def _t_embedding_hook(self, module, inputs, output):
-        if self._view != "fake":
-            return None
-        src = self._fake_src
-        if src is None:
-            raise RuntimeError(
-                "transition-aware fake: fake-view forward with no source σ "
-                "(call set_fake_source first)"
-            )
-        B = output.shape[0]
-        if isinstance(src, torch.Tensor):
-            sigma = src.detach().to(output.device, torch.float32).reshape(-1).expand(B)
-        else:
-            sigma = torch.full((B,), float(src), device=output.device)
-        with torch.autocast(output.device.type, enabled=False):
-            delta = self.fake_transition(sigma)
-        return output + delta.to(output.dtype).unsqueeze(1)
-
     def student_params(self):
         """Trainable params for the student optimizer."""
         return [p for p in self.student.parameters() if p.requires_grad]
 
     def fake_params(self):
-        """Trainable params for the fake optimizer (with the transition embed)."""
-        params = [p for p in self.fake.parameters() if p.requires_grad]
-        if self.fake_transition is not None:
-            params += list(self.fake_transition.parameters())
-        return params
+        """Trainable params for the fake optimizer."""
+        return [p for p in self.fake.parameters() if p.requires_grad]
 
     def freeze_dit(self) -> None:
         """Set ``requires_grad=False`` on every base DiT param.

@@ -4,7 +4,7 @@
 > `_archive/bench/cross_attn_drive/` — mechanism questions answered, the
 > exploitation lever shipped as `--xattn_boost` (see
 > `docs/anima/inference/xattn_boost.md`, `bench/frontload_text_boost/`). The glyph
-> scatter probe lives on in `bench/turbo/glyph_scatter_probe.py` (turbo
+> scatter probe is `_archive/bench/turbo/glyph_scatter_probe.py` (local; turbo
 > text-loss diagnosis). Paths below are pre-archive.
 >
 > STATUS (2026-06-28). Measurement-only finding. Two probes added under

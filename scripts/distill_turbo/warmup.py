@@ -47,7 +47,6 @@ def run_fake_warmup(ctx: RunContext, cfg) -> None:
 
         tau = sample_fake_tau(ctx, cfg, B)
         eps = torch.randn_like(x_pred_d)
-        ctx.turbo.set_fake_source(t)  # x_pred_d is the student's one step at σ = t
         fake_loss, _ = fake_regression_step(ctx, cfg, x_pred_d, crossattn_emb, tau, eps)
         tau_profile.add(fake_loss, tau)
         if (i + 1) % cfg.log_interval == 0:

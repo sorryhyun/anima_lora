@@ -131,25 +131,6 @@ def _build_model(cfg: TurboConfig, device, dtype) -> tuple[Anima, TurboDMDNetwor
     place_dit_for_training(model, device, blocks_to_swap=cfg.blocks_to_swap)
     enable_training_grad_ckpt(model, enabled=cfg.grad_ckpt)
 
-    gan_indices = None
-    if cfg.gan_on:
-        bidx = cfg.gan_feature_block_idx
-        if bidx < 0:
-            bidx = model.num_blocks // 2
-        if not 0 <= bidx < model.num_blocks:
-            raise ValueError(
-                f"gan.feature_block_idx resolved to {bidx}, out of range "
-                f"[0, {model.num_blocks})"
-            )
-        gan_indices = {bidx}
-        if cfg.gan_feature_blocks:
-            gan_indices = set(cfg.gan_feature_blocks)
-            if max(gan_indices) >= model.num_blocks:
-                raise ValueError(
-                    f"gan.feature_blocks={sorted(gan_indices)}: out of range "
-                    f"[0, {model.num_blocks})"
-                )
-
     int8_base_id = ""
 
     def convert_base() -> None:
@@ -178,18 +159,11 @@ def _build_model(cfg: TurboConfig, device, dtype) -> tuple[Anima, TurboDMDNetwor
         fake_adaln=cfg.fake_adaln,
         adaln_rank=cfg.adaln_rank,
         adaln_alpha=cfg.adaln_alpha,
-        gan_feature_indices=gan_indices,
-        gan_disc_hidden=cfg.gan_disc_hidden if cfg.gan_disc_hidden > 0 else None,
-        gan_disc_head=cfg.gan_disc_head,
-        gan_disc_pool=cfg.gan_disc_pool,
-        fake_transition=cfg.fake_transition,
         before_apply=convert_base,
     )
     turbo.freeze_dit()
     turbo.student.to(device=device, dtype=dtype)
     turbo.fake.to(device=device, dtype=dtype)
-    if turbo.fake_transition is not None:
-        turbo.fake_transition.to(device=device)  # fp32
     return model, turbo, int8_base_id
 
 
@@ -410,8 +384,7 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
     # Before any block traces: the views give each block more graphs than the
     # default limit of 8, and pin_dynamo_limit survives into backward.
     # set_num_threads is forced now because a later change is a GLOBAL_STATE
-    # guard: it recompiles everything and raises CheckpointError under the GAN's
-    # checkpoint.
+    # guard: it recompiles everything.
     if cfg.torch_compile:
         pin_dynamo_limit("recompile_limit", cfg.dynamo_recompile_limit)
     torch.set_num_threads(torch.get_num_threads())
@@ -427,8 +400,6 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
             warm_start_plain_lora(turbo.student, cfg.student_init_weights, "student")
         if cfg.fake_init_weights:
             warm_start_plain_lora(turbo.fake, cfg.fake_init_weights, "fake")
-    if turbo.disc is not None:
-        turbo.disc.to(device=device)  # fp32; its forward casts the features up
 
     _compile(cfg, model)
 
@@ -448,22 +419,6 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         cfg.fake_lr,
         cfg.lr_schedule,
     )
-    disc_opt = disc_sched = None
-    if turbo.disc is not None:
-        disc_opt = _adamw(turbo.disc_params(), cfg.gan_disc_lr, cfg, betas=(0.0, 0.99))
-        # anchor_only (paired GAN): one disc step per iteration, no fake loop.
-        disc_steps = cfg.iterations * (
-            1 if cfg.anchor_only else cfg.fake_steps_per_student_step
-        )
-        disc_sched = make_scheduler(
-            disc_opt,
-            disc_steps,
-            cfg.gan_disc_lr,
-            cfg.lr_schedule,
-        )
-        n_disc = sum(p.numel() for p in turbo.disc_params())
-        logger.info(f"trainable: disc={n_disc:,}")
-
     start_step = 0
     if resume_state is not None:
         start_step = apply_resume_state(
@@ -472,10 +427,8 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
             turbo=turbo,
             student_opt=student_opt,
             fake_opt=fake_opt,
-            disc_opt=disc_opt,
             student_sched=student_sched,
             fake_sched=fake_sched,
-            disc_sched=disc_sched,
         )
         if start_step >= cfg.iterations:
             raise SystemExit(
@@ -506,17 +459,9 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
     pad_cache = PadCache(dtype)
 
     def forward(
-        view: str,
-        x: torch.Tensor,
-        t_b: torch.Tensor,
-        c: torch.Tensor,
-        *,
-        no_grad: bool,
-        return_block_features: set | None = None,
-        return_features_early: bool = False,
+        view: str, x: torch.Tensor, t_b: torch.Tensor, c: torch.Tensor, *, no_grad: bool
     ):
-        """The DiT as ``view`` on a 4D ``x``: the 4D velocity, or under
-        ``return_features_early`` the ``{block_idx: feat}`` of the GAN taps.
+        """The DiT as ``view`` on a 4D ``x`` → the 4D velocity.
 
         ``model.training`` stays True for the whole run (the DiT is frozen), which
         keeps ``Block.forward``'s grad-ckpt gate armed; toggling it per forward was
@@ -532,10 +477,8 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
                 c,
                 padding_mask=pad_cache.get(x),
                 skip_pooled_text_proj=True,
-                return_block_features=return_block_features,
-                return_features_early=return_features_early,
             )
-        return out if return_features_early else out.squeeze(2)
+        return out.squeeze(2)
 
     def teacher_cfg_velocity(x, t_b, c_cond, c_null):
         """CFG'd teacher velocity ``v_u + α·(v_c − v_u)`` (no grad, fp32)."""
@@ -552,11 +495,20 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
     teacher_anchor_sigmas = get_timesteps_sigmas(
         cfg.teacher_anchor_steps, cfg.flow_shift, "cpu"
     )[1].tolist()
+    sigma_k = teacher_anchor_sigmas[cfg.k_anchor]
     logger.info(
         f"DP-DMD grids: student σ={['%.3f' % s for s in student_sigmas]}, "
-        f"anchor t_k={teacher_anchor_sigmas[cfg.k_anchor]:.4f} (teacher step "
+        f"anchor σ_k={sigma_k:.4f} (teacher step "
         f"{cfg.k_anchor}/{cfg.teacher_anchor_steps})"
     )
+    if cfg.div_weight > 0.0 and abs(sigma_k - student_sigmas[1]) > 1e-4:
+        logger.warning(
+            f"anchor interval mismatch: the target is the teacher's mean velocity "
+            f"over σ [{sigma_k:.3f}, 1], and step 0 applies it over "
+            f"σ [{student_sigmas[1]:.3f}, 1]. A step 0 at zero anchor loss then lands "
+            f"on the chord's point at σ {student_sigmas[1]:.3f}, not on a teacher "
+            "state. Set dpdmd.k_anchor so that σ_k is the student's σ_1."
+        )
 
     ema, ema_lr_mean = _build_ema(cfg, turbo, student_updates, start_step)
     try:
@@ -572,10 +524,8 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         cond_dtype=dtype,
         student_opt=student_opt,
         fake_opt=fake_opt,
-        disc_opt=disc_opt,
         student_sched=student_sched,
         fake_sched=fake_sched,
-        disc_sched=disc_sched,
         dataloader=dataloader,
         data_iter=iter(dataloader),
         anchor_cache=anchor_cache,
@@ -609,12 +559,6 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
     else:
         run_fake_warmup(ctx, cfg)
 
-    if cfg.dynamic_schedule:
-        logger.info(
-            f"dynamic schedule ON (CDM): per-iteration rollout grid, "
-            f"N ~ U{{2..{cfg.student_steps}}}, continuous anchors (t_1=1 pinned); "
-            "validation and inference keep the static grid."
-        )
     logger.info(
         f"{'resuming' if start_step else 'starting'} turbo training: "
         f"steps {start_step} → {cfg.iterations}"

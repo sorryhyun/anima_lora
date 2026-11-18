@@ -3,8 +3,7 @@
 ``save_student`` ships only the student LoRA. Restarting from a step-tagged
 checkpoint would re-warm a *cold* critic against an *already trained* student and
 reset the LR cosine to its peak, the regime the critic runaway lives in. This
-module checkpoints the critic, discriminator and all three optimizer/scheduler
-pairs as well.
+module checkpoints the critic and both optimizer/scheduler pairs as well.
 
 The bundle is a single rolling ``{output_name}_resume.pt`` next to the step-tagged
 students, rewritten atomically each ``save_every``. Only the latest is kept: it is
@@ -33,11 +32,7 @@ FORMAT_VERSION = 1
 _STRICT_FIELDS = (
     "student_rank",
     "fake_rank",
-    "gan_disc_hidden",
-    "gan_feature_block_idx",
-    "gan_feature_blocks",
     "channel_scaling_alpha",
-    "fake_transition",
 )
 
 # Fields that change the objective or schedule but not the shapes: a change is
@@ -47,28 +42,16 @@ _WARN_FIELDS = (
     "iterations",
     "student_lr",
     "fake_lr",
-    "gan_disc_lr",
-    "gan_disc_head",  # same disc parameters pooled or per-token
-    "gan_disc_pool",
     "student_alpha",
     "fake_alpha",
     "student_steps",
+    "flow_shift",
+    "k_anchor",
+    "teacher_anchor_steps",
     "div_weight",
-    "dm_first_step",
-    "rollout_grad",
-    "gan_loss_weight_gen",
-    "gan_delay_steps",
-    "gan_warmup_steps",
+    "anchor_only",
     "fake_steps_per_student_step",
     "teacher_cfg",
-    "dynamic_schedule",
-    "cdm_weight",
-    "cdm_teacher",
-    "mfd_dtau",
-    "mfd_max_steps",
-    "mfd_interval",
-    "fm_weight",
-    "fm_block_idx",
     "stream",
 )
 
@@ -95,16 +78,13 @@ def save_resume_state(
     turbo,
     student_opt,
     fake_opt,
-    disc_opt,
     student_sched,
     fake_sched,
-    disc_sched,
 ) -> None:
     """Atomically write the full mutable loop state after ``step`` completed steps."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    ft = getattr(turbo, "fake_transition", None)
     state: dict[str, Any] = {
         "format": FORMAT_VERSION,
         "step": int(step),
@@ -112,14 +92,10 @@ def save_resume_state(
         "fingerprint": _fingerprint(cfg),
         "student": turbo.student.state_dict(),
         "fake": turbo.fake.state_dict(),
-        "fake_transition": ft.state_dict() if ft is not None else None,
-        "disc": turbo.disc.state_dict() if turbo.disc is not None else None,
         "student_opt": student_opt.state_dict(),
         "fake_opt": fake_opt.state_dict(),
-        "disc_opt": disc_opt.state_dict() if disc_opt is not None else None,
         "student_sched": student_sched.state_dict(),
         "fake_sched": fake_sched.state_dict(),
-        "disc_sched": disc_sched.state_dict() if disc_sched is not None else None,
         "rng": {
             "torch": torch.get_rng_state(),
             "cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else [],
@@ -234,52 +210,32 @@ def apply_resume_state(
     turbo,
     student_opt,
     fake_opt,
-    disc_opt,
     student_sched,
     fake_sched,
-    disc_sched,
 ) -> int:
     """Restore the loop state in place; returns the number of completed steps
     (the index the loop resumes at)."""
     _check_fingerprint(state, cfg)
 
-    # Bundles from the removed dual-pool student / τ-split critic carry a
-    # second stack whose optimizer state cannot align with this one.
-    for key, what in (("student_div", "dual-pool"), ("fake_hi", "τ-split critic")):
+    # Bundles from removed features carry state this loop has no place for: a
+    # second stack, a disc, or a fake trained with the transition embed.
+    for key, what in (
+        ("student_div", "dual-pool"),
+        ("fake_hi", "τ-split critic"),
+        ("disc", "GAN"),
+        ("fake_transition", "transition-aware fake"),
+    ):
         if state.get(key) is not None:
             raise ResumeMismatchError(
                 f"resume bundle was written by a {what} run (removed); start fresh."
             )
     turbo.student.load_state_dict(state["student"])
     turbo.fake.load_state_dict(state["fake"])
-    ft = getattr(turbo, "fake_transition", None)
-    if ft is not None:
-        if state.get("fake_transition") is None:
-            raise ResumeMismatchError(
-                "config enables network.fake_transition but the resume bundle has no "
-                "transition-embed state (it was written by a run without it)."
-            )
-        ft.load_state_dict(state["fake_transition"])
-    if turbo.disc is not None:
-        if state.get("disc") is None:
-            raise ResumeMismatchError(
-                "config enables the GAN disc but the resume bundle has no disc state "
-                "(it was written by a run with the GAN off)."
-            )
-        turbo.disc.load_state_dict(state["disc"])
-    elif state.get("disc") is not None:
-        logger.warning(
-            "resume: bundle carries disc state but the GAN is off — dropped."
-        )
 
     student_opt.load_state_dict(state["student_opt"])
     fake_opt.load_state_dict(state["fake_opt"])
     _restore_scheduler(student_sched, state["student_sched"])
     _restore_scheduler(fake_sched, state["fake_sched"])
-    if disc_opt is not None and state.get("disc_opt") is not None:
-        disc_opt.load_state_dict(state["disc_opt"])
-    if disc_sched is not None and state.get("disc_sched") is not None:
-        _restore_scheduler(disc_sched, state["disc_sched"])
 
     rng = state.get("rng") or {}
     try:

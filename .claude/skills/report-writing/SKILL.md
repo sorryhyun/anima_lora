@@ -60,8 +60,8 @@ emphasis for the writer's own stress.
 
 ## Index files
 
-`README.md` maps, `reports/README.md`, `configs/README.md`, `findings/README.md` and run tables stay
-lists and tables: each entry says what the file or run is, plus a number or a recorded verdict where
+`README.md` maps, the `README.md` of a line's `reports/`, `configs/` and `findings/` folders, and
+run tables stay lists and tables: each entry says what the file or run is, plus a number or a recorded verdict where
 one exists. Readings go in a short note under the table, not in its cells.
 
 A verdict cell uses one of: baseline, passed, not passed, level, adopted on the user's read,
