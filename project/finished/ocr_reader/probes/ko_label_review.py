@@ -14,10 +14,10 @@ Manga109 COO onomatopoeia and the speech text (``manifest.parquet``), to compare
 ``linebreak_suspicious`` (``linebreak_auto.py apply``): JA speech rows whose automatic line
 breaks missed the gate; the box holds the proposed breaks, the meta line the per-column
 read and its distance to the label (largest first). ``ok`` takes the proposal.
-``dots_suspicious`` (``linebreak_auto.py dots``): dot-only labels whose re-spelling from the
-page's dot columns missed its checks; same ``ok`` rule. ``odd_dots``: the other speech rows
-whose dots ``ellipsis_fold`` left odd, the box holding ``round_dots``' spelling; same ``ok``
-rule, split runs first.
+``odd_dots``: speech rows with text whose dots ``ellipsis_fold`` left odd, the box holding
+``round_dots``' spelling; same ``ok`` rule, split runs first. (``dots_suspicious``, the
+dot-only rows ``linebreak_auto.py dots`` could not spell, was reviewed in full on 11-18 and
+is no longer listed; ``apply_ko_review.py`` still takes its rows.)
 
 hito rows also show the twin crop (the other edition's lettering of the same region) with
 its v4 read, and the read's mean token logprob (``prelabel_v4lp.jsonl``); they sort lowest
@@ -130,7 +130,7 @@ header .pager { margin:0; }
 const DATA = __DATA__;
 const MIN_DEFAULT = __MINRUN__;
 const SORT_DEFAULT = {"gelnote_ko": "nolf", "swaprelax_v5": "sus", "hito_v4_ja": "lp", "hito_v4_ko": "lp",
-                      "linebreak_suspicious": "sus", "dots_suspicious": "sus", "odd_dots": "sus"};
+                      "linebreak_suspicious": "sus", "odd_dots": "sus"};
 const PER = 50;
 const KEY = "ko_label_review_v1";
 let store = {};
@@ -502,43 +502,6 @@ def odd_dot_rows(d: Path) -> dict[str, list[dict]]:
     return {"odd_dots": rows}
 
 
-def dots_rows(d: Path) -> dict[str, list[dict]]:
-    """``linebreak_auto.py dots``'s dot-only rows that missed its checks: the proposal
-    (``ceil(dots / 3)`` × ``…`` per printed column) as the label, the counted dots per
-    column and the label's own spelling as a note; largest count mismatch first."""
-    path = REPO / "output/ocr/linebreak/dots_suspicious.jsonl"
-    if not path.exists():
-        return {}
-    df = pd.read_parquet(d / "manifest_sfxp_speech.parquet")
-    crop = {(r.book, int(r.page), str(r.id)): r.path for r in df.itertuples()}
-    rows = []
-    for line in open(path, encoding="utf-8"):
-        x = json.loads(line)
-        k = (x["book"], int(x["page"]), str(x["id"]))
-        if k not in crop:
-            continue
-        page = m109.page_path(x["book"], int(x["page"]))
-        got = sum(x["cols"])
-        rows.append(
-            dict(
-                id=f"{x['book']}_{int(x['page']):03d}_{x['id']}",
-                text=x["out"],
-                run=0,
-                sus=abs(got - x["label_dots"]) / max(1, x["label_dots"]),
-                why=f"dots per column {x['cols']} · label {x['label_dots']}",
-                lf=int("\n" in x["out"]),
-                len=len(x["raw"]),
-                status="",
-                note=f"label: {x['raw']}",
-                img=(d / crop[k]).as_uri(),
-                page=page.as_uri() if page.exists() else "",
-                box=[],
-            )
-        )
-    print(f"[review] dots_suspicious: {len(rows)} rows", flush=True)
-    return {"dots_suspicious": rows}
-
-
 def ref_rows(d: Path, n: int, seed: int = 0) -> dict[str, list[dict]]:
     """Read-only Manga109 references: ``n`` seeded rows each of COO onomatopoeia
     (``kind = sfx``) and speech text from ``manifest.parquet``."""
@@ -651,7 +614,6 @@ def main():
     data.update(hito_rows(d))
     data.update(odd_dot_rows(d))
     data.update(linebreak_rows(d))
-    data.update(dots_rows(d))
     if a.ref_n:
         data.update(ref_rows(d, a.ref_n))
     a.out.mkdir(parents=True, exist_ok=True)
