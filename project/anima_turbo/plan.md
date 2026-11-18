@@ -70,6 +70,21 @@ the student's one jump), `A>S@1` (the anchor target, then the jump). The read an
 the job's header before it runs (`experiment-planning` skill); the 4-step `T>S@1` of each student
 (0.94) is the reference.
 
+A1 as queued (2026-11-18, the user's go; label `handoff_2step_a1`, behind `1425`'s probe):
+
+- Question: at 2 steps, is the loss in step 0 or in the one jump σ 0.75 → 0? `A>S@1` near the
+  4-step `A>S@1` (0.966 on `0823`) → the jump holds and the 2-step student is a step-0 problem,
+  which item 2 is on. `A>S@1` well under it → the jump is what a 2-step arm trains
+  (`teacher_handoff` on the 2-step grid).
+- Students: the v1.1 delta untrained, `0823` EMA 6484, `1353` EMA 2048. None trained the jump.
+- Records it rests on: 4-step `T>S@1` cos 0.932 (v1.1, `reports/v11_init.md`), 0.944 (`0823`),
+  0.942 (`1353`); 4-step `A>S@1` 0.966 (`0823`, `reports/step0_depth.md`).
+- Read: the probe grids (group / café / guitarist, seeds 1–4, arms `T`, `T>S@1`, `A>S@1`, `S`),
+  labelled, beside the cos and sameness columns. The user's read decides.
+- Bars: spread unknown (no 2-step twin); the numbers go beside the 4-step ones of the same
+  students.
+- Cost: forward only, about 3 min a student, about 10 min.
+
 Interpretation:
 
 - A high `A>S@1` with a low `S` puts the 2-step loss in step 0, which item 2 is fitting already.
