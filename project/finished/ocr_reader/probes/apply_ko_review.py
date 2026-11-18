@@ -12,7 +12,7 @@ Manifests per source: gelnote_ko / gelnote_zh → ``manifest_pseudo_gelnote_{ko,
 ``manifest_sfxp_kozh``;
 swaprelax_v5 → ``manifest_pseudo_swaprelax_v5`` + ``manifest_sfxp_kozh``;
 hito_v4_ja / hito_v4_ko → ``manifest_pseudo_hito_v4``;
-linebreak_suspicious / dots_suspicious → ``manifest_sfxp_speech`` (``orig`` is a proposal,
+linebreak_suspicious / dots_suspicious / odd_dots → ``manifest_sfxp_speech`` (``orig`` is a proposal,
 so ``ok`` writes it too; a row matches when its text equals ``orig`` blind to whitespace and
 dot glyphs). Each manifest
 is copied to ``<name>.pre_review.parquet`` once, before its first change.
@@ -41,8 +41,9 @@ TARGETS = {
     "hito_v4_ko": ["pseudo_hito_v4"],
     "linebreak_suspicious": ["sfxp_speech"],
     "dots_suspicious": ["sfxp_speech"],
+    "odd_dots": ["sfxp_speech"],
 }
-APPLY_OK = {"linebreak_suspicious", "dots_suspicious"}
+APPLY_OK = {"linebreak_suspicious", "dots_suspicious", "odd_dots"}
 """Sources whose page text is a proposal, not the manifest's text: ``ok`` applies it."""
 
 
@@ -89,7 +90,7 @@ def main():
             key = df.source.astype(str) + ":" + df.id.astype(str)
         elif name == "sfxp_speech":  # the review id is <book>_<page:03d>_<text id>
             key = [
-                f"{b}_{int(p):03d}_{t}" if s == "sfxp_speech" else None
+                f"{b}_{int(p):03d}_{t}" if s in ("sfxp_speech", "m109_lines") else None
                 for b, p, t, s in zip(df.book, df.page, df.id, df.source)
             ]
         else:

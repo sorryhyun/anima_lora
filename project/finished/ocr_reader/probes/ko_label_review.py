@@ -15,7 +15,9 @@ Manga109 COO onomatopoeia and the speech text (``manifest.parquet``), to compare
 breaks missed the gate; the box holds the proposed breaks, the meta line the per-column
 read and its distance to the label (largest first). ``ok`` takes the proposal.
 ``dots_suspicious`` (``linebreak_auto.py dots``): dot-only labels whose re-spelling from the
-page's dot columns missed its checks; same ``ok`` rule.
+page's dot columns missed its checks; same ``ok`` rule. ``odd_dots``: the other speech rows
+whose dots ``ellipsis_fold`` left odd, the box holding ``round_dots``' spelling; same ``ok``
+rule, split runs first.
 
 hito rows also show the twin crop (the other edition's lettering of the same region) with
 its v4 read, and the read's mean token logprob (``prelabel_v4lp.jsonl``); they sort lowest
@@ -128,7 +130,7 @@ header .pager { margin:0; }
 const DATA = __DATA__;
 const MIN_DEFAULT = __MINRUN__;
 const SORT_DEFAULT = {"gelnote_ko": "nolf", "swaprelax_v5": "sus", "hito_v4_ja": "lp", "hito_v4_ko": "lp",
-                      "linebreak_suspicious": "sus", "dots_suspicious": "sus"};
+                      "linebreak_suspicious": "sus", "dots_suspicious": "sus", "odd_dots": "sus"};
 const PER = 50;
 const KEY = "ko_label_review_v1";
 let store = {};
@@ -432,6 +434,74 @@ def linebreak_rows(d: Path) -> dict[str, list[dict]]:
     return {"linebreak_suspicious": rows}
 
 
+LINE_DOT_RUN = re.compile(r"[.．・･…‥]+")
+
+
+def round_dots(t: str) -> str:
+    """Each dot run inside a line (``…`` counts 3, ``‥`` 2) → ``max(1, round(n / 3))`` ×
+    ``…``, as the review edits of 11-18 spell them (2 → ``…``, 7 → ``……``); a lone
+    ``・`` (nakaguro) and a run a line break splits stay as written."""
+
+    def sub(m: re.Match) -> str:
+        r, a, b = m[0], m.start(), m.end()
+        dot = ".．・･…‥"
+        if (a >= 2 and t[a - 1] == "\n" and t[a - 2] in dot) or (
+            b + 1 < len(t) and t[b] == "\n" and t[b + 1] in dot
+        ):
+            return r
+        n = sum(3 if c == "…" else 2 if c == "‥" else 1 for c in r)
+        return r if n < 2 else "…" * max(1, round(n / 3))
+
+    return LINE_DOT_RUN.sub(sub, t)
+
+
+def odd_dot_rows(d: Path) -> dict[str, list[dict]]:
+    """``manifest_sfxp_speech`` rows with text whose dots :func:`ellipsis_fold` left
+    odd (:func:`odd_dots`; ``linebreak_suspicious``'s rows are listed there): the
+    :func:`round_dots` spelling as the label (``ok`` takes it), the label as a note.
+    Suspicion order: a run a line break splits first (its place is the page's), then
+    dots next to ``…``, then the other runs, longest run first."""
+    sus_path = REPO / "output/ocr/linebreak/linebreak_suspicious.jsonl"
+    skip = set()
+    if sus_path.exists():
+        for line in open(sus_path, encoding="utf-8"):
+            x = json.loads(line)
+            skip.add((x["book"], int(x["page"]), str(x["id"])))
+    df = pd.read_parquet(d / "manifest_sfxp_speech.parquet")
+    df = df[df.source.isin(["sfxp_speech", "m109_lines"])]
+    rows = []
+    for r in df.itertuples():
+        k = (r.book, int(r.page), str(r.id))
+        if k in skip or not DOT_FREE.sub("", r.text):
+            continue
+        odd = odd_dots(r.text)
+        if not odd:
+            continue
+        longest = max(len(m) for m in LINE_DOT_RUN.findall(r.text))
+        page = m109.page_path(r.book, int(r.page))
+        rows.append(
+            dict(
+                id=f"{r.book}_{int(r.page):03d}_{r.id}",
+                text=round_dots(r.text),
+                run=0,
+                sus=100.0 * ("split" in odd)
+                + 10.0 * ("mixed" in odd)
+                + 1.0
+                + longest / 100,
+                why=f"dots {odd}",
+                lf=int("\n" in r.text),
+                len=len(r.text),
+                status="",
+                note=f"label: {r.text}",
+                img=(d / r.path).as_uri(),
+                page=page.as_uri() if page.exists() else "",
+                box=[],
+            )
+        )
+    print(f"[review] odd_dots: {len(rows)} rows", flush=True)
+    return {"odd_dots": rows}
+
+
 def dots_rows(d: Path) -> dict[str, list[dict]]:
     """``linebreak_auto.py dots``'s dot-only rows that missed its checks: the proposal
     (``ceil(dots / 3)`` × ``…`` per printed column) as the label, the counted dots per
@@ -579,6 +649,7 @@ def main():
         data[src] = out
         print(f"[review] {src}: {len(out)} rows", flush=True)
     data.update(hito_rows(d))
+    data.update(odd_dot_rows(d))
     data.update(linebreak_rows(d))
     data.update(dots_rows(d))
     if a.ref_n:
