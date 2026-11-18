@@ -254,6 +254,109 @@ def read(a):
     )
 
 
+def boxes_in(boxes, x0, y0, x1, y1, pad: int, inside: float) -> list:
+    """Detector boxes with ≥ ``inside`` of their area within the ``<text>`` box ± ``pad``."""
+    out = []
+    for b in boxes:
+        ix = max(0, min(b[2], x1 + pad) - max(b[0], x0 - pad))
+        iy = max(0, min(b[3], y1 + pad) - max(b[1], y0 - pad))
+        if ix * iy / max(1, (b[2] - b[0]) * (b[3] - b[1])) >= inside:
+            out.append(b)
+    return out
+
+
+def detcount(a):
+    """Line boxes per ``<text>`` against the annotated line count, per detector
+    input size (``--imgsz``; 0 = the page's native size)."""
+    from anime_tools.ocr.animetext import AnimeTextDetector
+
+    pages = sorted(gt_set().items())
+    imgs = {k: cv2.imread(str(m109.page_path(*k))) for k, _ in pages}
+    for sz in a.imgsz:
+        det = AnimeTextDetector.load(device="cuda", imgsz=sz)
+        t = Counter()
+        for (book, page), items in pages:
+            img = imgs[(book, page)]
+            prep = det.prepare(img)
+            boxes = [
+                b[:4]
+                for b in det._settle(det.forward_batch([prep])[0], prep, img.shape)
+            ]
+            for k, e, ann in items:
+                x0, y0, x1, y1 = (
+                    int(e.get(c)) for c in ("xmin", "ymin", "xmax", "ymax")
+                )
+                n = len(boxes_in(boxes, x0, y0, x1, y1, a.pad, a.inside))
+                g = len(ann["line_lengths"])
+                t["eq"] += n == g
+                t["lt"] += n < g
+                t["gt"] += n > g
+                if g > 1:
+                    t["multi"] += 1
+                    t["multi_eq"] += n == g
+        n = t["eq"] + t["lt"] + t["gt"]
+        print(
+            f"imgsz {sz}: count right {t['eq'] / n:.3f} (fewer {t['lt']}, more {t['gt']}); "
+            f"multi-line {t['multi']}: right {t['multi_eq'] / t['multi']:.3f}",
+            flush=True,
+        )
+
+
+def detread(a):
+    """AnimeText detector over the annotated pages (``nest inner``: a balloon's
+    columns), the boxes inside each ``<text>`` box taken as its lines in reading
+    order, each line read alone (``OCR:``), the reads joined with ``\\n``."""
+    import eval_manga109 as ev
+    from anime_tools.ocr.animetext import AnimeTextDetector
+
+    det = AnimeTextDetector.load(device="cuda")
+    rows, crops = [], []
+    for (book, page), items in sorted(gt_set().items()):
+        img = cv2.imread(str(m109.page_path(book, page)))
+        H, W = img.shape[:2]
+        prep = det.prepare(img)
+        boxes = [
+            b[:4] for b in det._settle(det.forward_batch([prep])[0], prep, img.shape)
+        ]
+        for k, e, t in items:
+            x0, y0, x1, y1 = (int(e.get(c)) for c in ("xmin", "ymin", "xmax", "ymax"))
+            inside = []
+            for b in boxes:
+                bx0, by0, bx1, by1 = b
+                ix = max(0, min(bx1, x1 + a.pad) - max(bx0, x0 - a.pad))
+                iy = max(0, min(by1, y1 + a.pad) - max(by0, y0 - a.pad))
+                area = max(1, (bx1 - bx0) * (by1 - by0))
+                if ix * iy / area >= a.inside:
+                    inside.append(b)
+            tall = sum((b[3] - b[1]) > (b[2] - b[0]) for b in inside)
+            vertical = 2 * tall >= len(inside) if inside else True
+            inside.sort(key=lambda b: -(b[0] + b[2]) if vertical else (b[1] + b[3]))
+            raw = e.text or ""
+            rows.append(
+                dict(
+                    book=book,
+                    page=page,
+                    id=k[2],
+                    raw=raw,
+                    gt=line_broken(raw, t["line_lengths"]),
+                    n_boxes=len(inside),
+                    first=len(crops),
+                )
+            )
+            for b in inside:
+                c = margin_box(*b, W, H)
+                crops.append(img[c[1] : c[3], c[0] : c[2]])
+    print(f"{len(rows)} texts, {len(crops)} line boxes", flush=True)
+    reads = ev.Vl16Reader(a.ckpt, "cuda").read(crops, None, a.bs)
+    OUT.mkdir(parents=True, exist_ok=True)
+    with open(OUT / f"{a.name}.jsonl", "w", encoding="utf-8") as f:
+        for r in rows:
+            r["lines"] = reads[r["first"] : r["first"] + r["n_boxes"]]
+            r["pred"] = "\n".join(x for x in r["lines"] if x)
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    print(f"wrote {OUT / (a.name + '.jsonl')}")
+
+
 def _fold(c: str) -> str:
     """One character → one comparable character (dot glyphs → ``.``)."""
     import unicodedata
@@ -359,7 +462,17 @@ def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("mode", choices=["eval", "read", "transfer"])
+    ap.add_argument("mode", choices=["eval", "read", "transfer", "detread", "detcount"])
+    ap.add_argument("--imgsz", type=int, nargs="+", default=[640, 1024, 1280, 0])
+    ap.add_argument(
+        "--pad", type=int, default=8, help="detread: px around the <text> box"
+    )
+    ap.add_argument(
+        "--inside",
+        type=float,
+        default=0.6,
+        help="detread: share of a detector box inside the <text> box",
+    )
     ap.add_argument("--name", default="stock")
     ap.add_argument("--ckpt", default=None)
     ap.add_argument("--bs", type=int, default=16)
@@ -370,7 +483,10 @@ def main():
     ap.add_argument("--oracle_orient", action="store_true")
     ap.add_argument("--show", type=int, default=8)
     a = ap.parse_args()
-    {"eval": evaluate, "read": read, "transfer": transfer}[a.mode](a)
+    modes = dict(
+        eval=evaluate, read=read, transfer=transfer, detread=detread, detcount=detcount
+    )
+    modes[a.mode](a)
 
 
 if __name__ == "__main__":
