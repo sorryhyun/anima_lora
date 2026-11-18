@@ -1,6 +1,6 @@
 # OCR reader: `OCR:` for speech, `SFX:` for sound effects
 
-Status: data built, 1k-step pilot and a 2-epoch run stopped after epoch 1 (2026-11-17).
+Status: 2-epoch run `sfxpc_1118_0412` shipped as Hub `v7_preview/`, opt-in in anime_tools (2026-11-18).
 
 Goal: retrain the manga reader (PaddleOCR-VL, Hub `v6/`, `anime_tools.ocr.reader`) with two task
 prompts. `OCR:` reads speech and answers `""` on a crop holding only SFX. `SFX:` reads the sound
@@ -234,14 +234,39 @@ firmer number. The data edits, the norm change and the batch order all moved at 
 one is credited. Rescoring `2300` under norm 6 moves only COO speech (2,184 → 2,196). Korean
 speech is still unmeasured.
 
+## 2 epochs on the cleaned data (`sfxpc_1118_0412`) — Hub `v7_preview/`
+
+`0031`'s data and recipe for the full 2 epochs (13,286 steps), with `--grad_ckpt`: three runs
+without it ran out of memory at steps 3,775, 6,260 and 2,980. The step peak sits at 14.3–14.6 GB
+on a card with ~15.2 GB left beside the desktop, and the third crash batch was an ordinary one, so
+over 13k steps some batch crosses. With checkpointing: 7.0 GB, 12.0 crops/s, 298 min.
+`target_loss` now upcasts only the target positions to fp32 (same loss).
+
+| | v6 | `0031` | ep2 | vs v6 z | vs `0031` z |
+|---|---|---|---|---|---|
+| COO SFX, `SFX:`, 4 px (v6: `OCR:`) | 85.2 % | 66.6 % | 78.0 % | −9.9 (82 / 266) | +13.1 |
+| COO SFX, `OCR:` (should be `""`) | — | 2.0 % | 8.4 % | | +11.1 |
+| COO speech, `OCR:`, 4 px | 88.4 % | 86.8 % | 89.0 % | +1.5 | +4.9 |
+| doujin SFX, strict | 292 | 173 | 358 | +5.6 | +12.8 |
+| doujin SFX, ♡-blind | 423 | 253 | 412 | −1.0 | +11.5 |
+| K3 KO / ZH (12 % crops, `OCR:`) | 28 / 30 | — | 29 / 30 | +0.6 / 0.0 | |
+| val SFX / speech | — | 74.8 / 87.8 % | 87.7 / 91.2 % | | |
+| val `OCR:` empty on SFX / `SFX:` empty on speech | — | 99.5 / 93.4 % | 99.5 / 95.7 % | | |
+
+Epoch 2 is the best epoch (val SFX 83.4 → 87.7 %). The first 2-epoch reader to reach v6 on COO
+speech and pass it on doujin strict (v6 at its own 12 % crop: 349). COO SFX stays 7 points under
+v6. `OCR:` reads 8.4 % of the COO SFX crops where it should answer `""`, while val holds 99.5 %:
+the polygon crops leak where the detector-box crops do not.
+
+Shipped 11-18 as Hub `v7_preview/` (`1987992e`), opt-in in anime_tools: `--vl_reader v7_preview`
+on the OCR stage (`OcrReader.load(version="v7_preview")`, catalog row `ocr_reader_v7_preview`).
+Every box is cut at the 4 px margin and read under both prompts; each read is a line carrying its
+kind (`seq ⇥ box ⇥ det ⇥ score ⇥ kind ⇥ text` in the sidecar), and `with_ocr_clause` takes the
+recorded kind over `line_kind`. A box holding both gives a speech line and an SFX line; nested
+lines drop only against a line of their own kind.
+
 ## Next
 
-- The 2-epoch run on the cleaned data (`sfxpc_1118_*`, queued 11-18).
-- Score the COO gate on the polygons a detector box covers, beside the full set.
-
-## Downstream
-
-- `anime_tools.ocr.reader`: reads with a chosen prompt (`OCR:` or `SFX:`).
-- The OCR stage takes each line's kind from the two reads. `line_kind` remains for the reads of
-  other readers.
-- Cut a new anime_tools tag and bump the pin; upload the weights as Hub `v7/`.
+- Score the COO gate on the polygons a detector box covers, beside the full set (the COO SFX gap
+  to v6).
+- The `OCR:` leak on COO SFX crops.

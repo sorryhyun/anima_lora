@@ -229,13 +229,12 @@ def target_loss(model, enc, K: int | None = None) -> torch.Tensor:
     if K is None:
         K = int((labels != -100).sum(1).max()) + 1
     out = model(**enc, logits_to_keep=K)
-    logits = out.logits[
-        :, :-1
-    ].float()  # positions seq-K .. seq-2 predict seq-K+1 .. seq-1
+    logits = out.logits[:, :-1]  # positions seq-K .. seq-2 predict seq-K+1 .. seq-1
     tgt = labels[:, -(K - 1) :]
-    return torch.nn.functional.cross_entropy(
-        logits.reshape(-1, logits.shape[-1]), tgt.reshape(-1), ignore_index=-100
-    )
+    # upcast the target positions only, not B x K x 103k (one long label among
+    # short ones made that the largest fp32 tensor of the step)
+    keep = tgt != -100
+    return torch.nn.functional.cross_entropy(logits[keep].float(), tgt[keep])
 
 
 @torch.no_grad()
