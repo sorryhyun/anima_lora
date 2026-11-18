@@ -5,11 +5,13 @@ Distribution Matching* (IDM, arXiv:2610.39633). The question was how far a datas
 sits from the CFG 4 teacher the student targets, before any feature-moment loss (`L_pop`,
 Eq. 13) is considered here.
 
+## Facts
+
 Script: `bench/turbo/moment_gap.py`. Run:
 `bench/turbo/results/20261031-1834-moment-gap-int8/` (job `20261031-183425-cc4523`, 55 min,
 eager, ~22 s/item).
 
-## Setup
+### Setup
 
 128 items drawn uniformly from `post_image_dataset/lora`. All five sets share each item's
 resolution and start noise:
@@ -31,7 +33,7 @@ by D's summed per-coordinate variance. `null p95` swaps a and b per item at rand
 below it is not separable at this N. The bootstrap ranges in `result.json` run high against
 the point estimate, so the null is the floor to read.
 
-## Results
+### Results
 
 | Pair | nW2² τ 0.8 | nW2² τ 0.5 | null p95 τ 0.8 / 0.5 |
 |---|---|---|---|
@@ -66,28 +68,22 @@ Cosine from S between "toward D" and "toward T4":
 | τ 0.5 features | 0.74 | 0.85 |
 | Latent channel means | 0.69 | 0.97 |
 
-## Reads
+### Derived from the tables
 
-- **The CFG gap is large and sits in the mean.** T1–T4 is about 17× the null at both τ, and
-  its std part is 2–5% of the total.
-- **The dataset sits nearer CFG 4 than CFG 1.** D–T4 is smaller than D–T1 by 1.6× at τ 0.8 and
-  6× at τ 0.5. In pixels D lies about 60% of the way from T1 to T4. The expected picture, where
-  the data matches CFG 1 and CFG 4 is the outlier, does not hold: base Anima at CFG 1 and 28
-  Euler steps renders washed out.
-- **A dataset reference is usable but not neutral.** Moving S toward D mostly moves it toward
-  T4 (cos 0.67–0.97), and D's saturation and contrast are slightly below T4's (paired
-  saturation −0.014, se 0.006), so it would pull a little against the baked guidance.
-- **The artist tag moves the teacher little.** T1–T1na is 1/9 to 1/18 of the CFG gap, and at
-  τ 0.5 it reaches only the null.
-- **The student is under-dispersed.** S has 11–14% less pooled feature spread than T4 and 20%
-  less in latent channel means. 89–93% of feature coordinates have a smaller std than T4. D,
-  T1 and T1na all stay near T4 at τ 0.8. S's gap to T4 is small in the mean and carries a large
-  share in the std (0.018 of 0.032 at τ 0.8), which is the term `L_pop` constrains explicitly.
+- T1–T4 is about 17× the null at both τ, and its std part is 2–5% of the total.
+- D–T4 is smaller than D–T1 by 1.6× at τ 0.8 and 6× at τ 0.5. In pixels D lies about 60% of the
+  way from T1 to T4.
+- Moving S toward D mostly moves it toward T4 (cos 0.67–0.97). D's saturation and contrast are
+  slightly below T4's (paired saturation −0.014, se 0.006).
+- T1–T1na is 1/9 to 1/18 of the CFG gap, and at τ 0.5 it reaches only the null.
+- S has 11–14% less pooled feature spread than T4 and 20% less in latent channel means. 89–93% of
+  feature coordinates have a smaller std than T4. D, T1 and T1na all stay near T4 at τ 0.8. S's gap
+  to T4 is small in the mean and carries a large share in the std (0.018 of 0.032 at τ 0.8).
 
-## Limits
+### Limits
 
 - S is the v1.1 delta, the official release the docs describe as mode-collapsed, not a DP-DMD
-  student. The spread deficit may not carry over.
+  student.
 - The spread is across prompts. It says nothing about seed-to-seed pose diversity under one
   prompt.
 - T1na is a proxy for the dataset's narrowness. It removes the artist tag only, so the content
@@ -95,8 +91,24 @@ Cosine from S between "toward D" and "toward T4":
 - Everything ran on the int8 base. The delta was extracted on bf16, and no bf16 run backs these
   numbers.
 - 128 of about 3.2k items, one seed per item.
+- The run was eager by oversight, which affects speed only.
 
-## Consequences
+## Interpretation
+
+### Reads
+
+- The CFG gap is large and sits in the mean.
+- The dataset sits nearer CFG 4 than CFG 1. The expected picture, where the data matches CFG 1 and
+  CFG 4 is the outlier, does not hold: base Anima at CFG 1 and 28 Euler steps renders washed out.
+- A dataset reference is usable but not neutral. Moving S toward D mostly moves it toward T4, and
+  D sits slightly below T4 in saturation and contrast, so it would pull a little against the baked
+  guidance.
+- The artist tag moves the teacher little.
+- The student is under-dispersed. Its gap to T4 sits largely in the std, which is the term `L_pop`
+  constrains explicitly.
+- The spread deficit may not carry over from the v1.1 delta to a DP-DMD student.
+
+### Consequences
 
 - `L_pop`, if tried, should take T4 samples as its reference. A dataset reference would not be
   ruinous, but T4 is the target and costs no argument.
@@ -104,5 +116,4 @@ Cosine from S between "toward D" and "toward T4":
   well below 1, the std term has a concrete job; if it closes, the case for `L_pop` is back to
   the paper's +0.35 GenEval points.
 - `_archive/proposals/turbo_data_space.md` ideas 1 and 2 stay ahead of this.
-- The next run of the script should enable `compile_dynamic_seq`; this one ran eager by
-  oversight, which affects speed only.
+- The next run of the script should enable `compile_dynamic_seq`.

@@ -8,7 +8,10 @@
 - Which licence-clean KO / ZH sources exist for hand-lettered text (webtoon /
   manhua SFX)? Is synthetic rendering (`ocr/synth_sfx.py`, unwritten) a
   stand-in where none exists?
-- Does ZH need simplified and traditional handled separately? K0 showed hayai
-  emits simplified on only 75.6 % of `zh` rows.
+- Does ZH need simplified and traditional handled separately? (K0, below)
 - Should the heart positives (the open lever from the finished line) ride
   along in v4's data mix?
+
+## Measured evidence cited
+
+- K0: hayai emits simplified on 75.6 % of `zh` rows.

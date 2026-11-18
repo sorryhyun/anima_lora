@@ -1,12 +1,14 @@
-# Step 0: how good the fit has to be, and Hub v3 as a fitted step 0 (2026-11-13)
+# Step 0: how good the fit has to be, and Hub v3's step 0 (2026-11-13)
 
 `_archive/anima_turbo/reports/step0.md` left one question open: how low the anchor MSE has to go before the layout comes with
-it. Three forward-only probes on `bench/turbo/probe_handoff.py` answer it. Same prompts
+it. Three forward-only probes on `bench/turbo/probe_handoff.py`. Same prompts
 (`bench/turbo/judge_hard.txt`: group / café / guitarist), seeds 1–4, 768 × 1344, CPU-drawn noise.
 
 **The render reads below are Claude's, on downscaled grids. The user's read is pending.**
 
 ## Step-0 mix probe
+
+### Facts
 
 `--step0_mix` (new): step 0 is the student's own velocity `v_s` plus part of its residual to the
 anchor target, `r = v_t − v_s`; the student draws steps 1–3. `M<α>`: `v_s + α·r`. `L<k>`: only the
@@ -32,53 +34,71 @@ Low-passed cosine to the teacher's image, mean of 12, and the anchor MSE left on
 Held-out anchor MSE and the share of that error in the 8× band: teacher cond 0.171 (0.72), v1 1k
 EMA 0.146 (0.59), control EMA 250 0.149 (0.68).
 
-- **The layout is in the low band of the residual.** `L8` gives 85 % / 96 % of the way from `S` to
-  `A>S@1`, `H8` 24 % / 25 %. `L16`, a 10 × 6 field per channel, still gives 66 % / 90 %. On the
-  guitarist grids the `L` columns draw the smaller figure and the stage edge of `A>S@1`; `H8` draws
-  the frame-filling figure of `S`.
-- **A pooled anchor loss has little to redirect.** The low band is already 59–68 % of the students'
-  error, and it is the part training lowered (0.123 → 0.087 / 0.102; the rest stayed at
-  0.047–0.059). The low-frequency weighting of the anchor loss is closed by this.
-- **No threshold: the gain is close to proportional to α.** Half of the layout gain needs an MSE of
-  about 0.04–0.08, that is 0.3–0.5 of where the 1k students sit.
+- `L8` gives 85 % / 96 % of the way from `S` to `A>S@1`, `H8` 24 % / 25 %. `L16`, a 10 × 6 field
+  per channel, gives 66 % / 90 %. On the guitarist grids the `L` columns draw the smaller figure
+  and the stage edge of `A>S@1`; `H8` draws the frame-filling figure of `S`.
+- The low band is 59–68 % of the students' error, and it is the part training lowered
+  (0.123 → 0.087 / 0.102; the rest stayed at 0.047–0.059). The low-frequency weighting of the
+  anchor loss is closed by this.
+- Half of the layout gain needs an MSE of about 0.04–0.08, that is 0.3–0.5 of where the 1k
+  students sit.
+
+### Interpretation
+
+- The layout is in the low band of the residual.
+- A pooled anchor loss has little to redirect: the low band is already most of the students' error,
+  and training already lowers it.
+- No threshold: the gain is close to proportional to α.
 
 ## Hub v3 on its own teacher
 
+### Facts
+
 `anima_turbo_4step_v3` (base teacher, 10k iterations at a constant 5e-5, warm start from the v1.1
-delta, `dm_first_step` off) with `--dit anima-base-v1.0`.
+delta, `dm_first_step` off) with `--dit anima-base-v1.0`. It was trained on the same anchor as the
+m14 students (`k_anchor 6`, `div_weight 0.1`) and the same LR.
 Run: `bench/turbo/results/20261113-1206-handoff_hub_v3/` (job `20261113-112028-e7b1a6`, 2.5 min).
 
 | | Hub v3 | m14 students (v1 1k / control 250) |
 |---|---|---|
-| held-out anchor MSE | **0.071** (0.045 / 0.097 / 0.070) | 0.146 / 0.149 |
+| held-out anchor MSE | 0.071 (0.045 / 0.097 / 0.070) | 0.146 / 0.149 |
 | teacher cond velocity, same target | 0.234 (0.084 / 0.162 / 0.456) | 0.171 |
 | ratio | 0.30 | 0.85 / 0.87 |
 | `S` / `A>S@1` / `T>S@1` | 0.503 / 0.642 / 0.722 | – |
 
-- **v3's step 0 is fitted**, to the level the mix probe names (0.3 of the reference), and its `S`
-  column draws the jump from below on all four guitarist seeds. The judge renders agree
-  (`output/tests/turbo4/hub_v3/`): view from below, a small full-body figure, a different pose per
-  seed.
-- So the step-0 regression does fit with enough training, on the same anchor (`k_anchor 6`,
-  `div_weight 0.1`) and the same LR. `_archive/anima_turbo/reports/step0.md`'s "the fit follows the LR, not the length" holds
-  from 250 to 1000 iterations and not at 10k.
-- v3's `S` cosine is low (0.503): it draws the teacher's kind of layout, not the teacher's image
-  of that noise. The cosine is not a quality score.
+- The ratio is at the level the mix probe names (0.3 of the reference). v3's `S` column draws the
+  jump from below on all four guitarist seeds. The judge renders (`output/tests/turbo4/hub_v3/`):
+  view from below, a small full-body figure, a different pose per seed.
+
+### Interpretation
+
+- v3's step 0 is fitted, to the level the mix probe names.
+- So the step-0 regression does fit with enough training, on the same anchor and the same LR.
+  `_archive/anima_turbo/reports/step0.md`'s "the fit follows the LR, not the length" holds from 250
+  to 1000 iterations and not at 10k.
+- v3's `S` cosine is low: it draws the teacher's kind of layout, not the teacher's image of that
+  noise. The cosine is not a quality score.
 
 ## Hub v3 on the merged14 teacher, untrained
+
+### Facts
 
 The same LoRA on `anima_merged14`, against the merged14 anchor target.
 Run: `bench/turbo/results/20261113-1210-handoff_v3_on_m14/` (job `20261113-120727-522366`).
 
 | | Hub v3 on m14 | v1 1k EMA | control EMA 250 |
 |---|---|---|---|
-| held-out anchor MSE | **0.063** (0.059 / 0.074 / 0.055) | 0.146 | 0.149 |
+| held-out anchor MSE | 0.063 (0.059 / 0.074 / 0.055) | 0.146 | 0.149 |
 | `S` | 0.639 | 0.562 | 0.547 |
 | `A>S@1` / `T>S@1` | 0.743 / 0.826 | 0.705 / 0.756 | 0.728 / 0.779 |
 
-- **v3's step 0 carries over to merged14.** With no training on that teacher it fits the merged14
-  anchor 2.3 times better than any student trained on it, and the `S` column keeps the view from
-  below and the jump on all four guitarist seeds.
+- With no training on that teacher, v3 fits the merged14 anchor 2.3 times better than any student
+  trained on it, and the `S` column keeps the view from below and the jump on all four guitarist
+  seeds.
+
+### Interpretation
+
+- v3's step 0 carries over to merged14.
 - A student of this line warm-started from v3 (`network.student_init_weights`; same rank 64 /
   alpha 180 / adaln 16) starts with the step 0 that 10k iterations bought. What it has to keep
   through training, and what v3 brings that is not wanted (the panel split on multi-character

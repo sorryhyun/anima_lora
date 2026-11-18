@@ -4,7 +4,7 @@
 
 No KO/ZH claim can be made until this phase exists.
 
-- **K3**: hand-label a KO and a ZH set in the sincos schema. Source the
+- K3: hand-label a KO and a ZH set in the sincos schema. Source the
   crops from plan2 K1's mined `kscreen` hits (screened by hayai, read by
   stock), not from a B′ screen. Hold the set out of every training manifest.
 - Score stock VL-1.6, v3 (`vl16_b2_norm4`) and `vl16_pl_kozh` on K3. This
@@ -25,11 +25,11 @@ No KO/ZH claim can be made until this phase exists.
 
 ## P2 — parametrization
 
-- **P2a (eval only)**: cut the v3 tower ΔW down to rank k ∈ {16, 64, 128}
+- P2a (eval only): cut the v3 tower ΔW down to rank k ∈ {16, 64, 128}
   per matrix and score sincos + COO with the v3 LM adapter. If k=16 holds
   about 310 / 617, a tower LoRA is enough. If k=128 drops, the tower needs
   full FT and P2b's tower half is dead.
-- **P2b (one arm)**: tower LoRA (rank taken from P2a) plus LM decoder layers
+- P2b (one arm): tower LoRA (rank taken from P2a) plus LM decoder layers
   in full FT (embed/lm_head frozen), against the v3 recipe on the same data.
   Read sincos, COO speech (to catch damage to the language prior) and peak
   VRAM.
@@ -37,7 +37,7 @@ No KO/ZH claim can be made until this phase exists.
 ## P3 — v4
 
 - One mixed-language run on P1 data with the P2 parametrization.
-- Gate: K3 KO and ZH both rise above v3, **and** sincos / COO SFX / COO
+- Gate: K3 KO and ZH both rise above v3, and sincos / COO SFX / COO
   speech do not drop by more than 1 SE against v3.
 - Ship through `anime_tools.ocr.reader` (with the decode guard) as Hub v4.
 

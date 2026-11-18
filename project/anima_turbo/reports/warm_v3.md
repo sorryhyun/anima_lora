@@ -1,5 +1,12 @@
 # Warm start from Hub v3: training on the m14 teacher makes v3 worse (2026-11-13)
 
+The v1 recipe warm-started from Hub v3 on merged14 (`turbo_1113_1221`), its two follow-ups
+(`turbo_1113_1309`, `turbo_1113_1438`), and a CPU check of where the turbo ΔW lives.
+
+## `turbo_1113_1221`
+
+### Facts
+
 `turbo_1113_1221` is the control `turbo_1113_1105` (the v1 recipe at 250 iterations: cosine
 5e-5 → 5e-6, EMA 0.2 of the summed LR, `dm_first_step` on, seed 42) with the student seeded from
 Hub v3 (`network.student_init_weights = models/loras/turbo_hub/anima_turbo_4step_v3.safetensors`;
@@ -10,11 +17,12 @@ base teacher, 10k it). The fake starts as in the control (`weight_svd`, 200 warm
 compared the run with the control only. Hub v3 placed on the merged14 DiT with no training at all
 beats it on every number and, in the user's read, on the renders. The largest gap is in diversity:
 untrained v3 draws its seeds as differently as the teacher does (sameness 0.326 against the
-teacher's 0.328), and 250 iterations raise it to 0.465, close to the control's 0.496. Training the student on the m14
-teacher with the v1 recipe moves v3 toward the control rather than improving it, so the planned
+teacher's 0.328), and 250 iterations raise it to 0.465, close to the control's 0.496. The planned
 1000-iteration run from this start is dropped.
 
-## Evaluation
+The m14 students at 250 to 1k iterations sit at an anchor MSE of 0.15 (`reports/step0_fit.md`).
+
+#### Evaluation
 
 Same evaluation as the control:
 
@@ -33,19 +41,19 @@ Probe runs: `bench/turbo/results/20261113-1250-handoff_v3warm/` (this run),
 `20261113-1257-handoff_v3_on_m14_same/` (v3 untrained; the second rerun adds the sameness metric, which
 the first predates).
 
-## Numbers
+#### Numbers
 
 Probe metrics, mean over the three prompts, with per-prompt values in group / café / guitarist
 order:
 
 | | Hub v3 on m14, untrained | `1221` EMA 250 | control EMA 250 | teacher |
 |---|---|---|---|---|
-| held-out anchor MSE | **0.063** (0.059 / 0.074 / 0.055) | 0.070 (0.062 / 0.074 / 0.075) | 0.149 | cond 0.171 |
-| low-passed cos to teacher, `S` | **0.639** (0.660 / 0.657 / 0.599) | 0.593 (0.585 / 0.611 / 0.584) | 0.547 | – |
-| same, `T>S@1` | **0.826** | 0.782 | 0.779 | – |
-| same, `A>S@1` | **0.743** | 0.707 | 0.728 | – |
-| sameness, `T>S@1` | **0.280** | 0.309 | 0.405 | – |
-| sameness across seeds, `S` | **0.326** (0.342 / 0.367 / 0.270) | 0.465 (0.459 / 0.618 / 0.317) | 0.496 (0.502 / 0.441 / 0.545) | 0.328 |
+| held-out anchor MSE | 0.063 (0.059 / 0.074 / 0.055) | 0.070 (0.062 / 0.074 / 0.075) | 0.149 | cond 0.171 |
+| low-passed cos to teacher, `S` | 0.639 (0.660 / 0.657 / 0.599) | 0.593 (0.585 / 0.611 / 0.584) | 0.547 | – |
+| same, `T>S@1` | 0.826 | 0.782 | 0.779 | – |
+| same, `A>S@1` | 0.743 | 0.707 | 0.728 | – |
+| sameness, `T>S@1` | 0.280 | 0.309 | 0.405 | – |
+| sameness across seeds, `S` | 0.326 (0.342 / 0.367 / 0.270) | 0.465 (0.459 / 0.618 / 0.317) | 0.496 (0.502 / 0.441 / 0.545) | 0.328 |
 
 Validation scalars from the training log (`output/logs/turbo/20261113-122201`), at 125 / 250:
 
@@ -55,7 +63,7 @@ Validation scalars from the training log (`output/logs/turbo/20261113-122201`), 
 | `val/div_ac_sim` | 0.583 / 0.483 | 0.661 / 0.547 |
 | `val/fm_mse` | 0.265 / 0.247 | 0.299 / 0.242 |
 
-## Gate (fixed in `plan.md` before the run)
+#### Gate (fixed in `plan.md` before the run)
 
 | Condition | Result |
 |---|---|
@@ -66,24 +74,23 @@ Validation scalars from the training log (`output/logs/turbo/20261113-122201`), 
 
 All four conditions hold, but the gate had no condition against the starting point.
 
-## Renders
+#### Renders
 
-**Claude's read on downscaled grids, then the user's read.**
+Claude's read on downscaled grids, then the user's read.
 
-- **Guitarist:** the seeds' poses come almost unchanged from v3 (seed 1 one arm up, seed 4 both
+- Guitarist: the seeds' poses come almost unchanged from v3 (seed 1 one arm up, seed 4 both
   arms up). The 250 iterations kept v3's composition here.
-- **Group:** v3 varies the arrangement between seeds and looks cluttered, close to a collage on
+- Group: v3 varies the arrangement between seeds and looks cluttered, close to a collage on
   some seeds. `1221` is one clean scene that keeps the prompt's positions, with a similar
   arrangement on every seed.
-- **Café:** v3 varies the apron colour and the framing between seeds. `1221` draws blue aprons on
-  every seed, which matches the café sameness rising to 0.618.
-- **Logo and small text:** on the café renders a "ブルーアーカイブ" logo appears on the sign and a
+- Café: v3 varies the apron colour and the framing between seeds. `1221` draws blue aprons on
+  every seed.
+- Logo and small text: on the café renders a "ブルーアーカイブ" logo appears on the sign and a
   small copyright-like line in the bottom-left corner. Both are in Hub v3 untrained too (logo on
-  seeds 1, 3 and 4, corner text on seeds 1, 2 and 4), so they come from v3 and not from this run.
-- Claude first read `1221` as "v3, cleaned up". The user read it as a regression from v3, and the
-  probe numbers above agree with the user.
+  seeds 1, 3 and 4, corner text on seeds 1, 2 and 4).
+- Claude first read `1221` as "v3, cleaned up". The user read it as a regression from v3.
 
-## Which steps carry the regression
+#### Which steps carry the regression
 
 Two cross-handoff runs (`probe_handoff.py --step0_lora`) split the run's change into step 0 and
 steps 1–3: `bench/turbo/results/20261113-1304-cross_v3s0_warm123/` (v3 draws step 0, `1221`
@@ -105,19 +112,29 @@ Low-passed cosine to the teacher's image:
 | v3 | 0.639 | 0.613 |
 | `1221` | 0.637 | 0.593 |
 
-- **Step 0 carries most of the diversity loss.** Swapping only step 0 to `1221` adds 0.08–0.10
-  of sameness, while swapping only steps 1–3 adds 0.03–0.06. The café takes most of it
-  (0.367 → 0.563 from step 0 alone).
-- **Steps 1–3 carry the loss of teacher likeness.** Swapping step 0 moves the cosine by 0.00–0.02.
-  Swapping steps 1–3 moves it by 0.03–0.04, including when the teacher draws step 0.
-- So both parts of the recipe regress v3. Step 0 makes the seeds alike while keeping the anchor
-  fit (MSE 0.063 → 0.070), and steps 1–3 move away from the teacher and make the seeds slightly
-  more alike as well. In this run step 0 is trained by the anchor (`div_weight 0.1`) and by the DM
-  term (`dm_first_step` on). v3 was trained without `dm_first_step`, and S-c.1 (the same switch on
-  the `weight_svd` start) was read by the user as "improved, less diverse". Neither source of the
+- Swapping only step 0 to `1221` adds 0.08–0.10 of sameness, while swapping only steps 1–3 adds
+  0.03–0.06. The café takes most of it (0.367 → 0.563 from step 0 alone).
+- Swapping step 0 moves the cosine by 0.00–0.02. Swapping steps 1–3 moves it by 0.03–0.04,
+  including when the teacher draws step 0.
+- In this run step 0 is trained by the anchor (`div_weight 0.1`) and by the DM term
+  (`dm_first_step` on). v3 was trained without `dm_first_step`, and S-c.1 (the same switch on the
+  `weight_svd` start) was read by the user as "improved, less diverse". Neither source of the
   step-0 change has been isolated yet.
 
+### Interpretation
+
+- Training the student on the m14 teacher with the v1 recipe moves v3 toward the control rather
+  than improving it.
+- The probe numbers agree with the user's read of the renders as a regression.
+- The café's blue aprons on every seed match its sameness rising to 0.618.
+- The logo and corner text come from v3 and not from this run.
+- Step 0 carries most of the diversity loss; steps 1–3 carry the loss of teacher likeness.
+- So both parts of the recipe regress v3. Step 0 makes the seeds alike while keeping the anchor
+  fit, and steps 1–3 move away from the teacher and make the seeds slightly more alike as well.
+
 ## `dm_first_step` off from the same start: not the cause (`turbo_1113_1309`)
+
+### Facts
 
 `turbo_1113_1221` with `dpdmd.dm_first_step = false`: step 0 is trained by the anchor alone, as v3
 was. Config `_archive/configs/anima_turbo/turbo_1113_1309.toml`, job `20261113-130933-4d08cb`. Probes:
@@ -132,42 +149,47 @@ steps 1–3 DM term is next.
 
 | | v3 untrained | `1221` | `1309` |
 |---|---|---|---|
-| sameness, own step 0 + v3 steps 1–3 | 0.326 | 0.429 | **0.405** (0.414 / 0.493 / 0.309) |
+| sameness, own step 0 + v3 steps 1–3 | 0.326 | 0.429 | 0.405 (0.414 / 0.493 / 0.309) |
 | sameness, `S` | 0.326 | 0.465 | 0.476 (0.421 / 0.567 / 0.442) |
 | sameness, `T>S@1` | 0.280 | 0.309 | 0.333 |
 | cos to teacher, `S` | 0.639 | 0.593 | 0.597 |
-| cos to teacher, `T>S@1` | 0.826 | 0.782 | **0.773** |
+| cos to teacher, `T>S@1` | 0.826 | 0.782 | 0.773 |
 | cos, own step 0 + v3 steps 1–3 | 0.639 | 0.637 | 0.643 |
-| held-out anchor MSE | 0.063 | 0.070 | **0.063** (0.064 / 0.072 / 0.051) |
+| held-out anchor MSE | 0.063 | 0.070 | 0.063 (0.064 / 0.072 / 0.051) |
 
-- **`dm_first_step` is not the main cause.** Turning it off takes back 0.024 of the 0.103 that
-  step 0 added to the sameness. Step 0 trained by the anchor alone still makes the seeds alike.
-- **The anchor MSE cannot see this.** `1309` keeps v3's anchor fit exactly (0.063) while its step 0
-  raises the sameness by 0.08. The fit to the per-noise anchor target is unchanged, yet the
+- `dm_first_step` is not the main cause. Turning it off takes back 0.024 of the 0.103 that
+  step 0 added to the sameness.
+- `1309` keeps v3's held-out anchor MSE (0.063) while its step 0 raises the sameness by 0.08.
+- `T>S@1` cos 0.773, sameness 0.333. The second condition holds, so the steps 1–3 DM term is next.
+
+Renders (Claude's read on downscaled grids; the user's read is pending):
+
+- Guitarist: a wider shot with a small figure and the crowd in front, on all four seeds. Poses
+  vary (guitar raised, both arms up), but the scale and framing are one, and v3's low camera with
+  a large figure is gone. Sameness 0.442 against v3's 0.270 and `1221`'s 0.317.
+- Café: closer to v3 than `1221`. Seed 1 has a dark apron, and the signs and menus vary. v3's
+  logo is still on seed 3.
+- Group: the arrangement varies more than in `1221`, closer to v3's busy layouts.
+- Neither `1221` nor `1309` is better than v3 untrained on any prompt.
+
+### Interpretation
+
+- Step 0 trained by the anchor alone still makes the seeds alike.
+- The anchor MSE cannot see this: the fit to the per-noise anchor target is unchanged, yet the
   seed-to-seed differences shrink.
-- **Steps 1–3 regress as in `1221`** (`T>S@1` cos 0.773, sameness 0.333). The second condition
-  holds, so the steps 1–3 DM term is next.
+- Steps 1–3 regress as in `1221`.
 - With `dm_first_step` off, step 0 receives the anchor gradient and the change that DM updates at
   σ < 1 make to the shared LoRA at σ 1. The GAN also touches it. Which of these makes the seeds
   alike has not been measured.
 
-Renders (Claude's read on downscaled grids; the user's read is pending):
-
-- **Guitarist:** a wider shot with a small figure and the crowd in front, on all four seeds. Poses
-  vary (guitar raised, both arms up), but the scale and framing are one, and v3's low camera with
-  a large figure is gone. Sameness 0.442 against v3's 0.270 and `1221`'s 0.317.
-- **Café:** closer to v3 than `1221`. Seed 1 has a dark apron, and the signs and menus vary. v3's
-  logo is still on seed 3.
-- **Group:** the arrangement varies more than in `1221`, closer to v3's busy layouts.
-- Neither `1221` nor `1309` is better than v3 untrained on any prompt.
-
 ## Fake seeded from v3 as well: not the cause (`turbo_1113_1438`)
+
+### Facts
 
 v3's own run (`output/logs/turbo/20260828-024030`, base teacher) seeded the student and the fake
 from one file, the official v1.1 delta. `1221` and `1309` seeded only the student; their fake
-started as in the control (`weight_svd`, 200 warmup steps). The DM gap shows the difference in the
-first 25 iterations: `train/dm_rel_gap` 0.292 in `1221` against 0.173 in v3's run. So a cold fake
-under an already trained student was the first suspect for the regression.
+started as in the control (`weight_svd`, 200 warmup steps). `train/dm_rel_gap` in the first 25
+iterations: 0.292 in `1221`, 0.173 in v3's run.
 
 `turbo_1113_1438` is `1221` with `network.fake_init_weights` = Hub v3 as well (both stacks on
 Kaiming downs, the 200-step fake warmup kept). Config `_archive/configs/anima_turbo/turbo_1113_1438.toml`, log
@@ -183,7 +205,7 @@ means the teacher or the recipe, and the line closes on merged14 + Hub v3 untrai
 
 | | v3 untrained | `1221` | `1438` |
 |---|---|---|---|
-| sameness, `S` | 0.326 | 0.465 | **0.483** (0.501 / 0.649 / 0.301) |
+| sameness, `S` | 0.326 | 0.465 | 0.483 (0.501 / 0.649 / 0.301) |
 | sameness, own step 0 + v3 steps 1–3 | 0.326 | 0.429 | 0.444 (0.469 / 0.581 / 0.282) |
 | sameness, v3 step 0 + own steps 1–3 | 0.326 | 0.381 | 0.409 (0.386 / 0.535 / 0.307) |
 | sameness, `T>S@1` | 0.280 | 0.309 | 0.307 |
@@ -191,14 +213,14 @@ means the teacher or the recipe, and the line closes on merged14 + Hub v3 untrai
 | cos to teacher, `T>S@1` | 0.826 | 0.782 | 0.797 |
 | held-out anchor MSE | 0.063 | 0.070 | 0.070 (0.059 / 0.077 / 0.075) |
 
-- **The cold fake is not the cause.** Sameness `S` is 0.483, on `1221`'s side of the fixed read,
+- The cold fake is not the cause. Sameness `S` is 0.483, on `1221`'s side of the fixed read,
   and both cross cells sit with `1221`'s as well.
-- **The seed did change the start.** `train/dm_rel_gap` in the first 25 iterations is 0.214
-  (`1221` 0.292, v3's run 0.173), and `train/fake_loss` starts at 0.102 (`1221` 0.136). v3 as a
-  fake starts badly on the warmup loss (0.556 in the first 25 warmup steps against 0.226 for the
-  cold fake) and is level with it by step 25 (0.090 against 0.097).
-- **Teacher likeness is slightly higher than `1221`'s** (`S` cos 0.610 against 0.593, `T>S@1`
-  0.797 against 0.782), still below v3. One run each, no twin.
+- `train/dm_rel_gap` in the first 25 iterations is 0.214 (`1221` 0.292, v3's run 0.173), and
+  `train/fake_loss` starts at 0.102 (`1221` 0.136). v3 as a fake starts at 0.556 on the warmup loss
+  in the first 25 warmup steps (cold fake 0.226) and is level with it by step 25 (0.090 against
+  0.097).
+- `S` cos 0.610 against `1221`'s 0.593, `T>S@1` 0.797 against 0.782, still below v3. One run each,
+  no twin.
 
 Renders:
 
@@ -209,25 +231,33 @@ Renders:
   and 4).
 - The user's read: `1438` has slightly more sense of space than `1221`, said tentatively.
 
+### Interpretation
+
+- A cold fake under an already trained student was the first suspect for the regression, from the
+  `dm_rel_gap` difference at the start.
+- The seed did change the start.
+- Teacher likeness is slightly higher than `1221`'s.
+
 ## What it means
 
-- **This is not a loss from baking the soup.** merged14 is the teacher itself, and v3 placed on it
-  sits closer to that teacher than any student distilled from it (anchor MSE 0.063 against
-  0.15 for the m14 students at 250 to 1k iterations; `reports/step0_fit.md`).
-- **The v1 recipe on the m14 teacher has its own attractor**, with or without `dm_first_step`, and
-  with the fake cold or seeded from v3. v3 starts at the teacher's
-  sameness, so the seed collapse seen in every m14 student is not something 4-step sampling
-  forces; the training puts it there. From the `weight_svd` start or from
-  v3, 250 iterations move the student toward the same place: less teacher-like low-passed
-  layout, café seeds that converge on one image, and a blander look. This matches the open item in
-  `plan.md`: the plain DM term on steps 1–3 pulls the seeds together (control `T>S@1` sameness
-  0.405 against the teacher's 0.328). This is the likely mechanism; no probe has isolated it.
-- **The best 4-step result on m14 right now needs no training:** merged14 + Hub v3 at 1.0. The
+- This is not a loss from baking the soup. merged14 is the teacher itself, and v3 placed on it
+  sits closer to that teacher than any student distilled from it.
+- The v1 recipe on the m14 teacher has its own attractor, with or without `dm_first_step`, and
+  with the fake cold or seeded from v3. v3 starts at the teacher's sameness, so the seed collapse
+  seen in every m14 student is not something 4-step sampling forces; the training puts it there.
+  From the `weight_svd` start or from v3, 250 iterations move the student toward the same place:
+  less teacher-like low-passed layout, café seeds that converge on one image, and a blander look.
+  This matches the open item in `plan.md`: the plain DM term on steps 1–3 pulls the seeds together
+  (the control's `T>S@1` sameness against the teacher's). This is the likely mechanism; no probe
+  has isolated it.
+- The best 4-step result on m14 right now needs no training: merged14 + Hub v3 at 1.0. The
   shipping target is one LoRA on base, so the candidate is the exact merge of the soup ΔW14 and v3
   (`scripts/toolkits/merge_loras.py anima_merged14.safetensors anima_turbo_4step_v3.safetensors
   --normalize off --adaln sum`), with v3's logo and corner text still in it.
 
 ## Where the ΔW lives: the down-init subspace (CPU, checkpoints only)
+
+### Facts
 
 Share of ΔW energy inside the row space of the control's `lora_down` (`weight_svd`, about the
 top-64 right singular vectors of the merged14 W₀), mean over the 280 block Linears; a random
@@ -240,13 +270,22 @@ subspace of that size holds 0.035.
 | official v1.1 delta (r96) | 0.045 |
 | official v1.1 delta, inside v3's down basis | 0.607 |
 
+Hub v3's and the v1.1 delta's ΔW sit about 88–95 % outside the control's down basis.
+
+### Interpretation
+
 A `weight_svd` student never leaves its init input subspace at these LRs and lengths, and the
-working turbo ΔW sits about 88–95 % outside it; Kaiming is no closer. v3 got its basis from the
+working turbo ΔW sits mostly outside it; Kaiming is no closer. v3 got its basis from the
 v1.1 delta it was warm-started from. `weight_svd` is not worse than Kaiming, but neither is the
 right init for a turbo. A basis-only arm (v3's `lora_down`, `lora_up` = 0) would separate the
 basis from the trained map; it needs code and is not proposed as a run.
 
 ## Dropped
 
-- The 1000-iteration run from the v3 start on the v1 recipe (`plan.md` "Pass" branch). A longer
-  run would most likely regress further.
+### Facts
+
+- The 1000-iteration run from the v3 start on the v1 recipe (`plan.md` "Pass" branch).
+
+### Interpretation
+
+A longer run would most likely regress further.

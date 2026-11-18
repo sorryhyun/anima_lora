@@ -9,15 +9,19 @@ whether a line is SFX, instead of the text rules deciding it from the read strin
 
 ## Why
 
-- **The text rules miss often.** `anime_tools.captions.ocr_sfx.line_kind` decides speech vs SFX
-  from the string alone (a vowel initial means speech, a repeat means SFX, …).
+- The text rules miss often.
+- Dialogue in SFX crops.
+
+### Evidence
+
+- `anime_tools.captions.ocr_sfx.line_kind` decides speech vs SFX from the string alone (a vowel
+  initial means speech, a repeat means SFX, …).
   - On the sincos hand labels it calls 113 of 597 SFX speech (`おっ`, `へこ♡`, `フリ♡`, `たぷん♡`,
     `はぁ♡`) and 12 of 272 speech lines SFX (`ムラッ`, `ダメッ♡`).
   - On the Manga109 train split it calls 10,522 of 38,582 COO SFX speech, and 2,124 of 38,634
     speech lines SFX.
-- **Dialogue in SFX crops.** 24.8 % of the COO SFX train crops take in at least 15 % of a
-  neighbouring annotation at the current 0.12 × long-side pad. In 3,661 of them the neighbour is
-  speech.
+- 24.8 % of the COO SFX train crops take in at least 15 % of a neighbouring annotation at the
+  current 0.12 × long-side pad. In 3,661 of them the neighbour is speech.
 
 ## Training data
 
@@ -31,7 +35,7 @@ whether a line is SFX, instead of the text rules deciding it from the read strin
 | `SFX:` negatives | detector boxes holding only speech, KO / ZH crops (half each) | `""` |
 
 - Negatives are at most 20 % of each prompt's rows.
-- **Detector boxes**: the OCR stage's AnimeText detector (`anime_tools.ocr.animetext`, `denest`
+- Detector boxes: the OCR stage's AnimeText detector (`anime_tools.ocr.animetext`, `denest`
   inner) over every Manga109 train / val page, so the crops are the boxes the reader gets at
   inference. Labels come from the Manga109 annotations by pixel overlap with each COO polygon:
   `pf` = share of the polygon inside the crop, `cf` = share of the crop the polygon covers.
@@ -41,7 +45,7 @@ whether a line is SFX, instead of the text rules deciding it from the read strin
   - A crop holds speech when a `<text>` box has ≥ 30 % of its area in it. The `OCR:` row of a
     mixed box needs every `<text>` box touching it to lie ≥ 80 % inside.
   - On a 160-page sample: 639 SFX-only, 16 mixed, 2,463 speech-only, 66 dropped of 3,660 boxes.
-- **Crop margin**, every crop: min(0.12 · long, 0.3 · short, 4 px). KO / ZH are re-cut from their
+- Crop margin, every crop: min(0.12 · long, 0.3 · short, 4 px). KO / ZH are re-cut from their
   pages at this margin.
 - There are no doujin SFX training rows. sincos stays eval-only.
 - Build: `project/finished/ocr_reader/ocr/build_sfx_prefix.py`; loader `crop_dataset.load_sfxp`;
@@ -61,6 +65,8 @@ COO test crops come in two margins: the v6 cut (0.12 × long side) and the cappe
 
 ## Pilot: 1k steps from the stock model (`vl16_sfxp_1k`)
 
+### Facts
+
 v6's recipe (tower LoRA r64, LM full FT 1e-5, bs 8 × 2), `--sfx_prefix --steps 1000`: 16k crops,
 about 1 / 12 of v6's steps.
 
@@ -71,16 +77,23 @@ about 1 / 12 of v6's steps.
 | COO speech, `OCR:` | 88.9 % | 88.4 % | 84.7 % | 85.0 % |
 | doujin SFX, strict / ♡-blind | 349 / 413 | 292 / 423 | 90 / 221 | 97 / 249 |
 
-- The kind split is learnt: `OCR:` answers `""` on 96.5 % of COO SFX crops and on 1.8 % of speech
-  crops; `SFX:` answers `""` on 0.9 % of COO SFX and 0.7 % of doujin SFX.
+- `OCR:` answers `""` on 96.5 % of COO SFX crops and on 1.8 % of speech crops; `SFX:` answers
+  `""` on 0.9 % of COO SFX and 0.7 % of doujin SFX.
+- At the 4 px crop against the 0.12 pad, the 1k reader gains 2.8 points on COO SFX and 28
+  ♡-blind lines on doujin. v6, trained on the 0.12 pad, is flat on COO; its doujin strict falls
+  349 → 292 while ♡-blind rises 413 → 423.
+
+### Interpretation
+
+- The kind split is learnt.
 - Matching the eval crops to the training crops helps, although the 4 px crop holds less of the
-  page: the 1k reader gains 2.8 points on COO SFX and 28 ♡-blind lines on doujin. v6, trained on
-  the 0.12 pad, is flat on COO; its doujin strict drop (349 → 292) is trailing hearts clipped, as
-  ♡-blind rises 413 → 423.
+  page. v6's doujin strict drop at 4 px is trailing hearts clipped.
 - The pilot's reading gap to v6 looked like undertraining. The 2-epoch run below says SFX is not
   only that.
 
 ## Run `sfxp_1117_1816`: stopped after epoch 1 (6,790 of 13,580 steps)
+
+### Facts
 
 Batching for this run (`finetune_vl16_lora.py`):
 
@@ -101,15 +114,22 @@ Batching for this run (`finetune_vl16_lora.py`):
 | doujin SFX, strict / ♡-blind | 349 / 413 | 292 / 423 | 97 / 249 | 199 / 362 | 183 / 358 |
 
 - Val at ep1: SFX 79.6 %, speech 87.0 %, `OCR:` empty on SFX 99.5 %, `SFX:` empty on speech 96.7 %.
-- v6's own run gained 4.2 (SFX) and 4.0 (speech) val points from ep1 to ep2. The same step would
-  put speech near v6 and leave COO SFX about 10 points short.
+- v6's own run gained 4.2 (SFX) and 4.0 (speech) val points from ep1 to ep2.
 - On the 4 px COO SFX crops, v6 is right and ep1 wrong on 430 (the reverse on 67): 248 misread
   glyphs (ぱち → ばち, ギシッ → ゴシッ), 107 trailing extras (は → は…), 61 empty answers, 14 cut
   short.
-- Open: the reader trains SFX on detector boxes and is scored on COO polygon crops; v6 trained
-  on the polygon crops. A contact sheet of the two comes next.
+- The reader trains SFX on detector boxes and is scored on COO polygon crops; v6 trained on the
+  polygon crops.
+
+### Interpretation
+
+- The same step as v6's ep1 → ep2 would put speech near v6 and leave COO SFX about 10 points
+  short.
+- Open: the detector-box / polygon-crop mismatch. A contact sheet of the two comes next.
 
 ## Detector boxes against COO polygons (2026-11-17)
+
+### Facts
 
 Every train COO polygon typed against the AnimeText boxes of its page
 (`project/finished/ocr_reader/probes/sfxp_crop_sheet.py`, one contact sheet per type):
@@ -125,12 +145,10 @@ Every train COO polygon typed against the AnimeText boxes of its page
 | drop_nb: fits a box dropped for a cut neighbour | 566 | 1.5 % | out (as before) |
 | loose: one SFX in a much larger box | 286 | 0.7 % | cut |
 
-- **missed / fragment** stay out of training: AnimeText will not detect them at inference either.
-  The COO gate still scores them, so part of the COO SFX gap to v6 sits on crops the pipeline
-  never produces.
-- **loose**: v6 reads text beyond the target in 15 % of these crops (titles, signs, asides
+- missed / fragment stay out of training. The COO gate still scores them.
+- loose: v6 reads text beyond the target in 15 % of these crops (titles, signs, asides
   annotated in neither COO nor `<text>`) against 0.1 % of `same`.
-- **merged**: the build joins right to left, then top down. That is right for vertical columns
+- merged: the build joins right to left, then top down. That is right for vertical columns
   side by side and wrong for most stacks (135 of 251 with differing texts) and horizontal rows
   (45 of 46); scattered SFX have no order. v6 reads these boxes in yet another order.
 - 394 `SFX:` negatives held part of an SFX (`neg_graze`).
@@ -145,7 +163,14 @@ pseudo labels take the teacher's spacing and line breaks, which the whitespace-b
 does not check. Hand review fixed spacing and breaks on about 160 rows; 10 duplicate gelnote notes
 (same or nested box) dropped; spaces at line edges removed.
 
+### Interpretation
+
+- missed / fragment: AnimeText will not detect them at inference either, so part of the COO SFX
+  gap to v6 sits on crops the pipeline never produces.
+
 ### 1k on the cleaned data (`sfxpc_1117_2110`, the pilot's recipe)
+
+#### Facts
 
 | | pilot `vl16_sfxp_1k`, 4 px | cleaned, 4 px | per crop (cleaned only / pilot only) |
 |---|---|---|---|
@@ -154,20 +179,26 @@ does not check. Hand review fixed spacing and breaks on about 160 rows; 10 dupli
 | COO speech, `OCR:` | 85.0 % | 84.9 % | |
 | doujin SFX, strict / ♡-blind | 97 / 249 | 129 / 210 | strict z +3.3, ♡-blind z −3.3 |
 
-No change on COO, as expected: 1,000 steps see about 200 of the removed boxes. The doujin moves
-(more trailing hearts, more misread glyphs such as びく → ぐく) touch no data the clean changed and
-are read as the spread between two undertrained 1k runs.
+No change on COO. 1,000 steps see about 200 of the removed boxes. The doujin moves (more trailing
+hearts, more misread glyphs such as びく → ぐく) touch no data the clean changed.
+
+#### Interpretation
+
+No change on COO is as expected from that count. The doujin moves are read as the spread between
+two undertrained 1k runs.
 
 ### swaprelax_v5 boxes and the second review (2026-11-17)
 
-- **Nested boxes.** swaprelax boxes are AnimeText's, and the swap_text read kept the outer box of
+#### Facts
+
+- Nested boxes. swaprelax boxes are AnimeText's, and the swap_text read kept the outer box of
   a nested pair (the raw boxes are in the relax tree's `det.json`). 983 rows hold a smaller
   detector box. The v6 confidence does not separate the bad ones (the read of the outer crop is
   right); the share of the label the inner boxes' v6 reads cover does. `probes/nested_inner_read.py`
   → `probes/apply_nested_fix.py`: coverage ≥ 0.85 takes the inner box (loose outer box, label
   kept; the union when the detector split one block), below drops the row (a line of a block, or
   several blocks merged): 500 re-boxed, 387 dropped.
-- **Unswapped groups.** The staged target is the JA page with the clean KO groups pasted in, so
+- Unswapped groups. The staged target is the JA page with the clean KO groups pasted in, so
   108 rows held JA lettering under a KO label (target equals the JA source inside the box).
   `probes/unswapped_ja.py` turns them into JA rows: the JA page's AnimeText box, the crop from the
   JA source, v6's JA read (conf ≥ 0.9, one row per JA box): 91 relabelled, 16 dropped. The JA
@@ -179,17 +210,22 @@ are read as the spread between two undertrained 1k runs.
 
 Batching defaults in `finetune_vl16_lora.py`: bs 4 × 4 without gradient checkpointing, batches
 cut at 3,072 padded patch tokens, crops capped at 2,048 tokens, no stock val before training.
-97 % of the crops sit at the processor's min_pixels floor (600–700 tokens), so the budget only
-splits the rare large ones (98 % of batches hold 4 crops, 3.5 % padding). 16.7 crops/s at 11.8 GB
-peak on the costliest batches, against 13.7 for bs 2 × 8 and 13.0 for bs 8 × 2 with
-checkpointing; GPU utilisation at bs 2 was 70–80 % at ~220 W, the kernels too small to fill the
-card. Removing the per-step host syncs (loss `.item()`, label length) changed nothing.
+97 % of the crops sit at the processor's min_pixels floor (600–700 tokens); 98 % of batches hold
+4 crops, 3.5 % padding. 16.7 crops/s at 11.8 GB peak on the costliest batches, against 13.7 for
+bs 2 × 8 and 13.0 for bs 8 × 2 with checkpointing; GPU utilisation at bs 2 was 70–80 % at ~220 W.
+Removing the per-step host syncs (loss `.item()`, label length) changed nothing.
+
+#### Interpretation
+
+- The budget only splits the rare large crops.
+- At bs 2 the kernels are too small to fill the card.
 
 ### 1k on the fixed data, bs 4 × 4 (`sfxpc_1117_2300`)
 
+#### Facts
+
 18.3 crops/s over the run (13.0 for `sfxpc_1117_2110`); peak 14.1 GB, above the smoke test's
-11.8 because long labels make the LM side of a batch dear, which `--largest_first` (vision cost)
-does not reach.
+11.8.
 
 | | pilot | `2110` | `2300` | paired z, 2300 vs 2110 |
 |---|---|---|---|---|
@@ -203,11 +239,20 @@ does not reach.
 | val `SFX:` empty on speech | | 89.9 % | 87.6 % | −2.0 |
 
 COO and doujin do not move. Val SFX gains while both negatives lose, and the batching changed
-with the data, so neither is credited. None of these sets holds Korean speech
-(`manifest_sfxp_kozh` is train-only; val and COO speech are Manga109), so the KO label fixes are
-not measured here; that needs a held-out KO set.
+with the data. None of these sets holds Korean speech (`manifest_sfxp_kozh` is train-only; val and
+COO speech are Manga109), so the KO label fixes are not measured here.
+
+#### Interpretation
+
+- The peak is above the smoke test's because long labels make the LM side of a batch dear, which
+  `--largest_first` (vision cost) does not reach.
+- With the batching changed alongside the data, neither the val SFX gain nor the negatives' loss
+  is credited.
+- Measuring the KO label fixes needs a held-out KO set.
 
 ### 1k after the KO review and target norm 6 (`sfxpc_1118_0031`)
+
+#### Facts
 
 Same recipe as `2300`, on the data after three more KO review exports (179 edits), three box
 fixes (two loose JA boxes tightened, one two-balloon box split into two rows), the swaprelax crops
@@ -227,20 +272,29 @@ lone conjoining jamo → the typed compatibility jamo, `ᄏ` → `ㅋ`). 17.8 cr
 | val `OCR:` empty on SFX | 95.4 % | 99.5 % | +4.8 |
 | val `SFX:` empty on speech | 87.6 % | 93.4 % | +4.4 |
 
-Both negatives recover what `2300` lost, and COO SFX read under `OCR:` falls with them: the two
-prompts separate better. Doujin strict moves most, and part of it is the heart (213 predictions
-carry one against 150); strict moved −15 between `2110` and `2300`, so the ♡-blind +38 is the
-firmer number. The data edits, the norm change and the batch order all moved at once, so no single
-one is credited. Rescoring `2300` under norm 6 moves only COO speech (2,184 → 2,196). Korean
-speech is still unmeasured.
+- Both negatives recover what `2300` lost, and COO SFX read under `OCR:` falls with them.
+- Doujin strict moves most; 213 predictions carry a heart against 150. Strict moved −15 between
+  `2110` and `2300`.
+- The data edits, the norm change and the batch order all moved at once.
+- Rescoring `2300` under norm 6 moves only COO speech (2,184 → 2,196).
+- Korean speech is still unmeasured.
+
+#### Interpretation
+
+- The two prompts separate better.
+- Part of the doujin strict gain is the heart; with strict having moved −15 between `2110` and
+  `2300`, the ♡-blind +38 is the firmer number.
+- With everything moving at once, no single change is credited.
 
 ## 2 epochs on the cleaned data (`sfxpc_1118_0412`) — Hub `v7_preview/`
 
-`0031`'s data and recipe for the full 2 epochs (13,286 steps), with `--grad_ckpt`: three runs
-without it ran out of memory at steps 3,775, 6,260 and 2,980. The step peak sits at 14.3–14.6 GB
-on a card with ~15.2 GB left beside the desktop, and the third crash batch was an ordinary one, so
-over 13k steps some batch crosses. With checkpointing: 7.0 GB, 12.0 crops/s, 298 min.
-`target_loss` now upcasts only the target positions to fp32 (same loss).
+### Facts
+
+`0031`'s data and recipe for the full 2 epochs (13,286 steps), with `--grad_ckpt`: **three runs
+without it ran out of memory** at steps 3,775, 6,260 and 2,980. The step peak sits at 14.3–14.6 GB
+on a card with ~15.2 GB left beside the desktop, and the third crash batch was an ordinary one.
+With checkpointing: 7.0 GB, 12.0 crops/s, 298 min. `target_loss` now upcasts only the target
+positions to fp32 (same loss).
 
 | | v6 | `0031` | ep2 | vs v6 z | vs `0031` z |
 |---|---|---|---|---|---|
@@ -255,8 +309,7 @@ over 13k steps some batch crosses. With checkpointing: 7.0 GB, 12.0 crops/s, 298
 
 Epoch 2 is the best epoch (val SFX 83.4 → 87.7 %). The first 2-epoch reader to reach v6 on COO
 speech and pass it on doujin strict (v6 at its own 12 % crop: 349). COO SFX stays 7 points under
-v6. `OCR:` reads 8.4 % of the COO SFX crops where it should answer `""`, while val holds 99.5 %:
-the polygon crops leak where the detector-box crops do not.
+v6. `OCR:` reads 8.4 % of the COO SFX crops where it should answer `""`, while val holds 99.5 %.
 
 Shipped 11-18 as Hub `v7_preview/` (`1987992e`), opt-in in anime_tools: `--vl_reader v7_preview`
 on the OCR stage (`OcrReader.load(version="v7_preview")`, catalog row `ocr_reader_v7_preview`).
@@ -264,6 +317,11 @@ Every box is cut at the 4 px margin and read under both prompts; each read is a 
 kind (`seq ⇥ box ⇥ det ⇥ score ⇥ kind ⇥ text` in the sidecar), and `with_ocr_clause` takes the
 recorded kind over `line_kind`. A box holding both gives a speech line and an SFX line; nested
 lines drop only against a line of their own kind.
+
+### Interpretation
+
+- Over 13k steps some batch crosses the memory left on the card.
+- The polygon crops leak where the detector-box crops do not.
 
 ## Next
 

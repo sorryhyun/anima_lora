@@ -1,7 +1,7 @@
 # anima_turbo — a few-step DP-DMD student on a soup teacher
 
-A 4-step turbo distilled from a LoRA soup (merged14, merged15 from 2026-11-16). It ships as **one
-LoRA on plain anima-base-v1.0**: `scripts/toolkits/merge_loras.py <soup>.safetensors
+A 4-step turbo distilled from a LoRA soup (merged14, merged15 from 2026-11-16). It ships as one
+LoRA on plain anima-base-v1.0: `scripts/toolkits/merge_loras.py <soup>.safetensors
 <turbo>.safetensors --normalize off --adaln sum` gives exact ΔW_soup + ΔT (the defaults, global
 normalise and adaln average, break exactness). The turbo LoRA alone means nothing on base; the
 merged LoRA is used at multiplier 1.0 only. The shipped base-teacher turbo
@@ -11,18 +11,20 @@ merged LoRA is used at multiplier 1.0 only. The shipped base-teacher turbo
 
 - Shipped: `v4_preview` (`1112_1512`, the [1112_v1.md](1112_v1.md) recipe on merged14). The
   2-step line is closed.
-- The gap is composition: students draw one layout per prompt, and the layout is set in step 0
-  ([reports/handoff.md](reports/handoff.md), [reports/step0_fit.md](reports/step0_fit.md)).
+- Students draw one layout per prompt ([reports/handoff.md](reports/handoff.md),
+  [reports/step0_fit.md](reports/step0_fit.md)).
 - On merged15 the shipped recipe failed at 1k ([reports/m15_1k.md](reports/m15_1k.md)). The
   official v1.1 delta as init keeps the best steps 1–3 of the line; from it the anchor alone on the
   teacher's 28-step schedule (`turbo_1116_1810`, 14 of 28) is adopted as the target to scale
   ([reports/v11_init.md](reports/v11_init.md), [anchor_only_recipe.md](anchor_only_recipe.md)).
-- The breaks left in the anchor students' renders are step 0's residual to the anchor target; a
-  third to a half of it has to go. The full-dataset anchor cache (`turbo_1117_0823`) is the best
-  anchor student and falls short of that ([reports/step0_depth.md](reports/step0_depth.md)).
-  Rank 96 ties it. Next: a lower student LR, then paired feature matching / a paired GAN on the
-  σ 0.75 state ([plan.md](plan.md)).
+- The full-dataset anchor cache (`turbo_1117_0823`) is the best anchor student; rank 96 ties it
+  ([reports/step0_depth.md](reports/step0_depth.md)). Next: a lower student LR, then paired feature
+  matching / a paired GAN on the σ 0.75 state ([plan.md](plan.md)).
 - Preference RL is at its P1 gate, not passed ([pref_rl/p1.md](pref_rl/p1.md)).
+
+Reading: the gap is composition, and the layout is set in step 0. The breaks left in the anchor
+students' renders are step 0's residual to the anchor target; a third to a half of it has to go,
+and `0823` falls short of that ([reports/step0_depth.md](reports/step0_depth.md)).
 
 ## Layout
 

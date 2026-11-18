@@ -6,13 +6,15 @@ where the teacher draws the jump from below and the tumbling group. The student 
 trajectory over at a student step boundary, in both directions, to see which step loses the layout.
 Forward only, no training.
 
+**The render read below is Claude's, on downscaled grids. The user's read is pending.**
+
+## Facts
+
 Script: `bench/turbo/probe_handoff.py`. Run: `bench/turbo/results/20261112-1033-handoff/` (job
 `20261112-102845-97e863`, 6.5 min). One grid per student and prompt (`<student>_p{0,1,2}.jpg`, rows
 are seeds, columns are arms), full-size images under `png/`.
 
-**The render read below is Claude's, on downscaled grids. The user's read is pending.**
-
-## Setup
+### Setup
 
 - Base: merged14 on int8 (its own GPTQ file), fp32 stream, compiled blocks, as the judge renders.
 - Prompts: `bench/turbo/judge_hard.txt` (five-girl group, café, guitarist), seeds 1–4, 768 × 1344.
@@ -31,11 +33,12 @@ are seeds, columns are arms), full-size images under `png/`.
 | `S` | student alone, 4 steps, cfg 1 |
 | `S>T@b` | student runs steps 0..b−1, teacher finishes from that σ |
 
-## Paired number: low-passed cosine to the teacher's image
+### Paired number: low-passed cosine to the teacher's image
 
 Cosine between the final latent of an arm and of `T` for the same noise, after an 8× average pool
 and with the per-channel mean removed. Mean over 12 images; the three per-prompt means in brackets
-(group, café, guitarist).
+(group, café, guitarist). The cosine measures how close an arm stays to the teacher's image for that
+noise. It is not a quality score: a different layout of equal quality reads low.
 
 | Arm | twin EMA 250 | control EMA 125 |
 |---|---|---|
@@ -55,58 +58,62 @@ Loss per student step, read down the `T>S` column (each row hands one more step 
 | 1 | 0.9 → 0.75 | 0.16 | 0.13 |
 | 0 | 1 → 0.9 | 0.24 | 0.27 |
 
-The cosine measures how close an arm stays to the teacher's image for that noise. It is not a
-quality score: a different layout of equal quality reads low.
+- Handing only σ 1 → 0.9 to the teacher takes the student from 0.46 / 0.54 to 0.70 / 0.80.
+- The loss shrinks with each later handoff. Step 1 is second (0.13–0.16).
 
-## Renders
+### Renders
 
-- **Teacher's step 0, student's steps 1–3 (`T>S@1`): the layout survives.** On the control's EMA 125
+- Teacher's step 0, student's steps 1–3 (`T>S@1`): the layout survives. On the control's EMA 125
   all four guitarist seeds keep the jump from below, the small full-body figure, the tilted stage
   edge and the crowd line; the group prompt keeps the lying and leaning figures. The twin's EMA 250
   keeps the figure's scale and placement and loses part of the camera tilt (seed 2 turns upright).
   Both render cleanly from a σ 0.9 state they were not trained on.
-- **Student alone (`S`): a larger, centred, frontal figure.** The pose still follows the noise (the
+- Student alone (`S`): a larger, centred, frontal figure. The pose still follows the noise (the
   same arm raised, the same guitar direction as the teacher's image of that seed), and on seeds 1 and
   2 the control's EMA 125 still bends the knees as in a jump. What is gone is the camera: no view from below, no tilt,
   the figure fills the frame. On the group prompt the figures stand or sit upright in a packed
   group photo.
-- **`T>S@2` and `T>S@3` are the teacher's image** with small changes of detail.
-- **Student's step 0, teacher's finish (`S>T@1`): hazy and desaturated on every image.** The teacher
-  does not receive a state on its own path. On the control's EMA 125 the frontal centred layout
-  stays. On the twin's EMA 250 the teacher redraws a dynamic pose on three of four guitarist seeds
-  (a hand reaching to the camera, a jump).
-- **`S>T@2`: the student's layout, hazy.** After the student's first two steps the teacher changes
+- `T>S@2` and `T>S@3` are the teacher's image with small changes of detail.
+- Student's step 0, teacher's finish (`S>T@1`): hazy and desaturated on every image. On the
+  control's EMA 125 the frontal centred layout stays. On the twin's EMA 250 the teacher redraws a
+  dynamic pose on three of four guitarist seeds (a hand reaching to the camera, a jump).
+- `S>T@2`: the student's layout, hazy. After the student's first two steps the teacher changes
   the rendering and not the framing.
-- **Café:** `T>S@1` keeps the teacher's apron colours and counter; `S` changes the outfits (frilled
-  aprons, black sleeves) and keeps two standing figures. This prompt has little layout to lose.
+- Café: `T>S@1` keeps the teacher's apron colours and counter; `S` changes the outfits (frilled
+  aprons, black sleeves) and keeps two standing figures.
 
-## Reads
+### Step 0's training signal in the recipe
 
-- **Step 0 is the largest single loss.** Handing only σ 1 → 0.9 to the teacher takes the student
-  from 0.46 / 0.54 to 0.70 / 0.80, and the renders agree. No arm in `plan.md` acted on step 0: MFD,
-  the static grid and the VA-TDM fake all change the DM term, which reaches steps 1–3 only
-  (`dm_first_step = false`, `detach_after_first`).
-- **Steps 1–3 mostly keep what they are handed.** The loss shrinks with each later handoff. Step 1
-  is second (0.13–0.16) and is where the twin's EMA 250 flattens the camera.
-- **The reverse direction is a partial cross-check.** `S>T@1` agrees on the control (the layout is
-  the student's once it has drawn step 0) and not on the twin. The haze says the student's σ 0.9
-  state is off the teacher's path. Whether that is anchor misfit or the chord the anchor target
-  defines (the mean velocity to σ 0.75, applied over 1 → 0.9) is not separated here.
-- Step 0's training signal is weak in the recipe: `div_weight 0.1`, backwarded into the same
-  gradient as DM / CDM / GAN and clipped with them. `train/div_loss` fell from about 0.20 to 0.16 over
-  250 iterations in both arm 0 runs (quintile means 0.218 / 0.197 / 0.171 / 0.170 control,
-  0.191 / 0.174 / 0.164 twin, outside the bursts). Its floor for a rank-64 LoRA is unknown.
+`div_weight 0.1`, backwarded into the same gradient as DM / CDM / GAN and clipped with them.
+`train/div_loss` fell from about 0.20 to 0.16 over 250 iterations in both arm 0 runs (quintile means
+0.218 / 0.197 / 0.171 / 0.170 control, 0.191 / 0.174 / 0.164 twin, outside the bursts).
 
-## Limits
+### Limits
 
-- The two students differ in seed and in checkpoint (125 against 250), so the larger step-1 loss of
-  the twin cannot be assigned to either.
+- The two students differ in seed and in checkpoint (125 against 250).
 - 3 prompts × 4 seeds, one noise draw each.
-- `T>S` hands the student a state from the teacher's path, not from its own step 0. A student
-  trained with a better step 0 would see states of that kind in training; these did not.
+- `T>S` hands the student a state from the teacher's path, not from its own step 0.
 - The read is on 320 px cells. The café grids were opened for the twin only.
 
-## Consequence
+## Interpretation
+
+- Step 0 is the largest single loss, and the renders agree. No arm in `plan.md` acted on step 0:
+  MFD, the static grid and the VA-TDM fake all change the DM term, which reaches steps 1–3 only
+  (`dm_first_step = false`, `detach_after_first`).
+- Steps 1–3 mostly keep what they are handed. Step 1 is where the twin's EMA 250 flattens the
+  camera.
+- The reverse direction is a partial cross-check. `S>T@1` agrees on the control (the layout is the
+  student's once it has drawn step 0) and not on the twin. The haze says the student's σ 0.9 state
+  is off the teacher's path: the teacher does not receive a state on its own path. Whether that is
+  anchor misfit or the chord the anchor target defines (the mean velocity to σ 0.75, applied over
+  1 → 0.9) is not separated here.
+- The café prompt has little layout to lose.
+- Step 0's training signal is weak in the recipe. Its floor for a rank-64 LoRA is unknown.
+- The larger step-1 loss of the twin cannot be assigned to seed or checkpoint.
+- A student trained with a better step 0 would see states like the ones `T>S` hands over in
+  training; these students did not.
+
+### Consequence
 
 The next arms act on step 0 (`plan.md`, "Step-0 arms"), before MFD. The probe's `S` row is the
 paired number for them: a better step 0 should move it toward the `T>S@1` row.

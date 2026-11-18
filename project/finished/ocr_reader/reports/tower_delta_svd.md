@@ -1,5 +1,9 @@
 # Tower ΔW spectrum — v3 (`vl16_b2_norm4`) vs stock VL-1.6 (2026-10-10)
 
+Singular-value spectrum of v3's full-FT tower update against stock, plus the parameter budget used to size P2b.
+
+## Facts
+
 `probes/tower_delta_svd.py <tower.safetensors> <base model.safetensors> <out.json>`
 runs on CPU in a few minutes. ΔW = fine-tuned tower − stock, per 2D weight;
 the embeddings are skipped. The original B′ (`vl16_tower_lr1e-5`) tower was
@@ -21,14 +25,11 @@ fraction for an i.i.d. Gaussian matrix of the same shape.
 | projector linear_1 | 4608² | 1.9e-2 | 0.24/0.01 | 0.35/0.01 | 0.50/0.03 | 0.67/0.05 | 234 | 195 |
 | projector linear_2 | 1024×4608 | 1.7e-2 | 0.41/0.02 | 0.52/0.03 | 0.65/0.06 | 0.78/0.12 | 150 | 92 |
 
-- bf16 storage rounding accounts for about 1 % of ‖ΔW‖², so the spectrum is
-  not quantization noise. 85 % of all tower elements changed.
-- **The update has structure but is not low-rank.** The top 16 hold about
-  10× the energy a random matrix would. Still, an r16 LoRA could express
-  only 30–50 % of the full-FT update's energy, and the MLP is the most spread.
-- **This does not decide the question.** Adam full FT leaves a high-rank tail
-  that may not matter to the function. The functional test is P2a: truncate
-  each ΔW to rank k, re-score, and read the gates.
+- bf16 storage rounding accounts for about 1 % of ‖ΔW‖². 85 % of all tower
+  elements changed.
+- The top 16 hold about 10× the energy a random matrix would. An r16 LoRA
+  could express only 30–50 % of the full-FT update's energy, and the MLP is the
+  most spread.
 
 Parameter budget, from the base checkpoint, for P2b sizing:
 
@@ -41,3 +42,12 @@ Parameter budget, from the base checkpoint, for P2b sizing:
 
 v3 trains 492 M in full at 12.1 GB. An LM-layers full FT trains about half
 that.
+
+## Interpretation
+
+- With bf16 rounding at about 1 % of ‖ΔW‖², the spectrum is not quantization
+  noise.
+- The update has structure but is not low-rank.
+- This does not decide the question. Adam full FT leaves a high-rank tail
+  that may not matter to the function. The functional test is P2a: truncate
+  each ΔW to rank k, re-score, and read the gates.

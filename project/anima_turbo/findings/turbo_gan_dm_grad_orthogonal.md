@@ -8,7 +8,9 @@ the aggregate and in every τ-bin. There is nothing for a sign (or PCGrad-style
 projection) gate to veto. **Do not re-propose gradient surgery between the GAN
 and DM terms on the DP-DMD loop.**
 
-## Premise tested
+## Facts
+
+### Premise tested
 
 OPD² ("On-Policy Delta Distillation", NAVER AI Lab, arXiv:2607.15161, Eq. 8)
 applies a noisy auxiliary gradient only where it sign-agrees with a trusted
@@ -22,7 +24,7 @@ The premise to measure (pre-registered, with the verdict thresholds fixed
 before looking): does the GAN generator gradient carry a substantial (>~25%
 energy), τ- or phase-localized, sign-disagreeing component against DM?
 
-## What was measured
+### What was measured
 
 Measure-only telemetry (`[gan] dm_gate_telemetry`, shipped): inside
 `gan_generator_term`, `g_gan = autograd.grad(gan_gen_loss, x_pred)` — read,
@@ -43,51 +45,24 @@ run, `weight_gen 0.03`, `delay_steps 0`; run `anima_turbo_cdm_dmgate`, logs
 | applied-magnitude ratio | ~6× median, heavy-tailed 0.5–50× | — |
 
 The pre-registered Phase-1 trigger needed a >~25-point localized excess over
-null; observed deviation is <1 point with 1–3 points of noise. Judgeable at
-n=19 flush points precisely because the required effect size is enormous
-relative to the noise floor.
+null; observed deviation is <1 point with 1–3 points of noise, at n=19 flush
+points.
 
-## What it means
-
-- The GAN is not fighting DM — it pushes along elementwise-orthogonal
-  directions. A sign gate would randomly delete ~half the GAN's energy, which
-  is exactly "a weaker GAN overall" (the confound the proposal's
-  matched-magnitude control existed to expose), not selectivity.
-- The GAN push is NOT negligible: ~6× the applied DM per-element magnitude
-  (heavy-tailed). Substantial pressure, zero DM-alignment — mechanistically
-  consistent with the `anima_turbo_R` "GAN spent" plateau verdict: realism
-  pressure orthogonal to distribution matching buys texture, not diversity.
-- This kills the *class* of GAN↔DM gradient-surgery ideas (sign veto, PCGrad
-  projection, conflict-aware reweighting), not just Eq. 8 — they all
-  presuppose a structured conflicting component that does not exist.
-
-## Reusable traps (methodology)
-
-1. ~0.5 agree-rate is the orthogonal baseline, not conflict. Elementwise
-   sign agreement between two high-dimensional latent fields sits at ~50% for
-   *independent* signals. Judge on agree-energy vs a permutation null
-   computed on the same tensors — never on the rate.
-2. Compare applied gradients, not raw tensors. `loss_dmd` is a `.mean()`,
-   so the DM push at `x_pred` is `grad_signal/numel`, while the GAN backward
-   injects `gan_w·g_gan` unscaled — a raw-tensor magnitude ratio under-reports
-   the GAN by ~numel (≈10⁵) and would have mis-closed this line as "GAN
-   contributes nothing".
-3. The telemetry is generic two-signal conflict tooling: `dm_gate_stats`
-   (`scripts/distill_turbo/metrics.py`) + `DmGateTelemetry` work for any pair
-   of gradients at `x_pred` (div vs DM, CDM vs DM, softrank vs DM), with the
-   RNG-neutrality contract (dedicated generator) already handled. The
-   dedicated gate tests it would have carried were never written — the line
-   closed at Phase 0.
-
-## Caveat
+### Scope
 
 Late-phase warm regime only (3k-warm, near the LR floor). The early/cold-start
-delay-window regime was never measured — the flag rides any future GAN-on run
-for free if that read is ever wanted, but the token-disc-head λ=0 ramp control
-(froze pose identically with zero GAN generator gradient) already deflated the
-"GAN gradient causes early collapse" story independently.
+delay-window regime was never measured; the flag rides any future GAN-on run
+for free if that read is ever wanted. The token-disc-head λ=0 ramp control froze
+pose identically with zero GAN generator gradient.
 
-## Pointers
+### Tooling
+
+`dm_gate_stats` (`scripts/distill_turbo/metrics.py`) + `DmGateTelemetry` work for any
+pair of gradients at `x_pred` (div vs DM, CDM vs DM, softrank vs DM), with the
+RNG-neutrality contract (dedicated generator) already handled. The dedicated gate
+tests it would have carried were never written — the line closed at Phase 0.
+
+### Pointers
 
 - Proposal + full Phase-0 design/verdict: `_archive/proposals/turbo_gan_dm_sign_gate.md`
 - Flag: `[gan] dm_gate_telemetry` / `--gan_dm_gate_telemetry`
@@ -95,3 +70,36 @@ for free if that read is ever wanted, but the token-disc-head λ=0 ramp control
 - TB tags: `train/gan_dm_{agree_rate,agree_energy,agree_energy_null}_tau{0..7}`
   + aggregates `train/gan_dm_{agree_rate,agree_energy,agree_energy_null,cos,mag_ratio}`
 - OPD² — arXiv:2607.15161 (Eq. 6–9)
+
+## Interpretation
+
+### What it means
+
+- The result is judgeable at this n precisely because the required effect size is
+  enormous relative to the noise floor.
+- The GAN is not fighting DM — it pushes along elementwise-orthogonal
+  directions. A sign gate would randomly delete ~half the GAN's energy, which
+  is exactly "a weaker GAN overall" (the confound the proposal's
+  matched-magnitude control existed to expose), not selectivity.
+- The GAN push is not negligible (the applied-magnitude ratio above).
+  Substantial pressure, zero DM-alignment — mechanistically consistent with the
+  `anima_turbo_R` "GAN spent" plateau verdict: realism pressure orthogonal to
+  distribution matching buys texture, not diversity.
+- This kills the class of GAN↔DM gradient-surgery ideas (sign veto, PCGrad
+  projection, conflict-aware reweighting), not just Eq. 8 — they all
+  presuppose a structured conflicting component that does not exist.
+- The λ=0 ramp control already deflated the "GAN gradient causes early collapse"
+  story independently of the unmeasured early regime.
+
+### Reusable traps (methodology)
+
+1. ~0.5 agree-rate is the orthogonal baseline, not conflict. Elementwise
+   sign agreement between two high-dimensional latent fields sits at ~50% for
+   independent signals. Judge on agree-energy vs a permutation null
+   computed on the same tensors — never on the rate.
+2. Compare applied gradients, not raw tensors. `loss_dmd` is a `.mean()`,
+   so the DM push at `x_pred` is `grad_signal/numel`, while the GAN backward
+   injects `gan_w·g_gan` unscaled — a raw-tensor magnitude ratio under-reports
+   the GAN by ~numel (≈10⁵) and would have mis-closed this line as "GAN
+   contributes nothing".
+3. The telemetry is generic two-signal conflict tooling (see Tooling above).

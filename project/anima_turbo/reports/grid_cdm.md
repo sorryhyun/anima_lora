@@ -7,8 +7,11 @@ not hold the gains (`m15_1k.md`). Moved here from `plan.md` on 2026-11-16; the r
 
 ## Static grid (`dmd.dynamic_schedule` off), 11-14
 
+### Facts
+
 `turbo_1114_1709` against the control `turbo_1113_1105` and its seed-43 twin `turbo_1114_1745`, on
-merged14. Grids `output/tests/turbo4/cmp/static_twin_*.jpg`.
+merged14. Grids `output/tests/turbo4/cmp/static_twin_*.jpg`. Adopted on the user's read of the
+renders.
 
 | | static `1709` | dynamic, seed 42 / 43 |
 |---|---|---|
@@ -19,19 +22,25 @@ merged14. Grids `output/tests/turbo4/cmp/static_twin_*.jpg`.
 
 - The anchor MSE sits between the two dynamic seeds, and the café sign text is worse than the
   control's.
-- One static seed, no twin. The dynamic grid is seed-unstable at 250 iterations (the two columns).
-- The static grid gives up other step counts.
+- One static seed, no twin.
 - CDM signal probe on the run's step-248 bundle: cond-only / CFG'd rms 0.58
-  (`bench/turbo/results/20261114-1739-cdm_signal_turbo_1114_1709/`), which made the cond-only L_CDM
-  a distinct arm.
+  (`bench/turbo/results/20261114-1739-cdm_signal_turbo_1114_1709/`).
+
+### Interpretation
+
+- The dynamic grid is seed-unstable at 250 iterations (the two columns).
+- The static grid gives up other step counts.
+- The CDM signal probe made the cond-only L_CDM a distinct arm.
 
 ## Cond-only L_CDM (`cdm.teacher = "cond"`), 11-16
+
+### Facts
 
 The paper's form (arXiv:2605.06376 Eq. 9): the cond-only teacher against the fake in L_CDM, with CFG
 reaching the student through the on-trajectory DM term only. `turbo_1116_0958` against the merged15
 control `turbo_1116_0957` (static grid, weight 1.0; its curves overlap the merged14 static run
 `1114_1709`). Probe `bench/turbo/results/20261116-1054-handoff_m15_cdmcond/`, grids
-`output/tests/turbo4/cmp/cdmcond_*.jpg`.
+`output/tests/turbo4/cmp/cdmcond_*.jpg`. Adopted on the user's read of the renders.
 
 | | control `0957` | cond-only `0958` |
 |---|---|---|
@@ -46,3 +55,7 @@ control `turbo_1116_0957` (static grid, weight 1.0; its curves overlap the merge
   pants, standing), the group gains camera variety, and the café aprons drift from the teacher's
   blue to grey and brown on three of four seeds.
 - One seed, no twin. The code fallback stays `cfg`, so past run configs reproduce.
+
+### Interpretation
+
+None recorded beyond the adoption; the 1k check is in `m15_1k.md`.

@@ -5,11 +5,13 @@ Status: CLOSED 2026-11-01. One LoRA as generator, reference and fake
 ran. The step is 3–5× cheaper; the student explodes in the proposal's form and loses its
 sharpness in the paper's. Phase 0a (endpoint weighting on DP-DMD) has no APEX code and stays open.
 
+## Facts
+
 Sources: APEX, arXiv:2604.12322; the public code at `LINs-lab/APEX`
 (`src/methodes/apex/apex.py`, `qwenimage_lora_1order.yaml`). Dataset: `post_image_dataset/lora`,
 batch 1, warm start from the v1.1 delta, int8 stream base, fp32 stream, LR 5e-5.
 
-## Results
+### Results
 
 ![4-step grids at CFG 1.0, seed 42: v1.1 delta, the arm at 500 / 1000 / 1500, v3_longer, p0b_dpdmd](assets/turbo_apex_4step_grid.jpg)
 
@@ -26,11 +28,9 @@ On arm D's grid every checkpoint is worse than its own warm start: blurred, dark
 gone, and posterized from 1000 on. `WELCOME` reads at 500 and is gone at 1000. The v1.1 delta,
 `anima_turbo_v3_longer` and `anima_turbo_p0b_dpdmd` are all sharp on the same seed. Six
 `general_prompts` lines at one seed, on the default bf16 base at inference, for every arm. The
-proposal's prompts 0 / 1 / 8 / 13 were not rendered. The gap is too wide for the sample size to
-change the verdict.
+proposal's prompts 0 / 1 / 8 / 13 were not rendered.
 
-The LoRA did move, so the failure is not a dead run. Distance from the v1.1 delta in merged
-`ΔW`, relative to the delta's norm:
+Distance from the v1.1 delta in merged `ΔW`, relative to the delta's norm:
 
 | Checkpoint | rel. dist. | cos | norm |
 |---|---|---|---|
@@ -42,23 +42,18 @@ The LoRA did move, so the failure is not a dead run. Distance from the v1.1 delt
 The delta's own norm is 3.17. Between 1000 and 1500 the distance is 0.09. Arm D ends at cos 0.14
 to `v3_longer`.
 
-## What the training scalars do not show
+### Training scalars (arm D)
 
-Arm D's scalars are flat and healthy while the grid degrades: `mix_v` 0.03–0.05, `d` rms about
-0.10, `x_pred` std 0.62, `roll_std` mean 0.50–0.57. `roll_std` catches a runaway and nothing
-else: a blurred sample has a normal latent std. Render a grid at the first checkpoint.
+While the grid degrades: `mix_v` 0.03–0.05, `d` rms about 0.10, `x_pred` std 0.62, `roll_std`
+mean 0.50–0.57.
 
-## Why (inferred, not measured)
+### Arm A blow-up
 
-- **Arm A.** `v* = F − d` holds `F` relative to itself, and the rollout point has no data term.
-  `L_sup` stayed near 0.2 on real points during the blow-up. `x_pred` left its range while `d` was
-  still 0.13, and `d` grew afterwards (0.96 at step 90, 1.75 at 105), with `cos(d, d')` going from
-  −0.03 to 0.96.
-- **Arms B–D.** With `v_fake ≈ F`, the fixed point of `(1−λ)·v_sup + λ·v_fake` is `v_sup`, a guided
-  velocity field. Euler at 4 steps on a velocity field gives the conditional mean. This is the
-  proposal's Open question 1: `L_sup` pulls a warm-started student back to a velocity field.
+`L_sup` stayed near 0.2 on real points during the blow-up. `x_pred` left its range while `d` was
+still 0.13, and `d` grew afterwards (0.96 at step 90, 1.75 at 105), with `cos(d, d')` going from
+−0.03 to 0.96.
 
-## Paper and code differ
+### Paper and code differ
 
 The paper's form is arm B's. The public LoRA config runs something else, and arm A's `F − d` is in
 it (`dist_match`):
@@ -70,12 +65,11 @@ it (`dist_match`):
 - The fake is split by time sign, LR is 1e-4, `lora_target_modules` includes `timestep_embedder`.
 - Neither the paper nor `training_step` has a head start or ramp.
 
-Not tried: that combination without `tt`. It would drop the term that anchors the point.
+Not tried: that combination without `tt`.
 
-## `−c` separation (Phase 0b)
+### `−c` separation (Phase 0b)
 
-Bare `−c` is a usable branch, so the failure is not in the condition shift. Over 12 items and 10 τ
-bands (`bench/turbo/apex_cond_shift.py`), in units of `rms(v_c − v_u)`:
+Over 12 items and 10 τ bands (`bench/turbo/apex_cond_shift.py`), in units of `rms(v_c − v_u)`:
 
 | | `rms(v(−c) − v_c)` | `rms(v(−c) − v_u)` | `cos(v(−c) − v_u, v_c − v_u)` |
 |---|---|---|---|
@@ -84,8 +78,24 @@ bands (`bench/turbo/apex_cond_shift.py`), in units of `rms(v_c − v_u)`:
 
 The head start made no visible difference at 150 steps (arms B and C).
 
-## History
+### History
 
 The repo carried an earlier APEX for plain LoRA, in the paper's form, with `λ = 0.5` and an
 FM-first ramp (`_archive/apex/`). It was stable over 200–500 steps and was archived on 2026-05-11.
 No reason for that was recorded.
+
+## Interpretation
+
+- The gap on the grid is too wide for the sample size to change the verdict.
+- The LoRA did move, so the failure is not a dead run.
+- Arm D's scalars look flat and healthy while the grid degrades. `roll_std` catches a runaway and
+  nothing else: a blurred sample has a normal latent std. Render a grid at the first checkpoint.
+- Bare `−c` is a usable branch, so the failure is not in the condition shift.
+- The public code's combination without `tt` would drop the term that anchors the point.
+
+### Why (inferred, not measured)
+
+- Arm A. `v* = F − d` holds `F` relative to itself, and the rollout point has no data term.
+- Arms B–D. With `v_fake ≈ F`, the fixed point of `(1−λ)·v_sup + λ·v_fake` is `v_sup`, a guided
+  velocity field. Euler at 4 steps on a velocity field gives the conditional mean. This is the
+  proposal's Open question 1: `L_sup` pulls a warm-started student back to a velocity field.
