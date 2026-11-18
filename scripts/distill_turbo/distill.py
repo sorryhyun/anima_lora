@@ -52,6 +52,7 @@ from .steps import (
     dm_slot,
     fake_update,
     gan_generator_term,
+    paired_disc_update,
     student_rollout,
     teacher_anchor,
 )
@@ -95,7 +96,7 @@ def run_loop(ctx: RunContext, cfg: TurboConfig) -> None:
             batch = ctx.next_batch()
             torch.compiler.cudagraph_mark_step_begin()
             if cfg.anchor_only:
-                anchor_only_iteration(ctx, cfg, batch, grad_mean)
+                anchor_only_iteration(ctx, cfg, batch, step, grad_mean)
             else:
                 dpdmd_iteration(ctx, cfg, batch, step, grad_mean)
 
@@ -144,18 +145,30 @@ def _anchor(ctx: RunContext, cfg, batch: Batch, c_null: torch.Tensor):
     return eps, teacher_anchor(ctx, cfg, eps, batch.crossattn_emb, c_null, B)
 
 
-def anchor_only_iteration(ctx: RunContext, cfg, batch: Batch, grad_mean) -> None:
+def anchor_only_iteration(
+    ctx: RunContext, cfg, batch: Batch, step: int, grad_mean
+) -> None:
     """``dpdmd.anchor_only``: step 0 on the anchor regression alone; ``anchor_draws``
-    k adds k − 1 fresh-ε anchors for the same prompt and averages the gradient."""
+    k adds k − 1 fresh-ε anchors for the same prompt and averages the gradient.
+    With ``fm_weight`` or the GAN on, the anchor's end state also goes through the
+    teacher (paired feature matching / paired GAN, ``steps.anchor_fm_loss``)."""
     c, B = batch.crossattn_emb, batch.latents.shape[0]
     c_null = uncond_for_batch(ctx.uncond_base, c)
     eps, v_target = _anchor(ctx, cfg, batch, c_null)
-    if cfg.fm_weight > 0.0:
-        r = anchor_fm_loss(ctx, cfg, eps, v_target, c, B)
+    if cfg.fm_weight > 0.0 or cfg.gan_on:
+        gan_w = gan_effective_weight(cfg, step)
+        r = anchor_fm_loss(ctx, cfg, eps, v_target, c, B, gan_weight=gan_w)
         gn_student = _student_update(ctx, cfg, grad_mean)
         ctx.metrics.add_div(r.mse)
         ctx.metrics.add_fm(r.fm, r.grad_ratio)
-        ctx.metrics.add_grad_norms(gn_student, torch.zeros((), device=ctx.device))
+        gn_disc = None
+        if ctx.turbo.disc is not None:
+            d_loss, margin, spread, gn_disc = paired_disc_update(ctx, cfg, r, c)
+            ctx.metrics.add_gan(r.gan_gen, d_loss, margin, spread)
+            ctx.metrics.add_gan_share(r.gan_share)
+        ctx.metrics.add_grad_norms(
+            gn_student, torch.zeros((), device=ctx.device), gn_disc
+        )
         return
     k = cfg.anchor_draws
     div_loss = anchor_only_loss(ctx, eps, v_target, c, B, scale=1.0 / k)
@@ -256,7 +269,7 @@ def _flush_logs(ctx: RunContext, cfg, progress, n: int) -> None:
             writer.add_scalar("train/fake_lr", ctx.fake_sched.get_last_lr()[0], n)
         if ctx.disc_sched is not None:
             writer.add_scalar("train/disc_lr", ctx.disc_sched.get_last_lr()[0], n)
-        if ctx.turbo.disc is not None and not cfg.anchor_only:
+        if ctx.turbo.disc is not None:
             # The ramped generator-side λ of this step.
             writer.add_scalar(
                 "train/gan_weight_gen_eff", gan_effective_weight(cfg, n - 1), n
@@ -351,6 +364,9 @@ def _student_metadata(cfg: TurboConfig, ctx: RunContext, step: int) -> dict[str,
             os.path.basename(os.path.normpath(cfg.anchor_cache))
             if cfg.anchor_cache
             else None
+        ),
+        "ss_turbo_gan_paired_ratio": (
+            str(cfg.gan_paired_ratio) if cfg.gan_paired_ratio > 0 else None
         ),
         "ss_turbo_fm": (
             f"{cfg.fm_weight:g}@{cfg.fm_block_idx}" if cfg.fm_weight > 0 else None

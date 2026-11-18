@@ -20,3 +20,6 @@ The live run config only. Launch with
 - `turbo_1117_1054.toml`: `0823` at `student_lr` 2e-5 on the full cache, on the user's read of the
   short A/B's renders.
 - `turbo_1117_1123.toml`: `1105` at `dpdmd.fm_weight` 0.1.
+- `turbo_1117_1403.toml` / `turbo_1117_1442.toml`: paired feature matching at 0.05 (middle tap) and at 15 on block 27.
+- `turbo_1118_0953.toml`: `1442` + the paired GAN (plan.md arm 3), disc on block 27 of the FM forward, λ 0.5.
+- `turbo_1118_1028.toml`: `0953` with the generator gradient held at 0.5x the FM gradient (`gan.paired_ratio`).

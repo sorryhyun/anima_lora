@@ -147,8 +147,14 @@ class AnchorFM:
     """Detached outputs of :func:`anchor_fm_loss` (pre-weight)."""
 
     mse: torch.Tensor
-    fm: torch.Tensor  # relative feature MSE
-    grad_ratio: torch.Tensor  # rms(fm_weight·∂fm/∂v) / rms(∂mse/∂v)
+    fm: torch.Tensor  # relative feature MSE (0 with fm_weight 0)
+    grad_ratio: torch.Tensor  # rms of the feature-path gradient into v / rms(∂mse/∂v)
+    gan_gen: torch.Tensor  # generator loss (0 without the paired GAN)
+    gan_share: torch.Tensor  # rms(GAN grad) / rms(FM + GAN grad), on the features
+    real_feats: list[torch.Tensor] | None  # disc taps of x_t (no grad)
+    fake_feats: list[torch.Tensor] | None  # disc taps of x_s (detached)
+    x_t: torch.Tensor | None  # the real state, for the R1 perturbation
+    t_k: torch.Tensor | None
 
 
 def _rel_feat_mse(f_s: torch.Tensor, f_t: torch.Tensor) -> torch.Tensor:
@@ -167,22 +173,29 @@ def anchor_fm_loss(
     v_target: torch.Tensor,
     crossattn_emb: torch.Tensor,
     B: int,
+    gan_weight: float = 0.0,
 ) -> AnchorFM:
-    """``dpdmd.fm_weight``: the anchor MSE plus paired feature matching on the anchor
-    chord's end state, backwarded here.
+    """``dpdmd.fm_weight`` / the paired GAN: the anchor MSE plus terms on the
+    teacher's features of the anchor chord's end state, backwarded here.
 
     The chord ends at σ_k = ``teacher_anchor_sigmas[k_anchor]``. Real: the teacher's
     own state there, ``x_t = ε − (1 − σ_k)·v_target``. Student: ``x_s = ε − (1 −
-    σ_k)·v_student``. The loss is the relative L2 between the frozen teacher's block
-    features of the two (cond only, tap ``fm_block_idx``, early exit), paired by ε.
-    It weighs the residual by what the teacher reads at σ_k, which steps 1–3 start
-    from.
+    σ_k)·v_student``. Both go through the frozen teacher at σ_k (cond only, early
+    exit at the deepest tap), paired by ε.
 
-    The two gradients are taken on ``v_student`` separately (the teacher graph is
-    freed before the student backward) and summed there, so their ratio is logged
-    at no extra cost.
+    - FM (``fm_weight`` > 0): relative L2 between the two at ``fm_block_idx``. It
+      weighs the residual by what the teacher reads at σ_k, which steps 1–3 start
+      from.
+    - Paired GAN (``gan`` on, ``gan_weight`` the ramped λ): the generator term
+      ``softplus(−D(f_s))`` on the disc taps of the same forward. The disc is frozen
+      here; :func:`paired_disc_update` trains it on the returned features.
+
+    The feature-path gradient and the MSE's are taken on ``v_student`` separately
+    (the teacher graph is freed before the student backward) and summed there, so
+    their ratio is logged at no extra cost.
     """
     dev, dt = ctx.device, ctx.dtype
+    turbo = ctx.turbo
     x = eps.requires_grad_()
     t0 = torch.full((B,), ctx.student_sigmas[0], device=dev, dtype=dt)
     v_first = ctx.forward("student", x, t0, crossattn_emb, no_grad=False)
@@ -190,43 +203,137 @@ def anchor_fm_loss(
     mse = nn.functional.mse_loss(v, v_target)
     g_mse = (2.0 / v.numel()) * (v - v_target).detach()
 
+    fm_on = cfg.fm_weight > 0.0
+    gan_on = turbo.disc is not None
     sig = ctx.teacher_anchor_sigmas[cfg.k_anchor]
     t_k = torch.full((B,), sig, device=dev, dtype=dt)
     bidx = cfg.fm_block_idx if cfg.fm_block_idx >= 0 else ctx.model.num_blocks // 2
-    tap = {bidx}
+    taps = ({bidx} if fm_on else set()) | (turbo.gan_feature_set or set())
     e = eps.detach().float()
     x_t = (e - (1.0 - sig) * v_target).detach()
     with torch.no_grad():
-        f_t = ctx.forward(
+        feats_t = ctx.forward(
             "teacher",
             x_t,
             t_k,
             crossattn_emb,
             no_grad=True,
-            return_block_features=tap,
+            return_block_features=taps,
             return_features_early=True,
-        )[bidx]
+        )
     v_leaf = v.detach().requires_grad_()
     x_s = e - (1.0 - sig) * v_leaf
     # the recompute runs inside autograd.grad below, still in the teacher view
     with selective_block_grad_ckpt(ctx.model):
-        f_s = ctx.forward(
+        feats_s = ctx.forward(
             "teacher",
             x_s,
             t_k,
             crossattn_emb,
             no_grad=False,
-            return_block_features=tap,
+            return_block_features=taps,
             return_features_early=True,
-        )[bidx]
-    fm = _rel_feat_mse(f_s, f_t)
-    (g_fm,) = torch.autograd.grad(fm, v_leaf)
-    g_fm = cfg.fm_weight * g_fm
+        )
 
-    ctx.turbo.set_view("student")  # a checkpointed student recomputes as itself
-    v_first.backward(gradient=(g_mse + g_fm).to(v_first.dtype))
-    ratio = g_fm.pow(2).mean().sqrt() / g_mse.pow(2).mean().sqrt().clamp_min(1e-12)
-    return AnchorFM(mse=mse.detach(), fm=fm.detach(), grad_ratio=ratio.detach())
+    zero = torch.zeros((), device=dev)
+    fm = gen = zero
+    loss = zero
+    if fm_on:
+        fm = _rel_feat_mse(feats_s[bidx], feats_t[bidx])
+        loss = loss + cfg.fm_weight * fm
+    real_feats = fake_feats = None
+    if gan_on:
+        turbo.set_disc_requires_grad(False)
+        fake_list = turbo.features_in_order(feats_s)
+        gen = gan_loss_generator(turbo.disc(fake_list))
+        loss = loss + gan_weight * gen
+        real_feats = [f.detach() for f in turbo.features_in_order(feats_t)]
+        fake_feats = [f.detach() for f in fake_list]
+
+    # One pullback through the teacher; the FM / GAN split is read on the features.
+    out_feats = sorted(taps)
+    f_s_list = [feats_s[i] for i in out_feats]
+    gan_share = zero
+    if fm_on and gan_on and gan_weight > 0.0:
+        g_f_fm = torch.autograd.grad(cfg.fm_weight * fm, f_s_list, retain_graph=True)
+        g_f_gan = torch.autograd.grad(gan_weight * gen, f_s_list, retain_graph=True)
+
+        def _rms(gs):
+            return torch.cat([g.float().flatten() for g in gs]).pow(2).mean().sqrt()
+
+        if cfg.gan_paired_ratio > 0.0:
+            # rms(GAN) = ratio·ramp·rms(FM): a stronger disc turns the term, it
+            # does not grow it. gan_weight / weight_gen is the delay/ramp fraction.
+            ramp = gan_weight / cfg.gan_loss_weight_gen
+            s = (
+                cfg.gan_paired_ratio
+                * ramp
+                * _rms(g_f_fm)
+                / _rms(g_f_gan).clamp_min(1e-20)
+            )
+            g_f_gan = [g * s.to(g.dtype) for g in g_f_gan]
+        g_f = [a + b for a, b in zip(g_f_fm, g_f_gan)]
+        gan_share = _rms(g_f_gan) / _rms(g_f).clamp_min(1e-20)
+    elif fm_on or gan_weight > 0.0:
+        g_f = torch.autograd.grad(loss, f_s_list, allow_unused=True, retain_graph=True)
+    else:
+        g_f = None
+    if g_f is not None:
+        g_f = [torch.zeros_like(f) if g is None else g for g, f in zip(g_f, f_s_list)]
+        (g_feat,) = torch.autograd.grad(f_s_list, v_leaf, grad_outputs=g_f)
+    else:  # GAN in its delay window and FM off: the MSE alone
+        g_feat = torch.zeros_like(g_mse)
+
+    turbo.set_view("student")  # a checkpointed student recomputes as itself
+    v_first.backward(gradient=(g_mse + g_feat).to(v_first.dtype))
+    ratio = g_feat.pow(2).mean().sqrt() / g_mse.pow(2).mean().sqrt().clamp_min(1e-12)
+    return AnchorFM(
+        mse=mse.detach(),
+        fm=fm.detach(),
+        grad_ratio=ratio.detach(),
+        gan_gen=gen.detach(),
+        gan_share=gan_share.detach(),
+        real_feats=real_feats,
+        fake_feats=fake_feats,
+        x_t=x_t if gan_on else None,
+        t_k=t_k if gan_on else None,
+    )
+
+
+def paired_disc_update(
+    ctx: RunContext,
+    cfg,
+    r: AnchorFM,
+    crossattn_emb: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Paired-GAN disc step on the features :func:`anchor_fm_loss` already took:
+    real = the teacher's state ``x_t`` at σ_k, fake = the student's ``x_s``. No
+    teacher forward unless ``gan.r1_weight`` > 0 (one no-grad forward of the
+    perturbed real state). Returns (loss, margin, spread, pre-clip grad norm)."""
+    turbo = ctx.turbo
+    turbo.set_disc_requires_grad(True)
+    real_logits = turbo.disc(r.real_feats)
+    fake_logits = turbo.disc(r.fake_feats)
+    loss = gan_loss_discriminator(real_logits, fake_logits)
+    with torch.no_grad():
+        margin = real_logits.mean() - fake_logits.mean()
+        fl = fake_logits.flatten()
+        spread = fl.std() if fl.numel() > 1 else torch.zeros((), device=ctx.device)
+    if cfg.gan_r1_weight > 0.0:
+        x_a = r.x_t + cfg.gan_r1_alpha * torch.randn_like(r.x_t)
+        feats_a = _teacher_feats(
+            ctx, x_a.to(ctx.dtype), r.t_k, crossattn_emb, no_grad=True
+        )
+        loss = loss + cfg.gan_r1_weight * nn.functional.mse_loss(
+            real_logits, turbo.disc(feats_a)
+        )
+    loss.backward()
+    gn = clip_or_norm(turbo.disc_params(), cfg.grad_clip)
+    ctx.disc_opt.step()
+    ctx.disc_opt.zero_grad(set_to_none=True)
+    ctx.disc_sched.step()
+    turbo.set_disc_requires_grad(False)
+    return loss.detach(), margin, spread, gn
 
 
 @dataclass

@@ -168,8 +168,11 @@ class TurboConfig:
     anchor_only: bool = knob(
         "dpdmd.anchor_only",
         False,
-        "Train step 0 on the anchor regression alone (no DM / CDM / GAN / fake "
-        "update, no fake warmup; project/anima_turbo/plan.md, S-b).",
+        "Train step 0 on the anchor regression alone (no DM / CDM / fake update, "
+        "no fake warmup; project/anima_turbo/plan.md, S-b). With gan.weight_gen > 0 "
+        "the GAN is the paired one: the disc reads the teacher's features of the "
+        "anchor end state, teacher x_t (real) against the student's x_s (fake), "
+        "plan.md arm 3.",
     )
     anchor_draws: int = knob(
         "dpdmd.anchor_draws",
@@ -310,6 +313,13 @@ class TurboConfig:
         "real input; 0 off.",
     )
     gan_r1_alpha: float = knob("gan.r1_alpha", 0.1)
+    gan_paired_ratio: float = knob(
+        "gan.paired_ratio",
+        0.0,
+        "Paired GAN (anchor_only) only: rescale the generator gradient each step to "
+        "this multiple of the FM gradient's rms on the teacher features (times the "
+        "delay/ramp fraction), so weight_gen sets only the ramp; 0 = off (λ·gen as is).",
+    )
     gan_use_same_t_noise: bool = knob("gan.use_same_t_noise", True)
     gan_grad_ckpt: bool = knob("gan.grad_ckpt", True)
 
@@ -611,6 +621,12 @@ def _validate(c: TurboConfig) -> None:
         c.gan_loss_weight_gen >= 0.0,
         f"gan.weight_gen={c.gan_loss_weight_gen}: must be >= 0",
     )
+    _require(
+        c.gan_paired_ratio >= 0.0
+        and (c.gan_paired_ratio == 0.0 or (c.anchor_only and c.fm_weight > 0.0)),
+        f"gan.paired_ratio={c.gan_paired_ratio}: must be >= 0, and > 0 is measured "
+        "against the FM gradient, so it needs dpdmd.anchor_only and fm_weight > 0.",
+    )
     _require(c.gan_r1_weight >= 0.0, f"gan.r1_weight={c.gan_r1_weight}: must be >= 0")
     _require(
         c.gan_delay_steps >= 0 and c.gan_warmup_steps >= 0,
@@ -711,6 +727,7 @@ def snapshot_toml_text(c: TurboConfig, *, source_config: str | None = None) -> s
 
 _TB_KEYS = (
     "gan_loss_weight_gen",
+    "gan_paired_ratio",
     "cdm_weight",
     "cdm_teacher",
     "mfd_dtau",

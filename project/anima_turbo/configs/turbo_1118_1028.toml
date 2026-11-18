@@ -1,0 +1,107 @@
+# Paired GAN (plan.md arm 3) with the generator gradient normalised to the FM's: turbo_1118_0953 with
+# gan.paired_ratio 0.5 and weight_gen 1.0 (the latter now only scales the delay/ramp), nothing else changed
+# (1442 recipe + disc on block 27 of the FM forward, token head, disc_lr 5e-5, 200-step delay, 200-step ramp).
+# In 0953 (raw lambda 0.5) the GAN took 0.99 of the feature-path gradient once the disc at 5e-5 grew strong, and the
+# training anchor MSE ran to 0.131 against 1442's 0.070 (renders not read). Here rms(GAN grad) = 0.5 rms(FM grad) on
+# the teacher features every step, so the disc can turn the term but not grow it.
+# Read: final EMA against turbo_1117_1442 EMA 2048 on the renders (guitarist seeds 1, 2 and 4, the group lower
+# halves); the user's read decides. Log numbers (anchor MSE, disc margin, gan_grad_share) go beside them.
+dit_path = "models/diffusion_models/anima_merged15_int8_gptq.safetensors"
+dit_nonquant_path = "models/diffusion_models/anima_merged15.safetensors"
+data_dir = "post_image_dataset/lora"
+output_dir = "output/ckpt"
+output_name = "turbo_1118_1028"
+
+iterations = 2048
+batch_size = 1
+seed = 42
+channel_scaling_alpha = 0.0
+compile_dynamic_seq = true
+dynamo_recompile_limit = 64
+activation_memory_budget = 0.99
+int8 = "stream"
+stream = "fp32"
+
+[network]
+student_rank = 64
+student_alpha = 180
+fake_rank = 64
+fake_alpha = 180
+attn_mode = "flash"
+student_down_init = "kaiming"
+fake_down_init = "kaiming"
+student_init_weights = "models/extracted/anima_turbo_v1.1_delta_r96_asvd_adaln.safetensors"
+fake_init_weights = "models/extracted/anima_turbo_v1.1_delta_r96_asvd_adaln.safetensors"
+train_adaln = true
+fake_adaln = true
+adaln_rank = 16
+adaln_alpha = 90
+fake_transition = true
+
+[dmd]
+student_steps = 4
+teacher_cfg = 4
+dynamic_schedule = false
+dm_x0_norm = true
+norm_floor = 0.05
+dm_draws = 1
+
+[cdm]
+weight = 0.0
+grad_ckpt = true
+teacher = "cond"
+
+[mfd]
+dtau = 0.0
+
+[optim]
+student_lr = 5e-5
+fake_lr = 5e-5
+fake_steps_per_student_step = 4
+fake_warmup_steps = 0
+grad_accum = 2
+weight_decay = 0.0
+grad_clip = 1.0
+lr_schedule = "cosine"
+
+[ema]
+window = 0.2
+
+[dpdmd]
+k_anchor = 14
+teacher_anchor_steps = 28
+div_weight = 0.1
+detach_after_first = true
+dm_first_step = false
+anchor_only = true
+rollout_grad = false
+fm_weight = 15.0
+fm_block_idx = 27
+anchor_cache = "post_image_dataset/turbo_anchor_cache/m15_k14of28_p1024"
+
+[sampling]
+t_distribution = "uniform"
+sigmoid_scale = 1.0
+flow_shift = 3.0
+
+[gan]
+weight_gen = 1.0
+paired_ratio = 0.5
+feature_block_idx = 27
+disc_lr = 5e-5
+disc_hidden = 0
+disc_head = "token"
+delay_steps = 200
+warmup_steps = 200
+r1_weight = 0.0
+r1_alpha = 0.1
+use_same_t_noise = true
+grad_ckpt = true
+
+[io]
+save_every = 1024
+log_interval = 5
+log_dir = "output/logs/turbo"
+validate_every_n_steps = 1024
+val_diversity_seeds = 8
+val_prompt_idx = -1

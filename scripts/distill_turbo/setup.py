@@ -443,9 +443,13 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
     disc_opt = disc_sched = None
     if turbo.disc is not None:
         disc_opt = _adamw(turbo.disc_params(), cfg.gan_disc_lr, cfg, betas=(0.0, 0.99))
+        # anchor_only (paired GAN): one disc step per iteration, no fake loop.
+        disc_steps = cfg.iterations * (
+            1 if cfg.anchor_only else cfg.fake_steps_per_student_step
+        )
         disc_sched = make_scheduler(
             disc_opt,
-            cfg.iterations * cfg.fake_steps_per_student_step,
+            disc_steps,
             cfg.gan_disc_lr,
             cfg.lr_schedule,
         )

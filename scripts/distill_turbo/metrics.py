@@ -8,8 +8,10 @@ Scalars (TB names in :func:`write_scalars`; how to read them:
 * ``rel_gap`` rms(τ·Δ_dm) / rms(τ·v_real_dm); ``mag_ratio`` rms(v_fake_dm) /
   rms(v_real_dm); ``cos`` cosine(v_fake_dm, v_real_dm)
 * ``div`` first-step diversity MSE (pre-weight)
-* ``fm`` / ``fm_ratio`` anchor feature matching (pre-weight) and the rms of its
-  weighted gradient into v over the anchor MSE's
+* ``fm`` / ``fm_ratio`` anchor feature matching (pre-weight) and the rms of the
+  weighted feature-path gradient (FM + paired GAN) into v over the anchor MSE's
+* ``gan_share`` paired GAN: rms of its gradient over that of FM + GAN, on the
+  teacher features
 * ``gn_*`` pre-clip gradient norm per optimizer (above ``grad_clip`` = clipped)
 """
 
@@ -44,6 +46,7 @@ class FlushedMetrics:
     gan_disc: float
     gan_margin: float
     gan_spread: float
+    gan_share: float
     cdm: float
     gn_student: float
     gn_fake: float
@@ -130,6 +133,11 @@ class TurboMetrics:
         self._acc.add("gan_disc", gan_disc_mean_t.detach().float())
         self._acc.add("gan_margin", gan_margin_t.detach().float())
         self._acc.add("gan_spread", gan_spread_t.detach().float())
+
+    @torch.no_grad()
+    def add_gan_share(self, share: torch.Tensor) -> None:
+        """Accumulate the paired GAN's share of the feature-path gradient."""
+        self._acc.add("gan_share", share.detach().float())
 
     @torch.no_grad()
     def add_cdm(self, grad_cdm: torch.Tensor) -> None:
@@ -273,8 +281,16 @@ def write_scalars(
     writer.add_scalar("train/grad_norm_student", m.gn_student, step)
     if m.fm != 0:
         writer.add_scalar("train/fm_loss", m.fm, step)
+    if m.fm_ratio != 0:
         writer.add_scalar("train/fm_grad_ratio", m.fm_ratio, step)
     if anchor_only:
+        if m.gan_disc != 0:
+            writer.add_scalar("train/gan_gen_loss", m.gan_gen, step)
+            writer.add_scalar("train/gan_disc_loss", m.gan_disc, step)
+            writer.add_scalar("train/gan_disc_margin", m.gan_margin, step)
+            writer.add_scalar("train/gan_logit_spread", m.gan_spread, step)
+            writer.add_scalar("train/gan_grad_share", m.gan_share, step)
+            writer.add_scalar("train/grad_norm_disc", m.gn_disc, step)
         return
     writer.add_scalar("train/fake_loss", m.fake, step)
     writer.add_scalar("train/grad_signal_rms", m.grad, step)
@@ -333,7 +349,13 @@ def tqdm_postfix(m: FlushedMetrics, *, anchor_only: bool = False) -> dict:
         out = {"anchor": f"{m.div:.4f}", "gn": f"{m.gn_student:.2e}"}
         if m.fm != 0:
             out["fm"] = f"{m.fm:.4f}"
+        if m.fm_ratio != 0:
             out["fmr"] = f"{m.fm_ratio:.2f}"
+        if m.gan_disc != 0:
+            out["gen"] = f"{m.gan_gen:.3f}"
+            out["dsc"] = f"{m.gan_disc:.3f}"
+            out["mgn"] = f"{m.gan_margin:.3f}"
+            out["gsh"] = f"{m.gan_share:.2f}"
         return out
     postfix = {
         "g": f"{m.grad:.2e}",

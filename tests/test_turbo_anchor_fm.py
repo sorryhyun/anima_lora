@@ -6,6 +6,10 @@
 * The teacher's real-side forward runs under no_grad; the student side with grad,
   both in the teacher view at σ_k.
 * config: off by default; > 0 needs anchor_only.
+* Paired GAN (gan on under anchor_only): the student gradient is that of
+  ``mse + fm_weight·fm + λ·softplus(−D(f_s))`` on the same teacher forward, with
+  the disc frozen there; the disc step reads the real / fake features of that
+  forward and runs no teacher forward of its own.
 """
 
 from __future__ import annotations
@@ -18,7 +22,15 @@ import torch
 import torch.nn as nn
 
 from scripts.distill_turbo.config import build_argparser, resolve_config
-from scripts.distill_turbo.steps import _rel_feat_mse, anchor_fm_loss
+from networks.methods.turbo_dmd import (
+    TeacherFeatureDiscriminator,
+    gan_loss_discriminator,
+)
+from scripts.distill_turbo.steps import (
+    _rel_feat_mse,
+    anchor_fm_loss,
+    paired_disc_update,
+)
 
 SIG_K = 0.75
 FM_W = 0.3
@@ -44,7 +56,7 @@ def _teacher_feat(x, sigma: float):
     return torch.tanh(torch.einsum("bchw,cd->bhwd", x, a) * (1.0 + sigma))
 
 
-def _ctx(net: _Student, calls: list):
+def _ctx(net: _Student, calls: list, disc=None):
     views = []
 
     def forward(
@@ -82,7 +94,14 @@ def _ctx(net: _Student, calls: list):
         student_sigmas=[1.0, 0.9, 0.75, 0.5],
         teacher_anchor_sigmas=[1.0, SIG_K, 0.0],
         model=SimpleNamespace(blocks=blocks, num_blocks=4),
-        turbo=SimpleNamespace(set_view=views.append),
+        turbo=SimpleNamespace(
+            set_view=views.append,
+            disc=disc,
+            gan_feature_set={2} if disc is not None else None,
+            features_in_order=lambda f: [f[2]],
+            set_disc_requires_grad=lambda flag: disc.requires_grad_(flag),
+            disc_params=lambda: list(disc.parameters()),
+        ),
     )
 
 
@@ -135,3 +154,95 @@ def test_config():
     with pytest.raises((ValueError, SystemExit)):
         _resolve(cfg={"dpdmd": {"fm_weight": 0.5}})
     assert dataclasses.is_dataclass(c)
+
+
+GAN_W = 0.7
+
+
+def test_paired_gan_grad_and_disc_step():
+    torch.manual_seed(0)
+    eps, v_t, c = torch.randn(2, 4, 4, 4), torch.randn(2, 4, 4, 4), torch.randn(2, 3, 8)
+    cfg = SimpleNamespace(
+        k_anchor=1,
+        fm_weight=FM_W,
+        fm_block_idx=2,
+        gan_paired_ratio=0.0,
+        gan_r1_weight=0.0,
+        gan_r1_alpha=0.1,
+        grad_clip=0.0,
+    )
+    disc = TeacherFeatureDiscriminator(inner_dim=6, num_taps=1, granularity="token")
+    disc_ref = TeacherFeatureDiscriminator(inner_dim=6, num_taps=1, granularity="token")
+    disc_ref.load_state_dict(disc.state_dict())
+    net, calls = _Student(), []
+    ctx = _ctx(net, calls, disc)
+    r = anchor_fm_loss(ctx, cfg, eps.clone(), v_t, c, 2, gan_weight=GAN_W)
+    assert all(p.grad is None for p in disc.parameters())  # frozen on the gen side
+
+    ref = _Student()
+    v = ref.v(eps)
+    mse = nn.functional.mse_loss(v, v_t)
+    f_s = _teacher_feat(eps - (1 - SIG_K) * v, SIG_K)
+    f_t = _teacher_feat(eps - (1 - SIG_K) * v_t, SIG_K)
+    fm = _rel_feat_mse(f_s, f_t)
+    gen = nn.functional.softplus(-disc_ref([f_s])).mean()
+    (g,) = torch.autograd.grad(mse + FM_W * fm + GAN_W * gen, ref.w)
+    assert torch.allclose(net.w.grad, g, rtol=1e-5)
+    assert torch.allclose(r.gan_gen, gen.detach(), rtol=1e-5)
+    assert 0.0 < float(r.gan_share) < 1.0
+
+    # Disc step: no teacher forward, loss on the forward's own features.
+    n_calls = len(calls)
+    ctx.disc_opt = torch.optim.SGD(disc.parameters(), lr=0.1)
+    ctx.disc_sched = SimpleNamespace(step=lambda: None)
+    d_loss, margin, _, _ = paired_disc_update(ctx, cfg, r, c)
+    assert len(calls) == n_calls
+    want = gan_loss_discriminator(disc_ref([f_t.detach()]), disc_ref([f_s.detach()]))
+    assert torch.allclose(d_loss, want.detach(), rtol=1e-5)
+    assert not any(p.requires_grad for p in disc.parameters())
+
+
+def test_gan_alone_in_delay_window_is_mse():
+    torch.manual_seed(0)
+    eps, v_t, c = torch.randn(2, 4, 4, 4), torch.randn(2, 4, 4, 4), torch.randn(2, 3, 8)
+    cfg = SimpleNamespace(k_anchor=1, fm_weight=0.0, fm_block_idx=-1)
+    disc = TeacherFeatureDiscriminator(inner_dim=6, num_taps=1, granularity="token")
+    net = _Student()
+    anchor_fm_loss(_ctx(net, [], disc), cfg, eps.clone(), v_t, c, 2, gan_weight=0.0)
+    ref = _Student()
+    (g,) = torch.autograd.grad(nn.functional.mse_loss(ref.v(eps), v_t), ref.w)
+    assert torch.allclose(net.w.grad, g, rtol=1e-5)
+
+
+def test_paired_ratio_fixes_gan_share():
+    torch.manual_seed(0)
+    eps, v_t, c = torch.randn(2, 4, 4, 4), torch.randn(2, 4, 4, 4), torch.randn(2, 3, 8)
+    disc = TeacherFeatureDiscriminator(inner_dim=6, num_taps=1, granularity="token")
+    shares = []
+    for w_gen, w in ((1.0, 1.0), (10.0, 10.0), (10.0, 5.0)):  # last: half the ramp
+        cfg = SimpleNamespace(
+            k_anchor=1,
+            fm_weight=FM_W,
+            fm_block_idx=2,
+            gan_paired_ratio=0.5,
+            gan_loss_weight_gen=w_gen,
+        )
+        r = anchor_fm_loss(
+            _ctx(_Student(), [], disc), cfg, eps.clone(), v_t, c, 2, gan_weight=w
+        )
+        shares.append(float(r.gan_share))
+    # same share whatever λ is; half the ramp gives a smaller one
+    assert abs(shares[0] - shares[1]) < 1e-5
+    assert shares[2] < shares[0]
+
+
+def test_paired_ratio_config():
+    c = _resolve(
+        cfg={
+            "dpdmd": {"anchor_only": True, "fm_weight": 1.0},
+            "gan": {"weight_gen": 1.0, "paired_ratio": 0.5},
+        }
+    )
+    assert c.gan_paired_ratio == 0.5
+    with pytest.raises((ValueError, SystemExit)):
+        _resolve(cfg={"dpdmd": {"anchor_only": True}, "gan": {"paired_ratio": 0.5}})
